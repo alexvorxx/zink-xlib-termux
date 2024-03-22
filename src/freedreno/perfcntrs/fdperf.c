@@ -65,24 +65,17 @@ struct counter_group {
    struct {
       const struct fd_perfcntr_counter *counter;
       uint16_t select_val;
-      volatile uint32_t *val_hi;
-      volatile uint32_t *val_lo;
       bool is_gpufreq_counter;
    } counter[MAX_CNTR_PER_GROUP];
 
-   /* last sample time: */
-   uint32_t stime[MAX_CNTR_PER_GROUP];
-   /* for now just care about the low 32b value.. at least then we don't
-    * have to really care that we can't sample both hi and lo regs at the
-    * same time:
-    */
-   uint32_t last[MAX_CNTR_PER_GROUP];
-   /* current value, ie. by how many did the counter increase in last
-    * sampling period divided by the sampling period:
-    */
-   float current[MAX_CNTR_PER_GROUP];
    /* name of currently selected counters (for UI): */
    const char *label[MAX_CNTR_PER_GROUP];
+
+   uint64_t value[MAX_CNTR_PER_GROUP];
+   uint64_t value_delta[MAX_CNTR_PER_GROUP];
+
+   uint64_t sample_time[MAX_CNTR_PER_GROUP];
+   uint64_t sample_time_delta[MAX_CNTR_PER_GROUP];
 };
 
 static struct {
@@ -108,7 +101,7 @@ static void restore_counter_groups(void);
  * helpers
  */
 
-static uint32_t
+static uint64_t
 gettime_us(void)
 {
    struct timespec ts;
@@ -126,12 +119,12 @@ sleep_us(uint32_t us)
    clock_nanosleep(CLOCK_MONOTONIC, 0, &ts, NULL);
 }
 
-static uint32_t
-delta(uint32_t a, uint32_t b)
+static uint64_t
+delta(uint64_t a, uint64_t b)
 {
    /* deal with rollover: */
    if (a > b)
-      return 0xffffffff - a + b;
+      return 0xffffffffffffffffull - a + b;
    else
       return b - a;
 }
@@ -291,21 +284,30 @@ select_counter(struct counter_group *group, int ctr, int countable_val)
 
       break;
    }
+}
 
-   group->last[ctr] = *group->counter[ctr].val_lo;
-   group->stime[ctr] = gettime_us();
+static uint64_t load_counter_value(struct counter_group *group, int ctr)
+{
+   /* We can read the counter register value as an uint64_t, as long as the
+    * lo/hi addresses are neighboring and the lo address is 8-byte-aligned.
+    * This currently holds for all counters exposed in perfcounter groups.
+    */
+   const struct fd_perfcntr_counter *counter = group->counter[ctr].counter;
+   assert(counter->counter_reg_lo + 1 == counter->counter_reg_hi);
+   assert(!((counter->counter_reg_lo * 4) % 8));
+   return *((uint64_t *) (dev.io + counter->counter_reg_lo * 4));
 }
 
 static void
-resample_counter(struct counter_group *group, int ctr)
+resample_counter(struct counter_group *group, int ctr, uint64_t sample_time)
 {
-   uint32_t val = *group->counter[ctr].val_lo;
-   uint32_t t = gettime_us();
-   uint32_t dt = delta(group->stime[ctr], t);
-   uint32_t dval = delta(group->last[ctr], val);
-   group->current[ctr] = (float)dval * 1000000.0 / (float)dt;
-   group->last[ctr] = val;
-   group->stime[ctr] = t;
+   uint64_t previous_value = group->value[ctr];
+   group->value[ctr] = load_counter_value(group, ctr);
+   group->value_delta[ctr] = delta(previous_value, group->value[ctr]);
+
+   uint64_t previous_sample_time = group->sample_time[ctr];
+   group->sample_time[ctr] = sample_time;
+   group->sample_time_delta[ctr] = delta(previous_sample_time, sample_time);
 }
 
 /* sample all the counters: */
@@ -323,7 +325,7 @@ resample(void)
    for (unsigned i = 0; i < dev.ngroups; i++) {
       struct counter_group *group = &dev.groups[i];
       for (unsigned j = 0; j < group->group->num_counters; j++) {
-         resample_counter(group, j);
+         resample_counter(group, j, current_time);
       }
    }
 }
@@ -444,11 +446,13 @@ redraw_counter(WINDOW *win, int row, struct counter_group *group, int ctr,
     * units the counter is counting for, ie. if a320 has 2x
     * shader as a306 we might need to scale the result..
     */
+   float counter_value = (float) group->value_delta[ctr] * 1000000.0 /
+                         (float) group->sample_time_delta[ctr];
    if (strstr(group->label[ctr], "CYCLE") ||
        strstr(group->label[ctr], "BUSY") || strstr(group->label[ctr], "IDLE"))
-      redraw_counter_value_cycles(win, group->current[ctr]);
+      redraw_counter_value_cycles(win, counter_value);
    else
-      redraw_counter_value_raw(win, group->current[ctr]);
+      redraw_counter_value_raw(win, counter_value);
 }
 
 static void
@@ -496,7 +500,8 @@ redraw(WINDOW *win)
 
    /* Draw GPU freq row: */
    redraw_counter_label(win, row, "Freq (MHz)", false);
-   redraw_counter_value_raw(win, dev.groups[0].current[0] / 1000000.0);
+   redraw_counter_value_raw(win, (float) dev.groups[0].value_delta[0] /
+                                 (float) dev.groups[0].sample_time_delta[0]);
    row++;
 
    redraw_footer(win);
@@ -647,7 +652,10 @@ static void
 main_ui(void)
 {
    WINDOW *mainwin;
-   uint32_t last_time = gettime_us();
+   uint64_t last_time = gettime_us();
+
+   /* Run an initial sample to set up baseline counter values. */
+   resample();
 
    /* curses setup: */
    mainwin = initscr();
@@ -696,7 +704,7 @@ main_ui(void)
       /* restore the counters every 0.5s in case the GPU has suspended,
        * in which case the current selected countables will have reset:
        */
-      uint32_t t = gettime_us();
+      uint64_t t = gettime_us();
       if (delta(last_time, t) > 500000) {
          restore_counter_groups();
          flush_ring();
@@ -722,7 +730,8 @@ dump_counters(void)
       const struct counter_group *group = &dev.groups[i];
       for (unsigned j = 0; j < group->group->num_counters; j++) {
          const char *label = group->label[j];
-         float val = group->current[j];
+         float val = (float) group->value_delta[j] * 1000000.0 /
+                     (float) group->sample_time_delta[j];
 
          int n = printf("%s: ", label) - 2;
          while (n++ < ctr_width)
@@ -796,11 +805,6 @@ setup_counter_groups(const struct fd_perfcntr_group *groups)
 
       for (unsigned j = 0; j < group->group->num_counters; j++) {
          group->counter[j].counter = &group->group->counters[j];
-
-         group->counter[j].val_hi =
-            dev.io + (group->counter[j].counter->counter_reg_hi * 4);
-         group->counter[j].val_lo =
-            dev.io + (group->counter[j].counter->counter_reg_lo * 4);
 
          if (!group->counter[j].is_gpufreq_counter)
             group->counter[j].select_val = j;

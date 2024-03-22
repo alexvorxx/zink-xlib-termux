@@ -419,19 +419,14 @@ redraw_counter_value_cycles(WINDOW *win, float val)
 }
 
 static void
-redraw_counter_value_raw(WINDOW *win, float val)
+redraw_counter_value(WINDOW *win, int row, struct counter_group *group, int ctr)
 {
    char str[32];
-   snprintf(str, sizeof(str), "%'.2f", val);
-   waddstr(win, str);
-   whline(win, ' ', w - getcurx(win));
-}
+   int n = snprintf(str, sizeof(str), "%" PRIu64 " ", group->value_delta[ctr]);
 
-static void
-redraw_counter(WINDOW *win, int row, struct counter_group *group, int ctr,
-               bool selected)
-{
-   redraw_counter_label(win, row, group->label[ctr], selected);
+   whline(win, ' ', 24 - n);
+   wmove(win, row, getcurx(win) + 24 - n);
+   waddstr(win, str);
 
    /* quick hack, if the label has "CYCLE" in the name, it is
     * probably a cycle counter ;-)
@@ -446,13 +441,37 @@ redraw_counter(WINDOW *win, int row, struct counter_group *group, int ctr,
     * units the counter is counting for, ie. if a320 has 2x
     * shader as a306 we might need to scale the result..
     */
-   float counter_value = (float) group->value_delta[ctr] * 1000000.0 /
-                         (float) group->sample_time_delta[ctr];
    if (strstr(group->label[ctr], "CYCLE") ||
-       strstr(group->label[ctr], "BUSY") || strstr(group->label[ctr], "IDLE"))
-      redraw_counter_value_cycles(win, counter_value);
-   else
-      redraw_counter_value_raw(win, counter_value);
+       strstr(group->label[ctr], "BUSY") || strstr(group->label[ctr], "IDLE")) {
+      float cycles_val = (float) group->value_delta[ctr] * 1000000.0 /
+                         (float) group->sample_time_delta[ctr];
+      redraw_counter_value_cycles(win, cycles_val);
+   } else {
+      whline(win, ' ', w - getcurx(win));
+   }
+}
+
+static void
+redraw_counter(WINDOW *win, int row, struct counter_group *group, int ctr,
+               bool selected)
+{
+   redraw_counter_label(win, row, group->label[ctr], selected);
+   redraw_counter_value(win, row, group, ctr);
+}
+
+static void
+redraw_gpufreq_counter(WINDOW *win, int row)
+{
+   redraw_counter_label(win, row, "Freq (MHz)", false);
+
+   struct counter_group *group = &dev.groups[0];
+   float freq_val = (float) group->value_delta[0] / (float) group->sample_time_delta[0];
+
+   char str[32];
+   snprintf(str, sizeof(str), "%.2f", freq_val);
+
+   waddstr(win, str);
+   whline(win, ' ', w - getcurx(win));
 }
 
 static void
@@ -499,9 +518,7 @@ redraw(WINDOW *win)
    row++;
 
    /* Draw GPU freq row: */
-   redraw_counter_label(win, row, "Freq (MHz)", false);
-   redraw_counter_value_raw(win, (float) dev.groups[0].value_delta[0] /
-                                 (float) dev.groups[0].sample_time_delta[0]);
+   redraw_gpufreq_counter(win, row);
    row++;
 
    redraw_footer(win);
@@ -737,13 +754,17 @@ dump_counters(void)
          while (n++ < ctr_width)
             fputc(' ', stdout);
 
+         n = printf("%" PRIu64, group->value_delta[j]);
+         while (n++ < 24)
+            fputc(' ', stdout);
+
          if (strstr(label, "CYCLE") ||
              strstr(label, "BUSY") ||
              strstr(label, "IDLE")) {
             val = val / dev.max_freq * 100.0f;
-            printf("%.2f%%\n", val);
+            printf(" %.2f%%\n", val);
          } else {
-            printf("%'.2f\n", val);
+            printf("\n");
          }
       }
    }

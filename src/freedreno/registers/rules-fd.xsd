@@ -23,14 +23,10 @@
 	<element name="import"         type="rng:importType" />
 	<element name="copyright"      type="rng:copyrightType" />
 	<element name="domain"         type="rng:domainType" />
-	<element name="group"          type="rng:groupType" />
-	<element name="use-group"      type="rng:refType" />
 	<element name="array"          type="rng:arrayType" />
 	<element name="stripe"         type="rng:stripeType" />
 	<element name="reg64"          type="rng:registerType" />
 	<element name="reg32"          type="rng:registerType" />
-	<element name="reg16"          type="rng:registerType" />
-	<element name="reg8"           type="rng:registerType" />
 	<element name="bitset"         type="rng:bitsetType" />
 	<element name="bitfield"       type="rng:bitfieldType" />
 	<element name="enum"           type="rng:enumType" />
@@ -119,24 +115,10 @@
 			<group ref="rng:regarrayGroup" />
 		</choice>
 		<attribute name="name" type="NMTOKEN" use="required" />
-		<attribute name="bare" type="rng:Boolean" use="optional" />
 		<attribute name="prefix" type="NMTOKENS" use="optional" />
 		<attribute name="width" type="rng:DomainWidth" use="optional" />
-		<attribute name="size" type="rng:HexOrNumber" use="optional" />
 		<attribute name="varset" type="NMTOKEN" use="optional" />
 		<attribute name="variants" type="string" use="optional" />
-	</complexType>
-
-	<complexType name="groupType">
-		<annotation>
-			<documentation>groupType</documentation>
-		</annotation>
-		<choice minOccurs="0" maxOccurs="unbounded">
-			<group ref="rng:docGroup" />
-			<group ref="rng:topGroup" />
-			<group ref="rng:regarrayGroup" />
-		</choice>
-		<attribute name="name" type="NMTOKEN" use="required" />
 	</complexType>
 
 	<complexType name="arrayType">
@@ -169,10 +151,6 @@
 			<group ref="rng:topGroup" />
 			<group ref="rng:regarrayGroup" minOccurs="0" />
 		</choice>
-		<attribute name="name" type="NMTOKEN" use="optional" />
-		<attribute name="offset" type="rng:HexOrNumber" use="optional" />
-		<attribute name="stride" type="rng:HexOrNumber" use="optional" />
-		<attribute name="length" type="rng:HexOrNumber" use="optional" />
 		<attribute name="varset" type="NMTOKEN" use="optional" />
 		<attribute name="variants" type="string" use="optional" />
 		<attribute name="prefix" type="NMTOKENS" use="optional" />
@@ -181,7 +159,7 @@
 	<complexType name="registerType">
 		<annotation>
 			<documentation>
-				registerType used by reg8, reg16, reg32, reg64
+				registerType used by reg32, reg64
 			</documentation>
 		</annotation>
 		<choice minOccurs="0" maxOccurs="unbounded">
@@ -192,7 +170,6 @@
 		</choice>
 		<attribute name="name" type="NMTOKEN" use="required" />
 		<attribute name="offset" type="rng:HexOrNumber" use="required" />
-		<attribute name="access" type="rng:Access" default="rw" use="optional" />
 		<attribute name="type" type="NMTOKENS" use="optional" />
 		<attribute name="shr" type="nonNegativeInteger" use="optional" />
 		<attribute name="varset" type="NMTOKEN" use="optional" />
@@ -218,8 +195,6 @@
 		</choice>
 		<attribute name="name" type="NMTOKEN" use="required" />
 		<attribute name="inline" type="rng:Boolean" use="optional" />
-		<attribute name="bare" type="rng:Boolean" use="optional" />
-		<attribute name="prefix" type="NMTOKENS" use="optional" />
 		<attribute name="varset" type="NMTOKEN" use="optional" />
 	</complexType>
 
@@ -237,7 +212,6 @@
 		<attribute name="low" type="nonNegativeInteger" use="optional" />
 		<attribute name="pos" type="nonNegativeInteger" use="optional" />
 		<attribute name="radix" type="nonNegativeInteger" use="optional" />
-		<attribute name="align" type="nonNegativeInteger" use="optional" />
 		<attribute name="type" type="NMTOKENS" use="optional" />
 		<attribute name="varset" type="NMTOKEN" use="optional" />
 		<attribute name="variants" type="string" use="optional" />
@@ -255,7 +229,6 @@
 			<group ref="rng:topGroup" />
 		</choice>
 		<attribute name="name" type="NMTOKEN" use="required" />
-		<attribute name="inline" type="rng:Boolean" use="optional" />
 		<attribute name="bare" type="rng:Boolean" use="optional" />
 		<attribute name="prefix" type="NMTOKENS" use="optional" />
 		<attribute name="varset" type="NMTOKEN" use="optional" />
@@ -274,14 +247,6 @@
 		<attribute name="varset" type="NMTOKEN" use="optional" />
 		<attribute name="variants" type="string" use="optional" />
 	</complexType>
-
-	<complexType name="refType">
-		<annotation>
-			<documentation>refType</documentation>
-		</annotation>
-		<attribute name="ref" type="NMTOKEN" use="required" />
-	</complexType>
-
 
 	<!-- Documentation element types -->
 
@@ -382,26 +347,12 @@
 		</restriction>
 	</simpleType>
 
-	<simpleType name="Access">
-		<annotation>
-			<documentation>Access</documentation>
-		</annotation>
-		<restriction base="string">
-			<enumeration value="r" />
-			<enumeration value="w" />
-			<enumeration value="rw" />
-		</restriction>
-	</simpleType>
-
 	<simpleType name="DomainWidth">
 		<annotation>
 			<documentation>DomainWidth</documentation>
 		</annotation>
 		<restriction base="string">
-			<enumeration value="8" />
-			<enumeration value="16" />
 			<enumeration value="32" />
-			<enumeration value="64" />
 		</restriction>
 	</simpleType>
 
@@ -414,7 +365,6 @@
 			<element ref="rng:copyright" />
 			<element ref="rng:domain" />
 			<element ref="rng:enum" />
-			<element ref="rng:group" />
 			<element ref="rng:bitset" />
 			<element ref="rng:import" />
 		</choice>
@@ -424,11 +374,8 @@
 		<choice>
 			<element ref="rng:reg64" />
 			<element ref="rng:reg32" />
-			<element ref="rng:reg16" />
-			<element ref="rng:reg8" />
 			<element ref="rng:array" />
 			<element ref="rng:stripe" />
-			<element ref="rng:use-group" />
 		</choice>
 	</group>
 	

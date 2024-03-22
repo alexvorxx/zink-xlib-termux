@@ -82,11 +82,17 @@ if host_machine.system() == 'darwin'
   # MoltenVK options
   if with_moltenvk_dir != ''
     fs = import('fs')
+    # Vulkan SDK 1.3.250 to 1.3.268 support
     moltenvk_includes = join_paths(with_moltenvk_dir, 'MoltenVK', 'include')
     if not fs.is_dir(moltenvk_includes)
+      # Vulkan SDK 1.3.275 onwards support
       moltenvk_includes = join_paths(with_moltenvk_dir, 'macos', 'include')
       if not fs.is_dir(moltenvk_includes)
-        error(f'moltenvk includes cannot be found in moltenvk-dir="@with_moltenvk_dir@"')
+        # MoltenVK from brew support
+        moltenvk_includes = join_paths(with_moltenvk_dir, 'include')
+        if not fs.is_dir(moltenvk_includes)
+          error(f'moltenvk includes cannot be found in moltenvk-dir="@with_moltenvk_dir@"')
+        endif
       endif
     endif
     inc_zink_vk += include_directories(moltenvk_includes)

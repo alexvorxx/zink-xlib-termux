@@ -4652,10 +4652,16 @@ scan_nir(struct zink_screen *screen, nir_shader *shader, struct zink_shader *zs)
             bool is_load = false;
             bool is_input = false;
             bool is_interp = false;
-            /* TODO: delete this once #10826 is fixed */
             if (filter_io_instr(intr, &is_load, &is_input, &is_interp)) {
+               nir_io_semantics s = nir_intrinsic_io_semantics(intr);
+               if (io_instr_is_arrayed(intr) && s.location < VARYING_SLOT_PATCH0) {
+                  if (is_input)
+                     zs->arrayed_inputs |= BITFIELD64_BIT(s.location);
+                  else
+                     zs->arrayed_outputs |= BITFIELD64_BIT(s.location);
+               }
+               /* TODO: delete this once #10826 is fixed */
                if (!(is_input && shader->info.stage == MESA_SHADER_VERTEX)) {
-                  nir_io_semantics s = nir_intrinsic_io_semantics(intr);
                   if (is_clipcull_dist(s.location)) {
                      unsigned frac = nir_intrinsic_component(intr) + 1;
                      if (s.location < VARYING_SLOT_CULL_DIST0) {

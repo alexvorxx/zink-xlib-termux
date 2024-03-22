@@ -201,13 +201,24 @@ flush_ring(void)
 }
 
 static void
-select_counter(struct counter_group *group, int ctr, int n)
+select_counter(struct counter_group *group, int ctr, int countable_val)
 {
-   assert(n < group->group->num_countables);
    assert(ctr < group->group->num_counters);
 
-   group->label[ctr] = group->group->countables[n].name;
-   group->counter[ctr].select_val = n;
+   unsigned countable_idx = UINT32_MAX;
+   for (unsigned i = 0; i < group->group->num_countables; i++) {
+      if (countable_val != group->group->countables[i].selector)
+         continue;
+
+      countable_idx = i;
+      break;
+   }
+
+   if (countable_idx >= group->group->num_countables)
+      return;
+
+   group->label[ctr] = group->group->countables[countable_idx].name;
+   group->counter[ctr].select_val = countable_val;
 
    if (!dev.submit) {
       dev.submit = fd_submit_new(dev.pipe);
@@ -244,7 +255,7 @@ select_counter(struct counter_group *group, int ctr, int n)
       }
 
       OUT_PKT0(ring, group->group->counters[ctr].select_reg, 1);
-      OUT_RING(ring, n);
+      OUT_RING(ring, countable_val);
 
       if (group->group->counters[ctr].enable) {
          OUT_PKT0(ring, group->group->counters[ctr].enable, 1);
@@ -270,7 +281,7 @@ select_counter(struct counter_group *group, int ctr, int n)
       }
 
       OUT_PKT4(ring, group->group->counters[ctr].select_reg, 1);
-      OUT_RING(ring, n);
+      OUT_RING(ring, countable_val);
 
       if (group->group->counters[ctr].enable) {
          OUT_PKT4(ring, group->group->counters[ctr].enable, 1);

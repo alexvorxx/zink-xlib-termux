@@ -3515,13 +3515,11 @@ radv_emit_ps_inputs(const struct radv_device *device, struct radeon_cmdbuf *ctx_
    if (ps->info.ps.has_pcoord)
       ps_input_cntl[ps_offset++] = S_028644_PT_SPRITE_TEX(1) | S_028644_OFFSET(0x20);
 
-   if (ps->info.ps.num_input_clips_culls) {
+   if (ps->info.ps.input_clips_culls_mask)
       single_slot_to_ps_input(outinfo, VARYING_SLOT_CLIP_DIST0, ps_input_cntl, &ps_offset, true, false, false, false);
 
-      if (ps->info.ps.num_input_clips_culls > 4)
-         single_slot_to_ps_input(outinfo, VARYING_SLOT_CLIP_DIST1, ps_input_cntl, &ps_offset, true, false, false,
-                                 false);
-   }
+   if (ps->info.ps.input_clips_culls_mask & 0xf0)
+      single_slot_to_ps_input(outinfo, VARYING_SLOT_CLIP_DIST1, ps_input_cntl, &ps_offset, true, false, false, false);
 
    input_mask_to_ps_inputs(outinfo, ps, ps->info.ps.input_mask, ps_input_cntl, &ps_offset, false);
 

@@ -951,8 +951,14 @@ gather_shader_info_fs(const struct radv_device *device, const nir_shader *nir,
 
       switch (idx) {
       case VARYING_SLOT_CLIP_DIST0:
+         if (nir->info.inputs_read & VARYING_BIT_CLIP_DIST0)
+            info->ps.input_clips_culls_mask |= BITFIELD_RANGE(0, attrib_count);
+         if (attrib_count > 4 && (nir->info.inputs_read & VARYING_BIT_CLIP_DIST1))
+            info->ps.input_clips_culls_mask |= BITFIELD_RANGE(4, attrib_count);
+         break;
       case VARYING_SLOT_CLIP_DIST1:
-         info->ps.num_input_clips_culls += attrib_count;
+         if (nir->info.inputs_read & VARYING_BIT_CLIP_DIST1)
+            info->ps.input_clips_culls_mask |= BITFIELD_RANGE(4, attrib_count);
          break;
       default:
          break;
@@ -1768,7 +1774,7 @@ radv_link_shaders_info(struct radv_device *device, struct radv_shader_stage *pro
        !(gfx_state->lib_flags & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT)) {
       struct radv_vs_output_info *outinfo = &producer->info.outinfo;
       const bool ps_prim_id_in = !consumer || consumer->info.ps.prim_id_input;
-      const bool ps_clip_dists_in = !consumer || !!consumer->info.ps.num_input_clips_culls;
+      const bool ps_clip_dists_in = !consumer || !!consumer->info.ps.input_clips_culls_mask;
 
       if (ps_prim_id_in && (producer->stage == MESA_SHADER_VERTEX || producer->stage == MESA_SHADER_TESS_EVAL)) {
          /* Mark the primitive ID as output when it's implicitly exported by VS or TES. */

@@ -385,7 +385,7 @@ struct radv_shader_info {
       bool prim_id_input;
       bool layer_input;
       bool viewport_index_input;
-      uint8_t num_input_clips_culls;
+      uint8_t input_clips_culls_mask;
       uint32_t input_mask;
       uint32_t input_per_primitive_mask;
       uint32_t flat_shaded_mask;

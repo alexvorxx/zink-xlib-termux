@@ -5573,6 +5573,7 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
       nir_gather_xfb_info_from_intrinsics(nir);
    /* clean up io to improve direct access */
    optimize_nir(nir, NULL, true);
+   nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
    scan_nir(screen, nir, ret);
    rework_io_vars(nir, nir_var_shader_in);
    rework_io_vars(nir, nir_var_shader_out);

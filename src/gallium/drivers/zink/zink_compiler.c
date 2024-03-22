@@ -69,6 +69,20 @@ copy_vars(nir_builder *b, nir_deref_instr *dst, nir_deref_instr *src)
    }
 }
 
+static bool
+is_clipcull_dist(int location)
+{
+   switch (location) {
+   case VARYING_SLOT_CLIP_DIST0:
+   case VARYING_SLOT_CLIP_DIST1:
+   case VARYING_SLOT_CULL_DIST0:
+   case VARYING_SLOT_CULL_DIST1:
+      return true;
+   default: break;
+   }
+   return false;
+}
+
 #define SIZEOF_FIELD(type, field) sizeof(((type *)0)->field)
 
 static void
@@ -1651,7 +1665,7 @@ find_var_with_location_frac(nir_shader *nir, unsigned location, unsigned locatio
          unsigned num_components = glsl_get_vector_elements(var->type);
          if (glsl_type_is_64bit(glsl_without_array(var->type)))
             num_components *= 2;
-         if (var->data.location == VARYING_SLOT_CLIP_DIST0 || var->data.location == VARYING_SLOT_CULL_DIST0)
+         if (is_clipcull_dist(var->data.location))
             num_components = glsl_get_aoa_size(var->type);
          if (var->data.location_frac <= location_frac &&
                var->data.location_frac + num_components > location_frac)
@@ -1738,7 +1752,7 @@ get_slot_components(nir_variable *var, unsigned slot, unsigned so_slot)
    /* arrays here are already fully unrolled from their structs, so slot handling is implicit */
    unsigned num_components = glsl_get_components(glsl_without_array(type));
    /* special handling: clip/cull distance are arrays with vector semantics */
-   if (var->data.location == VARYING_SLOT_CLIP_DIST0 || var->data.location == VARYING_SLOT_CULL_DIST0) {
+   if (is_clipcull_dist(var->data.location)) {
       num_components = glsl_array_size(type);
       if (slot_idx)
          /* this is the second vec4 */
@@ -1819,7 +1833,7 @@ update_so_info(struct zink_shader *zs, nir_shader *nir, uint64_t outputs_written
             }
             if (is_inlined(inlined[slot], output))
                continue;
-            assert(!glsl_type_is_array(var->type) || var->data.location == VARYING_SLOT_CLIP_DIST0 || var->data.location == VARYING_SLOT_CULL_DIST0);
+            assert(!glsl_type_is_array(var->type) || is_clipcull_dist(var->data.location));
             assert(!glsl_type_is_struct_or_ifc(var->type));
             unsigned num_components = glsl_type_is_array(var->type) ? glsl_get_aoa_size(var->type) : glsl_get_vector_elements(var->type);
             if (glsl_type_is_64bit(glsl_without_array(var->type)))
@@ -1871,7 +1885,7 @@ update_so_info(struct zink_shader *zs, nir_shader *nir, uint64_t outputs_written
          if (var->data.is_xfb)
             goto out;
 
-         unsigned num_slots = var->data.location >= VARYING_SLOT_CLIP_DIST0 && var->data.location <= VARYING_SLOT_CULL_DIST1 ?
+         unsigned num_slots = is_clipcull_dist(var->data.location) ?
                               glsl_array_size(var->type) / 4 :
                               glsl_count_vec4_slots(var->type, false, false);
          /* for each variable, iterate over all the variable's slots and inline the outputs */
@@ -3669,7 +3683,7 @@ add_derefs_instr(nir_builder *b, nir_intrinsic_instr *intr, void *data)
             if (src_offset) {
                /* clip/cull dist and tess levels use different array offset semantics */
                bool is_clipdist = (b->shader->info.stage != MESA_SHADER_VERTEX || var->data.mode == nir_var_shader_out) &&
-                                  var->data.location >= VARYING_SLOT_CLIP_DIST0 && var->data.location <= VARYING_SLOT_CULL_DIST1;
+                                  is_clipcull_dist(var->data.location);
                bool is_tess_level = b->shader->info.stage == MESA_SHADER_TESS_CTRL &&
                                     var->data.location >= VARYING_SLOT_TESS_LEVEL_INNER && var->data.location >= VARYING_SLOT_TESS_LEVEL_OUTER;
                bool is_builtin_array = is_clipdist || is_tess_level;
@@ -4642,7 +4656,7 @@ scan_nir(struct zink_screen *screen, nir_shader *shader, struct zink_shader *zs)
             if (filter_io_instr(intr, &is_load, &is_input, &is_interp)) {
                if (!(is_input && shader->info.stage == MESA_SHADER_VERTEX)) {
                   nir_io_semantics s = nir_intrinsic_io_semantics(intr);
-                  if (s.location >= VARYING_SLOT_CLIP_DIST0 && s.location <= VARYING_SLOT_CULL_DIST1) {
+                  if (is_clipcull_dist(s.location)) {
                      unsigned frac = nir_intrinsic_component(intr) + 1;
                      if (s.location < VARYING_SLOT_CULL_DIST0) {
                         if (s.location == VARYING_SLOT_CLIP_DIST1)

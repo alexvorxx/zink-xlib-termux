@@ -382,7 +382,12 @@ st_prog_to_nir_postprocess(struct st_context *st, nir_shader *nir,
 
    NIR_PASS(_, nir, st_nir_lower_wpos_ytransform, prog, screen);
    NIR_PASS(_, nir, nir_lower_system_values);
-   NIR_PASS(_, nir, nir_lower_compute_system_values, NULL);
+
+   struct nir_lower_compute_system_values_options cs_options = {
+      .has_base_global_invocation_id = false,
+      .has_base_workgroup_id = false,
+   };
+   NIR_PASS(_, nir, nir_lower_compute_system_values, &cs_options);
 
    /* Optimise NIR */
    NIR_PASS(_, nir, nir_opt_constant_folding);

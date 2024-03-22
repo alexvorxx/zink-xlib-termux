@@ -627,8 +627,10 @@ st_link_glsl_to_nir(struct gl_context *ctx,
       NIR_PASS(_, nir, st_nir_lower_wpos_ytransform, shader->Program,
                st->screen);
 
+      /* needed to lower base_workgroup_id and base_global_invocation_id */
+      struct nir_lower_compute_system_values_options cs_options = {};
       NIR_PASS(_, nir, nir_lower_system_values);
-      NIR_PASS(_, nir, nir_lower_compute_system_values, NULL);
+      NIR_PASS(_, nir, nir_lower_compute_system_values, &cs_options);
 
       if (nir->info.io_lowered)
          continue; /* the rest is for non-lowered IO only */

@@ -23,7 +23,7 @@ xml_files = [
 ]
 
 gen_header_py = files('gen_header.py')
-freedreno_schema = files('rules-ng.xsd')
+freedreno_schema = files('rules-fd.xsd')
 freedreno_copyright = files('freedreno_copyright.xml')
 
 freedreno_xml_header_files = []

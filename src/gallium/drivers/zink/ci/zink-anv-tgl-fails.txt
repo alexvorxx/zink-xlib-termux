@@ -535,9 +535,6 @@ spec@egl_mesa_configless_context@basic,Fail
 
 spec@ext_external_objects@vk-image-overwrite@RGB 10 A2 UINT optimal: Failed to initialize OpenGL FBO/RBO,Fail
 
-# Fails across most drivers, but it's a silly test.
-spec@ext_framebuffer_blit@fbo-blit-check-limits,Fail
-
 spec@ext_framebuffer_multisample@blit-mismatched-formats,Fail
 spec@ext_framebuffer_multisample@clip-and-scissor-blit 16 msaa,Fail
 spec@ext_framebuffer_multisample@enable-flag,Fail
@@ -588,7 +585,6 @@ spec@arb_timer_query@timestamp-get,Fail
 # SIGKILL
 spec@arb_gpu_shader_fp64@execution@arb_gpu_shader_fp64-fs-getuniformdv,Crash
 spec@arb_gpu_shader_fp64@execution@arb_gpu_shader_fp64-gs-getuniformdv,Crash
-spec@arb_gpu_shader_fp64@execution@arb_gpu_shader_fp64-vs-getuniformdv,Crash
 
 spec@arb_fragment_layer_viewport@layer-no-gs,Fail
 

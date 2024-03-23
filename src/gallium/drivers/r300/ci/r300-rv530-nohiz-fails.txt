@@ -615,7 +615,6 @@ spec@arb_texture_rg@texwrap formats-float bordercolor@GL_RG32F- border color onl
 
 spec@arb_vertex_program@big-param,Fail
 
-spec@ati_fragment_shader@ati_fragment_shader-render-notexture,Fail
 spec@ati_fragment_shader@ati_fragment_shader-render-sources,Fail
 
 spec@egl 1.4@eglterminate then unbind context,Fail

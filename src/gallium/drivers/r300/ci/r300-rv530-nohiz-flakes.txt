@@ -20,3 +20,7 @@ shaders@glsl-lod-bias
 spec@!opengl 1.1@texgen
 spec@!opengl 1.2@tex3d
 spec@ati_fragment_shader@ati_fragment_shader-render-textargets
+
+# Nightly run expectations update
+spec@ati_fragment_shader@ati_fragment_shader-render-notexture
+

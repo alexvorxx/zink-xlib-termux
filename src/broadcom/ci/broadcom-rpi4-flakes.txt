@@ -44,16 +44,6 @@ dEQP-VK.texture.shadow.cube.linear.less_d24_unorm_s8_uint
 dEQP-VK.wsi.wayland.display_timing.fifo.display_timing
 dEQP-VK.wsi.wayland.incremental_present.scale_none.immediate.identity.inherit.incremental_present
 dEQP-VK.wsi.wayland.shared_presentable_image.scale_none.inherit.inherit.continuous
-dEQP-VK.wsi.wayland.swapchain.simulate_oom.clipped
-dEQP-VK.wsi.wayland.swapchain.simulate_oom.composite_alpha
-dEQP-VK.wsi.wayland.swapchain.simulate_oom.exclusive_nonzero_queues
-dEQP-VK.wsi.wayland.swapchain.simulate_oom.image_array_layers
-dEQP-VK.wsi.wayland.swapchain.simulate_oom.image_extent
-dEQP-VK.wsi.wayland.swapchain.simulate_oom.image_format
-dEQP-VK.wsi.wayland.swapchain.simulate_oom.image_usage
-dEQP-VK.wsi.wayland.swapchain.simulate_oom.min_image_count
-dEQP-VK.wsi.wayland.swapchain.simulate_oom.pre_transform
-dEQP-VK.wsi.wayland.swapchain.simulate_oom.present_mode
 dEQP-VK.wsi.xcb.incremental_present.scale_none.fifo_relaxed.identity.opaque.incremental_present
 dEQP-VK.wsi.xcb.maintenance1.present_modes.heterogenous.fifo_fifo_mailbox
 dEQP-VK.wsi.xcb.maintenance1.present_modes.mailbox.query

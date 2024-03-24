@@ -151,16 +151,6 @@ pack_cfg_bits(struct v3dv_pipeline *pipeline,
       ms_info && ms_info->rasterizationSamples > VK_SAMPLE_COUNT_1_BIT;
 
    v3dvx_pack(pipeline->cfg_bits, CFG_BITS, config) {
-      config.enable_forward_facing_primitive =
-         rs_info ? !(rs_info->cullMode & VK_CULL_MODE_FRONT_BIT) : false;
-
-      config.enable_reverse_facing_primitive =
-         rs_info ? !(rs_info->cullMode & VK_CULL_MODE_BACK_BIT) : false;
-
-      /* Seems like the hardware is backwards regarding this setting... */
-      config.clockwise_primitives =
-         rs_info ? rs_info->frontFace == VK_FRONT_FACE_COUNTER_CLOCKWISE : false;
-
       /* Even if rs_info->depthBiasEnabled is true, we can decide to not
        * enable it, like if there isn't a depth/stencil attachment with the
        * pipeline.

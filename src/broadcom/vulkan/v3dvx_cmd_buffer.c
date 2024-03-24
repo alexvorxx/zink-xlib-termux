@@ -1946,6 +1946,9 @@ v3dX(cmd_buffer_emit_configuration_bits)(struct v3dv_cmd_buffer *cmd_buffer)
    v3dv_cl_ensure_space_with_branch(&job->bcl, cl_packet_length(CFG_BITS));
    v3dv_return_if_oom(cmd_buffer, NULL);
 
+   struct vk_dynamic_graphics_state *dyn =
+      &cmd_buffer->vk.dynamic_graphics_state;
+
    cl_emit_with_prepacked(&job->bcl, CFG_BITS, pipeline->cfg_bits, config) {
 #if V3D_VERSION == 42
       bool enable_ez = job_update_ez_state(job, pipeline, cmd_buffer);
@@ -1953,7 +1956,19 @@ v3dX(cmd_buffer_emit_configuration_bits)(struct v3dv_cmd_buffer *cmd_buffer)
       config.early_z_updates_enable = config.early_z_enable &&
          pipeline->z_updates_enable;
 #endif
+
+      if (pipeline->rasterization_enabled) {
+         assert(BITSET_TEST(dyn->set, MESA_VK_DYNAMIC_RS_CULL_MODE));
+         assert(BITSET_TEST(dyn->set, MESA_VK_DYNAMIC_RS_FRONT_FACE));
+         config.enable_forward_facing_primitive = !(dyn->rs.cull_mode & VK_CULL_MODE_FRONT_BIT);
+         config.enable_reverse_facing_primitive = !(dyn->rs.cull_mode & VK_CULL_MODE_BACK_BIT);
+         /* Seems like the hardware is backwards regarding this setting... */
+         config.clockwise_primitives = dyn->rs.front_face == VK_FRONT_FACE_COUNTER_CLOCKWISE;
+      }
    }
+
+   BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_RS_CULL_MODE);
+   BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_RS_FRONT_FACE);
 }
 
 void

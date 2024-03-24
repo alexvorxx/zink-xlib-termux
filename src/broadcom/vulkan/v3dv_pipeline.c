@@ -2905,6 +2905,8 @@ pipeline_init(struct v3dv_pipeline *pipeline,
       pCreateInfo->pRasterizationState &&
       !pCreateInfo->pRasterizationState->rasterizerDiscardEnable;
 
+   pipeline->rasterization_enabled = raster_enabled;
+
    const VkPipelineViewportStateCreateInfo *vp_info =
       raster_enabled ? pCreateInfo->pViewportState : NULL;
 

@@ -2958,12 +2958,6 @@ pipeline_init(struct v3dv_pipeline *pipeline,
    if (depth_clip_control)
       pipeline->negative_one_to_one = depth_clip_control->negativeOneToOne;
 
-   /* V3D 4.2 doesn't support depth bounds testing so we don't advertise that
-    * feature and it shouldn't be used by any pipeline.
-    */
-   assert(device->devinfo.ver >= 71 ||
-          !ds_info || !ds_info->depthBoundsTestEnable);
-
    enable_depth_bias(pipeline, rs_info);
 
    v3dv_X(device, pipeline_pack_state)(pipeline, cb_info, ds_info,

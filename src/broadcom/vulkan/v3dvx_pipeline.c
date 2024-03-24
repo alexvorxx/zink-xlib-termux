@@ -246,9 +246,6 @@ pack_cfg_bits(struct v3dv_pipeline *pipeline,
       }
 
       config.z_clamp_mode = z_clamp_enable;
-
-      config.depth_bounds_test_enable =
-              ds_info && ds_info->depthBoundsTestEnable && has_depth;
 #endif
    };
 }

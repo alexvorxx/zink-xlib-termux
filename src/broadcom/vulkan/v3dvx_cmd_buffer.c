@@ -1965,10 +1965,24 @@ v3dX(cmd_buffer_emit_configuration_bits)(struct v3dv_cmd_buffer *cmd_buffer)
          /* Seems like the hardware is backwards regarding this setting... */
          config.clockwise_primitives = dyn->rs.front_face == VK_FRONT_FACE_COUNTER_CLOCKWISE;
       }
+
+      /* V3D 4.2 doesn't support depth bounds testing so we don't advertise that
+       * feature and it shouldn't be used by any pipeline.
+       */
+      assert(cmd_buffer->device->devinfo.ver >= 71 ||
+             !dyn->ds.depth.bounds_test.enable);
+#if V3D_VERSION >= 71
+      bool has_depth =
+         pipeline->rendering_info.depth_attachment_format != VK_FORMAT_UNDEFINED;
+
+      config.depth_bounds_test_enable =
+         dyn->ds.depth.bounds_test.enable && has_depth;
+#endif
    }
 
    BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_RS_CULL_MODE);
    BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_RS_FRONT_FACE);
+   BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_BOUNDS_TEST_ENABLE);
 }
 
 void

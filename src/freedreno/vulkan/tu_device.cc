@@ -3016,6 +3016,11 @@ tu_BindBufferMemory2(VkDevice device,
       VK_FROM_HANDLE(tu_device_memory, mem, pBindInfos[i].memory);
       VK_FROM_HANDLE(tu_buffer, buffer, pBindInfos[i].buffer);
 
+      const VkBindMemoryStatusKHR *status =
+         vk_find_struct_const(pBindInfos[i].pNext, BIND_MEMORY_STATUS_KHR);
+      if (status)
+         *status->pResult = VK_SUCCESS;
+
       if (mem) {
          buffer->bo = mem->bo;
          buffer->iova = mem->bo->iova + pBindInfos[i].memoryOffset;

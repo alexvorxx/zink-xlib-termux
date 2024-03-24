@@ -1578,10 +1578,10 @@ crocus_transfer_map(struct pipe_context *ctx,
    else
       map = slab_zalloc(&ice->transfer_pool);
 
-   struct pipe_transfer *xfer = &map->base.b;
-
    if (!map)
       return NULL;
+
+   struct pipe_transfer *xfer = &map->base.b;
 
    map->dbg = &ice->dbg;
 

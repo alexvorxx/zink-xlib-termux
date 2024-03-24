@@ -821,6 +821,16 @@ dri2_x11_add_configs_for_visuals(struct dri2_egl_display *dri2_dpy,
             EGL_NONE,
          };
 
+         const EGLint config_attrs_2nd_group[] = {
+            EGL_NATIVE_VISUAL_ID,
+            visuals[i].visual_id,
+            EGL_NATIVE_VISUAL_TYPE,
+            visuals[i]._class,
+            EGL_CONFIG_SELECT_GROUP_EXT,
+            1,
+            EGL_NONE,
+         };
+
          for (int j = 0; dri2_dpy->driver_configs[j]; j++) {
             const __DRIconfig *config = dri2_dpy->driver_configs[j];
             int shifts[4];
@@ -854,7 +864,12 @@ dri2_x11_add_configs_for_visuals(struct dri2_egl_display *dri2_dpy,
                   continue;
             }
 
-            dri2_add_config(disp, config, surface_type, config_attrs);
+            unsigned int bit_per_pixel = sizes[0] + sizes[1] + sizes[2] + sizes[3];
+            if (sizes[3] != 0 && d.data->depth == bit_per_pixel) {
+               dri2_add_config(disp, config, surface_type, config_attrs_2nd_group);
+            } else {
+               dri2_add_config(disp, config, surface_type, config_attrs);
+            }
          }
       }
 

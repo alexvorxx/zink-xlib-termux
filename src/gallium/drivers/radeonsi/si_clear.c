@@ -291,10 +291,6 @@ static bool gfx11_get_dcc_clear_parameters(struct si_screen *sscreen, enum pipe_
    unsigned start_bit = UINT_MAX;
    unsigned end_bit = 0;
 
-   /* TODO: 8bpp and 16bpp fast DCC clears don't work. */
-   if (desc->block.bits <= 16)
-      return false;
-
    /* Find the used bit range. */
    for (unsigned i = 0; i < 4; i++) {
       unsigned swizzle = desc->swizzle[i];

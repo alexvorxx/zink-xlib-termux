@@ -255,6 +255,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_memory_budget = true,
       .EXT_multi_draw = true,
       .EXT_mutable_descriptor_type = true,
+      .EXT_nested_command_buffer = true,
       .EXT_non_seamless_cube_map = true,
       .EXT_physical_device_drm = !is_kgsl(device->instance),
       .EXT_pipeline_creation_cache_control = true,
@@ -579,6 +580,11 @@ tu_get_features(struct tu_physical_device *pdevice,
 
    /* VK_EXT_mutable_descriptor_type */
    features->mutableDescriptorType = true;
+
+   /* VK_EXT_nested_command_buffer */
+   features->nestedCommandBuffer = true,
+   features->nestedCommandBufferRendering = true,
+   features->nestedCommandBufferSimultaneousUse = true,
 
    /* VK_EXT_non_seamless_cube_map */
    features->nonSeamlessCubeMap = true;
@@ -1032,6 +1038,9 @@ tu_get_properties(struct tu_physical_device *pdevice,
 
    /* VK_EXT_multi_draw */
    props->maxMultiDrawCount = 2048;
+
+   /* VK_EXT_nested_command_buffer */
+   props->maxCommandBufferNestingLevel = UINT32_MAX,
 
    /* VK_EXT_graphics_pipeline_library */
    props->graphicsPipelineLibraryFastLinking = true;

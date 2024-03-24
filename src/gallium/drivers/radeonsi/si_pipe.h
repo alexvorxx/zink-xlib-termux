@@ -254,6 +254,7 @@ enum
    DBG_TEST_VMFAULT_SHADER,
    DBG_TEST_DMA_PERF,
    DBG_TEST_MEM_PERF,
+   DBG_TEST_BLIT_PERF,
 };
 
 #define DBG_ALL_SHADERS (((1 << (DBG_CS + 1)) - 1))
@@ -1716,8 +1717,10 @@ void si_test_blit(struct si_screen *sscreen, unsigned test_flags);
 
 /* si_test_dma_perf.c */
 void si_test_dma_perf(struct si_screen *sscreen);
-
 void si_test_mem_perf(struct si_screen *sscreen);
+
+/* si_test_blit_perf.c */
+void si_test_blit_perf(struct si_screen *sscreen);
 
 /* si_uvd.c */
 struct pipe_video_codec *si_uvd_create_decoder(struct pipe_context *context,

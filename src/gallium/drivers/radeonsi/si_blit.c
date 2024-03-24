@@ -947,10 +947,6 @@ void si_resource_copy_region(struct pipe_context *ctx, struct pipe_resource *dst
                              const struct pipe_box *src_box)
 {
    struct si_context *sctx = (struct si_context *)ctx;
-   struct si_texture *ssrc = (struct si_texture *)src;
-   struct pipe_surface *dst_view, dst_templ;
-   struct pipe_sampler_view src_templ, *src_view;
-   struct pipe_box dstbox;
 
    /* Handle buffers first. */
    if (dst->target == PIPE_BUFFER && src->target == PIPE_BUFFER) {
@@ -961,6 +957,19 @@ void si_resource_copy_region(struct pipe_context *ctx, struct pipe_resource *dst
    if (si_compute_copy_image(sctx, dst, dst_level, src, src_level, dstx, dsty, dstz,
                              src_box, SI_OP_SYNC_BEFORE_AFTER))
       return;
+
+   si_gfx_copy_image(sctx, dst, dst_level, dstx, dsty, dstz, src, src_level, src_box);
+}
+
+void si_gfx_copy_image(struct si_context *sctx, struct pipe_resource *dst,
+                       unsigned dst_level, unsigned dstx, unsigned dsty, unsigned dstz,
+                       struct pipe_resource *src, unsigned src_level,
+                       const struct pipe_box *src_box)
+{
+   struct si_texture *ssrc = (struct si_texture *)src;
+   struct pipe_surface *dst_view, dst_templ;
+   struct pipe_sampler_view src_templ, *src_view;
+   struct pipe_box dstbox;
 
    /* If the blitter isn't available fail here instead of crashing. */
    if (!sctx->blitter) {
@@ -973,7 +982,7 @@ void si_resource_copy_region(struct pipe_context *ctx, struct pipe_resource *dst
 
    /* The driver doesn't decompress resources automatically while
     * u_blitter is rendering. */
-   si_decompress_subresource(ctx, src, PIPE_MASK_RGBAZS, src_level, src_box->z,
+   si_decompress_subresource(&sctx->b, src, PIPE_MASK_RGBAZS, src_level, src_box->z,
                              src_box->z + src_box->depth - 1, false);
 
    util_blitter_default_dst_texture(&dst_templ, dst, dst_level, dstz);
@@ -1022,10 +1031,10 @@ void si_resource_copy_region(struct pipe_context *ctx, struct pipe_resource *dst
    vi_disable_dcc_if_incompatible_format(sctx, src, src_level, src_templ.format);
 
    /* Initialize the surface. */
-   dst_view = ctx->create_surface(ctx, dst, &dst_templ);
+   dst_view = sctx->b.create_surface(&sctx->b, dst, &dst_templ);
 
    /* Initialize the sampler view. */
-   src_view = ctx->create_sampler_view(ctx, src, &src_templ);
+   src_view = sctx->b.create_sampler_view(&sctx->b, src, &src_templ);
 
    u_box_3d(dstx, dsty, dstz, abs(src_box->width), abs(src_box->height), abs(src_box->depth),
             &dstbox);

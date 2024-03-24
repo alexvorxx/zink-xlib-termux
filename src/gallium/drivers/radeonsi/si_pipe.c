@@ -212,8 +212,7 @@ static void si_destroy_context(struct pipe_context *context)
 
    if (sctx->sqtt) {
       struct si_screen *sscreen = sctx->screen;
-      if (sscreen->info.has_stable_pstate && sscreen->b.num_contexts == 1 &&
-          !(sctx->context_flags & SI_CONTEXT_FLAG_AUX))
+      if (sscreen->b.num_contexts == 1 && !(sctx->context_flags & SI_CONTEXT_FLAG_AUX))
           sscreen->ws->cs_set_pstate(&sctx->gfx_cs, RADEON_CTX_PSTATE_NONE);
 
       si_destroy_sqtt(sctx);
@@ -904,9 +903,8 @@ static struct pipe_context *si_pipe_create_context(struct pipe_screen *screen, v
 
    if (ctx && sscreen->info.gfx_level >= GFX9 && sscreen->debug_flags & DBG(SQTT)) {
       /* Auto-enable stable performance profile if possible. */
-      if (sscreen->info.has_stable_pstate && screen->num_contexts == 1 &&
-          sscreen->ws->cs_set_pstate(&((struct si_context *)ctx)->gfx_cs, RADEON_CTX_PSTATE_PEAK)) {
-      }
+      if (screen->num_contexts == 1)
+          sscreen->ws->cs_set_pstate(&((struct si_context *)ctx)->gfx_cs, RADEON_CTX_PSTATE_PEAK);
 
       if (ac_check_profile_state(&sscreen->info)) {
          fprintf(stderr, "radeonsi: Canceling RGP trace request as a hang condition has been "

@@ -34,8 +34,8 @@
 #include "gbmint.h"
 #include "c11/threads.h"
 
-#include <GL/gl.h> /* dri_interface needs GL types */
-#include "GL/internal/dri_interface.h"
+#include <GL/gl.h> /* mesa_interface needs GL types */
+#include "GL/internal/mesa_interface.h"
 #include "GL/internal/mesa_interface.h"
 #include "kopper_interface.h"
 

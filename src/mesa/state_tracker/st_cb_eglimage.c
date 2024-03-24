@@ -25,7 +25,7 @@
  *    Chia-I Wu <olv@lunarg.com>
  */
 
-#include <GL/internal/dri_interface.h>
+#include <GL/internal/mesa_interface.h>
 #include "main/errors.h"
 #include "main/texobj.h"
 #include "main/teximage.h"

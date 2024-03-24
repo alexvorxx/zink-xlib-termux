@@ -42,7 +42,7 @@
 #include "drm-uapi/drm_fourcc.h"
 #endif
 #include <GL/gl.h>
-#include <GL/internal/dri_interface.h>
+#include <GL/internal/mesa_interface.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include "dri_screen.h"
@@ -2711,7 +2711,7 @@ dri2_query_dma_buf_formats(_EGLDisplay *disp, EGLint max, EGLint *formats,
    if (max > 0) {
       /* Assert that all of the formats returned are actually fourcc formats.
        * Some day, if we want the internal interface function to be able to
-       * return the fake fourcc formats defined in dri_interface.h, we'll have
+       * return the fake fourcc formats defined in mesa_interface.h, we'll have
        * to do something more clever here to pair the list down to just real
        * fourcc formats so that we don't leak the fake internal ones.
        */

@@ -636,8 +636,13 @@ nvk_CmdBindDescriptorSets(VkCommandBuffer commandBuffer,
       VK_FROM_HANDLE(nvk_descriptor_set, set, pDescriptorSets[i]);
 
       if (desc->sets[s] != set) {
-         desc->root.sets[s] = nvk_descriptor_set_addr(set);
-         desc->set_sizes[s] = set->size;
+         if (set != NULL) {
+            desc->root.sets[s] = nvk_descriptor_set_addr(set);
+            desc->set_sizes[s] = set->size;
+         } else {
+            desc->root.sets[s] = 0;
+            desc->set_sizes[s] = 0;
+         }
          desc->sets[s] = set;
          desc->sets_dirty |= BITFIELD_BIT(s);
 

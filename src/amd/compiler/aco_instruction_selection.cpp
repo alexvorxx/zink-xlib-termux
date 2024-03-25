@@ -13172,22 +13172,8 @@ select_tcs_epilog(Program* program, void* pinfo, ac_shader_config* config,
    if_context ic_invoc_0;
    begin_divergent_if_then(&ctx, &ic_invoc_0, cond);
 
-   int outer_comps, inner_comps;
-   switch (einfo->primitive_mode) {
-   case TESS_PRIMITIVE_ISOLINES:
-      outer_comps = 2;
-      inner_comps = 0;
-      break;
-   case TESS_PRIMITIVE_TRIANGLES:
-      outer_comps = 3;
-      inner_comps = 1;
-      break;
-   case TESS_PRIMITIVE_QUADS:
-      outer_comps = 4;
-      inner_comps = 2;
-      break;
-   default: unreachable("invalid primitive mode"); return;
-   }
+   unsigned outer_comps, inner_comps;
+   mesa_count_tess_level_components(einfo->primitive_mode, &outer_comps, &inner_comps);
 
    bld.reset(ctx.block);
 
@@ -13199,10 +13185,10 @@ select_tcs_epilog(Program* program, void* pinfo, ac_shader_config* config,
    Temp outer[4];
    Temp inner[2];
    if (einfo->pass_tessfactors_by_reg) {
-      for (int i = 0; i < outer_comps; i++)
+      for (unsigned i = 0; i < outer_comps; i++)
          outer[i] = get_arg(&ctx, einfo->tess_lvl_out[i]);
 
-      for (int i = 0; i < inner_comps; i++)
+      for (unsigned i = 0; i < inner_comps; i++)
          inner[i] = get_arg(&ctx, einfo->tess_lvl_in[i]);
    } else {
       Temp addr = get_arg(&ctx, einfo->tcs_out_current_patch_data_offset);
@@ -13210,13 +13196,13 @@ select_tcs_epilog(Program* program, void* pinfo, ac_shader_config* config,
 
       Temp data = program->allocateTmp(RegClass(RegType::vgpr, outer_comps));
       load_lds(&ctx, 4, outer_comps, data, addr, tess_lvl_out_loc, 4);
-      for (int i = 0; i < outer_comps; i++)
+      for (unsigned i = 0; i < outer_comps; i++)
          outer[i] = emit_extract_vector(&ctx, data, i, v1);
 
       if (inner_comps) {
          data = program->allocateTmp(RegClass(RegType::vgpr, inner_comps));
          load_lds(&ctx, 4, inner_comps, data, addr, tess_lvl_in_loc, 4);
-         for (int i = 0; i < inner_comps; i++)
+         for (unsigned i = 0; i < inner_comps; i++)
             inner[i] = emit_extract_vector(&ctx, data, i, v1);
       }
    }

@@ -30,9 +30,12 @@
 static void
 radv_destroy_event(struct radv_device *device, const VkAllocationCallbacks *pAllocator, struct radv_event *event)
 {
-   if (event->bo)
+   if (event->bo) {
+      radv_rmv_log_bo_destroy(device, event->bo);
       device->ws->buffer_destroy(device->ws, event->bo);
+   }
 
+   radv_rmv_log_resource_destroy(device, (uint64_t)radv_event_to_handle(event));
    vk_object_base_finish(&event->base);
    vk_free2(&device->vk.alloc, pAllocator, event);
 }

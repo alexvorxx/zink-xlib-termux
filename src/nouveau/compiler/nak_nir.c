@@ -374,6 +374,30 @@ nak_varying_attr_addr(gl_varying_slot slot)
    }
 }
 
+static uint16_t
+nak_fs_out_addr(gl_frag_result slot, uint32_t blend_idx)
+{
+   switch (slot) {
+   case FRAG_RESULT_DEPTH:
+      assert(blend_idx == 0);
+      return NAK_FS_OUT_DEPTH;
+
+   case FRAG_RESULT_STENCIL:
+      unreachable("EXT_shader_stencil_export not supported");
+
+   case FRAG_RESULT_COLOR:
+      unreachable("Vulkan alway uses explicit locations");
+
+   case FRAG_RESULT_SAMPLE_MASK:
+      assert(blend_idx == 0);
+      return NAK_FS_OUT_SAMPLE_MASK;
+
+   default:
+      assert(blend_idx < 2);
+      return NAK_FS_OUT_COLOR((slot - FRAG_RESULT_DATA0) + blend_idx);
+   }
+}
+
 uint16_t
 nak_sysval_attr_addr(gl_system_value sysval)
 {
@@ -633,11 +657,28 @@ nak_xfb_from_nir(const struct nir_xfb_info *nir_xfb)
    return nak_xfb;
 }
 
-static int
-fs_out_size(const struct glsl_type *type, bool bindless)
+static bool
+lower_fs_output_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *_data)
 {
-   assert(glsl_type_is_vector_or_scalar(type));
-   return 16;
+   if (intrin->intrinsic != nir_intrinsic_store_output)
+      return false;
+
+   b->cursor = nir_before_instr(&intrin->instr);
+
+   const nir_io_semantics sem = nir_intrinsic_io_semantics(intrin);
+   uint16_t addr = nak_fs_out_addr(sem.location, sem.dual_source_blend_index) +
+                   nir_src_as_uint(intrin->src[1]) * 16 +
+                   nir_intrinsic_component(intrin) * 4;
+
+   nir_def *data = intrin->src[0].ssa;
+
+   /* The fs_out_nv intrinsic is always scalar */
+   u_foreach_bit(c, nir_intrinsic_write_mask(intrin))
+      nir_fs_out_nv(b, nir_channel(b, data, c), .base = addr + c * 4);
+
+   nir_instr_remove(&intrin->instr);
+
+   return true;
 }
 
 static bool
@@ -648,37 +689,10 @@ nak_nir_lower_fs_outputs(nir_shader *nir)
 
    NIR_PASS_V(nir, nir_lower_io_arrays_to_elements_no_indirects, true);
 
-   nir->num_outputs = 0;
-   nir_foreach_shader_out_variable(var, nir) {
-      switch (var->data.location) {
-      case FRAG_RESULT_DEPTH:
-         assert(var->data.index == 0);
-         assert(var->data.location_frac == 0);
-         var->data.driver_location = NAK_FS_OUT_DEPTH;
-         break;
-      case FRAG_RESULT_STENCIL:
-         unreachable("EXT_shader_stencil_export not supported");
-         break;
-      case FRAG_RESULT_COLOR:
-         unreachable("Vulkan alway uses explicit locations");
-         break;
-      case FRAG_RESULT_SAMPLE_MASK:
-         assert(var->data.index == 0);
-         assert(var->data.location_frac == 0);
-         var->data.driver_location = NAK_FS_OUT_SAMPLE_MASK;
-         break;
-      default: {
-         assert(var->data.location >= FRAG_RESULT_DATA0);
-         assert(var->data.index < 2);
-         const unsigned out =
-            (var->data.location - FRAG_RESULT_DATA0) + var->data.index;
-         var->data.driver_location = NAK_FS_OUT_COLOR(out);
-         break;
-      }
-      }
-   }
+   NIR_PASS_V(nir, nir_lower_io, nir_var_shader_out, type_size_vec4, 0);
 
-   NIR_PASS_V(nir, nir_lower_io, nir_var_shader_out, fs_out_size, 0);
+   NIR_PASS_V(nir, nir_shader_intrinsics_pass, lower_fs_output_intrin,
+              nir_metadata_block_index | nir_metadata_dominance, NULL);
 
    /* We need a copy_fs_outputs_nv intrinsic so NAK knows where to place the
     * final copy.  This needs to be in the last block, after all store_output

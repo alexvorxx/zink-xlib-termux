@@ -392,6 +392,7 @@ nak_sysval_attr_addr(gl_system_value sysval)
    case SYSTEM_VALUE_INSTANCE_ID:   return NAK_ATTR_INSTANCE_ID;
    case SYSTEM_VALUE_VERTEX_ID:     return NAK_ATTR_VERTEX_ID;
    case SYSTEM_VALUE_FRONT_FACE:    return NAK_ATTR_FRONT_FACE;
+   case SYSTEM_VALUE_LAYER_ID:      return NAK_ATTR_RT_ARRAY_INDEX;
    default: unreachable("Invalid system value");
    }
 }
@@ -446,14 +447,6 @@ nak_nir_lower_system_value_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
 
    nir_def *val;
    switch (intrin->intrinsic) {
-   case nir_intrinsic_load_layer_id: {
-      const uint32_t addr = nak_varying_attr_addr(VARYING_SLOT_LAYER);
-      val = nir_load_input(b, intrin->def.num_components, 32,
-                           nir_imm_int(b, 0), .base = addr,
-                           .dest_type = nir_type_int32);
-      break;
-   }
-
    case nir_intrinsic_load_primitive_id:
    case nir_intrinsic_load_instance_id:
    case nir_intrinsic_load_vertex_id: {
@@ -471,14 +464,13 @@ nak_nir_lower_system_value_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
       break;
    }
 
+   case nir_intrinsic_load_layer_id:
    case nir_intrinsic_load_front_face: {
       assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
       const gl_system_value sysval =
          nir_system_value_from_intrinsic(intrin->intrinsic);
       const uint32_t addr = nak_sysval_attr_addr(sysval);
-      val = nir_load_input(b, intrin->def.num_components, 32,
-                           nir_imm_int(b, 0), .base = addr,
-                           .dest_type = nir_type_int32);
+      val = load_fs_input(b, intrin->def.num_components, addr, nak);
       break;
    }
 

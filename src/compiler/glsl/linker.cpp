@@ -2375,70 +2375,6 @@ check_explicit_uniform_locations(const struct gl_extensions *exts,
    prog->NumExplicitUniformLocations = entries_total;
 }
 
-static void
-link_assign_subroutine_types(struct gl_shader_program *prog)
-{
-   unsigned mask = prog->data->linked_stages;
-   while (mask) {
-      const int i = u_bit_scan(&mask);
-      gl_program *p = prog->_LinkedShaders[i]->Program;
-
-      p->sh.MaxSubroutineFunctionIndex = 0;
-      foreach_in_list(ir_instruction, node, prog->_LinkedShaders[i]->ir) {
-         ir_function *fn = node->as_function();
-         if (!fn)
-            continue;
-
-         if (fn->is_subroutine)
-            p->sh.NumSubroutineUniformTypes++;
-
-         if (!fn->num_subroutine_types)
-            continue;
-
-         /* these should have been calculated earlier. */
-         assert(fn->subroutine_index != -1);
-         if (p->sh.NumSubroutineFunctions + 1 > MAX_SUBROUTINES) {
-            linker_error(prog, "Too many subroutine functions declared.\n");
-            return;
-         }
-         p->sh.SubroutineFunctions = reralloc(p, p->sh.SubroutineFunctions,
-                                            struct gl_subroutine_function,
-                                            p->sh.NumSubroutineFunctions + 1);
-         p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].name.string = ralloc_strdup(p, fn->name);
-         resource_name_updated(&p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].name);
-         p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].num_compat_types = fn->num_subroutine_types;
-         p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].types =
-            ralloc_array(p, const struct glsl_type *,
-                         fn->num_subroutine_types);
-
-         /* From Section 4.4.4(Subroutine Function Layout Qualifiers) of the
-          * GLSL 4.5 spec:
-          *
-          *    "Each subroutine with an index qualifier in the shader must be
-          *    given a unique index, otherwise a compile or link error will be
-          *    generated."
-          */
-         for (unsigned j = 0; j < p->sh.NumSubroutineFunctions; j++) {
-            if (p->sh.SubroutineFunctions[j].index != -1 &&
-                p->sh.SubroutineFunctions[j].index == fn->subroutine_index) {
-               linker_error(prog, "each subroutine index qualifier in the "
-                            "shader must be unique\n");
-               return;
-            }
-         }
-         p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].index =
-            fn->subroutine_index;
-
-         if (fn->subroutine_index > (int)p->sh.MaxSubroutineFunctionIndex)
-            p->sh.MaxSubroutineFunctionIndex = fn->subroutine_index;
-
-         for (int j = 0; j < fn->num_subroutine_types; j++)
-            p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].types[j] = fn->subroutine_types[j];
-         p->sh.NumSubroutineFunctions++;
-      }
-   }
-}
-
 void
 link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
 {
@@ -2636,7 +2572,6 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
       goto done;
 
    check_explicit_uniform_locations(&ctx->Extensions, prog);
-   link_assign_subroutine_types(prog);
 
 done:
    for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {

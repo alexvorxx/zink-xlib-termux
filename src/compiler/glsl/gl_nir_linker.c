@@ -1467,6 +1467,80 @@ gl_nir_link_spirv(const struct gl_constants *consts,
 }
 
 static void
+link_assign_subroutine_types(struct gl_shader_program *prog)
+{
+   unsigned mask = prog->data->linked_stages;
+   while (mask) {
+      const int i = u_bit_scan(&mask);
+      struct gl_program *p = prog->_LinkedShaders[i]->Program;
+
+      struct set *fn_decl_set =
+         _mesa_set_create(NULL, _mesa_hash_string, _mesa_key_string_equal);
+
+      p->sh.MaxSubroutineFunctionIndex = 0;
+      nir_foreach_function(fn, p->nir) {
+         /* A function might be decalred multiple times but we should only
+          * process it once
+          */
+         struct set_entry *entry = _mesa_set_search(fn_decl_set, fn->name);
+         if (entry)
+            continue;
+
+         _mesa_set_add(fn_decl_set, fn->name);
+
+         if (fn->is_subroutine)
+            p->sh.NumSubroutineUniformTypes++;
+
+         if (!fn->num_subroutine_types)
+            continue;
+
+         /* these should have been calculated earlier. */
+         assert(fn->subroutine_index != -1);
+         if (p->sh.NumSubroutineFunctions + 1 > MAX_SUBROUTINES) {
+            linker_error(prog, "Too many subroutine functions declared.\n");
+            return;
+         }
+         p->sh.SubroutineFunctions = reralloc(p, p->sh.SubroutineFunctions,
+                                            struct gl_subroutine_function,
+                                            p->sh.NumSubroutineFunctions + 1);
+         p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].name.string = ralloc_strdup(p, fn->name);
+         resource_name_updated(&p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].name);
+         p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].num_compat_types = fn->num_subroutine_types;
+         p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].types =
+            ralloc_array(p, const struct glsl_type *,
+                         fn->num_subroutine_types);
+
+         /* From Section 4.4.4(Subroutine Function Layout Qualifiers) of the
+          * GLSL 4.5 spec:
+          *
+          *    "Each subroutine with an index qualifier in the shader must be
+          *    given a unique index, otherwise a compile or link error will be
+          *    generated."
+          */
+         for (unsigned j = 0; j < p->sh.NumSubroutineFunctions; j++) {
+            if (p->sh.SubroutineFunctions[j].index != -1 &&
+                p->sh.SubroutineFunctions[j].index == fn->subroutine_index) {
+               linker_error(prog, "each subroutine index qualifier in the "
+                            "shader must be unique\n");
+               return;
+            }
+         }
+         p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].index =
+            fn->subroutine_index;
+
+         if (fn->subroutine_index > (int)p->sh.MaxSubroutineFunctionIndex)
+            p->sh.MaxSubroutineFunctionIndex = fn->subroutine_index;
+
+         for (int j = 0; j < fn->num_subroutine_types; j++)
+            p->sh.SubroutineFunctions[p->sh.NumSubroutineFunctions].types[j] = fn->subroutine_types[j];
+         p->sh.NumSubroutineFunctions++;
+      }
+
+      _mesa_set_destroy(fn_decl_set, NULL);
+   }
+}
+
+static void
 verify_subroutine_associated_funcs(struct gl_shader_program *prog)
 {
    unsigned mask = prog->data->linked_stages;
@@ -1716,6 +1790,7 @@ gl_nir_link_glsl(const struct gl_constants *consts,
 
    MESA_TRACE_FUNC();
 
+   link_assign_subroutine_types(prog);
    verify_subroutine_associated_funcs(prog);
    if (!prog->data->LinkStatus)
       return false;

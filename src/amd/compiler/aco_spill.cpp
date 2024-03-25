@@ -535,9 +535,11 @@ init_live_in_vars(spill_ctx& ctx, Block* block, unsigned block_idx)
       if (!ctx.loop.empty()) {
          /* If this is a nested loop, keep variables from the outer loop spilled. */
          for (auto spilled : ctx.loop.back().spills) {
-            assert(next_use_distances.count(spilled.first));
-
-            if (ctx.spills_entry[block_idx].insert(spilled).second) {
+            /* If the inner loop comes after the last continue statement of the outer loop,
+             * the loop-carried variables might not be live-in for the inner loop.
+             */
+            if (next_use_distances.count(spilled.first) &&
+                ctx.spills_entry[block_idx].insert(spilled).second) {
                spilled_registers += spilled.first;
                loop_demand -= spilled.first;
             }

@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+#
+# Copyright © 2019-2024 Google, Inc.
+#
+# SPDX-License-Identifier: MIT
 
 import xml.parsers.expat
 import sys

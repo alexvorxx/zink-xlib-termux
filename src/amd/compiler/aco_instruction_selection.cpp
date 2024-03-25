@@ -11284,7 +11284,7 @@ create_tcs_jump_to_epilog(isel_context* ctx)
    Temp continue_pc = convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->program->info.epilog_pc));
 
    aco_ptr<Pseudo_instruction> jump{
-      create_instruction<Pseudo_instruction>(aco_opcode::p_jump_to_epilog, Format::PSEUDO, 9, 0)};
+      create_instruction<Pseudo_instruction>(aco_opcode::p_jump_to_epilog, Format::PSEUDO, 15, 0)};
    jump->operands[0] = Operand(continue_pc);
    jump->operands[1] = ring_offsets;
    jump->operands[2] = tess_offchip_offset;
@@ -11294,6 +11294,16 @@ create_tcs_jump_to_epilog(isel_context* ctx)
    jump->operands[6] = tcs_out_current_patch_data_offset;
    jump->operands[7] = invocation_id;
    jump->operands[8] = rel_patch_id;
+
+   for (unsigned i = 0; i < 4; ++i) {
+      Temp t = ctx->outputs.temps[VARYING_SLOT_TESS_LEVEL_OUTER * 4 + i];
+      jump->operands[9 + i] = t.id() ? Operand(t, vgpr_start.advance(12 + (i * 4))) : Operand();
+   }
+   for (unsigned i = 0; i < 2; ++i) {
+      Temp t = ctx->outputs.temps[VARYING_SLOT_TESS_LEVEL_INNER * 4 + i];
+      jump->operands[13 + i] = t.id() ? Operand(t, vgpr_start.advance(28 + (i * 4))) : Operand();
+   }
+
    ctx->block->instructions.emplace_back(std::move(jump));
 }
 

@@ -1392,4 +1392,42 @@ Instruction::isTrans() const noexcept
           instr_info.classes[(int)opcode] == instr_class::valu_double_transcendental;
 }
 
+size_t
+get_instr_data_size(Format format)
+{
+   switch (format) {
+   case Format::SOP1:
+   case Format::SOP2:
+   case Format::SOPC:
+   case Format::SOPK:
+   case Format::SOPP: return sizeof(SALU_instruction);
+   case Format::SMEM: return sizeof(SMEM_instruction);
+   case Format::PSEUDO: return sizeof(Pseudo_instruction);
+   case Format::PSEUDO_BARRIER: return sizeof(Pseudo_barrier_instruction);
+   case Format::PSEUDO_REDUCTION: return sizeof(Pseudo_reduction_instruction);
+   case Format::PSEUDO_BRANCH: return sizeof(Pseudo_branch_instruction);
+   case Format::DS: return sizeof(DS_instruction);
+   case Format::FLAT:
+   case Format::GLOBAL:
+   case Format::SCRATCH: return sizeof(FLAT_instruction);
+   case Format::LDSDIR: return sizeof(LDSDIR_instruction);
+   case Format::MTBUF: return sizeof(MTBUF_instruction);
+   case Format::MUBUF: return sizeof(MUBUF_instruction);
+   case Format::MIMG: return sizeof(MIMG_instruction);
+   case Format::VOPD: return sizeof(VOPD_instruction);
+   case Format::VINTERP_INREG: return sizeof(VINTERP_inreg_instruction);
+   case Format::VINTRP: return sizeof(VINTRP_instruction);
+   case Format::EXP: return sizeof(Export_instruction);
+   default:
+      if ((uint16_t)format & (uint16_t)Format::DPP16)
+         return sizeof(DPP16_instruction);
+      else if ((uint16_t)format & (uint16_t)Format::DPP8)
+         return sizeof(DPP8_instruction);
+      else if ((uint16_t)format & (uint16_t)Format::SDWA)
+         return sizeof(SDWA_instruction);
+      else
+         return sizeof(VALU_instruction);
+   }
+}
+
 } // namespace aco

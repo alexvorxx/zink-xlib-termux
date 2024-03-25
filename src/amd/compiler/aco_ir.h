@@ -1670,21 +1670,24 @@ struct instr_deleter_functor {
 
 template <typename T> using aco_ptr = std::unique_ptr<T, instr_deleter_functor>;
 
+size_t get_instr_data_size(Format format);
+
 template <typename T>
 Instruction*
 create_instruction(aco_opcode opcode, Format format, uint32_t num_operands,
                    uint32_t num_definitions)
 {
-   std::size_t size =
-      sizeof(T) + num_operands * sizeof(Operand) + num_definitions * sizeof(Definition);
-   void* data = instruction_buffer->allocate(size, alignof(uint32_t));
-   memset(data, 0, size);
+   size_t size = get_instr_data_size(format);
+   size_t total_size = size + num_operands * sizeof(Operand) + num_definitions * sizeof(Definition);
+
+   void* data = instruction_buffer->allocate(total_size, alignof(uint32_t));
+   memset(data, 0, total_size);
    Instruction* inst = (Instruction*)data;
 
    inst->opcode = opcode;
    inst->format = format;
 
-   uint16_t operands_offset = sizeof(T) - offsetof(Instruction, operands);
+   uint16_t operands_offset = size - offsetof(Instruction, operands);
    inst->operands = aco::span<Operand>(operands_offset, num_operands);
    uint16_t definitions_offset = (char*)inst->operands.end() - (char*)&inst->definitions;
    inst->definitions = aco::span<Definition>(definitions_offset, num_definitions);

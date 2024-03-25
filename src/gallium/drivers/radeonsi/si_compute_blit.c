@@ -1008,22 +1008,6 @@ void si_compute_clear_render_target(struct pipe_context *ctx, struct pipe_surfac
    ctx->set_constant_buffer(ctx, PIPE_SHADER_COMPUTE, 0, true, &saved_cb);
 }
 
-/* Return the last component that a compute blit should load and store. */
-static unsigned si_format_get_last_blit_component(enum pipe_format format, bool is_dst)
-{
-   const struct util_format_description *desc = util_format_description(format);
-   unsigned num = 0;
-
-   for (unsigned i = 1; i < 4; i++) {
-      if (desc->swizzle[i] <= PIPE_SWIZZLE_W ||
-          /* If the swizzle is 1 for dst, we need to store 1 explicitly.
-           * The hardware stores 0 by default. */
-          (is_dst && desc->swizzle[i] == PIPE_SWIZZLE_1))
-         num = i;
-   }
-   return num;
-}
-
 static bool si_should_blit_clamp_xy(const struct pipe_blit_info *info)
 {
    int src_width = u_minify(info->src.resource->width0, info->src.level);
@@ -1184,8 +1168,8 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    options.uint_to_sint = util_format_is_pure_uint(info->src.format) &&
                           util_format_is_pure_sint(info->dst.format);
    options.dst_is_srgb = util_format_is_srgb(info->dst.format);
-   options.last_dst_channel = si_format_get_last_blit_component(info->dst.format, true);
-   options.last_src_channel = MIN2(si_format_get_last_blit_component(info->src.format, false),
+   options.last_dst_channel = util_format_get_last_component(info->dst.format);
+   options.last_src_channel = MIN2(util_format_get_last_component(info->src.format),
                                    options.last_dst_channel);
    options.use_integer_one = util_format_is_pure_integer(info->dst.format) &&
                              options.last_src_channel < options.last_dst_channel &&

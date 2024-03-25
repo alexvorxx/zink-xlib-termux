@@ -502,9 +502,9 @@ radv_sqtt_acquire_gpu_timestamp(struct radv_device *device, struct radeon_winsys
 
       new_size = MAX2(4096, 2 * device->sqtt_timestamp.size);
 
-      result =
-         radv_bo_create(device, new_size, 8, RADEON_DOMAIN_GTT,
-                        RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING, RADV_BO_PRIORITY_SCRATCH, 0, &bo);
+      result = radv_bo_create(device, new_size, 8, RADEON_DOMAIN_GTT,
+                              RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING, RADV_BO_PRIORITY_SCRATCH, 0,
+                              true, &bo);
       if (result != VK_SUCCESS) {
          simple_mtx_unlock(&device->sqtt_timestamp_mtx);
          return result;
@@ -636,8 +636,8 @@ radv_sqtt_init_bo(struct radv_device *device)
 
    struct radeon_winsys_bo *bo = NULL;
    result = radv_bo_create(device, size, 4096, RADEON_DOMAIN_VRAM,
-                           RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_ZERO_VRAM,
-                           RADV_BO_PRIORITY_SCRATCH, 0, &bo);
+                               RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_ZERO_VRAM,
+                               RADV_BO_PRIORITY_SCRATCH, 0, true, &bo);
    device->sqtt.bo = bo;
    if (result != VK_SUCCESS)
       return false;

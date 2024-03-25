@@ -1314,7 +1314,7 @@ void radv_buffer_init(struct radv_buffer *buffer, struct radv_device *device, st
 void radv_buffer_finish(struct radv_buffer *buffer);
 
 VkResult radv_bo_create(struct radv_device *device, uint64_t size, unsigned alignment, enum radeon_bo_domain domain,
-                        enum radeon_bo_flag flags, unsigned priority, uint64_t address,
+                        enum radeon_bo_flag flags, unsigned priority, uint64_t address, bool is_internal,
                         struct radeon_winsys_bo **out_bo);
 void radv_bo_destroy(struct radv_device *device, struct radeon_winsys_bo *bo);
 

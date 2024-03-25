@@ -50,8 +50,8 @@ radv_create_shadow_regs_preamble(struct radv_device *device, struct radv_queue_s
 
    /* allocate memory for queue_state->shadowed_regs where register states are saved */
    result = radv_bo_create(device, SI_SHADOWED_REG_BUFFER_SIZE, 4096, RADEON_DOMAIN_VRAM,
-                           RADEON_FLAG_ZERO_VRAM | RADEON_FLAG_NO_INTERPROCESS_SHARING, RADV_BO_PRIORITY_SCRATCH, 0,
-                           &queue_state->shadowed_regs);
+                               RADEON_FLAG_ZERO_VRAM | RADEON_FLAG_NO_INTERPROCESS_SHARING, RADV_BO_PRIORITY_SCRATCH, 0,
+                               true, &queue_state->shadowed_regs);
    if (result != VK_SUCCESS)
       goto fail;
 
@@ -69,7 +69,7 @@ radv_create_shadow_regs_preamble(struct radv_device *device, struct radv_queue_s
    result = radv_bo_create(
       device, cs->cdw * 4, 4096, ws->cs_domain(ws),
       RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_READ_ONLY | RADEON_FLAG_GTT_WC,
-      RADV_BO_PRIORITY_CS, 0, &queue_state->shadow_regs_ib);
+      RADV_BO_PRIORITY_CS, 0, true, &queue_state->shadow_regs_ib);
    if (result != VK_SUCCESS)
       goto fail_ib_buffer;
 

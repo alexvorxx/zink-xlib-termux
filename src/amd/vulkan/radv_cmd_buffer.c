@@ -498,7 +498,7 @@ radv_cmd_buffer_resize_upload_buf(struct radv_cmd_buffer *cmd_buffer, uint64_t m
    VkResult result = radv_bo_create(
       device, new_size, 4096, device->ws->cs_domain(device->ws),
       RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_32BIT | RADEON_FLAG_GTT_WC,
-      RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, &bo);
+      RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, true, &bo);
 
    if (result != VK_SUCCESS) {
       vk_command_buffer_set_error(&cmd_buffer->vk, result);

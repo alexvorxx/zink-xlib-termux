@@ -780,10 +780,8 @@ radv_destroy_descriptor_pool(struct radv_device *device, const VkAllocationCallb
       }
    }
 
-   if (pool->bo) {
-      radv_rmv_log_bo_destroy(device, pool->bo);
+   if (pool->bo)
       radv_bo_destroy(device, pool->bo);
-   }
    if (pool->host_bo)
       vk_free2(&device->vk.alloc, pAllocator, pool->host_bo);
 
@@ -915,8 +913,8 @@ radv_create_descriptor_pool(struct radv_device *device, const VkDescriptorPoolCr
          if (device->instance->drirc.zero_vram)
             flags |= RADEON_FLAG_ZERO_VRAM;
 
-         VkResult result =
-            radv_bo_create(device, bo_size, 32, RADEON_DOMAIN_VRAM, flags, RADV_BO_PRIORITY_DESCRIPTOR, 0, &pool->bo);
+         VkResult result = radv_bo_create(device, bo_size, 32, RADEON_DOMAIN_VRAM, flags, RADV_BO_PRIORITY_DESCRIPTOR,
+                                          0, false, &pool->bo);
          if (result != VK_SUCCESS) {
             radv_destroy_descriptor_pool(device, pAllocator, pool);
             return vk_error(device, result);

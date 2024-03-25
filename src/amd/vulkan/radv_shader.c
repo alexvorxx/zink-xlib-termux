@@ -961,11 +961,9 @@ radv_create_shader_arena(struct radv_device *device, struct radv_shader_free_lis
 
    VkResult result;
    result = radv_bo_create(device, arena_size, RADV_SHADER_ALLOC_ALIGNMENT, RADEON_DOMAIN_VRAM, flags,
-                           RADV_BO_PRIORITY_SHADER, replay_va, &arena->bo);
+                           RADV_BO_PRIORITY_SHADER, replay_va, true, &arena->bo);
    if (result != VK_SUCCESS)
       goto fail;
-
-   radv_rmv_log_bo_allocate(device, arena->bo, true);
 
    list_inithead(&arena->entries);
    alloc = alloc_block_obj(device);
@@ -998,10 +996,8 @@ radv_create_shader_arena(struct radv_device *device, struct radv_shader_free_lis
 fail:
    if (alloc)
       free_block_obj(device, alloc);
-   if (arena && arena->bo) {
-      radv_rmv_log_bo_destroy(device, arena->bo);
+   if (arena && arena->bo)
       radv_bo_destroy(device, arena->bo);
-   }
    free(arena);
    return NULL;
 }
@@ -1153,7 +1149,6 @@ fail:
    free(alloc);
    if (arena) {
       free(arena->list.next);
-      radv_rmv_log_bo_destroy(device, arena->bo);
       radv_bo_destroy(device, arena->bo);
    }
    free(arena);
@@ -1225,7 +1220,6 @@ radv_free_shader_memory(struct radv_device *device, union radv_shader_arena_bloc
       struct radv_shader_arena *arena = hole->arena;
       free_block_obj(device, hole);
 
-      radv_rmv_log_bo_destroy(device, arena->bo);
       radv_bo_destroy(device, arena->bo);
       list_del(&arena->list);
       free(arena);
@@ -1322,7 +1316,6 @@ radv_destroy_shader_arenas(struct radv_device *device)
       free(block);
 
    list_for_each_entry_safe (struct radv_shader_arena, arena, &device->shader_arenas, list) {
-      radv_rmv_log_bo_destroy(device, arena->bo);
       radv_bo_destroy(device, arena->bo);
       free(arena);
    }
@@ -1910,7 +1903,7 @@ radv_shader_dma_resize_upload_buf(struct radv_device *device, struct radv_shader
    VkResult result = radv_bo_create(
       device, size, RADV_SHADER_ALLOC_ALIGNMENT, RADEON_DOMAIN_GTT,
       RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_32BIT | RADEON_FLAG_GTT_WC,
-      RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, &submission->bo);
+      RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, true, &submission->bo);
    if (result != VK_SUCCESS)
       return result;
 

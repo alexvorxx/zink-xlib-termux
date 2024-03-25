@@ -1199,10 +1199,8 @@ radv_destroy_query_pool(struct radv_device *device, const VkAllocationCallbacks 
    if (pool->vk.query_type == VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR)
       radv_pc_deinit_query_pool((struct radv_pc_query_pool *)pool);
 
-   if (pool->bo) {
-      radv_rmv_log_bo_destroy(device, pool->bo);
+   if (pool->bo)
       radv_bo_destroy(device, pool->bo);
-   }
 
    radv_rmv_log_resource_destroy(device, (uint64_t)radv_query_pool_to_handle(pool));
    vk_query_pool_finish(&pool->vk);
@@ -1303,7 +1301,7 @@ radv_create_query_pool(struct radv_device *device, const VkQueryPoolCreateInfo *
       pool->size += 4 * pCreateInfo->queryCount;
 
    result = radv_bo_create(device, pool->size, 64, RADEON_DOMAIN_GTT, RADEON_FLAG_NO_INTERPROCESS_SHARING,
-                           RADV_BO_PRIORITY_QUERY_POOL, 0, &pool->bo);
+                               RADV_BO_PRIORITY_QUERY_POOL, 0, false, &pool->bo);
    if (result != VK_SUCCESS) {
       radv_destroy_query_pool(device, pAllocator, pool);
       return vk_error(device, result);

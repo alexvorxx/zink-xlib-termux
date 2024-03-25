@@ -3540,6 +3540,120 @@ tex_instr_is_lod_allowed(nir_tex_instr *tex)
 }
 
 static void
+get_tex_srcs(struct ntv_context *ctx, nir_tex_instr *tex,
+             nir_variable **bindless_var, unsigned *coord_components,
+             struct spriv_tex_src *tex_src)
+{
+   tex_src->sparse = tex->is_sparse;
+   nir_alu_type atype;
+   for (unsigned i = 0; i < tex->num_srcs; i++) {
+      nir_const_value *cv;
+      switch (tex->src[i].src_type) {
+      case nir_tex_src_coord:
+         if (tex->op == nir_texop_txf ||
+             tex->op == nir_texop_txf_ms)
+            tex_src->coord = get_src_int(ctx, &tex->src[i].src);
+         else
+            tex_src->coord = get_src_float(ctx, &tex->src[i].src);
+         *coord_components = nir_src_num_components(tex->src[i].src);
+         break;
+
+      case nir_tex_src_projector:
+         assert(nir_src_num_components(tex->src[i].src) == 1);
+         tex_src->proj = get_src_float(ctx, &tex->src[i].src);
+         assert(tex_src->proj != 0);
+         break;
+
+      case nir_tex_src_offset:
+         cv = nir_src_as_const_value(tex->src[i].src);
+         if (cv) {
+            unsigned bit_size = nir_src_bit_size(tex->src[i].src);
+            unsigned num_components = nir_src_num_components(tex->src[i].src);
+
+            SpvId components[NIR_MAX_VEC_COMPONENTS];
+            for (int j = 0; j < num_components; ++j) {
+               int64_t tmp = nir_const_value_as_int(cv[j], bit_size);
+               components[j] = emit_int_const(ctx, bit_size, tmp);
+            }
+
+            if (num_components > 1) {
+               SpvId type = get_ivec_type(ctx, bit_size, num_components);
+               tex_src->const_offset = spirv_builder_const_composite(&ctx->builder,
+                                                                    type,
+                                                                    components,
+                                                                    num_components);
+            } else
+               tex_src->const_offset = components[0];
+         } else
+            tex_src->offset = get_src_int(ctx, &tex->src[i].src);
+         break;
+
+      case nir_tex_src_bias:
+         assert(tex->op == nir_texop_txb);
+         tex_src->bias = get_src_float(ctx, &tex->src[i].src);
+         assert(tex_src->bias != 0);
+         break;
+
+      case nir_tex_src_min_lod:
+         assert(nir_src_num_components(tex->src[i].src) == 1);
+         tex_src->min_lod = get_src_float(ctx, &tex->src[i].src);
+         assert(tex_src->min_lod != 0);
+         break;
+
+      case nir_tex_src_lod:
+         assert(nir_src_num_components(tex->src[i].src) == 1);
+         if (tex->op == nir_texop_txf ||
+             tex->op == nir_texop_txf_ms ||
+             tex->op == nir_texop_txs)
+            tex_src->lod = get_src_int(ctx, &tex->src[i].src);
+         else
+            tex_src->lod = get_src_float(ctx, &tex->src[i].src);
+         assert(tex_src->lod != 0);
+         break;
+
+      case nir_tex_src_ms_index:
+         assert(nir_src_num_components(tex->src[i].src) == 1);
+         tex_src->sample = get_src_int(ctx, &tex->src[i].src);
+         break;
+
+      case nir_tex_src_comparator:
+         assert(nir_src_num_components(tex->src[i].src) == 1);
+         tex_src->dref = get_src_float(ctx, &tex->src[i].src);
+         assert(tex_src->dref != 0);
+         break;
+
+      case nir_tex_src_ddx:
+         tex_src->dx = get_src_float(ctx, &tex->src[i].src);
+         assert(tex_src->dx != 0);
+         break;
+
+      case nir_tex_src_ddy:
+         tex_src->dy = get_src_float(ctx, &tex->src[i].src);
+         assert(tex_src->dy != 0);
+         break;
+
+      case nir_tex_src_texture_offset:
+         tex_src->tex_offset = get_src_int(ctx, &tex->src[i].src);
+         break;
+
+      case nir_tex_src_sampler_offset:
+      case nir_tex_src_sampler_handle:
+         /* don't care */
+         break;
+
+      case nir_tex_src_texture_handle:
+         tex_src->bindless = get_src(ctx, &tex->src[i].src, &atype);
+         *bindless_var = nir_deref_instr_get_variable(nir_src_as_deref(tex->src[i].src));
+         break;
+
+      default:
+         fprintf(stderr, "texture source: %d\n", tex->src[i].src_type);
+         unreachable("unknown texture source");
+      }
+   }
+}
+
+static void
 emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
 {
    assert(tex->op == nir_texop_tex ||
@@ -3559,112 +3673,7 @@ emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
    unsigned coord_components = 0;
    nir_variable *bindless_var = NULL;
 
-   nir_alu_type atype;
-   for (unsigned i = 0; i < tex->num_srcs; i++) {
-      nir_const_value *cv;
-      switch (tex->src[i].src_type) {
-      case nir_tex_src_coord:
-         if (tex->op == nir_texop_txf ||
-             tex->op == nir_texop_txf_ms)
-            tex_src.coord = get_src_int(ctx, &tex->src[i].src);
-         else
-            tex_src.coord = get_src_float(ctx, &tex->src[i].src);
-         coord_components = nir_src_num_components(tex->src[i].src);
-         break;
-
-      case nir_tex_src_projector:
-         assert(nir_src_num_components(tex->src[i].src) == 1);
-         tex_src.proj = get_src_float(ctx, &tex->src[i].src);
-         assert(tex_src.proj != 0);
-         break;
-
-      case nir_tex_src_offset:
-         cv = nir_src_as_const_value(tex->src[i].src);
-         if (cv) {
-            unsigned bit_size = nir_src_bit_size(tex->src[i].src);
-            unsigned num_components = nir_src_num_components(tex->src[i].src);
-
-            SpvId components[NIR_MAX_VEC_COMPONENTS];
-            for (int j = 0; j < num_components; ++j) {
-               int64_t tmp = nir_const_value_as_int(cv[j], bit_size);
-               components[j] = emit_int_const(ctx, bit_size, tmp);
-            }
-
-            if (num_components > 1) {
-               SpvId type = get_ivec_type(ctx, bit_size, num_components);
-               tex_src.const_offset = spirv_builder_const_composite(&ctx->builder,
-                                                            type,
-                                                            components,
-                                                            num_components);
-            } else
-               tex_src.const_offset = components[0];
-         } else
-            tex_src.offset = get_src_int(ctx, &tex->src[i].src);
-         break;
-
-      case nir_tex_src_bias:
-         assert(tex->op == nir_texop_txb);
-         tex_src.bias = get_src_float(ctx, &tex->src[i].src);
-         assert(tex_src.bias != 0);
-         break;
-
-      case nir_tex_src_min_lod:
-         assert(nir_src_num_components(tex->src[i].src) == 1);
-         tex_src.min_lod = get_src_float(ctx, &tex->src[i].src);
-         assert(tex_src.min_lod != 0);
-         break;
-
-      case nir_tex_src_lod:
-         assert(nir_src_num_components(tex->src[i].src) == 1);
-         if (tex->op == nir_texop_txf ||
-             tex->op == nir_texop_txf_ms ||
-             tex->op == nir_texop_txs)
-            tex_src.lod = get_src_int(ctx, &tex->src[i].src);
-         else
-            tex_src.lod = get_src_float(ctx, &tex->src[i].src);
-         assert(tex_src.lod != 0);
-         break;
-
-      case nir_tex_src_ms_index:
-         assert(nir_src_num_components(tex->src[i].src) == 1);
-         tex_src.sample = get_src_int(ctx, &tex->src[i].src);
-         break;
-
-      case nir_tex_src_comparator:
-         assert(nir_src_num_components(tex->src[i].src) == 1);
-         tex_src.dref = get_src_float(ctx, &tex->src[i].src);
-         assert(tex_src.dref != 0);
-         break;
-
-      case nir_tex_src_ddx:
-         tex_src.dx = get_src_float(ctx, &tex->src[i].src);
-         assert(tex_src.dx != 0);
-         break;
-
-      case nir_tex_src_ddy:
-         tex_src.dy = get_src_float(ctx, &tex->src[i].src);
-         assert(tex_src.dy != 0);
-         break;
-
-      case nir_tex_src_texture_offset:
-         tex_src.tex_offset = get_src_int(ctx, &tex->src[i].src);
-         break;
-
-      case nir_tex_src_sampler_offset:
-      case nir_tex_src_sampler_handle:
-         /* don't care */
-         break;
-
-      case nir_tex_src_texture_handle:
-         tex_src.bindless = get_src(ctx, &tex->src[i].src, &atype);
-         bindless_var = nir_deref_instr_get_variable(nir_src_as_deref(tex->src[i].src));
-         break;
-
-      default:
-         fprintf(stderr, "texture source: %d\n", tex->src[i].src_type);
-         unreachable("unknown texture source");
-      }
-   }
+   get_tex_srcs(ctx, tex, &bindless_var, &coord_components, &tex_src);
 
    unsigned texture_index = tex->texture_index;
    nir_variable *var = bindless_var ? bindless_var : ctx->sampler_var[tex->texture_index];

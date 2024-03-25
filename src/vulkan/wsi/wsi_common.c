@@ -123,7 +123,7 @@ wsi_device_init(struct wsi_device *wsi,
    for (VkExternalSemaphoreHandleTypeFlags handle_type = 1;
         handle_type <= VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT;
         handle_type <<= 1) {
-      const VkPhysicalDeviceExternalSemaphoreInfo esi = {
+      VkPhysicalDeviceExternalSemaphoreInfo esi = {
          .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_SEMAPHORE_INFO,
          .handleType = handle_type,
       };
@@ -135,6 +135,17 @@ wsi_device_init(struct wsi_device *wsi,
       if (esp.externalSemaphoreFeatures &
           VK_EXTERNAL_SEMAPHORE_FEATURE_EXPORTABLE_BIT)
          wsi->semaphore_export_handle_types |= handle_type;
+
+      VkSemaphoreTypeCreateInfo timeline_tci = {
+         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
+         .semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE_KHR,
+      };
+      esi.pNext = &timeline_tci;
+      GetPhysicalDeviceExternalSemaphoreProperties(pdevice, &esi, &esp);
+
+      if (esp.externalSemaphoreFeatures &
+          VK_EXTERNAL_SEMAPHORE_FEATURE_EXPORTABLE_BIT)
+         wsi->timeline_semaphore_export_handle_types |= handle_type;
    }
 
    const struct vk_device_extension_table *supported_extensions =

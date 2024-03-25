@@ -414,7 +414,7 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
       BITSET_SET(b.shader->info.msaa_images, 1);
    /* The workgroup size varies depending on the tiling layout and blit dimensions. */
    b.shader->info.workgroup_size_variable = true;
-   b.shader->info.cs.user_data_components_amd = 3;
+   b.shader->info.cs.user_data_components_amd = options->has_start_xyz ? 4 : 3;
 
    const struct glsl_type *img_type[2] = {
       glsl_image_type(options->src_is_1d ? GLSL_SAMPLER_DIM_1D :
@@ -436,6 +436,23 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
    /* Instructions. */
    /* Let's work with 0-based src and dst coordinates (thread IDs) first. */
    nir_def *dst_xyz = nir_pad_vector_imm_int(&b, get_global_ids(&b, options->wg_dim), 0, 3);
+
+   /* If the blit area is unaligned, we launched extra threads to make it aligned.
+    * Skip those threads here.
+    */
+   nir_if *if_positive = NULL;
+   if (options->has_start_xyz) {
+      nir_def *start_xyz = nir_channel(&b, nir_load_user_data_amd(&b), 3);
+      start_xyz = nir_trim_vector(&b, nir_u2u32(&b, nir_unpack_32_4x8(&b, start_xyz)), 3);
+
+      dst_xyz = nir_isub(&b, dst_xyz, start_xyz);
+      nir_def *is_positive_xyz = nir_ige_imm(&b, dst_xyz, 0);
+      nir_def *is_positive = nir_iand(&b, nir_channel(&b, is_positive_xyz, 0),
+                                      nir_iand(&b, nir_channel(&b, is_positive_xyz, 1),
+                                               nir_channel(&b, is_positive_xyz, 2)));
+      if_positive = nir_push_if(&b, is_positive);
+   }
+
    nir_def *src_xyz = dst_xyz;
 
    /* Flip src coordinates. */
@@ -530,6 +547,9 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
       color = apply_blit_output_modifiers(&b, color, options);
       nir_image_deref_store(&b, deref_ssa(&b, img_dst), coord_dst, zero, color, zero);
    }
+
+   if (options->has_start_xyz)
+      nir_pop_if(&b, if_positive);
 
    return create_shader_state(sctx, b.shader);
 }

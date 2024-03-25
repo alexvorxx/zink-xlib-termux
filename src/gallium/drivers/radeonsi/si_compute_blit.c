@@ -1033,10 +1033,16 @@ static bool si_should_blit_clamp_xy(const struct pipe_blit_info *info)
    return !in_bounds;
 }
 
+typedef struct {
+   unsigned x, y, z;
+} uvec3;
+
 bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info, bool testing)
 {
    struct si_texture *sdst = (struct si_texture *)info->dst.resource;
+   struct si_texture *ssrc = (struct si_texture *)info->src.resource;
    bool is_3d_tiling = sdst->surface.thick_tiling;
+   unsigned dst_samples = MAX2(1, sdst->buffer.b.b.nr_samples);
    /* Get the channel sizes. */
    unsigned max_dst_chan_size = util_format_get_max_channel_size(info->dst.format);
    unsigned max_src_chan_size = util_format_get_max_channel_size(info->src.format);
@@ -1088,7 +1094,116 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    unsigned width = info->dst.box.width;
    unsigned height = info->dst.box.height;
    unsigned depth = info->dst.box.depth;
+
+   /* Determine the alignment of coordinates of the first thread of each wave. The alignment should be
+    * to a 256B block or the size of 1 wave, whichever is less, but there are a few exceptions.
+    */
+   uvec3 align;
+   if (is_3d_tiling) {
+      /* Thick tiling. */
+      /* This is based on GFX11_SW_PATTERN_NIBBLE01, which also matches GFX10. */
+      if (sdst->surface.bpe == 1)
+         align = (uvec3){8, 4, 8};
+      else if (sdst->surface.bpe == 2)
+         align = (uvec3){4, 4, 8};
+      else if (sdst->surface.bpe == 4)
+         align = (uvec3){4, 4, 4};
+      else if (sdst->surface.bpe == 8)
+         align = (uvec3){4, 2, 4};
+      else {
+         /* 16bpp linear source image reads perform better with this. */
+         if (ssrc->surface.is_linear)
+            align = (uvec3){4, 2, 4}; /* align to 512B for linear->tiled */
+         else
+            align = (uvec3){2, 2, 4};
+      }
+
+      /* Clamp the alignment to the size of 1 wave. */
+      align.x = MIN2(align.x, 4);
+      align.y = MIN2(align.y, 4);
+      align.z = MIN2(align.z, 4);
+   } else if (sdst->surface.is_linear) {
+      /* 1D blits from linear to linear are faster unaligned.
+       * 1D image clears don't benefit from any alignment.
+       */
+      if (height == 1 && depth == 1 && ssrc->surface.is_linear) {
+         align = (uvec3){1, 1, 1};
+      } else {
+         /* Linear blits should use the cache line size instead of 256B alignment. */
+         align.x = MIN2(64, sctx->screen->info.tcc_cache_line_size / sdst->surface.bpe);
+         align.y = 1;
+         align.z = 1;
+      }
+   } else {
+      /* Thin tiling. */
+      if (sctx->gfx_level >= GFX11) {
+         /* Samples are next to each other on GFX11+. */
+         unsigned pix_size = sdst->surface.bpe * dst_samples;
+
+         /* This is based on GFX11_SW_PATTERN_NIBBLE01. */
+         if (pix_size == 1)
+            align = (uvec3){16, 16, 1};
+         else if (pix_size == 2)
+            align = (uvec3){16, 8, 1};
+         else if (pix_size == 4)
+            align = (uvec3){8, 8, 1};
+         else if (pix_size == 8)
+            align = (uvec3){8, 4, 1};
+         else if (pix_size == 16)
+            align = (uvec3){4, 4, 1};
+         else if (pix_size == 32)
+            align = (uvec3){4, 2, 1};
+         else if (pix_size == 64)
+            align = (uvec3){2, 2, 1};
+         else
+            align = (uvec3){2, 1, 1}; /* 16bpp 8xAA */
+      } else {
+         /* This is for 64KB_R_X. (most likely to occur due to DCC)
+          * It's based on GFX10_SW_64K_R_X_*xaa_RBPLUS_PATINFO (GFX10.3).
+          * The patterns are GFX10_SW_PATTERN_NIBBLE01[0, 1, 39, 6, 7] for 8bpp-128bpp.
+          * GFX6-10.1 and other swizzle modes might be similar.
+          */
+         if (sdst->surface.bpe == 1)
+            align = (uvec3){16, 16, 1};
+         else if (sdst->surface.bpe == 2)
+            align = (uvec3){16, 8, 1};
+         else if (sdst->surface.bpe == 4)
+            align = (uvec3){8, 8, 1};
+         else if (sdst->surface.bpe == 8)
+            align = (uvec3){8, 4, 1};
+         else
+            align = (uvec3){4, 4, 1};
+      }
+
+      /* Clamp the alignment to the size of 1 wave. */
+      align.x = MIN2(align.x, 8);
+      align.y = MIN2(align.y, 8);
+   }
+
+   /* If we don't have much to copy, don't align. The threshold is guessed and isn't covered
+    * by benchmarking.
+    */
+   if (width <= align.x * 4)
+      align.x = 1;
+   if (height <= align.y * 4)
+      align.y = 1;
+   if (depth <= align.z * 4)
+      align.z = 1;
+
+   unsigned start_x, start_y, start_z;
    unsigned block_x, block_y, block_z;
+
+   /* If the blit destination area is unaligned, launch extra threads before 0,0,0 to make it
+    * aligned. This makes sure that a wave doesn't straddle a DCC block boundary or a cache line
+    * unnecessarily, so that each cache line is only stored by exactly 1 CU. The shader will skip
+    * the extra threads. This makes unaligned compute blits faster.
+    */
+   start_x = info->dst.box.x % align.x;
+   start_y = info->dst.box.y % align.y;
+   start_z = info->dst.box.z % align.z;
+   width += start_x;
+   height += start_y;
+   depth += start_z;
 
    /* Choose the block (i.e. wave) dimensions based on the copy area size and the image layout
     * of dst.
@@ -1138,6 +1253,7 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
 
    options.always_true = true;
    options.wg_dim = wg_dim;
+   options.has_start_xyz = start_x || start_y || start_z;
    options.src_is_1d = info->src.resource->target == PIPE_TEXTURE_1D ||
                        info->src.resource->target == PIPE_TEXTURE_1D_ARRAY;
    options.dst_is_1d = info->dst.resource->target == PIPE_TEXTURE_1D ||
@@ -1196,6 +1312,7 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    sctx->cs_user_data[0] = (info->src.box.x & 0xffff) | ((info->dst.box.x & 0xffff) << 16);
    sctx->cs_user_data[1] = (info->src.box.y & 0xffff) | ((info->dst.box.y & 0xffff) << 16);
    sctx->cs_user_data[2] = (info->src.box.z & 0xffff) | ((info->dst.box.z & 0xffff) << 16);
+   sctx->cs_user_data[3] = (start_x & 0xff) | ((start_y & 0xff) << 8) | ((start_z & 0xff) << 16);
 
    si_launch_grid_internal_images(sctx, image, 2, &grid, shader,
                                   SI_OP_SYNC_BEFORE_AFTER |

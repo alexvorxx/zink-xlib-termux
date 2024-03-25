@@ -1639,8 +1639,10 @@ union si_compute_blit_shader_key {
    struct {
       /* The key saved in _mesa_hash_table_create_u32_keys() can't be 0. */
       bool always_true:1;
-      /* Declaration modifiers. */
+      /* Workgroup settings. */
       uint8_t wg_dim:2; /* 1, 2, or 3 */
+      bool has_start_xyz:1;
+      /* Declaration modifiers. */
       bool src_is_1d:1;
       bool dst_is_1d:1;
       bool src_is_msaa:1;

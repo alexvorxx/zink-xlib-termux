@@ -3654,6 +3654,33 @@ get_tex_srcs(struct ntv_context *ctx, nir_tex_instr *tex,
 }
 
 static void
+find_sampler_and_texture_index(struct ntv_context *ctx, struct spriv_tex_src *tex_src,
+                               nir_variable *bindless_var,
+                               nir_variable **var, uint32_t *texture_index)
+{
+   *var = bindless_var ? bindless_var : ctx->sampler_var[*texture_index];
+   nir_variable **sampler_var = tex_src->bindless ? ctx->bindless_sampler_var : ctx->sampler_var;
+   if (!bindless_var && (!tex_src->tex_offset || !var)) {
+      if (sampler_var[*texture_index]) {
+         if (glsl_type_is_array(sampler_var[*texture_index]->type))
+            tex_src->tex_offset = emit_uint_const(ctx, 32, 0);
+      } else {
+         /* convert constant index back to base + offset */
+         for (int i = *texture_index; i >= 0; i--) {
+            if (sampler_var[i]) {
+               assert(glsl_type_is_array(sampler_var[i]->type));
+               if (!tex_src->tex_offset)
+                  tex_src->tex_offset = emit_uint_const(ctx, 32, *texture_index - i);
+               *var = sampler_var[i];
+               *texture_index = i;
+               break;
+            }
+         }
+      }
+   }
+}
+
+static void
 emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
 {
    assert(tex->op == nir_texop_tex ||
@@ -3672,31 +3699,12 @@ emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
    struct spriv_tex_src tex_src = {0};
    unsigned coord_components = 0;
    nir_variable *bindless_var = NULL;
+   nir_variable *var = NULL;
+   uint32_t texture_index = tex->texture_index;
 
    get_tex_srcs(ctx, tex, &bindless_var, &coord_components, &tex_src);
+   find_sampler_and_texture_index(ctx, &tex_src, bindless_var, &var, &texture_index);
 
-   unsigned texture_index = tex->texture_index;
-   nir_variable *var = bindless_var ? bindless_var : ctx->sampler_var[tex->texture_index];
-   nir_variable **sampler_var = tex_src.bindless ? ctx->bindless_sampler_var : ctx->sampler_var;
-   if (!bindless_var && (!tex_src.tex_offset || !var)) {
-      if (sampler_var[texture_index]) {
-         if (glsl_type_is_array(sampler_var[texture_index]->type))
-            tex_src.tex_offset = emit_uint_const(ctx, 32, 0);
-         assert(var);
-      } else {
-         /* convert constant index back to base + offset */
-         for (int i = texture_index; i >= 0; i--) {
-            if (sampler_var[i]) {
-               assert(glsl_type_is_array(sampler_var[i]->type));
-               if (!tex_src.tex_offset)
-                  tex_src.tex_offset = emit_uint_const(ctx, 32, texture_index - i);
-               var = sampler_var[i];
-               texture_index = i;
-               break;
-            }
-         }
-      }
-   }
    assert(var);
    SpvId image_type = find_image_type(ctx, var);
    assert(image_type);

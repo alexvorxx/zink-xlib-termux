@@ -4019,7 +4019,7 @@ dzn_cmd_buffer_indirect_draw(struct dzn_cmd_buffer *cmdbuf,
    }
 
    struct dzn_indirect_draw_cmd_sig_key cmd_sig_key;
-   cmd_sig_key.value = 0;
+   memset(&cmd_sig_key, 0, sizeof(cmd_sig_key));
    cmd_sig_key.indexed = indexed;
    cmd_sig_key.triangle_fan = draw_type.triangle_fan;
    cmd_sig_key.draw_params = draw_type.draw_params;

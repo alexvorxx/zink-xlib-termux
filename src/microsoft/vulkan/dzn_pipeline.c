@@ -77,6 +77,18 @@ gfx_pipeline_variant_key_hash(const void *key)
    return _mesa_hash_data(key, sizeof(struct dzn_graphics_pipeline_variant_key));
 }
 
+static bool
+gfx_pipeline_cmd_signature_key_equal(const void *a, const void *b)
+{
+   return !memcmp(a, b, sizeof(struct dzn_indirect_draw_cmd_sig_key));
+}
+
+static uint32_t
+gfx_pipeline_cmd_signature_key_hash(const void *key)
+{
+   return _mesa_hash_data(key, sizeof(struct dzn_indirect_draw_cmd_sig_key));
+}
+
 struct dzn_cached_blob {
    struct vk_pipeline_cache_object base;
    uint8_t hash[SHA1_DIGEST_LENGTH];
@@ -1804,6 +1816,11 @@ static void dzn_graphics_pipeline_delete_variant(struct hash_entry *he)
       ID3D12PipelineState_Release(variant->state);
 }
 
+static void dzn_graphics_pipeline_delete_cmd_sig(struct hash_entry *he)
+{
+   ID3D12CommandSignature_Release((ID3D12CommandSignature *)he->data);
+}
+
 static void
 dzn_graphics_pipeline_cleanup_nir_shaders(struct dzn_graphics_pipeline *pipeline)
 {
@@ -1841,6 +1858,8 @@ dzn_graphics_pipeline_destroy(struct dzn_graphics_pipeline *pipeline,
       if (pipeline->indirect_cmd_sigs[i])
          ID3D12CommandSignature_Release(pipeline->indirect_cmd_sigs[i]);
    }
+   _mesa_hash_table_destroy(pipeline->custom_stride_cmd_sigs,
+                            dzn_graphics_pipeline_delete_cmd_sig);
 
    dzn_pipeline_finish(&pipeline->base);
    vk_free2(&pipeline->base.base.device->alloc, alloc, pipeline);
@@ -2253,10 +2272,6 @@ dzn_graphics_pipeline_get_indirect_cmd_sig(struct dzn_graphics_pipeline *pipelin
    assert(key.value < DZN_NUM_INDIRECT_DRAW_CMD_SIGS);
 
    struct dzn_device *device = container_of(pipeline->base.base.device, struct dzn_device, vk);
-   ID3D12CommandSignature *cmdsig = pipeline->indirect_cmd_sigs[key.value];
-
-   if (cmdsig)
-      return cmdsig;
 
    uint32_t cmd_arg_count = 0;
    D3D12_INDIRECT_ARGUMENT_DESC cmd_args[DZN_INDIRECT_CMD_SIG_MAX_ARGS];
@@ -2315,9 +2330,25 @@ dzn_graphics_pipeline_get_indirect_cmd_sig(struct dzn_graphics_pipeline *pipelin
 
    assert(cmd_arg_count <= ARRAY_SIZE(cmd_args));
    assert(offsetof(struct dxil_spirv_vertex_runtime_data, first_vertex) == 0);
+   ID3D12CommandSignature *cmdsig = NULL;
+
+   if (key.custom_stride == 0 || key.custom_stride == stride)
+      cmdsig = pipeline->indirect_cmd_sigs[key.value];
+   else {
+      if (!pipeline->custom_stride_cmd_sigs) {
+         pipeline->custom_stride_cmd_sigs =
+            _mesa_hash_table_create(NULL, gfx_pipeline_cmd_signature_key_hash, gfx_pipeline_cmd_signature_key_equal);
+      }
+      struct hash_entry *entry = _mesa_hash_table_search(pipeline->custom_stride_cmd_sigs, &key);
+      if (entry)
+         cmdsig = entry->data;
+   }
+
+   if (cmdsig)
+      return cmdsig;
 
    D3D12_COMMAND_SIGNATURE_DESC cmd_sig_desc = {
-      .ByteStride = stride,
+      .ByteStride = key.custom_stride ? key.custom_stride : stride,
       .NumArgumentDescs = cmd_arg_count,
       .pArgumentDescs = cmd_args,
    };
@@ -2332,7 +2363,10 @@ dzn_graphics_pipeline_get_indirect_cmd_sig(struct dzn_graphics_pipeline *pipelin
    if (FAILED(hres))
       return NULL;
 
-   pipeline->indirect_cmd_sigs[key.value] = cmdsig;
+   if (key.custom_stride == 0 || key.custom_stride == stride)
+      pipeline->indirect_cmd_sigs[key.value] = cmdsig;
+   else
+      _mesa_hash_table_insert(pipeline->custom_stride_cmd_sigs, &key, cmdsig);
    return cmdsig;
 }
 

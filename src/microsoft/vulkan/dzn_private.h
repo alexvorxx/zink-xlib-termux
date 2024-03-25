@@ -941,6 +941,9 @@ struct dzn_indirect_draw_cmd_sig_key {
       };
       uint8_t value;
    };
+
+   uint8_t padding[3];
+   uint32_t custom_stride;
 };
 #define DZN_NUM_INDIRECT_DRAW_CMD_SIGS (1 << 4)
 
@@ -1022,6 +1025,7 @@ struct dzn_graphics_pipeline {
    struct hash_table *variants;
 
    ID3D12CommandSignature *indirect_cmd_sigs[DZN_NUM_INDIRECT_DRAW_CMD_SIGS];
+   struct hash_table *custom_stride_cmd_sigs;
 };
 
 #define dzn_graphics_pipeline_get_desc(pipeline, streambuf, name) \

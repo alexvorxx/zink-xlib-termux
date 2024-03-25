@@ -69,8 +69,7 @@ create_global()
 static void
 create_mimg(bool nsa, Temp desc = Temp(0, s8))
 {
-   aco_ptr<Instruction> mimg{
-      create_instruction<MIMG_instruction>(aco_opcode::image_sample, Format::MIMG, 5, 1)};
+   aco_ptr<Instruction> mimg{create_instruction(aco_opcode::image_sample, Format::MIMG, 5, 1)};
    mimg->definitions[0] = Definition(PhysReg(256), v1);
    mimg->operands[0] = Operand(desc);
    mimg->operands[0].setFixed(PhysReg(0));

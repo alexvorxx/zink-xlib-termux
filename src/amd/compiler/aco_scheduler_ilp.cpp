@@ -686,7 +686,7 @@ create_vopd_instruction(const SchedILPContext& ctx, unsigned idx)
    get_vopd_opcode_operands(x, x_info, swap_x, &x_op, &num_operands, operands);
    get_vopd_opcode_operands(y, y_info, swap_y, &y_op, &num_operands, operands + num_operands);
 
-   Instruction* instr = create_instruction<VOPD_instruction>(x_op, Format::VOPD, num_operands, 2);
+   Instruction* instr = create_instruction(x_op, Format::VOPD, num_operands, 2);
    instr->vopd().opy = y_op;
    instr->definitions[0] = x->definitions[0];
    instr->definitions[1] = y->definitions[0];

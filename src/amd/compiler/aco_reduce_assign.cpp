@@ -79,7 +79,7 @@ setup_reduce_temp(Program* program)
           * Here, the linear vgpr is used before any phi copies, so this isn't necessary.
           */
          if (inserted_at >= 0) {
-            aco_ptr<Instruction> end{create_instruction<Pseudo_instruction>(
+            aco_ptr<Instruction> end{create_instruction(
                aco_opcode::p_end_linear_vgpr, Format::PSEUDO, vtmp_inserted_at >= 0 ? 2 : 1, 0)};
             end->operands[0] = Operand(reduceTmp);
             end->operands[0].setLateKill(true);
@@ -109,8 +109,8 @@ setup_reduce_temp(Program* program)
 
          if ((int)last_top_level_block_idx != inserted_at) {
             reduceTmp = program->allocateTmp(reduceTmp.regClass());
-            aco_ptr<Instruction> create{create_instruction<Pseudo_instruction>(
-               aco_opcode::p_start_linear_vgpr, Format::PSEUDO, 0, 1)};
+            aco_ptr<Instruction> create{
+               create_instruction(aco_opcode::p_start_linear_vgpr, Format::PSEUDO, 0, 1)};
             create->definitions[0] = Definition(reduceTmp);
             /* find the right place to insert this definition */
             if (last_top_level_block_idx == block.index) {
@@ -154,8 +154,8 @@ setup_reduce_temp(Program* program)
 
          if (need_vtmp && (int)last_top_level_block_idx != vtmp_inserted_at) {
             vtmp = program->allocateTmp(vtmp.regClass());
-            aco_ptr<Instruction> create{create_instruction<Pseudo_instruction>(
-               aco_opcode::p_start_linear_vgpr, Format::PSEUDO, 0, 1)};
+            aco_ptr<Instruction> create{
+               create_instruction(aco_opcode::p_start_linear_vgpr, Format::PSEUDO, 0, 1)};
             create->definitions[0] = Definition(vtmp);
             if (last_top_level_block_idx == block.index) {
                it = block.instructions.insert(it, std::move(create));

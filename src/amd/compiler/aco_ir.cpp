@@ -327,8 +327,8 @@ convert_to_SDWA(amd_gfx_level gfx_level, aco_ptr<Instruction>& instr)
 
    aco_ptr<Instruction> tmp = std::move(instr);
    Format format = asSDWA(withoutVOP3(tmp->format));
-   instr.reset(create_instruction<SDWA_instruction>(tmp->opcode, format, tmp->operands.size(),
-                                                    tmp->definitions.size()));
+   instr.reset(
+      create_instruction(tmp->opcode, format, tmp->operands.size(), tmp->definitions.size()));
    std::copy(tmp->operands.cbegin(), tmp->operands.cend(), instr->operands.begin());
    std::copy(tmp->definitions.cbegin(), tmp->definitions.cend(), instr->definitions.begin());
 
@@ -451,11 +451,11 @@ convert_to_DPP(amd_gfx_level gfx_level, aco_ptr<Instruction>& instr, bool dpp8)
    Format format =
       (Format)((uint32_t)tmp->format | (uint32_t)(dpp8 ? Format::DPP8 : Format::DPP16));
    if (dpp8)
-      instr.reset(create_instruction<DPP8_instruction>(tmp->opcode, format, tmp->operands.size(),
-                                                       tmp->definitions.size()));
+      instr.reset(
+         create_instruction(tmp->opcode, format, tmp->operands.size(), tmp->definitions.size()));
    else
-      instr.reset(create_instruction<DPP16_instruction>(tmp->opcode, format, tmp->operands.size(),
-                                                        tmp->definitions.size()));
+      instr.reset(
+         create_instruction(tmp->opcode, format, tmp->operands.size(), tmp->definitions.size()));
    std::copy(tmp->operands.cbegin(), tmp->operands.cend(), instr->operands.begin());
    std::copy(tmp->definitions.cbegin(), tmp->definitions.cend(), instr->definitions.begin());
 

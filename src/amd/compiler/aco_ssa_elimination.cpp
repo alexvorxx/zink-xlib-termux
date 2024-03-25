@@ -97,9 +97,8 @@ insert_parallelcopies(ssa_elimination_ctx& ctx)
       }
 
       std::vector<aco_ptr<Instruction>>::iterator it = std::next(block.instructions.begin(), idx);
-      aco_ptr<Instruction> pc{
-         create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy, Format::PSEUDO,
-                                                logical_phi_info.size(), logical_phi_info.size())};
+      aco_ptr<Instruction> pc{create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO,
+                                                 logical_phi_info.size(), logical_phi_info.size())};
       unsigned i = 0;
       for (auto& phi_info : logical_phi_info) {
          pc->definitions[i] = phi_info.def;
@@ -122,9 +121,8 @@ insert_parallelcopies(ssa_elimination_ctx& ctx)
       --it;
       assert((*it)->isBranch());
       PhysReg scratch_sgpr = (*it)->definitions[0].physReg();
-      aco_ptr<Instruction> pc{
-         create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy, Format::PSEUDO,
-                                                linear_phi_info.size(), linear_phi_info.size())};
+      aco_ptr<Instruction> pc{create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO,
+                                                 linear_phi_info.size(), linear_phi_info.size())};
       unsigned i = 0;
       for (auto& phi_info : linear_phi_info) {
          pc->definitions[i] = phi_info.def;
@@ -473,8 +471,8 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
             return;
          } else {
             aco_ptr<Instruction> tmp = std::move(exec_val);
-            exec_val.reset(create_instruction<VALU_instruction>(
-               tmp->opcode, tmp->format, tmp->operands.size(), tmp->definitions.size() + 1));
+            exec_val.reset(create_instruction(tmp->opcode, tmp->format, tmp->operands.size(),
+                                              tmp->definitions.size() + 1));
             std::copy(tmp->operands.cbegin(), tmp->operands.cend(), exec_val->operands.begin());
             std::copy(tmp->definitions.cbegin(), tmp->definitions.cend(),
                       exec_val->definitions.begin());
@@ -522,8 +520,7 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
       exec_copy.reset();
    } else {
       /* Reassign the copy to write the register of the original value. */
-      exec_copy.reset(
-         create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy, Format::PSEUDO, 1, 1));
+      exec_copy.reset(create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO, 1, 1));
       exec_copy->definitions[0] = exec_wr_def;
       exec_copy->operands[0] = Operand(exec, ctx.program->lane_mask);
    }
@@ -543,7 +540,7 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
        */
       const auto it = std::next(block.instructions.begin(), save_original_exec_idx);
       aco_ptr<Instruction> copy(
-         create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy, Format::PSEUDO, 1, 1));
+         create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO, 1, 1));
       copy->definitions[0] = exec_copy_def;
       copy->operands[0] = Operand(exec, ctx.program->lane_mask);
       block.instructions.insert(it, std::move(copy));

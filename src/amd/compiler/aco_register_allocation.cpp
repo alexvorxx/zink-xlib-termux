@@ -99,10 +99,8 @@ struct ra_ctx {
        : program(program_), assignments(program->peekAllocationId()),
          renames(program->blocks.size()), policy(policy_)
    {
-      pseudo_dummy.reset(
-         create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy, Format::PSEUDO, 0, 0));
-      phi_dummy.reset(
-         create_instruction<Pseudo_instruction>(aco_opcode::p_linear_phi, Format::PSEUDO, 0, 0));
+      pseudo_dummy.reset(create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO, 0, 0));
+      phi_dummy.reset(create_instruction(aco_opcode::p_linear_phi, Format::PSEUDO, 0, 0));
       sgpr_limit = get_addr_sgpr_from_waves(program, program->min_waves);
       vgpr_limit = get_addr_vgpr_from_waves(program, program->min_waves);
 
@@ -2237,8 +2235,7 @@ get_reg_phi(ra_ctx& ctx, IDSet& live_in, RegisterFile& register_file,
          pc.first.getTemp().is_linear() ? aco_opcode::p_linear_phi : aco_opcode::p_phi;
       Block::edge_vec& preds =
          pc.first.getTemp().is_linear() ? block.linear_preds : block.logical_preds;
-      aco_ptr<Instruction> new_phi{
-         create_instruction<Pseudo_instruction>(opcode, Format::PSEUDO, preds.size(), 1)};
+      aco_ptr<Instruction> new_phi{create_instruction(opcode, Format::PSEUDO, preds.size(), 1)};
       new_phi->definitions[0] = pc.second;
       for (unsigned i = 0; i < preds.size(); i++)
          new_phi->operands[i] = Operand(pc.first);
@@ -2382,8 +2379,7 @@ handle_live_in(ra_ctx& ctx, Temp val, Block* block)
 
       /* the variable has been renamed differently in the predecessors: we need to insert a phi */
       aco_opcode opcode = val.is_linear() ? aco_opcode::p_linear_phi : aco_opcode::p_phi;
-      aco_ptr<Instruction> phi{
-         create_instruction<Pseudo_instruction>(opcode, Format::PSEUDO, preds.size(), 1)};
+      aco_ptr<Instruction> phi{create_instruction(opcode, Format::PSEUDO, preds.size(), 1)};
       new_val = ctx.program->allocateTmp(val.regClass());
       phi->definitions[0] = Definition(new_val);
       ctx.assignments.emplace_back();
@@ -2886,8 +2882,8 @@ emit_parallel_copy_internal(ra_ctx& ctx, std::vector<std::pair<Operand, Definiti
       return;
 
    aco_ptr<Instruction> pc;
-   pc.reset(create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy, Format::PSEUDO,
-                                                   parallelcopy.size(), parallelcopy.size()));
+   pc.reset(create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO, parallelcopy.size(),
+                               parallelcopy.size()));
    bool linear_vgpr = false;
    bool sgpr_operands_alias_defs = false;
    uint64_t sgpr_operands[4] = {0, 0, 0, 0};
@@ -3317,11 +3313,9 @@ register_allocation(Program* program, live& live_vars, ra_test_policy policy)
 
                aco_ptr<Instruction> mov;
                if (can_sgpr)
-                  mov.reset(create_instruction<SALU_instruction>(aco_opcode::s_mov_b32,
-                                                                 Format::SOP1, 1, 1));
+                  mov.reset(create_instruction(aco_opcode::s_mov_b32, Format::SOP1, 1, 1));
                else
-                  mov.reset(create_instruction<VALU_instruction>(aco_opcode::v_mov_b32,
-                                                                 Format::VOP1, 1, 1));
+                  mov.reset(create_instruction(aco_opcode::v_mov_b32, Format::VOP1, 1, 1));
                mov->operands[0] = instr->operands[0];
                mov->definitions[0] = Definition(tmp);
                mov->definitions[0].setFixed(reg);

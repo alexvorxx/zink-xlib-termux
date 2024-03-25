@@ -412,10 +412,10 @@ try_optimize_scc_nocompare(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
           * This means that the original instruction will be eliminated.
           */
          if (wr_instr->format == Format::SOP2) {
-            instr.reset(create_instruction<SALU_instruction>(pulled_opcode, Format::SOP2, 2, 2));
+            instr.reset(create_instruction(pulled_opcode, Format::SOP2, 2, 2));
             instr->operands[1] = wr_instr->operands[1];
          } else if (wr_instr->format == Format::SOP1) {
-            instr.reset(create_instruction<SALU_instruction>(pulled_opcode, Format::SOP1, 1, 2));
+            instr.reset(create_instruction(pulled_opcode, Format::SOP1, 1, 2));
          }
          instr->definitions[0] = wr_instr->definitions[0];
          instr->definitions[1] = scc_def;
@@ -544,9 +544,9 @@ try_eliminate_scc_copy(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
    }
 
    /* Duplicate the original producer of the SCC */
-   instr.reset(create_instruction<SALU_instruction>(producer_instr->opcode, producer_instr->format,
-                                                    producer_instr->operands.size(),
-                                                    producer_instr->definitions.size()));
+   instr.reset(create_instruction(producer_instr->opcode, producer_instr->format,
+                                  producer_instr->operands.size(),
+                                  producer_instr->definitions.size()));
    instr->salu().imm = producer_instr->salu().imm;
 
    /* The copy is no longer needed. */

@@ -601,8 +601,8 @@ emit_reduction(lower_context* ctx, aco_opcode op, ReduceOp reduce_op, unsigned c
 
    if (src.regClass() == v1b) {
       if (ctx->program->gfx_level >= GFX8 && ctx->program->gfx_level < GFX11) {
-         aco_ptr<Instruction> sdwa{create_instruction<SDWA_instruction>(
-            aco_opcode::v_mov_b32, asSDWA(Format::VOP1), 1, 1)};
+         aco_ptr<Instruction> sdwa{
+            create_instruction(aco_opcode::v_mov_b32, asSDWA(Format::VOP1), 1, 1)};
          sdwa->operands[0] = Operand(PhysReg{tmp}, v1);
          sdwa->definitions[0] = Definition(PhysReg{tmp}, v1);
          bool sext = reduce_op == imin8 || reduce_op == imax8;
@@ -624,8 +624,8 @@ emit_reduction(lower_context* ctx, aco_opcode op, ReduceOp reduce_op, unsigned c
       bool is_add_cmp = reduce_op == iadd16 || reduce_op == imax16 || reduce_op == imin16 ||
                         reduce_op == umin16 || reduce_op == umax16;
       if (ctx->program->gfx_level >= GFX10 && ctx->program->gfx_level < GFX11 && is_add_cmp) {
-         aco_ptr<Instruction> sdwa{create_instruction<SDWA_instruction>(
-            aco_opcode::v_mov_b32, asSDWA(Format::VOP1), 1, 1)};
+         aco_ptr<Instruction> sdwa{
+            create_instruction(aco_opcode::v_mov_b32, asSDWA(Format::VOP1), 1, 1)};
          sdwa->operands[0] = Operand(PhysReg{tmp}, v1);
          sdwa->definitions[0] = Definition(PhysReg{tmp}, v1);
          bool sext = reduce_op == imin16 || reduce_op == imax16 || reduce_op == iadd16;
@@ -2259,8 +2259,8 @@ lower_image_sample(lower_context* ctx, aco_ptr<Instruction>& instr)
    instr->mimg().strict_wqm = false;
 
    if ((3 + num_vaddr) > instr->operands.size()) {
-      Instruction* new_instr = create_instruction<MIMG_instruction>(
-         instr->opcode, Format::MIMG, 3 + num_vaddr, instr->definitions.size());
+      Instruction* new_instr =
+         create_instruction(instr->opcode, Format::MIMG, 3 + num_vaddr, instr->definitions.size());
       std::copy(instr->definitions.cbegin(), instr->definitions.cend(),
                 new_instr->definitions.begin());
       new_instr->operands[0] = instr->operands[0];

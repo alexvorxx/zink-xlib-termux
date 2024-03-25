@@ -993,16 +993,14 @@ emit_waitcnt(wait_ctx& ctx, std::vector<aco_ptr<Instruction>>& instructions, wai
 {
    if (imm.vs != wait_imm::unset_counter) {
       assert(ctx.gfx_level >= GFX10);
-      Instruction* waitcnt_vs =
-         create_instruction<SALU_instruction>(aco_opcode::s_waitcnt_vscnt, Format::SOPK, 1, 0);
+      Instruction* waitcnt_vs = create_instruction(aco_opcode::s_waitcnt_vscnt, Format::SOPK, 1, 0);
       waitcnt_vs->operands[0] = Operand(sgpr_null, s1);
       waitcnt_vs->salu().imm = imm.vs;
       instructions.emplace_back(waitcnt_vs);
       imm.vs = wait_imm::unset_counter;
    }
    if (!imm.empty()) {
-      Instruction* waitcnt =
-         create_instruction<SALU_instruction>(aco_opcode::s_waitcnt, Format::SOPP, 0, 0);
+      Instruction* waitcnt = create_instruction(aco_opcode::s_waitcnt, Format::SOPP, 0, 0);
       waitcnt->salu().imm = imm.pack(ctx.gfx_level);
       instructions.emplace_back(waitcnt);
    }
@@ -1030,8 +1028,7 @@ emit_delay_alu(wait_ctx& ctx, std::vector<aco_ptr<Instruction>>& instructions,
       imm |= ((uint32_t)alu_delay_wait::SALU_CYCLE_1 + cycles - 1) << (imm ? 7 : 0);
    }
 
-   Instruction* inst =
-      create_instruction<SALU_instruction>(aco_opcode::s_delay_alu, Format::SOPP, 0, 0);
+   Instruction* inst = create_instruction(aco_opcode::s_delay_alu, Format::SOPP, 0, 0);
    inst->salu().imm = imm;
    inst->pass_flags = (delay.valu_cycles | (delay.trans_cycles << 16));
    instructions.emplace_back(inst);

@@ -43,7 +43,7 @@ void
 create_mimg(bool nsa, unsigned addrs, unsigned instr_dwords)
 {
    aco_ptr<Instruction> mimg{
-      create_instruction<MIMG_instruction>(aco_opcode::image_sample, Format::MIMG, 3 + addrs, 1)};
+      create_instruction(aco_opcode::image_sample, Format::MIMG, 3 + addrs, 1)};
    mimg->definitions[0] = Definition(PhysReg(256), v1);
    mimg->operands[0] = Operand(PhysReg(0), s8);
    mimg->operands[1] = Operand(PhysReg(0), s4);

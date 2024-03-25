@@ -3209,7 +3209,7 @@ void radv_rmv_log_buffer_bind(struct radv_device *device, VkBuffer _buffer);
 void radv_rmv_log_image_create(struct radv_device *device, const VkImageCreateInfo *create_info, bool is_internal,
                                VkImage _image);
 void radv_rmv_log_image_bind(struct radv_device *device, VkImage _image);
-void radv_rmv_log_query_pool_create(struct radv_device *device, VkQueryPool pool, bool is_internal);
+void radv_rmv_log_query_pool_create(struct radv_device *device, VkQueryPool pool);
 void radv_rmv_log_command_buffer_bo_create(struct radv_device *device, struct radeon_winsys_bo *bo,
                                            uint32_t executable_size, uint32_t data_size, uint32_t scratch_size);
 void radv_rmv_log_command_buffer_bo_destroy(struct radv_device *device, struct radeon_winsys_bo *bo);
@@ -3218,7 +3218,7 @@ void radv_rmv_log_border_color_palette_destroy(struct radv_device *device, struc
 void radv_rmv_log_sparse_add_residency(struct radv_device *device, struct radeon_winsys_bo *src_bo, uint64_t offset);
 void radv_rmv_log_sparse_remove_residency(struct radv_device *device, struct radeon_winsys_bo *src_bo, uint64_t offset);
 void radv_rmv_log_descriptor_pool_create(struct radv_device *device, const VkDescriptorPoolCreateInfo *create_info,
-                                         VkDescriptorPool pool, bool is_internal);
+                                         VkDescriptorPool pool);
 void radv_rmv_log_graphics_pipeline_create(struct radv_device *device, struct radv_pipeline *pipeline,
                                            bool is_internal);
 void radv_rmv_log_compute_pipeline_create(struct radv_device *device, struct radv_pipeline *pipeline, bool is_internal);

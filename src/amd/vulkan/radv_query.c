@@ -1211,7 +1211,7 @@ radv_destroy_query_pool(struct radv_device *device, const VkAllocationCallbacks 
 
 static VkResult
 radv_create_query_pool(struct radv_device *device, const VkQueryPoolCreateInfo *pCreateInfo,
-                       const VkAllocationCallbacks *pAllocator, VkQueryPool *pQueryPool, bool is_internal)
+                       const VkAllocationCallbacks *pAllocator, VkQueryPool *pQueryPool)
 {
    VkResult result;
    size_t pool_struct_size = pCreateInfo->queryType == VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR
@@ -1316,7 +1316,7 @@ radv_create_query_pool(struct radv_device *device, const VkQueryPoolCreateInfo *
    }
 
    *pQueryPool = radv_query_pool_to_handle(pool);
-   radv_rmv_log_query_pool_create(device, *pQueryPool, is_internal);
+   radv_rmv_log_query_pool_create(device, *pQueryPool);
    return VK_SUCCESS;
 }
 
@@ -1325,7 +1325,7 @@ radv_CreateQueryPool(VkDevice _device, const VkQueryPoolCreateInfo *pCreateInfo,
                      const VkAllocationCallbacks *pAllocator, VkQueryPool *pQueryPool)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
-   return radv_create_query_pool(device, pCreateInfo, pAllocator, pQueryPool, false);
+   return radv_create_query_pool(device, pCreateInfo, pAllocator, pQueryPool);
 }
 
 VKAPI_ATTR void VKAPI_CALL

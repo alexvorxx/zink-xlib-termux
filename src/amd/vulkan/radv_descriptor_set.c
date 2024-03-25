@@ -794,8 +794,7 @@ radv_destroy_descriptor_pool(struct radv_device *device, const VkAllocationCallb
 
 static VkResult
 radv_create_descriptor_pool(struct radv_device *device, const VkDescriptorPoolCreateInfo *pCreateInfo,
-                            const VkAllocationCallbacks *pAllocator, VkDescriptorPool *pDescriptorPool,
-                            bool is_internal)
+                            const VkAllocationCallbacks *pAllocator, VkDescriptorPool *pDescriptorPool)
 {
    struct radv_descriptor_pool *pool;
    uint64_t size = sizeof(struct radv_descriptor_pool);
@@ -940,7 +939,7 @@ radv_create_descriptor_pool(struct radv_device *device, const VkDescriptorPoolCr
    pool->max_entry_count = pCreateInfo->maxSets;
 
    *pDescriptorPool = radv_descriptor_pool_to_handle(pool);
-   radv_rmv_log_descriptor_pool_create(device, pCreateInfo, *pDescriptorPool, is_internal);
+   radv_rmv_log_descriptor_pool_create(device, pCreateInfo, *pDescriptorPool);
    return VK_SUCCESS;
 }
 
@@ -949,7 +948,7 @@ radv_CreateDescriptorPool(VkDevice _device, const VkDescriptorPoolCreateInfo *pC
                           const VkAllocationCallbacks *pAllocator, VkDescriptorPool *pDescriptorPool)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
-   return radv_create_descriptor_pool(device, pCreateInfo, pAllocator, pDescriptorPool, false);
+   return radv_create_descriptor_pool(device, pCreateInfo, pAllocator, pDescriptorPool);
 }
 
 VKAPI_ATTR void VKAPI_CALL

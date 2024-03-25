@@ -604,7 +604,7 @@ radv_rmv_log_image_bind(struct radv_device *device, VkImage _image)
 }
 
 void
-radv_rmv_log_query_pool_create(struct radv_device *device, VkQueryPool _pool, bool is_internal)
+radv_rmv_log_query_pool_create(struct radv_device *device, VkQueryPool _pool)
 {
    if (!device->vk.memory_trace_data.is_enabled)
       return;
@@ -615,11 +615,10 @@ radv_rmv_log_query_pool_create(struct radv_device *device, VkQueryPool _pool, bo
        pool->vk.query_type != VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT)
       return;
 
-   radv_rmv_log_bo_allocate(device, pool->bo, is_internal);
+   radv_rmv_log_bo_allocate(device, pool->bo, false);
 
    simple_mtx_lock(&device->vk.memory_trace_data.token_mtx);
    struct vk_rmv_resource_create_token create_token = {0};
-   create_token.is_driver_internal = is_internal;
    create_token.resource_id = vk_rmv_get_resource_id_locked(&device->vk, (uint64_t)_pool);
    create_token.type = VK_RMV_RESOURCE_TYPE_QUERY_HEAP;
    create_token.query_pool.type = pool->vk.query_type;
@@ -758,7 +757,7 @@ radv_rmv_log_sparse_remove_residency(struct radv_device *device, struct radeon_w
 
 void
 radv_rmv_log_descriptor_pool_create(struct radv_device *device, const VkDescriptorPoolCreateInfo *create_info,
-                                    VkDescriptorPool _pool, bool is_internal)
+                                    VkDescriptorPool _pool)
 {
    if (!device->vk.memory_trace_data.is_enabled)
       return;
@@ -766,7 +765,7 @@ radv_rmv_log_descriptor_pool_create(struct radv_device *device, const VkDescript
    RADV_FROM_HANDLE(radv_descriptor_pool, pool, _pool);
 
    if (pool->bo) {
-      radv_rmv_log_bo_allocate(device, pool->bo, is_internal);
+      radv_rmv_log_bo_allocate(device, pool->bo, false);
       vk_rmv_log_cpu_map(&device->vk, pool->bo->va, false);
    }
 

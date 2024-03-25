@@ -9,6 +9,7 @@
 #include "util/format_srgb.h"
 #include "util/u_helpers.h"
 #include "util/hash_table.h"
+#include "util/u_pack_color.h"
 
 static bool si_can_use_compute_blit(struct si_context *sctx, enum pipe_format format,
                                     unsigned num_samples, bool is_store, bool has_dcc)
@@ -1033,22 +1034,41 @@ static bool si_should_blit_clamp_xy(const struct pipe_blit_info *info)
    return !in_bounds;
 }
 
+bool si_compute_clear_image(struct si_context *sctx, struct pipe_resource *tex,
+                            enum pipe_format format, unsigned level, const struct pipe_box *box,
+                            const union pipe_color_union *color, bool render_condition_enable,
+                            bool fail_if_slow)
+{
+   struct pipe_blit_info info;
+   memset(&info, 0, sizeof(info));
+   info.dst.resource = tex;
+   info.dst.level = level;
+   info.dst.box = *box;
+   info.dst.format = format;
+   info.mask = util_format_is_depth_or_stencil(format) ? PIPE_MASK_ZS : PIPE_MASK_RGBA;
+   info.render_condition_enable = render_condition_enable;
+
+   return si_compute_blit(sctx, &info, color, !fail_if_slow);
+}
+
 typedef struct {
    unsigned x, y, z;
 } uvec3;
 
-bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info, bool testing)
+bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
+                     const union pipe_color_union *clear_color, bool testing)
 {
    struct si_texture *sdst = (struct si_texture *)info->dst.resource;
    struct si_texture *ssrc = (struct si_texture *)info->src.resource;
    bool is_3d_tiling = sdst->surface.thick_tiling;
+   bool is_clear = !info->src.resource;
    unsigned dst_samples = MAX2(1, sdst->buffer.b.b.nr_samples);
-   unsigned src_samples = MAX2(1, ssrc->buffer.b.b.nr_samples);
+   unsigned src_samples = is_clear ? 1 : MAX2(1, ssrc->buffer.b.b.nr_samples);
    bool sample0_only = src_samples >= 2 && dst_samples == 1 &&
                        (info->sample0_only || util_format_is_pure_integer(info->dst.format));
    /* Get the channel sizes. */
    unsigned max_dst_chan_size = util_format_get_max_channel_size(info->dst.format);
-   unsigned max_src_chan_size = util_format_get_max_channel_size(info->src.format);
+   unsigned max_src_chan_size = is_clear ? 0 : util_format_get_max_channel_size(info->src.format);
 
    /* Reject blits with invalid parameters. */
    if (info->dst.box.width < 0 || info->dst.box.height < 0 || info->dst.box.depth < 0 ||
@@ -1059,7 +1079,7 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
 
    /* Skip zero-area blits. */
    if (!info->dst.box.width || !info->dst.box.height || !info->dst.box.depth ||
-       !info->src.box.width || !info->src.box.height || !info->src.box.depth)
+       (!is_clear && (!info->src.box.width || !info->src.box.height || !info->src.box.depth)))
       return true;
 
    /* MSAA image stores don't work on <= Gfx10.3. It's an issue with FMASK because
@@ -1072,7 +1092,6 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    if (info->dst.format == PIPE_FORMAT_A8R8_UNORM || /* This format fails AMD_TEST=imagecopy. */
        max_dst_chan_size == 5 || /* PIPE_FORMAT_R5G5B5A1_UNORM has precision issues */
        util_format_is_depth_or_stencil(info->dst.resource->format) ||
-       util_format_is_depth_or_stencil(info->src.resource->format) ||
        info->dst_sample != 0 ||
        /* Image stores support DCC since GFX10. Return only for gfx queues. DCC is disabled
         * for compute queues farther below. */
@@ -1080,10 +1099,12 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
        info->alpha_blend ||
        info->num_window_rectangles ||
        info->scissor_enable ||
-       /* No scaling. */
-       info->dst.box.width != abs(info->src.box.width) ||
-       info->dst.box.height != abs(info->src.box.height) ||
-       info->dst.box.depth != abs(info->src.box.depth))
+       (!is_clear &&
+        /* Scaling is not implemented by the compute shader. */
+        (info->dst.box.width != abs(info->src.box.width) ||
+         info->dst.box.height != abs(info->src.box.height) ||
+         info->dst.box.depth != abs(info->src.box.depth) ||
+         util_format_is_depth_or_stencil(info->src.resource->format))))
       return false;
 
    /* Testing on Navi21 showed that the compute blit is slightly slower than the gfx blit.
@@ -1119,7 +1140,7 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
          align = (uvec3){4, 2, 4};
       else {
          /* 16bpp linear source image reads perform better with this. */
-         if (ssrc->surface.is_linear)
+         if (!is_clear && ssrc->surface.is_linear)
             align = (uvec3){4, 2, 4}; /* align to 512B for linear->tiled */
          else
             align = (uvec3){2, 2, 4};
@@ -1133,7 +1154,7 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
       /* 1D blits from linear to linear are faster unaligned.
        * 1D image clears don't benefit from any alignment.
        */
-      if (height == 1 && depth == 1 && ssrc->surface.is_linear) {
+      if (height == 1 && depth == 1 && (is_clear || ssrc->surface.is_linear)) {
          align = (uvec3){1, 1, 1};
       } else {
          /* Linear blits should use the cache line size instead of 256B alignment. */
@@ -1259,52 +1280,62 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    options.key = 0;
 
    options.always_true = true;
+   options.is_clear = is_clear;
    options.wg_dim = wg_dim;
    options.has_start_xyz = start_x || start_y || start_z;
-   options.src_is_1d = info->src.resource->target == PIPE_TEXTURE_1D ||
-                       info->src.resource->target == PIPE_TEXTURE_1D_ARRAY;
    options.dst_is_1d = info->dst.resource->target == PIPE_TEXTURE_1D ||
                        info->dst.resource->target == PIPE_TEXTURE_1D_ARRAY;
-   options.src_is_msaa = info->src.resource->nr_samples > 1;
-   options.dst_is_msaa = info->dst.resource->nr_samples > 1;
-   options.src_has_z = info->src.resource->target == PIPE_TEXTURE_3D ||
-                       info->src.resource->target == PIPE_TEXTURE_CUBE ||
-                       info->src.resource->target == PIPE_TEXTURE_1D_ARRAY ||
-                       info->src.resource->target == PIPE_TEXTURE_2D_ARRAY ||
-                       info->src.resource->target == PIPE_TEXTURE_CUBE_ARRAY;
+   options.dst_is_msaa = dst_samples > 1;
    options.dst_has_z = info->dst.resource->target == PIPE_TEXTURE_3D ||
                        info->dst.resource->target == PIPE_TEXTURE_CUBE ||
                        info->dst.resource->target == PIPE_TEXTURE_1D_ARRAY ||
                        info->dst.resource->target == PIPE_TEXTURE_2D_ARRAY ||
                        info->dst.resource->target == PIPE_TEXTURE_CUBE_ARRAY;
-   /* Resolving integer formats only copies sample 0. log2_samples is then unused. */
-   options.sample0_only = sample0_only;
-   unsigned num_samples = MAX2(src_samples, dst_samples);
-   options.log2_samples = sample0_only ? 0 : util_logbase2(num_samples);
-   options.xy_clamp_to_edge = si_should_blit_clamp_xy(info);
-   options.flip_x = info->src.box.width < 0;
-   options.flip_y = info->src.box.height < 0;
-   options.sint_to_uint = util_format_is_pure_sint(info->src.format) &&
-                          util_format_is_pure_uint(info->dst.format);
-   options.uint_to_sint = util_format_is_pure_uint(info->src.format) &&
-                          util_format_is_pure_sint(info->dst.format);
-   options.dst_is_srgb = util_format_is_srgb(info->dst.format);
    options.last_dst_channel = util_format_get_last_component(info->dst.format);
-   options.last_src_channel = MIN2(util_format_get_last_component(info->src.format),
-                                   options.last_dst_channel);
-   options.use_integer_one = util_format_is_pure_integer(info->dst.format) &&
-                             options.last_src_channel < options.last_dst_channel &&
-                             options.last_dst_channel == 3;
-   bool is_resolve = options.src_is_msaa && !options.dst_is_msaa && !options.sample0_only;
+
    /* ACO doesn't support D16 on GFX8 */
    bool has_d16 = sctx->gfx_level >= (sctx->screen->use_aco ? GFX9 : GFX8);
-   options.d16 = has_d16 &&
-                 /* Blitting FP16 using D16 has precision issues. Resolving has precision
-                  * issues all the way down to R11G11B10_FLOAT. */
-                 MIN2(max_dst_chan_size, max_src_chan_size) <=
-                 (util_format_is_pure_integer(info->dst.format) ?
-                     (options.sint_to_uint || options.uint_to_sint ? 10 : 16) :
-                     (is_resolve ? 10 : 11));
+
+   if (is_clear) {
+      options.log2_samples = util_logbase2(dst_samples);
+      options.d16 = has_d16 &&
+                    max_dst_chan_size <= (util_format_is_float(info->dst.format) ||
+                                          util_format_is_pure_integer(info->dst.format) ? 16 : 11);
+   } else {
+      options.src_is_1d = info->src.resource->target == PIPE_TEXTURE_1D ||
+                          info->src.resource->target == PIPE_TEXTURE_1D_ARRAY;
+      options.src_is_msaa = src_samples > 1;
+      options.src_has_z = info->src.resource->target == PIPE_TEXTURE_3D ||
+                          info->src.resource->target == PIPE_TEXTURE_CUBE ||
+                          info->src.resource->target == PIPE_TEXTURE_1D_ARRAY ||
+                          info->src.resource->target == PIPE_TEXTURE_2D_ARRAY ||
+                          info->src.resource->target == PIPE_TEXTURE_CUBE_ARRAY;
+      /* Resolving integer formats only copies sample 0. log2_samples is then unused. */
+      options.sample0_only = sample0_only;
+      unsigned num_samples = MAX2(src_samples, dst_samples);
+      options.log2_samples = sample0_only ? 0 : util_logbase2(num_samples);
+      options.xy_clamp_to_edge = si_should_blit_clamp_xy(info);
+      options.flip_x = info->src.box.width < 0;
+      options.flip_y = info->src.box.height < 0;
+      options.sint_to_uint = util_format_is_pure_sint(info->src.format) &&
+                             util_format_is_pure_uint(info->dst.format);
+      options.uint_to_sint = util_format_is_pure_uint(info->src.format) &&
+                             util_format_is_pure_sint(info->dst.format);
+      options.dst_is_srgb = util_format_is_srgb(info->dst.format);
+      options.last_src_channel = MIN2(util_format_get_last_component(info->src.format),
+                                      options.last_dst_channel);
+      options.use_integer_one = util_format_is_pure_integer(info->dst.format) &&
+                                options.last_src_channel < options.last_dst_channel &&
+                                options.last_dst_channel == 3;
+      bool is_resolve = options.src_is_msaa && !options.dst_is_msaa && !options.sample0_only;
+      options.d16 = has_d16 &&
+                    /* Blitting FP16 using D16 has precision issues. Resolving has precision
+                     * issues all the way down to R11G11B10_FLOAT. */
+                    MIN2(max_dst_chan_size, max_src_chan_size) <=
+                    (util_format_is_pure_integer(info->dst.format) ?
+                        (options.sint_to_uint || options.uint_to_sint ? 10 : 16) :
+                        (is_resolve ? 10 : 11));
+   }
 
    struct hash_entry *entry = _mesa_hash_table_search(sctx->cs_blit_shaders,
                                                       (void*)(uintptr_t)options.key);
@@ -1320,23 +1351,54 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    sctx->cs_user_data[2] = (info->src.box.z & 0xffff) | ((info->dst.box.z & 0xffff) << 16);
    sctx->cs_user_data[3] = (start_x & 0xff) | ((start_y & 0xff) << 8) | ((start_z & 0xff) << 16);
 
+   if (is_clear) {
+      union pipe_color_union final_value;
+      memcpy(&final_value, clear_color, sizeof(final_value));
+
+      /* Do the conversion to sRGB here instead of the shader. */
+      if (util_format_is_srgb(info->dst.format)) {
+         for (int i = 0; i < 3; i++)
+            final_value.f[i] = util_format_linear_to_srgb_float(final_value.f[i]);
+      }
+
+      if (options.d16) {
+         enum pipe_format data_format;
+
+         if (util_format_is_pure_uint(info->dst.format))
+            data_format = PIPE_FORMAT_R16G16B16A16_UINT;
+         else if (util_format_is_pure_sint(info->dst.format))
+            data_format = PIPE_FORMAT_R16G16B16A16_SINT;
+         else
+            data_format = PIPE_FORMAT_R16G16B16A16_FLOAT;
+
+         util_pack_color_union(data_format, (union util_color *)&sctx->cs_user_data[4],
+                               &final_value);
+      } else {
+         memcpy(&sctx->cs_user_data[4], &final_value, sizeof(final_value));
+      }
+   }
+
    /* Shader images. */
    struct pipe_image_view image[2];
-   image[0].resource = info->src.resource;
-   image[0].shader_access = image[0].access = PIPE_IMAGE_ACCESS_READ;
-   image[0].format = info->src.format;
-   image[0].u.tex.level = info->src.level;
-   image[0].u.tex.first_layer = 0;
-   image[0].u.tex.last_layer = util_max_layer(info->src.resource, info->src.level);
+   unsigned dst_index = is_clear ? 0 : 1;
 
-   image[1].resource = info->dst.resource;
-   image[1].shader_access = image[1].access = PIPE_IMAGE_ACCESS_WRITE;
-   image[1].format = info->dst.format;
-   image[1].u.tex.level = info->dst.level;
-   image[1].u.tex.first_layer = 0;
-   image[1].u.tex.last_layer = util_max_layer(info->dst.resource, info->dst.level);
+   if (!is_clear) {
+      image[0].resource = info->src.resource;
+      image[0].shader_access = image[0].access = PIPE_IMAGE_ACCESS_READ;
+      image[0].format = info->src.format;
+      image[0].u.tex.level = info->src.level;
+      image[0].u.tex.first_layer = 0;
+      image[0].u.tex.last_layer = util_max_layer(info->src.resource, info->src.level);
+   }
 
-   si_launch_grid_internal_images(sctx, image, 2, &grid, shader,
+   image[dst_index].resource = info->dst.resource;
+   image[dst_index].shader_access = image[dst_index].access = PIPE_IMAGE_ACCESS_WRITE;
+   image[dst_index].format = info->dst.format;
+   image[dst_index].u.tex.level = info->dst.level;
+   image[dst_index].u.tex.first_layer = 0;
+   image[dst_index].u.tex.last_layer = util_max_layer(info->dst.resource, info->dst.level);
+
+   si_launch_grid_internal_images(sctx, image, is_clear ? 1 : 2, &grid, shader,
                                   SI_OP_SYNC_BEFORE_AFTER |
                                   (info->render_condition_enable ? SI_OP_CS_RENDER_COND_ENABLE : 0));
    return true;

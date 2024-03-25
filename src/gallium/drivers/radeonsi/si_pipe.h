@@ -1519,7 +1519,12 @@ void si_retile_dcc(struct si_context *sctx, struct si_texture *tex);
 void gfx9_clear_dcc_msaa(struct si_context *sctx, struct pipe_resource *res, uint32_t clear_value,
                          unsigned flags, enum si_coherency coher);
 void si_compute_expand_fmask(struct pipe_context *ctx, struct pipe_resource *tex);
-bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info, bool testing);
+bool si_compute_clear_image(struct si_context *sctx, struct pipe_resource *tex,
+                            enum pipe_format format, unsigned level, const struct pipe_box *box,
+                            const union pipe_color_union *color, bool render_condition_enable,
+                            bool fail_if_slow);
+bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
+                     const union pipe_color_union *color, bool testing);
 void si_init_compute_blit_functions(struct si_context *sctx);
 
 /* si_cp_dma.c */
@@ -1643,6 +1648,7 @@ union si_compute_blit_shader_key {
       uint8_t wg_dim:2; /* 1, 2, or 3 */
       bool has_start_xyz:1;
       /* Declaration modifiers. */
+      bool is_clear:1;
       bool src_is_1d:1;
       bool dst_is_1d:1;
       bool src_is_msaa:1;

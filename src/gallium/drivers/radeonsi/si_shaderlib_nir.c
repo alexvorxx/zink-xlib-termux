@@ -372,8 +372,10 @@ static nir_def *apply_blit_output_modifiers(nir_builder *b, nir_def *color,
    /* Set channels not present in src to 0 or 1. This will eliminate code loading and resolving
     * those channels.
     */
-   for (unsigned chan = options->last_src_channel + 1; chan <= options->last_dst_channel; chan++)
-      color = nir_vector_insert_imm(b, color, chan == 3 ? one : zero, chan);
+   if (!options->is_clear) {
+      for (unsigned chan = options->last_src_channel + 1; chan <= options->last_dst_channel; chan++)
+         color = nir_vector_insert_imm(b, color, chan == 3 ? one : zero, chan);
+   }
 
    /* Discard channels not present in dst. The hardware fills unstored channels with 0. */
    if (options->last_dst_channel < 3)
@@ -400,14 +402,16 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
 
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, nir_options,
                                                   "blit_non_scaled_cs");
-   b.shader->info.num_images = 2;
-   if (options->src_is_msaa)
+   b.shader->info.num_images = options->is_clear ? 1 : 2;
+   unsigned image_dst_index = b.shader->info.num_images - 1;
+   if (!options->is_clear && options->src_is_msaa)
       BITSET_SET(b.shader->info.msaa_images, 0);
    if (options->dst_is_msaa)
-      BITSET_SET(b.shader->info.msaa_images, 1);
+      BITSET_SET(b.shader->info.msaa_images, image_dst_index);
    /* The workgroup size varies depending on the tiling layout and blit dimensions. */
    b.shader->info.workgroup_size_variable = true;
-   b.shader->info.cs.user_data_components_amd = options->has_start_xyz ? 4 : 3;
+   b.shader->info.cs.user_data_components_amd =
+      options->is_clear ? (options->d16 ? 6 : 8) : options->has_start_xyz ? 4 : 3;
 
    const struct glsl_type *img_type[2] = {
       glsl_image_type(options->src_is_1d ? GLSL_SAMPLER_DIM_1D :
@@ -418,11 +422,14 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
                       options->dst_has_z, GLSL_TYPE_FLOAT),
    };
 
-   nir_variable *img_src = nir_variable_create(b.shader, nir_var_uniform, img_type[0], "img0");
-   img_src->data.binding = 0;
+   nir_variable *img_src = NULL;
+   if (!options->is_clear) {
+      img_src = nir_variable_create(b.shader, nir_var_uniform, img_type[0], "img0");
+      img_src->data.binding = 0;
+   }
 
    nir_variable *img_dst = nir_variable_create(b.shader, nir_var_uniform, img_type[1], "img1");
-   img_dst->data.binding = 1;
+   img_dst->data.binding = image_dst_index;
 
    nir_def *zero = nir_imm_int(&b, 0);
 
@@ -502,11 +509,19 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
    /* Execute the image loads and stores. */
    unsigned bit_size = options->d16 ? 16 : 32;
    unsigned num_samples = 1 << options->log2_samples;
-   nir_def *color;
+   nir_def *color = NULL;
+
+   if (options->is_clear) {
+      /* The clear color start at component 4 of user data. */
+      color = nir_channels(&b, nir_load_user_data_amd(&b),
+                           BITFIELD_RANGE(4, options->d16 ? 2 : 4));
+      if (options->d16)
+         color = nir_unpack_64_4x16(&b, nir_pack_64_2x32(&b, color));
+   }
 
    if (options->src_is_msaa && !options->dst_is_msaa && !options->sample0_only) {
       /* MSAA resolving (downsampling). */
-      assert(num_samples > 1);
+      assert(num_samples > 1 && !options->is_clear);
       color = image_resolve_msaa(sctx->screen, &b, img_src, num_samples, coord_src, bit_size);
       color = apply_blit_output_modifiers(&b, color, options);
       nir_image_deref_store(&b, deref_ssa(&b, img_dst), coord_dst, zero, color, zero);
@@ -514,7 +529,7 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
    } else if (options->src_is_msaa && options->dst_is_msaa) {
       /* MSAA copy. */
       nir_def *color[16];
-      assert(num_samples > 1);
+      assert(num_samples > 1 && !options->is_clear);
       /* Group loads together and then stores. */
       for (unsigned i = 0; i < num_samples; i++) {
          color[i] = nir_image_deref_load(&b, 4, bit_size, deref_ssa(&b, img_src), coord_src,
@@ -529,7 +544,9 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
    } else if (!options->src_is_msaa && options->dst_is_msaa) {
       /* MSAA upsampling. */
       assert(num_samples > 1);
-      color = nir_image_deref_load(&b, 4, bit_size, deref_ssa(&b, img_src), coord_src, zero, zero);
+      if (!options->is_clear)
+         color = nir_image_deref_load(&b, 4, bit_size, deref_ssa(&b, img_src), coord_src, zero, zero);
+
       color = apply_blit_output_modifiers(&b, color, options);
       for (unsigned i = 0; i < num_samples; i++) {
          nir_image_deref_store(&b, deref_ssa(&b, img_dst), coord_dst,
@@ -539,7 +556,9 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
       /* Non-MSAA copy or read sample 0 only. */
       /* src2 = sample_index (zero), src3 = lod (zero) */
       assert(num_samples == 1);
-      color = nir_image_deref_load(&b, 4, bit_size, deref_ssa(&b, img_src), coord_src, zero, zero);
+      if (!options->is_clear)
+         color = nir_image_deref_load(&b, 4, bit_size, deref_ssa(&b, img_src), coord_src, zero, zero);
+
       color = apply_blit_output_modifiers(&b, color, options);
       nir_image_deref_store(&b, deref_ssa(&b, img_dst), coord_dst, zero, color, zero);
    }

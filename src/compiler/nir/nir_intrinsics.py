@@ -1012,7 +1012,7 @@ system_value("color0", 4)
 system_value("color1", 4)
 
 # System value for internal compute shaders in radeonsi.
-system_value("user_data_amd", 4)
+system_value("user_data_amd", 8)
 
 # In a fragment shader, the current sample mask. At the beginning of the shader,
 # this is the same as load_sample_mask_in, but as the shader is executed, it may

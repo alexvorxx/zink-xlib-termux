@@ -4027,7 +4027,6 @@ void anv_DestroyDevice(
     */
    anv_state_reserved_pool_finish(&device->custom_border_colors);
    anv_state_pool_free(&device->dynamic_state_pool, device->border_colors);
-   anv_state_pool_free(&device->dynamic_state_pool, device->border_colors_db);
    anv_state_pool_free(&device->dynamic_state_pool, device->slice_hash);
    anv_state_pool_free(&device->dynamic_state_pool, device->cps_states);
    anv_state_pool_free(&device->dynamic_state_pool, device->breakpoint);

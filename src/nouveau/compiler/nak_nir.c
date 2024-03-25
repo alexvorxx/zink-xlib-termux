@@ -683,11 +683,11 @@ load_frag_w(nir_builder *b, enum nak_interp_loc interp_loc, nir_def *offset)
 }
 
 static nir_def *
-load_interpolated_input(nir_builder *b, unsigned num_components, uint32_t addr,
-                        enum nak_interp_mode interp_mode,
-                        enum nak_interp_loc interp_loc,
-                        nir_def *inv_w, nir_def *offset,
-                        const struct nak_compiler *nak)
+interp_fs_input(nir_builder *b, unsigned num_components, uint32_t addr,
+                enum nak_interp_mode interp_mode,
+                enum nak_interp_loc interp_loc,
+                nir_def *inv_w, nir_def *offset,
+                const struct nak_compiler *nak)
 {
    if (offset == NULL)
       offset = nir_imm_int(b, 0);
@@ -815,11 +815,10 @@ lower_fs_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
          nak_sysval_attr_addr(SYSTEM_VALUE_POINT_COORD) :
          nak_sysval_attr_addr(SYSTEM_VALUE_FRAG_COORD);
 
-      nir_def *coord = load_interpolated_input(b, intrin->def.num_components,
-                                               addr,
-                                               NAK_INTERP_MODE_SCREEN_LINEAR,
-                                               interp_loc, NULL, NULL,
-                                               ctx->nak);
+      nir_def *coord = interp_fs_input(b, intrin->def.num_components, addr,
+                                       NAK_INTERP_MODE_SCREEN_LINEAR,
+                                       interp_loc, NULL, NULL,
+                                       ctx->nak);
 
       nir_def_rewrite_uses(&intrin->def, coord);
       nir_instr_remove(&intrin->instr);
@@ -895,9 +894,9 @@ lower_fs_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
       if (interp_mode == NAK_INTERP_MODE_PERSPECTIVE)
          inv_w = nir_frcp(b, load_frag_w(b, interp_loc, offset));
 
-      nir_def *res = load_interpolated_input(b, intrin->def.num_components,
-                                             addr, interp_mode, interp_loc,
-                                             inv_w, offset, ctx->nak);
+      nir_def *res = interp_fs_input(b, intrin->def.num_components,
+                                     addr, interp_mode, interp_loc,
+                                     inv_w, offset, ctx->nak);
 
       nir_def_rewrite_uses(&intrin->def, res);
       nir_instr_remove(&intrin->instr);
@@ -948,9 +947,9 @@ lower_fs_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
       if (interp_mode == NAK_INTERP_MODE_PERSPECTIVE)
          inv_w = nir_frcp(b, load_frag_w(b, interp_loc, offset));
 
-      nir_def *res = load_interpolated_input(b, intrin->def.num_components,
-                                             addr, interp_mode, interp_loc,
-                                             inv_w, offset, ctx->nak);
+      nir_def *res = interp_fs_input(b, intrin->def.num_components,
+                                     addr, interp_mode, interp_loc,
+                                     inv_w, offset, ctx->nak);
 
       nir_def_rewrite_uses(&intrin->def, res);
       nir_instr_remove(&intrin->instr);

@@ -32,7 +32,7 @@ radv_destroy_event(struct radv_device *device, const VkAllocationCallbacks *pAll
 {
    if (event->bo) {
       radv_rmv_log_bo_destroy(device, event->bo);
-      device->ws->buffer_destroy(device->ws, event->bo);
+      radv_bo_destroy(device, event->bo);
    }
 
    radv_rmv_log_resource_destroy(device, (uint64_t)radv_event_to_handle(event));
@@ -63,9 +63,9 @@ radv_create_event(struct radv_device *device, const VkEventCreateInfo *pCreateIn
       bo_flags = RADEON_FLAG_CPU_ACCESS;
    }
 
-   result = device->ws->buffer_create(device->ws, 8, 8, bo_domain,
-                                      RADEON_FLAG_VA_UNCACHED | RADEON_FLAG_NO_INTERPROCESS_SHARING | bo_flags,
-                                      RADV_BO_PRIORITY_FENCE, 0, &event->bo);
+   result =
+      radv_bo_create(device, 8, 8, bo_domain, RADEON_FLAG_VA_UNCACHED | RADEON_FLAG_NO_INTERPROCESS_SHARING | bo_flags,
+                     RADV_BO_PRIORITY_FENCE, 0, &event->bo);
    if (result != VK_SUCCESS) {
       radv_destroy_event(device, pAllocator, event);
       return vk_error(device, result);

@@ -1313,6 +1313,11 @@ void radv_buffer_init(struct radv_buffer *buffer, struct radv_device *device, st
                       uint64_t size, uint64_t offset);
 void radv_buffer_finish(struct radv_buffer *buffer);
 
+VkResult radv_bo_create(struct radv_device *device, uint64_t size, unsigned alignment, enum radeon_bo_domain domain,
+                        enum radeon_bo_flag flags, unsigned priority, uint64_t address,
+                        struct radeon_winsys_bo **out_bo);
+void radv_bo_destroy(struct radv_device *device, struct radeon_winsys_bo *bo);
+
 enum radv_dynamic_state_bits {
    RADV_DYNAMIC_VIEWPORT = 1ull << 0,
    RADV_DYNAMIC_SCISSOR = 1ull << 1,
@@ -1998,8 +2003,9 @@ void radv_write_scissors(struct radeon_cmdbuf *cs, int count, const VkRect2D *sc
 void radv_write_guardband(struct radeon_cmdbuf *cs, int count, const VkViewport *viewports, unsigned rast_prim,
                           unsigned polygon_mode, float line_width);
 
-VkResult radv_create_shadow_regs_preamble(const struct radv_device *device, struct radv_queue_state *queue_state);
-void radv_destroy_shadow_regs_preamble(struct radv_queue_state *queue_state, struct radeon_winsys *ws);
+VkResult radv_create_shadow_regs_preamble(struct radv_device *device, struct radv_queue_state *queue_state);
+void radv_destroy_shadow_regs_preamble(struct radv_device *device, struct radv_queue_state *queue_state,
+                                       struct radeon_winsys *ws);
 void radv_emit_shadow_regs_preamble(struct radeon_cmdbuf *cs, const struct radv_device *device,
                                     struct radv_queue_state *queue_state);
 VkResult radv_init_shadowed_regs_buffer_state(const struct radv_device *device, struct radv_queue *queue);

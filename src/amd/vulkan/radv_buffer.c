@@ -56,7 +56,7 @@ radv_destroy_buffer(struct radv_device *device, const VkAllocationCallbacks *pAl
 {
    if ((buffer->vk.create_flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT) && buffer->bo) {
       radv_rmv_log_bo_destroy(device, buffer->bo);
-      device->ws->buffer_destroy(device->ws, buffer->bo);
+      radv_bo_destroy(device, buffer->bo);
    }
 
    radv_rmv_log_resource_destroy(device, (uint64_t)radv_buffer_to_handle(buffer));
@@ -101,8 +101,8 @@ radv_create_buffer(struct radv_device *device, const VkBufferCreateInfo *pCreate
       if (replay_info && replay_info->opaqueCaptureAddress)
          replay_address = replay_info->opaqueCaptureAddress;
 
-      VkResult result = device->ws->buffer_create(device->ws, align64(buffer->vk.size, 4096), 4096, 0, flags,
-                                                  RADV_BO_PRIORITY_VIRTUAL, replay_address, &buffer->bo);
+      VkResult result = radv_bo_create(device, align64(buffer->vk.size, 4096), 4096, 0, flags, RADV_BO_PRIORITY_VIRTUAL,
+                                       replay_address, &buffer->bo);
       if (result != VK_SUCCESS) {
          radv_destroy_buffer(device, pAllocator, buffer);
          return vk_error(device, result);
@@ -261,4 +261,21 @@ radv_GetBufferOpaqueCaptureAddress(VkDevice device, const VkBufferDeviceAddressI
 {
    RADV_FROM_HANDLE(radv_buffer, buffer, pInfo->buffer);
    return buffer->bo ? radv_buffer_get_va(buffer->bo) + buffer->offset : 0;
+}
+
+VkResult
+radv_bo_create(struct radv_device *device, uint64_t size, unsigned alignment, enum radeon_bo_domain domain,
+               enum radeon_bo_flag flags, unsigned priority, uint64_t address, struct radeon_winsys_bo **out_bo)
+{
+   struct radeon_winsys *ws = device->ws;
+
+   return ws->buffer_create(ws, size, alignment, domain, flags, priority, address, out_bo);
+}
+
+void
+radv_bo_destroy(struct radv_device *device, struct radeon_winsys_bo *bo)
+{
+   struct radeon_winsys *ws = device->ws;
+
+   ws->buffer_destroy(ws, bo);
 }

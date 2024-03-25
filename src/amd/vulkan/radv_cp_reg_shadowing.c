@@ -36,7 +36,7 @@ radv_set_context_reg_array(struct radeon_cmdbuf *cs, unsigned reg, unsigned num,
 }
 
 VkResult
-radv_create_shadow_regs_preamble(const struct radv_device *device, struct radv_queue_state *queue_state)
+radv_create_shadow_regs_preamble(struct radv_device *device, struct radv_queue_state *queue_state)
 {
    struct radeon_winsys *ws = device->ws;
    const struct radeon_info *info = &device->physical_device->rad_info;
@@ -49,9 +49,9 @@ radv_create_shadow_regs_preamble(const struct radv_device *device, struct radv_q
    radeon_check_space(ws, cs, 256);
 
    /* allocate memory for queue_state->shadowed_regs where register states are saved */
-   result = ws->buffer_create(ws, SI_SHADOWED_REG_BUFFER_SIZE, 4096, RADEON_DOMAIN_VRAM,
-                              RADEON_FLAG_ZERO_VRAM | RADEON_FLAG_NO_INTERPROCESS_SHARING, RADV_BO_PRIORITY_SCRATCH, 0,
-                              &queue_state->shadowed_regs);
+   result = radv_bo_create(device, SI_SHADOWED_REG_BUFFER_SIZE, 4096, RADEON_DOMAIN_VRAM,
+                           RADEON_FLAG_ZERO_VRAM | RADEON_FLAG_NO_INTERPROCESS_SHARING, RADV_BO_PRIORITY_SCRATCH, 0,
+                           &queue_state->shadowed_regs);
    if (result != VK_SUCCESS)
       goto fail;
 
@@ -66,8 +66,8 @@ radv_create_shadow_regs_preamble(const struct radv_device *device, struct radv_q
          radeon_emit(cs, PKT3_NOP_PAD);
    }
 
-   result = ws->buffer_create(
-      ws, cs->cdw * 4, 4096, ws->cs_domain(ws),
+   result = radv_bo_create(
+      device, cs->cdw * 4, 4096, ws->cs_domain(ws),
       RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_READ_ONLY | RADEON_FLAG_GTT_WC,
       RADV_BO_PRIORITY_CS, 0, &queue_state->shadow_regs_ib);
    if (result != VK_SUCCESS)
@@ -88,10 +88,10 @@ radv_create_shadow_regs_preamble(const struct radv_device *device, struct radv_q
    ws->cs_destroy(cs);
    return VK_SUCCESS;
 fail_map:
-   ws->buffer_destroy(ws, queue_state->shadow_regs_ib);
+   radv_bo_destroy(device, queue_state->shadow_regs_ib);
    queue_state->shadow_regs_ib = NULL;
 fail_ib_buffer:
-   ws->buffer_destroy(ws, queue_state->shadowed_regs);
+   radv_bo_destroy(device, queue_state->shadowed_regs);
    queue_state->shadowed_regs = NULL;
 fail:
    ws->cs_destroy(cs);
@@ -99,12 +99,13 @@ fail:
 }
 
 void
-radv_destroy_shadow_regs_preamble(struct radv_queue_state *queue_state, struct radeon_winsys *ws)
+radv_destroy_shadow_regs_preamble(struct radv_device *device, struct radv_queue_state *queue_state,
+                                  struct radeon_winsys *ws)
 {
    if (queue_state->shadow_regs_ib)
-      ws->buffer_destroy(ws, queue_state->shadow_regs_ib);
+      radv_bo_destroy(device, queue_state->shadow_regs_ib);
    if (queue_state->shadowed_regs)
-      ws->buffer_destroy(ws, queue_state->shadowed_regs);
+      radv_bo_destroy(device, queue_state->shadowed_regs);
 }
 
 void

@@ -1165,7 +1165,7 @@ radv_destroy_image(struct radv_device *device, const VkAllocationCallbacks *pAll
 {
    if ((image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT) && image->bindings[0].bo) {
       radv_rmv_log_bo_destroy(device, image->bindings[0].bo);
-      device->ws->buffer_destroy(device->ws, image->bindings[0].bo);
+      radv_bo_destroy(device, image->bindings[0].bo);
    }
 
    if (image->owned_memory != VK_NULL_HANDLE) {
@@ -1317,8 +1317,8 @@ radv_image_create(VkDevice _device, const struct radv_image_create_info *create_
       image->size = align64(image->size, image->alignment);
       image->bindings[0].offset = 0;
 
-      result = device->ws->buffer_create(device->ws, image->size, image->alignment, 0, RADEON_FLAG_VIRTUAL,
-                                         RADV_BO_PRIORITY_VIRTUAL, 0, &image->bindings[0].bo);
+      result = radv_bo_create(device, image->size, image->alignment, 0, RADEON_FLAG_VIRTUAL, RADV_BO_PRIORITY_VIRTUAL,
+                              0, &image->bindings[0].bo);
       if (result != VK_SUCCESS) {
          radv_destroy_image(device, alloc, image);
          return vk_error(device, result);

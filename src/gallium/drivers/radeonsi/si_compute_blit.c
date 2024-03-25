@@ -1037,6 +1037,9 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
 {
    struct si_texture *sdst = (struct si_texture *)info->dst.resource;
    bool is_3d_tiling = sdst->surface.thick_tiling;
+   /* Get the channel sizes. */
+   unsigned max_dst_chan_size = util_format_get_max_channel_size(info->dst.format);
+   unsigned max_src_chan_size = util_format_get_max_channel_size(info->src.format);
 
    /* Testing on Navi21 showed that the compute blit is slightly slower than the gfx blit.
     * The compute blit is even slower with DCC stores. VP13 CATIA_plane_pencil is a good test
@@ -1170,6 +1173,16 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    options.use_integer_one = util_format_is_pure_integer(info->dst.format) &&
                              options.last_src_channel < options.last_dst_channel &&
                              options.last_dst_channel == 3;
+   bool is_resolve = options.src_is_msaa && !options.dst_is_msaa && !options.sample0_only;
+   /* ACO doesn't support D16 on GFX8 */
+   bool has_d16 = sctx->gfx_level >= (sctx->screen->use_aco ? GFX9 : GFX8);
+   options.d16 = has_d16 &&
+                 /* Blitting FP16 using D16 has precision issues. Resolving has precision
+                  * issues all the way down to R11G11B10_FLOAT. */
+                 MIN2(max_dst_chan_size, max_src_chan_size) <=
+                 (util_format_is_pure_integer(info->dst.format) ?
+                     (options.sint_to_uint || options.uint_to_sint ? 10 : 16) :
+                     (is_resolve ? 10 : 11));
 
    struct hash_entry *entry = _mesa_hash_table_search(sctx->cs_blit_shaders,
                                                       (void*)(uintptr_t)options.key);

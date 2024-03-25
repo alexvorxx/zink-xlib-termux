@@ -294,7 +294,7 @@ static nir_def *average_samples(nir_builder *b, nir_def **samples, unsigned num_
 }
 
 static nir_def *image_resolve_msaa(struct si_screen *sscreen, nir_builder *b, nir_variable *img,
-                                   unsigned num_samples, nir_def *coord)
+                                   unsigned num_samples, nir_def *coord, unsigned bit_size)
 {
    nir_def *zero = nir_imm_int(b, 0);
    nir_def *result = NULL;
@@ -303,11 +303,13 @@ static nir_def *image_resolve_msaa(struct si_screen *sscreen, nir_builder *b, ni
    /* Gfx11 doesn't support samples_identical, so we can't use it. */
    if (sscreen->info.gfx_level < GFX11) {
       /* We need a local variable to get the result out of conditional branches in SSA. */
-      var = nir_local_variable_create(b->impl, glsl_vec4_type(), NULL);
+      var = nir_local_variable_create(b->impl,
+                                      bit_size == 16 ? glsl_f16vec_type(4) : glsl_vec4_type(),
+                                      NULL);
 
       /* If all samples are identical, load only sample 0. */
       nir_push_if(b, nir_image_deref_samples_identical(b, 1, deref_ssa(b, img), coord));
-      result = nir_image_deref_load(b, 4, 32, deref_ssa(b, img), coord, zero, zero);
+      result = nir_image_deref_load(b, 4, bit_size, deref_ssa(b, img), coord, zero, zero);
       nir_store_var(b, var, result, 0xf);
 
       nir_push_else(b, NULL);
@@ -324,13 +326,13 @@ static nir_def *image_resolve_msaa(struct si_screen *sscreen, nir_builder *b, ni
     */
    if (!sscreen->use_aco) {
       for (unsigned i = 0; i < num_samples; i++)
-         sample_index[i] = nir_optimization_barrier_vgpr_amd(b, 32, sample_index[i]);
+         sample_index[i] = nir_optimization_barrier_vgpr_amd(b, bit_size, sample_index[i]);
    }
 
    /* Load all samples. */
    nir_def *samples[16];
    for (unsigned i = 0; i < num_samples; i++) {
-      samples[i] = nir_image_deref_load(b, 4, 32, deref_ssa(b, img),
+      samples[i] = nir_image_deref_load(b, 4, bit_size, deref_ssa(b, img),
                                         coord, sample_index[i], zero);
    }
 
@@ -349,17 +351,23 @@ static nir_def *image_resolve_msaa(struct si_screen *sscreen, nir_builder *b, ni
 static nir_def *apply_blit_output_modifiers(nir_builder *b, nir_def *color,
                                                 const union si_compute_blit_shader_key *options)
 {
-   if (options->sint_to_uint)
-      color = nir_imax(b, color, nir_imm_int(b, 0));
+   unsigned bit_size = color->bit_size;
+   nir_def *zero = nir_imm_intN_t(b, 0, bit_size);
 
-   if (options->uint_to_sint)
-      color = nir_umin(b, color, nir_imm_int(b, INT32_MAX));
+   if (options->sint_to_uint)
+      color = nir_imax(b, color, zero);
+
+   if (options->uint_to_sint) {
+      color = nir_umin(b, color,
+                       nir_imm_intN_t(b, bit_size == 16 ? INT16_MAX : INT32_MAX,
+                                      bit_size));
+   }
 
    if (options->dst_is_srgb)
       color = convert_linear_to_srgb(b, color);
 
-   nir_def *zero = nir_imm_int(b, 0);
-   nir_def *one = options->use_integer_one ? nir_imm_int(b, 1) : nir_imm_float(b, 1);
+   nir_def *one = options->use_integer_one ? nir_imm_intN_t(b, 1, bit_size) :
+                                             nir_imm_floatN_t(b, 1, bit_size);
 
    /* Set channels not present in src to 0 or 1. This will eliminate code loading and resolving
     * those channels.
@@ -479,13 +487,14 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
    /* TODO: out-of-bounds image stores have no effect, but we could jump over them for better perf */
 
    /* Execute the image loads and stores. */
+   unsigned bit_size = options->d16 ? 16 : 32;
    unsigned num_samples = 1 << options->log2_samples;
    nir_def *color;
 
    if (options->src_is_msaa && !options->dst_is_msaa && !options->sample0_only) {
       /* MSAA resolving (downsampling). */
       assert(num_samples > 1);
-      color = image_resolve_msaa(sctx->screen, &b, img_src, num_samples, coord_src);
+      color = image_resolve_msaa(sctx->screen, &b, img_src, num_samples, coord_src, bit_size);
       color = apply_blit_output_modifiers(&b, color, options);
       nir_image_deref_store(&b, deref_ssa(&b, img_dst), coord_dst, zero, color, zero);
 
@@ -495,7 +504,7 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
       assert(num_samples > 1);
       /* Group loads together and then stores. */
       for (unsigned i = 0; i < num_samples; i++) {
-         color[i] = nir_image_deref_load(&b, 4, 32, deref_ssa(&b, img_src), coord_src,
+         color[i] = nir_image_deref_load(&b, 4, bit_size, deref_ssa(&b, img_src), coord_src,
                                          nir_imm_int(&b, i), zero);
       }
       for (unsigned i = 0; i < num_samples; i++)
@@ -507,7 +516,7 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
    } else if (!options->src_is_msaa && options->dst_is_msaa) {
       /* MSAA upsampling. */
       assert(num_samples > 1);
-      color = nir_image_deref_load(&b, 4, 32, deref_ssa(&b, img_src), coord_src, zero, zero);
+      color = nir_image_deref_load(&b, 4, bit_size, deref_ssa(&b, img_src), coord_src, zero, zero);
       color = apply_blit_output_modifiers(&b, color, options);
       for (unsigned i = 0; i < num_samples; i++) {
          nir_image_deref_store(&b, deref_ssa(&b, img_dst), coord_dst,
@@ -517,7 +526,7 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
       /* Non-MSAA copy or read sample 0 only. */
       /* src2 = sample_index (zero), src3 = lod (zero) */
       assert(num_samples == 1);
-      color = nir_image_deref_load(&b, 4, 32, deref_ssa(&b, img_src), coord_src, zero, zero);
+      color = nir_image_deref_load(&b, 4, bit_size, deref_ssa(&b, img_src), coord_src, zero, zero);
       color = apply_blit_output_modifiers(&b, color, options);
       nir_image_deref_store(&b, deref_ssa(&b, img_dst), coord_dst, zero, color, zero);
    }

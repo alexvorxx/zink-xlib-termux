@@ -643,8 +643,12 @@ lower_fs_output_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *_data)
    nir_def *data = intrin->src[0].ssa;
 
    /* The fs_out_nv intrinsic is always scalar */
-   u_foreach_bit(c, nir_intrinsic_write_mask(intrin))
+   u_foreach_bit(c, nir_intrinsic_write_mask(intrin)) {
+      if (nir_scalar_is_undef(nir_scalar_resolved(data, c)))
+         continue;
+
       nir_fs_out_nv(b, nir_channel(b, data, c), .base = addr + c * 4);
+   }
 
    nir_instr_remove(&intrin->instr);
 

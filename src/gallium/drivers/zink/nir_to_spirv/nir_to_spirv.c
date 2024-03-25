@@ -3708,15 +3708,11 @@ emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
    assert(var);
    SpvId image_type = find_image_type(ctx, var);
    assert(image_type);
-   SpvId sampled_type;
 
    bool is_buffer = glsl_get_sampler_dim(glsl_without_array(var->type)) ==
                     GLSL_SAMPLER_DIM_BUF;
-   if (is_buffer)
-      sampled_type = image_type;
-   else
-      sampled_type = spirv_builder_type_sampled_image(&ctx->builder,
-                                                      image_type);
+   SpvId sampled_type = is_buffer ? image_type :
+                            spirv_builder_type_sampled_image(&ctx->builder, image_type);
    assert(sampled_type);
 
    SpvId sampler_id = tex_src.bindless ? tex_src.bindless : ctx->samplers[texture_index];

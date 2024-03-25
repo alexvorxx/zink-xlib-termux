@@ -73,6 +73,10 @@ blorp_alloc_general_state(struct blorp_batch *batch,
                           uint32_t alignment,
                           uint32_t *offset);
 
+static uint32_t
+blorp_get_dynamic_state(struct blorp_batch *batch,
+                        enum blorp_dynamic_state name);
+
 static void *
 blorp_alloc_vertex_buffer(struct blorp_batch *batch, uint32_t size,
                           struct blorp_address *addr);
@@ -193,7 +197,20 @@ _blorp_combine_address(struct blorp_batch *batch, void *location,
 
 #define STRUCT_ZERO(S) ({ struct S t; memset(&t, 0, sizeof(t)); t; })
 
-#define blorp_emit_dynamic(batch, state, name, align, offset)      \
+#define blorp_context_upload_dynamic(context, state, name,              \
+                                     align, dynamic_name)               \
+   for (struct state name = STRUCT_ZERO(state), *_dst = &name;          \
+        _dst != NULL;                                                   \
+        ({                                                              \
+           uint32_t _dw[_blorp_cmd_length(state)];                      \
+           _blorp_cmd_pack(state)(NULL, (void *)_dw, &name);            \
+           context->upload_dynamic_state(context, _dw,                  \
+                                         _blorp_cmd_length(state) * 4,  \
+                                         align, dynamic_name);          \
+           _dst = NULL;                                                 \
+        }))
+
+#define blorp_emit_dynamic(batch, state, name, align, offset)           \
    for (struct state name = STRUCT_ZERO(state),                         \
         *_dst = blorp_alloc_dynamic_state(batch,                   \
                                           _blorp_cmd_length(state) * 4, \
@@ -574,11 +591,16 @@ static uint32_t
 blorp_emit_cc_viewport(struct blorp_batch *batch)
 {
    uint32_t cc_vp_offset;
-   blorp_emit_dynamic(batch, GENX(CC_VIEWPORT), vp, 32, &cc_vp_offset) {
-      vp.MinimumDepth = batch->blorp->config.use_unrestricted_depth_range ?
+
+   if (batch->blorp->config.use_cached_dynamic_states) {
+      cc_vp_offset = blorp_get_dynamic_state(batch, BLORP_DYNAMIC_STATE_CC_VIEWPORT);
+   } else {
+      blorp_emit_dynamic(batch, GENX(CC_VIEWPORT), vp, 32, &cc_vp_offset) {
+         vp.MinimumDepth = batch->blorp->config.use_unrestricted_depth_range ?
                            -FLT_MAX : 0.0;
-      vp.MaximumDepth = batch->blorp->config.use_unrestricted_depth_range ?
+         vp.MaximumDepth = batch->blorp->config.use_unrestricted_depth_range ?
                            FLT_MAX : 1.0;
+      }
    }
 
    blorp_emit(batch, GENX(3DSTATE_VIEWPORT_STATE_POINTERS_CC), vsp) {
@@ -617,7 +639,9 @@ blorp_emit_sampler_state(struct blorp_batch *batch)
 UNUSED static uint32_t
 blorp_emit_sampler_state_ps(struct blorp_batch *batch)
 {
-   uint32_t offset = blorp_emit_sampler_state(batch);
+   uint32_t offset = batch->blorp->config.use_cached_dynamic_states ?
+      blorp_get_dynamic_state(batch, BLORP_DYNAMIC_STATE_SAMPLER) :
+      blorp_emit_sampler_state(batch);
 
    blorp_emit(batch, GENX(3DSTATE_SAMPLER_STATE_POINTERS_PS), ssp) {
       ssp.PointertoPSSamplerState = offset;
@@ -858,35 +882,41 @@ static void
 blorp_emit_blend_state(struct blorp_batch *batch,
                        const struct blorp_params *params)
 {
-   struct GENX(BLEND_STATE) blend = { };
-
    uint32_t offset;
-   int size = GENX(BLEND_STATE_length) * 4;
-   size += GENX(BLEND_STATE_ENTRY_length) * 4 * params->num_draw_buffers;
-   uint32_t *state = blorp_alloc_dynamic_state(batch, size, 64, &offset);
-   if (state == NULL)
-      return;
-   uint32_t *pos = state;
+   if (!batch->blorp->config.use_cached_dynamic_states) {
+      struct GENX(BLEND_STATE) blend = { };
 
-   GENX(BLEND_STATE_pack)(NULL, pos, &blend);
-   pos += GENX(BLEND_STATE_length);
+      int size = GENX(BLEND_STATE_length) * 4;
+      size += GENX(BLEND_STATE_ENTRY_length) * 4 * params->num_draw_buffers;
+      uint32_t *state = blorp_alloc_dynamic_state(batch, size, 64, &offset);
+      if (state == NULL)
+         return;
+      uint32_t *pos = state;
 
-   for (unsigned i = 0; i < params->num_draw_buffers; ++i) {
-      struct GENX(BLEND_STATE_ENTRY) entry = {
-         .PreBlendColorClampEnable = true,
-         .PostBlendColorClampEnable = true,
-         .ColorClampRange = COLORCLAMP_RTFORMAT,
+      GENX(BLEND_STATE_pack)(NULL, pos, &blend);
+      pos += GENX(BLEND_STATE_length);
 
-         .WriteDisableRed = params->color_write_disable & 1,
-         .WriteDisableGreen = params->color_write_disable & 2,
-         .WriteDisableBlue = params->color_write_disable & 4,
-         .WriteDisableAlpha = params->color_write_disable & 8,
-      };
-      GENX(BLEND_STATE_ENTRY_pack)(NULL, pos, &entry);
-      pos += GENX(BLEND_STATE_ENTRY_length);
+      for (unsigned i = 0; i < params->num_draw_buffers; ++i) {
+         struct GENX(BLEND_STATE_ENTRY) entry = {
+            .PreBlendColorClampEnable = true,
+            .PostBlendColorClampEnable = true,
+            .ColorClampRange = COLORCLAMP_RTFORMAT,
+
+            .WriteDisableRed = params->color_write_disable & 1,
+            .WriteDisableGreen = params->color_write_disable & 2,
+            .WriteDisableBlue = params->color_write_disable & 4,
+            .WriteDisableAlpha = params->color_write_disable & 8,
+         };
+         GENX(BLEND_STATE_ENTRY_pack)(NULL, pos, &entry);
+         pos += GENX(BLEND_STATE_ENTRY_length);
+      }
+
+      blorp_flush_range(batch, state, size);
+   } else {
+      /* We only cached this case. */
+      assert(params->color_write_disable == 0);
+      offset = blorp_get_dynamic_state(batch, BLORP_DYNAMIC_STATE_BLEND);
    }
-
-   blorp_flush_range(batch, state, size);
 
    blorp_emit(batch, GENX(3DSTATE_BLEND_STATE_POINTERS), sp) {
       sp.BlendStatePointer = offset;
@@ -903,7 +933,11 @@ blorp_emit_color_calc_state(struct blorp_batch *batch,
                             UNUSED const struct blorp_params *params)
 {
    uint32_t offset;
-   blorp_emit_dynamic(batch, GENX(COLOR_CALC_STATE), cc, 64, &offset) {}
+
+   if (batch->blorp->config.use_cached_dynamic_states)
+      offset = blorp_get_dynamic_state(batch, BLORP_DYNAMIC_STATE_COLOR_CALC);
+   else
+      blorp_emit_dynamic(batch, GENX(COLOR_CALC_STATE), cc, 64, &offset) {}
 
    blorp_emit(batch, GENX(3DSTATE_CC_STATE_POINTERS), sp) {
       sp.ColorCalcStatePointer = offset;
@@ -2148,6 +2182,67 @@ blorp_exec(struct blorp_batch *batch, const struct blorp_params *params)
       blorp_exec_compute(batch, params);
    } else {
       blorp_exec_3d(batch, params);
+   }
+}
+
+static void
+blorp_init_dynamic_states(struct blorp_context *context)
+{
+   {
+      struct GENX(BLEND_STATE) blend = { };
+
+      uint32_t dws[GENX(BLEND_STATE_length) * 4 +
+                   GENX(BLEND_STATE_ENTRY_length) * 4 * 8 /* MAX_RTS */];
+      uint32_t *pos = dws;
+
+      GENX(BLEND_STATE_pack)(NULL, pos, &blend);
+      pos += GENX(BLEND_STATE_length);
+
+      for (unsigned i = 0; i < 8; ++i) {
+         struct GENX(BLEND_STATE_ENTRY) entry = {
+            .PreBlendColorClampEnable = true,
+            .PostBlendColorClampEnable = true,
+            .ColorClampRange = COLORCLAMP_RTFORMAT,
+         };
+         GENX(BLEND_STATE_ENTRY_pack)(NULL, pos, &entry);
+         pos += GENX(BLEND_STATE_ENTRY_length);
+      }
+
+      context->upload_dynamic_state(context, dws, sizeof(dws), 64,
+                                    BLORP_DYNAMIC_STATE_BLEND);
+   }
+
+   blorp_context_upload_dynamic(context, GENX(CC_VIEWPORT), vp, 32,
+                                BLORP_DYNAMIC_STATE_CC_VIEWPORT) {
+      vp.MinimumDepth = context->config.use_unrestricted_depth_range ?
+                        -FLT_MAX : 0.0;
+      vp.MaximumDepth = context->config.use_unrestricted_depth_range ?
+                        FLT_MAX : 1.0;
+   }
+
+   blorp_context_upload_dynamic(context, GENX(COLOR_CALC_STATE), cc, 64,
+                                BLORP_DYNAMIC_STATE_COLOR_CALC) {
+      /* Nothing */
+   }
+
+   blorp_context_upload_dynamic(context, GENX(SAMPLER_STATE), sampler, 32,
+                                BLORP_DYNAMIC_STATE_SAMPLER) {
+      sampler.MipModeFilter = MIPFILTER_NONE;
+      sampler.MagModeFilter = MAPFILTER_LINEAR;
+      sampler.MinModeFilter = MAPFILTER_LINEAR;
+      sampler.MinLOD = 0;
+      sampler.MaxLOD = 0;
+      sampler.TCXAddressControlMode = TCM_CLAMP;
+      sampler.TCYAddressControlMode = TCM_CLAMP;
+      sampler.TCZAddressControlMode = TCM_CLAMP;
+      sampler.MaximumAnisotropy = RATIO21;
+      sampler.RAddressMinFilterRoundingEnable = true;
+      sampler.RAddressMagFilterRoundingEnable = true;
+      sampler.VAddressMinFilterRoundingEnable = true;
+      sampler.VAddressMagFilterRoundingEnable = true;
+      sampler.UAddressMinFilterRoundingEnable = true;
+      sampler.UAddressMagFilterRoundingEnable = true;
+      sampler.NonnormalizedCoordinateEnable = true;
    }
 }
 

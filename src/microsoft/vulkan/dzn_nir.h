@@ -31,21 +31,6 @@
 
 #include "nir.h"
 
-struct dzn_indirect_draw_params {
-   uint32_t vertex_count;
-   uint32_t instance_count;
-   uint32_t first_vertex;
-   uint32_t first_instance;
-};
-
-struct dzn_indirect_indexed_draw_params {
-   uint32_t index_count;
-   uint32_t instance_count;
-   uint32_t first_index;
-   int32_t vertex_offset;
-   uint32_t first_instance;
-};
-
 struct dzn_indirect_draw_rewrite_params {
    uint32_t draw_buf_stride;
 };
@@ -70,8 +55,8 @@ struct dzn_indirect_draw_exec_params {
       uint32_t draw_id;
    } sysvals;
    union {
-      struct dzn_indirect_draw_params draw;
-      struct dzn_indirect_indexed_draw_params indexed_draw;
+      D3D12_DRAW_ARGUMENTS draw;
+      D3D12_DRAW_INDEXED_ARGUMENTS indexed_draw;
    };
 };
 
@@ -83,8 +68,8 @@ struct dzn_indirect_triangle_fan_draw_exec_params {
       uint32_t draw_id;
    } sysvals;
    union {
-      struct dzn_indirect_draw_params draw;
-      struct dzn_indirect_indexed_draw_params indexed_draw;
+      D3D12_DRAW_ARGUMENTS draw;
+      D3D12_DRAW_INDEXED_ARGUMENTS indexed_draw;
    };
 };
 

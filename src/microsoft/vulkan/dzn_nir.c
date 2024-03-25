@@ -229,7 +229,7 @@ dzn_nir_indirect_draw_shader(enum dzn_indirect_draw_type type)
          triangle_fan_exec_vals[triangle_fan_exec_param_count++] = nir_channel(&b, draw_info1, 2);
          triangle_fan_exec_vals[triangle_fan_exec_param_count++] = nir_channel(&b, draw_info1, 0);
          uint32_t index_count_offset =
-            offsetof(struct dzn_indirect_triangle_fan_draw_exec_params, indexed_draw.index_count);
+            offsetof(struct dzn_indirect_triangle_fan_draw_exec_params, indexed_draw.IndexCountPerInstance);
          nir_def *exec_buf_start =
             nir_load_ubo(&b, 2, 32,
                          params_desc, nir_imm_int(&b, 16),

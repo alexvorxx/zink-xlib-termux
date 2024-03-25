@@ -3789,8 +3789,8 @@ dzn_cmd_buffer_indirect_draw(struct dzn_cmd_buffer *cmdbuf,
       cmdbuf->state.bindpoint[VK_PIPELINE_BIND_POINT_GRAPHICS].pipeline;
    uint32_t min_draw_buf_stride =
       indexed ?
-      sizeof(struct dzn_indirect_indexed_draw_params) :
-      sizeof(struct dzn_indirect_draw_params);
+      sizeof(D3D12_DRAW_INDEXED_ARGUMENTS) :
+      sizeof(D3D12_DRAW_ARGUMENTS);
    bool prim_restart =
       dzn_graphics_pipeline_get_desc_template(pipeline, ib_strip_cut) != NULL;
 
@@ -5314,12 +5314,12 @@ dzn_CmdDrawIndexed(VkCommandBuffer commandBuffer,
        * count passed to the draw call, which forces us to use the indirect
        * path.
        */
-      struct dzn_indirect_indexed_draw_params params = {
-         .index_count = indexCount,
-         .instance_count = instanceCount,
-         .first_index = firstIndex,
-         .vertex_offset = vertexOffset,
-         .first_instance = firstInstance,
+      D3D12_DRAW_INDEXED_ARGUMENTS params = {
+         .IndexCountPerInstance = indexCount,
+         .InstanceCount = instanceCount,
+         .StartIndexLocation = firstIndex,
+         .BaseVertexLocation = vertexOffset,
+         .StartInstanceLocation = firstInstance,
       };
 
       ID3D12Resource *draw_buf;

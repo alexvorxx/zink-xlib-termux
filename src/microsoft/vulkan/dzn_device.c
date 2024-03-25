@@ -436,6 +436,9 @@ dzn_physical_device_cache_caps(struct dzn_physical_device *pdev)
       pdev->options19.MaxSamplerDescriptorHeapSizeWithStaticSamplers = pdev->options19.MaxSamplerDescriptorHeapSize;
       pdev->options19.MaxViewDescriptorHeapSize = D3D12_MAX_SHADER_VISIBLE_DESCRIPTOR_HEAP_SIZE_TIER_1;
    }
+   if (FAILED(ID3D12Device1_CheckFeatureSupport(pdev->dev, D3D12_FEATURE_D3D12_OPTIONS21, &pdev->options21, sizeof(pdev->options21)))) {
+      pdev->options21.ExecuteIndirectTier = D3D12_EXECUTE_INDIRECT_TIER_1_0;
+   }
    {
       D3D12_FEATURE_DATA_FORMAT_SUPPORT a4b4g4r4_support = {
          .Format = DXGI_FORMAT_A4B4G4R4_UNORM

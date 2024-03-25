@@ -1051,6 +1051,9 @@ static bool si_should_blit_clamp_xy(const struct pipe_blit_info *info)
 
 bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info, bool testing)
 {
+   struct si_texture *sdst = (struct si_texture *)info->dst.resource;
+   bool is_3d_tiling = sdst->surface.thick_tiling;
+
    /* Compute blits require D16 right now (see the ISA).
     *
     * Testing on Navi21 showed that the compute blit is slightly slower than the gfx blit.
@@ -1097,10 +1100,52 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    image[1].u.tex.first_layer = 0;
    image[1].u.tex.last_layer = util_max_layer(info->dst.resource, info->dst.level);
 
+   unsigned width = info->dst.box.width;
+   unsigned height = info->dst.box.height;
+   unsigned depth = info->dst.box.depth;
+   unsigned block_x, block_y, block_z;
+
+   /* Choose the block (i.e. wave) dimensions based on the copy area size and the image layout
+    * of dst.
+    */
+   if (is_3d_tiling) {
+      /* Thick tiling. (microtiles are 3D boxes)
+       * If the box height and depth is > 2, the block size will be 4x4x4.
+       * If not, the threads will spill over to X.
+       */
+      block_y = util_next_power_of_two(MIN2(height, 4));
+      block_z = util_next_power_of_two(MIN2(depth, 4));
+      block_x = 64 / (block_y * block_z);
+   } else if (sdst->surface.is_linear) {
+      /* If the box width is > 128B, the block size will be 64x1 for bpp <= 4, 32x2 for bpp == 8,
+       * and 16x4 for bpp == 16.
+       * If not, the threads will spill over to Y, then Z if they aren't small.
+       *
+       * This is derived from the fact that the linear image layout has 256B linear blocks, and
+       * longer blocks don't benefit linear write performance, but they hurt tiled read performance.
+       * We want to prioritize blocks that are 256Bx2 over 512Bx1 because the source can be tiled.
+       *
+       * Using the cache line size (128B) instead of hardcoding 256B makes linear blits slower.
+       */
+      block_x = util_next_power_of_two(MIN3(width, 64, 256 / sdst->surface.bpe));
+      block_y = util_next_power_of_two(MIN2(height, 64 / block_x));
+      block_z = util_next_power_of_two(MIN2(depth, 64 / (block_x * block_y)));
+      block_x = 64 / (block_y * block_z);
+   } else {
+      /* Thin tiling. (microtiles are 2D rectangles)
+       * If the box width and height is > 4, the block size will be 8x8.
+       * If Y is <= 4, the threads will spill over to X.
+       * If X is <= 4, the threads will spill over to Y, then Z if they aren't small.
+       */
+      block_y = util_next_power_of_two(MIN2(height, 8));
+      block_x = util_next_power_of_two(MIN2(width, 64 / block_y));
+      block_y = util_next_power_of_two(MIN2(height, 64 / block_x));
+      block_z = util_next_power_of_two(MIN2(depth, 64 / (block_x * block_y)));
+      block_x = 64 / (block_y * block_z);
+   }
+
    struct pipe_grid_info grid = {0};
-   unsigned wg_dim =
-      set_work_size(&grid, 8, 8, 1, info->dst.box.width, info->dst.box.height,
-                    info->dst.box.depth);
+   unsigned wg_dim = set_work_size(&grid, block_x, block_y, block_z, width, height, depth);
 
    /* Get the shader key. */
    const struct util_format_description *dst_desc = util_format_description(info->dst.format);

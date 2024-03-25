@@ -410,10 +410,8 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
       BITSET_SET(b.shader->info.msaa_images, 0);
    if (options->dst_is_msaa)
       BITSET_SET(b.shader->info.msaa_images, 1);
-   /* TODO: 1D blits are 8x slower because the workgroup size is 8x8 */
-   b.shader->info.workgroup_size[0] = 8;
-   b.shader->info.workgroup_size[1] = 8;
-   b.shader->info.workgroup_size[2] = 1;
+   /* The workgroup size varies depending on the tiling layout and blit dimensions. */
+   b.shader->info.workgroup_size_variable = true;
    b.shader->info.cs.user_data_components_amd = 3;
 
    const struct glsl_type *img_type[2] = {

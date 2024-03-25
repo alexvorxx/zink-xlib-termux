@@ -672,6 +672,14 @@ nir_visitor::create_function(ir_function_signature *ir)
    }
    assert(np == func->num_params);
 
+   func->is_subroutine = ir->function()->is_subroutine;
+   func->num_subroutine_types = ir->function()->num_subroutine_types;
+   func->subroutine_index = ir->function()->subroutine_index;
+   func->subroutine_types =
+      ralloc_array(func, const struct glsl_type *, func->num_subroutine_types);
+   for (int i = 0; i < func->num_subroutine_types; i++)
+     func->subroutine_types[i] = ir->function()->subroutine_types[i];
+
    _mesa_hash_table_insert(this->overload_table, ir, func);
 }
 

@@ -390,6 +390,9 @@ enum dxil_intr {
    DXIL_INTR_SAMPLE_CMP_LEVEL = 224,
    DXIL_INTR_SAMPLE_CMP_GRAD = 254,
    DXIL_INTR_SAMPLE_CMP_BIAS = 255,
+
+   DXIL_INTR_START_VERTEX_LOCATION = 256,
+   DXIL_INTR_START_INSTANCE_LOCATION = 257,
 };
 
 enum dxil_atomic_op {
@@ -4938,6 +4941,15 @@ emit_intrinsic(struct ntd_context *ctx, nir_intrinsic_instr *intr)
    case nir_intrinsic_reduce:
    case nir_intrinsic_exclusive_scan:
       return emit_reduce(ctx, intr);
+
+   case nir_intrinsic_load_first_vertex:
+      ctx->mod.feats.extended_command_info = true;
+      return emit_load_unary_external_function(ctx, intr, "dx.op.startVertexLocation",
+                                               DXIL_INTR_START_VERTEX_LOCATION, nir_type_int);
+   case nir_intrinsic_load_base_instance:
+      ctx->mod.feats.extended_command_info = true;
+      return emit_load_unary_external_function(ctx, intr, "dx.op.startInstanceLocation",
+                                               DXIL_INTR_START_INSTANCE_LOCATION, nir_type_int);
 
    case nir_intrinsic_load_num_workgroups:
    case nir_intrinsic_load_workgroup_size:

@@ -314,17 +314,7 @@ SpvId
 spirv_builder_emit_image_sample(struct spirv_builder *b,
                                 SpvId result_type,
                                 SpvId sampled_image,
-                                SpvId coordinate,
-                                bool proj,
-                                SpvId lod,
-                                SpvId bias,
-                                SpvId dref,
-                                SpvId dx,
-                                SpvId dy,
-                                SpvId const_offset,
-                                SpvId offset,
-                                SpvId min_lod,
-                                bool sparse);
+                                const struct spriv_tex_src *src);
 
 SpvId
 spirv_builder_emit_image(struct spirv_builder *b, SpvId result_type,
@@ -360,24 +350,13 @@ SpvId
 spirv_builder_emit_image_fetch(struct spirv_builder *b,
                                SpvId result_type,
                                SpvId image,
-                               SpvId coordinate,
-                               SpvId lod,
-                               SpvId sample,
-                               SpvId const_offset,
-                               SpvId offset,
-                               bool sparse);
+                               const struct spriv_tex_src *src);
 SpvId
 spirv_builder_emit_image_gather(struct spirv_builder *b,
                                SpvId result_type,
                                SpvId image,
-                               SpvId coordinate,
-                               SpvId component,
-                               SpvId lod,
-                               SpvId sample,
-                               SpvId const_offset,
-                               SpvId offset,
-                               SpvId dref,
-                               bool sparse);
+                               const struct spriv_tex_src *src,
+                               SpvId component);
 
 SpvId
 spirv_builder_emit_image_query_size(struct spirv_builder *b,

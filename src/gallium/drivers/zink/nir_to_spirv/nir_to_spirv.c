@@ -3845,8 +3845,7 @@ emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
          if (tex_src.const_offset)
             spirv_builder_emit_cap(&ctx->builder, SpvCapabilityImageGatherExtended);
          result = spirv_builder_emit_image_gather(&ctx->builder, actual_dest_type,
-                                                 load, tex_src.coord, emit_uint_const(ctx, 32, tex->component),
-                                                 tex_src.lod, tex_src.sample, tex_src.const_offset, tex_src.offset, tex_src.dref, tex->is_sparse);
+                                                 load, &tex_src, emit_uint_const(ctx, 32, tex->component));
          actual_dest_type = dest_type;
       } else {
          assert(tex->op == nir_texop_txf_ms || !tex_src.sample);
@@ -3854,17 +3853,14 @@ emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
          type_to_dim(glsl_get_sampler_dim(glsl_without_array(var->type)), &is_ms);
          assert(is_ms || !tex_src.sample);
          result = spirv_builder_emit_image_fetch(&ctx->builder, actual_dest_type,
-                                                 image, tex_src.coord, tex_src.lod, tex_src.sample, tex_src.const_offset, tex_src.offset, tex->is_sparse);
+                                                 image, &tex_src);
       }
    } else {
       if (tex->op == nir_texop_txl)
          tex_src.min_lod = 0;
       result = spirv_builder_emit_image_sample(&ctx->builder,
                                                actual_dest_type, load,
-                                               tex_src.coord,
-                                               tex_src.proj != 0,
-                                               tex_src.lod, tex_src.bias, tex_src.dref, tex_src.dx, tex_src.dy,
-                                               tex_src.const_offset, tex_src.offset, tex_src.min_lod, tex->is_sparse);
+                                               &tex_src);
    }
 
    if (!bindless_var && (var->data.precision == GLSL_PRECISION_MEDIUM || var->data.precision == GLSL_PRECISION_LOW)) {

@@ -128,10 +128,6 @@ typedef struct {
    unsigned tcs_num_reserved_outputs;
    unsigned tcs_num_reserved_patch_outputs;
 
-   /* Location (slot) where tessellation levels are stored. */
-   int tcs_tess_lvl_in_loc;
-   int tcs_tess_lvl_out_loc;
-
    /* True if the output patch fits the subgroup, so all TCS outputs are always written in the same
     * subgroup that reads them.
     */
@@ -155,6 +151,19 @@ typedef struct {
    unsigned tcs_tess_level_inner_base;
    unsigned tcs_tess_level_inner_mask;
 } lower_tess_io_state;
+
+static unsigned
+map_tess_level(const unsigned semantic, const lower_tess_io_state *st)
+{
+   if (st->map_io)
+      return st->map_io(semantic);
+   else if (semantic == VARYING_SLOT_TESS_LEVEL_OUTER)
+      return st->tcs_tess_level_outer_base;
+   else if (semantic == VARYING_SLOT_TESS_LEVEL_INNER)
+      return st->tcs_tess_level_inner_base;
+
+   unreachable("Invalid semantic.");
+}
 
 static bool
 match_mask(gl_shader_stage stage,
@@ -413,27 +422,12 @@ lower_hs_output_store(nir_builder *b,
 
    nir_io_semantics semantics = nir_intrinsic_io_semantics(intrin);
    nir_def *store_val = intrin->src[0].ssa;
-   unsigned base = nir_intrinsic_base(intrin);
-   unsigned component = nir_intrinsic_component(intrin);
    unsigned write_mask = nir_intrinsic_write_mask(intrin);
    bool is_tess_factor = semantics.location == VARYING_SLOT_TESS_LEVEL_INNER ||
                          semantics.location == VARYING_SLOT_TESS_LEVEL_OUTER;
    bool write_to_vmem = !is_tess_factor && tcs_output_needs_vmem(intrin, st);
    bool write_to_lds = (is_tess_factor && !st->tcs_pass_tessfactors_by_reg) ||
       tcs_output_needs_lds(intrin, b->shader);
-
-   /* Remember tess factor location so that we can load them from LDS and/or
-    * store them to VMEM when hs_emit_write_tess_factors().
-    */
-   if (is_tess_factor) {
-      unsigned mapped_location =
-         st->map_io ? st->map_io(semantics.location) : nir_intrinsic_base(intrin);
-
-      if (semantics.location == VARYING_SLOT_TESS_LEVEL_INNER)
-         st->tcs_tess_lvl_in_loc = mapped_location * 16u;
-      else
-         st->tcs_tess_lvl_out_loc = mapped_location * 16u;
-   }
 
    if (write_to_vmem) {
       nir_def *vmem_off = intrin->intrinsic == nir_intrinsic_store_per_vertex_output
@@ -457,15 +451,20 @@ lower_hs_output_store(nir_builder *b,
     * store output instruction later.
     */
    if (is_tess_factor) {
+      const unsigned base = nir_intrinsic_base(intrin);
+      const unsigned component = nir_intrinsic_component(intrin);
+
       if (semantics.location == VARYING_SLOT_TESS_LEVEL_INNER) {
          st->tcs_tess_level_inner_base = base;
          st->tcs_tess_level_inner_mask |= write_mask << component;
+
          if (st->tcs_pass_tessfactors_by_reg)
             ac_nir_store_var_components(b, st->tcs_tess_level_inner, store_val,
                                         component, write_mask);
       } else {
          st->tcs_tess_level_outer_base = base;
          st->tcs_tess_level_outer_mask |= write_mask << component;
+
          if (st->tcs_pass_tessfactors_by_reg)
             ac_nir_store_var_components(b, st->tcs_tess_level_outer, store_val,
                                         component, write_mask);
@@ -603,12 +602,12 @@ hs_emit_write_tess_factors(nir_shader *shader,
       /* Load all tessellation factors (aka. tess levels) from LDS. */
       if (st->tcs_tess_level_outer_mask) {
          tessfactors_outer = nir_load_shared(b, outer_comps, 32, lds_base,
-                                             .base = st->tcs_tess_lvl_out_loc);
+                                             .base = map_tess_level(VARYING_SLOT_TESS_LEVEL_OUTER, st) * 16);
       }
 
       if (inner_comps && st->tcs_tess_level_inner_mask) {
          tessfactors_inner = nir_load_shared(b, inner_comps, 32, lds_base,
-                                             .base = st->tcs_tess_lvl_in_loc);
+                                             .base = map_tess_level(VARYING_SLOT_TESS_LEVEL_INNER, st) * 16);
       }
    }
 
@@ -662,7 +661,7 @@ hs_emit_write_tess_factors(nir_shader *shader,
 
       if (st->tcs_tess_level_outer_mask) {
          nir_def *vmem_off_outer =
-            hs_per_patch_output_vmem_offset(b, st, NULL, st->tcs_tess_lvl_out_loc);
+            hs_per_patch_output_vmem_offset(b, st, NULL, map_tess_level(VARYING_SLOT_TESS_LEVEL_OUTER, st) * 16);
 
          nir_store_buffer_amd(b, tessfactors_outer, hs_ring_tess_offchip,
                               vmem_off_outer, offchip_offset, zero,
@@ -672,7 +671,7 @@ hs_emit_write_tess_factors(nir_shader *shader,
 
       if (inner_comps && st->tcs_tess_level_inner_mask) {
          nir_def *vmem_off_inner =
-            hs_per_patch_output_vmem_offset(b, st, NULL, st->tcs_tess_lvl_in_loc);
+            hs_per_patch_output_vmem_offset(b, st, NULL, map_tess_level(VARYING_SLOT_TESS_LEVEL_INNER, st) * 16);
 
          nir_store_buffer_amd(b, tessfactors_inner, hs_ring_tess_offchip,
                               vmem_off_inner, offchip_offset, zero,
@@ -823,8 +822,6 @@ ac_nir_lower_hs_outputs_to_mem(nir_shader *shader,
       .tcs_out_patch_fits_subgroup = wave_size % shader->info.tess.tcs_vertices_out == 0,
       .tcs_pass_tessfactors_by_reg = pass_tessfactors_by_reg,
       .tcs_no_inputs_in_lds = no_inputs_in_lds,
-      .tcs_tess_lvl_in_loc = -1,
-      .tcs_tess_lvl_out_loc = -1,
       .map_io = map,
    };
 

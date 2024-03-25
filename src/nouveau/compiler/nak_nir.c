@@ -433,20 +433,25 @@ nak_nir_lower_system_value_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
       break;
    }
 
-   case nir_intrinsic_load_primitive_id: {
-      assert(b->shader->info.stage == MESA_SHADER_TESS_CTRL ||
+   case nir_intrinsic_load_primitive_id:
+   case nir_intrinsic_load_instance_id:
+   case nir_intrinsic_load_vertex_id: {
+      assert(b->shader->info.stage != MESA_SHADER_VERTEX ||
+             b->shader->info.stage != MESA_SHADER_TESS_CTRL ||
              b->shader->info.stage == MESA_SHADER_TESS_EVAL ||
              b->shader->info.stage == MESA_SHADER_GEOMETRY);
-      val = nir_load_per_vertex_input(b, 1, 32, nir_imm_int(b, 0),
-                                      nir_imm_int(b, 0),
-                                      .base = NAK_ATTR_PRIMITIVE_ID,
-                                      .dest_type = nir_type_int32);
+      const gl_system_value sysval =
+         nir_system_value_from_intrinsic(intrin->intrinsic);
+      const uint32_t addr = nak_sysval_attr_addr(sysval);
+      val = nir_ald_nv(b, 1, nir_imm_int(b, 0), nir_imm_int(b, 0),
+                       .base = addr, .flags = 0,
+                       .range_base = addr, .range = 4,
+                       .access = ACCESS_CAN_REORDER);
       break;
    }
 
-   case nir_intrinsic_load_front_face:
-   case nir_intrinsic_load_instance_id:
-   case nir_intrinsic_load_vertex_id: {
+   case nir_intrinsic_load_front_face: {
+      assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
       const gl_system_value sysval =
          nir_system_value_from_intrinsic(intrin->intrinsic);
       const uint32_t addr = nak_sysval_attr_addr(sysval);

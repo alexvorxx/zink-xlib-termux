@@ -348,8 +348,9 @@ dzn_physical_device_init_uuids(struct dzn_physical_device *pdev)
    _mesa_sha1_init(&sha1_ctx);
    _mesa_sha1_update(&sha1_ctx,  mesa_version, strlen(mesa_version));
    disk_cache_get_function_identifier(dzn_physical_device_init_uuids, &sha1_ctx);
-   _mesa_sha1_update(&sha1_ctx,  &pdev->options, sizeof(pdev->options));
-   _mesa_sha1_update(&sha1_ctx,  &pdev->options2, sizeof(pdev->options2));
+   _mesa_sha1_update(&sha1_ctx, &pdev->options,
+      offsetof(struct dzn_physical_device, options21) + sizeof(pdev->options21) -
+                     offsetof(struct dzn_physical_device, options));
    _mesa_sha1_final(&sha1_ctx, sha1);
    memcpy(pdev->pipeline_cache_uuid, sha1, VK_UUID_SIZE);
 

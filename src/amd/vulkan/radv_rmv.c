@@ -489,7 +489,7 @@ radv_rmv_log_heap_create(struct radv_device *device, VkDeviceMemory heap, bool i
    if (!memory->alloc_size)
       return;
 
-   radv_rmv_log_bo_allocate(device, memory->bo, memory->alloc_size, false);
+   radv_rmv_log_bo_allocate(device, memory->bo, false);
    simple_mtx_lock(&device->vk.memory_trace_data.token_mtx);
 
    struct vk_rmv_resource_create_token token = {0};
@@ -507,7 +507,7 @@ radv_rmv_log_heap_create(struct radv_device *device, VkDeviceMemory heap, bool i
 }
 
 void
-radv_rmv_log_bo_allocate(struct radv_device *device, struct radeon_winsys_bo *bo, uint32_t size, bool is_internal)
+radv_rmv_log_bo_allocate(struct radv_device *device, struct radeon_winsys_bo *bo, bool is_internal)
 {
    if (!device->vk.memory_trace_data.is_enabled)
       return;
@@ -518,7 +518,7 @@ radv_rmv_log_bo_allocate(struct radv_device *device, struct radeon_winsys_bo *bo
    token.is_in_invisible_vram = bo->vram_no_cpu_access && !device->physical_device->rad_info.all_vram_visible;
    token.preferred_domains = (enum vk_rmv_kernel_memory_domain)bo->initial_domain;
    token.is_driver_internal = is_internal;
-   token.page_count = DIV_ROUND_UP(size, 4096);
+   token.page_count = DIV_ROUND_UP(bo->size, 4096);
 
    simple_mtx_lock(&device->vk.memory_trace_data.token_mtx);
    vk_rmv_emit_token(&device->vk.memory_trace_data, VK_RMV_TOKEN_TYPE_VIRTUAL_ALLOCATE, &token);
@@ -615,7 +615,7 @@ radv_rmv_log_query_pool_create(struct radv_device *device, VkQueryPool _pool, bo
        pool->vk.query_type != VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT)
       return;
 
-   radv_rmv_log_bo_allocate(device, pool->bo, pool->size, is_internal);
+   radv_rmv_log_bo_allocate(device, pool->bo, is_internal);
 
    simple_mtx_lock(&device->vk.memory_trace_data.token_mtx);
    struct vk_rmv_resource_create_token create_token = {0};
@@ -637,11 +637,7 @@ radv_rmv_log_command_buffer_bo_create(struct radv_device *device, struct radeon_
    if (!device->vk.memory_trace_data.is_enabled)
       return;
 
-   /* Only one of executable_size, data_size and scratch_size should be > 0 */
-   /* TODO: Trace CS BOs for executable data */
-   uint32_t size = MAX3(executable_size, data_size, scratch_size);
-
-   radv_rmv_log_bo_allocate(device, bo, size, true);
+   radv_rmv_log_bo_allocate(device, bo, true);
 
    uint64_t upload_resource_identifier = (uint64_t)(uintptr_t)bo;
 
@@ -659,7 +655,7 @@ radv_rmv_log_command_buffer_bo_create(struct radv_device *device, struct radeon_
    create_token.command_buffer.app_available_scratch_size = scratch_size;
 
    vk_rmv_emit_token(&device->vk.memory_trace_data, VK_RMV_TOKEN_TYPE_RESOURCE_CREATE, &create_token);
-   log_resource_bind_locked(device, upload_resource_identifier, bo, 0, size);
+   log_resource_bind_locked(device, upload_resource_identifier, bo, 0, bo->size);
    simple_mtx_unlock(&device->vk.memory_trace_data.token_mtx);
    vk_rmv_log_cpu_map(&device->vk, bo->va, false);
 }
@@ -687,7 +683,7 @@ radv_rmv_log_border_color_palette_create(struct radv_device *device, struct rade
    if (!device->vk.memory_trace_data.is_enabled)
       return;
 
-   radv_rmv_log_bo_allocate(device, bo, RADV_BORDER_COLOR_BUFFER_SIZE, true);
+   radv_rmv_log_bo_allocate(device, bo, true);
    simple_mtx_lock(&device->vk.memory_trace_data.token_mtx);
    uint32_t resource_id = vk_rmv_get_resource_id_locked(&device->vk, (uint64_t)(uintptr_t)bo);
 
@@ -770,7 +766,7 @@ radv_rmv_log_descriptor_pool_create(struct radv_device *device, const VkDescript
    RADV_FROM_HANDLE(radv_descriptor_pool, pool, _pool);
 
    if (pool->bo) {
-      radv_rmv_log_bo_allocate(device, pool->bo, pool->size, is_internal);
+      radv_rmv_log_bo_allocate(device, pool->bo, is_internal);
       vk_rmv_log_cpu_map(&device->vk, pool->bo->va, false);
    }
 
@@ -913,7 +909,7 @@ radv_rmv_log_event_create(struct radv_device *device, VkEvent _event, VkEventCre
 
    RADV_FROM_HANDLE(radv_event, event, _event);
 
-   radv_rmv_log_bo_allocate(device, event->bo, 8, is_internal);
+   radv_rmv_log_bo_allocate(device, event->bo, is_internal);
    simple_mtx_lock(&device->vk.memory_trace_data.token_mtx);
    struct vk_rmv_resource_create_token create_token = {0};
    create_token.is_driver_internal = is_internal;

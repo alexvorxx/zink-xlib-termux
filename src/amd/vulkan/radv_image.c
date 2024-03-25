@@ -1323,7 +1323,7 @@ radv_image_create(VkDevice _device, const struct radv_image_create_info *create_
          radv_destroy_image(device, alloc, image);
          return vk_error(device, result);
       }
-      radv_rmv_log_bo_allocate(device, image->bindings[0].bo, image->size, true);
+      radv_rmv_log_bo_allocate(device, image->bindings[0].bo, true);
    }
 
    if (device->instance->debug_flags & RADV_DEBUG_IMG) {

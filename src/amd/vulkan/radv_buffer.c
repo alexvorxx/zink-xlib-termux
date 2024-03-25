@@ -107,7 +107,7 @@ radv_create_buffer(struct radv_device *device, const VkBufferCreateInfo *pCreate
          radv_destroy_buffer(device, pAllocator, buffer);
          return vk_error(device, result);
       }
-      radv_rmv_log_bo_allocate(device, buffer->bo, buffer->vk.size, true);
+      radv_rmv_log_bo_allocate(device, buffer->bo, true);
    }
 
    *pBuffer = radv_buffer_to_handle(buffer);

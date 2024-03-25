@@ -965,7 +965,7 @@ radv_create_shader_arena(struct radv_device *device, struct radv_shader_free_lis
    if (result != VK_SUCCESS)
       goto fail;
 
-   radv_rmv_log_bo_allocate(device, arena->bo, arena_size, true);
+   radv_rmv_log_bo_allocate(device, arena->bo, true);
 
    list_inithead(&arena->entries);
    alloc = alloc_block_obj(device);

@@ -3201,7 +3201,7 @@ void radv_rra_trace_clear_ray_history(VkDevice _device, struct radv_rra_trace_da
 void radv_rra_trace_finish(VkDevice vk_device, struct radv_rra_trace_data *data);
 
 void radv_memory_trace_init(struct radv_device *device);
-void radv_rmv_log_bo_allocate(struct radv_device *device, struct radeon_winsys_bo *bo, uint32_t size, bool is_internal);
+void radv_rmv_log_bo_allocate(struct radv_device *device, struct radeon_winsys_bo *bo, bool is_internal);
 void radv_rmv_log_bo_destroy(struct radv_device *device, struct radeon_winsys_bo *bo);
 void radv_rmv_log_heap_create(struct radv_device *device, VkDeviceMemory heap, bool is_internal,
                               VkMemoryAllocateFlags alloc_flags);

@@ -634,7 +634,7 @@ FragmentShaderR600::allocate_interpolators_or_inputs()
                             pin_fully);
          inp.set_gpr(pos++);
 
-         sfn_log << SfnLog::io << "Reseve input register at pos " << index << " as "
+         sfn_log << SfnLog::io << "Reserve input register at pos " << index << " as "
                  << input << " with register " << inp.gpr() << "\n";
 
          m_interpolated_inputs[index] = input;

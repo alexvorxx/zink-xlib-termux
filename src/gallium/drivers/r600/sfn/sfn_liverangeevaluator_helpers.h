@@ -135,7 +135,7 @@ private:
    static const int block_id_not_unique = -1;
    static const int block_id_uninitalized = 0;
 
-   /* A bit field tracking the nexting levels of if-else clauses where the
+   /* A bit field tracking the nesting levels of if-else clauses where the
     * temporary has (so far) been written to in the if branch, but not in the
     * else branch.
     */

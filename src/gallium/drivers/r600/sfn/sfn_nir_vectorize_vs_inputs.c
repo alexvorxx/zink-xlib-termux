@@ -48,7 +48,7 @@ r600_variable_can_rewrite(nir_variable *var)
    if (glsl_get_bit_size(glsl_without_array(var->type)) != 32)
       return false;
 
-   /* We only check VSand attribute imputs */
+   /* We only check VSand attribute inputs */
    return (var->data.location >= VERT_ATTRIB_GENERIC0 &&
            var->data.location <= VERT_ATTRIB_GENERIC15);
 }

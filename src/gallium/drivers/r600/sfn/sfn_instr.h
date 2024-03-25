@@ -121,7 +121,7 @@ public:
    virtual void update_indirect_addr(PRegister old_reg, PRegister addr) {
       (void)old_reg;
       (void)addr;
-      unreachable("Instruction type has no indirect addess");
+      unreachable("Instruction type has no indirect address");
    };
    const InstrList& required_instr() const { return m_required_instr; }
 

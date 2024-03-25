@@ -134,7 +134,7 @@ IfInstr::is_equal_to(const IfInstr& rhs) const
 
 uint32_t IfInstr::slots() const
 {
-   /* If we hava a literal value in the predicate evaluation, then
+   /* If we have a literal value in the predicate evaluation, then
     * we need at most two alu slots, otherwise it's just one. */
    for (auto s : m_predicate->sources())
       if (s->as_literal())

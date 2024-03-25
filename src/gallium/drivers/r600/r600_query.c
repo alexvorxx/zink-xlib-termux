@@ -1112,7 +1112,7 @@ static void r600_get_hw_query_params(struct r600_common_context *rctx,
 		params->start_offset = 0;
 		params->end_offset = 16;
 
-		/* We can re-use the high dword of the last 64-bit value as a
+		/* We can reuse the high dword of the last 64-bit value as a
 		 * fence: it is initialized as 0, and the high bit is set by
 		 * the write of the streamout stats event.
 		 */

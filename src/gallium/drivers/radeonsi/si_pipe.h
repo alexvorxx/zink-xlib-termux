@@ -1632,6 +1632,8 @@ void *gfx9_create_clear_dcc_msaa_cs(struct si_context *sctx, struct si_texture *
 void *si_create_passthrough_tcs(struct si_context *sctx);
 void *si_clear_image_dcc_single_shader(struct si_context *sctx, bool is_msaa, unsigned wg_dim);
 
+#define SI_MAX_COMPUTE_BLIT_SAMPLES    8
+
 union si_compute_blit_shader_key {
    struct {
       /* Workgroup settings. */
@@ -1646,7 +1648,7 @@ union si_compute_blit_shader_key {
       bool src_has_z:1;
       bool dst_has_z:1;
       bool d16:1;
-      uint8_t log2_samples:4;
+      uint8_t log_samples:2;
       bool sample0_only:1; /* src is MSAA, dst is not MSAA, log2_samples is ignored */
       /* Source coordinate modifiers. */
       bool x_clamp_to_edge:1;
@@ -1658,7 +1660,7 @@ union si_compute_blit_shader_key {
       bool uint_to_sint:1;
       bool dst_is_srgb:1;
       bool use_integer_one:1;
-      uint8_t last_src_channel:2;
+      uint8_t last_src_channel:2; /* this shouldn't be greater than last_dst_channel */
       uint8_t last_dst_channel:2;
    };
    uint64_t key;

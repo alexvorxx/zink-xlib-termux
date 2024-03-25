@@ -899,6 +899,7 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    if (info->dst.format == PIPE_FORMAT_A8R8_UNORM || /* This format fails AMD_TEST=imagecopy. */
        max_dst_chan_size == 5 || /* PIPE_FORMAT_R5G5B5A1_UNORM has precision issues */
        util_format_is_depth_or_stencil(info->dst.resource->format) ||
+       dst_samples > SI_MAX_COMPUTE_BLIT_SAMPLES ||
        info->dst_sample != 0 ||
        /* Image stores support DCC since GFX10. Return only for gfx queues. DCC is disabled
         * for compute queues farther below. */
@@ -912,7 +913,8 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
         (info->dst.box.width != abs(info->src.box.width) ||
          info->dst.box.height != abs(info->src.box.height) ||
          info->dst.box.depth != abs(info->src.box.depth) ||
-         util_format_is_depth_or_stencil(info->src.resource->format))))
+         util_format_is_depth_or_stencil(info->src.resource->format) ||
+         src_samples > SI_MAX_COMPUTE_BLIT_SAMPLES)))
       return false;
 
    /* Testing on Navi21 showed that the compute blit is slightly slower than the gfx blit.
@@ -1104,7 +1106,8 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    bool has_d16 = sctx->gfx_level >= (sctx->screen->use_aco ? GFX9 : GFX8);
 
    if (is_clear) {
-      options.log2_samples = util_logbase2(dst_samples);
+      assert(dst_samples <= 8);
+      options.log_samples = util_logbase2(dst_samples);
       options.d16 = has_d16 &&
                     max_dst_chan_size <= (util_format_is_float(info->dst.format) ||
                                           util_format_is_pure_integer(info->dst.format) ? 16 : 11);
@@ -1117,10 +1120,11 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
                           info->src.resource->target == PIPE_TEXTURE_1D_ARRAY ||
                           info->src.resource->target == PIPE_TEXTURE_2D_ARRAY ||
                           info->src.resource->target == PIPE_TEXTURE_CUBE_ARRAY;
-      /* Resolving integer formats only copies sample 0. log2_samples is then unused. */
+      /* Resolving integer formats only copies sample 0. log_samples is then unused. */
       options.sample0_only = sample0_only;
       unsigned num_samples = MAX2(src_samples, dst_samples);
-      options.log2_samples = sample0_only ? 0 : util_logbase2(num_samples);
+      assert(num_samples <= 8);
+      options.log_samples = sample0_only ? 0 : util_logbase2(num_samples);
       options.x_clamp_to_edge = si_should_blit_clamp_to_edge(info, BITFIELD_BIT(0));
       options.y_clamp_to_edge = si_should_blit_clamp_to_edge(info, BITFIELD_BIT(1));
       options.flip_x = info->src.box.width < 0;

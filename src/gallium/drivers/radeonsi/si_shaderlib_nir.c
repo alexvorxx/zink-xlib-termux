@@ -195,13 +195,12 @@ static nir_def *convert_linear_to_srgb(nir_builder *b, nir_def *input)
    /* There are small precision differences compared to CB, so the gfx blit will return slightly
     * different results.
     */
+   for (unsigned i = 0; i < MIN2(3, input->num_components); i++) {
+      input = nir_vector_insert_imm(b, input,
+                                    nir_format_linear_to_srgb(b, nir_channel(b, input, i)), i);
+   }
 
-   nir_def *comp[4];
-   for (unsigned i = 0; i < 3; i++)
-      comp[i] = nir_format_linear_to_srgb(b, nir_channel(b, input, i));
-   comp[3] = nir_channel(b, input, 3);
-
-   return nir_vec(b, comp, 4);
+   return input;
 }
 
 static nir_def *average_samples(nir_builder *b, nir_def **samples, unsigned num_samples)
@@ -228,61 +227,6 @@ static nir_def *average_samples(nir_builder *b, nir_def **samples, unsigned num_
    return nir_fmul_imm(b, samples[0], 1.0 / num_samples); /* average the sum */
 }
 
-static nir_def *image_resolve_msaa(struct si_screen *sscreen, nir_builder *b, nir_variable *img,
-                                   unsigned num_samples, nir_def *coord, unsigned bit_size)
-{
-   nir_def *zero = nir_imm_int(b, 0);
-   nir_def *result = NULL;
-   nir_variable *var = NULL;
-
-   /* Gfx11 doesn't support samples_identical, so we can't use it. */
-   if (sscreen->info.gfx_level < GFX11) {
-      /* We need a local variable to get the result out of conditional branches in SSA. */
-      var = nir_local_variable_create(b->impl,
-                                      bit_size == 16 ? glsl_f16vec_type(4) : glsl_vec4_type(),
-                                      NULL);
-
-      /* If all samples are identical, load only sample 0. */
-      nir_push_if(b, nir_image_deref_samples_identical(b, 1, deref_ssa(b, img), coord));
-      result = nir_image_deref_load(b, 4, bit_size, deref_ssa(b, img), coord, zero, zero);
-      nir_store_var(b, var, result, 0xf);
-
-      nir_push_else(b, NULL);
-   }
-
-   nir_def *sample_index[16];
-   for (unsigned i = 0; i < num_samples; i++)
-      sample_index[i] = nir_imm_int(b, i);
-
-   /* We need to hide the constant sample indices behind the optimization barrier, otherwise
-    * LLVM doesn't put loads into the same clause.
-    *
-    * TODO: nir_group_loads could do this.
-    */
-   if (!sscreen->use_aco) {
-      for (unsigned i = 0; i < num_samples; i++)
-         sample_index[i] = nir_optimization_barrier_vgpr_amd(b, bit_size, sample_index[i]);
-   }
-
-   /* Load all samples. */
-   nir_def *samples[16];
-   for (unsigned i = 0; i < num_samples; i++) {
-      samples[i] = nir_image_deref_load(b, 4, bit_size, deref_ssa(b, img),
-                                        coord, sample_index[i], zero);
-   }
-
-   result = average_samples(b, samples, num_samples);
-
-   if (sscreen->info.gfx_level < GFX11) {
-      /* Exit the conditional branch and get the result out of the branch. */
-      nir_store_var(b, var, result, 0xf);
-      nir_pop_if(b, NULL);
-      result = nir_load_var(b, var);
-   }
-
-   return result;
-}
-
 static nir_def *apply_blit_output_modifiers(nir_builder *b, nir_def *color,
                                                 const union si_compute_blit_shader_key *options)
 {
@@ -304,12 +248,24 @@ static nir_def *apply_blit_output_modifiers(nir_builder *b, nir_def *color,
    nir_def *one = options->use_integer_one ? nir_imm_intN_t(b, 1, bit_size) :
                                              nir_imm_floatN_t(b, 1, bit_size);
 
-   /* Set channels not present in src to 0 or 1. This will eliminate code loading and resolving
-    * those channels.
-    */
-   if (!options->is_clear) {
-      for (unsigned chan = options->last_src_channel + 1; chan <= options->last_dst_channel; chan++)
-         color = nir_vector_insert_imm(b, color, chan == 3 ? one : zero, chan);
+   if (options->is_clear) {
+      if (options->last_dst_channel < 3)
+         color = nir_trim_vector(b, color, options->last_dst_channel + 1);
+   } else {
+      assert(options->last_src_channel <= options->last_dst_channel);
+      assert(color->num_components == options->last_src_channel + 1);
+
+      /* Set channels not present in src to 0 or 1. */
+      if (options->last_src_channel < options->last_dst_channel) {
+         color = nir_pad_vector(b, color, options->last_dst_channel + 1);
+
+         for (unsigned chan = options->last_src_channel + 1; chan <= options->last_dst_channel; chan++)
+            color = nir_vector_insert_imm(b, color, chan == 3 ? one : zero, chan);
+      }
+
+      /* Discard channels not present in dst. The hardware fills unstored channels with 0. */
+      if (options->last_dst_channel < options->last_src_channel)
+         color = nir_trim_vector(b, color, options->last_dst_channel + 1);
    }
 
    /* Discard channels not present in dst. The hardware fills unstored channels with 0. */
@@ -317,6 +273,27 @@ static nir_def *apply_blit_output_modifiers(nir_builder *b, nir_def *color,
       color = nir_trim_vector(b, color, options->last_dst_channel + 1);
 
    return color;
+}
+
+static void optimization_barrier_vgpr_array(struct si_context *sctx, nir_builder *b,
+                                            nir_def **array, unsigned num_elements,
+                                            unsigned num_components)
+{
+   /* We use the optimization barrier to force LLVM to form VMEM clauses by constraining its
+    * instruction scheduling options.
+    *
+    * VMEM clauses are supported since GFX10. It's not recommended to use the optimization
+    * barrier in the compute blit for GFX6-8 because the lack of A16 combined with optimization
+    * barriers would unnecessarily increase VGPR usage for MSAA resources.
+    */
+   if (!sctx->screen->use_aco && sctx->gfx_level >= GFX10) {
+      for (unsigned i = 0; i < num_elements; i++) {
+         unsigned prev_num = array[i]->num_components;
+         array[i] = nir_trim_vector(b, array[i], num_components);
+         array[i] = nir_optimization_barrier_vgpr_amd(b, array[i]->bit_size, array[i]);
+         array[i] = nir_pad_vector(b, array[i], prev_num);
+      }
+   }
 }
 
 /* The compute blit shader.
@@ -407,96 +384,164 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
    }
 
    /* Add box.xyz. */
-   nir_def *coord_src = NULL, *coord_dst = NULL, *dim = NULL;
+   nir_def *base_coord_src = NULL, *base_coord_dst = NULL;
    unpack_2x16_signed(&b, nir_trim_vector(&b, nir_load_user_data_amd(&b), 3),
-                      &coord_src, &coord_dst);
-   coord_dst = nir_iadd(&b, coord_dst, dst_xyz);
-   coord_src = nir_iadd(&b, coord_src, src_xyz);
-
-   /* Clamp to edge for src, only X and Y because Z can't be out of bounds. */
-   for (unsigned i = 0; i < 2; i++) {
-      if (i ? options->y_clamp_to_edge : options->x_clamp_to_edge) {
-         assert(!options->src_is_1d || i == 0);
-
-         if (!dim)
-            dim = nir_image_deref_size(&b, 4, 32, deref_ssa(&b, img_src), zero);
-
-         nir_def *tmp = nir_channel(&b, coord_src, i);
-         tmp = nir_imax(&b, tmp, nir_imm_int(&b, 0));
-         tmp = nir_imin(&b, tmp, nir_iadd_imm(&b, nir_channel(&b, dim, i), -1));
-         coord_src = nir_vector_insert_imm(&b, coord_src, tmp, i);
-      }
-   }
-
-   /* Swizzle coordinates for 1D_ARRAY. */
-   static unsigned swizzle_xz[] = {0, 2, 0, 0};
-
-   if (options->src_is_1d)
-      coord_src = nir_swizzle(&b, coord_src, swizzle_xz, 4);
-   if (options->dst_is_1d)
-      coord_dst = nir_swizzle(&b, coord_dst, swizzle_xz, 4);
+                      &base_coord_src, &base_coord_dst);
+   base_coord_dst = nir_iadd(&b, base_coord_dst, dst_xyz);
+   base_coord_src = nir_iadd(&b, base_coord_src, src_xyz);
 
    /* Coordinates must have 4 channels in NIR. */
-   coord_src = nir_pad_vector(&b, coord_src, 4);
-   coord_dst = nir_pad_vector(&b, coord_dst, 4);
+   base_coord_src = nir_pad_vector(&b, base_coord_src, 4);
+   base_coord_dst = nir_pad_vector(&b, base_coord_dst, 4);
 
-   /* TODO: out-of-bounds image stores have no effect, but we could jump over them for better perf */
+/* NOTE: This will be changed to a more complex loop in the future. */
+#define foreach_sample(num_samples, sample) \
+   for (unsigned sample = 0; sample < (num_samples); sample++)
 
-   /* Execute the image loads and stores. */
+   /* Swizzle coordinates for 1D_ARRAY. */
+   static const unsigned swizzle_xz[] = {0, 2, 0, 0};
+
+   /* Execute image loads and stores. */
+   unsigned num_src_coords = (options->src_is_1d ? 1 : 2) + options->src_has_z + options->src_is_msaa;
+   unsigned num_dst_coords = (options->dst_is_1d ? 1 : 2) + options->dst_has_z + options->dst_is_msaa;
    unsigned bit_size = options->d16 ? 16 : 32;
-   unsigned num_samples = 1 << options->log2_samples;
-   nir_def *color = NULL;
+   unsigned num_samples = 1 << options->log_samples;
+   unsigned src_samples = options->src_is_msaa && !options->sample0_only &&
+                          !options->is_clear ? num_samples : 1;
+   unsigned dst_samples = options->dst_is_msaa ? num_samples : 1;
+   nir_def *color[SI_MAX_COMPUTE_BLIT_SAMPLES] = {0};
+   nir_def *coord_dst[SI_MAX_COMPUTE_BLIT_SAMPLES] = {0};
+   nir_def *src_resinfo = NULL;
 
    if (options->is_clear) {
-      /* The clear color start at component 4 of user data. */
-      color = nir_channels(&b, nir_load_user_data_amd(&b),
-                           BITFIELD_RANGE(4, options->d16 ? 2 : 4));
+      /* The clear color starts at component 4 of user data. */
+      color[0] = nir_channels(&b, nir_load_user_data_amd(&b),
+                              BITFIELD_RANGE(4, options->d16 ? 2 : 4));
       if (options->d16)
-         color = nir_unpack_64_4x16(&b, nir_pack_64_2x32(&b, color));
+         color[0] = nir_unpack_64_4x16(&b, nir_pack_64_2x32(&b, color[0]));
+   } else {
+      nir_def *coord_src[SI_MAX_COMPUTE_BLIT_SAMPLES] = {0};
+
+      /* Initialize src coordinates, one vector per pixel. */
+      foreach_sample(src_samples, i) {
+         coord_src[i] = base_coord_src;
+         if (options->src_is_1d)
+            coord_src[i] = nir_swizzle(&b, coord_src[i], swizzle_xz, 4);
+         if (options->src_is_msaa) {
+            coord_src[i] = nir_vector_insert_imm(&b, coord_src[i], nir_imm_int(&b, i),
+                                                 num_src_coords - 1);
+         }
+
+         /* Clamp to edge for src, only X and Y because Z can't be out of bounds. */
+         for (unsigned chan = 0; chan < 2; chan++) {
+            if (chan ? options->y_clamp_to_edge : options->x_clamp_to_edge) {
+               assert(!options->src_is_1d || chan == 0);
+
+               if (!src_resinfo) {
+                  src_resinfo = nir_image_deref_size(&b, 4, 32, deref_ssa(&b, img_src),
+                                                     zero);
+               }
+
+               nir_def *tmp = nir_channel(&b, coord_src[i], chan);
+               tmp = nir_imax_imm(&b, tmp, 0);
+               tmp = nir_imin(&b, tmp, nir_iadd_imm(&b, nir_channel(&b, src_resinfo, chan), -1));
+               coord_src[i] = nir_vector_insert_imm(&b, coord_src[i], tmp, chan);
+            }
+         }
+      }
+
+      /* We don't want the computation of src coordinates to be interleaved with loads. */
+      if (src_samples > 1) {
+         optimization_barrier_vgpr_array(sctx, &b, coord_src, src_samples,
+                                         num_src_coords);
+      }
+
+      /* Use "samples_identical" for MSAA resolving if it's supported. */
+      bool is_resolve = src_samples > 1 && dst_samples == 1;
+      bool uses_samples_identical = sctx->gfx_level < GFX11 &&
+                                    !(sctx->screen->debug_flags & DBG(NO_FMASK)) && is_resolve;
+      nir_def *samples_identical = NULL, *sample0 = {0};
+      nir_if *if_identical = NULL;
+
+      if (uses_samples_identical) {
+         samples_identical = nir_image_deref_samples_identical(&b, 1, deref_ssa(&b, img_src),
+                                                              coord_src[0],
+                                                              .image_dim = GLSL_SAMPLER_DIM_MS);
+
+         /* If all samples are identical, load only sample 0. */
+         if_identical = nir_push_if(&b, samples_identical);
+         {
+            sample0 = nir_image_deref_load(&b, options->last_src_channel + 1, bit_size,
+                                           deref_ssa(&b, img_src), coord_src[0],
+                                           nir_channel(&b, coord_src[0],
+                                                       num_src_coords - 1), zero,
+                                           .image_dim = img_src->type->sampler_dimensionality,
+                                           .image_array = img_src->type->sampler_array);
+         }
+         nir_push_else(&b, if_identical);
+      }
+
+      /* Load src pixels, one per sample. */
+      foreach_sample(src_samples, i) {
+         color[i] = nir_image_deref_load(&b, options->last_src_channel + 1, bit_size,
+                                         deref_ssa(&b, img_src), coord_src[i],
+                                         nir_channel(&b, coord_src[i], num_src_coords - 1), zero,
+                                         .image_dim = img_src->type->sampler_dimensionality,
+                                         .image_array = img_src->type->sampler_array);
+      }
+
+      /* Resolve MSAA if necessary. */
+      if (is_resolve) {
+         /* We don't want the averaging of samples to be interleaved with image loads. */
+         optimization_barrier_vgpr_array(sctx, &b, color, src_samples,
+                                         options->last_src_channel + 1);
+
+         color[0] = average_samples(&b, color, src_samples);
+         src_samples = 1;
+      }
+
+      if (uses_samples_identical) {
+         nir_pop_if(&b, if_identical);
+         color[0] = nir_if_phi(&b, sample0, color[0]);
+      }
    }
 
-   if (options->src_is_msaa && !options->dst_is_msaa && !options->sample0_only) {
-      /* MSAA resolving (downsampling). */
-      assert(num_samples > 1 && !options->is_clear);
-      color = image_resolve_msaa(sctx->screen, &b, img_src, num_samples, coord_src, bit_size);
-      color = apply_blit_output_modifiers(&b, color, options);
-      nir_image_deref_store(&b, deref_ssa(&b, img_dst), coord_dst, zero, color, zero);
+   nir_def *img_dst_desc = nir_image_deref_descriptor_amd(&b, 8, 32, deref_ssa(&b, img_dst));
 
-   } else if (options->src_is_msaa && options->dst_is_msaa) {
-      /* MSAA copy. */
-      nir_def *color[16];
-      assert(num_samples > 1 && !options->is_clear);
-      /* Group loads together and then stores. */
-      for (unsigned i = 0; i < num_samples; i++) {
-         color[i] = nir_image_deref_load(&b, 4, bit_size, deref_ssa(&b, img_src), coord_src,
-                                         nir_imm_int(&b, i), zero);
-      }
-      for (unsigned i = 0; i < num_samples; i++)
-         color[i] = apply_blit_output_modifiers(&b, color[i], options);
-      for (unsigned i = 0; i < num_samples; i++) {
-         nir_image_deref_store(&b, deref_ssa(&b, img_dst), coord_dst,
-                               nir_imm_int(&b, i), color[i], zero);
-      }
-   } else if (!options->src_is_msaa && options->dst_is_msaa) {
-      /* MSAA upsampling. */
-      assert(num_samples > 1);
-      if (!options->is_clear)
-         color = nir_image_deref_load(&b, 4, bit_size, deref_ssa(&b, img_src), coord_src, zero, zero);
+   /* Apply the blit output modifiers, once per sample.  */
+   foreach_sample(src_samples, i) {
+      color[i] = apply_blit_output_modifiers(&b, color[i], options);
+   }
 
-      color = apply_blit_output_modifiers(&b, color, options);
-      for (unsigned i = 0; i < num_samples; i++) {
-         nir_image_deref_store(&b, deref_ssa(&b, img_dst), coord_dst,
-                               nir_imm_int(&b, i), color, zero);
+   /* Initialize dst coordinates, one vector per pixel. */
+   foreach_sample(dst_samples, i) {
+      coord_dst[i] = base_coord_dst;
+      if (options->dst_is_1d)
+         coord_dst[i] = nir_swizzle(&b, coord_dst[i], swizzle_xz, 4);
+      if (options->dst_is_msaa) {
+         coord_dst[i] = nir_vector_insert_imm(&b, coord_dst[i],
+                                              nir_imm_int(&b, i),
+                                              num_dst_coords - 1);
       }
-   } else {
-      /* Non-MSAA copy or read sample 0 only. */
-      /* src2 = sample_index (zero), src3 = lod (zero) */
-      assert(num_samples == 1);
-      if (!options->is_clear)
-         color = nir_image_deref_load(&b, 4, bit_size, deref_ssa(&b, img_src), coord_src, zero, zero);
+   }
 
-      color = apply_blit_output_modifiers(&b, color, options);
-      nir_image_deref_store(&b, deref_ssa(&b, img_dst), coord_dst, zero, color, zero);
+   /* We don't want the computation of dst coordinates to be interleaved with stores. */
+   if (dst_samples > 1)
+      optimization_barrier_vgpr_array(sctx, &b, coord_dst, dst_samples, num_dst_coords);
+
+   /* We don't want the application of blit output modifiers to be interleaved with stores. */
+   if (!options->is_clear && MIN2(src_samples, dst_samples) > 1) {
+      optimization_barrier_vgpr_array(sctx, &b, color, src_samples,
+                                      options->last_dst_channel + 1);
+   }
+
+   /* Store the pixels, one per sample. */
+   foreach_sample(dst_samples, i) {
+      nir_bindless_image_store(&b, img_dst_desc, coord_dst[i],
+                               nir_channel(&b, coord_dst[i], num_dst_coords - 1),
+                               src_samples > 1 ? color[i] : color[i / dst_samples], zero,
+                               .image_dim = glsl_get_sampler_dim(img_type[1]),
+                               .image_array = glsl_sampler_type_is_array(img_type[1]));
    }
 
    if (options->has_start_xyz)

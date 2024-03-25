@@ -1190,11 +1190,13 @@ static void radeon_enc_intra_refresh(struct radeon_encoder *enc)
 
 static void radeon_enc_rc_per_pic(struct radeon_encoder *enc)
 {
+   fprintf(stderr, "Warning: Obsoleted rate control is being used due to outdated VCN firmware on system.\n");
+   fprintf(stderr, "Updating VCN firmware is highly recommended.\n");
    RADEON_ENC_BEGIN(enc->cmd.rc_per_pic);
-   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.qp);
-   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.min_qp_app);
-   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.max_qp_app);
-   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.max_au_size);
+   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.qp_obs);
+   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.min_qp_app_obs);
+   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.max_qp_app_obs);
+   RADEON_ENC_CS(enc->enc_pic.rc_per_pic.max_au_size_obs);
    RADEON_ENC_CS(enc->enc_pic.rc_per_pic.enabled_filler_data);
    RADEON_ENC_CS(enc->enc_pic.rc_per_pic.skip_frame_enable);
    RADEON_ENC_CS(enc->enc_pic.rc_per_pic.enforce_hrd);

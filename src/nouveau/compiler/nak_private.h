@@ -86,6 +86,15 @@ enum ENUM_PACKED nak_attr {
    NAK_ATTR_FRONT_FACE        = 0x3fc,
 };
 
+static inline uint16_t
+nak_attribute_attr_addr(gl_vert_attrib attrib)
+{
+   assert(attrib >= VERT_ATTRIB_GENERIC0);
+   return NAK_ATTR_GENERIC_START + (attrib - VERT_ATTRIB_GENERIC0) * 0x10;
+}
+
+uint16_t nak_varying_attr_addr(gl_varying_slot slot);
+
 enum ENUM_PACKED nak_sv {
    NAK_SV_LANE_ID          = 0x00,
    NAK_SV_VIRTCFG          = 0x02,

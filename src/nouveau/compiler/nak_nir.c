@@ -329,17 +329,10 @@ nak_preprocess_nir(nir_shader *nir, const struct nak_compiler *nak)
       OPT(nir, nir_lower_terminate_to_demote);
 }
 
-static uint16_t
-nak_attribute_attr_addr(gl_vert_attrib attrib)
-{
-   assert(attrib >= VERT_ATTRIB_GENERIC0);
-   return NAK_ATTR_GENERIC_START + (attrib - VERT_ATTRIB_GENERIC0) * 0x10;
-}
-
 static int
-type_size_vec4_bytes(const struct glsl_type *type, bool bindless)
+type_size_vec4(const struct glsl_type *type, bool bindless)
 {
-   return glsl_count_vec4_slots(type, false, bindless) * 16;
+   return glsl_count_vec4_slots(type, false, bindless);
 }
 
 static bool
@@ -347,18 +340,13 @@ nak_nir_lower_vs_inputs(nir_shader *nir)
 {
    bool progress = false;
 
-   nir_foreach_shader_in_variable(var, nir) {
-      var->data.driver_location =
-         nak_attribute_attr_addr(var->data.location);
-   }
-
-   progress |= OPT(nir, nir_lower_io, nir_var_shader_in, type_size_vec4_bytes,
-                        nir_lower_io_lower_64bit_to_32);
+   progress |= OPT(nir, nir_lower_io, nir_var_shader_in, type_size_vec4,
+                        nir_lower_io_lower_64bit_to_32_new);
 
    return progress;
 }
 
-static uint16_t
+uint16_t
 nak_varying_attr_addr(gl_varying_slot slot)
 {
    if (slot >= VARYING_SLOT_PATCH0) {
@@ -630,11 +618,8 @@ nak_nir_lower_varyings(nir_shader *nir, nir_variable_mode modes)
 
    assert(!(modes & ~(nir_var_shader_in | nir_var_shader_out)));
 
-   nir_foreach_variable_with_modes(var, nir, modes)
-      var->data.driver_location = nak_varying_attr_addr(var->data.location);
-
-   OPT(nir, nir_lower_io, modes, type_size_vec4_bytes,
-       nir_lower_io_lower_64bit_to_32);
+   OPT(nir, nir_lower_io, modes, type_size_vec4,
+       nir_lower_io_lower_64bit_to_32_new);
 
    return progress;
 }
@@ -802,6 +787,15 @@ struct lower_fs_input_ctx {
    const struct nak_fs_key *fs_key;
 };
 
+static uint16_t
+fs_input_intrin_addr(nir_intrinsic_instr *intrin)
+{
+   const nir_io_semantics sem = nir_intrinsic_io_semantics(intrin);
+   return nak_varying_attr_addr(sem.location) +
+          nir_src_as_uint(*nir_get_io_offset_src(intrin)) * 16 +
+          nir_intrinsic_component(intrin) * 4;
+}
+
 static bool
 lower_fs_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
 {
@@ -842,9 +836,7 @@ lower_fs_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
    case nir_intrinsic_load_input: {
       b->cursor = nir_before_instr(&intrin->instr);
 
-      uint16_t addr = nir_intrinsic_base(intrin) +
-                      nir_src_as_uint(intrin->src[0]) +
-                      nir_intrinsic_component(intrin) * 4;
+      const uint16_t addr = fs_input_intrin_addr(intrin);
 
       nir_def *res = load_fs_input(b, intrin->def.num_components,
                                    addr, ctx->nak);
@@ -908,10 +900,7 @@ lower_fs_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
    case nir_intrinsic_load_interpolated_input: {
       b->cursor = nir_before_instr(&intrin->instr);
 
-      const uint16_t addr = nir_intrinsic_base(intrin) +
-                            nir_src_as_uint(intrin->src[1]) +
-                            nir_intrinsic_component(intrin) * 4;
-
+      const uint16_t addr = fs_input_intrin_addr(intrin);
       nir_intrinsic_instr *bary = nir_src_as_intrinsic(intrin->src[0]);
 
       enum nak_interp_mode interp_mode;
@@ -989,12 +978,9 @@ lower_fs_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
    case nir_intrinsic_load_input_vertex: {
       b->cursor = nir_before_instr(&intrin->instr);
 
+      const uint16_t addr = fs_input_intrin_addr(intrin);
       unsigned vertex_id = nir_src_as_uint(intrin->src[0]);
       assert(vertex_id < 3);
-
-      const uint16_t addr = nir_intrinsic_base(intrin) +
-                            nir_src_as_uint(intrin->src[1]) +
-                            nir_intrinsic_component(intrin) * 4;
 
       nir_def *comps[NIR_MAX_VEC_COMPONENTS];
       for (unsigned c = 0; c < intrin->def.num_components; c++) {

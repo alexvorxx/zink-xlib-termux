@@ -295,6 +295,11 @@ nak_preprocess_nir(nir_shader *nir, const struct nak_compiler *nak)
 
    nir_validate_ssa_dominance(nir, "before nak_preprocess_nir");
 
+   if (nir->info.stage == MESA_SHADER_FRAGMENT) {
+      nir_lower_io_to_temporaries(nir, nir_shader_get_entrypoint(nir),
+                                  true /* outputs */, false /* inputs */);
+   }
+
    const nir_lower_tex_options tex_options = {
       .lower_txd_3d = true,
       .lower_txd_cube_map = true,

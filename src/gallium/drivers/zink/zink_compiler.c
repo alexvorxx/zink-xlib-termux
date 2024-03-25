@@ -2687,13 +2687,11 @@ fill_zero_reads(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    if (intr->def.bit_size == 64)
       num_components *= 2;
    nir_src *src_offset = nir_get_io_offset_src(intr);
-   if (nir_src_is_const(*src_offset)) {
-      unsigned slot_offset = nir_src_as_uint(*src_offset);
-      if (s.location + slot_offset != wc->slot)
-         return false;
-   } else if (s.location > wc->slot || s.location + s.num_slots <= wc->slot) {
+   if (!nir_src_is_const(*src_offset))
       return false;
-   }
+   unsigned slot_offset = nir_src_as_uint(*src_offset);
+   if (s.location + slot_offset != wc->slot)
+      return false;
    uint32_t readmask = BITFIELD_MASK(intr->num_components) << c;
    if (intr->def.bit_size == 64)
       readmask |= readmask << (intr->num_components + c);

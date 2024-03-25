@@ -62,6 +62,23 @@ struct spirv_builder {
    unsigned local_vars_begin;
 };
 
+struct spriv_tex_src {
+   SpvId coord;
+   SpvId proj;
+   SpvId bias;
+   SpvId lod;
+   SpvId dref;
+   SpvId dx;
+   SpvId dy;
+   SpvId const_offset;
+   SpvId offset;
+   SpvId sample;
+   SpvId tex_offset;
+   SpvId bindless;
+   SpvId min_lod;
+   bool sparse;
+};
+
 static inline SpvId
 spirv_builder_new_id(struct spirv_builder *b)
 {

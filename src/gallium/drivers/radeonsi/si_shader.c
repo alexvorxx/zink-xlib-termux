@@ -677,7 +677,12 @@ void si_init_shader_args(struct si_shader *shader, struct si_shader_args *args)
       unsigned cs_user_data_dwords =
          shader->selector->info.base.cs.user_data_components_amd;
       if (cs_user_data_dwords) {
-         ac_add_arg(&args->ac, AC_ARG_SGPR, cs_user_data_dwords, AC_ARG_INT, &args->cs_user_data);
+         ac_add_arg(&args->ac, AC_ARG_SGPR, MIN2(cs_user_data_dwords, 4), AC_ARG_INT,
+                    &args->cs_user_data[0]);
+         if (cs_user_data_dwords > 4) {
+            ac_add_arg(&args->ac, AC_ARG_SGPR, cs_user_data_dwords - 4, AC_ARG_INT,
+                       &args->cs_user_data[1]);
+         }
       }
 
       /* Some descriptors can be in user SGPRs. */

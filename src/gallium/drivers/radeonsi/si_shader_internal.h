@@ -75,7 +75,7 @@ struct si_shader_args {
    struct ac_arg color_start;
    /* CS */
    struct ac_arg block_size;
-   struct ac_arg cs_user_data;
+   struct ac_arg cs_user_data[2];
    struct ac_arg cs_shaderbuf[3];
    struct ac_arg cs_image[3];
 };

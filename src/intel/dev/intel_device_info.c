@@ -1219,7 +1219,11 @@ static const struct intel_device_info intel_device_info_arl_h = {
       .writeback_incoherent = PAT_ENTRY(0, WB, NONE),           \
       .writecombining = PAT_ENTRY(6, WC, NONE),                 \
    },                                                           \
-   .cooperative_matrix_configurations = { { 0 }, },             \
+   .cooperative_matrix_configurations = {                       \
+    { INTEL_CMAT_SCOPE_SUBGROUP, 8, 16, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT32, INTEL_CMAT_FLOAT32 }, \
+    { INTEL_CMAT_SCOPE_SUBGROUP, 8, 16, 32, INTEL_CMAT_SINT8, INTEL_CMAT_SINT8, INTEL_CMAT_SINT32, INTEL_CMAT_SINT32 },       \
+    { INTEL_CMAT_SCOPE_SUBGROUP, 8, 16, 32, INTEL_CMAT_UINT8, INTEL_CMAT_UINT8, INTEL_CMAT_UINT32, INTEL_CMAT_UINT32 },       \
+   },                                                           \
    .has_flat_ccs = true
 
 static const struct intel_device_info intel_device_info_bmg = {

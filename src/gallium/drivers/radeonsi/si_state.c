@@ -3132,6 +3132,7 @@ static void si_set_framebuffer_state(struct pipe_context *ctx,
    sctx->framebuffer.all_DCC_pipe_aligned = true;
    sctx->framebuffer.has_dcc_msaa = false;
    sctx->framebuffer.min_bytes_per_pixel = 0;
+   sctx->framebuffer.disable_vrs_flat_shading = false;
 
    for (i = 0; i < state->nr_cbufs; i++) {
       if (!state->cbufs[i])
@@ -3190,6 +3191,14 @@ static void si_set_framebuffer_state(struct pipe_context *ctx,
       if (!sctx->framebuffer.min_bytes_per_pixel ||
           tex->surface.bpe < sctx->framebuffer.min_bytes_per_pixel)
          sctx->framebuffer.min_bytes_per_pixel = tex->surface.bpe;
+
+      /* Disable VRS flat shading where it decreases performance.
+       * This gives the best results for slow clears for AMD_TEST=blitperf on Navi31.
+       */
+      if ((sctx->framebuffer.nr_samples == 8 && tex->surface.bpe != 2) ||
+          (tex->surface.thick_tiling && tex->surface.bpe == 4 &&
+           util_format_get_nr_components(surf->base.format) == 4))
+         sctx->framebuffer.disable_vrs_flat_shading = true;
    }
 
    struct si_texture *zstex = NULL;
@@ -3285,6 +3294,7 @@ static void si_set_framebuffer_state(struct pipe_context *ctx,
    si_ps_key_update_framebuffer_rasterizer_sample_shading(sctx);
    si_vs_ps_key_update_rast_prim_smooth_stipple(sctx);
    si_update_ps_inputs_read_or_disabled(sctx);
+   si_update_vrs_flat_shading(sctx);
    sctx->do_update_shaders = true;
 
    if (!sctx->decompression_enabled) {

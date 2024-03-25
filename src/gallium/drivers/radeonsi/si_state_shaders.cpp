@@ -3713,7 +3713,7 @@ void si_update_vrs_flat_shading(struct si_context *sctx)
       struct si_state_rasterizer *rs = sctx->queued.named.rasterizer;
       struct si_shader_info *info = &sctx->shader.ps.cso->info;
       bool allow_flat_shading =
-         info->allow_flat_shading &&
+         info->allow_flat_shading && !sctx->framebuffer.disable_vrs_flat_shading &&
          !rs->line_smooth && !rs->poly_smooth && !rs->poly_stipple_enable &&
          !rs->point_smooth && (rs->flatshade || !info->uses_interp_color);
 

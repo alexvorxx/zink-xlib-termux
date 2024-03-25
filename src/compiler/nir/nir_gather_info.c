@@ -442,8 +442,24 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader,
          slot_mask_16bit =
             BITFIELD_RANGE(semantics.location - VARYING_SLOT_VAR0_16BIT, num_slots);
       } else {
-         slot_mask = BITFIELD64_RANGE(semantics.location, semantics.num_slots);
-         assert(util_bitcount64(slot_mask) == semantics.num_slots);
+         unsigned num_slots = semantics.num_slots;
+         if (shader->options->compact_arrays &&
+             (instr->intrinsic != nir_intrinsic_load_input || shader->info.stage != MESA_SHADER_VERTEX)) {
+            /* clamp num_slots for compact arrays */
+            switch (semantics.location) {
+            case VARYING_SLOT_CLIP_DIST0:
+            case VARYING_SLOT_CLIP_DIST1:
+            case VARYING_SLOT_CULL_DIST0:
+            case VARYING_SLOT_CULL_DIST1:
+            case VARYING_SLOT_TESS_LEVEL_INNER:
+            case VARYING_SLOT_TESS_LEVEL_OUTER:
+               num_slots = DIV_ROUND_UP(num_slots, 4);
+               break;
+            default: break;
+            }
+         }
+         slot_mask = BITFIELD64_RANGE(semantics.location, num_slots);
+         assert(util_bitcount64(slot_mask) == num_slots);
       }
    }
 

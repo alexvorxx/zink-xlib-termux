@@ -1421,12 +1421,9 @@ static void si_clear_render_target(struct pipe_context *ctx, struct pipe_surface
                                    render_condition_enabled, true))
       return;
 
-   if (dst->texture->nr_samples <= 1 &&
-       (sctx->gfx_level >= GFX10 || !vi_dcc_enabled(sdst, dst->u.tex.level))) {
-      si_compute_clear_render_target(ctx, dst, color, dstx, dsty, width, height,
-                                     render_condition_enabled);
+   if (si_compute_clear_image(sctx, dst->texture, dst->format, dst->u.tex.level, &box, color,
+                              render_condition_enabled, true))
       return;
-   }
 
    si_gfx_clear_render_target(ctx, dst, color, dstx, dsty, width, height,
                               render_condition_enabled);

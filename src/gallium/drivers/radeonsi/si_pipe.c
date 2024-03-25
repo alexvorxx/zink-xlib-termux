@@ -280,10 +280,6 @@ static void si_destroy_context(struct pipe_context *context)
          }
       }
    }
-   if (sctx->cs_clear_render_target)
-      sctx->b.delete_compute_state(&sctx->b, sctx->cs_clear_render_target);
-   if (sctx->cs_clear_render_target_1d_array)
-      sctx->b.delete_compute_state(&sctx->b, sctx->cs_clear_render_target_1d_array);
    if (sctx->cs_clear_12bytes_buffer)
       sctx->b.delete_compute_state(&sctx->b, sctx->cs_clear_12bytes_buffer);
    for (unsigned i = 0; i < ARRAY_SIZE(sctx->cs_dcc_retile); i++) {

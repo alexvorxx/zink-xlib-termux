@@ -569,65 +569,6 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
    return create_shader_state(sctx, b.shader);
 }
 
-void *si_clear_render_target_shader(struct si_context *sctx, enum pipe_texture_target type)
-{
-   nir_def *address;
-   enum glsl_sampler_dim sampler_type;
-
-   const nir_shader_compiler_options *options =
-      sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_COMPUTE);
-
-   nir_builder b =
-   nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, options, "clear_render_target");
-   b.shader->info.num_ubos = 1;
-   b.shader->info.num_images = 1;
-   b.shader->num_uniforms = 2;
-
-   switch (type) {
-      case PIPE_TEXTURE_1D_ARRAY:
-         b.shader->info.workgroup_size[0] = 64;
-         b.shader->info.workgroup_size[1] = 1;
-         b.shader->info.workgroup_size[2] = 1;
-         sampler_type = GLSL_SAMPLER_DIM_1D;
-         address = get_global_ids(&b, 2);
-         break;
-      case PIPE_TEXTURE_2D_ARRAY:
-         b.shader->info.workgroup_size[0] = 8;
-         b.shader->info.workgroup_size[1] = 8;
-         b.shader->info.workgroup_size[2] = 1;
-         sampler_type = GLSL_SAMPLER_DIM_2D;
-         address = get_global_ids(&b, 3);
-         break;
-      default:
-         unreachable("unsupported texture target type");
-   }
-
-   const struct glsl_type *img_type = glsl_image_type(sampler_type, true, GLSL_TYPE_FLOAT);
-   nir_variable *output_img = nir_variable_create(b.shader, nir_var_image, img_type, "image");
-   output_img->data.image.format = PIPE_FORMAT_R32G32B32A32_FLOAT;
-
-   nir_def *zero = nir_imm_int(&b, 0);
-   nir_def *ubo = nir_load_ubo(&b, 4, 32, zero, zero, .range_base = 0, .range = 16);
-
-   /* TODO: No GL CTS tests for 1D arrays, relying on OpenCL CTS for now.
-    * As a sanity check, "OpenCL-CTS/test_conformance/images/clFillImage" tests should pass
-    */
-   if (type == PIPE_TEXTURE_1D_ARRAY) {
-      unsigned swizzle[4] = {0, 2, 0, 0};
-      ubo = nir_swizzle(&b, ubo, swizzle, 4);
-   }
-
-   address = nir_iadd(&b, address, ubo);
-   nir_def *coord = nir_pad_vector(&b, address, 4);
-
-   nir_def *data = nir_load_ubo(&b, 4, 32, zero, nir_imm_int(&b, 16), .range_base = 16, .range = 16);
-
-   nir_image_deref_store(&b, &nir_build_deref_var(&b, output_img)->def, coord, zero, data, zero,
-                         .image_dim = sampler_type, .image_array = true);
-
-   return create_shader_state(sctx, b.shader);
-}
-
 /* Store the clear color at the beginning of every 256B block. This is required when we clear DCC
  * to GFX11_DCC_CLEAR_SINGLE.
  */

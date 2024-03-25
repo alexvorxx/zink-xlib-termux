@@ -3234,8 +3234,6 @@ VkResult radv_create_buffer(struct radv_device *device, const VkBufferCreateInfo
                             const VkAllocationCallbacks *pAllocator, VkBuffer *pBuffer, bool is_internal);
 VkResult radv_alloc_memory(struct radv_device *device, const VkMemoryAllocateInfo *pAllocateInfo,
                            const VkAllocationCallbacks *pAllocator, VkDeviceMemory *pMem, bool is_internal);
-VkResult radv_create_query_pool(struct radv_device *device, const VkQueryPoolCreateInfo *pCreateInfo,
-                                const VkAllocationCallbacks *pAllocator, VkQueryPool *pQueryPool, bool is_internal);
 VkResult radv_create_event(struct radv_device *device, const VkEventCreateInfo *pCreateInfo,
                            const VkAllocationCallbacks *pAllocator, VkEvent *pEvent, bool is_internal);
 

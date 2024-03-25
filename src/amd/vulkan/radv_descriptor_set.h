@@ -228,8 +228,4 @@ void radv_pipeline_layout_add_set(struct radv_pipeline_layout *layout, uint32_t 
 void radv_pipeline_layout_hash(struct radv_pipeline_layout *layout);
 void radv_pipeline_layout_finish(struct radv_device *device, struct radv_pipeline_layout *layout);
 
-VkResult radv_create_descriptor_pool(struct radv_device *device, const VkDescriptorPoolCreateInfo *pCreateInfo,
-                                     const VkAllocationCallbacks *pAllocator, VkDescriptorPool *pDescriptorPool,
-                                     bool is_internal);
-
 #endif /* RADV_DESCRIPTOR_SET_H */

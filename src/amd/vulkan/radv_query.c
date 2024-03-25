@@ -1209,7 +1209,7 @@ radv_destroy_query_pool(struct radv_device *device, const VkAllocationCallbacks 
    vk_free2(&device->vk.alloc, pAllocator, pool);
 }
 
-VkResult
+static VkResult
 radv_create_query_pool(struct radv_device *device, const VkQueryPoolCreateInfo *pCreateInfo,
                        const VkAllocationCallbacks *pAllocator, VkQueryPool *pQueryPool, bool is_internal)
 {

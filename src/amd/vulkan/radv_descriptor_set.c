@@ -792,7 +792,7 @@ radv_destroy_descriptor_pool(struct radv_device *device, const VkAllocationCallb
    vk_free2(&device->vk.alloc, pAllocator, pool);
 }
 
-VkResult
+static VkResult
 radv_create_descriptor_pool(struct radv_device *device, const VkDescriptorPoolCreateInfo *pCreateInfo,
                             const VkAllocationCallbacks *pAllocator, VkDescriptorPool *pDescriptorPool,
                             bool is_internal)

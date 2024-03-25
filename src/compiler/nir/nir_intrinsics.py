@@ -2222,7 +2222,11 @@ system_value("ray_query_global_intel", 1, bit_sizes=[64])
 # The accumulator is source 0 because that is the source the intrinsic
 # infrastructure in NIR uses to determine the number of components in the
 # result.
-intrinsic("dpas_intel", dest_comp=0, src_comp=[0, 0, 0],
+#
+# The number of components for the second source is -1 to avoid validation of
+# its value. Some supported configurations will have the component count of
+# that matrix different than the others.
+intrinsic("dpas_intel", dest_comp=0, src_comp=[0, -1, 0],
           indices=[DEST_TYPE, SRC_TYPE, SATURATE, SYSTOLIC_DEPTH, REPEAT_COUNT],
           flags=[CAN_ELIMINATE])
 

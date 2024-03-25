@@ -85,15 +85,9 @@ radv_sparse_buffer_bind_memory(struct radv_device *device, const VkSparseBufferM
          }
       }
       if (size) {
-         result = device->ws->buffer_virtual_bind(device->ws, buffer->bo, resourceOffset, size, mem ? mem->bo : NULL,
-                                                  memoryOffset);
+         result = radv_bo_virtual_bind(device, buffer->bo, resourceOffset, size, mem ? mem->bo : NULL, memoryOffset);
          if (result != VK_SUCCESS)
             return result;
-
-         if (bind->pBinds[i].memory)
-            radv_rmv_log_sparse_add_residency(device, buffer->bo, resourceOffset);
-         else
-            radv_rmv_log_sparse_remove_residency(device, buffer->bo, resourceOffset);
       }
       mem = cur_mem;
       resourceOffset = bind->pBinds[i].resourceOffset;
@@ -101,13 +95,7 @@ radv_sparse_buffer_bind_memory(struct radv_device *device, const VkSparseBufferM
       memoryOffset = bind->pBinds[i].memoryOffset;
    }
    if (size) {
-      result = device->ws->buffer_virtual_bind(device->ws, buffer->bo, resourceOffset, size, mem ? mem->bo : NULL,
-                                               memoryOffset);
-
-      if (mem)
-         radv_rmv_log_sparse_add_residency(device, buffer->bo, resourceOffset);
-      else
-         radv_rmv_log_sparse_remove_residency(device, buffer->bo, resourceOffset);
+      result = radv_bo_virtual_bind(device, buffer->bo, resourceOffset, size, mem ? mem->bo : NULL, memoryOffset);
    }
 
    return result;
@@ -125,16 +113,10 @@ radv_sparse_image_opaque_bind_memory(struct radv_device *device, const VkSparseI
       if (bind->pBinds[i].memory != VK_NULL_HANDLE)
          mem = radv_device_memory_from_handle(bind->pBinds[i].memory);
 
-      result =
-         device->ws->buffer_virtual_bind(device->ws, image->bindings[0].bo, bind->pBinds[i].resourceOffset,
-                                         bind->pBinds[i].size, mem ? mem->bo : NULL, bind->pBinds[i].memoryOffset);
+      result = radv_bo_virtual_bind(device, image->bindings[0].bo, bind->pBinds[i].resourceOffset, bind->pBinds[i].size,
+                                    mem ? mem->bo : NULL, bind->pBinds[i].memoryOffset);
       if (result != VK_SUCCESS)
          return result;
-
-      if (bind->pBinds[i].memory)
-         radv_rmv_log_sparse_add_residency(device, image->bindings[0].bo, bind->pBinds[i].resourceOffset);
-      else
-         radv_rmv_log_sparse_remove_residency(device, image->bindings[0].bo, bind->pBinds[i].resourceOffset);
    }
 
    return VK_SUCCESS;
@@ -192,16 +174,9 @@ radv_sparse_image_bind_memory(struct radv_device *device, const VkSparseImageMem
 
       if (whole_subres) {
          uint64_t size = (uint64_t)aligned_extent_width * aligned_extent_height * aligned_extent_depth * bs;
-         result = device->ws->buffer_virtual_bind(device->ws, image->bindings[0].bo, offset, size, mem ? mem->bo : NULL,
-                                                  mem_offset);
+         result = radv_bo_virtual_bind(device, image->bindings[0].bo, offset, size, mem ? mem->bo : NULL, mem_offset);
          if (result != VK_SUCCESS)
             return result;
-
-         if (bind->pBinds[i].memory)
-            radv_rmv_log_sparse_add_residency(device, image->bindings[0].bo, offset);
-         else
-            radv_rmv_log_sparse_remove_residency(device, image->bindings[0].bo, offset);
-
       } else {
          uint32_t img_y_increment = pitch * bs * surface->prt_tile_depth;
          uint32_t mem_y_increment = aligned_extent_width * bs * surface->prt_tile_depth;
@@ -212,16 +187,10 @@ radv_sparse_image_bind_memory(struct radv_device *device, const VkSparseImageMem
             for (unsigned y = 0; y < bind_extent.height; y += surface->prt_tile_height) {
                uint64_t bo_offset = offset + (uint64_t)img_y_increment * y;
 
-               result = device->ws->buffer_virtual_bind(
-                  device->ws, image->bindings[0].bo, bo_offset, size, mem ? mem->bo : NULL,
-                  mem_offset + (uint64_t)mem_y_increment * y + mem_z_increment * z);
+               result = radv_bo_virtual_bind(device, image->bindings[0].bo, bo_offset, size, mem ? mem->bo : NULL,
+                                             mem_offset + (uint64_t)mem_y_increment * y + mem_z_increment * z);
                if (result != VK_SUCCESS)
                   return result;
-
-               if (bind->pBinds[i].memory)
-                  radv_rmv_log_sparse_add_residency(device, image->bindings[0].bo, bo_offset);
-               else
-                  radv_rmv_log_sparse_remove_residency(device, image->bindings[0].bo, bo_offset);
             }
          }
       }

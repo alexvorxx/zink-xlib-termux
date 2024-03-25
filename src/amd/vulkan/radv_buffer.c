@@ -286,3 +286,22 @@ radv_bo_destroy(struct radv_device *device, struct radeon_winsys_bo *bo)
 
    ws->buffer_destroy(ws, bo);
 }
+
+VkResult
+radv_bo_virtual_bind(struct radv_device *device, struct radeon_winsys_bo *parent, uint64_t offset, uint64_t size,
+                     struct radeon_winsys_bo *bo, uint64_t bo_offset)
+{
+   struct radeon_winsys *ws = device->ws;
+   VkResult result;
+
+   result = ws->buffer_virtual_bind(ws, parent, offset, size, bo, bo_offset);
+   if (result != VK_SUCCESS)
+      return result;
+
+   if (bo)
+      radv_rmv_log_sparse_add_residency(device, parent, offset);
+   else
+      radv_rmv_log_sparse_remove_residency(device, parent, offset);
+
+   return VK_SUCCESS;
+}

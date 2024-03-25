@@ -1395,9 +1395,10 @@ enum anv_gfx_state_bits {
    ANV_GFX_STATE_TASK_REDISTRIB,
    /* Dynamic states */
    ANV_GFX_STATE_BLEND_STATE, /* Just the dynamic state structure */
-   ANV_GFX_STATE_BLEND_STATE_POINTERS, /* The pointer to the dynamic state */
+   ANV_GFX_STATE_BLEND_STATE_PTR, /* The pointer to the dynamic state */
    ANV_GFX_STATE_CLIP,
    ANV_GFX_STATE_CC_STATE,
+   ANV_GFX_STATE_CC_STATE_PTR,
    ANV_GFX_STATE_CPS,
    ANV_GFX_STATE_DEPTH_BOUNDS,
    ANV_GFX_STATE_INDEX_BUFFER,
@@ -1415,6 +1416,7 @@ enum anv_gfx_state_bits {
    ANV_GFX_STATE_VF_TOPOLOGY,
    ANV_GFX_STATE_VFG,
    ANV_GFX_STATE_VIEWPORT_CC,
+   ANV_GFX_STATE_VIEWPORT_CC_PTR,
    ANV_GFX_STATE_VIEWPORT_SF_CLIP,
    ANV_GFX_STATE_WM,
    ANV_GFX_STATE_WM_DEPTH_STENCIL,
@@ -1458,7 +1460,9 @@ struct anv_gfx_dynamic_state {
          uint32_t DestinationAlphaBlendFactor;
          uint32_t AlphaBlendFunction;
       } rts[MAX_RTS];
-  } blend;
+
+      struct anv_state state;
+   } blend;
 
    /* 3DSTATE_CC_STATE_POINTERS */
    struct {
@@ -1466,6 +1470,8 @@ struct anv_gfx_dynamic_state {
       float BlendConstantColorGreen;
       float BlendConstantColorBlue;
       float BlendConstantColorAlpha;
+
+      struct anv_state state;
    } cc;
 
    /* 3DSTATE_CLIP */
@@ -1607,6 +1613,8 @@ struct anv_gfx_dynamic_state {
          float MinimumDepth;
          float MaximumDepth;
       } elem[MAX_VIEWPORTS];
+
+      struct anv_state state;
    } vp_cc;
 
    /* 3DSTATE_VIEWPORT_STATE_POINTERS_SF_CLIP */
@@ -3609,11 +3617,6 @@ struct anv_cmd_graphics_state {
 
    struct vk_vertex_input_state vertex_input;
    struct vk_sample_locations_state sample_locations;
-
-   /**
-    * The latest BLEND_STATE structure packed in dynamic state heap
-    */
-   struct anv_state blend_states;
 
    bool object_preemption;
    bool has_uint_rt;

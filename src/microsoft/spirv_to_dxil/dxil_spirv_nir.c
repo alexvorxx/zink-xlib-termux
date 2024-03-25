@@ -213,6 +213,8 @@ lower_shader_system_values(struct nir_builder *builder, nir_instr *instr,
          offsetof(struct dxil_spirv_compute_runtime_data, base_group_x);
       break;
    case nir_intrinsic_load_first_vertex:
+      if (conf->first_vertex_and_base_instance_mode == DXIL_SPIRV_SYSVAL_TYPE_NATIVE)
+         return false;
       offset = offsetof(struct dxil_spirv_vertex_runtime_data, first_vertex);
       break;
    case nir_intrinsic_load_is_indexed_draw:
@@ -220,6 +222,8 @@ lower_shader_system_values(struct nir_builder *builder, nir_instr *instr,
          offsetof(struct dxil_spirv_vertex_runtime_data, is_indexed_draw);
       break;
    case nir_intrinsic_load_base_instance:
+      if (conf->first_vertex_and_base_instance_mode == DXIL_SPIRV_SYSVAL_TYPE_NATIVE)
+         return false;
       offset = offsetof(struct dxil_spirv_vertex_runtime_data, base_instance);
       break;
    case nir_intrinsic_load_draw_id:
@@ -887,7 +891,7 @@ dxil_spirv_nir_passes(nir_shader *nir,
    NIR_PASS_V(nir, nir_lower_system_values);
 
    nir_lower_compute_system_values_options compute_options = {
-      .has_base_workgroup_id = !conf->zero_based_compute_workgroup_id,
+      .has_base_workgroup_id = conf->workgroup_id_mode != DXIL_SPIRV_SYSVAL_TYPE_ZERO,
    };
    NIR_PASS_V(nir, nir_lower_compute_system_values, &compute_options);
    NIR_PASS_V(nir, dxil_nir_lower_subgroup_id);
@@ -917,7 +921,7 @@ dxil_spirv_nir_passes(nir_shader *nir,
       nir->info.fs.uses_sample_shading = true;
    }
 
-   if (conf->zero_based_vertex_instance_id) {
+   if (conf->first_vertex_and_base_instance_mode == DXIL_SPIRV_SYSVAL_TYPE_ZERO) {
       // vertex_id and instance_id should have already been transformed to
       // base zero before spirv_to_dxil was called. Therefore, we can zero out
       // base/firstVertex/Instance.

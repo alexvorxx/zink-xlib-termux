@@ -141,6 +141,16 @@ enum dxil_spirv_yz_flip_mode {
 
 #define DXIL_SPIRV_MAX_VIEWPORT 16
 
+enum dxil_spirv_sysval_type {
+   // The sysval can be inlined in the shader as a constant zero
+   DXIL_SPIRV_SYSVAL_TYPE_ZERO,
+   // The sysval has a supported DXIL equivalent
+   DXIL_SPIRV_SYSVAL_TYPE_NATIVE,
+   // The sysval might be nonzero and has no DXIL equivalent, so it
+   // will need to be provided by the runtime_data constant buffer
+   DXIL_SPIRV_SYSVAL_TYPE_RUNTIME_DATA,
+};
+
 struct dxil_spirv_runtime_conf {
    struct {
       uint32_t register_space;
@@ -152,11 +162,8 @@ struct dxil_spirv_runtime_conf {
       uint32_t base_shader_register;
    } push_constant_cbv;
 
-   // Set true if vertex and instance ids have already been converted to
-   // zero-based. Otherwise, runtime_data will be required to lower them.
-   bool zero_based_vertex_instance_id;
-   // Set true if workgroup base is known to be zero
-   bool zero_based_compute_workgroup_id;
+   enum dxil_spirv_sysval_type first_vertex_and_base_instance_mode;
+   enum dxil_spirv_sysval_type workgroup_id_mode;
 
    struct {
       // mode != DXIL_SPIRV_YZ_FLIP_NONE only valid on vertex/geometry stages.

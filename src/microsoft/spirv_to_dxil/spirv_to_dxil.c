@@ -69,7 +69,7 @@ spirv_to_dxil(const uint32_t *words, size_t word_count,
    dxil_get_nir_compiler_options(&nir_options, conf->shader_model_max, supported_bit_sizes, supported_bit_sizes);
    // We will manually handle base_vertex when vertex_id and instance_id have
    // have been already converted to zero-base.
-   nir_options.lower_base_vertex = !conf->zero_based_vertex_instance_id;
+   nir_options.lower_base_vertex = conf->first_vertex_and_base_instance_mode != DXIL_SPIRV_SYSVAL_TYPE_ZERO;
 
    nir_shader *nir = spirv_to_nir(
       words, word_count, (struct nir_spirv_specialization *)specializations,

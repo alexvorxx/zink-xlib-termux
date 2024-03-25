@@ -1174,6 +1174,27 @@ enum tess_primitive_mode
    TESS_PRIMITIVE_ISOLINES,
 };
 
+static inline void
+mesa_count_tess_level_components(const enum tess_primitive_mode mode,
+                                 unsigned *outer, unsigned *inner)
+{
+   switch (mode) {
+   case TESS_PRIMITIVE_ISOLINES:
+      *outer = 2;
+      *inner = 0;
+      break;
+   case TESS_PRIMITIVE_TRIANGLES:
+      *outer = 3;
+      *inner = 1;
+      break;
+   case TESS_PRIMITIVE_QUADS:
+   default:
+      *outer = 4;
+      *inner = 2;
+      break;
+   }
+}
+
 /**
  * Mesa primitive types for both GL and Vulkan:
  */
@@ -1245,7 +1266,7 @@ mesa_vertices_per_prim(enum mesa_prim prim)
  * vertex count.
  * Parts of the pipline are invoked once for each triangle in
  * triangle strip, triangle fans and triangles and once
- * for each line in line strip, line loop, lines. Also 
+ * for each line in line strip, line loop, lines. Also
  * statistics depend on knowing the exact number of decomposed
  * primitives for a set of vertices.
  */

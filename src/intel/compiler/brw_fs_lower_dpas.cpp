@@ -139,7 +139,7 @@ int8_using_dp4a(const fs_builder &bld, fs_inst *inst)
    const fs_reg src1 = retype(inst->src[1], src1_type);
    const fs_reg src2 = retype(inst->src[2], src2_type);
 
-   const unsigned dest_stride = REG_SIZE;
+   const unsigned dest_stride = reg_unit(bld.shader->devinfo) * REG_SIZE;
 
    for (unsigned r = 0; r < inst->rcount; r++) {
       if (!src0.is_null()) {
@@ -152,8 +152,8 @@ int8_using_dp4a(const fs_builder &bld, fs_inst *inst)
       for (unsigned s = 0; s < inst->sdepth; s++) {
          bld.DP4A(dest,
                   dest,
-                  byte_offset(src1, s * REG_SIZE),
-                  component(byte_offset(src2, r * REG_SIZE), s))
+                  byte_offset(src1, s * inst->exec_size * 4),
+                  component(byte_offset(src2, r * inst->sdepth * 4), s))
             ->saturate = inst->saturate;
       }
 
@@ -279,7 +279,8 @@ brw_fs_lower_dpas(fs_visitor &v)
       if (inst->opcode != BRW_OPCODE_DPAS)
          continue;
 
-      const fs_builder bld = fs_builder(&v, block, inst).group(8, 0).exec_all();
+      const unsigned exec_size = v.devinfo->ver >= 20 ? 16 : 8;
+      const fs_builder bld = fs_builder(&v, block, inst).group(exec_size, 0).exec_all();
 
       if (brw_type_is_float(inst->dst.type)) {
          f16_using_mac(bld, inst);

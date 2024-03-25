@@ -931,12 +931,18 @@ struct dzn_pipeline {
 
 extern const struct vk_pipeline_cache_object_ops dzn_cached_blob_ops;
 
-enum dzn_indirect_draw_cmd_sig_type {
-   DZN_INDIRECT_DRAW_CMD_SIG,
-   DZN_INDIRECT_INDEXED_DRAW_CMD_SIG,
-   DZN_INDIRECT_DRAW_TRIANGLE_FAN_CMD_SIG,
-   DZN_NUM_INDIRECT_DRAW_CMD_SIGS,
+struct dzn_indirect_draw_cmd_sig_key {
+   union {
+      struct {
+         uint8_t indexed : 1;
+         uint8_t draw_params : 1;
+         uint8_t draw_id : 1;
+         uint8_t triangle_fan : 1;
+      };
+      uint8_t value;
+   };
 };
+#define DZN_NUM_INDIRECT_DRAW_CMD_SIGS (1 << 4)
 
 struct dzn_graphics_pipeline {
    struct dzn_pipeline base;
@@ -1031,7 +1037,7 @@ dzn_graphics_pipeline_get_state(struct dzn_graphics_pipeline *pipeline,
 
 ID3D12CommandSignature *
 dzn_graphics_pipeline_get_indirect_cmd_sig(struct dzn_graphics_pipeline *pipeline,
-                                           enum dzn_indirect_draw_cmd_sig_type cmd_sig_type);
+                                           struct dzn_indirect_draw_cmd_sig_key key);
 
 VkFormat dzn_graphics_pipeline_patch_vi_format(VkFormat format);
 

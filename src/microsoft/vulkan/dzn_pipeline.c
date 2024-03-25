@@ -245,7 +245,8 @@ dzn_pipeline_get_nir_shader(struct dzn_device *device,
          .register_space = DZN_REGISTER_SPACE_PUSH_CONSTANT,
          .base_shader_register = 0,
       },
-      .first_vertex_and_base_instance_mode = DXIL_SPIRV_SYSVAL_TYPE_RUNTIME_DATA,
+      .first_vertex_and_base_instance_mode = pdev->options21.ExtendedCommandInfoSupported ?
+            DXIL_SPIRV_SYSVAL_TYPE_NATIVE : DXIL_SPIRV_SYSVAL_TYPE_RUNTIME_DATA,
       .workgroup_id_mode = DXIL_SPIRV_SYSVAL_TYPE_RUNTIME_DATA,
       .yz_flip = {
          .mode = options->yz_flip_mode,
@@ -2247,73 +2248,91 @@ dzn_graphics_pipeline_get_state(struct dzn_graphics_pipeline *pipeline,
 
 ID3D12CommandSignature *
 dzn_graphics_pipeline_get_indirect_cmd_sig(struct dzn_graphics_pipeline *pipeline,
-                                           enum dzn_indirect_draw_cmd_sig_type type)
+                                           struct dzn_indirect_draw_cmd_sig_key key)
 {
-   assert(type < DZN_NUM_INDIRECT_DRAW_CMD_SIGS);
+   assert(key.value < DZN_NUM_INDIRECT_DRAW_CMD_SIGS);
 
-   struct dzn_device *device =
-      container_of(pipeline->base.base.device, struct dzn_device, vk);
-   ID3D12CommandSignature *cmdsig = pipeline->indirect_cmd_sigs[type];
+   struct dzn_device *device = container_of(pipeline->base.base.device, struct dzn_device, vk);
+   ID3D12CommandSignature *cmdsig = pipeline->indirect_cmd_sigs[key.value];
 
    if (cmdsig)
       return cmdsig;
 
-   bool triangle_fan = type == DZN_INDIRECT_DRAW_TRIANGLE_FAN_CMD_SIG;
-   bool indexed = type == DZN_INDIRECT_INDEXED_DRAW_CMD_SIG || triangle_fan;
-
    uint32_t cmd_arg_count = 0;
    D3D12_INDIRECT_ARGUMENT_DESC cmd_args[DZN_INDIRECT_CMD_SIG_MAX_ARGS];
+   uint32_t stride = 0;
 
-   if (triangle_fan) {
+   if (key.triangle_fan) {
+      assert(key.indexed);
       cmd_args[cmd_arg_count++] = (D3D12_INDIRECT_ARGUMENT_DESC) {
          .Type = D3D12_INDIRECT_ARGUMENT_TYPE_INDEX_BUFFER_VIEW,
       };
+      stride += sizeof(D3D12_INDEX_BUFFER_VIEW);
+   }
+
+   if (key.draw_params) {
+      cmd_args[cmd_arg_count++] = (D3D12_INDIRECT_ARGUMENT_DESC){
+         .Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT,
+         .Constant = {
+            .RootParameterIndex = pipeline->base.root.sysval_cbv_param_idx,
+            .DestOffsetIn32BitValues = offsetof(struct dxil_spirv_vertex_runtime_data, first_vertex) / 4,
+            .Num32BitValuesToSet = 2,
+         },
+      };
+      stride += sizeof(uint32_t) * 2;
+   }
+
+   if (key.draw_id) {
+      struct dzn_physical_device *pdev = container_of(device->vk.physical, struct dzn_physical_device, vk);
+      if (pdev->options21.ExecuteIndirectTier >= D3D12_EXECUTE_INDIRECT_TIER_1_1) {
+         cmd_args[cmd_arg_count++] = (D3D12_INDIRECT_ARGUMENT_DESC){
+            .Type = D3D12_INDIRECT_ARGUMENT_TYPE_INCREMENTING_CONSTANT,
+            .IncrementingConstant = {
+               .RootParameterIndex = pipeline->base.root.sysval_cbv_param_idx,
+               .DestOffsetIn32BitValues = offsetof(struct dxil_spirv_vertex_runtime_data, draw_id) / 4,
+            },
+         };
+      } else {
+         cmd_args[cmd_arg_count++] = (D3D12_INDIRECT_ARGUMENT_DESC){
+            .Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT,
+            .Constant = {
+               .RootParameterIndex = pipeline->base.root.sysval_cbv_param_idx,
+               .DestOffsetIn32BitValues = offsetof(struct dxil_spirv_vertex_runtime_data, draw_id) / 4,
+               .Num32BitValuesToSet = 1,
+            },
+         };
+         stride += sizeof(uint32_t);
+      }
    }
 
    cmd_args[cmd_arg_count++] = (D3D12_INDIRECT_ARGUMENT_DESC) {
-      .Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT,
-      .Constant = {
-         .RootParameterIndex = pipeline->base.root.sysval_cbv_param_idx,
-         .DestOffsetIn32BitValues = offsetof(struct dxil_spirv_vertex_runtime_data, first_vertex) / 4,
-         .Num32BitValuesToSet = 2,
-      },
-   };
-
-   cmd_args[cmd_arg_count++] = (D3D12_INDIRECT_ARGUMENT_DESC) {
-      .Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT,
-      .Constant = {
-         .RootParameterIndex = pipeline->base.root.sysval_cbv_param_idx,
-         .DestOffsetIn32BitValues = offsetof(struct dxil_spirv_vertex_runtime_data, draw_id) / 4,
-         .Num32BitValuesToSet = 1,
-      },
-   };
-
-   cmd_args[cmd_arg_count++] = (D3D12_INDIRECT_ARGUMENT_DESC) {
-      .Type = indexed ?
+      .Type = key.indexed ?
               D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED :
               D3D12_INDIRECT_ARGUMENT_TYPE_DRAW,
    };
+   stride += key.indexed ? sizeof(D3D12_DRAW_INDEXED_ARGUMENTS) :
+                           sizeof(D3D12_DRAW_ARGUMENTS);
 
    assert(cmd_arg_count <= ARRAY_SIZE(cmd_args));
    assert(offsetof(struct dxil_spirv_vertex_runtime_data, first_vertex) == 0);
 
    D3D12_COMMAND_SIGNATURE_DESC cmd_sig_desc = {
-      .ByteStride =
-         triangle_fan ?
-         sizeof(struct dzn_indirect_triangle_fan_draw_exec_params) :
-         sizeof(struct dzn_indirect_draw_exec_params),
+      .ByteStride = stride,
       .NumArgumentDescs = cmd_arg_count,
       .pArgumentDescs = cmd_args,
    };
+   /* A root signature should be specified iff root params are changing */
+   ID3D12RootSignature *root_sig = key.draw_id || key.draw_params ?
+      pipeline->base.root.sig : NULL;
    HRESULT hres =
       ID3D12Device1_CreateCommandSignature(device->dev, &cmd_sig_desc,
-                                           pipeline->base.root.sig,
+                                           root_sig,
                                            &IID_ID3D12CommandSignature,
                                            (void **)&cmdsig);
    if (FAILED(hres))
       return NULL;
 
-   pipeline->indirect_cmd_sigs[type] = cmdsig;
+   pipeline->indirect_cmd_sigs[key.value] = cmdsig;
    return cmdsig;
 }
 

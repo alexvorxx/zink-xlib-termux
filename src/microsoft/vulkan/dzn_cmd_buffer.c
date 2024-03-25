@@ -3785,6 +3785,7 @@ dzn_cmd_buffer_indirect_draw(struct dzn_cmd_buffer *cmdbuf,
                              bool indexed)
 {
    struct dzn_device *device = container_of(cmdbuf->vk.base.device, struct dzn_device, vk);
+   struct dzn_physical_device *pdev = container_of(device->vk.physical, struct dzn_physical_device, vk);
    struct dzn_graphics_pipeline *pipeline = (struct dzn_graphics_pipeline *)
       cmdbuf->state.bindpoint[VK_PIPELINE_BIND_POINT_GRAPHICS].pipeline;
    uint32_t min_draw_buf_stride =
@@ -3801,10 +3802,21 @@ dzn_cmd_buffer_indirect_draw(struct dzn_cmd_buffer *cmdbuf,
    uint32_t triangle_fan_index_buf_stride =
       dzn_cmd_buffer_triangle_fan_get_max_index_buf_size(cmdbuf, indexed) *
       sizeof(uint32_t);
+
+   struct dzn_indirect_draw_type draw_type;
+   draw_type.value = 0;
+   draw_type.indexed = indexed;
+   draw_type.indirect_count = count_buf != NULL;
+   draw_type.draw_params = pipeline->needs_draw_sysvals && !pdev->options21.ExtendedCommandInfoSupported;
+   draw_type.draw_id = max_draw_count > 1 && pdev->options21.ExecuteIndirectTier < D3D12_EXECUTE_INDIRECT_TIER_1_1;
+   draw_type.triangle_fan = triangle_fan_index_buf_stride > 0;
+   draw_type.triangle_fan_primitive_restart = draw_type.triangle_fan && prim_restart;
+
    uint32_t exec_buf_stride =
-      triangle_fan_index_buf_stride > 0 ?
-      sizeof(struct dzn_indirect_triangle_fan_draw_exec_params) :
-      sizeof(struct dzn_indirect_draw_exec_params);
+      (draw_type.triangle_fan ? sizeof(D3D12_INDEX_BUFFER_VIEW) : 0) +
+      (draw_type.draw_params ? sizeof(uint32_t) * 2 : 0) +
+      (draw_type.draw_id ? sizeof(uint32_t) : 0) +
+      min_draw_buf_stride;
    uint32_t triangle_fan_exec_buf_stride =
       sizeof(struct dzn_indirect_triangle_fan_rewrite_index_exec_params);
    uint32_t exec_buf_size = max_draw_count * exec_buf_stride;
@@ -3872,30 +3884,7 @@ dzn_cmd_buffer_indirect_draw(struct dzn_cmd_buffer *cmdbuf,
    else
       params_size = sizeof(struct dzn_indirect_draw_rewrite_params);
 
-   enum dzn_indirect_draw_type draw_type;
-
-   if (indexed && triangle_fan_index_buf_stride > 0) {
-      if (prim_restart && count_buf)
-         draw_type =  DZN_INDIRECT_INDEXED_DRAW_COUNT_TRIANGLE_FAN_PRIM_RESTART;
-      else if (prim_restart && !count_buf)
-         draw_type =  DZN_INDIRECT_INDEXED_DRAW_TRIANGLE_FAN_PRIM_RESTART;
-      else if (!prim_restart && count_buf)
-         draw_type = DZN_INDIRECT_INDEXED_DRAW_COUNT_TRIANGLE_FAN;
-      else
-         draw_type = DZN_INDIRECT_INDEXED_DRAW_TRIANGLE_FAN;
-   } else if (!indexed && triangle_fan_index_buf_stride > 0) {
-      draw_type = count_buf ?
-                  DZN_INDIRECT_DRAW_COUNT_TRIANGLE_FAN :
-                  DZN_INDIRECT_DRAW_TRIANGLE_FAN;
-   } else if (indexed) {
-      draw_type = count_buf ?
-                  DZN_INDIRECT_INDEXED_DRAW_COUNT :
-                  DZN_INDIRECT_INDEXED_DRAW;
-   } else {
-      draw_type = count_buf ? DZN_INDIRECT_DRAW_COUNT : DZN_INDIRECT_DRAW;
-   }
-
-   struct dzn_meta_indirect_draw *indirect_draw = &device->indirect_draws[draw_type];
+   struct dzn_meta_indirect_draw *indirect_draw = &device->indirect_draws[draw_type.value];
    uint32_t root_param_idx = 0;
 
    cmdbuf->state.bindpoint[VK_PIPELINE_BIND_POINT_COMPUTE].dirty |= DZN_CMD_BINDPOINT_DIRTY_PIPELINE;
@@ -4029,14 +4018,14 @@ dzn_cmd_buffer_indirect_draw(struct dzn_cmd_buffer *cmdbuf,
          DZN_CMD_BINDPOINT_DIRTY_PIPELINE;
    }
 
-   enum dzn_indirect_draw_cmd_sig_type cmd_sig_type =
-      triangle_fan_index_buf_stride > 0 ?
-      DZN_INDIRECT_DRAW_TRIANGLE_FAN_CMD_SIG :
-      indexed ?
-      DZN_INDIRECT_INDEXED_DRAW_CMD_SIG :
-      DZN_INDIRECT_DRAW_CMD_SIG;
+   struct dzn_indirect_draw_cmd_sig_key cmd_sig_key;
+   cmd_sig_key.value = 0;
+   cmd_sig_key.indexed = indexed;
+   cmd_sig_key.triangle_fan = draw_type.triangle_fan;
+   cmd_sig_key.draw_params = draw_type.draw_params;
+   cmd_sig_key.draw_id = max_draw_count > 1;
    ID3D12CommandSignature *cmdsig =
-      dzn_graphics_pipeline_get_indirect_cmd_sig(pipeline, cmd_sig_type);
+      dzn_graphics_pipeline_get_indirect_cmd_sig(pipeline, cmd_sig_key);
 
    if (!cmdsig) {
       vk_command_buffer_set_error(&cmdbuf->vk, VK_ERROR_OUT_OF_DEVICE_MEMORY);

@@ -1776,7 +1776,8 @@ get_var_slot_count(nir_shader *nir, nir_variable *var)
    if (nir_is_arrayed_io(var, nir->info.stage))
       type = glsl_get_array_element(type);
    unsigned slot_count = 0;
-   if (var->data.location >= VARYING_SLOT_VAR0)
+   if ((nir->info.stage == MESA_SHADER_VERTEX && var->data.mode == nir_var_shader_in && var->data.location >= VERT_ATTRIB_GENERIC0) ||
+       var->data.location >= VARYING_SLOT_VAR0)
       slot_count = glsl_count_vec4_slots(type, false, false);
    else if (glsl_type_is_array(type))
       slot_count = DIV_ROUND_UP(glsl_get_aoa_size(type), 4);

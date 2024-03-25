@@ -334,23 +334,6 @@ nak_preprocess_nir(nir_shader *nir, const struct nak_compiler *nak)
       OPT(nir, nir_lower_terminate_to_demote);
 }
 
-static int
-type_size_vec4(const struct glsl_type *type, bool bindless)
-{
-   return glsl_count_vec4_slots(type, false, bindless);
-}
-
-static bool
-nak_nir_lower_vs_inputs(nir_shader *nir)
-{
-   bool progress = false;
-
-   progress |= OPT(nir, nir_lower_io, nir_var_shader_in, type_size_vec4,
-                        nir_lower_io_lower_64bit_to_32_new);
-
-   return progress;
-}
-
 uint16_t
 nak_varying_attr_addr(gl_varying_slot slot)
 {
@@ -609,19 +592,6 @@ nak_nir_lower_system_values(nir_shader *nir, const struct nak_compiler *nak)
                                      (void *)nak);
 }
 
-static bool
-nak_nir_lower_varyings(nir_shader *nir, nir_variable_mode modes)
-{
-   bool progress = false;
-
-   assert(!(modes & ~(nir_var_shader_in | nir_var_shader_out)));
-
-   OPT(nir, nir_lower_io, modes, type_size_vec4,
-       nir_lower_io_lower_64bit_to_32_new);
-
-   return progress;
-}
-
 struct nak_xfb_info
 nak_xfb_from_nir(const struct nir_xfb_info *nir_xfb)
 {
@@ -687,20 +657,22 @@ nak_nir_lower_fs_outputs(nir_shader *nir)
    if (nir->info.outputs_written == 0)
       return false;
 
-   NIR_PASS_V(nir, nir_lower_io, nir_var_shader_out, type_size_vec4, 0);
+   bool progress = nir_shader_intrinsics_pass(nir, lower_fs_output_intrin,
+                                              nir_metadata_block_index |
+                                              nir_metadata_dominance,
+                                              NULL);
 
-   NIR_PASS_V(nir, nir_shader_intrinsics_pass, lower_fs_output_intrin,
-              nir_metadata_block_index | nir_metadata_dominance, NULL);
+   if (progress) {
+      /* We need a copy_fs_outputs_nv intrinsic so NAK knows where to place
+       * the final copy.  This needs to be in the last block, after all
+       * store_output intrinsics.
+       */
+      nir_function_impl *impl = nir_shader_get_entrypoint(nir);
+      nir_builder b = nir_builder_at(nir_after_impl(impl));
+      nir_copy_fs_outputs_nv(&b);
+   }
 
-   /* We need a copy_fs_outputs_nv intrinsic so NAK knows where to place the
-    * final copy.  This needs to be in the last block, after all store_output
-    * intrinsics.
-    */
-   nir_function_impl *impl = nir_shader_get_entrypoint(nir);
-   nir_builder b = nir_builder_at(nir_after_impl(impl));
-   nir_copy_fs_outputs_nv(&b);
-
-   return true;
+   return progress;
 }
 
 static bool
@@ -844,6 +816,12 @@ nir_shader_has_local_variables(const nir_shader *nir)
    return false;
 }
 
+static int
+type_size_vec4(const struct glsl_type *type, bool bindless)
+{
+   return glsl_count_vec4_slots(type, false, bindless);
+}
+
 void
 nak_postprocess_nir(nir_shader *nir,
                     const struct nak_compiler *nak,
@@ -914,33 +892,25 @@ nak_postprocess_nir(nir_shader *nir,
 
    switch (nir->info.stage) {
    case MESA_SHADER_VERTEX:
-      OPT(nir, nak_nir_lower_vs_inputs);
-      OPT(nir, nak_nir_lower_varyings, nir_var_shader_out);
-      OPT(nir, nir_opt_constant_folding);
-      OPT(nir, nak_nir_lower_vtg_io, nak);
-      break;
-
    case MESA_SHADER_TESS_CTRL:
    case MESA_SHADER_TESS_EVAL:
-      OPT(nir, nak_nir_lower_varyings, nir_var_shader_in | nir_var_shader_out);
+   case MESA_SHADER_GEOMETRY:
+      OPT(nir, nir_lower_io, nir_var_shader_in | nir_var_shader_out,
+          type_size_vec4, nir_lower_io_lower_64bit_to_32_new);
       OPT(nir, nir_opt_constant_folding);
       OPT(nir, nak_nir_lower_vtg_io, nak);
+      if (nir->info.stage == MESA_SHADER_GEOMETRY)
+         OPT(nir, nak_nir_lower_gs_intrinsics);
       break;
 
    case MESA_SHADER_FRAGMENT:
       OPT(nir, nir_lower_indirect_derefs,
           nir_var_shader_in | nir_var_shader_out, UINT32_MAX);
-      OPT(nir, nak_nir_lower_varyings, nir_var_shader_in);
+      OPT(nir, nir_lower_io, nir_var_shader_in | nir_var_shader_out,
+          type_size_vec4, nir_lower_io_lower_64bit_to_32_new);
       OPT(nir, nir_opt_constant_folding);
       OPT(nir, nak_nir_lower_fs_inputs, nak, fs_key);
       OPT(nir, nak_nir_lower_fs_outputs);
-      break;
-
-   case MESA_SHADER_GEOMETRY:
-      OPT(nir, nak_nir_lower_varyings, nir_var_shader_in | nir_var_shader_out);
-      OPT(nir, nir_opt_constant_folding);
-      OPT(nir, nak_nir_lower_vtg_io, nak);
-      OPT(nir, nak_nir_lower_gs_intrinsics);
       break;
 
    case MESA_SHADER_COMPUTE:

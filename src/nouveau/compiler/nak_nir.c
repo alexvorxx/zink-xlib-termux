@@ -687,8 +687,6 @@ nak_nir_lower_fs_outputs(nir_shader *nir)
    if (nir->info.outputs_written == 0)
       return false;
 
-   NIR_PASS_V(nir, nir_lower_io_arrays_to_elements_no_indirects, true);
-
    NIR_PASS_V(nir, nir_lower_io, nir_var_shader_out, type_size_vec4, 0);
 
    NIR_PASS_V(nir, nir_shader_intrinsics_pass, lower_fs_output_intrin,
@@ -930,7 +928,8 @@ nak_postprocess_nir(nir_shader *nir,
       break;
 
    case MESA_SHADER_FRAGMENT:
-      OPT(nir, nir_lower_indirect_derefs, nir_var_shader_in, UINT32_MAX);
+      OPT(nir, nir_lower_indirect_derefs,
+          nir_var_shader_in | nir_var_shader_out, UINT32_MAX);
       OPT(nir, nak_nir_lower_varyings, nir_var_shader_in);
       OPT(nir, nir_opt_constant_folding);
       OPT(nir, nak_nir_lower_fs_inputs, nak, fs_key);

@@ -512,6 +512,10 @@ radv_rmv_log_bo_allocate(struct radv_device *device, struct radeon_winsys_bo *bo
    if (!device->vk.memory_trace_data.is_enabled)
       return;
 
+   /* RMV doesn't seem to support GDS/OA domains. */
+   if (!(bo->initial_domain & RADEON_DOMAIN_VRAM_GTT))
+      return;
+
    struct vk_rmv_virtual_allocate_token token = {0};
    token.address = bo->va;
    /* If all VRAM is visible, no bo will be in invisible memory. */
@@ -530,6 +534,10 @@ void
 radv_rmv_log_bo_destroy(struct radv_device *device, struct radeon_winsys_bo *bo)
 {
    if (!device->vk.memory_trace_data.is_enabled)
+      return;
+
+   /* RMV doesn't seem to support GDS/OA domains. */
+   if (!(bo->initial_domain & RADEON_DOMAIN_VRAM_GTT))
       return;
 
    struct vk_rmv_virtual_free_token token = {0};

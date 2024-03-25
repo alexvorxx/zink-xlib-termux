@@ -23,7 +23,7 @@ struct NineDevice9;
 
 struct NineUnknown
 {
-    /* pointer to vtable (can be overriden outside gallium nine) */
+    /* pointer to vtable (can be overridden outside gallium nine) */
     void *vtable;
     /* pointer to internal vtable  */
     void *vtable_internal;

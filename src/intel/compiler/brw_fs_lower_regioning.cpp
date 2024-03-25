@@ -550,6 +550,12 @@ namespace {
          ibld.at(block, inst->next).MOV(subscript(inst->dst, raw_type, j),
                                         subscript(tmp, raw_type, j));
 
+      /* If the destination was an accumulator, after lowering it will be a
+       * GRF. Clear writes_accumulator for the instruction.
+       */
+      if (inst->dst.is_accumulator())
+         inst->writes_accumulator = false;
+
       /* Point the original instruction at the temporary, making sure to keep
        * any destination modifiers in the instruction.
        */

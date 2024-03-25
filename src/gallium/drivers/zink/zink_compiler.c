@@ -5119,9 +5119,9 @@ rework_io_vars(nir_shader *nir, nir_variable_mode mode)
    }
    if (!found) {
       if (mode == nir_var_shader_out)
-         found = nir->info.outputs_written || nir->info.outputs_read;
+         found = nir->info.outputs_written || nir->info.outputs_read || nir->info.patch_outputs_written || nir->info.patch_outputs_read;
       else
-         found = nir->info.inputs_read;
+         found = nir->info.inputs_read || nir->info.patch_inputs_read;
       if (!found)
          return;
    }

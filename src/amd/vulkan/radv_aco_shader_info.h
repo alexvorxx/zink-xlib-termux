@@ -67,6 +67,7 @@ radv_aco_convert_shader_info(struct aco_shader_info *aco_info, const struct radv
    aco_info->epilog_pc = radv_args->epilog_pc;
    aco_info->hw_stage = radv_select_hw_stage(radv, gfx_level);
    aco_info->tcs.tcs_offchip_layout = radv_args->tcs_offchip_layout;
+   aco_info->tcs.pass_tessfactors_by_reg = true;
    aco_info->next_stage_pc = radv_args->next_stage_pc;
 }
 
@@ -93,7 +94,7 @@ static inline void
 radv_aco_convert_tcs_epilog_key(struct aco_tcs_epilog_info *aco_info, const struct radv_tcs_epilog_key *radv,
                                 const struct radv_shader_args *radv_args)
 {
-   aco_info->pass_tessfactors_by_reg = false;
+   aco_info->pass_tessfactors_by_reg = true;
    ASSIGN_FIELD(tcs_out_patch_fits_subgroup);
    ASSIGN_FIELD(primitive_mode);
    ASSIGN_FIELD(tes_reads_tessfactors);

@@ -355,6 +355,8 @@ blorp_emit_input_varying_data(struct blorp_batch *batch,
 
    const uint32_t *const inputs_src = (const uint32_t *)&params->wm_inputs;
    void *data = blorp_alloc_vertex_buffer(batch, *size, addr);
+   if (data == NULL)
+      return;
    uint32_t *inputs = data;
 
    /* Copy in the VS inputs */
@@ -445,8 +447,10 @@ blorp_emit_vertex_buffers(struct blorp_batch *batch,
    const uint32_t num_vbs = ARRAY_SIZE(vb);
 
    struct blorp_address addrs[2] = {};
-   uint32_t sizes[2];
+   uint32_t sizes[2] = {};
    blorp_emit_vertex_data(batch, params, &addrs[0], &sizes[0]);
+   if (sizes[0] == 0)
+      return;
    blorp_fill_vertex_buffer_state(vb, 0, addrs[0], sizes[0],
                                   3 * sizeof(float));
 
@@ -1131,6 +1135,8 @@ blorp_emit_blend_state(struct blorp_batch *batch,
    int size = GENX(BLEND_STATE_length) * 4;
    size += GENX(BLEND_STATE_ENTRY_length) * 4 * params->num_draw_buffers;
    uint32_t *state = blorp_alloc_dynamic_state(batch, size, 64, &offset);
+   if (state == NULL)
+      return 0;
    uint32_t *pos = state;
 
    GENX(BLEND_STATE_pack)(NULL, pos, &blend);

@@ -2161,10 +2161,15 @@ instruction_restrictions(const struct brw_isa_info *isa,
       const unsigned ops_per_chan =
          MAX2(1, 32 / MAX2(src1_bits_per_element, src2_bits_per_element));
 
-      ERROR_IF(brw_inst_exec_size(devinfo, inst) != BRW_EXECUTE_8,
-               "DPAS execution size must be 8.");
+      if (devinfo->ver < 20) {
+         ERROR_IF(brw_inst_exec_size(devinfo, inst) != BRW_EXECUTE_8,
+                  "DPAS execution size must be 8.");
+      } else {
+         ERROR_IF(brw_inst_exec_size(devinfo, inst) != BRW_EXECUTE_16,
+                  "DPAS execution size must be 16.");
+      }
 
-      const unsigned exec_size = 8;
+      const unsigned exec_size = devinfo->ver < 20 ? 8 : 16;
 
       const unsigned dst_subnr  = brw_inst_dpas_3src_dst_subreg_nr(devinfo, inst);
       const unsigned src0_subnr = brw_inst_dpas_3src_src0_subreg_nr(devinfo, inst);

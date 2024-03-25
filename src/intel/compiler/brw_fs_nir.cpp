@@ -4519,8 +4519,8 @@ fs_nir_emit_cs_intrinsic(nir_to_brw_state &ntb,
       fs_reg src0 = retype(get_nir_src(ntb, instr->src[0]), dest_type);
       const fs_reg dest_hf = dest;
 
-      fs_builder bld8 = bld.exec_all().group(8, 0);
       fs_builder bld16 = bld.exec_all().group(16, 0);
+      fs_builder bldn = devinfo->ver >= 20 ? bld16 : bld.exec_all().group(8, 0);
 
       /* DG2 cannot have the destination or source 0 of DPAS be float16. It is
        * still advantageous to support these formats for memory and bandwidth
@@ -4530,12 +4530,12 @@ fs_nir_emit_cs_intrinsic(nir_to_brw_state &ntb,
        */
       if (devinfo->verx10 == 125 && dest_type == BRW_REGISTER_TYPE_HF &&
           !s.compiler->lower_dpas) {
-         dest = bld8.vgrf(BRW_REGISTER_TYPE_F, rcount);
+         dest = bldn.vgrf(BRW_REGISTER_TYPE_F, rcount);
 
          if (src0.file != ARF) {
             const fs_reg src0_hf = src0;
 
-            src0 = bld8.vgrf(BRW_REGISTER_TYPE_F, rcount);
+            src0 = bldn.vgrf(BRW_REGISTER_TYPE_F, rcount);
 
             for (unsigned i = 0; i < 4; i++) {
                bld16.MOV(byte_offset(src0, REG_SIZE * i * 2),
@@ -4546,7 +4546,7 @@ fs_nir_emit_cs_intrinsic(nir_to_brw_state &ntb,
          }
       }
 
-      bld8.DPAS(dest,
+      bldn.DPAS(dest,
                 src0,
                 retype(get_nir_src(ntb, instr->src[2]), src_type),
                 retype(get_nir_src(ntb, instr->src[1]), src_type),

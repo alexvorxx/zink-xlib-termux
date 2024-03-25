@@ -991,6 +991,7 @@ struct dzn_graphics_pipeline {
 
    bool rast_disabled_from_missing_position;
    bool use_gs_for_polygon_mode_point;
+   bool needs_draw_sysvals;
 
    struct {
       uint32_t view_mask;

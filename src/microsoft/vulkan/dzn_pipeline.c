@@ -208,13 +208,20 @@ dzn_pipeline_get_nir_shader(struct dzn_device *device,
                             const VkPipelineShaderStageCreateInfo *stage_info,
                             gl_shader_stage stage,
                             const struct dzn_nir_options *options,
+                            struct dxil_spirv_metadata *metadata,
                             nir_shader **nir)
 {
    if (cache) {
       *nir = vk_pipeline_cache_lookup_nir(cache, hash, SHA1_DIGEST_LENGTH,
                                           options->nir_opts, NULL, NULL);
-       if (*nir)
-          return VK_SUCCESS;
+      if (*nir) {
+         /* This bit is explicitly added into the info before caching, since this sysval wouldn't
+          * actually be present for this bit to be set by info gathering. */
+         if ((*nir)->info.stage == MESA_SHADER_VERTEX &&
+             BITSET_TEST((*nir)->info.system_values_read, SYSTEM_VALUE_FIRST_VERTEX))
+            metadata->needs_draw_sysvals = true;
+         return VK_SUCCESS;
+      }
    }
 
    struct dzn_physical_device *pdev =
@@ -253,8 +260,7 @@ dzn_pipeline_get_nir_shader(struct dzn_device *device,
       .shader_model_max = dzn_get_shader_model(pdev),
    };
 
-   struct dxil_spirv_metadata metadata = { 0 };
-   dxil_spirv_nir_passes(*nir, &conf, &metadata);
+   dxil_spirv_nir_passes(*nir, &conf, metadata);
 
    if (stage == MESA_SHADER_VERTEX) {
       bool needs_conv = false;
@@ -268,8 +274,12 @@ dzn_pipeline_get_nir_shader(struct dzn_device *device,
    }
    (*nir)->info.subgroup_size = options->subgroup_size;
 
-   if (cache)
+   if (cache) {
+      /* Cache this additional metadata */
+      if (metadata->needs_draw_sysvals)
+         BITSET_SET((*nir)->info.system_values_read, SYSTEM_VALUE_FIRST_VERTEX);
       vk_pipeline_cache_add_nir(cache, hash, SHA1_DIGEST_LENGTH, *nir);
+   }
 
    return VK_SUCCESS;
 }
@@ -579,7 +589,8 @@ dzn_pipeline_cache_add_dxil_shader(struct vk_pipeline_cache *cache,
 }
 
 struct dzn_cached_gfx_pipeline_header {
-   uint32_t stages : 31;
+   uint32_t stages : 30;
+   uint32_t needs_draw_sysvals : 1;
    uint32_t rast_disabled_from_missing_position : 1;
    uint32_t input_count;
 };
@@ -648,6 +659,7 @@ dzn_pipeline_cache_lookup_gfx_pipeline(struct dzn_graphics_pipeline *pipeline,
    }
 
    pipeline->rast_disabled_from_missing_position = info->rast_disabled_from_missing_position;
+   pipeline->needs_draw_sysvals = info->needs_draw_sysvals;
 
    *cache_hit = true;
 
@@ -688,6 +700,7 @@ dzn_pipeline_cache_add_gfx_pipeline(struct dzn_graphics_pipeline *pipeline,
 
    info->input_count = vertex_input_count;
    info->stages = stages;
+   info->needs_draw_sysvals = pipeline->needs_draw_sysvals;
    info->rast_disabled_from_missing_position = pipeline->rast_disabled_from_missing_position;
 
    offset = ALIGN_POT(offset + sizeof(*info), alignof(D3D12_INPUT_ELEMENT_DESC));
@@ -903,13 +916,17 @@ dzn_graphics_pipeline_compile_shaders(struct dzn_device *device,
          .subgroup_size = subgroup_enum,
       };
 
+      struct dxil_spirv_metadata metadata = { 0 };
       ret = dzn_pipeline_get_nir_shader(device, layout,
                                         cache, stages[stage].nir_hash,
                                         stages[stage].info, stage,
-                                        &options,
+                                        &options, &metadata,
                                         &pipeline->templates.shaders[stage].nir);
       if (ret != VK_SUCCESS)
          return ret;
+
+      if (stage == MESA_SHADER_VERTEX)
+         pipeline->needs_draw_sysvals = metadata.needs_draw_sysvals;
    }
 
    if (pipeline->use_gs_for_polygon_mode_point) {
@@ -2473,9 +2490,10 @@ dzn_compute_pipeline_compile_shader(struct dzn_device *device,
       .nir_opts = &nir_opts,
       .subgroup_size = subgroup_enum,
    };
+   struct dxil_spirv_metadata metadata = { 0 };
    ret = dzn_pipeline_get_nir_shader(device, layout, cache, nir_hash,
                                      &info->stage, MESA_SHADER_COMPUTE,
-                                     &options, &nir);
+                                     &options, &metadata, &nir);
    if (ret != VK_SUCCESS)
       return ret;
 

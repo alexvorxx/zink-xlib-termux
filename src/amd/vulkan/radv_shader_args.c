@@ -937,4 +937,9 @@ radv_declare_tcs_epilog_args(const struct radv_device *device, const struct radv
    ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->tcs_out_current_patch_data_offset);
    ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->invocation_id);
    ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->rel_patch_id);
+
+   for (unsigned i = 0; i < 4; ++i)
+      ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_FLOAT, &args->tess_lvl_out[i]);
+   for (unsigned i = 0; i < 2; ++i)
+      ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_FLOAT, &args->tess_lvl_in[i]);
 }

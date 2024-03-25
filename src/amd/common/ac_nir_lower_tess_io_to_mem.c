@@ -842,7 +842,8 @@ ac_nir_lower_hs_outputs_to_mem(nir_shader *shader,
                                unsigned wave_size,
                                bool no_inputs_in_lds,
                                bool pass_tessfactors_by_reg,
-                               bool emit_tess_factor_write)
+                               bool emit_tess_factor_write,
+                               bool emit_tess_factor_output)
 {
    assert(shader->info.stage == MESA_SHADER_TESS_CTRL);
 
@@ -874,7 +875,7 @@ ac_nir_lower_hs_outputs_to_mem(nir_shader *shader,
 
    if (emit_tess_factor_write) {
       hs_emit_write_tess_factors(shader, &state);
-   } else if (pass_tessfactors_by_reg) {
+   } else if (emit_tess_factor_output) {
       /* Reconstruct tess factor nir_store_output instruction if it's going to be passed
        * by reg instead of LDS and we use a compiler backend TCS epilog.
        *

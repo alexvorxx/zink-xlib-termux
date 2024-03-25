@@ -1783,6 +1783,7 @@ v3dX(cmd_buffer_emit_varyings_state)(struct v3dv_cmd_buffer *cmd_buffer)
    }
 }
 
+#if V3D_VERSION == 42
 /* Updates job early Z state tracking. Returns False if EZ must be disabled
  * for the current draw call.
  */
@@ -1920,10 +1921,10 @@ job_update_ez_state(struct v3dv_job *job,
    }
 
    /* If we had to disable EZ because of an incompatible test direction and
-    * and the pipeline writes depth then we need to disable EZ for the rest of
-    * the frame.
+    * and the cmd buffer writes depth then we need to disable EZ for the rest
+    * of the frame.
     */
-   if (incompatible_test && pipeline->z_updates_enable) {
+   if (incompatible_test && cmd_buffer->state.z_updates_enable) {
       assert(disable_ez);
       job->ez_state = V3D_EZ_DISABLED;
    }
@@ -1933,6 +1934,7 @@ job_update_ez_state(struct v3dv_job *job,
 
    return !disable_ez;
 }
+#endif
 
 void
 v3dX(cmd_buffer_emit_configuration_bits)(struct v3dv_cmd_buffer *cmd_buffer)
@@ -1949,12 +1951,23 @@ v3dX(cmd_buffer_emit_configuration_bits)(struct v3dv_cmd_buffer *cmd_buffer)
    struct vk_dynamic_graphics_state *dyn =
       &cmd_buffer->vk.dynamic_graphics_state;
 
+   bool has_depth =
+      pipeline->rendering_info.depth_attachment_format != VK_FORMAT_UNDEFINED;
+
    cl_emit_with_prepacked(&job->bcl, CFG_BITS, pipeline->cfg_bits, config) {
+      if (dyn->ds.depth.test_enable && has_depth) {
+         config.z_updates_enable = dyn->ds.depth.write_enable;
+         config.depth_test_function = dyn->ds.depth.compare_op;
+      } else {
+         config.depth_test_function = VK_COMPARE_OP_ALWAYS;
+      }
+
+      cmd_buffer->state.z_updates_enable = config.z_updates_enable;
 #if V3D_VERSION == 42
       bool enable_ez = job_update_ez_state(job, pipeline, cmd_buffer);
       config.early_z_enable = enable_ez;
       config.early_z_updates_enable = config.early_z_enable &&
-         pipeline->z_updates_enable;
+         cmd_buffer->state.z_updates_enable;
 #endif
 
       if (pipeline->rasterization_enabled) {
@@ -1972,9 +1985,6 @@ v3dX(cmd_buffer_emit_configuration_bits)(struct v3dv_cmd_buffer *cmd_buffer)
       assert(cmd_buffer->device->devinfo.ver >= 71 ||
              !dyn->ds.depth.bounds_test.enable);
 #if V3D_VERSION >= 71
-      bool has_depth =
-         pipeline->rendering_info.depth_attachment_format != VK_FORMAT_UNDEFINED;
-
       config.depth_bounds_test_enable =
          dyn->ds.depth.bounds_test.enable && has_depth;
 #endif

@@ -201,20 +201,10 @@ pack_cfg_bits(struct v3dv_pipeline *pipeline,
 
       /* Disable depth/stencil if we don't have a D/S attachment */
       const struct vk_render_pass_state *ri = &pipeline->rendering_info;
-      bool has_depth = ri->depth_attachment_format != VK_FORMAT_UNDEFINED;
       bool has_stencil = ri->stencil_attachment_format != VK_FORMAT_UNDEFINED;
-
-      if (ds_info && ds_info->depthTestEnable && has_depth) {
-         config.z_updates_enable = ds_info->depthWriteEnable;
-         config.depth_test_function = ds_info->depthCompareOp;
-      } else {
-         config.depth_test_function = VK_COMPARE_OP_ALWAYS;
-      }
 
       config.stencil_enable =
          ds_info ? ds_info->stencilTestEnable && has_stencil: false;
-
-      pipeline->z_updates_enable = config.z_updates_enable;
 
 #if V3D_VERSION >= 71
       /* From the Vulkan spec:

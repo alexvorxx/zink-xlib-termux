@@ -1603,6 +1603,9 @@ struct v3dv_cmd_buffer_state {
          struct v3dv_perf_query *perf;
       } active_query;
    } query;
+
+   /* This is dynamic state since VK_EXT_extended_dynamic_state. */
+   bool z_updates_enable;
 };
 
 void
@@ -2259,9 +2262,6 @@ struct v3dv_pipeline {
    struct v3dv_dynamic_state dynamic;
 
    struct v3dv_pipeline_layout *layout;
-
-   /* Whether this pipeline enables depth writes */
-   bool z_updates_enable;
 
    enum v3dv_ez_state ez_state;
 

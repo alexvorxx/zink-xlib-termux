@@ -1088,32 +1088,32 @@ radv_update_preamble_cs(struct radv_queue_state *queue, struct radv_device *devi
 
    if (scratch_bo != queue->scratch_bo) {
       if (queue->scratch_bo) {
-         ws->buffer_destroy(ws, queue->scratch_bo);
          radv_rmv_log_command_buffer_bo_destroy(device, queue->scratch_bo);
+         ws->buffer_destroy(ws, queue->scratch_bo);
       }
       queue->scratch_bo = scratch_bo;
    }
 
    if (compute_scratch_bo != queue->compute_scratch_bo) {
       if (queue->compute_scratch_bo) {
-         ws->buffer_destroy(ws, queue->compute_scratch_bo);
          radv_rmv_log_command_buffer_bo_destroy(device, queue->compute_scratch_bo);
+         ws->buffer_destroy(ws, queue->compute_scratch_bo);
       }
       queue->compute_scratch_bo = compute_scratch_bo;
    }
 
    if (esgs_ring_bo != queue->esgs_ring_bo) {
       if (queue->esgs_ring_bo) {
-         ws->buffer_destroy(ws, queue->esgs_ring_bo);
          radv_rmv_log_command_buffer_bo_destroy(device, queue->esgs_ring_bo);
+         ws->buffer_destroy(ws, queue->esgs_ring_bo);
       }
       queue->esgs_ring_bo = esgs_ring_bo;
    }
 
    if (gsvs_ring_bo != queue->gsvs_ring_bo) {
       if (queue->gsvs_ring_bo) {
-         ws->buffer_destroy(ws, queue->gsvs_ring_bo);
          radv_rmv_log_command_buffer_bo_destroy(device, queue->gsvs_ring_bo);
+         ws->buffer_destroy(ws, queue->gsvs_ring_bo);
       }
       queue->gsvs_ring_bo = gsvs_ring_bo;
    }
@@ -1867,8 +1867,8 @@ radv_queue_state_finish(struct radv_queue_state *queue, struct radv_device *devi
    if (queue->descriptor_bo)
       device->ws->buffer_destroy(device->ws, queue->descriptor_bo);
    if (queue->scratch_bo) {
-      device->ws->buffer_destroy(device->ws, queue->scratch_bo);
       radv_rmv_log_command_buffer_bo_destroy(device, queue->scratch_bo);
+      device->ws->buffer_destroy(device->ws, queue->scratch_bo);
    }
    if (queue->esgs_ring_bo) {
       radv_rmv_log_command_buffer_bo_destroy(device, queue->esgs_ring_bo);

@@ -419,10 +419,10 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
    const struct glsl_type *img_type[2] = {
       glsl_image_type(options->src_is_1d ? GLSL_SAMPLER_DIM_1D :
                       options->src_is_msaa ? GLSL_SAMPLER_DIM_MS : GLSL_SAMPLER_DIM_2D,
-                      /*is_array*/ true, GLSL_TYPE_FLOAT),
+                      options->src_has_z, GLSL_TYPE_FLOAT),
       glsl_image_type(options->dst_is_1d ? GLSL_SAMPLER_DIM_1D :
                       options->dst_is_msaa ? GLSL_SAMPLER_DIM_MS : GLSL_SAMPLER_DIM_2D,
-                      /*is_array*/ true, GLSL_TYPE_FLOAT),
+                      options->dst_has_z, GLSL_TYPE_FLOAT),
    };
 
    nir_variable *img_src = nir_variable_create(b.shader, nir_var_uniform, img_type[0], "img0");

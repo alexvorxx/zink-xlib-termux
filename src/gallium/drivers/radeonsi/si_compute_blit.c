@@ -1116,6 +1116,16 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
                        info->dst.resource->target == PIPE_TEXTURE_1D_ARRAY;
    options.src_is_msaa = info->src.resource->nr_samples > 1;
    options.dst_is_msaa = info->dst.resource->nr_samples > 1;
+   options.src_has_z = info->src.resource->target == PIPE_TEXTURE_3D ||
+                       info->src.resource->target == PIPE_TEXTURE_CUBE ||
+                       info->src.resource->target == PIPE_TEXTURE_1D_ARRAY ||
+                       info->src.resource->target == PIPE_TEXTURE_2D_ARRAY ||
+                       info->src.resource->target == PIPE_TEXTURE_CUBE_ARRAY;
+   options.dst_has_z = info->dst.resource->target == PIPE_TEXTURE_3D ||
+                       info->dst.resource->target == PIPE_TEXTURE_CUBE ||
+                       info->dst.resource->target == PIPE_TEXTURE_1D_ARRAY ||
+                       info->dst.resource->target == PIPE_TEXTURE_2D_ARRAY ||
+                       info->dst.resource->target == PIPE_TEXTURE_CUBE_ARRAY;
    /* Resolving integer formats only copies sample 0. log2_samples is then unused. */
    options.sample0_only = options.src_is_msaa && !options.dst_is_msaa &&
                           util_format_is_pure_integer(info->src.format);

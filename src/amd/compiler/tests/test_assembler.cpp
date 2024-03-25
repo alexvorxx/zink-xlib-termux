@@ -269,7 +269,7 @@ BEGIN_TEST(assembler.v_add3)
 
       //~gfx9>> v_add3_u32 v0, 0, 0, 0 ; d1ff0000 02010080
       //~gfx10>> v_add3_u32 v0, 0, 0, 0 ; d76d0000 02010080
-      aco_ptr<VALU_instruction> add3{
+      aco_ptr<Instruction> add3{
          create_instruction<VALU_instruction>(aco_opcode::v_add3_u32, Format::VOP3, 3, 1)};
       add3->operands[0] = Operand::zero();
       add3->operands[1] = Operand::zero();
@@ -288,13 +288,13 @@ BEGIN_TEST(assembler.v_add3_clamp)
 
       //~gfx9>> integer addition + clamp ; d1ff8000 02010080
       //~gfx10>> integer addition + clamp ; d76d8000 02010080
-      aco_ptr<VALU_instruction> add3{
+      aco_ptr<Instruction> add3{
          create_instruction<VALU_instruction>(aco_opcode::v_add3_u32, Format::VOP3, 3, 1)};
       add3->operands[0] = Operand::zero();
       add3->operands[1] = Operand::zero();
       add3->operands[2] = Operand::zero();
       add3->definitions[0] = Definition(PhysReg(0), v1);
-      add3->clamp = 1;
+      add3->valu().clamp = 1;
       bld.insert(std::move(add3));
 
       finish_assembler_test();

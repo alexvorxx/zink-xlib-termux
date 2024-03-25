@@ -376,7 +376,7 @@ do_reload(spill_ctx& ctx, Temp tmp, Temp new_name, uint32_t spill_id)
       res->definitions[0] = Definition(new_name);
       return res;
    } else {
-      aco_ptr<Pseudo_instruction> reload{
+      aco_ptr<Instruction> reload{
          create_instruction<Pseudo_instruction>(aco_opcode::p_reload, Format::PSEUDO, 1, 1)};
       reload->operands[0] = Operand::c32(spill_id);
       reload->definitions[0] = Definition(new_name);
@@ -845,7 +845,7 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
          for (std::pair<Temp, uint32_t> pair : ctx.spills_exit[pred_idx])
             ctx.add_interference(def_spill_id, pair.second);
 
-         aco_ptr<Pseudo_instruction> spill{
+         aco_ptr<Instruction> spill{
             create_instruction<Pseudo_instruction>(aco_opcode::p_spill, Format::PSEUDO, 2, 0)};
          spill->operands[0] = spill_op;
          spill->operands[1] = Operand::c32(def_spill_id);
@@ -915,7 +915,7 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
             ctx.renames[pred_idx].erase(rename_it);
          }
 
-         aco_ptr<Pseudo_instruction> spill{
+         aco_ptr<Instruction> spill{
             create_instruction<Pseudo_instruction>(aco_opcode::p_spill, Format::PSEUDO, 2, 0)};
          spill->operands[0] = Operand(var);
          spill->operands[1] = Operand::c32(pair.second);
@@ -1054,7 +1054,7 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
       if (!is_same) {
          /* the variable was renamed differently in the predecessors: we have to create a phi */
          aco_opcode opcode = pair.first.is_linear() ? aco_opcode::p_linear_phi : aco_opcode::p_phi;
-         aco_ptr<Pseudo_instruction> phi{
+         aco_ptr<Instruction> phi{
             create_instruction<Pseudo_instruction>(opcode, Format::PSEUDO, preds.size(), 1)};
          rename = ctx.program->allocateTmp(pair.first.regClass());
          for (unsigned i = 0; i < phi->operands.size(); i++) {
@@ -1229,7 +1229,7 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
             }
 
             /* add spill to new instructions */
-            aco_ptr<Pseudo_instruction> spill{
+            aco_ptr<Instruction> spill{
                create_instruction<Pseudo_instruction>(aco_opcode::p_spill, Format::PSEUDO, 2, 0)};
             spill->operands[0] = Operand(to_spill);
             spill->operands[1] = Operand::c32(spill_id);
@@ -1757,7 +1757,7 @@ assign_spill_slots(spill_ctx& ctx, unsigned spills_to_vgpr)
                if (vgpr_spill_temps[spill_slot / ctx.wave_size] == Temp()) {
                   Temp linear_vgpr = ctx.program->allocateTmp(v1.as_linear());
                   vgpr_spill_temps[spill_slot / ctx.wave_size] = linear_vgpr;
-                  aco_ptr<Pseudo_instruction> create{create_instruction<Pseudo_instruction>(
+                  aco_ptr<Instruction> create{create_instruction<Pseudo_instruction>(
                      aco_opcode::p_start_linear_vgpr, Format::PSEUDO, 0, 1)};
                   create->definitions[0] = Definition(linear_vgpr);
                   /* find the right place to insert this definition */
@@ -1774,7 +1774,7 @@ assign_spill_slots(spill_ctx& ctx, unsigned spills_to_vgpr)
                }
 
                /* spill sgpr: just add the vgpr temp to operands */
-               Pseudo_instruction* spill =
+               Instruction* spill =
                   create_instruction<Pseudo_instruction>(aco_opcode::p_spill, Format::PSEUDO, 3, 0);
                spill->operands[0] = Operand(vgpr_spill_temps[spill_slot / ctx.wave_size]);
                spill->operands[0].setLateKill(true);
@@ -1798,7 +1798,7 @@ assign_spill_slots(spill_ctx& ctx, unsigned spills_to_vgpr)
                if (vgpr_spill_temps[spill_slot / ctx.wave_size] == Temp()) {
                   Temp linear_vgpr = ctx.program->allocateTmp(v1.as_linear());
                   vgpr_spill_temps[spill_slot / ctx.wave_size] = linear_vgpr;
-                  aco_ptr<Pseudo_instruction> create{create_instruction<Pseudo_instruction>(
+                  aco_ptr<Instruction> create{create_instruction<Pseudo_instruction>(
                      aco_opcode::p_start_linear_vgpr, Format::PSEUDO, 0, 1)};
                   create->definitions[0] = Definition(linear_vgpr);
                   /* find the right place to insert this definition */
@@ -1815,8 +1815,8 @@ assign_spill_slots(spill_ctx& ctx, unsigned spills_to_vgpr)
                }
 
                /* reload sgpr: just add the vgpr temp to operands */
-               Pseudo_instruction* reload = create_instruction<Pseudo_instruction>(
-                  aco_opcode::p_reload, Format::PSEUDO, 2, 1);
+               Instruction* reload = create_instruction<Pseudo_instruction>(aco_opcode::p_reload,
+                                                                            Format::PSEUDO, 2, 1);
                reload->operands[0] = Operand(vgpr_spill_temps[spill_slot / ctx.wave_size]);
                reload->operands[0].setLateKill(true);
                reload->operands[1] = Operand::c32(spill_slot % ctx.wave_size);

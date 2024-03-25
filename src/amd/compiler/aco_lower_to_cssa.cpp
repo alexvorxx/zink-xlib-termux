@@ -424,8 +424,8 @@ emit_copies_block(Builder& bld, std::map<uint32_t, ltg_node>& ltg, RegType type)
       // TODO: this should be restricted to a feasible number of registers
       // and otherwise use a temporary to avoid having to reload more (spilled)
       // variables than we have registers.
-      aco_ptr<Pseudo_instruction> copy{create_instruction<Pseudo_instruction>(
-         aco_opcode::p_parallelcopy, Format::PSEUDO, num, num)};
+      aco_ptr<Instruction> copy{create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy,
+                                                                       Format::PSEUDO, num, num)};
       it = ltg.begin();
       for (unsigned i = 0; i < num; i++) {
          while (it->second.cp.def.regClass().type() != type)

@@ -69,7 +69,7 @@ create_global()
 static void
 create_mimg(bool nsa, Temp desc = Temp(0, s8))
 {
-   aco_ptr<MIMG_instruction> mimg{
+   aco_ptr<Instruction> mimg{
       create_instruction<MIMG_instruction>(aco_opcode::image_sample, Format::MIMG, 5, 1)};
    mimg->definitions[0] = Definition(PhysReg(256), v1);
    mimg->operands[0] = Operand(desc);
@@ -78,8 +78,8 @@ create_mimg(bool nsa, Temp desc = Temp(0, s8))
    mimg->operands[2] = Operand(v1);
    for (unsigned i = 0; i < 2; i++)
       mimg->operands[3 + i] = Operand(PhysReg(256 + (nsa ? i * 2 : i)), v1);
-   mimg->dmask = 0x1;
-   mimg->dim = ac_image_2d;
+   mimg->mimg().dmask = 0x1;
+   mimg->mimg().dim = ac_image_2d;
 
    bld.insert(std::move(mimg));
 }

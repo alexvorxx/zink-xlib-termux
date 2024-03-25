@@ -611,9 +611,9 @@ handle_instruction_gfx6(State& state, NOP_ctx_gfx6& ctx, aco_ptr<Instruction>& i
    // TODO: try to schedule the NOP-causing instruction up to reduce the number of stall cycles
    if (NOPs) {
       /* create NOP */
-      aco_ptr<SALU_instruction> nop{
+      aco_ptr<Instruction> nop{
          create_instruction<SALU_instruction>(aco_opcode::s_nop, Format::SOPP, 0, 0)};
-      nop->imm = NOPs - 1;
+      nop->salu().imm = NOPs - 1;
       new_instructions.emplace_back(std::move(nop));
    }
 

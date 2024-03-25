@@ -42,7 +42,7 @@ create_mubuf_store(PhysReg src = PhysReg(256))
 void
 create_mimg(bool nsa, unsigned addrs, unsigned instr_dwords)
 {
-   aco_ptr<MIMG_instruction> mimg{
+   aco_ptr<Instruction> mimg{
       create_instruction<MIMG_instruction>(aco_opcode::image_sample, Format::MIMG, 3 + addrs, 1)};
    mimg->definitions[0] = Definition(PhysReg(256), v1);
    mimg->operands[0] = Operand(PhysReg(0), s8);
@@ -50,8 +50,8 @@ create_mimg(bool nsa, unsigned addrs, unsigned instr_dwords)
    mimg->operands[2] = Operand(v1);
    for (unsigned i = 0; i < addrs; i++)
       mimg->operands[3 + i] = Operand(PhysReg(256 + (nsa ? i * 2 : i)), v1);
-   mimg->dmask = 0x1;
-   mimg->dim = ac_image_2d;
+   mimg->mimg().dmask = 0x1;
+   mimg->mimg().dim = ac_image_2d;
 
    assert(get_mimg_nsa_dwords(mimg.get()) + 2 == instr_dwords);
 

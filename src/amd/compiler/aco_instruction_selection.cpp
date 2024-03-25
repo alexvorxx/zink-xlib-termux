@@ -380,7 +380,7 @@ emit_split_vector(isel_context* ctx, Temp vec_src, unsigned num_components)
    } else {
       rc = RegClass(vec_src.type(), vec_src.size() / num_components);
    }
-   aco_ptr<Pseudo_instruction> split{create_instruction<Pseudo_instruction>(
+   aco_ptr<Instruction> split{create_instruction<Pseudo_instruction>(
       aco_opcode::p_split_vector, Format::PSEUDO, 1, num_components)};
    split->operands[0] = Operand(vec_src);
    std::array<Temp, NIR_MAX_VEC_COMPONENTS> elems;
@@ -432,7 +432,7 @@ expand_vector(isel_context* ctx, Temp vec_src, Temp dst, unsigned num_components
    if (zero_padding)
       padding = bld.copy(bld.def(dst_rc), Operand::zero(component_bytes));
 
-   aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(
+   aco_ptr<Instruction> vec{create_instruction<Pseudo_instruction>(
       aco_opcode::p_create_vector, Format::PSEUDO, num_components, 1)};
    vec->definitions[0] = Definition(dst);
    unsigned k = 0;
@@ -553,7 +553,7 @@ byte_align_vector(isel_context* ctx, Temp vec, Operand offset, Temp dst, unsigne
    if (dst.type() == RegType::vgpr) {
       /* if dst is vgpr - split the src and create a shrunk version according to the mask. */
       num_components = dst.bytes() / component_size;
-      aco_ptr<Pseudo_instruction> create_vec{create_instruction<Pseudo_instruction>(
+      aco_ptr<Instruction> create_vec{create_instruction<Pseudo_instruction>(
          aco_opcode::p_create_vector, Format::PSEUDO, num_components, 1)};
       for (unsigned i = 0; i < num_components; i++)
          create_vec->operands[i] = Operand(elems[i]);
@@ -749,7 +749,7 @@ get_alu_src(struct isel_context* ctx, nir_alu_src src, unsigned size = 1)
    } else {
       assert(size <= 4);
       std::array<Temp, NIR_MAX_VEC_COMPONENTS> elems;
-      aco_ptr<Pseudo_instruction> vec_instr{create_instruction<Pseudo_instruction>(
+      aco_ptr<Instruction> vec_instr{create_instruction<Pseudo_instruction>(
          aco_opcode::p_create_vector, Format::PSEUDO, size, 1)};
       for (unsigned i = 0; i < size; ++i) {
          elems[i] = emit_extract_vector(ctx, vec, src.swizzle[i], elem_rc);
@@ -823,7 +823,7 @@ void
 emit_sop2_instruction(isel_context* ctx, nir_alu_instr* instr, aco_opcode op, Temp dst,
                       bool writes_scc, uint8_t uses_ub = 0)
 {
-   aco_ptr<SALU_instruction> sop2{
+   aco_ptr<Instruction> sop2{
       create_instruction<SALU_instruction>(op, Format::SOP2, 2, writes_scc ? 2 : 1)};
    sop2->operands[0] = Operand(get_alu_src(ctx, instr->src[0]));
    sop2->operands[1] = Operand(get_alu_src(ctx, instr->src[1]));
@@ -1407,7 +1407,7 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
          elems[i] = get_alu_src(ctx, instr->src[i]);
 
       if (instr->def.bit_size >= 32 || dst.type() == RegType::vgpr) {
-         aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(
+         aco_ptr<Instruction> vec{create_instruction<Pseudo_instruction>(
             aco_opcode::p_create_vector, Format::PSEUDO, instr->def.num_components, 1)};
          RegClass elem_rc = RegClass::get(RegType::vgpr, instr->def.bit_size / 8u);
          for (unsigned i = 0; i < num; ++i) {
@@ -1484,7 +1484,7 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
          if (dst.size() == 1)
             bld.copy(Definition(dst), packed[0]);
          else {
-            aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(
+            aco_ptr<Instruction> vec{create_instruction<Pseudo_instruction>(
                aco_opcode::p_create_vector, Format::PSEUDO, dst.size(), 1)};
             vec->definitions[0] = Definition(dst);
             for (unsigned i = 0; i < dst.size(); ++i)
@@ -3954,7 +3954,7 @@ visit_load_const(isel_context* ctx, nir_load_const_instr* instr)
       bld.copy(Definition(dst), Operand::c32(instr->value[0].u32));
    } else {
       assert(dst.size() != 1);
-      aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(
+      aco_ptr<Instruction> vec{create_instruction<Pseudo_instruction>(
          aco_opcode::p_create_vector, Format::PSEUDO, dst.size(), 1)};
       if (instr->def.bit_size == 64)
          for (unsigned i = 0; i < dst.size(); i++)
@@ -3978,7 +3978,7 @@ emit_readfirstlane(isel_context* ctx, Temp src, Temp dst)
    } else if (src.size() == 1) {
       bld.vop1(aco_opcode::v_readfirstlane_b32, Definition(dst), src);
    } else {
-      aco_ptr<Pseudo_instruction> split{create_instruction<Pseudo_instruction>(
+      aco_ptr<Instruction> split{create_instruction<Pseudo_instruction>(
          aco_opcode::p_split_vector, Format::PSEUDO, 1, src.size())};
       split->operands[0] = Operand(src);
 
@@ -3990,7 +3990,7 @@ emit_readfirstlane(isel_context* ctx, Temp src, Temp dst)
       Instruction* split_raw = split.get();
       ctx->block->instructions.emplace_back(std::move(split));
 
-      aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(
+      aco_ptr<Instruction> vec{create_instruction<Pseudo_instruction>(
          aco_opcode::p_create_vector, Format::PSEUDO, src.size(), 1)};
       vec->definitions[0] = Definition(dst);
       for (unsigned i = 0; i < src.size(); i++) {
@@ -4246,7 +4246,7 @@ emit_load(isel_context* ctx, Builder& bld, const LoadEmitInfo& info,
          tmp[num_tmps++] = vals[i++];
       }
       if (num_tmps > 1) {
-         aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(
+         aco_ptr<Instruction> vec{create_instruction<Pseudo_instruction>(
             aco_opcode::p_create_vector, Format::PSEUDO, num_tmps, 1)};
          for (unsigned j = 0; j < num_tmps; j++)
             vec->operands[j] = Operand(tmp[j]);
@@ -4272,7 +4272,7 @@ emit_load(isel_context* ctx, Builder& bld, const LoadEmitInfo& info,
          allocated_vec[components_split++] = tmp[0];
       } else {
          assert(tmp_size % elem_rc.bytes() == 0);
-         aco_ptr<Pseudo_instruction> split{create_instruction<Pseudo_instruction>(
+         aco_ptr<Instruction> split{create_instruction<Pseudo_instruction>(
             aco_opcode::p_split_vector, Format::PSEUDO, 1, tmp_size / elem_rc.bytes())};
          for (auto& def : split->definitions) {
             Temp component = bld.tmp(elem_rc);
@@ -4305,7 +4305,7 @@ emit_load(isel_context* ctx, Builder& bld, const LoadEmitInfo& info,
    int padding_bytes =
       MAX2((int)info.dst.bytes() - int(allocated_vec[0].bytes() * info.num_components), 0);
 
-   aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(
+   aco_ptr<Instruction> vec{create_instruction<Pseudo_instruction>(
       aco_opcode::p_create_vector, Format::PSEUDO, info.num_components + !!padding_bytes, 1)};
    for (unsigned i = 0; i < info.num_components; i++)
       vec->operands[i] = Operand(allocated_vec[i]);
@@ -4440,7 +4440,7 @@ smem_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsigned
       op = buffer ? aco_opcode::s_buffer_load_dwordx16 : aco_opcode::s_load_dwordx16;
    }
 
-   aco_ptr<SMEM_instruction> load{create_instruction<SMEM_instruction>(op, Format::SMEM, 2, 1)};
+   aco_ptr<Instruction> load{create_instruction<SMEM_instruction>(op, Format::SMEM, 2, 1)};
    if (buffer) {
       if (const_offset)
          offset = bld.sop2(aco_opcode::s_add_u32, bld.def(s1), bld.def(s1, scc), offset,
@@ -4460,9 +4460,10 @@ smem_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsigned
    RegClass rc(RegType::sgpr, DIV_ROUND_UP(bytes_needed, 4u));
    Temp val = dst_hint.id() && dst_hint.regClass() == rc ? dst_hint : bld.tmp(rc);
    load->definitions[0] = Definition(val);
-   load->glc = info.glc;
-   load->dlc = info.glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
-   load->sync = info.sync;
+   load->smem().glc = info.glc;
+   load->smem().dlc =
+      info.glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
+   load->smem().sync = info.sync;
    bld.insert(std::move(load));
    return val;
 }
@@ -4514,18 +4515,19 @@ mubuf_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsigne
       bytes_size = 16;
       op = aco_opcode::buffer_load_dwordx4;
    }
-   aco_ptr<MUBUF_instruction> mubuf{create_instruction<MUBUF_instruction>(op, Format::MUBUF, 3, 1)};
+   aco_ptr<Instruction> mubuf{create_instruction<MUBUF_instruction>(op, Format::MUBUF, 3, 1)};
    mubuf->operands[0] = Operand(info.resource);
    mubuf->operands[1] = vaddr;
    mubuf->operands[2] = soffset;
-   mubuf->offen = offen;
-   mubuf->idxen = idxen;
-   mubuf->glc = info.glc;
-   mubuf->dlc = info.glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
-   mubuf->slc = info.slc;
-   mubuf->sync = info.sync;
-   mubuf->offset = const_offset;
-   mubuf->swizzled = info.swizzle_component_size != 0;
+   mubuf->mubuf().offen = offen;
+   mubuf->mubuf().idxen = idxen;
+   mubuf->mubuf().glc = info.glc;
+   mubuf->mubuf().dlc =
+      info.glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
+   mubuf->mubuf().slc = info.slc;
+   mubuf->mubuf().sync = info.sync;
+   mubuf->mubuf().offset = const_offset;
+   mubuf->mubuf().swizzled = info.swizzle_component_size != 0;
    RegClass rc = RegClass::get(RegType::vgpr, bytes_size);
    Temp val = dst_hint.id() && rc == dst_hint.regClass() ? dst_hint : bld.tmp(rc);
    mubuf->definitions[0] = Definition(val);
@@ -4581,17 +4583,18 @@ mubuf_load_format_callback(Builder& bld, const LoadEmitInfo& info, Temp offset,
       }
    }
 
-   aco_ptr<MUBUF_instruction> mubuf{create_instruction<MUBUF_instruction>(op, Format::MUBUF, 3, 1)};
+   aco_ptr<Instruction> mubuf{create_instruction<MUBUF_instruction>(op, Format::MUBUF, 3, 1)};
    mubuf->operands[0] = Operand(info.resource);
    mubuf->operands[1] = vaddr;
    mubuf->operands[2] = soffset;
-   mubuf->offen = offen;
-   mubuf->idxen = idxen;
-   mubuf->glc = info.glc;
-   mubuf->dlc = info.glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
-   mubuf->slc = info.slc;
-   mubuf->sync = info.sync;
-   mubuf->offset = const_offset;
+   mubuf->mubuf().offen = offen;
+   mubuf->mubuf().idxen = idxen;
+   mubuf->mubuf().glc = info.glc;
+   mubuf->mubuf().dlc =
+      info.glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
+   mubuf->mubuf().slc = info.slc;
+   mubuf->mubuf().sync = info.sync;
+   mubuf->mubuf().offset = const_offset;
    RegClass rc = RegClass::get(RegType::vgpr, bytes_needed);
    Temp val = dst_hint.id() && rc == dst_hint.regClass() ? dst_hint : bld.tmp(rc);
    mubuf->definitions[0] = Definition(val);
@@ -4629,11 +4632,11 @@ scratch_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsig
    }
    RegClass rc = RegClass::get(RegType::vgpr, bytes_size);
    Temp val = dst_hint.id() && rc == dst_hint.regClass() ? dst_hint : bld.tmp(rc);
-   aco_ptr<FLAT_instruction> flat{create_instruction<FLAT_instruction>(op, Format::SCRATCH, 2, 1)};
+   aco_ptr<Instruction> flat{create_instruction<FLAT_instruction>(op, Format::SCRATCH, 2, 1)};
    flat->operands[0] = offset.regClass() == s1 ? Operand(v1) : Operand(offset);
    flat->operands[1] = offset.regClass() == s1 ? Operand(offset) : Operand(s1);
-   flat->sync = info.sync;
-   flat->offset = const_offset;
+   flat->scratch().sync = info.sync;
+   flat->scratch().offset = const_offset;
    flat->definitions[0] = Definition(val);
    bld.insert(std::move(flat));
 
@@ -4793,21 +4796,20 @@ global_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsign
    RegClass rc = RegClass::get(RegType::vgpr, bytes_size);
    Temp val = dst_hint.id() && rc == dst_hint.regClass() ? dst_hint : bld.tmp(rc);
    if (use_mubuf) {
-      aco_ptr<MUBUF_instruction> mubuf{
-         create_instruction<MUBUF_instruction>(op, Format::MUBUF, 3, 1)};
+      aco_ptr<Instruction> mubuf{create_instruction<MUBUF_instruction>(op, Format::MUBUF, 3, 1)};
       mubuf->operands[0] = Operand(get_gfx6_global_rsrc(bld, addr));
       mubuf->operands[1] = addr.type() == RegType::vgpr ? Operand(addr) : Operand(v1);
       mubuf->operands[2] = Operand(offset);
-      mubuf->glc = info.glc;
-      mubuf->dlc = false;
-      mubuf->offset = const_offset;
-      mubuf->addr64 = addr.type() == RegType::vgpr;
-      mubuf->disable_wqm = false;
-      mubuf->sync = info.sync;
+      mubuf->mubuf().glc = info.glc;
+      mubuf->mubuf().dlc = false;
+      mubuf->mubuf().offset = const_offset;
+      mubuf->mubuf().addr64 = addr.type() == RegType::vgpr;
+      mubuf->mubuf().disable_wqm = false;
+      mubuf->mubuf().sync = info.sync;
       mubuf->definitions[0] = Definition(val);
       bld.insert(std::move(mubuf));
    } else {
-      aco_ptr<FLAT_instruction> flat{
+      aco_ptr<Instruction> flat{
          create_instruction<FLAT_instruction>(op, global ? Format::GLOBAL : Format::FLAT, 2, 1)};
       if (addr.regClass() == s2) {
          assert(global && offset.id() && offset.type() == RegType::vgpr);
@@ -4818,12 +4820,12 @@ global_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsign
          flat->operands[0] = Operand(addr);
          flat->operands[1] = Operand(s1);
       }
-      flat->glc = info.glc;
-      flat->dlc =
+      flat->flatlike().glc = info.glc;
+      flat->flatlike().dlc =
          info.glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
-      flat->sync = info.sync;
+      flat->flatlike().sync = info.sync;
       assert(global || !const_offset);
-      flat->offset = const_offset;
+      flat->flatlike().offset = const_offset;
       flat->definitions[0] = Definition(val);
       bld.insert(std::move(flat));
    }
@@ -5178,7 +5180,7 @@ create_vec_from_array(isel_context* ctx, Temp arr[], unsigned cnt, RegType reg_t
       dst = bld.tmp(RegClass(reg_type, cnt * dword_size));
 
    std::array<Temp, NIR_MAX_VEC_COMPONENTS> allocated_vec;
-   aco_ptr<Pseudo_instruction> instr{
+   aco_ptr<Instruction> instr{
       create_instruction<Pseudo_instruction>(aco_opcode::p_create_vector, Format::PSEUDO, cnt, 1)};
    instr->definitions[0] = Definition(dst);
 
@@ -5553,7 +5555,7 @@ emit_load_frag_coord(isel_context* ctx, Temp dst, unsigned num_components)
 {
    Builder bld(ctx->program, ctx->block);
 
-   aco_ptr<Pseudo_instruction> vec(create_instruction<Pseudo_instruction>(
+   aco_ptr<Instruction> vec(create_instruction<Pseudo_instruction>(
       aco_opcode::p_create_vector, Format::PSEUDO, num_components, 1));
    for (unsigned i = 0; i < num_components; i++) {
       if (ctx->args->frag_pos[i].used)
@@ -5617,7 +5619,7 @@ visit_load_interpolated_input(isel_context* ctx, nir_intrinsic_instr* instr)
    if (instr->def.num_components == 1) {
       emit_interp_instr(ctx, idx, component, coords, dst, prim_mask);
    } else {
-      aco_ptr<Pseudo_instruction> vec(create_instruction<Pseudo_instruction>(
+      aco_ptr<Instruction> vec(create_instruction<Pseudo_instruction>(
          aco_opcode::p_create_vector, Format::PSEUDO, instr->def.num_components, 1));
       for (unsigned i = 0; i < instr->def.num_components; i++) {
          Temp tmp = ctx->program->allocateTmp(instr->def.bit_size == 16 ? v2b : v1);
@@ -5709,19 +5711,20 @@ mtbuf_load_callback(Builder& bld, const LoadEmitInfo& info, Temp offset, unsigne
       abort();
    }
 
-   aco_ptr<MTBUF_instruction> mtbuf{create_instruction<MTBUF_instruction>(op, Format::MTBUF, 3, 1)};
+   aco_ptr<Instruction> mtbuf{create_instruction<MTBUF_instruction>(op, Format::MTBUF, 3, 1)};
    mtbuf->operands[0] = Operand(info.resource);
    mtbuf->operands[1] = vaddr;
    mtbuf->operands[2] = soffset;
-   mtbuf->offen = offen;
-   mtbuf->idxen = idxen;
-   mtbuf->glc = info.glc;
-   mtbuf->dlc = info.glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
-   mtbuf->slc = info.slc;
-   mtbuf->sync = info.sync;
-   mtbuf->offset = const_offset;
-   mtbuf->dfmt = fetch_fmt & 0xf;
-   mtbuf->nfmt = fetch_fmt >> 4;
+   mtbuf->mtbuf().offen = offen;
+   mtbuf->mtbuf().idxen = idxen;
+   mtbuf->mtbuf().glc = info.glc;
+   mtbuf->mtbuf().dlc =
+      info.glc && (bld.program->gfx_level == GFX10 || bld.program->gfx_level == GFX10_3);
+   mtbuf->mtbuf().slc = info.slc;
+   mtbuf->mtbuf().sync = info.sync;
+   mtbuf->mtbuf().offset = const_offset;
+   mtbuf->mtbuf().dfmt = fetch_fmt & 0xf;
+   mtbuf->mtbuf().nfmt = fetch_fmt >> 4;
    RegClass rc = RegClass::get(RegType::vgpr, bytes_size);
    Temp val = dst_hint.id() && rc == dst_hint.regClass() ? dst_hint : bld.tmp(rc);
    mtbuf->definitions[0] = Definition(val);
@@ -5757,7 +5760,7 @@ visit_load_fs_input(isel_context* ctx, nir_intrinsic_instr* instr)
       unsigned num_components = instr->def.num_components;
       if (instr->def.bit_size == 64)
          num_components *= 2;
-      aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(
+      aco_ptr<Instruction> vec{create_instruction<Pseudo_instruction>(
          aco_opcode::p_create_vector, Format::PSEUDO, num_components, 1)};
       for (unsigned i = 0; i < num_components; i++) {
          unsigned chan_component = (component + i) % 4;
@@ -5876,7 +5879,7 @@ visit_load_push_constant(isel_context* ctx, nir_intrinsic_instr* instr)
       if ((ctx->args->inline_push_const_mask | mask) == ctx->args->inline_push_const_mask &&
           start + count <= (sizeof(ctx->args->inline_push_const_mask) * 8u)) {
          std::array<Temp, NIR_MAX_VEC_COMPONENTS> elems;
-         aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(
+         aco_ptr<Instruction> vec{create_instruction<Pseudo_instruction>(
             aco_opcode::p_create_vector, Format::PSEUDO, count, 1)};
          unsigned arg_index =
             util_bitcount64(ctx->args->inline_push_const_mask & BITFIELD64_MASK(start));
@@ -6066,7 +6069,7 @@ emit_mimg(Builder& bld, aco_opcode op, Temp dst, Temp rsrc, Operand samp, std::v
    if (nsa_size < coords.size()) {
       Temp coord = coords[nsa_size];
       if (coords.size() - nsa_size > 1) {
-         aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(
+         aco_ptr<Instruction> vec{create_instruction<Pseudo_instruction>(
             aco_opcode::p_create_vector, Format::PSEUDO, coords.size() - nsa_size, 1)};
 
          unsigned coord_size = 0;
@@ -6088,7 +6091,7 @@ emit_mimg(Builder& bld, aco_opcode op, Temp dst, Temp rsrc, Operand samp, std::v
 
    bool has_dst = dst.id() != 0;
 
-   aco_ptr<MIMG_instruction> mimg{
+   aco_ptr<Instruction> mimg{
       create_instruction<MIMG_instruction>(op, Format::MIMG, 3 + coords.size(), has_dst)};
    if (has_dst)
       mimg->definitions[0] = Definition(dst);
@@ -6100,11 +6103,9 @@ emit_mimg(Builder& bld, aco_opcode op, Temp dst, Temp rsrc, Operand samp, std::v
       if (coords[i].regClass().is_linear_vgpr())
          mimg->operands[3 + i].setLateKill(true);
    }
-   mimg->strict_wqm = strict_wqm;
+   mimg->mimg().strict_wqm = strict_wqm;
 
-   MIMG_instruction* res = mimg.get();
-   bld.insert(std::move(mimg));
-   return res;
+   return &bld.insert(std::move(mimg))->mimg();
 }
 
 void
@@ -6257,8 +6258,8 @@ emit_tfe_init(Builder& bld, Temp dst)
 {
    Temp tmp = bld.tmp(dst.regClass());
 
-   aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(
-      aco_opcode::p_create_vector, Format::PSEUDO, dst.size(), 1)};
+   aco_ptr<Instruction> vec{create_instruction<Pseudo_instruction>(aco_opcode::p_create_vector,
+                                                                   Format::PSEUDO, dst.size(), 1)};
    for (unsigned i = 0; i < dst.size(); i++)
       vec->operands[i] = Operand::zero();
    vec->definitions[0] = Definition(tmp);
@@ -6332,19 +6333,19 @@ visit_image_load(isel_context* ctx, nir_intrinsic_instr* instr)
          default: unreachable(">4 channel buffer image load");
          }
       }
-      aco_ptr<MUBUF_instruction> load{
+      aco_ptr<Instruction> load{
          create_instruction<MUBUF_instruction>(opcode, Format::MUBUF, 3 + is_sparse, 1)};
       load->operands[0] = Operand(resource);
       load->operands[1] = Operand(vindex);
       load->operands[2] = Operand::c32(0);
       load->definitions[0] = Definition(tmp);
-      load->idxen = true;
-      load->glc = access & (ACCESS_VOLATILE | ACCESS_COHERENT);
-      load->dlc =
-         load->glc && (ctx->options->gfx_level == GFX10 || ctx->options->gfx_level == GFX10_3);
-      load->sync = sync;
-      load->tfe = is_sparse;
-      if (load->tfe)
+      load->mubuf().idxen = true;
+      load->mubuf().glc = access & (ACCESS_VOLATILE | ACCESS_COHERENT);
+      load->mubuf().dlc = load->mubuf().glc &&
+                          (ctx->options->gfx_level == GFX10 || ctx->options->gfx_level == GFX10_3);
+      load->mubuf().sync = sync;
+      load->mubuf().tfe = is_sparse;
+      if (load->mubuf().tfe)
          load->operands[3] = emit_tfe_init(bld, tmp);
       ctx->block->instructions.emplace_back(std::move(load));
    } else {
@@ -6446,7 +6447,7 @@ visit_image_store(isel_context* ctx, nir_intrinsic_instr* instr)
          if (dmask_count == 1) {
             data = emit_extract_vector(ctx, data, ffs(dmask) - 1, rc);
          } else {
-            aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(
+            aco_ptr<Instruction> vec{create_instruction<Pseudo_instruction>(
                aco_opcode::p_create_vector, Format::PSEUDO, dmask_count, 1)};
             uint32_t index = 0;
             u_foreach_bit (bit, dmask) {
@@ -6480,17 +6481,17 @@ visit_image_store(isel_context* ctx, nir_intrinsic_instr* instr)
          default: unreachable(">4 channel buffer image store");
          }
       }
-      aco_ptr<MUBUF_instruction> store{
+      aco_ptr<Instruction> store{
          create_instruction<MUBUF_instruction>(opcode, Format::MUBUF, 4, 0)};
       store->operands[0] = Operand(rsrc);
       store->operands[1] = Operand(vindex);
       store->operands[2] = Operand::c32(0);
       store->operands[3] = Operand(data);
-      store->idxen = true;
-      store->glc = glc;
-      store->dlc = false;
-      store->disable_wqm = true;
-      store->sync = sync;
+      store->mubuf().idxen = true;
+      store->mubuf().glc = glc;
+      store->mubuf().dlc = false;
+      store->mubuf().disable_wqm = true;
+      store->mubuf().sync = sync;
       ctx->program->needs_exact = true;
       ctx->block->instructions.emplace_back(std::move(store));
       return;
@@ -6634,7 +6635,7 @@ visit_image_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
       Temp resource = bld.as_uniform(get_ssa_temp(ctx, instr->src[0].ssa));
       // assert(ctx->options->gfx_level < GFX9 && "GFX9 stride size workaround not yet
       // implemented.");
-      aco_ptr<MUBUF_instruction> mubuf{create_instruction<MUBUF_instruction>(
+      aco_ptr<Instruction> mubuf{create_instruction<MUBUF_instruction>(
          is_64bit ? buf_op64 : buf_op, Format::MUBUF, 4, return_previous ? 1 : 0)};
       mubuf->operands[0] = Operand(resource);
       mubuf->operands[1] = Operand(vindex);
@@ -6644,12 +6645,12 @@ visit_image_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
          return_previous ? (cmpswap ? bld.def(data.regClass()) : Definition(dst)) : Definition();
       if (return_previous)
          mubuf->definitions[0] = def;
-      mubuf->offset = 0;
-      mubuf->idxen = true;
-      mubuf->glc = return_previous;
-      mubuf->dlc = false; /* Not needed for atomics */
-      mubuf->disable_wqm = true;
-      mubuf->sync = sync;
+      mubuf->mubuf().offset = 0;
+      mubuf->mubuf().idxen = true;
+      mubuf->mubuf().glc = return_previous;
+      mubuf->mubuf().dlc = false; /* Not needed for atomics */
+      mubuf->mubuf().disable_wqm = true;
+      mubuf->mubuf().sync = sync;
       ctx->program->needs_exact = true;
       ctx->block->instructions.emplace_back(std::move(mubuf));
       if (return_previous && cmpswap)
@@ -6728,18 +6729,17 @@ visit_store_ssbo(isel_context* ctx, nir_intrinsic_instr* instr)
    for (unsigned i = 0; i < write_count; i++) {
       aco_opcode op = get_buffer_store_op(write_datas[i].bytes());
 
-      aco_ptr<MUBUF_instruction> store{
-         create_instruction<MUBUF_instruction>(op, Format::MUBUF, 4, 0)};
+      aco_ptr<Instruction> store{create_instruction<MUBUF_instruction>(op, Format::MUBUF, 4, 0)};
       store->operands[0] = Operand(rsrc);
       store->operands[1] = offset.type() == RegType::vgpr ? Operand(offset) : Operand(v1);
       store->operands[2] = offset.type() == RegType::sgpr ? Operand(offset) : Operand::c32(0);
       store->operands[3] = Operand(write_datas[i]);
-      store->offset = offsets[i];
-      store->offen = (offset.type() == RegType::vgpr);
-      store->glc = glc;
-      store->dlc = false;
-      store->disable_wqm = true;
-      store->sync = sync;
+      store->mubuf().offset = offsets[i];
+      store->mubuf().offen = (offset.type() == RegType::vgpr);
+      store->mubuf().glc = glc;
+      store->mubuf().dlc = false;
+      store->mubuf().disable_wqm = true;
+      store->mubuf().sync = sync;
       ctx->program->needs_exact = true;
       ctx->block->instructions.emplace_back(std::move(store));
    }
@@ -6767,7 +6767,7 @@ visit_atomic_ssbo(isel_context* ctx, nir_intrinsic_instr* instr)
    Temp dst = get_ssa_temp(ctx, &instr->def);
 
    aco_opcode op = instr->def.bit_size == 32 ? op32 : op64;
-   aco_ptr<MUBUF_instruction> mubuf{
+   aco_ptr<Instruction> mubuf{
       create_instruction<MUBUF_instruction>(op, Format::MUBUF, 4, return_previous ? 1 : 0)};
    mubuf->operands[0] = Operand(rsrc);
    mubuf->operands[1] = offset.type() == RegType::vgpr ? Operand(offset) : Operand(v1);
@@ -6777,12 +6777,12 @@ visit_atomic_ssbo(isel_context* ctx, nir_intrinsic_instr* instr)
       return_previous ? (cmpswap ? bld.def(data.regClass()) : Definition(dst)) : Definition();
    if (return_previous)
       mubuf->definitions[0] = def;
-   mubuf->offset = 0;
-   mubuf->offen = (offset.type() == RegType::vgpr);
-   mubuf->glc = return_previous;
-   mubuf->dlc = false; /* Not needed for atomics */
-   mubuf->disable_wqm = true;
-   mubuf->sync = get_memory_sync_info(instr, storage_buffer, semantic_atomicrmw);
+   mubuf->mubuf().offset = 0;
+   mubuf->mubuf().offen = (offset.type() == RegType::vgpr);
+   mubuf->mubuf().glc = return_previous;
+   mubuf->mubuf().dlc = false; /* Not needed for atomics */
+   mubuf->mubuf().disable_wqm = true;
+   mubuf->mubuf().sync = get_memory_sync_info(instr, storage_buffer, semantic_atomicrmw);
    ctx->program->needs_exact = true;
    ctx->block->instructions.emplace_back(std::move(mubuf));
    if (return_previous && cmpswap)
@@ -6901,7 +6901,7 @@ visit_store_global(isel_context* ctx, nir_intrinsic_instr* instr)
          default: unreachable("store_global not implemented for this size.");
          }
 
-         aco_ptr<FLAT_instruction> flat{
+         aco_ptr<Instruction> flat{
             create_instruction<FLAT_instruction>(op, global ? Format::GLOBAL : Format::FLAT, 3, 0)};
          if (write_address.regClass() == s2) {
             assert(global && write_offset.id() && write_offset.type() == RegType::vgpr);
@@ -6913,12 +6913,12 @@ visit_store_global(isel_context* ctx, nir_intrinsic_instr* instr)
             flat->operands[1] = Operand(s1);
          }
          flat->operands[2] = Operand(write_datas[i]);
-         flat->glc = glc;
-         flat->dlc = false;
+         flat->flatlike().glc = glc;
+         flat->flatlike().dlc = false;
          assert(global || !write_const_offset);
-         flat->offset = write_const_offset;
-         flat->disable_wqm = true;
-         flat->sync = sync;
+         flat->flatlike().offset = write_const_offset;
+         flat->flatlike().disable_wqm = true;
+         flat->flatlike().sync = sync;
          ctx->program->needs_exact = true;
          ctx->block->instructions.emplace_back(std::move(flat));
       } else {
@@ -6928,19 +6928,18 @@ visit_store_global(isel_context* ctx, nir_intrinsic_instr* instr)
 
          Temp rsrc = get_gfx6_global_rsrc(bld, write_address);
 
-         aco_ptr<MUBUF_instruction> mubuf{
-            create_instruction<MUBUF_instruction>(op, Format::MUBUF, 4, 0)};
+         aco_ptr<Instruction> mubuf{create_instruction<MUBUF_instruction>(op, Format::MUBUF, 4, 0)};
          mubuf->operands[0] = Operand(rsrc);
          mubuf->operands[1] =
             write_address.type() == RegType::vgpr ? Operand(write_address) : Operand(v1);
          mubuf->operands[2] = Operand(write_offset);
          mubuf->operands[3] = Operand(write_datas[i]);
-         mubuf->glc = glc;
-         mubuf->dlc = false;
-         mubuf->offset = write_const_offset;
-         mubuf->addr64 = write_address.type() == RegType::vgpr;
-         mubuf->disable_wqm = true;
-         mubuf->sync = sync;
+         mubuf->mubuf().glc = glc;
+         mubuf->mubuf().dlc = false;
+         mubuf->mubuf().offset = write_const_offset;
+         mubuf->mubuf().addr64 = write_address.type() == RegType::vgpr;
+         mubuf->mubuf().disable_wqm = true;
+         mubuf->mubuf().sync = sync;
          ctx->program->needs_exact = true;
          ctx->block->instructions.emplace_back(std::move(mubuf));
       }
@@ -7029,7 +7028,7 @@ visit_global_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
       }
 
       aco_opcode op = instr->def.bit_size == 32 ? op32 : op64;
-      aco_ptr<FLAT_instruction> flat{create_instruction<FLAT_instruction>(
+      aco_ptr<Instruction> flat{create_instruction<FLAT_instruction>(
          op, global ? Format::GLOBAL : Format::FLAT, 3, return_previous ? 1 : 0)};
       if (addr.regClass() == s2) {
          assert(global && offset.id() && offset.type() == RegType::vgpr);
@@ -7043,12 +7042,12 @@ visit_global_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
       flat->operands[2] = Operand(data);
       if (return_previous)
          flat->definitions[0] = Definition(dst);
-      flat->glc = return_previous;
-      flat->dlc = false; /* Not needed for atomics */
+      flat->flatlike().glc = return_previous;
+      flat->flatlike().dlc = false; /* Not needed for atomics */
       assert(global || !const_offset);
-      flat->offset = const_offset;
-      flat->disable_wqm = true;
-      flat->sync = get_memory_sync_info(instr, storage_buffer, semantic_atomicrmw);
+      flat->flatlike().offset = const_offset;
+      flat->flatlike().disable_wqm = true;
+      flat->flatlike().sync = get_memory_sync_info(instr, storage_buffer, semantic_atomicrmw);
       ctx->program->needs_exact = true;
       ctx->block->instructions.emplace_back(std::move(flat));
    } else {
@@ -7061,7 +7060,7 @@ visit_global_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
 
       aco_opcode op = instr->def.bit_size == 32 ? op32 : op64;
 
-      aco_ptr<MUBUF_instruction> mubuf{
+      aco_ptr<Instruction> mubuf{
          create_instruction<MUBUF_instruction>(op, Format::MUBUF, 4, return_previous ? 1 : 0)};
       mubuf->operands[0] = Operand(rsrc);
       mubuf->operands[1] = addr.type() == RegType::vgpr ? Operand(addr) : Operand(v1);
@@ -7071,12 +7070,12 @@ visit_global_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
          return_previous ? (cmpswap ? bld.def(data.regClass()) : Definition(dst)) : Definition();
       if (return_previous)
          mubuf->definitions[0] = def;
-      mubuf->glc = return_previous;
-      mubuf->dlc = false;
-      mubuf->offset = const_offset;
-      mubuf->addr64 = addr.type() == RegType::vgpr;
-      mubuf->disable_wqm = true;
-      mubuf->sync = get_memory_sync_info(instr, storage_buffer, semantic_atomicrmw);
+      mubuf->mubuf().glc = return_previous;
+      mubuf->mubuf().dlc = false;
+      mubuf->mubuf().offset = const_offset;
+      mubuf->mubuf().addr64 = addr.type() == RegType::vgpr;
+      mubuf->mubuf().disable_wqm = true;
+      mubuf->mubuf().sync = get_memory_sync_info(instr, storage_buffer, semantic_atomicrmw);
       ctx->program->needs_exact = true;
       ctx->block->instructions.emplace_back(std::move(mubuf));
       if (return_previous && cmpswap)
@@ -7473,7 +7472,7 @@ visit_shared_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
       offset = 0;
    }
 
-   aco_ptr<DS_instruction> ds;
+   aco_ptr<Instruction> ds;
    ds.reset(
       create_instruction<DS_instruction>(op, Format::DS, num_operands, return_previous ? 1 : 0));
    ds->operands[0] = Operand(address);
@@ -7485,10 +7484,10 @@ visit_shared_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
          std::swap(ds->operands[1], ds->operands[2]);
    }
    ds->operands[num_operands - 1] = m;
-   ds->offset0 = offset;
+   ds->ds().offset0 = offset;
    if (return_previous)
       ds->definitions[0] = Definition(get_ssa_temp(ctx, &instr->def));
-   ds->sync = memory_sync_info(storage_shared, semantic_atomicrmw);
+   ds->ds().sync = memory_sync_info(storage_shared, semantic_atomicrmw);
 
    if (m.isUndefined())
       ds->operands.pop_back();
@@ -7916,7 +7915,7 @@ emit_reduction_instr(isel_context* ctx, aco_opcode aco_op, ReduceOp op, unsigned
    if (clobber_vcc)
       defs[num_defs++] = bld.def(bld.lm, vcc);
 
-   Pseudo_reduction_instruction* reduce = create_instruction<Pseudo_reduction_instruction>(
+   Instruction* reduce = create_instruction<Pseudo_reduction_instruction>(
       aco_op, Format::PSEUDO_REDUCTION, 3, num_defs);
    reduce->operands[0] = Operand(src);
    /* setup_reduce_temp will update these undef operands if needed */
@@ -7924,8 +7923,8 @@ emit_reduction_instr(isel_context* ctx, aco_opcode aco_op, ReduceOp op, unsigned
    reduce->operands[2] = Operand(v1.as_linear());
    std::copy(defs, defs + num_defs, reduce->definitions.begin());
 
-   reduce->reduce_op = op;
-   reduce->cluster_size = cluster_size;
+   reduce->reduction().reduce_op = op;
+   reduce->reduction().cluster_size = cluster_size;
    bld.insert(std::move(reduce));
 
    return dst.getTemp();
@@ -8111,7 +8110,7 @@ create_fs_dual_src_export_gfx11(isel_context* ctx, const struct aco_export_mrt* 
 {
    Builder bld(ctx->program, ctx->block);
 
-   aco_ptr<Pseudo_instruction> exp{create_instruction<Pseudo_instruction>(
+   aco_ptr<Instruction> exp{create_instruction<Pseudo_instruction>(
       aco_opcode::p_dual_src_export_gfx11, Format::PSEUDO, 8, 6)};
    for (unsigned i = 0; i < 4; i++) {
       exp->operands[i] = mrt0 ? mrt0->out[i] : Operand(v1);
@@ -9149,7 +9148,7 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
          bld.ds(aco_opcode::ds_ordered_count, bld.def(v1), gds_base, m, offset0, offset1, true);
       ds_instr->ds().sync = memory_sync_info(storage_gds, semantic_volatile);
 
-      aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(
+      aco_ptr<Instruction> vec{create_instruction<Pseudo_instruction>(
          aco_opcode::p_create_vector, Format::PSEUDO, instr->num_components, 1)};
       unsigned write_mask = nir_intrinsic_write_mask(instr);
 
@@ -9209,36 +9208,37 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
 
       const bool row_en = instr->intrinsic == nir_intrinsic_export_row_amd;
 
-      aco_ptr<Export_instruction> exp{
+      aco_ptr<Instruction> exp{
          create_instruction<Export_instruction>(aco_opcode::exp, Format::EXP, 4 + row_en, 0)};
 
-      exp->dest = target;
-      exp->enabled_mask = write_mask;
-      exp->compressed = flags & AC_EXP_FLAG_COMPRESSED;
+      exp->exp().dest = target;
+      exp->exp().enabled_mask = write_mask;
+      exp->exp().compressed = flags & AC_EXP_FLAG_COMPRESSED;
 
       /* ACO may reorder position/mrt export instructions, then mark done for last
        * export instruction. So don't respect the nir AC_EXP_FLAG_DONE for position/mrt
        * exports here and leave it to ACO.
        */
       if (target == V_008DFC_SQ_EXP_PRIM)
-         exp->done = flags & AC_EXP_FLAG_DONE;
+         exp->exp().done = flags & AC_EXP_FLAG_DONE;
       else
-         exp->done = false;
+         exp->exp().done = false;
 
       /* ACO may reorder mrt export instructions, then mark valid mask for last
        * export instruction. So don't respect the nir AC_EXP_FLAG_VALID_MASK for mrt
        * exports here and leave it to ACO.
        */
       if (target > V_008DFC_SQ_EXP_NULL)
-         exp->valid_mask = flags & AC_EXP_FLAG_VALID_MASK;
+         exp->exp().valid_mask = flags & AC_EXP_FLAG_VALID_MASK;
       else
-         exp->valid_mask = false;
+         exp->exp().valid_mask = false;
 
-      exp->row_en = row_en;
+      exp->exp().row_en = row_en;
 
       /* Compressed export uses two bits for a channel. */
-      uint32_t channel_mask =
-         exp->compressed ? (write_mask & 0x3 ? 1 : 0) | (write_mask & 0xc ? 2 : 0) : write_mask;
+      uint32_t channel_mask = exp->exp().compressed
+                                 ? (write_mask & 0x3 ? 1 : 0) | (write_mask & 0xc ? 2 : 0)
+                                 : write_mask;
 
       Temp value = get_ssa_temp(ctx, instr->src[0].ssa);
       for (unsigned i = 0; i < 4; i++) {
@@ -9287,7 +9287,7 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       if (it != ctx->allocated_vec.end())
          num_src = src.bytes() / it->second[0].bytes();
 
-      aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(
+      aco_ptr<Instruction> vec{create_instruction<Pseudo_instruction>(
          aco_opcode::p_start_linear_vgpr, Format::PSEUDO, num_src + !!begin_size, 1)};
 
       if (begin_size)
@@ -9730,15 +9730,15 @@ visit_tex(isel_context* ctx, nir_tex_instr* instr)
          }
       }
 
-      aco_ptr<MUBUF_instruction> mubuf{
+      aco_ptr<Instruction> mubuf{
          create_instruction<MUBUF_instruction>(op, Format::MUBUF, 3 + instr->is_sparse, 1)};
       mubuf->operands[0] = Operand(resource);
       mubuf->operands[1] = Operand(coords[0]);
       mubuf->operands[2] = Operand::c32(0);
       mubuf->definitions[0] = Definition(tmp_dst);
-      mubuf->idxen = true;
-      mubuf->tfe = instr->is_sparse;
-      if (mubuf->tfe)
+      mubuf->mubuf().idxen = true;
+      mubuf->mubuf().tfe = instr->is_sparse;
+      if (mubuf->mubuf().tfe)
          mubuf->operands[3] = emit_tfe_init(bld, tmp_dst);
       ctx->block->instructions.emplace_back(std::move(mubuf));
 
@@ -10008,7 +10008,7 @@ get_phi_operand(isel_context* ctx, nir_def* ssa, RegClass rc, bool logical)
 void
 visit_phi(isel_context* ctx, nir_phi_instr* instr)
 {
-   aco_ptr<Pseudo_instruction> phi;
+   aco_ptr<Instruction> phi;
    Temp dst = get_ssa_temp(ctx, &instr->def);
    assert(instr->def.bit_size != 1 || dst.regClass() == ctx->program->lane_mask);
 
@@ -10111,7 +10111,7 @@ visit_undef(isel_context* ctx, nir_undef_instr* instr)
    if (dst.size() == 1) {
       Builder(ctx->program, ctx->block).copy(Definition(dst), Operand::zero());
    } else {
-      aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(
+      aco_ptr<Instruction> vec{create_instruction<Pseudo_instruction>(
          aco_opcode::p_create_vector, Format::PSEUDO, dst.size(), 1)};
       for (unsigned i = 0; i < dst.size(); i++)
          vec->operands[i] = Operand::zero();
@@ -10210,7 +10210,7 @@ end_loop(isel_context* ctx, loop_context* lc)
    /* trim linear phis in loop header */
    for (auto&& instr : loop_entry->instructions) {
       if (instr->opcode == aco_opcode::p_linear_phi) {
-         aco_ptr<Pseudo_instruction> new_phi{create_instruction<Pseudo_instruction>(aco_opcode::p_linear_phi, Format::PSEUDO, loop_entry->linear_predecessors.size(), 1)};
+         aco_ptr<Instruction> new_phi{create_instruction<Pseudo_instruction>(aco_opcode::p_linear_phi, Format::PSEUDO, loop_entry->linear_predecessors.size(), 1)};
          new_phi->definitions[0] = instr->definitions[0];
          for (unsigned i = 0; i < new_phi->operands.size(); i++)
             new_phi->operands[i] = instr->operands[i];
@@ -10484,13 +10484,14 @@ begin_divergent_if_then(isel_context* ctx, if_context* ic, Temp cond,
 
    /* branch to linear then block */
    assert(cond.regClass() == ctx->program->lane_mask);
-   aco_ptr<Pseudo_branch_instruction> branch;
+   aco_ptr<Instruction> branch;
    branch.reset(create_instruction<Pseudo_branch_instruction>(aco_opcode::p_cbranch_z,
                                                               Format::PSEUDO_BRANCH, 1, 1));
    branch->definitions[0] = Definition(ctx->program->allocateTmp(s2));
    branch->operands[0] = Operand(cond);
-   branch->selection_control_remove = sel_ctrl == nir_selection_control_flatten ||
-                                      sel_ctrl == nir_selection_control_divergent_always_taken;
+   branch->branch().selection_control_remove =
+      sel_ctrl == nir_selection_control_flatten ||
+      sel_ctrl == nir_selection_control_divergent_always_taken;
    ctx->block->instructions.push_back(std::move(branch));
 
    ic->BB_if_idx = ctx->block->index;
@@ -10528,7 +10529,7 @@ begin_divergent_if_else(isel_context* ctx, if_context* ic,
    Block* BB_then_logical = ctx->block;
    append_logical_end(BB_then_logical);
    /* branch from logical then block to invert block */
-   aco_ptr<Pseudo_branch_instruction> branch;
+   aco_ptr<Instruction> branch;
    branch.reset(create_instruction<Pseudo_branch_instruction>(aco_opcode::p_branch,
                                                               Format::PSEUDO_BRANCH, 0, 1));
    branch->definitions[0] = Definition(ctx->program->allocateTmp(s2));
@@ -10561,8 +10562,9 @@ begin_divergent_if_else(isel_context* ctx, if_context* ic,
    branch.reset(create_instruction<Pseudo_branch_instruction>(aco_opcode::p_branch,
                                                               Format::PSEUDO_BRANCH, 0, 1));
    branch->definitions[0] = Definition(ctx->program->allocateTmp(s2));
-   branch->selection_control_remove = sel_ctrl == nir_selection_control_flatten ||
-                                      sel_ctrl == nir_selection_control_divergent_always_taken;
+   branch->branch().selection_control_remove =
+      sel_ctrl == nir_selection_control_flatten ||
+      sel_ctrl == nir_selection_control_divergent_always_taken;
    ctx->block->instructions.push_back(std::move(branch));
 
    ic->exec_potentially_empty_discard_old |= ctx->cf_info.exec_potentially_empty_discard;
@@ -10593,7 +10595,7 @@ end_divergent_if(isel_context* ctx, if_context* ic)
    append_logical_end(BB_else_logical);
 
    /* branch from logical else block to endif block */
-   aco_ptr<Pseudo_branch_instruction> branch;
+   aco_ptr<Instruction> branch;
    branch.reset(create_instruction<Pseudo_branch_instruction>(aco_opcode::p_branch,
                                                               Format::PSEUDO_BRANCH, 0, 1));
    branch->definitions[0] = Definition(ctx->program->allocateTmp(s2));
@@ -10650,7 +10652,7 @@ begin_uniform_if_then(isel_context* ctx, if_context* ic, Temp cond)
    append_logical_end(ctx->block);
    ctx->block->kind |= block_kind_uniform;
 
-   aco_ptr<Pseudo_branch_instruction> branch;
+   aco_ptr<Instruction> branch;
    aco_opcode branch_opcode = aco_opcode::p_cbranch_z;
    branch.reset(
       create_instruction<Pseudo_branch_instruction>(branch_opcode, Format::PSEUDO_BRANCH, 1, 1));
@@ -10687,7 +10689,7 @@ begin_uniform_if_else(isel_context* ctx, if_context* ic)
    if (!ic->uniform_has_then_branch) {
       append_logical_end(BB_then);
       /* branch from then block to endif block */
-      aco_ptr<Pseudo_branch_instruction> branch;
+      aco_ptr<Instruction> branch;
       branch.reset(create_instruction<Pseudo_branch_instruction>(aco_opcode::p_branch,
                                                                  Format::PSEUDO_BRANCH, 0, 1));
       branch->definitions[0] = Definition(ctx->program->allocateTmp(s2));
@@ -10719,7 +10721,7 @@ end_uniform_if(isel_context* ctx, if_context* ic)
    if (!ctx->cf_info.has_branch) {
       append_logical_end(BB_else);
       /* branch from then block to endif block */
-      aco_ptr<Pseudo_branch_instruction> branch;
+      aco_ptr<Instruction> branch;
       branch.reset(create_instruction<Pseudo_branch_instruction>(aco_opcode::p_branch,
                                                                  Format::PSEUDO_BRANCH, 0, 1));
       branch->definitions[0] = Definition(ctx->program->allocateTmp(s2));
@@ -10747,7 +10749,7 @@ visit_if(isel_context* ctx, nir_if* if_stmt)
 {
    Temp cond = get_ssa_temp(ctx, if_stmt->condition.ssa);
    Builder bld(ctx->program, ctx->block);
-   aco_ptr<Pseudo_branch_instruction> branch;
+   aco_ptr<Instruction> branch;
    if_context ic;
 
    if (!nir_src_is_divergent(if_stmt->condition)) { /* uniform condition */
@@ -11138,7 +11140,7 @@ create_fs_jump_to_epilog(isel_context* ctx)
 
    Temp continue_pc = convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->program->info.epilog_pc));
 
-   aco_ptr<Pseudo_instruction> jump{create_instruction<Pseudo_instruction>(
+   aco_ptr<Instruction> jump{create_instruction<Pseudo_instruction>(
       aco_opcode::p_jump_to_epilog, Format::PSEUDO, 1 + exports.size(), 0)};
    jump->operands[0] = Operand(continue_pc);
    for (unsigned i = 0; i < exports.size(); i++) {
@@ -11192,8 +11194,8 @@ passthrough_all_args(isel_context* ctx, std::vector<Operand>& regs)
 static void
 build_end_with_regs(isel_context* ctx, std::vector<Operand>& regs)
 {
-   aco_ptr<Pseudo_instruction> end{create_instruction<Pseudo_instruction>(
-      aco_opcode::p_end_with_regs, Format::PSEUDO, regs.size(), 0)};
+   aco_ptr<Instruction> end{create_instruction<Pseudo_instruction>(aco_opcode::p_end_with_regs,
+                                                                   Format::PSEUDO, regs.size(), 0)};
 
    for (unsigned i = 0; i < regs.size(); i++)
       end->operands[i] = regs[i];
@@ -11240,7 +11242,7 @@ create_tcs_jump_to_epilog(isel_context* ctx)
 
    Temp continue_pc = convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->program->info.epilog_pc));
 
-   aco_ptr<Pseudo_instruction> jump{
+   aco_ptr<Instruction> jump{
       create_instruction<Pseudo_instruction>(aco_opcode::p_jump_to_epilog, Format::PSEUDO, 14, 0)};
    jump->operands[0] = Operand(continue_pc);
    jump->operands[1] = ring_offsets;
@@ -11374,7 +11376,7 @@ create_fs_end_for_epilog(isel_context* ctx)
    ctx->program->needs_exact = true;
 }
 
-Pseudo_instruction*
+Instruction*
 add_startpgm(struct isel_context* ctx)
 {
    unsigned def_count = 0;
@@ -11388,7 +11390,7 @@ add_startpgm(struct isel_context* ctx)
          def_count++;
    }
 
-   Pseudo_instruction* startpgm =
+   Instruction* startpgm =
       create_instruction<Pseudo_instruction>(aco_opcode::p_startpgm, Format::PSEUDO, 0, def_count);
    ctx->block->instructions.emplace_back(startpgm);
    for (unsigned i = 0, arg = 0; i < ctx->args->arg_count; i++) {
@@ -11478,7 +11480,7 @@ fix_ls_vgpr_init_bug(isel_context* ctx)
 }
 
 void
-split_arguments(isel_context* ctx, Pseudo_instruction* startpgm)
+split_arguments(isel_context* ctx, Instruction* startpgm)
 {
    /* Split all arguments except for the first (ring_offsets) and the last
     * (exec) so that the dead channels don't stay live throughout the program.
@@ -11645,7 +11647,7 @@ insert_rt_jump_next(isel_context& ctx, const struct ac_shader_args* args)
    for (unsigned i = 0; i < ctx.args->arg_count; i++)
       src_count += !!BITSET_TEST(ctx.output_args, i);
 
-   Pseudo_instruction* ret =
+   Instruction* ret =
       create_instruction<Pseudo_instruction>(aco_opcode::p_return, Format::PSEUDO, src_count, 0);
    ctx.block->instructions.emplace_back(ret);
 
@@ -11682,7 +11684,7 @@ select_program_rt(isel_context& ctx, unsigned shader_count, struct nir_shader* c
       init_context(&ctx, nir);
       setup_fp_mode(&ctx, nir);
 
-      Pseudo_instruction* startpgm = add_startpgm(&ctx);
+      Instruction* startpgm = add_startpgm(&ctx);
       append_logical_start(ctx.block);
       split_arguments(&ctx, startpgm);
       visit_cf_list(&ctx, &nir_shader_get_entrypoint(nir)->body);
@@ -11839,7 +11841,7 @@ create_merged_jump_to_epilog(isel_context* ctx)
    Temp continue_pc =
       convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->program->info.next_stage_pc));
 
-   aco_ptr<Pseudo_instruction> jump{create_instruction<Pseudo_instruction>(
+   aco_ptr<Instruction> jump{create_instruction<Pseudo_instruction>(
       aco_opcode::p_jump_to_epilog, Format::PSEUDO, 1 + regs.size(), 0)};
    jump->operands[0] = Operand(continue_pc);
    for (unsigned i = 0; i < regs.size(); i++) {
@@ -11884,7 +11886,7 @@ select_shader(isel_context& ctx, nir_shader* nir, const bool need_startpgm, cons
 
    if (need_startpgm) {
       /* Needs to be after init_context() for FS. */
-      Pseudo_instruction* startpgm = add_startpgm(&ctx);
+      Instruction* startpgm = add_startpgm(&ctx);
       append_logical_start(ctx.block);
 
       if (ctx.options->has_ls_vgpr_init_bug && ctx.stage == vertex_tess_control_hs &&

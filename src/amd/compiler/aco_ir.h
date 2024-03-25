@@ -1671,7 +1671,7 @@ struct instr_deleter_functor {
 template <typename T> using aco_ptr = std::unique_ptr<T, instr_deleter_functor>;
 
 template <typename T>
-T*
+Instruction*
 create_instruction(aco_opcode opcode, Format format, uint32_t num_operands,
                    uint32_t num_definitions)
 {
@@ -1679,7 +1679,7 @@ create_instruction(aco_opcode opcode, Format format, uint32_t num_operands,
       sizeof(T) + num_operands * sizeof(Operand) + num_definitions * sizeof(Definition);
    void* data = instruction_buffer->allocate(size, alignof(uint32_t));
    memset(data, 0, size);
-   T* inst = (T*)data;
+   Instruction* inst = (Instruction*)data;
 
    inst->opcode = opcode;
    inst->format = format;

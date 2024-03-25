@@ -2885,7 +2885,7 @@ emit_parallel_copy_internal(ra_ctx& ctx, std::vector<std::pair<Operand, Definiti
    if (parallelcopy.empty())
       return;
 
-   aco_ptr<Pseudo_instruction> pc;
+   aco_ptr<Instruction> pc;
    pc.reset(create_instruction<Pseudo_instruction>(aco_opcode::p_parallelcopy, Format::PSEUDO,
                                                    parallelcopy.size(), parallelcopy.size()));
    bool linear_vgpr = false;
@@ -2935,8 +2935,8 @@ emit_parallel_copy_internal(ra_ctx& ctx, std::vector<std::pair<Operand, Definiti
 
       handle_pseudo(ctx, tmp_file, pc.get());
    } else {
-      pc->needs_scratch_reg = sgpr_operands_alias_defs || linear_vgpr;
-      pc->tmp_in_scc = false;
+      pc->pseudo().needs_scratch_reg = sgpr_operands_alias_defs || linear_vgpr;
+      pc->pseudo().tmp_in_scc = false;
    }
 
    instructions.emplace_back(std::move(pc));

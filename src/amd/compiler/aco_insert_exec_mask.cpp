@@ -237,7 +237,7 @@ add_coupling_code(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instruction>>
 
       /* create ssa names for outer exec masks */
       if (info.has_discard && preds.size() > 1) {
-         aco_ptr<Pseudo_instruction> phi;
+         aco_ptr<Instruction> phi;
          for (int i = 0; i < info.num_exec_masks - 1; i++) {
             phi.reset(create_instruction<Pseudo_instruction>(aco_opcode::p_linear_phi,
                                                              Format::PSEUDO, preds.size(), 1));
@@ -251,7 +251,7 @@ add_coupling_code(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instruction>>
 
       if (info.has_divergent_continue) {
          /* create ssa name for loop active mask */
-         aco_ptr<Pseudo_instruction> phi{create_instruction<Pseudo_instruction>(
+         aco_ptr<Instruction> phi{create_instruction<Pseudo_instruction>(
             aco_opcode::p_linear_phi, Format::PSEUDO, preds.size(), 1)};
          phi->definitions[0] = bld.def(bld.lm);
          phi->operands[0] = get_exec_op(ctx.info[preds[0]].exec.back().first);
@@ -312,7 +312,7 @@ add_coupling_code(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instruction>>
             ctx.info[idx].exec.emplace_back(same, type);
          } else {
             /* create phi for loop footer */
-            aco_ptr<Pseudo_instruction> phi{create_instruction<Pseudo_instruction>(
+            aco_ptr<Instruction> phi{create_instruction<Pseudo_instruction>(
                aco_opcode::p_linear_phi, Format::PSEUDO, preds.size(), 1)};
             phi->definitions[0] = bld.def(bld.lm);
             for (unsigned i = 0; i < phi->operands.size(); i++)

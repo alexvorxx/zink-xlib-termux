@@ -179,19 +179,18 @@ get_slice_type_from_desc(const struct lower_cmat_state *state,
    unsigned len = elements_per_invocation / packing_factor;
 
    /* Supported matrix sizes are designed to fill either 4 or 8 SIMD8
-    * registers. That means:
+    * registers on DG2. That means:
     *
     *          4 regsiters   8 registers
     * SIMD32     len = 1       len = 2
     * SIMD16     len = 2       len = 4
     * SIMD8      len = 4       len = 8
     *
-    * If configurations are added that result in other values of len, at the
-    * very least this assertion will need to be updated. The only value of len
-    * that makes sense to add would be 16, and that would be a lot of
-    * registers.
+    * On Xe2, supported matrix sizes are still designed to fill 4 registers
+    * (e.g., 8x32 uint8_t) or 8 registers (e.g., 16x16 float16). However, the
+    * 16x16 float16 matrix will assign 16 elements per channel at SIMD16.
     */
-   assert(len == 1 || len == 2 || len == 4 || len == 8);
+   assert(len == 1 || len == 2 || len == 4 || len == 8 || len == 16);
 
    const struct glsl_type *slice_type = glsl_vector_type(base_type, len);
 

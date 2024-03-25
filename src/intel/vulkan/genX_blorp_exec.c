@@ -120,7 +120,11 @@ static uint32_t
 blorp_get_dynamic_state(struct blorp_batch *batch,
                         enum blorp_dynamic_state name)
 {
-   unreachable("Not implemented");
+   struct anv_cmd_buffer *cmd_buffer = batch->driver_batch;
+   return (cmd_buffer->state.current_db_mode ==
+           ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER) ?
+      cmd_buffer->device->blorp.dynamic_states[name].db_state.offset :
+      cmd_buffer->device->blorp.dynamic_states[name].state.offset;
 }
 
 static void *
@@ -495,4 +499,10 @@ blorp_emit_post_draw(struct blorp_batch *batch, const struct blorp_params *param
 
    genX(emit_breakpoint)(&cmd_buffer->batch, cmd_buffer->device, false);
    blorp_measure_end(batch, params);
+}
+
+void
+genX(blorp_init_dynamic_states)(struct blorp_context *context)
+{
+   blorp_init_dynamic_states(context);
 }

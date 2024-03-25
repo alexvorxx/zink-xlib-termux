@@ -2956,17 +2956,6 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_icdGetInstanceProcAddr(
    return anv_GetInstanceProcAddr(instance, pName);
 }
 
-static struct anv_state
-anv_state_pool_emit_data(struct anv_state_pool *pool, size_t size, size_t align, const void *p)
-{
-   struct anv_state state;
-
-   state = anv_state_pool_alloc(pool, size, align);
-   memcpy(state.map, p, size);
-
-   return state;
-}
-
 static void
 anv_device_init_border_colors(struct anv_device *device)
 {

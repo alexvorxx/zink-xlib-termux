@@ -91,6 +91,23 @@ upload_blorp_shader(struct blorp_batch *batch, uint32_t stage,
    return true;
 }
 
+static void
+upload_dynamic_state(struct blorp_context *context,
+                     const void *data, uint32_t size,
+                     uint32_t alignment, enum blorp_dynamic_state name)
+{
+   struct anv_device *device = context->driver_ctx;
+
+   device->blorp.dynamic_states[name].state =
+      anv_state_pool_emit_data(&device->dynamic_state_pool,
+                               size, alignment, data);
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
+      device->blorp.dynamic_states[name].db_state =
+         anv_state_pool_emit_data(&device->dynamic_state_db_pool,
+                                  size, alignment, data);
+   }
+}
+
 void
 anv_device_init_blorp(struct anv_device *device)
 {
@@ -98,20 +115,38 @@ anv_device_init_blorp(struct anv_device *device)
       .use_mesh_shading = device->vk.enabled_extensions.EXT_mesh_shader,
       .use_unrestricted_depth_range =
          device->vk.enabled_extensions.EXT_depth_range_unrestricted,
+      .use_cached_dynamic_states = true,
    };
 
-   blorp_init_brw(&device->blorp, device, &device->isl_dev,
+   blorp_init_brw(&device->blorp.context, device, &device->isl_dev,
                   device->physical->compiler, &config);
-   device->blorp.lookup_shader = lookup_blorp_shader;
-   device->blorp.upload_shader = upload_blorp_shader;
-   device->blorp.enable_tbimr = device->physical->instance->enable_tbimr;
-   device->blorp.exec = anv_genX(device->info, blorp_exec);
+   device->blorp.context.lookup_shader = lookup_blorp_shader;
+   device->blorp.context.upload_shader = upload_blorp_shader;
+   device->blorp.context.enable_tbimr = device->physical->instance->enable_tbimr;
+   device->blorp.context.exec = anv_genX(device->info, blorp_exec);
+   device->blorp.context.upload_dynamic_state = upload_dynamic_state;
+
+   anv_genX(device->info, blorp_init_dynamic_states)(&device->blorp.context);
 }
 
 void
 anv_device_finish_blorp(struct anv_device *device)
 {
-   blorp_finish(&device->blorp);
+#ifdef HAVE_VALGRIND
+   /* We only need to free these to prevent valgrind errors.  The backing
+    * BO will go away in a couple of lines so we don't actually leak.
+    */
+   for (uint32_t i = 0; i < ARRAY_SIZE(device->blorp.dynamic_states); i++) {
+      anv_state_pool_free(&device->dynamic_state_pool,
+                          device->blorp.dynamic_states[i].state);
+      if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
+         anv_state_pool_free(&device->dynamic_state_pool,
+                             device->blorp.dynamic_states[i].db_state);
+      }
+
+   }
+#endif
+   blorp_finish(&device->blorp.context);
 }
 
 static void
@@ -134,7 +169,7 @@ anv_blorp_batch_init(struct anv_cmd_buffer *cmd_buffer,
    assert((flags & BLORP_BATCH_USE_BLITTER) == 0 ||
           (flags & BLORP_BATCH_USE_COMPUTE) == 0);
 
-   blorp_batch_init(&cmd_buffer->device->blorp, batch, cmd_buffer, flags);
+   blorp_batch_init(&cmd_buffer->device->blorp.context, batch, cmd_buffer, flags);
 }
 
 static void

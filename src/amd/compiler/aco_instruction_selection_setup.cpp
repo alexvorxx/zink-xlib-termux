@@ -17,35 +17,6 @@ namespace aco {
 
 namespace {
 
-bool
-is_loop_header_block(nir_block* block)
-{
-   return block->cf_node.parent->type == nir_cf_node_loop &&
-          block == nir_loop_first_block(nir_cf_node_as_loop(block->cf_node.parent));
-}
-
-/* similar to nir_block_is_unreachable(), but does not require dominance information */
-bool
-is_block_reachable(nir_function_impl* impl, nir_block* known_reachable, nir_block* block)
-{
-   if (block == nir_start_block(impl) || block == known_reachable)
-      return true;
-
-   /* skip loop back-edges */
-   if (is_loop_header_block(block)) {
-      nir_loop* loop = nir_cf_node_as_loop(block->cf_node.parent);
-      nir_block* preheader = nir_block_cf_tree_prev(nir_loop_first_block(loop));
-      return is_block_reachable(impl, known_reachable, preheader);
-   }
-
-   set_foreach (block->predecessors, entry) {
-      if (is_block_reachable(impl, known_reachable, (nir_block*)entry->key))
-         return true;
-   }
-
-   return false;
-}
-
 /* Check whether the given SSA def is only used by cross-lane instructions. */
 bool
 only_used_by_cross_lane_instrs(nir_def* ssa, bool follow_phis = true)
@@ -91,25 +62,24 @@ only_used_by_cross_lane_instrs(nir_def* ssa, bool follow_phis = true)
 /* If one side of a divergent IF ends in a branch and the other doesn't, we
  * might have to emit the contents of the side without the branch at the merge
  * block instead. This is so that we can use any SGPR live-out of the side
- * without the branch without creating a linear phi in the invert or merge block. */
+ * without the branch without creating a linear phi in the invert or merge block.
+ *
+ * This also removes any unreachable merge blocks.
+ */
 bool
 sanitize_if(nir_function_impl* impl, nir_if* nif)
 {
-   // TODO: skip this if the condition is uniform and there are no divergent breaks/continues?
-
    nir_block* then_block = nir_if_last_then_block(nif);
    nir_block* else_block = nir_if_last_else_block(nif);
-   bool then_jump = nir_block_ends_in_jump(then_block) ||
-                    !is_block_reachable(impl, nir_if_first_then_block(nif), then_block);
-   bool else_jump = nir_block_ends_in_jump(else_block) ||
-                    !is_block_reachable(impl, nir_if_first_else_block(nif), else_block);
-   if (then_jump == else_jump)
+   bool then_jump = nir_block_ends_in_jump(then_block);
+   bool else_jump = nir_block_ends_in_jump(else_block);
+   if (!then_jump && !else_jump)
       return false;
 
    /* If the continue from block is empty then return as there is nothing to
     * move.
     */
-   if (nir_cf_list_is_empty_block(else_jump ? &nif->then_list : &nif->else_list))
+   if (nir_cf_list_is_empty_block(then_jump ? &nif->else_list : &nif->then_list))
       return false;
 
    /* Even though this if statement has a jump on one side, we may still have
@@ -120,9 +90,13 @@ sanitize_if(nir_function_impl* impl, nir_if* nif)
    nir_opt_remove_phis_block(nir_cf_node_as_block(nir_cf_node_next(&nif->cf_node)));
 
    /* Finally, move the continue from branch after the if-statement. */
-   nir_block* last_continue_from_blk = else_jump ? then_block : else_block;
+   nir_block* last_continue_from_blk = then_jump ? else_block : then_block;
    nir_block* first_continue_from_blk =
-      else_jump ? nir_if_first_then_block(nif) : nir_if_first_else_block(nif);
+      then_jump ? nir_if_first_else_block(nif) : nir_if_first_then_block(nif);
+
+   /* We don't need to repair SSA. nir_remove_after_cf_node() replaces any uses with undef. */
+   if (then_jump && else_jump)
+      nir_remove_after_cf_node(&nif->cf_node);
 
    nir_cf_list tmp;
    nir_cf_extract(&tmp, nir_before_block(first_continue_from_blk),

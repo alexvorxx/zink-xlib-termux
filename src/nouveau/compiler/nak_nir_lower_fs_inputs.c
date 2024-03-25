@@ -169,6 +169,9 @@ lower_fs_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
 {
    const struct lower_fs_input_ctx *ctx = data;
 
+   b->cursor = nir_before_instr(&intrin->instr);
+
+   nir_def *res;
    switch (intrin->intrinsic) {
    case nir_intrinsic_load_barycentric_pixel: {
       if (!(ctx->fs_key && ctx->fs_key->force_sample_shading))
@@ -180,8 +183,6 @@ lower_fs_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
 
    case nir_intrinsic_load_frag_coord:
    case nir_intrinsic_load_point_coord: {
-      b->cursor = nir_before_instr(&intrin->instr);
-
       const enum nak_interp_loc interp_loc =
          b->shader->info.fs.uses_sample_shading ? NAK_INTERP_LOC_CENTROID
                                                 : NAK_INTERP_LOC_DEFAULT;
@@ -190,49 +191,30 @@ lower_fs_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
          nak_sysval_attr_addr(SYSTEM_VALUE_POINT_COORD) :
          nak_sysval_attr_addr(SYSTEM_VALUE_FRAG_COORD);
 
-      nir_def *coord = interp_fs_input(b, intrin->def.num_components, addr,
-                                       NAK_INTERP_MODE_SCREEN_LINEAR,
-                                       interp_loc, NULL, NULL,
-                                       ctx->nak);
-
-      nir_def_rewrite_uses(&intrin->def, coord);
-      nir_instr_remove(&intrin->instr);
-
-      return true;
+      res = interp_fs_input(b, intrin->def.num_components, addr,
+                            NAK_INTERP_MODE_SCREEN_LINEAR,
+                            interp_loc, NULL, NULL,
+                            ctx->nak);
+      break;
    }
 
    case nir_intrinsic_load_front_face:
    case nir_intrinsic_load_layer_id: {
-      b->cursor = nir_before_instr(&intrin->instr);
-
       assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
       const gl_system_value sysval =
          nir_system_value_from_intrinsic(intrin->intrinsic);
       const uint32_t addr = nak_sysval_attr_addr(sysval);
 
-      nir_def *res = load_fs_input(b, intrin->def.num_components,
-                                   addr, ctx->nak);
+      res = load_fs_input(b, intrin->def.num_components, addr, ctx->nak);
       if (intrin->def.bit_size == 1)
          res = nir_i2b(b, res);
-
-      nir_def_rewrite_uses(&intrin->def, res);
-      nir_instr_remove(&intrin->instr);
-
-      return true;
+      break;
    }
 
    case nir_intrinsic_load_input: {
-      b->cursor = nir_before_instr(&intrin->instr);
-
       const uint16_t addr = fs_input_intrin_addr(intrin);
-
-      nir_def *res = load_fs_input(b, intrin->def.num_components,
-                                   addr, ctx->nak);
-
-      nir_def_rewrite_uses(&intrin->def, res);
-      nir_instr_remove(&intrin->instr);
-
-      return true;
+      res = load_fs_input(b, intrin->def.num_components, addr, ctx->nak);
+      break;
    }
 
    case nir_intrinsic_load_barycentric_coord_pixel:
@@ -240,8 +222,6 @@ lower_fs_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
    case nir_intrinsic_load_barycentric_coord_sample:
    case nir_intrinsic_load_barycentric_coord_at_sample:
    case nir_intrinsic_load_barycentric_coord_at_offset: {
-      b->cursor = nir_before_instr(&intrin->instr);
-
       uint32_t addr;
       enum nak_interp_mode interp_mode;
       if (nir_intrinsic_interp_mode(intrin) == INTERP_MODE_NOPERSPECTIVE) {
@@ -275,19 +255,13 @@ lower_fs_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
       if (interp_mode == NAK_INTERP_MODE_PERSPECTIVE)
          inv_w = nir_frcp(b, load_frag_w(b, interp_loc, offset));
 
-      nir_def *res = interp_fs_input(b, intrin->def.num_components,
-                                     addr, interp_mode, interp_loc,
-                                     inv_w, offset, ctx->nak);
-
-      nir_def_rewrite_uses(&intrin->def, res);
-      nir_instr_remove(&intrin->instr);
-
-      return true;
+      res = interp_fs_input(b, intrin->def.num_components,
+                            addr, interp_mode, interp_loc,
+                            inv_w, offset, ctx->nak);
+      break;
    }
 
    case nir_intrinsic_load_interpolated_input: {
-      b->cursor = nir_before_instr(&intrin->instr);
-
       const uint16_t addr = fs_input_intrin_addr(intrin);
       nir_intrinsic_instr *bary = nir_src_as_intrinsic(intrin->src[0]);
 
@@ -325,14 +299,10 @@ lower_fs_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
       if (interp_mode == NAK_INTERP_MODE_PERSPECTIVE)
          inv_w = nir_frcp(b, load_frag_w(b, interp_loc, offset));
 
-      nir_def *res = interp_fs_input(b, intrin->def.num_components,
-                                     addr, interp_mode, interp_loc,
-                                     inv_w, offset, ctx->nak);
-
-      nir_def_rewrite_uses(&intrin->def, res);
-      nir_instr_remove(&intrin->instr);
-
-      return true;
+      res = interp_fs_input(b, intrin->def.num_components,
+                            addr, interp_mode, interp_loc,
+                            inv_w, offset, ctx->nak);
+      break;
    }
 
    case nir_intrinsic_load_sample_mask_in: {
@@ -351,21 +321,11 @@ lower_fs_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
       return true;
    }
 
-   case nir_intrinsic_load_sample_pos: {
-      b->cursor = nir_before_instr(&intrin->instr);
-
-      nir_def *sample_id = nir_load_sample_id(b);
-      nir_def *sample_pos = load_sample_pos_at(b, sample_id, ctx->fs_key);
-
-      nir_def_rewrite_uses(&intrin->def, sample_pos);
-      nir_instr_remove(&intrin->instr);
-
-      return true;
-   }
+   case nir_intrinsic_load_sample_pos:
+      res = load_sample_pos_at(b, nir_load_sample_id(b), ctx->fs_key);
+      break;
 
    case nir_intrinsic_load_input_vertex: {
-      b->cursor = nir_before_instr(&intrin->instr);
-
       const uint16_t addr = fs_input_intrin_addr(intrin);
       unsigned vertex_id = nir_src_as_uint(intrin->src[0]);
       assert(vertex_id < 3);
@@ -376,17 +336,18 @@ lower_fs_input_intrin(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
                                        .flags = vertex_id == 2);
          comps[c] = nir_channel(b, data, vertex_id & 1);
       }
-      nir_def *res = nir_vec(b, comps, intrin->num_components);
-
-      nir_def_rewrite_uses(&intrin->def, res);
-      nir_instr_remove(&intrin->instr);
-
-      return true;
+      res = nir_vec(b, comps, intrin->num_components);
+      break;
    }
 
    default:
       return false;
    }
+
+   nir_def_rewrite_uses(&intrin->def, res);
+   nir_instr_remove(&intrin->instr);
+
+   return true;
 }
 
 bool

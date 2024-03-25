@@ -72,7 +72,15 @@ struct dxil_spirv_specialization {
 };
 
 struct dxil_spirv_metadata {
+   // Some sysval or other type of data is accessed which needs to be piped
+   // from the app/API implementation into the shader via a buffer
    bool requires_runtime_data;
+
+   // Specifically if a vertex shader needs the first-vertex or base-instance
+   // sysval. These are relevant since these can come from an indirect arg
+   // buffer, and therefore piping them to the runtime data buffer is extra
+   // complex.
+   bool needs_draw_sysvals;
 };
 
 struct dxil_spirv_object {

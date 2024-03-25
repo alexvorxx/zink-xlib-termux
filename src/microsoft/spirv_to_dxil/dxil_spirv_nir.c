@@ -757,11 +757,11 @@ lower_view_index_to_rt_layer(nir_shader *nir)
 void
 dxil_spirv_nir_link(nir_shader *nir, nir_shader *prev_stage_nir,
                     const struct dxil_spirv_runtime_conf *conf,
-                    bool *requires_runtime_data)
+                    struct dxil_spirv_metadata *metadata)
 {
    glsl_type_singleton_init_or_ref();
 
-   *requires_runtime_data = false;
+   metadata->requires_runtime_data = false;
    if (prev_stage_nir) {
       if (nir->info.stage == MESA_SHADER_FRAGMENT) {
          nir->info.clip_distance_array_size = prev_stage_nir->info.clip_distance_array_size;
@@ -769,7 +769,7 @@ dxil_spirv_nir_link(nir_shader *nir, nir_shader *prev_stage_nir,
          if (nir->info.inputs_read & VARYING_BIT_PNTC) {
             NIR_PASS_V(prev_stage_nir, dxil_spirv_write_pntc, conf);
             NIR_PASS_V(nir, dxil_spirv_compute_pntc);
-            *requires_runtime_data = true;
+            metadata->requires_runtime_data = true;
          }
       }
 
@@ -871,7 +871,7 @@ merge_ubos_and_ssbos(nir_shader *nir)
 void
 dxil_spirv_nir_passes(nir_shader *nir,
                       const struct dxil_spirv_runtime_conf *conf,
-                      bool *requires_runtime_data)
+                      struct dxil_spirv_metadata *metadata)
 {
    glsl_type_singleton_init_or_ref();
 
@@ -935,8 +935,11 @@ dxil_spirv_nir_passes(nir_shader *nir,
    if (conf->lower_view_index_to_rt_layer)
       NIR_PASS_V(nir, lower_view_index_to_rt_layer);
 
-   *requires_runtime_data = false;
-   NIR_PASS(*requires_runtime_data, nir,
+   nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
+   metadata->needs_draw_sysvals = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_FIRST_VERTEX) ||
+                                  BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BASE_INSTANCE);
+
+   NIR_PASS(metadata->requires_runtime_data, nir,
             dxil_spirv_nir_lower_shader_system_values,
             conf);
 
@@ -1022,10 +1025,10 @@ dxil_spirv_nir_passes(nir_shader *nir,
              nir->info.stage == MESA_SHADER_TESS_EVAL);
       NIR_PASS_V(nir,
                  dxil_spirv_nir_lower_yz_flip,
-                 conf, requires_runtime_data);
+                 conf, &metadata->requires_runtime_data);
    }
 
-   if (*requires_runtime_data) {
+   if (metadata->requires_runtime_data) {
       add_runtime_data_var(nir, conf->runtime_data_cbv.register_space,
                            conf->runtime_data_cbv.base_shader_register);
    }

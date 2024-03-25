@@ -115,8 +115,8 @@ compile_shader(const char *filename, gl_shader_stage shader_stage, struct shader
 
    dxil_spirv_nir_prep(shader->nir);
 
-   bool requires_runtime_data;
-   dxil_spirv_nir_passes(shader->nir, conf, &requires_runtime_data);
+   struct dxil_spirv_metadata metadata = { 0 };
+   dxil_spirv_nir_passes(shader->nir, conf, &metadata);
 
    if (debug)
       nir_print_shader(shader->nir, stderr);
@@ -247,8 +247,8 @@ main(int argc, char **argv)
       for (int32_t prev = cur - 1; prev >= MESA_SHADER_VERTEX; --prev) {
          if (!shaders[prev].nir)
             continue;
-         bool requires_runtime_data;
-         dxil_spirv_nir_link(shaders[cur].nir, shaders[prev].nir, &conf, &requires_runtime_data);
+         struct dxil_spirv_metadata metadata = { 0 };
+         dxil_spirv_nir_link(shaders[cur].nir, shaders[prev].nir, &conf, &metadata);
          break;
       }
    }

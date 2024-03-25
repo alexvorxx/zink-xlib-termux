@@ -85,8 +85,7 @@ spirv_to_dxil(const uint32_t *words, size_t word_count,
 
    dxil_spirv_nir_prep(nir);
 
-   bool requires_runtime_data;
-   dxil_spirv_nir_passes(nir, conf, &requires_runtime_data);
+   dxil_spirv_nir_passes(nir, conf, &out_dxil->metadata);
 
    if (dgb_opts->dump_nir)
       nir_print_shader(nir, stderr);
@@ -104,7 +103,6 @@ spirv_to_dxil(const uint32_t *words, size_t word_count,
    }
 
    ralloc_free(nir);
-   out_dxil->metadata.requires_runtime_data = requires_runtime_data;
    blob_finish_get_buffer(&dxil_blob, &out_dxil->binary.buffer,
                           &out_dxil->binary.size);
 

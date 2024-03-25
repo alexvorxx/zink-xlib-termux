@@ -253,8 +253,8 @@ dzn_pipeline_get_nir_shader(struct dzn_device *device,
       .shader_model_max = dzn_get_shader_model(pdev),
    };
 
-   bool requires_runtime_data;
-   dxil_spirv_nir_passes(*nir, &conf, &requires_runtime_data);
+   struct dxil_spirv_metadata metadata = { 0 };
+   dxil_spirv_nir_passes(*nir, &conf, &metadata);
 
    if (stage == MESA_SHADER_VERTEX) {
       bool needs_conv = false;
@@ -972,11 +972,11 @@ dzn_graphics_pipeline_compile_shaders(struct dzn_device *device,
       }};
 
       assert(pipeline->templates.shaders[stage].nir);
-      bool requires_runtime_data;
+      struct dxil_spirv_metadata metadata = { 0 };
       dxil_spirv_nir_link(pipeline->templates.shaders[stage].nir,
                           prev_stage != MESA_SHADER_NONE ?
                           pipeline->templates.shaders[prev_stage].nir : NULL,
-                          &conf, &requires_runtime_data);
+                          &conf, &metadata);
 
       if (prev_stage != MESA_SHADER_NONE) {
          memcpy(stages[stage].link_hashes[0], stages[prev_stage].spirv_hash, SHA1_DIGEST_LENGTH);

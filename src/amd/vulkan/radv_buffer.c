@@ -54,8 +54,10 @@ radv_buffer_finish(struct radv_buffer *buffer)
 static void
 radv_destroy_buffer(struct radv_device *device, const VkAllocationCallbacks *pAllocator, struct radv_buffer *buffer)
 {
-   if ((buffer->vk.create_flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT) && buffer->bo)
+   if ((buffer->vk.create_flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT) && buffer->bo) {
+      radv_rmv_log_bo_destroy(device, buffer->bo);
       device->ws->buffer_destroy(device->ws, buffer->bo);
+   }
 
    radv_rmv_log_resource_destroy(device, (uint64_t)radv_buffer_to_handle(buffer));
    radv_buffer_finish(buffer);

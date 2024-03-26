@@ -272,14 +272,6 @@ static void si_destroy_context(struct pipe_context *context)
       sctx->b.delete_compute_state(&sctx->b, sctx->cs_copy_buffer);
    if (sctx->cs_ubyte_to_ushort)
       sctx->b.delete_compute_state(&sctx->b, sctx->cs_ubyte_to_ushort);
-   for (unsigned i = 0; i < ARRAY_SIZE(sctx->cs_copy_image); i++) {
-      for (unsigned j = 0; j < ARRAY_SIZE(sctx->cs_copy_image[i]); j++) {
-         for (unsigned k = 0; k < ARRAY_SIZE(sctx->cs_copy_image[i][j]); k++) {
-            if (sctx->cs_copy_image[i][j][k])
-               sctx->b.delete_compute_state(&sctx->b, sctx->cs_copy_image[i][j][k]);
-         }
-      }
-   }
    if (sctx->cs_clear_12bytes_buffer)
       sctx->b.delete_compute_state(&sctx->b, sctx->cs_clear_12bytes_buffer);
    for (unsigned i = 0; i < ARRAY_SIZE(sctx->cs_dcc_retile); i++) {

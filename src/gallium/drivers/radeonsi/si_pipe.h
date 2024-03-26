@@ -990,7 +990,6 @@ struct si_context {
    void *cs_clear_buffer_rmw;
    void *cs_copy_buffer;
    void *cs_ubyte_to_ushort;
-   void *cs_copy_image[3][2][2]; /* [wg_dim-1][src_is_1d][dst_is_1d] */
    void *cs_clear_12bytes_buffer;
    void *cs_dcc_retile[32];
    void *cs_fmask_expand[3][2]; /* [log2(samples)-1][is_array] */
@@ -1502,10 +1501,6 @@ void si_copy_buffer(struct si_context *sctx, struct pipe_resource *dst, struct p
                     uint64_t dst_offset, uint64_t src_offset, unsigned size, unsigned flags);
 void si_compute_shorten_ubyte_buffer(struct si_context *sctx, struct pipe_resource *dst, struct pipe_resource *src,
                                      uint64_t dst_offset, uint64_t src_offset, unsigned size, unsigned flags);
-bool si_compute_copy_image_old(struct si_context *sctx, struct pipe_resource *dst, unsigned dst_level,
-                           struct pipe_resource *src, unsigned src_level, unsigned dstx,
-                           unsigned dsty, unsigned dstz, const struct pipe_box *src_box,
-                           unsigned flags);
 void si_compute_clear_image_dcc_single(struct si_context *sctx, struct si_texture *tex,
                                        unsigned level, enum pipe_format format,
                                        const union pipe_color_union *color, unsigned flags);
@@ -1632,8 +1627,6 @@ void si_suspend_queries(struct si_context *sctx);
 void si_resume_queries(struct si_context *sctx);
 
 /* si_shaderlib_nir.c */
-void *si_create_copy_image_cs(struct si_context *sctx, unsigned wg_dim,
-                              bool src_is_1d_array, bool dst_is_1d_array);
 void *si_create_dcc_retile_cs(struct si_context *sctx, struct radeon_surf *surf);
 void *gfx9_create_clear_dcc_msaa_cs(struct si_context *sctx, struct si_texture *tex);
 void *si_create_passthrough_tcs(struct si_context *sctx);

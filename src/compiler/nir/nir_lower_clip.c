@@ -153,37 +153,44 @@ load_clipdist_input(nir_builder *b, nir_variable *in, int location_offset,
    val[3] = nir_channel(b, load, 3);
 }
 
-static nir_def *
-find_output_in_block(nir_block *block, unsigned location)
-{
-   nir_foreach_instr(instr, block) {
-
-      if (instr->type == nir_instr_type_intrinsic) {
-         nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
-         if ((intr->intrinsic == nir_intrinsic_store_output ||
-              intr->intrinsic == nir_intrinsic_store_per_vertex_output ||
-              intr->intrinsic == nir_intrinsic_store_per_primitive_output) &&
-             nir_intrinsic_io_semantics(intr).location == location) {
-            assert(nir_src_is_const(*nir_get_io_offset_src(intr)));
-            return intr->src[0].ssa;
-         }
-      }
-   }
-
-   return NULL;
-}
-
 /* TODO: maybe this would be a useful helper?
  * NOTE: assumes each output is written exactly once (and unconditionally)
  * so if needed nir_lower_outputs_to_temporaries()
  */
 static nir_def *
-find_output(nir_shader *shader, unsigned location)
+find_output(nir_builder *b, unsigned location)
 {
    nir_def *def = NULL;
-   nir_foreach_function_impl(impl, shader) {
+   nir_def *components[4] = {NULL};
+   nir_instr *first = NULL;
+   unsigned found = 0;
+   nir_foreach_function_impl(impl, b->shader) {
       nir_foreach_block_reverse(block, impl) {
-         nir_def *new_def = find_output_in_block(block, location);
+         nir_def *new_def = NULL;
+         nir_foreach_instr_reverse(instr, block) {
+            if (instr->type != nir_instr_type_intrinsic)
+               continue;
+            nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
+            if ((intr->intrinsic == nir_intrinsic_store_output ||
+               intr->intrinsic == nir_intrinsic_store_per_vertex_output ||
+               intr->intrinsic == nir_intrinsic_store_per_primitive_output) &&
+               nir_intrinsic_io_semantics(intr).location == location) {
+               assert(nir_src_is_const(*nir_get_io_offset_src(intr)));
+
+               int wrmask = nir_intrinsic_write_mask(intr);
+               if (intr->num_components == 4 && wrmask == 0xf) {
+                  new_def = intr->src[0].ssa;
+               } else {
+                  int c = nir_intrinsic_component(intr);
+                  assert(intr->num_components == 1 && wrmask == 0x1);
+                  assert(!components[c]);
+                  components[c] = intr->src[0].ssa;
+                  if (!first)
+                     first = &intr->instr;
+                  found++;
+               }
+            }
+         }
          assert(!(new_def && def));
          if (!def)
             def = new_def;
@@ -193,10 +200,15 @@ find_output(nir_shader *shader, unsigned location)
           * builds just assume all is well and bail when we
           * find first:
           */
-         if (def)
+         if (def || found == 4)
             break;
 #endif
       }
+   }
+   assert(def || found == 4);
+   if (found) {
+      b->cursor = nir_after_instr(first);
+      def = nir_vec(b, components, 4);
    }
 
    return def;
@@ -272,9 +284,9 @@ lower_clip_outputs(nir_builder *b, nir_variable *position,
       }
    } else {
       if (b->shader->info.outputs_written & VARYING_BIT_CLIP_VERTEX)
-         cv = find_output(b->shader, VARYING_SLOT_CLIP_VERTEX);
+         cv = find_output(b, VARYING_SLOT_CLIP_VERTEX);
       else {
-         cv = find_output(b->shader, VARYING_SLOT_POS);
+         cv = find_output(b, VARYING_SLOT_POS);
       }
    }
 

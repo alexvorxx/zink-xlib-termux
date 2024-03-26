@@ -972,7 +972,7 @@ bool si_compute_clear_image(struct si_context *sctx, struct pipe_resource *tex,
    info.mask = util_format_is_depth_or_stencil(format) ? PIPE_MASK_ZS : PIPE_MASK_RGBA;
    info.render_condition_enable = render_condition_enable;
 
-   return si_compute_blit(sctx, &info, color, !fail_if_slow);
+   return si_compute_blit(sctx, &info, color, fail_if_slow);
 }
 
 typedef struct {
@@ -980,7 +980,7 @@ typedef struct {
 } uvec3;
 
 bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
-                     const union pipe_color_union *clear_color, bool testing)
+                     const union pipe_color_union *clear_color, bool fail_if_slow)
 {
    struct si_texture *sdst = (struct si_texture *)info->dst.resource;
    struct si_texture *ssrc = (struct si_texture *)info->src.resource;
@@ -1037,7 +1037,7 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
     *
     * TODO: benchmark the performance on gfx11
     */
-   if (sctx->gfx_level < GFX11 && sctx->has_graphics && !testing)
+   if (sctx->gfx_level < GFX11 && sctx->has_graphics && fail_if_slow)
       return false;
 
    if (sctx->gfx_level < GFX10 && !sctx->has_graphics && vi_dcc_enabled(sdst, info->dst.level))

@@ -1518,7 +1518,7 @@ bool si_compute_clear_image(struct si_context *sctx, struct pipe_resource *tex,
                             const union pipe_color_union *color, bool render_condition_enable,
                             bool fail_if_slow);
 bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
-                     const union pipe_color_union *color, bool testing);
+                     const union pipe_color_union *color, bool fail_if_slow);
 void si_init_compute_blit_functions(struct si_context *sctx);
 
 /* si_cp_dma.c */

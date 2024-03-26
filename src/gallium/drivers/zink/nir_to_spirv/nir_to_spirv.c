@@ -3724,6 +3724,31 @@ get_texop_dest_type(struct ntv_context *ctx, const nir_tex_instr *tex)
 }
 
 static void
+move_tex_proj_to_coord(struct ntv_context *ctx, unsigned coord_components, struct spriv_tex_src *tex_src)
+{
+   SpvId constituents[NIR_MAX_VEC_COMPONENTS + 1];
+   if (coord_components == 1)
+      constituents[0] = tex_src->coord;
+   else {
+      assert(coord_components > 1);
+      SpvId float_type = spirv_builder_type_float(&ctx->builder, 32);
+      for (uint32_t i = 0; i < coord_components; ++i)
+         constituents[i] = spirv_builder_emit_composite_extract(&ctx->builder,
+                                                                float_type,
+                                                                tex_src->coord,
+                                                                &i, 1);
+   }
+
+   constituents[coord_components++] = tex_src->proj;
+
+   SpvId vec_type = get_fvec_type(ctx, 32, coord_components);
+   tex_src->coord = spirv_builder_emit_composite_construct(&ctx->builder,
+                                                           vec_type,
+                                                           constituents,
+                                                           coord_components);
+}
+
+static void
 emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
 {
    assert(tex->op == nir_texop_tex ||
@@ -3818,28 +3843,9 @@ emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
       return;
    }
 
-   if (tex_src.proj && coord_components > 0) {
-      SpvId constituents[NIR_MAX_VEC_COMPONENTS + 1];
-      if (coord_components == 1)
-         constituents[0] = tex_src.coord;
-      else {
-         assert(coord_components > 1);
-         SpvId float_type = spirv_builder_type_float(&ctx->builder, 32);
-         for (uint32_t i = 0; i < coord_components; ++i)
-            constituents[i] = spirv_builder_emit_composite_extract(&ctx->builder,
-                                                 float_type,
-                                                 tex_src.coord,
-                                                 &i, 1);
-      }
+   if (tex_src.proj && coord_components > 0)
+      move_tex_proj_to_coord(ctx, coord_components, &tex_src);
 
-      constituents[coord_components++] = tex_src.proj;
-
-      SpvId vec_type = get_fvec_type(ctx, 32, coord_components);
-      tex_src.coord = spirv_builder_emit_composite_construct(&ctx->builder,
-                                                            vec_type,
-                                                            constituents,
-                                                            coord_components);
-   }
    if (tex->op == nir_texop_lod) {
       SpvId result = spirv_builder_emit_image_query_lod(&ctx->builder,
                                                          dest_type, load,

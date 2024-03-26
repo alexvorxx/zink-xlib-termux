@@ -127,8 +127,8 @@ emit_wpos_adjustment(lower_wpos_ytransform_state *state,
    wpos_temp = nir_vec4(b,
                         nir_channel(b, wpos_temp, 0),
                         wpos_temp_y,
-                        nir_channel(b, wpos_temp, 2),
-                        nir_channel(b, wpos_temp, 3));
+                        nir_channel(b, &intr->def, 2),
+                        nir_channel(b, &intr->def, 3));
 
    nir_def_rewrite_uses_after(&intr->def,
                               wpos_temp,

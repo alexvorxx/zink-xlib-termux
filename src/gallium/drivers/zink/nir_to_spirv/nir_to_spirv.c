@@ -3748,6 +3748,14 @@ move_tex_proj_to_coord(struct ntv_context *ctx, unsigned coord_components, struc
                                                            coord_components);
 }
 
+static SpvId
+get_tex_image_to_load( struct ntv_context *ctx, SpvId image_type, bool is_buffer, SpvId load)
+{
+   return is_buffer || ctx->stage == MESA_SHADER_KERNEL ?
+              load :
+              spirv_builder_emit_image(&ctx->builder, image_type, load);
+}
+
 static void
 emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
 {
@@ -3809,9 +3817,7 @@ emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
 
    switch (tex->op) {
    case nir_texop_txs: {
-      SpvId image = is_buffer || ctx->stage == MESA_SHADER_KERNEL ?
-                        load :
-                        spirv_builder_emit_image(&ctx->builder, image_type, load);
+      SpvId image = get_tex_image_to_load(ctx, image_type, is_buffer, load);
       /* Its Dim operand must be one of 1D, 2D, 3D, or Cube
        * - OpImageQuerySizeLod specification
        *
@@ -3830,18 +3836,14 @@ emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
       return;
    }
    case nir_texop_query_levels: {
-      SpvId image = is_buffer || ctx->stage == MESA_SHADER_KERNEL ?
-                        load :
-                        spirv_builder_emit_image(&ctx->builder, image_type, load);
+      SpvId image = get_tex_image_to_load(ctx, image_type, is_buffer, load);
       SpvId result = spirv_builder_emit_image_query_levels(&ctx->builder,
                                                            dest_type, image);
       store_def(ctx, tex->def.index, result, tex->dest_type);
       return;
    }
    case nir_texop_texture_samples: {
-      SpvId image = is_buffer || ctx->stage == MESA_SHADER_KERNEL ?
-                        load :
-                        spirv_builder_emit_image(&ctx->builder, image_type, load);
+      SpvId image = get_tex_image_to_load(ctx, image_type, is_buffer, load);
       SpvId result = spirv_builder_emit_unop(&ctx->builder, SpvOpImageQuerySamples,
                                              dest_type, image);
       store_def(ctx, tex->def.index, result, tex->dest_type);
@@ -3868,9 +3870,7 @@ emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
    if (tex->op == nir_texop_txf ||
        tex->op == nir_texop_txf_ms ||
        tex->op == nir_texop_tg4) {
-      SpvId image = is_buffer || ctx->stage == MESA_SHADER_KERNEL ?
-                    load :
-                    spirv_builder_emit_image(&ctx->builder, image_type, load);
+      SpvId image = get_tex_image_to_load(ctx, image_type, is_buffer, load);
 
       if (tex->op == nir_texop_tg4) {
          if (tex_src.const_offset)

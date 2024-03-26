@@ -34,6 +34,14 @@ mark_sampler_desc(const nir_variable *var, struct radv_shader_info *info)
    info->desc_set_used_mask |= (1u << var->data.descriptor_set);
 }
 
+static bool
+radv_use_per_attribute_vb_descs(const nir_shader *nir,
+                                const struct radv_graphics_state_key *gfx_state,
+                                const struct radv_shader_stage_key *stage_key)
+{
+   return stage_key->vertex_robustness1 || (gfx_state->vs.has_prolog && nir->info.inputs_read);
+}
+
 static void
 gather_load_vs_input_info(const nir_shader *nir, const nir_intrinsic_instr *intrin, struct radv_shader_info *info,
                           const struct radv_graphics_state_key *gfx_state,
@@ -535,7 +543,7 @@ gather_shader_info_vs(struct radv_device *device, const nir_shader *nir,
    }
 
    /* Use per-attribute vertex descriptors to prevent faults and for correct bounds checking. */
-   info->vs.use_per_attribute_vb_descs = stage_key->vertex_robustness1 || info->vs.dynamic_inputs;
+   info->vs.use_per_attribute_vb_descs = radv_use_per_attribute_vb_descs(nir, gfx_state, stage_key);
 
    /* We have to ensure consistent input register assignments between the main shader and the
     * prolog.

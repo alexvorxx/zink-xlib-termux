@@ -1580,11 +1580,7 @@ vn_ResetFences(VkDevice device, uint32_t fenceCount, const VkFence *pFences)
    VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
 
-   /* TODO if the fence is shared-by-ref, this needs to be synchronous */
-   if (false)
-      vn_call_vkResetFences(dev->primary_ring, device, fenceCount, pFences);
-   else
-      vn_async_vkResetFences(dev->primary_ring, device, fenceCount, pFences);
+   vn_async_vkResetFences(dev->primary_ring, device, fenceCount, pFences);
 
    for (uint32_t i = 0; i < fenceCount; i++) {
       struct vn_fence *fence = vn_fence_from_handle(pFences[i]);
@@ -2157,11 +2153,7 @@ vn_SignalSemaphore(VkDevice device, const VkSemaphoreSignalInfo *pSignalInfo)
    struct vn_semaphore *sem =
       vn_semaphore_from_handle(pSignalInfo->semaphore);
 
-   /* TODO if the semaphore is shared-by-ref, this needs to be synchronous */
-   if (false)
-      vn_call_vkSignalSemaphore(dev->primary_ring, device, pSignalInfo);
-   else
-      vn_async_vkSignalSemaphore(dev->primary_ring, device, pSignalInfo);
+   vn_async_vkSignalSemaphore(dev->primary_ring, device, pSignalInfo);
 
    if (sem->feedback.slot) {
       simple_mtx_lock(&sem->feedback.async_wait_mtx);

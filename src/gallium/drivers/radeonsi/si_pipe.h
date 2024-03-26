@@ -1517,8 +1517,13 @@ bool si_compute_clear_image(struct si_context *sctx, struct pipe_resource *tex,
                             enum pipe_format format, unsigned level, const struct pipe_box *box,
                             const union pipe_color_union *color, bool render_condition_enable,
                             bool fail_if_slow);
+bool si_compute_copy_image(struct si_context *sctx, struct pipe_resource *dst, unsigned dst_level,
+                           struct pipe_resource *src, unsigned src_level, unsigned dstx,
+                           unsigned dsty, unsigned dstz, const struct pipe_box *src_box,
+                           bool fail_if_slow);
 bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
-                     const union pipe_color_union *color, bool fail_if_slow);
+                     const union pipe_color_union *clear_color, unsigned dst_access,
+                     unsigned src_access, bool fail_if_slow);
 void si_init_compute_blit_functions(struct si_context *sctx);
 
 /* si_cp_dma.c */

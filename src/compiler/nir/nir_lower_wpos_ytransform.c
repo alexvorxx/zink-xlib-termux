@@ -76,59 +76,57 @@ emit_wpos_adjustment(lower_wpos_ytransform_state *state,
                      float adjX, float adjY[2])
 {
    nir_builder *b = &state->b;
-   nir_def *wpostrans, *wpos_temp, *wpos_temp_y, *wpos_input;
+   nir_def *wpos_temp_x = NULL, *wpos_temp_y = NULL, *wpos_temp, *wpos_input[4] = {NULL};
+   nir_def *wpostrans = get_transform(state);
 
-   wpos_input = &intr->def;
-
-   wpostrans = get_transform(state);
    b->cursor = nir_after_instr(&intr->instr);
+   for (unsigned i = 0; i < intr->num_components; i++)
+      wpos_input[i] = nir_channel(b, &intr->def, i);
 
    /* First, apply the coordinate shift: */
    if (adjX || adjY[0] || adjY[1]) {
-      if (adjY[0] != adjY[1]) {
+      if (wpos_input[0])
+         wpos_temp_x = nir_fadd(b, wpos_input[0], nir_imm_float(b, adjX));
+      if (wpos_input[1] && adjY[0] != adjY[1]) {
          /* Adjust the y coordinate by adjY[1] or adjY[0] respectively
           * depending on whether inversion is actually going to be applied
           * or not, which is determined by testing against the inversion
           * state variable used below, which will be either +1 or -1.
           */
-         nir_def *adj_temp;
+         nir_def *adj_temp = nir_cmp(b,
+                                     nir_channel(b, wpostrans, invert ? 2 : 0),
+                                     nir_imm_float(b, adjY[0]),
+                                     nir_imm_float(b, adjY[1]));
 
-         adj_temp = nir_cmp(b,
-                            nir_channel(b, wpostrans, invert ? 2 : 0),
-                            nir_imm_vec4(b, adjX, adjY[0], 0.0f, 0.0f),
-                            nir_imm_vec4(b, adjX, adjY[1], 0.0f, 0.0f));
-
-         wpos_temp = nir_fadd(b, wpos_input, adj_temp);
-      } else {
-         wpos_temp = nir_fadd(b,
-                              wpos_input,
-                              nir_imm_vec4(b, adjX, adjY[0], 0.0f, 0.0f));
+         wpos_temp_y = nir_fadd(b, wpos_input[1], adj_temp);
+      } else if (wpos_input[1]) {
+         wpos_temp_y = nir_fadd(b, wpos_input[1], nir_imm_float(b, adjY[0]));
       }
-      wpos_input = wpos_temp;
    } else {
       /* MOV wpos_temp, input[wpos]
        */
-      wpos_temp = wpos_input;
+      wpos_temp_x = wpos_input[0];
+      wpos_temp_y = wpos_input[1];
    }
 
-   /* Now the conditional y flip: STATE_FB_WPOS_Y_TRANSFORM.xy/zw will be
-    * inversion/identity, or the other way around if we're drawing to an FBO.
-    */
-   if (invert) {
-      /* wpos_temp.y = wpos_temp * wpostrans.xxxx + wpostrans.yyyy */
-      wpos_temp_y = nir_fadd(b, nir_fmul(b, nir_channel(b, wpos_temp, 1), nir_channel(b, wpostrans, 0)),
-                             nir_channel(b, wpostrans, 1));
-   } else {
-      /* wpos_temp.y = wpos_temp * wpostrans.zzzz + wpostrans.wwww */
-      wpos_temp_y = nir_fadd(b, nir_fmul(b, nir_channel(b, wpos_temp, 1), nir_channel(b, wpostrans, 2)),
-                             nir_channel(b, wpostrans, 3));
+   if (wpos_temp_y) {
+      /* Now the conditional y flip: STATE_FB_WPOS_Y_TRANSFORM.xy/zw will be
+      * inversion/identity, or the other way around if we're drawing to an FBO.
+      */
+      if (invert) {
+         /* wpos_temp.y = wpos_temp * wpostrans.xxxx + wpostrans.yyyy */
+         wpos_temp_y = nir_fadd(b, nir_fmul(b, wpos_temp_y, nir_channel(b, wpostrans, 0)),
+                              nir_channel(b, wpostrans, 1));
+      } else {
+         /* wpos_temp.y = wpos_temp * wpostrans.zzzz + wpostrans.wwww */
+         wpos_temp_y = nir_fadd(b, nir_fmul(b, wpos_temp_y, nir_channel(b, wpostrans, 2)),
+                              nir_channel(b, wpostrans, 3));
+      }
    }
 
-   wpos_temp = nir_vec4(b,
-                        nir_channel(b, wpos_temp, 0),
-                        wpos_temp_y,
-                        nir_channel(b, &intr->def, 2),
-                        nir_channel(b, &intr->def, 3));
+   wpos_input[0] = wpos_temp_x;
+   wpos_input[1] = wpos_temp_y;
+   wpos_temp = nir_vec(b, wpos_input, intr->num_components);
 
    nir_def_rewrite_uses_after(&intr->def,
                               wpos_temp,

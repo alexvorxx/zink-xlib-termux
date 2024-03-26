@@ -11163,46 +11163,6 @@ get_arg_for_end(isel_context* ctx, struct ac_arg arg)
 }
 
 static Temp
-get_tcs_out_current_patch_data_offset(isel_context* ctx)
-{
-   Builder bld(ctx->program, ctx->block);
-
-   const unsigned output_vertex_size = ctx->program->info.tcs.num_linked_outputs * 4u;
-   const unsigned pervertex_output_patch_size =
-      ctx->program->info.tcs.tcs_vertices_out * output_vertex_size;
-   const unsigned output_patch_stride =
-      pervertex_output_patch_size + ctx->program->info.tcs.num_linked_patch_outputs * 4u;
-
-   Temp tcs_rel_ids = get_arg(ctx, ctx->args->tcs_rel_ids);
-   Temp rel_patch_id =
-      bld.vop3(aco_opcode::v_bfe_u32, bld.def(v1), tcs_rel_ids, Operand::c32(0u), Operand::c32(8u));
-   Temp patch_offset = bld.v_mul_imm(bld.def(v1), rel_patch_id, output_patch_stride, false);
-
-   Temp tcs_offchip_layout = get_arg(ctx, ctx->program->info.tcs.tcs_offchip_layout);
-
-   Temp patch_control_points = bld.sop2(aco_opcode::s_and_b32, bld.def(s1), bld.def(s1, scc),
-                                        tcs_offchip_layout, Operand::c32(0x3f));
-
-   Temp num_patches = bld.sop2(aco_opcode::s_bfe_u32, bld.def(s1), bld.def(s1, scc),
-                               tcs_offchip_layout, Operand::c32(0x60006));
-
-   Temp lshs_vertex_stride = bld.sop2(aco_opcode::s_bfe_u32, bld.def(s1), bld.def(s1, scc),
-                                      tcs_offchip_layout, Operand::c32(0x8000c));
-
-   Temp input_patch_size =
-      bld.sop2(aco_opcode::s_mul_i32, bld.def(s1), patch_control_points, lshs_vertex_stride);
-
-   Temp output_patch0_offset =
-      bld.sop2(aco_opcode::s_mul_i32, bld.def(s1), num_patches, input_patch_size);
-
-   Temp output_patch_offset =
-      bld.nuw().sop2(aco_opcode::s_add_i32, bld.def(s1), bld.def(s1, scc),
-                     Operand::c32(pervertex_output_patch_size), output_patch0_offset);
-
-   return bld.nuw().vadd32(bld.def(v1), patch_offset, output_patch_offset);
-}
-
-static Temp
 get_patch_base(isel_context* ctx)
 {
    Builder bld(ctx->program, ctx->block);
@@ -11268,40 +11228,36 @@ create_tcs_jump_to_epilog(isel_context* ctx)
    patch_base.setFixed(sgpr_start.advance(20u));
 
    /* VGPRs */
-   Operand tcs_out_current_patch_data_offset = Operand(get_tcs_out_current_patch_data_offset(ctx));
-   tcs_out_current_patch_data_offset.setFixed(vgpr_start);
-
    Operand invocation_id =
       bld.vop3(aco_opcode::v_bfe_u32, bld.def(v1), get_arg(ctx, ctx->args->tcs_rel_ids),
                Operand::c32(8u), Operand::c32(5u));
-   invocation_id.setFixed(vgpr_start.advance(4u));
+   invocation_id.setFixed(vgpr_start);
 
    Operand rel_patch_id =
       bld.pseudo(aco_opcode::p_extract, bld.def(v1), get_arg(ctx, ctx->args->tcs_rel_ids),
                  Operand::c32(0u), Operand::c32(8u), Operand::c32(0u));
-   rel_patch_id.setFixed(vgpr_start.advance(8u));
+   rel_patch_id.setFixed(vgpr_start.advance(4u));
 
    Temp continue_pc = convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->program->info.epilog_pc));
 
    aco_ptr<Pseudo_instruction> jump{
-      create_instruction<Pseudo_instruction>(aco_opcode::p_jump_to_epilog, Format::PSEUDO, 15, 0)};
+      create_instruction<Pseudo_instruction>(aco_opcode::p_jump_to_epilog, Format::PSEUDO, 14, 0)};
    jump->operands[0] = Operand(continue_pc);
    jump->operands[1] = ring_offsets;
    jump->operands[2] = tess_offchip_offset;
    jump->operands[3] = tcs_factor_offset;
    jump->operands[4] = tcs_offchip_layout;
    jump->operands[5] = patch_base;
-   jump->operands[6] = tcs_out_current_patch_data_offset;
-   jump->operands[7] = invocation_id;
-   jump->operands[8] = rel_patch_id;
+   jump->operands[6] = invocation_id;
+   jump->operands[7] = rel_patch_id;
 
    for (unsigned i = 0; i < 4; ++i) {
       Temp t = ctx->outputs.temps[VARYING_SLOT_TESS_LEVEL_OUTER * 4 + i];
-      jump->operands[9 + i] = t.id() ? Operand(t, vgpr_start.advance(12 + (i * 4))) : Operand();
+      jump->operands[8 + i] = t.id() ? Operand(t, vgpr_start.advance(8 + (i * 4))) : Operand();
    }
    for (unsigned i = 0; i < 2; ++i) {
       Temp t = ctx->outputs.temps[VARYING_SLOT_TESS_LEVEL_INNER * 4 + i];
-      jump->operands[13 + i] = t.id() ? Operand(t, vgpr_start.advance(28 + (i * 4))) : Operand();
+      jump->operands[12 + i] = t.id() ? Operand(t, vgpr_start.advance(24 + (i * 4))) : Operand();
    }
 
    ctx->block->instructions.emplace_back(std::move(jump));

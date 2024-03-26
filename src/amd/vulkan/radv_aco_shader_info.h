@@ -102,7 +102,6 @@ radv_aco_convert_tcs_epilog_key(struct aco_tcs_epilog_info *aco_info, const stru
    aco_info->tcs_offchip_layout = radv_args->tcs_offchip_layout;
    aco_info->invocation_id = radv_args->invocation_id;
    aco_info->rel_patch_id = radv_args->rel_patch_id;
-   aco_info->tcs_out_current_patch_data_offset = radv_args->tcs_out_current_patch_data_offset;
    aco_info->patch_base = radv_args->patch_base;
 
    for (unsigned i = 0; i < 4; ++i)

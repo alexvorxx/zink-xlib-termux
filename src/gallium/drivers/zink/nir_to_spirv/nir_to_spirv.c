@@ -3698,6 +3698,31 @@ get_texture_load(struct ntv_context *ctx, SpvId sampler_id, nir_tex_instr *tex,
    }
 }
 
+static SpvId
+get_texop_dest_type(struct ntv_context *ctx, const nir_tex_instr *tex)
+{
+   SpvId actual_dest_type;
+   unsigned num_components = tex->def.num_components;
+   switch (nir_alu_type_get_base_type(tex->dest_type)) {
+   case nir_type_int:
+      actual_dest_type = get_ivec_type(ctx, 32, num_components);
+      break;
+
+   case nir_type_uint:
+      actual_dest_type = get_uvec_type(ctx, 32, num_components);
+      break;
+
+   case nir_type_float:
+      actual_dest_type = get_fvec_type(ctx, 32, num_components);
+      break;
+
+   default:
+      unreachable("unexpected nir_alu_type");
+   }
+
+   return actual_dest_type;
+}
+
 static void
 emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
 {
@@ -3822,24 +3847,7 @@ emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
       store_def(ctx, tex->def.index, result, tex->dest_type);
       return;
    }
-   SpvId actual_dest_type;
-   unsigned num_components = tex->def.num_components;
-   switch (nir_alu_type_get_base_type(tex->dest_type)) {
-   case nir_type_int:
-      actual_dest_type = get_ivec_type(ctx, 32, num_components);
-      break;
-
-   case nir_type_uint:
-      actual_dest_type = get_uvec_type(ctx, 32, num_components);
-      break;
-
-   case nir_type_float:
-      actual_dest_type = get_fvec_type(ctx, 32, num_components);
-      break;
-
-   default:
-      unreachable("unexpected nir_alu_type");
-   }
+   SpvId actual_dest_type = get_texop_dest_type(ctx, tex);
 
    SpvId result;
    if (tex_src.offset)

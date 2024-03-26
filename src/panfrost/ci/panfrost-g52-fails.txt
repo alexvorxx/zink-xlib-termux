@@ -472,5 +472,4 @@ dEQP-VK.texture.explicit_lod.2d.derivatives.nearest_nearest_mipmap_nearest,Fail
 
 # uprev Piglit in Mesa
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-refcount-multithread,Crash
-spec@!opengl 3.0@texsubimage-sync,Fail
 

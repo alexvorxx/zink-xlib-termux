@@ -1450,7 +1450,7 @@ x11_present_to_x11_sw(struct x11_swapchain *chain, uint32_t image_index,
 
    /* We don't have queued present here.
     * Immediately let application acquire again, but query geometry first so
-    * we can report SUBOPTIMAL on resize. */
+    * we can report OUT_OF_DATE on resize. */
    xcb_generic_error_t *err;
 
    xcb_get_geometry_reply_t *geom = xcb_get_geometry_reply(chain->conn, geom_cookie, &err);
@@ -1458,7 +1458,7 @@ x11_present_to_x11_sw(struct x11_swapchain *chain, uint32_t image_index,
    if (geom) {
       if (chain->extent.width != geom->width ||
           chain->extent.height != geom->height)
-         result = VK_SUBOPTIMAL_KHR;
+         result = VK_ERROR_OUT_OF_DATE_KHR;
    } else {
       result = VK_ERROR_SURFACE_LOST_KHR;
    }

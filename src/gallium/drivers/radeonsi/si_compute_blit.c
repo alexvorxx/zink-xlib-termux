@@ -553,7 +553,7 @@ static void si_launch_grid_internal_images(struct si_context *sctx,
       pipe_resource_reference(&saved_image[i].resource, NULL);
 }
 
-bool si_compute_copy_image(struct si_context *sctx, struct pipe_resource *dst, unsigned dst_level,
+bool si_compute_copy_image_old(struct si_context *sctx, struct pipe_resource *dst, unsigned dst_level,
                            struct pipe_resource *src, unsigned src_level, unsigned dstx,
                            unsigned dsty, unsigned dstz, const struct pipe_box *src_box,
                            unsigned flags)

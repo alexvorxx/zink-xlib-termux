@@ -968,7 +968,7 @@ void si_resource_copy_region(struct pipe_context *ctx, struct pipe_resource *dst
       return;
    }
 
-   if (si_compute_copy_image(sctx, dst, dst_level, src, src_level, dstx, dsty, dstz,
+   if (si_compute_copy_image_old(sctx, dst, dst_level, src, src_level, dstx, dsty, dstz,
                              src_box, SI_OP_SYNC_BEFORE_AFTER))
       return;
 
@@ -1213,7 +1213,7 @@ static void si_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
          si_init_aux_async_compute_ctx(sscreen);
 
       if (sscreen->async_compute_context) {
-         si_compute_copy_image((struct si_context*)sctx->screen->async_compute_context,
+         si_compute_copy_image_old((struct si_context*)sctx->screen->async_compute_context,
                                info->dst.resource, 0, info->src.resource, 0, 0, 0, 0,
                                &info->src.box, 0);
          si_flush_gfx_cs((struct si_context*)sctx->screen->async_compute_context, 0, NULL);

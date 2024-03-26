@@ -3803,10 +3803,15 @@ emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
    else if (ctx->stage != MESA_SHADER_FRAGMENT &&
             tex->op == nir_texop_tex && ctx->explicit_lod && !tex_src.lod)
       tex_src.lod = emit_float_const(ctx, 32, 0.0);
-   if (tex->op == nir_texop_txs) {
+
+   if (tex_src.proj && coord_components > 0)
+      move_tex_proj_to_coord(ctx, coord_components, &tex_src);
+
+   switch (tex->op) {
+   case nir_texop_txs: {
       SpvId image = is_buffer || ctx->stage == MESA_SHADER_KERNEL ?
-                    load :
-                    spirv_builder_emit_image(&ctx->builder, image_type, load);
+                        load :
+                        spirv_builder_emit_image(&ctx->builder, image_type, load);
       /* Its Dim operand must be one of 1D, 2D, 3D, or Cube
        * - OpImageQuerySizeLod specification
        *
@@ -3824,35 +3829,35 @@ emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
       store_def(ctx, tex->def.index, result, tex->dest_type);
       return;
    }
-   if (tex->op == nir_texop_query_levels) {
+   case nir_texop_query_levels: {
       SpvId image = is_buffer || ctx->stage == MESA_SHADER_KERNEL ?
-                    load :
-                    spirv_builder_emit_image(&ctx->builder, image_type, load);
+                        load :
+                        spirv_builder_emit_image(&ctx->builder, image_type, load);
       SpvId result = spirv_builder_emit_image_query_levels(&ctx->builder,
-                                                         dest_type, image);
+                                                           dest_type, image);
       store_def(ctx, tex->def.index, result, tex->dest_type);
       return;
    }
-   if (tex->op == nir_texop_texture_samples) {
+   case nir_texop_texture_samples: {
       SpvId image = is_buffer || ctx->stage == MESA_SHADER_KERNEL ?
-                    load :
-                    spirv_builder_emit_image(&ctx->builder, image_type, load);
+                        load :
+                        spirv_builder_emit_image(&ctx->builder, image_type, load);
       SpvId result = spirv_builder_emit_unop(&ctx->builder, SpvOpImageQuerySamples,
                                              dest_type, image);
       store_def(ctx, tex->def.index, result, tex->dest_type);
       return;
    }
-
-   if (tex_src.proj && coord_components > 0)
-      move_tex_proj_to_coord(ctx, coord_components, &tex_src);
-
-   if (tex->op == nir_texop_lod) {
+   case nir_texop_lod: {
       SpvId result = spirv_builder_emit_image_query_lod(&ctx->builder,
-                                                         dest_type, load,
-                                                         tex_src.coord);
+                                                        dest_type, load,
+                                                        tex_src.coord);
       store_def(ctx, tex->def.index, result, tex->dest_type);
       return;
    }
+   default:
+      break;
+   }
+
    SpvId actual_dest_type = get_texop_dest_type(ctx, tex);
 
    SpvId result;

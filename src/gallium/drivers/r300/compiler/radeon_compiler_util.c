@@ -8,6 +8,8 @@
 #include "radeon_compiler.h"
 #include "radeon_dataflow.h"
 #include "r300_fragprog_swizzle.h"
+
+#include "util/u_math.h"
 /**
  */
 unsigned int rc_swizzle_to_writemask(unsigned int swz)
@@ -747,4 +749,17 @@ bool rc_inst_has_three_diff_temp_srcs(struct rc_instruction *inst)
 		inst->U.I.SrcReg[0].Index != inst->U.I.SrcReg[1].Index &&
 		inst->U.I.SrcReg[1].Index != inst->U.I.SrcReg[2].Index &&
 		inst->U.I.SrcReg[0].Index != inst->U.I.SrcReg[2].Index);
+}
+
+float rc_inline_to_float(int index)
+{
+	int r300_exponent = (index >> 3) & 0xf;
+	unsigned r300_mantissa = index & 0x7;
+	unsigned float_exponent;
+	unsigned real_float;
+
+	r300_exponent -= 7;
+	float_exponent = r300_exponent + 127;
+	real_float = (r300_mantissa << 20) | (float_exponent << 23);
+	return uif(real_float);
 }

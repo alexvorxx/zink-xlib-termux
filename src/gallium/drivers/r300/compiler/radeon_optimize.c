@@ -623,15 +623,20 @@ static int peephole_mad_presub_bias(
 	struct rc_src_register src1_reg = inst_mad->U.I.SrcReg[1];
 	if ((src1_reg.Negate & inst_mad->U.I.DstReg.WriteMask) != 0 || src1_reg.Abs)
 		return 0;
-        struct rc_constant *constant = &c->Program.Constants.Constants[src1_reg.Index];
-	if (constant->Type != RC_CONSTANT_IMMEDIATE)
-		return 0;
-        for (i = 0; i < 4; i++) {
-		if (!(inst_mad->U.I.DstReg.WriteMask & (1 << i)))
-			continue;
-		swz = GET_SWZ(src1_reg.Swizzle, i);
-		if (swz >= RC_SWIZZLE_ZERO || constant->u.Immediate[swz] != 2.0)
+	if (src1_reg.File == RC_FILE_INLINE) {
+		if (rc_inline_to_float(src1_reg.Index) != 2.0f)
+			 return 0;
+	} else {
+	        struct rc_constant *constant = &c->Program.Constants.Constants[src1_reg.Index];
+		if (constant->Type != RC_CONSTANT_IMMEDIATE)
 			return 0;
+	        for (i = 0; i < 4; i++) {
+			if (!(inst_mad->U.I.DstReg.WriteMask & (1 << i)))
+				continue;
+			swz = GET_SWZ(src1_reg.Swizzle, i);
+			if (swz >= RC_SWIZZLE_ZERO || constant->u.Immediate[swz] != 2.0)
+				return 0;
+		}
 	}
 
 	/* Check src0. */
@@ -835,11 +840,9 @@ static int peephole_mul_omod(
  * 	0 if inst is still part of the program.
  * 	1 if inst is no longer part of the program.
  */
-static int peephole(struct radeon_compiler * c, struct rc_instruction * inst)
+int
+rc_opt_presubtract(struct radeon_compiler *c, struct rc_instruction *inst, void *data)
 {
-	if (!c->has_presub)
-		return 0;
-
 	switch(inst->U.I.Opcode) {
 	case RC_OPCODE_ADD:
 	{
@@ -1457,14 +1460,6 @@ void rc_optimize(struct radeon_compiler * c, void *user)
 
 	if (c->type != RC_FRAGMENT_PROGRAM) {
 		return;
-	}
-
-	/* Presubtract operations. */
-	inst = c->Program.Instructions.Next;
-	while(inst != &c->Program.Instructions) {
-		struct rc_instruction * cur = inst;
-		inst = inst->Next;
-		peephole(c, cur);
 	}
 
 	/* Output modifiers. */

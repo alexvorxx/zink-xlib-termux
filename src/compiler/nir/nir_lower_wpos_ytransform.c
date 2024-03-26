@@ -39,6 +39,7 @@ typedef struct {
    nir_shader *shader;
    nir_builder b;
    nir_variable *transform;
+   nir_def *load;
 } lower_wpos_ytransform_state;
 
 static nir_def *
@@ -55,8 +56,10 @@ get_transform(lower_wpos_ytransform_state *state)
 
       var->data.how_declared = nir_var_hidden;
       state->transform = var;
+      state->b.cursor = nir_before_impl(nir_shader_get_entrypoint(state->b.shader));
+      state->load = nir_load_var(&state->b, state->transform);
    }
-   return nir_load_var(&state->b, state->transform);
+   return state->load;
 }
 
 /* NIR equiv of TGSI CMP instruction: */
@@ -77,9 +80,8 @@ emit_wpos_adjustment(lower_wpos_ytransform_state *state,
 
    wpos_input = &intr->def;
 
-   b->cursor = nir_after_instr(&intr->instr);
-
    wpostrans = get_transform(state);
+   b->cursor = nir_after_instr(&intr->instr);
 
    /* First, apply the coordinate shift: */
    if (adjX || adjY[0] || adjY[1]) {
@@ -227,11 +229,12 @@ lower_fddy(lower_wpos_ytransform_state *state, nir_alu_instr *fddy)
 {
    nir_builder *b = &state->b;
    nir_def *p, *pt, *trans;
+   nir_def *wpostrans = get_transform(state);
 
    b->cursor = nir_before_instr(&fddy->instr);
 
    p = nir_ssa_for_alu_src(b, fddy, 0);
-   trans = nir_channel(b, get_transform(state), 0);
+   trans = nir_channel(b, wpostrans, 0);
    if (p->bit_size == 16)
       trans = nir_f2f16(b, trans);
 
@@ -254,12 +257,13 @@ lower_interp_deref_or_load_baryc_at_offset(lower_wpos_ytransform_state *state,
    nir_builder *b = &state->b;
    nir_def *offset;
    nir_def *flip_y;
+   nir_def *wpostrans = get_transform(state);
 
    b->cursor = nir_before_instr(&intr->instr);
 
    offset = intr->src[offset_src].ssa;
    flip_y = nir_fmul(b, nir_channel(b, offset, 1),
-                     nir_channel(b, get_transform(state), 0));
+                     nir_channel(b, wpostrans, 0));
    nir_src_rewrite(&intr->src[offset_src],
                    nir_vec2(b, nir_channel(b, offset, 0), flip_y));
 }
@@ -269,11 +273,12 @@ lower_load_sample_pos(lower_wpos_ytransform_state *state,
                       nir_intrinsic_instr *intr)
 {
    nir_builder *b = &state->b;
+   nir_def *wpostrans = get_transform(state);
    b->cursor = nir_after_instr(&intr->instr);
 
    nir_def *pos = &intr->def;
-   nir_def *scale = nir_channel(b, get_transform(state), 0);
-   nir_def *neg_scale = nir_channel(b, get_transform(state), 2);
+   nir_def *scale = nir_channel(b, wpostrans, 0);
+   nir_def *neg_scale = nir_channel(b, wpostrans, 2);
    /* Either y or 1-y for scale equal to 1 or -1 respectively. */
    nir_def *flipped_y =
       nir_fadd(b, nir_fmax(b, neg_scale, nir_imm_float(b, 0.0)),

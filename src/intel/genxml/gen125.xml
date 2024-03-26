@@ -2260,6 +2260,7 @@
     <field name="GW3 Done" start="23" end="23" type="bool" />
     <field name="TDC Done" start="24" end="24" type="bool" />
     <field name="SFBE Done" start="25" end="25" type="bool" />
+    <field name="PSS Done" start="26" end="26" type="bool" />
     <field name="AMFS Done" start="27" end="27" type="bool" />
   </register>
   <register name="SC_INSTDONE_EXTRA" length="1" num="0x7104">
@@ -2277,6 +2278,7 @@
     <field name="GW6 Done" start="22" end="22" type="bool" />
     <field name="GW7 Done" start="23" end="23" type="bool" />
     <field name="TDC1 Done" start="24" end="24" type="bool" />
+    <field name="PSS Done" start="26" end="26" type="bool" />
   </register>
   <register name="SC_INSTDONE_EXTRA2" length="1" num="0x7108">
     <field name="RCC2 Done" start="9" end="9" type="bool" />

@@ -28,6 +28,7 @@
 #include "gl_nir_linker.h"
 #include "gl_nir_link_varyings.h"
 #include "linker_util.h"
+#include "string_to_uint_map.h"
 #include "main/shader_types.h"
 #include "main/consts_exts.h"
 #include "main/shaderobj.h"
@@ -1466,6 +1467,188 @@ gl_nir_link_spirv(const struct gl_constants *consts,
    return true;
 }
 
+/**
+ * Initializes explicit location slots to INACTIVE_UNIFORM_EXPLICIT_LOCATION
+ * for a variable, checks for overlaps between other uniforms using explicit
+ * locations.
+ */
+static int
+reserve_explicit_locations(struct gl_shader_program *prog,
+                           struct string_to_uint_map *map, nir_variable *var)
+{
+   unsigned slots = glsl_type_uniform_locations(var->type);
+   unsigned max_loc = var->data.location + slots - 1;
+   unsigned return_value = slots;
+
+   /* Resize remap table if locations do not fit in the current one. */
+   if (max_loc + 1 > prog->NumUniformRemapTable) {
+      prog->UniformRemapTable =
+         reralloc(prog, prog->UniformRemapTable,
+                  struct gl_uniform_storage *,
+                  max_loc + 1);
+
+      if (!prog->UniformRemapTable) {
+         linker_error(prog, "Out of memory during linking.\n");
+         return -1;
+      }
+
+      /* Initialize allocated space. */
+      for (unsigned i = prog->NumUniformRemapTable; i < max_loc + 1; i++)
+         prog->UniformRemapTable[i] = NULL;
+
+      prog->NumUniformRemapTable = max_loc + 1;
+   }
+
+   for (unsigned i = 0; i < slots; i++) {
+      unsigned loc = var->data.location + i;
+
+      /* Check if location is already used. */
+      if (prog->UniformRemapTable[loc] == INACTIVE_UNIFORM_EXPLICIT_LOCATION) {
+
+         /* Possibly same uniform from a different stage, this is ok. */
+         unsigned hash_loc;
+         if (string_to_uint_map_get(map, &hash_loc, var->name) &&
+             hash_loc == loc - i) {
+            return_value = 0;
+            continue;
+         }
+
+         /* ARB_explicit_uniform_location specification states:
+          *
+          *     "No two default-block uniform variables in the program can have
+          *     the same location, even if they are unused, otherwise a compiler
+          *     or linker error will be generated."
+          */
+         linker_error(prog,
+                      "location qualifier for uniform %s overlaps "
+                      "previously used location\n",
+                      var->name);
+         return -1;
+      }
+
+      /* Initialize location as inactive before optimization
+       * rounds and location assignment.
+       */
+      prog->UniformRemapTable[loc] = INACTIVE_UNIFORM_EXPLICIT_LOCATION;
+   }
+
+   /* Note, base location used for arrays. */
+   string_to_uint_map_put(map, var->data.location, var->name);
+
+   return return_value;
+}
+
+static bool
+reserve_subroutine_explicit_locations(struct gl_shader_program *prog,
+                                      struct gl_program *p,
+                                      nir_variable *var)
+{
+   unsigned slots = glsl_type_uniform_locations(var->type);
+   unsigned max_loc = var->data.location + slots - 1;
+
+   /* Resize remap table if locations do not fit in the current one. */
+   if (max_loc + 1 > p->sh.NumSubroutineUniformRemapTable) {
+      p->sh.SubroutineUniformRemapTable =
+         reralloc(p, p->sh.SubroutineUniformRemapTable,
+                  struct gl_uniform_storage *,
+                  max_loc + 1);
+
+      if (!p->sh.SubroutineUniformRemapTable) {
+         linker_error(prog, "Out of memory during linking.\n");
+         return false;
+      }
+
+      /* Initialize allocated space. */
+      for (unsigned i = p->sh.NumSubroutineUniformRemapTable; i < max_loc + 1; i++)
+         p->sh.SubroutineUniformRemapTable[i] = NULL;
+
+      p->sh.NumSubroutineUniformRemapTable = max_loc + 1;
+   }
+
+   for (unsigned i = 0; i < slots; i++) {
+      unsigned loc = var->data.location + i;
+
+      /* Check if location is already used. */
+      if (p->sh.SubroutineUniformRemapTable[loc] == INACTIVE_UNIFORM_EXPLICIT_LOCATION) {
+
+         /* ARB_explicit_uniform_location specification states:
+          *     "No two subroutine uniform variables can have the same location
+          *     in the same shader stage, otherwise a compiler or linker error
+          *     will be generated."
+          */
+         linker_error(prog,
+                      "location qualifier for uniform %s overlaps "
+                      "previously used location\n",
+                      var->name);
+         return false;
+      }
+
+      /* Initialize location as inactive before optimization
+       * rounds and location assignment.
+       */
+      p->sh.SubroutineUniformRemapTable[loc] = INACTIVE_UNIFORM_EXPLICIT_LOCATION;
+   }
+
+   return true;
+}
+/**
+ * Check and reserve all explicit uniform locations, called before
+ * any optimizations happen to handle also inactive uniforms and
+ * inactive array elements that may get trimmed away.
+ */
+static void
+check_explicit_uniform_locations(const struct gl_extensions *exts,
+                                 struct gl_shader_program *prog)
+{
+   prog->NumExplicitUniformLocations = 0;
+
+   if (!exts->ARB_explicit_uniform_location)
+      return;
+
+   /* This map is used to detect if overlapping explicit locations
+    * occur with the same uniform (from different stage) or a different one.
+    */
+   struct string_to_uint_map *uniform_map = string_to_uint_map_ctor();
+
+   if (!uniform_map) {
+      linker_error(prog, "Out of memory during linking.\n");
+      return;
+   }
+
+   unsigned entries_total = 0;
+   unsigned mask = prog->data->linked_stages;
+   while (mask) {
+      const int i = u_bit_scan(&mask);
+      struct gl_program *p = prog->_LinkedShaders[i]->Program;
+
+      unsigned modes = nir_var_uniform | nir_var_mem_ubo | nir_var_image;
+      nir_foreach_variable_with_modes(var, p->nir, modes) {
+         if (var->data.explicit_location) {
+            bool ret = false;
+            if (glsl_type_is_subroutine(glsl_without_array(var->type)))
+               ret = reserve_subroutine_explicit_locations(prog, p, var);
+            else {
+               int slots = reserve_explicit_locations(prog, uniform_map,
+                                                      var);
+               if (slots != -1) {
+                  ret = true;
+                  entries_total += slots;
+               }
+            }
+            if (!ret) {
+               string_to_uint_map_dtor(uniform_map);
+               return;
+            }
+         }
+      }
+   }
+
+   link_util_update_empty_uniform_locations(prog);
+
+   string_to_uint_map_dtor(uniform_map);
+   prog->NumExplicitUniformLocations = entries_total;
+}
+
 static void
 link_assign_subroutine_types(struct gl_shader_program *prog)
 {
@@ -1789,6 +1972,8 @@ gl_nir_link_glsl(const struct gl_constants *consts,
       return true;
 
    MESA_TRACE_FUNC();
+
+   check_explicit_uniform_locations(exts, prog);
 
    link_assign_subroutine_types(prog);
    verify_subroutine_associated_funcs(prog);

@@ -90,12 +90,6 @@ radv_spm_trace_enabled(struct radv_instance *instance)
           debug_get_bool_option("RADV_THREAD_TRACE_CACHE_COUNTERS", true);
 }
 
-bool
-radv_device_fault_detection_enabled(const struct radv_device *device)
-{
-   return device->instance->debug_flags & RADV_DEBUG_HANG;
-}
-
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_GetMemoryHostPointerPropertiesEXT(VkDevice _device, VkExternalMemoryHandleTypeFlagBits handleType,
                                        const void *pHostPointer,

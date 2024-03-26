@@ -3824,8 +3824,6 @@ radv_uses_image_float32_atomics(const struct radv_device *device)
           device->vk.enabled_features.sparseImageFloat32AtomicMinMax;
 }
 
-bool radv_device_fault_detection_enabled(const struct radv_device *device);
-
 struct radv_compute_pipeline_metadata {
    uint32_t shader_va;
    uint32_t rsrc1;

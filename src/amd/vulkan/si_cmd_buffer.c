@@ -28,6 +28,7 @@
 /* command buffer handling for AMD GCN */
 
 #include "radv_cs.h"
+#include "radv_debug.h"
 #include "radv_private.h"
 #include "radv_shader.h"
 #include "sid.h"

@@ -70,6 +70,9 @@ struct radv_shader_args {
    /* # [0:5] = the number of patch control points
     * # [6:11] = the number of tessellation patches
     * # [12:19] = the LS-HS vertex stride in DWORDS
+    * # [20:28] = reserved for future use
+    * # [29:30] = tess_primitive_mode
+    * # [31] = whether TES reads tess factors
     */
    struct ac_arg tcs_offchip_layout;
 

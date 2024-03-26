@@ -102,6 +102,21 @@ lower_abi_instr(nir_builder *b, nir_intrinsic_instr *intrin, void *state)
          }
       }
       break;
+   case nir_intrinsic_load_tcs_tess_levels_to_tes_amd:
+      if (s->info->outputs_linked) {
+         replacement = nir_imm_bool(b, s->info->tcs.tes_reads_tess_factors);
+      } else {
+         replacement =
+            nir_ine_imm(b, GET_SGPR_FIELD_NIR(s->args->tcs_offchip_layout, TCS_OFFCHIP_LAYOUT_TES_READS_TF), 0);
+      }
+      break;
+   case nir_intrinsic_load_tcs_primitive_mode_amd:
+      if (s->info->outputs_linked) {
+         replacement = nir_imm_int(b, s->info->tes._primitive_mode);
+      } else {
+         replacement = GET_SGPR_FIELD_NIR(s->args->tcs_offchip_layout, TCS_OFFCHIP_LAYOUT_PRIMITIVE_MODE);
+      }
+      break;
    case nir_intrinsic_load_ring_esgs_amd:
       replacement = load_ring(b, stage == MESA_SHADER_GEOMETRY ? RING_ESGS_GS : RING_ESGS_VS, s);
       break;

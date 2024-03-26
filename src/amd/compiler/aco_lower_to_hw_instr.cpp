@@ -2164,13 +2164,17 @@ emit_set_mode(Builder& bld, float_mode new_mode, bool set_round, bool set_denorm
 }
 
 void
-emit_set_mode_from_block(Builder& bld, Program& program, Block* block, bool always_set)
+emit_set_mode_from_block(Builder& bld, Program& program, Block* block)
 {
-   float_mode config_mode;
-   config_mode.val = program.config->float_mode;
+   float_mode initial;
+   initial.val = program.config->float_mode;
 
-   bool set_round = always_set && block->fp_mode.round != config_mode.round;
-   bool set_denorm = always_set && block->fp_mode.denorm != config_mode.denorm;
+   bool inital_unknown =
+      (program.info.merged_shader_compiled_separately && program.stage.sw == SWStage::GS) ||
+      (program.info.merged_shader_compiled_separately && program.stage.sw == SWStage::TCS);
+   bool is_start = block->index == 0;
+   bool set_round = is_start && (inital_unknown || block->fp_mode.round != initial.round);
+   bool set_denorm = is_start && (inital_unknown || block->fp_mode.denorm != initial.denorm);
    if (block->kind & block_kind_top_level) {
       for (unsigned pred : block->linear_preds) {
          if (program.blocks[pred].fp_mode.round != block->fp_mode.round)
@@ -2299,7 +2303,7 @@ lower_to_hw_instr(Program* program)
       ctx.instructions.reserve(block->instructions.size());
       Builder bld(program, &ctx.instructions);
 
-      emit_set_mode_from_block(bld, *program, block, (block_idx == 0));
+      emit_set_mode_from_block(bld, *program, block);
 
       for (size_t instr_idx = 0; instr_idx < block->instructions.size(); instr_idx++) {
          aco_ptr<Instruction>& instr = block->instructions[instr_idx];

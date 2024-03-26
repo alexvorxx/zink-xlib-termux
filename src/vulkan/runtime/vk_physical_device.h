@@ -145,6 +145,9 @@ VkResult
 vk_physical_device_check_device_features(struct vk_physical_device *physical_device,
                                          const VkDeviceCreateInfo *pCreateInfo);
 
+struct spirv_capabilities
+vk_physical_device_get_spirv_capabilities(const struct vk_physical_device *pdev);
+
 #ifdef __cplusplus
 }
 #endif

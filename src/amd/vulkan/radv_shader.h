@@ -324,7 +324,6 @@ struct radv_shader_info {
    bool merged_shader_compiled_separately; /* GFX9+ */
 
    struct {
-      uint8_t input_usage_mask[RADV_VERT_ATTRIB_MAX];
       uint8_t output_usage_mask[VARYING_SLOT_VAR31 + 1];
       bool needs_draw_id;
       bool needs_instance_id;

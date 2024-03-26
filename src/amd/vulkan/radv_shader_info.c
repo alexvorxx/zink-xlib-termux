@@ -59,10 +59,6 @@ gather_load_vs_input_info(const nir_shader *nir, const nir_intrinsic_instr *intr
    const unsigned component = nir_intrinsic_component(intrin);
    unsigned mask = nir_def_components_read(&intrin->def);
    mask = (intrin->def.bit_size == 64 ? util_widen_mask(mask, 2) : mask) << component;
-
-   info->vs.input_usage_mask[location] |= mask & 0xf;
-   if (mask >> 4)
-      info->vs.input_usage_mask[location + 1] |= mask >> 4;
 }
 
 static void

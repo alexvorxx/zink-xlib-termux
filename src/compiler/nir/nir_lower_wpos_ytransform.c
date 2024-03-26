@@ -79,9 +79,18 @@ emit_wpos_adjustment(lower_wpos_ytransform_state *state,
    nir_def *wpos_temp_x = NULL, *wpos_temp_y = NULL, *wpos_temp, *wpos_input[4] = {NULL};
    nir_def *wpostrans = get_transform(state);
 
+   unsigned c = 0;
+   const nir_intrinsic_info *info = &nir_intrinsic_infos[intr->intrinsic];
+   if (info->index_map[NIR_INTRINSIC_COMPONENT]) {
+      c = nir_intrinsic_component(intr);
+      /* this pass only alters the first two components */
+      if (c > 1)
+         return;
+   }
+
    b->cursor = nir_after_instr(&intr->instr);
    for (unsigned i = 0; i < intr->num_components; i++)
-      wpos_input[i] = nir_channel(b, &intr->def, i);
+      wpos_input[i + c] = nir_channel(b, &intr->def, i);
 
    /* First, apply the coordinate shift: */
    if (adjX || adjY[0] || adjY[1]) {
@@ -126,7 +135,9 @@ emit_wpos_adjustment(lower_wpos_ytransform_state *state,
 
    wpos_input[0] = wpos_temp_x;
    wpos_input[1] = wpos_temp_y;
-   wpos_temp = nir_vec(b, wpos_input, intr->num_components);
+   wpos_temp = intr->num_components > 1 ?
+               nir_vec(b, &wpos_input[c], intr->num_components) :
+               wpos_input[c];
 
    nir_def_rewrite_uses_after(&intr->def,
                               wpos_temp,
@@ -309,6 +320,10 @@ lower_wpos_ytransform_instr(nir_builder *b, nir_instr *instr,
                     var->data.location == SYSTEM_VALUE_SAMPLE_POS) {
             lower_load_sample_pos(state, intr);
          }
+      } else if (intr->intrinsic == nir_intrinsic_load_interpolated_input) {
+         nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
+         if (sem.location == VARYING_SLOT_POS)
+            lower_fragcoord(state, intr);
       } else if (intr->intrinsic == nir_intrinsic_load_frag_coord) {
          lower_fragcoord(state, intr);
       } else if (intr->intrinsic == nir_intrinsic_load_sample_pos) {

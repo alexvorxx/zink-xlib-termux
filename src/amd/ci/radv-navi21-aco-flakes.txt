@@ -5,4 +5,8 @@ dEQP-VK.ray_tracing_pipeline.pipeline_library.configurations.(single|multi)threa
 
 dEQP-VK.shader_object.binding.mesh_swap_task
 
+dEQP-VK.binding_model.shader_access.secondary_cmd_buf.with_template.storage_image.vertex.multiple_descriptor_sets.multiple_contiguous_descriptors.cube_array
 dEQP-VK.pipeline.monolithic.sampler.separate_stencil_usage.view_type.cube_array.format.d32_sfloat_s8_uint.mipmap.nearest.lod.equal_min_3_max_3
+dEQP-VK.pipeline.shader_object_unlinked_binary.image.suballocation.sampling_type.combined.view_type.1d.format.r8_unorm.count_8.size.443x1
+dEQP-VK.pipeline.shader_object_unlinked_binary.image.suballocation.sampling_type.separate.view_type.1d_array.format.a1b5g5r5_unorm_pack16_khr.count_8.size.443x1_array_of_6
+dEQP-VK.ray_tracing_pipeline.pipeline_library.configurations.misc.maintenance5

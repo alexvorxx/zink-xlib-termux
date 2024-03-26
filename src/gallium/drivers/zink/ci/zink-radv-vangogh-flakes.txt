@@ -22,8 +22,10 @@ spec@arb_shader_image_load_store@shader-mem-barrier@Tessellation evaluation shad
 spec@arb_shader_image_load_store@shader-mem-barrier@Tessellation evaluation shader/'volatile' qualifier memory barrier test/modulus=64
 spec@arb_shader_image_load_store@shader-mem-barrier@Vertex shader/'coherent' qualifier memory barrier test/modulus=64
 spec@arb_shader_image_load_store@shader-mem-barrier@Vertex shader/'volatile' qualifier memory barrier test/modulus=64
+spec@arb_tessellation_shader@execution@built-in-functions@tcs-sign-vec3
 spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch
 spec@arb_texture_multisample@arb_texture_multisample-dsa-texelfetch@Texture type: GL_RGB9_E5
+spec@glsl-1.10@execution@built-in-functions@vs-equal-vec2-vec2
 spec@glsl-1.50@execution@built-in-functions@gs-greaterthan-uvec3-uvec3
 spec@glsl-1.50@execution@geometry@point-size-out
 spec@glsl-1.50@execution@redeclare-pervertex-out-subset-gs

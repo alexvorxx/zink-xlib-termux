@@ -1,3 +1,4 @@
+KHR-GL46.packed_pixels.varied_rectangle.rgb16
 dEQP-GLES2.functional.texture.filtering.cube.nearest_linear_clamp_rgba4444_pot
 dEQP-GLES31.functional.copy_image.mixed.viewclass_128_bits_mixed.srgb8_alpha8_astc_10x5_khr_rgba32i.texture2d_array_to_texture2d_array
 dEQP-GLES31.functional.texture.filtering.cube_array.combinations.nearest_nearest_repeat_repeat

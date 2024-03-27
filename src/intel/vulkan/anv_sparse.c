@@ -798,7 +798,76 @@ anv_sparse_bind_vm_bind(struct anv_device *device,
    if (!queue)
       assert(submit->wait_count == 0 && submit->signal_count == 0);
 
-   return device->kmd_backend->vm_bind(device, submit, ANV_VM_BIND_FLAG_NONE);
+   VkResult result = device->kmd_backend->vm_bind(device, submit,
+                                                  ANV_VM_BIND_FLAG_NONE);
+
+   if (result == VK_ERROR_OUT_OF_HOST_MEMORY) {
+      /* If we get this, the system is under memory pressure. First we
+       * manually wait for all our dependency syncobjs hoping that some memory
+       * will be released while we wait, then we try to issue each bind
+       * operation in a single ioctl as it requires less Kernel memory and so
+       * we may be able to move things forward, although slowly, while also
+       * waiting for each operation to complete before issuing the next.
+       * Performance isn't a concern at this point: we're just trying to move
+       * progress forward without crashing until whatever is eating too much
+       * memory goes away.
+       */
+
+      result = vk_sync_wait_many(&device->vk, submit->wait_count,
+                                 submit->waits, VK_SYNC_WAIT_COMPLETE,
+                                 INT64_MAX);
+      if (result != VK_SUCCESS)
+         return vk_queue_set_lost(&queue->vk, "vk_sync_wait_many failed");
+
+      struct vk_sync *sync;
+      result = vk_sync_create(&device->vk,
+                              &device->physical->sync_syncobj_type,
+                              VK_SYNC_IS_TIMELINE, 0 /* initial_value */,
+                              &sync);
+      if (result != VK_SUCCESS)
+         return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+      for (int b = 0; b < submit->binds_len; b++) {
+         struct vk_sync_signal sync_signal = {
+            .sync = sync,
+            .signal_value = b + 1,
+         };
+         struct anv_sparse_submission s = {
+            .queue = submit->queue,
+            .binds = &submit->binds[b],
+            .binds_len = 1,
+            .binds_capacity = 1,
+            .wait_count = 0,
+            .signal_count = 1,
+            .waits = NULL,
+            .signals = &sync_signal,
+         };
+         result = device->kmd_backend->vm_bind(device, &s,
+                                               ANV_VM_BIND_FLAG_NONE);
+         if (result != VK_SUCCESS) {
+            vk_sync_destroy(&device->vk, sync);
+            return vk_error(device, result); /* Well, at least we tried... */
+         }
+
+         result = vk_sync_wait(&device->vk, sync, sync_signal.signal_value,
+                               VK_SYNC_WAIT_COMPLETE, UINT64_MAX);
+         if (result != VK_SUCCESS) {
+            vk_sync_destroy(&device->vk, sync);
+            return vk_queue_set_lost(&queue->vk, "vk_sync_wait failed");
+         }
+      }
+
+      vk_sync_destroy(&device->vk, sync);
+
+      for (uint32_t i = 0; i < submit->signal_count; i++) {
+         struct vk_sync_signal *s = &submit->signals[i];
+         result = vk_sync_signal(&device->vk, s->sync, s->signal_value);
+         if (result != VK_SUCCESS)
+            return vk_queue_set_lost(&queue->vk, "vk_sync_signal failed");
+      }
+   }
+
+   return VK_SUCCESS;
 }
 
 VkResult

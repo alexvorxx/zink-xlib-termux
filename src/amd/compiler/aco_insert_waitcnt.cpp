@@ -30,6 +30,7 @@
 #include <map>
 #include <stack>
 #include <vector>
+#include <optional>
 
 namespace aco {
 
@@ -1035,6 +1036,26 @@ emit_delay_alu(wait_ctx& ctx, std::vector<aco_ptr<Instruction>>& instructions,
    delay = alu_delay_info();
 }
 
+bool
+check_clause_raw(std::bitset<512>& regs_written, Instruction* instr)
+{
+   for (Operand op : instr->operands) {
+      if (op.isConstant())
+         continue;
+      for (unsigned i = 0; i < op.size(); i++) {
+         if (regs_written[op.physReg().reg() + i])
+            return false;
+      }
+   }
+
+   for (Definition def : instr->definitions) {
+      for (unsigned i = 0; i < def.size(); i++)
+         regs_written[def.physReg().reg() + i] = 1;
+   }
+
+   return true;
+}
+
 void
 handle_block(Program* program, Block& block, wait_ctx& ctx)
 {
@@ -1043,12 +1064,37 @@ handle_block(Program* program, Block& block, wait_ctx& ctx)
    wait_imm queued_imm;
    alu_delay_info queued_delay;
 
-   for (aco_ptr<Instruction>& instr : block.instructions) {
+   size_t clause_end = 0;
+   for (size_t i = 0; i < block.instructions.size(); i++) {
+      aco_ptr<Instruction>& instr = block.instructions[i];
+
       bool is_wait = parse_wait_instr(ctx, queued_imm, instr.get());
       bool is_delay_alu = parse_delay_alu(ctx, queued_delay, instr.get());
 
       memory_sync_info sync_info = get_sync_info(instr.get());
       kill(queued_imm, queued_delay, instr.get(), ctx, sync_info);
+
+      /* At the start of a possible clause, also emit waitcnts for each instruction to avoid
+       * splitting the clause.
+       */
+      if (i >= clause_end || !queued_imm.empty()) {
+         std::optional<std::bitset<512>> regs_written;
+         for (clause_end = i + 1; clause_end < block.instructions.size(); clause_end++) {
+            Instruction* next = block.instructions[clause_end].get();
+            if (!should_form_clause(instr.get(), next))
+               break;
+
+            if (!regs_written) {
+               regs_written.emplace();
+               check_clause_raw(*regs_written, instr.get());
+            }
+
+            if (!check_clause_raw(*regs_written, next))
+               break;
+
+            kill(queued_imm, queued_delay, next, ctx, get_sync_info(next));
+         }
+      }
 
       if (program->gfx_level >= GFX11)
          gen_alu(instr.get(), ctx);

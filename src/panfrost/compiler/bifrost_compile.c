@@ -954,6 +954,16 @@ bi_emit_fragment_out(bi_builder *b, nir_intrinsic_instr *instr)
       bi_index color = bi_src_color_vec4(b, &instr->src[0], T);
       bi_index color2 = dual ? bi_src_color_vec4(b, &instr->src[4], T2) : bi_null();
 
+      if (instr->intrinsic == nir_intrinsic_store_output &&
+          loc >= FRAG_RESULT_DATA0 && loc <= FRAG_RESULT_DATA7) {
+         assert(nir_src_is_const(instr->src[1]) && "no indirect outputs");
+
+         unsigned rt_offs = nir_src_as_uint(instr->src[1]);
+
+         assert(rt + rt_offs < 8 && "RT not in the [0-7] range");
+         rt += rt_offs;
+      }
+
       /* Explicit copy since BLEND inputs are precoloured to R0-R3,
        * TODO: maybe schedule around this or implement in RA as a
        * spill */

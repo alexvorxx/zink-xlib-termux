@@ -1089,7 +1089,7 @@ radv_physical_device_get_features(const struct radv_physical_device *pdevice, st
       .extendedDynamicState3SampleLocationsEnable = pdevice->rad_info.gfx_level < GFX10,
       .extendedDynamicState3LineRasterizationMode = true,
       .extendedDynamicState3ExtraPrimitiveOverestimationSize = false,
-      .extendedDynamicState3AlphaToOneEnable = false,
+      .extendedDynamicState3AlphaToOneEnable = !pdevice->use_llvm,
       .extendedDynamicState3RasterizationStream = false,
       .extendedDynamicState3ColorBlendAdvanced = false,
       .extendedDynamicState3ViewportWScalingEnable = false,

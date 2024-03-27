@@ -83,9 +83,11 @@
       <value name="RD" value="2" />
       <value name="RTZ" value="3" />
     </field>
-    <field name="Thread group dispatch size" start="187" end="187" type="uint">
+    <field name="Thread Group Dispatch Size" start="186" end="187" type="uint">
       <value name="TG size 8" value="0" />
-      <value name="TG size 16" value="1" />
+      <value name="TG size 4" value="1" />
+      <value name="TG size 2" value="2" />
+      <value name="TG size 1" value="3" />
     </field>
     <field name="Number Of Barriers" start="188" end="190" type="uint" prefix="BARRIER_SIZE">
       <value name="NONE" value="0" />

@@ -787,8 +787,8 @@ brw_dpas_three_src(struct brw_codegen *p, enum gfx12_systolic_depth opcode,
    assert(dest.file == BRW_GENERAL_REGISTER_FILE);
    brw_inst_set_dpas_3src_dst_reg_file(devinfo, inst,
                                        BRW_GENERAL_REGISTER_FILE);
-   brw_inst_set_dpas_3src_dst_reg_nr(devinfo, inst, dest.nr);
-   brw_inst_set_dpas_3src_dst_subreg_nr(devinfo, inst, dest.subnr);
+   brw_inst_set_dpas_3src_dst_reg_nr(devinfo, inst, phys_nr(devinfo, dest));
+   brw_inst_set_dpas_3src_dst_subreg_nr(devinfo, inst, phys_subnr(devinfo, dest));
 
    if (brw_reg_type_is_floating_point(dest.type)) {
       brw_inst_set_dpas_3src_exec_type(devinfo, inst,
@@ -811,21 +811,21 @@ brw_dpas_three_src(struct brw_codegen *p, enum gfx12_systolic_depth opcode,
            src0.nr == BRW_ARF_NULL));
 
    brw_inst_set_dpas_3src_src0_reg_file(devinfo, inst, src0.file);
-   brw_inst_set_dpas_3src_src0_reg_nr(devinfo, inst, src0.nr);
-   brw_inst_set_dpas_3src_src0_subreg_nr(devinfo, inst, src0.subnr);
+   brw_inst_set_dpas_3src_src0_reg_nr(devinfo, inst, phys_nr(devinfo, src0));
+   brw_inst_set_dpas_3src_src0_subreg_nr(devinfo, inst, phys_subnr(devinfo, src0));
 
    assert(src1.file == BRW_GENERAL_REGISTER_FILE);
 
    brw_inst_set_dpas_3src_src1_reg_file(devinfo, inst, src1.file);
-   brw_inst_set_dpas_3src_src1_reg_nr(devinfo, inst, src1.nr);
-   brw_inst_set_dpas_3src_src1_subreg_nr(devinfo, inst, src1.subnr);
+   brw_inst_set_dpas_3src_src1_reg_nr(devinfo, inst, phys_nr(devinfo, src1));
+   brw_inst_set_dpas_3src_src1_subreg_nr(devinfo, inst, phys_subnr(devinfo, src1));
    brw_inst_set_dpas_3src_src1_subbyte(devinfo, inst, BRW_SUB_BYTE_PRECISION_NONE);
 
    assert(src2.file == BRW_GENERAL_REGISTER_FILE);
 
    brw_inst_set_dpas_3src_src2_reg_file(devinfo, inst, src2.file);
-   brw_inst_set_dpas_3src_src2_reg_nr(devinfo, inst, src2.nr);
-   brw_inst_set_dpas_3src_src2_subreg_nr(devinfo, inst, src2.subnr);
+   brw_inst_set_dpas_3src_src2_reg_nr(devinfo, inst, phys_nr(devinfo, src2));
+   brw_inst_set_dpas_3src_src2_subreg_nr(devinfo, inst, phys_subnr(devinfo, src2));
    brw_inst_set_dpas_3src_src2_subbyte(devinfo, inst, BRW_SUB_BYTE_PRECISION_NONE);
 
    return inst;

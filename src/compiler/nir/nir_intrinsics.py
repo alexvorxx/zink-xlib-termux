@@ -1518,6 +1518,10 @@ system_value("rasterization_primitive_amd", 1);
 
 # Number of patches processed by each TCS workgroup
 system_value("tcs_num_patches_amd", 1)
+# Whether TCS should store tessellation level outputs for TES to read
+system_value("tcs_tess_levels_to_tes_amd", dest_comp=1, bit_sizes=[1])
+# Tessellation primitive mode for TCS
+system_value("tcs_primitive_mode_amd", 1)
 # Relative tessellation patch ID within the current workgroup
 system_value("tess_rel_patch_id_amd", 1)
 # Vertex offsets used for GS per-vertex inputs

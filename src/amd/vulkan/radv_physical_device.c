@@ -722,7 +722,7 @@ radv_physical_device_get_features(const struct radv_physical_device *pdevice, st
       .depthBounds = true,
       .wideLines = true,
       .largePoints = true,
-      .alphaToOne = false,
+      .alphaToOne = true,
       .multiViewport = true,
       .samplerAnisotropy = true,
       .textureCompressionETC2 = radv_device_supports_etc(pdevice) || pdevice->emulate_etc2,

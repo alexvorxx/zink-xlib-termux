@@ -5666,6 +5666,32 @@ lower_vec816_alu(const nir_instr *instr, const void *cb_data)
    return 4;
 }
 
+static bool
+fix_vertex_input_locations_instr(nir_builder *b, nir_intrinsic_instr *intr, void *data)
+{
+   bool is_load = false;
+   bool is_input = false;
+   bool is_interp = false;
+   if (!filter_io_instr(intr, &is_load, &is_input, &is_interp) || !is_input)
+      return false;
+
+   nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
+   if (sem.location < VERT_ATTRIB_GENERIC0)
+      return false;
+   sem.location = VERT_ATTRIB_GENERIC0 + nir_intrinsic_base(intr);
+   nir_intrinsic_set_io_semantics(intr, sem);
+   return true;
+}
+
+static bool
+fix_vertex_input_locations(nir_shader *nir)
+{
+   if (nir->info.stage != MESA_SHADER_VERTEX)
+      return false;
+
+   return nir_shader_intrinsics_pass(nir, fix_vertex_input_locations_instr, nir_metadata_all, NULL);
+}
+
 struct zink_shader *
 zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
 {
@@ -5733,6 +5759,7 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
       nir_gather_xfb_info_from_intrinsics(nir);
    /* clean up io to improve direct access */
    optimize_nir(nir, NULL, true);
+   NIR_PASS_V(nir, fix_vertex_input_locations);
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
    scan_nir(screen, nir, ret);
    if (nir->info.io_lowered) {

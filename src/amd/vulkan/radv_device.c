@@ -281,35 +281,6 @@ static struct radv_shader_part_cache_ops ps_epilog_ops = {
    .equals = radv_cmp_ps_epilog,
 };
 
-static struct radv_shader_part *
-_radv_create_tcs_epilog(struct radv_device *device, const void *_key)
-{
-   struct radv_tcs_epilog_key *key = (struct radv_tcs_epilog_key *)_key;
-   return radv_create_tcs_epilog(device, key);
-}
-
-static uint32_t
-radv_hash_tcs_epilog(const void *key_)
-{
-   const struct radv_tcs_epilog_key *key = key_;
-   return _mesa_hash_data(key, sizeof(*key));
-}
-
-static bool
-radv_cmp_tcs_epilog(const void *a_, const void *b_)
-{
-   const struct radv_tcs_epilog_key *a = a_;
-   const struct radv_tcs_epilog_key *b = b_;
-
-   return memcmp(a, b, sizeof(*a)) == 0;
-}
-
-static struct radv_shader_part_cache_ops tcs_epilog_ops = {
-   .create = _radv_create_tcs_epilog,
-   .hash = radv_hash_tcs_epilog,
-   .equals = radv_cmp_tcs_epilog,
-};
-
 VkResult
 radv_device_init_vrs_state(struct radv_device *device)
 {
@@ -1000,13 +971,6 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
          goto fail;
    }
 
-   if (device->vk.enabled_features.shaderObject) {
-      if (!radv_shader_part_cache_init(&device->tcs_epilogs, &tcs_epilog_ops)) {
-         result = VK_ERROR_OUT_OF_HOST_MEMORY;
-         goto fail;
-      }
-   }
-
    if (device->vk.enabled_features.graphicsPipelineLibrary || device->vk.enabled_features.shaderObject ||
        device->vk.enabled_features.extendedDynamicState3ColorBlendEnable ||
        device->vk.enabled_features.extendedDynamicState3ColorWriteMask ||
@@ -1100,8 +1064,6 @@ fail:
 
    radv_device_finish_notifier(device);
    radv_device_finish_vs_prologs(device);
-   if (device->tcs_epilogs.ops)
-      radv_shader_part_cache_finish(device, &device->tcs_epilogs);
    if (device->ps_epilogs.ops)
       radv_shader_part_cache_finish(device, &device->ps_epilogs);
    radv_device_finish_border_color(device);
@@ -1157,8 +1119,6 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    radv_device_finish_notifier(device);
    radv_device_finish_vs_prologs(device);
-   if (device->tcs_epilogs.ops)
-      radv_shader_part_cache_finish(device, &device->tcs_epilogs);
    if (device->ps_epilogs.ops)
       radv_shader_part_cache_finish(device, &device->ps_epilogs);
    radv_device_finish_border_color(device);

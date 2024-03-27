@@ -91,26 +91,6 @@ radv_aco_convert_vs_prolog_key(struct aco_vs_prolog_info *aco_info, const struct
 }
 
 static inline void
-radv_aco_convert_tcs_epilog_key(struct aco_tcs_epilog_info *aco_info, const struct radv_tcs_epilog_key *radv,
-                                const struct radv_shader_args *radv_args)
-{
-   aco_info->pass_tessfactors_by_reg = true;
-   ASSIGN_FIELD(tcs_out_patch_fits_subgroup);
-   ASSIGN_FIELD(primitive_mode);
-   ASSIGN_FIELD(tes_reads_tessfactors);
-
-   aco_info->tcs_offchip_layout = radv_args->tcs_offchip_layout;
-   aco_info->invocation_id = radv_args->invocation_id;
-   aco_info->rel_patch_id = radv_args->rel_patch_id;
-   aco_info->patch_base = radv_args->patch_base;
-
-   for (unsigned i = 0; i < 4; ++i)
-      aco_info->tess_lvl_out[i] = radv_args->tess_lvl_out[i];
-   for (unsigned i = 0; i < 2; ++i)
-      aco_info->tess_lvl_in[i] = radv_args->tess_lvl_in[i];
-}
-
-static inline void
 radv_aco_convert_ps_epilog_key(struct aco_ps_epilog_info *aco_info, const struct radv_ps_epilog_key *radv,
                                const struct radv_shader_args *radv_args)
 {

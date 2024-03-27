@@ -560,12 +560,6 @@ struct radv_vs_prolog_key {
    gl_shader_stage next_stage;
 };
 
-struct radv_tcs_epilog_key {
-   enum tess_primitive_mode primitive_mode;
-   bool tes_reads_tessfactors;
-   bool tcs_out_patch_fits_subgroup;
-};
-
 enum radv_shader_binary_type { RADV_BINARY_TYPE_LEGACY, RADV_BINARY_TYPE_RTLD };
 
 struct radv_shader_binary {
@@ -692,7 +686,6 @@ struct radv_shader_part {
    union {
       struct radv_vs_prolog_key vs;
       struct radv_ps_epilog_key ps;
-      struct radv_tcs_epilog_key tcs;
    } key;
 
    uint64_t va;
@@ -855,8 +848,6 @@ struct radv_shader_part *radv_create_vs_prolog(struct radv_device *device, const
 
 struct radv_shader_part *radv_create_ps_epilog(struct radv_device *device, const struct radv_ps_epilog_key *key,
                                                struct radv_shader_part_binary **binary_out);
-
-struct radv_shader_part *radv_create_tcs_epilog(struct radv_device *device, const struct radv_tcs_epilog_key *key);
 
 void radv_shader_part_destroy(struct radv_device *device, struct radv_shader_part *shader_part);
 

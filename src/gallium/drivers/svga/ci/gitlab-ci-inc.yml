@@ -1,6 +1,8 @@
 .vmware-rules:
   rules:
+    - !reference [.test, rules]
     - !reference [.vmware-farm-rules, rules]
+    - !reference [.gl-rules, rules]
     - changes: &vmware_file_list
       - src/gallium/drivers/svga/**/*
       - src/gallium/winsys/svga/**/*

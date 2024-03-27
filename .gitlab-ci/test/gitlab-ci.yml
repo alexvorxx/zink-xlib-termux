@@ -43,7 +43,7 @@ rustfmt:
     - rustfmt --verbose src/**/lib.rs
     - rustfmt --verbose src/**/main.rs
 
-.test-check:
+python-test:
   # Cancel job if a newer commit is pushed to the same branch
   interruptible: true
   stage: code-validation
@@ -52,10 +52,6 @@ rustfmt:
   variables:
     GIT_STRATEGY: fetch
   timeout: 10m
-
-python-test:
-  extends:
-    - .test-check
   script:
     - cd bin/ci
     - pip install --break-system-packages -r test/requirements.txt

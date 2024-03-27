@@ -3623,6 +3623,8 @@ add_derefs_instr(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    bool is_interp = false;
    if (!filter_io_instr(intr, &is_load, &is_input, &is_interp))
       return false;
+   bool is_special_io = (b->shader->info.stage == MESA_SHADER_VERTEX && is_input) ||
+                        (b->shader->info.stage == MESA_SHADER_FRAGMENT && !is_input);
    unsigned loc = nir_intrinsic_io_semantics(intr).location;
    nir_src *src_offset = nir_get_io_offset_src(intr);
    const unsigned slot_offset = src_offset && nir_src_is_const(*src_offset) ? nir_src_as_uint(*src_offset) : 0;
@@ -3651,9 +3653,8 @@ add_derefs_instr(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       bool is_struct = glsl_type_is_struct(glsl_without_array(type));
       if (is_struct)
          size = get_slot_components(var, var->data.location + slot_offset, var->data.location);
-      else if ((var->data.mode == nir_var_shader_out && var->data.location < VARYING_SLOT_VAR0) ||
-          (var->data.mode == nir_var_shader_in && var->data.location < (b->shader->info.stage == MESA_SHADER_VERTEX ? VERT_ATTRIB_GENERIC0 : VARYING_SLOT_VAR0)))
-         size = glsl_type_is_array(type) ? glsl_get_aoa_size(type) : glsl_get_vector_elements(type);
+      else if (!is_special_io && var->data.compact)
+         size = glsl_get_aoa_size(type);
       else
          size = glsl_get_vector_elements(glsl_without_array(type));
       assert(size);

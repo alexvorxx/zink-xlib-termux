@@ -55,6 +55,7 @@
 #define AMDGPU_INFO_FW_GFX_ME 0x04
 #define AMDGPU_INFO_FW_GFX_PFP 0x05
 #define AMDGPU_INFO_FW_GFX_CE 0x06
+#define AMDGPU_INFO_FW_VCN 0x0e
 #define AMDGPU_INFO_DEV_INFO 0x16
 #define AMDGPU_INFO_MEMORY 0x19
 #define AMDGPU_INFO_VIDEO_CAPS_DECODE 0
@@ -596,7 +597,8 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
    struct amdgpu_gpu_info amdinfo;
    struct drm_amdgpu_info_device device_info = {0};
    struct amdgpu_buffer_size_alignments alignment_info = {0};
-   uint32_t vce_version = 0, vce_feature = 0, uvd_version = 0, uvd_feature = 0;
+   uint32_t vce_version = 0, vce_feature = 0, uvd_version = 0, uvd_feature = 0,
+            vcn_version = 0, vcn_feature = 0;
    int r, i, j;
    amdgpu_device_handle dev = dev_p;
 
@@ -750,6 +752,12 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
    r = amdgpu_query_firmware_version(dev, AMDGPU_INFO_FW_VCE, 0, 0, &vce_version, &vce_feature);
    if (r) {
       fprintf(stderr, "amdgpu: amdgpu_query_firmware_version(vce) failed.\n");
+      return false;
+   }
+
+   r = amdgpu_query_firmware_version(dev, AMDGPU_INFO_FW_VCN, 0, 0, &vcn_version, &vcn_feature);
+   if (r) {
+      fprintf(stderr, "amdgpu: amdgpu_query_firmware_version(vcn) failed.\n");
       return false;
    }
 
@@ -1025,6 +1033,9 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
    info->num_cu_per_sh = device_info.num_cu_per_sh;
    info->uvd_fw_version = info->ip[AMD_IP_UVD].num_queues ? uvd_version : 0;
    info->vce_fw_version = info->ip[AMD_IP_VCE].num_queues ? vce_version : 0;
+   info->vcn_dec_version = (vcn_version & 0x0F000000) >> 24;
+   info->vcn_enc_major_version = (vcn_version & 0x00F00000) >> 20;
+   info->vcn_enc_minor_version = (vcn_version & 0x000FF000) >> 12;
 
    info->memory_freq_mhz_effective *= ac_memory_ops_per_clock(info->vram_type);
 

@@ -3871,10 +3871,9 @@ emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
       result = emit_unop(ctx, SpvOpFConvert, dest_type, result);
    }
 
-   if (tex->is_sparse && tex->is_shadow)
-      tex->def.num_components++;
    store_def(ctx, tex->def.index, result, tex->dest_type);
-   if (tex->is_sparse && !tex->is_shadow)
+
+   if (tex->is_sparse)
       tex->def.num_components++;
 }
 

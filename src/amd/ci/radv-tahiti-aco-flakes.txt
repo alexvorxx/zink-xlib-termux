@@ -14,6 +14,7 @@ dEQP-VK.pipeline.fast_linked_library.sampler.view_type.1d_array.format.r32_sfloa
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.1d_array.format.r5g6b5_unorm_pack16.min_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.1d_array.format.r8_snorm.min_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.1d_array.format.r8_snorm.min_reduce.comp_r_g_b_a.max
+dEQP-VK.pipeline.fast_linked_library.sampler.view_type.1d_array.format.r8_unorm.mag_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.2d.format.a1b5g5r5_unorm_pack16_khr.min_reduce.comp_r_g_b_a.min
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.2d.format.b8g8r8a8_unorm.min_reduce.comp_identity_zero_zero_zero.max
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.2d.format.r16_sfloat.min_reduce.comp_r_g_b_a.max
@@ -24,6 +25,7 @@ dEQP-VK.pipeline.fast_linked_library.sampler.view_type.2d_array.format.a1b5g5r5_
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.2d_array.format.b4g4r4a4_unorm_pack16.mag_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.2d_array.format.b5g5r5a1_unorm_pack16.mag_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.2d_array.format.d32_sfloat.mag_reduce.comp_r_zero_zero_zero.min
+dEQP-VK.pipeline.fast_linked_library.sampler.view_type.2d_array.format.d32_sfloat_s8_uint.mag_reduce.comp_r_zero_zero_zero.min
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.2d_array.format.r32_sfloat.mag_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.2d_array.format.r32_sfloat.mag_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.2d_array.format.r32g32_sfloat.mag_reduce.comp_identity_zero_zero_zero.min
@@ -31,6 +33,7 @@ dEQP-VK.pipeline.fast_linked_library.sampler.view_type.2d_array.format.r32g32_sf
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.2d_array.format.r8g8_srgb.mag_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.2d_array.format.r8g8b8a8_srgb.mag_reduce.comp_identity_zero_zero_zero.max
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.3d.format.a1b5g5r5_unorm_pack16_khr.min_reduce.comp_r_zero_zero_zero.min
+dEQP-VK.pipeline.fast_linked_library.sampler.view_type.3d.format.a2b10g10r10_unorm_pack32.mag_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.3d.format.b4g4r4a4_unorm_pack16.min_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.3d.format.b5g5r5a1_unorm_pack16.mag_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.3d.format.r32_sfloat.mag_reduce.comp_r_g_b_a.min
@@ -63,6 +66,7 @@ dEQP-VK.pipeline.fast_linked_library.sampler.view_type.cube_array.format.r32g32_
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.cube_array.format.r8_snorm.min_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.cube_array.format.r8g8_srgb.mag_reduce.comp_r_zero_zero_zero.min
 dEQP-VK.pipeline.fast_linked_library.sampler.view_type.cube_array.format.r8g8b8a8_snorm.min_reduce.comp_r_g_b_a.max
+dEQP-VK.pipeline.fast_linked_library.sampler.view_type.cube_array.format.r8g8b8a8_snorm.min_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.monolithic.sampler.separate_stencil_usage.view_type.2d_array.format.d16_unorm_s8_uint.mag_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.monolithic.sampler.separate_stencil_usage.view_type.2d_array.format.d32_sfloat_s8_uint.mag_reduce.comp_identity_zero_zero_zero.max
 dEQP-VK.pipeline.monolithic.sampler.separate_stencil_usage.view_type.cube_array.format.d32_sfloat_s8_uint.mag_reduce.comp_r_zero_zero_zero.min
@@ -76,6 +80,7 @@ dEQP-VK.pipeline.monolithic.sampler.view_type.1d_array.format.r16_snorm.mag_redu
 dEQP-VK.pipeline.monolithic.sampler.view_type.1d_array.format.r16_snorm.min_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.monolithic.sampler.view_type.1d_array.format.r5g5b5a1_unorm_pack16.min_reduce.comp_r_g_b_a.min
 dEQP-VK.pipeline.monolithic.sampler.view_type.1d_array.format.r5g6b5_unorm_pack16.mag_reduce.comp_r_g_b_a.max
+dEQP-VK.pipeline.monolithic.sampler.view_type.1d_array.format.r5g6b5_unorm_pack16.min_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.monolithic.sampler.view_type.1d_array.format.r8_srgb.mag_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.monolithic.sampler.view_type.1d_array.format.r8g8_srgb.mag_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.monolithic.sampler.view_type.1d_array.format.r8g8_unorm.min_reduce.comp_r_zero_zero_zero.max
@@ -104,6 +109,7 @@ dEQP-VK.pipeline.monolithic.sampler.view_type.3d.format.r16_sfloat.min_reduce.co
 dEQP-VK.pipeline.monolithic.sampler.view_type.3d.format.r16_snorm.min_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.monolithic.sampler.view_type.3d.format.r5g5b5a1_unorm_pack16.min_reduce.comp_r_g_b_a.min
 dEQP-VK.pipeline.monolithic.sampler.view_type.3d.format.r8_srgb.mag_reduce.comp_r_zero_zero_zero.max
+dEQP-VK.pipeline.monolithic.sampler.view_type.cube.format.a2b10g10r10_unorm_pack32.min_reduce.comp_identity_zero_zero_zero.max
 dEQP-VK.pipeline.monolithic.sampler.view_type.cube.format.a4b4g4r4_unorm_pack16.mag_reduce.comp_identity_zero_zero_zero.max
 dEQP-VK.pipeline.monolithic.sampler.view_type.cube.format.b5g5r5a1_unorm_pack16.mag_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.monolithic.sampler.view_type.cube.format.d32_sfloat_s8_uint.mag_reduce.comp_identity_zero_zero_zero.min
@@ -140,6 +146,7 @@ dEQP-VK.pipeline.pipeline_library.sampler.view_type.1d.format.r8g8_unorm.min_red
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.1d_array.format.a1b5g5r5_unorm_pack16_khr.min_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.1d_array.format.a2b10g10r10_unorm_pack32.mag_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.1d_array.format.r16_sfloat.mag_reduce.comp_r_g_b_a.min
+dEQP-VK.pipeline.pipeline_library.sampler.view_type.1d_array.format.r16_snorm.mag_reduce.comp_r_zero_zero_zero.min
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.1d_array.format.r16g16b16a16_sfloat.min_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.1d_array.format.r8_snorm.min_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.1d_array.format.r8g8_unorm.mag_reduce.comp_r_zero_zero_zero.max
@@ -158,14 +165,17 @@ dEQP-VK.pipeline.pipeline_library.sampler.view_type.2d_array.format.d16_unorm_s8
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.2d_array.format.d32_sfloat.mag_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.2d_array.format.r16_snorm.mag_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.2d_array.format.r32g32_sfloat.mag_reduce.comp_identity_zero_zero_zero.max
+dEQP-VK.pipeline.pipeline_library.sampler.view_type.2d_array.format.r5g5b5a1_unorm_pack16.mag_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.2d_array.format.r8_snorm.min_reduce.comp_identity_zero_zero_zero.max
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.2d_array.format.r8_snorm.min_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.2d_array.format.r8g8_unorm.mag_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.2d_array.format.r8g8b8a8_unorm.min_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.3d.format.a4r4g4b4_unorm_pack16.mag_reduce.comp_r_g_b_a.min
+dEQP-VK.pipeline.pipeline_library.sampler.view_type.3d.format.b10g11r11_ufloat_pack32.mag_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.3d.format.b10g11r11_ufloat_pack32.mag_reduce.comp_r_zero_zero_zero.min
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.3d.format.b10g11r11_ufloat_pack32.min_reduce.comp_r_g_b_a.min
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.3d.format.b5g5r5a1_unorm_pack16.min_reduce.comp_r_g_b_a.max
+dEQP-VK.pipeline.pipeline_library.sampler.view_type.3d.format.r32g32_sfloat.min_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.3d.format.r4g4b4a4_unorm_pack16.mag_reduce.comp_r_g_b_a.min
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.3d.format.r4g4b4a4_unorm_pack16.min_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.3d.format.r5g5b5a1_unorm_pack16.min_reduce.comp_r_zero_zero_zero.max
@@ -173,6 +183,7 @@ dEQP-VK.pipeline.pipeline_library.sampler.view_type.3d.format.r5g6b5_unorm_pack1
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.3d.format.r5g6b5_unorm_pack16.min_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.3d.format.r8_snorm.mag_reduce.comp_r_g_b_a.min
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.3d.format.r8_srgb.mag_reduce.comp_r_g_b_a.min
+dEQP-VK.pipeline.pipeline_library.sampler.view_type.3d.format.r8g8_snorm.min_reduce.comp_r_zero_zero_zero.min
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.3d.format.r8g8_srgb.mag_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.3d.format.r8g8b8a8_snorm.mag_reduce.comp_identity_zero_zero_zero.max
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.3d.format.r8g8b8a8_snorm.min_reduce.comp_r_zero_zero_zero.max
@@ -188,7 +199,9 @@ dEQP-VK.pipeline.pipeline_library.sampler.view_type.cube.format.r5g5b5a1_unorm_p
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.cube.format.r8g8_srgb.mag_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.cube.format.r8g8_unorm.min_reduce.comp_identity_zero_zero_zero.max
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.cube.format.r8g8b8a8_unorm.min_reduce.comp_identity_zero_zero_zero.max
+dEQP-VK.pipeline.pipeline_library.sampler.view_type.cube_array.format.a1b5g5r5_unorm_pack16_khr.mag_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.cube_array.format.a1b5g5r5_unorm_pack16_khr.mag_reduce.comp_r_zero_zero_zero.max
+dEQP-VK.pipeline.pipeline_library.sampler.view_type.cube_array.format.a4r4g4b4_unorm_pack16.min_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.cube_array.format.b4g4r4a4_unorm_pack16.min_reduce.comp_r_zero_zero_zero.min
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.cube_array.format.b5g5r5a1_unorm_pack16.min_reduce.comp_r_g_b_a.min
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.cube_array.format.b5g5r5a1_unorm_pack16.min_reduce.comp_r_zero_zero_zero.min
@@ -203,6 +216,7 @@ dEQP-VK.pipeline.pipeline_library.sampler.view_type.cube_array.format.r8g8_snorm
 dEQP-VK.pipeline.pipeline_library.sampler.view_type.cube_array.format.r8g8b8a8_unorm.mag_reduce.comp_r_zero_zero_zero.min
 dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.1d.format.b8g8r8a8_unorm.mag_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.1d.format.r32g32_sfloat.min_reduce.comp_r_g_b_a.min
+dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.1d.format.r32g32_sfloat.min_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.1d_array.format.b5g5r5a1_unorm_pack16.mag_reduce.comp_r_zero_zero_zero.min
 dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.1d_array.format.b8g8r8a8_unorm.min_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.1d_array.format.r16_snorm.mag_reduce.comp_r_zero_zero_zero.min
@@ -229,6 +243,7 @@ dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.2d_array.format.r
 dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.2d_array.format.r4g4b4a4_unorm_pack16.mag_reduce.comp_identity_zero_zero_zero.max
 dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.2d_array.format.r4g4b4a4_unorm_pack16.mag_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.2d_array.format.r5g6b5_unorm_pack16.min_reduce.comp_r_zero_zero_zero.min
+dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.2d_array.format.r8_srgb.min_reduce.comp_identity_zero_zero_zero.max
 dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.2d_array.format.r8g8_unorm.min_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.2d_array.format.r8g8b8a8_snorm.mag_reduce.comp_r_g_b_a.min
 dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.2d_array.format.r8g8b8a8_srgb.min_reduce.comp_r_zero_zero_zero.min
@@ -248,6 +263,7 @@ dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.cube.format.b4g4r
 dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.cube.format.d16_unorm.mag_reduce.comp_r_g_b_a.min
 dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.cube.format.d16_unorm.min_reduce.comp_r_zero_zero_zero.min
 dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.cube.format.d32_sfloat.mag_reduce.comp_r_zero_zero_zero.min
+dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.cube.format.d32_sfloat.min_reduce.comp_r_zero_zero_zero.min
 dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.cube.format.d32_sfloat_s8_uint.min_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.cube.format.r32_sfloat.min_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.shader_object_linked_binary.sampler.view_type.cube.format.r4g4b4a4_unorm_pack16.mag_reduce.comp_r_g_b_a.min
@@ -307,6 +323,7 @@ dEQP-VK.pipeline.shader_object_linked_spirv.sampler.view_type.3d.format.r32_sflo
 dEQP-VK.pipeline.shader_object_linked_spirv.sampler.view_type.3d.format.r5g5b5a1_unorm_pack16.mag_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.shader_object_linked_spirv.sampler.view_type.3d.format.r8_unorm.mag_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.shader_object_linked_spirv.sampler.view_type.3d.format.r8g8b8a8_snorm.min_reduce.comp_r_g_b_a.max
+dEQP-VK.pipeline.shader_object_linked_spirv.sampler.view_type.3d.format.r8g8b8a8_srgb.min_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.shader_object_linked_spirv.sampler.view_type.3d.format.r8g8b8a8_unorm.mag_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.shader_object_linked_spirv.sampler.view_type.cube.format.d16_unorm.mag_reduce.comp_identity_zero_zero_zero.max
 dEQP-VK.pipeline.shader_object_linked_spirv.sampler.view_type.cube.format.d16_unorm_s8_uint.min_reduce.comp_r_zero_zero_zero.max
@@ -334,6 +351,7 @@ dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.separate_stencil_usage.vi
 dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.1d_array.format.r4g4b4a4_unorm_pack16.mag_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.1d_array.format.r5g6b5_unorm_pack16.min_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.1d_array.format.r8_srgb.mag_reduce.comp_r_g_b_a.max
+dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.1d_array.format.r8g8_srgb.min_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.2d.format.a2b10g10r10_unorm_pack32.min_reduce.comp_r_g_b_a.min
 dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.2d.format.b5g5r5a1_unorm_pack16.min_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.2d.format.r16g16b16a16_sfloat.min_reduce.comp_identity_zero_zero_zero.min
@@ -365,11 +383,13 @@ dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.cube.format.r4g
 dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.cube.format.r4g4b4a4_unorm_pack16.min_reduce.comp_r_zero_zero_zero.min
 dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.cube.format.r5g5b5a1_unorm_pack16.mag_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.cube.format.r8_snorm.mag_reduce.comp_r_zero_zero_zero.min
+dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.cube.format.r8g8b8a8_snorm.min_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.cube.format.r8g8b8a8_srgb.min_reduce.comp_r_g_b_a.min
 dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.cube_array.format.a1b5g5r5_unorm_pack16_khr.min_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.cube_array.format.a2b10g10r10_unorm_pack32.mag_reduce.comp_r_zero_zero_zero.max
 dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.cube_array.format.d32_sfloat.mag_reduce.comp_r_zero_zero_zero.min
 dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.cube_array.format.r32g32_sfloat.mag_reduce.comp_r_g_b_a.max
+dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.cube_array.format.r4g4b4a4_unorm_pack16.min_reduce.comp_identity_zero_zero_zero.max
 dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.cube_array.format.r8_srgb.min_reduce.comp_r_g_b_a.max
 dEQP-VK.pipeline.shader_object_unlinked_binary.sampler.view_type.cube_array.format.r8g8b8a8_snorm.min_reduce.comp_identity_zero_zero_zero.min
 dEQP-VK.pipeline.shader_object_unlinked_spirv.sampler.separate_stencil_usage.view_type.cube.format.d16_unorm_s8_uint.min_reduce.comp_r_g_b_a.max

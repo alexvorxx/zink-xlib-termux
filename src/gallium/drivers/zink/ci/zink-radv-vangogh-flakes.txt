@@ -4,6 +4,7 @@ dEQP-GLES31.functional.copy_image.mixed.viewclass_128_bits_mixed.rgba_astc_4x4_k
 dEQP-GLES31.functional.texture.filtering.cube_array.sizes.8x8x6_nearest
 dEQP-GLES3.functional.texture.filtering.cube.combinations.linear_linear_mirror_mirror
 dEQP-GLES3.functional.texture.shadow.cube.linear_mipmap_nearest.greater_depth_component32f
+object namespace pollution@framebuffer with glgetteximage
 spec@arb_fragment_shader_interlock@arb_fragment_shader_interlock-image-load-store
 spec@arb_shader_image_load_store@shader-mem-barrier
 spec@arb_shader_image_load_store@shader-mem-barrier@Fragment shader/'coherent' qualifier memory barrier test/modulus=16

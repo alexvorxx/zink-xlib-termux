@@ -1760,7 +1760,7 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
       .rt_count = pRenderingInfo->colorAttachmentCount,
    };
 
-   assert(pRenderingInfo->colorAttachmentCount < ARRAY_SIZE(fbinfo->rts));
+   assert(pRenderingInfo->colorAttachmentCount <= ARRAY_SIZE(fbinfo->rts));
 
    for (uint32_t i = 0; i < pRenderingInfo->colorAttachmentCount; i++) {
       const VkRenderingAttachmentInfo *att =

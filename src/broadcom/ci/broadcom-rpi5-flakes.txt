@@ -16,7 +16,9 @@ dEQP-VK.wsi.xcb.maintenance1.scaling.continuous.one_to_one.min_min.swapchain_big
 dEQP-VK.wsi.xcb.maintenance1.scaling.demand.aspect_stretch.min_max.swapchain_bigger_taller_aspect
 dEQP-VK.wsi.xcb.maintenance1.scaling.immediate.one_to_one.max_max.swapchain_smaller_taller_aspect
 dEQP-VK.wsi.xcb.maintenance1.scaling.resize_window.continuous.one_to_one.min_max.swapchain_smaller_same_aspect
+dEQP-VK.wsi.xcb.maintenance1.scaling.resize_window.demand.one_to_one.min_min.swapchain_bigger_wider_aspect
 dEQP-VK.wsi.xcb.maintenance1.scaling.resize_window.fifo_relaxed.aspect_stretch.center_max.swapchain_smaller_taller_aspect
+dEQP-VK.wsi.xcb.swapchain.simulate_oom.image_extent
 
 dEQP-VK.wsi.(xcb|xlib).maintenance1.present_modes.fifo_relaxed.change_modes_with_deferred_alloc
 dEQP-VK.wsi.(xcb|xlib).maintenance1.present_modes.fifo_relaxed.query

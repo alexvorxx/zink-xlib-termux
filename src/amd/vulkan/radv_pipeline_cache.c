@@ -399,7 +399,6 @@ struct radv_ray_tracing_pipeline_cache_data {
 bool
 radv_ray_tracing_pipeline_cache_search(struct radv_device *device, struct vk_pipeline_cache *cache,
                                        struct radv_ray_tracing_pipeline *pipeline,
-                                       const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
                                        bool *found_in_application_cache)
 {
    *found_in_application_cache = false;
@@ -429,7 +428,7 @@ radv_ray_tracing_pipeline_cache_search(struct radv_device *device, struct vk_pip
    if (data->has_traversal_shader)
       pipeline->base.base.shaders[MESA_SHADER_INTERSECTION] = radv_shader_ref(pipeline_obj->shaders[idx++]);
 
-   for (unsigned i = 0; i < pCreateInfo->stageCount; i++) {
+   for (unsigned i = 0; i < pipeline->non_imported_stage_count; i++) {
       pipeline->stages[i].stack_size = data->stages[i].stack_size;
 
       if (data->stages[i].has_shader)

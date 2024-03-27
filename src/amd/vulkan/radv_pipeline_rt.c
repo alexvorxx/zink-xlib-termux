@@ -906,8 +906,7 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
    if (!skip_shaders_cache) {
       bool found_in_application_cache = true;
 
-      cache_hit =
-         radv_ray_tracing_pipeline_cache_search(device, cache, pipeline, pCreateInfo, &found_in_application_cache);
+      cache_hit = radv_ray_tracing_pipeline_cache_search(device, cache, pipeline, &found_in_application_cache);
       if (cache_hit && found_in_application_cache)
          pipeline_feedback.flags |= VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT;
    }

@@ -91,12 +91,8 @@ static void
 xe_exec_fill_sync(struct drm_xe_sync *xe_sync, struct vk_sync *vk_sync,
                   uint64_t value, bool signal)
 {
-   if (unlikely(!vk_sync_type_is_drm_syncobj(vk_sync->type))) {
-      unreachable("Unsupported sync type");
-      return;
-   }
-
    const struct vk_drm_syncobj *syncobj = vk_sync_as_drm_syncobj(vk_sync);
+   assert(syncobj);
    xe_sync->handle = syncobj->syncobj;
 
    if (value) {

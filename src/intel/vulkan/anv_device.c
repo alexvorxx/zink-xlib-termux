@@ -2406,6 +2406,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
          device->sync_types[st_idx++] = &device->sync_timeline_type.sync;
       }
    } else {
+      assert(vk_sync_type_is_drm_syncobj(&device->sync_syncobj_type));
       assert(device->sync_syncobj_type.features & VK_SYNC_FEATURE_TIMELINE);
       assert(device->sync_syncobj_type.features & VK_SYNC_FEATURE_CPU_WAIT);
    }

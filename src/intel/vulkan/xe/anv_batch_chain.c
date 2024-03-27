@@ -87,7 +87,7 @@ exec_error:
 #define TYPE_SIGNAL true
 #define TYPE_WAIT false
 
-static void
+void
 xe_exec_fill_sync(struct drm_xe_sync *xe_sync, struct vk_sync *vk_sync,
                   uint64_t value, bool signal)
 {

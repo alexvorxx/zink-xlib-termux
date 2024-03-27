@@ -185,32 +185,16 @@ xe_vm_bind_op(struct anv_device *device,
 
    int sync_idx = 0;
    for (int s = 0; s < submit->wait_count; s++) {
-      const struct vk_drm_syncobj *syncobj =
-         vk_sync_as_drm_syncobj(submit->waits[s].sync);
-      assert(syncobj);
-      uint64_t val = submit->waits[s].wait_value;
-
-      xe_syncs[sync_idx++] = (struct drm_xe_sync) {
-         .type = val ? DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ :
-                       DRM_XE_SYNC_TYPE_SYNCOBJ,
-         .flags = 0,
-         .handle = syncobj->syncobj,
-         .timeline_value = val,
-      };
+      xe_exec_fill_sync(&xe_syncs[sync_idx++],
+                        submit->waits[s].sync,
+                        submit->waits[s].wait_value,
+                        false);
    }
    for (int s = 0; s < submit->signal_count; s++) {
-      const struct vk_drm_syncobj *syncobj =
-         vk_sync_as_drm_syncobj(submit->signals[s].sync);
-      assert(syncobj);
-      uint64_t val = submit->signals[s].signal_value;
-
-      xe_syncs[sync_idx++] = (struct drm_xe_sync) {
-         .type = val ? DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ :
-                       DRM_XE_SYNC_TYPE_SYNCOBJ,
-         .flags = DRM_XE_SYNC_FLAG_SIGNAL,
-         .handle = syncobj->syncobj,
-         .timeline_value = val,
-      };
+      xe_exec_fill_sync(&xe_syncs[sync_idx++],
+                        submit->signals[s].sync,
+                        submit->signals[s].signal_value,
+                        true);
    }
    if (signal_bind_timeline) {
       xe_syncs[sync_idx++] = (struct drm_xe_sync) {

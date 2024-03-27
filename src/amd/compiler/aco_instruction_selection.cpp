@@ -5451,7 +5451,7 @@ in_exec_divergent_or_in_loop(isel_context* ctx)
 
 void
 emit_interp_instr_gfx11(isel_context* ctx, unsigned idx, unsigned component, Temp src, Temp dst,
-                        Temp prim_mask)
+                        Temp prim_mask, bool high_16bits)
 {
    Temp coord1 = emit_extract_vector(ctx, src, 0, v1);
    Temp coord2 = emit_extract_vector(ctx, src, 1, v1);
@@ -5464,7 +5464,8 @@ emit_interp_instr_gfx11(isel_context* ctx, unsigned idx, unsigned component, Tem
       Operand coord2_op(coord2);
       coord2_op.setLateKill(true); /* we re-use the destination reg in the middle */
       bld.pseudo(aco_opcode::p_interp_gfx11, Definition(dst), Operand(v1.as_linear()),
-                 Operand::c32(idx), Operand::c32(component), coord1, coord2_op, prim_mask_op);
+                 Operand::c32(idx), Operand::c32(component), Operand::c32(high_16bits), coord1,
+                 coord2_op, prim_mask_op);
       return;
    }
 
@@ -5472,10 +5473,10 @@ emit_interp_instr_gfx11(isel_context* ctx, unsigned idx, unsigned component, Tem
 
    Temp res;
    if (dst.regClass() == v2b) {
-      Temp p10 =
-         bld.vinterp_inreg(aco_opcode::v_interp_p10_f16_f32_inreg, bld.def(v1), p, coord1, p);
-      res = bld.vinterp_inreg(aco_opcode::v_interp_p2_f16_f32_inreg, bld.def(v1), p, coord2, p10);
-      emit_extract_vector(ctx, res, 0, dst);
+      Temp p10 = bld.vinterp_inreg(aco_opcode::v_interp_p10_f16_f32_inreg, bld.def(v1), p, coord1,
+                                   p, high_16bits ? 0x5 : 0);
+      bld.vinterp_inreg(aco_opcode::v_interp_p2_f16_f32_inreg, Definition(dst), p, coord2, p10,
+                        high_16bits ? 0x1 : 0);
    } else {
       Temp p10 = bld.vinterp_inreg(aco_opcode::v_interp_p10_f32_inreg, bld.def(v1), p, coord1, p);
       bld.vinterp_inreg(aco_opcode::v_interp_p2_f32_inreg, Definition(dst), p, coord2, p10);
@@ -5486,10 +5487,10 @@ emit_interp_instr_gfx11(isel_context* ctx, unsigned idx, unsigned component, Tem
 
 void
 emit_interp_instr(isel_context* ctx, unsigned idx, unsigned component, Temp src, Temp dst,
-                  Temp prim_mask)
+                  Temp prim_mask, bool high_16bits)
 {
    if (ctx->options->gfx_level >= GFX11) {
-      emit_interp_instr_gfx11(ctx, idx, component, src, dst, prim_mask);
+      emit_interp_instr_gfx11(ctx, idx, component, src, dst, prim_mask, high_16bits);
       return;
    }
 
@@ -5505,9 +5506,9 @@ emit_interp_instr(isel_context* ctx, unsigned idx, unsigned component, Temp src,
             bld.vintrp(aco_opcode::v_interp_mov_f32, bld.def(v1), Operand::c32(2u) /* P0 */,
                        bld.m0(prim_mask), idx, component);
          interp_p1 = bld.vintrp(aco_opcode::v_interp_p1lv_f16, bld.def(v1), coord1,
-                                bld.m0(prim_mask), interp_p1, idx, component);
+                                bld.m0(prim_mask), interp_p1, idx, component, high_16bits);
          bld.vintrp(aco_opcode::v_interp_p2_legacy_f16, Definition(dst), coord2, bld.m0(prim_mask),
-                    interp_p1, idx, component);
+                    interp_p1, idx, component, high_16bits);
       } else {
          aco_opcode interp_p2_op = aco_opcode::v_interp_p2_f16;
 
@@ -5515,11 +5516,12 @@ emit_interp_instr(isel_context* ctx, unsigned idx, unsigned component, Temp src,
             interp_p2_op = aco_opcode::v_interp_p2_legacy_f16;
 
          Builder::Result interp_p1 = bld.vintrp(aco_opcode::v_interp_p1ll_f16, bld.def(v1), coord1,
-                                                bld.m0(prim_mask), idx, component);
+                                                bld.m0(prim_mask), idx, component, high_16bits);
          bld.vintrp(interp_p2_op, Definition(dst), coord2, bld.m0(prim_mask), interp_p1, idx,
-                    component);
+                    component, high_16bits);
       }
    } else {
+      assert(!high_16bits);
       Builder::Result interp_p1 = bld.vintrp(aco_opcode::v_interp_p1_f32, bld.def(v1), coord1,
                                              bld.m0(prim_mask), idx, component);
 
@@ -5533,33 +5535,32 @@ emit_interp_instr(isel_context* ctx, unsigned idx, unsigned component, Temp src,
 
 void
 emit_interp_mov_instr(isel_context* ctx, unsigned idx, unsigned component, unsigned vertex_id,
-                      Temp dst, Temp prim_mask)
+                      Temp dst, Temp prim_mask, bool high_16bits)
 {
    Builder bld(ctx->program, ctx->block);
+   Temp tmp = dst.bytes() == 2 ? bld.tmp(v1) : dst;
    if (ctx->options->gfx_level >= GFX11) {
       uint16_t dpp_ctrl = dpp_quad_perm(vertex_id, vertex_id, vertex_id, vertex_id);
       if (in_exec_divergent_or_in_loop(ctx)) {
          Operand prim_mask_op = bld.m0(prim_mask);
          prim_mask_op.setLateKill(true); /* we don't want the bld.lm definition to use m0 */
-         bld.pseudo(aco_opcode::p_interp_gfx11, Definition(dst), Operand(v1.as_linear()),
+         bld.pseudo(aco_opcode::p_interp_gfx11, Definition(tmp), Operand(v1.as_linear()),
                     Operand::c32(idx), Operand::c32(component), Operand::c32(dpp_ctrl),
                     prim_mask_op);
       } else {
          Temp p =
             bld.ldsdir(aco_opcode::lds_param_load, bld.def(v1), bld.m0(prim_mask), idx, component);
-         if (dst.regClass() == v2b) {
-            Temp res = bld.vop1_dpp(aco_opcode::v_mov_b32, bld.def(v1), p, dpp_ctrl);
-            emit_extract_vector(ctx, res, 0, dst);
-         } else {
-            bld.vop1_dpp(aco_opcode::v_mov_b32, Definition(dst), p, dpp_ctrl);
-         }
+         bld.vop1_dpp(aco_opcode::v_mov_b32, Definition(tmp), p, dpp_ctrl);
          /* lds_param_load must be done in WQM, and the result kept valid for helper lanes. */
          set_wqm(ctx, true);
       }
    } else {
-      bld.vintrp(aco_opcode::v_interp_mov_f32, Definition(dst), Operand::c32((vertex_id + 2) % 3),
+      bld.vintrp(aco_opcode::v_interp_mov_f32, Definition(tmp), Operand::c32((vertex_id + 2) % 3),
                  bld.m0(prim_mask), idx, component);
    }
+
+   if (dst.id() != tmp.id())
+      emit_extract_vector(ctx, tmp, high_16bits, dst);
 }
 
 void
@@ -5624,18 +5625,19 @@ visit_load_interpolated_input(isel_context* ctx, nir_intrinsic_instr* instr)
    Temp coords = get_ssa_temp(ctx, instr->src[0].ssa);
    unsigned idx = nir_intrinsic_base(instr);
    unsigned component = nir_intrinsic_component(instr);
+   bool high_16bits = nir_intrinsic_io_semantics(instr).high_16bits;
    Temp prim_mask = get_arg(ctx, ctx->args->prim_mask);
 
    assert(nir_src_is_const(instr->src[1]) && !nir_src_as_uint(instr->src[1]));
 
    if (instr->def.num_components == 1) {
-      emit_interp_instr(ctx, idx, component, coords, dst, prim_mask);
+      emit_interp_instr(ctx, idx, component, coords, dst, prim_mask, high_16bits);
    } else {
       aco_ptr<Instruction> vec(create_instruction(aco_opcode::p_create_vector, Format::PSEUDO,
                                                   instr->def.num_components, 1));
       for (unsigned i = 0; i < instr->def.num_components; i++) {
          Temp tmp = ctx->program->allocateTmp(instr->def.bit_size == 16 ? v2b : v1);
-         emit_interp_instr(ctx, idx, component + i, coords, tmp, prim_mask);
+         emit_interp_instr(ctx, idx, component + i, coords, tmp, prim_mask, high_16bits);
          vec->operands[i] = Operand(tmp);
       }
       vec->definitions[0] = Definition(dst);
@@ -5761,13 +5763,14 @@ visit_load_fs_input(isel_context* ctx, nir_intrinsic_instr* instr)
 
    unsigned idx = nir_intrinsic_base(instr);
    unsigned component = nir_intrinsic_component(instr);
+   bool high_16bits = nir_intrinsic_io_semantics(instr).high_16bits;
    unsigned vertex_id = 0; /* P0 */
 
    if (instr->intrinsic == nir_intrinsic_load_input_vertex)
       vertex_id = nir_src_as_uint(instr->src[0]);
 
    if (instr->def.num_components == 1 && instr->def.bit_size != 64) {
-      emit_interp_mov_instr(ctx, idx, component, vertex_id, dst, prim_mask);
+      emit_interp_mov_instr(ctx, idx, component, vertex_id, dst, prim_mask, high_16bits);
    } else {
       unsigned num_components = instr->def.num_components;
       if (instr->def.bit_size == 64)
@@ -5779,7 +5782,7 @@ visit_load_fs_input(isel_context* ctx, nir_intrinsic_instr* instr)
          unsigned chan_idx = idx + (component + i) / 4;
          vec->operands[i] = Operand(bld.tmp(instr->def.bit_size == 16 ? v2b : v1));
          emit_interp_mov_instr(ctx, chan_idx, chan_component, vertex_id, vec->operands[i].getTemp(),
-                               prim_mask);
+                               prim_mask, high_16bits);
       }
       vec->definitions[0] = Definition(dst);
       bld.insert(std::move(vec));
@@ -11985,9 +11988,9 @@ get_interp_color(isel_context* ctx, int interp_vgpr, unsigned attr_index, unsign
       int arg_index = ctx->args->persp_sample.arg_index + interp_vgpr / 2;
       Temp interp_ij = ctx->arg_temps[arg_index];
 
-      emit_interp_instr(ctx, attr_index, comp, interp_ij, dst, prim_mask);
+      emit_interp_instr(ctx, attr_index, comp, interp_ij, dst, prim_mask, false);
    } else {
-      emit_interp_mov_instr(ctx, attr_index, comp, 0, dst, prim_mask);
+      emit_interp_mov_instr(ctx, attr_index, comp, 0, dst, prim_mask, false);
    }
 
    return dst;

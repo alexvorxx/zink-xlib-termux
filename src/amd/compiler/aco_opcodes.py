@@ -170,7 +170,8 @@ class Format(IntEnum):
                  ('sync_scope', 'exec_scope', 'scope_invocation')]
       elif self == Format.VINTRP:
          return [('unsigned', 'attribute', None),
-                 ('unsigned', 'component', None)]
+                 ('unsigned', 'component', None),
+                 ('bool', 'high_16bits', 'false')]
       elif self == Format.DPP16:
          return [('uint16_t', 'dpp_ctrl', None),
                  ('uint8_t', 'row_mask', '0xF'),
@@ -427,7 +428,7 @@ insn("p_init_scratch")
 insn("p_jump_to_epilog")
 
 # loads and interpolates a fragment shader input with a correct exec mask
-#dst0=result, src0=linear_vgpr, src1=attribute, src2=component, src3=coord1, src4=coord2, src5=m0
+#dst0=result, src0=linear_vgpr, src1=attribute, src2=component, src3=high_16bits, src4=coord1, src5=coord2, src6=m0
 #dst0=result, src0=linear_vgpr, src1=attribute, src2=component, src3=dpp_ctrl, src4=m0
 insn("p_interp_gfx11")
 

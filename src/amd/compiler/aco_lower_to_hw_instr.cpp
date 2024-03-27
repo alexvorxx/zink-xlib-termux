@@ -2730,12 +2730,15 @@ lower_to_hw_instr(Program* program)
                unsigned attribute = instr->operands[1].constantValue();
                unsigned component = instr->operands[2].constantValue();
                uint16_t dpp_ctrl = 0;
+               bool high_16bits = false;
                Operand coord1, coord2;
-               if (instr->operands.size() == 6) {
-                  assert(instr->operands[3].regClass() == v1);
+               if (instr->operands.size() == 7) {
+                  assert(instr->operands[3].isConstant());
+                  high_16bits = instr->operands[3].constantValue();
                   assert(instr->operands[4].regClass() == v1);
-                  coord1 = instr->operands[3];
-                  coord2 = instr->operands[4];
+                  assert(instr->operands[5].regClass() == v1);
+                  coord1 = instr->operands[4];
+                  coord2 = instr->operands[5];
                } else {
                   assert(instr->operands[3].isConstant());
                   dpp_ctrl = instr->operands[3].constantValue();
@@ -2750,9 +2753,9 @@ lower_to_hw_instr(Program* program)
                   bld.vop1_dpp(aco_opcode::v_mov_b32, Definition(dst), p, dpp_ctrl);
                } else if (dst.regClass() == v2b) {
                   bld.vinterp_inreg(aco_opcode::v_interp_p10_f16_f32_inreg, Definition(dst), p,
-                                    coord1, p);
+                                    coord1, p, high_16bits ? 0x5 : 0);
                   bld.vinterp_inreg(aco_opcode::v_interp_p2_f16_f32_inreg, Definition(dst), p,
-                                    coord2, dst_op);
+                                    coord2, dst_op, high_16bits ? 0x1 : 0);
                } else {
                   bld.vinterp_inreg(aco_opcode::v_interp_p10_f32_inreg, Definition(dst), p, coord1,
                                     p);

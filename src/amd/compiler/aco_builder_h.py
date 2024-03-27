@@ -548,7 +548,7 @@ public:
    }
 <%
 import itertools
-formats = [("pseudo", [Format.PSEUDO], list(itertools.product(range(5), range(6))) + [(8, 1), (1, 8), (2, 6), (3, 6), (1, 6)]),
+formats = [("pseudo", [Format.PSEUDO], list(itertools.product(range(5), range(6))) + [(8, 1), (1, 8), (2, 6), (3, 6), (1, 7)]),
            ("sop1", [Format.SOP1], [(0, 1), (1, 0), (1, 1), (2, 1), (3, 2)]),
            ("sop2", [Format.SOP2], itertools.product([1, 2], [2, 3])),
            ("sopk", [Format.SOPK], itertools.product([0, 1, 2], [0, 1])),

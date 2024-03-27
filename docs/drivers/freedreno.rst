@@ -406,7 +406,8 @@ capture from inside Mesa. Different ``FD_RD_DUMP`` options are available:
   until disabled. Writing 0 (or any other value) will disable dumps.
 
 Output dump files and trigger file (when enabled) are hard-coded to be placed
-under ``/tmp``, or ``/data/local/tmp`` under Android.
+under ``/tmp``, or ``/data/local/tmp`` under Android. `FD_RD_DUMP_TESTNAME` can
+be used to specify a more descriptive prefix for the output or trigger files.
 
 Functionality is generic to any Freedreno-based backend, but is currently only
 integrated in the MSM backend of Turnip. Using the existing ``TU_DEBUG=rd``

@@ -3588,6 +3588,8 @@ typedef enum {
     */
    nir_io_dont_use_pos_for_non_fs_varyings = BITFIELD_BIT(1),
 
+   nir_io_16bit_input_output_support = BITFIELD_BIT(2),
+
    /* Options affecting the GLSL compiler are below. */
 
    /**

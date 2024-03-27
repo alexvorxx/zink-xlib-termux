@@ -3382,6 +3382,23 @@ backward_inter_shader_code_motion(struct linkage_info *linkage,
    if (!num_movable_loads)
       return false;
 
+   /* Inter-shader code motion turns ALU results into outputs, but not all
+    * bit sizes are supported by outputs.
+    *
+    * The 1-bit type is allowed because the pass always promotes 1-bit
+    * outputs to 16 or 32 bits, whichever is supported.
+    *
+    * TODO: We could support replacing 2 32-bit inputs with one 64-bit
+    * post-dominator by supporting 64 bits here, but the likelihood of that
+    * occuring seems low.
+    */
+   unsigned supported_io_types = 32 | 1;
+
+   if (linkage->producer_builder.shader->options->io_options &
+       linkage->consumer_builder.shader->options->io_options &
+       nir_io_16bit_input_output_support)
+      supported_io_types |= 16;
+
    struct nir_use_dominance_state *postdom_state =
       nir_calc_use_dominance_impl(linkage->consumer_builder.impl, true);
 
@@ -3403,10 +3420,8 @@ backward_inter_shader_code_motion(struct linkage_info *linkage,
             /* This can only be an ALU instruction. */
             nir_alu_instr *alu = nir_instr_as_alu(iter);
 
-            /* Skip 64-bit defs and keep searching. Replacing 32-bit inputs
-             * with one 64-bit input is unlikely to benefit.
-             */
-            if (alu->def.bit_size == 64)
+            /* Skip unsupported bit sizes and keep searching. */
+            if (!(alu->def.bit_size & supported_io_types))
                continue;
 
             /* Skip comparison opcodes that directly source the first load

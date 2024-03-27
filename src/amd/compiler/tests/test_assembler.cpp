@@ -1097,3 +1097,46 @@ BEGIN_TEST(assembler.vopd)
 
    finish_assembler_test();
 END_TEST
+
+BEGIN_TEST(assembler.vintrp_high_16bits)
+   for (unsigned i = GFX8; i <= GFX10; i++) {
+      if (!setup_cs(NULL, (amd_gfx_level)i))
+         continue;
+
+      Definition dst_v0 = bld.def(v1);
+      dst_v0.setFixed(PhysReg(256));
+
+      Definition dst_v1 = bld.def(v1);
+      dst_v1.setFixed(PhysReg(256 + 1));
+
+      Operand op_v0(bld.tmp(v1));
+      op_v0.setFixed(PhysReg(256 + 0));
+
+      Operand op_v1(bld.tmp(v1));
+      op_v1.setFixed(PhysReg(256 + 1));
+
+      Operand op_v2(bld.tmp(v1));
+      op_v2.setFixed(PhysReg(256 + 2));
+
+      Operand op_m0(bld.tmp(s1));
+      op_m0.setFixed(m0);
+
+      aco_opcode interp_p2_op = aco_opcode::v_interp_p2_f16;
+
+      if (bld.program->gfx_level == GFX8)
+         interp_p2_op = aco_opcode::v_interp_p2_legacy_f16;
+
+      //! BB0:
+      //~gfx8! v_interp_p1ll_f16 v0, v1, attr4.y high                      ; d2740000 00020344
+      //~gfx9! v_interp_p1ll_f16 v0, v1, attr4.y high                      ; d2740000 00020344
+      //~gfx10! v_interp_p1ll_f16 v0, v1, attr4.y high                      ; d7420000 00020344
+      bld.vintrp(aco_opcode::v_interp_p1ll_f16, dst_v0, op_v1, op_m0, 4, 1, true);
+
+      //~gfx8! v_interp_p2_f16 v1, v2, attr4.y, v0 high                    ; d2760001 04020544
+      //~gfx9! v_interp_p2_f16 v1, v2, attr4.y, v0 high                    ; d2770001 04020544
+      //~gfx10! v_interp_p2_f16 v1, v2, attr4.y, v0 high                    ; d75a0001 04020544
+      bld.vintrp(interp_p2_op, dst_v1, op_v2, op_m0, op_v0, 4, 1, true);
+
+      finish_assembler_test();
+   }
+END_TEST

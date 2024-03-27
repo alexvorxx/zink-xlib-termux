@@ -1957,12 +1957,11 @@ brw_broadcast(struct brw_codegen *p,
               struct brw_reg idx)
 {
    const struct intel_device_info *devinfo = p->devinfo;
-   const bool align1 = brw_get_default_access_mode(p) == BRW_ALIGN_1;
-   brw_inst *inst;
+   assert(brw_get_default_access_mode(p) == BRW_ALIGN_1);
 
    brw_push_insn_state(p);
    brw_set_default_mask_control(p, BRW_MASK_DISABLE);
-   brw_set_default_exec_size(p, align1 ? BRW_EXECUTE_1 : BRW_EXECUTE_4);
+   brw_set_default_exec_size(p, BRW_EXECUTE_1);
 
    assert(src.file == BRW_GENERAL_REGISTER_FILE &&
           src.address_mode == BRW_ADDRESS_DIRECT);
@@ -1980,15 +1979,14 @@ brw_broadcast(struct brw_codegen *p,
    src.type = dst.type = brw_reg_type_from_bit_size(type_sz(src.type) * 8,
                                                     BRW_REGISTER_TYPE_UD);
 
-   if ((src.vstride == 0 && (src.hstride == 0 || !align1)) ||
+   if ((src.vstride == 0 && src.hstride == 0) ||
        idx.file == BRW_IMMEDIATE_VALUE) {
       /* Trivial, the source is already uniform or the index is a constant.
        * We will typically not get here if the optimizer is doing its job, but
        * asserting would be mean.
        */
       const unsigned i = idx.file == BRW_IMMEDIATE_VALUE ? idx.ud : 0;
-      src = align1 ? stride(suboffset(src, i), 0, 1, 0) :
-                     stride(suboffset(src, 4 * i), 0, 4, 1);
+      src = stride(suboffset(src, i), 0, 1, 0);
 
       if (type_sz(src.type) > 4 && !devinfo->has_64bit_int) {
          brw_MOV(p, subscript(dst, BRW_REGISTER_TYPE_D, 0),
@@ -2014,83 +2012,64 @@ brw_broadcast(struct brw_codegen *p,
        */
       assert(src.subnr == 0);
 
-      if (align1) {
-         const struct brw_reg addr =
-            retype(brw_address_reg(0), BRW_REGISTER_TYPE_UD);
-         unsigned offset = src.nr * REG_SIZE + src.subnr;
-         /* Limit in bytes of the signed indirect addressing immediate. */
-         const unsigned limit = 512;
+      const struct brw_reg addr =
+         retype(brw_address_reg(0), BRW_REGISTER_TYPE_UD);
+      unsigned offset = src.nr * REG_SIZE + src.subnr;
+      /* Limit in bytes of the signed indirect addressing immediate. */
+      const unsigned limit = 512;
 
-         brw_push_insn_state(p);
-         brw_set_default_mask_control(p, BRW_MASK_DISABLE);
-         brw_set_default_predicate_control(p, BRW_PREDICATE_NONE);
-         brw_set_default_flag_reg(p, 0, 0);
+      brw_push_insn_state(p);
+      brw_set_default_mask_control(p, BRW_MASK_DISABLE);
+      brw_set_default_predicate_control(p, BRW_PREDICATE_NONE);
+      brw_set_default_flag_reg(p, 0, 0);
 
-         /* Take into account the component size and horizontal stride. */
-         assert(src.vstride == src.hstride + src.width);
-         brw_SHL(p, addr, vec1(idx),
-                 brw_imm_ud(util_logbase2(type_sz(src.type)) +
-                            src.hstride - 1));
+      /* Take into account the component size and horizontal stride. */
+      assert(src.vstride == src.hstride + src.width);
+      brw_SHL(p, addr, vec1(idx),
+              brw_imm_ud(util_logbase2(type_sz(src.type)) +
+                         src.hstride - 1));
 
-         /* We can only address up to limit bytes using the indirect
-          * addressing immediate, account for the difference if the source
-          * register is above this limit.
-          */
-         if (offset >= limit) {
-            brw_set_default_swsb(p, tgl_swsb_regdist(1));
-            brw_ADD(p, addr, addr, brw_imm_ud(offset - offset % limit));
-            offset = offset % limit;
-         }
-
-         brw_pop_insn_state(p);
-
+      /* We can only address up to limit bytes using the indirect
+       * addressing immediate, account for the difference if the source
+       * register is above this limit.
+       */
+      if (offset >= limit) {
          brw_set_default_swsb(p, tgl_swsb_regdist(1));
+         brw_ADD(p, addr, addr, brw_imm_ud(offset - offset % limit));
+         offset = offset % limit;
+      }
 
-         /* Use indirect addressing to fetch the specified component. */
-         if (type_sz(src.type) > 4 &&
-             (intel_device_info_is_9lp(devinfo) || !devinfo->has_64bit_int)) {
-            /* From the Cherryview PRM Vol 7. "Register Region Restrictions":
-             *
-             *   "When source or destination datatype is 64b or operation is
-             *    integer DWord multiply, indirect addressing must not be
-             *    used."
-             *
-             * We may also not support Q/UQ types.
-             *
-             * To work around both of these, we do two integer MOVs instead
-             * of one 64-bit MOV.  Because no double value should ever cross
-             * a register boundary, it's safe to use the immediate offset in
-             * the indirect here to handle adding 4 bytes to the offset and
-             * avoid the extra ADD to the register file.
-             */
-            brw_MOV(p, subscript(dst, BRW_REGISTER_TYPE_D, 0),
-                       retype(brw_vec1_indirect(addr.subnr, offset),
-                              BRW_REGISTER_TYPE_D));
-            brw_set_default_swsb(p, tgl_swsb_null());
-            brw_MOV(p, subscript(dst, BRW_REGISTER_TYPE_D, 1),
-                       retype(brw_vec1_indirect(addr.subnr, offset + 4),
-                              BRW_REGISTER_TYPE_D));
-         } else {
-            brw_MOV(p, dst,
-                    retype(brw_vec1_indirect(addr.subnr, offset), src.type));
-         }
-      } else {
-         /* In SIMD4x2 mode the index can be either zero or one, replicate it
-          * to all bits of a flag register,
+      brw_pop_insn_state(p);
+
+      brw_set_default_swsb(p, tgl_swsb_regdist(1));
+
+      /* Use indirect addressing to fetch the specified component. */
+      if (type_sz(src.type) > 4 &&
+          (intel_device_info_is_9lp(devinfo) || !devinfo->has_64bit_int)) {
+         /* From the Cherryview PRM Vol 7. "Register Region Restrictions":
+          *
+          *   "When source or destination datatype is 64b or operation is
+          *    integer DWord multiply, indirect addressing must not be
+          *    used."
+          *
+          * We may also not support Q/UQ types.
+          *
+          * To work around both of these, we do two integer MOVs instead
+          * of one 64-bit MOV.  Because no double value should ever cross
+          * a register boundary, it's safe to use the immediate offset in
+          * the indirect here to handle adding 4 bytes to the offset and
+          * avoid the extra ADD to the register file.
           */
-         inst = brw_MOV(p,
-                        brw_null_reg(),
-                        stride(brw_swizzle(idx, BRW_SWIZZLE_XXXX), 4, 4, 1));
-         brw_inst_set_pred_control(devinfo, inst, BRW_PREDICATE_NONE);
-         brw_inst_set_cond_modifier(devinfo, inst, BRW_CONDITIONAL_NZ);
-         brw_inst_set_flag_reg_nr(devinfo, inst, 1);
-
-         /* and use predicated SEL to pick the right channel. */
-         inst = brw_SEL(p, dst,
-                        stride(suboffset(src, 4), 4, 4, 1),
-                        stride(src, 4, 4, 1));
-         brw_inst_set_pred_control(devinfo, inst, BRW_PREDICATE_NORMAL);
-         brw_inst_set_flag_reg_nr(devinfo, inst, 1);
+         brw_MOV(p, subscript(dst, BRW_REGISTER_TYPE_D, 0),
+                    retype(brw_vec1_indirect(addr.subnr, offset),
+                           BRW_REGISTER_TYPE_D));
+         brw_set_default_swsb(p, tgl_swsb_null());
+         brw_MOV(p, subscript(dst, BRW_REGISTER_TYPE_D, 1),
+                    retype(brw_vec1_indirect(addr.subnr, offset + 4),
+                           BRW_REGISTER_TYPE_D));
+      } else {
+         brw_MOV(p, dst,
+                 retype(brw_vec1_indirect(addr.subnr, offset), src.type));
       }
    }
 

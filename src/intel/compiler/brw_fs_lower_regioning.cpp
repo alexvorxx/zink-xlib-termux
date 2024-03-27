@@ -146,7 +146,6 @@ namespace {
           * don't support 64-bit types at all.
           */
          if ((!devinfo->has_64bit_int ||
-              devinfo->platform == INTEL_PLATFORM_CHV ||
               intel_device_info_is_9lp(devinfo)) && type_sz(t) > 4)
             return BRW_REGISTER_TYPE_UD;
          else if (has_dst_aligned_region_restriction(devinfo, inst))

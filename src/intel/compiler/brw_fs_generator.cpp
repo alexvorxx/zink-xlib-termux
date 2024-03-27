@@ -1383,8 +1383,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          break;
 
       case SHADER_OPCODE_CLUSTER_BROADCAST: {
-         assert((devinfo->platform != INTEL_PLATFORM_CHV &&
-                 !intel_device_info_is_9lp(devinfo) &&
+         assert((!intel_device_info_is_9lp(devinfo) &&
                  devinfo->has_64bit_float) || type_sz(src[0].type) <= 4);
          assert(!src[0].negate && !src[0].abs);
          assert(src[1].file == BRW_IMMEDIATE_VALUE);

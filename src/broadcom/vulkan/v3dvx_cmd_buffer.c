@@ -1442,29 +1442,40 @@ v3dX(cmd_buffer_emit_stencil)(struct v3dv_cmd_buffer *cmd_buffer)
    bool any_dynamic_stencil_state =
       BITSET_TEST(dyn->set, MESA_VK_DYNAMIC_DS_STENCIL_COMPARE_MASK) ||
       BITSET_TEST(dyn->set, MESA_VK_DYNAMIC_DS_STENCIL_WRITE_MASK) ||
-      BITSET_TEST(dyn->set, MESA_VK_DYNAMIC_DS_STENCIL_REFERENCE);
+      BITSET_TEST(dyn->set, MESA_VK_DYNAMIC_DS_STENCIL_REFERENCE) ||
+      BITSET_TEST(dyn->set, MESA_VK_DYNAMIC_DS_STENCIL_OP);
 
    bool emitted_stencil = false;
    const struct vk_stencil_test_face_state *front = &dyn->ds.stencil.front;
    const struct vk_stencil_test_face_state *back = &dyn->ds.stencil.back;
 
-   for (uint32_t i = 0; i < 2; i++) {
+   const bool needs_front_and_back = any_dynamic_stencil_state ?
+      memcmp(front, back, sizeof(*front)) != 0 :
+      pipeline->emit_stencil_cfg[1] == true;
+   const unsigned stencil_packets = needs_front_and_back ? 2 : 1;
+
+   for (uint32_t i = 0; i < stencil_packets; i++) {
       if (pipeline->emit_stencil_cfg[i]) {
          if (any_dynamic_stencil_state) {
-            cl_emit_with_prepacked(&job->bcl, STENCIL_CFG,
-                                   pipeline->stencil_cfg[i], config) {
-               if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_COMPARE_MASK)) {
-                  config.stencil_test_mask =
-                     i == 0 ? front->compare_mask : back->compare_mask;
-               }
-               if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_WRITE_MASK)) {
-                  config.stencil_write_mask =
-                     i == 0 ? front->write_mask : back->write_mask;
-               }
-               if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_REFERENCE)) {
-                  config.stencil_ref_value =
-                     i == 0 ? front->reference : back->reference;
-               }
+            const struct vk_stencil_test_face_state *stencil_state =
+               i == 0 ? front : back;
+
+            /* If we have any dynamic stencil state we just emit the entire
+             * packet since for simplicity
+             */
+            cl_emit(&job->bcl, STENCIL_CFG, config) {
+               config.front_config = !needs_front_and_back || i == 0;
+               config.back_config = !needs_front_and_back || i == 1;
+               config.stencil_test_mask = stencil_state->compare_mask & 0xff;
+               config.stencil_write_mask = stencil_state->write_mask & 0xff;
+               config.stencil_ref_value = stencil_state->reference & 0xff;
+               config.stencil_test_function = stencil_state->op.compare;
+               config.stencil_pass_op =
+                  v3dX(translate_stencil_op)(stencil_state->op.pass);
+               config.depth_test_fail_op =
+                  v3dX(translate_stencil_op)(stencil_state->op.depth_fail);
+               config.stencil_test_fail_op =
+                  v3dX(translate_stencil_op)(stencil_state->op.fail);
             }
          } else {
             cl_emit_prepacked(&job->bcl, &pipeline->stencil_cfg[i]);
@@ -1476,6 +1487,7 @@ v3dX(cmd_buffer_emit_stencil)(struct v3dv_cmd_buffer *cmd_buffer)
       BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_COMPARE_MASK);
       BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_REFERENCE);
       BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_WRITE_MASK);
+      BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_OP);
    }
 }
 
@@ -1970,8 +1982,11 @@ v3dX(cmd_buffer_emit_configuration_bits)(struct v3dv_cmd_buffer *cmd_buffer)
    struct vk_dynamic_graphics_state *dyn =
       &cmd_buffer->vk.dynamic_graphics_state;
 
+   /* Disable depth/stencil if we don't have a D/S attachment */
    bool has_depth =
       pipeline->rendering_info.depth_attachment_format != VK_FORMAT_UNDEFINED;
+   bool has_stencil =
+      pipeline->rendering_info.stencil_attachment_format != VK_FORMAT_UNDEFINED;
 
    cl_emit_with_prepacked(&job->bcl, CFG_BITS, pipeline->cfg_bits, config) {
       if (dyn->ds.depth.test_enable && has_depth) {
@@ -1980,6 +1995,8 @@ v3dX(cmd_buffer_emit_configuration_bits)(struct v3dv_cmd_buffer *cmd_buffer)
       } else {
          config.depth_test_function = VK_COMPARE_OP_ALWAYS;
       }
+
+      config.stencil_enable = dyn->ds.stencil.test_enable && has_stencil;
 
       cmd_buffer->state.z_updates_enable = config.z_updates_enable;
 #if V3D_VERSION == 42
@@ -2012,6 +2029,7 @@ v3dX(cmd_buffer_emit_configuration_bits)(struct v3dv_cmd_buffer *cmd_buffer)
    BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_RS_CULL_MODE);
    BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_RS_FRONT_FACE);
    BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_BOUNDS_TEST_ENABLE);
+   BITSET_CLEAR(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_TEST_ENABLE);
 }
 
 void

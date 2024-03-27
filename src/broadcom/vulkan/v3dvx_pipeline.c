@@ -199,13 +199,6 @@ pack_cfg_bits(struct v3dv_pipeline *pipeline,
 
       config.blend_enable = pipeline->blend.enables != 0;
 
-      /* Disable depth/stencil if we don't have a D/S attachment */
-      const struct vk_render_pass_state *ri = &pipeline->rendering_info;
-      bool has_stencil = ri->stencil_attachment_format != VK_FORMAT_UNDEFINED;
-
-      config.stencil_enable =
-         ds_info ? ds_info->stencilTestEnable && has_stencil: false;
-
 #if V3D_VERSION >= 71
       /* From the Vulkan spec:
        *
@@ -240,8 +233,8 @@ pack_cfg_bits(struct v3dv_pipeline *pipeline,
    };
 }
 
-static uint32_t
-translate_stencil_op(VkStencilOp op)
+uint32_t
+v3dX(translate_stencil_op)(VkStencilOp op)
 {
    switch (op) {
    case VK_STENCIL_OP_KEEP:
@@ -283,33 +276,20 @@ pack_single_stencil_cfg(struct v3dv_pipeline *pipeline,
     *
     * In our case, 's' is always 8, so we clamp to that to prevent our packing
     * functions to assert in debug mode if they see larger values.
-    *
-    * If we have dynamic state we need to make sure we set the corresponding
-    * state bits to 0, since cl_emit_with_prepacked ORs the new value with
-    * the old.
     */
-   const uint8_t write_mask =
-      BITSET_TEST(state->dynamic, MESA_VK_DYNAMIC_DS_STENCIL_WRITE_MASK) ?
-      0 : stencil_state->writeMask & 0xff;
-
-   const uint8_t compare_mask =
-      BITSET_TEST(state->dynamic, MESA_VK_DYNAMIC_DS_STENCIL_COMPARE_MASK) ?
-      0 : stencil_state->compareMask & 0xff;
-
-   const uint8_t reference =
-      BITSET_TEST(state->dynamic, MESA_VK_DYNAMIC_DS_STENCIL_REFERENCE) ?
-      0 : stencil_state->reference & 0xff;
-
    v3dvx_pack(stencil_cfg, STENCIL_CFG, config) {
       config.front_config = is_front;
       config.back_config = is_back;
-      config.stencil_write_mask = write_mask;
-      config.stencil_test_mask = compare_mask;
+      config.stencil_write_mask = stencil_state->writeMask & 0xff;
+      config.stencil_test_mask = stencil_state->compareMask & 0xff;
       config.stencil_test_function = stencil_state->compareOp;
-      config.stencil_pass_op = translate_stencil_op(stencil_state->passOp);
-      config.depth_test_fail_op = translate_stencil_op(stencil_state->depthFailOp);
-      config.stencil_test_fail_op = translate_stencil_op(stencil_state->failOp);
-      config.stencil_ref_value = reference;
+      config.stencil_pass_op =
+         v3dX(translate_stencil_op)(stencil_state->passOp);
+      config.depth_test_fail_op =
+         v3dX(translate_stencil_op)(stencil_state->depthFailOp);
+      config.stencil_test_fail_op =
+         v3dX(translate_stencil_op)(stencil_state->failOp);
+      config.stencil_ref_value = stencil_state->reference & 0xff;
    }
 }
 
@@ -320,8 +300,10 @@ pack_stencil_cfg(struct v3dv_pipeline *pipeline,
 {
    assert(sizeof(pipeline->stencil_cfg) == 2 * cl_packet_length(STENCIL_CFG));
 
-   if (!ds_info || !ds_info->stencilTestEnable)
+   if ((!ds_info || !ds_info->stencilTestEnable) &&
+       (!BITSET_TEST(state->dynamic, MESA_VK_DYNAMIC_DS_STENCIL_TEST_ENABLE))) {
       return;
+   }
 
    const struct vk_render_pass_state *ri = &pipeline->rendering_info;
    if (ri->stencil_attachment_format == VK_FORMAT_UNDEFINED)
@@ -330,7 +312,9 @@ pack_stencil_cfg(struct v3dv_pipeline *pipeline,
    const bool any_dynamic_stencil_states =
       BITSET_TEST(state->dynamic, MESA_VK_DYNAMIC_DS_STENCIL_WRITE_MASK) ||
       BITSET_TEST(state->dynamic, MESA_VK_DYNAMIC_DS_STENCIL_COMPARE_MASK) ||
-      BITSET_TEST(state->dynamic, MESA_VK_DYNAMIC_DS_STENCIL_REFERENCE);
+      BITSET_TEST(state->dynamic, MESA_VK_DYNAMIC_DS_STENCIL_REFERENCE) ||
+      BITSET_TEST(state->dynamic, MESA_VK_DYNAMIC_DS_STENCIL_TEST_ENABLE) ||
+      BITSET_TEST(state->dynamic, MESA_VK_DYNAMIC_DS_STENCIL_OP);
 
    /* If front != back or we have dynamic stencil state we can't emit a single
     * packet for both faces.

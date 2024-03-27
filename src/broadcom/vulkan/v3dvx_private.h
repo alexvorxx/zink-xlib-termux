@@ -368,3 +368,6 @@ void
 v3dX(viewport_compute_xform)(const VkViewport *viewport,
                              float scale[3],
                              float translate[3]);
+
+uint32_t
+v3dX(translate_stencil_op)(VkStencilOp op);

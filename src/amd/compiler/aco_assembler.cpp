@@ -385,6 +385,7 @@ emit_vintrp_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instructio
       encoding = 0;
       encoding |= interp.attribute;
       encoding |= interp.component << 6;
+      encoding |= interp.high_16bits << 8;
       encoding |= reg(ctx, instr->operands[0]) << 9;
       if (instr->opcode == aco_opcode::v_interp_p2_f16 ||
           instr->opcode == aco_opcode::v_interp_p2_legacy_f16 ||

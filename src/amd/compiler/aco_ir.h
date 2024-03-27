@@ -1403,7 +1403,8 @@ static_assert(sizeof(SDWA_instruction) == sizeof(VALU_instruction) + 4, "Unexpec
 struct VINTRP_instruction : public Instruction {
    uint8_t attribute;
    uint8_t component;
-   uint16_t padding;
+   bool high_16bits;
+   uint8_t padding;
 };
 static_assert(sizeof(VINTRP_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
 

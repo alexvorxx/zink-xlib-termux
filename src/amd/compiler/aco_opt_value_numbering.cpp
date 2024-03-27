@@ -170,11 +170,8 @@ struct InstrPred {
       case Format::VINTRP: {
          VINTRP_instruction& aI = a->vintrp();
          VINTRP_instruction& bI = b->vintrp();
-         if (aI.attribute != bI.attribute)
-            return false;
-         if (aI.component != bI.component)
-            return false;
-         return true;
+         return aI.attribute == bI.attribute && aI.component == bI.component &&
+                aI.high_16bits == bI.high_16bits;
       }
       case Format::VINTERP_INREG: {
          VINTERP_inreg_instruction& aI = a->vinterp_inreg();

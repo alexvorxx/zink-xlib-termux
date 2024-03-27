@@ -427,6 +427,8 @@ print_instr_format_specific(enum amd_gfx_level gfx_level, const Instruction* ins
    case Format::VINTRP: {
       const VINTRP_instruction& vintrp = instr->vintrp();
       fprintf(output, " attr%d.%c", vintrp.attribute, "xyzw"[vintrp.component]);
+      if (vintrp.high_16bits)
+         fprintf(output, " high");
       break;
    }
    case Format::DS: {

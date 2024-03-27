@@ -431,6 +431,12 @@ unsigned int rc_inst_can_use_presub(
 		return 0;
 	}
 
+	struct rc_src_register test_reg = *replace_reg;
+	test_reg.File = RC_FILE_PRESUB;
+	if (!c->SwizzleCaps->IsNative(info->Opcode, test_reg)) {
+		return 0;
+	}
+
 	/* We can't allow constant swizzles from presubtract, because it is not possible
 	 * to rewrite it to a native swizzle later. */
 	if (!c->is_r500) {

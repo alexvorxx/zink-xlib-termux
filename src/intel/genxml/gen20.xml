@@ -1061,7 +1061,12 @@
     </field>
     <field name="EU Thread Scheduling Mode Override" start="45" end="46" type="uint" />
     <field name="Large GRF Mode" start="47" end="47" type="bool" />
+    <field name="Z Pass Async Compute Thread Limit Mask" start="48" end="50" type="uint" />
     <field name="Mask1" start="48" end="63" type="uint" />
+    <field name="Z Async Throttle settings Mask" start="51" end="52" type="uint" />
+    <field name="Pixel Async Compute Thread Limit Mask" start="55" end="57" type="uint" />
+    <field name="EU Thread Scheduling Mode Override Mask" start="61" end="62" type="uint" />
+    <field name="Large GRF Mode Mask" start="63" end="63" type="bool" />
     <field name="Midthread Preemption Delay Timer" start="64" end="66" type="uint">
       <value name="MTP_TIMER_VAL_0" value="0" />
       <value name="MTP_TIMER_VAL_50" value="1" />
@@ -1086,7 +1091,12 @@
       <value name="Full" value="0" />
       <value name="Min" value="1" />
     </field>
+    <field name="Midthread Preemption Delay Timer Mask" start="80" end="82" type="uint" />
     <field name="Mask2" start="80" end="95" type="uint" />
+    <field name="Midthread Preemption Overdispatch Thread group count Mask" start="83" end="84" type="uint" />
+    <field name="Midthread Preemption Overdispatch Test mode Mask" start="85" end="85" type="uint" />
+    <field name="UAV Coherency Mode Mask" start="86" end="86" type="uint" />
+    <field name="Memory allocation for Scratch and Midthread Preemption buffers Mask" start="91" end="91" type="uint" />
   </instruction>
   <instruction name="XY_BLOCK_COPY_BLT" bias="2" length="22" engine="blitter">
     <field name="DWord Length" start="0" end="7" type="uint" default="20" />

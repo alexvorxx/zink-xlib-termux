@@ -432,12 +432,11 @@ fs_generator::generate_shuffle(fs_inst *inst,
    src.type = dst.type = brw_reg_type_from_bit_size(type_sz(src.type) * 8,
                                                     BRW_REGISTER_TYPE_UD);
 
-   /* Because we're using the address register, we're limited to 8-wide
-    * execution on gfx7.  On gfx8, we're limited to 16-wide by the address
-    * register file and 8-wide for 64-bit types.  We could try and make this
-    * instruction splittable higher up in the compiler but that gets weird
-    * because it reads all of the channels regardless of execution size.  It's
-    * easier just to split it here.
+   /* Because we're using the address register, we're limited to 16-wide
+    * by the address register file and 8-wide for 64-bit types.  We could try
+    * and make this instruction splittable higher up in the compiler but that
+    * gets weird because it reads all of the channels regardless of execution
+    * size.  It's easier just to split it here.
     */
    const unsigned lower_width =
       element_sz(src) > 4 || element_sz(dst) > 4 ? 8 :

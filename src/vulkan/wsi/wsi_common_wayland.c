@@ -1929,8 +1929,8 @@ wsi_wl_presentation_update_present_id(struct wsi_wl_present_id *id)
       id->chain->present_ids.max_completed = id->present_id;
 
    wl_list_remove(&id->link);
-   vk_free(id->alloc, id);
    pthread_mutex_unlock(&id->chain->present_ids.lock);
+   vk_free(id->alloc, id);
 }
 
 static void

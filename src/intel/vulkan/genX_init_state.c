@@ -330,6 +330,9 @@ init_common_queue_state(struct anv_queue *queue, struct anv_batch *batch)
              */
             .offset = device->btd_fifo_bo->offset,
          };
+#if INTEL_NEEDS_WA_14017794102
+         btd.BTDMidthreadpreemption = false;
+#endif
       }
    }
 #endif

@@ -64,7 +64,7 @@
       <value name="Ftz" value="0" />
       <value name="SetByKernel" value="1" />
     </field>
-    <field name="Thread Preemption" start="84" end="84" type="bool" />
+    <field name="Thread Preemption" start="84" end="84" type="bool" default="1" />
     <field name="Sampler Count" start="98" end="100" type="uint">
       <value name="No samplers used" value="0" />
       <value name="Between 1 and 4 samplers used" value="1" />
@@ -342,7 +342,7 @@
       <value name="512" value="2" />
       <value name="1024" value="3" />
     </field>
-    <field name="BTD Mid thread preemption" start="63" end="63" type="bool" />
+    <field name="BTD Mid thread preemption" start="63" end="63" type="bool" default="1" />
     <field name="Per DSS Memory Backed Buffer Size" start="64" end="66" type="uint" default="6">
       <value name="2KB" value="0" />
       <value name="4KB" value="1" />

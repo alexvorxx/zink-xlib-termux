@@ -1369,7 +1369,8 @@ enum radv_dynamic_state_bits {
    RADV_DYNAMIC_DISCARD_RECTANGLE_MODE = 1ull << 47,
    RADV_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE = 1ull << 48,
    RADV_DYNAMIC_SAMPLE_LOCATIONS_ENABLE = 1ull << 49,
-   RADV_DYNAMIC_ALL = (1ull << 50) - 1,
+   RADV_DYNAMIC_ALPHA_TO_ONE_ENABLE = 1ull << 50,
+   RADV_DYNAMIC_ALL = (1ull << 51) - 1,
 };
 
 enum radv_cmd_dirty_bits {
@@ -1425,19 +1426,20 @@ enum radv_cmd_dirty_bits {
    RADV_CMD_DIRTY_DYNAMIC_DISCARD_RECTANGLE_MODE = 1ull << 47,
    RADV_CMD_DIRTY_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE = 1ull << 48,
    RADV_CMD_DIRTY_DYNAMIC_SAMPLE_LOCATIONS_ENABLE = 1ull << 49,
-   RADV_CMD_DIRTY_DYNAMIC_ALL = (1ull << 50) - 1,
-   RADV_CMD_DIRTY_PIPELINE = 1ull << 50,
-   RADV_CMD_DIRTY_INDEX_BUFFER = 1ull << 51,
-   RADV_CMD_DIRTY_FRAMEBUFFER = 1ull << 52,
-   RADV_CMD_DIRTY_VERTEX_BUFFER = 1ull << 53,
-   RADV_CMD_DIRTY_STREAMOUT_BUFFER = 1ull << 54,
-   RADV_CMD_DIRTY_GUARDBAND = 1ull << 55,
-   RADV_CMD_DIRTY_RBPLUS = 1ull << 56,
-   RADV_CMD_DIRTY_SHADER_QUERY = 1ull << 57,
-   RADV_CMD_DIRTY_OCCLUSION_QUERY = 1ull << 58,
-   RADV_CMD_DIRTY_DB_SHADER_CONTROL = 1ull << 59,
-   RADV_CMD_DIRTY_STREAMOUT_ENABLE = 1ull << 60,
-   RADV_CMD_DIRTY_GRAPHICS_SHADERS = 1ull << 61,
+   RADV_CMD_DIRTY_DYNAMIC_ALPHA_TO_ONE_ENABLE = 1ull << 50,
+   RADV_CMD_DIRTY_DYNAMIC_ALL = (1ull << 51) - 1,
+   RADV_CMD_DIRTY_PIPELINE = 1ull << 51,
+   RADV_CMD_DIRTY_INDEX_BUFFER = 1ull << 52,
+   RADV_CMD_DIRTY_FRAMEBUFFER = 1ull << 53,
+   RADV_CMD_DIRTY_VERTEX_BUFFER = 1ull << 54,
+   RADV_CMD_DIRTY_STREAMOUT_BUFFER = 1ull << 55,
+   RADV_CMD_DIRTY_GUARDBAND = 1ull << 56,
+   RADV_CMD_DIRTY_RBPLUS = 1ull << 57,
+   RADV_CMD_DIRTY_SHADER_QUERY = 1ull << 58,
+   RADV_CMD_DIRTY_OCCLUSION_QUERY = 1ull << 59,
+   RADV_CMD_DIRTY_DB_SHADER_CONTROL = 1ull << 60,
+   RADV_CMD_DIRTY_STREAMOUT_ENABLE = 1ull << 61,
+   RADV_CMD_DIRTY_GRAPHICS_SHADERS = 1ull << 62,
 };
 
 enum radv_cmd_flush_bits {
@@ -2068,6 +2070,7 @@ struct radv_ps_epilog_state {
    bool export_stencil;
    bool export_sample_mask;
    bool alpha_to_coverage_via_mrtz;
+   bool alpha_to_one;
    uint8_t need_src_alpha;
 };
 

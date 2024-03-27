@@ -630,6 +630,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
             gfx_state->ps.epilog.enable_mrt_output_nan_fixup && !stage->nir->info.internal;
          /* Need to filter out unwritten color slots. */
          options.spi_shader_col_format = gfx_state->ps.epilog.spi_shader_col_format & stage->info.ps.colors_written;
+         options.alpha_to_one = gfx_state->ps.epilog.alpha_to_one;
       }
 
       if (!options.no_depth_export) {

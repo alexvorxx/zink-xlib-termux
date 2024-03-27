@@ -260,8 +260,9 @@ radv_pipeline_needs_ps_epilog(const struct radv_graphics_pipeline *pipeline,
       return true;
 
    /* These dynamic states need to compile PS epilogs on-demand. */
-   if (pipeline->dynamic_states & (RADV_DYNAMIC_COLOR_BLEND_ENABLE | RADV_DYNAMIC_COLOR_WRITE_MASK |
-                                   RADV_DYNAMIC_ALPHA_TO_COVERAGE_ENABLE | RADV_DYNAMIC_COLOR_BLEND_EQUATION))
+   if (pipeline->dynamic_states &
+       (RADV_DYNAMIC_COLOR_BLEND_ENABLE | RADV_DYNAMIC_COLOR_WRITE_MASK | RADV_DYNAMIC_ALPHA_TO_COVERAGE_ENABLE |
+        RADV_DYNAMIC_COLOR_BLEND_EQUATION | RADV_DYNAMIC_ALPHA_TO_ONE_ENABLE))
       return true;
 
    return false;
@@ -471,6 +472,8 @@ radv_dynamic_state_mask(VkDynamicState state)
       return RADV_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE;
    case VK_DYNAMIC_STATE_SAMPLE_LOCATIONS_ENABLE_EXT:
       return RADV_DYNAMIC_SAMPLE_LOCATIONS_ENABLE;
+   case VK_DYNAMIC_STATE_ALPHA_TO_ONE_ENABLE_EXT:
+      return RADV_DYNAMIC_ALPHA_TO_ONE_ENABLE;
    default:
       unreachable("Unhandled dynamic state");
    }
@@ -956,6 +959,10 @@ radv_pipeline_init_dynamic_state(const struct radv_device *device, struct radv_g
    /* Multisample. */
    if (states & RADV_DYNAMIC_ALPHA_TO_COVERAGE_ENABLE) {
       dynamic->vk.ms.alpha_to_coverage_enable = state->ms->alpha_to_coverage_enable;
+   }
+
+   if (states & RADV_DYNAMIC_ALPHA_TO_ONE_ENABLE) {
+      dynamic->vk.ms.alpha_to_one_enable = state->ms->alpha_to_one_enable;
    }
 
    if (states & RADV_DYNAMIC_SAMPLE_MASK) {
@@ -1735,6 +1742,7 @@ radv_generate_ps_epilog_key(const struct radv_device *device, const struct radv_
    key.export_sample_mask = state->export_sample_mask;
    key.alpha_to_coverage_via_mrtz = state->alpha_to_coverage_via_mrtz;
    key.spi_shader_z_format = z_format;
+   key.alpha_to_one = state->alpha_to_one;
 
    return key;
 }
@@ -1792,6 +1800,9 @@ radv_pipeline_generate_ps_epilog_key(const struct radv_device *device, const str
          ps_epilog.color_attachment_formats[i] = state->rp->color_attachment_formats[i];
       }
    }
+
+   if (state->ms)
+      ps_epilog.alpha_to_one = state->ms->alpha_to_one_enable;
 
    return radv_generate_ps_epilog_key(device, &ps_epilog);
 }

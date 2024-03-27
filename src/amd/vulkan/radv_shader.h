@@ -118,6 +118,7 @@ struct radv_ps_epilog_key {
    bool export_stencil;
    bool export_sample_mask;
    bool alpha_to_coverage_via_mrtz;
+   bool alpha_to_one;
 };
 
 struct radv_spirv_to_nir_options {

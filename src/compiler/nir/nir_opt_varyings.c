@@ -3547,6 +3547,9 @@ relocate_slot(struct linkage_info *linkage, struct scalar_slot *slot,
          sem.location = new_semantic;
          sem.high_16bits = new_high_16bits;
 
+         /* This is never indirectly indexed. Simplify num_slots. */
+         sem.num_slots = 1;
+
          nir_intrinsic_set_io_semantics(intr, sem);
          nir_intrinsic_set_component(intr, new_component);
 

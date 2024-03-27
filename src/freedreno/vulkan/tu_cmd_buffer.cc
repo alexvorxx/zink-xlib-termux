@@ -2628,34 +2628,29 @@ tu_dirty_desc_sets(struct tu_cmd_buffer *cmd,
    }
 }
 
-VKAPI_ATTR void VKAPI_CALL
-tu_CmdBindDescriptorSets(VkCommandBuffer commandBuffer,
-                         VkPipelineBindPoint pipelineBindPoint,
-                         VkPipelineLayout _layout,
-                         uint32_t firstSet,
-                         uint32_t descriptorSetCount,
-                         const VkDescriptorSet *pDescriptorSets,
-                         uint32_t dynamicOffsetCount,
-                         const uint32_t *pDynamicOffsets)
+static void
+tu_bind_descriptor_sets(struct tu_cmd_buffer *cmd,
+                        const VkBindDescriptorSetsInfoKHR *info,
+                        VkPipelineBindPoint bind_point)
 {
-   VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
-   VK_FROM_HANDLE(tu_pipeline_layout, layout, _layout);
+   VK_FROM_HANDLE(tu_pipeline_layout, layout, info->layout);
    unsigned dyn_idx = 0;
 
    struct tu_descriptor_state *descriptors_state =
-      tu_get_descriptors_state(cmd, pipelineBindPoint);
+      tu_get_descriptors_state(cmd, bind_point);
 
    descriptors_state->max_sets_bound =
-      MAX2(descriptors_state->max_sets_bound, firstSet + descriptorSetCount);
+      MAX2(descriptors_state->max_sets_bound,
+           info->firstSet + info->descriptorSetCount);
 
    unsigned dynamic_offset_offset = 0;
-   for (unsigned i = 0; i < firstSet; i++) {
+   for (unsigned i = 0; i < info->firstSet; i++) {
       dynamic_offset_offset += layout->set[i].layout->dynamic_offset_size;
    }
 
-   for (unsigned i = 0; i < descriptorSetCount; ++i) {
-      unsigned idx = i + firstSet;
-      VK_FROM_HANDLE(tu_descriptor_set, set, pDescriptorSets[i]);
+   for (unsigned i = 0; i < info->descriptorSetCount; ++i) {
+      unsigned idx = i + info->firstSet;
+      VK_FROM_HANDLE(tu_descriptor_set, set, info->pDescriptorSets[i]);
 
       descriptors_state->sets[idx] = set;
       descriptors_state->set_iova[idx] = set ?
@@ -2679,8 +2674,8 @@ tu_CmdBindDescriptorSets(VkCommandBuffer commandBuffer,
          if (binding->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
              binding->type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
             for (unsigned k = 0; k < binding->array_size; k++, dyn_idx++) {
-               assert(dyn_idx < dynamicOffsetCount);
-               uint32_t offset = pDynamicOffsets[dyn_idx];
+               assert(dyn_idx < info->dynamicOffsetCount);
+               uint32_t offset = info->pDynamicOffsets[dyn_idx];
                memcpy(dst, src, binding->size);
 
                if (binding->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) {
@@ -2731,7 +2726,7 @@ tu_CmdBindDescriptorSets(VkCommandBuffer commandBuffer,
 
       dynamic_offset_offset += layout->set[idx].layout->dynamic_offset_size;
    }
-   assert(dyn_idx == dynamicOffsetCount);
+   assert(dyn_idx == info->dynamicOffsetCount);
 
    if (dynamic_offset_offset) {
       descriptors_state->max_dynamic_offset_size =
@@ -2756,7 +2751,25 @@ tu_CmdBindDescriptorSets(VkCommandBuffer commandBuffer,
       descriptors_state->set_iova[reserved_set_idx] = dynamic_desc_set.iova | BINDLESS_DESCRIPTOR_64B;
    }
 
-   tu_dirty_desc_sets(cmd, pipelineBindPoint);
+   tu_dirty_desc_sets(cmd, bind_point);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+tu_CmdBindDescriptorSets2KHR(
+   VkCommandBuffer commandBuffer,
+   const VkBindDescriptorSetsInfoKHR *pBindDescriptorSetsInfo)
+{
+   VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
+
+   if (pBindDescriptorSetsInfo->stageFlags & VK_SHADER_STAGE_COMPUTE_BIT) {
+      tu_bind_descriptor_sets(cmd, pBindDescriptorSetsInfo,
+                              VK_PIPELINE_BIND_POINT_COMPUTE);
+   }
+
+   if (pBindDescriptorSetsInfo->stageFlags & VK_SHADER_STAGE_ALL_GRAPHICS) {
+      tu_bind_descriptor_sets(cmd, pBindDescriptorSetsInfo,
+                              VK_PIPELINE_BIND_POINT_GRAPHICS);
+   }
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -2771,62 +2784,100 @@ tu_CmdBindDescriptorBuffersEXT(
       cmd->state.descriptor_buffer_iova[i] = pBindingInfos[i].address;
 }
 
-VKAPI_ATTR void VKAPI_CALL
-tu_CmdSetDescriptorBufferOffsetsEXT(
-   VkCommandBuffer commandBuffer,
-   VkPipelineBindPoint pipelineBindPoint,
-   VkPipelineLayout _layout,
-   uint32_t firstSet,
-   uint32_t setCount,
-   const uint32_t *pBufferIndices,
-   const VkDeviceSize *pOffsets)
+static void
+tu_set_descriptor_buffer_offsets(
+   struct tu_cmd_buffer *cmd,
+   const VkSetDescriptorBufferOffsetsInfoEXT *info,
+   VkPipelineBindPoint bind_point)
 {
-   VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
-   VK_FROM_HANDLE(tu_pipeline_layout, layout, _layout);
+   VK_FROM_HANDLE(tu_pipeline_layout, layout, info->layout);
 
    struct tu_descriptor_state *descriptors_state =
-      tu_get_descriptors_state(cmd, pipelineBindPoint);
+      tu_get_descriptors_state(cmd, bind_point);
 
-   descriptors_state->max_sets_bound =
-      MAX2(descriptors_state->max_sets_bound, firstSet + setCount);
+   descriptors_state->max_sets_bound = MAX2(descriptors_state->max_sets_bound,
+                                            info->firstSet + info->setCount);
 
-   for (unsigned i = 0; i < setCount; ++i) {
-      unsigned idx = i + firstSet;
+   for (unsigned i = 0; i < info->setCount; ++i) {
+      unsigned idx = i + info->firstSet;
       struct tu_descriptor_set_layout *set_layout = layout->set[idx].layout;
 
       descriptors_state->set_iova[idx] =
-         (cmd->state.descriptor_buffer_iova[pBufferIndices[i]] + pOffsets[i]) |
+         (cmd->state.descriptor_buffer_iova[info->pBufferIndices[i]] +
+          info->pOffsets[i]) |
          BINDLESS_DESCRIPTOR_64B;
 
       if (set_layout->has_inline_uniforms)
          cmd->state.dirty |= TU_CMD_DIRTY_SHADER_CONSTS;
    }
 
-   tu_dirty_desc_sets(cmd, pipelineBindPoint);
+   tu_dirty_desc_sets(cmd, bind_point);
 }
 
 VKAPI_ATTR void VKAPI_CALL
-tu_CmdBindDescriptorBufferEmbeddedSamplersEXT(
+tu_CmdSetDescriptorBufferOffsets2EXT(
    VkCommandBuffer commandBuffer,
-   VkPipelineBindPoint pipelineBindPoint,
-   VkPipelineLayout _layout,
-   uint32_t set)
+   const VkSetDescriptorBufferOffsetsInfoEXT *pSetDescriptorBufferOffsetsInfo)
 {
    VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
-   VK_FROM_HANDLE(tu_pipeline_layout, layout, _layout);
 
-   struct tu_descriptor_set_layout *set_layout = layout->set[set].layout;
+   if (pSetDescriptorBufferOffsetsInfo->stageFlags &
+       VK_SHADER_STAGE_COMPUTE_BIT) {
+      tu_set_descriptor_buffer_offsets(cmd, pSetDescriptorBufferOffsetsInfo,
+                                       VK_PIPELINE_BIND_POINT_COMPUTE);
+   }
+
+   if (pSetDescriptorBufferOffsetsInfo->stageFlags &
+       VK_SHADER_STAGE_ALL_GRAPHICS) {
+      tu_set_descriptor_buffer_offsets(cmd, pSetDescriptorBufferOffsetsInfo,
+                                       VK_PIPELINE_BIND_POINT_GRAPHICS);
+   }
+}
+
+static void
+tu_bind_descriptor_buffer_embedded_samplers(
+   struct tu_cmd_buffer *cmd,
+   const VkBindDescriptorBufferEmbeddedSamplersInfoEXT *info,
+   VkPipelineBindPoint bind_point)
+{
+   VK_FROM_HANDLE(tu_pipeline_layout, layout, info->layout);
+
+   struct tu_descriptor_set_layout *set_layout =
+      layout->set[info->set].layout;
 
    struct tu_descriptor_state *descriptors_state =
-      tu_get_descriptors_state(cmd, pipelineBindPoint);
+      tu_get_descriptors_state(cmd, bind_point);
 
    descriptors_state->max_sets_bound =
-      MAX2(descriptors_state->max_sets_bound, set + 1);
+      MAX2(descriptors_state->max_sets_bound, info->set + 1);
 
-   descriptors_state->set_iova[set] = set_layout->embedded_samplers->iova |
-         BINDLESS_DESCRIPTOR_64B;
+   descriptors_state->set_iova[info->set] =
+      set_layout->embedded_samplers->iova | BINDLESS_DESCRIPTOR_64B;
 
-   tu_dirty_desc_sets(cmd, pipelineBindPoint);
+   tu_dirty_desc_sets(cmd, bind_point);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+tu_CmdBindDescriptorBufferEmbeddedSamplers2EXT(
+   VkCommandBuffer commandBuffer,
+   const VkBindDescriptorBufferEmbeddedSamplersInfoEXT
+      *pBindDescriptorBufferEmbeddedSamplersInfo)
+{
+   VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
+
+   if (pBindDescriptorBufferEmbeddedSamplersInfo->stageFlags &
+       VK_SHADER_STAGE_COMPUTE_BIT) {
+      tu_bind_descriptor_buffer_embedded_samplers(
+         cmd, pBindDescriptorBufferEmbeddedSamplersInfo,
+         VK_PIPELINE_BIND_POINT_COMPUTE);
+   }
+
+   if (pBindDescriptorBufferEmbeddedSamplersInfo->stageFlags &
+       VK_SHADER_STAGE_ALL_GRAPHICS) {
+      tu_bind_descriptor_buffer_embedded_samplers(
+         cmd, pBindDescriptorBufferEmbeddedSamplersInfo,
+         VK_PIPELINE_BIND_POINT_GRAPHICS);
+   }
 }
 
 static enum VkResult
@@ -2854,19 +2905,16 @@ tu_push_descriptor_set_update_layout(struct tu_device *device,
    return VK_SUCCESS;
 }
 
-VKAPI_ATTR void VKAPI_CALL
-tu_CmdPushDescriptorSetKHR(VkCommandBuffer commandBuffer,
-                           VkPipelineBindPoint pipelineBindPoint,
-                           VkPipelineLayout _layout,
-                           uint32_t _set,
-                           uint32_t descriptorWriteCount,
-                           const VkWriteDescriptorSet *pDescriptorWrites)
+static void
+tu_push_descriptor_set(struct tu_cmd_buffer *cmd,
+                       const VkPushDescriptorSetInfoKHR *info,
+                       VkPipelineBindPoint bind_point)
 {
-   VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
-   VK_FROM_HANDLE(tu_pipeline_layout, pipe_layout, _layout);
-   struct tu_descriptor_set_layout *layout = pipe_layout->set[_set].layout;
+   VK_FROM_HANDLE(tu_pipeline_layout, pipe_layout, info->layout);
+   struct tu_descriptor_set_layout *layout =
+      pipe_layout->set[info->set].layout;
    struct tu_descriptor_set *set =
-      &tu_get_descriptors_state(cmd, pipelineBindPoint)->push_set;
+      &tu_get_descriptors_state(cmd, bind_point)->push_set;
 
    struct tu_cs_memory set_mem;
    VkResult result = tu_cs_alloc(&cmd->sub_cs,
@@ -2884,27 +2932,50 @@ tu_CmdPushDescriptorSetKHR(VkCommandBuffer commandBuffer,
    }
 
    tu_update_descriptor_sets(cmd->device, tu_descriptor_set_to_handle(set),
-                             descriptorWriteCount, pDescriptorWrites, 0, NULL);
+                             info->descriptorWriteCount,
+                             info->pDescriptorWrites, 0, NULL);
 
    memcpy(set_mem.map, set->mapped_ptr, layout->size);
    set->va = set_mem.iova;
 
    const VkDescriptorSet desc_set[] = { tu_descriptor_set_to_handle(set) };
-   tu_CmdBindDescriptorSets(commandBuffer, pipelineBindPoint, _layout, _set,
-                            1, desc_set, 0, NULL);
+   vk_common_CmdBindDescriptorSets(tu_cmd_buffer_to_handle(cmd), bind_point,
+                                   info->layout, info->set, 1, desc_set, 0,
+                                   NULL);
 }
 
 VKAPI_ATTR void VKAPI_CALL
-tu_CmdPushDescriptorSetWithTemplateKHR(VkCommandBuffer commandBuffer,
-                                       VkDescriptorUpdateTemplate descriptorUpdateTemplate,
-                                       VkPipelineLayout _layout,
-                                       uint32_t _set,
-                                       const void* pData)
+tu_CmdPushDescriptorSet2KHR(
+   VkCommandBuffer commandBuffer,
+   const VkPushDescriptorSetInfoKHR *pPushDescriptorSetInfo)
 {
    VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
-   VK_FROM_HANDLE(tu_pipeline_layout, pipe_layout, _layout);
-   VK_FROM_HANDLE(tu_descriptor_update_template, templ, descriptorUpdateTemplate);
-   struct tu_descriptor_set_layout *layout = pipe_layout->set[_set].layout;
+
+   if (pPushDescriptorSetInfo->stageFlags & VK_SHADER_STAGE_COMPUTE_BIT) {
+      tu_push_descriptor_set(cmd, pPushDescriptorSetInfo,
+                             VK_PIPELINE_BIND_POINT_COMPUTE);
+   }
+
+   if (pPushDescriptorSetInfo->stageFlags & VK_SHADER_STAGE_ALL_GRAPHICS) {
+      tu_push_descriptor_set(cmd, pPushDescriptorSetInfo,
+                             VK_PIPELINE_BIND_POINT_GRAPHICS);
+   }
+}
+
+VKAPI_ATTR void VKAPI_CALL
+tu_CmdPushDescriptorSetWithTemplate2KHR(
+   VkCommandBuffer commandBuffer,
+   const VkPushDescriptorSetWithTemplateInfoKHR
+      *pPushDescriptorSetWithTemplateInfo)
+{
+   VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
+   VK_FROM_HANDLE(tu_pipeline_layout, pipe_layout,
+                  pPushDescriptorSetWithTemplateInfo->layout);
+   VK_FROM_HANDLE(
+      tu_descriptor_update_template, templ,
+      pPushDescriptorSetWithTemplateInfo->descriptorUpdateTemplate);
+   struct tu_descriptor_set_layout *layout =
+      pipe_layout->set[pPushDescriptorSetWithTemplateInfo->set].layout;
    struct tu_descriptor_set *set =
       &tu_get_descriptors_state(cmd, templ->bind_point)->push_set;
 
@@ -2923,14 +2994,19 @@ tu_CmdPushDescriptorSetWithTemplateKHR(VkCommandBuffer commandBuffer,
       return;
    }
 
-   tu_update_descriptor_set_with_template(cmd->device, set, descriptorUpdateTemplate, pData);
+   tu_update_descriptor_set_with_template(
+      cmd->device, set,
+      pPushDescriptorSetWithTemplateInfo->descriptorUpdateTemplate,
+      pPushDescriptorSetWithTemplateInfo->pData);
 
    memcpy(set_mem.map, set->mapped_ptr, layout->size);
    set->va = set_mem.iova;
 
    const VkDescriptorSet desc_set[] = { tu_descriptor_set_to_handle(set) };
-   tu_CmdBindDescriptorSets(commandBuffer, templ->bind_point, _layout, _set,
-                            1, desc_set, 0, NULL);
+   vk_common_CmdBindDescriptorSets(
+      tu_cmd_buffer_to_handle(cmd), templ->bind_point,
+      pPushDescriptorSetWithTemplateInfo->layout,
+      pPushDescriptorSetWithTemplateInfo->set, 1, desc_set, 0, NULL);
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -3088,15 +3164,12 @@ tu_CmdEndTransformFeedbackEXT(VkCommandBuffer commandBuffer,
 TU_GENX(tu_CmdEndTransformFeedbackEXT);
 
 VKAPI_ATTR void VKAPI_CALL
-tu_CmdPushConstants(VkCommandBuffer commandBuffer,
-                    VkPipelineLayout layout,
-                    VkShaderStageFlags stageFlags,
-                    uint32_t offset,
-                    uint32_t size,
-                    const void *pValues)
+tu_CmdPushConstants2KHR(VkCommandBuffer commandBuffer,
+                        const VkPushConstantsInfoKHR *pPushConstantsInfo)
 {
    VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
-   memcpy((char *) cmd->push_constants + offset, pValues, size);
+   memcpy((char *) cmd->push_constants + pPushConstantsInfo->offset,
+          pPushConstantsInfo->pValues, pPushConstantsInfo->size);
    cmd->state.dirty |= TU_CMD_DIRTY_SHADER_CONSTS;
 }
 

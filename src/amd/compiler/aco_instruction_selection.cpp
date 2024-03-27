@@ -5412,13 +5412,9 @@ visit_store_output(isel_context* ctx, nir_intrinsic_instr* instr)
    bool ls_need_output = ctx->stage == vertex_tess_control_hs &&
                          ctx->shader->info.stage == MESA_SHADER_VERTEX && ctx->tcs_in_out_eq;
 
-   bool tcs_need_output = ctx->shader->info.stage == MESA_SHADER_TESS_CTRL &&
-                          ctx->program->info.has_epilog &&
-                          ctx->program->info.tcs.pass_tessfactors_by_reg;
-
    bool ps_need_output = ctx->stage == fragment_fs;
 
-   if (ls_need_output || tcs_need_output || ps_need_output) {
+   if (ls_need_output || ps_need_output) {
       bool stored_to_temps = store_output_to_temps(ctx, instr);
       if (!stored_to_temps) {
          isel_err(instr->src[1].ssa->parent_instr, "Unimplemented output offset instruction");
@@ -11169,62 +11165,6 @@ build_end_with_regs(isel_context* ctx, std::vector<Operand>& regs)
 }
 
 static void
-create_tcs_end_for_epilog(isel_context* ctx)
-{
-   std::vector<Operand> regs;
-
-   regs.emplace_back(get_arg_for_end(ctx, ctx->program->info.tcs.tcs_offchip_layout));
-   regs.emplace_back(get_arg_for_end(ctx, ctx->program->info.tcs.tes_offchip_addr));
-   regs.emplace_back(get_arg_for_end(ctx, ctx->args->tess_offchip_offset));
-   regs.emplace_back(get_arg_for_end(ctx, ctx->args->tcs_factor_offset));
-
-   Builder bld(ctx->program, ctx->block);
-
-   /* Leave a hole corresponding to the two input VGPRs. This ensures that
-    * the invocation_id output does not alias the tcs_rel_ids input,
-    * which saves a V_MOV on gfx9.
-    */
-   unsigned vgpr = 256 + ctx->args->num_vgprs_used;
-
-   Temp rel_patch_id =
-      bld.pseudo(aco_opcode::p_extract, bld.def(v1), get_arg(ctx, ctx->args->tcs_rel_ids),
-                 Operand::c32(0u), Operand::c32(8u), Operand::c32(0u));
-   regs.emplace_back(Operand(rel_patch_id, PhysReg{vgpr++}));
-
-   Temp invocation_id =
-      bld.vop3(aco_opcode::v_bfe_u32, bld.def(v1), get_arg(ctx, ctx->args->tcs_rel_ids),
-               Operand::c32(8u), Operand::c32(5u));
-   regs.emplace_back(Operand(invocation_id, PhysReg{vgpr++}));
-
-   if (ctx->program->info.tcs.pass_tessfactors_by_reg) {
-      vgpr++; /* skip the tess factor LDS offset */
-
-      unsigned slot = VARYING_SLOT_TESS_LEVEL_OUTER;
-      u_foreach_bit (i, ctx->outputs.mask[slot]) {
-         regs.emplace_back(Operand(ctx->outputs.temps[slot * 4 + i], PhysReg{vgpr + i}));
-      }
-      vgpr += 4;
-
-      slot = VARYING_SLOT_TESS_LEVEL_INNER;
-      u_foreach_bit (i, ctx->outputs.mask[slot]) {
-         regs.emplace_back(Operand(ctx->outputs.temps[slot * 4 + i], PhysReg{vgpr + i}));
-      }
-   } else {
-      Temp patch0_patch_data_offset =
-         bld.sop2(aco_opcode::s_bfe_u32, bld.def(s1), bld.def(s1, scc),
-                  get_arg(ctx, ctx->program->info.tcs.vs_state_bits), Operand::c32(0xe000a));
-
-      Temp tf_lds_offset =
-         bld.v_mul24_imm(bld.def(v1), rel_patch_id, ctx->program->info.tcs.patch_stride);
-      tf_lds_offset = bld.nuw().vadd32(bld.def(v1), tf_lds_offset, patch0_patch_data_offset);
-
-      regs.emplace_back(Operand(tf_lds_offset, PhysReg{vgpr}));
-   }
-
-   build_end_with_regs(ctx, regs);
-}
-
-static void
 create_fs_end_for_epilog(isel_context* ctx)
 {
    Builder bld(ctx->program, ctx->block);
@@ -11840,10 +11780,6 @@ select_shader(isel_context& ctx, nir_shader* nir, const bool need_startpgm, cons
 
          /* FS epilogs always have at least one color/null export. */
          ctx.program->has_color_exports = true;
-      } else if (nir->info.stage == MESA_SHADER_TESS_CTRL) {
-         assert(ctx.stage == tess_control_hs || ctx.stage == vertex_tess_control_hs);
-         assert(ctx.options->is_opengl);
-         create_tcs_end_for_epilog(&ctx);
       }
    }
 
@@ -11929,71 +11865,6 @@ select_program_merged(isel_context& ctx, const unsigned shader_count, nir_shader
          ctx.outputs = shader_io_state();
       }
    }
-}
-
-Temp
-get_tess_ring_descriptor(isel_context* ctx, const struct aco_tcs_epilog_info* einfo,
-                         bool is_tcs_factor_ring)
-{
-   Builder bld(ctx->program, ctx->block);
-
-   if (!ctx->options->is_opengl) {
-      Temp ring_offsets = get_arg(ctx, ctx->args->ring_offsets);
-      uint32_t tess_ring_offset =
-         is_tcs_factor_ring ? 5 /* RING_HS_TESS_FACTOR */ : 6 /* RING_HS_TESS_OFFCHIP */;
-      return bld.smem(aco_opcode::s_load_dwordx4, bld.def(s4), ring_offsets,
-                      Operand::c32(tess_ring_offset * 16u));
-   }
-
-   Temp addr = get_arg(ctx, einfo->tcs_out_lds_layout);
-   /* TCS only receives high 13 bits of the address. */
-   addr = bld.sop2(aco_opcode::s_and_b32, bld.def(s1), bld.def(s1, scc), addr,
-                   Operand::c32(0xfff80000));
-
-   if (is_tcs_factor_ring) {
-      addr = bld.sop2(aco_opcode::s_add_u32, bld.def(s1), bld.def(s1, scc), addr,
-                      Operand::c32(einfo->tess_offchip_ring_size));
-   }
-
-   uint32_t rsrc3 = S_008F0C_DST_SEL_X(V_008F0C_SQ_SEL_X) | S_008F0C_DST_SEL_Y(V_008F0C_SQ_SEL_Y) |
-                    S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) | S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W);
-
-   if (ctx->options->gfx_level >= GFX11) {
-      rsrc3 |= S_008F0C_FORMAT(V_008F0C_GFX11_FORMAT_32_FLOAT) |
-               S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
-   } else if (ctx->options->gfx_level >= GFX10) {
-      rsrc3 |= S_008F0C_FORMAT(V_008F0C_GFX10_FORMAT_32_FLOAT) |
-               S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW) | S_008F0C_RESOURCE_LEVEL(1);
-   } else {
-      rsrc3 |= S_008F0C_NUM_FORMAT(V_008F0C_BUF_NUM_FORMAT_FLOAT) |
-               S_008F0C_DATA_FORMAT(V_008F0C_BUF_DATA_FORMAT_32);
-   }
-
-   return bld.pseudo(aco_opcode::p_create_vector, bld.def(s4), addr,
-                     Operand::c32(ctx->options->address32_hi), Operand::c32(0xffffffff),
-                     Operand::c32(rsrc3));
-}
-
-void
-store_tess_factor_to_tess_ring(isel_context* ctx, Temp tess_ring_desc, Temp factors[],
-                               unsigned factor_comps, Temp sbase, Temp voffset, Temp num_patches,
-                               unsigned patch_offset)
-{
-   Builder bld(ctx->program, ctx->block);
-
-   Temp soffset = sbase;
-   if (patch_offset) {
-      Temp offset =
-         bld.sop2(aco_opcode::s_mul_i32, bld.def(s1), num_patches, Operand::c32(patch_offset));
-      soffset = bld.sop2(aco_opcode::s_add_u32, bld.def(s1), bld.def(s1, scc), soffset, offset);
-   }
-
-   Temp data = factor_comps == 1
-                  ? factors[0]
-                  : create_vec_from_array(ctx, factors, factor_comps, RegType::vgpr, 4);
-
-   emit_single_mubuf_store(ctx, tess_ring_desc, voffset, soffset, Temp(), data, 0,
-                           memory_sync_info(storage_vmem_output), true, false, false);
 }
 
 void
@@ -13000,187 +12871,6 @@ select_ps_epilog(Program* program, void* pinfo, ac_shader_config* config,
 
    append_logical_end(ctx.block);
    ctx.block->kind |= block_kind_export_end;
-   bld.reset(ctx.block);
-   bld.sopp(aco_opcode::s_endpgm);
-
-   finish_program(&ctx);
-}
-
-void
-select_tcs_epilog(Program* program, void* pinfo, ac_shader_config* config,
-                  const struct aco_compiler_options* options, const struct aco_shader_info* info,
-                  const struct ac_shader_args* args)
-{
-   const struct aco_tcs_epilog_info* einfo = (const struct aco_tcs_epilog_info*)pinfo;
-   isel_context ctx =
-      setup_isel_context(program, 0, NULL, config, options, info, args, SWStage::TCS);
-
-   ctx.block->fp_mode = program->next_fp_mode;
-
-   add_startpgm(&ctx);
-   append_logical_start(ctx.block);
-
-   Builder bld(ctx.program, ctx.block);
-
-   /* Add a barrier before loading tess factors from LDS. */
-   if (!einfo->pass_tessfactors_by_reg) {
-      /* To generate s_waitcnt lgkmcnt(0) when waitcnt insertion. */
-      program->pending_lds_access = true;
-
-      sync_scope scope = einfo->tcs_out_patch_fits_subgroup ? scope_subgroup : scope_workgroup;
-      bld.barrier(aco_opcode::p_barrier, memory_sync_info(storage_shared, semantic_acqrel, scope),
-                  scope);
-   }
-
-   Temp invocation_id = get_arg(&ctx, einfo->invocation_id);
-
-   Temp cond = bld.vopc(aco_opcode::v_cmp_eq_u32, bld.def(bld.lm), Operand::zero(), invocation_id);
-
-   if_context ic_invoc_0;
-   begin_divergent_if_then(&ctx, &ic_invoc_0, cond);
-
-   unsigned outer_comps, inner_comps;
-   mesa_count_tess_level_components(einfo->primitive_mode, &outer_comps, &inner_comps);
-
-   bld.reset(ctx.block);
-
-   unsigned tess_lvl_out_loc =
-      ac_shader_io_get_unique_index_patch(VARYING_SLOT_TESS_LEVEL_OUTER) * 16;
-   unsigned tess_lvl_in_loc =
-      ac_shader_io_get_unique_index_patch(VARYING_SLOT_TESS_LEVEL_INNER) * 16;
-
-   Temp outer[4];
-   Temp inner[2];
-   if (einfo->pass_tessfactors_by_reg) {
-      for (unsigned i = 0; i < outer_comps; i++)
-         outer[i] = get_arg(&ctx, einfo->tess_lvl_out[i]);
-
-      for (unsigned i = 0; i < inner_comps; i++)
-         inner[i] = get_arg(&ctx, einfo->tess_lvl_in[i]);
-   } else {
-      Temp addr = get_arg(&ctx, einfo->tcs_out_current_patch_data_offset);
-      addr = bld.vop2(aco_opcode::v_lshlrev_b32, bld.def(v1), Operand::c32(2), addr);
-
-      Temp data = program->allocateTmp(RegClass(RegType::vgpr, outer_comps));
-      load_lds(&ctx, 4, outer_comps, data, addr, tess_lvl_out_loc, 4);
-      for (unsigned i = 0; i < outer_comps; i++)
-         outer[i] = emit_extract_vector(&ctx, data, i, v1);
-
-      if (inner_comps) {
-         data = program->allocateTmp(RegClass(RegType::vgpr, inner_comps));
-         load_lds(&ctx, 4, inner_comps, data, addr, tess_lvl_in_loc, 4);
-         for (unsigned i = 0; i < inner_comps; i++)
-            inner[i] = emit_extract_vector(&ctx, data, i, v1);
-      }
-   }
-
-   Temp tess_factor_ring_desc = get_tess_ring_descriptor(&ctx, einfo, true);
-   Temp tess_factor_ring_base = get_arg(&ctx, args->tcs_factor_offset);
-   Temp rel_patch_id = get_arg(&ctx, einfo->rel_patch_id);
-   unsigned tess_factor_ring_const_offset = 0;
-
-   if (program->gfx_level <= GFX8) {
-      /* Store the dynamic HS control word. */
-      cond = bld.vopc(aco_opcode::v_cmp_eq_u32, bld.def(bld.lm), Operand::zero(), rel_patch_id);
-
-      if_context ic_patch_0;
-      begin_divergent_if_then(&ctx, &ic_patch_0, cond);
-
-      bld.reset(ctx.block);
-
-      Temp data = bld.copy(bld.def(v1), Operand::c32(0x80000000u));
-
-      emit_single_mubuf_store(&ctx, tess_factor_ring_desc, Temp(0, v1), tess_factor_ring_base,
-                              Temp(), data, 0, memory_sync_info(), true, false, false);
-
-      tess_factor_ring_const_offset += 4;
-
-      begin_divergent_if_else(&ctx, &ic_patch_0);
-      end_divergent_if(&ctx, &ic_patch_0);
-   }
-
-   bld.reset(ctx.block);
-
-   Temp tess_factor_ring_offset =
-      bld.v_mul_imm(bld.def(v1), rel_patch_id, (inner_comps + outer_comps) * 4, false);
-
-   switch (einfo->primitive_mode) {
-   case TESS_PRIMITIVE_ISOLINES: {
-      /* For isolines, the hardware expects tess factors in the reverse order. */
-      Temp data = bld.pseudo(aco_opcode::p_create_vector, bld.def(v2), outer[1], outer[0]);
-      emit_single_mubuf_store(&ctx, tess_factor_ring_desc, tess_factor_ring_offset,
-                              tess_factor_ring_base, Temp(), data, tess_factor_ring_const_offset,
-                              memory_sync_info(), true, false, false);
-      break;
-   }
-   case TESS_PRIMITIVE_TRIANGLES: {
-      Temp data = bld.pseudo(aco_opcode::p_create_vector, bld.def(v4), outer[0], outer[1], outer[2],
-                             inner[0]);
-      emit_single_mubuf_store(&ctx, tess_factor_ring_desc, tess_factor_ring_offset,
-                              tess_factor_ring_base, Temp(), data, tess_factor_ring_const_offset,
-                              memory_sync_info(), true, false, false);
-      break;
-   }
-   case TESS_PRIMITIVE_QUADS: {
-      Temp data = bld.pseudo(aco_opcode::p_create_vector, bld.def(v4), outer[0], outer[1], outer[2],
-                             outer[3]);
-      emit_single_mubuf_store(&ctx, tess_factor_ring_desc, tess_factor_ring_offset,
-                              tess_factor_ring_base, Temp(), data, tess_factor_ring_const_offset,
-                              memory_sync_info(), true, false, false);
-
-      data = bld.pseudo(aco_opcode::p_create_vector, bld.def(v2), inner[0], inner[1]);
-      emit_single_mubuf_store(
-         &ctx, tess_factor_ring_desc, tess_factor_ring_offset, tess_factor_ring_base, Temp(), data,
-         tess_factor_ring_const_offset + 16, memory_sync_info(), true, false, false);
-      break;
-   }
-   default: unreachable("invalid primitive mode"); break;
-   }
-
-   if (einfo->tes_reads_tessfactors) {
-      Temp layout = get_arg(&ctx, einfo->tcs_offchip_layout);
-      Temp num_patches, patch_base;
-
-      if (ctx.options->is_opengl) {
-         num_patches = bld.sop2(aco_opcode::s_and_b32, bld.def(s1), bld.def(s1, scc), layout,
-                                Operand::c32(0x3f));
-         num_patches = bld.sop2(aco_opcode::s_add_u32, bld.def(s1), bld.def(s1, scc), num_patches,
-                                Operand::c32(1));
-
-         patch_base = bld.sop2(aco_opcode::s_lshr_b32, bld.def(s1), bld.def(s1, scc), layout,
-                               Operand::c32(16));
-      } else {
-         num_patches = bld.sop2(aco_opcode::s_bfe_u32, bld.def(s1), bld.def(s1, scc), layout,
-                                Operand::c32(0x60006));
-
-         patch_base = get_arg(&ctx, einfo->patch_base);
-      }
-
-      Temp tess_ring_desc = get_tess_ring_descriptor(&ctx, einfo, false);
-      Temp tess_ring_base = get_arg(&ctx, args->tess_offchip_offset);
-
-      Temp sbase =
-         bld.sop2(aco_opcode::s_add_u32, bld.def(s1), bld.def(s1, scc), tess_ring_base, patch_base);
-
-      Temp voffset =
-         bld.vop2(aco_opcode::v_lshlrev_b32, bld.def(v1), Operand::c32(4), rel_patch_id);
-
-      store_tess_factor_to_tess_ring(&ctx, tess_ring_desc, outer, outer_comps, sbase, voffset,
-                                     num_patches, tess_lvl_out_loc);
-
-      if (inner_comps) {
-         store_tess_factor_to_tess_ring(&ctx, tess_ring_desc, inner, inner_comps, sbase, voffset,
-                                        num_patches, tess_lvl_in_loc);
-      }
-   }
-
-   begin_divergent_if_else(&ctx, &ic_invoc_0);
-   end_divergent_if(&ctx, &ic_invoc_0);
-
-   program->config->float_mode = program->blocks[0].fp_mode.val;
-
-   append_logical_end(ctx.block);
-
    bld.reset(ctx.block);
    bld.sopp(aco_opcode::s_endpgm);
 

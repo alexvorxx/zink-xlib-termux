@@ -1738,12 +1738,9 @@ dispatch_present_id_queue(struct wsi_swapchain *wsi_chain, struct timespec *end_
     */
    pthread_mutex_unlock(&chain->present_ids.lock);
 
-   struct timespec current_time, remaining_timeout;
-   clock_gettime(CLOCK_MONOTONIC, &current_time);
-   timespec_sub_saturate(&remaining_timeout, end_time, &current_time);
-   ret = wl_display_dispatch_queue_timeout(wl_display,
-                                           chain->present_ids.queue,
-                                           &remaining_timeout);
+   ret = loader_wayland_dispatch(wl_display,
+                                 chain->present_ids.queue,
+                                 end_time);
 
    pthread_mutex_lock(&chain->present_ids.lock);
 
@@ -1770,7 +1767,6 @@ wsi_wl_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain,
                                   uint64_t timeout)
 {
    struct wsi_wl_swapchain *chain = (struct wsi_wl_swapchain *)wsi_chain;
-
    struct timespec end_time;
    VkResult ret;
    int err;
@@ -1880,14 +1876,10 @@ wsi_wl_swapchain_acquire_next_image_implicit(struct wsi_swapchain *wsi_chain,
          }
       }
 
-      struct timespec current_time, remaining_timeout;
-      clock_gettime(CLOCK_MONOTONIC, &current_time);
-      timespec_sub_saturate(&remaining_timeout, &end_time, &current_time);
-
       /* Try to dispatch potential events. */
-      int ret = wl_display_dispatch_queue_timeout(wsi_wl_surface->display->wl_display,
-                                                  wsi_wl_surface->display->queue,
-                                                  &remaining_timeout);
+      int ret = loader_wayland_dispatch(wsi_wl_surface->display->wl_display,
+                                        wsi_wl_surface->display->queue,
+                                        &end_time);
       if (ret == -1)
          return VK_ERROR_OUT_OF_DATE_KHR;
 

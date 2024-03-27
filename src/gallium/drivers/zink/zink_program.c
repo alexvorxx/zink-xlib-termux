@@ -1401,42 +1401,6 @@ create_compute_program(struct zink_context *ctx, nir_shader *nir)
    return comp;
 }
 
-uint32_t
-zink_program_get_descriptor_usage(struct zink_context *ctx, gl_shader_stage stage, enum zink_descriptor_type type)
-{
-   struct zink_shader *zs = NULL;
-   switch (stage) {
-   case MESA_SHADER_VERTEX:
-   case MESA_SHADER_TESS_CTRL:
-   case MESA_SHADER_TESS_EVAL:
-   case MESA_SHADER_GEOMETRY:
-   case MESA_SHADER_FRAGMENT:
-      zs = ctx->gfx_stages[stage];
-      break;
-   case MESA_SHADER_COMPUTE: {
-      zs = ctx->curr_compute->shader;
-      break;
-   }
-   default:
-      unreachable("unknown shader type");
-   }
-   if (!zs)
-      return 0;
-   switch (type) {
-   case ZINK_DESCRIPTOR_TYPE_UBO:
-      return zs->ubos_used;
-   case ZINK_DESCRIPTOR_TYPE_SSBO:
-      return zs->ssbos_used;
-   case ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW:
-      return BITSET_TEST_RANGE(zs->info.textures_used, 0, PIPE_MAX_SAMPLERS - 1);
-   case ZINK_DESCRIPTOR_TYPE_IMAGE:
-      return BITSET_TEST_RANGE(zs->info.images_used, 0, PIPE_MAX_SAMPLERS - 1);
-   default:
-      unreachable("unknown descriptor type!");
-   }
-   return 0;
-}
-
 bool
 zink_program_descriptor_is_buffer(struct zink_context *ctx, gl_shader_stage stage, enum zink_descriptor_type type, unsigned i)
 {

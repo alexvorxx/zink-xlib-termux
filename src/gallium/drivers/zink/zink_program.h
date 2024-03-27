@@ -163,9 +163,6 @@ zink_gfx_lib_cache_unref(struct zink_screen *screen, struct zink_gfx_lib_cache *
 void
 zink_program_init(struct zink_context *ctx);
 
-uint32_t
-zink_program_get_descriptor_usage(struct zink_context *ctx, gl_shader_stage stage, enum zink_descriptor_type type);
-
 void
 debug_describe_zink_gfx_program(char* buf, const struct zink_gfx_program *ptr);
 

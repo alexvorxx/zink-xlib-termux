@@ -1910,6 +1910,7 @@
     <field name="Disable L1 Invalidate for non-L1-cacheable Writes" start="45" end="45" type="bool" />
     <field name="Large GRF Mode" start="47" end="47" type="bool" />
     <field name="Z Pass Async Compute Thread Limit Mask" start="48" end="50" type="uint" />
+    <field name="Mask1" start="48" end="63" type="uint" />
     <field name="Force Non-Coherent Mask" start="51" end="52" type="uint" />
     <field name="Fast Clear Disabled on Compressed Surface Mask" start="53" end="53" type="bool" />
     <field name="Disable SLM Read Merge Optimization Mask" start="54" end="54" type="bool" />
@@ -2129,10 +2130,10 @@
     <field name="Aux Inv" start="0" end="0" type="bool" />
   </register>
   <register name="CCS_INSTDONE" length="1" num="0x1206c">
-    <field name="Ring Enable" start="0" end="0" type="bool"/>
-    <field name="VFE Done" start="16" end="16" type="bool"/>
-    <field name="TSG Done" start="17" end="17" type="bool"/>
-    <field name="CS Done" start="21" end="21" type="bool"/>
+    <field name="Ring Enable" start="0" end="0" type="bool" />
+    <field name="VFE Done" start="16" end="16" type="bool" />
+    <field name="TSG Done" start="17" end="17" type="bool" />
+    <field name="CS Done" start="21" end="21" type="bool" />
   </register>
   <register name="CHICKEN_RASTER_1" length="1" num="0x6204">
     <field name="AA Line Quality Fix" start="5" end="5" type="bool" />

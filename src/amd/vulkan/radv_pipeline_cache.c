@@ -399,17 +399,22 @@ struct radv_ray_tracing_pipeline_cache_data {
 bool
 radv_ray_tracing_pipeline_cache_search(struct radv_device *device, struct vk_pipeline_cache *cache,
                                        struct radv_ray_tracing_pipeline *pipeline,
-                                       const VkRayTracingPipelineCreateInfoKHR *pCreateInfo)
+                                       const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
+                                       bool *found_in_application_cache)
 {
+   *found_in_application_cache = false;
+
    if (device->cache_disabled)
       return false;
 
-   if (!cache)
+   bool *found = found_in_application_cache;
+   if (!cache) {
       cache = device->mem_cache;
+      found = NULL;
+   }
 
-   bool cache_hit = false;
    struct vk_pipeline_cache_object *object =
-      vk_pipeline_cache_lookup_object(cache, pipeline->sha1, SHA1_DIGEST_LENGTH, &radv_pipeline_ops, &cache_hit);
+      vk_pipeline_cache_lookup_object(cache, pipeline->sha1, SHA1_DIGEST_LENGTH, &radv_pipeline_ops, found);
 
    if (!object)
       return false;
@@ -437,14 +442,6 @@ radv_ray_tracing_pipeline_cache_search(struct radv_device *device, struct vk_pip
    }
 
    assert(idx == pipeline_obj->num_shaders);
-
-   if (cache_hit && cache != device->mem_cache) {
-      const VkPipelineCreationFeedbackCreateInfo *creation_feedback =
-         vk_find_struct_const(pCreateInfo->pNext, PIPELINE_CREATION_FEEDBACK_CREATE_INFO);
-      if (creation_feedback)
-         creation_feedback->pPipelineCreationFeedback->flags |=
-            VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT;
-   }
 
    pipeline->base.base.cache_object = object;
    return complete;

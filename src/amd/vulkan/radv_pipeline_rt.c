@@ -842,12 +842,13 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
    VK_FROM_HANDLE(radv_device, device, _device);
    VK_FROM_HANDLE(vk_pipeline_cache, cache, _cache);
    VK_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->layout);
+   VkPipelineCreationFeedback pipeline_feedback = {
+      .flags = VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT,
+   };
    bool skip_shaders_cache = false;
    VkResult result;
    const VkPipelineCreationFeedbackCreateInfo *creation_feedback =
       vk_find_struct_const(pCreateInfo->pNext, PIPELINE_CREATION_FEEDBACK_CREATE_INFO);
-   if (creation_feedback)
-      creation_feedback->pPipelineCreationFeedback->flags = VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT;
 
    int64_t pipeline_start = os_time_get_nano();
 
@@ -902,8 +903,14 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
    }
 
    bool cache_hit = false;
-   if (!skip_shaders_cache)
-      cache_hit = radv_ray_tracing_pipeline_cache_search(device, cache, pipeline, pCreateInfo);
+   if (!skip_shaders_cache) {
+      bool found_in_application_cache = true;
+
+      cache_hit =
+         radv_ray_tracing_pipeline_cache_search(device, cache, pipeline, pCreateInfo, &found_in_application_cache);
+      if (cache_hit && found_in_application_cache)
+         pipeline_feedback.flags |= VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT;
+   }
 
    if (!cache_hit) {
       result = radv_rt_compile_shaders(device, cache, pCreateInfo, creation_feedback, stage_keys, pipeline,
@@ -935,8 +942,10 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
    }
 
 fail:
+   pipeline_feedback.duration = os_time_get_nano() - pipeline_start;
+
    if (creation_feedback)
-      creation_feedback->pPipelineCreationFeedback->duration = os_time_get_nano() - pipeline_start;
+      *creation_feedback->pPipelineCreationFeedback = pipeline_feedback;
 
    if (result == VK_SUCCESS)
       *pPipeline = radv_pipeline_to_handle(&pipeline->base.base);

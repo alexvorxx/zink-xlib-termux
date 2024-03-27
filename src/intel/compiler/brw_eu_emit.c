@@ -2052,15 +2052,17 @@ brw_broadcast(struct brw_codegen *p,
               !devinfo->has_64bit_int)) {
             /* From the Cherryview PRM Vol 7. "Register Region Restrictions":
              *
-             *    "When source or destination datatype is 64b or operation is
+             *   "When source or destination datatype is 64b or operation is
              *    integer DWord multiply, indirect addressing must not be
              *    used."
              *
-             * To work around both of this issue, we do two integer MOVs
-             * insead of one 64-bit MOV.  Because no double value should ever
-             * cross a register boundary, it's safe to use the immediate
-             * offset in the indirect here to handle adding 4 bytes to the
-             * offset and avoid the extra ADD to the register file.
+             * We may also not support Q/UQ types.
+             *
+             * To work around both of these, we do two integer MOVs instead
+             * of one 64-bit MOV.  Because no double value should ever cross
+             * a register boundary, it's safe to use the immediate offset in
+             * the indirect here to handle adding 4 bytes to the offset and
+             * avoid the extra ADD to the register file.
              */
             brw_MOV(p, subscript(dst, BRW_REGISTER_TYPE_D, 0),
                        retype(brw_vec1_indirect(addr.subnr, offset),

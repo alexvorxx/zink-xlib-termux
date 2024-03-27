@@ -591,6 +591,9 @@ static void
 panvk_pipeline_builder_parse_color_blend(struct panvk_pipeline_builder *builder,
                                          struct panvk_pipeline *pipeline)
 {
+   if (!builder->create_info.gfx->pColorBlendState)
+      return;
+
    pipeline->blend.state.logicop_enable =
       builder->create_info.gfx->pColorBlendState->logicOpEnable;
    pipeline->blend.state.logicop_func =
@@ -1063,8 +1066,8 @@ panvk_pipeline_builder_init_graphics(
          subpass->depth_stencil_attachment &&
          subpass->depth_stencil_attachment->attachment != VK_ATTACHMENT_UNUSED;
 
-      assert(subpass->color_count <=
-             create_info->pColorBlendState->attachmentCount);
+      assert(!subpass->color_count ||
+             subpass->color_count <= create_info->pColorBlendState->attachmentCount);
       builder->active_color_attachments = 0;
       for (uint32_t i = 0; i < subpass->color_count; i++) {
          uint32_t idx = subpass->color_attachments[i].attachment;

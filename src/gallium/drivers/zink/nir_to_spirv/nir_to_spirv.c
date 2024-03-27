@@ -1494,15 +1494,6 @@ get_alu_src_raw(struct ntv_context *ctx, nir_alu_instr *alu, unsigned src, nir_a
    }
 }
 
-static void
-store_ssa_def(struct ntv_context *ctx, nir_def *ssa, SpvId result, nir_alu_type atype)
-{
-   assert(result != 0);
-   assert(ssa->index < ctx->num_defs);
-   ctx->def_types[ssa->index] = nir_alu_type_get_base_type(atype);
-   ctx->defs[ssa->index] = result;
-}
-
 static SpvId
 emit_select(struct ntv_context *ctx, SpvId type, SpvId cond,
             SpvId if_true, SpvId if_false)
@@ -1552,7 +1543,10 @@ cast_src_to_type(struct ntv_context *ctx, SpvId value, nir_src src, nir_alu_type
 static void
 store_def(struct ntv_context *ctx, nir_def *def, SpvId result, nir_alu_type type)
 {
-   store_ssa_def(ctx, def, result, type);
+   assert(result != 0);
+   assert(def->index < ctx->num_defs);
+   ctx->def_types[def->index] = nir_alu_type_get_base_type(type);
+   ctx->defs[def->index] = result;
 }
 
 static SpvId
@@ -2244,10 +2238,10 @@ emit_load_const(struct ntv_context *ctx, nir_load_const_instr *load_const)
       SpvId value = spirv_builder_const_composite(&ctx->builder,
                                                   type, components,
                                                   num_components);
-      store_ssa_def(ctx, &load_const->def, value, atype);
+      store_def(ctx, &load_const->def, value, atype);
    } else {
       assert(num_components == 1);
-      store_ssa_def(ctx, &load_const->def, components[0], atype);
+      store_def(ctx, &load_const->def, components[0], atype);
    }
 }
 
@@ -3171,7 +3165,7 @@ emit_vote(struct ntv_context *ctx, nir_intrinsic_instr *intr)
    spirv_builder_emit_cap(&ctx->builder, SpvCapabilityGroupNonUniformVote);
    nir_alu_type atype;
    SpvId result = spirv_builder_emit_vote(&ctx->builder, op, get_src(ctx, &intr->src[0], &atype));
-   store_ssa_def(ctx, &intr->def, result, nir_type_bool);
+   store_def(ctx, &intr->def, result, nir_type_bool);
 }
 
 static void
@@ -3498,7 +3492,7 @@ emit_undef(struct ntv_context *ctx, nir_undef_instr *undef)
                                            get_uvec_type(ctx, undef->def.bit_size,
                                                          undef->def.num_components);
 
-   store_ssa_def(ctx, &undef->def,
+   store_def(ctx, &undef->def,
                  spirv_builder_emit_undef(&ctx->builder, type),
                  undef->def.bit_size == 1 ? nir_type_bool : nir_type_uint);
 }
@@ -3941,7 +3935,7 @@ emit_deref_var(struct ntv_context *ctx, nir_deref_instr *deref)
    struct hash_entry *he = _mesa_hash_table_search(ctx->vars, deref->var);
    assert(he);
    SpvId result = (SpvId)(intptr_t)he->data;
-   store_ssa_def(ctx, &deref->def, result, get_nir_alu_type(deref->type));
+   store_def(ctx, &deref->def, result, get_nir_alu_type(deref->type));
 }
 
 static void

@@ -1747,6 +1747,8 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
    struct panvk_physical_device *phys_dev =
       to_panvk_physical_device(dev->vk.physical);
    struct pan_fb_info *fbinfo = &cmdbuf->state.fb.info;
+   uint32_t att_width = 0, att_height = 0;
+   bool has_attachments = false;
 
    cmdbuf->state.fb.bo_count = 0;
    memset(cmdbuf->state.fb.bos, 0, sizeof(cmdbuf->state.fb.bos));
@@ -1773,8 +1775,9 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
       const VkExtent3D iview_size =
          vk_image_mip_level_extent(&img->vk, iview->vk.base_mip_level);
 
-      fbinfo->width = MAX2(iview_size.width, fbinfo->width);
-      fbinfo->height = MAX2(iview_size.height, fbinfo->height);
+      has_attachments = true;
+      att_width = MAX2(iview_size.width, att_width);
+      att_height = MAX2(iview_size.height, att_height);
 
       cmdbuf->state.fb.bos[cmdbuf->state.fb.bo_count++] = img->bo;
       fbinfo->rts[i].view = &iview->pview;
@@ -1804,8 +1807,9 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
       const VkExtent3D iview_size =
          vk_image_mip_level_extent(&img->vk, iview->vk.base_mip_level);
 
-      fbinfo->width = MAX2(iview_size.width, fbinfo->width);
-      fbinfo->height = MAX2(iview_size.height, fbinfo->height);
+      has_attachments = true;
+      att_width = MAX2(iview_size.width, att_width);
+      att_height = MAX2(iview_size.height, att_height);
 
       cmdbuf->state.fb.bos[cmdbuf->state.fb.bo_count++] = img->bo;
       fbinfo->zs.view.zs = &iview->pview;
@@ -1827,8 +1831,9 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
       const VkExtent3D iview_size =
          vk_image_mip_level_extent(&img->vk, iview->vk.base_mip_level);
 
-      fbinfo->width = MAX2(iview_size.width, fbinfo->width);
-      fbinfo->height = MAX2(iview_size.height, fbinfo->height);
+      has_attachments = true;
+      att_width = MAX2(iview_size.width, att_width);
+      att_height = MAX2(iview_size.height, att_height);
 
       cmdbuf->state.fb.bos[cmdbuf->state.fb.bo_count++] = img->bo;
       fbinfo->zs.view.s =
@@ -1842,17 +1847,19 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
       }
    }
 
-   /* We need the rendering area to be aligned on 32x32 section for tile buffer
-    * preloading to work correctly.
-    */
-   fbinfo->width =
-      MIN2(fbinfo->width, ALIGN_POT(pRenderingInfo->renderArea.offset.x +
-                                       pRenderingInfo->renderArea.extent.width,
-                                    32));
-   fbinfo->height = MIN2(fbinfo->height,
-                         ALIGN_POT(pRenderingInfo->renderArea.offset.y +
-                                      pRenderingInfo->renderArea.extent.height,
-                                   32));
+   fbinfo->width = pRenderingInfo->renderArea.offset.x +
+                   pRenderingInfo->renderArea.extent.width;
+   fbinfo->height = pRenderingInfo->renderArea.offset.y +
+                    pRenderingInfo->renderArea.extent.height;
+
+   if (has_attachments) {
+      /* We need the rendering area to be aligned on a 32x32 section for tile
+       * buffer preloading to work correctly.
+       */
+      fbinfo->width = MIN2(att_width, ALIGN_POT(fbinfo->width, 32));
+      fbinfo->height = MIN2(att_height, ALIGN_POT(fbinfo->height, 32));
+   }
+
    assert(fbinfo->width && fbinfo->height);
 
    fbinfo->extent.maxx = fbinfo->width - 1;

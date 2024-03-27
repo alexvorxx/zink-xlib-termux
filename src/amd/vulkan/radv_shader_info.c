@@ -1721,10 +1721,8 @@ radv_determine_ngg_settings(struct radv_device *device, struct radv_shader_stage
                                                                                                     : 3;
    }
 
-   /* TODO: Enable culling for LLVM. */
    es_stage->info.has_ngg_culling = radv_consider_culling(device->physical_device, es_stage->nir, ps_inputs_read,
-                                                          num_vertices_per_prim, &es_stage->info) &&
-                                    !radv_use_llvm_for_stage(device, es_stage->stage);
+                                                          num_vertices_per_prim, &es_stage->info);
 
    nir_function_impl *impl = nir_shader_get_entrypoint(es_stage->nir);
    es_stage->info.has_ngg_early_prim_export = exec_list_is_singular(&impl->body);

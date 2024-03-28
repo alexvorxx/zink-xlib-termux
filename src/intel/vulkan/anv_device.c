@@ -371,6 +371,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_image_view_min_lod                = true,
       .EXT_index_type_uint8                  = true,
       .EXT_inline_uniform_block              = true,
+      .EXT_legacy_vertex_attributes          = true,
       .EXT_line_rasterization                = true,
       .EXT_load_store_op_none                = true,
       .EXT_map_memory_placed                 = device->info.has_mmap_offset,
@@ -932,6 +933,9 @@ get_features(const struct anv_physical_device *pdevice,
 
       /* VK_KHR_shader_float_controls2 */
       .shaderFloatControls2 = true,
+
+      /* VK_EXT_legacy_vertex_attributes */
+      .legacyVertexAttributes = true,
    };
 
    /* The new DOOM and Wolfenstein games require depthBounds without
@@ -1605,6 +1609,11 @@ get_properties(const struct anv_physical_device *pdevice,
    {
       props->graphicsPipelineLibraryFastLinking = true;
       props->graphicsPipelineLibraryIndependentInterpolationDecoration = true;
+   }
+
+   /* VK_EXT_legacy_vertex_attributes */
+   {
+      props->nativeUnalignedPerformance = true;
    }
 
    /* VK_EXT_line_rasterization */

@@ -201,7 +201,7 @@ xe_execute_trtt_batch(struct anv_sparse_submission *submit,
    struct anv_queue *queue = submit->queue;
    struct anv_device *device = queue->device;
    struct anv_trtt *trtt = &device->trtt;
-   VkResult result;
+   VkResult result = VK_SUCCESS;
 
    struct drm_xe_sync extra_sync = {
       .type = DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ,
@@ -230,18 +230,22 @@ xe_execute_trtt_batch(struct anv_sparse_submission *submit,
    };
 
    if (!device->info->no_hw) {
-      if (intel_ioctl(device->fd, DRM_IOCTL_XE_EXEC, &exec))
-         return vk_device_set_lost(&device->vk, "XE_EXEC failed: %m");
+      if (intel_ioctl(device->fd, DRM_IOCTL_XE_EXEC, &exec)) {
+         result = vk_device_set_lost(&device->vk, "XE_EXEC failed: %m");
+         goto out;
+      }
    }
 
    if (queue->sync) {
       result = vk_sync_wait(&device->vk, queue->sync, 0,
                             VK_SYNC_WAIT_COMPLETE, UINT64_MAX);
       if (result != VK_SUCCESS)
-         return vk_queue_set_lost(&queue->vk, "trtt sync wait failed");
+         result = vk_queue_set_lost(&queue->vk, "trtt sync wait failed");
    }
 
-   return VK_SUCCESS;
+out:
+   vk_free(&device->vk.alloc, xe_syncs);
+   return result;
 }
 
 VkResult

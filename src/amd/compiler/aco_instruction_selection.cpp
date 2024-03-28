@@ -12542,18 +12542,6 @@ select_vs_prolog(Program* program, const struct aco_vs_prolog_info* pinfo, ac_sh
                             Operand(cur_desc, s4), fetch_index, Operand::c32(0u), dfmt, nfmt,
                             offset, false, true);
             }
-            uint32_t one =
-               nfmt == V_008F0C_BUF_NUM_FORMAT_UINT || nfmt == V_008F0C_BUF_NUM_FORMAT_SINT
-                  ? 1u
-                  : 0x3f800000u;
-            /* 22.1.1. Attribute Location and Component Assignment of Vulkan 1.3 specification:
-             * For 64-bit data types, no default attribute values are provided. Input variables must
-             * not use more components than provided by the attribute.
-             */
-            for (unsigned j = vtx_info->num_channels; vtx_info->chan_byte_size != 8 && j < 4; j++) {
-               bld.vop1(aco_opcode::v_mov_b32, Definition(dest.advance(j * 4u), v1),
-                        Operand::c32(j == 3 ? one : 0u));
-            }
 
             unsigned slots = vtx_info->chan_byte_size == 8 && vtx_info->num_channels > 2 ? 2 : 1;
             loc += slots;
@@ -12564,6 +12552,34 @@ select_vs_prolog(Program* program, const struct aco_vs_prolog_info* pinfo, ac_sh
             loc++;
             i++;
          }
+      }
+   }
+
+   uint32_t constant_mask = pinfo->misaligned_mask;
+   while (constant_mask) {
+      unsigned loc = u_bit_scan(&constant_mask);
+      const struct ac_vtx_format_info* vtx_info = &vtx_info_table[pinfo->formats[loc]];
+
+      /* 22.1.1. Attribute Location and Component Assignment of Vulkan 1.3 specification:
+       * For 64-bit data types, no default attribute values are provided. Input variables must
+       * not use more components than provided by the attribute.
+       */
+      if (vtx_info->chan_byte_size == 8) {
+         if (vtx_info->num_channels > 2)
+            u_bit_scan(&constant_mask);
+         continue;
+      }
+
+      assert(vtx_info->has_hw_format & 0x1);
+      unsigned nfmt = vtx_info->hw_format[0] >> 4;
+
+      uint32_t one = nfmt == V_008F0C_BUF_NUM_FORMAT_UINT || nfmt == V_008F0C_BUF_NUM_FORMAT_SINT
+                        ? 1u
+                        : 0x3f800000u;
+      PhysReg dest(attributes_start.reg() + loc * 4u);
+      for (unsigned j = vtx_info->num_channels; j < 4; j++) {
+         bld.vop1(aco_opcode::v_mov_b32, Definition(dest.advance(j * 4u), v1),
+                  Operand::c32(j == 3 ? one : 0u));
       }
    }
 

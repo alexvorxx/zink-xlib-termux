@@ -60,6 +60,8 @@ python-test:
     - !reference [.disable-farm-mr-rules, rules]
     - !reference [.never-post-merge-rules, rules]
     - changes:
+        - .gitlab-ci.yml
+        - .gitlab-ci/**/*
         - bin/ci/**/*
 
 .test-gl:

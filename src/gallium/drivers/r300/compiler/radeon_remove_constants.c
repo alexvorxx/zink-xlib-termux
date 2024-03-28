@@ -82,6 +82,31 @@ static void place_constant_in_free_slot(struct const_remap_state *s, unsigned i)
 	s->new_constants.Count++;
 }
 
+static void try_merge_constants_external(struct const_remap_state *s, unsigned i)
+{
+	assert(util_bitcount(s->constants[i].UseMask) == 1);
+	for (unsigned j = 0; j < s->new_constants.Count; j++) {
+		for (unsigned chan = 0; chan < 4; chan++) {
+			if (s->remap_table[j].swizzle[chan] == RC_SWIZZLE_UNUSED) {
+				/* Writemask to swizzle */
+				unsigned swizzle = 0;
+				for (; swizzle < 4; swizzle++)
+					if (s->constants[i].UseMask >> swizzle == 1)
+						break;
+				/* Update the remap tables. */
+				s->remap_table[j].index[chan] = i;
+				s->remap_table[j].swizzle[chan] = swizzle;
+				s->inv_remap_table[i].index[swizzle] = j;
+				s->inv_remap_table[i].swizzle[swizzle] = chan;
+				s->are_externals_remapped = true;
+				s->is_identity = false;
+				return;
+			}
+		}
+	}
+	place_constant_in_free_slot(s, i);
+}
+
 static void init_constant_remap_state(struct radeon_compiler *c, struct const_remap_state *s)
 {
 	s->is_identity = true;
@@ -90,7 +115,6 @@ static void init_constant_remap_state(struct radeon_compiler *c, struct const_re
 	s->new_constants._Reserved = c->Program.Constants.Count;
 	s->constants = c->Program.Constants.Constants;
 
-	/* Initialize the remap tables. */
 	s->remap_table = malloc(c->Program.Constants.Count * sizeof(struct const_remap));
 	s->inv_remap_table =
 	malloc(c->Program.Constants.Count * sizeof(struct const_remap));
@@ -134,16 +158,38 @@ void rc_remove_unused_constants(struct radeon_compiler *c, void *user)
 
 
 	/* Pass 3: Make the remapping table and remap constants.
-	 * This pass removes unused constants simply by overwriting them by other constants. */
+	 * First iterate over used vec2, vec3 and vec4 externals and place them in a free
+	 * slots. While we could in theory merge 2 vec2 together, its not worth it
+	 * as we would have to a) check that the swizzle is valid, b) transforming
+	 * xy to zw would mean we need rgb and alpha source slot, thus it would hurt
+	 * us potentially during pair scheduling. */
 	for (unsigned i = 0; i < c->Program.Constants.Count; i++) {
-		if (s->constants[i].UseMask) {
+		if (constants[i].Type != RC_CONSTANT_EXTERNAL)
+			continue;
+		if (util_bitcount(s->constants[i].UseMask) > 1) {
 			place_constant_in_free_slot(s, i);
+		}
+	}
+
+	/* Now iterate over scalarar externals and put them into empty slots. */
+	for (unsigned i = 0; i < c->Program.Constants.Count; i++) {
+		if (constants[i].Type != RC_CONSTANT_EXTERNAL)
+			continue;
+		if (util_bitcount(s->constants[i].UseMask) == 1)
+			try_merge_constants_external(s, i);
+	}
+
+	/* Now put the immediates and state constants. */
+	for (unsigned i = 0; i < c->Program.Constants.Count; i++) {
+		if (constants[i].Type == RC_CONSTANT_EXTERNAL)
+			continue;
+		if (util_bitcount(s->constants[i].UseMask) > 0) {
+			place_constant_in_free_slot(s,  i);
 		}
 	}
 
 	/*  is_identity ==> new_count == old_count
 	 * !is_identity ==> new_count <  old_count */
-	assert(s->is_identity || s->new_constants.Count <  c->Program.Constants.Count);
 	assert(!((s->has_rel_addr || !c->remove_unused_constants) && s->are_externals_remapped));
 
 	/* Pass 4: Redirect reads of all constants to their new locations. */

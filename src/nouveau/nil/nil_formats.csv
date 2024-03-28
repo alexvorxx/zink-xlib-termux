@@ -179,33 +179,33 @@ I32_UINT                , RU32                  , R32               , UUUU , RRR
 
 # Alpha formats
 A8_UNORM                , A8                    , R8                , NNNN , 000R , CTBSA
-A8_SNORM                , RN8                   , R8                , SSSS , 000R , T
-A8_SINT                 , RS8                   , R8                , IIII , 000R , T
-A8_UINT                 , RU8                   , R8                , UUUU , 000R , T
-A16_UNORM               , R16                   , R16               , NNNN , 000R , T
-A16_SNORM               , RN16                  , R16               , SSSS , 000R , T
+A8_SNORM                , NONE                  , R8                , SSSS , 000R , T
+A8_SINT                 , NONE                  , R8                , IIII , 000R , T
+A8_UINT                 , NONE                  , R8                , UUUU , 000R , T
+A16_UNORM               , NONE                  , R16               , NNNN , 000R , T
+A16_SNORM               , NONE                  , R16               , SSSS , 000R , T
 A16_FLOAT               , AF16                  , R16               , FFFF , 000R , T
-A16_SINT                , RS16                  , R16               , IIII , 000R , T
-A16_UINT                , RU16                  , R16               , UUUU , 000R , T
+A16_SINT                , NONE                  , R16               , IIII , 000R , T
+A16_UINT                , NONE                  , R16               , UUUU , 000R , T
 A32_FLOAT               , AF32                  , R32               , FFFF , 000R , T
-A32_SINT                , RS32                  , R32               , IIII , 000R , T
-A32_UINT                , RU32                  , R32               , UUUU , 000R , T
+A32_SINT                , NONE                  , R32               , IIII , 000R , T
+A32_UINT                , NONE                  , R32               , UUUU , 000R , T
 
 # Luminance/alpha formats
 L4A4_UNORM              , NONE                  , G4R4              , NNNN , RRRG , T
-L8A8_UNORM              , G8R8                  , G8R8              , NNNN , RRRG , T
-L8A8_SNORM              , GN8RN8                , G8R8              , SSSS , RRRG , T
+L8A8_UNORM              , NONE                  , G8R8              , NNNN , RRRG , T
+L8A8_SNORM              , NONE                  , G8R8              , SSSS , RRRG , T
 L8A8_SRGB               , NONE                  , G8R8              , NNNN , RRRG , T
-L8A8_SINT               , GS8RS8                , G8R8              , IIII , RRRG , T
-L8A8_UINT               , GU8RU8                , G8R8              , UUUU , RRRG , T
-L16A16_UNORM            , R16_G16               , R16_G16           , NNNN , RRRG , T
-L16A16_SNORM            , RN16_GN16             , R16_G16           , SSSS , RRRG , T
-L16A16_FLOAT            , RF16_GF16             , R16_G16           , FFFF , RRRG , T
-L16A16_SINT             , RS16_GS16             , R16_G16           , IIII , RRRG , T
-L16A16_UINT             , RU16_GU16             , R16_G16           , UUUU , RRRG , T
-L32A32_FLOAT            , RF32_GF32             , R32_G32           , FFFF , RRRG , T
-L32A32_SINT             , RS32_GS32             , R32_G32           , IIII , RRRG , T
-L32A32_UINT             , RU32_GU32             , R32_G32           , UUUU , RRRG , T
+L8A8_SINT               , NONE                  , G8R8              , IIII , RRRG , T
+L8A8_UINT               , NONE                  , G8R8              , UUUU , RRRG , T
+L16A16_UNORM            , NONE                  , R16_G16           , NNNN , RRRG , T
+L16A16_SNORM            , NONE                  , R16_G16           , SSSS , RRRG , T
+L16A16_FLOAT            , NONE                  , R16_G16           , FFFF , RRRG , T
+L16A16_SINT             , NONE                  , R16_G16           , IIII , RRRG , T
+L16A16_UINT             , NONE                  , R16_G16           , UUUU , RRRG , T
+L32A32_FLOAT            , NONE                  , R32_G32           , FFFF , RRRG , T
+L32A32_SINT             , NONE                  , R32_G32           , IIII , RRRG , T
+L32A32_UINT             , NONE                  , R32_G32           , UUUU , RRRG , T
 
 # Red/alpha formats
 R4A4_UNORM              , NONE                  , G4R4              , NNNN , R00G , T

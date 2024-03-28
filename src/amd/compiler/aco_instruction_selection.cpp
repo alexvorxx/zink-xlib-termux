@@ -12076,11 +12076,6 @@ unsigned
 load_vb_descs(Builder& bld, PhysReg dest, Operand base, unsigned start, unsigned max)
 {
    unsigned count = MIN2((bld.program->dev.sgpr_limit - dest.reg()) / 4u, max);
-
-   unsigned num_loads = (count / 4u) + util_bitcount(count & 0x3);
-   if (bld.program->gfx_level >= GFX10 && num_loads > 1)
-      bld.sopp(aco_opcode::s_clause, num_loads - 1);
-
    for (unsigned i = 0; i < count;) {
       unsigned size = 1u << util_logbase2(MIN2(count - i, 4));
 

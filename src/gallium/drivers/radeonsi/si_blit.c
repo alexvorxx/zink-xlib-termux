@@ -991,7 +991,12 @@ void si_gfx_copy_image(struct si_context *sctx, struct pipe_resource *dst,
    assert(!util_format_is_compressed(src->format) && !util_format_is_compressed(dst->format));
    assert(!util_format_is_subsampled_422(src->format));
 
-   if (!util_blitter_is_copy_supported(sctx->blitter, dst, src)) {
+   /* We can't blit as floats because it wouldn't preserve NaNs.
+    * Z32_FLOAT needs to keep using floats.
+    */
+   if ((util_format_is_float(dst_templ.format) &&
+        !util_format_is_depth_or_stencil(dst_templ.format)) ||
+       !util_blitter_is_copy_supported(sctx->blitter, dst, src)) {
       switch (ssrc->surface.bpe) {
       case 1:
          dst_templ.format = PIPE_FORMAT_R8_UNORM;
@@ -1023,9 +1028,8 @@ void si_gfx_copy_image(struct si_context *sctx, struct pipe_resource *dst,
    /* SNORM blitting has precision issues on some chips. Use the SINT
     * equivalent instead, which doesn't force DCC decompression.
     */
-   if (util_format_is_snorm(dst_templ.format)) {
+   if (util_format_is_snorm(dst_templ.format))
       dst_templ.format = src_templ.format = util_format_snorm_to_sint(dst_templ.format);
-   }
 
    vi_disable_dcc_if_incompatible_format(sctx, dst, dst_level, dst_templ.format);
    vi_disable_dcc_if_incompatible_format(sctx, src, src_level, src_templ.format);

@@ -23,6 +23,7 @@
 
 #include <inttypes.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -43,9 +44,10 @@ static void
 usage(const char *prog)
 {
    fprintf(stderr,
-           "Usage: %s [-g GPU_ID | -c CHIP_ID] FILE\n"
+           "Usage: %s [-g GPU_ID | -c CHIP_ID] [-x HEX | FILE]\n"
            " -g GPU_ID: specify GPU ID\n"
-           " -c CHIP_ID: specify GPU chip ID in hex\n",
+           " -c CHIP_ID: specify GPU chip ID in hex\n"
+           " -x HEX: disassemble instruction encoded as HEX\n",
            prog);
 }
 
@@ -54,10 +56,11 @@ main(int argc, char **argv)
 {
    size_t sz;
    void *raw = NULL;
+   uint64_t raw_hex;
    const struct fd_dev_info *info = NULL;
    int opt;
 
-   while ((opt = getopt(argc, argv, "g:c:")) != -1) {
+   while ((opt = getopt(argc, argv, "g:c:x:")) != -1) {
       switch (opt) {
       case 'g':
          info = fd_dev_info_raw_by_name(optarg);
@@ -84,19 +87,32 @@ main(int argc, char **argv)
          }
          break;
       }
+      case 'x':
+         if (sscanf(optarg, "%" PRIx64, &raw_hex) != 1) {
+            fprintf(stderr, "Invalid hex number: %s\n", optarg);
+            usage(argv[0]);
+            return EXIT_FAILURE;
+         }
+
+         raw = &raw_hex;
+         sz = sizeof(raw_hex);
+         break;
       default:
          usage(argv[0]);
          return EXIT_FAILURE;
       }
    }
 
-   if (optind >= argc) {
-      fprintf(stderr, "No file specified\n");
-      usage(argv[0]);
-      return EXIT_FAILURE;
+   if (!raw) {
+      if (optind >= argc) {
+         fprintf(stderr, "No file specified\n");
+         usage(argv[0]);
+         return EXIT_FAILURE;
+      }
+
+      raw = os_read_file(argv[optind], &sz);
    }
 
-   raw = os_read_file(argv[optind], &sz);
    unsigned chip = info ? info->chip : 7;
 
    ir3_isa_disasm(raw, sz, stdout,

@@ -1275,8 +1275,6 @@ RADV driver environment variables
       disable HIZ for depthstencil images
    ``noibs``
       disable directly recording command buffers in GPU-visible memory
-   ``nomemorycache``
-      disable memory shaders cache
    ``nomeshshader``
       disable mesh shader support on GFX10.3+
    ``nongg``

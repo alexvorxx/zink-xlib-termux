@@ -269,6 +269,8 @@ const struct fd_dev_info *fd_dev_info_raw(const struct fd_dev_id *id);
 /* Final dev info with dbg options and everything else applied.  */
 const struct fd_dev_info fd_dev_info(const struct fd_dev_id *id);
 
+const struct fd_dev_info *fd_dev_info_raw_by_name(const char *name);
+
 static uint8_t
 fd_dev_gen(const struct fd_dev_id *id)
 {

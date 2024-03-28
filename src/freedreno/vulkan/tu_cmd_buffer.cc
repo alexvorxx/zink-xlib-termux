@@ -5172,12 +5172,14 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
 
    if (dirty_lrz) {
       struct tu_cs cs;
-      uint32_t size = cmd->device->physical_device->info->a6xx.lrz_track_quirk ? 10 : 8;
+      uint32_t size = 8 +
+                      (cmd->device->physical_device->info->a6xx.lrz_track_quirk ? 2 : 0) +
+                      (CHIP >= A7XX ? 2 : 0); // A7XX has extra packets from LRZ_CNTL2.
 
       cmd->state.lrz_and_depth_plane_state =
          tu_cs_draw_state(&cmd->sub_cs, &cs, size);
       tu6_update_simplified_stencil_state(cmd);
-      tu6_emit_lrz(cmd, &cs);
+      tu6_emit_lrz<CHIP>(cmd, &cs);
       tu6_build_depth_plane_z_mode(cmd, &cs);
    }
 

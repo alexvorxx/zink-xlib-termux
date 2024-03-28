@@ -3317,7 +3317,7 @@ tu_CmdClearAttachments(VkCommandBuffer commandBuffer,
       if ((pAttachments[j].aspectMask & VK_IMAGE_ASPECT_DEPTH_BIT) == 0)
          continue;
 
-      tu_lrz_disable_during_renderpass(cmd);
+      tu_lrz_disable_during_renderpass<CHIP>(cmd);
    }
 
    /* vkCmdClearAttachments is supposed to respect the predicate if active. The

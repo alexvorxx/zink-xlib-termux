@@ -648,6 +648,7 @@ lower_rq_terminate(nir_builder *b, nir_def *index, nir_intrinsic_instr *instr, s
 bool
 radv_nir_lower_ray_queries(struct nir_shader *shader, struct radv_device *device)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    bool progress = false;
    struct hash_table *query_ht = _mesa_pointer_hash_table_create(NULL);
 
@@ -655,7 +656,7 @@ radv_nir_lower_ray_queries(struct nir_shader *shader, struct radv_device *device
       if (!var->data.ray_query)
          continue;
 
-      lower_ray_query(shader, var, query_ht, device->physical_device->max_shared_size);
+      lower_ray_query(shader, var, query_ht, pdev->max_shared_size);
 
       progress = true;
    }
@@ -670,7 +671,7 @@ radv_nir_lower_ray_queries(struct nir_shader *shader, struct radv_device *device
          if (!var->data.ray_query)
             continue;
 
-         lower_ray_query(shader, var, query_ht, device->physical_device->max_shared_size);
+         lower_ray_query(shader, var, query_ht, pdev->max_shared_size);
 
          progress = true;
       }

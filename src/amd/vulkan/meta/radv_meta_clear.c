@@ -1139,10 +1139,11 @@ uint32_t
 radv_clear_cmask(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image, const VkImageSubresourceRange *range,
                  uint32_t value)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
    uint64_t offset = image->bindings[0].offset + image->planes[0].surface.cmask_offset;
    uint64_t size;
 
-   if (cmd_buffer->device->physical_device->info.gfx_level == GFX9) {
+   if (pdev->info.gfx_level == GFX9) {
       /* TODO: clear layers. */
       size = image->planes[0].surface.cmask_size;
    } else {
@@ -1178,6 +1179,7 @@ uint32_t
 radv_clear_dcc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image, const VkImageSubresourceRange *range,
                uint32_t value)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
    uint32_t level_count = vk_image_subresource_level_count(&image->vk, range);
    uint32_t layer_count = vk_image_subresource_layer_count(&image->vk, range);
    uint32_t flush_bits = 0;
@@ -1190,12 +1192,12 @@ radv_clear_dcc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image, con
       uint32_t level = range->baseMipLevel + l;
       uint64_t size;
 
-      if (cmd_buffer->device->physical_device->info.gfx_level >= GFX10) {
+      if (pdev->info.gfx_level >= GFX10) {
          /* DCC for mipmaps+layers is currently disabled. */
          offset += image->planes[0].surface.meta_slice_size * range->baseArrayLayer +
                    image->planes[0].surface.u.gfx9.meta_levels[level].offset;
          size = image->planes[0].surface.u.gfx9.meta_levels[level].size * layer_count;
-      } else if (cmd_buffer->device->physical_device->info.gfx_level == GFX9) {
+      } else if (pdev->info.gfx_level == GFX9) {
          /* Mipmap levels and layers aren't implemented. */
          assert(level == 0);
          size = image->planes[0].surface.meta_size;
@@ -1331,6 +1333,7 @@ uint32_t
 radv_clear_htile(struct radv_cmd_buffer *cmd_buffer, const struct radv_image *image,
                  const VkImageSubresourceRange *range, uint32_t value)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
    uint32_t level_count = vk_image_subresource_level_count(&image->vk, range);
    uint32_t flush_bits = 0;
    uint32_t htile_mask;
@@ -1338,7 +1341,7 @@ radv_clear_htile(struct radv_cmd_buffer *cmd_buffer, const struct radv_image *im
    htile_mask = radv_get_htile_mask(cmd_buffer->device, image, range->aspectMask);
 
    if (level_count != image->vk.mip_levels) {
-      assert(cmd_buffer->device->physical_device->info.gfx_level >= GFX10);
+      assert(pdev->info.gfx_level >= GFX10);
 
       /* Clear individuals levels separately. */
       for (uint32_t l = 0; l < level_count; l++) {
@@ -1398,7 +1401,8 @@ enum {
 static uint32_t
 radv_dcc_single_clear_value(const struct radv_device *device)
 {
-   return device->physical_device->info.gfx_level >= GFX11 ? RADV_DCC_GFX11_CLEAR_SINGLE : RADV_DCC_GFX9_CLEAR_SINGLE;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   return pdev->info.gfx_level >= GFX11 ? RADV_DCC_GFX11_CLEAR_SINGLE : RADV_DCC_GFX9_CLEAR_SINGLE;
 }
 
 static void
@@ -1605,6 +1609,7 @@ radv_can_fast_clear_color(struct radv_cmd_buffer *cmd_buffer, const struct radv_
                           VkImageLayout image_layout, const VkClearRect *clear_rect, VkClearColorValue clear_value,
                           uint32_t view_mask)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
    uint32_t clear_color[2];
 
    if (!iview || !iview->support_fast_clear)
@@ -1641,7 +1646,7 @@ radv_can_fast_clear_color(struct radv_cmd_buffer *cmd_buffer, const struct radv_
       bool can_avoid_fast_clear_elim;
       uint32_t reset_value;
 
-      if (cmd_buffer->device->physical_device->info.gfx_level >= GFX11) {
+      if (pdev->info.gfx_level >= GFX11) {
          if (!gfx11_get_fast_clear_parameters(cmd_buffer->device, iview, &clear_value, &reset_value))
             return false;
       } else {
@@ -1650,7 +1655,7 @@ radv_can_fast_clear_color(struct radv_cmd_buffer *cmd_buffer, const struct radv_
       }
 
       if (iview->image->vk.mip_levels > 1) {
-         if (cmd_buffer->device->physical_device->info.gfx_level >= GFX9) {
+         if (pdev->info.gfx_level >= GFX9) {
             uint32_t last_level = iview->vk.base_mip_level + iview->vk.level_count - 1;
             if (last_level >= iview->image->planes[0].surface.num_meta_levels) {
                /* Do not fast clears if one level can't be fast cleard. */
@@ -1680,6 +1685,7 @@ radv_fast_clear_color(struct radv_cmd_buffer *cmd_buffer, const struct radv_imag
                       const VkClearAttachment *clear_att, enum radv_cmd_flush_bits *pre_flush,
                       enum radv_cmd_flush_bits *post_flush)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
    VkClearColorValue clear_value = clear_att->clearValue.color;
    uint32_t clear_color[4], flush_bits = 0;
    uint32_t cmask_clear_value;
@@ -1710,7 +1716,7 @@ radv_fast_clear_color(struct radv_cmd_buffer *cmd_buffer, const struct radv_imag
       uint32_t reset_value;
       bool can_avoid_fast_clear_elim = true;
 
-      if (cmd_buffer->device->physical_device->info.gfx_level >= GFX11) {
+      if (pdev->info.gfx_level >= GFX11) {
          ASSERTED bool result = gfx11_get_fast_clear_parameters(cmd_buffer->device, iview, &clear_value, &reset_value);
          assert(result);
       } else {
@@ -2074,6 +2080,7 @@ radv_cmd_clear_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *imag
                      const VkClearValue *clear_value, uint32_t range_count, const VkImageSubresourceRange *ranges,
                      bool cs)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
    VkFormat format = image->vk.format;
    VkClearValue internal_clear_value;
 
@@ -2086,8 +2093,8 @@ radv_cmd_clear_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *imag
 
    if (format == VK_FORMAT_E5B9G9R9_UFLOAT_PACK32) {
       bool blendable;
-      if (cs ? !radv_is_storage_image_format_supported(cmd_buffer->device->physical_device, format)
-             : !radv_is_colorbuffer_format_supported(cmd_buffer->device->physical_device, format, &blendable)) {
+      if (cs ? !radv_is_storage_image_format_supported(pdev, format)
+             : !radv_is_colorbuffer_format_supported(pdev, format, &blendable)) {
          format = VK_FORMAT_R32_UINT;
          internal_clear_value.color.uint32[0] = float3_to_rgb9e5(clear_value->color.float32);
 

@@ -239,13 +239,14 @@ radv_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer, const VkCopyBufferToIm
    RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    RADV_FROM_HANDLE(radv_buffer, src_buffer, pCopyBufferToImageInfo->srcBuffer);
    RADV_FROM_HANDLE(radv_image, dst_image, pCopyBufferToImageInfo->dstImage);
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
 
    for (unsigned r = 0; r < pCopyBufferToImageInfo->regionCount; r++) {
       copy_buffer_to_image(cmd_buffer, src_buffer, dst_image, pCopyBufferToImageInfo->dstImageLayout,
                            &pCopyBufferToImageInfo->pRegions[r]);
    }
 
-   if (radv_is_format_emulated(cmd_buffer->device->physical_device, dst_image->vk.format)) {
+   if (radv_is_format_emulated(pdev, dst_image->vk.format)) {
       cmd_buffer->state.flush_bits |=
          RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_PS_PARTIAL_FLUSH |
          radv_src_access_flush(cmd_buffer, VK_ACCESS_TRANSFER_WRITE_BIT, dst_image) |
@@ -422,6 +423,8 @@ static void
 copy_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image, VkImageLayout src_image_layout,
            struct radv_image *dst_image, VkImageLayout dst_image_layout, const VkImageCopy2 *region)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+
    if (cmd_buffer->qf == RADV_QUEUE_TRANSFER) {
       transfer_copy_image(cmd_buffer, src_image, src_image_layout, dst_image, dst_image_layout, region);
       return;
@@ -499,9 +502,9 @@ copy_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image, VkI
                                                     src_image_layout, src_queue_mask);
    bool need_dcc_sign_reinterpret = false;
 
-   if (!src_compressed || (radv_dcc_formats_compatible(cmd_buffer->device->physical_device->info.gfx_level,
-                                                       b_src.format, b_dst.format, &need_dcc_sign_reinterpret) &&
-                           !need_dcc_sign_reinterpret)) {
+   if (!src_compressed ||
+       (radv_dcc_formats_compatible(pdev->info.gfx_level, b_src.format, b_dst.format, &need_dcc_sign_reinterpret) &&
+        !need_dcc_sign_reinterpret)) {
       b_src.format = b_dst.format;
    } else if (!dst_compressed) {
       b_dst.format = b_src.format;
@@ -613,13 +616,14 @@ radv_CmdCopyImage2(VkCommandBuffer commandBuffer, const VkCopyImageInfo2 *pCopyI
    RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    RADV_FROM_HANDLE(radv_image, src_image, pCopyImageInfo->srcImage);
    RADV_FROM_HANDLE(radv_image, dst_image, pCopyImageInfo->dstImage);
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
 
    for (unsigned r = 0; r < pCopyImageInfo->regionCount; r++) {
       copy_image(cmd_buffer, src_image, pCopyImageInfo->srcImageLayout, dst_image, pCopyImageInfo->dstImageLayout,
                  &pCopyImageInfo->pRegions[r]);
    }
 
-   if (radv_is_format_emulated(cmd_buffer->device->physical_device, dst_image->vk.format)) {
+   if (radv_is_format_emulated(pdev, dst_image->vk.format)) {
       cmd_buffer->state.flush_bits |=
          RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_PS_PARTIAL_FLUSH |
          radv_src_access_flush(cmd_buffer, VK_ACCESS_TRANSFER_WRITE_BIT, dst_image) |

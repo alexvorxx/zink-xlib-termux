@@ -232,8 +232,10 @@ radv_can_use_fmask_copy(struct radv_cmd_buffer *cmd_buffer, const struct radv_im
                         const struct radv_image *dst_image, unsigned num_rects,
                         const struct radv_meta_blit2d_rect *rects)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+
    /* TODO: Test on pre GFX10 chips. */
-   if (cmd_buffer->device->physical_device->info.gfx_level < GFX10)
+   if (pdev->info.gfx_level < GFX10)
       return false;
 
    /* TODO: Add support for layers. */

@@ -114,6 +114,7 @@ radv_image_from_gralloc(VkDevice device_h, const VkImageCreateInfo *base_info,
 
 {
    RADV_FROM_HANDLE(radv_device, device, device_h);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    VkImage image_h = VK_NULL_HANDLE;
    struct radv_image *image = NULL;
    VkResult result;
@@ -141,10 +142,9 @@ radv_image_from_gralloc(VkDevice device_h, const VkImageCreateInfo *base_info,
 
    /* Find the first VRAM memory type, or GART for PRIME images. */
    int memory_type_index = -1;
-   for (int i = 0; i < device->physical_device->memory_properties.memoryTypeCount; ++i) {
-      bool is_local = !!(device->physical_device->memory_properties.memoryTypes[i].propertyFlags &
-                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-      bool is_32bit = !!(device->physical_device->memory_types_32bit & (1u << i));
+   for (int i = 0; i < pdev->memory_properties.memoryTypeCount; ++i) {
+      bool is_local = !!(pdev->memory_properties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+      bool is_32bit = !!(pdev->memory_types_32bit & (1u << i));
       if (is_local && !is_32bit) {
          memory_type_index = i;
          break;
@@ -217,7 +217,7 @@ radv_GetSwapchainGrallocUsageANDROID(VkDevice device_h, VkFormat format, VkImage
                                      int *grallocUsage)
 {
    RADV_FROM_HANDLE(radv_device, device, device_h);
-   struct radv_physical_device *pdev = device->physical_device;
+   struct radv_physical_device *pdev = radv_device_physical(device);
    VkPhysicalDevice pdev_h = radv_physical_device_to_handle(pdev);
    VkResult result;
 
@@ -298,7 +298,7 @@ radv_GetSwapchainGrallocUsage2ANDROID(VkDevice device_h, VkFormat format, VkImag
     * vkGetSwapchainGrallocUsageANDROID. */
 #if ANDROID_API_LEVEL >= 26
    RADV_FROM_HANDLE(radv_device, device, device_h);
-   struct radv_physical_device *pdev = device->physical_device;
+   struct radv_physical_device *pdev = radv_device_physical(device);
    VkPhysicalDevice pdev_h = radv_physical_device_to_handle(pdev);
    VkResult result;
 
@@ -408,6 +408,7 @@ get_ahb_buffer_format_properties(VkDevice device_h, const struct AHardwareBuffer
                                  VkAndroidHardwareBufferFormatPropertiesANDROID *pProperties)
 {
    RADV_FROM_HANDLE(radv_device, device, device_h);
+   struct radv_physical_device *pdev = radv_device_physical(device);
 
    /* Get a description of buffer contents . */
    AHardwareBuffer_Desc desc;
@@ -431,8 +432,7 @@ get_ahb_buffer_format_properties(VkDevice device_h, const struct AHardwareBuffer
 
    VkFormatProperties2 format_properties = {.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2};
 
-   radv_GetPhysicalDeviceFormatProperties2(radv_physical_device_to_handle(device->physical_device), p->format,
-                                           &format_properties);
+   radv_GetPhysicalDeviceFormatProperties2(radv_physical_device_to_handle(pdev), p->format, &format_properties);
 
    if (desc.usage & AHARDWAREBUFFER_USAGE_GPU_DATA_BUFFER)
       p->formatFeatures = format_properties.formatProperties.linearTilingFeatures;
@@ -481,6 +481,7 @@ get_ahb_buffer_format_properties2(VkDevice device_h, const struct AHardwareBuffe
                                   VkAndroidHardwareBufferFormatProperties2ANDROID *pProperties)
 {
    RADV_FROM_HANDLE(radv_device, device, device_h);
+   struct radv_physical_device *pdev = radv_device_physical(device);
 
    /* Get a description of buffer contents . */
    AHardwareBuffer_Desc desc;
@@ -504,8 +505,7 @@ get_ahb_buffer_format_properties2(VkDevice device_h, const struct AHardwareBuffe
 
    VkFormatProperties2 format_properties = {.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2};
 
-   radv_GetPhysicalDeviceFormatProperties2(radv_physical_device_to_handle(device->physical_device), p->format,
-                                           &format_properties);
+   radv_GetPhysicalDeviceFormatProperties2(radv_physical_device_to_handle(pdev), p->format, &format_properties);
 
    if (desc.usage & AHARDWAREBUFFER_USAGE_GPU_DATA_BUFFER)
       p->formatFeatures = format_properties.formatProperties.linearTilingFeatures;
@@ -554,7 +554,7 @@ radv_GetAndroidHardwareBufferPropertiesANDROID(VkDevice device_h, const struct A
                                                VkAndroidHardwareBufferPropertiesANDROID *pProperties)
 {
    RADV_FROM_HANDLE(radv_device, dev, device_h);
-   struct radv_physical_device *pdev = dev->physical_device;
+   struct radv_physical_device *pdev = radv_device_physical(dev);
 
    VkAndroidHardwareBufferFormatPropertiesANDROID *format_prop =
       vk_find_struct(pProperties->pNext, ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_ANDROID);

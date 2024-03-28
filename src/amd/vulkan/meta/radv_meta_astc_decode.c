@@ -32,9 +32,10 @@
 VkResult
 radv_device_init_meta_astc_decode_state(struct radv_device *device, bool on_demand)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_meta_state *state = &device->meta_state;
 
-   if (!device->physical_device->emulate_astc)
+   if (!pdev->emulate_astc)
       return VK_SUCCESS;
 
    return vk_texcompress_astc_init(&device->vk, &state->alloc, state->cache, &state->astc_decode);
@@ -43,10 +44,11 @@ radv_device_init_meta_astc_decode_state(struct radv_device *device, bool on_dema
 void
 radv_device_finish_meta_astc_decode_state(struct radv_device *device)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_meta_state *state = &device->meta_state;
    struct vk_texcompress_astc_state *astc = state->astc_decode;
 
-   if (!device->physical_device->emulate_astc)
+   if (!pdev->emulate_astc)
       return;
 
    vk_texcompress_astc_finish(&device->vk, &state->alloc, astc);

@@ -35,6 +35,7 @@ radv_get_sequence_size_compute(const struct radv_indirect_command_layout *layout
                                const struct radv_compute_pipeline *pipeline, uint32_t *cmd_size)
 {
    const struct radv_device *device = container_of(layout->base.device, struct radv_device, vk);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
 
    /* dispatch */
    *cmd_size += 5 * 4;
@@ -55,7 +56,7 @@ radv_get_sequence_size_compute(const struct radv_indirect_command_layout *layout
       /* COMPUTE_PGM_{LO,RSRC1,RSRC2} */
       *cmd_size += 7 * 4;
 
-      if (device->physical_device->info.gfx_level >= GFX10) {
+      if (pdev->info.gfx_level >= GFX10) {
          /* COMPUTE_PGM_RSRC3 */
          *cmd_size += 3 * 4;
       }
@@ -87,6 +88,7 @@ radv_get_sequence_size_graphics(const struct radv_indirect_command_layout *layou
                                 uint32_t *upload_size)
 {
    const struct radv_device *device = container_of(layout->base.device, struct radv_device, vk);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_shader *vs = radv_get_shader(pipeline->base.shaders, MESA_SHADER_VERTEX);
 
    if (layout->bind_vbo_mask) {
@@ -115,7 +117,7 @@ radv_get_sequence_size_graphics(const struct radv_indirect_command_layout *layou
    } else {
       if (layout->draw_mesh_tasks) {
          /* userdata writes + instance count + non-indexed draw */
-         *cmd_size += (6 + 2 + (device->physical_device->mesh_fast_launch_2 ? 5 : 3)) * 4;
+         *cmd_size += (6 + 2 + (pdev->mesh_fast_launch_2 ? 5 : 3)) * 4;
       } else {
          /* userdata writes + instance count + non-indexed draw */
          *cmd_size += (5 + 2 + 3) * 4;
@@ -189,7 +191,8 @@ radv_get_sequence_size(const struct radv_indirect_command_layout *layout, struct
 static uint32_t
 radv_align_cmdbuf_size(const struct radv_device *device, uint32_t size, enum amd_ip_type ip_type)
 {
-   const uint32_t ib_alignment = device->physical_device->info.ip[ip_type].ib_alignment;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const uint32_t ib_alignment = pdev->info.ip[ip_type].ib_alignment;
 
    return align(size, ib_alignment);
 }
@@ -365,7 +368,9 @@ nir_pkt3(nir_builder *b, unsigned op, nir_def *len)
 static nir_def *
 dgc_get_nop_packet(nir_builder *b, const struct radv_device *device)
 {
-   if (device->physical_device->info.gfx_ib_pad_with_type2) {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
+   if (pdev->info.gfx_ib_pad_with_type2) {
       return nir_imm_int(b, PKT2_NOP_PAD);
    } else {
       return nir_imm_int(b, PKT3_NOP_PAD);
@@ -691,6 +696,8 @@ dgc_main_cmd_buf_offset(nir_builder *b, const struct radv_device *device)
 static void
 build_dgc_buffer_tail(nir_builder *b, nir_def *sequence_count, const struct radv_device *device)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    nir_def *global_id = get_global_ids(b, 1);
 
    nir_def *cmd_buf_stride = load_param32(b, cmd_buf_stride);
@@ -718,7 +725,7 @@ build_dgc_buffer_tail(nir_builder *b, nir_def *sequence_count, const struct radv
 
          nir_def *packet, *packet_size;
 
-         if (device->physical_device->info.gfx_ib_pad_with_type2) {
+         if (pdev->info.gfx_ib_pad_with_type2) {
             packet_size = nir_imm_int(b, 4);
             packet = nir_imm_int(b, PKT2_NOP_PAD);
          } else {
@@ -741,6 +748,8 @@ build_dgc_buffer_tail(nir_builder *b, nir_def *sequence_count, const struct radv
 static void
 build_dgc_buffer_preamble(nir_builder *b, nir_def *sequence_count, const struct radv_device *device)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    nir_def *global_id = get_global_ids(b, 1);
    nir_def *use_preamble = nir_ine_imm(b, load_param8(b, use_preamble), 0);
 
@@ -778,7 +787,7 @@ build_dgc_buffer_preamble(nir_builder *b, nir_def *sequence_count, const struct 
       nir_def *chain_packets[] = {
          nir_imm_int(b, PKT3(PKT3_INDIRECT_BUFFER, 2, 0)),
          addr,
-         nir_imm_int(b, device->physical_device->info.address32_hi),
+         nir_imm_int(b, pdev->info.address32_hi),
          nir_ior_imm(b, words, S_3F2_CHAIN(1) | S_3F2_VALID(1) | S_3F2_PRE_ENA(false)),
       };
 
@@ -861,6 +870,8 @@ dgc_emit_index_buffer(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_buf
                       nir_def *index_buffer_offset, nir_def *ibo_type_32, nir_def *ibo_type_8,
                       nir_variable *max_index_count_var, const struct radv_device *device)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    nir_def *index_stream_offset = nir_iadd(b, index_buffer_offset, stream_base);
    nir_def *data = nir_load_ssbo(b, 4, 32, stream_buf, index_stream_offset);
 
@@ -876,10 +887,9 @@ dgc_emit_index_buffer(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_buf
 
    nir_def *cmd_values[3 + 2 + 3];
 
-   if (device->physical_device->info.gfx_level >= GFX9) {
+   if (pdev->info.gfx_level >= GFX9) {
       unsigned opcode = PKT3_SET_UCONFIG_REG_INDEX;
-      if (device->physical_device->info.gfx_level < GFX9 ||
-          (device->physical_device->info.gfx_level == GFX9 && device->physical_device->info.me_fw_version < 26))
+      if (pdev->info.gfx_level < GFX9 || (pdev->info.gfx_level == GFX9 && pdev->info.me_fw_version < 26))
          opcode = PKT3_SET_UCONFIG_REG;
       cmd_values[0] = nir_imm_int(b, PKT3(opcode, 1, 0));
       cmd_values[1] = nir_imm_int(b, (R_03090C_VGT_INDEX_TYPE - CIK_UCONFIG_REG_OFFSET) >> 2 | (2u << 28));
@@ -1186,6 +1196,8 @@ static void
 dgc_emit_vertex_buffer(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_buf, nir_def *stream_base,
                        nir_def *vbo_bind_mask, nir_variable *upload_offset, const struct radv_device *device)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    nir_def *vbo_cnt = load_param8(b, vbo_cnt);
    nir_variable *vbo_idx = nir_variable_create(b->shader, nir_var_shader_temp, glsl_uint_type(), "vbo_idx");
    nir_store_var(b, vbo_idx, nir_imm_int(b, 0), 0x1);
@@ -1252,9 +1264,9 @@ dgc_emit_vertex_buffer(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_bu
             nir_pop_if(b, NULL);
 
             nir_def *convert_cond = nir_ine_imm(b, nir_load_var(b, num_records), 0);
-            if (device->physical_device->info.gfx_level == GFX9)
+            if (pdev->info.gfx_level == GFX9)
                convert_cond = nir_imm_false(b);
-            else if (device->physical_device->info.gfx_level != GFX8)
+            else if (pdev->info.gfx_level != GFX8)
                convert_cond = nir_iand(b, convert_cond, nir_ieq_imm(b, stride, 0));
 
             nir_def *new_records =
@@ -1264,7 +1276,7 @@ dgc_emit_vertex_buffer(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_bu
          }
          nir_push_else(b, NULL);
          {
-            if (device->physical_device->info.gfx_level != GFX8) {
+            if (pdev->info.gfx_level != GFX8) {
                nir_push_if(b, nir_ine_imm(b, stride, 0));
                {
                   nir_def *r = nir_iadd(b, nir_load_var(b, num_records), nir_iadd_imm(b, stride, -1));
@@ -1276,7 +1288,7 @@ dgc_emit_vertex_buffer(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_bu
          nir_pop_if(b, NULL);
 
          nir_def *rsrc_word3 = nir_channel(b, nir_load_var(b, vbo_data), 3);
-         if (device->physical_device->info.gfx_level >= GFX10) {
+         if (pdev->info.gfx_level >= GFX10) {
             nir_def *oob_select = nir_bcsel(b, nir_ieq_imm(b, stride, 0), nir_imm_int(b, V_008F0C_OOB_SELECT_RAW),
                                             nir_imm_int(b, V_008F0C_OOB_SELECT_STRUCTURED));
             rsrc_word3 = nir_iand_imm(b, rsrc_word3, C_008F0C_OOB_SELECT);
@@ -1408,6 +1420,8 @@ static void
 dgc_emit_draw_mesh_tasks(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_buf, nir_def *stream_base,
                          nir_def *draw_params_offset, nir_def *sequence_id, const struct radv_device *device)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    nir_def *vtx_base_sgpr = load_param16(b, vtx_base_sgpr);
    nir_def *stream_offset = nir_iadd(b, draw_params_offset, stream_base);
 
@@ -1424,7 +1438,7 @@ dgc_emit_draw_mesh_tasks(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_
       dgc_emit_userdata_mesh(b, cs, vtx_base_sgpr, x, y, z, sequence_id, device);
       dgc_emit_instance_count(b, cs, nir_imm_int(b, 1));
 
-      if (device->physical_device->mesh_fast_launch_2) {
+      if (pdev->mesh_fast_launch_2) {
          dgc_emit_dispatch_mesh_direct(b, cs, x, y, z);
       } else {
          nir_def *vertex_count = nir_imul(b, x, nir_imul(b, y, z));
@@ -1454,6 +1468,8 @@ static void
 dgc_emit_bind_pipeline(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_buf, nir_def *stream_base,
                        nir_def *pipeline_params_offset, const struct radv_device *device)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    nir_def *stream_offset = nir_iadd(b, pipeline_params_offset, stream_base);
 
    nir_def *pipeline_va = nir_load_ssbo(b, 1, 64, stream_buf, stream_offset);
@@ -1465,7 +1481,7 @@ dgc_emit_bind_pipeline(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_bu
    dgc_emit1(b, cs, load_metadata32(b, rsrc1));
    dgc_emit1(b, cs, load_metadata32(b, rsrc2));
 
-   if (device->physical_device->info.gfx_level >= GFX10) {
+   if (pdev->info.gfx_level >= GFX10) {
       dgc_emit_set_sh_reg_seq(b, cs, R_00B8A0_COMPUTE_PGM_RSRC3, 1);
       dgc_emit1(b, cs, load_metadata32(b, rsrc3));
    }
@@ -1504,6 +1520,7 @@ dgc_is_cond_render_enabled(nir_builder *b)
 static nir_shader *
 build_dgc_prepare_shader(struct radv_device *dev)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(dev);
    nir_builder b = radv_meta_init_shader(dev, MESA_SHADER_COMPUTE, "meta_dgc_prepare");
    b.shader->info.workgroup_size[0] = 64;
 
@@ -1554,7 +1571,7 @@ build_dgc_prepare_shader(struct radv_device *dev)
       struct dgc_cmdbuf cmd_buf = {
          .descriptor = radv_meta_load_descriptor(&b, 0, DGC_DESC_PREPARE),
          .offset = nir_variable_create(b.shader, nir_var_shader_temp, glsl_uint_type(), "cmd_buf_offset"),
-         .gfx_level = dev->physical_device->info.gfx_level,
+         .gfx_level = pdev->info.gfx_level,
          .sqtt_enabled = !!dev->sqtt.bo,
       };
       nir_store_var(&b, cmd_buf.offset, nir_iadd(&b, nir_imul(&b, global_id, cmd_buf_stride), cmd_buf_base_offset), 1);
@@ -1647,7 +1664,7 @@ build_dgc_prepare_shader(struct radv_device *dev)
       /* Pad the cmdbuffer if we did not use the whole stride */
       nir_push_if(&b, nir_ine(&b, nir_load_var(&b, cmd_buf.offset), cmd_buf_end));
       {
-         if (dev->physical_device->info.gfx_ib_pad_with_type2) {
+         if (pdev->info.gfx_ib_pad_with_type2) {
             nir_push_loop(&b);
             {
                nir_def *curr_offset = nir_load_var(&b, cmd_buf.offset);
@@ -1872,6 +1889,7 @@ radv_GetGeneratedCommandsMemoryRequirementsNV(VkDevice _device,
                                               VkMemoryRequirements2 *pMemoryRequirements)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    VK_FROM_HANDLE(radv_indirect_command_layout, layout, pInfo->indirectCommandsLayout);
    VK_FROM_HANDLE(radv_pipeline, pipeline, pInfo->pipeline);
 
@@ -1882,10 +1900,9 @@ radv_GetGeneratedCommandsMemoryRequirementsNV(VkDevice _device,
                                radv_dgc_preamble_cmdbuf_size(device);
    VkDeviceSize upload_buf_size = upload_stride * pInfo->maxSequencesCount;
 
-   pMemoryRequirements->memoryRequirements.memoryTypeBits = device->physical_device->memory_types_32bit;
+   pMemoryRequirements->memoryRequirements.memoryTypeBits = pdev->memory_types_32bit;
    pMemoryRequirements->memoryRequirements.alignment =
-      MAX2(device->physical_device->info.ip[AMD_IP_GFX].ib_alignment,
-           device->physical_device->info.ip[AMD_IP_COMPUTE].ib_alignment);
+      MAX2(pdev->info.ip[AMD_IP_GFX].ib_alignment, pdev->info.ip[AMD_IP_COMPUTE].ib_alignment);
    pMemoryRequirements->memoryRequirements.size =
       align(cmd_buf_size + upload_buf_size, pMemoryRequirements->memoryRequirements.alignment);
 }
@@ -2051,6 +2068,7 @@ radv_prepare_dgc_compute(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCo
 {
    VK_FROM_HANDLE(radv_indirect_command_layout, layout, pGeneratedCommandsInfo->indirectCommandsLayout);
    VK_FROM_HANDLE(radv_pipeline, pipeline, pGeneratedCommandsInfo->pipeline);
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
 
    *upload_size = MAX2(*upload_size, 16);
 
@@ -2074,7 +2092,7 @@ radv_prepare_dgc_compute(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCo
       struct radv_shader *cs = radv_get_shader(compute_pipeline->base.shaders, MESA_SHADER_COMPUTE);
 
       if (cs->info.wave_size == 32) {
-         assert(cmd_buffer->device->physical_device->info.gfx_level >= GFX10);
+         assert(pdev->info.gfx_level >= GFX10);
          params->dispatch_initiator |= S_00B800_CS_W32_EN(1);
       }
 
@@ -2276,9 +2294,9 @@ radv_GetPipelineIndirectMemoryRequirementsNV(VkDevice _device, const VkComputePi
    VkMemoryRequirements *reqs = &pMemoryRequirements->memoryRequirements;
    const uint32_t size = sizeof(struct radv_compute_pipeline_metadata);
    RADV_FROM_HANDLE(radv_device, device, _device);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
 
-   reqs->memoryTypeBits = ((1u << device->physical_device->memory_properties.memoryTypeCount) - 1u) &
-                          ~device->physical_device->memory_types_32bit;
+   reqs->memoryTypeBits = ((1u << pdev->memory_properties.memoryTypeCount) - 1u) & ~pdev->memory_types_32bit;
    reqs->alignment = 4;
    reqs->size = align(size, reqs->alignment);
 }

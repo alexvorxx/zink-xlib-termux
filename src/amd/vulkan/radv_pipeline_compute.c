@@ -75,6 +75,7 @@ void
 radv_get_compute_pipeline_metadata(const struct radv_device *device, const struct radv_compute_pipeline *pipeline,
                                    struct radv_compute_pipeline_metadata *metadata)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_shader *cs = pipeline->base.shaders[MESA_SHADER_COMPUTE];
    uint32_t upload_sgpr = 0, inline_sgpr = 0;
 
@@ -84,7 +85,7 @@ radv_get_compute_pipeline_metadata(const struct radv_device *device, const struc
    metadata->rsrc1 = cs->config.rsrc1;
    metadata->rsrc2 = cs->config.rsrc2;
    metadata->rsrc3 = cs->config.rsrc3;
-   metadata->compute_resource_limits = radv_get_compute_resource_limits(device->physical_device, cs);
+   metadata->compute_resource_limits = radv_get_compute_resource_limits(pdev, cs);
    metadata->block_size_x = cs->info.cs.block_size[0];
    metadata->block_size_y = cs->info.cs.block_size[1];
    metadata->block_size_z = cs->info.cs.block_size[2];
@@ -136,7 +137,7 @@ static void
 radv_compute_generate_pm4(const struct radv_device *device, struct radv_compute_pipeline *pipeline,
                           struct radv_shader *shader)
 {
-   struct radv_physical_device *pdev = device->physical_device;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radeon_cmdbuf *cs = &pipeline->base.cs;
 
    cs->reserved_dw = cs->max_dw = pdev->info.gfx_level >= GFX10 ? 19 : 16;

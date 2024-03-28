@@ -1074,6 +1074,8 @@ write_texel_buffer_descriptor(struct radv_device *device, struct radv_cmd_buffer
 static ALWAYS_INLINE void
 write_buffer_descriptor(struct radv_device *device, unsigned *dst, uint64_t va, uint64_t range)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    if (!va) {
       memset(dst, 0, 4 * 4);
       return;
@@ -1082,9 +1084,9 @@ write_buffer_descriptor(struct radv_device *device, unsigned *dst, uint64_t va, 
    uint32_t rsrc_word3 = S_008F0C_DST_SEL_X(V_008F0C_SQ_SEL_X) | S_008F0C_DST_SEL_Y(V_008F0C_SQ_SEL_Y) |
                          S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) | S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W);
 
-   if (device->physical_device->info.gfx_level >= GFX11) {
+   if (pdev->info.gfx_level >= GFX11) {
       rsrc_word3 |= S_008F0C_FORMAT(V_008F0C_GFX11_FORMAT_32_FLOAT) | S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW);
-   } else if (device->physical_device->info.gfx_level >= GFX10) {
+   } else if (pdev->info.gfx_level >= GFX10) {
       rsrc_word3 |= S_008F0C_FORMAT(V_008F0C_GFX10_FORMAT_32_FLOAT) | S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW) |
                     S_008F0C_RESOURCE_LEVEL(1);
    } else {

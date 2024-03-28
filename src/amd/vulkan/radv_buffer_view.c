@@ -34,6 +34,7 @@ void
 radv_make_texel_buffer_descriptor(struct radv_device *device, uint64_t va, VkFormat vk_format, unsigned offset,
                                   unsigned range, uint32_t *state)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct util_format_description *desc;
    unsigned stride;
    unsigned num_format, data_format;
@@ -49,16 +50,15 @@ radv_make_texel_buffer_descriptor(struct radv_device *device, uint64_t va, VkFor
 
    va += offset;
 
-   if (device->physical_device->info.gfx_level != GFX8 && stride) {
+   if (pdev->info.gfx_level != GFX8 && stride) {
       range /= stride;
    }
 
    rsrc_word3 = S_008F0C_DST_SEL_X(radv_map_swizzle(swizzle[0])) | S_008F0C_DST_SEL_Y(radv_map_swizzle(swizzle[1])) |
                 S_008F0C_DST_SEL_Z(radv_map_swizzle(swizzle[2])) | S_008F0C_DST_SEL_W(radv_map_swizzle(swizzle[3]));
 
-   if (device->physical_device->info.gfx_level >= GFX10) {
-      const struct gfx10_format *fmt =
-         &ac_get_gfx10_format_table(&device->physical_device->info)[vk_format_to_pipe_format(vk_format)];
+   if (pdev->info.gfx_level >= GFX10) {
+      const struct gfx10_format *fmt = &ac_get_gfx10_format_table(&pdev->info)[vk_format_to_pipe_format(vk_format)];
 
       /* OOB_SELECT chooses the out-of-bounds check.
        *
@@ -81,7 +81,7 @@ radv_make_texel_buffer_descriptor(struct radv_device *device, uint64_t va, VkFor
        *          offset+payload > NUM_RECORDS
        */
       rsrc_word3 |= S_008F0C_FORMAT(fmt->img_format) | S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_STRUCTURED_WITH_OFFSET) |
-                    S_008F0C_RESOURCE_LEVEL(device->physical_device->info.gfx_level < GFX11);
+                    S_008F0C_RESOURCE_LEVEL(pdev->info.gfx_level < GFX11);
    } else {
       num_format = radv_translate_buffer_numformat(desc, first_non_void);
       data_format = radv_translate_buffer_dataformat(desc, first_non_void);

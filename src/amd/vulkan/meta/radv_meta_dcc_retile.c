@@ -31,6 +31,7 @@
 static nir_shader *
 build_dcc_retile_compute_shader(struct radv_device *dev, struct radeon_surf *surf)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(dev);
    enum glsl_sampler_dim dim = GLSL_SAMPLER_DIM_BUF;
    const struct glsl_type *buf_type = glsl_image_type(dim, false, GLSL_TYPE_UINT);
    nir_builder b = radv_meta_init_shader(dev, MESA_SHADER_COMPUTE, "dcc_retile_compute");
@@ -60,12 +61,12 @@ build_dcc_retile_compute_shader(struct radv_device *dev, struct radeon_surf *sur
    coord =
       nir_imul(&b, coord, nir_imm_ivec2(&b, surf->u.gfx9.color.dcc_block_width, surf->u.gfx9.color.dcc_block_height));
 
-   nir_def *src = ac_nir_dcc_addr_from_coord(&b, &dev->physical_device->info, surf->bpe,
-                                             &surf->u.gfx9.color.dcc_equation, src_dcc_pitch, src_dcc_height, zero,
-                                             nir_channel(&b, coord, 0), nir_channel(&b, coord, 1), zero, zero, zero);
-   nir_def *dst = ac_nir_dcc_addr_from_coord(
-      &b, &dev->physical_device->info, surf->bpe, &surf->u.gfx9.color.display_dcc_equation, dst_dcc_pitch,
-      dst_dcc_height, zero, nir_channel(&b, coord, 0), nir_channel(&b, coord, 1), zero, zero, zero);
+   nir_def *src = ac_nir_dcc_addr_from_coord(&b, &pdev->info, surf->bpe, &surf->u.gfx9.color.dcc_equation,
+                                             src_dcc_pitch, src_dcc_height, zero, nir_channel(&b, coord, 0),
+                                             nir_channel(&b, coord, 1), zero, zero, zero);
+   nir_def *dst = ac_nir_dcc_addr_from_coord(&b, &pdev->info, surf->bpe, &surf->u.gfx9.color.display_dcc_equation,
+                                             dst_dcc_pitch, dst_dcc_height, zero, nir_channel(&b, coord, 0),
+                                             nir_channel(&b, coord, 1), zero, zero, zero);
 
    nir_def *dcc_val = nir_image_deref_load(&b, 1, 32, input_dcc_ref, nir_vec4(&b, src, src, src, src),
                                            nir_undef(&b, 1, 32), nir_imm_int(&b, 0), .image_dim = dim);

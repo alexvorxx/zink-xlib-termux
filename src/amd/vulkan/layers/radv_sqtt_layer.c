@@ -35,7 +35,8 @@
 void
 radv_sqtt_emit_relocated_shaders(struct radv_cmd_buffer *cmd_buffer, struct radv_graphics_pipeline *pipeline)
 {
-   const enum amd_gfx_level gfx_level = cmd_buffer->device->physical_device->info.gfx_level;
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+   const enum amd_gfx_level gfx_level = pdev->info.gfx_level;
    struct radv_sqtt_shaders_reloc *reloc = pipeline->sqtt_shaders_reloc;
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
    uint64_t va;
@@ -340,7 +341,8 @@ radv_describe_begin_cmd_buffer(struct radv_cmd_buffer *cmd_buffer)
       return;
 
    /* Reserve a command buffer ID for SQTT. */
-   enum amd_ip_type ip_type = radv_queue_family_to_ring(cmd_buffer->device->physical_device, cmd_buffer->qf);
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+   enum amd_ip_type ip_type = radv_queue_family_to_ring(pdev, cmd_buffer->qf);
    union rgp_sqtt_marker_cb_id cb_id = ac_sqtt_get_next_cmdbuf_id(&cmd_buffer->device->sqtt, ip_type);
    cmd_buffer->sqtt_cb_id = cb_id.all;
 
@@ -354,7 +356,7 @@ radv_describe_begin_cmd_buffer(struct radv_cmd_buffer *cmd_buffer)
    if (cmd_buffer->qf == RADV_QUEUE_GENERAL)
       marker.queue_flags |= VK_QUEUE_GRAPHICS_BIT;
 
-   if (!radv_sparse_queue_enabled(cmd_buffer->device->physical_device))
+   if (!radv_sparse_queue_enabled(pdev))
       marker.queue_flags |= VK_QUEUE_SPARSE_BINDING_BIT;
 
    radv_emit_sqtt_userdata(cmd_buffer, &marker, sizeof(marker) / 4);
@@ -655,6 +657,7 @@ radv_handle_sqtt(VkQueue _queue)
 {
    RADV_FROM_HANDLE(radv_queue, queue, _queue);
 
+   const struct radv_physical_device *pdev = radv_device_physical(queue->device);
    bool trigger = queue->device->sqtt_triggered;
    queue->device->sqtt_triggered = false;
 
@@ -673,8 +676,7 @@ radv_handle_sqtt(VkQueue _queue)
          if (queue->device->spm.bo)
             ac_spm_get_trace(&queue->device->spm, &spm_trace);
 
-         ac_dump_rgp_capture(&queue->device->physical_device->info, &sqtt_trace,
-                             queue->device->spm.bo ? &spm_trace : NULL);
+         ac_dump_rgp_capture(&pdev->info, &sqtt_trace, queue->device->spm.bo ? &spm_trace : NULL);
       } else {
          /* Trigger a new capture if the driver failed to get
           * the trace because the buffer was too small.
@@ -687,7 +689,7 @@ radv_handle_sqtt(VkQueue _queue)
    }
 
    if (trigger) {
-      if (ac_check_profile_state(&queue->device->physical_device->info)) {
+      if (ac_check_profile_state(&pdev->info)) {
          fprintf(stderr, "radv: Canceling RGP trace request as a hang condition has been "
                          "detected. Force the GPU into a profiling mode with e.g. "
                          "\"echo profile_peak  > "
@@ -1415,7 +1417,7 @@ static void
 radv_fill_code_object_record(struct radv_device *device, struct rgp_shader_data *shader_data,
                              struct radv_shader *shader, uint64_t va)
 {
-   struct radv_physical_device *pdev = device->physical_device;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    unsigned lds_increment = pdev->info.gfx_level >= GFX11 && shader->info.stage == MESA_SHADER_FRAGMENT
                                ? 1024
                                : pdev->info.lds_encode_granularity;

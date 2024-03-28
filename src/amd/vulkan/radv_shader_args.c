@@ -258,7 +258,9 @@ declare_ms_input_sgprs(const struct radv_shader_info *info, struct radv_shader_a
 static void
 declare_ms_input_vgprs(const struct radv_device *device, struct radv_shader_args *args)
 {
-   if (device->physical_device->mesh_fast_launch_2) {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
+   if (pdev->mesh_fast_launch_2) {
       ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.local_invocation_ids);
    } else {
       ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.vertex_id);
@@ -510,7 +512,8 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
                     const struct radv_shader_info *info, gl_shader_stage stage, gl_shader_stage previous_stage,
                     struct radv_shader_args *args, struct user_sgpr_info *user_sgpr_info)
 {
-   const enum amd_gfx_level gfx_level = device->physical_device->info.gfx_level;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const enum amd_gfx_level gfx_level = pdev->info.gfx_level;
    bool has_shader_query = info->has_prim_query || info->has_xfb_query ||
                            (stage == MESA_SHADER_GEOMETRY && info->gs.has_pipeline_stat_query) ||
                            (stage == MESA_SHADER_MESH && info->ms.has_query) ||
@@ -784,7 +787,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
                declare_ngg_sgprs(info, args, has_ngg_provoking_vtx);
             }
 
-            if (previous_stage != MESA_SHADER_MESH || !device->physical_device->mesh_fast_launch_2) {
+            if (previous_stage != MESA_SHADER_MESH || !pdev->mesh_fast_launch_2) {
                ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[0]);
                ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[1]);
                ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_prim_id);
@@ -871,7 +874,8 @@ radv_declare_shader_args(const struct radv_device *device, const struct radv_gra
    if (info->loads_push_constants)
       num_user_sgprs++;
 
-   const enum amd_gfx_level gfx_level = device->physical_device->info.gfx_level;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const enum amd_gfx_level gfx_level = pdev->info.gfx_level;
    uint32_t available_sgprs = gfx_level >= GFX9 && stage != MESA_SHADER_COMPUTE && stage != MESA_SHADER_TASK ? 32 : 16;
    uint32_t remaining_sgprs = available_sgprs - num_user_sgprs;
 

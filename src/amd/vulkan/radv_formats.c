@@ -1881,6 +1881,7 @@ radv_GetImageSparseMemoryRequirements2(VkDevice _device, const VkImageSparseMemo
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
    RADV_FROM_HANDLE(radv_image, image, pInfo->image);
+   struct radv_physical_device *pdev = radv_device_physical(device);
 
    if (!(image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT)) {
       *pSparseMemoryRequirementCount = 0;
@@ -1892,12 +1893,12 @@ radv_GetImageSparseMemoryRequirements2(VkDevice _device, const VkImageSparseMemo
 
    vk_outarray_append_typed(VkSparseImageMemoryRequirements2, &out, req)
    {
-      fill_sparse_image_format_properties(device->physical_device, image->vk.image_type, image->vk.format,
+      fill_sparse_image_format_properties(pdev, image->vk.image_type, image->vk.format,
                                           &req->memoryRequirements.formatProperties);
       req->memoryRequirements.imageMipTailFirstLod = image->planes[0].surface.first_mip_tail_level;
 
       if (req->memoryRequirements.imageMipTailFirstLod < image->vk.mip_levels) {
-         if (device->physical_device->info.gfx_level >= GFX9) {
+         if (pdev->info.gfx_level >= GFX9) {
             /* The tail is always a single tile per layer. */
             req->memoryRequirements.imageMipTailSize = 65536;
             req->memoryRequirements.imageMipTailOffset =

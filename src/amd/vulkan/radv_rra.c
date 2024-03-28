@@ -898,15 +898,17 @@ exit:
 VkResult
 radv_rra_trace_init(struct radv_device *device)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    device->rra_trace.validate_as = debug_get_bool_option("RADV_RRA_TRACE_VALIDATE", false);
    device->rra_trace.copy_after_build = debug_get_bool_option("RADV_RRA_TRACE_COPY_AFTER_BUILD", false);
    device->rra_trace.accel_structs = _mesa_pointer_hash_table_create(NULL);
    device->rra_trace.accel_struct_vas = _mesa_hash_table_u64_create(NULL);
    simple_mtx_init(&device->rra_trace.data_mtx, mtx_plain);
 
-   device->rra_trace.copy_memory_index = radv_find_memory_index(
-      device->physical_device,
-      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+   device->rra_trace.copy_memory_index =
+      radv_find_memory_index(pdev, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                                      VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
 
    util_dynarray_init(&device->rra_trace.ray_history, NULL);
 
@@ -939,9 +941,9 @@ radv_rra_trace_init(struct radv_device *device)
    VkMemoryAllocateInfo alloc_info = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
       .allocationSize = requirements.size,
-      .memoryTypeIndex = radv_find_memory_index(device->physical_device, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
-                                                                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                                                            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
+      .memoryTypeIndex =
+         radv_find_memory_index(pdev, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
    };
 
    result = radv_AllocateMemory(_device, &alloc_info, NULL, &device->rra_trace.ray_history_memory);
@@ -1316,6 +1318,7 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
 {
    RADV_FROM_HANDLE(radv_queue, queue, vk_queue);
    struct radv_device *device = queue->device;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    VkDevice vk_device = radv_device_to_handle(device);
 
    VkResult result = vk_common_DeviceWaitIdle(vk_device);
@@ -1365,7 +1368,7 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
    fwrite(&api, sizeof(uint64_t), 1, file);
 
    uint64_t asic_info_offset = (uint64_t)ftell(file);
-   rra_dump_asic_info(&device->physical_device->info, file);
+   rra_dump_asic_info(&pdev->info, file);
 
    uint64_t written_accel_struct_count = 0;
 

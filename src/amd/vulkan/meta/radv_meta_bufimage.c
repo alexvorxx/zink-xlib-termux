@@ -1174,11 +1174,12 @@ fixup_gfx9_cs_copy(struct radv_cmd_buffer *cmd_buffer, const struct radv_meta_bl
                    const struct radv_meta_blit2d_surf *img_bsurf, const struct radv_meta_blit2d_rect *rect,
                    bool to_image)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
    const unsigned mip_level = img_bsurf->level;
    const struct radv_image *image = img_bsurf->image;
    const struct radeon_surf *surf = &image->planes[0].surface;
    struct radv_device *device = cmd_buffer->device;
-   const struct radeon_info *gpu_info = &device->physical_device->info;
+   const struct radeon_info *gpu_info = &pdev->info;
    struct ac_addrlib *addrlib = device->ws->get_addrlib(device->ws);
    struct ac_surf_info surf_info = radv_get_ac_surf_info(device, image);
 
@@ -1243,9 +1244,10 @@ fixup_gfx9_cs_copy(struct radv_cmd_buffer *cmd_buffer, const struct radv_meta_bl
 static unsigned
 get_image_stride_for_r32g32b32(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf *surf)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
    unsigned stride;
 
-   if (cmd_buffer->device->physical_device->info.gfx_level >= GFX9) {
+   if (pdev->info.gfx_level >= GFX9) {
       stride = surf->image->planes[0].surface.u.gfx9.surf_pitch;
    } else {
       stride = surf->image->planes[0].surface.u.legacy.level[0].nblk_x * 3;

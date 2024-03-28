@@ -297,11 +297,12 @@ build_addr_to_node(nir_builder *b, nir_def *addr)
 static nir_def *
 build_node_to_addr(struct radv_device *device, nir_builder *b, nir_def *node, bool skip_type_and)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    nir_def *addr = skip_type_and ? node : nir_iand_imm(b, node, ~7ull);
    addr = nir_ishl_imm(b, addr, 3);
    /* Assumes everything is in the top half of address space, which is true in
     * GFX9+ for now. */
-   return device->physical_device->info.gfx_level >= GFX9 ? nir_ior_imm(b, addr, 0xffffull << 48) : addr;
+   return pdev->info.gfx_level >= GFX9 ? nir_ior_imm(b, addr, 0xffffull << 48) : addr;
 }
 
 nir_def *
@@ -477,6 +478,7 @@ radv_test_flag(nir_builder *b, const struct radv_ray_traversal_args *args, uint3
 nir_def *
 radv_build_ray_traversal(struct radv_device *device, nir_builder *b, const struct radv_ray_traversal_args *args)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    nir_variable *incomplete = nir_local_variable_create(b->impl, glsl_bool_type(), "incomplete");
    nir_store_var(b, incomplete, nir_imm_true(b), 0x1);
 
@@ -568,7 +570,7 @@ radv_build_ray_traversal(struct radv_device *device, nir_builder *b, const struc
       nir_def *global_bvh_node = nir_iadd(b, nir_load_deref(b, args->vars.bvh_base), nir_u2u64(b, bvh_node));
 
       nir_def *intrinsic_result = NULL;
-      if (!radv_emulate_rt(device->physical_device)) {
+      if (!radv_emulate_rt(pdev)) {
          intrinsic_result =
             nir_bvh64_intersect_ray_amd(b, 32, desc, nir_unpack_64_2x32(b, global_bvh_node),
                                         nir_load_deref(b, args->vars.tmax), nir_load_deref(b, args->vars.origin),

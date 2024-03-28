@@ -1134,8 +1134,6 @@ struct radv_device {
    /* Whether to keep shader debug info, for debugging. */
    bool keep_shader_info;
 
-   struct radv_physical_device *physical_device;
-
    /* Backup in-memory cache to be used if the app doesn't provide one */
    struct vk_pipeline_cache *mem_cache;
 
@@ -1274,6 +1272,12 @@ struct radv_device {
    uint32_t compute_scratch_size_per_wave;
    uint32_t compute_scratch_waves;
 };
+
+static inline struct radv_physical_device *
+radv_device_physical(const struct radv_device *dev)
+{
+   return (struct radv_physical_device *)dev->vk.physical;
+}
 
 bool radv_device_set_pstate(struct radv_device *device, bool enable);
 bool radv_device_acquire_performance_counters(struct radv_device *device);
@@ -2155,10 +2159,12 @@ static inline void
 radv_emit_shader_pointer_body(const struct radv_device *device, struct radeon_cmdbuf *cs, uint64_t va,
                               bool use_32bit_pointers)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    radeon_emit(cs, va);
 
    if (use_32bit_pointers) {
-      assert(va == 0 || (va >> 32) == device->physical_device->info.address32_hi);
+      assert(va == 0 || (va >> 32) == pdev->info.address32_hi);
    } else {
       radeon_emit(cs, va >> 32);
    }
@@ -2798,7 +2804,8 @@ radv_image_has_htile(const struct radv_image *image)
 static inline bool
 radv_image_has_vrs_htile(const struct radv_device *device, const struct radv_image *image)
 {
-   const enum amd_gfx_level gfx_level = device->physical_device->info.gfx_level;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const enum amd_gfx_level gfx_level = pdev->info.gfx_level;
 
    /* Any depth buffer can potentially use VRS on GFX10.3. */
    return gfx_level == GFX10_3 && device->vk.enabled_features.attachmentFragmentShadingRate &&
@@ -2830,7 +2837,9 @@ radv_image_is_tc_compat_htile(const struct radv_image *image)
 static inline bool
 radv_image_tile_stencil_disabled(const struct radv_device *device, const struct radv_image *image)
 {
-   if (device->physical_device->info.gfx_level >= GFX9) {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
+   if (pdev->info.gfx_level >= GFX9) {
       return !vk_format_has_stencil(image->vk.format) && !radv_image_has_vrs_htile(device, image);
    } else {
       /* Due to a hw bug, TILE_STENCIL_DISABLE must be set to 0 for
@@ -2938,8 +2947,10 @@ radv_get_htile_initial_value(const struct radv_device *device, const struct radv
 static inline bool
 radv_image_get_iterate256(const struct radv_device *device, struct radv_image *image)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    /* ITERATE_256 is required for depth or stencil MSAA images that are TC-compatible HTILE. */
-   return device->physical_device->info.gfx_level >= GFX10 &&
+   return pdev->info.gfx_level >= GFX10 &&
           (image->vk.usage & (VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)) &&
           radv_image_is_tc_compat_htile(image) && image->vk.samples > 1;
 }
@@ -3744,7 +3755,8 @@ radv_is_streamout_enabled(struct radv_cmd_buffer *cmd_buffer)
 static inline enum amd_ip_type
 radv_queue_ring(const struct radv_queue *queue)
 {
-   return radv_queue_family_to_ring(queue->device->physical_device, queue->state.qf);
+   const struct radv_physical_device *pdev = radv_device_physical(queue->device);
+   return radv_queue_family_to_ring(pdev, queue->state.qf);
 }
 
 /* radv_video */
@@ -3758,7 +3770,8 @@ void radv_video_get_profile_alignments(struct radv_physical_device *pdev, const 
 static inline bool
 radv_use_llvm_for_stage(const struct radv_device *device, UNUSED gl_shader_stage stage)
 {
-   return device->physical_device->use_llvm;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   return pdev->use_llvm;
 }
 
 static inline bool

@@ -54,17 +54,17 @@ static VkQueue
 radv_wsi_get_prime_blit_queue(VkDevice _device)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
+   struct radv_physical_device *pdev = radv_device_physical(device);
 
    if (device->private_sdma_queue != VK_NULL_HANDLE)
       return vk_queue_to_handle(&device->private_sdma_queue->vk);
 
-   if (device->physical_device->info.gfx_level >= GFX9 &&
-       !(device->physical_device->instance->debug_flags & RADV_DEBUG_NO_DMA_BLIT)) {
+   if (pdev->info.gfx_level >= GFX9 && !(pdev->instance->debug_flags & RADV_DEBUG_NO_DMA_BLIT)) {
 
-      device->physical_device->vk_queue_to_radv[device->physical_device->num_queues++] = RADV_QUEUE_TRANSFER;
+      pdev->vk_queue_to_radv[pdev->num_queues++] = RADV_QUEUE_TRANSFER;
       const VkDeviceQueueCreateInfo queue_create = {
          .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-         .queueFamilyIndex = device->physical_device->num_queues - 1,
+         .queueFamilyIndex = pdev->num_queues - 1,
          .queueCount = 1,
       };
 

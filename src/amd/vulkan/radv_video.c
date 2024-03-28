@@ -311,7 +311,7 @@ calc_ctx_size_h265_main10(struct radv_video_session *vid)
 static unsigned
 calc_ctx_size_av1(struct radv_device *device, struct radv_video_session *vid)
 {
-   struct radv_physical_device *pdev = device->physical_device;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    unsigned frame_ctxt_size = pdev->av1_version == RDECODE_AV1_VER_0
                                  ? align(sizeof(rvcn_av1_frame_context_t), 2048)
                                  : align(sizeof(rvcn_av1_vcn4_frame_context_t), 2048);
@@ -345,6 +345,7 @@ radv_CreateVideoSessionKHR(VkDevice _device, const VkVideoSessionCreateInfoKHR *
                            const VkAllocationCallbacks *pAllocator, VkVideoSessionKHR *pVideoSession)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
+   struct radv_physical_device *pdev = radv_device_physical(device);
 
    struct radv_video_session *vid =
       vk_alloc2(&device->vk.alloc, pAllocator, sizeof(*vid), 8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
@@ -365,12 +366,12 @@ radv_CreateVideoSessionKHR(VkDevice _device, const VkVideoSessionCreateInfoKHR *
    switch (vid->vk.op) {
    case VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR:
       vid->stream_type = RDECODE_CODEC_H264_PERF;
-      if (radv_enable_tier2(device->physical_device))
+      if (radv_enable_tier2(pdev))
          vid->dpb_type = DPB_DYNAMIC_TIER_2;
       break;
    case VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR:
       vid->stream_type = RDECODE_CODEC_H265;
-      if (radv_enable_tier2(device->physical_device))
+      if (radv_enable_tier2(pdev))
          vid->dpb_type = DPB_DYNAMIC_TIER_2;
       break;
    case VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR:
@@ -381,10 +382,10 @@ radv_CreateVideoSessionKHR(VkDevice _device, const VkVideoSessionCreateInfoKHR *
       return VK_ERROR_FEATURE_NOT_PRESENT;
    }
 
-   vid->stream_handle = radv_vid_alloc_stream_handle(device->physical_device);
+   vid->stream_handle = radv_vid_alloc_stream_handle(pdev);
    vid->dbg_frame_cnt = 0;
    vid->db_alignment = radv_video_get_db_alignment(
-      device->physical_device, vid->vk.max_coded.width,
+      pdev, vid->vk.max_coded.width,
       (vid->stream_type == RDECODE_CODEC_AV1 ||
        (vid->stream_type == RDECODE_CODEC_H265 && vid->vk.h265.profile_idc == STD_VIDEO_H265_PROFILE_IDC_MAIN_10)));
 
@@ -656,11 +657,13 @@ radv_GetVideoSessionMemoryRequirementsKHR(VkDevice _device, VkVideoSessionKHR vi
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
    RADV_FROM_HANDLE(radv_video_session, vid, videoSession);
-   uint32_t memory_type_bits = (1u << device->physical_device->memory_properties.memoryTypeCount) - 1;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
+   uint32_t memory_type_bits = (1u << pdev->memory_properties.memoryTypeCount) - 1;
 
    VK_OUTARRAY_MAKE_TYPED(VkVideoSessionMemoryRequirementsKHR, out, pMemoryRequirements, pMemoryRequirementsCount);
    /* 1 buffer for session context */
-   if (device->physical_device->info.family >= CHIP_POLARIS10) {
+   if (pdev->info.family >= CHIP_POLARIS10) {
       vk_outarray_append_typed(VkVideoSessionMemoryRequirementsKHR, &out, m)
       {
          m->memoryBindIndex = RADV_BIND_SESSION_CTX;
@@ -670,7 +673,7 @@ radv_GetVideoSessionMemoryRequirementsKHR(VkDevice _device, VkVideoSessionKHR vi
       }
    }
 
-   if (vid->stream_type == RDECODE_CODEC_H264_PERF && device->physical_device->info.family >= CHIP_POLARIS10) {
+   if (vid->stream_type == RDECODE_CODEC_H264_PERF && pdev->info.family >= CHIP_POLARIS10) {
       vk_outarray_append_typed(VkVideoSessionMemoryRequirementsKHR, &out, m)
       {
          m->memoryBindIndex = RADV_BIND_DECODER_CTX;
@@ -701,9 +704,8 @@ radv_GetVideoSessionMemoryRequirementsKHR(VkDevice _device, VkVideoSessionKHR vi
          m->memoryRequirements.size = align(calc_ctx_size_av1(device, vid), 4096);
          m->memoryRequirements.alignment = 0;
          m->memoryRequirements.memoryTypeBits = 0;
-         for (unsigned i = 0; i < device->physical_device->memory_properties.memoryTypeCount; i++)
-            if (device->physical_device->memory_properties.memoryTypes[i].propertyFlags &
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+         for (unsigned i = 0; i < pdev->memory_properties.memoryTypeCount; i++)
+            if (pdev->memory_properties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
                m->memoryRequirements.memoryTypeBits |= (1 << i);
       }
    }
@@ -761,14 +763,15 @@ set_reg(struct radv_cmd_buffer *cmd_buffer, unsigned reg, uint32_t val)
 static void
 send_cmd(struct radv_cmd_buffer *cmd_buffer, unsigned cmd, struct radeon_winsys_bo *bo, uint32_t offset)
 {
-   struct radv_physical_device *pdev = cmd_buffer->device->physical_device;
+   struct radv_device *device = cmd_buffer->device;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    uint64_t addr;
 
    radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, bo);
    addr = radv_buffer_get_va(bo);
    addr += offset;
 
-   if (cmd_buffer->device->physical_device->vid_decode_ip != AMD_IP_VCN_UNIFIED) {
+   if (pdev->vid_decode_ip != AMD_IP_VCN_UNIFIED) {
       radeon_check_space(cmd_buffer->device->ws, cmd_buffer->cs, 6);
       set_reg(cmd_buffer, pdev->vid_dec_reg.data0, addr);
       set_reg(cmd_buffer, pdev->vid_dec_reg.data1, addr >> 32);
@@ -1037,6 +1040,7 @@ get_h265_msg(struct radv_device *device, struct radv_video_session *vid, struct 
              uint32_t *height_in_samples,
              void *it_ptr)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    rvcn_dec_message_hevc_t result;
    int i, j;
    const struct VkVideoDecodeH265PictureInfoKHR *h265_pic_info =
@@ -1059,7 +1063,7 @@ get_h265_msg(struct radv_device *device, struct radv_video_session *vid, struct 
    result.sps_info_flags |= sps->flags.strong_intra_smoothing_enabled_flag << 7;
    result.sps_info_flags |= sps->flags.separate_colour_plane_flag << 8;
 
-   if (device->physical_device->info.family == CHIP_CARRIZO)
+   if (pdev->info.family == CHIP_CARRIZO)
       result.sps_info_flags |= 1 << 9;
 
    if (!h265_pic_info->pStdPictureInfo->flags.short_term_ref_pic_set_sps_flag) {
@@ -2097,6 +2101,7 @@ rvcn_dec_message_decode(struct radv_cmd_buffer *cmd_buffer, struct radv_video_se
                         const struct VkVideoDecodeInfoKHR *frame_info)
 {
    struct radv_device *device = cmd_buffer->device;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    rvcn_dec_message_header_t *header;
    rvcn_dec_message_index_t *index_codec;
    rvcn_dec_message_decode_t *decode;
@@ -2182,7 +2187,7 @@ rvcn_dec_message_decode(struct radv_cmd_buffer *cmd_buffer, struct radv_video_se
 
    decode->dt_tiling_mode = 0;
    decode->dt_swizzle_mode = luma->surface.u.gfx9.swizzle_mode;
-   decode->dt_array_mode = device->physical_device->vid_addr_gfx_mode;
+   decode->dt_array_mode = pdev->vid_addr_gfx_mode;
    decode->dt_field_mode = vid->interlaced ? 1 : 0;
    decode->dt_surf_tile_config = 0;
    decode->dt_uv_surf_tile_config = 0;
@@ -2254,7 +2259,7 @@ rvcn_dec_message_decode(struct radv_cmd_buffer *cmd_buffer, struct radv_video_se
    decode->db_pitch = dpb->planes[0].surface.u.gfx9.surf_pitch;
    decode->db_aligned_height = dpb->planes[0].surface.u.gfx9.surf_height;
    decode->db_swizzle_mode = dpb->planes[0].surface.u.gfx9.swizzle_mode;
-   decode->db_array_mode = device->physical_device->vid_addr_gfx_mode;
+   decode->db_array_mode = pdev->vid_addr_gfx_mode;
 
    decode->hw_ctxt_size = vid->ctx.size;
 
@@ -2427,6 +2432,7 @@ get_uvd_h265_msg(struct radv_device *device, struct radv_video_session *vid, str
                  const struct VkVideoDecodeInfoKHR *frame_info, uint32_t *width_in_samples,
                  uint32_t *height_in_samples, void *it_ptr)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    struct ruvd_h265 result;
    int i, j;
    const struct VkVideoDecodeH265PictureInfoKHR *h265_pic_info =
@@ -2450,7 +2456,7 @@ get_uvd_h265_msg(struct radv_device *device, struct radv_video_session *vid, str
    result.sps_info_flags |= sps->flags.strong_intra_smoothing_enabled_flag << 7;
    result.sps_info_flags |= sps->flags.separate_colour_plane_flag << 8;
 
-   if (device->physical_device->info.family == CHIP_CARRIZO)
+   if (pdev->info.family == CHIP_CARRIZO)
       result.sps_info_flags |= 1 << 9;
 
    *width_in_samples = sps->pic_width_in_luma_samples;
@@ -2592,6 +2598,7 @@ ruvd_dec_message_decode(struct radv_device *device, struct radv_video_session *v
                         struct radv_video_session_params *params, void *ptr, void *it_ptr, uint32_t *slice_offset,
                         const struct VkVideoDecodeInfoKHR *frame_info)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    struct ruvd_msg *msg = ptr;
    struct radv_image_view *dst_iv = radv_image_view_from_handle(frame_info->dstPictureResource.imageViewBinding);
    struct radv_image *img = dst_iv->image;
@@ -2616,7 +2623,7 @@ ruvd_dec_message_decode(struct radv_device *device, struct radv_video_session *v
    msg->body.decode.bsd_size = frame_info->srcBufferRange;
    msg->body.decode.db_pitch = align(frame_info->dstPictureResource.codedExtent.width, vid->db_alignment);
 
-   if (vid->stream_type == RUVD_CODEC_H264_PERF && device->physical_device->info.family >= CHIP_POLARIS10)
+   if (vid->stream_type == RUVD_CODEC_H264_PERF && pdev->info.family >= CHIP_POLARIS10)
       msg->body.decode.dpb_reserved = vid->ctx.size;
 
    *slice_offset = 0;
@@ -2643,7 +2650,7 @@ ruvd_dec_message_decode(struct radv_device *device, struct radv_video_session *v
 
    msg->body.decode.dt_field_mode = false;
 
-   if (device->physical_device->info.gfx_level >= GFX9) {
+   if (pdev->info.gfx_level >= GFX9) {
       msg->body.decode.dt_pitch = luma->surface.u.gfx9.surf_pitch * luma->surface.blk_w;
       msg->body.decode.dt_tiling_mode = RUVD_TILE_LINEAR;
       msg->body.decode.dt_array_mode = RUVD_ARRAY_MODE_LINEAR;
@@ -2703,7 +2710,7 @@ ruvd_dec_message_decode(struct radv_device *device, struct radv_video_session *v
          RUVD_MACRO_TILE_ASPECT_RATIO(util_logbase2(luma->surface.u.legacy.mtilea));
    }
 
-   if (device->physical_device->info.family >= CHIP_STONEY)
+   if (pdev->info.family >= CHIP_STONEY)
       msg->body.decode.dt_wa_chroma_top_offset = msg->body.decode.dt_pitch / 2;
 
    msg->body.decode.db_surf_tile_config = msg->body.decode.dt_surf_tile_config;
@@ -2740,8 +2747,8 @@ radv_CmdBeginVideoCodingKHR(VkCommandBuffer commandBuffer, const VkVideoBeginCod
 static void
 radv_vcn_cmd_reset(struct radv_cmd_buffer *cmd_buffer)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
    struct radv_video_session *vid = cmd_buffer->video.vid;
-   struct radv_physical_device *pdev = cmd_buffer->device->physical_device;
    uint32_t size = sizeof(rvcn_dec_message_header_t) + sizeof(rvcn_dec_message_create_t);
 
    void *ptr;
@@ -2771,7 +2778,7 @@ radv_vcn_cmd_reset(struct radv_cmd_buffer *cmd_buffer)
    }
    radv_vid_buffer_upload_alloc(cmd_buffer, size, &out_offset, &ptr);
 
-   if (cmd_buffer->device->physical_device->vid_decode_ip == AMD_IP_VCN_UNIFIED)
+   if (pdev->vid_decode_ip == AMD_IP_VCN_UNIFIED)
       radv_vcn_sq_start(cmd_buffer);
 
    rvcn_dec_message_create(vid, ptr, size);
@@ -2779,7 +2786,7 @@ radv_vcn_cmd_reset(struct radv_cmd_buffer *cmd_buffer)
    send_cmd(cmd_buffer, RDECODE_CMD_MSG_BUFFER, cmd_buffer->upload.upload_bo, out_offset);
    /* pad out the IB to the 16 dword boundary - otherwise the fw seems to be unhappy */
 
-   if (cmd_buffer->device->physical_device->vid_decode_ip != AMD_IP_VCN_UNIFIED) {
+   if (pdev->vid_decode_ip != AMD_IP_VCN_UNIFIED) {
       radeon_check_space(cmd_buffer->device->ws, cmd_buffer->cs, 8);
       for (unsigned i = 0; i < 8; i++)
          radeon_emit(cmd_buffer->cs, 0x81ff);
@@ -2812,8 +2819,10 @@ VKAPI_ATTR void VKAPI_CALL
 radv_CmdControlVideoCodingKHR(VkCommandBuffer commandBuffer, const VkVideoCodingControlInfoKHR *pCodingControlInfo)
 {
    RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+
    if (pCodingControlInfo->flags & VK_VIDEO_CODING_CONTROL_RESET_BIT_KHR) {
-      if (radv_has_uvd(cmd_buffer->device->physical_device))
+      if (radv_has_uvd(pdev))
          radv_uvd_cmd_reset(cmd_buffer);
       else
          radv_vcn_cmd_reset(cmd_buffer);
@@ -2829,14 +2838,14 @@ static void
 radv_uvd_decode_video(struct radv_cmd_buffer *cmd_buffer, const VkVideoDecodeInfoKHR *frame_info)
 {
    RADV_FROM_HANDLE(radv_buffer, src_buffer, frame_info->srcBuffer);
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
    struct radv_video_session *vid = cmd_buffer->video.vid;
    struct radv_video_session_params *params = cmd_buffer->video.params;
    unsigned size = sizeof(struct ruvd_msg);
    void *ptr, *fb_ptr, *it_probs_ptr = NULL;
    uint32_t out_offset, fb_offset, it_probs_offset = 0;
    struct radeon_winsys_bo *msg_bo, *fb_bo, *it_probs_bo = NULL;
-   unsigned fb_size =
-      (cmd_buffer->device->physical_device->info.family == CHIP_TONGA) ? FB_BUFFER_SIZE_TONGA : FB_BUFFER_SIZE;
+   unsigned fb_size = (pdev->info.family == CHIP_TONGA) ? FB_BUFFER_SIZE_TONGA : FB_BUFFER_SIZE;
 
    radv_vid_buffer_upload_alloc(cmd_buffer, fb_size, &fb_offset, &fb_ptr);
    fb_bo = cmd_buffer->upload.upload_bo;
@@ -2876,13 +2885,14 @@ radv_uvd_decode_video(struct radv_cmd_buffer *cmd_buffer, const VkVideoDecodeInf
       send_cmd(cmd_buffer, RDECODE_CMD_IT_SCALING_TABLE_BUFFER, it_probs_bo, it_probs_offset);
 
    radeon_check_space(cmd_buffer->device->ws, cmd_buffer->cs, 2);
-   set_reg(cmd_buffer, cmd_buffer->device->physical_device->vid_dec_reg.cntl, 1);
+   set_reg(cmd_buffer, pdev->vid_dec_reg.cntl, 1);
 }
 
 static void
 radv_vcn_decode_video(struct radv_cmd_buffer *cmd_buffer, const VkVideoDecodeInfoKHR *frame_info)
 {
    RADV_FROM_HANDLE(radv_buffer, src_buffer, frame_info->srcBuffer);
+   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
    struct radv_video_session *vid = cmd_buffer->video.vid;
    struct radv_video_session_params *params = cmd_buffer->video.params;
    unsigned size = 0;
@@ -2924,7 +2934,7 @@ radv_vcn_decode_video(struct radv_cmd_buffer *cmd_buffer, const VkVideoDecodeInf
    radv_vid_buffer_upload_alloc(cmd_buffer, size, &out_offset, &ptr);
    msg_bo = cmd_buffer->upload.upload_bo;
 
-   if (cmd_buffer->device->physical_device->vid_decode_ip == AMD_IP_VCN_UNIFIED)
+   if (pdev->vid_decode_ip == AMD_IP_VCN_UNIFIED)
       radv_vcn_sq_start(cmd_buffer);
 
    uint32_t slice_offset;
@@ -2955,9 +2965,9 @@ radv_vcn_decode_video(struct radv_cmd_buffer *cmd_buffer, const VkVideoDecodeInf
    else if (have_probs(vid))
       send_cmd(cmd_buffer, RDECODE_CMD_PROB_TBL_BUFFER, it_probs_bo, it_probs_offset);
 
-   if (cmd_buffer->device->physical_device->vid_decode_ip != AMD_IP_VCN_UNIFIED) {
+   if (pdev->vid_decode_ip != AMD_IP_VCN_UNIFIED) {
       radeon_check_space(cmd_buffer->device->ws, cmd_buffer->cs, 2);
-      set_reg(cmd_buffer, cmd_buffer->device->physical_device->vid_dec_reg.cntl, 1);
+      set_reg(cmd_buffer, pdev->vid_dec_reg.cntl, 1);
    } else
       radv_vcn_sq_tail(cmd_buffer->cs, &cmd_buffer->video.sq);
 }
@@ -2966,8 +2976,9 @@ VKAPI_ATTR void VKAPI_CALL
 radv_CmdDecodeVideoKHR(VkCommandBuffer commandBuffer, const VkVideoDecodeInfoKHR *frame_info)
 {
    RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
 
-   if (radv_has_uvd(cmd_buffer->device->physical_device))
+   if (radv_has_uvd(pdev))
       radv_uvd_decode_video(cmd_buffer, frame_info);
    else
       radv_vcn_decode_video(cmd_buffer, frame_info);

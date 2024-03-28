@@ -155,15 +155,43 @@ unsigned rc_constants_add_immediate_scalar(struct rc_constant_list * c, float da
 	return rc_constants_add(c, &constant);
 }
 
-void rc_constants_print(struct rc_constant_list * c)
+static char swizzle_char(unsigned swz)
 {
-	unsigned int i;
-	for(i = 0; i < c->Count; i++) {
+	switch (swz) {
+	case RC_SWIZZLE_X:
+		return 'x';
+	case RC_SWIZZLE_Y:
+		return 'y';
+	case RC_SWIZZLE_Z:
+		return 'z';
+	case RC_SWIZZLE_W:
+		return 'w';
+	default:
+		return 'u';
+	}
+}
+
+void rc_constants_print(struct rc_constant_list *c, struct const_remap *r)
+{
+	for (unsigned i = 0; i < c->Count; i++) {
 		if (c->Constants[i].Type == RC_CONSTANT_IMMEDIATE) {
-			float * values = c->Constants[i].u.Immediate;
-			fprintf(stderr, "CONST[%u] = "
-				"{ %10.4f %10.4f %10.4f %10.4f }\n",
-				i, values[0],values[1], values[2], values[3]);
+			float *values = c->Constants[i].u.Immediate;
+			fprintf(stderr, "CONST[%u] = {", i);
+			for (unsigned chan = 0; chan < 4; chan++) {
+				if (c->Constants[i].UseMask & 1 << chan)
+					fprintf(stderr, "%11.6f ", values[chan]);
+				else
+					fprintf(stderr, "     unused ");
+			}
+			fprintf(stderr, "}\n");
+		}
+		if (r && c->Constants[i].Type == RC_CONSTANT_EXTERNAL) {
+			fprintf(stderr, "CONST[%u] = {", i);
+			for (unsigned chan = 0; chan < 4; chan++) {
+				fprintf(stderr, "CONST[%i].%c ", r[i].index[chan],
+					swizzle_char(r[i].swizzle[chan]));
+			}
+			fprintf(stderr, " }\n");
 		}
 	}
 }

@@ -115,6 +115,14 @@ panvk_lower_sysvals(nir_builder *b, nir_instr *instr, void *data)
          val = load_sysval_from_ubo(b, intr, SYSVAL(blend_constants));
       }
       break;
+
+   case nir_intrinsic_load_layer_id:
+      /* We don't support layered rendering yet, so force the layer_id to
+       * zero for now.
+       */
+      val = nir_imm_int(b, 0);
+      break;
+
    default:
       return false;
    }
@@ -273,6 +281,15 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
    NIR_PASS_V(nir, nir_opt_copy_prop_vars);
    NIR_PASS_V(nir, nir_opt_combine_stores, nir_var_all);
    NIR_PASS_V(nir, nir_opt_loop);
+
+   if (stage == MESA_SHADER_FRAGMENT) {
+      struct nir_input_attachment_options lower_input_attach_opts = {
+         .use_fragcoord_sysval = true,
+         .use_layer_id_sysval = true,
+      };
+
+      NIR_PASS_V(nir, nir_lower_input_attachments, &lower_input_attach_opts);
+   }
 
    /* Do texture lowering here.  Yes, it's a duplication of the texture
     * lowering in bifrost_compile.  However, we need to lower texture stuff

@@ -658,6 +658,7 @@ panvk_per_arch(UpdateDescriptorSets)(
          break;
 
       case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+      case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
          for (uint32_t j = 0; j < write->descriptorCount; j++) {
             panvk_write_tex_desc(set, write->dstBinding,
                                  write->dstArrayElement + j,
@@ -666,7 +667,6 @@ panvk_per_arch(UpdateDescriptorSets)(
          break;
 
       case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-      case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
          for (uint32_t j = 0; j < write->descriptorCount; j++) {
             panvk_write_img_desc(set, write->dstBinding,
                                  write->dstArrayElement + j,
@@ -772,6 +772,7 @@ panvk_per_arch(UpdateDescriptorSets)(
          break;
 
       case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+      case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
       case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
          for (uint32_t j = 0; j < copy->descriptorCount; j++) {
             panvk_copy_tex_desc(dst_set, copy->dstBinding,
@@ -781,7 +782,6 @@ panvk_per_arch(UpdateDescriptorSets)(
          break;
 
       case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-      case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
       case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
          for (uint32_t j = 0; j < copy->descriptorCount; j++) {
             panvk_copy_img_desc(dst_set, copy->dstBinding,
@@ -848,6 +848,7 @@ panvk_per_arch(UpdateDescriptorSetWithTemplate)(
       case VK_DESCRIPTOR_TYPE_SAMPLER:
       case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
       case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+      case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
          for (unsigned j = 0; j < entry->array_count; j++) {
             const VkDescriptorImageInfo *info =
                data + entry->offset + j * entry->stride;
@@ -861,7 +862,8 @@ panvk_per_arch(UpdateDescriptorSetWithTemplate)(
             }
 
             if (entry->type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE ||
-                entry->type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) {
+                entry->type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
+                entry->type == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT) {
 
                panvk_write_tex_desc(set, entry->binding,
                                     entry->array_element + j, info);
@@ -870,7 +872,6 @@ panvk_per_arch(UpdateDescriptorSetWithTemplate)(
          break;
 
       case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-      case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
          for (unsigned j = 0; j < entry->array_count; j++) {
             const VkDescriptorImageInfo *info =
                data + entry->offset + j * entry->stride;

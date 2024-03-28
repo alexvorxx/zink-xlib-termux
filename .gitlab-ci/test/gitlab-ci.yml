@@ -59,10 +59,14 @@ python-test:
   rules:
     - !reference [.disable-farm-mr-rules, rules]
     - !reference [.never-post-merge-rules, rules]
-    - changes:
+    - if: $GITLAB_USER_LOGIN == "marge-bot"
+      changes: &bin_ci_files
         - .gitlab-ci.yml
         - .gitlab-ci/**/*
         - bin/ci/**/*
+      when: on_success
+    - changes: *bin_ci_files
+      when: manual
 
 .test-gl:
   extends:

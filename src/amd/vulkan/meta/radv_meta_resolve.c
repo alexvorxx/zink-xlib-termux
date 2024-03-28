@@ -508,8 +508,8 @@ radv_CmdResolveImage2(VkCommandBuffer commandBuffer, const VkResolveImageInfo2 *
    RADV_FROM_HANDLE(radv_image, dst_image, pResolveImageInfo->dstImage);
    VkImageLayout src_image_layout = pResolveImageInfo->srcImageLayout;
    VkImageLayout dst_image_layout = pResolveImageInfo->dstImageLayout;
-   const struct radv_physical_device *pdevice = cmd_buffer->device->physical_device;
-   enum radv_resolve_method resolve_method = pdevice->rad_info.gfx_level >= GFX11 ? RESOLVE_FRAGMENT : RESOLVE_HW;
+   const struct radv_physical_device *pdev = cmd_buffer->device->physical_device;
+   enum radv_resolve_method resolve_method = pdev->rad_info.gfx_level >= GFX11 ? RESOLVE_FRAGMENT : RESOLVE_HW;
 
    /* we can use the hw resolve only for single full resolves */
    if (pResolveImageInfo->regionCount == 1) {
@@ -622,9 +622,9 @@ radv_cmd_buffer_resolve_rendering_hw(struct radv_cmd_buffer *cmd_buffer, struct 
 void
 radv_cmd_buffer_resolve_rendering(struct radv_cmd_buffer *cmd_buffer)
 {
-   const struct radv_physical_device *pdevice = cmd_buffer->device->physical_device;
+   const struct radv_physical_device *pdev = cmd_buffer->device->physical_device;
    const struct radv_rendering_state *render = &cmd_buffer->state.render;
-   enum radv_resolve_method resolve_method = pdevice->rad_info.gfx_level >= GFX11 ? RESOLVE_FRAGMENT : RESOLVE_HW;
+   enum radv_resolve_method resolve_method = pdev->rad_info.gfx_level >= GFX11 ? RESOLVE_FRAGMENT : RESOLVE_HW;
 
    bool has_color_resolve = false;
    for (uint32_t i = 0; i < render->color_att_count; ++i) {

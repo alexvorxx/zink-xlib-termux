@@ -1095,21 +1095,21 @@ radv_GetDeviceFaultInfoEXT(VkDevice _device, VkDeviceFaultCountsEXT *pFaultCount
    pFaultCounts->vendorBinarySize = 0;
 
    if (device->gpu_hang_report) {
-      const struct radv_physical_device *pdevice = device->physical_device;
+      const struct radv_physical_device *pdev = device->physical_device;
 
       VkDeviceFaultVendorBinaryHeaderVersionOneEXT hdr;
 
       hdr.headerSize = sizeof(VkDeviceFaultVendorBinaryHeaderVersionOneEXT);
       hdr.headerVersion = VK_DEVICE_FAULT_VENDOR_BINARY_HEADER_VERSION_ONE_EXT;
-      hdr.vendorID = pdevice->vk.properties.vendorID;
-      hdr.deviceID = pdevice->vk.properties.deviceID;
-      hdr.driverVersion = pdevice->vk.properties.driverVersion;
-      memcpy(hdr.pipelineCacheUUID, pdevice->cache_uuid, VK_UUID_SIZE);
+      hdr.vendorID = pdev->vk.properties.vendorID;
+      hdr.deviceID = pdev->vk.properties.deviceID;
+      hdr.driverVersion = pdev->vk.properties.driverVersion;
+      memcpy(hdr.pipelineCacheUUID, pdev->cache_uuid, VK_UUID_SIZE);
       hdr.applicationNameOffset = 0;
-      hdr.applicationVersion = pdevice->instance->vk.app_info.app_version;
+      hdr.applicationVersion = pdev->instance->vk.app_info.app_version;
       hdr.engineNameOffset = 0;
-      hdr.engineVersion = pdevice->instance->vk.app_info.engine_version;
-      hdr.apiVersion = pdevice->instance->vk.app_info.api_version;
+      hdr.engineVersion = pdev->instance->vk.app_info.engine_version;
+      hdr.apiVersion = pdev->instance->vk.app_info.api_version;
 
       pFaultCounts->vendorBinarySize = sizeof(hdr) + strlen(device->gpu_hang_report);
       if (pFaultInfo) {

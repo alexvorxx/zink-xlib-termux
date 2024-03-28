@@ -100,11 +100,10 @@ radv_GetMemoryHostPointerPropertiesEXT(VkDevice _device, VkExternalMemoryHandleT
 
    switch (handleType) {
    case VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT: {
-      const struct radv_physical_device *physical_device = device->physical_device;
+      const struct radv_physical_device *pdev = device->physical_device;
       uint32_t memoryTypeBits = 0;
-      for (int i = 0; i < physical_device->memory_properties.memoryTypeCount; i++) {
-         if (physical_device->memory_domains[i] == RADEON_DOMAIN_GTT &&
-             !(physical_device->memory_flags[i] & RADEON_FLAG_GTT_WC)) {
+      for (int i = 0; i < pdev->memory_properties.memoryTypeCount; i++) {
+         if (pdev->memory_domains[i] == RADEON_DOMAIN_GTT && !(pdev->memory_flags[i] & RADEON_FLAG_GTT_WC)) {
             memoryTypeBits = (1 << i);
             break;
          }
@@ -555,7 +554,7 @@ add_entrypoints(struct dispatch_table_builder *b, const struct vk_device_entrypo
 }
 
 static void
-init_dispatch_tables(struct radv_device *device, struct radv_physical_device *physical_device)
+init_dispatch_tables(struct radv_device *device, struct radv_physical_device *pdev)
 {
    struct dispatch_table_builder b = {0};
    b.tables[RADV_DEVICE_DISPATCH_TABLE] = &device->vk.dispatch_table;
@@ -566,26 +565,26 @@ init_dispatch_tables(struct radv_device *device, struct radv_physical_device *ph
    b.tables[RADV_RMV_DISPATCH_TABLE] = &device->layer_dispatch.rmv;
    b.tables[RADV_CTX_ROLL_DISPATCH_TABLE] = &device->layer_dispatch.ctx_roll;
 
-   bool gather_ctx_rolls = physical_device->instance->vk.trace_mode & RADV_TRACE_MODE_CTX_ROLLS;
+   bool gather_ctx_rolls = pdev->instance->vk.trace_mode & RADV_TRACE_MODE_CTX_ROLLS;
    if (radv_device_fault_detection_enabled(device) || gather_ctx_rolls)
       add_entrypoints(&b, &annotate_device_entrypoints, RADV_ANNOTATE_DISPATCH_TABLE);
 
-   if (!strcmp(physical_device->instance->drirc.app_layer, "metroexodus")) {
+   if (!strcmp(pdev->instance->drirc.app_layer, "metroexodus")) {
       add_entrypoints(&b, &metro_exodus_device_entrypoints, RADV_APP_DISPATCH_TABLE);
-   } else if (!strcmp(physical_device->instance->drirc.app_layer, "rage2")) {
+   } else if (!strcmp(pdev->instance->drirc.app_layer, "rage2")) {
       add_entrypoints(&b, &rage2_device_entrypoints, RADV_APP_DISPATCH_TABLE);
-   } else if (!strcmp(physical_device->instance->drirc.app_layer, "quanticdream")) {
+   } else if (!strcmp(pdev->instance->drirc.app_layer, "quanticdream")) {
       add_entrypoints(&b, &quantic_dream_device_entrypoints, RADV_APP_DISPATCH_TABLE);
    }
 
-   if (physical_device->instance->vk.trace_mode & RADV_TRACE_MODE_RGP)
+   if (pdev->instance->vk.trace_mode & RADV_TRACE_MODE_RGP)
       add_entrypoints(&b, &sqtt_device_entrypoints, RADV_RGP_DISPATCH_TABLE);
 
-   if ((physical_device->instance->vk.trace_mode & RADV_TRACE_MODE_RRA) && radv_enable_rt(physical_device, false))
+   if ((pdev->instance->vk.trace_mode & RADV_TRACE_MODE_RRA) && radv_enable_rt(pdev, false))
       add_entrypoints(&b, &rra_device_entrypoints, RADV_RRA_DISPATCH_TABLE);
 
 #ifndef _WIN32
-   if (physical_device->instance->vk.trace_mode & VK_TRACE_MODE_RMV)
+   if (pdev->instance->vk.trace_mode & VK_TRACE_MODE_RMV)
       add_entrypoints(&b, &rmv_device_entrypoints, RADV_RMV_DISPATCH_TABLE);
 #endif
 
@@ -667,7 +666,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCreateInfo,
                   const VkAllocationCallbacks *pAllocator, VkDevice *pDevice)
 {
-   RADV_FROM_HANDLE(radv_physical_device, physical_device, physicalDevice);
+   RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
    VkResult result;
    struct radv_device *device;
 
@@ -687,12 +686,11 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
       }
    }
 
-   device = vk_zalloc2(&physical_device->instance->vk.alloc, pAllocator, sizeof(*device), 8,
-                       VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+   device = vk_zalloc2(&pdev->instance->vk.alloc, pAllocator, sizeof(*device), 8, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
    if (!device)
-      return vk_error(physical_device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
+      return vk_error(pdev->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   result = vk_device_init(&device->vk, &physical_device->vk, NULL, pCreateInfo, pAllocator);
+   result = vk_device_init(&device->vk, &pdev->vk, NULL, pCreateInfo, pAllocator);
    if (result != VK_SUCCESS) {
       vk_free(&device->vk.alloc, device);
       return result;
@@ -702,10 +700,10 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
 
    device->vk.command_buffer_ops = &radv_cmd_buffer_ops;
 
-   device->instance = physical_device->instance;
-   device->physical_device = physical_device;
+   device->instance = pdev->instance;
+   device->physical_device = pdev;
 
-   init_dispatch_tables(device, physical_device);
+   init_dispatch_tables(device, pdev);
 
    simple_mtx_init(&device->ctx_roll_mtx, mtx_plain);
    simple_mtx_init(&device->trace_mtx, mtx_plain);
@@ -715,7 +713,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
 
    device->rt_handles = _mesa_hash_table_create(NULL, _mesa_hash_u32, _mesa_key_u32_equal);
 
-   device->ws = physical_device->ws;
+   device->ws = pdev->ws;
    vk_device_set_drm_fd(&device->vk, device->ws->get_fd(device->ws));
 
    /* With update after bind we can't attach bo's to the command buffer
@@ -739,7 +737,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    device->overallocation_disallowed = overallocation_disallowed;
    mtx_init(&device->overallocation_mutex, mtx_plain);
 
-   if (physical_device->rad_info.register_shadowing_required || device->instance->debug_flags & RADV_DEBUG_SHADOW_REGS)
+   if (pdev->rad_info.register_shadowing_required || device->instance->debug_flags & RADV_DEBUG_SHADOW_REGS)
       device->uses_shadow_regs = true;
 
    /* Create one context per queue priority. */
@@ -816,7 +814,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
     * async compute). I've seen ~2% performance difference between 4 and 32.
     */
    uint32_t max_threads_per_block = 2048;
-   device->scratch_waves = MAX2(32 * physical_device->rad_info.num_cu, max_threads_per_block / 64);
+   device->scratch_waves = MAX2(32 * pdev->rad_info.num_cu, max_threads_per_block / 64);
 
    device->dispatch_initiator = S_00B800_COMPUTE_SHADER_EN(1);
 
@@ -896,10 +894,10 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    }
 
 #ifndef _WIN32
-   if (physical_device->instance->vk.trace_mode & VK_TRACE_MODE_RMV) {
+   if (pdev->instance->vk.trace_mode & VK_TRACE_MODE_RMV) {
       struct vk_rmv_device_info info;
       memset(&info, 0, sizeof(struct vk_rmv_device_info));
-      radv_rmv_fill_device_info(physical_device, &info);
+      radv_rmv_fill_device_info(pdev, &info);
       vk_memory_trace_init(&device->vk, &info);
       radv_memory_trace_init(device);
    }
@@ -1017,7 +1015,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
       }
    }
 
-   if ((device->instance->vk.trace_mode & RADV_TRACE_MODE_RRA) && radv_enable_rt(physical_device, false)) {
+   if ((device->instance->vk.trace_mode & RADV_TRACE_MODE_RRA) && radv_enable_rt(pdev, false)) {
       result = radv_rra_trace_init(device);
       if (result != VK_SUCCESS)
          goto fail;
@@ -1822,10 +1820,10 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
 void
 radv_gfx11_set_db_render_control(const struct radv_device *device, unsigned num_samples, unsigned *db_render_control)
 {
-   const struct radv_physical_device *pdevice = device->physical_device;
+   const struct radv_physical_device *pdev = device->physical_device;
    unsigned max_allowed_tiles_in_wave = 0;
 
-   if (pdevice->rad_info.has_dedicated_vram) {
+   if (pdev->rad_info.has_dedicated_vram) {
       if (num_samples == 8)
          max_allowed_tiles_in_wave = 6;
       else if (num_samples == 4)
@@ -1863,7 +1861,7 @@ radv_GetMemoryFdKHR(VkDevice _device, const VkMemoryGetFdInfoKHR *pGetFdInfo, in
 }
 
 static uint32_t
-radv_compute_valid_memory_types_attempt(struct radv_physical_device *dev, enum radeon_bo_domain domains,
+radv_compute_valid_memory_types_attempt(struct radv_physical_device *pdev, enum radeon_bo_domain domains,
                                         enum radeon_bo_flag flags, enum radeon_bo_flag ignore_flags)
 {
    /* Don't count GTT/CPU as relevant:
@@ -1873,11 +1871,11 @@ radv_compute_valid_memory_types_attempt(struct radv_physical_device *dev, enum r
     */
    const enum radeon_bo_domain relevant_domains = RADEON_DOMAIN_VRAM | RADEON_DOMAIN_GDS | RADEON_DOMAIN_OA;
    uint32_t bits = 0;
-   for (unsigned i = 0; i < dev->memory_properties.memoryTypeCount; ++i) {
-      if ((domains & relevant_domains) != (dev->memory_domains[i] & relevant_domains))
+   for (unsigned i = 0; i < pdev->memory_properties.memoryTypeCount; ++i) {
+      if ((domains & relevant_domains) != (pdev->memory_domains[i] & relevant_domains))
          continue;
 
-      if ((flags & ~ignore_flags) != (dev->memory_flags[i] & ~ignore_flags))
+      if ((flags & ~ignore_flags) != (pdev->memory_flags[i] & ~ignore_flags))
          continue;
 
       bits |= 1u << i;
@@ -1887,24 +1885,24 @@ radv_compute_valid_memory_types_attempt(struct radv_physical_device *dev, enum r
 }
 
 static uint32_t
-radv_compute_valid_memory_types(struct radv_physical_device *dev, enum radeon_bo_domain domains,
+radv_compute_valid_memory_types(struct radv_physical_device *pdev, enum radeon_bo_domain domains,
                                 enum radeon_bo_flag flags)
 {
    enum radeon_bo_flag ignore_flags = ~(RADEON_FLAG_NO_CPU_ACCESS | RADEON_FLAG_GTT_WC);
-   uint32_t bits = radv_compute_valid_memory_types_attempt(dev, domains, flags, ignore_flags);
+   uint32_t bits = radv_compute_valid_memory_types_attempt(pdev, domains, flags, ignore_flags);
 
    if (!bits) {
       ignore_flags |= RADEON_FLAG_GTT_WC;
-      bits = radv_compute_valid_memory_types_attempt(dev, domains, flags, ignore_flags);
+      bits = radv_compute_valid_memory_types_attempt(pdev, domains, flags, ignore_flags);
    }
 
    if (!bits) {
       ignore_flags |= RADEON_FLAG_NO_CPU_ACCESS;
-      bits = radv_compute_valid_memory_types_attempt(dev, domains, flags, ignore_flags);
+      bits = radv_compute_valid_memory_types_attempt(pdev, domains, flags, ignore_flags);
    }
 
    /* Avoid 32-bit memory types for shared memory. */
-   bits &= ~dev->memory_types_32bit;
+   bits &= ~pdev->memory_types_32bit;
 
    return bits;
 }

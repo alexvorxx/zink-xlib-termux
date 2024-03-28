@@ -307,11 +307,11 @@ cmp_uint32_t(const void *a, const void *b)
 }
 
 static VkResult
-radv_get_counter_registers(const struct radv_physical_device *pdevice, uint32_t num_indices, const uint32_t *indices,
+radv_get_counter_registers(const struct radv_physical_device *pdev, uint32_t num_indices, const uint32_t *indices,
                            unsigned *out_num_regs, uint32_t **out_regs)
 {
-   ASSERTED uint32_t num_counters = pdevice->num_perfcounters;
-   const struct radv_perfcounter_desc *descs = pdevice->perfcounters;
+   ASSERTED uint32_t num_counters = pdev->num_perfcounters;
+   const struct radv_perfcounter_desc *descs = pdev->perfcounters;
 
    unsigned full_reg_cnt = num_indices * ARRAY_SIZE(descs->impl.regs);
    uint32_t *regs = malloc(full_reg_cnt * sizeof(uint32_t));
@@ -343,13 +343,13 @@ radv_get_counter_registers(const struct radv_physical_device *pdevice, uint32_t 
 }
 
 static unsigned
-radv_pc_get_num_instances(const struct radv_physical_device *pdevice, struct ac_pc_block *ac_block)
+radv_pc_get_num_instances(const struct radv_physical_device *pdev, struct ac_pc_block *ac_block)
 {
-   return ac_block->num_instances * ((ac_block->b->b->flags & AC_PC_BLOCK_SE) ? pdevice->rad_info.max_se : 1);
+   return ac_block->num_instances * ((ac_block->b->b->flags & AC_PC_BLOCK_SE) ? pdev->rad_info.max_se : 1);
 }
 
 static unsigned
-radv_get_num_counter_passes(const struct radv_physical_device *pdevice, unsigned num_regs, const uint32_t *regs)
+radv_get_num_counter_passes(const struct radv_physical_device *pdev, unsigned num_regs, const uint32_t *regs)
 {
    enum ac_pc_gpu_block prev_block = NUM_GPU_BLOCK;
    unsigned block_reg_count = 0;
@@ -362,7 +362,7 @@ radv_get_num_counter_passes(const struct radv_physical_device *pdevice, unsigned
       if (block != prev_block) {
          block_reg_count = 0;
          prev_block = block;
-         ac_block = ac_pc_get_block(&pdevice->ac_perfcounters, block);
+         ac_block = ac_pc_get_block(&pdev->ac_perfcounters, block);
       }
 
       ++block_reg_count;
@@ -381,22 +381,22 @@ radv_pc_deinit_query_pool(struct radv_pc_query_pool *pool)
 }
 
 VkResult
-radv_pc_init_query_pool(struct radv_physical_device *pdevice, const VkQueryPoolCreateInfo *pCreateInfo,
+radv_pc_init_query_pool(struct radv_physical_device *pdev, const VkQueryPoolCreateInfo *pCreateInfo,
                         struct radv_pc_query_pool *pool)
 {
    const VkQueryPoolPerformanceCreateInfoKHR *perf_info =
       vk_find_struct_const(pCreateInfo->pNext, QUERY_POOL_PERFORMANCE_CREATE_INFO_KHR);
    VkResult result;
 
-   if (!radv_init_perfcounter_descs(pdevice))
+   if (!radv_init_perfcounter_descs(pdev))
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
-   result = radv_get_counter_registers(pdevice, perf_info->counterIndexCount, perf_info->pCounterIndices,
+   result = radv_get_counter_registers(pdev, perf_info->counterIndexCount, perf_info->pCounterIndices,
                                        &pool->num_pc_regs, &pool->pc_regs);
    if (result != VK_SUCCESS)
       return result;
 
-   pool->num_passes = radv_get_num_counter_passes(pdevice, pool->num_pc_regs, pool->pc_regs);
+   pool->num_passes = radv_get_num_counter_passes(pdev, pool->num_pc_regs, pool->pc_regs);
 
    uint32_t *pc_reg_offsets = malloc(pool->num_pc_regs * sizeof(uint32_t));
    if (!pc_reg_offsets)
@@ -405,8 +405,8 @@ radv_pc_init_query_pool(struct radv_physical_device *pdevice, const VkQueryPoolC
    unsigned offset = 0;
    for (unsigned i = 0; i < pool->num_pc_regs; ++i) {
       enum ac_pc_gpu_block block = pool->pc_regs[i] >> 16;
-      struct ac_pc_block *ac_block = ac_pc_get_block(&pdevice->ac_perfcounters, block);
-      unsigned num_instances = radv_pc_get_num_instances(pdevice, ac_block);
+      struct ac_pc_block *ac_block = ac_pc_get_block(&pdev->ac_perfcounters, block);
+      unsigned num_instances = radv_pc_get_num_instances(pdev, ac_block);
 
       pc_reg_offsets[i] = S_REG_OFFSET(offset) | S_REG_INSTANCES(num_instances);
       offset += sizeof(uint64_t) * 2 * num_instances;
@@ -423,7 +423,7 @@ radv_pc_init_query_pool(struct radv_physical_device *pdevice, const VkQueryPoolC
    }
 
    for (unsigned i = 0; i < pool->num_counters; ++i) {
-      pool->counters[i] = pdevice->perfcounters[perf_info->pCounterIndices[i]].impl;
+      pool->counters[i] = pdev->perfcounters[perf_info->pCounterIndices[i]].impl;
 
       for (unsigned j = 0; j < ARRAY_SIZE(pool->counters[i].regs); ++j) {
          uint32_t reg = pool->counters[i].regs[j];
@@ -556,7 +556,7 @@ static void
 radv_pc_stop_and_sample(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query_pool *pool, uint64_t va, bool end)
 {
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
-   struct radv_physical_device *pdevice = cmd_buffer->device->physical_device;
+   struct radv_physical_device *pdev = cmd_buffer->device->physical_device;
 
    radeon_emit(cs, PKT3(PKT3_EVENT_WRITE, 0, 0));
    radeon_emit(cs, EVENT_TYPE(V_028A90_PERFCOUNTER_SAMPLE) | EVENT_INDEX(0));
@@ -584,9 +584,9 @@ radv_pc_stop_and_sample(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query
 
       for (unsigned i = 0; i < pool->num_pc_regs;) {
          enum ac_pc_gpu_block block = G_REG_BLOCK(pool->pc_regs[i]);
-         struct ac_pc_block *ac_block = ac_pc_get_block(&pdevice->ac_perfcounters, block);
+         struct ac_pc_block *ac_block = ac_pc_get_block(&pdev->ac_perfcounters, block);
          unsigned offset = ac_block->num_instances * pass;
-         unsigned num_instances = radv_pc_get_num_instances(pdevice, ac_block);
+         unsigned num_instances = radv_pc_get_num_instances(pdev, ac_block);
 
          unsigned cnt = 1;
          while (cnt < pool->num_pc_regs - i && block == G_REG_BLOCK(pool->pc_regs[i + cnt]))
@@ -621,7 +621,7 @@ void
 radv_pc_begin_query(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query_pool *pool, uint64_t va)
 {
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
-   struct radv_physical_device *pdevice = cmd_buffer->device->physical_device;
+   struct radv_physical_device *pdev = cmd_buffer->device->physical_device;
    ASSERTED unsigned cdw_max;
 
    cmd_buffer->state.uses_perf_counters = true;
@@ -663,7 +663,7 @@ radv_pc_begin_query(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query_poo
 
       for (unsigned i = 0; i < pool->num_pc_regs;) {
          enum ac_pc_gpu_block block = G_REG_BLOCK(pool->pc_regs[i]);
-         struct ac_pc_block *ac_block = ac_pc_get_block(&pdevice->ac_perfcounters, block);
+         struct ac_pc_block *ac_block = ac_pc_get_block(&pdev->ac_perfcounters, block);
          unsigned offset = ac_block->num_instances * pass;
 
          unsigned cnt = 1;
@@ -807,18 +807,18 @@ radv_EnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR(
    VkPhysicalDevice physicalDevice, uint32_t queueFamilyIndex, uint32_t *pCounterCount,
    VkPerformanceCounterKHR *pCounters, VkPerformanceCounterDescriptionKHR *pCounterDescriptions)
 {
-   RADV_FROM_HANDLE(radv_physical_device, pdevice, physicalDevice);
+   RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
 
-   if (vk_queue_to_radv(pdevice, queueFamilyIndex) != RADV_QUEUE_GENERAL) {
+   if (vk_queue_to_radv(pdev, queueFamilyIndex) != RADV_QUEUE_GENERAL) {
       *pCounterCount = 0;
       return VK_SUCCESS;
    }
 
-   if (!radv_init_perfcounter_descs(pdevice))
+   if (!radv_init_perfcounter_descs(pdev))
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
-   uint32_t counter_cnt = pdevice->num_perfcounters;
-   const struct radv_perfcounter_desc *descs = pdevice->perfcounters;
+   uint32_t counter_cnt = pdev->num_perfcounters;
+   const struct radv_perfcounter_desc *descs = pdev->perfcounters;
 
    if (!pCounters && !pCounterDescriptions) {
       *pCounterCount = counter_cnt;
@@ -859,31 +859,31 @@ radv_GetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR(
    VkPhysicalDevice physicalDevice, const VkQueryPoolPerformanceCreateInfoKHR *pPerformanceQueryCreateInfo,
    uint32_t *pNumPasses)
 {
-   RADV_FROM_HANDLE(radv_physical_device, pdevice, physicalDevice);
+   RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
 
    if (pPerformanceQueryCreateInfo->counterIndexCount == 0) {
       *pNumPasses = 0;
       return;
    }
 
-   if (!radv_init_perfcounter_descs(pdevice)) {
+   if (!radv_init_perfcounter_descs(pdev)) {
       /* Can't return an error, so log */
       fprintf(stderr, "radv: Failed to init perf counters\n");
       *pNumPasses = 1;
       return;
    }
 
-   assert(vk_queue_to_radv(pdevice, pPerformanceQueryCreateInfo->queueFamilyIndex) == RADV_QUEUE_GENERAL);
+   assert(vk_queue_to_radv(pdev, pPerformanceQueryCreateInfo->queueFamilyIndex) == RADV_QUEUE_GENERAL);
 
    unsigned num_regs = 0;
    uint32_t *regs = NULL;
-   VkResult result = radv_get_counter_registers(pdevice, pPerformanceQueryCreateInfo->counterIndexCount,
+   VkResult result = radv_get_counter_registers(pdev, pPerformanceQueryCreateInfo->counterIndexCount,
                                                 pPerformanceQueryCreateInfo->pCounterIndices, &num_regs, &regs);
    if (result != VK_SUCCESS) {
       /* Can't return an error, so log */
       fprintf(stderr, "radv: Failed to allocate memory for perf counters\n");
    }
 
-   *pNumPasses = radv_get_num_counter_passes(pdevice, num_regs, regs);
+   *pNumPasses = radv_get_num_counter_passes(pdev, num_regs, regs);
    free(regs);
 }

@@ -372,14 +372,14 @@ struct radv_physical_device {
    struct radv_physical_device_cache_key cache_key;
 };
 
-uint32_t radv_find_memory_index(const struct radv_physical_device *pdevice, VkMemoryPropertyFlags flags);
+uint32_t radv_find_memory_index(const struct radv_physical_device *pdev, VkMemoryPropertyFlags flags);
 
 VkResult create_null_physical_device(struct vk_instance *vk_instance);
 
 VkResult create_drm_physical_device(struct vk_instance *vk_instance, struct _drmDevice *device,
                                     struct vk_physical_device **out);
 
-void radv_physical_device_destroy(struct vk_physical_device *vk_device);
+void radv_physical_device_destroy(struct vk_physical_device *vk_pdev);
 
 enum radv_trace_mode {
    /** Radeon GPU Profiler */
@@ -435,8 +435,8 @@ struct radv_instance {
    } drirc;
 };
 
-VkResult radv_init_wsi(struct radv_physical_device *physical_device);
-void radv_finish_wsi(struct radv_physical_device *physical_device);
+VkResult radv_init_wsi(struct radv_physical_device *pdev);
+void radv_finish_wsi(struct radv_physical_device *pdev);
 
 struct radv_shader_binary_part;
 
@@ -744,11 +744,11 @@ struct radv_meta_state {
 #define RADV_NUM_HW_CTX (RADEON_CTX_PRIORITY_REALTIME + 1)
 
 static inline bool
-radv_sparse_queue_enabled(const struct radv_physical_device *pdevice)
+radv_sparse_queue_enabled(const struct radv_physical_device *pdev)
 {
    /* Dedicated sparse queue requires VK_QUEUE_SUBMIT_MODE_THREADED, which is incompatible with
     * VK_DEVICE_TIMELINE_MODE_EMULATED. */
-   return pdevice->rad_info.has_timeline_syncobj && !pdevice->instance->drirc.legacy_sparse_binding;
+   return pdev->rad_info.has_timeline_syncobj && !pdev->instance->drirc.legacy_sparse_binding;
 }
 
 static inline enum radv_queue_family
@@ -763,8 +763,7 @@ vk_queue_to_radv(const struct radv_physical_device *phys_dev, int queue_family_i
    return phys_dev->vk_queue_to_radv[queue_family_index];
 }
 
-enum amd_ip_type radv_queue_family_to_ring(const struct radv_physical_device *physical_device,
-                                           enum radv_queue_family f);
+enum amd_ip_type radv_queue_family_to_ring(const struct radv_physical_device *dev, enum radv_queue_family f);
 
 static inline bool
 radv_has_uvd(struct radv_physical_device *phys_dev)
@@ -2229,9 +2228,9 @@ void radv_hash_rt_shaders(const struct radv_device *device, unsigned char *hash,
                           const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
                           const struct radv_ray_tracing_group *groups);
 
-bool radv_enable_rt(const struct radv_physical_device *pdevice, bool rt_pipelines);
+bool radv_enable_rt(const struct radv_physical_device *pdev, bool rt_pipelines);
 
-bool radv_emulate_rt(const struct radv_physical_device *pdevice);
+bool radv_emulate_rt(const struct radv_physical_device *pdev);
 
 struct radv_prim_vertex_count {
    uint8_t min;
@@ -2535,7 +2534,7 @@ const struct radv_userdata_info *radv_get_user_sgpr(const struct radv_shader *sh
 
 struct radv_shader *radv_get_shader(struct radv_shader *const *shaders, gl_shader_stage stage);
 
-void radv_emit_compute_shader(const struct radv_physical_device *pdevice, struct radeon_cmdbuf *cs,
+void radv_emit_compute_shader(const struct radv_physical_device *pdev, struct radeon_cmdbuf *cs,
                               const struct radv_shader *shader);
 
 bool radv_mem_vectorize_callback(unsigned align_mul, unsigned align_offset, unsigned bit_size, unsigned num_components,
@@ -2644,13 +2643,13 @@ uint32_t radv_translate_dbformat(VkFormat format);
 uint32_t radv_translate_tex_dataformat(VkFormat format, const struct util_format_description *desc, int first_non_void);
 uint32_t radv_translate_tex_numformat(VkFormat format, const struct util_format_description *desc, int first_non_void);
 bool radv_format_pack_clear_color(VkFormat format, uint32_t clear_vals[2], VkClearColorValue *value);
-bool radv_is_storage_image_format_supported(const struct radv_physical_device *physical_device, VkFormat format);
-bool radv_is_colorbuffer_format_supported(const struct radv_physical_device *pdevice, VkFormat format, bool *blendable);
+bool radv_is_storage_image_format_supported(const struct radv_physical_device *dev, VkFormat format);
+bool radv_is_colorbuffer_format_supported(const struct radv_physical_device *pdev, VkFormat format, bool *blendable);
 bool radv_dcc_formats_compatible(enum amd_gfx_level gfx_level, VkFormat format1, VkFormat format2,
                                  bool *sign_reinterpret);
 bool radv_is_atomic_format_supported(VkFormat format);
-bool radv_device_supports_etc(const struct radv_physical_device *physical_device);
-bool radv_is_format_emulated(const struct radv_physical_device *physical_device, VkFormat format);
+bool radv_device_supports_etc(const struct radv_physical_device *pdev);
+bool radv_is_format_emulated(const struct radv_physical_device *pdev, VkFormat format);
 
 static const VkImageUsageFlags RADV_IMAGE_USAGE_WRITE_BITS =
    VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
@@ -3105,7 +3104,7 @@ struct radv_pc_query_pool {
 };
 
 void radv_pc_deinit_query_pool(struct radv_pc_query_pool *pool);
-VkResult radv_pc_init_query_pool(struct radv_physical_device *pdevice, const VkQueryPoolCreateInfo *pCreateInfo,
+VkResult radv_pc_init_query_pool(struct radv_physical_device *pdev, const VkQueryPoolCreateInfo *pCreateInfo,
                                  struct radv_pc_query_pool *pool);
 void radv_pc_begin_query(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query_pool *pool, uint64_t va);
 void radv_pc_end_query(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query_pool *pool, uint64_t va);
@@ -3233,7 +3232,7 @@ void radv_rmv_log_rt_pipeline_create(struct radv_device *device, struct radv_ray
 void radv_rmv_log_event_create(struct radv_device *device, VkEvent event, VkEventCreateFlags flags, bool is_internal);
 void radv_rmv_log_resource_destroy(struct radv_device *device, uint64_t handle);
 void radv_rmv_log_submit(struct radv_device *device, enum amd_ip_type type);
-void radv_rmv_fill_device_info(const struct radv_physical_device *device, struct vk_rmv_device_info *info);
+void radv_rmv_fill_device_info(const struct radv_physical_device *pdev, struct vk_rmv_device_info *info);
 void radv_rmv_collect_trace_events(struct radv_device *device);
 void radv_memory_trace_finish(struct radv_device *device);
 
@@ -3749,10 +3748,9 @@ radv_queue_ring(const struct radv_queue *queue)
 }
 
 /* radv_video */
-void radv_init_physical_device_decoder(struct radv_physical_device *pdevice);
-void radv_video_get_profile_alignments(struct radv_physical_device *pdevice,
-                                       const VkVideoProfileListInfoKHR *profile_list, uint32_t *width_align_out,
-                                       uint32_t *height_align_out);
+void radv_init_physical_device_decoder(struct radv_physical_device *pdev);
+void radv_video_get_profile_alignments(struct radv_physical_device *pdev, const VkVideoProfileListInfoKHR *profile_list,
+                                       uint32_t *width_align_out, uint32_t *height_align_out);
 /**
  * Helper used for debugging compiler issues by enabling/disabling LLVM for a
  * specific shader stage (developers only).
@@ -3764,16 +3762,16 @@ radv_use_llvm_for_stage(const struct radv_device *device, UNUSED gl_shader_stage
 }
 
 static inline bool
-radv_has_shader_buffer_float_minmax(const struct radv_physical_device *pdevice, unsigned bitsize)
+radv_has_shader_buffer_float_minmax(const struct radv_physical_device *pdev, unsigned bitsize)
 {
-   return (pdevice->rad_info.gfx_level <= GFX7 && !pdevice->use_llvm) || pdevice->rad_info.gfx_level == GFX10 ||
-          pdevice->rad_info.gfx_level == GFX10_3 || (pdevice->rad_info.gfx_level == GFX11 && bitsize == 32);
+   return (pdev->rad_info.gfx_level <= GFX7 && !pdev->use_llvm) || pdev->rad_info.gfx_level == GFX10 ||
+          pdev->rad_info.gfx_level == GFX10_3 || (pdev->rad_info.gfx_level == GFX11 && bitsize == 32);
 }
 
 static inline bool
-radv_has_pops(const struct radv_physical_device *pdevice)
+radv_has_pops(const struct radv_physical_device *pdev)
 {
-   return pdevice->rad_info.gfx_level >= GFX9 && !pdevice->use_llvm;
+   return pdev->rad_info.gfx_level >= GFX9 && !pdev->use_llvm;
 }
 
 unsigned radv_compact_spi_shader_col_format(const struct radv_shader *ps, uint32_t spi_shader_col_format);

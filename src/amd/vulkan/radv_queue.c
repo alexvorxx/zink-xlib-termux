@@ -725,16 +725,16 @@ static void
 radv_emit_attribute_ring(struct radv_device *device, struct radeon_cmdbuf *cs, struct radeon_winsys_bo *attr_ring_bo,
                          uint32_t attr_ring_size)
 {
-   const struct radv_physical_device *pdevice = device->physical_device;
+   const struct radv_physical_device *pdev = device->physical_device;
    uint64_t va;
 
    if (!attr_ring_bo)
       return;
 
-   assert(pdevice->rad_info.gfx_level >= GFX11);
+   assert(pdev->rad_info.gfx_level >= GFX11);
 
    va = radv_buffer_get_va(attr_ring_bo);
-   assert((va >> 32) == pdevice->rad_info.address32_hi);
+   assert((va >> 32) == pdev->rad_info.address32_hi);
 
    radv_cs_add_buffer(device->ws, cs, attr_ring_bo);
 
@@ -764,8 +764,8 @@ radv_emit_attribute_ring(struct radv_device *device, struct radeon_cmdbuf *cs, s
    /* The PS will read inputs from this address. */
    radeon_set_uconfig_reg(cs, R_031118_SPI_ATTRIBUTE_RING_BASE, va >> 16);
    radeon_set_uconfig_reg(cs, R_03111C_SPI_ATTRIBUTE_RING_SIZE,
-                          S_03111C_MEM_SIZE(((attr_ring_size / pdevice->rad_info.max_se) >> 16) - 1) |
-                             S_03111C_BIG_PAGE(pdevice->rad_info.discardable_allows_big_page) | S_03111C_L1_POLICY(1));
+                          S_03111C_MEM_SIZE(((attr_ring_size / pdev->rad_info.max_se) >> 16) - 1) |
+                             S_03111C_BIG_PAGE(pdev->rad_info.discardable_allows_big_page) | S_03111C_L1_POLICY(1));
 }
 
 static void

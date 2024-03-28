@@ -927,11 +927,10 @@ radv_GetPipelineExecutableStatisticsKHR(VkDevice _device, const VkPipelineExecut
    struct radv_shader *shader =
       radv_get_shader_from_executable_index(pipeline, pExecutableInfo->executableIndex, &stage);
 
-   const struct radv_physical_device *pdevice = device->physical_device;
+   const struct radv_physical_device *pdev = device->physical_device;
 
-   unsigned lds_increment = pdevice->rad_info.gfx_level >= GFX11 && stage == MESA_SHADER_FRAGMENT
-                               ? 1024
-                               : pdevice->rad_info.lds_encode_granularity;
+   unsigned lds_increment =
+      pdev->rad_info.gfx_level >= GFX11 && stage == MESA_SHADER_FRAGMENT ? 1024 : pdev->rad_info.lds_encode_granularity;
 
    VkPipelineExecutableStatisticKHR *s = pStatistics;
    VkPipelineExecutableStatisticKHR *end = s + (pStatistics ? *pStatisticCount : 0);

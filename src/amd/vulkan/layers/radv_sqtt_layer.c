@@ -1415,10 +1415,10 @@ static void
 radv_fill_code_object_record(struct radv_device *device, struct rgp_shader_data *shader_data,
                              struct radv_shader *shader, uint64_t va)
 {
-   struct radv_physical_device *pdevice = device->physical_device;
-   unsigned lds_increment = pdevice->rad_info.gfx_level >= GFX11 && shader->info.stage == MESA_SHADER_FRAGMENT
+   struct radv_physical_device *pdev = device->physical_device;
+   unsigned lds_increment = pdev->rad_info.gfx_level >= GFX11 && shader->info.stage == MESA_SHADER_FRAGMENT
                                ? 1024
-                               : pdevice->rad_info.lds_encode_granularity;
+                               : pdev->rad_info.lds_encode_granularity;
 
    memset(shader_data->rt_shader_name, 0, sizeof(shader_data->rt_shader_name));
    shader_data->hash[0] = (uint64_t)(uintptr_t)shader;

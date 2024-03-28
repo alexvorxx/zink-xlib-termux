@@ -1009,10 +1009,10 @@ get_tcs_num_patches(unsigned tcs_num_input_vertices, unsigned tcs_num_output_ver
 void radv_lower_ngg(struct radv_device *device, struct radv_shader_stage *ngg_stage,
                     const struct radv_graphics_state_key *gfx_state);
 
-bool radv_consider_culling(const struct radv_physical_device *pdevice, struct nir_shader *nir, uint64_t ps_inputs_read,
+bool radv_consider_culling(const struct radv_physical_device *pdev, struct nir_shader *nir, uint64_t ps_inputs_read,
                            unsigned num_vertices_per_primitive, const struct radv_shader_info *info);
 
-void radv_get_nir_options(struct radv_physical_device *device);
+void radv_get_nir_options(struct radv_physical_device *pdev);
 
 struct radv_ray_tracing_stage_info;
 

@@ -217,8 +217,8 @@ radv_GetSwapchainGrallocUsageANDROID(VkDevice device_h, VkFormat format, VkImage
                                      int *grallocUsage)
 {
    RADV_FROM_HANDLE(radv_device, device, device_h);
-   struct radv_physical_device *phys_dev = device->physical_device;
-   VkPhysicalDevice phys_dev_h = radv_physical_device_to_handle(phys_dev);
+   struct radv_physical_device *pdev = device->physical_device;
+   VkPhysicalDevice pdev_h = radv_physical_device_to_handle(pdev);
    VkResult result;
 
    *grallocUsage = 0;
@@ -249,7 +249,7 @@ radv_GetSwapchainGrallocUsageANDROID(VkDevice device_h, VkFormat format, VkImage
    };
 
    /* Check that requested format and usage are supported. */
-   result = radv_GetPhysicalDeviceImageFormatProperties2(phys_dev_h, &image_format_info, &image_format_props);
+   result = radv_GetPhysicalDeviceImageFormatProperties2(pdev_h, &image_format_info, &image_format_props);
    if (result != VK_SUCCESS) {
       return vk_errorf(device, result,
                        "radv_GetPhysicalDeviceImageFormatProperties2 failed "
@@ -298,8 +298,8 @@ radv_GetSwapchainGrallocUsage2ANDROID(VkDevice device_h, VkFormat format, VkImag
     * vkGetSwapchainGrallocUsageANDROID. */
 #if ANDROID_API_LEVEL >= 26
    RADV_FROM_HANDLE(radv_device, device, device_h);
-   struct radv_physical_device *phys_dev = device->physical_device;
-   VkPhysicalDevice phys_dev_h = radv_physical_device_to_handle(phys_dev);
+   struct radv_physical_device *pdev = device->physical_device;
+   VkPhysicalDevice pdev_h = radv_physical_device_to_handle(pdev);
    VkResult result;
 
    *grallocConsumerUsage = 0;
@@ -322,7 +322,7 @@ radv_GetSwapchainGrallocUsage2ANDROID(VkDevice device_h, VkFormat format, VkImag
    };
 
    /* Check that requested format and usage are supported. */
-   result = radv_GetPhysicalDeviceImageFormatProperties2(phys_dev_h, &image_format_info, &image_format_props);
+   result = radv_GetPhysicalDeviceImageFormatProperties2(pdev_h, &image_format_info, &image_format_props);
    if (result != VK_SUCCESS) {
       return vk_errorf(device, result,
                        "radv_GetPhysicalDeviceImageFormatProperties2 failed "
@@ -554,7 +554,7 @@ radv_GetAndroidHardwareBufferPropertiesANDROID(VkDevice device_h, const struct A
                                                VkAndroidHardwareBufferPropertiesANDROID *pProperties)
 {
    RADV_FROM_HANDLE(radv_device, dev, device_h);
-   struct radv_physical_device *pdevice = dev->physical_device;
+   struct radv_physical_device *pdev = dev->physical_device;
 
    VkAndroidHardwareBufferFormatPropertiesANDROID *format_prop =
       vk_find_struct(pProperties->pNext, ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_ANDROID);
@@ -579,10 +579,10 @@ radv_GetAndroidHardwareBufferPropertiesANDROID(VkDevice device_h, const struct A
       return VK_ERROR_INVALID_EXTERNAL_HANDLE;
 
    /* All memory types. */
-   uint32_t memory_types = (1u << pdevice->memory_properties.memoryTypeCount) - 1;
+   uint32_t memory_types = (1u << pdev->memory_properties.memoryTypeCount) - 1;
 
    pProperties->allocationSize = lseek(dma_buf, 0, SEEK_END);
-   pProperties->memoryTypeBits = memory_types & ~pdevice->memory_types_32bit;
+   pProperties->memoryTypeBits = memory_types & ~pdev->memory_types_32bit;
 
    return VK_SUCCESS;
 }

@@ -54,7 +54,7 @@
 #include "vk_format.h"
 
 static uint32_t
-radv_get_compute_resource_limits(const struct radv_physical_device *pdevice, const struct radv_shader *cs)
+radv_get_compute_resource_limits(const struct radv_physical_device *pdev, const struct radv_shader *cs)
 {
    unsigned threads_per_threadgroup;
    unsigned threadgroups_per_cu = 1;
@@ -65,11 +65,10 @@ radv_get_compute_resource_limits(const struct radv_physical_device *pdevice, con
    threads_per_threadgroup = cs->info.cs.block_size[0] * cs->info.cs.block_size[1] * cs->info.cs.block_size[2];
    waves_per_threadgroup = DIV_ROUND_UP(threads_per_threadgroup, cs->info.wave_size);
 
-   if (pdevice->rad_info.gfx_level >= GFX10 && waves_per_threadgroup == 1)
+   if (pdev->rad_info.gfx_level >= GFX10 && waves_per_threadgroup == 1)
       threadgroups_per_cu = 2;
 
-   return ac_get_compute_resource_limits(&pdevice->rad_info, waves_per_threadgroup, max_waves_per_sh,
-                                         threadgroups_per_cu);
+   return ac_get_compute_resource_limits(&pdev->rad_info, waves_per_threadgroup, max_waves_per_sh, threadgroups_per_cu);
 }
 
 void
@@ -111,7 +110,7 @@ radv_get_compute_pipeline_metadata(const struct radv_device *device, const struc
 }
 
 void
-radv_emit_compute_shader(const struct radv_physical_device *pdevice, struct radeon_cmdbuf *cs,
+radv_emit_compute_shader(const struct radv_physical_device *pdev, struct radeon_cmdbuf *cs,
                          const struct radv_shader *shader)
 {
    uint64_t va = radv_shader_get_va(shader);
@@ -121,11 +120,11 @@ radv_emit_compute_shader(const struct radv_physical_device *pdevice, struct rade
    radeon_set_sh_reg_seq(cs, R_00B848_COMPUTE_PGM_RSRC1, 2);
    radeon_emit(cs, shader->config.rsrc1);
    radeon_emit(cs, shader->config.rsrc2);
-   if (pdevice->rad_info.gfx_level >= GFX10) {
+   if (pdev->rad_info.gfx_level >= GFX10) {
       radeon_set_sh_reg(cs, R_00B8A0_COMPUTE_PGM_RSRC3, shader->config.rsrc3);
    }
 
-   radeon_set_sh_reg(cs, R_00B854_COMPUTE_RESOURCE_LIMITS, radv_get_compute_resource_limits(pdevice, shader));
+   radeon_set_sh_reg(cs, R_00B854_COMPUTE_RESOURCE_LIMITS, radv_get_compute_resource_limits(pdev, shader));
 
    radeon_set_sh_reg_seq(cs, R_00B81C_COMPUTE_NUM_THREAD_X, 3);
    radeon_emit(cs, S_00B81C_NUM_THREAD_FULL(shader->info.cs.block_size[0]));
@@ -137,13 +136,13 @@ static void
 radv_compute_generate_pm4(const struct radv_device *device, struct radv_compute_pipeline *pipeline,
                           struct radv_shader *shader)
 {
-   struct radv_physical_device *pdevice = device->physical_device;
+   struct radv_physical_device *pdev = device->physical_device;
    struct radeon_cmdbuf *cs = &pipeline->base.cs;
 
-   cs->reserved_dw = cs->max_dw = pdevice->rad_info.gfx_level >= GFX10 ? 19 : 16;
+   cs->reserved_dw = cs->max_dw = pdev->rad_info.gfx_level >= GFX10 ? 19 : 16;
    cs->buf = malloc(cs->max_dw * 4);
 
-   radv_emit_compute_shader(pdevice, cs, shader);
+   radv_emit_compute_shader(pdev, cs, shader);
 
    assert(pipeline->base.cs.cdw <= pipeline->base.cs.max_dw);
 }

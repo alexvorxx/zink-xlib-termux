@@ -211,9 +211,9 @@ radv_get_driver_uuid(void *uuid)
 }
 
 static void
-radv_get_device_uuid(const struct radeon_info *info, void *uuid)
+radv_get_device_uuid(const struct radeon_info *gpu_info, void *uuid)
 {
-   ac_compute_device_uuid(info, uuid, VK_UUID_SIZE);
+   ac_compute_device_uuid(gpu_info, uuid, VK_UUID_SIZE);
 }
 
 static void

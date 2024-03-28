@@ -1761,13 +1761,13 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
          ds->db_z_info |= S_028040_NUM_SAMPLES(util_logbase2(iview->image->vk.samples));
 
       if (device->physical_device->rad_info.gfx_level >= GFX7) {
-         const struct radeon_info *info = &device->physical_device->rad_info;
+         const struct radeon_info *gpu_info = &device->physical_device->rad_info;
          unsigned tiling_index = surf->u.legacy.tiling_index[level];
          unsigned stencil_index = surf->u.legacy.zs.stencil_tiling_index[level];
          unsigned macro_index = surf->u.legacy.macro_tile_index;
-         unsigned tile_mode = info->si_tile_mode_array[tiling_index];
-         unsigned stencil_tile_mode = info->si_tile_mode_array[stencil_index];
-         unsigned macro_mode = info->cik_macrotile_mode_array[macro_index];
+         unsigned tile_mode = gpu_info->si_tile_mode_array[tiling_index];
+         unsigned stencil_tile_mode = gpu_info->si_tile_mode_array[stencil_index];
+         unsigned macro_mode = gpu_info->cik_macrotile_mode_array[macro_index];
 
          if (stencil_only)
             tile_mode = stencil_tile_mode;

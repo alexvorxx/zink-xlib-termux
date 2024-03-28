@@ -101,19 +101,19 @@ radv_emit_sqtt_start(const struct radv_device *device, struct radeon_cmdbuf *cs,
 {
    const enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
    uint32_t shifted_size = device->sqtt.buffer_size >> SQTT_BUFFER_ALIGN_SHIFT;
-   const struct radeon_info *rad_info = &device->physical_device->rad_info;
-   const unsigned shader_mask = ac_sqtt_get_shader_mask(rad_info);
-   unsigned max_se = rad_info->max_se;
+   const struct radeon_info *gpu_info = &device->physical_device->rad_info;
+   const unsigned shader_mask = ac_sqtt_get_shader_mask(gpu_info);
+   unsigned max_se = gpu_info->max_se;
 
    radeon_check_space(device->ws, cs, 6 + max_se * 33);
 
    for (unsigned se = 0; se < max_se; se++) {
       uint64_t va = radv_buffer_get_va(device->sqtt.bo);
-      uint64_t data_va = ac_sqtt_get_data_va(rad_info, &device->sqtt, va, se);
+      uint64_t data_va = ac_sqtt_get_data_va(gpu_info, &device->sqtt, va, se);
       uint64_t shifted_va = data_va >> SQTT_BUFFER_ALIGN_SHIFT;
       int active_cu = ac_sqtt_get_active_cu(&device->physical_device->rad_info, se);
 
-      if (ac_sqtt_se_is_disabled(rad_info, se))
+      if (ac_sqtt_se_is_disabled(gpu_info, se))
          continue;
 
       /* Target SEx and SH0. */
@@ -936,9 +936,9 @@ bool
 radv_get_sqtt_trace(struct radv_queue *queue, struct ac_sqtt_trace *sqtt_trace)
 {
    struct radv_device *device = queue->device;
-   const struct radeon_info *rad_info = &device->physical_device->rad_info;
+   const struct radeon_info *gpu_info = &device->physical_device->rad_info;
 
-   if (!ac_sqtt_get_trace(&device->sqtt, rad_info, sqtt_trace)) {
+   if (!ac_sqtt_get_trace(&device->sqtt, gpu_info, sqtt_trace)) {
       if (!radv_sqtt_resize_bo(device))
          fprintf(stderr, "radv: Failed to resize the SQTT buffer.\n");
       return false;

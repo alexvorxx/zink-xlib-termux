@@ -237,7 +237,7 @@ enum radv_cs_dump_type {
 struct radeon_winsys {
    void (*destroy)(struct radeon_winsys *ws);
 
-   void (*query_info)(struct radeon_winsys *ws, struct radeon_info *info);
+   void (*query_info)(struct radeon_winsys *ws, struct radeon_info *gpu_info);
 
    uint64_t (*query_value)(struct radeon_winsys *ws, enum radeon_value_id value);
 

@@ -238,14 +238,14 @@ radv_emit_spm_setup(struct radv_device *device, struct radeon_cmdbuf *cs, enum r
 bool
 radv_spm_init(struct radv_device *device)
 {
-   const struct radeon_info *info = &device->physical_device->rad_info;
+   const struct radeon_info *gpu_info = &device->physical_device->rad_info;
    struct ac_perfcounters *pc = &device->physical_device->ac_perfcounters;
 
    /* We failed to initialize the performance counters. */
    if (!pc->blocks)
       return false;
 
-   if (!ac_init_spm(info, pc, &device->spm))
+   if (!ac_init_spm(gpu_info, pc, &device->spm))
       return false;
 
    if (!radv_spm_init_bo(device))

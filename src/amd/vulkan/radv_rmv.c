@@ -368,23 +368,23 @@ error:
 }
 
 static void
-fill_memory_info(const struct radeon_info *info, struct vk_rmv_memory_info *out_info, int32_t index)
+fill_memory_info(const struct radeon_info *gpu_info, struct vk_rmv_memory_info *out_info, int32_t index)
 {
    switch (index) {
    case VK_RMV_MEMORY_LOCATION_DEVICE:
       out_info->physical_base_address = 0;
-      out_info->size =
-         info->all_vram_visible ? (uint64_t)info->vram_size_kb * 1024ULL : (uint64_t)info->vram_vis_size_kb * 1024ULL;
+      out_info->size = gpu_info->all_vram_visible ? (uint64_t)gpu_info->vram_size_kb * 1024ULL
+                                                  : (uint64_t)gpu_info->vram_vis_size_kb * 1024ULL;
       break;
    case VK_RMV_MEMORY_LOCATION_DEVICE_INVISIBLE:
-      out_info->physical_base_address = (uint64_t)info->vram_vis_size_kb * 1024ULL;
-      out_info->size = info->all_vram_visible ? 0 : (uint64_t)info->vram_size_kb * 1024ULL;
+      out_info->physical_base_address = (uint64_t)gpu_info->vram_vis_size_kb * 1024ULL;
+      out_info->size = gpu_info->all_vram_visible ? 0 : (uint64_t)gpu_info->vram_size_kb * 1024ULL;
       break;
    case VK_RMV_MEMORY_LOCATION_HOST: {
       uint64_t ram_size = -1U;
       os_get_total_physical_memory(&ram_size);
       out_info->physical_base_address = 0;
-      out_info->size = MIN2((uint64_t)info->gart_size_kb * 1024ULL, ram_size);
+      out_info->size = MIN2((uint64_t)gpu_info->gart_size_kb * 1024ULL, ram_size);
    } break;
    default:
       unreachable("invalid memory index");
@@ -423,25 +423,25 @@ memory_type_from_vram_type(uint32_t vram_type)
 void
 radv_rmv_fill_device_info(const struct radv_physical_device *pdev, struct vk_rmv_device_info *info)
 {
-   const struct radeon_info *rad_info = &pdev->rad_info;
+   const struct radeon_info *gpu_info = &pdev->rad_info;
 
    for (int32_t i = 0; i < VK_RMV_MEMORY_LOCATION_COUNT; ++i) {
-      fill_memory_info(rad_info, &info->memory_infos[i], i);
+      fill_memory_info(gpu_info, &info->memory_infos[i], i);
    }
 
-   if (rad_info->marketing_name)
-      strncpy(info->device_name, rad_info->marketing_name, sizeof(info->device_name) - 1);
-   info->pcie_family_id = rad_info->family_id;
-   info->pcie_revision_id = rad_info->pci_rev_id;
-   info->pcie_device_id = rad_info->pci.dev;
+   if (gpu_info->marketing_name)
+      strncpy(info->device_name, gpu_info->marketing_name, sizeof(info->device_name) - 1);
+   info->pcie_family_id = gpu_info->family_id;
+   info->pcie_revision_id = gpu_info->pci_rev_id;
+   info->pcie_device_id = gpu_info->pci.dev;
    info->minimum_shader_clock = 0;
-   info->maximum_shader_clock = rad_info->max_gpu_freq_mhz;
-   info->vram_type = memory_type_from_vram_type(rad_info->vram_type);
-   info->vram_bus_width = rad_info->memory_bus_width;
-   info->vram_operations_per_clock = ac_memory_ops_per_clock(rad_info->vram_type);
+   info->maximum_shader_clock = gpu_info->max_gpu_freq_mhz;
+   info->vram_type = memory_type_from_vram_type(gpu_info->vram_type);
+   info->vram_bus_width = gpu_info->memory_bus_width;
+   info->vram_operations_per_clock = ac_memory_ops_per_clock(gpu_info->vram_type);
    info->minimum_memory_clock = 0;
-   info->maximum_memory_clock = rad_info->memory_freq_mhz;
-   info->vram_bandwidth = rad_info->memory_bandwidth_gbps;
+   info->maximum_memory_clock = gpu_info->memory_freq_mhz;
+   info->vram_bandwidth = gpu_info->memory_bandwidth_gbps;
 }
 
 void

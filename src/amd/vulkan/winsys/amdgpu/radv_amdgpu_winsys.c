@@ -71,9 +71,9 @@ do_winsys_init(struct radv_amdgpu_winsys *ws, int fd)
 }
 
 static void
-radv_amdgpu_winsys_query_info(struct radeon_winsys *rws, struct radeon_info *info)
+radv_amdgpu_winsys_query_info(struct radeon_winsys *rws, struct radeon_info *gpu_info)
 {
-   *info = ((struct radv_amdgpu_winsys *)rws)->info;
+   *gpu_info = ((struct radv_amdgpu_winsys *)rws)->info;
 }
 
 static uint64_t

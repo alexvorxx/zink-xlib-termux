@@ -119,7 +119,7 @@ radv_dump_mmapped_reg(const struct radv_device *device, FILE *f, unsigned offset
 static void
 radv_dump_debug_registers(const struct radv_device *device, FILE *f)
 {
-   const struct radeon_info *info = &device->physical_device->rad_info;
+   const struct radeon_info *gpu_info = &device->physical_device->rad_info;
 
    fprintf(f, "Memory-mapped registers:\n");
    radv_dump_mmapped_reg(device, f, R_008010_GRBM_STATUS);
@@ -131,7 +131,7 @@ radv_dump_debug_registers(const struct radv_device *device, FILE *f)
    radv_dump_mmapped_reg(device, f, R_00803C_GRBM_STATUS_SE3);
    radv_dump_mmapped_reg(device, f, R_00D034_SDMA0_STATUS_REG);
    radv_dump_mmapped_reg(device, f, R_00D834_SDMA1_STATUS_REG);
-   if (info->gfx_level <= GFX8) {
+   if (gpu_info->gfx_level <= GFX8) {
       radv_dump_mmapped_reg(device, f, R_000E50_SRBM_STATUS);
       radv_dump_mmapped_reg(device, f, R_000E4C_SRBM_STATUS2);
       radv_dump_mmapped_reg(device, f, R_000E54_SRBM_STATUS3);
@@ -634,21 +634,21 @@ radv_dump_app_info(const struct radv_device *device, FILE *f)
 static void
 radv_dump_device_name(const struct radv_device *device, FILE *f)
 {
-   const struct radeon_info *info = &device->physical_device->rad_info;
+   const struct radeon_info *gpu_info = &device->physical_device->rad_info;
 #ifndef _WIN32
    char kernel_version[128] = {0};
    struct utsname uname_data;
 #endif
 
 #ifdef _WIN32
-   fprintf(f, "Device name: %s (DRM %i.%i.%i)\n\n", device->physical_device->marketing_name, info->drm_major,
-           info->drm_minor, info->drm_patchlevel);
+   fprintf(f, "Device name: %s (DRM %i.%i.%i)\n\n", device->physical_device->marketing_name, gpu_info->drm_major,
+           gpu_info->drm_minor, gpu_info->drm_patchlevel);
 #else
    if (uname(&uname_data) == 0)
       snprintf(kernel_version, sizeof(kernel_version), " / %s", uname_data.release);
 
-   fprintf(f, "Device name: %s (DRM %i.%i.%i%s)\n\n", device->physical_device->marketing_name, info->drm_major,
-           info->drm_minor, info->drm_patchlevel, kernel_version);
+   fprintf(f, "Device name: %s (DRM %i.%i.%i%s)\n\n", device->physical_device->marketing_name, gpu_info->drm_major,
+           gpu_info->drm_minor, gpu_info->drm_patchlevel, kernel_version);
 #endif
 }
 

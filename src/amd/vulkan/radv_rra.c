@@ -181,26 +181,26 @@ amdgpu_vram_type_to_rra(uint32_t type)
 }
 
 static void
-rra_dump_asic_info(const struct radeon_info *rad_info, FILE *output)
+rra_dump_asic_info(const struct radeon_info *gpu_info, FILE *output)
 {
    struct rra_asic_info asic_info = {
       /* All frequencies are in Hz */
       .min_shader_clk_freq = 0,
-      .max_shader_clk_freq = rad_info->max_gpu_freq_mhz * 1000000,
+      .max_shader_clk_freq = gpu_info->max_gpu_freq_mhz * 1000000,
       .min_mem_clk_freq = 0,
-      .max_mem_clk_freq = rad_info->memory_freq_mhz * 1000000,
+      .max_mem_clk_freq = gpu_info->memory_freq_mhz * 1000000,
 
-      .vram_size = (uint64_t)rad_info->vram_size_kb * 1024,
+      .vram_size = (uint64_t)gpu_info->vram_size_kb * 1024,
 
-      .mem_type = amdgpu_vram_type_to_rra(rad_info->vram_type),
-      .mem_ops_per_clk = ac_memory_ops_per_clock(rad_info->vram_type),
-      .bus_width = rad_info->memory_bus_width,
+      .mem_type = amdgpu_vram_type_to_rra(gpu_info->vram_type),
+      .mem_ops_per_clk = ac_memory_ops_per_clock(gpu_info->vram_type),
+      .bus_width = gpu_info->memory_bus_width,
 
-      .device_id = rad_info->pci.dev,
-      .rev_id = rad_info->pci_rev_id,
+      .device_id = gpu_info->pci.dev,
+      .rev_id = gpu_info->pci_rev_id,
    };
 
-   strncpy(asic_info.device_name, rad_info->marketing_name ? rad_info->marketing_name : rad_info->name,
+   strncpy(asic_info.device_name, gpu_info->marketing_name ? gpu_info->marketing_name : gpu_info->name,
            RRA_FILE_DEVICE_NAME_MAX_SIZE - 1);
 
    fwrite(&asic_info, sizeof(struct rra_asic_info), 1, output);

@@ -34,7 +34,7 @@ typedef struct {
    const struct radv_shader_args *args;
    const struct radv_shader_info *info;
    const struct radv_graphics_state_key *gfx_state;
-   const struct radeon_info *rad_info;
+   const struct radeon_info *gpu_info;
 } lower_vs_inputs_state;
 
 static nir_def *
@@ -239,12 +239,12 @@ lower_load_vs_input(nir_builder *b, nir_intrinsic_instr *intrin, lower_vs_inputs
    const enum pipe_format attrib_format = s->gfx_state->vi.vertex_attribute_formats[location];
    const struct util_format_description *f = util_format_description(attrib_format);
    const struct ac_vtx_format_info *vtx_info =
-      ac_get_vtx_format_info(s->rad_info->gfx_level, s->rad_info->family, attrib_format);
+      ac_get_vtx_format_info(s->gpu_info->gfx_level, s->gpu_info->family, attrib_format);
    const unsigned binding_index = s->info->vs.use_per_attribute_vb_descs ? location : attrib_binding;
    const unsigned desc_index = util_bitcount(s->info->vs.vb_desc_usage_mask & u_bit_consecutive(0, binding_index));
 
    nir_def *vertex_buffers_arg = ac_nir_load_arg(b, &s->args->ac, s->args->ac.vertex_buffers);
-   nir_def *vertex_buffers = nir_pack_64_2x32_split(b, vertex_buffers_arg, nir_imm_int(b, s->rad_info->address32_hi));
+   nir_def *vertex_buffers = nir_pack_64_2x32_split(b, vertex_buffers_arg, nir_imm_int(b, s->gpu_info->address32_hi));
    nir_def *descriptor = nir_load_smem_amd(b, 4, vertex_buffers, nir_imm_int(b, desc_index * 16));
    nir_def *base_index = calc_vs_input_index(b, location, s);
    nir_def *zero = nir_imm_int(b, 0);
@@ -411,7 +411,7 @@ lower_vs_input_instr(nir_builder *b, nir_intrinsic_instr *intrin, void *state)
 
 bool
 radv_nir_lower_vs_inputs(nir_shader *shader, const struct radv_shader_stage *vs_stage,
-                         const struct radv_graphics_state_key *gfx_state, const struct radeon_info *rad_info)
+                         const struct radv_graphics_state_key *gfx_state, const struct radeon_info *gpu_info)
 {
    assert(shader->info.stage == MESA_SHADER_VERTEX);
 
@@ -419,7 +419,7 @@ radv_nir_lower_vs_inputs(nir_shader *shader, const struct radv_shader_stage *vs_
       .info = &vs_stage->info,
       .args = &vs_stage->args,
       .gfx_state = gfx_state,
-      .rad_info = rad_info,
+      .gpu_info = gpu_info,
    };
 
    return nir_shader_intrinsics_pass(shader, lower_vs_input_instr, nir_metadata_dominance | nir_metadata_block_index,

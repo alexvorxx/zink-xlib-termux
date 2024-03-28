@@ -151,7 +151,7 @@ class Format(object):
         if comp < len(self._types):
             return DATA_TYPES[self._types[comp]]
         else:
-            return DATA_TYPES['U']
+            return DATA_TYPES[self._types[0]]
 
     def src(self, comp):
         if self._srcs[comp] == '1':

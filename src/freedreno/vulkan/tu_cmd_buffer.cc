@@ -1849,7 +1849,7 @@ tu6_sysmem_render_end(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
    tu_cs_emit_pkt7(cs, CP_SKIP_IB2_ENABLE_GLOBAL, 1);
    tu_cs_emit(cs, 0x0);
 
-   tu_lrz_sysmem_end(cmd, cs);
+   tu_lrz_sysmem_end<CHIP>(cmd, cs);
 
    tu_cs_sanity_check(cs);
 }

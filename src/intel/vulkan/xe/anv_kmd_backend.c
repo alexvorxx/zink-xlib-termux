@@ -185,16 +185,16 @@ xe_vm_bind_op(struct anv_device *device,
 
    int sync_idx = 0;
    for (int s = 0; s < submit->wait_count; s++) {
-      xe_exec_fill_sync(&xe_syncs[sync_idx++],
-                        submit->waits[s].sync,
-                        submit->waits[s].wait_value,
-                        false);
+      xe_syncs[sync_idx++] =
+         vk_sync_to_drm_xe_sync(submit->waits[s].sync,
+                                submit->waits[s].wait_value,
+                                false);
    }
    for (int s = 0; s < submit->signal_count; s++) {
-      xe_exec_fill_sync(&xe_syncs[sync_idx++],
-                        submit->signals[s].sync,
-                        submit->signals[s].signal_value,
-                        true);
+      xe_syncs[sync_idx++] =
+         vk_sync_to_drm_xe_sync(submit->signals[s].sync,
+                                submit->signals[s].signal_value,
+                                true);
    }
    if (signal_bind_timeline) {
       xe_syncs[sync_idx++] = (struct drm_xe_sync) {

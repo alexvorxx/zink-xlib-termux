@@ -1268,16 +1268,6 @@ static void si_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
    if (unlikely(sctx->sqtt_enabled))
       sctx->sqtt_next_event = EventCmdCopyImage;
 
-   /* Using compute for copying to a linear texture in GTT is much faster than
-    * going through RBs (render backends). This improves DRI PRIME performance.
-    */
-   if (util_can_blit_via_copy_region(info, false, sctx->render_cond != NULL)) {
-      si_resource_copy_region(ctx, info->dst.resource, info->dst.level,
-                              info->dst.box.x, info->dst.box.y, info->dst.box.z,
-                              info->src.resource, info->src.level, &info->src.box);
-      return;
-   }
-
    if (si_compute_blit(sctx, info, false))
       return;
 

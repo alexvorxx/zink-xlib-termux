@@ -62,7 +62,7 @@ radv_spm_init_bo(struct radv_device *device)
 static void
 radv_emit_spm_counters(struct radv_device *device, struct radeon_cmdbuf *cs, enum radv_queue_family qf)
 {
-   const enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
+   const enum amd_gfx_level gfx_level = device->physical_device->info.gfx_level;
    struct ac_spm *spm = &device->spm;
 
    if (gfx_level >= GFX11) {
@@ -142,7 +142,7 @@ radv_emit_spm_counters(struct radv_device *device, struct radeon_cmdbuf *cs, enu
 void
 radv_emit_spm_setup(struct radv_device *device, struct radeon_cmdbuf *cs, enum radv_queue_family qf)
 {
-   const enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
+   const enum amd_gfx_level gfx_level = device->physical_device->info.gfx_level;
    struct ac_spm *spm = &device->spm;
    uint64_t va = radv_buffer_get_va(spm->bo);
    uint64_t ring_size = spm->buffer_size;
@@ -170,7 +170,7 @@ radv_emit_spm_setup(struct radv_device *device, struct radeon_cmdbuf *cs, enum r
 
    radeon_set_uconfig_reg(cs, R_03726C_RLC_SPM_ACCUM_MODE, 0);
 
-   if (device->physical_device->rad_info.gfx_level >= GFX11) {
+   if (device->physical_device->info.gfx_level >= GFX11) {
       radeon_set_uconfig_reg(cs, R_03721C_RLC_SPM_PERFMON_SEGMENT_SIZE,
                              S_03721C_TOTAL_NUM_SEGMENT(total_muxsel_lines) |
                                 S_03721C_GLOBAL_NUM_SEGMENT(spm->num_muxsel_lines[AC_SPM_SEGMENT_TYPE_GLOBAL]) |
@@ -238,7 +238,7 @@ radv_emit_spm_setup(struct radv_device *device, struct radeon_cmdbuf *cs, enum r
 bool
 radv_spm_init(struct radv_device *device)
 {
-   const struct radeon_info *gpu_info = &device->physical_device->rad_info;
+   const struct radeon_info *gpu_info = &device->physical_device->info;
    struct ac_perfcounters *pc = &device->physical_device->ac_perfcounters;
 
    /* We failed to initialize the performance counters. */

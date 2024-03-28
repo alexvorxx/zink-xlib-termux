@@ -111,7 +111,7 @@ radeon_set_sh_reg_idx(const struct radv_physical_device *pdev, struct radeon_cmd
    assert(idx);
 
    unsigned opcode = PKT3_SET_SH_REG_INDEX;
-   if (pdev->rad_info.gfx_level < GFX10)
+   if (pdev->info.gfx_level < GFX10)
       opcode = PKT3_SET_SH_REG;
 
    radeon_emit(cs, PKT3(opcode, 1, 0));
@@ -166,7 +166,7 @@ radeon_set_uconfig_reg_idx(const struct radv_physical_device *pdev, struct radeo
    assert(idx);
 
    unsigned opcode = PKT3_SET_UCONFIG_REG_INDEX;
-   if (pdev->rad_info.gfx_level < GFX9 || (pdev->rad_info.gfx_level == GFX9 && pdev->rad_info.me_fw_version < 26))
+   if (pdev->info.gfx_level < GFX9 || (pdev->info.gfx_level == GFX9 && pdev->info.me_fw_version < 26))
       opcode = PKT3_SET_UCONFIG_REG;
 
    radeon_emit(cs, PKT3(opcode, 1, 0));

@@ -253,7 +253,7 @@ enum radv_resolve_method {
 static bool
 image_hw_resolve_compat(const struct radv_device *device, struct radv_image *src_image, struct radv_image *dst_image)
 {
-   if (device->physical_device->rad_info.gfx_level >= GFX9) {
+   if (device->physical_device->info.gfx_level >= GFX9) {
       return dst_image->planes[0].surface.u.gfx9.swizzle_mode == src_image->planes[0].surface.u.gfx9.swizzle_mode;
    } else {
       return dst_image->planes[0].surface.micro_tile_mode == src_image->planes[0].surface.micro_tile_mode;
@@ -509,7 +509,7 @@ radv_CmdResolveImage2(VkCommandBuffer commandBuffer, const VkResolveImageInfo2 *
    VkImageLayout src_image_layout = pResolveImageInfo->srcImageLayout;
    VkImageLayout dst_image_layout = pResolveImageInfo->dstImageLayout;
    const struct radv_physical_device *pdev = cmd_buffer->device->physical_device;
-   enum radv_resolve_method resolve_method = pdev->rad_info.gfx_level >= GFX11 ? RESOLVE_FRAGMENT : RESOLVE_HW;
+   enum radv_resolve_method resolve_method = pdev->info.gfx_level >= GFX11 ? RESOLVE_FRAGMENT : RESOLVE_HW;
 
    /* we can use the hw resolve only for single full resolves */
    if (pResolveImageInfo->regionCount == 1) {
@@ -624,7 +624,7 @@ radv_cmd_buffer_resolve_rendering(struct radv_cmd_buffer *cmd_buffer)
 {
    const struct radv_physical_device *pdev = cmd_buffer->device->physical_device;
    const struct radv_rendering_state *render = &cmd_buffer->state.render;
-   enum radv_resolve_method resolve_method = pdev->rad_info.gfx_level >= GFX11 ? RESOLVE_FRAGMENT : RESOLVE_HW;
+   enum radv_resolve_method resolve_method = pdev->info.gfx_level >= GFX11 ? RESOLVE_FRAGMENT : RESOLVE_HW;
 
    bool has_color_resolve = false;
    for (uint32_t i = 0; i < render->color_att_count; ++i) {

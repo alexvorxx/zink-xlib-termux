@@ -510,7 +510,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
                     const struct radv_shader_info *info, gl_shader_stage stage, gl_shader_stage previous_stage,
                     struct radv_shader_args *args, struct user_sgpr_info *user_sgpr_info)
 {
-   const enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
+   const enum amd_gfx_level gfx_level = device->physical_device->info.gfx_level;
    bool has_shader_query = info->has_prim_query || info->has_xfb_query ||
                            (stage == MESA_SHADER_GEOMETRY && info->gs.has_pipeline_stat_query) ||
                            (stage == MESA_SHADER_MESH && info->ms.has_query) ||
@@ -871,7 +871,7 @@ radv_declare_shader_args(const struct radv_device *device, const struct radv_gra
    if (info->loads_push_constants)
       num_user_sgprs++;
 
-   const enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
+   const enum amd_gfx_level gfx_level = device->physical_device->info.gfx_level;
    uint32_t available_sgprs = gfx_level >= GFX9 && stage != MESA_SHADER_COMPUTE && stage != MESA_SHADER_TASK ? 32 : 16;
    uint32_t remaining_sgprs = available_sgprs - num_user_sgprs;
 

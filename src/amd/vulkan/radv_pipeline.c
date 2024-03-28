@@ -365,7 +365,7 @@ static unsigned
 lower_bit_size_callback(const nir_instr *instr, void *_)
 {
    struct radv_device *device = _;
-   enum amd_gfx_level chip = device->physical_device->rad_info.gfx_level;
+   enum amd_gfx_level chip = device->physical_device->info.gfx_level;
 
    if (instr->type != nir_instr_type_alu)
       return 0;
@@ -437,7 +437,7 @@ opt_vectorize_callback(const nir_instr *instr, const void *_)
       return 0;
 
    const struct radv_device *device = _;
-   enum amd_gfx_level chip = device->physical_device->rad_info.gfx_level;
+   enum amd_gfx_level chip = device->physical_device->info.gfx_level;
    if (chip < GFX9)
       return 1;
 
@@ -461,7 +461,7 @@ void
 radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_state_key *gfx_state,
                      struct radv_shader_stage *stage)
 {
-   enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
+   enum amd_gfx_level gfx_level = device->physical_device->info.gfx_level;
    bool progress;
 
    /* Wave and workgroup size should already be filled. */
@@ -549,7 +549,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
             &(ac_nir_lower_tex_options){
                .gfx_level = gfx_level,
                .lower_array_layer_round_even =
-                  !device->physical_device->rad_info.conformant_trunc_coord || device->disable_trunc_coord,
+                  !device->physical_device->info.conformant_trunc_coord || device->disable_trunc_coord,
                .fix_derivs_in_divergent_cf = fix_derivs_in_divergent_cf,
                .max_wqm_vgprs = 64, // TODO: improve spiller and RA support for linear VGPRs
             });
@@ -581,7 +581,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
     * load_input can be reordered, but buffer loads can't.
     */
    if (stage->stage == MESA_SHADER_VERTEX) {
-      NIR_PASS(_, stage->nir, radv_nir_lower_vs_inputs, stage, gfx_state, &device->physical_device->rad_info);
+      NIR_PASS(_, stage->nir, radv_nir_lower_vs_inputs, stage, gfx_state, &device->physical_device->info);
    }
 
    /* Lower I/O intrinsics to memory instructions. */
@@ -609,7 +609,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
    } else if (stage->stage == MESA_SHADER_FRAGMENT) {
       ac_nir_lower_ps_options options = {
          .gfx_level = gfx_level,
-         .family = device->physical_device->rad_info.family,
+         .family = device->physical_device->info.family,
          .use_aco = !radv_use_llvm_for_stage(device, stage->stage),
          .uses_discard = true,
          .alpha_func = COMPARE_FUNC_ALWAYS,
@@ -666,8 +666,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
    NIR_PASS(_, stage->nir, ac_nir_lower_global_access);
    NIR_PASS_V(stage->nir, ac_nir_lower_intrinsics_to_args, gfx_level, radv_select_hw_stage(&stage->info, gfx_level),
               &stage->args.ac);
-   NIR_PASS_V(stage->nir, radv_nir_lower_abi, gfx_level, stage, gfx_state,
-              device->physical_device->rad_info.address32_hi);
+   NIR_PASS_V(stage->nir, radv_nir_lower_abi, gfx_level, stage, gfx_state, device->physical_device->info.address32_hi);
    radv_optimize_nir_algebraic(
       stage->nir, io_to_mem || lowered_ngg || stage->stage == MESA_SHADER_COMPUTE || stage->stage == MESA_SHADER_TASK);
 
@@ -930,7 +929,7 @@ radv_GetPipelineExecutableStatisticsKHR(VkDevice _device, const VkPipelineExecut
    const struct radv_physical_device *pdev = device->physical_device;
 
    unsigned lds_increment =
-      pdev->rad_info.gfx_level >= GFX11 && stage == MESA_SHADER_FRAGMENT ? 1024 : pdev->rad_info.lds_encode_granularity;
+      pdev->info.gfx_level >= GFX11 && stage == MESA_SHADER_FRAGMENT ? 1024 : pdev->info.lds_encode_granularity;
 
    VkPipelineExecutableStatisticKHR *s = pStatistics;
    VkPipelineExecutableStatisticKHR *end = s + (pStatistics ? *pStatisticCount : 0);

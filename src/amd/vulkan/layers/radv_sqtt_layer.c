@@ -35,7 +35,7 @@
 void
 radv_sqtt_emit_relocated_shaders(struct radv_cmd_buffer *cmd_buffer, struct radv_graphics_pipeline *pipeline)
 {
-   const enum amd_gfx_level gfx_level = cmd_buffer->device->physical_device->rad_info.gfx_level;
+   const enum amd_gfx_level gfx_level = cmd_buffer->device->physical_device->info.gfx_level;
    struct radv_sqtt_shaders_reloc *reloc = pipeline->sqtt_shaders_reloc;
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
    uint64_t va;
@@ -673,7 +673,7 @@ radv_handle_sqtt(VkQueue _queue)
          if (queue->device->spm.bo)
             ac_spm_get_trace(&queue->device->spm, &spm_trace);
 
-         ac_dump_rgp_capture(&queue->device->physical_device->rad_info, &sqtt_trace,
+         ac_dump_rgp_capture(&queue->device->physical_device->info, &sqtt_trace,
                              queue->device->spm.bo ? &spm_trace : NULL);
       } else {
          /* Trigger a new capture if the driver failed to get
@@ -687,7 +687,7 @@ radv_handle_sqtt(VkQueue _queue)
    }
 
    if (trigger) {
-      if (ac_check_profile_state(&queue->device->physical_device->rad_info)) {
+      if (ac_check_profile_state(&queue->device->physical_device->info)) {
          fprintf(stderr, "radv: Canceling RGP trace request as a hang condition has been "
                          "detected. Force the GPU into a profiling mode with e.g. "
                          "\"echo profile_peak  > "
@@ -1416,9 +1416,9 @@ radv_fill_code_object_record(struct radv_device *device, struct rgp_shader_data 
                              struct radv_shader *shader, uint64_t va)
 {
    struct radv_physical_device *pdev = device->physical_device;
-   unsigned lds_increment = pdev->rad_info.gfx_level >= GFX11 && shader->info.stage == MESA_SHADER_FRAGMENT
+   unsigned lds_increment = pdev->info.gfx_level >= GFX11 && shader->info.stage == MESA_SHADER_FRAGMENT
                                ? 1024
-                               : pdev->rad_info.lds_encode_granularity;
+                               : pdev->info.lds_encode_granularity;
 
    memset(shader_data->rt_shader_name, 0, sizeof(shader_data->rt_shader_name));
    shader_data->hash[0] = (uint64_t)(uintptr_t)shader;

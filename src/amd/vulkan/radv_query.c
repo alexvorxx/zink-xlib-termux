@@ -56,7 +56,7 @@ radv_get_pipelinestat_query_size(struct radv_device *device)
    /* GFX10_3 only has 11 valid pipeline statistics queries but in order to emulate mesh/task shader
     * invocations, it's easier to use the same size as GFX11.
     */
-   unsigned num_results = device->physical_device->rad_info.gfx_level >= GFX10_3 ? 14 : 11;
+   unsigned num_results = device->physical_device->info.gfx_level >= GFX10_3 ? 14 : 11;
    return num_results * 8;
 }
 
@@ -128,8 +128,8 @@ build_occlusion_query_shader(struct radv_device *device)
    nir_variable *start = nir_local_variable_create(b.impl, glsl_uint64_t_type(), "start");
    nir_variable *end = nir_local_variable_create(b.impl, glsl_uint64_t_type(), "end");
    nir_variable *available = nir_local_variable_create(b.impl, glsl_bool_type(), "available");
-   uint64_t enabled_rb_mask = device->physical_device->rad_info.enabled_rb_mask;
-   unsigned db_count = device->physical_device->rad_info.max_render_backends;
+   uint64_t enabled_rb_mask = device->physical_device->info.enabled_rb_mask;
+   unsigned db_count = device->physical_device->info.max_render_backends;
 
    nir_def *flags = nir_load_push_constant(&b, 1, 32, nir_imm_int(&b, 0), .range = 4);
 
@@ -1246,7 +1246,7 @@ radv_create_query_pool(struct radv_device *device, const VkQueryPoolCreateInfo *
 
    switch (pCreateInfo->queryType) {
    case VK_QUERY_TYPE_OCCLUSION:
-      pool->stride = 16 * device->physical_device->rad_info.max_render_backends;
+      pool->stride = 16 * device->physical_device->info.max_render_backends;
       break;
    case VK_QUERY_TYPE_PIPELINE_STATISTICS:
       pool->stride = radv_get_pipelinestat_query_size(device) * 2;
@@ -1262,7 +1262,7 @@ radv_create_query_pool(struct radv_device *device, const VkQueryPoolCreateInfo *
       pool->stride = 32;
       break;
    case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT:
-      if (pool->uses_gds && device->physical_device->rad_info.gfx_level < GFX11) {
+      if (pool->uses_gds && device->physical_device->info.gfx_level < GFX11) {
          /* When the hardware can use both the legacy and the NGG paths in the same begin/end pair,
           * allocate 2x64-bit values for the GDS counters.
           */
@@ -1281,7 +1281,7 @@ radv_create_query_pool(struct radv_device *device, const VkQueryPoolCreateInfo *
       break;
    }
    case VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT:
-      if (device->physical_device->rad_info.gfx_level >= GFX11) {
+      if (device->physical_device->info.gfx_level >= GFX11) {
          /* GFX11 natively supports mesh generated primitives with pipeline statistics. */
          pool->stride = radv_get_pipelinestat_query_size(device) * 2;
       } else {
@@ -1297,7 +1297,7 @@ radv_create_query_pool(struct radv_device *device, const VkQueryPoolCreateInfo *
    pool->size = pool->availability_offset;
    if (pCreateInfo->queryType == VK_QUERY_TYPE_PIPELINE_STATISTICS ||
        (pCreateInfo->queryType == VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT &&
-        device->physical_device->rad_info.gfx_level >= GFX11))
+        device->physical_device->info.gfx_level >= GFX11))
       pool->size += 4 * pCreateInfo->queryCount;
 
    result = radv_bo_create(device, pool->size, 64, RADEON_DOMAIN_GTT, RADEON_FLAG_NO_INTERPROCESS_SHARING,
@@ -1413,8 +1413,8 @@ radv_GetQueryPoolResults(VkDevice _device, VkQueryPool queryPool, uint32_t first
       }
       case VK_QUERY_TYPE_OCCLUSION: {
          p_atomic_uint64_t const *src64 = (p_atomic_uint64_t const *)src;
-         uint32_t db_count = device->physical_device->rad_info.max_render_backends;
-         uint64_t enabled_rb_mask = device->physical_device->rad_info.enabled_rb_mask;
+         uint32_t db_count = device->physical_device->info.max_render_backends;
+         uint64_t enabled_rb_mask = device->physical_device->info.enabled_rb_mask;
          uint64_t sample_count = 0;
          available = 1;
 
@@ -1550,7 +1550,7 @@ radv_GetQueryPoolResults(VkDevice _device, VkQueryPool queryPool, uint32_t first
          break;
       }
       case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT: {
-         const bool uses_gds_query = pool->uses_gds && device->physical_device->rad_info.gfx_level < GFX11;
+         const bool uses_gds_query = pool->uses_gds && device->physical_device->info.gfx_level < GFX11;
          p_atomic_uint64_t const *src64 = (p_atomic_uint64_t const *)src;
          uint64_t primitive_storage_needed;
 
@@ -1615,7 +1615,7 @@ radv_GetQueryPoolResults(VkDevice _device, VkQueryPool queryPool, uint32_t first
       case VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT: {
          uint64_t ms_prim_gen;
 
-         if (device->physical_device->rad_info.gfx_level >= GFX11) {
+         if (device->physical_device->info.gfx_level >= GFX11) {
             unsigned pipelinestat_block_size = radv_get_pipelinestat_query_size(device);
             const uint32_t *avail_ptr = (const uint32_t *)(pool->ptr + pool->availability_offset + 4 * query);
 
@@ -1842,7 +1842,7 @@ radv_CmdCopyQueryPoolResults(VkCommandBuffer commandBuffer, VkQueryPool queryPoo
       break;
    case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT:
       if (flags & VK_QUERY_RESULT_WAIT_BIT) {
-         const bool uses_gds_query = pool->uses_gds && cmd_buffer->device->physical_device->rad_info.gfx_level < GFX11;
+         const bool uses_gds_query = pool->uses_gds && cmd_buffer->device->physical_device->info.gfx_level < GFX11;
 
          for (unsigned i = 0; i < queryCount; i++) {
             unsigned query = firstQuery + i;
@@ -1864,10 +1864,10 @@ radv_CmdCopyQueryPoolResults(VkCommandBuffer commandBuffer, VkQueryPool queryPoo
       radv_query_shader(cmd_buffer, &cmd_buffer->device->meta_state.query.pg_query_pipeline, pool->bo, dst_buffer->bo,
                         firstQuery * pool->stride, dst_buffer->offset + dstOffset, pool->stride, stride, dst_size,
                         queryCount, flags, 0, 0,
-                        pool->uses_gds && cmd_buffer->device->physical_device->rad_info.gfx_level < GFX11);
+                        pool->uses_gds && cmd_buffer->device->physical_device->info.gfx_level < GFX11);
       break;
    case VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT:
-      if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX11) {
+      if (cmd_buffer->device->physical_device->info.gfx_level >= GFX11) {
          if (flags & VK_QUERY_RESULT_WAIT_BIT) {
             for (unsigned i = 0; i < queryCount; ++i, dest_va += stride) {
                unsigned query = firstQuery + i;
@@ -1942,7 +1942,7 @@ radv_CmdResetQueryPool(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uin
 
    if (pool->vk.query_type == VK_QUERY_TYPE_PIPELINE_STATISTICS ||
        (pool->vk.query_type == VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT &&
-        cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX11)) {
+        cmd_buffer->device->physical_device->info.gfx_level >= GFX11)) {
       flush_bits |=
          radv_fill_buffer(cmd_buffer, NULL, pool->bo,
                           radv_buffer_get_va(pool->bo) + pool->availability_offset + firstQuery * 4, queryCount * 4, 0);
@@ -1970,7 +1970,7 @@ radv_ResetQueryPool(VkDevice _device, VkQueryPool queryPool, uint32_t firstQuery
 
    if (pool->vk.query_type == VK_QUERY_TYPE_PIPELINE_STATISTICS ||
        (pool->vk.query_type == VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT &&
-        device->physical_device->rad_info.gfx_level >= GFX11)) {
+        device->physical_device->info.gfx_level >= GFX11)) {
       memset(pool->ptr + pool->availability_offset + firstQuery * 4, 0, queryCount * 4);
    }
 }
@@ -2082,12 +2082,12 @@ emit_begin_query(struct radv_cmd_buffer *cmd_buffer, struct radv_query_pool *poo
          }
       }
 
-      if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX11 &&
-          cmd_buffer->device->physical_device->rad_info.pfp_fw_version >= EVENT_WRITE_ZPASS_PFP_VERSION) {
+      if (cmd_buffer->device->physical_device->info.gfx_level >= GFX11 &&
+          cmd_buffer->device->physical_device->info.pfp_fw_version >= EVENT_WRITE_ZPASS_PFP_VERSION) {
          radeon_emit(cs, PKT3(PKT3_EVENT_WRITE_ZPASS, 1, 0));
       } else {
          radeon_emit(cs, PKT3(PKT3_EVENT_WRITE, 2, 0));
-         if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX11) {
+         if (cmd_buffer->device->physical_device->info.gfx_level >= GFX11) {
             radeon_emit(cs, EVENT_TYPE(V_028A90_PIXEL_PIPE_STAT_DUMP) | EVENT_INDEX(1));
          } else {
             radeon_emit(cs, EVENT_TYPE(V_028A90_ZPASS_DONE) | EVENT_INDEX(1));
@@ -2149,7 +2149,7 @@ emit_begin_query(struct radv_cmd_buffer *cmd_buffer, struct radv_query_pool *poo
          uint32_t task_invoc_offset =
             radv_get_pipelinestat_query_offset(VK_QUERY_PIPELINE_STATISTIC_TASK_SHADER_INVOCATIONS_BIT_EXT);
 
-         if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX11) {
+         if (cmd_buffer->device->physical_device->info.gfx_level >= GFX11) {
             va += task_invoc_offset;
 
             radeon_check_space(cmd_buffer->device->ws, cmd_buffer->gang.cs, 4);
@@ -2201,7 +2201,7 @@ emit_begin_query(struct radv_cmd_buffer *cmd_buffer, struct radv_query_pool *poo
       }
       break;
    case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT: {
-      if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX11) {
+      if (cmd_buffer->device->physical_device->info.gfx_level >= GFX11) {
          /* On GFX11+, primitives generated query always use GDS. */
          gfx10_copy_gds_query_gfx(cmd_buffer, RADV_SHADER_QUERY_PRIM_GEN_OFFSET(index), va);
          radv_cs_write_data_imm(cs, V_370_ME, va + 4, 0x80000000);
@@ -2251,7 +2251,7 @@ emit_begin_query(struct radv_cmd_buffer *cmd_buffer, struct radv_query_pool *poo
       break;
    }
    case VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT: {
-      if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX11) {
+      if (cmd_buffer->device->physical_device->info.gfx_level >= GFX11) {
          radeon_check_space(cmd_buffer->device->ws, cs, 4);
 
          ++cmd_buffer->state.active_pipeline_queries;
@@ -2300,12 +2300,12 @@ emit_end_query(struct radv_cmd_buffer *cmd_buffer, struct radv_query_pool *pool,
          cmd_buffer->state.dirty |= RADV_CMD_DIRTY_OCCLUSION_QUERY;
       }
 
-      if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX11 &&
-          cmd_buffer->device->physical_device->rad_info.pfp_fw_version >= EVENT_WRITE_ZPASS_PFP_VERSION) {
+      if (cmd_buffer->device->physical_device->info.gfx_level >= GFX11 &&
+          cmd_buffer->device->physical_device->info.pfp_fw_version >= EVENT_WRITE_ZPASS_PFP_VERSION) {
          radeon_emit(cs, PKT3(PKT3_EVENT_WRITE_ZPASS, 1, 0));
       } else {
          radeon_emit(cs, PKT3(PKT3_EVENT_WRITE, 2, 0));
-         if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX11) {
+         if (cmd_buffer->device->physical_device->info.gfx_level >= GFX11) {
             radeon_emit(cs, EVENT_TYPE(V_028A90_PIXEL_PIPE_STAT_DUMP) | EVENT_INDEX(1));
          } else {
             radeon_emit(cs, EVENT_TYPE(V_028A90_ZPASS_DONE) | EVENT_INDEX(1));
@@ -2369,7 +2369,7 @@ emit_end_query(struct radv_cmd_buffer *cmd_buffer, struct radv_query_pool *pool,
          uint32_t task_invoc_offset =
             radv_get_pipelinestat_query_offset(VK_QUERY_PIPELINE_STATISTIC_TASK_SHADER_INVOCATIONS_BIT_EXT);
 
-         if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX11) {
+         if (cmd_buffer->device->physical_device->info.gfx_level >= GFX11) {
             va += task_invoc_offset;
 
             radeon_check_space(cmd_buffer->device->ws, cmd_buffer->gang.cs, 4);
@@ -2391,7 +2391,7 @@ emit_end_query(struct radv_cmd_buffer *cmd_buffer, struct radv_query_pool *pool,
          }
       }
 
-      radv_cs_emit_write_event_eop(cs, cmd_buffer->device->physical_device->rad_info.gfx_level, cmd_buffer->qf,
+      radv_cs_emit_write_event_eop(cs, cmd_buffer->device->physical_device->info.gfx_level, cmd_buffer->qf,
                                    V_028A90_BOTTOM_OF_PIPE_TS, 0, EOP_DST_SEL_MEM, EOP_DATA_SEL_VALUE_32BIT, avail_va,
                                    1, cmd_buffer->gfx9_eop_bug_va);
       break;
@@ -2419,7 +2419,7 @@ emit_end_query(struct radv_cmd_buffer *cmd_buffer, struct radv_query_pool *pool,
       }
       break;
    case VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT: {
-      if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX11) {
+      if (cmd_buffer->device->physical_device->info.gfx_level >= GFX11) {
          /* On GFX11+, primitives generated query always use GDS. */
          gfx10_copy_gds_query_gfx(cmd_buffer, RADV_SHADER_QUERY_PRIM_GEN_OFFSET(index), va + 16);
          radv_cs_write_data_imm(cs, V_370_ME, va + 20, 0x80000000);
@@ -2463,7 +2463,7 @@ emit_end_query(struct radv_cmd_buffer *cmd_buffer, struct radv_query_pool *pool,
       break;
    }
    case VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT: {
-      if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX11) {
+      if (cmd_buffer->device->physical_device->info.gfx_level >= GFX11) {
          unsigned pipelinestat_block_size = radv_get_pipelinestat_query_size(cmd_buffer->device);
 
          radeon_check_space(cmd_buffer->device->ws, cs, 16);
@@ -2479,7 +2479,7 @@ emit_end_query(struct radv_cmd_buffer *cmd_buffer, struct radv_query_pool *pool,
          radeon_emit(cs, va);
          radeon_emit(cs, va >> 32);
 
-         radv_cs_emit_write_event_eop(cs, cmd_buffer->device->physical_device->rad_info.gfx_level, cmd_buffer->qf,
+         radv_cs_emit_write_event_eop(cs, cmd_buffer->device->physical_device->info.gfx_level, cmd_buffer->qf,
                                       V_028A90_BOTTOM_OF_PIPE_TS, 0, EOP_DST_SEL_MEM, EOP_DATA_SEL_VALUE_32BIT,
                                       avail_va, 1, cmd_buffer->gfx9_eop_bug_va);
       } else {
@@ -2499,7 +2499,7 @@ emit_end_query(struct radv_cmd_buffer *cmd_buffer, struct radv_query_pool *pool,
 
    cmd_buffer->active_query_flush_bits |=
       RADV_CMD_FLAG_PS_PARTIAL_FLUSH | RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_INV_L2 | RADV_CMD_FLAG_INV_VCACHE;
-   if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX9) {
+   if (cmd_buffer->device->physical_device->info.gfx_level >= GFX9) {
       cmd_buffer->active_query_flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB | RADV_CMD_FLAG_FLUSH_AND_INV_DB;
    }
 }
@@ -2575,7 +2575,7 @@ radv_write_timestamp(struct radv_cmd_buffer *cmd_buffer, uint64_t va, VkPipeline
       radeon_emit(cs, va);
       radeon_emit(cs, va >> 32);
    } else {
-      radv_cs_emit_write_event_eop(cs, cmd_buffer->device->physical_device->rad_info.gfx_level, cmd_buffer->qf,
+      radv_cs_emit_write_event_eop(cs, cmd_buffer->device->physical_device->info.gfx_level, cmd_buffer->qf,
                                    V_028A90_BOTTOM_OF_PIPE_TS, 0, EOP_DST_SEL_MEM, EOP_DATA_SEL_TIMESTAMP, va, 0,
                                    cmd_buffer->gfx9_eop_bug_va);
    }
@@ -2625,7 +2625,7 @@ radv_CmdWriteTimestamp2(VkCommandBuffer commandBuffer, VkPipelineStageFlags2 sta
 
    cmd_buffer->active_query_flush_bits |=
       RADV_CMD_FLAG_PS_PARTIAL_FLUSH | RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_INV_L2 | RADV_CMD_FLAG_INV_VCACHE;
-   if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX9) {
+   if (cmd_buffer->device->physical_device->info.gfx_level >= GFX9) {
       cmd_buffer->active_query_flush_bits |= RADV_CMD_FLAG_FLUSH_AND_INV_CB | RADV_CMD_FLAG_FLUSH_AND_INV_DB;
    }
 

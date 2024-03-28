@@ -499,7 +499,7 @@ copy_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image, VkI
                                                     src_image_layout, src_queue_mask);
    bool need_dcc_sign_reinterpret = false;
 
-   if (!src_compressed || (radv_dcc_formats_compatible(cmd_buffer->device->physical_device->rad_info.gfx_level,
+   if (!src_compressed || (radv_dcc_formats_compatible(cmd_buffer->device->physical_device->info.gfx_level,
                                                        b_src.format, b_dst.format, &need_dcc_sign_reinterpret) &&
                            !need_dcc_sign_reinterpret)) {
       b_src.format = b_dst.format;

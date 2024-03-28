@@ -64,7 +64,7 @@ build_copy_vrs_htile_shader(struct radv_device *device, struct radeon_surf *surf
    /* Get the HTILE addr from coordinates. */
    nir_def *zero = nir_imm_int(&b, 0);
    nir_def *htile_addr =
-      ac_nir_htile_addr_from_coord(&b, &device->physical_device->rad_info, &surf->u.gfx9.zs.htile_equation, htile_pitch,
+      ac_nir_htile_addr_from_coord(&b, &device->physical_device->info, &surf->u.gfx9.zs.htile_equation, htile_pitch,
                                    htile_slice_size, nir_channel(&b, coord, 0), nir_channel(&b, coord, 1), zero, zero);
 
    /* Set up the input VRS image descriptor. */

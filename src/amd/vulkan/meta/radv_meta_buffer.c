@@ -215,7 +215,7 @@ radv_prefer_compute_dma(const struct radv_device *device, uint64_t size, struct 
 {
    bool use_compute = size >= RADV_BUFFER_OPS_CS_THRESHOLD;
 
-   if (device->physical_device->rad_info.gfx_level >= GFX10 && device->physical_device->rad_info.has_dedicated_vram) {
+   if (device->physical_device->info.gfx_level >= GFX10 && device->physical_device->info.has_dedicated_vram) {
       if ((src_bo && !(src_bo->initial_domain & RADEON_DOMAIN_VRAM)) ||
           (dst_bo && !(dst_bo->initial_domain & RADEON_DOMAIN_VRAM))) {
          /* Prefer CP DMA for GTT on dGPUS due to slow PCIe. */

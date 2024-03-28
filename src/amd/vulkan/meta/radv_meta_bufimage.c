@@ -1178,7 +1178,7 @@ fixup_gfx9_cs_copy(struct radv_cmd_buffer *cmd_buffer, const struct radv_meta_bl
    const struct radv_image *image = img_bsurf->image;
    const struct radeon_surf *surf = &image->planes[0].surface;
    struct radv_device *device = cmd_buffer->device;
-   const struct radeon_info *gpu_info = &device->physical_device->rad_info;
+   const struct radeon_info *gpu_info = &device->physical_device->info;
    struct ac_addrlib *addrlib = device->ws->get_addrlib(device->ws);
    struct ac_surf_info surf_info = radv_get_ac_surf_info(device, image);
 
@@ -1245,7 +1245,7 @@ get_image_stride_for_r32g32b32(struct radv_cmd_buffer *cmd_buffer, struct radv_m
 {
    unsigned stride;
 
-   if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX9) {
+   if (cmd_buffer->device->physical_device->info.gfx_level >= GFX9) {
       stride = surf->image->planes[0].surface.u.gfx9.surf_pitch;
    } else {
       stride = surf->image->planes[0].surface.u.legacy.level[0].nblk_x * 3;

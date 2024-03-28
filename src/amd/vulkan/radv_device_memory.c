@@ -238,8 +238,8 @@ radv_alloc_memory(struct radv_device *device, const VkMemoryAllocateInfo *pAlloc
          mtx_unlock(&device->overallocation_mutex);
       }
 
-      result = radv_bo_create(device, alloc_size, device->physical_device->rad_info.max_alignment, domain, flags,
-                                  priority, replay_address, is_internal, &mem->bo);
+      result = radv_bo_create(device, alloc_size, device->physical_device->info.max_alignment, domain, flags, priority,
+                              replay_address, is_internal, &mem->bo);
 
       if (result != VK_SUCCESS) {
          if (device->overallocation_disallowed) {

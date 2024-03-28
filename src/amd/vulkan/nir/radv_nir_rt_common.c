@@ -301,7 +301,7 @@ build_node_to_addr(struct radv_device *device, nir_builder *b, nir_def *node, bo
    addr = nir_ishl_imm(b, addr, 3);
    /* Assumes everything is in the top half of address space, which is true in
     * GFX9+ for now. */
-   return device->physical_device->rad_info.gfx_level >= GFX9 ? nir_ior_imm(b, addr, 0xffffull << 48) : addr;
+   return device->physical_device->info.gfx_level >= GFX9 ? nir_ior_imm(b, addr, 0xffffull << 48) : addr;
 }
 
 nir_def *

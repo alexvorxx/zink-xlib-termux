@@ -149,7 +149,7 @@ radv_shader_object_init_graphics(struct radv_shader_object *shader_obj, struct r
    gfx_state.dynamic_provoking_vtx_mode = true;
    gfx_state.dynamic_line_rast_mode = true;
 
-   if (device->physical_device->rad_info.gfx_level >= GFX11)
+   if (device->physical_device->info.gfx_level >= GFX11)
       gfx_state.ps.exports_mrtz_via_epilog = true;
 
    struct radv_shader *shader = NULL;
@@ -425,7 +425,7 @@ radv_shader_object_create_linked(VkDevice _device, uint32_t createInfoCount, con
    gfx_state.dynamic_provoking_vtx_mode = true;
    gfx_state.dynamic_line_rast_mode = true;
 
-   if (device->physical_device->rad_info.gfx_level >= GFX11)
+   if (device->physical_device->info.gfx_level >= GFX11)
       gfx_state.ps.exports_mrtz_via_epilog = true;
 
    for (unsigned i = 0; i < createInfoCount; i++) {

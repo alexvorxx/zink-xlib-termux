@@ -55,7 +55,7 @@ radv_get_sequence_size_compute(const struct radv_indirect_command_layout *layout
       /* COMPUTE_PGM_{LO,RSRC1,RSRC2} */
       *cmd_size += 7 * 4;
 
-      if (device->physical_device->rad_info.gfx_level >= GFX10) {
+      if (device->physical_device->info.gfx_level >= GFX10) {
          /* COMPUTE_PGM_RSRC3 */
          *cmd_size += 3 * 4;
       }
@@ -189,7 +189,7 @@ radv_get_sequence_size(const struct radv_indirect_command_layout *layout, struct
 static uint32_t
 radv_align_cmdbuf_size(const struct radv_device *device, uint32_t size, enum amd_ip_type ip_type)
 {
-   const uint32_t ib_alignment = device->physical_device->rad_info.ip[ip_type].ib_alignment;
+   const uint32_t ib_alignment = device->physical_device->info.ip[ip_type].ib_alignment;
 
    return align(size, ib_alignment);
 }
@@ -365,7 +365,7 @@ nir_pkt3(nir_builder *b, unsigned op, nir_def *len)
 static nir_def *
 dgc_get_nop_packet(nir_builder *b, const struct radv_device *device)
 {
-   if (device->physical_device->rad_info.gfx_ib_pad_with_type2) {
+   if (device->physical_device->info.gfx_ib_pad_with_type2) {
       return nir_imm_int(b, PKT2_NOP_PAD);
    } else {
       return nir_imm_int(b, PKT3_NOP_PAD);
@@ -718,7 +718,7 @@ build_dgc_buffer_tail(nir_builder *b, nir_def *sequence_count, const struct radv
 
          nir_def *packet, *packet_size;
 
-         if (device->physical_device->rad_info.gfx_ib_pad_with_type2) {
+         if (device->physical_device->info.gfx_ib_pad_with_type2) {
             packet_size = nir_imm_int(b, 4);
             packet = nir_imm_int(b, PKT2_NOP_PAD);
          } else {
@@ -778,7 +778,7 @@ build_dgc_buffer_preamble(nir_builder *b, nir_def *sequence_count, const struct 
       nir_def *chain_packets[] = {
          nir_imm_int(b, PKT3(PKT3_INDIRECT_BUFFER, 2, 0)),
          addr,
-         nir_imm_int(b, device->physical_device->rad_info.address32_hi),
+         nir_imm_int(b, device->physical_device->info.address32_hi),
          nir_ior_imm(b, words, S_3F2_CHAIN(1) | S_3F2_VALID(1) | S_3F2_PRE_ENA(false)),
       };
 
@@ -876,10 +876,10 @@ dgc_emit_index_buffer(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_buf
 
    nir_def *cmd_values[3 + 2 + 3];
 
-   if (device->physical_device->rad_info.gfx_level >= GFX9) {
+   if (device->physical_device->info.gfx_level >= GFX9) {
       unsigned opcode = PKT3_SET_UCONFIG_REG_INDEX;
-      if (device->physical_device->rad_info.gfx_level < GFX9 ||
-          (device->physical_device->rad_info.gfx_level == GFX9 && device->physical_device->rad_info.me_fw_version < 26))
+      if (device->physical_device->info.gfx_level < GFX9 ||
+          (device->physical_device->info.gfx_level == GFX9 && device->physical_device->info.me_fw_version < 26))
          opcode = PKT3_SET_UCONFIG_REG;
       cmd_values[0] = nir_imm_int(b, PKT3(opcode, 1, 0));
       cmd_values[1] = nir_imm_int(b, (R_03090C_VGT_INDEX_TYPE - CIK_UCONFIG_REG_OFFSET) >> 2 | (2u << 28));
@@ -1252,9 +1252,9 @@ dgc_emit_vertex_buffer(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_bu
             nir_pop_if(b, NULL);
 
             nir_def *convert_cond = nir_ine_imm(b, nir_load_var(b, num_records), 0);
-            if (device->physical_device->rad_info.gfx_level == GFX9)
+            if (device->physical_device->info.gfx_level == GFX9)
                convert_cond = nir_imm_false(b);
-            else if (device->physical_device->rad_info.gfx_level != GFX8)
+            else if (device->physical_device->info.gfx_level != GFX8)
                convert_cond = nir_iand(b, convert_cond, nir_ieq_imm(b, stride, 0));
 
             nir_def *new_records =
@@ -1264,7 +1264,7 @@ dgc_emit_vertex_buffer(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_bu
          }
          nir_push_else(b, NULL);
          {
-            if (device->physical_device->rad_info.gfx_level != GFX8) {
+            if (device->physical_device->info.gfx_level != GFX8) {
                nir_push_if(b, nir_ine_imm(b, stride, 0));
                {
                   nir_def *r = nir_iadd(b, nir_load_var(b, num_records), nir_iadd_imm(b, stride, -1));
@@ -1276,7 +1276,7 @@ dgc_emit_vertex_buffer(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_bu
          nir_pop_if(b, NULL);
 
          nir_def *rsrc_word3 = nir_channel(b, nir_load_var(b, vbo_data), 3);
-         if (device->physical_device->rad_info.gfx_level >= GFX10) {
+         if (device->physical_device->info.gfx_level >= GFX10) {
             nir_def *oob_select = nir_bcsel(b, nir_ieq_imm(b, stride, 0), nir_imm_int(b, V_008F0C_OOB_SELECT_RAW),
                                             nir_imm_int(b, V_008F0C_OOB_SELECT_STRUCTURED));
             rsrc_word3 = nir_iand_imm(b, rsrc_word3, C_008F0C_OOB_SELECT);
@@ -1465,7 +1465,7 @@ dgc_emit_bind_pipeline(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_bu
    dgc_emit1(b, cs, load_metadata32(b, rsrc1));
    dgc_emit1(b, cs, load_metadata32(b, rsrc2));
 
-   if (device->physical_device->rad_info.gfx_level >= GFX10) {
+   if (device->physical_device->info.gfx_level >= GFX10) {
       dgc_emit_set_sh_reg_seq(b, cs, R_00B8A0_COMPUTE_PGM_RSRC3, 1);
       dgc_emit1(b, cs, load_metadata32(b, rsrc3));
    }
@@ -1554,7 +1554,7 @@ build_dgc_prepare_shader(struct radv_device *dev)
       struct dgc_cmdbuf cmd_buf = {
          .descriptor = radv_meta_load_descriptor(&b, 0, DGC_DESC_PREPARE),
          .offset = nir_variable_create(b.shader, nir_var_shader_temp, glsl_uint_type(), "cmd_buf_offset"),
-         .gfx_level = dev->physical_device->rad_info.gfx_level,
+         .gfx_level = dev->physical_device->info.gfx_level,
          .sqtt_enabled = !!dev->sqtt.bo,
       };
       nir_store_var(&b, cmd_buf.offset, nir_iadd(&b, nir_imul(&b, global_id, cmd_buf_stride), cmd_buf_base_offset), 1);
@@ -1647,7 +1647,7 @@ build_dgc_prepare_shader(struct radv_device *dev)
       /* Pad the cmdbuffer if we did not use the whole stride */
       nir_push_if(&b, nir_ine(&b, nir_load_var(&b, cmd_buf.offset), cmd_buf_end));
       {
-         if (dev->physical_device->rad_info.gfx_ib_pad_with_type2) {
+         if (dev->physical_device->info.gfx_ib_pad_with_type2) {
             nir_push_loop(&b);
             {
                nir_def *curr_offset = nir_load_var(&b, cmd_buf.offset);
@@ -1884,8 +1884,8 @@ radv_GetGeneratedCommandsMemoryRequirementsNV(VkDevice _device,
 
    pMemoryRequirements->memoryRequirements.memoryTypeBits = device->physical_device->memory_types_32bit;
    pMemoryRequirements->memoryRequirements.alignment =
-      MAX2(device->physical_device->rad_info.ip[AMD_IP_GFX].ib_alignment,
-           device->physical_device->rad_info.ip[AMD_IP_COMPUTE].ib_alignment);
+      MAX2(device->physical_device->info.ip[AMD_IP_GFX].ib_alignment,
+           device->physical_device->info.ip[AMD_IP_COMPUTE].ib_alignment);
    pMemoryRequirements->memoryRequirements.size =
       align(cmd_buf_size + upload_buf_size, pMemoryRequirements->memoryRequirements.alignment);
 }
@@ -2074,7 +2074,7 @@ radv_prepare_dgc_compute(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCo
       struct radv_shader *cs = radv_get_shader(compute_pipeline->base.shaders, MESA_SHADER_COMPUTE);
 
       if (cs->info.wave_size == 32) {
-         assert(cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX10);
+         assert(cmd_buffer->device->physical_device->info.gfx_level >= GFX10);
          params->dispatch_initiator |= S_00B800_CS_W32_EN(1);
       }
 

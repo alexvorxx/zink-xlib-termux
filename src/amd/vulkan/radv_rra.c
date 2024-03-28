@@ -1365,7 +1365,7 @@ radv_rra_dump_trace(VkQueue vk_queue, char *filename)
    fwrite(&api, sizeof(uint64_t), 1, file);
 
    uint64_t asic_info_offset = (uint64_t)ftell(file);
-   rra_dump_asic_info(&device->physical_device->rad_info, file);
+   rra_dump_asic_info(&device->physical_device->info, file);
 
    uint64_t written_accel_struct_count = 0;
 

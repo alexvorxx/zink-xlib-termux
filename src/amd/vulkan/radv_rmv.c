@@ -180,7 +180,7 @@ evaluate_trace_event(struct radv_device *device, uint64_t timestamp, struct util
    struct trace_event_address_array *array = (struct trace_event_address_array *)(event + 1);
 
    for (uint32_t i = 0; i < event->num_ptes; ++i)
-      emit_page_table_update_event(&device->vk.memory_trace_data, !device->physical_device->rad_info.has_dedicated_vram,
+      emit_page_table_update_event(&device->vk.memory_trace_data, !device->physical_device->info.has_dedicated_vram,
                                    timestamp, event, (uint64_t *)array->data, i);
 }
 
@@ -423,7 +423,7 @@ memory_type_from_vram_type(uint32_t vram_type)
 void
 radv_rmv_fill_device_info(const struct radv_physical_device *pdev, struct vk_rmv_device_info *info)
 {
-   const struct radeon_info *gpu_info = &pdev->rad_info;
+   const struct radeon_info *gpu_info = &pdev->info;
 
    for (int32_t i = 0; i < VK_RMV_MEMORY_LOCATION_COUNT; ++i) {
       fill_memory_info(gpu_info, &info->memory_infos[i], i);
@@ -495,7 +495,7 @@ radv_rmv_log_heap_create(struct radv_device *device, VkDeviceMemory heap, bool i
    token.is_driver_internal = is_internal;
    token.resource_id = vk_rmv_get_resource_id_locked(&device->vk, (uint64_t)heap);
    token.type = VK_RMV_RESOURCE_TYPE_HEAP;
-   token.heap.alignment = device->physical_device->rad_info.max_alignment;
+   token.heap.alignment = device->physical_device->info.max_alignment;
    token.heap.size = memory->alloc_size;
    token.heap.heap_index = memory->heap_index;
    token.heap.alloc_flags = alloc_flags;
@@ -518,7 +518,7 @@ radv_rmv_log_bo_allocate(struct radv_device *device, struct radeon_winsys_bo *bo
    struct vk_rmv_virtual_allocate_token token = {0};
    token.address = bo->va;
    /* If all VRAM is visible, no bo will be in invisible memory. */
-   token.is_in_invisible_vram = bo->vram_no_cpu_access && !device->physical_device->rad_info.all_vram_visible;
+   token.is_in_invisible_vram = bo->vram_no_cpu_access && !device->physical_device->info.all_vram_visible;
    token.preferred_domains = (enum vk_rmv_kernel_memory_domain)bo->initial_domain;
    token.is_driver_internal = is_internal;
    token.page_count = DIV_ROUND_UP(bo->size, 4096);

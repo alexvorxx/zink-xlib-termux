@@ -270,7 +270,7 @@ struct radv_physical_device {
    struct radv_instance *instance;
 
    struct radeon_winsys *ws;
-   struct radeon_info rad_info;
+   struct radeon_info info;
    char name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
    char marketing_name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
    uint8_t driver_uuid[VK_UUID_SIZE];
@@ -748,7 +748,7 @@ radv_sparse_queue_enabled(const struct radv_physical_device *pdev)
 {
    /* Dedicated sparse queue requires VK_QUEUE_SUBMIT_MODE_THREADED, which is incompatible with
     * VK_DEVICE_TIMELINE_MODE_EMULATED. */
-   return pdev->rad_info.has_timeline_syncobj && !pdev->instance->drirc.legacy_sparse_binding;
+   return pdev->info.has_timeline_syncobj && !pdev->instance->drirc.legacy_sparse_binding;
 }
 
 static inline enum radv_queue_family
@@ -768,11 +768,11 @@ enum amd_ip_type radv_queue_family_to_ring(const struct radv_physical_device *de
 static inline bool
 radv_has_uvd(struct radv_physical_device *phys_dev)
 {
-   enum radeon_family family = phys_dev->rad_info.family;
+   enum radeon_family family = phys_dev->info.family;
    /* Only support UVD on TONGA+ */
    if (family < CHIP_TONGA)
       return false;
-   return phys_dev->rad_info.ip[AMD_IP_UVD].num_queues > 0;
+   return phys_dev->info.ip[AMD_IP_UVD].num_queues > 0;
 }
 
 struct radv_queue_ring_info {
@@ -2158,7 +2158,7 @@ radv_emit_shader_pointer_body(const struct radv_device *device, struct radeon_cm
    radeon_emit(cs, va);
 
    if (use_32bit_pointers) {
-      assert(va == 0 || (va >> 32) == device->physical_device->rad_info.address32_hi);
+      assert(va == 0 || (va >> 32) == device->physical_device->info.address32_hi);
    } else {
       radeon_emit(cs, va >> 32);
    }
@@ -2798,7 +2798,7 @@ radv_image_has_htile(const struct radv_image *image)
 static inline bool
 radv_image_has_vrs_htile(const struct radv_device *device, const struct radv_image *image)
 {
-   const enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
+   const enum amd_gfx_level gfx_level = device->physical_device->info.gfx_level;
 
    /* Any depth buffer can potentially use VRS on GFX10.3. */
    return gfx_level == GFX10_3 && device->vk.enabled_features.attachmentFragmentShadingRate &&
@@ -2830,7 +2830,7 @@ radv_image_is_tc_compat_htile(const struct radv_image *image)
 static inline bool
 radv_image_tile_stencil_disabled(const struct radv_device *device, const struct radv_image *image)
 {
-   if (device->physical_device->rad_info.gfx_level >= GFX9) {
+   if (device->physical_device->info.gfx_level >= GFX9) {
       return !vk_format_has_stencil(image->vk.format) && !radv_image_has_vrs_htile(device, image);
    } else {
       /* Due to a hw bug, TILE_STENCIL_DISABLE must be set to 0 for
@@ -2939,7 +2939,7 @@ static inline bool
 radv_image_get_iterate256(const struct radv_device *device, struct radv_image *image)
 {
    /* ITERATE_256 is required for depth or stencil MSAA images that are TC-compatible HTILE. */
-   return device->physical_device->rad_info.gfx_level >= GFX10 &&
+   return device->physical_device->info.gfx_level >= GFX10 &&
           (image->vk.usage & (VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)) &&
           radv_image_is_tc_compat_htile(image) && image->vk.samples > 1;
 }
@@ -3764,14 +3764,14 @@ radv_use_llvm_for_stage(const struct radv_device *device, UNUSED gl_shader_stage
 static inline bool
 radv_has_shader_buffer_float_minmax(const struct radv_physical_device *pdev, unsigned bitsize)
 {
-   return (pdev->rad_info.gfx_level <= GFX7 && !pdev->use_llvm) || pdev->rad_info.gfx_level == GFX10 ||
-          pdev->rad_info.gfx_level == GFX10_3 || (pdev->rad_info.gfx_level == GFX11 && bitsize == 32);
+   return (pdev->info.gfx_level <= GFX7 && !pdev->use_llvm) || pdev->info.gfx_level == GFX10 ||
+          pdev->info.gfx_level == GFX10_3 || (pdev->info.gfx_level == GFX11 && bitsize == 32);
 }
 
 static inline bool
 radv_has_pops(const struct radv_physical_device *pdev)
 {
-   return pdev->rad_info.gfx_level >= GFX9 && !pdev->use_llvm;
+   return pdev->info.gfx_level >= GFX9 && !pdev->use_llvm;
 }
 
 unsigned radv_compact_spi_shader_col_format(const struct radv_shader *ps, uint32_t spi_shader_col_format);

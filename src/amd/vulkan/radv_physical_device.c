@@ -58,7 +58,7 @@ radv_perf_query_supported(const struct radv_physical_device *pdev)
 {
    /* SQTT / SPM interfere with the register states for perf counters, and
     * the code has only been tested on GFX10.3 */
-   return pdev->rad_info.gfx_level == GFX10_3 && !(pdev->instance->vk.trace_mode & RADV_TRACE_MODE_RGP);
+   return pdev->info.gfx_level == GFX10_3 && !(pdev->instance->vk.trace_mode & RADV_TRACE_MODE_RGP);
 }
 
 static bool
@@ -67,32 +67,31 @@ radv_taskmesh_enabled(const struct radv_physical_device *pdev)
    if (pdev->instance->debug_flags & RADV_DEBUG_NO_MESH_SHADER)
       return false;
 
-   return pdev->use_ngg && !pdev->use_llvm && pdev->rad_info.gfx_level >= GFX10_3 &&
-          !(pdev->instance->debug_flags & RADV_DEBUG_NO_COMPUTE_QUEUE) && pdev->rad_info.has_gang_submit;
+   return pdev->use_ngg && !pdev->use_llvm && pdev->info.gfx_level >= GFX10_3 &&
+          !(pdev->instance->debug_flags & RADV_DEBUG_NO_COMPUTE_QUEUE) && pdev->info.has_gang_submit;
 }
 
 static bool
 radv_transfer_queue_enabled(const struct radv_physical_device *pdev)
 {
    /* Check if the GPU has SDMA support and transfer queues are allowed. */
-   if (pdev->rad_info.sdma_ip_version == SDMA_UNKNOWN || !pdev->rad_info.ip[AMD_IP_SDMA].num_queues ||
+   if (pdev->info.sdma_ip_version == SDMA_UNKNOWN || !pdev->info.ip[AMD_IP_SDMA].num_queues ||
        !(pdev->instance->perftest_flags & RADV_PERFTEST_TRANSFER_QUEUE))
       return false;
 
-   return pdev->rad_info.gfx_level >= GFX9;
+   return pdev->info.gfx_level >= GFX9;
 }
 
 static bool
 radv_vrs_attachment_enabled(const struct radv_physical_device *pdev)
 {
-   return pdev->rad_info.gfx_level >= GFX11 || !(pdev->instance->debug_flags & RADV_DEBUG_NO_HIZ);
+   return pdev->info.gfx_level >= GFX11 || !(pdev->instance->debug_flags & RADV_DEBUG_NO_HIZ);
 }
 
 static bool
 radv_calibrated_timestamps_enabled(const struct radv_physical_device *pdev)
 {
-   return RADV_SUPPORT_CALIBRATED_TIMESTAMPS &&
-          !(pdev->rad_info.family == CHIP_RAVEN || pdev->rad_info.family == CHIP_RAVEN2);
+   return RADV_SUPPORT_CALIBRATED_TIMESTAMPS && !(pdev->info.family == CHIP_RAVEN || pdev->info.family == CHIP_RAVEN2);
 }
 
 static bool
@@ -104,7 +103,7 @@ radv_shader_object_enabled(const struct radv_physical_device *pdev)
 bool
 radv_enable_rt(const struct radv_physical_device *pdev, bool rt_pipelines)
 {
-   if (pdev->rad_info.gfx_level < GFX10_3 && !radv_emulate_rt(pdev))
+   if (pdev->info.gfx_level < GFX10_3 && !radv_emulate_rt(pdev))
       return false;
 
    if (rt_pipelines && pdev->use_llvm)
@@ -122,7 +121,7 @@ radv_emulate_rt(const struct radv_physical_device *pdev)
 static bool
 radv_is_conformant(const struct radv_physical_device *pdev)
 {
-   return pdev->rad_info.gfx_level >= GFX8;
+   return pdev->info.gfx_level >= GFX8;
 }
 
 static void
@@ -142,14 +141,13 @@ radv_physical_device_init_cache_key(struct radv_physical_device *pdev)
 {
    struct radv_physical_device_cache_key *key = &pdev->cache_key;
 
-   key->family = pdev->rad_info.family;
+   key->family = pdev->info.family;
    key->ptr_size = sizeof(void *);
-   key->conformant_trunc_coord = pdev->rad_info.conformant_trunc_coord;
+   key->conformant_trunc_coord = pdev->info.conformant_trunc_coord;
 
    key->clear_lds = pdev->instance->drirc.clear_lds;
    key->cs_wave32 = pdev->cs_wave_size == 32;
-   key->disable_aniso_single_level =
-      pdev->instance->drirc.disable_aniso_single_level && pdev->rad_info.gfx_level < GFX8;
+   key->disable_aniso_single_level = pdev->instance->drirc.disable_aniso_single_level && pdev->info.gfx_level < GFX8;
    key->disable_shrink_image_store = pdev->instance->drirc.disable_shrink_image_store;
    key->disable_sinking_load_input_fs = pdev->instance->drirc.disable_sinking_load_input_fs;
    key->dual_color_blend_by_location = pdev->instance->drirc.dual_color_blend_by_location;
@@ -226,14 +224,13 @@ radv_physical_device_init_queue_table(struct radv_physical_device *pdev)
    for (unsigned i = 1; i < RADV_MAX_QUEUE_FAMILIES; i++)
       pdev->vk_queue_to_radv[i] = RADV_MAX_QUEUE_FAMILIES + 1;
 
-   if (pdev->rad_info.ip[AMD_IP_COMPUTE].num_queues > 0 &&
-       !(pdev->instance->debug_flags & RADV_DEBUG_NO_COMPUTE_QUEUE)) {
+   if (pdev->info.ip[AMD_IP_COMPUTE].num_queues > 0 && !(pdev->instance->debug_flags & RADV_DEBUG_NO_COMPUTE_QUEUE)) {
       pdev->vk_queue_to_radv[idx] = RADV_QUEUE_COMPUTE;
       idx++;
    }
 
    if (pdev->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE) {
-      if (pdev->rad_info.ip[pdev->vid_decode_ip].num_queues > 0) {
+      if (pdev->info.ip[pdev->vid_decode_ip].num_queues > 0) {
          pdev->vk_queue_to_radv[idx] = RADV_QUEUE_VIDEO_DEC;
          idx++;
       }
@@ -264,21 +261,21 @@ radv_get_adjusted_vram_size(struct radv_physical_device *pdev)
 {
    int ov = pdev->instance->drirc.override_vram_size;
    if (ov >= 0)
-      return MIN2((uint64_t)pdev->rad_info.vram_size_kb * 1024, (uint64_t)ov << 20);
-   return (uint64_t)pdev->rad_info.vram_size_kb * 1024;
+      return MIN2((uint64_t)pdev->info.vram_size_kb * 1024, (uint64_t)ov << 20);
+   return (uint64_t)pdev->info.vram_size_kb * 1024;
 }
 
 static uint64_t
 radv_get_visible_vram_size(struct radv_physical_device *pdev)
 {
-   return MIN2(radv_get_adjusted_vram_size(pdev), (uint64_t)pdev->rad_info.vram_vis_size_kb * 1024);
+   return MIN2(radv_get_adjusted_vram_size(pdev), (uint64_t)pdev->info.vram_vis_size_kb * 1024);
 }
 
 static uint64_t
 radv_get_vram_size(struct radv_physical_device *pdev)
 {
    uint64_t total_size = radv_get_adjusted_vram_size(pdev);
-   return total_size - MIN2(total_size, (uint64_t)pdev->rad_info.vram_vis_size_kb * 1024);
+   return total_size - MIN2(total_size, (uint64_t)pdev->info.vram_vis_size_kb * 1024);
 }
 
 static void
@@ -286,13 +283,13 @@ radv_physical_device_init_mem_types(struct radv_physical_device *pdev)
 {
    uint64_t visible_vram_size = radv_get_visible_vram_size(pdev);
    uint64_t vram_size = radv_get_vram_size(pdev);
-   uint64_t gtt_size = (uint64_t)pdev->rad_info.gart_size_kb * 1024;
+   uint64_t gtt_size = (uint64_t)pdev->info.gart_size_kb * 1024;
    int vram_index = -1, visible_vram_index = -1, gart_index = -1;
 
    pdev->memory_properties.memoryHeapCount = 0;
    pdev->heaps = 0;
 
-   if (!pdev->rad_info.has_dedicated_vram) {
+   if (!pdev->info.has_dedicated_vram) {
       const uint64_t total_size = gtt_size + visible_vram_size;
 
       if (pdev->instance->drirc.enable_unified_heap_on_apu) {
@@ -304,7 +301,7 @@ radv_physical_device_init_mem_types(struct radv_physical_device *pdev)
           * greater than it. To workaround this, we compute the total available memory size (GTT +
           * visible VRAM size) and report 2/3 as VRAM and 1/3 as GTT.
           */
-         visible_vram_size = align64((total_size * 2) / 3, pdev->rad_info.gart_page_size);
+         visible_vram_size = align64((total_size * 2) / 3, pdev->info.gart_page_size);
          gtt_size = total_size - visible_vram_size;
       }
 
@@ -403,7 +400,7 @@ radv_physical_device_init_mem_types(struct radv_physical_device *pdev)
    }
    pdev->memory_properties.memoryTypeCount = type_count;
 
-   if (pdev->rad_info.has_l2_uncached) {
+   if (pdev->info.has_l2_uncached) {
       for (int i = 0; i < pdev->memory_properties.memoryTypeCount; i++) {
          VkMemoryType mem_type = pdev->memory_properties.memoryTypes[i];
 
@@ -446,13 +443,12 @@ radv_find_memory_index(const struct radv_physical_device *pdev, VkMemoryProperty
 static void
 radv_get_binning_settings(const struct radv_physical_device *pdev, struct radv_binning_settings *settings)
 {
-   if ((pdev->rad_info.has_dedicated_vram && pdev->rad_info.max_render_backends > 4) ||
-       pdev->rad_info.gfx_level >= GFX10) {
+   if ((pdev->info.has_dedicated_vram && pdev->info.max_render_backends > 4) || pdev->info.gfx_level >= GFX10) {
       /* Using higher settings on GFX10+ can cause random GPU hangs. */
       settings->context_states_per_bin = 1;
       settings->persistent_states_per_bin = 1;
    } else {
-      settings->context_states_per_bin = pdev->rad_info.has_gfx9_scissor_bug ? 1 : 3;
+      settings->context_states_per_bin = pdev->info.has_gfx9_scissor_bug ? 1 : 3;
       settings->persistent_states_per_bin = 1;
    }
 
@@ -468,7 +464,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .KHR_16bit_storage = true,
       .KHR_acceleration_structure = radv_enable_rt(pdev, false),
       .KHR_calibrated_timestamps = radv_calibrated_timestamps_enabled(pdev),
-      .KHR_cooperative_matrix = pdev->rad_info.gfx_level >= GFX11 && !pdev->use_llvm,
+      .KHR_cooperative_matrix = pdev->info.gfx_level >= GFX11 && !pdev->use_llvm,
       .KHR_bind_memory2 = true,
       .KHR_buffer_device_address = true,
       .KHR_copy_commands2 = true,
@@ -488,8 +484,8 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .KHR_external_semaphore = true,
       .KHR_external_semaphore_fd = true,
       .KHR_format_feature_flags2 = true,
-      .KHR_fragment_shader_barycentric = pdev->rad_info.gfx_level >= GFX10_3,
-      .KHR_fragment_shading_rate = pdev->rad_info.gfx_level >= GFX10_3,
+      .KHR_fragment_shader_barycentric = pdev->info.gfx_level >= GFX10_3,
+      .KHR_fragment_shading_rate = pdev->info.gfx_level >= GFX10_3,
       .KHR_get_memory_requirements2 = true,
       .KHR_global_priority = true,
       .KHR_image_format_list = true,
@@ -497,7 +493,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
 #ifdef RADV_USE_WSI_PLATFORM
       .KHR_incremental_present = true,
 #endif
-      .KHR_index_type_uint8 = pdev->rad_info.gfx_level >= GFX8,
+      .KHR_index_type_uint8 = pdev->info.gfx_level >= GFX8,
       .KHR_line_rasterization = true,
       .KHR_load_store_op_none = true,
       .KHR_maintenance1 = true,
@@ -555,9 +551,8 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .KHR_variable_pointers = true,
       .KHR_vertex_attribute_divisor = true,
       .KHR_video_queue = !!(pdev->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE),
-      .KHR_video_decode_av1 =
-         (pdev->rad_info.vcn_ip_version >= VCN_3_0_0 && pdev->rad_info.vcn_ip_version != VCN_3_0_33 &&
-          VIDEO_CODEC_AV1DEC && !!(pdev->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE)),
+      .KHR_video_decode_av1 = (pdev->info.vcn_ip_version >= VCN_3_0_0 && pdev->info.vcn_ip_version != VCN_3_0_33 &&
+                               VIDEO_CODEC_AV1DEC && !!(pdev->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE)),
       .KHR_video_decode_queue = !!(pdev->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE),
       .KHR_video_decode_h264 = VIDEO_CODEC_H264DEC && !!(pdev->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE),
       .KHR_video_decode_h265 = VIDEO_CODEC_H265DEC && !!(pdev->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE),
@@ -567,12 +562,12 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_4444_formats = true,
       .EXT_attachment_feedback_loop_dynamic_state = true,
       .EXT_attachment_feedback_loop_layout = true,
-      .EXT_border_color_swizzle = pdev->rad_info.gfx_level >= GFX10,
+      .EXT_border_color_swizzle = pdev->info.gfx_level >= GFX10,
       .EXT_buffer_device_address = true,
       .EXT_calibrated_timestamps = radv_calibrated_timestamps_enabled(pdev),
       .EXT_color_write_enable = true,
       .EXT_conditional_rendering = true,
-      .EXT_conservative_rasterization = pdev->rad_info.gfx_level >= GFX9,
+      .EXT_conservative_rasterization = pdev->info.gfx_level >= GFX9,
       .EXT_custom_border_color = true,
       .EXT_debug_marker = pdev->instance->vk.trace_mode & RADV_TRACE_MODE_RGP,
       .EXT_depth_bias_control = true,
@@ -582,7 +577,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_depth_range_unrestricted = true,
       .EXT_descriptor_buffer = true,
       .EXT_descriptor_indexing = true,
-      .EXT_device_fault = pdev->rad_info.has_gpuvm_fault_query,
+      .EXT_device_fault = pdev->info.has_gpuvm_fault_query,
       .EXT_discard_rectangles = true,
 #ifdef VK_USE_PLATFORM_DISPLAY_KHR
       .EXT_display_control = true,
@@ -593,7 +588,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_extended_dynamic_state3 = true,
       .EXT_external_memory_acquire_unmodified = true,
       .EXT_external_memory_dma_buf = true,
-      .EXT_external_memory_host = pdev->rad_info.has_userptr,
+      .EXT_external_memory_host = pdev->info.has_userptr,
       .EXT_fragment_shader_interlock = radv_has_pops(pdev),
       .EXT_global_priority = true,
       .EXT_global_priority_query = true,
@@ -601,11 +596,11 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_host_query_reset = true,
       .EXT_image_2d_view_of_3d = true,
       .EXT_image_compression_control = true,
-      .EXT_image_drm_format_modifier = pdev->rad_info.gfx_level >= GFX9,
+      .EXT_image_drm_format_modifier = pdev->info.gfx_level >= GFX9,
       .EXT_image_robustness = true,
-      .EXT_image_sliced_view_of_3d = pdev->rad_info.gfx_level >= GFX10,
+      .EXT_image_sliced_view_of_3d = pdev->info.gfx_level >= GFX10,
       .EXT_image_view_min_lod = true,
-      .EXT_index_type_uint8 = pdev->rad_info.gfx_level >= GFX8,
+      .EXT_index_type_uint8 = pdev->info.gfx_level >= GFX8,
       .EXT_inline_uniform_block = true,
       .EXT_line_rasterization = true,
       .EXT_load_store_op_none = true,
@@ -624,16 +619,16 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_pipeline_creation_feedback = true,
       .EXT_pipeline_library_group_handles = radv_enable_rt(pdev, true),
       .EXT_pipeline_robustness = !pdev->use_llvm,
-      .EXT_post_depth_coverage = pdev->rad_info.gfx_level >= GFX10,
+      .EXT_post_depth_coverage = pdev->info.gfx_level >= GFX10,
       .EXT_primitive_topology_list_restart = true,
       .EXT_primitives_generated_query = true,
       .EXT_private_data = true,
       .EXT_provoking_vertex = true,
       .EXT_queue_family_foreign = true,
       .EXT_robustness2 = true,
-      .EXT_sample_locations = pdev->rad_info.gfx_level < GFX10,
+      .EXT_sample_locations = pdev->info.gfx_level < GFX10,
       .EXT_sampler_filter_minmax = true,
-      .EXT_scalar_block_layout = pdev->rad_info.gfx_level >= GFX7,
+      .EXT_scalar_block_layout = pdev->info.gfx_level >= GFX7,
       .EXT_separate_stencil_usage = true,
       .EXT_shader_atomic_float = true,
       .EXT_shader_atomic_float2 = true,
@@ -659,11 +654,11 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .AMD_device_coherent_memory = true,
       .AMD_draw_indirect_count = true,
       .AMD_gcn_shader = true,
-      .AMD_gpu_shader_half_float = pdev->rad_info.has_packed_math_16bit,
-      .AMD_gpu_shader_int16 = pdev->rad_info.has_packed_math_16bit,
+      .AMD_gpu_shader_half_float = pdev->info.has_packed_math_16bit,
+      .AMD_gpu_shader_int16 = pdev->info.has_packed_math_16bit,
       .AMD_memory_overallocation_behavior = true,
       .AMD_mixed_attachment_samples = true,
-      .AMD_rasterization_order = pdev->rad_info.has_out_of_order_rast,
+      .AMD_rasterization_order = pdev->info.has_out_of_order_rast,
       .AMD_shader_ballot = true,
       .AMD_shader_core_properties = true,
       .AMD_shader_core_properties2 = true,
@@ -672,7 +667,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .AMD_shader_fragment_mask = pdev->use_fmask,
       .AMD_shader_image_load_store_lod = true,
       .AMD_shader_trinary_minmax = true,
-      .AMD_texture_gather_bias_lod = pdev->rad_info.gfx_level < GFX11,
+      .AMD_texture_gather_bias_lod = pdev->info.gfx_level < GFX11,
 #if DETECT_OS_ANDROID
       .ANDROID_external_memory_android_hardware_buffer = RADV_SUPPORT_ANDROID_HARDWARE_BUFFER,
       .ANDROID_native_buffer = true,
@@ -700,7 +695,7 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
    bool taskmesh_en = radv_taskmesh_enabled(pdev);
    bool has_perf_query = radv_perf_query_supported(pdev);
    bool has_shader_image_float_minmax =
-      pdev->rad_info.gfx_level != GFX8 && pdev->rad_info.gfx_level != GFX9 && pdev->rad_info.gfx_level != GFX11;
+      pdev->info.gfx_level != GFX8 && pdev->info.gfx_level != GFX9 && pdev->info.gfx_level != GFX11;
    bool has_fragment_shader_interlock = radv_has_pops(pdev);
 
    *features = (struct vk_features){
@@ -748,10 +743,10 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
       .shaderInt64 = true,
       .shaderInt16 = true,
       .sparseBinding = true,
-      .sparseResidencyBuffer = pdev->rad_info.family >= CHIP_POLARIS10,
-      .sparseResidencyImage2D = pdev->rad_info.family >= CHIP_POLARIS10,
-      .sparseResidencyImage3D = pdev->rad_info.family >= CHIP_POLARIS10,
-      .sparseResidencyAliased = pdev->rad_info.family >= CHIP_POLARIS10,
+      .sparseResidencyBuffer = pdev->info.family >= CHIP_POLARIS10,
+      .sparseResidencyImage2D = pdev->info.family >= CHIP_POLARIS10,
+      .sparseResidencyImage3D = pdev->info.family >= CHIP_POLARIS10,
+      .sparseResidencyAliased = pdev->info.family >= CHIP_POLARIS10,
       .variableMultisampleRate = true,
       .shaderResourceMinLod = true,
       .shaderResourceResidency = true,
@@ -761,7 +756,7 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
       .storageBuffer16BitAccess = true,
       .uniformAndStorageBuffer16BitAccess = true,
       .storagePushConstant16 = true,
-      .storageInputOutput16 = pdev->rad_info.has_packed_math_16bit,
+      .storageInputOutput16 = pdev->info.has_packed_math_16bit,
       .multiview = true,
       .multiviewGeometryShader = true,
       .multiviewTessellationShader = true,
@@ -779,7 +774,7 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
       .storagePushConstant8 = true,
       .shaderBufferInt64Atomics = true,
       .shaderSharedInt64Atomics = true,
-      .shaderFloat16 = pdev->rad_info.has_packed_math_16bit,
+      .shaderFloat16 = pdev->info.has_packed_math_16bit,
       .shaderInt8 = true,
 
       .descriptorIndexing = true,
@@ -805,7 +800,7 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
       .runtimeDescriptorArray = true,
 
       .samplerFilterMinmax = true,
-      .scalarBlockLayout = pdev->rad_info.gfx_level >= GFX7,
+      .scalarBlockLayout = pdev->info.gfx_level >= GFX7,
       .imagelessFramebuffer = true,
       .uniformBufferStandardLayout = true,
       .shaderSubgroupExtendedTypes = true,
@@ -865,20 +860,20 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
       .ycbcrImageArrays = true,
 
       /* VK_KHR_index_type_uint8 */
-      .indexTypeUint8 = pdev->rad_info.gfx_level >= GFX8,
+      .indexTypeUint8 = pdev->info.gfx_level >= GFX8,
 
       /* VK_KHR_pipeline_executable_properties */
       .pipelineExecutableInfo = true,
 
       /* VK_KHR_shader_clock */
       .shaderSubgroupClock = true,
-      .shaderDeviceClock = pdev->rad_info.gfx_level >= GFX8,
+      .shaderDeviceClock = pdev->info.gfx_level >= GFX8,
 
       /* VK_EXT_texel_buffer_alignment */
       .texelBufferAlignment = true,
 
       /* VK_AMD_device_coherent_memory */
-      .deviceCoherentMemory = pdev->rad_info.has_l2_uncached,
+      .deviceCoherentMemory = pdev->info.has_l2_uncached,
 
       /* VK_KHR_line_rasterization */
       .rectangularLines = true,
@@ -902,11 +897,11 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
 
       /* VK_EXT_shader_atomic_float */
       .shaderBufferFloat32Atomics = true,
-      .shaderBufferFloat32AtomicAdd = pdev->rad_info.gfx_level >= GFX11,
+      .shaderBufferFloat32AtomicAdd = pdev->info.gfx_level >= GFX11,
       .shaderBufferFloat64Atomics = true,
       .shaderBufferFloat64AtomicAdd = false,
       .shaderSharedFloat32Atomics = true,
-      .shaderSharedFloat32AtomicAdd = pdev->rad_info.gfx_level >= GFX8,
+      .shaderSharedFloat32AtomicAdd = pdev->info.gfx_level >= GFX8,
       .shaderSharedFloat64Atomics = true,
       .shaderSharedFloat64AtomicAdd = false,
       .shaderImageFloat32Atomics = true,
@@ -1079,14 +1074,14 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
       .extendedDynamicState3LineStippleEnable = true,
       .extendedDynamicState3ColorBlendEnable = !pdev->use_llvm,
       .extendedDynamicState3DepthClipEnable = true,
-      .extendedDynamicState3ConservativeRasterizationMode = pdev->rad_info.gfx_level >= GFX9,
+      .extendedDynamicState3ConservativeRasterizationMode = pdev->info.gfx_level >= GFX9,
       .extendedDynamicState3DepthClipNegativeOneToOne = true,
       .extendedDynamicState3ProvokingVertexMode = true,
       .extendedDynamicState3DepthClampEnable = true,
       .extendedDynamicState3ColorWriteMask = !pdev->use_llvm,
       .extendedDynamicState3RasterizationSamples = true,
       .extendedDynamicState3ColorBlendEquation = !pdev->use_llvm,
-      .extendedDynamicState3SampleLocationsEnable = pdev->rad_info.gfx_level < GFX10,
+      .extendedDynamicState3SampleLocationsEnable = pdev->info.gfx_level < GFX10,
       .extendedDynamicState3LineRasterizationMode = true,
       .extendedDynamicState3ExtraPrimitiveOverestimationSize = false,
       .extendedDynamicState3AlphaToOneEnable = !pdev->use_llvm,
@@ -1152,8 +1147,8 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
       .deviceGeneratedComputeCaptureReplay = false,
 
       /* VK_KHR_cooperative_matrix */
-      .cooperativeMatrix = pdev->rad_info.gfx_level >= GFX11 && !pdev->use_llvm,
-      .cooperativeMatrixRobustBufferAccess = pdev->rad_info.gfx_level >= GFX11 && !pdev->use_llvm,
+      .cooperativeMatrix = pdev->info.gfx_level >= GFX11 && !pdev->use_llvm,
+      .cooperativeMatrixRobustBufferAccess = pdev->info.gfx_level >= GFX11 && !pdev->use_llvm,
 
       /* VK_EXT_image_compression_control */
       .imageCompressionControl = true,
@@ -1247,7 +1242,7 @@ radv_get_physical_device_properties(struct radv_physical_device *pdev)
    size_t max_descriptor_set_size = radv_max_descriptor_set_size();
 
    VkPhysicalDeviceType device_type;
-   if (pdev->rad_info.has_dedicated_vram) {
+   if (pdev->info.has_dedicated_vram) {
       device_type = VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
    } else {
       device_type = VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
@@ -1257,7 +1252,7 @@ radv_get_physical_device_properties(struct radv_physical_device *pdev)
       .apiVersion = RADV_API_VERSION,
       .driverVersion = vk_get_driver_version(),
       .vendorID = ATI_VENDOR_ID,
-      .deviceID = pdev->rad_info.pci_id,
+      .deviceID = pdev->info.pci_id,
       .deviceType = device_type,
       .maxImageDimension1D = (1 << 14),
       .maxImageDimension2D = (1 << 14),
@@ -1351,7 +1346,7 @@ radv_get_physical_device_properties(struct radv_physical_device *pdev)
       .storageImageSampleCounts = sample_counts,
       .maxSampleMaskWords = 1,
       .timestampComputeAndGraphics = true,
-      .timestampPeriod = 1000000.0 / pdev->rad_info.clock_crystal_freq,
+      .timestampPeriod = 1000000.0 / pdev->info.clock_crystal_freq,
       .maxClipDistances = 8,
       .maxCullDistances = 8,
       .maxCombinedClipAndCullDistances = 8,
@@ -1365,9 +1360,9 @@ radv_get_physical_device_properties(struct radv_physical_device *pdev)
       .optimalBufferCopyOffsetAlignment = 1,
       .optimalBufferCopyRowPitchAlignment = 1,
       .nonCoherentAtomSize = 64,
-      .sparseResidencyNonResidentStrict = pdev->rad_info.family >= CHIP_POLARIS10,
-      .sparseResidencyStandard2DBlockShape = pdev->rad_info.family >= CHIP_POLARIS10,
-      .sparseResidencyStandard3DBlockShape = pdev->rad_info.gfx_level >= GFX9,
+      .sparseResidencyNonResidentStrict = pdev->info.family >= CHIP_POLARIS10,
+      .sparseResidencyStandard2DBlockShape = pdev->info.family >= CHIP_POLARIS10,
+      .sparseResidencyStandard3DBlockShape = pdev->info.gfx_level >= GFX9,
    };
 
    struct vk_properties *p = &pdev->vk.properties;
@@ -1411,7 +1406,7 @@ radv_get_physical_device_properties(struct radv_physical_device *pdev)
             radv_get_compiler_string(pdev));
 
    if (radv_is_conformant(pdev)) {
-      if (pdev->rad_info.gfx_level >= GFX10_3) {
+      if (pdev->info.gfx_level >= GFX10_3) {
          p->conformanceVersion = (VkConformanceVersion){
             .major = 1,
             .minor = 3,
@@ -1438,7 +1433,7 @@ radv_get_physical_device_properties(struct radv_physical_device *pdev)
    /* On AMD hardware, denormals and rounding modes for fp16/fp64 are
     * controlled by the same config register.
     */
-   if (pdev->rad_info.has_packed_math_16bit) {
+   if (pdev->info.has_packed_math_16bit) {
       p->denormBehaviorIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_32_BIT_ONLY;
       p->roundingModeIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_32_BIT_ONLY;
    } else {
@@ -1459,17 +1454,17 @@ radv_get_physical_device_properties(struct radv_physical_device *pdev)
    p->shaderRoundingModeRTZFloat32 = !pdev->use_llvm;
    p->shaderSignedZeroInfNanPreserveFloat32 = true;
 
-   p->shaderDenormFlushToZeroFloat16 = pdev->rad_info.has_packed_math_16bit && !pdev->use_llvm;
-   p->shaderDenormPreserveFloat16 = pdev->rad_info.has_packed_math_16bit;
-   p->shaderRoundingModeRTEFloat16 = pdev->rad_info.has_packed_math_16bit;
-   p->shaderRoundingModeRTZFloat16 = pdev->rad_info.has_packed_math_16bit && !pdev->use_llvm;
-   p->shaderSignedZeroInfNanPreserveFloat16 = pdev->rad_info.has_packed_math_16bit;
+   p->shaderDenormFlushToZeroFloat16 = pdev->info.has_packed_math_16bit && !pdev->use_llvm;
+   p->shaderDenormPreserveFloat16 = pdev->info.has_packed_math_16bit;
+   p->shaderRoundingModeRTEFloat16 = pdev->info.has_packed_math_16bit;
+   p->shaderRoundingModeRTZFloat16 = pdev->info.has_packed_math_16bit && !pdev->use_llvm;
+   p->shaderSignedZeroInfNanPreserveFloat16 = pdev->info.has_packed_math_16bit;
 
-   p->shaderDenormFlushToZeroFloat64 = pdev->rad_info.gfx_level >= GFX8 && !pdev->use_llvm;
-   p->shaderDenormPreserveFloat64 = pdev->rad_info.gfx_level >= GFX8;
-   p->shaderRoundingModeRTEFloat64 = pdev->rad_info.gfx_level >= GFX8;
-   p->shaderRoundingModeRTZFloat64 = pdev->rad_info.gfx_level >= GFX8 && !pdev->use_llvm;
-   p->shaderSignedZeroInfNanPreserveFloat64 = pdev->rad_info.gfx_level >= GFX8;
+   p->shaderDenormFlushToZeroFloat64 = pdev->info.gfx_level >= GFX8 && !pdev->use_llvm;
+   p->shaderDenormPreserveFloat64 = pdev->info.gfx_level >= GFX8;
+   p->shaderRoundingModeRTEFloat64 = pdev->info.gfx_level >= GFX8;
+   p->shaderRoundingModeRTZFloat64 = pdev->info.gfx_level >= GFX8 && !pdev->use_llvm;
+   p->shaderSignedZeroInfNanPreserveFloat64 = pdev->info.gfx_level >= GFX8;
 
    p->maxUpdateAfterBindDescriptorsInAllPools = UINT32_MAX / 64;
    p->shaderUniformBufferArrayNonUniformIndexingNative = false;
@@ -1508,7 +1503,7 @@ radv_get_physical_device_properties(struct radv_physical_device *pdev)
    p->independentResolve = true;
 
    /* GFX6-8 only support single channel min/max filter. */
-   p->filterMinmaxImageComponentMapping = pdev->rad_info.gfx_level >= GFX9;
+   p->filterMinmaxImageComponentMapping = pdev->info.gfx_level >= GFX9;
    p->filterMinmaxSingleComponentFormats = true;
 
    p->maxTimelineSemaphoreValueDifference = UINT64_MAX;
@@ -1520,7 +1515,7 @@ radv_get_physical_device_properties(struct radv_physical_device *pdev)
    p->maxSubgroupSize = 64;
    p->maxComputeWorkgroupSubgroups = UINT32_MAX;
    p->requiredSubgroupSizeStages = 0;
-   if (pdev->rad_info.gfx_level >= GFX10) {
+   if (pdev->info.gfx_level >= GFX10) {
       /* Only GFX10+ supports wave32. */
       p->minSubgroupSize = 32;
       p->requiredSubgroupSizeStages = VK_SHADER_STAGE_COMPUTE_BIT;
@@ -1537,8 +1532,8 @@ radv_get_physical_device_properties(struct radv_physical_device *pdev)
    p->maxDescriptorSetUpdateAfterBindInlineUniformBlocks = MAX_INLINE_UNIFORM_BLOCK_COUNT;
    p->maxInlineUniformTotalSize = UINT16_MAX;
 
-   bool accel_dot = pdev->rad_info.has_accelerated_dot_product;
-   bool gfx11plus = pdev->rad_info.gfx_level >= GFX11;
+   bool accel_dot = pdev->info.has_accelerated_dot_product;
+   bool gfx11plus = pdev->info.gfx_level >= GFX11;
    p->integerDotProduct8BitUnsignedAccelerated = accel_dot;
    p->integerDotProduct8BitSignedAccelerated = accel_dot;
    p->integerDotProduct8BitMixedSignednessAccelerated = accel_dot && gfx11plus;
@@ -1588,28 +1583,28 @@ radv_get_physical_device_properties(struct radv_physical_device *pdev)
 
    /* VK_AMD_shader_core_properties */
    /* Shader engines. */
-   p->shaderEngineCount = pdev->rad_info.max_se;
-   p->shaderArraysPerEngineCount = pdev->rad_info.max_sa_per_se;
-   p->computeUnitsPerShaderArray = pdev->rad_info.min_good_cu_per_sa;
-   p->simdPerComputeUnit = pdev->rad_info.num_simd_per_compute_unit;
-   p->wavefrontsPerSimd = pdev->rad_info.max_waves_per_simd;
+   p->shaderEngineCount = pdev->info.max_se;
+   p->shaderArraysPerEngineCount = pdev->info.max_sa_per_se;
+   p->computeUnitsPerShaderArray = pdev->info.min_good_cu_per_sa;
+   p->simdPerComputeUnit = pdev->info.num_simd_per_compute_unit;
+   p->wavefrontsPerSimd = pdev->info.max_waves_per_simd;
    p->wavefrontSize = 64;
 
    /* SGPR. */
-   p->sgprsPerSimd = pdev->rad_info.num_physical_sgprs_per_simd;
-   p->minSgprAllocation = pdev->rad_info.min_sgpr_alloc;
-   p->maxSgprAllocation = pdev->rad_info.max_sgpr_alloc;
-   p->sgprAllocationGranularity = pdev->rad_info.sgpr_alloc_granularity;
+   p->sgprsPerSimd = pdev->info.num_physical_sgprs_per_simd;
+   p->minSgprAllocation = pdev->info.min_sgpr_alloc;
+   p->maxSgprAllocation = pdev->info.max_sgpr_alloc;
+   p->sgprAllocationGranularity = pdev->info.sgpr_alloc_granularity;
 
    /* VGPR. */
-   p->vgprsPerSimd = pdev->rad_info.num_physical_wave64_vgprs_per_simd;
-   p->minVgprAllocation = pdev->rad_info.min_wave64_vgpr_alloc;
-   p->maxVgprAllocation = pdev->rad_info.max_vgpr_alloc;
-   p->vgprAllocationGranularity = pdev->rad_info.wave64_vgpr_alloc_granularity;
+   p->vgprsPerSimd = pdev->info.num_physical_wave64_vgprs_per_simd;
+   p->minVgprAllocation = pdev->info.min_wave64_vgpr_alloc;
+   p->maxVgprAllocation = pdev->info.max_vgpr_alloc;
+   p->vgprAllocationGranularity = pdev->info.wave64_vgpr_alloc_granularity;
 
    /* VK_AMD_shader_core_properties2 */
    p->shaderCoreFeatures = 0;
-   p->activeComputeUnitCount = pdev->rad_info.num_cu;
+   p->activeComputeUnitCount = pdev->info.num_cu;
 
    /* VK_KHR_vertex_attribute_divisor */
    p->maxVertexAttribDivisor = UINT32_MAX;
@@ -1680,11 +1675,11 @@ radv_get_physical_device_properties(struct radv_physical_device *pdev)
    p->maxFragmentSizeAspectRatio = 2;
    p->maxFragmentShadingRateCoverageSamples = 32;
    p->maxFragmentShadingRateRasterizationSamples = VK_SAMPLE_COUNT_8_BIT;
-   p->fragmentShadingRateWithShaderDepthStencilWrites = !pdev->rad_info.has_vrs_ds_export_bug;
+   p->fragmentShadingRateWithShaderDepthStencilWrites = !pdev->info.has_vrs_ds_export_bug;
    p->fragmentShadingRateWithSampleMask = true;
    p->fragmentShadingRateWithShaderSampleMask = false;
    p->fragmentShadingRateWithConservativeRasterization = true;
-   p->fragmentShadingRateWithFragmentShaderInterlock = pdev->rad_info.gfx_level >= GFX11 && radv_has_pops(pdev);
+   p->fragmentShadingRateWithFragmentShaderInterlock = pdev->info.gfx_level >= GFX11 && radv_has_pops(pdev);
    p->fragmentShadingRateWithCustomSampleLocations = false;
    p->fragmentShadingRateStrictMultiplyCombiner = true;
 
@@ -1974,7 +1969,7 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
 
    pdev->master_fd = master_fd;
    pdev->local_fd = fd;
-   pdev->ws->query_info(pdev->ws, &pdev->rad_info);
+   pdev->ws->query_info(pdev->ws, &pdev->info);
 
    pdev->use_llvm = instance->debug_flags & RADV_DEBUG_LLVM;
 #if !LLVM_AVAILABLE
@@ -1993,40 +1988,39 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
    pdev->emulate_astc = instance->drirc.vk_require_astc;
 #endif
 
-   snprintf(pdev->name, sizeof(pdev->name), "AMD RADV %s%s", pdev->rad_info.name, radv_get_compiler_string(pdev));
+   snprintf(pdev->name, sizeof(pdev->name), "AMD RADV %s%s", pdev->info.name, radv_get_compiler_string(pdev));
 
    const char *marketing_name = pdev->ws->get_chip_name(pdev->ws);
    snprintf(pdev->marketing_name, sizeof(pdev->name), "%s (RADV %s%s)", marketing_name ? marketing_name : "AMD Unknown",
-            pdev->rad_info.name, radv_get_compiler_string(pdev));
+            pdev->info.name, radv_get_compiler_string(pdev));
 
    if (!radv_is_conformant(pdev))
       vk_warn_non_conformant_implementation("radv");
 
    radv_get_driver_uuid(&pdev->driver_uuid);
-   radv_get_device_uuid(&pdev->rad_info, &pdev->device_uuid);
+   radv_get_device_uuid(&pdev->info, &pdev->device_uuid);
 
    pdev->dcc_msaa_allowed = (pdev->instance->perftest_flags & RADV_PERFTEST_DCC_MSAA);
 
-   pdev->use_fmask = pdev->rad_info.gfx_level < GFX11 && !(pdev->instance->debug_flags & RADV_DEBUG_NO_FMASK);
+   pdev->use_fmask = pdev->info.gfx_level < GFX11 && !(pdev->instance->debug_flags & RADV_DEBUG_NO_FMASK);
 
-   pdev->use_ngg = (pdev->rad_info.gfx_level >= GFX10 && pdev->rad_info.family != CHIP_NAVI14 &&
+   pdev->use_ngg = (pdev->info.gfx_level >= GFX10 && pdev->info.family != CHIP_NAVI14 &&
                     !(pdev->instance->debug_flags & RADV_DEBUG_NO_NGG)) ||
-                   pdev->rad_info.gfx_level >= GFX11;
+                   pdev->info.gfx_level >= GFX11;
 
    /* TODO: Investigate if NGG culling helps on GFX11. */
-   pdev->use_ngg_culling =
-      pdev->use_ngg && pdev->rad_info.max_render_backends > 1 &&
-      (pdev->rad_info.gfx_level == GFX10_3 || (pdev->instance->perftest_flags & RADV_PERFTEST_NGGC)) &&
-      !(pdev->instance->debug_flags & RADV_DEBUG_NO_NGGC);
+   pdev->use_ngg_culling = pdev->use_ngg && pdev->info.max_render_backends > 1 &&
+                           (pdev->info.gfx_level == GFX10_3 || (pdev->instance->perftest_flags & RADV_PERFTEST_NGGC)) &&
+                           !(pdev->instance->debug_flags & RADV_DEBUG_NO_NGGC);
 
-   pdev->use_ngg_streamout = pdev->rad_info.gfx_level >= GFX11;
+   pdev->use_ngg_streamout = pdev->info.gfx_level >= GFX11;
 
-   pdev->emulate_ngg_gs_query_pipeline_stat = pdev->use_ngg && pdev->rad_info.gfx_level < GFX11;
+   pdev->emulate_ngg_gs_query_pipeline_stat = pdev->use_ngg && pdev->info.gfx_level < GFX11;
 
    pdev->mesh_fast_launch_2 =
-      pdev->rad_info.gfx_level >= GFX11 && !(pdev->instance->debug_flags & RADV_DEBUG_NO_GS_FAST_LAUNCH_2);
+      pdev->info.gfx_level >= GFX11 && !(pdev->instance->debug_flags & RADV_DEBUG_NO_GS_FAST_LAUNCH_2);
 
-   pdev->emulate_mesh_shader_queries = pdev->rad_info.gfx_level == GFX10_3;
+   pdev->emulate_mesh_shader_queries = pdev->info.gfx_level == GFX10_3;
 
    /* Determine the number of threads per wave for all stages. */
    pdev->cs_wave_size = 64;
@@ -2034,7 +2028,7 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
    pdev->ge_wave_size = 64;
    pdev->rt_wave_size = 64;
 
-   if (pdev->rad_info.gfx_level >= GFX10) {
+   if (pdev->info.gfx_level >= GFX10) {
       if (pdev->instance->perftest_flags & RADV_PERFTEST_CS_WAVE_32)
          pdev->cs_wave_size = 32;
 
@@ -2050,14 +2044,14 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
        * wave32 VOPD for VALU dependent code.
        * (as well as the SALU count becoming more problematic with wave32)
        */
-      if (pdev->instance->perftest_flags & RADV_PERFTEST_RT_WAVE_32 || pdev->rad_info.gfx_level < GFX11)
+      if (pdev->instance->perftest_flags & RADV_PERFTEST_RT_WAVE_32 || pdev->info.gfx_level < GFX11)
          pdev->rt_wave_size = 32;
 
       if (pdev->instance->perftest_flags & RADV_PERFTEST_RT_WAVE_64 || pdev->instance->drirc.force_rt_wave64)
          pdev->rt_wave_size = 64;
    }
 
-   pdev->max_shared_size = pdev->rad_info.gfx_level >= GFX7 ? 65536 : 32768;
+   pdev->max_shared_size = pdev->info.gfx_level >= GFX7 ? 65536 : 32768;
 
    radv_physical_device_init_mem_types(pdev);
 
@@ -2108,14 +2102,14 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
    radv_get_physical_device_properties(pdev);
 
    if ((pdev->instance->debug_flags & RADV_DEBUG_INFO))
-      ac_print_gpu_info(&pdev->rad_info, stdout);
+      ac_print_gpu_info(&pdev->info, stdout);
 
    radv_init_physical_device_decoder(pdev);
 
    radv_physical_device_init_queue_table(pdev);
 
    /* We don't check the error code, but later check if it is initialized. */
-   ac_init_perfcounters(&pdev->rad_info, false, false, &pdev->ac_perfcounters);
+   ac_init_perfcounters(&pdev->info, false, false, &pdev->ac_perfcounters);
 
    /* The WSI is structured as a layer on top of the driver, so this has
     * to be the last part of initialization (at least until we get other
@@ -2127,10 +2121,10 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
       goto fail_perfcounters;
    }
 
-   pdev->gs_table_depth = ac_get_gs_table_depth(pdev->rad_info.gfx_level, pdev->rad_info.family);
+   pdev->gs_table_depth = ac_get_gs_table_depth(pdev->info.gfx_level, pdev->info.family);
 
-   ac_get_hs_info(&pdev->rad_info, &pdev->hs);
-   ac_get_task_info(&pdev->rad_info, &pdev->task_info);
+   ac_get_hs_info(&pdev->info, &pdev->hs);
+   ac_get_task_info(&pdev->info, &pdev->task_info);
    radv_get_binning_settings(pdev, &pdev->binning_settings);
 
    *pdev_out = pdev;
@@ -2206,11 +2200,11 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
 {
    int num_queue_families = 1;
    int idx;
-   if (pdev->rad_info.ip[AMD_IP_COMPUTE].num_queues > 0 && !(pdev->instance->debug_flags & RADV_DEBUG_NO_COMPUTE_QUEUE))
+   if (pdev->info.ip[AMD_IP_COMPUTE].num_queues > 0 && !(pdev->instance->debug_flags & RADV_DEBUG_NO_COMPUTE_QUEUE))
       num_queue_families++;
 
    if (pdev->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE) {
-      if (pdev->rad_info.ip[pdev->vid_decode_ip].num_queues > 0)
+      if (pdev->info.ip[pdev->vid_decode_ip].num_queues > 0)
          num_queue_families++;
    }
 
@@ -2244,15 +2238,14 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
       idx++;
    }
 
-   if (pdev->rad_info.ip[AMD_IP_COMPUTE].num_queues > 0 &&
-       !(pdev->instance->debug_flags & RADV_DEBUG_NO_COMPUTE_QUEUE)) {
+   if (pdev->info.ip[AMD_IP_COMPUTE].num_queues > 0 && !(pdev->instance->debug_flags & RADV_DEBUG_NO_COMPUTE_QUEUE)) {
       VkQueueFlags compute_flags = VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT;
       if (!radv_sparse_queue_enabled(pdev))
          compute_flags |= VK_QUEUE_SPARSE_BINDING_BIT;
       if (*pCount > idx) {
          *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
             .queueFlags = compute_flags,
-            .queueCount = pdev->rad_info.ip[AMD_IP_COMPUTE].num_queues,
+            .queueCount = pdev->info.ip[AMD_IP_COMPUTE].num_queues,
             .timestampValidBits = 64,
             .minImageTransferGranularity = (VkExtent3D){1, 1, 1},
          };
@@ -2261,11 +2254,11 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
    }
 
    if (pdev->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE) {
-      if (pdev->rad_info.ip[pdev->vid_decode_ip].num_queues > 0) {
+      if (pdev->info.ip[pdev->vid_decode_ip].num_queues > 0) {
          if (*pCount > idx) {
             *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
                .queueFlags = VK_QUEUE_VIDEO_DECODE_BIT_KHR,
-               .queueCount = pdev->rad_info.ip[pdev->vid_decode_ip].num_queues,
+               .queueCount = pdev->info.ip[pdev->vid_decode_ip].num_queues,
                .timestampValidBits = 64,
                .minImageTransferGranularity = (VkExtent3D){1, 1, 1},
             };
@@ -2278,7 +2271,7 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
       if (*pCount > idx) {
          *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
             .queueFlags = VK_QUEUE_TRANSFER_BIT,
-            .queueCount = pdev->rad_info.ip[AMD_IP_SDMA].num_queues,
+            .queueCount = pdev->info.ip[AMD_IP_SDMA].num_queues,
             .timestampValidBits = 64,
             .minImageTransferGranularity = (VkExtent3D){16, 16, 8},
          };
@@ -2348,8 +2341,8 @@ radv_GetPhysicalDeviceQueueFamilyProperties2(VkPhysicalDevice physicalDevice, ui
                   prop->videoCodecOperations |= VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR;
                if (VIDEO_CODEC_H265DEC)
                   prop->videoCodecOperations |= VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR;
-               if (VIDEO_CODEC_AV1DEC && pdev->rad_info.vcn_ip_version >= VCN_3_0_0 &&
-                   pdev->rad_info.vcn_ip_version != VCN_3_0_33)
+               if (VIDEO_CODEC_AV1DEC && pdev->info.vcn_ip_version >= VCN_3_0_0 &&
+                   pdev->info.vcn_ip_version != VCN_3_0_33)
                   prop->videoCodecOperations |= VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR;
             }
             break;
@@ -2377,7 +2370,7 @@ radv_get_memory_budget_properties(VkPhysicalDevice physicalDevice,
     * Note that the application heap usages are not really accurate (eg.
     * in presence of shared buffers).
     */
-   if (!pdev->rad_info.has_dedicated_vram) {
+   if (!pdev->info.has_dedicated_vram) {
       if (pdev->instance->drirc.enable_unified_heap_on_apu) {
          /* When the heaps are unified, only the visible VRAM heap is exposed on APUs. */
          assert(pdev->heaps == RADV_HEAP_VRAM_VIS);
@@ -2436,7 +2429,7 @@ radv_get_memory_budget_properties(VkPhysicalDevice physicalDevice,
           * sizes, and align down to the page size to be conservative.
           */
          vram_vis_free_space =
-            ROUND_DOWN_TO(MIN2((total_free_space * 2) / 3, vram_vis_free_space), pdev->rad_info.gart_page_size);
+            ROUND_DOWN_TO(MIN2((total_free_space * 2) / 3, vram_vis_free_space), pdev->info.gart_page_size);
          uint64_t gtt_free_space = total_free_space - vram_vis_free_space;
 
          memoryBudget->heapBudget[vram_vis_heap_idx] = vram_vis_free_space + vram_vis_internal_usage;

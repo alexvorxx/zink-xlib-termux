@@ -25,33 +25,33 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "util/os_file.h"
 
 #include "ir3-isa.h"
 
-
 static void
 disasm_instr_cb(void *d, unsigned n, void *instr)
 {
-	uint32_t *dwords = (uint32_t *)instr;
-	printf("%3d[%08x_%08x] ", n, dwords[1], dwords[0]);
+   uint32_t *dwords = (uint32_t *)instr;
+   printf("%3d[%08x_%08x] ", n, dwords[1], dwords[0]);
 }
 
 int
 main(int argc, char **argv)
 {
-	size_t sz;
-	void *raw = os_read_file(argv[1], &sz);
+   size_t sz;
+   void *raw = os_read_file(argv[1], &sz);
 
-	ir3_isa_disasm(raw, sz, stdout, &(struct isa_decode_options) {
-		.show_errors = true,
-		.branch_labels = true,
-		.pre_instr_cb = disasm_instr_cb,
-	});
+   ir3_isa_disasm(raw, sz, stdout,
+                  &(struct isa_decode_options){
+                     .show_errors = true,
+                     .branch_labels = true,
+                     .pre_instr_cb = disasm_instr_cb,
+                  });
 
-	return 0;
+   return 0;
 }

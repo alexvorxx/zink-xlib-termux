@@ -239,8 +239,6 @@ xe_execute_trtt_batch(struct anv_sparse_submission *submit,
    if (queue->sync) {
       result = vk_sync_wait(&device->vk, queue->sync, 0,
                             VK_SYNC_WAIT_COMPLETE, UINT64_MAX);
-      if (result != VK_SUCCESS)
-         result = vk_queue_set_lost(&queue->vk, "trtt sync wait failed");
    }
 
 out:

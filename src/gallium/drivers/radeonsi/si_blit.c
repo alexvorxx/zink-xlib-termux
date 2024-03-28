@@ -999,24 +999,19 @@ void si_gfx_copy_image(struct si_context *sctx, struct pipe_resource *dst,
        !util_blitter_is_copy_supported(sctx->blitter, dst, src)) {
       switch (ssrc->surface.bpe) {
       case 1:
-         dst_templ.format = PIPE_FORMAT_R8_UNORM;
-         src_templ.format = PIPE_FORMAT_R8_UNORM;
+         dst_templ.format = src_templ.format = PIPE_FORMAT_R8_UINT;
          break;
       case 2:
-         dst_templ.format = PIPE_FORMAT_R8G8_UNORM;
-         src_templ.format = PIPE_FORMAT_R8G8_UNORM;
+         dst_templ.format = src_templ.format = PIPE_FORMAT_R16_UINT;
          break;
       case 4:
-         dst_templ.format = PIPE_FORMAT_R8G8B8A8_UNORM;
-         src_templ.format = PIPE_FORMAT_R8G8B8A8_UNORM;
+         dst_templ.format = src_templ.format = PIPE_FORMAT_R32_UINT;
          break;
       case 8:
-         dst_templ.format = PIPE_FORMAT_R16G16B16A16_UINT;
-         src_templ.format = PIPE_FORMAT_R16G16B16A16_UINT;
+         dst_templ.format = src_templ.format = PIPE_FORMAT_R32G32_UINT;
          break;
       case 16:
-         dst_templ.format = PIPE_FORMAT_R32G32B32A32_UINT;
-         src_templ.format = PIPE_FORMAT_R32G32B32A32_UINT;
+         dst_templ.format = src_templ.format = PIPE_FORMAT_R32G32B32A32_UINT;
          break;
       default:
          fprintf(stderr, "Unhandled format %s with blocksize %u\n",

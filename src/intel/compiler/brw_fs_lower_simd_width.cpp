@@ -287,8 +287,8 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
        * The execution size must be 16.
        */
       if (is_half_float_src_dst(inst))
-         return MIN2(8,  inst->exec_size);
-
+         return devinfo->ver < 20 ? MIN2(8,  inst->exec_size) :
+                                    MIN2(16, inst->exec_size);
       return MIN2(16, inst->exec_size);
    }
 

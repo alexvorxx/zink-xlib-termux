@@ -194,6 +194,24 @@ fs_visitor::validate()
           phys_subnr(devinfo, inst->dst.as_brw_reg()) == 0) {
          fsv_assert_eq(inst->dst.hstride, 1);
       }
+
+      if (inst->is_math() && intel_needs_workaround(devinfo, 22016140776)) {
+         /* Wa_22016140776:
+          *
+          *    Scalar broadcast on HF math (packed or unpacked) must not be
+          *    used.  Compiler must use a mov instruction to expand the scalar
+          *    value to a vector before using in a HF (packed or unpacked)
+          *    math operation.
+          *
+          * Since copy propagation knows about this restriction, nothing
+          * should be able to generate these invalid source strides. Detect
+          * potential problems sooner rather than later.
+          */
+         for (unsigned i = 0; i < inst->sources; i++) {
+            fsv_assert(!is_uniform(inst->src[i]) ||
+                       inst->src[i].type != BRW_REGISTER_TYPE_HF);
+         }
+      }
    }
 }
 #endif

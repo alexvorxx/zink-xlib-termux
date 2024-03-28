@@ -599,6 +599,7 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
    struct amdgpu_buffer_size_alignments alignment_info = {0};
    uint32_t vce_version = 0, vce_feature = 0, uvd_version = 0, uvd_feature = 0,
             vcn_version = 0, vcn_feature = 0;
+   uint32_t num_instances = 0;
    int r, i, j;
    amdgpu_device_handle dev = dev_p;
 
@@ -685,15 +686,12 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
                   device_info.family == FAMILY_MDN)
             info->ip[AMD_IP_GFX].ver_minor = info->ip[AMD_IP_COMPUTE].ver_minor = 3;
       }
-      if (ip_type >= AMD_IP_VCN_DEC && ip_type <= AMD_IP_VCN_JPEG) {
-         uint32_t num_inst;
-         r = amdgpu_query_hw_ip_count(dev, ip_type, &num_inst);
-         if (r)
-            fprintf(stderr, "amdgpu: failed to query ip count for vcn or jpeg\n");
-         else
-            info->ip[ip_type].num_queues = num_inst;
-      } else
-         info->ip[ip_type].num_queues = util_bitcount(ip_info.available_rings);
+      info->ip[ip_type].num_queues = util_bitcount(ip_info.available_rings);
+
+      /* query ip count */
+      r = amdgpu_query_hw_ip_count(dev, ip_type, &num_instances);
+      if (!r)
+         info->ip[ip_type].num_instances = num_instances;
 
       /* According to the kernel, only SDMA and VPE require 256B alignment, but use it
        * for all queues because the kernel reports wrong limits for some of the queues.

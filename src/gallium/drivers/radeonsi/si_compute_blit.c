@@ -40,30 +40,6 @@ static bool si_can_use_compute_blit(struct si_context *sctx, enum pipe_format fo
    return true;
 }
 
-static void si_use_compute_copy_for_float_formats(struct si_context *sctx,
-                                                  struct pipe_resource *texture,
-                                                  unsigned level)
-{
-   struct si_texture *tex = (struct si_texture *)texture;
-
-   /* If we are uploading into FP16 or R11G11B10_FLOAT via a blit, CB clobbers NaNs,
-    * so in order to preserve them exactly, we have to use the compute blit.
-    * The compute blit is used only when the destination doesn't have DCC, so
-    * disable it here, which is kinda a hack.
-    * If we are uploading into 32-bit floats with DCC via a blit, NaNs will also get
-    * lost so we need to disable DCC as well.
-    *
-    * This makes KHR-GL45.texture_view.view_classes pass on gfx9.
-    */
-   if (vi_dcc_enabled(tex, level) &&
-       util_format_is_float(texture->format) &&
-       /* Check if disabling DCC enables the compute copy. */
-       !si_can_use_compute_blit(sctx, texture->format, texture->nr_samples, true, true) &&
-       si_can_use_compute_blit(sctx, texture->format, texture->nr_samples, true, false)) {
-      si_texture_disable_dcc(sctx, tex);
-   }
-}
-
 /* Determine the cache policy. */
 static enum si_cache_policy get_cache_policy(struct si_context *sctx, enum si_coherency coher,
                                              uint64_t size)
@@ -648,8 +624,6 @@ bool si_compute_copy_image(struct si_context *sctx, struct pipe_resource *dst, u
 {
    struct si_texture *ssrc = (struct si_texture*)src;
    struct si_texture *sdst = (struct si_texture*)dst;
-
-   si_use_compute_copy_for_float_formats(sctx, dst, dst_level);
 
    /* The compute copy is mandatory for compressed and subsampled formats because the gfx copy
     * doesn't support them. In all other cases, call si_can_use_compute_blit.

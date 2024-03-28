@@ -99,8 +99,28 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
 
    if (view->vk.usage &
        (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) {
+      /* Use a temporary pan_image_view so we can tweak it for texture
+       * descriptor emission without changing the original definition.
+       */
+      struct pan_image_view pview = view->pview;
+
+      if (util_format_is_depth_or_stencil(view->pview.format)) {
+         /* Vulkan wants R001, where the depth/stencil is stored in the red
+          * component, but the pan_format/texture logic gives us RRRR.
+          * Tweak the swizzle so we get what Vulkan wants.
+          */
+         static const unsigned char r001[4] = {
+            PIPE_SWIZZLE_X,
+            PIPE_SWIZZLE_0,
+            PIPE_SWIZZLE_0,
+            PIPE_SWIZZLE_1,
+         };
+
+         util_format_compose_swizzles(r001, view->pview.swizzle, pview.swizzle);
+      }
+
       unsigned bo_size =
-         GENX(panfrost_estimate_texture_payload_size)(&view->pview);
+         GENX(panfrost_estimate_texture_payload_size)(&pview);
 
       view->bo = panvk_priv_bo_create(device, bo_size, 0, pAllocator,
                                       VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
@@ -110,7 +130,7 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
          .cpu = view->bo->addr.host,
       };
 
-      GENX(panfrost_new_texture)(&view->pview, view->descs.tex.opaque, &ptr);
+      GENX(panfrost_new_texture)(&pview, view->descs.tex.opaque, &ptr);
    }
 
    if (view->vk.usage & VK_IMAGE_USAGE_STORAGE_BIT) {

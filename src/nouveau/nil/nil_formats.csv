@@ -75,10 +75,14 @@ R10G10B10A2_UNORM       , A2B10G10R10           , A2B10G10R10       , NNNN , RGB
 R10G10B10X2_UNORM       , A2B10G10R10           , A2B10G10R10       , NNNN , RGB1 , T
 B10G10R10A2_UNORM       , A2R10G10B10           , A2B10G10R10       , NNNN , BGRA , CTA
 B10G10R10X2_UNORM       , A2R10G10B10           , A2B10G10R10       , NNNN , BGR1 , T
-R10G10B10A2_SNORM       , NONE                  , A2B10G10R10       , SSSS , RGBA , T
-B10G10R10A2_SNORM       , NONE                  , A2B10G10R10       , SSSS , BGRA , T
 R10G10B10A2_UINT        , AU2BU10GU10RU10       , A2B10G10R10       , UUUU , RGBA , CTBS
 B10G10R10A2_UINT        , NONE                  , A2B10G10R10       , UUUU , BGRA , TB
+
+# These formats are disabled because the image/texture hardware doesn't clamp
+# the 2-bit SNORM alpha to [-1, 1] so you can end up with a = -2 which is out
+# of spec for both GL and Vulkan.
+# R10G10B10A2_SNORM     , NONE                  , A2B10G10R10       , SSSS , RGBA , T
+# B10G10R10A2_SNORM     , NONE                  , A2B10G10R10       , SSSS , BGRA , T
 
 R11G11B10_FLOAT         , BF10GF11RF11          , BF10GF11RF11      , FFFF , RGB1 , CTBSA
 

@@ -7,7 +7,6 @@
 
 #include "nouveau_device.h"
 
-#include "cl9097tex.h"
 #include "cla297.h"
 #include "clb097.h"
 
@@ -18,15 +17,6 @@ nil_format_supports_texturing(struct nv_device_info *dev,
    assert(format < PIPE_FORMAT_COUNT);
    const struct nil_format_info *fmt = &nil_format_table[format];
    if (!(fmt->support & NIL_FORMAT_SUPPORTS_TEXTURE_BIT))
-      return false;
-
-   /* The image/texture hardware doesn't clamp 2-bit SNORM alpha components to
-    * [-1, 1] which is out-of-spec according to Vulkan.  Fortunately, as of
-    * September 14, 2022, according to vulkan.gpuinfo.org, these formats are
-    * only supported by lavapipe and a handful of mobile phones.
-    */
-   if (fmt->tic.comp_sizes == NV9097_TEXHEAD0_COMPONENT_SIZES_A2B10G10R10 &&
-       fmt->tic.type_r == NV9097_TEXHEAD0_A_DATA_TYPE_NUM_SNORM)
       return false;
 
    const struct util_format_description *desc = util_format_description(format);

@@ -55,6 +55,11 @@
 #include <directx/d3d12sdklayers.h>
 #endif
 
+#if defined(_WIN32) && defined(_WIN64) && !defined(_GAMING_XBOX)
+#include <filesystem>
+#include <ShlObj.h>
+#endif
+
 #include <dxguids/dxguids.h>
 static GUID OpenGLOn12CreatorID = { 0x6bb3cd34, 0x0d19, 0x45ab, { 0x97, 0xed, 0xd7, 0x20, 0xba, 0x3d, 0xfc, 0x80 } };
 
@@ -69,6 +74,7 @@ d3d12_debug_options[] = {
    { "debuglayer",   D3D12_DEBUG_DEBUG_LAYER,   "Enable debug layer" },
    { "gpuvalidator", D3D12_DEBUG_GPU_VALIDATOR, "Enable GPU validator" },
    { "singleton",    D3D12_DEBUG_SINGLETON,     "Disallow use of device factory" },
+   { "pix",          D3D12_DEBUG_PIX,           "Load WinPixGpuCaptuerer.dll" },
    DEBUG_NAMED_VALUE_END
 };
 
@@ -1455,6 +1461,31 @@ try_find_d3d12core_next_to_self(char *path, size_t path_arr_size)
 static ID3D12DeviceFactory *
 try_create_device_factory(util_dl_library *d3d12_mod)
 {
+#if defined(_WIN32) && defined(_WIN64)
+   if (d3d12_debug & D3D12_DEBUG_PIX) {
+      if (GetModuleHandleW(L"WinPixGpuCapturer.dll") == nullptr) {
+         LPWSTR program_files_path = nullptr;
+         SHGetKnownFolderPath(FOLDERID_ProgramFiles, KF_FLAG_DEFAULT, NULL, &program_files_path);
+
+         auto pix_installation_path = std::filesystem::path(program_files_path) / "Microsoft PIX";
+         std::wstring newest_version;
+         for (auto const &directory : std::filesystem::directory_iterator(pix_installation_path)) {
+            if (directory.is_directory() &&
+                (newest_version.empty() || newest_version < directory.path().filename().c_str()))
+               newest_version = directory.path().filename().wstring();
+         }
+         if (newest_version.empty()) {
+            debug_printf("D3D12: Failed to find any PIX installations\n");
+         }
+         else if (!LoadLibraryW((pix_installation_path / newest_version / L"WinPixGpuCapturer.dll").c_str()) &&
+                  // Try the x64 subdirectory for x64-on-arm64
+                  !LoadLibraryW((pix_installation_path / newest_version / L"x64/WinPixGpuCapturer.dll").c_str())) {
+            debug_printf("D3D12: Failed to load WinPixGpuCapturer.dll from %S\n", newest_version.c_str());
+         }
+      }
+   }
+#endif
+
    if (d3d12_debug & D3D12_DEBUG_SINGLETON)
       return nullptr;
 

@@ -2512,7 +2512,7 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
       physical_device->info->a6xx.has_z24uint_s8uint &&
       !border_color_without_format;
    device->use_lrz =
-      !TU_DEBUG(NOLRZ) && device->physical_device->info->chip == 6;
+      !TU_DEBUG(NOLRZ);
 
    tu_gpu_tracepoint_config_variable();
 

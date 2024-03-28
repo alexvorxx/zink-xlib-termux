@@ -1384,7 +1384,7 @@ struct si_context {
    unsigned context_flags;
 
    /* Shaders. */
-   /* TODO: move other shaders here too */
+   void *cs_clear_image_dcc_single[2][3]; /* [is_msaa][wg_dim] */
    /* Only used for DCC MSAA clears with 4-8 fragments and 4-16 samples. */
    void *cs_clear_dcc_msaa[32][5][2][3][2]; /* [swizzle_mode][log2(bpe)][fragments == 8][log2(samples)-2][is_array] */
 
@@ -1465,6 +1465,9 @@ struct si_clear_info {
    uint32_t clear_value;
    uint32_t writemask;
    bool is_dcc_msaa; /* Clear it as a DCC MSAA image. */
+   uint8_t level;
+   enum pipe_format format;
+   union pipe_color_union color;
 };
 
 enum pipe_format si_simplify_cb_format(enum pipe_format format);
@@ -1525,6 +1528,9 @@ bool si_compute_copy_image(struct si_context *sctx, struct pipe_resource *dst, u
                            struct pipe_resource *src, unsigned src_level, unsigned dstx,
                            unsigned dsty, unsigned dstz, const struct pipe_box *src_box,
                            unsigned flags);
+void si_compute_clear_image_dcc_single(struct si_context *sctx, struct si_texture *tex,
+                                       unsigned level, enum pipe_format format,
+                                       const union pipe_color_union *color, unsigned flags);
 void si_compute_clear_render_target(struct pipe_context *ctx, struct pipe_surface *dstsurf,
                                     const union pipe_color_union *color, unsigned dstx,
                                     unsigned dsty, unsigned width, unsigned height,
@@ -1649,6 +1655,7 @@ void *si_create_copy_image_cs(struct si_context *sctx, unsigned wg_dim,
 void *si_create_dcc_retile_cs(struct si_context *sctx, struct radeon_surf *surf);
 void *gfx9_create_clear_dcc_msaa_cs(struct si_context *sctx, struct si_texture *tex);
 void *si_create_passthrough_tcs(struct si_context *sctx);
+void *si_clear_image_dcc_single_shader(struct si_context *sctx, bool is_msaa, unsigned wg_dim);
 
 union si_compute_blit_shader_key {
    struct {

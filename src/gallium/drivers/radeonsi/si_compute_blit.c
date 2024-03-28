@@ -970,6 +970,47 @@ void si_compute_expand_fmask(struct pipe_context *ctx, struct pipe_resource *tex
                    SI_COHERENCY_SHADER, SI_AUTO_SELECT_CLEAR_METHOD);
 }
 
+void si_compute_clear_image_dcc_single(struct si_context *sctx, struct si_texture *tex,
+                                       unsigned level, enum pipe_format format,
+                                       const union pipe_color_union *color, unsigned flags)
+{
+   assert(sctx->gfx_level >= GFX11); /* not believed to be useful on gfx10 */
+   unsigned dcc_block_width = tex->surface.u.gfx9.color.dcc_block_width;
+   unsigned dcc_block_height = tex->surface.u.gfx9.color.dcc_block_height;
+   unsigned width = DIV_ROUND_UP(u_minify(tex->buffer.b.b.width0, level), dcc_block_width);
+   unsigned height = DIV_ROUND_UP(u_minify(tex->buffer.b.b.height0, level), dcc_block_height);
+   unsigned depth = util_num_layers(&tex->buffer.b.b, level);
+   bool is_msaa = tex->buffer.b.b.nr_samples >= 2;
+
+   struct pipe_image_view image = {0};
+   image.resource = &tex->buffer.b.b;
+   image.shader_access = image.access = PIPE_IMAGE_ACCESS_WRITE | SI_IMAGE_ACCESS_DCC_OFF;
+   image.format = format;
+   image.u.tex.level = level;
+   image.u.tex.last_layer = depth - 1;
+
+   if (util_format_is_srgb(format)) {
+      union pipe_color_union color_srgb;
+      for (int i = 0; i < 3; i++)
+         color_srgb.f[i] = util_format_linear_to_srgb_float(color->f[i]);
+      color_srgb.f[3] = color->f[3];
+      memcpy(sctx->cs_user_data, color_srgb.ui, sizeof(color->ui));
+   } else {
+      memcpy(sctx->cs_user_data, color->ui, sizeof(color->ui));
+   }
+
+   sctx->cs_user_data[4] = dcc_block_width | (dcc_block_height << 16);
+
+   struct pipe_grid_info info = {0};
+   unsigned wg_dim = set_work_size(&info, 8, 8, 1, width, height, depth);
+
+   void **shader = &sctx->cs_clear_image_dcc_single[is_msaa][wg_dim];
+   if (!*shader)
+      *shader = si_clear_image_dcc_single_shader(sctx, is_msaa, wg_dim);
+
+   si_launch_grid_internal_images(sctx, &image, 1, &info, *shader, flags);
+}
+
 void si_init_compute_blit_functions(struct si_context *sctx)
 {
    sctx->b.clear_buffer = si_pipe_clear_buffer;

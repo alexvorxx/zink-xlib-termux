@@ -25,6 +25,7 @@ void si_init_buffer_clear(struct si_clear_info *info,
    info->clear_value = clear_value;
    info->writemask = 0xffffffff;
    info->is_dcc_msaa = false;
+   info->format = PIPE_FORMAT_NONE;
 }
 
 static void si_init_buffer_clear_rmw(struct si_clear_info *info,
@@ -33,6 +34,17 @@ static void si_init_buffer_clear_rmw(struct si_clear_info *info,
 {
    si_init_buffer_clear(info, resource, offset, size, clear_value);
    info->writemask = writemask;
+   info->format = PIPE_FORMAT_NONE;
+}
+
+static void si_init_clear_image_dcc_single(struct si_clear_info *info, struct si_texture *tex,
+                                           unsigned level, enum pipe_format format,
+                                           const union pipe_color_union *color)
+{
+   info->resource = &tex->buffer.b.b;
+   info->level = level;
+   info->format = format;
+   memcpy(&info->color, color, sizeof(info->color));
 }
 
 void si_execute_clears(struct si_context *sctx, struct si_clear_info *info,
@@ -59,6 +71,13 @@ void si_execute_clears(struct si_context *sctx, struct si_clear_info *info,
 
    /* Execute clears. */
    for (unsigned i = 0; i < num_clears; i++) {
+      if (info[i].format) {
+         si_compute_clear_image_dcc_single(sctx, (struct si_texture*)info[i].resource,
+                                           info[i].level, info[i].format, &info[i].color,
+                                           SI_OP_SKIP_CACHE_INV_BEFORE);
+         continue;
+      }
+
       if (info[i].is_dcc_msaa) {
          gfx9_clear_dcc_msaa(sctx, info[i].resource, info[i].clear_value,
                              SI_OP_SKIP_CACHE_INV_BEFORE, SI_COHERENCY_CP);
@@ -283,7 +302,8 @@ static bool gfx8_get_dcc_clear_parameters(struct si_screen *sscreen, enum pipe_f
    return true;
 }
 
-static bool gfx11_get_dcc_clear_parameters(struct si_screen *sscreen, enum pipe_format surface_format,
+static bool gfx11_get_dcc_clear_parameters(struct si_screen *sscreen, struct si_texture *tex,
+                                           unsigned level, enum pipe_format surface_format,
                                            const union pipe_color_union *color, uint32_t *clear_value)
 {
    const struct util_format_description *desc =
@@ -397,6 +417,28 @@ static bool gfx11_get_dcc_clear_parameters(struct si_screen *sscreen, enum pipe_
          *clear_value = GFX11_DCC_CLEAR_1110_UNORM;
          return true;
       }
+   }
+
+   /* Estimate whether DCC clear-to-single is better than a slow clear. */
+   unsigned width = u_minify(tex->buffer.b.b.width0, level);
+   unsigned height = u_minify(tex->buffer.b.b.height0, level);
+   unsigned depth = util_num_layers(&tex->buffer.b.b, level);
+   unsigned num_samples = MAX2(tex->buffer.b.b.nr_samples, 1);
+   uint64_t size = (uint64_t)width * height * depth * num_samples * tex->surface.bpe;
+
+   /* These cases perform exceptionally well with DCC clear-to-single, so make them more likely. */
+   if ((num_samples <= 2 && tex->surface.bpe <= 2) ||
+       (num_samples == 1 && tex->surface.bpe == 4))
+      size *= 2;
+
+   /* These cases perform terribly with DCC clear-to-single. */
+   if (tex->buffer.b.b.nr_samples >= 4 && tex->surface.bpe >= 4)
+      size = 0;
+
+   /* This is mostly optimal for Navi31. The scaling effect of num_rb on other chips is guessed. */
+   if (size >= sscreen->info.num_rb * 512 * 1024) {
+      *clear_value = GFX11_DCC_CLEAR_SINGLE;
+      return true;
    }
 
    return false;
@@ -651,7 +693,7 @@ static void si_fast_clear(struct si_context *sctx, unsigned *buffers,
                           const union pipe_color_union *color, float depth, uint8_t stencil)
 {
    struct pipe_framebuffer_state *fb = &sctx->framebuffer.state;
-   struct si_clear_info info[8 * 2 + 1]; /* MRTs * (CMASK + DCC) + ZS */
+   struct si_clear_info info[8 * 3 + 1]; /* MRTs * (CMASK + DCC + clear_dcc_single) + ZS */
    unsigned num_clears = 0;
    unsigned clear_types = 0;
    unsigned num_pixels = fb->width * fb->height;
@@ -718,8 +760,8 @@ static void si_fast_clear(struct si_context *sctx, unsigned *buffers,
             continue;
 
          if (sctx->gfx_level >= GFX11) {
-            if (!gfx11_get_dcc_clear_parameters(sctx->screen, fb->cbufs[i]->format, color,
-                                                &reset_value))
+            if (!gfx11_get_dcc_clear_parameters(sctx->screen, tex, level, fb->cbufs[i]->format,
+                                                color, &reset_value))
                continue;
          } else {
             if (!gfx8_get_dcc_clear_parameters(sctx->screen, tex->buffer.b.b.format,
@@ -762,6 +804,18 @@ static void si_fast_clear(struct si_context *sctx, unsigned *buffers,
          clear_types |= SI_CLEAR_TYPE_DCC;
 
          si_mark_display_dcc_dirty(sctx, tex);
+
+         if (sctx->gfx_level >= GFX11 && reset_value == GFX11_DCC_CLEAR_SINGLE) {
+            /* Put this clear first by moving other clears after it because this clear has
+             * the most GPU overhead.
+             */
+            if (num_clears)
+               memmove(&info[1], &info[0], sizeof(info[0]) * num_clears);
+
+            si_init_clear_image_dcc_single(&info[0], tex, level, fb->cbufs[i]->format,
+                                           color);
+            num_clears++;
+         }
 
          /* DCC fast clear with MSAA should clear CMASK to 0xC. */
          if (tex->buffer.b.b.nr_samples >= 2 && tex->cmask_buffer) {

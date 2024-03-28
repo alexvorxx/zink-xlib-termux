@@ -303,6 +303,14 @@ static void si_destroy_context(struct pipe_context *context)
       }
    }
 
+   for (unsigned i = 0; i < ARRAY_SIZE(sctx->cs_clear_image_dcc_single); i++) {
+      for (unsigned j = 0; j < ARRAY_SIZE(sctx->cs_clear_image_dcc_single[i]); j++) {
+         if (sctx->cs_clear_image_dcc_single[i][j]) {
+            sctx->b.delete_compute_state(&sctx->b, sctx->cs_clear_image_dcc_single[i][j]);
+         }
+      }
+   }
+
    for (unsigned i = 0; i < ARRAY_SIZE(sctx->cs_clear_dcc_msaa); i++) {
       for (unsigned j = 0; j < ARRAY_SIZE(sctx->cs_clear_dcc_msaa[i]); j++) {
          for (unsigned k = 0; k < ARRAY_SIZE(sctx->cs_clear_dcc_msaa[i][j]); k++) {

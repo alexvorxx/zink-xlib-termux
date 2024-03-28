@@ -36,7 +36,7 @@ static const struct {
    uint32_t pci_id;
    uint32_t num_render_backends;
    bool has_dedicated_vram;
-} gpu_info[] = {
+} pci_ids[] = {
    /* clang-format off */
    [CHIP_TAHITI] = {0x6780, 8, true},
    [CHIP_PITCAIRN] = {0x6800, 8, true},
@@ -110,7 +110,7 @@ radv_null_winsys_query_info(struct radeon_winsys *rws, struct radeon_info *info)
       abort();
    }
 
-   info->pci_id = gpu_info[info->family].pci_id;
+   info->pci_id = pci_ids[info->family].pci_id;
    info->max_se = 4;
    info->num_se = 4;
    if (info->gfx_level >= GFX10_3)
@@ -144,9 +144,9 @@ radv_null_winsys_query_info(struct radeon_winsys *rws, struct radeon_info *info)
                                                             : 32 * 1024;
    info->lds_encode_granularity = info->gfx_level >= GFX7 ? 128 * 4 : 64 * 4;
    info->lds_alloc_granularity = info->gfx_level >= GFX10_3 ? 256 * 4 : info->lds_encode_granularity;
-   info->max_render_backends = gpu_info[info->family].num_render_backends;
+   info->max_render_backends = pci_ids[info->family].num_render_backends;
 
-   info->has_dedicated_vram = gpu_info[info->family].has_dedicated_vram;
+   info->has_dedicated_vram = pci_ids[info->family].has_dedicated_vram;
    info->has_packed_math_16bit = info->gfx_level >= GFX9;
 
    info->has_image_load_dcc_bug = info->family == CHIP_NAVI23 || info->family == CHIP_VANGOGH;

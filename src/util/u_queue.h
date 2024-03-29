@@ -91,7 +91,7 @@ util_queue_fence_signal(struct util_queue_fence *fence)
    assert(val != 0);
 
    if (val == 2)
-      futex_wake(&fence->val, INT_MAX);
+      futex_wake(&fence->val, INT32_MAX);
 }
 
 /**

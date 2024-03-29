@@ -292,7 +292,7 @@ anv_state_table_add(struct anv_state_table *table, uint32_t *idx,
 
          old.u64 = __sync_lock_test_and_set(&table->state.u64, new.u64);
          if (old.next != state.next)
-            futex_wake(&table->state.end, INT_MAX);
+            futex_wake(&table->state.end, INT32_MAX);
       } else {
          futex_wait(&table->state.end, state.end, NULL);
          continue;
@@ -614,14 +614,14 @@ anv_block_pool_alloc_new(struct anv_block_pool *pool,
          do {
             new.end = anv_block_pool_grow(pool, pool_state, block_size);
             if (pool->size > 0 && new.end == 0) {
-               futex_wake(&pool_state->end, INT_MAX);
+               futex_wake(&pool_state->end, INT32_MAX);
                return VK_ERROR_OUT_OF_DEVICE_MEMORY;
             }
          } while (new.end < new.next);
 
          old.u64 = __sync_lock_test_and_set(&pool_state->u64, new.u64);
          if (old.next != state.next)
-            futex_wake(&pool_state->end, INT_MAX);
+            futex_wake(&pool_state->end, INT32_MAX);
          *offset = state.next;
          return VK_SUCCESS;
       } else {
@@ -721,7 +721,7 @@ anv_fixed_size_state_pool_alloc_new(struct anv_fixed_size_state_pool *pool,
       new.end = *offset + block_size;
       old.u64 = __sync_lock_test_and_set(&pool->block.u64, new.u64);
       if (old.next != block.next)
-         futex_wake(&pool->block.end, INT_MAX);
+         futex_wake(&pool->block.end, INT32_MAX);
       return result;
    } else {
       futex_wait(&pool->block.end, block.end, NULL);

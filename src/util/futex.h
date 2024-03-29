@@ -46,7 +46,7 @@ extern "C" {
 #endif
 
 #if UTIL_FUTEX_SUPPORTED
-int futex_wake(uint32_t *addr, int count);
+int futex_wake(uint32_t *addr, int32_t count);
 int futex_wait(uint32_t *addr, int32_t value, const struct timespec *timeout);
 #endif
 

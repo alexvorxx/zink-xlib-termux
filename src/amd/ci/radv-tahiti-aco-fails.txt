@@ -17,5 +17,5 @@ dEQP-VK.pipeline.pipeline_library.input_attribute_offset.vec4.offset_12.packed.n
 dEQP-VK.pipeline.pipeline_library.input_attribute_offset.vec4.offset_12.packed.with_memory_offset.static,Fail
 dEQP-VK.pipeline.pipeline_library.input_attribute_offset.vec4.offset_4.packed.no_memory_offset.static,Fail
 dEQP-VK.pipeline.pipeline_library.input_attribute_offset.vec4.offset_4.packed.with_memory_offset.static,Fail
-dEQP-VK.spirv_assembly.type.vec4.i8.mod_geom,Fail
+dEQP-VK.spirv_assembly.type.vec4.i8.mod_geom,Crash
 dEQP-VK.spirv_assembly.type.vec4.i8.rem_geom,Fail

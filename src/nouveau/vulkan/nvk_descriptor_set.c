@@ -364,6 +364,10 @@ nvk_push_descriptor_set_update(struct nvk_push_descriptor_set *push_set,
 }
 
 static void
+nvk_descriptor_pool_free(struct nvk_descriptor_pool *pool,
+                         uint64_t addr, uint64_t size);
+
+static void
 nvk_descriptor_set_destroy(struct nvk_device *dev,
                            struct nvk_descriptor_pool *pool,
                            struct nvk_descriptor_set *set, bool free_bo)
@@ -377,11 +381,10 @@ nvk_descriptor_set_destroy(struct nvk_device *dev,
             break;
          }
       }
-
-      if (pool->entry_count == 0)
-         pool->current_offset = 0;
    }
 
+   if (set->size > 0)
+      nvk_descriptor_pool_free(pool, set->addr, set->size);
    vk_descriptor_set_layout_unref(&dev->vk, &set->layout->vk);
 
    vk_object_free(&dev->vk, NULL, set);
@@ -395,6 +398,8 @@ nvk_destroy_descriptor_pool(struct nvk_device *dev,
    for (int i = 0; i < pool->entry_count; ++i) {
       nvk_descriptor_set_destroy(dev, pool, pool->entries[i].set, false);
    }
+
+   util_vma_heap_finish(&pool->heap);
 
    if (pool->bo) {
       nouveau_ws_bo_unmap(pool->bo, pool->mapped_ptr);
@@ -481,14 +486,45 @@ nvk_CreateDescriptorPool(VkDevice _device,
        * make that extra space available to the client.
        */
       assert(pool->bo->size >= bo_size);
-      bo_size = pool->bo->size;
+      util_vma_heap_init(&pool->heap, pool->bo->offset, pool->bo->size);
+   } else {
+      util_vma_heap_init(&pool->heap, 0, 0);
    }
 
-   pool->size = bo_size;
    pool->max_entry_count = pCreateInfo->maxSets;
 
    *pDescriptorPool = nvk_descriptor_pool_to_handle(pool);
    return VK_SUCCESS;
+}
+
+static VkResult
+nvk_descriptor_pool_alloc(struct nvk_descriptor_pool *pool,
+                          uint64_t size, uint64_t alignment,
+                          uint64_t *addr_out, void **map_out)
+{
+   assert(size > 0);
+   uint64_t addr = util_vma_heap_alloc(&pool->heap, size, alignment);
+   if (addr == 0)
+      return VK_ERROR_OUT_OF_POOL_MEMORY;
+
+   assert(addr >= pool->bo->offset);
+   assert(addr + size <= pool->bo->offset + pool->bo->size);
+   uint64_t offset = addr - pool->bo->offset;
+
+   *addr_out = addr;
+   *map_out = pool->mapped_ptr + offset;
+
+   return VK_SUCCESS;
+}
+
+static void
+nvk_descriptor_pool_free(struct nvk_descriptor_pool *pool,
+                         uint64_t addr, uint64_t size)
+{
+   assert(size > 0);
+   assert(addr >= pool->bo->offset);
+   assert(addr + size <= pool->bo->offset + pool->bo->size);
+   util_vma_heap_free(&pool->heap, addr, size);
 }
 
 static VkResult
@@ -500,6 +536,7 @@ nvk_descriptor_set_create(struct nvk_device *dev,
 {
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
    struct nvk_descriptor_set *set;
+   VkResult result;
 
    uint32_t mem_size = sizeof(struct nvk_descriptor_set) +
       layout->dynamic_buffer_count * sizeof(struct nvk_buffer_address);
@@ -521,21 +558,19 @@ nvk_descriptor_set_create(struct nvk_device *dev,
       set->size += stride * variable_count;
    }
 
-   set->size = align64(set->size, nvk_min_cbuf_alignment(&pdev->info));
+   uint32_t alignment = nvk_min_cbuf_alignment(&pdev->info);
+   set->size = align64(set->size, alignment);
 
    if (set->size > 0) {
-      if (pool->current_offset + set->size > pool->size)
-         return VK_ERROR_OUT_OF_POOL_MEMORY;
-
-      set->mapped_ptr = (uint32_t *)(pool->mapped_ptr + pool->current_offset);
-      set->addr = pool->bo->offset + pool->current_offset;
+      result = nvk_descriptor_pool_alloc(pool, set->size, alignment,
+                                         &set->addr, &set->mapped_ptr);
+      if (result != VK_SUCCESS) {
+         vk_object_free(&dev->vk, NULL, set);
+         return result;
+      }
    }
 
-   assert(pool->current_offset % nvk_min_cbuf_alignment(&pdev->info) == 0);
-   pool->entries[pool->entry_count].offset = pool->current_offset;
-   pool->entries[pool->entry_count].size = set->size;
    pool->entries[pool->entry_count].set = set;
-   pool->current_offset += set->size;
    pool->entry_count++;
 
    vk_descriptor_set_layout_ref(&layout->vk);
@@ -654,7 +689,6 @@ nvk_ResetDescriptorPool(VkDevice device,
       nvk_descriptor_set_destroy(dev, pool, pool->entries[i].set, false);
    }
    pool->entry_count = 0;
-   pool->current_offset = 0;
 
    return VK_SUCCESS;
 }

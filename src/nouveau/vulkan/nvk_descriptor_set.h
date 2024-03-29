@@ -12,6 +12,8 @@
 #include "vk_object.h"
 #include "vk_descriptor_update_template.h"
 
+#include "util/vma.h"
+
 struct nvk_descriptor_set_layout;
 
 #define NVK_IMAGE_DESCRIPTOR_IMAGE_INDEX_MASK   0x000fffff
@@ -48,8 +50,6 @@ struct nvk_buffer_address {
 };
 
 struct nvk_descriptor_pool_entry {
-   uint32_t offset;
-   uint32_t size;
    struct nvk_descriptor_set *set;
 };
 
@@ -57,8 +57,7 @@ struct nvk_descriptor_pool {
    struct vk_object_base base;
    struct nouveau_ws_bo *bo;
    uint8_t *mapped_ptr;
-   uint64_t current_offset;
-   uint64_t size;
+   struct util_vma_heap heap;
    uint32_t entry_count;
    uint32_t max_entry_count;
    struct nvk_descriptor_pool_entry entries[0];

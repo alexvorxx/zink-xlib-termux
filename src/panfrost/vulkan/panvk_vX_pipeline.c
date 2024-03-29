@@ -520,11 +520,13 @@ panvk_pipeline_builder_parse_viewport(struct panvk_pipeline_builder *builder,
          builder->create_info.gfx->pViewportState->pScissors, vpd);
       pipeline->vpd = pipeline->state_bo->addr.dev + builder->vpd_offset;
    }
-   if (panvk_pipeline_static_state(pipeline, VK_DYNAMIC_STATE_VIEWPORT))
+   if (panvk_pipeline_static_state(pipeline, VK_DYNAMIC_STATE_VIEWPORT) &&
+       builder->create_info.gfx->pViewportState)
       pipeline->viewport =
          builder->create_info.gfx->pViewportState->pViewports[0];
 
-   if (panvk_pipeline_static_state(pipeline, VK_DYNAMIC_STATE_SCISSOR))
+   if (panvk_pipeline_static_state(pipeline, VK_DYNAMIC_STATE_SCISSOR) &&
+       builder->create_info.gfx->pViewportState)
       pipeline->scissor =
          builder->create_info.gfx->pViewportState->pScissors[0];
 }

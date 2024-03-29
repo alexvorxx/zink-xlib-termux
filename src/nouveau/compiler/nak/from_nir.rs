@@ -2502,10 +2502,12 @@ impl<'a> ShaderFromNir<'a> {
                             dst: dst.into(),
                             cb: cb.into(),
                             offset: off,
+                            mode: LdcMode::Indexed,
                             mem_type: MemType::from_size(size_B, false),
                         });
                     }
                 } else {
+
                     panic!("Indirect UBO indices not yet supported");
                 }
                 self.set_dst(&intrin.def, dst);

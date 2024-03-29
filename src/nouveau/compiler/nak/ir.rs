@@ -3811,6 +3811,25 @@ impl DisplayOp for OpLd {
 }
 impl_display_for_op!(OpLd);
 
+#[allow(dead_code)]
+pub enum LdcMode {
+    Indexed,
+    IndexedLinear,
+    IndexedSegmented,
+    IndexedSegmentedLinear,
+}
+
+impl fmt::Display for LdcMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LdcMode::Indexed => Ok(()),
+            LdcMode::IndexedLinear => write!(f, ".il"),
+            LdcMode::IndexedSegmented => write!(f, ".is"),
+            LdcMode::IndexedSegmentedLinear => write!(f, ".isl"),
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(SrcsAsSlice, DstsAsSlice)]
 pub struct OpLdc {
@@ -3822,6 +3841,7 @@ pub struct OpLdc {
     #[src_type(GPR)]
     pub offset: Src,
 
+    pub mode: LdcMode,
     pub mem_type: MemType,
 }
 
@@ -3830,7 +3850,7 @@ impl DisplayOp for OpLdc {
         let SrcRef::CBuf(cb) = self.cb.src_ref else {
             panic!("Not a cbuf");
         };
-        write!(f, "ldc{} {}[", self.mem_type, cb.buf)?;
+        write!(f, "ldc{}{} {}[", self.mode, self.mem_type, cb.buf)?;
         if self.offset.is_zero() {
             write!(f, "+{:#x}", cb.offset)?;
         } else if cb.offset == 0 {

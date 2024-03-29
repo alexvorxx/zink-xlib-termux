@@ -1492,7 +1492,15 @@ impl SM70Instr {
         );
 
         self.set_mem_type(73..76, op.mem_type);
-        self.set_field(78..80, 0_u8); // subop
+        self.set_field(
+            78..80,
+            match op.mode {
+                LdcMode::Indexed => 0_u8,
+                LdcMode::IndexedLinear => 1_u8,
+                LdcMode::IndexedSegmented => 2_u8,
+                LdcMode::IndexedSegmentedLinear => 3_u8,
+            },
+        );
     }
 
     fn encode_stg(&mut self, op: &OpSt) {

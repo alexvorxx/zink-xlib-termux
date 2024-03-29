@@ -1205,7 +1205,7 @@ struct si_context {
    int last_primitive_restart_en;
    unsigned last_restart_index;
    unsigned last_prim;
-   unsigned current_vs_state; /* all VS bits including LS bits */
+   unsigned current_vs_state; /* all VS bits */
    unsigned current_gs_state; /* only GS and NGG bits */
    unsigned last_vs_state;
    unsigned last_gs_state;

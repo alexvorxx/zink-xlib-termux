@@ -4623,10 +4623,6 @@ void si_update_tess_io_layout_state(struct si_context *sctx)
       lds_size = align(lds_size, 256) / 256;
    }
 
-   /* Set SI_SGPR_VS_STATE_BITS. */
-   SET_FIELD(sctx->current_vs_state, VS_STATE_LS_OUT_VERTEX_SIZE, input_vertex_size / 4);
-   SET_FIELD(sctx->current_vs_state, VS_STATE_TCS_OUT_PATCH0_OFFSET, perpatch_output_offset / 4);
-
    /* We should be able to support in-shader LDS use with LLVM >= 9
     * by just adding the lds_sizes together, but it has never
     * been tested. */

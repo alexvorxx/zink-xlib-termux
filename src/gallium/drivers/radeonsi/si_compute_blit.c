@@ -1106,7 +1106,6 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    union si_compute_blit_shader_key options;
    options.key = 0;
 
-   options.always_true = true;
    options.is_clear = is_clear;
    options.wg_dim = wg_dim;
    options.has_start_xyz = start_x || start_y || start_z;
@@ -1164,13 +1163,10 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
                         (is_resolve ? 10 : 11));
    }
 
-   struct hash_entry *entry = _mesa_hash_table_search(sctx->cs_blit_shaders,
-                                                      (void*)(uintptr_t)options.key);
-   void *shader = entry ? entry->data : NULL;
+   void *shader = _mesa_hash_table_u64_search(sctx->cs_blit_shaders, options.key);
    if (!shader) {
       shader = si_create_blit_cs(sctx, &options);
-      _mesa_hash_table_insert(sctx->cs_blit_shaders,
-                              (void*)(uintptr_t)options.key, shader);
+      _mesa_hash_table_u64_insert(sctx->cs_blit_shaders, options.key, shader);
    }
 
    sctx->cs_user_data[0] = (info->src.box.x & 0xffff) | ((info->dst.box.x & 0xffff) << 16);

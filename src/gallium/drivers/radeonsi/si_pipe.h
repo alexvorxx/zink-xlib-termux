@@ -993,7 +993,7 @@ struct si_context {
    void *cs_clear_12bytes_buffer;
    void *cs_dcc_retile[32];
    void *cs_fmask_expand[3][2]; /* [log2(samples)-1][is_array] */
-   struct hash_table *cs_blit_shaders;
+   struct hash_table_u64 *cs_blit_shaders;
    struct si_screen *screen;
    struct util_debug_callback debug;
    struct ac_llvm_compiler *compiler; /* only non-threaded compilation */
@@ -1634,8 +1634,6 @@ void *si_clear_image_dcc_single_shader(struct si_context *sctx, bool is_msaa, un
 
 union si_compute_blit_shader_key {
    struct {
-      /* The key saved in _mesa_hash_table_create_u32_keys() can't be 0. */
-      bool always_true:1;
       /* Workgroup settings. */
       uint8_t wg_dim:2; /* 1, 2, or 3 */
       bool has_start_xyz:1;
@@ -1662,7 +1660,7 @@ union si_compute_blit_shader_key {
       uint8_t last_src_channel:2;
       uint8_t last_dst_channel:2;
    };
-   uint32_t key;
+   uint64_t key;
 };
 
 void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_shader_key *options);

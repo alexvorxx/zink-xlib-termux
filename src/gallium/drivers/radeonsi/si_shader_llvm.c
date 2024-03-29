@@ -485,9 +485,6 @@ static LLVMValueRef si_llvm_load_intrinsic(struct ac_shader_abi *abi, nir_intrin
    struct si_shader_context *ctx = si_shader_context_from_abi(abi);
 
    switch (intrin->intrinsic) {
-   case nir_intrinsic_load_tess_rel_patch_id_amd:
-      return si_get_rel_patch_id(ctx);
-
    case nir_intrinsic_load_lds_ngg_scratch_base_amd:
       return LLVMBuildPtrToInt(ctx->ac.builder, ctx->gs_ngg_scratch.value, ctx->ac.i32, "");
 

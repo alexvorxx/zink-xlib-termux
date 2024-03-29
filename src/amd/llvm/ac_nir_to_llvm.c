@@ -3074,9 +3074,21 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       result = ac_build_gather_values(&ctx->ac, values, 3);
       break;
    }
+   case nir_intrinsic_load_tess_rel_patch_id_amd:
+      switch (ctx->stage) {
+      case MESA_SHADER_TESS_CTRL:
+         result = ac_unpack_param(&ctx->ac, ac_get_arg(&ctx->ac, ctx->args->tcs_rel_ids), 0, 8);
+         break;
+      case MESA_SHADER_TESS_EVAL:
+         result = ctx->abi->tes_rel_patch_id_replaced ? ctx->abi->tes_rel_patch_id_replaced :
+                  ac_get_arg(&ctx->ac, ctx->args->tes_rel_patch_id);
+         break;
+      default:
+         unreachable("invalid stage");
+      }
+      break;
    case nir_intrinsic_load_base_vertex:
    case nir_intrinsic_load_first_vertex:
-   case nir_intrinsic_load_tess_rel_patch_id_amd:
    case nir_intrinsic_load_ring_attr_amd:
    case nir_intrinsic_load_lds_ngg_scratch_base_amd:
    case nir_intrinsic_load_lds_ngg_gs_out_vertex_base_amd:

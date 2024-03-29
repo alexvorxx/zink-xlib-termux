@@ -476,6 +476,12 @@ nvk_CreateDescriptorPool(VkDevice _device,
          nvk_destroy_descriptor_pool(dev, pAllocator, pool);
          return vk_error(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY);
       }
+
+      /* The BO may be larger thanks to GPU page alignment.  We may as well
+       * make that extra space available to the client.
+       */
+      assert(pool->bo->size >= bo_size);
+      bo_size = pool->bo->size;
    }
 
    pool->size = bo_size;

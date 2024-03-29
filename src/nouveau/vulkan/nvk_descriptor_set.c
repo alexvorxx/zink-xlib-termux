@@ -370,19 +370,9 @@ nvk_descriptor_pool_free(struct nvk_descriptor_pool *pool,
 static void
 nvk_descriptor_set_destroy(struct nvk_device *dev,
                            struct nvk_descriptor_pool *pool,
-                           struct nvk_descriptor_set *set, bool free_bo)
+                           struct nvk_descriptor_set *set)
 {
-   if (free_bo) {
-      for (int i = 0; i < pool->entry_count; ++i) {
-         if (pool->entries[i].set == set) {
-            memmove(&pool->entries[i], &pool->entries[i + 1],
-                    sizeof(pool->entries[i]) * (pool->entry_count - i - 1));
-            --pool->entry_count;
-            break;
-         }
-      }
-   }
-
+   list_del(&set->link);
    if (set->size > 0)
       nvk_descriptor_pool_free(pool, set->addr, set->size);
    vk_descriptor_set_layout_unref(&dev->vk, &set->layout->vk);
@@ -395,9 +385,8 @@ nvk_destroy_descriptor_pool(struct nvk_device *dev,
                             const VkAllocationCallbacks *pAllocator,
                             struct nvk_descriptor_pool *pool)
 {
-   for (int i = 0; i < pool->entry_count; ++i) {
-      nvk_descriptor_set_destroy(dev, pool, pool->entries[i].set, false);
-   }
+   list_for_each_entry_safe(struct nvk_descriptor_set, set, &pool->sets, link)
+      nvk_descriptor_set_destroy(dev, pool, set);
 
    util_vma_heap_finish(&pool->heap);
 
@@ -418,8 +407,13 @@ nvk_CreateDescriptorPool(VkDevice _device,
    VK_FROM_HANDLE(nvk_device, dev, _device);
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
    struct nvk_descriptor_pool *pool;
-   uint64_t size = sizeof(struct nvk_descriptor_pool);
-   uint64_t bo_size = 0;
+
+   pool = vk_object_zalloc(&dev->vk, pAllocator, sizeof(*pool),
+                           VK_OBJECT_TYPE_DESCRIPTOR_POOL);
+   if (!pool)
+      return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   list_inithead(&pool->sets);
 
    const VkMutableDescriptorTypeCreateInfoEXT *mutable_info =
       vk_find_struct_const(pCreateInfo->pNext,
@@ -439,6 +433,7 @@ nvk_CreateDescriptorPool(VkDevice _device,
       max_align = MAX2(max_align, alignment);
    }
 
+   uint64_t bo_size = 0;
    for (unsigned i = 0; i < pCreateInfo->poolSizeCount; ++i) {
       const VkMutableDescriptorTypeListEXT *type_list = NULL;
       if (pCreateInfo->pPoolSizes[i].type == VK_DESCRIPTOR_TYPE_MUTABLE_EXT &&
@@ -463,15 +458,6 @@ nvk_CreateDescriptorPool(VkDevice _device,
     */
    bo_size += nvk_min_cbuf_alignment(&pdev->info) * pCreateInfo->maxSets;
 
-   uint64_t entries_size = sizeof(struct nvk_descriptor_pool_entry) *
-                           pCreateInfo->maxSets;
-   size += entries_size;
-
-   pool = vk_object_zalloc(&dev->vk, pAllocator, size,
-                           VK_OBJECT_TYPE_DESCRIPTOR_POOL);
-   if (!pool)
-      return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
-
    if (bo_size) {
       uint32_t flags = NOUVEAU_WS_BO_GART | NOUVEAU_WS_BO_NO_SHARE;
       pool->bo = nouveau_ws_bo_new_mapped(dev->ws_dev, bo_size, 0, flags,
@@ -490,8 +476,6 @@ nvk_CreateDescriptorPool(VkDevice _device,
    } else {
       util_vma_heap_init(&pool->heap, 0, 0);
    }
-
-   pool->max_entry_count = pCreateInfo->maxSets;
 
    *pDescriptorPool = nvk_descriptor_pool_to_handle(pool);
    return VK_SUCCESS;
@@ -546,9 +530,6 @@ nvk_descriptor_set_create(struct nvk_device *dev,
    if (!set)
       return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   if (pool->entry_count == pool->max_entry_count)
-      return VK_ERROR_OUT_OF_POOL_MEMORY;
-
    set->size = layout->non_variable_descriptor_buffer_size;
 
    if (layout->binding_count > 0 &&
@@ -569,9 +550,6 @@ nvk_descriptor_set_create(struct nvk_device *dev,
          return result;
       }
    }
-
-   pool->entries[pool->entry_count].set = set;
-   pool->entry_count++;
 
    vk_descriptor_set_layout_ref(&layout->vk);
    set->layout = layout;
@@ -595,6 +573,7 @@ nvk_descriptor_set_create(struct nvk_device *dev,
       }
    }
 
+   list_addtail(&set->link, &pool->sets);
    *out_set = set;
 
    return VK_SUCCESS;
@@ -658,7 +637,7 @@ nvk_FreeDescriptorSets(VkDevice device,
       VK_FROM_HANDLE(nvk_descriptor_set, set, pDescriptorSets[i]);
 
       if (set)
-         nvk_descriptor_set_destroy(dev, pool, set, true);
+         nvk_descriptor_set_destroy(dev, pool, set);
    }
    return VK_SUCCESS;
 }
@@ -685,10 +664,8 @@ nvk_ResetDescriptorPool(VkDevice device,
    VK_FROM_HANDLE(nvk_device, dev, device);
    VK_FROM_HANDLE(nvk_descriptor_pool, pool, descriptorPool);
 
-   for (int i = 0; i < pool->entry_count; ++i) {
-      nvk_descriptor_set_destroy(dev, pool, pool->entries[i].set, false);
-   }
-   pool->entry_count = 0;
+   list_for_each_entry_safe(struct nvk_descriptor_set, set, &pool->sets, link)
+      nvk_descriptor_set_destroy(dev, pool, set);
 
    return VK_SUCCESS;
 }

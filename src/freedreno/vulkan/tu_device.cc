@@ -2978,47 +2978,6 @@ tu_BindBufferMemory2(VkDevice device,
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
-tu_BindImageMemory2(VkDevice _device,
-                    uint32_t bindInfoCount,
-                    const VkBindImageMemoryInfo *pBindInfos)
-{
-   TU_FROM_HANDLE(tu_device, device, _device);
-
-   for (uint32_t i = 0; i < bindInfoCount; ++i) {
-      TU_FROM_HANDLE(tu_image, image, pBindInfos[i].image);
-      TU_FROM_HANDLE(tu_device_memory, mem, pBindInfos[i].memory);
-
-      if (mem) {
-         image->bo = mem->bo;
-         image->iova = mem->bo->iova + pBindInfos[i].memoryOffset;
-
-         if (image->vk.usage & VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT) {
-            if (!mem->bo->map) {
-               VkResult result = tu_bo_map(device, mem->bo);
-               if (result != VK_SUCCESS)
-                  return result;
-            }
-
-            image->map = (char *)mem->bo->map + pBindInfos[i].memoryOffset;
-         } else {
-            image->map = NULL;
-         }
-#ifdef HAVE_PERFETTO
-         tu_perfetto_log_bind_image(device, image);
-#endif
-      } else {
-         image->bo = NULL;
-         image->map = NULL;
-         image->iova = 0;
-      }
-
-      TU_RMV(image_bind, device, image);
-   }
-
-   return VK_SUCCESS;
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
 tu_QueueBindSparse(VkQueue _queue,
                    uint32_t bindInfoCount,
                    const VkBindSparseInfo *pBindInfo,

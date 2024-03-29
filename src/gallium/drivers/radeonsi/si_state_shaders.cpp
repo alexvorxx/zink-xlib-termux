@@ -4486,6 +4486,7 @@ void si_update_tess_io_layout_state(struct si_context *sctx)
    unsigned num_tcs_patch_outputs = util_last_bit64(tcs->info.patch_outputs_written);
 
    unsigned input_vertex_size = ls->info.lshs_vertex_stride;
+   unsigned num_vs_outputs = (input_vertex_size - 4) / 16;
    unsigned output_vertex_size = num_tcs_outputs * 16;
    unsigned input_patch_size;
 
@@ -4595,6 +4596,7 @@ void si_update_tess_io_layout_state(struct si_context *sctx)
    assert(num_tcs_input_cp <= 32);
    assert(num_tcs_output_cp <= 32);
    assert(num_patches <= 64);
+   assert(num_vs_outputs <= 63);
    assert(num_tcs_outputs <= 63);
    assert(((pervertex_output_patch_size * num_patches) & ~0xffff) == 0);
 
@@ -4608,7 +4610,7 @@ void si_update_tess_io_layout_state(struct si_context *sctx)
    sctx->tcs_offchip_layout &= 0xe0000000;
    sctx->tcs_offchip_layout |=
       (num_patches - 1) | ((num_tcs_output_cp - 1) << 6) | ((num_tcs_input_cp - 1) << 11) |
-      (num_tcs_outputs << 23);
+      (num_vs_outputs << 17) | (num_tcs_outputs << 23);
 
    /* Compute the LDS size. */
    unsigned lds_size = lds_per_patch * num_patches;

@@ -349,14 +349,18 @@ static bool lower_intrinsic(nir_builder *b, nir_instr *instr, struct lower_abi_s
       replacement = ac_nir_load_arg(b, &args->ac, args->ac.sample_coverage);
       break;
    case nir_intrinsic_load_lshs_vertex_stride_amd:
-      if (stage == MESA_SHADER_VERTEX)
+      if (stage == MESA_SHADER_VERTEX) {
          replacement = nir_imm_int(b, sel->info.lshs_vertex_stride);
-      else if (stage == MESA_SHADER_TESS_CTRL)
-         replacement = sel->screen->info.gfx_level >= GFX9 && shader->is_monolithic ?
-            nir_imm_int(b, key->ge.part.tcs.ls->info.lshs_vertex_stride) :
-            nir_ishl_imm(b, GET_FIELD_NIR(VS_STATE_LS_OUT_VERTEX_SIZE), 2);
-      else
+      } else if (stage == MESA_SHADER_TESS_CTRL) {
+         if (sel->screen->info.gfx_level >= GFX9 && shader->is_monolithic) {
+            replacement = nir_imm_int(b, key->ge.part.tcs.ls->info.lshs_vertex_stride);
+         } else {
+            nir_def *num_ls_out = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 17, 6);
+            replacement = nir_iadd_imm_nuw(b, nir_ishl_imm(b, num_ls_out, 4), 4);
+         }
+      } else {
          unreachable("no nir_load_lshs_vertex_stride_amd");
+      }
       break;
    case nir_intrinsic_load_esgs_vertex_stride_amd:
       assert(sel->screen->info.gfx_level >= GFX9);

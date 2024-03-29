@@ -4450,7 +4450,7 @@ tu_CmdBeginRendering(VkCommandBuffer commandBuffer,
       cmd->state.lrz.valid = false;
    } else {
       if (resuming)
-         tu_lrz_begin_resumed_renderpass(cmd);
+         tu_lrz_begin_resumed_renderpass<CHIP>(cmd);
       else
          tu_lrz_begin_renderpass<CHIP>(cmd);
    }

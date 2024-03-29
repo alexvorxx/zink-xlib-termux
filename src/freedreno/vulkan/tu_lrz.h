@@ -116,6 +116,7 @@ template <chip CHIP>
 void
 tu_lrz_begin_renderpass(struct tu_cmd_buffer *cmd);
 
+template <chip CHIP>
 void
 tu_lrz_begin_resumed_renderpass(struct tu_cmd_buffer *cmd);
 

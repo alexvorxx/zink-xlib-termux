@@ -1050,6 +1050,15 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    unsigned max_dst_chan_size = util_format_get_max_channel_size(info->dst.format);
    unsigned max_src_chan_size = util_format_get_max_channel_size(info->src.format);
 
+   if (info->alpha_blend ||
+       info->num_window_rectangles ||
+       info->scissor_enable ||
+       /* No scaling. */
+       info->dst.box.width != abs(info->src.box.width) ||
+       info->dst.box.height != abs(info->src.box.height) ||
+       info->dst.box.depth != abs(info->src.box.depth))
+      return false;
+
    /* Testing on Navi21 showed that the compute blit is slightly slower than the gfx blit.
     * The compute blit is even slower with DCC stores. VP13 CATIA_plane_pencil is a good test
     * for that because it's mostly just blits.
@@ -1065,15 +1074,6 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
        !si_can_use_compute_blit(sctx, info->src.format, info->src.resource->nr_samples, false,
                                 vi_dcc_enabled((struct si_texture*)info->src.resource,
                                                info->src.level)))
-      return false;
-
-   if (info->alpha_blend ||
-       info->num_window_rectangles ||
-       info->scissor_enable ||
-       /* No scaling. */
-       info->dst.box.width != abs(info->src.box.width) ||
-       info->dst.box.height != abs(info->src.box.height) ||
-       info->dst.box.depth != abs(info->src.box.depth))
       return false;
 
    assert(info->src.box.depth >= 0);

@@ -1292,7 +1292,7 @@ update_dispatch_indirect_with_sysvals(struct d3d12_context *ctx,
        ctx->compute_state == nullptr)
       return false;
 
-   if (!BITSET_TEST(ctx->compute_state->current->nir->info.system_values_read, SYSTEM_VALUE_NUM_WORKGROUPS))
+   if (!BITSET_TEST(ctx->compute_state->initial->info.system_values_read, SYSTEM_VALUE_NUM_WORKGROUPS))
       return false;
 
    if (ctx->current_predication)

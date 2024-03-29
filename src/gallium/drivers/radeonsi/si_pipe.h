@@ -672,7 +672,6 @@ struct si_screen {
    } barrier_flags;
 
    simple_mtx_t shader_parts_mutex;
-   struct si_shader_part *tcs_epilogs;
    struct si_shader_part *ps_prologs;
    struct si_shader_part *ps_epilogs;
 
@@ -1387,7 +1386,7 @@ struct si_context {
    /* TODO: move other shaders here too */
    /* Only used for DCC MSAA clears with 4-8 fragments and 4-16 samples. */
    void *cs_clear_dcc_msaa[32][5][2][3][2]; /* [swizzle_mode][log2(bpe)][fragments == 8][log2(samples)-2][is_array] */
-   
+
    /* u_trace logging*/
    struct si_ds_device ds;
    /** Where tracepoints are recorded */

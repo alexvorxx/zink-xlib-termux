@@ -99,7 +99,6 @@ unsigned si_get_max_workgroup_size(const struct si_shader *shader);
 struct nir_shader *si_get_nir_shader(struct si_shader *shader, struct si_shader_args *args,
                                      bool *free_nir, uint64_t tcs_vgpr_only_inputs,
                                      ac_nir_gs_output_info *output_info);
-void si_get_tcs_epilog_key(struct si_shader *shader, union si_shader_part_key *key);
 bool si_need_ps_prolog(const union si_shader_part_key *key);
 void si_get_ps_prolog_key(struct si_shader *shader, union si_shader_part_key *key);
 void si_get_ps_epilog_key(struct si_shader *shader, union si_shader_part_key *key);
@@ -110,12 +109,6 @@ nir_shader *si_get_prev_stage_nir_shader(struct si_shader *shader,
                                          struct si_shader_args *args,
                                          bool *free_nir);
 unsigned si_get_tcs_out_patch_stride(const struct si_shader_info *info);
-void si_get_tcs_epilog_args(enum amd_gfx_level gfx_level,
-                            struct si_shader_args *args,
-                            struct ac_arg *rel_patch_id,
-                            struct ac_arg *invocation_id,
-                            struct ac_arg *tf_lds_offset,
-                            struct ac_arg tess_factors[6]);
 void si_get_ps_prolog_args(struct si_shader_args *args,
                            const union si_shader_part_key *key);
 void si_get_ps_epilog_args(struct si_shader_args *args,

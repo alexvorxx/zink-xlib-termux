@@ -896,11 +896,6 @@ bool si_llvm_build_shader_part(struct si_screen *sscreen, gl_shader_stage stage,
    bool exports_mrtz = false;
 
    switch (stage) {
-   case MESA_SHADER_TESS_CTRL:
-      assert(!prolog);
-      shader.key.ge.part.tcs.epilog = key->tcs_epilog.states;
-      wave32 = key->tcs_epilog.wave32;
-      break;
    case MESA_SHADER_FRAGMENT:
       if (prolog) {
          shader.key.ps.part.prolog = key->ps_prolog.states;
@@ -933,9 +928,6 @@ bool si_llvm_build_shader_part(struct si_screen *sscreen, gl_shader_stage stage,
    void (*build)(struct si_shader_context *, union si_shader_part_key *);
 
    switch (stage) {
-   case MESA_SHADER_TESS_CTRL:
-      build = si_llvm_build_tcs_epilog;
-      break;
    case MESA_SHADER_FRAGMENT:
       build = prolog ? si_llvm_build_ps_prolog : si_llvm_build_ps_epilog;
       break;

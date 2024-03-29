@@ -397,8 +397,6 @@ static nir_def *apply_blit_output_modifiers(nir_builder *b, nir_def *color,
  * - Out-of-bounds src coordinates are clamped by emulating CLAMP_TO_EDGE using
  *   the image_size NIR intrinsic.
  * - X/Y flipping just does this in the shader: -threadIDs - 1
- * - MSAA copies are implemented but disabled because MSAA image stores don't
- *   work.
  */
 void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_shader_key *options)
 {

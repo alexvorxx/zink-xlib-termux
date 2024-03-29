@@ -1052,8 +1052,9 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
 
    /* MSAA image stores don't work on <= Gfx10.3. It's an issue with FMASK because
     * AMD_DEBUG=nofmask fixes them. EQAA image stores are also unimplemented.
+    * MSAA image stores work fine on Gfx11 (it has neither FMASK nor EQAA).
     */
-   if (dst_samples > 1)
+   if (sctx->gfx_level < GFX11 && !(sctx->screen->debug_flags & DBG(NO_FMASK)) && dst_samples > 1)
       return false;
 
    if (info->dst.format == PIPE_FORMAT_A8R8_UNORM || /* This format fails AMD_TEST=imagecopy. */

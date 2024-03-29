@@ -21,6 +21,7 @@
 #include "tu_formats.h"
 #include "tu_image.h"
 #include "tu_tracepoints.h"
+#include "tu_lrz.h"
 
 #include "common/freedreno_gpu_event.h"
 
@@ -1832,16 +1833,30 @@ tu6_dirty_lrz_fc(struct tu_cmd_buffer *cmd,
    VkClearValue clear = {};
    clear.color.uint32[0] = 0xffffffff;
 
-   /* LRZ fast-clear buffer is always allocated with 512 bytes size. */
+   using LRZFC = tu_lrzfc_layout<CHIP>;
+   uint64_t lrz_fc_iova = image->iova + image->lrz_fc_offset;
    ops->setup(cmd, cs, PIPE_FORMAT_R32_UINT, PIPE_FORMAT_R32_UINT,
               VK_IMAGE_ASPECT_COLOR_BIT, 0, true, false,
               VK_SAMPLE_COUNT_1_BIT);
    ops->clear_value(cmd, cs, PIPE_FORMAT_R32_UINT, &clear);
    ops->dst_buffer(cs, PIPE_FORMAT_R32_UINT,
-                   image->iova + image->lrz_fc_offset, 512,
+                   lrz_fc_iova + offsetof(LRZFC, fc1),
+                   sizeof(LRZFC::fc1),
                    PIPE_FORMAT_R32_UINT);
-   ops->coords(cmd, cs, (VkOffset2D) {}, blt_no_coord, (VkExtent2D) {128, 1});
+   ops->coords(cmd, cs, (VkOffset2D) {}, blt_no_coord, (VkExtent2D) {
+      sizeof(LRZFC::fc1) / sizeof(uint32_t), 1
+   });
    ops->run(cmd, cs);
+   if constexpr (LRZFC::HAS_BIDIR) {
+      ops->dst_buffer(cs, PIPE_FORMAT_R32_UINT,
+                      lrz_fc_iova + offsetof(LRZFC, fc2),
+                      sizeof(LRZFC::fc2),
+                      PIPE_FORMAT_R32_UINT);
+      ops->coords(cmd, cs, (VkOffset2D) {}, blt_no_coord, (VkExtent2D) {
+         sizeof(LRZFC::fc2) / sizeof(uint32_t), 1
+      });
+      ops->run(cmd, cs);
+   }
    ops->teardown(cmd, cs);
 }
 TU_GENX(tu6_dirty_lrz_fc);

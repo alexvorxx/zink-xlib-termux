@@ -140,7 +140,7 @@ int futex_wait(uint32_t *addr, int32_t value, const struct timespec *timeout)
    DWORD timeout_ms = INFINITE;
    if (timeout != NULL) {
       struct timespec tsnow;
-      timespec_get(&tsnow, TIME_UTC);
+      timespec_get(&tsnow, TIME_MONOTONIC);
 
       timeout_ms = (timeout->tv_sec - tsnow.tv_sec) * 1000 +
                    (timeout->tv_nsec - tsnow.tv_nsec) / 1000000;

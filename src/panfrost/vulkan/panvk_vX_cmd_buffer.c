@@ -1782,6 +1782,8 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
       att_width = MAX2(iview_size.width, att_width);
       att_height = MAX2(iview_size.height, att_height);
 
+      assert(att->resolveMode == VK_RESOLVE_MODE_NONE);
+
       cmdbuf->state.fb.bos[cmdbuf->state.fb.bo_count++] = img->bo;
       fbinfo->rts[i].view = &iview->pview;
       fbinfo->rts[i].crc_valid = &cmdbuf->state.fb.crc_valid[i];
@@ -1814,6 +1816,8 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
       att_width = MAX2(iview_size.width, att_width);
       att_height = MAX2(iview_size.height, att_height);
 
+      assert(att->resolveMode == VK_RESOLVE_MODE_NONE);
+
       cmdbuf->state.fb.bos[cmdbuf->state.fb.bo_count++] = img->bo;
       fbinfo->zs.view.zs = &iview->pview;
 
@@ -1837,6 +1841,8 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
       has_attachments = true;
       att_width = MAX2(iview_size.width, att_width);
       att_height = MAX2(iview_size.height, att_height);
+
+      assert(att->resolveMode == VK_RESOLVE_MODE_NONE);
 
       cmdbuf->state.fb.bos[cmdbuf->state.fb.bo_count++] = img->bo;
       fbinfo->zs.view.s =

@@ -1050,7 +1050,20 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    unsigned max_dst_chan_size = util_format_get_max_channel_size(info->dst.format);
    unsigned max_src_chan_size = util_format_get_max_channel_size(info->src.format);
 
-   if (info->alpha_blend ||
+   /* MSAA image stores don't work on <= Gfx10.3. It's an issue with FMASK because
+    * AMD_DEBUG=nofmask fixes them. EQAA image stores are also unimplemented.
+    */
+   if (dst_samples > 1)
+      return false;
+
+   if (info->dst.format == PIPE_FORMAT_A8R8_UNORM || /* This format fails AMD_TEST=imagecopy. */
+       max_dst_chan_size == 5 || /* PIPE_FORMAT_R5G5B5A1_UNORM has precision issues */
+       util_format_is_depth_or_stencil(info->dst.resource->format) ||
+       util_format_is_depth_or_stencil(info->src.resource->format) ||
+       info->dst_sample != 0 ||
+       /* Image stores support DCC since GFX10. */
+       (sctx->gfx_level < GFX10 && vi_dcc_enabled(sdst, info->dst.level)) ||
+       info->alpha_blend ||
        info->num_window_rectangles ||
        info->scissor_enable ||
        /* No scaling. */
@@ -1066,14 +1079,6 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
     * TODO: benchmark the performance on gfx11
     */
    if (sctx->gfx_level < GFX11 && !testing)
-      return false;
-
-   if (!si_can_use_compute_blit(sctx, info->dst.format, info->dst.resource->nr_samples, true,
-                                vi_dcc_enabled((struct si_texture*)info->dst.resource,
-                                               info->dst.level)) ||
-       !si_can_use_compute_blit(sctx, info->src.format, info->src.resource->nr_samples, false,
-                                vi_dcc_enabled((struct si_texture*)info->src.resource,
-                                               info->src.level)))
       return false;
 
    assert(info->src.box.depth >= 0);

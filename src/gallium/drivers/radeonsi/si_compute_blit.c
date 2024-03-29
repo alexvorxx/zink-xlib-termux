@@ -1061,8 +1061,9 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
        util_format_is_depth_or_stencil(info->dst.resource->format) ||
        util_format_is_depth_or_stencil(info->src.resource->format) ||
        info->dst_sample != 0 ||
-       /* Image stores support DCC since GFX10. */
-       (sctx->gfx_level < GFX10 && vi_dcc_enabled(sdst, info->dst.level)) ||
+       /* Image stores support DCC since GFX10. Return only for gfx queues. DCC is disabled
+        * for compute queues farther below. */
+       (sctx->gfx_level < GFX10 && sctx->has_graphics && vi_dcc_enabled(sdst, info->dst.level)) ||
        info->alpha_blend ||
        info->num_window_rectangles ||
        info->scissor_enable ||
@@ -1078,10 +1079,13 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
     *
     * TODO: benchmark the performance on gfx11
     */
-   if (sctx->gfx_level < GFX11 && !testing)
+   if (sctx->gfx_level < GFX11 && sctx->has_graphics && !testing)
       return false;
 
    assert(info->src.box.depth >= 0);
+
+   if (sctx->gfx_level < GFX10 && !sctx->has_graphics && vi_dcc_enabled(sdst, info->dst.level))
+      si_texture_disable_dcc(sctx, sdst);
 
    /* Shader images. */
    struct pipe_image_view image[2];

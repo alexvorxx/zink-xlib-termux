@@ -723,14 +723,14 @@ static bool lower_intrinsic(nir_builder *b, nir_instr *instr, struct lower_abi_s
       if (shader->is_monolithic) {
          replacement = nir_imm_bool(b, key->ge.part.tcs.epilog.tes_reads_tess_factors);
       } else {
-         unreachable("TODO");
+         replacement = nir_ine_imm(b, ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 31, 1), 0);
       }
       break;
    case nir_intrinsic_load_tcs_primitive_mode_amd:
       if (shader->is_monolithic) {
          replacement = nir_imm_int(b, key->ge.part.tcs.epilog.prim_mode);
       } else {
-         unreachable("TODO");
+         replacement = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 29, 2);
       }
       break;
    case nir_intrinsic_load_ring_gsvs_amd: {

@@ -3697,6 +3697,15 @@ static void si_bind_tes_shader(struct pipe_context *ctx, void *state)
    sctx->shader.tcs.key.ge.part.tcs.epilog.tes_reads_tess_factors =
       sel ? sel->info.reads_tess_factors : 0;
 
+   if (sel) {
+      sctx->tcs_offchip_layout &= 0x1fffffff;
+      sctx->tcs_offchip_layout |=
+         (sel->info.base.tess._primitive_mode << 29) |
+         (sel->info.reads_tess_factors << 31);
+
+      si_mark_atom_dirty(sctx, &sctx->atoms.s.tess_io_layout);
+   }
+
    si_update_common_shader_state(sctx, sel, PIPE_SHADER_TESS_EVAL);
    si_select_draw_vbo(sctx);
 
@@ -4596,7 +4605,8 @@ void si_update_tess_io_layout_state(struct si_context *sctx)
    assert((ring_va & u_bit_consecutive(0, 19)) == 0);
 
    sctx->tes_offchip_ring_va_sgpr = ring_va;
-   sctx->tcs_offchip_layout =
+   sctx->tcs_offchip_layout &= 0xe0000000;
+   sctx->tcs_offchip_layout |=
       (num_patches - 1) | ((num_tcs_output_cp - 1) << 6) | ((num_tcs_input_cp - 1) << 11) |
       (num_tcs_outputs << 23);
 

@@ -61,6 +61,10 @@ struct si_shader_args {
     *   [16:22] = reserved for future use
     * # 6 bits
     *   [23:28] = the number of HS per-vertex outputs, max = 63
+    * # 2 bits
+    *   [29:30] = TES output primitive type
+    * # 1 bit
+    *   [31] = whether TES reads tess factor outputs from TCS
     */
    struct ac_arg tcs_offchip_layout;
 

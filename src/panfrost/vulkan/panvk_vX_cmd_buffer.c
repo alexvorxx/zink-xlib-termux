@@ -590,6 +590,7 @@ panvk_per_arch(cmd_get_tiler_context)(struct panvk_cmd_buffer *cmdbuf,
                                       unsigned width, unsigned height)
 {
    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+   struct pan_fb_info *fbinfo = &cmdbuf->state.fb.info;
    struct panvk_batch *batch = cmdbuf->state.batch;
 
    if (batch->tiler.ctx_desc.cpu)
@@ -612,6 +613,7 @@ panvk_per_arch(cmd_get_tiler_context)(struct panvk_cmd_buffer *cmdbuf,
       cfg.fb_width = width;
       cfg.fb_height = height;
       cfg.heap = batch->tiler.heap_desc.gpu;
+      cfg.sample_pattern = pan_sample_pattern(fbinfo->nr_samples);
    }
 
    memcpy(batch->tiler.heap_desc.cpu, &batch->tiler.heap_templ,

@@ -392,13 +392,6 @@ dEQP-VK.rasterization.interpolation_multisample_4_bit.lines_wide,Fail
 dEQP-VK.rasterization.interpolation_multisample_4_bit.non_strict_lines_wide,Fail
 dEQP-VK.rasterization.interpolation_multisample_4_bit.triangles,Fail
 
-# internal alignment assertion
-dEQP-VK.spirv_assembly.instruction.compute.pointer_parameter.workgroup_memory_variable_pointers,Crash
-dEQP-VK.spirv_assembly.instruction.compute.variable_pointers.compute.workgroup_two_buffers,Crash
-dEQP-VK.spirv_assembly.instruction.compute.workgroup_memory.float32,Crash
-dEQP-VK.spirv_assembly.instruction.compute.workgroup_memory.int32,Crash
-dEQP-VK.spirv_assembly.instruction.compute.workgroup_memory.uint32,Crash
-
 dEQP-VK.api.copy_and_blit.core.image_to_image.all_formats.color.1d_to_1d.r16g16_snorm.r16g16_snorm.general_optimal,Fail
 dEQP-VK.api.copy_and_blit.core.image_to_image.all_formats.color.1d_to_1d.r16g16b16a16_uint.r16g16b16a16_uint.optimal_general,Fail
 dEQP-VK.api.copy_and_blit.core.image_to_image.all_formats.color.1d_to_1d.r8_uint.r8_uint.general_optimal,Fail

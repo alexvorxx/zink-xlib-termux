@@ -1730,8 +1730,9 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
       unsigned core_id_range;
 
       panfrost_query_core_count(&phys_dev->kmod.props, &core_id_range);
+      batch->tlsinfo.wls.instances = pan_wls_instances(&dispatch.wg_count);
       batch->wls_total_size = pan_wls_adjust_size(batch->tlsinfo.wls.size) *
-                              pan_wls_instances(&dispatch.wg_count) *
+                              batch->tlsinfo.wls.instances *
                               core_id_range;
    }
 

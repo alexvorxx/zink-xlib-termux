@@ -86,6 +86,7 @@ static LLVMValueRef get_tcs_tes_buffer_address(struct si_shader_context *ctx,
 {
    LLVMValueRef base_addr, num_patches;
    LLVMValueRef param_stride, constant16;
+   LLVMValueRef num_hs_out, num_out_vtx_per_patch, out_vtx_size, per_vtx_out_patch_size;
 
    num_patches = si_unpack_param(ctx, ctx->args->tcs_offchip_layout, 0, 6);
    num_patches = LLVMBuildAdd(ctx->ac.builder, num_patches, ctx->ac.i32_1, "");
@@ -97,7 +98,13 @@ static LLVMValueRef get_tcs_tes_buffer_address(struct si_shader_context *ctx,
    base_addr = ac_build_imad(&ctx->ac, param_index, param_stride, base_addr);
    base_addr = LLVMBuildMul(ctx->ac.builder, base_addr, constant16, "");
 
-   LLVMValueRef patch_data_offset = si_unpack_param(ctx, ctx->args->tcs_offchip_layout, 16, 16);
+   num_hs_out = si_unpack_param(ctx, ctx->args->tcs_offchip_layout, 23, 6);
+   num_out_vtx_per_patch = si_unpack_param(ctx, ctx->args->tcs_offchip_layout, 6, 5);
+   num_out_vtx_per_patch = LLVMBuildAdd(ctx->ac.builder, num_out_vtx_per_patch, ctx->ac.i32_1, "");
+   out_vtx_size = LLVMBuildMul(ctx->ac.builder, num_hs_out, constant16, "");
+   per_vtx_out_patch_size = LLVMBuildMul(ctx->ac.builder, num_out_vtx_per_patch, out_vtx_size, "");
+
+   LLVMValueRef patch_data_offset = LLVMBuildMul(ctx->ac.builder, per_vtx_out_patch_size, num_patches, "");
    return LLVMBuildAdd(ctx->ac.builder, base_addr, patch_data_offset, "");
 }
 

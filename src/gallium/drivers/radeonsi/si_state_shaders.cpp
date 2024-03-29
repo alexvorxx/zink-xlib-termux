@@ -4586,6 +4586,7 @@ void si_update_tess_io_layout_state(struct si_context *sctx)
    assert(num_tcs_input_cp <= 32);
    assert(num_tcs_output_cp <= 32);
    assert(num_patches <= 64);
+   assert(num_tcs_outputs <= 63);
    assert(((pervertex_output_patch_size * num_patches) & ~0xffff) == 0);
 
    uint64_t ring_va =
@@ -4597,7 +4598,7 @@ void si_update_tess_io_layout_state(struct si_context *sctx)
    sctx->tes_offchip_ring_va_sgpr = ring_va;
    sctx->tcs_offchip_layout =
       (num_patches - 1) | ((num_tcs_output_cp - 1) << 6) | ((num_tcs_input_cp - 1) << 11) |
-      ((pervertex_output_patch_size * num_patches) << 16);
+      (num_tcs_outputs << 23);
 
    /* Compute the LDS size. */
    unsigned lds_size = lds_per_patch * num_patches;

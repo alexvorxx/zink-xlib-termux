@@ -372,9 +372,27 @@ static bool lower_intrinsic(nir_builder *b, nir_instr *instr, struct lower_abi_s
       replacement = nir_iadd_imm(b, tmp, 1);
       break;
    }
-   case nir_intrinsic_load_hs_out_patch_data_offset_amd:
-      replacement = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 16, 16);
+   case nir_intrinsic_load_hs_out_patch_data_offset_amd: {
+      nir_def *per_vtx_out_patch_size = NULL;
+
+      if (stage == MESA_SHADER_TESS_CTRL) {
+         const unsigned num_hs_out = util_last_bit64(sel->info.outputs_written_before_tes_gs);
+         const unsigned out_vtx_size = num_hs_out * 16;
+         const unsigned out_vtx_per_patch = sel->info.base.tess.tcs_vertices_out;
+         per_vtx_out_patch_size = nir_imm_int(b, out_vtx_size * out_vtx_per_patch);
+      } else {
+         nir_def *num_hs_out = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 23, 6);
+         nir_def *out_vtx_size = nir_ishl_imm(b, num_hs_out, 4);
+         nir_def *o = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 6, 5);
+         nir_def *out_vtx_per_patch = nir_iadd_imm_nuw(b, o, 1);
+         per_vtx_out_patch_size = nir_imul(b, out_vtx_per_patch, out_vtx_size);
+      }
+
+      nir_def *p = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 0, 6);
+      nir_def *num_patches = nir_iadd_imm_nuw(b, p, 1);
+      replacement = nir_imul(b, per_vtx_out_patch_size, num_patches);
       break;
+   }
    case nir_intrinsic_load_ring_tess_offchip_offset_amd:
       replacement = ac_nir_load_arg(b, &args->ac, args->ac.tess_offchip_offset);
       break;

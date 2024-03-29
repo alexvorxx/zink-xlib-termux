@@ -57,11 +57,10 @@ struct si_shader_args {
     *   [6:10] = the number of output vertices per patch - 1, max = 31
     * # 5 bits
     *   [11:15] = the number of input vertices per patch - 1, max = 31 (TCS only)
-    * # 16 bits
-    *   [16:31] = the offset of per patch attributes in the buffer in bytes.
-    *       64 outputs are implied by SI_UNIQUE_SLOT_* values.
-    *       max = 32(CPs) * 64(outputs) * 16(vec4) * 64(num_patches) = 2M,
-    *       clamped to 32K(LDS limit) = 32K
+    * # 7 bits
+    *   [16:22] = reserved for future use
+    * # 6 bits
+    *   [23:28] = the number of HS per-vertex outputs, max = 63
     */
    struct ac_arg tcs_offchip_layout;
 

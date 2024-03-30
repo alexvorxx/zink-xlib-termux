@@ -481,6 +481,23 @@ lower_hs_output_load(nir_builder *b,
                      nir_intrinsic_instr *intrin,
                      lower_tess_io_state *st)
 {
+   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
+   const bool is_tess_factor = io_sem.location == VARYING_SLOT_TESS_LEVEL_INNER ||
+                               io_sem.location == VARYING_SLOT_TESS_LEVEL_OUTER;
+
+   if (is_tess_factor && st->tcs_pass_tessfactors_by_reg) {
+      const unsigned component = nir_intrinsic_component(intrin);
+      const unsigned num_components = intrin->def.num_components;
+      const unsigned bit_size = intrin->def.bit_size;
+
+      nir_def *var =
+         io_sem.location == VARYING_SLOT_TESS_LEVEL_OUTER
+            ? nir_load_var(b, st->tcs_tess_level_outer)
+            : nir_load_var(b, st->tcs_tess_level_inner);
+
+      return nir_extract_bits(b, &var, 1, component * bit_size, num_components, bit_size);
+   }
+
    nir_def *off = hs_output_lds_offset(b, st, intrin);
    return nir_load_shared(b, intrin->def.num_components, intrin->def.bit_size, off);
 }

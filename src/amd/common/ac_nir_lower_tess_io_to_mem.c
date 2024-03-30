@@ -544,6 +544,10 @@ lower_hs_output_load(nir_builder *b,
       return nir_extract_bits(b, &var, 1, component * bit_size, num_components, bit_size);
    }
 
+   /* If an output is not stored by the shader, replace the output load by undef. */
+   if (!tcs_output_needs_lds(intrin, b->shader, st))
+      return nir_undef(b, intrin->def.num_components, intrin->def.bit_size);
+
    nir_def *off = hs_output_lds_offset(b, st, intrin);
    return nir_load_shared(b, intrin->def.num_components, intrin->def.bit_size, off);
 }

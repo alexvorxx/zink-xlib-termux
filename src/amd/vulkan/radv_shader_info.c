@@ -454,13 +454,12 @@ gather_shader_info_ngg_query(struct radv_device *device, struct radv_shader_info
 }
 
 static uint64_t
-gather_io_mask(const uint64_t nir_mask, const uint64_t nir_patch_mask, const bool per_patch)
+gather_io_mask(const uint64_t nir_mask)
 {
    /* Select the correct NIR IO mask.
     * Exclude per-patch built-in variables, because in NIR they are not part of the patch I/O masks.
     */
-   const uint64_t nir_io_mask =
-      (per_patch ? nir_patch_mask : nir_mask) & ~(VARYING_BIT_TESS_LEVEL_OUTER | VARYING_BIT_TESS_LEVEL_INNER);
+   const uint64_t nir_io_mask = nir_mask & ~(VARYING_BIT_TESS_LEVEL_OUTER | VARYING_BIT_TESS_LEVEL_INNER);
 
    /* Create a mask of driver locations mapped from NIR semantics. */
    uint64_t radv_io_mask = 0;
@@ -470,19 +469,7 @@ gather_io_mask(const uint64_t nir_mask, const uint64_t nir_patch_mask, const boo
           semantic == VARYING_SLOT_PRIMITIVE_ID || semantic == VARYING_SLOT_PRIMITIVE_SHADING_RATE)
          continue;
 
-      /* Generic per-patch outputs start at an offset. */
-      if (per_patch)
-         semantic += VARYING_SLOT_PATCH0;
-
       radv_io_mask |= BITFIELD64_BIT(radv_map_io_driver_location(semantic));
-   }
-
-   /* Include per-patch built-in variables. */
-   if (per_patch) {
-      if (nir_mask & VARYING_BIT_TESS_LEVEL_OUTER)
-         radv_io_mask |= BITFIELD64_BIT(radv_map_io_driver_location(VARYING_SLOT_TESS_LEVEL_OUTER));
-      if (nir_mask & VARYING_BIT_TESS_LEVEL_INNER)
-         radv_io_mask |= BITFIELD64_BIT(radv_map_io_driver_location(VARYING_SLOT_TESS_LEVEL_INNER));
    }
 
    return radv_io_mask;
@@ -494,7 +481,7 @@ gather_info_unlinked_input(struct radv_shader_info *info, const nir_shader *nir)
    if (info->inputs_linked)
       return;
 
-   const uint64_t io_mask = gather_io_mask(nir->info.inputs_read, 0, false);
+   const uint64_t io_mask = gather_io_mask(nir->info.inputs_read);
    const unsigned num_linked_inputs = util_last_bit64(io_mask);
 
    switch (nir->info.stage) {
@@ -518,7 +505,7 @@ gather_info_unlinked_output(struct radv_shader_info *info, const nir_shader *nir
    if (info->outputs_linked)
       return;
 
-   const uint64_t io_mask = gather_io_mask(nir->info.outputs_written, 0, false);
+   const uint64_t io_mask = gather_io_mask(nir->info.outputs_written);
    const unsigned num_linked_outputs = util_last_bit64(io_mask);
 
    switch (nir->info.stage) {

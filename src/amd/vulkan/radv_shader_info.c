@@ -519,7 +519,6 @@ gather_info_unlinked_output(struct radv_shader_info *info, const nir_shader *nir
       return;
 
    const uint64_t io_mask = gather_io_mask(nir->info.outputs_written, 0, false);
-   const uint64_t patch_io_mask = gather_io_mask(nir->info.outputs_written, nir->info.patch_outputs_written, true);
    const unsigned num_linked_outputs = util_last_bit64(io_mask);
 
    switch (nir->info.stage) {
@@ -528,7 +527,6 @@ gather_info_unlinked_output(struct radv_shader_info *info, const nir_shader *nir
       break;
    case MESA_SHADER_TESS_CTRL:
       info->tcs.num_linked_outputs = num_linked_outputs;
-      info->tcs.num_linked_patch_outputs = util_last_bit64(patch_io_mask);
       break;
    case MESA_SHADER_TESS_EVAL:
       info->tes.num_linked_outputs = num_linked_outputs;
@@ -591,6 +589,13 @@ gather_shader_info_tcs(struct radv_device *device, const nir_shader *nir,
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
+   const uint64_t tess_lvl_mask = VARYING_BIT_TESS_LEVEL_OUTER | VARYING_BIT_TESS_LEVEL_INNER;
+   const uint64_t per_vtx_out_mask = nir->info.outputs_read & nir->info.outputs_written & ~tess_lvl_mask;
+   const uint64_t tess_lvl_out_mask = nir->info.outputs_written & tess_lvl_mask;
+   const uint32_t per_patch_out_mask = nir->info.patch_outputs_read & nir->info.patch_outputs_written;
+
+   info->tcs.num_lds_per_vertex_outputs = util_bitcount64(per_vtx_out_mask);
+   info->tcs.num_lds_per_patch_outputs = util_bitcount64(tess_lvl_out_mask) + util_bitcount(per_patch_out_mask);
    info->tcs.tcs_vertices_out = nir->info.tess.tcs_vertices_out;
    info->tcs.tes_inputs_read = ~0ULL;
    info->tcs.tes_patch_inputs_read = ~0ULL;
@@ -602,14 +607,14 @@ gather_shader_info_tcs(struct radv_device *device, const nir_shader *nir,
       /* Number of tessellation patches per workgroup processed by the current pipeline. */
       info->num_tess_patches = get_tcs_num_patches(
          gfx_state->ts.patch_control_points, nir->info.tess.tcs_vertices_out, info->tcs.num_linked_inputs,
-         info->tcs.num_linked_outputs, info->tcs.num_linked_patch_outputs, pdev->hs.tess_offchip_block_dw_size,
+         info->tcs.num_lds_per_vertex_outputs, info->tcs.num_lds_per_patch_outputs, pdev->hs.tess_offchip_block_dw_size,
          pdev->info.gfx_level, pdev->info.family);
 
       /* LDS size used by VS+TCS for storing TCS inputs and outputs. */
       info->tcs.num_lds_blocks =
          calculate_tess_lds_size(pdev->info.gfx_level, gfx_state->ts.patch_control_points,
                                  nir->info.tess.tcs_vertices_out, info->tcs.num_linked_inputs, info->num_tess_patches,
-                                 info->tcs.num_linked_outputs, info->tcs.num_linked_patch_outputs);
+                                 info->tcs.num_lds_per_vertex_outputs, info->tcs.num_lds_per_patch_outputs);
    }
 }
 

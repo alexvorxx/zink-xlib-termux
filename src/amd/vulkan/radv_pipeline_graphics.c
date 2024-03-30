@@ -1477,7 +1477,6 @@ radv_link_tcs(const struct radv_device *device, struct radv_shader_stage *tcs_st
    nir_linked_io_var_info tcs2tes = nir_assign_linked_io_var_locations(tcs_stage->nir, tes_stage->nir);
 
    tcs_stage->info.tcs.num_linked_outputs = tcs2tes.num_linked_io_vars;
-   tcs_stage->info.tcs.num_linked_patch_outputs = tcs2tes.num_linked_patch_io_vars;
    tcs_stage->info.outputs_linked = true;
 
    tes_stage->info.tes.num_linked_inputs = tcs2tes.num_linked_io_vars;

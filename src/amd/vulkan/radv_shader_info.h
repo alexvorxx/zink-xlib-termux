@@ -150,7 +150,7 @@ struct radv_shader_info {
       bool point_mode;
       bool reads_tess_factors;
       unsigned tcs_vertices_out;
-      uint8_t num_linked_inputs;
+      uint8_t num_linked_inputs; /* Number of reserved per-vertex input slots in VRAM. */
       uint8_t num_linked_outputs;
       uint32_t num_outputs; /* For NGG streamout only */
    } tes;
@@ -229,9 +229,10 @@ struct radv_shader_info {
       uint64_t tes_patch_inputs_read;
       unsigned tcs_vertices_out;
       uint32_t num_lds_blocks;
-      uint8_t num_linked_inputs;
-      uint8_t num_linked_outputs;
-      uint8_t num_linked_patch_outputs;
+      uint8_t num_linked_inputs;          /* Number of reserved per-vertex input slots in LDS. */
+      uint8_t num_linked_outputs;         /* Number of reserved per-vertex output slots in VRAM. */
+      uint8_t num_lds_per_vertex_outputs; /* Number of reserved per-vertex output slots in LDS. */
+      uint8_t num_lds_per_patch_outputs;  /* Number of reserved per-patch output slots in LDS. */
       bool tes_reads_tess_factors : 1;
    } tcs;
    struct {

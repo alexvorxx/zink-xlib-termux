@@ -107,6 +107,12 @@ opt_selects = [
          ('bcsel', a, ('bcsel', b, c, d), d)),
 ]
 
+# When the ior/iand is used multiple times, we can instead fuse the other way.
+opt_selects.extend([
+        (('iand', 'a@1', b), ('bcsel', a, b, False)),
+        (('ior', 'a@1', b), ('bcsel', a, True, b)),
+])
+
 fuse_extr = []
 for start in range(32):
     fuse_extr.extend([

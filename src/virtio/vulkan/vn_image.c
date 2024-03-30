@@ -743,22 +743,14 @@ vn_BindImageMemory2(VkDevice device,
                     uint32_t bindInfoCount,
                     const VkBindImageMemoryInfo *pBindInfos)
 {
-   struct vn_device *dev = vn_device_from_handle(device);
-   const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
+   STACK_ARRAY(VkBindImageMemoryInfo, bind_infos, bindInfoCount);
+   typed_memcpy(bind_infos, pBindInfos, bindInfoCount);
 
-   VkBindImageMemoryInfo *local_infos = NULL;
    for (uint32_t i = 0; i < bindInfoCount; i++) {
-      const VkBindImageMemoryInfo *info = &pBindInfos[i];
+      VkBindImageMemoryInfo *info = &bind_infos[i];
       struct vn_image *img = vn_image_from_handle(info->image);
       struct vn_device_memory *mem =
          vn_device_memory_from_handle(info->memory);
-
-      /* no bind info fixup needed */
-      if (mem && !mem->base_memory) {
-         if (img->wsi.is_wsi)
-            vn_image_bind_wsi_memory(img, mem);
-         continue;
-      }
 
       if (!mem) {
 #if DETECT_OS_ANDROID
@@ -778,35 +770,26 @@ vn_BindImageMemory2(VkDevice device,
          mem = swapchain_img->wsi.memory;
 #endif
       }
+      assert(mem);
 
       if (img->wsi.is_wsi)
          vn_image_bind_wsi_memory(img, mem);
-
-      if (!local_infos) {
-         const size_t size = sizeof(*local_infos) * bindInfoCount;
-         local_infos = vk_alloc(alloc, size, VN_DEFAULT_ALIGN,
-                                VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-         if (!local_infos)
-            return vn_error(dev->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-         memcpy(local_infos, pBindInfos, size);
-      }
 
       /* If mem is suballocated, mem->base_memory is non-NULL and we must
        * patch it in.  If VkBindImageMemorySwapchainInfoKHR is given, we've
        * looked mem up above and also need to patch it in.
        */
-      local_infos[i].memory = vn_device_memory_to_handle(
-         mem->base_memory ? mem->base_memory : mem);
-      local_infos[i].memoryOffset += mem->base_offset;
+      if (mem->base_memory) {
+         info->memory = vn_device_memory_to_handle(mem->base_memory);
+         info->memoryOffset += mem->base_offset;
+      }
    }
-   if (local_infos)
-      pBindInfos = local_infos;
 
+   struct vn_device *dev = vn_device_from_handle(device);
    vn_async_vkBindImageMemory2(dev->primary_ring, device, bindInfoCount,
-                               pBindInfos);
+                               bind_infos);
 
-   vk_free(alloc, local_infos);
+   STACK_ARRAY_FINISH(bind_infos);
 
    return VK_SUCCESS;
 }

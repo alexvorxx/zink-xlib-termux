@@ -1540,7 +1540,6 @@ enumerate_physical_devices(struct vn_instance *instance,
    const VkAllocationCallbacks *alloc = &instance->base.base.alloc;
    struct vn_ring *ring = instance->ring.ring;
    struct vn_physical_device *physical_devs = NULL;
-   VkPhysicalDevice *handles = NULL;
    VkResult result;
 
    uint32_t count = 0;
@@ -1555,12 +1554,7 @@ enumerate_physical_devices(struct vn_instance *instance,
    if (!physical_devs)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
-   handles = vk_alloc(alloc, sizeof(*handles) * count, VN_DEFAULT_ALIGN,
-                      VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-   if (!handles) {
-      vk_free(alloc, physical_devs);
-      return VK_ERROR_OUT_OF_HOST_MEMORY;
-   }
+   STACK_ARRAY(VkPhysicalDevice, handles, count);
 
    for (uint32_t i = 0; i < count; i++) {
       struct vn_physical_device *physical_dev = &physical_devs[i];
@@ -1587,7 +1581,7 @@ enumerate_physical_devices(struct vn_instance *instance,
    if (result != VK_SUCCESS)
       goto fail;
 
-   vk_free(alloc, handles);
+   STACK_ARRAY_FINISH(handles);
    *out_physical_devs = physical_devs;
    *out_count = count;
 
@@ -1597,7 +1591,7 @@ fail:
    for (uint32_t i = 0; i < count; i++)
       vn_physical_device_base_fini(&physical_devs[i].base);
    vk_free(alloc, physical_devs);
-   vk_free(alloc, handles);
+   STACK_ARRAY_FINISH(handles);
    return result;
 }
 

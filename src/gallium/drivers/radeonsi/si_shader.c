@@ -1801,9 +1801,7 @@ static bool si_lower_io_to_mem(struct si_shader *shader, nir_shader *nir,
                  /* ALL TCS inputs are passed by register. */
                  key->ge.opt.same_patch_vertices &&
                  !(sel->info.base.inputs_read & ~sel->info.tcs_vgpr_only_inputs),
-                 sel->info.tessfactors_are_def_in_all_invocs,
-                 true,
-                 false);
+                 sel->info.tessfactors_are_def_in_all_invocs);
       return true;
    } else if (nir->info.stage == MESA_SHADER_TESS_EVAL) {
       NIR_PASS_V(nir, ac_nir_lower_tes_inputs_to_mem, si_map_io_driver_location);

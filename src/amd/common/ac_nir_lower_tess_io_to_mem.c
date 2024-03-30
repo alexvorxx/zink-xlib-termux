@@ -699,15 +699,8 @@ hs_if_invocation_id_zero(nir_builder *b)
 
 static void
 hs_finale(nir_shader *shader,
-          lower_tess_io_state *st,
-          bool store_tess_factors,
-          bool write_tess_factor_outputs)
+          lower_tess_io_state *st)
 {
-   if (!store_tess_factors && !write_tess_factor_outputs)
-      return;
-
-   assert(!store_tess_factors || !write_tess_factor_outputs);
-
    nir_function_impl *impl = nir_shader_get_entrypoint(shader);
    assert(impl);
    nir_block *last_block = nir_impl_last_block(impl);
@@ -724,13 +717,10 @@ hs_finale(nir_shader *shader,
    }
 
    /* Only the 1st invocation of each patch needs to access VRAM and/or LDS. */
-   nir_if *if_invocation_id_zero = NULL;
-   if (!st->tcs_pass_tessfactors_by_reg || store_tess_factors)
-      if_invocation_id_zero = hs_if_invocation_id_zero(b);
+   nir_if *if_invocation_id_zero = hs_if_invocation_id_zero(b);
+   {
+      tess_levels tessfactors = hs_load_tess_levels(b, st);
 
-   tess_levels tessfactors = hs_load_tess_levels(b, st);
-
-   if (store_tess_factors) {
       if (st->gfx_level <= GFX8)
          hs_store_dynamic_control_word_gfx6(b);
 
@@ -760,38 +750,7 @@ hs_finale(nir_shader *shader,
       nir_pop_if(b, if_tes_reads_tf);
    }
 
-   if (if_invocation_id_zero) {
-      /* Make sure that the tess factor definitions are available in top-level CF. */
-      nir_push_else(b, if_invocation_id_zero);
-      nir_def *outer_undef = tessfactors.outer ? nir_undef(b, tessfactors.outer->num_components, 32) : NULL;
-      nir_def *inner_undef = tessfactors.inner ? nir_undef(b, tessfactors.inner->num_components, 32) : NULL;
-      nir_pop_if(b, if_invocation_id_zero);
-
-      if (tessfactors.outer)
-         tessfactors.outer = nir_if_phi(b, tessfactors.outer, outer_undef);
-      if (tessfactors.inner)
-         tessfactors.inner = nir_if_phi(b, tessfactors.inner, inner_undef);
-   }
-
-   if (write_tess_factor_outputs) {
-      /* Write tess factor output variables, these are passed to the TCS epilog.
-       * This needs to be in top-level CF, otherwise ACO will have trouble with it
-       * because nir_lower_io_to_temporaries doesn't work for TCS.
-       */
-      if (st->tcs_tess_level_outer_mask) {
-         nir_store_output(b, tessfactors.outer, nir_imm_int(b, 0),
-                          .base = st->tcs_tess_level_outer_base,
-                          .write_mask = st->tcs_tess_level_outer_mask,
-                          .io_semantics.location = VARYING_SLOT_TESS_LEVEL_OUTER);
-      }
-
-      if (st->tcs_tess_level_inner_mask) {
-         nir_store_output(b, tessfactors.inner, nir_imm_int(b, 0),
-                          .base = st->tcs_tess_level_inner_base,
-                          .write_mask = st->tcs_tess_level_inner_mask,
-                          .io_semantics.location = VARYING_SLOT_TESS_LEVEL_INNER);
-      }
-   }
+   nir_pop_if(b, if_invocation_id_zero);
 
    nir_metadata_preserve(impl, nir_metadata_none);
 }
@@ -892,9 +851,7 @@ ac_nir_lower_hs_outputs_to_mem(nir_shader *shader,
                                unsigned num_reserved_tcs_patch_outputs,
                                unsigned wave_size,
                                bool no_inputs_in_lds,
-                               bool pass_tessfactors_by_reg,
-                               bool emit_tess_factor_write,
-                               bool emit_tess_factor_output)
+                               bool pass_tessfactors_by_reg)
 {
    assert(shader->info.stage == MESA_SHADER_TESS_CTRL);
 
@@ -923,7 +880,7 @@ ac_nir_lower_hs_outputs_to_mem(nir_shader *shader,
                                  lower_hs_output_access,
                                  &state);
 
-   hs_finale(shader, &state, emit_tess_factor_write, emit_tess_factor_output);
+   hs_finale(shader, &state);
 }
 
 void

@@ -125,12 +125,6 @@ compile_nir(struct d3d12_context *ctx, struct d3d12_shader_selector *sel,
    if (key->stage == PIPE_SHADER_VERTEX && key->vs.needs_format_emulation)
       dxil_nir_lower_vs_vertex_conversion(nir, key->vs.format_conversion);
 
-   uint32_t num_ubos_before_lower_to_ubo = nir->info.num_ubos;
-   uint32_t num_uniforms_before_lower_to_ubo = nir->num_uniforms;
-   NIR_PASS_V(nir, nir_lower_uniforms_to_ubo, false, false);
-   shader->has_default_ubo0 = num_uniforms_before_lower_to_ubo > 0 &&
-                              nir->info.num_ubos > num_ubos_before_lower_to_ubo;
-
    if (key->last_vertex_processing_stage) {
       if (key->invert_depth)
          NIR_PASS_V(nir, d3d12_nir_invert_depth, key->invert_depth, key->halfz);
@@ -150,7 +144,6 @@ compile_nir(struct d3d12_context *ctx, struct d3d12_shader_selector *sel,
    struct nir_to_dxil_options opts = {};
    opts.interpolate_at_vertex = screen->have_load_at_vertex;
    opts.lower_int16 = !screen->opts4.Native16BitShaderOpsSupported;
-   opts.no_ubo0 = !shader->has_default_ubo0;
    opts.last_ubo_is_not_arrayed = shader->num_state_vars > 0;
    if (key->stage == PIPE_SHADER_FRAGMENT)
       opts.provoking_vertex = key->fs.provoking_vertex;
@@ -191,11 +184,9 @@ compile_nir(struct d3d12_context *ctx, struct d3d12_shader_selector *sel,
 
    // Ubo variables
    if(nir->info.num_ubos) {
+      shader->begin_ubo_binding = shader->nir->num_uniforms > 0 || !shader->nir->info.first_ubo_is_default_ubo ? 0 : 1;
       // Ignore state_vars ubo as it is bound as root constants
-      unsigned num_ubo_bindings = nir->info.num_ubos - (shader->state_vars_used ? 1 : 0);
-      for(unsigned i = shader->has_default_ubo0 ? 0 : 1; i < num_ubo_bindings; ++i) {
-         shader->cb_bindings[shader->num_cb_bindings++].binding = i;
-      }
+      shader->end_ubo_binding = nir->info.num_ubos - (shader->state_vars_used ? 1 : 0);
    }
 
 #ifdef _WIN32

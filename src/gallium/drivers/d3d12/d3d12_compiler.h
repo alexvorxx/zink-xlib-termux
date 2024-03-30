@@ -208,10 +208,9 @@ struct d3d12_shader {
    struct d3d12_varying_info *tess_eval_output_vars;
    struct d3d12_varying_info *tess_ctrl_input_vars;
 
-   struct {
-      unsigned binding;
-   } cb_bindings[PIPE_MAX_CONSTANT_BUFFERS];
-   size_t num_cb_bindings;
+   /* UBOs can be sparse, if there's no uniforms then ubo0 is unused, and state vars are an internal ubo */
+   uint32_t begin_ubo_binding;
+   uint32_t end_ubo_binding;
 
    struct {
       enum d3d12_state_var var;
@@ -221,17 +220,18 @@ struct d3d12_shader {
    size_t state_vars_size;
    bool state_vars_used;
 
+   /* Samplers/textures can be sparse for some internal shaders */
    struct {
       uint32_t dimension;
    } srv_bindings[PIPE_MAX_SHADER_SAMPLER_VIEWS];
-   size_t begin_srv_binding;
-   size_t end_srv_binding;
+   uint32_t begin_srv_binding;
+   uint32_t end_srv_binding;
 
+   /* Images and SSBOs are never sparse */
    struct {
       uint32_t dimension;
    } uav_bindings[PIPE_MAX_SHADER_IMAGES];
 
-   bool has_default_ubo0;
    unsigned pstipple_binding;
 
    struct d3d12_shader_key key;

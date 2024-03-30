@@ -510,7 +510,7 @@ d3d12_lower_state_vars(nir_shader *nir, struct d3d12_shader *shader)
     * exists it will be replaced by using the same binding.
     * In the event there are no other UBO's, use binding slot 1 to
     * be consistent with other non-default UBO's */
-   unsigned binding = MAX2(nir->info.num_ubos, 1);
+   unsigned binding = MAX2(nir->info.num_ubos, nir->info.first_ubo_is_default_ubo ? 1 : 0);
 
    nir_foreach_variable_with_modes_safe(var, nir, nir_var_uniform) {
       if (var->num_state_slots == 1 &&

@@ -152,6 +152,7 @@ nir_options = {
       nir_lower_dfloor |
       nir_lower_dceil |
       nir_lower_dround_even,
+   .lower_uniforms_to_ubo = true,
    .max_unroll_iterations = 32, /* arbitrary */
    .force_indirect_unrolling = (nir_var_shader_in | nir_var_shader_out),
    .lower_device_index_to_zero = true,
@@ -3365,7 +3366,7 @@ get_resource_handle(struct ntd_context *ctx, nir_src *src, enum dxil_resource_cl
     * load_vulkan_descriptor handle creation.
     */
    unsigned base_binding = 0;
-   if (ctx->opts->environment == DXIL_ENVIRONMENT_GL &&
+   if (ctx->shader->info.first_ubo_is_default_ubo &&
        class == DXIL_RESOURCE_CLASS_CBV)
       base_binding = 1;
 
@@ -5877,16 +5878,17 @@ emit_cbvs(struct ntd_context *ctx)
    } else {
       if (ctx->shader->info.num_ubos) {
          const unsigned ubo_size = 16384 /*4096 vec4's*/;
-         bool has_ubo0 = !ctx->opts->no_ubo0;
+         uint array_base = ctx->shader->info.first_ubo_is_default_ubo ? 1 : 0;
+         bool has_ubo0 = ctx->shader->num_uniforms > 0 && ctx->shader->info.first_ubo_is_default_ubo;
          bool has_state_vars = ctx->opts->last_ubo_is_not_arrayed;
-         unsigned ubo1_array_size = ctx->shader->info.num_ubos -
-            (has_state_vars ? 2 : 1);
+         unsigned ubo1_array_size = ctx->shader->info.num_ubos - array_base -
+            (has_state_vars ? 1 : 0);
 
          if (has_ubo0 &&
              !emit_cbv(ctx, 0, 0, ubo_size, 1, "__ubo_uniforms"))
             return false;
          if (ubo1_array_size &&
-             !emit_cbv(ctx, 1, 0, ubo_size, ubo1_array_size, "__ubos"))
+             !emit_cbv(ctx, array_base, 0, ubo_size, ubo1_array_size, "__ubos"))
             return false;
          if (has_state_vars &&
              !emit_cbv(ctx, ctx->shader->info.num_ubos - 1, 0, ubo_size, 1, "__ubo_state_vars"))

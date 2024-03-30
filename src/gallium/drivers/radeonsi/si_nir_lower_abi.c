@@ -338,9 +338,9 @@ static bool lower_intrinsic(nir_builder *b, nir_instr *instr, struct lower_abi_s
    }
    case nir_intrinsic_load_patch_vertices_in:
       if (stage == MESA_SHADER_TESS_CTRL)
-         replacement = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 11, 5);
+         replacement = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 12, 5);
       else if (stage == MESA_SHADER_TESS_EVAL) {
-         replacement = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 6, 5);
+         replacement = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 7, 5);
       } else
          unreachable("no nir_load_patch_vertices_in");
       replacement = nir_iadd_imm(b, replacement, 1);
@@ -372,7 +372,7 @@ static bool lower_intrinsic(nir_builder *b, nir_instr *instr, struct lower_abi_s
       }
       break;
    case nir_intrinsic_load_tcs_num_patches_amd: {
-      nir_def *tmp = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 0, 6);
+      nir_def *tmp = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 0, 7);
       replacement = nir_iadd_imm(b, tmp, 1);
       break;
    }
@@ -387,12 +387,12 @@ static bool lower_intrinsic(nir_builder *b, nir_instr *instr, struct lower_abi_s
       } else {
          nir_def *num_hs_out = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 23, 6);
          nir_def *out_vtx_size = nir_ishl_imm(b, num_hs_out, 4);
-         nir_def *o = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 6, 5);
+         nir_def *o = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 7, 5);
          nir_def *out_vtx_per_patch = nir_iadd_imm_nuw(b, o, 1);
          per_vtx_out_patch_size = nir_imul(b, out_vtx_per_patch, out_vtx_size);
       }
 
-      nir_def *p = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 0, 6);
+      nir_def *p = ac_nir_unpack_arg(b, &args->ac, args->tcs_offchip_layout, 0, 7);
       nir_def *num_patches = nir_iadd_imm_nuw(b, p, 1);
       replacement = nir_imul(b, per_vtx_out_patch_size, num_patches);
       break;

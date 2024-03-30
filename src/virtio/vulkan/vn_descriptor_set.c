@@ -202,23 +202,17 @@ vn_CreateDescriptorSetLayout(
    /* ignore pAllocator as the layout is reference-counted */
    const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
 
+   STACK_ARRAY(VkDescriptorSetLayoutBinding, bindings,
+               pCreateInfo->bindingCount);
+
    uint32_t last_binding = 0;
-   VkDescriptorSetLayoutBinding *local_bindings = NULL;
    VkDescriptorSetLayoutCreateInfo local_create_info;
    if (pCreateInfo->bindingCount) {
-      /* the encoder does not ignore
-       * VkDescriptorSetLayoutBinding::pImmutableSamplers when it should
-       */
-      const size_t binding_size =
-         sizeof(*pCreateInfo->pBindings) * pCreateInfo->bindingCount;
-      local_bindings = vk_alloc(alloc, binding_size, VN_DEFAULT_ALIGN,
-                                VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-      if (!local_bindings)
-         return vn_error(dev->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
+      typed_memcpy(bindings, pCreateInfo->pBindings,
+                   pCreateInfo->bindingCount);
 
-      memcpy(local_bindings, pCreateInfo->pBindings, binding_size);
       for (uint32_t i = 0; i < pCreateInfo->bindingCount; i++) {
-         VkDescriptorSetLayoutBinding *binding = &local_bindings[i];
+         VkDescriptorSetLayoutBinding *binding = &bindings[i];
 
          if (last_binding < binding->binding)
             last_binding = binding->binding;
@@ -234,7 +228,7 @@ vn_CreateDescriptorSetLayout(
       }
 
       local_create_info = *pCreateInfo;
-      local_create_info.pBindings = local_bindings;
+      local_create_info.pBindings = bindings;
       pCreateInfo = &local_create_info;
    }
 
@@ -245,7 +239,7 @@ vn_CreateDescriptorSetLayout(
       vk_zalloc(alloc, layout_size, VN_DEFAULT_ALIGN,
                 VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
    if (!layout) {
-      vk_free(alloc, local_bindings);
+      STACK_ARRAY_FINISH(bindings);
       return vn_error(dev->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
@@ -254,7 +248,7 @@ vn_CreateDescriptorSetLayout(
 
    vn_descriptor_set_layout_init(dev, pCreateInfo, last_binding, layout);
 
-   vk_free(alloc, local_bindings);
+   STACK_ARRAY_FINISH(bindings);
 
    *pSetLayout = vn_descriptor_set_layout_to_handle(layout);
 

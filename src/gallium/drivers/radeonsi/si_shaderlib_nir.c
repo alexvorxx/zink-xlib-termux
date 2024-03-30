@@ -456,9 +456,12 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
    /* Flip src coordinates. */
    for (unsigned i = 0; i < 2; i++) {
       if (i ? options->flip_y : options->flip_x) {
-         /* x goes from 0 to (dim - 1).
-          * The flipped blit should load from -dim to -1.
-          * Therefore do: x = -x - 1;
+         /* A normal blit loads from (box.x + tid.x) where tid.x = 0..(width - 1).
+          *
+          * A flipped blit sets box.x = width, so we should make tid.x negative to load from
+          * (width - 1)..0.
+          *
+          * Therefore do: x = -x - 1, which becomes (width - 1) to 0 after we add box.x = width.
           */
          nir_def *comp = nir_channel(&b, src_xyz, i);
          comp = nir_iadd_imm(&b, nir_ineg(&b, comp), -1);

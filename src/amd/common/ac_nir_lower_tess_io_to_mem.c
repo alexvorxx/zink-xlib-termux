@@ -120,7 +120,7 @@ typedef struct {
 
    /* Bit mask of TCS outputs read by TES. */
    uint64_t tes_inputs_read;
-   uint64_t tes_patch_inputs_read;
+   uint32_t tes_patch_inputs_read;
 
    unsigned tcs_num_reserved_outputs;
    unsigned tcs_num_reserved_patch_outputs;
@@ -154,6 +154,8 @@ typedef struct {
    nir_def *inner;
 } tess_levels;
 
+#define TESS_LVL_MASK (VARYING_BIT_TESS_LEVEL_OUTER | VARYING_BIT_TESS_LEVEL_INNER)
+
 static unsigned
 map_tess_level(const unsigned semantic, const lower_tess_io_state *st)
 {
@@ -186,28 +188,74 @@ match_mask(gl_shader_stage stage,
    return (UINT64_C(1) << slot) & mask;
 }
 
+static uint64_t
+tcs_vram_per_vtx_out_mask(nir_shader *shader, lower_tess_io_state *st)
+{
+   return st->tes_inputs_read & shader->info.outputs_written & ~TESS_LVL_MASK;
+}
+
+static uint32_t
+tcs_vram_per_patch_out_mask(nir_shader *shader, lower_tess_io_state *st)
+{
+   return st->tes_patch_inputs_read & shader->info.patch_outputs_written;
+}
+
 static bool
 tcs_output_needs_vmem(nir_intrinsic_instr *intrin,
+                      nir_shader *shader,
                       lower_tess_io_state *st)
 {
-   uint64_t mask = intrin->intrinsic == nir_intrinsic_store_per_vertex_output
-                   ? st->tes_inputs_read
-                   : st->tes_patch_inputs_read;
-
    /* no_varying indicates that TES doesn't read the output. */
-   return !nir_intrinsic_io_semantics(intrin).no_varying &&
-          match_mask(MESA_SHADER_TESS_CTRL, intrin, mask, true);
+   if (nir_intrinsic_io_semantics(intrin).no_varying)
+      return false;
+
+   const unsigned loc = nir_intrinsic_io_semantics(intrin).location;
+   const bool per_vertex = intrin->intrinsic == nir_intrinsic_store_per_vertex_output ||
+                           intrin->intrinsic == nir_intrinsic_load_per_vertex_output;
+
+   if (per_vertex) {
+      return tcs_vram_per_vtx_out_mask(shader, st) & BITFIELD64_BIT(loc);
+   } else if (loc == VARYING_SLOT_TESS_LEVEL_OUTER || loc == VARYING_SLOT_TESS_LEVEL_INNER) {
+      return false;
+   } else {
+      return tcs_vram_per_patch_out_mask(shader, st) & BITFIELD_BIT(loc - VARYING_SLOT_PATCH0);
+   }
+}
+
+static uint64_t
+tcs_lds_per_vtx_out_mask(nir_shader *shader)
+{
+   return shader->info.outputs_read & shader->info.outputs_written & ~TESS_LVL_MASK;
+}
+
+static uint64_t
+tcs_lds_tf_out_mask(nir_shader *shader, lower_tess_io_state *st)
+{
+   return st->tcs_pass_tessfactors_by_reg ? 0ull : (shader->info.outputs_written & TESS_LVL_MASK);
+}
+
+static uint32_t
+tcs_lds_per_patch_out_mask(nir_shader *shader)
+{
+   return shader->info.patch_outputs_read & shader->info.patch_outputs_written;
 }
 
 static bool
 tcs_output_needs_lds(nir_intrinsic_instr *intrin,
-                     nir_shader *shader)
+                     nir_shader *shader,
+                     lower_tess_io_state *st)
 {
-   uint64_t mask = intrin->intrinsic == nir_intrinsic_store_per_vertex_output
-                   ? shader->info.outputs_read
-                   : shader->info.patch_outputs_read;
+   const unsigned loc = nir_intrinsic_io_semantics(intrin).location;
+   const bool per_vertex = intrin->intrinsic == nir_intrinsic_store_per_vertex_output ||
+                           intrin->intrinsic == nir_intrinsic_load_per_vertex_output;
 
-   return match_mask(MESA_SHADER_TESS_CTRL, intrin, mask, true);
+   if (per_vertex) {
+      return tcs_lds_per_vtx_out_mask(shader) & BITFIELD64_BIT(loc);
+   } else if (loc == VARYING_SLOT_TESS_LEVEL_OUTER || loc == VARYING_SLOT_TESS_LEVEL_INNER) {
+      return tcs_lds_tf_out_mask(shader, st) & BITFIELD64_BIT(loc);
+   } else {
+      return tcs_lds_per_patch_out_mask(shader) & BITFIELD_BIT(loc - VARYING_SLOT_PATCH0);
+   }
 }
 
 static bool
@@ -424,12 +472,9 @@ lower_hs_output_store(nir_builder *b,
 
    nir_io_semantics semantics = nir_intrinsic_io_semantics(intrin);
    nir_def *store_val = intrin->src[0].ssa;
-   unsigned write_mask = nir_intrinsic_write_mask(intrin);
-   bool is_tess_factor = semantics.location == VARYING_SLOT_TESS_LEVEL_INNER ||
-                         semantics.location == VARYING_SLOT_TESS_LEVEL_OUTER;
-   bool write_to_vmem = !is_tess_factor && tcs_output_needs_vmem(intrin, st);
-   bool write_to_lds = (is_tess_factor && !st->tcs_pass_tessfactors_by_reg) ||
-      tcs_output_needs_lds(intrin, b->shader);
+   const unsigned write_mask = nir_intrinsic_write_mask(intrin);
+   const bool write_to_vmem = tcs_output_needs_vmem(intrin, b->shader, st);
+   const bool write_to_lds =  tcs_output_needs_lds(intrin, b->shader, st);
 
    if (write_to_vmem) {
       nir_def *vmem_off = intrin->intrinsic == nir_intrinsic_store_per_vertex_output
@@ -452,7 +497,8 @@ lower_hs_output_store(nir_builder *b,
    /* Save tess factor to be used by tess factor writer or reconstruct
     * store output instruction later.
     */
-   if (is_tess_factor) {
+   if (semantics.location == VARYING_SLOT_TESS_LEVEL_INNER ||
+       semantics.location == VARYING_SLOT_TESS_LEVEL_OUTER) {
       const unsigned base = nir_intrinsic_base(intrin);
       const unsigned component = nir_intrinsic_component(intrin);
 
@@ -863,7 +909,7 @@ ac_nir_lower_hs_outputs_to_mem(nir_shader *shader,
                                ac_nir_map_io_driver_location map,
                                enum amd_gfx_level gfx_level,
                                uint64_t tes_inputs_read,
-                               uint64_t tes_patch_inputs_read,
+                               uint32_t tes_patch_inputs_read,
                                unsigned num_reserved_tcs_outputs,
                                unsigned num_reserved_tcs_patch_outputs,
                                unsigned wave_size,

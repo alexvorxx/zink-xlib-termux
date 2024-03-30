@@ -264,4 +264,6 @@ void radv_nir_shader_info_link(struct radv_device *device, const struct radv_gra
 
 enum ac_hw_stage radv_select_hw_stage(const struct radv_shader_info *const info, const enum amd_gfx_level gfx_level);
 
+uint64_t radv_gather_unlinked_io_mask(const uint64_t nir_mask);
+
 #endif /* RADV_SHADER_INFO_H */

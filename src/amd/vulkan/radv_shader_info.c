@@ -453,8 +453,8 @@ gather_shader_info_ngg_query(struct radv_device *device, struct radv_shader_info
    info->has_prim_query = device->cache_key.primitives_generated_query || info->has_xfb_query;
 }
 
-static uint64_t
-gather_io_mask(const uint64_t nir_mask)
+uint64_t
+radv_gather_unlinked_io_mask(const uint64_t nir_mask)
 {
    /* Select the correct NIR IO mask.
     * Exclude per-patch built-in variables, because in NIR they are not part of the patch I/O masks.
@@ -481,7 +481,7 @@ gather_info_unlinked_input(struct radv_shader_info *info, const nir_shader *nir)
    if (info->inputs_linked)
       return;
 
-   const uint64_t io_mask = gather_io_mask(nir->info.inputs_read);
+   const uint64_t io_mask = radv_gather_unlinked_io_mask(nir->info.inputs_read);
    const unsigned num_linked_inputs = util_last_bit64(io_mask);
 
    switch (nir->info.stage) {
@@ -505,7 +505,7 @@ gather_info_unlinked_output(struct radv_shader_info *info, const nir_shader *nir
    if (info->outputs_linked)
       return;
 
-   const uint64_t io_mask = gather_io_mask(nir->info.outputs_written);
+   const uint64_t io_mask = radv_gather_unlinked_io_mask(nir->info.outputs_written);
    const unsigned num_linked_outputs = util_last_bit64(io_mask);
 
    switch (nir->info.stage) {

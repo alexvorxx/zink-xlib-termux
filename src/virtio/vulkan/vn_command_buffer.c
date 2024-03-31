@@ -2201,26 +2201,23 @@ vn_CmdPushDescriptorSetKHR(VkCommandBuffer commandBuffer,
                            uint32_t descriptorWriteCount,
                            const VkWriteDescriptorSet *pDescriptorWrites)
 {
-   struct vn_command_buffer *cmd =
-      vn_command_buffer_from_handle(commandBuffer);
-
    const uint32_t img_info_count = vn_descriptor_set_count_write_images(
       descriptorWriteCount, pDescriptorWrites);
-   struct vn_update_descriptor_sets *update = vn_update_descriptor_sets_alloc(
-      descriptorWriteCount, img_info_count, 0, 0, 0, &cmd->pool->allocator,
-      VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-   if (!update) {
-      cmd->state = VN_COMMAND_BUFFER_STATE_INVALID;
-      return;
-   }
 
-   vn_update_descriptor_sets_parse_writes(update, descriptorWriteCount,
-                                          pDescriptorWrites, layout);
+   STACK_ARRAY(VkWriteDescriptorSet, writes, descriptorWriteCount);
+   STACK_ARRAY(VkDescriptorImageInfo, img_infos, img_info_count);
+   struct vn_descriptor_set_writes local = {
+      .writes = writes,
+      .img_infos = img_infos,
+   };
+   pDescriptorWrites = vn_descriptor_set_get_writes(
+      descriptorWriteCount, pDescriptorWrites, layout, &local);
 
    VN_CMD_ENQUEUE(vkCmdPushDescriptorSetKHR, commandBuffer, pipelineBindPoint,
-                  layout, set, update->write_count, update->writes);
+                  layout, set, descriptorWriteCount, pDescriptorWrites);
 
-   vk_free(&cmd->pool->allocator, update);
+   STACK_ARRAY_FINISH(writes);
+   STACK_ARRAY_FINISH(img_infos);
 }
 
 void

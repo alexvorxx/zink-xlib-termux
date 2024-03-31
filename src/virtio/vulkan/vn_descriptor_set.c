@@ -727,7 +727,7 @@ vn_FreeDescriptorSets(VkDevice device,
    return VK_SUCCESS;
 }
 
-struct vn_update_descriptor_sets *
+static struct vn_update_descriptor_sets *
 vn_update_descriptor_sets_alloc(uint32_t write_count,
                                 uint32_t image_count,
                                 uint32_t buffer_count,
@@ -786,19 +786,18 @@ vn_descriptor_set_count_write_images(uint32_t write_count,
    return img_info_count;
 }
 
-void
-vn_update_descriptor_sets_parse_writes(
-   struct vn_update_descriptor_sets *update,
-   uint32_t write_count,
-   const VkWriteDescriptorSet *writes,
-   VkPipelineLayout pipeline_layout_handle)
+const VkWriteDescriptorSet *
+vn_descriptor_set_get_writes(uint32_t write_count,
+                             const VkWriteDescriptorSet *writes,
+                             VkPipelineLayout pipeline_layout_handle,
+                             struct vn_descriptor_set_writes *local)
 {
    const struct vn_pipeline_layout *pipeline_layout =
       vn_pipeline_layout_from_handle(pipeline_layout_handle);
 
-   typed_memcpy(update->writes, writes, write_count);
+   typed_memcpy(local->writes, writes, write_count);
 
-   uint32_t img_count = 0;
+   uint32_t img_info_count = 0;
    for (uint32_t i = 0; i < write_count; i++) {
       const struct vn_descriptor_set_layout *set_layout =
          pipeline_layout
@@ -806,8 +805,8 @@ vn_update_descriptor_sets_parse_writes(
             : vn_descriptor_set_from_handle(writes[i].dstSet)->layout;
       const struct vn_descriptor_set_layout_binding *binding =
          &set_layout->bindings[writes[i].dstBinding];
-      VkWriteDescriptorSet *write = &update->writes[i];
-      VkDescriptorImageInfo *imgs = &update->images[img_count];
+      VkWriteDescriptorSet *write = &local->writes[i];
+      VkDescriptorImageInfo *img_infos = &local->img_infos[img_info_count];
 
       switch (write->descriptorType) {
       case VK_DESCRIPTOR_TYPE_SAMPLER:
@@ -815,29 +814,29 @@ vn_update_descriptor_sets_parse_writes(
       case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
       case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
       case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
-         typed_memcpy(imgs, write->pImageInfo, write->descriptorCount);
-         img_count += write->descriptorCount;
+         typed_memcpy(img_infos, write->pImageInfo, write->descriptorCount);
+         img_info_count += write->descriptorCount;
 
          for (uint32_t j = 0; j < write->descriptorCount; j++) {
             switch (write->descriptorType) {
             case VK_DESCRIPTOR_TYPE_SAMPLER:
-               imgs[j].imageView = VK_NULL_HANDLE;
+               img_infos[j].imageView = VK_NULL_HANDLE;
                FALLTHROUGH;
             case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
                if (binding->has_immutable_samplers)
-                  imgs[j].sampler = VK_NULL_HANDLE;
+                  img_infos[j].sampler = VK_NULL_HANDLE;
                break;
             case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
             case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
             case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
-               imgs[j].sampler = VK_NULL_HANDLE;
+               img_infos[j].sampler = VK_NULL_HANDLE;
                break;
             default:
                break;
             }
          }
 
-         write->pImageInfo = imgs;
+         write->pImageInfo = img_infos;
          write->pBufferInfo = NULL;
          write->pTexelBufferView = NULL;
          break;
@@ -862,6 +861,7 @@ vn_update_descriptor_sets_parse_writes(
          break;
       }
    }
+   return local->writes;
 }
 
 void
@@ -872,24 +872,24 @@ vn_UpdateDescriptorSets(VkDevice device,
                         const VkCopyDescriptorSet *pDescriptorCopies)
 {
    struct vn_device *dev = vn_device_from_handle(device);
-   const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
-
    const uint32_t img_info_count = vn_descriptor_set_count_write_images(
       descriptorWriteCount, pDescriptorWrites);
-   struct vn_update_descriptor_sets *update = vn_update_descriptor_sets_alloc(
-      descriptorWriteCount, img_info_count, 0, 0, 0, alloc,
-      VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-   if (!update)
-      return;
 
-   vn_update_descriptor_sets_parse_writes(update, descriptorWriteCount,
-                                          pDescriptorWrites, VK_NULL_HANDLE);
+   STACK_ARRAY(VkWriteDescriptorSet, writes, descriptorWriteCount);
+   STACK_ARRAY(VkDescriptorImageInfo, img_infos, img_info_count);
+   struct vn_descriptor_set_writes local = {
+      .writes = writes,
+      .img_infos = img_infos,
+   };
+   pDescriptorWrites = vn_descriptor_set_get_writes(
+      descriptorWriteCount, pDescriptorWrites, VK_NULL_HANDLE, &local);
 
    vn_async_vkUpdateDescriptorSets(dev->primary_ring, device,
-                                   update->write_count, update->writes,
+                                   descriptorWriteCount, pDescriptorWrites,
                                    descriptorCopyCount, pDescriptorCopies);
 
-   vk_free(alloc, update);
+   STACK_ARRAY_FINISH(writes);
+   STACK_ARRAY_FINISH(img_infos);
 }
 
 /* descriptor update template commands */

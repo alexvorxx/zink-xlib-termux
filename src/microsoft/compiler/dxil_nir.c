@@ -1595,8 +1595,9 @@ dxil_sort_ps_outputs(nir_shader* s)
 enum dxil_sysvalue_type {
    DXIL_NO_SYSVALUE = 0,
    DXIL_USED_SYSVALUE,
+   DXIL_UNUSED_NO_SYSVALUE,
    DXIL_SYSVALUE,
-   DXIL_GENERATED_SYSVALUE
+   DXIL_GENERATED_SYSVALUE,
 };
 
 static enum dxil_sysvalue_type
@@ -1619,6 +1620,9 @@ nir_var_to_dxil_sysvalue_type(nir_variable *var, uint64_t other_stage_mask)
          return DXIL_SYSVALUE;
       return DXIL_USED_SYSVALUE;
    default:
+      if (var->data.location < VARYING_SLOT_PATCH0 &&
+          !((1ull << var->data.location) & other_stage_mask))
+         return DXIL_UNUSED_NO_SYSVALUE;
       return DXIL_NO_SYSVALUE;
    }
 }

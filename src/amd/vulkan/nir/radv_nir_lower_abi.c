@@ -175,7 +175,8 @@ lower_abi_instr(nir_builder *b, nir_intrinsic_instr *intrin, void *state)
          if (s->gfx_state->ts.patch_control_points) {
             replacement = nir_imm_int(b, s->gfx_state->ts.patch_control_points);
          } else {
-            replacement = GET_SGPR_FIELD_NIR(s->args->tcs_offchip_layout, TCS_OFFCHIP_LAYOUT_PATCH_CONTROL_POINTS);
+            nir_def *n = GET_SGPR_FIELD_NIR(s->args->tcs_offchip_layout, TCS_OFFCHIP_LAYOUT_PATCH_CONTROL_POINTS);
+            replacement = nir_iadd_imm_nuw(b, n, 1);
          }
       } else if (stage == MESA_SHADER_TESS_EVAL) {
          if (s->info->tes.tcs_vertices_out) {

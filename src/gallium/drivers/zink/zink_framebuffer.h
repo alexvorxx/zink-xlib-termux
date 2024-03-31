@@ -60,7 +60,7 @@ struct zink_framebuffer {
       struct pipe_surface *surfaces[PIPE_MAX_COLOR_BUFS + 1];
       VkFramebufferAttachmentImageInfo infos[PIPE_MAX_COLOR_BUFS + 1];
    };
-   
+
    struct hash_table objects;
 };
 

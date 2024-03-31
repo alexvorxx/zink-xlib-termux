@@ -165,7 +165,7 @@ zink_batch_state_destroy(struct zink_screen *screen, struct zink_batch_state *bs
 
    cnd_destroy(&bs->usage.flush);
    mtx_destroy(&bs->usage.mtx);
-   
+
    if (bs->fence.fence)
       VKSCR(DestroyFence)(screen->dev, bs->fence.fence, NULL);
 
@@ -196,9 +196,9 @@ create_batch_state(struct zink_context *ctx)
 {
    struct zink_screen *screen = zink_screen(ctx->base.screen);
    struct zink_batch_state *bs = rzalloc(NULL, struct zink_batch_state);
-   
+
    bs->have_timelines = ctx->have_timelines;
-   
+
    VkCommandPoolCreateInfo cpci = {0};
    cpci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
    cpci.queueFamilyIndex = screen->gfx_queue;
@@ -245,7 +245,7 @@ create_batch_state(struct zink_context *ctx)
 
    if (!screen->batch_descriptor_init(screen, bs))
       goto fail;
-   
+
    VkFenceCreateInfo fci = {0};
    fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 
@@ -276,7 +276,7 @@ get_batch_state(struct zink_context *ctx, struct zink_batch *batch)
 {
    struct zink_screen *screen = zink_screen(ctx->base.screen);
    struct zink_batch_state *bs = NULL;
-   
+
    simple_mtx_lock(&ctx->batch_mtx);
 
    if (util_dynarray_num_elements(&ctx->free_batch_states, struct zink_batch_state*))
@@ -289,14 +289,14 @@ get_batch_state(struct zink_context *ctx, struct zink_batch *batch)
          pop_batch_state(ctx);
       }
    }
-   
+
    simple_mtx_unlock(&ctx->batch_mtx);
    
    if (bs) {
 	  if (bs->fence.submitted && !bs->fence.completed)
          /* this fence is already done, so we need vulkan to release the cmdbuf */
          zink_vkfence_wait(screen, &bs->fence, PIPE_TIMEOUT_INFINITE);
-		 
+
       zink_reset_batch_state(ctx, bs);
    } else {
       if (!batch->state) {
@@ -418,7 +418,7 @@ submit_queue(void *data, void *gdata, int thread_index)
    si[1].pSignalSemaphores = signals;
    VkTimelineSemaphoreSubmitInfo tsi = {0};
    uint64_t signal_values[2] = {0};
-   
+
    if (bs->have_timelines) {
       tsi.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
       si[1].pNext = &tsi;
@@ -478,7 +478,7 @@ zink_end_batch(struct zink_context *ctx, struct zink_batch *batch)
 
    struct zink_screen *screen = zink_screen(ctx->base.screen);
    struct zink_batch_state *bs;
-   
+
    simple_mtx_lock(&ctx->batch_mtx);
 
    if (ctx->oom_flush || ctx->batch_states_count > 10) {
@@ -494,7 +494,7 @@ zink_end_batch(struct zink_context *ctx, struct zink_batch *batch)
          if (bs->fence.submitted && !bs->fence.completed)
             /* this fence is already done, so we need vulkan to release the cmdbuf */
             zink_vkfence_wait(screen, &bs->fence, PIPE_TIMEOUT_INFINITE);
-			
+
          pop_batch_state(ctx);
          zink_reset_batch_state(ctx, bs);
          util_dynarray_append(&ctx->free_batch_states, struct zink_batch_state *, bs);
@@ -512,9 +512,9 @@ zink_end_batch(struct zink_context *ctx, struct zink_batch *batch)
    }
    ctx->last_fence = &bs->fence;
    ctx->batch_states_count++;
-   
+
    simple_mtx_unlock(&ctx->batch_mtx);
-   
+
    batch->work_count = 0;
 
    if (batch->swapchain) {
@@ -684,6 +684,7 @@ zink_batch_usage_check_completion(struct zink_context *ctx, const struct zink_ba
       return true;
    if (zink_batch_usage_is_unflushed(u))
       return false;
+
    //return zink_check_batch_completion(ctx, u->usage);
    return zink_check_batch_completion(ctx, u->usage, false);
 }

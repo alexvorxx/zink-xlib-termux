@@ -115,7 +115,7 @@ struct zink_screen {
    bool device_lost;
    
    struct sw_winsys *winsys;
-   
+
    int drm_fd;
 
    struct hash_table framebuffer_cache;
@@ -163,9 +163,9 @@ struct zink_screen {
    uint32_t gfx_queue;
    uint32_t max_queues;
    uint32_t timestamp_valid_bits;
-   
+
    unsigned max_fences;
-   
+
    VkDevice dev;
    VkQueue queue; //gfx+compute
    VkQueue thread_queue; //gfx+compute

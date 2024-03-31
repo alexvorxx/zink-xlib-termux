@@ -591,7 +591,7 @@ setup_framebuffer(struct zink_context *ctx)
    //zink_init_framebuffer(screen, ctx->framebuffer, rp);
    
    ctx->init_framebuffer(screen, ctx->framebuffer, rp);
-   
+
    ctx->fb_changed = false;
    ctx->gfx_pipeline_state.render_pass = rp;
 }
@@ -694,7 +694,7 @@ begin_render_pass(struct zink_context *ctx)
    infos.pAttachments = att;
    if (!prep_fb_attachments(ctx, att))
       return 0;
-  
+
    if (zink_screen(ctx->base.screen)->info.have_KHR_imageless_framebuffer) {  
 #ifndef NDEBUG
    const unsigned cresolve_offset = ctx->fb_state.nr_cbufs + !!ctx->fb_state.zsbuf;
@@ -730,7 +730,7 @@ begin_render_pass(struct zink_context *ctx)
 #endif
    rpbi.pNext = &infos;
    }
-   
+
    VKCTX(CmdBeginRenderPass)(batch->state->cmdbuf, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
    batch->in_rp = true;
    ctx->new_swapchain = false;

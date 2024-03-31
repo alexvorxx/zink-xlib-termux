@@ -2444,7 +2444,7 @@ stall(struct zink_context *ctx)
    sync_flush(ctx, zink_batch_state(ctx->last_fence));
    //zink_screen_timeline_wait(screen, ctx->last_fence->batch_id, PIPE_TIMEOUT_INFINITE);
    zink_vkfence_wait(zink_screen(ctx->base.screen), ctx->last_fence, PIPE_TIMEOUT_INFINITE);
-   
+
    zink_batch_reset_all(ctx);
 }
 
@@ -4203,7 +4203,7 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
       goto fail;
 
    ctx->have_timelines = screen->info.have_KHR_timeline_semaphore;
-   
+
    ctx->pipeline_changed[0] = ctx->pipeline_changed[1] = true;
    ctx->gfx_pipeline_state.dirty = true;
    ctx->gfx_pipeline_state.dyn_state2.vertices_per_patch = 1;
@@ -4218,7 +4218,7 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
 
    ctx->base.screen = pscreen;
    ctx->base.priv = priv;
-   
+
    if (screen->info.have_KHR_imageless_framebuffer) {
       ctx->get_framebuffer = zink_get_framebuffer_imageless;
       ctx->init_framebuffer = zink_init_framebuffer_imageless;
@@ -4396,7 +4396,7 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
          util_dynarray_init(&ctx->di.bindless[i].resident, NULL);
       }
    }
-   
+
    ctx->have_timelines = screen->info.have_KHR_timeline_semaphore;
    simple_mtx_init(&ctx->batch_mtx, mtx_plain);
 
@@ -4482,7 +4482,7 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
       threaded_context_init_bytes_mapped_limit(tc, 4);
       ctx->base.set_context_param = zink_set_context_param;
    }
-   
+
    if (context_mode == ZINK_CONTEXT_THREADED || context_mode == ZINK_CONTEXT_AUTO) {
       mesa_logi("threaded context %u created", (unsigned)zink_xlib_context);
       zink_xlib_context = (struct pipe_context*)tc; 

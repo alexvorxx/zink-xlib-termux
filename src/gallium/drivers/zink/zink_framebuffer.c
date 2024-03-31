@@ -411,7 +411,7 @@ zink_update_framebuffer_state(struct zink_context *ctx)
          _mesa_hash_table_remove(&screen->framebuffer_cache, he);
       simple_mtx_unlock(&screen->framebuffer_mtx);
    }
-   
+
    ctx->fb_changed |= ctx->framebuffer != fb;
    ctx->framebuffer = fb;
 }

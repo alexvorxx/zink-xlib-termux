@@ -1103,7 +1103,7 @@ resource_create(struct pipe_screen *pscreen,
       res->optimal_tiling = optimal_tiling;
       res->aspect = aspect_from_format(templ->format);
    }
-   
+
    if (screen->winsys && (templ->bind & PIPE_BIND_DISPLAY_TARGET)) {
       struct sw_winsys *winsys = screen->winsys;
       res->dt = winsys->displaytarget_create(screen->winsys,

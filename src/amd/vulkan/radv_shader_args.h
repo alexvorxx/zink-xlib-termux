@@ -77,12 +77,6 @@ struct radv_shader_args {
     */
    struct ac_arg tcs_offchip_layout;
 
-   /* TES */
-   /* # [0:7] = the number of tessellation patches
-    * # [8:15] = the number of TCS vertices output
-    */
-   struct ac_arg tes_state;
-
    /* GS */
    struct ac_arg vgt_esgs_ring_itemsize;
 

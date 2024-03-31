@@ -456,7 +456,7 @@ declare_unmerged_vs_tes_gs_args(const enum amd_gfx_level gfx_level, const struct
    declare_global_input_sgprs(info, user_sgpr_info, args);
 
    add_ud_arg(args, 1, AC_ARG_INT, &args->ac.view_index, AC_UD_VIEW_INDEX);
-   add_ud_arg(args, 1, AC_ARG_INT, &args->tes_state, AC_UD_TES_STATE);
+   add_ud_arg(args, 1, AC_ARG_INT, &args->tcs_offchip_layout, AC_UD_TCS_OFFCHIP_LAYOUT);
 
    add_ud_arg(args, 1, AC_ARG_INT, &args->shader_query_state, AC_UD_SHADER_QUERY_STATE);
    if (info->is_ngg) {
@@ -493,7 +493,7 @@ declare_unmerged_vs_tes_gs_args(const enum amd_gfx_level gfx_level, const struct
    ac_add_preserved(&args->ac, &args->ac.push_constants);
    ac_add_preserved(&args->ac, &args->streamout_buffers);
    ac_add_preserved(&args->ac, &args->ac.view_index);
-   ac_add_preserved(&args->ac, &args->tes_state);
+   ac_add_preserved(&args->ac, &args->tcs_offchip_layout);
    ac_add_preserved(&args->ac, &args->shader_query_state);
    if (info->is_ngg)
       ac_add_preserved(&args->ac, &args->ngg_provoking_vtx);
@@ -719,7 +719,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
          add_ud_arg(args, 1, AC_ARG_INT, &args->ac.view_index, AC_UD_VIEW_INDEX);
 
       if (radv_tes_needs_state_sgpr(info))
-         add_ud_arg(args, 1, AC_ARG_INT, &args->tes_state, AC_UD_TES_STATE);
+         add_ud_arg(args, 1, AC_ARG_INT, &args->tcs_offchip_layout, AC_UD_TCS_OFFCHIP_LAYOUT);
 
       if (info->tes.as_es) {
          ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, &args->ac.tess_offchip_offset);
@@ -771,7 +771,7 @@ declare_shader_args(const struct radv_device *device, const struct radv_graphics
             }
 
             if (previous_stage == MESA_SHADER_TESS_EVAL && radv_tes_needs_state_sgpr(info))
-               add_ud_arg(args, 1, AC_ARG_INT, &args->tes_state, AC_UD_TES_STATE);
+               add_ud_arg(args, 1, AC_ARG_INT, &args->tcs_offchip_layout, AC_UD_TCS_OFFCHIP_LAYOUT);
 
             if (previous_stage == MESA_SHADER_VERTEX && info->vs.dynamic_num_verts_per_prim)
                add_ud_arg(args, 1, AC_ARG_INT, &args->num_verts_per_prim, AC_UD_NUM_VERTS_PER_PRIM);

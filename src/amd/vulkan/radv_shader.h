@@ -241,8 +241,7 @@ enum radv_ud_index {
    /* We might not know the previous stage when compiling a geometry shader, so we just
     * declare both TES and VS user SGPRs.
     */
-   AC_UD_TES_STATE = AC_UD_VS_MAX_UD,
-   AC_UD_TES_MAX_UD,
+   AC_UD_TES_MAX_UD = AC_UD_TCS_MAX_UD,
    AC_UD_MAX_UD = AC_UD_CS_MAX_UD,
 };
 

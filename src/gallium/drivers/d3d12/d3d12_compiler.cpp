@@ -1577,6 +1577,30 @@ d3d12_create_shader(struct d3d12_context *ctx,
    NIR_PASS_V(nir, dxil_nir_split_clip_cull_distance);
    NIR_PASS_V(nir, d3d12_split_needed_varyings);
 
+   if (nir->info.stage == MESA_SHADER_TESS_EVAL || nir->info.stage == MESA_SHADER_TESS_CTRL) {
+      /* D3D requires exactly-matching patch constant signatures. Since tess ctrl must write these vars,
+       * tess eval must have them. */
+      for (uint32_t i = 0; i < 2; ++i) {
+         unsigned loc = i == 0 ? VARYING_SLOT_TESS_LEVEL_OUTER : VARYING_SLOT_TESS_LEVEL_INNER;
+         nir_variable_mode mode = nir->info.stage == MESA_SHADER_TESS_EVAL ? nir_var_shader_in : nir_var_shader_out;
+         nir_variable *var = nir_find_variable_with_location(nir, mode, loc);
+         uint32_t arr_size = i == 0 ? 4 : 2;
+         if (!var) {
+            var = nir_variable_create(nir, mode, glsl_array_type(glsl_float_type(), arr_size, 0), i == 0 ? "outer" : "inner");
+            var->data.location = loc;
+            var->data.patch = true;
+            var->data.compact = true;
+
+            if (mode == nir_var_shader_out) {
+               nir_builder b;
+               b.cursor = nir_after_impl(nir_shader_get_entrypoint(nir));
+               for (uint32_t j = 0; j < arr_size; ++j)
+                  nir_store_deref(&b, nir_build_deref_array_imm(&b, nir_build_deref_var(&b, var), j), nir_imm_zero(&b, 1, 32), 1);
+            }
+         }
+      }
+   }
+
    if (nir->info.stage != MESA_SHADER_VERTEX) {
       dxil_reassign_driver_locations(nir, nir_var_shader_in,
                                      prev ? prev->current->nir->info.outputs_written : 0);

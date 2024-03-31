@@ -106,8 +106,6 @@ struct d3d12_shader_key {
    uint32_t hash;
    enum pipe_shader_type stage;
 
-   struct d3d12_varying_info *required_varying_inputs;
-   struct d3d12_varying_info *required_varying_outputs;
    uint64_t next_varying_inputs;
    uint64_t prev_varying_outputs;
    union {
@@ -156,13 +154,11 @@ struct d3d12_shader_key {
             };
             uint64_t all;
          };
-         struct d3d12_varying_info *required_patch_outputs;
       } hs;
 
       struct {
          unsigned tcs_vertices_out;
          uint32_t prev_patch_outputs;
-         struct d3d12_varying_info *required_patch_inputs;
       } ds;
 
       union {
@@ -199,15 +195,6 @@ struct d3d12_shader {
    size_t bytecode_length;
 
    nir_shader *nir;
-   struct d3d12_varying_info *output_vars_gs;
-   struct d3d12_varying_info *output_vars_fs;
-   struct d3d12_varying_info *output_vars_default;
-
-   struct d3d12_varying_info *input_vars_vs;
-   struct d3d12_varying_info *input_vars_default;
-
-   struct d3d12_varying_info *tess_eval_output_vars;
-   struct d3d12_varying_info *tess_ctrl_input_vars;
 
    /* UBOs can be sparse, if there's no uniforms then ubo0 is unused, and state vars are an internal ubo */
    uint32_t begin_ubo_binding;

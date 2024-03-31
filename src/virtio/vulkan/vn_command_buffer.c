@@ -2201,29 +2201,21 @@ vn_CmdPushDescriptorSetKHR(VkCommandBuffer commandBuffer,
                            uint32_t descriptorWriteCount,
                            const VkWriteDescriptorSet *pDescriptorWrites)
 {
-   if (vn_should_sanitize_descriptor_set_writes(descriptorWriteCount,
-                                                pDescriptorWrites, layout)) {
-      struct vn_command_buffer *cmd =
-         vn_command_buffer_from_handle(commandBuffer);
-      struct vn_update_descriptor_sets *update =
-         vn_update_descriptor_sets_parse_writes(
-            descriptorWriteCount, pDescriptorWrites, &cmd->pool->allocator,
-            layout);
-      if (!update) {
-         cmd->state = VN_COMMAND_BUFFER_STATE_INVALID;
-         return;
-      }
-
-      VN_CMD_ENQUEUE(vkCmdPushDescriptorSetKHR, commandBuffer,
-                     pipelineBindPoint, layout, set, update->write_count,
-                     update->writes);
-
-      vk_free(&cmd->pool->allocator, update);
-   } else {
-      VN_CMD_ENQUEUE(vkCmdPushDescriptorSetKHR, commandBuffer,
-                     pipelineBindPoint, layout, set, descriptorWriteCount,
-                     pDescriptorWrites);
+   struct vn_command_buffer *cmd =
+      vn_command_buffer_from_handle(commandBuffer);
+   struct vn_update_descriptor_sets *update =
+      vn_update_descriptor_sets_parse_writes(descriptorWriteCount,
+                                             pDescriptorWrites,
+                                             &cmd->pool->allocator, layout);
+   if (!update) {
+      cmd->state = VN_COMMAND_BUFFER_STATE_INVALID;
+      return;
    }
+
+   VN_CMD_ENQUEUE(vkCmdPushDescriptorSetKHR, commandBuffer, pipelineBindPoint,
+                  layout, set, update->write_count, update->writes);
+
+   vk_free(&cmd->pool->allocator, update);
 }
 
 void

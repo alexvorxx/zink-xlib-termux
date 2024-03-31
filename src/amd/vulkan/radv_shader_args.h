@@ -67,8 +67,8 @@ struct radv_shader_args {
    struct ac_arg sample_mask;
 
    /* TCS */
-   /* # [0:5] = reserved for future use
-    * # [6:11] = the number of tessellation patches
+   /* # [0:6] = the number of tessellation patches minus one, max = 127
+    * # [7:11] = reserved for future use
     * # [12:16] = the number of input patch control points minus one, max = 31
     * # [17:22] = the number of LS outputs, up to 32
     * # [23:28] = the number of HS per-vertex outputs, up to 32

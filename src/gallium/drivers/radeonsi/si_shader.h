@@ -251,25 +251,51 @@ enum
    SI_NUM_PARAMS = SI_PARAM_POS_FIXED_PT + 9, /* +8 for COLOR[0..1] */
 };
 
-/* Fields of driver-defined VS state SGPR. */
-#define S_VS_STATE_CLAMP_VERTEX_COLOR(x)      (((unsigned)(x)&0x1) << 0)
-#define C_VS_STATE_CLAMP_VERTEX_COLOR         0xFFFFFFFE
-#define S_VS_STATE_INDEXED(x)                 (((unsigned)(x)&0x1) << 1)
-#define C_VS_STATE_INDEXED                    0xFFFFFFFD
-#define S_VS_STATE_OUTPRIM(x)                 (((unsigned)(x)&0x3) << 2)
-#define C_VS_STATE_OUTPRIM                    0xFFFFFFF3
-#define S_VS_STATE_PROVOKING_VTX_INDEX(x)     (((unsigned)(x)&0x3) << 4)
-#define C_VS_STATE_PROVOKING_VTX_INDEX        0xFFFFFFCF
-#define S_VS_STATE_STREAMOUT_QUERY_ENABLED(x) (((unsigned)(x)&0x1) << 6)
-#define C_VS_STATE_STREAMOUT_QUERY_ENABLED    0xFFFFFFBF
-#define S_VS_STATE_SMALL_PRIM_PRECISION(x)    (((unsigned)(x)&0xF) << 7)
-#define C_VS_STATE_SMALL_PRIM_PRECISION       0xFFFFF87F
-#define S_VS_STATE_LS_OUT_PATCH_SIZE(x)       (((unsigned)(x)&0x1FFF) << 11)
-#define C_VS_STATE_LS_OUT_PATCH_SIZE          0xFF0007FF
-#define S_VS_STATE_LS_OUT_VERTEX_SIZE(x)      (((unsigned)(x)&0xFF) << 24)
-#define C_VS_STATE_LS_OUT_VERTEX_SIZE         0x00FFFFFF
-#define S_VS_STATE_GS_PIPELINE_STATS_EMU(x)   (((unsigned)(x)&0x1) << 31)
-#define C_VS_STATE_GS_PIPELINE_STATS_EMU      0x7FFFFFFF
+/* These fields are only set in current_vs_state (except INDEXED) in si_context, and they are
+ * accessible in the shader via vs_state_bits in VS, TES, and GS.
+ */
+#define VS_STATE_CLAMP_VERTEX_COLOR__SHIFT   0
+#define VS_STATE_CLAMP_VERTEX_COLOR__MASK    0x1 /* Shared by VS and GS */
+#define VS_STATE_INDEXED__SHIFT              1
+#define VS_STATE_INDEXED__MASK               0x1 /* Shared by VS and GS */
+
+/* These fields are only set in current_vs_state in si_context, and they are accessible
+ * in the shader via vs_state_bits in LS/HS.
+ */
+/* bit gap */
+#define VS_STATE_LS_OUT_PATCH_SIZE__SHIFT    11
+#define VS_STATE_LS_OUT_PATCH_SIZE__MASK     0x1fff
+#define VS_STATE_LS_OUT_VERTEX_SIZE__SHIFT   24
+#define VS_STATE_LS_OUT_VERTEX_SIZE__MASK    0xff
+
+/* These fields are only set in current_gs_state in si_context, and they are accessible
+ * in the shader via vs_state_bits in legacy GS, the GS copy shader, and any NGG shader.
+ */
+/* bit gap */
+#define GS_STATE_SMALL_PRIM_PRECISION__SHIFT    22
+#define GS_STATE_SMALL_PRIM_PRECISION__MASK     0xf
+#define GS_STATE_STREAMOUT_QUERY_ENABLED__SHIFT 26
+#define GS_STATE_STREAMOUT_QUERY_ENABLED__MASK  0x1
+#define GS_STATE_PROVOKING_VTX_INDEX__SHIFT     27
+#define GS_STATE_PROVOKING_VTX_INDEX__MASK      0x3
+#define GS_STATE_OUTPRIM__SHIFT                 29
+#define GS_STATE_OUTPRIM__MASK                  0x3
+#define GS_STATE_PIPELINE_STATS_EMU__SHIFT      31
+#define GS_STATE_PIPELINE_STATS_EMU__MASK       0x1
+
+#define ENCODE_FIELD(field, value) (((unsigned)(value) & field##__MASK) << field##__SHIFT)
+#define CLEAR_FIELD(field) (~((unsigned)field##__MASK << field##__SHIFT))
+
+/* This is called by functions that change states. */
+#define SET_FIELD(var, field, value) do { \
+   assert((value) == ((unsigned)(value) & field##__MASK)); \
+   (var) &= CLEAR_FIELD(field); \
+   (var) |= ENCODE_FIELD(field, value); \
+} while (0)
+
+/* This is called during shader compilation and returns LLVMValueRef. */
+#define GET_FIELD(ctx, field) si_unpack_param((ctx), (ctx)->vs_state_bits, field##__SHIFT, \
+                                             util_bitcount(field##__MASK))
 
 enum
 {
@@ -381,8 +407,6 @@ struct si_shader_info {
    ubyte gs_input_verts_per_prim;
    unsigned max_gsvs_emit_size;
 
-   /* PS parameters */
-   unsigned db_shader_control;
    /* Set 0xf or 0x0 (4 bits) per each written output.
     * ANDed with spi_shader_col_format.
     */
@@ -618,6 +642,7 @@ union si_shader_part_key {
    struct {
       struct si_ps_epilog_bits states;
       unsigned wave32 : 1;
+      unsigned uses_discard : 1;
       unsigned colors_written : 8;
       unsigned color_types : 16;
       unsigned writes_z : 1;
@@ -674,6 +699,7 @@ struct si_shader_key_ge {
       uint64_t kill_outputs; /* "get_unique_index" bits */
       unsigned kill_clip_distances : 8;
       unsigned kill_pointsize : 1;
+      unsigned remove_streamout : 1;
 
       /* For NGG VS and TES. */
       unsigned ngg_culling : 13; /* SI_NGG_CULL_* */
@@ -838,7 +864,7 @@ struct si_shader {
 
    /* SI_SGPR_VS_STATE_BITS */
    bool uses_vs_state_provoking_vertex;
-   bool uses_vs_state_outprim;
+   bool uses_gs_state_outprim;
 
    bool uses_base_instance;
 
@@ -916,6 +942,7 @@ struct si_shader {
          unsigned spi_shader_z_format;
          unsigned spi_shader_col_format;
          unsigned cb_shader_mask;
+         unsigned db_shader_control;
          unsigned num_interp;
       } ps;
    } ctx_reg;
@@ -1018,6 +1045,21 @@ static inline bool gfx10_ngg_writes_user_edgeflags(struct si_shader *shader)
 {
    return gfx10_edgeflags_have_effect(shader) &&
           shader->selector->info.writes_edgeflag;
+}
+
+static inline bool si_shader_uses_streamout(struct si_shader *shader)
+{
+   return shader->selector->stage <= MESA_SHADER_GEOMETRY &&
+          shader->selector->info.enabled_streamout_buffer_mask &&
+          !shader->key.ge.opt.remove_streamout;
+}
+
+static inline bool si_shader_uses_discard(struct si_shader *shader)
+{
+   /* Changes to this should also update ps_modifies_zs. */
+   return shader->selector->info.base.fs.uses_discard ||
+          shader->key.ps.part.prolog.poly_stipple ||
+          shader->key.ps.part.epilog.alpha_func != PIPE_FUNC_ALWAYS;
 }
 
 #ifdef __cplusplus

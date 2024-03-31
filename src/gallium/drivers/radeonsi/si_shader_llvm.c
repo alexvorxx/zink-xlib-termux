@@ -188,6 +188,10 @@ void si_llvm_create_func(struct si_shader_context *ctx, const char *name, LLVMTy
                                            ctx->screen->info.address32_hi);
    }
 
+   if (ctx->stage <= MESA_SHADER_GEOMETRY && ctx->shader->key.ge.as_ngg &&
+       si_shader_uses_streamout(ctx->shader))
+      ac_llvm_add_target_dep_function_attr(ctx->main_fn, "amdgpu-gds-size", 256);
+
    ac_llvm_set_workgroup_size(ctx->main_fn, max_workgroup_size);
    ac_llvm_set_target_features(ctx->main_fn, &ctx->ac);
 }
@@ -725,7 +729,7 @@ static LLVMValueRef si_llvm_load_intrinsic(struct ac_shader_abi *abi, nir_intrin
        * (for direct draws) or the CP (for indirect draws) is the
        * first vertex ID, but GLSL expects 0 to be returned.
        */
-      LLVMValueRef indexed = si_unpack_param(ctx, ctx->vs_state_bits, 1, 1);
+      LLVMValueRef indexed = GET_FIELD(ctx, VS_STATE_INDEXED);
       indexed = LLVMBuildTrunc(ctx->ac.builder, indexed, ctx->ac.i1, "");
       return LLVMBuildSelect(ctx->ac.builder, indexed, ac_get_arg(&ctx->ac, ctx->args.base_vertex),
                              ctx->ac.i32_0, "");

@@ -1104,13 +1104,14 @@ static void si_shader_dump_stats(struct si_screen *sscreen, struct si_shader *sh
               "Spilled VGPRs: %d\n"
               "Private memory VGPRs: %d\n"
               "Code Size: %d bytes\n"
-              "LDS: %d blocks\n"
+              "LDS: %d bytes\n"
               "Scratch: %d bytes per wave\n"
               "Max Waves: %d\n"
               "********************\n\n\n",
               conf->num_sgprs, conf->num_vgprs, conf->spilled_sgprs, conf->spilled_vgprs,
               shader->info.private_mem_vgprs, si_get_shader_binary_size(sscreen, shader),
-              conf->lds_size, conf->scratch_bytes_per_wave, shader->info.max_simd_waves);
+              conf->lds_size * get_lds_granularity(sscreen, shader->selector->stage),
+              conf->scratch_bytes_per_wave, shader->info.max_simd_waves);
    }
 }
 
@@ -1759,7 +1760,7 @@ bool si_compile_shader(struct si_screen *sscreen, struct ac_llvm_compiler *compi
    }
 
    struct pipe_stream_output_info so = {};
-   if (sel->info.enabled_streamout_buffer_mask)
+   if (si_shader_uses_streamout(shader))
       nir_gather_stream_output_info(nir, &so);
 
    /* Dump NIR before doing NIR->LLVM conversion in case the
@@ -2221,6 +2222,7 @@ void si_get_ps_epilog_key(struct si_shader *shader, union si_shader_part_key *ke
    struct si_shader_info *info = &shader->selector->info;
    memset(key, 0, sizeof(*key));
    key->ps_epilog.wave32 = shader->wave_size == 32;
+   key->ps_epilog.uses_discard = si_shader_uses_discard(shader);
    key->ps_epilog.colors_written = info->colors_written;
    key->ps_epilog.color_types = info->output_color_types;
    key->ps_epilog.writes_z = info->writes_z;
@@ -2497,10 +2499,10 @@ bool si_create_shader_variant(struct si_screen *sscreen, struct ac_llvm_compiler
         /* Used to export PrimitiveID from the correct vertex. */
         shader->key.ge.mono.u.vs_export_prim_id));
 
-   shader->uses_vs_state_outprim = sscreen->use_ngg &&
+   shader->uses_gs_state_outprim = sscreen->use_ngg &&
                                    /* Only used by streamout in vertex shaders. */
                                    sel->stage == MESA_SHADER_VERTEX &&
-                                   sel->info.enabled_streamout_buffer_mask;
+                                   si_shader_uses_streamout(shader);
 
    if (sel->stage == MESA_SHADER_VERTEX) {
       shader->uses_base_instance = sel->info.uses_base_instance ||

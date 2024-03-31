@@ -334,8 +334,6 @@ static void si_destroy_context(struct pipe_context *context)
    si_resource_reference(&sctx->eop_bug_scratch, NULL);
    si_resource_reference(&sctx->eop_bug_scratch_tmz, NULL);
    si_resource_reference(&sctx->shadowed_regs, NULL);
-   radeon_bo_reference(sctx->screen->ws, &sctx->gds, NULL);
-   radeon_bo_reference(sctx->screen->ws, &sctx->gds_oa, NULL);
 
    si_destroy_compiler(&sctx->compiler);
 
@@ -697,7 +695,7 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
       sctx->wait_mem_scratch =
            si_aligned_buffer_create(screen,
                                     PIPE_RESOURCE_FLAG_UNMAPPABLE | SI_RESOURCE_FLAG_DRIVER_INTERNAL,
-                                    PIPE_USAGE_DEFAULT, 8,
+                                    PIPE_USAGE_DEFAULT, 4,
                                     sscreen->info.tcc_cache_line_size);
       if (!sctx->wait_mem_scratch) {
          fprintf(stderr, "radeonsi: can't create wait_mem_scratch\n");
@@ -780,9 +778,6 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
    /* Initialize per-context buffers. */
    if (sctx->wait_mem_scratch)
       si_cp_write_data(sctx, sctx->wait_mem_scratch, 0, 4, V_370_MEM, V_370_ME,
-                       &sctx->wait_mem_number);
-   if (sctx->wait_mem_scratch_tmz)
-      si_cp_write_data(sctx, sctx->wait_mem_scratch_tmz, 0, 4, V_370_MEM, V_370_ME,
                        &sctx->wait_mem_number);
 
    if (sctx->gfx_level == GFX7) {
@@ -972,6 +967,10 @@ static void si_destroy_screen(struct pipe_screen *pscreen)
    si_gpu_load_kill_thread(sscreen);
 
    simple_mtx_destroy(&sscreen->gpu_load_mutex);
+   simple_mtx_destroy(&sscreen->gds_mutex);
+
+   radeon_bo_reference(sscreen->ws, &sscreen->gds, NULL);
+   radeon_bo_reference(sscreen->ws, &sscreen->gds_oa, NULL);
 
    slab_destroy_parent(&sscreen->pool_transfers);
 
@@ -1191,6 +1190,7 @@ static struct pipe_screen *radeonsi_screen_create_impl(struct radeon_winsys *ws,
    (void)simple_mtx_init(&sscreen->aux_context_lock, mtx_plain);
    (void)simple_mtx_init(&sscreen->async_compute_context_lock, mtx_plain);
    (void)simple_mtx_init(&sscreen->gpu_load_mutex, mtx_plain);
+   (void)simple_mtx_init(&sscreen->gds_mutex, mtx_plain);
 
    si_init_gs_info(sscreen);
    if (!si_init_shader_cache(sscreen)) {

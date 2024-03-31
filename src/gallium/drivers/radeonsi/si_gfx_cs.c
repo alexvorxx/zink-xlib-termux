@@ -211,10 +211,10 @@ static void si_begin_gfx_cs_debug(struct si_context *ctx)
 
 static void si_add_gds_to_buffer_list(struct si_context *sctx)
 {
-   if (sctx->gds) {
-      sctx->ws->cs_add_buffer(&sctx->gfx_cs, sctx->gds, RADEON_USAGE_READWRITE, 0);
-      if (sctx->gds_oa) {
-         sctx->ws->cs_add_buffer(&sctx->gfx_cs, sctx->gds_oa, RADEON_USAGE_READWRITE, 0);
+   if (sctx->screen->gds) {
+      sctx->ws->cs_add_buffer(&sctx->gfx_cs, sctx->screen->gds, RADEON_USAGE_READWRITE, 0);
+      if (sctx->screen->gds_oa) {
+         sctx->ws->cs_add_buffer(&sctx->gfx_cs, sctx->screen->gds_oa, RADEON_USAGE_READWRITE, 0);
       }
    }
 }
@@ -223,18 +223,21 @@ void si_allocate_gds(struct si_context *sctx)
 {
    struct radeon_winsys *ws = sctx->ws;
 
-   if (sctx->gds)
+   if (sctx->screen->gds && sctx->screen->gds_oa)
       return;
 
    assert(sctx->screen->use_ngg_streamout);
 
-   /* 4 streamout GDS counters.
-    * We need 256B (64 dw) of GDS, otherwise streamout hangs.
-    */
-   sctx->gds = ws->buffer_create(ws, 256, 4, RADEON_DOMAIN_GDS, RADEON_FLAG_DRIVER_INTERNAL);
-   sctx->gds_oa = ws->buffer_create(ws, 4, 1, RADEON_DOMAIN_OA, RADEON_FLAG_DRIVER_INTERNAL);
+   /* We need 256B (64 dw) of GDS, otherwise streamout hangs. */
+   simple_mtx_lock(&sctx->screen->gds_mutex);
+   if (!sctx->screen->gds)
+      sctx->screen->gds = ws->buffer_create(ws, 256, 4, RADEON_DOMAIN_GDS, RADEON_FLAG_DRIVER_INTERNAL);
+   if (!sctx->screen->gds_oa)
+      sctx->screen->gds_oa = ws->buffer_create(ws, 1, 1, RADEON_DOMAIN_OA, RADEON_FLAG_DRIVER_INTERNAL);
+   simple_mtx_unlock(&sctx->screen->gds_mutex);
 
-   assert(sctx->gds && sctx->gds_oa);
+   assert(sctx->screen->gds && sctx->screen->gds_oa);
+
    si_add_gds_to_buffer_list(sctx);
 }
 
@@ -440,7 +443,7 @@ void si_begin_new_gfx_cs(struct si_context *ctx, bool first_cs)
       struct si_pm4_state *preamble = is_secure ? ctx->cs_preamble_state_tmz :
                                                   ctx->cs_preamble_state;
       ctx->ws->cs_set_preamble(&ctx->gfx_cs, preamble->pm4, preamble->ndw,
-                               preamble != ctx->last_preamble);
+                               preamble != ctx->last_preamble, false);
       ctx->last_preamble = preamble;
    }
 
@@ -516,6 +519,7 @@ void si_begin_new_gfx_cs(struct si_context *ctx, bool first_cs)
       ctx->last_prim = -1;
       ctx->last_multi_vgt_param = -1;
       ctx->last_vs_state = ~0;
+      ctx->last_gs_state = ~0;
       ctx->last_ls = NULL;
       ctx->last_tcs = NULL;
       ctx->last_tes_sh_base = -1;
@@ -611,7 +615,8 @@ void si_emit_surface_sync(struct si_context *sctx, struct radeon_cmdbuf *cs, uns
       sctx->context_roll = true;
 }
 
-static struct si_resource* si_get_wait_mem_scratch_bo(struct si_context *ctx, bool is_secure)
+static struct si_resource *si_get_wait_mem_scratch_bo(struct si_context *ctx,
+                                                      struct radeon_cmdbuf *cs, bool is_secure)
 {
    struct si_screen *sscreen = ctx->screen;
 
@@ -619,14 +624,17 @@ static struct si_resource* si_get_wait_mem_scratch_bo(struct si_context *ctx, bo
       return ctx->wait_mem_scratch;
    } else {
       assert(sscreen->info.has_tmz_support);
-      if (!ctx->wait_mem_scratch_tmz)
+      if (!ctx->wait_mem_scratch_tmz) {
          ctx->wait_mem_scratch_tmz =
             si_aligned_buffer_create(&sscreen->b,
                                      PIPE_RESOURCE_FLAG_UNMAPPABLE |
                                      SI_RESOURCE_FLAG_DRIVER_INTERNAL |
                                      PIPE_RESOURCE_FLAG_ENCRYPTED,
-                                     PIPE_USAGE_DEFAULT, 8,
+                                     PIPE_USAGE_DEFAULT, 4,
                                      sscreen->info.tcc_cache_line_size);
+         si_cp_write_data(ctx, ctx->wait_mem_scratch_tmz, 0, 4, V_370_MEM, V_370_ME,
+                          &ctx->wait_mem_number);
+      }
 
       return ctx->wait_mem_scratch_tmz;
    }
@@ -746,7 +754,7 @@ void gfx10_emit_cache_flush(struct si_context *ctx, struct radeon_cmdbuf *cs)
 
    if (cb_db_event) {
       struct si_resource* wait_mem_scratch =
-        si_get_wait_mem_scratch_bo(ctx, ctx->ws->cs_is_secure(cs));
+        si_get_wait_mem_scratch_bo(ctx, cs, ctx->ws->cs_is_secure(cs));
       /* CB/DB flush and invalidate (or possibly just a wait for a
        * meta flush) via RELEASE_MEM.
        *
@@ -986,7 +994,7 @@ void si_emit_cache_flush(struct si_context *sctx, struct radeon_cmdbuf *cs)
 
       /* Do the flush (enqueue the event and wait for it). */
       struct si_resource* wait_mem_scratch =
-        si_get_wait_mem_scratch_bo(sctx, sctx->ws->cs_is_secure(cs));
+        si_get_wait_mem_scratch_bo(sctx, cs, sctx->ws->cs_is_secure(cs));
 
       va = wait_mem_scratch->gpu_address;
       sctx->wait_mem_number++;

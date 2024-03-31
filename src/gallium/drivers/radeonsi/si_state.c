@@ -1170,8 +1170,7 @@ static void si_bind_rs_state(struct pipe_context *ctx, void *state)
         old_rs->line_width != rs->line_width))
       si_mark_atom_dirty(sctx, &sctx->atoms.s.ngg_cull_state);
 
-   sctx->current_vs_state &= C_VS_STATE_CLAMP_VERTEX_COLOR;
-   sctx->current_vs_state |= S_VS_STATE_CLAMP_VERTEX_COLOR(rs->clamp_vertex_color);
+   SET_FIELD(sctx->current_vs_state, VS_STATE_CLAMP_VERTEX_COLOR, rs->clamp_vertex_color);
 
    si_pm4_bind_state(sctx, rasterizer, rs);
    si_update_poly_offset_state(sctx);
@@ -1428,7 +1427,6 @@ static void si_bind_dsa_state(struct pipe_context *ctx, void *state)
    if (old_dsa->alpha_func != dsa->alpha_func) {
       si_ps_key_update_dsa(sctx);
       si_update_ps_inputs_read_or_disabled(sctx);
-      si_update_ps_kill_enable(sctx);
       sctx->do_update_shaders = true;
    }
 
@@ -3768,7 +3766,8 @@ static void si_emit_msaa_config(struct si_context *sctx)
       S_028A4C_TILE_WALK_ORDER_ENABLE(1) | S_028A4C_MULTI_SHADER_ENGINE_PRIM_DISCARD_ENABLE(1) |
       S_028A4C_FORCE_EOV_CNTDWN_ENABLE(1) | S_028A4C_FORCE_EOV_REZ_ENABLE(1);
    unsigned db_eqaa = S_028804_HIGH_QUALITY_INTERSECTIONS(1) | S_028804_INCOHERENT_EQAA_READS(1) |
-                      S_028804_INTERPOLATE_COMP_Z(1) | S_028804_STATIC_ANCHOR_ASSOCIATIONS(1);
+                      S_028804_INTERPOLATE_COMP_Z(sctx->gfx_level < GFX11) |
+                      S_028804_STATIC_ANCHOR_ASSOCIATIONS(1);
    unsigned coverage_samples, color_samples, z_samples;
    struct si_state_rasterizer *rs = sctx->queued.named.rasterizer;
 
@@ -5585,6 +5584,11 @@ void si_init_cs_preamble_state(struct si_context *sctx, bool uses_reg_shadowing)
       si_pm4_cmd_add(pm4, PKT3(PKT3_CONTEXT_CONTROL, 1, 0));
       si_pm4_cmd_add(pm4, CC0_UPDATE_LOAD_ENABLES(1));
       si_pm4_cmd_add(pm4, CC1_UPDATE_SHADOW_ENABLES(1));
+
+      if (sscreen->dpbb_allowed) {
+         si_pm4_cmd_add(pm4, PKT3(PKT3_EVENT_WRITE, 0, 0));
+         si_pm4_cmd_add(pm4, EVENT_TYPE(V_028A90_BREAK_BATCH) | EVENT_INDEX(0));
+      }
 
       if (has_clear_state) {
          si_pm4_cmd_add(pm4, PKT3(PKT3_CLEAR_STATE, 0, 0));

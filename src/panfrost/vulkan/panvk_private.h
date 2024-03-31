@@ -151,28 +151,24 @@ struct panvk_meta {
       struct {
          mali_ptr shader;
          struct pan_shader_info shader_info;
-      } color[MAX_RTS][3], zs, z, s; /* 3 base types */
+      } color[3]; /* 3 base types */
    } clear_attachment;
 
    struct {
       struct {
          mali_ptr rsd;
-         struct panfrost_ubo_push pushmap;
       } buf2img[PANVK_META_COPY_BUF2IMG_NUM_FORMATS];
       struct {
          mali_ptr rsd;
-         struct panfrost_ubo_push pushmap;
       } img2buf[PANVK_META_COPY_NUM_TEX_TYPES][PANVK_META_COPY_IMG2BUF_NUM_FORMATS];
       struct {
          mali_ptr rsd;
       } img2img[2][PANVK_META_COPY_NUM_TEX_TYPES][PANVK_META_COPY_IMG2IMG_NUM_FORMATS];
       struct {
          mali_ptr rsd;
-         struct panfrost_ubo_push pushmap;
       } buf2buf[PANVK_META_COPY_BUF2BUF_NUM_BLKSIZES];
       struct {
          mali_ptr rsd;
-         struct panfrost_ubo_push pushmap;
       } fillbuf;
    } copy;
 };

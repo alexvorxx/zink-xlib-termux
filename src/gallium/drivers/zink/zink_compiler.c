@@ -2010,6 +2010,10 @@ zink_shader_compile(struct zink_screen *screen, struct zink_shader *zs, nir_shad
       /* This must be done again. */
       NIR_PASS_V(nir, nir_io_add_const_offset_to_base, nir_var_shader_in |
                                                        nir_var_shader_out);
+
+      nir_function_impl *impl = nir_shader_get_entrypoint(nir);
+      if (impl->ssa_alloc > ZINK_ALWAYS_INLINE_LIMIT)
+         zs->can_inline = false;
    } else if (need_optimize)
       optimize_nir(nir);
    prune_io(nir);
@@ -2603,8 +2607,7 @@ scan_nir(struct zink_screen *screen, nir_shader *shader, struct zink_shader *zs)
             static bool warned = false;
             if (!screen->info.have_EXT_shader_atomic_float && !screen->is_cpu && !warned) {
                switch (intr->intrinsic) {
-               case nir_intrinsic_image_deref_atomic_add:
-               case nir_intrinsic_image_deref_atomic_exchange: {
+               case nir_intrinsic_image_deref_atomic_add: {
                   nir_variable *var = nir_intrinsic_get_var(intr, 0);
                   if (util_format_is_float(var->data.image.format))
                      fprintf(stderr, "zink: Vulkan driver missing VK_EXT_shader_atomic_float but attempting to do atomic ops!\n");
@@ -2835,6 +2838,8 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir,
       }
    }
 
+   ret->can_inline = true;
+
    return ret;
 }
 
@@ -2890,12 +2895,18 @@ zink_shader_free(struct zink_context *ctx, struct zink_shader *shader)
             _mesa_hash_table_remove_key(&ctx->program_cache[prog->stages_present >> 2], prog->shaders);
             prog->base.removed = true;
          }
-         prog->shaders[pstage] = NULL;
+         if (shader->nir->info.stage != MESA_SHADER_TESS_CTRL || !shader->is_generated)
+            prog->shaders[pstage] = NULL;
+         /* only remove generated tcs during parent tes destruction */
          if (shader->nir->info.stage == MESA_SHADER_TESS_EVAL && shader->generated)
-            /* automatically destroy generated tcs shaders when tes is destroyed */
-            zink_shader_free(ctx, shader->generated);
+            prog->shaders[PIPE_SHADER_TESS_CTRL] = NULL;
          zink_gfx_program_reference(ctx, &prog, NULL);
       }
+   }
+   if (shader->nir->info.stage == MESA_SHADER_TESS_EVAL && shader->generated) {
+      /* automatically destroy generated tcs shaders when tes is destroyed */
+      zink_shader_free(ctx, shader->generated);
+      shader->generated = NULL;
    }
    _mesa_set_destroy(shader->programs, NULL);
    ralloc_free(shader->nir);

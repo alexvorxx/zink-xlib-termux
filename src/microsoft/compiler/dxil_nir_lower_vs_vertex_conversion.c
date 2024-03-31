@@ -21,7 +21,7 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "d3d12_nir_passes.h"
+#include "dxil_nir.h"
 
 #include "nir_builder.h"
 #include "nir_builtin_builder.h"
@@ -132,6 +132,12 @@ lower_vs_vertex_conversion_impl(nir_builder *b, nir_instr *instr, void *options)
          return from_10_10_10_2_scaled(b, src, lshift_rgba(b), nir_ushr);
       case PIPE_FORMAT_B10G10R10A2_USCALED:
          return from_10_10_10_2_scaled(b, src, lshift_bgra(b), nir_ushr);
+      case PIPE_FORMAT_R8G8B8A8_USCALED:
+      case PIPE_FORMAT_R16G16B16A16_USCALED:
+         return nir_u2f32(b, &intr->dest.ssa);
+      case PIPE_FORMAT_R8G8B8A8_SSCALED:
+      case PIPE_FORMAT_R16G16B16A16_SSCALED:
+         return nir_i2f32(b, &intr->dest.ssa);
 
       default:
          unreachable("Unsupported emulated vertex format");
@@ -147,8 +153,8 @@ lower_vs_vertex_conversion_impl(nir_builder *b, nir_instr *instr, void *options)
  * or PIPE_FORMAT_NONE if no conversion is needed
  */
 bool
-d3d12_nir_lower_vs_vertex_conversion(nir_shader *s,
-                                     enum pipe_format target_formats[])
+dxil_nir_lower_vs_vertex_conversion(nir_shader *s,
+                                    enum pipe_format target_formats[])
 {
    assert(s->info.stage == MESA_SHADER_VERTEX);
 

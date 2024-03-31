@@ -544,6 +544,7 @@ struct dzn_cmd_buffer {
    } rtvs, dsvs;
 
    struct dzn_descriptor_heap_pool cbv_srv_uav_pool, sampler_pool;
+   D3D12_CPU_DESCRIPTOR_HANDLE null_rtv;
 
    struct list_head internal_bufs;
 
@@ -758,6 +759,8 @@ struct dzn_graphics_pipeline {
 ID3D12CommandSignature *
 dzn_graphics_pipeline_get_indirect_cmd_sig(struct dzn_graphics_pipeline *pipeline,
                                            enum dzn_indirect_draw_cmd_sig_type cmd_sig_type);
+
+VkFormat dzn_graphics_pipeline_patch_vi_format(VkFormat format);
 
 struct dzn_compute_pipeline {
    struct dzn_pipeline base;

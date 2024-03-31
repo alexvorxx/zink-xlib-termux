@@ -222,7 +222,7 @@ void si_llvm_gs_build_end(struct si_shader_context *ctx)
        * use pipeline statistics (they would be correct but when screen->use_ngg, we
        * can't know when the query is started if the next draw(s) will use ngg or not).
        */
-      LLVMValueRef tmp = si_unpack_param(ctx, ctx->vs_state_bits, 31, 1);
+      LLVMValueRef tmp = GET_FIELD(ctx, GS_STATE_PIPELINE_STATS_EMU);
       tmp = LLVMBuildTrunc(ctx->ac.builder, tmp, ctx->ac.i1, "");
       ac_build_ifcc(&ctx->ac, tmp, 5229); /* if (GS_PIPELINE_STATS_EMU) */
       {
@@ -245,8 +245,7 @@ void si_llvm_gs_build_end(struct si_shader_context *ctx)
             prim,
             ngg_get_emulated_counters_buf(ctx),
             LLVMConstInt(ctx->ac.i32,
-                         (si_hw_query_dw_offset(PIPE_STAT_QUERY_GS_PRIMITIVES) +
-                             SI_QUERY_STATS_END_OFFSET_DW) * 4,
+                         si_query_pipestat_end_dw_offset(ctx->screen, PIPE_STAT_QUERY_GS_PRIMITIVES) * 4,
                          false),
             ctx->ac.i32_0,                            /* soffset */
             ctx->ac.i32_0,                            /* cachepolicy */
@@ -255,9 +254,8 @@ void si_llvm_gs_build_end(struct si_shader_context *ctx)
 
          args[0] = ctx->ac.i32_1;
          args[2] = LLVMConstInt(ctx->ac.i32,
-                                (si_hw_query_dw_offset(PIPE_STAT_QUERY_GS_INVOCATIONS) +
-                                    SI_QUERY_STATS_END_OFFSET_DW) * 4,
-                                 false);
+                                si_query_pipestat_end_dw_offset(ctx->screen, PIPE_STAT_QUERY_GS_INVOCATIONS) * 4,
+                                false);
          ac_build_intrinsic(&ctx->ac, "llvm.amdgcn.raw.buffer.atomic.add.i32", ctx->ac.i32, args, 5, 0);
       }
       ac_build_endif(&ctx->ac, 5229);

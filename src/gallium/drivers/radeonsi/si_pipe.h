@@ -710,6 +710,11 @@ struct si_screen {
    struct util_vertex_state_cache vertex_state_cache;
 
    struct si_resource *attribute_ring;
+
+   /* NGG streamout. */
+   simple_mtx_t gds_mutex;
+   struct pb_buffer *gds;
+   struct pb_buffer *gds_oa;
 };
 
 struct si_sampler_view {
@@ -995,7 +1000,6 @@ struct si_context {
    struct util_debug_callback debug;
    struct ac_llvm_compiler compiler; /* only non-threaded compilation */
    struct si_shader_ctx_state fixed_func_tcs_shader;
-   /* Offset 0: EOP flush number; Offset 4: GDS prim restart counter */
    struct si_resource *wait_mem_scratch;
    struct si_resource *wait_mem_scratch_tmz;
    unsigned wait_mem_number;
@@ -1020,10 +1024,6 @@ struct si_context {
    unsigned flags; /* flush flags */
    /* Current unaccounted memory usage. */
    uint32_t memory_usage_kb;
-
-   /* NGG streamout. */
-   struct pb_buffer *gds;
-   struct pb_buffer *gds_oa;
 
    /* Atoms (direct states). */
    union si_state_atoms atoms;
@@ -1165,10 +1165,10 @@ struct si_context {
    unsigned last_prim;
    unsigned last_multi_vgt_param;
    unsigned last_gs_out_prim;
-   unsigned current_vs_state;
+   unsigned current_vs_state; /* all VS bits including LS bits */
+   unsigned current_gs_state; /* only GS and NGG bits */
    unsigned last_vs_state;
-   bool current_gs_stats_counter_emul;
-   bool last_gs_stats_counter_emul;
+   unsigned last_gs_state;
    enum pipe_prim_type current_rast_prim; /* primitive type after TES, GS */
 
    struct si_small_prim_cull_info last_small_prim_cull_info;

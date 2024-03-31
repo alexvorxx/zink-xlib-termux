@@ -290,9 +290,8 @@ lower_abi_instr(nir_builder *b, nir_intrinsic_instr *intrin, void *state)
          if (s->info->inputs_linked) {
             replacement = nir_imm_int(b, get_tcs_input_vertex_stride(s->info->tcs.num_linked_inputs));
          } else {
-            nir_def *lshs_vertex_stride =
-               GET_SGPR_FIELD_NIR(s->args->tcs_offchip_layout, TCS_OFFCHIP_LAYOUT_LSHS_VERTEX_STRIDE);
-            replacement = nir_ishl_imm(b, lshs_vertex_stride, 2);
+            nir_def *num_ls_out = GET_SGPR_FIELD_NIR(s->args->tcs_offchip_layout, TCS_OFFCHIP_LAYOUT_NUM_LS_OUTPUTS);
+            replacement = nir_iadd_imm_nuw(b, nir_ishl_imm(b, num_ls_out, 4), 4);
          }
       }
       break;

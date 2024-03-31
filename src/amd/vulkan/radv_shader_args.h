@@ -69,8 +69,9 @@ struct radv_shader_args {
    /* TCS */
    /* # [0:5] = the number of patch control points
     * # [6:11] = the number of tessellation patches
-    * # [12:19] = the LS-HS vertex stride in DWORDS
-    * # [20:28] = reserved for future use
+    * # [12:16] = reserved for future use
+    * # [17:22] = the number of LS outputs, up to 32
+    * # [23:28] = the number of HS per-vertex outputs, up to 32
     * # [29:30] = tess_primitive_mode
     * # [31] = whether TES reads tess factors
     */

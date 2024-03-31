@@ -340,6 +340,7 @@ emit_load(struct lower_io_state *state,
          var->data.precision == GLSL_PRECISION_MEDIUM ||
          var->data.precision == GLSL_PRECISION_LOW;
       semantics.high_dvec2 = high_dvec2;
+      semantics.per_primitive = var->data.per_primitive;
       /* "per_vertex" is misnamed. It means "explicit interpolation with
        * the original vertex order", which is a stricter version of
        * INTERP_MODE_EXPLICIT.

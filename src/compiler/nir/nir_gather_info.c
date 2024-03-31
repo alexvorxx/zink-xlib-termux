@@ -534,6 +534,8 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader,
          shader->info.inputs_read |= slot_mask;
          if (nir_intrinsic_io_semantics(instr).high_dvec2)
             shader->info.dual_slot_inputs |= slot_mask;
+         if (nir_intrinsic_io_semantics(instr).per_primitive)
+            shader->info.per_primitive_inputs |= slot_mask;
          shader->info.inputs_read_16bit |= slot_mask_16bit;
          if (!nir_src_is_const(*nir_get_io_offset_src(instr))) {
             shader->info.inputs_read_indirectly |= slot_mask;

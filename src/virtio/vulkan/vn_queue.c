@@ -1701,21 +1701,12 @@ vn_WaitForFences(VkDevice device,
 {
    VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
-   const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
 
    const int64_t abs_timeout = os_time_get_absolute_timeout(timeout);
    VkResult result = VK_NOT_READY;
    if (fenceCount > 1 && waitAll) {
-      VkFence local_fences[8];
-      VkFence *fences = local_fences;
-      if (fenceCount > ARRAY_SIZE(local_fences)) {
-         fences =
-            vk_alloc(alloc, sizeof(*fences) * fenceCount, VN_DEFAULT_ALIGN,
-                     VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-         if (!fences)
-            return vn_error(dev->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
-      }
-      memcpy(fences, pFences, sizeof(*fences) * fenceCount);
+      STACK_ARRAY(VkFence, fences, fenceCount);
+      typed_memcpy(fences, pFences, fenceCount);
 
       struct vn_relax_state relax_state =
          vn_relax_init(dev->instance, VN_RELAX_REASON_FENCE);
@@ -1726,8 +1717,7 @@ vn_WaitForFences(VkDevice device,
       }
       vn_relax_fini(&relax_state);
 
-      if (fences != local_fences)
-         vk_free(alloc, fences);
+      STACK_ARRAY_FINISH(fences);
    } else {
       struct vn_relax_state relax_state =
          vn_relax_init(dev->instance, VN_RELAX_REASON_FENCE);
@@ -2214,29 +2204,16 @@ vn_WaitSemaphores(VkDevice device,
 {
    VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
-   const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
 
    const int64_t abs_timeout = os_time_get_absolute_timeout(timeout);
    VkResult result = VK_NOT_READY;
    if (pWaitInfo->semaphoreCount > 1 &&
        !(pWaitInfo->flags & VK_SEMAPHORE_WAIT_ANY_BIT)) {
       uint32_t semaphore_count = pWaitInfo->semaphoreCount;
-      VkSemaphore local_semaphores[8];
-      uint64_t local_values[8];
-      VkSemaphore *semaphores = local_semaphores;
-      uint64_t *values = local_values;
-      if (semaphore_count > ARRAY_SIZE(local_semaphores)) {
-         semaphores = vk_alloc(
-            alloc, (sizeof(*semaphores) + sizeof(*values)) * semaphore_count,
-            VN_DEFAULT_ALIGN, VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-         if (!semaphores)
-            return vn_error(dev->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-         values = (uint64_t *)&semaphores[semaphore_count];
-      }
-      memcpy(semaphores, pWaitInfo->pSemaphores,
-             sizeof(*semaphores) * semaphore_count);
-      memcpy(values, pWaitInfo->pValues, sizeof(*values) * semaphore_count);
+      STACK_ARRAY(VkSemaphore, semaphores, semaphore_count);
+      STACK_ARRAY(uint64_t, values, semaphore_count);
+      typed_memcpy(semaphores, pWaitInfo->pSemaphores, semaphore_count);
+      typed_memcpy(values, pWaitInfo->pValues, semaphore_count);
 
       struct vn_relax_state relax_state =
          vn_relax_init(dev->instance, VN_RELAX_REASON_SEMAPHORE);
@@ -2248,8 +2225,8 @@ vn_WaitSemaphores(VkDevice device,
       }
       vn_relax_fini(&relax_state);
 
-      if (semaphores != local_semaphores)
-         vk_free(alloc, semaphores);
+      STACK_ARRAY_FINISH(semaphores);
+      STACK_ARRAY_FINISH(values);
    } else {
       struct vn_relax_state relax_state =
          vn_relax_init(dev->instance, VN_RELAX_REASON_SEMAPHORE);

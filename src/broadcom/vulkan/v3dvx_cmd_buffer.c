@@ -2612,13 +2612,9 @@ v3dX(cmd_buffer_emit_draw)(struct v3dv_cmd_buffer *cmd_buffer,
 {
    struct v3dv_job *job = cmd_buffer->state.job;
    assert(job);
-
-   struct v3dv_cmd_buffer_state *state = &cmd_buffer->state;
-   struct v3dv_pipeline *pipeline = state->gfx.pipeline;
-
-   assert(pipeline);
-
-   uint32_t hw_prim_type = v3d_hw_prim_type(pipeline->topology);
+   const struct vk_dynamic_graphics_state *dyn =
+      &cmd_buffer->vk.dynamic_graphics_state;
+   uint32_t hw_prim_type = v3dv_pipeline_primitive(dyn->ia.primitive_topology);
 
    if (info->first_instance > 0) {
       v3dv_cl_ensure_space_with_branch(
@@ -2773,7 +2769,9 @@ v3dX(cmd_buffer_emit_indexed_indirect)(struct v3dv_cmd_buffer *cmd_buffer,
    assert(job);
 
    const struct v3dv_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
-   uint32_t hw_prim_type = v3d_hw_prim_type(pipeline->topology);
+   const struct vk_dynamic_graphics_state *dyn =
+      &cmd_buffer->vk.dynamic_graphics_state;
+   uint32_t hw_prim_type = v3dv_pipeline_primitive(dyn->ia.primitive_topology);
    uint8_t index_type = ffs(cmd_buffer->state.index_buffer.index_size) - 1;
 
    v3dv_cl_ensure_space_with_branch(

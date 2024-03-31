@@ -1076,6 +1076,12 @@ static const enum mesa_prim vk_to_mesa_prim[] = {
    [VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY] = MESA_PRIM_TRIANGLE_STRIP_ADJACENCY,
 };
 
+uint32_t
+v3dv_pipeline_primitive(VkPrimitiveTopology vk_prim)
+{
+   return v3d_hw_prim_type(vk_to_mesa_prim[vk_prim]);
+}
+
 static const enum pipe_logicop vk_to_pipe_logicop[] = {
    [VK_LOGIC_OP_CLEAR] = PIPE_LOGICOP_CLEAR,
    [VK_LOGIC_OP_AND] = PIPE_LOGICOP_AND,

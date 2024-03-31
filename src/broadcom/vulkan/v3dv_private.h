@@ -2705,6 +2705,8 @@ v3dv_compute_ez_state(struct vk_dynamic_graphics_state *dyn,
                       enum v3dv_ez_state *ez_state,
                       bool *incompatible_ez_test);
 
+uint32_t v3dv_pipeline_primitive(VkPrimitiveTopology vk_prim);
+
 #if DETECT_OS_ANDROID
 VkResult
 v3dv_gralloc_to_drm_explicit_layout(struct u_gralloc *gralloc,

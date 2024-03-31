@@ -2203,14 +2203,19 @@ vn_CmdPushDescriptorSetKHR(VkCommandBuffer commandBuffer,
 {
    struct vn_command_buffer *cmd =
       vn_command_buffer_from_handle(commandBuffer);
-   struct vn_update_descriptor_sets *update =
-      vn_update_descriptor_sets_parse_writes(descriptorWriteCount,
-                                             pDescriptorWrites,
-                                             &cmd->pool->allocator, layout);
+
+   const uint32_t img_info_count = vn_descriptor_set_count_write_images(
+      descriptorWriteCount, pDescriptorWrites);
+   struct vn_update_descriptor_sets *update = vn_update_descriptor_sets_alloc(
+      descriptorWriteCount, img_info_count, 0, 0, 0, &cmd->pool->allocator,
+      VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
    if (!update) {
       cmd->state = VN_COMMAND_BUFFER_STATE_INVALID;
       return;
    }
+
+   vn_update_descriptor_sets_parse_writes(update, descriptorWriteCount,
+                                          pDescriptorWrites, layout);
 
    VN_CMD_ENQUEUE(vkCmdPushDescriptorSetKHR, commandBuffer, pipelineBindPoint,
                   layout, set, update->write_count, update->writes);

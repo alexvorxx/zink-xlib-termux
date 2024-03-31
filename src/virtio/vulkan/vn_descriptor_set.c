@@ -727,7 +727,7 @@ vn_FreeDescriptorSets(VkDevice device,
    return VK_SUCCESS;
 }
 
-static struct vn_update_descriptor_sets *
+struct vn_update_descriptor_sets *
 vn_update_descriptor_sets_alloc(uint32_t write_count,
                                 uint32_t image_count,
                                 uint32_t buffer_count,
@@ -764,13 +764,11 @@ vn_update_descriptor_sets_alloc(uint32_t write_count,
    return update;
 }
 
-struct vn_update_descriptor_sets *
-vn_update_descriptor_sets_parse_writes(uint32_t write_count,
-                                       const VkWriteDescriptorSet *writes,
-                                       const VkAllocationCallbacks *alloc,
-                                       VkPipelineLayout pipeline_layout_handle)
+uint32_t
+vn_descriptor_set_count_write_images(uint32_t write_count,
+                                     const VkWriteDescriptorSet *writes)
 {
-   uint32_t img_count = 0;
+   uint32_t img_info_count = 0;
    for (uint32_t i = 0; i < write_count; i++) {
       const VkWriteDescriptorSet *write = &writes[i];
       switch (write->descriptorType) {
@@ -779,29 +777,28 @@ vn_update_descriptor_sets_parse_writes(uint32_t write_count,
       case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
       case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
       case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
-         img_count += write->descriptorCount;
+         img_info_count += write->descriptorCount;
          break;
       default:
          break;
       }
    }
+   return img_info_count;
+}
 
-   struct vn_update_descriptor_sets *update =
-      vn_update_descriptor_sets_alloc(write_count, img_count, 0, 0, 0, alloc,
-                                      VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-   if (!update)
-      return NULL;
-
-   /* the encoder does not ignore
-    * VkWriteDescriptorSet::{pImageInfo,pBufferInfo,pTexelBufferView} when it
-    * should
-    *
-    * TODO make the encoder smarter
-    */
-   memcpy(update->writes, writes, sizeof(*writes) * write_count);
-   img_count = 0;
+void
+vn_update_descriptor_sets_parse_writes(
+   struct vn_update_descriptor_sets *update,
+   uint32_t write_count,
+   const VkWriteDescriptorSet *writes,
+   VkPipelineLayout pipeline_layout_handle)
+{
    const struct vn_pipeline_layout *pipeline_layout =
       vn_pipeline_layout_from_handle(pipeline_layout_handle);
+
+   typed_memcpy(update->writes, writes, write_count);
+
+   uint32_t img_count = 0;
    for (uint32_t i = 0; i < write_count; i++) {
       const struct vn_descriptor_set_layout *set_layout =
          pipeline_layout
@@ -818,8 +815,7 @@ vn_update_descriptor_sets_parse_writes(uint32_t write_count,
       case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
       case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
       case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
-         memcpy(imgs, write->pImageInfo,
-                sizeof(*imgs) * write->descriptorCount);
+         typed_memcpy(imgs, write->pImageInfo, write->descriptorCount);
          img_count += write->descriptorCount;
 
          for (uint32_t j = 0; j < write->descriptorCount; j++) {
@@ -866,8 +862,6 @@ vn_update_descriptor_sets_parse_writes(uint32_t write_count,
          break;
       }
    }
-
-   return update;
 }
 
 void
@@ -880,14 +874,16 @@ vn_UpdateDescriptorSets(VkDevice device,
    struct vn_device *dev = vn_device_from_handle(device);
    const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
 
-   struct vn_update_descriptor_sets *update =
-      vn_update_descriptor_sets_parse_writes(
-         descriptorWriteCount, pDescriptorWrites, alloc, VK_NULL_HANDLE);
-   if (!update) {
-      /* TODO update one-by-one? */
-      vn_log(dev->instance, "TODO descriptor set update ignored due to OOM");
+   const uint32_t img_info_count = vn_descriptor_set_count_write_images(
+      descriptorWriteCount, pDescriptorWrites);
+   struct vn_update_descriptor_sets *update = vn_update_descriptor_sets_alloc(
+      descriptorWriteCount, img_info_count, 0, 0, 0, alloc,
+      VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+   if (!update)
       return;
-   }
+
+   vn_update_descriptor_sets_parse_writes(update, descriptorWriteCount,
+                                          pDescriptorWrites, VK_NULL_HANDLE);
 
    vn_async_vkUpdateDescriptorSets(dev->primary_ring, device,
                                    update->write_count, update->writes,

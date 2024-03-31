@@ -42,9 +42,8 @@ struct ac_shader_abi {
    unsigned fs_input_attr_indices[MAX_VARYING];
 
    LLVMValueRef (*load_tess_varyings)(struct ac_shader_abi *abi, LLVMTypeRef type,
-                                      LLVMValueRef vertex_index, LLVMValueRef param_index,
                                       unsigned driver_location, unsigned component,
-                                      unsigned num_components, bool load_inputs);
+                                      unsigned num_components);
 
    LLVMValueRef (*load_ubo)(struct ac_shader_abi *abi, LLVMValueRef index);
 

@@ -2691,6 +2691,7 @@ radv_emit_patch_control_points(struct radv_cmd_buffer *cmd_buffer)
 
    unsigned tcs_offchip_layout =
       SET_SGPR_FIELD(TCS_OFFCHIP_LAYOUT_PATCH_CONTROL_POINTS, d->vk.ts.patch_control_points - 1) |
+      SET_SGPR_FIELD(TCS_OFFCHIP_LAYOUT_OUT_PATCH_CP, tcs->info.tcs.tcs_vertices_out - 1) |
       SET_SGPR_FIELD(TCS_OFFCHIP_LAYOUT_NUM_PATCHES, cmd_buffer->state.tess_num_patches - 1) |
       SET_SGPR_FIELD(TCS_OFFCHIP_LAYOUT_NUM_LS_OUTPUTS, vs->info.vs.num_linked_outputs) |
       SET_SGPR_FIELD(TCS_OFFCHIP_LAYOUT_NUM_HS_OUTPUTS, tcs->info.tcs.num_linked_outputs) |

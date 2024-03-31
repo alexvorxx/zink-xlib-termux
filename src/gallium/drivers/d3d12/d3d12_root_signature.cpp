@@ -216,7 +216,7 @@ create_root_signature(struct d3d12_context *ctx, struct d3d12_root_signature_key
    if (ctx->dev_config) {
       if (FAILED(ctx->dev_config->SerializeVersionedRootSignature(&root_sig_desc,
                                                                   &sig, &error))) {
-         debug_printf("D3D12SerializeRootSignature failed\n");
+         debug_printf("D3D12SerializeRootSignature failed: %s\n", (char *)error->GetBufferPointer());
          return NULL;
       }
    } else
@@ -224,7 +224,7 @@ create_root_signature(struct d3d12_context *ctx, struct d3d12_root_signature_key
    {
       if (FAILED(ctx->D3D12SerializeVersionedRootSignature(&root_sig_desc,
                                                            &sig, &error))) {
-         debug_printf("D3D12SerializeRootSignature failed\n");
+         debug_printf("D3D12SerializeRootSignature failed: %s\n", (char *)error->GetBufferPointer());
          return NULL;
       }
    }

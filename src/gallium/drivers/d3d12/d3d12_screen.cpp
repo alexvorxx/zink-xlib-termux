@@ -1425,24 +1425,24 @@ try_find_d3d12core_next_to_self(char *path, size_t path_arr_size)
    uint32_t path_size = GetModuleFileNameA((HINSTANCE)&__ImageBase,
                                            path, path_arr_size);
    if (!path_arr_size || path_size == path_arr_size) {
-      debug_printf("Unable to get path to self");
+      debug_printf("Unable to get path to self\n");
       return nullptr;
    }
 
    auto last_slash = strrchr(path, '\\');
    if (!last_slash) {
-      debug_printf("Unable to get path to self");
+      debug_printf("Unable to get path to self\n");
       return nullptr;
    }
 
    *(last_slash + 1) = '\0';
    if (strcat_s(path, path_arr_size, "D3D12Core.dll") != 0) {
-      debug_printf("Unable to get path to D3D12Core.dll next to self");
+      debug_printf("Unable to get path to D3D12Core.dll next to self\n");
       return nullptr;
    }
 
    if (GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) {
-      debug_printf("No D3D12Core.dll exists next to self");
+      debug_printf("No D3D12Core.dll exists next to self\n");
       return nullptr;
    }
 

@@ -2773,49 +2773,6 @@ void radv_sqtt_emit_relocated_shaders(struct radv_cmd_buffer *cmd_buffer, struct
 void radv_write_user_event_marker(struct radv_cmd_buffer *cmd_buffer, enum rgp_sqtt_marker_user_event_type type,
                                   const char *str);
 
-struct radv_indirect_command_layout {
-   struct vk_object_base base;
-
-   VkIndirectCommandsLayoutUsageFlagsNV flags;
-   VkPipelineBindPoint pipeline_bind_point;
-
-   uint32_t input_stride;
-   uint32_t token_count;
-
-   bool indexed;
-   bool binds_index_buffer;
-   bool draw_mesh_tasks;
-   uint16_t draw_params_offset;
-   uint16_t index_buffer_offset;
-
-   uint16_t dispatch_params_offset;
-
-   bool bind_pipeline;
-   uint16_t pipeline_params_offset;
-
-   uint32_t bind_vbo_mask;
-   uint32_t vbo_offsets[MAX_VBS];
-
-   uint64_t push_constant_mask;
-   uint32_t push_constant_offsets[MAX_PUSH_CONSTANTS_SIZE / 4];
-   uint32_t push_constant_size;
-   uint32_t dynamic_offset_count;
-
-   uint32_t ibo_type_32;
-   uint32_t ibo_type_8;
-
-   VkIndirectCommandsLayoutTokenNV tokens[0];
-};
-
-uint32_t radv_get_indirect_cmdbuf_size(const VkGeneratedCommandsInfoNV *cmd_info);
-
-bool radv_use_dgc_predication(struct radv_cmd_buffer *cmd_buffer,
-                              const VkGeneratedCommandsInfoNV *pGeneratedCommandsInfo);
-void radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsInfoNV *pGeneratedCommandsInfo,
-                      bool cond_render_enabled);
-
-bool radv_dgc_can_preprocess(const struct radv_indirect_command_layout *layout, struct radv_pipeline *pipeline);
-
 static inline uint32_t
 radv_conv_prim_to_gs_out(uint32_t topology, bool is_ngg)
 {
@@ -3307,8 +3264,6 @@ VK_DEFINE_HANDLE_CASTS(radv_instance, vk.base, VkInstance, VK_OBJECT_TYPE_INSTAN
 VK_DEFINE_HANDLE_CASTS(radv_physical_device, vk.base, VkPhysicalDevice, VK_OBJECT_TYPE_PHYSICAL_DEVICE)
 VK_DEFINE_HANDLE_CASTS(radv_queue, vk.base, VkQueue, VK_OBJECT_TYPE_QUEUE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_device_memory, base, VkDeviceMemory, VK_OBJECT_TYPE_DEVICE_MEMORY)
-VK_DEFINE_NONDISP_HANDLE_CASTS(radv_indirect_command_layout, base, VkIndirectCommandsLayoutNV,
-                               VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NV)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_pipeline, base, VkPipeline, VK_OBJECT_TYPE_PIPELINE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_shader_object, base, VkShaderEXT, VK_OBJECT_TYPE_SHADER_EXT);
 

@@ -21,6 +21,7 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_device_generated_commands.h"
 #include "meta/radv_meta.h"
 #include "radv_private.h"
 

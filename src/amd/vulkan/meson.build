@@ -119,6 +119,7 @@ libradv_files = files(
   'radv_descriptor_set.c',
   'radv_descriptor_set.h',
   'radv_device_generated_commands.c',
+  'radv_device_generated_commands.h',
   'radv_event.c',
   'radv_event.h',
   'radv_formats.c',

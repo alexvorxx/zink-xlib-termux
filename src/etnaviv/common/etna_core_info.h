@@ -5,7 +5,10 @@
 
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
+
+#include "util/bitset.h"
 
 enum etna_feature {
    ETNA_FEATURE_FAST_CLEAR,
@@ -64,4 +67,24 @@ enum etna_feature {
 struct etna_core_info {
    uint32_t model;
    uint32_t revision;
+
+   BITSET_DECLARE(feature, ETNA_FEATURE_NUM);
 };
+
+static inline bool
+etna_core_has_feature(const struct etna_core_info *info, enum etna_feature feature)
+{
+   return BITSET_TEST(info->feature, feature);
+}
+
+static inline void
+etna_core_disable_feature(struct etna_core_info *info, enum etna_feature feature)
+{
+   BITSET_CLEAR(info->feature, feature);
+}
+
+static inline void
+etna_core_enable_feature(struct etna_core_info *info, enum etna_feature feature)
+{
+   BITSET_SET(info->feature, feature);
+}

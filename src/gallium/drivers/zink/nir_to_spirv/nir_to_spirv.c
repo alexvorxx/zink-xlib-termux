@@ -3870,6 +3870,8 @@ emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
    if (tex_src.proj && coord_components > 0)
       move_tex_proj_to_coord(ctx, coord_components, &tex_src);
 
+   SpvId result = 0;
+
    switch (tex->op) {
    case nir_texop_txs: {
       SpvId image = get_tex_image_to_load(ctx, image_type, is_buffer, load);
@@ -3884,41 +3886,36 @@ emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
        */
       if (!tex_src.lod && tex_instr_is_lod_allowed(tex))
          tex_src.lod = emit_uint_const(ctx, 32, 0);
-      SpvId result = spirv_builder_emit_image_query_size(&ctx->builder,
-                                                         dest_type, image,
-                                                         tex_src.lod);
-      store_def(ctx, tex->def.index, result, tex->dest_type);
-      return;
+      result = spirv_builder_emit_image_query_size(&ctx->builder,
+                                                   dest_type, image,
+                                                   tex_src.lod);
+      break;
    }
    case nir_texop_query_levels: {
       SpvId image = get_tex_image_to_load(ctx, image_type, is_buffer, load);
-      SpvId result = spirv_builder_emit_image_query_levels(&ctx->builder,
-                                                           dest_type, image);
-      store_def(ctx, tex->def.index, result, tex->dest_type);
-      return;
+      result = spirv_builder_emit_image_query_levels(&ctx->builder,
+                                                     dest_type, image);
+      break;
    }
    case nir_texop_texture_samples: {
       SpvId image = get_tex_image_to_load(ctx, image_type, is_buffer, load);
-      SpvId result = spirv_builder_emit_unop(&ctx->builder, SpvOpImageQuerySamples,
-                                             dest_type, image);
-      store_def(ctx, tex->def.index, result, tex->dest_type);
-      return;
+      result = spirv_builder_emit_unop(&ctx->builder, SpvOpImageQuerySamples,
+                                       dest_type, image);
+      break;
    }
    case nir_texop_lod: {
-      SpvId result = spirv_builder_emit_image_query_lod(&ctx->builder,
-                                                        dest_type, load,
-                                                        tex_src.coord);
-      store_def(ctx, tex->def.index, result, tex->dest_type);
-      return;
+      result = spirv_builder_emit_image_query_lod(&ctx->builder,
+                                                  dest_type, load,
+                                                  tex_src.coord);
+      break;
+   }
+   default:
+      result = emit_tex_readop(ctx, bindless_var, load, &tex_src,
+                               dest_type, is_buffer, var, image_type, tex);
+      break;
    }
 
-   default: {
-      SpvId result = emit_tex_readop(ctx, bindless_var, load, &tex_src,
-                               dest_type, is_buffer, var, image_type, tex);
-      store_def(ctx, tex->def.index, result, tex->dest_type);
-      break;
-   };
-   }
+   store_def(ctx, tex->def.index, result, tex->dest_type);
 
    if (tex->is_sparse)
       tex->def.num_components++;

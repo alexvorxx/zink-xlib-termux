@@ -86,6 +86,7 @@ struct d3d12_varying_info {
          unsigned interpolation:3;   // INTERP_MODE_COUNT = 5
          unsigned driver_location:6; // VARYING_SLOT_MAX = 64
          unsigned compact:1;
+         unsigned always_active_io:1;
       } vars[4];
    } slots[VARYING_SLOT_MAX];
    uint64_t mask;

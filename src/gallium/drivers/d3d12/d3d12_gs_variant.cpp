@@ -121,6 +121,7 @@ d3d12_make_passthrough_gs(struct d3d12_context *ctx, struct d3d12_gs_variant_key
          out->data.driver_location = key->varyings->slots[i].vars[j].driver_location;
          out->data.interpolation = key->varyings->slots[i].vars[j].interpolation;
          out->data.compact = key->varyings->slots[i].vars[j].compact;
+         out->data.always_active_io = key->varyings->slots[i].vars[j].always_active_io;
 
          nir_deref_instr *in_value = nir_build_deref_array(&b, nir_build_deref_var(&b, in),
                                                                nir_imm_int(&b, 0));
@@ -236,6 +237,7 @@ d3d12_begin_emit_primitives_gs(struct emit_primitives_context *emit_ctx,
          emit_ctx->out[emit_ctx->num_vars]->data.driver_location = key->varyings->slots[i].vars[j].driver_location;
          emit_ctx->out[emit_ctx->num_vars]->data.interpolation = key->varyings->slots[i].vars[j].interpolation;
          emit_ctx->out[emit_ctx->num_vars]->data.compact = key->varyings->slots[i].vars[j].compact;
+         emit_ctx->out[emit_ctx->num_vars]->data.always_active_io = key->varyings->slots[i].vars[j].always_active_io;
 
          emit_ctx->num_vars++;
       }

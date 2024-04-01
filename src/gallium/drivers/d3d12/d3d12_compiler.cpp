@@ -515,6 +515,7 @@ create_varying_from_info(nir_shader *nir, const struct d3d12_varying_info *info,
    var->data.interpolation = info->slots[slot].vars[slot_frac].interpolation;
    var->data.patch = info->slots[slot].patch;
    var->data.compact = info->slots[slot].vars[slot_frac].compact;
+   var->data.always_active_io = info->slots[slot].vars[slot_frac].always_active_io;
    if (patch)
       var->data.location += VARYING_SLOT_PATCH0;
 
@@ -573,6 +574,7 @@ fill_varyings(struct d3d12_context *ctx, const nir_shader *s,
       var_slot.driver_location = var->data.driver_location;
       var_slot.interpolation = var->data.interpolation;
       var_slot.compact = var->data.compact;
+      var_slot.always_active_io = var->data.always_active_io;
       info.mask |= slot_bit;
       info.slots[slot].location_frac_mask |= (1 << var->data.location_frac);
    }

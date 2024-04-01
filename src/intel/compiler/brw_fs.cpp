@@ -2599,10 +2599,14 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
             fprintf(file, "%fdf", inst->src[i].df);
             break;
          case BRW_TYPE_W:
+            fprintf(file, "%dw", (int)(int16_t)inst->src[i].d);
+            break;
          case BRW_TYPE_D:
             fprintf(file, "%dd", inst->src[i].d);
             break;
          case BRW_TYPE_UW:
+            fprintf(file, "%duw", inst->src[i].ud & 0xffff);
+            break;
          case BRW_TYPE_UD:
             fprintf(file, "%uu", inst->src[i].ud);
             break;

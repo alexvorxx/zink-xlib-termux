@@ -1900,26 +1900,57 @@ v3dv_EndCommandBuffer(VkCommandBuffer commandBuffer)
    return VK_SUCCESS;
 }
 
-static void
-clone_bo_list(struct v3dv_cmd_buffer *cmd_buffer,
+static bool
+clone_bo_list(struct v3dv_device *device,
               struct list_head *dst,
               struct list_head *src)
 {
-   assert(cmd_buffer);
+   assert(device);
 
    list_inithead(dst);
    list_for_each_entry(struct v3dv_bo, bo, src, list_link) {
       struct v3dv_bo *clone_bo =
-         vk_alloc(&cmd_buffer->device->vk.alloc, sizeof(struct v3dv_bo), 8,
+         vk_alloc(&device->vk.alloc, sizeof(struct v3dv_bo), 8,
                   VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-      if (!clone_bo) {
-         v3dv_flag_oom(cmd_buffer, NULL);
-         return;
-      }
+      if (!clone_bo)
+         return false;
 
       *clone_bo = *bo;
       list_addtail(&clone_bo->list_link, dst);
    }
+
+   return true;
+}
+
+struct v3dv_job *
+v3dv_job_clone(struct v3dv_job *job)
+{
+   struct v3dv_job *clone = vk_alloc(&job->device->vk.alloc,
+                                     sizeof(struct v3dv_job), 8,
+                                     VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+   if (!clone)
+      return NULL;
+
+   /* Cloned jobs don't duplicate resources! */
+   *clone = *job;
+   clone->is_clone = true;
+   clone->cmd_buffer = NULL;
+
+   /* We need to regen the BO lists so that they point to the BO list in the
+    * cloned job. Otherwise functions like list_length() will loop forever.
+    */
+   if (job->type == V3DV_JOB_TYPE_GPU_CL) {
+      assert(job->cmd_buffer);
+      struct v3dv_device *device = job->cmd_buffer->device;
+      if (!clone_bo_list(device, &clone->bcl.bo_list, &job->bcl.bo_list))
+         return NULL;
+      if (!clone_bo_list(device, &clone->rcl.bo_list, &job->rcl.bo_list))
+         return NULL;
+      if (!clone_bo_list(device, &clone->indirect.bo_list, &job->indirect.bo_list))
+         return NULL;
+   }
+
+   return clone;
 }
 
 /* Clones a job for inclusion in the given command buffer. Note that this
@@ -1932,31 +1963,15 @@ struct v3dv_job *
 v3dv_job_clone_in_cmd_buffer(struct v3dv_job *job,
                              struct v3dv_cmd_buffer *cmd_buffer)
 {
-   struct v3dv_job *clone_job = vk_alloc(&job->device->vk.alloc,
-                                         sizeof(struct v3dv_job), 8,
-                                         VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-   if (!clone_job) {
+   struct v3dv_job *clone = v3dv_job_clone(job);
+   if (!clone) {
       v3dv_flag_oom(cmd_buffer, NULL);
       return NULL;
    }
 
-   /* Cloned jobs don't duplicate resources! */
-   *clone_job = *job;
-   clone_job->is_clone = true;
-   clone_job->cmd_buffer = cmd_buffer;
-   list_addtail(&clone_job->list_link, &cmd_buffer->jobs);
-
-   /* We need to regen the BO lists so that they point to the BO list in the
-    * cloned job. Otherwise functions like list_length() will loop forever.
-    */
-   if (job->type == V3DV_JOB_TYPE_GPU_CL) {
-      clone_bo_list(cmd_buffer, &clone_job->bcl.bo_list, &job->bcl.bo_list);
-      clone_bo_list(cmd_buffer, &clone_job->rcl.bo_list, &job->rcl.bo_list);
-      clone_bo_list(cmd_buffer, &clone_job->indirect.bo_list,
-                    &job->indirect.bo_list);
-   }
-
-   return clone_job;
+   clone->cmd_buffer = cmd_buffer;
+   list_addtail(&clone->list_link, &cmd_buffer->jobs);
+   return clone;
 }
 
 void

@@ -500,7 +500,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
          NIR_PASS(_, stage->nir, nir_opt_non_uniform_access);
       }
 
-      if (!radv_use_llvm_for_stage(device, stage->stage)) {
+      if (!radv_use_llvm_for_stage(pdev, stage->stage)) {
          nir_lower_non_uniform_access_options options = {
             .types = lower_non_uniform_access_types,
             .callback = &non_uniform_access_callback,
@@ -552,7 +552,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
       nir_shader_gather_info(stage->nir, nir_shader_get_entrypoint(stage->nir));
 
    bool fix_derivs_in_divergent_cf =
-      stage->stage == MESA_SHADER_FRAGMENT && !radv_use_llvm_for_stage(device, stage->stage);
+      stage->stage == MESA_SHADER_FRAGMENT && !radv_use_llvm_for_stage(pdev, stage->stage);
    if (fix_derivs_in_divergent_cf) {
       NIR_PASS(_, stage->nir, nir_convert_to_lcssa, true, true);
       nir_divergence_analysis(stage->nir);
@@ -621,7 +621,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
       ac_nir_lower_ps_options options = {
          .gfx_level = gfx_level,
          .family = pdev->info.family,
-         .use_aco = !radv_use_llvm_for_stage(device, stage->stage),
+         .use_aco = !radv_use_llvm_for_stage(pdev, stage->stage),
          .uses_discard = true,
          .alpha_func = COMPARE_FUNC_ALWAYS,
          .no_color_export = stage->info.has_epilog,
@@ -671,7 +671,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
                .allow_fp16 = gfx_level >= GFX9,
             });
 
-   if (radv_use_llvm_for_stage(device, stage->stage))
+   if (radv_use_llvm_for_stage(pdev, stage->stage))
       NIR_PASS_V(stage->nir, nir_lower_io_to_scalar, nir_var_mem_global, NULL, NULL);
 
    NIR_PASS(_, stage->nir, ac_nir_lower_global_access);
@@ -715,7 +715,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
          .fold_tex_dest_types = nir_type_float,
          .fold_image_dest_types = nir_type_float,
          .fold_image_store_data = true,
-         .fold_image_srcs = !radv_use_llvm_for_stage(device, stage->stage),
+         .fold_image_srcs = !radv_use_llvm_for_stage(pdev, stage->stage),
          .fold_srcs_options_count = separate_g16 ? 2 : 1,
          .fold_srcs_options = fold_srcs_options,
       };
@@ -1071,6 +1071,7 @@ radv_GetPipelineExecutableInternalRepresentationsKHR(
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
    RADV_FROM_HANDLE(radv_pipeline, pipeline, pExecutableInfo->pipeline);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    gl_shader_stage stage;
    struct radv_shader *shader =
       radv_get_shader_from_executable_index(pipeline, pExecutableInfo->executableIndex, &stage);
@@ -1092,7 +1093,7 @@ radv_GetPipelineExecutableInternalRepresentationsKHR(
    /* backend IR */
    if (p < end) {
       p->isText = true;
-      if (radv_use_llvm_for_stage(device, stage)) {
+      if (radv_use_llvm_for_stage(pdev, stage)) {
          desc_copy(p->name, "LLVM IR");
          desc_copy(p->description, "The LLVM IR after some optimizations");
       } else {

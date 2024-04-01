@@ -312,10 +312,11 @@ declare_ngg_sgprs(const struct radv_shader_info *info, struct radv_shader_args *
 static void
 radv_init_shader_args(const struct radv_device *device, gl_shader_stage stage, struct radv_shader_args *args)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    memset(args, 0, sizeof(*args));
 
-   args->explicit_scratch_args = !radv_use_llvm_for_stage(device, stage);
-   args->remap_spi_ps_input = !radv_use_llvm_for_stage(device, stage);
+   args->explicit_scratch_args = !radv_use_llvm_for_stage(pdev, stage);
+   args->remap_spi_ps_input = !radv_use_llvm_for_stage(pdev, stage);
    args->load_grid_size_from_user_sgpr = device->load_grid_size_from_user_sgpr;
 
    for (int i = 0; i < MAX_SETS; i++)

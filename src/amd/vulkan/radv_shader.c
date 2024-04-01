@@ -611,7 +611,7 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
    bool gfx7minus = pdev->info.gfx_level <= GFX7;
    bool has_inverse_ballot = true;
 #if LLVM_AVAILABLE
-   has_inverse_ballot = !radv_use_llvm_for_stage(device, nir->info.stage) || LLVM_VERSION_MAJOR >= 17;
+   has_inverse_ballot = !radv_use_llvm_for_stage(pdev, nir->info.stage) || LLVM_VERSION_MAJOR >= 17;
 #endif
 
    NIR_PASS(_, nir, nir_lower_subgroups,
@@ -622,7 +622,7 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
                .lower_to_scalar = 1,
                .lower_subgroup_masks = 1,
                .lower_relative_shuffle = 1,
-               .lower_rotate_to_shuffle = radv_use_llvm_for_stage(device, nir->info.stage),
+               .lower_rotate_to_shuffle = radv_use_llvm_for_stage(pdev, nir->info.stage),
                .lower_shuffle_to_32bit = 1,
                .lower_vote_eq = 1,
                .lower_vote_bool_eq = 1,
@@ -2510,10 +2510,12 @@ shader_compile(struct radv_device *device, struct nir_shader *const *shaders, in
    struct radv_shader_binary *binary = NULL;
 
 #if LLVM_AVAILABLE
-   if (radv_use_llvm_for_stage(device, stage) || options->dump_shader || options->record_ir)
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
+   if (radv_use_llvm_for_stage(pdev, stage) || options->dump_shader || options->record_ir)
       ac_init_llvm_once();
 
-   if (radv_use_llvm_for_stage(device, stage)) {
+   if (radv_use_llvm_for_stage(pdev, stage)) {
       llvm_compile_shader(options, info, shader_count, shaders, &binary, args);
 #else
    if (false) {

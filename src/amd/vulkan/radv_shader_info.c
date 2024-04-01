@@ -1802,7 +1802,7 @@ radv_link_shaders_info(struct radv_device *device, struct radv_shader_stage *pro
             ac_compute_lshs_workgroup_size(pdev->info.gfx_level, MESA_SHADER_VERTEX, tcs_stage->info.num_tess_patches,
                                            gfx_state->ts.patch_control_points, tcs_stage->info.tcs.tcs_vertices_out);
 
-         if (!radv_use_llvm_for_stage(device, MESA_SHADER_VERTEX)) {
+         if (!radv_use_llvm_for_stage(pdev, MESA_SHADER_VERTEX)) {
             /* When the number of TCS input and output vertices are the same (typically 3):
              * - There is an equal amount of LS and HS invocations
              * - In case of merged LSHS shaders, the LS and HS halves of the shader always process

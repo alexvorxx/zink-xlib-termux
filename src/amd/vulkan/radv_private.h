@@ -3758,9 +3758,8 @@ void radv_video_get_profile_alignments(struct radv_physical_device *pdev, const 
  * specific shader stage (developers only).
  */
 static inline bool
-radv_use_llvm_for_stage(const struct radv_device *device, UNUSED gl_shader_stage stage)
+radv_use_llvm_for_stage(const struct radv_physical_device *pdev, UNUSED gl_shader_stage stage)
 {
-   const struct radv_physical_device *pdev = radv_device_physical(device);
    return pdev->use_llvm;
 }
 

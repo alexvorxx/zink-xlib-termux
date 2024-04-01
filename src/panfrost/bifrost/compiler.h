@@ -542,7 +542,7 @@ typedef struct {
 } bi_instr;
 
 static inline bool
-bi_is_staging_src(bi_instr *I, unsigned s)
+bi_is_staging_src(const bi_instr *I, unsigned s)
 {
         return (s == 0 || s == 4) && bi_opcode_props[I->op].sr_read;
 }
@@ -1133,7 +1133,7 @@ void bi_compute_liveness(bi_context *ctx);
 void bi_liveness_ins_update(uint8_t *live, bi_instr *ins, unsigned max);
 
 void bi_postra_liveness(bi_context *ctx);
-uint64_t bi_postra_liveness_ins(uint64_t live, bi_instr *ins);
+uint64_t MUST_CHECK bi_postra_liveness_ins(uint64_t live, bi_instr *ins);
 
 /* Layout */
 

@@ -54,7 +54,6 @@
  * be a performance penalty.
  */
 
-#define BI_NUM_GENERAL_SLOTS 3
 #define BI_NUM_REGISTERS 64
 
 /*
@@ -199,6 +198,28 @@ bi_set_dependencies(bi_block *block, bi_instr *I, struct bi_scoreboard_state *st
    if (bi_is_memory_access(I)) {
       u_foreach_bit(slot, st->memory)
          I->flow |= bi_pop_slot(st, slot);
+   }
+
+   /* We need to wait for all general slots before a barrier. The reason is
+    * unknown. In theory, this is redundant, since the BARRIER instruction will
+    * be followed immediately by .wait which waits for all slots. However, that
+    * doesn't seem to work properly in practice.
+    *
+    * The DDK is observed to use the same workaround, going so far as
+    * introducing a NOP before a BARRIER at the beginning of a basic block when
+    * there are outstanding stores.
+    *
+    *     NOP.wait12
+    *     BARRIER.slot7.wait
+    *
+    * Luckily, this situation is pretty rare. The wait introduced here can
+    * usually be merged into the preceding instruction.
+    */
+   if (I->op == BI_OPCODE_BARRIER) {
+      for (unsigned i = 0; i < VA_NUM_GENERAL_SLOTS; ++i) {
+         if (st->write[i] || (st->memory & BITFIELD_BIT(i)))
+            I->flow |= bi_pop_slot(st, i);
+      }
    }
 }
 
@@ -429,7 +450,7 @@ va_insert_flow_control_nops(bi_context *ctx)
              * waits on general slots. The dataflow analysis should be ignoring
              * the special slots #6 and #7, which are handled separately.
              */
-            assert((I->flow & ~BITFIELD_MASK(BI_NUM_GENERAL_SLOTS)) == 0);
+            assert((I->flow & ~BITFIELD_MASK(VA_NUM_GENERAL_SLOTS)) == 0);
 
             bi_flow(ctx, bi_before_instr(I), I->flow);
             I->flow = 0;

@@ -2325,10 +2325,15 @@ void si_ps_key_update_framebuffer_blend(struct si_context *sctx)
     * Check if any output is eliminated.
     *
     * Dual source blending never has color buffer 1 enabled, so ignore it.
+    *
+    * On gfx11, pixel shaders that write memory should be compiled with an inlined epilog,
+    * so that the compiler can see s_endpgm and deallocates VGPRs before memory stores return.
     */
    if (sel->info.colors_written_4bit &
        (blend->dual_src_blend ? 0xffffff0f : 0xffffffff) &
        ~(sctx->framebuffer.colorbuf_enabled_4bit & blend->cb_target_enabled_4bit))
+      key->ps.opt.prefer_mono = 1;
+   else if (sctx->gfx_level >= GFX11 && sel->info.base.writes_memory)
       key->ps.opt.prefer_mono = 1;
    else
       key->ps.opt.prefer_mono = 0;
@@ -3152,11 +3157,6 @@ static void *si_create_shader_selector(struct pipe_context *ctx,
 
    if (!sel)
       return NULL;
-
-   if (sscreen->info.gfx_level == GFX11 && state->stream_output.num_outputs) {
-      fprintf(stderr, "radeonsi: streamout unimplemented\n");
-      abort();
-   }
 
    sel->screen = sscreen;
    sel->compiler_ctx_state.debug = sctx->debug;

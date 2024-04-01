@@ -627,17 +627,8 @@ void st_init_limits(struct pipe_screen *screen,
    c->SparseTextureFullArrayCubeMipmaps =
       screen->get_param(screen, PIPE_CAP_SPARSE_TEXTURE_FULL_ARRAY_CUBE_MIPMAPS);
 
-   /* =0: on CPU, always disabled
-    * >0: on GPU, enable by default, user can disable it manually
-    * <0: unknown, disable by default, user can enable it manually
-    */
-   int accel = screen->get_param(screen, PIPE_CAP_ACCELERATED);
    c->HardwareAcceleratedSelect =
-      accel && debug_get_bool_option("MESA_HW_ACCEL_SELECT", accel > 0) &&
-      /* internal geometry shader need indirect array access */
-      !c->ShaderCompilerOptions[MESA_SHADER_GEOMETRY].EmitNoIndirectTemp &&
-      /* internal geometry shader need SSBO support */
-      c->Program[MESA_SHADER_GEOMETRY].MaxShaderStorageBlocks;
+      screen->get_param(screen, PIPE_CAP_HARDWARE_GL_SELECT);
 }
 
 
@@ -883,7 +874,8 @@ void st_init_extensions(struct pipe_screen *screen,
       { o(OES_texture_float_linear),         PIPE_CAP_TEXTURE_FLOAT_LINEAR             },
       { o(OES_texture_half_float_linear),    PIPE_CAP_TEXTURE_HALF_FLOAT_LINEAR        },
       { o(OES_texture_view),                 PIPE_CAP_SAMPLER_VIEW_TARGET              },
-      { o(INTEL_blackhole_render),           PIPE_CAP_FRONTEND_NOOP,                   },
+      { o(INTEL_blackhole_render),           PIPE_CAP_FRONTEND_NOOP                    },
+      { o(ARM_shader_framebuffer_fetch_depth_stencil), PIPE_CAP_FBFETCH_ZS             },
    };
 
    /* Required: render target and sampler support */
@@ -1163,6 +1155,8 @@ void st_init_extensions(struct pipe_screen *screen,
    consts->DoDCEBeforeClipCullAnalysis = options->do_dce_before_clip_cull_analysis;
 
    consts->GLSLIgnoreWriteToReadonlyVar = options->glsl_ignore_write_to_readonly_var;
+
+   consts->ForceMapBufferSynchronized = options->force_gl_map_buffer_synchronized;
 
    consts->PrimitiveRestartFixedIndex =
       screen->get_param(screen, PIPE_CAP_PRIMITIVE_RESTART_FIXED_INDEX);

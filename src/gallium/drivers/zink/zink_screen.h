@@ -99,8 +99,8 @@ struct zink_screen {
 
    bool threaded;
    bool is_cpu;
-   uint32_t curr_batch; //the current batch id
-   uint32_t last_finished; //this is racy but ultimately doesn't matter
+   uint64_t curr_batch; //the current batch id
+   uint32_t last_finished;
    VkSemaphore sem;
    VkSemaphore prev_sem;
    VkFence fence;
@@ -137,6 +137,7 @@ struct zink_screen {
       uint32_t next_bo_unique_id;
    } pb;
    uint8_t heap_map[VK_MAX_MEMORY_TYPES];
+   VkMemoryPropertyFlags heap_flags[VK_MAX_MEMORY_TYPES];
    bool resizable_bar;
 
    uint64_t total_video_mem;
@@ -162,6 +163,7 @@ struct zink_screen {
    bool faked_e5sparse; //drivers may not expose R9G9B9E5 but cts requires it
 
    uint32_t gfx_queue;
+   uint32_t sparse_queue;
    uint32_t max_queues;
    uint32_t timestamp_valid_bits;
 
@@ -169,7 +171,7 @@ struct zink_screen {
 
    VkDevice dev;
    VkQueue queue; //gfx+compute
-   VkQueue thread_queue; //gfx+compute
+   VkQueue queue_sparse;
    simple_mtx_t queue_lock;
    VkDebugUtilsMessengerEXT debugUtilsCallbackHandle;
 
@@ -216,36 +218,38 @@ struct zink_screen {
 
 /* update last_finished to account for batch_id wrapping */
 static inline void
-zink_screen_update_last_finished(struct zink_screen *screen, uint32_t batch_id)
+zink_screen_update_last_finished(struct zink_screen *screen, uint64_t batch_id)
 {
+   const uint32_t check_id = (uint32_t)batch_id;
    /* last_finished may have wrapped */
    if (screen->last_finished < UINT_MAX / 2) {
       /* last_finished has wrapped, batch_id has not */
-      if (batch_id > UINT_MAX / 2)
+      if (check_id > UINT_MAX / 2)
          return;
-   } else if (batch_id < UINT_MAX / 2) {
+   } else if (check_id < UINT_MAX / 2) {
       /* batch_id has wrapped, last_finished has not */
-      screen->last_finished = batch_id;
+      screen->last_finished = check_id;
       return;
    }
    /* neither have wrapped */
-   screen->last_finished = MAX2(batch_id, screen->last_finished);
+   screen->last_finished = MAX2(check_id, screen->last_finished);
 }
 
 /* check a batch_id against last_finished while accounting for wrapping */
 static inline bool
 zink_screen_check_last_finished(struct zink_screen *screen, uint32_t batch_id)
 {
+   const uint32_t check_id = (uint32_t)batch_id;
    /* last_finished may have wrapped */
    if (screen->last_finished < UINT_MAX / 2) {
       /* last_finished has wrapped, batch_id has not */
-      if (batch_id > UINT_MAX / 2)
+      if (check_id > UINT_MAX / 2)
          return true;
-   } else if (batch_id < UINT_MAX / 2) {
+   } else if (check_id < UINT_MAX / 2) {
       /* batch_id has wrapped, last_finished has not */
       return false;
    }
-   return screen->last_finished >= batch_id;
+   return screen->last_finished >= check_id;
 }
 
 bool
@@ -292,7 +296,7 @@ bool
 zink_screen_batch_id_wait(struct zink_screen *screen, uint32_t batch_id, uint64_t timeout);
 
 bool
-zink_screen_timeline_wait(struct zink_screen *screen, uint32_t batch_id, uint64_t timeout);
+zink_screen_timeline_wait(struct zink_screen *screen, uint64_t batch_id, uint64_t timeout);
 
 bool
 zink_is_depth_format_supported(struct zink_screen *screen, VkFormat format);

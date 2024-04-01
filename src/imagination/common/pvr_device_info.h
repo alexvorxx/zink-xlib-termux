@@ -259,6 +259,7 @@ struct pvr_device_features {
    bool has_gs_rta_support : 1;
    bool has_isp_max_tiles_in_flight : 1;
    bool has_isp_samples_per_pixel : 1;
+   bool has_max_instances_per_pds_task : 1;
    bool has_max_multisample : 1;
    bool has_max_partitions : 1;
    bool has_max_usc_tasks : 1;
@@ -285,10 +286,12 @@ struct pvr_device_features {
    bool has_usc_f16sop_u8 : 1;
    bool has_usc_min_output_registers_per_pix : 1;
    bool has_usc_pixel_partition_mask : 1;
+   bool has_usc_slots : 1;
    bool has_uvs_banks : 1;
    bool has_uvs_pba_entries : 1;
    bool has_uvs_vtx_entries : 1;
    bool has_vdm_cam_size : 1;
+   bool has_vdm_degenerate_culling : 1;
    bool has_xpu_max_slaves : 1;
    bool has_xt_top_infrastructure : 1;
    bool has_zls_subtile : 1;
@@ -296,6 +299,7 @@ struct pvr_device_features {
    uint32_t common_store_size_in_dwords;
    uint32_t isp_max_tiles_in_flight;
    uint32_t isp_samples_per_pixel;
+   uint32_t max_instances_per_pds_task;
    uint32_t max_multisample;
    uint32_t max_partitions;
    uint32_t max_usc_tasks;
@@ -307,6 +311,7 @@ struct pvr_device_features {
    uint32_t tile_size_x;
    uint32_t tile_size_y;
    uint32_t usc_min_output_registers_per_pix;
+   uint32_t usc_slots;
    uint32_t uvs_banks;
    uint32_t uvs_pba_entries;
    uint32_t uvs_vtx_entries;

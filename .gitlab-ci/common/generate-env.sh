@@ -81,6 +81,7 @@ for var in \
     MESA_IMAGE \
     MESA_IMAGE_PATH \
     MESA_IMAGE_TAG \
+    MESA_LOADER_DRIVER_OVERRIDE \
     MESA_TEMPLATES_COMMIT \
     MESA_VK_IGNORE_CONFORMANCE_WARNING \
     MESA_SPIRV_LOG_LEVEL \
@@ -112,6 +113,7 @@ for var in \
     VK_CPU \
     VK_DRIVER \
     VK_ICD_FILENAMES \
+    VKD3D_PROTON_RESULTS \
     ; do
   if [ -n "${!var+x}" ]; then
     echo "export $var=${!var@Q}"

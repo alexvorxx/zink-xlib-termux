@@ -72,9 +72,7 @@ panfrost_batch_init(struct panfrost_context *ctx,
 
         batch->seqnum = ++ctx->batches.seqnum;
 
-        batch->first_bo = INT32_MAX;
-        batch->last_bo = INT32_MIN;
-        util_sparse_array_init(&batch->bos, sizeof(uint32_t), 64);
+        util_dynarray_init(&batch->bos, NULL);
 
         batch->minx = batch->miny = ~0;
         batch->maxx = batch->maxy = 0;
@@ -113,10 +111,11 @@ panfrost_batch_cleanup(struct panfrost_context *ctx, struct panfrost_batch *batc
 
         unsigned batch_idx = panfrost_batch_idx(batch);
 
-        for (int i = batch->first_bo; i <= batch->last_bo; i++) {
-                uint32_t *flags = util_sparse_array_get(&batch->bos, i);
+        pan_bo_access *flags = util_dynarray_begin(&batch->bos);
+        unsigned end_bo = util_dynarray_num_elements(&batch->bos, pan_bo_access);
 
-                if (!*flags)
+        for (int i = 0; i < end_bo; ++i) {
+                if (!flags[i])
                         continue;
 
                 struct panfrost_bo *bo = pan_lookup_bo(dev, i);
@@ -142,7 +141,7 @@ panfrost_batch_cleanup(struct panfrost_context *ctx, struct panfrost_batch *batc
 
         util_unreference_framebuffer_state(&batch->key);
 
-        util_sparse_array_finish(&batch->bos);
+        util_dynarray_fini(&batch->bos);
 
         memset(batch, 0, sizeof(*batch));
         BITSET_CLEAR(ctx->batches.active, batch_idx);
@@ -150,8 +149,7 @@ panfrost_batch_cleanup(struct panfrost_context *ctx, struct panfrost_batch *batc
 
 static void
 panfrost_batch_submit(struct panfrost_context *ctx,
-                      struct panfrost_batch *batch,
-                      uint32_t in_sync, uint32_t out_sync);
+                      struct panfrost_batch *batch);
 
 static struct panfrost_batch *
 panfrost_get_batch(struct panfrost_context *ctx,
@@ -177,7 +175,7 @@ panfrost_get_batch(struct panfrost_context *ctx,
 
         /* The selected slot is used, we need to flush the batch */
         if (batch->seqnum)
-                panfrost_batch_submit(ctx, batch, 0, 0);
+                panfrost_batch_submit(ctx, batch);
 
         panfrost_batch_init(ctx, key, batch);
 
@@ -225,7 +223,7 @@ panfrost_get_fresh_batch_for_fbo(struct panfrost_context *ctx, const char *reaso
 
         if (batch->scoreboard.first_job) {
                 perf_debug_ctx(ctx, "Flushing the current FBO due to: %s", reason);
-                panfrost_batch_submit(ctx, batch, 0, 0);
+                panfrost_batch_submit(ctx, batch);
                 batch = panfrost_get_batch(ctx, &ctx->pipe_framebuffer);
         }
 
@@ -265,7 +263,7 @@ panfrost_batch_update_access(struct panfrost_batch *batch,
 
                         /* Submit if it's a user */
                         if (_mesa_set_search(batch->resources, rsrc))
-                                panfrost_batch_submit(ctx, batch, 0, 0);
+                                panfrost_batch_submit(ctx, batch);
                 }
         }
 
@@ -275,6 +273,21 @@ panfrost_batch_update_access(struct panfrost_batch *batch,
         }
 }
 
+static pan_bo_access *
+panfrost_batch_get_bo_access(struct panfrost_batch *batch, unsigned handle)
+{
+        unsigned size = util_dynarray_num_elements(&batch->bos, pan_bo_access);
+
+        if (handle >= size) {
+                unsigned grow = handle + 1 - size;
+
+                memset(util_dynarray_grow(&batch->bos, pan_bo_access, grow),
+                       0, grow * sizeof(pan_bo_access));
+        }
+
+        return util_dynarray_element(&batch->bos, pan_bo_access, handle);
+}
+
 static void
 panfrost_batch_add_bo_old(struct panfrost_batch *batch,
                 struct panfrost_bo *bo, uint32_t flags)
@@ -282,13 +295,12 @@ panfrost_batch_add_bo_old(struct panfrost_batch *batch,
         if (!bo)
                 return;
 
-        uint32_t *entry = util_sparse_array_get(&batch->bos, bo->gem_handle);
-        uint32_t old_flags = *entry;
+        pan_bo_access *entry =
+                panfrost_batch_get_bo_access(batch, bo->gem_handle);
+        pan_bo_access old_flags = *entry;
 
         if (!old_flags) {
                 batch->num_bos++;
-                batch->first_bo = MIN2(batch->first_bo, bo->gem_handle);
-                batch->last_bo = MAX2(batch->last_bo, bo->gem_handle);
                 panfrost_bo_reference(bo);
         }
 
@@ -436,6 +448,7 @@ panfrost_batch_to_fb_info(const struct panfrost_batch *batch,
         fb->nr_samples = util_framebuffer_get_num_samples(&batch->key);
         fb->rt_count = batch->key.nr_cbufs;
         fb->sprite_coord_origin = pan_tristate_get(batch->sprite_coord_origin);
+        fb->first_provoking_vertex = pan_tristate_get(batch->first_provoking_vertex);
 
         static const unsigned char id_swz[] = {
                 PIPE_SWIZZLE_X, PIPE_SWIZZLE_Y, PIPE_SWIZZLE_Z, PIPE_SWIZZLE_W,
@@ -590,10 +603,11 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
                             sizeof(*bo_handles));
         assert(bo_handles);
 
-        for (int i = batch->first_bo; i <= batch->last_bo; i++) {
-                uint32_t *flags = util_sparse_array_get(&batch->bos, i);
+        pan_bo_access *flags = util_dynarray_begin(&batch->bos);
+        unsigned end_bo = util_dynarray_num_elements(&batch->bos, pan_bo_access);
 
-                if (!*flags)
+        for (int i = 0; i < end_bo; ++i) {
+                if (!flags[i])
                         continue;
 
                 assert(submit.bo_handle_count < batch->num_bos);
@@ -608,7 +622,7 @@ panfrost_batch_submit_ioctl(struct panfrost_batch *batch,
                  */
                 struct panfrost_bo *bo = pan_lookup_bo(dev, i);
 
-                bo->gpu_access |= *flags & (PAN_BO_ACCESS_RW);
+                bo->gpu_access |= flags[i] & (PAN_BO_ACCESS_RW);
         }
 
         panfrost_pool_get_bo_handles(&batch->pool, bo_handles + submit.bo_handle_count);
@@ -731,8 +745,7 @@ panfrost_emit_tile_map(struct panfrost_batch *batch, struct pan_fb_info *fb)
 
 static void
 panfrost_batch_submit(struct panfrost_context *ctx,
-                      struct panfrost_batch *batch,
-                      uint32_t in_sync, uint32_t out_sync)
+                      struct panfrost_batch *batch)
 {
         struct pipe_screen *pscreen = ctx->base.screen;
         struct panfrost_screen *screen = pan_screen(pscreen);
@@ -748,9 +761,7 @@ panfrost_batch_submit(struct panfrost_context *ctx,
 
                 /* Shared depth/stencil resources are not supported, and would
                  * break this optimisation. */
-                assert(!(z_rsrc->base.bind & (PIPE_BIND_SHARED |
-                                              PIPE_BIND_SCANOUT |
-                                              PIPE_BIND_DISPLAY_TARGET)));
+                assert(!(z_rsrc->base.bind & PAN_BIND_SHARED_MASK));
 
                 if (batch->clear & PIPE_CLEAR_STENCIL) {
                         z_rsrc->stencil_value = batch->clear_stencil;
@@ -781,7 +792,7 @@ panfrost_batch_submit(struct panfrost_context *ctx,
         if (batch->scoreboard.first_tiler || batch->clear)
                 screen->vtbl.emit_fbd(batch, &fb);
 
-        ret = panfrost_batch_submit_jobs(batch, &fb, in_sync, out_sync);
+        ret = panfrost_batch_submit_jobs(batch, &fb, 0, ctx->syncobj);
 
         if (ret)
                 fprintf(stderr, "panfrost_batch_submit failed: %d\n", ret);
@@ -808,21 +819,20 @@ out:
         panfrost_batch_cleanup(ctx, batch);
 }
 
-/* Submit all batches, applying the out_sync to the currently bound batch */
+/* Submit all batches */
 
 void
 panfrost_flush_all_batches(struct panfrost_context *ctx, const char *reason)
 {
         struct panfrost_batch *batch = panfrost_get_batch_for_fbo(ctx);
-        panfrost_batch_submit(ctx, batch, ctx->syncobj, ctx->syncobj);
+        panfrost_batch_submit(ctx, batch);
 
         for (unsigned i = 0; i < PAN_MAX_BATCHES; i++) {
                 if (ctx->batches.slots[i].seqnum) {
                         if (reason)
                                 perf_debug_ctx(ctx, "Flushing everything due to: %s", reason);
 
-                        panfrost_batch_submit(ctx, &ctx->batches.slots[i],
-                                              ctx->syncobj, ctx->syncobj);
+                        panfrost_batch_submit(ctx, &ctx->batches.slots[i]);
                 }
         }
 }
@@ -836,7 +846,7 @@ panfrost_flush_writer(struct panfrost_context *ctx,
 
         if (entry) {
                 perf_debug_ctx(ctx, "Flushing writer due to: %s", reason);
-                panfrost_batch_submit(ctx, entry->data, ctx->syncobj, ctx->syncobj);
+                panfrost_batch_submit(ctx, entry->data);
         }
 }
 
@@ -853,7 +863,7 @@ panfrost_flush_batches_accessing_rsrc(struct panfrost_context *ctx,
                         continue;
 
                 perf_debug_ctx(ctx, "Flushing user due to: %s", reason);
-                panfrost_batch_submit(ctx, batch, ctx->syncobj, ctx->syncobj);
+                panfrost_batch_submit(ctx, batch);
         }
 }
 

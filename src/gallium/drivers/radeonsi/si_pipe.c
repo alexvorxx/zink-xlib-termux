@@ -691,18 +691,6 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
       sctx->b.create_video_buffer = vl_video_buffer_create;
    }
 
-   if (sctx->gfx_level >= GFX9) {
-      sctx->wait_mem_scratch =
-           si_aligned_buffer_create(screen,
-                                    PIPE_RESOURCE_FLAG_UNMAPPABLE | SI_RESOURCE_FLAG_DRIVER_INTERNAL,
-                                    PIPE_USAGE_DEFAULT, 4,
-                                    sscreen->info.tcc_cache_line_size);
-      if (!sctx->wait_mem_scratch) {
-         fprintf(stderr, "radeonsi: can't create wait_mem_scratch\n");
-         goto fail;
-      }
-   }
-
    /* GFX7 cannot unbind a constant buffer (S_BUFFER_LOAD doesn't skip loads
     * if NUM_RECORDS == 0). We need to use a dummy buffer instead. */
    if (sctx->gfx_level == GFX7) {
@@ -775,10 +763,21 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
    si_begin_new_gfx_cs(sctx, true);
    assert(sctx->gfx_cs.current.cdw == sctx->initial_gfx_cs_size);
 
-   /* Initialize per-context buffers. */
-   if (sctx->wait_mem_scratch)
+   if (sctx->gfx_level >= GFX9 && sctx->gfx_level < GFX11) {
+      sctx->wait_mem_scratch =
+           si_aligned_buffer_create(screen,
+                                    PIPE_RESOURCE_FLAG_UNMAPPABLE |
+                                    SI_RESOURCE_FLAG_DRIVER_INTERNAL,
+                                    PIPE_USAGE_DEFAULT, 4,
+                                    sscreen->info.tcc_cache_line_size);
+      if (!sctx->wait_mem_scratch) {
+         fprintf(stderr, "radeonsi: can't create wait_mem_scratch\n");
+         goto fail;
+      }
+
       si_cp_write_data(sctx, sctx->wait_mem_scratch, 0, 4, V_370_MEM, V_370_ME,
                        &sctx->wait_mem_number);
+   }
 
    if (sctx->gfx_level == GFX7) {
       /* Clear the NULL constant buffer, because loads should return zeros.
@@ -795,24 +794,24 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
       p_atomic_inc(&screen->num_contexts);
 
       /* Check if the aux_context needs to be recreated */
-      struct si_context *saux = (struct si_context *)sscreen->aux_context;
+      struct si_context *saux = si_get_aux_context(sscreen);
 
-      simple_mtx_lock(&sscreen->aux_context_lock);
       enum pipe_reset_status status = sctx->ws->ctx_query_reset_status(
          saux->ctx, true, NULL);
       if (status != PIPE_NO_RESET) {
          /* We lost the aux_context, create a new one */
          struct u_log_context *aux_log = (saux)->log;
-         sscreen->aux_context->set_log_context(sscreen->aux_context, NULL);
-         sscreen->aux_context->destroy(sscreen->aux_context);
+         saux->b.set_log_context(&saux->b, NULL);
+         saux->b.destroy(&saux->b);
 
-         sscreen->aux_context = si_create_context(
+         saux = (struct si_context *)si_create_context(
             &sscreen->b, SI_CONTEXT_FLAG_AUX |
                          (sscreen->options.aux_debug ? PIPE_CONTEXT_DEBUG : 0) |
                          (sscreen->info.has_graphics ? 0 : PIPE_CONTEXT_COMPUTE_ONLY));
-         sscreen->aux_context->set_log_context(sscreen->aux_context, aux_log);
+         saux->b.set_log_context(&saux->b, aux_log);
+         sscreen->aux_context = saux;
       }
-      simple_mtx_unlock(&sscreen->aux_context_lock);
+      si_put_aux_context_flush(sscreen);
 
       simple_mtx_lock(&sscreen->async_compute_context_lock);
       if (status != PIPE_NO_RESET && sscreen->async_compute_context) {
@@ -920,18 +919,19 @@ static void si_destroy_screen(struct pipe_screen *pscreen)
 
    si_resource_reference(&sscreen->attribute_ring, NULL);
 
-   simple_mtx_destroy(&sscreen->aux_context_lock);
-
    if (sscreen->aux_context) {
-       struct u_log_context *aux_log = ((struct si_context *)sscreen->aux_context)->log;
-       if (aux_log) {
-          sscreen->aux_context->set_log_context(sscreen->aux_context, NULL);
-          u_log_context_destroy(aux_log);
-          FREE(aux_log);
-       }
+      struct si_context *saux = si_get_aux_context(sscreen);
+      struct u_log_context *aux_log = saux->log;
+      if (aux_log) {
+         saux->b.set_log_context(&saux->b, NULL);
+         u_log_context_destroy(aux_log);
+         FREE(aux_log);
+      }
 
-       sscreen->aux_context->destroy(sscreen->aux_context);
+      saux->b.destroy(&saux->b);
+      mtx_unlock(&sscreen->aux_context_lock);
    }
+   mtx_destroy(&sscreen->aux_context_lock);
 
    simple_mtx_destroy(&sscreen->async_compute_context_lock);
    if (sscreen->async_compute_context) {
@@ -1187,7 +1187,7 @@ static struct pipe_screen *radeonsi_screen_create_impl(struct radeon_winsys *ws,
              1 << util_logbase2(sscreen->force_aniso));
    }
 
-   (void)simple_mtx_init(&sscreen->aux_context_lock, mtx_plain);
+   (void)mtx_init(&sscreen->aux_context_lock, mtx_recursive);
    (void)simple_mtx_init(&sscreen->async_compute_context_lock, mtx_plain);
    (void)simple_mtx_init(&sscreen->gpu_load_mutex, mtx_plain);
    (void)simple_mtx_init(&sscreen->gds_mutex, mtx_plain);
@@ -1418,7 +1418,8 @@ static struct pipe_screen *radeonsi_screen_create_impl(struct radeon_winsys *ws,
    if (sscreen->options.aux_debug) {
       struct u_log_context *log = CALLOC_STRUCT(u_log_context);
       u_log_context_init(log);
-      sscreen->aux_context->set_log_context(sscreen->aux_context, log);
+      si_get_aux_context(sscreen)->b.set_log_context(sscreen->aux_context, log);
+      si_put_aux_context_flush(sscreen);
    }
 
    if (test_flags & DBG(TEST_IMAGE_COPY))
@@ -1468,4 +1469,17 @@ struct pipe_screen *radeonsi_screen_create(int fd, const struct pipe_screen_conf
 
    drmFreeVersion(version);
    return rw ? rw->screen : NULL;
+}
+
+struct si_context* si_get_aux_context(struct si_screen *sscreen)
+{
+   mtx_lock(&sscreen->aux_context_lock);
+   return (struct si_context*)sscreen->aux_context;
+}
+
+void si_put_aux_context_flush(struct si_screen *sscreen)
+{
+   struct pipe_context *c = &((struct si_context*)sscreen->aux_context)->b;
+   c->flush(c, NULL, 0);
+   mtx_unlock(&sscreen->aux_context_lock);
 }

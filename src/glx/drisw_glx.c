@@ -439,12 +439,18 @@ drisw_bind_context(struct glx_context *context, struct glx_context *old,
 
    driReleaseDrawables(&pcp->base);
 
-   if ((*psc->core->bindContext) (pcp->driContext,
+   if (!(*psc->core->bindContext) (pcp->driContext,
                                   pdraw ? pdraw->driDrawable : NULL,
                                   pread ? pread->driDrawable : NULL))
-      return Success;
+      return GLXBadContext;
+   if (psc->f) {
+      if (pdraw)
+         psc->f->invalidate(pdraw->driDrawable);
+      if (pread && (!pdraw || pread->driDrawable != pdraw->driDrawable))
+         psc->f->invalidate(pread->driDrawable);
+   }
 
-   return GLXBadContext;
+   return Success;
 }
 
 static void
@@ -837,6 +843,8 @@ driswBindExtensions(struct drisw_screen *psc, const __DRIextension **extensions)
 	  __glXEnableDirectExtension(&psc->base,
 				     "GLX_ARB_context_flush_control");
       }
+      if (strcmp(extensions[i]->name, __DRI2_FLUSH) == 0)
+         psc->f = (__DRI2flushExtension *) extensions[i];
    }
 
    if (psc->kopper) {
@@ -855,9 +863,16 @@ check_xshm(Display *dpy)
    xcb_void_cookie_t cookie;
    xcb_generic_error_t *error;
    int ret = True;
-   int ignore;
+   xcb_query_extension_cookie_t shm_cookie;
+   xcb_query_extension_reply_t *shm_reply;
+   bool has_mit_shm;
 
-   if (!XQueryExtension(dpy, "MIT-SHM", &xshm_opcode, &ignore, &ignore))
+   shm_cookie = xcb_query_extension(c, 7, "MIT-SHM");
+   shm_reply = xcb_query_extension_reply(c, shm_cookie, NULL);
+
+   has_mit_shm = shm_reply->present;
+   free(shm_reply);
+   if (!has_mit_shm)
       return False;
 
    cookie = xcb_shm_detach_checked(c, 0);

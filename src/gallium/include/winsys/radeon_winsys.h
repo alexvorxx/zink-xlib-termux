@@ -388,7 +388,7 @@ struct radeon_winsys {
     * \param pointer   User pointer to turn into a buffer object.
     * \param Size      Size in bytes for the new buffer.
     */
-   struct pb_buffer *(*buffer_from_ptr)(struct radeon_winsys *ws, void *pointer, uint64_t size);
+   struct pb_buffer *(*buffer_from_ptr)(struct radeon_winsys *ws, void *pointer, uint64_t size, enum radeon_bo_flag flags);
 
    /**
     * Whether the buffer was created from a user pointer.
@@ -510,18 +510,23 @@ struct radeon_winsys {
     * the command buffer. If the winsys doesn't support preambles, the packets are inserted
     * into the command buffer.
     *
-    * If preemption is enabled, the preamble is also executed when an IB is resumed, which can
-    * happen in the middle of it.
-    *
     * \param cs               Command stream
     * \param preamble_ib      Preamble IB for the context.
     * \param preamble_num_dw  Number of dwords in the preamble IB.
     * \param preamble_changed Whether the preamble changed or is the same as the last one.
-    * \param enable_preemption  If this is true, it also enables preemption.
     */
-   bool (*cs_set_preamble)(struct radeon_cmdbuf *cs, const uint32_t *preamble_ib,
-                           unsigned preamble_num_dw, bool preamble_changed,
-                           bool enable_preemption);
+   void (*cs_set_preamble)(struct radeon_cmdbuf *cs, const uint32_t *preamble_ib,
+                           unsigned preamble_num_dw, bool preamble_changed);
+
+   /**
+    * Set up and enable mid command buffer preemption for the command stream.
+    *
+    * \param cs               Command stream
+    * \param preamble_ib      Non-preemptible preamble IB for the context.
+    * \param preamble_num_dw  Number of dwords in the preamble IB.
+    */
+   bool (*cs_setup_preemption)(struct radeon_cmdbuf *cs, const uint32_t *preamble_ib,
+                               unsigned preamble_num_dw);
 
    /**
     * Destroy a command stream.

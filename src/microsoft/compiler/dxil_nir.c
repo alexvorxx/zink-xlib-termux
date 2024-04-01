@@ -1968,3 +1968,108 @@ dxil_nir_lower_fquantize2f16(nir_shader *s)
 {
    return nir_shader_lower_instructions(s, is_fquantize2f16, lower_fquantize2f16, NULL);
 }
+
+static bool
+fix_io_uint_deref_types(struct nir_builder *builder, nir_instr *instr, void *data)
+{
+   if (instr->type != nir_instr_type_deref)
+      return false;
+
+   nir_deref_instr *deref = nir_instr_as_deref(instr);
+   nir_variable *var =
+      deref->deref_type == nir_deref_type_var ? deref->var : NULL;
+
+   if (var == data) {
+      deref->type = var->type;
+      return true;
+   }
+
+   return false;
+}
+
+static bool
+fix_io_uint_type(nir_shader *s, nir_variable_mode modes, int slot)
+{
+   nir_variable *fixed_var = NULL;
+   nir_foreach_variable_with_modes(var, s, modes) {
+      if (var->data.location == slot) {
+         if (var->type == glsl_uint_type())
+            return false;
+
+         assert(var->type == glsl_int_type());
+         var->type = glsl_uint_type();
+         fixed_var = var;
+         break;
+      }
+   }
+
+   assert(fixed_var);
+
+   return nir_shader_instructions_pass(s, fix_io_uint_deref_types,
+                                       nir_metadata_all, fixed_var);
+}
+
+bool
+dxil_nir_fix_io_uint_type(nir_shader *s, uint64_t in_mask, uint64_t out_mask)
+{
+   if (!(s->info.outputs_written & out_mask) &&
+       !(s->info.inputs_read & in_mask))
+      return false;
+
+   bool progress = false;
+
+   while (in_mask) {
+      int slot = u_bit_scan64(&in_mask);
+      progress |= (s->info.inputs_read & (1ull << slot)) &&
+                  fix_io_uint_type(s, nir_var_shader_in, slot);
+   }
+
+   while (out_mask) {
+      int slot = u_bit_scan64(&out_mask);
+      progress |= (s->info.outputs_written & (1ull << slot)) &&
+                  fix_io_uint_type(s, nir_var_shader_out, slot);
+   }
+
+   return progress;
+}
+
+static bool
+lower_kill(struct nir_builder *builder, nir_instr *instr, void *_cb_data)
+{
+   if (instr->type != nir_instr_type_intrinsic)
+      return false;
+
+   nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
+
+   if (intr->intrinsic != nir_intrinsic_discard &&
+       intr->intrinsic != nir_intrinsic_terminate &&
+       intr->intrinsic != nir_intrinsic_discard_if &&
+       intr->intrinsic != nir_intrinsic_terminate_if)
+      return false;
+
+   builder->cursor = nir_instr_remove(instr);
+   if (intr->intrinsic == nir_intrinsic_discard ||
+       intr->intrinsic == nir_intrinsic_terminate) {
+      nir_demote(builder);
+   } else {
+      assert(intr->src[0].is_ssa);
+      nir_demote_if(builder, intr->src[0].ssa);
+   }
+
+   nir_jump(builder, nir_jump_return);
+
+   return true;
+}
+
+bool
+dxil_nir_lower_discard_and_terminate(nir_shader *s)
+{
+   if (s->info.stage != MESA_SHADER_FRAGMENT)
+      return false;
+
+   // This pass only works if all functions have been inlined
+   assert(exec_list_length(&s->functions) == 1);
+
+   return nir_shader_instructions_pass(s, lower_kill, nir_metadata_none,
+                                       NULL);
+}

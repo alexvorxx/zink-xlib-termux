@@ -28,6 +28,7 @@
 #include "shader_enums.h"
 #include "spirv/nir_spirv.h"
 #include "util/blob.h"
+#include "dxil_spirv_nir.h"
 
 #include "git_sha1.h"
 #include "vulkan/vulkan.h"
@@ -285,7 +286,7 @@ lower_yz_flip(struct nir_builder *builder, nir_instr *instr,
    nir_ssa_def *pos = nir_ssa_for_src(builder, intrin->src[1], 4);
    nir_ssa_def *y_pos = nir_channel(builder, pos, 1);
    nir_ssa_def *z_pos = nir_channel(builder, pos, 2);
-   nir_ssa_def *y_flip_mask = NULL, *z_flip_mask = NULL, *dyn_yz_flip_mask;
+   nir_ssa_def *y_flip_mask = NULL, *z_flip_mask = NULL, *dyn_yz_flip_mask = NULL;
 
    if (rt_conf->yz_flip.mode & DXIL_SPIRV_YZ_FLIP_CONDITIONAL) {
       // conditional YZ-flip. The flip bitmask is passed through the vertex
@@ -472,44 +473,6 @@ dxil_spirv_nir_discard_point_size_var(nir_shader *shader)
 
    nir_remove_dead_derefs(shader);
    return true;
-}
-
-static bool
-fix_sample_mask_type(struct nir_builder *builder, nir_instr *instr,
-                     void *cb_data)
-{
-   struct dxil_spirv_runtime_conf *conf =
-      (struct dxil_spirv_runtime_conf *)cb_data;
-
-   if (instr->type != nir_instr_type_deref)
-      return false;
-
-   nir_deref_instr *deref = nir_instr_as_deref(instr);
-   nir_variable *var =
-      deref->deref_type == nir_deref_type_var ? deref->var : NULL;
-
-   if (!var || var->data.mode != nir_var_shader_out ||
-       var->data.location != FRAG_RESULT_SAMPLE_MASK ||
-       deref->type == glsl_uint_type())
-      return false;
-
-   assert(glsl_without_array(deref->type) == glsl_int_type());
-   deref->type = glsl_uint_type();
-   return true;
-}
-
-static bool
-dxil_spirv_nir_fix_sample_mask_type(nir_shader *shader)
-{
-   nir_foreach_variable_with_modes(var, shader, nir_var_shader_out) {
-      if (var->data.location == FRAG_RESULT_SAMPLE_MASK &&
-          var->type != glsl_uint_type()) {
-         var->type = glsl_uint_type();
-      }
-   }
-
-   return nir_shader_instructions_pass(shader, fix_sample_mask_type,
-                                       nir_metadata_all, NULL);
 }
 
 static bool
@@ -718,6 +681,10 @@ dxil_spirv_nir_passes(nir_shader *nir,
                      .use_fragcoord_sysval = false,
                      .use_layer_id_sysval = true,
                  });
+
+      NIR_PASS_V(nir, dxil_nir_lower_discard_and_terminate);
+      NIR_PASS_V(nir, nir_lower_returns);
+
    }
 
    NIR_PASS_V(nir, nir_opt_deref);
@@ -815,7 +782,6 @@ dxil_spirv_nir_passes(nir_shader *nir,
    };
    NIR_PASS_V(nir, nir_lower_tex, &lower_tex_options);
 
-   NIR_PASS_V(nir, dxil_spirv_nir_fix_sample_mask_type);
    NIR_PASS_V(nir, dxil_nir_lower_atomics_to_dxil);
    NIR_PASS_V(nir, dxil_nir_split_clip_cull_distance);
    NIR_PASS_V(nir, dxil_nir_lower_loads_stores_to_dxil);

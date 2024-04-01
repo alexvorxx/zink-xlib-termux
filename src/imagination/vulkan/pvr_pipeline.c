@@ -36,10 +36,10 @@
 #include "pvr_bo.h"
 #include "pvr_csb.h"
 #include "pvr_csb_enum_helpers.h"
+#include "pvr_hardcode.h"
 #include "pvr_pds.h"
 #include "pvr_private.h"
 #include "pvr_shader.h"
-#include "pvr_usc_compute_shader.h"
 #include "pvr_winsys.h"
 #include "rogue/rogue.h"
 #include "rogue/rogue_build_data.h"
@@ -51,37 +51,6 @@
 #include "vk_log.h"
 #include "vk_object.h"
 #include "vk_util.h"
-
-/* FIXME: Remove this when the compiler is hooked up. */
-/******************************************************************************
-   Hard coding
- ******************************************************************************/
-/* This section contains hard coding related structs. */
-
-struct pvr_explicit_constant_usage {
-   /* Hardware register number assigned to the explicit constant with the lower
-    * pre_assigned offset.
-    */
-   uint32_t start_offset;
-};
-
-static const struct {
-   uint32_t local_invocation_regs[2];
-
-   uint32_t work_group_regs[PVR_WORKGROUP_DIMENSIONS];
-
-   uint32_t barrier_reg;
-
-   uint32_t usc_temps;
-} pvr_pds_compute_program_params = {
-   .local_invocation_regs = { 0, 1 },
-
-   .work_group_regs = { 0, 1, 2 },
-
-   .barrier_reg = ROGUE_REG_UNUSED,
-
-   .usc_temps = 0,
-};
 
 /*****************************************************************************
    PDS functions
@@ -601,23 +570,25 @@ static void pvr_pds_uniform_program_setup_buffers(
    struct pvr_pds_buffer *const buffers = *buffers_out_ptr;
    uint32_t buffer_count = 0;
 
-   for (size_t u = 0; u < ubo_data->num_ubo_entries; ++u) {
-      struct pvr_pds_buffer *current_buffer = &buffers[buffer_count++];
+   for (size_t i = 0; i < ubo_data->num_ubo_entries; i++) {
+      struct pvr_pds_buffer *current_buffer = &buffers[buffer_count];
 
       /* This is fine since buffers_out_ptr is a pointer to an array. */
-      assert(buffer_count <= ARRAY_SIZE(*buffers_out_ptr));
+      assert(buffer_count < ARRAY_SIZE(*buffers_out_ptr));
 
       current_buffer->type = PVR_BUFFER_TYPE_UBO;
-      current_buffer->size_in_dwords = ubo_data->size[u];
-      current_buffer->destination = ubo_data->dest[u];
+      current_buffer->size_in_dwords = ubo_data->size[i];
+      current_buffer->destination = ubo_data->dest[i];
 
       current_buffer->buffer_id = buffer_count;
-      current_buffer->desc_set = ubo_data->desc_set[u];
-      current_buffer->binding = ubo_data->binding[u];
+      current_buffer->desc_set = ubo_data->desc_set[i];
+      current_buffer->binding = ubo_data->binding[i];
       /* TODO: Is this always the case?
        * E.g. can multiple UBOs have the same base buffer?
        */
       current_buffer->source_offset = 0;
+
+      buffer_count++;
    }
 
    *buffer_count_out = buffer_count;
@@ -1043,42 +1014,58 @@ static VkResult pvr_compute_pipeline_compile(
    const VkAllocationCallbacks *const allocator,
    struct pvr_compute_pipeline *const compute_pipeline)
 {
-   /* FIXME: Remove this hard coding. */
-   const struct pvr_explicit_constant_usage explicit_const_usage = {
-      .start_offset = 0,
-   };
-   const struct rogue_ubo_data uniform_program_ubo_data = { 0 };
-
-   const uint32_t cache_line_size =
-      rogue_get_slc_cache_line_size(&device->pdevice->dev_info);
    uint32_t work_group_input_regs[PVR_WORKGROUP_DIMENSIONS];
+   struct pvr_explicit_constant_usage explicit_const_usage;
    uint32_t local_input_regs[PVR_WORKGROUP_DIMENSIONS];
+   struct rogue_ubo_data ubo_data;
    uint32_t barrier_coefficient;
+   uint32_t usc_temps;
    VkResult result;
 
-   /* FIXME: Compile the shader. */
+   if (pvr_hard_code_shader_required(&device->pdevice->dev_info)) {
+      struct pvr_hard_code_compute_build_info build_info;
 
-   /* FIXME: Remove this hard coding. */
-   compute_pipeline->state.shader.uses_atomic_ops = false;
-   compute_pipeline->state.shader.uses_barrier = false;
-   compute_pipeline->state.shader.uses_num_workgroups = false;
-   compute_pipeline->state.shader.const_shared_reg_count = 4;
-   compute_pipeline->state.shader.input_register_count = 8;
-   compute_pipeline->state.shader.work_size = 1 * 1 * 1;
-   compute_pipeline->state.shader.coefficient_register_count = 4;
+      result = pvr_hard_code_compute_pipeline(device,
+                                              &compute_pipeline->state.shader,
+                                              &build_info);
+      if (result != VK_SUCCESS)
+         return result;
 
-   result = pvr_gpu_upload_usc(device,
-                               pvr_usc_compute_shader,
-                               sizeof(pvr_usc_compute_shader),
-                               cache_line_size,
-                               &compute_pipeline->state.shader.bo);
-   if (result != VK_SUCCESS)
-      return result;
+      ubo_data = build_info.ubo_data;
+
+      /* We make sure that the compiler's unused reg value is compatible with
+       * the pds api.
+       */
+      STATIC_ASSERT(ROGUE_REG_UNUSED == PVR_PDS_COMPUTE_INPUT_REG_UNUSED);
+
+      barrier_coefficient = build_info.barrier_reg;
+
+      /* TODO: Maybe change the pds api to use pointers so we avoid the copy. */
+      local_input_regs[0] = build_info.local_invocation_regs[0];
+      local_input_regs[1] = build_info.local_invocation_regs[1];
+      /* This is not a mistake. We want to assign element 1 to 2. */
+      local_input_regs[2] = build_info.local_invocation_regs[1];
+
+      STATIC_ASSERT(
+         __same_type(work_group_input_regs, build_info.work_group_regs));
+      typed_memcpy(work_group_input_regs,
+                   build_info.work_group_regs,
+                   PVR_WORKGROUP_DIMENSIONS);
+
+      usc_temps = build_info.usc_temps;
+
+      explicit_const_usage = build_info.explicit_conts_usage;
+
+   } else {
+      /* FIXME: Compile and upload the shader. */
+      /* FIXME: Initialize the shader state and setup build info. */
+      abort();
+   };
 
    result = pvr_pds_uniform_program_create_and_upload(
       device,
       allocator,
-      &uniform_program_ubo_data,
+      &ubo_data,
       &explicit_const_usage,
       compute_pipeline->base.layout,
       PVR_STAGE_ALLOCATION_COMPUTE,
@@ -1087,35 +1074,13 @@ static VkResult pvr_compute_pipeline_compile(
    if (result != VK_SUCCESS)
       goto err_free_shader;
 
-   /* We make sure that the compiler's unused reg value is compatible with the
-    * pds api.
-    */
-   STATIC_ASSERT(ROGUE_REG_UNUSED == PVR_PDS_COMPUTE_INPUT_REG_UNUSED);
-
-   barrier_coefficient = pvr_pds_compute_program_params.barrier_reg;
-
-   /* TODO: Maybe change the pds api to use pointers so we avoid the copy. */
-   local_input_regs[0] =
-      pvr_pds_compute_program_params.local_invocation_regs[0];
-   local_input_regs[1] =
-      pvr_pds_compute_program_params.local_invocation_regs[1];
-   /* This is not a mistake. We want to assign element 1 to 2. */
-   local_input_regs[2] =
-      pvr_pds_compute_program_params.local_invocation_regs[1];
-
-   STATIC_ASSERT(__same_type(work_group_input_regs,
-                             pvr_pds_compute_program_params.work_group_regs));
-   typed_memcpy(work_group_input_regs,
-                pvr_pds_compute_program_params.work_group_regs,
-                PVR_WORKGROUP_DIMENSIONS);
-
    result = pvr_pds_compute_program_create_and_upload(
       device,
       allocator,
       local_input_regs,
       work_group_input_regs,
       barrier_coefficient,
-      pvr_pds_compute_program_params.usc_temps,
+      usc_temps,
       compute_pipeline->state.shader.bo->vma->dev_addr,
       &compute_pipeline->state.primary_program,
       &compute_pipeline->state.primary_program_info);
@@ -1137,7 +1102,7 @@ static VkResult pvr_compute_pipeline_compile(
          local_input_regs,
          work_group_input_regs,
          barrier_coefficient,
-         pvr_pds_compute_program_params.usc_temps,
+         usc_temps,
          compute_pipeline->state.shader.bo->vma->dev_addr,
          &compute_pipeline->state.primary_base_workgroup_variant_program);
       if (result != VK_SUCCESS)
@@ -1373,7 +1338,6 @@ pvr_vertex_state_init(struct pvr_graphics_pipeline *gfx_pipeline,
    vertex_state->vertex_input_size = vs_data->num_vertex_input_regs;
    vertex_state->vertex_output_size =
       vs_data->num_vertex_outputs * ROGUE_REG_SIZE_BYTES;
-   vertex_state->output_selects = 0;
    vertex_state->user_clip_planes_mask = 0;
    vertex_state->entry_offset = 0;
 
@@ -1431,20 +1395,21 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
                               struct pvr_graphics_pipeline *const gfx_pipeline)
 {
    /* FIXME: Remove this hard coding. */
-   const struct pvr_explicit_constant_usage explicit_const_usage = {
+   struct pvr_explicit_constant_usage vert_explicit_const_usage = {
       .start_offset = 16,
    };
+   struct pvr_explicit_constant_usage frag_explicit_const_usage = {
+      .start_offset = 0,
+   };
+   static uint32_t hard_code_pipeline_n = 0;
 
    const VkPipelineVertexInputStateCreateInfo *const vertex_input_state =
       pCreateInfo->pVertexInputState;
-
    const uint32_t cache_line_size =
       rogue_get_slc_cache_line_size(&device->pdevice->dev_info);
    struct rogue_compiler *compiler = device->pdevice->compiler;
    struct rogue_build_ctx *ctx;
    VkResult result;
-
-   /* Compile the USC shaders. */
 
    /* Setup shared build context. */
    ctx = rogue_create_build_context(compiler);
@@ -1456,6 +1421,13 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
         stage--) {
       const VkPipelineShaderStageCreateInfo *create_info;
       size_t stage_index = gfx_pipeline->stage_indices[stage];
+
+      if (pvr_hard_code_shader_required(&device->pdevice->dev_info)) {
+         if (pvr_hard_code_graphics_get_flags(&device->pdevice->dev_info) &
+             BITFIELD_BIT(stage)) {
+            continue;
+         }
+      }
 
       /* Skip unused/inactive stages. */
       if (stage_index == ~0)
@@ -1480,6 +1452,41 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
    /* Back-end translation. */
    for (gl_shader_stage stage = MESA_SHADER_FRAGMENT; stage > MESA_SHADER_NONE;
         stage--) {
+      if (pvr_hard_code_shader_required(&device->pdevice->dev_info) &&
+          pvr_hard_code_graphics_get_flags(&device->pdevice->dev_info) &
+             BITFIELD_BIT(stage)) {
+         const struct pvr_device_info *const dev_info =
+            &device->pdevice->dev_info;
+         struct pvr_explicit_constant_usage *explicit_const_usage;
+
+         switch (stage) {
+         case MESA_SHADER_VERTEX:
+            explicit_const_usage = &vert_explicit_const_usage;
+            break;
+
+         case MESA_SHADER_FRAGMENT:
+            explicit_const_usage = &frag_explicit_const_usage;
+            break;
+
+         default:
+            unreachable("Unsupported stage.");
+         }
+
+         pvr_hard_code_graphics_shader(dev_info,
+                                       hard_code_pipeline_n,
+                                       stage,
+                                       &ctx->binary[stage]);
+
+         pvr_hard_code_graphics_get_build_info(dev_info,
+                                               hard_code_pipeline_n,
+                                               stage,
+                                               &ctx->common_data[stage],
+                                               &ctx->stage_data,
+                                               explicit_const_usage);
+
+         continue;
+      }
+
       if (!ctx->nir[stage])
          continue;
 
@@ -1496,9 +1503,17 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
       }
    }
 
-   pvr_vertex_state_init(gfx_pipeline,
-                         &ctx->common_data[MESA_SHADER_VERTEX],
-                         &ctx->stage_data.vs);
+   if (pvr_hard_code_shader_required(&device->pdevice->dev_info) &&
+       pvr_hard_code_graphics_get_flags(&device->pdevice->dev_info) &
+          BITFIELD_BIT(MESA_SHADER_VERTEX)) {
+      pvr_hard_code_graphics_vertex_state(&device->pdevice->dev_info,
+                                          hard_code_pipeline_n,
+                                          &gfx_pipeline->vertex_shader_state);
+   } else {
+      pvr_vertex_state_init(gfx_pipeline,
+                            &ctx->common_data[MESA_SHADER_VERTEX],
+                            &ctx->stage_data.vs);
+   }
 
    result = pvr_gpu_upload_usc(device,
                                ctx->binary[MESA_SHADER_VERTEX]->data,
@@ -1508,8 +1523,17 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
    if (result != VK_SUCCESS)
       goto err_free_build_context;
 
-   pvr_fragment_state_init(gfx_pipeline,
-                           &ctx->common_data[MESA_SHADER_FRAGMENT]);
+   if (pvr_hard_code_shader_required(&device->pdevice->dev_info) &&
+       pvr_hard_code_graphics_get_flags(&device->pdevice->dev_info) &
+          BITFIELD_BIT(MESA_SHADER_FRAGMENT)) {
+      pvr_hard_code_graphics_fragment_state(
+         &device->pdevice->dev_info,
+         hard_code_pipeline_n,
+         &gfx_pipeline->fragment_shader_state);
+   } else {
+      pvr_fragment_state_init(gfx_pipeline,
+                              &ctx->common_data[MESA_SHADER_FRAGMENT]);
+   }
 
    result = pvr_gpu_upload_usc(device,
                                ctx->binary[MESA_SHADER_FRAGMENT]->data,
@@ -1563,7 +1587,7 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
       device,
       allocator,
       &ctx->common_data[MESA_SHADER_VERTEX].ubo_data,
-      &explicit_const_usage,
+      &vert_explicit_const_usage,
       gfx_pipeline->base.layout,
       PVR_STAGE_ALLOCATION_VERTEX_GEOMETRY,
       &gfx_pipeline->vertex_shader_state.uniform_state.pds_code,
@@ -1586,7 +1610,7 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
       device,
       allocator,
       &ctx->common_data[MESA_SHADER_FRAGMENT].ubo_data,
-      &explicit_const_usage,
+      &frag_explicit_const_usage,
       gfx_pipeline->base.layout,
       PVR_STAGE_ALLOCATION_FRAGMENT,
       &gfx_pipeline->fragment_shader_state.uniform_state.pds_code,
@@ -1595,6 +1619,8 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
       goto err_free_vertex_uniform_program;
 
    ralloc_free(ctx);
+
+   hard_code_pipeline_n++;
 
    return VK_SUCCESS;
 

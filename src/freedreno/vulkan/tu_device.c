@@ -42,6 +42,7 @@
 #include "util/os_misc.h"
 #include "util/u_atomic.h"
 #include "vk_format.h"
+#include "vk_sampler.h"
 #include "vk_util.h"
 
 /* for fd_get_driver/device_uuid() */
@@ -190,6 +191,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_sampler_filter_minmax = true,
       .EXT_transform_feedback = true,
       .EXT_4444_formats = true,
+      .EXT_border_color_swizzle = true,
       .EXT_conditional_rendering = true,
       .EXT_custom_border_color = true,
       .EXT_depth_clip_control = true,
@@ -232,6 +234,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .IMG_filter_cubic = device->info->a6xx.has_tex_filter_cubic,
       .VALVE_mutable_descriptor_type = true,
       .EXT_image_2d_view_of_3d = true,
+      .EXT_color_write_enable = true,
    };
 }
 
@@ -757,6 +760,12 @@ tu_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
          features->formatA4B4G4R4 = true;
          break;
       }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BORDER_COLOR_SWIZZLE_FEATURES_EXT: {
+         VkPhysicalDeviceBorderColorSwizzleFeaturesEXT *features = (void *)ext;
+         features->borderColorSwizzle = true;
+         features->borderColorSwizzleFromImage = true;
+         break;
+      }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_FEATURES_EXT: {
          VkPhysicalDeviceCustomBorderColorFeaturesEXT *features = (void *) ext;
          features->customBorderColors = true;
@@ -772,7 +781,7 @@ tu_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
          VkPhysicalDeviceExtendedDynamicState2FeaturesEXT *features =
             (VkPhysicalDeviceExtendedDynamicState2FeaturesEXT *)ext;
          features->extendedDynamicState2 = true;
-         features->extendedDynamicState2LogicOp = false;
+         features->extendedDynamicState2LogicOp = true;
          features->extendedDynamicState2PatchControlPoints = false;
          break;
       }
@@ -884,6 +893,12 @@ tu_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
             (VkPhysicalDeviceImage2DViewOf3DFeaturesEXT *)ext;
          features->image2DViewOf3D = true;
          features->sampler2DViewOf3D = true;
+         break;
+      }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COLOR_WRITE_ENABLE_FEATURES_EXT: {
+         VkPhysicalDeviceColorWriteEnableFeaturesEXT *features =
+            (VkPhysicalDeviceColorWriteEnableFeaturesEXT *)ext;
+         features->colorWriteEnable = true;
          break;
       }
 
@@ -1854,18 +1869,11 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
    global->dbg_gmem_taken_loads = 0;
    global->dbg_gmem_total_stores = 0;
    global->dbg_gmem_taken_stores = 0;
-   tu6_pack_border_color(&global->bcolor_builtin[VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK],
-                         &(VkClearColorValue) {}, false);
-   tu6_pack_border_color(&global->bcolor_builtin[VK_BORDER_COLOR_INT_TRANSPARENT_BLACK],
-                         &(VkClearColorValue) {}, true);
-   tu6_pack_border_color(&global->bcolor_builtin[VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK],
-                         &(VkClearColorValue) { .float32[3] = 1.0f }, false);
-   tu6_pack_border_color(&global->bcolor_builtin[VK_BORDER_COLOR_INT_OPAQUE_BLACK],
-                         &(VkClearColorValue) { .int32[3] = 1 }, true);
-   tu6_pack_border_color(&global->bcolor_builtin[VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE],
-                         &(VkClearColorValue) { .float32[0 ... 3] = 1.0f }, false);
-   tu6_pack_border_color(&global->bcolor_builtin[VK_BORDER_COLOR_INT_OPAQUE_WHITE],
-                         &(VkClearColorValue) { .int32[0 ... 3] = 1 }, true);
+   for (int i = 0; i < TU_BORDER_COLOR_BUILTIN; i++) {
+      VkClearColorValue border_color = vk_border_color_value(i);
+      tu6_pack_border_color(&global->bcolor_builtin[i], &border_color,
+                            vk_border_color_is_int(i));
+   }
 
    /* initialize to ones so ffs can be used to find unused slots */
    BITSET_ONES(device->custom_border_color);

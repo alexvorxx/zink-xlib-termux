@@ -71,6 +71,7 @@ va_pack_fau_special(enum bir_fau fau)
    case BIR_FAU_WLS_PTR:         return VA_FAU_SPECIAL_PAGE_1_WORKGROUP_LOCAL_POINTER;
    case BIR_FAU_LANE_ID:         return VA_FAU_SPECIAL_PAGE_3_LANE_ID;
    case BIR_FAU_PROGRAM_COUNTER: return VA_FAU_SPECIAL_PAGE_3_PROGRAM_COUNTER;
+   case BIR_FAU_SAMPLE_POS_ARRAY:return VA_FAU_SPECIAL_PAGE_0_SAMPLE;
 
    case BIR_FAU_BLEND_0...(BIR_FAU_BLEND_0 + 7):
       return VA_FAU_SPECIAL_PAGE_0_BLEND_DESCRIPTOR_0 + (fau - BIR_FAU_BLEND_0);
@@ -452,8 +453,10 @@ va_pack_alu(const bi_instr *I)
          unsigned offs = (i == 1) ? 26 : 36;
          hex |= (uint64_t) va_pack_widen(src.swizzle, src_info.size) << offs;
       } else if (src_info.lane) {
-         unsigned offs = 28;
-         assert(i == 0 && "todo: MKVEC");
+         unsigned offs = (I->op == BI_OPCODE_MKVEC_V2I8) ?
+                         ((i == 0) ? 38 : 36) :
+                         28;
+
          if (src_info.size == VA_SIZE_16) {
             hex |= (src.swizzle == BI_SWIZZLE_H11 ? 1 : 0) << offs;
          } else if (I->op == BI_OPCODE_BRANCHZ_I16) {
@@ -724,17 +727,7 @@ va_pack_instr(const bi_instr *I)
    {
       /* Source 0 - Blend descriptor (64-bit) */
       hex |= ((uint64_t) va_pack_src(I->src[2])) << 0;
-
-      /* Vaidate that it is a 64-bit register pair */
-      assert(I->src[3].type == I->src[2].type);
-
-      if (I->src[2].type == BI_INDEX_REGISTER) {
-         assert(I->src[3].value & 1);
-         assert(I->src[3].value == I->src[2].value + 1);
-      } else {
-         assert(I->src[3].offset & 1);
-         assert(I->src[3].offset == I->src[2].offset + 1);
-      }
+      va_validate_register_pair(I, 2);
 
       /* Target */
       assert((I->branch_offset & 0x7) == 0);

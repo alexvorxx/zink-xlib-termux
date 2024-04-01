@@ -169,6 +169,9 @@ EXTENSIONS = [
     Extension("VK_EXT_non_seamless_cube_map",
         alias="nonseamless",
         features=True),
+    Extension("VK_EXT_border_color_swizzle",
+        alias="border_swizzle",
+        features=True),
     Extension("VK_EXT_blend_operation_advanced",
         alias="blend",
         properties=True,
@@ -239,6 +242,9 @@ EXTENSIONS = [
         features=True,
         properties=True,
         conditions=["$feats.descriptorBindingPartiallyBound"]),
+    Extension("VK_EXT_depth_clip_enable",
+        alias="depth_clip_enable",
+        features=True),
 ]
 
 # constructor: Versions(device_version(major, minor, patch), struct_version(major, minor))

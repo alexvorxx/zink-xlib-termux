@@ -606,10 +606,9 @@ struct si_screen {
 
    unsigned max_texel_buffer_elements;
 
-   /* Auxiliary context. Mainly used to initialize resources.
-    * It must be locked prior to using and flushed before unlocking. */
-   struct pipe_context *aux_context;
-   simple_mtx_t aux_context_lock;
+   /* Auxiliary context. Mainly used to initialize resources. */
+   void *aux_context;
+   mtx_t aux_context_lock;
 
    /* Async compute context for DRI_PRIME copies. */
    struct pipe_context *async_compute_context;
@@ -631,6 +630,7 @@ struct si_screen {
    /* GPU load thread. */
    simple_mtx_t gpu_load_mutex;
    thrd_t gpu_load_thread;
+   bool gpu_load_thread_created;
    union si_mmio_counters mmio_counters;
    volatile unsigned gpu_load_stop_thread; /* bool */
 
@@ -1526,6 +1526,8 @@ void si_init_compute_functions(struct si_context *sctx);
 /* si_pipe.c */
 bool si_init_compiler(struct si_screen *sscreen, struct ac_llvm_compiler *compiler);
 void si_init_aux_async_compute_ctx(struct si_screen *sscreen);
+struct si_context* si_get_aux_context(struct si_screen *sscreen);
+void si_put_aux_context_flush(struct si_screen *sscreen);
 
 /* si_perfcounters.c */
 void si_init_perfcounters(struct si_screen *screen);

@@ -720,14 +720,13 @@ dzn_physical_device_get_image_format_properties(struct dzn_physical_device *pdev
       switch (s->sType) {
       case VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES:
          external_props = (VkExternalImageFormatProperties *)s;
+         external_props->externalMemoryProperties = (VkExternalMemoryProperties) { 0 };
          break;
       default:
          dzn_debug_ignored_stype(s->sType);
          break;
       }
    }
-
-   assert((external_props != NULL) == (external_info != NULL));
 
    /* TODO: support image import */
    if (external_info && external_info->handleType != 0)
@@ -1062,7 +1061,7 @@ dzn_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
       .fullDrawIndexUint32 = false,
       .imageCubeArray = true,
       .independentBlend = false,
-      .geometryShader = false,
+      .geometryShader = true,
       .tessellationShader = false,
       .sampleRateShading = true,
       .dualSrcBlend = false,
@@ -1070,7 +1069,7 @@ dzn_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
       .multiDrawIndirect = true,
       .drawIndirectFirstInstance = true,
       .depthClamp = false,
-      .depthBiasClamp = false,
+      .depthBiasClamp = true,
       .fillModeNonSolid = false,
       .depthBounds = dzn_physical_device_supports_depth_bounds(pdev),
       .wideLines = false,
@@ -1496,14 +1495,15 @@ dzn_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
       .maxMultiviewViewCount                 = 0,
       .maxMultiviewInstanceIndex             = 0,
       .protectedNoFault                      = false,
-      /* Maximum number of descriptors in a GPU-visible sampler heap is 2048,
-       * and 1000000 in a CBV/SRV/UAV heap, so let's pick the smallest
-       * limitation factor here. All descriptor sets are merged in a single
-       * heap when descriptor sets are bound to the command buffer, hence the
-       * division by MAX_SETS.
+      /* Vulkan 1.1 wants this value to be at least 1024. Let's stick to this
+       * minimum requirement for now, and hope the total number of samplers
+       * across all descriptor sets doesn't exceed 2048, otherwise we'd exceed
+       * the maximum number of samplers per heap. For any descriptor set
+       * containing more than 1024 descriptors,
+       * vkGetDescriptorSetLayoutSupport() can be called to determine if the
+       * layout is within D3D12 descriptor heap bounds.
        */
-      .maxPerSetDescriptors                  =
-         MAX_DESCS_PER_SAMPLER_HEAP / MAX_SETS,
+      .maxPerSetDescriptors                  = 1024,
       /* According to the spec, the maximum D3D12 resource size is
        * min(max(128MB, 0.25f * (amount of dedicated VRAM)), 2GB),
        * but the limit actually depends on the max(system_ram, VRAM) not
@@ -2143,25 +2143,54 @@ dzn_device_memory_create(struct dzn_device *device,
 
    mem->size = pAllocateInfo->allocationSize;
 
-#if 0
-   const VkExportMemoryAllocateInfo *export_info = NULL;
-   VkMemoryAllocateFlags vk_flags = 0;
-#endif
+   const struct dzn_buffer *buffer = NULL;
+   const struct dzn_image *image = NULL;
 
    vk_foreach_struct_const(ext, pAllocateInfo->pNext) {
-      dzn_debug_ignored_stype(ext->sType);
+      switch (ext->sType) {
+      case VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO: {
+         const VkExportMemoryAllocateInfo *exp =
+            (const VkExportMemoryAllocateInfo *)ext;
+
+         // TODO: support export
+         assert(exp->handleTypes == 0);
+         break;
+      }
+      case VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO: {
+         const VkMemoryDedicatedAllocateInfo *dedicated =
+           (const VkMemoryDedicatedAllocateInfo *)ext;
+
+         buffer = dzn_buffer_from_handle(dedicated->buffer);
+         image = dzn_image_from_handle(dedicated->image);
+         assert(!buffer || !image);
+	 break;
+      }
+      default:
+         dzn_debug_ignored_stype(ext->sType);
+         break;
+      }
    }
 
    const VkMemoryType *mem_type =
       &pdevice->memory.memoryTypes[pAllocateInfo->memoryTypeIndex];
 
    D3D12_HEAP_DESC heap_desc = { 0 };
-   // TODO: fix all of these:
+
    heap_desc.SizeInBytes = pAllocateInfo->allocationSize;
-   heap_desc.Alignment =
-      heap_desc.SizeInBytes >= D3D12_DEFAULT_MSAA_RESOURCE_PLACEMENT_ALIGNMENT ?
-      D3D12_DEFAULT_MSAA_RESOURCE_PLACEMENT_ALIGNMENT :
-      D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
+   if (buffer) {
+      heap_desc.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
+   } else if (image) {
+      heap_desc.Alignment =
+         image->vk.samples > 1 ?
+         D3D12_DEFAULT_MSAA_RESOURCE_PLACEMENT_ALIGNMENT :
+         D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
+   } else {
+      heap_desc.Alignment =
+         heap_desc.SizeInBytes >= D3D12_DEFAULT_MSAA_RESOURCE_PLACEMENT_ALIGNMENT ?
+         D3D12_DEFAULT_MSAA_RESOURCE_PLACEMENT_ALIGNMENT :
+         D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
+   }
+
    heap_desc.Flags =
       dzn_physical_device_get_heap_flags_for_mem_type(pdevice,
                                                       pAllocateInfo->memoryTypeIndex);
@@ -2803,4 +2832,41 @@ dzn_DestroySampler(VkDevice device,
                    const VkAllocationCallbacks *pAllocator)
 {
    dzn_sampler_destroy(dzn_sampler_from_handle(sampler), pAllocator);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+dzn_GetDeviceGroupPeerMemoryFeatures(VkDevice device,
+                                     uint32_t heapIndex,
+                                     uint32_t localDeviceIndex,
+                                     uint32_t remoteDeviceIndex,
+                                     VkPeerMemoryFeatureFlags *pPeerMemoryFeatures)
+{
+   *pPeerMemoryFeatures = 0;
+}
+
+VKAPI_ATTR void VKAPI_CALL
+dzn_GetImageSparseMemoryRequirements2(VkDevice device,
+                                      const VkImageSparseMemoryRequirementsInfo2* pInfo,
+                                      uint32_t *pSparseMemoryRequirementCount,
+                                      VkSparseImageMemoryRequirements2 *pSparseMemoryRequirements)
+{
+   *pSparseMemoryRequirementCount = 0;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+dzn_CreateSamplerYcbcrConversion(VkDevice device,
+                                 const VkSamplerYcbcrConversionCreateInfo *pCreateInfo,
+                                 const VkAllocationCallbacks *pAllocator,
+                                 VkSamplerYcbcrConversion *pYcbcrConversion)
+{
+   unreachable("Ycbcr sampler conversion is not supported");
+   return VK_SUCCESS;
+}
+
+VKAPI_ATTR void VKAPI_CALL
+dzn_DestroySamplerYcbcrConversion(VkDevice device,
+                                  VkSamplerYcbcrConversion YcbcrConversion,
+                                  const VkAllocationCallbacks *pAllocator)
+{
+   unreachable("Ycbcr sampler conversion is not supported");
 }

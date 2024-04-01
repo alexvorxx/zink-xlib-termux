@@ -424,6 +424,8 @@ The integer capabilities:
   and a larger value would mean that multiple render targets are supported.
 * ``PIPE_CAP_FBFETCH_COHERENT``: Whether framebuffer fetches from the fragment
   shader can be guaranteed to be coherent with framebuffer writes.
+* ``PIPE_CAP_FBFETCH_ZS``: Whether fragment shader can fetch current values of
+  Z/S attachments. These fetches are always coherent with framebuffer writes.
 * ``PIPE_CAP_LEGACY_MATH_RULES``: Whether NIR shaders support the
   ``shader_info.use_legacy_math_rules`` flag (see documentation there), and
   TGSI shaders support the corresponding ``TGSI_PROPERTY_LEGACY_MATH_RULES``.
@@ -572,6 +574,7 @@ The integer capabilities:
 * ``PIPE_CAP_ATOMIC_FLOAT_MINMAX``: Atomic float point minimum,
   maximum, exchange and compare-and-swap support to buffer and shared variables.
 * ``PIPE_CAP_TGSI_DIV``: Whether opcode DIV is supported
+* ``PIPE_CAP_DITHERING``: Whether dithering is supported
 * ``PIPE_CAP_FRAGMENT_SHADER_TEXTURE_LOD``: Whether texture lookups with
   explicit LOD is supported in the fragment shader.
 * ``PIPE_CAP_FRAGMENT_SHADER_DERIVATIVES``: True if the driver supports
@@ -641,6 +644,7 @@ The integer capabilities:
 * ``PIPE_CAP_CLAMP_SPARSE_TEXTURE_LOD``: TRUE if shader sparse texture sample instruction support clamp the minimal lod to prevent read from un-committed pages.
 * ``PIPE_CAP_ALLOW_DRAW_OUT_OF_ORDER``: TRUE if the driver allows the "draw out of order" optimization to be enabled. See _mesa_update_allow_draw_out_of_order for more details.
 * ``PIPE_CAP_MAX_CONSTANT_BUFFER_SIZE_UINT``: Maximum bound constant buffer size in bytes. This is unsigned integer with the maximum of 4GB - 1. This applies to all constant buffers used by UBOs, unlike `PIPE_SHADER_CAP_MAX_CONST_BUFFER0_SIZE`, which is specifically for GLSL uniforms.
+* ``PIPE_CAP_HARDWARE_GL_SELECT``: Enable hardware accelerated GL_SELECT for this driver.
 
 .. _pipe_capf:
 

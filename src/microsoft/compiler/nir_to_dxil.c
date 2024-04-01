@@ -1054,15 +1054,6 @@ emit_uav_var(struct ntd_context *ctx, nir_variable *var, unsigned count)
    return emit_uav(ctx, binding, space, count, comp_type, res_kind, name);
 }
 
-static unsigned get_dword_size(const struct glsl_type *type)
-{
-   if (glsl_type_is_array(type)) {
-      type = glsl_without_array(type);
-   }
-   assert(glsl_type_is_struct(type) || glsl_type_is_interface(type));
-   return glsl_get_explicit_size(type, false);
-}
-
 static void
 var_fill_const_array_with_vector_or_scalar(struct ntd_context *ctx,
                                            const struct nir_constant *c,
@@ -1218,8 +1209,12 @@ emit_ubo_var(struct ntd_context *ctx, nir_variable *var)
       name = temp_name;
    }
 
+   const struct glsl_type *type = glsl_without_array(var->type);
+   assert(glsl_type_is_struct(type) || glsl_type_is_interface(type));
+   unsigned dwords = ALIGN_POT(glsl_get_explicit_size(type, false), 16) / 4;
+
    return emit_cbv(ctx, var->data.binding, var->data.descriptor_set,
-                   get_dword_size(var->type), count, name);
+                   dwords, count, name);
 }
 
 static bool
@@ -2501,11 +2496,7 @@ emit_barrier_impl(struct ntd_context *ctx, nir_variable_mode modes, nir_scope ex
    if (execution_scope == NIR_SCOPE_WORKGROUP)
       flags |= DXIL_BARRIER_MODE_SYNC_THREAD_GROUP;
 
-   /* Currently vtn uses uniform to indicate image memory, which DXIL considers global */
-   if (modes & nir_var_uniform)
-      modes |= nir_var_mem_global;
-
-   if (modes & (nir_var_mem_ssbo | nir_var_mem_global)) {
+   if (modes & (nir_var_mem_ssbo | nir_var_mem_global | nir_var_image)) {
       if (mem_scope > NIR_SCOPE_WORKGROUP)
          flags |= DXIL_BARRIER_MODE_UAV_FENCE_GLOBAL;
       else
@@ -3674,8 +3665,12 @@ emit_image_load(struct ntd_context *ctx, nir_intrinsic_instr *intr)
       store_dest(ctx, &intr->dest, i, component, out_type);
    }
 
-   if (num_components > 1)
-      ctx->mod.feats.typed_uav_load_additional_formats = true;
+   /* FIXME: This flag should be set to true when the RWTexture is attached
+    * a vector, and we always declare a vec4 right now, so it should always be
+    * true. Might be worth reworking the dxil_module_get_res_type() to use a
+    * scalar when the image only has one component.
+    */
+   ctx->mod.feats.typed_uav_load_additional_formats = true;
 
    return true;
 }
@@ -4112,6 +4107,20 @@ emit_load_layer_id(struct ntd_context *ctx, nir_intrinsic_instr *intr)
 }
 
 static bool
+emit_load_sample_id(struct ntd_context *ctx, nir_intrinsic_instr *intr)
+{
+   assert(ctx->mod.info.has_per_sample_input ||
+          intr->intrinsic == nir_intrinsic_load_sample_id_no_per_sample);
+
+   if (ctx->mod.info.has_per_sample_input)
+      return emit_load_unary_external_function(ctx, intr, "dx.op.sampleIndex",
+                                               DXIL_INTR_SAMPLE_INDEX);
+
+   store_dest_value(ctx, &intr->dest, 0, dxil_module_get_int32_const(&ctx->mod, 0));
+   return true;
+}
+
+static bool
 emit_intrinsic(struct ntd_context *ctx, nir_intrinsic_instr *intr)
 {
    switch (intr->intrinsic) {
@@ -4146,8 +4155,8 @@ emit_intrinsic(struct ntd_context *ctx, nir_intrinsic_instr *intr)
       return emit_load_unary_external_function(ctx, intr, "dx.op.primitiveID",
                                                DXIL_INTR_PRIMITIVE_ID);
    case nir_intrinsic_load_sample_id:
-      return emit_load_unary_external_function(ctx, intr, "dx.op.sampleIndex",
-                                               DXIL_INTR_SAMPLE_INDEX);
+   case nir_intrinsic_load_sample_id_no_per_sample:
+      return emit_load_sample_id(ctx, intr);
    case nir_intrinsic_load_invocation_id:
       switch (ctx->mod.shader_kind) {
       case DXIL_HULL_SHADER:
@@ -4168,8 +4177,10 @@ emit_intrinsic(struct ntd_context *ctx, nir_intrinsic_instr *intr)
    case nir_intrinsic_load_scratch_dxil:
       return emit_load_scratch(ctx, intr);
    case nir_intrinsic_discard_if:
+   case nir_intrinsic_demote_if:
       return emit_discard_if(ctx, intr);
    case nir_intrinsic_discard:
+   case nir_intrinsic_demote:
       return emit_discard(ctx);
    case nir_intrinsic_emit_vertex:
       return emit_emit_vertex(ctx, intr);
@@ -4302,7 +4313,7 @@ emit_intrinsic(struct ntd_context *ctx, nir_intrinsic_instr *intr)
    case nir_intrinsic_load_workgroup_size:
    default:
       NIR_INSTR_UNSUPPORTED(&intr->instr);
-      assert("Unimplemented intrinsic instruction");
+      unreachable("Unimplemented intrinsic instruction");
       return false;
    }
 }
@@ -5426,7 +5437,8 @@ emit_module(struct ntd_context *ctx, const struct nir_to_dxil_options *opts)
       }
    } else if (ctx->shader->info.stage == MESA_SHADER_VERTEX ||
               ctx->shader->info.stage == MESA_SHADER_TESS_EVAL) {
-      if (ctx->shader->info.outputs_written & VARYING_BIT_VIEWPORT)
+      if (ctx->shader->info.outputs_written &
+          (VARYING_BIT_VIEWPORT | VARYING_BIT_LAYER))
          ctx->mod.feats.array_layer_from_vs_or_ds = true;
    }
 
@@ -5713,6 +5725,18 @@ nir_to_dxil(struct nir_shader *s, const struct nir_to_dxil_options *opts,
    ctx->mod.major_version = 6;
    ctx->mod.minor_version = 1;
 
+   if (s->info.stage <= MESA_SHADER_FRAGMENT) {
+      uint64_t in_mask =
+         s->info.stage == MESA_SHADER_VERTEX ?
+         0 : (VARYING_BIT_PRIMITIVE_ID | VARYING_BIT_VIEWPORT | VARYING_BIT_LAYER);
+      uint64_t out_mask =
+         s->info.stage == MESA_SHADER_FRAGMENT ?
+         ((1ull << FRAG_RESULT_STENCIL) | (1ull << FRAG_RESULT_SAMPLE_MASK)) :
+         (VARYING_BIT_PRIMITIVE_ID | VARYING_BIT_VIEWPORT | VARYING_BIT_LAYER);
+
+      NIR_PASS_V(s, dxil_nir_fix_io_uint_type, in_mask, out_mask);
+   }
+
    NIR_PASS_V(s, dxil_nir_lower_fquantize2f16);
    NIR_PASS_V(s, nir_lower_frexp);
    NIR_PASS_V(s, nir_lower_flrp, 16 | 32 | 64, true);
@@ -5854,6 +5878,7 @@ nir_var_to_dxil_sysvalue_type(nir_variable *var, uint64_t other_stage_mask)
    case VARYING_SLOT_TESS_LEVEL_INNER:
    case VARYING_SLOT_TESS_LEVEL_OUTER:
    case VARYING_SLOT_VIEWPORT:
+   case VARYING_SLOT_LAYER:
       if (!((1ull << var->data.location) & other_stage_mask))
          return DXIL_SYSVALUE;
       FALLTHROUGH;

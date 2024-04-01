@@ -50,6 +50,12 @@
 
 #include <vulkan/vulkan.h>
 
+#define GFX_SHADER_BITS (VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | \
+                         VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT | \
+                         VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT | \
+                         VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT | \
+                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT)
+
 #define pipe_buffer_write "use tc_buffer_write to avoid breaking threaded context"
 
 #ifdef __cplusplus
@@ -418,10 +424,10 @@ void
 zink_fence_wait(struct pipe_context *ctx);
 
 void
-zink_wait_on_batch(struct zink_context *ctx, uint32_t batch_id);
+zink_wait_on_batch(struct zink_context *ctx, uint64_t batch_id);
 
 bool
-zink_check_batch_completion(struct zink_context *ctx, uint32_t batch_id, bool have_lock);
+zink_check_batch_completion(struct zink_context *ctx, uint64_t batch_id, bool have_lock);
 //zink_check_batch_completion(struct zink_context *ctx, uint32_t batch_id);
 
 void

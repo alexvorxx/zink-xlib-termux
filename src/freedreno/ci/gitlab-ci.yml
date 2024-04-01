@@ -1,7 +1,6 @@
 .freedreno-test:
   extends:
     - .baremetal-test-arm64
-    - .use-debian/arm_test
     - .freedreno-rules
   variables:
     FLAKES_CHANNEL: "#freedreno-ci"
@@ -9,10 +8,6 @@
     BM_CMDLINE: "ip=dhcp console=ttyMSM0,115200n8 $BM_KERNEL_EXTRA_ARGS root=/dev/nfs rw nfsrootdebug nfsroot=,tcp,nfsvers=4.2 init=/init $BM_KERNELARGS"
   script:
     - ./install/bare-metal/fastboot.sh
-  needs:
-    - debian/arm_test
-    - job: debian-arm64
-      artifacts: false
   tags:
     - google-freedreno-db410c
 
@@ -89,7 +84,6 @@ a306-traces:
 .a530-test:
   extends:
     - .freedreno-test
-    - .test-manual-mr
   variables:
     BM_KERNEL: /baremetal-files/Image.gz
     BM_KERNEL_EXTRA_ARGS: maxcpus=2
@@ -104,7 +98,7 @@ a530_gl:
     - .a530-test
   variables:
     DEQP_SUITE: freedreno-a530
-  parallel: 5
+  parallel: 6
 
 .a530_piglit:
   extends:
@@ -114,20 +108,13 @@ a530_gl:
     HWCI_START_XORG: 1
 
 # piglit_gl since it takes a bit under 20 minutes and has a lot of flakes, so
-# leave it as manual.
+# leave it as manual.  The shader_tests are in the main a530_gl suite.
 a530_piglit_gl:
   extends:
     - .a530_piglit
     - .test-manual-mr
   variables:
     PIGLIT_PROFILES: quick_gl
-
-a530_piglit_shader:
-  extends:
-    - .a530_piglit
-  parallel: 2
-  variables:
-    PIGLIT_PROFILES: quick_shader
 
 a530-traces:
   extends:
@@ -231,8 +218,9 @@ a630_vk:
     DEQP_SUITE: freedreno-a630-vk
 
 a630_vk_full:
-  # We use a longer timeout to keep the parallel down so that we don't lock up
-  # too many runners for a long time when a dev is trying out at full VK status.
+  # We use a longer timeout (2 hour job, 90 minute deqp) to keep the parallel
+  # down so that we don't lock up too many runners for a long time when a dev is
+  # testing full VK status.
   timeout: 2h
   extends:
     - a630_vk
@@ -240,6 +228,7 @@ a630_vk_full:
   parallel: 2
   variables:
     DEQP_SUITE: freedreno-a630-vk-full
+    TEST_PHASE_TIMEOUT: 90
 
 a630_vk_asan:
   extends:

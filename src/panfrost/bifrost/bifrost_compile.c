@@ -3198,11 +3198,16 @@ bi_emit_valhall_offsets(bi_builder *b, nir_tex_instr *instr)
                 /* No multisample index with 3D */
                 assert((nr <= 2) || (ms_idx < 0));
 
-                dest = bi_mkvec_v4i8(b,
+                /* Zero extend the Z byte so we can use it with MKVEC.v2i8 */
+                bi_index z = (nr > 2) ?
+                             bi_mkvec_v2i8(b, bi_byte(bi_extract(b, idx, 2), 0),
+                                              bi_imm_u8(0), bi_zero()) :
+                             bi_zero();
+
+                dest = bi_mkvec_v2i8(b,
                                 (nr > 0) ? bi_byte(bi_extract(b, idx, 0), 0) : bi_imm_u8(0),
                                 (nr > 1) ? bi_byte(bi_extract(b, idx, 1), 0) : bi_imm_u8(0),
-                                (nr > 2) ? bi_byte(bi_extract(b, idx, 2), 0) : bi_imm_u8(0),
-                                bi_imm_u8(0));
+                                z);
         }
 
         /* Component 2: multisample index */
@@ -4835,9 +4840,18 @@ bi_finalize_nir(nir_shader *nir, unsigned gpu_id, bool is_blend)
         /* Get rid of any global vars before we lower to scratch. */
         NIR_PASS_V(nir, nir_lower_global_vars_to_local);
 
-        /* Lower large arrays to scratch and small arrays to bcsel (TODO: tune
-         * threshold, but not until addresses / csel is optimized better) */
-        NIR_PASS_V(nir, nir_lower_vars_to_scratch, nir_var_function_temp, 16,
+        /* Valhall introduces packed thread local storage, which improves cache
+         * locality of TLS access. However, access to packed TLS cannot
+         * straddle 16-byte boundaries. As such, when packed TLS is in use
+         * (currently unconditional for Valhall), we force vec4 alignment for
+         * scratch access.
+         */
+        bool packed_tls = (gpu_id >= 0x9000);
+
+        /* Lower large arrays to scratch and small arrays to bcsel */
+        NIR_PASS_V(nir, nir_lower_vars_to_scratch, nir_var_function_temp, 256,
+                        packed_tls ?
+                        glsl_get_vec4_size_align_bytes :
                         glsl_get_natural_size_align_bytes);
         NIR_PASS_V(nir, nir_lower_indirect_derefs, nir_var_function_temp, ~0);
 
@@ -5099,6 +5113,7 @@ bi_compile_variant_nir(nir_shader *nir,
                 va_assign_slots(ctx);
                 va_insert_flow_control_nops(ctx);
                 va_merge_flow(ctx);
+                va_mark_last(ctx);
         } else {
                 bi_schedule(ctx);
                 bi_assign_scoreboard(ctx);

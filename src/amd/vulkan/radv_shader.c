@@ -586,6 +586,39 @@ radv_lower_fs_intrinsics(nir_shader *nir, const struct radv_pipeline_stage *fs_s
    return progress;
 }
 
+/* Emulates NV_mesh_shader first_task using first_vertex. */
+static bool
+radv_lower_ms_workgroup_id(nir_shader *nir)
+{
+   nir_function_impl *impl = nir_shader_get_entrypoint(nir);
+   bool progress = false;
+   nir_builder b;
+   nir_builder_init(&b, impl);
+
+   nir_foreach_block(block, impl) {
+      nir_foreach_instr_safe(instr, block) {
+         if (instr->type != nir_instr_type_intrinsic)
+            continue;
+
+         nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+         if (intrin->intrinsic != nir_intrinsic_load_workgroup_id)
+            continue;
+
+         progress = true;
+         b.cursor = nir_after_instr(instr);
+         nir_ssa_def *x = nir_channel(&b, &intrin->dest.ssa, 0);
+         nir_ssa_def *x_full = nir_iadd(&b, x, nir_load_first_vertex(&b));
+         nir_ssa_def *v = nir_vector_insert_imm(&b, &intrin->dest.ssa, x_full, 0);
+         nir_ssa_def_rewrite_uses_after(&intrin->dest.ssa, v, v->parent_instr);
+      }
+   }
+
+   nir_metadata preserved =
+      progress ? (nir_metadata_block_index | nir_metadata_dominance) : nir_metadata_all;
+   nir_metadata_preserve(impl, preserved);
+   return progress;
+}
+
 nir_shader *
 radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_pipeline_stage *stage,
                          const struct radv_pipeline_key *key)
@@ -808,6 +841,19 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_pipeline_
                                        (nir->info.workgroup_size[2] == 1)) == 2,
    };
    NIR_PASS(_, nir, nir_lower_compute_system_values, &csv_options);
+
+   if (nir->info.stage == MESA_SHADER_MESH) {
+      /* NV_mesh_shader: include first_task (aka. first_vertex) in workgroup ID. */
+      NIR_PASS(_, nir, radv_lower_ms_workgroup_id);
+
+      /* Mesh shaders only have a 1D "vertex index" which we use
+       * as "workgroup index" to emulate the 3D workgroup ID.
+       */
+      nir_lower_compute_system_values_options o = {
+         .lower_workgroup_id_to_index = true,
+      };
+      NIR_PASS(_, nir, nir_lower_compute_system_values, &o);
+   }
 
    /* Vulkan uses the separate-shader linking model */
    nir->info.separate_shader = true;
@@ -2174,22 +2220,22 @@ radv_trap_handler_shader_destroy(struct radv_device *device, struct radv_trap_ha
    free(trap);
 }
 
-static struct radv_shader_prolog *
-upload_vs_prolog(struct radv_device *device, struct radv_prolog_binary *bin, unsigned wave_size)
+static struct radv_shader_part *
+upload_shader_part(struct radv_device *device, struct radv_shader_part_binary *bin, unsigned wave_size)
 {
    uint32_t code_size = radv_get_shader_binary_size(bin->code_size);
-   struct radv_shader_prolog *prolog = malloc(sizeof(struct radv_shader_prolog));
-   if (!prolog)
+   struct radv_shader_part *shader_part = malloc(sizeof(struct radv_shader_part));
+   if (!shader_part)
       return NULL;
 
-   prolog->alloc = radv_alloc_shader_memory(device, code_size, NULL);
-   if (!prolog->alloc) {
-      free(prolog);
+   shader_part->alloc = radv_alloc_shader_memory(device, code_size, NULL);
+   if (!shader_part->alloc) {
+      free(shader_part);
       return NULL;
    }
 
-   prolog->bo = prolog->alloc->arena->bo;
-   char *dest_ptr = prolog->alloc->arena->ptr + prolog->alloc->offset;
+   shader_part->bo = shader_part->alloc->arena->bo;
+   char *dest_ptr = shader_part->alloc->arena->ptr + shader_part->alloc->offset;
 
    memcpy(dest_ptr, bin->data, bin->code_size);
 
@@ -2198,15 +2244,15 @@ upload_vs_prolog(struct radv_device *device, struct radv_prolog_binary *bin, uns
    for (unsigned i = 0; i < DEBUGGER_NUM_MARKERS; i++)
       ptr32[i] = DEBUGGER_END_OF_CODE_MARKER;
 
-   prolog->rsrc1 = S_00B848_VGPRS((bin->num_vgprs - 1) / (wave_size == 32 ? 8 : 4)) |
+   shader_part->rsrc1 = S_00B848_VGPRS((bin->num_vgprs - 1) / (wave_size == 32 ? 8 : 4)) |
                    S_00B228_SGPRS((bin->num_sgprs - 1) / 8);
-   prolog->num_preserved_sgprs = bin->num_preserved_sgprs;
-   prolog->disasm_string = NULL;
+   shader_part->num_preserved_sgprs = bin->num_preserved_sgprs;
+   shader_part->disasm_string = NULL;
 
-   return prolog;
+   return shader_part;
 }
 
-struct radv_shader_prolog *
+struct radv_shader_part *
 radv_create_vs_prolog(struct radv_device *device, const struct radv_vs_prolog_key *key)
 {
    struct radv_shader_args args = {0};
@@ -2243,7 +2289,7 @@ radv_create_vs_prolog(struct radv_device *device, const struct radv_vs_prolog_ke
       ac_init_llvm_once();
 #endif
 
-   struct radv_prolog_binary *binary = NULL;
+   struct radv_shader_part_binary *binary = NULL;
    struct aco_shader_info ac_info;
    struct aco_vs_prolog_key ac_key;
    struct aco_compiler_options ac_opts;
@@ -2251,7 +2297,7 @@ radv_create_vs_prolog(struct radv_device *device, const struct radv_vs_prolog_ke
    radv_aco_convert_opts(&ac_opts, &options);
    radv_aco_convert_vs_prolog_key(&ac_key, key);
    aco_compile_vs_prolog(&ac_opts, &ac_info, &ac_key, &args, &binary);
-   struct radv_shader_prolog *prolog = upload_vs_prolog(device, binary, info.wave_size);
+   struct radv_shader_part *prolog = upload_shader_part(device, binary, info.wave_size);
    if (prolog) {
       prolog->nontrivial_divisors = key->state->nontrivial_divisors;
       prolog->disasm_string =
@@ -2283,14 +2329,14 @@ radv_shader_destroy(struct radv_device *device, struct radv_shader *shader)
 }
 
 void
-radv_prolog_destroy(struct radv_device *device, struct radv_shader_prolog *prolog)
+radv_shader_part_destroy(struct radv_device *device, struct radv_shader_part *shader_part)
 {
-   if (!prolog)
+   if (!shader_part)
       return;
 
-   radv_free_shader_memory(device, prolog->alloc);
-   free(prolog->disasm_string);
-   free(prolog);
+   radv_free_shader_memory(device, shader_part->alloc);
+   free(shader_part->disasm_string);
+   free(shader_part);
 }
 
 uint64_t

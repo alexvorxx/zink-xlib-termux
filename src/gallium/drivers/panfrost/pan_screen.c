@@ -195,7 +195,7 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
         case PIPE_CAP_GLSL_FEATURE_LEVEL_COMPATIBILITY:
                 return is_gl3 ? 330 : 140;
         case PIPE_CAP_ESSL_FEATURE_LEVEL:
-                return pan_is_bifrost(dev) ? 320 : 310;
+                return dev->arch >= 6 ? 320 : 310;
 
         case PIPE_CAP_CONSTANT_BUFFER_OFFSET_ALIGNMENT:
                 return 16;
@@ -325,6 +325,14 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
                         modes |= BITFIELD_BIT(PIPE_PRIM_POLYGON);
                 }
 
+                if (dev->arch >= 9) {
+                        /* Although Valhall is supposed to support quads, they
+                         * don't seem to work correctly. Disable to fix
+                         * arb-provoking-vertex-render.
+                         */
+                        modes &= ~BITFIELD_BIT(PIPE_PRIM_QUADS);
+                }
+
                 return modes;
         }
 
@@ -400,7 +408,7 @@ panfrost_get_shader_param(struct pipe_screen *screen,
                 return 0;
 
         case PIPE_SHADER_CAP_INDIRECT_TEMP_ADDR:
-                return pan_is_bifrost(dev);
+                return dev->arch >= 6;
 
         case PIPE_SHADER_CAP_INDIRECT_CONST_ADDR:
                 return 1;
@@ -423,11 +431,11 @@ panfrost_get_shader_param(struct pipe_screen *screen,
                 return !is_nofp16;
         case PIPE_SHADER_CAP_FP16_DERIVATIVES:
         case PIPE_SHADER_CAP_FP16_CONST_BUFFERS:
-                return pan_is_bifrost(dev) && !is_nofp16;
+                return dev->arch >= 6 && !is_nofp16;
         case PIPE_SHADER_CAP_INT16:
                 /* XXX: Advertise this CAP when a proper fix to lower_precision
                  * lands. GLSL IR validation failure in glmark2 -bterrain */
-                return pan_is_bifrost(dev) && !is_nofp16 && is_deqp;
+                return dev->arch >= 6 && !is_nofp16 && is_deqp;
 
         case PIPE_SHADER_CAP_INT64_ATOMICS:
         case PIPE_SHADER_CAP_DROUND_SUPPORTED:

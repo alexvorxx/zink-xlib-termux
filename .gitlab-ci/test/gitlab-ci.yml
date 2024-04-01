@@ -120,14 +120,15 @@
     - .test
   # Cancel job if a newer commit is pushed to the same branch
   interruptible: true
-  stage: test
   before_script:
     - !reference [default, before_script]
     # Use this instead of gitlab's artifacts download because it hits packet.net
     # instead of fd.o.  Set FDO_HTTP_CACHE_URI to an http cache for your test lab to
     # improve it even more (see https://docs.mesa3d.org/ci/bare-metal.html for
     # setup).
+    - echo -e "\e[0Ksection_start:$(date +%s):artifacts_download[collapsed=true]\r\e[0KDownloading artifacts from minio"
     - wget ${FDO_HTTP_CACHE_URI:-}https://${PIPELINE_ARTIFACTS_BASE}/${MINIO_ARTIFACT_NAME}.tar.gz -S --progress=dot:giga -O- | tar -xz
+    - echo -e "\e[0Ksection_end:$(date +%s):artifacts_download\r\e[0K"
   artifacts:
     when: always
     name: "mesa_${CI_JOB_NAME}"
@@ -139,21 +140,37 @@
     reports:
       junit: results/junit.xml
 
+# ARM testing of bare-metal boards attached to an x86 gitlab-runner system
 .baremetal-test-armhf:
   extends:
     - .baremetal-test
+    - .use-debian/arm_test
   variables:
     BM_ROOTFS: /rootfs-armhf
     MINIO_ARTIFACT_NAME: mesa-armhf
+  needs:
+    - debian/arm_test
+    - job: debian-armhf
+      artifacts: false
 
+# ARM64 testing of bare-metal boards attached to an x86 gitlab-runner system
 .baremetal-test-arm64:
   extends:
     - .baremetal-test
+    - .use-debian/arm_test
   variables:
     BM_ROOTFS: /rootfs-arm64
     MINIO_ARTIFACT_NAME: mesa-arm64
+  needs:
+    - debian/arm_test
+    - job: debian-arm64
+      artifacts: false
 
+# ARM64 testing of bare-metal boards attached to an x86 gitlab-runner system, using an asan mesa build
 .baremetal-arm64-asan-test:
+  extends:
+    - .baremetal-test
+    - .use-debian/arm_test
   variables:
     DEQP_RUNNER_OPTIONS: "--env LD_PRELOAD=libasan.so.6:/install/lib/libdlclose-skip.so"
     MINIO_ARTIFACT_NAME: mesa-arm64-asan
@@ -185,8 +202,6 @@
   # depend on more than one image per job. So, the job container is
   # built as part of the CI in the boot2container project.
   image: registry.freedesktop.org/mupuf/valve-infra/mesa-trigger:2022-03-03.2
-  extends:
-    - .use-debian/x86_test-vk
   timeout: 1h 40m
   variables:
     # No need by default to pull the whole repo
@@ -216,10 +231,10 @@
 
     INSTALL_TARBALL_NAME: "install.tar"
     INSTALL_TARBALL: "./artifacts/${INSTALL_TARBALL_NAME}"
-    CI_VALVE_ARTIFACTS: "./artifacts/valve"
+    CI_B2C_ARTIFACTS: "./artifacts/b2c"
     CI_COMMON_SCRIPTS: "./artifacts/ci-common"
     GENERATE_ENV_SCRIPT: "${CI_COMMON_SCRIPTS}/generate-env.sh"
-    B2C_JOB_TEMPLATE: "${CI_VALVE_ARTIFACTS}/b2c.yml.jinja2.jinja2"
+    B2C_JOB_TEMPLATE: "${CI_B2C_ARTIFACTS}/b2c.yml.jinja2.jinja2"
     JOB_FOLDER: "job_folder"
   before_script:
     # We don't want the tarball unpacking of .test, but will take the JWT bits.
@@ -243,7 +258,7 @@
       fi
 
       [ -s "$INSTALL_TARBALL" ] || exit 1
-      [ -d "$CI_VALVE_ARTIFACTS" ] || exit 1
+      [ -d "$CI_B2C_ARTIFACTS" ] || exit 1
       [ -d "$CI_COMMON_SCRIPTS" ] || exit 1
 
 
@@ -251,7 +266,7 @@
 
       # The Valve CI gateway receives jobs in a YAML format. Create a
       # job description from the CI environment.
-      python3 "$CI_VALVE_ARTIFACTS"/generate_b2c.py \
+      python3 "$CI_B2C_ARTIFACTS"/generate_b2c.py \
         --ci-job-id "${CI_JOB_ID}" \
         --container-cmd "${B2C_TEST_SCRIPT}" \
         --initramfs-url "${B2C_INITRAMFS_URL}" \
@@ -308,9 +323,6 @@
       # Gitlab coordinator for status presentation. results/junit.xml
       # will be parsed by the UI for more detailed explanations of
       # test execution.
-  needs:
-    - debian/x86_test-vk
-    - debian-testing
   artifacts:
     when: always
     name: "mesa_${CI_JOB_NAME}"
@@ -318,3 +330,19 @@
       - ${JOB_FOLDER}/results
     reports:
       junit: ${JOB_FOLDER}/results/junit.xml
+
+.b2c-test-vk:
+  extends:
+    - .use-debian/x86_test-vk
+    - .b2c-test
+  needs:
+    - debian/x86_test-vk
+    - debian-testing
+
+.b2c-test-gl:
+  extends:
+    - .use-debian/x86_test-gl
+    - .b2c-test
+  needs:
+    - debian/x86_test-gl
+    - debian-testing

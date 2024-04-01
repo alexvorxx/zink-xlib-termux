@@ -37,6 +37,7 @@
 #include "util/debug.h"
 #include "util/log.h"
 #include "util/macros.h"
+#include "util/os_misc.h"
 
 #include "drm-uapi/i915_drm.h"
 
@@ -1587,6 +1588,77 @@ query_topology(struct intel_device_info *devinfo, int fd)
 
 }
 
+/**
+ * Reports memory region info, and allows buffers to target system-memory,
+ * and/or device local memory.
+ */
+static bool
+query_regions(struct intel_device_info *devinfo, int fd, bool update)
+{
+   struct drm_i915_query_memory_regions *meminfo =
+      intel_i915_query_alloc(fd, DRM_I915_QUERY_MEMORY_REGIONS, NULL);
+   if (meminfo == NULL)
+      return false;
+
+   for (int i = 0; i < meminfo->num_regions; i++) {
+      const struct drm_i915_memory_region_info *mem = &meminfo->regions[i];
+      switch (mem->region.memory_class) {
+      case I915_MEMORY_CLASS_SYSTEM:
+         if (!update) {
+            devinfo->mem.sram.mem_class = mem->region.memory_class;
+            devinfo->mem.sram.mem_instance = mem->region.memory_instance;
+            devinfo->mem.sram.mappable.size = mem->probed_size;
+         } else {
+            assert(devinfo->mem.sram.mem_class == mem->region.memory_class);
+            assert(devinfo->mem.sram.mem_instance == mem->region.memory_instance);
+            assert(devinfo->mem.sram.mappable.size == mem->probed_size);
+         }
+         if (mem->unallocated_size != -1)
+            devinfo->mem.sram.mappable.free = mem->unallocated_size;
+         break;
+      case I915_MEMORY_CLASS_DEVICE:
+         if (!update) {
+            devinfo->mem.vram.mem_class = mem->region.memory_class;
+            devinfo->mem.vram.mem_instance = mem->region.memory_instance;
+            devinfo->mem.vram.mappable.size = mem->probed_size;
+         } else {
+            assert(devinfo->mem.vram.mem_class == mem->region.memory_class);
+            assert(devinfo->mem.vram.mem_instance == mem->region.memory_instance);
+            assert(devinfo->mem.vram.mappable.size == mem->probed_size);
+         }
+         if (mem->unallocated_size != -1)
+            devinfo->mem.vram.mappable.free = mem->unallocated_size;
+         break;
+      default:
+         break;
+      }
+   }
+
+   free(meminfo);
+   devinfo->mem.use_class_instance = true;
+   return true;
+}
+
+static bool
+compute_system_memory(struct intel_device_info *devinfo, bool update)
+{
+   uint64_t total_phys;
+   if (!os_get_total_physical_memory(&total_phys))
+      return false;
+
+   uint64_t available = 0;
+   os_get_available_system_memory(&available);
+
+   if (!update)
+      devinfo->mem.sram.mappable.size = total_phys;
+   else
+      assert(devinfo->mem.sram.mappable.size == total_phys);
+
+   devinfo->mem.sram.mappable.free = available;
+
+   return true;
+}
+
 static int
 intel_get_aperture_size(int fd, uint64_t *size)
 {
@@ -1899,7 +1971,13 @@ intel_get_device_info_from_fd(int fd, struct intel_device_info *devinfo)
       return true;
    }
 
-   intel_get_and_process_hwconfig_table(fd, devinfo);
+   if (intel_get_and_process_hwconfig_table(fd, devinfo)) {
+      /* After applying hwconfig values, some items need to be recalculated. */
+      devinfo->max_cs_threads =
+         devinfo->max_eus_per_subslice * devinfo->num_thread_per_eu;
+
+      update_cs_workgroup_threads(devinfo);
+   }
 
    int timestamp_frequency;
    if (getparam(fd, I915_PARAM_CS_TIMESTAMP_FREQUENCY,
@@ -1923,6 +2001,18 @@ intel_get_device_info_from_fd(int fd, struct intel_device_info *devinfo)
        * will be wrong, affecting GPU metrics. In this case, fail silently.
        */
       getparam_topology(devinfo, fd);
+   }
+
+   /* If the memory region uAPI query is not available, try to generate some
+    * numbers out of os_* utils for sram only.
+    */
+   if (!query_regions(devinfo, fd, false))
+      compute_system_memory(devinfo, false);
+
+   /* region info is required for lmem support */
+   if (devinfo->has_local_mem && !devinfo->mem.use_class_instance) {
+      mesa_logw("Could not query local memory size.");
+      return false;
    }
 
    if (devinfo->platform == INTEL_PLATFORM_CHV)
@@ -1952,4 +2042,9 @@ intel_get_device_info_from_fd(int fd, struct intel_device_info *devinfo)
    init_max_scratch_ids(devinfo);
 
    return true;
+}
+
+bool intel_device_info_update_memory_info(struct intel_device_info *devinfo, int fd)
+{
+   return query_regions(devinfo, fd, true) || compute_system_memory(devinfo, true);
 }

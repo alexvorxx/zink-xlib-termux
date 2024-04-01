@@ -102,10 +102,10 @@ struct zink_batch_state {
    struct util_dynarray wait_semaphores; //external wait semaphores
    struct util_dynarray wait_semaphore_stages; //external wait semaphores
 
-   VkQueue queue; //duplicated from batch for threading
    VkSemaphore present;
    struct zink_resource *swapchain;
    struct util_dynarray acquires;
+   struct util_dynarray acquire_flags;
    struct util_dynarray dead_swapchains;
 
    struct util_queue_fence flush_completed;
@@ -181,6 +181,9 @@ zink_start_batch(struct zink_context *ctx, struct zink_batch *batch);
 
 void
 zink_end_batch(struct zink_context *ctx, struct zink_batch *batch);
+
+void
+zink_batch_add_wait_semaphore(struct zink_batch *batch, VkSemaphore sem);
 
 void
 zink_batch_resource_usage_set(struct zink_batch *batch, struct zink_resource *res, bool write);

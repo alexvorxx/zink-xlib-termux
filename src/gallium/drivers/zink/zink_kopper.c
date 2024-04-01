@@ -640,7 +640,7 @@ kopper_present(void *data, void *gdata, int thread_idx)
       cpi->info.pWaitSemaphores = NULL;
       cpi->info.waitSemaphoreCount = 0;
    }
-   VkResult error2 = VKSCR(QueuePresentKHR)(screen->thread_queue, &cpi->info);
+   VkResult error2 = VKSCR(QueuePresentKHR)(screen->queue, &cpi->info);
    simple_mtx_unlock(&screen->queue_lock);
    swapchain->last_present = cpi->image;
    if (cpi->indefinite_acquire)
@@ -672,7 +672,9 @@ kopper_present(void *data, void *gdata, int thread_idx)
    }
    /* queue this wait semaphore for deletion on completion of the next batch */
    assert(screen->curr_batch > 0);
-   uint32_t next = screen->curr_batch + 1;
+   uint32_t next = (uint32_t)screen->curr_batch + 1;
+   /* handle overflow */
+   next = MAX2(next + 1, 1);
    struct hash_entry *he = _mesa_hash_table_search(swapchain->presents, (void*)(uintptr_t)next);
    if (he)
       arr = he->data;
@@ -782,7 +784,7 @@ zink_kopper_present_readback(struct zink_context *ctx, struct zink_resource *res
    si.waitSemaphoreCount = !!acquire;
    si.pWaitSemaphores = &acquire;
    si.pSignalSemaphores = &present;
-   VkResult error = VKSCR(QueueSubmit)(screen->thread_queue, 1, &si, VK_NULL_HANDLE);
+   VkResult error = VKSCR(QueueSubmit)(screen->queue, 1, &si, VK_NULL_HANDLE);
    if (!zink_screen_handle_vkresult(screen, error))
       return false;
 

@@ -8342,36 +8342,6 @@
     <immediate name="index" size="32"/>
   </ins>
 
-  <ins name="+FRSCALE.f32" pseudo="true">
-    <src start="0"/>
-    <src start="3"/>
-    <mod name="clamp" size="2">
-      <opt>none</opt>
-      <opt>clamp_0_inf</opt>
-      <opt>clamp_m1_1</opt>
-      <opt>clamp_0_1</opt>
-    </mod>
-    <mod name="neg0" size="1" opt="neg"/>
-    <mod name="neg1" size="1" opt="neg"/>
-    <mod name="abs0" start="15" size="1" opt="abs"/>
-    <mod name="abs1" start="15" size="1" opt="abs"/>
-  </ins>
-
-  <ins name="+FRSCALE.v2f16" pseudo="true">
-    <src start="0"/>
-    <src start="3"/>
-    <mod name="clamp" size="2">
-      <opt>none</opt>
-      <opt>clamp_0_inf</opt>
-      <opt>clamp_m1_1</opt>
-      <opt>clamp_0_1</opt>
-    </mod>
-    <mod name="neg0" size="1" opt="neg"/>
-    <mod name="neg1" size="1" opt="neg"/>
-    <mod name="abs0" start="15" size="1" opt="abs"/>
-    <mod name="abs1" start="15" size="1" opt="abs"/>
-  </ins>
-
   <ins name="*FABSNEG.f32" pseudo="true">
     <src start="0" mask="0xfb"/>
     <mod name="neg0" start="7" size="1" opt="neg"/>
@@ -8725,7 +8695,7 @@
     <src start="3"/>
   </ins>
 
-  <ins name="+LD_BUFFER.i16" staging="w=1" pseudo="true">
+  <ins name="+LD_BUFFER.i16" staging="w=1" pseudo="true" message="load">
     <src start="0"/>
     <src start="3"/>
     <mod name="lane_dest" size="2" default="h0">
@@ -8844,6 +8814,24 @@
       <opt>v2</opt>
       <opt>v3</opt>
       <opt>v4</opt>
+    </mod>
+  </ins>
+
+  <ins name="*MKVEC.v2i8" pseudo="true">
+    <src start="0"/>
+    <src start="3"/>
+    <src start="6"/>
+    <mod name="lane0" start="12" size="2" default="b0">
+      <opt>b0</opt>
+      <opt>b1</opt>
+      <opt>b2</opt>
+      <opt>b3</opt>
+    </mod>
+    <mod name="lane1" start="13" size="2" default="b0">
+      <opt>b0</opt>
+      <opt>b1</opt>
+      <opt>b2</opt>
+      <opt>b3</opt>
     </mod>
   </ins>
 

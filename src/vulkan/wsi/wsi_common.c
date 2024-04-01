@@ -247,24 +247,25 @@ wsi_device_setup_syncobj_fd(struct wsi_device *wsi_device,
 VkResult
 wsi_swapchain_init(const struct wsi_device *wsi,
                    struct wsi_swapchain *chain,
-                   VkDevice device,
+                   VkDevice _device,
                    const VkSwapchainCreateInfoKHR *pCreateInfo,
                    const VkAllocationCallbacks *pAllocator,
                    bool use_buffer_blit)
 {
+   VK_FROM_HANDLE(vk_device, device, _device);
    VkResult result;
 
    memset(chain, 0, sizeof(*chain));
 
-   vk_object_base_init(NULL, &chain->base, VK_OBJECT_TYPE_SWAPCHAIN_KHR);
+   vk_object_base_init(device, &chain->base, VK_OBJECT_TYPE_SWAPCHAIN_KHR);
 
    chain->wsi = wsi;
-   chain->device = device;
+   chain->device = _device;
    chain->alloc = *pAllocator;
    chain->use_buffer_blit = use_buffer_blit;
    chain->buffer_blit_queue = VK_NULL_HANDLE;
    if (use_buffer_blit && wsi->get_buffer_blit_queue)
-      chain->buffer_blit_queue = wsi->get_buffer_blit_queue(device);
+      chain->buffer_blit_queue = wsi->get_buffer_blit_queue(_device);
 
    int cmd_pools_count = chain->buffer_blit_queue != VK_NULL_HANDLE ? 1 : wsi->queue_family_count;
 
@@ -287,7 +288,7 @@ wsi_swapchain_init(const struct wsi_device *wsi,
          .flags = 0,
          .queueFamilyIndex = queue_family_index,
       };
-      result = wsi->CreateCommandPool(device, &cmd_pool_info, &chain->alloc,
+      result = wsi->CreateCommandPool(_device, &cmd_pool_info, &chain->alloc,
                                       &chain->cmd_pools[i]);
       if (result != VK_SUCCESS)
          goto fail;
@@ -864,7 +865,7 @@ wsi_signal_semaphore_for_image(struct vk_device *device,
 
    vk_semaphore_reset_temporary(device, semaphore);
 
-#ifndef _WIN32
+#ifdef HAVE_LIBDRM
    VkResult result = wsi_create_sync_for_dma_buf_wait(chain, image,
                                                       VK_SYNC_FEATURE_GPU_WAIT,
                                                       &semaphore->temporary);
@@ -896,7 +897,7 @@ wsi_signal_fence_for_image(struct vk_device *device,
 
    vk_fence_reset_temporary(device, fence);
 
-#ifndef _WIN32
+#ifdef HAVE_LIBDRM
    VkResult result = wsi_create_sync_for_dma_buf_wait(chain, image,
                                                       VK_SYNC_FEATURE_CPU_WAIT,
                                                       &fence->temporary);
@@ -1074,7 +1075,7 @@ wsi_common_queue_present(const struct wsi_device *wsi,
       VkFence fence = swapchain->fences[image_index];
 
       bool has_signal_dma_buf = false;
-#ifndef _WIN32
+#ifdef HAVE_LIBDRM
       result = wsi_prepare_signal_dma_buf_from_semaphore(swapchain, image);
       if (result == VK_SUCCESS) {
          assert(submit_info.signalSemaphoreCount == 0);
@@ -1107,7 +1108,7 @@ wsi_common_queue_present(const struct wsi_device *wsi,
       if (result != VK_SUCCESS)
          goto fail_present;
 
-#ifndef _WIN32
+#ifdef HAVE_LIBDRM
       if (has_signal_dma_buf) {
          result = wsi_signal_dma_buf_from_semaphore(swapchain, image);
          if (result != VK_SUCCESS)

@@ -158,34 +158,18 @@ genX(emit_slice_hashing_state)(struct anv_device *device,
 #endif
 }
 
-static VkResult
-init_render_queue_state(struct anv_queue *queue)
+static void
+init_common_queue_state(struct anv_queue *queue, struct anv_batch *batch)
 {
-   struct anv_device *device = queue->device;
-   uint32_t cmds[128];
-   struct anv_batch batch = {
-      .start = cmds,
-      .next = cmds,
-      .end = (void *) cmds + sizeof(cmds),
-   };
+   UNUSED struct anv_device *device = queue->device;
 
-   anv_batch_emit(&batch, GENX(PIPELINE_SELECT), ps) {
-#if GFX_VER >= 9
-      ps.MaskBits = GFX_VER >= 12 ? 0x13 : 3;
-      ps.MediaSamplerDOPClockGateEnable = GFX_VER >= 12;
-#endif
-      ps.PipelineSelection = _3D;
-   }
-
-#if GFX_VER == 9
-   anv_batch_write_reg(&batch, GENX(CACHE_MODE_1), cm1) {
-      cm1.FloatBlendOptimizationEnable = true;
-      cm1.FloatBlendOptimizationEnableMask = true;
-      cm1.MSCRAWHazardAvoidanceBit = true;
-      cm1.MSCRAWHazardAvoidanceBitMask = true;
-      cm1.PartialResolveDisableInVC = true;
-      cm1.PartialResolveDisableInVCMask = true;
-   }
+#if GFX_VER >= 11
+   /* Starting with GFX version 11, SLM is no longer part of the L3$ config
+    * so it never changes throughout the lifetime of the VkDevice.
+    */
+   const struct intel_l3_config *cfg = intel_get_default_l3_config(&device->info);
+   genX(emit_l3_config)(batch, device, cfg);
+   device->l3_config = cfg;
 #endif
 
 #if GFX_VERx10 >= 125
@@ -195,7 +179,7 @@ init_render_queue_state(struct anv_queue *queue)
     *  Fortunately, we always start the context off in 3D mode.
     */
    uint32_t mocs = device->isl_dev.mocs.internal;
-   anv_batch_emit(&batch, GENX(STATE_BASE_ADDRESS), sba) {
+   anv_batch_emit(batch, GENX(STATE_BASE_ADDRESS), sba) {
       sba.GeneralStateBaseAddress = (struct anv_address) { NULL, 0 };
       sba.GeneralStateBufferSize  = 0xfffff;
       sba.GeneralStateMOCS = mocs;
@@ -239,6 +223,37 @@ init_render_queue_state(struct anv_queue *queue)
       sba.BindlessSamplerStateMOCS = mocs;
       sba.BindlessSamplerStateBaseAddressModifyEnable = true;
       sba.BindlessSamplerStateBufferSize = 0;
+   }
+#endif
+}
+
+static VkResult
+init_render_queue_state(struct anv_queue *queue)
+{
+   struct anv_device *device = queue->device;
+   uint32_t cmds[128];
+   struct anv_batch batch = {
+      .start = cmds,
+      .next = cmds,
+      .end = (void *) cmds + sizeof(cmds),
+   };
+
+   anv_batch_emit(&batch, GENX(PIPELINE_SELECT), ps) {
+#if GFX_VER >= 9
+      ps.MaskBits = GFX_VER >= 12 ? 0x13 : 3;
+      ps.MediaSamplerDOPClockGateEnable = GFX_VER >= 12;
+#endif
+      ps.PipelineSelection = _3D;
+   }
+
+#if GFX_VER == 9
+   anv_batch_write_reg(&batch, GENX(CACHE_MODE_1), cm1) {
+      cm1.FloatBlendOptimizationEnable = true;
+      cm1.FloatBlendOptimizationEnableMask = true;
+      cm1.MSCRAWHazardAvoidanceBit = true;
+      cm1.MSCRAWHazardAvoidanceBitMask = true;
+      cm1.PartialResolveDisableInVC = true;
+      cm1.PartialResolveDisableInVCMask = true;
    }
 #endif
 
@@ -372,14 +387,36 @@ init_render_queue_state(struct anv_queue *queue)
 #endif
    }
 
-#if GFX_VER >= 11
-   /* Starting with GFX version 11, SLM is no longer part of the L3$ config
-    * so it never changes throughout the lifetime of the VkDevice.
-    */
-   const struct intel_l3_config *cfg = intel_get_default_l3_config(&device->info);
-   genX(emit_l3_config)(&batch, device, cfg);
-   device->l3_config = cfg;
+   init_common_queue_state(queue, &batch);
+
+   anv_batch_emit(&batch, GENX(MI_BATCH_BUFFER_END), bbe);
+
+   assert(batch.next <= batch.end);
+
+   return anv_queue_submit_simple_batch(queue, &batch);
+}
+
+static VkResult
+init_compute_queue_state(struct anv_queue *queue)
+{
+   struct anv_batch batch;
+
+   uint32_t cmds[64];
+   batch.start = batch.next = cmds;
+   batch.end = (void *) cmds + sizeof(cmds);
+
+   anv_batch_emit(&batch, GENX(PIPELINE_SELECT), ps) {
+#if GFX_VER >= 9
+      ps.MaskBits = 3;
 #endif
+#if GFX_VER >= 11
+      ps.MaskBits |= 0x10;
+      ps.MediaSamplerDOPClockGateEnable = true;
+#endif
+      ps.PipelineSelection = GPGPU;
+   }
+
+   init_common_queue_state(queue, &batch);
 
    anv_batch_emit(&batch, GENX(MI_BATCH_BUFFER_END), bbe);
 
@@ -405,6 +442,9 @@ genX(init_device_state)(struct anv_device *device)
       switch (queue->family->engine_class) {
       case I915_ENGINE_CLASS_RENDER:
          res = init_render_queue_state(queue);
+         break;
+      case I915_ENGINE_CLASS_COMPUTE:
+         res = init_compute_queue_state(queue);
          break;
       default:
          res = vk_error(device, VK_ERROR_INITIALIZATION_FAILED);

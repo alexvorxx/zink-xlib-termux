@@ -486,8 +486,8 @@ populate_wm_prog_key(const struct anv_graphics_pipeline *pipeline,
 
    assert(rendering_info->colorAttachmentCount <= MAX_RTS);
    /* Consider all inputs as valid until look at the NIR variables. */
-   key->color_outputs_valid = (1u << MAX_RTS) - 1;
-   key->nr_color_regions = MAX_RTS;
+   key->color_outputs_valid = (1u << rendering_info->colorAttachmentCount) - 1;
+   key->nr_color_regions = rendering_info->colorAttachmentCount;
 
    /* To reduce possible shader recompilations we would need to know if
     * there is a SampleMask output variable to compute if we should emit
@@ -788,9 +788,9 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
    NIR_PASS(_, nir, brw_nir_lower_ray_queries, &pdevice->info);
 
    /* Apply the actual pipeline layout to UBOs, SSBOs, and textures */
-   anv_nir_apply_pipeline_layout(pdevice,
-                                 pipeline->device->robust_buffer_access,
-                                 layout, nir, &stage->bind_map);
+   NIR_PASS_V(nir, anv_nir_apply_pipeline_layout,
+              pdevice, pipeline->device->robust_buffer_access,
+              layout, &stage->bind_map);
 
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_ubo,
             anv_nir_ubo_addr_format(pdevice,
@@ -818,8 +818,9 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
                 .callback = NULL,
             });
 
-   anv_nir_compute_push_layout(pdevice, pipeline->device->robust_buffer_access,
-                               nir, prog_data, &stage->bind_map, mem_ctx);
+   NIR_PASS_V(nir, anv_nir_compute_push_layout,
+              pdevice, pipeline->device->robust_buffer_access,
+              prog_data, &stage->bind_map, mem_ctx);
 
    if (gl_shader_stage_uses_workgroup(nir->info.stage)) {
       if (!nir->info.shared_memory_explicit_layout) {
@@ -1125,7 +1126,8 @@ anv_pipeline_compile_mesh(const struct brw_compiler *compiler,
 
 static void
 anv_pipeline_link_fs(const struct brw_compiler *compiler,
-                     struct anv_pipeline_stage *stage)
+                     struct anv_pipeline_stage *stage,
+                     const VkPipelineRenderingCreateInfo *rendering_info)
 {
    /* Initially the valid outputs value is set to all possible render targets
     * valid (see populate_wm_prog_key()), before we look at the shader
@@ -1144,6 +1146,8 @@ anv_pipeline_link_fs(const struct brw_compiler *compiler,
 
       stage->key.wm.color_outputs_valid |= BITFIELD_RANGE(rt, array_len);
    }
+   stage->key.wm.color_outputs_valid &=
+      (1u << rendering_info->colorAttachmentCount) - 1;
    stage->key.wm.nr_color_regions =
       util_last_bit(stage->key.wm.color_outputs_valid);
 
@@ -1682,7 +1686,7 @@ anv_pipeline_compile_graphics(struct anv_graphics_pipeline *pipeline,
          anv_pipeline_link_mesh(compiler, &stages[s], next_stage);
          break;
       case MESA_SHADER_FRAGMENT:
-         anv_pipeline_link_fs(compiler, &stages[s]);
+         anv_pipeline_link_fs(compiler, &stages[s], rendering_info);
          break;
       default:
          unreachable("Invalid graphics shader stage");
@@ -1846,46 +1850,6 @@ anv_pipeline_compile_graphics(struct anv_graphics_pipeline *pipeline,
    ralloc_free(pipeline_ctx);
 
 done:
-
-   if (pipeline->shaders[MESA_SHADER_FRAGMENT] != NULL) {
-      struct anv_shader_bin *fs = pipeline->shaders[MESA_SHADER_FRAGMENT];
-      const struct brw_wm_prog_data *wm_prog_data =
-         brw_wm_prog_data_const(fs->prog_data);
-
-      if (wm_prog_data->color_outputs_written == 0 &&
-          !wm_prog_data->has_side_effects &&
-          !wm_prog_data->uses_omask &&
-          !wm_prog_data->uses_kill &&
-          wm_prog_data->computed_depth_mode == BRW_PSCDEPTH_OFF &&
-          !wm_prog_data->computed_stencil &&
-          fs->xfb_info == NULL) {
-         /* This can happen if we decided to implicitly disable the fragment
-          * shader.  See anv_pipeline_compile_fs().
-          */
-         anv_shader_bin_unref(pipeline->base.device, fs);
-         pipeline->shaders[MESA_SHADER_FRAGMENT] = NULL;
-         pipeline->active_stages &= ~VK_SHADER_STAGE_FRAGMENT_BIT;
-
-         /* The per-SIMD size fragment shaders should be last in the
-          * executables array.  Remove all of them.
-          */
-         ASSERTED unsigned removed = 0;
-
-         util_dynarray_foreach_reverse(&pipeline->base.executables,
-                                       struct anv_pipeline_executable,
-                                       tail) {
-            /* There must be at least one fragment shader. */
-            assert(removed > 0 || tail->stage == MESA_SHADER_FRAGMENT);
-
-            if (tail->stage != MESA_SHADER_FRAGMENT)
-               break;
-
-            (void) util_dynarray_pop(&pipeline->base.executables,
-                                     struct anv_pipeline_executable);
-            removed++;
-         }
-      }
-   }
 
    pipeline_feedback.duration = os_time_get_nano() - pipeline_start;
 
@@ -2332,7 +2296,7 @@ copy_non_dynamic_state(struct anv_graphics_pipeline *pipeline,
       default: unreachable("invalid sample count");
       }
 
-      if (sl_info) {
+      if (sl_info && sl_info->sampleLocationsEnable) {
          const VkSampleLocationEXT *positions =
             sl_info->sampleLocationsInfo.pSampleLocations;
          for (uint32_t i = 0; i < samples; i++) {

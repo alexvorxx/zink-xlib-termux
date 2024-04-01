@@ -93,12 +93,16 @@ radv_amdgpu_winsys_rebuild_bo_list(struct radv_amdgpu_winsys_bo *bo)
 
    qsort(bo->bos, temp_bo_count, sizeof(struct radv_amdgpu_winsys_bo *), &bo_comparator);
 
-   uint32_t final_bo_count = 1;
-   for (uint32_t i = 1; i < temp_bo_count; ++i)
-      if (bo->bos[i] != bo->bos[i - 1])
-         bo->bos[final_bo_count++] = bo->bos[i];
+   if (!temp_bo_count) {
+      bo->bo_count = 0;
+   } else {
+      uint32_t final_bo_count = 1;
+      for (uint32_t i = 1; i < temp_bo_count; ++i)
+         if (bo->bos[i] != bo->bos[i - 1])
+            bo->bos[final_bo_count++] = bo->bos[i];
 
-   bo->bo_count = final_bo_count;
+      bo->bo_count = final_bo_count;
+   }
 
    return VK_SUCCESS;
 }
@@ -134,6 +138,21 @@ radv_amdgpu_winsys_bo_virtual_bind(struct radeon_winsys *_ws, struct radeon_wins
    if (r) {
       fprintf(stderr, "radv/amdgpu: Failed to replace a PRT VA region (%d).\n", r);
       return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+   }
+
+   /* Do not add the BO to the virtual BO list if it's already in the global list to avoid dangling
+    * BO references because it might have been destroyed without being previously unbound. Resetting
+    * it to NULL clears the old BO ranges if present.
+    *
+    * This is going to be clarified in the Vulkan spec:
+    * https://gitlab.khronos.org/vulkan/vulkan/-/issues/3125
+    *
+    * The issue still exists for non-global BO but it will be addressed later, once we are 100% it's
+    * RADV fault (mostly because the solution looks more complicated).
+    */
+   if (bo && bo->base.use_global_list) {
+      bo = NULL;
+      bo_offset = 0;
    }
 
    /* We have at most 2 new ranges (1 by the bind, and another one by splitting a range that

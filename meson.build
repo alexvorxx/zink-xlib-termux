@@ -1098,7 +1098,7 @@ if cc.compiles('__uint128_t foo(void) { return 0; }',
 endif
 
 # TODO: this is very incomplete
-if ['linux', 'cygwin', 'gnu', 'freebsd', 'gnu/kfreebsd', 'haiku'].contains(host_machine.system())
+if ['linux', 'cygwin', 'gnu', 'freebsd', 'gnu/kfreebsd', 'haiku', 'android'].contains(host_machine.system())
   pre_args += '-D_GNU_SOURCE'
 elif host_machine.system() == 'sunos'
   pre_args += '-D__EXTENSIONS__'
@@ -1108,7 +1108,7 @@ elif host_machine.system() == 'windows'
     '-DPIPE_SUBSYSTEM_WINDOWS_USER',
     '-D_USE_MATH_DEFINES',  # XXX: scons didn't use this for mingw
   ]
-  if cc.get_id() == 'msvc'
+  if cc.get_argument_syntax() == 'msvc'
     pre_args += [
       '-DVC_EXTRALEAN',
       '-D_CRT_SECURE_NO_WARNINGS',
@@ -1141,7 +1141,7 @@ endif
 c_msvc_compat_args = []
 no_override_init_args = []
 cpp_msvc_compat_args = []
-if cc.get_id() == 'msvc'
+if cc.get_argument_syntax() == 'msvc'
   _trial = [
     '/wd4018',  # signed/unsigned mismatch
     '/wd4056',  # overflow in floating-point constant arithmetic
@@ -1203,7 +1203,7 @@ else
   ]
 
   # MinGW chokes on format specifiers and I can't get it all working
-  if not (cc.get_id() == 'gcc' and host_machine.system() == 'windows')
+  if not (cc.get_argument_syntax() == 'gcc' and host_machine.system() == 'windows')
     _trial_c += ['-Werror=format', '-Wformat-security']
     _trial_cpp += ['-Werror=format', '-Wformat-security']
   endif
@@ -1247,7 +1247,7 @@ endif
 
 # set linker arguments
 if host_machine.system() == 'windows'
-  if cc.get_id() == 'msvc'
+  if cc.get_argument_syntax() == 'msvc'
     add_project_link_arguments(
       '/fixed:no',
       '/dynamicbase',
@@ -1282,7 +1282,7 @@ if host_machine.system() == 'windows'
   endif
 endif
 
-if host_machine.cpu_family().startswith('x86') and cc.get_id() != 'msvc'
+if host_machine.cpu_family().startswith('x86') and cc.get_argument_syntax() != 'msvc'
   pre_args += '-DUSE_SSE41'
   with_sse41 = true
   sse41_args = ['-msse4.1']
@@ -1782,10 +1782,10 @@ if with_llvm
     error('Lavapipe requires LLVM draw support.')
   endif
 
-  if cc.get_id() != 'msvc'
+  if host_machine.system() != 'windows'
     # LLVM can be built without rtti, turning off rtti changes the ABI of C++
     # programs, so we need to build all C++ code in mesa without rtti as well to
-    # ensure that linking works. Note that MSVC does handle mismatching RTTI
+    # ensure that linking works. Note that Win32 compilers does handle mismatching RTTI
     # without issues, so only apply this for other compilers.
     if dep_llvm.type_name() == 'internal'
       _llvm_rtti = subproject('llvm').get_variable('has_rtti', true)
@@ -1800,7 +1800,9 @@ if with_llvm
         error('LLVM was built without RTTI, so Mesa must also disable RTTI. Use an LLVM built with LLVM_ENABLE_RTTI or add cpp_rtti=false.')
       endif
     endif
-  else
+  endif
+
+  if cc.get_argument_syntax() == 'msvc'
     # Suppress "/DELAYLOAD:ole32.dll/shell32.dll ignored" warnings that LLVM adds
     add_project_link_arguments(
       '/ignore:4199',

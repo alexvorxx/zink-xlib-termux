@@ -89,32 +89,71 @@ vn_device_init_queues(struct vn_device *dev,
    if (!queues)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
-   VkResult result = VK_SUCCESS;
    count = 0;
    for (uint32_t i = 0; i < create_info->queueCreateInfoCount; i++) {
+      VkResult result;
+
       const VkDeviceQueueCreateInfo *queue_info =
          &create_info->pQueueCreateInfos[i];
       for (uint32_t j = 0; j < queue_info->queueCount; j++) {
          result = vn_queue_init(dev, &queues[count], queue_info, j);
-         if (result != VK_SUCCESS)
-            break;
+         if (result != VK_SUCCESS) {
+            for (uint32_t k = 0; k < count; k++)
+               vn_queue_fini(&queues[k]);
+            vk_free(alloc, queues);
+
+            return result;
+         }
 
          count++;
       }
-   }
-
-   if (result != VK_SUCCESS) {
-      for (uint32_t i = 0; i < count; i++)
-         vn_queue_fini(&queues[i]);
-      vk_free(alloc, queues);
-
-      return result;
    }
 
    dev->queues = queues;
    dev->queue_count = count;
 
    return VK_SUCCESS;
+}
+
+static bool
+vn_device_queue_family_init(struct vn_device *dev,
+                            const VkDeviceCreateInfo *create_info)
+{
+   const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
+   uint32_t *queue_families = NULL;
+   uint32_t count = 0;
+
+   queue_families = vk_zalloc(
+      alloc, sizeof(*queue_families) * create_info->queueCreateInfoCount,
+      VN_DEFAULT_ALIGN, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+   if (!queue_families)
+      return false;
+
+   for (uint32_t i = 0; i < create_info->queueCreateInfoCount; i++) {
+      const uint32_t index =
+         create_info->pQueueCreateInfos[i].queueFamilyIndex;
+      bool new_index = true;
+
+      for (uint32_t j = 0; j < count; j++) {
+         if (queue_families[j] == index) {
+            new_index = false;
+            break;
+         }
+      }
+      if (new_index)
+         queue_families[count++] = index;
+   }
+
+   dev->queue_families = queue_families;
+   dev->queue_family_count = count;
+
+   return true;
+}
+
+static inline void
+vn_device_queue_family_fini(struct vn_device *dev)
+{
+   vk_free(&dev->base.base.alloc, dev->queue_families);
 }
 
 static bool
@@ -261,6 +300,31 @@ vn_device_fix_create_info(const struct vn_device *dev,
    return local_info;
 }
 
+static inline VkResult
+vn_device_feedback_pool_init(struct vn_device *dev)
+{
+   /* The feedback pool defaults to suballocate slots of 8 bytes each. Initial
+    * pool size of 4096 corresponds to a total of 512 fences, semaphores and
+    * events, which well covers the common scenarios. Pool can grow anyway.
+    */
+   static const uint32_t pool_size = 4096;
+   const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
+
+   if (VN_PERF(NO_EVENT_FEEDBACK) && VN_PERF(NO_FENCE_FEEDBACK))
+      return VK_SUCCESS;
+
+   return vn_feedback_pool_init(dev, &dev->feedback_pool, pool_size, alloc);
+}
+
+static inline void
+vn_device_feedback_pool_fini(struct vn_device *dev)
+{
+   if (VN_PERF(NO_EVENT_FEEDBACK) && VN_PERF(NO_FENCE_FEEDBACK))
+      return;
+
+   vn_feedback_pool_fini(&dev->feedback_pool);
+}
+
 static VkResult
 vn_device_init(struct vn_device *dev,
                struct vn_physical_device *physical_dev,
@@ -293,9 +357,10 @@ vn_device_init(struct vn_device *dev,
    if (result != VK_SUCCESS)
       return result;
 
-   result = vn_device_init_queues(dev, create_info);
-   if (result != VK_SUCCESS)
-      goto fail;
+   if (!vn_device_queue_family_init(dev, create_info)) {
+      result = VK_ERROR_OUT_OF_HOST_MEMORY;
+      goto out_destroy_device;
+   }
 
    for (uint32_t i = 0; i < ARRAY_SIZE(dev->memory_pools); i++) {
       struct vn_device_memory_pool *pool = &dev->memory_pools[i];
@@ -304,18 +369,38 @@ vn_device_init(struct vn_device *dev,
 
    result = vn_buffer_cache_init(dev);
    if (result != VK_SUCCESS)
-      goto fail;
+      goto out_memory_pool_fini;
+
+   result = vn_device_feedback_pool_init(dev);
+   if (result != VK_SUCCESS)
+      goto out_buffer_cache_fini;
+
+   result = vn_feedback_cmd_pools_init(dev);
+   if (result != VK_SUCCESS)
+      goto out_feedback_pool_fini;
+
+   result = vn_device_init_queues(dev, create_info);
+   if (result != VK_SUCCESS)
+      goto out_cmd_pools_fini;
 
    return VK_SUCCESS;
 
-fail:
-   if (dev->queues) {
-      for (uint32_t i = 0; i < dev->queue_count; i++)
-         vn_queue_fini(&dev->queues[i]);
+out_cmd_pools_fini:
+   vn_feedback_cmd_pools_fini(dev);
 
-      vk_free(alloc, dev->queues);
-   }
+out_feedback_pool_fini:
+   vn_device_feedback_pool_fini(dev);
 
+out_buffer_cache_fini:
+   vn_buffer_cache_fini(dev);
+
+out_memory_pool_fini:
+   for (uint32_t i = 0; i < ARRAY_SIZE(dev->memory_pools); i++)
+      vn_device_memory_pool_fini(dev, i);
+
+   vn_device_queue_family_fini(dev);
+
+out_destroy_device:
    vn_call_vkDestroyDevice(instance, dev_handle, NULL);
 
    return result;
@@ -374,13 +459,19 @@ vn_DestroyDevice(VkDevice device, const VkAllocationCallbacks *pAllocator)
    if (!dev)
       return;
 
+   for (uint32_t i = 0; i < dev->queue_count; i++)
+      vn_queue_fini(&dev->queues[i]);
+
+   vn_feedback_cmd_pools_fini(dev);
+
+   vn_device_feedback_pool_fini(dev);
+
    vn_buffer_cache_fini(dev);
 
    for (uint32_t i = 0; i < ARRAY_SIZE(dev->memory_pools); i++)
       vn_device_memory_pool_fini(dev, i);
 
-   for (uint32_t i = 0; i < dev->queue_count; i++)
-      vn_queue_fini(&dev->queues[i]);
+   vn_device_queue_family_fini(dev);
 
    /* We must emit vkDestroyDevice before freeing dev->queues.  Otherwise,
     * another thread might reuse their object ids while they still refer to

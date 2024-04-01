@@ -32,6 +32,15 @@
 #include "git_sha1.h"
 #include "vulkan/vulkan.h"
 
+static_assert(DXIL_SPIRV_SHADER_NONE == (int)MESA_SHADER_NONE, "must match");
+static_assert(DXIL_SPIRV_SHADER_VERTEX == (int)MESA_SHADER_VERTEX, "must match");
+static_assert(DXIL_SPIRV_SHADER_TESS_CTRL == (int)MESA_SHADER_TESS_CTRL, "must match");
+static_assert(DXIL_SPIRV_SHADER_TESS_EVAL == (int)MESA_SHADER_TESS_EVAL, "must match");
+static_assert(DXIL_SPIRV_SHADER_GEOMETRY == (int)MESA_SHADER_GEOMETRY, "must match");
+static_assert(DXIL_SPIRV_SHADER_FRAGMENT == (int)MESA_SHADER_FRAGMENT, "must match");
+static_assert(DXIL_SPIRV_SHADER_COMPUTE == (int)MESA_SHADER_COMPUTE, "must match");
+static_assert(DXIL_SPIRV_SHADER_KERNEL == (int)MESA_SHADER_KERNEL, "must match");
+
 /* Logic extracted from vk_spirv_to_nir() so we have the same preparation
  * steps for both the vulkan driver and the lib used by the WebGPU
  * implementation.
@@ -89,7 +98,7 @@ spirv_to_dxil(const uint32_t *words, size_t word_count,
               const struct dxil_spirv_runtime_conf *conf,
               struct dxil_spirv_object *out_dxil)
 {
-   if (stage == MESA_SHADER_NONE || stage == MESA_SHADER_KERNEL)
+   if (stage == DXIL_SPIRV_SHADER_NONE || stage == DXIL_SPIRV_SHADER_KERNEL)
       return false;
 
    struct spirv_to_nir_options spirv_opts = {

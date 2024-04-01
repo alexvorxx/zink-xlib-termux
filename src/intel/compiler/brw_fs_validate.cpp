@@ -41,47 +41,47 @@
       }                                                                 \
    }
 
-#define fsv_assert_eq(first, second)                                    \
+#define fsv_assert_eq(A, B)                                             \
    {                                                                    \
-      unsigned f = (first);                                             \
-      unsigned s = (second);                                            \
-      if (f != s) {                                                     \
+      unsigned a = (A);                                                 \
+      unsigned b = (B);                                                 \
+      if (a != b) {                                                     \
          fprintf(stderr, "ASSERT: Scalar %s validation failed!\n",      \
                  _mesa_shader_stage_to_abbrev(stage));                  \
          dump_instruction(inst, stderr);                                \
          fprintf(stderr, "%s:%d: A == B failed\n", __FILE__, __LINE__); \
-         fprintf(stderr, "  A = %s = %u\n", #first, f);                 \
-         fprintf(stderr, "  B = %s = %u\n", #second, s);                \
+         fprintf(stderr, "  A = %s = %u\n", #A, a);                     \
+         fprintf(stderr, "  B = %s = %u\n", #B, b);                     \
          abort();                                                       \
       }                                                                 \
    }
 
-#define fsv_assert_ne(first, second)                                    \
+#define fsv_assert_ne(A, B)                                             \
    {                                                                    \
-      unsigned f = (first);                                             \
-      unsigned s = (second);                                            \
-      if (f == s) {                                                     \
+      unsigned a = (A);                                                 \
+      unsigned b = (B);                                                 \
+      if (a == b) {                                                     \
          fprintf(stderr, "ASSERT: Scalar %s validation failed!\n",      \
                  _mesa_shader_stage_to_abbrev(stage));                  \
          dump_instruction(inst, stderr);                                \
          fprintf(stderr, "%s:%d: A != B failed\n", __FILE__, __LINE__); \
-         fprintf(stderr, "  A = %s = %u\n", #first, f);                 \
-         fprintf(stderr, "  B = %s = %u\n", #second, s);                \
+         fprintf(stderr, "  A = %s = %u\n", #A, a);                     \
+         fprintf(stderr, "  B = %s = %u\n", #B, b);                     \
          abort();                                                       \
       }                                                                 \
    }
 
-#define fsv_assert_lte(first, second)                                   \
+#define fsv_assert_lte(A, B)                                            \
    {                                                                    \
-      unsigned f = (first);                                             \
-      unsigned s = (second);                                            \
-      if (f > s) {                                                      \
+      unsigned a = (A);                                                 \
+      unsigned b = (B);                                                 \
+      if (a > b) {                                                      \
          fprintf(stderr, "ASSERT: Scalar %s validation failed!\n",      \
                  _mesa_shader_stage_to_abbrev(stage));                  \
          dump_instruction(inst, stderr);                                \
          fprintf(stderr, "%s:%d: A <= B failed\n", __FILE__, __LINE__); \
-         fprintf(stderr, "  A = %s = %u\n", #first, f);                 \
-         fprintf(stderr, "  B = %s = %u\n", #second, s);                \
+         fprintf(stderr, "  A = %s = %u\n", #A, a);                     \
+         fprintf(stderr, "  B = %s = %u\n", #B, b);                     \
          abort();                                                       \
       }                                                                 \
    }

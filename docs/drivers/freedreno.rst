@@ -431,7 +431,7 @@ The format of hangrd is the same as in ordinary command stream capture.
 Replaying Command Stream
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-`replay` tool allows capturing and replaying ``rd`` to reproduce GPU faults.
+``replay`` tool allows capturing and replaying ``rd`` to reproduce GPU faults.
 Especially useful for transient GPU issues since it has much higher chances to
 reproduce them.
 
@@ -440,7 +440,7 @@ Dumping rendering results or even just memory is currently unsupported.
 - Replaying command streams requires kernel with ``MSM_INFO_SET_IOVA`` support.
 - Requires ``rd`` capture to have full snapshots of the memory (``rd_full`` is enabled).
 
-Replaying is done via `replay` tool:
+Replaying is done via ``replay`` tool:
 
 .. code-block:: sh
 
@@ -629,9 +629,9 @@ the cases where stale data is read.
   ``renderpass``
     stomp registers before each renderpass.
   ``inverse``
-    changes `TU_DEBUG_STALE_REGS_RANGE` meaning to
+    changes ``TU_DEBUG_STALE_REGS_RANGE`` meaning to
     "regs that should NOT be stomped".
 
 The best way to pinpoint the reg which causes a failure is to bisect the regs
 range. In case when a fail is caused by combination of several registers
-the `inverse` flag may be set to find the reg which prevents the failure.
+the ``inverse`` flag may be set to find the reg which prevents the failure.

@@ -1787,7 +1787,7 @@ PowerVR driver environment variables
 
 .. envvar:: PVR_DEBUG
 
-   A comma-separated list of debug options. Use `PVR_DEBUG=help` to
+   A comma-separated list of debug options. Use ``PVR_DEBUG=help`` to
    print a list of available options.
 
 .. envvar:: ROGUE_DEBUG

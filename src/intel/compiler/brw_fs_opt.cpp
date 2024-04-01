@@ -17,7 +17,7 @@ brw_fs_optimize(fs_visitor &s)
    s.debug_optimizer(nir, "start", 0, 0);
 
    /* Start by validating the shader we currently have. */
-   s.validate();
+   brw_fs_validate(s);
 
    bool progress = false;
    int iteration = 0;
@@ -30,7 +30,7 @@ brw_fs_optimize(fs_visitor &s)
       if (this_progress)                                                \
          s.debug_optimizer(nir, #pass, iteration, pass_num);            \
                                                                         \
-      s.validate();                                                     \
+      brw_fs_validate(s);                                               \
                                                                         \
       progress = progress || this_progress;                             \
       this_progress;                                                    \

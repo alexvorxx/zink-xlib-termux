@@ -3756,6 +3756,61 @@ get_tex_image_to_load( struct ntv_context *ctx, SpvId image_type, bool is_buffer
               spirv_builder_emit_image(&ctx->builder, image_type, load);
 }
 
+static SpvId
+emit_tex_readop(struct ntv_context *ctx, nir_variable *bindless_var, SpvId load,
+                struct spriv_tex_src *tex_src, SpvId dest_type, bool is_buffer,
+                nir_variable *var, SpvId image_type, nir_tex_instr *tex)
+{
+   SpvId actual_dest_type = get_texop_dest_type(ctx, tex);
+
+   SpvId result;
+   if (tex_src->offset)
+      spirv_builder_emit_cap(&ctx->builder, SpvCapabilityImageGatherExtended);
+   if (tex_src->min_lod)
+      spirv_builder_emit_cap(&ctx->builder, SpvCapabilityMinLod);
+   if (tex->op == nir_texop_txf ||
+       tex->op == nir_texop_txf_ms ||
+       tex->op == nir_texop_tg4) {
+      SpvId image = get_tex_image_to_load(ctx, image_type, is_buffer, load);
+
+      if (tex->op == nir_texop_tg4) {
+         if (tex_src->const_offset)
+            spirv_builder_emit_cap(&ctx->builder, SpvCapabilityImageGatherExtended);
+         result = spirv_builder_emit_image_gather(&ctx->builder, actual_dest_type,
+                                                  load, tex_src, emit_uint_const(ctx, 32, tex->component));
+         actual_dest_type = dest_type;
+      } else {
+         assert(tex->op == nir_texop_txf_ms || !tex_src->sample);
+         bool is_ms;
+         type_to_dim(glsl_get_sampler_dim(glsl_without_array(var->type)), &is_ms);
+         assert(is_ms || !tex_src->sample);
+         result = spirv_builder_emit_image_fetch(&ctx->builder, actual_dest_type,
+                                                 image, tex_src);
+      }
+   } else {
+      if (tex->op == nir_texop_txl)
+         tex_src->min_lod = 0;
+      result = spirv_builder_emit_image_sample(&ctx->builder,
+                                               actual_dest_type, load,
+                                               tex_src);
+   }
+
+   if (!bindless_var && (var->data.precision == GLSL_PRECISION_MEDIUM || var->data.precision == GLSL_PRECISION_LOW)) {
+      spirv_builder_emit_decoration(&ctx->builder, result,
+                                    SpvDecorationRelaxedPrecision);
+   }
+
+   if (tex->is_sparse)
+      result = extract_sparse_load(ctx, result, actual_dest_type, &tex->def);
+
+   if (tex->def.bit_size != 32) {
+      /* convert FP32 to FP16 */
+      result = emit_unop(ctx, SpvOpFConvert, dest_type, result);
+   }
+
+   return result;
+}
+
 static void
 emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
 {
@@ -3856,58 +3911,14 @@ emit_tex(struct ntv_context *ctx, nir_tex_instr *tex)
       store_def(ctx, tex->def.index, result, tex->dest_type);
       return;
    }
-   default:
+
+   default: {
+      SpvId result = emit_tex_readop(ctx, bindless_var, load, &tex_src,
+                               dest_type, is_buffer, var, image_type, tex);
+      store_def(ctx, tex->def.index, result, tex->dest_type);
       break;
+   };
    }
-
-   SpvId actual_dest_type = get_texop_dest_type(ctx, tex);
-
-   SpvId result;
-   if (tex_src.offset)
-      spirv_builder_emit_cap(&ctx->builder, SpvCapabilityImageGatherExtended);
-   if (tex_src.min_lod)
-      spirv_builder_emit_cap(&ctx->builder, SpvCapabilityMinLod);
-   if (tex->op == nir_texop_txf ||
-       tex->op == nir_texop_txf_ms ||
-       tex->op == nir_texop_tg4) {
-      SpvId image = get_tex_image_to_load(ctx, image_type, is_buffer, load);
-
-      if (tex->op == nir_texop_tg4) {
-         if (tex_src.const_offset)
-            spirv_builder_emit_cap(&ctx->builder, SpvCapabilityImageGatherExtended);
-         result = spirv_builder_emit_image_gather(&ctx->builder, actual_dest_type,
-                                                 load, &tex_src, emit_uint_const(ctx, 32, tex->component));
-         actual_dest_type = dest_type;
-      } else {
-         assert(tex->op == nir_texop_txf_ms || !tex_src.sample);
-         bool is_ms;
-         type_to_dim(glsl_get_sampler_dim(glsl_without_array(var->type)), &is_ms);
-         assert(is_ms || !tex_src.sample);
-         result = spirv_builder_emit_image_fetch(&ctx->builder, actual_dest_type,
-                                                 image, &tex_src);
-      }
-   } else {
-      if (tex->op == nir_texop_txl)
-         tex_src.min_lod = 0;
-      result = spirv_builder_emit_image_sample(&ctx->builder,
-                                               actual_dest_type, load,
-                                               &tex_src);
-   }
-
-   if (!bindless_var && (var->data.precision == GLSL_PRECISION_MEDIUM || var->data.precision == GLSL_PRECISION_LOW)) {
-      spirv_builder_emit_decoration(&ctx->builder, result,
-                                    SpvDecorationRelaxedPrecision);
-   }
-
-   if (tex->is_sparse)
-      result = extract_sparse_load(ctx, result, actual_dest_type, &tex->def);
-
-   if (tex->def.bit_size != 32) {
-      /* convert FP32 to FP16 */
-      result = emit_unop(ctx, SpvOpFConvert, dest_type, result);
-   }
-
-   store_def(ctx, tex->def.index, result, tex->dest_type);
 
    if (tex->is_sparse)
       tex->def.num_components++;

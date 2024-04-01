@@ -27,7 +27,6 @@
 #include "util/os_file.h"
 #include "util/xmlconfig.h"
 #include "vk_device.h"
-#include "vk_format.h"
 #include "vk_physical_device.h"
 #include "vk_util.h"
 #include "drm-uapi/drm_fourcc.h"
@@ -68,7 +67,7 @@ wsi_dma_buf_export_sync_file(int dma_buf_fd, int *sync_file_fd)
    };
    int ret = drmIoctl(dma_buf_fd, DMA_BUF_IOCTL_EXPORT_SYNC_FILE_WSI, &export);
    if (ret) {
-      if (errno == ENOTTY || errno == EBADF) {
+      if (errno == ENOTTY || errno == EBADF || errno == ENOSYS) {
          no_dma_buf_sync_file = true;
          return VK_ERROR_FEATURE_NOT_PRESENT;
       } else {
@@ -95,7 +94,7 @@ wsi_dma_buf_import_sync_file(int dma_buf_fd, int sync_file_fd)
    };
    int ret = drmIoctl(dma_buf_fd, DMA_BUF_IOCTL_IMPORT_SYNC_FILE_WSI, &import);
    if (ret) {
-      if (errno == ENOTTY || errno == EBADF) {
+      if (errno == ENOTTY || errno == EBADF || errno == ENOSYS) {
          no_dma_buf_sync_file = true;
          return VK_ERROR_FEATURE_NOT_PRESENT;
       } else {
@@ -295,43 +294,12 @@ wsi_device_matches_drm_fd(const struct wsi_device *wsi, int drm_fd)
 }
 
 static uint32_t
-select_memory_type(const struct wsi_device *wsi,
-                   bool want_device_local,
-                   uint32_t type_bits)
-{
-   assert(type_bits);
-
-   bool all_local = true;
-   for (uint32_t i = 0; i < wsi->memory_props.memoryTypeCount; i++) {
-       const VkMemoryType type = wsi->memory_props.memoryTypes[i];
-       bool local = type.propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-
-       if ((type_bits & (1 << i)) && local == want_device_local)
-         return i;
-       all_local &= local;
-   }
-
-   /* ignore want_device_local when all memory types are device-local */
-   if (all_local) {
-      assert(!want_device_local);
-      return ffs(type_bits) - 1;
-   }
-
-   unreachable("No memory type found");
-}
-
-static uint32_t
 prime_select_buffer_memory_type(const struct wsi_device *wsi,
                                 uint32_t type_bits)
 {
-   return select_memory_type(wsi, false, type_bits);
-}
-
-static uint32_t
-prime_select_image_memory_type(const struct wsi_device *wsi,
-                               uint32_t type_bits)
-{
-   return select_memory_type(wsi, true, type_bits);
+   return wsi_select_memory_type(wsi, 0 /* req_props */,
+                                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                 type_bits);
 }
 
 static const struct VkDrmFormatModifierPropertiesEXT *
@@ -355,15 +323,12 @@ wsi_configure_native_image(const struct wsi_swapchain *chain,
                            uint32_t num_modifier_lists,
                            const uint32_t *num_modifiers,
                            const uint64_t *const *modifiers,
-                           uint8_t *(alloc_shm)(struct wsi_image *image,
-                                                unsigned size),
                            struct wsi_image_info *info)
 {
    const struct wsi_device *wsi = chain->wsi;
 
    VkExternalMemoryHandleTypeFlags handle_type =
-      wsi->sw ? VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT :
-                VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+      VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
 
    VkResult result = wsi_configure_image(chain, pCreateInfo, handle_type, info);
    if (result != VK_SUCCESS)
@@ -420,7 +385,7 @@ wsi_configure_native_image(const struct wsi_swapchain *chain,
             .flags = info->create.flags,
          };
 
-         VkImageFormatListCreateInfoKHR format_list;
+         VkImageFormatListCreateInfo format_list;
          if (info->create.flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT) {
             format_list = info->format_list;
             format_list.pNext = NULL;
@@ -482,7 +447,6 @@ wsi_configure_native_image(const struct wsi_swapchain *chain,
       }
    }
 
-   info->alloc_shm = alloc_shm;
    info->create_mem = wsi_create_native_image_mem;
 
    return VK_SUCCESS;
@@ -503,19 +467,6 @@ wsi_create_native_image_mem(const struct wsi_swapchain *chain,
    VkMemoryRequirements reqs;
    wsi->GetImageMemoryRequirements(chain->device, image->image, &reqs);
 
-   void *sw_host_ptr = NULL;
-   if (info->alloc_shm) {
-      VkSubresourceLayout layout;
-
-      wsi->GetImageSubresourceLayout(chain->device, image->image,
-                                     &(VkImageSubresource) {
-                                        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                                        .mipLevel = 0,
-                                        .arrayLayer = 0,
-                                     }, &layout);
-      sw_host_ptr = info->alloc_shm(image, layout.size);
-   }
-
    const struct wsi_memory_allocate_info memory_wsi_info = {
       .sType = VK_STRUCTURE_TYPE_WSI_MEMORY_ALLOCATE_INFO_MESA,
       .pNext = NULL,
@@ -524,8 +475,7 @@ wsi_create_native_image_mem(const struct wsi_swapchain *chain,
    const VkExportMemoryAllocateInfo memory_export_info = {
       .sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO,
       .pNext = &memory_wsi_info,
-      .handleTypes = wsi->sw ? VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT :
-      VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
+      .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
    };
    const VkMemoryDedicatedAllocateInfo memory_dedicated_info = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
@@ -533,38 +483,31 @@ wsi_create_native_image_mem(const struct wsi_swapchain *chain,
       .image = image->image,
       .buffer = VK_NULL_HANDLE,
    };
-   const VkImportMemoryHostPointerInfoEXT host_ptr_info = {
-      .sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT,
-      .pNext = &memory_dedicated_info,
-      .pHostPointer = sw_host_ptr,
-      .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT,
-   };
    const VkMemoryAllocateInfo memory_info = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-      .pNext = sw_host_ptr ? (void *)&host_ptr_info : (void *)&memory_dedicated_info,
+      .pNext = &memory_dedicated_info,
       .allocationSize = reqs.size,
-      .memoryTypeIndex = select_memory_type(wsi, true, reqs.memoryTypeBits),
+      .memoryTypeIndex =
+         wsi_select_device_memory_type(wsi, reqs.memoryTypeBits),
    };
    result = wsi->AllocateMemory(chain->device, &memory_info,
                                 &chain->alloc, &image->memory);
    if (result != VK_SUCCESS)
       return result;
 
-   if (!wsi->sw) {
-      const VkMemoryGetFdInfoKHR memory_get_fd_info = {
-         .sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
-         .pNext = NULL,
-         .memory = image->memory,
-         .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
-      };
+   const VkMemoryGetFdInfoKHR memory_get_fd_info = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
+      .pNext = NULL,
+      .memory = image->memory,
+      .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
+   };
 
-      result = wsi->GetMemoryFdKHR(chain->device, &memory_get_fd_info,
-                                   &image->dma_buf_fd);
-      if (result != VK_SUCCESS)
-         return result;
-   }
+   result = wsi->GetMemoryFdKHR(chain->device, &memory_get_fd_info,
+                                &image->dma_buf_fd);
+   if (result != VK_SUCCESS)
+      return result;
 
-   if (!wsi->sw && info->drm_mod_list.drmFormatModifierCount > 0) {
+   if (info->drm_mod_list.drmFormatModifierCount > 0) {
       VkImageDrmFormatModifierPropertiesEXT image_mod_props = {
          .sType = VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_PROPERTIES_EXT,
       };
@@ -653,20 +596,17 @@ wsi_configure_prime_image(UNUSED const struct wsi_swapchain *chain,
                           struct wsi_image_info *info)
 {
    VkResult result =
-      wsi_configure_buffer_image(chain, pCreateInfo, info);
+      wsi_configure_buffer_image(chain, pCreateInfo,
+                                 WSI_PRIME_LINEAR_STRIDE_ALIGN, 4096,
+                                 info);
    if (result != VK_SUCCESS)
       return result;
 
    info->prime_use_linear_modifier = use_modifier;
 
-   const uint32_t cpp = vk_format_get_blocksize(info->create.format);
-   info->linear_stride = ALIGN_POT(info->create.extent.width * cpp,
-                                   WSI_PRIME_LINEAR_STRIDE_ALIGN);
-   info->size_align = 4096;
-
    info->create_mem = wsi_create_prime_image_mem;
    info->select_buffer_memory_type = prime_select_buffer_memory_type;
-   info->select_image_memory_type = prime_select_image_memory_type;
+   info->select_image_memory_type = wsi_select_device_memory_type;
 
    return VK_SUCCESS;
 }

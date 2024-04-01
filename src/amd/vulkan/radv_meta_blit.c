@@ -48,7 +48,7 @@ build_nir_vertex_shader(struct radv_device *dev)
    tex_pos_out->data.location = VARYING_SLOT_VAR0;
    tex_pos_out->data.interpolation = INTERP_MODE_SMOOTH;
 
-   nir_ssa_def *outvec = radv_meta_gen_rect_vertices(&b);
+   nir_ssa_def *outvec = nir_gen_rect_vertices(&b, NULL, NULL);
 
    nir_store_var(&b, pos_out, outvec, 0xf);
 
@@ -457,7 +457,6 @@ blit_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
    const VkImageSubresourceLayers *dst_res = &region->dstSubresource;
    struct radv_device *device = cmd_buffer->device;
    struct radv_meta_saved_state saved_state;
-   bool old_predicating;
    VkSampler sampler;
 
    /* From the Vulkan 1.0 spec:
@@ -479,15 +478,12 @@ blit_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
                       },
                       &cmd_buffer->pool->vk.alloc, &sampler);
 
-   radv_meta_save(
-      &saved_state, cmd_buffer,
-      RADV_META_SAVE_GRAPHICS_PIPELINE | RADV_META_SAVE_CONSTANTS | RADV_META_SAVE_DESCRIPTORS);
-
    /* VK_EXT_conditional_rendering says that blit commands should not be
     * affected by conditional rendering.
     */
-   old_predicating = cmd_buffer->state.predicating;
-   cmd_buffer->state.predicating = false;
+   radv_meta_save(&saved_state, cmd_buffer,
+                  RADV_META_SAVE_GRAPHICS_PIPELINE | RADV_META_SAVE_CONSTANTS |
+                     RADV_META_SAVE_DESCRIPTORS | RADV_META_SUSPEND_PREDICATING);
 
    unsigned dst_start, dst_end;
    if (dst_image->vk.image_type == VK_IMAGE_TYPE_3D) {
@@ -602,9 +598,6 @@ blit_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
       radv_image_view_finish(&src_iview);
    }
 
-   /* Restore conditional rendering. */
-   cmd_buffer->state.predicating = old_predicating;
-
    radv_meta_restore(&saved_state, cmd_buffer);
 
    radv_DestroySampler(radv_device_to_handle(device), sampler, &cmd_buffer->pool->vk.alloc);
@@ -654,8 +647,8 @@ radv_device_finish_meta_blit_state(struct radv_device *device)
 
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->blit.pipeline_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device), state->blit.ds_layout,
-                                   &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(radv_device_to_handle(device),
+                                                        state->blit.ds_layout, &state->alloc);
 }
 
 static VkResult
@@ -939,7 +932,7 @@ radv_device_init_meta_blit_state(struct radv_device *device, bool on_demand)
       radv_CreateDescriptorSetLayout(radv_device_to_handle(device), &ds_layout_info,
                                      &device->meta_state.alloc, &device->meta_state.blit.ds_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    const VkPushConstantRange push_constant_range = {VK_SHADER_STAGE_VERTEX_BIT, 0, 20};
 
@@ -954,20 +947,15 @@ radv_device_init_meta_blit_state(struct radv_device *device, bool on_demand)
                                       &device->meta_state.alloc,
                                       &device->meta_state.blit.pipeline_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    result = radv_device_init_meta_blit_color(device, on_demand);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    result = radv_device_init_meta_blit_depth(device, on_demand);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
-   result = radv_device_init_meta_blit_stencil(device, on_demand);
-
-fail:
-   if (result != VK_SUCCESS)
-      radv_device_finish_meta_blit_state(device);
-   return result;
+   return radv_device_init_meta_blit_stencil(device, on_demand);
 }

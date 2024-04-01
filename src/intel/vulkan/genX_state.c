@@ -35,6 +35,7 @@
 #include "genxml/gen_macros.h"
 #include "genxml/genX_pack.h"
 
+#include "vk_standard_sample_locations.h"
 #include "vk_util.h"
 
 static void
@@ -223,6 +224,8 @@ init_common_queue_state(struct anv_queue *queue, struct anv_batch *batch)
       sba.BindlessSamplerStateMOCS = mocs;
       sba.BindlessSamplerStateBaseAddressModifyEnable = true;
       sba.BindlessSamplerStateBufferSize = 0;
+
+      sba.L1CacheControl = L1CC_WB;
    }
 #endif
 }
@@ -337,6 +340,17 @@ init_render_queue_state(struct anv_queue *queue)
       cc1.DisablePreemptionandHighPriorityPausingdueto3DPRIMITIVECommandMask = true;
 #endif
    }
+
+#if GFX_VERx10 == 120
+   /* Wa_1806527549 says to disable the following HiZ optimization when the
+    * depth buffer is D16_UNORM. We've found the WA to help with more depth
+    * buffer configurations however, so we always disable it just to be safe.
+    */
+   anv_batch_write_reg(&batch, GENX(HIZ_CHICKEN), reg) {
+      reg.HZDepthTestLEGEOptimizationDisable = true;
+      reg.HZDepthTestLEGEOptimizationDisableMask = true;
+   }
+#endif
 
 #if GFX_VERx10 < 125
 #define AA_LINE_QUALITY_REG GENX(3D_CHICKEN3)
@@ -530,7 +544,7 @@ genX(init_cps_device_state)(struct anv_device *device)
 #if GFX_VER >= 12
 static uint32_t
 get_cps_state_offset(struct anv_device *device, bool cps_enabled,
-                     const struct anv_dynamic_state *d)
+                     const struct vk_fragment_shading_rate_state *fsr)
 {
    if (!cps_enabled)
       return device->cps_states.offset;
@@ -545,15 +559,15 @@ get_cps_state_offset(struct anv_device *device, bool cps_enabled,
 #if GFX_VERx10 >= 125
    offset =
       1 + /* skip disabled */
-      d->fragment_shading_rate.ops[0] * 5 * 3 * 3 +
-      d->fragment_shading_rate.ops[1] * 3 * 3 +
-      size_index[d->fragment_shading_rate.rate.width] * 3 +
-      size_index[d->fragment_shading_rate.rate.height];
+      fsr->combiner_ops[0] * 5 * 3 * 3 +
+      fsr->combiner_ops[1] * 3 * 3 +
+      size_index[fsr->fragment_size.width] * 3 +
+      size_index[fsr->fragment_size.height];
 #else
    offset =
       1 + /* skip disabled */
-      size_index[d->fragment_shading_rate.rate.width] * 3 +
-      size_index[d->fragment_shading_rate.rate.height];
+      size_index[fsr->fragment_size.width] * 3 +
+      size_index[fsr->fragment_size.height];
 #endif
 
    offset *= MAX_VIEWPORTS * GENX(CPS_STATE_length) * 4;
@@ -686,8 +700,16 @@ genX(emit_l3_config)(struct anv_batch *batch,
 
 void
 genX(emit_multisample)(struct anv_batch *batch, uint32_t samples,
-                       const struct intel_sample_position *positions)
+                       const struct vk_sample_locations_state *sl)
 {
+   if (sl != NULL) {
+      assert(sl->per_pixel == samples);
+      assert(sl->grid_size.width == 1);
+      assert(sl->grid_size.height == 1);
+   } else {
+      sl = vk_standard_sample_locations_state(samples);
+   }
+
    anv_batch_emit(batch, GENX(3DSTATE_MULTISAMPLE), ms) {
       ms.NumberofMultisamples       = __builtin_ffs(samples) - 1;
 
@@ -702,16 +724,16 @@ genX(emit_multisample)(struct anv_batch *batch, uint32_t samples,
 #else
       switch (samples) {
       case 1:
-         INTEL_SAMPLE_POS_1X_ARRAY(ms.Sample, positions);
+         INTEL_SAMPLE_POS_1X_ARRAY(ms.Sample, sl->locations);
          break;
       case 2:
-         INTEL_SAMPLE_POS_2X_ARRAY(ms.Sample, positions);
+         INTEL_SAMPLE_POS_2X_ARRAY(ms.Sample, sl->locations);
          break;
       case 4:
-         INTEL_SAMPLE_POS_4X_ARRAY(ms.Sample, positions);
+         INTEL_SAMPLE_POS_4X_ARRAY(ms.Sample, sl->locations);
          break;
       case 8:
-         INTEL_SAMPLE_POS_8X_ARRAY(ms.Sample, positions);
+         INTEL_SAMPLE_POS_8X_ARRAY(ms.Sample, sl->locations);
          break;
       default:
             break;
@@ -723,8 +745,11 @@ genX(emit_multisample)(struct anv_batch *batch, uint32_t samples,
 #if GFX_VER >= 8
 void
 genX(emit_sample_pattern)(struct anv_batch *batch,
-                          const struct anv_dynamic_state *d)
+                          const struct vk_sample_locations_state *sl)
 {
+   assert(sl == NULL || sl->grid_size.width == 1);
+   assert(sl == NULL || sl->grid_size.height == 1);
+
    /* See the Vulkan 1.0 spec Table 24.1 "Standard sample locations" and
     * VkPhysicalDeviceFeatures::standardSampleLocations.
     */
@@ -746,22 +771,48 @@ genX(emit_sample_pattern)(struct anv_batch *batch,
        * lit sample and that it's the same for all samples in a pixel; they
        * have no requirement that it be the one closest to center.
        */
-      if (d) {
-         INTEL_SAMPLE_POS_1X_ARRAY(sp._1xSample,  d->sample_locations.locations_1);
-         INTEL_SAMPLE_POS_2X_ARRAY(sp._2xSample,  d->sample_locations.locations_2);
-         INTEL_SAMPLE_POS_4X_ARRAY(sp._4xSample,  d->sample_locations.locations_4);
-         INTEL_SAMPLE_POS_8X_ARRAY(sp._8xSample,  d->sample_locations.locations_8);
+      for (uint32_t i = 1; i <= (GFX_VER >= 9 ? 16 : 8); i *= 2) {
+         switch (i) {
+         case VK_SAMPLE_COUNT_1_BIT:
+            if (sl && sl->per_pixel == i) {
+               INTEL_SAMPLE_POS_1X_ARRAY(sp._1xSample, sl->locations);
+            } else {
+               INTEL_SAMPLE_POS_1X(sp._1xSample);
+            }
+            break;
+         case VK_SAMPLE_COUNT_2_BIT:
+            if (sl && sl->per_pixel == i) {
+               INTEL_SAMPLE_POS_2X_ARRAY(sp._2xSample, sl->locations);
+            } else {
+               INTEL_SAMPLE_POS_2X(sp._2xSample);
+            }
+            break;
+         case VK_SAMPLE_COUNT_4_BIT:
+            if (sl && sl->per_pixel == i) {
+               INTEL_SAMPLE_POS_4X_ARRAY(sp._4xSample, sl->locations);
+            } else {
+               INTEL_SAMPLE_POS_4X(sp._4xSample);
+            }
+            break;
+         case VK_SAMPLE_COUNT_8_BIT:
+            if (sl && sl->per_pixel == i) {
+               INTEL_SAMPLE_POS_8X_ARRAY(sp._8xSample, sl->locations);
+            } else {
+               INTEL_SAMPLE_POS_8X(sp._8xSample);
+            }
+            break;
 #if GFX_VER >= 9
-         INTEL_SAMPLE_POS_16X_ARRAY(sp._16xSample, d->sample_locations.locations_16);
+         case VK_SAMPLE_COUNT_16_BIT:
+            if (sl && sl->per_pixel == i) {
+               INTEL_SAMPLE_POS_16X_ARRAY(sp._16xSample, sl->locations);
+            } else {
+               INTEL_SAMPLE_POS_16X(sp._16xSample);
+            }
+            break;
 #endif
-      } else {
-         INTEL_SAMPLE_POS_1X(sp._1xSample);
-         INTEL_SAMPLE_POS_2X(sp._2xSample);
-         INTEL_SAMPLE_POS_4X(sp._4xSample);
-         INTEL_SAMPLE_POS_8X(sp._8xSample);
-#if GFX_VER >= 9
-         INTEL_SAMPLE_POS_16X(sp._16xSample);
-#endif
+         default:
+            unreachable("Invalid sample count");
+         }
       }
    }
 }
@@ -771,7 +822,7 @@ genX(emit_sample_pattern)(struct anv_batch *batch,
 void
 genX(emit_shading_rate)(struct anv_batch *batch,
                         const struct anv_graphics_pipeline *pipeline,
-                        struct anv_dynamic_state *dynamic_state)
+                        const struct vk_fragment_shading_rate_state *fsr)
 {
    const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
    const bool cps_enable = wm_prog_data && wm_prog_data->per_coarse_pixel_dispatch;
@@ -780,8 +831,8 @@ genX(emit_shading_rate)(struct anv_batch *batch,
    anv_batch_emit(batch, GENX(3DSTATE_CPS), cps) {
       cps.CoarsePixelShadingMode = cps_enable ? CPS_MODE_CONSTANT : CPS_MODE_NONE;
       if (cps_enable) {
-         cps.MinCPSizeX = dynamic_state->fragment_shading_rate.rate.width;
-         cps.MinCPSizeY = dynamic_state->fragment_shading_rate.rate.height;
+         cps.MinCPSizeX = fsr->fragment_size.width;
+         cps.MinCPSizeY = fsr->fragment_size.height;
       }
    }
 #elif GFX_VER >= 12
@@ -807,7 +858,7 @@ genX(emit_shading_rate)(struct anv_batch *batch,
       struct anv_device *device = pipeline->base.device;
 
       cps.CoarsePixelShadingStateArrayPointer =
-         get_cps_state_offset(device, cps_enable, dynamic_state);
+         get_cps_state_offset(device, cps_enable, fsr);
    }
 #endif
 }
@@ -869,9 +920,9 @@ static const uint32_t vk_to_intel_shadow_compare_op[] = {
 
 #if GFX_VER >= 9
 static const uint32_t vk_to_intel_sampler_reduction_mode[] = {
-   [VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE_EXT] = STD_FILTER,
-   [VK_SAMPLER_REDUCTION_MODE_MIN_EXT]              = MINIMUM,
-   [VK_SAMPLER_REDUCTION_MODE_MAX_EXT]              = MAXIMUM,
+   [VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE] = STD_FILTER,
+   [VK_SAMPLER_REDUCTION_MODE_MIN]              = MINIMUM,
+   [VK_SAMPLER_REDUCTION_MODE_MAX]              = MAXIMUM,
 };
 #endif
 
@@ -912,7 +963,7 @@ VkResult genX(CreateSampler)(
    bool enable_sampler_reduction = false;
 #endif
 
-   vk_foreach_struct(ext, pCreateInfo->pNext) {
+   vk_foreach_struct_const(ext, pCreateInfo->pNext) {
       switch (ext->sType) {
       case VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO: {
          VkSamplerYcbcrConversionInfo *pSamplerConversion =
@@ -974,6 +1025,8 @@ VkResult genX(CreateSampler)(
          has_custom_color = true;
          break;
       }
+      case VK_STRUCTURE_TYPE_SAMPLER_BORDER_COLOR_COMPONENT_MAPPING_CREATE_INFO_EXT:
+         break;
       default:
          anv_debug_ignored_stype(ext->sType);
          break;

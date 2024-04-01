@@ -30,8 +30,7 @@ static bool si_alu_to_scalar_filter(const nir_instr *instr, const void *data)
 {
    struct si_screen *sscreen = (struct si_screen *)data;
 
-   if (sscreen->options.fp16 &&
-       instr->type == nir_instr_type_alu) {
+   if (sscreen->info.has_packed_math_16bit && instr->type == nir_instr_type_alu) {
       nir_alu_instr *alu = nir_instr_as_alu(instr);
 
       if (alu->dest.dest.is_ssa &&
@@ -81,7 +80,10 @@ void si_nir_opts(struct si_screen *sscreen, struct nir_shader *nir, bool first)
       NIR_PASS(progress, nir, nir_copy_prop);
       NIR_PASS(progress, nir, nir_opt_remove_phis);
       NIR_PASS(progress, nir, nir_opt_dce);
-      NIR_PASS(lower_phis_to_scalar, nir, nir_opt_if, true);
+      /* nir_opt_if_optimize_phi_true_false is disabled on LLVM14 (#6976) */
+      NIR_PASS(lower_phis_to_scalar, nir, nir_opt_if,
+         nir_opt_if_aggressive_last_continue |
+            (LLVM_VERSION_MAJOR == 14 ? 0 : nir_opt_if_optimize_phi_true_false));
       NIR_PASS(progress, nir, nir_opt_dead_cf);
 
       if (lower_alu_to_scalar)
@@ -125,7 +127,7 @@ void si_nir_opts(struct si_screen *sscreen, struct nir_shader *nir, bool first)
       if (nir->info.stage == MESA_SHADER_FRAGMENT)
          NIR_PASS_V(nir, nir_opt_move_discards_to_top);
 
-      if (sscreen->options.fp16)
+      if (sscreen->info.has_packed_math_16bit)
          NIR_PASS(progress, nir, nir_opt_vectorize, si_vectorize_callback, NULL);
    } while (progress);
 
@@ -155,46 +157,45 @@ void si_nir_late_opts(nir_shader *nir)
 
 static void si_late_optimize_16bit_samplers(struct si_screen *sscreen, nir_shader *nir)
 {
-   /* Optimize and fix types of image_sample sources and destinations.
+   /* Optimize types of image_sample sources and destinations.
     *
-    * The image_sample constraints are:
-    *   nir_tex_src_coord:       has_a16 ? select 16 or 32 : 32
+    * The image_sample sources bit sizes are:
+    *   nir_tex_src_coord:       a16 ? 16 : 32
     *   nir_tex_src_comparator:  32
     *   nir_tex_src_offset:      32
-    *   nir_tex_src_bias:        32
-    *   nir_tex_src_lod:         match coord
-    *   nir_tex_src_min_lod:     match coord
-    *   nir_tex_src_ms_index:    match coord
-    *   nir_tex_src_ddx:         has_g16 && coord == 32 ? select 16 or 32 : match coord
-    *   nir_tex_src_ddy:         match ddy
+    *   nir_tex_src_bias:        a16 ? 16 : 32
+    *   nir_tex_src_lod:         a16 ? 16 : 32
+    *   nir_tex_src_min_lod:     a16 ? 16 : 32
+    *   nir_tex_src_ms_index:    a16 ? 16 : 32
+    *   nir_tex_src_ddx:         has_g16 ? (g16 ? 16 : 32) : (a16 ? 16 : 32)
+    *   nir_tex_src_ddy:         has_g16 ? (g16 ? 16 : 32) : (a16 ? 16 : 32)
     *
-    * coord and ddx are selected optimally. The types of the rest are legalized
-    * based on those two.
+    * We only use a16/g16 if all of the affected sources are 16bit.
     */
-   /* TODO: The constraints can't represent the ddx constraint. */
-   /*bool has_g16 = sscreen->info.gfx_level >= GFX10 && LLVM_VERSION_MAJOR >= 12;*/
-   bool has_g16 = false;
-   nir_tex_src_type_constraints tex_constraints = {
-      [nir_tex_src_comparator]   = {true, 32},
-      [nir_tex_src_offset]       = {true, 32},
-      [nir_tex_src_bias]         = {true, 32},
-      [nir_tex_src_lod]          = {true, 0, nir_tex_src_coord},
-      [nir_tex_src_min_lod]      = {true, 0, nir_tex_src_coord},
-      [nir_tex_src_ms_index]     = {true, 0, nir_tex_src_coord},
-      [nir_tex_src_ddx]          = {!has_g16, 0, nir_tex_src_coord},
-      [nir_tex_src_ddy]          = {true, 0, has_g16 ? nir_tex_src_ddx : nir_tex_src_coord},
+   bool has_g16 = sscreen->info.gfx_level >= GFX10 && LLVM_VERSION_MAJOR >= 12;
+   struct nir_fold_tex_srcs_options fold_srcs_options[] = {
+      {
+         .sampler_dims =
+            ~(BITFIELD_BIT(GLSL_SAMPLER_DIM_CUBE) | BITFIELD_BIT(GLSL_SAMPLER_DIM_BUF)),
+         .src_types = (1 << nir_tex_src_coord) | (1 << nir_tex_src_lod) |
+                      (1 << nir_tex_src_bias) | (1 << nir_tex_src_min_lod) |
+                      (1 << nir_tex_src_ms_index) |
+                      (has_g16 ? 0 : (1 << nir_tex_src_ddx) | (1 << nir_tex_src_ddy)),
+      },
+      {
+         .sampler_dims = ~BITFIELD_BIT(GLSL_SAMPLER_DIM_CUBE),
+         .src_types = (1 << nir_tex_src_ddx) | (1 << nir_tex_src_ddy),
+      },
+   };
+   struct nir_fold_16bit_tex_image_options fold_16bit_options = {
+      .rounding_mode = nir_rounding_mode_rtne,
+      .fold_tex_dest = true,
+      .fold_image_load_store_data = true,
+      .fold_srcs_options_count = has_g16 ? 2 : 1,
+      .fold_srcs_options = fold_srcs_options,
    };
    bool changed = false;
-
-   uint32_t sampler_dims = UINT32_MAX;
-   /* Skip because AMD doesn't support 16-bit types with these. */
-   sampler_dims &= ~BITFIELD_BIT(GLSL_SAMPLER_DIM_CUBE);
-   NIR_PASS(changed, nir, nir_fold_16bit_sampler_conversions,
-            (1 << nir_tex_src_coord) |
-            (has_g16 ? 1 << nir_tex_src_ddx : 0),
-            sampler_dims);
-   NIR_PASS(changed, nir, nir_legalize_16bit_sampler_srcs, tex_constraints);
-   NIR_PASS(changed, nir, nir_fold_16bit_image_load_store_conversions);
+   NIR_PASS(changed, nir, nir_fold_16bit_tex_image, &fold_16bit_options);
 
    if (changed) {
       si_nir_opts(sscreen, nir, false);

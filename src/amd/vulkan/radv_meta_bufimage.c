@@ -198,8 +198,8 @@ radv_device_finish_meta_itob_state(struct radv_device *device)
 
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->itob.img_p_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device), state->itob.img_ds_layout,
-                                   &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(radv_device_to_handle(device),
+                                                        state->itob.img_ds_layout, &state->alloc);
    radv_DestroyPipeline(radv_device_to_handle(device), state->itob.pipeline, &state->alloc);
    radv_DestroyPipeline(radv_device_to_handle(device), state->itob.pipeline_3d, &state->alloc);
 }
@@ -374,8 +374,8 @@ radv_device_finish_meta_btoi_state(struct radv_device *device)
 
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->btoi.img_p_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device), state->btoi.img_ds_layout,
-                                   &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(radv_device_to_handle(device),
+                                                        state->btoi.img_ds_layout, &state->alloc);
    radv_DestroyPipeline(radv_device_to_handle(device), state->btoi.pipeline, &state->alloc);
    radv_DestroyPipeline(radv_device_to_handle(device), state->btoi.pipeline_3d, &state->alloc);
 }
@@ -523,8 +523,8 @@ radv_device_finish_meta_btoi_r32g32b32_state(struct radv_device *device)
 
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->btoi_r32g32b32.img_p_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device),
-                                   state->btoi_r32g32b32.img_ds_layout, &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(
+      radv_device_to_handle(device), state->btoi_r32g32b32.img_ds_layout, &state->alloc);
    radv_DestroyPipeline(radv_device_to_handle(device), state->btoi_r32g32b32.pipeline,
                         &state->alloc);
 }
@@ -718,8 +718,8 @@ radv_device_finish_meta_itoi_state(struct radv_device *device)
 
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->itoi.img_p_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device), state->itoi.img_ds_layout,
-                                   &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(radv_device_to_handle(device),
+                                                        state->itoi.img_ds_layout, &state->alloc);
 
    for (uint32_t i = 0; i < MAX_SAMPLES_LOG2; ++i) {
       radv_DestroyPipeline(radv_device_to_handle(device), state->itoi.pipeline[i], &state->alloc);
@@ -878,8 +878,8 @@ radv_device_finish_meta_itoi_r32g32b32_state(struct radv_device *device)
 
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->itoi_r32g32b32.img_p_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device),
-                                   state->itoi_r32g32b32.img_ds_layout, &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(
+      radv_device_to_handle(device), state->itoi_r32g32b32.img_ds_layout, &state->alloc);
    radv_DestroyPipeline(radv_device_to_handle(device), state->itoi_r32g32b32.pipeline,
                         &state->alloc);
 }
@@ -1032,8 +1032,8 @@ radv_device_finish_meta_cleari_state(struct radv_device *device)
 
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->cleari.img_p_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device), state->cleari.img_ds_layout,
-                                   &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(radv_device_to_handle(device),
+                                                        state->cleari.img_ds_layout, &state->alloc);
 
    for (uint32_t i = 0; i < MAX_SAMPLES_LOG2; ++i) {
       radv_DestroyPipeline(radv_device_to_handle(device), state->cleari.pipeline[i], &state->alloc);
@@ -1149,8 +1149,8 @@ radv_device_finish_meta_cleari_r32g32b32_state(struct radv_device *device)
 
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->cleari_r32g32b32.img_p_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device),
-                                   state->cleari_r32g32b32.img_ds_layout, &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(
+      radv_device_to_handle(device), state->cleari_r32g32b32.img_ds_layout, &state->alloc);
    radv_DestroyPipeline(radv_device_to_handle(device), state->cleari_r32g32b32.pipeline,
                         &state->alloc);
 }
@@ -1174,48 +1174,33 @@ radv_device_init_meta_bufimage_state(struct radv_device *device)
 
    result = radv_device_init_meta_itob_state(device);
    if (result != VK_SUCCESS)
-      goto fail_itob;
+      return result;
 
    result = radv_device_init_meta_btoi_state(device);
    if (result != VK_SUCCESS)
-      goto fail_btoi;
+      return result;
 
    result = radv_device_init_meta_btoi_r32g32b32_state(device);
    if (result != VK_SUCCESS)
-      goto fail_btoi_r32g32b32;
+      return result;
 
    result = radv_device_init_meta_itoi_state(device);
    if (result != VK_SUCCESS)
-      goto fail_itoi;
+      return result;
 
    result = radv_device_init_meta_itoi_r32g32b32_state(device);
    if (result != VK_SUCCESS)
-      goto fail_itoi_r32g32b32;
+      return result;
 
    result = radv_device_init_meta_cleari_state(device);
    if (result != VK_SUCCESS)
-      goto fail_cleari;
+      return result;
 
    result = radv_device_init_meta_cleari_r32g32b32_state(device);
    if (result != VK_SUCCESS)
-      goto fail_cleari_r32g32b32;
+      return result;
 
    return VK_SUCCESS;
-fail_cleari_r32g32b32:
-   radv_device_finish_meta_cleari_r32g32b32_state(device);
-fail_cleari:
-   radv_device_finish_meta_cleari_state(device);
-fail_itoi_r32g32b32:
-   radv_device_finish_meta_itoi_r32g32b32_state(device);
-fail_itoi:
-   radv_device_finish_meta_itoi_state(device);
-fail_btoi_r32g32b32:
-   radv_device_finish_meta_btoi_r32g32b32_state(device);
-fail_btoi:
-   radv_device_finish_meta_btoi_state(device);
-fail_itob:
-   radv_device_finish_meta_itob_state(device);
-   return result;
 }
 
 static void
@@ -1264,7 +1249,7 @@ create_buffer_from_image(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_bl
    struct radv_device *device = cmd_buffer->device;
    struct radv_device_memory mem;
 
-   radv_device_memory_init(&mem, device, surf->image->bo);
+   radv_device_memory_init(&mem, device, surf->image->bindings[0].bo);
 
    radv_CreateBuffer(radv_device_to_handle(device),
                      &(VkBufferCreateInfo){
@@ -1281,7 +1266,7 @@ create_buffer_from_image(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_bl
                              .sType = VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO,
                              .buffer = *buffer,
                              .memory = radv_device_memory_to_handle(&mem),
-                             .memoryOffset = surf->image->offset,
+                             .memoryOffset = surf->image->bindings[0].offset,
                           }});
 
    radv_device_memory_finish(&mem);

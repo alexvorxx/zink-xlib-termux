@@ -34,10 +34,10 @@ libdzn_files = files(
   'dzn_cmd_buffer.c',
   'dzn_descriptor_set.c',
   'dzn_device.c',
+  'dzn_dxcore.cpp',
   'dzn_image.c',
   'dzn_meta.c',
   'dzn_nir.c',
-  'dzn_pipeline_cache.c',
   'dzn_pipeline.c',
   'dzn_query.c',
   'dzn_sync.c',
@@ -57,9 +57,23 @@ dzn_deps = [
 ]
 
 dzn_flags = [ ]
+dzn_cpp_flags = [ ]
 
 if with_platform_windows
   dzn_flags += '-DVK_USE_PLATFORM_WIN32_KHR'
+  libdzn_files += files('dzn_dxgi.c')
+endif
+
+if cc.get_argument_syntax() != 'msvc'
+  dzn_flags_to_try = [
+    '-Werror=unused-variable',
+    '-Werror=unused-but-set-variable',
+    '-Werror=unused-value',
+    '-Werror=format',
+    '-Werror=switch',
+  ]
+  dzn_flags += cc.get_supported_arguments(dzn_flags_to_try)
+  dzn_cpp_flags = cpp.get_supported_arguments(['-Wno-error=unused-value'])
 endif
 
 libvulkan_dzn = shared_library(
@@ -72,6 +86,7 @@ libvulkan_dzn = shared_library(
   ],
   dependencies : [dzn_deps, idep_vulkan_wsi],
   c_args : dzn_flags,
+  cpp_args : dzn_cpp_flags,
   gnu_symbol_visibility : 'hidden',
   link_args : [ld_args_bsymbolic, ld_args_gc_sections],
   name_prefix : host_machine.system() == 'windows' ? '' : 'lib',

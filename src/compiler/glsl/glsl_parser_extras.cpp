@@ -2390,7 +2390,6 @@ do_common_optimization(exec_list *ir, bool linked,
    OPT(propagate_invariance, ir);
    OPT(do_if_simplification, ir);
    OPT(opt_flatten_nested_if_blocks, ir);
-   OPT(opt_conditional_discard, ir);
    OPT(do_copy_propagation_elements, ir);
 
    if (options->OptimizeForAOS && !linked)
@@ -2415,7 +2414,6 @@ do_common_optimization(exec_list *ir, bool linked,
        options->EmitNoCont);
    OPT(do_vec_index_to_swizzle, ir);
    OPT(lower_vector_insert, ir, false);
-   OPT(optimize_swizzles, ir);
 
    /* Some drivers only call do_common_optimization() once rather than in a
     * loop, and split arrays causes each element of a constant array to

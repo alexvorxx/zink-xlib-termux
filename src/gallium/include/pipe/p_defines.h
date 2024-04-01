@@ -30,6 +30,8 @@
 
 #include "p_compiler.h"
 
+#include "compiler/shader_enums.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -517,6 +519,7 @@ enum pipe_flush_flags
 #define PIPE_BIND_SAMPLER_REDUCTION_MINMAX (1 << 23) /* PIPE_CAP_SAMPLER_REDUCTION_MINMAX */
 /* Resource is the DRI_PRIME blit destination. Only set on on the render GPU. */
 #define PIPE_BIND_PRIME_BLIT_DST (1 << 24)
+#define PIPE_BIND_USE_FRONT_RENDERING (1 << 25) /* Resource may be used for frontbuffer rendering */
 
 
 /**
@@ -544,19 +547,6 @@ enum pipe_resource_usage {
    PIPE_USAGE_DYNAMIC,        /* uploaded data is used multiple times */
    PIPE_USAGE_STREAM,         /* uploaded data is used once */
    PIPE_USAGE_STAGING,        /* fast CPU access */
-};
-
-/**
- * Shaders
- */
-enum pipe_shader_type {
-   PIPE_SHADER_VERTEX,
-   PIPE_SHADER_FRAGMENT,
-   PIPE_SHADER_GEOMETRY,
-   PIPE_SHADER_TESS_CTRL,
-   PIPE_SHADER_TESS_EVAL,
-   PIPE_SHADER_COMPUTE,
-   PIPE_SHADER_TYPES,
 };
 
 /**
@@ -1012,6 +1002,7 @@ enum pipe_cap
    PIPE_CAP_HARDWARE_GL_SELECT,
    PIPE_CAP_DITHERING,
    PIPE_CAP_FBFETCH_ZS,
+   PIPE_CAP_TIMELINE_SEMAPHORE_IMPORT,
 
    PIPE_CAP_LAST,
    /* XXX do not add caps after PIPE_CAP_LAST! */
@@ -1034,8 +1025,12 @@ enum pipe_texture_transfer_mode {
 #define PIPE_CONTEXT_PRIORITY_MEDIUM  (1 << 1)
 #define PIPE_CONTEXT_PRIORITY_HIGH    (1 << 2)
 
-#define PIPE_QUIRK_TEXTURE_BORDER_COLOR_SWIZZLE_NV50 (1 << 0)
-#define PIPE_QUIRK_TEXTURE_BORDER_COLOR_SWIZZLE_R600 (1 << 1)
+enum pipe_quirk_texture_border_color_swizzle {
+   PIPE_QUIRK_TEXTURE_BORDER_COLOR_SWIZZLE_NV50 = (1 << 0),
+   PIPE_QUIRK_TEXTURE_BORDER_COLOR_SWIZZLE_R600 = (1 << 1),
+   PIPE_QUIRK_TEXTURE_BORDER_COLOR_SWIZZLE_FREEDRENO = (1 << 2),
+   PIPE_QUIRK_TEXTURE_BORDER_COLOR_SWIZZLE_ALPHA_NOT_W = (1 << 3),
+};
 
 enum pipe_endian
 {
@@ -1363,6 +1358,7 @@ enum pipe_fd_type
 {
    PIPE_FD_TYPE_NATIVE_SYNC,
    PIPE_FD_TYPE_SYNCOBJ,
+   PIPE_FD_TYPE_TIMELINE_SEMAPHORE,
 };
 
 /**

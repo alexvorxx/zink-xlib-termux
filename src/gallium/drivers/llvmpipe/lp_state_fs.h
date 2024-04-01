@@ -104,6 +104,7 @@ struct lp_fragment_shader_variant_key
    unsigned depth_clamp:1;
    unsigned multisample:1;
    unsigned no_ms_sample_mask_out:1;
+   unsigned restrict_depth_values:1;
 
    enum pipe_format zsbuf_format;
    enum pipe_format cbuf_format[PIPE_MAX_COLOR_BUFS];
@@ -146,7 +147,8 @@ static inline struct lp_image_static_state *
 lp_fs_variant_key_images(struct lp_fragment_shader_variant_key *key)
 {
    return (struct lp_image_static_state *)
-      &(lp_fs_variant_key_samplers(key)[MAX2(key->nr_samplers, key->nr_sampler_views)]);
+      &(lp_fs_variant_key_samplers(key)[MAX2(key->nr_samplers,
+                                             key->nr_sampler_views)]);
 }
 
 /** doubly-linked list item */
@@ -164,10 +166,10 @@ struct lp_fragment_shader_variant
     */
    unsigned potentially_opaque:1;
 
+   unsigned opaque:1;
    unsigned blit:1;
    unsigned linear_input_mask:16;
    struct pipe_reference reference;
-   boolean opaque;
 
    struct gallivm_state *gallivm;
 
@@ -232,6 +234,7 @@ struct lp_fragment_shader
 
 void
 llvmpipe_fs_analyse_nir(struct lp_fragment_shader *shader);
+
 void
 llvmpipe_fs_analyse(struct lp_fragment_shader *shader,
                     const struct tgsi_token *tokens);
@@ -253,7 +256,6 @@ lp_debug_fs_variant(struct lp_fragment_shader_variant *variant);
 const char *
 lp_debug_fs_kind(enum lp_fs_kind kind);
 
-
 void
 lp_linear_check_variant(struct lp_fragment_shader_variant *variant);
 
@@ -267,7 +269,8 @@ lp_fs_reference(struct llvmpipe_context *llvmpipe,
                 struct lp_fragment_shader *shader)
 {
    struct lp_fragment_shader *old_ptr = *ptr;
-   if (pipe_reference(old_ptr ? &(*ptr)->reference : NULL, shader ? &shader->reference : NULL)) {
+   if (pipe_reference(old_ptr ? &(*ptr)->reference : NULL,
+                      shader ? &shader->reference : NULL)) {
       llvmpipe_destroy_fs(llvmpipe, old_ptr);
    }
    *ptr = shader;
@@ -283,7 +286,8 @@ lp_fs_variant_reference(struct llvmpipe_context *llvmpipe,
                         struct lp_fragment_shader_variant *variant)
 {
    struct lp_fragment_shader_variant *old_ptr = *ptr;
-   if (pipe_reference(old_ptr ? &(*ptr)->reference : NULL, variant ? &variant->reference : NULL)) {
+   if (pipe_reference(old_ptr ? &(*ptr)->reference : NULL,
+                      variant ? &variant->reference : NULL)) {
       llvmpipe_destroy_shader_variant(llvmpipe, old_ptr);
    }
    *ptr = variant;

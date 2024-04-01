@@ -71,8 +71,8 @@ radv_init_trace(struct radv_device *device)
 
    result = ws->buffer_create(
       ws, TRACE_BO_SIZE, 8, RADEON_DOMAIN_VRAM,
-      RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_ZERO_VRAM,
-      RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, &device->trace_bo);
+      RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_ZERO_VRAM |
+      RADEON_FLAG_VA_UNCACHED, RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, &device->trace_bo);
    if (result != VK_SUCCESS)
       return false;
 
@@ -663,7 +663,7 @@ radv_dump_umr_waves(struct radv_queue *queue, FILE *f)
    if (ring != AMD_IP_GFX)
       return;
 
-   sprintf(cmd, "umr -O bits,halt_waves -wa %s 2>&1",
+   sprintf(cmd, "umr -O bits,halt_waves -go 0 -wa %s -go 1 2>&1",
            device->physical_device->rad_info.gfx_level >= GFX10 ? "gfx_0.0.0" : "gfx");
 
    fprintf(f, "\nUMR GFX waves:\n\n");
@@ -739,19 +739,19 @@ radv_check_gpu_hangs(struct radv_queue *queue, struct radeon_cmdbuf *cs)
    }
 
    if (!(device->instance->debug_flags & RADV_DEBUG_NO_UMR)) {
-      /* Dump UMR ring. */
-      snprintf(dump_path, sizeof(dump_path), "%s/%s", dump_dir, "umr_ring.log");
-      f = fopen(dump_path, "w+");
-      if (f) {
-         radv_dump_umr_ring(queue, f);
-         fclose(f);
-      }
-
       /* Dump UMR waves. */
       snprintf(dump_path, sizeof(dump_path), "%s/%s", dump_dir, "umr_waves.log");
       f = fopen(dump_path, "w+");
       if (f) {
          radv_dump_umr_waves(queue, f);
+         fclose(f);
+      }
+
+      /* Dump UMR ring. */
+      snprintf(dump_path, sizeof(dump_path), "%s/%s", dump_dir, "umr_ring.log");
+      f = fopen(dump_path, "w+");
+      if (f) {
+         radv_dump_umr_ring(queue, f);
          fclose(f);
       }
    }

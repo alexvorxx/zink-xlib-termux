@@ -67,6 +67,22 @@ ir3_destroy(struct ir3 *shader)
    ralloc_free(shader);
 }
 
+static bool
+is_shared_consts(struct ir3_compiler *compiler,
+                 struct ir3_const_state *const_state,
+                 struct ir3_register *reg)
+{
+   if (const_state->shared_consts_enable && reg->flags & IR3_REG_CONST) {
+      uint32_t min_const_reg = regid(compiler->shared_consts_base_offset, 0);
+      uint32_t max_const_reg =
+         regid(compiler->shared_consts_base_offset +
+               compiler->shared_consts_size, 0);
+      return reg->num >= min_const_reg && min_const_reg < max_const_reg;
+   }
+
+   return false;
+}
+
 static void
 collect_reg_info(struct ir3_instruction *instr, struct ir3_register *reg,
                  struct ir3_info *info)
@@ -78,6 +94,10 @@ collect_reg_info(struct ir3_instruction *instr, struct ir3_register *reg,
       /* nothing to do */
       return;
    }
+
+   /* Shared consts don't need to be included into constlen. */
+   if (is_shared_consts(v->compiler, ir3_const_state(v), reg))
+      return;
 
    if (!(reg->flags & IR3_REG_R)) {
       repeat = 0;
@@ -567,7 +587,7 @@ ir3_src_create(struct ir3_instruction *instr, int num, int flags)
 {
    struct ir3 *shader = instr->block->shader;
 #ifdef DEBUG
-   debug_assert(instr->srcs_count < instr->srcs_max);
+   assert(instr->srcs_count < instr->srcs_max);
 #endif
    struct ir3_register *reg = reg_create(shader, num, flags);
    instr->srcs[instr->srcs_count++] = reg;
@@ -579,7 +599,7 @@ ir3_dst_create(struct ir3_instruction *instr, int num, int flags)
 {
    struct ir3 *shader = instr->block->shader;
 #ifdef DEBUG
-   debug_assert(instr->dsts_count < instr->dsts_max);
+   assert(instr->dsts_count < instr->dsts_max);
 #endif
    struct ir3_register *reg = reg_create(shader, num, flags);
    instr->dsts[instr->dsts_count++] = reg;
@@ -612,21 +632,21 @@ ir3_instr_set_address(struct ir3_instruction *instr,
    if (!instr->address) {
       struct ir3 *ir = instr->block->shader;
 
-      debug_assert(instr->block == addr->block);
+      assert(instr->block == addr->block);
 
       instr->address =
          ir3_src_create(instr, addr->dsts[0]->num, addr->dsts[0]->flags);
       instr->address->def = addr->dsts[0];
-      debug_assert(reg_num(addr->dsts[0]) == REG_A0);
+      assert(reg_num(addr->dsts[0]) == REG_A0);
       unsigned comp = reg_comp(addr->dsts[0]);
       if (comp == 0) {
          array_insert(ir, ir->a0_users, instr);
       } else {
-         debug_assert(comp == 1);
+         assert(comp == 1);
          array_insert(ir, ir->a1_users, instr);
       }
    } else {
-      debug_assert(instr->address->def->instr == addr);
+      assert(instr->address->def->instr == addr);
    }
 }
 

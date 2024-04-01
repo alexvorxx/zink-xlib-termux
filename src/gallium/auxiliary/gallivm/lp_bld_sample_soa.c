@@ -2397,10 +2397,11 @@ lp_build_sample_aniso(struct lp_build_sample_context *bld,
          wnz = LLVMBuildSExt(builder, wnz, bld->int_coord_bld.vec_type, "");
          wnz = lp_build_any_true_range(&bld->coord_bld, bld->coord_bld.type.length, wnz);
          lp_build_if(&noloadw0, gallivm, wnz);
-         LLVMValueRef new_coords[3];
+         LLVMValueRef new_coords[4];
          new_coords[0] = lp_build_div(coord_bld, lp_build_int_to_float(coord_bld, u_val), width_dim);
          new_coords[1] = lp_build_div(coord_bld, lp_build_int_to_float(coord_bld, v_val), height_dim);
          new_coords[2] = coords[2];
+         new_coords[3] = coords[3];
 
          /* lookup q in filter table */
          LLVMValueRef temp_colors[4];
@@ -2671,10 +2672,7 @@ lp_build_sample_common(struct lp_build_sample_context *bld,
 
    switch (mip_filter) {
    default:
-      debug_assert(0 && "bad mip_filter value in lp_build_sample_soa()");
-#if defined(NDEBUG) || defined(DEBUG)
-      FALLTHROUGH;
-#endif
+      assert(0 && "bad mip_filter value in lp_build_sample_soa()");
    case PIPE_TEX_MIPFILTER_NONE:
       /* always use mip level 0 */
       first_level = bld->dynamic_state->first_level(bld->dynamic_state,
@@ -3261,7 +3259,6 @@ static struct lp_type
 lp_build_texel_type(struct lp_type texel_type,
                     const struct util_format_description *format_desc)
 {
-   assert(format_desc != NULL);
    /* always using the first channel hopefully should be safe,
     * if not things WILL break in other places anyway.
     */
@@ -3386,8 +3383,6 @@ lp_build_sample_soa_code(struct gallivm_state *gallivm,
    bld.dynamic_state = dynamic_state;
    bld.format_desc = util_format_description(static_texture_state->format);
    bld.dims = dims;
-
-   assert(bld.format_desc);
 
    if (gallivm_perf & GALLIVM_PERF_NO_QUAD_LOD || op_is_lodq) {
       bld.no_quad_lod = TRUE;
@@ -4003,7 +3998,7 @@ lp_build_sample_gen_func(struct gallivm_state *gallivm,
    if (dynamic_state->cache_ptr) {
       const struct util_format_description *format_desc;
       format_desc = util_format_description(static_texture_state->format);
-      if (format_desc && format_desc->layout == UTIL_FORMAT_LAYOUT_S3TC) {
+      if (format_desc->layout == UTIL_FORMAT_LAYOUT_S3TC) {
          need_cache = TRUE;
       }
    }
@@ -4132,7 +4127,7 @@ lp_build_sample_soa_func(struct gallivm_state *gallivm,
    if (dynamic_state->cache_ptr) {
       const struct util_format_description *format_desc;
       format_desc = util_format_description(static_texture_state->format);
-      if (format_desc && format_desc->layout == UTIL_FORMAT_LAYOUT_S3TC) {
+      if (format_desc->layout == UTIL_FORMAT_LAYOUT_S3TC) {
          need_cache = TRUE;
       }
    }
@@ -4304,9 +4299,9 @@ lp_build_sample_soa(const struct lp_static_texture_state *static_texture_state,
    if (USE_TEX_FUNC_CALL) {
       const struct util_format_description *format_desc =
          util_format_description(static_texture_state->format);
-      const boolean simple_format = !format_desc ||
-                      (util_format_is_rgba8_variant(format_desc) &&
-                       format_desc->colorspace == UTIL_FORMAT_COLORSPACE_RGB);
+      const boolean simple_format =
+         (util_format_is_rgba8_variant(format_desc) &&
+         format_desc->colorspace == UTIL_FORMAT_COLORSPACE_RGB);
       const enum lp_sampler_op_type op_type =
          (params->sample_key & LP_SAMPLER_OP_TYPE_MASK) >>
          LP_SAMPLER_OP_TYPE_SHIFT;
@@ -4316,7 +4311,7 @@ lp_build_sample_soa(const struct lp_static_texture_state *static_texture_state,
              static_texture_state->level_zero_only == TRUE) &&
             static_sampler_state->min_img_filter == static_sampler_state->mag_img_filter);
 
-      use_tex_func = format_desc && !(simple_format && simple_tex);
+      use_tex_func = !(simple_format && simple_tex);
    }
 
    if (use_tex_func) {

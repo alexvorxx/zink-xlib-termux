@@ -6,7 +6,7 @@ git config --global user.email "mesa@example.com"
 git config --global user.name "Mesa CI"
 git clone \
     https://github.com/KhronosGroup/VK-GL-CTS.git \
-    -b vulkan-cts-1.3.2.0 \
+    -b vulkan-cts-1.3.3.0 \
     --depth 1 \
     /VK-GL-CTS
 pushd /VK-GL-CTS
@@ -59,6 +59,9 @@ cp \
     /deqp/mustpass/.
 cp \
     /deqp/external/openglcts/modules/gl_cts/data/mustpass/gl/khronos_mustpass/4.6.1.x/*-master.txt \
+    /deqp/mustpass/.
+cp \
+    /deqp/external/openglcts/modules/gl_cts/data/mustpass/gl/khronos_mustpass_single/4.6.1.x/*-single.txt \
     /deqp/mustpass/.
 
 # Save *some* executor utils, but otherwise strip things down

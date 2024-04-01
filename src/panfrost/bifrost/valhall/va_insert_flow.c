@@ -214,10 +214,13 @@ bi_set_dependencies(bi_block *block, bi_instr *I, struct bi_scoreboard_state *st
     *
     * Luckily, this situation is pretty rare. The wait introduced here can
     * usually be merged into the preceding instruction.
+    *
+    * We also use the same workaround to serialize all async instructions when
+    * debugging this pass with the BIFROST_MESA_DEBUG=nosb option.
     */
-   if (I->op == BI_OPCODE_BARRIER) {
+   if (I->op == BI_OPCODE_BARRIER || (bifrost_debug & BIFROST_DBG_NOSB)) {
       for (unsigned i = 0; i < VA_NUM_GENERAL_SLOTS; ++i) {
-         if (st->write[i] || (st->memory & BITFIELD_BIT(i)))
+         if (st->write[i] || ((st->varying | st->memory) & BITFIELD_BIT(i)))
             I->flow |= bi_pop_slot(st, i);
       }
    }
@@ -426,6 +429,10 @@ va_insert_flow_control_nops(bi_context *ctx)
          /* Insert waits for tilebuffer and depth/stencil instructions. These
           * only happen in regular fragment shaders, as the required waits are
           * assumed to already have happened in blend shaders.
+          *
+          * For discarded thread handling, ATEST must be serialized against all
+          * other asynchronous instructions and should be serialized against all
+          * instructions. Wait for slot 0 immediately after the ATEST.
           */
          case BI_OPCODE_BLEND:
          case BI_OPCODE_LD_TILE:
@@ -434,6 +441,9 @@ va_insert_flow_control_nops(bi_context *ctx)
                bi_flow(ctx, bi_before_instr(I), VA_FLOW_WAIT);
             break;
          case BI_OPCODE_ATEST:
+            bi_flow(ctx, bi_before_instr(I), VA_FLOW_WAIT0126);
+            bi_flow(ctx, bi_after_instr(I), VA_FLOW_WAIT0);
+            break;
          case BI_OPCODE_ZS_EMIT:
             if (!ctx->inputs->is_blend)
                bi_flow(ctx, bi_before_instr(I), VA_FLOW_WAIT0126);

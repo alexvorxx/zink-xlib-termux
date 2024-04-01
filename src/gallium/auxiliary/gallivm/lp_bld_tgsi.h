@@ -221,7 +221,7 @@ struct lp_build_sampler_aos
    LLVMValueRef
    (*emit_fetch_texel)(const struct lp_build_sampler_aos *sampler,
                        struct lp_build_context *bld,
-                       unsigned target, /* TGSI_TEXTURE_* */
+                       enum tgsi_texture_type target,
                        unsigned unit,
                        LLVMValueRef coords,
                        const struct lp_derivatives derivs,
@@ -522,7 +522,6 @@ struct lp_build_tgsi_soa_context
    LLVMValueRef max_output_vertices_vec;
 
    LLVMValueRef consts_ptr;
-   LLVMValueRef const_sizes_ptr;
    LLVMValueRef consts[LP_MAX_TGSI_CONST_BUFFERS];
    LLVMValueRef consts_sizes[LP_MAX_TGSI_CONST_BUFFERS];
    const LLVMValueRef (*inputs)[TGSI_NUM_CHANNELS];
@@ -531,7 +530,6 @@ struct lp_build_tgsi_soa_context
    LLVMValueRef thread_data_ptr;
 
    LLVMValueRef ssbo_ptr;
-   LLVMValueRef ssbo_sizes_ptr;
    LLVMValueRef ssbos[LP_MAX_TGSI_SHADER_BUFFERS];
    LLVMValueRef ssbo_sizes[LP_MAX_TGSI_SHADER_BUFFERS];
 

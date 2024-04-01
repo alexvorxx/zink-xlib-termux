@@ -65,6 +65,14 @@ struct panfrost_zsa_state {
         /* Is any depth, stencil, or alpha testing enabled? */
         bool enabled;
 
+        /* Does the depth and stencil tests always pass? This ignores write
+         * masks, we are only interested in whether pixels may be killed.
+         */
+        bool zs_always_passes;
+
+        /* Are depth or stencil writes possible? */
+        bool writes_zs;
+
 #if PAN_ARCH <= 7
         /* Prepacked words from the RSD */
         struct mali_multisample_misc_packed rsd_depth;
@@ -521,9 +529,21 @@ panfrost_prepare_fs_state(struct panfrost_context *ctx,
         for (unsigned c = 0; c < rt_count; ++c)
                 has_blend_shader |= (blend_shaders[c] != 0);
 
+        bool has_oq = ctx->occlusion_query && ctx->active_queries;
+
         pan_pack(rsd, RENDERER_STATE, cfg) {
                 if (panfrost_fs_required(fs, so, &ctx->pipe_framebuffer, zsa)) {
 #if PAN_ARCH >= 6
+                        struct pan_earlyzs_state earlyzs =
+                               pan_earlyzs_get(fs->earlyzs,
+                                               ctx->depth_stencil->writes_zs ||
+                                               has_oq,
+                                               ctx->blend->base.alpha_to_coverage,
+                                               ctx->depth_stencil->zs_always_passes);
+
+                        cfg.properties.pixel_kill_operation = earlyzs.kill;
+                        cfg.properties.zs_update_operation = earlyzs.update;
+
                         cfg.properties.allow_forward_pixel_to_kill =
                                 pan_allow_forward_pixel_to_kill(ctx, fs);
 #else
@@ -539,7 +559,6 @@ panfrost_prepare_fs_state(struct panfrost_context *ctx,
 
                         /* Hardware quirks around early-zs forcing without a
                          * depth buffer. Note this breaks occlusion queries. */
-                        bool has_oq = ctx->occlusion_query && ctx->active_queries;
                         bool force_ez_with_discard = !zsa->enabled && !has_oq;
 
                         cfg.properties.shader_reads_tilebuffer =
@@ -1298,14 +1317,15 @@ panfrost_upload_sysvals(struct panfrost_batch *batch,
                         struct pipe_stream_output_info *so = &vs->stream_output;
                         unsigned stride = so->stride[buf] * 4;
 
-                        if (buf >= batch->ctx->streamout.num_targets) {
+                        struct pipe_stream_output_target *target = NULL;
+                        if (buf < batch->ctx->streamout.num_targets)
+                                target = batch->ctx->streamout.targets[buf];
+
+                        if (!target) {
                                 /* Memory sink */
                                 uniforms[i].du[0] = 0x8ull << 60;
                                 break;
                         }
-
-                        struct pipe_stream_output_target *target = batch->ctx->streamout.targets[buf];
-                        assert(target != NULL);
 
                         struct panfrost_resource *rsrc = pan_resource(target->buffer);
                         unsigned offset = panfrost_xfb_offset(stride, target);
@@ -1585,7 +1605,7 @@ panfrost_emit_shared_memory(struct panfrost_batch *batch,
                         panfrost_batch_get_scratchpad(batch,
                                                       ss->info.tls_size,
                                                       dev->thread_tls_alloc,
-                                                      dev->core_count);
+                                                      dev->core_id_range);
                 info.tls.ptr = bo->ptr.gpu;
         }
 
@@ -1593,7 +1613,7 @@ panfrost_emit_shared_memory(struct panfrost_batch *batch,
                 unsigned size =
                         pan_wls_adjust_size(info.wls.size) *
                         pan_wls_instances(&info.wls.dim) *
-                        dev->core_count;
+                        dev->core_id_range;
 
                 struct panfrost_bo *bo =
                         panfrost_batch_get_shared_memory(batch, size, 1);
@@ -2146,10 +2166,12 @@ panfrost_emit_vertex_data(struct panfrost_batch *batch,
         }
 #endif
 
-        k = ALIGN_POT(k, 2);
-        emit_image_attribs(ctx, PIPE_SHADER_VERTEX, out + so->num_elements, k);
-        emit_image_bufs(batch, PIPE_SHADER_VERTEX, bufs + k, k);
-        k += (util_last_bit(ctx->image_mask[PIPE_SHADER_VERTEX]) * 2);
+        if (nr_images) {
+                k = ALIGN_POT(k, 2);
+                emit_image_attribs(ctx, PIPE_SHADER_VERTEX, out + so->num_elements, k);
+                emit_image_bufs(batch, PIPE_SHADER_VERTEX, bufs + k, k);
+                k += (util_last_bit(ctx->image_mask[PIPE_SHADER_VERTEX]) * 2);
+        }
 
 #if PAN_ARCH >= 6
         /* We need an empty attrib buf to stop the prefetching on Bifrost */
@@ -2165,7 +2187,12 @@ panfrost_emit_vertex_data(struct panfrost_batch *batch,
          * addressing modes and now base is 64 aligned.
          */
 
-        for (unsigned i = 0; i < so->num_elements; ++i) {
+        /* While these are usually equal, they are not required to be. In some
+         * cases, u_blitter passes too high a value for num_elements.
+         */
+        assert(vs->info.attributes_read_count <= so->num_elements);
+
+        for (unsigned i = 0; i < vs->info.attributes_read_count; ++i) {
                 unsigned vbi = so->pipe[i].vertex_buffer_index;
                 struct pipe_vertex_buffer *buf = &ctx->vertex_buffers[vbi];
 
@@ -2523,11 +2550,14 @@ panfrost_emit_varying_descs(
         out->stride = pan_assign_varyings(dev, &producer->info,
                         &consumer->info, offsets);
 
-        unsigned xfb_offsets[PIPE_MAX_SO_BUFFERS];
+        unsigned xfb_offsets[PIPE_MAX_SO_BUFFERS] = {0};
 
         for (unsigned i = 0; i < xfb->num_targets; ++i) {
+                if (!xfb->targets[i])
+                        continue;
+
                 xfb_offsets[i] = panfrost_xfb_offset(xfb_info->stride[i] * 4,
-                                xfb->targets[i]);
+                                                     xfb->targets[i]);
         }
 
         for (unsigned i = 0; i < producer_count; ++i) {
@@ -2641,7 +2671,7 @@ panfrost_emit_varying_descriptor(struct panfrost_batch *batch,
 
 #if PAN_ARCH >= 6
         /* Suppress prefetch on Bifrost */
-        memset(varyings + (xfb_base * ctx->streamout.num_targets), 0, sizeof(*varyings));
+        memset(varyings + xfb_base + ctx->streamout.num_targets, 0, sizeof(*varyings));
 #else
         /* Emit the stream out buffers. We need enough room for all the
          * vertices we emit across all instances */
@@ -2652,6 +2682,9 @@ panfrost_emit_varying_descriptor(struct panfrost_batch *batch,
                 u_stream_outputs_for_vertices(ctx->active_prim, ctx->vertex_count);
 
         for (unsigned i = 0; i < ctx->streamout.num_targets; ++i) {
+                if (!ctx->streamout.targets[i])
+                        continue;
+
                 panfrost_emit_streamout(batch, &varyings[xfb_base + i],
                                         so->stride[i] * 4,
                                         out_count,
@@ -2663,6 +2696,11 @@ panfrost_emit_varying_descriptor(struct panfrost_batch *batch,
                 panfrost_emit_varyings(batch,
                                 &varyings[pan_varying_index(present, PAN_VARY_GENERAL)],
                                 stride, vertex_count);
+        } else {
+                /* The indirect draw code reads the stride field, make sure
+                 * that it is initialised */
+                memset(varyings + pan_varying_index(present, PAN_VARY_GENERAL), 0,
+                       sizeof(*varyings));
         }
 
         /* fp32 vec4 gl_Position */
@@ -2732,7 +2770,7 @@ emit_tls(struct panfrost_batch *batch)
                 panfrost_batch_get_scratchpad(batch,
                                               batch->stack_size,
                                               dev->thread_tls_alloc,
-                                              dev->core_count):
+                                              dev->core_id_range):
                 NULL;
         struct pan_tls_info tls = {
                 .tls = {
@@ -2754,7 +2792,7 @@ emit_fbd(struct panfrost_batch *batch, const struct pan_fb_info *fb)
                 panfrost_batch_get_scratchpad(batch,
                                               batch->stack_size,
                                               dev->thread_tls_alloc,
-                                              dev->core_count):
+                                              dev->core_id_range):
                 NULL;
         struct pan_tls_info tls = {
                 .tls = {
@@ -2876,11 +2914,13 @@ panfrost_statistics_record(
 static void
 panfrost_update_streamout_offsets(struct panfrost_context *ctx)
 {
-        for (unsigned i = 0; i < ctx->streamout.num_targets; ++i) {
-                unsigned count;
+        unsigned count = u_stream_outputs_for_vertices(ctx->active_prim,
+                                                       ctx->vertex_count);
 
-                count = u_stream_outputs_for_vertices(ctx->active_prim,
-                                                      ctx->vertex_count);
+        for (unsigned i = 0; i < ctx->streamout.num_targets; ++i) {
+                if (!ctx->streamout.targets[i])
+                        continue;
+
                 pan_so_target(ctx->streamout.targets[i])->offset += count;
         }
 }
@@ -3100,13 +3140,6 @@ panfrost_batch_get_bifrost_tiler(struct panfrost_batch *batch, unsigned vertex_c
         GENX(pan_emit_tiler_heap)(dev, t.cpu);
 
         mali_ptr heap = t.gpu;
-
-        /* We emit this descriptor after the first draw. The provoking vertex
-         * for the batch should have already been set (on Valhall, where it is a
-         * property of the batch).
-         */
-        if (PAN_ARCH >= 9)
-                assert(pan_tristate_is_defined(batch->first_provoking_vertex));
 
         t = pan_pool_alloc_desc(&batch->pool.base, TILER_CONTEXT);
         GENX(pan_emit_tiler_ctx)(dev, batch->key.width, batch->key.height,
@@ -3328,9 +3361,16 @@ panfrost_emit_draw(void *out,
                 cfg.depth_stencil = batch->depth_stencil;
 
                 if (fs_required) {
-                        struct pan_pixel_kill kill = pan_shader_classify_pixel_kill_coverage(&fs->info);
-                        cfg.pixel_kill_operation = kill.pixel_kill;
-                        cfg.zs_update_operation = kill.zs_update;
+                        bool has_oq = ctx->occlusion_query && ctx->active_queries;
+
+                        struct pan_earlyzs_state earlyzs =
+                               pan_earlyzs_get(fs->earlyzs,
+                                               ctx->depth_stencil->writes_zs || has_oq,
+                                               ctx->blend->base.alpha_to_coverage,
+                                               ctx->depth_stencil->zs_always_passes);
+
+                        cfg.pixel_kill_operation = earlyzs.kill;
+                        cfg.zs_update_operation = earlyzs.update;
 
                         cfg.allow_forward_pixel_to_kill = pan_allow_forward_pixel_to_kill(ctx, fs);
                         cfg.allow_forward_pixel_to_be_killed = !fs->info.writes_global;
@@ -3352,8 +3392,12 @@ panfrost_emit_draw(void *out,
                          */
                         cfg.evaluate_per_sample |= fs->info.fs.sample_shading;
 
+                        /* Unlike Bifrost, alpha-to-coverage must be included in
+                         * this identically-named flag. Confusing, isn't it?
+                         */
                         cfg.shader_modifies_coverage = fs->info.fs.writes_coverage ||
-                                                       fs->info.fs.can_discard;
+                                                       fs->info.fs.can_discard ||
+                                                       ctx->blend->base.alpha_to_coverage;
 
                         /* Blend descriptors are only accessed by a BLEND
                          * instruction on Valhall. It follows that if the
@@ -3973,7 +4017,8 @@ panfrost_indirect_draw(struct panfrost_batch *batch,
 #endif
 
 static bool
-panfrost_compatible_batch_state(struct panfrost_batch *batch)
+panfrost_compatible_batch_state(struct panfrost_batch *batch,
+                                bool points)
 {
         /* Only applies on Valhall */
         if (PAN_ARCH < 9)
@@ -3985,8 +4030,13 @@ panfrost_compatible_batch_state(struct panfrost_batch *batch)
         bool coord = (rast->sprite_coord_mode == PIPE_SPRITE_COORD_LOWER_LEFT);
         bool first = rast->flatshade_first;
 
-        return pan_tristate_set(&batch->sprite_coord_origin, coord) &&
-               pan_tristate_set(&batch->first_provoking_vertex, first);
+        /* gl_PointCoord orientation only matters when drawing points, but
+         * provoking vertex doesn't matter for points.
+         */
+        if (points)
+                return pan_tristate_set(&batch->sprite_coord_origin, coord);
+        else
+                return pan_tristate_set(&batch->first_provoking_vertex, first);
 }
 
 static void
@@ -4019,10 +4069,12 @@ panfrost_draw_vbo(struct pipe_context *pipe,
         if (unlikely(batch->scoreboard.job_index > 10000))
                 batch = panfrost_get_fresh_batch_for_fbo(ctx, "Too many draws");
 
-        if (unlikely(!panfrost_compatible_batch_state(batch))) {
+        bool points = (info->mode == PIPE_PRIM_POINTS);
+
+        if (unlikely(!panfrost_compatible_batch_state(batch, points))) {
                 batch = panfrost_get_fresh_batch_for_fbo(ctx, "State change");
 
-                ASSERTED bool succ = panfrost_compatible_batch_state(batch);
+                ASSERTED bool succ = panfrost_compatible_batch_state(batch, points);
                 assert(succ && "must be able to set state for a fresh batch");
         }
 
@@ -4357,6 +4409,21 @@ pan_pipe_to_stencil(const struct pipe_stencil_state *in,
 }
 #endif
 
+static bool
+pipe_zs_always_passes(const struct pipe_depth_stencil_alpha_state *zsa)
+{
+        if (zsa->depth_enabled && zsa->depth_func != PIPE_FUNC_ALWAYS)
+                return false;
+
+        if (zsa->stencil[0].enabled && zsa->stencil[0].func != PIPE_FUNC_ALWAYS)
+                return false;
+
+        if (zsa->stencil[1].enabled && zsa->stencil[1].func != PIPE_FUNC_ALWAYS)
+                return false;
+
+        return true;
+}
+
 static void *
 panfrost_create_depth_stencil_state(struct pipe_context *pipe,
                                     const struct pipe_depth_stencil_alpha_state *zsa)
@@ -4422,6 +4489,9 @@ panfrost_create_depth_stencil_state(struct pipe_context *pipe,
 
         so->enabled = zsa->stencil[0].enabled ||
                 (zsa->depth_enabled && zsa->depth_func != PIPE_FUNC_ALWAYS);
+
+        so->zs_always_passes = pipe_zs_always_passes(zsa);
+        so->writes_zs = util_writes_depth_stencil(zsa);
 
         /* TODO: Bounds test should be easy */
         assert(!zsa->depth_bounds_test);

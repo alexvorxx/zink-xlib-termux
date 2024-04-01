@@ -55,6 +55,12 @@ struct d3d12_resource {
    unsigned generation_id;
 };
 
+struct d3d12_memory_object {
+   struct pipe_memory_object base;
+   ID3D12Resource *res;
+   ID3D12Heap *heap;
+};
+
 struct d3d12_transfer {
    struct threaded_transfer base;
    struct pipe_resource *staging_res;
@@ -67,6 +73,12 @@ static inline struct d3d12_resource *
 d3d12_resource(struct pipe_resource *r)
 {
    return (struct d3d12_resource *)r;
+}
+
+static inline struct d3d12_memory_object *
+d3d12_memory_object(struct pipe_memory_object *m)
+{
+   return (struct d3d12_memory_object *)m;
 }
 
 /* Returns the underlying ID3D12Resource and offset for this resource */
@@ -87,15 +99,6 @@ d3d12_resource_resource(struct d3d12_resource *res)
    uint64_t offset;
    ret = d3d12_resource_underlying(res, &offset);
    return ret;
-}
-
-static inline struct TransitionableResourceState *
-d3d12_resource_state(struct d3d12_resource *res)
-{
-   uint64_t offset;
-   if (!res->bo)
-      return NULL;
-   return d3d12_bo_get_base(res->bo, &offset)->trans_state;
 }
 
 static inline D3D12_GPU_VIRTUAL_ADDRESS

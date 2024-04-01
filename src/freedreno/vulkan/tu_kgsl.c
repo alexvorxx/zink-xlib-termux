@@ -1,31 +1,12 @@
 /*
  * Copyright © 2020 Google, Inc.
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
-#include "tu_private.h"
+#include "tu_drm.h"
 
 #include <errno.h>
 #include <fcntl.h>
-#include <stdint.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 
@@ -33,6 +14,11 @@
 #include "vk_util.h"
 
 #include "util/debug.h"
+
+#include "tu_cmd_buffer.h"
+#include "tu_cs.h"
+#include "tu_device.h"
+#include "tu_dynamic_rendering.h"
 
 struct tu_syncobj {
    struct vk_object_base base;
@@ -367,6 +353,9 @@ tu_QueueSubmit2(VkQueue _queue,
       tu_dbg_log_gmem_load_store_skips(queue->device);
    }
 
+   struct tu_cmd_buffer **submit_cmd_buffers[submitCount];
+   uint32_t submit_cmd_buffer_count[submitCount];
+
    uint32_t max_entry_count = 0;
    for (uint32_t i = 0; i < submitCount; ++i) {
       const VkSubmitInfo2 *submit = pSubmits + i;
@@ -375,17 +364,34 @@ tu_QueueSubmit2(VkQueue _queue,
          vk_find_struct_const(pSubmits[i].pNext,
                               PERFORMANCE_QUERY_SUBMIT_INFO_KHR);
 
-      uint32_t entry_count = 0;
-      struct tu_cmd_buffer *cmd_buffers[submit->commandBufferInfoCount];
-      for (uint32_t j = 0; j < submit->commandBufferInfoCount; ++j) {
+      struct tu_cmd_buffer *old_cmd_buffers[submit->commandBufferInfoCount];
+      uint32_t cmdbuf_count = submit->commandBufferInfoCount;
+      for (uint32_t j = 0; j < cmdbuf_count; ++j) {
          TU_FROM_HANDLE(tu_cmd_buffer, cmdbuf, submit->pCommandBufferInfos[j].commandBuffer);
-         cmd_buffers[j] = cmdbuf;
-         entry_count += cmdbuf->cs.entry_count;
+         old_cmd_buffers[j] = cmdbuf;
+      }
+
+      struct tu_cmd_buffer **cmd_buffers = old_cmd_buffers;
+      tu_insert_dynamic_cmdbufs(queue->device, &cmd_buffers, &cmdbuf_count);
+      if (cmd_buffers == old_cmd_buffers) {
+         cmd_buffers =
+            vk_alloc(&queue->device->vk.alloc,
+                     sizeof(*cmd_buffers) * cmdbuf_count, 8,
+                     VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+         memcpy(cmd_buffers, old_cmd_buffers,
+                sizeof(*cmd_buffers) * cmdbuf_count);
+      }
+      submit_cmd_buffers[i] = cmd_buffers;
+      submit_cmd_buffer_count[i] = cmdbuf_count;
+
+      uint32_t entry_count = 0;
+      for (uint32_t j = 0; j < cmdbuf_count; ++j) {
+         entry_count += cmd_buffers[i]->cs.entry_count;
          if (perf_info)
             entry_count++;
       }
 
-      if (tu_autotune_submit_requires_fence(cmd_buffers, submit->commandBufferInfoCount))
+      if (tu_autotune_submit_requires_fence(cmd_buffers, cmdbuf_count))
          entry_count++;
 
       max_entry_count = MAX2(max_entry_count, entry_count);
@@ -406,10 +412,10 @@ tu_QueueSubmit2(VkQueue _queue,
                               PERFORMANCE_QUERY_SUBMIT_INFO_KHR);
 
 
-      struct tu_cmd_buffer *cmd_buffers[submit->commandBufferInfoCount];
-      for (uint32_t j = 0; j < submit->commandBufferInfoCount; j++) {
-         TU_FROM_HANDLE(tu_cmd_buffer, cmdbuf, submit->pCommandBufferInfos[j].commandBuffer);
-         cmd_buffers[j] = cmdbuf;
+      struct tu_cmd_buffer **cmd_buffers = submit_cmd_buffers[i];
+      uint32_t cmdbuf_count = submit_cmd_buffer_count[i];
+      for (uint32_t j = 0; j < cmdbuf_count; j++) {
+         struct tu_cmd_buffer *cmdbuf = cmd_buffers[j];
          struct tu_cs *cs = &cmdbuf->cs;
 
          if (perf_info) {
@@ -436,12 +442,12 @@ tu_QueueSubmit2(VkQueue _queue,
          }
       }
 
-      if (tu_autotune_submit_requires_fence(cmd_buffers, submit->commandBufferInfoCount)) {
+      if (tu_autotune_submit_requires_fence(cmd_buffers, cmdbuf_count)) {
          struct tu_cs *autotune_cs =
             tu_autotune_on_submit(queue->device,
                                   &queue->device->autotune,
                                   cmd_buffers,
-                                  submit->commandBufferInfoCount);
+                                  cmdbuf_count);
          cmds[entry_idx++] = (struct kgsl_command_object) {
             .offset = autotune_cs->entries[0].offset,
             .gpuaddr = autotune_cs->entries[0].bo->iova,

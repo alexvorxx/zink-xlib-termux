@@ -96,6 +96,7 @@ static const struct debug_named_value fd_debug_options[] = {
    {"layout",    FD_DBG_LAYOUT,   "Dump resource layouts"},
    {"nofp16",    FD_DBG_NOFP16,   "Disable mediump precision lowering"},
    {"nohw",      FD_DBG_NOHW,     "Disable submitting commands to the HW"},
+   {"nosbin",    FD_DBG_NOSBIN,   "Execute GMEM bins in raster order instead of 'S' pattern"},
    DEBUG_NAMED_VALUE_END
 };
 /* clang-format on */
@@ -131,7 +132,7 @@ fd_screen_get_timestamp(struct pipe_screen *pscreen)
    if (screen->has_timestamp) {
       uint64_t n;
       fd_pipe_get_param(screen->pipe, FD_TIMESTAMP, &n);
-      debug_assert(screen->max_freq > 0);
+      assert(screen->max_freq > 0);
       return n * 1000000000 / screen->max_freq;
    } else {
       int64_t cpu_time = os_time_get() * 1000;
@@ -426,6 +427,14 @@ fd_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return is_a2xx(screen);
 
    case PIPE_CAP_CLIP_PLANES:
+      /* Gens that support GS, have GS lowered into a quasi-VS which confuses
+       * the frontend clip-plane lowering.  So we handle this in the backend
+       *
+       */
+      if (pscreen->get_shader_param(pscreen, PIPE_SHADER_GEOMETRY,
+                                    PIPE_SHADER_CAP_MAX_INSTRUCTIONS))
+         return 1;
+
       /* On a3xx, there is HW support for GL user clip planes that
        * occasionally has to fall back to shader key-based lowering to clip
        * distances in the VS, and we don't support clip distances so that is
@@ -439,8 +448,10 @@ fd_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
        * On a5xx-a6xx, we have the HW clip distances hooked up, so we just let
        * mesa/st lower desktop GL's clip planes to clip distances in the last
        * vertex shader stage.
+       *
+       * NOTE: but see comment above about geometry shaders
        */
-      return !is_a5xx(screen) && !is_a6xx(screen);
+      return !is_a5xx(screen);
 
    /* Stream output. */
    case PIPE_CAP_MAX_STREAM_OUTPUT_BUFFERS:
@@ -515,6 +526,14 @@ fd_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 
       if (!os_get_total_physical_memory(&system_memory))
          return 0;
+
+      if (fd_device_version(screen->dev) >= FD_VERSION_VA_SIZE) {
+         uint64_t va_size;
+
+         if (!fd_pipe_get_param(screen->pipe, FD_VA_SIZE, &va_size)) {
+            system_memory = MIN2(system_memory, va_size);
+         }
+      }
 
       return (int)(system_memory >> 20);
    }
@@ -792,7 +811,7 @@ fd_get_compute_param(struct pipe_screen *pscreen, enum pipe_shader_ir ir_type,
 
 static const void *
 fd_get_compiler_options(struct pipe_screen *pscreen, enum pipe_shader_ir ir,
-                        unsigned shader)
+                        enum pipe_shader_type shader)
 {
    struct fd_screen *screen = fd_screen(pscreen);
 

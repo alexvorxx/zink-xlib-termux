@@ -39,7 +39,7 @@ enum radv_meta_save_flags {
    RADV_META_SAVE_DESCRIPTORS = (1 << 2),
    RADV_META_SAVE_GRAPHICS_PIPELINE = (1 << 3),
    RADV_META_SAVE_COMPUTE_PIPELINE = (1 << 4),
-   RADV_META_SAVE_SAMPLE_LOCATIONS = (1 << 5),
+   RADV_META_SUSPEND_PREDICATING = (1 << 5),
 };
 
 struct radv_meta_saved_state {
@@ -59,6 +59,8 @@ struct radv_meta_saved_state {
    VkRect2D render_area;
 
    unsigned active_pipeline_gds_queries;
+
+   bool predicating;
 };
 
 VkResult radv_device_init_meta_clear_state(struct radv_device *device, bool on_demand);
@@ -106,6 +108,9 @@ void radv_device_finish_accel_struct_build_state(struct radv_device *device);
 
 VkResult radv_device_init_meta_etc_decode_state(struct radv_device *device, bool on_demand);
 void radv_device_finish_meta_etc_decode_state(struct radv_device *device);
+
+VkResult radv_device_init_dgc_prepare_state(struct radv_device *device);
+void radv_device_finish_dgc_prepare_state(struct radv_device *device);
 
 void radv_meta_save(struct radv_meta_saved_state *saved_state, struct radv_cmd_buffer *cmd_buffer,
                     uint32_t flags);
@@ -260,8 +265,7 @@ radv_is_dcc_decompress_pipeline(struct radv_cmd_buffer *cmd_buffer)
 
 nir_builder PRINTFLIKE(3, 4)
    radv_meta_init_shader(struct radv_device *dev, gl_shader_stage stage, const char *name, ...);
-nir_ssa_def *radv_meta_gen_rect_vertices(nir_builder *vs_b);
-nir_ssa_def *radv_meta_gen_rect_vertices_comp2(nir_builder *vs_b, nir_ssa_def *comp2);
+
 nir_shader *radv_meta_build_nir_vs_generate_vertices(struct radv_device *dev);
 nir_shader *radv_meta_build_nir_fs_noop(struct radv_device *dev);
 

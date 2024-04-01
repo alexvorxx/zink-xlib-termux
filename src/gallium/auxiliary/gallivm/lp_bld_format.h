@@ -68,7 +68,7 @@ struct lp_build_format_cache
 };
 
 
-enum {
+enum cache_member {
    LP_BUILD_FORMAT_CACHE_MEMBER_DATA = 0,
    LP_BUILD_FORMAT_CACHE_MEMBER_TAGS,
 #if LP_BUILD_FORMAT_CACHE_DEBUG
@@ -82,6 +82,11 @@ enum {
 LLVMTypeRef
 lp_build_format_cache_type(struct gallivm_state *gallivm);
 
+LLVMTypeRef
+lp_build_format_cache_member_type(struct gallivm_state *gallivm, enum cache_member member);
+
+LLVMTypeRef
+lp_build_format_cache_elem_type(struct gallivm_state *gallivm, enum cache_member member);
 
 /*
  * AoS

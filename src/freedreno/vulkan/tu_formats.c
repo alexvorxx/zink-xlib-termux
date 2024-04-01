@@ -1,37 +1,18 @@
-
 /*
  * Copyright © 2016 Red Hat.
  * Copyright © 2016 Bas Nieuwenhuizen
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
-#include "tu_private.h"
+#include "tu_formats.h"
 
-#include "adreno_common.xml.h"
-#include "a6xx.xml.h"
 #include "fdl/fd6_format_table.h"
 
-#include "vk_format.h"
 #include "vk_util.h"
 #include "drm-uapi/drm_fourcc.h"
+
+#include "tu_device.h"
+#include "tu_image.h"
 
 struct tu_native_format
 tu6_format_vtx(VkFormat vk_format)
@@ -151,6 +132,108 @@ tu6_format_texture_supported(enum pipe_format format)
    return tu6_format_texture_unchecked(format, TILE6_LINEAR).fmt != FMT6_NONE;
 }
 
+enum tu6_ubwc_compat_type {
+   TU6_UBWC_UNKNOWN_COMPAT,
+   TU6_UBWC_R8G8_UNORM,
+   TU6_UBWC_R8G8_INT,
+   TU6_UBWC_R8G8B8A8_UNORM,
+   TU6_UBWC_R8G8B8A8_INT,
+   TU6_UBWC_B8G8R8A8_UNORM,
+   TU6_UBWC_R16G16_INT,
+   TU6_UBWC_R16G16B16A16_INT,
+   TU6_UBWC_R32_INT,
+   TU6_UBWC_R32G32_INT,
+   TU6_UBWC_R32G32B32A32_INT,
+   TU6_UBWC_R32_FLOAT,
+};
+
+static enum tu6_ubwc_compat_type
+tu6_ubwc_compat_mode(VkFormat format)
+{
+   switch (format) {
+   case VK_FORMAT_R8G8_UNORM:
+   case VK_FORMAT_R8G8_SRGB:
+      return TU6_UBWC_R8G8_UNORM;
+
+   case VK_FORMAT_R8G8_UINT:
+   case VK_FORMAT_R8G8_SINT:
+      return TU6_UBWC_R8G8_INT;
+
+   case VK_FORMAT_R8G8B8A8_UNORM:
+   case VK_FORMAT_R8G8B8A8_SRGB:
+   case VK_FORMAT_A8B8G8R8_UNORM_PACK32:
+   case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
+      return TU6_UBWC_R8G8B8A8_UNORM;
+
+   case VK_FORMAT_R8G8B8A8_UINT:
+   case VK_FORMAT_R8G8B8A8_SINT:
+   case VK_FORMAT_A8B8G8R8_UINT_PACK32:
+   case VK_FORMAT_A8B8G8R8_SINT_PACK32:
+      return TU6_UBWC_R8G8B8A8_INT;
+
+   case VK_FORMAT_R16G16_UINT:
+   case VK_FORMAT_R16G16_SINT:
+      return TU6_UBWC_R16G16_INT;
+
+   case VK_FORMAT_R16G16B16A16_UINT:
+   case VK_FORMAT_R16G16B16A16_SINT:
+      return TU6_UBWC_R16G16B16A16_INT;
+
+   case VK_FORMAT_R32_UINT:
+   case VK_FORMAT_R32_SINT:
+      return TU6_UBWC_R32_INT;
+
+   case VK_FORMAT_R32G32_UINT:
+   case VK_FORMAT_R32G32_SINT:
+      return TU6_UBWC_R32G32_INT;
+
+   case VK_FORMAT_R32G32B32A32_UINT:
+   case VK_FORMAT_R32G32B32A32_SINT:
+      return TU6_UBWC_R32G32B32A32_INT;
+
+   case VK_FORMAT_D32_SFLOAT:
+   case VK_FORMAT_R32_SFLOAT:
+      /* TODO: a630 blob allows these, but not a660.  When is it legal? */
+      return TU6_UBWC_UNKNOWN_COMPAT;
+
+   case VK_FORMAT_B8G8R8A8_UNORM:
+   case VK_FORMAT_B8G8R8A8_SRGB:
+      /* The blob doesn't list these as compatible, but they surely are.
+       * freedreno's happy to cast between them, and zink would really like
+       * to.
+       */
+      return TU6_UBWC_B8G8R8A8_UNORM;
+
+   default:
+      return TU6_UBWC_UNKNOWN_COMPAT;
+   }
+}
+
+bool
+tu6_mutable_format_list_ubwc_compatible(const VkImageFormatListCreateInfo *fmt_list)
+{
+   if (!fmt_list || !fmt_list->viewFormatCount)
+      return false;
+
+   /* We're only looking at format list cross compatibility here, check
+    * ubwc_possible() for the base "is the format UBWC-able at all?"
+    */
+   if (fmt_list->viewFormatCount == 1)
+      return true;
+
+   enum tu6_ubwc_compat_type type =
+      tu6_ubwc_compat_mode(fmt_list->pViewFormats[0]);
+   if (type == TU6_UBWC_UNKNOWN_COMPAT)
+      return false;
+
+   for (uint32_t i = 1; i < fmt_list->viewFormatCount; i++) {
+      if (tu6_ubwc_compat_mode(fmt_list->pViewFormats[i]) != type)
+         return false;
+   }
+
+   return true;
+}
+
 static void
 tu_physical_device_get_format_properties(
    struct tu_physical_device *physical_device,
@@ -216,11 +299,11 @@ tu_physical_device_get_format_properties(
                  VK_FORMAT_FEATURE_BLIT_DST_BIT |
                  VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT |
                  VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT |
-                 VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT_KHR;
+                 VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT;
 
       buffer |= VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT |
                 VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT |
-                VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT_KHR;
+                VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT;
 
       /* TODO: The blob also exposes these for R16G16_UINT/R16G16_SINT, but we
        * don't have any tests for those.
@@ -348,7 +431,7 @@ tu_GetPhysicalDeviceFormatProperties2(
       /* note: ubwc_possible() argument values to be ignored except for format */
       if (pFormatProperties->formatProperties.optimalTilingFeatures &&
           tiling_possible(format) &&
-          ubwc_possible(format, VK_IMAGE_TYPE_2D, 0, 0, physical_device->info, VK_SAMPLE_COUNT_1_BIT)) {
+          ubwc_possible(format, VK_IMAGE_TYPE_2D, 0, 0, physical_device->info, VK_SAMPLE_COUNT_1_BIT, false)) {
          vk_outarray_append_typed(VkDrmFormatModifierPropertiesEXT, &out, mod_props) {
             mod_props->drmFormatModifier = DRM_FORMAT_MOD_QCOM_COMPRESSED;
             mod_props->drmFormatModifierPlaneCount = tu6_plane_count(format);
@@ -394,12 +477,15 @@ tu_get_image_format_properties(
              !tiling_possible(info->format))
             return VK_ERROR_FORMAT_NOT_SUPPORTED;
 
-         /* for mutable formats, its very unlikely to be possible to use UBWC */
-         if (info->flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT)
-            return VK_ERROR_FORMAT_NOT_SUPPORTED;
+         if (info->flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT) {
+            const VkImageFormatListCreateInfo *format_list =
+               vk_find_struct_const(info->pNext,
+                                    IMAGE_FORMAT_LIST_CREATE_INFO);
+            if (!tu6_mutable_format_list_ubwc_compatible(format_list))
+               return VK_ERROR_FORMAT_NOT_SUPPORTED;
+         }
 
-
-         if (!ubwc_possible(info->format, info->type, info->usage, info->usage, physical_device->info, sampleCounts))
+         if (!ubwc_possible(info->format, info->type, info->usage, info->usage, physical_device->info, sampleCounts, false))
             return VK_ERROR_FORMAT_NOT_SUPPORTED;
 
          format_feature_flags = format_props.optimalTilingFeatures;

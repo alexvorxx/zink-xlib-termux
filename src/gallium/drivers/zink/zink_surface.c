@@ -142,11 +142,19 @@ create_surface(struct pipe_context *pctx,
    VkImageViewUsageCreateInfo usage_info;
    usage_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
    usage_info.pNext = NULL;
-   VkFormatFeatureFlags feats = res->optimal_tiling ?
-                                screen->format_props[templ->format].optimalTilingFeatures :
-                                screen->format_props[templ->format].linearTilingFeatures;
+   VkFormatFeatureFlags feats = res->linear ?
+                                screen->format_props[templ->format].linearTilingFeatures :
+                                screen->format_props[templ->format].optimalTilingFeatures;
    VkImageUsageFlags attachment = (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
    usage_info.usage = res->obj->vkusage & ~attachment;
+   if (res->obj->modifier_aspect) {
+      feats = res->obj->vkfeats;
+      /* intersect format features for current modifier */
+      for (unsigned i = 0; i < screen->modifier_props[templ->format].drmFormatModifierCount; i++) {
+         if (res->obj->modifier == screen->modifier_props[templ->format].pDrmFormatModifierProperties[i].drmFormatModifier)
+            feats &= screen->modifier_props[templ->format].pDrmFormatModifierProperties[i].drmFormatModifierTilingFeatures;
+      }
+   }
    if ((res->obj->vkusage & attachment) &&
        !(feats & (VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))) {
       ivci->pNext = &usage_info;
@@ -175,9 +183,10 @@ create_surface(struct pipe_context *pctx,
    if (!actually)
       return surface;
    assert(ivci->image);
-   if (VKSCR(CreateImageView)(screen->dev, ivci, NULL,
-                         &surface->image_view) != VK_SUCCESS) {
-      mesa_loge("ZINK: vkCreateImageView failed");
+   VkResult result = VKSCR(CreateImageView)(screen->dev, ivci, NULL,
+                                            &surface->image_view);
+   if (result != VK_SUCCESS) {
+      mesa_loge("ZINK: vkCreateImageView failed (%s)", vk_Result_to_str(result));
       FREE(surface);
       return NULL;
    }
@@ -396,8 +405,9 @@ zink_rebind_surface(struct zink_context *ctx, struct pipe_surface **psurface)
    assert(entry);
    _mesa_hash_table_remove(&res->surface_cache, entry);
    VkImageView image_view;
-   if (VKSCR(CreateImageView)(screen->dev, &ivci, NULL, &image_view) != VK_SUCCESS) {
-      mesa_loge("ZINK: failed to create new imageview");
+   VkResult result = VKSCR(CreateImageView)(screen->dev, &ivci, NULL, &image_view);
+   if (result != VK_SUCCESS) {
+      mesa_loge("ZINK: failed to create new imageview (%s)", vk_Result_to_str(result));
       simple_mtx_unlock(&res->surface_mtx);
       return false;
    }
@@ -474,7 +484,7 @@ zink_surface_swapchain_update(struct zink_context *ctx, struct zink_surface *sur
       init_surface_info(surface, res, &surface->ivci);
    }
    if (!surface->swapchain[res->obj->dt_idx]) {
-      assert(res->obj->image && cdt->swapchain->images[res->obj->dt_idx] == res->obj->image);
+      assert(res->obj->image && cdt->swapchain->images[res->obj->dt_idx].image == res->obj->image);
       surface->ivci.image = res->obj->image;
       assert(surface->ivci.image);
       VKSCR(CreateImageView)(screen->dev, &surface->ivci, NULL, &surface->swapchain[res->obj->dt_idx]);

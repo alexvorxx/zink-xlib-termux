@@ -101,6 +101,14 @@ static void radeon_vcn_enc_get_param(struct radeon_encoder *enc, struct pipe_pic
       default:
          enc->enc_pic.rc_session_init.rate_control_method = RENCODE_RATE_CONTROL_METHOD_NONE;
       }
+      enc->enc_pic.spec_misc.profile_idc = u_get_h264_profile_idc(enc->base.profile);
+      if (enc->enc_pic.spec_misc.profile_idc >= PIPE_VIDEO_PROFILE_MPEG4_AVC_MAIN &&
+          enc->enc_pic.spec_misc.profile_idc != PIPE_VIDEO_PROFILE_MPEG4_AVC_EXTENDED)
+         enc->enc_pic.spec_misc.cabac_enable = pic->pic_ctrl.enc_cabac_enable;
+      else
+         enc->enc_pic.spec_misc.cabac_enable = false;
+      enc->enc_pic.spec_misc.cabac_init_idc = enc->enc_pic.spec_misc.cabac_enable ? pic->pic_ctrl.enc_cabac_init_idc : 0;
+
    } else if (u_reduce_video_profile(picture->profile) == PIPE_VIDEO_FORMAT_HEVC) {
       struct pipe_h265_enc_picture_desc *pic = (struct pipe_h265_enc_picture_desc *)picture;
       enc->enc_pic.picture_type = pic->picture_type;
@@ -142,10 +150,17 @@ static void radeon_vcn_enc_get_param(struct radeon_encoder *enc, struct pipe_pic
          pic->seq.log2_min_transform_block_size_minus2;
       enc->enc_pic.log2_diff_max_min_transform_block_size =
          pic->seq.log2_diff_max_min_transform_block_size;
+
+      /* To fix incorrect hardcoded values set by player
+       * log2_diff_max_min_luma_coding_block_size = log2(64) - (log2_min_luma_coding_block_size_minus3 + 3)
+       * max_transform_hierarchy_depth_inter = log2_diff_max_min_luma_coding_block_size + 1
+       * max_transform_hierarchy_depth_intra = log2_diff_max_min_luma_coding_block_size + 1
+       */
       enc->enc_pic.max_transform_hierarchy_depth_inter =
-         pic->seq.max_transform_hierarchy_depth_inter;
+         6 - (pic->seq.log2_min_luma_coding_block_size_minus3 + 3) + 1;
       enc->enc_pic.max_transform_hierarchy_depth_intra =
-         pic->seq.max_transform_hierarchy_depth_intra;
+         enc->enc_pic.max_transform_hierarchy_depth_inter;
+
       enc->enc_pic.log2_parallel_merge_level_minus2 = pic->pic.log2_parallel_merge_level_minus2;
       enc->enc_pic.bit_depth_luma_minus8 = pic->seq.bit_depth_luma_minus8;
       enc->enc_pic.bit_depth_chroma_minus8 = pic->seq.bit_depth_chroma_minus8;

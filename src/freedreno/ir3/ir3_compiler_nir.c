@@ -826,6 +826,14 @@ emit_alu(struct ir3_context *ctx, nir_alu_instr *alu)
       dst[0] = ir3_ADD_S(b, src[0], 0, src[1], 0);
       dst[0]->flags |= IR3_INSTR_SAT;
       break;
+   case nir_op_usub_sat:
+      dst[0] = ir3_SUB_U(b, src[0], 0, src[1], 0);
+      dst[0]->flags |= IR3_INSTR_SAT;
+      break;
+   case nir_op_isub_sat:
+      dst[0] = ir3_SUB_S(b, src[0], 0, src[1], 0);
+      dst[0]->flags |= IR3_INSTR_SAT;
+      break;
 
    case nir_op_udot_4x8_uadd:
    case nir_op_udot_4x8_uadd_sat:
@@ -1753,8 +1761,8 @@ get_barycentric(struct ir3_context *ctx, enum ir3_bary bary)
                  SYSTEM_VALUE_BARYCENTRIC_PERSP_SAMPLE);
    STATIC_ASSERT(SYSTEM_VALUE_BARYCENTRIC_PERSP_PIXEL + IJ_PERSP_CENTROID ==
                  SYSTEM_VALUE_BARYCENTRIC_PERSP_CENTROID);
-   STATIC_ASSERT(SYSTEM_VALUE_BARYCENTRIC_PERSP_PIXEL + IJ_PERSP_SIZE ==
-                 SYSTEM_VALUE_BARYCENTRIC_PERSP_SIZE);
+   STATIC_ASSERT(SYSTEM_VALUE_BARYCENTRIC_PERSP_PIXEL + IJ_PERSP_CENTER_RHW ==
+                 SYSTEM_VALUE_BARYCENTRIC_PERSP_CENTER_RHW);
    STATIC_ASSERT(SYSTEM_VALUE_BARYCENTRIC_PERSP_PIXEL + IJ_LINEAR_PIXEL ==
                  SYSTEM_VALUE_BARYCENTRIC_LINEAR_PIXEL);
    STATIC_ASSERT(SYSTEM_VALUE_BARYCENTRIC_PERSP_PIXEL + IJ_LINEAR_CENTROID ==
@@ -1896,7 +1904,7 @@ create_multidst_mov(struct ir3_block *block, struct ir3_register *dst)
       ir3_src_create(mov, INVALID_REG, IR3_REG_SSA | src_flags);
    src->wrmask = dst->wrmask;
    src->def = dst;
-   debug_assert(!(dst->flags & IR3_REG_RELATIV));
+   assert(!(dst->flags & IR3_REG_RELATIV));
    mov->cat1.src_type = mov->cat1.dst_type =
       (dst->flags & IR3_REG_HALF) ? TYPE_U16 : TYPE_U32;
    return mov;
@@ -2025,14 +2033,6 @@ static void setup_input(struct ir3_context *ctx, nir_intrinsic_instr *intr);
 static void setup_output(struct ir3_context *ctx, nir_intrinsic_instr *intr);
 
 static void
-switch_to_late_z_if_fs(struct ir3_context *ctx)
-{
-   if ((ctx->so->type == MESA_SHADER_FRAGMENT) &&
-       !ctx->s->info.fs.early_fragment_tests)
-      ctx->so->no_earlyz = true;
-}
-
-static void
 emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
 {
    const nir_intrinsic_info *info = &nir_intrinsic_infos[intr->intrinsic];
@@ -2148,7 +2148,6 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
       break;
 
    case nir_intrinsic_store_global_ir3:
-      switch_to_late_z_if_fs(ctx);
       ctx->funcs->emit_intrinsic_store_global_ir3(ctx, intr);
       break;
    case nir_intrinsic_load_global_ir3:
@@ -2180,12 +2179,12 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
 
       break;
    }
-   case nir_intrinsic_load_size_ir3:
-      if (!ctx->ij[IJ_PERSP_SIZE]) {
-         ctx->ij[IJ_PERSP_SIZE] =
-            create_sysval_input(ctx, SYSTEM_VALUE_BARYCENTRIC_PERSP_SIZE, 0x1);
+   case nir_intrinsic_load_persp_center_rhw_ir3:
+      if (!ctx->ij[IJ_PERSP_CENTER_RHW]) {
+         ctx->ij[IJ_PERSP_CENTER_RHW] =
+            create_sysval_input(ctx, SYSTEM_VALUE_BARYCENTRIC_PERSP_CENTER_RHW, 0x1);
       }
-      dst[0] = ctx->ij[IJ_PERSP_SIZE];
+      dst[0] = ctx->ij[IJ_PERSP_CENTER_RHW];
       break;
    case nir_intrinsic_load_barycentric_centroid:
    case nir_intrinsic_load_barycentric_sample:
@@ -2207,7 +2206,6 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
       emit_intrinsic_load_ssbo(ctx, intr, dst);
       break;
    case nir_intrinsic_store_ssbo_ir3:
-      switch_to_late_z_if_fs(ctx);
       ctx->funcs->emit_intrinsic_store_ssbo(ctx, intr);
       break;
    case nir_intrinsic_get_ssbo_size:
@@ -2223,7 +2221,6 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
    case nir_intrinsic_ssbo_atomic_xor_ir3:
    case nir_intrinsic_ssbo_atomic_exchange_ir3:
    case nir_intrinsic_ssbo_atomic_comp_swap_ir3:
-      switch_to_late_z_if_fs(ctx);
       dst[0] = ctx->funcs->emit_intrinsic_atomic_ssbo(ctx, intr);
       break;
    case nir_intrinsic_load_shared:
@@ -2256,7 +2253,6 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
       break;
    case nir_intrinsic_image_store:
    case nir_intrinsic_bindless_image_store:
-      switch_to_late_z_if_fs(ctx);
       ctx->funcs->emit_intrinsic_store_image(ctx, intr);
       break;
    case nir_intrinsic_image_size:
@@ -2283,7 +2279,6 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
    case nir_intrinsic_bindless_image_atomic_exchange:
    case nir_intrinsic_image_atomic_comp_swap:
    case nir_intrinsic_bindless_image_atomic_comp_swap:
-      switch_to_late_z_if_fs(ctx);
       dst[0] = ctx->funcs->emit_intrinsic_atomic_image(ctx, intr);
       break;
    case nir_intrinsic_scoped_barrier:
@@ -2629,7 +2624,6 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
    case nir_intrinsic_global_atomic_xor_ir3:
    case nir_intrinsic_global_atomic_exchange_ir3:
    case nir_intrinsic_global_atomic_comp_swap_ir3: {
-      switch_to_late_z_if_fs(ctx);
       dst[0] = ctx->funcs->emit_intrinsic_atomic_global(ctx, intr);
       break;
    }
@@ -3234,7 +3228,7 @@ emit_tex(struct ir3_context *ctx, nir_tex_instr *tex)
                bits = 10;
             break;
          default:
-            debug_assert(0);
+            assert(0);
          }
 
          sam->cat5.type = TYPE_F32;
@@ -3895,7 +3889,7 @@ emit_function(struct ir3_context *ctx, nir_function_impl *impl)
    if ((ctx->compiler->gen < 5) &&
        (ctx->so->stream_output.num_outputs > 0) &&
        !ctx->so->binning_pass) {
-      debug_assert(ctx->so->type == MESA_SHADER_VERTEX);
+      assert(ctx->so->type == MESA_SHADER_VERTEX);
       emit_stream_out(ctx);
    }
 
@@ -4167,7 +4161,7 @@ setup_output(struct ir3_context *ctx, nir_intrinsic_instr *intr)
          break;
       case VARYING_SLOT_PRIMITIVE_ID:
       case VARYING_SLOT_GS_VERTEX_FLAGS_IR3:
-         debug_assert(ctx->so->type == MESA_SHADER_GEOMETRY);
+         assert(ctx->so->type == MESA_SHADER_GEOMETRY);
          FALLTHROUGH;
       case VARYING_SLOT_COL0:
       case VARYING_SLOT_COL1:
@@ -4383,8 +4377,12 @@ emit_instructions(struct ir3_context *ctx)
    ctx->so->num_samp =
       BITSET_LAST_BIT(ctx->s->info.textures_used) + ctx->s->info.num_images;
 
-   /* Save off clip+cull information. */
-   ctx->so->clip_mask = MASK(ctx->s->info.clip_distance_array_size);
+   /* Save off clip+cull information. Note that in OpenGL clip planes may
+    * be individually enabled/disabled, and some gens handle lowering in
+    * backend, so we also need to consider the shader key:
+    */
+   ctx->so->clip_mask = ctx->so->key.ucp_enables |
+                        MASK(ctx->s->info.clip_distance_array_size);
    ctx->so->cull_mask = MASK(ctx->s->info.cull_distance_array_size)
                         << ctx->s->info.clip_distance_array_size;
 
@@ -4765,7 +4763,7 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
             unsigned n = i / 4;
             unsigned c = i % 4;
 
-            debug_assert(n < so->nonbinning->inputs_count);
+            assert(n < so->nonbinning->inputs_count);
 
             if (so->nonbinning->inputs[n].sysval)
                continue;
@@ -4836,12 +4834,6 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
 
    ir3_debug_print(ir, "AFTER: ir3_sched");
 
-   if (IR3_PASS(ir, ir3_cp_postsched)) {
-      /* cleanup the result of removing unneeded mov's: */
-      while (IR3_PASS(ir, ir3_dce, so)) {
-      }
-   }
-
    /* Pre-assign VS inputs on a6xx+ binning pass shader, to align
     * with draw pass VS, so binning and draw pass can both use the
     * same VBO state.
@@ -4900,6 +4892,7 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
 
    IR3_PASS(ir, ir3_postsched, so);
 
+   IR3_PASS(ir, ir3_legalize_relative);
    IR3_PASS(ir, ir3_lower_subgroups);
 
    if (so->type == MESA_SHADER_FRAGMENT)
@@ -4983,6 +4976,10 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
    if (so->type == MESA_SHADER_FRAGMENT &&
        ctx->s->info.fs.needs_quad_helper_invocations)
       so->need_pixlod = true;
+
+   if ((ctx->so->type == MESA_SHADER_FRAGMENT) &&
+       !ctx->s->info.fs.early_fragment_tests)
+      ctx->so->no_earlyz |= ctx->s->info.writes_memory;
 
 out:
    if (ret) {

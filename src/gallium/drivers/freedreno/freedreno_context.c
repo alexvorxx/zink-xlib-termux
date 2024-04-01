@@ -38,6 +38,7 @@
 #include "freedreno_state.h"
 #include "freedreno_texture.h"
 #include "freedreno_util.h"
+#include "freedreno_tracepoints.h"
 #include "util/u_trace_gallium.h"
 
 static void
@@ -421,7 +422,7 @@ fd_get_reset_count(struct fd_context *ctx, bool per_context)
    uint64_t val;
    enum fd_param_id param = per_context ? FD_CTX_FAULTS : FD_GLOBAL_FAULTS;
    int ret = fd_pipe_get_param(ctx->pipe, param, &val);
-   debug_assert(!ret);
+   assert(!ret);
    return val;
 }
 
@@ -666,6 +667,7 @@ fd_context_init(struct fd_context *ctx, struct pipe_screen *pscreen,
 
    ctx->current_scissor = &ctx->disabled_scissor;
 
+   fd_gpu_tracepoint_config_variable();
    u_trace_pipe_context_init(&ctx->trace_context, pctx,
                              fd_trace_record_ts,
                              fd_trace_read_ts,

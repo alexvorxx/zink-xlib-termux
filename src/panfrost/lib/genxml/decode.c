@@ -712,8 +712,13 @@ pandecode_bifrost_texture(
         pandecode_indent++;
 
 #if PAN_ARCH >= 9
-        /* TODO: count */
-        for (unsigned i = 0; i < 4; ++i)
+        int plane_count = temp.levels * temp.array_size;
+
+        /* Miptree for each face */
+        if (temp.dimension == MALI_TEXTURE_DIMENSION_CUBE)
+                plane_count *= 6;
+
+        for (unsigned i = 0; i < plane_count; ++i)
                 DUMP_ADDR(PLANE, temp.surfaces + i * pan_size(PLANE), "Plane %u:\n", i);
 #else
         struct pandecode_mapped_memory *tmem = pandecode_find_mapped_gpu_mem_containing(temp.surfaces);
@@ -1205,19 +1210,20 @@ pandecode_resources(mali_ptr addr, unsigned size)
 static void
 pandecode_resource_tables(mali_ptr addr, const char *label)
 {
-        fprintf(pandecode_dump_stream, "Tag %x\n", (int) (addr & 0xF));
-        addr = addr & ~0xF;
+        unsigned count = addr & 0x3F;
+        addr = addr & ~0x3F;
 
         struct pandecode_mapped_memory *mem = pandecode_find_mapped_gpu_mem_containing(addr);
-        unsigned count = 9; // TODO: what is the actual count? at least 5.
         const uint8_t *cl = pandecode_fetch_gpu_mem(mem, addr, MALI_RESOURCE_LENGTH * count);
 
         for (unsigned i = 0; i < count; ++i) {
                 pan_unpack(cl + i * MALI_RESOURCE_LENGTH, RESOURCE, entry);
                 DUMP_UNPACKED(RESOURCE, entry, "Entry %u:\n", i);
 
+                pandecode_indent += 2;
                 if (entry.address)
                         pandecode_resources(entry.address, entry.size);
+                pandecode_indent -= 2;
         }
 }
 
@@ -1413,6 +1419,7 @@ GENX(pandecode_abort_on_fault)(mali_ptr jc_gpu_va)
                 /* Ensure the job is marked COMPLETE */
                 if (h.exception_status != 0x1) {
                         fprintf(stderr, "Incomplete job or timeout\n");
+                        fflush(NULL);
                         abort();
                 }
         } while ((jc_gpu_va = next_job));

@@ -186,13 +186,20 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
        * else, and separate limits. There seems to be a shared limit, but
        * it's higher than the vert or frag limits.
        *
-       * TODO: The shared limit seems to be different on different on
-       * different models.
+       * Also, according to the observation on a630/a650/a660, max_const_pipeline
+       * has to be 512 when all geometry stages are present. Otherwise a gpu hang
+       * happens. Accordingly maximum safe size for each stage should be under
+       * (max_const_pipeline / 5 (stages)) with 4 vec4's alignment considered for
+       * const files.
+       *
+       * Only when VS and FS stages are present, the limit is 640.
+       *
+       * TODO: The shared limit seems to be different on different models.
        */
-      compiler->max_const_pipeline = 640;
+      compiler->max_const_pipeline = 512;
       compiler->max_const_frag = 512;
       compiler->max_const_geom = 512;
-      compiler->max_const_safe = 128;
+      compiler->max_const_safe = 100;
 
       /* Compute shaders don't share a const file with the FS. Instead they
        * have their own file, which is smaller than the FS one.
@@ -217,6 +224,10 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
 
       compiler->has_dp2acc = dev_info->a6xx.has_dp2acc;
       compiler->has_dp4acc = dev_info->a6xx.has_dp4acc;
+
+      compiler->shared_consts_base_offset = 504;
+      compiler->shared_consts_size = 8;
+      compiler->geom_shared_consts_size_quirk = 16;
    } else {
       compiler->max_const_pipeline = 512;
       compiler->max_const_geom = 512;
@@ -291,6 +302,12 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
       if (compiler->gen <= 2)
          compiler->nir_options.force_indirect_unrolling = nir_var_all;
    }
+
+   /* 16-bit ALU op generation is mostly controlled by frontend compiler options, but
+    * this core NIR option enables some optimizations of 16-bit operations.
+    */
+   if (compiler->gen >= 5 && !(ir3_shader_debug & IR3_DBG_NOFP16))
+      compiler->nir_options.support_16bit_alu = true;
 
    if (!options->disable_cache)
       ir3_disk_cache_init(compiler);

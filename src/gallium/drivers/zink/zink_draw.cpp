@@ -40,6 +40,7 @@ zink_emit_xfb_counter_barrier(struct zink_context *ctx)
          stage |= VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
       }
       zink_resource_buffer_barrier(ctx, res, access, stage);
+      res->obj->unordered_read = false;
    }
 }
 
@@ -85,6 +86,7 @@ check_buffer_barrier(struct zink_context *ctx, struct pipe_resource *pres, VkAcc
 {
    struct zink_resource *res = zink_resource(pres);
    zink_resource_buffer_barrier(ctx, res, flags, pipeline);
+   res->obj->unordered_read = false;
 }
 
 ALWAYS_INLINE static void
@@ -112,9 +114,6 @@ zink_bind_vertex_buffers(struct zink_batch *batch, struct zink_context *ctx)
    struct zink_vertex_elements_state *elems = ctx->element_state;
    struct zink_screen *screen = zink_screen(ctx->base.screen);
 
-   if (!elems->hw_state.num_bindings)
-      return;
-
    for (unsigned i = 0; i < elems->hw_state.num_bindings; i++) {
       struct pipe_vertex_buffer *vb = ctx->vertex_buffers + ctx->element_state->binding_map[i];
       assert(vb);
@@ -139,7 +138,7 @@ zink_bind_vertex_buffers(struct zink_batch *batch, struct zink_context *ctx)
       VKCTX(CmdBindVertexBuffers2EXT)(batch->state->cmdbuf, 0,
                                           elems->hw_state.num_bindings,
                                           buffers, buffer_offsets, NULL, buffer_strides);
-   else
+   else if (elems->hw_state.num_bindings)
       VKSCR(CmdBindVertexBuffers)(batch->state->cmdbuf, 0,
                              elems->hw_state.num_bindings,
                              buffers, buffer_offsets);
@@ -189,7 +188,7 @@ update_gfx_program(struct zink_context *ctx)
    if (ctx->gfx_dirty) {
       struct zink_gfx_program *prog = NULL;
 
-      struct hash_table *ht = &ctx->program_cache[ctx->shader_stages >> 2];
+      struct hash_table *ht = &ctx->program_cache[zink_program_cache_stages(ctx->shader_stages)];
       const uint32_t hash = ctx->gfx_hash;
       struct hash_entry *entry = _mesa_hash_table_search_pre_hashed(ht, hash, ctx->gfx_stages);
       if (entry) {
@@ -343,6 +342,10 @@ update_barriers(struct zink_context *ctx, bool is_compute,
             if (layout != res->layout)
                zink_resource_image_barrier(ctx, res, layout, res->barrier_access[is_compute], pipeline);
          }
+         if (zink_resource_access_is_write(res->barrier_access[is_compute]))
+            res->obj->unordered_read = res->obj->unordered_write = false;
+         else
+            res->obj->unordered_read = false;
          /* always barrier on draw if this resource has either multiple image write binds or
           * image write binds and image read binds
           */
@@ -477,9 +480,12 @@ zink_draw(struct pipe_context *pctx,
           */
          for (unsigned i = 0; i < ctx->num_so_targets; i++) {
             struct zink_so_target *t = (struct zink_so_target *)ctx->so_targets[i];
-            if (t)
-               zink_resource_buffer_barrier(ctx, zink_resource(t->base.buffer),
+            if (t) {
+               struct zink_resource *res = zink_resource(t->base.buffer);
+               zink_resource_buffer_barrier(ctx, res,
                                             VK_ACCESS_TRANSFORM_FEEDBACK_WRITE_BIT_EXT, VK_PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT);
+               res->obj->unordered_read = res->obj->unordered_write = false;
+            }
          }
       }
    }
@@ -491,10 +497,13 @@ zink_draw(struct pipe_context *pctx,
    /* ensure synchronization between doing streamout with counter buffer
     * and using counter buffer for indirect draw
     */
-   if (so_target && so_target->counter_buffer_valid)
-      zink_resource_buffer_barrier(ctx, zink_resource(so_target->counter_buffer),
+   if (so_target && so_target->counter_buffer_valid) {
+      struct zink_resource *res = zink_resource(so_target->counter_buffer);
+      zink_resource_buffer_barrier(ctx, res,
                                    VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_READ_BIT_EXT,
                                    VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT);
+      res->obj->unordered_read = false;
+   }
 
    zink_query_update_gs_states(ctx, dinfo->was_line_loop);
 
@@ -569,11 +578,22 @@ zink_draw(struct pipe_context *pctx,
             ctx->vp_state.viewport_states[i].translate[1] - ctx->vp_state.viewport_states[i].scale[1],
             MAX2(ctx->vp_state.viewport_states[i].scale[0] * 2, 1),
             ctx->vp_state.viewport_states[i].scale[1] * 2,
-            ctx->rast_state->base.clip_halfz ?
-               ctx->vp_state.viewport_states[i].translate[2] :
-               ctx->vp_state.viewport_states[i].translate[2] - ctx->vp_state.viewport_states[i].scale[2],
-            ctx->vp_state.viewport_states[i].translate[2] + ctx->vp_state.viewport_states[i].scale[2]
+            CLAMP(ctx->rast_state->base.clip_halfz ?
+                  ctx->vp_state.viewport_states[i].translate[2] :
+                  ctx->vp_state.viewport_states[i].translate[2] - ctx->vp_state.viewport_states[i].scale[2],
+                  0, 1),
+            CLAMP(ctx->vp_state.viewport_states[i].translate[2] + ctx->vp_state.viewport_states[i].scale[2],
+                  0, 1)
          };
+         if (!ctx->rast_state->base.half_pixel_center) {
+             /* magic constant value from dxvk */
+             float cf = 0.5f - (1.0f / 128.0f);
+             viewport.x += cf;
+             if (viewport.height < 0)
+                viewport.y += cf;
+             else
+                viewport.y -= cf;
+         }
          viewports[i] = viewport;
       }
       if (DYNAMIC_STATE != ZINK_NO_DYNAMIC_STATE)
@@ -661,7 +681,7 @@ zink_draw(struct pipe_context *pctx,
        screen->info.have_EXT_line_rasterization && rast_state->base.line_stipple_enable)
       VKCTX(CmdSetLineStippleEXT)(batch->state->cmdbuf, rast_state->base.line_stipple_factor, rast_state->base.line_stipple_pattern);
 
-   if (BATCH_CHANGED || ctx->rast_state_changed || mode_changed) {
+   if (BATCH_CHANGED || ctx->rast_state_changed) {
       enum pipe_prim_type reduced_prim = ctx->last_vertex_stage->reduced_prim;
       if (reduced_prim == PIPE_PRIM_MAX)
          reduced_prim = u_reduced_prim(mode);
@@ -685,10 +705,15 @@ zink_draw(struct pipe_context *pctx,
       }
 
       VKCTX(CmdSetLineWidth)(batch->state->cmdbuf, rast_state->line_width);
-      if (depth_bias)
-         VKCTX(CmdSetDepthBias)(batch->state->cmdbuf, rast_state->offset_units, rast_state->offset_clamp, rast_state->offset_scale);
-      else
+      if (depth_bias) {
+         if (rast_state->base.offset_units_unscaled) {
+            VKCTX(CmdSetDepthBias)(batch->state->cmdbuf, rast_state->offset_units * ctx->depth_bias_scale_factor, rast_state->offset_clamp, rast_state->offset_scale);
+         } else {
+            VKCTX(CmdSetDepthBias)(batch->state->cmdbuf, rast_state->offset_units, rast_state->offset_clamp, rast_state->offset_scale);
+         }
+      } else {
          VKCTX(CmdSetDepthBias)(batch->state->cmdbuf, 0.0f, 0.0f, 0.0f);
+      }
    }
    ctx->rast_state_changed = false;
 
@@ -738,7 +763,10 @@ zink_draw(struct pipe_context *pctx,
    if (zink_program_has_descriptors(&ctx->curr_program->base))
       screen->descriptors_update(ctx, false);
 
-   if (ctx->di.any_bindless_dirty && ctx->curr_program->base.dd->bindless)
+   if (ctx->di.any_bindless_dirty &&
+       /* some apps (d3dretrace) call MakeTextureHandleResidentARB randomly */
+       zink_program_has_descriptors(&ctx->curr_program->base) &&
+       ctx->curr_program->base.dd->bindless)
       zink_descriptors_update_bindless(ctx);
 
    if (reads_basevertex) {
@@ -761,6 +789,7 @@ zink_draw(struct pipe_context *pctx,
             struct zink_resource *res = zink_resource(t->counter_buffer);
             t->stride = ctx->last_vertex_stage->sinfo.so_info.stride[i] * sizeof(uint32_t);
             zink_batch_reference_resource_rw(batch, res, true);
+            res->obj->unordered_read = res->obj->unordered_write = false;
             if (t->counter_buffer_valid) {
                counter_buffers[i] = res->obj->buffer;
                counter_buffer_offsets[i] = t->counter_buffer_offset;
@@ -877,6 +906,7 @@ zink_draw_vertex_state(struct pipe_context *pctx,
    struct zink_resource *res = zink_resource(vstate->input.vbuffer.buffer.resource);
    zink_resource_buffer_barrier(ctx, res, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
                                 VK_PIPELINE_STAGE_VERTEX_INPUT_BIT);
+   res->obj->unordered_read = false;
    struct zink_vertex_elements_hw_state *hw_state = ctx->gfx_pipeline_state.element_state;
    ctx->gfx_pipeline_state.element_state = &((struct zink_vertex_state*)vstate)->velems.hw_state;
 
@@ -1048,23 +1078,30 @@ zink_invalid_launch_grid(struct pipe_context *pctx, const struct pipe_grid_info 
    unreachable("compute shader not bound");
 }
 
+#define STAGE_BASE 0
+#define STAGE_BASE_GS 4
+#define STAGE_BASE_TES 2
+#define STAGE_BASE_TES_GS 6
+#define STAGE_BASE_TCS_TES 3
+#define STAGE_BASE_TCS_TES_GS 7
+
 template <unsigned STAGE_MASK>
 static uint32_t
 hash_gfx_program(const void *key)
 {
    const struct zink_shader **shaders = (const struct zink_shader**)key;
    uint32_t base_hash = shaders[PIPE_SHADER_VERTEX]->hash ^ shaders[PIPE_SHADER_FRAGMENT]->hash;
-   if (STAGE_MASK == 0) //VS+FS
+   if (STAGE_MASK == STAGE_BASE) //VS+FS
       return base_hash;
-   if (STAGE_MASK == 1) //VS+GS+FS
+   if (STAGE_MASK == STAGE_BASE_GS) //VS+GS+FS
       return base_hash ^ shaders[PIPE_SHADER_GEOMETRY]->hash;
    /*VS+TCS+FS isn't a thing */
    /*VS+TCS+GS+FS isn't a thing */
-   if (STAGE_MASK == 4) //VS+TES+FS
+   if (STAGE_MASK == STAGE_BASE_TES) //VS+TES+FS
       return base_hash ^ shaders[PIPE_SHADER_TESS_EVAL]->hash;
-   if (STAGE_MASK == 5) //VS+TES+GS+FS
+   if (STAGE_MASK == STAGE_BASE_TES_GS) //VS+TES+GS+FS
       return base_hash ^ shaders[PIPE_SHADER_GEOMETRY]->hash ^ shaders[PIPE_SHADER_TESS_EVAL]->hash;
-   if (STAGE_MASK == 6) //VS+TCS+TES+FS
+   if (STAGE_MASK == STAGE_BASE_TCS_TES) //VS+TCS+TES+FS
       return base_hash ^ shaders[PIPE_SHADER_TESS_CTRL]->hash ^ shaders[PIPE_SHADER_TESS_EVAL]->hash;
 
    /* all stages */
@@ -1077,17 +1114,17 @@ equals_gfx_program(const void *a, const void *b)
 {
    const void **sa = (const void**)a;
    const void **sb = (const void**)b;
-   if (STAGE_MASK == 0) //VS+FS
+   if (STAGE_MASK == STAGE_BASE) //VS+FS
       return !memcmp(a, b, sizeof(void*) * 2);
-   if (STAGE_MASK == 1) //VS+GS+FS
+   if (STAGE_MASK == STAGE_BASE_GS) //VS+GS+FS
       return !memcmp(a, b, sizeof(void*) * 3);
    /*VS+TCS+FS isn't a thing */
    /*VS+TCS+GS+FS isn't a thing */
-   if (STAGE_MASK == 4) //VS+TES+FS
+   if (STAGE_MASK == STAGE_BASE_TES) //VS+TES+FS
       return sa[PIPE_SHADER_TESS_EVAL] == sb[PIPE_SHADER_TESS_EVAL] && !memcmp(a, b, sizeof(void*) * 2);
-   if (STAGE_MASK == 5) //VS+TES+GS+FS
+   if (STAGE_MASK == STAGE_BASE_TES_GS) //VS+TES+GS+FS
       return sa[PIPE_SHADER_TESS_EVAL] == sb[PIPE_SHADER_TESS_EVAL] && !memcmp(a, b, sizeof(void*) * 3);
-   if (STAGE_MASK == 6) //VS+TCS+TES+FS
+   if (STAGE_MASK == STAGE_BASE_TCS_TES) //VS+TCS+TES+FS
       return !memcmp(&sa[PIPE_SHADER_TESS_CTRL], &sb[PIPE_SHADER_TESS_CTRL], sizeof(void*) * 2) &&
              !memcmp(a, b, sizeof(void*) * 2);
 

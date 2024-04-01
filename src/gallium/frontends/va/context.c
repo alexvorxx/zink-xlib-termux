@@ -249,10 +249,13 @@ vlVaCreateContext(VADriverContextP ctx, VAConfigID config_id, int picture_width,
    if (!context)
       return VA_STATUS_ERROR_ALLOCATION_FAILED;
 
-   if (is_vpp) {
+   if (is_vpp && !drv->vscreen->pscreen->get_video_param(drv->vscreen->pscreen,
+                                                         PIPE_VIDEO_PROFILE_UNKNOWN,
+                                                         PIPE_VIDEO_ENTRYPOINT_PROCESSING,
+                                                         PIPE_VIDEO_CAP_SUPPORTED)) {
       context->decoder = NULL;
    } else {
-      if (config->entrypoint != PIPE_VIDEO_ENTRYPOINT_UNKNOWN) {
+      if (config->entrypoint != PIPE_VIDEO_ENTRYPOINT_PROCESSING) {
          max_supported_width = drv->vscreen->pscreen->get_video_param(drv->vscreen->pscreen,
                         config->profile, config->entrypoint,
                         PIPE_VIDEO_CAP_MAX_WIDTH);

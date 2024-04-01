@@ -53,6 +53,7 @@ struct pvr_explicit_constant_usage {
 
 struct pvr_hard_code_compute_build_info {
    struct rogue_ubo_data ubo_data;
+   struct rogue_compile_time_consts_data compile_time_consts_data;
 
    uint32_t local_invocation_regs[2];
    uint32_t work_group_regs[3];
@@ -117,5 +118,11 @@ void pvr_hard_code_graphics_get_build_info(
    struct rogue_common_build_data *const common_build_data,
    struct rogue_build_data *const build_data,
    struct pvr_explicit_constant_usage *const explicit_const_usage);
+
+void pvr_hard_code_get_idfwdf_program(
+   const struct pvr_device_info *const dev_info,
+   const struct rogue_shader_binary **const program_out,
+   uint32_t *usc_shareds_out,
+   uint32_t *usc_temps_out);
 
 #endif /* PVR_HARDCODE_SHADERS_H */

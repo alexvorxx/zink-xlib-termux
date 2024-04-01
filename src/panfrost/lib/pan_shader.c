@@ -215,8 +215,9 @@ GENX(pan_shader_compile)(nir_shader *s,
 
         switch (info->stage) {
         case MESA_SHADER_VERTEX:
-                info->attribute_count = util_bitcount64(s->info.inputs_read);
                 info->attributes_read = s->info.inputs_read;
+                info->attributes_read_count = util_bitcount64(info->attributes_read);
+                info->attribute_count = info->attributes_read_count;
 
 #if PAN_ARCH <= 5
                 bool vertex_id = BITSET_TEST(s->info.system_values_read,
@@ -251,10 +252,7 @@ GENX(pan_shader_compile)(nir_shader *s,
 
                 info->fs.outputs_read = s->info.outputs_read >> FRAG_RESULT_DATA0;
                 info->fs.outputs_written = s->info.outputs_written >> FRAG_RESULT_DATA0;
-
-                /* EXT_shader_framebuffer_fetch requires per-sample */
-                info->fs.sample_shading = s->info.fs.uses_sample_shading ||
-                                          info->fs.outputs_read;
+                info->fs.sample_shading = s->info.fs.uses_sample_shading;
 
                 info->fs.can_discard = s->info.fs.uses_discard;
                 info->fs.early_fragment_tests = s->info.fs.early_fragment_tests;

@@ -34,6 +34,7 @@
 #include "pipe/p_screen.h"
 #include "util/u_hash_table.h"
 #include "util/u_inlines.h"
+#include "util/u_rect.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -136,6 +137,7 @@ struct pipe_picture_desc
    enum pipe_video_entrypoint entry_point;
    bool protected_playback;
    uint8_t *decrypt_key;
+   uint32_t key_size;
    enum pipe_format input_format;
    enum pipe_format output_format;
 };
@@ -390,6 +392,7 @@ struct pipe_h264_enc_motion_estimation
 struct pipe_h264_enc_pic_control
 {
    unsigned enc_cabac_enable;
+   unsigned enc_cabac_init_idc;
    unsigned enc_constraint_set_flags;
    unsigned enc_frame_cropping_flag;
    unsigned enc_frame_crop_left_offset;
@@ -961,6 +964,22 @@ struct pipe_av1_picture_desc
       uint32_t slice_data_size[256];
       uint32_t slice_data_offset[256];
    } slice_parameter;
+};
+
+struct pipe_vpp_blend
+{
+   enum pipe_video_vpp_blend_mode mode;
+   /* To be used with PIPE_VIDEO_VPP_BLEND_MODE_GLOBAL_ALPHA */
+   float global_alpha;
+};
+
+struct pipe_vpp_desc
+{
+   struct pipe_picture_desc base;
+   struct u_rect src_region;
+   struct u_rect dst_region;
+   enum pipe_video_vpp_orientation orientation;
+   struct pipe_vpp_blend blend;
 };
 
 #ifdef __cplusplus

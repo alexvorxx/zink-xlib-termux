@@ -95,7 +95,7 @@ static bool do_winsys_init(struct amdgpu_winsys *ws,
                            const struct pipe_screen_config *config,
                            int fd)
 {
-   if (!ac_query_gpu_info(fd, ws->dev, &ws->info, &ws->amdinfo))
+   if (!ac_query_gpu_info(fd, ws->dev, &ws->info))
       goto fail;
 
    /* TODO: Enable this once the kernel handles it efficiently. */
@@ -453,7 +453,7 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
       /* Create managers. */
       pb_cache_init(&aws->bo_cache, RADEON_NUM_HEAPS,
                     500000, aws->check_vm ? 1.0f : 2.0f, 0,
-                    (aws->info.vram_size + aws->info.gart_size) / 8, aws,
+                    ((uint64_t)aws->info.vram_size_kb + aws->info.gart_size_kb) * 1024 / 8, aws,
                     /* Cast to void* because one of the function parameters
                      * is a struct pointer instead of void*. */
                     (void*)amdgpu_bo_destroy, (void*)amdgpu_bo_can_reclaim);

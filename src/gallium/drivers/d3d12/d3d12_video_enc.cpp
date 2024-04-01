@@ -645,7 +645,7 @@ bool d3d12_video_encoder_negotiate_requested_features_and_d3d12_driver_caps(stru
          bool isClientRequestingVBVSizes = ((pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Flags & D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_VBV_SIZES) != 0);
          
          if(isClientRequestingVBVSizes && !isRequestingVBVSizesSupported) {
-            debug_printf("[d3d12_video_encoder] WARNING: Requested D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_VBV_SIZES with VBVCapacity (bits): %ld and InitialVBVFullness (bits) %ld is not supported, will continue encoding unsetting this feature as fallback.\n",
+            debug_printf("[d3d12_video_encoder] WARNING: Requested D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_VBV_SIZES with VBVCapacity (bits): %" PRIu64 " and InitialVBVFullness (bits) %" PRIu64 " is not supported, will continue encoding unsetting this feature as fallback.\n",
                   pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Config.m_Configuration_CBR.VBVCapacity,
                   pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Config.m_Configuration_CBR.InitialVBVFullness);
 
@@ -658,7 +658,7 @@ bool d3d12_video_encoder_negotiate_requested_features_and_d3d12_driver_caps(stru
          bool isClientRequestingPeakFrameSize = ((pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Flags & D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_MAX_FRAME_SIZE) != 0);
 
          if(isClientRequestingPeakFrameSize && !isRequestingPeakFrameSizeSupported) {
-            debug_printf("[d3d12_video_encoder] WARNING: Requested D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_MAX_FRAME_SIZE with MaxFrameBitSize %ld but the feature is not supported, will continue encoding unsetting this feature as fallback.\n",
+            debug_printf("[d3d12_video_encoder] WARNING: Requested D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_MAX_FRAME_SIZE with MaxFrameBitSize %" PRIu64 " but the feature is not supported, will continue encoding unsetting this feature as fallback.\n",
                pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Config.m_Configuration_VBR.MaxFrameBitSize);
 
             pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Flags &= ~D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_MAX_FRAME_SIZE;
@@ -883,17 +883,6 @@ d3d12_video_encoder_create_command_objects(struct d3d12_video_encoder *pD3D12Enc
       return false;
    }
 
-   D3D12_COMMAND_QUEUE_DESC copyQueueDesc = { D3D12_COMMAND_LIST_TYPE_COPY };
-   hr                                     = pD3D12Enc->m_pD3D12Screen->dev->CreateCommandQueue(&copyQueueDesc,
-                                                           IID_PPV_ARGS(pD3D12Enc->m_spCopyQueue.GetAddressOf()));
-
-   if (FAILED(hr)) {
-      debug_printf("[d3d12_video_encoder] d3d12_video_encoder_create_command_objects - Call to CreateCommandQueue "
-                      "failed with HR %x\n",
-                      hr);
-      return false;
-   }
-
    return true;
 }
 
@@ -983,7 +972,7 @@ d3d12_video_encoder_prepare_output_buffers(struct d3d12_video_encoder *pD3D12Enc
 
    D3D12_HEAP_PROPERTIES Properties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
    if ((pD3D12Enc->m_spResolvedMetadataBuffer == nullptr) ||
-       (pD3D12Enc->m_spResolvedMetadataBuffer->GetDesc().Width <
+       (GetDesc(pD3D12Enc->m_spResolvedMetadataBuffer.Get()).Width <
         pD3D12Enc->m_currentEncodeCapabilities.m_resolvedLayoutMetadataBufferRequiredSize)) {
       CD3DX12_RESOURCE_DESC resolvedMetadataBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(
          pD3D12Enc->m_currentEncodeCapabilities.m_resolvedLayoutMetadataBufferRequiredSize);
@@ -1003,7 +992,7 @@ d3d12_video_encoder_prepare_output_buffers(struct d3d12_video_encoder *pD3D12Enc
    }
 
    if ((pD3D12Enc->m_spMetadataOutputBuffer == nullptr) ||
-       (pD3D12Enc->m_spMetadataOutputBuffer->GetDesc().Width <
+       (GetDesc(pD3D12Enc->m_spMetadataOutputBuffer.Get()).Width <
         pD3D12Enc->m_currentEncodeCapabilities.m_ResourceRequirementsCaps.MaxEncoderOutputMetadataBufferSize)) {
       CD3DX12_RESOURCE_DESC metadataBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(
          pD3D12Enc->m_currentEncodeCapabilities.m_ResourceRequirementsCaps.MaxEncoderOutputMetadataBufferSize);
@@ -1181,11 +1170,11 @@ d3d12_video_encoder_encode_bitstream(struct pipe_video_codec * codec,
       d3d12_context(pD3D12Enc->base.context),
       pInputVideoBuffer->texture,   // d3d12_resource wrapper for pInputVideoD3D12Res
       D3D12_RESOURCE_STATE_COMMON,
-      D3D12_BIND_INVALIDATE_FULL);
+      D3D12_TRANSITION_FLAG_INVALIDATE_BINDINGS);
    d3d12_transition_resource_state(d3d12_context(pD3D12Enc->base.context),
                                    pOutputBitstreamBuffer,   // d3d12_resource wrapped for pOutputBufferD3D12Res
                                    D3D12_RESOURCE_STATE_COMMON,
-                                   D3D12_BIND_INVALIDATE_FULL);
+                                   D3D12_TRANSITION_FLAG_INVALIDATE_BINDINGS);
    d3d12_apply_resource_states(d3d12_context(pD3D12Enc->base.context), false);
 
    d3d12_resource_wait_idle(d3d12_context(pD3D12Enc->base.context),
@@ -1253,7 +1242,7 @@ d3d12_video_encoder_encode_bitstream(struct pipe_video_codec * codec,
          // reference pics in ppTexture2Ds and also for the pReconstructedPicture output allocations, just different
          // subresources.
 
-         CD3DX12_RESOURCE_DESC referencesTexArrayDesc(referenceFramesDescriptor.ppTexture2Ds[0]->GetDesc());
+         CD3DX12_RESOURCE_DESC referencesTexArrayDesc(GetDesc(referenceFramesDescriptor.ppTexture2Ds[0]));
 
          for (uint32_t referenceSubresource = 0; referenceSubresource < referencesTexArrayDesc.DepthOrArraySize;
               referenceSubresource++) {
@@ -1461,7 +1450,7 @@ d3d12_video_encoder_get_feedback(struct pipe_video_codec *codec, void *feedback,
 
    // Read metadata from encoderMetadata
    if (encoderMetadata.EncodeErrorFlags != D3D12_VIDEO_ENCODER_ENCODE_ERROR_FLAG_NO_ERROR) {
-      debug_printf("[d3d12_video_encoder] Encode GPU command failed - EncodeErrorFlags: %ld\n",
+      debug_printf("[d3d12_video_encoder] Encode GPU command failed - EncodeErrorFlags: %" PRIu64 "\n",
                       encoderMetadata.EncodeErrorFlags);
       *size = 0;
    }

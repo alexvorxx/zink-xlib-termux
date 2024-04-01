@@ -158,10 +158,10 @@ gather_intrinsic_info(const nir_shader *nir, const nir_intrinsic_instr *instr,
       break;
    }
    case nir_intrinsic_load_frag_coord:
-      info->ps.reads_frag_coord_mask = nir_ssa_def_components_read(&instr->dest.ssa);
+      info->ps.reads_frag_coord_mask |= nir_ssa_def_components_read(&instr->dest.ssa);
       break;
    case nir_intrinsic_load_sample_pos:
-      info->ps.reads_sample_pos_mask = nir_ssa_def_components_read(&instr->dest.ssa);
+      info->ps.reads_sample_pos_mask |= nir_ssa_def_components_read(&instr->dest.ssa);
       break;
    case nir_intrinsic_load_push_constant:
       gather_push_constant_info(nir, instr, info);
@@ -479,6 +479,12 @@ radv_nir_shader_info_pass(struct radv_device *device, const struct nir_shader *n
       info->vs.use_per_attribute_vb_descs = device->robust_buffer_access || info->vs.dynamic_inputs;
    }
 
+   if (nir->info.stage == MESA_SHADER_FRAGMENT) {
+      if (pipeline_key->ps.has_epilog) {
+         info->ps.has_epilog = true;
+      }
+   }
+
    /* We have to ensure consistent input register assignments between the main shader and the
     * prolog. */
    info->vs.needs_instance_id |= info->vs.has_prolog;
@@ -500,8 +506,10 @@ radv_nir_shader_info_pass(struct radv_device *device, const struct nir_shader *n
 
    struct radv_vs_output_info *outinfo = get_vs_output_info(nir, info);
    if (outinfo) {
+      /* These are not compiled into neither output param nor position exports. */
       uint64_t special_mask = BITFIELD64_BIT(VARYING_SLOT_PRIMITIVE_COUNT) |
-                              BITFIELD64_BIT(VARYING_SLOT_PRIMITIVE_INDICES);
+                              BITFIELD64_BIT(VARYING_SLOT_PRIMITIVE_INDICES) |
+                              BITFIELD64_BIT(VARYING_SLOT_CULL_PRIMITIVE);
       uint64_t per_prim_mask =
          nir->info.outputs_written & nir->info.per_primitive_outputs & ~special_mask;
       uint64_t per_vtx_mask =

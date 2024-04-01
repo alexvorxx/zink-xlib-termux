@@ -238,6 +238,7 @@ struct iris_bufmgr {
    bool has_userptr_probe:1;
    bool bo_reuse:1;
    bool use_global_vm:1;
+   bool all_vram_mappable:1;
 
    struct intel_aux_map_context *aux_map_ctx;
 
@@ -996,6 +997,11 @@ alloc_fresh_bo(struct iris_bufmgr *bufmgr, uint64_t bo_size, unsigned flags)
          .extensions = (uintptr_t)&ext_regions,
       };
 
+      if (!bufmgr->all_vram_mappable &&
+          bo->real.heap == IRIS_HEAP_DEVICE_LOCAL_PREFERRED) {
+         create.flags |= I915_GEM_CREATE_EXT_FLAG_NEEDS_CPU_ACCESS;
+      }
+
       /* It should be safe to use GEM_CREATE_EXT without checking, since we are
        * in the side of the branch where discrete memory is available. So we
        * can assume GEM_CREATE_EXT is supported already.
@@ -1078,8 +1084,14 @@ iris_bo_alloc(struct iris_bufmgr *bufmgr,
                       (bufmgr->vram.size > 0 && !local) ||
                       (flags & BO_ALLOC_COHERENT);
    bool is_scanout = (flags & BO_ALLOC_SCANOUT) != 0;
-   enum iris_mmap_mode mmap_mode =
-      !local && is_coherent && !is_scanout ? IRIS_MMAP_WB : IRIS_MMAP_WC;
+
+   enum iris_mmap_mode mmap_mode;
+   if (!bufmgr->all_vram_mappable && heap == IRIS_HEAP_DEVICE_LOCAL)
+      mmap_mode = IRIS_MMAP_NONE;
+   else if (!local && is_coherent && !is_scanout)
+      mmap_mode = IRIS_MMAP_WB;
+   else
+      mmap_mode = IRIS_MMAP_WC;
 
    simple_mtx_lock(&bufmgr->lock);
 
@@ -2404,6 +2416,7 @@ iris_bufmgr_create(struct intel_device_info *devinfo, int fd, bool bo_reuse)
    bufmgr->has_userptr_probe =
       gem_param(fd, I915_PARAM_HAS_USERPTR_PROBE) >= 1;
    iris_bufmgr_get_meminfo(bufmgr, devinfo);
+   bufmgr->all_vram_mappable = intel_vram_all_mappable(devinfo);
 
    STATIC_ASSERT(IRIS_MEMZONE_SHADER_START == 0ull);
    const uint64_t _4GB = 1ull << 32;
@@ -2421,10 +2434,15 @@ iris_bufmgr_create(struct intel_device_info *devinfo, int fd, bool bo_reuse)
    util_vma_heap_init(&bufmgr->vma_allocator[IRIS_MEMZONE_SURFACE],
                       IRIS_MEMZONE_SURFACE_START, _4GB_minus_1 -
                       IRIS_BINDER_ZONE_SIZE - IRIS_BINDLESS_SIZE);
-   /* TODO: Why does limiting to 2GB help some state items on gfx12?
-    *  - CC Viewport Pointer
-    *  - Blend State Pointer
-    *  - Color Calc State Pointer
+
+   /* Wa_2209859288: the Tigerlake PRM's workarounds volume says:
+    *
+    *    "PSDunit is dropping MSB of the blend state pointer from SD FIFO"
+    *    "Limit the Blend State Pointer to < 2G"
+    *
+    * We restrict the dynamic state pool to 2GB so that we don't ever get a
+    * BLEND_STATE pointer with the MSB set.  We aren't likely to need the
+    * full 4GB for dynamic state anyway.
     */
    const uint64_t dynamic_pool_size =
       (devinfo->ver >= 12 ? _2GB : _4GB_minus_1) - IRIS_BORDER_COLOR_POOL_SIZE;

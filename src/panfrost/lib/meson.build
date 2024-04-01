@@ -78,6 +78,7 @@ libpanfrost_lib_files = files(
   'pan_bo.c',
   'pan_blend.c',
   'pan_clear.c',
+  'pan_earlyzs.c',
   'pan_samples.c',
   'pan_tiler.c',
   'pan_layout.c',
@@ -131,10 +132,11 @@ if with_tests
   )
 
   test(
-    'panfrost_layout',
+    'panfrost_tests',
     executable(
-      'panfrost_layout',
+      'panfrost_tests',
       files(
+        'tests/test-earlyzs.cpp',
         'tests/test-layout.cpp',
       ),
       c_args : [c_msvc_compat_args, no_override_init_args],

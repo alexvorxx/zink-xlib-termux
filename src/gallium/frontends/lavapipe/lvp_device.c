@@ -122,6 +122,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .KHR_sampler_mirror_clamp_to_edge      = true,
    .KHR_separate_depth_stencil_layouts    = true,
    .KHR_shader_atomic_int64               = true,
+   .KHR_shader_clock                      = true,
    .KHR_shader_draw_parameters            = true,
    .KHR_shader_float16_int8               = true,
    .KHR_shader_integer_dot_product        = true,
@@ -146,6 +147,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .EXT_conditional_rendering             = true,
    .EXT_depth_clip_enable                 = true,
    .EXT_depth_clip_control                = true,
+   .EXT_depth_range_unrestricted          = true,
    .EXT_extended_dynamic_state            = true,
    .EXT_extended_dynamic_state2           = true,
    .EXT_external_memory_host              = true,
@@ -155,7 +157,9 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .EXT_image_robustness                  = true,
    .EXT_index_type_uint8                  = true,
    .EXT_inline_uniform_block              = true,
+   .EXT_multisampled_render_to_single_sampled = true,
    .EXT_multi_draw                        = true,
+   .EXT_non_seamless_cube_map             = true,
    .EXT_pipeline_creation_feedback        = true,
    .EXT_pipeline_creation_cache_control   = true,
    .EXT_post_depth_coverage               = true,
@@ -167,6 +171,8 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .EXT_separate_stencil_usage            = true,
    .EXT_shader_demote_to_helper_invocation= true,
    .EXT_shader_stencil_export             = true,
+   .EXT_shader_subgroup_ballot            = true,
+   .EXT_shader_subgroup_vote              = true,
    .EXT_shader_viewport_index_layer       = true,
    .EXT_subgroup_size_control             = true,
    .EXT_texel_buffer_alignment            = true,
@@ -449,7 +455,7 @@ VKAPI_ATTR void VKAPI_CALL lvp_DestroyInstance(
    vk_free(&instance->vk.alloc, instance);
 }
 
-#if defined(HAVE_PIPE_LOADER_DRI)
+#if defined(HAVE_DRI)
 static void lvp_get_image(struct dri_drawable *dri_drawable,
                           int x, int y, unsigned width, unsigned height, unsigned stride,
                           void *data)
@@ -490,7 +496,7 @@ lvp_enumerate_physical_devices(struct lvp_instance *instance)
 
    assert(instance->num_devices == 1);
 
-#if defined(HAVE_PIPE_LOADER_DRI)
+#if defined(HAVE_DRI)
    pipe_loader_sw_probe_dri(&instance->devs, &lvp_sw_lf);
 #else
    pipe_loader_sw_probe_null(&instance->devs);
@@ -624,7 +630,7 @@ lvp_get_physical_device_features_1_1(struct lvp_physical_device *pdevice,
    f->multiviewGeometryShader             = true;
    f->multiviewTessellationShader         = true;
    f->variablePointersStorageBuffer       = true;
-   f->variablePointers                    = false;
+   f->variablePointers                    = true;
    f->protectedMemory                     = false;
    f->samplerYcbcrConversion              = false;
    f->shaderDrawParameters                = true;
@@ -742,9 +748,9 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceFeatures2(
          continue;
 
       switch (ext->sType) {
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRIVATE_DATA_FEATURES_EXT: {
-         VkPhysicalDevicePrivateDataFeaturesEXT *features =
-            (VkPhysicalDevicePrivateDataFeaturesEXT *)ext;
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRIVATE_DATA_FEATURES: {
+         VkPhysicalDevicePrivateDataFeatures *features =
+            (VkPhysicalDevicePrivateDataFeatures *)ext;
          features->privateData = true;
          break;
       }
@@ -775,6 +781,12 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceFeatures2(
          features->borderColorSwizzleFromImage = true;
          break;
       }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_NON_SEAMLESS_CUBE_MAP_FEATURES_EXT: {
+         VkPhysicalDeviceNonSeamlessCubeMapFeaturesEXT *features =
+            (VkPhysicalDeviceNonSeamlessCubeMapFeaturesEXT *)ext;
+         features->nonSeamlessCubeMap = true;
+         break;
+      }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_FEATURES_EXT: {
          VkPhysicalDeviceLineRasterizationFeaturesEXT *features =
             (VkPhysicalDeviceLineRasterizationFeaturesEXT *)ext;
@@ -798,7 +810,12 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceFeatures2(
          }
          break;
       }
-
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_FEATURES_EXT: {
+         VkPhysicalDeviceMultisampledRenderToSingleSampledFeaturesEXT *features =
+            (VkPhysicalDeviceMultisampledRenderToSingleSampledFeaturesEXT *)ext;
+         features->multisampledRenderToSingleSampled = true;
+         break;
+      }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INDEX_TYPE_UINT8_FEATURES_EXT: {
          VkPhysicalDeviceIndexTypeUint8FeaturesEXT *features =
             (VkPhysicalDeviceIndexTypeUint8FeaturesEXT *)ext;
@@ -845,6 +862,13 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceFeatures2(
          features->shaderZeroInitializeWorkgroupMemory = true;
          break;
       }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_CLOCK_FEATURES_KHR: {
+         VkPhysicalDeviceShaderClockFeaturesKHR *features =
+            (VkPhysicalDeviceShaderClockFeaturesKHR *)ext;
+         features->shaderSubgroupClock = true;
+         features->shaderDeviceClock = true;
+         break;
+      }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXEL_BUFFER_ALIGNMENT_FEATURES_EXT: {
          VkPhysicalDeviceTexelBufferAlignmentFeaturesEXT *features =
             (VkPhysicalDeviceTexelBufferAlignmentFeaturesEXT *)ext;
@@ -872,9 +896,9 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceFeatures2(
          features->extendedDynamicState = true;
          break;
       }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES_EXT: {
-         VkPhysicalDeviceShaderDemoteToHelperInvocationFeaturesEXT *features =
-            (VkPhysicalDeviceShaderDemoteToHelperInvocationFeaturesEXT *)ext;
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES: {
+         VkPhysicalDeviceShaderDemoteToHelperInvocationFeatures *features =
+            (VkPhysicalDeviceShaderDemoteToHelperInvocationFeatures *)ext;
          features->shaderDemoteToHelperInvocation = true;
          break;
       }
@@ -941,7 +965,7 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceFeatures2(
          break;
       }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_ROBUSTNESS_FEATURES: {
-         VkPhysicalDeviceImageRobustnessFeaturesEXT *features = (VkPhysicalDeviceImageRobustnessFeaturesEXT *)ext;
+         VkPhysicalDeviceImageRobustnessFeatures *features = (VkPhysicalDeviceImageRobustnessFeatures *)ext;
          features->robustImageAccess = true;
          break;
       }
@@ -963,8 +987,8 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceFeatures2(
          features->shaderTerminateInvocation = true;
          break;
       }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR: {
-         VkPhysicalDeviceDynamicRenderingFeaturesKHR *features = (VkPhysicalDeviceDynamicRenderingFeaturesKHR *)ext;
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES: {
+         VkPhysicalDeviceDynamicRenderingFeatures *features = (VkPhysicalDeviceDynamicRenderingFeatures *)ext;
          features->dynamicRendering = VK_TRUE;
          break;
       }
@@ -1050,14 +1074,14 @@ lvp_get_physical_device_properties_1_2(struct lvp_physical_device *pdevice,
             );
 
    p->conformanceVersion = (VkConformanceVersion){
-      .major = 0,
-      .minor = 0,
-      .subminor = 0,
-      .patch = 0,
+      .major = 1,
+      .minor = 3,
+      .subminor = 1,
+      .patch = 1,
    };
 
-   p->denormBehaviorIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_ALL_KHR;
-   p->roundingModeIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_ALL_KHR;
+   p->denormBehaviorIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_ALL;
+   p->roundingModeIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_ALL;
    p->shaderDenormFlushToZeroFloat16 = false;
    p->shaderDenormPreserveFloat16 = false;
    p->shaderRoundingModeRTEFloat16 = true;
@@ -1212,9 +1236,9 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceProperties2(
          properties->transformFeedbackDraw = true;
          break;
       }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES_KHR: {
-         VkPhysicalDeviceMaintenance4PropertiesKHR *properties =
-            (VkPhysicalDeviceMaintenance4PropertiesKHR *)ext;
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES: {
+         VkPhysicalDeviceMaintenance4Properties *properties =
+            (VkPhysicalDeviceMaintenance4Properties *)ext;
          properties->maxBufferSize = UINT32_MAX;
          break;
       }
@@ -1268,9 +1292,9 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceProperties2(
          props->maxMultiDrawCount = 2048;
          break;
       }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXEL_BUFFER_ALIGNMENT_PROPERTIES_EXT: {
-         VkPhysicalDeviceTexelBufferAlignmentPropertiesEXT *properties =
-            (VkPhysicalDeviceTexelBufferAlignmentPropertiesEXT *)ext;
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXEL_BUFFER_ALIGNMENT_PROPERTIES: {
+         VkPhysicalDeviceTexelBufferAlignmentProperties *properties =
+            (VkPhysicalDeviceTexelBufferAlignmentProperties *)ext;
          int alignment = pdevice->pscreen->get_param(pdevice->pscreen, PIPE_CAP_TEXTURE_BUFFER_OFFSET_ALIGNMENT);
          properties->storageTexelBufferOffsetAlignmentBytes = alignment;
          properties->storageTexelBufferOffsetSingleTexelAlignment = true;
@@ -1493,31 +1517,12 @@ lvp_queue_finish(struct lvp_queue *queue)
    queue->ctx->destroy(queue->ctx);
 }
 
-static void
-ref_pipeline_layout(struct vk_device *vk_device, VkPipelineLayout _layout)
-{
-   LVP_FROM_HANDLE(lvp_pipeline_layout, layout, _layout);
-
-   lvp_pipeline_layout_ref(layout);
-}
-
-static void
-unref_pipeline_layout(struct vk_device *vk_device, VkPipelineLayout _layout)
-{
-   struct lvp_device *device = container_of(vk_device, struct lvp_device, vk);
-   LVP_FROM_HANDLE(lvp_pipeline_layout, layout, _layout);
-
-   lvp_pipeline_layout_unref(device, layout);
-}
-
 VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateDevice(
    VkPhysicalDevice                            physicalDevice,
    const VkDeviceCreateInfo*                   pCreateInfo,
    const VkAllocationCallbacks*                pAllocator,
    VkDevice*                                   pDevice)
 {
-   vk_warn_non_conformant_implementation("lavapipe");
-
    LVP_FROM_HANDLE(lvp_physical_device, physical_device, physicalDevice);
    struct lvp_device *device;
    struct lvp_instance *instance = (struct lvp_instance *)physical_device->vk.instance;
@@ -1553,9 +1558,6 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateDevice(
 
    device->instance = (struct lvp_instance *)physical_device->vk.instance;
    device->physical_device = physical_device;
-
-   device->vk.ref_pipeline_layout = ref_pipeline_layout;
-   device->vk.unref_pipeline_layout = unref_pipeline_layout;
 
    device->pscreen = physical_device->pscreen;
 
@@ -2270,9 +2272,9 @@ vk_icdNegotiateLoaderICDInterfaceVersion(uint32_t* pSupportedVersion)
 
 VKAPI_ATTR VkResult VKAPI_CALL lvp_CreatePrivateDataSlotEXT(
    VkDevice                                    _device,
-   const VkPrivateDataSlotCreateInfoEXT*       pCreateInfo,
+   const VkPrivateDataSlotCreateInfo*          pCreateInfo,
    const VkAllocationCallbacks*                pAllocator,
-   VkPrivateDataSlotEXT*                       pPrivateDataSlot)
+   VkPrivateDataSlot*                          pPrivateDataSlot)
 {
    LVP_FROM_HANDLE(lvp_device, device, _device);
    return vk_private_data_slot_create(&device->vk, pCreateInfo, pAllocator,
@@ -2281,7 +2283,7 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreatePrivateDataSlotEXT(
 
 VKAPI_ATTR void VKAPI_CALL lvp_DestroyPrivateDataSlotEXT(
    VkDevice                                    _device,
-   VkPrivateDataSlotEXT                        privateDataSlot,
+   VkPrivateDataSlot                           privateDataSlot,
    const VkAllocationCallbacks*                pAllocator)
 {
    LVP_FROM_HANDLE(lvp_device, device, _device);
@@ -2292,7 +2294,7 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_SetPrivateDataEXT(
    VkDevice                                    _device,
    VkObjectType                                objectType,
    uint64_t                                    objectHandle,
-   VkPrivateDataSlotEXT                        privateDataSlot,
+   VkPrivateDataSlot                           privateDataSlot,
    uint64_t                                    data)
 {
    LVP_FROM_HANDLE(lvp_device, device, _device);
@@ -2305,7 +2307,7 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPrivateDataEXT(
    VkDevice                                    _device,
    VkObjectType                                objectType,
    uint64_t                                    objectHandle,
-   VkPrivateDataSlotEXT                        privateDataSlot,
+   VkPrivateDataSlot                           privateDataSlot,
    uint64_t*                                   pData)
 {
    LVP_FROM_HANDLE(lvp_device, device, _device);

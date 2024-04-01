@@ -52,18 +52,8 @@ anv_physical_device_init_perf(struct anv_physical_device *device, int fd)
                            false /* pipeline statistics */,
                            true /* register snapshots */);
 
-   if (!perf->n_queries) {
-      if (perf->platform_supported) {
-         static bool warned_once = false;
-
-         if (!warned_once) {
-            mesa_logw("Performance support disabled, "
-                      "consider sysctl dev.i915.perf_stream_paranoid=0\n");
-            warned_once = true;
-         }
-      }
+   if (!perf->n_queries)
       goto err;
-   }
 
    /* We need DRM_I915_PERF_PROP_HOLD_PREEMPTION support, only available in
     * perf revision 2.
@@ -371,7 +361,7 @@ VkResult anv_EnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR(
 
       vk_outarray_append_typed(VkPerformanceCounterKHR, &out, counter) {
          counter->unit = intel_perf_counter_unit_to_vk_unit[intel_counter->units];
-         counter->scope = VK_QUERY_SCOPE_COMMAND_KHR;
+         counter->scope = VK_PERFORMANCE_COUNTER_SCOPE_COMMAND_KHR;
          counter->storage = intel_perf_counter_data_type_to_vk_storage[intel_counter->data_type];
 
          unsigned char sha1_result[20];

@@ -47,10 +47,11 @@ typedef struct {
    /* I/O semantic -> real location used by lowering. */
    ac_nir_map_io_driver_location map_io;
 
-   /* Number of ES outputs for which memory should be reserved.
-    * When compacted, this should be the number of linked ES outputs.
-    */
-   unsigned num_reserved_es_outputs;
+   /* Stride of an ES invocation outputs in esgs ring, in bytes. */
+   unsigned esgs_itemsize;
+
+   /* Enable fix for triangle strip adjacency in geometry shader. */
+   bool gs_triangle_strip_adjacency_fix;
 } lower_esgs_io_state;
 
 static nir_ssa_def *
@@ -124,6 +125,38 @@ lower_es_output_store(nir_builder *b,
    if (intrin->intrinsic != nir_intrinsic_store_output)
       return false;
 
+   /* The ARB_shader_viewport_layer_array spec contains the
+    * following issue:
+    *
+    *    2) What happens if gl_ViewportIndex or gl_Layer is
+    *    written in the vertex shader and a geometry shader is
+    *    present?
+    *
+    *    RESOLVED: The value written by the last vertex processing
+    *    stage is used. If the last vertex processing stage
+    *    (vertex, tessellation evaluation or geometry) does not
+    *    statically assign to gl_ViewportIndex or gl_Layer, index
+    *    or layer zero is assumed.
+    *
+    * Vulkan spec 15.7 Built-In Variables:
+    *
+    *   The last active pre-rasterization shader stage (in pipeline order)
+    *   controls the Layer that is used. Outputs in previous shader stages
+    *   are not used, even if the last stage fails to write the Layer.
+    *
+    *   The last active pre-rasterization shader stage (in pipeline order)
+    *   controls the ViewportIndex that is used. Outputs in previous shader
+    *   stages are not used, even if the last stage fails to write the
+    *   ViewportIndex.
+    *
+    * So writes to those outputs in ES are simply ignored.
+    */
+   unsigned semantic = nir_intrinsic_io_semantics(intrin).location;
+   if (semantic == VARYING_SLOT_LAYER || semantic == VARYING_SLOT_VIEWPORT) {
+      nir_instr_remove(instr);
+      return true;
+   }
+
    lower_esgs_io_state *st = (lower_esgs_io_state *) state;
    unsigned write_mask = nir_intrinsic_write_mask(intrin);
 
@@ -139,9 +172,8 @@ lower_es_output_store(nir_builder *b,
                               write_mask, true, true);
    } else {
       /* GFX9+: ES is merged into GS, data is passed through LDS. */
-      unsigned esgs_itemsize = st->num_reserved_es_outputs * 16u;
       nir_ssa_def *vertex_idx = nir_build_load_local_invocation_index(b);
-      nir_ssa_def *off = nir_iadd(b, nir_imul_imm(b, vertex_idx, esgs_itemsize), io_off);
+      nir_ssa_def *off = nir_iadd(b, nir_imul_imm(b, vertex_idx, st->esgs_itemsize), io_off);
       nir_build_store_shared(b, intrin->src[0].ssa, off, .write_mask = write_mask,
                              .align_mul = 16u, .align_offset = (nir_intrinsic_component(intrin) * 4u) % 16u);
    }
@@ -151,16 +183,42 @@ lower_es_output_store(nir_builder *b,
 }
 
 static nir_ssa_def *
-gs_per_vertex_input_vertex_offset_gfx6(nir_builder *b, nir_src *vertex_src)
+gs_get_vertex_offset(nir_builder *b, lower_esgs_io_state *st, unsigned vertex_index)
+{
+   nir_ssa_def *origin = nir_build_load_gs_vertex_offset_amd(b, .base = vertex_index);
+   if (!st->gs_triangle_strip_adjacency_fix)
+      return origin;
+
+   unsigned fixed_index;
+   if (st->gfx_level < GFX9) {
+      /* Rotate vertex index by 2. */
+      fixed_index = (vertex_index + 4) % 6;
+   } else {
+      /* This issue has been fixed for GFX10+ */
+      assert(st->gfx_level == GFX9);
+      /* 6 vertex offset are packed to 3 vgprs for GFX9+ */
+      fixed_index = (vertex_index + 2) % 3;
+   }
+   nir_ssa_def *fixed = nir_build_load_gs_vertex_offset_amd(b, .base = fixed_index);
+
+   nir_ssa_def *prim_id = nir_load_primitive_id(b);
+   /* odd primitive id use fixed offset */
+   nir_ssa_def *cond = nir_i2b(b, nir_iand_imm(b, prim_id, 1));
+   return nir_bcsel(b, cond, fixed, origin);
+}
+
+static nir_ssa_def *
+gs_per_vertex_input_vertex_offset_gfx6(nir_builder *b, lower_esgs_io_state *st,
+                                       nir_src *vertex_src)
 {
    if (nir_src_is_const(*vertex_src))
-      return nir_build_load_gs_vertex_offset_amd(b, .base = nir_src_as_uint(*vertex_src));
+      return gs_get_vertex_offset(b, st, nir_src_as_uint(*vertex_src));
 
-   nir_ssa_def *vertex_offset = nir_build_load_gs_vertex_offset_amd(b, .base = 0);
+   nir_ssa_def *vertex_offset = gs_get_vertex_offset(b, st, 0);
 
    for (unsigned i = 1; i < b->shader->info.gs.vertices_in; ++i) {
       nir_ssa_def *cond = nir_ieq_imm(b, vertex_src->ssa, i);
-      nir_ssa_def *elem = nir_build_load_gs_vertex_offset_amd(b, .base = i);
+      nir_ssa_def *elem = gs_get_vertex_offset(b, st, i);
       vertex_offset = nir_bcsel(b, cond, elem, vertex_offset);
    }
 
@@ -168,19 +226,20 @@ gs_per_vertex_input_vertex_offset_gfx6(nir_builder *b, nir_src *vertex_src)
 }
 
 static nir_ssa_def *
-gs_per_vertex_input_vertex_offset_gfx9(nir_builder *b, nir_src *vertex_src)
+gs_per_vertex_input_vertex_offset_gfx9(nir_builder *b, lower_esgs_io_state *st,
+                                       nir_src *vertex_src)
 {
    if (nir_src_is_const(*vertex_src)) {
       unsigned vertex = nir_src_as_uint(*vertex_src);
-      return nir_ubfe(b, nir_build_load_gs_vertex_offset_amd(b, .base = vertex / 2u),
+      return nir_ubfe(b, gs_get_vertex_offset(b, st, vertex / 2u),
                       nir_imm_int(b, (vertex & 1u) * 16u), nir_imm_int(b, 16u));
    }
 
-   nir_ssa_def *vertex_offset = nir_build_load_gs_vertex_offset_amd(b, .base = 0);
+   nir_ssa_def *vertex_offset = gs_get_vertex_offset(b, st, 0);
 
    for (unsigned i = 1; i < b->shader->info.gs.vertices_in; i++) {
       nir_ssa_def *cond = nir_ieq_imm(b, vertex_src->ssa, i);
-      nir_ssa_def *elem = nir_build_load_gs_vertex_offset_amd(b, .base = i / 2u * 2u);
+      nir_ssa_def *elem = gs_get_vertex_offset(b, st, i / 2u * 2u);
       if (i % 2u)
          elem = nir_ishr_imm(b, elem, 16u);
 
@@ -197,8 +256,8 @@ gs_per_vertex_input_offset(nir_builder *b,
 {
    nir_src *vertex_src = nir_get_io_arrayed_index_src(instr);
    nir_ssa_def *vertex_offset = st->gfx_level >= GFX9
-                                ? gs_per_vertex_input_vertex_offset_gfx9(b, vertex_src)
-                                : gs_per_vertex_input_vertex_offset_gfx6(b, vertex_src);
+      ? gs_per_vertex_input_vertex_offset_gfx9(b, st, vertex_src)
+      : gs_per_vertex_input_vertex_offset_gfx6(b, st, vertex_src);
 
    unsigned base_stride = st->gfx_level >= GFX9 ? 1 : 64 /* Wave size on GFX6-8 */;
    nir_ssa_def *io_off = ac_nir_calc_io_offset(b, instr, nir_imm_int(b, base_stride * 4u), base_stride, st->map_io);
@@ -235,11 +294,11 @@ void
 ac_nir_lower_es_outputs_to_mem(nir_shader *shader,
                                ac_nir_map_io_driver_location map,
                                enum amd_gfx_level gfx_level,
-                               unsigned num_reserved_es_outputs)
+                               unsigned esgs_itemsize)
 {
    lower_esgs_io_state state = {
       .gfx_level = gfx_level,
-      .num_reserved_es_outputs = num_reserved_es_outputs,
+      .esgs_itemsize = esgs_itemsize,
       .map_io = map,
    };
 
@@ -253,12 +312,12 @@ void
 ac_nir_lower_gs_inputs_to_mem(nir_shader *shader,
                               ac_nir_map_io_driver_location map,
                               enum amd_gfx_level gfx_level,
-                              unsigned num_reserved_es_outputs)
+                              bool triangle_strip_adjacency_fix)
 {
    lower_esgs_io_state state = {
       .gfx_level = gfx_level,
-      .num_reserved_es_outputs = num_reserved_es_outputs,
       .map_io = map,
+      .gs_triangle_strip_adjacency_fix = triangle_strip_adjacency_fix,
    };
 
    nir_shader_lower_instructions(shader,

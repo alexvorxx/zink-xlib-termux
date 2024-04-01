@@ -91,8 +91,8 @@ radv_device_finish_meta_dcc_retile_state(struct radv_device *device)
    }
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->dcc_retile.p_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device), state->dcc_retile.ds_layout,
-                                   &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(radv_device_to_handle(device),
+                                                        state->dcc_retile.ds_layout, &state->alloc);
 
    /* Reset for next finish. */
    memset(&state->dcc_retile, 0, sizeof(state->dcc_retile));
@@ -173,8 +173,6 @@ radv_device_init_meta_dcc_retile_state(struct radv_device *device, struct radeon
       goto cleanup;
 
 cleanup:
-   if (result != VK_SUCCESS)
-      radv_device_finish_meta_dcc_retile_state(device);
    ralloc_free(cs);
    return result;
 }
@@ -213,7 +211,7 @@ radv_retile_dcc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image)
    radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE,
                         device->meta_state.dcc_retile.pipeline[swizzle_mode]);
 
-   radv_buffer_init(&buffer, device, image->bo, image->size, image->offset);
+   radv_buffer_init(&buffer, device, image->bindings[0].bo, image->size, image->bindings[0].offset);
 
    struct radv_buffer_view views[2];
    VkBufferView view_handles[2];

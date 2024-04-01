@@ -1,9 +1,14 @@
 name: CI
 on: push
 
+permissions:
+  contents: read
+
 jobs:
   CI:
     runs-on: macos-latest
+    env:
+      GALLIUM_DUMP_CPU: true
     steps:
     - name: Checkout
       uses: actions/checkout@v3
@@ -27,10 +32,22 @@ jobs:
     - name: Install Mako
       run: pip3 install --user mako
     - name: Configure
-      run: meson . build -Dbuild-tests=true
+      run: |
+        cat > native_config <<EOL
+        [binaries]
+        llvm-config = '/usr/local/opt/llvm/bin/llvm-config'
+        EOL
+        meson . build --native-file=native_config -Dbuild-tests=true -Dosmesa=true -Dgallium-drivers=swrast
     - name: Build
       run: meson compile -C build
     - name: Test
-      run: meson test -C build
+      run: meson test -C build --print-errorlogs
     - name: Install
       run: meson install -C build
+    - name: 'Upload Artifact'
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-result
+        path: build/meson-logs/testlog.txt
+        retention-days: 5

@@ -512,6 +512,7 @@ driver_RenderTexture_is_safe(const struct gl_renderbuffer_attachment *att)
       att->Texture->Image[att->CubeMapFace][att->TextureLevel];
 
    if (!texImage ||
+       !texImage->pt ||
        texImage->Width == 0 || texImage->Height == 0 || texImage->Depth == 0)
       return false;
 
@@ -1289,7 +1290,7 @@ _mesa_test_framebuffer_completeness(struct gl_context *ctx,
    fb->_HasSNormOrFloatColorBuffer = GL_FALSE;
    fb->_HasAttachments = true;
    fb->_IntegerBuffers = 0;
-   fb->_RGBBuffers = 0;
+   fb->_BlendForceAlphaToOne = 0;
    fb->_FP32Buffers = 0;
 
    /* Start at -2 to more easily loop over all attachment points.
@@ -1450,8 +1451,10 @@ _mesa_test_framebuffer_completeness(struct gl_context *ctx,
          if (_mesa_is_format_integer_color(attFormat))
             fb->_IntegerBuffers |= (1 << i);
 
-         if (baseFormat == GL_RGB)
-            fb->_RGBBuffers |= (1 << i);
+         if ((baseFormat == GL_RGB && ctx->st->needs_rgb_dst_alpha_override) ||
+             (baseFormat == GL_LUMINANCE && !util_format_is_luminance(attFormat)) ||
+             (baseFormat == GL_INTENSITY && !util_format_is_intensity(attFormat)))
+            fb->_BlendForceAlphaToOne |= (1 << i);
 
          if (type == GL_FLOAT && _mesa_get_format_max_bits(attFormat) > 16)
             fb->_FP32Buffers |= (1 << i);
@@ -3797,7 +3800,8 @@ check_textarget(struct gl_context *ctx, int dims, GLenum target,
       err = dims != 2;
       break;
    case GL_TEXTURE_3D:
-      err = dims != 3;
+      err = dims != 3 ||
+            (ctx->API == API_OPENGLES2 && !ctx->Extensions.OES_texture_3D);
       break;
    default:
       _mesa_error(ctx, GL_INVALID_ENUM,

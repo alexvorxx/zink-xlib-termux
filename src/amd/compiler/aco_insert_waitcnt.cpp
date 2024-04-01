@@ -79,6 +79,12 @@ enum counter_type : uint8_t {
    num_counters = 4,
 };
 
+enum vmem_type : uint8_t {
+   vmem_nosampler = 1 << 0,
+   vmem_sampler = 1 << 1,
+   vmem_bvh = 1 << 2,
+};
+
 static const uint16_t exp_events =
    event_exp_pos | event_exp_param | event_exp_mrt_null | event_gds_gpr_lock | event_vmem_gpr_lock;
 static const uint16_t lgkm_events = event_smem | event_lds | event_gds | event_flat | event_sendmsg;
@@ -111,27 +117,22 @@ struct wait_entry {
    uint8_t counters; /* use counter_type notion */
    bool wait_on_read : 1;
    bool logical : 1;
-   bool has_vmem_nosampler : 1;
-   bool has_vmem_sampler : 1;
+   uint8_t vmem_types : 4;
 
    wait_entry(wait_event event_, wait_imm imm_, bool logical_, bool wait_on_read_)
        : imm(imm_), events(event_), counters(get_counters_for_event(event_)),
-         wait_on_read(wait_on_read_), logical(logical_), has_vmem_nosampler(false),
-         has_vmem_sampler(false)
+         wait_on_read(wait_on_read_), logical(logical_), vmem_types(0)
    {}
 
    bool join(const wait_entry& other)
    {
       bool changed = (other.events & ~events) || (other.counters & ~counters) ||
-                     (other.wait_on_read && !wait_on_read) ||
-                     (other.has_vmem_nosampler && !has_vmem_nosampler) ||
-                     (other.has_vmem_sampler && !has_vmem_sampler);
+                     (other.wait_on_read && !wait_on_read) || (other.vmem_types & !vmem_types);
       events |= other.events;
       counters |= other.counters;
       changed |= imm.combine(other.imm);
       wait_on_read |= other.wait_on_read;
-      has_vmem_nosampler |= other.has_vmem_nosampler;
-      has_vmem_sampler |= other.has_vmem_sampler;
+      vmem_types |= other.vmem_types;
       assert(logical == other.logical);
       return changed;
    }
@@ -148,8 +149,7 @@ struct wait_entry {
       if (counter == counter_vm) {
          imm.vm = wait_imm::unset_counter;
          events &= ~event_vmem;
-         has_vmem_nosampler = false;
-         has_vmem_sampler = false;
+         vmem_types = 0;
       }
 
       if (counter == counter_exp) {
@@ -242,6 +242,19 @@ struct wait_ctx {
    }
 };
 
+uint8_t
+get_vmem_type(Instruction* instr)
+{
+   if (instr->opcode == aco_opcode::image_bvh64_intersect_ray)
+      return vmem_bvh;
+   else if (instr->isMIMG() && !instr->operands[1].isUndefined() &&
+            instr->operands[1].regClass() == s4)
+      return vmem_sampler;
+   else if (instr->isVMEM() || instr->isScratch() || instr->isGlobal())
+      return vmem_nosampler;
+   return 0;
+}
+
 void
 check_instr(wait_ctx& ctx, wait_imm& wait, Instruction* instr)
 {
@@ -270,11 +283,9 @@ check_instr(wait_ctx& ctx, wait_imm& wait, Instruction* instr)
             continue;
 
          /* Vector Memory reads and writes return in the order they were issued */
-         bool has_sampler = instr->isMIMG() && !instr->operands[1].isUndefined() &&
-                            instr->operands[1].regClass() == s4;
-         if (instr->isVMEM() && ((it->second.events & vm_events) == event_vmem) &&
-             it->second.has_vmem_nosampler == !has_sampler &&
-             it->second.has_vmem_sampler == has_sampler)
+         uint8_t vmem_type = get_vmem_type(instr);
+         if (vmem_type && ((it->second.events & vm_events) == event_vmem) &&
+             it->second.vmem_types == vmem_type)
             continue;
 
          /* LDS reads and writes return in the order they were issued. same for GDS */
@@ -348,9 +359,10 @@ force_waitcnt(wait_ctx& ctx, wait_imm& imm)
 void
 kill(wait_imm& imm, Instruction* instr, wait_ctx& ctx, memory_sync_info sync_info)
 {
-   if (debug_flags & DEBUG_FORCE_WAITCNT) {
+   if (instr->opcode == aco_opcode::s_setpc_b64 || (debug_flags & DEBUG_FORCE_WAITCNT)) {
       /* Force emitting waitcnt states right after the instruction if there is
-       * something to wait for.
+       * something to wait for. This is also applied for s_setpc_b64 to ensure
+       * waitcnt states are inserted before jumping to the PS epilog.
        */
       force_waitcnt(ctx, imm);
    }
@@ -568,7 +580,7 @@ update_counters_for_flat_load(wait_ctx& ctx, memory_sync_info sync = memory_sync
 
 void
 insert_wait_entry(wait_ctx& ctx, PhysReg reg, RegClass rc, wait_event event, bool wait_on_read,
-                  bool has_sampler = false)
+                  uint8_t vmem_types = 0)
 {
    uint16_t counters = get_counters_for_event(event);
    wait_imm imm;
@@ -582,8 +594,7 @@ insert_wait_entry(wait_ctx& ctx, PhysReg reg, RegClass rc, wait_event event, boo
       imm.vs = 0;
 
    wait_entry new_entry(event, imm, !rc.is_linear(), wait_on_read);
-   new_entry.has_vmem_nosampler = (event & event_vmem) && !has_sampler;
-   new_entry.has_vmem_sampler = (event & event_vmem) && has_sampler;
+   new_entry.vmem_types |= vmem_types;
 
    for (unsigned i = 0; i < rc.size(); i++) {
       auto it = ctx.gpr_map.emplace(PhysReg{reg.reg() + i}, new_entry);
@@ -593,16 +604,16 @@ insert_wait_entry(wait_ctx& ctx, PhysReg reg, RegClass rc, wait_event event, boo
 }
 
 void
-insert_wait_entry(wait_ctx& ctx, Operand op, wait_event event, bool has_sampler = false)
+insert_wait_entry(wait_ctx& ctx, Operand op, wait_event event, uint8_t vmem_types = 0)
 {
    if (!op.isConstant() && !op.isUndefined())
-      insert_wait_entry(ctx, op.physReg(), op.regClass(), event, false, has_sampler);
+      insert_wait_entry(ctx, op.physReg(), op.regClass(), event, false, vmem_types);
 }
 
 void
-insert_wait_entry(wait_ctx& ctx, Definition def, wait_event event, bool has_sampler = false)
+insert_wait_entry(wait_ctx& ctx, Definition def, wait_event event, uint8_t vmem_types = 0)
 {
-   insert_wait_entry(ctx, def.physReg(), def.regClass(), event, true, has_sampler);
+   insert_wait_entry(ctx, def.physReg(), def.regClass(), event, true, vmem_types);
 }
 
 void
@@ -673,23 +684,19 @@ gen(Instruction* instr, wait_ctx& ctx)
    case Format::MUBUF:
    case Format::MTBUF:
    case Format::MIMG:
-   case Format::GLOBAL: {
+   case Format::GLOBAL:
+   case Format::SCRATCH: {
       wait_event ev =
          !instr->definitions.empty() || ctx.gfx_level < GFX10 ? event_vmem : event_vmem_store;
       update_counters(ctx, ev, get_sync_info(instr));
 
-      bool has_sampler = instr->isMIMG() && !instr->operands[1].isUndefined() &&
-                         instr->operands[1].regClass() == s4;
-
       if (!instr->definitions.empty())
-         insert_wait_entry(ctx, instr->definitions[0], ev, has_sampler);
+         insert_wait_entry(ctx, instr->definitions[0], ev, get_vmem_type(instr));
 
       if (ctx.gfx_level == GFX6 && instr->format != Format::MIMG && instr->operands.size() == 4) {
-         ctx.exp_cnt++;
          update_counters(ctx, event_vmem_gpr_lock);
          insert_wait_entry(ctx, instr->operands[3], event_vmem_gpr_lock);
       } else if (ctx.gfx_level == GFX6 && instr->isMIMG() && !instr->operands[2].isUndefined()) {
-         ctx.exp_cnt++;
          update_counters(ctx, event_vmem_gpr_lock);
          insert_wait_entry(ctx, instr->operands[2], event_vmem_gpr_lock);
       }

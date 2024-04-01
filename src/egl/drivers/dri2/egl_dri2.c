@@ -68,6 +68,7 @@
 #include "util/u_vector.h"
 #include "mapi/glapi/glapi.h"
 #include "util/bitscan.h"
+#include "util/driconf.h"
 #include "util/u_math.h"
 
 #define NUM_ATTRIBS 12
@@ -2386,6 +2387,16 @@ dri2_get_sync_values_chromium(_EGLDisplay *disp, _EGLSurface *surf,
    return dri2_dpy->vtbl->get_sync_values(disp, surf, ust, msc, sbc);
 }
 
+static EGLBoolean
+dri2_get_msc_rate_angle(_EGLDisplay *disp, _EGLSurface *surf,
+                        EGLint *numerator, EGLint *denominator)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+   if (!dri2_dpy->vtbl->get_msc_rate)
+      return EGL_FALSE;
+   return dri2_dpy->vtbl->get_msc_rate(disp, surf, numerator, denominator);
+}
+
 /**
  * Set the error code after a call to
  * dri2_egl_image::dri_image::createImageFromTexture.
@@ -2664,6 +2675,8 @@ dri2_num_fourcc_format_planes(EGLint format)
    case DRM_FORMAT_ABGR2101010:
    case DRM_FORMAT_RGBA1010102:
    case DRM_FORMAT_BGRA1010102:
+   case DRM_FORMAT_ABGR16161616:
+   case DRM_FORMAT_XBGR16161616:
    case DRM_FORMAT_XBGR16161616F:
    case DRM_FORMAT_ABGR16161616F:
    case DRM_FORMAT_YUYV:
@@ -3738,6 +3751,7 @@ const _EGLDriver _eglDriver = {
    .QueryWaylandBufferWL = dri2_query_wayland_buffer_wl,
 #endif
    .GetSyncValuesCHROMIUM = dri2_get_sync_values_chromium,
+   .GetMscRateANGLE = dri2_get_msc_rate_angle,
    .CreateSyncKHR = dri2_create_sync,
    .ClientWaitSyncKHR = dri2_client_wait_sync,
    .SignalSyncKHR = dri2_signal_sync,

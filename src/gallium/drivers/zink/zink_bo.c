@@ -29,6 +29,7 @@
  *    Mike Blumenkrantz <michael.blumenkrantz@gmail.com>
  */
 
+#include "zink_context.h"
 #include "zink_bo.h"
 #include "zink_resource.h"
 #include "zink_screen.h"
@@ -126,7 +127,7 @@ bo_destroy(struct zink_screen *screen, struct pb_buffer *pbuf)
    struct zink_bo *bo = zink_bo(pbuf);
 
 #ifdef ZINK_USE_DMABUF
-   if (!bo->u.real.use_reusable_pool) {
+   if (bo->mem && !bo->u.real.use_reusable_pool) {
       simple_mtx_lock(&bo->u.real.export_lock);
       list_for_each_entry_safe(struct bo_export, export, &bo->u.real.exports, link) {
          struct drm_gem_close args = { .handle = export->gem_handle };
@@ -284,7 +285,7 @@ bo_create_internal(struct zink_screen *screen,
 
    VkResult ret = VKSCR(AllocateMemory)(screen->dev, &mai, NULL, &bo->mem);
    if (!zink_screen_handle_vkresult(screen, ret)) {
-      mesa_loge("zink: couldn't allocate memory! from heap %u", heap);
+      mesa_loge("zink: couldn't allocate memory: heap=%u size=%" PRIu64, heap, size);
       goto fail;
    }
 
@@ -682,7 +683,7 @@ zink_bo_map(struct zink_screen *screen, struct zink_bo *bo)
       if (!cpu) {
          VkResult result = VKSCR(MapMemory)(screen->dev, real->mem, 0, real->base.size, 0, &cpu);
          if (result != VK_SUCCESS) {
-            mesa_loge("ZINK: vkMapMemory failed");
+            mesa_loge("ZINK: vkMapMemory failed (%s)", vk_Result_to_str(result));
             simple_mtx_unlock(&real->lock);
             return NULL;
          }
@@ -1218,12 +1219,7 @@ bo_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned group_ind
 
    list_inithead(&slab->base.free);
 
-#ifdef _MSC_VER
-   /* C11 too hard for msvc, no __sync_fetch_and_add */
-   base_id = p_atomic_add_return(&screen->pb.next_bo_unique_id, slab->base.num_entries) - slab->base.num_entries;
-#else
-   base_id = __sync_fetch_and_add(&screen->pb.next_bo_unique_id, slab->base.num_entries);
-#endif
+   base_id = p_atomic_fetch_add(&screen->pb.next_bo_unique_id, slab->base.num_entries);
    for (unsigned i = 0; i < slab->base.num_entries; ++i) {
       struct zink_bo *bo = &slab->entries[i];
 

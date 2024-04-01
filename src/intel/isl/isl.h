@@ -1161,7 +1161,7 @@ typedef uint32_t isl_sample_count_mask_t;
  */
 enum isl_msaa_layout {
    /**
-    * @brief Suface is single-sampled.
+    * @brief Surface is single-sampled.
     */
    ISL_MSAA_LAYOUT_NONE,
 
@@ -1389,7 +1389,7 @@ struct isl_tile_info {
    /**
     * The physical size of the tile in bytes and rows of bytes
     *
-    * This field determines how the tiles of a surface are physically layed
+    * This field determines how the tiles of a surface are physically laid
     * out in memory.  The logical and physical tile extent are frequently the
     * same but this is not always the case.  For instance, a W-tile (which is
     * always used with ISL_FORMAT_R8) has a logical size of 64el x 64el but
@@ -1642,7 +1642,7 @@ struct isl_surf_fill_state_info {
    uint32_t mocs;
 
    /**
-    * The auxilary surface or NULL if no auxilary surface is to be used.
+    * The auxiliary surface or NULL if no auxiliary surface is to be used.
     */
    const struct isl_surf *aux_surf;
    enum isl_aux_usage aux_usage;
@@ -1871,6 +1871,9 @@ bool isl_formats_are_ccs_e_compatible(const struct intel_device_info *devinfo,
                                       enum isl_format format2);
 uint8_t isl_format_get_aux_map_encoding(enum isl_format format);
 uint8_t isl_get_render_compression_format(enum isl_format format);
+
+bool isl_formats_have_same_bits_per_channel(enum isl_format format1,
+                                            enum isl_format format2);
 
 bool isl_format_has_unorm_channel(enum isl_format fmt) ATTRIBUTE_CONST;
 bool isl_format_has_snorm_channel(enum isl_format fmt) ATTRIBUTE_CONST;

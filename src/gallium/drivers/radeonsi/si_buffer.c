@@ -67,15 +67,6 @@ void si_init_resource_fields(struct si_screen *sscreen, struct si_resource *res,
       res->domains = RADEON_DOMAIN_GTT;
       break;
    case PIPE_USAGE_DYNAMIC:
-      /* Older kernels didn't always flush the HDP cache before
-       * CS execution
-       */
-      if (!sscreen->info.kernel_flushes_hdp_before_ib) {
-         res->domains = RADEON_DOMAIN_GTT;
-         res->flags |= RADEON_FLAG_GTT_WC;
-         break;
-      }
-      FALLTHROUGH;
    case PIPE_USAGE_DEFAULT:
    case PIPE_USAGE_IMMUTABLE:
    default:
@@ -98,7 +89,7 @@ void si_init_resource_fields(struct si_screen *sscreen, struct si_resource *res,
        * radeon doesn't have good BO move throttling, so put all
        * persistent buffers into GTT to prevent VRAM CPU page faults.
        */
-      if (!sscreen->info.kernel_flushes_hdp_before_ib || !sscreen->info.is_amdgpu)
+      if (!sscreen->info.is_amdgpu)
          res->domains = RADEON_DOMAIN_GTT;
    }
 
@@ -118,7 +109,7 @@ void si_init_resource_fields(struct si_screen *sscreen, struct si_resource *res,
    if (res->b.b.bind & PIPE_BIND_PROTECTED ||
        /* Force scanout/depth/stencil buffer allocation to be encrypted */
        (sscreen->debug_flags & DBG(TMZ) &&
-        res->b.b.bind & (PIPE_BIND_SCANOUT | PIPE_BIND_DEPTH_STENCIL)))
+        res->b.b.bind & (PIPE_BIND_RENDER_TARGET | PIPE_BIND_DEPTH_STENCIL)))
       res->flags |= RADEON_FLAG_ENCRYPTED;
 
    if (res->b.b.flags & PIPE_RESOURCE_FLAG_ENCRYPTED)
@@ -169,7 +160,7 @@ void si_init_resource_fields(struct si_screen *sscreen, struct si_resource *res,
       if (!sscreen->info.smart_access_memory &&
           sscreen->info.has_dedicated_vram &&
           !res->b.cpu_storage && /* TODO: The CPU storage breaks this. */
-          size >= SI_MAX_VRAM_MAP_SIZE)
+          size >= sscreen->options.max_vram_map_size)
          res->b.b.flags |= PIPE_RESOURCE_FLAG_DONT_MAP_DIRECTLY;
    }
 }
@@ -210,8 +201,10 @@ bool si_alloc_resource(struct si_screen *sscreen, struct si_resource *res)
 
    /* Print debug information. */
    if (sscreen->debug_flags & DBG(VM) && res->b.b.target == PIPE_BUFFER) {
-      fprintf(stderr, "VM start=0x%" PRIX64 "  end=0x%" PRIX64 " | Buffer %" PRIu64 " bytes\n",
+      fprintf(stderr, "VM start=0x%" PRIX64 "  end=0x%" PRIX64 " | Buffer %" PRIu64 " bytes | Flags: ",
               res->gpu_address, res->gpu_address + res->buf->size, res->buf->size);
+      si_res_print_flags(res->flags);
+      fprintf(stderr, "\n");
    }
 
    if (res->b.b.flags & SI_RESOURCE_FLAG_CLEAR)

@@ -499,7 +499,7 @@ static void si_vertex_color_clamping(struct si_shader_context *ctx,
          continue;
 
       for (unsigned j = 0; j < 4; j++) {
-         outputs[i].values[j] = LLVMBuildLoad(ctx->ac.builder, addr[i][j], "");
+         outputs[i].values[j] = LLVMBuildLoad2(ctx->ac.builder, ctx->ac.f32, addr[i][j], "");
       }
    }
 }
@@ -794,7 +794,7 @@ void si_llvm_build_vs_exports(struct si_shader_context *ctx, LLVMValueRef num_ex
       for (unsigned i = 0; i < shader->info.nr_param_exports; i++) {
          for (unsigned chan = 0; chan < 4; chan++) {
             param_exports[i].out[chan] =
-               LLVMBuildLoad(ctx->ac.builder, param_exports[i].out[chan], "");
+               LLVMBuildLoad2(ctx->ac.builder, ctx->ac.f32, param_exports[i].out[chan], "");
          }
 
          LLVMValueRef vdata = ac_build_gather_values_extended(&ctx->ac, param_exports[i].out,
@@ -826,7 +826,7 @@ void si_llvm_vs_build_end(struct si_shader_context *ctx)
       outputs[i].semantic = info->output_semantic[i];
 
       for (j = 0; j < 4; j++) {
-         outputs[i].values[j] = LLVMBuildLoad(ctx->ac.builder, addrs[4 * i + j], "");
+         outputs[i].values[j] = LLVMBuildLoad2(ctx->ac.builder, ctx->ac.f32, addrs[4 * i + j], "");
          outputs[i].vertex_streams = info->output_streams[i];
       }
    }
@@ -932,10 +932,9 @@ void si_llvm_build_vs_prolog(struct si_shader_context *ctx, union si_shader_part
    if (key->vs_prolog.load_vgprs_after_culling) {
       for (i = 5; i <= 8; i++) {
          bool is_tes_rel_patch_id = i == 7;
-         input_vgprs[i] = LLVMBuildIntToPtr(ctx->ac.builder, input_vgprs[i],
-                                            LLVMPointerType(is_tes_rel_patch_id ? ctx->ac.i8 : ctx->ac.i32,
-                                                            AC_ADDR_SPACE_LDS), "");
-         input_vgprs[i] = LLVMBuildLoad(ctx->ac.builder, input_vgprs[i], "");
+         LLVMTypeRef t = is_tes_rel_patch_id ? ctx->ac.i8 : ctx->ac.i32;
+         input_vgprs[i] = LLVMBuildIntToPtr(ctx->ac.builder, input_vgprs[i], LLVMPointerType(t, AC_ADDR_SPACE_LDS), "");
+         input_vgprs[i] = LLVMBuildLoad2(ctx->ac.builder, t, input_vgprs[i], "");
          if (is_tes_rel_patch_id)
             input_vgprs[i] = LLVMBuildZExt(ctx->ac.builder, input_vgprs[i], ctx->ac.i32, "");
       }

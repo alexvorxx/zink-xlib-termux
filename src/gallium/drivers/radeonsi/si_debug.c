@@ -302,14 +302,11 @@ static void si_dump_mmapped_reg(struct si_context *sctx, FILE *f, unsigned offse
 
 static void si_dump_debug_registers(struct si_context *sctx, FILE *f)
 {
-   if (!sctx->screen->info.has_read_registers_query)
-      return;
-
    fprintf(f, "Memory-mapped registers:\n");
    si_dump_mmapped_reg(sctx, f, R_008010_GRBM_STATUS);
 
-   /* No other registers can be read on DRM < 3.1.0. */
-   if (!sctx->screen->info.is_amdgpu || sctx->screen->info.drm_minor < 1) {
+   /* No other registers can be read on radeon. */
+   if (!sctx->screen->info.is_amdgpu) {
       fprintf(f, "\n");
       return;
    }
@@ -775,21 +772,6 @@ static void si_dump_descriptors(struct si_context *sctx, gl_shader_stage stage,
       enabled_images = sctx->images[processor].enabled_mask;
    }
 
-   if (stage == MESA_SHADER_VERTEX && sctx->vb_descriptors_buffer &&
-       sctx->vb_descriptors_gpu_list) {
-      assert(info); /* only CS may not have an info struct */
-      struct si_descriptors desc = {};
-
-      desc.buffer = sctx->vb_descriptors_buffer;
-      desc.list = sctx->vb_descriptors_gpu_list;
-      desc.gpu_list = sctx->vb_descriptors_gpu_list;
-      desc.element_dw_size = 4;
-      desc.num_active_slots = sctx->vertex_elements->vb_desc_list_alloc_size / 16;
-
-      si_dump_descriptor_list(sctx->screen, &desc, name, " - Vertex buffer", 4, info->num_inputs,
-                              si_identity, log);
-   }
-
    si_dump_descriptor_list(sctx->screen, &descs[SI_SHADER_DESCS_CONST_AND_SHADER_BUFFERS], name,
                            " - Constant buffer", 4, util_last_bit(enabled_constbuf),
                            si_get_constbuf_slot, log);
@@ -1036,19 +1018,13 @@ static void si_dump_debug_state(struct pipe_context *ctx, FILE *f, unsigned flag
 
 void si_log_draw_state(struct si_context *sctx, struct u_log_context *log)
 {
-   struct si_shader_ctx_state *tcs_shader;
-
    if (!log)
       return;
-
-   tcs_shader = &sctx->shader.tcs;
-   if (sctx->shader.tes.cso && !sctx->shader.tcs.cso)
-      tcs_shader = &sctx->fixed_func_tcs_shader;
 
    si_dump_framebuffer(sctx, log);
 
    si_dump_gfx_shader(sctx, &sctx->shader.vs, log);
-   si_dump_gfx_shader(sctx, tcs_shader, log);
+   si_dump_gfx_shader(sctx, &sctx->shader.tcs, log);
    si_dump_gfx_shader(sctx, &sctx->shader.tes, log);
    si_dump_gfx_shader(sctx, &sctx->shader.gs, log);
    si_dump_gfx_shader(sctx, &sctx->shader.ps, log);
@@ -1057,7 +1033,7 @@ void si_log_draw_state(struct si_context *sctx, struct u_log_context *log)
                            4, sctx->descriptors[SI_DESCS_INTERNAL].num_active_slots, si_identity,
                            log);
    si_dump_gfx_descriptors(sctx, &sctx->shader.vs, log);
-   si_dump_gfx_descriptors(sctx, tcs_shader, log);
+   si_dump_gfx_descriptors(sctx, &sctx->shader.tcs, log);
    si_dump_gfx_descriptors(sctx, &sctx->shader.tes, log);
    si_dump_gfx_descriptors(sctx, &sctx->shader.gs, log);
    si_dump_gfx_descriptors(sctx, &sctx->shader.ps, log);

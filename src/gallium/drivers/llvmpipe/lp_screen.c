@@ -355,14 +355,18 @@ llvmpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_SAMPLER_REDUCTION_MINMAX:
    case PIPE_CAP_TEXTURE_QUERY_SAMPLES:
    case PIPE_CAP_SHADER_GROUP_VOTE:
+   case PIPE_CAP_SHADER_BALLOT:
    case PIPE_CAP_LOAD_CONSTBUF:
    case PIPE_CAP_TEXTURE_MULTISAMPLE:
    case PIPE_CAP_SAMPLE_SHADING:
    case PIPE_CAP_GL_SPIRV:
    case PIPE_CAP_POST_DEPTH_COVERAGE:
+   case PIPE_CAP_SHADER_CLOCK:
    case PIPE_CAP_PACKED_UNIFORMS: {
       struct llvmpipe_screen *lscreen = llvmpipe_screen(screen);
       return !lscreen->use_tgsi;
+   case PIPE_CAP_NIR_IMAGES_AS_DEREF:
+      return 0;
    }
    default:
       return u_pipe_screen_get_param_defaults(screen, param);
@@ -597,6 +601,7 @@ static const struct nir_shader_compiler_options gallivm_nir_options = {
    .lower_fmod = true,
    .lower_hadd = true,
    .lower_uadd_sat = true,
+   .lower_usub_sat = true,
    .lower_iadd_sat = true,
    .lower_ldexp = true,
    .lower_pack_snorm_2x16 = true,
@@ -667,8 +672,6 @@ llvmpipe_is_format_supported( struct pipe_screen *_screen,
    const struct util_format_description *format_desc;
 
    format_desc = util_format_description(format);
-   if (!format_desc)
-      return false;
 
    assert(target == PIPE_BUFFER ||
           target == PIPE_TEXTURE_1D ||
@@ -681,9 +684,6 @@ llvmpipe_is_format_supported( struct pipe_screen *_screen,
           target == PIPE_TEXTURE_CUBE_ARRAY);
 
    if (sample_count != 0 && sample_count != 1 && sample_count != 4)
-      return false;
-
-   if (MAX2(1, sample_count) != MAX2(1, storage_sample_count))
       return false;
 
    if (bind & (PIPE_BIND_RENDER_TARGET | PIPE_BIND_SHADER_IMAGE)) {
@@ -1083,6 +1083,8 @@ llvmpipe_create_screen(struct sw_winsys *winsys)
 
    snprintf(screen->renderer_string, sizeof(screen->renderer_string), "llvmpipe (LLVM " MESA_LLVM_VERSION_STRING ", %u bits)", lp_native_vector_width );
 
+   list_inithead(&screen->ctx_list);
+   (void) mtx_init(&screen->ctx_mutex, mtx_plain);
    (void) mtx_init(&screen->cs_mutex, mtx_plain);
    (void) mtx_init(&screen->rast_mutex, mtx_plain);
 

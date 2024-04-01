@@ -261,8 +261,10 @@ validate_ir(Program* program)
                bool flat = instr->isFlatLike();
                bool can_be_undef = is_phi(instr) || instr->isEXP() || instr->isReduction() ||
                                    instr->opcode == aco_opcode::p_create_vector ||
+                                   instr->opcode == aco_opcode::p_jump_to_epilog ||
                                    (flat && i == 1) || (instr->isMIMG() && (i == 1 || i == 2)) ||
-                                   ((instr->isMUBUF() || instr->isMTBUF()) && i == 1);
+                                   ((instr->isMUBUF() || instr->isMTBUF()) && i == 1) ||
+                                   (instr->isScratch() && i == 0);
                check(can_be_undef, "Undefs can only be used in certain operands", instr.get());
             } else {
                check(instr->operands[i].isFixed() || instr->operands[i].isTemp() ||
@@ -510,6 +512,18 @@ validate_ir(Program* program)
                unsigned comp = data_bits / MAX2(op_bits, 1);
                check(instr->operands[1].constantValue() < comp, "Index must be in-bounds",
                      instr.get());
+            } else if (instr->opcode == aco_opcode::p_jump_to_epilog) {
+               check(instr->definitions.size() == 0, "p_jump_to_epilog must have 0 definitions",
+                     instr.get());
+               check(instr->operands.size() > 0 &&
+                        instr->operands[0].getTemp().type() == RegType::sgpr &&
+                        instr->operands[0].getTemp().size() == 2,
+                     "First operand of p_jump_to_epilog must be a SGPR", instr.get());
+               for (unsigned i = 1; i < instr->operands.size(); i++) {
+                  check(instr->operands[i].getTemp().type() == RegType::vgpr ||
+                           instr->operands[i].isUndefined(),
+                        "Other operands of p_jump_to_epilog must be VGPRs or undef", instr.get());
+               }
             }
             break;
          }
@@ -658,13 +672,20 @@ validate_ir(Program* program)
                   instr.get());
             FALLTHROUGH;
          case Format::GLOBAL:
-         case Format::SCRATCH: {
             check(
                instr->operands[0].isTemp() && instr->operands[0].regClass().type() == RegType::vgpr,
-               "FLAT/GLOBAL/SCRATCH address must be vgpr", instr.get());
+               "FLAT/GLOBAL address must be vgpr", instr.get());
+            FALLTHROUGH;
+         case Format::SCRATCH: {
+            check(instr->operands[0].hasRegClass() &&
+                     instr->operands[0].regClass().type() == RegType::vgpr,
+                  "FLAT/GLOBAL/SCRATCH address must be undefined or vgpr", instr.get());
             check(instr->operands[1].hasRegClass() &&
                      instr->operands[1].regClass().type() == RegType::sgpr,
                   "FLAT/GLOBAL/SCRATCH sgpr address must be undefined or sgpr", instr.get());
+            if (instr->format == Format::SCRATCH && program->gfx_level < GFX10_3)
+               check(instr->operands[0].isTemp() || instr->operands[1].isTemp(),
+                     "SCRATCH must have either SADDR or ADDR operand", instr.get());
             if (!instr->definitions.empty())
                check(instr->definitions[0].getTemp().type() == RegType::vgpr,
                      "FLAT/GLOBAL/SCRATCH result must be vgpr", instr.get());
@@ -841,6 +862,7 @@ validate_subdword_definition(amd_gfx_level gfx_level, const aco_ptr<Instruction>
       return true;
 
    switch (instr->opcode) {
+   case aco_opcode::v_fma_mixhi_f16:
    case aco_opcode::buffer_load_ubyte_d16_hi:
    case aco_opcode::buffer_load_sbyte_d16_hi:
    case aco_opcode::buffer_load_short_d16_hi:

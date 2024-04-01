@@ -118,7 +118,7 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
    if (batch->tlsinfo.tls.size) {
       unsigned size = panfrost_get_total_stack_size(batch->tlsinfo.tls.size,
                                                     pdev->thread_tls_alloc,
-                                                    pdev->core_count);
+                                                    pdev->core_id_range);
       batch->tlsinfo.tls.ptr =
          pan_pool_alloc_aligned(&cmdbuf->tls_pool.base, size, 4096).gpu;
    }
@@ -918,7 +918,7 @@ panvk_per_arch(EndCommandBuffer)(VkCommandBuffer commandBuffer)
 
 void
 panvk_per_arch(CmdEndRenderPass2)(VkCommandBuffer commandBuffer,
-                                  const VkSubpassEndInfoKHR *pSubpassEndInfo)
+                                  const VkSubpassEndInfo *pSubpassEndInfo)
 {
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
 
@@ -934,7 +934,7 @@ panvk_per_arch(CmdEndRenderPass2)(VkCommandBuffer commandBuffer,
 void
 panvk_per_arch(CmdEndRenderPass)(VkCommandBuffer cmd)
 {
-   VkSubpassEndInfoKHR einfo = {
+   VkSubpassEndInfo einfo = {
       .sType = VK_STRUCTURE_TYPE_SUBPASS_END_INFO,
    };
 

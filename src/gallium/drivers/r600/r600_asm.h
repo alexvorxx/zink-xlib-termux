@@ -262,6 +262,7 @@ struct r600_bytecode {
 	struct r600_bytecode_cf		*cf_last;
 	unsigned			ndw;
 	unsigned			ncf;
+	unsigned			nalu_groups;
 	unsigned			ngpr;
 	unsigned			nstack;
 	unsigned			nlds_dw;
@@ -269,7 +270,7 @@ struct r600_bytecode {
 	unsigned			force_add_cf;
 	uint32_t			*bytecode;
 	uint32_t			fc_sp;
-	struct r600_cf_stack_entry	fc_stack[TGSI_EXEC_MAX_NESTING];
+	struct r600_cf_stack_entry	fc_stack[256];
 	struct r600_stack_info		stack;
 	unsigned	ar_loaded;
 	unsigned	ar_reg;
@@ -353,6 +354,8 @@ void eg_bytecode_export_read(struct r600_bytecode *bc,
 
 void r600_vertex_data_type(enum pipe_format pformat, unsigned *format,
 			   unsigned *num_format, unsigned *format_comp, unsigned *endian);
+
+int r600_load_ar(struct r600_bytecode *bc);
 
 static inline int fp64_switch(int i)
 {

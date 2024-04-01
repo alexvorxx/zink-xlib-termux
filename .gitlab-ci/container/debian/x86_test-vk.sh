@@ -51,6 +51,7 @@ STABLE_EPHEMERAL=" \
 
 apt-get install -y --no-remove \
       $STABLE_EPHEMERAL \
+      libepoxy0 \
       libxcb-shm0 \
       pciutils \
       python3-lxml \
@@ -73,80 +74,14 @@ pip3 install gfxinfo-mupuf==0.0.9
 
 apt install -y --no-remove --install-recommends winehq-stable
 
-function setup_wine() {
-    export WINEDEBUG="-all"
-    export WINEPREFIX="$1"
-
-    # We don't want crash dialogs
-    cat >crashdialog.reg <<EOF
-Windows Registry Editor Version 5.00
-
-[HKEY_CURRENT_USER\Software\Wine\WineDbg]
-"ShowCrashDialog"=dword:00000000
-
-EOF
-
-    # Set the wine prefix and disable the crash dialog
-    wine regedit crashdialog.reg
-    rm crashdialog.reg
-
-    # An immediate wine command may fail with: "${WINEPREFIX}: Not a
-    # valid wine prefix."  and that is just spit because of checking
-    # the existance of the system.reg file, which fails.  Just giving
-    # it a bit more of time for it to be created solves the problem
-    # ...
-    while ! test -f  "${WINEPREFIX}/system.reg"; do sleep 1; done
-}
-
 ############### Install DXVK
 
-dxvk_install_release() {
-    local DXVK_VERSION=${1:-"1.10.1"}
+. .gitlab-ci/container/setup-wine.sh "/dxvk-wine64"
+. .gitlab-ci/container/install-wine-dxvk.sh
 
-    wget "https://github.com/doitsujin/dxvk/releases/download/v${DXVK_VERSION}/dxvk-${DXVK_VERSION}.tar.gz"
-    tar xzpf dxvk-"${DXVK_VERSION}".tar.gz
-    "dxvk-${DXVK_VERSION}"/setup_dxvk.sh install
-    rm -rf "dxvk-${DXVK_VERSION}"
-    rm dxvk-"${DXVK_VERSION}".tar.gz
-}
+############### Install apitrace binaries for wine
 
-# Install from a Github PR number
-dxvk_install_pr() {
-    local __prnum=$1
-
-    # NOTE: Clone all the ensite history of the repo so as not to think
-    # harder about cloning just enough for 'git describe' to work.  'git
-    # describe' is used by the dxvk build system to generate a
-    # dxvk_version Meson variable, which is nice-to-have.
-    git clone https://github.com/doitsujin/dxvk
-    pushd dxvk
-    git fetch origin pull/"$__prnum"/head:pr
-    git checkout pr
-    ./package-release.sh pr ../dxvk-build --no-package
-    popd
-    pushd ./dxvk-build/dxvk-pr
-    ./setup_dxvk.sh install
-    popd
-    rm -rf ./dxvk-build ./dxvk
-}
-
-# Sets up the WINEPREFIX for the DXVK installation commands below.
-setup_wine "/dxvk-wine64"
-dxvk_install_release "1.10.1"
-#dxvk_install_pr 2359
-
-############### Install Windows' apitrace binaries
-
-APITRACE_VERSION="10.0"
-APITRACE_VERSION_DATE=""
-
-wget "https://github.com/apitrace/apitrace/releases/download/${APITRACE_VERSION}/apitrace-${APITRACE_VERSION}${APITRACE_VERSION_DATE}-win64.7z"
-7zr x "apitrace-${APITRACE_VERSION}${APITRACE_VERSION_DATE}-win64.7z" \
-      "apitrace-${APITRACE_VERSION}${APITRACE_VERSION_DATE}-win64/bin/apitrace.exe" \
-      "apitrace-${APITRACE_VERSION}${APITRACE_VERSION_DATE}-win64/bin/d3dretrace.exe"
-mv "apitrace-${APITRACE_VERSION}${APITRACE_VERSION_DATE}-win64" /apitrace-msvc-win64
-rm "apitrace-${APITRACE_VERSION}${APITRACE_VERSION_DATE}-win64.7z"
-
+. .gitlab-ci/container/install-wine-apitrace.sh
 # Add the apitrace path to the registry
 wine \
     reg add "HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\Environment" \
@@ -158,14 +93,6 @@ wine \
 ############### Building ...
 
 . .gitlab-ci/container/container_pre_build.sh
-
-############### Build libdrm
-
-. .gitlab-ci/container/build-libdrm.sh
-
-############### Build Wayland
-
-. .gitlab-ci/container/build-wayland.sh
 
 ############### Build parallel-deqp-runner's hang-detection tool
 
@@ -193,7 +120,7 @@ PIGLIT_BUILD_TARGETS="piglit_replayer" . .gitlab-ci/container/build-piglit.sh
 
 ############### Build VKD3D-Proton
 
-setup_wine "/vkd3d-proton-wine64"
+. .gitlab-ci/container/setup-wine.sh "/vkd3d-proton-wine64"
 
 . .gitlab-ci/container/build-vkd3d-proton.sh
 

@@ -34,6 +34,7 @@
 #ifdef HAVE_X11_PLATFORM
 #include <xcb/xcb.h>
 #include <xcb/dri2.h>
+#include <xcb/randr.h>
 #include <xcb/xfixes.h>
 #include <X11/Xlib-xcb.h>
 
@@ -159,6 +160,10 @@ struct dri2_egl_display_vtbl {
    EGLBoolean (*get_sync_values)(_EGLDisplay *display, _EGLSurface *surface,
                                  EGLuint64KHR *ust, EGLuint64KHR *msc,
                                  EGLuint64KHR *sbc);
+
+   /* optional */
+   EGLBoolean (*get_msc_rate)(_EGLDisplay *display, _EGLSurface *surface,
+                              EGLint *numerator, EGLint *denominator);
 
    /* mandatory */
    __DRIdrawable *(*get_dri_drawable)(_EGLSurface *surf);
@@ -416,12 +421,6 @@ struct dri2_egl_sync {
    int refcount;
    void *fence;
 };
-
-/* From driconf.h, user exposed so should be stable */
-#define DRI_CONF_VBLANK_NEVER 0
-#define DRI_CONF_VBLANK_DEF_INTERVAL_0 1
-#define DRI_CONF_VBLANK_DEF_INTERVAL_1 2
-#define DRI_CONF_VBLANK_ALWAYS_SYNC 3
 
 /* standard typecasts */
 _EGL_DRIVER_STANDARD_TYPECASTS(dri2_egl)

@@ -84,9 +84,11 @@ etna_screen_resource_alloc_ts(struct pipe_screen *pscreen,
                               struct etna_resource *rsc)
 {
    struct etna_screen *screen = etna_screen(pscreen);
+   struct pipe_resource *prsc = &rsc->base;
    size_t rt_ts_size, ts_layer_stride;
    uint8_t ts_mode = TS_MODE_128B;
    int8_t ts_compress_fmt;
+   unsigned layers;
 
    assert(!rsc->ts_bo);
 
@@ -94,8 +96,8 @@ etna_screen_resource_alloc_ts(struct pipe_screen *pscreen,
     * v4 compression can be enabled everywhere without any known drawback,
     * except that in-place resolve must go through a slower path
     */
-   ts_compress_fmt = (screen->specs.v4_compression || rsc->base.nr_samples > 1) ?
-                      translate_ts_format(rsc->base.format) : -1;
+   ts_compress_fmt = (screen->specs.v4_compression || prsc->nr_samples > 1) ?
+                      translate_ts_format(prsc->format) : -1;
 
    /* enable 256B ts mode with compression, as it improves performance
     * the size of the resource might also determine if we want to use it or not
@@ -104,11 +106,12 @@ etna_screen_resource_alloc_ts(struct pipe_screen *pscreen,
        ts_compress_fmt >= 0)
          ts_mode = TS_MODE_256B;
 
+   layers = prsc->target == PIPE_TEXTURE_3D ? prsc->depth0 : prsc->array_size;
    ts_layer_stride = align(DIV_ROUND_UP(rsc->levels[0].layer_stride,
                                         etna_screen_get_tile_size(screen, ts_mode) *
                                         8 / screen->specs.bits_per_tile),
                            0x100 * screen->specs.pixel_pipes);
-   rt_ts_size = ts_layer_stride * rsc->base.array_size;
+   rt_ts_size = ts_layer_stride * layers;
    if (rt_ts_size == 0)
       return true;
 
@@ -305,12 +308,6 @@ etna_resource_alloc(struct pipe_screen *pscreen, unsigned layout,
       etna_bo_cpu_fini(rsc->bo);
    }
 
-   mtx_init(&rsc->lock, mtx_recursive);
-   rsc->pending_ctx = _mesa_set_create(NULL, _mesa_hash_pointer,
-                                       _mesa_key_pointer_equal);
-   if (!rsc->pending_ctx)
-      goto free_rsc;
-
    return &rsc->base;
 
 free_rsc:
@@ -430,12 +427,6 @@ etna_resource_create_modifiers(struct pipe_screen *pscreen,
    if (modifier == DRM_FORMAT_MOD_INVALID)
       return NULL;
 
-   /*
-    * We currently assume that all buffers allocated through this interface
-    * should be scanout enabled.
-    */
-   tmpl.bind |= PIPE_BIND_SCANOUT;
-
    return etna_resource_alloc(pscreen, modifier_to_layout(modifier), modifier, &tmpl);
 }
 
@@ -449,11 +440,6 @@ static void
 etna_resource_destroy(struct pipe_screen *pscreen, struct pipe_resource *prsc)
 {
    struct etna_resource *rsc = etna_resource(prsc);
-
-   mtx_lock(&rsc->lock);
-   assert(!_mesa_set_next_entry(rsc->pending_ctx, NULL));
-   _mesa_set_destroy(rsc->pending_ctx, NULL);
-   mtx_unlock(&rsc->lock);
 
    if (rsc->bo)
       etna_bo_del(rsc->bo);
@@ -471,8 +457,6 @@ etna_resource_destroy(struct pipe_screen *pscreen, struct pipe_resource *prsc)
 
    for (unsigned i = 0; i < ETNA_NUM_LOD; i++)
       FREE(rsc->levels[i].patch_offsets);
-
-   mtx_destroy(&rsc->lock);
 
    FREE(rsc);
 }
@@ -553,12 +537,6 @@ etna_resource_from_handle(struct pipe_screen *pscreen,
           util_format_name(tmpl->format));
       goto fail;
    }
-
-   mtx_init(&rsc->lock, mtx_recursive);
-   rsc->pending_ctx = _mesa_set_create(NULL, _mesa_hash_pointer,
-                                       _mesa_key_pointer_equal);
-   if (!rsc->pending_ctx)
-      goto fail;
 
    if (screen->ro) {
       struct pipe_resource *imp_prsc = prsc;
@@ -669,78 +647,37 @@ void
 etna_resource_used(struct etna_context *ctx, struct pipe_resource *prsc,
                    enum etna_resource_status status)
 {
-   struct pipe_resource *referenced = NULL;
    struct etna_resource *rsc;
+   struct hash_entry *entry;
+   uint32_t hash;
 
    if (!prsc)
       return;
 
-   mtx_lock(&ctx->lock);
-
    rsc = etna_resource(prsc);
-again:
-   mtx_lock(&rsc->lock);
+   hash = _mesa_hash_pointer(rsc);
+   entry = _mesa_hash_table_search_pre_hashed(ctx->pending_resources,
+                                              hash, rsc);
 
-   set_foreach(rsc->pending_ctx, entry) {
-      struct etna_context *extctx = (struct etna_context *)entry->key;
-      struct pipe_context *pctx = &extctx->base;
-      bool need_flush = false;
-
-      if (mtx_trylock(&extctx->lock) != thrd_success) {
-         /*
-	  * The other context could be locked in etna_flush() and
-	  * stuck waiting for the resource lock, so release the
-	  * resource lock here, let etna_flush() finish, and try
-	  * again.
-	  */
-         mtx_unlock(&rsc->lock);
-         thrd_yield();
-         goto again;
-      }
-
-      set_foreach(extctx->used_resources_read, entry2) {
-         struct etna_resource *rsc2 = (struct etna_resource *)entry2->key;
-         if (ctx == extctx || rsc2 != rsc)
-            continue;
-
-         if (status & ETNA_PENDING_WRITE) {
-            need_flush = true;
-            break;
-         }
-      }
-
-      if (need_flush) {
-         pctx->flush(pctx, NULL, 0);
-         mtx_unlock(&extctx->lock);
-	 continue;
-      }
-
-      set_foreach(extctx->used_resources_write, entry2) {
-         struct etna_resource *rsc2 = (struct etna_resource *)entry2->key;
-         if (ctx == extctx || rsc2 != rsc)
-            continue;
-
-         need_flush = true;
-         break;
-      }
-
-      if (need_flush)
-         pctx->flush(pctx, NULL, 0);
-
-      mtx_unlock(&extctx->lock);
+   if (entry) {
+      enum etna_resource_status tmp = (uintptr_t)entry->data;
+      tmp |= status;
+      entry->data = (void *)(uintptr_t)tmp;
+   } else {
+      _mesa_hash_table_insert_pre_hashed(ctx->pending_resources, hash, rsc,
+                                         (void *)(uintptr_t)status);
    }
+}
 
-   rsc->status = status;
+enum etna_resource_status
+etna_resource_status(struct etna_context *ctx, struct etna_resource *res)
+{
+   struct hash_entry *entry = _mesa_hash_table_search(ctx->pending_resources, res);
 
-   if (!_mesa_set_search(rsc->pending_ctx, ctx)) {
-      pipe_resource_reference(&referenced, prsc);
-      _mesa_set_add((status & ETNA_PENDING_READ) ?
-                    ctx->used_resources_read : ctx->used_resources_write, rsc);
-      _mesa_set_add(rsc->pending_ctx, ctx);
-   }
-
-   mtx_unlock(&rsc->lock);
-   mtx_unlock(&ctx->lock);
+   if (entry)
+      return (enum etna_resource_status)(uintptr_t)entry->data;
+   else
+      return 0;
 }
 
 bool

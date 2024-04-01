@@ -213,7 +213,7 @@ radv_amdgpu_cs_domain(const struct radeon_winsys *_ws)
    const struct radv_amdgpu_winsys *ws = (const struct radv_amdgpu_winsys *)_ws;
 
    bool enough_vram = ws->info.all_vram_visible ||
-                      p_atomic_read_relaxed(&ws->allocated_vram_vis) * 2 <= ws->info.vram_vis_size;
+                      p_atomic_read_relaxed(&ws->allocated_vram_vis) * 2 <= (uint64_t)ws->info.vram_vis_size_kb * 1024;
    bool use_sam =
       (enough_vram && ws->info.has_dedicated_vram && !(ws->perftest & RADV_PERFTEST_NO_SAM)) ||
       (ws->perftest & RADV_PERFTEST_SAM);
@@ -616,6 +616,22 @@ radv_amdgpu_cs_add_buffer(struct radeon_cmdbuf *_cs, struct radeon_winsys_bo *_b
    }
 
    radv_amdgpu_cs_add_buffer_internal(cs, bo->bo_handle, bo->priority);
+}
+
+static void
+radv_amdgpu_cs_add_buffers(struct radeon_cmdbuf *_to, struct radeon_cmdbuf *_from)
+{
+   struct radv_amdgpu_cs *from = radv_amdgpu_cs(_from);
+   struct radv_amdgpu_cs *to = radv_amdgpu_cs(_to);
+
+   for (unsigned i = 0; i < from->num_buffers; ++i) {
+      radv_amdgpu_cs_add_buffer_internal(to, from->handles[i].bo_handle,
+                                         from->handles[i].bo_priority);
+   }
+
+   for (unsigned i = 0; i < from->num_virtual_buffers; ++i) {
+      radv_amdgpu_cs_add_buffer(&to->base, from->virtual_buffers[i]);
+   }
 }
 
 static void
@@ -1528,7 +1544,7 @@ radv_amdgpu_ctx_create(struct radeon_winsys *_ws, enum radeon_ctx_priority prior
 
    r = amdgpu_cs_ctx_create2(ws->dev, amdgpu_priority, &ctx->ctx);
    if (r && r == -EACCES) {
-      result = VK_ERROR_NOT_PERMITTED_EXT;
+      result = VK_ERROR_NOT_PERMITTED_KHR;
       goto fail_create;
    } else if (r) {
       fprintf(stderr, "radv/amdgpu: radv_amdgpu_cs_ctx_create2 failed. (%i)\n", r);
@@ -1885,6 +1901,7 @@ radv_amdgpu_cs_init_functions(struct radv_amdgpu_winsys *ws)
    ws->base.cs_finalize = radv_amdgpu_cs_finalize;
    ws->base.cs_reset = radv_amdgpu_cs_reset;
    ws->base.cs_add_buffer = radv_amdgpu_cs_add_buffer;
+   ws->base.cs_add_buffers = radv_amdgpu_cs_add_buffers;
    ws->base.cs_execute_secondary = radv_amdgpu_cs_execute_secondary;
    ws->base.cs_submit = radv_amdgpu_winsys_cs_submit;
    ws->base.cs_dump = radv_amdgpu_winsys_cs_dump;

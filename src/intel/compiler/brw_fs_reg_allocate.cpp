@@ -531,18 +531,18 @@ fs_reg_alloc::setup_inst_interference(const fs_inst *inst)
       }
    }
 
-   /* In 16-wide instructions we have an issue where a compressed
-    * instruction is actually two instructions executed simultaneously.
-    * It's actually ok to have the source and destination registers be
-    * the same.  In this case, each instruction over-writes its own
-    * source and there's no problem.  The real problem here is if the
-    * source and destination registers are off by one.  Then you can end
-    * up in a scenario where the first instruction over-writes the
-    * source of the second instruction.  Since the compiler doesn't know
-    * about this level of granularity, we simply make the source and
-    * destination interfere.
+   /* A compressed instruction is actually two instructions executed
+    * simultaneously.  On most platforms, it ok to have the source and
+    * destination registers be the same.  In this case, each instruction
+    * over-writes its own source and there's no problem.  The real problem
+    * here is if the source and destination registers are off by one.  Then
+    * you can end up in a scenario where the first instruction over-writes the
+    * source of the second instruction.  Since the compiler doesn't know about
+    * this level of granularity, we simply make the source and destination
+    * interfere.
     */
-   if (inst->exec_size >= 16 && inst->dst.file == VGRF) {
+   if (inst->dst.component_size(inst->exec_size) > REG_SIZE &&
+       inst->dst.file == VGRF) {
       for (int i = 0; i < inst->sources; ++i) {
          if (inst->src[i].file == VGRF) {
             ra_add_node_interference(g, first_vgrf_node + inst->dst.nr,
@@ -560,7 +560,7 @@ fs_reg_alloc::setup_inst_interference(const fs_inst *inst)
        *
        * We are avoiding using grf127 as part of the destination of send
        * messages adding a node interference to the grf127_send_hack_node.
-       * This node has a fixed asignment to grf127.
+       * This node has a fixed assignment to grf127.
        *
        * We don't apply it to SIMD16 instructions because previous code avoids
        * any register overlap between sources and destination.
@@ -570,7 +570,7 @@ fs_reg_alloc::setup_inst_interference(const fs_inst *inst)
          ra_add_node_interference(g, first_vgrf_node + inst->dst.nr,
                                      grf127_send_hack_node);
 
-      /* Spilling instruction are genereated as SEND messages from MRF but as
+      /* Spilling instruction are generated as SEND messages from MRF but as
        * Gfx7+ supports sending from GRF the driver will maps assingn these
        * MRF registers to a GRF. Implementations reuses the dest of the send
        * message as source. So as we will have an overlap for sure, we create
@@ -614,8 +614,7 @@ fs_reg_alloc::setup_inst_interference(const fs_inst *inst)
    if (inst->eot) {
       const int vgrf = inst->opcode == SHADER_OPCODE_SEND ?
                        inst->src[2].nr : inst->src[0].nr;
-      int size = fs->alloc.sizes[vgrf];
-      int reg = BRW_MAX_GRF - size;
+      int reg = BRW_MAX_GRF - fs->alloc.sizes[vgrf];
 
       if (first_mrf_hack_node >= 0) {
          /* If something happened to spill, we want to push the EOT send
@@ -631,6 +630,12 @@ fs_reg_alloc::setup_inst_interference(const fs_inst *inst)
       }
 
       ra_set_node_reg(g, first_vgrf_node + vgrf, reg);
+
+      if (inst->ex_mlen > 0) {
+         const int vgrf = inst->src[3].nr;
+         reg -= fs->alloc.sizes[vgrf];
+         ra_set_node_reg(g, first_vgrf_node + vgrf, reg);
+      }
    }
 }
 
@@ -1141,7 +1146,7 @@ fs_reg_alloc::spill_reg(unsigned spill_reg)
             spill_max_size(fs));
 
          /* Spills should only write data initialized by the instruction for
-          * whichever channels are enabled in the excution mask.  If that's
+          * whichever channels are enabled in the execution mask.  If that's
           * not possible we'll have to emit a matching unspill before the
           * instruction and set force_writemask_all on the spill.
           */

@@ -40,11 +40,11 @@ files_libd3d12 = files(
   'd3d12_query.cpp',
   'd3d12_residency.cpp',
   'd3d12_resource.cpp',
+  'd3d12_resource_state.cpp',
   'd3d12_root_signature.cpp',
   'd3d12_screen.cpp',
   'd3d12_surface.cpp',
   'd3d12_tcs_variant.cpp',
-  'D3D12ResourceState.cpp',
 )
 
 if with_gallium_d3d12_video
@@ -62,6 +62,7 @@ if with_gallium_d3d12_video
     'd3d12_video_texture_array_dpb_manager.cpp',
     'd3d12_video_array_of_textures_dpb_manager.cpp',
     'd3d12_video_screen.cpp',
+    'd3d12_video_proc.cpp',
   ]
 endif
 
@@ -71,7 +72,7 @@ endif
 
 libd3d12 = static_library(
   'd3d12',
-  files_libd3d12,
+  [files_libd3d12, sha1_h],
   gnu_symbol_visibility : 'hidden',
   include_directories : [inc_include, inc_src, inc_mesa, inc_gallium, inc_gallium_aux],
   dependencies: [idep_nir_headers, idep_libdxil_compiler, dep_dxheaders],

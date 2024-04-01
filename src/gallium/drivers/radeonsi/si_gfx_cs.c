@@ -55,9 +55,7 @@ void si_flush_gfx_cs(struct si_context *ctx, unsigned flags, struct pipe_fence_h
    if (sscreen->info.is_amdgpu && sscreen->info.drm_minor >= 39)
       flags |= RADEON_FLUSH_START_NEXT_GFX_IB_NOW;
 
-   if (!sscreen->info.kernel_flushes_tc_l2_after_ib) {
-      wait_flags |= wait_ps_cs | SI_CONTEXT_INV_L2;
-   } else if (ctx->gfx_level == GFX6) {
+   if (ctx->gfx_level == GFX6) {
       /* The kernel flushes L2 before shaders are finished. */
       wait_flags |= wait_ps_cs;
    } else if (!(flags & RADEON_FLUSH_START_NEXT_GFX_IB_NOW) ||
@@ -1029,7 +1027,7 @@ void si_emit_cache_flush(struct si_context *sctx, struct radeon_cmdbuf *cs)
        * All operations that invalidate L2 also seem to invalidate
        * metadata. Volatile (VOL) and WC flushes are not listed here.
        *
-       * TC    | TC_WB         = writeback & invalidate L2 & L1
+       * TC    | TC_WB         = writeback & invalidate L2
        * TC    | TC_WB | TC_NC = writeback & invalidate L2 for MTYPE == NC
        *         TC_WB | TC_NC = writeback L2 for MTYPE == NC
        * TC            | TC_NC = invalidate L2 for MTYPE == NC
@@ -1048,7 +1046,7 @@ void si_emit_cache_flush(struct si_context *sctx, struct radeon_cmdbuf *cs)
          tc_flags = EVENT_TC_ACTION_ENA | EVENT_TC_WB_ACTION_ENA;
 
          /* Clear the flags. */
-         flags &= ~(SI_CONTEXT_INV_L2 | SI_CONTEXT_WB_L2 | SI_CONTEXT_INV_VCACHE);
+         flags &= ~(SI_CONTEXT_INV_L2 | SI_CONTEXT_WB_L2);
          sctx->num_L2_invalidates++;
       }
 

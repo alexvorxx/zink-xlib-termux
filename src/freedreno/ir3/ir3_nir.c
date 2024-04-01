@@ -169,7 +169,7 @@ ir3_optimize_loop(struct ir3_compiler *compiler, nir_shader *s)
          OPT(s, nir_copy_prop);
          OPT(s, nir_opt_dce);
       }
-      progress |= OPT(s, nir_opt_if, false);
+      progress |= OPT(s, nir_opt_if, nir_opt_if_optimize_phi_true_false);
       progress |= OPT(s, nir_opt_loop_unroll);
       progress |= OPT(s, nir_lower_64bit_phis);
       progress |= OPT(s, nir_opt_remove_phis);
@@ -608,6 +608,25 @@ ir3_nir_lower_view_layer_id(nir_shader *nir, bool layer_zero, bool view_zero)
    return progress;
 }
 
+static bool
+lower_ucp_vs(struct ir3_shader_variant *so)
+{
+   if (!so->key.ucp_enables)
+      return false;
+
+   gl_shader_stage last_geom_stage = MESA_SHADER_VERTEX;
+
+   if (so->key.tessellation) {
+      last_geom_stage = MESA_SHADER_TESS_EVAL;
+   } else if (so->key.has_gs) {
+      last_geom_stage = MESA_SHADER_GEOMETRY;
+   } else {
+      last_geom_stage = MESA_SHADER_VERTEX;
+   }
+
+   return so->type == last_geom_stage;
+}
+
 void
 ir3_nir_lower_variant(struct ir3_shader_variant *so, nir_shader *s)
 {
@@ -647,10 +666,11 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so, nir_shader *s)
       }
    }
 
-   if (s->info.stage == MESA_SHADER_VERTEX) {
-      if (so->key.ucp_enables)
-         progress |=
-            OPT(s, nir_lower_clip_vs, so->key.ucp_enables, false, true, NULL);
+   /* Note that it is intentional to use the VS lowering pass for GS, since we
+    * lower GS into something that looks more like a VS in ir3_nir_lower_gs():
+    */
+   if (lower_ucp_vs(so)) {
+      progress |= OPT(s, nir_lower_clip_vs, so->key.ucp_enables, false, true, NULL);
    } else if (s->info.stage == MESA_SHADER_FRAGMENT) {
       bool layer_zero =
          so->key.layer_zero && (s->info.inputs_read & VARYING_BIT_LAYER);
@@ -745,44 +765,33 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so, nir_shader *s)
    bool more_late_algebraic = true;
    while (more_late_algebraic) {
       more_late_algebraic = OPT(s, nir_opt_algebraic_late);
-      if (!more_late_algebraic) {
+      if (!more_late_algebraic && so->compiler->gen >= 5) {
          /* Lowers texture operations that have only f2f16 or u2u16 called on
           * them to have a 16-bit destination.  Also, lower 16-bit texture
           * coordinates that had been upconverted to 32-bits just for the
           * sampler to just be 16-bit texture sources.
           */
-         OPT(s, nir_fold_16bit_sampler_conversions,
-            (1 << nir_tex_src_coord) |
-            (1 << nir_tex_src_lod) |
-            (1 << nir_tex_src_bias) |
-            (1 << nir_tex_src_comparator) |
-            (1 << nir_tex_src_min_lod) |
-            (1 << nir_tex_src_ms_index) |
-            (1 << nir_tex_src_ddx) |
-            (1 << nir_tex_src_ddy),
-            ~0);
-
-         /* blob dumps have no half regs on pixel 2's ldib or stib, so only enable for a6xx+. */
-         if (so->compiler->gen >= 6)
-            OPT(s, nir_fold_16bit_image_load_store_conversions);
-
-         /* Now that we stripped off the 16-bit conversions, legalize so that we
-          * don't have a mix of 16- and 32-bit args that will need to be
-          * collected together in the coordinate vector.
-          */
-         nir_tex_src_type_constraints tex_constraints = {
-            [nir_tex_src_lod] = {true, 0, nir_tex_src_coord},
-            [nir_tex_src_bias] = {true, 0, nir_tex_src_coord},
-            [nir_tex_src_offset] = {true, 0, nir_tex_src_coord},
-            [nir_tex_src_comparator] = {true, 0, nir_tex_src_coord},
-
-            [nir_tex_src_min_lod] = {true, 0, nir_tex_src_coord},
-            [nir_tex_src_ms_index] = {true, 0, nir_tex_src_coord},
-            [nir_tex_src_ddx] = {true, 0, nir_tex_src_coord},
-            [nir_tex_src_ddy] = {true, 0, nir_tex_src_coord},
-
+         struct nir_fold_tex_srcs_options fold_srcs_options = {
+            .sampler_dims = ~0,
+            .src_types = (1 << nir_tex_src_coord) |
+                         (1 << nir_tex_src_lod) |
+                         (1 << nir_tex_src_bias) |
+                         (1 << nir_tex_src_offset) |
+                         (1 << nir_tex_src_comparator) |
+                         (1 << nir_tex_src_min_lod) |
+                         (1 << nir_tex_src_ms_index) |
+                         (1 << nir_tex_src_ddx) |
+                         (1 << nir_tex_src_ddy),
          };
-         NIR_PASS_V(s, nir_legalize_16bit_sampler_srcs, tex_constraints);
+         struct nir_fold_16bit_tex_image_options fold_16bit_options = {
+            .rounding_mode = nir_rounding_mode_rtz,
+            .fold_tex_dest = true,
+            /* blob dumps have no half regs on pixel 2's ldib or stib, so only enable for a6xx+. */
+            .fold_image_load_store_data = so->compiler->gen >= 6,
+            .fold_srcs_options_count = 1,
+            .fold_srcs_options = &fold_srcs_options,
+         };
+         OPT(s, nir_fold_16bit_tex_image, &fold_16bit_options);
       }
       OPT_V(s, nir_opt_constant_folding);
       OPT_V(s, nir_copy_prop);
@@ -939,7 +948,7 @@ ir3_setup_const_state(nir_shader *nir, struct ir3_shader_variant *v,
 
    const_state->num_ubos = nir->info.num_ubos;
 
-   debug_assert((const_state->ubo_state.size % 16) == 0);
+   assert((const_state->ubo_state.size % 16) == 0);
    unsigned constoff = v->num_reserved_user_consts +
       const_state->ubo_state.size / 16 +
       const_state->preamble_size;
@@ -996,15 +1005,18 @@ ir3_setup_const_state(nir_shader *nir, struct ir3_shader_variant *v,
       break;
    case MESA_SHADER_TESS_CTRL:
    case MESA_SHADER_TESS_EVAL:
-      constoff = align(constoff - 1, 4) + 3;
       const_state->offsets.primitive_param = constoff;
-      const_state->offsets.primitive_map = constoff + 5;
-      constoff += 5 + DIV_ROUND_UP(v->input_size, 4);
+      constoff += 2;
+
+      const_state->offsets.primitive_map = constoff;
+      constoff += DIV_ROUND_UP(v->input_size, 4);
       break;
    case MESA_SHADER_GEOMETRY:
       const_state->offsets.primitive_param = constoff;
-      const_state->offsets.primitive_map = constoff + 1;
-      constoff += 1 + DIV_ROUND_UP(v->input_size, 4);
+      constoff += 1;
+
+      const_state->offsets.primitive_map = constoff;
+      constoff += DIV_ROUND_UP(v->input_size, 4);
       break;
    default:
       break;

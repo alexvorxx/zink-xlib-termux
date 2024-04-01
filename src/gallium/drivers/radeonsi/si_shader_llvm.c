@@ -718,7 +718,6 @@ void si_build_wrapper_function(struct si_shader_context *ctx, LLVMValueRef *part
 static LLVMValueRef si_llvm_load_intrinsic(struct ac_shader_abi *abi, nir_intrinsic_op op)
 {
    struct si_shader_context *ctx = si_shader_context_from_abi(abi);
-   const struct si_shader_info *info = &ctx->shader->selector->info;
 
    switch (op) {
    case nir_intrinsic_load_first_vertex:
@@ -745,12 +744,6 @@ static LLVMValueRef si_llvm_load_intrinsic(struct ac_shader_abi *abi, nir_intrin
       };
       return ac_build_gather_values(&ctx->ac, chan, 3);
    }
-
-   case nir_intrinsic_load_tess_level_outer:
-      return abi->load_tess_varyings(abi, ctx->ac.f32, NULL, NULL, info->num_inputs, 0, 4, true);
-
-   case nir_intrinsic_load_tess_level_inner:
-      return abi->load_tess_varyings(abi, ctx->ac.f32, NULL, NULL, info->num_inputs + 1, 0, 4, true);
 
    case nir_intrinsic_load_tess_level_outer_default:
    case nir_intrinsic_load_tess_level_inner_default: {
@@ -779,6 +772,29 @@ static LLVMValueRef si_llvm_load_intrinsic(struct ac_shader_abi *abi, nir_intrin
    case nir_intrinsic_load_lshs_vertex_stride_amd:
       return LLVMBuildShl(ctx->ac.builder, si_get_tcs_in_vertex_dw_stride(ctx),
                           LLVMConstInt(ctx->ac.i32, 2, 0), "");
+
+   case nir_intrinsic_load_tcs_num_patches_amd:
+      return LLVMBuildAdd(ctx->ac.builder,
+                          si_unpack_param(ctx, ctx->tcs_offchip_layout, 0, 6),
+                          ctx->ac.i32_1, "");
+
+   case nir_intrinsic_load_hs_out_patch_data_offset_amd:
+      return si_unpack_param(ctx, ctx->tcs_offchip_layout, 11, 21);
+
+   case nir_intrinsic_load_ring_tess_offchip_amd:
+      return ctx->tess_offchip_ring;
+
+   case nir_intrinsic_load_ring_tess_offchip_offset_amd:
+      return ac_get_arg(&ctx->ac, ctx->args.tess_offchip_offset);
+
+   case nir_intrinsic_load_tess_rel_patch_id_amd:
+      return si_get_rel_patch_id(ctx);
+
+   case nir_intrinsic_load_ring_esgs_amd:
+      return ctx->esgs_ring;
+
+   case nir_intrinsic_load_ring_es2gs_offset_amd:
+      return ac_get_arg(&ctx->ac, ctx->args.es2gs_offset);
 
    default:
       return NULL;
@@ -816,16 +832,11 @@ bool si_llvm_translate_nir(struct si_shader_context *ctx, struct si_shader *shad
 
    case MESA_SHADER_TESS_CTRL:
       si_llvm_init_tcs_callbacks(ctx);
-
-      if (sel->info.tessfactors_are_def_in_all_invocs) {
-         for (unsigned i = 0; i < 6; i++)
-            ctx->invoc0_tess_factors[i] = ac_build_alloca_undef(&ctx->ac, ctx->ac.i32, "");
-      }
+      si_llvm_preload_tess_rings(ctx);
       break;
 
    case MESA_SHADER_TESS_EVAL:
-      si_llvm_init_tes_callbacks(ctx, ngg_cull_shader);
-      si_llvm_preload_tes_rings(ctx);
+      si_llvm_preload_tess_rings(ctx);
       break;
 
    case MESA_SHADER_GEOMETRY:
@@ -888,6 +899,7 @@ bool si_llvm_translate_nir(struct si_shader_context *ctx, struct si_shader *shad
          ctx->abi.color1 = ac_to_integer(&ctx->ac, ac_build_gather_values(&ctx->ac, values, 4));
       }
 
+      ctx->abi.num_interp = si_get_ps_num_interp(shader);
       ctx->abi.interp_at_sample_force_center =
          ctx->shader->key.ps.mono.interpolate_at_sample_force_center;
 
@@ -1023,45 +1035,15 @@ bool si_llvm_translate_nir(struct si_shader_context *ctx, struct si_shader *shad
             /* If both input and output patches are wholly in one wave, we don't need a barrier.
              * That's true when both VS and TCS have the same number of patch vertices and
              * the wave size is a multiple of the number of patch vertices.
-             *
-             * The fixed-func TCS doesn't set tcs_vertices_out.
              */
             if (!shader->key.ge.opt.same_patch_vertices ||
-                (sel->info.base.tess.tcs_vertices_out &&
-                 ctx->ac.wave_size % sel->info.base.tess.tcs_vertices_out != 0))
+                ctx->ac.wave_size % sel->info.base.tess.tcs_vertices_out != 0)
                ac_build_s_barrier(&ctx->ac, ctx->stage);
          }
       } else if (ctx->stage == MESA_SHADER_GEOMETRY && !shader->key.ge.as_ngg) {
          /* gfx10_ngg_gs_emit_begin inserts the barrier for NGG. */
          ac_build_waitcnt(&ctx->ac, AC_WAIT_LGKM);
          ac_build_s_barrier(&ctx->ac, ctx->stage);
-      }
-   }
-
-   if (nir->info.stage == MESA_SHADER_GEOMETRY) {
-      /* Unpack GS vertex offsets. */
-      for (unsigned i = 0; i < 6; i++) {
-         if (ctx->screen->info.gfx_level >= GFX9) {
-            ctx->gs_vtx_offset[i] = si_unpack_param(ctx, ctx->args.gs_vtx_offset[i / 2], (i & 1) * 16, 16);
-         } else {
-            ctx->gs_vtx_offset[i] = ac_get_arg(&ctx->ac, ctx->args.gs_vtx_offset[i]);
-         }
-      }
-
-      /* Apply the hw bug workaround for triangle strips with adjacency. */
-      if (ctx->screen->info.gfx_level <= GFX9 &&
-          ctx->shader->key.ge.mono.u.gs_tri_strip_adj_fix) {
-         LLVMValueRef prim_id = ac_get_arg(&ctx->ac, ctx->args.gs_prim_id);
-         /* Remap GS vertex offsets for every other primitive. */
-         LLVMValueRef rotate = LLVMBuildTrunc(ctx->ac.builder, prim_id, ctx->ac.i1, "");
-         LLVMValueRef fixed[6];
-
-         for (unsigned i = 0; i < 6; i++) {
-            fixed[i] = LLVMBuildSelect(ctx->ac.builder, rotate,
-                                       ctx->gs_vtx_offset[(i + 4) % 6],
-                                       ctx->gs_vtx_offset[i], "");
-         }
-         memcpy(ctx->gs_vtx_offset, fixed, sizeof(fixed));
       }
    }
 
@@ -1081,8 +1063,10 @@ bool si_llvm_translate_nir(struct si_shader_context *ctx, struct si_shader *shad
           nir_alu_type_get_type_size(ctx->shader->selector->info.output_type[i]) == 16)
          type = ctx->ac.f16;
 
-      for (unsigned j = 0; j < 4; j++)
+      for (unsigned j = 0; j < 4; j++) {
          ctx->abi.outputs[i * 4 + j] = ac_build_alloca_undef(&ctx->ac, type, "");
+         ctx->abi.is_16bit[i * 4 + j] = type == ctx->ac.f16;
+      }
    }
 
    ac_nir_translate(&ctx->ac, &ctx->abi, &ctx->args, nir);
@@ -1254,8 +1238,7 @@ bool si_llvm_compile_shader(struct si_screen *sscreen, struct ac_llvm_compiler *
          shader_ls.key.ge.opt.inline_uniforms = false; /* only TCS can inline uniforms */
          shader_ls.is_monolithic = true;
 
-         nir = si_get_nir_shader(ls, &shader_ls.key, &free_nir,
-                                 sel->info.tcs_vgpr_only_inputs);
+         nir = si_get_nir_shader(&shader_ls, &free_nir, sel->info.tcs_vgpr_only_inputs);
          si_update_shader_binary_info(shader, nir);
 
          if (!si_llvm_translate_nir(&ctx, &shader_ls, nir, free_nir, false)) {
@@ -1315,7 +1298,7 @@ bool si_llvm_compile_shader(struct si_screen *sscreen, struct ac_llvm_compiler *
          shader_es.key.ge.opt.kill_outputs = 0;
          shader_es.is_monolithic = true;
 
-         nir = si_get_nir_shader(es, &shader_es.key, &free_nir, 0);
+         nir = si_get_nir_shader(&shader_es, &free_nir, 0);
          si_update_shader_binary_info(shader, nir);
 
          if (!si_llvm_translate_nir(&ctx, &shader_es, nir, free_nir, false)) {

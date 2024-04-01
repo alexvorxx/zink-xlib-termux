@@ -452,6 +452,9 @@ brw_nir_lower_fs_inputs(nir_shader *nir,
    if (devinfo->ver >= 11)
       nir_lower_interpolation(nir, ~0);
 
+   if (!key->multisample_fbo)
+      nir_lower_single_sampled(nir);
+
    nir_shader_instructions_pass(nir, lower_barycentric_at_offset,
                                 nir_metadata_block_index |
                                 nir_metadata_dominance,
@@ -622,7 +625,7 @@ brw_nir_optimize(nir_shader *nir, const struct brw_compiler *compiler,
          OPT(nir_copy_prop);
          OPT(nir_opt_dce);
       }
-      OPT(nir_opt_if, false);
+      OPT(nir_opt_if, nir_opt_if_optimize_phi_true_false);
       OPT(nir_opt_conditional_discard);
       if (nir->options->max_unroll_iterations != 0) {
          OPT(nir_opt_loop_unroll);
@@ -891,8 +894,6 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
    };
    OPT(nir_lower_subgroups, &subgroups_options);
 
-   OPT(nir_lower_clip_cull_distance_arrays);
-
    nir_variable_mode indirect_mask =
       brw_nir_no_indirect_mask(compiler, nir->info.stage);
    OPT(nir_lower_indirect_derefs, indirect_mask, UINT32_MAX);
@@ -972,6 +973,15 @@ brw_nir_link_shaders(const struct brw_compiler *compiler,
    NIR_PASS(_, consumer, nir_remove_dead_variables, nir_var_shader_in, NULL);
 
    if (nir_remove_unused_varyings(producer, consumer)) {
+      if (should_print_nir(producer)) {
+         printf("nir_remove_unused_varyings\n");
+         nir_print_shader(producer, stdout);
+      }
+      if (should_print_nir(consumer)) {
+         printf("nir_remove_unused_varyings\n");
+         nir_print_shader(consumer, stdout);
+      }
+
       NIR_PASS(_, producer, nir_lower_global_vars_to_local);
       NIR_PASS(_, consumer, nir_lower_global_vars_to_local);
 
@@ -1236,8 +1246,17 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
 
    /* TODO: Enable nir_opt_uniform_atomics on Gfx7.x too.
     * It currently fails Vulkan tests on Haswell for an unknown reason.
+    *
+    * TODO: Using this optimization on RT/OpenCL kernels also seems to cause
+    *       issues. Until we can understand those issues, disable it.
     */
-   if (devinfo->ver >= 8 && OPT(nir_opt_uniform_atomics)) {
+   bool opt_uniform_atomic_stage_allowed =
+      devinfo->ver >= 8 &&
+      nir->info.stage != MESA_SHADER_KERNEL &&
+      nir->info.stage != MESA_SHADER_RAYGEN &&
+      !gl_shader_stage_is_callable(nir->info.stage);
+
+   if (opt_uniform_atomic_stage_allowed && OPT(nir_opt_uniform_atomics)) {
       const nir_lower_subgroups_options subgroups_options = {
          .ballot_bit_size = 32,
          .ballot_components = 1,
@@ -1344,16 +1363,14 @@ brw_nir_apply_sampler_key(nir_shader *nir,
 }
 
 static unsigned
-get_subgroup_size(gl_shader_stage stage,
-                  const struct brw_base_prog_key *key,
-                  unsigned max_subgroup_size)
+get_subgroup_size(const struct shader_info *info, unsigned max_subgroup_size)
 {
-   switch (key->subgroup_size_type) {
-   case BRW_SUBGROUP_SIZE_API_CONSTANT:
+   switch (info->subgroup_size) {
+   case SUBGROUP_SIZE_API_CONSTANT:
       /* We have to use the global constant size. */
       return BRW_SUBGROUP_SIZE;
 
-   case BRW_SUBGROUP_SIZE_UNIFORM:
+   case SUBGROUP_SIZE_UNIFORM:
       /* It has to be uniform across all invocations but can vary per stage
        * if we want.  This gives us a bit more freedom.
        *
@@ -1364,7 +1381,7 @@ get_subgroup_size(gl_shader_stage stage,
        */
       return max_subgroup_size;
 
-   case BRW_SUBGROUP_SIZE_VARYING:
+   case SUBGROUP_SIZE_VARYING:
       /* The subgroup size is allowed to be fully varying.  For geometry
        * stages, we know it's always 8 which is max_subgroup_size so we can
        * return that.  For compute, brw_nir_apply_key is called once per
@@ -1375,16 +1392,21 @@ get_subgroup_size(gl_shader_stage stage,
        * that's a risk the client took when it asked for a varying subgroup
        * size.
        */
-      return stage == MESA_SHADER_FRAGMENT ? 0 : max_subgroup_size;
+      return info->stage == MESA_SHADER_FRAGMENT ? 0 : max_subgroup_size;
 
-   case BRW_SUBGROUP_SIZE_REQUIRE_8:
-   case BRW_SUBGROUP_SIZE_REQUIRE_16:
-   case BRW_SUBGROUP_SIZE_REQUIRE_32:
-      assert(gl_shader_stage_uses_workgroup(stage));
+   case SUBGROUP_SIZE_REQUIRE_8:
+   case SUBGROUP_SIZE_REQUIRE_16:
+   case SUBGROUP_SIZE_REQUIRE_32:
+      assert(gl_shader_stage_uses_workgroup(info->stage));
       /* These enum values are expressly chosen to be equal to the subgroup
        * size that they require.
        */
-      return key->subgroup_size_type;
+      return info->subgroup_size;
+
+   case SUBGROUP_SIZE_FULL_SUBGROUPS:
+   case SUBGROUP_SIZE_REQUIRE_64:
+   case SUBGROUP_SIZE_REQUIRE_128:
+      break;
    }
 
    unreachable("Invalid subgroup size type");
@@ -1402,8 +1424,7 @@ brw_nir_apply_key(nir_shader *nir,
    OPT(brw_nir_apply_sampler_key, compiler, &key->tex);
 
    const nir_lower_subgroups_options subgroups_options = {
-      .subgroup_size = get_subgroup_size(nir->info.stage, key,
-                                         max_subgroup_size),
+      .subgroup_size = get_subgroup_size(&nir->info, max_subgroup_size),
       .ballot_bit_size = 32,
       .ballot_components = 1,
       .lower_subgroup_masks = true,

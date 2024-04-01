@@ -1,25 +1,7 @@
 /*
  * Copyright © 2016 Red Hat.
  * Copyright © 2016 Bas Nieuwenhuizen
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 /**
@@ -35,17 +17,16 @@
  * descriptor set at CmdBindDescriptors time/draw time.
  */
 
-#include "tu_private.h"
+#include "tu_descriptor_set.h"
 
-#include <assert.h>
 #include <fcntl.h>
-#include <stdbool.h>
-#include <string.h>
-#include <unistd.h>
 
 #include "util/mesa-sha1.h"
 #include "vk_descriptors.h"
 #include "vk_util.h"
+
+#include "tu_device.h"
+#include "tu_image.h"
 
 static inline uint8_t *
 pool_base(struct tu_descriptor_pool *pool)
@@ -58,6 +39,9 @@ descriptor_size(struct tu_device *dev, VkDescriptorType type)
 {
    switch (type) {
    case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+      if (unlikely(dev->instance->debug_flags & TU_DEBUG_DYNAMIC))
+         return A6XX_TEX_CONST_DWORDS * 4;
+
       /* Input attachment doesn't use descriptor sets at all */
       return 0;
    case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
@@ -116,10 +100,10 @@ tu_CreateDescriptorSetLayout(
 
    assert(pCreateInfo->sType ==
           VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO);
-   const VkDescriptorSetLayoutBindingFlagsCreateInfoEXT *variable_flags =
+   const VkDescriptorSetLayoutBindingFlagsCreateInfo *variable_flags =
       vk_find_struct_const(
          pCreateInfo->pNext,
-         DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT);
+         DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO);
    const VkMutableDescriptorTypeCreateInfoVALVE *mutable_info =
       vk_find_struct_const(
          pCreateInfo->pNext,
@@ -205,7 +189,7 @@ tu_CreateDescriptorSetLayout(
 
       if (variable_flags && binding->binding < variable_flags->bindingCount &&
           (variable_flags->pBindingFlags[binding->binding] &
-           VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT)) {
+           VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT)) {
          assert(!binding->pImmutableSamplers); /* Terribly ill defined  how
                                                   many samplers are valid */
          assert(binding->binding == num_bindings - 1);
@@ -305,14 +289,14 @@ tu_GetDescriptorSetLayoutSupport(
       return;
    }
 
-   const VkDescriptorSetLayoutBindingFlagsCreateInfoEXT *variable_flags =
+   const VkDescriptorSetLayoutBindingFlagsCreateInfo *variable_flags =
       vk_find_struct_const(
          pCreateInfo->pNext,
-         DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT);
-   VkDescriptorSetVariableDescriptorCountLayoutSupportEXT *variable_count =
+         DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO);
+   VkDescriptorSetVariableDescriptorCountLayoutSupport *variable_count =
       vk_find_struct(
          (void *) pCreateInfo->pNext,
-         DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT_EXT);
+         DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT);
    const VkMutableDescriptorTypeCreateInfoVALVE *mutable_info =
       vk_find_struct_const(
          pCreateInfo->pNext,
@@ -368,7 +352,7 @@ tu_GetDescriptorSetLayoutSupport(
       if (variable_flags && binding->binding < variable_flags->bindingCount &&
           variable_count &&
           (variable_flags->pBindingFlags[binding->binding] &
-           VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT)) {
+           VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT)) {
          variable_count->maxVariableDescriptorCount =
             MIN2(UINT32_MAX, max_count);
       }
@@ -824,8 +808,8 @@ tu_AllocateDescriptorSets(VkDevice _device,
    uint32_t i;
    struct tu_descriptor_set *set = NULL;
 
-   const VkDescriptorSetVariableDescriptorCountAllocateInfoEXT *variable_counts =
-      vk_find_struct_const(pAllocateInfo->pNext, DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT);
+   const VkDescriptorSetVariableDescriptorCountAllocateInfo *variable_counts =
+      vk_find_struct_const(pAllocateInfo->pNext, DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO);
    const uint32_t zero = 0;
 
    /* allocate a set of buffers for each shader to contain descriptors */
@@ -1079,6 +1063,8 @@ tu_update_descriptor_sets(const struct tu_device *device,
             break;
          case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
             /* nothing in descriptor set - framebuffer state is used instead */
+            if (unlikely(device->instance->debug_flags & TU_DEBUG_DYNAMIC))
+               write_image_descriptor(ptr, writeset->descriptorType, writeset->pImageInfo + j);
             break;
          default:
             unreachable("unimplemented descriptor type");
@@ -1151,8 +1137,7 @@ tu_CreateDescriptorUpdateTemplate(
    VkDescriptorUpdateTemplate *pDescriptorUpdateTemplate)
 {
    TU_FROM_HANDLE(tu_device, device, _device);
-   TU_FROM_HANDLE(tu_descriptor_set_layout, set_layout,
-                  pCreateInfo->descriptorSetLayout);
+   struct tu_descriptor_set_layout *set_layout = NULL;
    const uint32_t entry_count = pCreateInfo->descriptorUpdateEntryCount;
    const size_t size =
       sizeof(struct tu_descriptor_update_template) +
@@ -1176,6 +1161,10 @@ tu_CreateDescriptorUpdateTemplate(
       set_layout = pipeline_layout->set[pCreateInfo->set].layout;
 
       templ->bind_point = pCreateInfo->pipelineBindPoint;
+   } else {
+      TU_FROM_HANDLE(tu_descriptor_set_layout, _set_layout,
+                     pCreateInfo->descriptorSetLayout);
+      set_layout = _set_layout;
    }
 
    for (uint32_t i = 0; i < entry_count; i++) {
@@ -1303,6 +1292,8 @@ tu_update_descriptor_set_with_template(
             break;
          case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
             /* nothing in descriptor set - framebuffer state is used instead */
+            if (unlikely(device->instance->debug_flags & TU_DEBUG_DYNAMIC))
+               write_image_descriptor(ptr, templ->entry[i].descriptor_type, src);
             break;
          default:
             unreachable("unimplemented descriptor type");

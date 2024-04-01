@@ -451,6 +451,8 @@ struct PhysReg {
 
 /* helper expressions for special registers */
 static constexpr PhysReg m0{124};
+static constexpr PhysReg flat_scr_lo{102}; /* GFX8-GFX9, encoded differently on GFX6-7 */
+static constexpr PhysReg flat_scr_hi{103}; /* GFX8-GFX9, encoded differently on GFX6-7 */
 static constexpr PhysReg vcc{106};
 static constexpr PhysReg vcc_hi{107};
 static constexpr PhysReg tba{108}; /* GFX6-GFX8 */
@@ -644,6 +646,17 @@ public:
       return op;
    }
 
+   static Operand literal32(uint32_t v) noexcept
+   {
+      Operand op;
+      op.control_ = 0;
+      op.data_.i = v;
+      op.isConstant_ = true;
+      op.constSize = 2;
+      op.setFixed(PhysReg{255});
+      return op;
+   }
+
    explicit Operand(RegClass type) noexcept
    {
       isUndef_ = true;
@@ -793,6 +806,19 @@ public:
       } else {
          return data_.i;
       }
+   }
+
+   /* Value if this were used with vop3/opsel or vop3p. */
+   constexpr uint16_t constantValue16(bool opsel) const noexcept
+   {
+      assert(bytes() == 2 || bytes() == 4);
+      if (opsel) {
+         if (bytes() == 2 && int16_t(data_.i) >= -16 && int16_t(data_.i) <= 64 && !isLiteral())
+            return int16_t(data_.i) >> 16; /* 16-bit inline integers are sign-extended, even with fp16 instrs */
+         else
+            return data_.i >> 16;
+      }
+      return data_.i;
    }
 
    constexpr bool isOfType(RegType type) const noexcept
@@ -1341,14 +1367,18 @@ struct SOPP_instruction : public Instruction {
 };
 static_assert(sizeof(SOPP_instruction) == sizeof(Instruction) + 8, "Unexpected padding");
 
-struct SOPC_instruction : public Instruction {};
-static_assert(sizeof(SOPC_instruction) == sizeof(Instruction) + 0, "Unexpected padding");
+struct SOPC_instruction : public Instruction {
+   uint32_t padding;
+};
+static_assert(sizeof(SOPC_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
 
 struct SOP1_instruction : public Instruction {};
 static_assert(sizeof(SOP1_instruction) == sizeof(Instruction) + 0, "Unexpected padding");
 
-struct SOP2_instruction : public Instruction {};
-static_assert(sizeof(SOP2_instruction) == sizeof(Instruction) + 0, "Unexpected padding");
+struct SOP2_instruction : public Instruction {
+   uint32_t padding;
+};
+static_assert(sizeof(SOP2_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
 
 /**
  * Scalar Memory Format:
@@ -1618,7 +1648,7 @@ struct FLAT_instruction : public Instruction {
    bool nv : 1;
    bool disable_wqm : 1; /* Require an exec mask without helper invocations */
    uint8_t padding0 : 2;
-   uint16_t offset; /* Vega/Navi only */
+   int16_t offset; /* Vega/Navi only */
    uint16_t padding1;
 };
 static_assert(sizeof(FLAT_instruction) == sizeof(Instruction) + 8, "Unexpected padding");
@@ -1779,6 +1809,7 @@ aco_opcode get_ordered(aco_opcode op);
 aco_opcode get_unordered(aco_opcode op);
 aco_opcode get_inverse(aco_opcode op);
 aco_opcode get_f32_cmp(aco_opcode op);
+aco_opcode get_vcmpx(aco_opcode op);
 unsigned get_cmp_bitsize(aco_opcode op);
 bool is_cmp(aco_opcode op);
 
@@ -2038,6 +2069,9 @@ struct DeviceInfo {
    bool fused_mad_mix = false;
    bool xnack_enabled = false;
    bool sram_ecc_enabled = false;
+
+   int16_t scratch_global_offset_min;
+   int16_t scratch_global_offset_max;
 };
 
 enum class CompilationProgress {
@@ -2073,7 +2107,6 @@ public:
    bool early_rast = false; /* whether rasterization can start as soon as the 1st DONE pos export */
 
    bool needs_vcc = false;
-   bool needs_flat_scr = false;
 
    CompilationProgress progress;
 
@@ -2173,6 +2206,12 @@ void select_vs_prolog(Program* program, const struct aco_vs_prolog_key* key,
                       const struct aco_shader_info* info,
                       const struct radv_shader_args* args,
                       unsigned* num_preserved_sgprs);
+
+void select_ps_epilog(Program* program, const struct aco_ps_epilog_key* key,
+                      ac_shader_config* config,
+                      const struct aco_compiler_options* options,
+                      const struct aco_shader_info* info,
+                      const struct radv_shader_args* args);
 
 void lower_phis(Program* program);
 void calc_min_waves(Program* program);

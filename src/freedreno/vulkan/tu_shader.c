@@ -1,27 +1,9 @@
 /*
  * Copyright © 2019 Google LLC
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
-#include "tu_private.h"
+#include "tu_shader.h"
 
 #include "spirv/nir_spirv.h"
 #include "util/mesa-sha1.h"
@@ -30,6 +12,10 @@
 #include "vk_util.h"
 
 #include "ir3/ir3_nir.h"
+
+#include "tu_device.h"
+#include "tu_descriptor_set.h"
+#include "tu_pipeline.h"
 
 nir_shader *
 tu_spirv_to_nir(struct tu_device *dev,
@@ -97,7 +83,6 @@ tu_spirv_to_nir(struct tu_device *dev,
 
    struct vk_shader_module *module =
       vk_shader_module_from_handle(stage_info->module);
-   assert(module->size % 4 == 0);
 
    nir_shader *nir;
    VkResult result = vk_shader_module_to_nir(&dev->vk, module,
@@ -129,8 +114,6 @@ tu_spirv_to_nir(struct tu_device *dev,
 
    NIR_PASS_V(nir, nir_lower_system_values);
 
-   NIR_PASS_V(nir, nir_lower_clip_cull_distance_arrays);
-
    NIR_PASS_V(nir, nir_lower_frexp);
 
    ir3_optimize_loop(dev->compiler, nir);
@@ -141,18 +124,31 @@ tu_spirv_to_nir(struct tu_device *dev,
 }
 
 static void
-lower_load_push_constant(nir_builder *b, nir_intrinsic_instr *instr,
-                         struct tu_shader *shader)
+lower_load_push_constant(struct tu_device *dev,
+                         nir_builder *b,
+                         nir_intrinsic_instr *instr,
+                         struct tu_shader *shader,
+                         const struct tu_pipeline_layout *layout)
 {
    uint32_t base = nir_intrinsic_base(instr);
    assert(base % 4 == 0);
-   assert(base >= shader->push_consts.lo * 16);
-   base -= shader->push_consts.lo * 16;
+
+   if (tu6_shared_constants_enable(layout, dev->compiler)) {
+      /* All stages share the same range.  We could potentially add
+       * push_constant_offset to layout and apply it, but this is good for
+       * now.
+       */
+      base += dev->compiler->shared_consts_base_offset * 4;
+   } else {
+      assert(base >= shader->push_consts.lo * 4);
+      base -= shader->push_consts.lo * 4;
+   }
 
    nir_ssa_def *load =
-      nir_load_uniform(b, instr->num_components, instr->dest.ssa.bit_size,
-                       nir_ushr(b, instr->src[0].ssa, nir_imm_int(b, 2)),
-                       .base = base / 4);
+      nir_load_uniform(b, instr->num_components,
+            instr->dest.ssa.bit_size,
+            nir_ushr(b, instr->src[0].ssa, nir_imm_int(b, 2)),
+            .base = base);
 
    nir_ssa_def_rewrite_uses(&instr->dest.ssa, load);
 
@@ -325,7 +321,8 @@ lower_ssbo_ubo_intrinsic(struct tu_device *dev,
 }
 
 static nir_ssa_def *
-build_bindless(nir_builder *b, nir_deref_instr *deref, bool is_sampler,
+build_bindless(struct tu_device *dev, nir_builder *b,
+               nir_deref_instr *deref, bool is_sampler,
                struct tu_shader *shader,
                const struct tu_pipeline_layout *layout)
 {
@@ -337,7 +334,8 @@ build_bindless(nir_builder *b, nir_deref_instr *deref, bool is_sampler,
       &layout->set[set].layout->binding[binding];
 
    /* input attachments use non bindless workaround */
-   if (bind_layout->type == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT) {
+   if (bind_layout->type == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT &&
+       likely(!(dev->instance->debug_flags & TU_DEBUG_DYNAMIC))) {
       const struct glsl_type *glsl_type = glsl_without_array(var->type);
       uint32_t idx = var->data.index * 2;
 
@@ -384,12 +382,12 @@ build_bindless(nir_builder *b, nir_deref_instr *deref, bool is_sampler,
 }
 
 static void
-lower_image_deref(nir_builder *b,
+lower_image_deref(struct tu_device *dev, nir_builder *b,
                   nir_intrinsic_instr *instr, struct tu_shader *shader,
                   const struct tu_pipeline_layout *layout)
 {
    nir_deref_instr *deref = nir_src_as_deref(instr->src[0]);
-   nir_ssa_def *bindless = build_bindless(b, deref, false, shader, layout);
+   nir_ssa_def *bindless = build_bindless(dev, b, deref, false, shader, layout);
    nir_rewrite_image_intrinsic(instr, bindless, true);
 }
 
@@ -401,7 +399,7 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *instr,
 {
    switch (instr->intrinsic) {
    case nir_intrinsic_load_push_constant:
-      lower_load_push_constant(b, instr, shader);
+      lower_load_push_constant(dev, b, instr, shader, layout);
       return true;
 
    case nir_intrinsic_load_vulkan_descriptor:
@@ -450,7 +448,7 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *instr,
    case nir_intrinsic_image_deref_atomic_comp_swap:
    case nir_intrinsic_image_deref_size:
    case nir_intrinsic_image_deref_samples:
-      lower_image_deref(b, instr, shader, layout);
+      lower_image_deref(dev, b, instr, shader, layout);
       return true;
 
    default:
@@ -503,6 +501,19 @@ lower_tex_ycbcr(const struct tu_pipeline_layout *layout,
    uint8_t bits = vk_format_get_component_bits(ycbcr_sampler->format,
                                                UTIL_FORMAT_COLORSPACE_RGB,
                                                PIPE_SWIZZLE_X);
+
+   switch (ycbcr_sampler->format) {
+   case VK_FORMAT_G8B8G8R8_422_UNORM:
+   case VK_FORMAT_B8G8R8G8_422_UNORM:
+   case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM:
+   case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
+      /* util_format_get_component_bits doesn't return what we want */
+      bits = 8;
+      break;
+   default:
+      break;
+   }
+
    uint32_t bpcs[3] = {bits, bits, bits}; /* TODO: use right bpc for each channel ? */
    nir_ssa_def *result = nir_convert_ycbcr_to_rgb(builder,
                                                   ycbcr_sampler->ycbcr_model,
@@ -516,7 +527,7 @@ lower_tex_ycbcr(const struct tu_pipeline_layout *layout,
 }
 
 static bool
-lower_tex(nir_builder *b, nir_tex_instr *tex,
+lower_tex(nir_builder *b, nir_tex_instr *tex, struct tu_device *dev,
           struct tu_shader *shader, const struct tu_pipeline_layout *layout)
 {
    lower_tex_ycbcr(layout, b, tex);
@@ -524,7 +535,7 @@ lower_tex(nir_builder *b, nir_tex_instr *tex,
    int sampler_src_idx = nir_tex_instr_src_index(tex, nir_tex_src_sampler_deref);
    if (sampler_src_idx >= 0) {
       nir_deref_instr *deref = nir_src_as_deref(tex->src[sampler_src_idx].src);
-      nir_ssa_def *bindless = build_bindless(b, deref, true, shader, layout);
+      nir_ssa_def *bindless = build_bindless(dev, b, deref, true, shader, layout);
       nir_instr_rewrite_src(&tex->instr, &tex->src[sampler_src_idx].src,
                             nir_src_for_ssa(bindless));
       tex->src[sampler_src_idx].src_type = nir_tex_src_sampler_handle;
@@ -533,7 +544,7 @@ lower_tex(nir_builder *b, nir_tex_instr *tex,
    int tex_src_idx = nir_tex_instr_src_index(tex, nir_tex_src_texture_deref);
    if (tex_src_idx >= 0) {
       nir_deref_instr *deref = nir_src_as_deref(tex->src[tex_src_idx].src);
-      nir_ssa_def *bindless = build_bindless(b, deref, false, shader, layout);
+      nir_ssa_def *bindless = build_bindless(dev, b, deref, false, shader, layout);
       nir_instr_rewrite_src(&tex->instr, &tex->src[tex_src_idx].src,
                             nir_src_for_ssa(bindless));
       tex->src[tex_src_idx].src_type = nir_tex_src_texture_handle;
@@ -559,7 +570,7 @@ lower_instr(nir_builder *b, nir_instr *instr, void *cb_data)
    b->cursor = nir_before_instr(instr);
    switch (instr->type) {
    case nir_instr_type_tex:
-      return lower_tex(b, nir_instr_as_tex(instr), params->shader, params->layout);
+      return lower_tex(b, nir_instr_as_tex(instr), params->dev, params->shader, params->layout);
    case nir_instr_type_intrinsic:
       return lower_intrinsic(b, nir_instr_as_intrinsic(instr), params->dev, params->shader, params->layout);
    default:
@@ -600,17 +611,21 @@ gather_push_constants(nir_shader *shader, struct tu_shader *tu_shader)
 
    if (min >= max) {
       tu_shader->push_consts.lo = 0;
-      tu_shader->push_consts.count = 0;
+      tu_shader->push_consts.dwords = 0;
       return;
    }
 
-   /* CP_LOAD_STATE OFFSET and NUM_UNIT are in units of vec4 (4 dwords),
-    * however there's an alignment requirement of 4 on OFFSET. Expand the
-    * range and change units accordingly.
+   /* CP_LOAD_STATE OFFSET and NUM_UNIT for SHARED_CONSTS are in units of
+    * dwords while loading regular consts is in units of vec4's.
+    * So we unify the unit here as dwords for tu_push_constant_range, then
+    * we should consider correct unit when emitting.
+    *
+    * Note there's an alignment requirement of 16 dwords on OFFSET. Expand
+    * the range and change units accordingly.
     */
-   tu_shader->push_consts.lo = (min / 16) / 4 * 4;
-   tu_shader->push_consts.count =
-      align(max, 16) / 16 - tu_shader->push_consts.lo;
+   tu_shader->push_consts.lo = (min / 4) / 4 * 4;
+   tu_shader->push_consts.dwords =
+      align(max, 16) / 4 - tu_shader->push_consts.lo;
 }
 
 static bool
@@ -618,7 +633,8 @@ tu_lower_io(nir_shader *shader, struct tu_device *dev,
             struct tu_shader *tu_shader,
             const struct tu_pipeline_layout *layout)
 {
-   gather_push_constants(shader, tu_shader);
+   if (!tu6_shared_constants_enable(layout, dev->compiler))
+      gather_push_constants(shader, tu_shader);
 
    struct lower_instr_params params = {
       .dev = dev,
@@ -810,9 +826,15 @@ tu_shader_create(struct tu_device *dev,
 
    ir3_finalize_nir(dev->compiler, nir);
 
+   uint32_t reserved_consts_vec4 = align(shader->push_consts.dwords, 16) / 4;
+   bool shared_consts_enable = tu6_shared_constants_enable(layout, dev->compiler);
+   if (shared_consts_enable)
+      assert(!shader->push_consts.dwords);
+
    shader->ir3_shader =
       ir3_shader_from_nir(dev->compiler, nir, &(struct ir3_shader_options) {
-                           .reserved_user_consts = align(shader->push_consts.count, 4),
+                           .reserved_user_consts = reserved_consts_vec4,
+                           .shared_consts_enable = shared_consts_enable,
                            .api_wavesize = key->api_wavesize,
                            .real_wavesize = key->real_wavesize,
                           }, &so_info);

@@ -284,6 +284,9 @@ static void r600_set_clip_state(struct pipe_context *ctx,
 	rctx->clip_state.state = *state;
 	r600_mark_atom_dirty(rctx, &rctx->clip_state.atom);
 	rctx->driver_consts[PIPE_SHADER_VERTEX].vs_ucp_dirty = true;
+	rctx->driver_consts[PIPE_SHADER_GEOMETRY].vs_ucp_dirty = true;
+	if (rctx->b.family >= CHIP_CEDAR)
+		rctx->driver_consts[PIPE_SHADER_TESS_EVAL].vs_ucp_dirty = true;
 }
 
 static void r600_set_stencil_ref(struct pipe_context *ctx,
@@ -994,7 +997,7 @@ struct r600_pipe_shader_selector *r600_create_shader_state_tokens(struct pipe_co
 			ir = PIPE_SHADER_IR_TGSI;
 			tgsi_scan_shader(sel->tokens, &sel->info);
 		} else {
-			sel->nir = nir_shader_clone(NULL, s);
+			sel->nir = s;
 			nir_tgsi_scan_shader(sel->nir, &sel->info, true);
 		}
 	}
@@ -1014,7 +1017,7 @@ static void *r600_create_shader_state(struct pipe_context *ctx,
 	else if (state->type == PIPE_SHADER_IR_NIR) {
 		sel = r600_create_shader_state_tokens(ctx, state->ir.nir, state->type, pipe_shader_type);
 	} else
-		assert(0 && "Unknown shader type\n");
+		unreachable("Unknown shader type");
 	
 	sel->so = state->stream_output;
 
@@ -1350,6 +1353,12 @@ void r600_update_driver_const_buffers(struct r600_context *rctx, bool compute_on
 	start = compute_only ? PIPE_SHADER_COMPUTE : 0;
 	end = compute_only ? PIPE_SHADER_TYPES : PIPE_SHADER_COMPUTE;
 
+	int last_vertex_stage = PIPE_SHADER_VERTEX;
+	if (rctx->tes_shader)
+		last_vertex_stage = PIPE_SHADER_TESS_EVAL;
+	if (rctx->gs_shader)
+		last_vertex_stage  = PIPE_SHADER_GEOMETRY;
+
 	for (sh = start; sh < end; sh++) {
 		struct r600_shader_driver_constants_info *info = &rctx->driver_consts[sh];
 		if (!info->vs_ucp_dirty &&
@@ -1362,7 +1371,9 @@ void r600_update_driver_const_buffers(struct r600_context *rctx, bool compute_on
 		ptr = info->constants;
 		size = info->alloc_size;
 		if (info->vs_ucp_dirty) {
-			assert(sh == PIPE_SHADER_VERTEX);
+			assert(sh == PIPE_SHADER_VERTEX ||
+			       sh == PIPE_SHADER_GEOMETRY ||
+			       sh == PIPE_SHADER_TESS_EVAL);
 			if (!size) {
 				ptr = rctx->clip_state.state.ucp;
 				size = R600_UCP_SIZE;
@@ -1411,7 +1422,7 @@ void r600_update_driver_const_buffers(struct r600_context *rctx, bool compute_on
 		if (info->texture_const_dirty) {
 			assert (ptr);
 			assert (size);
-			if (sh == PIPE_SHADER_VERTEX)
+			if (sh == last_vertex_stage)
 				memcpy(ptr, rctx->clip_state.state.ucp, R600_UCP_SIZE);
 			if (sh == PIPE_SHADER_FRAGMENT)
 				memcpy(ptr, rctx->sample_positions, R600_UCP_SIZE);
@@ -2787,8 +2798,6 @@ uint32_t r600_translate_texformat(struct pipe_screen *screen,
 		format = PIPE_FORMAT_A4R4_UNORM;
 
 	desc = util_format_description(format);
-	if (!desc)
-		goto out_unknown;
 
 	/* Depth and stencil swizzling is handled separately. */
 	if (desc->colorspace != UTIL_FORMAT_COLORSPACE_ZS) {
@@ -3154,8 +3163,6 @@ uint32_t r600_translate_colorformat(enum amd_gfx_level chip, enum pipe_format fo
 	const struct util_format_description *desc = util_format_description(format);
 	int channel = util_format_get_first_non_void_channel(format);
 	bool is_float;
-	if (!desc)
-		return ~0U;
 
 #define HAS_SIZE(x,y,z,w) \
 	(desc->channel[0].size == (x) && desc->channel[1].size == (y) && \

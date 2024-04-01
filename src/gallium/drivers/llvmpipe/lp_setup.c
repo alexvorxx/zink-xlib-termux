@@ -212,11 +212,6 @@ lp_setup_rasterize_scene(struct lp_setup_context *setup)
 
    lp_scene_end_binning(scene);
 
-   lp_fence_reference(&setup->last_fence, scene->fence);
-
-   if (setup->last_fence)
-      setup->last_fence->issued = TRUE;
-
    mtx_lock(&screen->rast_mutex);
    lp_rast_queue_scene(screen->rast, scene);
    mtx_unlock(&screen->rast_mutex);
@@ -393,16 +388,9 @@ fail:
 
 void
 lp_setup_flush(struct lp_setup_context *setup,
-               struct pipe_fence_handle **fence,
                const char *reason)
 {
    set_scene_state(setup, SETUP_FLUSHED, reason);
-
-   if (fence) {
-      lp_fence_reference((struct lp_fence **)fence, setup->last_fence);
-      if (!*fence)
-         *fence = (struct pipe_fence_handle *)lp_fence_create(0);
-   }
 }
 
 
@@ -571,7 +559,7 @@ lp_setup_clear(struct lp_setup_context *setup,
    if (flags & PIPE_CLEAR_DEPTHSTENCIL) {
       unsigned flagszs = flags & PIPE_CLEAR_DEPTHSTENCIL;
       if (!lp_setup_try_clear_zs(setup, depth, stencil, flagszs)) {
-         lp_setup_flush(setup, NULL, __FUNCTION__);
+         set_scene_state( setup, SETUP_FLUSHED, __FUNCTION__ );
 
          if (!lp_setup_try_clear_zs(setup, depth, stencil, flagszs))
             assert(0);
@@ -583,7 +571,7 @@ lp_setup_clear(struct lp_setup_context *setup,
       for (unsigned i = 0; i < setup->fb.nr_cbufs; i++) {
          if ((flags & (1 << (2 + i))) && setup->fb.cbufs[i]) {
             if (!lp_setup_try_clear_color_buffer(setup, color, i)) {
-               lp_setup_flush(setup, NULL, __FUNCTION__);
+               set_scene_state( setup, SETUP_FLUSHED, __FUNCTION__ );
 
                if (!lp_setup_try_clear_color_buffer(setup, color, i))
                   assert(0);
@@ -595,60 +583,34 @@ lp_setup_clear(struct lp_setup_context *setup,
 
 
 void
-lp_setup_set_triangle_state(struct lp_setup_context *setup,
-                            unsigned cull_mode,
-                            boolean ccw_is_frontface,
-                            boolean scissor,
-                            boolean half_pixel_center,
-                            boolean bottom_edge_rule,
-                            boolean multisample)
+lp_setup_bind_rasterizer( struct lp_setup_context *setup,
+                          const struct pipe_rasterizer_state *rast)
 {
    LP_DBG(DEBUG_SETUP, "%s\n", __FUNCTION__);
 
-   setup->ccw_is_frontface = ccw_is_frontface;
-   setup->cullmode = cull_mode;
+   setup->ccw_is_frontface = rast->front_ccw;
+   setup->cullmode = rast->cull_face;
    setup->triangle = first_triangle;
    setup->rect = first_rectangle;
-   setup->multisample = multisample;
-   setup->pixel_offset = half_pixel_center ? 0.5f : 0.0f;
-   setup->bottom_edge_rule = bottom_edge_rule;
+   setup->multisample = rast->multisample;
+   setup->pixel_offset = rast->half_pixel_center ? 0.5f : 0.0f;
+   setup->bottom_edge_rule = rast->bottom_edge_rule;
 
-   if (setup->scissor_test != scissor) {
+   if (setup->scissor_test != rast->scissor) {
       setup->dirty |= LP_SETUP_NEW_SCISSOR;
-      setup->scissor_test = scissor;
+      setup->scissor_test = rast->scissor;
    }
-}
 
+   setup->flatshade_first = rast->flatshade_first;
+   setup->line_width = rast->line_width;
+   setup->rectangular_lines = rast->line_rectangular;
 
-void
-lp_setup_set_line_state(struct lp_setup_context *setup,
-                        float line_width,
-                        boolean line_rectangular)
-{
-   LP_DBG(DEBUG_SETUP, "%s\n", __FUNCTION__);
-
-   setup->line_width = line_width;
-   setup->rectangular_lines = line_rectangular;
-}
-
-
-void
-lp_setup_set_point_state(struct lp_setup_context *setup,
-                         float point_size,
-                         boolean point_tri_clip,
-                         boolean point_size_per_vertex,
-                         uint sprite_coord_enable,
-                         uint sprite_coord_origin,
-                         boolean point_quad_rasterization)
-{
-   LP_DBG(DEBUG_SETUP, "%s\n", __FUNCTION__);
-
-   setup->point_size = point_size;
-   setup->sprite_coord_enable = sprite_coord_enable;
-   setup->sprite_coord_origin = sprite_coord_origin;
-   setup->point_tri_clip = point_tri_clip;
-   setup->point_size_per_vertex = point_size_per_vertex;
-   setup->legacy_points = !point_quad_rasterization;
+   setup->point_size = rast->point_size;
+   setup->sprite_coord_enable = rast->sprite_coord_enable;
+   setup->sprite_coord_origin = rast->sprite_coord_mode;
+   setup->point_tri_clip = rast->point_size_per_vertex;
+   setup->point_size_per_vertex = rast->point_size_per_vertex;
+   setup->legacy_points = !rast->point_quad_rasterization && !setup->multisample;
 }
 
 
@@ -657,6 +619,7 @@ lp_setup_set_setup_variant(struct lp_setup_context *setup,
                            const struct lp_setup_variant *variant)
 {
    LP_DBG(DEBUG_SETUP, "%s\n", __FUNCTION__);
+
    setup->setup.variant = variant;
 }
 
@@ -865,14 +828,6 @@ lp_setup_set_sample_mask(struct lp_setup_context *setup,
       setup->fs.current.jit_context.sample_mask = sample_mask;
       setup->dirty |= LP_SETUP_NEW_FS;
    }
-}
-
-
-void
-lp_setup_set_flatshade_first(struct lp_setup_context *setup,
-                             boolean flatshade_first)
-{
-   setup->flatshade_first = flatshade_first;
 }
 
 
@@ -1322,19 +1277,19 @@ try_update_scene_state(struct lp_setup_context *setup)
                setup->constants[i].stored_size = current_size;
                setup->constants[i].stored_data = stored;
             }
-            setup->fs.current.jit_context.constants[i] =
+            setup->fs.current.jit_context.constants[i].f =
                setup->constants[i].stored_data;
          }
          else {
             setup->constants[i].stored_size = 0;
             setup->constants[i].stored_data = NULL;
-            setup->fs.current.jit_context.constants[i] = fake_const_buf;
+            setup->fs.current.jit_context.constants[i].f = fake_const_buf;
          }
 
          const int num_constants =
             DIV_ROUND_UP(setup->constants[i].stored_size,
                          lp_get_constant_buffer_stride(scene->pipe->screen));
-         setup->fs.current.jit_context.num_constants[i] = num_constants;
+         setup->fs.current.jit_context.constants[i].num_elements = num_constants;
          setup->dirty |= LP_SETUP_NEW_FS;
       }
    }
@@ -1351,13 +1306,13 @@ try_update_scene_state(struct lp_setup_context *setup)
          if (current_data) {
             current_data += setup->ssbos[i].current.buffer_offset;
 
-            setup->fs.current.jit_context.ssbos[i] =
+            setup->fs.current.jit_context.ssbos[i].u =
                (const uint32_t *)current_data;
-            setup->fs.current.jit_context.num_ssbos[i] =
+            setup->fs.current.jit_context.ssbos[i].num_elements =
                setup->ssbos[i].current.buffer_size;
          } else {
-            setup->fs.current.jit_context.ssbos[i] = NULL;
-            setup->fs.current.jit_context.num_ssbos[i] = 0;
+            setup->fs.current.jit_context.ssbos[i].u = NULL;
+            setup->fs.current.jit_context.ssbos[i].num_elements = 0;
          }
          setup->dirty |= LP_SETUP_NEW_FS;
       }
@@ -1594,7 +1549,6 @@ lp_setup_destroy(struct lp_setup_context *setup)
 
    LP_DBG(DEBUG_SETUP, "number of scenes used: %d\n", setup->num_active_scenes);
    slab_destroy(&setup->scene_slab);
-   lp_fence_reference(&setup->last_fence, NULL);
 
    FREE(setup);
 }
@@ -1759,7 +1713,8 @@ lp_setup_end_query(struct lp_setup_context *setup, struct llvmpipe_query *pq)
       }
    }
    else {
-      lp_fence_reference(&pq->fence, setup->last_fence);
+      struct llvmpipe_screen *screen = llvmpipe_screen(setup->pipe->screen);
+      lp_rast_fence(screen->rast, &pq->fence);
    }
 
 fail:

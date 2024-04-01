@@ -267,22 +267,17 @@ static EGLBoolean
 _eglSetFuncName(const char *funcName, _EGLDisplay *disp, EGLenum objectType, _EGLResource *object)
 {
    _EGLThreadInfo *thr = _eglGetCurrentThread();
-   if (!_eglIsCurrentThreadDummy()) {
-      thr->CurrentFuncName = funcName;
-      thr->CurrentObjectLabel = NULL;
+   thr->CurrentFuncName = funcName;
+   thr->CurrentObjectLabel = NULL;
 
-      if (objectType == EGL_OBJECT_THREAD_KHR)
-         thr->CurrentObjectLabel = thr->Label;
-      else if (objectType == EGL_OBJECT_DISPLAY_KHR && disp)
-         thr->CurrentObjectLabel = disp->Label;
-      else if (object)
-         thr->CurrentObjectLabel = object->Label;
+   if (objectType == EGL_OBJECT_THREAD_KHR)
+      thr->CurrentObjectLabel = thr->Label;
+   else if (objectType == EGL_OBJECT_DISPLAY_KHR && disp)
+      thr->CurrentObjectLabel = disp->Label;
+   else if (object)
+      thr->CurrentObjectLabel = object->Label;
 
-      return EGL_TRUE;
-   }
-
-   _eglDebugReport(EGL_BAD_ALLOC, funcName, EGL_DEBUG_MSG_CRITICAL_KHR, NULL);
-   return EGL_FALSE;
+   return EGL_TRUE;
 }
 
 #define _EGL_FUNC_START(disp, objectType, object, ret) \
@@ -495,6 +490,7 @@ _eglCreateExtensionsString(_EGLDisplay *disp)
    _EGL_CHECK_EXTENSION(ANDROID_recordable);
 
    _EGL_CHECK_EXTENSION(CHROMIUM_sync_control);
+   _EGL_CHECK_EXTENSION(ANGLE_sync_control_rate);
 
    _EGL_CHECK_EXTENSION(EXT_buffer_age);
    _EGL_CHECK_EXTENSION(EXT_create_context_robustness);
@@ -1645,8 +1641,7 @@ eglGetError(void)
 {
    _EGLThreadInfo *t = _eglGetCurrentThread();
    EGLint e = t->LastError;
-   if (!_eglIsCurrentThreadDummy())
-      t->LastError = EGL_SUCCESS;
+   t->LastError = EGL_SUCCESS;
    return e;
 }
 
@@ -1674,8 +1669,6 @@ eglBindAPI(EGLenum api)
    _EGL_FUNC_START(NULL, EGL_OBJECT_THREAD_KHR, NULL, EGL_FALSE);
 
    t = _eglGetCurrentThread();
-   if (_eglIsCurrentThreadDummy())
-      RETURN_EGL_ERROR(NULL, EGL_BAD_ALLOC, EGL_FALSE);
 
    if (!_eglIsApiValid(api))
       RETURN_EGL_ERROR(NULL, EGL_BAD_PARAMETER, EGL_FALSE);
@@ -1723,19 +1716,17 @@ EGLBoolean EGLAPIENTRY
 eglReleaseThread(void)
 {
    /* unbind current contexts */
-   if (!_eglIsCurrentThreadDummy()) {
-      _EGLThreadInfo *t = _eglGetCurrentThread();
-      _EGLContext *ctx = t->CurrentContext;
+   _EGLThreadInfo *t = _eglGetCurrentThread();
+   _EGLContext *ctx = t->CurrentContext;
 
-      _EGL_FUNC_START(NULL, EGL_OBJECT_THREAD_KHR, NULL, EGL_FALSE);
+   _EGL_FUNC_START(NULL, EGL_OBJECT_THREAD_KHR, NULL, EGL_FALSE);
 
-      if (ctx) {
-         _EGLDisplay *disp = ctx->Resource.Display;
+   if (ctx) {
+      _EGLDisplay *disp = ctx->Resource.Display;
 
-         mtx_lock(&disp->Mutex);
-         (void) disp->Driver->MakeCurrent(disp, NULL, NULL, NULL);
-         mtx_unlock(&disp->Mutex);
-      }
+      mtx_lock(&disp->Mutex);
+      (void) disp->Driver->MakeCurrent(disp, NULL, NULL, NULL);
+      mtx_unlock(&disp->Mutex);
    }
 
    _eglDestroyCurrentThread();
@@ -2380,6 +2371,28 @@ eglGetSyncValuesCHROMIUM(EGLDisplay dpy, EGLSurface surface,
 }
 
 static EGLBoolean EGLAPIENTRY
+eglGetMscRateANGLE(EGLDisplay dpy, EGLSurface surface,
+                    EGLint *numerator, EGLint *denominator)
+{
+   _EGLDisplay *disp = _eglLockDisplay(dpy);
+   _EGLSurface *surf = _eglLookupSurface(surface, disp);
+   EGLBoolean ret;
+
+   _EGL_FUNC_START(disp, EGL_OBJECT_SURFACE_KHR, surf, EGL_FALSE);
+
+   _EGL_CHECK_SURFACE(disp, surf, EGL_FALSE);
+   if (!disp->Extensions.ANGLE_sync_control_rate)
+      RETURN_EGL_EVAL(disp, EGL_FALSE);
+
+   if (!numerator || !denominator)
+      RETURN_EGL_ERROR(disp, EGL_BAD_PARAMETER, EGL_FALSE);
+
+   ret = disp->Driver->GetMscRateANGLE(disp, surf, numerator, denominator);
+
+   RETURN_EGL_EVAL(disp, ret);
+}
+
+static EGLBoolean EGLAPIENTRY
 eglExportDMABUFImageQueryMESA(EGLDisplay dpy, EGLImage image,
                               EGLint *fourcc, EGLint *nplanes,
                               EGLuint64KHR *modifiers)
@@ -2434,12 +2447,8 @@ eglLabelObjectKHR(EGLDisplay dpy, EGLenum objectType, EGLObjectKHR object,
    if (objectType == EGL_OBJECT_THREAD_KHR) {
       _EGLThreadInfo *t = _eglGetCurrentThread();
 
-      if (!_eglIsCurrentThreadDummy()) {
-         t->Label = label;
-         return EGL_SUCCESS;
-      }
-
-      RETURN_EGL_ERROR(NULL, EGL_BAD_ALLOC, EGL_BAD_ALLOC);
+     t->Label = label;
+     return EGL_SUCCESS;
    }
 
    disp = _eglLockDisplay(dpy);

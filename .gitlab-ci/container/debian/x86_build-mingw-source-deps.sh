@@ -5,7 +5,7 @@ mkdir -p ~/tmp
 pushd ~/tmp
 
 # Building DirectX-Headers
-git clone https://github.com/microsoft/DirectX-Headers -b mesa-mingw --depth 1
+git clone https://github.com/microsoft/DirectX-Headers -b v1.606.3 --depth 1
 mkdir -p DirectX-Headers/build
 pushd DirectX-Headers/build
 meson .. \
@@ -55,7 +55,7 @@ cmake ../llvm \
 -DLLVM_ENABLE_RTTI=ON \
 -DCROSS_TOOLCHAIN_FLAGS_NATIVE=-DLLVM_EXTERNAL_SPIRV_HEADERS_SOURCE_DIR=$PWD/../../SPIRV-Tools/external/SPIRV-Headers \
 -DLLVM_EXTERNAL_SPIRV_HEADERS_SOURCE_DIR=$PWD/../../SPIRV-Tools/external/SPIRV-Headers \
--DLLVM_ENABLE_PROJECTS="clang;lld" \
+-DLLVM_ENABLE_PROJECTS="clang" \
 -DLLVM_TARGETS_TO_BUILD="AMDGPU;X86" \
 -DLLVM_OPTIMIZED_TABLEGEN=TRUE \
 -DLLVM_ENABLE_ASSERTIONS=TRUE \

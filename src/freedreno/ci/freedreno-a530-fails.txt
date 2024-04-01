@@ -44,6 +44,7 @@ dEQP-GLES3.functional.fbo.msaa.4_samples.depth24_stencil8,Fail
 dEQP-GLES3.functional.fbo.msaa.4_samples.depth32f_stencil8,Fail
 dEQP-GLES3.functional.fbo.msaa.4_samples.stencil_index8,Fail
 dEQP-GLES3.functional.polygon_offset.float32_displacement_with_units,Fail
+dEQP-GLES3.functional.shaders.builtin_variable.vertex_id,Fail
 dEQP-GLES3.functional.shaders.texture_functions.texturegradoffset.sampler2darray_fixed_vertex,Fail
 dEQP-GLES3.functional.shaders.texture_functions.texturegradoffset.sampler2dshadow_vertex,Fail
 dEQP-GLES3.functional.shaders.texture_functions.texturegradoffset.sampler3d_fixed_vertex,Fail
@@ -55,6 +56,7 @@ dEQP-GLES3.functional.shaders.texture_functions.textureprojgrad.sampler2dshadow_
 dEQP-GLES3.functional.texture.specification.texstorage3d.size.3d_2x2x2_2_levels,Fail
 
 # MESA: error: ir3_ra() failed!
+dEQP-GLES31.functional.atomic_counter.inc_dec.8_counters_5_calls_1_thread,Fail
 dEQP-GLES31.functional.atomic_counter.get_dec.8_counters_5_calls_10_threads,Fail
 dEQP-GLES31.functional.atomic_counter.get_dec.8_counters_5_calls_1_thread,Fail
 dEQP-GLES31.functional.atomic_counter.get_inc.8_counters_5_calls_10_threads,Fail
@@ -64,6 +66,7 @@ dEQP-GLES31.functional.atomic_counter.get_inc_dec.4_counters_5_calls_1_thread,Fa
 dEQP-GLES31.functional.atomic_counter.get_inc_dec.8_counters_5_calls_10_threads,Fail
 dEQP-GLES31.functional.atomic_counter.get_inc_dec.8_counters_5_calls_1_thread,Fail
 dEQP-GLES31.functional.atomic_counter.inc_dec.8_counters_5_calls_10_threads,Fail
+dEQP-GLES31.functional.atomic_counter.layout.default_offset_set.get_inc.8_counters_5_calls_1_thread,Fail
 dEQP-GLES31.functional.atomic_counter.layout.default_offset_set.get_dec.8_counters_5_calls_1000_threads,Fail
 dEQP-GLES31.functional.atomic_counter.layout.default_offset_set.get_dec.8_counters_5_calls_1_thread,Fail
 dEQP-GLES31.functional.atomic_counter.layout.default_offset_set.inc_dec.8_counters_5_calls_1000_threads,Fail
@@ -83,9 +86,6 @@ dEQP-GLES31.functional.atomic_counter.layout.reverse_offset.get_inc.8_counters_5
 dEQP-GLES31.functional.atomic_counter.layout.reverse_offset.get_inc.8_counters_5_calls_1_thread,Fail
 dEQP-GLES31.functional.atomic_counter.layout.reverse_offset.inc_dec.8_counters_5_calls_1000_threads,Fail
 dEQP-GLES31.functional.atomic_counter.layout.reverse_offset.inc_dec.8_counters_5_calls_1_thread,Fail
-
-dEQP-GLES31.functional.compute.basic.image_atomic_op_local_size_1,Crash
-dEQP-GLES31.functional.compute.basic.image_atomic_op_local_size_8,Crash
 
 dEQP-GLES31.functional.draw_base_vertex.draw_elements_base_vertex.builtin_variable.vertex_id,Fail
 dEQP-GLES31.functional.draw_base_vertex.draw_elements_instanced_base_vertex.builtin_variable.vertex_id,Fail
@@ -595,8 +595,6 @@ KHR-GLES3.texture_repeat_mode.rgba32ui_49x23_2_mirrored_repeat,Fail
 KHR-GLES3.texture_repeat_mode.rgba32ui_49x23_2_repeat,Fail
 
 glx@glx-multithread-buffer,Fail
-glx@glx-make-current,Crash
-glx@glx-multi-window-single-context,Fail
 glx@glx-swap-pixmap-bad,Fail
 glx@glx-tfp,Fail
 glx@glx-visuals-depth -pixmap,Crash

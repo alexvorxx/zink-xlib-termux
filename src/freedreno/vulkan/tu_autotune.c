@@ -1,31 +1,15 @@
 /*
  * Copyright © 2021 Igalia S.L.
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
-#include <vulkan/vulkan_core.h>
-
 #include "tu_autotune.h"
-#include "tu_private.h"
+
+#include "tu_cmd_buffer.h"
 #include "tu_cs.h"
+#include "tu_device.h"
+#include "tu_image.h"
+#include "tu_pass.h"
 
 /* How does it work?
  *
@@ -151,9 +135,9 @@ hash_renderpass_instance(const struct tu_render_pass *pass,
    for (unsigned i = 0; i < pass->attachment_count; i++) {
       APPEND_TO_HASH(&hash_state, cmd->state.attachments[i]->view.width);
       APPEND_TO_HASH(&hash_state, cmd->state.attachments[i]->view.height);
-      APPEND_TO_HASH(&hash_state, cmd->state.attachments[i]->image->vk_format);
-      APPEND_TO_HASH(&hash_state, cmd->state.attachments[i]->image->layer_count);
-      APPEND_TO_HASH(&hash_state, cmd->state.attachments[i]->image->level_count);
+      APPEND_TO_HASH(&hash_state, cmd->state.attachments[i]->image->vk.format);
+      APPEND_TO_HASH(&hash_state, cmd->state.attachments[i]->image->vk.array_layers);
+      APPEND_TO_HASH(&hash_state, cmd->state.attachments[i]->image->vk.mip_levels);
    }
 
    APPEND_TO_HASH(&hash_state, pass->subpass_count);
@@ -480,7 +464,7 @@ fallback_use_bypass(const struct tu_render_pass *pass,
                     const struct tu_framebuffer *framebuffer,
                     const struct tu_cmd_buffer *cmd_buffer)
 {
-   if (cmd_buffer->state.drawcall_count > 5)
+   if (cmd_buffer->state.rp.drawcall_count > 5)
       return false;
 
    for (unsigned i = 0; i < pass->subpass_count; i++) {
@@ -504,12 +488,12 @@ estimate_drawcall_bandwidth(const struct tu_cmd_buffer *cmd,
 {
    const struct tu_cmd_state *state = &cmd->state;
 
-   if (!state->drawcall_count)
+   if (!state->rp.drawcall_count)
       return 0;
 
    /* sample count times drawcall_bandwidth_per_sample */
    return (uint64_t)avg_renderpass_sample_count *
-      state->drawcall_bandwidth_per_sample_sum / state->drawcall_count;
+      state->rp.drawcall_bandwidth_per_sample_sum / state->rp.drawcall_count;
 }
 
 bool
@@ -583,12 +567,12 @@ tu_autotune_use_bypass(struct tu_autotune *at,
       if (TU_AUTOTUNE_DEBUG_LOG) {
          const VkExtent2D *extent = &cmd_buffer->state.render_area.extent;
          const float drawcall_bandwidth_per_sample =
-            (float)cmd_buffer->state.drawcall_bandwidth_per_sample_sum /
-            cmd_buffer->state.drawcall_count;
+            (float)cmd_buffer->state.rp.drawcall_bandwidth_per_sample_sum /
+            cmd_buffer->state.rp.drawcall_count;
 
          mesa_logi("autotune %016" PRIx64 ":%u selecting %s",
                renderpass_key,
-               cmd_buffer->state.drawcall_count,
+               cmd_buffer->state.rp.drawcall_count,
                select_sysmem ? "sysmem" : "gmem");
          mesa_logi("   avg_samples=%u, draw_bandwidth_per_sample=%.2f, total_draw_call_bandwidth=%" PRIu64,
                avg_samples,

@@ -355,7 +355,7 @@ struct intel_device_info
     * SKL (or scale factor of 83.33333333) and a frequency of 19200000Hz for
     * BXT.
     *
-    * For simplicty to fit with the current code scaling by a single constant
+    * For simplicity to fit with the current code scaling by a single constant
     * to map from raw timestamps to nanoseconds we now do the conversion in
     * floating point instead of integer arithmetic.
     *
@@ -400,7 +400,7 @@ struct intel_device_info
          struct {
             uint64_t size;
             uint64_t free;
-         } mappable;
+         } mappable, unmappable;
       } sram, vram;
    } mem;
    /** @} */
@@ -488,6 +488,12 @@ intel_device_info_timebase_scale(const struct intel_device_info *devinfo,
    uint64_t upper_scaled_ts = upper_ts * 1000000000ull / devinfo->timestamp_frequency;
    uint64_t lower_scaled_ts = lower_ts * 1000000000ull / devinfo->timestamp_frequency;
    return (upper_scaled_ts << 32) + lower_scaled_ts;
+}
+
+static inline bool
+intel_vram_all_mappable(const struct intel_device_info *devinfo)
+{
+   return devinfo->mem.vram.unmappable.size == 0;
 }
 
 bool intel_get_device_info_from_fd(int fh, struct intel_device_info *devinfo);

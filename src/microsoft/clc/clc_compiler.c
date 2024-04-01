@@ -856,7 +856,7 @@ clc_spirv_to_dxil(struct clc_libclc *lib,
          NIR_PASS(progress, nir, nir_lower_var_copies);
          NIR_PASS(progress, nir, nir_lower_vars_to_ssa);
          NIR_PASS(progress, nir, nir_opt_algebraic);
-         NIR_PASS(progress, nir, nir_opt_if, true);
+         NIR_PASS(progress, nir, nir_opt_if, nir_opt_if_aggressive_last_continue | nir_opt_if_optimize_phi_true_false);
          NIR_PASS(progress, nir, nir_opt_dead_cf);
          NIR_PASS(progress, nir, nir_opt_remove_phis);
          NIR_PASS(progress, nir, nir_opt_peephole_select, 8, true, true);
@@ -868,18 +868,6 @@ clc_spirv_to_dxil(struct clc_libclc *lib,
 
    dxil_wrap_sampler_state int_sampler_states[PIPE_MAX_SHADER_SAMPLER_VIEWS] = { {{0}} };
    unsigned sampler_id = 0;
-
-   struct exec_list inline_samplers_list;
-   exec_list_make_empty(&inline_samplers_list);
-
-   // Move inline samplers to the end of the uniforms list
-   nir_foreach_variable_with_modes_safe(var, nir, nir_var_uniform) {
-      if (glsl_type_is_sampler(var->type) && var->data.sampler.is_inline_sampler) {
-         exec_node_remove(&var->node);
-         exec_list_push_tail(&inline_samplers_list, &var->node);
-      }
-   }
-   exec_node_insert_list_after(exec_list_get_tail(&nir->variables), &inline_samplers_list);
 
    NIR_PASS_V(nir, nir_lower_variable_initializers, ~(nir_var_function_temp | nir_var_shader_temp));
 
@@ -976,9 +964,10 @@ clc_spirv_to_dxil(struct clc_libclc *lib,
       metadata->kernel_inputs_buf_size += metadata->args[i].size;
    }
 
-   // Before removing dead uniforms, dedupe constant samplers to make more dead uniforms
-   NIR_PASS_V(nir, clc_nir_dedupe_const_samplers);
-   NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_uniform | nir_var_mem_ubo | nir_var_mem_constant | nir_var_function_temp, NULL);
+   // Before removing dead uniforms, dedupe inline samplers to make more dead uniforms
+   NIR_PASS_V(nir, nir_dedup_inline_samplers);
+   NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_uniform | nir_var_mem_ubo |
+              nir_var_mem_constant | nir_var_function_temp | nir_var_image, NULL);
 
    // Fill out inline sampler metadata, now that they've been deduped and dead ones removed
    nir_foreach_variable_with_modes(var, nir, nir_var_uniform) {
@@ -1112,6 +1101,8 @@ clc_spirv_to_dxil(struct clc_libclc *lib,
       .disable_math_refactoring = true,
       .num_kernel_globals = num_global_inputs,
       .environment = DXIL_ENVIRONMENT_CL,
+      .shader_model_max = SHADER_MODEL_6_2,
+      .validator_version_max = DXIL_VALIDATOR_1_4,
    };
 
    for (unsigned i = 0; i < out_dxil->kernel->num_args; i++) {
@@ -1152,8 +1143,11 @@ clc_spirv_to_dxil(struct clc_libclc *lib,
       goto err_free_dxil;
    }
 
+   struct dxil_logger dxil_logger = {.priv = logger->priv,
+                                     .log = logger->error};
+
    struct blob tmp;
-   if (!nir_to_dxil(nir, &opts, &tmp)) {
+   if (!nir_to_dxil(nir, &opts, &dxil_logger, &tmp)) {
       debug_printf("D3D12: nir_to_dxil failed\n");
       goto err_free_dxil;
    }

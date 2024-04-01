@@ -31,7 +31,6 @@ EXT(ANGLE_pack_reverse_row_order            , dummy_true                        
 EXT(ANGLE_texture_compression_dxt3          , ANGLE_texture_compression_dxt          , GLL, GLC, ES1, ES2, 2011)
 EXT(ANGLE_texture_compression_dxt5          , ANGLE_texture_compression_dxt          , GLL, GLC, ES1, ES2, 2011)
 
-EXT(APPLE_object_purgeable                  , APPLE_object_purgeable                 , GLL, GLC,  x ,  x , 2006)
 EXT(APPLE_packed_pixels                     , dummy_true                             , GLL,  x ,  x ,  x , 2002)
 EXT(APPLE_texture_max_level                 , dummy_true                             ,  x ,  x , ES1, ES2, 2009)
 
@@ -471,7 +470,7 @@ EXT(OES_stencil_wrap                        , dummy_true                        
 EXT(OES_surfaceless_context                 , dummy_true                             ,  x ,  x , ES1, ES2, 2012)
 EXT(OES_tessellation_point_size             , ARB_tessellation_shader                ,  x ,  x ,  x ,  31, 2014)
 EXT(OES_tessellation_shader                 , ARB_tessellation_shader                ,  x ,  x ,  x ,  31, 2014)
-EXT(OES_texture_3D                          , dummy_true                             ,  x ,  x ,  x , ES2, 2005)
+EXT(OES_texture_3D                          , OES_texture_3D                         ,  x ,  x ,  x , ES2, 2005)
 EXT(OES_texture_border_clamp                , dummy_true                             ,  x ,  x ,  x , ES2, 2014)
 EXT(OES_texture_buffer                      , OES_texture_buffer                     ,  x ,  x ,  x ,  31, 2014)
 EXT(OES_texture_compression_astc            , OES_texture_compression_astc           ,  x ,  x , ES1, ES2, 2015)

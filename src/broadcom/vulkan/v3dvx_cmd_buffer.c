@@ -23,6 +23,7 @@
 
 #include "v3dv_private.h"
 #include "broadcom/common/v3d_macros.h"
+#include "broadcom/common/v3d_util.h"
 #include "broadcom/cle/v3dx_pack.h"
 #include "broadcom/compiler/v3d_compiler.h"
 
@@ -2106,36 +2107,16 @@ v3dX(cmd_buffer_emit_gl_shader_state)(struct v3dv_cmd_buffer *cmd_buffer)
       }
    }
 
+   /* Clearing push constants and descriptor sets for all stages is not quite
+    * correct (some shader stages may not be used at all or they may not be
+    * consuming push constants), however this is not relevant because if we
+    * bind a different pipeline we always have to rebuild the uniform streams.
+    */
    cmd_buffer->state.dirty &= ~(V3DV_CMD_DIRTY_VERTEX_BUFFER |
                                 V3DV_CMD_DIRTY_DESCRIPTOR_SETS |
                                 V3DV_CMD_DIRTY_PUSH_CONSTANTS);
    cmd_buffer->state.dirty_descriptor_stages &= ~VK_SHADER_STAGE_ALL_GRAPHICS;
    cmd_buffer->state.dirty_push_constants_stages &= ~VK_SHADER_STAGE_ALL_GRAPHICS;
-}
-
-/* FIXME: C&P from v3dx_draw. Refactor to common place? */
-static uint32_t
-v3d_hw_prim_type(enum pipe_prim_type prim_type)
-{
-   switch (prim_type) {
-   case PIPE_PRIM_POINTS:
-   case PIPE_PRIM_LINES:
-   case PIPE_PRIM_LINE_LOOP:
-   case PIPE_PRIM_LINE_STRIP:
-   case PIPE_PRIM_TRIANGLES:
-   case PIPE_PRIM_TRIANGLE_STRIP:
-   case PIPE_PRIM_TRIANGLE_FAN:
-      return prim_type;
-
-   case PIPE_PRIM_LINES_ADJACENCY:
-   case PIPE_PRIM_LINE_STRIP_ADJACENCY:
-   case PIPE_PRIM_TRIANGLES_ADJACENCY:
-   case PIPE_PRIM_TRIANGLE_STRIP_ADJACENCY:
-      return 8 + (prim_type - PIPE_PRIM_LINES_ADJACENCY);
-
-   default:
-      unreachable("Unsupported primitive type");
-   }
 }
 
 void

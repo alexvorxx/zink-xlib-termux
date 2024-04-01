@@ -76,6 +76,7 @@
 #include "vk_drm_syncobj.h"
 #include "vk_enum_defines.h"
 #include "vk_framebuffer.h"
+#include "vk_graphics_state.h"
 #include "vk_image.h"
 #include "vk_instance.h"
 #include "vk_pipeline_cache.h"
@@ -476,7 +477,7 @@ struct anv_bo {
    uint32_t refcount;
 
    /* Index into the current validation list.  This is used by the
-    * validation list building alrogithm to track which buffers are already
+    * validation list building algorithm to track which buffers are already
     * in the validation list so that we can ensure uniqueness.
     */
    uint32_t exec_obj_index;
@@ -1039,7 +1040,11 @@ struct anv_physical_device {
       bool                                      need_clflush;
     } memory;
 
-    struct anv_memregion                        vram;
+    /* Either we have a single vram region and it's all mappable, or we have
+     * both mappable & non-mappable parts. System memory is always available.
+     */
+    struct anv_memregion                        vram_mappable;
+    struct anv_memregion                        vram_non_mappable;
     struct anv_memregion                        sys;
     uint8_t                                     driver_build_sha1[20];
     uint8_t                                     pipeline_cache_uuid[VK_UUID_SIZE];
@@ -1064,6 +1069,12 @@ struct anv_physical_device {
     void (*cmd_emit_timestamp)(struct anv_batch *, struct anv_device *, struct anv_address, bool);
     struct intel_measure_device                 measure_device;
 };
+
+static inline bool
+anv_physical_device_has_vram(const struct anv_physical_device *device)
+{
+   return device->vram_mappable.size > 0;
+}
 
 struct anv_app_info {
    const char*        app_name;
@@ -1170,6 +1181,7 @@ struct anv_device {
     struct list_head                            memory_objects;
 
     struct anv_bo_pool                          batch_bo_pool;
+    struct anv_bo_pool                          utrace_bo_pool;
 
     struct anv_bo_cache                         bo_cache;
 
@@ -1366,6 +1378,9 @@ enum anv_bo_alloc_flags {
 
    /** This buffer is allocated from local memory */
    ANV_BO_ALLOC_LOCAL_MEM = (1 << 10),
+
+   /** This buffer is allocated from local memory and should be cpu visible */
+   ANV_BO_ALLOC_LOCAL_MEM_CPU_VISIBLE = (1 << 11),
 };
 
 VkResult anv_device_alloc_bo(struct anv_device *device,
@@ -1429,7 +1444,7 @@ void anv_gem_munmap(struct anv_device *device, void *p, uint64_t size);
 uint32_t anv_gem_create(struct anv_device *device, uint64_t size);
 void anv_gem_close(struct anv_device *device, uint32_t gem_handle);
 uint32_t anv_gem_create_regions(struct anv_device *device, uint64_t anv_bo_size,
-                                uint32_t num_regions,
+                                uint32_t flags, uint32_t num_regions,
                                 struct drm_i915_gem_memory_class_instance *regions);
 uint32_t anv_gem_userptr(struct anv_device *device, void *mem, size_t size);
 int anv_gem_busy(struct anv_device *device, uint32_t gem_handle);
@@ -1824,7 +1839,7 @@ struct anv_descriptor_set_binding_layout {
     */
    uint32_t array_size;
 
-   /* Index into the flattend descriptor set */
+   /* Index into the flattened descriptor set */
    uint32_t descriptor_index;
 
    /* Index into the dynamic state array for a dynamic buffer */
@@ -1964,7 +1979,6 @@ anv_descriptor_set_is_push(struct anv_descriptor_set *set)
 struct anv_buffer_view {
    struct vk_object_base base;
 
-   enum isl_format format; /**< VkBufferViewCreateInfo::format */
    uint64_t range; /**< VkBufferViewCreateInfo::range */
 
    struct anv_address address;
@@ -2198,135 +2212,12 @@ struct anv_buffer {
 };
 
 enum anv_cmd_dirty_bits {
-   ANV_CMD_DIRTY_DYNAMIC_VIEWPORT                    = 1 << 0, /* VK_DYNAMIC_STATE_VIEWPORT */
-   ANV_CMD_DIRTY_DYNAMIC_SCISSOR                     = 1 << 1, /* VK_DYNAMIC_STATE_SCISSOR */
-   ANV_CMD_DIRTY_DYNAMIC_LINE_WIDTH                  = 1 << 2, /* VK_DYNAMIC_STATE_LINE_WIDTH */
-   ANV_CMD_DIRTY_DYNAMIC_DEPTH_BIAS                  = 1 << 3, /* VK_DYNAMIC_STATE_DEPTH_BIAS */
-   ANV_CMD_DIRTY_DYNAMIC_BLEND_CONSTANTS             = 1 << 4, /* VK_DYNAMIC_STATE_BLEND_CONSTANTS */
-   ANV_CMD_DIRTY_DYNAMIC_DEPTH_BOUNDS                = 1 << 5, /* VK_DYNAMIC_STATE_DEPTH_BOUNDS */
-   ANV_CMD_DIRTY_DYNAMIC_STENCIL_COMPARE_MASK        = 1 << 6, /* VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK */
-   ANV_CMD_DIRTY_DYNAMIC_STENCIL_WRITE_MASK          = 1 << 7, /* VK_DYNAMIC_STATE_STENCIL_WRITE_MASK */
-   ANV_CMD_DIRTY_DYNAMIC_STENCIL_REFERENCE           = 1 << 8, /* VK_DYNAMIC_STATE_STENCIL_REFERENCE */
-   ANV_CMD_DIRTY_PIPELINE                            = 1 << 9,
-   ANV_CMD_DIRTY_INDEX_BUFFER                        = 1 << 10,
-   ANV_CMD_DIRTY_RENDER_TARGETS                      = 1 << 11,
-   ANV_CMD_DIRTY_XFB_ENABLE                          = 1 << 12,
-   ANV_CMD_DIRTY_DYNAMIC_LINE_STIPPLE                = 1 << 13, /* VK_DYNAMIC_STATE_LINE_STIPPLE_EXT */
-   ANV_CMD_DIRTY_DYNAMIC_CULL_MODE                   = 1 << 14, /* VK_DYNAMIC_STATE_CULL_MODE_EXT */
-   ANV_CMD_DIRTY_DYNAMIC_FRONT_FACE                  = 1 << 15, /* VK_DYNAMIC_STATE_FRONT_FACE */
-   ANV_CMD_DIRTY_DYNAMIC_PRIMITIVE_TOPOLOGY          = 1 << 16, /* VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY */
-   ANV_CMD_DIRTY_DYNAMIC_VERTEX_INPUT_BINDING_STRIDE = 1 << 17, /* VK_DYNAMIC_STATE_VERTEX_INPUT_BINDING_STRIDE */
-   ANV_CMD_DIRTY_DYNAMIC_DEPTH_TEST_ENABLE           = 1 << 18, /* VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE */
-   ANV_CMD_DIRTY_DYNAMIC_DEPTH_WRITE_ENABLE          = 1 << 19, /* VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE */
-   ANV_CMD_DIRTY_DYNAMIC_DEPTH_COMPARE_OP            = 1 << 20, /* VK_DYNAMIC_STATE_DEPTH_COMPARE_OP */
-   ANV_CMD_DIRTY_DYNAMIC_DEPTH_BOUNDS_TEST_ENABLE    = 1 << 21, /* VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE */
-   ANV_CMD_DIRTY_DYNAMIC_STENCIL_TEST_ENABLE         = 1 << 22, /* VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE */
-   ANV_CMD_DIRTY_DYNAMIC_STENCIL_OP                  = 1 << 23, /* VK_DYNAMIC_STATE_STENCIL_OP */
-   ANV_CMD_DIRTY_DYNAMIC_SAMPLE_LOCATIONS            = 1 << 24, /* VK_DYNAMIC_STATE_SAMPLE_LOCATIONS_EXT */
-   ANV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_STATE           = 1 << 25, /* VK_DYNAMIC_STATE_COLOR_WRITE_ENABLE_EXT */
-   ANV_CMD_DIRTY_DYNAMIC_SHADING_RATE                = 1 << 26, /* VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR */
-   ANV_CMD_DIRTY_DYNAMIC_RASTERIZER_DISCARD_ENABLE   = 1 << 27, /* VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE */
-   ANV_CMD_DIRTY_DYNAMIC_DEPTH_BIAS_ENABLE           = 1 << 28, /* VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE */
-   ANV_CMD_DIRTY_DYNAMIC_LOGIC_OP                    = 1 << 29, /* VK_DYNAMIC_STATE_LOGIC_OP_EXT */
-   ANV_CMD_DIRTY_DYNAMIC_PRIMITIVE_RESTART_ENABLE    = 1 << 30, /* VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE */
+   ANV_CMD_DIRTY_PIPELINE                            = 1 << 0,
+   ANV_CMD_DIRTY_INDEX_BUFFER                        = 1 << 1,
+   ANV_CMD_DIRTY_RENDER_TARGETS                      = 1 << 2,
+   ANV_CMD_DIRTY_XFB_ENABLE                          = 1 << 3,
 };
 typedef enum anv_cmd_dirty_bits anv_cmd_dirty_mask_t;
-
-#define ANV_CMD_DIRTY_DYNAMIC_ALL                       \
-   (ANV_CMD_DIRTY_DYNAMIC_VIEWPORT |                    \
-    ANV_CMD_DIRTY_DYNAMIC_SCISSOR |                     \
-    ANV_CMD_DIRTY_DYNAMIC_LINE_WIDTH |                  \
-    ANV_CMD_DIRTY_DYNAMIC_DEPTH_BIAS |                  \
-    ANV_CMD_DIRTY_DYNAMIC_BLEND_CONSTANTS |             \
-    ANV_CMD_DIRTY_DYNAMIC_DEPTH_BOUNDS |                \
-    ANV_CMD_DIRTY_DYNAMIC_STENCIL_COMPARE_MASK |        \
-    ANV_CMD_DIRTY_DYNAMIC_STENCIL_WRITE_MASK |          \
-    ANV_CMD_DIRTY_DYNAMIC_STENCIL_REFERENCE |           \
-    ANV_CMD_DIRTY_DYNAMIC_LINE_STIPPLE |                \
-    ANV_CMD_DIRTY_DYNAMIC_CULL_MODE |                   \
-    ANV_CMD_DIRTY_DYNAMIC_FRONT_FACE |                  \
-    ANV_CMD_DIRTY_DYNAMIC_PRIMITIVE_TOPOLOGY |          \
-    ANV_CMD_DIRTY_DYNAMIC_VERTEX_INPUT_BINDING_STRIDE | \
-    ANV_CMD_DIRTY_DYNAMIC_DEPTH_TEST_ENABLE |           \
-    ANV_CMD_DIRTY_DYNAMIC_DEPTH_WRITE_ENABLE |          \
-    ANV_CMD_DIRTY_DYNAMIC_DEPTH_COMPARE_OP |            \
-    ANV_CMD_DIRTY_DYNAMIC_DEPTH_BOUNDS_TEST_ENABLE |    \
-    ANV_CMD_DIRTY_DYNAMIC_STENCIL_TEST_ENABLE |         \
-    ANV_CMD_DIRTY_DYNAMIC_STENCIL_OP |                  \
-    ANV_CMD_DIRTY_DYNAMIC_SAMPLE_LOCATIONS |            \
-    ANV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_STATE |           \
-    ANV_CMD_DIRTY_DYNAMIC_SHADING_RATE |                \
-    ANV_CMD_DIRTY_DYNAMIC_RASTERIZER_DISCARD_ENABLE |   \
-    ANV_CMD_DIRTY_DYNAMIC_DEPTH_BIAS_ENABLE |           \
-    ANV_CMD_DIRTY_DYNAMIC_LOGIC_OP |                    \
-    ANV_CMD_DIRTY_DYNAMIC_PRIMITIVE_RESTART_ENABLE)
-
-static inline enum anv_cmd_dirty_bits
-anv_cmd_dirty_bit_for_vk_dynamic_state(VkDynamicState vk_state)
-{
-   switch (vk_state) {
-   case VK_DYNAMIC_STATE_VIEWPORT:
-   case VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT:
-      return ANV_CMD_DIRTY_DYNAMIC_VIEWPORT;
-   case VK_DYNAMIC_STATE_SCISSOR:
-   case VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT:
-      return ANV_CMD_DIRTY_DYNAMIC_SCISSOR;
-   case VK_DYNAMIC_STATE_LINE_WIDTH:
-      return ANV_CMD_DIRTY_DYNAMIC_LINE_WIDTH;
-   case VK_DYNAMIC_STATE_DEPTH_BIAS:
-      return ANV_CMD_DIRTY_DYNAMIC_DEPTH_BIAS;
-   case VK_DYNAMIC_STATE_BLEND_CONSTANTS:
-      return ANV_CMD_DIRTY_DYNAMIC_BLEND_CONSTANTS;
-   case VK_DYNAMIC_STATE_DEPTH_BOUNDS:
-      return ANV_CMD_DIRTY_DYNAMIC_DEPTH_BOUNDS;
-   case VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK:
-      return ANV_CMD_DIRTY_DYNAMIC_STENCIL_COMPARE_MASK;
-   case VK_DYNAMIC_STATE_STENCIL_WRITE_MASK:
-      return ANV_CMD_DIRTY_DYNAMIC_STENCIL_WRITE_MASK;
-   case VK_DYNAMIC_STATE_STENCIL_REFERENCE:
-      return ANV_CMD_DIRTY_DYNAMIC_STENCIL_REFERENCE;
-   case VK_DYNAMIC_STATE_LINE_STIPPLE_EXT:
-      return ANV_CMD_DIRTY_DYNAMIC_LINE_STIPPLE;
-   case VK_DYNAMIC_STATE_CULL_MODE:
-      return ANV_CMD_DIRTY_DYNAMIC_CULL_MODE;
-   case VK_DYNAMIC_STATE_FRONT_FACE:
-      return ANV_CMD_DIRTY_DYNAMIC_FRONT_FACE;
-   case VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY:
-      return ANV_CMD_DIRTY_DYNAMIC_PRIMITIVE_TOPOLOGY;
-   case VK_DYNAMIC_STATE_VERTEX_INPUT_BINDING_STRIDE:
-      return ANV_CMD_DIRTY_DYNAMIC_VERTEX_INPUT_BINDING_STRIDE;
-   case VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE:
-      return ANV_CMD_DIRTY_DYNAMIC_DEPTH_TEST_ENABLE;
-   case VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE:
-      return ANV_CMD_DIRTY_DYNAMIC_DEPTH_WRITE_ENABLE;
-   case VK_DYNAMIC_STATE_DEPTH_COMPARE_OP:
-      return ANV_CMD_DIRTY_DYNAMIC_DEPTH_COMPARE_OP;
-   case VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE:
-      return ANV_CMD_DIRTY_DYNAMIC_DEPTH_BOUNDS_TEST_ENABLE;
-   case VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE:
-      return ANV_CMD_DIRTY_DYNAMIC_STENCIL_TEST_ENABLE;
-   case VK_DYNAMIC_STATE_STENCIL_OP:
-      return ANV_CMD_DIRTY_DYNAMIC_STENCIL_OP;
-   case VK_DYNAMIC_STATE_SAMPLE_LOCATIONS_EXT:
-      return ANV_CMD_DIRTY_DYNAMIC_SAMPLE_LOCATIONS;
-   case VK_DYNAMIC_STATE_COLOR_WRITE_ENABLE_EXT:
-      return ANV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_STATE;
-   case VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR:
-      return ANV_CMD_DIRTY_DYNAMIC_SHADING_RATE;
-   case VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE:
-      return ANV_CMD_DIRTY_DYNAMIC_RASTERIZER_DISCARD_ENABLE;
-   case VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE:
-      return ANV_CMD_DIRTY_DYNAMIC_DEPTH_BIAS_ENABLE;
-   case VK_DYNAMIC_STATE_LOGIC_OP_EXT:
-      return ANV_CMD_DIRTY_DYNAMIC_LOGIC_OP;
-   case VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE:
-      return ANV_CMD_DIRTY_DYNAMIC_PRIMITIVE_RESTART_ENABLE;
-   default:
-      assert(!"Unsupported dynamic state");
-      return 0;
-   }
-}
-
 
 enum anv_pipe_bits {
    ANV_PIPE_DEPTH_CACHE_FLUSH_BIT            = (1 << 0),
@@ -2347,6 +2238,12 @@ enum anv_pipe_bits {
     */
    ANV_PIPE_HDC_PIPELINE_FLUSH_BIT           = (1 << 14),
    ANV_PIPE_PSS_STALL_SYNC_BIT               = (1 << 15),
+
+   /*
+    * This bit flush data-port's Untyped L1 data cache (LSC L1).
+    */
+   ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT = (1 << 16),
+
    ANV_PIPE_CS_STALL_BIT                     = (1 << 20),
    ANV_PIPE_END_OF_PIPE_SYNC_BIT             = (1 << 21),
 
@@ -2382,6 +2279,7 @@ enum anv_pipe_bits {
    ANV_PIPE_DEPTH_CACHE_FLUSH_BIT | \
    ANV_PIPE_DATA_CACHE_FLUSH_BIT | \
    ANV_PIPE_HDC_PIPELINE_FLUSH_BIT | \
+   ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT | \
    ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT | \
    ANV_PIPE_TILE_CACHE_FLUSH_BIT)
 
@@ -2417,6 +2315,7 @@ anv_pipe_flush_bits_for_access_flags(struct anv_device *device,
           * to future operations, flush the hdc pipeline.
           */
          pipe_bits |= ANV_PIPE_HDC_PIPELINE_FLUSH_BIT;
+         pipe_bits |= ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT;
          break;
       case VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT:
          /* We're transitioning a buffer that was previously used as render
@@ -2524,10 +2423,12 @@ anv_pipe_invalidate_bits_for_access_flags(struct anv_device *device,
           * port) to avoid stale data.
           */
          pipe_bits |= ANV_PIPE_CONSTANT_CACHE_INVALIDATE_BIT;
-         if (device->physical->compiler->indirect_ubos_use_sampler)
+         if (device->physical->compiler->indirect_ubos_use_sampler) {
             pipe_bits |= ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT;
-         else
+         } else {
             pipe_bits |= ANV_PIPE_HDC_PIPELINE_FLUSH_BIT;
+            pipe_bits |= ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT;
+         }
          break;
       case VK_ACCESS_2_SHADER_READ_BIT:
       case VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT:
@@ -2567,6 +2468,14 @@ anv_pipe_invalidate_bits_for_access_flags(struct anv_device *device,
           */
          pipe_bits |= ANV_PIPE_FLUSH_BITS;
          break;
+      case VK_ACCESS_2_TRANSFORM_FEEDBACK_WRITE_BIT_EXT:
+         /* We're transitioning a buffer to be written by the streamout fixed
+          * function. This one is apparently not L3 coherent, so we need a
+          * tile cache flush to make sure any previous write is not going to
+          * create WaW hazards.
+          */
+         pipe_bits |= ANV_PIPE_TILE_CACHE_FLUSH_BIT;
+         break;
       default:
          break; /* Nothing to do */
       }
@@ -2588,7 +2497,6 @@ anv_pipe_invalidate_bits_for_access_flags(struct anv_device *device,
 struct anv_vertex_binding {
    struct anv_buffer *                          buffer;
    VkDeviceSize                                 offset;
-   VkDeviceSize                                 stride;
    VkDeviceSize                                 size;
 };
 
@@ -2629,122 +2537,6 @@ struct anv_push_constants {
       uint32_t subgroup_id;
    } cs;
 };
-
-struct anv_dynamic_state {
-   struct {
-      uint32_t                                  count;
-      VkViewport                                viewports[MAX_VIEWPORTS];
-   } viewport;
-
-   struct {
-      uint32_t                                  count;
-      VkRect2D                                  scissors[MAX_SCISSORS];
-   } scissor;
-
-   float                                        line_width;
-
-   struct {
-      float                                     bias;
-      float                                     clamp;
-      float                                     slope;
-   } depth_bias;
-
-   float                                        blend_constants[4];
-
-   struct {
-      float                                     min;
-      float                                     max;
-   } depth_bounds;
-
-   struct {
-      uint32_t                                  front;
-      uint32_t                                  back;
-   } stencil_compare_mask;
-
-   struct {
-      uint32_t                                  front;
-      uint32_t                                  back;
-   } stencil_write_mask;
-
-   struct {
-      uint32_t                                  front;
-      uint32_t                                  back;
-   } stencil_reference;
-
-   struct {
-      struct {
-         VkStencilOp fail_op;
-         VkStencilOp pass_op;
-         VkStencilOp depth_fail_op;
-         VkCompareOp compare_op;
-      } front;
-      struct {
-         VkStencilOp fail_op;
-         VkStencilOp pass_op;
-         VkStencilOp depth_fail_op;
-         VkCompareOp compare_op;
-      } back;
-   } stencil_op;
-
-   struct {
-      uint32_t                                  factor;
-      uint16_t                                  pattern;
-   } line_stipple;
-
-   struct {
-      struct intel_sample_position              locations_1[1];
-      struct intel_sample_position              locations_2[2];
-      struct intel_sample_position              locations_4[4];
-      struct intel_sample_position              locations_8[8];
-      struct intel_sample_position              locations_16[16];
-      /* Only valid on the pipeline dynamic state */
-      unsigned                                  pipeline_samples;
-   } sample_locations;
-
-   struct {
-      VkExtent2D                                rate;
-      VkFragmentShadingRateCombinerOpKHR        ops[2];
-   } fragment_shading_rate;
-
-   VkCullModeFlags                              cull_mode;
-   VkFrontFace                                  front_face;
-   VkPrimitiveTopology                          primitive_topology;
-   bool                                         depth_test_enable;
-   bool                                         depth_write_enable;
-   VkCompareOp                                  depth_compare_op;
-   bool                                         depth_bounds_test_enable;
-   bool                                         stencil_test_enable;
-   bool                                         raster_discard;
-   bool                                         depth_bias_enable;
-   bool                                         primitive_restart_enable;
-   VkLogicOp                                    logic_op;
-   bool                                         dyn_vbo_stride;
-   bool                                         dyn_vbo_size;
-
-   /* Bitfield, one bit per render target */
-   uint8_t                                      color_writes;
-};
-
-extern const struct anv_dynamic_state default_dynamic_state;
-
-void anv_dynamic_state_init(struct anv_dynamic_state *state);
-anv_cmd_dirty_mask_t anv_dynamic_state_copy(struct anv_dynamic_state *dest,
-                                            const struct anv_dynamic_state *src,
-                                            anv_cmd_dirty_mask_t copy_mask);
-
-static inline struct intel_sample_position *
-anv_dynamic_state_get_sample_locations(struct anv_dynamic_state *state,
-                                       unsigned samples)
-{
-   switch (samples) {
-   case  1: return state->sample_locations.locations_1;  break;
-   case  2: return state->sample_locations.locations_2;  break;
-   case  4: return state->sample_locations.locations_4;  break;
-   case  8: return state->sample_locations.locations_8;  break;
-   case 16: return state->sample_locations.locations_16; break;
-   default: unreachable("invalid sample count");
-   }
-}
 
 struct anv_surface_state {
    struct anv_state state;
@@ -2882,21 +2674,23 @@ struct anv_cmd_graphics_state {
    struct anv_vb_cache_range vb_bound_ranges[33];
    struct anv_vb_cache_range vb_dirty_ranges[33];
 
-   VkShaderStageFlags push_constant_stages;
+   uint32_t restart_index;
 
-   struct anv_dynamic_state dynamic;
+   VkShaderStageFlags push_constant_stages;
 
    uint32_t primitive_topology;
 
    struct anv_buffer *index_buffer;
    uint32_t index_type; /**< 3DSTATE_INDEX_BUFFER.IndexFormat */
    uint32_t index_offset;
+
+   struct vk_sample_locations_state sample_locations;
 };
 
 enum anv_depth_reg_mode {
    ANV_DEPTH_REG_MODE_UNKNOWN = 0,
    ANV_DEPTH_REG_MODE_HW_DEFAULT,
-   ANV_DEPTH_REG_MODE_D16,
+   ANV_DEPTH_REG_MODE_D16_1X_MSAA,
 };
 
 /** State tracking for compute pipeline
@@ -2946,7 +2740,6 @@ struct anv_cmd_state {
    VkShaderStageFlags                           descriptors_dirty;
    VkShaderStageFlags                           push_constants_dirty;
 
-   uint32_t                                     restart_index;
    struct anv_vertex_binding                    vertex_bindings[MAX_VBS];
    bool                                         xfb_enabled;
    struct anv_xfb_binding                       xfb_bindings[MAX_XFB_BUFFERS];
@@ -2971,7 +2764,7 @@ struct anv_cmd_state {
     */
    bool                                         hiz_enabled;
 
-   /* We ensure the registers for the gfx12 D16 fix are initalized at the
+   /* We ensure the registers for the gfx12 D16 fix are initialized at the
     * first non-NULL depth stencil packet emission of every command buffer.
     * For secondary command buffer execution, we transfer the state from the
     * last command buffer to the primary (if known).
@@ -3315,43 +3108,30 @@ struct anv_pipeline {
 struct anv_graphics_pipeline {
    struct anv_pipeline                          base;
 
-   uint32_t                                     batch_data[512];
+   /* Shaders */
+   struct anv_shader_bin *                      shaders[ANV_GRAPHICS_SHADER_STAGE_COUNT];
 
-   /* States that need to be reemitted in cmd_buffer_flush_dynamic_state().
-    * This might cover more than the dynamic states specified at pipeline
-    * creation.
-    */
-   anv_cmd_dirty_mask_t                         dynamic_state_mask;
+   VkShaderStageFlags                           active_stages;
 
-   struct anv_dynamic_state                     dynamic_state;
-
-   /* States declared dynamic at pipeline creation. */
-   anv_cmd_dirty_mask_t                         dynamic_states;
-
-   uint32_t                                     topology;
+   struct vk_sample_locations_state             sample_locations;
+   struct vk_dynamic_graphics_state             dynamic_state;
 
    /* These fields are required with dynamic primitive topology,
     * rasterization_samples used only with gen < 8.
     */
    VkLineRasterizationModeEXT                   line_mode;
    VkPolygonMode                                polygon_mode;
+   uint32_t                                     patch_control_points;
    uint32_t                                     rasterization_samples;
 
    VkColorComponentFlags                        color_comp_writes[MAX_RTS];
 
-   struct anv_shader_bin *                      shaders[ANV_GRAPHICS_SHADER_STAGE_COUNT];
-
-   VkShaderStageFlags                           active_stages;
    uint32_t                                     view_mask;
+   uint32_t                                     instance_multiplier;
 
-   bool                                         writes_depth;
-   bool                                         depth_test_enable;
-   bool                                         writes_stencil;
-   bool                                         stencil_test_enable;
    bool                                         depth_clamp_enable;
    bool                                         depth_clip_enable;
    bool                                         kill_pixel;
-   bool                                         depth_bounds_test_enable;
    bool                                         force_fragment_thread_dispatch;
    bool                                         negative_one_to_one;
 
@@ -3367,9 +3147,16 @@ struct anv_graphics_pipeline {
       uint32_t                                  instance_divisor;
    } vb[MAX_VBS];
 
+   /* Pre computed CS instructions that can directly be copied into
+    * anv_cmd_buffer.
+    */
+   uint32_t                                     batch_data[512];
+
+   /* Pre packed CS instructions & structures that need to be merged later
+    * with dynamic state.
+    */
    struct {
       uint32_t                                  sf[7];
-      uint32_t                                  depth_stencil_state[3];
       uint32_t                                  clip[4];
       uint32_t                                  xfb_bo_pitch[4];
       uint32_t                                  wm[3];
@@ -3380,16 +3167,11 @@ struct anv_graphics_pipeline {
    struct {
       uint32_t                                  sf[4];
       uint32_t                                  raster[5];
-      uint32_t                                  wm_depth_stencil[3];
       uint32_t                                  wm[2];
       uint32_t                                  ps_blend[2];
       uint32_t                                  blend_state[1 + MAX_RTS * 2];
       uint32_t                                  streamout_state[5];
    } gfx8;
-
-   struct {
-      uint32_t                                  wm_depth_stencil[4];
-   } gfx9;
 };
 
 struct anv_compute_pipeline {
@@ -3463,7 +3245,9 @@ static inline bool
 anv_cmd_buffer_all_color_write_masked(const struct anv_cmd_buffer *cmd_buffer)
 {
    const struct anv_cmd_graphics_state *state = &cmd_buffer->state.gfx;
-   uint8_t color_writes = state->dynamic.color_writes;
+   const struct vk_dynamic_graphics_state *dyn =
+      &cmd_buffer->vk.dynamic_graphics_state;
+   uint8_t color_writes = dyn->cb.color_write_enables;
 
    /* All writes disabled through vkCmdSetColorWriteEnableEXT */
    if ((color_writes & ((1u << state->color_att_count) - 1)) == 0)
@@ -3533,28 +3317,6 @@ void
 anv_pipeline_finish(struct anv_pipeline *pipeline,
                     struct anv_device *device,
                     const VkAllocationCallbacks *pAllocator);
-
-VkResult
-anv_graphics_pipeline_init(struct anv_graphics_pipeline *pipeline, struct anv_device *device,
-                           struct vk_pipeline_cache *cache,
-                           const VkGraphicsPipelineCreateInfo *pCreateInfo,
-                           const VkPipelineRenderingCreateInfo *rendering_info,
-                           const VkAllocationCallbacks *alloc);
-
-VkResult
-anv_pipeline_compile_cs(struct anv_compute_pipeline *pipeline,
-                        struct vk_pipeline_cache *cache,
-                        const VkComputePipelineCreateInfo *info,
-                        const struct vk_shader_module *module,
-                        const char *entrypoint,
-                        const VkSpecializationInfo *spec_info);
-
-VkResult
-anv_ray_tracing_pipeline_init(struct anv_ray_tracing_pipeline *pipeline,
-                              struct anv_device *device,
-                              struct vk_pipeline_cache *cache,
-                              const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
-                              const VkAllocationCallbacks *alloc);
 
 struct anv_format_plane {
    enum isl_format isl_format:16;
@@ -3822,6 +3584,22 @@ struct anv_image {
 
       /** Location of the fast clear state.  */
       struct anv_image_memory_range fast_clear_memory_range;
+
+      /**
+       * Whether this image can be fast cleared with non-zero clear colors.
+       * This can happen with mutable images when formats of different bit
+       * sizes per components are used.
+       *
+       * On Gfx9+, because the clear colors are stored as a 4 components 32bit
+       * values, we can clear in R16G16_UNORM (store 2 16bit values in the
+       * components 0 & 1 of the clear color) and then draw in R32_UINT which
+       * would interpret the clear color as a single component value, using
+       * only the first 16bit component of the previous written clear color.
+       *
+       * On Gfx7/7.5/8, only CC_ZERO/CC_ONE clear colors are supported, this
+       * boolean will prevent the usage of CC_ONE.
+       */
+      bool can_non_zero_fast_clear;
    } planes[3];
 };
 
@@ -4244,6 +4022,7 @@ anv_get_image_format_features2(const struct intel_device_info *devinfo,
 void anv_fill_buffer_surface_state(struct anv_device *device,
                                    struct anv_state state,
                                    enum isl_format format,
+                                   struct isl_swizzle swizzle,
                                    isl_surf_usage_flags_t usage,
                                    struct anv_address address,
                                    uint32_t range, uint32_t stride);

@@ -31,12 +31,14 @@
 #include "pvr_bo.h"
 #include "pvr_csb.h"
 #include "pvr_csb_enum_helpers.h"
+#include "pvr_debug.h"
 #include "pvr_job_common.h"
 #include "pvr_job_context.h"
 #include "pvr_job_render.h"
 #include "pvr_pds.h"
 #include "pvr_private.h"
 #include "pvr_rogue_fw.h"
+#include "pvr_types.h"
 #include "pvr_winsys.h"
 #include "util/compiler.h"
 #include "util/macros.h"
@@ -438,8 +440,8 @@ static VkResult pvr_rt_vheap_rtc_data_init(struct pvr_device *device,
    rt_dataset->vheap_dev_addr = rt_dataset->vheap_rtc_bo->vma->dev_addr;
 
    if (rtc_size > 0) {
-      rt_dataset->rtc_dev_addr.addr =
-         rt_dataset->vheap_dev_addr.addr + vheap_size;
+      rt_dataset->rtc_dev_addr =
+         PVR_DEV_ADDR_OFFSET(rt_dataset->vheap_dev_addr, vheap_size);
    } else {
       rt_dataset->rtc_dev_addr = PVR_DEV_ADDR_INVALID;
    }
@@ -643,19 +645,19 @@ pvr_rt_mta_mlist_data_init(struct pvr_device *device,
    for (uint32_t i = 0; i < num_rt_datas; i++) {
       if (mta_size != 0) {
          rt_dataset->rt_datas[i].mta_dev_addr = dev_addr;
-         dev_addr.addr += mta_size;
+         dev_addr = PVR_DEV_ADDR_OFFSET(dev_addr, mta_size);
       } else {
          rt_dataset->rt_datas[i].mta_dev_addr = PVR_DEV_ADDR_INVALID;
       }
    }
 
-   dev_addr.addr =
-      rt_dataset->mta_mlist_bo->vma->dev_addr.addr + rt_datas_mta_size;
+   dev_addr = PVR_DEV_ADDR_OFFSET(rt_dataset->mta_mlist_bo->vma->dev_addr,
+                                  rt_datas_mta_size);
 
    for (uint32_t i = 0; i < num_rt_datas; i++) {
       if (mlist_size != 0) {
          rt_dataset->rt_datas[i].mlist_dev_addr = dev_addr;
-         dev_addr.addr += mlist_size;
+         dev_addr = PVR_DEV_ADDR_OFFSET(dev_addr, mlist_size);
       } else {
          rt_dataset->rt_datas[i].mlist_dev_addr = PVR_DEV_ADDR_INVALID;
       }
@@ -705,7 +707,7 @@ pvr_rt_rgn_headers_data_init(struct pvr_device *device,
 
    for (uint32_t i = 0; i < num_rt_datas; i++) {
       rt_dataset->rt_datas[i].rgn_headers_dev_addr = dev_addr;
-      dev_addr.addr += rgn_headers_size;
+      dev_addr = PVR_DEV_ADDR_OFFSET(dev_addr, rgn_headers_size);
    }
 
    return VK_SUCCESS;
@@ -1049,6 +1051,8 @@ pvr_render_target_dataset_create(struct pvr_device *device,
                                  uint32_t layers,
                                  struct pvr_rt_dataset **const rt_dataset_out)
 {
+   struct pvr_device_runtime_info *runtime_info =
+      &device->pdevice->dev_runtime_info;
    const struct pvr_device_info *dev_info = &device->pdevice->dev_info;
    struct pvr_winsys_rt_dataset_create_info rt_dataset_create_info;
    struct pvr_rt_mtile_info mtile_info;
@@ -1082,8 +1086,8 @@ pvr_render_target_dataset_create(struct pvr_device *device,
     * details.
     */
    result = pvr_free_list_create(device,
-                                 rogue_get_min_free_list_size(dev_info),
-                                 rogue_get_min_free_list_size(dev_info),
+                                 runtime_info->min_free_list_size,
+                                 runtime_info->min_free_list_size,
                                  0 /* grow_size */,
                                  0 /* grow_threshold */,
                                  rt_dataset->global_free_list,
@@ -1296,6 +1300,8 @@ pvr_render_job_ws_fragment_state_init(struct pvr_render_ctx *ctx,
 {
    const enum PVRX(CR_ISP_AA_MODE_TYPE)
       isp_aa_mode = pvr_cr_isp_aa_mode_type(job->samples);
+   const struct pvr_device_runtime_info *dev_runtime_info =
+      &ctx->device->pdevice->dev_runtime_info;
    const struct pvr_device_info *dev_info = &ctx->device->pdevice->dev_info;
    uint32_t isp_ctl;
 
@@ -1303,6 +1309,7 @@ pvr_render_job_ws_fragment_state_init(struct pvr_render_ctx *ctx,
 
    /* FIXME: pass in the number of samples rather than isp_aa_mode? */
    pvr_setup_tiles_in_flight(dev_info,
+                             dev_runtime_info,
                              isp_aa_mode,
                              job->pixel_output_width,
                              false,
@@ -1338,7 +1345,7 @@ pvr_render_job_ws_fragment_state_init(struct pvr_render_ctx *ctx,
 
    if (PVR_HAS_FEATURE(dev_info, cluster_grouping) &&
        PVR_HAS_FEATURE(dev_info, slc_mcu_cache_controls) &&
-       rogue_get_num_phantoms(dev_info) > 1 && job->frag_uses_atomic_ops) {
+       dev_runtime_info->num_phantoms > 1 && job->frag_uses_atomic_ops) {
       /* Each phantom has its own MCU, so atomicity can only be guaranteed
        * when all work items are processed on the same phantom. This means we
        * need to disable all USCs other than those of the first phantom, which
@@ -1454,7 +1461,7 @@ pvr_render_job_ws_fragment_state_init(struct pvr_render_ctx *ctx,
    pvr_csb_pack (&state->regs.event_pixel_pds_data,
                  CR_EVENT_PIXEL_PDS_DATA,
                  value) {
-      value.addr.addr = job->pds_pixel_event_data_offset;
+      value.addr = PVR_DEV_ADDR(job->pds_pixel_event_data_offset);
    }
 
    STATIC_ASSERT(ARRAY_SIZE(state->regs.pbe_word) ==

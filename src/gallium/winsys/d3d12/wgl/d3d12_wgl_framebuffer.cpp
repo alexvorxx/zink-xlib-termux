@@ -29,6 +29,7 @@
 #include <dxgi1_4.h>
 #include <directx/d3d12.h>
 #include <wrl.h>
+#include <dxguids/dxguids.h>
 
 #include "util/u_memory.h"
 #include "util/u_inlines.h"
@@ -149,7 +150,7 @@ d3d12_wgl_framebuffer_resize(stw_winsys_framebuffer *fb,
 }
 
 static boolean
-d3d12_wgl_framebuffer_present(stw_winsys_framebuffer *fb)
+d3d12_wgl_framebuffer_present(stw_winsys_framebuffer *fb, int interval)
 {
    auto framebuffer = d3d12_wgl_framebuffer(fb);
    if (!framebuffer->swapchain) {
@@ -157,10 +158,10 @@ d3d12_wgl_framebuffer_present(stw_winsys_framebuffer *fb)
       return false;
    }
 
-   if (stw_dev->swap_interval < 1)
+   if (interval < 1)
       return S_OK == framebuffer->swapchain->Present(0, DXGI_PRESENT_ALLOW_TEARING);
    else
-       return S_OK == framebuffer->swapchain->Present(stw_dev->swap_interval, 0);
+      return S_OK == framebuffer->swapchain->Present(interval, 0);
 }
 
 static struct pipe_resource *
@@ -193,7 +194,7 @@ d3d12_wgl_framebuffer_get_resource(struct stw_winsys_framebuffer *pframebuffer,
    handle.format = framebuffer->pformat;
    handle.com_obj = res;
 
-   D3D12_RESOURCE_DESC res_desc = res->GetDesc();
+   D3D12_RESOURCE_DESC res_desc = GetDesc(res);
 
    struct pipe_resource templ;
    memset(&templ, 0, sizeof(templ));

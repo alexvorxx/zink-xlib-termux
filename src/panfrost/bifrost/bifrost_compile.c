@@ -2211,7 +2211,7 @@ bi_clper_xor(bi_builder *b, bi_index s0, bi_index s1)
 
         bi_index lane_id = bi_fau(BIR_FAU_LANE_ID, false);
         bi_index lane = bi_lshift_xor_i32(b, lane_id, s1, bi_imm_u8(0));
-        return bi_clper_v6_i32(b, s0, lane);
+        return bi_clper_old_i32(b, s0, lane);
 }
 
 static enum bi_cmpf
@@ -2318,9 +2318,16 @@ bi_emit_alu(bi_builder *b, nir_alu_instr *instr)
         case nir_op_vec16:
                 unreachable("should've been lowered");
 
-        case nir_op_unpack_32_2x16:
-                bi_mov_i32_to(b, dst, bi_src_index(&instr->src[0].src));
-                break;
+        case nir_op_unpack_32_2x16: {
+                /* Should have been scalarized */
+                assert(comps == 2 && sz == 16);
+
+                bi_index vec = bi_src_index(&instr->src[0].src);
+                unsigned chan = instr->src[0].swizzle[0];
+
+                bi_mov_i32_to(b, dst, bi_extract(b, vec, chan));
+                return;
+        }
 
         case nir_op_unpack_64_2x32_split_x:
                 bi_mov_i32_to(b, dst, bi_extract(b, bi_src_index(&instr->src[0].src), 0));
@@ -2394,14 +2401,28 @@ bi_emit_alu(bi_builder *b, nir_alu_instr *instr)
         }
 
         case nir_op_f2f16:
+        case nir_op_f2f16_rtz:
+        case nir_op_f2f16_rtne: {
                 assert(src_sz == 32);
                 bi_index idx = bi_src_index(&instr->src[0].src);
                 bi_index s0 = bi_extract(b, idx, instr->src[0].swizzle[0]);
                 bi_index s1 = comps > 1 ?
                         bi_extract(b, idx, instr->src[0].swizzle[1]) : s0;
 
-                bi_v2f32_to_v2f16_to(b, dst, s0, s1);
+                bi_instr *I = bi_v2f32_to_v2f16_to(b, dst, s0, s1);
+
+                /* Override rounding if explicitly requested. Otherwise, the
+                 * default rounding mode is selected by the builder. Depending
+                 * on the float controls required by the shader, the default
+                 * mode may not be nearest-even.
+                 */
+                if (instr->op == nir_op_f2f16_rtz)
+                        I->round = BI_ROUND_RTZ;
+                else if (instr->op == nir_op_f2f16_rtne)
+                        I->round = BI_ROUND_NONE; /* Nearest even */
+
                 return;
+        }
 
         /* Vectorized downcasts */
         case nir_op_u2u16:
@@ -2687,8 +2708,8 @@ bi_emit_alu(bi_builder *b, nir_alu_instr *instr)
                 bi_index left, right;
 
                 if (b->shader->quirks & BIFROST_LIMITED_CLPER) {
-                        left = bi_clper_v6_i32(b, s0, lane1);
-                        right = bi_clper_v6_i32(b, s0, lane2);
+                        left = bi_clper_old_i32(b, s0, lane1);
+                        right = bi_clper_old_i32(b, s0, lane2);
                 } else {
                         left = bi_clper_i32(b, s0, lane1,
                                         BI_INACTIVE_RESULT_ZERO, BI_LANE_OP_NONE,
@@ -4545,7 +4566,7 @@ bi_optimize_nir(nir_shader *nir, unsigned gpu_id, bool is_blend)
                 nir_convert_to_lcssa(nir, true, true);
                 NIR_PASS_V(nir, nir_divergence_analysis);
                 NIR_PASS_V(nir, bi_lower_divergent_indirects,
-                                bifrost_lanes_per_warp(gpu_id));
+                                pan_subgroup_size(gpu_id >> 12));
                 NIR_PASS_V(nir, nir_shader_instructions_pass,
                         nir_invalidate_divergence, nir_metadata_all, NULL);
         }

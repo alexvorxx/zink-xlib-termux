@@ -62,6 +62,9 @@ void ac_llvm_context_init(struct ac_llvm_context *ctx, struct ac_llvm_compiler *
                           unsigned ballot_mask_bits)
 {
    ctx->context = LLVMContextCreate();
+   #if LLVM_VERSION_MAJOR >= 15
+   LLVMContextSetOpaquePointers(ctx->context, false);
+   #endif
 
    ctx->gfx_level = gfx_level;
    ctx->family = family;
@@ -3217,21 +3220,28 @@ LLVMValueRef ac_build_writelane(struct ac_llvm_context *ctx, LLVMValueRef src, L
 
 LLVMValueRef ac_build_mbcnt_add(struct ac_llvm_context *ctx, LLVMValueRef mask, LLVMValueRef add_src)
 {
+   LLVMValueRef val;
+
    if (ctx->wave_size == 32) {
-      LLVMValueRef val = ac_build_intrinsic(ctx, "llvm.amdgcn.mbcnt.lo", ctx->i32,
-                                (LLVMValueRef[]){mask, add_src}, 2, AC_FUNC_ATTR_READNONE);
-      ac_set_range_metadata(ctx, val, 0, ctx->wave_size);
-      return val;
+      val = ac_build_intrinsic(ctx, "llvm.amdgcn.mbcnt.lo", ctx->i32,
+                               (LLVMValueRef[]){mask, ctx->i32_0}, 2, AC_FUNC_ATTR_READNONE);
+   } else {
+      LLVMValueRef mask_vec = LLVMBuildBitCast(ctx->builder, mask, ctx->v2i32, "");
+      LLVMValueRef mask_lo = LLVMBuildExtractElement(ctx->builder, mask_vec, ctx->i32_0, "");
+      LLVMValueRef mask_hi = LLVMBuildExtractElement(ctx->builder, mask_vec, ctx->i32_1, "");
+      val = ac_build_intrinsic(ctx, "llvm.amdgcn.mbcnt.lo", ctx->i32,
+                               (LLVMValueRef[]){mask_lo, ctx->i32_0}, 2, AC_FUNC_ATTR_READNONE);
+      val = ac_build_intrinsic(ctx, "llvm.amdgcn.mbcnt.hi", ctx->i32, (LLVMValueRef[]){mask_hi, val},
+                               2, AC_FUNC_ATTR_READNONE);
    }
-   LLVMValueRef mask_vec = LLVMBuildBitCast(ctx->builder, mask, ctx->v2i32, "");
-   LLVMValueRef mask_lo = LLVMBuildExtractElement(ctx->builder, mask_vec, ctx->i32_0, "");
-   LLVMValueRef mask_hi = LLVMBuildExtractElement(ctx->builder, mask_vec, ctx->i32_1, "");
-   LLVMValueRef val =
-      ac_build_intrinsic(ctx, "llvm.amdgcn.mbcnt.lo", ctx->i32,
-                         (LLVMValueRef[]){mask_lo, add_src}, 2, AC_FUNC_ATTR_READNONE);
-   val = ac_build_intrinsic(ctx, "llvm.amdgcn.mbcnt.hi", ctx->i32, (LLVMValueRef[]){mask_hi, val},
-                            2, AC_FUNC_ATTR_READNONE);
-   ac_set_range_metadata(ctx, val, 0, ctx->wave_size);
+
+   /* Bug workaround. LLVM always believes the upper bound of mbcnt to be the wave size,
+    * regardless of ac_set_range_metadata. Use an extra add instruction to work around it.
+    */
+   if (add_src != NULL && add_src != ctx->i32_0) {
+      return LLVMBuildAdd(ctx->builder, val, add_src, "");
+   }
+
    return val;
 }
 
@@ -4388,7 +4398,8 @@ void ac_build_sendmsg_gs_alloc_req(struct ac_llvm_context *ctx, LLVMValueRef wav
       export_dummy_prim = true;
    }
 
-   ac_build_ifcc(ctx, LLVMBuildICmp(builder, LLVMIntEQ, wave_id, ctx->i32_0, ""), 5020);
+   if (wave_id)
+      ac_build_ifcc(ctx, LLVMBuildICmp(builder, LLVMIntEQ, wave_id, ctx->i32_0, ""), 5020);
 
    tmp = LLVMBuildShl(builder, prim_cnt, LLVMConstInt(ctx->i32, 12, false), "");
    tmp = LLVMBuildOr(builder, tmp, vtx_cnt, "");
@@ -4413,7 +4424,8 @@ void ac_build_sendmsg_gs_alloc_req(struct ac_llvm_context *ctx, LLVMValueRef wav
       ac_build_endif(ctx, 5021);
    }
 
-   ac_build_endif(ctx, 5020);
+   if (wave_id)
+      ac_build_endif(ctx, 5020);
 }
 
 

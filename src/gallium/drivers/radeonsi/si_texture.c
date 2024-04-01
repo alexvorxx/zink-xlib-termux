@@ -50,7 +50,7 @@ static bool si_texture_is_aux_plane(const struct pipe_resource *resource);
 
 /* Same as resource_copy_region, except that both upsampling and downsampling are allowed. */
 static void si_copy_region_with_blit(struct pipe_context *pipe, struct pipe_resource *dst,
-                                     unsigned dst_level, unsigned dstx, unsigned dsty,
+                                     unsigned dst_level, unsigned dst_sample, unsigned dstx, unsigned dsty,
                                      unsigned dstz, struct pipe_resource *src, unsigned src_level,
                                      const struct pipe_box *src_box)
 {
@@ -72,9 +72,14 @@ static void si_copy_region_with_blit(struct pipe_context *pipe, struct pipe_reso
    blit.dst.box.depth = src_box->depth;
    blit.mask = util_format_get_mask(dst->format);
    blit.filter = PIPE_TEX_FILTER_NEAREST;
+   blit.dst_sample = dst_sample;
 
    if (blit.mask) {
-      pipe->blit(pipe, &blit);
+      /* Only the gfx blit handles dst_sample. */
+      if (dst_sample)
+         si_gfx_blit(pipe, &blit);
+      else
+         pipe->blit(pipe, &blit);
    }
 }
 
@@ -84,13 +89,15 @@ static void si_copy_to_staging_texture(struct pipe_context *ctx, struct si_trans
    struct pipe_transfer *transfer = (struct pipe_transfer *)stransfer;
    struct pipe_resource *dst = &stransfer->staging->b.b;
    struct pipe_resource *src = transfer->resource;
+   /* level means sample_index - 1 with MSAA. Used by texture uploads. */
+   unsigned src_level = src->nr_samples > 1 ? 0 : transfer->level;
 
    if (src->nr_samples > 1 || ((struct si_texture *)src)->is_depth) {
-      si_copy_region_with_blit(ctx, dst, 0, 0, 0, 0, src, transfer->level, &transfer->box);
+      si_copy_region_with_blit(ctx, dst, 0, 0, 0, 0, 0, src, src_level, &transfer->box);
       return;
    }
 
-   si_resource_copy_region(ctx, dst, 0, 0, 0, 0, src, transfer->level, &transfer->box);
+   si_resource_copy_region(ctx, dst, 0, 0, 0, 0, src, src_level, &transfer->box);
 }
 
 /* Copy from a transfer's staging texture to a full GPU one. */
@@ -104,7 +111,10 @@ static void si_copy_from_staging_texture(struct pipe_context *ctx, struct si_tra
    u_box_3d(0, 0, 0, transfer->box.width, transfer->box.height, transfer->box.depth, &sbox);
 
    if (dst->nr_samples > 1 || ((struct si_texture *)dst)->is_depth) {
-      si_copy_region_with_blit(ctx, dst, transfer->level, transfer->box.x, transfer->box.y,
+      unsigned dst_level = dst->nr_samples > 1 ? 0 : transfer->level;
+      unsigned dst_sample = dst->nr_samples > 1 ? transfer->level : 0;
+
+      si_copy_region_with_blit(ctx, dst, dst_level, dst_sample, transfer->box.x, transfer->box.y,
                                transfer->box.z, src, 0, &sbox);
       return;
    }
@@ -891,14 +901,14 @@ void si_print_texture_info(struct si_screen *sscreen, struct si_texture *tex,
 /**
  * Common function for si_texture_create and si_texture_from_handle.
  *
- * \param screen	screen
- * \param base		resource template
- * \param surface	radeon_surf
- * \param plane0	if a non-zero plane is being created, this is the first plane
- * \param imported_buf	from si_texture_from_handle
- * \param offset	offset for non-zero planes or imported buffers
- * \param alloc_size	the size to allocate if plane0 != NULL
- * \param alignment	alignment for the allocation
+ * \param screen       screen
+ * \param base         resource template
+ * \param surface      radeon_surf
+ * \param plane0       if a non-zero plane is being created, this is the first plane
+ * \param imported_buf from si_texture_from_handle
+ * \param offset       offset for non-zero planes or imported buffers
+ * \param alloc_size   the size to allocate if plane0 != NULL
+ * \param alignment    alignment for the allocation
  */
 static struct si_texture *si_texture_create_object(struct pipe_screen *screen,
                                                    const struct pipe_resource *base,
@@ -1139,10 +1149,12 @@ static struct si_texture *si_texture_create_object(struct pipe_screen *screen,
    if (sscreen->debug_flags & DBG(VM)) {
       fprintf(stderr,
               "VM start=0x%" PRIX64 "  end=0x%" PRIX64
-              " | Texture %ix%ix%i, %i levels, %i samples, %s\n",
+              " | Texture %ix%ix%i, %i levels, %i samples, %s | Flags: ",
               tex->buffer.gpu_address, tex->buffer.gpu_address + tex->buffer.buf->size,
               base->width0, base->height0, util_num_layers(base, 0), base->last_level + 1,
               base->nr_samples ? base->nr_samples : 1, util_format_short_name(base->format));
+      si_res_print_flags(tex->buffer.flags);
+      fprintf(stderr, "\n");
    }
 
    if (sscreen->debug_flags & DBG(TEX)) {
@@ -1190,7 +1202,7 @@ static enum radeon_surf_mode si_choose_tiling(struct si_screen *sscreen,
     */
    if (!force_tiling && !is_depth_stencil && !util_format_is_compressed(templ->format)) {
       if (sscreen->debug_flags & DBG(NO_TILING) ||
-	  (templ->bind & PIPE_BIND_SCANOUT && sscreen->debug_flags & DBG(NO_DISPLAY_TILING)))
+          (templ->bind & PIPE_BIND_SCANOUT && sscreen->debug_flags & DBG(NO_DISPLAY_TILING)))
          return RADEON_SURF_MODE_LINEAR_ALIGNED;
 
       /* Tiling doesn't work with the 422 (SUBSAMPLED) formats. */
@@ -1820,6 +1832,7 @@ static void *si_texture_transfer_map(struct pipe_context *ctx, struct pipe_resou
    unsigned offset = 0;
    char *map;
    bool use_staging_texture = tex->buffer.flags & RADEON_FLAG_ENCRYPTED;
+   unsigned real_level = texture->nr_samples > 1 ? 0 : level;
 
    assert(texture->target != PIPE_BUFFER);
    assert(!(texture->flags & SI_RESOURCE_FLAG_FORCE_LINEAR));
@@ -1839,7 +1852,7 @@ static void *si_texture_transfer_map(struct pipe_context *ctx, struct pipe_resou
        * On dGPUs, the staging texture is always faster.
        * Only count uploads that are at least 4x4 pixels large.
        */
-      if (!sctx->screen->info.has_dedicated_vram && level == 0 && box->width >= 4 &&
+      if (!sctx->screen->info.has_dedicated_vram && real_level == 0 && box->width >= 4 &&
           box->height >= 4 && p_atomic_inc_return(&tex->num_level0_transfers) == 10) {
          bool can_invalidate = si_can_invalidate_texture(sctx->screen, tex, usage, box);
 
@@ -1890,7 +1903,7 @@ static void *si_texture_transfer_map(struct pipe_context *ctx, struct pipe_resou
       unsigned bo_usage = usage & PIPE_MAP_READ ? PIPE_USAGE_STAGING : PIPE_USAGE_STREAM;
       unsigned bo_flags = SI_RESOURCE_FLAG_FORCE_LINEAR | SI_RESOURCE_FLAG_DRIVER_INTERNAL;
 
-      si_init_temp_resource_from_box(&resource, texture, box, level, bo_usage,
+      si_init_temp_resource_from_box(&resource, texture, box, real_level, bo_usage,
                                      bo_flags);
 
       /* Since depth-stencil textures don't support linear tiling,
@@ -1920,7 +1933,7 @@ static void *si_texture_transfer_map(struct pipe_context *ctx, struct pipe_resou
       buf = trans->staging;
    } else {
       /* the resource is mapped directly */
-      offset = si_texture_get_offset(sctx->screen, tex, level, box, &trans->b.b.stride,
+      offset = si_texture_get_offset(sctx->screen, tex, real_level, box, &trans->b.b.stride,
                                      &trans->b.b.layer_stride);
       buf = &tex->buffer;
    }
@@ -1981,7 +1994,7 @@ static void si_texture_transfer_unmap(struct pipe_context *ctx, struct pipe_tran
     *
     * The result is that the kernel memory manager is never a bottleneck.
     */
-   if (sctx->num_alloc_tex_transfer_bytes > sctx->screen->info.gart_size / 4) {
+   if (sctx->num_alloc_tex_transfer_bytes > (uint64_t)sctx->screen->info.gart_size_kb * 1024 / 4) {
       si_flush_gfx_cs(sctx, RADEON_FLUSH_ASYNC_START_NEXT_GFX_IB_NOW, NULL);
       sctx->num_alloc_tex_transfer_bytes = 0;
    }

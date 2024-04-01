@@ -87,7 +87,6 @@ bool ir_constant_fold(ir_rvalue **rvalue);
 bool do_rebalance_tree(exec_list *instructions);
 bool do_algebraic(exec_list *instructions, bool native_integers,
                   const struct gl_shader_compiler_options *options);
-bool opt_conditional_discard(exec_list *instructions);
 bool do_constant_folding(exec_list *instructions);
 bool do_constant_variable(exec_list *instructions);
 bool do_constant_variable_unlinked(exec_list *instructions);
@@ -105,7 +104,6 @@ bool opt_flatten_nested_if_blocks(exec_list *instructions);
 bool do_mat_op_to_vec(exec_list *instructions);
 bool do_minmax_prune(exec_list *instructions);
 bool do_structure_splitting(exec_list *instructions);
-bool optimize_swizzles(exec_list *instructions);
 bool do_tree_grafting(exec_list *instructions);
 bool do_vec_index_to_cond_assign(exec_list *instructions);
 bool do_vec_index_to_swizzle(exec_list *instructions);
@@ -116,9 +114,6 @@ bool lower_clip_cull_distance(struct gl_shader_program *prog,
                               gl_linked_shader *shader);
 void lower_output_reads(unsigned stage, exec_list *instructions);
 bool lower_packing_builtins(exec_list *instructions, int op_mask);
-void lower_shared_reference(const struct gl_constants *consts,
-                            struct gl_shader_program *prog,
-                            struct gl_linked_shader *shader);
 bool lower_vector_insert(exec_list *instructions, bool lower_nonconstant_index);
 bool lower_vector_derefs(gl_linked_shader *shader);
 void lower_named_interface_blocks(void *mem_ctx, gl_linked_shader *shader);

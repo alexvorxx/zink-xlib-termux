@@ -362,6 +362,7 @@ alloc_variant(struct ir3_shader *shader, const struct ir3_shader_key *key,
       break;
 
    case MESA_SHADER_COMPUTE:
+   case MESA_SHADER_KERNEL:
       v->cs.req_input_mem = shader->cs.req_input_mem;
       v->cs.req_local_mem = shader->cs.req_local_mem;
       break;
@@ -376,8 +377,10 @@ alloc_variant(struct ir3_shader *shader, const struct ir3_shader_key *key,
    v->api_wavesize = shader->api_wavesize;
    v->real_wavesize = shader->real_wavesize;
 
-   if (!v->binning_pass)
+   if (!v->binning_pass) {
       v->const_state = rzalloc_size(v, sizeof(*v->const_state));
+      v->const_state->shared_consts_enable = shader->shared_consts_enable;
+   }
 
    return v;
 }
@@ -620,6 +623,22 @@ ir3_trim_constlen(struct ir3_shader_variant **variants,
    uint32_t trimmed = 0;
    STATIC_ASSERT(MESA_SHADER_STAGES <= 8 * sizeof(trimmed));
 
+   bool shared_consts_enable =
+      ir3_const_state(variants[MESA_SHADER_VERTEX])->shared_consts_enable;
+
+   /* Use a hw quirk for geometry shared consts, not matched with actual
+    * shared consts size (on a6xx).
+    */
+   uint32_t shared_consts_size_geom = shared_consts_enable ?
+      compiler->geom_shared_consts_size_quirk : 0;
+
+   uint32_t shared_consts_size = shared_consts_enable ?
+      compiler->shared_consts_size : 0;
+
+   uint32_t safe_shared_consts_size = shared_consts_enable  ?
+      ALIGN_POT(MAX2(DIV_ROUND_UP(shared_consts_size_geom, 4),
+                     DIV_ROUND_UP(shared_consts_size, 5)), 4) : 0;
+
    /* There are two shared limits to take into account, the geometry limit on
     * a6xx and the total limit. The frag limit on a6xx only matters for a
     * single stage, so it's always satisfied with the first variant.
@@ -627,11 +646,13 @@ ir3_trim_constlen(struct ir3_shader_variant **variants,
    if (compiler->gen >= 6) {
       trimmed |=
          trim_constlens(constlens, MESA_SHADER_VERTEX, MESA_SHADER_GEOMETRY,
-                        compiler->max_const_geom, compiler->max_const_safe);
+                        compiler->max_const_geom - shared_consts_size_geom,
+                        compiler->max_const_safe - safe_shared_consts_size);
    }
    trimmed |=
       trim_constlens(constlens, MESA_SHADER_VERTEX, MESA_SHADER_FRAGMENT,
-                     compiler->max_const_pipeline, compiler->max_const_safe);
+                     compiler->max_const_pipeline - shared_consts_size,
+                     compiler->max_const_safe - safe_shared_consts_size);
 
    return trimmed;
 }
@@ -653,6 +674,7 @@ ir3_shader_from_nir(struct ir3_compiler *compiler, nir_shader *nir,
    shader->num_reserved_user_consts = options->reserved_user_consts;
    shader->api_wavesize = options->api_wavesize;
    shader->real_wavesize = options->real_wavesize;
+   shader->shared_consts_enable = options->shared_consts_enable;
    shader->nir = nir;
 
    ir3_disk_cache_init_shader_key(compiler, shader);
@@ -863,8 +885,8 @@ ir3_shader_disasm(struct ir3_shader_variant *so, uint32_t *bin, FILE *out)
       dump_reg(
          out, "pos (ij_centroid)",
          ir3_find_sysval_regid(so, SYSTEM_VALUE_BARYCENTRIC_PERSP_CENTROID));
-      dump_reg(out, "pos (ij_size)",
-               ir3_find_sysval_regid(so, SYSTEM_VALUE_BARYCENTRIC_PERSP_SIZE));
+      dump_reg(out, "pos (center_rhw)",
+               ir3_find_sysval_regid(so, SYSTEM_VALUE_BARYCENTRIC_PERSP_CENTER_RHW));
       dump_output(out, so, FRAG_RESULT_DEPTH, "posz");
       if (so->color0_mrt) {
          dump_output(out, so, FRAG_RESULT_COLOR, "color");

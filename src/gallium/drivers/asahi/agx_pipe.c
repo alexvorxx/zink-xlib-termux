@@ -730,8 +730,23 @@ agx_get_param(struct pipe_screen* pscreen, enum pipe_cap param)
    case PIPE_CAP_MIXED_FRAMEBUFFER_SIZES:
    case PIPE_CAP_FRAGMENT_SHADER_DERIVATIVES:
    case PIPE_CAP_FRAMEBUFFER_NO_ATTACHMENT:
-   case PIPE_CAP_CLIP_HALFZ:
       return 1;
+
+   /* We could support ARB_clip_control by toggling the clip control bit for
+    * the render pass. Because this bit is for the whole render pass,
+    * switching clip modes necessarily incurs a flush. This should be ok, from
+    * the ARB_clip_control spec:
+    *
+    *         Some implementations may introduce a flush when changing the
+    *         clip control state.  Hence frequent clip control changes are
+    *         not recommended.
+    *
+    * However, this would require tuning to ensure we don't flush unnecessary
+    * when using u_blitter clears, for example. As we don't yet have a use case,
+    * don't expose the feature.
+    */
+   case PIPE_CAP_CLIP_HALFZ:
+      return 0;
 
    case PIPE_CAP_MAX_RENDER_TARGETS:
       return 1;
@@ -1012,8 +1027,6 @@ agx_is_format_supported(struct pipe_screen* pscreen,
                         unsigned storage_sample_count,
                         unsigned usage)
 {
-   const struct util_format_description *format_desc;
-
    assert(target == PIPE_BUFFER ||
           target == PIPE_TEXTURE_1D ||
           target == PIPE_TEXTURE_1D_ARRAY ||
@@ -1023,11 +1036,6 @@ agx_is_format_supported(struct pipe_screen* pscreen,
           target == PIPE_TEXTURE_3D ||
           target == PIPE_TEXTURE_CUBE ||
           target == PIPE_TEXTURE_CUBE_ARRAY);
-
-   format_desc = util_format_description(format);
-
-   if (!format_desc)
-      return false;
 
    if (sample_count > 1)
       return false;

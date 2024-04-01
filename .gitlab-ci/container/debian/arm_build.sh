@@ -28,6 +28,7 @@ apt-get -y install \
 	libdrm-dev \
 	libelf-dev \
 	libexpat1-dev \
+	libvulkan-dev \
 	libx11-dev \
 	libx11-xcb-dev \
 	libxcb-dri2-0-dev \
@@ -53,7 +54,8 @@ apt-get -y install \
 	u-boot-tools \
 	wget \
 	xz-utils \
-	zlib1g-dev
+	zlib1g-dev \
+	zstd
 
 # Not available anymore in bullseye
 apt-get install -y --no-remove -t buster \

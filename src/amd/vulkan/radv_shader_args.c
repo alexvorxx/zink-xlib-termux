@@ -51,7 +51,8 @@ static void
 set_loc_shader_ptr(struct radv_shader_args *args, int idx, uint8_t *sgpr_idx)
 {
    bool use_32bit_pointers = idx != AC_UD_SCRATCH_RING_OFFSETS &&
-                             idx != AC_UD_CS_TASK_RING_OFFSETS;
+                             idx != AC_UD_CS_TASK_RING_OFFSETS && idx != AC_UD_CS_SBT_DESCRIPTORS &&
+                             idx != AC_UD_CS_RAY_LAUNCH_SIZE_ADDR;
 
    set_loc_shader(args, idx, sgpr_idx, use_32bit_pointers ? 1 : 2);
 }
@@ -171,17 +172,20 @@ allocate_user_sgprs(enum amd_gfx_level gfx_level, const struct radv_shader_info 
    case MESA_SHADER_COMPUTE:
    case MESA_SHADER_TASK:
       if (info->cs.uses_sbt)
-         user_sgpr_count += 1;
+         user_sgpr_count += 2;
       if (info->cs.uses_grid_size)
          user_sgpr_count += args->load_grid_size_from_user_sgpr ? 3 : 2;
       if (info->cs.uses_ray_launch_size)
-         user_sgpr_count++;
+         user_sgpr_count += 2;
       if (info->vs.needs_draw_id)
          user_sgpr_count += 1;
       if (info->cs.uses_task_rings)
          user_sgpr_count += 4; /* ring_entry, 2x ib_addr, ib_stride */
       break;
    case MESA_SHADER_FRAGMENT:
+      /* epilog continue PC */
+      if (info->ps.has_epilog)
+         user_sgpr_count += 1;
       break;
    case MESA_SHADER_VERTEX:
       if (!args->is_gs_copy_shader)
@@ -446,6 +450,12 @@ declare_ps_input_vgprs(const struct radv_shader_info *info, struct radv_shader_a
          vgpr_arg++;
       }
    }
+
+   if (info->ps.has_epilog) {
+      /* FIXME: Ensure the main shader doesn't have less VGPRs than the epilog */
+      for (unsigned i = 0; i < MAX_RTS; i++)
+         ac_add_arg(&args->ac, AC_ARG_VGPR, 4, AC_ARG_INT, NULL);
+   }
 }
 
 static void
@@ -564,7 +574,7 @@ radv_declare_shader_args(enum amd_gfx_level gfx_level, const struct radv_pipelin
       declare_global_input_sgprs(info, &user_sgpr_info, args);
 
       if (info->cs.uses_sbt) {
-         ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_CONST_DESC_PTR, &args->ac.sbt_descriptors);
+         ac_add_arg(&args->ac, AC_ARG_SGPR, 2, AC_ARG_CONST_PTR, &args->ac.sbt_descriptors);
       }
 
       if (info->cs.uses_grid_size) {
@@ -575,7 +585,7 @@ radv_declare_shader_args(enum amd_gfx_level gfx_level, const struct radv_pipelin
       }
 
       if (info->cs.uses_ray_launch_size) {
-         ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_CONST_PTR, &args->ac.ray_launch_size_addr);
+         ac_add_arg(&args->ac, AC_ARG_SGPR, 2, AC_ARG_CONST_PTR, &args->ac.ray_launch_size_addr);
       }
 
       if (info->vs.needs_draw_id) {
@@ -784,6 +794,10 @@ radv_declare_shader_args(enum amd_gfx_level gfx_level, const struct radv_pipelin
    case MESA_SHADER_FRAGMENT:
       declare_global_input_sgprs(info, &user_sgpr_info, args);
 
+      if (info->ps.has_epilog) {
+         ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, &args->ps_epilog_pc);
+      }
+
       ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, &args->ac.prim_mask);
       if (args->explicit_scratch_args && gfx_level < GFX11) {
          ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, &args->ac.scratch_offset);
@@ -875,10 +889,34 @@ radv_declare_shader_args(enum amd_gfx_level gfx_level, const struct radv_pipelin
       }
       break;
    case MESA_SHADER_FRAGMENT:
+      if (args->ps_epilog_pc.used)
+         set_loc_shader(args, AC_UD_PS_EPILOG_PC, &user_sgpr_idx, 1);
       break;
    default:
       unreachable("Shader stage not implemented");
    }
 
    args->num_user_sgprs = user_sgpr_idx;
+}
+
+void
+radv_declare_ps_epilog_args(enum amd_gfx_level gfx_level, const struct radv_ps_epilog_key *key,
+                            struct radv_shader_args *args)
+{
+   unsigned num_inputs = 0;
+
+   ac_add_arg(&args->ac, AC_ARG_SGPR, 2, AC_ARG_CONST_DESC_PTR, &args->ring_offsets);
+   if (gfx_level < GFX11)
+      ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, &args->ac.scratch_offset);
+
+   /* Declare VGPR arguments for color exports. */
+   for (unsigned i = 0; i < MAX_RTS; i++) {
+      unsigned col_format = (key->spi_shader_col_format >> (i * 4)) & 0xf;
+
+      if (col_format == V_028714_SPI_SHADER_ZERO)
+         continue;
+
+      ac_add_arg(&args->ac, AC_ARG_VGPR, 4, AC_ARG_FLOAT, &args->ps_epilog_inputs[num_inputs]);
+      num_inputs++;
+   }
 }

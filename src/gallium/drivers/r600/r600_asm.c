@@ -387,7 +387,7 @@ static int assign_alu_units(struct r600_bytecode *bc, struct r600_bytecode_alu *
 	for (i = 0; i < max_slots; i++)
 		assignment[i] = NULL;
 
-	for (alu = alu_first; alu; alu = LIST_ENTRY(struct r600_bytecode_alu, alu->list.next, list)) {
+	for (alu = alu_first; alu; alu = list_entry(alu->list.next, struct r600_bytecode_alu, list)) {
 		chan = alu->dst.chan;
 		if (max_slots == 4)
 			trans = 0;
@@ -407,8 +407,8 @@ static int assign_alu_units(struct r600_bytecode *bc, struct r600_bytecode_alu *
 			}
 			assignment[4] = alu;
 		} else {
-			if (assignment[chan]) {                           
-				assert(0); /* ALU.chan has already been allocated. */
+                        if (assignment[chan]) {
+			 	assert(0); /* ALU.chan has already been allocated. */
 				return -1;
 			}
 			assignment[chan] = alu;
@@ -593,6 +593,7 @@ static int check_and_set_bank_swizzle(const struct r600_bytecode *bc,
 	int i, r = 0, forced = 1;
 	boolean scalar_only = bc->gfx_level == CAYMAN ? false : true;
 	int max_slots = bc->gfx_level == CAYMAN ? 4 : 5;
+	int max_checks = max_slots * 1000;
 
 	for (i = 0; i < max_slots; i++) {
 		if (slots[i]) {
@@ -612,14 +613,14 @@ static int check_and_set_bank_swizzle(const struct r600_bytecode *bc,
 	/* Just check every possible combination of bank swizzle.
 	 * Not very efficent, but works on the first try in most of the cases. */
 	for (i = 0; i < 4; i++)
-		if (!slots[i] || !slots[i]->bank_swizzle_force)
+		if (!slots[i] || !slots[i]->bank_swizzle_force || slots[i]->is_lds_idx_op)
 			bank_swizzle[i] = SQ_ALU_VEC_012;
 		else
 			bank_swizzle[i] = slots[i]->bank_swizzle;
 
 	bank_swizzle[4] = SQ_ALU_SCL_210;
-	while(bank_swizzle[4] <= SQ_ALU_SCL_221) {
 
+	while(bank_swizzle[4] <= SQ_ALU_SCL_221 && max_checks--) {
 		init_bank_swizzle(&bs);
 		if (scalar_only == false) {
 			for (i = 0; i < 4; i++) {
@@ -647,7 +648,7 @@ static int check_and_set_bank_swizzle(const struct r600_bytecode *bc,
 			bank_swizzle[4]++;
 		} else {
 			for (i = 0; i < max_slots; i++) {
-				if (!slots[i] || !slots[i]->bank_swizzle_force) {
+				if (!slots[i] || (!slots[i]->bank_swizzle_force && !slots[i]->is_lds_idx_op)) {
 					bank_swizzle[i]++;
 					if (bank_swizzle[i] <= SQ_ALU_VEC_210)
 						break;
@@ -989,7 +990,7 @@ static int merge_inst_groups(struct r600_bytecode *bc, struct r600_bytecode_alu 
 	}
 
 	/* determine new last instruction */
-	LIST_ENTRY(struct r600_bytecode_alu, bc->cf_last->alu.prev, list)->last = 1;
+	list_entry(bc->cf_last->alu.prev, struct r600_bytecode_alu, list)->last = 1;
 
 	/* determine new first instruction */
 	for (i = 0; i < max_slots; ++i) {
@@ -1270,13 +1271,14 @@ int r600_bytecode_add_alu_type(struct r600_bytecode *bc,
 
 	if (bc->cf_last != NULL && bc->cf_last->op != type) {
 		/* check if we could add it anyway */
-		if (bc->cf_last->op == CF_OP_ALU &&
-			type == CF_OP_ALU_PUSH_BEFORE) {
-			LIST_FOR_EACH_ENTRY(lalu, &bc->cf_last->alu, list) {
-				if (lalu->execute_mask) {
+		if ((bc->cf_last->op == CF_OP_ALU && type == CF_OP_ALU_PUSH_BEFORE) ||
+		 	(bc->cf_last->op == CF_OP_ALU_PUSH_BEFORE && type == CF_OP_ALU)) {
+		 	LIST_FOR_EACH_ENTRY(lalu, &bc->cf_last->alu, list) {
+		 		if (lalu->execute_mask) {
 					bc->force_add_cf = 1;
 					break;
 				}
+		 		type = CF_OP_ALU_PUSH_BEFORE;
 			}
 		} else
 			bc->force_add_cf = 1;
@@ -1347,9 +1349,12 @@ int r600_bytecode_add_alu_type(struct r600_bytecode *bc,
 			return r;
 
 		if (bc->cf_last->prev_bs_head) {
-			r = merge_inst_groups(bc, slots, bc->cf_last->prev_bs_head);
+         struct r600_bytecode_alu *cur_prev_head = bc->cf_last->prev_bs_head;
+			r = merge_inst_groups(bc, slots, cur_prev_head);
 			if (r)
 				return r;
+         if (cur_prev_head != bc->cf_last->prev_bs_head)
+            bc->nalu_groups--;
 		}
 
 		if (bc->cf_last->prev_bs_head) {
@@ -1381,10 +1386,13 @@ int r600_bytecode_add_alu_type(struct r600_bytecode *bc,
 		bc->cf_last->prev_bs_head = bc->cf_last->curr_bs_head;
 		bc->cf_last->curr_bs_head = NULL;
 
+		bc->nalu_groups++;
+
 		if (bc->r6xx_nop_after_rel_dst) {
 			for (int i = 0; i < max_slots; ++i) {
 				if (slots[i] && slots[i]->dst.rel) {
 					insert_nop_r6xx(bc, max_slots);
+					bc->nalu_groups++;
 					break;
 				}
 			}
@@ -2772,11 +2780,6 @@ void *r600_create_vertex_fetch_shader(struct pipe_context *ctx,
 				      &format, &num_format, &format_comp, &endian);
 
 		desc = util_format_description(elements[i].src_format);
-		if (!desc) {
-			r600_bytecode_clear(&bc);
-			R600_ERR("unknown format %d\n", elements[i].src_format);
-			return NULL;
-		}
 
 		if (elements[i].src_offset > 65535) {
 			r600_bytecode_clear(&bc);

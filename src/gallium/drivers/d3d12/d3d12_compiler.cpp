@@ -123,8 +123,9 @@ compile_nir(struct d3d12_context *ctx, struct d3d12_shader_selector *sel,
 
    if (key->last_vertex_processing_stage) {
       if (key->invert_depth)
-         NIR_PASS_V(nir, d3d12_nir_invert_depth, key->invert_depth);
-      NIR_PASS_V(nir, nir_lower_clip_halfz);
+         NIR_PASS_V(nir, d3d12_nir_invert_depth, key->invert_depth, key->halfz);
+      if (!key->halfz)
+         NIR_PASS_V(nir, nir_lower_clip_halfz);
       NIR_PASS_V(nir, d3d12_lower_yflip);
    }
    NIR_PASS_V(nir, nir_lower_packed_ubo_loads);
@@ -147,9 +148,13 @@ compile_nir(struct d3d12_context *ctx, struct d3d12_shader_selector *sel,
    opts.provoking_vertex = key->fs.provoking_vertex;
    opts.input_clip_size = key->input_clip_size;
    opts.environment = DXIL_ENVIRONMENT_GL;
+   opts.shader_model_max = SHADER_MODEL_6_2;
+#ifdef _WIN32
+   opts.validator_version_max = dxil_get_validator_version(ctx->dxil_validator);
+#endif
 
    struct blob tmp;
-   if (!nir_to_dxil(nir, &opts, &tmp)) {
+   if (!nir_to_dxil(nir, &opts, NULL, &tmp)) {
       debug_printf("D3D12: nir_to_dxil failed\n");
       return NULL;
    }
@@ -790,7 +795,8 @@ d3d12_compare_shader_keys(const d3d12_shader_key *expect, const d3d12_shader_key
       expect->n_images * sizeof(struct d3d12_image_format_conversion_info)))
       return false;
 
-   if (expect->invert_depth != have->invert_depth)
+   if (expect->invert_depth != have->invert_depth ||
+       expect->halfz != have->halfz)
       return false;
 
    if (expect->stage == PIPE_SHADER_VERTEX) {
@@ -930,6 +936,8 @@ d3d12_fill_shader_key(struct d3d12_selection_context *sel_ctx,
           (!next || next->stage == PIPE_SHADER_FRAGMENT))) {
       key->last_vertex_processing_stage = 1;
       key->invert_depth = sel_ctx->ctx->reverse_depth_range;
+      key->halfz = sel_ctx->ctx->gfx_pipeline_state.rast ?
+         sel_ctx->ctx->gfx_pipeline_state.rast->base.clip_halfz : false;
       if (sel_ctx->ctx->pstipple.enabled &&
          sel_ctx->ctx->gfx_pipeline_state.rast->base.poly_stipple_enable)
          key->next_varying_inputs |= VARYING_BIT_POS;

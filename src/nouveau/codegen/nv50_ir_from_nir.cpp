@@ -34,24 +34,12 @@
 #include "nv50_ir_util.h"
 #include "tgsi/tgsi_from_mesa.h"
 
-#if __cplusplus >= 201103L
 #include <unordered_map>
-#else
-#include <tr1/unordered_map>
-#endif
 #include <cstring>
 #include <list>
 #include <vector>
 
 namespace {
-
-#if __cplusplus >= 201103L
-using std::hash;
-using std::unordered_map;
-#else
-using std::tr1::hash;
-using std::tr1::unordered_map;
-#endif
 
 using namespace nv50_ir;
 
@@ -85,9 +73,9 @@ public:
    bool run();
 private:
    typedef std::vector<LValue*> LValues;
-   typedef unordered_map<unsigned, LValues> NirDefMap;
-   typedef unordered_map<unsigned, nir_load_const_instr*> ImmediateMap;
-   typedef unordered_map<unsigned, BasicBlock*> NirBlockMap;
+   typedef std::unordered_map<unsigned, LValues> NirDefMap;
+   typedef std::unordered_map<unsigned, nir_load_const_instr*> ImmediateMap;
+   typedef std::unordered_map<unsigned, BasicBlock*> NirBlockMap;
 
    CacheMode convert(enum gl_access_qualifier);
    TexTarget convert(glsl_sampler_dim, bool isArray, bool isShadow);
@@ -3382,6 +3370,7 @@ nvir_nir_shader_compiler_options(int chipset, uint8_t shader_type)
    op.lower_wpos_pntc = false; // TODO
    op.lower_hadd = true; // TODO
    op.lower_uadd_sat = true; // TODO
+   op.lower_usub_sat = true; // TODO
    op.lower_iadd_sat = true; // TODO
    op.vectorize_io = false;
    op.lower_to_scalar = false;

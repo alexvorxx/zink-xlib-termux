@@ -237,6 +237,8 @@ typedef struct shader_info {
     */
    uint16_t workgroup_size[3];
 
+   enum gl_subgroup_size subgroup_size;
+
    /* Transform feedback buffer strides in dwords, max. 1K - 4. */
    uint8_t xfb_stride[MAX_XFB_BUFFERS];
 
@@ -251,6 +253,9 @@ typedef struct shader_info {
 
    /* Whether or not this shader ever uses textureGather() */
    bool uses_texture_gather:1;
+
+   /* Whether texture size, levels, or samples is queried. */
+   bool uses_resource_info_query:1;
 
    /**
     * True if this shader uses the fddx/fddy opcodes.
@@ -480,11 +485,6 @@ typedef struct shader_info {
           * shader.  From NV_compute_shader_derivatives.
           */
          enum gl_derivative_group derivative_group:2;
-
-         /**
-          * Explicit subgroup size if set by the shader, otherwise 0.
-          */
-         unsigned subgroup_size;
 
          /**
           * pointer size is:

@@ -1,6 +1,4 @@
 .test:
-  extends:
-    - .ci-run-policy
   # Cancel job if a newer commit is pushed to the same branch
   interruptible: true
   variables:
@@ -116,7 +114,6 @@
 
 .baremetal-test:
   extends:
-    - .ci-run-policy
     - .test
   # Cancel job if a newer commit is pushed to the same branch
   interruptible: true
@@ -127,7 +124,7 @@
     # improve it even more (see https://docs.mesa3d.org/ci/bare-metal.html for
     # setup).
     - echo -e "\e[0Ksection_start:$(date +%s):artifacts_download[collapsed=true]\r\e[0KDownloading artifacts from minio"
-    - wget ${FDO_HTTP_CACHE_URI:-}https://${PIPELINE_ARTIFACTS_BASE}/${MINIO_ARTIFACT_NAME}.tar.gz -S --progress=dot:giga -O- | tar -xz
+    - wget ${FDO_HTTP_CACHE_URI:-}https://${PIPELINE_ARTIFACTS_BASE}/${MINIO_ARTIFACT_NAME}.tar.zst -S --progress=dot:giga -O- | tar --zstd -x
     - echo -e "\e[0Ksection_end:$(date +%s):artifacts_download\r\e[0K"
   artifacts:
     when: always
@@ -184,11 +181,6 @@
     HWCI_TEST_SCRIPT: "/install/deqp-runner.sh"
     FDO_CI_CONCURRENT: 0 # Default to number of CPUs
 
-.baremetal-skqp-test:
-  variables:
-    HWCI_START_XORG: 1
-    HWCI_TEST_SCRIPT: "/install/skqp-runner.sh"
-
 # For Valve's bare-metal testing farm jobs.
 .b2c-test:
   # It would be nice to use ci-templates within Mesa CI for this job's
@@ -210,11 +202,11 @@
     B2C_KERNEL_URL: 'https://gitlab.freedesktop.org/mupuf/valve-infra/-/package_files/144/download'  # 5.17.1
     B2C_INITRAMFS_URL: 'https://gitlab.freedesktop.org/mupuf/boot2container/-/releases/v0.9.6/downloads/initramfs.linux_amd64.cpio.xz'
     B2C_JOB_SUCCESS_REGEX: '\[.*\]: Execution is over, pipeline status: 0\r$'
-    B2C_JOB_WARN_REGEX: 'null'
+    B2C_JOB_WARN_REGEX: '\*ERROR\* ring .* timeout, but soft recovered'
     B2C_LOG_LEVEL: 6
     B2C_POWEROFF_DELAY: 15
     B2C_SESSION_END_REGEX: '^.*It''s now safe to turn off your computer\r$'
-    B2C_SESSION_REBOOT_REGEX: '(GPU hang detected!|\*ERROR\* ring [^\s]+ timeout|The CS has been cancelled because the context is lost)'
+    B2C_SESSION_REBOOT_REGEX: '(GPU hang detected!|\*ERROR\* ring [^\s]+ timeout(?!, but soft recovered)|The CS has been cancelled because the context is lost)'
     B2C_TIMEOUT_BOOT_MINUTES: 45
     B2C_TIMEOUT_BOOT_RETRIES: 1
     B2C_TIMEOUT_FIRST_MINUTES: 5

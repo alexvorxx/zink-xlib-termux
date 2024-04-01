@@ -60,6 +60,8 @@ struct d3d12_screen {
    struct pipe_screen base;
    struct sw_winsys *winsys;
    LUID adapter_luid;
+   char driver_uuid[PIPE_UUID_SIZE];
+   char device_uuid[PIPE_UUID_SIZE];
 
    ID3D12Device3 *dev;
    ID3D12CommandQueue *cmdqueue;
@@ -74,6 +76,8 @@ struct d3d12_screen {
    struct list_head residency_list;
    ID3D12Fence *residency_fence;
    uint64_t residency_fence_value;
+
+   struct list_head context_list;
 
    struct slab_parent_pool transfer_pool;
    struct pb_manager *bufmgr;
@@ -91,6 +95,7 @@ struct d3d12_screen {
    struct d3d12_descriptor_handle null_rtv;
 
    volatile uint32_t ctx_count;
+   volatile uint64_t resource_id_generator;
 
    /* capabilities */
    D3D_FEATURE_LEVEL max_feature_level;
@@ -105,6 +110,9 @@ struct d3d12_screen {
 
    /* description */
    uint32_t vendor_id;
+   uint32_t device_id;
+   uint32_t subsys_id;
+   uint32_t revision;
    uint64_t driver_version;
    uint64_t memory_size_megabytes;
    double timestamp_multiplier;

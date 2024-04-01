@@ -348,6 +348,8 @@ zink_screen_init_compiler(struct zink_screen *screen)
       .lower_mul_high = true,
       .lower_rotate = true,
       .lower_uadd_carry = true,
+      .lower_uadd_sat = true,
+      .lower_usub_sat = true,
       .lower_vector_cmp = true,
       .lower_int64_options = 0,
       .lower_doubles_options = 0,
@@ -464,8 +466,114 @@ filter_pack_instr(const nir_instr *const_instr, UNUSED const void *data)
    return false;
 }
 
+
+struct bo_vars {
+   nir_variable *uniforms[5];
+   nir_variable *ubo[5];
+   nir_variable *ssbo[5];
+   uint32_t first_ubo;
+   uint32_t first_ssbo;
+};
+
+static struct bo_vars
+get_bo_vars(struct zink_shader *zs, nir_shader *shader)
+{
+   struct bo_vars bo;
+   memset(&bo, 0, sizeof(bo));
+   if (zs->ubos_used)
+      bo.first_ubo = ffs(zs->ubos_used & ~BITFIELD_BIT(0)) - 2;
+   assert(bo.first_ssbo < PIPE_MAX_CONSTANT_BUFFERS);
+   if (zs->ssbos_used)
+      bo.first_ssbo = ffs(zs->ssbos_used) - 1;
+   assert(bo.first_ssbo < PIPE_MAX_SHADER_BUFFERS);
+   nir_foreach_variable_with_modes(var, shader, nir_var_mem_ssbo | nir_var_mem_ubo) {
+      unsigned idx = glsl_get_explicit_stride(glsl_get_struct_field(glsl_without_array(var->type), 0)) >> 1;
+      if (var->data.mode == nir_var_mem_ssbo) {
+         assert(!bo.ssbo[idx]);
+         bo.ssbo[idx] = var;
+      } else {
+         if (var->data.driver_location) {
+            assert(!bo.ubo[idx]);
+            bo.ubo[idx] = var;
+         } else {
+            assert(!bo.uniforms[idx]);
+            bo.uniforms[idx] = var;
+         }
+      }
+   }
+   return bo;
+}
+
+static bool
+bound_bo_access_instr(nir_builder *b, nir_instr *instr, void *data)
+{
+   struct bo_vars *bo = data;
+   if (instr->type != nir_instr_type_intrinsic)
+      return false;
+   nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
+   nir_variable *var = NULL;
+   nir_ssa_def *offset = NULL;
+   bool is_load = true;
+   b->cursor = nir_before_instr(instr);
+
+   switch (intr->intrinsic) {
+   case nir_intrinsic_store_ssbo:
+      var = bo->ssbo[nir_dest_bit_size(intr->dest) >> 4];
+      offset = intr->src[2].ssa;
+      is_load = false;
+      break;
+   case nir_intrinsic_load_ssbo:
+      var = bo->ssbo[nir_dest_bit_size(intr->dest) >> 4];
+      offset = intr->src[1].ssa;
+      break;
+   case nir_intrinsic_load_ubo:
+      if (nir_src_is_const(intr->src[0]) && nir_src_as_const_value(intr->src[0])->u32 == 0)
+         var = bo->uniforms[nir_dest_bit_size(intr->dest) >> 4];
+      else
+         var = bo->ubo[nir_dest_bit_size(intr->dest) >> 4];
+      offset = intr->src[1].ssa;
+      break;
+   default:
+      return false;
+   }
+   nir_src offset_src = nir_src_for_ssa(offset);
+   if (!nir_src_is_const(offset_src))
+      return false;
+
+   unsigned offset_bytes = nir_src_as_const_value(offset_src)->u32;
+   const struct glsl_type *strct_type = glsl_get_array_element(var->type);
+   unsigned size = glsl_array_size(glsl_get_struct_field(strct_type, 0));
+   bool has_unsized = glsl_array_size(glsl_get_struct_field(strct_type, glsl_get_length(strct_type) - 1)) == 0;
+   if (has_unsized || offset_bytes + intr->num_components - 1 < size)
+      return false;
+
+   unsigned rewrites = 0;
+   nir_ssa_def *result[2];
+   for (unsigned i = 0; i < intr->num_components; i++) {
+      if (offset_bytes + i >= size) {
+         rewrites++;
+         if (is_load)
+            result[i] = nir_imm_zero(b, 1, nir_dest_bit_size(intr->dest));
+      }
+   }
+   assert(rewrites == intr->num_components);
+   if (is_load) {
+      nir_ssa_def *load = nir_vec(b, result, intr->num_components);
+      nir_ssa_def_rewrite_uses(&intr->dest.ssa, load);
+   }
+   nir_instr_remove(instr);
+   return true;
+}
+
+static bool
+bound_bo_access(nir_shader *shader, struct zink_shader *zs)
+{
+   struct bo_vars bo = get_bo_vars(zs, shader);
+   return nir_shader_instructions_pass(shader, bound_bo_access_instr, nir_metadata_dominance, &bo);
+}
+
 static void
-optimize_nir(struct nir_shader *s)
+optimize_nir(struct nir_shader *s, struct zink_shader *zs)
 {
    bool progress;
    do {
@@ -490,6 +598,8 @@ optimize_nir(struct nir_shader *s)
       NIR_PASS(progress, s, nir_opt_constant_folding);
       NIR_PASS(progress, s, nir_opt_undef);
       NIR_PASS(progress, s, zink_nir_lower_b2b);
+      if (zs)
+         NIR_PASS(progress, s, bound_bo_access, zs);
    } while (progress);
 
    do {
@@ -537,9 +647,7 @@ lower_fbfetch_instr(nir_builder *b, nir_instr *instr, void *data)
    nir_ssa_def *deref = &nir_build_deref_var(b, fbfetch)->dest.ssa;
    nir_ssa_def *sample = ms ? nir_load_sample_id(b) : nir_ssa_undef(b, 1, 32);
    nir_ssa_def *load = nir_image_deref_load(b, 4, 32, deref, nir_imm_vec4(b, 0, 0, 0, 1), sample, nir_imm_int(b, 0));
-   unsigned swiz[4] = {2, 1, 0, 3};
-   nir_ssa_def *swizzle = nir_swizzle(b, load, swiz, 4);
-   nir_ssa_def_rewrite_uses(&intr->dest.ssa, swizzle);
+   nir_ssa_def_rewrite_uses(&intr->dest.ssa, load);
    return true;
 }
 
@@ -816,6 +924,8 @@ update_so_info(struct zink_shader *zs, const struct pipe_stream_output_info *so_
 
             /* if all the components the variable exports to this slot aren't captured, skip consolidation */
             unsigned num_components = get_slot_components(var, slot, var->data.location);
+            if (glsl_type_is_array(var->type) && !glsl_type_is_struct_or_ifc(glsl_without_array(var->type)))
+               num_components /= glsl_array_size(var->type);
             if (num_components != packed_components[slot])
                goto out;
 
@@ -927,7 +1037,7 @@ decompose_attribs(nir_shader *nir, uint32_t decomposed_attrs, uint32_t decompose
    }
    nir_fixup_deref_modes(nir);
    NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_shader_temp, NULL);
-   optimize_nir(nir);
+   optimize_nir(nir, NULL);
    return true;
 }
 
@@ -1050,14 +1160,6 @@ rewrite_bo_access(nir_shader *shader, struct zink_screen *screen)
 {
    return nir_shader_instructions_pass(shader, rewrite_bo_access_instr, nir_metadata_dominance, screen);
 }
-
-struct bo_vars {
-   nir_variable *uniforms[5];
-   nir_variable *ubo[5];
-   nir_variable *ssbo[5];
-   uint32_t first_ubo;
-   uint32_t first_ssbo;
-};
 
 static nir_variable *
 get_bo_var(nir_shader *shader, struct bo_vars *bo, bool ssbo, nir_src *src, unsigned bit_size)
@@ -1262,28 +1364,7 @@ remove_bo_access_instr(nir_builder *b, nir_instr *instr, void *data)
 static bool
 remove_bo_access(nir_shader *shader, struct zink_shader *zs)
 {
-   struct bo_vars bo;
-   memset(&bo, 0, sizeof(bo));
-   if (zs->ubos_used)
-      bo.first_ubo = ffs(zs->ubos_used & ~BITFIELD_BIT(0)) - 2;
-   assert(bo.first_ssbo < PIPE_MAX_CONSTANT_BUFFERS);
-   if (zs->ssbos_used)
-      bo.first_ssbo = ffs(zs->ssbos_used) - 1;
-   assert(bo.first_ssbo < PIPE_MAX_SHADER_BUFFERS);
-   nir_foreach_variable_with_modes(var, shader, nir_var_mem_ssbo | nir_var_mem_ubo) {
-      if (var->data.mode == nir_var_mem_ssbo) {
-         assert(!bo.ssbo[32 >> 4]);
-         bo.ssbo[32 >> 4] = var;
-      } else {
-         if (var->data.driver_location) {
-            assert(!bo.ubo[32 >> 4]);
-            bo.ubo[32 >> 4] = var;
-         } else {
-            assert(!bo.uniforms[32 >> 4]);
-            bo.uniforms[32 >> 4] = var;
-         }
-      }
-   }
+   struct bo_vars bo = get_bo_vars(zs, shader);
    return nir_shader_instructions_pass(shader, remove_bo_access_instr, nir_metadata_dominance, &bo);
 }
 
@@ -1361,12 +1442,17 @@ assign_consumer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reser
          slot -= VARYING_SLOT_PATCH0;
       }
       if (slot_map[slot] == (unsigned char)-1) {
-         if (stage != MESA_SHADER_TESS_CTRL && !is_texcoord(stage, var))
+         /* texcoords can't be eliminated in fs due to GL_COORD_REPLACE,
+          * so keep for now and eliminate later
+          */
+         if (is_texcoord(stage, var)) {
+            var->data.driver_location = -1;
+            return true;
+         }
+         if (stage != MESA_SHADER_TESS_CTRL)
             /* dead io */
             return false;
-         /* - texcoords can't be eliminated in fs due to GL_COORD_REPLACE
-          * - patch variables may be read in the workgroup
-          */
+         /* patch variables may be read in the workgroup */
          slot_map[slot] = (*reserved)++;
       }
       var->data.driver_location = slot_map[slot];
@@ -1376,7 +1462,7 @@ assign_consumer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reser
 
 
 static bool
-rewrite_and_discard_read(nir_builder *b, nir_instr *instr, void *data)
+rewrite_read_as_0(nir_builder *b, nir_instr *instr, void *data)
 {
    nir_variable *var = data;
    if (instr->type != nir_instr_type_intrinsic)
@@ -1388,8 +1474,24 @@ rewrite_and_discard_read(nir_builder *b, nir_instr *instr, void *data)
    nir_variable *deref_var = nir_intrinsic_get_var(intr, 0);
    if (deref_var != var)
       return false;
-   nir_ssa_def *undef = nir_ssa_undef(b, nir_dest_num_components(intr->dest), nir_dest_bit_size(intr->dest));
-   nir_ssa_def_rewrite_uses(&intr->dest.ssa, undef);
+   b->cursor = nir_before_instr(instr);
+   nir_ssa_def *zero = zero = nir_imm_zero(b, nir_dest_num_components(intr->dest), nir_dest_bit_size(intr->dest));
+   if (b->shader->info.stage == MESA_SHADER_FRAGMENT) {
+      switch (var->data.location) {
+      case VARYING_SLOT_COL0:
+      case VARYING_SLOT_COL1:
+      case VARYING_SLOT_BFC0:
+      case VARYING_SLOT_BFC1:
+         /* default color is 0,0,0,1 */
+         if (nir_dest_num_components(intr->dest) == 4)
+            zero = nir_vector_insert_imm(b, zero, nir_imm_float(b, 1.0), 3);
+         break;
+      default:
+         break;
+      }
+   }
+   nir_ssa_def_rewrite_uses(&intr->dest.ssa, zero);
+   nir_instr_remove(instr);
    return true;
 }
 
@@ -1408,7 +1510,7 @@ zink_compiler_assign_io(nir_shader *producer, nir_shader *consumer)
          var->data.mode = nir_var_shader_temp;
          nir_fixup_deref_modes(producer);
          NIR_PASS_V(producer, nir_remove_dead_variables, nir_var_shader_temp, NULL);
-         optimize_nir(producer);
+         optimize_nir(producer, NULL);
       }
    }
    if (producer->info.stage == MESA_SHADER_TESS_CTRL) {
@@ -1426,8 +1528,8 @@ zink_compiler_assign_io(nir_shader *producer, nir_shader *consumer)
       nir_foreach_variable_with_modes_safe(var, consumer, nir_var_shader_in) {
          if (!assign_consumer_var_io(consumer->info.stage, var, &reserved, slot_map)) {
             do_fixup = true;
-            /* input needs to be rewritten as an undef to ensure the entire deref chain is deleted */
-            nir_shader_instructions_pass(consumer, rewrite_and_discard_read, nir_metadata_dominance, var);
+            /* input needs to be rewritten */
+            nir_shader_instructions_pass(consumer, rewrite_read_as_0, nir_metadata_dominance, var);
          }
       }
    }
@@ -1435,7 +1537,7 @@ zink_compiler_assign_io(nir_shader *producer, nir_shader *consumer)
       return;
    nir_fixup_deref_modes(nir);
    NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_shader_temp, NULL);
-   optimize_nir(nir);
+   optimize_nir(nir, NULL);
 }
 
 /* all types that hit this function contain something that is 64bit */
@@ -1755,6 +1857,76 @@ lower_64bit_vars(nir_shader *shader)
    return progress;
 }
 
+static bool
+split_blocks(nir_shader *nir)
+{
+   bool progress = false;
+   bool changed = true;
+   do {
+      progress = false;
+      nir_foreach_shader_out_variable(var, nir) {
+         const struct glsl_type *base_type = glsl_without_array(var->type);
+         nir_variable *members[32]; //can't have more than this without breaking NIR
+         if (!glsl_type_is_struct(base_type))
+            continue;
+         /* TODO: arrays? */
+         if (!glsl_type_is_struct(var->type) || glsl_get_length(var->type) == 1)
+            continue;
+         if (glsl_count_attribute_slots(var->type, false) == 1)
+            continue;
+         unsigned offset = 0;
+         for (unsigned i = 0; i < glsl_get_length(var->type); i++) {
+            members[i] = nir_variable_clone(var, nir);
+            members[i]->type = glsl_get_struct_field(var->type, i);
+            members[i]->name = (void*)glsl_get_struct_elem_name(var->type, i);
+            members[i]->data.location += offset;
+            offset += glsl_count_attribute_slots(members[i]->type, false);
+            nir_shader_add_variable(nir, members[i]);
+         }
+         nir_foreach_function(function, nir) {
+            bool func_progress = false;
+            if (!function->impl)
+               continue;
+            nir_builder b;
+            nir_builder_init(&b, function->impl);
+            nir_foreach_block(block, function->impl) {
+               nir_foreach_instr_safe(instr, block) {
+                  switch (instr->type) {
+                  case nir_instr_type_deref: {
+                  nir_deref_instr *deref = nir_instr_as_deref(instr);
+                  if (!(deref->modes & nir_var_shader_out))
+                     continue;
+                  if (nir_deref_instr_get_variable(deref) != var)
+                     continue;
+                  if (deref->deref_type != nir_deref_type_struct)
+                     continue;
+                  nir_deref_instr *parent = nir_deref_instr_parent(deref);
+                  if (parent->deref_type != nir_deref_type_var)
+                     continue;
+                  deref->modes = nir_var_shader_temp;
+                  parent->modes = nir_var_shader_temp;
+                  b.cursor = nir_before_instr(instr);
+                  nir_ssa_def *dest = &nir_build_deref_var(&b, members[deref->strct.index])->dest.ssa;
+                  nir_ssa_def_rewrite_uses_after(&deref->dest.ssa, dest, &deref->instr);
+                  nir_instr_remove(&deref->instr);
+                  func_progress = true;
+                  break;
+                  }
+                  default: break;
+                  }
+               }
+            }
+            if (func_progress)
+               nir_metadata_preserve(function->impl, nir_metadata_none);
+         }
+         var->data.mode = nir_var_shader_temp;
+         changed = true;
+         progress = true;
+      }
+   } while (progress);
+   return changed;
+}
+
 static void
 zink_shader_dump(void *words, size_t size, const char *file)
 {
@@ -1992,6 +2164,15 @@ zink_shader_compile(struct zink_screen *screen, struct zink_shader *zs, nir_shad
             NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_shader_temp, NULL);
             need_optimize = true;
          }
+         nir_foreach_shader_in_variable_safe(var, nir) {
+            if (!is_texcoord(MESA_SHADER_FRAGMENT, var) || var->data.driver_location != -1)
+               continue;
+            nir_shader_instructions_pass(nir, rewrite_read_as_0, nir_metadata_dominance, var);
+            var->data.mode = nir_var_shader_temp;
+            nir_fixup_deref_modes(nir);
+            NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_shader_temp, NULL);
+            need_optimize = true;
+         }
          break;
       default: break;
       }
@@ -2007,7 +2188,7 @@ zink_shader_compile(struct zink_screen *screen, struct zink_shader *zs, nir_shad
       need_optimize = true;
    }
    if (inlined_uniforms) {
-      optimize_nir(nir);
+      optimize_nir(nir, zs);
 
       /* This must be done again. */
       NIR_PASS_V(nir, nir_io_add_const_offset_to_base, nir_var_shader_in |
@@ -2017,7 +2198,7 @@ zink_shader_compile(struct zink_screen *screen, struct zink_shader *zs, nir_shad
       if (impl->ssa_alloc > ZINK_ALWAYS_INLINE_LIMIT)
          zs->can_inline = false;
    } else if (need_optimize)
-      optimize_nir(nir);
+      optimize_nir(nir, zs);
    prune_io(nir);
 
    NIR_PASS_V(nir, nir_convert_from_ssa, true);
@@ -2066,6 +2247,7 @@ unbreak_bos(nir_shader *shader, struct zink_shader *zs, bool needs_size)
 {
    uint64_t max_ssbo_size = 0;
    uint64_t max_ubo_size = 0;
+   uint64_t max_uniform_size = 0;
 
    if (!shader->info.num_ssbos && !shader->info.num_ubos)
       return false;
@@ -2076,27 +2258,38 @@ unbreak_bos(nir_shader *shader, struct zink_shader *zs, bool needs_size)
          continue;
       /* be conservative: use the bigger of the interface and variable types to ensure in-bounds access */
       unsigned size = glsl_count_attribute_slots(glsl_type_is_array(var->type) ? var->type : type, false);
-      if (var->interface_type)
-         size = MAX2(size, glsl_count_attribute_slots(glsl_without_array(var->interface_type), false));
-      if (var->data.mode == nir_var_mem_ubo)
-         max_ubo_size = MAX2(max_ubo_size, size);
-      else
+      const struct glsl_type *interface_type = var->interface_type ? glsl_without_array(var->interface_type) : NULL;
+      if (interface_type) {
+         unsigned block_size = glsl_get_explicit_size(interface_type, true);
+         block_size = DIV_ROUND_UP(block_size, sizeof(float) * 4);
+         size = MAX2(size, block_size);
+      }
+      if (var->data.mode == nir_var_mem_ubo) {
+         if (var->data.driver_location)
+            max_ubo_size = MAX2(max_ubo_size, size);
+         else
+            max_uniform_size = MAX2(max_uniform_size, size);
+      } else {
          max_ssbo_size = MAX2(max_ssbo_size, size);
+         if (interface_type) {
+            if (glsl_type_is_unsized_array(glsl_get_struct_field(interface_type, glsl_get_length(interface_type) - 1)))
+               needs_size = true;
+         }
+      }
       var->data.mode = nir_var_shader_temp;
    }
    nir_fixup_deref_modes(shader);
    NIR_PASS_V(shader, nir_remove_dead_variables, nir_var_shader_temp, NULL);
-   optimize_nir(shader);
+   optimize_nir(shader, NULL);
 
    struct glsl_struct_field *fields = rzalloc_array(shader, struct glsl_struct_field, 2);
    fields[0].name = ralloc_strdup(shader, "base");
    fields[1].name = ralloc_strdup(shader, "unsized");
    if (shader->info.num_ubos) {
-      const struct glsl_type *ubo_type = glsl_array_type(glsl_uint_type(), max_ubo_size * 4, 4);
-      fields[0].type = ubo_type;
       if (shader->num_uniforms && zs->ubos_used & BITFIELD_BIT(0)) {
+         fields[0].type = glsl_array_type(glsl_uint_type(), max_uniform_size * 4, 4);
          nir_variable *var = nir_variable_create(shader, nir_var_mem_ubo,
-                                                 glsl_array_type(glsl_struct_type(fields, 1, "struct", false), 1, 0),
+                                                 glsl_array_type(glsl_interface_type(fields, 1, GLSL_INTERFACE_PACKING_STD430, false, "struct"), 1, 0),
                                                  "uniform_0");
          var->interface_type = var->type;
          var->data.mode = nir_var_mem_ubo;
@@ -2106,6 +2299,7 @@ unbreak_bos(nir_shader *shader, struct zink_shader *zs, bool needs_size)
       unsigned num_ubos = shader->info.num_ubos - !!shader->info.first_ubo_is_default_ubo;
       uint32_t ubos_used = zs->ubos_used & ~BITFIELD_BIT(0);
       if (num_ubos && ubos_used) {
+         fields[0].type = glsl_array_type(glsl_uint_type(), max_ubo_size * 4, 4);
          /* shrink array as much as possible */
          unsigned first_ubo = ffs(ubos_used) - 2;
          assert(first_ubo < PIPE_MAX_CONSTANT_BUFFERS);
@@ -2328,7 +2522,7 @@ lower_bindless(nir_shader *shader, struct zink_bindless_info *bindless)
       return false;
    nir_fixup_deref_modes(shader);
    NIR_PASS_V(shader, nir_remove_dead_variables, nir_var_shader_temp, NULL);
-   optimize_nir(shader);
+   optimize_nir(shader, NULL);
    return true;
 }
 
@@ -2655,6 +2849,81 @@ lower_sparse(nir_shader *shader)
    return nir_shader_instructions_pass(shader, lower_sparse_instr, nir_metadata_dominance, NULL);
 }
 
+static bool
+match_tex_dests_instr(nir_builder *b, nir_instr *in, void *data)
+{
+   if (in->type != nir_instr_type_tex)
+      return false;
+   nir_tex_instr *tex = nir_instr_as_tex(in);
+   if (tex->op == nir_texop_txs)
+      return false;
+   int handle = nir_tex_instr_src_index(tex, nir_tex_src_texture_handle);
+   nir_variable *var = NULL;
+   if (handle != -1) {
+      var = nir_deref_instr_get_variable(nir_src_as_deref(tex->src[handle].src));
+   } else {
+      nir_foreach_variable_with_modes(img, b->shader, nir_var_uniform) {
+         if (glsl_type_is_sampler(glsl_without_array(img->type))) {
+            unsigned size = glsl_type_is_array(img->type) ? glsl_get_aoa_size(img->type) : 1;
+            if (tex->texture_index >= img->data.driver_location &&
+                tex->texture_index < img->data.driver_location + size) {
+               var = img;
+               break;
+            }
+         }
+      }
+   }
+   assert(var);
+   const struct glsl_type *type = glsl_without_array(var->type);
+   enum glsl_base_type ret_type = glsl_get_sampler_result_type(type);
+   bool is_int = glsl_base_type_is_integer(ret_type);
+   unsigned bit_size = glsl_base_type_get_bit_size(ret_type);
+   unsigned dest_size = nir_dest_bit_size(tex->dest);
+   b->cursor = nir_after_instr(in);
+   unsigned num_components = nir_dest_num_components(tex->dest);
+   bool rewrite_depth = tex->is_shadow && num_components > 1 && tex->op != nir_texop_tg4 && !tex->is_sparse;
+   if (bit_size == dest_size && !rewrite_depth)
+      return false;
+   nir_ssa_def *dest = &tex->dest.ssa;
+   if (bit_size != dest_size) {
+      tex->dest.ssa.bit_size = bit_size;
+      tex->dest_type = nir_get_nir_type_for_glsl_base_type(ret_type);
+      if (rewrite_depth) {
+         assert(!tex->is_new_style_shadow);
+         tex->dest.ssa.num_components = 1;
+         tex->is_new_style_shadow = true;
+      }
+
+      if (is_int) {
+         if (glsl_unsigned_base_type_of(ret_type) == ret_type)
+            dest = nir_u2uN(b, &tex->dest.ssa, dest_size);
+         else
+            dest = nir_i2iN(b, &tex->dest.ssa, dest_size);
+      } else {
+         dest = nir_f2fN(b, &tex->dest.ssa, dest_size);
+      }
+      if (rewrite_depth) {
+         nir_ssa_def *vec[4] = {dest, dest, dest, dest};
+         dest = nir_vec(b, vec, num_components);
+      }
+      nir_ssa_def_rewrite_uses_after(&tex->dest.ssa, dest, dest->parent_instr);
+   } else if (rewrite_depth) {
+      assert(!tex->is_new_style_shadow);
+      tex->dest.ssa.num_components = 1;
+      tex->is_new_style_shadow = true;
+      nir_ssa_def *vec[4] = {dest, dest, dest, dest};
+      nir_ssa_def *splat = nir_vec(b, vec, num_components);
+      nir_ssa_def_rewrite_uses_after(dest, splat, splat->parent_instr);
+   }
+   return true;
+}
+
+static bool
+match_tex_dests(nir_shader *shader)
+{
+   return nir_shader_instructions_pass(shader, match_tex_dests_instr, nir_metadata_dominance, NULL);
+}
+
 struct zink_shader *
 zink_shader_create(struct zink_screen *screen, struct nir_shader *nir,
                    const struct pipe_stream_output_info *so_info)
@@ -2711,7 +2980,10 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir,
       NIR_PASS_V(nir, nir_lower_subgroups, &subgroup_options);
    }
 
-   optimize_nir(nir);
+   if (so_info && so_info->num_outputs)
+      NIR_PASS_V(nir, split_blocks);
+
+   optimize_nir(nir, NULL);
    NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp, NULL);
    NIR_PASS_V(nir, nir_lower_discard_if);
    NIR_PASS_V(nir, nir_lower_fragcolor,
@@ -2745,7 +3017,7 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir,
    if (has_bindless_io)
       NIR_PASS_V(nir, lower_bindless_io);
 
-   optimize_nir(nir);
+   optimize_nir(nir, NULL);
    prune_io(nir);
 
    scan_nir(screen, nir, ret);
@@ -2821,9 +3093,10 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir,
 
    if (!screen->info.feats.features.shaderInt64)
       NIR_PASS_V(nir, lower_64bit_vars);
+   NIR_PASS_V(nir, match_tex_dests);
 
    ret->nir = nir;
-   if (so_info && nir->info.outputs_written && nir->info.has_transform_feedback_varyings)
+   if (so_info && so_info->num_outputs)
       update_so_info(ret, so_info, nir->info.outputs_written, have_psiz);
    else if (have_psiz) {
       bool have_fake_psiz = false;
@@ -2869,10 +3142,9 @@ zink_shader_finalize(struct pipe_screen *pscreen, void *nirptr)
    if (!screen->info.feats.features.shaderImageGatherExtended)
       tex_opts.lower_tg4_offsets = true;
    NIR_PASS_V(nir, nir_lower_tex, &tex_opts);
-   NIR_PASS_V(nir, nir_lower_uniforms_to_ubo, true, false);
    if (nir->info.stage == MESA_SHADER_GEOMETRY)
       NIR_PASS_V(nir, nir_lower_gs_intrinsics, nir_lower_gs_intrinsics_per_stream);
-   optimize_nir(nir);
+   optimize_nir(nir, NULL);
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
    if (screen->driconf.inline_uniforms)
       nir_find_inlinable_uniforms(nir);
@@ -2897,7 +3169,13 @@ zink_shader_free(struct zink_context *ctx, struct zink_shader *shader)
          enum pipe_shader_type pstage = pipe_shader_type_from_mesa(shader->nir->info.stage);
          assert(pstage < ZINK_SHADER_COUNT);
          if (!prog->base.removed && (shader->nir->info.stage != MESA_SHADER_TESS_CTRL || !shader->is_generated)) {
-            _mesa_hash_table_remove_key(&ctx->program_cache[prog->stages_present >> 2], prog->shaders);
+            unsigned stages_present = prog->stages_present;
+            if (prog->shaders[PIPE_SHADER_TESS_CTRL] && prog->shaders[PIPE_SHADER_TESS_CTRL]->is_generated)
+               stages_present &= ~BITFIELD_BIT(PIPE_SHADER_TESS_CTRL);
+            struct hash_table *ht = &ctx->program_cache[zink_program_cache_stages(stages_present)];
+            struct hash_entry *he = _mesa_hash_table_search(ht, prog->shaders);
+            assert(he);
+            _mesa_hash_table_remove(ht, he);
             prog->base.removed = true;
          }
          if (shader->nir->info.stage != MESA_SHADER_TESS_CTRL || !shader->is_generated)
@@ -3035,7 +3313,7 @@ zink_shader_tcs_create(struct zink_screen *screen, struct zink_shader *vs, unsig
    nir_validate_shader(nir, "created");
 
    NIR_PASS_V(nir, nir_lower_regs_to_ssa);
-   optimize_nir(nir);
+   optimize_nir(nir, NULL);
    NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp, NULL);
    NIR_PASS_V(nir, nir_convert_from_ssa, true);
 

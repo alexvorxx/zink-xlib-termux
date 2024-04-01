@@ -240,7 +240,7 @@ check_opaque(const struct lp_setup_context *setup,
 
    const struct lp_tgsi_channel_info *alpha_info = &variant->shader->info.cbuf[0][3];
    if (alpha_info->file == TGSI_FILE_CONSTANT) {
-      const float *constants = setup->fs.current.jit_context.constants[0];
+      const float *constants = setup->fs.current.jit_context.constants[0].f;
       float alpha = constants[alpha_info->u.index*4 +
                               alpha_info->swizzle];
       return alpha == 1.0f;
@@ -457,9 +457,9 @@ do_triangle_ccw(struct lp_setup_context *setup,
 
    if (0)
       lp_dump_setup_coef(&setup->setup.variant->key,
-                         (const float (*)[4])GET_A0(&tri->inputs),
-                         (const float (*)[4])GET_DADX(&tri->inputs),
-                         (const float (*)[4])GET_DADY(&tri->inputs));
+                         GET_A0(&tri->inputs),
+                         GET_DADX(&tri->inputs),
+                         GET_DADY(&tri->inputs));
 
    struct lp_rast_plane *plane = GET_PLANES(tri);
 

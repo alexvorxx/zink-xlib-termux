@@ -78,13 +78,16 @@
  * still want to use normal TLS (which involves a function call, but not the
  * expensive pthread_getspecific() or its equivalent).
  */
-#ifdef USE_ELF_TLS
-#if defined(__GLIBC__)
+#if DETECT_OS_APPLE
+/* Apple Clang emits wrappers when using thread_local that break module linkage,
+ * but not with __thread
+ */
+#define __THREAD_INITIAL_EXEC __thread
+#elif defined(__GLIBC__)
 #define __THREAD_INITIAL_EXEC thread_local __attribute__((tls_model("initial-exec")))
 #define REALLY_INITIAL_EXEC
 #else
 #define __THREAD_INITIAL_EXEC thread_local
-#endif
 #endif
 
 static inline int
@@ -109,6 +112,12 @@ static inline int u_thread_create(thrd_t *thrd, int (*routine)(void *), void *pa
 
    sigfillset(&new_set);
    sigdelset(&new_set, SIGSYS);
+
+   /* SIGSEGV is commonly used by Vulkan API tracing layers in order to track
+    * accesses in device memory mapped to user space. Blocking the signal hinders
+    * that tracking mechanism.
+    */
+   sigdelset(&new_set, SIGSEGV);
    pthread_sigmask(SIG_BLOCK, &new_set, &saved_set);
    ret = thrd_create(thrd, routine, param);
    pthread_sigmask(SIG_SETMASK, &saved_set, NULL);
@@ -188,7 +197,7 @@ util_set_thread_affinity(thrd_t thread,
    if (sizeof(m) > 4 && num_mask_bits > 32)
       m |= (uint64_t)mask[1] << 32;
 
-   m = SetThreadAffinityMask(thread, m);
+   m = SetThreadAffinityMask(thread.handle, m);
    if (!m)
       return false;
 
@@ -212,20 +221,9 @@ util_set_current_thread_affinity(const uint32_t *mask,
                                  uint32_t *old_mask,
                                  unsigned num_mask_bits)
 {
-#if defined(HAVE_PTHREAD_SETAFFINITY)
-   return util_set_thread_affinity(pthread_self(), mask, old_mask,
+   return util_set_thread_affinity(thrd_current(), mask, old_mask,
                                    num_mask_bits);
-
-#elif defined(_WIN32) && !defined(__CYGWIN__)
-   /* The GetCurrentThreadId() handle is only valid within the current thread. */
-   return util_set_thread_affinity(GetCurrentThread(), mask, old_mask,
-                                   num_mask_bits);
-
-#else
-   return false;
-#endif
 }
-
 
 /*
  * Thread statistics.
@@ -242,6 +240,13 @@ util_thread_get_time_nano(thrd_t thread)
    pthread_getcpuclockid(thread, &cid);
    clock_gettime(cid, &ts);
    return (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
+#elif defined(_WIN32)
+   union {
+      FILETIME time;
+      ULONGLONG value;
+   } kernel_time, user_time;
+   GetThreadTimes((HANDLE)thread.handle, NULL, NULL, &kernel_time.time, &user_time.time);
+   return (kernel_time.value + user_time.value) * 100;
 #else
    (void)thread;
    return 0;
@@ -252,24 +257,12 @@ util_thread_get_time_nano(thrd_t thread)
 static inline int64_t
 util_current_thread_get_time_nano(void)
 {
-#if defined(HAVE_PTHREAD)
-   return util_thread_get_time_nano(pthread_self());
-
-#elif defined(_WIN32) && !defined(__CYGWIN__)
-   /* The GetCurrentThreadId() handle is only valid within the current thread. */
-   return util_thread_get_time_nano(GetCurrentThread());
-
-#else
-   return 0;
-#endif
+   return util_thread_get_time_nano(thrd_current());
 }
 
 static inline bool u_thread_is_self(thrd_t thread)
 {
-#if defined(HAVE_PTHREAD)
-   return pthread_equal(pthread_self(), thread);
-#endif
-   return false;
+   return thrd_equal(thrd_current(), thread);
 }
 
 /*
@@ -347,46 +340,5 @@ static inline bool util_barrier_wait(util_barrier *barrier)
 }
 
 #endif
-
-/*
- * Thread-id's.
- *
- * thrd_current() is not portable to windows (or at least not in a desirable
- * way), so thread_id's provide an alternative mechanism
- */
-
-#ifdef _WIN32
-typedef DWORD thread_id;
-#else
-typedef thrd_t thread_id;
-#endif
-
-static inline thread_id
-util_get_thread_id(void)
-{
-   /*
-    * XXX: Callers of of this function assume it is a lightweight function.
-    * But unfortunately C11's thrd_current() gives no such guarantees.  In
-    * fact, it's pretty hard to have a compliant implementation of
-    * thrd_current() on Windows with such characteristics.  So for now, we
-    * side-step this mess and use Windows thread primitives directly here.
-    */
-#ifdef _WIN32
-   return GetCurrentThreadId();
-#else
-   return thrd_current();
-#endif
-}
-
-
-static inline int
-util_thread_id_equal(thread_id t1, thread_id t2)
-{
-#ifdef _WIN32
-   return t1 == t2;
-#else
-   return thrd_equal(t1, t2);
-#endif
-}
 
 #endif /* U_THREAD_H_ */

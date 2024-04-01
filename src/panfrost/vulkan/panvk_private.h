@@ -52,12 +52,14 @@
 #include "vk_buffer.h"
 #include "vk_command_buffer.h"
 #include "vk_command_pool.h"
+#include "vk_descriptor_set_layout.h"
 #include "vk_device.h"
 #include "vk_image.h"
 #include "vk_instance.h"
 #include "vk_log.h"
 #include "vk_object.h"
 #include "vk_physical_device.h"
+#include "vk_pipeline_layout.h"
 #include "vk_queue.h"
 #include "vk_sync.h"
 #include "wsi_common.h"
@@ -369,11 +371,7 @@ struct panvk_descriptor_set_binding_layout {
 };
 
 struct panvk_descriptor_set_layout {
-   struct vk_object_base base;
-   int32_t refcount;
-
-   /* The create flags for this descriptor set layout */
-   VkDescriptorSetLayoutCreateFlags flags;
+   struct vk_descriptor_set_layout vk;
 
    /* Shader stages affected by this descriptor set */
    uint16_t shader_stages;
@@ -398,30 +396,15 @@ struct panvk_descriptor_set_layout {
    struct panvk_descriptor_set_binding_layout bindings[0];
 };
 
-void
-panvk_descriptor_set_layout_destroy(struct panvk_device *dev,
-                                    struct panvk_descriptor_set_layout *layout);
-
-static inline void
-panvk_descriptor_set_layout_unref(struct panvk_device *dev,
-                                  struct panvk_descriptor_set_layout *layout)
+static inline const struct panvk_descriptor_set_layout *
+vk_to_panvk_descriptor_set_layout(const struct vk_descriptor_set_layout *layout)
 {
-   if (layout && p_atomic_dec_zero(&layout->refcount))
-      panvk_descriptor_set_layout_destroy(dev, layout);
-}
-
-static inline struct panvk_descriptor_set_layout *
-panvk_descriptor_set_layout_ref(struct panvk_descriptor_set_layout *layout)
-{
-   if (layout)
-      p_atomic_inc(&layout->refcount);
-
-   return layout;
+   return container_of(layout, const struct panvk_descriptor_set_layout, vk);
 }
 
 struct panvk_pipeline_layout {
-   struct vk_object_base base;
-   int32_t refcount;
+   struct vk_pipeline_layout vk;
+
    unsigned char sha1[20];
 
    unsigned num_samplers;
@@ -437,7 +420,6 @@ struct panvk_pipeline_layout {
    } push_constants;
 
    struct {
-      struct panvk_descriptor_set_layout *layout;
       unsigned sampler_offset;
       unsigned tex_offset;
       unsigned ubo_offset;
@@ -447,37 +429,19 @@ struct panvk_pipeline_layout {
    } sets[MAX_SETS];
 };
 
-void
-panvk_pipeline_layout_destroy(struct panvk_device *dev,
-                              struct panvk_pipeline_layout *layout);
-
-static inline void
-panvk_pipeline_layout_unref(struct panvk_device *dev,
-                            struct panvk_pipeline_layout *layout)
-{
-   if (layout && p_atomic_dec_zero(&layout->refcount))
-      panvk_pipeline_layout_destroy(dev, layout);
-}
-
-static inline struct panvk_pipeline_layout *
-panvk_pipeline_layout_ref(struct panvk_pipeline_layout *layout)
-{
-   if (layout)
-      p_atomic_inc(&layout->refcount);
-
-   return layout;
-}
-
 static unsigned
 panvk_pipeline_layout_ubo_start(const struct panvk_pipeline_layout *layout,
                                 unsigned set, bool is_dynamic)
 {
+   const struct panvk_descriptor_set_layout *set_layout =
+      vk_to_panvk_descriptor_set_layout(layout->vk.set_layouts[set]);
+
    unsigned offset = PANVK_NUM_BUILTIN_UBOS +
                      layout->sets[set].ubo_offset +
                      layout->sets[set].dyn_ubo_offset;
 
    if (is_dynamic)
-      offset += layout->sets[set].layout->num_ubos;
+      offset += set_layout->num_ubos;
 
    return offset;
 }
@@ -487,8 +451,10 @@ panvk_pipeline_layout_ubo_index(const struct panvk_pipeline_layout *layout,
                                 unsigned set, unsigned binding,
                                 unsigned array_index)
 {
-   struct panvk_descriptor_set_binding_layout *binding_layout =
-      &layout->sets[set].layout->bindings[binding];
+   const struct panvk_descriptor_set_layout *set_layout =
+      vk_to_panvk_descriptor_set_layout(layout->vk.set_layouts[set]);
+   const struct panvk_descriptor_set_binding_layout *binding_layout =
+      &set_layout->bindings[binding];
 
    const bool is_dynamic =
       binding_layout->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
@@ -1100,7 +1066,7 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_buffer, vk.base, VkBuffer, VK_OBJECT_TYPE_B
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_buffer_view, base, VkBufferView, VK_OBJECT_TYPE_BUFFER_VIEW)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_pool, base, VkDescriptorPool, VK_OBJECT_TYPE_DESCRIPTOR_POOL)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_set, base, VkDescriptorSet, VK_OBJECT_TYPE_DESCRIPTOR_SET)
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_set_layout, base,
+VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_descriptor_set_layout, vk.base,
                                VkDescriptorSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_device_memory, base, VkDeviceMemory, VK_OBJECT_TYPE_DEVICE_MEMORY)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_event, base, VkEvent, VK_OBJECT_TYPE_EVENT)
@@ -1109,7 +1075,7 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_image, vk.base, VkImage, VK_OBJECT_TYPE_IMA
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_image_view, vk.base, VkImageView, VK_OBJECT_TYPE_IMAGE_VIEW);
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline_cache, base, VkPipelineCache, VK_OBJECT_TYPE_PIPELINE_CACHE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline, base, VkPipeline, VK_OBJECT_TYPE_PIPELINE)
-VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline_layout, base, VkPipelineLayout, VK_OBJECT_TYPE_PIPELINE_LAYOUT)
+VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline_layout, vk.base, VkPipelineLayout, VK_OBJECT_TYPE_PIPELINE_LAYOUT)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_render_pass, base, VkRenderPass, VK_OBJECT_TYPE_RENDER_PASS)
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_sampler, base, VkSampler, VK_OBJECT_TYPE_SAMPLER)
 

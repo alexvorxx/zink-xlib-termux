@@ -189,57 +189,17 @@ VkResult pvr_QueueWaitIdle(VkQueue _queue)
    return VK_SUCCESS;
 }
 
-static enum pvr_pipeline_stage_bits
-pvr_convert_stage_mask(VkPipelineStageFlags2KHR stage_mask)
-{
-   enum pvr_pipeline_stage_bits stages = 0;
-
-   if (stage_mask & VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT ||
-       stage_mask & VK_PIPELINE_STAGE_ALL_COMMANDS_BIT) {
-      return PVR_PIPELINE_STAGE_ALL_BITS;
-   }
-
-   if (stage_mask & (VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT))
-      stages |= PVR_PIPELINE_STAGE_ALL_GRAPHICS_BITS;
-
-   if (stage_mask & (VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT |
-                     VK_PIPELINE_STAGE_VERTEX_INPUT_BIT |
-                     VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
-                     VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT |
-                     VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT |
-                     VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT)) {
-      stages |= PVR_PIPELINE_STAGE_GEOM_BIT;
-   }
-
-   if (stage_mask & (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
-                     VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-                     VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT |
-                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)) {
-      stages |= PVR_PIPELINE_STAGE_FRAG_BIT;
-   }
-
-   if (stage_mask & (VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT |
-                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)) {
-      stages |= PVR_PIPELINE_STAGE_COMPUTE_BIT;
-   }
-
-   if (stage_mask & (VK_PIPELINE_STAGE_TRANSFER_BIT))
-      stages |= PVR_PIPELINE_STAGE_TRANSFER_BIT;
-
-   return stages;
-}
-
 static VkResult
 pvr_process_graphics_cmd(struct pvr_device *device,
                          struct pvr_queue *queue,
                          struct pvr_cmd_buffer *cmd_buffer,
-                         struct pvr_sub_cmd *sub_cmd,
+                         struct pvr_sub_cmd_gfx *sub_cmd,
                          struct vk_sync **waits,
                          uint32_t wait_count,
                          uint32_t *stage_flags,
                          struct vk_sync *completions[static PVR_JOB_TYPE_MAX])
 {
-   const struct pvr_framebuffer *framebuffer = sub_cmd->gfx.framebuffer;
+   const struct pvr_framebuffer *framebuffer = sub_cmd->framebuffer;
    struct vk_sync *sync_geom;
    struct vk_sync *sync_frag;
    uint32_t bo_count = 0;
@@ -254,8 +214,10 @@ pvr_process_graphics_cmd(struct pvr_device *device,
                            0U,
                            0UL,
                            &sync_geom);
-   if (result != VK_SUCCESS)
+   if (result != VK_SUCCESS) {
+      STACK_ARRAY_FINISH(bos);
       return result;
+   }
 
    result = vk_sync_create(&device->vk,
                            &device->pdevice->ws->syncobj_type,
@@ -264,6 +226,7 @@ pvr_process_graphics_cmd(struct pvr_device *device,
                            &sync_frag);
    if (result != VK_SUCCESS) {
       vk_sync_destroy(&device->vk, sync_geom);
+      STACK_ARRAY_FINISH(bos);
       return result;
    }
 
@@ -272,7 +235,7 @@ pvr_process_graphics_cmd(struct pvr_device *device,
    /* FIXME: If the framebuffer being rendered to has multiple layers then we
     * need to split submissions that run a fragment job into two.
     */
-   if (sub_cmd->gfx.job.run_frag && framebuffer->layers > 1)
+   if (sub_cmd->job.run_frag && framebuffer->layers > 1)
       pvr_finishme("Split job submission for framebuffers with > 1 layers");
 
    /* Get any imported buffers used in framebuffer attachments. */
@@ -287,7 +250,7 @@ pvr_process_graphics_cmd(struct pvr_device *device,
 
    /* This passes ownership of the wait fences to pvr_render_job_submit(). */
    result = pvr_render_job_submit(queue->gfx_ctx,
-                                  &sub_cmd->gfx.job,
+                                  &sub_cmd->job,
                                   bos,
                                   bo_count,
                                   waits,
@@ -321,7 +284,7 @@ pvr_process_graphics_cmd(struct pvr_device *device,
 static VkResult
 pvr_process_compute_cmd(struct pvr_device *device,
                         struct pvr_queue *queue,
-                        struct pvr_sub_cmd *sub_cmd,
+                        struct pvr_sub_cmd_compute *sub_cmd,
                         struct vk_sync **waits,
                         uint32_t wait_count,
                         uint32_t *stage_flags,
@@ -362,7 +325,7 @@ pvr_process_compute_cmd(struct pvr_device *device,
 static VkResult
 pvr_process_transfer_cmds(struct pvr_device *device,
                           struct pvr_queue *queue,
-                          struct pvr_sub_cmd *sub_cmd,
+                          struct pvr_sub_cmd_transfer *sub_cmd,
                           struct vk_sync **waits,
                           uint32_t wait_count,
                           uint32_t *stage_flags,
@@ -516,7 +479,7 @@ pvr_process_cmd_buffer(struct pvr_device *device,
          result = pvr_process_graphics_cmd(device,
                                            queue,
                                            cmd_buffer,
-                                           sub_cmd,
+                                           &sub_cmd->gfx,
                                            waits,
                                            wait_count,
                                            stage_flags,
@@ -526,7 +489,7 @@ pvr_process_cmd_buffer(struct pvr_device *device,
       case PVR_SUB_CMD_TYPE_COMPUTE:
          result = pvr_process_compute_cmd(device,
                                           queue,
-                                          sub_cmd,
+                                          &sub_cmd->compute,
                                           waits,
                                           wait_count,
                                           stage_flags,
@@ -536,7 +499,7 @@ pvr_process_cmd_buffer(struct pvr_device *device,
       case PVR_SUB_CMD_TYPE_TRANSFER:
          result = pvr_process_transfer_cmds(device,
                                             queue,
-                                            sub_cmd,
+                                            &sub_cmd->transfer,
                                             waits,
                                             wait_count,
                                             stage_flags,
@@ -655,7 +618,7 @@ VkResult pvr_QueueSubmit(VkQueue _queue,
          assert(!(sync->flags & VK_SYNC_IS_TIMELINE));
 
          stage_flags[wait_count] =
-            pvr_convert_stage_mask(desc->pWaitDstStageMask[j]);
+            pvr_stage_mask_dst(desc->pWaitDstStageMask[j]);
          waits[wait_count] = vk_semaphore_get_active_sync(semaphore);
          wait_count++;
       }

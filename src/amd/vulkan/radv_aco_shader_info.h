@@ -95,6 +95,7 @@ radv_aco_convert_shader_info(struct aco_shader_info *aco_info,
    ASSIGN_FIELD(ps.writes_z);
    ASSIGN_FIELD(ps.writes_stencil);
    ASSIGN_FIELD(ps.writes_sample_mask);
+   ASSIGN_FIELD(ps.has_epilog);
    ASSIGN_FIELD(ps.num_interp);
    ASSIGN_FIELD(ps.spi_ps_input);
    ASSIGN_FIELD(cs.subgroup_size);
@@ -120,6 +121,16 @@ radv_aco_convert_vs_prolog_key(struct aco_vs_prolog_key *aco_info,
    ASSIGN_FIELD(misaligned_mask);
    ASSIGN_FIELD(is_ngg);
    ASSIGN_FIELD(next_stage);
+}
+
+static inline void
+radv_aco_convert_ps_epilog_key(struct aco_ps_epilog_key *aco_info,
+			       const struct radv_ps_epilog_key *radv)
+{
+   ASSIGN_FIELD(spi_shader_col_format);
+   ASSIGN_FIELD(color_is_int8);
+   ASSIGN_FIELD(color_is_int10);
+   ASSIGN_FIELD(enable_mrt_output_nan_fixup);
 }
 
 static inline void

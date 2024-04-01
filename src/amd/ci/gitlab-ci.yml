@@ -1,10 +1,10 @@
 ############### LAVA
-# Run three jobs in parallel each running 1/30th of the test suite
+# Run four jobs in parallel each running 1/40th of the test suite
 radv_stoney_vkcts:amd64:
   extends:
     - .lava-test:amd64
     - .radv-rules
-  parallel: 3
+  parallel: 4
   variables:
     DEQP_VER: vk
     DEQP_FRACTION: 10
@@ -115,6 +115,7 @@ radv_stoney_vkcts:amd64:
     FDO_CI_CONCURRENT: 8
     B2C_TIMEOUT_BOOT_MINUTES: 85
     B2C_TIMEOUT_OVERALL_MINUTES: 120
+    B2C_TIMEOUT_MINUTES: 3
     B2C_KERNEL_CMDLINE_EXTRAS: 'b2c.swap=16g'
   tags:
     - amdgpu:codename:VANGOGH
@@ -135,16 +136,16 @@ radv_stoney_vkcts:amd64:
 
 # VKCTS never finishes on gfx7 due to all the GPU resets and hangs.
 # Hence, disable it for now.
-.vkcts-kabini-valve:
+vkcts-kabini-valve:
   extends:
     - .vkcts-test-valve
     - .kabini-test-valve
-  timeout: 6h 10m
+    - .test-manual-mr  # Make sure this job is *always* run manually
+  timeout: 12h
   variables:
-    # FIXME: Create this baseline for KABINI
     GPU_VERSION: radv-kabini-aco
-    B2C_TIMEOUT_BOOT_MINUTES: 360
-    B2C_TIMEOUT_OVERALL_MINUTES: 360
+    B2C_TIMEOUT_BOOT_MINUTES: 710
+    B2C_TIMEOUT_OVERALL_MINUTES: 710
     B2C_TIMEOUT_BOOT_RETRIES: 0
 
 # Disabled for now due to Igalia farm issues.
@@ -202,6 +203,14 @@ vkcts-navi21-valve:
   variables:
     GPU_VERSION: radv-navi21-aco
 
+vkcts-navi21-llvm-valve:
+  extends:
+    - .vkcts-test-valve
+    - .navi21-test-valve
+  variables:
+    GPU_VERSION: radv-navi21-llvm
+    RADV_DEBUG: llvm,checkir
+
 vkcts-vangogh-valve:
   extends:
     - .vkcts-test-valve
@@ -255,14 +264,17 @@ radv-fossils:
     # Polaris10 (GFX8)
     - export RADV_FORCE_FAMILY="POLARIS10"
     - ./install/fossilize-runner.sh
-    # Vega10 (GFX9): Currently fails, thus disabled
-    #- export RADV_FORCE_FAMILY="VEGA10"
-    #- ./install/fossilize-runner.sh
+    # Vega10 (GFX9)
+    - export RADV_FORCE_FAMILY="VEGA10"
+    - ./install/fossilize-runner.sh
     # Navi10 (GFX10)
     - export RADV_FORCE_FAMILY="NAVI10"
     - ./install/fossilize-runner.sh
     # Navi21 (GFX10_3)
     - export RADV_FORCE_FAMILY="NAVI21"
+    - ./install/fossilize-runner.sh
+    # RDNA3 (GFX11)
+    - export RADV_FORCE_FAMILY="GFX1100"
     - ./install/fossilize-runner.sh
 
 ############### vkd3d-proton

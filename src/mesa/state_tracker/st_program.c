@@ -379,6 +379,14 @@ st_prog_to_nir_postprocess(struct st_context *st, nir_shader *nir,
    NIR_PASS_V(nir, nir_lower_regs_to_ssa);
    nir_validate_shader(nir, "after st/ptn lower_regs_to_ssa");
 
+   /* Lower outputs to temporaries to avoid reading from output variables (which
+    * is permitted by the language but generally not implemented in HW).
+    */
+   NIR_PASS_V(nir, nir_lower_io_to_temporaries,
+               nir_shader_get_entrypoint(nir),
+               true, false);
+   NIR_PASS_V(nir, nir_lower_global_vars_to_local);
+
    NIR_PASS_V(nir, st_nir_lower_wpos_ytransform, prog, screen);
    NIR_PASS_V(nir, nir_lower_system_values);
    NIR_PASS_V(nir, nir_lower_compute_system_values, NULL);
@@ -407,7 +415,7 @@ st_translate_prog_to_nir(struct st_context *st, struct gl_program *prog,
       st_get_nir_compiler_options(st, prog->info.stage);
 
    /* Translate to NIR */
-   nir_shader *nir = prog_to_nir(prog, options);
+   nir_shader *nir = prog_to_nir(st->ctx, prog, options);
 
    st_prog_to_nir_postprocess(st, nir, prog);
 
@@ -494,6 +502,7 @@ st_create_nir_shader(struct st_context *st, struct pipe_shader_state *state)
 
    assert(state->type == PIPE_SHADER_IR_NIR);
    nir_shader *nir = state->ir.nir;
+   struct shader_info info = nir->info;
    gl_shader_stage stage = nir->info.stage;
    enum pipe_shader_type sh = pipe_shader_type_from_mesa(stage);
 
@@ -540,7 +549,7 @@ st_create_nir_shader(struct st_context *st, struct pipe_shader_state *state)
    case MESA_SHADER_COMPUTE: {
       struct pipe_compute_state cs = {0};
       cs.ir_type = state->type;
-      cs.req_local_mem = nir->info.shared_size;
+      cs.req_local_mem = info.shared_size;
 
       if (state->type == PIPE_SHADER_IR_NIR)
          cs.prog = state->ir.nir;
@@ -571,8 +580,6 @@ st_translate_vertex_program(struct st_context *st,
    /* ARB_vp: */
    if (prog->arb.IsPositionInvariant)
       _mesa_insert_mvp_code(st->ctx, prog);
-
-   _mesa_remove_output_reads(prog, PROGRAM_OUTPUT);
 
    /* This determines which states will be updated when the assembly
       * shader is bound.
@@ -739,8 +746,10 @@ st_create_common_variant(struct st_context *st,
       }
    }
 
-   if (key->is_draw_shader)
+   if (key->is_draw_shader) {
+      NIR_PASS_V(state.ir.nir, gl_nir_lower_images, false);
       v->base.driver_shader = draw_create_vertex_shader(st->draw, &state);
+   }
    else
       v->base.driver_shader = st_create_nir_shader(st, &state);
 
@@ -822,11 +831,6 @@ static bool
 st_translate_fragment_program(struct st_context *st,
                               struct gl_program *fp)
 {
-   /* Non-GLSL programs: */
-   _mesa_remove_output_reads(fp, PROGRAM_OUTPUT);
-   if (st->ctx->Const.GLSLFragCoordIsSysVal)
-      _mesa_program_fragment_position_to_sysval(fp);
-
    /* This determines which states will be updated when the assembly
     * shader is bound.
     *

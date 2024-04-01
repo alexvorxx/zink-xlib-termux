@@ -60,7 +60,8 @@ struct zink_resource_object {
 
    VkPipelineStageFlagBits access_stage;
    VkAccessFlags access;
-   bool unordered_barrier;
+   bool unordered_read;
+   bool unordered_write;
 
    unsigned persistent_maps; //if nonzero, requires vkFlushMappedMemoryRanges during batch use
    struct zink_descriptor_refs desc_set_refs;
@@ -85,14 +86,11 @@ struct zink_resource_object {
    int handle;
    struct zink_bo *bo;
    // struct {
-   void *dt;
+   struct kopper_displaytarget *dt;
    uint32_t dt_idx;
    uint32_t last_dt_idx;
-   VkSemaphore acquire;
    VkSemaphore present;
-   bool acquired;
    bool new_dt;
-   bool dt_has_data;
    bool indefinite_acquire;
    // }
 
@@ -100,9 +98,10 @@ struct zink_resource_object {
    VkDeviceSize offset, size, alignment;
    VkImageCreateFlags vkflags;
    VkImageUsageFlags vkusage;
+   VkFormatFeatureFlags vkfeats;
    uint64_t modifier;
    VkImageAspectFlags modifier_aspect;
-   VkSamplerYcbcrConversionKHR sampler_conversion;
+   VkSamplerYcbcrConversion sampler_conversion;
    unsigned plane_offsets[3];
    unsigned plane_strides[3];
    unsigned plane_count;
@@ -135,7 +134,7 @@ struct zink_resource {
          VkFormat format;
          VkImageLayout layout;
          VkImageAspectFlags aspect;
-         bool optimal_tiling;
+         bool linear;
          bool need_2D;
          bool valid;
          uint8_t fb_binds; //not counted in all_binds

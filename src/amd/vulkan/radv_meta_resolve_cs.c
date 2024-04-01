@@ -61,9 +61,10 @@ radv_meta_build_resolve_srgb_conversion(nir_builder *b, nir_ssa_def *input)
 static nir_shader *
 build_resolve_compute_shader(struct radv_device *dev, bool is_integer, bool is_srgb, int samples)
 {
+   enum glsl_base_type img_base_type = is_integer ? GLSL_TYPE_UINT : GLSL_TYPE_FLOAT;
    const struct glsl_type *sampler_type =
-      glsl_sampler_type(GLSL_SAMPLER_DIM_MS, false, false, GLSL_TYPE_FLOAT);
-   const struct glsl_type *img_type = glsl_image_type(GLSL_SAMPLER_DIM_2D, false, GLSL_TYPE_FLOAT);
+      glsl_sampler_type(GLSL_SAMPLER_DIM_MS, false, false, img_base_type);
+   const struct glsl_type *img_type = glsl_image_type(GLSL_SAMPLER_DIM_2D, false, img_base_type);
    nir_builder b = radv_meta_init_shader(dev, MESA_SHADER_COMPUTE, "meta_resolve_cs-%d-%s", samples,
                                          is_integer ? "int" : (is_srgb ? "srgb" : "float"));
    b.shader->info.workgroup_size[0] = 8;
@@ -130,9 +131,10 @@ static nir_shader *
 build_depth_stencil_resolve_compute_shader(struct radv_device *dev, int samples, int index,
                                            VkResolveModeFlagBits resolve_mode)
 {
+   enum glsl_base_type img_base_type = index == DEPTH_RESOLVE ? GLSL_TYPE_FLOAT : GLSL_TYPE_UINT;
    const struct glsl_type *sampler_type =
-      glsl_sampler_type(GLSL_SAMPLER_DIM_MS, false, true, GLSL_TYPE_FLOAT);
-   const struct glsl_type *img_type = glsl_image_type(GLSL_SAMPLER_DIM_2D, true, GLSL_TYPE_FLOAT);
+      glsl_sampler_type(GLSL_SAMPLER_DIM_MS, false, true, img_base_type);
+   const struct glsl_type *img_type = glsl_image_type(GLSL_SAMPLER_DIM_2D, true, img_base_type);
 
    nir_builder b = radv_meta_init_shader(dev, MESA_SHADER_COMPUTE, "meta_resolve_cs_%s-%s-%d",
                                          index == DEPTH_RESOLVE ? "depth" : "stencil",
@@ -148,7 +150,15 @@ build_depth_stencil_resolve_compute_shader(struct radv_device *dev, int samples,
    output_img->data.descriptor_set = 0;
    output_img->data.binding = 1;
 
-   nir_ssa_def *img_coord = get_global_ids(&b, 3);
+   nir_ssa_def *global_id = get_global_ids(&b, 3);
+
+   nir_ssa_def *offset = nir_load_push_constant(&b, 2, 32, nir_imm_int(&b, 0), .range = 8);
+
+   nir_ssa_def *resolve_coord = nir_iadd(&b, nir_channels(&b, global_id, 0x3), offset);
+
+   nir_ssa_def *img_coord = nir_vec3(&b, nir_channel(&b, resolve_coord, 0),
+                                         nir_channel(&b, resolve_coord, 1),
+                                         nir_channel(&b, global_id, 2));
 
    nir_ssa_def *input_img_deref = &nir_build_deref_var(&b, input_img)->dest.ssa;
 
@@ -373,7 +383,7 @@ radv_device_init_meta_resolve_compute_state(struct radv_device *device, bool on_
 
    res = create_layout(device);
    if (res != VK_SUCCESS)
-      goto fail;
+      return res;
 
    if (on_demand)
       return VK_SUCCESS;
@@ -384,65 +394,58 @@ radv_device_init_meta_resolve_compute_state(struct radv_device *device, bool on_
       res = create_resolve_pipeline(device, samples, false, false,
                                     &state->resolve_compute.rc[i].pipeline);
       if (res != VK_SUCCESS)
-         goto fail;
+         return res;
 
       res = create_resolve_pipeline(device, samples, true, false,
                                     &state->resolve_compute.rc[i].i_pipeline);
       if (res != VK_SUCCESS)
-         goto fail;
+         return res;
 
       res = create_resolve_pipeline(device, samples, false, true,
                                     &state->resolve_compute.rc[i].srgb_pipeline);
       if (res != VK_SUCCESS)
-         goto fail;
+         return res;
 
       res = create_depth_stencil_resolve_pipeline(
          device, samples, DEPTH_RESOLVE, VK_RESOLVE_MODE_AVERAGE_BIT,
          &state->resolve_compute.depth[i].average_pipeline);
       if (res != VK_SUCCESS)
-         goto fail;
+         return res;
 
       res = create_depth_stencil_resolve_pipeline(device, samples, DEPTH_RESOLVE,
                                                   VK_RESOLVE_MODE_MAX_BIT,
                                                   &state->resolve_compute.depth[i].max_pipeline);
       if (res != VK_SUCCESS)
-         goto fail;
+         return res;
 
       res = create_depth_stencil_resolve_pipeline(device, samples, DEPTH_RESOLVE,
                                                   VK_RESOLVE_MODE_MIN_BIT,
                                                   &state->resolve_compute.depth[i].min_pipeline);
       if (res != VK_SUCCESS)
-         goto fail;
+         return res;
 
       res = create_depth_stencil_resolve_pipeline(device, samples, STENCIL_RESOLVE,
                                                   VK_RESOLVE_MODE_MAX_BIT,
                                                   &state->resolve_compute.stencil[i].max_pipeline);
       if (res != VK_SUCCESS)
-         goto fail;
+         return res;
 
       res = create_depth_stencil_resolve_pipeline(device, samples, STENCIL_RESOLVE,
                                                   VK_RESOLVE_MODE_MIN_BIT,
                                                   &state->resolve_compute.stencil[i].min_pipeline);
       if (res != VK_SUCCESS)
-         goto fail;
+         return res;
    }
 
    res = create_depth_stencil_resolve_pipeline(device, 0, DEPTH_RESOLVE,
                                                VK_RESOLVE_MODE_SAMPLE_ZERO_BIT,
                                                &state->resolve_compute.depth_zero_pipeline);
    if (res != VK_SUCCESS)
-      goto fail;
+      return res;
 
-   res = create_depth_stencil_resolve_pipeline(device, 0, STENCIL_RESOLVE,
-                                               VK_RESOLVE_MODE_SAMPLE_ZERO_BIT,
-                                               &state->resolve_compute.stencil_zero_pipeline);
-   if (res != VK_SUCCESS)
-      goto fail;
-
-   return VK_SUCCESS;
-fail:
-   radv_device_finish_meta_resolve_compute_state(device);
-   return res;
+   return create_depth_stencil_resolve_pipeline(device, 0, STENCIL_RESOLVE,
+                                                VK_RESOLVE_MODE_SAMPLE_ZERO_BIT,
+                                                &state->resolve_compute.stencil_zero_pipeline);
 }
 
 void
@@ -481,8 +484,8 @@ radv_device_finish_meta_resolve_compute_state(struct radv_device *device)
    radv_DestroyPipeline(radv_device_to_handle(device), state->resolve_compute.stencil_zero_pipeline,
                         &state->alloc);
 
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device), state->resolve_compute.ds_layout,
-                                   &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(
+      radv_device_to_handle(device), state->resolve_compute.ds_layout, &state->alloc);
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->resolve_compute.p_layout,
                               &state->alloc);
 }
@@ -572,8 +575,9 @@ emit_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_ivi
 
 static void
 emit_depth_stencil_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_iview,
-                           struct radv_image_view *dest_iview, const VkExtent3D *resolve_extent,
-                           VkImageAspectFlags aspects, VkResolveModeFlagBits resolve_mode)
+                           struct radv_image_view *dest_iview, const VkOffset2D *resolve_offset,
+                           const VkExtent3D *resolve_extent, VkImageAspectFlags aspects,
+                           VkResolveModeFlagBits resolve_mode)
 {
    struct radv_device *device = cmd_buffer->device;
    const uint32_t samples = src_iview->image->info.samples;
@@ -648,6 +652,12 @@ emit_depth_stencil_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image
 
    radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE,
                         *pipeline);
+
+   uint32_t push_constants[2] = { resolve_offset->x, resolve_offset->y };
+
+   radv_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer),
+                         device->meta_state.resolve_compute.p_layout, VK_SHADER_STAGE_COMPUTE_BIT,
+                         0, sizeof(push_constants), push_constants);
 
    radv_unaligned_dispatch(cmd_buffer, resolve_extent->width, resolve_extent->height,
                            resolve_extent->depth);
@@ -838,10 +848,10 @@ radv_depth_stencil_resolve_subpass_cs(struct radv_cmd_buffer *cmd_buffer,
                                       VkImageAspectFlags aspects,
                                       VkResolveModeFlagBits resolve_mode)
 {
-   struct vk_framebuffer *fb = cmd_buffer->state.framebuffer;
    const struct radv_subpass *subpass = cmd_buffer->state.subpass;
+   uint32_t layer_count = cmd_buffer->state.framebuffer->layers;
+   VkRect2D resolve_area = cmd_buffer->state.render_area;
    struct radv_meta_saved_state saved_state;
-   uint32_t layer_count = fb->layers;
 
    if (subpass->view_mask)
       layer_count = util_last_bit(subpass->view_mask);
@@ -910,9 +920,9 @@ radv_depth_stencil_resolve_subpass_cs(struct radv_cmd_buffer *cmd_buffer,
                         },
                         0, NULL);
 
-   emit_depth_stencil_resolve(cmd_buffer, &tsrc_iview, &tdst_iview,
-                              &(VkExtent3D){fb->width, fb->height, layer_count}, aspects,
-                              resolve_mode);
+   emit_depth_stencil_resolve(cmd_buffer, &tsrc_iview, &tdst_iview, &resolve_area.offset,
+                              &(VkExtent3D){resolve_area.extent.width, resolve_area.extent.height, layer_count},
+                              aspects, resolve_mode);
 
    cmd_buffer->state.flush_bits |=
       RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_INV_VCACHE |

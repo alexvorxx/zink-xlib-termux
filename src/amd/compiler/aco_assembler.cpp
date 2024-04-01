@@ -88,7 +88,7 @@ emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* inst
       instr->operands.pop_back();
       assert(instr->operands[1].isConstant());
       /* in case it's an inline constant, make it a literal */
-      instr->operands[1].setFixed(PhysReg(255));
+      instr->operands[1] = Operand::literal32(instr->operands[1].constantValue());
    }
 
    uint32_t opcode = ctx.opcode[(int)instr->opcode];
@@ -149,10 +149,6 @@ emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* inst
    }
    case Format::SOP1: {
       uint32_t encoding = (0b101111101 << 23);
-      if (opcode >= 55 && ctx.gfx_level <= GFX9) {
-         assert(ctx.gfx_level == GFX9 && opcode < 60);
-         opcode = opcode - 4;
-      }
       encoding |= !instr->definitions.empty() ? instr->definitions[0].physReg() << 16 : 0;
       encoding |= opcode << 8;
       encoding |= !instr->operands.empty() ? instr->operands[0].physReg() : 0;
@@ -511,16 +507,19 @@ emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* inst
       FLAT_instruction& flat = instr->flatlike();
       uint32_t encoding = (0b110111 << 26);
       encoding |= opcode << 18;
-      if (ctx.gfx_level <= GFX9) {
-         assert(flat.offset <= 0x1fff);
+      if (ctx.gfx_level == GFX9 || ctx.gfx_level >= GFX11) {
+         if (instr->isFlat())
+            assert(flat.offset <= 0xfff);
+         else
+            assert(flat.offset >= -4096 && flat.offset < 4096);
          encoding |= flat.offset & 0x1fff;
-      } else if (instr->isFlat()) {
+      } else if (ctx.gfx_level <= GFX8 || instr->isFlat()) {
          /* GFX10 has a 12-bit immediate OFFSET field,
           * but it has a hw bug: it ignores the offset, called FlatSegmentOffsetBug
           */
          assert(flat.offset == 0);
       } else {
-         assert(flat.offset <= 0xfff);
+         assert(flat.offset >= -2048 && flat.offset <= 2047);
          encoding |= flat.offset & 0xfff;
       }
       if (instr->isScratch())
@@ -548,7 +547,11 @@ emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* inst
          encoding |= instr->operands[1].physReg() << 16;
       } else if (instr->format != Format::FLAT ||
                  ctx.gfx_level >= GFX10) { /* SADDR is actually used with FLAT on GFX10 */
-         if (ctx.gfx_level <= GFX9)
+         /* For GFX10.3 scratch, 0x7F disables both ADDR and SADDR, unlike sgpr_null, which only
+          * disables SADDR.
+          */
+         if (ctx.gfx_level <= GFX9 ||
+             (instr->format == Format::SCRATCH && instr->operands[0].isUndefined()))
             encoding |= 0x7F << 16;
          else
             encoding |= sgpr_null << 16;
@@ -800,13 +803,21 @@ fix_exports(asm_context& ctx, std::vector<uint32_t>& out, Program* program)
                   break;
                }
             } else {
-               exp.done = true;
-               exp.valid_mask = true;
+               if (!program->info.ps.has_epilog) {
+                  exp.done = true;
+                  exp.valid_mask = true;
+               }
                exported = true;
                break;
             }
-         } else if ((*it)->definitions.size() && (*it)->definitions[0].physReg() == exec)
+         } else if ((*it)->definitions.size() && (*it)->definitions[0].physReg() == exec) {
             break;
+         } else if ((*it)->opcode == aco_opcode::s_setpc_b64) {
+            /* Do not abort if the main FS has an epilog because it only
+             * exports MRTZ (if present) and the epilog exports colors.
+             */
+            exported |= program->stage.hw == HWStage::FS && program->info.ps.has_epilog;
+         }
          ++it;
       }
    }
@@ -912,8 +923,8 @@ emit_long_jump(asm_context& ctx, SOPP_instruction* branch, bool backwards,
    instr.reset(bld.sop1(aco_opcode::s_getpc_b64, branch->definitions[0]).instr);
    emit_instruction(ctx, out, instr.get());
 
-   instr.reset(bld.sop2(aco_opcode::s_addc_u32, def_tmp_lo, op_tmp_lo, Operand::zero()).instr);
-   instr->operands[1].setFixed(PhysReg{255}); /* this operand has to be a literal */
+   instr.reset(
+      bld.sop2(aco_opcode::s_addc_u32, def_tmp_lo, op_tmp_lo, Operand::literal32(0)).instr);
    emit_instruction(ctx, out, instr.get());
    branch->pass_flags = out.size();
 

@@ -104,6 +104,8 @@ struct cros_gralloc0_buffer_info {
 struct vn_android_gralloc_buffer_properties {
    uint32_t drm_fourcc;
    uint64_t modifier;
+
+   /* plane order matches VkImageDrmFormatModifierExplicitCreateInfoEXT */
    uint32_t offset[4];
    uint32_t stride[4];
 };
@@ -131,6 +133,18 @@ vn_android_gralloc_get_buffer_properties(
       out_props->stride[i] = info.stride[i];
       out_props->offset[i] = info.offset[i];
    }
+
+   /* YVU420 has a chroma order of CrCb. So we must swap the planes for CrCb
+    * to align with VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM. This is to serve
+    * VkImageDrmFormatModifierExplicitCreateInfoEXT explicit plane layouts.
+    */
+   if (info.drm_fourcc == DRM_FORMAT_YVU420) {
+      out_props->stride[1] = info.stride[2];
+      out_props->offset[1] = info.offset[2];
+      out_props->stride[2] = info.stride[1];
+      out_props->offset[2] = info.offset[1];
+   }
+
    out_props->modifier = info.modifier;
 
    return true;
@@ -965,7 +979,8 @@ vn_android_get_ahb_format_properties(
          .a = VK_COMPONENT_SWIZZLE_IDENTITY,
       },
       .suggestedYcbcrModel = model,
-      .suggestedYcbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL,
+      /* match EGL_YUV_NARROW_RANGE_EXT used in egl platform_android */
+      .suggestedYcbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW,
       .suggestedXChromaOffset = VK_CHROMA_LOCATION_MIDPOINT,
       .suggestedYChromaOffset = VK_CHROMA_LOCATION_MIDPOINT,
    };
@@ -979,6 +994,7 @@ vn_GetAndroidHardwareBufferPropertiesANDROID(
    const struct AHardwareBuffer *buffer,
    VkAndroidHardwareBufferPropertiesANDROID *pProperties)
 {
+   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    VkResult result = VK_SUCCESS;
    int dma_buf_fd = -1;

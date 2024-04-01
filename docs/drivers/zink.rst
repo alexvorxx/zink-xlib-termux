@@ -49,6 +49,9 @@ Here's a list of those requirements:
     * ``stippledBresenhamLines``
     * ``stippledSmoothLines``
 
+  * `VK_KHR_swapchain_mutable_format`_
+  * `VK_EXT_border_color_swizzle`_
+
 In addition to this, `VK_KHR_external_memory`_ is required to support the
 DRI code-path.
 
@@ -154,7 +157,7 @@ For OpenGL 4.2 support, the following additional requirements must be
 supported:
 
 * Device extensions:
-    * `VK_EXT_2d_view_of_3d`_
+    * `VK_EXT_image_2d_view_of_3d`_
 
 * ``VkPhysicalDeviceLimits``:
 
@@ -253,8 +256,8 @@ changing the descriptor manager may improve performance:
    Automatically detect best mode. This is the default.
 ``lazy``
    Disable caching and attempt to use the least amount of CPU.
-``nofallback``
-   Always use caching to try reducing GPU churn.
+``cached``
+   Use caching to reuse descriptor sets.
 ``notemplates``
    The same as `auto`, but disables the use of `VK_KHR_descriptor_templates`.
 
@@ -277,6 +280,10 @@ variable:
    Dump Validation layer output.
 ``sync``
    Emit full synchronization barriers before every draw and dispatch.
+``compact``
+   Use a maximum of 4 descriptor sets
+``noreorder``
+   Do not reorder or optimize GL command streams
 
 Vulkan Validation Layers
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -308,7 +315,7 @@ questions, don't hesitate to visit `#zink on OFTC
 .. _VK_EXT_transform_feedback: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_transform_feedback.html
 .. _VK_EXT_conditional_rendering: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_conditional_rendering.html
 .. _VK_EXT_vertex_attribute_divisor: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_vertex_attribute_divisor.html
-.. _VK_EXT_2d_view_of_3d: https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_2d_view_of_3d.html
+.. _VK_EXT_image_2d_view_of_3d: https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_2d_view_of_3d.html
 .. _VK_KHR_maintenance2: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_maintenance2.html
 .. _VK_KHR_shader_draw_parameters: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_shader_draw_parameters.html
 .. _VK_KHR_draw_indirect_count: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_draw_indirect_count.html
@@ -316,4 +323,6 @@ questions, don't hesitate to visit `#zink on OFTC
 .. _VK_EXT_custom_border_color: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_custom_border_color.html
 .. _VK_EXT_provoking_vertex: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_provoking_vertex.html
 .. _VK_EXT_line_rasterization: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_line_rasterization.html
+.. _VK_KHR_swapchain_mutable_format: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_swapchain_mutable_format.html
+.. _VK_EXT_border_color_swizzle: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_border_color_swizzle.html
 .. _VK_EXT_depth_clip_enable: https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_EXT_depth_clip_enable.html

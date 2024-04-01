@@ -40,7 +40,7 @@
 #include "pvr_pds.h"
 #include "pvr_private.h"
 #include "pvr_shader.h"
-#include "pvr_winsys.h"
+#include "pvr_types.h"
 #include "rogue/rogue.h"
 #include "rogue/rogue_build_data.h"
 #include "util/log.h"
@@ -559,13 +559,24 @@ static size_t pvr_pds_get_max_descriptor_upload_const_map_size_in_bytes()
  * structs.
  */
 typedef struct pvr_pds_buffer (
-      *const pvr_pds_uniform_program_buffer_array_ptr)[PVR_PDS_MAX_BUFFERS];
+      *const pvr_pds_descriptor_program_buffer_array_ptr)[PVR_PDS_MAX_BUFFERS];
 
-static void pvr_pds_uniform_program_setup_buffers(
+/**
+ * \brief Setup buffers for the PDS descriptor program.
+ *
+ * Sets up buffers required by the PDS gen api based on compiler info.
+ *
+ * For compile time static constants that need DMAing it uploads them and
+ * returns the upload in \r static_consts_pvr_bo_out .
+ */
+static VkResult pvr_pds_descriptor_program_setup_buffers(
+   struct pvr_device *device,
    bool robust_buffer_access,
+   const struct rogue_compile_time_consts_data *compile_time_consts_data,
    const struct rogue_ubo_data *ubo_data,
-   pvr_pds_uniform_program_buffer_array_ptr buffers_out_ptr,
-   uint32_t *const buffer_count_out)
+   pvr_pds_descriptor_program_buffer_array_ptr buffers_out_ptr,
+   uint32_t *const buffer_count_out,
+   struct pvr_bo **const static_consts_pvr_bo_out)
 {
    struct pvr_pds_buffer *const buffers = *buffers_out_ptr;
    uint32_t buffer_count = 0;
@@ -591,21 +602,56 @@ static void pvr_pds_uniform_program_setup_buffers(
       buffer_count++;
    }
 
+   if (compile_time_consts_data->static_consts.num > 0) {
+      VkResult result;
+
+      assert(compile_time_consts_data->static_consts.num <=
+             ARRAY_SIZE(compile_time_consts_data->static_consts.value));
+
+      /* This is fine since buffers_out_ptr is a pointer to an array. */
+      assert(buffer_count < ARRAY_SIZE(*buffers_out_ptr));
+
+      /* TODO: Is it possible to have multiple static consts buffer where the
+       * destination is not adjoining? If so we need to handle that.
+       * Currently we're only setting up a single buffer.
+       */
+      buffers[buffer_count++] = (struct pvr_pds_buffer){
+         .type = PVR_BUFFER_TYPES_COMPILE_TIME,
+         .size_in_dwords = compile_time_consts_data->static_consts.num,
+         .destination = compile_time_consts_data->static_consts.dest,
+      };
+
+      result = pvr_gpu_upload(device,
+                              device->heaps.general_heap,
+                              compile_time_consts_data->static_consts.value,
+                              compile_time_consts_data->static_consts.num *
+                                 ROGUE_REG_SIZE_BYTES,
+                              ROGUE_REG_SIZE_BYTES,
+                              static_consts_pvr_bo_out);
+      if (result != VK_SUCCESS)
+         return result;
+   } else {
+      *static_consts_pvr_bo_out = NULL;
+   }
+
    *buffer_count_out = buffer_count;
+
+   return VK_SUCCESS;
 }
 
-static VkResult pvr_pds_uniform_program_create_and_upload(
+static VkResult pvr_pds_descriptor_program_create_and_upload(
    struct pvr_device *const device,
    const VkAllocationCallbacks *const allocator,
+   const struct rogue_compile_time_consts_data *const compile_time_consts_data,
    const struct rogue_ubo_data *const ubo_data,
    const struct pvr_explicit_constant_usage *const explicit_const_usage,
    const struct pvr_pipeline_layout *const layout,
    enum pvr_stage_allocation stage,
-   struct pvr_pds_upload *const pds_code_upload_out,
-   struct pvr_pds_info *const pds_info_out)
+   struct pvr_stage_allocation_descriptor_state *const descriptor_state)
 {
    const size_t const_entries_size_in_bytes =
       pvr_pds_get_max_descriptor_upload_const_map_size_in_bytes();
+   struct pvr_pds_info *const pds_info = &descriptor_state->pds_info;
    struct pvr_descriptor_program_input program = { 0 };
    struct pvr_const_map_entry *entries_buffer;
    ASSERTED uint32_t code_size_in_dwords;
@@ -615,19 +661,18 @@ static VkResult pvr_pds_uniform_program_create_and_upload(
 
    assert(stage != PVR_STAGE_ALLOCATION_COUNT);
 
-   memset(pds_info_out, 0, sizeof(*pds_info_out));
+   *pds_info = (struct pvr_pds_info){ 0 };
 
-   pvr_pds_uniform_program_setup_buffers(device->features.robustBufferAccess,
-                                         ubo_data,
-                                         &program.buffers,
-                                         &program.buffer_count);
-
-   for (uint32_t dma = 0; dma < program.buffer_count; dma++) {
-      if (program.buffers[dma].type != PVR_BUFFER_TYPES_COMPILE_TIME)
-         continue;
-
-      assert(!"Unimplemented");
-   }
+   result = pvr_pds_descriptor_program_setup_buffers(
+      device,
+      device->features.robustBufferAccess,
+      compile_time_consts_data,
+      ubo_data,
+      &program.buffers,
+      &program.buffer_count,
+      &descriptor_state->static_consts);
+   if (result != VK_SUCCESS)
+      return result;
 
    if (layout->per_stage_reg_info[stage].primary_dynamic_size_in_dwords)
       assert(!"Unimplemented");
@@ -667,23 +712,26 @@ static VkResult pvr_pds_uniform_program_create_and_upload(
                               const_entries_size_in_bytes,
                               8,
                               VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-   if (!entries_buffer)
+   if (!entries_buffer) {
+      pvr_bo_free(device, descriptor_state->static_consts);
+
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+   }
 
-   pds_info_out->entries = entries_buffer;
-   pds_info_out->entries_size_in_bytes = const_entries_size_in_bytes;
+   pds_info->entries = entries_buffer;
+   pds_info->entries_size_in_bytes = const_entries_size_in_bytes;
 
-   pvr_pds_generate_descriptor_upload_program(&program, NULL, pds_info_out);
+   pvr_pds_generate_descriptor_upload_program(&program, NULL, pds_info);
 
-   code_size_in_dwords = pds_info_out->code_size_in_dwords;
+   code_size_in_dwords = pds_info->code_size_in_dwords;
    staging_buffer_size =
-      pds_info_out->code_size_in_dwords * sizeof(*staging_buffer);
+      pds_info->code_size_in_dwords * sizeof(*staging_buffer);
 
    if (!staging_buffer_size) {
       vk_free2(&device->vk.alloc, allocator, entries_buffer);
 
-      memset(pds_info_out, 0, sizeof(*pds_info_out));
-      memset(pds_code_upload_out, 0, sizeof(*pds_code_upload_out));
+      *descriptor_state = (struct pvr_stage_allocation_descriptor_state){ 0 };
+
       return VK_SUCCESS;
    }
 
@@ -693,30 +741,33 @@ static VkResult pvr_pds_uniform_program_create_and_upload(
                               8,
                               VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
    if (!staging_buffer) {
+      pvr_bo_free(device, descriptor_state->static_consts);
       vk_free2(&device->vk.alloc, allocator, entries_buffer);
+
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
    pvr_pds_generate_descriptor_upload_program(&program,
                                               staging_buffer,
-                                              pds_info_out);
+                                              pds_info);
 
-   assert(pds_info_out->code_size_in_dwords <= code_size_in_dwords);
+   assert(pds_info->code_size_in_dwords <= code_size_in_dwords);
 
    /* FIXME: use vk_realloc2() ? */
    entries_buffer = vk_realloc((!allocator) ? &device->vk.alloc : allocator,
                                entries_buffer,
-                               pds_info_out->entries_written_size_in_bytes,
+                               pds_info->entries_written_size_in_bytes,
                                8,
                                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    if (!entries_buffer) {
+      pvr_bo_free(device, descriptor_state->static_consts);
       vk_free2(&device->vk.alloc, allocator, staging_buffer);
+
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
-   pds_info_out->entries = entries_buffer;
-   pds_info_out->entries_size_in_bytes =
-      pds_info_out->entries_written_size_in_bytes;
+   pds_info->entries = entries_buffer;
+   pds_info->entries_size_in_bytes = pds_info->entries_written_size_in_bytes;
 
    /* FIXME: Figure out the define for alignment of 16. */
    result = pvr_gpu_upload_pds(device,
@@ -724,11 +775,12 @@ static VkResult pvr_pds_uniform_program_create_and_upload(
                                0,
                                0,
                                staging_buffer,
-                               pds_info_out->code_size_in_dwords,
+                               pds_info->code_size_in_dwords,
                                16,
                                16,
-                               pds_code_upload_out);
+                               &descriptor_state->pds_code);
    if (result != VK_SUCCESS) {
+      pvr_bo_free(device, descriptor_state->static_consts);
       vk_free2(&device->vk.alloc, allocator, entries_buffer);
       vk_free2(&device->vk.alloc, allocator, staging_buffer);
 
@@ -740,14 +792,14 @@ static VkResult pvr_pds_uniform_program_create_and_upload(
    return VK_SUCCESS;
 }
 
-static void pvr_pds_uniform_program_destroy(
+static void pvr_pds_descriptor_program_destroy(
    struct pvr_device *const device,
    const struct VkAllocationCallbacks *const allocator,
-   struct pvr_pds_upload *const pds_code,
-   struct pvr_pds_info *const pds_info)
+   struct pvr_stage_allocation_descriptor_state *const descriptor_state)
 {
-   pvr_bo_free(device, pds_code->pvr_bo);
-   vk_free2(&device->vk.alloc, allocator, pds_info->entries);
+   pvr_bo_free(device, descriptor_state->pds_code.pvr_bo);
+   vk_free2(&device->vk.alloc, allocator, descriptor_state->pds_info.entries);
+   pvr_bo_free(device, descriptor_state->static_consts);
 }
 
 static void pvr_pds_compute_program_setup(
@@ -1014,6 +1066,7 @@ static VkResult pvr_compute_pipeline_compile(
    const VkAllocationCallbacks *const allocator,
    struct pvr_compute_pipeline *const compute_pipeline)
 {
+   struct rogue_compile_time_consts_data compile_time_consts_data;
    uint32_t work_group_input_regs[PVR_WORKGROUP_DIMENSIONS];
    struct pvr_explicit_constant_usage explicit_const_usage;
    uint32_t local_input_regs[PVR_WORKGROUP_DIMENSIONS];
@@ -1032,6 +1085,7 @@ static VkResult pvr_compute_pipeline_compile(
          return result;
 
       ubo_data = build_info.ubo_data;
+      compile_time_consts_data = build_info.compile_time_consts_data;
 
       /* We make sure that the compiler's unused reg value is compatible with
        * the pds api.
@@ -1062,15 +1116,15 @@ static VkResult pvr_compute_pipeline_compile(
       abort();
    };
 
-   result = pvr_pds_uniform_program_create_and_upload(
+   result = pvr_pds_descriptor_program_create_and_upload(
       device,
       allocator,
+      &compile_time_consts_data,
       &ubo_data,
       &explicit_const_usage,
       compute_pipeline->base.layout,
       PVR_STAGE_ALLOCATION_COMPUTE,
-      &compute_pipeline->state.uniform.pds_code,
-      &compute_pipeline->state.uniform.pds_info);
+      &compute_pipeline->state.descriptor);
    if (result != VK_SUCCESS)
       goto err_free_shader;
 
@@ -1085,7 +1139,7 @@ static VkResult pvr_compute_pipeline_compile(
       &compute_pipeline->state.primary_program,
       &compute_pipeline->state.primary_program_info);
    if (result != VK_SUCCESS)
-      goto err_free_uniform_program;
+      goto err_free_descriptor_program;
 
    /* If the workgroup ID is required, then we require the base workgroup
     * variant of the PDS compute program as well.
@@ -1118,8 +1172,8 @@ err_destroy_compute_program:
       &compute_pipeline->state.primary_program,
       &compute_pipeline->state.primary_program_info);
 
-err_free_uniform_program:
-   pvr_bo_free(device, compute_pipeline->state.uniform.pds_code.pvr_bo);
+err_free_descriptor_program:
+   pvr_bo_free(device, compute_pipeline->state.descriptor.pds_code.pvr_bo);
 
 err_free_shader:
    pvr_bo_free(device, compute_pipeline->state.shader.bo);
@@ -1207,10 +1261,9 @@ static void pvr_compute_pipeline_destroy(
       allocator,
       &compute_pipeline->state.primary_program,
       &compute_pipeline->state.primary_program_info);
-   pvr_pds_uniform_program_destroy(device,
-                                   allocator,
-                                   &compute_pipeline->state.uniform.pds_code,
-                                   &compute_pipeline->state.uniform.pds_info);
+   pvr_pds_descriptor_program_destroy(device,
+                                      allocator,
+                                      &compute_pipeline->state.descriptor);
    pvr_bo_free(device, compute_pipeline->state.shader.bo);
 
    pvr_pipeline_finish(&compute_pipeline->base);
@@ -1282,17 +1335,15 @@ pvr_graphics_pipeline_destroy(struct pvr_device *const device,
    const uint32_t num_vertex_attrib_programs =
       ARRAY_SIZE(gfx_pipeline->vertex_shader_state.pds_attrib_programs);
 
-   pvr_pds_uniform_program_destroy(
+   pvr_pds_descriptor_program_destroy(
       device,
       allocator,
-      &gfx_pipeline->fragment_shader_state.uniform_state.pds_code,
-      &gfx_pipeline->fragment_shader_state.uniform_state.pds_info);
+      &gfx_pipeline->fragment_shader_state.descriptor_state);
 
-   pvr_pds_uniform_program_destroy(
+   pvr_pds_descriptor_program_destroy(
       device,
       allocator,
-      &gfx_pipeline->vertex_shader_state.uniform_state.pds_code,
-      &gfx_pipeline->vertex_shader_state.uniform_state.pds_info);
+      &gfx_pipeline->vertex_shader_state.descriptor_state);
 
    for (uint32_t i = 0; i < num_vertex_attrib_programs; i++) {
       struct pvr_pds_attrib_program *const attrib_program =
@@ -1583,15 +1634,15 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
    if (result != VK_SUCCESS)
       goto err_free_frag_program;
 
-   result = pvr_pds_uniform_program_create_and_upload(
+   result = pvr_pds_descriptor_program_create_and_upload(
       device,
       allocator,
+      &ctx->common_data[MESA_SHADER_VERTEX].compile_time_consts_data,
       &ctx->common_data[MESA_SHADER_VERTEX].ubo_data,
       &vert_explicit_const_usage,
       gfx_pipeline->base.layout,
       PVR_STAGE_ALLOCATION_VERTEX_GEOMETRY,
-      &gfx_pipeline->vertex_shader_state.uniform_state.pds_code,
-      &gfx_pipeline->vertex_shader_state.uniform_state.pds_info);
+      &gfx_pipeline->vertex_shader_state.descriptor_state);
    if (result != VK_SUCCESS)
       goto err_free_vertex_attrib_program;
 
@@ -1599,24 +1650,24 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
     * scratch buffer for both vertex and fragment stage.
     * Figure out the best place to do this.
     */
-   /* assert(pvr_pds_uniform_program_variables.temp_buff_total_size == 0); */
+   /* assert(pvr_pds_descriptor_program_variables.temp_buff_total_size == 0); */
    /* TODO: Implement spilling with the above. */
 
-   /* TODO: Call pvr_pds_uniform_program_create_and_upload in a loop. */
+   /* TODO: Call pvr_pds_program_program_create_and_upload in a loop. */
    /* FIXME: For now we pass in the same explicit_const_usage since it contains
     * all invalid entries. Fix this by hooking it up to the compiler.
     */
-   result = pvr_pds_uniform_program_create_and_upload(
+   result = pvr_pds_descriptor_program_create_and_upload(
       device,
       allocator,
+      &ctx->common_data[MESA_SHADER_FRAGMENT].compile_time_consts_data,
       &ctx->common_data[MESA_SHADER_FRAGMENT].ubo_data,
       &frag_explicit_const_usage,
       gfx_pipeline->base.layout,
       PVR_STAGE_ALLOCATION_FRAGMENT,
-      &gfx_pipeline->fragment_shader_state.uniform_state.pds_code,
-      &gfx_pipeline->fragment_shader_state.uniform_state.pds_info);
+      &gfx_pipeline->fragment_shader_state.descriptor_state);
    if (result != VK_SUCCESS)
-      goto err_free_vertex_uniform_program;
+      goto err_free_vertex_descriptor_program;
 
    ralloc_free(ctx);
 
@@ -1624,12 +1675,11 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
 
    return VK_SUCCESS;
 
-err_free_vertex_uniform_program:
-   pvr_pds_uniform_program_destroy(
+err_free_vertex_descriptor_program:
+   pvr_pds_descriptor_program_destroy(
       device,
       allocator,
-      &gfx_pipeline->vertex_shader_state.uniform_state.pds_code,
-      &gfx_pipeline->vertex_shader_state.uniform_state.pds_info);
+      &gfx_pipeline->vertex_shader_state.descriptor_state);
 err_free_vertex_attrib_program:
    for (uint32_t i = 0;
         i < ARRAY_SIZE(gfx_pipeline->vertex_shader_state.pds_attrib_programs);

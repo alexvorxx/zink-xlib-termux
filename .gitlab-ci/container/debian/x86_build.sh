@@ -23,6 +23,7 @@ apt-get install -y --no-remove \
       clang \
       libasan6 \
       libarchive-dev \
+      libclang-cpp13-dev \
       libclang-cpp11-dev \
       libgbm-dev \
       libglvnd-dev \
@@ -38,6 +39,7 @@ apt-get install -y --no-remove \
       libxcb-xfixes0-dev \
       libxcb1-dev \
       libxml2-dev \
+      llvm-13-dev \
       llvm-11-dev \
       llvm-9-dev \
       ocl-icd-opencl-dev \
@@ -46,7 +48,8 @@ apt-get install -y --no-remove \
       procps \
       spirv-tools \
       strace \
-      time
+      time \
+      zstd
 
 
 . .gitlab-ci/container/container_pre_build.sh
@@ -72,7 +75,7 @@ cd shader-db
 make
 popd
 
-git clone https://github.com/microsoft/DirectX-Headers -b mesa-mingw --depth 1
+git clone https://github.com/microsoft/DirectX-Headers -b v1.606.3 --depth 1
 mkdir -p DirectX-Headers/build
 pushd DirectX-Headers/build
 meson .. --backend=ninja --buildtype=release -Dbuild-test=false

@@ -872,7 +872,7 @@ vulkan_descriptor_type_name(VkDescriptorType type)
    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC: return "UBO";
    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC: return "SSBO";
    case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT: return "input-att";
-   case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT: return "inline-UBO";
+   case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK: return "inline-UBO";
    case VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR: return "accel-struct";
    default: return "unknown";
    }
@@ -1801,7 +1801,27 @@ nir_print_instr(const nir_instr *instr, FILE *fp)
    }
 
    print_instr(instr, &state, 0);
+}
 
+char *
+nir_instr_as_str(const nir_instr *instr, void *mem_ctx)
+{
+   char *stream_data = NULL;
+   size_t stream_size = 0;
+   struct u_memstream mem;
+   if (u_memstream_open(&mem, &stream_data, &stream_size)) {
+      FILE *const stream = u_memstream_get(&mem);
+      nir_print_instr(instr, stream);
+      u_memstream_close(&mem);
+   }
+
+   char *str = ralloc_size(mem_ctx, stream_size + 1);
+   memcpy(str, stream_data, stream_size);
+   str[stream_size] = '\0';
+
+   free(stream_data);
+
+   return str;
 }
 
 void

@@ -63,6 +63,7 @@ EXTENSIONS = [
         required=True),
     Extension("VK_KHR_maintenance2"),
     Extension("VK_KHR_maintenance3"),
+    Extension("VK_KHR_maintenance4", alias="maint4", features=True),
     Extension("VK_KHR_external_memory"),
     Extension("VK_KHR_external_memory_fd"),
     Extension("VK_KHR_vulkan_memory_model"),
@@ -86,6 +87,7 @@ EXTENSIONS = [
     Extension("VK_EXT_post_depth_coverage"),
     Extension("VK_EXT_depth_clip_control", alias="clip_control", features=True),
     Extension("VK_EXT_shader_subgroup_ballot"),
+    Extension("VK_EXT_shader_subgroup_vote"),
     Extension("VK_EXT_shader_atomic_float", alias="atomic_float", features=True),
     Extension("VK_KHR_8bit_storage",
               alias="storage_8bit",
@@ -191,10 +193,8 @@ EXTENSIONS = [
         conditions=["$feats.pipelineCreationCacheControl"]),
     Extension("VK_EXT_shader_stencil_export",
         alias="stencil_export"),
-    Extension("VK_EXTX_portability_subset",
-        alias="portability_subset_extx",
-        nonstandard=True,
-        properties=True,
+    Extension("VK_KHR_portability_subset",
+        alias="portability_subset",
         features=True,
         guard=True),
     Extension("VK_KHR_timeline_semaphore", alias="timeline", features=True),
@@ -218,6 +218,11 @@ EXTENSIONS = [
     Extension("VK_EXT_primitives_generated_query",
               alias="primgen",
 	             features=True),
+    Extension("VK_KHR_pipeline_library"),
+    Extension("VK_EXT_graphics_pipeline_library",
+              alias="gpl",
+	             features=True,
+	             properties=True),
     Extension("VK_KHR_push_descriptor",
         alias="push",
         properties=True),
@@ -261,10 +266,7 @@ VERSIONS = [
 # There exists some inconsistencies regarding the enum constants, fix them.
 # This is basically generated_code.replace(key, value).
 REPLACEMENTS = {
-    "ROBUSTNESS2": "ROBUSTNESS_2",
     "PROPERTIES_PROPERTIES": "PROPERTIES",
-    "EXTENDED_DYNAMIC_STATE2": "EXTENDED_DYNAMIC_STATE_2",
-    "SYNCHRONIZATION2": "SYNCHRONIZATION_2",
 }
 
 
@@ -364,6 +366,7 @@ void zink_stub_${cmd.lstrip("vk")}(void);
 impl_code = """
 <%namespace name="helpers" file="helpers"/>
 
+#include "vk_enum_to_str.h"
 #include "zink_device_info.h"
 #include "zink_screen.h"
 
@@ -382,14 +385,16 @@ zink_get_physical_device_info(struct zink_screen *screen)
    screen->vk.GetPhysicalDeviceMemoryProperties(screen->pdev, &info->mem_props);
 
    // enumerate device supported extensions
-   if (screen->vk.EnumerateDeviceExtensionProperties(screen->pdev, NULL, &num_extensions, NULL) != VK_SUCCESS) {
-      mesa_loge("ZINK: vkEnumerateDeviceExtensionProperties failed");
+   VkResult result = screen->vk.EnumerateDeviceExtensionProperties(screen->pdev, NULL, &num_extensions, NULL);
+   if (result != VK_SUCCESS) {
+      mesa_loge("ZINK: vkEnumerateDeviceExtensionProperties failed (%s)", vk_Result_to_str(result));
    } else {
       if (num_extensions > 0) {
          VkExtensionProperties *extensions = MALLOC(sizeof(VkExtensionProperties) * num_extensions);
          if (!extensions) goto fail;
-         if (screen->vk.EnumerateDeviceExtensionProperties(screen->pdev, NULL, &num_extensions, extensions) != VK_SUCCESS) {
-            mesa_loge("ZINK: vkEnumerateDeviceExtensionProperties failed");
+         result = screen->vk.EnumerateDeviceExtensionProperties(screen->pdev, NULL, &num_extensions, extensions);
+         if (result != VK_SUCCESS) {
+            mesa_loge("ZINK: vkEnumerateDeviceExtensionProperties failed (%s)", vk_Result_to_str(result));
          }
 
          for (uint32_t i = 0; i < num_extensions; ++i) {
@@ -584,6 +589,7 @@ zink_verify_device_extensions(struct zink_screen *screen)
 {
 %for ext in extensions:
 %if registry.in_registry(ext.name):
+<%helpers:guard ext="${ext}">
    if (screen->info.have_${ext.name_with_vendor()}) {
 %for cmd in registry.get_registry_entry(ext.name).device_commands:
 %if cmd.find("win32"):
@@ -601,6 +607,7 @@ zink_verify_device_extensions(struct zink_screen *screen)
 %endif
 %endfor
    }
+</%helpers:guard>
 %endif
 %endfor
 }

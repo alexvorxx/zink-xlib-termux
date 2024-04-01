@@ -55,6 +55,8 @@ static const struct pvr_format pvr_format_table[] = {
    FORMAT(R32_UINT, U32, U32),
    /* VK_FORMAT_R32G32B32A32_UINT = 107. */
    FORMAT(R32G32B32A32_UINT, U32U32U32U32, U32U32U32U32),
+   /* VK_FORMAT_R32G32B32A32_SFLOAT = 109. */
+   FORMAT(R32G32B32A32_SFLOAT, F32F32F32F32, F32F32F32F32),
    /* VK_FORMAT_D32_SFLOAT = 126. */
    FORMAT(D32_SFLOAT, F32, F32),
 };
@@ -117,16 +119,8 @@ pvr_get_image_format_features(const struct pvr_format *pvr_format,
 const uint8_t *pvr_get_format_swizzle(VkFormat vk_format)
 {
    const struct util_format_description *vf = vk_format_description(vk_format);
-   static const uint8_t fallback[] = { PIPE_SWIZZLE_X,
-                                       PIPE_SWIZZLE_Y,
-                                       PIPE_SWIZZLE_Z,
-                                       PIPE_SWIZZLE_W };
 
-   if (vf)
-      return vf->swizzle;
-
-   assert(!"Unsupported format");
-   return fallback;
+   return vf->swizzle;
 }
 
 static VkFormatFeatureFlags

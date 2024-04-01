@@ -38,7 +38,9 @@
  * radv to share a compiler backend.
  */
 struct ac_shader_abi {
+   /* Each entry is a pointer to a f32 or a f16 value (only possible for FS) */
    LLVMValueRef outputs[AC_LLVM_MAX_OUTPUTS * 4];
+   bool is_16bit[AC_LLVM_MAX_OUTPUTS * 4];
 
    /* These input registers sometimes need to be fixed up. */
    LLVMValueRef vertex_id;
@@ -68,12 +70,6 @@ struct ac_shader_abi {
                                       LLVMValueRef vertex_index, LLVMValueRef param_index,
                                       unsigned driver_location, unsigned component,
                                       unsigned num_components, bool load_inputs);
-
-   void (*store_tcs_outputs)(struct ac_shader_abi *abi,
-                             LLVMValueRef vertex_index, LLVMValueRef param_index,
-                             LLVMValueRef src, unsigned writemask,
-                             unsigned component, unsigned location, unsigned driver_location);
-
 
    LLVMValueRef (*load_ubo)(struct ac_shader_abi *abi, LLVMValueRef index);
 
@@ -132,6 +128,9 @@ struct ac_shader_abi {
    /* Whether to detect divergent textures/samplers index and apply
     * waterfall to avoid incorrect rendering. */
    bool use_waterfall_for_divergent_tex_samplers;
+
+   /* Number of all interpolated inputs */
+   unsigned num_interp;
 };
 
 #endif /* AC_SHADER_ABI_H */

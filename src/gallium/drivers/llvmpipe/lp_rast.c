@@ -47,6 +47,7 @@
 #include "gallivm/lp_bld_format.h"
 #include "gallivm/lp_bld_debug.h"
 #include "lp_scene.h"
+#include "lp_screen.h"
 #include "lp_tex_sample.h"
 
 
@@ -683,7 +684,7 @@ void
 lp_rast_set_state(struct lp_rasterizer_task *task,
                   const union lp_rast_cmd_arg arg)
 {
-   task->state = arg.state;
+   task->state = arg.set_state;
 }
 
 
@@ -1100,6 +1101,10 @@ lp_rast_queue_scene(struct lp_rasterizer *rast,
 {
    LP_DBG(DEBUG_SETUP, "%s\n", __FUNCTION__);
 
+   lp_fence_reference(&rast->last_fence, scene->fence);
+   if (rast->last_fence)
+      rast->last_fence->issued = TRUE;
+
    if (rast->num_threads == 0) {
       /* no threading */
       unsigned fpstate = util_fpstate_get();
@@ -1332,7 +1337,7 @@ lp_rast_destroy(struct lp_rasterizer *rast)
        * other threads when returning from main.
        */
       DWORD exit_code = STILL_ACTIVE;
-      if (GetExitCodeThread(rast->threads[i], &exit_code) &&
+      if (GetExitCodeThread(rast->threads[i].handle, &exit_code) &&
           exit_code == STILL_ACTIVE) {
          pipe_semaphore_wait(&rast->tasks[i].work_done);
       }
@@ -1350,6 +1355,8 @@ lp_rast_destroy(struct lp_rasterizer *rast)
       align_free(rast->tasks[i].thread_data.cache);
    }
 
+   lp_fence_reference(&rast->last_fence, NULL);
+
    /* for synchronizing rasterization threads */
    if (rast->num_threads > 0) {
       util_barrier_destroy(&rast->barrier);
@@ -1360,4 +1367,9 @@ lp_rast_destroy(struct lp_rasterizer *rast)
    FREE(rast);
 }
 
-
+void lp_rast_fence(struct lp_rasterizer *rast,
+                   struct lp_fence **fence)
+{
+   if (fence)
+      lp_fence_reference((struct lp_fence **)fence, rast->last_fence);
+}

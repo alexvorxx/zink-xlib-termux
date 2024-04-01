@@ -3182,7 +3182,7 @@ ntt_optimize_nir(struct nir_shader *s, struct pipe_screen *screen)
       NIR_PASS(progress, s, nir_opt_copy_prop_vars);
       NIR_PASS(progress, s, nir_opt_dead_write_vars);
 
-      NIR_PASS(progress, s, nir_opt_if, true);
+      NIR_PASS(progress, s, nir_opt_if, nir_opt_if_aggressive_last_continue | nir_opt_if_optimize_phi_true_false);
       NIR_PASS(progress, s, nir_opt_peephole_select,
                control_flow_depth == 0 ? ~0 : 8, true, true);
       NIR_PASS(progress, s, nir_opt_algebraic);
@@ -3540,6 +3540,8 @@ ntt_fix_nir_options(struct pipe_screen *screen, struct nir_shader *s,
        !options->lower_flrp64 ||
        !options->lower_fmod ||
        !options->lower_rotate ||
+       !options->lower_uadd_sat ||
+       !options->lower_usub_sat ||
        !options->lower_uniforms_to_ubo ||
        !options->lower_vector_cmp ||
        options->lower_fsqrt != lower_fsqrt ||
@@ -3556,7 +3558,9 @@ ntt_fix_nir_options(struct pipe_screen *screen, struct nir_shader *s,
       new_options->lower_flrp64 = true;
       new_options->lower_fmod = true;
       new_options->lower_rotate = true;
-      new_options->lower_uniforms_to_ubo = true,
+      new_options->lower_uadd_sat = true;
+      new_options->lower_usub_sat = true;
+      new_options->lower_uniforms_to_ubo = true;
       new_options->lower_vector_cmp = true;
       new_options->lower_fsqrt = lower_fsqrt;
       new_options->force_indirect_unrolling = no_indirects_mask;
@@ -3907,6 +3911,8 @@ static const nir_shader_compiler_options nir_to_tgsi_compiler_options = {
    .lower_fmod = true,
    .lower_rotate = true,
    .lower_uniforms_to_ubo = true,
+   .lower_uadd_sat = true,
+   .lower_usub_sat = true,
    .lower_vector_cmp = true,
    .lower_int64_options = nir_lower_imul_2x32_64,
    .use_interpolated_input_intrinsics = true,

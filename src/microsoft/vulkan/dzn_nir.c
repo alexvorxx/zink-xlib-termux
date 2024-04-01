@@ -21,12 +21,12 @@
  * IN THE SOFTWARE.
  */
 
+#include "dzn_nir.h"
+
 #include "spirv_to_dxil.h"
 #include "nir_to_dxil.h"
 #include "nir_builder.h"
 #include "nir_vulkan.h"
-
-#include "dzn_nir.h"
 
 static nir_ssa_def *
 dzn_nir_create_bo_desc(nir_builder *b,
@@ -124,13 +124,6 @@ dzn_nir_indirect_draw_shader(enum dzn_indirect_draw_type type)
                                      "dzn_meta_indirect_%s()",
                                      type_str[type]);
    b.shader->info.internal = true;
-
-   struct glsl_struct_field field = {
-      .type = glsl_uint_type(),
-      .name = "dummy_int",
-   };
-   const struct glsl_type *dummy_type =
-      glsl_struct_type(&field, 1, "dummy_type", false);
 
    nir_ssa_def *params_desc =
       dzn_nir_create_bo_desc(&b, nir_var_mem_ubo, 0, 0, "params", 0);
@@ -233,9 +226,9 @@ dzn_nir_indirect_draw_shader(enum dzn_indirect_draw_type type)
       if (prim_restart) {
          triangle_fan_exec_vals[triangle_fan_exec_param_count++] = nir_channel(&b, draw_info1, 2);
          triangle_fan_exec_vals[triangle_fan_exec_param_count++] = nir_channel(&b, draw_info1, 0);
-	 uint32_t index_count_offset =
+         uint32_t index_count_offset =
             offsetof(struct dzn_indirect_triangle_fan_draw_exec_params, indexed_draw.index_count);
-	 nir_ssa_def *exec_buf_start =
+         nir_ssa_def *exec_buf_start =
             nir_load_ubo(&b, 2, 32,
                          params_desc, nir_imm_int(&b, 16),
                          .align_mul = 4, .align_offset = 0, .range_base = 0, .range = ~0);
@@ -243,7 +236,7 @@ dzn_nir_indirect_draw_shader(enum dzn_indirect_draw_type type)
             nir_iadd(&b, nir_imm_int(&b, index_count_offset),
                      nir_iadd(&b, nir_channel(&b, exec_buf_start, 0),
                               nir_imul(&b, exec_stride, index)));
-	 addr_lo_overflow = nir_ult(&b, exec_buf_start_lo, nir_channel(&b, exec_buf_start, 0));
+         addr_lo_overflow = nir_ult(&b, exec_buf_start_lo, nir_channel(&b, exec_buf_start, 0));
          nir_ssa_def *exec_buf_start_hi =
             nir_iadd(&b, nir_channel(&b, exec_buf_start, 0),
                      nir_bcsel(&b, addr_lo_overflow, nir_imm_int(&b, 1), nir_imm_int(&b, 0)));
@@ -418,10 +411,9 @@ dzn_nir_triangle_fan_prim_restart_rewrite_index_shader(uint8_t old_index_size)
                     old_index_size == 2 ? nir_iand_imm(&b, old_index_offset, ~3ULL) : old_index_offset,
                     .align_mul = 4);
    if (old_index_size == 2) {
-      index_val = nir_bcsel(&b,
-                            nir_ieq_imm(&b, nir_iand_imm(&b, old_index_offset, 0x2), 0),
-                            nir_iand_imm(&b, index_val, 0xffff),
-                            nir_ushr_imm(&b, index_val, 16));
+     index_val = nir_bcsel(&b, nir_test_mask(&b, old_index_offset, 0x2),
+                           nir_ushr_imm(&b, index_val, 16),
+                           nir_iand_imm(&b, index_val, 0xffff));
    }
 
    nir_store_var(&b, index0_var, index_val, 1);
@@ -440,11 +432,9 @@ dzn_nir_triangle_fan_prim_restart_rewrite_index_shader(uint8_t old_index_size)
          nir_iand_imm(&b, nir_channel(&b, index12, 1), 0xffff),
       };
 
-      index12 =
-         nir_bcsel(&b,
-                   nir_ieq_imm(&b, nir_iand_imm(&b, old_index_offset, 0x2), 0),
-                   nir_vec2(&b, indices[0], indices[1]),
-                   nir_vec2(&b, indices[1], indices[2]));
+      index12 = nir_bcsel(&b, nir_test_mask(&b, old_index_offset, 0x2),
+                          nir_vec2(&b, indices[1], indices[2]),
+                          nir_vec2(&b, indices[0], indices[1]));
    }
 
    nir_push_if(&b, nir_ieq(&b, nir_channel(&b, index12, 1), prim_restart_val));
@@ -523,11 +513,9 @@ dzn_nir_triangle_fan_rewrite_index_shader(uint8_t old_index_size)
                        .align_mul = 4);
 
       if (old_index_size == 2) {
-         old_index0 =
-            nir_bcsel(&b,
-                      nir_ieq_imm(&b, nir_iand_imm(&b, old_index0_offset, 0x2), 0),
-                      nir_iand_imm(&b, old_index0, 0xffff),
-                      nir_ushr_imm(&b, old_index0, 16));
+        old_index0 = nir_bcsel(&b, nir_test_mask(&b, old_index0_offset, 0x2),
+                               nir_ushr_imm(&b, old_index0, 16),
+                               nir_iand_imm(&b, old_index0, 0xffff));
       }
 
       nir_ssa_def *old_index12 =
@@ -541,11 +529,9 @@ dzn_nir_triangle_fan_rewrite_index_shader(uint8_t old_index_size)
             nir_iand_imm(&b, nir_channel(&b, old_index12, 1), 0xffff),
          };
 
-         old_index12 =
-            nir_bcsel(&b,
-                      nir_ieq_imm(&b, nir_iand_imm(&b, old_index1_offset, 0x2), 0),
-                      nir_vec2(&b, indices[0], indices[1]),
-                      nir_vec2(&b, indices[1], indices[2]));
+         old_index12 = nir_bcsel(&b, nir_test_mask(&b, old_index1_offset, 0x2),
+                                 nir_vec2(&b, indices[1], indices[2]),
+                                 nir_vec2(&b, indices[0], indices[1]));
       }
 
       /* TODO: VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT */

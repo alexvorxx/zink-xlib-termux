@@ -197,7 +197,7 @@ fs_generator::fs_generator(const struct brw_compiler *compiler, void *log_data,
      shader_name(NULL), stage(stage), mem_ctx(mem_ctx)
 {
    p = rzalloc(mem_ctx, struct brw_codegen);
-   brw_init_codegen(devinfo, p, mem_ctx);
+   brw_init_codegen(&compiler->isa, p, mem_ctx);
 
    /* In the FS code generator, we are very careful to ensure that we always
     * set the right execution size so we don't need the EU code to "help" us
@@ -252,7 +252,7 @@ fs_generator::patch_halt_jumps()
    foreach_in_list(ip_record, patch_ip, &discard_halt_patches) {
       brw_inst *patch = &p->store[patch_ip->ip];
 
-      assert(brw_inst_opcode(p->devinfo, patch) == BRW_OPCODE_HALT);
+      assert(brw_inst_opcode(p->isa, patch) == BRW_OPCODE_HALT);
       if (devinfo->ver >= 6) {
          /* HALT takes a half-instruction distance from the pre-incremented IP. */
          brw_inst_set_uip(p->devinfo, patch, (ip - patch_ip->ip) * scale);
@@ -343,13 +343,13 @@ fs_generator::generate_send(fs_inst *inst,
                                       desc, desc_imm, ex_desc, ex_desc_imm,
                                       inst->eot);
       if (inst->check_tdr)
-         brw_inst_set_opcode(p->devinfo, brw_last_inst,
+         brw_inst_set_opcode(p->isa, brw_last_inst,
                              devinfo->ver >= 12 ? BRW_OPCODE_SENDC : BRW_OPCODE_SENDSC);
    } else {
       brw_send_indirect_message(p, inst->sfid, dst, payload, desc, desc_imm,
                                    inst->eot);
       if (inst->check_tdr)
-         brw_inst_set_opcode(p->devinfo, brw_last_inst, BRW_OPCODE_SENDC);
+         brw_inst_set_opcode(p->isa, brw_last_inst, BRW_OPCODE_SENDC);
    }
 }
 
@@ -782,61 +782,6 @@ fs_generator::generate_quad_swizzle(const fs_inst *inst,
          break;
       }
    }
-}
-
-void
-fs_generator::generate_urb_read(fs_inst *inst,
-                                struct brw_reg dst,
-                                struct brw_reg header)
-{
-   assert(inst->size_written % REG_SIZE == 0);
-   assert(header.file == BRW_GENERAL_REGISTER_FILE);
-   assert(header.type == BRW_REGISTER_TYPE_UD);
-
-   brw_inst *send = brw_next_insn(p, BRW_OPCODE_SEND);
-   brw_set_dest(p, send, retype(dst, BRW_REGISTER_TYPE_UD));
-   brw_set_src0(p, send, header);
-   if (devinfo->ver < 12)
-      brw_set_src1(p, send, brw_imm_ud(0u));
-
-   brw_inst_set_sfid(p->devinfo, send, BRW_SFID_URB);
-   brw_inst_set_urb_opcode(p->devinfo, send, GFX8_URB_OPCODE_SIMD8_READ);
-
-   if (inst->opcode == SHADER_OPCODE_URB_READ_SIMD8_PER_SLOT)
-      brw_inst_set_urb_per_slot_offset(p->devinfo, send, true);
-
-   brw_inst_set_mlen(p->devinfo, send, inst->mlen);
-   brw_inst_set_rlen(p->devinfo, send, inst->size_written / REG_SIZE);
-   brw_inst_set_header_present(p->devinfo, send, true);
-   brw_inst_set_urb_global_offset(p->devinfo, send, inst->offset);
-}
-
-void
-fs_generator::generate_urb_write(fs_inst *inst, struct brw_reg payload)
-{
-   brw_inst *insn = brw_next_insn(p, BRW_OPCODE_SEND);
-
-   brw_set_dest(p, insn, brw_null_reg());
-   brw_set_src0(p, insn, payload);
-   if (devinfo->ver < 12)
-      brw_set_src1(p, insn, brw_imm_ud(0u));
-
-   brw_inst_set_sfid(p->devinfo, insn, BRW_SFID_URB);
-   brw_inst_set_urb_opcode(p->devinfo, insn, GFX8_URB_OPCODE_SIMD8_WRITE);
-
-   if (inst->opcode == SHADER_OPCODE_URB_WRITE_SIMD8_PER_SLOT ||
-       inst->opcode == SHADER_OPCODE_URB_WRITE_SIMD8_MASKED_PER_SLOT)
-      brw_inst_set_urb_per_slot_offset(p->devinfo, insn, true);
-
-   if (inst->opcode == SHADER_OPCODE_URB_WRITE_SIMD8_MASKED ||
-       inst->opcode == SHADER_OPCODE_URB_WRITE_SIMD8_MASKED_PER_SLOT)
-      brw_inst_set_urb_channel_mask_present(p->devinfo, insn, true);
-
-   brw_inst_set_mlen(p->devinfo, insn, inst->mlen);
-   brw_inst_set_rlen(p->devinfo, insn, 0);
-   brw_inst_set_eot(p->devinfo, insn, inst->eot);
-   brw_inst_set_header_present(p->devinfo, insn, true);
-   brw_inst_set_urb_global_offset(p->devinfo, insn, inst->offset);
 }
 
 void
@@ -1831,7 +1776,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
    int loop_count = 0, send_count = 0, nop_count = 0;
    bool is_accum_used = false;
 
-   struct disasm_info *disasm_info = disasm_initialize(devinfo, cfg);
+   struct disasm_info *disasm_info = disasm_initialize(p->isa, cfg);
 
    foreach_block_and_inst (block, fs_inst, inst, cfg) {
       if (inst->opcode == SHADER_OPCODE_UNDEF)
@@ -1854,7 +1799,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
       if (devinfo->ver >= 8 &&
           devinfo->ver <= 9 &&
           p->nr_insn > 1 &&
-          brw_inst_opcode(devinfo, brw_last_inst) == BRW_OPCODE_MATH &&
+          brw_inst_opcode(p->isa, brw_last_inst) == BRW_OPCODE_MATH &&
           brw_inst_math_function(devinfo, brw_last_inst) == BRW_MATH_FUNCTION_POW &&
           inst->dst.component_size(inst->exec_size) > REG_SIZE) {
          brw_NOP(p);
@@ -2319,20 +2264,6 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          brw_MOV_reloc_imm(p, dst, dst.type, src[0].ud);
          break;
 
-      case SHADER_OPCODE_URB_READ_SIMD8:
-      case SHADER_OPCODE_URB_READ_SIMD8_PER_SLOT:
-         generate_urb_read(inst, dst, src[0]);
-         send_count++;
-         break;
-
-      case SHADER_OPCODE_URB_WRITE_SIMD8:
-      case SHADER_OPCODE_URB_WRITE_SIMD8_PER_SLOT:
-      case SHADER_OPCODE_URB_WRITE_SIMD8_MASKED:
-      case SHADER_OPCODE_URB_WRITE_SIMD8_MASKED_PER_SLOT:
-	 generate_urb_write(inst, src[0]);
-         send_count++;
-	 break;
-
       case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
          assert(inst->force_writemask_all);
 	 generate_uniform_pull_constant_load(inst, dst, src[0], src[1]);
@@ -2412,32 +2343,12 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
 
          break;
 
-      case SHADER_OPCODE_FIND_LIVE_CHANNEL: {
-         const bool uses_vmask =
-            stage == MESA_SHADER_FRAGMENT &&
-            brw_wm_prog_data(this->prog_data)->uses_vmask;
-         const struct brw_reg mask =
-            brw_stage_has_packed_dispatch(devinfo, stage,
-                                          prog_data) ? brw_imm_ud(~0u) :
-            uses_vmask ? brw_vmask_reg() : brw_dmask_reg();
-
-         brw_find_live_channel(p, dst, mask, false);
+      case SHADER_OPCODE_FIND_LIVE_CHANNEL:
+         brw_find_live_channel(p, dst, false);
          break;
-      }
-      case SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL: {
-         const bool uses_vmask =
-            stage == MESA_SHADER_FRAGMENT &&
-            brw_wm_prog_data(this->prog_data)->uses_vmask;
-
-         /* ce0 doesn't consider the thread dispatch mask, so if we want
-          * to find the true last enabled channel, we need to apply that too.
-          */
-         const struct brw_reg mask =
-            uses_vmask ? brw_vmask_reg() : brw_dmask_reg();
-
-         brw_find_live_channel(p, dst, mask, true);
+      case SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL:
+         brw_find_live_channel(p, dst, true);
          break;
-      }
 
       case FS_OPCODE_LOAD_LIVE_CHANNELS: {
          assert(devinfo->ver >= 8);
@@ -2637,7 +2548,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
 #else
    if (unlikely(debug_flag))
 #endif
-      brw_validate_instructions(devinfo, p->store,
+      brw_validate_instructions(&compiler->isa, p->store,
                                 start_offset,
                                 p->next_insn_offset,
                                 disasm_info);

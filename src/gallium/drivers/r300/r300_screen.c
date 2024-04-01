@@ -220,6 +220,9 @@ static int r300_get_param(struct pipe_screen* pscreen, enum pipe_cap param)
         case PIPE_CAP_MAX_VARYINGS:
             return 10;
 
+	case PIPE_CAP_PREFER_IMM_ARRAYS_AS_CONSTBUF:
+	    return 0;
+
         case PIPE_CAP_VENDOR_ID:
                 return 0x1002;
         case PIPE_CAP_DEVICE_ID:
@@ -227,7 +230,7 @@ static int r300_get_param(struct pipe_screen* pscreen, enum pipe_cap param)
         case PIPE_CAP_ACCELERATED:
                 return 1;
         case PIPE_CAP_VIDEO_MEMORY:
-                return r300screen->info.vram_size >> 20;
+                return r300screen->info.vram_size_kb >> 10;
         case PIPE_CAP_UMA:
                 return 0;
         case PIPE_CAP_PCI_GROUP:

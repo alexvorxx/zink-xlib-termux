@@ -187,9 +187,6 @@ st_gl_texture_dims_to_pipe_dims(GLenum texture,
       break;
    default:
       assert(0 && "Unexpected texture in st_gl_texture_dims_to_pipe_dims()");
-#if defined(NDEBUG) || defined(DEBUG)
-      FALLTHROUGH;
-#endif
    case GL_TEXTURE_3D:
    case GL_PROXY_TEXTURE_3D:
       *widthOut = widthIn;
@@ -526,7 +523,8 @@ st_create_texture_handle_from_unit(struct st_context *st,
       return 0;
 
    if (view->target != PIPE_BUFFER)
-      st_convert_sampler_from_unit(st, &sampler, texUnit);
+      st_convert_sampler_from_unit(st, &sampler, texUnit,
+                                   prog->sh.data && prog->sh.data->Version >= 130);
 
    assert(st->ctx->Texture.Unit[texUnit]._Current);
 

@@ -62,12 +62,15 @@ enum zink_descriptor_type;
 /* this is the spec minimum */
 #define ZINK_SPARSE_BUFFER_PAGE_SIZE (64 * 1024)
 
-#define ZINK_DEBUG_NIR 0x1
-#define ZINK_DEBUG_SPIRV 0x2
-#define ZINK_DEBUG_TGSI 0x4
-#define ZINK_DEBUG_VALIDATION 0x8
-#define ZINK_DEBUG_SYNC 0x10
-#define ZINK_DEBUG_COMPACT (1<<5)
+enum zink_debug {
+   ZINK_DEBUG_NIR = (1<<0),
+   ZINK_DEBUG_SPIRV = (1<<1),
+   ZINK_DEBUG_TGSI = (1<<2),
+   ZINK_DEBUG_VALIDATION = (1<<3),
+   ZINK_DEBUG_SYNC = (1<<4),
+   ZINK_DEBUG_COMPACT = (1<<5),
+   ZINK_DEBUG_NOREORDER = (1<<6),
+};
 
 #define NUM_SLAB_ALLOCATORS 3
 #define MIN_SLAB_ORDER 8
@@ -77,10 +80,12 @@ enum zink_descriptor_type;
 enum zink_descriptor_mode {
    ZINK_DESCRIPTOR_MODE_AUTO,
    ZINK_DESCRIPTOR_MODE_LAZY,
-   ZINK_DESCRIPTOR_MODE_NOFALLBACK,
+   ZINK_DESCRIPTOR_MODE_CACHED,
    ZINK_DESCRIPTOR_MODE_NOTEMPLATES,
    ZINK_DESCRIPTOR_MODE_COMPACT,
 };
+
+extern enum zink_descriptor_mode zink_descriptor_mode;
 
 //keep in sync with zink_descriptor_type since headers can't be cross-included
 #define ZINK_MAX_DESCRIPTOR_SETS 6
@@ -99,6 +104,7 @@ struct zink_screen {
 
    bool threaded;
    bool is_cpu;
+   bool abort_on_hang;
    uint64_t curr_batch; //the current batch id
    uint32_t last_finished;
    VkSemaphore sem;
@@ -109,6 +115,7 @@ struct zink_screen {
 
    unsigned buffer_rebind_counter;
    unsigned image_rebind_counter;
+   unsigned robust_ctx_count;
 
    struct hash_table dts;
    simple_mtx_t dt_lock;
@@ -157,6 +164,7 @@ struct zink_screen {
 
    bool have_X8_D24_UNORM_PACK32;
    bool have_D24_UNORM_S8_UINT;
+   bool have_D32_SFLOAT_S8_UINT;
    bool have_triangle_fans;
    bool need_2D_zs;
    bool need_2D_sparse;
@@ -193,7 +201,6 @@ struct zink_screen {
    void (*batch_descriptor_deinit)(struct zink_screen *screen, struct zink_batch_state *bs);
    bool (*descriptors_init)(struct zink_context *ctx);
    void (*descriptors_deinit)(struct zink_context *ctx);
-   enum zink_descriptor_mode descriptor_mode;
 
    struct {
       bool dual_color_blend_by_location;
@@ -210,9 +217,13 @@ struct zink_screen {
    VkExtent2D maxSampleLocationGridSize[5];
 
    struct {
+      bool broken_l4a4;
       bool color_write_missing;
       bool depth_clip_control_missing;
       bool implicit_sync;
+      bool force_pipeline_library;
+      unsigned z16_unscaled_bias;
+      unsigned z24_unscaled_bias;
    } driver_workarounds;
 };
 
@@ -266,6 +277,9 @@ zink_screen_handle_vkresult(struct zink_screen *screen, VkResult ret)
    case VK_ERROR_DEVICE_LOST:
       screen->device_lost = true;
       mesa_loge("zink: DEVICE LOST!\n");
+      /* if nothing can save us, abort */
+      if (screen->abort_on_hang && !screen->robust_ctx_count)
+         abort();
       FALLTHROUGH;
    default:
       success = false;

@@ -335,10 +335,16 @@ radv_emit_thread_trace_stop(struct radv_device *device, struct radeon_cmdbuf *cs
 }
 
 void
-radv_emit_thread_trace_userdata(const struct radv_device *device, struct radeon_cmdbuf *cs,
-                                const void *data, uint32_t num_dwords)
+radv_emit_thread_trace_userdata(struct radv_cmd_buffer *cmd_buffer, const void *data,
+                                uint32_t num_dwords)
 {
+   struct radv_device *device = cmd_buffer->device;
+   struct radeon_cmdbuf *cs = cmd_buffer->cs;
    const uint32_t *dwords = (uint32_t *)data;
+
+   /* SQTT user data packets aren't supported on SDMA queues. */
+   if (cmd_buffer->qf == RADV_QUEUE_TRANSFER)
+      return;
 
    while (num_dwords > 0) {
       uint32_t count = MIN2(num_dwords, 2);
@@ -358,7 +364,7 @@ radv_emit_thread_trace_userdata(const struct radv_device *device, struct radeon_
    }
 }
 
-static void
+void
 radv_emit_spi_config_cntl(struct radv_device *device, struct radeon_cmdbuf *cs, bool enable)
 {
    if (device->physical_device->rad_info.gfx_level >= GFX9) {
@@ -378,7 +384,7 @@ radv_emit_spi_config_cntl(struct radv_device *device, struct radeon_cmdbuf *cs, 
    }
 }
 
-static void
+void
 radv_emit_inhibit_clockgating(struct radv_device *device, struct radeon_cmdbuf *cs, bool inhibit)
 {
    if (device->physical_device->rad_info.gfx_level >= GFX11)
@@ -442,26 +448,6 @@ radv_thread_trace_finish_bo(struct radv_device *device)
    }
 }
 
-static int
-radv_thread_trace_init_pstate(struct radv_device *device)
-{
-   struct radeon_winsys *ws = device->ws;
-
-   if (device->physical_device->rad_info.has_stable_pstate) {
-      for (unsigned i = 0; i < RADV_MAX_QUEUE_FAMILIES; i++) {
-         for (unsigned q = 0; q < device->queue_count[i]; q++) {
-            struct radv_queue *queue = &device->queues[i][q];
-
-            /* Set the current pstate to peak which is required for profiling. */
-            if (ws->ctx_set_pstate(queue->hw_ctx, RADEON_CTX_PSTATE_PEAK) < 0)
-               return false;
-         }
-      }
-   }
-
-   return true;
-}
-
 bool
 radv_thread_trace_init(struct radv_device *device)
 {
@@ -479,7 +465,7 @@ radv_thread_trace_init(struct radv_device *device)
    if (!radv_thread_trace_init_bo(device))
       return false;
 
-   if (!radv_thread_trace_init_pstate(device))
+   if (!radv_device_acquire_performance_counters(device))
       return false;
 
    list_inithead(&thread_trace_data->rgp_pso_correlation.record);
@@ -582,7 +568,7 @@ radv_begin_thread_trace(struct radv_queue *queue)
    /* Enable SQG events that collects thread trace data. */
    radv_emit_spi_config_cntl(device, cs, true);
 
-   radv_perfcounter_emit_reset(cs);
+   radv_perfcounter_emit_spm_reset(cs);
 
    if (device->spm_trace.bo) {
       /* Enable all shader stages by default. */
@@ -595,7 +581,7 @@ radv_begin_thread_trace(struct radv_queue *queue)
    radv_emit_thread_trace_start(device, cs, family);
 
    if (device->spm_trace.bo)
-      radv_perfcounter_emit_start(device, cs, family);
+      radv_perfcounter_emit_spm_start(device, cs, family);
 
    result = ws->cs_finalize(cs);
    if (result != VK_SUCCESS) {
@@ -646,12 +632,12 @@ radv_end_thread_trace(struct radv_queue *queue)
    radv_emit_wait_for_idle(device, cs, family);
 
    if (device->spm_trace.bo)
-      radv_perfcounter_emit_stop(device, cs, family);
+      radv_perfcounter_emit_spm_stop(device, cs, family);
 
    /* Stop SQTT. */
    radv_emit_thread_trace_stop(device, cs, family);
 
-   radv_perfcounter_emit_reset(cs);
+   radv_perfcounter_emit_spm_reset(cs);
 
    /* Restore previous state by disabling SQG events. */
    radv_emit_spi_config_cntl(device, cs, false);

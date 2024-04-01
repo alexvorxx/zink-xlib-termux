@@ -47,6 +47,7 @@
 #include "util/slab.h"
 #include "util/list.h"
 #include "util/u_dynarray.h"
+#include "vk_enum_to_str.h"
 
 #include <vulkan/vulkan.h>
 
@@ -88,6 +89,7 @@ enum zink_blit_flags {
 
 struct zink_sampler_state {
    VkSampler sampler;
+   VkSampler sampler_clamped;
    uint32_t hash;
    struct zink_descriptor_refs desc_set_refs;
    struct zink_batch_usage *batch_uses;
@@ -208,6 +210,8 @@ struct zink_context {
    struct slab_child_pool transfer_pool_unsync;
    struct blitter_context *blitter;
 
+   unsigned flags;
+
    pipe_draw_vbo_func draw_vbo[2]; //batch changed
    pipe_draw_vertex_state_func draw_state[2]; //batch changed
    pipe_launch_grid_func launch_grid[2]; //batch changed
@@ -260,6 +264,8 @@ struct zink_context {
    struct hash_table program_cache[8];
    uint32_t gfx_hash;
    struct zink_gfx_program *curr_program;
+   struct set gfx_inputs;
+   struct set gfx_outputs;
 
    struct zink_descriptor_data *dd;
 
@@ -276,18 +282,23 @@ struct zink_context {
       VkRenderingAttachmentInfo attachments[PIPE_MAX_COLOR_BUFS + 2]; //+depth, +stencil
       VkRenderingInfo info;
    } dynamic_fb;
+   uint32_t fb_layer_mismatch; //bitmask
+   unsigned depth_bias_scale_factor;
    struct set rendering_state_cache;
    struct set render_pass_state_cache;
    struct hash_table *render_pass_cache;
    bool new_swapchain;
    VkExtent2D swapchain_size;
    bool fb_changed;
-   bool rp_changed;
+   bool rp_changed; //force renderpass restart
+   bool rp_layout_changed; //renderpass changed, maybe restart
+   bool rp_loadop_changed; //renderpass changed, don't restart
 
    struct zink_framebuffer *framebuffer;
    struct zink_framebuffer_clear fb_clears[PIPE_MAX_COLOR_BUFS + 1];
    uint16_t clears_enabled;
    uint16_t rp_clears_enabled;
+   uint16_t void_clears;
    uint16_t fbfetch_outputs;
    struct zink_resource *needs_present;
 
@@ -420,6 +431,14 @@ zink_fb_clear_enabled(const struct zink_context *ctx, unsigned idx)
    return ctx->clears_enabled & (PIPE_CLEAR_COLOR0 << idx);
 }
 
+static inline uint32_t
+zink_program_cache_stages(uint32_t stages_present)
+{
+   return (stages_present & ((1 << PIPE_SHADER_TESS_CTRL) |
+                             (1 << PIPE_SHADER_TESS_EVAL) |
+                             (1 << PIPE_SHADER_GEOMETRY))) >> 1;
+}
+
 void
 zink_fence_wait(struct pipe_context *ctx);
 
@@ -429,6 +448,9 @@ zink_wait_on_batch(struct zink_context *ctx, uint64_t batch_id);
 bool
 zink_check_batch_completion(struct zink_context *ctx, uint64_t batch_id, bool have_lock);
 //zink_check_batch_completion(struct zink_context *ctx, uint32_t batch_id);
+
+VkCommandBuffer
+zink_get_cmdbuf(struct zink_context *ctx, struct zink_resource *src, struct zink_resource *dst);
 
 void
 zink_flush_queue(struct zink_context *ctx);
@@ -497,7 +519,8 @@ void
 zink_init_draw_functions(struct zink_context *ctx, struct zink_screen *screen);
 void
 zink_init_grid_functions(struct zink_context *ctx);
-
+struct zink_context *
+zink_tc_context_unwrap(struct pipe_context *pctx);
 #ifdef __cplusplus
 }
 #endif

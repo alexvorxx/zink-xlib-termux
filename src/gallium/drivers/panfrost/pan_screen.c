@@ -69,6 +69,9 @@ static const struct debug_named_value panfrost_debug_options[] = {
         {"linear",    PAN_DBG_LINEAR,   "Force linear textures"},
         {"nocache",   PAN_DBG_NO_CACHE, "Disable BO cache"},
         {"dump",      PAN_DBG_DUMP,     "Dump all graphics memory"},
+#ifdef PAN_DBG_OVERFLOW
+        {"overflow",  PAN_DBG_OVERFLOW, "Check for buffer overflows in pool uploads"},
+#endif
         DEBUG_NAMED_VALUE_END
 };
 
@@ -317,10 +320,11 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
 
         case PIPE_CAP_SUPPORTED_PRIM_MODES:
         case PIPE_CAP_SUPPORTED_PRIM_MODES_WITH_RESTART: {
-                /* Mali supports GLES and QUADS. Midgard supports more */
+                /* Mali supports GLES and QUADS. Midgard and v6 Bifrost
+                 * support more */
                 uint32_t modes = BITFIELD_MASK(PIPE_PRIM_QUADS + 1);
 
-                if (dev->arch <= 5) {
+                if (dev->arch <= 6) {
                         modes |= BITFIELD_BIT(PIPE_PRIM_QUAD_STRIP);
                         modes |= BITFIELD_BIT(PIPE_PRIM_POLYGON);
                 }
@@ -540,9 +544,6 @@ panfrost_is_format_supported( struct pipe_screen *screen,
 
         format_desc = util_format_description(format);
 
-        if (!format_desc)
-                return false;
-
         /* MSAA 2x gets rounded up to 4x. MSAA 8x/16x only supported on v5+.
          * TODO: debug MSAA 8x/16x */
 
@@ -715,13 +716,13 @@ panfrost_get_compute_param(struct pipe_screen *pscreen, enum pipe_shader_ir ir_t
 		RET((uint32_t []) { 800 /* MHz -- TODO */ });
 
 	case PIPE_COMPUTE_CAP_MAX_COMPUTE_UNITS:
-		RET((uint32_t []) { 9999 });  // TODO
+		RET((uint32_t []) { dev->core_count });
 
 	case PIPE_COMPUTE_CAP_IMAGES_SUPPORTED:
 		RET((uint32_t []) { 1 });
 
 	case PIPE_COMPUTE_CAP_SUBGROUP_SIZE:
-		RET((uint32_t []) { dev->arch >= 7 ? 8 : 4 });
+		RET((uint32_t []) { pan_subgroup_size(dev->arch) });
 
 	case PIPE_COMPUTE_CAP_MAX_VARIABLE_THREADS_PER_BLOCK:
 		RET((uint64_t []) { 1024 }); // TODO

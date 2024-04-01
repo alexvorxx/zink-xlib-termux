@@ -42,11 +42,13 @@
 #include "util/u_memory.h"
 #include "util/u_screen.h"
 #include "util/u_dl.h"
+#include "util/mesa-sha1.h"
 
 #include "nir.h"
 #include "frontend/sw_winsys.h"
 
 #include "nir_to_dxil.h"
+#include "git_sha1.h"
 
 #include <directx/d3d12sdklayers.h>
 
@@ -324,6 +326,10 @@ d3d12_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_DOUBLES:
    case PIPE_CAP_DEVICE_RESET_STATUS_QUERY:
    case PIPE_CAP_ROBUST_BUFFER_ACCESS_BEHAVIOR:
+   case PIPE_CAP_MEMOBJ:
+   case PIPE_CAP_FENCE_SIGNAL:
+   case PIPE_CAP_TIMELINE_SEMAPHORE_IMPORT:
+   case PIPE_CAP_CLIP_HALFZ:
       return 1;
 
    case PIPE_CAP_MAX_VERTEX_STREAMS:
@@ -1089,6 +1095,49 @@ d3d12_init_null_rtv(struct d3d12_screen *screen)
    screen->dev->CreateRenderTargetView(NULL, &rtv, screen->null_rtv.cpu_handle);
 }
 
+static void
+d3d12_get_adapter_luid(struct pipe_screen *pscreen, char *luid)
+{
+   struct d3d12_screen *screen = d3d12_screen(pscreen);
+   memcpy(luid, &screen->adapter_luid, PIPE_LUID_SIZE);
+}
+
+static void
+d3d12_get_device_uuid(struct pipe_screen *pscreen, char *uuid)
+{
+   struct d3d12_screen *screen = d3d12_screen(pscreen);
+   memcpy(uuid, &screen->device_uuid, PIPE_UUID_SIZE);
+}
+
+static void
+d3d12_get_driver_uuid(struct pipe_screen *pscreen, char *uuid)
+{
+   struct d3d12_screen *screen = d3d12_screen(pscreen);
+   memcpy(uuid, &screen->driver_uuid, PIPE_UUID_SIZE);
+}
+
+static uint32_t
+d3d12_get_node_mask(struct pipe_screen *pscreen)
+{
+   /* This implementation doesn't support linked adapters */
+   return 1;
+}
+
+static void
+d3d12_create_fence_win32(struct pipe_screen *pscreen, struct pipe_fence_handle **pfence, void *handle, const void *name, enum pipe_fd_type type)
+{
+   d3d12_fence_reference((struct d3d12_fence **)pfence,
+                         type == PIPE_FD_TYPE_TIMELINE_SEMAPHORE ?
+                           d3d12_open_fence(d3d12_screen(pscreen), handle, name) :
+                           nullptr);
+}
+
+static void
+d3d12_set_fence_timeline_value(struct pipe_screen *pscreen, struct pipe_fence_handle *pfence, uint64_t value)
+{
+   d3d12_fence(pfence)->value = value;
+}
+
 void
 d3d12_init_screen_base(struct d3d12_screen *screen, struct sw_winsys *winsys, LUID *adapter_luid)
 {
@@ -1100,6 +1149,8 @@ d3d12_init_screen_base(struct d3d12_screen *screen, struct sw_winsys *winsys, LU
    mtx_init(&screen->descriptor_pool_mutex, mtx_plain);
    mtx_init(&screen->submit_mutex, mtx_plain);
 
+   list_inithead(&screen->context_list);
+
    screen->base.get_vendor = d3d12_get_vendor;
    screen->base.get_device_vendor = d3d12_get_device_vendor;
    screen->base.get_param = d3d12_get_param;
@@ -1110,6 +1161,12 @@ d3d12_init_screen_base(struct d3d12_screen *screen, struct sw_winsys *winsys, LU
    screen->base.get_compiler_options = d3d12_get_compiler_options;
    screen->base.context_create = d3d12_context_create;
    screen->base.flush_frontbuffer = d3d12_flush_frontbuffer;
+   screen->base.get_device_luid = d3d12_get_adapter_luid;
+   screen->base.get_device_uuid = d3d12_get_device_uuid;
+   screen->base.get_driver_uuid = d3d12_get_driver_uuid;
+   screen->base.get_device_node_mask = d3d12_get_node_mask;
+   screen->base.create_fence_win32 = d3d12_create_fence_win32;
+   screen->base.set_fence_timeline_value = d3d12_set_fence_timeline_value;
 }
 
 bool
@@ -1131,6 +1188,8 @@ d3d12_init_screen(struct d3d12_screen *screen, IUnknown *adapter)
       debug_printf("D3D12: failed to create device\n");
       return false;
    }
+
+   screen->adapter_luid = GetAdapterLuid(screen->dev);
 
    ID3D12InfoQueue *info_queue;
    if (SUCCEEDED(screen->dev->QueryInterface(IID_PPV_ARGS(&info_queue)))) {
@@ -1310,6 +1369,28 @@ d3d12_init_screen(struct d3d12_screen *screen, IUnknown *adapter)
 
    if (!screen->opts.DoublePrecisionFloatShaderOps)
       screen->nir_options.lower_doubles_options = (nir_lower_doubles_options)~0;
+
+   const char *mesa_version = "Mesa " PACKAGE_VERSION MESA_GIT_SHA1;
+   struct mesa_sha1 sha1_ctx;
+   uint8_t sha1[SHA1_DIGEST_LENGTH];
+   STATIC_ASSERT(PIPE_UUID_SIZE <= sizeof(sha1));
+
+   /* The driver UUID is used for determining sharability of images and memory
+    * between two instances in separate processes.  People who want to
+    * share memory need to also check the device UUID or LUID so all this
+    * needs to be is the build-id.
+    */
+   _mesa_sha1_compute(mesa_version, strlen(mesa_version), sha1);
+   memcpy(screen->driver_uuid, sha1, PIPE_UUID_SIZE);
+
+   /* The device UUID uniquely identifies the given device within the machine. */
+   _mesa_sha1_init(&sha1_ctx);
+   _mesa_sha1_update(&sha1_ctx, &screen->vendor_id, sizeof(screen->vendor_id));
+   _mesa_sha1_update(&sha1_ctx, &screen->device_id, sizeof(screen->device_id));
+   _mesa_sha1_update(&sha1_ctx, &screen->subsys_id, sizeof(screen->subsys_id));
+   _mesa_sha1_update(&sha1_ctx, &screen->revision, sizeof(screen->revision));
+   _mesa_sha1_final(&sha1_ctx, sha1);
+   memcpy(screen->device_uuid, sha1, PIPE_UUID_SIZE);
 
    glsl_type_singleton_init_or_ref();
    return true;

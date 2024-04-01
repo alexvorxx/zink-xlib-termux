@@ -129,10 +129,20 @@ vn_physical_device_init_features(struct vn_physical_device *physical_dev)
                        EXTENDED_DYNAMIC_STATE_2_FEATURES_EXT, features2);
    VN_ADD_EXT_TO_PNEXT(exts->EXT_image_robustness, feats->image_robustness,
                        IMAGE_ROBUSTNESS_FEATURES_EXT, features2);
+   VN_ADD_EXT_TO_PNEXT(exts->EXT_inline_uniform_block,
+                       feats->inline_uniform_block,
+                       INLINE_UNIFORM_BLOCK_FEATURES, features2);
+   VN_ADD_EXT_TO_PNEXT(exts->KHR_dynamic_rendering, feats->dynamic_rendering,
+                       DYNAMIC_RENDERING_FEATURES, features2);
+   VN_ADD_EXT_TO_PNEXT(exts->KHR_maintenance4, feats->maintenance4,
+                       MAINTENANCE_4_FEATURES, features2);
    VN_ADD_EXT_TO_PNEXT(exts->EXT_shader_demote_to_helper_invocation,
                        feats->shader_demote_to_helper_invocation,
                        SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES,
                        features2);
+   VN_ADD_EXT_TO_PNEXT(exts->EXT_texture_compression_astc_hdr,
+                       feats->texture_compression_astc_hdr,
+                       TEXTURE_COMPRESSION_ASTC_HDR_FEATURES, features2);
 
    /* EXT */
    VN_ADD_EXT_TO_PNEXT(exts->EXT_conditional_rendering,
@@ -143,6 +153,8 @@ vn_physical_device_init_features(struct vn_physical_device *physical_dev)
                        CUSTOM_BORDER_COLOR_FEATURES_EXT, features2);
    VN_ADD_EXT_TO_PNEXT(exts->EXT_depth_clip_enable, feats->depth_clip_enable,
                        DEPTH_CLIP_ENABLE_FEATURES_EXT, features2);
+   VN_ADD_EXT_TO_PNEXT(exts->EXT_image_view_min_lod, feats->image_view_min_lod,
+                       IMAGE_VIEW_MIN_LOD_FEATURES_EXT, features2);
    VN_ADD_EXT_TO_PNEXT(exts->EXT_index_type_uint8, feats->index_type_uint8,
                        INDEX_TYPE_UINT8_FEATURES_EXT, features2);
    VN_ADD_EXT_TO_PNEXT(exts->EXT_line_rasterization,
@@ -464,6 +476,11 @@ vn_physical_device_init_properties(struct vn_physical_device *physical_dev)
                       TIMELINE_SEMAPHORE_PROPERTIES, properties2);
    }
 
+   /* Vulkan 1.3 */
+   VN_ADD_EXT_TO_PNEXT(exts->EXT_inline_uniform_block,
+                       props->inline_uniform_block,
+                       INLINE_UNIFORM_BLOCK_PROPERTIES, properties2);
+
    /* EXT */
    VN_ADD_EXT_TO_PNEXT(
       exts->EXT_conservative_rasterization, props->conservative_rasterization,
@@ -481,6 +498,8 @@ vn_physical_device_init_properties(struct vn_physical_device *physical_dev)
    VN_ADD_EXT_TO_PNEXT(exts->EXT_transform_feedback,
                        props->transform_feedback,
                        TRANSFORM_FEEDBACK_PROPERTIES_EXT, properties2);
+   VN_ADD_EXT_TO_PNEXT(exts->KHR_maintenance4, props->maintenance4,
+                       MAINTENANCE_4_PROPERTIES, properties2);
    VN_ADD_EXT_TO_PNEXT(exts->EXT_vertex_attribute_divisor,
                        props->vertex_attribute_divisor,
                        VERTEX_ATTRIBUTE_DIVISOR_PROPERTIES_EXT, properties2);
@@ -705,7 +724,7 @@ vn_physical_device_init_properties(struct vn_physical_device *physical_dev)
    snprintf(vk12_props->driverName, sizeof(vk12_props->driverName), "venus");
    snprintf(vk12_props->driverInfo, sizeof(vk12_props->driverInfo),
             "Mesa " PACKAGE_VERSION MESA_GIT_SHA1);
-   vk12_props->conformanceVersion = (VkConformanceVersionKHR){
+   vk12_props->conformanceVersion = (VkConformanceVersion){
       .major = 1,
       .minor = 2,
       .subminor = 7,
@@ -918,6 +937,8 @@ vn_physical_device_get_native_extensions(
    exts->KHR_swapchain_mutable_format = true;
 #endif
 #endif /* ANDROID */
+
+   exts->EXT_physical_device_drm = true;
 }
 
 static void
@@ -978,10 +999,14 @@ vn_physical_device_get_passthrough_extensions(
       /* promoted to VK_VERSION_1_3 */
       .EXT_4444_formats = true,
       .EXT_extended_dynamic_state = true,
-      /* TODO re-enable with fixed extended_dynamic_state.*_raster cts */
-      .EXT_extended_dynamic_state2 = false,
+      .EXT_extended_dynamic_state2 = true,
       .EXT_image_robustness = true,
+      .EXT_inline_uniform_block = true,
       .EXT_shader_demote_to_helper_invocation = true,
+      .EXT_texture_compression_astc_hdr = true,
+      .KHR_copy_commands2 = true,
+      .KHR_dynamic_rendering = true,
+      .KHR_maintenance4 = true,
 
       /* EXT */
       .EXT_calibrated_timestamps = true,
@@ -992,6 +1017,7 @@ vn_physical_device_get_passthrough_extensions(
 #ifndef ANDROID
       .EXT_image_drm_format_modifier = true,
 #endif
+      .EXT_image_view_min_lod = true,
       .EXT_index_type_uint8 = true,
       .EXT_line_rasterization = true,
       .EXT_provoking_vertex = true,
@@ -1601,12 +1627,17 @@ vn_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
 
       /* Vulkan 1.3 */
       VkPhysicalDevice4444FormatsFeaturesEXT *argb_4444_formats;
+      VkPhysicalDeviceDynamicRenderingFeatures *dynamic_rendering;
       VkPhysicalDeviceExtendedDynamicStateFeaturesEXT *extended_dynamic_state;
       VkPhysicalDeviceExtendedDynamicState2FeaturesEXT
          *extended_dynamic_state2;
-      VkPhysicalDeviceImageRobustnessFeaturesEXT *image_robustness;
+      VkPhysicalDeviceImageRobustnessFeatures *image_robustness;
+      VkPhysicalDeviceInlineUniformBlockFeatures *inline_uniform_block;
+      VkPhysicalDeviceMaintenance4Features *maintenance4;
       VkPhysicalDeviceShaderDemoteToHelperInvocationFeatures
          *shader_demote_to_helper_invocation;
+      VkPhysicalDeviceTextureCompressionASTCHDRFeatures
+         *texture_compression_astc_hdr;
 
       /* EXT */
       VkPhysicalDeviceConditionalRenderingFeaturesEXT *conditional_rendering;
@@ -1783,18 +1814,28 @@ vn_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_4444_FORMATS_FEATURES_EXT:
          *u.argb_4444_formats = feats->argb_4444_formats;
          break;
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES:
+         *u.dynamic_rendering = feats->dynamic_rendering;
+         break;
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT:
          *u.extended_dynamic_state = feats->extended_dynamic_state;
          break;
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_2_FEATURES_EXT:
          *u.extended_dynamic_state2 = feats->extended_dynamic_state_2;
          break;
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_ROBUSTNESS_FEATURES_EXT:
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_ROBUSTNESS_FEATURES:
          *u.image_robustness = feats->image_robustness;
+         break;
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INLINE_UNIFORM_BLOCK_FEATURES:
+         *u.inline_uniform_block = feats->inline_uniform_block;
          break;
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES:
          *u.shader_demote_to_helper_invocation =
             feats->shader_demote_to_helper_invocation;
+         break;
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXTURE_COMPRESSION_ASTC_HDR_FEATURES:
+         *u.texture_compression_astc_hdr =
+            feats->texture_compression_astc_hdr;
          break;
 
       /* EXT */
@@ -1824,6 +1865,9 @@ vn_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
          break;
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_FEATURES_EXT:
          *u.vertex_attribute_divisor = feats->vertex_attribute_divisor;
+         break;
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES:
+         *u.maintenance4 = feats->maintenance4;
          break;
       default:
          break;
@@ -1869,15 +1913,20 @@ vn_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
       VkPhysicalDeviceSamplerFilterMinmaxProperties *sampler_filter_minmax;
       VkPhysicalDeviceTimelineSemaphoreProperties *timeline_semaphore;
 
+      /* Vulkan 1.3 */
+      VkPhysicalDeviceInlineUniformBlockProperties *inline_uniform_block;
+
       /* EXT */
       VkPhysicalDeviceConservativeRasterizationPropertiesEXT
          *conservative_rasterization;
       VkPhysicalDeviceCustomBorderColorPropertiesEXT *custom_border_color;
+      VkPhysicalDeviceDrmPropertiesEXT *drm;
       VkPhysicalDeviceLineRasterizationPropertiesEXT *line_rasterization;
       VkPhysicalDevicePCIBusInfoPropertiesEXT *pci_bus_info;
       VkPhysicalDevicePresentationPropertiesANDROID *presentation_properties;
       VkPhysicalDeviceProvokingVertexPropertiesEXT *provoking_vertex;
       VkPhysicalDeviceRobustness2PropertiesEXT *robustness_2;
+      VkPhysicalDeviceMaintenance4Properties *maintenance4;
       VkPhysicalDeviceTransformFeedbackPropertiesEXT *transform_feedback;
       VkPhysicalDeviceVertexAttributeDivisorPropertiesEXT
          *vertex_attribute_divisor;
@@ -2063,12 +2112,31 @@ vn_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
             vk12_props->maxTimelineSemaphoreValueDifference;
          break;
 
+      /* Vulkan 1.3 */
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INLINE_UNIFORM_BLOCK_PROPERTIES:
+         *u.inline_uniform_block = props->inline_uniform_block;
+         break;
+
       /* EXT */
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONSERVATIVE_RASTERIZATION_PROPERTIES_EXT:
          *u.conservative_rasterization = props->conservative_rasterization;
          break;
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_PROPERTIES_EXT:
          *u.custom_border_color = props->custom_border_color;
+         break;
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRM_PROPERTIES_EXT:
+         u.drm->hasPrimary =
+            physical_dev->instance->renderer->info.drm.has_primary;
+         u.drm->primaryMajor =
+            physical_dev->instance->renderer->info.drm.primary_major;
+         u.drm->primaryMinor =
+            physical_dev->instance->renderer->info.drm.primary_minor;
+         u.drm->hasRender =
+            physical_dev->instance->renderer->info.drm.has_render;
+         u.drm->renderMajor =
+            physical_dev->instance->renderer->info.drm.render_major;
+         u.drm->renderMinor =
+            physical_dev->instance->renderer->info.drm.render_minor;
          break;
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_PROPERTIES_EXT:
          *u.line_rasterization = props->line_rasterization;
@@ -2102,6 +2170,9 @@ vn_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          break;
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_PROPERTIES_EXT:
          *u.vertex_attribute_divisor = props->vertex_attribute_divisor;
+         break;
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES:
+         *u.maintenance4 = props->maintenance4;
          break;
       default:
          break;
@@ -2205,7 +2276,7 @@ vn_physical_device_fix_image_format_info(
          memcpy(&local_info->list, src, sizeof(local_info->list));
          pnext = &local_info->list;
          break;
-      case VK_STRUCTURE_TYPE_IMAGE_STENCIL_USAGE_CREATE_INFO_EXT:
+      case VK_STRUCTURE_TYPE_IMAGE_STENCIL_USAGE_CREATE_INFO:
          memcpy(&local_info->stencil_usage, src,
                 sizeof(local_info->stencil_usage));
          pnext = &local_info->stencil_usage;
@@ -2373,6 +2444,17 @@ vn_GetPhysicalDeviceSparseImageFormatProperties2(
    struct vn_physical_device *physical_dev =
       vn_physical_device_from_handle(physicalDevice);
 
+   /* TODO allow sparse resource along with sync feedback
+    *
+    * If VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT is not supported for the given
+    * arguments, pPropertyCount will be set to zero upon return, and no data
+    * will be written to pProperties.
+    */
+   if (!VN_PERF(NO_FENCE_FEEDBACK)) {
+      *pPropertyCount = 0;
+      return;
+   }
+
    /* TODO per-device cache */
    vn_call_vkGetPhysicalDeviceSparseImageFormatProperties2(
       physical_dev->instance, physicalDevice, pFormatInfo, pPropertyCount,
@@ -2478,8 +2560,8 @@ vn_GetPhysicalDeviceExternalSemaphoreProperties(
    struct vn_physical_device *physical_dev =
       vn_physical_device_from_handle(physicalDevice);
 
-   const VkSemaphoreTypeCreateInfoKHR *type_info = vk_find_struct_const(
-      pExternalSemaphoreInfo->pNext, SEMAPHORE_TYPE_CREATE_INFO_KHR);
+   const VkSemaphoreTypeCreateInfo *type_info = vk_find_struct_const(
+      pExternalSemaphoreInfo->pNext, SEMAPHORE_TYPE_CREATE_INFO);
    const VkSemaphoreType sem_type =
       type_info ? type_info->semaphoreType : VK_SEMAPHORE_TYPE_BINARY;
    const VkExternalSemaphoreHandleTypeFlags valid_handles =

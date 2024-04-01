@@ -243,7 +243,7 @@ v3d_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
                 else if (screen->nonmsaa_texture_size_limit)
                         return 7680;
                 else
-                        return 4096;
+                        return V3D_MAX_IMAGE_DIMENSION;
         case PIPE_CAP_MAX_TEXTURE_CUBE_LEVELS:
         case PIPE_CAP_MAX_TEXTURE_3D_LEVELS:
                 if (screen->devinfo.ver < 40)
@@ -251,7 +251,7 @@ v3d_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
                 else
                         return V3D_MAX_MIP_LEVELS;
         case PIPE_CAP_MAX_TEXTURE_ARRAY_LAYERS:
-                return 2048;
+                return V3D_MAX_ARRAY_LAYERS;
 
                 /* Render targets. */
         case PIPE_CAP_MAX_RENDER_TARGETS:
@@ -346,7 +346,7 @@ v3d_screen_get_paramf(struct pipe_screen *pscreen, enum pipe_capf param)
 }
 
 static int
-v3d_screen_get_shader_param(struct pipe_screen *pscreen, unsigned shader,
+v3d_screen_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_type shader,
                            enum pipe_shader_cap param)
 {
         struct v3d_screen *screen = v3d_screen(pscreen);
@@ -441,7 +441,7 @@ v3d_screen_get_shader_param(struct pipe_screen *pscreen, unsigned shader,
                 return 0;
         case PIPE_SHADER_CAP_MAX_TEXTURE_SAMPLERS:
         case PIPE_SHADER_CAP_MAX_SAMPLER_VIEWS:
-                return V3D_OPENGL_MAX_TEXTURE_SAMPLERS;
+                return V3D_MAX_TEXTURE_SAMPLERS;
 
         case PIPE_SHADER_CAP_MAX_SHADER_BUFFERS:
                 if (screen->has_cache_flush) {
@@ -688,6 +688,7 @@ v3d_screen_is_format_supported(struct pipe_screen *pscreen,
 
 static const nir_shader_compiler_options v3d_nir_options = {
         .lower_uadd_sat = true,
+        .lower_usub_sat = true,
         .lower_iadd_sat = true,
         .lower_all_io_to_temps = true,
         .lower_extract_byte = true,
@@ -731,6 +732,7 @@ static const nir_shader_compiler_options v3d_nir_options = {
         .lower_int64_options = nir_lower_imul_2x32_64,
         .has_fsub = true,
         .has_isub = true,
+        .lower_mul_high = true,
         .divergence_analysis_options =
                 nir_divergence_multiple_workgroup_per_compute_subgroup,
         /* This will enable loop unrolling in the state tracker so we won't
@@ -744,7 +746,7 @@ static const nir_shader_compiler_options v3d_nir_options = {
 
 static const void *
 v3d_screen_get_compiler_options(struct pipe_screen *pscreen,
-                                enum pipe_shader_ir ir, unsigned shader)
+                                enum pipe_shader_ir ir, enum pipe_shader_type shader)
 {
         return &v3d_nir_options;
 }

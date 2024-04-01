@@ -79,16 +79,6 @@ pan_tristate_get(struct pan_tristate state)
         return (state.v == PAN_TRISTATE_TRUE);
 }
 
-/*
- * Check whether a tristate has a defined value (not PAN_TRISTATE_DONTCARE). If
- * true, pan_tristate_get will return a defined value.
- */
-static inline bool
-pan_tristate_is_defined(struct pan_tristate state)
-{
-        return (state.v != PAN_TRISTATE_DONTCARE);
-}
-
 /* A panfrost_batch corresponds to a bound FBO we're rendering to,
  * collecting over multiple draws. */
 
@@ -231,7 +221,7 @@ panfrost_batch_write_rsrc(struct panfrost_batch *batch,
 
 struct panfrost_bo *
 panfrost_batch_create_bo(struct panfrost_batch *batch, size_t size,
-                         uint32_t create_flags, uint32_t access_flags,
+                         uint32_t create_flags, enum pipe_shader_type stage,
                          const char *label);
 
 void
@@ -251,7 +241,7 @@ void
 panfrost_batch_adjust_stack_size(struct panfrost_batch *batch);
 
 struct panfrost_bo *
-panfrost_batch_get_scratchpad(struct panfrost_batch *batch, unsigned size, unsigned thread_tls_alloc, unsigned core_count);
+panfrost_batch_get_scratchpad(struct panfrost_batch *batch, unsigned size, unsigned thread_tls_alloc, unsigned core_id_range);
 
 struct panfrost_bo *
 panfrost_batch_get_shared_memory(struct panfrost_batch *batch, unsigned size, unsigned workgroup_count);

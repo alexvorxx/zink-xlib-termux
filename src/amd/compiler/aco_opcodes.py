@@ -158,7 +158,7 @@ class Format(Enum):
          return [('uint8_t', 'opsel_lo', None),
                  ('uint8_t', 'opsel_hi', None)]
       elif self in [Format.FLAT, Format.GLOBAL, Format.SCRATCH]:
-         return [('uint16_t', 'offset', 0),
+         return [('int16_t', 'offset', 0),
                  ('memory_sync_info', 'sync', 'memory_sync_info()'),
                  ('bool', 'glc', 'false'),
                  ('bool', 'slc', 'false'),
@@ -318,6 +318,10 @@ opcode("p_extract") # src1=index, src2=bits, src3=signext
 # (src0 & ((1 << bits) - 1)) << (index * bits)
 opcode("p_insert") # src1=index, src2=bits
 
+opcode("p_init_scratch")
+
+# jumps to a shader epilog
+opcode("p_jump_to_epilog")
 
 # SOP2 instructions: 2 scalar inputs, 1 scalar output (+optional scc)
 SOP2 = {
@@ -1480,6 +1484,21 @@ IMAGE_SAMPLE = {
 # (gfx6, gfx7, gfx8, gfx9, gfx10, name) = (code, code, code, code, code, name)
 for (code, name) in IMAGE_SAMPLE:
    opcode(name, code, code, code, Format.MIMG, InstrClass.VMem)
+
+IMAGE_SAMPLE_G16 = {
+   (0xa2, "image_sample_d_g16"),
+   (0xa3, "image_sample_d_cl_g16"),
+   (0xaa, "image_sample_c_d_g16"),
+   (0xab, "image_sample_c_d_cl_g16"),
+   (0xb2, "image_sample_d_o_g16"),
+   (0xb3, "image_sample_d_cl_o_g16"),
+   (0xba, "image_sample_c_d_o_g16"),
+   (0xbb, "image_sample_c_d_cl_o_g16"),
+}
+
+# (gfx6, gfx7, gfx8, gfx9, gfx10, name) = (-1, -1, -1, -1, code, name)
+for (code, name) in IMAGE_SAMPLE_G16:
+   opcode(name, -1, -1, code, Format.MIMG, InstrClass.VMem)
 
 IMAGE_GATHER4 = {
    (0x40, "image_gather4"),

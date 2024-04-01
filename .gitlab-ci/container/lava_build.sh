@@ -112,7 +112,8 @@ apt-get install -y --no-remove \
                    python3-numpy \
                    python3-serial \
                    unzip \
-                   wget
+                   wget \
+                   zstd
 
 
 if [[ "$DEBIAN_ARCH" = "armhf" ]]; then
@@ -214,7 +215,9 @@ fi
 set -e
 
 cp .gitlab-ci/container/create-rootfs.sh /lava-files/rootfs-${DEBIAN_ARCH}/.
+cp .gitlab-ci/container/debian/llvm-snapshot.gpg.key /lava-files/rootfs-${DEBIAN_ARCH}/.
 chroot /lava-files/rootfs-${DEBIAN_ARCH} sh /create-rootfs.sh
+rm /lava-files/rootfs-${DEBIAN_ARCH}/llvm-snapshot.gpg.key
 rm /lava-files/rootfs-${DEBIAN_ARCH}/create-rootfs.sh
 
 
@@ -236,14 +239,14 @@ fi
 
 du -ah /lava-files/rootfs-${DEBIAN_ARCH} | sort -h | tail -100
 pushd /lava-files/rootfs-${DEBIAN_ARCH}
-  tar czf /lava-files/lava-rootfs.tgz .
+  tar --zstd -cf /lava-files/lava-rootfs.tar.zst .
 popd
 
 . .gitlab-ci/container/container_post_build.sh
 
 ############### Upload the files!
 ci-fairy minio login --token-file "${CI_JOB_JWT_FILE}"
-FILES_TO_UPLOAD="lava-rootfs.tgz \
+FILES_TO_UPLOAD="lava-rootfs.tar.zst \
                  $KERNEL_IMAGE_NAME"
 
 if [[ -n $DEVICE_TREES ]]; then

@@ -282,9 +282,9 @@
    DRI_CONF_OPT_S_NODEF(indirect_gl_extension_override, \
                   "Allow enabling/disabling a list of indirect-GL extensions")
 
-#define DRI_CONF_DISABLE_PROTECTED_CONTENT_CHECK(def) \
-   DRI_CONF_OPT_B(disable_protected_content_check, def, \
-                  "Don't reject image import if protected_content attribute doesn't match")
+#define DRI_CONF_FORCE_PROTECTED_CONTENT_CHECK(def) \
+   DRI_CONF_OPT_B(force_protected_content_check, def, \
+                  "Reject image import if protected_content attribute doesn't match")
 
 #define DRI_CONF_IGNORE_MAP_UNSYNCHRONIZED(def) \
    DRI_CONF_OPT_B(ignore_map_unsynchronized, def, \
@@ -566,17 +566,9 @@
    DRI_CONF_OPT_B(radv_disable_dcc, def, \
                   "Disable DCC for color images")
 
-#define DRI_CONF_RADV_REPORT_APU_AS_DGPU(def) \
-   DRI_CONF_OPT_B(radv_report_apu_as_dgpu, def, \
-                  "Report APUs as discrete GPUs instead of integrated GPUs")
-
 #define DRI_CONF_RADV_REQUIRE_ETC2(def)                                        \
   DRI_CONF_OPT_B(radv_require_etc2, def,                                       \
                  "Implement emulated ETC2 on HW that does not support it")
-
-#define DRI_CONF_RADV_DISABLE_HTILE_LAYERS(def) \
-   DRI_CONF_OPT_B(radv_disable_htile_layers, def, \
-                  "Disable HTILE for layered depth/stencil formats")
 
 #define DRI_CONF_RADV_DISABLE_ANISO_SINGLE_LEVEL(def) \
   DRI_CONF_OPT_B(radv_disable_aniso_single_level, def, \
@@ -585,6 +577,15 @@
 #define DRI_CONF_RADV_DISABLE_SINKING_LOAD_INPUT_FS(def) \
    DRI_CONF_OPT_B(radv_disable_sinking_load_input_fs, def, \
                   "Disable sinking load inputs for fragment shaders")
+
+#define DRI_CONF_RADV_DGC(def) \
+   DRI_CONF_OPT_B(radv_dgc, def, \
+                  "Expose an experimental implementation of VK_NV_device_generated_commands")
+
+#define DRI_CONF_RADV_FLUSH_BEFORE_QUERY_COPY(def) \
+  DRI_CONF_OPT_B( \
+      radv_flush_before_query_copy, def, \
+      "Wait for timestamps to be written before a query copy command")
 
 /**
  * \brief ANV specific configuration options

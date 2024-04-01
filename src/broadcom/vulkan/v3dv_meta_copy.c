@@ -378,7 +378,7 @@ static bool
 copy_image_to_buffer_tlb(struct v3dv_cmd_buffer *cmd_buffer,
                          struct v3dv_buffer *buffer,
                          struct v3dv_image *image,
-                         const VkBufferImageCopy2KHR *region)
+                         const VkBufferImageCopy2 *region)
 {
    VkFormat fb_format;
    if (!v3dv_meta_can_use_tlb(image, &region->imageOffset, &fb_format))
@@ -431,7 +431,7 @@ blit_shader(struct v3dv_cmd_buffer *cmd_buffer,
             VkFormat src_format,
             VkColorComponentFlags cmask,
             VkComponentMapping *cswizzle,
-            const VkImageBlit2KHR *region,
+            const VkImageBlit2 *region,
             VkFilter filter,
             bool dst_is_padded_image);
 
@@ -443,7 +443,7 @@ static bool
 copy_image_to_buffer_blit(struct v3dv_cmd_buffer *cmd_buffer,
                           struct v3dv_buffer *buffer,
                           struct v3dv_image *image,
-                          const VkBufferImageCopy2KHR *region)
+                          const VkBufferImageCopy2 *region)
 {
    bool handled = false;
 
@@ -684,8 +684,8 @@ copy_image_to_buffer_blit(struct v3dv_cmd_buffer *cmd_buffer,
        * image, but that we need to blit to a S8D24 destination (the only
        * stencil format we support).
        */
-      const VkImageBlit2KHR blit_region = {
-         .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2_KHR,
+      const VkImageBlit2 blit_region = {
+         .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
          .srcSubresource = {
             .aspectMask = copy_aspect,
             .mipLevel = region->imageSubresource.mipLevel,
@@ -740,7 +740,7 @@ copy_image_to_buffer_blit(struct v3dv_cmd_buffer *cmd_buffer,
 
 VKAPI_ATTR void VKAPI_CALL
 v3dv_CmdCopyImageToBuffer2KHR(VkCommandBuffer commandBuffer,
-                              const VkCopyImageToBufferInfo2KHR *info)
+                              const VkCopyImageToBufferInfo2 *info)
 
 {
    V3DV_FROM_HANDLE(v3dv_cmd_buffer, cmd_buffer, commandBuffer);
@@ -770,7 +770,7 @@ static bool
 copy_image_tfu(struct v3dv_cmd_buffer *cmd_buffer,
                struct v3dv_image *dst,
                struct v3dv_image *src,
-               const VkImageCopy2KHR *region)
+               const VkImageCopy2 *region)
 {
    /* Destination can't be raster format */
    if (dst->vk.tiling == VK_IMAGE_TILING_LINEAR)
@@ -899,7 +899,7 @@ static bool
 copy_image_tlb(struct v3dv_cmd_buffer *cmd_buffer,
                struct v3dv_image *dst,
                struct v3dv_image *src,
-               const VkImageCopy2KHR *region)
+               const VkImageCopy2 *region)
 {
    VkFormat fb_format;
    if (!v3dv_meta_can_use_tlb(src, &region->srcOffset, &fb_format) ||
@@ -1024,7 +1024,7 @@ static bool
 copy_image_blit(struct v3dv_cmd_buffer *cmd_buffer,
                 struct v3dv_image *dst,
                 struct v3dv_image *src,
-                const VkImageCopy2KHR *region)
+                const VkImageCopy2 *region)
 {
    const uint32_t src_block_w = vk_format_get_blockwidth(src->vk.format);
    const uint32_t src_block_h = vk_format_get_blockheight(src->vk.format);
@@ -1144,8 +1144,8 @@ copy_image_blit(struct v3dv_cmd_buffer *cmd_buffer,
       dst_start.z + region->extent.depth,
    };
 
-   const VkImageBlit2KHR blit_region = {
-      .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2_KHR,
+   const VkImageBlit2 blit_region = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
       .srcSubresource = region->srcSubresource,
       .srcOffsets = { src_start, src_end },
       .dstSubresource = region->dstSubresource,
@@ -1164,7 +1164,7 @@ copy_image_blit(struct v3dv_cmd_buffer *cmd_buffer,
 
 VKAPI_ATTR void VKAPI_CALL
 v3dv_CmdCopyImage2KHR(VkCommandBuffer commandBuffer,
-                      const VkCopyImageInfo2KHR *info)
+                      const VkCopyImageInfo2 *info)
 
 {
    V3DV_FROM_HANDLE(v3dv_cmd_buffer, cmd_buffer, commandBuffer);
@@ -1190,7 +1190,7 @@ v3dv_CmdCopyImage2KHR(VkCommandBuffer commandBuffer,
 
 VKAPI_ATTR void VKAPI_CALL
 v3dv_CmdCopyBuffer2KHR(VkCommandBuffer commandBuffer,
-                       const VkCopyBufferInfo2KHR *pCopyBufferInfo)
+                       const VkCopyBufferInfo2 *pCopyBufferInfo)
 {
    V3DV_FROM_HANDLE(v3dv_cmd_buffer, cmd_buffer, commandBuffer);
    V3DV_FROM_HANDLE(v3dv_buffer, src_buffer, pCopyBufferInfo->srcBuffer);
@@ -1248,8 +1248,8 @@ v3dv_CmdUpdateBuffer(VkCommandBuffer commandBuffer,
 
    v3dv_bo_unmap(cmd_buffer->device, src_bo);
 
-   VkBufferCopy2KHR region = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_COPY_2_KHR,
+   VkBufferCopy2 region = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_COPY_2,
       .srcOffset = 0,
       .dstOffset = dstOffset,
       .size = dataSize,
@@ -1305,7 +1305,7 @@ static bool
 copy_buffer_to_image_tfu(struct v3dv_cmd_buffer *cmd_buffer,
                          struct v3dv_image *image,
                          struct v3dv_buffer *buffer,
-                         const VkBufferImageCopy2KHR *region)
+                         const VkBufferImageCopy2 *region)
 {
    assert(image->vk.samples == VK_SAMPLE_COUNT_1_BIT);
 
@@ -1419,7 +1419,7 @@ static bool
 copy_buffer_to_image_tlb(struct v3dv_cmd_buffer *cmd_buffer,
                          struct v3dv_image *image,
                          struct v3dv_buffer *buffer,
-                         const VkBufferImageCopy2KHR *region)
+                         const VkBufferImageCopy2 *region)
 {
    VkFormat fb_format;
    if (!v3dv_meta_can_use_tlb(image, &region->imageOffset, &fb_format))
@@ -1468,7 +1468,7 @@ static bool
 create_tiled_image_from_buffer(struct v3dv_cmd_buffer *cmd_buffer,
                                struct v3dv_image *image,
                                struct v3dv_buffer *buffer,
-                               const VkBufferImageCopy2KHR *region)
+                               const VkBufferImageCopy2 *region)
 {
    if (copy_buffer_to_image_tfu(cmd_buffer, image, buffer, region))
       return true;
@@ -1597,8 +1597,6 @@ create_blit_render_pass(struct v3dv_device *device,
                         VkRenderPass *pass_load,
                         VkRenderPass *pass_no_load);
 
-static nir_ssa_def *gen_rect_vertices(nir_builder *b);
-
 static bool
 create_pipeline(struct v3dv_device *device,
                 struct v3dv_render_pass *pass,
@@ -1623,7 +1621,7 @@ get_texel_buffer_copy_vs()
                           glsl_vec4_type(), "gl_Position");
    vs_out_pos->data.location = VARYING_SLOT_POS;
 
-   nir_ssa_def *pos = gen_rect_vertices(&b);
+   nir_ssa_def *pos = nir_gen_rect_vertices(&b, NULL, NULL);
    nir_store_var(&b, vs_out_pos, pos, 0xf);
 
    return b.shader;
@@ -1968,7 +1966,7 @@ texel_buffer_shader_copy(struct v3dv_cmd_buffer *cmd_buffer,
                          VkColorComponentFlags cmask,
                          VkComponentMapping *cswizzle,
                          uint32_t region_count,
-                         const VkBufferImageCopy2KHR *regions)
+                         const VkBufferImageCopy2 *regions)
 {
    VkResult result;
    bool handled = false;
@@ -2057,13 +2055,10 @@ texel_buffer_shader_copy(struct v3dv_cmd_buffer *cmd_buffer,
    if (result != VK_SUCCESS)
       return handled;
 
-   /* FIXME: for some reason passing region->bufferOffset here for the
-    * offset field doesn't work, making the following CTS tests fail:
-    *
-    * dEQP-VK.api.copy_and_blit.core.buffer_to_image.*buffer_offset*
-    *
-    * So instead we pass 0 here and we pass the offset in texels as a push
-    * constant to the shader, which seems to work correctly.
+   /* We can't pass region->bufferOffset here for the offset field because
+    * the texture base pointer in the texture shader state must be a 64-byte
+    * aligned value. Instead, we use 0 here and we pass the offset in texels
+    * as a push constant to the shader.
     */
    VkDevice _device = v3dv_device_to_handle(cmd_buffer->device);
    VkBufferViewCreateInfo buffer_view_info = {
@@ -2227,7 +2222,7 @@ texel_buffer_shader_copy(struct v3dv_cmd_buffer *cmd_buffer,
       /* For each region */
       dirty_dynamic_state = V3DV_CMD_DIRTY_VIEWPORT | V3DV_CMD_DIRTY_SCISSOR;
       for (uint32_t r = 0; r < region_count; r++) {
-         const VkBufferImageCopy2KHR *region = &regions[r];
+         const VkBufferImageCopy2 *region = &regions[r];
 
          /* Obtain the 2D buffer region spec */
          uint32_t buf_width, buf_height;
@@ -2302,7 +2297,7 @@ copy_buffer_to_image_blit(struct v3dv_cmd_buffer *cmd_buffer,
                           VkColorComponentFlags cmask,
                           VkComponentMapping *cswizzle,
                           uint32_t region_count,
-                          const VkBufferImageCopy2KHR *regions)
+                          const VkBufferImageCopy2 *regions)
 {
    /* Since we can't sample linear images we need to upload the linear
     * buffer to a tiled image that we can use as a blit source, which
@@ -2384,7 +2379,7 @@ copy_buffer_to_image_blit(struct v3dv_cmd_buffer *cmd_buffer,
     * the memory we have just allocated as storage.
     */
    for (uint32_t r = 0; r < region_count; r++) {
-      const VkBufferImageCopy2KHR *region = &regions[r];
+      const VkBufferImageCopy2 *region = &regions[r];
 
       /* Obtain the 2D buffer region spec */
       uint32_t buf_width, buf_height;
@@ -2438,8 +2433,8 @@ copy_buffer_to_image_blit(struct v3dv_cmd_buffer *cmd_buffer,
          /* Upload buffer contents for the selected layer */
          const VkDeviceSize buf_offset_bytes =
             region->bufferOffset + i * buf_height * buf_width * buffer_bpp;
-         const VkBufferImageCopy2KHR buffer_image_copy = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2_KHR,
+         const VkBufferImageCopy2 buffer_image_copy = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2,
             .bufferOffset = buf_offset_bytes,
             .bufferRowLength = region->bufferRowLength / block_width,
             .bufferImageHeight = region->bufferImageHeight / block_height,
@@ -2473,8 +2468,8 @@ copy_buffer_to_image_blit(struct v3dv_cmd_buffer *cmd_buffer,
           * image, but that we need to blit to a S8D24 destination (the only
           * stencil format we support).
           */
-         const VkImageBlit2KHR blit_region = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2_KHR,
+         const VkImageBlit2 blit_region = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
             .srcSubresource = {
                .aspectMask = aspect,
                .mipLevel = 0,
@@ -2532,7 +2527,7 @@ copy_buffer_to_image_shader(struct v3dv_cmd_buffer *cmd_buffer,
                             struct v3dv_image *image,
                             struct v3dv_buffer *buffer,
                             uint32_t region_count,
-                            const VkBufferImageCopy2KHR *regions,
+                            const VkBufferImageCopy2 *regions,
                             bool use_texel_buffer)
 {
    /* We can only call this with region_count > 1 if we can batch the regions
@@ -2661,7 +2656,7 @@ static bool
 copy_buffer_to_image_cpu(struct v3dv_cmd_buffer *cmd_buffer,
                          struct v3dv_image *image,
                          struct v3dv_buffer *buffer,
-                         const VkBufferImageCopy2KHR *region)
+                         const VkBufferImageCopy2 *region)
 {
    /* FIXME */
    if (vk_format_is_depth_or_stencil(image->vk.format))
@@ -2721,7 +2716,7 @@ copy_buffer_to_image_cpu(struct v3dv_cmd_buffer *cmd_buffer,
 
 VKAPI_ATTR void VKAPI_CALL
 v3dv_CmdCopyBufferToImage2KHR(VkCommandBuffer commandBuffer,
-                              const VkCopyBufferToImageInfo2KHR *info)
+                              const VkCopyBufferToImageInfo2 *info)
 {
    V3DV_FROM_HANDLE(v3dv_cmd_buffer, cmd_buffer, commandBuffer);
    V3DV_FROM_HANDLE(v3dv_buffer, buffer, info->srcBuffer);
@@ -2815,7 +2810,7 @@ static bool
 blit_tfu(struct v3dv_cmd_buffer *cmd_buffer,
          struct v3dv_image *dst,
          struct v3dv_image *src,
-         const VkImageBlit2KHR *region)
+         const VkImageBlit2 *region)
 {
    assert(dst->vk.samples == VK_SAMPLE_COUNT_1_BIT);
    assert(src->vk.samples == VK_SAMPLE_COUNT_1_BIT);
@@ -3053,39 +3048,6 @@ create_blit_render_pass(struct v3dv_device *device,
 }
 
 static nir_ssa_def *
-gen_rect_vertices(nir_builder *b)
-{
-   nir_ssa_def *vertex_id = nir_load_vertex_id(b);
-
-   /* vertex 0: -1.0, -1.0
-    * vertex 1: -1.0,  1.0
-    * vertex 2:  1.0, -1.0
-    * vertex 3:  1.0,  1.0
-    *
-    * so:
-    *
-    * channel 0 is vertex_id < 2 ? -1.0 :  1.0
-    * channel 1 is vertex id & 1 ?  1.0 : -1.0
-    */
-
-   nir_ssa_def *one = nir_imm_int(b, 1);
-   nir_ssa_def *c0cmp = nir_ilt(b, vertex_id, nir_imm_int(b, 2));
-   nir_ssa_def *c1cmp = nir_ieq(b, nir_iand(b, vertex_id, one), one);
-
-   nir_ssa_def *comp[4];
-   comp[0] = nir_bcsel(b, c0cmp,
-                       nir_imm_float(b, -1.0f),
-                       nir_imm_float(b, 1.0f));
-
-   comp[1] = nir_bcsel(b, c1cmp,
-                       nir_imm_float(b, 1.0f),
-                       nir_imm_float(b, -1.0f));
-   comp[2] = nir_imm_float(b, 0.0f);
-   comp[3] = nir_imm_float(b, 1.0f);
-   return nir_vec(b, comp, 4);
-}
-
-static nir_ssa_def *
 gen_tex_coords(nir_builder *b)
 {
    nir_ssa_def *tex_box =
@@ -3291,7 +3253,7 @@ get_blit_vs()
    vs_out_tex_coord->data.location = VARYING_SLOT_VAR0;
    vs_out_tex_coord->data.interpolation = INTERP_MODE_SMOOTH;
 
-   nir_ssa_def *pos = gen_rect_vertices(&b);
+   nir_ssa_def *pos = nir_gen_rect_vertices(&b, NULL, NULL);
    nir_store_var(&b, vs_out_pos, pos, 0xf);
 
    nir_ssa_def *tex_coord = gen_tex_coords(&b);
@@ -3412,14 +3374,12 @@ create_pipeline(struct v3dv_device *device,
                 const VkPipelineLayout layout,
                 VkPipeline *pipeline)
 {
-   struct vk_shader_module vs_m;
+   struct vk_shader_module vs_m = vk_shader_module_from_nir(vs_nir);
+   struct vk_shader_module fs_m = vk_shader_module_from_nir(fs_nir);
    struct vk_shader_module gs_m;
-   struct vk_shader_module fs_m;
 
    uint32_t num_stages = gs_nir ? 3 : 2;
 
-   v3dv_shader_module_internal_init(device, &vs_m, vs_nir);
-   v3dv_shader_module_internal_init(device, &fs_m, fs_nir);
 
    VkPipelineShaderStageCreateInfo stages[3] = {
       {
@@ -3443,7 +3403,7 @@ create_pipeline(struct v3dv_device *device,
    };
 
    if (gs_nir) {
-      v3dv_shader_module_internal_init(device, &gs_m, gs_nir);
+      gs_m = vk_shader_module_from_nir(gs_nir);
       stages[2].module = vk_shader_module_to_handle(&gs_m);
    }
 
@@ -3516,6 +3476,7 @@ create_pipeline(struct v3dv_device *device,
                                    pipeline);
 
    ralloc_free(vs_nir);
+   ralloc_free(gs_nir);
    ralloc_free(fs_nir);
 
    return result == VK_SUCCESS;
@@ -3835,7 +3796,7 @@ blit_shader(struct v3dv_cmd_buffer *cmd_buffer,
             VkFormat src_format,
             VkColorComponentFlags cmask,
             VkComponentMapping *cswizzle,
-            const VkImageBlit2KHR *region,
+            const VkImageBlit2 *region,
             VkFilter filter,
             bool dst_is_padded_image)
 {
@@ -4253,7 +4214,7 @@ fail:
 
 VKAPI_ATTR void VKAPI_CALL
 v3dv_CmdBlitImage2KHR(VkCommandBuffer commandBuffer,
-                      const VkBlitImageInfo2KHR *pBlitImageInfo)
+                      const VkBlitImageInfo2 *pBlitImageInfo)
 {
    V3DV_FROM_HANDLE(v3dv_cmd_buffer, cmd_buffer, commandBuffer);
    V3DV_FROM_HANDLE(v3dv_image, src, pBlitImageInfo->srcImage);
@@ -4293,7 +4254,7 @@ static bool
 resolve_image_tlb(struct v3dv_cmd_buffer *cmd_buffer,
                   struct v3dv_image *dst,
                   struct v3dv_image *src,
-                  const VkImageResolve2KHR *region)
+                  const VkImageResolve2 *region)
 {
    if (!v3dv_meta_can_use_tlb(src, &region->srcOffset, NULL) ||
        !v3dv_meta_can_use_tlb(dst, &region->dstOffset, NULL)) {
@@ -4346,10 +4307,10 @@ static bool
 resolve_image_blit(struct v3dv_cmd_buffer *cmd_buffer,
                    struct v3dv_image *dst,
                    struct v3dv_image *src,
-                   const VkImageResolve2KHR *region)
+                   const VkImageResolve2 *region)
 {
-   const VkImageBlit2KHR blit_region = {
-      .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2_KHR,
+   const VkImageBlit2 blit_region = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
       .srcSubresource = region->srcSubresource,
       .srcOffsets = {
          region->srcOffset,
@@ -4376,7 +4337,7 @@ resolve_image_blit(struct v3dv_cmd_buffer *cmd_buffer,
 
 VKAPI_ATTR void VKAPI_CALL
 v3dv_CmdResolveImage2KHR(VkCommandBuffer commandBuffer,
-                         const VkResolveImageInfo2KHR *info)
+                         const VkResolveImageInfo2 *info)
 
 {
    V3DV_FROM_HANDLE(v3dv_cmd_buffer, cmd_buffer, commandBuffer);

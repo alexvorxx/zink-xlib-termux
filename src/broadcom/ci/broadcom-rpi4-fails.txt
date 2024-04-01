@@ -1,5 +1,3 @@
-glx@glx-make-current,Crash
-glx@glx-multi-window-single-context,Fail
 glx@glx-multithread-buffer,Fail
 glx@glx-swap-pixmap-bad,Fail
 glx@glx-visuals-depth -pixmap,Crash
@@ -146,9 +144,7 @@ spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgrad,Fail
 spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgradcube,Fail
 spec@arb_texture_float@fbo-blending-formats,Fail
 spec@arb_texture_float@fbo-blending-formats@GL_ALPHA32F_ARB,Fail
-spec@arb_texture_float@fbo-blending-formats@GL_INTENSITY16F_ARB,Fail
 spec@arb_texture_float@fbo-blending-formats@GL_INTENSITY32F_ARB,Fail
-spec@arb_texture_float@fbo-blending-formats@GL_LUMINANCE16F_ARB,Fail
 spec@arb_texture_float@fbo-blending-formats@GL_LUMINANCE32F_ARB,Fail
 spec@arb_texture_float@fbo-blending-formats@GL_LUMINANCE_ALPHA32F_ARB,Fail
 spec@arb_texture_float@fbo-blending-formats@GL_RGB16F,Fail
@@ -350,6 +346,13 @@ spec@!opengl 1.0@depth-clear-precision-check,Fail
 spec@!opengl 1.0@depth-clear-precision-check@depth16,Fail
 spec@!opengl 1.0@depth-clear-precision-check@depth24,Fail
 
-# https://gitlab.khronos.org/Tracker/vk-gl-cts/-/issues/3711
-dEQP-VK.rasterization.rasterization_order_attachment_access.depth.samples_1.multi_draw_barriers,Fail
-dEQP-VK.rasterization.rasterization_order_attachment_access.depth.samples_4.multi_draw_barriers,Fail
+# These fail because the shaders use indirect indexing on samplers which we
+# don't support (the GLSL linker fails to link the shaders because of this).
+# If loop unrolling kicks-in for these tests it removes the indirect indexing
+# and the tests pass, but this would just be working around an issue in the
+# tests.
+spec@!opengl 2.0@max-samplers,Fail
+spec@!opengl 2.0@max-samplers border,Fail
+
+# https://gitlab.khronos.org/Tracker/vk-gl-cts/-/issues/3759
+dEQP-VK.pipeline.monolithic.color_write_enable_maxa.cwe_after_bind.attachments4_more0,Crash

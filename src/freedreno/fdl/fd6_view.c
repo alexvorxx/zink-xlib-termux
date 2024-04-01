@@ -29,18 +29,6 @@
 #include "freedreno_layout.h"
 #include "fd6_format_table.h"
 
-static enum a6xx_tex_swiz
-fdl6_swiz(unsigned char swiz)
-{
-   STATIC_ASSERT((unsigned) A6XX_TEX_X == (unsigned) PIPE_SWIZZLE_X);
-   STATIC_ASSERT((unsigned) A6XX_TEX_Y == (unsigned) PIPE_SWIZZLE_Y);
-   STATIC_ASSERT((unsigned) A6XX_TEX_Z == (unsigned) PIPE_SWIZZLE_Z);
-   STATIC_ASSERT((unsigned) A6XX_TEX_W == (unsigned) PIPE_SWIZZLE_W);
-   STATIC_ASSERT((unsigned) A6XX_TEX_ZERO == (unsigned) PIPE_SWIZZLE_0);
-   STATIC_ASSERT((unsigned) A6XX_TEX_ONE == (unsigned) PIPE_SWIZZLE_1);
-   return (enum a6xx_tex_swiz) swiz;
-}
-
 static enum a6xx_tex_type
 fdl6_tex_type(enum fdl_view_type type, bool storage)
 {
@@ -54,16 +42,44 @@ fdl6_tex_type(enum fdl_view_type type, bool storage)
       A6XX_TEX_2D : (enum a6xx_tex_type) type;
 }
 
-static uint32_t
-fdl6_texswiz(const struct fdl_view_args *args, bool has_z24uint_s8uint)
+void
+fdl6_format_swiz(enum pipe_format format, bool has_z24uint_s8uint,
+                 unsigned char *format_swiz)
 {
-   unsigned char format_swiz[4] =
-      { PIPE_SWIZZLE_X, PIPE_SWIZZLE_Y, PIPE_SWIZZLE_Z, PIPE_SWIZZLE_W };
-   switch (args->format) {
+   format_swiz[0] = PIPE_SWIZZLE_X;
+   format_swiz[1] = PIPE_SWIZZLE_Y;
+   format_swiz[2] = PIPE_SWIZZLE_Z;
+   format_swiz[3] = PIPE_SWIZZLE_W;
+
+   /* Note: Using the swizzle here to do anything other than replace with a
+    * constant or replicate a component breaks border colors, because border
+    * color replacement will happen before this swizzle is applied but it's
+    * supposed to happen after any "hidden" swizzles that are applied by the
+    * driver as part of implementing the API format. There are a few
+    * exceptions, called out below.
+    */
+   switch (format) {
    case PIPE_FORMAT_R8G8_R8B8_UNORM:
    case PIPE_FORMAT_G8R8_B8R8_UNORM:
    case PIPE_FORMAT_G8_B8R8_420_UNORM:
    case PIPE_FORMAT_G8_B8_R8_420_UNORM:
+      /* These formats are currently only used for Vulkan, and border colors
+       * aren't allowed on these formats in Vulkan because, from the
+       * description of VkImageViewCreateInfo:
+       *
+       *    If the image has a multi-planar format and
+       *    subresourceRange.aspectMask is VK_IMAGE_ASPECT_COLOR_BIT, ... then
+       *    ... the sampler to be used with the image view must enable sampler
+       *    ycbcr conversion.
+       *
+       * combined with this VU on VkSamplerCreateInfo:
+       *
+       *    If sampler ycbcr conversion is enabled, addressModeU,
+       *    addressModeV, and addressModeW must be
+       *    VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, ...
+       *
+       * This makes the swizzle safe.
+       */
       format_swiz[0] = PIPE_SWIZZLE_Z;
       format_swiz[1] = PIPE_SWIZZLE_X;
       format_swiz[2] = PIPE_SWIZZLE_Y;
@@ -82,8 +98,10 @@ fdl6_texswiz(const struct fdl_view_args *args, bool has_z24uint_s8uint)
          format_swiz[2] = PIPE_SWIZZLE_0;
          format_swiz[3] = PIPE_SWIZZLE_1;
       } else {
-         /* using FMT6_Z24_UINT_S8_UINT, which is (d, s, 0, 1), so need to
-          * swizzle away the d.
+         /* Using FMT6_Z24_UINT_S8_UINT, which is (d, s, 0, 1), so need to
+          * swizzle away the d. We don't use this if
+          * customBorderColorWithoutFormat is enabled, so we can fix up the
+          * border color, and there's a workaround in freedreno.
           */
          format_swiz[0] = PIPE_SWIZZLE_Y;
          format_swiz[1] = PIPE_SWIZZLE_0;
@@ -91,33 +109,43 @@ fdl6_texswiz(const struct fdl_view_args *args, bool has_z24uint_s8uint)
       break;
 
    default:
-      /* Our I, L, A, and LA formats use R or RG HW formats. */
-      if (util_format_is_alpha(args->format)) {
+      /* Our I, L, A, and LA formats use R or RG HW formats. These aren't
+       * supported in Vulkan, and freedreno uses a hack to get the border
+       * colors correct by undoing these swizzles.
+       */
+      if (util_format_is_alpha(format)) {
          format_swiz[0] = PIPE_SWIZZLE_0;
          format_swiz[1] = PIPE_SWIZZLE_0;
          format_swiz[2] = PIPE_SWIZZLE_0;
          format_swiz[3] = PIPE_SWIZZLE_X;
-      } else if (util_format_is_luminance(args->format)) {
+      } else if (util_format_is_luminance(format)) {
          format_swiz[0] = PIPE_SWIZZLE_X;
          format_swiz[1] = PIPE_SWIZZLE_X;
          format_swiz[2] = PIPE_SWIZZLE_X;
          format_swiz[3] = PIPE_SWIZZLE_1;
-      } else if (util_format_is_intensity(args->format)) {
+      } else if (util_format_is_intensity(format)) {
          format_swiz[0] = PIPE_SWIZZLE_X;
          format_swiz[1] = PIPE_SWIZZLE_X;
          format_swiz[2] = PIPE_SWIZZLE_X;
          format_swiz[3] = PIPE_SWIZZLE_X;
-      } else if (util_format_is_luminance_alpha(args->format)) {
+      } else if (util_format_is_luminance_alpha(format)) {
          format_swiz[0] = PIPE_SWIZZLE_X;
          format_swiz[1] = PIPE_SWIZZLE_X;
          format_swiz[2] = PIPE_SWIZZLE_X;
          format_swiz[3] = PIPE_SWIZZLE_Y;
-      } else if (!util_format_has_alpha(args->format)) {
+      } else if (!util_format_has_alpha(format)) {
          /* for rgbx, force A to 1.  Harmless for R/RG, where we already get 1. */
          format_swiz[3] = PIPE_SWIZZLE_1;
       }
       break;
    }
+}
+
+static uint32_t
+fdl6_texswiz(const struct fdl_view_args *args, bool has_z24uint_s8uint)
+{
+   unsigned char format_swiz[4];
+   fdl6_format_swiz(args->format, has_z24uint_s8uint, format_swiz);
 
    unsigned char swiz[4];
    util_format_compose_swizzles(format_swiz, args->swiz, swiz);
@@ -208,6 +236,8 @@ fdl6_view_init(struct fdl6_view *view, const struct fdl_layout **layouts,
       else
          storage_format = FMT6_8_8_8_8_UNORM;
    }
+
+   view->format = args->format;
 
    memset(view->descriptor, 0, sizeof(view->descriptor));
 
@@ -315,6 +345,15 @@ fdl6_view_init(struct fdl6_view *view, const struct fdl_layout **layouts,
    view->FLAG_BUFFER_PITCH =
       A6XX_RB_DEPTH_FLAG_BUFFER_PITCH_PITCH(ubwc_pitch) |
       A6XX_RB_DEPTH_FLAG_BUFFER_PITCH_ARRAY_PITCH(layout->ubwc_layer_size >> 2);
+
+   const struct util_format_description *format_desc =
+      util_format_description(args->format);
+   if (util_format_has_depth(format_desc)) {
+      view->GRAS_LRZ_DEPTH_VIEW =
+         A6XX_GRAS_LRZ_DEPTH_VIEW_BASE_LAYER(args->base_array_layer) |
+         A6XX_GRAS_LRZ_DEPTH_VIEW_LAYER_COUNT(args->layer_count) |
+         A6XX_GRAS_LRZ_DEPTH_VIEW_BASE_MIP_LEVEL(args->base_miplevel);
+   }
 
    view->base_addr = base_addr;
    view->ubwc_addr = ubwc_addr;

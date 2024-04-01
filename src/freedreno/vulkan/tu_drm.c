@@ -1,30 +1,13 @@
 /*
  * Copyright © 2018 Google, Inc.
  * Copyright © 2015 Intel Corporation
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
+
+#include "tu_drm.h"
 
 #include <errno.h>
 #include <fcntl.h>
-#include <stdint.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <xf86drm.h>
@@ -42,21 +25,23 @@
 #include "util/debug.h"
 #include "util/timespec.h"
 #include "util/os_time.h"
-#include "util/perf/u_trace.h"
 
-#include "tu_private.h"
-
+#include "tu_cmd_buffer.h"
 #include "tu_cs.h"
+#include "tu_device.h"
+#include "tu_dynamic_rendering.h"
 
 struct tu_queue_submit
 {
    struct vk_queue_submit *vk_submit;
    struct tu_u_trace_submission_data *u_trace_submission_data;
 
+   struct tu_cmd_buffer **cmd_buffers;
    struct drm_msm_gem_submit_cmd *cmds;
    struct drm_msm_gem_submit_syncobj *in_syncobjs;
    struct drm_msm_gem_submit_syncobj *out_syncobjs;
 
+   uint32_t nr_cmd_buffers;
    uint32_t nr_in_syncobjs;
    uint32_t nr_out_syncobjs;
    uint32_t entry_count;
@@ -754,7 +739,9 @@ tu_drm_device_init(struct tu_physical_device *device,
    }
 
    device->syncobj_type = vk_drm_syncobj_get_type(fd);
-   device->timeline_type = vk_sync_timeline_get_type(&tu_timeline_sync_type);
+   /* we don't support DRM_CAP_SYNCOBJ_TIMELINE, but drm-shim does */
+   if (!(device->syncobj_type.features & VK_SYNC_FEATURE_TIMELINE))
+      device->timeline_type = vk_sync_timeline_get_type(&tu_timeline_sync_type);
 
    device->sync_types[0] = &device->syncobj_type;
    device->sync_types[1] = &device->timeline_type.sync;
@@ -831,11 +818,17 @@ tu_queue_submit_create_locked(struct tu_queue *queue,
    bool has_trace_points = false;
 
    struct vk_command_buffer **vk_cmd_buffers = vk_submit->command_buffers;
-   struct tu_cmd_buffer **cmd_buffers = (void *)vk_cmd_buffers;
+
+   memset(new_submit, 0, sizeof(struct tu_queue_submit));
+
+   new_submit->cmd_buffers = (void *)vk_cmd_buffers;
+   new_submit->nr_cmd_buffers = vk_submit->command_buffer_count;
+   tu_insert_dynamic_cmdbufs(queue->device, &new_submit->cmd_buffers,
+                             &new_submit->nr_cmd_buffers);
 
    uint32_t entry_count = 0;
-   for (uint32_t j = 0; j < vk_submit->command_buffer_count; ++j) {
-      struct tu_cmd_buffer *cmdbuf = cmd_buffers[j];
+   for (uint32_t j = 0; j < new_submit->nr_cmd_buffers; ++j) {
+      struct tu_cmd_buffer *cmdbuf = new_submit->cmd_buffers[j];
 
       if (perf_pass_index != ~0)
          entry_count++;
@@ -850,11 +843,8 @@ tu_queue_submit_create_locked(struct tu_queue *queue,
       }
    }
 
-
-   memset(new_submit, 0, sizeof(struct tu_queue_submit));
-
    new_submit->autotune_fence =
-      tu_autotune_submit_requires_fence(cmd_buffers, vk_submit->command_buffer_count);
+      tu_autotune_submit_requires_fence(new_submit->cmd_buffers, new_submit->nr_cmd_buffers);
    if (new_submit->autotune_fence)
       entry_count++;
 
@@ -870,8 +860,8 @@ tu_queue_submit_create_locked(struct tu_queue *queue,
    if (has_trace_points) {
       result =
          tu_u_trace_submission_data_create(
-            queue->device, cmd_buffers,
-            vk_submit->command_buffer_count,
+            queue->device, new_submit->cmd_buffers,
+            new_submit->nr_cmd_buffers,
             &new_submit->u_trace_submission_data);
 
       if (result != VK_SUCCESS) {
@@ -925,6 +915,8 @@ tu_queue_submit_finish(struct tu_queue *queue, struct tu_queue_submit *submit)
    vk_free(&queue->device->vk.alloc, submit->cmds);
    vk_free(&queue->device->vk.alloc, submit->in_syncobjs);
    vk_free(&queue->device->vk.alloc, submit->out_syncobjs);
+   if (submit->cmd_buffers != (void *) submit->vk_submit->command_buffers)
+      vk_free(&queue->device->vk.alloc, submit->cmd_buffers);
 }
 
 static void
@@ -949,13 +941,10 @@ tu_queue_build_msm_gem_submit_cmds(struct tu_queue *queue,
    struct tu_device *dev = queue->device;
    struct drm_msm_gem_submit_cmd *cmds = submit->cmds;
 
-   struct vk_command_buffer **vk_cmd_buffers = submit->vk_submit->command_buffers;
-   struct tu_cmd_buffer **cmd_buffers = (void *)vk_cmd_buffers;
-
    uint32_t entry_idx = 0;
-   for (uint32_t j = 0; j < submit->vk_submit->command_buffer_count; ++j) {
+   for (uint32_t j = 0; j < submit->nr_cmd_buffers; ++j) {
       struct tu_device *dev = queue->device;
-      struct tu_cmd_buffer *cmdbuf = cmd_buffers[j];
+      struct tu_cmd_buffer *cmdbuf = submit->cmd_buffers[j];
       struct tu_cs *cs = &cmdbuf->cs;
 
       if (submit->perf_pass_index != ~0) {
@@ -994,11 +983,10 @@ tu_queue_submit_locked(struct tu_queue *queue, struct tu_queue_submit *submit)
 
    struct tu_cs *autotune_cs = NULL;
    if (submit->autotune_fence) {
-      struct tu_cmd_buffer **cmd_buffers = (void *)submit->vk_submit->command_buffers;
       autotune_cs = tu_autotune_on_submit(queue->device,
                                           &queue->device->autotune,
-                                          cmd_buffers,
-                                          submit->vk_submit->command_buffer_count);
+                                          submit->cmd_buffers,
+                                          submit->nr_cmd_buffers);
    }
 
    uint32_t flags = MSM_PIPE_3D0;
@@ -1060,7 +1048,7 @@ tu_queue_submit_locked(struct tu_queue *queue, struct tu_queue_submit *submit)
 
       submit->u_trace_submission_data = NULL;
 
-      for (uint32_t i = 0; i < submit->vk_submit->command_buffer_count; i++) {
+      for (uint32_t i = 0; i < submission_data->cmd_buffer_count; i++) {
          bool free_data = i == submission_data->last_buffer_with_tracepoints;
          if (submission_data->cmd_trace_data[i].trace)
             u_trace_flush(submission_data->cmd_trace_data[i].trace,

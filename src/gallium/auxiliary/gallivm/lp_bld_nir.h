@@ -115,6 +115,7 @@ struct lp_build_nir_context
                     LLVMValueRef index, LLVMValueRef offset, LLVMValueRef result[NIR_MAX_VEC_COMPONENTS]);
    void (*store_mem)(struct lp_build_nir_context *bld_base,
                      unsigned writemask, unsigned nc, unsigned bit_size,
+                     bool index_and_offset_are_uniform,
                      LLVMValueRef index, LLVMValueRef offset, LLVMValueRef dst);
 
    void (*atomic_mem)(struct lp_build_nir_context *bld_base,
@@ -221,6 +222,7 @@ struct lp_build_nir_context
                            LLVMValueRef dst[4]);
    void (*helper_invocation)(struct lp_build_nir_context *bld_base, LLVMValueRef *dst);
 
+   void (*clock)(struct lp_build_nir_context *bld_Base, LLVMValueRef dst[4]);
    void (*interp_at)(struct lp_build_nir_context *bld_base,
                      unsigned num_components,
                      nir_variable *var,
@@ -240,7 +242,6 @@ struct lp_build_nir_soa_context
    struct lp_build_context uint_elem_bld;
 
    LLVMValueRef consts_ptr;
-   LLVMValueRef const_sizes_ptr;
    LLVMValueRef consts[LP_MAX_TGSI_CONST_BUFFERS];
    LLVMValueRef consts_sizes[LP_MAX_TGSI_CONST_BUFFERS];
    const LLVMValueRef (*inputs)[TGSI_NUM_CHANNELS];
@@ -249,7 +250,6 @@ struct lp_build_nir_soa_context
    LLVMValueRef thread_data_ptr;
 
    LLVMValueRef ssbo_ptr;
-   LLVMValueRef ssbo_sizes_ptr;
    LLVMValueRef ssbos[LP_MAX_TGSI_SHADER_BUFFERS];
    LLVMValueRef ssbo_sizes[LP_MAX_TGSI_SHADER_BUFFERS];
 

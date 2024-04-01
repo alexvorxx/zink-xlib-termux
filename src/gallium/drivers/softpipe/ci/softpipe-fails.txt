@@ -908,14 +908,8 @@ KHR-GLES31.core.texture_storage_multisample.GLCoverage.gl_tex_parameter_handlers
 
 fast_color_clear@fcc-front-buffer-distraction,Fail
 
-# X Error of failed request:  BadMatch (invalid parameter attributes)
-#   Major opcode of failed request:  150 (GLX)
-#   Minor opcode of failed request:  11 (X_GLXSwapBuffers)
-glx@glx-make-current,Crash
-
 
 glx@glx-multi-context-front,Fail
-glx@glx-multi-window-single-context,Fail
 glx@glx-swap-copy,Fail
 glx@glx-swap-pixmap-bad,Fail
 
@@ -1345,10 +1339,6 @@ spec@nv_primitive_restart@primitive-restart-draw-mode-triangle_fan,Fail
 spec@nv_primitive_restart@primitive-restart-draw-mode-triangle_strip,Fail
 spec@nv_primitive_restart@primitive-restart-draw-mode-triangles,Fail
 spec@nv_read_depth@read_depth_gles3,Fail
-
-spec@oes_egl_image_external_essl3@oes_egl_image_external_essl3,Fail
-spec@oes_egl_image_external_essl3@oes_egl_image_external_essl3@oes_egl_image_external_essl3_imageLoad,Fail
-spec@oes_egl_image_external_essl3@oes_egl_image_external_essl3@oes_egl_image_external_essl3_imageStore,Fail
 
 spec@oes_texture_view@rendering-formats,Fail
 spec@oes_texture_view@rendering-formats@clear GL_RGBA8_SNORM as GL_R32F,Fail

@@ -836,6 +836,14 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader,
    default:
       if (nir_intrinsic_writes_external_memory(instr))
          shader->info.writes_memory = true;
+
+      if (instr->intrinsic == nir_intrinsic_image_size ||
+          instr->intrinsic == nir_intrinsic_image_samples ||
+          instr->intrinsic == nir_intrinsic_image_deref_size ||
+          instr->intrinsic == nir_intrinsic_image_deref_samples ||
+          instr->intrinsic == nir_intrinsic_bindless_image_size ||
+          instr->intrinsic == nir_intrinsic_bindless_image_samples)
+         shader->info.uses_resource_info_query = true;
       break;
    }
 }
@@ -850,6 +858,11 @@ gather_tex_info(nir_tex_instr *instr, nir_shader *shader)
    switch (instr->op) {
    case nir_texop_tg4:
       shader->info.uses_texture_gather = true;
+      break;
+   case nir_texop_txs:
+   case nir_texop_query_levels:
+   case nir_texop_texture_samples:
+      shader->info.uses_resource_info_query = true;
       break;
    default:
       break;
@@ -962,6 +975,8 @@ nir_shader_gather_info(nir_shader *shader, nir_function_impl *entrypoint)
    shader->info.patch_inputs_read_indirectly = 0;
    shader->info.patch_outputs_accessed_indirectly = 0;
 
+   shader->info.uses_resource_info_query = false;
+
    if (shader->info.stage == MESA_SHADER_VERTEX) {
       shader->info.vs.double_inputs = 0;
    }
@@ -986,17 +1001,6 @@ nir_shader_gather_info(nir_shader *shader, nir_function_impl *entrypoint)
    struct set *visited_funcs = _mesa_pointer_set_create(dead_ctx);
    gather_func_info(entrypoint, shader, visited_funcs, dead_ctx);
    ralloc_free(dead_ctx);
-
-   if (shader->info.stage == MESA_SHADER_FRAGMENT &&
-       (shader->info.fs.uses_sample_qualifier ||
-        (BITSET_TEST(shader->info.system_values_read, SYSTEM_VALUE_SAMPLE_ID) ||
-         BITSET_TEST(shader->info.system_values_read, SYSTEM_VALUE_SAMPLE_POS)))) {
-      /* This shouldn't be cleared because if optimizations remove all
-       * sample-qualified inputs and that pass is run again, the sample
-       * shading must stay enabled.
-       */
-      shader->info.fs.uses_sample_shading = true;
-   }
 
    shader->info.per_primitive_outputs = 0;
    if (shader->info.stage == MESA_SHADER_MESH) {

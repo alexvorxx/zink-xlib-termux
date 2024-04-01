@@ -32,6 +32,18 @@ struct dxil_validator;
 extern "C" {
 #endif
 
+enum dxil_validator_version {
+   NO_DXIL_VALIDATION,
+   DXIL_VALIDATOR_1_0 = 0x10000,
+   DXIL_VALIDATOR_1_1,
+   DXIL_VALIDATOR_1_2,
+   DXIL_VALIDATOR_1_3,
+   DXIL_VALIDATOR_1_4,
+   DXIL_VALIDATOR_1_5,
+   DXIL_VALIDATOR_1_6,
+   DXIL_VALIDATOR_1_7,
+};
+
 struct dxil_validator *
 dxil_create_validator(const void *ctx);
 
@@ -44,6 +56,9 @@ dxil_validate_module(struct dxil_validator *val, void *data,
 
 char *
 dxil_disasm_module(struct dxil_validator *val, void *data, size_t size);
+
+enum dxil_validator_version
+dxil_get_validator_version(struct dxil_validator *val);
 
 #ifdef __cplusplus
 }

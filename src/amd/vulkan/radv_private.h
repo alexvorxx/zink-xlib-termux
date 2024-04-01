@@ -60,7 +60,6 @@
 #include "vk_debug_report.h"
 #include "vk_device.h"
 #include "vk_format.h"
-#include "vk_image.h"
 #include "vk_instance.h"
 #include "vk_log.h"
 #include "vk_physical_device.h"
@@ -1983,8 +1982,6 @@ struct radv_dispatch_info {
 
 void radv_compute_dispatch(struct radv_cmd_buffer *cmd_buffer, const struct radv_dispatch_info *info);
 
-struct radv_image_view;
-
 bool radv_cmd_buffer_uses_mec(struct radv_cmd_buffer *cmd_buffer);
 
 void radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs);
@@ -2096,20 +2093,6 @@ void radv_update_ds_clear_metadata(struct radv_cmd_buffer *cmd_buffer, const str
 
 void radv_update_color_clear_metadata(struct radv_cmd_buffer *cmd_buffer, const struct radv_image_view *iview,
                                       int cb_idx, uint32_t color_values[2]);
-
-void radv_set_mutable_tex_desc_fields(struct radv_device *device, struct radv_image *image,
-                                      const struct legacy_surf_level *base_level_info, unsigned plane_id,
-                                      unsigned base_level, unsigned first_level, unsigned block_width, bool is_stencil,
-                                      bool is_storage_image, bool disable_compression, bool enable_write_compression,
-                                      uint32_t *state, const struct ac_surf_nbc_view *nbc_view);
-
-void radv_make_texture_descriptor(struct radv_device *device, struct radv_image *image, bool is_storage_image,
-                                  VkImageViewType view_type, VkFormat vk_format, const VkComponentMapping *mapping,
-                                  unsigned first_level, unsigned last_level, unsigned first_layer, unsigned last_layer,
-                                  unsigned width, unsigned height, unsigned depth, float min_lod, uint32_t *state,
-                                  uint32_t *fmask_state, VkImageCreateFlags img_create_flags,
-                                  const struct ac_surf_nbc_view *nbc_view,
-                                  const VkImageViewSlicedCreateInfoEXT *sliced_3d);
 
 void radv_update_fce_metadata(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image,
                               const VkImageSubresourceRange *range, bool value);
@@ -2620,39 +2603,6 @@ void radv_pipeline_destroy(struct radv_device *device, struct radv_pipeline *pip
 struct vk_format_description;
 bool radv_device_supports_etc(const struct radv_physical_device *pdev);
 
-union radv_descriptor {
-   struct {
-      uint32_t plane0_descriptor[8];
-      uint32_t fmask_descriptor[8];
-   };
-   struct {
-      uint32_t plane_descriptors[3][8];
-   };
-};
-
-struct radv_image_view {
-   struct vk_image_view vk;
-   struct radv_image *image; /**< VkImageViewCreateInfo::image */
-
-   unsigned plane_id;
-   VkExtent3D extent; /**< Extent of VkImageViewCreateInfo::baseMipLevel. */
-
-   /* Whether the image iview supports fast clear. */
-   bool support_fast_clear;
-
-   bool disable_dcc_mrt;
-
-   union radv_descriptor descriptor;
-
-   /* Descriptor for use as a storage image as opposed to a sampled image.
-    * This has a few differences for cube maps (e.g. type).
-    */
-   union radv_descriptor storage_descriptor;
-
-   /* Block-compressed image views on GFX10+. */
-   struct ac_surf_nbc_view nbc_view;
-};
-
 unsigned radv_get_dcc_max_uncompressed_block_size(const struct radv_device *device, const struct radv_image *image);
 
 VkResult radv_image_from_gralloc(VkDevice device_h, const VkImageCreateInfo *base_info,
@@ -2668,18 +2618,6 @@ unsigned radv_ahb_format_for_vk_format(VkFormat vk_format);
 VkFormat radv_select_android_external_format(const void *next, VkFormat default_format);
 
 bool radv_android_gralloc_supports_format(VkFormat format, VkImageUsageFlagBits usage);
-
-struct radv_image_view_extra_create_info {
-   bool disable_compression;
-   bool enable_compression;
-   bool disable_dcc_mrt;
-   bool from_client; /**< Set only if this came from vkCreateImage */
-};
-
-void radv_image_view_init(struct radv_image_view *view, struct radv_device *device,
-                          const VkImageViewCreateInfo *pCreateInfo, VkImageCreateFlags img_create_flags,
-                          const struct radv_image_view_extra_create_info *extra_create_info);
-void radv_image_view_finish(struct radv_image_view *iview);
 
 struct radv_resolve_barrier {
    VkPipelineStageFlags2 src_stage_mask;
@@ -3412,7 +3350,6 @@ VK_DEFINE_HANDLE_CASTS(radv_instance, vk.base, VkInstance, VK_OBJECT_TYPE_INSTAN
 VK_DEFINE_HANDLE_CASTS(radv_physical_device, vk.base, VkPhysicalDevice, VK_OBJECT_TYPE_PHYSICAL_DEVICE)
 VK_DEFINE_HANDLE_CASTS(radv_queue, vk.base, VkQueue, VK_OBJECT_TYPE_QUEUE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_device_memory, base, VkDeviceMemory, VK_OBJECT_TYPE_DEVICE_MEMORY)
-VK_DEFINE_NONDISP_HANDLE_CASTS(radv_image_view, vk.base, VkImageView, VK_OBJECT_TYPE_IMAGE_VIEW);
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_indirect_command_layout, base, VkIndirectCommandsLayoutNV,
                                VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NV)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_pipeline, base, VkPipeline, VK_OBJECT_TYPE_PIPELINE)

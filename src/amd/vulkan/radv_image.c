@@ -33,6 +33,7 @@
 #include "radv_buffer_view.h"
 #include "radv_debug.h"
 #include "radv_formats.h"
+#include "radv_image_view.h"
 #include "radv_private.h"
 #include "radv_radeon_winsys.h"
 #include "radv_video.h"

@@ -352,7 +352,7 @@ radv_CreateVideoSessionKHR(VkDevice _device, const VkVideoSessionCreateInfoKHR *
    struct radv_video_session *vid =
       vk_alloc2(&device->vk.alloc, pAllocator, sizeof(*vid), 8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    if (!vid)
-      return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
+      return vk_error(pdev->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    memset(vid, 0, sizeof(struct radv_video_session));
 
@@ -415,10 +415,11 @@ radv_CreateVideoSessionParametersKHR(VkDevice _device, const VkVideoSessionParam
    RADV_FROM_HANDLE(radv_device, device, _device);
    RADV_FROM_HANDLE(radv_video_session, vid, pCreateInfo->videoSession);
    RADV_FROM_HANDLE(radv_video_session_params, templ, pCreateInfo->videoSessionParametersTemplate);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_video_session_params *params =
       vk_alloc2(&device->vk.alloc, pAllocator, sizeof(*params), 8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    if (!params)
-      return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
+      return vk_error(pdev->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    VkResult result =
       vk_video_session_parameters_init(&device->vk, &params->vk, &vid->vk, templ ? &templ->vk : NULL, pCreateInfo);

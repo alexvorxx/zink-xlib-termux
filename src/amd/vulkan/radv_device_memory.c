@@ -223,7 +223,7 @@ radv_alloc_memory(struct radv_device *device, const VkMemoryAllocateInfo *pAlloc
       if (flags_info && flags_info->flags & VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT)
          flags |= RADEON_FLAG_REPLAYABLE;
 
-      if (device->instance->drirc.zero_vram)
+      if (pdev->instance->drirc.zero_vram)
          flags |= RADEON_FLAG_ZERO_VRAM;
 
       if (device->overallocation_disallowed) {

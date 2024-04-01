@@ -1105,7 +1105,6 @@ void radv_device_associate_nir(struct radv_device *device, nir_shader *nir);
 struct radv_device {
    struct vk_device vk;
 
-   struct radv_instance *instance;
    struct radeon_winsys *ws;
 
    struct radv_layer_dispatch_tables layer_dispatch;

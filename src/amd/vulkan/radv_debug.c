@@ -470,6 +470,7 @@ static void
 radv_dump_queue_state(struct radv_queue *queue, const char *dump_dir, FILE *f)
 {
    struct radv_device *device = radv_queue_device(queue);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    enum amd_ip_type ring = radv_queue_ring(queue);
    struct radv_pipeline *pipeline;
 
@@ -508,8 +509,7 @@ radv_dump_queue_state(struct radv_queue *queue, const char *dump_dir, FILE *f)
                           MESA_SHADER_COMPUTE, dump_dir, f);
       }
 
-      if (!(device->instance->debug_flags & RADV_DEBUG_NO_UMR)) {
-         const struct radv_physical_device *pdev = radv_device_physical(device);
+      if (!(pdev->instance->debug_flags & RADV_DEBUG_NO_UMR)) {
          struct ac_wave_info waves[AC_MAX_WAVES_PER_CHIP];
          enum amd_gfx_level gfx_level = pdev->info.gfx_level;
          unsigned num_waves = ac_get_wave_info(gfx_level, &pdev->info, waves);
@@ -596,12 +596,13 @@ radv_dump_dmesg(FILE *f)
 void
 radv_dump_enabled_options(const struct radv_device *device, FILE *f)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    uint64_t mask;
 
-   if (device->instance->debug_flags) {
+   if (pdev->instance->debug_flags) {
       fprintf(f, "Enabled debug options: ");
 
-      mask = device->instance->debug_flags;
+      mask = pdev->instance->debug_flags;
       while (mask) {
          int i = u_bit_scan64(&mask);
          fprintf(f, "%s, ", radv_get_debug_option_name(i));
@@ -609,10 +610,10 @@ radv_dump_enabled_options(const struct radv_device *device, FILE *f)
       fprintf(f, "\n");
    }
 
-   if (device->instance->perftest_flags) {
+   if (pdev->instance->perftest_flags) {
       fprintf(f, "Enabled perftest options: ");
 
-      mask = device->instance->perftest_flags;
+      mask = pdev->instance->perftest_flags;
       while (mask) {
          int i = u_bit_scan64(&mask);
          fprintf(f, "%s, ", radv_get_perftest_option_name(i));
@@ -624,7 +625,8 @@ radv_dump_enabled_options(const struct radv_device *device, FILE *f)
 static void
 radv_dump_app_info(const struct radv_device *device, FILE *f)
 {
-   const struct radv_instance *instance = device->instance;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = pdev->instance;
 
    fprintf(f, "Application name: %s\n", instance->vk.app_info.app_name);
    fprintf(f, "Application version: %d\n", instance->vk.app_info.app_version);
@@ -812,11 +814,11 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
          radv_dump_queue_state(queue, dump_dir, f);
          break;
       case RADV_DEVICE_FAULT_CHUNK_UMR_WAVES:
-         if (!(device->instance->debug_flags & RADV_DEBUG_NO_UMR))
+         if (!(pdev->instance->debug_flags & RADV_DEBUG_NO_UMR))
             radv_dump_umr_waves(queue, f);
          break;
       case RADV_DEVICE_FAULT_CHUNK_UMR_RING:
-         if (!(device->instance->debug_flags & RADV_DEBUG_NO_UMR))
+         if (!(pdev->instance->debug_flags & RADV_DEBUG_NO_UMR))
             radv_dump_umr_ring(queue, f);
          break;
       case RADV_DEVICE_FAULT_CHUNK_REGISTERS:

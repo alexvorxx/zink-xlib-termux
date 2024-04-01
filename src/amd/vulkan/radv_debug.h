@@ -114,7 +114,8 @@ bool radv_vm_fault_occurred(struct radv_device *device, struct radv_winsys_gpuvm
 ALWAYS_INLINE static bool
 radv_device_fault_detection_enabled(const struct radv_device *device)
 {
-   return device->instance->debug_flags & RADV_DEBUG_HANG;
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   return pdev->instance->debug_flags & RADV_DEBUG_HANG;
 }
 
 #endif

@@ -47,7 +47,7 @@ radv_is_cache_disabled(struct radv_device *device)
    /* Pipeline caches can be disabled with RADV_DEBUG=nocache, with MESA_GLSL_CACHE_DISABLE=1 and
     * when ACO_DEBUG is used. MESA_GLSL_CACHE_DISABLE is done elsewhere.
     */
-   return (device->instance->debug_flags & RADV_DEBUG_NO_CACHE) || (pdev->use_llvm ? 0 : aco_get_codegen_flags());
+   return (pdev->instance->debug_flags & RADV_DEBUG_NO_CACHE) || (pdev->use_llvm ? 0 : aco_get_codegen_flags());
 }
 
 void

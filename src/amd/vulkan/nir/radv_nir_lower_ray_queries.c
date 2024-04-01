@@ -711,7 +711,7 @@ radv_nir_lower_ray_queries(struct nir_shader *shader, struct radv_device *device
                lower_rq_generate_intersection(&builder, index, intrinsic, vars);
                break;
             case nir_intrinsic_rq_initialize:
-               lower_rq_initialize(&builder, index, intrinsic, vars, device->instance);
+               lower_rq_initialize(&builder, index, intrinsic, vars, pdev->instance);
                break;
             case nir_intrinsic_rq_load:
                new_dest = lower_rq_load(device, &builder, index, intrinsic, vars);

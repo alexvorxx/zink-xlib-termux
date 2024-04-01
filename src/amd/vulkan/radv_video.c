@@ -40,6 +40,7 @@
 #include "radv_buffer.h"
 #include "radv_cs.h"
 #include "radv_debug.h"
+#include "radv_video.h"
 
 #define NUM_H2645_REFS               16
 #define FB_BUFFER_OFFSET             0x1000

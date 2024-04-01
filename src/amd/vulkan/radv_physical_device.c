@@ -36,6 +36,7 @@
 #include "util/u_debug.h"
 #include "radv_debug.h"
 #include "radv_private.h"
+#include "radv_video.h"
 
 #ifdef _WIN32
 typedef void *drmDevicePtr;

@@ -34,6 +34,7 @@
 #include "radv_formats.h"
 #include "radv_private.h"
 #include "radv_radeon_winsys.h"
+#include "radv_video.h"
 #include "sid.h"
 #include "vk_format.h"
 #include "vk_render_pass.h"

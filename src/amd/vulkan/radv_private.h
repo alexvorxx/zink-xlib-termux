@@ -70,7 +70,6 @@
 #include "vk_texcompress_astc.h"
 #include "vk_texcompress_etc2.h"
 #include "vk_util.h"
-#include "vk_video.h"
 #include "vk_ycbcr_conversion.h"
 
 #include "rmv/vk_rmv_common.h"
@@ -3078,34 +3077,6 @@ void radv_pc_begin_query(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_quer
 void radv_pc_end_query(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query_pool *pool, uint64_t va);
 void radv_pc_get_results(const struct radv_pc_query_pool *pc_pool, const uint64_t *data, void *out);
 
-#define VL_MACROBLOCK_WIDTH  16
-#define VL_MACROBLOCK_HEIGHT 16
-
-struct radv_vid_mem {
-   struct radv_device_memory *mem;
-   VkDeviceSize offset;
-   VkDeviceSize size;
-};
-
-struct radv_video_session {
-   struct vk_video_session vk;
-
-   uint32_t stream_handle;
-   unsigned stream_type;
-   bool interlaced;
-   enum { DPB_MAX_RES = 0, DPB_DYNAMIC_TIER_1, DPB_DYNAMIC_TIER_2 } dpb_type;
-   unsigned db_alignment;
-
-   struct radv_vid_mem sessionctx;
-   struct radv_vid_mem ctx;
-
-   unsigned dbg_frame_cnt;
-};
-
-struct radv_video_session_params {
-   struct vk_video_session_parameters vk;
-};
-
 bool radv_queue_internal_submit(struct radv_queue *queue, struct radeon_cmdbuf *cs);
 
 int radv_queue_init(struct radv_device *device, struct radv_queue *queue, int idx,
@@ -3700,10 +3671,6 @@ radv_queue_ring(const struct radv_queue *queue)
    return radv_queue_family_to_ring(pdev, queue->state.qf);
 }
 
-/* radv_video */
-void radv_init_physical_device_decoder(struct radv_physical_device *pdev);
-void radv_video_get_profile_alignments(struct radv_physical_device *pdev, const VkVideoProfileListInfoKHR *profile_list,
-                                       uint32_t *width_align_out, uint32_t *height_align_out);
 /**
  * Helper used for debugging compiler issues by enabling/disabling LLVM for a
  * specific shader stage (developers only).
@@ -3807,10 +3774,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(radv_indirect_command_layout, base, VkIndirectCom
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_pipeline, base, VkPipeline, VK_OBJECT_TYPE_PIPELINE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_query_pool, vk.base, VkQueryPool, VK_OBJECT_TYPE_QUERY_POOL)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_shader_object, base, VkShaderEXT, VK_OBJECT_TYPE_SHADER_EXT);
-
-VK_DEFINE_NONDISP_HANDLE_CASTS(radv_video_session, vk.base, VkVideoSessionKHR, VK_OBJECT_TYPE_VIDEO_SESSION_KHR)
-VK_DEFINE_NONDISP_HANDLE_CASTS(radv_video_session_params, vk.base, VkVideoSessionParametersKHR,
-                               VK_OBJECT_TYPE_VIDEO_SESSION_PARAMETERS_KHR)
 
 static inline uint64_t
 radv_get_tdr_timeout_for_ip(enum amd_ip_type ip_type)

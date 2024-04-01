@@ -414,6 +414,7 @@ dzn_pipeline_compile_shader(struct dzn_device *device,
    struct blob dxil_blob;
    VkResult result = VK_SUCCESS;
 
+   nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
    if (instance->debug_flags & DZN_DEBUG_NIR)
       nir_print_shader(nir, stderr);
 

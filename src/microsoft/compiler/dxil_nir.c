@@ -2812,12 +2812,35 @@ dxil_nir_lower_coherent_loads_and_stores(nir_shader *s)
                                      NULL);
 }
 
+struct undefined_varying_masks {
+   uint64_t io_mask;
+   uint32_t patch_io_mask;
+};
+
+static bool
+is_dead_in_variable(nir_variable *var, void *data)
+{
+   switch (var->data.location) {
+   /* Only these values can be system generated values in addition to varyings */
+   case VARYING_SLOT_PRIMITIVE_ID:
+   case VARYING_SLOT_FACE:
+   case VARYING_SLOT_VIEW_INDEX:
+      return false;
+   /* Tessellation input vars must remain untouched */
+   case VARYING_SLOT_TESS_LEVEL_INNER:
+   case VARYING_SLOT_TESS_LEVEL_OUTER:
+      return false;
+   default:
+      return true;
+   }
+}
+
 static bool
 kill_undefined_varyings(struct nir_builder *b,
                         nir_instr *instr,
                         void *data)
 {
-   const nir_shader *prev_stage_nir = data;
+   const struct undefined_varying_masks *masks = data;
 
    if (instr->type != nir_instr_type_intrinsic)
       return false;
@@ -2831,18 +2854,14 @@ kill_undefined_varyings(struct nir_builder *b,
    if (!var || var->data.mode != nir_var_shader_in)
       return false;
 
-   /* Ignore most builtins for now, some of them get default values
-    * when not written from previous stages.
-    */
-   if (var->data.location < VARYING_SLOT_VAR0 &&
-       var->data.location != VARYING_SLOT_POS)
+   if (!is_dead_in_variable(var, NULL))
       return false;
 
-   uint32_t loc = var->data.patch ?
-      var->data.location - VARYING_SLOT_PATCH0 : var->data.location;
-   uint64_t written = var->data.patch ?
-      prev_stage_nir->info.patch_outputs_written :
-      prev_stage_nir->info.outputs_written;
+   uint32_t loc = var->data.patch && var->data.location >= VARYING_SLOT_PATCH0 ?
+      var->data.location - VARYING_SLOT_PATCH0 :
+      var->data.location;
+   uint64_t written = var->data.patch && var->data.location >= VARYING_SLOT_PATCH0 ?
+      masks->patch_io_mask : masks->io_mask;
    if (BITFIELD64_RANGE(loc, glsl_varying_count(var->type)) & written)
       return false;
 
@@ -2862,20 +2881,32 @@ kill_undefined_varyings(struct nir_builder *b,
 }
 
 bool
-dxil_nir_kill_undefined_varyings(nir_shader *shader,
-                                 const nir_shader *prev_stage_shader)
+dxil_nir_kill_undefined_varyings(nir_shader *shader, uint64_t prev_stage_written_mask, uint32_t prev_stage_patch_written_mask)
 {
-   if (!nir_shader_instructions_pass(shader,
-                                     kill_undefined_varyings,
-                                     nir_metadata_dominance |
-                                     nir_metadata_block_index |
-                                     nir_metadata_loop_analysis,
-                                     (void *)prev_stage_shader))
-      return false;
+   struct undefined_varying_masks masks = { .io_mask = prev_stage_written_mask, .patch_io_mask = prev_stage_patch_written_mask };
+   bool progress = nir_shader_instructions_pass(shader,
+                                                kill_undefined_varyings,
+                                                nir_metadata_dominance |
+                                                nir_metadata_block_index |
+                                                nir_metadata_loop_analysis,
+                                                (void *)&masks);
+   if (progress) {
+      nir_opt_dce(shader);
+      nir_remove_dead_derefs(shader);
+   }
 
-   nir_remove_dead_derefs(shader);
-   nir_remove_dead_variables(shader, nir_var_shader_in, NULL);
-   return true;
+   const struct nir_remove_dead_variables_options options = {
+      .can_remove_var = is_dead_in_variable,
+      .can_remove_var_data = &masks,
+   };
+   progress |= nir_remove_dead_variables(shader, nir_var_shader_in, &options);
+   return progress;
+}
+
+static bool
+is_dead_out_variable(nir_variable *var, void *data)
+{
+   return !nir_slot_is_sysval_output(var->data.location, MESA_SHADER_NONE);
 }
 
 static bool
@@ -2883,68 +2914,66 @@ kill_unused_outputs(struct nir_builder *b,
                     nir_instr *instr,
                     void *data)
 {
-   uint64_t kill_mask = *((uint64_t *)data);
+   const struct undefined_varying_masks *masks = data;
 
    if (instr->type != nir_instr_type_intrinsic)
       return false;
 
    nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
 
-   if (intr->intrinsic != nir_intrinsic_store_deref)
+   if (intr->intrinsic != nir_intrinsic_store_deref &&
+       intr->intrinsic != nir_intrinsic_load_deref)
       return false;
 
    nir_variable *var = nir_intrinsic_get_var(intr, 0);
-   if (!var || var->data.mode != nir_var_shader_out)
+   if (!var || var->data.mode != nir_var_shader_out ||
+       /* always_active_io can mean two things: xfb or GL separable shaders. We can't delete
+        * varyings that are used for xfb (we'll just sort them last), but we must delete varyings
+        * that are mismatching between TCS and TES. Fortunately TCS can't do xfb, so we can ignore
+        the always_active_io bit for TCS outputs. */
+       (b->shader->info.stage != MESA_SHADER_TESS_CTRL && var->data.always_active_io))
       return false;
 
-   unsigned loc = var->data.patch ?
+   if (!is_dead_out_variable(var, NULL))
+      return false;
+
+   unsigned loc = var->data.patch && var->data.location >= VARYING_SLOT_PATCH0 ?
       var->data.location - VARYING_SLOT_PATCH0 :
       var->data.location;
-   if (!(BITFIELD64_RANGE(loc, glsl_varying_count(var->type)) & kill_mask))
+   uint64_t read = var->data.patch && var->data.location >= VARYING_SLOT_PATCH0 ?
+      masks->patch_io_mask : masks->io_mask;
+   if (BITFIELD64_RANGE(loc, glsl_varying_count(var->type)) & read)
       return false;
 
+   if (intr->intrinsic == nir_intrinsic_load_deref) {
+      b->cursor = nir_after_instr(&intr->instr);
+      nir_def *zero = nir_imm_zero(b, intr->def.num_components, intr->def.bit_size);
+      nir_def_rewrite_uses(&intr->def, zero);
+   }
    nir_instr_remove(instr);
    return true;
 }
 
 bool
-dxil_nir_kill_unused_outputs(nir_shader *shader,
-                             const nir_shader *next_stage_shader)
+dxil_nir_kill_unused_outputs(nir_shader *shader, uint64_t next_stage_read_mask, uint32_t next_stage_patch_read_mask)
 {
-   uint64_t kill_var_mask =
-      shader->info.outputs_written & ~next_stage_shader->info.inputs_read;
-   bool progress = false;
+   struct undefined_varying_masks masks = { .io_mask = next_stage_read_mask, .patch_io_mask = next_stage_patch_read_mask };
 
-   /* Don't kill buitin vars */
-   kill_var_mask &= BITFIELD64_MASK(MAX_VARYING) << VARYING_SLOT_VAR0;
-
-   if (nir_shader_instructions_pass(shader,
-                                    kill_unused_outputs,
-                                    nir_metadata_dominance |
-                                    nir_metadata_block_index |
-                                    nir_metadata_loop_analysis,
-                                    (void *)&kill_var_mask))
-      progress = true;
-
-   if (shader->info.stage == MESA_SHADER_TESS_CTRL) {
-      kill_var_mask =
-         (shader->info.patch_outputs_written |
-          shader->info.patch_outputs_read) &
-         ~next_stage_shader->info.patch_inputs_read;
-      if (nir_shader_instructions_pass(shader,
-                                       kill_unused_outputs,
-                                       nir_metadata_dominance |
-                                       nir_metadata_block_index |
-                                       nir_metadata_loop_analysis,
-                                       (void *)&kill_var_mask))
-         progress = true;
-   }
+   bool progress = nir_shader_instructions_pass(shader,
+                                                kill_unused_outputs,
+                                                nir_metadata_dominance |
+                                                nir_metadata_block_index |
+                                                nir_metadata_loop_analysis,
+                                                (void *)&masks);
 
    if (progress) {
       nir_opt_dce(shader);
       nir_remove_dead_derefs(shader);
-      nir_remove_dead_variables(shader, nir_var_shader_out, NULL);
    }
-
+   const struct nir_remove_dead_variables_options options = {
+      .can_remove_var = is_dead_out_variable,
+      .can_remove_var_data = &masks,
+   };
+   progress |= nir_remove_dead_variables(shader, nir_var_shader_out, &options);
    return progress;
 }

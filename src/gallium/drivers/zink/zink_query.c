@@ -1,13 +1,10 @@
 #include "zink_query.h"
 
 #include "zink_context.h"
-#include "zink_fence.h"
+#include "zink_clear.h"
 #include "zink_program.h"
 #include "zink_resource.h"
-#include "zink_screen.h"
 
-#include "util/hash_table.h"
-#include "util/set.h"
 #include "util/u_dump.h"
 #include "util/u_inlines.h"
 #include "util/u_memory.h"
@@ -1087,7 +1084,7 @@ zink_query_update_gs_states(struct zink_context *ctx, bool was_line_loop)
 {
    struct zink_query *query;
    bool suspendall = false;
-   bool have_gs = !!ctx->gfx_stages[PIPE_SHADER_GEOMETRY];
+   bool have_gs = !!ctx->gfx_stages[MESA_SHADER_GEOMETRY];
    bool have_xfb = !!ctx->num_so_targets;
 
    LIST_FOR_EACH_ENTRY(query, &ctx->primitives_generated_queries, stats_list) {

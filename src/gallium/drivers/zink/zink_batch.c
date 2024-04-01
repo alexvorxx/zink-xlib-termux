@@ -1,19 +1,13 @@
 #include "zink_batch.h"
-
 #include "zink_context.h"
-#include "zink_kopper.h"
-#include "zink_fence.h"
+#include "zink_descriptors.h"
 #include "zink_framebuffer.h"
-#include "zink_query.h"
+#include "zink_kopper.h"
 #include "zink_program.h"
-#include "zink_render_pass.h"
+#include "zink_query.h"
 #include "zink_resource.h"
 #include "zink_screen.h"
 #include "zink_surface.h"
-
-#include "util/hash_table.h"
-#include "util/u_debug.h"
-#include "util/set.h"
 
 #ifdef VK_USE_PLATFORM_METAL_EXT
 #include "QuartzCore/CAMetalLayer.h"
@@ -81,7 +75,7 @@ zink_reset_batch_state(struct zink_context *ctx, struct zink_batch_state *bs)
    util_dynarray_clear(&bs->zombie_samplers);
    util_dynarray_clear(&bs->persistent_resources);
 
-   screen->batch_descriptor_reset(screen, bs);
+   zink_batch_descriptor_reset(screen, bs);
 
    set_foreach_remove(bs->programs, entry) {
       struct zink_program *pg = (struct zink_program*)entry->key;
@@ -189,7 +183,7 @@ zink_batch_state_destroy(struct zink_screen *screen, struct zink_batch_state *bs
    _mesa_set_destroy(bs->bufferviews, NULL);
    _mesa_set_destroy(bs->programs, NULL);
    _mesa_set_destroy(bs->active_queries, NULL);
-   screen->batch_descriptor_deinit(screen, bs);
+   zink_batch_descriptor_deinit(screen, bs);
    ralloc_free(bs);
 }
 
@@ -255,7 +249,7 @@ create_batch_state(struct zink_context *ctx)
    cnd_init(&bs->usage.flush);
    mtx_init(&bs->usage.mtx, mtx_plain);
 
-   if (!screen->batch_descriptor_init(screen, bs))
+   if (!zink_batch_descriptor_init(screen, bs))
       goto fail;
 
    VkFenceCreateInfo fci = {0};

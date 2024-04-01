@@ -343,9 +343,7 @@ zink_destroy_surface(struct zink_screen *screen, struct pipe_surface *psurface)
 
    if (!screen->info.have_KHR_imageless_framebuffer)
       surface_clear_fb_refs(screen, psurface);
-   
-   zink_descriptor_set_refs_clear(&surface->desc_set_refs, surface);
-   
+  
    util_dynarray_fini(&surface->framebuffer_refs);
 
    if (surface->simage_view)
@@ -392,7 +390,6 @@ zink_rebind_surface(struct zink_context *ctx, struct pipe_surface **psurface)
 
    surface_clear_fb_refs(screen, *psurface);  
 
-   zink_descriptor_set_refs_clear(&surface->desc_set_refs, surface);
    if (new_entry) {
       /* reuse existing surface; old one will be cleaned up naturally */
       struct zink_surface *new_surface = new_entry->data;

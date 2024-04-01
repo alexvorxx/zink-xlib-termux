@@ -26,25 +26,21 @@
 #include "zink_kopper.h"
 #include "zink_compiler.h"
 #include "zink_context.h"
-#include "zink_device_info.h"
 #include "zink_descriptors.h"
 #include "zink_fence.h"
 #include "zink_format.h"
 #include "zink_framebuffer.h"
-#include "zink_instance.h"
 #include "zink_program.h"
 #include "zink_public.h"
 #include "zink_query.h"
 #include "zink_resource.h"
+#include "zink_state.h"
 #include "nir_to_spirv/nir_to_spirv.h" // for SPIRV_VERSION
 
 #include "os/os_process.h"
 #include "util/u_debug.h"
 #include "util/u_dl.h"
-#include "util/format/u_format.h"
-#include "util/hash_table.h"
 #include "util/os_file.h"
-#include "util/u_math.h"
 #include "util/u_memory.h"
 #include "util/u_screen.h"
 #include "util/u_string.h"
@@ -98,8 +94,6 @@ static const struct debug_named_value
 zink_descriptor_options[] = {
    { "auto", ZINK_DESCRIPTOR_MODE_AUTO, "Automatically detect best mode" },
    { "lazy", ZINK_DESCRIPTOR_MODE_LAZY, "Don't cache, do least amount of updates" },
-   { "cached", ZINK_DESCRIPTOR_MODE_CACHED, "Cache, reuse sets" },
-   { "notemplates", ZINK_DESCRIPTOR_MODE_NOTEMPLATES, "Cache, but disable templated updates" },
    DEBUG_NAMED_VALUE_END
 };
 
@@ -901,7 +895,7 @@ zink_get_paramf(struct pipe_screen *pscreen, enum pipe_capf param)
 
 static int
 zink_get_shader_param(struct pipe_screen *pscreen,
-                       enum pipe_shader_type shader,
+                       gl_shader_stage shader,
                        enum pipe_shader_cap param)
 {
    struct zink_screen *screen = zink_screen(pscreen);
@@ -909,22 +903,22 @@ zink_get_shader_param(struct pipe_screen *pscreen,
    switch (param) {
    case PIPE_SHADER_CAP_MAX_INSTRUCTIONS:
       switch (shader) {
-      case PIPE_SHADER_FRAGMENT:
-      case PIPE_SHADER_VERTEX:
+      case MESA_SHADER_FRAGMENT:
+      case MESA_SHADER_VERTEX:
          return INT_MAX;
-      case PIPE_SHADER_TESS_CTRL:
-      case PIPE_SHADER_TESS_EVAL:
+      case MESA_SHADER_TESS_CTRL:
+      case MESA_SHADER_TESS_EVAL:
          if (screen->info.feats.features.tessellationShader &&
              screen->info.have_KHR_maintenance2)
             return INT_MAX;
          break;
 
-      case PIPE_SHADER_GEOMETRY:
+      case MESA_SHADER_GEOMETRY:
          if (screen->info.feats.features.geometryShader)
             return INT_MAX;
          break;
 
-      case PIPE_SHADER_COMPUTE:
+      case MESA_SHADER_COMPUTE:
          return INT_MAX;
       default:
          break;
@@ -939,19 +933,19 @@ zink_get_shader_param(struct pipe_screen *pscreen,
    case PIPE_SHADER_CAP_MAX_INPUTS: {
       uint32_t max = 0;
       switch (shader) {
-      case PIPE_SHADER_VERTEX:
+      case MESA_SHADER_VERTEX:
          max = MIN2(screen->info.props.limits.maxVertexInputAttributes, PIPE_MAX_ATTRIBS);
          break;
-      case PIPE_SHADER_TESS_CTRL:
+      case MESA_SHADER_TESS_CTRL:
          max = screen->info.props.limits.maxTessellationControlPerVertexInputComponents / 4;
          break;
-      case PIPE_SHADER_TESS_EVAL:
+      case MESA_SHADER_TESS_EVAL:
          max = screen->info.props.limits.maxTessellationEvaluationInputComponents / 4;
          break;
-      case PIPE_SHADER_GEOMETRY:
+      case MESA_SHADER_GEOMETRY:
          max = screen->info.props.limits.maxGeometryInputComponents / 4;
          break;
-      case PIPE_SHADER_FRAGMENT:
+      case MESA_SHADER_FRAGMENT:
          /* intel drivers report fewer components, but it's a value that's compatible
           * with what we need for GL, so we can still force a conformant value here
           */
@@ -964,9 +958,9 @@ zink_get_shader_param(struct pipe_screen *pscreen,
          return 0; /* unsupported stage */
       }
       switch (shader) {
-      case PIPE_SHADER_VERTEX:
-      case PIPE_SHADER_TESS_EVAL:
-      case PIPE_SHADER_GEOMETRY:
+      case MESA_SHADER_VERTEX:
+      case MESA_SHADER_TESS_EVAL:
+      case MESA_SHADER_GEOMETRY:
          /* last vertex stage must support streamout, and this is capped in glsl compiler */
          return MIN2(max, MAX_VARYING);
       default: break;
@@ -977,19 +971,19 @@ zink_get_shader_param(struct pipe_screen *pscreen,
    case PIPE_SHADER_CAP_MAX_OUTPUTS: {
       uint32_t max = 0;
       switch (shader) {
-      case PIPE_SHADER_VERTEX:
+      case MESA_SHADER_VERTEX:
          max = screen->info.props.limits.maxVertexOutputComponents / 4;
          break;
-      case PIPE_SHADER_TESS_CTRL:
+      case MESA_SHADER_TESS_CTRL:
          max = screen->info.props.limits.maxTessellationControlPerVertexOutputComponents / 4;
          break;
-      case PIPE_SHADER_TESS_EVAL:
+      case MESA_SHADER_TESS_EVAL:
          max = screen->info.props.limits.maxTessellationEvaluationOutputComponents / 4;
          break;
-      case PIPE_SHADER_GEOMETRY:
+      case MESA_SHADER_GEOMETRY:
          max = screen->info.props.limits.maxGeometryOutputComponents / 4;
          break;
-      case PIPE_SHADER_FRAGMENT:
+      case MESA_SHADER_FRAGMENT:
          max = screen->info.props.limits.maxColorAttachments;
          break;
       default:
@@ -1062,15 +1056,15 @@ zink_get_shader_param(struct pipe_screen *pscreen,
 
    case PIPE_SHADER_CAP_MAX_SHADER_BUFFERS:
       switch (shader) {
-      case PIPE_SHADER_VERTEX:
-      case PIPE_SHADER_TESS_CTRL:
-      case PIPE_SHADER_TESS_EVAL:
-      case PIPE_SHADER_GEOMETRY:
+      case MESA_SHADER_VERTEX:
+      case MESA_SHADER_TESS_CTRL:
+      case MESA_SHADER_TESS_EVAL:
+      case MESA_SHADER_GEOMETRY:
          if (!screen->info.feats.features.vertexPipelineStoresAndAtomics)
             return 0;
          break;
 
-      case PIPE_SHADER_FRAGMENT:
+      case MESA_SHADER_FRAGMENT:
          if (!screen->info.feats.features.fragmentStoresAndAtomics)
             return 0;
          break;
@@ -1608,37 +1602,6 @@ zink_get_format(struct zink_screen *screen, enum pipe_format format)
       return VK_FORMAT_R4G4_UNORM_PACK8;
 
    return ret;
-}
-
-void
-zink_screen_init_descriptor_funcs(struct zink_screen *screen, bool fallback)
-{
-   if (!fallback &&
-       zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_LAZY) {
-#define LAZY(FUNC) screen->FUNC = zink_##FUNC##_lazy
-      LAZY(descriptor_program_init);
-      LAZY(descriptor_program_deinit);
-      LAZY(context_invalidate_descriptor_state);
-      LAZY(batch_descriptor_init);
-      LAZY(batch_descriptor_reset);
-      LAZY(batch_descriptor_deinit);
-      LAZY(descriptors_init);
-      LAZY(descriptors_deinit);
-      LAZY(descriptors_update);
-#undef LAZY
-   } else {
-#define DEFAULT(FUNC) screen->FUNC = zink_##FUNC
-      DEFAULT(descriptor_program_init);
-      DEFAULT(descriptor_program_deinit);
-      DEFAULT(context_invalidate_descriptor_state);
-      DEFAULT(batch_descriptor_init);
-      DEFAULT(batch_descriptor_reset);
-      DEFAULT(batch_descriptor_deinit);
-      DEFAULT(descriptors_init);
-      DEFAULT(descriptors_deinit);
-      DEFAULT(descriptors_update);
-#undef DEFAULT
-   }
 }
 
 static bool
@@ -2268,7 +2231,10 @@ init_driver_workarounds(struct zink_screen *screen)
    if (screen->info.have_EXT_graphics_pipeline_library)
       screen->info.have_EXT_graphics_pipeline_library = screen->info.have_EXT_extended_dynamic_state &&
                                                         screen->info.have_EXT_extended_dynamic_state2 &&
+                                                        (screen->driver_workarounds.force_pipeline_library ||
+                                                         screen->info.dynamic_state2_feats.extendedDynamicState2PatchControlPoints) &&
                                                         screen->info.have_KHR_dynamic_rendering &&
+                                                        screen->info.have_EXT_non_seamless_cube_map &&
                                                         (screen->info.gpl_props.graphicsPipelineLibraryFastLinking ||
                                                          screen->is_cpu ||
                                                          screen->driver_workarounds.force_pipeline_library);
@@ -2316,10 +2282,6 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
 
    zink_debug = debug_get_option_zink_debug();
    zink_descriptor_mode = debug_get_option_zink_descriptor_mode();
-   if (zink_descriptor_mode > ZINK_DESCRIPTOR_MODE_NOTEMPLATES) {
-      printf("Specify exactly one descriptor mode.\n");
-      abort();
-   }
 
    screen->loader_lib = util_dl_open(VK_LIBNAME);
    if (!screen->loader_lib)
@@ -2424,10 +2386,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
       screen->desc_set_id[ZINK_DESCRIPTOR_BINDLESS] = 5;
    }
    if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_AUTO) {
-      if (screen->info.have_KHR_descriptor_update_template)
-         zink_descriptor_mode = ZINK_DESCRIPTOR_MODE_LAZY;
-      else
-         zink_descriptor_mode = ZINK_DESCRIPTOR_MODE_CACHED;
+      zink_descriptor_mode = ZINK_DESCRIPTOR_MODE_LAZY;
    }
 
    if (screen->info.have_EXT_calibrated_timestamps && !check_have_device_time(screen))
@@ -2568,7 +2527,6 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
 
    simple_mtx_init(&screen->dt_lock, mtx_plain);
 
-   zink_screen_init_descriptor_funcs(screen, false);
    util_idalloc_mt_init_tc(&screen->buffer_ids);
 
    util_vertex_state_cache_init(&screen->vertex_state_cache,

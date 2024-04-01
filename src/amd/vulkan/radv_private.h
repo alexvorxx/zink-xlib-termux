@@ -1285,25 +1285,6 @@ bool radv_device_set_pstate(struct radv_device *device, bool enable);
 bool radv_device_acquire_performance_counters(struct radv_device *device);
 void radv_device_release_performance_counters(struct radv_device *device);
 
-struct radv_device_memory {
-   struct vk_object_base base;
-   struct radeon_winsys_bo *bo;
-   /* for dedicated allocations */
-   struct radv_image *image;
-   struct radv_buffer *buffer;
-   uint32_t heap_index;
-   uint64_t alloc_size;
-   void *map;
-   void *user_ptr;
-
-#if RADV_SUPPORT_ANDROID_HARDWARE_BUFFER
-   struct AHardwareBuffer *android_hardware_buffer;
-#endif
-};
-
-void radv_device_memory_init(struct radv_device_memory *mem, struct radv_device *device, struct radeon_winsys_bo *bo);
-void radv_device_memory_finish(struct radv_device_memory *mem);
-
 enum radv_dynamic_state_bits {
    RADV_DYNAMIC_VIEWPORT = 1ull << 0,
    RADV_DYNAMIC_SCISSOR = 1ull << 1,
@@ -2105,8 +2086,6 @@ void radv_cmd_buffer_trace_emit(struct radv_cmd_buffer *cmd_buffer);
 void radv_cmd_buffer_annotate(struct radv_cmd_buffer *cmd_buffer, const char *annotation);
 
 bool radv_get_memory_fd(struct radv_device *device, struct radv_device_memory *memory, int *pFD);
-void radv_free_memory(struct radv_device *device, const VkAllocationCallbacks *pAllocator,
-                      struct radv_device_memory *mem);
 
 static inline void
 radv_emit_shader_pointer_head(struct radeon_cmdbuf *cs, unsigned sh_offset, unsigned pointer_count,
@@ -2653,9 +2632,6 @@ void radv_rmv_log_submit(struct radv_device *device, enum amd_ip_type type);
 void radv_rmv_fill_device_info(const struct radv_physical_device *pdev, struct vk_rmv_device_info *info);
 void radv_rmv_collect_trace_events(struct radv_device *device);
 void radv_memory_trace_finish(struct radv_device *device);
-
-VkResult radv_alloc_memory(struct radv_device *device, const VkMemoryAllocateInfo *pAllocateInfo,
-                           const VkAllocationCallbacks *pAllocator, VkDeviceMemory *pMem, bool is_internal);
 
 /* radv_sqtt_layer_.c */
 struct radv_barrier_data {
@@ -3209,7 +3185,6 @@ VK_DEFINE_HANDLE_CASTS(radv_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)
 VK_DEFINE_HANDLE_CASTS(radv_instance, vk.base, VkInstance, VK_OBJECT_TYPE_INSTANCE)
 VK_DEFINE_HANDLE_CASTS(radv_physical_device, vk.base, VkPhysicalDevice, VK_OBJECT_TYPE_PHYSICAL_DEVICE)
 VK_DEFINE_HANDLE_CASTS(radv_queue, vk.base, VkQueue, VK_OBJECT_TYPE_QUEUE)
-VK_DEFINE_NONDISP_HANDLE_CASTS(radv_device_memory, base, VkDeviceMemory, VK_OBJECT_TYPE_DEVICE_MEMORY)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_pipeline, base, VkPipeline, VK_OBJECT_TYPE_PIPELINE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_shader_object, base, VkShaderEXT, VK_OBJECT_TYPE_SHADER_EXT);
 

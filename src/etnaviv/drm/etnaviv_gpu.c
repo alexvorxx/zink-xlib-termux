@@ -27,6 +27,122 @@
 #include "etnaviv_priv.h"
 #include "etnaviv_drmif.h"
 
+#include "hw/common.xml.h"
+
+/* Enum with indices for each of the feature words */
+enum viv_features_word {
+	viv_chipFeatures = 0,
+	viv_chipMinorFeatures0 = 1,
+	viv_chipMinorFeatures1 = 2,
+	viv_chipMinorFeatures2 = 3,
+	viv_chipMinorFeatures3 = 4,
+	viv_chipMinorFeatures4 = 5,
+	viv_chipMinorFeatures5 = 6,
+	viv_chipMinorFeatures6 = 7,
+	viv_chipMinorFeatures7 = 8,
+	viv_chipMinorFeatures8 = 9,
+	viv_chipMinorFeatures9 = 10,
+	viv_chipMinorFeatures10 = 11,
+	viv_chipMinorFeatures11 = 12,
+	viv_chipMinorFeatures12 = 13,
+	VIV_FEATURES_WORD_COUNT /* Must be last */
+};
+
+#define VIV_FEATURE(word, feature) \
+	((features[viv_ ## word] & (word ## _ ## feature)) != 0)
+
+#define ETNA_FEATURE(word, feature) \
+	if (VIV_FEATURE(word, feature)) \
+		etna_core_enable_feature(&gpu->info, ETNA_FEATURE_## feature)
+
+static void
+query_features_from_kernel(struct etna_gpu *gpu)
+{
+	uint32_t features[VIV_FEATURES_WORD_COUNT];
+
+	STATIC_ASSERT(ETNA_GPU_FEATURES_0  == 0x3);
+	STATIC_ASSERT(ETNA_GPU_FEATURES_1  == 0x4);
+	STATIC_ASSERT(ETNA_GPU_FEATURES_2  == 0x5);
+	STATIC_ASSERT(ETNA_GPU_FEATURES_3  == 0x6);
+	STATIC_ASSERT(ETNA_GPU_FEATURES_4  == 0x7);
+	STATIC_ASSERT(ETNA_GPU_FEATURES_5  == 0x8);
+	STATIC_ASSERT(ETNA_GPU_FEATURES_6  == 0x9);
+	STATIC_ASSERT(ETNA_GPU_FEATURES_7  == 0xa);
+	STATIC_ASSERT(ETNA_GPU_FEATURES_8  == 0xb);
+	STATIC_ASSERT(ETNA_GPU_FEATURES_9  == 0xc);
+	STATIC_ASSERT(ETNA_GPU_FEATURES_10 == 0xd);
+	STATIC_ASSERT(ETNA_GPU_FEATURES_11 == 0xe);
+	STATIC_ASSERT(ETNA_GPU_FEATURES_12 == 0xf);
+
+	for (unsigned i = ETNA_GPU_FEATURES_0; i <= ETNA_GPU_FEATURES_12; i++) {
+		uint64_t val;
+
+		etna_gpu_get_param(gpu, i, &val);
+		features[i - ETNA_GPU_FEATURES_0] = val;
+	}
+
+	ETNA_FEATURE(chipFeatures, FAST_CLEAR);
+	ETNA_FEATURE(chipFeatures, 32_BIT_INDICES);
+	ETNA_FEATURE(chipFeatures, MSAA);
+	ETNA_FEATURE(chipFeatures, DXT_TEXTURE_COMPRESSION);
+	ETNA_FEATURE(chipFeatures, ETC1_TEXTURE_COMPRESSION);
+	ETNA_FEATURE(chipFeatures, NO_EARLY_Z);
+
+	ETNA_FEATURE(chipMinorFeatures0, MC20);
+	ETNA_FEATURE(chipMinorFeatures0, RENDERTARGET_8K);
+	ETNA_FEATURE(chipMinorFeatures0, TEXTURE_8K);
+	ETNA_FEATURE(chipMinorFeatures0, HAS_SIGN_FLOOR_CEIL);
+	ETNA_FEATURE(chipMinorFeatures0, HAS_SQRT_TRIG);
+	ETNA_FEATURE(chipMinorFeatures0, 2BITPERTILE);
+	ETNA_FEATURE(chipMinorFeatures0, SUPER_TILED);
+
+	ETNA_FEATURE(chipMinorFeatures1, AUTO_DISABLE);
+	ETNA_FEATURE(chipMinorFeatures1, TEXTURE_HALIGN);
+	ETNA_FEATURE(chipMinorFeatures1, MMU_VERSION);
+	ETNA_FEATURE(chipMinorFeatures1, HALF_FLOAT);
+	ETNA_FEATURE(chipMinorFeatures1, WIDE_LINE);
+	ETNA_FEATURE(chipMinorFeatures1, HALTI0);
+	ETNA_FEATURE(chipMinorFeatures1, NON_POWER_OF_TWO);
+	ETNA_FEATURE(chipMinorFeatures1, LINEAR_TEXTURE_SUPPORT);
+
+	ETNA_FEATURE(chipMinorFeatures2, LINEAR_PE);
+	ETNA_FEATURE(chipMinorFeatures2, SUPERTILED_TEXTURE);
+	ETNA_FEATURE(chipMinorFeatures2, LOGIC_OP);
+	ETNA_FEATURE(chipMinorFeatures2, HALTI1);
+	ETNA_FEATURE(chipMinorFeatures2, SEAMLESS_CUBE_MAP);
+	ETNA_FEATURE(chipMinorFeatures2, LINE_LOOP);
+	ETNA_FEATURE(chipMinorFeatures2, TEXTURE_TILED_READ);
+	ETNA_FEATURE(chipMinorFeatures2, BUG_FIXES8);
+
+	ETNA_FEATURE(chipMinorFeatures3, PE_DITHER_FIX);
+	ETNA_FEATURE(chipMinorFeatures3, INSTRUCTION_CACHE);
+	ETNA_FEATURE(chipMinorFeatures3, HAS_FAST_TRANSCENDENTALS);
+
+	ETNA_FEATURE(chipMinorFeatures4, SMALL_MSAA);
+	ETNA_FEATURE(chipMinorFeatures4, BUG_FIXES18);
+	ETNA_FEATURE(chipMinorFeatures4, TEXTURE_ASTC);
+	ETNA_FEATURE(chipMinorFeatures4, SINGLE_BUFFER);
+	ETNA_FEATURE(chipMinorFeatures4, HALTI2);
+
+	ETNA_FEATURE(chipMinorFeatures5, BLT_ENGINE);
+	ETNA_FEATURE(chipMinorFeatures5, HALTI3);
+	ETNA_FEATURE(chipMinorFeatures5, HALTI4);
+	ETNA_FEATURE(chipMinorFeatures5, HALTI5);
+	ETNA_FEATURE(chipMinorFeatures5, RA_WRITE_DEPTH);
+
+	ETNA_FEATURE(chipMinorFeatures6, CACHE128B256BPERLINE);
+	ETNA_FEATURE(chipMinorFeatures6, NEW_GPIPE);
+	ETNA_FEATURE(chipMinorFeatures6, NO_ASTC);
+	ETNA_FEATURE(chipMinorFeatures6, V4_COMPRESSION);
+
+	ETNA_FEATURE(chipMinorFeatures7, RS_NEW_BASEADDR);
+	ETNA_FEATURE(chipMinorFeatures7, PE_NO_ALPHA_TEST);
+
+	ETNA_FEATURE(chipMinorFeatures8, SH_NO_ONECONST_LIMIT);
+
+	ETNA_FEATURE(chipMinorFeatures10, DEC400);
+}
+
 static uint64_t get_param(struct etna_device *dev, uint32_t core, uint32_t param)
 {
 	struct drm_etnaviv_param req = {
@@ -64,6 +180,8 @@ struct etna_gpu *etna_gpu_new(struct etna_device *dev, unsigned int core)
 		goto fail;
 
 	DEBUG_MSG(" GPU model:          0x%x (rev %x)", gpu->info.model, gpu->info.revision);
+
+	query_features_from_kernel(gpu);
 
 	return gpu;
 fail:

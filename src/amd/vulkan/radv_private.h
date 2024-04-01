@@ -62,7 +62,6 @@
 #include "vk_format.h"
 #include "vk_log.h"
 #include "vk_physical_device.h"
-#include "vk_queue.h"
 #include "vk_shader_module.h"
 #include "vk_texcompress_astc.h"
 #include "vk_texcompress_etc2.h"
@@ -82,6 +81,7 @@
 #include "radv_constants.h"
 #include "radv_descriptor_set.h"
 #include "radv_instance.h"
+#include "radv_queue.h"
 #include "radv_radeon_winsys.h"
 #include "radv_shader.h"
 #include "radv_shader_args.h"
@@ -208,17 +208,6 @@ struct radv_image_view;
 struct rvcn_decode_buffer_s;
 
 /* queue types */
-enum radv_queue_family {
-   RADV_QUEUE_GENERAL,
-   RADV_QUEUE_COMPUTE,
-   RADV_QUEUE_TRANSFER,
-   RADV_QUEUE_SPARSE,
-   RADV_QUEUE_VIDEO_DEC,
-   RADV_QUEUE_VIDEO_ENC,
-   RADV_MAX_QUEUE_FAMILIES,
-   RADV_QUEUE_FOREIGN = RADV_MAX_QUEUE_FAMILIES,
-   RADV_QUEUE_IGNORED,
-};
 
 struct radv_binning_settings {
    unsigned context_states_per_bin;    /* allowed range: [1, 6] */
@@ -717,81 +706,6 @@ radv_has_uvd(struct radv_physical_device *phys_dev)
       return false;
    return phys_dev->info.ip[AMD_IP_UVD].num_queues > 0;
 }
-
-struct radv_queue_ring_info {
-   uint32_t scratch_size_per_wave;
-   uint32_t scratch_waves;
-   uint32_t compute_scratch_size_per_wave;
-   uint32_t compute_scratch_waves;
-   uint32_t esgs_ring_size;
-   uint32_t gsvs_ring_size;
-   uint32_t attr_ring_size;
-   bool tess_rings;
-   bool task_rings;
-   bool mesh_scratch_ring;
-   bool gds;
-   bool gds_oa;
-   bool sample_positions;
-};
-
-struct radv_queue_state {
-   enum radv_queue_family qf;
-   struct radv_queue_ring_info ring_info;
-
-   struct radeon_winsys_bo *scratch_bo;
-   struct radeon_winsys_bo *descriptor_bo;
-   struct radeon_winsys_bo *compute_scratch_bo;
-   struct radeon_winsys_bo *esgs_ring_bo;
-   struct radeon_winsys_bo *gsvs_ring_bo;
-   struct radeon_winsys_bo *tess_rings_bo;
-   struct radeon_winsys_bo *task_rings_bo;
-   struct radeon_winsys_bo *mesh_scratch_ring_bo;
-   struct radeon_winsys_bo *attr_ring_bo;
-   struct radeon_winsys_bo *gds_bo;
-   struct radeon_winsys_bo *gds_oa_bo;
-
-   struct radeon_cmdbuf *initial_preamble_cs;
-   struct radeon_cmdbuf *initial_full_flush_preamble_cs;
-   struct radeon_cmdbuf *continue_preamble_cs;
-   struct radeon_cmdbuf *gang_wait_preamble_cs;
-   struct radeon_cmdbuf *gang_wait_postamble_cs;
-
-   /* the uses_shadow_regs here will be set only for general queue */
-   bool uses_shadow_regs;
-   /* register state is saved in shadowed_regs buffer */
-   struct radeon_winsys_bo *shadowed_regs;
-   /* shadow regs preamble ib. This will be the first preamble ib.
-    * This ib has the packets to start register shadowing.
-    */
-   struct radeon_winsys_bo *shadow_regs_ib;
-   uint32_t shadow_regs_ib_size_dw;
-};
-
-struct radv_queue {
-   struct vk_queue vk;
-   struct radeon_winsys_ctx *hw_ctx;
-   enum radeon_ctx_priority priority;
-   struct radv_queue_state state;
-   struct radv_queue_state *follower_state;
-   struct radeon_winsys_bo *gang_sem_bo;
-
-   uint64_t last_shader_upload_seq;
-   bool sqtt_present;
-};
-
-static inline struct radv_device *
-radv_queue_device(const struct radv_queue *queue)
-{
-   return (struct radv_device *)queue->vk.base.device;
-}
-
-int radv_queue_init(struct radv_device *device, struct radv_queue *queue, int idx,
-                    const VkDeviceQueueCreateInfo *create_info,
-                    const VkDeviceQueueGlobalPriorityCreateInfoKHR *global_priority);
-
-void radv_queue_finish(struct radv_queue *queue);
-
-enum radeon_ctx_priority radv_get_queue_global_priority(const VkDeviceQueueGlobalPriorityCreateInfoKHR *pObj);
 
 #define RADV_BORDER_COLOR_COUNT       4096
 #define RADV_BORDER_COLOR_BUFFER_SIZE (sizeof(VkClearColorValue) * RADV_BORDER_COLOR_COUNT)
@@ -2489,12 +2403,6 @@ struct radv_resolve_barrier {
 
 void radv_emit_resolve_barrier(struct radv_cmd_buffer *cmd_buffer, const struct radv_resolve_barrier *barrier);
 
-bool radv_queue_internal_submit(struct radv_queue *queue, struct radeon_cmdbuf *cs);
-
-int radv_queue_init(struct radv_device *device, struct radv_queue *queue, int idx,
-                    const VkDeviceQueueCreateInfo *create_info,
-                    const VkDeviceQueueGlobalPriorityCreateInfoKHR *global_priority);
-
 void radv_set_descriptor_set(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoint bind_point,
                              struct radv_descriptor_set *set, unsigned idx);
 
@@ -3124,7 +3032,6 @@ void radv_get_compute_pipeline_metadata(const struct radv_device *device, const 
 VK_DEFINE_HANDLE_CASTS(radv_cmd_buffer, vk.base, VkCommandBuffer, VK_OBJECT_TYPE_COMMAND_BUFFER)
 VK_DEFINE_HANDLE_CASTS(radv_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)
 VK_DEFINE_HANDLE_CASTS(radv_physical_device, vk.base, VkPhysicalDevice, VK_OBJECT_TYPE_PHYSICAL_DEVICE)
-VK_DEFINE_HANDLE_CASTS(radv_queue, vk.base, VkQueue, VK_OBJECT_TYPE_QUEUE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_pipeline, base, VkPipeline, VK_OBJECT_TYPE_PIPELINE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_shader_object, base, VkShaderEXT, VK_OBJECT_TYPE_SHADER_EXT);
 

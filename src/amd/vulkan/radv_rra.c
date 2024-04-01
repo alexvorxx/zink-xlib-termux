@@ -21,6 +21,7 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_rra.h"
 #include "bvh/bvh.h"
 #include "util/half_float.h"
 #include "amd_family.h"

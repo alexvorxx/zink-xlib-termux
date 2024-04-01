@@ -28,6 +28,7 @@
 #include "util/u_atomic.h"
 #include "util/u_debug.h"
 #include "ac_drm_fourcc.h"
+#include "radv_buffer.h"
 #include "radv_buffer_view.h"
 #include "radv_debug.h"
 #include "radv_formats.h"

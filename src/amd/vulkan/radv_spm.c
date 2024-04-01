@@ -23,6 +23,7 @@
 
 #include <inttypes.h>
 
+#include "radv_buffer.h"
 #include "radv_cs.h"
 #include "radv_private.h"
 #include "sid.h"

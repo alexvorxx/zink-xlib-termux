@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "ac_gpu_info.h"
+#include "radv_buffer.h"
 #include "radv_event.h"
 #include "radv_private.h"
 

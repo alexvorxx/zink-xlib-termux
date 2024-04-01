@@ -55,7 +55,6 @@
 #include "util/rwlock.h"
 #include "util/xmlconfig.h"
 #include "vk_alloc.h"
-#include "vk_buffer.h"
 #include "vk_command_buffer.h"
 #include "vk_command_pool.h"
 #include "vk_debug_report.h"
@@ -1310,24 +1309,6 @@ struct radv_device_memory {
 void radv_device_memory_init(struct radv_device_memory *mem, struct radv_device *device, struct radeon_winsys_bo *bo);
 void radv_device_memory_finish(struct radv_device_memory *mem);
 
-struct radv_buffer {
-   struct vk_buffer vk;
-
-   /* Set when bound */
-   struct radeon_winsys_bo *bo;
-   VkDeviceSize offset;
-};
-
-void radv_buffer_init(struct radv_buffer *buffer, struct radv_device *device, struct radeon_winsys_bo *bo,
-                      uint64_t size, uint64_t offset);
-void radv_buffer_finish(struct radv_buffer *buffer);
-
-VkResult radv_bo_create(struct radv_device *device, uint64_t size, unsigned alignment, enum radeon_bo_domain domain,
-                        enum radeon_bo_flag flags, unsigned priority, uint64_t address, bool is_internal,
-                        struct radeon_winsys_bo **out_bo);
-VkResult radv_bo_virtual_bind(struct radv_device *device, struct radeon_winsys_bo *parent, uint64_t offset,
-                              uint64_t size, struct radeon_winsys_bo *bo, uint64_t bo_offset);
-void radv_bo_destroy(struct radv_device *device, struct radeon_winsys_bo *bo);
 
 enum radv_dynamic_state_bits {
    RADV_DYNAMIC_VIEWPORT = 1ull << 0,
@@ -3210,8 +3191,6 @@ void radv_rmv_fill_device_info(const struct radv_physical_device *pdev, struct v
 void radv_rmv_collect_trace_events(struct radv_device *device);
 void radv_memory_trace_finish(struct radv_device *device);
 
-VkResult radv_create_buffer(struct radv_device *device, const VkBufferCreateInfo *pCreateInfo,
-                            const VkAllocationCallbacks *pAllocator, VkBuffer *pBuffer, bool is_internal);
 VkResult radv_alloc_memory(struct radv_device *device, const VkMemoryAllocateInfo *pAllocateInfo,
                            const VkAllocationCallbacks *pAllocator, VkDeviceMemory *pMem, bool is_internal);
 
@@ -3820,7 +3799,6 @@ VK_DEFINE_HANDLE_CASTS(radv_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)
 VK_DEFINE_HANDLE_CASTS(radv_instance, vk.base, VkInstance, VK_OBJECT_TYPE_INSTANCE)
 VK_DEFINE_HANDLE_CASTS(radv_physical_device, vk.base, VkPhysicalDevice, VK_OBJECT_TYPE_PHYSICAL_DEVICE)
 VK_DEFINE_HANDLE_CASTS(radv_queue, vk.base, VkQueue, VK_OBJECT_TYPE_QUEUE)
-VK_DEFINE_NONDISP_HANDLE_CASTS(radv_buffer, vk.base, VkBuffer, VK_OBJECT_TYPE_BUFFER)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_device_memory, base, VkDeviceMemory, VK_OBJECT_TYPE_DEVICE_MEMORY)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_image, vk.base, VkImage, VK_OBJECT_TYPE_IMAGE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_image_view, vk.base, VkImageView, VK_OBJECT_TYPE_IMAGE_VIEW);

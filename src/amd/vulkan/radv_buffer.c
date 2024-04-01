@@ -25,9 +25,9 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_buffer.h"
 #include "radv_private.h"
 
-#include "vk_buffer.h"
 #include "vk_common_entrypoints.h"
 
 void

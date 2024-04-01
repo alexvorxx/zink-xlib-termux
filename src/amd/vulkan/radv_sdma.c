@@ -27,6 +27,7 @@
 #include "radv_sdma.h"
 #include "util/macros.h"
 #include "util/u_memory.h"
+#include "radv_buffer.h"
 #include "radv_cs.h"
 #include "radv_formats.h"
 #include "radv_private.h"

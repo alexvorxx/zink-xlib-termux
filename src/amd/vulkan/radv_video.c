@@ -37,6 +37,7 @@
 #include "ac_vcn_av1_default.h"
 #include "ac_vcn_dec.h"
 
+#include "radv_buffer.h"
 #include "radv_cs.h"
 #include "radv_debug.h"
 

@@ -1470,9 +1470,6 @@ lower_sysval_to_load_input_impl(nir_builder *b, nir_intrinsic_instr *intr,
 {
    gl_system_value sysval = SYSTEM_VALUE_MAX;
    switch (intr->intrinsic) {
-   case nir_intrinsic_load_front_face:
-      sysval = SYSTEM_VALUE_FRONT_FACE;
-      break;
    case nir_intrinsic_load_instance_id:
       sysval = SYSTEM_VALUE_INSTANCE_ID;
       break;
@@ -1487,21 +1484,12 @@ lower_sysval_to_load_input_impl(nir_builder *b, nir_intrinsic_instr *intr,
    nir_variable *var = sysval_vars[sysval];
    assert(var);
 
-   const nir_alu_type dest_type = (sysval == SYSTEM_VALUE_FRONT_FACE)
-      ? nir_type_uint32 : nir_get_nir_type_for_glsl_type(var->type);
-   const unsigned bit_size = (sysval == SYSTEM_VALUE_FRONT_FACE)
-      ? 32 : intr->def.bit_size;
+   const nir_alu_type dest_type = nir_get_nir_type_for_glsl_type(var->type);
+   const unsigned bit_size = intr->def.bit_size;
 
    b->cursor = nir_before_instr(&intr->instr);
    nir_def *result = nir_load_input(b, intr->def.num_components, bit_size, nir_imm_int(b, 0),
       .base = var->data.driver_location, .dest_type = dest_type);
-
-   /* The nir_type_uint32 is really a nir_type_bool32, but that type is very
-    * inconvenient at this point during compilation.  Convert to
-    * nir_type_bool1 by comparing with zero.
-    */
-   if (sysval == SYSTEM_VALUE_FRONT_FACE)
-      result = nir_ine_imm(b, result, 0);
 
    nir_def_rewrite_uses(&intr->def, result);
    return true;
@@ -2268,36 +2256,17 @@ dxil_nir_lower_unsupported_subgroup_scan(nir_shader *s)
    return ret;
 }
 
-static bool
-lower_load_face(nir_builder *b, nir_intrinsic_instr *intr, void *data)
-{
-   if (intr->intrinsic != nir_intrinsic_load_front_face)
-      return false;
-
-   b->cursor = nir_before_instr(&intr->instr);
-
-   nir_variable *var = data;
-   nir_def *load = nir_ine_imm(b, nir_load_var(b, var), 0);
-
-   nir_def_rewrite_uses(&intr->def, load);
-   nir_instr_remove(&intr->instr);
-   return true;
-}
-
 bool
 dxil_nir_forward_front_face(nir_shader *nir)
 {
    assert(nir->info.stage == MESA_SHADER_FRAGMENT);
 
-   nir_variable *var = nir_variable_create(nir, nir_var_shader_in,
-                                           glsl_uint_type(),
-                                           "gl_FrontFacing");
-   var->data.location = VARYING_SLOT_VAR12;
-   var->data.interpolation = INTERP_MODE_FLAT;
-
-   return nir_shader_intrinsics_pass(nir, lower_load_face,
-                                       nir_metadata_block_index | nir_metadata_dominance,
-                                       var);
+   nir_variable *var = nir_find_variable_with_location(nir, nir_var_shader_in, VARYING_SLOT_FACE);
+   if (var) {
+      var->data.location = VARYING_SLOT_VAR12;
+      return true;
+   }
+   return false;
 }
 
 static bool

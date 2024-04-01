@@ -589,7 +589,6 @@ struct ntd_context {
    const struct dxil_value **scratchvars;
    const struct dxil_value **consts;
 
-   nir_variable *ps_front_face;
    nir_variable *system_value[SYSTEM_VALUE_MAX];
 
    nir_function *tess_ctrl_patch_constant_func;

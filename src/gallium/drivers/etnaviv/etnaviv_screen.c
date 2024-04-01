@@ -835,100 +835,30 @@ etna_determine_sampler_limits(struct etna_screen *screen)
       screen->specs.vertex_sampler_count = 0;
 }
 
-static bool
+static void
 etna_get_specs(struct etna_screen *screen)
 {
-   uint64_t val;
-   uint32_t instruction_count;
+   const struct etna_core_info *info = screen->info;
+   uint32_t instruction_count = 0;
 
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_INSTRUCTION_COUNT, &val)) {
-      DBG("could not get ETNA_GPU_INSTRUCTION_COUNT");
-      goto fail;
+   /* Copy all relevant limits from etna_core_info. */
+   if (info->type == ETNA_CORE_GPU) {
+      instruction_count = info->gpu.max_instructions;
+      screen->specs.vertex_output_buffer_size = info->gpu.vertex_output_buffer_size;
+      screen->specs.vertex_cache_size = info->gpu.vertex_cache_size;
+      screen->specs.shader_core_count = info->gpu.shader_core_count;
+      screen->specs.stream_count = info->gpu.stream_count;
+      screen->specs.max_registers = info->gpu.max_registers;
+      screen->specs.pixel_pipes = info->gpu.pixel_pipes;
+      screen->specs.num_constants = info->gpu.num_constants;
+      screen->specs.max_varyings = MIN2(info->gpu.max_varyings, ETNA_NUM_VARYINGS);
+   } else {
+      screen->specs.nn_core_count = info->npu.nn_core_count;
+      screen->specs.nn_mad_per_core = info->npu.nn_mad_per_core;
+      screen->specs.tp_core_count = info->npu.tp_core_count;
+      screen->specs.on_chip_sram_size = info->npu.on_chip_sram_size;
+      screen->specs.axi_sram_size = info->npu.axi_sram_size;
    }
-   instruction_count = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_VERTEX_OUTPUT_BUFFER_SIZE,
-                          &val)) {
-      DBG("could not get ETNA_GPU_VERTEX_OUTPUT_BUFFER_SIZE");
-      goto fail;
-   }
-   screen->specs.vertex_output_buffer_size = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_VERTEX_CACHE_SIZE, &val)) {
-      DBG("could not get ETNA_GPU_VERTEX_CACHE_SIZE");
-      goto fail;
-   }
-   screen->specs.vertex_cache_size = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_SHADER_CORE_COUNT, &val)) {
-      DBG("could not get ETNA_GPU_SHADER_CORE_COUNT");
-      goto fail;
-   }
-   screen->specs.shader_core_count = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_STREAM_COUNT, &val)) {
-      DBG("could not get ETNA_GPU_STREAM_COUNT");
-      goto fail;
-   }
-   screen->specs.stream_count = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_REGISTER_MAX, &val)) {
-      DBG("could not get ETNA_GPU_REGISTER_MAX");
-      goto fail;
-   }
-   screen->specs.max_registers = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_PIXEL_PIPES, &val)) {
-      DBG("could not get ETNA_GPU_PIXEL_PIPES");
-      goto fail;
-   }
-   screen->specs.pixel_pipes = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_NUM_CONSTANTS, &val)) {
-      DBG("could not get %s", "ETNA_GPU_NUM_CONSTANTS");
-      goto fail;
-   }
-   if (val == 0) {
-      fprintf(stderr, "Warning: zero num constants (update kernel?)\n");
-      val = 168;
-   }
-   screen->specs.num_constants = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_NUM_VARYINGS, &val)) {
-      DBG("could not get ETNA_GPU_NUM_VARYINGS");
-      goto fail;
-   }
-   screen->specs.max_varyings = MIN2(val, ETNA_NUM_VARYINGS);
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_NN_CORE_COUNT, &val)) {
-      DBG("could not get ETNA_GPU_NN_CORE_COUNT");
-      goto fail;
-   }
-   screen->specs.nn_core_count = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_NN_MAD_PER_CORE, &val)) {
-      DBG("could not get ETNA_GPU_NN_MAD_PER_CORE");
-      goto fail;
-   }
-   screen->specs.nn_mad_per_core = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_TP_CORE_COUNT, &val)) {
-      DBG("could not get ETNA_GPU_TP_CORE_COUNT");
-      goto fail;
-   }
-   screen->specs.tp_core_count = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_ON_CHIP_SRAM_SIZE, &val)) {
-      DBG("could not get ETNA_GPU_ON_CHIP_SRAM_SIZE");
-      goto fail;
-   }
-   screen->specs.on_chip_sram_size = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_AXI_SRAM_SIZE, &val)) {
-      DBG("could not get ETNA_GPU_AXI_SRAM_SIZE");
-      goto fail;
-   }
-   screen->specs.axi_sram_size = val;
 
    /* Figure out gross GPU architecture. See rnndb/common.xml for a specific
     * description of the differences. */
@@ -1070,11 +1000,6 @@ etna_get_specs(struct etna_screen *screen)
    if (!VIV_FEATURE(screen, ETNA_FEATURE_MC20) &&
        !VIV_FEATURE(screen, ETNA_FEATURE_MMU_VERSION))
       etna_core_disable_feature(screen->info, ETNA_FEATURE_FAST_CLEAR);
-
-   return true;
-
-fail:
-   return false;
 }
 
 struct etna_bo *
@@ -1152,8 +1077,7 @@ etna_screen_create(struct etna_device *dev, struct etna_gpu *gpu,
       goto fail;
    }
 
-   if (!etna_get_specs(screen))
-      goto fail;
+   etna_get_specs(screen);
 
    if (screen->specs.halti >= 5 && !etnaviv_device_softpin_capable(dev)) {
       DBG("halti5 requires softpin");

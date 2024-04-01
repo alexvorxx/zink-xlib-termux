@@ -30,6 +30,7 @@
 #include "radv_buffer.h"
 #include "radv_buffer_view.h"
 #include "radv_formats.h"
+#include "radv_image.h"
 #include "radv_private.h"
 
 void

@@ -28,6 +28,7 @@
 #include "radv_buffer.h"
 #include "radv_cs.h"
 #include "radv_debug.h"
+#include "radv_image.h"
 #include "radv_private.h"
 #include "vk_semaphore.h"
 #include "vk_sync.h"

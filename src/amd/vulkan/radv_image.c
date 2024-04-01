@@ -25,6 +25,7 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_image.h"
 #include "util/u_atomic.h"
 #include "util/u_debug.h"
 #include "ac_drm_fourcc.h"

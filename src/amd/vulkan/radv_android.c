@@ -22,6 +22,7 @@
  */
 
 #include "radv_buffer.h"
+#include "radv_image.h"
 #include "radv_private.h"
 
 #if DETECT_OS_ANDROID

@@ -124,6 +124,7 @@ libradv_files = files(
   'radv_formats.c',
   'radv_formats.h',
   'radv_image.c',
+  'radv_image.h',
   'radv_image_view.c',
   'radv_instance.c',
   'radv_perfcounter.c',

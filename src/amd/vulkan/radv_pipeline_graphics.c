@@ -1690,6 +1690,7 @@ struct radv_ps_epilog_key
 radv_generate_ps_epilog_key(const struct radv_device *device, const struct radv_ps_epilog_state *state)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    unsigned col_format = 0, is_int8 = 0, is_int10 = 0, is_float32 = 0, z_format = 0;
    struct radv_ps_epilog_key key;
 
@@ -1737,7 +1738,7 @@ radv_generate_ps_epilog_key(const struct radv_device *device, const struct radv_
    key.spi_shader_col_format = col_format;
    key.color_is_int8 = pdev->info.gfx_level < GFX8 ? is_int8 : 0;
    key.color_is_int10 = pdev->info.gfx_level < GFX8 ? is_int10 : 0;
-   key.enable_mrt_output_nan_fixup = pdev->instance->drirc.enable_mrt_output_nan_fixup ? is_float32 : 0;
+   key.enable_mrt_output_nan_fixup = instance->drirc.enable_mrt_output_nan_fixup ? is_float32 : 0;
    key.colors_written = state->colors_written;
    key.mrt0_is_dual_src = state->mrt0_is_dual_src;
    key.export_depth = state->export_depth;
@@ -1999,6 +2000,7 @@ radv_fill_shader_info_ngg(struct radv_device *device, struct radv_shader_stage *
                           VkShaderStageFlagBits active_nir_stages)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    if (!pdev->cache_key.use_ngg)
       return;
@@ -2037,7 +2039,7 @@ radv_fill_shader_info_ngg(struct radv_device *device, struct radv_shader_stage *
       }
 
       if ((last_vgt_stage && last_vgt_stage->nir->xfb_info) ||
-          ((pdev->instance->debug_flags & RADV_DEBUG_NO_NGG_GS) && stages[MESA_SHADER_GEOMETRY].nir)) {
+          ((instance->debug_flags & RADV_DEBUG_NO_NGG_GS) && stages[MESA_SHADER_GEOMETRY].nir)) {
          /* NGG needs to be disabled on GFX10/GFX10.3 when:
           * - streamout is used because NGG streamout isn't supported
           * - NGG GS is explictly disabled to workaround performance issues
@@ -2500,7 +2502,8 @@ radv_graphics_shaders_compile(struct radv_device *device, struct vk_pipeline_cac
                               struct radv_shader **gs_copy_shader, struct radv_shader_binary **gs_copy_binary)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
-   const bool nir_cache = pdev->instance->perftest_flags & RADV_PERFTEST_NIR_CACHE;
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+   const bool nir_cache = instance->perftest_flags & RADV_PERFTEST_NIR_CACHE;
    for (unsigned s = 0; s < MESA_VULKAN_SHADER_STAGES; s++) {
       if (!stages[s].entrypoint)
          continue;
@@ -2512,7 +2515,7 @@ radv_graphics_shaders_compile(struct radv_device *device, struct vk_pipeline_cac
          struct radv_spirv_to_nir_options options = {
             .lower_view_index_to_zero = !gfx_state->has_multiview_view_index,
             .fix_dual_src_mrt1_export =
-               gfx_state->ps.epilog.mrt0_is_dual_src && pdev->instance->drirc.dual_color_blend_by_location,
+               gfx_state->ps.epilog.mrt0_is_dual_src && instance->drirc.dual_color_blend_by_location,
          };
          blake3_hash key;
 
@@ -2664,13 +2667,14 @@ radv_should_compute_pipeline_hash(const struct radv_device *device, const struct
                                   bool fast_linking_enabled)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    /* Skip computing the pipeline hash when GPL fast-linking is enabled because these shaders aren't
     * supposed to be cached and computing the hash is costly. Though, make sure it's always computed
     * when RGP is enabled, otherwise ISA isn't reported.
     */
    return !fast_linking_enabled ||
-          ((pdev->instance->vk.trace_mode & RADV_TRACE_MODE_RGP) && pipeline->base.type == RADV_PIPELINE_GRAPHICS);
+          ((instance->vk.trace_mode & RADV_TRACE_MODE_RGP) && pipeline->base.type == RADV_PIPELINE_GRAPHICS);
 }
 
 static VkResult
@@ -3729,12 +3733,13 @@ static bool
 gfx103_pipeline_vrs_coarse_shading(const struct radv_device *device, const struct radv_graphics_pipeline *pipeline)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    struct radv_shader *ps = pipeline->base.shaders[MESA_SHADER_FRAGMENT];
 
    if (pdev->info.gfx_level != GFX10_3)
       return false;
 
-   if (pdev->instance->debug_flags & RADV_DEBUG_NO_VRS_FLAT_SHADING)
+   if (instance->debug_flags & RADV_DEBUG_NO_VRS_FLAT_SHADING)
       return false;
 
    if (ps && !ps->info.ps.allow_flat_shading)

@@ -649,6 +649,7 @@ bool
 radv_nir_lower_ray_queries(struct nir_shader *shader, struct radv_device *device)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
    bool progress = false;
    struct hash_table *query_ht = _mesa_pointer_hash_table_create(NULL);
 
@@ -711,7 +712,7 @@ radv_nir_lower_ray_queries(struct nir_shader *shader, struct radv_device *device
                lower_rq_generate_intersection(&builder, index, intrinsic, vars);
                break;
             case nir_intrinsic_rq_initialize:
-               lower_rq_initialize(&builder, index, intrinsic, vars, pdev->instance);
+               lower_rq_initialize(&builder, index, intrinsic, vars, instance);
                break;
             case nir_intrinsic_rq_load:
                new_dest = lower_rq_load(device, &builder, index, intrinsic, vars);

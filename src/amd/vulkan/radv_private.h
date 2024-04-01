@@ -267,8 +267,6 @@ struct radv_physical_device_cache_key {
 struct radv_physical_device {
    struct vk_physical_device vk;
 
-   struct radv_instance *instance;
-
    struct radeon_winsys *ws;
    struct radeon_info info;
    char name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
@@ -371,6 +369,12 @@ struct radv_physical_device {
 
    struct radv_physical_device_cache_key cache_key;
 };
+
+static inline struct radv_instance *
+radv_physical_device_instance(const struct radv_physical_device *pdev)
+{
+   return (struct radv_instance *)pdev->vk.instance;
+}
 
 uint32_t radv_find_memory_index(const struct radv_physical_device *pdev, VkMemoryPropertyFlags flags);
 
@@ -746,9 +750,11 @@ struct radv_meta_state {
 static inline bool
 radv_sparse_queue_enabled(const struct radv_physical_device *pdev)
 {
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+
    /* Dedicated sparse queue requires VK_QUEUE_SUBMIT_MODE_THREADED, which is incompatible with
     * VK_DEVICE_TIMELINE_MODE_EMULATED. */
-   return pdev->info.has_timeline_syncobj && !pdev->instance->drirc.legacy_sparse_binding;
+   return pdev->info.has_timeline_syncobj && !instance->drirc.legacy_sparse_binding;
 }
 
 static inline enum radv_queue_family

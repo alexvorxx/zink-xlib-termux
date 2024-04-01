@@ -36,7 +36,8 @@ static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
 radv_wsi_proc_addr(VkPhysicalDevice physicalDevice, const char *pName)
 {
    RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
-   return vk_instance_get_proc_addr_unchecked(&pdev->instance->vk, pName);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+   return vk_instance_get_proc_addr_unchecked(&instance->vk, pName);
 }
 
 static void
@@ -55,11 +56,12 @@ radv_wsi_get_prime_blit_queue(VkDevice _device)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
    struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    if (device->private_sdma_queue != VK_NULL_HANDLE)
       return vk_queue_to_handle(&device->private_sdma_queue->vk);
 
-   if (pdev->info.gfx_level >= GFX9 && !(pdev->instance->debug_flags & RADV_DEBUG_NO_DMA_BLIT)) {
+   if (pdev->info.gfx_level >= GFX9 && !(instance->debug_flags & RADV_DEBUG_NO_DMA_BLIT)) {
 
       pdev->vk_queue_to_radv[pdev->num_queues++] = RADV_QUEUE_TRANSFER;
       const VkDeviceQueueCreateInfo queue_create = {
@@ -85,9 +87,11 @@ radv_wsi_get_prime_blit_queue(VkDevice _device)
 VkResult
 radv_init_wsi(struct radv_physical_device *pdev)
 {
-   VkResult result = wsi_device_init(&pdev->wsi_device, radv_physical_device_to_handle(pdev), radv_wsi_proc_addr,
-                                     &pdev->instance->vk.alloc, pdev->master_fd, &pdev->instance->drirc.options,
-                                     &(struct wsi_device_options){.sw_device = false});
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+
+   VkResult result =
+      wsi_device_init(&pdev->wsi_device, radv_physical_device_to_handle(pdev), radv_wsi_proc_addr, &instance->vk.alloc,
+                      pdev->master_fd, &instance->drirc.options, &(struct wsi_device_options){.sw_device = false});
    if (result != VK_SUCCESS)
       return result;
 
@@ -105,6 +109,8 @@ radv_init_wsi(struct radv_physical_device *pdev)
 void
 radv_finish_wsi(struct radv_physical_device *pdev)
 {
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+
    pdev->vk.wsi_device = NULL;
-   wsi_device_finish(&pdev->wsi_device, &pdev->instance->vk.alloc);
+   wsi_device_finish(&pdev->wsi_device, &instance->vk.alloc);
 }

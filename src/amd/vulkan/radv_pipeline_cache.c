@@ -39,6 +39,7 @@ static bool
 radv_is_cache_disabled(struct radv_device *device)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    /* The buffer address used for debug printf is hardcoded. */
    if (device->printf.buffer_addr)
@@ -47,7 +48,7 @@ radv_is_cache_disabled(struct radv_device *device)
    /* Pipeline caches can be disabled with RADV_DEBUG=nocache, with MESA_GLSL_CACHE_DISABLE=1 and
     * when ACO_DEBUG is used. MESA_GLSL_CACHE_DISABLE is done elsewhere.
     */
-   return (pdev->instance->debug_flags & RADV_DEBUG_NO_CACHE) || (pdev->use_llvm ? 0 : aco_get_codegen_flags());
+   return (instance->debug_flags & RADV_DEBUG_NO_CACHE) || (pdev->use_llvm ? 0 : aco_get_codegen_flags());
 }
 
 void

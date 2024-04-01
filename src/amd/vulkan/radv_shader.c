@@ -64,9 +64,10 @@
 static void
 get_nir_options_for_stage(struct radv_physical_device *pdev, gl_shader_stage stage)
 {
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    nir_shader_compiler_options *options = &pdev->nir_options[stage];
-   bool split_fma = (stage <= MESA_SHADER_GEOMETRY || stage == MESA_SHADER_MESH) &&
-                    pdev->instance->debug_flags & RADV_DEBUG_SPLIT_FMA;
+   bool split_fma =
+      (stage <= MESA_SHADER_GEOMETRY || stage == MESA_SHADER_MESH) && instance->debug_flags & RADV_DEBUG_SPLIT_FMA;
 
    ac_set_nir_options(&pdev->info, pdev->use_llvm, options);
 
@@ -109,11 +110,12 @@ bool
 radv_can_dump_shader(struct radv_device *device, nir_shader *nir, bool meta_shader)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
-   if (!(pdev->instance->debug_flags & RADV_DEBUG_DUMP_SHADERS))
+   if (!(instance->debug_flags & RADV_DEBUG_DUMP_SHADERS))
       return false;
 
-   if ((is_meta_shader(nir) || meta_shader) && !(pdev->instance->debug_flags & RADV_DEBUG_DUMP_META_SHADERS))
+   if ((is_meta_shader(nir) || meta_shader) && !(instance->debug_flags & RADV_DEBUG_DUMP_META_SHADERS))
       return false;
 
    return true;
@@ -123,9 +125,10 @@ bool
 radv_can_dump_shader_stats(struct radv_device *device, nir_shader *nir)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    /* Only dump non-meta shader stats. */
-   return pdev->instance->debug_flags & RADV_DEBUG_DUMP_SHADER_STATS && !is_meta_shader(nir);
+   return instance->debug_flags & RADV_DEBUG_DUMP_SHADER_STATS && !is_meta_shader(nir);
 }
 
 void
@@ -256,7 +259,7 @@ radv_spirv_nir_debug(void *private_data, enum nir_spirv_debug_level level, size_
 {
    struct radv_shader_debug_data *debug_data = private_data;
    const struct radv_physical_device *pdev = radv_device_physical(debug_data->device);
-   struct radv_instance *instance = pdev->instance;
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    static const VkDebugReportFlagsEXT vk_flags[] = {
       [NIR_SPIRV_DEBUG_LEVEL_INFO] = VK_DEBUG_REPORT_INFORMATION_BIT_EXT,
@@ -275,7 +278,7 @@ radv_compiler_debug(void *private_data, enum aco_compiler_debug_level level, con
 {
    struct radv_shader_debug_data *debug_data = private_data;
    const struct radv_physical_device *pdev = radv_device_physical(debug_data->device);
-   struct radv_instance *instance = pdev->instance;
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    static const VkDebugReportFlagsEXT vk_flags[] = {
       [ACO_COMPILER_DEBUG_LEVEL_PERFWARN] = VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT,
@@ -311,6 +314,7 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
                          const struct radv_spirv_to_nir_options *options, bool is_internal)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    unsigned subgroup_size = 64, ballot_bit_size = 64;
    const unsigned required_subgroup_size = stage->key.subgroup_required_size * 32;
    if (required_subgroup_size) {
@@ -337,8 +341,8 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
       uint32_t *spirv = (uint32_t *)stage->spirv.data;
       assert(stage->spirv.size % 4 == 0);
 
-      bool dump_meta = pdev->instance->debug_flags & RADV_DEBUG_DUMP_META_SHADERS;
-      if ((pdev->instance->debug_flags & RADV_DEBUG_DUMP_SPIRV) && (!is_internal || dump_meta))
+      bool dump_meta = instance->debug_flags & RADV_DEBUG_DUMP_META_SHADERS;
+      if ((instance->debug_flags & RADV_DEBUG_DUMP_SPIRV) && (!is_internal || dump_meta))
          radv_print_spirv(stage->spirv.data, stage->spirv.size, stderr);
 
       uint32_t num_spec_entries = 0;
@@ -632,7 +636,7 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
             });
 
    NIR_PASS(_, nir, nir_lower_load_const_to_scalar);
-   NIR_PASS(_, nir, nir_opt_shrink_stores, !pdev->instance->drirc.disable_shrink_image_store);
+   NIR_PASS(_, nir, nir_opt_shrink_stores, !instance->drirc.disable_shrink_image_store);
 
    if (!stage->key.optimisations_disabled)
       radv_optimize_nir(nir, false);
@@ -2437,16 +2441,17 @@ radv_fill_nir_compiler_options(struct radv_nir_compiler_options *options, struct
                                bool keep_statistic_info)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    /* robust_buffer_access_llvm here used by LLVM only, pipeline robustness is not exposed there. */
    options->robust_buffer_access_llvm = device->buffer_robustness >= RADV_BUFFER_ROBUSTNESS_1;
    options->wgp_mode = should_use_wgp;
    options->info = &pdev->info;
    options->dump_shader = can_dump_shader;
-   options->dump_preoptir = options->dump_shader && pdev->instance->debug_flags & RADV_DEBUG_PREOPTIR;
+   options->dump_preoptir = options->dump_shader && instance->debug_flags & RADV_DEBUG_PREOPTIR;
    options->record_ir = keep_shader_info;
    options->record_stats = keep_statistic_info;
-   options->check_ir = pdev->instance->debug_flags & RADV_DEBUG_CHECKIR;
+   options->check_ir = instance->debug_flags & RADV_DEBUG_CHECKIR;
    options->enable_mrt_output_nan_fixup = gfx_state ? gfx_state->ps.epilog.enable_mrt_output_nan_fixup : false;
 }
 
@@ -2623,12 +2628,13 @@ struct radv_shader *
 radv_create_rt_prolog(struct radv_device *device)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    struct radv_shader *prolog;
    struct radv_shader_args in_args = {0};
    struct radv_shader_args out_args = {0};
    struct radv_nir_compiler_options options = {0};
-   radv_fill_nir_compiler_options(&options, device, NULL, false, pdev->instance->debug_flags & RADV_DEBUG_DUMP_PROLOGS,
-                                  false, radv_device_fault_detection_enabled(device), false);
+   radv_fill_nir_compiler_options(&options, device, NULL, false, instance->debug_flags & RADV_DEBUG_DUMP_PROLOGS, false,
+                                  radv_device_fault_detection_enabled(device), false);
    struct radv_shader_info info = {0};
    info.stage = MESA_SHADER_COMPUTE;
    info.loads_push_constants = true;
@@ -2688,11 +2694,12 @@ struct radv_shader_part *
 radv_create_vs_prolog(struct radv_device *device, const struct radv_vs_prolog_key *key)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    struct radv_shader_part *prolog;
    struct radv_shader_args args = {0};
    struct radv_nir_compiler_options options = {0};
-   radv_fill_nir_compiler_options(&options, device, NULL, false, pdev->instance->debug_flags & RADV_DEBUG_DUMP_PROLOGS,
-                                  false, radv_device_fault_detection_enabled(device), false);
+   radv_fill_nir_compiler_options(&options, device, NULL, false, instance->debug_flags & RADV_DEBUG_DUMP_PROLOGS, false,
+                                  radv_device_fault_detection_enabled(device), false);
 
    struct radv_shader_info info = {0};
    info.stage = MESA_SHADER_VERTEX;
@@ -2755,11 +2762,12 @@ radv_create_ps_epilog(struct radv_device *device, const struct radv_ps_epilog_ke
                       struct radv_shader_part_binary **binary_out)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    struct radv_shader_part *epilog;
    struct radv_shader_args args = {0};
    struct radv_nir_compiler_options options = {0};
-   radv_fill_nir_compiler_options(&options, device, NULL, false, pdev->instance->debug_flags & RADV_DEBUG_DUMP_EPILOGS,
-                                  false, radv_device_fault_detection_enabled(device), false);
+   radv_fill_nir_compiler_options(&options, device, NULL, false, instance->debug_flags & RADV_DEBUG_DUMP_EPILOGS, false,
+                                  radv_device_fault_detection_enabled(device), false);
 
    struct radv_shader_info info = {0};
    info.stage = MESA_SHADER_FRAGMENT;

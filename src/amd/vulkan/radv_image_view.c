@@ -415,6 +415,7 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
                              uint32_t *fmask_state, VkImageCreateFlags img_create_flags)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    const struct util_format_description *desc;
    enum pipe_swizzle swizzle[4];
    int first_non_void;
@@ -505,7 +506,7 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
    if (!(image->planes[0].surface.flags & RADEON_SURF_Z_OR_SBUFFER) && image->planes[0].surface.meta_offset) {
       state[6] = S_008F28_ALPHA_IS_ON_MSB(vi_alpha_is_on_msb(device, vk_format));
    } else {
-      if (pdev->instance->drirc.disable_aniso_single_level) {
+      if (instance->drirc.disable_aniso_single_level) {
          /* The last dword is unused by hw. The shader uses it to clear
           * bits in the first dword of sampler state.
           */

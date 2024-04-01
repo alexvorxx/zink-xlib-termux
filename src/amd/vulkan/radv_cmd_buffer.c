@@ -812,6 +812,7 @@ radv_cmd_buffer_after_draw(struct radv_cmd_buffer *cmd_buffer, enum radv_cmd_flu
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    if (unlikely(device->sqtt.bo) && !dgc) {
       radeon_check_space(device->ws, cmd_buffer->cs, 2);
@@ -820,7 +821,7 @@ radv_cmd_buffer_after_draw(struct radv_cmd_buffer *cmd_buffer, enum radv_cmd_flu
       radeon_emit(cmd_buffer->cs, EVENT_TYPE(V_028A90_THREAD_TRACE_MARKER) | EVENT_INDEX(0));
    }
 
-   if (pdev->instance->debug_flags & RADV_DEBUG_SYNC_SHADERS) {
+   if (instance->debug_flags & RADV_DEBUG_SYNC_SHADERS) {
       enum rgp_flush_bits sqtt_flush_bits = 0;
       assert(flags & (RADV_CMD_FLAG_PS_PARTIAL_FLUSH | RADV_CMD_FLAG_CS_PARTIAL_FLUSH));
 
@@ -4187,10 +4188,11 @@ radv_emit_alpha_to_coverage_enable(struct radv_cmd_buffer *cmd_buffer)
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
    unsigned db_alpha_to_mask = 0;
 
-   if (pdev->instance->debug_flags & RADV_DEBUG_NO_ATOC_DITHERING) {
+   if (instance->debug_flags & RADV_DEBUG_NO_ATOC_DITHERING) {
       db_alpha_to_mask = S_028B70_ALPHA_TO_MASK_OFFSET0(2) | S_028B70_ALPHA_TO_MASK_OFFSET1(2) |
                          S_028B70_ALPHA_TO_MASK_OFFSET2(2) | S_028B70_ALPHA_TO_MASK_OFFSET3(2) |
                          S_028B70_OFFSET_ROUND(0);
@@ -6117,7 +6119,8 @@ radv_bind_descriptor_sets(struct radv_cmd_buffer *cmd_buffer,
    RADV_FROM_HANDLE(radv_pipeline_layout, layout, pBindDescriptorSetsInfo->layout);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
-   const bool no_dynamic_bounds = pdev->instance->debug_flags & RADV_DEBUG_NO_DYNAMIC_BOUNDS;
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+   const bool no_dynamic_bounds = instance->debug_flags & RADV_DEBUG_NO_DYNAMIC_BOUNDS;
    struct radv_descriptor_state *descriptors_state = radv_get_descriptors_state(cmd_buffer, bind_point);
    unsigned dyn_idx = 0;
 
@@ -10693,8 +10696,9 @@ radv_trace_rays(struct radv_cmd_buffer *cmd_buffer, VkTraceRaysIndirectCommand2K
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
-   if (pdev->instance->debug_flags & RADV_DEBUG_NO_RT)
+   if (instance->debug_flags & RADV_DEBUG_NO_RT)
       return;
 
    if (unlikely(device->rra_trace.ray_history_buffer))

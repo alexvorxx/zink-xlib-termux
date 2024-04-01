@@ -187,12 +187,13 @@ static VkResult
 radv_device_init_vs_prologs(struct radv_device *device)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    if (!radv_shader_part_cache_init(&device->vs_prologs, &vs_prolog_ops))
-      return vk_error(pdev->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
+      return vk_error(instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    /* don't pre-compile prologs if we want to print them */
-   if (pdev->instance->debug_flags & RADV_DEBUG_DUMP_PROLOGS)
+   if (instance->debug_flags & RADV_DEBUG_DUMP_PROLOGS)
       return VK_SUCCESS;
 
    struct radv_vs_prolog_key key;
@@ -208,7 +209,7 @@ radv_device_init_vs_prologs(struct radv_device *device)
 
       device->simple_vs_prologs[i - 1] = radv_create_vs_prolog(device, &key);
       if (!device->simple_vs_prologs[i - 1])
-         return vk_error(pdev->instance, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+         return vk_error(instance, VK_ERROR_OUT_OF_DEVICE_MEMORY);
    }
 
    unsigned idx = 0;
@@ -220,7 +221,7 @@ radv_device_init_vs_prologs(struct radv_device *device)
 
             struct radv_shader_part *prolog = radv_create_vs_prolog(device, &key);
             if (!prolog)
-               return vk_error(pdev->instance, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+               return vk_error(instance, VK_ERROR_OUT_OF_DEVICE_MEMORY);
 
             assert(idx == radv_instance_rate_prolog_index(num_attributes, key.instance_rate_inputs));
             device->instance_rate_vs_prologs[idx++] = prolog;
@@ -558,6 +559,7 @@ add_entrypoints(struct dispatch_table_builder *b, const struct vk_device_entrypo
 static void
 init_dispatch_tables(struct radv_device *device, struct radv_physical_device *pdev)
 {
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    struct dispatch_table_builder b = {0};
    b.tables[RADV_DEVICE_DISPATCH_TABLE] = &device->vk.dispatch_table;
    b.tables[RADV_ANNOTATE_DISPATCH_TABLE] = &device->layer_dispatch.annotate;
@@ -567,26 +569,26 @@ init_dispatch_tables(struct radv_device *device, struct radv_physical_device *pd
    b.tables[RADV_RMV_DISPATCH_TABLE] = &device->layer_dispatch.rmv;
    b.tables[RADV_CTX_ROLL_DISPATCH_TABLE] = &device->layer_dispatch.ctx_roll;
 
-   bool gather_ctx_rolls = pdev->instance->vk.trace_mode & RADV_TRACE_MODE_CTX_ROLLS;
+   bool gather_ctx_rolls = instance->vk.trace_mode & RADV_TRACE_MODE_CTX_ROLLS;
    if (radv_device_fault_detection_enabled(device) || gather_ctx_rolls)
       add_entrypoints(&b, &annotate_device_entrypoints, RADV_ANNOTATE_DISPATCH_TABLE);
 
-   if (!strcmp(pdev->instance->drirc.app_layer, "metroexodus")) {
+   if (!strcmp(instance->drirc.app_layer, "metroexodus")) {
       add_entrypoints(&b, &metro_exodus_device_entrypoints, RADV_APP_DISPATCH_TABLE);
-   } else if (!strcmp(pdev->instance->drirc.app_layer, "rage2")) {
+   } else if (!strcmp(instance->drirc.app_layer, "rage2")) {
       add_entrypoints(&b, &rage2_device_entrypoints, RADV_APP_DISPATCH_TABLE);
-   } else if (!strcmp(pdev->instance->drirc.app_layer, "quanticdream")) {
+   } else if (!strcmp(instance->drirc.app_layer, "quanticdream")) {
       add_entrypoints(&b, &quantic_dream_device_entrypoints, RADV_APP_DISPATCH_TABLE);
    }
 
-   if (pdev->instance->vk.trace_mode & RADV_TRACE_MODE_RGP)
+   if (instance->vk.trace_mode & RADV_TRACE_MODE_RGP)
       add_entrypoints(&b, &sqtt_device_entrypoints, RADV_RGP_DISPATCH_TABLE);
 
-   if ((pdev->instance->vk.trace_mode & RADV_TRACE_MODE_RRA) && radv_enable_rt(pdev, false))
+   if ((instance->vk.trace_mode & RADV_TRACE_MODE_RRA) && radv_enable_rt(pdev, false))
       add_entrypoints(&b, &rra_device_entrypoints, RADV_RRA_DISPATCH_TABLE);
 
 #ifndef _WIN32
-   if (pdev->instance->vk.trace_mode & VK_TRACE_MODE_RMV)
+   if (instance->vk.trace_mode & VK_TRACE_MODE_RMV)
       add_entrypoints(&b, &rmv_device_entrypoints, RADV_RMV_DISPATCH_TABLE);
 #endif
 
@@ -604,10 +606,11 @@ capture_trace(VkQueue _queue)
    RADV_FROM_HANDLE(radv_queue, queue, _queue);
    struct radv_device *device = radv_queue_device(queue);
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    VkResult result = VK_SUCCESS;
 
-   if (pdev->instance->vk.trace_mode & RADV_TRACE_MODE_RRA)
+   if (instance->vk.trace_mode & RADV_TRACE_MODE_RRA)
       device->rra_trace.triggered = true;
 
    if (device->vk.memory_trace_data.is_enabled) {
@@ -617,10 +620,10 @@ capture_trace(VkQueue _queue)
       simple_mtx_unlock(&device->vk.memory_trace_data.token_mtx);
    }
 
-   if (pdev->instance->vk.trace_mode & RADV_TRACE_MODE_RGP)
+   if (instance->vk.trace_mode & RADV_TRACE_MODE_RGP)
       device->sqtt_triggered = true;
 
-   if (pdev->instance->vk.trace_mode & RADV_TRACE_MODE_CTX_ROLLS) {
+   if (instance->vk.trace_mode & RADV_TRACE_MODE_CTX_ROLLS) {
       char filename[2048];
       time_t t = time(NULL);
       struct tm now = *localtime(&t);
@@ -671,6 +674,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
                   const VkAllocationCallbacks *pAllocator, VkDevice *pDevice)
 {
    RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
    VkResult result;
    struct radv_device *device;
 
@@ -690,9 +694,9 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
       }
    }
 
-   device = vk_zalloc2(&pdev->instance->vk.alloc, pAllocator, sizeof(*device), 8, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+   device = vk_zalloc2(&instance->vk.alloc, pAllocator, sizeof(*device), 8, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
    if (!device)
-      return vk_error(pdev->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
+      return vk_error(instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    result = vk_device_init(&device->vk, &pdev->vk, NULL, pCreateInfo, pAllocator);
    if (result != VK_SUCCESS) {
@@ -721,7 +725,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
     * from the descriptor set anymore, so we have to use a global BO list.
     */
    device->use_global_bo_list =
-      (pdev->instance->perftest_flags & RADV_PERFTEST_BO_LIST) || device->vk.enabled_features.bufferDeviceAddress ||
+      (instance->perftest_flags & RADV_PERFTEST_BO_LIST) || device->vk.enabled_features.bufferDeviceAddress ||
       device->vk.enabled_features.descriptorIndexing || device->vk.enabled_extensions.EXT_descriptor_indexing ||
       device->vk.enabled_extensions.EXT_buffer_device_address ||
       device->vk.enabled_extensions.KHR_buffer_device_address ||
@@ -738,7 +742,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    device->overallocation_disallowed = overallocation_disallowed;
    mtx_init(&device->overallocation_mutex, mtx_plain);
 
-   if (pdev->info.register_shadowing_required || pdev->instance->debug_flags & RADV_DEBUG_SHADOW_REGS)
+   if (pdev->info.register_shadowing_required || instance->debug_flags & RADV_DEBUG_SHADOW_REGS)
       device->uses_shadow_regs = true;
 
    /* Create one context per queue priority. */
@@ -781,22 +785,22 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    }
    device->private_sdma_queue = VK_NULL_HANDLE;
 
-   device->shader_use_invisible_vram = (pdev->instance->perftest_flags & RADV_PERFTEST_DMA_SHADERS) &&
+   device->shader_use_invisible_vram = (instance->perftest_flags & RADV_PERFTEST_DMA_SHADERS) &&
                                        /* SDMA buffer copy is only implemented for GFX7+. */
                                        pdev->info.gfx_level >= GFX7;
    result = radv_init_shader_upload_queue(device);
    if (result != VK_SUCCESS)
       goto fail;
 
-   device->pbb_allowed = pdev->info.gfx_level >= GFX9 && !(pdev->instance->debug_flags & RADV_DEBUG_NOBINNING);
+   device->pbb_allowed = pdev->info.gfx_level >= GFX9 && !(instance->debug_flags & RADV_DEBUG_NOBINNING);
 
-   device->disable_trunc_coord = pdev->instance->drirc.disable_trunc_coord;
+   device->disable_trunc_coord = instance->drirc.disable_trunc_coord;
 
-   if (pdev->instance->vk.app_info.engine_name && !strcmp(pdev->instance->vk.app_info.engine_name, "DXVK")) {
+   if (instance->vk.app_info.engine_name && !strcmp(instance->vk.app_info.engine_name, "DXVK")) {
       /* For DXVK 2.3.0 and older, use dualSrcBlend to determine if this is D3D9. */
       bool is_d3d9 = !device->vk.enabled_features.dualSrcBlend;
-      if (pdev->instance->vk.app_info.engine_version > VK_MAKE_VERSION(2, 3, 0))
-         is_d3d9 = pdev->instance->vk.app_info.app_version & 0x1;
+      if (instance->vk.app_info.engine_version > VK_MAKE_VERSION(2, 3, 0))
+         is_d3d9 = instance->vk.app_info.app_version & 0x1;
 
       device->disable_trunc_coord &= !is_d3d9;
    }
@@ -856,12 +860,12 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
       /* Wait for idle after every draw/dispatch to identify the
        * first bad call.
        */
-      pdev->instance->debug_flags |= RADV_DEBUG_SYNC_SHADERS;
+      instance->debug_flags |= RADV_DEBUG_SYNC_SHADERS;
 
       radv_dump_enabled_options(device, stderr);
    }
 
-   if (pdev->instance->vk.trace_mode & RADV_TRACE_MODE_RGP) {
+   if (instance->vk.trace_mode & RADV_TRACE_MODE_RGP) {
       if (pdev->info.gfx_level < GFX8 || pdev->info.gfx_level > GFX11) {
          fprintf(stderr, "GPU hardware not supported: refer to "
                          "the RGP documentation for the list of "
@@ -878,10 +882,10 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
               "radv: Thread trace support is enabled (initial buffer size: %u MiB, "
               "instruction timing: %s, cache counters: %s, queue events: %s).\n",
               device->sqtt.buffer_size / (1024 * 1024), radv_is_instruction_timing_enabled() ? "enabled" : "disabled",
-              radv_spm_trace_enabled(pdev->instance) ? "enabled" : "disabled",
+              radv_spm_trace_enabled(instance) ? "enabled" : "disabled",
               radv_sqtt_queue_events_enabled() ? "enabled" : "disabled");
 
-      if (radv_spm_trace_enabled(pdev->instance)) {
+      if (radv_spm_trace_enabled(instance)) {
          if (pdev->info.gfx_level >= GFX10) {
             if (!radv_spm_init(device)) {
                result = VK_ERROR_INITIALIZATION_FAILED;
@@ -894,7 +898,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    }
 
 #ifndef _WIN32
-   if (pdev->instance->vk.trace_mode & VK_TRACE_MODE_RMV) {
+   if (instance->vk.trace_mode & VK_TRACE_MODE_RMV) {
       struct vk_rmv_device_info info;
       memset(&info, 0, sizeof(struct vk_rmv_device_info));
       radv_rmv_fill_device_info(pdev, &info);
@@ -980,7 +984,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
       }
    }
 
-   if (!(pdev->instance->debug_flags & RADV_DEBUG_NO_IBS))
+   if (!(instance->debug_flags & RADV_DEBUG_NO_IBS))
       radv_create_gfx_config(device);
 
    struct vk_pipeline_cache_create_info info = {.weak_ref = true};
@@ -1015,7 +1019,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
       }
    }
 
-   if ((pdev->instance->vk.trace_mode & RADV_TRACE_MODE_RRA) && radv_enable_rt(pdev, false)) {
+   if ((instance->vk.trace_mode & RADV_TRACE_MODE_RRA) && radv_enable_rt(pdev, false)) {
       result = radv_rra_trace_init(device);
       if (result != VK_SUCCESS)
          goto fail;
@@ -1029,8 +1033,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    if (result != VK_SUCCESS)
       goto fail_cache;
 
-   if (pdev->info.gfx_level == GFX11 && pdev->info.has_dedicated_vram &&
-       pdev->instance->drirc.force_pstate_peak_gfx11_dgpu) {
+   if (pdev->info.gfx_level == GFX11 && pdev->info.has_dedicated_vram && instance->drirc.force_pstate_peak_gfx11_dgpu) {
       if (!radv_device_acquire_performance_counters(device))
          fprintf(stderr, "radv: failed to set pstate to profile_peak.\n");
    }
@@ -1347,6 +1350,7 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
                               struct radv_image_view *iview)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    const struct util_format_description *desc;
    unsigned ntype, format, swap, endian;
    unsigned blend_clamp = 0, blend_bypass = 0;
@@ -1529,7 +1533,7 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
       }
    }
 
-   if (radv_image_has_cmask(iview->image) && !(pdev->instance->debug_flags & RADV_DEBUG_NO_FAST_CLEARS))
+   if (radv_image_has_cmask(iview->image) && !(instance->debug_flags & RADV_DEBUG_NO_FAST_CLEARS))
       cb->cb_color_info |= S_028C70_FAST_CLEAR(1);
 
    if (radv_dcc_enabled(iview->image, iview->vk.base_mip_level) && !iview->disable_dcc_mrt &&

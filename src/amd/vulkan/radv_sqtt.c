@@ -577,6 +577,7 @@ static bool
 radv_sqtt_init_queue_event(struct radv_device *device)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    VkCommandPool cmd_pool;
    VkResult result;
 
@@ -591,7 +592,7 @@ radv_sqtt_init_queue_event(struct radv_device *device)
 
    device->sqtt_command_pool[0] = vk_command_pool_from_handle(cmd_pool);
 
-   if (!(pdev->instance->debug_flags & RADV_DEBUG_NO_COMPUTE_QUEUE)) {
+   if (!(instance->debug_flags & RADV_DEBUG_NO_COMPUTE_QUEUE)) {
       const VkCommandPoolCreateInfo create_comp_info = {
          .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
          .queueFamilyIndex = RADV_QUEUE_COMPUTE,

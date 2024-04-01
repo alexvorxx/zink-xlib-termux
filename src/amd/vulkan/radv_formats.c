@@ -701,6 +701,7 @@ static void
 radv_physical_device_get_format_properties(struct radv_physical_device *pdev, VkFormat format,
                                            VkFormatProperties3 *out_properties)
 {
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    VkFormatFeatureFlags2 linear = 0, tiled = 0, buffer = 0;
    const struct util_format_description *desc = vk_format_description(format);
    bool blendable;
@@ -747,7 +748,7 @@ radv_physical_device_get_format_properties(struct radv_physical_device *pdev, Vk
             tiling |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT;
       }
 
-      if (pdev->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE) {
+      if (instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE) {
          if (format == VK_FORMAT_G8_B8R8_2PLANE_420_UNORM ||
              format == VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16)
             tiling |= VK_FORMAT_FEATURE_2_VIDEO_DECODE_OUTPUT_BIT_KHR | VK_FORMAT_FEATURE_2_VIDEO_DECODE_DPB_BIT_KHR;
@@ -1148,6 +1149,7 @@ static VkFormatFeatureFlags2
 radv_get_modifier_flags(struct radv_physical_device *pdev, VkFormat format, uint64_t modifier,
                         const VkFormatProperties3 *props)
 {
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    VkFormatFeatureFlags2 features;
 
    if (vk_format_is_compressed(format) || vk_format_is_depth_or_stencil(format))
@@ -1173,7 +1175,7 @@ radv_get_modifier_flags(struct radv_physical_device *pdev, VkFormat format, uint
           radv_is_atomic_format_supported(format))
          features &= ~VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT;
 
-      if (pdev->instance->debug_flags & (RADV_DEBUG_NO_DCC | RADV_DEBUG_NO_DISPLAY_DCC))
+      if (instance->debug_flags & (RADV_DEBUG_NO_DCC | RADV_DEBUG_NO_DISPLAY_DCC))
          return 0;
    }
 
@@ -1672,6 +1674,7 @@ radv_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice,
                                              VkImageFormatProperties2 *base_props)
 {
    RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    const VkPhysicalDeviceExternalImageFormatInfo *external_info = NULL;
    VkExternalImageFormatProperties *external_props = NULL;
    struct VkAndroidHardwareBufferUsageANDROID *android_usage = NULL;
@@ -1771,12 +1774,12 @@ radv_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice,
       image_compression_props->imageCompressionFixedRateFlags = VK_IMAGE_COMPRESSION_FIXED_RATE_NONE_EXT;
 
       if (vk_format_is_depth_or_stencil(format)) {
-         image_compression_props->imageCompressionFlags = (pdev->instance->debug_flags & RADV_DEBUG_NO_HIZ)
+         image_compression_props->imageCompressionFlags = (instance->debug_flags & RADV_DEBUG_NO_HIZ)
                                                              ? VK_IMAGE_COMPRESSION_DISABLED_EXT
                                                              : VK_IMAGE_COMPRESSION_DEFAULT_EXT;
       } else {
          image_compression_props->imageCompressionFlags =
-            ((pdev->instance->debug_flags & RADV_DEBUG_NO_DCC) || pdev->info.gfx_level < GFX8)
+            ((instance->debug_flags & RADV_DEBUG_NO_DCC) || pdev->info.gfx_level < GFX8)
                ? VK_IMAGE_COMPRESSION_DISABLED_EXT
                : VK_IMAGE_COMPRESSION_DEFAULT_EXT;
       }

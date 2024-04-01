@@ -471,6 +471,7 @@ radv_dump_queue_state(struct radv_queue *queue, const char *dump_dir, FILE *f)
 {
    struct radv_device *device = radv_queue_device(queue);
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    enum amd_ip_type ring = radv_queue_ring(queue);
    struct radv_pipeline *pipeline;
 
@@ -509,7 +510,7 @@ radv_dump_queue_state(struct radv_queue *queue, const char *dump_dir, FILE *f)
                           MESA_SHADER_COMPUTE, dump_dir, f);
       }
 
-      if (!(pdev->instance->debug_flags & RADV_DEBUG_NO_UMR)) {
+      if (!(instance->debug_flags & RADV_DEBUG_NO_UMR)) {
          struct ac_wave_info waves[AC_MAX_WAVES_PER_CHIP];
          enum amd_gfx_level gfx_level = pdev->info.gfx_level;
          unsigned num_waves = ac_get_wave_info(gfx_level, &pdev->info, waves);
@@ -597,12 +598,13 @@ void
 radv_dump_enabled_options(const struct radv_device *device, FILE *f)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    uint64_t mask;
 
-   if (pdev->instance->debug_flags) {
+   if (instance->debug_flags) {
       fprintf(f, "Enabled debug options: ");
 
-      mask = pdev->instance->debug_flags;
+      mask = instance->debug_flags;
       while (mask) {
          int i = u_bit_scan64(&mask);
          fprintf(f, "%s, ", radv_get_debug_option_name(i));
@@ -610,10 +612,10 @@ radv_dump_enabled_options(const struct radv_device *device, FILE *f)
       fprintf(f, "\n");
    }
 
-   if (pdev->instance->perftest_flags) {
+   if (instance->perftest_flags) {
       fprintf(f, "Enabled perftest options: ");
 
-      mask = pdev->instance->perftest_flags;
+      mask = instance->perftest_flags;
       while (mask) {
          int i = u_bit_scan64(&mask);
          fprintf(f, "%s, ", radv_get_perftest_option_name(i));
@@ -626,7 +628,7 @@ static void
 radv_dump_app_info(const struct radv_device *device, FILE *f)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
-   const struct radv_instance *instance = pdev->instance;
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    fprintf(f, "Application name: %s\n", instance->vk.app_info.app_name);
    fprintf(f, "Application version: %d\n", instance->vk.app_info.app_version);
@@ -755,6 +757,7 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
 #ifndef _WIN32
    struct radv_device *device = radv_queue_device(queue);
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    const bool save_hang_report = !device->vk.enabled_features.deviceFaultVendorBinary;
    struct radv_winsys_gpuvm_fault_info fault_info = {0};
 
@@ -814,11 +817,11 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
          radv_dump_queue_state(queue, dump_dir, f);
          break;
       case RADV_DEVICE_FAULT_CHUNK_UMR_WAVES:
-         if (!(pdev->instance->debug_flags & RADV_DEBUG_NO_UMR))
+         if (!(instance->debug_flags & RADV_DEBUG_NO_UMR))
             radv_dump_umr_waves(queue, f);
          break;
       case RADV_DEVICE_FAULT_CHUNK_UMR_RING:
-         if (!(pdev->instance->debug_flags & RADV_DEBUG_NO_UMR))
+         if (!(instance->debug_flags & RADV_DEBUG_NO_UMR))
             radv_dump_umr_ring(queue, f);
          break;
       case RADV_DEVICE_FAULT_CHUNK_REGISTERS:
@@ -1098,6 +1101,7 @@ radv_GetDeviceFaultInfoEXT(VkDevice _device, VkDeviceFaultCountsEXT *pFaultCount
    struct radv_winsys_gpuvm_fault_info fault_info = {0};
    RADV_FROM_HANDLE(radv_device, device, _device);
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    bool vm_fault_occurred = false;
 
    /* Query if a GPUVM fault happened. */
@@ -1117,10 +1121,10 @@ radv_GetDeviceFaultInfoEXT(VkDevice _device, VkDeviceFaultCountsEXT *pFaultCount
       hdr.driverVersion = pdev->vk.properties.driverVersion;
       memcpy(hdr.pipelineCacheUUID, pdev->cache_uuid, VK_UUID_SIZE);
       hdr.applicationNameOffset = 0;
-      hdr.applicationVersion = pdev->instance->vk.app_info.app_version;
+      hdr.applicationVersion = instance->vk.app_info.app_version;
       hdr.engineNameOffset = 0;
-      hdr.engineVersion = pdev->instance->vk.app_info.engine_version;
-      hdr.apiVersion = pdev->instance->vk.app_info.api_version;
+      hdr.engineVersion = instance->vk.app_info.engine_version;
+      hdr.apiVersion = instance->vk.app_info.api_version;
 
       pFaultCounts->vendorBinarySize = sizeof(hdr) + strlen(device->gpu_hang_report);
       if (pFaultInfo) {

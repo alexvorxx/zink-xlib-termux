@@ -1736,6 +1736,7 @@ radv_CmdCopyQueryPoolResults(VkCommandBuffer commandBuffer, VkQueryPool queryPoo
    RADV_FROM_HANDLE(radv_buffer, dst_buffer, dstBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
    uint64_t va = radv_buffer_get_va(pool->bo);
    uint64_t dest_va = radv_buffer_get_va(dst_buffer->bo);
@@ -1751,7 +1752,7 @@ radv_CmdCopyQueryPoolResults(VkCommandBuffer commandBuffer, VkQueryPool queryPoo
    /* Workaround engines that forget to properly specify WAIT_BIT because some driver implicitly
     * synchronizes before query copy.
     */
-   if (pdev->instance->drirc.flush_before_query_copy)
+   if (instance->drirc.flush_before_query_copy)
       cmd_buffer->state.flush_bits |= cmd_buffer->active_query_flush_bits;
 
    /* From the Vulkan spec 1.1.108:
@@ -2599,6 +2600,7 @@ radv_CmdWriteTimestamp2(VkCommandBuffer commandBuffer, VkPipelineStageFlags2 sta
    RADV_FROM_HANDLE(radv_query_pool, pool, queryPool);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    const unsigned num_queries = MAX2(util_bitcount(cmd_buffer->state.render.view_mask), 1);
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
    const uint64_t va = radv_buffer_get_va(pool->bo);
@@ -2607,7 +2609,7 @@ radv_CmdWriteTimestamp2(VkCommandBuffer commandBuffer, VkPipelineStageFlags2 sta
    radv_cs_add_buffer(device->ws, cs, pool->bo);
 
    if (cmd_buffer->qf == RADV_QUEUE_TRANSFER) {
-      if (pdev->instance->drirc.flush_before_timestamp_write) {
+      if (instance->drirc.flush_before_timestamp_write) {
          radeon_check_space(device->ws, cmd_buffer->cs, 1);
          radeon_emit(cmd_buffer->cs, SDMA_PACKET(SDMA_OPCODE_NOP, 0, 0));
       }
@@ -2621,7 +2623,7 @@ radv_CmdWriteTimestamp2(VkCommandBuffer commandBuffer, VkPipelineStageFlags2 sta
       return;
    }
 
-   if (pdev->instance->drirc.flush_before_timestamp_write) {
+   if (instance->drirc.flush_before_timestamp_write) {
       /* Make sure previously launched waves have finished */
       cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_PS_PARTIAL_FLUSH | RADV_CMD_FLAG_CS_PARTIAL_FLUSH;
    }

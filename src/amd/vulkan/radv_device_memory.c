@@ -196,6 +196,7 @@ radv_alloc_memory(struct radv_device *device, const VkMemoryAllocateInfo *pAlloc
       }
    } else {
       const struct radv_physical_device *pdev = radv_device_physical(device);
+      const struct radv_instance *instance = radv_physical_device_instance(pdev);
       uint64_t alloc_size = align_u64(pAllocateInfo->allocationSize, 4096);
       uint32_t heap_index;
 
@@ -223,7 +224,7 @@ radv_alloc_memory(struct radv_device *device, const VkMemoryAllocateInfo *pAlloc
       if (flags_info && flags_info->flags & VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT)
          flags |= RADEON_FLAG_REPLAYABLE;
 
-      if (pdev->instance->drirc.zero_vram)
+      if (instance->drirc.zero_vram)
          flags |= RADEON_FLAG_ZERO_VRAM;
 
       if (device->overallocation_disallowed) {

@@ -2223,12 +2223,6 @@ void radv_unaligned_dispatch(struct radv_cmd_buffer *cmd_buffer, uint32_t x, uin
 
 void radv_indirect_dispatch(struct radv_cmd_buffer *cmd_buffer, struct radeon_winsys_bo *bo, uint64_t va);
 
-struct radv_event {
-   struct vk_object_base base;
-   struct radeon_winsys_bo *bo;
-   uint64_t *map;
-};
-
 struct radv_ray_tracing_group;
 
 void radv_pipeline_stage_init(const VkPipelineShaderStageCreateInfo *sinfo, const struct radv_pipeline_layout *layout,
@@ -3233,8 +3227,6 @@ VkResult radv_create_buffer(struct radv_device *device, const VkBufferCreateInfo
                             const VkAllocationCallbacks *pAllocator, VkBuffer *pBuffer, bool is_internal);
 VkResult radv_alloc_memory(struct radv_device *device, const VkMemoryAllocateInfo *pAllocateInfo,
                            const VkAllocationCallbacks *pAllocator, VkDeviceMemory *pMem, bool is_internal);
-VkResult radv_create_event(struct radv_device *device, const VkEventCreateInfo *pCreateInfo,
-                           const VkAllocationCallbacks *pAllocator, VkEvent *pEvent, bool is_internal);
 
 /* radv_sqtt_layer_.c */
 struct radv_barrier_data {
@@ -3844,7 +3836,6 @@ VK_DEFINE_HANDLE_CASTS(radv_queue, vk.base, VkQueue, VK_OBJECT_TYPE_QUEUE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_buffer, vk.base, VkBuffer, VK_OBJECT_TYPE_BUFFER)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_buffer_view, vk.base, VkBufferView, VK_OBJECT_TYPE_BUFFER_VIEW)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_device_memory, base, VkDeviceMemory, VK_OBJECT_TYPE_DEVICE_MEMORY)
-VK_DEFINE_NONDISP_HANDLE_CASTS(radv_event, base, VkEvent, VK_OBJECT_TYPE_EVENT)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_image, vk.base, VkImage, VK_OBJECT_TYPE_IMAGE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_image_view, vk.base, VkImageView, VK_OBJECT_TYPE_IMAGE_VIEW);
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_indirect_command_layout, base, VkIndirectCommandsLayoutNV,

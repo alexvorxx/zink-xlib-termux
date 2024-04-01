@@ -28,6 +28,7 @@
 #include "meta/radv_meta.h"
 #include "radv_cs.h"
 #include "radv_debug.h"
+#include "radv_event.h"
 #include "radv_private.h"
 #include "radv_radeon_winsys.h"
 #include "radv_shader.h"

@@ -31,6 +31,7 @@
 #include "radv_device_memory.h"
 #include "radv_image.h"
 #include "radv_image_view.h"
+#include "radv_physical_device.h"
 #include "radv_private.h"
 #include "radv_queue.h"
 #include "radv_shader.h"

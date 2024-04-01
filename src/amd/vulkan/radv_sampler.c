@@ -27,7 +27,7 @@
 
 #include "radv_private.h"
 
-#include "vk_sampler.h"
+#include "radv_sampler.h"
 
 static unsigned
 radv_tex_wrap(VkSamplerAddressMode address_mode)

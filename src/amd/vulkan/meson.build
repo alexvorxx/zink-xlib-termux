@@ -137,6 +137,7 @@ libradv_files = files(
   'radv_rmv.c',
   'radv_rra.c',
   'radv_sampler.c',
+  'radv_sampler.h',
   'radv_sdma.c',
   'radv_sdma.h',
   'radv_shader.c',

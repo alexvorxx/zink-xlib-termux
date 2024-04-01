@@ -68,7 +68,6 @@
 #include "vk_physical_device.h"
 #include "vk_query_pool.h"
 #include "vk_queue.h"
-#include "vk_sampler.h"
 #include "vk_shader_module.h"
 #include "vk_texcompress_astc.h"
 #include "vk_texcompress_etc2.h"
@@ -3073,12 +3072,6 @@ radv_image_extent_compare(const struct radv_image *image, const VkExtent3D *exte
    return true;
 }
 
-struct radv_sampler {
-   struct vk_sampler vk;
-   uint32_t state[4];
-   uint32_t border_color_slot;
-};
-
 struct radv_resolve_barrier {
    VkPipelineStageFlags2 src_stage_mask;
    VkPipelineStageFlags2 dst_stage_mask;
@@ -3858,7 +3851,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(radv_indirect_command_layout, base, VkIndirectCom
                                VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NV)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_pipeline, base, VkPipeline, VK_OBJECT_TYPE_PIPELINE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_query_pool, vk.base, VkQueryPool, VK_OBJECT_TYPE_QUERY_POOL)
-VK_DEFINE_NONDISP_HANDLE_CASTS(radv_sampler, vk.base, VkSampler, VK_OBJECT_TYPE_SAMPLER)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_shader_object, base, VkShaderEXT, VK_OBJECT_TYPE_SHADER_EXT);
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_video_session, vk.base, VkVideoSessionKHR, VK_OBJECT_TYPE_VIDEO_SESSION_KHR)

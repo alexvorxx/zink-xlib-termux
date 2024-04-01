@@ -28,6 +28,7 @@
 
 #include "util/mesa-sha1.h"
 #include "radv_private.h"
+#include "radv_sampler.h"
 #include "sid.h"
 #include "vk_acceleration_structure.h"
 #include "vk_descriptors.h"

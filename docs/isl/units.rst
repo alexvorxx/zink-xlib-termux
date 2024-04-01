@@ -51,11 +51,11 @@ The next unit in ISL's repertoire is **samples**.  In a multisampled surface,
 each pixel corresponds to some number of samples given by
 :c:member:`isl_surf.samples`.  The exact layout of the samples depends on
 the value of :c:member:`isl_surf.msaa_layout`.  If the layout is
-:c:enumerator:`ISL_MSAA_LAYOUT_ARRAY` then each logical array in the surface
-corresponds to :c:member:`isl_surf.samples` actual slices
+:c:enumerator:`isl_msaa_layout.ISL_MSAA_LAYOUT_ARRAY` then each logical array in
+the surface corresponds to :c:member:`isl_surf.samples` actual slices
 in the resulting surface, one per array slice.  If the layout is
-:c:enumerator:`ISL_MSAA_LAYOUT_INTERLEAVED` then each pixel corresponds to a
-2x1, 2x2, 4x2, or 4x4 grid of samples.  In order to aid in calculations, one of
+:c:enumerator:`isl_msaa_layout.ISL_MSAA_LAYOUT_INTERLEAVED` then each pixel corresponds
+to a 2x1, 2x2, 4x2, or 4x4 grid of samples.  In order to aid in calculations, one of
 the first things ISL does is to compute :c:member:`isl_surf.phys_level0_sa`
 which gives the dimensions of the base miplevel of the surface in samples.  The
 type of :c:member:`isl_surf.phys_level0_sa` is :c:struct:`isl_extent4d`

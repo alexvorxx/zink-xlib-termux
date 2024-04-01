@@ -35,6 +35,7 @@
 #include "vulkan/vulkan_core.h"
 #include "radv_cs.h"
 #include "radv_private.h"
+#include "radv_query.h"
 #include "sid.h"
 #include "vk_acceleration_structure.h"
 #include "vk_common_entrypoints.h"

@@ -63,7 +63,6 @@
 #include "vk_instance.h"
 #include "vk_log.h"
 #include "vk_physical_device.h"
-#include "vk_query_pool.h"
 #include "vk_queue.h"
 #include "vk_shader_module.h"
 #include "vk_texcompress_astc.h"
@@ -83,6 +82,7 @@
 #include "ac_vcn.h"
 #include "radv_constants.h"
 #include "radv_descriptor_set.h"
+#include "radv_query.h"
 #include "radv_radeon_winsys.h"
 #include "radv_shader.h"
 #include "radv_shader_args.h"
@@ -2104,8 +2104,6 @@ enum radv_cmd_flush_bits radv_src_access_flush(struct radv_cmd_buffer *cmd_buffe
 enum radv_cmd_flush_bits radv_dst_access_flush(struct radv_cmd_buffer *cmd_buffer, VkAccessFlags2 dst_flags,
                                                const struct radv_image *image);
 
-void radv_write_timestamp(struct radv_cmd_buffer *cmd_buffer, uint64_t va, VkPipelineStageFlags2 stage);
-
 void radv_cmd_buffer_trace_emit(struct radv_cmd_buffer *cmd_buffer);
 
 void radv_cmd_buffer_annotate(struct radv_cmd_buffer *cmd_buffer, const char *annotation);
@@ -2627,17 +2625,6 @@ struct radv_resolve_barrier {
 };
 
 void radv_emit_resolve_barrier(struct radv_cmd_buffer *cmd_buffer, const struct radv_resolve_barrier *barrier);
-
-struct radv_query_pool {
-   struct vk_query_pool vk;
-   struct radeon_winsys_bo *bo;
-   uint32_t stride;
-   uint32_t availability_offset;
-   uint64_t size;
-   char *ptr;
-   bool uses_gds; /* For NGG GS on GFX10+ */
-   bool uses_ace; /* For task shader invocations on GFX10.3+ */
-};
 
 struct radv_perfcounter_impl;
 
@@ -3353,7 +3340,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(radv_device_memory, base, VkDeviceMemory, VK_OBJE
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_indirect_command_layout, base, VkIndirectCommandsLayoutNV,
                                VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NV)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_pipeline, base, VkPipeline, VK_OBJECT_TYPE_PIPELINE)
-VK_DEFINE_NONDISP_HANDLE_CASTS(radv_query_pool, vk.base, VkQueryPool, VK_OBJECT_TYPE_QUERY_POOL)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_shader_object, base, VkShaderEXT, VK_OBJECT_TYPE_SHADER_EXT);
 
 static inline uint64_t

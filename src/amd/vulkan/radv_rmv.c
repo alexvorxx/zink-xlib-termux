@@ -34,6 +34,7 @@
 #include "radv_event.h"
 #include "radv_image.h"
 #include "radv_private.h"
+#include "radv_query.h"
 
 #define RADV_FTRACE_INSTANCE_PATH "/sys/kernel/tracing/instances/amd_rmv"
 

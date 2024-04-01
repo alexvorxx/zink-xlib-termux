@@ -154,6 +154,7 @@ libradv_files = files(
   'radv_spm.c',
   'radv_sqtt.c',
   'radv_query.c',
+  'radv_query.h',
   'radv_video.c',
   'radv_video.h',
   'radv_wsi.c',

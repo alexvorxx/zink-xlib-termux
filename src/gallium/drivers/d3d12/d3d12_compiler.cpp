@@ -1020,7 +1020,8 @@ d3d12_fill_shader_key(struct d3d12_selection_context *sel_ctx,
          }
       }
       key->next_varying_inputs = next->current->nir->info.inputs_read;
-
+      if (BITSET_TEST(next->current->nir->info.system_values_read, SYSTEM_VALUE_PRIMITIVE_ID))
+         key->next_varying_inputs |= VARYING_SLOT_PRIMITIVE_ID;
    }
 
    if (stage == PIPE_SHADER_GEOMETRY ||

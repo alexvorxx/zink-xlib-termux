@@ -21,6 +21,7 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_device.h"
 #include "radv_private.h"
 
 VKAPI_ATTR VkResult VKAPI_CALL

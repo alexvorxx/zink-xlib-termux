@@ -21,6 +21,7 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_device.h"
 #include "radv_private.h"
 #include "vk_common_entrypoints.h"
 #include "vk_framebuffer.h"

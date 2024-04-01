@@ -39,7 +39,6 @@
 #include "etnaviv_uniforms.h"
 #include "etnaviv_util.h"
 #include "etnaviv_zsa.h"
-#include "hw/common.xml.h"
 #include "hw/state.xml.h"
 #include "hw/state_blt.xml.h"
 #include "util/u_math.h"
@@ -519,7 +518,7 @@ etna_emit_state(struct etna_context *ctx)
       }
    }
    if (unlikely(dirty & (ETNA_DIRTY_BLEND_COLOR)) &&
-       VIV_FEATURE(screen, chipMinorFeatures1, HALF_FLOAT)) {
+       VIV_FEATURE(screen, ETNA_FEATURE_HALF_FLOAT)) {
          /*014B0*/ EMIT_STATE(PE_ALPHA_COLOR_EXT0, ctx->blend_color.PE_ALPHA_COLOR_EXT0);
          /*014B4*/ EMIT_STATE(PE_ALPHA_COLOR_EXT1, ctx->blend_color.PE_ALPHA_COLOR_EXT1);
    }

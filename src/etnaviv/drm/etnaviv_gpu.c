@@ -27,6 +27,8 @@
 #include "etnaviv_priv.h"
 #include "etnaviv_drmif.h"
 
+#include "hwdb/etna_hwdb.h"
+
 #include "hw/common.xml.h"
 
 /* Enum with indices for each of the feature words */
@@ -163,6 +165,7 @@ static uint64_t get_param(struct etna_device *dev, uint32_t core, uint32_t param
 struct etna_gpu *etna_gpu_new(struct etna_device *dev, unsigned int core)
 {
 	struct etna_gpu *gpu;
+	bool core_info_okay = false;
 
 	gpu = calloc(1, sizeof(*gpu));
 	if (!gpu) {
@@ -185,9 +188,13 @@ struct etna_gpu *etna_gpu_new(struct etna_device *dev, unsigned int core)
 		gpu->info.product_id = get_param(dev, core, ETNAVIV_PARAM_GPU_PRODUCT_ID);
 		gpu->info.customer_id = get_param(dev, core, ETNAVIV_PARAM_GPU_CUSTOMER_ID);
 		gpu->info.eco_id = get_param(dev, core, ETNAVIV_PARAM_GPU_ECO_ID);
+
+		core_info_okay = etna_query_feature_db(&gpu->info);
+		DEBUG_MSG(" Found entry in hwdb: %u\n", core_info_okay);
 	}
 
-	query_features_from_kernel(gpu);
+	if (!core_info_okay)
+		query_features_from_kernel(gpu);
 
 	return gpu;
 fail:

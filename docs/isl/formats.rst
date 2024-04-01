@@ -73,7 +73,7 @@ must be careful to pay attention to the enum in question in order to avoid
 getting them backwards.
 
 From an API perspective, both types of formats are available.  In Vulkan, the
-formats that are of the form :c:enumerator:`VK_FORMAT_xxx_PACKEDn` are packed
+formats that are of the form ``VK_FORMAT_xxx_PACKEDn`` are packed
 formats where the entire color fits in `n` bits and formats without the
 `_PACKEDn` suffix are array formats.  In GL, if you specify one of the
 base types such as :c:enumerator:`GL_FLOAT` you get an array format but if you

@@ -1069,7 +1069,7 @@ etna_get_specs(struct etna_screen *screen)
     */
    if (!VIV_FEATURE(screen, ETNA_FEATURE_MC20) &&
        !VIV_FEATURE(screen, ETNA_FEATURE_MMU_VERSION))
-      screen->features[viv_chipFeatures] &= ~chipFeatures_FAST_CLEAR;
+      etna_core_disable_feature(screen->info, ETNA_FEATURE_FAST_CLEAR);
 
    return true;
 
@@ -1130,7 +1130,6 @@ etna_screen_create(struct etna_device *dev, struct etna_gpu *gpu,
 {
    struct etna_screen *screen = CALLOC_STRUCT(etna_screen);
    struct pipe_screen *pscreen;
-   uint64_t val;
 
    if (!screen)
       return NULL;
@@ -1153,84 +1152,6 @@ etna_screen_create(struct etna_device *dev, struct etna_gpu *gpu,
       goto fail;
    }
 
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_FEATURES_0, &val)) {
-      DBG("could not get ETNA_GPU_FEATURES_0");
-      goto fail;
-   }
-   screen->features[0] = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_FEATURES_1, &val)) {
-      DBG("could not get ETNA_GPU_FEATURES_1");
-      goto fail;
-   }
-   screen->features[1] = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_FEATURES_2, &val)) {
-      DBG("could not get ETNA_GPU_FEATURES_2");
-      goto fail;
-   }
-   screen->features[2] = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_FEATURES_3, &val)) {
-      DBG("could not get ETNA_GPU_FEATURES_3");
-      goto fail;
-   }
-   screen->features[3] = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_FEATURES_4, &val)) {
-      DBG("could not get ETNA_GPU_FEATURES_4");
-      goto fail;
-   }
-   screen->features[4] = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_FEATURES_5, &val)) {
-      DBG("could not get ETNA_GPU_FEATURES_5");
-      goto fail;
-   }
-   screen->features[5] = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_FEATURES_6, &val)) {
-      DBG("could not get ETNA_GPU_FEATURES_6");
-      goto fail;
-   }
-   screen->features[6] = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_FEATURES_7, &val)) {
-      DBG("could not get ETNA_GPU_FEATURES_7");
-      goto fail;
-   }
-   screen->features[7] = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_FEATURES_8, &val)) {
-      DBG("could not get ETNA_GPU_FEATURES_8");
-      goto fail;
-   }
-   screen->features[8] = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_FEATURES_9, &val)) {
-      DBG("could not get ETNA_GPU_FEATURES_9");
-      goto fail;
-   }
-   screen->features[9] = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_FEATURES_10, &val)) {
-      DBG("could not get ETNA_GPU_FEATURES_10");
-      goto fail;
-   }
-   screen->features[10] = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_FEATURES_11, &val)) {
-      DBG("could not get ETNA_GPU_FEATURES_11");
-      goto fail;
-   }
-   screen->features[11] = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_FEATURES_12, &val)) {
-      DBG("could not get ETNA_GPU_FEATURES_12");
-      goto fail;
-   }
-   screen->features[12] = val;
-
    if (!etna_get_specs(screen))
       goto fail;
 
@@ -1241,17 +1162,17 @@ etna_screen_create(struct etna_device *dev, struct etna_gpu *gpu,
 
    /* apply debug options that disable individual features */
    if (DBG_ENABLED(ETNA_DBG_NO_EARLY_Z))
-      screen->features[viv_chipFeatures] |= chipFeatures_NO_EARLY_Z;
+      etna_core_disable_feature(screen->info, ETNA_FEATURE_NO_EARLY_Z);
    if (DBG_ENABLED(ETNA_DBG_NO_TS))
-         screen->features[viv_chipFeatures] &= ~chipFeatures_FAST_CLEAR;
+      etna_core_disable_feature(screen->info, ETNA_FEATURE_FAST_CLEAR);
    if (DBG_ENABLED(ETNA_DBG_NO_AUTODISABLE))
-      screen->features[viv_chipMinorFeatures1] &= ~chipMinorFeatures1_AUTO_DISABLE;
+      etna_core_disable_feature(screen->info, ETNA_FEATURE_AUTO_DISABLE);
    if (DBG_ENABLED(ETNA_DBG_NO_SUPERTILE))
       screen->specs.can_supertile = 0;
    if (DBG_ENABLED(ETNA_DBG_NO_SINGLEBUF))
       screen->specs.single_buffer = 0;
    if (!DBG_ENABLED(ETNA_DBG_LINEAR_PE))
-      screen->features[viv_chipMinorFeatures2] &= ~chipMinorFeatures2_LINEAR_PE;
+      etna_core_disable_feature(screen->info, ETNA_FEATURE_LINEAR_PE);
 
    pscreen->destroy = etna_screen_destroy;
    pscreen->get_screen_fd = etna_screen_get_fd;

@@ -124,8 +124,8 @@ etna_screen_get_name(struct pipe_screen *pscreen)
    struct etna_screen *priv = etna_screen(pscreen);
    static char buffer[128];
 
-   snprintf(buffer, sizeof(buffer), "Vivante GC%x rev %04x", priv->model,
-            priv->revision);
+   snprintf(buffer, sizeof(buffer), "Vivante GC%x rev %04x", priv->info->model,
+            priv->info->revision);
 
    return buffer;
 }
@@ -794,15 +794,15 @@ etna_determine_uniform_limits(struct etna_screen *screen)
     * gcmCONFIGUREUNIFORMS in the Vivante kernel driver file
     * drivers/mxc/gpu-viv/hal/kernel/inc/gc_hal_base.h.
     */
-   if (screen->model == chipModel_GC2000 &&
-       (screen->revision == 0x5118 || screen->revision == 0x5140)) {
+   if (screen->info->model == chipModel_GC2000 &&
+       (screen->info->revision == 0x5118 || screen->info->revision == 0x5140)) {
       screen->specs.max_vs_uniforms = 256;
       screen->specs.max_ps_uniforms = 64;
    } else if (screen->specs.num_constants == 320) {
       screen->specs.max_vs_uniforms = 256;
       screen->specs.max_ps_uniforms = 64;
    } else if (screen->specs.num_constants > 256 &&
-              screen->model == chipModel_GC1000) {
+              screen->info->model == chipModel_GC1000) {
       /* All GC1000 series chips can only support 64 uniforms for ps on non-unified const mode. */
       screen->specs.max_vs_uniforms = 256;
       screen->specs.max_ps_uniforms = 64;
@@ -832,7 +832,7 @@ etna_determine_sampler_limits(struct etna_screen *screen)
       screen->specs.vertex_sampler_count = 4;
    }
 
-   if (screen->model == 0x400)
+   if (screen->info->model == 0x400)
       screen->specs.vertex_sampler_count = 0;
 }
 
@@ -963,13 +963,13 @@ etna_get_specs(struct etna_screen *screen)
       screen->specs.bits_per_tile == 4 ? 0x11111111 : 0x55555555;
 
    screen->specs.vs_need_z_div =
-      screen->model < 0x1000 && screen->model != 0x880;
+      screen->info->model < 0x1000 && screen->info->model != 0x880;
    screen->specs.has_sin_cos_sqrt =
       VIV_FEATURE(screen, chipMinorFeatures0, HAS_SQRT_TRIG);
    screen->specs.has_sign_floor_ceil =
       VIV_FEATURE(screen, chipMinorFeatures0, HAS_SIGN_FLOOR_CEIL);
    screen->specs.has_shader_range_registers =
-      screen->model >= 0x1000 || screen->model == 0x880;
+      screen->info->model >= 0x1000 || screen->info->model == 0x880;
    screen->specs.npot_tex_any_wrap =
       VIV_FEATURE(screen, chipMinorFeatures1, NON_POWER_OF_TWO);
    screen->specs.has_new_transcendentals =
@@ -981,7 +981,7 @@ etna_get_specs(struct etna_screen *screen)
    screen->specs.v4_compression =
       VIV_FEATURE(screen, chipMinorFeatures6, V4_COMPRESSION);
    screen->specs.seamless_cube_map =
-      (screen->model != 0x880) && /* Seamless cubemap is broken on GC880? */
+      (screen->info->model != 0x880) && /* Seamless cubemap is broken on GC880? */
       VIV_FEATURE(screen, chipMinorFeatures2, SEAMLESS_CUBE_MAP);
 
    if (screen->specs.halti >= 5) {
@@ -1140,6 +1140,7 @@ etna_screen_create(struct etna_device *dev, struct etna_gpu *gpu,
    screen->dev = dev;
    screen->gpu = gpu;
    screen->ro = ro;
+   screen->info = etna_gpu_get_core_info(gpu);
 
    screen->drm_version = etnaviv_device_version(screen->dev);
    etna_mesa_debug = debug_get_option_etna_mesa_debug();
@@ -1152,18 +1153,6 @@ etna_screen_create(struct etna_device *dev, struct etna_gpu *gpu,
       DBG("could not create 3d pipe");
       goto fail;
    }
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_MODEL, &val)) {
-      DBG("could not get ETNA_GPU_MODEL");
-      goto fail;
-   }
-   screen->model = val;
-
-   if (etna_gpu_get_param(screen->gpu, ETNA_GPU_REVISION, &val)) {
-      DBG("could not get ETNA_GPU_REVISION");
-      goto fail;
-   }
-   screen->revision = val;
 
    if (etna_gpu_get_param(screen->gpu, ETNA_GPU_FEATURES_0, &val)) {
       DBG("could not get ETNA_GPU_FEATURES_0");

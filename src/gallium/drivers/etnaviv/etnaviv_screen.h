@@ -28,6 +28,7 @@
 #ifndef H_ETNAVIV_SCREEN
 #define H_ETNAVIV_SCREEN
 
+#include "etna_core_info.h"
 #include "etnaviv_internal.h"
 #include "etnaviv_perfmon.h"
 
@@ -81,8 +82,7 @@ struct etna_screen {
    struct util_dynarray supported_pm_queries;
    struct slab_parent_pool transfer_pool;
 
-   uint32_t model;
-   uint32_t revision;
+   struct etna_core_info *info;
    uint32_t features[VIV_FEATURES_WORD_COUNT];
 
    struct etna_specs specs;

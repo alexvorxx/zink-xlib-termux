@@ -1185,9 +1185,13 @@ lvp_physical_device_init(struct lvp_physical_device *device,
    device->max_images = device->pscreen->get_shader_param(device->pscreen, MESA_SHADER_FRAGMENT, PIPE_SHADER_CAP_MAX_SHADER_IMAGES);
    device->vk.supported_extensions = lvp_device_extensions_supported;
 #ifdef HAVE_LIBDRM
+   int dmabuf_bits = DRM_PRIME_CAP_EXPORT | DRM_PRIME_CAP_IMPORT;
+   int supported_dmabuf_bits = device->pscreen->get_param(device->pscreen, PIPE_CAP_DMABUF);
    /* if import or export is supported then EXT_external_memory_dma_buf is supported */
-   if (device->pscreen->get_param(device->pscreen, PIPE_CAP_DMABUF))
+   if (supported_dmabuf_bits)
       device->vk.supported_extensions.EXT_external_memory_dma_buf = true;
+   if ((supported_dmabuf_bits & dmabuf_bits) == dmabuf_bits)
+      device->vk.supported_extensions.EXT_image_drm_format_modifier = true;
 #endif
 
    lvp_get_features(device, &device->vk.supported_features);

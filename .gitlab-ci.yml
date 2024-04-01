@@ -89,6 +89,8 @@ variables:
   PYTHONPATH: "$PYTHONPATH:$CI_PROJECT_DIR/install"
   # Drop once deqp-runner is upgraded to > 0.18.0
   MESA_VK_ABORT_ON_DEVICE_LOSS: 1
+  # Avoid the wall of "Unsupported SPIR-V capability" warnings in CI job log, hiding away useful output
+  MESA_SPIRV_LOG_LEVEL: error
 
 default:
   before_script:

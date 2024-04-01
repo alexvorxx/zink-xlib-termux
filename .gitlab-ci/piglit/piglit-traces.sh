@@ -54,7 +54,7 @@ if [ -n "${VK_DRIVER}" ]; then
   export DXVK_LOG="$RESULTS/dxvk"
   [ -d "$DXVK_LOG" ] || mkdir -pv "$DXVK_LOG"
   export DXVK_STATE_CACHE=0
-  export VK_ICD_FILENAMES="$INSTALL/share/vulkan/icd.d/${VK_DRIVER}_icd.${VK_CPU:-$(uname -m)}.json"
+  export VK_DRIVER_FILES="$INSTALL/share/vulkan/icd.d/${VK_DRIVER}_icd.${VK_CPU:-$(uname -m)}.json"
 fi
 
 # Sanity check to ensure that our environment is sufficient to make our tests
@@ -117,7 +117,7 @@ else
       mkdir -p /tmp/.X11-unix
 
       env \
-        VK_ICD_FILENAMES="/install/share/vulkan/icd.d/${VK_DRIVER}_icd.$(uname -m).json" \
+        VK_DRIVER_FILES="/install/share/vulkan/icd.d/${VK_DRIVER}_icd.$(uname -m).json" \
 	weston -Bheadless-backend.so --use-gl -Swayland-0 --xwayland --idle-time=0 &
 
       while [ ! -S "$WESTON_X11_SOCK" ]; do sleep 1; done

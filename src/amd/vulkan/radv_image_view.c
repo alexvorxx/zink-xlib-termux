@@ -25,6 +25,7 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_buffer_view.h"
 #include "radv_formats.h"
 #include "radv_private.h"
 

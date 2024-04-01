@@ -107,6 +107,7 @@ libradv_files = files(
   'radv_android.c',
   'radv_buffer.c',
   'radv_buffer_view.c',
+  'radv_buffer_view.h',
   'radv_cmd_buffer.c',
   'radv_cp_reg_shadowing.c',
   'radv_cs.h',

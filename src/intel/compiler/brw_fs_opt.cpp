@@ -39,8 +39,6 @@ brw_fs_optimize(fs_visitor &s)
    s.assign_constant_locations();
    OPT(brw_fs_lower_constant_loads);
 
-   s.validate();
-
    if (s.compiler->lower_dpas)
       OPT(brw_fs_lower_dpas);
 
@@ -157,8 +155,6 @@ brw_fs_optimize(fs_visitor &s)
    OPT(brw_fs_lower_uniform_pull_constant_loads);
 
    OPT(brw_fs_lower_find_live_channel);
-
-   s.validate();
 }
 
 static unsigned

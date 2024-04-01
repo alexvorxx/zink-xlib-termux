@@ -34,6 +34,7 @@
 #include "util/u_atomic.h"
 #include "vulkan/vulkan_core.h"
 #include "radv_cs.h"
+#include "radv_perfcounter.h"
 #include "radv_private.h"
 #include "radv_query.h"
 #include "sid.h"

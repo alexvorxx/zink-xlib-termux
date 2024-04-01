@@ -82,7 +82,6 @@
 #include "ac_vcn.h"
 #include "radv_constants.h"
 #include "radv_descriptor_set.h"
-#include "radv_query.h"
 #include "radv_radeon_winsys.h"
 #include "radv_shader.h"
 #include "radv_shader_args.h"
@@ -221,8 +220,6 @@ enum radv_queue_family {
    RADV_QUEUE_FOREIGN = RADV_MAX_QUEUE_FAMILIES,
    RADV_QUEUE_IGNORED,
 };
-
-struct radv_perfcounter_desc;
 
 struct radv_binning_settings {
    unsigned context_states_per_bin;    /* allowed range: [1, 6] */
@@ -2626,27 +2623,6 @@ struct radv_resolve_barrier {
 
 void radv_emit_resolve_barrier(struct radv_cmd_buffer *cmd_buffer, const struct radv_resolve_barrier *barrier);
 
-struct radv_perfcounter_impl;
-
-struct radv_pc_query_pool {
-   struct radv_query_pool b;
-
-   uint32_t *pc_regs;
-   unsigned num_pc_regs;
-
-   unsigned num_passes;
-
-   unsigned num_counters;
-   struct radv_perfcounter_impl *counters;
-};
-
-void radv_pc_deinit_query_pool(struct radv_pc_query_pool *pool);
-VkResult radv_pc_init_query_pool(struct radv_physical_device *pdev, const VkQueryPoolCreateInfo *pCreateInfo,
-                                 struct radv_pc_query_pool *pool);
-void radv_pc_begin_query(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query_pool *pool, uint64_t va);
-void radv_pc_end_query(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query_pool *pool, uint64_t va);
-void radv_pc_get_results(const struct radv_pc_query_pool *pc_pool, const uint64_t *data, void *out);
-
 bool radv_queue_internal_submit(struct radv_queue *queue, struct radeon_cmdbuf *cs);
 
 int radv_queue_init(struct radv_device *device, struct radv_queue *queue, int idx,
@@ -3265,12 +3241,6 @@ radv_has_pops(const struct radv_physical_device *pdev)
 }
 
 unsigned radv_compact_spi_shader_col_format(const struct radv_shader *ps, uint32_t spi_shader_col_format);
-
-/* radv_perfcounter.c */
-void radv_perfcounter_emit_shaders(struct radv_device *device, struct radeon_cmdbuf *cs, unsigned shaders);
-void radv_perfcounter_emit_spm_reset(struct radeon_cmdbuf *cs);
-void radv_perfcounter_emit_spm_start(struct radv_device *device, struct radeon_cmdbuf *cs, int family);
-void radv_perfcounter_emit_spm_stop(struct radv_device *device, struct radeon_cmdbuf *cs, int family);
 
 /* radv_spm.c */
 bool radv_spm_init(struct radv_device *device);

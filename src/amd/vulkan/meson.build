@@ -130,6 +130,7 @@ libradv_files = files(
   'radv_image_view.c',
   'radv_image_view.h',
   'radv_instance.c',
+  'radv_instance.h',
   'radv_perfcounter.c',
   'radv_physical_device.c',
   'radv_pipeline.c',

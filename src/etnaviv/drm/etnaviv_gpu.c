@@ -154,6 +154,61 @@ query_features_from_kernel(struct etna_gpu *gpu)
 	ETNA_FEATURE(chipMinorFeatures10, DEC400);
 }
 
+static void
+query_limits_from_kernel(struct etna_gpu *gpu)
+{
+	struct etna_core_info *info = &gpu->info;
+	uint64_t val;
+
+	if (info->type == ETNA_CORE_GPU) {
+		etna_gpu_get_param(gpu, ETNA_GPU_INSTRUCTION_COUNT, &val);
+		info->gpu.max_instructions = val;
+
+		etna_gpu_get_param(gpu, ETNA_GPU_VERTEX_OUTPUT_BUFFER_SIZE, &val);
+		info->gpu.vertex_output_buffer_size = val;
+
+		etna_gpu_get_param(gpu, ETNA_GPU_VERTEX_CACHE_SIZE, &val);
+		info->gpu.vertex_cache_size = val;
+
+		etna_gpu_get_param(gpu, ETNA_GPU_SHADER_CORE_COUNT, &val);
+		info->gpu.shader_core_count = val;
+
+		etna_gpu_get_param(gpu, ETNA_GPU_STREAM_COUNT, &val);
+		info->gpu.stream_count = val;
+
+		etna_gpu_get_param(gpu, ETNA_GPU_REGISTER_MAX, &val);
+		info->gpu.max_registers = val;
+
+		etna_gpu_get_param(gpu, ETNA_GPU_PIXEL_PIPES, &val);
+		info->gpu.pixel_pipes = val;
+
+		etna_gpu_get_param(gpu, ETNA_GPU_NUM_CONSTANTS, &val);
+		if (val == 0) {
+			fprintf(stderr, "Warning: zero num constants (update kernel?)\n");
+			val = 168;
+		}
+		info->gpu.num_constants = val;
+
+		etna_gpu_get_param(gpu, ETNA_GPU_NUM_VARYINGS, &val);
+		info->gpu.max_varyings = val;
+	} else {
+		etna_gpu_get_param(gpu, ETNA_GPU_NN_CORE_COUNT, &val);
+		info->npu.nn_core_count = val;
+
+		etna_gpu_get_param(gpu, ETNA_GPU_NN_MAD_PER_CORE, &val);
+		info->npu.nn_mad_per_core = val;
+
+		etna_gpu_get_param(gpu, ETNA_GPU_TP_CORE_COUNT, &val);
+		info->npu.tp_core_count = val;
+
+		etna_gpu_get_param(gpu, ETNA_GPU_ON_CHIP_SRAM_SIZE, &val);
+		info->npu.on_chip_sram_size = val;
+
+		etna_gpu_get_param(gpu, ETNA_GPU_AXI_SRAM_SIZE, &val);
+		info->npu.axi_sram_size = val;
+	}
+}
+
 static uint64_t get_param(struct etna_device *dev, uint32_t core, uint32_t param)
 {
 	struct drm_etnaviv_param req = {
@@ -202,8 +257,10 @@ struct etna_gpu *etna_gpu_new(struct etna_device *dev, unsigned int core)
 		DEBUG_MSG(" Found entry in hwdb: %u\n", core_info_okay);
 	}
 
-	if (!core_info_okay)
+	if (!core_info_okay) {
 		query_features_from_kernel(gpu);
+		query_limits_from_kernel(gpu);
+	}
 
 	return gpu;
 fail:

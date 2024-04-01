@@ -826,7 +826,6 @@ struct radv_queue_state {
 
 struct radv_queue {
    struct vk_queue vk;
-   struct radv_device *device;
    struct radeon_winsys_ctx *hw_ctx;
    enum radeon_ctx_priority priority;
    struct radv_queue_state state;
@@ -836,6 +835,12 @@ struct radv_queue {
    uint64_t last_shader_upload_seq;
    bool sqtt_present;
 };
+
+static inline struct radv_device *
+radv_queue_device(const struct radv_queue *queue)
+{
+   return (struct radv_device *)queue->vk.base.device;
+}
 
 int radv_queue_init(struct radv_device *device, struct radv_queue *queue, int idx,
                     const VkDeviceQueueCreateInfo *create_info,
@@ -3755,7 +3760,8 @@ radv_is_streamout_enabled(struct radv_cmd_buffer *cmd_buffer)
 static inline enum amd_ip_type
 radv_queue_ring(const struct radv_queue *queue)
 {
-   const struct radv_physical_device *pdev = radv_device_physical(queue->device);
+   struct radv_device *device = radv_queue_device(queue);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    return radv_queue_family_to_ring(pdev, queue->state.qf);
 }
 

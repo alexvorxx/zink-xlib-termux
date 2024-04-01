@@ -810,7 +810,7 @@ radv_sqtt_resize_bo(struct radv_device *device)
 bool
 radv_begin_sqtt(struct radv_queue *queue)
 {
-   struct radv_device *device = queue->device;
+   struct radv_device *device = radv_queue_device(queue);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    enum radv_queue_family family = queue->state.qf;
    struct radeon_winsys *ws = device->ws;
@@ -882,14 +882,14 @@ radv_begin_sqtt(struct radv_queue *queue)
 bool
 radv_end_sqtt(struct radv_queue *queue)
 {
-   struct radv_device *device = queue->device;
+   struct radv_device *device = radv_queue_device(queue);
    enum radv_queue_family family = queue->state.qf;
    struct radeon_winsys *ws = device->ws;
    struct radeon_cmdbuf *cs;
    VkResult result;
 
    /* Destroy the previous stop CS and create a new one. */
-   if (queue->device->sqtt.stop_cs[family]) {
+   if (device->sqtt.stop_cs[family]) {
       ws->cs_destroy(device->sqtt.stop_cs[family]);
       device->sqtt.stop_cs[family] = NULL;
    }
@@ -946,7 +946,7 @@ radv_end_sqtt(struct radv_queue *queue)
 bool
 radv_get_sqtt_trace(struct radv_queue *queue, struct ac_sqtt_trace *sqtt_trace)
 {
-   struct radv_device *device = queue->device;
+   struct radv_device *device = radv_queue_device(queue);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radeon_info *gpu_info = &pdev->info;
 
@@ -1040,7 +1040,7 @@ VkResult
 radv_sqtt_get_timed_cmdbuf(struct radv_queue *queue, struct radeon_winsys_bo *timestamp_bo, uint32_t timestamp_offset,
                            VkPipelineStageFlags2 timestamp_stage, VkCommandBuffer *pcmdbuf)
 {
-   struct radv_device *device = queue->device;
+   struct radv_device *device = radv_queue_device(queue);
    enum radv_queue_family queue_family = queue->state.qf;
    VkCommandBuffer cmdbuf;
    uint64_t timestamp_va;

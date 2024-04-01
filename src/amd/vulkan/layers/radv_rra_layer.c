@@ -31,11 +31,12 @@ VKAPI_ATTR VkResult VKAPI_CALL
 rra_QueuePresentKHR(VkQueue _queue, const VkPresentInfoKHR *pPresentInfo)
 {
    RADV_FROM_HANDLE(radv_queue, queue, _queue);
+   struct radv_device *device = radv_queue_device(queue);
 
-   if (queue->device->rra_trace.triggered) {
-      queue->device->rra_trace.triggered = false;
+   if (device->rra_trace.triggered) {
+      device->rra_trace.triggered = false;
 
-      if (_mesa_hash_table_num_entries(queue->device->rra_trace.accel_structs) == 0) {
+      if (_mesa_hash_table_num_entries(device->rra_trace.accel_structs) == 0) {
          fprintf(stderr, "radv: No acceleration structures captured, not saving RRA trace.\n");
       } else {
          char filename[2048];
@@ -52,26 +53,26 @@ rra_QueuePresentKHR(VkQueue _queue, const VkPresentInfoKHR *pPresentInfo)
       }
    }
 
-   VkResult result = queue->device->layer_dispatch.rra.QueuePresentKHR(_queue, pPresentInfo);
+   VkResult result = device->layer_dispatch.rra.QueuePresentKHR(_queue, pPresentInfo);
    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
       return result;
 
-   VkDevice _device = radv_device_to_handle(queue->device);
-   radv_rra_trace_clear_ray_history(_device, &queue->device->rra_trace);
+   VkDevice _device = radv_device_to_handle(device);
+   radv_rra_trace_clear_ray_history(_device, &device->rra_trace);
 
-   if (queue->device->rra_trace.triggered) {
-      result = queue->device->layer_dispatch.rra.DeviceWaitIdle(_device);
+   if (device->rra_trace.triggered) {
+      result = device->layer_dispatch.rra.DeviceWaitIdle(_device);
       if (result != VK_SUCCESS)
          return result;
 
-      struct radv_ray_history_header *header = queue->device->rra_trace.ray_history_data;
+      struct radv_ray_history_header *header = device->rra_trace.ray_history_data;
       header->offset = sizeof(struct radv_ray_history_header);
    }
 
-   if (!queue->device->rra_trace.copy_after_build)
+   if (!device->rra_trace.copy_after_build)
       return VK_SUCCESS;
 
-   struct hash_table *accel_structs = queue->device->rra_trace.accel_structs;
+   struct hash_table *accel_structs = device->rra_trace.accel_structs;
 
    hash_table_foreach (accel_structs, entry) {
       struct radv_rra_accel_struct_data *data = entry->data;
@@ -329,7 +330,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 rra_QueueSubmit2KHR(VkQueue _queue, uint32_t submitCount, const VkSubmitInfo2 *pSubmits, VkFence _fence)
 {
    RADV_FROM_HANDLE(radv_queue, queue, _queue);
-   struct radv_device *device = queue->device;
+   struct radv_device *device = radv_queue_device(queue);
 
    VkResult result = device->layer_dispatch.rra.QueueSubmit2KHR(_queue, submitCount, pSubmits, _fence);
    if (result != VK_SUCCESS || !device->rra_trace.triggered)

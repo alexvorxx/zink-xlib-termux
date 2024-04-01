@@ -469,13 +469,13 @@ radv_get_saved_pipeline(struct radv_device *device, enum amd_ip_type ring)
 static void
 radv_dump_queue_state(struct radv_queue *queue, const char *dump_dir, FILE *f)
 {
-   struct radv_device *device = queue->device;
+   struct radv_device *device = radv_queue_device(queue);
    enum amd_ip_type ring = radv_queue_ring(queue);
    struct radv_pipeline *pipeline;
 
    fprintf(f, "AMD_IP_%s:\n", ring == AMD_IP_GFX ? "GFX" : "COMPUTE");
 
-   pipeline = radv_get_saved_pipeline(queue->device, ring);
+   pipeline = radv_get_saved_pipeline(device, ring);
    if (pipeline) {
       fprintf(f, "Pipeline hash: %" PRIx64 "\n", pipeline->pipeline_hash);
 
@@ -508,7 +508,7 @@ radv_dump_queue_state(struct radv_queue *queue, const char *dump_dir, FILE *f)
                           MESA_SHADER_COMPUTE, dump_dir, f);
       }
 
-      if (!(queue->device->instance->debug_flags & RADV_DEBUG_NO_UMR)) {
+      if (!(device->instance->debug_flags & RADV_DEBUG_NO_UMR)) {
          const struct radv_physical_device *pdev = radv_device_physical(device);
          struct ac_wave_info waves[AC_MAX_WAVES_PER_CHIP];
          enum amd_gfx_level gfx_level = pdev->info.gfx_level;
@@ -565,7 +565,7 @@ radv_dump_queue_state(struct radv_queue *queue, const char *dump_dir, FILE *f)
          struct radv_graphics_pipeline *graphics_pipeline = radv_pipeline_to_graphics(pipeline);
          radv_dump_vertex_descriptors(device, graphics_pipeline, f);
       }
-      radv_dump_descriptors(queue->device, f);
+      radv_dump_descriptors(device, f);
    }
 }
 
@@ -662,7 +662,8 @@ static void
 radv_dump_umr_ring(const struct radv_queue *queue, FILE *f)
 {
 #ifndef _WIN32
-   const struct radv_physical_device *pdev = radv_device_physical(queue->device);
+   const struct radv_device *device = radv_queue_device(queue);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    const enum amd_ip_type ring = radv_queue_ring(queue);
    char cmd[256];
 
@@ -681,7 +682,8 @@ static void
 radv_dump_umr_waves(struct radv_queue *queue, FILE *f)
 {
 #ifndef _WIN32
-   const struct radv_physical_device *pdev = radv_device_physical(queue->device);
+   const struct radv_device *device = radv_queue_device(queue);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    enum amd_ip_type ring = radv_queue_ring(queue);
    char cmd[256];
 
@@ -700,7 +702,8 @@ radv_dump_umr_waves(struct radv_queue *queue, FILE *f)
 static bool
 radv_gpu_hang_occurred(struct radv_queue *queue, enum amd_ip_type ring)
 {
-   struct radeon_winsys *ws = queue->device->ws;
+   const struct radv_device *device = radv_queue_device(queue);
+   struct radeon_winsys *ws = device->ws;
 
    if (!ws->ctx_wait_idle(queue->hw_ctx, ring, queue->vk.index_in_family))
       return true;
@@ -748,13 +751,13 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
    fprintf(stderr, "radv: GPU hang detected...\n");
 
 #ifndef _WIN32
-   const struct radv_physical_device *pdev = radv_device_physical(queue->device);
-   const bool save_hang_report = !queue->device->vk.enabled_features.deviceFaultVendorBinary;
+   struct radv_device *device = radv_queue_device(queue);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const bool save_hang_report = !device->vk.enabled_features.deviceFaultVendorBinary;
    struct radv_winsys_gpuvm_fault_info fault_info = {0};
-   struct radv_device *device = queue->device;
 
    /* Query if a VM fault happened for this GPU hang. */
-   bool vm_fault_occurred = radv_vm_fault_occurred(queue->device, &fault_info);
+   bool vm_fault_occurred = radv_vm_fault_occurred(device, &fault_info);
 
    /* Create a directory into $HOME/radv_dumps_<pid>_<time> to save
     * various debugging info about that GPU hang.
@@ -803,7 +806,7 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
 
       switch (i) {
       case RADV_DEVICE_FAULT_CHUNK_TRACE:
-         radv_dump_trace(queue->device, submit_info->cs_array[0], f);
+         radv_dump_trace(device, submit_info->cs_array[0], f);
          break;
       case RADV_DEVICE_FAULT_CHUNK_QUEUE_STATE:
          radv_dump_queue_state(queue, dump_dir, f);
@@ -1041,7 +1044,7 @@ void
 radv_check_trap_handler(struct radv_queue *queue)
 {
    enum amd_ip_type ring = radv_queue_ring(queue);
-   struct radv_device *device = queue->device;
+   struct radv_device *device = radv_queue_device(queue);
    struct radeon_winsys *ws = device->ws;
 
    /* Wait for the context to be idle in a finite time. */

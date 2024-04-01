@@ -578,7 +578,7 @@ radv_describe_pipeline_bind(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPo
 static void
 radv_describe_queue_event(struct radv_queue *queue, struct rgp_queue_event_record *record)
 {
-   struct radv_device *device = queue->device;
+   struct radv_device *device = radv_queue_device(queue);
    struct ac_sqtt *sqtt = &device->sqtt;
    struct rgp_queue_event *queue_event = &sqtt->rgp_queue_event;
 
@@ -611,7 +611,7 @@ static VkResult
 radv_describe_queue_submit(struct radv_queue *queue, struct radv_cmd_buffer *cmd_buffer, uint32_t cmdbuf_idx,
                            uint64_t cpu_timestamp, void *pre_gpu_timestamp_ptr, void *post_gpu_timestamp_ptr)
 {
-   struct radv_device *device = queue->device;
+   struct radv_device *device = radv_queue_device(queue);
    struct rgp_queue_event_record *record;
 
    record = calloc(1, sizeof(struct rgp_queue_event_record));
@@ -656,27 +656,27 @@ static void
 radv_handle_sqtt(VkQueue _queue)
 {
    RADV_FROM_HANDLE(radv_queue, queue, _queue);
+   struct radv_device *device = radv_queue_device(queue);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   bool trigger = device->sqtt_triggered;
+   device->sqtt_triggered = false;
 
-   const struct radv_physical_device *pdev = radv_device_physical(queue->device);
-   bool trigger = queue->device->sqtt_triggered;
-   queue->device->sqtt_triggered = false;
-
-   if (queue->device->sqtt_enabled) {
+   if (device->sqtt_enabled) {
       struct ac_sqtt_trace sqtt_trace = {0};
 
       radv_end_sqtt(queue);
-      queue->device->sqtt_enabled = false;
+      device->sqtt_enabled = false;
 
       /* TODO: Do something better than this whole sync. */
-      queue->device->vk.dispatch_table.QueueWaitIdle(_queue);
+      device->vk.dispatch_table.QueueWaitIdle(_queue);
 
       if (radv_get_sqtt_trace(queue, &sqtt_trace)) {
          struct ac_spm_trace spm_trace;
 
-         if (queue->device->spm.bo)
-            ac_spm_get_trace(&queue->device->spm, &spm_trace);
+         if (device->spm.bo)
+            ac_spm_get_trace(&device->spm, &spm_trace);
 
-         ac_dump_rgp_capture(&pdev->info, &sqtt_trace, queue->device->spm.bo ? &spm_trace : NULL);
+         ac_dump_rgp_capture(&pdev->info, &sqtt_trace, device->spm.bo ? &spm_trace : NULL);
       } else {
          /* Trigger a new capture if the driver failed to get
           * the trace because the buffer was too small.
@@ -685,7 +685,7 @@ radv_handle_sqtt(VkQueue _queue)
       }
 
       /* Clear resources used for this capture. */
-      radv_reset_sqtt_trace(queue->device);
+      radv_reset_sqtt_trace(device);
    }
 
    if (trigger) {
@@ -698,13 +698,13 @@ radv_handle_sqtt(VkQueue _queue)
       }
 
       /* Sample CPU/GPU clocks before starting the trace. */
-      if (!radv_sqtt_sample_clocks(queue->device)) {
+      if (!radv_sqtt_sample_clocks(device)) {
          fprintf(stderr, "radv: Failed to sample clocks\n");
       }
 
       radv_begin_sqtt(queue);
-      assert(!queue->device->sqtt_enabled);
-      queue->device->sqtt_enabled = true;
+      assert(!device->sqtt_enabled);
+      device->sqtt_enabled = true;
    }
 }
 
@@ -712,11 +712,12 @@ VKAPI_ATTR VkResult VKAPI_CALL
 sqtt_QueuePresentKHR(VkQueue _queue, const VkPresentInfoKHR *pPresentInfo)
 {
    RADV_FROM_HANDLE(radv_queue, queue, _queue);
+   struct radv_device *device = radv_queue_device(queue);
    VkResult result;
 
    queue->sqtt_present = true;
 
-   result = queue->device->layer_dispatch.rgp.QueuePresentKHR(_queue, pPresentInfo);
+   result = device->layer_dispatch.rgp.QueuePresentKHR(_queue, pPresentInfo);
    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
       return result;
 
@@ -731,7 +732,7 @@ static VkResult
 radv_sqtt_wsi_submit(VkQueue _queue, uint32_t submitCount, const VkSubmitInfo2 *pSubmits, VkFence _fence)
 {
    RADV_FROM_HANDLE(radv_queue, queue, _queue);
-   struct radv_device *device = queue->device;
+   struct radv_device *device = radv_queue_device(queue);
    VkCommandBufferSubmitInfo *new_cmdbufs = NULL;
    struct radeon_winsys_bo *gpu_timestamp_bo;
    uint32_t gpu_timestamp_offset;
@@ -780,7 +781,7 @@ radv_sqtt_wsi_submit(VkQueue _queue, uint32_t submitCount, const VkSubmitInfo2 *
 
       radv_describe_queue_present(queue, cpu_timestamp, gpu_timestamp_ptr);
 
-      result = queue->device->layer_dispatch.rgp.QueueSubmit2(_queue, 1, &sqtt_submit, _fence);
+      result = device->layer_dispatch.rgp.QueueSubmit2(_queue, 1, &sqtt_submit, _fence);
       if (result != VK_SUCCESS)
          goto fail;
 
@@ -798,14 +799,14 @@ VKAPI_ATTR VkResult VKAPI_CALL
 sqtt_QueueSubmit2(VkQueue _queue, uint32_t submitCount, const VkSubmitInfo2 *pSubmits, VkFence _fence)
 {
    RADV_FROM_HANDLE(radv_queue, queue, _queue);
+   struct radv_device *device = radv_queue_device(queue);
    const bool is_gfx_or_ace = queue->state.qf == RADV_QUEUE_GENERAL || queue->state.qf == RADV_QUEUE_COMPUTE;
-   struct radv_device *device = queue->device;
    VkCommandBufferSubmitInfo *new_cmdbufs = NULL;
    VkResult result = VK_SUCCESS;
 
    /* Only consider queue events on graphics/compute when enabled. */
    if (!device->sqtt_enabled || !radv_sqtt_queue_events_enabled() || !is_gfx_or_ace)
-      return queue->device->layer_dispatch.rgp.QueueSubmit2(_queue, submitCount, pSubmits, _fence);
+      return device->layer_dispatch.rgp.QueueSubmit2(_queue, submitCount, pSubmits, _fence);
 
    for (uint32_t i = 0; i < submitCount; i++) {
       const VkSubmitInfo2 *pSubmit = &pSubmits[i];
@@ -844,7 +845,7 @@ sqtt_QueueSubmit2(VkQueue _queue, uint32_t submitCount, const VkSubmitInfo2 *pSu
          /* Sample the current CPU time before building the timed cmdbufs. */
          cpu_timestamp = os_time_get_nano();
 
-         result = radv_sqtt_acquire_gpu_timestamp(queue->device, &gpu_timestamps_bo[0], &gpu_timestamps_offset[0],
+         result = radv_sqtt_acquire_gpu_timestamp(device, &gpu_timestamps_bo[0], &gpu_timestamps_offset[0],
                                                   &gpu_timestamps_ptr[0]);
          if (result != VK_SUCCESS)
             goto fail;
@@ -861,7 +862,7 @@ sqtt_QueueSubmit2(VkQueue _queue, uint32_t submitCount, const VkSubmitInfo2 *pSu
 
          new_cmdbufs[cmdbuf_idx++] = *pCommandBufferInfo;
 
-         result = radv_sqtt_acquire_gpu_timestamp(queue->device, &gpu_timestamps_bo[1], &gpu_timestamps_offset[1],
+         result = radv_sqtt_acquire_gpu_timestamp(device, &gpu_timestamps_bo[1], &gpu_timestamps_offset[1],
                                                   &gpu_timestamps_ptr[1]);
          if (result != VK_SUCCESS)
             goto fail;
@@ -883,7 +884,7 @@ sqtt_QueueSubmit2(VkQueue _queue, uint32_t submitCount, const VkSubmitInfo2 *pSu
       sqtt_submit.commandBufferInfoCount = new_cmdbuf_count;
       sqtt_submit.pCommandBufferInfos = new_cmdbufs;
 
-      result = queue->device->layer_dispatch.rgp.QueueSubmit2(_queue, 1, &sqtt_submit, _fence);
+      result = device->layer_dispatch.rgp.QueueSubmit2(_queue, 1, &sqtt_submit, _fence);
       if (result != VK_SUCCESS)
          goto fail;
 

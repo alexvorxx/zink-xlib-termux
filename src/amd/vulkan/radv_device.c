@@ -602,36 +602,37 @@ static VkResult
 capture_trace(VkQueue _queue)
 {
    RADV_FROM_HANDLE(radv_queue, queue, _queue);
+   struct radv_device *device = radv_queue_device(queue);
 
    VkResult result = VK_SUCCESS;
 
-   if (queue->device->instance->vk.trace_mode & RADV_TRACE_MODE_RRA)
-      queue->device->rra_trace.triggered = true;
+   if (device->instance->vk.trace_mode & RADV_TRACE_MODE_RRA)
+      device->rra_trace.triggered = true;
 
-   if (queue->device->vk.memory_trace_data.is_enabled) {
-      simple_mtx_lock(&queue->device->vk.memory_trace_data.token_mtx);
-      radv_rmv_collect_trace_events(queue->device);
-      vk_dump_rmv_capture(&queue->device->vk.memory_trace_data);
-      simple_mtx_unlock(&queue->device->vk.memory_trace_data.token_mtx);
+   if (device->vk.memory_trace_data.is_enabled) {
+      simple_mtx_lock(&device->vk.memory_trace_data.token_mtx);
+      radv_rmv_collect_trace_events(device);
+      vk_dump_rmv_capture(&device->vk.memory_trace_data);
+      simple_mtx_unlock(&device->vk.memory_trace_data.token_mtx);
    }
 
-   if (queue->device->instance->vk.trace_mode & RADV_TRACE_MODE_RGP)
-      queue->device->sqtt_triggered = true;
+   if (device->instance->vk.trace_mode & RADV_TRACE_MODE_RGP)
+      device->sqtt_triggered = true;
 
-   if (queue->device->instance->vk.trace_mode & RADV_TRACE_MODE_CTX_ROLLS) {
+   if (device->instance->vk.trace_mode & RADV_TRACE_MODE_CTX_ROLLS) {
       char filename[2048];
       time_t t = time(NULL);
       struct tm now = *localtime(&t);
       snprintf(filename, sizeof(filename), "/tmp/%s_%04d.%02d.%02d_%02d.%02d.%02d.ctxroll", util_get_process_name(),
                1900 + now.tm_year, now.tm_mon + 1, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec);
 
-      simple_mtx_lock(&queue->device->ctx_roll_mtx);
+      simple_mtx_lock(&device->ctx_roll_mtx);
 
-      queue->device->ctx_roll_file = fopen(filename, "w");
-      if (queue->device->ctx_roll_file)
+      device->ctx_roll_file = fopen(filename, "w");
+      if (device->ctx_roll_file)
          fprintf(stderr, "radv: Writing context rolls to '%s'...\n", filename);
 
-      simple_mtx_unlock(&queue->device->ctx_roll_mtx);
+      simple_mtx_unlock(&device->ctx_roll_mtx);
    }
 
    return result;

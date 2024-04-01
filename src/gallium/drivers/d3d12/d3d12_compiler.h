@@ -269,6 +269,7 @@ struct d3d12_shader_selector {
    enum pipe_shader_type stage;
    const nir_shader *initial;
    struct d3d12_varying_info *initial_output_vars;
+   struct d3d12_varying_info *initial_input_vars;
 
    struct d3d12_shader *first;
    struct d3d12_shader *current;

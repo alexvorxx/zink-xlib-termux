@@ -58,7 +58,7 @@ static void
 decode_astc(struct radv_cmd_buffer *cmd_buffer, struct radv_image_view *src_iview, struct radv_image_view *dst_iview,
             VkImageLayout layout, const VkOffset3D *offset, const VkExtent3D *extent)
 {
-   struct radv_device *device = cmd_buffer->device;
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_state *state = &device->meta_state;
    struct vk_texcompress_astc_write_descriptor_set write_desc_set;
    VkFormat format = src_iview->image->vk.format;
@@ -136,6 +136,7 @@ void
 radv_meta_decode_astc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image, VkImageLayout layout,
                       const VkImageSubresourceLayers *subresource, VkOffset3D offset, VkExtent3D extent)
 {
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_saved_state saved_state;
    radv_meta_save(&saved_state, cmd_buffer,
                   RADV_META_SAVE_COMPUTE_PIPELINE | RADV_META_SAVE_CONSTANTS | RADV_META_SAVE_DESCRIPTORS |
@@ -150,12 +151,10 @@ radv_meta_decode_astc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *ima
    offset = vk_image_sanitize_offset(&image->vk, offset);
 
    struct radv_image_view src_iview, dst_iview;
-   image_view_init(cmd_buffer->device, image, VK_FORMAT_R32G32B32A32_UINT, VK_IMAGE_ASPECT_COLOR_BIT,
-                   subresource->mipLevel, subresource->baseArrayLayer,
-                   vk_image_subresource_layer_count(&image->vk, subresource), &src_iview);
-   image_view_init(cmd_buffer->device, image, VK_FORMAT_R8G8B8A8_UINT, VK_IMAGE_ASPECT_PLANE_1_BIT,
-                   subresource->mipLevel, subresource->baseArrayLayer,
-                   vk_image_subresource_layer_count(&image->vk, subresource), &dst_iview);
+   image_view_init(device, image, VK_FORMAT_R32G32B32A32_UINT, VK_IMAGE_ASPECT_COLOR_BIT, subresource->mipLevel,
+                   subresource->baseArrayLayer, vk_image_subresource_layer_count(&image->vk, subresource), &src_iview);
+   image_view_init(device, image, VK_FORMAT_R8G8B8A8_UINT, VK_IMAGE_ASPECT_PLANE_1_BIT, subresource->mipLevel,
+                   subresource->baseArrayLayer, vk_image_subresource_layer_count(&image->vk, subresource), &dst_iview);
 
    VkExtent3D extent_copy = {
       .width = extent.width,

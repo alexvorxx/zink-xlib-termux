@@ -470,7 +470,8 @@ radv_emit_instance(struct radv_cmd_buffer *cmd_buffer, int se, int instance)
 static void
 radv_emit_select(struct radv_cmd_buffer *cmd_buffer, struct ac_pc_block *block, unsigned count, unsigned *selectors)
 {
-   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    const enum amd_gfx_level gfx_level = pdev->info.gfx_level;
    const enum radv_queue_family qf = cmd_buffer->qf;
    struct ac_pc_block_base *regs = block->b->b;
@@ -497,7 +498,8 @@ static void
 radv_pc_emit_block_instance_read(struct radv_cmd_buffer *cmd_buffer, struct ac_pc_block *block, unsigned count,
                                  uint64_t va)
 {
-   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    struct ac_pc_block_base *regs = block->b->b;
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
    unsigned reg = regs->counter0_lo;
@@ -524,7 +526,8 @@ radv_pc_emit_block_instance_read(struct radv_cmd_buffer *cmd_buffer, struct ac_p
 static void
 radv_pc_sample_block(struct radv_cmd_buffer *cmd_buffer, struct ac_pc_block *block, unsigned count, uint64_t va)
 {
-   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    unsigned se_end = 1;
    if (block->b->b->flags & AC_PC_BLOCK_SE)
       se_end = pdev->info.max_se;
@@ -562,7 +565,8 @@ radv_pc_wait_idle(struct radv_cmd_buffer *cmd_buffer)
 static void
 radv_pc_stop_and_sample(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query_pool *pool, uint64_t va, bool end)
 {
-   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
 
    radeon_emit(cs, PKT3(PKT3_EVENT_WRITE, 0, 0));
@@ -571,14 +575,14 @@ radv_pc_stop_and_sample(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query
    radv_pc_wait_idle(cmd_buffer);
 
    radv_emit_instance(cmd_buffer, -1, -1);
-   radv_emit_windowed_counters(cmd_buffer->device, cs, cmd_buffer->qf, false);
+   radv_emit_windowed_counters(device, cs, cmd_buffer->qf, false);
 
    radeon_set_uconfig_reg(
       cs, R_036020_CP_PERFMON_CNTL,
       S_036020_PERFMON_STATE(V_036020_CP_PERFMON_STATE_STOP_COUNTING) | S_036020_PERFMON_SAMPLE_ENABLE(1));
 
    for (unsigned pass = 0; pass < pool->num_passes; ++pass) {
-      uint64_t pred_va = radv_buffer_get_va(cmd_buffer->device->perf_counter_bo) + PERF_CTR_BO_PASS_OFFSET + 8 * pass;
+      uint64_t pred_va = radv_buffer_get_va(device->perf_counter_bo) + PERF_CTR_BO_PASS_OFFSET + 8 * pass;
       uint64_t reg_va = va + (end ? 8 : 0);
 
       radeon_emit(cs, PKT3(PKT3_COND_EXEC, 3, 0));
@@ -627,21 +631,22 @@ radv_pc_stop_and_sample(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query
 void
 radv_pc_begin_query(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query_pool *pool, uint64_t va)
 {
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
-   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    ASSERTED unsigned cdw_max;
 
    cmd_buffer->state.uses_perf_counters = true;
 
-   cdw_max = radeon_check_space(cmd_buffer->device->ws, cs,
+   cdw_max = radeon_check_space(device->ws, cs,
                                 256 +                      /* Random one time stuff */
                                    10 * pool->num_passes + /* COND_EXECs */
                                    pool->b.stride / 8 * (5 + 8));
 
-   radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, pool->b.bo);
-   radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, cmd_buffer->device->perf_counter_bo);
+   radv_cs_add_buffer(device->ws, cmd_buffer->cs, pool->b.bo);
+   radv_cs_add_buffer(device->ws, cmd_buffer->cs, device->perf_counter_bo);
 
-   uint64_t perf_ctr_va = radv_buffer_get_va(cmd_buffer->device->perf_counter_bo) + PERF_CTR_BO_FENCE_OFFSET;
+   uint64_t perf_ctr_va = radv_buffer_get_va(device->perf_counter_bo) + PERF_CTR_BO_FENCE_OFFSET;
    radeon_emit(cs, PKT3(PKT3_WRITE_DATA, 3, 0));
    radeon_emit(cs, S_370_DST_SEL(V_370_MEM) | S_370_WR_CONFIRM(1) | S_370_ENGINE_SEL(V_370_ME));
    radeon_emit(cs, perf_ctr_va);
@@ -653,12 +658,12 @@ radv_pc_begin_query(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query_poo
    radeon_set_uconfig_reg(cs, R_036020_CP_PERFMON_CNTL,
                           S_036020_PERFMON_STATE(V_036020_CP_PERFMON_STATE_DISABLE_AND_RESET));
 
-   radv_emit_inhibit_clockgating(cmd_buffer->device, cs, true);
-   radv_emit_spi_config_cntl(cmd_buffer->device, cs, true);
-   radv_perfcounter_emit_shaders(cmd_buffer->device, cs, 0x7f);
+   radv_emit_inhibit_clockgating(device, cs, true);
+   radv_emit_spi_config_cntl(device, cs, true);
+   radv_perfcounter_emit_shaders(device, cs, 0x7f);
 
    for (unsigned pass = 0; pass < pool->num_passes; ++pass) {
-      uint64_t pred_va = radv_buffer_get_va(cmd_buffer->device->perf_counter_bo) + PERF_CTR_BO_PASS_OFFSET + 8 * pass;
+      uint64_t pred_va = radv_buffer_get_va(device->perf_counter_bo) + PERF_CTR_BO_PASS_OFFSET + 8 * pass;
 
       radeon_emit(cs, PKT3(PKT3_COND_EXEC, 3, 0));
       radeon_emit(cs, pred_va);
@@ -697,7 +702,7 @@ radv_pc_begin_query(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query_poo
    radeon_set_uconfig_reg(cs, R_036020_CP_PERFMON_CNTL,
                           S_036020_PERFMON_STATE(V_036020_CP_PERFMON_STATE_START_COUNTING));
 
-   radv_emit_windowed_counters(cmd_buffer->device, cs, cmd_buffer->qf, true);
+   radv_emit_windowed_counters(device, cs, cmd_buffer->qf, true);
 
    assert(cmd_buffer->cs->cdw <= cdw_max);
 }
@@ -705,19 +710,20 @@ radv_pc_begin_query(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query_poo
 void
 radv_pc_end_query(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query_pool *pool, uint64_t va)
 {
-   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
    ASSERTED unsigned cdw_max;
 
-   cdw_max = radeon_check_space(cmd_buffer->device->ws, cs,
+   cdw_max = radeon_check_space(device->ws, cs,
                                 256 + /* Reserved for things that don't scale with passes/counters */
                                    5 * pool->num_passes + /* COND_EXECs */
                                    pool->b.stride / 8 * 8);
 
-   radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, pool->b.bo);
-   radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, cmd_buffer->device->perf_counter_bo);
+   radv_cs_add_buffer(device->ws, cmd_buffer->cs, pool->b.bo);
+   radv_cs_add_buffer(device->ws, cmd_buffer->cs, device->perf_counter_bo);
 
-   uint64_t perf_ctr_va = radv_buffer_get_va(cmd_buffer->device->perf_counter_bo) + PERF_CTR_BO_FENCE_OFFSET;
+   uint64_t perf_ctr_va = radv_buffer_get_va(device->perf_counter_bo) + PERF_CTR_BO_FENCE_OFFSET;
    radv_cs_emit_write_event_eop(cs, pdev->info.gfx_level, cmd_buffer->qf, V_028A90_BOTTOM_OF_PIPE_TS, 0,
                                 EOP_DST_SEL_MEM, EOP_DATA_SEL_VALUE_32BIT, perf_ctr_va, 1, cmd_buffer->gfx9_fence_va);
    radv_cp_wait_mem(cs, cmd_buffer->qf, WAIT_REG_MEM_EQUAL, perf_ctr_va, 1, 0xffffffff);
@@ -727,8 +733,8 @@ radv_pc_end_query(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query_pool 
 
    radeon_set_uconfig_reg(cs, R_036020_CP_PERFMON_CNTL,
                           S_036020_PERFMON_STATE(V_036020_CP_PERFMON_STATE_DISABLE_AND_RESET));
-   radv_emit_spi_config_cntl(cmd_buffer->device, cs, false);
-   radv_emit_inhibit_clockgating(cmd_buffer->device, cs, false);
+   radv_emit_spi_config_cntl(device, cs, false);
+   radv_emit_inhibit_clockgating(device, cs, false);
 
    assert(cmd_buffer->cs->cdw <= cdw_max);
 }

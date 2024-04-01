@@ -460,7 +460,7 @@ static void
 radv_process_color_image_layer(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image,
                                const VkImageSubresourceRange *range, int level, int layer, bool flush_cb)
 {
-   struct radv_device *device = cmd_buffer->device;
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_image_view iview;
    uint32_t width, height;
 
@@ -519,7 +519,7 @@ static void
 radv_process_color_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image,
                          const VkImageSubresourceRange *subresourceRange, enum radv_color_op op)
 {
-   struct radv_device *device = cmd_buffer->device;
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_saved_state saved_state;
    bool old_predicating = false;
    bool flush_cb = false;
@@ -685,15 +685,15 @@ static void
 radv_decompress_dcc_compute(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image,
                             const VkImageSubresourceRange *subresourceRange)
 {
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_saved_state saved_state;
    struct radv_image_view load_iview = {0};
    struct radv_image_view store_iview = {0};
-   struct radv_device *device = cmd_buffer->device;
 
    cmd_buffer->state.flush_bits |= radv_dst_access_flush(cmd_buffer, VK_ACCESS_2_SHADER_WRITE_BIT, image);
 
-   if (!cmd_buffer->device->meta_state.fast_clear_flush.cmask_eliminate_pipeline) {
-      VkResult ret = radv_device_init_meta_fast_clear_flush_state_internal(cmd_buffer->device);
+   if (!device->meta_state.fast_clear_flush.cmask_eliminate_pipeline) {
+      VkResult ret = radv_device_init_meta_fast_clear_flush_state_internal(device);
       if (ret != VK_SUCCESS) {
          vk_command_buffer_set_error(&cmd_buffer->vk, ret);
          return;
@@ -716,7 +716,7 @@ radv_decompress_dcc_compute(struct radv_cmd_buffer *cmd_buffer, struct radv_imag
       height = radv_minify(image->vk.extent.height, subresourceRange->baseMipLevel + l);
 
       for (uint32_t s = 0; s < vk_image_subresource_layer_count(&image->vk, subresourceRange); s++) {
-         radv_image_view_init(&load_iview, cmd_buffer->device,
+         radv_image_view_init(&load_iview, device,
                               &(VkImageViewCreateInfo){
                                  .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
                                  .image = radv_image_to_handle(image),
@@ -729,7 +729,7 @@ radv_decompress_dcc_compute(struct radv_cmd_buffer *cmd_buffer, struct radv_imag
                                                       .layerCount = 1},
                               },
                               0, &(struct radv_image_view_extra_create_info){.enable_compression = true});
-         radv_image_view_init(&store_iview, cmd_buffer->device,
+         radv_image_view_init(&store_iview, device,
                               &(VkImageViewCreateInfo){
                                  .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
                                  .image = radv_image_to_handle(image),

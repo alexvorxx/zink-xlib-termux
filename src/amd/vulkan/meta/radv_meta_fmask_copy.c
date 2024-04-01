@@ -232,7 +232,8 @@ radv_can_use_fmask_copy(struct radv_cmd_buffer *cmd_buffer, const struct radv_im
                         const struct radv_image *dst_image, unsigned num_rects,
                         const struct radv_meta_blit2d_rect *rects)
 {
-   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
 
    /* TODO: Test on pre GFX10 chips. */
    if (pdev->info.gfx_level < GFX10)
@@ -274,7 +275,7 @@ void
 radv_fmask_copy(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf *src,
                 struct radv_meta_blit2d_surf *dst)
 {
-   struct radv_device *device = cmd_buffer->device;
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_image_view src_iview, dst_iview;
    uint32_t samples = src->image->vk.samples;
    uint32_t samples_log2 = ffs(samples) - 1;
@@ -286,7 +287,7 @@ radv_fmask_copy(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf
    }
 
    radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE,
-                        cmd_buffer->device->meta_state.fmask_copy.pipeline[samples_log2]);
+                        device->meta_state.fmask_copy.pipeline[samples_log2]);
 
    radv_image_view_init(&src_iview, device,
                         &(VkImageViewCreateInfo){
@@ -322,9 +323,9 @@ radv_fmask_copy(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_blit2d_surf
                         },
                         0, NULL);
 
-   radv_meta_push_descriptor_set(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                 cmd_buffer->device->meta_state.fmask_copy.p_layout, 0, /* set */
-                                 2,                                                     /* descriptorWriteCount */
+   radv_meta_push_descriptor_set(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, device->meta_state.fmask_copy.p_layout,
+                                 0, /* set */
+                                 2, /* descriptorWriteCount */
                                  (VkWriteDescriptorSet[]){{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                                                            .dstBinding = 0,
                                                            .dstArrayElement = 0,

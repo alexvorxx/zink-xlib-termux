@@ -193,15 +193,15 @@ void
 radv_copy_vrs_htile(struct radv_cmd_buffer *cmd_buffer, struct radv_image *vrs_image, const VkRect2D *rect,
                     struct radv_image *dst_image, struct radv_buffer *htile_buffer, bool read_htile_value)
 {
-   struct radv_device *device = cmd_buffer->device;
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_state *state = &device->meta_state;
    struct radv_meta_saved_state saved_state;
    struct radv_image_view vrs_iview;
 
    assert(radv_image_has_htile(dst_image));
 
-   if (!cmd_buffer->device->meta_state.copy_vrs_htile_pipeline) {
-      VkResult ret = radv_device_init_meta_copy_vrs_htile_state(cmd_buffer->device, &dst_image->planes[0].surface);
+   if (!device->meta_state.copy_vrs_htile_pipeline) {
+      VkResult ret = radv_device_init_meta_copy_vrs_htile_state(device, &dst_image->planes[0].surface);
       if (ret != VK_SUCCESS) {
          vk_command_buffer_set_error(&cmd_buffer->vk, ret);
          return;
@@ -218,7 +218,7 @@ radv_copy_vrs_htile(struct radv_cmd_buffer *cmd_buffer, struct radv_image *vrs_i
    radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE,
                         state->copy_vrs_htile_pipeline);
 
-   radv_image_view_init(&vrs_iview, cmd_buffer->device,
+   radv_image_view_init(&vrs_iview, device,
                         &(VkImageViewCreateInfo){
                            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
                            .image = radv_image_to_handle(vrs_image),

@@ -810,7 +810,8 @@ radv_get_ia_multi_vgt_param(struct radv_cmd_buffer *cmd_buffer, bool instanced_d
                             bool count_from_stream_output, uint32_t draw_vertex_count, unsigned topology,
                             bool prim_restart_enable, unsigned patch_control_points, unsigned num_tess_patches)
 {
-   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radeon_info *gpu_info = &pdev->info;
    const unsigned max_primgroup_in_wave = 2;
    /* SWITCH_ON_EOP(0) is always preferable. */
@@ -1489,7 +1490,8 @@ radv_cs_emit_cache_flush(struct radeon_winsys *ws, struct radeon_cmdbuf *cs, enu
 void
 radv_emit_cache_flush(struct radv_cmd_buffer *cmd_buffer)
 {
-   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    bool is_compute = cmd_buffer->qf == RADV_QUEUE_COMPUTE;
 
    if (is_compute)
@@ -1504,12 +1506,12 @@ radv_emit_cache_flush(struct radv_cmd_buffer *cmd_buffer)
       return;
    }
 
-   radv_cs_emit_cache_flush(cmd_buffer->device->ws, cmd_buffer->cs, pdev->info.gfx_level, &cmd_buffer->gfx9_fence_idx,
+   radv_cs_emit_cache_flush(device->ws, cmd_buffer->cs, pdev->info.gfx_level, &cmd_buffer->gfx9_fence_idx,
                             cmd_buffer->gfx9_fence_va, radv_cmd_buffer_uses_mec(cmd_buffer),
                             cmd_buffer->state.flush_bits, &cmd_buffer->state.sqtt_flush_bits,
                             cmd_buffer->gfx9_eop_bug_va);
 
-   if (radv_device_fault_detection_enabled(cmd_buffer->device))
+   if (radv_device_fault_detection_enabled(device))
       radv_cmd_buffer_trace_emit(cmd_buffer);
 
    if (cmd_buffer->state.flush_bits & RADV_CMD_FLAG_INV_L2)
@@ -1534,10 +1536,11 @@ radv_emit_cache_flush(struct radv_cmd_buffer *cmd_buffer)
 void
 radv_emit_set_predication_state(struct radv_cmd_buffer *cmd_buffer, bool draw_visible, unsigned pred_op, uint64_t va)
 {
-   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    uint32_t op = 0;
 
-   radeon_check_space(cmd_buffer->device->ws, cmd_buffer->cs, 4);
+   radeon_check_space(device->ws, cmd_buffer->cs, 4);
 
    if (va) {
       assert(pred_op == PREDICATION_OP_BOOL32 || pred_op == PREDICATION_OP_BOOL64);
@@ -1668,8 +1671,8 @@ radv_cs_emit_cp_dma(struct radv_device *device, struct radeon_cmdbuf *cs, bool p
 static void
 radv_emit_cp_dma(struct radv_cmd_buffer *cmd_buffer, uint64_t dst_va, uint64_t src_va, unsigned size, unsigned flags)
 {
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
-   struct radv_device *device = cmd_buffer->device;
    bool predicating = cmd_buffer->state.predicating;
 
    radv_cs_emit_cp_dma(device, cs, predicating, dst_va, src_va, size, flags);
@@ -1689,7 +1692,7 @@ radv_emit_cp_dma(struct radv_cmd_buffer *cmd_buffer, uint64_t dst_va, uint64_t s
       cmd_buffer->state.dma_is_busy = false;
    }
 
-   if (radv_device_fault_detection_enabled(cmd_buffer->device))
+   if (radv_device_fault_detection_enabled(device))
       radv_cmd_buffer_trace_emit(cmd_buffer);
 }
 
@@ -1734,9 +1737,11 @@ radv_cs_cp_dma_prefetch(const struct radv_device *device, struct radeon_cmdbuf *
 void
 radv_cp_dma_prefetch(struct radv_cmd_buffer *cmd_buffer, uint64_t va, unsigned size)
 {
-   radv_cs_cp_dma_prefetch(cmd_buffer->device, cmd_buffer->cs, va, size, cmd_buffer->state.predicating);
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
-   if (radv_device_fault_detection_enabled(cmd_buffer->device))
+   radv_cs_cp_dma_prefetch(device, cmd_buffer->cs, va, size, cmd_buffer->state.predicating);
+
+   if (radv_device_fault_detection_enabled(device))
       radv_cmd_buffer_trace_emit(cmd_buffer);
 }
 
@@ -1783,7 +1788,8 @@ radv_cp_dma_realign_engine(struct radv_cmd_buffer *cmd_buffer, unsigned size)
 void
 radv_cp_dma_buffer_copy(struct radv_cmd_buffer *cmd_buffer, uint64_t src_va, uint64_t dest_va, uint64_t size)
 {
-   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
    enum amd_gfx_level gfx_level = pdev->info.gfx_level;
    uint64_t main_src_va, main_dest_va;
    uint64_t skipped_size = 0, realign_size = 0;
@@ -1857,7 +1863,8 @@ radv_cp_dma_buffer_copy(struct radv_cmd_buffer *cmd_buffer, uint64_t src_va, uin
 void
 radv_cp_dma_clear_buffer(struct radv_cmd_buffer *cmd_buffer, uint64_t va, uint64_t size, unsigned value)
 {
-   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
 
    if (!size)
       return;
@@ -1896,7 +1903,8 @@ radv_cp_dma_clear_buffer(struct radv_cmd_buffer *cmd_buffer, uint64_t va, uint64
 void
 radv_cp_dma_wait_for_idle(struct radv_cmd_buffer *cmd_buffer)
 {
-   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
 
    if (pdev->info.gfx_level < GFX7)
       return;

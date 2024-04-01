@@ -2068,7 +2068,8 @@ radv_prepare_dgc_compute(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCo
 {
    VK_FROM_HANDLE(radv_indirect_command_layout, layout, pGeneratedCommandsInfo->indirectCommandsLayout);
    VK_FROM_HANDLE(radv_pipeline, pipeline, pGeneratedCommandsInfo->pipeline);
-   const struct radv_physical_device *pdev = radv_device_physical(cmd_buffer->device);
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
 
    *upload_size = MAX2(*upload_size, 16);
 
@@ -2078,7 +2079,7 @@ radv_prepare_dgc_compute(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCo
    }
 
    params->dispatch_params_offset = layout->dispatch_params_offset;
-   params->dispatch_initiator = cmd_buffer->device->dispatch_initiator | S_00B800_FORCE_START_AT_000(1);
+   params->dispatch_initiator = device->dispatch_initiator | S_00B800_FORCE_START_AT_000(1);
    params->is_dispatch = 1;
 
    if (cond_render_enabled) {
@@ -2114,6 +2115,7 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
    VK_FROM_HANDLE(radv_pipeline, pipeline, pGeneratedCommandsInfo->pipeline);
    VK_FROM_HANDLE(radv_buffer, prep_buffer, pGeneratedCommandsInfo->preprocessBuffer);
    VK_FROM_HANDLE(radv_buffer, stream_buffer, pGeneratedCommandsInfo->pStreams[0].buffer);
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_saved_state saved_state;
    unsigned upload_offset, upload_size;
    struct radv_buffer token_buffer;
@@ -2123,7 +2125,7 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
    radv_get_sequence_size(layout, pipeline, &cmd_stride, &upload_stride);
 
    unsigned cmd_buf_size =
-      radv_align_cmdbuf_size(cmd_buffer->device, cmd_stride * pGeneratedCommandsInfo->sequencesCount, AMD_IP_GFX);
+      radv_align_cmdbuf_size(device, cmd_stride * pGeneratedCommandsInfo->sequencesCount, AMD_IP_GFX);
 
    uint64_t upload_addr =
       radv_buffer_get_va(prep_buffer->bo) + prep_buffer->offset + pGeneratedCommandsInfo->preprocessOffset;
@@ -2213,7 +2215,7 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
       upload_data = (char *)upload_data + 16 * layout->dynamic_offset_count;
    }
 
-   radv_buffer_init(&token_buffer, cmd_buffer->device, cmd_buffer->upload.upload_bo, upload_size, upload_offset);
+   radv_buffer_init(&token_buffer, device, cmd_buffer->upload.upload_bo, upload_size, upload_offset);
 
    VkWriteDescriptorSet ds_writes[5];
    VkDescriptorBufferInfo buf_info[ARRAY_SIZE(ds_writes)];
@@ -2270,14 +2272,13 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
                   RADV_META_SAVE_COMPUTE_PIPELINE | RADV_META_SAVE_DESCRIPTORS | RADV_META_SAVE_CONSTANTS);
 
    radv_CmdBindPipeline(radv_cmd_buffer_to_handle(cmd_buffer), VK_PIPELINE_BIND_POINT_COMPUTE,
-                        cmd_buffer->device->meta_state.dgc_prepare.pipeline);
+                        device->meta_state.dgc_prepare.pipeline);
 
-   vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer),
-                              cmd_buffer->device->meta_state.dgc_prepare.p_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                              sizeof(params), &params);
+   vk_common_CmdPushConstants(radv_cmd_buffer_to_handle(cmd_buffer), device->meta_state.dgc_prepare.p_layout,
+                              VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(params), &params);
 
-   radv_meta_push_descriptor_set(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                 cmd_buffer->device->meta_state.dgc_prepare.p_layout, 0, ds_cnt, ds_writes);
+   radv_meta_push_descriptor_set(cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, device->meta_state.dgc_prepare.p_layout, 0,
+                                 ds_cnt, ds_writes);
 
    unsigned block_count = MAX2(1, DIV_ROUND_UP(pGeneratedCommandsInfo->sequencesCount, 64));
    vk_common_CmdDispatch(radv_cmd_buffer_to_handle(cmd_buffer), block_count, 1, 1);

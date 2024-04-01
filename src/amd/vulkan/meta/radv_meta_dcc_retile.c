@@ -172,7 +172,7 @@ void
 radv_retile_dcc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image)
 {
    struct radv_meta_saved_state saved_state;
-   struct radv_device *device = cmd_buffer->device;
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_buffer buffer;
 
    assert(image->vk.image_type == VK_IMAGE_TYPE_2D);
@@ -186,8 +186,8 @@ radv_retile_dcc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image)
    unsigned swizzle_mode = image->planes[0].surface.u.gfx9.swizzle_mode;
 
    /* Compile pipelines if not already done so. */
-   if (!cmd_buffer->device->meta_state.dcc_retile.pipeline[swizzle_mode]) {
-      VkResult ret = radv_device_init_meta_dcc_retile_state(cmd_buffer->device, &image->planes[0].surface);
+   if (!device->meta_state.dcc_retile.pipeline[swizzle_mode]) {
+      VkResult ret = radv_device_init_meta_dcc_retile_state(device, &image->planes[0].surface);
       if (ret != VK_SUCCESS) {
          vk_command_buffer_set_error(&cmd_buffer->vk, ret);
          return;
@@ -204,7 +204,7 @@ radv_retile_dcc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image)
 
    struct radv_buffer_view views[2];
    VkBufferView view_handles[2];
-   radv_buffer_view_init(views, cmd_buffer->device,
+   radv_buffer_view_init(views, device,
                          &(VkBufferViewCreateInfo){
                             .sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO,
                             .buffer = radv_buffer_to_handle(&buffer),
@@ -212,7 +212,7 @@ radv_retile_dcc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image)
                             .range = image->planes[0].surface.meta_size,
                             .format = VK_FORMAT_R8_UINT,
                          });
-   radv_buffer_view_init(views + 1, cmd_buffer->device,
+   radv_buffer_view_init(views + 1, device,
                          &(VkBufferViewCreateInfo){
                             .sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO,
                             .buffer = radv_buffer_to_handle(&buffer),

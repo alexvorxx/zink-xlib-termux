@@ -1844,8 +1844,6 @@ struct radv_cmd_buffer_upload {
 struct radv_cmd_buffer {
    struct vk_command_buffer vk;
 
-   struct radv_device *device;
-
    VkCommandBufferUsageFlags usage_flags;
    struct radeon_cmdbuf *cs;
    struct radv_cmd_state state;
@@ -1948,6 +1946,12 @@ struct radv_cmd_buffer {
 
    struct util_dynarray ray_history;
 };
+
+static inline struct radv_device *
+radv_cmd_buffer_device(const struct radv_cmd_buffer *cmd_buffer)
+{
+   return (struct radv_device *)cmd_buffer->vk.base.device;
+}
 
 static inline bool
 radv_cmdbuf_has_stage(const struct radv_cmd_buffer *cmd_buffer, gl_shader_stage stage)

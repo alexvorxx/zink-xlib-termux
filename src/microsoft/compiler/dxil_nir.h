@@ -89,6 +89,9 @@ bool dxil_nir_analyze_io_dependencies(struct dxil_module *mod, nir_shader *s);
 bool dxil_nir_guess_image_formats(nir_shader *s);
 bool dxil_nir_lower_coherent_loads_and_stores(nir_shader *s);
 
+bool dxil_nir_kill_undefined_varyings(nir_shader *shader, const nir_shader *prev_stage_shader);
+bool dxil_nir_kill_unused_outputs(nir_shader *shader, const nir_shader *next_stage_shader);
+
 #ifdef __cplusplus
 }
 #endif

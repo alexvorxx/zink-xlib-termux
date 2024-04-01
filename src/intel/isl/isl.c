@@ -2344,8 +2344,8 @@ isl_calc_min_row_pitch(const struct isl_device *dev,
 }
 
 /**
- * Is `pitch` in the valid range for a hardware bitfield, if the bitfield's
- * size is `bits` bits?
+ * Is ``pitch`` in the valid range for a hardware bitfield, if the bitfield's
+ * size is ``bits`` bits?
  *
  * Hardware pitch fields are offset by 1. For example, if the size of
  * RENDER_SURFACE_STATE::SurfacePitch is B bits, then the range of valid

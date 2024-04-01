@@ -216,7 +216,7 @@ calc_dominance(struct nir_use_dominance_state *state,
 /**
  * Calculate dominance or post-dominance of the SSA use graph.
  * The returned state must not be freed while dominance queries are being used.
- * nir_free_use_dominance_state() frees the state.
+ * ralloc_free() frees the state.
  *
  * It clobbers nir_instr::index, which can't be changed while dominance queries
  * are being used.

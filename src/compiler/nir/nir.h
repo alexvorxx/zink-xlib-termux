@@ -28,6 +28,7 @@
 #ifndef NIR_H
 #define NIR_H
 
+#include <stdint.h>
 #include "compiler/glsl_types.h"
 #include "compiler/glsl/list.h"
 #include "compiler/shader_enums.h"

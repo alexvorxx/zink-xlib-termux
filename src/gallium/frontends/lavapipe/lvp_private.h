@@ -46,6 +46,7 @@
 
 #ifdef HAVE_LIBDRM
 #include <drm-uapi/drm.h>
+#include "drm-uapi/drm_fourcc.h"
 #endif
 
 /* Pre-declarations needed for WSI entrypoints */

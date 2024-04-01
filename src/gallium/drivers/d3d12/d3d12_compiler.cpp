@@ -1195,17 +1195,10 @@ select_shader_variant(struct d3d12_selection_context *sel_ctx, d3d12_shader_sele
                     key.gs.point_size_per_vertex,
                     key.gs.sprite_coord_enable,
                     key.next_varying_inputs);
-
-         nir_function_impl *impl = nir_shader_get_entrypoint(new_nir_variant);
-         nir_shader_gather_info(new_nir_variant, impl);
       }
 
-      if (key.gs.primitive_id) {
+      if (key.gs.primitive_id)
          NIR_PASS_V(new_nir_variant, d3d12_lower_primitive_id);
-
-         nir_function_impl *impl = nir_shader_get_entrypoint(new_nir_variant);
-         nir_shader_gather_info(new_nir_variant, impl);
-      }
 
       if (key.gs.triangle_strip)
          NIR_PASS_V(new_nir_variant, d3d12_lower_triangle_strip);
@@ -1215,17 +1208,10 @@ select_shader_variant(struct d3d12_selection_context *sel_ctx, d3d12_shader_sele
       if (key.fs.polygon_stipple) {
          NIR_PASS_V(new_nir_variant, nir_lower_pstipple_fs,
                     &pstipple_binding, 0, false, nir_type_bool1);
-
-         nir_function_impl *impl = nir_shader_get_entrypoint(new_nir_variant);
-         nir_shader_gather_info(new_nir_variant, impl);
       }
 
-      if (key.fs.remap_front_facing) {
+      if (key.fs.remap_front_facing)
          dxil_nir_forward_front_face(new_nir_variant);
-
-         nir_function_impl *impl = nir_shader_get_entrypoint(new_nir_variant);
-         nir_shader_gather_info(new_nir_variant, impl);
-      }
 
       if (key.fs.missing_dual_src_outputs) {
          NIR_PASS_V(new_nir_variant, d3d12_add_missing_dual_src_target,
@@ -1338,6 +1324,7 @@ select_shader_variant(struct d3d12_selection_context *sel_ctx, d3d12_shader_sele
                                      key.next_varying_inputs);
    }
 
+   nir_shader_gather_info(new_nir_variant, nir_shader_get_entrypoint(new_nir_variant));
    d3d12_shader *new_variant = compile_nir(ctx, sel, &key, new_nir_variant);
    assert(new_variant);
 

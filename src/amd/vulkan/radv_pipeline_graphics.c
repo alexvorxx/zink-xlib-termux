@@ -1474,12 +1474,16 @@ radv_link_tcs(const struct radv_device *device, struct radv_shader_stage *tcs_st
    /* Copy TCS info into the TES info */
    merge_tess_info(&tes_stage->nir->info, &tcs_stage->nir->info);
 
-   nir_linked_io_var_info tcs2tes = nir_assign_linked_io_var_locations(tcs_stage->nir, tes_stage->nir);
+   /* Count the number of per-vertex output slots we need to reserve for the TCS and TES. */
+   const uint64_t nir_mask = tcs_stage->nir->info.outputs_written & tes_stage->nir->info.inputs_read &
+                             ~(VARYING_SLOT_TESS_LEVEL_OUTER | VARYING_SLOT_TESS_LEVEL_INNER);
+   const uint64_t io_mask = radv_gather_unlinked_io_mask(nir_mask);
+   const unsigned num_reserved_outputs = util_last_bit64(io_mask);
 
-   tcs_stage->info.tcs.num_linked_outputs = tcs2tes.num_linked_io_vars;
+   tcs_stage->info.tcs.num_linked_outputs = num_reserved_outputs;
    tcs_stage->info.outputs_linked = true;
 
-   tes_stage->info.tes.num_linked_inputs = tcs2tes.num_linked_io_vars;
+   tes_stage->info.tes.num_linked_inputs = num_reserved_outputs;
    tes_stage->info.inputs_linked = true;
 }
 

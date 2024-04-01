@@ -30,7 +30,7 @@ rows of samples.  For block-compressed images, this meant it had to be
 a multiple of the block height.  On Skylake, it changed to always being in rows
 of elements so you have to divide the pitch in samples by the compression
 block height.  Since the old surface state code tries to store things in
-hardware units, everyone who ever reads :c:expr:`brw_mipmap_tree.qpitch` has
+hardware units, everyone who ever reads ``brw_mipmap_tree.qpitch`` has
 to change their interpretation based on hardware generation and whether or not
 the surface was block-compressed.  In ISL, we have
 :c:member:`isl_surf.array_pitch_el_rows` which, as the name says, is in rows

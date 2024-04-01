@@ -50,6 +50,11 @@ vk_cts_patch_files=(
   # https://github.com/KhronosGroup/VK-GL-CTS/pull/442
   build-deqp-vk_Use-subgroups-helper-in-derivate-tests.patch
   build-deqp-vk_Add-missing-subgroup-support-checks-for-linear-derivate-tests.patch
+
+  # Fix for render_to_image exceeding maxResourceSize
+  # e7e7c4ff1b8a3c6f25527c82e92f67a9a7c49481
+  # patch because it doesn't backport cleanly
+  build-deqp-vk_Fix-for-render_to_image-exceeding-maxResourceSize.patch
 )
 
 if [ "${DEQP_TARGET}" = 'android' ]; then

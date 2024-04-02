@@ -730,6 +730,28 @@ nvk_image_init(struct nvk_device *dev,
                                            mod_list_info->pDrmFormatModifiers);
          assert(image->vk.drm_format_mod != DRM_FORMAT_MOD_INVALID);
       }
+
+      if (image->vk.drm_format_mod == DRM_FORMAT_MOD_LINEAR) {
+         /* We only have one shadow plane per nvk_image */
+         assert(image->plane_count == 1);
+
+         struct nil_image_init_info tiled_shadow_nil_info = {
+            .dim = vk_image_type_to_nil_dim(pCreateInfo->imageType),
+            .format = nil_format(vk_format_to_pipe_format(image->vk.format)),
+            .modifier = DRM_FORMAT_MOD_INVALID,
+            .extent_px = {
+               .width = pCreateInfo->extent.width,
+               .height = pCreateInfo->extent.height,
+               .depth = pCreateInfo->extent.depth,
+               .array_len = pCreateInfo->arrayLayers,
+            },
+            .levels = pCreateInfo->mipLevels,
+            .samples = pCreateInfo->samples,
+            .usage = usage & ~NIL_IMAGE_USAGE_LINEAR_BIT,
+         };
+         image->linear_tiled_shadow.nil =
+            nil_image_new(&pdev->info, &tiled_shadow_nil_info);
+      }
    }
 
    const struct vk_format_ycbcr_info *ycbcr_info =
@@ -838,6 +860,11 @@ nvk_image_finish(struct nvk_device *dev, struct nvk_image *image,
                              image->vk.create_flags, pAllocator);
    }
 
+   if (image->linear_tiled_shadow.nil.size_B > 0) {
+      assert(image->linear_tiled_shadow.vma_size_B == 0);
+      nouveau_ws_bo_destroy(image->linear_tiled_shadow_bo);
+   }
+
    vk_image_finish(&image->vk);
 }
 
@@ -896,6 +923,22 @@ nvk_CreateImage(VkDevice _device,
          vk_free2(&dev->vk.alloc, pAllocator, image);
          return result;
       }
+   }
+
+   if (image->linear_tiled_shadow.nil.size_B > 0) {
+      struct nvk_image_plane *shadow = &image->linear_tiled_shadow;
+      image->linear_tiled_shadow_bo =
+         nouveau_ws_bo_new_tiled(dev->ws_dev,
+                                 shadow->nil.size_B, shadow->nil.align_B,
+                                 shadow->nil.pte_kind, shadow->nil.tile_mode,
+                                 NOUVEAU_WS_BO_LOCAL);
+      if (image->linear_tiled_shadow_bo == NULL) {
+         nvk_image_finish(dev, image, pAllocator);
+         vk_free2(&dev->vk.alloc, pAllocator, image);
+         return vk_errorf(pdev, VK_ERROR_OUT_OF_DEVICE_MEMORY,
+                          "Failed to allocate tiled shadow image");
+      }
+      shadow->addr = image->linear_tiled_shadow_bo->offset;
    }
 
    *pImage = nvk_image_to_handle(image);

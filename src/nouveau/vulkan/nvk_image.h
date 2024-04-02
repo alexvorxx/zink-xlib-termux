@@ -6,6 +6,7 @@
 #define NVK_IMAGE_H 1
 
 #include "nvk_private.h"
+#include "nvk_device_memory.h"
 
 #include "vk_image.h"
 
@@ -78,6 +79,14 @@ struct nvk_image {
     * copied again down to the 8-bit result.
     */
    struct nvk_image_plane stencil_copy_temp;
+
+   /* The hardware doesn't support rendering to linear images except
+    * under certain conditions, so to support DRM_FORMAT_MOD_LINEAR
+    * rendering in the general case, we need to keep a tiled copy, which would
+    * be used to fake support if the conditions aren't satisfied.
+    */
+   struct nvk_image_plane linear_tiled_shadow;
+   struct nouveau_ws_bo *linear_tiled_shadow_bo;
 };
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(nvk_image, vk.base, VkImage, VK_OBJECT_TYPE_IMAGE)

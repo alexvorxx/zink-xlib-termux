@@ -168,7 +168,6 @@ nvk_AllocateMemory(VkDevice device,
    if (!mem)
       return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-
    mem->map = NULL;
    if (fd_info && fd_info->handleType) {
       assert(fd_info->handleType ==

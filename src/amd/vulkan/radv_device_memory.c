@@ -29,6 +29,7 @@
 #include "radv_buffer.h"
 #include "radv_image.h"
 #include "radv_private.h"
+#include "radv_rmv.h"
 
 void
 radv_device_memory_init(struct radv_device_memory *mem, struct radv_device *device, struct radeon_winsys_bo *bo)

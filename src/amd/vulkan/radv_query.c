@@ -37,6 +37,7 @@
 #include "radv_perfcounter.h"
 #include "radv_private.h"
 #include "radv_query.h"
+#include "radv_rmv.h"
 #include "sid.h"
 #include "vk_acceleration_structure.h"
 #include "vk_common_entrypoints.h"

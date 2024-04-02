@@ -29,6 +29,7 @@
 #include "radv_pipeline_cache.h"
 #include "radv_pipeline_rt.h"
 #include "radv_private.h"
+#include "radv_rmv.h"
 #include "radv_shader.h"
 
 struct rt_handle_hash_entry {

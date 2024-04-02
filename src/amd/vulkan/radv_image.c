@@ -37,6 +37,7 @@
 #include "radv_image_view.h"
 #include "radv_private.h"
 #include "radv_radeon_winsys.h"
+#include "radv_rmv.h"
 #include "radv_video.h"
 #include "sid.h"
 #include "vk_debug_utils.h"

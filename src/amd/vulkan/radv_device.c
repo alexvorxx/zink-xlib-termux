@@ -50,6 +50,7 @@
 #include "radv_debug.h"
 #include "radv_formats.h"
 #include "radv_private.h"
+#include "radv_rmv.h"
 #include "radv_shader.h"
 #include "radv_spm.h"
 #include "radv_sqtt.h"

@@ -28,6 +28,7 @@
 #include "radv_buffer.h"
 #include "radv_device_memory.h"
 #include "radv_private.h"
+#include "radv_rmv.h"
 
 #include "vk_common_entrypoints.h"
 #include "vk_debug_utils.h"

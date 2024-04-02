@@ -32,6 +32,7 @@
 #include "radv_image.h"
 #include "radv_image_view.h"
 #include "radv_private.h"
+#include "radv_rmv.h"
 #include "radv_sampler.h"
 #include "sid.h"
 #include "vk_acceleration_structure.h"

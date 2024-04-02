@@ -1563,10 +1563,6 @@ emit_3dstate_wm(struct anv_graphics_pipeline *pipeline,
          pipeline->force_fragment_thread_dispatch =
             wm_prog_data->has_side_effects ||
             wm_prog_data->uses_kill;
-
-         wm.BarycentricInterpolationMode =
-            wm_prog_data_barycentric_modes(wm_prog_data,
-                                           pipeline->fs_msaa_flags);
       }
    }
 }

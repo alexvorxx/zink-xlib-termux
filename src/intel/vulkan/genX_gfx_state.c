@@ -577,6 +577,14 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
       }
    }
 
+   if ((gfx->dirty & ANV_CMD_DIRTY_PIPELINE) ||
+       (gfx->dirty & ANV_CMD_DIRTY_FS_MSAA_FLAGS)) {
+      if (wm_prog_data) {
+         SET(WM, wm.BarycentricInterpolationMode,
+             wm_prog_data_barycentric_modes(wm_prog_data, gfx->fs_msaa_flags));
+      }
+   }
+
    if ((gfx->dirty & (ANV_CMD_DIRTY_PIPELINE |
                       ANV_CMD_DIRTY_XFB_ENABLE |
                       ANV_CMD_DIRTY_OCCLUSION_QUERY_ACTIVE)) ||
@@ -2001,6 +2009,7 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
                            pipeline, partial.wm, wm) {
          SET(wm, wm, ForceThreadDispatchEnable);
          SET(wm, wm, LineStippleEnable);
+         SET(wm, wm, BarycentricInterpolationMode);
       }
    }
 

@@ -1682,6 +1682,7 @@ struct anv_gfx_dynamic_state {
    struct {
       uint32_t ForceThreadDispatchEnable;
       bool     LineStippleEnable;
+      uint32_t BarycentricInterpolationMode;
    } wm;
 
    /* 3DSTATE_WM_DEPTH_STENCIL */

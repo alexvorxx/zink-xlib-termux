@@ -22,6 +22,7 @@
  */
 
 #include "radv_private.h"
+#include "radv_sqtt.h"
 
 #include "meta/radv_meta.h"
 #include "nir_builder.h"

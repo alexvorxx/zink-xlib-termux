@@ -28,6 +28,7 @@
 #include "radv_debug.h"
 #include "radv_perfcounter.h"
 #include "radv_private.h"
+#include "radv_sqtt.h"
 #include "sid.h"
 
 #include "vk_common_entrypoints.h"

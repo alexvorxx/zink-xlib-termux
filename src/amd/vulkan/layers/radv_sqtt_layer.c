@@ -26,6 +26,7 @@
 #include "radv_private.h"
 #include "radv_queue.h"
 #include "radv_shader.h"
+#include "radv_sqtt.h"
 #include "vk_common_entrypoints.h"
 #include "vk_semaphore.h"
 

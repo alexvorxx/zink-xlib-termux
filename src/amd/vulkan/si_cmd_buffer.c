@@ -32,6 +32,7 @@
 #include "radv_debug.h"
 #include "radv_private.h"
 #include "radv_shader.h"
+#include "radv_sqtt.h"
 #include "sid.h"
 
 static void

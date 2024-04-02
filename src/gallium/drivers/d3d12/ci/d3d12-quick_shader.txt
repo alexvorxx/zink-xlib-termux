@@ -3,7 +3,6 @@ spec@arb_separate_shader_objects@execution@layout-location-block-with-struct-mem
 spec@arb_separate_shader_objects@execution@layout-location-struct-mixed-with-implicitly-assigned-varying,Crash
 spec@arb_shader_texture_lod@execution@glsl-fs-shadow2dgradarb-07,Fail
 spec@arb_shader_texture_lod@execution@glsl-fs-shadow2dgradarb-cumulative,Fail
-spec@arb_tessellation_shader@execution@dmat-vs-gs-tcs-tes,Fail
 spec@arb_tessellation_shader@execution@gs-primitiveid-instanced,Fail
 spec@arb_tessellation_shader@execution@tcs-output-unmatched,Fail
 spec@arb_tessellation_shader@execution@tcs-tes-levels-out-of-bounds-read,Crash
@@ -33,13 +32,7 @@ spec@glsl-1.50@execution@primitive-id-no-gs-quad-strip,Fail
 spec@glsl-1.50@execution@primitive-id-no-gs-quads,Fail
 spec@glsl-1.50@execution@variable-indexing@gs-output-array-vec4-index-wr,Crash
 
-# TODO: Inter-stage linkage (removing unused varyings) needs to be done at
-# component level, not just location
-spec@arb_enhanced_layouts@execution@component-layout@vs-fs-array-dvec3,Crash
-
 # TODO: Need to investigate and debug
-spec@arb_enhanced_layouts@execution@component-layout@vs-gs-fs-double,Fail
-spec@arb_tessellation_shader@execution@dvec3-vs-tcs-tes,Fail
 spec@arb_gl_spirv@execution@xfb@vs_block,Fail
 spec@arb_gl_spirv@execution@xfb@vs_block_array,Crash
 spec@arb_gl_spirv@execution@xfb@vs_block_array_offset_per_member,Crash

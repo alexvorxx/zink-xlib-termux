@@ -108,6 +108,8 @@ struct d3d12_shader_key {
 
    uint64_t next_varying_inputs;
    uint64_t prev_varying_outputs;
+   BITSET_WORD *next_varying_frac_inputs;
+   BITSET_WORD *prev_varying_frac_outputs;
    union {
       struct {
          unsigned last_vertex_processing_stage : 1;
@@ -115,6 +117,8 @@ struct d3d12_shader_key {
          unsigned halfz : 1;
          unsigned samples_int_textures : 1;
          unsigned input_clip_size : 4;
+         unsigned next_has_frac_inputs : 1;
+         unsigned prev_has_frac_outputs : 1;
       };
       uint32_t common_all;
    };
@@ -266,6 +270,11 @@ struct d3d12_shader_selector {
    unsigned samples_int_textures:1;
    unsigned compare_with_lod_bias_grad:1;
    unsigned workgroup_size_variable:1;
+   unsigned has_frac_inputs:1;
+   unsigned has_frac_outputs:1;
+
+   BITSET_DECLARE(varying_frac_inputs, 64 * 4);
+   BITSET_DECLARE(varying_frac_outputs, 64 * 4);
 
    bool is_variant;
    union {

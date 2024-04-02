@@ -772,13 +772,23 @@ d3d12_compare_shader_keys(struct d3d12_selection_context* sel_ctx, const d3d12_s
       expect->n_images * sizeof(struct d3d12_image_format_conversion_info)))
       return false;
    
-   return
-      expect->next_varying_inputs == have->next_varying_inputs &&
-      expect->prev_varying_outputs == have->prev_varying_outputs &&
-      expect->common_all == have->common_all &&
-      expect->tex_saturate_s == have->tex_saturate_s &&
-      expect->tex_saturate_r == have->tex_saturate_r &&
-      expect->tex_saturate_t == have->tex_saturate_t;
+   if (!(expect->next_varying_inputs == have->next_varying_inputs &&
+         expect->prev_varying_outputs == have->prev_varying_outputs &&
+         expect->common_all == have->common_all &&
+         expect->tex_saturate_s == have->tex_saturate_s &&
+         expect->tex_saturate_r == have->tex_saturate_r &&
+         expect->tex_saturate_t == have->tex_saturate_t))
+      return false;
+
+   if (expect->next_has_frac_inputs &&
+       expect->next_varying_frac_inputs != have->next_varying_frac_inputs &&
+       memcmp(expect->next_varying_frac_inputs, have->next_varying_frac_inputs, sizeof(d3d12_shader_selector::varying_frac_inputs)))
+      return false;
+   if (expect->prev_has_frac_outputs &&
+       expect->prev_varying_frac_outputs != have->prev_varying_frac_outputs &&
+       memcmp(expect->prev_varying_frac_outputs, have->prev_varying_frac_outputs, sizeof(d3d12_shader_selector::varying_frac_outputs)))
+      return false;
+   return true;
 }
 
 static uint32_t
@@ -790,6 +800,11 @@ d3d12_shader_key_hash(const d3d12_shader_key *key)
 
    hash += key->next_varying_inputs;
    hash += key->prev_varying_outputs;
+   hash += key->common_all;
+   if (key->next_has_frac_inputs)
+      hash = _mesa_hash_data_with_seed(&key->next_varying_frac_inputs, sizeof(d3d12_shader_selector::varying_frac_inputs), hash);
+   if (key->prev_has_frac_outputs)
+      hash = _mesa_hash_data_with_seed(&key->prev_varying_frac_outputs, sizeof(d3d12_shader_selector::varying_frac_outputs), hash);
    switch (key->stage) {
    case PIPE_SHADER_VERTEX:
       /* (Probably) not worth the bit extraction for needs_format_emulation and
@@ -862,6 +877,8 @@ d3d12_fill_shader_key(struct d3d12_selection_context *sel_ctx,
 
    if (prev) {
       key->prev_varying_outputs = prev->initial->info.outputs_written;
+      key->prev_has_frac_outputs = prev->has_frac_outputs;
+      key->prev_varying_frac_outputs = prev->varying_frac_outputs;
 
       if (stage == PIPE_SHADER_TESS_EVAL)
          key->ds.prev_patch_outputs = prev->initial->info.patch_outputs_written;
@@ -887,6 +904,8 @@ d3d12_fill_shader_key(struct d3d12_selection_context *sel_ctx,
       key->next_varying_inputs = next->initial->info.inputs_read;
       if (BITSET_TEST(next->initial->info.system_values_read, SYSTEM_VALUE_PRIMITIVE_ID))
          key->next_varying_inputs |= VARYING_SLOT_PRIMITIVE_ID;
+      key->next_has_frac_inputs = next->has_frac_inputs;
+      key->next_varying_frac_inputs = next->varying_frac_inputs;
    }
 
    if (stage == PIPE_SHADER_GEOMETRY ||
@@ -1153,16 +1172,18 @@ select_shader_variant(struct d3d12_selection_context *sel_ctx, d3d12_shader_sele
 
    /* Remove not-written inputs, and re-sort */
    if (prev) {
-      uint32_t prev_stage_patch_written = prev->initial->info.patch_outputs_written;
-      NIR_PASS_V(new_nir_variant, dxil_nir_kill_undefined_varyings, key.prev_varying_outputs, prev_stage_patch_written, NULL);
-      dxil_reassign_driver_locations(new_nir_variant, nir_var_shader_in, key.prev_varying_outputs, NULL);
+      NIR_PASS_V(new_nir_variant, dxil_nir_kill_undefined_varyings, key.prev_varying_outputs,
+                 prev->initial->info.patch_outputs_written, key.prev_varying_frac_outputs);
+      dxil_reassign_driver_locations(new_nir_variant, nir_var_shader_in, key.prev_varying_outputs,
+                                     key.prev_varying_frac_outputs);
    }
 
    /* Remove not-read outputs and re-sort */
    if (next) {
-      uint32_t next_stage_patch_read = next->initial->info.patch_inputs_read;
-      NIR_PASS_V(new_nir_variant, dxil_nir_kill_unused_outputs, key.next_varying_inputs, next_stage_patch_read, NULL);
-      dxil_reassign_driver_locations(new_nir_variant, nir_var_shader_out, key.next_varying_inputs, NULL);
+      NIR_PASS_V(new_nir_variant, dxil_nir_kill_unused_outputs, key.next_varying_inputs,
+                 next->initial->info.patch_inputs_read, key.next_varying_frac_inputs);
+      dxil_reassign_driver_locations(new_nir_variant, nir_var_shader_out, key.next_varying_inputs,
+                                     key.next_varying_frac_inputs);
    }
 
    nir_shader_gather_info(new_nir_variant, nir_shader_get_entrypoint(new_nir_variant));
@@ -1343,6 +1364,19 @@ d3d12_create_shader_impl(struct d3d12_context *ctx,
    NIR_PASS_V(nir, d3d12_lower_load_draw_params);
    NIR_PASS_V(nir, d3d12_lower_load_patch_vertices_in);
    NIR_PASS_V(nir, dxil_nir_lower_double_math);
+
+   nir_foreach_variable_with_modes(var, nir, nir_var_shader_in) {
+      if (var->data.location >= VARYING_SLOT_VAR0 && var->data.location_frac) {
+         sel->has_frac_inputs = 1;
+         BITSET_SET(sel->varying_frac_inputs, (var->data.location - VARYING_SLOT_VAR0) * 4 + var->data.location_frac);
+      }
+   }
+   nir_foreach_variable_with_modes(var, nir, nir_var_shader_out) {
+      if (var->data.location >= VARYING_SLOT_VAR0 && var->data.location_frac) {
+         sel->has_frac_outputs = 1;
+         BITSET_SET(sel->varying_frac_outputs, (var->data.location - VARYING_SLOT_VAR0) * 4 + var->data.location_frac);
+      }
+   }
 
    /* Keep this initial shader as the blue print for possible variants */
    sel->initial = nir;

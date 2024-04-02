@@ -198,6 +198,7 @@ if with_llvm
     'radv_llvm_helper.cpp',
     'radv_llvm_helper.h',
     'radv_nir_to_llvm.c',
+    'radv_nir_to_llvm.h',
   )
 endif
 

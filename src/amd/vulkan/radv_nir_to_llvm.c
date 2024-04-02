@@ -25,6 +25,7 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_nir_to_llvm.h"
 #include "nir/nir.h"
 #include "radv_debug.h"
 #include "radv_llvm_helper.h"

@@ -282,10 +282,6 @@ struct radv_shader_args;
 struct radv_nir_compiler_options;
 struct radv_shader_info;
 
-void llvm_compile_shader(const struct radv_nir_compiler_options *options, const struct radv_shader_info *info,
-                         unsigned shader_count, struct nir_shader *const *shaders, struct radv_shader_binary **binary,
-                         const struct radv_shader_args *args);
-
 #define RADV_FROM_HANDLE(__radv_type, __name, __handle) VK_FROM_HANDLE(__radv_type, __name, __handle)
 
 #ifdef __cplusplus

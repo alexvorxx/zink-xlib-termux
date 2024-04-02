@@ -780,6 +780,11 @@ radv_write_guardband(struct radeon_cmdbuf *cs, int count, const VkViewport *view
    radeon_emit(cs, fui(discard_x));
 }
 
+struct radv_prim_vertex_count {
+   uint8_t min;
+   uint8_t incr;
+};
+
 static inline unsigned
 radv_prims_for_vertices(struct radv_prim_vertex_count *info, unsigned num)
 {

@@ -2193,11 +2193,6 @@ bool radv_enable_rt(const struct radv_physical_device *pdev, bool rt_pipelines);
 
 bool radv_emulate_rt(const struct radv_physical_device *pdev);
 
-struct radv_prim_vertex_count {
-   uint8_t min;
-   uint8_t incr;
-};
-
 enum radv_pipeline_type {
    RADV_PIPELINE_GRAPHICS,
    RADV_PIPELINE_GRAPHICS_LIB,

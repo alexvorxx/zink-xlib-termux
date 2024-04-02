@@ -833,7 +833,7 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
 
       const VkLineRasterizationModeKHR line_mode =
          anv_line_rasterization_mode(dyn->rs.line.mode,
-                                     pipeline->rasterization_samples);
+                                     dyn->ms.rasterization_samples);
 
       const VkPolygonMode dynamic_raster_mode =
          genX(raster_polygon_mode)(pipeline,
@@ -886,6 +886,11 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
       SET(RASTER, raster.ConservativeRasterizationEnable,
                   dyn->rs.conservative_mode !=
                   VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT);
+   }
+
+   if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_MS_RASTERIZATION_SAMPLES)) {
+      SET(MULTISAMPLE, ms.NumberofMultisamples,
+          __builtin_ffs(MAX2(dyn->ms.rasterization_samples, 1)) - 1);
    }
 
    if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_MS_SAMPLE_MASK)) {
@@ -1185,7 +1190,7 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
 
          if (instance->intel_enable_wa_14018912822 &&
              intel_needs_workaround(cmd_buffer->device->info, 14018912822) &&
-             pipeline->rasterization_samples > 1) {
+             dyn->ms.rasterization_samples > 1) {
             if (DestinationBlendFactor == BLENDFACTOR_ZERO) {
                DestinationBlendFactor = BLENDFACTOR_CONST_COLOR;
                color_blend_zero = true;
@@ -1601,9 +1606,6 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
              sizeof(struct intel_urb_config));
    }
 
-   if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_MULTISAMPLE))
-      anv_batch_emit_pipeline_state(&cmd_buffer->batch, pipeline, final.ms);
-
    if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_PRIMITIVE_REPLICATION))
       anv_batch_emit_pipeline_state(&cmd_buffer->batch, pipeline, final.primitive_replication);
 
@@ -1971,6 +1973,13 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
          SET(raster, raster, ViewportZFarClipTestEnable);
          SET(raster, raster, ViewportZNearClipTestEnable);
          SET(raster, raster, ConservativeRasterizationEnable);
+      }
+   }
+
+   if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_MULTISAMPLE)) {
+      anv_batch_emit_merge(&cmd_buffer->batch, GENX(3DSTATE_MULTISAMPLE),
+                           pipeline, partial.ms, ms) {
+         SET(ms, ms, NumberofMultisamples);
       }
    }
 

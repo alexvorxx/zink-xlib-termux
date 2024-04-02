@@ -562,7 +562,6 @@ anv_cmd_buffer_flush_pipeline_state(struct anv_cmd_buffer *cmd_buffer,
       diff_fix_state(PRIMITIVE_REPLICATION, final.primitive_replication);
    diff_fix_state(SBE,                      final.sbe);
    diff_fix_state(SBE_SWIZ,                 final.sbe_swiz);
-   diff_fix_state(MULTISAMPLE,              final.ms);
    diff_fix_state(VS,                       final.vs);
    diff_fix_state(HS,                       final.hs);
    diff_fix_state(DS,                       final.ds);
@@ -570,6 +569,7 @@ anv_cmd_buffer_flush_pipeline_state(struct anv_cmd_buffer *cmd_buffer,
    diff_fix_state(CLIP,                     partial.clip);
    diff_fix_state(SF,                       partial.sf);
    diff_fix_state(RASTER,                   partial.raster);
+   diff_fix_state(MULTISAMPLE,              partial.ms);
    diff_fix_state(WM,                       partial.wm);
    diff_fix_state(STREAMOUT,                partial.so);
    diff_fix_state(GS,                       partial.gs);

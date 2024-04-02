@@ -2910,11 +2910,6 @@ anv_graphics_pipeline_emit(struct anv_graphics_pipeline *pipeline,
       /* TODO(mesh): Mesh vs. Multiview with Instancing. */
    }
 
-   /* Store line mode and rasterization samples, these are used
-    * for dynamic primitive topology.
-    */
-   pipeline->rasterization_samples =
-      state->ms != NULL ? state->ms->rasterization_samples : 1;
 
    pipeline->dynamic_patch_control_points =
       anv_pipeline_has_stage(pipeline, MESA_SHADER_TESS_CTRL) &&

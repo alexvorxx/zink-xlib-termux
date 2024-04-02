@@ -848,9 +848,7 @@ static void
 emit_ms_state(struct anv_graphics_pipeline *pipeline,
               const struct vk_multisample_state *ms)
 {
-   anv_pipeline_emit(pipeline, final.ms, GENX(3DSTATE_MULTISAMPLE), ms) {
-      ms.NumberofMultisamples       = __builtin_ffs(pipeline->rasterization_samples) - 1;
-
+   anv_pipeline_emit(pipeline, partial.ms, GENX(3DSTATE_MULTISAMPLE), ms) {
       ms.PixelLocation              = CENTER;
 
       /* The PRM says that this bit is valid only for DX9:

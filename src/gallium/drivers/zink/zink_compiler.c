@@ -3677,7 +3677,7 @@ add_derefs_instr(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       }
       if (glsl_type_is_array(type)) {
          /* unroll array derefs */
-         unsigned idx = frac - var->data.location_frac;
+         unsigned idx = var->data.compact ? (frac - var->data.location_frac) : 0;
          assert(src_offset);
          if (var->data.location < VARYING_SLOT_VAR0) {
             if (src_offset) {

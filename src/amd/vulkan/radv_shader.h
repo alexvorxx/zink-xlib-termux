@@ -765,11 +765,6 @@ struct radv_shader_stage;
 void radv_optimize_nir(struct nir_shader *shader, bool optimize_conservatively);
 void radv_optimize_nir_algebraic(nir_shader *shader, bool opt_offsets);
 
-void radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_state_key *gfx_state,
-                          struct radv_shader_stage *stage);
-
-bool radv_shader_should_clear_lds(const struct radv_device *device, const nir_shader *shader);
-
 void radv_nir_lower_rt_io(nir_shader *shader, bool monolithic, uint32_t payload_offset);
 
 struct radv_ray_tracing_stage_info;

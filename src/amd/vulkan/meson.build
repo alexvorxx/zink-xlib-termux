@@ -135,6 +135,7 @@ libradv_files = files(
   'radv_perfcounter.c',
   'radv_physical_device.c',
   'radv_pipeline.c',
+  'radv_pipeline.h',
   'radv_pipeline_cache.c',
   'radv_pipeline_cache.h',
   'radv_pipeline_compute.c',

@@ -119,7 +119,7 @@ radv_image_from_gralloc(VkDevice device_h, const VkImageCreateInfo *base_info,
                         VkImage *out_image_h)
 
 {
-   RADV_FROM_HANDLE(radv_device, device, device_h);
+   VK_FROM_HANDLE(radv_device, device, device_h);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    VkImage image_h = VK_NULL_HANDLE;
    struct radv_image *image = NULL;
@@ -222,7 +222,7 @@ VkResult
 radv_GetSwapchainGrallocUsageANDROID(VkDevice device_h, VkFormat format, VkImageUsageFlags imageUsage,
                                      int *grallocUsage)
 {
-   RADV_FROM_HANDLE(radv_device, device, device_h);
+   VK_FROM_HANDLE(radv_device, device, device_h);
    struct radv_physical_device *pdev = radv_device_physical(device);
    VkPhysicalDevice pdev_h = radv_physical_device_to_handle(pdev);
    VkResult result;
@@ -303,7 +303,7 @@ radv_GetSwapchainGrallocUsage2ANDROID(VkDevice device_h, VkFormat format, VkImag
    /* Before level 26 (Android 8.0/Oreo) the loader uses
     * vkGetSwapchainGrallocUsageANDROID. */
 #if ANDROID_API_LEVEL >= 26
-   RADV_FROM_HANDLE(radv_device, device, device_h);
+   VK_FROM_HANDLE(radv_device, device, device_h);
    struct radv_physical_device *pdev = radv_device_physical(device);
    VkPhysicalDevice pdev_h = radv_physical_device_to_handle(pdev);
    VkResult result;
@@ -413,7 +413,7 @@ static VkResult
 get_ahb_buffer_format_properties(VkDevice device_h, const struct AHardwareBuffer *buffer,
                                  VkAndroidHardwareBufferFormatPropertiesANDROID *pProperties)
 {
-   RADV_FROM_HANDLE(radv_device, device, device_h);
+   VK_FROM_HANDLE(radv_device, device, device_h);
    struct radv_physical_device *pdev = radv_device_physical(device);
 
    /* Get a description of buffer contents . */
@@ -486,7 +486,7 @@ static VkResult
 get_ahb_buffer_format_properties2(VkDevice device_h, const struct AHardwareBuffer *buffer,
                                   VkAndroidHardwareBufferFormatProperties2ANDROID *pProperties)
 {
-   RADV_FROM_HANDLE(radv_device, device, device_h);
+   VK_FROM_HANDLE(radv_device, device, device_h);
    struct radv_physical_device *pdev = radv_device_physical(device);
 
    /* Get a description of buffer contents . */
@@ -559,7 +559,7 @@ VkResult
 radv_GetAndroidHardwareBufferPropertiesANDROID(VkDevice device_h, const struct AHardwareBuffer *buffer,
                                                VkAndroidHardwareBufferPropertiesANDROID *pProperties)
 {
-   RADV_FROM_HANDLE(radv_device, dev, device_h);
+   VK_FROM_HANDLE(radv_device, dev, device_h);
    struct radv_physical_device *pdev = radv_device_physical(dev);
 
    VkAndroidHardwareBufferFormatPropertiesANDROID *format_prop =
@@ -597,7 +597,7 @@ VkResult
 radv_GetMemoryAndroidHardwareBufferANDROID(VkDevice device_h, const VkMemoryGetAndroidHardwareBufferInfoANDROID *pInfo,
                                            struct AHardwareBuffer **pBuffer)
 {
-   RADV_FROM_HANDLE(radv_device_memory, mem, pInfo->memory);
+   VK_FROM_HANDLE(radv_device_memory, mem, pInfo->memory);
 
    /* This should always be set due to the export handle types being set on
     * allocation. */

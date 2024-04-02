@@ -2338,7 +2338,7 @@ VKAPI_ATTR void VKAPI_CALL
 radv_GetPhysicalDeviceQueueFamilyProperties2(VkPhysicalDevice physicalDevice, uint32_t *pCount,
                                              VkQueueFamilyProperties2 *pQueueFamilyProperties)
 {
-   RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
+   VK_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
    if (!pQueueFamilyProperties) {
       radv_get_physical_device_queue_family_properties(pdev, pCount, NULL);
       return;
@@ -2391,7 +2391,7 @@ static void
 radv_get_memory_budget_properties(VkPhysicalDevice physicalDevice,
                                   VkPhysicalDeviceMemoryBudgetPropertiesEXT *memoryBudget)
 {
-   RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
+   VK_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
    VkPhysicalDeviceMemoryProperties *memory_properties = &pdev->memory_properties;
 
@@ -2521,7 +2521,7 @@ VKAPI_ATTR void VKAPI_CALL
 radv_GetPhysicalDeviceMemoryProperties2(VkPhysicalDevice physicalDevice,
                                         VkPhysicalDeviceMemoryProperties2 *pMemoryProperties)
 {
-   RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
+   VK_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
 
    pMemoryProperties->memoryProperties = pdev->memory_properties;
 

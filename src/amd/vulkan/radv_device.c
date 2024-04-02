@@ -100,7 +100,7 @@ radv_GetMemoryHostPointerPropertiesEXT(VkDevice _device, VkExternalMemoryHandleT
                                        const void *pHostPointer,
                                        VkMemoryHostPointerPropertiesEXT *pMemoryHostPointerProperties)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
    switch (handleType) {
@@ -607,7 +607,7 @@ init_dispatch_tables(struct radv_device *device, struct radv_physical_device *pd
 static VkResult
 capture_trace(VkQueue _queue)
 {
-   RADV_FROM_HANDLE(radv_queue, queue, _queue);
+   VK_FROM_HANDLE(radv_queue, queue, _queue);
    struct radv_device *device = radv_queue_device(queue);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
@@ -853,7 +853,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCreateInfo,
                   const VkAllocationCallbacks *pAllocator, VkDevice *pDevice)
 {
-   RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
+   VK_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
    struct radv_instance *instance = radv_physical_device_instance(pdev);
    VkResult result;
    struct radv_device *device;
@@ -1283,7 +1283,7 @@ fail_queue:
 VKAPI_ATTR void VKAPI_CALL
 radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
 
    if (!device)
       return;
@@ -1378,8 +1378,8 @@ VKAPI_ATTR void VKAPI_CALL
 radv_GetImageMemoryRequirements2(VkDevice _device, const VkImageMemoryRequirementsInfo2 *pInfo,
                                  VkMemoryRequirements2 *pMemoryRequirements)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_image, image, pInfo->image);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_image, image, pInfo->image);
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
    pMemoryRequirements->memoryRequirements.memoryTypeBits =
@@ -2035,8 +2035,8 @@ radv_gfx11_set_db_render_control(const struct radv_device *device, unsigned num_
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_GetMemoryFdKHR(VkDevice _device, const VkMemoryGetFdInfoKHR *pGetFdInfo, int *pFD)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_device_memory, memory, pGetFdInfo->memory);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device_memory, memory, pGetFdInfo->memory);
 
    assert(pGetFdInfo->sType == VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR);
 
@@ -2100,7 +2100,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_GetMemoryFdPropertiesKHR(VkDevice _device, VkExternalMemoryHandleTypeFlagBits handleType, int fd,
                               VkMemoryFdPropertiesKHR *pMemoryFdProperties)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    struct radv_physical_device *pdev = radv_device_physical(device);
 
    switch (handleType) {
@@ -2131,7 +2131,7 @@ radv_GetCalibratedTimestampsKHR(VkDevice _device, uint32_t timestampCount,
                                 uint64_t *pMaxDeviation)
 {
 #ifndef _WIN32
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    uint32_t clock_crystal_freq = pdev->info.clock_crystal_freq;
    int d;
@@ -2229,7 +2229,7 @@ radv_device_release_performance_counters(struct radv_device *device)
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_AcquireProfilingLockKHR(VkDevice _device, const VkAcquireProfilingLockInfoKHR *pInfo)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    bool result = radv_device_acquire_performance_counters(device);
    return result ? VK_SUCCESS : VK_ERROR_UNKNOWN;
 }
@@ -2237,7 +2237,7 @@ radv_AcquireProfilingLockKHR(VkDevice _device, const VkAcquireProfilingLockInfoK
 VKAPI_ATTR void VKAPI_CALL
 radv_ReleaseProfilingLockKHR(VkDevice _device)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    radv_device_release_performance_counters(device);
 }
 

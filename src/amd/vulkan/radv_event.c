@@ -89,7 +89,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateEvent(VkDevice _device, const VkEventCreateInfo *pCreateInfo, const VkAllocationCallbacks *pAllocator,
                  VkEvent *pEvent)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    VkResult result = radv_create_event(device, pCreateInfo, pAllocator, pEvent, false);
    if (result != VK_SUCCESS)
       return result;
@@ -100,8 +100,8 @@ radv_CreateEvent(VkDevice _device, const VkEventCreateInfo *pCreateInfo, const V
 VKAPI_ATTR void VKAPI_CALL
 radv_DestroyEvent(VkDevice _device, VkEvent _event, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_event, event, _event);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_event, event, _event);
 
    if (!event)
       return;
@@ -112,8 +112,8 @@ radv_DestroyEvent(VkDevice _device, VkEvent _event, const VkAllocationCallbacks 
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_GetEventStatus(VkDevice _device, VkEvent _event)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_event, event, _event);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_event, event, _event);
 
    if (vk_device_is_lost(&device->vk))
       return VK_ERROR_DEVICE_LOST;
@@ -126,7 +126,7 @@ radv_GetEventStatus(VkDevice _device, VkEvent _event)
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_SetEvent(VkDevice _device, VkEvent _event)
 {
-   RADV_FROM_HANDLE(radv_event, event, _event);
+   VK_FROM_HANDLE(radv_event, event, _event);
    *event->map = 1;
 
    return VK_SUCCESS;
@@ -135,7 +135,7 @@ radv_SetEvent(VkDevice _device, VkEvent _event)
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_ResetEvent(VkDevice _device, VkEvent _event)
 {
-   RADV_FROM_HANDLE(radv_event, event, _event);
+   VK_FROM_HANDLE(radv_event, event, _event);
    *event->map = 0;
 
    return VK_SUCCESS;

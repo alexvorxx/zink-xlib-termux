@@ -121,15 +121,15 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateBuffer(VkDevice _device, const VkBufferCreateInfo *pCreateInfo, const VkAllocationCallbacks *pAllocator,
                   VkBuffer *pBuffer)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    return radv_create_buffer(device, pCreateInfo, pAllocator, pBuffer, false);
 }
 
 VKAPI_ATTR void VKAPI_CALL
 radv_DestroyBuffer(VkDevice _device, VkBuffer _buffer, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_buffer, buffer, _buffer);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_buffer, buffer, _buffer);
 
    if (!buffer)
       return;
@@ -140,13 +140,13 @@ radv_DestroyBuffer(VkDevice _device, VkBuffer _buffer, const VkAllocationCallbac
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_BindBufferMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindBufferMemoryInfo *pBindInfos)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    for (uint32_t i = 0; i < bindInfoCount; ++i) {
-      RADV_FROM_HANDLE(radv_device_memory, mem, pBindInfos[i].memory);
-      RADV_FROM_HANDLE(radv_buffer, buffer, pBindInfos[i].buffer);
+      VK_FROM_HANDLE(radv_device_memory, mem, pBindInfos[i].memory);
+      VK_FROM_HANDLE(radv_buffer, buffer, pBindInfos[i].buffer);
       VkBindMemoryStatusKHR *status = (void *)vk_find_struct_const(&pBindInfos[i], BIND_MEMORY_STATUS_KHR);
 
       if (status)
@@ -248,7 +248,7 @@ VKAPI_ATTR void VKAPI_CALL
 radv_GetDeviceBufferMemoryRequirements(VkDevice _device, const VkDeviceBufferMemoryRequirements *pInfo,
                                        VkMemoryRequirements2 *pMemoryRequirements)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    const VkBufferUsageFlagBits2KHR usage_flags = radv_get_buffer_usage_flags(pInfo->pCreateInfo);
 
    radv_get_buffer_memory_requirements(device, pInfo->pCreateInfo->size, pInfo->pCreateInfo->flags, usage_flags,
@@ -258,14 +258,14 @@ radv_GetDeviceBufferMemoryRequirements(VkDevice _device, const VkDeviceBufferMem
 VKAPI_ATTR VkDeviceAddress VKAPI_CALL
 radv_GetBufferDeviceAddress(VkDevice device, const VkBufferDeviceAddressInfo *pInfo)
 {
-   RADV_FROM_HANDLE(radv_buffer, buffer, pInfo->buffer);
+   VK_FROM_HANDLE(radv_buffer, buffer, pInfo->buffer);
    return radv_buffer_get_va(buffer->bo) + buffer->offset;
 }
 
 VKAPI_ATTR uint64_t VKAPI_CALL
 radv_GetBufferOpaqueCaptureAddress(VkDevice device, const VkBufferDeviceAddressInfo *pInfo)
 {
-   RADV_FROM_HANDLE(radv_buffer, buffer, pInfo->buffer);
+   VK_FROM_HANDLE(radv_buffer, buffer, pInfo->buffer);
    return buffer->bo ? radv_buffer_get_va(buffer->bo) + buffer->offset : 0;
 }
 

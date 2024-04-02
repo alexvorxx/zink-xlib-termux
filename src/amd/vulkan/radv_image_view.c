@@ -745,7 +745,7 @@ radv_image_view_init(struct radv_image_view *iview, struct radv_device *device,
                      const VkImageViewCreateInfo *pCreateInfo, VkImageCreateFlags img_create_flags,
                      const struct radv_image_view_extra_create_info *extra_create_info)
 {
-   RADV_FROM_HANDLE(radv_image, image, pCreateInfo->image);
+   VK_FROM_HANDLE(radv_image, image, pCreateInfo->image);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const VkImageSubresourceRange *range = &pCreateInfo->subresourceRange;
    uint32_t plane_count = 1;
@@ -924,8 +924,8 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateImageView(VkDevice _device, const VkImageViewCreateInfo *pCreateInfo,
                      const VkAllocationCallbacks *pAllocator, VkImageView *pView)
 {
-   RADV_FROM_HANDLE(radv_image, image, pCreateInfo->image);
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_image, image, pCreateInfo->image);
+   VK_FROM_HANDLE(radv_device, device, _device);
    struct radv_image_view *view;
 
    view = vk_alloc2(&device->vk.alloc, pAllocator, sizeof(*view), 8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
@@ -943,8 +943,8 @@ radv_CreateImageView(VkDevice _device, const VkImageViewCreateInfo *pCreateInfo,
 VKAPI_ATTR void VKAPI_CALL
 radv_DestroyImageView(VkDevice _device, VkImageView _iview, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_image_view, iview, _iview);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_image_view, iview, _iview);
 
    if (!iview)
       return;

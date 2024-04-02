@@ -281,7 +281,7 @@ radv_GetAccelerationStructureBuildSizesKHR(VkDevice _device, VkAccelerationStruc
                                            const uint32_t *pMaxPrimitiveCounts,
                                            VkAccelerationStructureBuildSizesInfoKHR *pSizeInfo)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
 
    STATIC_ASSERT(sizeof(struct radv_bvh_triangle_node) == 64);
    STATIC_ASSERT(sizeof(struct radv_bvh_aabb_node) == 64);
@@ -733,7 +733,7 @@ build_leaves(VkCommandBuffer commandBuffer, uint32_t infoCount,
              const VkAccelerationStructureBuildRangeInfoKHR *const *ppBuildRangeInfos, struct bvh_state *bvh_states,
              bool updateable)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    radv_write_user_event_marker(cmd_buffer, UserEventPush, "leaves");
@@ -748,7 +748,7 @@ build_leaves(VkCommandBuffer commandBuffer, uint32_t infoCount,
       if (bvh_states[i].config.updateable != updateable)
          continue;
 
-      RADV_FROM_HANDLE(vk_acceleration_structure, accel_struct, pInfos[i].dstAccelerationStructure);
+      VK_FROM_HANDLE(vk_acceleration_structure, accel_struct, pInfos[i].dstAccelerationStructure);
 
       struct leaf_args leaf_consts = {
          .ir = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.ir_offset,
@@ -782,7 +782,7 @@ morton_generate(VkCommandBuffer commandBuffer, uint32_t infoCount,
                 const VkAccelerationStructureBuildGeometryInfoKHR *pInfos, struct bvh_state *bvh_states,
                 enum radv_cmd_flush_bits flush_bits)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    radv_write_user_event_marker(cmd_buffer, UserEventPush, "morton");
@@ -815,7 +815,7 @@ morton_sort(VkCommandBuffer commandBuffer, uint32_t infoCount,
             enum radv_cmd_flush_bits flush_bits)
 {
    /* Copyright 2019 The Fuchsia Authors. */
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    radv_write_user_event_marker(cmd_buffer, UserEventPush, "sort");
@@ -1045,7 +1045,7 @@ lbvh_build_internal(VkCommandBuffer commandBuffer, uint32_t infoCount,
                     const VkAccelerationStructureBuildGeometryInfoKHR *pInfos, struct bvh_state *bvh_states,
                     enum radv_cmd_flush_bits flush_bits)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    radv_write_user_event_marker(cmd_buffer, UserEventPush, "lbvh");
@@ -1103,7 +1103,7 @@ static void
 ploc_build_internal(VkCommandBuffer commandBuffer, uint32_t infoCount,
                     const VkAccelerationStructureBuildGeometryInfoKHR *pInfos, struct bvh_state *bvh_states)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    radv_write_user_event_marker(cmd_buffer, UserEventPush, "ploc");
@@ -1142,7 +1142,7 @@ static void
 encode_nodes(VkCommandBuffer commandBuffer, uint32_t infoCount,
              const VkAccelerationStructureBuildGeometryInfoKHR *pInfos, struct bvh_state *bvh_states, bool compact)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    radv_write_user_event_marker(cmd_buffer, UserEventPush, "encode");
@@ -1157,7 +1157,7 @@ encode_nodes(VkCommandBuffer commandBuffer, uint32_t infoCount,
       if (bvh_states[i].config.internal_type == INTERNAL_BUILD_TYPE_UPDATE)
          continue;
 
-      RADV_FROM_HANDLE(vk_acceleration_structure, accel_struct, pInfos[i].dstAccelerationStructure);
+      VK_FROM_HANDLE(vk_acceleration_structure, accel_struct, pInfos[i].dstAccelerationStructure);
 
       VkGeometryTypeKHR geometry_type = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
 
@@ -1206,7 +1206,7 @@ init_header(VkCommandBuffer commandBuffer, uint32_t infoCount,
             const VkAccelerationStructureBuildGeometryInfoKHR *pInfos, struct bvh_state *bvh_states,
             struct radv_bvh_batch_state *batch_state)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    if (batch_state->any_compact) {
@@ -1219,7 +1219,7 @@ init_header(VkCommandBuffer commandBuffer, uint32_t infoCount,
    for (uint32_t i = 0; i < infoCount; ++i) {
       if (bvh_states[i].config.internal_type == INTERNAL_BUILD_TYPE_UPDATE)
          continue;
-      RADV_FROM_HANDLE(vk_acceleration_structure, accel_struct, pInfos[i].dstAccelerationStructure);
+      VK_FROM_HANDLE(vk_acceleration_structure, accel_struct, pInfos[i].dstAccelerationStructure);
       size_t base = offsetof(struct radv_accel_struct_header, compacted_size);
 
       uint64_t instance_count =
@@ -1277,7 +1277,7 @@ init_geometry_infos(VkCommandBuffer commandBuffer, uint32_t infoCount,
    for (uint32_t i = 0; i < infoCount; ++i) {
       if (bvh_states[i].config.internal_type == INTERNAL_BUILD_TYPE_UPDATE)
          continue;
-      RADV_FROM_HANDLE(vk_acceleration_structure, accel_struct, pInfos[i].dstAccelerationStructure);
+      VK_FROM_HANDLE(vk_acceleration_structure, accel_struct, pInfos[i].dstAccelerationStructure);
 
       uint64_t geometry_infos_size = pInfos[i].geometryCount * sizeof(struct radv_accel_struct_geometry_info);
 
@@ -1305,7 +1305,7 @@ static void
 update(VkCommandBuffer commandBuffer, uint32_t infoCount, const VkAccelerationStructureBuildGeometryInfoKHR *pInfos,
        const VkAccelerationStructureBuildRangeInfoKHR *const *ppBuildRangeInfos, struct bvh_state *bvh_states)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    radv_write_user_event_marker(cmd_buffer, UserEventPush, "update");
@@ -1358,7 +1358,7 @@ radv_CmdBuildAccelerationStructuresKHR(VkCommandBuffer commandBuffer, uint32_t i
                                        const VkAccelerationStructureBuildGeometryInfoKHR *pInfos,
                                        const VkAccelerationStructureBuildRangeInfoKHR *const *ppBuildRangeInfos)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_saved_state saved_state;
 
@@ -1439,8 +1439,8 @@ radv_CmdBuildAccelerationStructuresKHR(VkCommandBuffer commandBuffer, uint32_t i
             VK_FROM_HANDLE(vk_acceleration_structure, src_as, pInfos[i].srcAccelerationStructure);
             VK_FROM_HANDLE(vk_acceleration_structure, dst_as, pInfos[i].dstAccelerationStructure);
 
-            RADV_FROM_HANDLE(radv_buffer, src_as_buffer, src_as->buffer);
-            RADV_FROM_HANDLE(radv_buffer, dst_as_buffer, dst_as->buffer);
+            VK_FROM_HANDLE(radv_buffer, src_as_buffer, src_as->buffer);
+            VK_FROM_HANDLE(radv_buffer, dst_as_buffer, dst_as->buffer);
 
             /* Copy header/metadata */
             radv_copy_buffer(cmd_buffer, src_as_buffer->bo, dst_as_buffer->bo, src_as_buffer->offset + src_as->offset,
@@ -1499,10 +1499,10 @@ radv_CmdBuildAccelerationStructuresKHR(VkCommandBuffer commandBuffer, uint32_t i
 VKAPI_ATTR void VKAPI_CALL
 radv_CmdCopyAccelerationStructureKHR(VkCommandBuffer commandBuffer, const VkCopyAccelerationStructureInfoKHR *pInfo)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
-   RADV_FROM_HANDLE(vk_acceleration_structure, src, pInfo->src);
-   RADV_FROM_HANDLE(vk_acceleration_structure, dst, pInfo->dst);
-   RADV_FROM_HANDLE(radv_buffer, src_buffer, src->buffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(vk_acceleration_structure, src, pInfo->src);
+   VK_FROM_HANDLE(vk_acceleration_structure, dst, pInfo->dst);
+   VK_FROM_HANDLE(radv_buffer, src_buffer, src->buffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_saved_state saved_state;
 
@@ -1541,7 +1541,7 @@ radv_GetDeviceAccelerationStructureCompatibilityKHR(VkDevice _device,
                                                     const VkAccelerationStructureVersionInfoKHR *pVersionInfo,
                                                     VkAccelerationStructureCompatibilityKHR *pCompatibility)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    bool compat = memcmp(pVersionInfo->pVersionData, pdev->driver_uuid, VK_UUID_SIZE) == 0 &&
                  memcmp(pVersionInfo->pVersionData + VK_UUID_SIZE, pdev->cache_uuid, VK_UUID_SIZE) == 0;
@@ -1569,8 +1569,8 @@ VKAPI_ATTR void VKAPI_CALL
 radv_CmdCopyMemoryToAccelerationStructureKHR(VkCommandBuffer commandBuffer,
                                              const VkCopyMemoryToAccelerationStructureInfoKHR *pInfo)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
-   RADV_FROM_HANDLE(vk_acceleration_structure, dst, pInfo->dst);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(vk_acceleration_structure, dst, pInfo->dst);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_meta_saved_state saved_state;
 
@@ -1604,9 +1604,9 @@ VKAPI_ATTR void VKAPI_CALL
 radv_CmdCopyAccelerationStructureToMemoryKHR(VkCommandBuffer commandBuffer,
                                              const VkCopyAccelerationStructureToMemoryInfoKHR *pInfo)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
-   RADV_FROM_HANDLE(vk_acceleration_structure, src, pInfo->src);
-   RADV_FROM_HANDLE(radv_buffer, src_buffer, src->buffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(vk_acceleration_structure, src, pInfo->src);
+   VK_FROM_HANDLE(radv_buffer, src_buffer, src->buffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_meta_saved_state saved_state;

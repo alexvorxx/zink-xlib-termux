@@ -55,8 +55,8 @@ radv_shader_object_destroy(struct radv_device *device, struct radv_shader_object
 VKAPI_ATTR void VKAPI_CALL
 radv_DestroyShaderEXT(VkDevice _device, VkShaderEXT shader, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_shader_object, shader_obj, shader);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_shader_object, shader_obj, shader);
 
    if (!shader)
       return;
@@ -80,7 +80,7 @@ radv_shader_stage_init(const VkShaderCreateInfoEXT *sinfo, struct radv_shader_st
    out_stage->spirv.size = sinfo->codeSize;
 
    for (uint32_t i = 0; i < sinfo->setLayoutCount; i++) {
-      RADV_FROM_HANDLE(radv_descriptor_set_layout, set_layout, sinfo->pSetLayouts[i]);
+      VK_FROM_HANDLE(radv_descriptor_set_layout, set_layout, sinfo->pSetLayouts[i]);
 
       if (set_layout == NULL)
          continue;
@@ -249,7 +249,7 @@ radv_get_shader_layout(const VkShaderCreateInfoEXT *pCreateInfo, struct radv_sha
    layout->dynamic_offset_count = 0;
 
    for (uint32_t i = 0; i < pCreateInfo->setLayoutCount; i++) {
-      RADV_FROM_HANDLE(radv_descriptor_set_layout, set_layout, pCreateInfo->pSetLayouts[i]);
+      VK_FROM_HANDLE(radv_descriptor_set_layout, set_layout, pCreateInfo->pSetLayouts[i]);
 
       if (set_layout == NULL)
          continue;
@@ -385,7 +385,7 @@ static VkResult
 radv_shader_object_create(VkDevice _device, const VkShaderCreateInfoEXT *pCreateInfo,
                           const VkAllocationCallbacks *pAllocator, VkShaderEXT *pShader)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    struct radv_shader_object *shader_obj;
    VkResult result;
 
@@ -410,7 +410,7 @@ static VkResult
 radv_shader_object_create_linked(VkDevice _device, uint32_t createInfoCount, const VkShaderCreateInfoEXT *pCreateInfos,
                                  const VkAllocationCallbacks *pAllocator, VkShaderEXT *pShaders)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_shader_stage stages[MESA_VULKAN_SHADER_STAGES];
 
@@ -624,8 +624,8 @@ radv_write_shader_binary(struct blob *blob, const struct radv_shader_binary *bin
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_GetShaderBinaryDataEXT(VkDevice _device, VkShaderEXT shader, size_t *pDataSize, void *pData)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_shader_object, shader_obj, shader);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_shader_object, shader_obj, shader);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const size_t size = radv_get_shader_object_size(shader_obj);
 

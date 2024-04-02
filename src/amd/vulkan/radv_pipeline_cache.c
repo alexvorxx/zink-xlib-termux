@@ -93,7 +93,7 @@ void
 radv_hash_rt_shaders(const struct radv_device *device, unsigned char *hash, const struct radv_ray_tracing_stage *stages,
                      const VkRayTracingPipelineCreateInfoKHR *pCreateInfo, const struct radv_ray_tracing_group *groups)
 {
-   RADV_FROM_HANDLE(radv_pipeline_layout, layout, pCreateInfo->layout);
+   VK_FROM_HANDLE(radv_pipeline_layout, layout, pCreateInfo->layout);
    struct mesa_sha1 ctx;
 
    _mesa_sha1_init(&ctx);
@@ -118,7 +118,7 @@ radv_hash_rt_shaders(const struct radv_device *device, unsigned char *hash, cons
 
    if (pCreateInfo->pLibraryInfo) {
       for (uint32_t i = 0; i < pCreateInfo->pLibraryInfo->libraryCount; ++i) {
-         RADV_FROM_HANDLE(radv_pipeline, lib_pipeline, pCreateInfo->pLibraryInfo->pLibraries[i]);
+         VK_FROM_HANDLE(radv_pipeline, lib_pipeline, pCreateInfo->pLibraryInfo->pLibraries[i]);
          struct radv_ray_tracing_pipeline *lib = radv_pipeline_to_ray_tracing(lib_pipeline);
          _mesa_sha1_update(&ctx, lib->sha1, SHA1_DIGEST_LENGTH);
       }

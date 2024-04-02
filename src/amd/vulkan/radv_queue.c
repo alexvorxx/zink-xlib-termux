@@ -65,7 +65,7 @@ radv_get_queue_global_priority(const VkDeviceQueueGlobalPriorityCreateInfoKHR *p
 static VkResult
 radv_sparse_buffer_bind_memory(struct radv_device *device, const VkSparseBufferMemoryBindInfo *bind)
 {
-   RADV_FROM_HANDLE(radv_buffer, buffer, bind->buffer);
+   VK_FROM_HANDLE(radv_buffer, buffer, bind->buffer);
    VkResult result = VK_SUCCESS;
 
    struct radv_device_memory *mem = NULL;
@@ -113,7 +113,7 @@ radv_sparse_buffer_bind_memory(struct radv_device *device, const VkSparseBufferM
 static VkResult
 radv_sparse_image_opaque_bind_memory(struct radv_device *device, const VkSparseImageOpaqueMemoryBindInfo *bind)
 {
-   RADV_FROM_HANDLE(radv_image, image, bind->image);
+   VK_FROM_HANDLE(radv_image, image, bind->image);
    VkResult result;
 
    for (uint32_t i = 0; i < bind->bindCount; ++i) {
@@ -134,7 +134,7 @@ radv_sparse_image_opaque_bind_memory(struct radv_device *device, const VkSparseI
 static VkResult
 radv_sparse_image_bind_memory(struct radv_device *device, const VkSparseImageMemoryBindInfo *bind)
 {
-   RADV_FROM_HANDLE(radv_image, image, bind->image);
+   VK_FROM_HANDLE(radv_image, image, bind->image);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radeon_surf *surface = &image->planes[0].surface;
    uint32_t bs = vk_format_get_blocksize(image->vk.format);

@@ -31,7 +31,7 @@ rage2_CmdBeginRenderPass(VkCommandBuffer commandBuffer, const VkRenderPassBeginI
                          VkSubpassContents contents)
 {
    VK_FROM_HANDLE(vk_framebuffer, framebuffer, pRenderPassBegin->framebuffer);
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
    VkRenderPassBeginInfo render_pass_begin = {

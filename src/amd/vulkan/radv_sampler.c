@@ -268,7 +268,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateSampler(VkDevice _device, const VkSamplerCreateInfo *pCreateInfo, const VkAllocationCallbacks *pAllocator,
                    VkSampler *pSampler)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    struct radv_sampler *sampler;
 
    sampler = vk_sampler_create(&device->vk, pCreateInfo, pAllocator, sizeof(*sampler));
@@ -285,8 +285,8 @@ radv_CreateSampler(VkDevice _device, const VkSamplerCreateInfo *pCreateInfo, con
 VKAPI_ATTR void VKAPI_CALL
 radv_DestroySampler(VkDevice _device, VkSampler _sampler, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_sampler, sampler, _sampler);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_sampler, sampler, _sampler);
 
    if (!sampler)
       return;

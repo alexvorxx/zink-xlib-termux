@@ -284,15 +284,15 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_AllocateMemory(VkDevice _device, const VkMemoryAllocateInfo *pAllocateInfo,
                     const VkAllocationCallbacks *pAllocator, VkDeviceMemory *pMem)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    return radv_alloc_memory(device, pAllocateInfo, pAllocator, pMem, false);
 }
 
 VKAPI_ATTR void VKAPI_CALL
 radv_FreeMemory(VkDevice _device, VkDeviceMemory _mem, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_device_memory, mem, _mem);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device_memory, mem, _mem);
 
    radv_free_memory(device, pAllocator, mem);
 }
@@ -300,8 +300,8 @@ radv_FreeMemory(VkDevice _device, VkDeviceMemory _mem, const VkAllocationCallbac
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_MapMemory2KHR(VkDevice _device, const VkMemoryMapInfoKHR *pMemoryMapInfo, void **ppData)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_device_memory, mem, pMemoryMapInfo->memory);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device_memory, mem, pMemoryMapInfo->memory);
    void *fixed_address = NULL;
    bool use_fixed_address = false;
 
@@ -331,8 +331,8 @@ radv_MapMemory2KHR(VkDevice _device, const VkMemoryMapInfoKHR *pMemoryMapInfo, v
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_UnmapMemory2KHR(VkDevice _device, const VkMemoryUnmapInfoKHR *pMemoryUnmapInfo)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_device_memory, mem, pMemoryUnmapInfo->memory);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device_memory, mem, pMemoryUnmapInfo->memory);
 
    vk_rmv_log_cpu_map(&device->vk, mem->bo->va, true);
    if (mem->user_ptr == NULL)
@@ -356,7 +356,7 @@ radv_InvalidateMappedMemoryRanges(VkDevice _device, uint32_t memoryRangeCount, c
 VKAPI_ATTR uint64_t VKAPI_CALL
 radv_GetDeviceMemoryOpaqueCaptureAddress(VkDevice device, const VkDeviceMemoryOpaqueCaptureAddressInfo *pInfo)
 {
-   RADV_FROM_HANDLE(radv_device_memory, mem, pInfo->memory);
+   VK_FROM_HANDLE(radv_device_memory, mem, pInfo->memory);
    return radv_buffer_get_va(mem->bo);
 }
 

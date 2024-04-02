@@ -1790,7 +1790,7 @@ radv_CreateIndirectCommandsLayoutNV(VkDevice _device, const VkIndirectCommandsLa
                                     const VkAllocationCallbacks *pAllocator,
                                     VkIndirectCommandsLayoutNV *pIndirectCommandsLayout)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    struct radv_indirect_command_layout *layout;
 
    size_t size = sizeof(*layout) + pCreateInfo->tokenCount * sizeof(VkIndirectCommandsLayoutTokenNV);
@@ -1841,7 +1841,7 @@ radv_CreateIndirectCommandsLayoutNV(VkDevice _device, const VkIndirectCommandsLa
             layout->vbo_offsets[pCreateInfo->pTokens[i].vertexBindingUnit] |= DGC_DYNAMIC_STRIDE;
          break;
       case VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV: {
-         RADV_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->pTokens[i].pushconstantPipelineLayout);
+         VK_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->pTokens[i].pushconstantPipelineLayout);
          for (unsigned j = pCreateInfo->pTokens[i].pushconstantOffset / 4, k = 0;
               k < pCreateInfo->pTokens[i].pushconstantSize / 4; ++j, ++k) {
             layout->push_constant_mask |= 1ull << j;
@@ -1874,7 +1874,7 @@ VKAPI_ATTR void VKAPI_CALL
 radv_DestroyIndirectCommandsLayoutNV(VkDevice _device, VkIndirectCommandsLayoutNV indirectCommandsLayout,
                                      const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    VK_FROM_HANDLE(radv_indirect_command_layout, layout, indirectCommandsLayout);
 
    if (!layout)
@@ -1889,7 +1889,7 @@ radv_GetGeneratedCommandsMemoryRequirementsNV(VkDevice _device,
                                               const VkGeneratedCommandsMemoryRequirementsInfoNV *pInfo,
                                               VkMemoryRequirements2 *pMemoryRequirements)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    VK_FROM_HANDLE(radv_indirect_command_layout, layout, pInfo->indirectCommandsLayout);
    VK_FROM_HANDLE(radv_pipeline, pipeline, pInfo->pipeline);
@@ -2295,7 +2295,7 @@ radv_GetPipelineIndirectMemoryRequirementsNV(VkDevice _device, const VkComputePi
 {
    VkMemoryRequirements *reqs = &pMemoryRequirements->memoryRequirements;
    const uint32_t size = sizeof(struct radv_compute_pipeline_metadata);
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
    reqs->memoryTypeBits = ((1u << pdev->memory_properties.memoryTypeCount) - 1u) & ~pdev->memory_types_32bit;
@@ -2306,7 +2306,7 @@ radv_GetPipelineIndirectMemoryRequirementsNV(VkDevice _device, const VkComputePi
 VKAPI_ATTR VkDeviceAddress VKAPI_CALL
 radv_GetPipelineIndirectDeviceAddressNV(VkDevice device, const VkPipelineIndirectDeviceAddressInfoNV *pInfo)
 {
-   RADV_FROM_HANDLE(radv_pipeline, pipeline, pInfo->pipeline);
+   VK_FROM_HANDLE(radv_pipeline, pipeline, pInfo->pipeline);
 
    return radv_pipeline_to_compute(pipeline)->indirect.va;
 }

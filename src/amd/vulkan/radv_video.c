@@ -353,7 +353,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateVideoSessionKHR(VkDevice _device, const VkVideoSessionCreateInfoKHR *pCreateInfo,
                            const VkAllocationCallbacks *pAllocator, VkVideoSessionKHR *pVideoSession)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_device, device, _device);
    struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
@@ -406,8 +406,8 @@ radv_CreateVideoSessionKHR(VkDevice _device, const VkVideoSessionCreateInfoKHR *
 VKAPI_ATTR void VKAPI_CALL
 radv_DestroyVideoSessionKHR(VkDevice _device, VkVideoSessionKHR _session, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_video_session, vid, _session);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_video_session, vid, _session);
    if (!_session)
       return;
 
@@ -420,9 +420,9 @@ radv_CreateVideoSessionParametersKHR(VkDevice _device, const VkVideoSessionParam
                                      const VkAllocationCallbacks *pAllocator,
                                      VkVideoSessionParametersKHR *pVideoSessionParameters)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_video_session, vid, pCreateInfo->videoSession);
-   RADV_FROM_HANDLE(radv_video_session_params, templ, pCreateInfo->videoSessionParametersTemplate);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_video_session, vid, pCreateInfo->videoSession);
+   VK_FROM_HANDLE(radv_video_session_params, templ, pCreateInfo->videoSessionParametersTemplate);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
    struct radv_video_session_params *params =
@@ -445,8 +445,8 @@ VKAPI_ATTR void VKAPI_CALL
 radv_DestroyVideoSessionParametersKHR(VkDevice _device, VkVideoSessionParametersKHR _params,
                                       const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_video_session_params, params, _params);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_video_session_params, params, _params);
 
    vk_video_session_parameters_finish(&device->vk, &params->vk);
    vk_free2(&device->vk.alloc, pAllocator, params);
@@ -456,7 +456,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice, const VkVideoProfileInfoKHR *pVideoProfile,
                                            VkVideoCapabilitiesKHR *pCapabilities)
 {
-   RADV_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
+   VK_FROM_HANDLE(radv_physical_device, pdev, physicalDevice);
    const struct video_codec_cap *cap = NULL;
 
    switch (pVideoProfile->videoCodecOperation) {
@@ -667,8 +667,8 @@ radv_GetVideoSessionMemoryRequirementsKHR(VkDevice _device, VkVideoSessionKHR vi
                                           uint32_t *pMemoryRequirementsCount,
                                           VkVideoSessionMemoryRequirementsKHR *pMemoryRequirements)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_video_session, vid, videoSession);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_video_session, vid, videoSession);
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
    uint32_t memory_type_bits = (1u << pdev->memory_properties.memoryTypeCount) - 1;
@@ -728,7 +728,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_UpdateVideoSessionParametersKHR(VkDevice _device, VkVideoSessionParametersKHR videoSessionParameters,
                                      const VkVideoSessionParametersUpdateInfoKHR *pUpdateInfo)
 {
-   RADV_FROM_HANDLE(radv_video_session_params, params, videoSessionParameters);
+   VK_FROM_HANDLE(radv_video_session_params, params, videoSessionParameters);
 
    return vk_video_session_parameters_update(&params->vk, pUpdateInfo);
 }
@@ -745,7 +745,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_BindVideoSessionMemoryKHR(VkDevice _device, VkVideoSessionKHR videoSession, uint32_t videoSessionBindMemoryCount,
                                const VkBindVideoSessionMemoryInfoKHR *pBindSessionMemoryInfos)
 {
-   RADV_FROM_HANDLE(radv_video_session, vid, videoSession);
+   VK_FROM_HANDLE(radv_video_session, vid, videoSession);
 
    for (unsigned i = 0; i < videoSessionBindMemoryCount; i++) {
       switch (pBindSessionMemoryInfos[i].memoryBindIndex) {
@@ -2748,9 +2748,9 @@ ruvd_dec_message_create(struct radv_video_session *vid, void *ptr)
 VKAPI_ATTR void VKAPI_CALL
 radv_CmdBeginVideoCodingKHR(VkCommandBuffer commandBuffer, const VkVideoBeginCodingInfoKHR *pBeginInfo)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
-   RADV_FROM_HANDLE(radv_video_session, vid, pBeginInfo->videoSession);
-   RADV_FROM_HANDLE(radv_video_session_params, params, pBeginInfo->videoSessionParameters);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_video_session, vid, pBeginInfo->videoSession);
+   VK_FROM_HANDLE(radv_video_session_params, params, pBeginInfo->videoSessionParameters);
 
    cmd_buffer->video.vid = vid;
    cmd_buffer->video.params = params;
@@ -2832,7 +2832,7 @@ radv_uvd_cmd_reset(struct radv_cmd_buffer *cmd_buffer)
 VKAPI_ATTR void VKAPI_CALL
 radv_CmdControlVideoCodingKHR(VkCommandBuffer commandBuffer, const VkVideoCodingControlInfoKHR *pCodingControlInfo)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_physical_device *pdev = radv_device_physical(device);
 
@@ -2852,7 +2852,7 @@ radv_CmdEndVideoCodingKHR(VkCommandBuffer commandBuffer, const VkVideoEndCodingI
 static void
 radv_uvd_decode_video(struct radv_cmd_buffer *cmd_buffer, const VkVideoDecodeInfoKHR *frame_info)
 {
-   RADV_FROM_HANDLE(radv_buffer, src_buffer, frame_info->srcBuffer);
+   VK_FROM_HANDLE(radv_buffer, src_buffer, frame_info->srcBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_video_session *vid = cmd_buffer->video.vid;
@@ -2907,7 +2907,7 @@ radv_uvd_decode_video(struct radv_cmd_buffer *cmd_buffer, const VkVideoDecodeInf
 static void
 radv_vcn_decode_video(struct radv_cmd_buffer *cmd_buffer, const VkVideoDecodeInfoKHR *frame_info)
 {
-   RADV_FROM_HANDLE(radv_buffer, src_buffer, frame_info->srcBuffer);
+   VK_FROM_HANDLE(radv_buffer, src_buffer, frame_info->srcBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_video_session *vid = cmd_buffer->video.vid;
@@ -2992,7 +2992,7 @@ radv_vcn_decode_video(struct radv_cmd_buffer *cmd_buffer, const VkVideoDecodeInf
 VKAPI_ATTR void VKAPI_CALL
 radv_CmdDecodeVideoKHR(VkCommandBuffer commandBuffer, const VkVideoDecodeInfoKHR *frame_info)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_physical_device *pdev = radv_device_physical(device);
 

@@ -173,8 +173,6 @@ radv_float_to_ufixed(float value, unsigned frac_bits)
    return value * (1 << frac_bits);
 }
 
-#define RADV_FROM_HANDLE(__radv_type, __name, __handle) VK_FROM_HANDLE(__radv_type, __name, __handle)
-
 #ifdef __cplusplus
 }
 #endif

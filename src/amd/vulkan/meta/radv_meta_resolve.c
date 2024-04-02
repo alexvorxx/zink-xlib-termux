@@ -503,9 +503,9 @@ resolve_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image, 
 VKAPI_ATTR void VKAPI_CALL
 radv_CmdResolveImage2(VkCommandBuffer commandBuffer, const VkResolveImageInfo2 *pResolveImageInfo)
 {
-   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
-   RADV_FROM_HANDLE(radv_image, src_image, pResolveImageInfo->srcImage);
-   RADV_FROM_HANDLE(radv_image, dst_image, pResolveImageInfo->dstImage);
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_image, src_image, pResolveImageInfo->srcImage);
+   VK_FROM_HANDLE(radv_image, dst_image, pResolveImageInfo->dstImage);
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    VkImageLayout src_image_layout = pResolveImageInfo->srcImageLayout;

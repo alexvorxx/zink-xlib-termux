@@ -125,8 +125,8 @@ radv_pipeline_destroy(struct radv_device *device, struct radv_pipeline *pipeline
 VKAPI_ATTR void VKAPI_CALL
 radv_DestroyPipeline(VkDevice _device, VkPipeline _pipeline, const VkAllocationCallbacks *pAllocator)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_pipeline, pipeline, _pipeline);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_pipeline, pipeline, _pipeline);
 
    if (!_pipeline)
       return;
@@ -836,7 +836,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_GetPipelineExecutablePropertiesKHR(VkDevice _device, const VkPipelineInfoKHR *pPipelineInfo,
                                         uint32_t *pExecutableCount, VkPipelineExecutablePropertiesKHR *pProperties)
 {
-   RADV_FROM_HANDLE(radv_pipeline, pipeline, pPipelineInfo->pipeline);
+   VK_FROM_HANDLE(radv_pipeline, pipeline, pPipelineInfo->pipeline);
    const uint32_t total_count = radv_get_executable_count(pipeline);
 
    if (!pProperties) {
@@ -936,8 +936,8 @@ VKAPI_ATTR VkResult VKAPI_CALL
 radv_GetPipelineExecutableStatisticsKHR(VkDevice _device, const VkPipelineExecutableInfoKHR *pExecutableInfo,
                                         uint32_t *pStatisticCount, VkPipelineExecutableStatisticKHR *pStatistics)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_pipeline, pipeline, pExecutableInfo->pipeline);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_pipeline, pipeline, pExecutableInfo->pipeline);
    gl_shader_stage stage;
    struct radv_shader *shader =
       radv_get_shader_from_executable_index(pipeline, pExecutableInfo->executableIndex, &stage);
@@ -1071,8 +1071,8 @@ radv_GetPipelineExecutableInternalRepresentationsKHR(
    VkDevice _device, const VkPipelineExecutableInfoKHR *pExecutableInfo, uint32_t *pInternalRepresentationCount,
    VkPipelineExecutableInternalRepresentationKHR *pInternalRepresentations)
 {
-   RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_pipeline, pipeline, pExecutableInfo->pipeline);
+   VK_FROM_HANDLE(radv_device, device, _device);
+   VK_FROM_HANDLE(radv_pipeline, pipeline, pExecutableInfo->pipeline);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    gl_shader_stage stage;
    struct radv_shader *shader =
@@ -1151,7 +1151,7 @@ radv_copy_shader_stage_create_info(struct radv_device *device, uint32_t stageCou
       memcpy(new_stages, pStages, size);
 
    for (uint32_t i = 0; i < stageCount; i++) {
-      RADV_FROM_HANDLE(vk_shader_module, module, new_stages[i].module);
+      VK_FROM_HANDLE(vk_shader_module, module, new_stages[i].module);
 
       const VkShaderModuleCreateInfo *minfo = vk_find_struct_const(pStages[i].pNext, SHADER_MODULE_CREATE_INFO);
 

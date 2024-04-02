@@ -444,7 +444,7 @@ has_flat_varyings(struct d3d12_context *ctx)
 {
    struct d3d12_shader_selector *fs = ctx->gfx_stages[PIPE_SHADER_FRAGMENT];
 
-   if (!fs || !fs->current)
+   if (!fs)
       return false;
 
    nir_foreach_variable_with_modes(input, fs->initial,
@@ -561,7 +561,7 @@ fill_varyings(struct d3d12_context *ctx, const nir_shader *s,
 static void
 fill_flat_varyings(struct d3d12_gs_variant_key *key, d3d12_shader_selector *fs)
 {
-   if (!fs || !fs->current)
+   if (!fs)
       return;
 
    nir_foreach_variable_with_modes(input, fs->initial,
@@ -1290,9 +1290,7 @@ update_so_info(struct pipe_stream_output_info *so_info,
 static struct d3d12_shader_selector *
 d3d12_create_shader_impl(struct d3d12_context *ctx,
                          struct d3d12_shader_selector *sel,
-                         struct nir_shader *nir,
-                         struct d3d12_shader_selector *prev,
-                         struct d3d12_shader_selector *next)
+                         struct nir_shader *nir)
 {
    unsigned tex_scan_result = scan_texture_use(nir);
    sel->samples_int_textures = (tex_scan_result & TEX_SAMPLE_INTEGER_TEXTURE) != 0;
@@ -1353,32 +1351,6 @@ d3d12_create_shader_impl(struct d3d12_context *ctx,
    sel->gs_key.varyings = nullptr;
    sel->tcs_key.varyings = nullptr;
 
-   /*
-    * We must compile some shader here, because if the previous or a next shaders exists later
-    * when the shaders are bound, then the key evaluation in the shader selector will access
-    * the current variant of these  prev and next shader, and we can only assign
-    * a current variant when it has been successfully compiled.
-    *
-    * For shaders that require lowering because certain instructions are not available
-    * and their emulation is state depended (like sampling an integer texture that must be
-    * emulated and needs handling of boundary conditions, or shadow compare sampling with LOD),
-    * we must go through the shader selector here to create a compilable variant.
-    * For shaders that are not depended on the state this is just compiling the original
-    * shader.
-    *
-    * TODO: get rid of having to compiling the shader here if it can be forseen that it will
-    * be thrown away (i.e. it depends on states that are likely to change before the shader is
-    * used for the first time)
-    */
-   struct d3d12_selection_context sel_ctx = {0};
-   sel_ctx.ctx = ctx;
-   select_shader_variant(&sel_ctx, sel, prev, next);
-
-   if (!sel->current) {
-      ralloc_free(sel);
-      return NULL;
-   }
-
    return sel;
 }
 
@@ -1404,8 +1376,6 @@ d3d12_create_shader(struct d3d12_context *ctx,
    update_so_info(&sel->so_info, nir->info.outputs_written);
 
    assert(nir != NULL);
-   d3d12_shader_selector *prev = get_prev_shader(ctx, sel->stage);
-   d3d12_shader_selector *next = get_next_shader(ctx, sel->stage);
 
    NIR_PASS_V(nir, dxil_nir_split_clip_cull_distance);
    NIR_PASS_V(nir, d3d12_split_needed_varyings);
@@ -1435,8 +1405,7 @@ d3d12_create_shader(struct d3d12_context *ctx,
    }
 
    if (nir->info.stage != MESA_SHADER_VERTEX) {
-      dxil_reassign_driver_locations(nir, nir_var_shader_in,
-                                     prev ? prev->initial->info.outputs_written : 0);
+      dxil_reassign_driver_locations(nir, nir_var_shader_in, 0);
    } else {
       dxil_sort_by_driver_location(nir, nir_var_shader_in);
 
@@ -1448,15 +1417,14 @@ d3d12_create_shader(struct d3d12_context *ctx,
    }
 
    if (nir->info.stage != MESA_SHADER_FRAGMENT) {
-      dxil_reassign_driver_locations(nir, nir_var_shader_out,
-                                     next ? next->initial->info.inputs_read : 0);
+      dxil_reassign_driver_locations(nir, nir_var_shader_out, 0);
    } else {
       NIR_PASS_V(nir, nir_lower_fragcoord_wtrans);
       NIR_PASS_V(nir, dxil_nir_lower_sample_pos);
       dxil_sort_ps_outputs(nir);
    }
 
-   return d3d12_create_shader_impl(ctx, sel, nir, prev, next);
+   return d3d12_create_shader_impl(ctx, sel, nir);
 }
 
 struct d3d12_shader_selector *
@@ -1477,7 +1445,7 @@ d3d12_create_compute_shader(struct d3d12_context *ctx,
 
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
 
-   return d3d12_create_shader_impl(ctx, sel, nir, nullptr, nullptr);
+   return d3d12_create_shader_impl(ctx, sel, nir);
 }
 
 void

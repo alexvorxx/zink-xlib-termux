@@ -408,6 +408,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_shader_atomic_float2              = true,
       .EXT_shader_demote_to_helper_invocation = true,
       .EXT_shader_module_identifier          = true,
+      .EXT_shader_replicated_composites      = true,
       .EXT_shader_stencil_export             = true,
       .EXT_shader_subgroup_ballot            = true,
       .EXT_shader_subgroup_vote              = true,
@@ -740,6 +741,9 @@ get_features(const struct anv_physical_device *pdevice,
       .robustBufferAccess2 = true,
       .robustImageAccess2 = true,
       .nullDescriptor = true,
+
+      /* VK_EXT_shader_replicated_composites */
+      .shaderReplicatedComposites = true,
 
       /* VK_EXT_shader_atomic_float */
       .shaderBufferFloat32Atomics =    true,

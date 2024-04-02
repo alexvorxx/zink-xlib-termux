@@ -4556,6 +4556,9 @@ vtn_handle_composite(struct vtn_builder *b, SpvOp opcode,
             vtn_vector_construct(b, glsl_get_vector_elements(type->type),
                                  elems, srcs);
       } else {
+         vtn_fail_if(elems != type->length,
+                     "%s has %u constituents, expected %u",
+                     spirv_op_to_string(opcode), elems, type->length);
          ssa->elems = vtn_alloc_array(b, struct vtn_ssa_value *, elems);
          for (unsigned i = 0; i < elems; i++)
             ssa->elems[i] = vtn_ssa_value(b, w[3 + i]);

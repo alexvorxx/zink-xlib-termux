@@ -1578,20 +1578,13 @@ emit_3dstate_ps(struct anv_graphics_pipeline *pipeline,
       pipeline->base.shaders[MESA_SHADER_FRAGMENT];
 
    if (!anv_pipeline_has_stage(pipeline, MESA_SHADER_FRAGMENT)) {
-      anv_pipeline_emit(pipeline, final.ps, GENX(3DSTATE_PS), ps);
+      anv_pipeline_emit(pipeline, partial.ps, GENX(3DSTATE_PS), ps);
       return;
    }
 
    const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
 
-   anv_pipeline_emit(pipeline, final.ps, GENX(3DSTATE_PS), ps) {
-      intel_set_ps_dispatch_state(&ps, devinfo, wm_prog_data,
-                                  ms != NULL ? ms->rasterization_samples : 1,
-                                  pipeline->fs_msaa_flags);
-
-      const bool persample =
-         brw_wm_prog_data_is_persample(wm_prog_data, pipeline->fs_msaa_flags);
-
+   anv_pipeline_emit(pipeline, partial.ps, GENX(3DSTATE_PS), ps) {
 #if GFX_VER == 12
       assert(wm_prog_data->dispatch_multi == 0 ||
              (wm_prog_data->dispatch_multi == 16 && wm_prog_data->max_polygons == 2));
@@ -1604,15 +1597,6 @@ emit_3dstate_ps(struct anv_graphics_pipeline *pipeline,
       ps.OverlappingSubspansEnable = false;
 #endif
 
-      ps.KernelStartPointer0 = fs_bin->kernel.offset +
-                               brw_wm_prog_data_prog_offset(wm_prog_data, ps, 0);
-      ps.KernelStartPointer1 = fs_bin->kernel.offset +
-                               brw_wm_prog_data_prog_offset(wm_prog_data, ps, 1);
-#if GFX_VER < 20
-      ps.KernelStartPointer2 = fs_bin->kernel.offset +
-                               brw_wm_prog_data_prog_offset(wm_prog_data, ps, 2);
-#endif
-
       ps.SingleProgramFlow          = false;
       ps.VectorMaskEnable           = wm_prog_data->uses_vmask;
       /* Wa_1606682166 */
@@ -1622,20 +1606,8 @@ emit_3dstate_ps(struct anv_graphics_pipeline *pipeline,
       ps.PushConstantEnable         = wm_prog_data->base.nr_params > 0 ||
                                       wm_prog_data->base.ubo_ranges[0].length;
 #endif
-      ps.PositionXYOffsetSelect     =
-           !wm_prog_data->uses_pos_offset ? POSOFFSET_NONE :
-           persample ? POSOFFSET_SAMPLE : POSOFFSET_CENTROID;
 
       ps.MaximumNumberofThreadsPerPSD = devinfo->max_threads_per_psd - 1;
-
-      ps.DispatchGRFStartRegisterForConstantSetupData0 =
-         brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 0);
-      ps.DispatchGRFStartRegisterForConstantSetupData1 =
-         brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 1);
-#if GFX_VER < 20
-      ps.DispatchGRFStartRegisterForConstantSetupData2 =
-         brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 2);
-#endif
 
 #if GFX_VERx10 >= 125
       ps.ScratchSpaceBuffer =

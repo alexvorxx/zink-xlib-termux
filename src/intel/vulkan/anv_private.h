@@ -1553,6 +1553,31 @@ struct anv_gfx_dynamic_state {
       uint32_t LineStippleRepeatCount;
    } ls;
 
+   /* 3DSTATE_PS */
+   struct {
+      uint32_t PositionXYOffsetSelect;
+
+      uint32_t KernelStartPointer0;
+      uint32_t KernelStartPointer1;
+      uint32_t KernelStartPointer2;
+
+      uint32_t DispatchGRFStartRegisterForConstantSetupData0;
+      uint32_t DispatchGRFStartRegisterForConstantSetupData1;
+      uint32_t DispatchGRFStartRegisterForConstantSetupData2;
+
+      /* Pre-Gfx20 only */
+      bool     _8PixelDispatchEnable;
+      bool     _16PixelDispatchEnable;
+      bool     _32PixelDispatchEnable;
+
+      /* Gfx20+ only */
+      bool     Kernel0Enable;
+      bool     Kernel1Enable;
+      uint32_t Kernel0SIMDWidth;
+      uint32_t Kernel1SIMDWidth;
+      uint32_t Kernel0PolyPackingPolicy;
+   } ps;
+
    /* 3DSTATE_PS_EXTRA */
    struct {
       bool PixelShaderIsPerSample;
@@ -4635,7 +4660,6 @@ struct anv_graphics_pipeline {
       struct anv_gfx_state_ptr                  vs;
       struct anv_gfx_state_ptr                  hs;
       struct anv_gfx_state_ptr                  ds;
-      struct anv_gfx_state_ptr                  ps;
 
       struct anv_gfx_state_ptr                  task_control;
       struct anv_gfx_state_ptr                  task_shader;
@@ -4659,6 +4683,7 @@ struct anv_graphics_pipeline {
       struct anv_gfx_state_ptr                  so;
       struct anv_gfx_state_ptr                  gs;
       struct anv_gfx_state_ptr                  te;
+      struct anv_gfx_state_ptr                  ps;
       struct anv_gfx_state_ptr                  vfg;
    } partial;
 };

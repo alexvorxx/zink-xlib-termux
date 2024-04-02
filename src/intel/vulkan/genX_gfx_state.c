@@ -31,6 +31,7 @@
 
 #include "genxml/gen_macros.h"
 #include "genxml/genX_pack.h"
+#include "common/intel_genX_state_brw.h"
 #include "common/intel_guardband.h"
 #include "common/intel_tiled_render.h"
 #include "compiler/brw_prim.h"
@@ -580,6 +581,52 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
    if ((gfx->dirty & ANV_CMD_DIRTY_PIPELINE) ||
        (gfx->dirty & ANV_CMD_DIRTY_FS_MSAA_FLAGS)) {
       if (wm_prog_data) {
+         const struct anv_shader_bin *fs_bin =
+            pipeline->base.shaders[MESA_SHADER_FRAGMENT];
+
+         struct GENX(3DSTATE_PS) ps = {};
+         intel_set_ps_dispatch_state(&ps, device->info, wm_prog_data,
+                                     MAX2(dyn->ms.rasterization_samples, 1),
+                                     gfx->fs_msaa_flags);
+
+         SET(PS, ps.KernelStartPointer0,
+             fs_bin->kernel.offset +
+             brw_wm_prog_data_prog_offset(wm_prog_data, ps, 0));
+         SET(PS, ps.KernelStartPointer1,
+             fs_bin->kernel.offset +
+             brw_wm_prog_data_prog_offset(wm_prog_data, ps, 1));
+#if GFX_VER < 20
+         SET(PS, ps.KernelStartPointer2,
+             fs_bin->kernel.offset +
+             brw_wm_prog_data_prog_offset(wm_prog_data, ps, 2));
+#endif
+
+         SET(PS, ps.DispatchGRFStartRegisterForConstantSetupData0,
+             brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 0));
+         SET(PS, ps.DispatchGRFStartRegisterForConstantSetupData1,
+             brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 1));
+#if GFX_VER < 20
+         SET(PS, ps.DispatchGRFStartRegisterForConstantSetupData2,
+             brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 2));
+#endif
+
+#if GFX_VER < 20
+         SET(PS, ps._8PixelDispatchEnable,  ps._8PixelDispatchEnable);
+         SET(PS, ps._16PixelDispatchEnable, ps._16PixelDispatchEnable);
+         SET(PS, ps._32PixelDispatchEnable, ps._32PixelDispatchEnable);
+#else
+         SET(PS, ps.Kernel0Enable,            ps.Kernel0Enable);
+         SET(PS, ps.Kernel1Enable,            ps.Kernel1Enable);
+         SET(PS, ps.Kernel0SIMDWidth,         ps.Kernel0SIMDWidth);
+         SET(PS, ps.Kernel1SIMDWidth,         ps.Kernel1SIMDWidth);
+         SET(PS, ps.Kernel0PolyPackingPolicy, ps.Kernel0PolyPackingPolicy);
+#endif
+
+         SET(PS, ps.PositionXYOffsetSelect,
+             !wm_prog_data->uses_pos_offset ? POSOFFSET_NONE :
+             brw_wm_prog_data_is_persample(wm_prog_data, gfx->fs_msaa_flags) ?
+             POSOFFSET_SAMPLE : POSOFFSET_CENTROID);
+
          SET(PS_EXTRA, ps_extra.PixelShaderIsPerSample,
              brw_wm_prog_data_is_persample(wm_prog_data, gfx->fs_msaa_flags));
 #if GFX_VER >= 11
@@ -595,6 +642,15 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
 #endif
          SET(WM, wm.BarycentricInterpolationMode,
              wm_prog_data_barycentric_modes(wm_prog_data, gfx->fs_msaa_flags));
+      } else {
+#if GFX_VER < 20
+         SET(PS, ps._8PixelDispatchEnable,  false);
+         SET(PS, ps._16PixelDispatchEnable, false);
+         SET(PS, ps._32PixelDispatchEnable, false);
+#else
+         SET(PS, ps.Kernel0Enable, false);
+         SET(PS, ps.Kernel1Enable, false);
+#endif
       }
    }
 
@@ -1609,9 +1665,6 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
 #endif
    }
 
-   if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_PS))
-      anv_batch_emit_pipeline_state(&cmd_buffer->batch, pipeline, final.ps);
-
    if (device->vk.enabled_extensions.EXT_mesh_shader) {
       if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_MESH_CONTROL))
          anv_batch_emit_pipeline_state(&cmd_buffer->batch, pipeline, final.mesh_control);
@@ -1653,6 +1706,32 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
    s.name = hw_state->category.name
 
    /* Now the potentially dynamic instructions */
+
+   if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_PS)) {
+      anv_batch_emit_merge(&cmd_buffer->batch, GENX(3DSTATE_PS),
+                           pipeline, partial.ps, ps) {
+         SET(ps, ps, KernelStartPointer0);
+         SET(ps, ps, KernelStartPointer1);
+         SET(ps, ps, DispatchGRFStartRegisterForConstantSetupData0);
+         SET(ps, ps, DispatchGRFStartRegisterForConstantSetupData1);
+
+#if GFX_VER < 20
+         SET(ps, ps, KernelStartPointer2);
+         SET(ps, ps, DispatchGRFStartRegisterForConstantSetupData2);
+
+         SET(ps, ps, _8PixelDispatchEnable);
+         SET(ps, ps, _16PixelDispatchEnable);
+         SET(ps, ps, _32PixelDispatchEnable);
+#else
+         SET(ps, ps, Kernel0Enable);
+         SET(ps, ps, Kernel1Enable);
+         SET(ps, ps, Kernel0SIMDWidth);
+         SET(ps, ps, Kernel1SIMDWidth);
+         SET(ps, ps, Kernel0PolyPackingPolicy);
+#endif
+         SET(ps, ps, PositionXYOffsetSelect);
+      }
+   }
 
    if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_PS_EXTRA)) {
       anv_batch_emit_merge(&cmd_buffer->batch, GENX(3DSTATE_PS_EXTRA),

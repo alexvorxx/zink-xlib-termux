@@ -3849,7 +3849,7 @@ zink_flush(struct pipe_context *pctx,
    bool deferred = flags & PIPE_FLUSH_DEFERRED;
    bool deferred_fence = false;
    struct zink_batch *batch = &ctx->batch;
-   struct zink_fence *fence = NULL;
+   struct zink_batch_state *bs = NULL;
    struct zink_screen *screen = zink_screen(ctx->base.screen);
    VkSemaphore export_sem = VK_NULL_HANDLE;
 
@@ -3914,7 +3914,7 @@ zink_flush(struct pipe_context *pctx,
    if (!batch->has_work) {
        if (pfence) {
           /* reuse last fence */
-          fence = &ctx->last_batch_state->fence;
+          bs = ctx->last_batch_state;
        }
        if (!deferred) {
           struct zink_batch_state *last = ctx->last_batch_state;
@@ -3927,7 +3927,7 @@ zink_flush(struct pipe_context *pctx,
        if (ctx->tc && !ctx->track_renderpasses)
          tc_driver_internal_flush_notify(ctx->tc);
    } else {
-      fence = &batch->state->fence;
+      bs = batch->state;
       if (deferred && !(flags & PIPE_FLUSH_FENCE_FD) && pfence)
          deferred_fence = true;
       else
@@ -3948,11 +3948,11 @@ zink_flush(struct pipe_context *pctx,
       }
 
       assert(!mfence->fence);
-      mfence->fence = fence;
+      mfence->fence = &bs->fence;
       mfence->sem = export_sem;
-      if (fence) {
-         mfence->submit_count = zink_batch_state(fence)->usage.submit_count;
-         util_dynarray_append(&fence->mfences, struct zink_tc_fence *, mfence);
+      if (bs) {
+         mfence->submit_count = bs->usage.submit_count;
+         util_dynarray_append(&bs->fence.mfences, struct zink_tc_fence *, mfence);
       }
       if (export_sem) {
          pipe_reference(NULL, &mfence->reference);
@@ -3960,20 +3960,20 @@ zink_flush(struct pipe_context *pctx,
       }
 
       if (deferred_fence) {
-         assert(fence);
+         assert(bs);
          mfence->deferred_ctx = pctx;
-         assert(!ctx->deferred_fence || ctx->deferred_fence == fence);
-         ctx->deferred_fence = fence;
+         assert(!ctx->deferred_fence || ctx->deferred_fence == &bs->fence);
+         ctx->deferred_fence = &bs->fence;
       }
 
-      if (!fence || flags & TC_FLUSH_ASYNC) {
+      if (!bs || flags & TC_FLUSH_ASYNC) {
          if (!util_queue_fence_is_signalled(&mfence->ready))
             util_queue_fence_signal(&mfence->ready);
       }
    }
-   if (fence) {
+   if (bs) {
       if (!(flags & (PIPE_FLUSH_DEFERRED | PIPE_FLUSH_ASYNC)))
-         sync_flush(ctx, zink_batch_state(fence));
+         sync_flush(ctx, bs);
    }
 }
 

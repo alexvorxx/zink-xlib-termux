@@ -115,6 +115,11 @@ typedef struct {
 
    /* Bit mask of TCS per-vertex inputs (VS outputs) which
     * are passed between the two stages only in temporaries (registers).
+    *
+    * A VS output can be passed to TCS in registers when:
+    * - VS is known to write, and TCS is known to read it
+    * - Neither VS nor TCS accesses it indirecty
+    * - There are no TCS cross-invocation reads to this input
     */
    uint64_t tcs_temp_only_inputs;
 
@@ -164,25 +169,6 @@ map_tess_level(const unsigned semantic, const lower_tess_io_state *st)
       return st->tcs_tess_level_inner_base;
 
    unreachable("Invalid semantic.");
-}
-
-static bool
-match_mask(gl_shader_stage stage,
-           nir_intrinsic_instr *intrin,
-           uint64_t mask,
-           bool match_indirect)
-{
-   bool indirect = !nir_src_is_const(*nir_get_io_offset_src(intrin));
-   if (indirect)
-      return match_indirect;
-
-   uint64_t slot = nir_intrinsic_io_semantics(intrin).location;
-   if (stage == MESA_SHADER_TESS_CTRL &&
-       intrin->intrinsic != nir_intrinsic_load_per_vertex_input &&
-       intrin->intrinsic != nir_intrinsic_store_per_vertex_output)
-      slot -= VARYING_SLOT_PATCH0;
-
-   return (UINT64_C(1) << slot) & mask;
 }
 
 static uint64_t
@@ -287,7 +273,7 @@ lower_ls_output_store(nir_builder *b,
    lower_tess_io_state *st = (lower_tess_io_state *) state;
 
    /* If this is a temp-only TCS input, we don't need to use shared memory at all. */
-   if (match_mask(MESA_SHADER_VERTEX, intrin, st->tcs_temp_only_inputs, false))
+   if (st->tcs_temp_only_inputs & BITFIELD64_BIT(semantic))
       return false;
 
    b->cursor = nir_before_instr(&intrin->instr);

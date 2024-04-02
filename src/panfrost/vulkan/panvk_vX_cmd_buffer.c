@@ -937,7 +937,7 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
                              &cmdbuf->state.vb.bufs[buf_idx], &attrib_descs[i]);
    }
 
-   if (attrib_count > pipeline->attribs.buf_count) {
+   if (attrib_count > pipeline->attribs.attrib_count) {
       unsigned bufs_offset =
          pipeline->attribs.buf_count * pan_size(ATTRIBUTE_BUFFER) * 2;
       unsigned attribs_offset =

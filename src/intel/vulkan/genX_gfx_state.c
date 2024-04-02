@@ -580,6 +580,19 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
    if ((gfx->dirty & ANV_CMD_DIRTY_PIPELINE) ||
        (gfx->dirty & ANV_CMD_DIRTY_FS_MSAA_FLAGS)) {
       if (wm_prog_data) {
+         SET(PS_EXTRA, ps_extra.PixelShaderIsPerSample,
+             brw_wm_prog_data_is_persample(wm_prog_data, gfx->fs_msaa_flags));
+#if GFX_VER >= 11
+         SET(PS_EXTRA, ps_extra.PixelShaderIsPerCoarsePixel,
+             brw_wm_prog_data_is_coarse(wm_prog_data, gfx->fs_msaa_flags));
+#endif
+#if GFX_VERx10 >= 125
+         /* TODO: We should only require this when the last geometry shader
+          *       uses a fragment shading rate that is not constant.
+          */
+         SET(PS_EXTRA, ps_extra.EnablePSDependencyOnCPsizeChange,
+             brw_wm_prog_data_is_coarse(wm_prog_data, gfx->fs_msaa_flags));
+#endif
          SET(WM, wm.BarycentricInterpolationMode,
              wm_prog_data_barycentric_modes(wm_prog_data, gfx->fs_msaa_flags));
       }
@@ -1644,6 +1657,13 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
    if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_PS_EXTRA)) {
       anv_batch_emit_merge(&cmd_buffer->batch, GENX(3DSTATE_PS_EXTRA),
                            pipeline, partial.ps_extra, pse) {
+         SET(pse, ps_extra, PixelShaderIsPerSample);
+#if GFX_VER >= 11
+         SET(pse, ps_extra, PixelShaderIsPerCoarsePixel);
+#endif
+#if GFX_VERx10 >= 125
+         SET(pse, ps_extra, EnablePSDependencyOnCPsizeChange);
+#endif
          SET(pse, ps_extra, PixelShaderKillsPixel);
       }
    }

@@ -1555,7 +1555,10 @@ struct anv_gfx_dynamic_state {
 
    /* 3DSTATE_PS_EXTRA */
    struct {
+      bool PixelShaderIsPerSample;
       bool PixelShaderKillsPixel;
+      bool PixelShaderIsPerCoarsePixel;
+      bool EnablePSDependencyOnCPsizeChange;
    } ps_extra;
 
    /* 3DSTATE_PS_BLEND */

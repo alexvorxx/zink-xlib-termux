@@ -1666,8 +1666,6 @@ emit_3dstate_ps_extra(struct anv_graphics_pipeline *pipeline,
       ps.AttributeEnable               = wm_prog_data->num_varying_inputs > 0;
 #endif
       ps.oMaskPresenttoRenderTarget    = wm_prog_data->uses_omask;
-      ps.PixelShaderIsPerSample        =
-         brw_wm_prog_data_is_persample(wm_prog_data, pipeline->fs_msaa_flags);
       ps.PixelShaderComputedDepthMode  = wm_prog_data->computed_depth_mode;
       ps.PixelShaderUsesSourceDepth    = wm_prog_data->uses_src_depth;
       ps.PixelShaderUsesSourceW        = wm_prog_data->uses_src_w;
@@ -1693,15 +1691,6 @@ emit_3dstate_ps_extra(struct anv_graphics_pipeline *pipeline,
 #if GFX_VER >= 11
       ps.PixelShaderRequiresSourceDepthandorWPlaneCoefficients =
          wm_prog_data->uses_depth_w_coefficients;
-      ps.PixelShaderIsPerCoarsePixel =
-         brw_wm_prog_data_is_coarse(wm_prog_data, pipeline->fs_msaa_flags);
-#endif
-#if GFX_VERx10 >= 125
-      /* TODO: We should only require this when the last geometry shader uses
-       *       a fragment shading rate that is not constant.
-       */
-      ps.EnablePSDependencyOnCPsizeChange =
-         brw_wm_prog_data_is_coarse(wm_prog_data, pipeline->fs_msaa_flags);
 #endif
    }
 }

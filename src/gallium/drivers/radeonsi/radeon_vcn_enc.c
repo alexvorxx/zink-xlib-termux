@@ -970,7 +970,7 @@ static int setup_dpb(struct radeon_encoder *enc)
       enc_pic->ctx_buf.two_pass_search_center_map_offset = 0;
 
    if (is_av1) {
-      enc_pic->ctx_buf.av1.av1_sdb_intermedidate_context_offset = offset;
+      enc_pic->ctx_buf.av1.av1_sdb_intermediate_context_offset = offset;
       offset += RENCODE_AV1_SDB_FRAME_CONTEXT_SIZE;
    }
 

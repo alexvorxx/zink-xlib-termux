@@ -1118,7 +1118,7 @@ static void radeon_enc_ctx(struct radeon_encoder *enc)
 
    RADEON_ENC_CS(enc->enc_pic.ctx_buf.two_pass_search_center_map_offset);
    if (is_av1)
-      RADEON_ENC_CS(enc->enc_pic.ctx_buf.av1.av1_sdb_intermedidate_context_offset);
+      RADEON_ENC_CS(enc->enc_pic.ctx_buf.av1.av1_sdb_intermediate_context_offset);
    else
       RADEON_ENC_CS(enc->enc_pic.ctx_buf.colloc_buffer_offset);
    RADEON_ENC_END();

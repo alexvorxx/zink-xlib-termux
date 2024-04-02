@@ -208,6 +208,8 @@ enum vcn_version{
    VCN_4_0_4,
    VCN_4_0_5,
    VCN_4_0_6,
+
+   VCN_5_0_0,
 };
 
 #define SDMA_VERSION_VALUE(major, minor) (((major) << 8) | (minor))

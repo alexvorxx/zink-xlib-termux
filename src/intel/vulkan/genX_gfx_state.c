@@ -520,6 +520,63 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
       unreachable("Invalid provoking vertex mode");                    \
    }                                                                   \
 
+   UNUSED bool fs_msaa_changed = false;
+   if ((gfx->dirty & ANV_CMD_DIRTY_PIPELINE) ||
+       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_MS_ALPHA_TO_COVERAGE_ENABLE) ||
+       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_MS_RASTERIZATION_SAMPLES) ||
+       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_FSR)) {
+      enum intel_msaa_flags fs_msaa_flags = 0;
+
+      if (wm_prog_data) {
+         /* If we have any dynamic bits here, we might need to update the
+          * value in the push constant for the shader.
+          */
+         if (wm_prog_data->coarse_pixel_dispatch == BRW_SOMETIMES ||
+             wm_prog_data->persample_dispatch == BRW_SOMETIMES ||
+             wm_prog_data->alpha_to_coverage == BRW_SOMETIMES) {
+            fs_msaa_flags = INTEL_MSAA_FLAG_ENABLE_DYNAMIC;
+
+            if (dyn->ms.rasterization_samples > 1) {
+               fs_msaa_flags |= INTEL_MSAA_FLAG_MULTISAMPLE_FBO;
+
+               if (wm_prog_data->sample_shading) {
+                  assert(wm_prog_data->persample_dispatch != BRW_NEVER);
+                  fs_msaa_flags |= INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH;
+               }
+               if ((pipeline->sample_shading_enable &&
+                    (pipeline->min_sample_shading * dyn->ms.rasterization_samples) > 1) ||
+                   wm_prog_data->sample_shading) {
+                  fs_msaa_flags |= INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH |
+                                   INTEL_MSAA_FLAG_PERSAMPLE_INTERP;
+               }
+            }
+
+            if (wm_prog_data->coarse_pixel_dispatch == BRW_SOMETIMES &&
+                !(fs_msaa_flags & INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH)) {
+               fs_msaa_flags |= INTEL_MSAA_FLAG_COARSE_PI_MSG |
+                                INTEL_MSAA_FLAG_COARSE_RT_WRITES;
+            }
+
+            if (wm_prog_data->alpha_to_coverage == BRW_SOMETIMES &&
+                dyn->ms.alpha_to_coverage_enable)
+               fs_msaa_flags |= INTEL_MSAA_FLAG_ALPHA_TO_COVERAGE;
+
+            /* Check the last push constant value and update */
+
+            if (gfx->base.push_constants.gfx.fs_msaa_flags != fs_msaa_flags) {
+               gfx->base.push_constants.gfx.fs_msaa_flags = fs_msaa_flags;
+               cmd_buffer->state.push_constants_dirty |= VK_SHADER_STAGE_FRAGMENT_BIT;
+               gfx->base.push_constants_data_dirty = true;
+            }
+         }
+      }
+
+      if (fs_msaa_flags != gfx->fs_msaa_flags) {
+         gfx->fs_msaa_flags = fs_msaa_flags;
+         gfx->dirty |= ANV_CMD_DIRTY_FS_MSAA_FLAGS;
+      }
+   }
+
    if ((gfx->dirty & (ANV_CMD_DIRTY_PIPELINE |
                       ANV_CMD_DIRTY_XFB_ENABLE |
                       ANV_CMD_DIRTY_OCCLUSION_QUERY_ACTIVE)) ||
@@ -600,10 +657,11 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
 
 #if GFX_VER >= 11
    if (cmd_buffer->device->vk.enabled_extensions.KHR_fragment_shading_rate &&
-       (gfx->dirty & ANV_CMD_DIRTY_PIPELINE ||
+       ((gfx->dirty & ANV_CMD_DIRTY_PIPELINE) ||
+        (gfx->dirty & ANV_CMD_DIRTY_FS_MSAA_FLAGS) ||
         BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_FSR))) {
       const bool cps_enable = wm_prog_data &&
-         brw_wm_prog_data_is_coarse(wm_prog_data, pipeline->fs_msaa_flags);
+         brw_wm_prog_data_is_coarse(wm_prog_data, gfx->fs_msaa_flags);
 #if GFX_VER == 11
       SET(CPS, cps.CoarsePixelShadingMode,
                cps_enable ? CPS_MODE_CONSTANT : CPS_MODE_NONE);

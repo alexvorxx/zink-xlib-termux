@@ -690,13 +690,6 @@ radv_is_format_emulated(const struct radv_physical_device *pdev, VkFormat format
    return false;
 }
 
-bool
-radv_device_supports_etc(const struct radv_physical_device *pdev)
-{
-   return pdev->info.family == CHIP_VEGA10 || pdev->info.family == CHIP_RAVEN || pdev->info.family == CHIP_RAVEN2 ||
-          pdev->info.family == CHIP_STONEY;
-}
-
 static void
 radv_physical_device_get_format_properties(struct radv_physical_device *pdev, VkFormat format,
                                            VkFormatProperties3 *out_properties)

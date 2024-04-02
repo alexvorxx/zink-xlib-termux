@@ -772,13 +772,8 @@ dxil_spirv_nir_link(nir_shader *nir, nir_shader *prev_stage_nir,
       NIR_PASS_V(nir, dxil_nir_kill_undefined_varyings, prev_stage_nir->info.outputs_written, prev_stage_nir->info.patch_outputs_written);
       NIR_PASS_V(prev_stage_nir, dxil_nir_kill_unused_outputs, nir->info.inputs_read, nir->info.patch_inputs_read);
 
-      nir->info.inputs_read =
-         dxil_reassign_driver_locations(nir, nir_var_shader_in,
-                                        prev_stage_nir->info.outputs_written);
-
-      prev_stage_nir->info.outputs_written =
-         dxil_reassign_driver_locations(prev_stage_nir, nir_var_shader_out,
-                                        nir->info.inputs_read);
+      dxil_reassign_driver_locations(nir, nir_var_shader_in, prev_stage_nir->info.outputs_written);
+      dxil_reassign_driver_locations(prev_stage_nir, nir_var_shader_out, nir->info.inputs_read);
 
       if (nir->info.stage == MESA_SHADER_TESS_EVAL) {
          assert(prev_stage_nir->info.stage == MESA_SHADER_TESS_CTRL);
@@ -1104,8 +1099,7 @@ dxil_spirv_nir_passes(nir_shader *nir,
        * assigned even if there's just a single vertex shader in the
        * pipeline. The real linking happens in dxil_spirv_nir_link().
        */
-      nir->info.outputs_written =
-         dxil_reassign_driver_locations(nir, nir_var_shader_out, 0);
+      dxil_reassign_driver_locations(nir, nir_var_shader_out, 0);
    }
 
    if (nir->info.stage == MESA_SHADER_VERTEX) {
@@ -1115,11 +1109,9 @@ dxil_spirv_nir_passes(nir_shader *nir,
          var->data.driver_location = var->data.location - VERT_ATTRIB_GENERIC0;
       }
 
-      nir->info.inputs_read =
-         dxil_sort_by_driver_location(nir, nir_var_shader_in);
+      dxil_sort_by_driver_location(nir, nir_var_shader_in);
    } else {
-      nir->info.inputs_read =
-         dxil_reassign_driver_locations(nir, nir_var_shader_in, 0);
+      dxil_reassign_driver_locations(nir, nir_var_shader_in, 0);
    }
 
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));

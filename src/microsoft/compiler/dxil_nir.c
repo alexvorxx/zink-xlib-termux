@@ -1533,16 +1533,10 @@ variable_location_cmp(const nir_variable* a, const nir_variable* b)
 }
 
 /* Order varyings according to driver location */
-uint64_t
+void
 dxil_sort_by_driver_location(nir_shader* s, nir_variable_mode modes)
 {
    nir_sort_variables_with_modes(s, variable_location_cmp, modes);
-
-   uint64_t result = 0;
-   nir_foreach_variable_with_modes(var, s, modes) {
-      result |= 1ull << var->data.location;
-   }
-   return result;
 }
 
 /* Sort PS outputs so that color outputs come first */
@@ -1618,7 +1612,7 @@ nir_var_to_dxil_sysvalue_type(nir_variable *var, uint64_t other_stage_mask)
 /* Order between stage values so that normal varyings come first,
  * then sysvalues and then system generated values.
  */
-uint64_t
+void
 dxil_reassign_driver_locations(nir_shader* s, nir_variable_mode modes,
    uint64_t other_stage_mask)
 {
@@ -1631,16 +1625,12 @@ dxil_reassign_driver_locations(nir_shader* s, nir_variable_mode modes,
 
    nir_sort_variables_with_modes(s, variable_location_cmp, modes);
 
-   uint64_t result = 0;
    unsigned driver_loc = 0, driver_patch_loc = 0;
    nir_foreach_variable_with_modes(var, s, modes) {
-      if (var->data.location < 64)
-         result |= 1ull << var->data.location;
       /* Overlap patches with non-patch */
       var->data.driver_location = var->data.patch ?
          driver_patch_loc++ : driver_loc++;
    }
-   return result;
 }
 
 static bool

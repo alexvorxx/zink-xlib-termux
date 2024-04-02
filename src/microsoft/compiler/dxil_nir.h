@@ -59,13 +59,13 @@ bool dxil_nir_split_typed_samplers(nir_shader *shader);
 bool dxil_nir_lower_sysval_to_load_input(nir_shader *s, nir_variable **sysval_vars);
 bool dxil_nir_lower_vs_vertex_conversion(nir_shader *s, enum pipe_format target_formats[]);
 
-uint64_t
+void
 dxil_sort_by_driver_location(nir_shader* s, nir_variable_mode modes);
 
 void
 dxil_sort_ps_outputs(nir_shader* s);
 
-uint64_t
+void
 dxil_reassign_driver_locations(nir_shader* s, nir_variable_mode modes,
    uint64_t other_stage_mask);
 

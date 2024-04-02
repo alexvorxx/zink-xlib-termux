@@ -1584,11 +1584,10 @@ d3d12_create_shader(struct d3d12_context *ctx,
    NIR_PASS_V(nir, d3d12_split_needed_varyings);
 
    if (nir->info.stage != MESA_SHADER_VERTEX) {
-      nir->info.inputs_read =
       dxil_reassign_driver_locations(nir, nir_var_shader_in,
                                      prev ? prev->current->nir->info.outputs_written : 0);
    } else {
-      nir->info.inputs_read = dxil_sort_by_driver_location(nir, nir_var_shader_in);
+      dxil_sort_by_driver_location(nir, nir_var_shader_in);
 
       uint32_t driver_loc = 0;
       nir_foreach_variable_with_modes(var, nir, nir_var_shader_in) {
@@ -1598,9 +1597,8 @@ d3d12_create_shader(struct d3d12_context *ctx,
    }
 
    if (nir->info.stage != MESA_SHADER_FRAGMENT) {
-      nir->info.outputs_written =
-            dxil_reassign_driver_locations(nir, nir_var_shader_out,
-                                            next ? next->current->nir->info.inputs_read : 0);
+      dxil_reassign_driver_locations(nir, nir_var_shader_out,
+                                     next ? next->current->nir->info.inputs_read : 0);
    } else {
       NIR_PASS_V(nir, nir_lower_fragcoord_wtrans);
       NIR_PASS_V(nir, dxil_nir_lower_sample_pos);

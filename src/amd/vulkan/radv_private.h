@@ -2427,56 +2427,8 @@ RADV_DECL_PIPELINE_DOWNCAST(graphics_lib, RADV_PIPELINE_GRAPHICS_LIB)
 RADV_DECL_PIPELINE_DOWNCAST(compute, RADV_PIPELINE_COMPUTE)
 RADV_DECL_PIPELINE_DOWNCAST(ray_tracing, RADV_PIPELINE_RAY_TRACING)
 
-struct radv_shader_layout {
-   uint32_t num_sets;
-
-   struct {
-      struct radv_descriptor_set_layout *layout;
-      uint32_t dynamic_offset_start;
-   } set[MAX_SETS];
-
-   uint32_t push_constant_size;
-   uint32_t dynamic_offset_count;
-   bool use_dynamic_descriptors;
-};
-
-struct radv_shader_stage {
-   gl_shader_stage stage;
-   gl_shader_stage next_stage;
-
-   struct {
-      const struct vk_object_base *object;
-      const char *data;
-      uint32_t size;
-   } spirv;
-
-   const char *entrypoint;
-   const VkSpecializationInfo *spec_info;
-
-   unsigned char shader_sha1[20];
-
-   nir_shader *nir;
-   nir_shader *internal_nir; /* meta shaders */
-
-   struct radv_shader_info info;
-   struct radv_shader_args args;
-   struct radv_shader_stage_key key;
-
-   VkPipelineCreationFeedback feedback;
-
-   struct radv_shader_layout layout;
-};
-
 void radv_shader_layout_init(const struct radv_pipeline_layout *pipeline_layout, gl_shader_stage stage,
                              struct radv_shader_layout *layout);
-
-static inline bool
-radv_is_last_vgt_stage(const struct radv_shader_stage *stage)
-{
-   return (stage->info.stage == MESA_SHADER_VERTEX || stage->info.stage == MESA_SHADER_TESS_EVAL ||
-           stage->info.stage == MESA_SHADER_GEOMETRY || stage->info.stage == MESA_SHADER_MESH) &&
-          (stage->info.next_stage == MESA_SHADER_FRAGMENT || stage->info.next_stage == MESA_SHADER_NONE);
-}
 
 static inline bool
 radv_pipeline_has_stage(const struct radv_graphics_pipeline *pipeline, gl_shader_stage stage)

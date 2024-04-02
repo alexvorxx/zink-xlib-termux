@@ -464,6 +464,54 @@ struct radv_shader_info {
    struct gfx10_ngg_info ngg_info;
 };
 
+struct radv_shader_layout {
+   uint32_t num_sets;
+
+   struct {
+      struct radv_descriptor_set_layout *layout;
+      uint32_t dynamic_offset_start;
+   } set[MAX_SETS];
+
+   uint32_t push_constant_size;
+   uint32_t dynamic_offset_count;
+   bool use_dynamic_descriptors;
+};
+
+struct radv_shader_stage {
+   gl_shader_stage stage;
+   gl_shader_stage next_stage;
+
+   struct {
+      const struct vk_object_base *object;
+      const char *data;
+      uint32_t size;
+   } spirv;
+
+   const char *entrypoint;
+   const VkSpecializationInfo *spec_info;
+
+   unsigned char shader_sha1[20];
+
+   nir_shader *nir;
+   nir_shader *internal_nir; /* meta shaders */
+
+   struct radv_shader_info info;
+   struct radv_shader_args args;
+   struct radv_shader_stage_key key;
+
+   VkPipelineCreationFeedback feedback;
+
+   struct radv_shader_layout layout;
+};
+
+static inline bool
+radv_is_last_vgt_stage(const struct radv_shader_stage *stage)
+{
+   return (stage->info.stage == MESA_SHADER_VERTEX || stage->info.stage == MESA_SHADER_TESS_EVAL ||
+           stage->info.stage == MESA_SHADER_GEOMETRY || stage->info.stage == MESA_SHADER_MESH) &&
+          (stage->info.next_stage == MESA_SHADER_FRAGMENT || stage->info.next_stage == MESA_SHADER_NONE);
+}
+
 struct radv_vs_input_state {
    uint32_t attribute_mask;
 

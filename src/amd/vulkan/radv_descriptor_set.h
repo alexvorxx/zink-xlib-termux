@@ -89,6 +89,9 @@ struct radv_descriptor_set_layout {
    struct radv_descriptor_set_binding_layout binding[0];
 };
 
+VK_DEFINE_NONDISP_HANDLE_CASTS(radv_descriptor_set_layout, vk.base, VkDescriptorSetLayout,
+                               VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT)
+
 struct radv_descriptor_range {
    uint64_t va;
    uint32_t size;
@@ -111,6 +114,8 @@ struct radv_descriptor_set {
 
    struct radeon_winsys_bo *descriptors[];
 };
+
+VK_DEFINE_NONDISP_HANDLE_CASTS(radv_descriptor_set, header.base, VkDescriptorSet, VK_OBJECT_TYPE_DESCRIPTOR_SET)
 
 struct radv_push_descriptor_set {
    struct radv_descriptor_set_header set;
@@ -143,6 +148,8 @@ struct radv_descriptor_pool {
       struct radv_descriptor_pool_entry entries[0];
    };
 };
+
+VK_DEFINE_NONDISP_HANDLE_CASTS(radv_descriptor_pool, base, VkDescriptorPool, VK_OBJECT_TYPE_DESCRIPTOR_POOL)
 
 struct radv_descriptor_update_template_entry {
    VkDescriptorType descriptor_type;
@@ -177,6 +184,9 @@ struct radv_descriptor_update_template {
    struct radv_descriptor_update_template_entry entry[0];
 };
 
+VK_DEFINE_NONDISP_HANDLE_CASTS(radv_descriptor_update_template, base, VkDescriptorUpdateTemplate,
+                               VK_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE)
+
 struct radv_pipeline_layout {
    struct vk_object_base base;
    struct {
@@ -193,6 +203,8 @@ struct radv_pipeline_layout {
 
    unsigned char sha1[20];
 };
+
+VK_DEFINE_NONDISP_HANDLE_CASTS(radv_pipeline_layout, base, VkPipelineLayout, VK_OBJECT_TYPE_PIPELINE_LAYOUT)
 
 static inline const uint32_t *
 radv_immutable_samplers(const struct radv_descriptor_set_layout *set,

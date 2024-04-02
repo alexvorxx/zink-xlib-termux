@@ -47,34 +47,6 @@ murmur_32_scramble(uint32_t h, uint32_t k)
    return h;
 }
 
-template <typename T>
-uint32_t
-hash_murmur_32(Instruction* instr)
-{
-   uint32_t hash = uint32_t(instr->format) << 16 | uint32_t(instr->opcode);
-
-   for (const Operand& op : instr->operands)
-      hash = murmur_32_scramble(hash, op.constantValue());
-
-   /* skip format, opcode and pass_flags */
-   for (unsigned i = 2; i < (sizeof(T) >> 2); i++) {
-      uint32_t u;
-      /* Accesses it though a byte array, so doesn't violate the strict aliasing rule */
-      memcpy(&u, reinterpret_cast<uint8_t*>(instr) + i * 4, 4);
-      hash = murmur_32_scramble(hash, u);
-   }
-
-   /* Finalize. */
-   uint32_t len = instr->operands.size() + instr->definitions.size() + sizeof(T);
-   hash ^= len;
-   hash ^= hash >> 16;
-   hash *= 0x85ebca6b;
-   hash ^= hash >> 13;
-   hash *= 0xc2b2ae35;
-   hash ^= hash >> 16;
-   return hash;
-}
-
 struct InstrHash {
    /* This hash function uses the Murmur3 algorithm written by Austin Appleby
     * https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp
@@ -84,36 +56,30 @@ struct InstrHash {
     */
    std::size_t operator()(Instruction* instr) const
    {
-      if (instr->isDPP16())
-         return hash_murmur_32<DPP16_instruction>(instr);
+      uint32_t hash = uint32_t(instr->format) << 16 | uint32_t(instr->opcode);
 
-      if (instr->isDPP8())
-         return hash_murmur_32<DPP8_instruction>(instr);
+      for (const Operand& op : instr->operands)
+         hash = murmur_32_scramble(hash, op.constantValue());
 
-      if (instr->isSDWA())
-         return hash_murmur_32<SDWA_instruction>(instr);
+      size_t data_size = get_instr_data_size(instr->format);
 
-      if (instr->isVINTERP_INREG())
-         return hash_murmur_32<VINTERP_inreg_instruction>(instr);
-
-      if (instr->isVALU())
-         return hash_murmur_32<VALU_instruction>(instr);
-
-      switch (instr->format) {
-      case Format::SMEM: return hash_murmur_32<SMEM_instruction>(instr);
-      case Format::VINTRP: return hash_murmur_32<VINTRP_instruction>(instr);
-      case Format::DS: return hash_murmur_32<DS_instruction>(instr);
-      case Format::SOPP: return hash_murmur_32<SALU_instruction>(instr);
-      case Format::SOPK: return hash_murmur_32<SALU_instruction>(instr);
-      case Format::EXP: return hash_murmur_32<Export_instruction>(instr);
-      case Format::MUBUF: return hash_murmur_32<MUBUF_instruction>(instr);
-      case Format::MIMG: return hash_murmur_32<MIMG_instruction>(instr);
-      case Format::MTBUF: return hash_murmur_32<MTBUF_instruction>(instr);
-      case Format::FLAT: return hash_murmur_32<FLAT_instruction>(instr);
-      case Format::PSEUDO_BRANCH: return hash_murmur_32<Pseudo_branch_instruction>(instr);
-      case Format::PSEUDO_REDUCTION: return hash_murmur_32<Pseudo_reduction_instruction>(instr);
-      default: return hash_murmur_32<Instruction>(instr);
+      /* skip format, opcode and pass_flags and op/def spans */
+      for (unsigned i = sizeof(Instruction) >> 2; i < (data_size >> 2); i++) {
+         uint32_t u;
+         /* Accesses it though a byte array, so doesn't violate the strict aliasing rule */
+         memcpy(&u, reinterpret_cast<uint8_t*>(instr) + i * 4, 4);
+         hash = murmur_32_scramble(hash, u);
       }
+
+      /* Finalize. */
+      uint32_t len = instr->operands.size() + instr->definitions.size();
+      hash ^= len;
+      hash ^= hash >> 16;
+      hash *= 0x85ebca6b;
+      hash ^= hash >> 13;
+      hash *= 0xc2b2ae35;
+      hash ^= hash >> 16;
+      return hash;
    }
 };
 

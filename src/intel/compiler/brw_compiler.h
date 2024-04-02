@@ -659,6 +659,13 @@ struct brw_wm_prog_data {
     */
    bool sample_shading;
 
+   /** Min sample shading value
+    *
+    * Not used by the compiler, but useful for restore from the cache. The
+    * driver is expected to write the value it wants.
+    */
+   float min_sample_shading;
+
    /** Should this shader be dispatched per-sample */
    enum brw_sometimes persample_dispatch;
 

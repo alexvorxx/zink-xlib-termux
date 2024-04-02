@@ -21,6 +21,7 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_pipeline_cache.h"
 #include "util/disk_cache.h"
 #include "util/macros.h"
 #include "util/mesa-blake3.h"

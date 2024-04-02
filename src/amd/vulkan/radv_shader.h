@@ -794,9 +794,6 @@ void radv_destroy_shader_upload_queue(struct radv_device *device);
 
 struct radv_shader_args;
 
-struct radv_shader *radv_shader_create(struct radv_device *device, struct vk_pipeline_cache *cache,
-                                       const struct radv_shader_binary *binary, bool skip_cache);
-
 VkResult radv_shader_create_uncached(struct radv_device *device, const struct radv_shader_binary *binary,
                                      bool replayable, struct radv_serialized_shader_arena_block *replay_block,
                                      struct radv_shader **out_shader);

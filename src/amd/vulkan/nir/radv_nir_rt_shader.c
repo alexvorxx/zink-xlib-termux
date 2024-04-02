@@ -29,6 +29,7 @@
 #include "nir/radv_nir.h"
 #include "nir/radv_nir_rt_common.h"
 #include "ac_nir.h"
+#include "radv_pipeline_cache.h"
 #include "radv_private.h"
 #include "radv_shader.h"
 

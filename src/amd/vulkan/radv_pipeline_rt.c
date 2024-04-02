@@ -26,6 +26,7 @@
 
 #include "nir/radv_nir.h"
 #include "radv_debug.h"
+#include "radv_pipeline_cache.h"
 #include "radv_private.h"
 #include "radv_shader.h"
 #include "vk_pipeline.h"

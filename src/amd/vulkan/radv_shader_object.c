@@ -21,6 +21,7 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_pipeline_cache.h"
 #include "radv_private.h"
 
 static void

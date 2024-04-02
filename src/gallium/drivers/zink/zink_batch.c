@@ -471,7 +471,7 @@ submit_queue(void *data, void *gdata, int thread_index)
    }
 
    simple_mtx_lock(&screen->queue_lock);
-   result = VKSCR(QueueSubmit)(screen->queue, num_si, num_si == 2 ? si : &si[1], VK_NULL_HANDLE);
+   result = VKSCR(QueueSubmit)(screen->queue, num_si, num_si == 2 ? si : &si[1], bs->fence.fence);
    if (result != VK_SUCCESS) {
       mesa_loge("ZINK: vkQueueSubmit failed (%s)", vk_Result_to_str(result));
       bs->is_device_lost = true;

@@ -47,9 +47,9 @@ vn_descriptor_set_destroy(struct vn_device *dev,
    vk_free(alloc, set);
 }
 
-/* Mapping VkDescriptorType to array index */
+/* Map VkDescriptorType to contiguous enum vn_descriptor_type */
 static enum vn_descriptor_type
-vn_descriptor_type_index(VkDescriptorType type)
+vn_descriptor_type(VkDescriptorType type)
 {
    switch (type) {
    case VK_DESCRIPTOR_TYPE_SAMPLER:
@@ -137,6 +137,8 @@ vn_descriptor_set_layout_init(
    for (uint32_t i = 0; i < create_info->bindingCount; i++) {
       const VkDescriptorSetLayoutBinding *binding_info =
          &create_info->pBindings[i];
+      const enum vn_descriptor_type type =
+         vn_descriptor_type(binding_info->descriptorType);
       struct vn_descriptor_set_layout_binding *binding =
          &layout->bindings[binding_info->binding];
 
@@ -161,27 +163,25 @@ vn_descriptor_set_layout_init(
              VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT);
       }
 
-      binding->type = binding_info->descriptorType;
+      binding->type = type;
       binding->count = binding_info->descriptorCount;
 
-      switch (binding_info->descriptorType) {
-      case VK_DESCRIPTOR_TYPE_SAMPLER:
-      case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+      switch (type) {
+      case VN_DESCRIPTOR_TYPE_SAMPLER:
+      case VN_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
          binding->has_immutable_samplers = binding_info->pImmutableSamplers;
          break;
-      case VK_DESCRIPTOR_TYPE_MUTABLE_EXT:
+      case VN_DESCRIPTOR_TYPE_MUTABLE_EXT:
          assert(mutable_descriptor_info->mutableDescriptorTypeListCount &&
                 mutable_descriptor_info->pMutableDescriptorTypeLists[i]
                    .descriptorTypeCount);
-
          const VkMutableDescriptorTypeListEXT *list =
             &mutable_descriptor_info->pMutableDescriptorTypeLists[i];
          for (uint32_t j = 0; j < list->descriptorTypeCount; j++) {
             BITSET_SET(binding->mutable_descriptor_types,
-                       vn_descriptor_type_index(list->pDescriptorTypes[j]));
+                       vn_descriptor_type(list->pDescriptorTypes[j]));
          }
          break;
-
       default:
          break;
       }
@@ -331,50 +331,44 @@ vn_CreateDescriptorPool(VkDevice device,
    uint32_t next_mutable_state = 0;
    for (uint32_t i = 0; i < pCreateInfo->poolSizeCount; i++) {
       const VkDescriptorPoolSize *pool_size = &pCreateInfo->pPoolSizes[i];
-      const uint32_t type_index = vn_descriptor_type_index(pool_size->type);
+      const enum vn_descriptor_type type =
+         vn_descriptor_type(pool_size->type);
 
-      assert(type_index < VN_NUM_DESCRIPTOR_TYPES);
-
-      if (pool_size->type == VK_DESCRIPTOR_TYPE_MUTABLE_EXT) {
-         struct vn_descriptor_pool_state_mutable *mutable_state = NULL;
-         BITSET_DECLARE(mutable_types, VN_NUM_DESCRIPTOR_TYPES);
-         if (!mutable_descriptor_info ||
-             i >= mutable_descriptor_info->mutableDescriptorTypeListCount) {
-            BITSET_ONES(mutable_types);
-         } else {
-            const VkMutableDescriptorTypeListEXT *list =
-               &mutable_descriptor_info->pMutableDescriptorTypeLists[i];
-
-            for (uint32_t j = 0; j < list->descriptorTypeCount; j++) {
-               BITSET_SET(mutable_types, vn_descriptor_type_index(
-                                            list->pDescriptorTypes[j]));
-            }
-         }
-         for (uint32_t j = 0; j < next_mutable_state; j++) {
-            if (BITSET_EQUAL(mutable_types, pool->mutable_states[j].types)) {
-               mutable_state = &pool->mutable_states[j];
-               break;
-            }
-         }
-
-         if (!mutable_state) {
-            /* The application must ensure that partial overlap does not
-             * exist in pPoolSizes. so this entry must have a disjoint set
-             * of types.
-             */
-            mutable_state = &pool->mutable_states[next_mutable_state++];
-            BITSET_COPY(mutable_state->types, mutable_types);
-         }
-
-         mutable_state->max += pool_size->descriptorCount;
-      } else {
-         pool->max.descriptor_counts[type_index] +=
-            pool_size->descriptorCount;
+      if (type != VN_DESCRIPTOR_TYPE_MUTABLE_EXT) {
+         pool->max.descriptor_counts[type] += pool_size->descriptorCount;
+         continue;
       }
 
-      assert((pCreateInfo->pPoolSizes[i].type !=
-              VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK) ||
-             iub_info);
+      struct vn_descriptor_pool_state_mutable *mutable_state = NULL;
+      BITSET_DECLARE(mutable_types, VN_NUM_DESCRIPTOR_TYPES);
+      if (!mutable_descriptor_info ||
+          i >= mutable_descriptor_info->mutableDescriptorTypeListCount) {
+         BITSET_ONES(mutable_types);
+      } else {
+         const VkMutableDescriptorTypeListEXT *list =
+            &mutable_descriptor_info->pMutableDescriptorTypeLists[i];
+
+         for (uint32_t j = 0; j < list->descriptorTypeCount; j++) {
+            BITSET_SET(mutable_types,
+                       vn_descriptor_type(list->pDescriptorTypes[j]));
+         }
+      }
+      for (uint32_t j = 0; j < next_mutable_state; j++) {
+         if (BITSET_EQUAL(mutable_types, pool->mutable_states[j].types)) {
+            mutable_state = &pool->mutable_states[j];
+            break;
+         }
+      }
+
+      if (!mutable_state) {
+         /* The application must ensure that partial overlap does not exist in
+          * pPoolSizes. so this entry must have a disjoint set of types.
+          */
+         mutable_state = &pool->mutable_states[next_mutable_state++];
+         BITSET_COPY(mutable_state->types, mutable_types);
+      }
+
+      mutable_state->max += pool_size->descriptorCount;
    }
 
    pool->mutable_states_count = next_mutable_state;
@@ -448,7 +442,7 @@ vn_pool_restore_mutable_states(struct vn_descriptor_pool *pool,
                                uint32_t last_binding_descriptor_count)
 {
    for (uint32_t i = 0; i <= max_binding_index; i++) {
-      if (layout->bindings[i].type != VK_DESCRIPTOR_TYPE_MUTABLE_EXT)
+      if (layout->bindings[i].type != VN_DESCRIPTOR_TYPE_MUTABLE_EXT)
          continue;
 
       const uint32_t count = i == layout->last_binding
@@ -484,7 +478,8 @@ vn_descriptor_pool_alloc_descriptors(
    uint32_t binding_index = 0;
 
    while (binding_index <= layout->last_binding) {
-      const VkDescriptorType type = layout->bindings[binding_index].type;
+      const enum vn_descriptor_type type =
+         layout->bindings[binding_index].type;
       const uint32_t count = binding_index == layout->last_binding
                                 ? last_binding_descriptor_count
                                 : layout->bindings[binding_index].count;
@@ -499,12 +494,12 @@ vn_descriptor_pool_alloc_descriptors(
        * resource must not be accessed from any stage via this binding within
        * any pipeline using the set layout.
        */
-      if (type == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK && count != 0) {
+      if (type == VN_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK && count != 0) {
          if (++pool->used.iub_binding_count > pool->max.iub_binding_count)
             goto fail;
       }
 
-      if (type == VK_DESCRIPTOR_TYPE_MUTABLE_EXT) {
+      if (type == VN_DESCRIPTOR_TYPE_MUTABLE_EXT) {
          /* A mutable descriptor can be allocated if below are satisfied:
           * - vn_descriptor_pool_state_mutable::types is a superset
           * - vn_descriptor_pool_state_mutable::{max - used} is enough
@@ -519,11 +514,10 @@ vn_descriptor_pool_alloc_descriptors(
          } else
             goto fail;
       } else {
-         const uint32_t type_index = vn_descriptor_type_index(type);
-         pool->used.descriptor_counts[type_index] += count;
+         pool->used.descriptor_counts[type] += count;
 
-         if (pool->used.descriptor_counts[type_index] >
-             pool->max.descriptor_counts[type_index])
+         if (pool->used.descriptor_counts[type] >
+             pool->max.descriptor_counts[type])
             goto fail;
       }
       binding_index++;
@@ -554,16 +548,15 @@ vn_descriptor_pool_free_descriptors(
                                   last_binding_descriptor_count);
 
    for (uint32_t i = 0; i <= layout->last_binding; i++) {
+      const enum vn_descriptor_type type = layout->bindings[i].type;
       const uint32_t count = i == layout->last_binding
                                 ? last_binding_descriptor_count
                                 : layout->bindings[i].count;
 
-      if (layout->bindings[i].type != VK_DESCRIPTOR_TYPE_MUTABLE_EXT) {
-         pool->used.descriptor_counts[vn_descriptor_type_index(
-            layout->bindings[i].type)] -= count;
+      if (type != VN_DESCRIPTOR_TYPE_MUTABLE_EXT) {
+         pool->used.descriptor_counts[type] -= count;
 
-         if (layout->bindings[i].type ==
-             VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK)
+         if (type == VN_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK)
             --pool->used.iub_binding_count;
       }
    }

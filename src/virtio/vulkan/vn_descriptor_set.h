@@ -32,13 +32,8 @@ enum vn_descriptor_type {
    VN_NUM_DESCRIPTOR_TYPES,
 };
 
-/* TODO refactor struct to track enum vn_descriptor_type type.
- * On VkDescriptorSetLayout creation. When we check against
- * VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK, it will be against
- * VN_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK instead
- */
 struct vn_descriptor_set_layout_binding {
-   VkDescriptorType type;
+   enum vn_descriptor_type type;
    uint32_t count;
    bool has_immutable_samplers;
    BITSET_DECLARE(mutable_descriptor_types, VN_NUM_DESCRIPTOR_TYPES);

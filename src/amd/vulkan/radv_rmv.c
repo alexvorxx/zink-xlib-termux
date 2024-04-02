@@ -34,6 +34,7 @@
 #include "radv_device_memory.h"
 #include "radv_event.h"
 #include "radv_image.h"
+#include "radv_pipeline_rt.h"
 #include "radv_private.h"
 #include "radv_query.h"
 

@@ -30,6 +30,7 @@
 #include "radv_debug.h"
 #include "radv_device_generated_commands.h"
 #include "radv_event.h"
+#include "radv_pipeline_rt.h"
 #include "radv_private.h"
 #include "radv_radeon_winsys.h"
 #include "radv_shader.h"

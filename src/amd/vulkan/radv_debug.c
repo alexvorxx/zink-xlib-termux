@@ -37,6 +37,7 @@
 #include "ac_debug.h"
 #include "radv_buffer.h"
 #include "radv_debug.h"
+#include "radv_pipeline_rt.h"
 #include "radv_shader.h"
 #include "sid.h"
 

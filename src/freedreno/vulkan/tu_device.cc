@@ -275,6 +275,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_separate_stencil_usage = true,
       .EXT_shader_demote_to_helper_invocation = true,
       .EXT_shader_module_identifier = true,
+      .EXT_shader_replicated_composites = true,
       .EXT_shader_stencil_export = true,
       .EXT_shader_viewport_index_layer = TU_DEBUG(NOCONFORM) ? true : device->info->a6xx.has_hw_multiview,
       .EXT_subgroup_size_control = true,
@@ -617,6 +618,9 @@ tu_get_features(struct tu_physical_device *pdevice,
 
    /* VK_EXT_shader_module_identifier */
    features->shaderModuleIdentifier = true;
+
+   /* VK_EXT_shader_replicated_composites */
+   features->shaderReplicatedComposites = true;
 
 #ifdef TU_USE_WSI_PLATFORM
    /* VK_EXT_swapchain_maintenance1 */

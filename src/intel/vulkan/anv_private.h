@@ -4634,8 +4634,6 @@ struct anv_graphics_pipeline {
    uint32_t                                     vertex_input_elems;
    uint32_t                                     vertex_input_data[2 * 31 /* MAX_VES + 2 internal */];
 
-   enum intel_msaa_flags                        fs_msaa_flags;
-
    /* Pre computed CS instructions that can directly be copied into
     * anv_cmd_buffer.
     */

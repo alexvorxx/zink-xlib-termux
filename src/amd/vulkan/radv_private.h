@@ -250,12 +250,6 @@ void radv_write_scissors(struct radeon_cmdbuf *cs, int count, const VkRect2D *sc
 void radv_write_guardband(struct radeon_cmdbuf *cs, int count, const VkViewport *viewports, unsigned rast_prim,
                           unsigned polygon_mode, float line_width);
 
-VkResult radv_create_shadow_regs_preamble(struct radv_device *device, struct radv_queue_state *queue_state);
-void radv_destroy_shadow_regs_preamble(struct radv_device *device, struct radv_queue_state *queue_state,
-                                       struct radeon_winsys *ws);
-void radv_emit_shadow_regs_preamble(struct radeon_cmdbuf *cs, const struct radv_device *device,
-                                    struct radv_queue_state *queue_state);
-VkResult radv_init_shadowed_regs_buffer_state(const struct radv_device *device, struct radv_queue *queue);
 
 uint32_t radv_get_ia_multi_vgt_param(struct radv_cmd_buffer *cmd_buffer, bool instanced_draw, bool indirect_draw,
                                      bool count_from_stream_output, uint32_t draw_vertex_count, unsigned topology,

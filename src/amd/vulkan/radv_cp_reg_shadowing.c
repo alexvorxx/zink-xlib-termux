@@ -22,6 +22,7 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "radv_cp_reg_shadowing.h"
 #include "ac_shadowed_regs.h"
 #include "radv_buffer.h"
 #include "radv_cs.h"

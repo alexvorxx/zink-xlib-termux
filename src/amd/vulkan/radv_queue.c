@@ -27,6 +27,7 @@
 
 #include "radv_queue.h"
 #include "radv_buffer.h"
+#include "radv_cp_reg_shadowing.h"
 #include "radv_cs.h"
 #include "radv_debug.h"
 #include "radv_device_memory.h"

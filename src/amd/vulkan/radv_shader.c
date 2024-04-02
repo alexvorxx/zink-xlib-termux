@@ -38,6 +38,7 @@
 #include "util/u_atomic.h"
 #include "radv_cs.h"
 #include "radv_debug.h"
+#include "radv_printf.h"
 #include "radv_private.h"
 #include "radv_sdma.h"
 #include "radv_shader_args.h"

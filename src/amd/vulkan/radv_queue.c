@@ -32,6 +32,7 @@
 #include "radv_debug.h"
 #include "radv_device_memory.h"
 #include "radv_image.h"
+#include "radv_printf.h"
 #include "radv_private.h"
 #include "radv_rmv.h"
 #include "vk_semaphore.h"

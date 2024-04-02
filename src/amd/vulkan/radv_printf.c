@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "radv_printf.h"
 #include "radv_private.h"
 
 #include "util/hash_table.h"

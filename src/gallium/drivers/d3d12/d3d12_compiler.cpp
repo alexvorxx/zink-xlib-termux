@@ -1154,15 +1154,15 @@ select_shader_variant(struct d3d12_selection_context *sel_ctx, d3d12_shader_sele
    /* Remove not-written inputs, and re-sort */
    if (prev) {
       uint32_t prev_stage_patch_written = prev->initial->info.patch_outputs_written;
-      NIR_PASS_V(new_nir_variant, dxil_nir_kill_undefined_varyings, key.prev_varying_outputs, prev_stage_patch_written);
-      dxil_reassign_driver_locations(new_nir_variant, nir_var_shader_in, key.prev_varying_outputs);
+      NIR_PASS_V(new_nir_variant, dxil_nir_kill_undefined_varyings, key.prev_varying_outputs, prev_stage_patch_written, NULL);
+      dxil_reassign_driver_locations(new_nir_variant, nir_var_shader_in, key.prev_varying_outputs, NULL);
    }
 
    /* Remove not-read outputs and re-sort */
    if (next) {
       uint32_t next_stage_patch_read = next->initial->info.patch_inputs_read;
-      NIR_PASS_V(new_nir_variant, dxil_nir_kill_unused_outputs, key.next_varying_inputs, next_stage_patch_read);
-      dxil_reassign_driver_locations(new_nir_variant, nir_var_shader_out, key.next_varying_inputs);
+      NIR_PASS_V(new_nir_variant, dxil_nir_kill_unused_outputs, key.next_varying_inputs, next_stage_patch_read, NULL);
+      dxil_reassign_driver_locations(new_nir_variant, nir_var_shader_out, key.next_varying_inputs, NULL);
    }
 
    nir_shader_gather_info(new_nir_variant, nir_shader_get_entrypoint(new_nir_variant));
@@ -1405,7 +1405,7 @@ d3d12_create_shader(struct d3d12_context *ctx,
    }
 
    if (nir->info.stage != MESA_SHADER_VERTEX) {
-      dxil_reassign_driver_locations(nir, nir_var_shader_in, 0);
+      dxil_reassign_driver_locations(nir, nir_var_shader_in, 0, NULL);
    } else {
       dxil_sort_by_driver_location(nir, nir_var_shader_in);
 
@@ -1417,7 +1417,7 @@ d3d12_create_shader(struct d3d12_context *ctx,
    }
 
    if (nir->info.stage != MESA_SHADER_FRAGMENT) {
-      dxil_reassign_driver_locations(nir, nir_var_shader_out, 0);
+      dxil_reassign_driver_locations(nir, nir_var_shader_out, 0, NULL);
    } else {
       NIR_PASS_V(nir, nir_lower_fragcoord_wtrans);
       NIR_PASS_V(nir, dxil_nir_lower_sample_pos);

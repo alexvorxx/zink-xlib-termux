@@ -1583,7 +1583,8 @@ enum dxil_sysvalue_type {
 };
 
 static enum dxil_sysvalue_type
-nir_var_to_dxil_sysvalue_type(nir_variable *var, uint64_t other_stage_mask)
+nir_var_to_dxil_sysvalue_type(nir_variable *var, uint64_t other_stage_mask,
+                              const BITSET_WORD *other_stage_frac_mask)
 {
    switch (var->data.location) {
    case VARYING_SLOT_FACE:
@@ -1605,6 +1606,10 @@ nir_var_to_dxil_sysvalue_type(nir_variable *var, uint64_t other_stage_mask)
       if (var->data.location < VARYING_SLOT_PATCH0 &&
           !((1ull << var->data.location) & other_stage_mask))
          return DXIL_UNUSED_NO_SYSVALUE;
+      if (var->data.location_frac && other_stage_frac_mask &&
+          var->data.location >= VARYING_SLOT_VAR0 &&
+          !BITSET_TEST(other_stage_frac_mask, ((var->data.location - VARYING_SLOT_VAR0) * 4 + var->data.location_frac)))
+         return DXIL_UNUSED_NO_SYSVALUE;
       return DXIL_NO_SYSVALUE;
    }
 }
@@ -1614,13 +1619,13 @@ nir_var_to_dxil_sysvalue_type(nir_variable *var, uint64_t other_stage_mask)
  */
 void
 dxil_reassign_driver_locations(nir_shader* s, nir_variable_mode modes,
-   uint64_t other_stage_mask)
+   uint64_t other_stage_mask, const BITSET_WORD *other_stage_frac_mask)
 {
    nir_foreach_variable_with_modes_safe(var, s, modes) {
       /* We use the driver_location here to avoid introducing a new
        * struct or member variable here. The true, updated driver location
        * will be written below, after sorting */
-      var->data.driver_location = nir_var_to_dxil_sysvalue_type(var, other_stage_mask);
+      var->data.driver_location = nir_var_to_dxil_sysvalue_type(var, other_stage_mask, other_stage_frac_mask);
    }
 
    nir_sort_variables_with_modes(s, variable_location_cmp, modes);
@@ -2805,6 +2810,7 @@ dxil_nir_lower_coherent_loads_and_stores(nir_shader *s)
 struct undefined_varying_masks {
    uint64_t io_mask;
    uint32_t patch_io_mask;
+   const BITSET_WORD *frac_io_mask;
 };
 
 static bool
@@ -2852,8 +2858,12 @@ kill_undefined_varyings(struct nir_builder *b,
       var->data.location;
    uint64_t written = var->data.patch && var->data.location >= VARYING_SLOT_PATCH0 ?
       masks->patch_io_mask : masks->io_mask;
-   if (BITFIELD64_RANGE(loc, glsl_varying_count(var->type)) & written)
+   if (BITFIELD64_RANGE(loc, glsl_varying_count(var->type)) & written) {
+      if (!masks->frac_io_mask || !var->data.location_frac ||
+          var->data.location < VARYING_SLOT_VAR0 ||
+          BITSET_TEST(masks->frac_io_mask, (var->data.location - VARYING_SLOT_VAR0) * 4 + var->data.location_frac))
       return false;
+   }
 
    b->cursor = nir_after_instr(instr);
    /* Note: zero is used instead of undef, because optimization is not run here, but is
@@ -2871,9 +2881,14 @@ kill_undefined_varyings(struct nir_builder *b,
 }
 
 bool
-dxil_nir_kill_undefined_varyings(nir_shader *shader, uint64_t prev_stage_written_mask, uint32_t prev_stage_patch_written_mask)
+dxil_nir_kill_undefined_varyings(nir_shader *shader, uint64_t prev_stage_written_mask, uint32_t prev_stage_patch_written_mask,
+                                 const BITSET_WORD *prev_stage_frac_output_mask)
 {
-   struct undefined_varying_masks masks = { .io_mask = prev_stage_written_mask, .patch_io_mask = prev_stage_patch_written_mask };
+   struct undefined_varying_masks masks = {
+      .io_mask = prev_stage_written_mask,
+      .patch_io_mask = prev_stage_patch_written_mask,
+      .frac_io_mask = prev_stage_frac_output_mask
+   };
    bool progress = nir_shader_instructions_pass(shader,
                                                 kill_undefined_varyings,
                                                 nir_metadata_dominance |
@@ -2932,8 +2947,12 @@ kill_unused_outputs(struct nir_builder *b,
       var->data.location;
    uint64_t read = var->data.patch && var->data.location >= VARYING_SLOT_PATCH0 ?
       masks->patch_io_mask : masks->io_mask;
-   if (BITFIELD64_RANGE(loc, glsl_varying_count(var->type)) & read)
+   if (BITFIELD64_RANGE(loc, glsl_varying_count(var->type)) & read) {
+      if (!masks->frac_io_mask || !var->data.location_frac ||
+          var->data.location < VARYING_SLOT_VAR0 ||
+          BITSET_TEST(masks->frac_io_mask, (var->data.location - VARYING_SLOT_VAR0) * 4 + var->data.location_frac))
       return false;
+   }
 
    if (intr->intrinsic == nir_intrinsic_load_deref) {
       b->cursor = nir_after_instr(&intr->instr);
@@ -2945,9 +2964,14 @@ kill_unused_outputs(struct nir_builder *b,
 }
 
 bool
-dxil_nir_kill_unused_outputs(nir_shader *shader, uint64_t next_stage_read_mask, uint32_t next_stage_patch_read_mask)
+dxil_nir_kill_unused_outputs(nir_shader *shader, uint64_t next_stage_read_mask, uint32_t next_stage_patch_read_mask,
+                             const BITSET_WORD *next_stage_frac_input_mask)
 {
-   struct undefined_varying_masks masks = { .io_mask = next_stage_read_mask, .patch_io_mask = next_stage_patch_read_mask };
+   struct undefined_varying_masks masks = {
+      .io_mask = next_stage_read_mask,
+      .patch_io_mask = next_stage_patch_read_mask,
+      .frac_io_mask = next_stage_frac_input_mask
+   };
 
    bool progress = nir_shader_instructions_pass(shader,
                                                 kill_unused_outputs,

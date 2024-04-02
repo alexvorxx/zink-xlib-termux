@@ -28,6 +28,7 @@
 #include "radv_debug.h"
 #include "radv_perfcounter.h"
 #include "radv_private.h"
+#include "radv_spm.h"
 #include "radv_sqtt.h"
 #include "sid.h"
 

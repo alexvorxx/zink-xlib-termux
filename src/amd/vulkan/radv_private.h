@@ -1078,11 +1078,6 @@ radv_queue_ring(const struct radv_queue *queue)
    return radv_queue_family_to_ring(pdev, queue->state.qf);
 }
 
-/* radv_spm.c */
-bool radv_spm_init(struct radv_device *device);
-void radv_spm_finish(struct radv_device *device);
-void radv_emit_spm_setup(struct radv_device *device, struct radeon_cmdbuf *cs, enum radv_queue_family qf);
-
 void radv_begin_conditional_rendering(struct radv_cmd_buffer *cmd_buffer, uint64_t va, bool draw_visible);
 void radv_end_conditional_rendering(struct radv_cmd_buffer *cmd_buffer);
 

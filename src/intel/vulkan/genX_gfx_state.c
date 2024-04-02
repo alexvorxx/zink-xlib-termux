@@ -478,6 +478,7 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
    const struct vk_dynamic_graphics_state *dyn =
       &cmd_buffer->vk.dynamic_graphics_state;
    struct anv_gfx_dynamic_state *hw_state = &gfx->dyn_state;
+   const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
    struct anv_instance *instance = cmd_buffer->device->physical->instance;
 
 #define GET(field) hw_state->field
@@ -601,7 +602,6 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
    if (cmd_buffer->device->vk.enabled_extensions.KHR_fragment_shading_rate &&
        (gfx->dirty & ANV_CMD_DIRTY_PIPELINE ||
         BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_FSR))) {
-      const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
       const bool cps_enable = wm_prog_data &&
          brw_wm_prog_data_is_coarse(wm_prog_data, pipeline->fs_msaa_flags);
 #if GFX_VER == 11
@@ -895,8 +895,6 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
 
    if ((cmd_buffer->state.gfx.dirty & ANV_CMD_DIRTY_PIPELINE) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE)) {
-      const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
-
       SET_STAGE(PS_EXTRA, ps_extra.PixelShaderKillsPixel,
                 wm_prog_data && (pipeline->rp_has_ds_self_dep ||
                                  has_ds_feedback_loop(dyn) ||
@@ -914,7 +912,6 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_CB_BLEND_ENABLES) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_CB_BLEND_EQUATIONS)) {
       const uint8_t color_writes = dyn->cb.color_write_enables;
-      const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
       bool has_writeable_rt =
          anv_pipeline_has_stage(pipeline, MESA_SHADER_FRAGMENT) &&
          (color_writes & ((1u << gfx->color_att_count) - 1)) != 0;

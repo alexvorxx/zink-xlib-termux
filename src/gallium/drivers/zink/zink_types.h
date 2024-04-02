@@ -1807,7 +1807,7 @@ struct zink_context {
    struct util_queue_fence flush_fence; //unsigned during flush (blocks unsync ops)
 
    struct zink_fence *deferred_fence;
-   struct zink_fence *last_fence; //the last command buffer submitted
+   struct zink_batch_state *last_batch_state; //the last command buffer submitted
    struct zink_batch_state *batch_states; //list of submitted batch states: ordered by increasing timeline id
    unsigned batch_states_count; //number of states in `batch_states`
    struct zink_batch_state *free_batch_states; //unused batch states

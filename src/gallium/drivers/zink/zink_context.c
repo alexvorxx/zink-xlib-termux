@@ -3386,8 +3386,8 @@ static void
 stall(struct zink_context *ctx)
 {
    struct zink_screen *screen = zink_screen(ctx->base.screen);
-   sync_flush(ctx, zink_batch_state(ctx->last_fence));
-   zink_screen_timeline_wait(screen, ctx->last_fence->batch_id, OS_TIMEOUT_INFINITE);
+   sync_flush(ctx, ctx->last_batch_state);
+   zink_screen_timeline_wait(screen, ctx->last_batch_state->fence.batch_id, OS_TIMEOUT_INFINITE);
    zink_batch_reset_all(ctx);
 }
 
@@ -3914,10 +3914,10 @@ zink_flush(struct pipe_context *pctx,
    if (!batch->has_work) {
        if (pfence) {
           /* reuse last fence */
-          fence = ctx->last_fence;
+          fence = &ctx->last_batch_state->fence;
        }
        if (!deferred) {
-          struct zink_batch_state *last = zink_batch_state(ctx->last_fence);
+          struct zink_batch_state *last = ctx->last_batch_state;
           if (last) {
              sync_flush(ctx, last);
              if (last->is_device_lost)
@@ -3984,7 +3984,7 @@ zink_fence_wait(struct pipe_context *pctx)
 
    if (ctx->batch.has_work)
       pctx->flush(pctx, NULL, PIPE_FLUSH_HINT_FINISH);
-   if (ctx->last_fence)
+   if (ctx->last_batch_state)
       stall(ctx);
 }
 
@@ -3995,7 +3995,7 @@ zink_wait_on_batch(struct zink_context *ctx, uint64_t batch_id)
    if (!batch_id) {
       /* not submitted yet */
       flush_batch(ctx, true);
-      bs = zink_batch_state(ctx->last_fence);
+      bs = ctx->last_batch_state;
       assert(bs);
       batch_id = bs->fence.batch_id;
    }

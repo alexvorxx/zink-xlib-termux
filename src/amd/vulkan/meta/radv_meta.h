@@ -28,6 +28,7 @@
 
 #include "radv_buffer.h"
 #include "radv_buffer_view.h"
+#include "radv_cmd_buffer.h"
 #include "radv_device.h"
 #include "radv_device_memory.h"
 #include "radv_image.h"

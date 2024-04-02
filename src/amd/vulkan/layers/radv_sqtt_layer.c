@@ -21,6 +21,7 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_cmd_buffer.h"
 #include "radv_cs.h"
 #include "radv_pipeline_rt.h"
 #include "radv_private.h"

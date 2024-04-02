@@ -25,6 +25,7 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_cmd_buffer.h"
 #include "meta/radv_meta.h"
 #include "radv_cs.h"
 #include "radv_debug.h"

@@ -18,6 +18,8 @@ struct const_remap_state {
 	struct rc_constant *constants;
 	/* New constant layout. */
 	struct rc_constant_list new_constants;
+	/* Marks immediates that are used as a vector. Those will be just copied. */
+	uint8_t *is_used_as_vector;
 	bool has_rel_addr;
 	bool are_externals_remapped;
 	bool is_identity;
@@ -48,6 +50,7 @@ static void mark_used(void * userdata, struct rc_instruction * inst,
 	struct const_remap_state* d = userdata;
 
 	if (src->File == RC_FILE_CONSTANT) {
+		uint8_t mask = 0;
 		if (src->RelAddr) {
 			d->has_rel_addr = true;
 		} else {
@@ -55,8 +58,13 @@ static void mark_used(void * userdata, struct rc_instruction * inst,
 				char swz = GET_SWZ(src->Swizzle, chan);
 				if (swz > RC_SWIZZLE_W)
 					continue;
-				d->constants[src->Index].UseMask |= 1 << swz;
+				mask |= 1 << swz;
 			}
+		}
+		d->constants[src->Index].UseMask |= mask;
+		if (d->constants[src->Index].Type == RC_CONSTANT_IMMEDIATE &&
+			util_bitcount(mask) > 1) {
+			d->is_used_as_vector[src->Index] |= mask;
 		}
 	}
 }
@@ -77,6 +85,26 @@ static void place_constant_in_free_slot(struct const_remap_state *s, unsigned i)
 	if (count != i) {
 		if (s->constants[i].Type == RC_CONSTANT_EXTERNAL)
 			s->are_externals_remapped = true;
+		s->is_identity = false;
+	}
+	s->new_constants.Count++;
+}
+
+static void place_immediate_in_free_slot(struct const_remap_state *s, unsigned i)
+{
+	assert(util_bitcount(s->is_used_as_vector[i]) > 1);
+
+	unsigned count = s->new_constants.Count;
+
+	s->new_constants.Constants[count] = s->constants[i];
+	s->new_constants.Constants[count].UseMask = s->is_used_as_vector[i];
+	for (unsigned chan = 0; chan < 4; chan++) {
+		if (s->constants[i].UseMask & 1 << chan & s->is_used_as_vector[i]) {
+			s->inv_remap_table[i].index[chan] = count;
+			s->inv_remap_table[i].swizzle[chan] = chan;
+		}
+	}
+	if (count != i) {
 		s->is_identity = false;
 	}
 	s->new_constants.Count++;
@@ -110,10 +138,12 @@ static void try_merge_constants_external(struct const_remap_state *s, unsigned i
 static void init_constant_remap_state(struct radeon_compiler *c, struct const_remap_state *s)
 {
 	s->is_identity = true;
+	s->is_used_as_vector = malloc(c->Program.Constants.Count);
 	s->new_constants.Constants =
 		malloc(sizeof(struct rc_constant) * c->Program.Constants.Count);
 	s->new_constants._Reserved = c->Program.Constants.Count;
 	s->constants = c->Program.Constants.Constants;
+	memset(s->is_used_as_vector, 0, c->Program.Constants.Count);
 
 	s->remap_table = malloc(c->Program.Constants.Count * sizeof(struct const_remap));
 	s->inv_remap_table =
@@ -179,9 +209,39 @@ void rc_remove_unused_constants(struct radeon_compiler *c, void *user)
 			try_merge_constants_external(s, i);
 	}
 
-	/* Now put the immediates and state constants. */
+	/* Now put immediates which are used as vectors. */
 	for (unsigned i = 0; i < c->Program.Constants.Count; i++) {
-		if (constants[i].Type == RC_CONSTANT_EXTERNAL)
+		if (constants[i].Type == RC_CONSTANT_IMMEDIATE &&
+			util_bitcount(s->constants[i].UseMask) > 0 &&
+			util_bitcount(s->is_used_as_vector[i]) > 0) {
+			place_immediate_in_free_slot(s, i);
+		}
+	}
+
+	/* Now walk over scalar immediates and try to:
+	 *  a) check for duplicates,
+	 *  b) find free slot.
+	 *  All of this is already done by rc_constants_add_immediate_scalar,
+	 *  so just use it.
+	 */
+	for (unsigned i = 0; i < c->Program.Constants.Count; i++) {
+		if (constants[i].Type != RC_CONSTANT_IMMEDIATE)
+			continue;
+		for (unsigned chan = 0; chan < 4; chan++) {
+			if ((s->constants[i].UseMask) & (1 << chan) &&
+				(~(s->is_used_as_vector[i]) & (1 << chan))) {
+				unsigned swz;
+				s->inv_remap_table[i].index[chan] =
+					rc_constants_add_immediate_scalar(&s->new_constants, constants[i].u.Immediate[chan], &swz);
+				s->inv_remap_table[i].swizzle[chan] = GET_SWZ(swz, 0);
+				s->is_identity = false;
+			}
+		}
+	}
+
+	/* Finally place state constants. */
+	for (unsigned i = 0; i < c->Program.Constants.Count; i++) {
+		if (constants[i].Type != RC_CONSTANT_STATE)
 			continue;
 		if (util_bitcount(s->constants[i].UseMask) > 0) {
 			place_constant_in_free_slot(s,  i);

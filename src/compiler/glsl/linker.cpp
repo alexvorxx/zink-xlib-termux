@@ -942,24 +942,6 @@ cross_validate_globals(const struct gl_constants *consts,
    }
 }
 
-
-/**
- * Perform validation of uniforms used across multiple shader stages
- */
-static void
-cross_validate_uniforms(const struct gl_constants *consts,
-                        struct gl_shader_program *prog)
-{
-   glsl_symbol_table variables;
-   for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
-      if (prog->_LinkedShaders[i] == NULL)
-         continue;
-
-      cross_validate_globals(consts, prog, prog->_LinkedShaders[i]->ir,
-                             &variables, true);
-   }
-}
-
 /**
  * Populates a shaders symbol table with all global declarations
  */
@@ -2377,14 +2359,6 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
          prog->data->linked_stages |= 1 << stage;
       }
    }
-
-   /* Here begins the inter-stage linking phase.  Some initial validation is
-    * performed, then locations are assigned for uniforms, attributes, and
-    * varyings.
-    */
-   cross_validate_uniforms(consts, prog);
-   if (!prog->data->LinkStatus)
-      goto done;
 
 done:
    for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {

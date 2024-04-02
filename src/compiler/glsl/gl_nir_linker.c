@@ -1564,6 +1564,343 @@ gl_nir_validate_intrastage_arrays(struct gl_shader_program *prog,
    return false;
 }
 
+static bool
+nir_constant_compare(const nir_constant *c1, const nir_constant *c2)
+{
+   bool match = true;
+
+   match &= memcmp(c1->values, c2->values, sizeof(c1->values)) == 0;
+   match &= c1->is_null_constant == c2->is_null_constant;
+   match &= c1->num_elements == c2->num_elements;
+   if (!match)
+      return false;
+
+   for (unsigned i = 0; i < c1->num_elements; i++) {
+      match &= nir_constant_compare(c1->elements[i], c2->elements[i]);
+   }
+
+   return match;
+}
+
+struct ifc_var {
+   unsigned stage;
+   nir_variable *var;
+};
+
+/**
+ * Perform validation of global variables used across multiple shaders
+ */
+static void
+cross_validate_globals(void *mem_ctx, const struct gl_constants *consts,
+                       struct gl_shader_program *prog,
+                       nir_shader *shader, struct hash_table *variables,
+                       bool uniforms_only)
+{
+   nir_foreach_variable_in_shader(var, shader) {
+      if (uniforms_only &&
+          (var->data.mode != nir_var_uniform &&
+           var->data.mode != nir_var_mem_ubo &&
+           var->data.mode != nir_var_image &&
+           var->data.mode != nir_var_mem_ssbo))
+         continue;
+
+      /* don't cross validate subroutine uniforms */
+      if (glsl_contains_subroutine(var->type))
+         continue;
+
+      /* Don't cross validate interface instances. These are only relevant
+       * inside a shader. The cross validation is done at the Interface Block
+       * name level.
+       */
+      if (glsl_without_array(var->type) == var->interface_type)
+         continue;
+
+      /* Don't cross validate temporaries that are at global scope.  These
+       * will eventually get pulled into the shaders 'main'.
+       */
+      if (var->data.mode == nir_var_function_temp ||
+          var->data.mode == nir_var_shader_temp)
+         continue;
+
+      /* If a global with this name has already been seen, verify that the
+       * new instance has the same type.  In addition, if the globals have
+       * initializers, the values of the initializers must be the same.
+       */
+      struct hash_entry *entry =
+         _mesa_hash_table_search(variables, var->name);
+      if (entry != NULL) {
+         struct ifc_var *existing_ifc = (struct ifc_var *) entry->data;
+         nir_variable *existing = existing_ifc->var;
+
+         /* Check if types match. */
+         if (var->type != existing->type) {
+            if (!gl_nir_validate_intrastage_arrays(prog, var, existing,
+                                                   existing_ifc->stage, true)) {
+               /* If it is an unsized array in a Shader Storage Block,
+                * two different shaders can access to different elements.
+                * Because of that, they might be converted to different
+                * sized arrays, then check that they are compatible but
+                * ignore the array size.
+                */
+               if (!(var->data.mode == nir_var_mem_ssbo &&
+                     var->data.from_ssbo_unsized_array &&
+                     existing->data.mode == nir_var_mem_ssbo &&
+                     existing->data.from_ssbo_unsized_array &&
+                     glsl_get_gl_type(var->type) == glsl_get_gl_type(existing->type))) {
+                  linker_error(prog, "%s `%s' declared as type "
+                                 "`%s' and type `%s'\n",
+                                 gl_nir_mode_string(var),
+                                 var->name, glsl_get_type_name(var->type),
+                                 glsl_get_type_name(existing->type));
+                  return;
+               }
+            }
+         }
+
+         if (var->data.explicit_location) {
+            if (existing->data.explicit_location
+                && (var->data.location != existing->data.location)) {
+               linker_error(prog, "explicit locations for %s "
+                            "`%s' have differing values\n",
+                            gl_nir_mode_string(var), var->name);
+               return;
+            }
+
+            if (var->data.location_frac != existing->data.location_frac) {
+               linker_error(prog, "explicit components for %s `%s' have "
+                            "differing values\n", gl_nir_mode_string(var),
+                            var->name);
+               return;
+            }
+
+            existing->data.location = var->data.location;
+            existing->data.explicit_location = true;
+         } else {
+            /* Check if uniform with implicit location was marked explicit
+             * by earlier shader stage. If so, mark it explicit in this stage
+             * too to make sure later processing does not treat it as
+             * implicit one.
+             */
+            if (existing->data.explicit_location) {
+               var->data.location = existing->data.location;
+               var->data.explicit_location = true;
+            }
+         }
+
+         /* From the GLSL 4.20 specification:
+          * "A link error will result if two compilation units in a program
+          *  specify different integer-constant bindings for the same
+          *  opaque-uniform name.  However, it is not an error to specify a
+          *  binding on some but not all declarations for the same name"
+          */
+         if (var->data.explicit_binding) {
+            if (existing->data.explicit_binding &&
+                var->data.binding != existing->data.binding) {
+               linker_error(prog, "explicit bindings for %s "
+                            "`%s' have differing values\n",
+                            gl_nir_mode_string(var), var->name);
+               return;
+            }
+
+            existing->data.binding = var->data.binding;
+            existing->data.explicit_binding = true;
+         }
+
+         if (glsl_contains_atomic(var->type) &&
+             var->data.offset != existing->data.offset) {
+            linker_error(prog, "offset specifications for %s "
+                         "`%s' have differing values\n",
+                         gl_nir_mode_string(var), var->name);
+            return;
+         }
+
+         /* Validate layout qualifiers for gl_FragDepth.
+          *
+          * From the AMD/ARB_conservative_depth specs:
+          *
+          *    "If gl_FragDepth is redeclared in any fragment shader in a
+          *    program, it must be redeclared in all fragment shaders in
+          *    that program that have static assignments to
+          *    gl_FragDepth. All redeclarations of gl_FragDepth in all
+          *    fragment shaders in a single program must have the same set
+          *    of qualifiers."
+          */
+         if (strcmp(var->name, "gl_FragDepth") == 0) {
+            bool layout_declared = var->data.depth_layout != nir_depth_layout_none;
+            bool layout_differs =
+               var->data.depth_layout != existing->data.depth_layout;
+
+            if (layout_declared && layout_differs) {
+               linker_error(prog,
+                            "All redeclarations of gl_FragDepth in all "
+                            "fragment shaders in a single program must have "
+                            "the same set of qualifiers.\n");
+            }
+
+            if (var->data.used && layout_differs) {
+               linker_error(prog,
+                            "If gl_FragDepth is redeclared with a layout "
+                            "qualifier in any fragment shader, it must be "
+                            "redeclared with the same layout qualifier in "
+                            "all fragment shaders that have assignments to "
+                            "gl_FragDepth\n");
+            }
+         }
+
+         /* Page 35 (page 41 of the PDF) of the GLSL 4.20 spec says:
+          *
+          *     "If a shared global has multiple initializers, the
+          *     initializers must all be constant expressions, and they
+          *     must all have the same value. Otherwise, a link error will
+          *     result. (A shared global having only one initializer does
+          *     not require that initializer to be a constant expression.)"
+          *
+          * Previous to 4.20 the GLSL spec simply said that initializers
+          * must have the same value.  In this case of non-constant
+          * initializers, this was impossible to determine.  As a result,
+          * no vendor actually implemented that behavior.  The 4.20
+          * behavior matches the implemented behavior of at least one other
+          * vendor, so we'll implement that for all GLSL versions.
+          * If (at least) one of these constant expressions is implicit,
+          * because it was added by glsl_zero_init, we skip the verification.
+          */
+         if (var->constant_initializer != NULL) {
+            if (existing->constant_initializer != NULL &&
+                !existing->data.is_implicit_initializer &&
+                !var->data.is_implicit_initializer) {
+               if (!nir_constant_compare(var->constant_initializer,
+                                         existing->constant_initializer)) {
+                  linker_error(prog, "initializers for %s "
+                               "`%s' have differing values\n",
+                               gl_nir_mode_string(var), var->name);
+                  return;
+               }
+            } else {
+               /* If the first-seen instance of a particular uniform did
+                * not have an initializer but a later instance does,
+                * replace the former with the later.
+                */
+               if (!var->data.is_implicit_initializer)
+                  _mesa_hash_table_insert(variables, existing->name, var);
+            }
+         }
+
+         if (var->data.has_initializer) {
+            if (existing->data.has_initializer
+                && (var->constant_initializer == NULL
+                    || existing->constant_initializer == NULL)) {
+               linker_error(prog,
+                            "shared global variable `%s' has multiple "
+                            "non-constant initializers.\n",
+                            var->name);
+               return;
+            }
+         }
+
+         if (existing->data.explicit_invariant != var->data.explicit_invariant) {
+            linker_error(prog, "declarations for %s `%s' have "
+                         "mismatching invariant qualifiers\n",
+                         gl_nir_mode_string(var), var->name);
+            return;
+         }
+         if (existing->data.centroid != var->data.centroid) {
+            linker_error(prog, "declarations for %s `%s' have "
+                         "mismatching centroid qualifiers\n",
+                         gl_nir_mode_string(var), var->name);
+            return;
+         }
+         if (existing->data.sample != var->data.sample) {
+            linker_error(prog, "declarations for %s `%s` have "
+                         "mismatching sample qualifiers\n",
+                         gl_nir_mode_string(var), var->name);
+            return;
+         }
+         if (existing->data.image.format != var->data.image.format) {
+            linker_error(prog, "declarations for %s `%s` have "
+                         "mismatching image format qualifiers\n",
+                         gl_nir_mode_string(var), var->name);
+            return;
+         }
+
+         /* Check the precision qualifier matches for uniform variables on
+          * GLSL ES.
+          */
+         if (!consts->AllowGLSLRelaxedES &&
+             prog->IsES && !var->interface_type &&
+             existing->data.precision != var->data.precision) {
+            if ((existing->data.used && var->data.used) ||
+                prog->GLSL_Version >= 300) {
+               linker_error(prog, "declarations for %s `%s` have "
+                            "mismatching precision qualifiers\n",
+                            gl_nir_mode_string(var), var->name);
+               return;
+            } else {
+               linker_warning(prog, "declarations for %s `%s` have "
+                              "mismatching precision qualifiers\n",
+                              gl_nir_mode_string(var), var->name);
+            }
+         }
+
+         /* In OpenGL GLSL 3.20 spec, section 4.3.9:
+          *
+          *   "It is a link-time error if any particular shader interface
+          *    contains:
+          *
+          *    - two different blocks, each having no instance name, and each
+          *      having a member of the same name, or
+          *
+          *    - a variable outside a block, and a block with no instance name,
+          *      where the variable has the same name as a member in the block."
+          */
+         const glsl_type *var_itype = var->interface_type;
+         const glsl_type *existing_itype = existing->interface_type;
+         if (var_itype != existing_itype) {
+            if (!var_itype || !existing_itype) {
+               linker_error(prog, "declarations for %s `%s` are inside block "
+                            "`%s` and outside a block",
+                            gl_nir_mode_string(var), var->name,
+                            glsl_get_type_name(var_itype ? var_itype : existing_itype));
+               return;
+            } else if (strcmp(glsl_get_type_name(var_itype), glsl_get_type_name(existing_itype)) != 0) {
+               linker_error(prog, "declarations for %s `%s` are inside blocks "
+                            "`%s` and `%s`",
+                            gl_nir_mode_string(var), var->name,
+                            glsl_get_type_name(existing_itype),
+                            glsl_get_type_name(var_itype));
+               return;
+            }
+         }
+      } else {
+         struct ifc_var *ifc_var = ralloc(mem_ctx, struct ifc_var);
+         ifc_var->var = var;
+         ifc_var->stage = shader->info.stage;
+         _mesa_hash_table_insert(variables, var->name, ifc_var);
+      }
+   }
+}
+
+/**
+ * Perform validation of uniforms used across multiple shader stages
+ */
+static void
+cross_validate_uniforms(const struct gl_constants *consts,
+                        struct gl_shader_program *prog)
+{
+   void *mem_ctx = ralloc_context(NULL);
+   struct hash_table *variables =
+      _mesa_hash_table_create(mem_ctx, _mesa_hash_string, _mesa_key_string_equal);
+   for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
+      if (prog->_LinkedShaders[i] == NULL)
+         continue;
+
+      cross_validate_globals(mem_ctx, consts, prog,
+                             prog->_LinkedShaders[i]->Program->nir,
+                             variables, true);
+   }
+
+   ralloc_free(mem_ctx);
+}
+
 /**
  * Initializes explicit location slots to INACTIVE_UNIFORM_EXPLICIT_LOCATION
  * for a variable, checks for overlaps between other uniforms using explicit
@@ -2069,6 +2406,14 @@ gl_nir_link_glsl(const struct gl_constants *consts,
       return true;
 
    MESA_TRACE_FUNC();
+
+   /* Here begins the inter-stage linking phase.  Some initial validation is
+    * performed, then locations are assigned for uniforms, attributes, and
+    * varyings.
+    */
+   cross_validate_uniforms(consts, prog);
+   if (!prog->data->LinkStatus)
+      return false;
 
    check_explicit_uniform_locations(exts, prog);
 

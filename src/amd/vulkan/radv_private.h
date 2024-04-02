@@ -2654,22 +2654,7 @@ void radv_pipeline_destroy(struct radv_device *device, struct radv_pipeline *pip
                            const VkAllocationCallbacks *allocator);
 
 struct vk_format_description;
-uint32_t radv_translate_buffer_dataformat(const struct util_format_description *desc, int first_non_void);
-uint32_t radv_translate_buffer_numformat(const struct util_format_description *desc, int first_non_void);
-bool radv_is_buffer_format_supported(VkFormat format, bool *scaled);
-uint32_t radv_colorformat_endian_swap(uint32_t colorformat);
-unsigned radv_translate_colorswap(VkFormat format, bool do_endian_swap);
-uint32_t radv_translate_dbformat(VkFormat format);
-uint32_t radv_translate_tex_dataformat(VkFormat format, const struct util_format_description *desc, int first_non_void);
-uint32_t radv_translate_tex_numformat(VkFormat format, const struct util_format_description *desc, int first_non_void);
-bool radv_format_pack_clear_color(VkFormat format, uint32_t clear_vals[2], VkClearColorValue *value);
-bool radv_is_storage_image_format_supported(const struct radv_physical_device *dev, VkFormat format);
-bool radv_is_colorbuffer_format_supported(const struct radv_physical_device *pdev, VkFormat format, bool *blendable);
-bool radv_dcc_formats_compatible(enum amd_gfx_level gfx_level, VkFormat format1, VkFormat format2,
-                                 bool *sign_reinterpret);
-bool radv_is_atomic_format_supported(VkFormat format);
 bool radv_device_supports_etc(const struct radv_physical_device *pdev);
-bool radv_is_format_emulated(const struct radv_physical_device *pdev, VkFormat format);
 
 static const VkImageUsageFlags RADV_IMAGE_USAGE_WRITE_BITS =
    VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |

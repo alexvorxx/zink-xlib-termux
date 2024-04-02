@@ -1228,11 +1228,6 @@ v3dv_queue_driver_submit(struct vk_queue *vk_queue,
    for (int i = 0; i < V3DV_QUEUE_COUNT; i++)
       queue->last_job_syncs.first[i] = true;
 
-   /* FIXME: if suspend/resume chains are recorded into command buffers with
-    * usage flag VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT, then this won't
-    * work and we would need to "clone" the jobs instead so we never patch a
-    * job that may still be executing.
-    */
    struct v3dv_job *first_suspend_job = NULL;
    struct v3dv_job *current_suspend_job = NULL;
    for (uint32_t i = 0; i < submit->command_buffer_count; i++) {
@@ -1240,6 +1235,13 @@ v3dv_queue_driver_submit(struct vk_queue *vk_queue,
          container_of(submit->command_buffers[i], struct v3dv_cmd_buffer, vk);
       list_for_each_entry_safe(struct v3dv_job, job,
                                &cmd_buffer->jobs, list_link) {
+         if (job->suspending) {
+            job = v3dv_X(job->device,
+                         cmd_buffer_prepare_suspend_job_for_submit)(job);
+            if (!job)
+               return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+         }
+
          if (job->suspending && !job->resuming) {
             assert(!first_suspend_job);
             assert(!current_suspend_job);

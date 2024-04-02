@@ -130,6 +130,9 @@ v3dX(cmd_buffer_emit_indexed_indirect)(struct v3dv_cmd_buffer *cmd_buffer,
 void
 v3dX(cmd_buffer_suspend)(struct v3dv_cmd_buffer *cmd_buffer);
 
+struct v3dv_job *
+v3dX(cmd_buffer_prepare_suspend_job_for_submit)(struct v3dv_job *job);
+
 void
 v3dX(get_hw_clear_color)(const VkClearColorValue *color,
                          uint32_t internal_type,

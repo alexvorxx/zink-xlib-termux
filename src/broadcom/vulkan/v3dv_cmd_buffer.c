@@ -149,9 +149,21 @@ job_destroy_cloned_gpu_cl_resources(struct v3dv_job *job)
 {
    assert(job->type == V3DV_JOB_TYPE_GPU_CL);
 
-   list_for_each_entry_safe(struct v3dv_bo, bo, &job->bcl.bo_list, list_link) {
-      list_del(&bo->list_link);
-      vk_free(&job->device->vk.alloc, bo);
+   struct v3dv_cmd_buffer *cmd_buffer = job->cmd_buffer;
+   if (job->clone_owns_bcl) {
+      /* For suspending jobs in command buffers with the simultaneous use flag
+       * we allocate a real copy of the BCL.
+       */
+      assert(job->suspending &&
+             cmd_buffer &&
+             (cmd_buffer->usage_flags &
+              VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT));
+      v3dv_cl_destroy(&job->bcl);
+   } else {
+      list_for_each_entry_safe(struct v3dv_bo, bo, &job->bcl.bo_list, list_link) {
+         list_del(&bo->list_link);
+         vk_free(&job->device->vk.alloc, bo);
+      }
    }
 
    list_for_each_entry_safe(struct v3dv_bo, bo, &job->rcl.bo_list, list_link) {
@@ -1923,7 +1935,7 @@ clone_bo_list(struct v3dv_device *device,
 }
 
 struct v3dv_job *
-v3dv_job_clone(struct v3dv_job *job)
+v3dv_job_clone(struct v3dv_job *job, bool skip_bcl)
 {
    struct v3dv_job *clone = vk_alloc(&job->device->vk.alloc,
                                      sizeof(struct v3dv_job), 8,
@@ -1931,7 +1943,16 @@ v3dv_job_clone(struct v3dv_job *job)
    if (!clone)
       return NULL;
 
-   /* Cloned jobs don't duplicate resources! */
+   /* Cloned jobs don't duplicate resources, they share their CLs with the
+    * oringinal job, since they are typically read-only. The exception to this
+    * is dynamic rendering suspension paired with
+    * VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT, since in that case we need
+    * to patch the BCL with the resume address and for that we need to create a
+    * copy of the job so we avoid rewriting the resume address for another copy
+    * of the same job that may be running in the GPU. When we create a job for
+    * this use case skip_bcl is set to True and the caller will be responsible
+    * for creating the BCL.
+    */
    *clone = *job;
    clone->is_clone = true;
    clone->cmd_buffer = NULL;
@@ -1947,8 +1968,10 @@ v3dv_job_clone(struct v3dv_job *job)
       clone->rcl.job = clone;
       clone->indirect.job = clone;
 
-      if (!clone_bo_list(device, &clone->bcl.bo_list, &job->bcl.bo_list))
+      if (!skip_bcl &&
+          !clone_bo_list(device, &clone->bcl.bo_list, &job->bcl.bo_list)) {
          return NULL;
+      }
       if (!clone_bo_list(device, &clone->rcl.bo_list, &job->rcl.bo_list))
          return NULL;
       if (!clone_bo_list(device, &clone->indirect.bo_list, &job->indirect.bo_list))
@@ -1968,7 +1991,7 @@ struct v3dv_job *
 v3dv_job_clone_in_cmd_buffer(struct v3dv_job *job,
                              struct v3dv_cmd_buffer *cmd_buffer)
 {
-   struct v3dv_job *clone = v3dv_job_clone(job);
+   struct v3dv_job *clone = v3dv_job_clone(job, false);
    if (!clone) {
       v3dv_flag_oom(cmd_buffer, NULL);
       return NULL;

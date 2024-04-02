@@ -2776,3 +2776,111 @@ v3dX(job_patch_resume_address)(struct v3dv_job *first_suspend,
    first_suspend->suspended_bcl_end = resume->bcl.bo->offset +
                                       v3dv_cl_offset(&resume->bcl);
 }
+
+static void
+job_destroy_cb(VkDevice device, uint64_t pobj, VkAllocationCallbacks *allocb)
+{
+   struct v3dv_job *clone = (struct v3dv_job *) (uintptr_t) pobj;
+   v3dv_job_destroy(clone);
+}
+
+/**
+ * This checks if the command buffer has been created with
+ * VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT, in which case we won't be
+ * able to safely patch the resume address into the job (since we could have
+ * another instance of this job running in the GPU, potentially resuming in a
+ * different address). In that case, we clone the job and make the clone have
+ * its own BCL copied from the original job so we can later patch the resume
+ * address into it safely.
+ */
+struct v3dv_job *
+v3dX(cmd_buffer_prepare_suspend_job_for_submit)(struct v3dv_job *job)
+{
+   assert(job->suspending);
+   assert(job->cmd_buffer);
+   assert(job->type == V3DV_JOB_TYPE_GPU_CL);
+
+   if (!(job->cmd_buffer->usage_flags & VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT))
+      return job;
+
+   /* Create the clone job, but skip the BCL since we are going to create
+    * our own below.
+    */
+   struct v3dv_job *clone = v3dv_job_clone(job, true);
+   if (!clone)
+      return NULL;
+
+   /* Compute total size of BCL we need to copy */
+   uint32_t bcl_size = 0;
+   list_for_each_entry(struct v3dv_bo, bo, &job->bcl.bo_list, list_link)
+      bcl_size += bo->size;
+
+   /* Prepare the BCL for the cloned job. For this we go over the BOs in the
+    * BCL of the original job and we copy their contents into the single BO
+    * in the BCL of the cloned job.
+    */
+   clone->clone_owns_bcl = true;
+   v3dv_cl_init(clone, &clone->bcl);
+   v3dv_cl_ensure_space(&clone->bcl, bcl_size, 4);
+   if (!clone->bcl.bo)
+      return NULL;
+
+   assert(clone->bcl.base);
+   assert(clone->bcl.base == clone->bcl.next);
+
+   /* Unlink this job from the command buffer's execution list */
+   list_inithead(&clone->list_link);
+
+   /* Copy the contents of each BO in the original job's BCL into the single
+    * BO we have in the clone's BCL.
+    *
+    * If the BO is the last in the BCL (which we can tell because it wouldn't
+    * have emitted a BRANCH instruction to link to another BO) we need to copy
+    * up to the current BCL offset, otherwise we need to copy up to the BRANCH
+    * instruction (excluded, since we are putting everything together into a
+    * single BO here).
+    */
+   list_for_each_entry(struct v3dv_bo, bo, &job->bcl.bo_list, list_link) {
+      assert(bo->map);
+      uint32_t copy_size;
+      if (bo->cl_branch_offset == 0xffffffff) { /* Last BO in BCL */
+         assert(bo == list_last_entry(&job->bcl.bo_list, struct v3dv_bo, list_link));
+         copy_size = v3dv_cl_offset(&job->bcl);
+      } else {
+         assert(bo->cl_branch_offset >= cl_packet_length(BRANCH));
+         copy_size = bo->cl_branch_offset - cl_packet_length(BRANCH);
+      }
+
+      assert(v3dv_cl_offset(&job->bcl) + copy_size < bcl_size);
+      memcpy(cl_start(&clone->bcl), bo->map, copy_size);
+      cl_advance_and_end(&clone->bcl, copy_size);
+   }
+
+   /* Now we need to fixup the pointer to the suspend BRANCH instruction at the
+    * end of the BCL so it points to the address in the new BCL. We know that
+    * to suspend a command buffer we always emit a BRANCH+NOP combo, so we just
+    * need to go back that many bytes in to the BCL to find the instruction.
+    */
+   uint32_t suspend_terminator_size =
+      cl_packet_length(BRANCH) + cl_packet_length(NOP);
+   clone->suspend_branch_inst_ptr = (struct v3dv_cl_out *)
+      (((uint8_t *)cl_start(&clone->bcl)) - suspend_terminator_size);
+   assert(*(((uint8_t *)clone->suspend_branch_inst_ptr)) == V3DX(BRANCH_opcode));
+
+   /* This job is not in the execution list of the command buffer so it
+    * won't be destroyed with it; add it as a private object to get it freed.
+    *
+    * FIXME: every time this job is submitted we clone the job and we only
+    * destroy it when the command buffer is destroyed. If the user keeps the
+    * command buffer for the entire lifetime of the application, this command
+    * buffer could grow significantly, so maybe we want to do something smarter
+    * like having a syncobj bound to these jobs and every time we submit the
+    * command buffer again we first check these sncobjs to see if we can free
+    * some of these clones so we avoid blowing up memory.
+    */
+   v3dv_cmd_buffer_add_private_obj(
+      job->cmd_buffer, (uintptr_t)clone,
+      (v3dv_cmd_buffer_private_obj_destroy_cb)job_destroy_cb);
+
+   return clone;
+}

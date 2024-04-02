@@ -35,6 +35,7 @@
 #include "radv_physical_device.h"
 #include "radv_pipeline.h"
 #include "radv_pipeline_compute.h"
+#include "radv_pipeline_graphics.h"
 #include "radv_private.h"
 #include "radv_queue.h"
 #include "radv_shader.h"
@@ -111,7 +112,6 @@ radv_meta_dst_layout_to_layout(enum radv_meta_dst_layout layout)
 }
 
 extern const VkFormat radv_fs_key_format_exemplars[NUM_META_FS_KEYS];
-unsigned radv_format_meta_fs_key(struct radv_device *device, VkFormat format);
 
 VkResult radv_device_init_meta(struct radv_device *device);
 void radv_device_finish_meta(struct radv_device *device);

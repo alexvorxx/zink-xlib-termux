@@ -221,11 +221,22 @@ radv_immutable_ycbcr_samplers(const struct radv_descriptor_set_layout *set, unsi
 }
 
 struct radv_device;
+struct radv_cmd_buffer;
 
 void radv_pipeline_layout_init(struct radv_device *device, struct radv_pipeline_layout *layout, bool independent_sets);
 void radv_pipeline_layout_add_set(struct radv_pipeline_layout *layout, uint32_t set_idx,
                                   struct radv_descriptor_set_layout *set_layout);
 void radv_pipeline_layout_hash(struct radv_pipeline_layout *layout);
 void radv_pipeline_layout_finish(struct radv_device *device, struct radv_pipeline_layout *layout);
+
+void radv_cmd_update_descriptor_sets(struct radv_device *device, struct radv_cmd_buffer *cmd_buffer,
+                                     VkDescriptorSet overrideSet, uint32_t descriptorWriteCount,
+                                     const VkWriteDescriptorSet *pDescriptorWrites, uint32_t descriptorCopyCount,
+                                     const VkCopyDescriptorSet *pDescriptorCopies);
+
+void radv_cmd_update_descriptor_set_with_template(struct radv_device *device, struct radv_cmd_buffer *cmd_buffer,
+                                                  struct radv_descriptor_set *set,
+                                                  VkDescriptorUpdateTemplate descriptorUpdateTemplate,
+                                                  const void *pData);
 
 #endif /* RADV_DESCRIPTOR_SET_H */

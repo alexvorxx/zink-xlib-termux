@@ -891,10 +891,10 @@ split_varying_accesses(nir_builder *b, nir_intrinsic_instr *intr,
          unsigned orig_write_mask = nir_intrinsic_write_mask(intr);
          nir_def *sub_value = nir_channels(b, intr->src[1].ssa, mask_num_channels << first_channel);
 
-         first_channel += var_state->subvars[subvar].num_components;
-
          unsigned new_write_mask = (orig_write_mask >> first_channel) & mask_num_channels;
          nir_build_store_deref(b, &new_path->def, sub_value, new_write_mask, nir_intrinsic_access(intr));
+
+         first_channel += var_state->subvars[subvar].num_components;
       } else {
          /* The load path only handles splitting dvec3/dvec4 */
          assert(subvar == 0 || subvar == 1);

@@ -423,15 +423,13 @@ vn_get_mutable_state(const struct vn_descriptor_pool *pool,
       BITSET_AND(shared_types, mutable_state->types,
                  binding->mutable_descriptor_types);
 
-      if (BITSET_EQUAL(shared_types, binding->mutable_descriptor_types)) {
-         /* The application must ensure that partial overlap does not
-          * exist in pPoolSizes. so there should be at most 1
-          * matching pool entry for a binding.
-          */
+      /* The application must ensure that partial overlap does not exist in
+       * pPoolSizes, so there only exists one matching entry.
+       */
+      if (BITSET_EQUAL(shared_types, binding->mutable_descriptor_types))
          return mutable_state;
-      }
    }
-   return NULL;
+   unreachable("bad mutable descriptor binding");
 }
 
 static inline void
@@ -457,44 +455,28 @@ vn_descriptor_pool_alloc_descriptors(
 {
    assert(pool->async_set_allocation);
 
-   struct vn_descriptor_pool_state recovery;
-
    if (pool->used.set_count == pool->max.set_count)
       return false;
 
    /* backup current pool state to recovery */
-   recovery = pool->used;
+   struct vn_descriptor_pool_state recovery = pool->used;
+   pool->used.set_count++;
 
-   ++pool->used.set_count;
-
-   uint32_t binding_index = 0;
-
-   while (binding_index <= layout->last_binding) {
-      const enum vn_descriptor_type type =
-         layout->bindings[binding_index].type;
-      const uint32_t count = binding_index == layout->last_binding
+   uint32_t i = 0;
+   for (; i <= layout->last_binding; i++) {
+      const struct vn_descriptor_set_layout_binding *binding =
+         &layout->bindings[i];
+      const enum vn_descriptor_type type = binding->type;
+      const uint32_t count = i == layout->last_binding
                                 ? last_binding_descriptor_count
-                                : layout->bindings[binding_index].count;
+                                : binding->count;
 
       /* Skip resource accounting for either of below:
        * - reserved binding entry that has a valid type with a zero count
        * - invalid binding entry from sparse binding indices
        */
-      if (!count) {
-         binding_index++;
+      if (!count)
          continue;
-      }
-
-      /* Allocation may fail if a call to vkAllocateDescriptorSets would cause
-       * the total number of inline uniform block bindings allocated from the
-       * pool to exceed the value of
-       * VkDescriptorPoolInlineUniformBlockCreateInfo::maxInlineUniformBlockBindings
-       * used to create the descriptor pool.
-       */
-      if (type == VN_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK) {
-         if (++pool->used.iub_binding_count > pool->max.iub_binding_count)
-            goto fail;
-      }
 
       if (type == VN_DESCRIPTOR_TYPE_MUTABLE_EXT) {
          /* A mutable descriptor can be allocated if below are satisfied:
@@ -502,29 +484,31 @@ vn_descriptor_pool_alloc_descriptors(
           * - vn_descriptor_pool_state_mutable::{max - used} is enough
           */
          struct vn_descriptor_pool_state_mutable *mutable_state =
-            vn_get_mutable_state(pool, &layout->bindings[binding_index]);
+            vn_get_mutable_state(pool, binding);
+         assert(mutable_state);
+         if (mutable_state->used + count > mutable_state->max)
+            goto restore;
 
-         if (mutable_state &&
-             mutable_state->max - mutable_state->used >= count) {
-            mutable_state->used += count;
-         } else
-            goto fail;
+         mutable_state->used += count;
       } else {
-         pool->used.descriptor_counts[type] += count;
+         if (type == VN_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK &&
+             ++pool->used.iub_binding_count > pool->max.iub_binding_count)
+            goto restore;
 
+         pool->used.descriptor_counts[type] += count;
          if (pool->used.descriptor_counts[type] >
              pool->max.descriptor_counts[type])
-            goto fail;
+            goto restore;
       }
-      binding_index++;
    }
 
    return true;
 
-fail:
+restore:
    /* restore pool state before this allocation */
    pool->used = recovery;
-   for (uint32_t j = 0; j < binding_index; j++) {
+   for (uint32_t j = 0; j < i; j++) {
+      /* mutable state at binding i is not changed */
       const uint32_t count = layout->bindings[j].count;
       if (count && layout->bindings[j].type == VN_DESCRIPTOR_TYPE_MUTABLE_EXT)
          vn_pool_restore_mutable_states(pool, layout, j, count);
@@ -554,14 +538,14 @@ vn_descriptor_pool_free_descriptors(
          pool->used.descriptor_counts[type] -= count;
 
          if (type == VN_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK)
-            --pool->used.iub_binding_count;
+            pool->used.iub_binding_count--;
       }
    }
 
-   --pool->used.set_count;
+   pool->used.set_count--;
 }
 
-static void
+static inline void
 vn_descriptor_pool_reset_descriptors(struct vn_descriptor_pool *pool)
 {
    assert(pool->async_set_allocation);
@@ -607,8 +591,6 @@ vn_AllocateDescriptorSets(VkDevice device,
    struct vn_descriptor_pool *pool =
       vn_descriptor_pool_from_handle(pAllocateInfo->descriptorPool);
    const VkAllocationCallbacks *alloc = &pool->allocator;
-   const VkDescriptorSetVariableDescriptorCountAllocateInfo *variable_info =
-      NULL;
    VkResult result;
 
    /* 14.2.3. Allocation of Descriptor Sets
@@ -616,18 +598,17 @@ vn_AllocateDescriptorSets(VkDevice device,
     * If descriptorSetCount is zero or this structure is not included in
     * the pNext chain, then the variable lengths are considered to be zero.
     */
-   variable_info = vk_find_struct_const(
-      pAllocateInfo->pNext,
-      DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO);
-
+   const VkDescriptorSetVariableDescriptorCountAllocateInfo *variable_info =
+      vk_find_struct_const(
+         pAllocateInfo->pNext,
+         DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO);
    if (variable_info && !variable_info->descriptorSetCount)
       variable_info = NULL;
 
-   for (uint32_t i = 0; i < pAllocateInfo->descriptorSetCount; i++) {
+   uint32_t i = 0;
+   for (; i < pAllocateInfo->descriptorSetCount; i++) {
       struct vn_descriptor_set_layout *layout =
          vn_descriptor_set_layout_from_handle(pAllocateInfo->pSetLayouts[i]);
-      uint32_t last_binding_descriptor_count = 0;
-      struct vn_descriptor_set *set = NULL;
 
       /* 14.2.3. Allocation of Descriptor Sets
        *
@@ -635,6 +616,7 @@ vn_AllocateDescriptorSets(VkDevice device,
        * variable count descriptor binding, then pDescriptorCounts[i] is
        * ignored.
        */
+      uint32_t last_binding_descriptor_count = 0;
       if (!layout->has_variable_descriptor_count) {
          last_binding_descriptor_count =
             layout->bindings[layout->last_binding].count;
@@ -645,19 +627,18 @@ vn_AllocateDescriptorSets(VkDevice device,
       if (pool->async_set_allocation &&
           !vn_descriptor_pool_alloc_descriptors(
              pool, layout, last_binding_descriptor_count)) {
-         pDescriptorSets[i] = VK_NULL_HANDLE;
          result = VK_ERROR_OUT_OF_POOL_MEMORY;
          goto fail;
       }
 
-      set = vk_zalloc(alloc, sizeof(*set), VN_DEFAULT_ALIGN,
-                      VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+      struct vn_descriptor_set *set =
+         vk_zalloc(alloc, sizeof(*set), VN_DEFAULT_ALIGN,
+                   VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
       if (!set) {
          if (pool->async_set_allocation) {
             vn_descriptor_pool_free_descriptors(
                pool, layout, last_binding_descriptor_count);
          }
-         pDescriptorSets[i] = VK_NULL_HANDLE;
          result = VK_ERROR_OUT_OF_HOST_MEMORY;
          goto fail;
       }
@@ -683,8 +664,7 @@ vn_AllocateDescriptorSets(VkDevice device,
       set->last_binding_descriptor_count = last_binding_descriptor_count;
       list_addtail(&set->head, &pool->descriptor_sets);
 
-      VkDescriptorSet set_handle = vn_descriptor_set_to_handle(set);
-      pDescriptorSets[i] = set_handle;
+      pDescriptorSets[i] = vn_descriptor_set_to_handle(set);
    }
 
    if (pool->async_set_allocation) {
@@ -700,11 +680,9 @@ vn_AllocateDescriptorSets(VkDevice device,
    return VK_SUCCESS;
 
 fail:
-   for (uint32_t i = 0; i < pAllocateInfo->descriptorSetCount; i++) {
+   for (uint32_t j = 0; j < i; j++) {
       struct vn_descriptor_set *set =
-         vn_descriptor_set_from_handle(pDescriptorSets[i]);
-      if (!set)
-         break;
+         vn_descriptor_set_from_handle(pDescriptorSets[j]);
 
       if (pool->async_set_allocation) {
          vn_descriptor_pool_free_descriptors(

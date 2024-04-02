@@ -78,6 +78,12 @@ bool gl_nir_link_varyings(const struct gl_constants *consts,
 
 const char * gl_nir_mode_string(const nir_variable *var);
 
+bool gl_nir_validate_intrastage_arrays(struct gl_shader_program *prog,
+                                       nir_variable *var,
+                                       nir_variable *existing,
+                                       unsigned existing_stage,
+                                       bool match_precision);
+
 struct nir_xfb_info *
 gl_to_nir_xfb_info(struct gl_transform_feedback_info *info, void *mem_ctx);
 

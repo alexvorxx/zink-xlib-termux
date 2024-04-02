@@ -1508,6 +1508,62 @@ gl_nir_link_spirv(const struct gl_constants *consts,
    return true;
 }
 
+bool
+gl_nir_validate_intrastage_arrays(struct gl_shader_program *prog,
+                                  nir_variable *var, nir_variable *existing,
+                                  unsigned existing_stage,
+                                  bool match_precision)
+{
+   /* Consider the types to be "the same" if both types are arrays
+    * of the same type and one of the arrays is implicitly sized.
+    * In addition, set the type of the linked variable to the
+    * explicitly sized array.
+    */
+   if (glsl_type_is_array(var->type) && glsl_type_is_array(existing->type)) {
+      const glsl_type *no_array_var = glsl_get_array_element(var->type);
+      const glsl_type *no_array_existing =
+         glsl_get_array_element(existing->type);
+      bool type_matches;
+
+      type_matches = (match_precision ?
+                      no_array_var == no_array_existing :
+                      glsl_type_compare_no_precision(no_array_var, no_array_existing));
+
+      if (type_matches &&
+          ((glsl_array_size(var->type) == 0) ||
+           (glsl_array_size(existing->type) == 0))) {
+         if (glsl_array_size(var->type) != 0) {
+            if ((int)glsl_array_size(var->type) <=
+                existing->data.max_array_access) {
+               linker_error(prog, "%s `%s' declared as type "
+                           "`%s' but outermost dimension has an index"
+                           " of `%i'\n",
+                           gl_nir_mode_string(var),
+                           var->name, glsl_get_type_name(var->type),
+                           existing->data.max_array_access);
+            }
+            existing->type = var->type;
+
+            nir_shader *s = prog->_LinkedShaders[existing_stage]->Program->nir;
+            nir_fixup_deref_types(s);
+            return true;
+         } else if (glsl_array_size(existing->type) != 0) {
+            if((int)glsl_array_size(existing->type) <= var->data.max_array_access &&
+               !existing->data.from_ssbo_unsized_array) {
+               linker_error(prog, "%s `%s' declared as type "
+                           "`%s' but outermost dimension has an index"
+                           " of `%i'\n",
+                           gl_nir_mode_string(var),
+                           var->name, glsl_get_type_name(existing->type),
+                           var->data.max_array_access);
+            }
+            return true;
+         }
+      }
+   }
+   return false;
+}
+
 /**
  * Initializes explicit location slots to INACTIVE_UNIFORM_EXPLICIT_LOCATION
  * for a variable, checks for overlaps between other uniforms using explicit

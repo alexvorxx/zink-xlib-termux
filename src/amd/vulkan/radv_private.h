@@ -300,15 +300,6 @@ radv_queue_ring(const struct radv_queue *queue)
 
 #define RADV_FROM_HANDLE(__radv_type, __name, __handle) VK_FROM_HANDLE(__radv_type, __name, __handle)
 
-static inline uint64_t
-radv_get_tdr_timeout_for_ip(enum amd_ip_type ip_type)
-{
-   const uint64_t compute_tdr_duration_ns = 60000000000ull; /* 1 minute (default in kernel) */
-   const uint64_t other_tdr_duration_ns = 10000000000ull;   /* 10 seconds (default in kernel) */
-
-   return ip_type == AMD_IP_COMPUTE ? compute_tdr_duration_ns : other_tdr_duration_ns;
-}
-
 #ifdef __cplusplus
 }
 #endif

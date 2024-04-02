@@ -59,7 +59,7 @@ python-test:
   rules:
     - !reference [.disable-farm-mr-rules, rules]
     - !reference [.never-post-merge-rules, rules]
-    - if: $GITLAB_USER_LOGIN == "marge-bot"
+    - if: '$GITLAB_USER_LOGIN == "marge-bot" || $CI_PIPELINE_SOURCE == "schedule"'
       changes: &bin_ci_files
         - .gitlab-ci.yml
         - .gitlab-ci/**/*

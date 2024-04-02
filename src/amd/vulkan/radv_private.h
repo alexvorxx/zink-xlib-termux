@@ -173,33 +173,6 @@ radv_float_to_ufixed(float value, unsigned frac_bits)
    return value * (1 << frac_bits);
 }
 
-/* Whenever we generate an error, pass it through this function. Useful for
- * debugging, where we can break on it. Only call at error site, not when
- * propagating errors. Might be useful to plug in a stack trace here.
- */
-
-struct radv_image_view;
-struct rvcn_decode_buffer_s;
-
-/* queue types */
-
-struct radv_shader_binary_part;
-
-
-struct radv_ray_tracing_pipeline;
-
-struct radv_ray_tracing_group;
-
-struct radv_ray_tracing_stage;
-
-struct vk_format_description;
-
-
-/* radv_nir_to_llvm.c */
-struct radv_shader_args;
-struct radv_nir_compiler_options;
-struct radv_shader_info;
-
 #define RADV_FROM_HANDLE(__radv_type, __name, __handle) VK_FROM_HANDLE(__radv_type, __name, __handle)
 
 #ifdef __cplusplus

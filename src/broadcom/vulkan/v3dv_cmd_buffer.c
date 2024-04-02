@@ -1942,6 +1942,11 @@ v3dv_job_clone(struct v3dv_job *job)
    if (job->type == V3DV_JOB_TYPE_GPU_CL) {
       assert(job->cmd_buffer);
       struct v3dv_device *device = job->cmd_buffer->device;
+
+      clone->bcl.job = clone;
+      clone->rcl.job = clone;
+      clone->indirect.job = clone;
+
       if (!clone_bo_list(device, &clone->bcl.bo_list, &job->bcl.bo_list))
          return NULL;
       if (!clone_bo_list(device, &clone->rcl.bo_list, &job->rcl.bo_list))

@@ -76,6 +76,8 @@ bool gl_nir_link_varyings(const struct gl_constants *consts,
                           const struct gl_extensions *exts,
                           gl_api api, struct gl_shader_program *prog);
 
+const char * gl_nir_mode_string(const nir_variable *var);
+
 struct nir_xfb_info *
 gl_to_nir_xfb_info(struct gl_transform_feedback_info *info, void *mem_ctx);
 

@@ -261,6 +261,47 @@ validate_geometry_shader_emissions(const struct gl_constants *consts,
    }
 }
 
+/**
+ * Generate a string describing the mode of a variable
+ */
+const char *
+gl_nir_mode_string(const nir_variable *var)
+{
+   switch (var->data.mode) {
+   case nir_var_shader_temp:
+      return (var->data.read_only) ? "global constant" : "global variable";
+
+   case nir_var_uniform:
+   case nir_var_image:
+   case nir_var_mem_ubo:
+      return "uniform";
+
+   case nir_var_mem_ssbo:
+      return "buffer";
+
+   case nir_var_shader_in:
+      return "shader input";
+
+   case nir_var_shader_out:
+      return "shader output";
+
+   case nir_var_system_value:
+      return "shader input";
+
+   case nir_var_function_temp:
+      return "local variable";
+
+   case nir_var_mem_shared:
+      return "shader shared";
+
+   case nir_num_variable_modes:
+      break;
+   }
+
+   assert(!"Should not get here.");
+   return "invalid variable";
+}
+
 bool
 gl_nir_can_add_pointsize_to_program(const struct gl_constants *consts,
                                     struct gl_program *prog)

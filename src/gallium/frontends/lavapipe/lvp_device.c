@@ -227,6 +227,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .EXT_shader_atomic_float2              = true,
    .EXT_shader_demote_to_helper_invocation= true,
    .EXT_shader_object                     = true,
+   .EXT_shader_replicated_composites      = true,
    .EXT_shader_stencil_export             = true,
    .EXT_shader_subgroup_ballot            = true,
    .EXT_shader_subgroup_vote              = true,
@@ -513,6 +514,9 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
 
       /* VK_EXT_shader_object */
       .shaderObject = true,
+
+      /* VK_EXT_shader_replicated_composites */
+      .shaderReplicatedComposites = true,
 
       /* VK_KHR_shader_clock */
       .shaderSubgroupClock = true,

@@ -126,12 +126,6 @@ extern "C" {
 #define RADV_SUPPORT_CALIBRATED_TIMESTAMPS 1
 #endif
 
-#ifdef _WIN32
-#define radv_printflike(a, b)
-#else
-#define radv_printflike(a, b) __attribute__((__format__(__printf__, a, b)))
-#endif
-
 /* The "RAW" clocks on Linux are called "FAST" on FreeBSD */
 #if !defined(CLOCK_MONOTONIC_RAW) && defined(CLOCK_MONOTONIC_FAST)
 #define CLOCK_MONOTONIC_RAW CLOCK_MONOTONIC_FAST

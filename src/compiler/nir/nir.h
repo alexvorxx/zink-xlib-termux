@@ -617,6 +617,19 @@ typedef struct nir_variable {
       int max_array_access;
 
       /**
+       * Does this variable have an initializer?
+       *
+       * This is used by the linker to cross-validiate initializers of global
+       * variables.
+       */
+      unsigned has_initializer:1;
+
+      /**
+       * Is the initializer created by the compiler (glsl_zero_init)
+       */
+      unsigned is_implicit_initializer:1;
+
+      /**
        * Is this varying used by transform feedback?
        *
        * This is used by the linker to decide if it's safe to pack the varying.

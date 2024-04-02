@@ -81,6 +81,7 @@
 #include "radv_device.h"
 #include "radv_physical_device.h"
 #include "radv_pipeline.h"
+#include "radv_pipeline_compute.h"
 #include "radv_queue.h"
 #include "radv_radeon_winsys.h"
 #include "radv_rra.h"
@@ -1144,15 +1145,6 @@ struct radv_graphics_pipeline {
    struct radv_sqtt_shaders_reloc *sqtt_shaders_reloc;
 };
 
-struct radv_compute_pipeline {
-   struct radv_pipeline base;
-
-   struct {
-      uint64_t va;
-      uint64_t size;
-   } indirect;
-};
-
 struct radv_ray_tracing_group {
    VkRayTracingShaderGroupTypeKHR type;
    uint32_t recursive_shader; /* generalShader or closestHitShader */
@@ -1248,7 +1240,6 @@ struct radv_graphics_lib_pipeline {
 
 RADV_DECL_PIPELINE_DOWNCAST(graphics, RADV_PIPELINE_GRAPHICS)
 RADV_DECL_PIPELINE_DOWNCAST(graphics_lib, RADV_PIPELINE_GRAPHICS_LIB)
-RADV_DECL_PIPELINE_DOWNCAST(compute, RADV_PIPELINE_COMPUTE)
 RADV_DECL_PIPELINE_DOWNCAST(ray_tracing, RADV_PIPELINE_RAY_TRACING)
 
 static inline bool
@@ -1262,9 +1253,6 @@ bool radv_pipeline_has_gs_copy_shader(const struct radv_pipeline *pipeline);
 const struct radv_userdata_info *radv_get_user_sgpr(const struct radv_shader *shader, int idx);
 
 struct radv_shader *radv_get_shader(struct radv_shader *const *shaders, gl_shader_stage stage);
-
-void radv_emit_compute_shader(const struct radv_physical_device *pdev, struct radeon_cmdbuf *cs,
-                              const struct radv_shader *shader);
 
 
 void radv_emit_vertex_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
@@ -1314,12 +1302,6 @@ void radv_graphics_shaders_compile(struct radv_device *device, struct vk_pipelin
                                    struct radv_shader **shaders, struct radv_shader_binary **binaries,
                                    struct radv_shader **gs_copy_shader, struct radv_shader_binary **gs_copy_binary);
 
-void radv_compute_pipeline_init(const struct radv_device *device, struct radv_compute_pipeline *pipeline,
-                                const struct radv_pipeline_layout *layout, struct radv_shader *shader);
-
-struct radv_shader *radv_compile_cs(struct radv_device *device, struct vk_pipeline_cache *cache,
-                                    struct radv_shader_stage *cs_stage, bool keep_executable_info,
-                                    bool keep_statistic_info, bool is_internal, struct radv_shader_binary **cs_binary);
 
 struct radv_graphics_pipeline_create_info {
    bool use_rectlist;
@@ -1336,10 +1318,6 @@ VkResult radv_graphics_pipeline_create(VkDevice device, VkPipelineCache cache,
                                        const VkGraphicsPipelineCreateInfo *pCreateInfo,
                                        const struct radv_graphics_pipeline_create_info *extra,
                                        const VkAllocationCallbacks *alloc, VkPipeline *pPipeline);
-
-VkResult radv_compute_pipeline_create(VkDevice _device, VkPipelineCache _cache,
-                                      const VkComputePipelineCreateInfo *pCreateInfo,
-                                      const VkAllocationCallbacks *pAllocator, VkPipeline *pPipeline);
 
 
 bool radv_pipeline_has_ngg(const struct radv_graphics_pipeline *pipeline);
@@ -1915,7 +1893,6 @@ void radv_emit_spm_setup(struct radv_device *device, struct radeon_cmdbuf *cs, e
 
 void radv_destroy_graphics_pipeline(struct radv_device *device, struct radv_graphics_pipeline *pipeline);
 void radv_destroy_graphics_lib_pipeline(struct radv_device *device, struct radv_graphics_lib_pipeline *pipeline);
-void radv_destroy_compute_pipeline(struct radv_device *device, struct radv_compute_pipeline *pipeline);
 void radv_destroy_ray_tracing_pipeline(struct radv_device *device, struct radv_ray_tracing_pipeline *pipeline);
 
 void radv_begin_conditional_rendering(struct radv_cmd_buffer *cmd_buffer, uint64_t va, bool draw_visible);
@@ -1923,24 +1900,6 @@ void radv_end_conditional_rendering(struct radv_cmd_buffer *cmd_buffer);
 
 bool radv_gang_init(struct radv_cmd_buffer *cmd_buffer);
 void radv_gang_cache_flush(struct radv_cmd_buffer *cmd_buffer);
-
-struct radv_compute_pipeline_metadata {
-   uint32_t shader_va;
-   uint32_t rsrc1;
-   uint32_t rsrc2;
-   uint32_t rsrc3;
-   uint32_t compute_resource_limits;
-   uint32_t block_size_x;
-   uint32_t block_size_y;
-   uint32_t block_size_z;
-   uint32_t wave32;
-   uint32_t grid_base_sgpr;
-   uint32_t push_const_sgpr;
-   uint64_t inline_push_const_mask;
-};
-
-void radv_get_compute_pipeline_metadata(const struct radv_device *device, const struct radv_compute_pipeline *pipeline,
-                                        struct radv_compute_pipeline_metadata *metadata);
 
 #define RADV_FROM_HANDLE(__radv_type, __name, __handle) VK_FROM_HANDLE(__radv_type, __name, __handle)
 

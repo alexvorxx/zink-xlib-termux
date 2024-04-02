@@ -34,6 +34,7 @@
 #include "radv_image_view.h"
 #include "radv_physical_device.h"
 #include "radv_pipeline.h"
+#include "radv_pipeline_compute.h"
 #include "radv_private.h"
 #include "radv_queue.h"
 #include "radv_shader.h"

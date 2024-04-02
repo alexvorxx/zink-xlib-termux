@@ -23,6 +23,7 @@
  */
 
 #include "radv_formats.h"
+#include "radv_android.h"
 #include "radv_debug.h"
 #include "radv_image.h"
 #include "radv_private.h"

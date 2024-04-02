@@ -34,6 +34,7 @@
 #include "util/disk_cache.h"
 #include "util/hex.h"
 #include "util/u_debug.h"
+#include "radv_android.h"
 #include "radv_debug.h"
 #include "radv_pipeline_rt.h"
 #include "radv_private.h"

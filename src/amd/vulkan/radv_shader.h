@@ -30,12 +30,13 @@
 
 #include "util/mesa-blake3.h"
 #include "util/u_math.h"
-#include "vk_pipeline_cache.h"
 #include "vulkan/vulkan.h"
 #include "ac_binary.h"
 #include "ac_shader_util.h"
 #include "amd_family.h"
 #include "radv_constants.h"
+#include "radv_shader_args.h"
+#include "vk_pipeline_cache.h"
 
 #include "aco_shader_info.h"
 
@@ -201,50 +202,6 @@ struct radv_nir_compiler_options {
    } debug;
 };
 
-enum radv_ud_index {
-   AC_UD_SCRATCH_RING_OFFSETS = 0,
-   AC_UD_PUSH_CONSTANTS = 1,
-   AC_UD_INLINE_PUSH_CONSTANTS = 2,
-   AC_UD_INDIRECT_DESCRIPTOR_SETS = 3,
-   AC_UD_VIEW_INDEX = 4,
-   AC_UD_STREAMOUT_BUFFERS = 5,
-   AC_UD_SHADER_QUERY_STATE = 6,
-   AC_UD_NGG_PROVOKING_VTX = 7,
-   AC_UD_NGG_CULLING_SETTINGS = 8,
-   AC_UD_NGG_VIEWPORT = 9,
-   AC_UD_NGG_LDS_LAYOUT = 10,
-   AC_UD_VGT_ESGS_RING_ITEMSIZE = 11,
-   AC_UD_FORCE_VRS_RATES = 12,
-   AC_UD_TASK_RING_ENTRY = 13,
-   AC_UD_NUM_VERTS_PER_PRIM = 14,
-   AC_UD_NEXT_STAGE_PC = 15,
-   AC_UD_EPILOG_PC = 16,
-   AC_UD_SHADER_START = 17,
-   AC_UD_VS_VERTEX_BUFFERS = AC_UD_SHADER_START,
-   AC_UD_VS_BASE_VERTEX_START_INSTANCE,
-   AC_UD_VS_PROLOG_INPUTS,
-   AC_UD_VS_MAX_UD,
-   AC_UD_PS_STATE,
-   AC_UD_PS_MAX_UD,
-   AC_UD_CS_GRID_SIZE = AC_UD_SHADER_START,
-   AC_UD_CS_SBT_DESCRIPTORS,
-   AC_UD_CS_RAY_LAUNCH_SIZE_ADDR,
-   AC_UD_CS_RAY_DYNAMIC_CALLABLE_STACK_BASE,
-   AC_UD_CS_TRAVERSAL_SHADER_ADDR,
-   AC_UD_CS_TASK_RING_OFFSETS,
-   AC_UD_CS_TASK_DRAW_ID,
-   AC_UD_CS_TASK_IB,
-   AC_UD_CS_MAX_UD,
-   AC_UD_GS_MAX_UD,
-   AC_UD_TCS_OFFCHIP_LAYOUT = AC_UD_VS_MAX_UD,
-   AC_UD_TCS_MAX_UD,
-   /* We might not know the previous stage when compiling a geometry shader, so we just
-    * declare both TES and VS user SGPRs.
-    */
-   AC_UD_TES_MAX_UD = AC_UD_TCS_MAX_UD,
-   AC_UD_MAX_UD = AC_UD_CS_MAX_UD,
-};
-
 #define SET_SGPR_FIELD(field, value) (((unsigned)(value)&field##__MASK) << field##__SHIFT)
 
 #define TCS_OFFCHIP_LAYOUT_NUM_PATCHES__SHIFT          0
@@ -287,17 +244,6 @@ struct radv_streamout_info {
    uint16_t num_outputs;
    uint16_t strides[MAX_SO_BUFFERS];
    uint32_t enabled_stream_buffers_mask;
-};
-
-struct radv_userdata_info {
-   int8_t sgpr_idx;
-   uint8_t num_sgprs;
-};
-
-struct radv_userdata_locations {
-   struct radv_userdata_info descriptor_sets[MAX_SETS];
-   struct radv_userdata_info shader_data[AC_UD_MAX_UD];
-   uint32_t descriptor_sets_enabled;
 };
 
 struct radv_vs_output_info {

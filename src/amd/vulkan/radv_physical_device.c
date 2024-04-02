@@ -655,6 +655,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_shader_image_atomic_int64 = true,
       .EXT_shader_module_identifier = true,
       .EXT_shader_object = !pdev->use_llvm && !(instance->debug_flags & RADV_DEBUG_NO_ESO),
+      .EXT_shader_replicated_composites = true,
       .EXT_shader_stencil_export = true,
       .EXT_shader_subgroup_ballot = true,
       .EXT_shader_subgroup_vote = true,
@@ -1216,6 +1217,9 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
 
       /* VK_MESA_image_alignment_control */
       .imageAlignmentControl = true,
+
+      /* VK_EXT_shader_replicated_composites */
+      .shaderReplicatedComposites = true,
    };
 }
 

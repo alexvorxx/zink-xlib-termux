@@ -327,6 +327,8 @@ void radeon_enc_3_0_init(struct radeon_encoder *enc);
 
 void radeon_enc_4_0_init(struct radeon_encoder *enc);
 
+void radeon_enc_5_0_init(struct radeon_encoder *enc);
+
 void radeon_enc_av1_bs_instruction_type(struct radeon_encoder *enc,
                                         unsigned int inst, unsigned int obu_type);
 

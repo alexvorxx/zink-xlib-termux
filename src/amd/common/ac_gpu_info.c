@@ -1025,6 +1025,9 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
       case VCN_IP_VERSION(4, 0, 6):
          info->vcn_ip_version = VCN_4_0_6;
          break;
+      case VCN_IP_VERSION(5, 0, 0):
+         info->vcn_ip_version = VCN_5_0_0;
+         break;
       default:
          info->vcn_ip_version = VCN_UNKNOWN;
       }

@@ -212,9 +212,6 @@ struct rvcn_decode_buffer_s;
 
 /* queue types */
 
-VkResult radv_init_wsi(struct radv_physical_device *pdev);
-void radv_finish_wsi(struct radv_physical_device *pdev);
-
 struct radv_shader_binary_part;
 
 

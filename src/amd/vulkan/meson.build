@@ -168,6 +168,7 @@ libradv_files = files(
   'radv_video.c',
   'radv_video.h',
   'radv_wsi.c',
+  'radv_wsi.h',
   'si_cmd_buffer.c',
 )
 

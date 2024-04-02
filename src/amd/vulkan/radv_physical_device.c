@@ -38,6 +38,7 @@
 #include "radv_pipeline_rt.h"
 #include "radv_private.h"
 #include "radv_video.h"
+#include "radv_wsi.h"
 
 #ifdef _WIN32
 typedef void *drmDevicePtr;

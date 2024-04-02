@@ -314,6 +314,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_shader_atomic_float               = true,
       .EXT_shader_demote_to_helper_invocation = true,
       .EXT_shader_module_identifier          = true,
+      .EXT_shader_replicated_composites      = true,
       .EXT_shader_subgroup_ballot            = true,
       .EXT_shader_subgroup_vote              = true,
       .EXT_shader_viewport_index_layer       = true,
@@ -590,6 +591,9 @@ get_features(const struct anv_physical_device *pdevice,
 
       /* VK_EXT_shader_module_identifier */
       .shaderModuleIdentifier = true,
+
+      /* VK_EXT_shader_replicated_composites */
+      .shaderReplicatedComposites = true,
 
       /* VK_KHR_shader_subgroup_uniform_control_flow */
       .shaderSubgroupUniformControlFlow = true,

@@ -1311,6 +1311,9 @@ zink_destroy_screen(struct pipe_screen *pscreen)
    if (screen->sem)
       VKSCR(DestroySemaphore)(screen->dev, screen->sem, NULL);
 
+   if (screen->prev_sem)
+      VKSCR(DestroySemaphore)(screen->dev, screen->prev_sem, NULL);
+
    if (screen->fence)
       VKSCR(DestroyFence)(screen->dev, screen->fence, NULL);
 

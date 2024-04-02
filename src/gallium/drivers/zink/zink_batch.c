@@ -252,11 +252,13 @@ create_batch_state(struct zink_context *ctx)
    if (!zink_batch_descriptor_init(screen, bs))
       goto fail;
 
-   VkFenceCreateInfo fci = {0};
-   fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-
-   if (VKSCR(CreateFence)(screen->dev, &fci, NULL, &bs->fence.fence) != VK_SUCCESS)
+   if (!screen->info.have_KHR_timeline_semaphore) {
+      VkFenceCreateInfo fci = {0};
+      fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+   
+      if (VKSCR(CreateFence)(screen->dev, &fci, NULL, &bs->fence.fence) != VK_SUCCESS)
       goto fail;
+   }
 
    util_queue_fence_init(&bs->flush_completed);
 
@@ -505,7 +507,7 @@ zink_end_batch(struct zink_context *ctx, struct zink_batch *batch)
          struct zink_fence *fence = &bs->fence;
          /* once an incomplete state is reached, no more will be complete */
          //if (!zink_check_batch_completion(ctx, fence->batch_id))
-		 if (!zink_check_batch_completion(ctx, fence->batch_id, true))	 
+	 if (!zink_check_batch_completion(ctx, fence->batch_id, true))	 
             break;
 
          if (bs->fence.submitted && !bs->fence.completed)

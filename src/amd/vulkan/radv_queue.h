@@ -126,4 +126,6 @@ enum radeon_ctx_priority radv_get_queue_global_priority(const VkDeviceQueueGloba
 
 bool radv_queue_internal_submit(struct radv_queue *queue, struct radeon_cmdbuf *cs);
 
+enum amd_ip_type radv_queue_ring(const struct radv_queue *queue);
+
 #endif /* RADV_QUEUE_H */

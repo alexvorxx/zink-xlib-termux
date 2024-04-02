@@ -1933,3 +1933,11 @@ radv_queue_finish(struct radv_queue *queue)
    radv_queue_state_finish(&queue->state, device);
    vk_queue_finish(&queue->vk);
 }
+
+enum amd_ip_type
+radv_queue_ring(const struct radv_queue *queue)
+{
+   struct radv_device *device = radv_queue_device(queue);
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   return radv_queue_family_to_ring(pdev, queue->state.qf);
+}

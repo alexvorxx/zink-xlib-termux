@@ -286,18 +286,6 @@ void llvm_compile_shader(const struct radv_nir_compiler_options *options, const 
                          unsigned shader_count, struct nir_shader *const *shaders, struct radv_shader_binary **binary,
                          const struct radv_shader_args *args);
 
-/*
- * Queue helper to get ring.
- * placed here as it needs queue + device structs.
- */
-static inline enum amd_ip_type
-radv_queue_ring(const struct radv_queue *queue)
-{
-   struct radv_device *device = radv_queue_device(queue);
-   const struct radv_physical_device *pdev = radv_device_physical(device);
-   return radv_queue_family_to_ring(pdev, queue->state.qf);
-}
-
 #define RADV_FROM_HANDLE(__radv_type, __name, __handle) VK_FROM_HANDLE(__radv_type, __name, __handle)
 
 #ifdef __cplusplus

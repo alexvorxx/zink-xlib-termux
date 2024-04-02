@@ -55,6 +55,8 @@ vk_cts_patch_files=(
   # e7e7c4ff1b8a3c6f25527c82e92f67a9a7c49481
   # patch because it doesn't backport cleanly
   build-deqp-vk_Fix-for-render_to_image-exceeding-maxResourceSize.patch
+  # Fix for modifiers test
+  0001-Add-check-for-import-export-bits-for-vk-modifier-tes.patch
 )
 
 if [ "${DEQP_TARGET}" = 'android' ]; then

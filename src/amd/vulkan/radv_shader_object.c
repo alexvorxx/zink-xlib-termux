@@ -21,6 +21,7 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_shader_object.h"
 #include "radv_pipeline_cache.h"
 #include "radv_private.h"
 

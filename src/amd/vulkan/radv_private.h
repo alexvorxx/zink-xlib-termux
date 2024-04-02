@@ -1092,7 +1092,6 @@ void radv_gang_cache_flush(struct radv_cmd_buffer *cmd_buffer);
 #define RADV_FROM_HANDLE(__radv_type, __name, __handle) VK_FROM_HANDLE(__radv_type, __name, __handle)
 
 VK_DEFINE_HANDLE_CASTS(radv_cmd_buffer, vk.base, VkCommandBuffer, VK_OBJECT_TYPE_COMMAND_BUFFER)
-VK_DEFINE_NONDISP_HANDLE_CASTS(radv_shader_object, base, VkShaderEXT, VK_OBJECT_TYPE_SHADER_EXT);
 
 static inline uint64_t
 radv_get_tdr_timeout_for_ip(enum amd_ip_type ip_type)

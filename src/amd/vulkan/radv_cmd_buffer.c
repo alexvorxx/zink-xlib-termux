@@ -34,6 +34,7 @@
 #include "radv_private.h"
 #include "radv_radeon_winsys.h"
 #include "radv_shader.h"
+#include "radv_shader_object.h"
 #include "radv_sqtt.h"
 #include "sid.h"
 #include "vk_common_entrypoints.h"

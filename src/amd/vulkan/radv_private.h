@@ -89,13 +89,6 @@
 
 #include "radix_sort/radix_sort_vk_devaddr.h"
 
-/* Pre-declarations needed for WSI entrypoints */
-struct wl_surface;
-struct wl_display;
-typedef struct xcb_connection_t xcb_connection_t;
-typedef uint32_t xcb_visualid_t;
-typedef uint32_t xcb_window_t;
-
 #include <vulkan/vk_android_native_buffer.h>
 #include <vulkan/vk_icd.h>
 #include <vulkan/vulkan.h>

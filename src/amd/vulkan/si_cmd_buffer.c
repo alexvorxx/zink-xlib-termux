@@ -680,53 +680,6 @@ radv_get_viewport_xform(const VkViewport *viewport, float scale[3], float transl
    translate[2] = n;
 }
 
-static VkRect2D
-radv_scissor_from_viewport(const VkViewport *viewport)
-{
-   float scale[3], translate[3];
-   VkRect2D rect;
-
-   radv_get_viewport_xform(viewport, scale, translate);
-
-   rect.offset.x = translate[0] - fabsf(scale[0]);
-   rect.offset.y = translate[1] - fabsf(scale[1]);
-   rect.extent.width = ceilf(translate[0] + fabsf(scale[0])) - rect.offset.x;
-   rect.extent.height = ceilf(translate[1] + fabsf(scale[1])) - rect.offset.y;
-
-   return rect;
-}
-
-static VkRect2D
-radv_intersect_scissor(const VkRect2D *a, const VkRect2D *b)
-{
-   VkRect2D ret;
-   ret.offset.x = MAX2(a->offset.x, b->offset.x);
-   ret.offset.y = MAX2(a->offset.y, b->offset.y);
-   ret.extent.width = MIN2(a->offset.x + a->extent.width, b->offset.x + b->extent.width) - ret.offset.x;
-   ret.extent.height = MIN2(a->offset.y + a->extent.height, b->offset.y + b->extent.height) - ret.offset.y;
-   return ret;
-}
-
-void
-radv_write_scissors(struct radeon_cmdbuf *cs, int count, const VkRect2D *scissors, const VkViewport *viewports)
-{
-   int i;
-
-   if (!count)
-      return;
-
-   radeon_set_context_reg_seq(cs, R_028250_PA_SC_VPORT_SCISSOR_0_TL, count * 2);
-   for (i = 0; i < count; i++) {
-      VkRect2D viewport_scissor = radv_scissor_from_viewport(viewports + i);
-      VkRect2D scissor = radv_intersect_scissor(&scissors[i], &viewport_scissor);
-
-      radeon_emit(
-         cs, S_028250_TL_X(scissor.offset.x) | S_028250_TL_Y(scissor.offset.y) | S_028250_WINDOW_OFFSET_DISABLE(1));
-      radeon_emit(cs, S_028254_BR_X(scissor.offset.x + scissor.extent.width) |
-                         S_028254_BR_Y(scissor.offset.y + scissor.extent.height));
-   }
-}
-
 void
 radv_cs_emit_write_event_eop(struct radeon_cmdbuf *cs, enum amd_gfx_level gfx_level, enum radv_queue_family qf,
                              unsigned event, unsigned event_flags, unsigned dst_sel, unsigned data_sel, uint64_t va,

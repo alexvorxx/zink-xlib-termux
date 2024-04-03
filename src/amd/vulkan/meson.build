@@ -112,6 +112,8 @@ libradv_files = files(
   'radv_buffer_view.h',
   'radv_cmd_buffer.c',
   'radv_cmd_buffer.h',
+  'radv_cp_dma.c',
+  'radv_cp_dma.h',
   'radv_cp_reg_shadowing.c',
   'radv_cp_reg_shadowing.h',
   'radv_cs.h',

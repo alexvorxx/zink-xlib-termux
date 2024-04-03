@@ -358,7 +358,7 @@ main(int argc, char *argv[])
    fail_if(!err_file, "Failed to open error file \"%s\": %m\n", in_filename);
 
    FILE *hang_file = fopen(out_filename, "w");
-   fail_if(!hang_file, "Failed to open aub file \"%s\": %m\n", in_filename);
+   fail_if(!hang_file, "Failed to open aub file \"%s\": %m\n", out_filename);
 
    enum address_space active_gtt = PPGTT;
    enum address_space default_gtt = PPGTT;

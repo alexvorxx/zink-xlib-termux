@@ -589,11 +589,11 @@ instr_is_16bit(amd_gfx_level gfx_level, aco_opcode op)
 
    switch (op) {
    /* VOP3 */
-   case aco_opcode::v_mad_f16:
-   case aco_opcode::v_mad_u16:
-   case aco_opcode::v_mad_i16:
-   case aco_opcode::v_fma_f16:
-   case aco_opcode::v_div_fixup_f16:
+   case aco_opcode::v_mad_legacy_f16:
+   case aco_opcode::v_mad_legacy_u16:
+   case aco_opcode::v_mad_legacy_i16:
+   case aco_opcode::v_fma_legacy_f16:
+   case aco_opcode::v_div_fixup_legacy_f16: return false;
    case aco_opcode::v_interp_p2_f16:
    case aco_opcode::v_fma_mixlo_f16:
    case aco_opcode::v_fma_mixhi_f16:
@@ -634,8 +634,8 @@ instr_is_16bit(amd_gfx_level gfx_level, aco_opcode op)
    case aco_opcode::v_cvt_i16_f16:
    case aco_opcode::v_cvt_norm_i16_f16:
    case aco_opcode::v_cvt_norm_u16_f16: return gfx_level >= GFX10;
-   /* on GFX10, all opsel instructions preserve the high bits */
-   default: return gfx_level >= GFX10 && can_use_opsel(gfx_level, op, -1);
+   /* all non legacy opsel instructions preserve the high bits */
+   default: return can_use_opsel(gfx_level, op, -1);
    }
 }
 

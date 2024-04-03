@@ -35,11 +35,18 @@ mark_sampler_desc(const nir_variable *var, struct radv_shader_info *info)
 }
 
 static bool
+radv_use_vs_prolog(const nir_shader *nir,
+                   const struct radv_graphics_state_key *gfx_state)
+{
+   return gfx_state->vs.has_prolog && nir->info.inputs_read;
+}
+
+static bool
 radv_use_per_attribute_vb_descs(const nir_shader *nir,
                                 const struct radv_graphics_state_key *gfx_state,
                                 const struct radv_shader_stage_key *stage_key)
 {
-   return stage_key->vertex_robustness1 || (gfx_state->vs.has_prolog && nir->info.inputs_read);
+   return stage_key->vertex_robustness1 || radv_use_vs_prolog(nir, gfx_state);
 }
 
 static void
@@ -537,7 +544,7 @@ gather_shader_info_vs(struct radv_device *device, const nir_shader *nir,
                       const struct radv_graphics_state_key *gfx_state, const struct radv_shader_stage_key *stage_key,
                       struct radv_shader_info *info)
 {
-   if (gfx_state->vs.has_prolog && nir->info.inputs_read) {
+   if (radv_use_vs_prolog(nir, gfx_state)) {
       info->vs.has_prolog = true;
       info->vs.dynamic_inputs = true;
    }

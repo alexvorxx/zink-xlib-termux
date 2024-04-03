@@ -270,4 +270,17 @@ radv_cs_write_data(const struct radv_device *device, struct radeon_cmdbuf *cs, c
    assert(cs->cdw == cdw_end);
 }
 
+void radv_cs_emit_write_event_eop(struct radeon_cmdbuf *cs, enum amd_gfx_level gfx_level, enum radv_queue_family qf,
+                                  unsigned event, unsigned event_flags, unsigned dst_sel, unsigned data_sel,
+                                  uint64_t va, uint32_t new_fence, uint64_t gfx9_eop_bug_va);
+
+void radv_cs_emit_cache_flush(struct radeon_winsys *ws, struct radeon_cmdbuf *cs, enum amd_gfx_level gfx_level,
+                              uint32_t *flush_cnt, uint64_t flush_va, enum radv_queue_family qf,
+                              enum radv_cmd_flush_bits flush_bits, enum rgp_flush_bits *sqtt_flush_bits,
+                              uint64_t gfx9_eop_bug_va);
+
+void radv_emit_cond_exec(const struct radv_device *device, struct radeon_cmdbuf *cs, uint64_t va, uint32_t count);
+
+void radv_cs_write_data_imm(struct radeon_cmdbuf *cs, unsigned engine_sel, uint64_t va, uint32_t imm);
+
 #endif /* RADV_CS_H */

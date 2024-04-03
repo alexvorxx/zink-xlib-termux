@@ -116,6 +116,7 @@ libradv_files = files(
   'radv_cp_dma.h',
   'radv_cp_reg_shadowing.c',
   'radv_cp_reg_shadowing.h',
+  'radv_cs.c',
   'radv_cs.h',
   'radv_debug.c',
   'radv_debug.h',
@@ -180,7 +181,6 @@ libradv_files = files(
   'radv_video.h',
   'radv_wsi.c',
   'radv_wsi.h',
-  'si_cmd_buffer.c',
 )
 
 if not with_platform_windows

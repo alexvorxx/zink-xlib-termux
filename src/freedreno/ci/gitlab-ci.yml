@@ -108,16 +108,15 @@ a618_skqp:
 
 a618_piglit:
   extends:
-    - .piglit-test
-    - .lava-piglit:arm64
+    - .lava-test-deqp:arm64
     - .lava-sc7180-trogdor-lazor-limozeen:arm64
     - .collabora-freedreno-rules
     # Note that piglit has GL+VK integration testing.
     - .collabora-freedreno-turnip-rules
   variables:
+    DEQP_SUITE: freedreno-a618-piglit
     FLAKES_CHANNEL: "#freedreno-ci"
     HWCI_START_WESTON: 1
-    PIGLIT_PROFILES: gpu
 
 a618-traces:
   extends:

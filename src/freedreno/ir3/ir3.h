@@ -1506,6 +1506,7 @@ half_type(type_t type)
    case TYPE_F32:
       return TYPE_F16;
    case TYPE_U32:
+   case TYPE_U8_32:
       return TYPE_U16;
    case TYPE_S32:
       return TYPE_S16;
@@ -1514,7 +1515,6 @@ half_type(type_t type)
    case TYPE_S16:
       return type;
    case TYPE_U8:
-   case TYPE_S8:
       return type;
    default:
       assert(0);
@@ -1529,9 +1529,9 @@ full_type(type_t type)
    case TYPE_F16:
       return TYPE_F32;
    case TYPE_U8:
+   case TYPE_U8_32:
    case TYPE_U16:
       return TYPE_U32;
-   case TYPE_S8:
    case TYPE_S16:
       return TYPE_S32;
    case TYPE_F32:

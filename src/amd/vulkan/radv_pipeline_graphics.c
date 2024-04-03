@@ -1457,10 +1457,6 @@ radv_link_vs(const struct radv_device *device, struct radv_shader_stage *vs_stag
       radv_link_shaders(device, vs_stage, next_stage, gfx_state);
    }
 
-   nir_foreach_shader_in_variable (var, vs_stage->nir) {
-      var->data.driver_location = var->data.location;
-   }
-
    if (next_stage && next_stage->nir->info.stage == MESA_SHADER_TESS_CTRL) {
       nir_linked_io_var_info vs2tcs = nir_assign_linked_io_var_locations(vs_stage->nir, next_stage->nir);
 

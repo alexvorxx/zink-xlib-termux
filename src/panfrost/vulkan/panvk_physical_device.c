@@ -828,7 +828,10 @@ get_format_properties(struct panvk_physical_device *physical_device,
    buffer |=
       VK_FORMAT_FEATURE_TRANSFER_SRC_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
 
-   if (fmt.bind & PAN_BIND_VERTEX_BUFFER)
+   /* Reject sRGB formats (see
+    * https://github.com/KhronosGroup/Vulkan-Docs/issues/2214).
+    */
+   if ((fmt.bind & PAN_BIND_VERTEX_BUFFER) && !util_format_is_srgb(pfmt))
       buffer |= VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT;
 
    if (fmt.bind & PAN_BIND_SAMPLER_VIEW) {

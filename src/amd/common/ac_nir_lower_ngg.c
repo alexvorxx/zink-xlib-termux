@@ -2472,10 +2472,6 @@ ac_nir_lower_ngg_nogs(nir_shader *shader, const ac_nir_lower_ngg_options *option
       options->export_primitive_id && shader->info.stage == MESA_SHADER_VERTEX;
 
    if (options->export_primitive_id) {
-      nir_variable *prim_id_var = nir_variable_create(shader, nir_var_shader_out, glsl_uint_type(), "ngg_prim_id");
-      prim_id_var->data.location = VARYING_SLOT_PRIMITIVE_ID;
-      prim_id_var->data.driver_location = VARYING_SLOT_PRIMITIVE_ID;
-      prim_id_var->data.interpolation = INTERP_MODE_NONE;
       shader->info.outputs_written |= VARYING_BIT_PRIMITIVE_ID;
    }
 

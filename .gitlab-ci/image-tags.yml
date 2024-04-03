@@ -43,4 +43,4 @@ variables:
    WINDOWS_X64_BUILD_TAG: "20240322-agility-sdk"
 
    WINDOWS_X64_TEST_PATH: "windows/x86_64_test"
-   WINDOWS_X64_TEST_TAG: "20240322-agility-sdk"
+   WINDOWS_X64_TEST_TAG: "20240402-agility-sdk"

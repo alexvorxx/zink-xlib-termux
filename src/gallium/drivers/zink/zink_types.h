@@ -815,7 +815,6 @@ struct zink_shader {
       unsigned char size;
    } bindings[ZINK_DESCRIPTOR_BASE_TYPES][ZINK_MAX_DESCRIPTORS_PER_TYPE];
    size_t num_bindings[ZINK_DESCRIPTOR_BASE_TYPES];
-   unsigned num_texel_buffers;
    uint32_t ubos_used; // bitfield of which ubo indices are used
    uint32_t ssbos_used; // bitfield of which ssbo indices are used
    uint64_t arrayed_inputs; //mask of locations using arrayed io

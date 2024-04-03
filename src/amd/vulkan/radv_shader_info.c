@@ -20,6 +20,7 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
+#include "radv_shader_info.h"
 #include "nir/nir.h"
 #include "nir/nir_xfb_info.h"
 #include "nir/radv_nir.h"

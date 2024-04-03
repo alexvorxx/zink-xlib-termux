@@ -3695,7 +3695,7 @@ ms_store_cull_flag(nir_builder *b,
 static nir_def *
 ms_arrayed_output_base_addr(nir_builder *b,
                             nir_def *arr_index,
-                            unsigned driver_location,
+                            unsigned mapped_location,
                             unsigned num_arrayed_outputs)
 {
    /* Address offset of the array item (vertex or primitive). */
@@ -3703,7 +3703,7 @@ ms_arrayed_output_base_addr(nir_builder *b,
    nir_def *arr_index_off = nir_imul_imm(b, arr_index, arr_index_stride);
 
    /* IO address offset within the vertex or primitive data. */
-   unsigned io_offset = driver_location * 16u;
+   unsigned io_offset = mapped_location * 16u;
    nir_def *io_off = nir_imm_int(b, io_offset);
 
    return nir_iadd_nuw(b, arr_index_off, io_off);
@@ -3875,10 +3875,9 @@ ms_store_arrayed_output_intrin(nir_builder *b,
    update_ms_output_info(intrin, out, s);
 
    /* We compact the LDS size (we don't reserve LDS space for outputs which can
-    * be stored in variables), so we can't rely on the original driver_location.
-    * Instead, we compute the first free location based on the output mask.
+    * be stored in variables), so we compute the first free location based on the output mask.
     */
-   unsigned driver_location = util_bitcount64(out->mask & u_bit_consecutive64(0, location));
+   unsigned mapped_location = util_bitcount64(out->mask & u_bit_consecutive64(0, location));
    unsigned component_offset = nir_intrinsic_component(intrin);
    unsigned write_mask = nir_intrinsic_write_mask(intrin);
    unsigned num_outputs = util_bitcount64(out->mask);
@@ -3886,7 +3885,7 @@ ms_store_arrayed_output_intrin(nir_builder *b,
 
    nir_def *store_val = regroup_store_val(b, intrin->src[0].ssa);
    nir_def *arr_index = nir_get_io_arrayed_index_src(intrin)->ssa;
-   nir_def *base_addr = ms_arrayed_output_base_addr(b, arr_index, driver_location, num_outputs);
+   nir_def *base_addr = ms_arrayed_output_base_addr(b, arr_index, mapped_location, num_outputs);
    nir_def *base_offset = nir_get_io_offset_src(intrin)->ssa;
    nir_def *base_addr_off = nir_imul_imm(b, base_offset, 16u);
    nir_def *addr = nir_iadd_nuw(b, base_addr, base_addr_off);
@@ -3955,10 +3954,10 @@ ms_load_arrayed_output(nir_builder *b,
    unsigned num_outputs = util_bitcount64(out->mask);
    unsigned const_off = out->addr + component_offset * 4;
 
-   /* Use compacted driver location instead of the original. */
-   unsigned driver_location = util_bitcount64(out->mask & u_bit_consecutive64(0, location));
+   /* Use compacted location instead of the original semantic location. */
+   unsigned mapped_location = util_bitcount64(out->mask & u_bit_consecutive64(0, location));
 
-   nir_def *base_addr = ms_arrayed_output_base_addr(b, arr_index, driver_location, num_outputs);
+   nir_def *base_addr = ms_arrayed_output_base_addr(b, arr_index, mapped_location, num_outputs);
    nir_def *base_addr_off = nir_imul_imm(b, base_offset, 16);
    nir_def *addr = nir_iadd_nuw(b, base_addr, base_addr_off);
 

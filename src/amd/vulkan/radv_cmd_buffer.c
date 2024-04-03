@@ -3748,9 +3748,56 @@ radv_emit_guardband_state(struct radv_cmd_buffer *cmd_buffer)
 {
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
    unsigned rast_prim = radv_get_rasterization_prim(cmd_buffer);
+   const bool draw_points = radv_rast_prim_is_point(rast_prim) || radv_polygon_mode_is_point(d->vk.rs.polygon_mode);
+   const bool draw_lines = radv_rast_prim_is_line(rast_prim) || radv_polygon_mode_is_line(d->vk.rs.polygon_mode);
+   struct radeon_cmdbuf *cs = cmd_buffer->cs;
+   int i;
+   float scale[3], translate[3], guardband_x = INFINITY, guardband_y = INFINITY;
+   float discard_x = 1.0f, discard_y = 1.0f;
+   const float max_range = 32767.0f;
 
-   radv_write_guardband(cmd_buffer->cs, d->vk.vp.viewport_count, d->vk.vp.viewports, rast_prim, d->vk.rs.polygon_mode,
-                        d->vk.rs.line.width);
+   if (!d->vk.vp.viewport_count)
+      return;
+
+   for (i = 0; i < d->vk.vp.viewport_count; i++) {
+      radv_get_viewport_xform(d->vk.vp.viewports + i, scale, translate);
+      scale[0] = fabsf(scale[0]);
+      scale[1] = fabsf(scale[1]);
+
+      if (scale[0] < 0.5)
+         scale[0] = 0.5;
+      if (scale[1] < 0.5)
+         scale[1] = 0.5;
+
+      guardband_x = MIN2(guardband_x, (max_range - fabsf(translate[0])) / scale[0]);
+      guardband_y = MIN2(guardband_y, (max_range - fabsf(translate[1])) / scale[1]);
+
+      if (draw_points || draw_lines) {
+         /* When rendering wide points or lines, we need to be more conservative about when to
+          * discard them entirely. */
+         float pixels;
+
+         if (draw_points) {
+            pixels = 8191.875f;
+         } else {
+            pixels = d->vk.rs.line.width;
+         }
+
+         /* Add half the point size / line width. */
+         discard_x += pixels / (2.0 * scale[0]);
+         discard_y += pixels / (2.0 * scale[1]);
+
+         /* Discard primitives that would lie entirely outside the clip region. */
+         discard_x = MIN2(discard_x, guardband_x);
+         discard_y = MIN2(discard_y, guardband_y);
+      }
+   }
+
+   radeon_set_context_reg_seq(cs, R_028BE8_PA_CL_GB_VERT_CLIP_ADJ, 4);
+   radeon_emit(cs, fui(guardband_y));
+   radeon_emit(cs, fui(discard_y));
+   radeon_emit(cs, fui(guardband_x));
+   radeon_emit(cs, fui(discard_x));
 
    cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_GUARDBAND;
 }

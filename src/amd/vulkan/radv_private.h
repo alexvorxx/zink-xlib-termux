@@ -208,9 +208,6 @@ void radv_create_gfx_config(struct radv_device *device);
 
 void radv_write_scissors(struct radeon_cmdbuf *cs, int count, const VkRect2D *scissors, const VkViewport *viewports);
 
-void radv_write_guardband(struct radeon_cmdbuf *cs, int count, const VkViewport *viewports, unsigned rast_prim,
-                          unsigned polygon_mode, float line_width);
-
 void radv_cs_emit_write_event_eop(struct radeon_cmdbuf *cs, enum amd_gfx_level gfx_level, enum radv_queue_family qf,
                                   unsigned event, unsigned event_flags, unsigned dst_sel, unsigned data_sel,
                                   uint64_t va, uint32_t new_fence, uint64_t gfx9_eop_bug_va);

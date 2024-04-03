@@ -728,60 +728,6 @@ radv_write_scissors(struct radeon_cmdbuf *cs, int count, const VkRect2D *scissor
 }
 
 void
-radv_write_guardband(struct radeon_cmdbuf *cs, int count, const VkViewport *viewports, unsigned rast_prim,
-                     unsigned polygon_mode, float line_width)
-{
-   const bool draw_points = radv_rast_prim_is_point(rast_prim) || radv_polygon_mode_is_point(polygon_mode);
-   const bool draw_lines = radv_rast_prim_is_line(rast_prim) || radv_polygon_mode_is_line(polygon_mode);
-   int i;
-   float scale[3], translate[3], guardband_x = INFINITY, guardband_y = INFINITY;
-   float discard_x = 1.0f, discard_y = 1.0f;
-   const float max_range = 32767.0f;
-   if (!count)
-      return;
-
-   for (i = 0; i < count; i++) {
-      radv_get_viewport_xform(viewports + i, scale, translate);
-      scale[0] = fabsf(scale[0]);
-      scale[1] = fabsf(scale[1]);
-
-      if (scale[0] < 0.5)
-         scale[0] = 0.5;
-      if (scale[1] < 0.5)
-         scale[1] = 0.5;
-
-      guardband_x = MIN2(guardband_x, (max_range - fabsf(translate[0])) / scale[0]);
-      guardband_y = MIN2(guardband_y, (max_range - fabsf(translate[1])) / scale[1]);
-
-      if (draw_points || draw_lines) {
-         /* When rendering wide points or lines, we need to be more conservative about when to
-          * discard them entirely. */
-         float pixels;
-
-         if (draw_points) {
-            pixels = 8191.875f;
-         } else {
-            pixels = line_width;
-         }
-
-         /* Add half the point size / line width. */
-         discard_x += pixels / (2.0 * scale[0]);
-         discard_y += pixels / (2.0 * scale[1]);
-
-         /* Discard primitives that would lie entirely outside the clip region. */
-         discard_x = MIN2(discard_x, guardband_x);
-         discard_y = MIN2(discard_y, guardband_y);
-      }
-   }
-
-   radeon_set_context_reg_seq(cs, R_028BE8_PA_CL_GB_VERT_CLIP_ADJ, 4);
-   radeon_emit(cs, fui(guardband_y));
-   radeon_emit(cs, fui(discard_y));
-   radeon_emit(cs, fui(guardband_x));
-   radeon_emit(cs, fui(discard_x));
-}
-
-void
 radv_cs_emit_write_event_eop(struct radeon_cmdbuf *cs, enum amd_gfx_level gfx_level, enum radv_queue_family qf,
                              unsigned event, unsigned event_flags, unsigned dst_sel, unsigned data_sel, uint64_t va,
                              uint32_t new_fence, uint64_t gfx9_eop_bug_va)

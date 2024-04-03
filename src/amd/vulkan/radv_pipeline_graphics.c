@@ -1603,10 +1603,6 @@ radv_link_fs(struct radv_shader_stage *fs_stage, const struct radv_graphics_stat
    assert(fs_stage->nir->info.stage == MESA_SHADER_FRAGMENT);
 
    radv_remove_color_exports(gfx_state, fs_stage->nir);
-
-   nir_foreach_shader_out_variable (var, fs_stage->nir) {
-      var->data.driver_location = var->data.location + var->data.index;
-   }
 }
 
 static bool

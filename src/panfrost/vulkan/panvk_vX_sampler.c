@@ -89,7 +89,21 @@ panvk_per_arch(CreateSampler)(VkDevice _device,
          panvk_translate_sampler_address_mode(pCreateInfo->addressModeU);
       cfg.wrap_mode_t =
          panvk_translate_sampler_address_mode(pCreateInfo->addressModeV);
+
+      /* "
+       * When unnormalizedCoordinates is VK_TRUE, images the sampler is used
+       * with in the shader have the following requirements:
+       * - The viewType must be either VK_IMAGE_VIEW_TYPE_1D or
+       *   VK_IMAGE_VIEW_TYPE_2D.
+       * - The image view must have a single layer and a single mip level.
+       * "
+       *
+       * This means addressModeW should be ignored. We pick a default value
+       * that works for normalized_coordinates=false.
+       */
       cfg.wrap_mode_r =
+         pCreateInfo->unnormalizedCoordinates ?
+         MALI_WRAP_MODE_CLAMP_TO_EDGE :
          panvk_translate_sampler_address_mode(pCreateInfo->addressModeW);
       cfg.compare_function = panvk_translate_sampler_compare_func(pCreateInfo);
       cfg.border_color_r = border_color.uint32[0];

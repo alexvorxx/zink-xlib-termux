@@ -584,7 +584,6 @@ struct zink_shader_info {
    bool have_vulkan_memory_model;
 };
 
-
 struct zink_shader {
    struct util_live_shader base;
    uint32_t hash;
@@ -693,7 +692,6 @@ struct zink_compute_pipeline_state {
    uint32_t hash;
    uint32_t final_hash;
    bool dirty;
-   bool use_local_size;
    uint32_t local_size[3];
 
    uint32_t module_hash;
@@ -734,12 +732,14 @@ struct zink_shader_module {
 
 struct zink_program {
    struct pipe_reference reference;
+   struct zink_context *ctx;
    unsigned char sha1[20];
    struct util_queue_fence cache_fence;
    VkPipelineCache pipeline_cache;
    size_t pipeline_cache_size;
    struct zink_batch_usage *batch_uses;
    bool is_compute;
+   bool can_precompile;
 
    struct zink_program_descriptor_data dd;
 
@@ -812,6 +812,10 @@ struct zink_gfx_program {
 struct zink_compute_program {
    struct zink_program base;
 
+   bool use_local_size;
+
+   nir_shader *nir;
+
    struct zink_shader_module *curr;
 
    struct zink_shader_module *module; //base
@@ -819,7 +823,9 @@ struct zink_compute_program {
    unsigned inlined_variant_count;
 
    struct zink_shader *shader;
-   struct hash_table *pipelines;
+   struct hash_table pipelines;
+
+   VkPipeline base_pipeline;
 };
 
 
@@ -1173,6 +1179,7 @@ struct zink_surface_info {
 struct zink_surface {
    struct pipe_surface base;
    VkImageViewCreateInfo ivci;
+   VkImageViewUsageCreateInfo usage_info;
    struct zink_surface_info info; //TODO: union with fb refs
    uint32_t info_hash;
    bool is_swapchain;
@@ -1402,7 +1409,9 @@ struct zink_context {
    struct zink_rasterizer_state *rast_state;
    struct zink_depth_stencil_alpha_state *dsa_state;
 
+   simple_mtx_t desc_set_layouts_lock;
    struct hash_table desc_set_layouts[ZINK_DESCRIPTOR_TYPES];
+   simple_mtx_t desc_pool_keys_lock;
    struct set desc_pool_keys[ZINK_DESCRIPTOR_TYPES];
    bool pipeline_changed[2]; //gfx, compute
 
@@ -1422,9 +1431,7 @@ struct zink_context {
 
    struct zink_descriptor_data dd;
 
-   struct zink_shader *compute_stage;
    struct zink_compute_pipeline_state compute_pipeline_state;
-   struct hash_table compute_program_cache;
    struct zink_compute_program *curr_compute;
 
    unsigned shader_stages : ZINK_GFX_SHADER_COUNT; /* mask of bound gfx shader stages */

@@ -74,6 +74,7 @@ struct spirv_supported_capabilities {
    bool kernel_image_read_write;
    bool linkage;
    bool literal_sampler;
+   bool mesh_shading;
    bool mesh_shading_nv;
    bool min_lod;
    bool multiview;
@@ -171,6 +172,9 @@ typedef struct shader_info {
     */
    uint64_t per_primitive_inputs;
    uint64_t per_primitive_outputs;
+
+   /* Which I/O is per-view */
+   uint64_t per_view_outputs;
 
    /* Which 16-bit inputs and outputs are used corresponding to
     * VARYING_SLOT_VARn_16BIT.
@@ -536,6 +540,9 @@ typedef struct shader_info {
          uint16_t max_vertices_out;
          uint16_t max_primitives_out;
          uint16_t primitive_type;  /* GL_POINTS, GL_LINES or GL_TRIANGLES. */
+
+         /* TODO: remove this when we stop supporting NV_mesh_shader. */
+         bool nv;
       } mesh;
    };
 } shader_info;

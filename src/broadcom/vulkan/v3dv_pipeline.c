@@ -150,6 +150,9 @@ v3dv_destroy_pipeline(struct v3dv_pipeline *pipeline,
    if (pipeline->executables.mem_ctx)
       ralloc_free(pipeline->executables.mem_ctx);
 
+   if (pipeline->layout)
+      v3dv_pipeline_layout_unref(device, pipeline->layout, pAllocator);
+
    vk_object_free(&device->vk, pAllocator, pipeline);
 }
 
@@ -179,6 +182,7 @@ static const struct spirv_to_nir_options default_spirv_options =  {
       .vk_memory_model = true,
       .vk_memory_model_device_scope = true,
       .physical_storage_buffer_address = true,
+      .workgroup_memory_explicit_layout = true,
     },
    .ubo_addr_format = nir_address_format_32bit_index_offset,
    .ssbo_addr_format = nir_address_format_32bit_index_offset,
@@ -438,7 +442,7 @@ shader_module_compile_to_nir(struct v3dv_device *device,
    const nir_shader_compiler_options *nir_options = &v3dv_nir_options;
 
 
-   if (unlikely(V3D_DEBUG & V3D_DEBUG_DUMP_SPIRV) && stage->module->nir == NULL)
+   if (V3D_DBG(DUMP_SPIRV) && stage->module->nir == NULL)
       v3dv_print_spirv(stage->module->data, stage->module->size, stderr);
 
    /* vk_shader_module_to_nir also handles internal shaders, when module->nir
@@ -456,15 +460,14 @@ shader_module_compile_to_nir(struct v3dv_device *device,
       return NULL;
    assert(nir->info.stage == broadcom_shader_stage_to_gl(stage->stage));
 
-   if (unlikely(V3D_DEBUG & V3D_DEBUG_SHADERDB) && stage->module->nir == NULL) {
+   if (V3D_DBG(SHADERDB) && stage->module->nir == NULL) {
       char sha1buf[41];
       _mesa_sha1_format(sha1buf, stage->pipeline->sha1);
       nir->info.name = ralloc_strdup(nir, sha1buf);
    }
 
-   if (unlikely(V3D_DEBUG & (V3D_DEBUG_NIR |
-                             v3d_debug_flag_for_shader_stage(
-                                broadcom_shader_stage_to_gl(stage->stage))))) {
+   if (V3D_DBG(NIR) ||
+       v3d_debug_flag_for_shader_stage(broadcom_shader_stage_to_gl(stage->stage))) {
       fprintf(stderr, "NIR after vk_shader_module_to_nir: %s prog %d NIR:\n",
               broadcom_shader_stage_name(stage->stage),
               stage->program_id);
@@ -743,9 +746,9 @@ lower_tex_src_to_offset(nir_builder *b,
       base_index;
 
    uint8_t return_size;
-   if (unlikely(V3D_DEBUG & V3D_DEBUG_TMU_16BIT))
+   if (V3D_DBG(TMU_16BIT))
       return_size = 16;
-   else  if (unlikely(V3D_DEBUG & V3D_DEBUG_TMU_32BIT))
+   else  if (V3D_DBG(TMU_32BIT))
       return_size = 32;
    else
       return_size = relaxed_precision || instr->is_shadow ? 16 : 32;
@@ -1645,13 +1648,11 @@ pipeline_compile_shader_variant(struct v3dv_pipeline_stage *p_stage,
    int64_t stage_start = os_time_get_nano();
 
    struct v3dv_pipeline *pipeline = p_stage->pipeline;
-   struct v3dv_physical_device *physical_device =
-      &pipeline->device->instance->physicalDevice;
+   struct v3dv_physical_device *physical_device = pipeline->device->pdevice;
    const struct v3d_compiler *compiler = physical_device->compiler;
 
-   if (unlikely(V3D_DEBUG & (V3D_DEBUG_NIR |
-                             v3d_debug_flag_for_shader_stage
-                             (broadcom_shader_stage_to_gl(p_stage->stage))))) {
+   if (V3D_DBG(NIR) ||
+       v3d_debug_flag_for_shader_stage(broadcom_shader_stage_to_gl(p_stage->stage))) {
       fprintf(stderr, "Just before v3d_compile: %s prog %d NIR:\n",
               broadcom_shader_stage_name(p_stage->stage),
               p_stage->program_id);
@@ -2286,8 +2287,7 @@ pipeline_add_multiview_gs(struct v3dv_pipeline *pipeline,
 
    /* Attach the geometry shader to the  pipeline */
    struct v3dv_device *device = pipeline->device;
-   struct v3dv_physical_device *physical_device =
-      &device->instance->physicalDevice;
+   struct v3dv_physical_device *physical_device = device->pdevice;
 
    struct v3dv_pipeline_stage *p_stage =
       vk_zalloc2(&device->vk.alloc, pAllocator, sizeof(*p_stage), 8,
@@ -2354,8 +2354,7 @@ pipeline_compile_graphics(struct v3dv_pipeline *pipeline,
    int64_t pipeline_start = os_time_get_nano();
 
    struct v3dv_device *device = pipeline->device;
-   struct v3dv_physical_device *physical_device =
-      &device->instance->physicalDevice;
+   struct v3dv_physical_device *physical_device = device->pdevice;
 
    /* First pass to get some common info from the shader, and create the
     * individual pipeline_stage objects
@@ -3027,6 +3026,8 @@ pipeline_init(struct v3dv_pipeline *pipeline,
    /* This must be done after the pipeline has been compiled */
    pipeline_set_ez_state(pipeline, ds_info);
 
+   v3dv_pipeline_layout_ref(pipeline->layout);
+
    return result;
 }
 
@@ -3080,7 +3081,7 @@ v3dv_CreateGraphicsPipelines(VkDevice _device,
    V3DV_FROM_HANDLE(v3dv_device, device, _device);
    VkResult result = VK_SUCCESS;
 
-   if (unlikely(V3D_DEBUG & V3D_DEBUG_SHADERS))
+   if (V3D_DBG(SHADERS))
       mtx_lock(&device->pdevice->mutex);
 
    uint32_t i = 0;
@@ -3106,7 +3107,7 @@ v3dv_CreateGraphicsPipelines(VkDevice _device,
    for (; i < count; i++)
       pPipelines[i] = VK_NULL_HANDLE;
 
-   if (unlikely(V3D_DEBUG & V3D_DEBUG_SHADERS))
+   if (V3D_DBG(SHADERS))
       mtx_unlock(&device->pdevice->mutex);
 
    return result;
@@ -3127,8 +3128,10 @@ shared_type_info(const struct glsl_type *type, unsigned *size, unsigned *align)
 static void
 lower_cs_shared(struct nir_shader *nir)
 {
-   NIR_PASS(_, nir, nir_lower_vars_to_explicit_types,
-            nir_var_mem_shared, shared_type_info);
+   if (!nir->info.shared_memory_explicit_layout) {
+      NIR_PASS(_, nir, nir_lower_vars_to_explicit_types,
+               nir_var_mem_shared, shared_type_info);
+   }
    NIR_PASS(_, nir, nir_lower_explicit_io,
             nir_var_mem_shared, nir_address_format_32bit_offset);
 }
@@ -3145,8 +3148,7 @@ pipeline_compile_compute(struct v3dv_pipeline *pipeline,
    int64_t pipeline_start = os_time_get_nano();
 
    struct v3dv_device *device = pipeline->device;
-   struct v3dv_physical_device *physical_device =
-      &device->instance->physicalDevice;
+   struct v3dv_physical_device *physical_device = device->pdevice;
 
    const VkPipelineShaderStageCreateInfo *sinfo = &info->stage;
    gl_shader_stage stage = vk_to_mesa_shader_stage(sinfo->stage);
@@ -3267,6 +3269,10 @@ compute_pipeline_init(struct v3dv_pipeline *pipeline,
    pipeline->layout = layout;
 
    VkResult result = pipeline_compile_compute(pipeline, cache, info, alloc);
+   if (result != VK_SUCCESS)
+      return result;
+
+   v3dv_pipeline_layout_ref(pipeline->layout);
 
    return result;
 }
@@ -3318,7 +3324,7 @@ v3dv_CreateComputePipelines(VkDevice _device,
    V3DV_FROM_HANDLE(v3dv_device, device, _device);
    VkResult result = VK_SUCCESS;
 
-   if (unlikely(V3D_DEBUG & V3D_DEBUG_SHADERS))
+   if (V3D_DBG(SHADERS))
       mtx_lock(&device->pdevice->mutex);
 
    uint32_t i = 0;
@@ -3343,7 +3349,7 @@ v3dv_CreateComputePipelines(VkDevice _device,
    for (; i < createInfoCount; i++)
       pPipelines[i] = VK_NULL_HANDLE;
 
-   if (unlikely(V3D_DEBUG & V3D_DEBUG_SHADERS))
+   if (V3D_DBG(SHADERS))
       mtx_unlock(&device->pdevice->mutex);
 
    return result;

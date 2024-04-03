@@ -201,6 +201,48 @@ nouveau_query_memory_info(struct pipe_screen *pscreen,
    info->avail_staging_memory = dev->gart_limit / 1024;
 }
 
+static void
+nouveau_pushbuf_cb(struct nouveau_pushbuf *push)
+{
+   struct nouveau_pushbuf_priv *p = (struct nouveau_pushbuf_priv *)push->user_priv;
+
+   if (p->context)
+      p->context->kick_notify(p->context);
+   else
+      _nouveau_fence_update(p->screen, true);
+
+   NOUVEAU_DRV_STAT(p->screen, pushbuf_count, 1);
+}
+
+int
+nouveau_pushbuf_create(struct nouveau_screen *screen, struct nouveau_context *context,
+                       struct nouveau_client *client, struct nouveau_object *chan, int nr,
+                       uint32_t size, bool immediate, struct nouveau_pushbuf **push)
+{
+   int ret;
+   ret = nouveau_pushbuf_new(client, chan, nr, size, immediate, push);
+   if (ret)
+      return ret;
+
+   struct nouveau_pushbuf_priv *p = MALLOC_STRUCT(nouveau_pushbuf_priv);
+   if (!p) {
+      nouveau_pushbuf_del(push);
+      return -ENOMEM;
+   }
+   p->screen = screen;
+   p->context = context;
+   (*push)->kick_notify = nouveau_pushbuf_cb;
+   (*push)->user_priv = p;
+   return 0;
+}
+
+void
+nouveau_pushbuf_destroy(struct nouveau_pushbuf **push)
+{
+   FREE((*push)->user_priv);
+   nouveau_pushbuf_del(push);
+}
+
 int
 nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
 {
@@ -315,9 +357,9 @@ nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
    ret = nouveau_client_new(screen->device, &screen->client);
    if (ret)
       goto err;
-   ret = nouveau_pushbuf_new(screen->client, screen->channel,
-                             4, 512 * 1024, 1,
-                             &screen->pushbuf);
+   ret = nouveau_pushbuf_create(screen, NULL, screen->client, screen->channel,
+                                4, 512 * 1024, 1,
+                                &screen->pushbuf);
    if (ret)
       goto err;
 
@@ -358,6 +400,7 @@ nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
       PIPE_BIND_COMMAND_ARGS_BUFFER;
 
    memset(&mm_config, 0, sizeof(mm_config));
+   nouveau_fence_list_init(&screen->fence);
 
    screen->mm_GART = nouveau_mm_create(dev,
                                        NOUVEAU_BO_GART | NOUVEAU_BO_MAP,
@@ -384,7 +427,7 @@ nouveau_screen_fini(struct nouveau_screen *screen)
    nouveau_mm_destroy(screen->mm_GART);
    nouveau_mm_destroy(screen->mm_VRAM);
 
-   nouveau_pushbuf_del(&screen->pushbuf);
+   nouveau_pushbuf_destroy(&screen->pushbuf);
 
    nouveau_client_del(&screen->client);
    nouveau_object_del(&screen->channel);
@@ -394,6 +437,7 @@ nouveau_screen_fini(struct nouveau_screen *screen)
    close(fd);
 
    disk_cache_destroy(screen->disk_shader_cache);
+   nouveau_fence_list_destroy(&screen->fence);
 }
 
 static void
@@ -408,8 +452,23 @@ nouveau_set_debug_callback(struct pipe_context *pipe,
       memset(&context->debug, 0, sizeof(context->debug));
 }
 
-void
-nouveau_context_init(struct nouveau_context *context)
+int
+nouveau_context_init(struct nouveau_context *context, struct nouveau_screen *screen)
 {
+   int ret;
+
    context->pipe.set_debug_callback = nouveau_set_debug_callback;
+   context->screen = screen;
+
+   ret = nouveau_client_new(screen->device, &context->client);
+   if (ret)
+      return ret;
+
+   ret = nouveau_pushbuf_create(screen, context, context->client, screen->channel,
+                                4, 512 * 1024, 1,
+                                &context->pushbuf);
+   if (ret)
+      return ret;
+
+   return 0;
 }

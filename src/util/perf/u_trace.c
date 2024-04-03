@@ -38,7 +38,7 @@
 #define TIMESTAMP_BUF_SIZE 0x1000
 #define TRACES_PER_CHUNK   (TIMESTAMP_BUF_SIZE / sizeof(uint64_t))
 
-bool ut_trace_instrument;
+int _u_trace_instrument;
 
 #ifdef HAVE_PERFETTO
 int ut_perfetto_enabled;
@@ -369,7 +369,8 @@ get_tracefile(void)
          tracefile = stdout;
       }
 
-      ut_trace_instrument = debug_get_option_trace_instrument();
+      if (tracefile || debug_get_option_trace_instrument())
+         p_atomic_inc(&_u_trace_instrument);
 
       firsttime = false;
    }
@@ -465,14 +466,16 @@ u_trace_perfetto_start(void)
 {
    list_for_each_entry (struct u_trace_context, utctx, &ctx_list, node)
       queue_init(utctx);
-   ut_perfetto_enabled++;
+   if (p_atomic_inc_return(&ut_perfetto_enabled) == 1)
+      p_atomic_inc(&_u_trace_instrument);
 }
 
 void
 u_trace_perfetto_stop(void)
 {
    assert(ut_perfetto_enabled > 0);
-   ut_perfetto_enabled--;
+   if (p_atomic_dec_return(&ut_perfetto_enabled) == 0)
+      p_atomic_dec(&_u_trace_instrument);
 }
 #endif
 
@@ -595,7 +598,6 @@ u_trace_init(struct u_trace *ut, struct u_trace_context *utctx)
 {
    ut->utctx = utctx;
    list_inithead(&ut->trace_chunks);
-   ut->enabled = u_trace_context_instrumenting(utctx);
 }
 
 void
@@ -616,9 +618,6 @@ u_trace_has_points(struct u_trace *ut)
 struct u_trace_iterator
 u_trace_begin_iterator(struct u_trace *ut)
 {
-   if (!ut->enabled)
-      return (struct u_trace_iterator) {NULL, NULL, 0};
-
    if (list_is_empty(&ut->trace_chunks))
       return (struct u_trace_iterator) { ut, NULL, 0 };
 
@@ -631,9 +630,6 @@ u_trace_begin_iterator(struct u_trace *ut)
 struct u_trace_iterator
 u_trace_end_iterator(struct u_trace *ut)
 {
-   if (!ut->enabled)
-      return (struct u_trace_iterator) {NULL, NULL, 0};
-
    if (list_is_empty(&ut->trace_chunks))
       return (struct u_trace_iterator) { ut, NULL, 0 };
 

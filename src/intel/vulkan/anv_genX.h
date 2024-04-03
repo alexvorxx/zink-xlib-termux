@@ -62,8 +62,6 @@ void genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
 
 void genX(cmd_buffer_apply_pipe_flushes)(struct anv_cmd_buffer *cmd_buffer);
 
-void genX(cmd_buffer_emit_gfx7_depth_flush)(struct anv_cmd_buffer *cmd_buffer);
-
 void genX(cmd_buffer_emit_gfx12_depth_wa)(struct anv_cmd_buffer *cmd_buffer,
                                           const struct isl_surf *surf);
 
@@ -160,10 +158,6 @@ genX(rasterization_mode)(VkPolygonMode raster_mode,
                          float line_width,
                          uint32_t *api_mode,
                          bool *msaa_rasterization_enable);
-
-uint32_t
-genX(ms_rasterization_mode)(struct anv_graphics_pipeline *pipeline,
-                            VkPolygonMode raster_mode);
 
 VkPolygonMode
 genX(raster_polygon_mode)(struct anv_graphics_pipeline *pipeline,

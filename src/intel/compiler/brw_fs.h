@@ -297,7 +297,7 @@ public:
    fs_reg get_indirect_offset(nir_intrinsic_instr *instr);
    fs_reg get_tcs_single_patch_icp_handle(const brw::fs_builder &bld,
                                           nir_intrinsic_instr *instr);
-   fs_reg get_tcs_eight_patch_icp_handle(const brw::fs_builder &bld,
+   fs_reg get_tcs_multi_patch_icp_handle(const brw::fs_builder &bld,
                                          nir_intrinsic_instr *instr);
    struct brw_reg get_tcs_output_urb_handle();
 
@@ -332,9 +332,11 @@ public:
    fs_reg emit_work_group_id_setup();
 
    void emit_task_mesh_store(const brw::fs_builder &bld,
-                             nir_intrinsic_instr *instr);
+                             nir_intrinsic_instr *instr,
+                             const fs_reg &urb_handle);
    void emit_task_mesh_load(const brw::fs_builder &bld,
-                            nir_intrinsic_instr *instr);
+                            nir_intrinsic_instr *instr,
+                            const fs_reg &urb_handle);
 
    void emit_barrier();
 

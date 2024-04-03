@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2086 # we want word splitting
 
 set -e
 set -o xtrace
@@ -36,7 +37,6 @@ apt-get install -y --no-remove \
         kmod \
         libclang-13-dev \
         libclang-11-dev \
-        libclang-9-dev \
         libclc-dev \
         libelf-dev \
         libepoxy-dev \
@@ -44,7 +44,6 @@ apt-get install -y --no-remove \
         libgtk-3-dev \
         libllvm13 \
         libllvm11 \
-        libllvm9 \
         libomxil-bellagio-dev \
         libpciaccess-dev \
         libunwind-dev \

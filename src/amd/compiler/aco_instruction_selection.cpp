@@ -1420,6 +1420,8 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
                const_vals[idx] |= nir_src_as_uint(instr->src[i].src) << offset;
                continue;
             }
+            if (nir_src_is_undef(instr->src[i].src))
+               continue;
 
             if (offset != packed_size - instr->dest.dest.ssa.bit_size)
                elems[i] =
@@ -5384,11 +5386,10 @@ visit_load_interpolated_input(isel_context* ctx, nir_intrinsic_instr* instr)
 }
 
 bool
-check_vertex_fetch_size(isel_context* ctx, const ac_data_format_info* vtx_info, unsigned offset,
+check_vertex_fetch_size(isel_context* ctx, const ac_vtx_format_info* vtx_info, unsigned offset,
                         unsigned binding_align, unsigned channels)
 {
-   unsigned vertex_byte_size = vtx_info->chan_byte_size * channels;
-   if (vtx_info->chan_byte_size != 4 && channels == 3)
+   if (!(vtx_info->has_hw_format & BITFIELD_BIT(channels - 1)))
       return false;
 
    /* Split typed vertex buffer loads on GFX6 and GFX10+ to avoid any
@@ -5397,17 +5398,18 @@ check_vertex_fetch_size(isel_context* ctx, const ac_data_format_info* vtx_info, 
     * also if the VBO offset is aligned to a scalar (eg. stride is 8 and VBO
     * offset is 2 for R16G16B16A16_SNORM).
     */
+   unsigned vertex_byte_size = vtx_info->chan_byte_size * channels;
    return (ctx->options->gfx_level >= GFX7 && ctx->options->gfx_level <= GFX9) ||
           (offset % vertex_byte_size == 0 && MAX2(binding_align, 1) % vertex_byte_size == 0);
 }
 
 uint8_t
-get_fetch_data_format(isel_context* ctx, const ac_data_format_info* vtx_info, unsigned offset,
-                      unsigned* channels, unsigned max_channels, unsigned binding_align)
+get_fetch_format(isel_context* ctx, const ac_vtx_format_info* vtx_info, unsigned offset,
+                 unsigned* channels, unsigned max_channels, unsigned binding_align)
 {
    if (!vtx_info->chan_byte_size) {
       *channels = vtx_info->num_channels;
-      return vtx_info->chan_format;
+      return vtx_info->hw_format[0];
    }
 
    unsigned num_channels = *channels;
@@ -5432,22 +5434,7 @@ get_fetch_data_format(isel_context* ctx, const ac_data_format_info* vtx_info, un
       num_channels = new_channels;
    }
 
-   switch (vtx_info->chan_format) {
-   case V_008F0C_BUF_DATA_FORMAT_8:
-      return std::array<uint8_t, 4>{V_008F0C_BUF_DATA_FORMAT_8, V_008F0C_BUF_DATA_FORMAT_8_8,
-                                    V_008F0C_BUF_DATA_FORMAT_INVALID,
-                                    V_008F0C_BUF_DATA_FORMAT_8_8_8_8}[num_channels - 1];
-   case V_008F0C_BUF_DATA_FORMAT_16:
-      return std::array<uint8_t, 4>{V_008F0C_BUF_DATA_FORMAT_16, V_008F0C_BUF_DATA_FORMAT_16_16,
-                                    V_008F0C_BUF_DATA_FORMAT_INVALID,
-                                    V_008F0C_BUF_DATA_FORMAT_16_16_16_16}[num_channels - 1];
-   case V_008F0C_BUF_DATA_FORMAT_32:
-      return std::array<uint8_t, 4>{V_008F0C_BUF_DATA_FORMAT_32, V_008F0C_BUF_DATA_FORMAT_32_32,
-                                    V_008F0C_BUF_DATA_FORMAT_32_32_32,
-                                    V_008F0C_BUF_DATA_FORMAT_32_32_32_32}[num_channels - 1];
-   }
-   unreachable("shouldn't reach here");
-   return V_008F0C_BUF_DATA_FORMAT_INVALID;
+   return vtx_info->hw_format[num_channels - 1];
 }
 
 void
@@ -5463,17 +5450,23 @@ visit_load_input(isel_context* ctx, nir_intrinsic_instr* instr)
                   "Unimplemented non-zero nir_intrinsic_load_input offset");
 
       unsigned location = nir_intrinsic_base(instr) - VERT_ATTRIB_GENERIC0;
-      unsigned component = nir_intrinsic_component(instr);
       unsigned bitsize = instr->dest.ssa.bit_size;
+      unsigned component = nir_intrinsic_component(instr) >> (bitsize == 64 ? 1 : 0);
       unsigned num_components = instr->dest.ssa.num_components;
-
-      Temp input = get_arg(ctx, ctx->args->vs_inputs[location]);
 
       aco_ptr<Instruction> vec{create_instruction<Pseudo_instruction>(
          aco_opcode::p_create_vector, Format::PSEUDO, num_components, 1)};
       std::array<Temp, NIR_MAX_VEC_COMPONENTS> elems;
       for (unsigned i = 0; i < num_components; i++) {
-         elems[i] = emit_extract_vector(ctx, input, component + i, bitsize == 64 ? v2 : v1);
+         if (bitsize == 64) {
+            Temp input = get_arg(ctx, ctx->args->vs_inputs[location + (component + i) / 2]);
+            elems[i] = bld.pseudo(aco_opcode::p_create_vector, bld.def(v2),
+                                  emit_extract_vector(ctx, input, (component + i) * 2 % 4, v1),
+                                  emit_extract_vector(ctx, input, (component + i) * 2 % 4 + 1, v1));
+         } else {
+            Temp input = get_arg(ctx, ctx->args->vs_inputs[location]);
+            elems[i] = emit_extract_vector(ctx, input, component + i, v1);
+         }
          if (bitsize == 16) {
             if (nir_alu_type_get_base_type(nir_intrinsic_dest_type(instr)) == nir_type_float)
                elems[i] = bld.vop1(aco_opcode::v_cvt_f16_f32, bld.def(v2b), elems[i]);
@@ -5496,17 +5489,17 @@ visit_load_input(isel_context* ctx, nir_intrinsic_instr* instr)
          convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->args->ac.vertex_buffers));
 
       unsigned location = nir_intrinsic_base(instr) - VERT_ATTRIB_GENERIC0;
-      unsigned component = nir_intrinsic_component(instr);
       unsigned bitsize = instr->dest.ssa.bit_size;
+      unsigned component = nir_intrinsic_component(instr) >> (bitsize == 64 ? 1 : 0);
       unsigned attrib_binding = ctx->options->key.vs.vertex_attribute_bindings[location];
       uint32_t attrib_offset = ctx->options->key.vs.vertex_attribute_offsets[location];
       uint32_t attrib_stride = ctx->options->key.vs.vertex_attribute_strides[location];
-      unsigned attrib_format = ctx->options->key.vs.vertex_attribute_formats[location];
+      enum pipe_format attrib_format =
+         (enum pipe_format)ctx->options->key.vs.vertex_attribute_formats[location];
       unsigned binding_align = ctx->options->key.vs.vertex_binding_align[attrib_binding];
 
-      unsigned dfmt = attrib_format & 0xf;
-      unsigned nfmt = (attrib_format >> 4) & 0x7;
-      const struct ac_data_format_info* vtx_info = ac_get_data_format_info(dfmt);
+      const struct ac_vtx_format_info* vtx_info =
+         ac_get_vtx_format_info(GFX8, CHIP_POLARIS10, attrib_format);
 
       unsigned mask = nir_ssa_def_components_read(&instr->dest.ssa) << component;
       unsigned num_channels = MIN2(util_last_bit(mask), vtx_info->num_channels);
@@ -5554,25 +5547,18 @@ visit_load_input(isel_context* ctx, nir_intrinsic_instr* instr)
       while (channel_start < num_channels) {
          unsigned fetch_component = num_channels - channel_start;
          unsigned fetch_offset = attrib_offset + channel_start * vtx_info->chan_byte_size;
-         bool expanded = false;
 
          /* use MUBUF when possible to avoid possible alignment issues */
          /* TODO: we could use SDWA to unpack 8/16-bit attributes without extra instructions */
-         bool use_mubuf =
-            (nfmt == V_008F0C_BUF_NUM_FORMAT_FLOAT || nfmt == V_008F0C_BUF_NUM_FORMAT_UINT ||
-             nfmt == V_008F0C_BUF_NUM_FORMAT_SINT) &&
-            vtx_info->chan_byte_size == 4;
-         unsigned fetch_dfmt = V_008F0C_BUF_DATA_FORMAT_INVALID;
+         bool use_mubuf = vtx_info->chan_byte_size == 4 && bitsize != 16;
+         unsigned fetch_fmt = V_008F0C_BUF_DATA_FORMAT_INVALID;
          if (!use_mubuf) {
-            fetch_dfmt =
-               get_fetch_data_format(ctx, vtx_info, fetch_offset, &fetch_component,
-                                     vtx_info->num_channels - channel_start, binding_align);
+            fetch_fmt = get_fetch_format(ctx, vtx_info, fetch_offset, &fetch_component,
+                                         vtx_info->num_channels - channel_start, binding_align);
          } else {
-            if (fetch_component == 3 && ctx->options->gfx_level == GFX6) {
-               /* GFX6 only supports loading vec3 with MTBUF, expand to vec4. */
-               fetch_component = 4;
-               expanded = true;
-            }
+            /* GFX6 only supports loading vec3 with MTBUF, split to vec2,scalar. */
+            if (fetch_component == 3 && ctx->options->gfx_level == GFX6)
+               fetch_component = 2;
          }
 
          unsigned fetch_bytes = fetch_component * bitsize / 8;
@@ -5632,8 +5618,7 @@ visit_load_input(isel_context* ctx, nir_intrinsic_instr* instr)
          }
 
          Temp fetch_dst;
-         if (channel_start == 0 && fetch_bytes == dst.bytes() && !expanded &&
-             num_channels <= 3) {
+         if (channel_start == 0 && fetch_bytes == dst.bytes()) {
             direct_fetch = true;
             fetch_dst = dst;
          } else {
@@ -5646,20 +5631,22 @@ visit_load_input(isel_context* ctx, nir_intrinsic_instr* instr)
                                     .instr;
             mubuf->mubuf().vtx_binding = attrib_binding + 1;
          } else {
+            unsigned dfmt = fetch_fmt & 0xf;
+            unsigned nfmt = fetch_fmt >> 4;
             Instruction* mtbuf = bld.mtbuf(opcode, Definition(fetch_dst), list, fetch_index,
-                                           soffset, fetch_dfmt, nfmt, fetch_offset, false, true)
+                                           soffset, dfmt, nfmt, fetch_offset, false, true)
                                     .instr;
             mtbuf->mtbuf().vtx_binding = attrib_binding + 1;
          }
 
-         emit_split_vector(ctx, fetch_dst, fetch_dst.size());
+         emit_split_vector(ctx, fetch_dst, fetch_dst.bytes() * 8 / bitsize);
 
          if (fetch_component == 1) {
             channels[channel_start] = fetch_dst;
          } else {
             for (unsigned i = 0; i < MIN2(fetch_component, num_channels - channel_start); i++)
-               channels[channel_start + i] =
-                  emit_extract_vector(ctx, fetch_dst, i, bitsize == 16 ? v2b : v1);
+               channels[channel_start + i] = emit_extract_vector(
+                  ctx, fetch_dst, i, RegClass::get(RegType::vgpr, bitsize / 8u));
          }
 
          channel_start += fetch_component;
@@ -5667,7 +5654,7 @@ visit_load_input(isel_context* ctx, nir_intrinsic_instr* instr)
 
       if (!direct_fetch) {
          bool is_float =
-            nfmt != V_008F0C_BUF_NUM_FORMAT_UINT && nfmt != V_008F0C_BUF_NUM_FORMAT_SINT;
+            nir_alu_type_get_base_type(nir_intrinsic_dest_type(instr)) == nir_type_float;
 
          unsigned num_components = instr->dest.ssa.num_components;
 
@@ -5683,12 +5670,18 @@ visit_load_input(isel_context* ctx, nir_intrinsic_instr* instr)
 
                num_temp++;
                elems[i] = channel;
+            } else if (bitsize == 64) {
+               /* 22.1.1. Attribute Location and Component Assignment of Vulkan 1.3 specification:
+                * For 64-bit data types, no default attribute values are provided. Input variables
+                * must not use more components than provided by the attribute.
+                */
+               vec->operands[i] = Operand(v2);
             } else if (is_float && idx == 3) {
-               vec->operands[i] = Operand::c32(0x3f800000u);
+               vec->operands[i] = bitsize == 16 ? Operand::c16(0x3c00u) : Operand::c32(0x3f800000u);
             } else if (!is_float && idx == 3) {
-               vec->operands[i] = Operand::c32(1u);
+               vec->operands[i] = Operand::get_const(ctx->options->gfx_level, 1u, bitsize / 8u);
             } else {
-               vec->operands[i] = Operand::zero();
+               vec->operands[i] = Operand::zero(bitsize / 8u);
             }
          }
          vec->definitions[0] = Definition(dst);
@@ -6016,12 +6009,12 @@ image_type_to_components_count(enum glsl_sampler_dim dim, bool array)
    case GLSL_SAMPLER_DIM_BUF: return 1;
    case GLSL_SAMPLER_DIM_1D: return array ? 2 : 1;
    case GLSL_SAMPLER_DIM_2D: return array ? 3 : 2;
-   case GLSL_SAMPLER_DIM_MS: return array ? 4 : 3;
+   case GLSL_SAMPLER_DIM_MS: return array ? 3 : 2;
    case GLSL_SAMPLER_DIM_3D:
    case GLSL_SAMPLER_DIM_CUBE: return 3;
    case GLSL_SAMPLER_DIM_RECT:
    case GLSL_SAMPLER_DIM_SUBPASS: return 2;
-   case GLSL_SAMPLER_DIM_SUBPASS_MS: return 3;
+   case GLSL_SAMPLER_DIM_SUBPASS_MS: return 2;
    default: break;
    }
    return 0;
@@ -6125,6 +6118,8 @@ get_image_coords(isel_context* ctx, const nir_intrinsic_instr* instr)
 {
 
    Temp src0 = get_ssa_temp(ctx, instr->src[1].ssa);
+   bool a16 = instr->src[1].ssa->bit_size == 16;
+   RegClass rc = a16 ? v2b : v1;
    enum glsl_sampler_dim dim = nir_intrinsic_image_dim(instr);
    bool is_array = nir_intrinsic_image_array(instr);
    ASSERTED bool add_frag_pos =
@@ -6133,21 +6128,32 @@ get_image_coords(isel_context* ctx, const nir_intrinsic_instr* instr)
    bool is_ms = (dim == GLSL_SAMPLER_DIM_MS || dim == GLSL_SAMPLER_DIM_SUBPASS_MS);
    bool gfx9_1d = ctx->options->gfx_level == GFX9 && dim == GLSL_SAMPLER_DIM_1D;
    int count = image_type_to_components_count(dim, is_array);
-   std::vector<Temp> coords(count);
+   std::vector<Temp> coords;
    Builder bld(ctx->program, ctx->block);
 
-   if (is_ms)
-      coords[--count] = emit_extract_vector(ctx, get_ssa_temp(ctx, instr->src[2].ssa), 0, v1);
-
    if (gfx9_1d) {
-      coords[0] = emit_extract_vector(ctx, src0, 0, v1);
-      coords.resize(coords.size() + 1);
-      coords[1] = bld.copy(bld.def(v1), Operand::zero());
+      coords.emplace_back(emit_extract_vector(ctx, src0, 0, rc));
+      coords.emplace_back(bld.copy(bld.def(rc), Operand::zero(a16 ? 2 : 4)));
       if (is_array)
-         coords[2] = emit_extract_vector(ctx, src0, 1, v1);
+         coords.emplace_back(emit_extract_vector(ctx, src0, 1, rc));
    } else {
       for (int i = 0; i < count; i++)
-         coords[i] = emit_extract_vector(ctx, src0, i, v1);
+         coords.emplace_back(emit_extract_vector(ctx, src0, i, rc));
+   }
+
+   bool has_lod = false;
+   Temp lod;
+
+   if (instr->intrinsic == nir_intrinsic_bindless_image_load ||
+       instr->intrinsic == nir_intrinsic_bindless_image_sparse_load ||
+       instr->intrinsic == nir_intrinsic_bindless_image_store) {
+      int lod_index = instr->intrinsic == nir_intrinsic_bindless_image_store ? 4 : 3;
+      assert(instr->src[lod_index].ssa->bit_size == (a16 ? 16 : 32));
+      has_lod =
+         !nir_src_is_const(instr->src[lod_index]) || nir_src_as_uint(instr->src[lod_index]) != 0;
+
+      if (has_lod)
+         lod = get_ssa_temp_tex(ctx, instr->src[lod_index].ssa, a16);
    }
 
    if (ctx->options->key.image_2d_view_of_3d &&
@@ -6160,24 +6166,40 @@ get_image_coords(isel_context* ctx, const nir_intrinsic_instr* instr)
       Temp rsrc = bld.as_uniform(get_ssa_temp(ctx, instr->src[0].ssa));
       Temp rsrc_word5 = emit_extract_vector(ctx, rsrc, 5, v1);
       /* Extract the BASE_ARRAY field [0:12] from the descriptor. */
-      Temp first_layer =
-         bld.vop3(aco_opcode::v_bfe_u32, bld.def(v1), rsrc_word5,
-                  Operand::c32(0u), Operand::c32(13u));
-      coords.emplace_back(first_layer);
+      Temp first_layer = bld.vop3(aco_opcode::v_bfe_u32, bld.def(v1), rsrc_word5, Operand::c32(0u),
+                                  Operand::c32(13u));
+
+      if (has_lod) {
+         /* If there's a lod parameter it matter if the image is 3d or 2d because
+          * the hw reads either the fourth or third component as lod. So detect
+          * 3d images and place the lod at the third component otherwise.
+          * For non 3D descriptors we effectively add lod twice to coords,
+          * but the hw will only read the first one, the second is ignored.
+          */
+         Temp rsrc_word3 = emit_extract_vector(ctx, rsrc, 3, s1);
+         Temp type = bld.sop2(aco_opcode::s_bfe_u32, bld.def(s1), bld.def(s1, scc), rsrc_word3,
+                              Operand::c32(28 | (4 << 16))); /* extract last 4 bits */
+         Temp is_3d = bld.vopc_e64(aco_opcode::v_cmp_eq_u32, bld.def(bld.lm), type,
+                                   Operand::c32(V_008F1C_SQ_RSRC_IMG_3D));
+         first_layer =
+            bld.vop2(aco_opcode::v_cndmask_b32, bld.def(v1), as_vgpr(ctx, lod), first_layer, is_3d);
+      }
+
+      if (a16)
+         coords.emplace_back(emit_extract_vector(ctx, first_layer, 0, v2b));
+      else
+         coords.emplace_back(first_layer);
    }
 
-   if (instr->intrinsic == nir_intrinsic_bindless_image_load ||
-       instr->intrinsic == nir_intrinsic_bindless_image_sparse_load ||
-       instr->intrinsic == nir_intrinsic_bindless_image_store) {
-      int lod_index = instr->intrinsic == nir_intrinsic_bindless_image_store ? 4 : 3;
-      bool level_zero =
-         nir_src_is_const(instr->src[lod_index]) && nir_src_as_uint(instr->src[lod_index]) == 0;
-
-      if (!level_zero)
-         coords.emplace_back(get_ssa_temp(ctx, instr->src[lod_index].ssa));
+   if (is_ms) {
+      assert(instr->src[2].ssa->bit_size == (a16 ? 16 : 32));
+      coords.emplace_back(get_ssa_temp_tex(ctx, instr->src[2].ssa, a16));
    }
 
-   return coords;
+   if (has_lod)
+      coords.emplace_back(lod);
+
+   return emit_pack_v1(ctx, coords);
 }
 
 memory_sync_info
@@ -6306,6 +6328,7 @@ visit_image_load(isel_context* ctx, nir_intrinsic_instr* instr)
       load->dlc =
          load->glc && (ctx->options->gfx_level == GFX10 || ctx->options->gfx_level == GFX10_3);
       load->dim = ac_get_image_dim(ctx->options->gfx_level, dim, is_array);
+      load->a16 = instr->src[1].ssa->bit_size == 16;
       load->d16 = d16;
       load->dmask = dmask;
       load->unrm = true;
@@ -6399,8 +6422,8 @@ visit_image_store(isel_context* ctx, nir_intrinsic_instr* instr)
    if (instr->src[3].ssa->bit_size == 32 || instr->src[3].ssa->bit_size == 16) {
       for (uint32_t i = 0; i < instr->num_components; i++) {
          nir_ssa_scalar comp = nir_ssa_scalar_resolved(instr->src[3].ssa, i);
-         if (comp.def->parent_instr->type == nir_instr_type_ssa_undef ||
-             (nir_ssa_scalar_is_const(comp) && nir_ssa_scalar_as_uint(comp) == 0))
+         if ((nir_ssa_scalar_is_const(comp) && nir_ssa_scalar_as_uint(comp) == 0) ||
+             nir_ssa_scalar_is_undef(comp))
             dmask &= ~BITFIELD_BIT(i);
       }
 
@@ -6432,6 +6455,7 @@ visit_image_store(isel_context* ctx, nir_intrinsic_instr* instr)
    store->glc = glc;
    store->dlc = false;
    store->dim = ac_get_image_dim(ctx->options->gfx_level, dim, is_array);
+   store->a16 = instr->src[1].ssa->bit_size == 16;
    store->d16 = d16;
    store->dmask = dmask;
    store->unrm = true;
@@ -6567,6 +6591,7 @@ visit_image_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
    mimg->dlc = false; /* Not needed for atomics */
    mimg->dim = ac_get_image_dim(ctx->options->gfx_level, dim, is_array);
    mimg->dmask = (1 << data.size()) - 1;
+   mimg->a16 = instr->src[1].ssa->bit_size == 16;
    mimg->unrm = true;
    mimg->da = should_declare_array(ctx, dim, is_array);
    mimg->disable_wqm = true;
@@ -6575,112 +6600,6 @@ visit_image_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
    if (return_previous && cmpswap)
       bld.pseudo(aco_opcode::p_extract_vector, Definition(dst), def.getTemp(), Operand::zero());
    return;
-}
-
-void
-get_buffer_size(isel_context* ctx, Temp desc, Temp dst)
-{
-   if (ctx->options->gfx_level == GFX8) {
-      /* we only have to divide by 1, 2, 4, 8, 12 or 16 */
-      Builder bld(ctx->program, ctx->block);
-
-      Temp size = emit_extract_vector(ctx, desc, 2, s1);
-
-      Temp size_div3 = bld.vop3(aco_opcode::v_mul_hi_u32, bld.def(v1),
-                                bld.copy(bld.def(v1), Operand::c32(0xaaaaaaabu)), size);
-      size_div3 = bld.sop2(aco_opcode::s_lshr_b32, bld.def(s1), bld.def(s1, scc),
-                           bld.as_uniform(size_div3), Operand::c32(1u));
-
-      Temp stride = emit_extract_vector(ctx, desc, 1, s1);
-      stride = bld.sop2(aco_opcode::s_bfe_u32, bld.def(s1), bld.def(s1, scc), stride,
-                        Operand::c32((5u << 16) | 16u));
-
-      Temp is12 = bld.sopc(aco_opcode::s_cmp_eq_i32, bld.def(s1, scc), stride, Operand::c32(12u));
-      size = bld.sop2(aco_opcode::s_cselect_b32, bld.def(s1), size_div3, size, bld.scc(is12));
-
-      Temp shr_dst = dst.type() == RegType::vgpr ? bld.tmp(s1) : dst;
-      bld.sop2(aco_opcode::s_lshr_b32, Definition(shr_dst), bld.def(s1, scc), size,
-               bld.sop1(aco_opcode::s_ff1_i32_b32, bld.def(s1), stride));
-      if (dst.type() == RegType::vgpr)
-         bld.copy(Definition(dst), shr_dst);
-
-      /* TODO: we can probably calculate this faster with v_skip when stride != 12 */
-   } else {
-      emit_extract_vector(ctx, desc, 2, dst);
-   }
-}
-
-void
-visit_image_size(isel_context* ctx, nir_intrinsic_instr* instr)
-{
-   const enum glsl_sampler_dim dim = nir_intrinsic_image_dim(instr);
-   bool is_array = nir_intrinsic_image_array(instr);
-   Builder bld(ctx->program, ctx->block);
-
-   if (dim == GLSL_SAMPLER_DIM_BUF) {
-      Temp desc = bld.as_uniform(get_ssa_temp(ctx, instr->src[0].ssa));
-      return get_buffer_size(ctx, desc, get_ssa_temp(ctx, &instr->dest.ssa));
-   }
-
-   /* LOD */
-   assert(nir_src_as_uint(instr->src[1]) == 0);
-   std::vector<Temp> lod{bld.copy(bld.def(v1), Operand::zero())};
-
-   /* Resource */
-   Temp resource = bld.as_uniform(get_ssa_temp(ctx, instr->src[0].ssa));
-
-   Temp dst = get_ssa_temp(ctx, &instr->dest.ssa);
-
-   MIMG_instruction* mimg =
-      emit_mimg(bld, aco_opcode::image_get_resinfo, Definition(dst), resource, Operand(s4), lod);
-   uint8_t& dmask = mimg->dmask;
-   mimg->dim = ac_get_image_dim(ctx->options->gfx_level, dim, is_array);
-   mimg->dmask = (1 << instr->dest.ssa.num_components) - 1;
-   mimg->da = is_array;
-
-   if (ctx->options->gfx_level == GFX9 && dim == GLSL_SAMPLER_DIM_1D && is_array) {
-      assert(instr->dest.ssa.num_components == 2);
-      dmask = 0x5;
-   }
-
-   emit_split_vector(ctx, dst, instr->dest.ssa.num_components);
-}
-
-void
-get_image_samples(isel_context* ctx, Definition dst, Temp resource)
-{
-   Builder bld(ctx->program, ctx->block);
-
-   Temp dword3 = emit_extract_vector(ctx, resource, 3, s1);
-   Temp samples_log2 = bld.sop2(aco_opcode::s_bfe_u32, bld.def(s1), bld.def(s1, scc), dword3,
-                                Operand::c32(16u | 4u << 16));
-   Temp samples = bld.sop2(aco_opcode::s_lshl_b32, bld.def(s1), bld.def(s1, scc), Operand::c32(1u),
-                           samples_log2);
-   Temp type = bld.sop2(aco_opcode::s_bfe_u32, bld.def(s1), bld.def(s1, scc), dword3,
-                        Operand::c32(28u | 4u << 16 /* offset=28, width=4 */));
-
-   Operand default_sample = Operand::c32(1u);
-   if (ctx->options->robust_buffer_access) {
-      /* Extract the second dword of the descriptor, if it's
-       * all zero, then it's a null descriptor.
-       */
-      Temp dword1 = emit_extract_vector(ctx, resource, 1, s1);
-      Temp is_non_null_descriptor =
-         bld.sopc(aco_opcode::s_cmp_gt_u32, bld.def(s1, scc), dword1, Operand::zero());
-      default_sample = Operand(is_non_null_descriptor);
-   }
-
-   Temp is_msaa = bld.sopc(aco_opcode::s_cmp_ge_u32, bld.def(s1, scc), type, Operand::c32(14u));
-   bld.sop2(aco_opcode::s_cselect_b32, dst, samples, default_sample, bld.scc(is_msaa));
-}
-
-void
-visit_image_samples(isel_context* ctx, nir_intrinsic_instr* instr)
-{
-   Builder bld(ctx->program, ctx->block);
-   Temp dst = get_ssa_temp(ctx, &instr->dest.ssa);
-   Temp resource = bld.as_uniform(get_ssa_temp(ctx, instr->src[0].ssa));
-   get_image_samples(ctx, Definition(dst), resource);
 }
 
 void
@@ -8458,8 +8377,6 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
    case nir_intrinsic_bindless_image_atomic_comp_swap:
    case nir_intrinsic_bindless_image_atomic_fmin:
    case nir_intrinsic_bindless_image_atomic_fmax: visit_image_atomic(ctx, instr); break;
-   case nir_intrinsic_bindless_image_size: visit_image_size(ctx, instr); break;
-   case nir_intrinsic_bindless_image_samples: visit_image_samples(ctx, instr); break;
    case nir_intrinsic_load_ssbo: visit_load_ssbo(ctx, instr); break;
    case nir_intrinsic_store_ssbo: visit_store_ssbo(ctx, instr); break;
    case nir_intrinsic_load_buffer_amd: visit_load_buffer(ctx, instr); break;
@@ -9308,7 +9225,7 @@ build_cube_select(isel_context* ctx, Temp ma, Temp id, Temp deriv, Temp* out_ma,
 
    Temp is_ma_z = bld.vopc(aco_opcode::v_cmp_le_f32, bld.def(bld.lm), four, id);
    Temp is_ma_y = bld.vopc(aco_opcode::v_cmp_le_f32, bld.def(bld.lm), two, id);
-   is_ma_y = bld.sop2(Builder::s_andn2, bld.def(bld.lm), is_ma_y, is_ma_z);
+   is_ma_y = bld.sop2(Builder::s_andn2, bld.def(bld.lm), bld.def(s1, scc), is_ma_y, is_ma_z);
    Temp is_not_ma_x =
       bld.sop2(aco_opcode::s_or_b64, bld.def(bld.lm), bld.def(s1, scc), is_ma_z, is_ma_y);
 
@@ -9521,14 +9438,6 @@ visit_tex(isel_context* ctx, nir_tex_instr* instr)
       }
    }
 
-   if (instr->op == nir_texop_txs && instr->sampler_dim == GLSL_SAMPLER_DIM_BUF)
-      return get_buffer_size(ctx, resource, get_ssa_temp(ctx, &instr->dest.ssa));
-
-   if (instr->op == nir_texop_texture_samples) {
-      get_image_samples(ctx, Definition(get_ssa_temp(ctx, &instr->dest.ssa)), resource);
-      return;
-   }
-
    if (has_offset) {
       assert(instr->op != nir_texop_txf);
 
@@ -9684,27 +9593,6 @@ visit_tex(isel_context* ctx, nir_tex_instr* instr)
               dst.type() == RegType::sgpr) {
       unsigned bytes = util_bitcount(dmask) * instr->dest.ssa.bit_size / 8;
       tmp_dst = bld.tmp(RegClass::get(RegType::vgpr, bytes));
-   }
-
-   if (instr->op == nir_texop_txs || instr->op == nir_texop_query_levels) {
-      if (!has_lod)
-         lod = bld.copy(bld.def(v1), Operand::zero());
-
-      MIMG_instruction* tex = emit_mimg(bld, aco_opcode::image_get_resinfo, Definition(tmp_dst),
-                                        resource, Operand(s4), std::vector<Temp>{lod});
-      if (ctx->options->gfx_level == GFX9 && instr->op == nir_texop_txs &&
-          instr->sampler_dim == GLSL_SAMPLER_DIM_1D && instr->is_array) {
-         tex->dmask = (dmask & 0x1) | ((dmask & 0x2) << 1);
-      } else if (instr->op == nir_texop_query_levels) {
-         tex->dmask = 1 << 3;
-      } else {
-         tex->dmask = dmask;
-      }
-      tex->da = da;
-      tex->dim = dim;
-
-      expand_vector(ctx, tmp_dst, dst, instr->dest.ssa.num_components, dmask);
-      return;
    }
 
    Temp tg4_compare_cube_wa64 = Temp();
@@ -10419,6 +10307,8 @@ visit_jump(isel_context* ctx, nir_jump_instr* instr)
 void
 visit_block(isel_context* ctx, nir_block* block)
 {
+   ctx->block->instructions.reserve(ctx->block->instructions.size() +
+                                    exec_list_length(&block->instr_list) * 2);
    nir_foreach_instr (instr, block) {
       switch (instr->type) {
       case nir_instr_type_alu: visit_alu_instr(ctx, nir_instr_as_alu(instr)); break;
@@ -10898,10 +10788,7 @@ export_vs_varying(isel_context* ctx, int slot, bool is_pos, int* next_pos)
    assert(ctx->stage.hw == HWStage::VS || ctx->stage.hw == HWStage::NGG);
 
    const uint8_t *vs_output_param_offset =
-      ctx->stage.has(SWStage::GS) ? ctx->program->info.vs.outinfo.vs_output_param_offset :
-      ctx->stage.has(SWStage::TES) ? ctx->program->info.tes.outinfo.vs_output_param_offset :
-      ctx->stage.has(SWStage::MS) ? ctx->program->info.ms.outinfo.vs_output_param_offset :
-      ctx->program->info.vs.outinfo.vs_output_param_offset;
+      ctx->program->info.outinfo.vs_output_param_offset;
 
    assert(vs_output_param_offset);
 
@@ -10982,11 +10869,7 @@ static void
 create_vs_exports(isel_context* ctx)
 {
    assert(ctx->stage.hw == HWStage::VS || ctx->stage.hw == HWStage::NGG);
-   const aco_vp_output_info* outinfo =
-      ctx->stage.has(SWStage::GS) ? &ctx->program->info.vs.outinfo :
-      ctx->stage.has(SWStage::TES) ? &ctx->program->info.tes.outinfo :
-      ctx->stage.has(SWStage::MS) ? &ctx->program->info.ms.outinfo :
-      &ctx->program->info.vs.outinfo;
+   const aco_vp_output_info* outinfo = &ctx->program->info.outinfo;
 
    assert(outinfo);
    ctx->block->kind |= block_kind_export_end;
@@ -11031,11 +10914,7 @@ static void
 create_primitive_exports(isel_context *ctx, Temp prim_ch1)
 {
    assert(ctx->stage.hw == HWStage::NGG);
-   const aco_vp_output_info* outinfo =
-      ctx->stage.has(SWStage::GS) ? &ctx->program->info.vs.outinfo :
-      ctx->stage.has(SWStage::TES) ? &ctx->program->info.tes.outinfo :
-      ctx->stage.has(SWStage::MS) ? &ctx->program->info.ms.outinfo :
-      &ctx->program->info.vs.outinfo;
+   const aco_vp_output_info* outinfo = &ctx->program->info.outinfo;
 
    Builder bld(ctx->program, ctx->block);
 
@@ -11632,7 +11511,7 @@ add_startpgm(struct isel_context* ctx)
    }
 
    if (ctx->stage.has(SWStage::VS) && ctx->program->info.vs.dynamic_inputs) {
-      unsigned num_attributes = util_last_bit(ctx->program->info.vs.vb_desc_usage_mask);
+      unsigned num_attributes = util_last_bit(ctx->program->info.vs.input_slot_usage_mask);
       for (unsigned i = 0; i < num_attributes; i++) {
          Definition def(get_arg(ctx, ctx->args->vs_inputs[i]));
 
@@ -12376,6 +12255,9 @@ select_vs_prolog(Program* program, const struct aco_vs_prolog_key* key, ac_shade
       num_vgprs++; /* make space for nontrivial_tmp_vgpr1 */
    unsigned num_sgprs = 0;
 
+   const struct ac_vtx_format_info* vtx_info_table =
+      ac_get_vtx_format_info_table(GFX8, CHIP_POLARIS10);
+
    for (unsigned loc = 0; loc < key->num_attributes;) {
       unsigned num_descs =
          load_vb_descs(bld, desc, Operand(vertex_buffers, s2), loc, key->num_attributes - loc);
@@ -12414,7 +12296,7 @@ select_vs_prolog(Program* program, const struct aco_vs_prolog_key* key, ac_shade
 
       bld.sopp(aco_opcode::s_waitcnt, -1, lgkm_imm.pack(program->gfx_level));
 
-      for (unsigned i = 0; i < num_descs; i++, loc++) {
+      for (unsigned i = 0; i < num_descs;) {
          PhysReg dest(attributes_start.reg() + loc * 4u);
 
          /* calculate index */
@@ -12440,9 +12322,12 @@ select_vs_prolog(Program* program, const struct aco_vs_prolog_key* key, ac_shade
          /* perform load */
          PhysReg cur_desc = desc.advance(i * 16);
          if ((key->misaligned_mask & (1u << loc))) {
-            unsigned dfmt = key->state.formats[loc] & 0xf;
-            unsigned nfmt = key->state.formats[loc] >> 4;
-            const struct ac_data_format_info* vtx_info = ac_get_data_format_info(dfmt);
+            const struct ac_vtx_format_info* vtx_info = &vtx_info_table[key->state.formats[loc]];
+
+            assert(vtx_info->has_hw_format & 0x1);
+            unsigned dfmt = vtx_info->hw_format[0] & 0xf;
+            unsigned nfmt = vtx_info->hw_format[0] >> 4;
+
             for (unsigned j = 0; j < vtx_info->num_channels; j++) {
                bool post_shuffle = key->state.post_shuffle & (1u << loc);
                unsigned offset = vtx_info->chan_byte_size * (post_shuffle && j < 3 ? 2 - j : j);
@@ -12452,26 +12337,40 @@ select_vs_prolog(Program* program, const struct aco_vs_prolog_key* key, ac_shade
                 * MTBUF can hang, but MUBUF doesn't (probably gives garbage, but GL CTS doesn't
                 * care).
                 */
-               if (vtx_info->chan_format == V_008F0C_BUF_DATA_FORMAT_32)
+               if (dfmt == V_008F0C_BUF_DATA_FORMAT_32)
                   bld.mubuf(aco_opcode::buffer_load_dword, Definition(dest.advance(j * 4u), v1),
                             Operand(cur_desc, s4), fetch_index, Operand::c32(0u), offset, false,
                             false, true);
+               else if (vtx_info->chan_byte_size == 8)
+                  bld.mtbuf(aco_opcode::tbuffer_load_format_xy,
+                            Definition(dest.advance(j * 8u), v2), Operand(cur_desc, s4),
+                            fetch_index, Operand::c32(0u), dfmt, nfmt, offset, false, true);
                else
                   bld.mtbuf(aco_opcode::tbuffer_load_format_x, Definition(dest.advance(j * 4u), v1),
-                            Operand(cur_desc, s4), fetch_index, Operand::c32(0u),
-                            vtx_info->chan_format, nfmt, offset, false, true);
+                            Operand(cur_desc, s4), fetch_index, Operand::c32(0u), dfmt, nfmt,
+                            offset, false, true);
             }
             uint32_t one =
                nfmt == V_008F0C_BUF_NUM_FORMAT_UINT || nfmt == V_008F0C_BUF_NUM_FORMAT_SINT
                   ? 1u
                   : 0x3f800000u;
-            for (unsigned j = vtx_info->num_channels; j < 4; j++) {
+            /* 22.1.1. Attribute Location and Component Assignment of Vulkan 1.3 specification:
+             * For 64-bit data types, no default attribute values are provided. Input variables must
+             * not use more components than provided by the attribute.
+             */
+            for (unsigned j = vtx_info->num_channels; vtx_info->chan_byte_size != 8 && j < 4; j++) {
                bld.vop1(aco_opcode::v_mov_b32, Definition(dest.advance(j * 4u), v1),
                         Operand::c32(j == 3 ? one : 0u));
             }
+
+            unsigned slots = vtx_info->chan_byte_size == 8 && vtx_info->num_channels > 2 ? 2 : 1;
+            loc += slots;
+            i += slots;
          } else {
             bld.mubuf(aco_opcode::buffer_load_format_xyzw, Definition(dest, v4),
                       Operand(cur_desc, s4), fetch_index, Operand::c32(0u), 0u, false, false, true);
+            loc++;
+            i++;
          }
       }
    }
@@ -12491,7 +12390,7 @@ select_vs_prolog(Program* program, const struct aco_vs_prolog_key* key, ac_shade
       unsigned alpha_adjust = (key->state.alpha_adjust_lo >> loc) & 0x1;
       alpha_adjust |= ((key->state.alpha_adjust_hi >> loc) & 0x1) << 1;
 
-      if (alpha_adjust == ALPHA_ADJUST_SSCALED)
+      if (alpha_adjust == AC_ALPHA_ADJUST_SSCALED)
          bld.vop1(aco_opcode::v_cvt_u32_f32, Definition(alpha, v1), Operand(alpha, v1));
 
       /* For the integer-like cases, do a natural sign extension.
@@ -12500,16 +12399,16 @@ select_vs_prolog(Program* program, const struct aco_vs_prolog_key* key, ac_shade
        * and happen to contain 0, 1, 2, 3 as the two LSBs of the
        * exponent.
        */
-      unsigned offset = alpha_adjust == ALPHA_ADJUST_SNORM ? 23u : 0u;
+      unsigned offset = alpha_adjust == AC_ALPHA_ADJUST_SNORM ? 23u : 0u;
       bld.vop3(aco_opcode::v_bfe_i32, Definition(alpha, v1), Operand(alpha, v1),
                Operand::c32(offset), Operand::c32(2u));
 
       /* Convert back to the right type. */
-      if (alpha_adjust == ALPHA_ADJUST_SNORM) {
+      if (alpha_adjust == AC_ALPHA_ADJUST_SNORM) {
          bld.vop1(aco_opcode::v_cvt_f32_i32, Definition(alpha, v1), Operand(alpha, v1));
          bld.vop2(aco_opcode::v_max_f32, Definition(alpha, v1), Operand::c32(0xbf800000u),
                   Operand(alpha, v1));
-      } else if (alpha_adjust == ALPHA_ADJUST_SSCALED) {
+      } else if (alpha_adjust == AC_ALPHA_ADJUST_SSCALED) {
          bld.vop1(aco_opcode::v_cvt_f32_i32, Definition(alpha, v1), Operand(alpha, v1));
       }
    }

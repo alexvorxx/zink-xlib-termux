@@ -37,12 +37,12 @@ nouveau_vpe_init(struct nouveau_decoder *dec) {
    int ret;
    if (dec->cmds)
       return 0;
-   ret = nouveau_bo_map(dec->cmd_bo, NOUVEAU_BO_RDWR, dec->client);
+   ret = BO_MAP(dec->screen, dec->cmd_bo, NOUVEAU_BO_RDWR, dec->client);
    if (ret) {
       debug_printf("Mapping cmd bo: %s\n", strerror(-ret));
       return ret;
    }
-   ret = nouveau_bo_map(dec->data_bo, NOUVEAU_BO_RDWR, dec->client);
+   ret = BO_MAP(dec->screen, dec->data_bo, NOUVEAU_BO_RDWR, dec->client);
    if (ret) {
       debug_printf("Mapping data bo: %s\n", strerror(-ret));
       return ret;
@@ -73,7 +73,7 @@ nouveau_vpe_fini(struct nouveau_decoder *dec) {
    if (!dec->cmds)
       return;
 
-   nouveau_pushbuf_space(push, 16, 2, 0);
+   PUSH_SPACE_EX(push, 16, 2, 0);
    nouveau_bufctx_reset(dec->bufctx, NV31_VIDEO_BIND_CMD);
 
 #define BCTX_ARGS dec->bufctx, NV31_VIDEO_BIND_CMD, NOUVEAU_BO_RD
@@ -88,7 +88,7 @@ nouveau_vpe_fini(struct nouveau_decoder *dec) {
 
 #undef BCTX_ARGS
 
-   if (unlikely(nouveau_pushbuf_validate(dec->push)))
+   if (unlikely(PUSH_VAL(dec->push)))
       return;
 
    BEGIN_NV04(push, NV31_MPEG(EXEC), 1);
@@ -486,7 +486,7 @@ nouveau_decoder_destroy(struct pipe_video_codec *decoder)
    if (dec->bufctx)
       nouveau_bufctx_del(&dec->bufctx);
    if (dec->push)
-      nouveau_pushbuf_del(&dec->push);
+      nouveau_pushbuf_destroy(&dec->push);
    if (dec->client)
       nouveau_client_del(&dec->client);
    if (dec->chan)
@@ -532,7 +532,7 @@ nouveau_create_decoder(struct pipe_context *context,
    ret = nouveau_client_new(screen->device, &dec->client);
    if (ret)
       goto fail;
-   ret = nouveau_pushbuf_new(dec->client, dec->chan, 2, 4096, 1, &dec->push);
+   ret = nouveau_pushbuf_create(screen, nouveau_context(context), dec->client, dec->chan, 2, 4096, 1, &dec->push);
    if (ret)
       goto fail;
    ret = nouveau_bufctx_new(dec->client, NV31_VIDEO_BIND_COUNT, &dec->bufctx);
@@ -582,13 +582,13 @@ nouveau_create_decoder(struct pipe_context *context,
                         0, 4096, NULL, &dec->fence_bo);
    if (ret)
       goto fail;
-   nouveau_bo_map(dec->fence_bo, NOUVEAU_BO_RDWR, NULL);
+   BO_MAP(screen, dec->fence_bo, NOUVEAU_BO_RDWR, NULL);
    dec->fence_map = dec->fence_bo->map;
    dec->fence_map[0] = 0;
 #endif
 
    nouveau_pushbuf_bufctx(dec->push, dec->bufctx);
-   nouveau_pushbuf_space(push, 32, 4, 0);
+   PUSH_SPACE_EX(push, 32, 4, 0);
 
    BEGIN_NV04(push, SUBC_MPEG(NV01_SUBCHAN_OBJECT), 1);
    PUSH_DATA (push, dec->mpeg->handle);

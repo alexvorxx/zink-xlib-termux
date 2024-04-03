@@ -22,6 +22,7 @@
  */
 
 #include "lvp_private.h"
+#include "lvp_conv.h"
 
 #include "pipe-loader/pipe_loader.h"
 #include "git_sha1.h"
@@ -392,6 +393,16 @@ lvp_physical_device_finish(struct lvp_physical_device *device)
    vk_physical_device_finish(&device->vk);
 }
 
+static void
+lvp_destroy_physical_device(struct vk_physical_device *device)
+{
+   lvp_physical_device_finish((struct lvp_physical_device *)device);
+   vk_free(&device->instance->alloc, device);
+}
+
+static VkResult
+lvp_enumerate_physical_devices(struct vk_instance *vk_instance);
+
 VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateInstance(
    const VkInstanceCreateInfo*                 pCreateInfo,
    const VkAllocationCallbacks*                pAllocator,
@@ -427,7 +438,9 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateInstance(
    }
 
    instance->apiVersion = LVP_API_VERSION;
-   instance->physicalDeviceCount = -1;
+
+   instance->vk.physical_devices.enumerate = lvp_enumerate_physical_devices;
+   instance->vk.physical_devices.destroy = lvp_destroy_physical_device;
 
    //   _mesa_locale_init();
    //   VG(VALGRIND_CREATE_MEMPOOL(instance, 0, false));
@@ -445,8 +458,6 @@ VKAPI_ATTR void VKAPI_CALL lvp_DestroyInstance(
 
    if (!instance)
       return;
-   if (instance->physicalDeviceCount > 0)
-      lvp_physical_device_finish(&instance->physicalDevice);
    //   _mesa_locale_fini();
 
    pipe_loader_release(&instance->devs, instance->num_devices);
@@ -484,12 +495,10 @@ static struct drisw_loader_funcs lvp_sw_lf = {
 #endif
 
 static VkResult
-lvp_enumerate_physical_devices(struct lvp_instance *instance)
+lvp_enumerate_physical_devices(struct vk_instance *vk_instance)
 {
-   VkResult result;
-
-   if (instance->physicalDeviceCount != -1)
-      return VK_SUCCESS;
+   struct lvp_instance *instance =
+      container_of(vk_instance, struct lvp_instance, vk);
 
    /* sw only for now */
    instance->num_devices = pipe_loader_sw_probe(NULL, 0);
@@ -502,63 +511,19 @@ lvp_enumerate_physical_devices(struct lvp_instance *instance)
    pipe_loader_sw_probe_null(&instance->devs);
 #endif
 
-   result = lvp_physical_device_init(&instance->physicalDevice,
-                                     instance, &instance->devs[0]);
-   if (result == VK_ERROR_INCOMPATIBLE_DRIVER) {
-      instance->physicalDeviceCount = 0;
-   } else if (result == VK_SUCCESS) {
-      instance->physicalDeviceCount = 1;
-   }
+   struct lvp_physical_device *device =
+      vk_zalloc2(&instance->vk.alloc, NULL, sizeof(*device), 8,
+                 VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
+   if (!device)
+      return vk_error(instance, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   VkResult result = lvp_physical_device_init(device, instance, &instance->devs[0]);
+   if (result == VK_SUCCESS)
+      list_addtail(&device->vk.link, &instance->vk.physical_devices.list);
+   else
+      vk_free(&vk_instance->alloc, device);
 
    return result;
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL lvp_EnumeratePhysicalDevices(
-   VkInstance                                  _instance,
-   uint32_t*                                   pPhysicalDeviceCount,
-   VkPhysicalDevice*                           pPhysicalDevices)
-{
-   LVP_FROM_HANDLE(lvp_instance, instance, _instance);
-   VkResult result;
-
-   result = lvp_enumerate_physical_devices(instance);
-   if (result != VK_SUCCESS)
-      return result;
-
-   if (!pPhysicalDevices) {
-      *pPhysicalDeviceCount = instance->physicalDeviceCount;
-   } else if (*pPhysicalDeviceCount >= 1) {
-      pPhysicalDevices[0] = lvp_physical_device_to_handle(&instance->physicalDevice);
-      *pPhysicalDeviceCount = 1;
-   } else {
-      *pPhysicalDeviceCount = 0;
-   }
-
-   return VK_SUCCESS;
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL lvp_EnumeratePhysicalDeviceGroups(
-   VkInstance                                 _instance,
-   uint32_t*                                   pPhysicalDeviceGroupCount,
-   VkPhysicalDeviceGroupProperties*            pPhysicalDeviceGroupProperties)
-{
-   LVP_FROM_HANDLE(lvp_instance, instance, _instance);
-   VK_OUTARRAY_MAKE_TYPED(VkPhysicalDeviceGroupProperties, out,
-                          pPhysicalDeviceGroupProperties,
-                          pPhysicalDeviceGroupCount);
-
-   VkResult result = lvp_enumerate_physical_devices(instance);
-   if (result != VK_SUCCESS)
-      return result;
-
-   vk_outarray_append_typed(VkPhysicalDeviceGroupProperties, &out, p) {
-      p->physicalDeviceCount = 1;
-      memset(p->physicalDevices, 0, sizeof(p->physicalDevices));
-      p->physicalDevices[0] = lvp_physical_device_to_handle(&instance->physicalDevice);
-      p->subsetAllocation = false;
-   }
-
-   return vk_outarray_status(&out);
 }
 
 VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceFeatures(
@@ -1555,6 +1520,7 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateDevice(
    }
 
    vk_device_enable_threaded_submit(&device->vk);
+   device->vk.command_buffer_ops = &lvp_cmd_buffer_ops;
 
    device->instance = (struct lvp_instance *)physical_device->vk.instance;
    device->physical_device = physical_device;
@@ -2171,16 +2137,36 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateSampler(
 
    vk_object_base_init(&device->vk, &sampler->base,
                        VK_OBJECT_TYPE_SAMPLER);
-   sampler->create_info = *pCreateInfo;
 
    VkClearColorValue border_color =
       vk_sampler_border_color_value(pCreateInfo, NULL);
-   STATIC_ASSERT(sizeof(sampler->border_color) == sizeof(border_color));
-   memcpy(&sampler->border_color, &border_color, sizeof(border_color));
+   STATIC_ASSERT(sizeof(sampler->state.border_color) == sizeof(border_color));
 
-   sampler->reduction_mode = VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE;
+   sampler->state.wrap_s = vk_conv_wrap_mode(pCreateInfo->addressModeU);
+   sampler->state.wrap_t = vk_conv_wrap_mode(pCreateInfo->addressModeV);
+   sampler->state.wrap_r = vk_conv_wrap_mode(pCreateInfo->addressModeW);
+   sampler->state.min_img_filter = pCreateInfo->minFilter == VK_FILTER_LINEAR ? PIPE_TEX_FILTER_LINEAR : PIPE_TEX_FILTER_NEAREST;
+   sampler->state.min_mip_filter = pCreateInfo->mipmapMode == VK_SAMPLER_MIPMAP_MODE_LINEAR ? PIPE_TEX_MIPFILTER_LINEAR : PIPE_TEX_MIPFILTER_NEAREST;
+   sampler->state.mag_img_filter = pCreateInfo->magFilter == VK_FILTER_LINEAR ? PIPE_TEX_FILTER_LINEAR : PIPE_TEX_FILTER_NEAREST;
+   sampler->state.min_lod = pCreateInfo->minLod;
+   sampler->state.max_lod = pCreateInfo->maxLod;
+   sampler->state.lod_bias = pCreateInfo->mipLodBias;
+   if (pCreateInfo->anisotropyEnable)
+      sampler->state.max_anisotropy = pCreateInfo->maxAnisotropy;
+   else
+      sampler->state.max_anisotropy = 1;
+   sampler->state.normalized_coords = !pCreateInfo->unnormalizedCoordinates;
+   sampler->state.compare_mode = pCreateInfo->compareEnable ? PIPE_TEX_COMPARE_R_TO_TEXTURE : PIPE_TEX_COMPARE_NONE;
+   sampler->state.compare_func = pCreateInfo->compareOp;
+   sampler->state.seamless_cube_map = !(pCreateInfo->flags & VK_SAMPLER_CREATE_NON_SEAMLESS_CUBE_MAP_BIT_EXT);
+   STATIC_ASSERT((unsigned)VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE == (unsigned)PIPE_TEX_REDUCTION_WEIGHTED_AVERAGE);
+   STATIC_ASSERT((unsigned)VK_SAMPLER_REDUCTION_MODE_MIN == (unsigned)PIPE_TEX_REDUCTION_MIN);
+   STATIC_ASSERT((unsigned)VK_SAMPLER_REDUCTION_MODE_MAX == (unsigned)PIPE_TEX_REDUCTION_MAX);
    if (reduction_mode_create_info)
-      sampler->reduction_mode = reduction_mode_create_info->reductionMode;
+      sampler->state.reduction_mode = (enum pipe_tex_reduction_mode)reduction_mode_create_info->reductionMode;
+   else
+      sampler->state.reduction_mode = PIPE_TEX_REDUCTION_WEIGHTED_AVERAGE;
+   memcpy(&sampler->state.border_color, &border_color, sizeof(border_color));
 
    *pSampler = lvp_sampler_to_handle(sampler);
 

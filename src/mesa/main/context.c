@@ -481,12 +481,6 @@ _mesa_init_constants(struct gl_constants *consts, gl_api api)
 
    consts->GLSLLowerConstArrays = true;
 
-   /* Assume that if GLSL 1.30+ (or GLSL ES 3.00+) is supported that
-    * gl_VertexID is implemented using a native hardware register with OpenGL
-    * semantics.
-    */
-   consts->VertexID_is_zero_based = false;
-
    /* GL_ARB_draw_buffers */
    consts->MaxDrawBuffers = MAX_DRAW_BUFFERS;
 
@@ -1492,11 +1486,6 @@ _mesa_make_current( struct gl_context *newCtx,
       FLUSH_VERTICES(curCtx, 0, 0);
       st_glFlush(curCtx, 0);
    }
-
-   /* Call this periodically to detect when the user has begun using
-    * GL rendering from multiple threads.
-    */
-   _glapi_check_multithread();
 
    if (!newCtx) {
       _glapi_set_dispatch(NULL);  /* none current */

@@ -355,10 +355,10 @@ radv_get_sampler_desc(struct ac_shader_abi *abi, unsigned descriptor_set, unsign
 
 static LLVMValueRef
 radv_fixup_vertex_input_fetches(struct radv_shader_context *ctx, LLVMValueRef value,
-                                unsigned num_channels, bool is_float)
+                                unsigned num_channels, bool is_float, bool is_64bit)
 {
-   LLVMValueRef zero = is_float ? ctx->ac.f32_0 : ctx->ac.i32_0;
-   LLVMValueRef one = is_float ? ctx->ac.f32_1 : ctx->ac.i32_1;
+   LLVMValueRef zero = is_64bit ? ctx->ac.i64_0 : (is_float ? ctx->ac.f32_0 : ctx->ac.i32_0);
+   LLVMValueRef one = is_64bit ? ctx->ac.i64_0 : (is_float ? ctx->ac.f32_1 : ctx->ac.i32_1);
    LLVMValueRef chan[4];
 
    if (LLVMGetTypeKind(LLVMTypeOf(value)) == LLVMVectorTypeKind) {
@@ -394,11 +394,9 @@ load_vs_input(struct radv_shader_context *ctx, unsigned driver_location, LLVMTyp
    LLVMValueRef input;
    LLVMValueRef buffer_index;
    unsigned attrib_index = driver_location - VERT_ATTRIB_GENERIC0;
-   unsigned attrib_format = ctx->options->key.vs.vertex_attribute_formats[attrib_index];
-   unsigned data_format = attrib_format & 0x0f;
-   unsigned num_format = (attrib_format >> 4) & 0x07;
-   bool is_float =
-      num_format != V_008F0C_BUF_NUM_FORMAT_UINT && num_format != V_008F0C_BUF_NUM_FORMAT_SINT;
+   enum pipe_format attrib_format = ctx->options->key.vs.vertex_attribute_formats[attrib_index];
+   const struct util_format_description *desc = util_format_description(attrib_format);
+   bool is_float = !desc->channel[0].pure_integer;
    uint8_t input_usage_mask =
       ctx->shader_info->vs.input_usage_mask[driver_location];
    unsigned num_input_channels = util_last_bit(input_usage_mask);
@@ -424,13 +422,17 @@ load_vs_input(struct radv_shader_context *ctx, unsigned driver_location, LLVMTyp
                                   ac_get_arg(&ctx->ac, ctx->args->ac.base_vertex), "");
    }
 
-   const struct ac_data_format_info *vtx_info = ac_get_data_format_info(data_format);
+   const struct ac_vtx_format_info *vtx_info =
+      ac_get_vtx_format_info(GFX8, CHIP_POLARIS10, attrib_format);
 
    /* Adjust the number of channels to load based on the vertex attribute format. */
    unsigned num_channels = MIN2(num_input_channels, vtx_info->num_channels);
    unsigned attrib_binding = ctx->options->key.vs.vertex_attribute_bindings[attrib_index];
    unsigned attrib_offset = ctx->options->key.vs.vertex_attribute_offsets[attrib_index];
    unsigned attrib_stride = ctx->options->key.vs.vertex_attribute_strides[attrib_index];
+
+   unsigned data_format = vtx_info->hw_format[num_channels - 1] & 0xf;
+   unsigned num_format = vtx_info->hw_format[0] >> 4;
 
    unsigned desc_index =
       ctx->shader_info->vs.use_per_attribute_vb_descs ? attrib_index : attrib_binding;
@@ -444,11 +446,12 @@ load_vs_input(struct radv_shader_context *ctx, unsigned driver_location, LLVMTyp
     * dynamic) is unaligned and also if the VBO offset is aligned to a scalar (eg. stride is 8 and
     * VBO offset is 2 for R16G16B16A16_SNORM).
     */
-   if (ctx->ac.gfx_level == GFX6 || ctx->ac.gfx_level >= GFX10) {
-      unsigned chan_format = vtx_info->chan_format;
+   unsigned chan_dwords = vtx_info->chan_byte_size == 8 ? 2 : 1;
+   if (((ctx->ac.gfx_level == GFX6 || ctx->ac.gfx_level >= GFX10) && vtx_info->chan_byte_size) ||
+       !(vtx_info->has_hw_format & BITFIELD_BIT(vtx_info->num_channels - 1)) ||
+       vtx_info->element_size > 16) {
+      unsigned chan_format = vtx_info->hw_format[0] & 0xf;
       LLVMValueRef values[4];
-
-      assert(ctx->ac.gfx_level == GFX6 || ctx->ac.gfx_level >= GFX10);
 
       for (unsigned chan = 0; chan < num_channels; chan++) {
          unsigned chan_offset = attrib_offset + chan * vtx_info->chan_byte_size;
@@ -465,7 +468,7 @@ load_vs_input(struct radv_shader_context *ctx, unsigned driver_location, LLVMTyp
 
          values[chan] = ac_build_struct_tbuffer_load(
             &ctx->ac, t_list, chan_index, LLVMConstInt(ctx->ac.i32, chan_offset, false),
-            ctx->ac.i32_0, 1, chan_format, num_format, 0, true);
+            ctx->ac.i32_0, chan_dwords, chan_format, num_format, 0, true);
       }
 
       input = ac_build_gather_values(&ctx->ac, values, num_channels);
@@ -481,10 +484,15 @@ load_vs_input(struct radv_shader_context *ctx, unsigned driver_location, LLVMTyp
 
       input = ac_build_struct_tbuffer_load(
          &ctx->ac, t_list, buffer_index, LLVMConstInt(ctx->ac.i32, attrib_offset, false),
-         ctx->ac.i32_0, num_channels, data_format, num_format, 0, true);
+         ctx->ac.i32_0, num_channels * chan_dwords, data_format, num_format, 0, true);
    }
 
-   input = radv_fixup_vertex_input_fetches(ctx, input, num_channels, is_float);
+   if (vtx_info->chan_byte_size == 8)
+      input =
+         LLVMBuildBitCast(ctx->ac.builder, input, LLVMVectorType(ctx->ac.i64, num_channels), "");
+
+   input = radv_fixup_vertex_input_fetches(ctx, input, num_channels, is_float,
+                                           vtx_info->chan_byte_size == 8);
 
    for (unsigned chan = 0; chan < 4; chan++) {
       LLVMValueRef llvm_chan = LLVMConstInt(ctx->ac.i32, chan, false);
@@ -1012,9 +1020,10 @@ radv_llvm_export_vs(struct radv_shader_context *ctx, struct radv_shader_output_v
 }
 
 static void
-handle_vs_outputs_post(struct radv_shader_context *ctx, bool export_prim_id, bool export_clip_dists,
-                       const struct radv_vs_output_info *outinfo)
+handle_vs_outputs_post(struct radv_shader_context *ctx)
 {
+   const struct radv_vs_output_info *outinfo = &ctx->shader_info->outinfo;
+   const bool export_clip_dists = outinfo->export_clip_dists;
    struct radv_shader_output_values *outputs;
    unsigned noutput = 0;
 
@@ -1157,9 +1166,7 @@ handle_shader_outputs_post(struct ac_shader_abi *abi)
       else if (ctx->shader_info->is_ngg)
          break; /* Lowered in NIR */
       else
-         handle_vs_outputs_post(ctx, ctx->shader_info->vs.outinfo.export_prim_id,
-                                ctx->shader_info->vs.outinfo.export_clip_dists,
-                                &ctx->shader_info->vs.outinfo);
+         handle_vs_outputs_post(ctx);
       break;
    case MESA_SHADER_FRAGMENT:
       handle_fs_outputs_post(ctx);
@@ -1178,9 +1185,7 @@ handle_shader_outputs_post(struct ac_shader_abi *abi)
       else if (ctx->shader_info->is_ngg)
          break; /* Lowered in NIR */
       else
-         handle_vs_outputs_post(ctx, ctx->shader_info->tes.outinfo.export_prim_id,
-                                ctx->shader_info->tes.outinfo.export_clip_dists,
-                                &ctx->shader_info->tes.outinfo);
+         handle_vs_outputs_post(ctx);
       break;
    default:
       break;
@@ -1200,13 +1205,8 @@ static void
 radv_llvm_visit_export_vertex(struct ac_shader_abi *abi)
 {
    struct radv_shader_context *ctx = radv_shader_context_from_abi(abi);
-   const struct radv_vs_output_info *outinfo = ctx->stage == MESA_SHADER_TESS_EVAL
-                                         ? &ctx->shader_info->tes.outinfo
-                                         : &ctx->shader_info->vs.outinfo;
 
-   handle_vs_outputs_post(ctx, false,
-                          outinfo->export_clip_dists,
-                          outinfo);
+   handle_vs_outputs_post(ctx);
 }
 
 static void
@@ -1497,7 +1497,9 @@ ac_translate_nir_to_llvm(struct ac_llvm_compiler *ac_llvm,
       else if (shaders[shader_idx]->info.stage == MESA_SHADER_GEOMETRY && !info->is_ngg)
          prepare_gs_input_vgprs(&ctx, shader_count >= 2);
 
-      ac_nir_translate(&ctx.ac, &ctx.abi, &args->ac, shaders[shader_idx]);
+      if (!ac_nir_translate(&ctx.ac, &ctx.abi, &args->ac, shaders[shader_idx])) {
+         abort();
+      }
 
       if (!gl_shader_stage_is_compute(shaders[shader_idx]->info.stage))
          handle_shader_outputs_post(&ctx.abi);
@@ -1696,8 +1698,7 @@ ac_gs_copy_shader_emit(struct radv_shader_context *ctx)
          radv_emit_streamout(ctx, stream);
 
       if (stream == 0) {
-         handle_vs_outputs_post(ctx, false, ctx->shader_info->vs.outinfo.export_clip_dists,
-                                &ctx->shader_info->vs.outinfo);
+         handle_vs_outputs_post(ctx);
       }
 
       LLVMBuildBr(ctx->ac.builder, end_bb);

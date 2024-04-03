@@ -103,7 +103,7 @@
 #endif
 
 #define perf_debug(...) do {                       \
-   if (unlikely(V3D_DEBUG & V3D_DEBUG_PERF))       \
+   if (V3D_DBG(PERF))                            \
       fprintf(stderr, __VA_ARGS__);                \
 } while (0)
 
@@ -222,9 +222,6 @@ bool v3dv_meta_can_use_tlb(struct v3dv_image *image,
 
 struct v3dv_instance {
    struct vk_instance vk;
-
-   int physicalDeviceCount;
-   struct v3dv_physical_device physicalDevice;
 
    bool pipeline_cache_enabled;
    bool default_pipeline_cache_enabled;
@@ -606,6 +603,12 @@ struct v3dv_image {
    bool is_native_buffer_memory;
 #endif
 };
+
+VkResult
+v3dv_image_init(struct v3dv_device *device,
+                const VkImageCreateInfo *pCreateInfo,
+                const VkAllocationCallbacks *pAllocator,
+                struct v3dv_image *image);
 
 VkImageViewType v3dv_image_type_to_view_type(VkImageType type);
 
@@ -1298,8 +1301,8 @@ struct v3dv_barrier_state {
    /* For graphics barriers, access masks involved. Used to decide if we need
     * to execute a binning or render barrier.
     */
-   VkAccessFlags bcl_buffer_access;
-   VkAccessFlags bcl_image_access;
+   VkAccessFlags2 bcl_buffer_access;
+   VkAccessFlags2 bcl_image_access;
 };
 
 struct v3dv_cmd_buffer_state {
@@ -1842,8 +1845,35 @@ struct v3dv_pipeline_layout {
    uint32_t dynamic_offset_count;
    uint32_t push_constant_size;
 
+   /* Pipeline layouts can be destroyed after creating pipelines since
+    * maintenance4.
+    */
+   uint32_t ref_cnt;
+
    unsigned char sha1[20];
 };
+
+void
+v3dv_pipeline_layout_destroy(struct v3dv_device *device,
+                             struct v3dv_pipeline_layout *layout,
+                             const VkAllocationCallbacks *alloc);
+
+static inline void
+v3dv_pipeline_layout_ref(struct v3dv_pipeline_layout *layout)
+{
+   assert(layout && layout->ref_cnt >= 1);
+   p_atomic_inc(&layout->ref_cnt);
+}
+
+static inline void
+v3dv_pipeline_layout_unref(struct v3dv_device *device,
+                           struct v3dv_pipeline_layout *layout,
+                           const VkAllocationCallbacks *alloc)
+{
+   assert(layout && layout->ref_cnt >= 1);
+   if (p_atomic_dec_zero(&layout->ref_cnt))
+      v3dv_pipeline_layout_destroy(device, layout, alloc);
+}
 
 /*
  * We are using descriptor maps for ubo/ssbo and texture/samplers, so we need

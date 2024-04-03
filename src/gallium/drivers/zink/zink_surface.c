@@ -139,14 +139,13 @@ create_surface(struct pipe_context *pctx,
    if (!surface)
       return NULL;
 
-   VkImageViewUsageCreateInfo usage_info;
-   usage_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
-   usage_info.pNext = NULL;
+   surface->usage_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
+   surface->usage_info.pNext = NULL;
    VkFormatFeatureFlags feats = res->linear ?
                                 screen->format_props[templ->format].linearTilingFeatures :
                                 screen->format_props[templ->format].optimalTilingFeatures;
    VkImageUsageFlags attachment = (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
-   usage_info.usage = res->obj->vkusage & ~attachment;
+   surface->usage_info.usage = res->obj->vkusage & ~attachment;
    if (res->obj->modifier_aspect) {
       feats = res->obj->vkfeats;
       /* intersect format features for current modifier */
@@ -157,7 +156,7 @@ create_surface(struct pipe_context *pctx,
    }
    if ((res->obj->vkusage & attachment) &&
        !(feats & (VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))) {
-      ivci->pNext = &usage_info;
+      ivci->pNext = &surface->usage_info;
    }
 
    pipe_resource_reference(&surface->base.texture, pres);
@@ -225,8 +224,9 @@ zink_get_surface(struct zink_context *ctx,
    struct hash_entry *entry = _mesa_hash_table_search_pre_hashed(&res->surface_cache, hash, ivci);
 
    if (!entry) {
-      /* create a new surface */
-      surface = do_create_surface(&ctx->base, pres, templ, ivci, hash, true);
+      /* create a new surface, but don't actually create the imageview if mutable isn't set */
+      bool actually = pres->format == templ->format || (res->obj->vkflags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT);
+      surface = do_create_surface(&ctx->base, pres, templ, ivci, hash, actually);
       entry = _mesa_hash_table_insert_pre_hashed(&res->surface_cache, hash, &surface->ivci, surface);
       if (!entry) {
          simple_mtx_unlock(&res->surface_mtx);
@@ -263,6 +263,10 @@ zink_create_surface(struct pipe_context *pctx,
    struct zink_resource *res = zink_resource(pres);
    bool is_array = templ->u.tex.last_layer != templ->u.tex.first_layer;
    enum pipe_texture_target target_2d[] = {PIPE_TEXTURE_2D, PIPE_TEXTURE_2D_ARRAY};
+   if (!res->obj->dt && pres->format != templ->format)
+      /* mutable not set by default */
+      zink_resource_object_init_mutable(zink_context(pctx), res);
+
    VkImageViewCreateInfo ivci = create_ivci(zink_screen(pctx->screen), res, templ,
                                             pres->target == PIPE_TEXTURE_3D ? target_2d[is_array] : pres->target);
 

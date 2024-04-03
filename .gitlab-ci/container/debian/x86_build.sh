@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2086 # we want word splitting
 
 set -e
 set -o xtrace
@@ -12,6 +13,7 @@ STABLE_EPHEMERAL=" \
       autotools-dev \
       bzip2 \
       libtool \
+      libssl-dev \
       python3-pip \
       "
 
@@ -41,12 +43,12 @@ apt-get install -y --no-remove \
       libxml2-dev \
       llvm-13-dev \
       llvm-11-dev \
-      llvm-9-dev \
       ocl-icd-opencl-dev \
       python3-freezegun \
       python3-pytest \
       procps \
       spirv-tools \
+      shellcheck \
       strace \
       time \
       zstd
@@ -58,6 +60,8 @@ apt-get install -y --no-remove \
 export              XORG_RELEASES=https://xorg.freedesktop.org/releases/individual
 
 export         XORGMACROS_VERSION=util-macros-1.19.0
+
+. .gitlab-ci/container/build-mold.sh
 
 wget $XORG_RELEASES/util/$XORGMACROS_VERSION.tar.bz2
 tar -xvf $XORGMACROS_VERSION.tar.bz2 && rm $XORGMACROS_VERSION.tar.bz2

@@ -88,7 +88,8 @@ void
 anv_device_init_blorp(struct anv_device *device)
 {
    const struct blorp_config config = {
-      .use_mesh_shading = device->physical->vk.supported_extensions.NV_mesh_shader,
+      .use_mesh_shading = device->physical->vk.supported_extensions.NV_mesh_shader ||
+                          device->physical->vk.supported_extensions.EXT_mesh_shader,
    };
 
    blorp_init(&device->blorp, device, &device->isl_dev, &config);
@@ -96,15 +97,6 @@ anv_device_init_blorp(struct anv_device *device)
    device->blorp.lookup_shader = lookup_blorp_shader;
    device->blorp.upload_shader = upload_blorp_shader;
    switch (device->info->verx10) {
-   case 70:
-      device->blorp.exec = gfx7_blorp_exec;
-      break;
-   case 75:
-      device->blorp.exec = gfx75_blorp_exec;
-      break;
-   case 80:
-      device->blorp.exec = gfx8_blorp_exec;
-      break;
    case 90:
       device->blorp.exec = gfx9_blorp_exec;
       break;

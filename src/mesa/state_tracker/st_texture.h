@@ -46,7 +46,7 @@ struct st_texture_image_transfer
    /* For compressed texture fallback. */
    GLubyte *temp_data; /**< Temporary compressed texture storage. */
    unsigned temp_stride; /**< Stride of the compressed texture storage. */
-   GLubyte *map; /**< Saved map pointer of the uncompressed transfer. */
+   struct pipe_box box; /**< Region of the transfer's resource to write. */
 };
 
 
@@ -177,6 +177,14 @@ extern GLboolean
 st_texture_match_image(struct st_context *st,
                        const struct pipe_resource *pt,
                        const struct gl_texture_image *image);
+
+/* Insert a transfer pointer into the image's transfer array at the specified
+ * index. The array is reallocated if necessary.
+ */
+void
+st_texture_image_insert_transfer(struct gl_texture_image *stImage,
+                                 unsigned index,
+                                 struct pipe_transfer *transfer);
 
 /* Return a pointer to an image within a texture.  Return image stride as
  * well.

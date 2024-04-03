@@ -487,14 +487,23 @@ fd_bo_map(struct fd_bo *bo)
 }
 
 void
-fd_bo_upload(struct fd_bo *bo, void *src, unsigned len)
+fd_bo_upload(struct fd_bo *bo, void *src, unsigned off, unsigned len)
 {
    if (bo->funcs->upload) {
-      bo->funcs->upload(bo, src, len);
+      bo->funcs->upload(bo, src, off, len);
       return;
    }
 
-   memcpy(bo_map(bo), src, len);
+   memcpy((uint8_t *)bo_map(bo) + off, src, len);
+}
+
+bool
+fd_bo_prefer_upload(struct fd_bo *bo, unsigned len)
+{
+   if (bo->funcs->prefer_upload)
+      return bo->funcs->prefer_upload(bo, len);
+
+   return false;
 }
 
 /* a bit odd to take the pipe as an arg, but it's a, umm, quirk of kgsl.. */

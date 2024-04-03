@@ -2009,6 +2009,7 @@ lower_to_hw_instr(Program* program)
       lower_context ctx;
       ctx.program = program;
       ctx.block = block;
+      ctx.instructions.reserve(block->instructions.size());
       Builder bld(program, &ctx.instructions);
 
       emit_set_mode_from_block(bld, *program, block, (block_idx == 0));
@@ -2121,6 +2122,7 @@ lower_to_hw_instr(Program* program)
 
                if (!discard_block) {
                   discard_block = program->create_and_insert_block();
+                  discard_block->kind = block_kind_discard_early_exit;
                   block = &program->blocks[block_idx];
 
                   bld.reset(discard_block);
@@ -2133,8 +2135,7 @@ lower_to_hw_instr(Program* program)
                }
 
                assert(instr->operands[0].physReg() == scc);
-               bld.sopp(aco_opcode::s_cbranch_scc0, Definition(exec, s2), instr->operands[0],
-                        discard_block->index);
+               bld.sopp(aco_opcode::s_cbranch_scc0, instr->operands[0], discard_block->index);
 
                discard_block->linear_preds.push_back(block->index);
                block->linear_succs.push_back(discard_block->index);
@@ -2334,7 +2335,7 @@ lower_to_hw_instr(Program* program)
 
                Operand scratch_addr = instr->operands[0];
                Operand scratch_addr_lo(scratch_addr.physReg(), s1);
-               if (program->stage != compute_cs) {
+               if (program->stage.hw != HWStage::CS) {
                   bld.smem(aco_opcode::s_load_dwordx2, instr->definitions[0], scratch_addr,
                            Operand::zero());
                   scratch_addr_lo.setFixed(instr->definitions[0].physReg());
@@ -2520,7 +2521,7 @@ lower_to_hw_instr(Program* program)
             ctx.instructions.emplace_back(std::move(instr));
          }
       }
-      block->instructions.swap(ctx.instructions);
+      block->instructions = std::move(ctx.instructions);
    }
 }
 

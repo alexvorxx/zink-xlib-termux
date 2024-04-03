@@ -25,6 +25,7 @@
 #include "tu_cmd_buffer.h"
 #include "tu_cs.h"
 #include "tu_device.h"
+#include "tu_drm.h"
 #include "tu_formats.h"
 #include "tu_lrz.h"
 #include "tu_pass.h"
@@ -269,6 +270,7 @@ struct tu_pipeline_builder
    bool subpass_raster_order_attachment_access;
    bool subpass_feedback_loop_color;
    bool subpass_feedback_loop_ds;
+   bool feedback_loop_may_involve_textures;
 };
 
 static bool
@@ -839,11 +841,21 @@ tu6_setup_streamout(struct tu_cs *cs,
 
    /* no streamout: */
    if (info->num_outputs == 0) {
-      tu_cs_emit_pkt7(cs, CP_CONTEXT_REG_BUNCH, 4);
+      unsigned sizedw = 4;
+      if (cs->device->physical_device->info->a6xx.tess_use_shared)
+         sizedw += 2;
+
+      tu_cs_emit_pkt7(cs, CP_CONTEXT_REG_BUNCH, sizedw);
       tu_cs_emit(cs, REG_A6XX_VPC_SO_CNTL);
       tu_cs_emit(cs, 0);
       tu_cs_emit(cs, REG_A6XX_VPC_SO_STREAM_CNTL);
       tu_cs_emit(cs, 0);
+
+      if (cs->device->physical_device->info->a6xx.tess_use_shared) {
+         tu_cs_emit(cs, REG_A6XX_PC_SO_STREAM_CNTL);
+         tu_cs_emit(cs, 0);
+      }
+
       return;
    }
 
@@ -892,6 +904,13 @@ tu6_setup_streamout(struct tu_cs *cs,
       prog_count += end - start + 1;
    }
 
+   const bool emit_pc_so_stream_cntl =
+      cs->device->physical_device->info->a6xx.tess_use_shared &&
+      v->type == MESA_SHADER_TESS_EVAL;
+
+   if (emit_pc_so_stream_cntl)
+      prog_count += 1;
+
    tu_cs_emit_pkt7(cs, CP_CONTEXT_REG_BUNCH, 10 + 2 * prog_count);
    tu_cs_emit(cs, REG_A6XX_VPC_SO_STREAM_CNTL);
    tu_cs_emit(cs, A6XX_VPC_SO_STREAM_CNTL_STREAM_ENABLE(info->streams_written) |
@@ -918,6 +937,14 @@ tu6_setup_streamout(struct tu_cs *cs,
          tu_cs_emit(cs, prog[i]);
       }
       first = false;
+   }
+
+   if (emit_pc_so_stream_cntl) {
+      /* Possibly not tess_use_shared related, but the combination of
+       * tess + xfb fails some tests if we don't emit this.
+       */
+      tu_cs_emit(cs, REG_A6XX_PC_SO_STREAM_CNTL);
+      tu_cs_emit(cs, A6XX_PC_SO_STREAM_CNTL_STREAM_ENABLE(info->streams_written));
    }
 }
 
@@ -1231,24 +1258,35 @@ tu6_emit_vpc(struct tu_cs *cs,
       tu_cs_emit_pkt4(cs, REG_A6XX_PC_TESS_NUM_VERTEX, 1);
       tu_cs_emit(cs, hs->tess.tcs_vertices_out);
 
+      uint32_t patch_local_mem_size_16b =
+         patch_control_points * vs->output_size / 4;
+
       /* Total attribute slots in HS incoming patch. */
       tu_cs_emit_pkt4(cs, REG_A6XX_PC_HS_INPUT_SIZE, 1);
-      tu_cs_emit(cs, patch_control_points * vs->output_size / 4);
+      tu_cs_emit(cs, patch_local_mem_size_16b);
 
       const uint32_t wavesize = 64;
-      const uint32_t max_wave_input_size = 64;
+      const uint32_t vs_hs_local_mem_size = 16384;
 
-      /* note: if HS is really just the VS extended, then this
-       * should be by MAX2(patch_control_points, hs->tess.tcs_vertices_out)
-       * however that doesn't match the blob, and fails some dEQP tests.
-       */
-      uint32_t prims_per_wave = wavesize / hs->tess.tcs_vertices_out;
-      uint32_t max_prims_per_wave =
-         max_wave_input_size * wavesize / (vs->output_size * patch_control_points);
-      prims_per_wave = MIN2(prims_per_wave, max_prims_per_wave);
+      uint32_t max_patches_per_wave;
+      if (cs->device->physical_device->info->a6xx.tess_use_shared) {
+         /* HS invocations for a patch are always within the same wave,
+          * making barriers less expensive. VS can't have barriers so we
+          * don't care about VS invocations being in the same wave.
+          */
+         max_patches_per_wave = wavesize / hs->tess.tcs_vertices_out;
+      } else {
+         /* VS is also in the same wave */
+         max_patches_per_wave =
+            wavesize / MAX2(patch_control_points, hs->tess.tcs_vertices_out);
+      }
 
-      uint32_t total_size = vs->output_size * patch_control_points * prims_per_wave;
-      uint32_t wave_input_size = DIV_ROUND_UP(total_size, wavesize);
+      uint32_t patches_per_wave =
+         MIN2(vs_hs_local_mem_size / (patch_local_mem_size_16b * 16),
+              max_patches_per_wave);
+
+      uint32_t wave_input_size = DIV_ROUND_UP(
+         patches_per_wave * patch_local_mem_size_16b * 16, 256);
 
       tu_cs_emit_pkt4(cs, REG_A6XX_SP_HS_WAVE_INPUT_SIZE, 1);
       tu_cs_emit(cs, wave_input_size);
@@ -1394,6 +1432,7 @@ tu6_emit_vpc_varying_modes(struct tu_cs *cs,
 {
    uint32_t interp_modes[8] = { 0 };
    uint32_t ps_repl_modes[8] = { 0 };
+   uint32_t interp_regs = 0;
 
    if (fs) {
       for (int i = -1;
@@ -1418,14 +1457,17 @@ tu6_emit_vpc_varying_modes(struct tu_cs *cs,
             interp_modes[n] |= interp_mode >> shift;
             ps_repl_modes[n] |= ps_repl_mode >> shift;
          }
+         interp_regs = MAX2(interp_regs, n + 1);
       }
    }
 
-   tu_cs_emit_pkt4(cs, REG_A6XX_VPC_VARYING_INTERP_MODE(0), 8);
-   tu_cs_emit_array(cs, interp_modes, 8);
+   if (interp_regs) {
+      tu_cs_emit_pkt4(cs, REG_A6XX_VPC_VARYING_INTERP_MODE(0), interp_regs);
+      tu_cs_emit_array(cs, interp_modes, interp_regs);
 
-   tu_cs_emit_pkt4(cs, REG_A6XX_VPC_VARYING_PS_REPL_MODE(0), 8);
-   tu_cs_emit_array(cs, ps_repl_modes, 8);
+      tu_cs_emit_pkt4(cs, REG_A6XX_VPC_VARYING_PS_REPL_MODE(0), interp_regs);
+      tu_cs_emit_array(cs, ps_repl_modes, interp_regs);
+   }
 }
 
 void
@@ -1566,13 +1608,14 @@ tu6_emit_fs_outputs(struct tu_cs *cs,
    smask_regid     = ir3_find_output_regid(fs, FRAG_RESULT_SAMPLE_MASK);
    stencilref_regid = ir3_find_output_regid(fs, FRAG_RESULT_STENCIL);
 
-   uint32_t fragdata_regid[8];
+   int output_reg_count = MAX2(mrt_count, 1);
+   uint32_t fragdata_regid[output_reg_count];
    if (fs->color0_mrt) {
       fragdata_regid[0] = ir3_find_output_regid(fs, FRAG_RESULT_COLOR);
-      for (uint32_t i = 1; i < ARRAY_SIZE(fragdata_regid); i++)
+      for (uint32_t i = 1; i < output_reg_count; i++)
          fragdata_regid[i] = fragdata_regid[0];
    } else {
-      for (uint32_t i = 0; i < ARRAY_SIZE(fragdata_regid); i++)
+      for (uint32_t i = 0; i < output_reg_count; i++)
          fragdata_regid[i] = ir3_find_output_regid(fs, FRAG_RESULT_DATA0 + i);
    }
 
@@ -1585,8 +1628,8 @@ tu6_emit_fs_outputs(struct tu_cs *cs,
 
    uint32_t fs_render_components = 0;
 
-   tu_cs_emit_pkt4(cs, REG_A6XX_SP_FS_OUTPUT_REG(0), 8);
-   for (uint32_t i = 0; i < ARRAY_SIZE(fragdata_regid); i++) {
+   tu_cs_emit_pkt4(cs, REG_A6XX_SP_FS_OUTPUT_REG(0), output_reg_count);
+   for (uint32_t i = 0; i < output_reg_count; i++) {
       tu_cs_emit(cs, A6XX_SP_FS_OUTPUT_REG_REGID(fragdata_regid[i]) |
                      (COND(fragdata_regid[i] & HALF_REG_ID,
                            A6XX_SP_FS_OUTPUT_REG_HALF_PRECISION)));
@@ -2282,47 +2325,68 @@ tu6_emit_blend(struct tu_cs *cs,
    }
 }
 
-static uint32_t
-calc_pvtmem_size(struct tu_device *dev, struct tu_pvtmem_config *config,
-                 uint32_t pvtmem_bytes)
-{
-   uint32_t per_fiber_size = ALIGN(pvtmem_bytes, 512);
-   uint32_t per_sp_size =
-      ALIGN(per_fiber_size * dev->physical_device->info->a6xx.fibers_per_sp, 1 << 12);
-
-   if (config) {
-      config->per_fiber_size = per_fiber_size;
-      config->per_sp_size = per_sp_size;
-   }
-
-   return dev->physical_device->info->num_sp_cores * per_sp_size;
-}
-
 static VkResult
 tu_setup_pvtmem(struct tu_device *dev,
                 struct tu_pipeline *pipeline,
                 struct tu_pvtmem_config *config,
-                uint32_t pvtmem_bytes, bool per_wave)
+                uint32_t pvtmem_bytes,
+                bool per_wave)
 {
    if (!pvtmem_bytes) {
       memset(config, 0, sizeof(*config));
       return VK_SUCCESS;
    }
 
-   uint32_t total_size = calc_pvtmem_size(dev, config, pvtmem_bytes);
+   /* There is a substantial memory footprint from private memory BOs being
+    * allocated on a per-pipeline basis and it isn't required as the same
+    * BO can be utilized by multiple pipelines as long as they have the
+    * private memory layout (sizes and per-wave/per-fiber) to avoid being
+    * overwritten by other active pipelines using the same BO with differing
+    * private memory layouts resulting memory corruption.
+    *
+    * To avoid this, we create private memory BOs on a per-device level with
+    * an associated private memory layout then dynamically grow them when
+    * needed and reuse them across pipelines. Growth is done in terms of
+    * powers of two so that we can avoid frequent reallocation of the
+    * private memory BOs.
+    */
+
+   struct tu_pvtmem_bo *pvtmem_bo =
+      per_wave ? &dev->wave_pvtmem_bo : &dev->fiber_pvtmem_bo;
+   mtx_lock(&pvtmem_bo->mtx);
+
+   if (pvtmem_bo->per_fiber_size < pvtmem_bytes) {
+      if (pvtmem_bo->bo)
+         tu_bo_finish(dev, pvtmem_bo->bo);
+
+      pvtmem_bo->per_fiber_size =
+         util_next_power_of_two(ALIGN(pvtmem_bytes, 512));
+      pvtmem_bo->per_sp_size =
+         ALIGN(pvtmem_bo->per_fiber_size *
+                  dev->physical_device->info->a6xx.fibers_per_sp,
+               1 << 12);
+      uint32_t total_size =
+         dev->physical_device->info->num_sp_cores * pvtmem_bo->per_sp_size;
+
+      VkResult result = tu_bo_init_new(dev, &pvtmem_bo->bo, total_size,
+                                       TU_BO_ALLOC_NO_FLAGS);
+      if (result != VK_SUCCESS) {
+         mtx_unlock(&pvtmem_bo->mtx);
+         return result;
+      }
+   }
+
    config->per_wave = per_wave;
+   config->per_fiber_size = pvtmem_bo->per_fiber_size;
+   config->per_sp_size = pvtmem_bo->per_sp_size;
 
-   VkResult result =
-      tu_bo_init_new(dev, &pipeline->pvtmem_bo, total_size,
-                     TU_BO_ALLOC_NO_FLAGS);
-   if (result != VK_SUCCESS)
-      return result;
-
+   pipeline->pvtmem_bo = tu_bo_get_ref(pvtmem_bo->bo);
    config->iova = pipeline->pvtmem_bo->iova;
 
-   return result;
-}
+   mtx_unlock(&pvtmem_bo->mtx);
 
+   return VK_SUCCESS;
+}
 
 static VkResult
 tu_pipeline_allocate_cs(struct tu_device *dev,
@@ -3411,6 +3475,9 @@ tu_pipeline_builder_parse_rasterization(struct tu_pipeline_builder *builder,
    const VkPipelineRasterizationStateCreateInfo *rast_info =
       builder->create_info->pRasterizationState;
 
+   pipeline->feedback_loop_may_involve_textures =
+      builder->feedback_loop_may_involve_textures;
+
    enum a6xx_polygon_mode mode = tu6_polygon_mode(rast_info->polygonMode);
 
    builder->depth_clip_disable = rast_info->depthClampEnable;
@@ -3773,6 +3840,7 @@ tu_pipeline_builder_parse_rasterization_order(
        */
       sysmem_prim_mode = FLUSH_PER_OVERLAP_AND_OVERWRITE;
       gmem_prim_mode = FLUSH_PER_OVERLAP;
+      pipeline->sysmem_single_prim_mode = true;
    } else {
       /* If there is a feedback loop, then the shader can read the previous value
        * of a pixel being written out. It can also write some components and then
@@ -3783,8 +3851,10 @@ tu_pipeline_builder_parse_rasterization_order(
        * for advanced_blend in sysmem mode if a feedback loop is detected.
        */
       if (builder->subpass_feedback_loop_color ||
-          builder->subpass_feedback_loop_ds) {
+          (builder->subpass_feedback_loop_ds &&
+           (ds_info->depthWriteEnable || ds_info->stencilTestEnable))) {
          sysmem_prim_mode = FLUSH_PER_OVERLAP_AND_OVERWRITE;
+         pipeline->sysmem_single_prim_mode = true;
       }
    }
 
@@ -4026,6 +4096,15 @@ tu_pipeline_builder_init_graphics(
       }
    }
 
+   if (builder->create_info->flags & VK_PIPELINE_CREATE_COLOR_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT) {
+      builder->subpass_feedback_loop_color = true;
+      builder->feedback_loop_may_involve_textures = true;
+   }
+
+   if (builder->create_info->flags & VK_PIPELINE_CREATE_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT) {
+      builder->subpass_feedback_loop_ds = true;
+      builder->feedback_loop_may_involve_textures = true;
+   }
 
    if (builder->rasterizer_discard) {
       builder->samples = VK_SAMPLE_COUNT_1_BIT;
@@ -4079,6 +4158,7 @@ tu_CreateGraphicsPipelines(VkDevice device,
                            const VkAllocationCallbacks *pAllocator,
                            VkPipeline *pPipelines)
 {
+   MESA_TRACE_FUNC();
    VkResult final_result = VK_SUCCESS;
    uint32_t i = 0;
 
@@ -4286,6 +4366,7 @@ tu_CreateComputePipelines(VkDevice device,
                           const VkAllocationCallbacks *pAllocator,
                           VkPipeline *pPipelines)
 {
+   MESA_TRACE_FUNC();
    VkResult final_result = VK_SUCCESS;
    uint32_t i = 0;
 

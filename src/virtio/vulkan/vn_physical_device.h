@@ -30,10 +30,19 @@ struct vn_physical_device_features {
    VkPhysicalDeviceImageRobustnessFeatures image_robustness;
    VkPhysicalDeviceInlineUniformBlockFeatures inline_uniform_block;
    VkPhysicalDeviceMaintenance4Features maintenance4;
+   VkPhysicalDevicePipelineCreationCacheControlFeatures
+      pipeline_creation_cache_control;
+   VkPhysicalDevicePrivateDataFeatures private_data;
    VkPhysicalDeviceShaderDemoteToHelperInvocationFeatures
       shader_demote_to_helper_invocation;
+   VkPhysicalDeviceShaderIntegerDotProductFeatures shader_integer_dot_product;
+   VkPhysicalDeviceShaderTerminateInvocationFeatures
+      shader_terminate_invocation;
+   VkPhysicalDeviceSubgroupSizeControlFeatures subgroup_size_control;
    VkPhysicalDeviceTextureCompressionASTCHDRFeatures
       texture_compression_astc_hdr;
+   VkPhysicalDeviceZeroInitializeWorkgroupMemoryFeatures
+      zero_initialize_workgroup_memory;
 
    /* EXT */
    VkPhysicalDeviceConditionalRenderingFeaturesEXT conditional_rendering;
@@ -42,10 +51,14 @@ struct vn_physical_device_features {
    VkPhysicalDeviceImageViewMinLodFeaturesEXT image_view_min_lod;
    VkPhysicalDeviceIndexTypeUint8FeaturesEXT index_type_uint8;
    VkPhysicalDeviceLineRasterizationFeaturesEXT line_rasterization;
+   VkPhysicalDevicePrimitiveTopologyListRestartFeaturesEXT
+      primitive_topology_list_restart;
    VkPhysicalDeviceProvokingVertexFeaturesEXT provoking_vertex;
    VkPhysicalDeviceRobustness2FeaturesEXT robustness_2;
+   VkPhysicalDeviceTexelBufferAlignmentFeaturesEXT texel_buffer_alignment;
    VkPhysicalDeviceTransformFeedbackFeaturesEXT transform_feedback;
    VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT vertex_attribute_divisor;
+   VkPhysicalDeviceYcbcr2Plane444FormatsFeaturesEXT ycbcr_2plane_444_formats;
 };
 
 struct vn_physical_device_properties {
@@ -56,6 +69,10 @@ struct vn_physical_device_properties {
    /* Vulkan 1.3 */
    VkPhysicalDeviceInlineUniformBlockProperties inline_uniform_block;
    VkPhysicalDeviceMaintenance4Properties maintenance4;
+   VkPhysicalDeviceShaderIntegerDotProductProperties
+      shader_integer_dot_product;
+   VkPhysicalDeviceSubgroupSizeControlProperties subgroup_size_control;
+   VkPhysicalDeviceTexelBufferAlignmentProperties texel_buffer_alignment;
 
    /* EXT */
    VkPhysicalDeviceConservativeRasterizationPropertiesEXT
@@ -108,6 +125,10 @@ struct vn_physical_device {
       VkExternalMemoryHandleTypeFlagBits renderer_handle_type;
       VkExternalMemoryHandleTypeFlags supported_handle_types;
    } external_memory;
+
+   /* syncFdFencing allows driver to query renderer sync_fd features */
+   VkExternalFenceFeatureFlags renderer_sync_fd_fence_features;
+   VkExternalSemaphoreFeatureFlags renderer_sync_fd_semaphore_features;
 
    VkExternalFenceHandleTypeFlags external_fence_handles;
    VkExternalSemaphoreHandleTypeFlags external_binary_semaphore_handles;

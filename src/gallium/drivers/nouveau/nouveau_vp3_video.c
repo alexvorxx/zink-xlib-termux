@@ -27,6 +27,7 @@
 
 #include <nvif/class.h>
 
+#include "nouveau_winsys.h"
 #include "nouveau_screen.h"
 #include "nouveau_context.h"
 #include "nouveau_vp3_video.h"
@@ -213,11 +214,11 @@ nouveau_vp3_decoder_destroy(struct pipe_video_codec *decoder)
 
    if (dec->channel[0] != dec->channel[1]) {
       for (i = 0; i < 3; ++i) {
-         nouveau_pushbuf_del(&dec->pushbuf[i]);
+         nouveau_pushbuf_destroy(&dec->pushbuf[i]);
          nouveau_object_del(&dec->channel[i]);
       }
    } else {
-      nouveau_pushbuf_del(dec->pushbuf);
+      nouveau_pushbuf_destroy(dec->pushbuf);
       nouveau_object_del(dec->channel);
    }
 
@@ -284,13 +285,14 @@ nouveau_vp3_load_firmware(struct nouveau_vp3_decoder *dec,
    char path[PATH_MAX];
    ssize_t r;
    uint32_t *end, endval;
+   struct nouveau_screen *screen = nouveau_screen(dec->base.context->screen);
 
    if (chipset >= 0xa3 && chipset != 0xaa && chipset != 0xac)
       vp4_getpath(profile, path);
    else
       vp3_getpath(profile, path);
 
-   if (nouveau_bo_map(dec->fw_bo, NOUVEAU_BO_WR, dec->client))
+   if (BO_MAP(screen, dec->fw_bo, NOUVEAU_BO_WR, dec->client))
       return 1;
 
    fd = open(path, O_RDONLY | O_CLOEXEC);

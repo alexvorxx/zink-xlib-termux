@@ -148,7 +148,9 @@ compile_nir(struct d3d12_context *ctx, struct d3d12_shader_selector *sel,
    opts.provoking_vertex = key->fs.provoking_vertex;
    opts.input_clip_size = key->input_clip_size;
    opts.environment = DXIL_ENVIRONMENT_GL;
-   opts.shader_model_max = SHADER_MODEL_6_2;
+   static_assert(D3D_SHADER_MODEL_6_0 == 0x60 && SHADER_MODEL_6_0 == 0x60000, "Validating math below");
+   static_assert(D3D_SHADER_MODEL_6_7 == 0x67 && SHADER_MODEL_6_7 == 0x60007, "Validating math below");
+   opts.shader_model_max = ((screen->max_shader_model & 0xf0) << 12) | (screen->max_shader_model & 0xf);
 #ifdef _WIN32
    opts.validator_version_max = dxil_get_validator_version(ctx->dxil_validator);
 #endif
@@ -1173,6 +1175,7 @@ select_shader_variant(struct d3d12_selection_context *sel_ctx, d3d12_shader_sele
       tex_options.saturate_r = key.tex_saturate_r;
       tex_options.saturate_t = key.tex_saturate_t;
       tex_options.lower_invalid_implicit_lod = true;
+      tex_options.lower_tg4_offsets = true;
 
       NIR_PASS_V(new_nir_variant, nir_lower_tex, &tex_options);
    }

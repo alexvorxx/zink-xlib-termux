@@ -754,7 +754,7 @@ void AssamblerVisitor::visit(const RatInstr& instr)
    struct r600_bytecode_gds gds;
 
    /* The instruction writes to the retuen buffer loaction, and
-    * the value will actually be read bach, so make sure all previous writes
+    * the value will actually be read back, so make sure all previous writes
     * have been finished */
    if (m_ack_suggested /*&& instr.has_instr_flag(Instr::ack_rat_return_write)*/)
       emit_wait_ack();
@@ -887,9 +887,13 @@ void AssamblerVisitor::visit(const ControlFlowInstr& instr)
    case ControlFlowInstr::cf_endif:
       emit_endif();
       break;
-   case ControlFlowInstr::cf_loop_begin:
-      emit_loop_begin(instr.has_instr_flag(Instr::vpm));
+   case ControlFlowInstr::cf_loop_begin: {
+      bool use_vpm = m_shader->processor_type == PIPE_SHADER_FRAGMENT &&
+            instr.has_instr_flag(Instr::vpm) &&
+            !instr.has_instr_flag(Instr::helper);
+      emit_loop_begin(use_vpm);
       break;
+   }
    case ControlFlowInstr::cf_loop_end:
       emit_loop_end();
       break;
@@ -1088,6 +1092,11 @@ void AssamblerVisitor::emit_loop_begin(bool vpm)
 
 void AssamblerVisitor::emit_loop_end()
 {
+   if (m_ack_suggested) {
+      emit_wait_ack();
+      m_ack_suggested = false;
+   }
+
    r600_bytecode_add_cfinst(m_bc, CF_OP_LOOP_END);
    m_callstack.pop(FC_LOOP);
    assert(m_loop_nesting);

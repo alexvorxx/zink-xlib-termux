@@ -25,7 +25,6 @@ libasahi_lib_files = files(
   'agx_device.c',
   'agx_formats.c',
   'pool.c',
-  'tiling.c',
 )
 
 libasahi_decode_files = files(
@@ -42,6 +41,7 @@ agx_pack = custom_target(
 
 idep_agx_pack = declare_dependency(
   sources : [agx_pack],
+  dependencies : dep_valgrind,
   include_directories : include_directories('.'),
 )
 
@@ -51,7 +51,7 @@ libasahi_lib = static_library(
   include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux, inc_asahi],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
-  dependencies: [dep_libdrm, idep_nir, dep_iokit],
+  dependencies: [dep_libdrm, dep_valgrind, idep_nir, dep_iokit],
   build_by_default : false,
 )
 
@@ -59,7 +59,7 @@ libasahi_decode = static_library(
   'asahi_decode',
   [libasahi_decode_files, agx_pack],
   include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux, inc_asahi],
-  dependencies : idep_mesautil,
+  dependencies : [dep_valgrind, idep_mesautil],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   build_by_default : false,

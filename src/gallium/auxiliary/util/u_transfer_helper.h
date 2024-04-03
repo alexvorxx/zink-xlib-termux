@@ -98,6 +98,15 @@ struct u_transfer_vtbl {
    struct pipe_resource *(*get_stencil)(struct pipe_resource *prsc);
 };
 
+enum u_transfer_helper_flags {
+   U_TRANSFER_HELPER_SEPARATE_Z32S8 = (1 << 0),
+   U_TRANSFER_HELPER_SEPARATE_STENCIL = (1 << 1),
+   U_TRANSFER_HELPER_FAKE_RGTC = (1 << 2),
+   U_TRANSFER_HELPER_MSAA_MAP = (1 << 3),
+   U_TRANSFER_HELPER_Z24_IN_Z32F = (1 << 4),
+   U_TRANSFER_HELPER_INTERLEAVE_IN_PLACE = (1 << 5),
+};
+
 struct pipe_resource *u_transfer_helper_resource_create(
       struct pipe_screen *pscreen, const struct pipe_resource *templ);
 
@@ -121,25 +130,12 @@ void u_transfer_helper_transfer_unmap(struct pipe_context *pctx,
 
 struct u_transfer_helper;
 
-struct u_transfer_helper * u_transfer_helper_create(const struct u_transfer_vtbl *vtbl,
-                                                    bool separate_z32s8,
-                                                    bool separate_stencil,
-                                                    bool fake_rgtc,
-                                                    bool msaa_map,
-                                                    bool z24_in_z32f);
+struct u_transfer_helper *
+u_transfer_helper_create(const struct u_transfer_vtbl *vtbl,
+                         enum u_transfer_helper_flags flags);
 
 void u_transfer_helper_destroy(struct u_transfer_helper *helper);
 
-void *
-u_transfer_helper_deinterleave_transfer_map(struct pipe_context *pctx,
-                                            struct pipe_resource *prsc,
-                                            unsigned level, unsigned usage,
-                                            const struct pipe_box *box,
-                                            struct pipe_transfer **pptrans);
-
-void
-u_transfer_helper_deinterleave_transfer_unmap(struct pipe_context *pctx,
-                                              struct pipe_transfer *ptrans);
 #ifdef __cplusplus
 } // extern "C" {
 #endif

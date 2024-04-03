@@ -84,6 +84,10 @@ anv_cmd_state_reset(struct anv_cmd_buffer *cmd_buffer)
 
 static void anv_cmd_buffer_destroy(struct vk_command_buffer *vk_cmd_buffer);
 
+static const struct vk_command_buffer_ops cmd_buffer_ops = {
+   .destroy = anv_cmd_buffer_destroy,
+};
+
 static VkResult anv_create_cmd_buffer(
     struct anv_device *                         device,
     struct vk_command_pool *                    pool,
@@ -98,11 +102,11 @@ static VkResult anv_create_cmd_buffer(
    if (cmd_buffer == NULL)
       return vk_error(pool, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   result = vk_command_buffer_init(&cmd_buffer->vk, pool, level);
+   result = vk_command_buffer_init(pool, &cmd_buffer->vk,
+                                   &cmd_buffer_ops, level);
    if (result != VK_SUCCESS)
       goto fail_alloc;
 
-   cmd_buffer->vk.destroy = anv_cmd_buffer_destroy;
    cmd_buffer->vk.dynamic_graphics_state.ms.sample_locations =
       &cmd_buffer->state.gfx.sample_locations;
 
@@ -329,7 +333,7 @@ anv_cmd_buffer_set_ray_query_buffer(struct anv_cmd_buffer *cmd_buffer,
          struct anv_bo *new_bo;
          VkResult result = anv_device_alloc_bo(device, "RT queries shadow",
                                                ray_shadow_size,
-                                               ANV_BO_ALLOC_LOCAL_MEM, /* alloc_flags */
+                                               0, /* alloc_flags */
                                                0, /* explicit_address */
                                                &new_bo);
          if (result != VK_SUCCESS) {
@@ -477,9 +481,10 @@ anv_cmd_buffer_bind_descriptor_set(struct anv_cmd_buffer *cmd_buffer,
    switch (bind_point) {
    case VK_PIPELINE_BIND_POINT_GRAPHICS:
       stages &= VK_SHADER_STAGE_ALL_GRAPHICS |
-                (cmd_buffer->device->vk.enabled_extensions.NV_mesh_shader ?
-                      (VK_SHADER_STAGE_TASK_BIT_NV |
-                       VK_SHADER_STAGE_MESH_BIT_NV) : 0);
+                ((cmd_buffer->device->vk.enabled_extensions.NV_mesh_shader ||
+                  cmd_buffer->device->vk.enabled_extensions.EXT_mesh_shader) ?
+                      (VK_SHADER_STAGE_TASK_BIT_EXT |
+                       VK_SHADER_STAGE_MESH_BIT_EXT) : 0);
       pipe_state = &cmd_buffer->state.gfx.base;
       break;
 
@@ -515,8 +520,8 @@ anv_cmd_buffer_bind_descriptor_set(struct anv_cmd_buffer *cmd_buffer,
        * This means that we have to upload the descriptor set
        * as an 64-bit address in the push constants.
        */
-      bool update_desc_sets = stages & (VK_SHADER_STAGE_TASK_BIT_NV |
-                                        VK_SHADER_STAGE_MESH_BIT_NV |
+      bool update_desc_sets = stages & (VK_SHADER_STAGE_TASK_BIT_EXT |
+                                        VK_SHADER_STAGE_MESH_BIT_EXT |
                                         VK_SHADER_STAGE_RAYGEN_BIT_KHR |
                                         VK_SHADER_STAGE_ANY_HIT_BIT_KHR |
                                         VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR |
@@ -750,8 +755,7 @@ anv_cmd_buffer_cs_push_constants(struct anv_cmd_buffer *cmd_buffer)
    if (total_push_constants_size == 0)
       return (struct anv_state) { .offset = 0 };
 
-   const unsigned push_constant_alignment =
-      cmd_buffer->device->info->ver < 8 ? 32 : 64;
+   const unsigned push_constant_alignment = 64;
    const unsigned aligned_total_push_constants_size =
       ALIGN(total_push_constants_size, push_constant_alignment);
    struct anv_state state;
@@ -801,8 +805,8 @@ void anv_CmdPushConstants(
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
 
    if (stageFlags & (VK_SHADER_STAGE_ALL_GRAPHICS |
-                     VK_SHADER_STAGE_TASK_BIT_NV |
-                     VK_SHADER_STAGE_MESH_BIT_NV)) {
+                     VK_SHADER_STAGE_TASK_BIT_EXT |
+                     VK_SHADER_STAGE_MESH_BIT_EXT)) {
       struct anv_cmd_pipeline_state *pipe_state =
          &cmd_buffer->state.gfx.base;
 
@@ -1087,7 +1091,7 @@ void anv_CmdSetRayTracingPipelineStackSizeKHR(
       struct anv_bo *new_bo;
       VkResult result = anv_device_alloc_bo(device, "RT scratch",
                                             rt->scratch.layout.total_size,
-                                            ANV_BO_ALLOC_LOCAL_MEM,
+                                            0, /* alloc_flags */
                                             0, /* explicit_address */
                                             &new_bo);
       if (result != VK_SUCCESS) {

@@ -44,23 +44,20 @@ anv_descriptor_data_for_type(const struct anv_physical_device *device,
 
    switch (type) {
    case VK_DESCRIPTOR_TYPE_SAMPLER:
-      data = ANV_DESCRIPTOR_SAMPLER_STATE;
-      if (device->has_bindless_samplers)
-         data |= ANV_DESCRIPTOR_SAMPLED_IMAGE;
+      data = ANV_DESCRIPTOR_SAMPLER_STATE |
+             ANV_DESCRIPTOR_SAMPLED_IMAGE;
       break;
 
    case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
       data = ANV_DESCRIPTOR_SURFACE_STATE |
-             ANV_DESCRIPTOR_SAMPLER_STATE;
-      if (device->has_bindless_images || device->has_bindless_samplers)
-         data |= ANV_DESCRIPTOR_SAMPLED_IMAGE;
+             ANV_DESCRIPTOR_SAMPLER_STATE |
+             ANV_DESCRIPTOR_SAMPLED_IMAGE;
       break;
 
    case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
    case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
-      data = ANV_DESCRIPTOR_SURFACE_STATE;
-      if (device->has_bindless_images)
-         data |= ANV_DESCRIPTOR_SAMPLED_IMAGE;
+      data = ANV_DESCRIPTOR_SURFACE_STATE |
+             ANV_DESCRIPTOR_SAMPLED_IMAGE;
       break;
 
    case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
@@ -69,11 +66,8 @@ anv_descriptor_data_for_type(const struct anv_physical_device *device,
 
    case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
    case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
-      data = ANV_DESCRIPTOR_SURFACE_STATE;
-      if (device->info.ver < 9)
-         data |= ANV_DESCRIPTOR_IMAGE_PARAM;
-      if (device->has_bindless_images)
-         data |= ANV_DESCRIPTOR_STORAGE_IMAGE;
+      data = ANV_DESCRIPTOR_SURFACE_STATE |
+             ANV_DESCRIPTOR_STORAGE_IMAGE;
       break;
 
    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
@@ -99,28 +93,14 @@ anv_descriptor_data_for_type(const struct anv_physical_device *device,
       unreachable("Unsupported descriptor type");
    }
 
-   /* On gfx8 and above when we have softpin enabled, we also need to push
-    * SSBO address ranges so that we can use A64 messages in the shader.
+   /* We also need to push SSBO address ranges so that we can use A64
+    * messages in the shader.
     */
-   if (device->has_a64_buffer_access &&
-       (type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
-        type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC ||
-        type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
-        type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC))
+   if (type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
+       type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC ||
+       type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
+       type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
       data |= ANV_DESCRIPTOR_ADDRESS_RANGE;
-
-   /* On Ivy Bridge and Bay Trail, we need swizzles textures in the shader
-    * Do not handle VK_DESCRIPTOR_TYPE_STORAGE_IMAGE and
-    * VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT because they already must
-    * have identity swizzle.
-    *
-    * TODO: We need to handle swizzle on buffer views too for those same
-    *       platforms.
-    */
-   if (device->info.verx10 == 70 &&
-       (type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE ||
-        type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER))
-      data |= ANV_DESCRIPTOR_TEXTURE_SWIZZLE;
 
    return data;
 }
@@ -169,14 +149,8 @@ anv_descriptor_data_size(enum anv_descriptor_data data)
    if (data & ANV_DESCRIPTOR_STORAGE_IMAGE)
       size += sizeof(struct anv_storage_image_descriptor);
 
-   if (data & ANV_DESCRIPTOR_IMAGE_PARAM)
-      size += BRW_IMAGE_PARAM_SIZE * 4;
-
    if (data & ANV_DESCRIPTOR_ADDRESS_RANGE)
       size += sizeof(struct anv_address_range_descriptor);
-
-   if (data & ANV_DESCRIPTOR_TEXTURE_SWIZZLE)
-      size += sizeof(struct anv_texture_swizzle_descriptor);
 
    return size;
 }
@@ -257,23 +231,9 @@ anv_descriptor_data_supports_bindless(const struct anv_physical_device *pdevice,
                                       enum anv_descriptor_data data,
                                       bool sampler)
 {
-   if (data & ANV_DESCRIPTOR_ADDRESS_RANGE) {
-      assert(pdevice->has_a64_buffer_access);
-      return true;
-   }
-
-   if (data & ANV_DESCRIPTOR_SAMPLED_IMAGE) {
-      assert(pdevice->has_bindless_images || pdevice->has_bindless_samplers);
-      return sampler ? pdevice->has_bindless_samplers :
-                       pdevice->has_bindless_images;
-   }
-
-   if (data & ANV_DESCRIPTOR_STORAGE_IMAGE) {
-      assert(pdevice->has_bindless_images);
-      return true;
-   }
-
-   return false;
+   return data & (ANV_DESCRIPTOR_ADDRESS_RANGE |
+                  ANV_DESCRIPTOR_SAMPLED_IMAGE |
+                  ANV_DESCRIPTOR_STORAGE_IMAGE);
 }
 
 bool
@@ -1333,24 +1293,6 @@ VkResult anv_FreeDescriptorSets(
    return VK_SUCCESS;
 }
 
-static void
-anv_descriptor_set_write_image_param(uint32_t *param_desc_map,
-                                     const struct brw_image_param *param)
-{
-#define WRITE_PARAM_FIELD(field, FIELD) \
-   for (unsigned i = 0; i < ARRAY_SIZE(param->field); i++) \
-      param_desc_map[BRW_IMAGE_PARAM_##FIELD##_OFFSET + i] = param->field[i]
-
-   WRITE_PARAM_FIELD(offset, OFFSET);
-   WRITE_PARAM_FIELD(size, SIZE);
-   WRITE_PARAM_FIELD(stride, STRIDE);
-   WRITE_PARAM_FIELD(tiling, TILING);
-   WRITE_PARAM_FIELD(swizzling, SWIZZLING);
-   WRITE_PARAM_FIELD(size, SIZE);
-
-#undef WRITE_PARAM_FIELD
-}
-
 static uint32_t
 anv_surface_state_to_handle(struct anv_state state)
 {
@@ -1459,7 +1401,6 @@ anv_descriptor_set_write_image_view(struct anv_device *device,
       return;
 
    if (data & ANV_DESCRIPTOR_STORAGE_IMAGE) {
-      assert(!(data & ANV_DESCRIPTOR_IMAGE_PARAM));
       assert(image_view->n_planes == 1);
       struct anv_storage_image_descriptor desc_data = {
          .vanilla = anv_surface_state_to_handle(
@@ -1468,35 +1409,6 @@ anv_descriptor_set_write_image_view(struct anv_device *device,
                            image_view->planes[0].lowered_storage_surface_state.state),
       };
       memcpy(desc_map, &desc_data, sizeof(desc_data));
-   }
-
-   if (data & ANV_DESCRIPTOR_IMAGE_PARAM) {
-      /* Storage images can only ever have one plane */
-      assert(image_view->n_planes == 1);
-      const struct brw_image_param *image_param =
-         &image_view->planes[0].lowered_storage_image_param;
-
-      anv_descriptor_set_write_image_param(desc_map, image_param);
-   }
-
-   if (data & ANV_DESCRIPTOR_TEXTURE_SWIZZLE) {
-      assert(!(data & ANV_DESCRIPTOR_SAMPLED_IMAGE));
-      assert(image_view);
-      struct anv_texture_swizzle_descriptor desc_data[3];
-      memset(desc_data, 0, sizeof(desc_data));
-
-      for (unsigned p = 0; p < image_view->n_planes; p++) {
-         desc_data[p] = (struct anv_texture_swizzle_descriptor) {
-            .swizzle = {
-               (uint8_t)image_view->planes[p].isl.swizzle.r,
-               (uint8_t)image_view->planes[p].isl.swizzle.g,
-               (uint8_t)image_view->planes[p].isl.swizzle.b,
-               (uint8_t)image_view->planes[p].isl.swizzle.a,
-            },
-         };
-      }
-      memcpy(desc_map, desc_data,
-             MAX2(1, bind_layout->max_plane_count) * sizeof(desc_data[0]));
    }
 }
 
@@ -1545,7 +1457,6 @@ anv_descriptor_set_write_buffer_view(struct anv_device *device,
    }
 
    if (data & ANV_DESCRIPTOR_STORAGE_IMAGE) {
-      assert(!(data & ANV_DESCRIPTOR_IMAGE_PARAM));
       struct anv_storage_image_descriptor desc_data = {
          .vanilla = anv_surface_state_to_handle(
                            buffer_view->storage_surface_state),
@@ -1553,11 +1464,6 @@ anv_descriptor_set_write_buffer_view(struct anv_device *device,
                            buffer_view->lowered_storage_surface_state),
       };
       memcpy(desc_map, &desc_data, sizeof(desc_data));
-   }
-
-   if (data & ANV_DESCRIPTOR_IMAGE_PARAM) {
-      anv_descriptor_set_write_image_param(desc_map,
-         &buffer_view->lowered_storage_image_param);
    }
 }
 

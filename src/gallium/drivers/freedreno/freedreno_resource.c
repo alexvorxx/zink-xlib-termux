@@ -710,7 +710,10 @@ fd_resource_transfer_unmap(struct pipe_context *pctx,
       pipe_resource_reference(&trans->staging_prsc, NULL);
    }
 
-   if (!(ptrans->usage & PIPE_MAP_UNSYNCHRONIZED)) {
+   if (trans->upload_ptr) {
+      fd_bo_upload(rsc->bo, trans->upload_ptr, ptrans->box.x, ptrans->box.width);
+      free(trans->upload_ptr);
+   } else if (!(ptrans->usage & PIPE_MAP_UNSYNCHRONIZED)) {
       fd_bo_cpu_fini(rsc->bo);
    }
 
@@ -788,6 +791,13 @@ resource_transfer_map_unsync(struct pipe_context *pctx,
    enum pipe_format format = prsc->format;
    uint32_t offset;
    char *buf;
+
+   if ((prsc->target == PIPE_BUFFER) &&
+       !(usage & (PIPE_MAP_READ | PIPE_MAP_DIRECTLY | PIPE_MAP_PERSISTENT)) &&
+       fd_bo_prefer_upload(rsc->bo, box->width)) {
+      trans->upload_ptr = malloc(box->width);
+      return trans->upload_ptr;
+   }
 
    buf = fd_bo_map(rsc->bo);
 
@@ -1656,7 +1666,10 @@ fd_resource_screen_init(struct pipe_screen *pscreen)
    pscreen->resource_destroy = u_transfer_helper_resource_destroy;
 
    pscreen->transfer_helper =
-      u_transfer_helper_create(&transfer_vtbl, true, false, fake_rgtc, true, false);
+      u_transfer_helper_create(&transfer_vtbl,
+                               U_TRANSFER_HELPER_SEPARATE_Z32S8 |
+                               U_TRANSFER_HELPER_MSAA_MAP |
+                               (fake_rgtc ? U_TRANSFER_HELPER_FAKE_RGTC : 0));
 
    if (!screen->layout_resource_for_modifier)
       screen->layout_resource_for_modifier = fd_layout_resource_for_modifier;

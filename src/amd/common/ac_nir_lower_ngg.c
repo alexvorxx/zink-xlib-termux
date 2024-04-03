@@ -62,6 +62,7 @@ typedef struct
    unsigned num_vertices_per_primitives;
    unsigned provoking_vtx_idx;
    unsigned max_es_num_vertices;
+   unsigned position_store_base;
    unsigned total_lds_bytes;
 
    uint64_t inputs_needed_by_pos;
@@ -70,10 +71,19 @@ typedef struct
 
    nir_instr *compact_arg_stores[4];
    nir_intrinsic_instr *overwrite_args;
+
+   /* clip distance */
+   nir_variable *clip_vertex_var;
+   nir_variable *clipdist_neg_mask_var;
+   unsigned clipdist_enable_mask;
+   unsigned user_clip_plane_enable_mask;
+   bool has_clipdist;
 } lower_ngg_nogs_state;
 
 typedef struct
 {
+   /* store output base (driver location) */
+   uint8_t base;
    /* Bitmask of components used: 4 bits per slot, 1 bit per component. */
    uint8_t components_mask : 4;
    /* output stream index  */
@@ -82,6 +92,7 @@ typedef struct
 
 typedef struct
 {
+   nir_function_impl *impl;
    nir_variable *output_vars[VARYING_SLOT_MAX][4];
    nir_variable *current_clear_primflag_idx_var;
    int const_out_vtxcnt[4];
@@ -96,6 +107,7 @@ typedef struct
    bool found_out_vtxcnt[4];
    bool output_compile_time_known;
    bool provoking_vertex_last;
+   bool can_cull;
    gs_output_info output_info[VARYING_SLOT_MAX];
 } lower_ngg_gs_state;
 
@@ -169,14 +181,6 @@ typedef struct
    } output_info[VARYING_SLOT_MAX];
 } lower_ngg_ms_state;
 
-typedef struct {
-   nir_variable *pre_cull_position_value_var;
-} remove_culling_shader_outputs_state;
-
-typedef struct {
-   nir_variable *pos_value_replacement;
-} remove_extra_position_output_state;
-
 /* Per-vertex LDS layout of culling shaders */
 enum {
    /* Position of the ES vertex (at the beginning for alignment reasons) */
@@ -189,6 +193,8 @@ enum {
    lds_es_vertex_accepted = 16,
    /* ID of the thread which will export the current thread's vertex */
    lds_es_exporter_tid = 17,
+   /* bit i is set when the i'th clip distance of a vertex is negative */
+   lds_es_clipdist_neg_mask = 18,
 
    /* Repacked arguments - also listed separately for VS and TES */
    lds_es_arg_0 = 20,
@@ -503,10 +509,44 @@ emit_store_ngg_nogs_es_primitive_id(nir_builder *b)
                     .src_type = nir_type_uint32, .io_semantics = io_sem);
 }
 
+static void
+store_var_components(nir_builder *b, nir_variable *var, nir_ssa_def *value,
+                     unsigned component, unsigned writemask)
+{
+   /* component store */
+   if (value->num_components != 4) {
+      nir_ssa_def *undef = nir_ssa_undef(b, 1, value->bit_size);
+
+      /* add undef component before and after value to form a vec4 */
+      nir_ssa_def *comp[4];
+      for (int i = 0; i < 4; i++) {
+         comp[i] = (i >= component && i < component + value->num_components) ?
+            nir_channel(b, value, i - component) : undef;
+      }
+
+      value = nir_vec(b, comp, 4);
+      writemask <<= component;
+   } else {
+      /* if num_component==4, there should be no component offset */
+      assert(component == 0);
+   }
+
+   nir_store_var(b, var, value, writemask);
+}
+
+static void
+add_clipdist_bit(nir_builder *b, nir_ssa_def *dist, unsigned index, nir_variable *mask)
+{
+   nir_ssa_def *is_neg = nir_flt(b, dist, nir_imm_float(b, 0));
+   nir_ssa_def *neg_mask = nir_ishl_imm(b, nir_b2i8(b, is_neg), index);
+   neg_mask = nir_ior(b, neg_mask, nir_load_var(b, mask));
+   nir_store_var(b, mask, neg_mask, 1);
+}
+
 static bool
 remove_culling_shader_output(nir_builder *b, nir_instr *instr, void *state)
 {
-   remove_culling_shader_outputs_state *s = (remove_culling_shader_outputs_state *) state;
+   lower_ngg_nogs_state *s = (lower_ngg_nogs_state *) state;
 
    if (instr->type != nir_instr_type_intrinsic)
       return false;
@@ -523,13 +563,38 @@ remove_culling_shader_output(nir_builder *b, nir_instr *instr, void *state)
 
    b->cursor = nir_before_instr(instr);
 
+   /* no indirect output */
+   assert(nir_src_is_const(intrin->src[1]) && nir_src_as_uint(intrin->src[1]) == 0);
+
+   unsigned writemask = nir_intrinsic_write_mask(intrin);
+   unsigned component = nir_intrinsic_component(intrin);
+   nir_ssa_def *store_val = intrin->src[0].ssa;
+
    /* Position output - store the value to a variable, remove output store */
    nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
-   if (io_sem.location == VARYING_SLOT_POS) {
-      /* TODO: check if it's indirect, etc? */
-      unsigned writemask = nir_intrinsic_write_mask(intrin);
-      nir_ssa_def *store_val = intrin->src[0].ssa;
-      nir_store_var(b, s->pre_cull_position_value_var, store_val, writemask);
+   switch (io_sem.location) {
+   case VARYING_SLOT_POS:
+      store_var_components(b, s->position_value_var, store_val, component, writemask);
+      break;
+   case VARYING_SLOT_CLIP_DIST0:
+   case VARYING_SLOT_CLIP_DIST1: {
+      unsigned base = io_sem.location == VARYING_SLOT_CLIP_DIST1 ? 4 : 0;
+      base += component;
+
+      /* valid clipdist component mask */
+      unsigned mask = (s->clipdist_enable_mask >> base) & writemask;
+      u_foreach_bit(i, mask) {
+         add_clipdist_bit(b, nir_channel(b, store_val, i), base + i,
+                          s->clipdist_neg_mask_var);
+         s->has_clipdist = true;
+      }
+      break;
+   }
+   case VARYING_SLOT_CLIP_VERTEX:
+      store_var_components(b, s->clip_vertex_var, store_val, component, writemask);
+      break;
+   default:
+      break;
    }
 
    /* Remove all output stores */
@@ -538,14 +603,10 @@ remove_culling_shader_output(nir_builder *b, nir_instr *instr, void *state)
 }
 
 static void
-remove_culling_shader_outputs(nir_shader *culling_shader, lower_ngg_nogs_state *nogs_state, nir_variable *pre_cull_position_value_var)
+remove_culling_shader_outputs(nir_shader *culling_shader, lower_ngg_nogs_state *nogs_state)
 {
-   remove_culling_shader_outputs_state s = {
-      .pre_cull_position_value_var = pre_cull_position_value_var,
-   };
-
    nir_shader_instructions_pass(culling_shader, remove_culling_shader_output,
-                                nir_metadata_block_index | nir_metadata_dominance, &s);
+                                nir_metadata_block_index | nir_metadata_dominance, nogs_state);
 
    /* Remove dead code resulting from the deleted outputs. */
    bool progress;
@@ -587,7 +648,7 @@ rewrite_uses_to_var(nir_builder *b, nir_ssa_def *old_def, nir_variable *replacem
 static bool
 remove_extra_pos_output(nir_builder *b, nir_instr *instr, void *state)
 {
-   remove_extra_position_output_state *s = (remove_extra_position_output_state *) state;
+   lower_ngg_nogs_state *s = (lower_ngg_nogs_state *) state;
 
    if (instr->type != nir_instr_type_intrinsic)
       return false;
@@ -615,6 +676,9 @@ remove_extra_pos_output(nir_builder *b, nir_instr *instr, void *state)
    nir_ssa_def *store_val = intrin->src[0].ssa;
    unsigned store_pos_component = nir_intrinsic_component(intrin);
 
+   /* save the store base for re-construct store output instruction */
+   s->position_store_base = nir_intrinsic_base(intrin);
+
    nir_instr_remove(instr);
 
    if (store_val->parent_instr->type == nir_instr_type_alu) {
@@ -641,12 +705,12 @@ remove_extra_pos_output(nir_builder *b, nir_instr *instr, void *state)
             vec_comps[i] = alu->src[i].src.ssa;
 
          for (unsigned i = 0; i < num_vec_src; i++)
-            rewrite_uses_to_var(b, vec_comps[i], s->pos_value_replacement, store_pos_component + i);
+            rewrite_uses_to_var(b, vec_comps[i], s->position_value_var, store_pos_component + i);
       } else {
-         rewrite_uses_to_var(b, store_val, s->pos_value_replacement, store_pos_component);
+         rewrite_uses_to_var(b, store_val, s->position_value_var, store_pos_component);
       }
    } else {
-      rewrite_uses_to_var(b, store_val, s->pos_value_replacement, store_pos_component);
+      rewrite_uses_to_var(b, store_val, s->position_value_var, store_pos_component);
    }
 
    return true;
@@ -655,12 +719,9 @@ remove_extra_pos_output(nir_builder *b, nir_instr *instr, void *state)
 static void
 remove_extra_pos_outputs(nir_shader *shader, lower_ngg_nogs_state *nogs_state)
 {
-   remove_extra_position_output_state s = {
-      .pos_value_replacement = nogs_state->position_value_var,
-   };
-
    nir_shader_instructions_pass(shader, remove_extra_pos_output,
-                                nir_metadata_block_index | nir_metadata_dominance, &s);
+                                nir_metadata_block_index | nir_metadata_dominance,
+                                nogs_state);
 }
 
 static bool
@@ -844,14 +905,16 @@ compact_vertices_after_culling(nir_builder *b,
       nir_ssa_def *exporter_vtx_indices[3] = {0};
 
       /* Load the index of the ES threads that will export the current GS thread's vertices */
-      for (unsigned v = 0; v < 3; ++v) {
+      for (unsigned v = 0; v < nogs_state->num_vertices_per_primitives; ++v) {
          nir_ssa_def *vtx_addr = nir_load_var(b, gs_vtxaddr_vars[v]);
          nir_ssa_def *exporter_vtx_idx = nir_load_shared(b, 1, 8, vtx_addr, .base = lds_es_exporter_tid);
          exporter_vtx_indices[v] = nir_u2u32(b, exporter_vtx_idx);
          nir_store_var(b, nogs_state->gs_vtx_indices_vars[v], exporter_vtx_indices[v], 0x1);
       }
 
-      nir_ssa_def *prim_exp_arg = emit_pack_ngg_prim_exp_arg(b, 3, exporter_vtx_indices, NULL, nogs_state->use_edgeflags);
+      nir_ssa_def *prim_exp_arg =
+         emit_pack_ngg_prim_exp_arg(b, nogs_state->num_vertices_per_primitives,
+                                    exporter_vtx_indices, NULL, nogs_state->use_edgeflags);
       nir_store_var(b, prim_exp_arg_var, prim_exp_arg, 0x1u);
    }
    nir_pop_if(b, if_gs_accepted);
@@ -1123,8 +1186,40 @@ cull_primitive_accepted(nir_builder *b, void *state)
    nir_store_var(b, s->gs_accepted_var, nir_imm_true(b), 0x1u);
 
    /* Store the accepted state to LDS for ES threads */
-   for (unsigned vtx = 0; vtx < 3; ++vtx)
+   for (unsigned vtx = 0; vtx < s->num_vertices_per_primitives; ++vtx)
       nir_store_shared(b, nir_imm_intN_t(b, 1, 8), s->vtx_addr[vtx], .base = lds_es_vertex_accepted);
+}
+
+static void
+clipdist_culling_es_part(nir_builder *b, lower_ngg_nogs_state *nogs_state,
+                         nir_ssa_def *es_vertex_lds_addr)
+{
+   /* no gl_ClipDistance used but we have user defined clip plane */
+   if (nogs_state->user_clip_plane_enable_mask && !nogs_state->has_clipdist) {
+      /* use gl_ClipVertex if defined */
+      nir_variable *clip_vertex_var =
+         b->shader->info.outputs_written & BITFIELD64_BIT(VARYING_SLOT_CLIP_VERTEX) ?
+         nogs_state->clip_vertex_var : nogs_state->position_value_var;
+      nir_ssa_def *clip_vertex = nir_load_var(b, clip_vertex_var);
+
+      /* clip against user defined clip planes */
+      for (unsigned i = 0; i < 8; i++) {
+         if (!(nogs_state->user_clip_plane_enable_mask & BITFIELD_BIT(i)))
+            continue;
+
+         nir_ssa_def *plane = nir_load_user_clip_plane(b, .ucp_id = i);
+         nir_ssa_def *dist = nir_fdot(b, clip_vertex, plane);
+         add_clipdist_bit(b, dist, i, nogs_state->clipdist_neg_mask_var);
+      }
+
+      nogs_state->has_clipdist = true;
+   }
+
+   /* store clipdist_neg_mask to LDS for culling latter in gs thread */
+   if (nogs_state->has_clipdist) {
+      nir_ssa_def *mask = nir_load_var(b, nogs_state->clipdist_neg_mask_var);
+      nir_store_shared(b, mask, es_vertex_lds_addr, .base = lds_es_clipdist_neg_mask);
+   }
 }
 
 static void
@@ -1164,6 +1259,13 @@ add_deferred_attribute_culling(nir_builder *b, nir_cf_list *original_extracted_c
       nir_local_variable_create(impl, glsl_uint_type(), "repacked_arg_2"),
       nir_local_variable_create(impl, glsl_uint_type(), "repacked_arg_3"),
    };
+
+   if (nogs_state->clipdist_enable_mask || nogs_state->user_clip_plane_enable_mask) {
+      nogs_state->clip_vertex_var =
+         nir_local_variable_create(impl, glsl_vec4_type(), "clip_vertex");
+      nogs_state->clipdist_neg_mask_var =
+         nir_local_variable_create(impl, glsl_uint8_t_type(), "clipdist_neg_mask");
+   }
 
    /* Top part of the culling shader (aka. position shader part)
     *
@@ -1211,7 +1313,7 @@ add_deferred_attribute_culling(nir_builder *b, nir_cf_list *original_extracted_c
 
    /* Remove all non-position outputs, and put the position output into the variable. */
    nir_metadata_preserve(impl, nir_metadata_none);
-   remove_culling_shader_outputs(b->shader, nogs_state, position_value_var);
+   remove_culling_shader_outputs(b->shader, nogs_state);
    b->cursor = nir_after_cf_list(&impl->body);
 
    /* Run culling algorithms if culling is enabled.
@@ -1239,6 +1341,9 @@ add_deferred_attribute_culling(nir_builder *b, nir_cf_list *original_extracted_c
 
          /* Clear out the ES accepted flag in LDS */
          nir_store_shared(b, nir_imm_zero(b, 1, 8), es_vertex_lds_addr, .align_mul = 4, .base = lds_es_vertex_accepted);
+
+         /* For clipdist culling */
+         clipdist_culling_es_part(b, nogs_state, es_vertex_lds_addr);
       }
       nir_pop_if(b, if_es_thread);
 
@@ -1253,27 +1358,44 @@ add_deferred_attribute_culling(nir_builder *b, nir_cf_list *original_extracted_c
       {
          /* Load vertex indices from input VGPRs */
          nir_ssa_def *vtx_idx[3] = {0};
-         for (unsigned vertex = 0; vertex < 3; ++vertex)
+         for (unsigned vertex = 0; vertex < nogs_state->num_vertices_per_primitives; ++vertex)
             vtx_idx[vertex] = nir_load_var(b, nogs_state->gs_vtx_indices_vars[vertex]);
 
          nir_ssa_def *pos[3][4] = {0};
 
          /* Load W positions of vertices first because the culling code will use these first */
-         for (unsigned vtx = 0; vtx < 3; ++vtx) {
+         for (unsigned vtx = 0; vtx < nogs_state->num_vertices_per_primitives; ++vtx) {
             nogs_state->vtx_addr[vtx] = pervertex_lds_addr(b, vtx_idx[vtx], pervertex_lds_bytes);
             pos[vtx][3] = nir_load_shared(b, 1, 32, nogs_state->vtx_addr[vtx], .base = lds_es_pos_w);
             nir_store_var(b, gs_vtxaddr_vars[vtx], nogs_state->vtx_addr[vtx], 0x1u);
          }
 
          /* Load the X/W, Y/W positions of vertices */
-         for (unsigned vtx = 0; vtx < 3; ++vtx) {
+         for (unsigned vtx = 0; vtx < nogs_state->num_vertices_per_primitives; ++vtx) {
             nir_ssa_def *xy = nir_load_shared(b, 2, 32, nogs_state->vtx_addr[vtx], .base = lds_es_pos_x);
             pos[vtx][0] = nir_channel(b, xy, 0);
             pos[vtx][1] = nir_channel(b, xy, 1);
          }
 
+         nir_ssa_def *accepted_by_clipdist;
+         if (nogs_state->has_clipdist) {
+            nir_ssa_def *clipdist_neg_mask = nir_imm_intN_t(b, 0xff, 8);
+            for (unsigned vtx = 0; vtx < nogs_state->num_vertices_per_primitives; ++vtx) {
+               nir_ssa_def *mask =
+                  nir_load_shared(b, 1, 8, nogs_state->vtx_addr[vtx],
+                                  .base = lds_es_clipdist_neg_mask);
+               clipdist_neg_mask = nir_iand(b, clipdist_neg_mask, mask);
+            }
+            /* primitive is culled if any plane's clipdist of all vertices are negative */
+            accepted_by_clipdist = nir_ieq_imm(b, clipdist_neg_mask, 0);
+         } else {
+            accepted_by_clipdist = nir_imm_bool(b, true);
+         }
+
          /* See if the current primitive is accepted */
-         ac_nir_cull_triangle(b, nir_imm_bool(b, true), pos, cull_primitive_accepted, nogs_state);
+         ac_nir_cull_primitive(b, accepted_by_clipdist, pos,
+                               nogs_state->num_vertices_per_primitives,
+                               cull_primitive_accepted, nogs_state);
       }
       nir_pop_if(b, if_gs_thread);
 
@@ -1376,7 +1498,9 @@ ac_nir_lower_ngg_nogs(nir_shader *shader,
                       bool provoking_vtx_last,
                       bool use_edgeflags,
                       bool has_prim_query,
-                      uint32_t instance_rate_inputs)
+                      uint32_t instance_rate_inputs,
+                      uint32_t clipdist_enable_mask,
+                      uint32_t user_clip_plane_enable_mask)
 {
    nir_function_impl *impl = nir_shader_get_entrypoint(shader);
    assert(impl);
@@ -1405,6 +1529,8 @@ ac_nir_lower_ngg_nogs(nir_shader *shader,
       .max_es_num_vertices = max_num_es_vertices,
       .wave_size = wave_size,
       .instance_rate_inputs = instance_rate_inputs,
+      .clipdist_enable_mask = clipdist_enable_mask,
+      .user_clip_plane_enable_mask = user_clip_plane_enable_mask,
    };
 
    const bool need_prim_id_store_shared =
@@ -1517,7 +1643,8 @@ ac_nir_lower_ngg_nogs(nir_shader *shader,
 
       nir_ssa_def *pos_val = nir_load_var(b, state.position_value_var);
       nir_io_semantics io_sem = { .location = VARYING_SLOT_POS, .num_slots = 1 };
-      nir_store_output(b, pos_val, nir_imm_int(b, 0), .base = VARYING_SLOT_POS, .component = 0, .io_semantics = io_sem);
+      nir_store_output(b, pos_val, nir_imm_int(b, 0), .base = state.position_store_base,
+                       .component = 0, .io_semantics = io_sem);
    }
 
    nir_metadata_preserve(impl, nir_metadata_none);
@@ -1669,52 +1796,53 @@ lower_ngg_gs_store_output(nir_builder *b, nir_intrinsic_instr *intrin, lower_ngg
    assert(nir_src_is_const(intrin->src[1]));
    b->cursor = nir_before_instr(&intrin->instr);
 
-   unsigned writemask = nir_intrinsic_write_mask(intrin);
    unsigned base = nir_intrinsic_base(intrin);
+   unsigned writemask = nir_intrinsic_write_mask(intrin);
    unsigned component_offset = nir_intrinsic_component(intrin);
    unsigned base_offset = nir_src_as_uint(intrin->src[1]);
    nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
 
-   assert((base + base_offset) < VARYING_SLOT_MAX);
+   unsigned location = io_sem.location + base_offset;
+   assert(location < VARYING_SLOT_MAX);
+
+   unsigned base_index = base + base_offset;
+   assert(base_index < VARYING_SLOT_MAX);
 
    nir_ssa_def *store_val = intrin->src[0].ssa;
 
-   for (unsigned comp = 0; comp < 4; ++comp) {
+   /* Small bitsize components consume the same amount of space as 32-bit components,
+    * but 64-bit ones consume twice as many. (Vulkan spec 15.1.5)
+    *
+    * 64-bit IO has been lowered to multi 32-bit IO.
+    */
+   assert(store_val->bit_size <= 32);
+
+   /* Save output usage info. */
+   gs_output_info *info = &s->output_info[location];
+
+   for (unsigned comp = 0; comp < store_val->num_components; ++comp) {
       if (!(writemask & (1 << comp)))
          continue;
       unsigned stream = (io_sem.gs_streams >> (comp * 2)) & 0x3;
       if (!(b->shader->info.gs.active_stream_mask & (1 << stream)))
          continue;
 
-      /* Small bitsize components consume the same amount of space as 32-bit components,
-       * but 64-bit ones consume twice as many. (Vulkan spec 15.1.5)
-       */
-      unsigned num_consumed_components = DIV_ROUND_UP(store_val->bit_size, 32);
-      nir_ssa_def *element = nir_channel(b, store_val, comp);
-      if (num_consumed_components > 1)
-         element = nir_extract_bits(b, &element, 1, 0, num_consumed_components, 32);
-
-      /* Save output usage info. */
-      gs_output_info *info = &s->output_info[io_sem.location];
-      /* The same output should always belong to the same stream. */
-      assert(!info->components_mask || info->stream == stream);
+      /* The same output should always belong to the same stream and base. */
+      assert(!info->components_mask || (info->stream == stream && info->base == base_index));
+      info->base = base_index;
       info->stream = stream;
-      info->components_mask |= BITFIELD_BIT(component_offset + comp * num_consumed_components);
+      info->components_mask |= BITFIELD_BIT(component_offset + comp);
 
-      for (unsigned c = 0; c < num_consumed_components; ++c) {
-         unsigned component_index =  (comp * num_consumed_components) + c + component_offset;
-         unsigned base_index = base + base_offset + component_index / 4;
-         component_index %= 4;
-
-         /* Store the current component element */
-         nir_ssa_def *component_element = element;
-         if (num_consumed_components > 1)
-            component_element = nir_channel(b, component_element, c);
-         if (component_element->bit_size != 32)
-            component_element = nir_u2u32(b, component_element);
-
-         nir_store_var(b, s->output_vars[base_index][component_index], component_element, 0x1u);
+      unsigned component = component_offset + comp;
+      nir_variable *var = s->output_vars[location][component];
+      if (!var) {
+         var = nir_local_variable_create(
+            s->impl, glsl_uintN_t_type(store_val->bit_size), "output");
+         s->output_vars[location][component] = var;
       }
+      assert(glsl_base_type_bit_size(glsl_get_base_type(var->type)) == store_val->bit_size);
+
+      nir_store_var(b, var, nir_channel(b, store_val, comp), 0x1u);
    }
 
    nir_instr_remove(&intrin->instr);
@@ -1748,10 +1876,22 @@ lower_ngg_gs_emit_vertex_with_counter(nir_builder *b, nir_intrinsic_instr *intri
          u_bit_scan_consecutive_range(&mask, &start, &count);
          nir_ssa_def *values[4] = {0};
          for (int c = start; c < start + count; ++c) {
+            nir_variable *var = s->output_vars[slot][c];
+            if (!var) {
+               /* no one write to this output before */
+               values[c - start] = nir_ssa_undef(b, 1, 32);
+               continue;
+            }
+
             /* Load output from variable. */
-            values[c - start] = nir_load_var(b, s->output_vars[slot][c]);
+            nir_ssa_def *val = nir_load_var(b, var);
+
+            /* extend 8/16 bit to 32 bit, 64 bit has been lowered */
+            unsigned bit_size = glsl_base_type_bit_size(glsl_get_base_type(var->type));
+            values[c - start] = bit_size == 32 ? val : nir_u2u32(b, val);
+
             /* Clear the variable (it is undefined after emit_vertex) */
-            nir_store_var(b, s->output_vars[slot][c], nir_ssa_undef(b, 1, 32), 0x1);
+            nir_store_var(b, s->output_vars[slot][c], nir_ssa_undef(b, 1, bit_size), 0x1);
          }
 
          nir_ssa_def *store_val = nir_vec(b, values, (unsigned)count);
@@ -1764,12 +1904,17 @@ lower_ngg_gs_emit_vertex_with_counter(nir_builder *b, nir_intrinsic_instr *intri
    /* Calculate and store per-vertex primitive flags based on vertex counts:
     * - bit 0: whether this vertex finishes a primitive (a real primitive, not the strip)
     * - bit 1: whether the primitive index is odd (if we are emitting triangle strips, otherwise always 0)
-    * - bit 2: always 1 (so that we can use it for determining vertex liveness)
+    * - bit 2: whether vertex is live (if culling is enabled: set after culling, otherwise always 1)
     */
 
-   nir_ssa_def *completes_prim = nir_ige(b, current_vtx_per_prim, nir_imm_int(b, s->num_vertices_per_primitive - 1));
-   nir_ssa_def *prim_flag = nir_bcsel(b, completes_prim, nir_imm_int(b, 0b101u), nir_imm_int(b, 0b100u));
+   nir_ssa_def *vertex_live_flag = !stream && s->can_cull ?
+      nir_ishl_imm(b, nir_b2i32(b, nir_inot(b, nir_load_cull_any_enabled_amd(b))), 2) :
+      nir_imm_int(b, 0b100);
 
+   nir_ssa_def *completes_prim = nir_ige(b, current_vtx_per_prim, nir_imm_int(b, s->num_vertices_per_primitive - 1));
+   nir_ssa_def *complete_flag = nir_b2i32(b, completes_prim);
+
+   nir_ssa_def *prim_flag = nir_ior(b, vertex_live_flag, complete_flag);
    if (s->num_vertices_per_primitive == 3) {
       nir_ssa_def *odd = nir_iand_imm(b, current_vtx_per_prim, 1);
       prim_flag = nir_iadd_nuw(b, prim_flag, nir_ishl(b, odd, nir_imm_int(b, 1)));
@@ -1894,16 +2039,6 @@ ngg_gs_export_vertices(nir_builder *b, nir_ssa_def *max_num_out_vtx, nir_ssa_def
       exported_out_vtx_lds_addr = ngg_gs_out_vertex_addr(b, nir_u2u32(b, exported_vtx_idx), s);
    }
 
-   /* Remember proper bit sizes of output variables. */
-   uint8_t out_bitsizes[VARYING_SLOT_MAX];
-   memset(out_bitsizes, 32, VARYING_SLOT_MAX);
-   nir_foreach_shader_out_variable(var, b->shader) {
-      /* Check 8/16-bit. All others should be lowered to 32-bit already. */
-      unsigned bit_size = glsl_base_type_bit_size(glsl_get_base_type(glsl_without_array(var->type)));
-      if (bit_size == 8 || bit_size == 16)
-         out_bitsizes[var->data.location] = bit_size;
-   }
-
    for (unsigned slot = 0; slot < VARYING_SLOT_MAX; ++slot) {
       if (!(b->shader->info.outputs_written & BITFIELD64_BIT(slot)))
          continue;
@@ -1924,12 +2059,21 @@ ngg_gs_export_vertices(nir_builder *b, nir_ssa_def *max_num_out_vtx, nir_ssa_def
                             .base = packed_location * 16 + start * 4,
                             .align_mul = 4);
 
-         /* Convert to the expected bit size of the output variable. */
-         if (out_bitsizes[slot] != 32)
-            load = nir_u2u(b, load, out_bitsizes[slot]);
+         for (int i = 0; i < count; i++) {
+            nir_variable *var = s->output_vars[slot][start + i];
+            assert(var);
 
-         nir_store_output(b, load, nir_imm_int(b, 0), .base = slot, .io_semantics = io_sem,
-                          .component = start, .write_mask = BITFIELD_MASK(count));
+            nir_ssa_def *val = nir_channel(b, load, i);
+
+            /* Convert to the expected bit size of the output variable. */
+            unsigned bit_size = glsl_base_type_bit_size(glsl_get_base_type(var->type));
+            if (bit_size != 32)
+               val = nir_u2u(b, val, bit_size);
+
+            nir_store_output(b, val, nir_imm_int(b, 0), .base = info->base,
+                             .io_semantics = io_sem, .component = start + i,
+                             .write_mask = 1);
+         }
       }
    }
 
@@ -1971,6 +2115,127 @@ ngg_gs_load_out_vtx_primflag_0(nir_builder *b, nir_ssa_def *tid_in_tg, nir_ssa_d
 }
 
 static void
+ngg_gs_out_prim_all_vtxptr(nir_builder *b, nir_ssa_def *last_vtxidx, nir_ssa_def *last_vtxptr,
+                           nir_ssa_def *last_vtx_primflag, lower_ngg_gs_state *s,
+                           nir_ssa_def *vtxptr[3])
+{
+   unsigned last_vtx = s->num_vertices_per_primitive - 1;
+   vtxptr[last_vtx]= last_vtxptr;
+
+   bool primitive_is_triangle = s->num_vertices_per_primitive == 3;
+   nir_ssa_def *is_odd = primitive_is_triangle ?
+      nir_ubfe(b, last_vtx_primflag, nir_imm_int(b, 1), nir_imm_int(b, 1)) : NULL;
+
+   for (unsigned i = 0; i < s->num_vertices_per_primitive - 1; i++) {
+      nir_ssa_def *vtxidx = nir_iadd_imm(b, last_vtxidx, -(last_vtx - i));
+
+      /* Need to swap vertex 0 and vertex 1 when vertex 2 index is odd to keep
+       * CW/CCW order for correct front/back face culling.
+       */
+      if (primitive_is_triangle)
+         vtxidx = i == 0 ? nir_iadd(b, vtxidx, is_odd) : nir_isub(b, vtxidx, is_odd);
+
+      vtxptr[i] = ngg_gs_out_vertex_addr(b, vtxidx, s);
+   }
+}
+
+static nir_ssa_def *
+ngg_gs_cull_primitive(nir_builder *b, nir_ssa_def *tid_in_tg, nir_ssa_def *max_vtxcnt,
+                      nir_ssa_def *out_vtx_lds_addr, nir_ssa_def *out_vtx_primflag_0,
+                      lower_ngg_gs_state *s)
+{
+   /* we haven't enabled point culling, if enabled this function could be further optimized */
+   assert(s->num_vertices_per_primitive > 1);
+
+   /* save the primflag so that we don't need to load it from LDS again */
+   nir_variable *primflag_var = nir_local_variable_create(s->impl, glsl_uint_type(), "primflag");
+   nir_store_var(b, primflag_var, out_vtx_primflag_0, 1);
+
+   /* last bit of primflag indicate if this is the final vertex of a primitive */
+   nir_ssa_def *is_end_prim_vtx = nir_i2b(b, nir_iand_imm(b, out_vtx_primflag_0, 1));
+   nir_ssa_def *has_output_vertex = nir_ilt(b, tid_in_tg, max_vtxcnt);
+   nir_ssa_def *prim_enable = nir_iand(b, is_end_prim_vtx, has_output_vertex);
+
+   nir_if *if_prim_enable = nir_push_if(b, prim_enable);
+   {
+      /* Calculate the LDS address of every vertex in the current primitive. */
+      nir_ssa_def *vtxptr[3];
+      ngg_gs_out_prim_all_vtxptr(b, tid_in_tg, out_vtx_lds_addr, out_vtx_primflag_0, s, vtxptr);
+
+      /* Load the positions from LDS. */
+      nir_ssa_def *pos[3][4];
+      for (unsigned i = 0; i < s->num_vertices_per_primitive; i++) {
+         /* VARYING_SLOT_POS == 0, so base won't count packed location */
+         pos[i][3] = nir_load_shared(b, 1, 32, vtxptr[i], .base = 12); /* W */
+         nir_ssa_def *xy = nir_load_shared(b, 2, 32, vtxptr[i], .base = 0, .align_mul = 4);
+         pos[i][0] = nir_channel(b, xy, 0);
+         pos[i][1] = nir_channel(b, xy, 1);
+
+         pos[i][0] = nir_fdiv(b, pos[i][0], pos[i][3]);
+         pos[i][1] = nir_fdiv(b, pos[i][1], pos[i][3]);
+      }
+
+      /* TODO: support clipdist culling in GS */
+      nir_ssa_def *accepted_by_clipdist = nir_imm_bool(b, true);
+
+      nir_ssa_def *accepted = ac_nir_cull_primitive(
+         b, accepted_by_clipdist, pos, s->num_vertices_per_primitive, NULL, NULL);
+
+      nir_if *if_rejected = nir_push_if(b, nir_inot(b, accepted));
+      {
+         /* clear the primflag if rejected */
+         nir_store_shared(b, nir_imm_zero(b, 1, 8), out_vtx_lds_addr,
+                          .base = s->lds_offs_primflags);
+
+         nir_store_var(b, primflag_var, nir_imm_int(b, 0), 1);
+      }
+      nir_pop_if(b, if_rejected);
+   }
+   nir_pop_if(b, if_prim_enable);
+
+   /* Wait for LDS primflag access done. */
+   nir_scoped_barrier(b, .execution_scope = NIR_SCOPE_WORKGROUP,
+                         .memory_scope = NIR_SCOPE_WORKGROUP,
+                         .memory_semantics = NIR_MEMORY_ACQ_REL,
+                         .memory_modes = nir_var_mem_shared);
+
+   /* only dead vertex need a chance to relive */
+   nir_ssa_def *vtx_is_dead = nir_ieq_imm(b, nir_load_var(b, primflag_var), 0);
+   nir_ssa_def *vtx_update_primflag = nir_iand(b, vtx_is_dead, has_output_vertex);
+   nir_if *if_update_primflag = nir_push_if(b, vtx_update_primflag);
+   {
+      /* get succeeding vertices' primflag to detect this vertex's liveness */
+      for (unsigned i = 1; i < s->num_vertices_per_primitive; i++) {
+         nir_ssa_def *vtxidx = nir_iadd_imm(b, tid_in_tg, i);
+         nir_ssa_def *not_overflow = nir_ilt(b, vtxidx, max_vtxcnt);
+         nir_if *if_not_overflow = nir_push_if(b, not_overflow);
+         {
+            nir_ssa_def *vtxptr = ngg_gs_out_vertex_addr(b, vtxidx, s);
+            nir_ssa_def *vtx_primflag =
+               nir_load_shared(b, 1, 8, vtxptr, .base = s->lds_offs_primflags);
+            vtx_primflag = nir_u2u32(b, vtx_primflag);
+
+            /* if succeeding vertex is alive end of primitive vertex, need to set current
+             * thread vertex's liveness flag (bit 2)
+             */
+            nir_ssa_def *has_prim = nir_i2b(b, nir_iand_imm(b, vtx_primflag, 1));
+            nir_ssa_def *vtx_live_flag =
+               nir_bcsel(b, has_prim, nir_imm_int(b, 0b100), nir_imm_int(b, 0));
+
+            /* update this vertex's primflag */
+            nir_ssa_def *primflag = nir_load_var(b, primflag_var);
+            primflag = nir_ior(b, primflag, vtx_live_flag);
+            nir_store_var(b, primflag_var, primflag, 1);
+         }
+         nir_pop_if(b, if_not_overflow);
+      }
+   }
+   nir_pop_if(b, if_update_primflag);
+
+   return nir_load_var(b, primflag_var);
+}
+
+static void
 ngg_gs_finale(nir_builder *b, lower_ngg_gs_state *s)
 {
    nir_ssa_def *tid_in_tg = nir_load_local_invocation_index(b);
@@ -1997,6 +2262,20 @@ ngg_gs_finale(nir_builder *b, lower_ngg_gs_state *s)
       ngg_gs_export_primitives(b, max_vtxcnt, tid_in_tg, tid_in_tg, out_vtx_primflag_0, s);
       ngg_gs_export_vertices(b, max_vtxcnt, tid_in_tg, out_vtx_lds_addr, s);
       return;
+   }
+
+   /* cull primitives */
+   if (s->can_cull) {
+      nir_if *if_cull_en = nir_push_if(b, nir_load_cull_any_enabled_amd(b));
+
+      /* culling code will update the primflag */
+      nir_ssa_def *updated_primflag =
+         ngg_gs_cull_primitive(b, tid_in_tg, max_vtxcnt, out_vtx_lds_addr,
+                               out_vtx_primflag_0, s);
+
+      nir_pop_if(b, if_cull_en);
+
+      out_vtx_primflag_0 = nir_if_phi(b, updated_primflag, out_vtx_primflag_0);
    }
 
    /* When the output vertex count is not known at compile time:
@@ -2037,12 +2316,14 @@ ac_nir_lower_ngg_gs(nir_shader *shader,
                     unsigned esgs_ring_lds_bytes,
                     unsigned gs_out_vtx_bytes,
                     unsigned gs_total_out_vtx_bytes,
-                    bool provoking_vertex_last)
+                    bool provoking_vertex_last,
+                    bool can_cull)
 {
    nir_function_impl *impl = nir_shader_get_entrypoint(shader);
    assert(impl);
 
    lower_ngg_gs_state state = {
+      .impl = impl,
       .max_num_waves = DIV_ROUND_UP(max_workgroup_size, wave_size),
       .wave_size = wave_size,
       .lds_addr_gs_out_vtx = esgs_ring_lds_bytes,
@@ -2050,15 +2331,20 @@ ac_nir_lower_ngg_gs(nir_shader *shader,
       .lds_offs_primflags = gs_out_vtx_bytes,
       .lds_bytes_per_gs_out_vertex = gs_out_vtx_bytes + 4u,
       .provoking_vertex_last = provoking_vertex_last,
+      .can_cull = can_cull,
    };
 
    unsigned lds_scratch_bytes = DIV_ROUND_UP(state.max_num_waves, 4u) * 4u;
    unsigned total_lds_bytes = state.lds_addr_gs_scratch + lds_scratch_bytes;
    shader->info.shared_size = total_lds_bytes;
 
-   nir_gs_count_vertices_and_primitives(shader, state.const_out_vtxcnt, state.const_out_prmcnt, 4u);
-   state.output_compile_time_known = state.const_out_vtxcnt[0] == shader->info.gs.vertices_out &&
-                                     state.const_out_prmcnt[0] != -1;
+   if (!can_cull) {
+      nir_gs_count_vertices_and_primitives(shader, state.const_out_vtxcnt,
+                                           state.const_out_prmcnt, 4u);
+      state.output_compile_time_known =
+         state.const_out_vtxcnt[0] == shader->info.gs.vertices_out &&
+         state.const_out_prmcnt[0] != -1;
+   }
 
    if (!state.output_compile_time_known)
       state.current_clear_primflag_idx_var = nir_local_variable_create(impl, glsl_uint_type(), "current_clear_primflag_idx");
@@ -2087,13 +2373,6 @@ ac_nir_lower_ngg_gs(nir_shader *shader,
 
    /* Wrap the GS control flow. */
    nir_if *if_gs_thread = nir_push_if(b, nir_has_input_primitive_amd(b));
-
-   /* Create and initialize output variables */
-   for (unsigned slot = 0; slot < VARYING_SLOT_MAX; ++slot) {
-      for (unsigned comp = 0; comp < 4; ++comp) {
-         state.output_vars[slot][comp] = nir_local_variable_create(impl, glsl_uint_type(), "output");
-      }
-   }
 
    nir_cf_reinsert(&extracted, b->cursor);
    b->cursor = nir_after_cf_list(&if_gs_thread->then_list);

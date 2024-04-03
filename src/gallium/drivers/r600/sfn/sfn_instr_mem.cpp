@@ -559,12 +559,6 @@ bool RatInstr::emit_ssbo_load(nir_intrinsic_instr *intr, Shader& shader)
 
 bool RatInstr::emit_ssbo_store(nir_intrinsic_instr *instr, Shader& shader)
 {
-
-   /* Forche the scheduler to not move the preparation too far away, by starting
-    * a new block (TODO: better priority handling in the scheduler)*/
-   if (nir_src_num_components(instr->src[0]) > 2)
-      shader.start_new_block(0);
-
    auto &vf = shader.value_factory();
    auto orig_addr = vf.src(instr->src[2], 0);
 
@@ -706,8 +700,10 @@ bool RatInstr::emit_image_store(nir_intrinsic_instr *intrin, Shader& shader)
    auto store = new RatInstr(op, RatInstr::STORE_TYPED, value, coord, imageid,
                              image_offset, 1, 0xf, 0);
 
-   if (nir_intrinsic_has_access(intrin) & ACCESS_COHERENT)
-      store->set_ack();
+   store->set_ack();
+   if (nir_intrinsic_access(intrin) & ACCESS_INCLUDE_HELPERS)
+      store->set_instr_flag(Instr::helper);
+
    shader.emit_instruction(store);
    return true;
 }

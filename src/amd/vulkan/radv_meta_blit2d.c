@@ -245,7 +245,7 @@ radv_meta_blit2d_normal_dst(struct radv_cmd_buffer *cmd_buffer,
                VkResult ret = blit2d_init_color_pipeline(
                   device, src_type, radv_fs_key_format_exemplars[fs_key], log2_samples);
                if (ret != VK_SUCCESS) {
-                  cmd_buffer->record_result = ret;
+                  vk_command_buffer_set_error(&cmd_buffer->vk, ret);
                   goto fail_pipeline;
                }
             }
@@ -277,7 +277,7 @@ radv_meta_blit2d_normal_dst(struct radv_cmd_buffer *cmd_buffer,
                 VK_NULL_HANDLE) {
                VkResult ret = blit2d_init_depth_only_pipeline(device, src_type, log2_samples);
                if (ret != VK_SUCCESS) {
-                  cmd_buffer->record_result = ret;
+                  vk_command_buffer_set_error(&cmd_buffer->vk, ret);
                   goto fail_pipeline;
                }
             }
@@ -298,6 +298,8 @@ radv_meta_blit2d_normal_dst(struct radv_cmd_buffer *cmd_buffer,
                },
                .layerCount = 1,
                .pDepthAttachment = &depth_att_info,
+               .pStencilAttachment = (dst->image->vk.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) ?
+                                     &depth_att_info : NULL,
             };
 
             radv_CmdBeginRendering(radv_cmd_buffer_to_handle(cmd_buffer), &rendering_info);
@@ -309,7 +311,7 @@ radv_meta_blit2d_normal_dst(struct radv_cmd_buffer *cmd_buffer,
                 VK_NULL_HANDLE) {
                VkResult ret = blit2d_init_stencil_only_pipeline(device, src_type, log2_samples);
                if (ret != VK_SUCCESS) {
-                  cmd_buffer->record_result = ret;
+                  vk_command_buffer_set_error(&cmd_buffer->vk, ret);
                   goto fail_pipeline;
                }
             }
@@ -329,6 +331,8 @@ radv_meta_blit2d_normal_dst(struct radv_cmd_buffer *cmd_buffer,
                   .extent = { rects[r].width, rects[r].height },
                },
                .layerCount = 1,
+               .pDepthAttachment = (dst->image->vk.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) ?
+                                   &stencil_att_info : NULL,
                .pStencilAttachment = &stencil_att_info,
             };
 

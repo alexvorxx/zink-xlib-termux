@@ -425,8 +425,10 @@ create_ici(struct zink_screen *screen, VkImageCreateInfo *ici, const struct pipe
    /* pNext may already be set */
    if (util_format_get_num_planes(templ->format) > 1)
       ici->flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
+   else if (bind & ZINK_BIND_MUTABLE)
+      ici->flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
    else
-      ici->flags = modifiers_count || dmabuf || bind & (PIPE_BIND_SCANOUT | PIPE_BIND_DEPTH_STENCIL) ? 0 : VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+      ici->flags = 0;
    if (ici->flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT)
       /* unset VkImageFormatListCreateInfo if mutable */
       ici->pNext = NULL;
@@ -667,7 +669,11 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
       bool success = false;
       VkImageCreateInfo ici;
       enum pipe_format srgb = PIPE_FORMAT_NONE;
-      if (screen->info.have_KHR_swapchain_mutable_format) {
+      /* We use modifiers as a proxy for "this surface is used as a window system render target".
+       * For winsys, we need to be able to mutate between srgb and linear, but we don't need general
+       * image view/shader image format compatibility (that path means losing fast clears or compression on some hardware).
+       */
+      if (ici_modifier_count) {
          srgb = util_format_is_srgb(templ->format) ? util_format_linear(templ->format) : util_format_srgb(templ->format);
          /* why do these helpers have different default return values? */
          if (srgb == templ->format)
@@ -2173,11 +2179,11 @@ zink_resource_get_separate_stencil(struct pipe_resource *pres)
 
 }
 
-bool
-zink_resource_object_init_storage(struct zink_context *ctx, struct zink_resource *res)
+static bool
+resource_object_add_bind(struct zink_context *ctx, struct zink_resource *res, unsigned bind)
 {
    /* base resource already has the cap */
-   if (res->base.b.bind & PIPE_BIND_SHADER_IMAGE)
+   if (res->base.b.bind & bind)
       return true;
    if (res->obj->is_buffer) {
       unreachable("zink: all buffers should have this bit");
@@ -2185,11 +2191,23 @@ zink_resource_object_init_storage(struct zink_context *ctx, struct zink_resource
    }
    assert(!res->obj->dt);
    zink_fb_clears_apply_region(ctx, &res->base.b, (struct u_rect){0, res->base.b.width0, 0, res->base.b.height0});
-   bool ret = add_resource_bind(ctx, res, PIPE_BIND_SHADER_IMAGE);
+   bool ret = add_resource_bind(ctx, res, bind);
    if (ret)
       zink_resource_rebind(ctx, res);
 
    return ret;
+}
+
+bool
+zink_resource_object_init_storage(struct zink_context *ctx, struct zink_resource *res)
+{
+   return resource_object_add_bind(ctx, res, PIPE_BIND_SHADER_IMAGE);
+}
+
+bool
+zink_resource_object_init_mutable(struct zink_context *ctx, struct zink_resource *res)
+{
+   return resource_object_add_bind(ctx, res, ZINK_BIND_MUTABLE);
 }
 
 void
@@ -2279,11 +2297,14 @@ bool
 zink_screen_resource_init(struct pipe_screen *pscreen)
 {
    struct zink_screen *screen = zink_screen(pscreen);
-   pscreen->resource_create = zink_resource_create;
+   pscreen->resource_create = u_transfer_helper_resource_create;
    pscreen->resource_create_with_modifiers = zink_resource_create_with_modifiers;
    pscreen->resource_create_drawable = zink_resource_create_drawable;
-   pscreen->resource_destroy = zink_resource_destroy;
-   pscreen->transfer_helper = u_transfer_helper_create(&transfer_vtbl, true, true, false, false, !screen->have_D24_UNORM_S8_UINT);
+   pscreen->resource_destroy = u_transfer_helper_resource_destroy;
+   pscreen->transfer_helper = u_transfer_helper_create(&transfer_vtbl,
+      U_TRANSFER_HELPER_SEPARATE_Z32S8 | U_TRANSFER_HELPER_SEPARATE_STENCIL |
+      U_TRANSFER_HELPER_INTERLEAVE_IN_PLACE |
+      (!screen->have_D24_UNORM_S8_UINT ? U_TRANSFER_HELPER_Z24_IN_Z32F : 0));
 
    if (screen->info.have_KHR_external_memory_fd || screen->info.have_KHR_external_memory_win32) {
       pscreen->resource_get_handle = zink_resource_get_handle;
@@ -2303,8 +2324,8 @@ zink_context_resource_init(struct pipe_context *pctx)
 {
    pctx->buffer_map = zink_buffer_map;
    pctx->buffer_unmap = zink_buffer_unmap;
-   pctx->texture_map = u_transfer_helper_deinterleave_transfer_map;
-   pctx->texture_unmap = u_transfer_helper_deinterleave_transfer_unmap;
+   pctx->texture_map = u_transfer_helper_transfer_map;
+   pctx->texture_unmap = u_transfer_helper_transfer_unmap;
 
    pctx->transfer_flush_region = u_transfer_helper_transfer_flush_region;
    pctx->buffer_subdata = zink_buffer_subdata;

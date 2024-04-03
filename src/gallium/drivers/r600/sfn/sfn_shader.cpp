@@ -1071,20 +1071,27 @@ void Shader::InstructionChain::visit(ScratchIOInstr *instr)
 void Shader::InstructionChain::visit(GDSInstr *instr)
 {
    apply(instr, &last_gds_instr);
+   Instr::Flags flag = instr->has_instr_flag(Instr::helper) ?
+                          Instr::helper: Instr::vpm;
    for (auto& loop : this_shader->m_loops) {
-      loop->set_instr_flag(Instr::vpm);
+      loop->set_instr_flag(flag);
    }
 }
 
 void Shader::InstructionChain::visit(RatInstr *instr)
 {
    apply(instr, &last_ssbo_instr);
+   Instr::Flags flag = instr->has_instr_flag(Instr::helper) ?
+                          Instr::helper: Instr::vpm;
    for (auto& loop : this_shader->m_loops) {
-      loop->set_instr_flag(Instr::vpm);
+      loop->set_instr_flag(flag);
    }
 
    if (prepare_mem_barrier)
       instr->set_ack();
+
+   if (this_shader->m_current_block->inc_rat_emitted() > 15)
+      this_shader->start_new_block(0);
 }
 
 void Shader::InstructionChain::apply(Instr *current, Instr **last) {

@@ -98,7 +98,7 @@ count_ms_user_sgprs(const struct radv_shader_info *info)
 
    if (info->vs.needs_draw_id)
       count++;
-   if (info->cs.uses_task_rings)
+   if (info->ms.has_task)
       count++;
 
    return count;
@@ -179,7 +179,7 @@ allocate_user_sgprs(enum amd_gfx_level gfx_level, const struct radv_shader_info 
          user_sgpr_count += 2;
       if (info->vs.needs_draw_id)
          user_sgpr_count += 1;
-      if (info->cs.uses_task_rings)
+      if (stage == MESA_SHADER_TASK)
          user_sgpr_count += 4; /* ring_entry, 2x ib_addr, ib_stride */
       break;
    case MESA_SHADER_FRAGMENT:
@@ -300,11 +300,11 @@ declare_vs_specific_input_sgprs(const struct radv_shader_info *info, struct radv
 
 static void
 declare_vs_input_vgprs(enum amd_gfx_level gfx_level, const struct radv_shader_info *info,
-                       struct radv_shader_args *args)
+                       struct radv_shader_args *args, bool merged_vs_tcs)
 {
    ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.vertex_id);
    if (!args->is_gs_copy_shader) {
-      if (info->vs.as_ls) {
+      if (info->vs.as_ls || merged_vs_tcs) {
 
          if (gfx_level >= GFX11) {
             ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, NULL); /* user VGPR */
@@ -340,7 +340,7 @@ declare_vs_input_vgprs(enum amd_gfx_level gfx_level, const struct radv_shader_in
 
    if (info->vs.dynamic_inputs) {
       assert(info->vs.use_per_attribute_vb_descs);
-      unsigned num_attributes = util_last_bit(info->vs.vb_desc_usage_mask);
+      unsigned num_attributes = util_last_bit(info->vs.input_slot_usage_mask);
       for (unsigned i = 0; i < num_attributes; i++)
          ac_add_arg(&args->ac, AC_ARG_VGPR, 4, AC_ARG_INT, &args->vs_inputs[i]);
       /* Ensure the main shader doesn't use less vgprs than the prolog. The prolog requires one
@@ -392,7 +392,7 @@ declare_ms_input_sgprs(const struct radv_shader_info *info, struct radv_shader_a
    if (info->vs.needs_draw_id) {
       ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, &args->ac.draw_id);
    }
-   if (info->cs.uses_task_rings) {
+   if (info->ms.has_task) {
       ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, &args->ac.task_ring_entry);
    }
 }
@@ -592,7 +592,7 @@ radv_declare_shader_args(enum amd_gfx_level gfx_level, const struct radv_pipelin
          ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, &args->ac.draw_id);
       }
 
-      if (info->cs.uses_task_rings) {
+      if (stage == MESA_SHADER_TASK) {
          ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, &args->ac.task_ring_entry);
          ac_add_arg(&args->ac, AC_ARG_SGPR, 2, AC_ARG_INT, &args->task_ib_addr);
          ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, &args->task_ib_stride);
@@ -645,7 +645,7 @@ radv_declare_shader_args(enum amd_gfx_level gfx_level, const struct radv_pipelin
          ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, &args->ac.scratch_offset);
       }
 
-      declare_vs_input_vgprs(gfx_level, info, args);
+      declare_vs_input_vgprs(gfx_level, info, args, false);
       break;
    case MESA_SHADER_TESS_CTRL:
       if (has_previous_stage) {
@@ -674,7 +674,7 @@ radv_declare_shader_args(enum amd_gfx_level gfx_level, const struct radv_pipelin
          ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.tcs_patch_id);
          ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.tcs_rel_ids);
 
-         declare_vs_input_vgprs(gfx_level, info, args);
+         declare_vs_input_vgprs(gfx_level, info, args, true);
       } else {
          declare_global_input_sgprs(info, &user_sgpr_info, args);
 
@@ -759,7 +759,7 @@ radv_declare_shader_args(enum amd_gfx_level gfx_level, const struct radv_pipelin
          ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.gs_vtx_offset[2]);
 
          if (previous_stage == MESA_SHADER_VERTEX) {
-            declare_vs_input_vgprs(gfx_level, info, args);
+            declare_vs_input_vgprs(gfx_level, info, args, false);
          } else if (previous_stage == MESA_SHADER_TESS_EVAL) {
             declare_tes_input_vgprs(args);
          } else if (previous_stage == MESA_SHADER_MESH) {

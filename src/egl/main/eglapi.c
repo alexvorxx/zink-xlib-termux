@@ -95,8 +95,8 @@
 #include <string.h>
 #include "c11/threads.h"
 #include "util/debug.h"
-#include "util/log.h"
 #include "util/macros.h"
+#include "util/perf/cpu_trace.h"
 
 #include "egldefines.h"
 #include "eglglobals.h"
@@ -356,6 +356,7 @@ eglGetDisplay(EGLNativeDisplayType nativeDisplay)
    _EGLDisplay *disp;
    void *native_display_ptr;
 
+   util_perfetto_init();
    _EGL_FUNC_START(NULL, EGL_OBJECT_THREAD_KHR, NULL);
 
    STATIC_ASSERT(sizeof(void*) == sizeof(nativeDisplay));
@@ -420,6 +421,7 @@ eglGetPlatformDisplayEXT(EGLenum platform, void *native_display,
    EGLAttrib *attrib_list;
    EGLDisplay disp;
 
+   util_perfetto_init();
    _EGL_FUNC_START(NULL, EGL_OBJECT_THREAD_KHR, NULL);
 
    if (_eglConvertIntsToAttribs(int_attribs, &attrib_list) != EGL_SUCCESS)
@@ -434,6 +436,7 @@ EGLDisplay EGLAPIENTRY
 eglGetPlatformDisplay(EGLenum platform, void *native_display,
                       const EGLAttrib *attrib_list)
 {
+   util_perfetto_init();
    _EGL_FUNC_START(NULL, EGL_OBJECT_THREAD_KHR, NULL);
    return _eglGetPlatformDisplayCommon(platform, native_display, attrib_list);
 }
@@ -1856,10 +1859,7 @@ _eglCreateSync(_EGLDisplay *disp, EGLenum type, const EGLAttrib *attrib_list,
        (type == EGL_SYNC_FENCE_KHR || type == EGL_SYNC_NATIVE_FENCE_ANDROID))
       RETURN_EGL_ERROR(disp, EGL_BAD_MATCH, EGL_NO_SYNC_KHR);
 
-   /* return an error if the client API doesn't support GL_[OES|MESA]_EGL_sync. */
-   if (ctx && (ctx->Resource.Display != disp ||
-               (ctx->ClientAPI != EGL_OPENGL_ES_API &&
-                ctx->ClientAPI != EGL_OPENGL_API)))
+   if (ctx && (ctx->Resource.Display != disp))
       RETURN_EGL_ERROR(disp, EGL_BAD_MATCH, EGL_NO_SYNC_KHR);
 
    switch (type) {
@@ -2038,10 +2038,7 @@ _eglWaitSyncCommon(_EGLDisplay *disp, _EGLSync *s, EGLint flags)
    _EGL_CHECK_SYNC(disp, s, EGL_FALSE);
    assert(disp->Extensions.KHR_wait_sync);
 
-   /* return an error if the client API doesn't support GL_[OES|MESA]_EGL_sync. */
-   if (ctx == EGL_NO_CONTEXT ||
-         (ctx->ClientAPI != EGL_OPENGL_ES_API &&
-          ctx->ClientAPI != EGL_OPENGL_API))
+   if (ctx == EGL_NO_CONTEXT)
       RETURN_EGL_ERROR(disp, EGL_BAD_MATCH, EGL_FALSE);
 
    /* the API doesn't allow any flags yet */
@@ -2784,9 +2781,7 @@ _eglLockDisplayInterop(EGLDisplay dpy, EGLContext context,
    }
 
    *ctx = _eglLookupContext(context, *disp);
-   if (!*ctx ||
-       ((*ctx)->ClientAPI != EGL_OPENGL_API &&
-        (*ctx)->ClientAPI != EGL_OPENGL_ES_API)) {
+   if (!*ctx) {
       _eglUnlockDisplay(*disp);
       return MESA_GLINTEROP_INVALID_CONTEXT;
    }

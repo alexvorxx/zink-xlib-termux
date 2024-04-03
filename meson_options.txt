@@ -164,6 +164,12 @@ option(
   description : 'build gallium "clover" OpenCL frontend.',
 )
 option(
+  'gallium-windows-dll-name',
+  type : 'string',
+  value : 'libgallium_wgl',
+  description : 'name of gallium megadriver DLL built for Windows. defaults to libgallium_wgl.dll to match DRI',
+)
+option(
   'opencl-spirv',
   type : 'boolean',
   value : false,
@@ -192,7 +198,7 @@ option(
   'vulkan-drivers',
   type : 'array',
   value : ['auto'],
-  choices : ['auto', 'amd', 'broadcom', 'freedreno', 'imagination-experimental', 'intel', 'microsoft-experimental', 'panfrost', 'swrast', 'virtio-experimental'],
+  choices : ['auto', 'amd', 'broadcom', 'freedreno', 'imagination-experimental', 'intel', 'intel_hasvk', 'microsoft-experimental', 'panfrost', 'swrast', 'virtio-experimental'],
   description : 'List of vulkan drivers to build. If this is set to auto all drivers applicable to the target OS/architecture will be built'
 )
 option(
@@ -386,6 +392,12 @@ option(
   type : 'boolean',
   value : false,
   description : 'Build unit tests. Currently this will build *all* unit tests except the ACO tests, which may build more than expected.'
+)
+option(
+  'enable-glcpp-tests',
+  type : 'boolean',
+  value : true,
+  description : 'Build glcpp unit tests. These are flaky on CI.'
 )
 option(
   'build-aco-tests',

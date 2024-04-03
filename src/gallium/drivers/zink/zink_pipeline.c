@@ -117,6 +117,9 @@ zink_create_gfx_pipeline(struct zink_screen *screen,
       blend_state.logicOpEnable = state->blend_state->logicop_enable;
       blend_state.logicOp = state->blend_state->logicop_func;
    }
+   if (screen->info.have_EXT_rasterization_order_attachment_access &&
+       prog->shaders[MESA_SHADER_FRAGMENT]->nir->info.fs.uses_fbfetch_output)
+      blend_state.flags |= VK_PIPELINE_COLOR_BLEND_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_BIT_EXT;
 
    VkPipelineMultisampleStateCreateInfo ms_state = {0};
    ms_state.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
@@ -387,7 +390,7 @@ zink_create_compute_pipeline(struct zink_screen *screen, struct zink_compute_pro
 
    VkSpecializationInfo sinfo = {0};
    VkSpecializationMapEntry me[3];
-   if (state->use_local_size) {
+   if (comp->use_local_size) {
       stage.pSpecializationInfo = &sinfo;
       sinfo.mapEntryCount = 3;
       sinfo.pMapEntries = &me[0];
@@ -410,7 +413,6 @@ zink_create_compute_pipeline(struct zink_screen *screen, struct zink_compute_pro
       mesa_loge("ZINK: vkCreateComputePipelines failed (%s)", vk_Result_to_str(result));
       return VK_NULL_HANDLE;
    }
-   zink_screen_update_pipeline_cache(screen, &comp->base);
 
    return pipeline;
 }

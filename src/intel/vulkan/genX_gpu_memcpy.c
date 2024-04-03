@@ -55,13 +55,11 @@ static void
 emit_common_so_memcpy(struct anv_batch *batch, struct anv_device *device,
                       const struct intel_l3_config *l3_config)
 {
-#if GFX_VER >= 8
    anv_batch_emit(batch, GENX(3DSTATE_VF_INSTANCING), vfi) {
       vfi.InstancingEnable = false;
       vfi.VertexElementIndex = 0;
    }
    anv_batch_emit(batch, GENX(3DSTATE_VF_SGVS), sgvs);
-#endif
 
    /* Disable all shader stages */
    anv_batch_emit(batch, GENX(3DSTATE_VS), vs);
@@ -75,15 +73,11 @@ emit_common_so_memcpy(struct anv_batch *batch, struct anv_device *device,
       sbe.VertexURBEntryReadOffset = 1;
       sbe.NumberofSFOutputAttributes = 1;
       sbe.VertexURBEntryReadLength = 1;
-#if GFX_VER >= 8
       sbe.ForceVertexURBEntryReadLength = true;
       sbe.ForceVertexURBEntryReadOffset = true;
-#endif
 
-#if GFX_VER >= 9
       for (unsigned i = 0; i < 32; i++)
          sbe.AttributeActiveComponentFormat[i] = ACF_XYZW;
-#endif
    }
 
    /* Emit URB setup.  We tell it that the VS is active because we want it to
@@ -100,11 +94,9 @@ emit_common_so_memcpy(struct anv_batch *batch, struct anv_device *device,
    anv_batch_emit(batch, GENX(3DSTATE_PRIMITIVE_REPLICATION), pr);
 #endif
 
-#if GFX_VER >= 8
    anv_batch_emit(batch, GENX(3DSTATE_VF_TOPOLOGY), topo) {
       topo.PrimitiveTopologyType = _3DPRIM_POINTLIST;
    }
-#endif
 
    anv_batch_emit(batch, GENX(3DSTATE_VF_STATISTICS), vf) {
       vf.StatisticsEnable = false;
@@ -141,11 +133,7 @@ emit_so_memcpy(struct anv_batch *batch, struct anv_device *device,
 #if GFX_VER >= 12
          .L3BypassDisable = true,
 #endif
-#if (GFX_VER >= 8)
          .BufferSize = size,
-#else
-         .EndAddress = anv_address_add(src, size - 1),
-#endif
       });
 
    dw = anv_batch_emitn(batch, 3, GENX(3DSTATE_VERTEX_ELEMENTS));
@@ -172,15 +160,9 @@ emit_so_memcpy(struct anv_batch *batch, struct anv_device *device,
       sob.MOCS = anv_mocs(device, dst.bo, 0),
       sob.SurfaceBaseAddress = dst;
 
-#if GFX_VER >= 8
       sob.SOBufferEnable = true;
       sob.SurfaceSize = size / 4 - 1;
-#else
-      sob.SurfacePitch = bs;
-      sob.SurfaceEndAddress = anv_address_add(dst, size);
-#endif
 
-#if GFX_VER >= 8
       /* As SOL writes out data, it updates the SO_WRITE_OFFSET registers with
        * the end position of the stream.  We need to reset this value to 0 at
        * the beginning of the run or else SOL will start at the offset from
@@ -188,16 +170,7 @@ emit_so_memcpy(struct anv_batch *batch, struct anv_device *device,
        */
       sob.StreamOffsetWriteEnable = true;
       sob.StreamOffset = 0;
-#endif
    }
-
-#if GFX_VER <= 7
-   /* The hardware can do this for us on BDW+ (see above) */
-   anv_batch_emit(batch, GENX(MI_LOAD_REGISTER_IMM), load) {
-      load.RegisterOffset = GENX(SO_WRITE_OFFSET0_num);
-      load.DataDWord = 0;
-   }
-#endif
 
    dw = anv_batch_emitn(batch, 5, GENX(3DSTATE_SO_DECL_LIST),
                         .StreamtoBufferSelects0 = (1 << 0),
@@ -216,11 +189,7 @@ emit_so_memcpy(struct anv_batch *batch, struct anv_device *device,
       so.RenderingDisable = true;
       so.Stream0VertexReadOffset = 0;
       so.Stream0VertexReadLength = DIV_ROUND_UP(32, 64);
-#if GFX_VER >= 8
       so.Buffer0SurfacePitch = bs;
-#else
-      so.SOBufferEnable0 = true;
-#endif
    }
 
    anv_batch_emit(batch, GENX(3DPRIMITIVE), prim) {
@@ -248,10 +217,8 @@ genX(emit_so_memcpy_init)(struct anv_memcpy_state *state,
    genX(emit_l3_config)(batch, device, cfg);
 
    anv_batch_emit(batch, GENX(PIPELINE_SELECT), ps) {
-#if GFX_VER >= 9
       ps.MaskBits = GFX_VER >= 12 ? 0x13 : 3;
       ps.MediaSamplerDOPClockGateEnable = GFX_VER >= 12;
-#endif
       ps.PipelineSelection = _3D;
    }
 
@@ -275,8 +242,7 @@ genX(emit_so_memcpy)(struct anv_memcpy_state *state,
                      struct anv_address dst, struct anv_address src,
                      uint32_t size)
 {
-   if (GFX_VER >= 8 && GFX_VER <= 9 &&
-       !anv_use_relocations(state->device->physical) &&
+   if (GFX_VER == 9 &&
        anv_gfx8_9_vb_cache_range_needs_workaround(&state->vb_bound,
                                                   &state->vb_dirty,
                                                   src, size)) {

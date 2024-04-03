@@ -183,6 +183,23 @@ zink_get_device_node_mask(struct pipe_screen *pscreen)
    }
 }
 
+static void
+zink_set_max_shader_compiler_threads(struct pipe_screen *pscreen, unsigned max_threads)
+{
+   struct zink_screen *screen = zink_screen(pscreen);
+   util_queue_adjust_num_threads(&screen->cache_get_thread, max_threads);
+}
+
+static bool
+zink_is_parallel_shader_compilation_finished(struct pipe_screen *screen, void *shader, enum pipe_shader_type shader_type)
+{
+   /* not supported yet */
+   if (shader_type != MESA_SHADER_COMPUTE)
+      return true;
+   struct zink_program *pg = shader;
+   return !pg->can_precompile || util_queue_fence_is_signalled(&pg->cache_fence);
+}
+
 static VkDeviceSize
 get_video_mem(struct zink_screen *screen)
 {
@@ -206,16 +223,13 @@ disk_cache_init(struct zink_screen *screen)
    if (!screen->disk_cache)
       return true;
 
-   if (!util_queue_init(&screen->cache_put_thread, "zcq", 8, 1, UTIL_QUEUE_INIT_RESIZE_IF_FULL, screen) ||
-      !util_queue_init(&screen->cache_get_thread, "zcfq", 8, 4,
-         UTIL_QUEUE_INIT_RESIZE_IF_FULL | UTIL_QUEUE_INIT_SCALE_THREADS, screen)) {
+   if (!util_queue_init(&screen->cache_put_thread, "zcq", 8, 1, UTIL_QUEUE_INIT_RESIZE_IF_FULL, screen)) {
       mesa_loge("zink: Failed to create disk cache queue\n");
 
       disk_cache_destroy(screen->disk_cache);
       screen->disk_cache = NULL;
 
       util_queue_destroy(&screen->cache_put_thread);
-      util_queue_destroy(&screen->cache_get_thread);
 
       return false;
    }
@@ -254,12 +268,15 @@ cache_put_job(void *data, void *gdata, int thread_index)
 }
 
 void
-zink_screen_update_pipeline_cache(struct zink_screen *screen, struct zink_program *pg)
+zink_screen_update_pipeline_cache(struct zink_screen *screen, struct zink_program *pg, bool in_thread)
 {
    if (!screen->disk_cache)
       return;
 
-   util_queue_add_job(&screen->cache_put_thread, pg, &pg->cache_fence, cache_put_job, NULL, 0);
+   if (in_thread)
+      cache_put_job(pg, screen, 0);
+   else
+      util_queue_add_job(&screen->cache_put_thread, pg, &pg->cache_fence, cache_put_job, NULL, 0);
 }
 
 static void
@@ -288,13 +305,15 @@ cache_get_job(void *data, void *gdata, int thread_index)
 }
 
 void
-zink_screen_get_pipeline_cache(struct zink_screen *screen, struct zink_program *pg)
+zink_screen_get_pipeline_cache(struct zink_screen *screen, struct zink_program *pg, bool in_thread)
 {
-   util_queue_fence_init(&pg->cache_fence);
    if (!screen->disk_cache)
       return;
 
-   util_queue_add_job(&screen->cache_get_thread, pg, &pg->cache_fence, cache_get_job, NULL, 0);
+   if (in_thread)
+      cache_get_job(pg, screen, 0);
+   else
+      util_queue_add_job(&screen->cache_get_thread, pg, &pg->cache_fence, cache_get_job, NULL, 0);
 }
 
 static int
@@ -375,6 +394,31 @@ get_smallest_buffer_heap(struct zink_screen *screen)
    return size;
 }
 
+static inline bool
+have_fp32_filter_linear(struct zink_screen *screen)
+{
+   const VkFormat fp32_formats[] = {
+      VK_FORMAT_R32_SFLOAT,
+      VK_FORMAT_R32G32_SFLOAT,
+      VK_FORMAT_R32G32B32_SFLOAT,
+      VK_FORMAT_R32G32B32A32_SFLOAT,
+      VK_FORMAT_D32_SFLOAT,
+   };
+   for (int i = 0; i < ARRAY_SIZE(fp32_formats); ++i) {
+      VkFormatProperties props;
+      VKSCR(GetPhysicalDeviceFormatProperties)(screen->pdev,
+                                               fp32_formats[i],
+                                               &props);
+      if (((props.linearTilingFeatures | props.optimalTilingFeatures) &
+           (VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
+            VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) ==
+          VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) {
+         return false;
+      }
+   }
+   return true;
+}
+
 static int
 zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 {
@@ -419,6 +463,8 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 
    case PIPE_CAP_FBFETCH:
       return 1;
+   case PIPE_CAP_FBFETCH_COHERENT:
+      return screen->info.have_EXT_rasterization_order_attachment_access;
 
    case PIPE_CAP_MEMOBJ:
       return screen->instance_info.have_KHR_external_memory_capabilities && (screen->info.have_KHR_external_memory_fd || screen->info.have_KHR_external_memory_win32);
@@ -465,12 +511,9 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_SURFACE_SAMPLE_COUNT:
       return screen->vk_version >= VK_MAKE_VERSION(1,2,0);
 
-   case PIPE_CAP_DRAW_PARAMETERS:
-      return screen->info.feats11.shaderDrawParameters || screen->info.have_KHR_shader_draw_parameters;
-
    case PIPE_CAP_SHADER_GROUP_VOTE:
       if (screen->info.have_vulkan11 &&
-             (screen->info.subgroup.supportedOperations & VK_SUBGROUP_FEATURE_VOTE_BIT) &&
+          (screen->info.subgroup.supportedOperations & VK_SUBGROUP_FEATURE_VOTE_BIT) &&
           (screen->info.subgroup.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT))
          return true;
       if (screen->info.have_EXT_shader_subgroup_vote)
@@ -501,6 +544,7 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return screen->info.have_KHR_draw_indirect_count;
 
    case PIPE_CAP_START_INSTANCE:
+   case PIPE_CAP_DRAW_PARAMETERS:
       return (screen->info.have_vulkan12 && screen->info.feats11.shaderDrawParameters) ||
               screen->info.have_KHR_shader_draw_parameters;
 
@@ -735,6 +779,8 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
               screen->info.feats12.shaderOutputViewportIndex);
 
    case PIPE_CAP_TEXTURE_FLOAT_LINEAR:
+      return have_fp32_filter_linear(screen);
+
    case PIPE_CAP_TEXTURE_HALF_FLOAT_LINEAR:
       return 1;
 
@@ -998,7 +1044,7 @@ zink_get_shader_param(struct pipe_screen *pscreen,
       assert(screen->info.props.limits.maxUniformBufferRange >= 16384);
       /* but Gallium can't handle values that are too big */
       return MIN3(get_smallest_buffer_heap(screen),
-                  screen->info.props.limits.maxUniformBufferRange, 1 << 31);
+                  screen->info.props.limits.maxUniformBufferRange, BITFIELD_BIT(31));
 
    case PIPE_SHADER_CAP_MAX_CONST_BUFFERS:
       return  MIN2(screen->info.props.limits.maxPerStageDescriptorUniformBuffers,
@@ -1289,13 +1335,13 @@ zink_destroy_screen(struct pipe_screen *pscreen)
    }
 
    u_transfer_helper_destroy(pscreen->transfer_helper);
+   util_queue_finish(&screen->cache_get_thread);
+   util_queue_destroy(&screen->cache_get_thread);
 #ifdef ENABLE_SHADER_CACHE
    if (screen->disk_cache) {
       util_queue_finish(&screen->cache_put_thread);
-      util_queue_finish(&screen->cache_get_thread);
       disk_cache_wait_for_idle(screen->disk_cache);
       util_queue_destroy(&screen->cache_put_thread);
-      util_queue_destroy(&screen->cache_get_thread);
    }
 #endif
    disk_cache_destroy(screen->disk_cache);
@@ -1529,7 +1575,7 @@ zink_is_depth_format_supported(struct zink_screen *screen, VkFormat format)
 static enum pipe_format
 emulate_x8(enum pipe_format format)
 {
-   /* convert missing X8 variants to A8 */
+   /* convert missing Xn variants to An */
    switch (format) {
    case PIPE_FORMAT_B8G8R8X8_UNORM:
       return PIPE_FORMAT_B8G8R8A8_UNORM;
@@ -1554,6 +1600,11 @@ emulate_x8(enum pipe_format format)
       return PIPE_FORMAT_R16G16B16A16_SNORM;
    case PIPE_FORMAT_R16G16B16X16_UNORM:
       return PIPE_FORMAT_R16G16B16A16_UNORM;
+
+   case PIPE_FORMAT_R32G32B32X32_FLOAT:
+      return PIPE_FORMAT_R32G32B32A32_FLOAT;
+   case PIPE_FORMAT_R32G32B32X32_SINT:
+      return PIPE_FORMAT_R32G32B32A32_SINT;
 
    default:
       return format;
@@ -2408,6 +2459,8 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
       screen->base.get_device_luid = zink_get_device_luid;
       screen->base.get_device_node_mask = zink_get_device_node_mask;
    }
+   screen->base.set_max_shader_compiler_threads = zink_set_max_shader_compiler_threads;
+   screen->base.is_parallel_shader_compilation_finished = zink_is_parallel_shader_compilation_finished;
    screen->base.get_vendor = zink_get_vendor;
    screen->base.get_device_vendor = zink_get_device_vendor;
    screen->base.get_compute_param = zink_get_compute_param;
@@ -2454,6 +2507,9 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
 
    zink_screen_init_compiler(screen);
    if (!disk_cache_init(screen))
+      goto fail;
+   if (!util_queue_init(&screen->cache_get_thread, "zcfq", 8, 4,
+                        UTIL_QUEUE_INIT_RESIZE_IF_FULL | UTIL_QUEUE_INIT_SCALE_THREADS, screen))
       goto fail;
    populate_format_props(screen);
    pre_hash_descriptor_states(screen);

@@ -46,6 +46,8 @@ struct tu_descriptor_state
    struct tu_descriptor_set *sets[MAX_SETS];
    struct tu_descriptor_set push_set;
    uint32_t dynamic_descriptors[MAX_DYNAMIC_BUFFERS_SIZE];
+   uint32_t max_sets_bound;
+   bool dynamic_bound;
 };
 
 enum tu_cmd_dirty_bits
@@ -260,6 +262,7 @@ struct tu_render_pass_state
    bool has_tess;
    bool has_prim_generated_query_in_rp;
    bool disable_gmem;
+   bool sysmem_single_prim_mode;
 
    /* Track whether conditional predicate for COND_REG_EXEC is changed in draw_cs */
    bool draw_cs_writes_to_cond_pred;
@@ -309,6 +312,9 @@ struct tu_cmd_state
       uint32_t size;
       uint32_t stride;
    } vb[MAX_VBS];
+
+   uint32_t max_vbs_bound;
+
    VkViewport viewport[MAX_VIEWPORTS];
    VkRect2D scissor[MAX_SCISSORS];
    uint32_t max_viewport, max_scissor;
@@ -501,16 +507,6 @@ struct tu_cmd_state
    struct tu_vs_params last_vs_params;
 };
 
-struct tu_cmd_pool
-{
-   struct vk_command_pool vk;
-
-   struct list_head cmd_buffers;
-   struct list_head free_cmd_buffers;
-};
-VK_DEFINE_NONDISP_HANDLE_CASTS(tu_cmd_pool, vk.base, VkCommandPool,
-                               VK_OBJECT_TYPE_COMMAND_POOL)
-
 enum tu_cmd_buffer_status
 {
    TU_CMD_BUFFER_STATUS_INVALID,
@@ -525,9 +521,6 @@ struct tu_cmd_buffer
    struct vk_command_buffer vk;
 
    struct tu_device *device;
-
-   struct tu_cmd_pool *pool;
-   struct list_head pool_link;
 
    struct u_trace trace;
    struct u_trace_iterator trace_renderpass_start;
@@ -559,8 +552,6 @@ struct tu_cmd_buffer
    struct tu_subpass dynamic_subpass;
    struct tu_framebuffer dynamic_framebuffer;
 
-   VkResult record_result;
-
    struct tu_cs cs;
    struct tu_cs draw_cs;
    struct tu_cs tile_store_cs;
@@ -590,6 +581,8 @@ struct tu_cmd_buffer
 };
 VK_DEFINE_HANDLE_CASTS(tu_cmd_buffer, vk.base, VkCommandBuffer,
                        VK_OBJECT_TYPE_COMMAND_BUFFER)
+
+extern const struct vk_command_buffer_ops tu_cmd_buffer_ops;
 
 static inline uint32_t
 tu_attachment_gmem_offset(struct tu_cmd_buffer *cmd,

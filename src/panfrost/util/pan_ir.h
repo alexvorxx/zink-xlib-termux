@@ -178,6 +178,8 @@ int
 panfrost_sysval_for_instr(nir_instr *instr, nir_dest *dest);
 
 struct panfrost_compile_inputs {
+        struct util_debug_callback *debug;
+
         unsigned gpu_id;
         bool is_blend, is_blit;
         struct {
@@ -187,7 +189,6 @@ struct panfrost_compile_inputs {
         } blend;
         int fixed_sysval_ubo;
         struct panfrost_sysvals *fixed_sysval_layout;
-        bool shaderdb;
         bool no_idvs;
         bool no_ubo_to_push;
 
@@ -292,6 +293,7 @@ struct pan_shader_info {
                         bool sample_shading;
                         bool early_fragment_tests;
                         bool can_early_z, can_fpk;
+                        bool untyped_color_outputs;
                         BITSET_WORD outputs_read;
                         BITSET_WORD outputs_written;
                 } fs;

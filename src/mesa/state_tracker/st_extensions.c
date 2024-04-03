@@ -975,6 +975,12 @@ void st_init_extensions(struct pipe_screen *screen,
           PIPE_FORMAT_BPTC_RGB_FLOAT,
           PIPE_FORMAT_BPTC_RGB_UFLOAT } },
 
+      /* BPTC software fallback support. */
+      { { o(ARB_texture_compression_bptc) },
+        { PIPE_FORMAT_R8G8B8A8_UNORM,
+          PIPE_FORMAT_R8G8B8A8_SRGB,
+          PIPE_FORMAT_R16G16B16X16_FLOAT } },
+
       { { o(TDFX_texture_compression_FXT1) },
         { PIPE_FORMAT_FXT1_RGB,
           PIPE_FORMAT_FXT1_RGBA } },
@@ -1203,10 +1209,6 @@ void st_init_extensions(struct pipe_screen *screen,
       /* only override for > 1 - 0 if none, 1 is MAX, >2 overrides MAX */
       if (drv_clip_planes > 1)
          consts->MaxClipPlanes = drv_clip_planes;
-
-      if (screen->get_param(screen, PIPE_CAP_VERTEXID_NOBASE)) {
-         consts->VertexID_is_zero_based = GL_TRUE;
-      }
 
       /* Extensions that either depend on GLSL 1.30 or are a subset thereof. */
       extensions->ARB_conservative_depth = GL_TRUE;

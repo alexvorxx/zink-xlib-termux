@@ -167,7 +167,7 @@ vkcts-kabini-valve:
   tags:
     - amdgpu:codename:STONEY
 
-vkcts-polaris10-valve:
+.vkcts-polaris10-valve:
   extends:
     - .vkcts-test-valve
     - .polaris10-test-valve
@@ -289,14 +289,14 @@ radv-fossils:
     B2C_JOB_SUCCESS_REGEX: 'SUCCESS: No changes found!\r$'
     B2C_TEST_SCRIPT: ./install/vkd3d-proton/run.sh
 
-vkd3d-kabini-valve:
+.vkd3d-kabini-valve:
   extends:
     - .vkd3d-test-valve
     - .kabini-test-valve
   variables:
     VKD3D_PROTON_RESULTS: radv-kabini-vkd3d
 
-vkd3d-polaris10-valve:
+.vkd3d-polaris10-valve:
   extends:
     - .vkd3d-test-valve
     - .polaris10-test-valve

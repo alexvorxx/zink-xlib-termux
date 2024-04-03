@@ -811,26 +811,6 @@ brw_compile_mesh(const struct brw_compiler *compiler,
    return g.get_assembly();
 }
 
-static fs_reg
-get_mesh_urb_handle(const fs_builder &bld, nir_intrinsic_op op)
-{
-   unsigned subreg;
-   if (bld.shader->stage == MESA_SHADER_TASK) {
-      subreg = 6;
-   } else {
-      assert(bld.shader->stage == MESA_SHADER_MESH);
-      subreg = op == nir_intrinsic_load_task_payload ? 7 : 6;
-   }
-
-   fs_builder ubld8 = bld.group(8, 0).exec_all();
-
-   fs_reg h = ubld8.vgrf(BRW_REGISTER_TYPE_UD, 1);
-   ubld8.MOV(h, retype(brw_vec1_grf(0, subreg), BRW_REGISTER_TYPE_UD));
-   ubld8.AND(h, h, brw_imm_ud(0xFFFF));
-
-   return h;
-}
-
 static unsigned
 component_from_intrinsic(nir_intrinsic_instr *instr)
 {
@@ -859,14 +839,12 @@ adjust_handle_and_offset(const fs_builder &bld,
 
 static void
 emit_urb_direct_writes(const fs_builder &bld, nir_intrinsic_instr *instr,
-                       const fs_reg &src)
+                       const fs_reg &src, fs_reg urb_handle)
 {
    assert(nir_src_bit_size(instr->src[0]) == 32);
 
    nir_src *offset_nir_src = nir_get_io_offset_src(instr);
    assert(nir_src_is_const(*offset_nir_src));
-
-   fs_reg urb_handle = get_mesh_urb_handle(bld, instr->intrinsic);
 
    const unsigned comps = nir_src_num_components(instr->src[0]);
    assert(comps <= 4);
@@ -952,14 +930,13 @@ emit_urb_direct_writes(const fs_builder &bld, nir_intrinsic_instr *instr,
 
 static void
 emit_urb_indirect_writes(const fs_builder &bld, nir_intrinsic_instr *instr,
-                         const fs_reg &src, const fs_reg &offset_src)
+                         const fs_reg &src, const fs_reg &offset_src,
+                         fs_reg urb_handle)
 {
    assert(nir_src_bit_size(instr->src[0]) == 32);
 
    const unsigned comps = nir_src_num_components(instr->src[0]);
    assert(comps <= 4);
-
-   fs_reg urb_handle = get_mesh_urb_handle(bld, instr->intrinsic);
 
    const unsigned base_in_dwords = nir_intrinsic_base(instr) +
                                    component_from_intrinsic(instr);
@@ -1017,7 +994,7 @@ emit_urb_indirect_writes(const fs_builder &bld, nir_intrinsic_instr *instr,
 
 static void
 emit_urb_direct_reads(const fs_builder &bld, nir_intrinsic_instr *instr,
-                      const fs_reg &dest)
+                      const fs_reg &dest, fs_reg urb_handle)
 {
    assert(nir_dest_bit_size(instr->dest) == 32);
 
@@ -1027,8 +1004,6 @@ emit_urb_direct_reads(const fs_builder &bld, nir_intrinsic_instr *instr,
 
    nir_src *offset_nir_src = nir_get_io_offset_src(instr);
    assert(nir_src_is_const(*offset_nir_src));
-
-   fs_reg urb_handle = get_mesh_urb_handle(bld, instr->intrinsic);
 
    const unsigned offset_in_dwords = nir_intrinsic_base(instr) +
                                      nir_src_as_uint(*offset_nir_src) +
@@ -1061,7 +1036,7 @@ emit_urb_direct_reads(const fs_builder &bld, nir_intrinsic_instr *instr,
 
 static void
 emit_urb_indirect_reads(const fs_builder &bld, nir_intrinsic_instr *instr,
-                        const fs_reg &dest, const fs_reg &offset_src)
+                        const fs_reg &dest, const fs_reg &offset_src, fs_reg urb_handle)
 {
    assert(nir_dest_bit_size(instr->dest) == 32);
 
@@ -1078,8 +1053,6 @@ emit_urb_indirect_reads(const fs_builder &bld, nir_intrinsic_instr *instr,
       ubld8.MOV(seq_ud, seq_uw);
       ubld8.SHL(seq_ud, seq_ud, brw_imm_ud(2));
    }
-
-   fs_reg urb_handle = get_mesh_urb_handle(bld, instr->intrinsic);
 
    const unsigned base_in_dwords = nir_intrinsic_base(instr) +
                                    component_from_intrinsic(instr);
@@ -1124,10 +1097,16 @@ emit_urb_indirect_reads(const fs_builder &bld, nir_intrinsic_instr *instr,
 }
 
 void
-fs_visitor::emit_task_mesh_store(const fs_builder &bld, nir_intrinsic_instr *instr)
+fs_visitor::emit_task_mesh_store(const fs_builder &bld, nir_intrinsic_instr *instr,
+                                 const fs_reg &urb_handle)
 {
    fs_reg src = get_nir_src(instr->src[0]);
    nir_src *offset_nir_src = nir_get_io_offset_src(instr);
+
+   fs_builder ubld8 = bld.group(8, 0).exec_all();
+   fs_reg h = ubld8.vgrf(BRW_REGISTER_TYPE_UD, 1);
+   ubld8.MOV(h, urb_handle);
+   ubld8.AND(h, h, brw_imm_ud(0xFFFF));
 
    /* TODO(mesh): for per_vertex and per_primitive, if we could keep around
     * the non-array-index offset, we could use to decide if we can perform
@@ -1135,16 +1114,22 @@ fs_visitor::emit_task_mesh_store(const fs_builder &bld, nir_intrinsic_instr *ins
     */
 
    if (nir_src_is_const(*offset_nir_src))
-      emit_urb_direct_writes(bld, instr, src);
+      emit_urb_direct_writes(bld, instr, src, h);
    else
-      emit_urb_indirect_writes(bld, instr, src, get_nir_src(*offset_nir_src));
+      emit_urb_indirect_writes(bld, instr, src, get_nir_src(*offset_nir_src), h);
 }
 
 void
-fs_visitor::emit_task_mesh_load(const fs_builder &bld, nir_intrinsic_instr *instr)
+fs_visitor::emit_task_mesh_load(const fs_builder &bld, nir_intrinsic_instr *instr,
+                                const fs_reg &urb_handle)
 {
    fs_reg dest = get_nir_dest(instr->dest);
    nir_src *offset_nir_src = nir_get_io_offset_src(instr);
+
+   fs_builder ubld8 = bld.group(8, 0).exec_all();
+   fs_reg h = ubld8.vgrf(BRW_REGISTER_TYPE_UD, 1);
+   ubld8.MOV(h, urb_handle);
+   ubld8.AND(h, h, brw_imm_ud(0xFFFF));
 
    /* TODO(mesh): for per_vertex and per_primitive, if we could keep around
     * the non-array-index offset, we could use to decide if we can perform
@@ -1152,9 +1137,9 @@ fs_visitor::emit_task_mesh_load(const fs_builder &bld, nir_intrinsic_instr *inst
     */
 
    if (nir_src_is_const(*offset_nir_src))
-      emit_urb_direct_reads(bld, instr, dest);
+      emit_urb_direct_reads(bld, instr, dest, h);
    else
-      emit_urb_indirect_reads(bld, instr, dest, get_nir_src(*offset_nir_src));
+      emit_urb_indirect_reads(bld, instr, dest, get_nir_src(*offset_nir_src), h);
 }
 
 void
@@ -1163,15 +1148,17 @@ fs_visitor::nir_emit_task_intrinsic(const fs_builder &bld,
 {
    assert(stage == MESA_SHADER_TASK);
 
+   fs_reg urb_handle = retype(brw_vec1_grf(0, 6), BRW_REGISTER_TYPE_UD);
+
    switch (instr->intrinsic) {
    case nir_intrinsic_store_output:
    case nir_intrinsic_store_task_payload:
-      emit_task_mesh_store(bld, instr);
+      emit_task_mesh_store(bld, instr, urb_handle);
       break;
 
    case nir_intrinsic_load_output:
    case nir_intrinsic_load_task_payload:
-      emit_task_mesh_load(bld, instr);
+      emit_task_mesh_load(bld, instr, urb_handle);
       break;
 
    default:
@@ -1186,18 +1173,24 @@ fs_visitor::nir_emit_mesh_intrinsic(const fs_builder &bld,
 {
    assert(stage == MESA_SHADER_MESH);
 
+   unsigned subreg = instr->intrinsic == nir_intrinsic_load_task_payload ? 7 : 6;
+   fs_reg urb_handle = retype(brw_vec1_grf(0, subreg), BRW_REGISTER_TYPE_UD);
+
    switch (instr->intrinsic) {
    case nir_intrinsic_store_per_primitive_output:
    case nir_intrinsic_store_per_vertex_output:
    case nir_intrinsic_store_output:
-      emit_task_mesh_store(bld, instr);
+      emit_task_mesh_store(bld, instr, urb_handle);
       break;
 
    case nir_intrinsic_load_per_vertex_output:
    case nir_intrinsic_load_per_primitive_output:
    case nir_intrinsic_load_output:
+      emit_task_mesh_load(bld, instr, urb_handle);
+      break;
+
    case nir_intrinsic_load_task_payload:
-      emit_task_mesh_load(bld, instr);
+      emit_task_mesh_load(bld, instr, urb_handle);
       break;
 
    default:
@@ -1240,6 +1233,19 @@ fs_visitor::nir_emit_task_mesh_intrinsic(const fs_builder &bld,
          bld.MOV(offset(dest, bld, 1), brw_imm_uw(0));
          bld.MOV(offset(dest, bld, 2), brw_imm_uw(0));
       }
+      break;
+
+   case nir_intrinsic_load_num_workgroups:
+      assert(!nir->info.mesh.nv);
+      dest = retype(dest, BRW_REGISTER_TYPE_UD);
+      bld.SHR(offset(dest, bld, 0), retype(brw_vec1_grf(0, 6), dest.type), brw_imm_ud(16));
+      bld.AND(offset(dest, bld, 1), retype(brw_vec1_grf(0, 4), dest.type), brw_imm_ud(0xffff));
+      bld.SHR(offset(dest, bld, 2), retype(brw_vec1_grf(0, 4), dest.type), brw_imm_ud(16));
+      break;
+
+   case nir_intrinsic_load_workgroup_index:
+      dest = retype(dest, BRW_REGISTER_TYPE_UD);
+      bld.MOV(dest, retype(brw_vec1_grf(0, 1), BRW_REGISTER_TYPE_UD));
       break;
 
    default:

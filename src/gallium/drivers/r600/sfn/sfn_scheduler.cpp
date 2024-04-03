@@ -329,12 +329,10 @@ void BlockSheduler::schedule_block(Block& in_block, Shader::ShaderBlocks& out_bl
       if (!m_current_block->lds_group_active()) {
          if (last_shed != sched_free && memops_ready.size() > 8)
             current_shed = sched_free;
-         else if (mem_ring_writes_ready.size() > 5)
+         else if (mem_ring_writes_ready.size() > 15)
             current_shed = sched_mem_ring;
          else if (rat_instr_ready.size() > 3)
             current_shed = sched_rat;
-         else if (gds_ready.size() > 3)
-            current_shed = sched_gds;
          else if (tex_ready.size() > 3)
             current_shed = sched_tex;         
       }
@@ -915,7 +913,8 @@ bool BlockSheduler::collect_ready_type(std::list<T *>& ready, std::list<T *>& av
    auto i = available.begin();
    auto e = available.end();
 
-   while (i != e) {
+   int lookahead = 16;
+   while (i != e && ready.size() < 16 && lookahead-- > 0) {
       if ((*i)->ready()) {
          ready.push_back(*i);
          auto old_i = i;

@@ -315,9 +315,9 @@ nv50_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_DRAW_INDIRECT:
    case PIPE_CAP_MULTI_DRAW_INDIRECT:
    case PIPE_CAP_MULTI_DRAW_INDIRECT_PARAMS:
-   case PIPE_CAP_VERTEXID_NOBASE:
    case PIPE_CAP_MULTISAMPLE_Z_RESOLVE: /* potentially supported on some hw */
    case PIPE_CAP_RESOURCE_FROM_USER_MEMORY:
+   case PIPE_CAP_RESOURCE_FROM_USER_MEMORY_COMPUTE_ONLY:
    case PIPE_CAP_DEVICE_RESET_STATUS_QUERY:
    case PIPE_CAP_MAX_SHADER_PATCH_VARYINGS:
    case PIPE_CAP_DRAW_PARAMETERS:
@@ -569,6 +569,7 @@ nv50_screen_get_compute_param(struct pipe_screen *pscreen,
                               enum pipe_compute_cap param, void *data)
 {
    struct nv50_screen *screen = nv50_screen(pscreen);
+   struct nouveau_device *dev = screen->base.device;
 
 #define RET(x) do {                  \
    if (data)                         \
@@ -586,7 +587,7 @@ nv50_screen_get_compute_param(struct pipe_screen *pscreen,
    case PIPE_COMPUTE_CAP_MAX_THREADS_PER_BLOCK:
       RET((uint64_t []) { 512 });
    case PIPE_COMPUTE_CAP_MAX_GLOBAL_SIZE: /* g0-15[] */
-      RET((uint64_t []) { 1ULL << 32 });
+      RET((uint64_t []) { nouveau_device_get_global_mem_size(dev) });
    case PIPE_COMPUTE_CAP_MAX_LOCAL_SIZE: /* s[] */
       RET((uint64_t []) { 16 << 10 });
    case PIPE_COMPUTE_CAP_MAX_PRIVATE_SIZE: /* l[] */
@@ -596,7 +597,7 @@ nv50_screen_get_compute_param(struct pipe_screen *pscreen,
    case PIPE_COMPUTE_CAP_SUBGROUP_SIZE:
       RET((uint32_t []) { 32 });
    case PIPE_COMPUTE_CAP_MAX_MEM_ALLOC_SIZE:
-      RET((uint64_t []) { 1ULL << 40 });
+      RET((uint64_t []) { nouveau_device_get_global_mem_size(dev) });
    case PIPE_COMPUTE_CAP_IMAGES_SUPPORTED:
       RET((uint32_t []) { 0 });
    case PIPE_COMPUTE_CAP_MAX_COMPUTE_UNITS:
@@ -621,11 +622,6 @@ nv50_screen_destroy(struct pipe_screen *pscreen)
 
    if (!nouveau_drm_screen_unref(&screen->base))
       return;
-
-   nouveau_fence_cleanup(&screen->base);
-
-   if (screen->base.pushbuf)
-      screen->base.pushbuf->user_priv = NULL;
 
    if (screen->blitter)
       nv50_blitter_destroy(screen);
@@ -655,15 +651,17 @@ nv50_screen_destroy(struct pipe_screen *pscreen)
    nouveau_object_del(&screen->sync);
 
    nouveau_screen_fini(&screen->base);
+   simple_mtx_destroy(&screen->state_lock);
 
    FREE(screen);
 }
 
 static void
-nv50_screen_fence_emit(struct pipe_screen *pscreen, u32 *sequence)
+nv50_screen_fence_emit(struct pipe_context *pcontext, u32 *sequence)
 {
-   struct nv50_screen *screen = nv50_screen(pscreen);
-   struct nouveau_pushbuf *push = screen->base.pushbuf;
+   struct nv50_context *nv50 = nv50_context(pcontext);
+   struct nv50_screen *screen = nv50->screen;
+   struct nouveau_pushbuf *push = nv50->base.pushbuf;
 
    /* we need to do it after possible flush in MARK_RING */
    *sequence = ++screen->base.fence.sequence;
@@ -783,16 +781,16 @@ nv50_screen_init_hwctx(struct nv50_screen *screen)
    PUSH_DATA (push, 0x3f);
 
    BEGIN_NV04(push, NV50_3D(VP_ADDRESS_HIGH), 2);
-   PUSH_DATAh(push, screen->code->offset + (0 << NV50_CODE_BO_SIZE_LOG2));
-   PUSH_DATA (push, screen->code->offset + (0 << NV50_CODE_BO_SIZE_LOG2));
+   PUSH_DATAh(push, screen->code->offset + (NV50_SHADER_STAGE_VERTEX << NV50_CODE_BO_SIZE_LOG2));
+   PUSH_DATA (push, screen->code->offset + (NV50_SHADER_STAGE_VERTEX << NV50_CODE_BO_SIZE_LOG2));
 
    BEGIN_NV04(push, NV50_3D(FP_ADDRESS_HIGH), 2);
-   PUSH_DATAh(push, screen->code->offset + (1 << NV50_CODE_BO_SIZE_LOG2));
-   PUSH_DATA (push, screen->code->offset + (1 << NV50_CODE_BO_SIZE_LOG2));
+   PUSH_DATAh(push, screen->code->offset + (NV50_SHADER_STAGE_FRAGMENT << NV50_CODE_BO_SIZE_LOG2));
+   PUSH_DATA (push, screen->code->offset + (NV50_SHADER_STAGE_FRAGMENT << NV50_CODE_BO_SIZE_LOG2));
 
    BEGIN_NV04(push, NV50_3D(GP_ADDRESS_HIGH), 2);
-   PUSH_DATAh(push, screen->code->offset + (2 << NV50_CODE_BO_SIZE_LOG2));
-   PUSH_DATA (push, screen->code->offset + (2 << NV50_CODE_BO_SIZE_LOG2));
+   PUSH_DATAh(push, screen->code->offset + (NV50_SHADER_STAGE_GEOMETRY << NV50_CODE_BO_SIZE_LOG2));
+   PUSH_DATA (push, screen->code->offset + (NV50_SHADER_STAGE_GEOMETRY << NV50_CODE_BO_SIZE_LOG2));
 
    BEGIN_NV04(push, NV50_3D(LOCAL_ADDRESS_HIGH), 3);
    PUSH_DATAh(push, screen->tls_bo->offset);
@@ -1015,6 +1013,7 @@ nv50_screen_create(struct nouveau_device *dev)
    pscreen = &screen->base.base;
    pscreen->destroy = nv50_screen_destroy;
 
+   simple_mtx_init(&screen->state_lock, mtx_plain);
    ret = nouveau_screen_init(&screen->base, dev);
    if (ret) {
       NOUVEAU_ERR("nouveau_screen_init failed: %d\n", ret);
@@ -1029,7 +1028,6 @@ nv50_screen_create(struct nouveau_device *dev)
    screen->base.sysmem_bindings |=
       PIPE_BIND_VERTEX_BUFFER | PIPE_BIND_INDEX_BUFFER;
 
-   screen->base.pushbuf->user_priv = screen;
    screen->base.pushbuf->rsvd_kick = 5;
 
    chan = screen->base.channel;
@@ -1070,7 +1068,7 @@ nv50_screen_create(struct nouveau_device *dev)
       goto fail;
    }
 
-   nouveau_bo_map(screen->fence.bo, 0, NULL);
+   BO_MAP(&screen->base, screen->fence.bo, 0, NULL);
    screen->fence.map = screen->fence.bo->map;
    screen->base.fence.emit = nv50_screen_fence_emit;
    screen->base.fence.update = nv50_screen_fence_update;
@@ -1212,8 +1210,6 @@ nv50_screen_create(struct nouveau_device *dev)
       NOUVEAU_ERR("Failed to init compute context: %d\n", ret);
       goto fail;
    }
-
-   nouveau_fence_new(&screen->base, &screen->base.fence.current);
 
    return &screen->base;
 

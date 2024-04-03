@@ -202,9 +202,8 @@ bo_upload(struct fd_bo *bo, unsigned off, void *src, unsigned len)
 }
 
 static void
-virtio_bo_upload(struct fd_bo *bo, void *src, unsigned len)
+virtio_bo_upload(struct fd_bo *bo, void *src, unsigned off, unsigned len)
 {
-   unsigned off = 0;
    while (len > 0) {
       unsigned sz = MIN2(len, 0x1000);
       bo_upload(bo, off, src, sz);
@@ -212,6 +211,27 @@ virtio_bo_upload(struct fd_bo *bo, void *src, unsigned len)
       src += sz;
       len -= sz;
    }
+}
+
+/**
+ * For recently allocated buffers, an immediate mmap would stall waiting
+ * for the host to handle the allocation and map to the guest, which
+ * could take a few ms.  So for small transfers to recently allocated
+ * buffers, we'd prefer to use the upload path instead.
+ */
+static bool
+virtio_bo_prefer_upload(struct fd_bo *bo, unsigned len)
+{
+   struct virtio_bo *virtio_bo = to_virtio_bo(bo);
+
+   if (len > 0x4000)
+      return false;
+
+   int64_t age_ns = os_time_get_nano() - virtio_bo->alloc_time_ns;
+   if (age_ns > 5000000)
+      return false;
+
+   return true;
 }
 
 static void
@@ -255,6 +275,7 @@ static const struct fd_bo_funcs funcs = {
    .iova = virtio_bo_iova,
    .set_name = virtio_bo_set_name,
    .upload = virtio_bo_upload,
+   .prefer_upload = virtio_bo_prefer_upload,
    .destroy = virtio_bo_destroy,
 };
 
@@ -267,6 +288,8 @@ bo_from_handle(struct fd_device *dev, uint32_t size, uint32_t handle)
    virtio_bo = calloc(1, sizeof(*virtio_bo));
    if (!virtio_bo)
       return NULL;
+
+   virtio_bo->alloc_time_ns = os_time_get_nano();
 
    bo = &virtio_bo->base;
 

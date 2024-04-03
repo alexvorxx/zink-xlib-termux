@@ -84,7 +84,7 @@ struct brw_compiler {
    void (*shader_perf_log)(void *, unsigned *id, const char *str, ...) PRINTFLIKE(3, 4);
 
    bool scalar_stage[MESA_ALL_SHADER_STAGES];
-   bool use_tcs_8_patch;
+   bool use_tcs_multi_patch;
    struct nir_shader_compiler_options *nir_options[MESA_ALL_SHADER_STAGES];
 
    /**
@@ -1203,6 +1203,12 @@ struct brw_vue_map {
    int num_slots;
 
    /**
+    * Number of position VUE slots.  If num_pos_slots > 1, primitive
+    * replication is being used.
+    */
+   int num_pos_slots;
+
+   /**
     * Number of per-patch VUE slots. Only valid for tessellation control
     * shader outputs and tessellation evaluation shader inputs.
     */
@@ -1258,7 +1264,7 @@ enum shader_dispatch_mode {
    DISPATCH_MODE_SIMD8 = 3,
 
    DISPATCH_MODE_TCS_SINGLE_PATCH = 0,
-   DISPATCH_MODE_TCS_8_PATCH = 2,
+   DISPATCH_MODE_TCS_MULTI_PATCH = 2,
 };
 
 /**

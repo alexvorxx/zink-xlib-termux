@@ -102,13 +102,7 @@ zink_context_destroy(struct pipe_context *pctx)
       hash_table_foreach(&ctx->program_cache[i], entry) {
          struct zink_program *pg = entry->data;
          pg->removed = true;
-         zink_descriptor_program_deinit(ctx, pg);
       }
-   }
-   hash_table_foreach(&ctx->compute_program_cache, entry) {
-      struct zink_program *pg = entry->data;
-      pg->removed = true;
-      zink_descriptor_program_deinit(ctx, pg);
    }
 
    if (ctx->blitter)
@@ -179,7 +173,6 @@ zink_context_destroy(struct pipe_context *pctx)
    slab_destroy_child(&ctx->transfer_pool);
    for (unsigned i = 0; i < ARRAY_SIZE(ctx->program_cache); i++)
       _mesa_hash_table_clear(&ctx->program_cache[i], NULL);
-   _mesa_hash_table_clear(&ctx->compute_program_cache, NULL);
    _mesa_hash_table_destroy(ctx->render_pass_cache, NULL);
    slab_destroy_child(&ctx->transfer_pool_unsync);
 
@@ -935,6 +928,9 @@ zink_create_sampler_view(struct pipe_context *pctx, struct pipe_resource *pres,
       struct pipe_surface templ = {0};
       templ.u.tex.level = state->u.tex.first_level;
       templ.format = state->format;
+      /* avoid needing mutable for depth/stencil sampling */
+      if (util_format_is_depth_and_stencil(pres->format))
+         templ.format = pres->format;
       if (state->target != PIPE_TEXTURE_3D) {
          templ.u.tex.first_layer = state->u.tex.first_layer;
          templ.u.tex.last_layer = state->u.tex.last_layer;
@@ -1641,6 +1637,9 @@ create_image_surface(struct zink_context *ctx, const struct pipe_image_view *vie
       break;
    default: break;
    }
+   if (!res->obj->dt && view->resource->format != view->format)
+      /* mutable not set by default */
+      zink_resource_object_init_mutable(ctx, res);
    VkImageViewCreateInfo ivci = create_ivci(screen, res, &tmpl, target);
    struct pipe_surface *psurf = zink_get_surface(ctx, view->resource, &tmpl, &ivci);
    if (!psurf)
@@ -1816,6 +1815,9 @@ zink_set_sampler_views(struct pipe_context *pctx,
                update = true;
             zink_batch_resource_usage_set(&ctx->batch, res, false, true);
          } else if (!res->obj->is_buffer) {
+             if (res->base.b.format != b->image_view->base.format)
+                /* mutable not set by default */
+                zink_resource_object_init_mutable(ctx, res);
              if (res->obj != b->image_view->obj) {
                 struct pipe_surface *psurf = &b->image_view->base;
                 VkImageView iv = b->image_view->image_view;
@@ -4661,7 +4663,6 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
    ctx->gfx_pipeline_state.shader_keys.key[MESA_SHADER_TESS_CTRL].size = sizeof(struct zink_tcs_key);
    ctx->gfx_pipeline_state.shader_keys.key[MESA_SHADER_GEOMETRY].size = sizeof(struct zink_vs_key_base);
    ctx->gfx_pipeline_state.shader_keys.key[MESA_SHADER_FRAGMENT].size = sizeof(struct zink_fs_key);
-   _mesa_hash_table_init(&ctx->compute_program_cache, ctx, _mesa_hash_pointer, _mesa_key_pointer_equal);
    _mesa_hash_table_init(&ctx->framebuffer_cache, ctx, hash_framebuffer_imageless, equals_framebuffer_imageless);
    if (!zink_init_render_pass(ctx))
       goto fail;

@@ -1,4 +1,4 @@
-# Copyright © 2018 Intel Corporation
+# Copyright © 2021 Collabora
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -18,21 +18,13 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-libopenglon12 = shared_library(
-  'openglon12',
-  ['libgl_d3d12.c'],
-  vs_module_defs : 'openglon12.def',
-  include_directories : [
-    inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux,
-    inc_wgl, inc_gallium_winsys, inc_gallium_winsys_sw, inc_gallium_drivers,
-  ],
-  link_whole : [libwgl],
-  link_with : [
-    libgallium, libglsl, libmesa, libwsgdi, libd3d12winsys, libglapi_static, libglapi
-  ],
-  dependencies : [
-    dep_ws2_32, idep_nir, idep_mesautil, driver_d3d12
-  ],
-  name_prefix : '',  # otherwise mingw will create libopenglon12.dll
-  install : true,
+coredumpdec = executable(
+  'panfrostdump',
+  files('panfrostdump.c'),
+  c_args : [c_msvc_compat_args, no_override_init_args, compile_args_panfrost],
+  gnu_symbol_visibility : 'hidden',
+  include_directories : [inc_include, inc_src, inc_mesa],
+  dependencies: [libpanfrost_dep],
+  build_by_default : true,
+  install: true
 )

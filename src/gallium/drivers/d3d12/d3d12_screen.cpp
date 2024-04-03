@@ -53,7 +53,7 @@
 #include <directx/d3d12sdklayers.h>
 
 #include <dxguids/dxguids.h>
-static GUID OpenGLOn12CreatorID = { 0x6bb3cd34, 0x0d19, 0x45ab, 0x97, 0xed, 0xd7, 0x20, 0xba, 0x3d, 0xfc, 0x80 };
+static GUID OpenGLOn12CreatorID = { 0x6bb3cd34, 0x0d19, 0x45ab, { 0x97, 0xed, 0xd7, 0x20, 0xba, 0x3d, 0xfc, 0x80 } };
 
 static const struct debug_named_value
 d3d12_debug_options[] = {
@@ -652,17 +652,6 @@ d3d12_is_format_supported(struct pipe_screen *pscreen,
             return false;
       } else
          fmt_info_sv = fmt_info;
-
-#ifdef _WIN32
-      if (bind & PIPE_BIND_DISPLAY_TARGET &&
-         (!(fmt_info.Support1 & D3D12_FORMAT_SUPPORT1_DISPLAY) ||
-            // Disable formats that don't support flip model
-            dxgi_format == DXGI_FORMAT_B8G8R8X8_UNORM ||
-            dxgi_format == DXGI_FORMAT_B5G5R5A1_UNORM ||
-            dxgi_format == DXGI_FORMAT_B5G6R5_UNORM ||
-            dxgi_format == DXGI_FORMAT_B4G4R4A4_UNORM))
-         return false;
-#endif
 
       if (bind & PIPE_BIND_DEPTH_STENCIL &&
           !(fmt_info.Support1 & D3D12_FORMAT_SUPPORT1_DEPTH_STENCIL))
@@ -1267,6 +1256,18 @@ d3d12_init_screen(struct d3d12_screen *screen, IUnknown *adapter)
       return false;
    }
    screen->max_feature_level = feature_levels.MaxSupportedFeatureLevel;
+
+   static const D3D_SHADER_MODEL valid_shader_models[] = {
+      D3D_SHADER_MODEL_6_7, D3D_SHADER_MODEL_6_6, D3D_SHADER_MODEL_6_5, D3D_SHADER_MODEL_6_4,
+      D3D_SHADER_MODEL_6_3, D3D_SHADER_MODEL_6_2, D3D_SHADER_MODEL_6_1,
+   };
+   for (UINT i = 0; i < ARRAY_SIZE(valid_shader_models); ++i) {
+      D3D12_FEATURE_DATA_SHADER_MODEL shader_model = { valid_shader_models[i] };
+      if (SUCCEEDED(screen->dev->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shader_model, sizeof(shader_model)))) {
+         screen->max_shader_model = shader_model.HighestShaderModel;
+         break;
+      }
+   }
 
    D3D12_COMMAND_QUEUE_DESC queue_desc;
    queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;

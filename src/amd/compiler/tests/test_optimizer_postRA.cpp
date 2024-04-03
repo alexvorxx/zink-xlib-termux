@@ -134,7 +134,6 @@ BEGIN_TEST(optimizer_postRA.scc_nocmp_opt)
     assert(setup_ok);
 
     PhysReg reg_s0{0};
-    PhysReg reg_s1{1};
     PhysReg reg_s2{2};
     PhysReg reg_s3{3};
     PhysReg reg_s4{4};
@@ -236,6 +235,25 @@ BEGIN_TEST(optimizer_postRA.scc_nocmp_opt)
                              Operand::zero());
         auto br = bld.branch(aco_opcode::p_cbranch_z, bld.def(s2, vcc), bld.scc(scmp));
         writeout(5, Operand(br, vcc), Operand(ovrw, reg_s3));
+    }
+
+    //; del d, e, f, g, h, x
+
+    {
+       /* SCC is overwritten in between, optimize by pulling down */
+
+       //! s1: %h:s[3], s1: %x:scc = s_add_u32 %a:s[0], 1
+       //! s1: %d:s[2], s1: %e:scc = s_bfe_u32 %a:s[0], 0x40018
+       //! s2: %f:vcc = p_cbranch_z %g:scc
+       //! p_unit_test 5, %f:vcc, %h:s[3]
+       auto salu = bld.sop2(aco_opcode::s_bfe_u32, bld.def(s1, reg_s2), bld.def(s1, scc), op_in_0,
+                            Operand::c32(0x40018u));
+       auto ovrw = bld.sop2(aco_opcode::s_add_u32, bld.def(s1, reg_s3), bld.def(s1, scc), op_in_0,
+                            Operand::c32(1u));
+       auto scmp = bld.sopc(aco_opcode::s_cmp_lg_u32, bld.def(s1, scc), Operand(salu, reg_s2),
+                            Operand::zero());
+       auto br = bld.branch(aco_opcode::p_cbranch_z, bld.def(s2, vcc), bld.scc(scmp));
+       writeout(5, Operand(br, vcc), Operand(ovrw, reg_s3));
     }
 
     //; del d, e, f, g, h, x

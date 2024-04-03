@@ -512,7 +512,7 @@ radv_get_resolve_pipeline(struct radv_cmd_buffer *cmd_buffer, struct radv_image_
       ret = create_resolve_pipeline(device, samples, vk_format_is_int(src_iview->vk.format),
                                     vk_format_is_srgb(src_iview->vk.format), pipeline);
       if (ret != VK_SUCCESS) {
-         cmd_buffer->record_result = ret;
+         vk_command_buffer_set_error(&cmd_buffer->vk, ret);
          return NULL;
       }
    }
@@ -645,7 +645,7 @@ emit_depth_stencil_resolve(struct radv_cmd_buffer *cmd_buffer, struct radv_image
 
       ret = create_depth_stencil_resolve_pipeline(device, samples, index, resolve_mode, pipeline);
       if (ret != VK_SUCCESS) {
-         cmd_buffer->record_result = ret;
+         vk_command_buffer_set_error(&cmd_buffer->vk, ret);
          return;
       }
    }
@@ -681,7 +681,7 @@ radv_meta_resolve_compute_image(struct radv_cmd_buffer *cmd_buffer, struct radv_
 
    if (!radv_image_use_dcc_image_stores(cmd_buffer->device, dest_image) &&
        radv_layout_dcc_compressed(cmd_buffer->device, dest_image, region->dstSubresource.mipLevel,
-                                  dest_image_layout, false, queue_mask) &&
+                                  dest_image_layout, queue_mask) &&
        (region->dstOffset.x || region->dstOffset.y || region->dstOffset.z ||
         region->extent.width != dest_image->info.width ||
         region->extent.height != dest_image->info.height ||
@@ -764,7 +764,7 @@ radv_meta_resolve_compute_image(struct radv_cmd_buffer *cmd_buffer, struct radv_
 
    if (!radv_image_use_dcc_image_stores(cmd_buffer->device, dest_image) &&
        radv_layout_dcc_compressed(cmd_buffer->device, dest_image, region->dstSubresource.mipLevel,
-                                  dest_image_layout, false, queue_mask)) {
+                                  dest_image_layout, queue_mask)) {
 
       cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_INV_VCACHE;
 
@@ -786,10 +786,10 @@ radv_meta_resolve_compute_image(struct radv_cmd_buffer *cmd_buffer, struct radv_
 void
 radv_cmd_buffer_resolve_subpass_cs(struct radv_cmd_buffer *cmd_buffer)
 {
-   struct vk_framebuffer *fb = cmd_buffer->state.framebuffer;
    const struct radv_subpass *subpass = cmd_buffer->state.subpass;
+   VkRect2D resolve_area = cmd_buffer->state.render_area;
+   uint32_t layer_count = cmd_buffer->state.framebuffer->layers;
    struct radv_subpass_barrier barrier;
-   uint32_t layer_count = fb->layers;
 
    if (subpass->view_mask)
       layer_count = util_last_bit(subpass->view_mask);
@@ -814,7 +814,11 @@ radv_cmd_buffer_resolve_subpass_cs(struct radv_cmd_buffer *cmd_buffer)
 
       VkImageResolve2 region = {
          .sType = VK_STRUCTURE_TYPE_IMAGE_RESOLVE_2,
-         .extent = (VkExtent3D){fb->width, fb->height, 1},
+         .extent = {
+            .width = resolve_area.extent.width,
+            .height = resolve_area.extent.height,
+            .depth = 1,
+         },
          .srcSubresource =
             (VkImageSubresourceLayers){
                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -829,8 +833,8 @@ radv_cmd_buffer_resolve_subpass_cs(struct radv_cmd_buffer *cmd_buffer)
                .baseArrayLayer = dst_iview->vk.base_array_layer,
                .layerCount = layer_count,
             },
-         .srcOffset = (VkOffset3D){0, 0, 0},
-         .dstOffset = (VkOffset3D){0, 0, 0},
+         .srcOffset = { resolve_area.offset.x, resolve_area.offset.y, 0 },
+         .dstOffset = { resolve_area.offset.x, resolve_area.offset.y, 0 },
       };
 
       radv_meta_resolve_compute_image(cmd_buffer, src_iview->image, src_iview->vk.format,
@@ -932,7 +936,7 @@ radv_depth_stencil_resolve_subpass_cs(struct radv_cmd_buffer *cmd_buffer,
    uint32_t queue_mask = radv_image_queue_family_mask(dst_image, cmd_buffer->qf,
                                                       cmd_buffer->qf);
 
-   if (radv_layout_is_htile_compressed(cmd_buffer->device, dst_image, layout, false, queue_mask)) {
+   if (radv_layout_is_htile_compressed(cmd_buffer->device, dst_image, layout, queue_mask)) {
       VkImageSubresourceRange range = {0};
       range.aspectMask = aspects;
       range.baseMipLevel = dst_iview->vk.base_mip_level;

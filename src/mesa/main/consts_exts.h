@@ -686,19 +686,16 @@ struct gl_constants
    GLboolean ForceIntegerTexNearest;
 
    /**
+    * Treat 32-bit floating-point textures using GL_LINEAR filters as
+    * GL_NEAREST.
+    */
+   GLboolean ForceFloat32TexNearest;
+
+   /**
     * Does the driver support real 32-bit integers?  (Otherwise, integers are
     * simulated via floats.)
     */
    GLboolean NativeIntegers;
-
-   /**
-    * Does VertexID count from zero or from base vertex?
-    *
-    * \note
-    * If desktop GLSL 1.30 or GLSL ES 3.00 are not supported, this field is
-    * ignored and need not be set.
-    */
-   bool VertexID_is_zero_based;
 
    /**
     * If the driver supports real 32-bit integers, what integer value should be

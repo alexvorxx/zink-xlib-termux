@@ -46,7 +46,6 @@
 #include "magic.h"
 #include "asahi/compiler/agx_compile.h"
 #include "asahi/lib/decode.h"
-#include "asahi/lib/tiling.h"
 #include "asahi/lib/agx_formats.h"
 
 static const struct debug_named_value agx_debug_options[] = {
@@ -146,7 +145,7 @@ agx_select_modifier(const struct agx_resource *pres)
       return DRM_FORMAT_MOD_LINEAR;
 
    /* Default to tiled */
-   return DRM_FORMAT_MOD_APPLE_64X64_MORTON_ORDER;
+   return DRM_FORMAT_MOD_APPLE_TWIDDLED;
 }
 
 static struct pipe_resource *
@@ -167,35 +166,15 @@ agx_resource_create(struct pipe_screen *screen,
    nresource->mipmapped = (templ->last_level > 0);
    nresource->internal_format = nresource->base.format;
 
-   unsigned offset = 0;
-   unsigned blocksize = util_format_get_blocksize(templ->format);
-
-   for (unsigned l = 0; l <= templ->last_level; ++l) {
-      unsigned width = u_minify(templ->width0, l);
-      unsigned height = u_minify(templ->height0, l);
-
-      if (nresource->modifier == DRM_FORMAT_MOD_APPLE_64X64_MORTON_ORDER) {
-         unsigned tile = agx_select_tile_size(templ->width0, templ->height0, l, blocksize);
-
-         width = ALIGN_POT(width, tile);
-         height = ALIGN_POT(height, tile);
-      }
-
-      /* Align stride to presumed cache line */
-      nresource->slices[l].line_stride = util_format_get_stride(templ->format, width);
-      if (nresource->modifier == DRM_FORMAT_MOD_LINEAR) {
-         nresource->slices[l].line_stride = ALIGN_POT(nresource->slices[l].line_stride, 64);
-      }
-
-      nresource->slices[l].offset = offset;
-      nresource->slices[l].size = ALIGN_POT(nresource->slices[l].line_stride * height, 0x80);
-
-      offset += nresource->slices[l].size;
-   }
-
-   /* Arrays and cubemaps have the entire miptree duplicated and page aligned (16K) */
-   nresource->array_stride = ALIGN_POT(offset, 0x4000);
-   unsigned size = nresource->array_stride * templ->array_size * templ->depth0;
+   nresource->layout = (struct ail_layout) {
+      .tiling = (nresource->modifier == DRM_FORMAT_MOD_LINEAR) ?
+                AIL_TILING_LINEAR : AIL_TILING_TWIDDLED,
+      .format = templ->format,
+      .width_px = templ->width0,
+      .height_px = templ->height0,
+      .depth_px = templ->depth0 * templ->array_size,
+      .levels = templ->last_level + 1
+   };
 
    pipe_reference_init(&nresource->base.reference, 1);
 
@@ -204,26 +183,25 @@ agx_resource_create(struct pipe_screen *screen,
    if (templ->bind & (PIPE_BIND_DISPLAY_TARGET |
                       PIPE_BIND_SCANOUT |
                       PIPE_BIND_SHARED)) {
-      unsigned width0 = templ->width0, height0 = templ->height0;
+      unsigned width = templ->width0;
+      unsigned height = templ->height0;
 
-      if (nresource->modifier == DRM_FORMAT_MOD_APPLE_64X64_MORTON_ORDER) {
-         width0 = ALIGN_POT(width0, 64);
-         height0 = ALIGN_POT(height0, 64);
+      if (nresource->layout.tiling == AIL_TILING_TWIDDLED) {
+         width = ALIGN_POT(width, 64);
+         height = ALIGN_POT(height, 64);
       }
 
       nresource->dt = winsys->displaytarget_create(winsys,
                       templ->bind,
                       templ->format,
-                      width0,
-                      height0,
+                      width,
+                      height,
                       64,
                       NULL /*map_front_private*/,
                       &nresource->dt_stride);
 
-      nresource->slices[0].line_stride = nresource->dt_stride;
-      assert((nresource->dt_stride & 0xF) == 0);
-
-      offset = nresource->slices[0].line_stride * ALIGN_POT(templ->height0, 64);
+      if (nresource->layout.tiling == AIL_TILING_LINEAR)
+         nresource->layout.linear_stride_B = nresource->dt_stride;
 
       if (nresource->dt == NULL) {
          FREE(nresource);
@@ -231,7 +209,8 @@ agx_resource_create(struct pipe_screen *screen,
       }
    }
 
-   nresource->bo = agx_bo_create(dev, size, AGX_MEMORY_TYPE_FRAMEBUFFER);
+   ail_make_miptree(&nresource->layout);
+   nresource->bo = agx_bo_create(dev, nresource->layout.size_B, AGX_MEMORY_TYPE_FRAMEBUFFER);
 
    if (!nresource->bo) {
       FREE(nresource);
@@ -280,7 +259,6 @@ agx_transfer_map(struct pipe_context *pctx,
 {
    struct agx_context *ctx = agx_context(pctx);
    struct agx_resource *rsrc = agx_resource(resource);
-   unsigned blocksize = util_format_get_blocksize(resource->format);
 
    /* Can't map tiled/compressed directly */
    if ((usage & PIPE_MAP_DIRECTLY) && rsrc->modifier != DRM_FORMAT_MOD_LINEAR)
@@ -299,9 +277,14 @@ agx_transfer_map(struct pipe_context *pctx,
    pipe_resource_reference(&transfer->base.resource, resource);
    *out_transfer = &transfer->base;
 
-   if (rsrc->modifier == DRM_FORMAT_MOD_APPLE_64X64_MORTON_ORDER) {
-      transfer->base.stride = box->width * blocksize;
-      transfer->base.layer_stride = transfer->base.stride * box->height;
+   if (rsrc->modifier == DRM_FORMAT_MOD_APPLE_TWIDDLED) {
+      transfer->base.stride =
+         util_format_get_stride(resource->format, box->width);
+
+      transfer->base.layer_stride =
+         util_format_get_2d_size(resource->format, transfer->base.stride,
+                                 box->height);
+
       transfer->map = calloc(transfer->base.layer_stride, box->depth);
 
       if ((usage & PIPE_MAP_READ) && BITSET_TEST(rsrc->data_valid, level)) {
@@ -310,11 +293,8 @@ agx_transfer_map(struct pipe_context *pctx,
             uint8_t *dst = (uint8_t *) transfer->map +
                            transfer->base.layer_stride * z;
 
-            agx_detile(map, dst,
-               u_minify(resource->width0, level), blocksize * 8,
-               transfer->base.stride / blocksize,
-               box->x, box->y, box->x + box->width, box->y + box->height,
-               agx_select_tile_shift(resource->width0, resource->height0, level, blocksize));
+            ail_detile(map, dst, &rsrc->layout, level, transfer->base.stride,
+                       box->x, box->y, box->width, box->height);
          }
       }
 
@@ -322,17 +302,18 @@ agx_transfer_map(struct pipe_context *pctx,
    } else {
       assert (rsrc->modifier == DRM_FORMAT_MOD_LINEAR);
 
-      transfer->base.stride = rsrc->slices[level].line_stride;
-      transfer->base.layer_stride = rsrc->array_stride;
+      transfer->base.stride = ail_get_linear_stride_B(&rsrc->layout, level);
+      transfer->base.layer_stride = rsrc->layout.layer_stride_B;
 
       /* Be conservative for direct writes */
 
       if ((usage & PIPE_MAP_WRITE) && (usage & PIPE_MAP_DIRECTLY))
          BITSET_SET(rsrc->data_valid, level);
 
-      return (uint8_t *) agx_map_texture_cpu(rsrc, level, box->z)
-             + transfer->base.box.y * rsrc->slices[level].line_stride
-             + transfer->base.box.x * blocksize;
+      uint32_t offset = ail_get_linear_pixel_B(&rsrc->layout, level, box->x,
+                                               box->y, box->z);
+
+      return ((uint8_t *) rsrc->bo->ptr.cpu) + offset;
    }
 }
 
@@ -345,14 +326,13 @@ agx_transfer_unmap(struct pipe_context *pctx,
    struct agx_transfer *trans = agx_transfer(transfer);
    struct pipe_resource *prsrc = transfer->resource;
    struct agx_resource *rsrc = (struct agx_resource *) prsrc;
-   unsigned blocksize = util_format_get_blocksize(prsrc->format);
 
    if (transfer->usage & PIPE_MAP_WRITE)
       BITSET_SET(rsrc->data_valid, transfer->level);
 
    /* Tiling will occur in software from a staging cpu buffer */
    if ((transfer->usage & PIPE_MAP_WRITE) &&
-         rsrc->modifier == DRM_FORMAT_MOD_APPLE_64X64_MORTON_ORDER) {
+         rsrc->modifier == DRM_FORMAT_MOD_APPLE_TWIDDLED) {
       assert(trans->map != NULL);
 
       for (unsigned z = 0; z < transfer->box.depth; ++z) {
@@ -361,16 +341,9 @@ agx_transfer_unmap(struct pipe_context *pctx,
          uint8_t *src = (uint8_t *) trans->map +
                         transfer->layer_stride * z;
 
-         agx_tile(map, src,
-            u_minify(transfer->resource->width0, transfer->level),
-            blocksize * 8,
-            transfer->stride / blocksize,
-            transfer->box.x, transfer->box.y,
-            transfer->box.x + transfer->box.width,
-            transfer->box.y + transfer->box.height,
-            agx_select_tile_shift(transfer->resource->width0,
-                                  transfer->resource->height0,
-                                  transfer->level, blocksize));
+         ail_tile(map, src, &rsrc->layout, transfer->level,
+                  transfer->stride, transfer->box.x, transfer->box.y,
+                  transfer->box.width, transfer->box.height);
       }
    }
 
@@ -686,10 +659,9 @@ agx_flush_frontbuffer(struct pipe_screen *_screen,
    void *map = winsys->displaytarget_map(winsys, rsrc->dt, PIPE_USAGE_DEFAULT);
    assert(map != NULL);
 
-   if (rsrc->modifier == DRM_FORMAT_MOD_APPLE_64X64_MORTON_ORDER) {
-      agx_detile(rsrc->bo->ptr.cpu, map,
-                 rsrc->base.width0, 32, rsrc->dt_stride / 4,
-                 0, 0, rsrc->base.width0, rsrc->base.height0, 6);
+   if (rsrc->modifier == DRM_FORMAT_MOD_APPLE_TWIDDLED) {
+      ail_detile(rsrc->bo->ptr.cpu, map, &rsrc->layout, 0, rsrc->dt_stride,
+                 0, 0, rsrc->base.width0, rsrc->base.height0);
    } else {
       memcpy(map, rsrc->bo->ptr.cpu, rsrc->dt_stride * rsrc->base.height0);
    }
@@ -1064,7 +1036,7 @@ agx_is_format_supported(struct pipe_screen* pscreen,
       case PIPE_FORMAT_R32G32_FLOAT:
       case PIPE_FORMAT_R32G32B32_FLOAT:
       case PIPE_FORMAT_R32G32B32A32_FLOAT:
-         return true;
+         break;
       default:
          return false;
       }
@@ -1081,14 +1053,13 @@ agx_is_format_supported(struct pipe_screen* pscreen,
       case PIPE_FORMAT_Z24X8_UNORM:
       case PIPE_FORMAT_Z24_UNORM_S8_UINT:
       case PIPE_FORMAT_Z32_FLOAT_S8X24_UINT:
-         return true;
+         break;
 
       default:
          return false;
       }
    }
 
-   /* TODO */
    return true;
 }
 
@@ -1217,8 +1188,10 @@ agx_screen_create(struct sw_winsys *winsys)
    screen->resource_create = u_transfer_helper_resource_create;
    screen->resource_destroy = u_transfer_helper_resource_destroy;
    screen->transfer_helper = u_transfer_helper_create(&transfer_vtbl,
-                                                      true, true, false, true,
-                                                      true);
+                                                      U_TRANSFER_HELPER_SEPARATE_Z32S8 |
+                                                      U_TRANSFER_HELPER_SEPARATE_STENCIL |
+                                                      U_TRANSFER_HELPER_MSAA_MAP |
+                                                      U_TRANSFER_HELPER_Z24_IN_Z32F);
 
    agx_internal_shaders(&agx_screen->dev);
 

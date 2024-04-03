@@ -132,8 +132,7 @@ bi_lower_swizzle_16(bi_context *ctx, bi_instr *ins, unsigned src)
 
         /* Lower it away */
         bi_builder b = bi_init_builder(ctx, bi_before_instr(ins));
-        ins->src[src] = bi_replace_index(ins->src[src],
-                        bi_swz_v2i16(&b, ins->src[src]));
+        bi_replace_src(ins, src, bi_swz_v2i16(&b, ins->src[src]));
         ins->src[src].swizzle = BI_SWIZZLE_H01;
 }
 
@@ -251,7 +250,7 @@ bi_lower_swizzle(bi_context *ctx)
         BITSET_WORD *replicates_16 = calloc(sizeof(bi_index), ctx->ssa_alloc);
 
         bi_foreach_instr_global(ctx, ins) {
-                if (bi_is_ssa(ins->dest[0]) && bi_instr_replicates(ins, replicates_16))
+                if (ins->nr_dests && bi_instr_replicates(ins, replicates_16))
                         BITSET_SET(replicates_16, ins->dest[0].value);
 
                 if (ins->op == BI_OPCODE_SWZ_V2I16 && bi_is_ssa(ins->src[0]) &&
@@ -264,7 +263,8 @@ bi_lower_swizzle(bi_context *ctx)
                  * Valhall, we will want to optimize this. For now, default
                  * to Bifrost compatible behaviour.
                  */
-                ins->dest[0].swizzle = BI_SWIZZLE_H01;
+                if (ins->nr_dests)
+                        ins->dest[0].swizzle = BI_SWIZZLE_H01;
         }
 
         free(replicates_16);

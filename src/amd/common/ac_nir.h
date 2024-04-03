@@ -131,7 +131,9 @@ ac_nir_lower_ngg_nogs(nir_shader *shader,
                       bool provoking_vtx_last,
                       bool use_edgeflags,
                       bool has_prim_query,
-                      uint32_t instance_rate_inputs);
+                      uint32_t instance_rate_inputs,
+                      uint32_t clipdist_enable_mask,
+                      uint32_t user_clip_plane_enable_mask);
 
 void
 ac_nir_lower_ngg_gs(nir_shader *shader,
@@ -140,7 +142,8 @@ ac_nir_lower_ngg_gs(nir_shader *shader,
                     unsigned esgs_ring_lds_bytes,
                     unsigned gs_out_vtx_bytes,
                     unsigned gs_total_out_vtx_bytes,
-                    bool provoking_vtx_last);
+                    bool provoking_vtx_last,
+                    bool can_cull);
 
 void
 ac_nir_lower_ngg_ms(nir_shader *shader,
@@ -161,12 +164,13 @@ ac_nir_lower_mesh_inputs_to_mem(nir_shader *shader,
                                 unsigned task_payload_entry_bytes,
                                 unsigned task_num_entries);
 
-void
-ac_nir_cull_triangle(nir_builder *b,
-                     nir_ssa_def *initially_accepted,
-                     nir_ssa_def *pos[3][4],
-                     ac_nir_cull_accepted accept_func,
-                     void *state);
+nir_ssa_def *
+ac_nir_cull_primitive(nir_builder *b,
+                      nir_ssa_def *initially_accepted,
+                      nir_ssa_def *pos[3][4],
+                      unsigned num_vertices,
+                      ac_nir_cull_accepted accept_func,
+                      void *state);
 
 bool
 ac_nir_lower_global_access(nir_shader *shader);

@@ -297,7 +297,7 @@ v3d_uncompiled_shader_create(struct pipe_context *pctx,
         } else {
                 assert(type == PIPE_SHADER_IR_TGSI);
 
-                if (unlikely(V3D_DEBUG & V3D_DEBUG_TGSI)) {
+                if (V3D_DBG(TGSI)) {
                         fprintf(stderr, "prog %d TGSI:\n",
                                 so->program_id);
                         tgsi_dump(ir, 0);
@@ -328,8 +328,7 @@ v3d_uncompiled_shader_create(struct pipe_context *pctx,
         so->base.type = PIPE_SHADER_IR_NIR;
         so->base.ir.nir = s;
 
-        if (unlikely(V3D_DEBUG & (V3D_DEBUG_NIR |
-                                  v3d_debug_flag_for_shader_stage(s->info.stage)))) {
+        if (V3D_DBG(NIR) || v3d_debug_flag_for_shader_stage(s->info.stage)) {
                 fprintf(stderr, "%s prog %d NIR:\n",
                         gl_shader_stage_name(s->info.stage),
                         so->program_id);
@@ -337,7 +336,7 @@ v3d_uncompiled_shader_create(struct pipe_context *pctx,
                 fprintf(stderr, "\n");
         }
 
-        if (unlikely(V3D_DEBUG & V3D_DEBUG_PRECOMPILE))
+        if (V3D_DBG(PRECOMPILE))
                 v3d_shader_precompile(v3d, so);
 
         return so;
@@ -346,9 +345,9 @@ v3d_uncompiled_shader_create(struct pipe_context *pctx,
 static void
 v3d_shader_debug_output(const char *message, void *data)
 {
-        struct v3d_context *v3d = data;
+        struct pipe_context *ctx = data;
 
-        util_debug_message(&v3d->debug, SHADER_INFO, "%s", message);
+        util_debug_message(&ctx->debug, SHADER_INFO, "%s", message);
 }
 
 static void *

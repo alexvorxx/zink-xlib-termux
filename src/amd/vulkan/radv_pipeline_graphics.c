@@ -1127,7 +1127,7 @@ radv_pipeline_init_dynamic_state(const struct radv_device *device, struct radv_g
 }
 
 static void
-gfx10_emit_ge_pc_alloc(struct radeon_cmdbuf *cs, enum amd_gfx_level gfx_level, uint32_t oversub_pc_lines)
+gfx10_emit_ge_pc_alloc(struct radeon_cmdbuf *cs, uint32_t oversub_pc_lines)
 {
    radeon_set_uconfig_reg(cs, R_030980_GE_PC_ALLOC,
                           S_030980_OVERSUB_EN(oversub_pc_lines > 0) | S_030980_NUM_PC_LINES(oversub_pc_lines - 1));
@@ -2951,7 +2951,7 @@ radv_emit_hw_vs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
    }
    if (pdev->info.gfx_level >= GFX10) {
       uint32_t oversub_pc_lines = late_alloc_wave64 ? pdev->info.pc_lines / 4 : 0;
-      gfx10_emit_ge_pc_alloc(cs, pdev->info.gfx_level, oversub_pc_lines);
+      gfx10_emit_ge_pc_alloc(cs, oversub_pc_lines);
 
       /* Required programming for tessellation (legacy pipeline only). */
       if (shader->info.stage == MESA_SHADER_TESS_EVAL) {
@@ -3139,7 +3139,7 @@ radv_emit_hw_ngg(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
       oversub_pc_lines *= oversub_factor;
    }
 
-   gfx10_emit_ge_pc_alloc(cs, pdev->info.gfx_level, oversub_pc_lines);
+   gfx10_emit_ge_pc_alloc(cs, oversub_pc_lines);
 }
 
 static void

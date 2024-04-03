@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "aubinator_error_decode_lib.h"
+#include "error_decode_lib.h"
 #include "error_decode_xe_lib.h"
 #include "intel/compiler/brw_isa_info.h"
 #include "intel/dev/intel_device_info.h"

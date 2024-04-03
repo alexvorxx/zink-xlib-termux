@@ -44,6 +44,7 @@
 #include "compiler/elk/elk_compiler.h"
 #include "decoder/intel_decoder.h"
 #include "dev/intel_debug.h"
+#include "error_decode_lib.h"
 #include "util/macros.h"
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))

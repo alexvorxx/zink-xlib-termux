@@ -49,6 +49,8 @@ aubinator_error_decode = executable(
         'aubinator_error_decode_lib.h',
         'aubinator_error_decode_xe.c',
         'aubinator_error_decode_xe.h',
+        'error_decode_lib.c',
+        'error_decode_lib.h',
         'error_decode_xe_lib.c',
         'error_decode_xe_lib.h'),
   dependencies : [idep_mesautil, dep_zlib, dep_thread, idep_intel_dev,
@@ -63,7 +65,11 @@ aubinator_error_decode = executable(
 
 error2aub = executable(
   'intel_error2aub',
-  files('aub_write.h', 'aub_write.c', 'error2aub.c'),
+  files('aub_write.h',
+        'aub_write.c',
+        'error2aub.c',
+        'error_decode_lib.c',
+        'error_decode_lib.h'),
   dependencies : [dep_zlib, dep_dl, dep_thread, dep_m, idep_intel_dev],
   include_directories : [inc_include, inc_src, inc_intel],
   c_args : [no_override_init_args],
@@ -73,7 +79,9 @@ error2aub = executable(
 
 error2hangdump = executable(
   'intel_error2hangdump',
-  files('error2hangdump.c'),
+  files('error2hangdump.c',
+        'error_decode_lib.c',
+        'error_decode_lib.h'),
   dependencies : [dep_zlib, dep_dl, dep_thread, dep_m, idep_intel_dev],
   include_directories : [inc_include, inc_src, inc_intel],
   c_args : [no_override_init_args],

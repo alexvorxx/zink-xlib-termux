@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "aubinator_error_decode_lib.h"
+#include "error_decode_xe_lib.h"
 #include "intel/compiler/brw_isa_info.h"
 #include "intel/dev/intel_device_info.h"
 
@@ -35,61 +36,6 @@ struct xe_vm {
 
    struct xe_vm_entry hw_context;
 };
-
-static const char *
-read_parameter_helper(const char *line, const char *parameter)
-{
-   if (!strstr(line, parameter))
-      return NULL;
-
-   while (*line != ':')
-      line++;
-   /* skip ':' and ' ' */
-   line += 2;
-
-   return line;
-}
-
-/* parse lines like 'batch_addr[0]: 0x0000effeffff5000 */
-static bool
-read_u64_hexacimal_parameter(const char *line, const char *parameter, uint64_t *value)
-{
-   line = read_parameter_helper(line, parameter);
-   if (!line)
-      return false;
-
-   *value = (uint64_t)strtoull(line, NULL, 0);
-   return true;
-}
-
-/* parse lines like 'PCI ID: 0x9a49' */
-static bool
-read_hexacimal_parameter(const char *line, const char *parameter, int *value)
-{
-   line = read_parameter_helper(line, parameter);
-   if (!line)
-      return false;
-
-   *value = (int)strtol(line, NULL, 0);
-   return true;
-}
-
-/* parse lines like 'rcs0 (physical), logical instance=0' */
-static bool
-read_xe_engine_name(const char *line, char *ring_name)
-{
-   int i;
-
-   if (!strstr(line, " (physical), logical instance="))
-      return false;
-
-   i = 0;
-   for (i = 0; *line != ' '; i++, line++)
-      ring_name[i] = *line;
-
-   ring_name[i] = 0;
-   return true;
-}
 
 /* return type of VM topic lines like '[200000].data: x...' and points
  * value_ptr to first char of data of topic type
@@ -353,48 +299,27 @@ read_xe_data_file(FILE *file,
    struct xe_vm xe_vm;
    char *line = NULL;
    size_t line_size;
-   enum  {
-      TOPIC_DEVICE = 0,
-      TOPIC_GUC_CT,
-      TOPIC_JOB,
-      TOPIC_HW_ENGINES,
-      TOPIC_VM,
-      TOPIC_INVALID,
-   } xe_topic = TOPIC_INVALID;
+   enum xe_topic xe_topic = XE_TOPIC_INVALID;
 
    xe_vm_init(&xe_vm);
 
    while (getline(&line, &line_size, file) > 0) {
-      static const char *xe_topic_strings[] = {
-         "**** Xe Device Coredump ****",
-         "**** GuC CT ****",
-         "**** Job ****",
-         "**** HW Engines ****",
-         "**** VM state ****",
-      };
       bool topic_changed = false;
       bool print_line = true;
 
-      /* handle Xe dump topics */
-      for (int i = 0; i < ARRAY_SIZE(xe_topic_strings); i++) {
-         if (strncmp(xe_topic_strings[i], line, strlen(xe_topic_strings[i])) == 0) {
-            topic_changed = true;
-            xe_topic = i;
-            print_line = (xe_topic != TOPIC_VM);
-            break;
-         }
-      }
+      topic_changed = error_decode_xe_decode_topic(line, &xe_topic);
       if (topic_changed) {
+         print_line = (xe_topic != XE_TOPIC_VM);
          if (print_line)
             fputs(line, stdout);
          continue;
       }
 
       switch (xe_topic) {
-      case TOPIC_DEVICE: {
+      case XE_TOPIC_DEVICE: {
          int int_value;
 
-         if (read_hexacimal_parameter(line, "PCI ID", &int_value)) {
+         if (error_decode_xe_read_hexacimal_parameter(line, "PCI ID", &int_value)) {
             if (intel_get_device_info_from_pci_id(int_value, &devinfo)) {
                printf("Detected GFX ver %i\n", devinfo.verx10);
                brw_init_isa_info(&isa, &devinfo);
@@ -410,23 +335,23 @@ read_xe_data_file(FILE *file,
 
          break;
       }
-      case TOPIC_HW_ENGINES: {
+      case XE_TOPIC_HW_ENGINES: {
          char engine_name[64];
          uint64_t u64_reg;
 
-         if (read_xe_engine_name(line, engine_name))
+         if (error_decode_xe_read_engine_name(line, engine_name))
             ring_name_to_class(engine_name, &engine_class);
 
-         if (read_u64_hexacimal_parameter(line, "ACTHD", &u64_reg))
+         if (error_decode_xe_read_u64_hexacimal_parameter(line, "ACTHD", &u64_reg))
             acthd = u64_reg;
 
          /* TODO: parse other engine registers */
          break;
       }
-      case TOPIC_JOB: {
+      case XE_TOPIC_JOB: {
          uint64_t u64_value;
 
-         if (read_u64_hexacimal_parameter(line, "batch_addr[", &u64_value)) {
+         if (error_decode_xe_read_u64_hexacimal_parameter(line, "batch_addr[", &u64_value)) {
             batch_buffers.addrs = realloc(batch_buffers.addrs, sizeof(uint64_t) * (batch_buffers.len + 1));
             batch_buffers.addrs[batch_buffers.len] = u64_value;
             batch_buffers.len++;
@@ -434,7 +359,7 @@ read_xe_data_file(FILE *file,
 
          break;
       }
-      case TOPIC_GUC_CT: {
+      case XE_TOPIC_GUC_CT: {
          enum xe_vm_topic_type type;
          const char *value_ptr;
          bool is_hw_ctx;
@@ -474,7 +399,7 @@ read_xe_data_file(FILE *file,
 
          break;
       }
-      case TOPIC_VM: {
+      case XE_TOPIC_VM: {
          enum xe_vm_topic_type type;
          const char *value_ptr;
          uint64_t address;

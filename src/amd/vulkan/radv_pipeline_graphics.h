@@ -565,6 +565,8 @@ unsigned radv_format_meta_fs_key(struct radv_device *device, VkFormat format);
 struct radv_ia_multi_vgt_param_helpers radv_compute_ia_multi_vgt_param(const struct radv_device *device,
                                                                        struct radv_shader *const *shaders);
 
+void radv_get_viewport_xform(const VkViewport *viewport, float scale[3], float translate[3]);
+
 struct radv_shader *radv_get_shader(struct radv_shader *const *shaders, gl_shader_stage stage);
 
 struct radv_ps_epilog_state {

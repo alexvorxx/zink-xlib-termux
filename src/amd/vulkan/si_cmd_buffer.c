@@ -662,25 +662,6 @@ fail:
 }
 
 void
-radv_get_viewport_xform(const VkViewport *viewport, float scale[3], float translate[3])
-{
-   float x = viewport->x;
-   float y = viewport->y;
-   float half_width = 0.5f * viewport->width;
-   float half_height = 0.5f * viewport->height;
-   double n = viewport->minDepth;
-   double f = viewport->maxDepth;
-
-   scale[0] = half_width;
-   translate[0] = half_width + x;
-   scale[1] = half_height;
-   translate[1] = half_height + y;
-
-   scale[2] = (f - n);
-   translate[2] = n;
-}
-
-void
 radv_cs_emit_write_event_eop(struct radeon_cmdbuf *cs, enum amd_gfx_level gfx_level, enum radv_queue_family qf,
                              unsigned event, unsigned event_flags, unsigned dst_sel, unsigned data_sel, uint64_t va,
                              uint32_t new_fence, uint64_t gfx9_eop_bug_va)

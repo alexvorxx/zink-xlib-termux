@@ -222,8 +222,6 @@ void radv_device_init_msaa(struct radv_device *device);
 
 void radv_cs_write_data_imm(struct radeon_cmdbuf *cs, unsigned engine_sel, uint64_t va, uint32_t imm);
 
-void radv_get_viewport_xform(const VkViewport *viewport, float scale[3], float translate[3]);
-
 struct radv_ray_tracing_group;
 
 struct radv_ray_tracing_stage;

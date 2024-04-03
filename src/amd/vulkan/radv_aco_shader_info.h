@@ -132,4 +132,4 @@ radv_aco_convert_opts(struct aco_compiler_options *aco_info, const struct radv_n
 #undef ASSIGN_FIELD
 #undef ASSIGN_FIELD_CP
 
-#endif
+#endif /* RADV_ACO_SHADER_INFO_H */

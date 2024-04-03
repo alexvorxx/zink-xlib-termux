@@ -120,4 +120,4 @@ radv_device_fault_detection_enabled(const struct radv_device *device)
    return instance->debug_flags & RADV_DEBUG_HANG;
 }
 
-#endif
+#endif /* RADV_DEBUG_H */

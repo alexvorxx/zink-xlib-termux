@@ -211,4 +211,4 @@ struct radv_bvh_geometry_data {
    uint32_t index_format;
 };
 
-#endif
+#endif /* BVH_H */

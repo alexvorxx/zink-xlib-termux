@@ -37,4 +37,5 @@ bool radv_compile_to_elf(struct ac_llvm_compiler *info, LLVMModuleRef module, ch
 #ifdef __cplusplus
 }
 #endif
-#endif
+
+#endif /* RADV_LLVM_HELPER_H */

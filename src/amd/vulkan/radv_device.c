@@ -673,6 +673,46 @@ radv_device_init_cache_key(struct radv_device *device)
    _mesa_blake3_compute(key, sizeof(*key), device->cache_hash);
 }
 
+static void
+radv_create_gfx_preamble(struct radv_device *device)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radeon_cmdbuf *cs = device->ws->cs_create(device->ws, AMD_IP_GFX, false);
+   if (!cs)
+      return;
+
+   radeon_check_space(device->ws, cs, 512);
+
+   radv_emit_graphics(device, cs);
+
+   while (cs->cdw & 7) {
+      if (pdev->info.gfx_ib_pad_with_type2)
+         radeon_emit(cs, PKT2_NOP_PAD);
+      else
+         radeon_emit(cs, PKT3_NOP_PAD);
+   }
+
+   VkResult result = radv_bo_create(
+      device, NULL, cs->cdw * 4, 4096, device->ws->cs_domain(device->ws),
+      RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_READ_ONLY | RADEON_FLAG_GTT_WC,
+      RADV_BO_PRIORITY_CS, 0, true, &device->gfx_init);
+   if (result != VK_SUCCESS)
+      goto fail;
+
+   void *map = radv_buffer_map(device->ws, device->gfx_init);
+   if (!map) {
+      radv_bo_destroy(device, NULL, device->gfx_init);
+      device->gfx_init = NULL;
+      goto fail;
+   }
+   memcpy(map, cs->buf, cs->cdw * 4);
+
+   device->ws->buffer_unmap(device->ws, device->gfx_init, false);
+   device->gfx_init_size_dw = cs->cdw;
+fail:
+   device->ws->cs_destroy(cs);
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCreateInfo,
                   const VkAllocationCallbacks *pAllocator, VkDevice *pDevice)
@@ -989,7 +1029,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    }
 
    if (!(instance->debug_flags & RADV_DEBUG_NO_IBS))
-      radv_create_gfx_config(device);
+      radv_create_gfx_preamble(device);
 
    struct vk_pipeline_cache_create_info info = {.weak_ref = true};
    device->mem_cache = vk_pipeline_cache_create(&device->vk, &info, NULL);

@@ -622,46 +622,6 @@ radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs)
 }
 
 void
-radv_create_gfx_config(struct radv_device *device)
-{
-   const struct radv_physical_device *pdev = radv_device_physical(device);
-   struct radeon_cmdbuf *cs = device->ws->cs_create(device->ws, AMD_IP_GFX, false);
-   if (!cs)
-      return;
-
-   radeon_check_space(device->ws, cs, 512);
-
-   radv_emit_graphics(device, cs);
-
-   while (cs->cdw & 7) {
-      if (pdev->info.gfx_ib_pad_with_type2)
-         radeon_emit(cs, PKT2_NOP_PAD);
-      else
-         radeon_emit(cs, PKT3_NOP_PAD);
-   }
-
-   VkResult result = radv_bo_create(
-      device, NULL, cs->cdw * 4, 4096, device->ws->cs_domain(device->ws),
-      RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_READ_ONLY | RADEON_FLAG_GTT_WC,
-      RADV_BO_PRIORITY_CS, 0, true, &device->gfx_init);
-   if (result != VK_SUCCESS)
-      goto fail;
-
-   void *map = radv_buffer_map(device->ws, device->gfx_init);
-   if (!map) {
-      radv_bo_destroy(device, NULL, device->gfx_init);
-      device->gfx_init = NULL;
-      goto fail;
-   }
-   memcpy(map, cs->buf, cs->cdw * 4);
-
-   device->ws->buffer_unmap(device->ws, device->gfx_init, false);
-   device->gfx_init_size_dw = cs->cdw;
-fail:
-   device->ws->cs_destroy(cs);
-}
-
-void
 radv_cs_emit_write_event_eop(struct radeon_cmdbuf *cs, enum amd_gfx_level gfx_level, enum radv_queue_family qf,
                              unsigned event, unsigned event_flags, unsigned dst_sel, unsigned data_sel, uint64_t va,
                              uint32_t new_fence, uint64_t gfx9_eop_bug_va)

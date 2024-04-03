@@ -204,8 +204,6 @@ struct radv_ray_tracing_pipeline;
 void radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs);
 void radv_emit_compute(struct radv_device *device, struct radeon_cmdbuf *cs);
 
-void radv_create_gfx_config(struct radv_device *device);
-
 void radv_cs_emit_write_event_eop(struct radeon_cmdbuf *cs, enum amd_gfx_level gfx_level, enum radv_queue_family qf,
                                   unsigned event, unsigned event_flags, unsigned dst_sel, unsigned data_sel,
                                   uint64_t va, uint32_t new_fence, uint64_t gfx9_eop_bug_va);

@@ -211,11 +211,6 @@ void radv_write_scissors(struct radeon_cmdbuf *cs, int count, const VkRect2D *sc
 void radv_write_guardband(struct radeon_cmdbuf *cs, int count, const VkViewport *viewports, unsigned rast_prim,
                           unsigned polygon_mode, float line_width);
 
-
-uint32_t radv_get_ia_multi_vgt_param(struct radv_cmd_buffer *cmd_buffer, bool instanced_draw, bool indirect_draw,
-                                     bool count_from_stream_output, uint32_t draw_vertex_count, unsigned topology,
-                                     bool prim_restart_enable, unsigned patch_control_points,
-                                     unsigned num_tess_patches);
 void radv_cs_emit_write_event_eop(struct radeon_cmdbuf *cs, enum amd_gfx_level gfx_level, enum radv_queue_family qf,
                                   unsigned event, unsigned event_flags, unsigned dst_sel, unsigned data_sel,
                                   uint64_t va, uint32_t new_fence, uint64_t gfx9_eop_bug_va);
@@ -224,9 +219,6 @@ void radv_cs_emit_cache_flush(struct radeon_winsys *ws, struct radeon_cmdbuf *cs
                               uint32_t *flush_cnt, uint64_t flush_va, enum radv_queue_family qf,
                               enum radv_cmd_flush_bits flush_bits, enum rgp_flush_bits *sqtt_flush_bits,
                               uint64_t gfx9_eop_bug_va);
-void radv_emit_cache_flush(struct radv_cmd_buffer *cmd_buffer);
-void radv_emit_set_predication_state(struct radv_cmd_buffer *cmd_buffer, bool draw_visible, unsigned pred_op,
-                                     uint64_t va);
 void radv_emit_cond_exec(const struct radv_device *device, struct radeon_cmdbuf *cs, uint64_t va, uint32_t count);
 
 void radv_emit_default_sample_locations(struct radeon_cmdbuf *cs, int nr_samples);

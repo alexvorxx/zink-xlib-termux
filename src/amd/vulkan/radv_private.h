@@ -1012,7 +1012,11 @@ struct radv_descriptor_pool {
 
    uint32_t entry_count;
    uint32_t max_entry_count;
-   struct radv_descriptor_pool_entry entries[0];
+
+   union {
+      struct radv_descriptor_set_layout *layouts[0];
+      struct radv_descriptor_pool_entry entries[0];
+   };
 };
 
 struct radv_descriptor_update_template_entry {
@@ -1922,6 +1926,7 @@ struct radv_binning_state {
 
 enum radv_pipeline_type {
    RADV_PIPELINE_GRAPHICS,
+   RADV_PIPELINE_GRAPHICS_LIB,
    /* Compute pipeline (incl raytracing pipeline) */
    RADV_PIPELINE_COMPUTE,
    /* Pipeline library. This can't actually run and merely is a partial pipeline. */
@@ -1945,156 +1950,6 @@ struct radv_pipeline_slab {
 };
 
 void radv_pipeline_slab_destroy(struct radv_device *device, struct radv_pipeline_slab *slab);
-
-struct radv_vertex_input_info {
-   uint32_t instance_rate_inputs;
-   uint32_t instance_rate_divisors[MAX_VERTEX_ATTRIBS];
-   uint8_t vertex_attribute_formats[MAX_VERTEX_ATTRIBS];
-   uint32_t vertex_attribute_bindings[MAX_VERTEX_ATTRIBS];
-   uint32_t vertex_attribute_offsets[MAX_VERTEX_ATTRIBS];
-   uint32_t vertex_attribute_strides[MAX_VERTEX_ATTRIBS];
-   uint8_t vertex_binding_align[MAX_VBS];
-   enum radv_vs_input_alpha_adjust vertex_alpha_adjust[MAX_VERTEX_ATTRIBS];
-   uint32_t vertex_post_shuffle;
-   uint32_t binding_stride[MAX_VBS];
-   uint8_t attrib_bindings[MAX_VERTEX_ATTRIBS];
-   uint32_t attrib_ends[MAX_VERTEX_ATTRIBS];
-   uint32_t attrib_index_offset[MAX_VERTEX_ATTRIBS];
-};
-
-struct radv_input_assembly_info {
-   uint8_t primitive_topology; /* VkPrimitiveTopology */
-   bool primitive_restart_enable;
-};
-
-struct radv_tessellation_info {
-   uint8_t patch_control_points;
-   VkTessellationDomainOrigin domain_origin;
-};
-
-struct radv_viewport_info {
-   bool negative_one_to_one;
-   uint8_t viewport_count;
-   uint8_t scissor_count;
-   VkRect2D scissors[MAX_SCISSORS];
-   VkViewport viewports[MAX_VIEWPORTS];
-};
-
-struct radv_rasterization_info {
-   bool discard_enable;
-   VkFrontFace front_face;
-   VkCullModeFlags cull_mode;
-   uint8_t polygon_mode; /* VkPolygonMode */
-   bool depth_bias_enable;
-   bool depth_clamp_enable;
-   float line_width;
-   float depth_bias_constant_factor;
-   float depth_bias_clamp;
-   float depth_bias_slope_factor;
-   VkConservativeRasterizationModeEXT conservative_mode;
-   bool provoking_vtx_last;
-   bool stippled_line_enable;
-   VkLineRasterizationModeEXT line_raster_mode;
-   uint32_t line_stipple_factor;
-   uint16_t line_stipple_pattern;
-   bool depth_clip_disable;
-   VkRasterizationOrderAMD order;
-};
-
-struct radv_discard_rectangle_info {
-   VkDiscardRectangleModeEXT mode;
-   VkRect2D rects[MAX_DISCARD_RECTANGLES];
-   uint8_t count;
-};
-
-struct radv_multisample_info {
-   bool sample_shading_enable;
-   bool alpha_to_coverage_enable;
-   bool sample_locs_enable;
-   VkSampleCountFlagBits raster_samples;
-   float min_sample_shading;
-   uint16_t sample_mask;
-   uint8_t sample_locs_count;
-   VkSampleCountFlagBits sample_locs_per_pixel;
-   VkExtent2D sample_locs_grid_size;
-   VkSampleLocationEXT sample_locs[MAX_SAMPLE_LOCATIONS];
-};
-
-struct radv_stencil_op_info {
-   VkStencilOp fail_op;
-   VkStencilOp pass_op;
-   VkStencilOp depth_fail_op;
-   VkCompareOp compare_op;
-   uint8_t compare_mask;
-   uint8_t write_mask;
-   uint8_t reference;
-};
-
-struct radv_depth_stencil_info {
-   bool stencil_test_enable;
-   bool depth_test_enable;
-   bool depth_write_enable;
-   bool depth_bounds_test_enable;
-   struct {
-      float min;
-      float max;
-   } depth_bounds;
-   struct radv_stencil_op_info front;
-   struct radv_stencil_op_info back;
-   VkCompareOp depth_compare_op;
-};
-
-struct radv_rendering_info {
-   uint32_t view_mask;
-   uint32_t color_att_count;
-   VkFormat color_att_formats[MAX_RTS];
-   VkFormat depth_att_format;
-   VkFormat stencil_att_format;
-};
-
-struct radv_color_blend_info {
-   bool logic_op_enable;
-   uint8_t att_count;
-   uint16_t logic_op;
-   uint32_t color_write_enable;
-   float blend_constants[4];
-   struct {
-      uint8_t color_write_mask;
-      bool blend_enable;
-      uint16_t color_blend_op;
-      uint16_t alpha_blend_op;
-      uint16_t src_color_blend_factor;
-      uint16_t dst_color_blend_factor;
-      uint16_t src_alpha_blend_factor;
-      uint16_t dst_alpha_blend_factor;
-   } att[MAX_RTS];
-};
-
-struct radv_fragment_shading_rate_info {
-   VkExtent2D size;
-   VkFragmentShadingRateCombinerOpKHR combiner_ops[2];
-};
-
-struct radv_graphics_pipeline_info {
-   struct radv_vertex_input_info vi;
-   struct radv_input_assembly_info ia;
-
-   struct radv_tessellation_info ts;
-   struct radv_viewport_info vp;
-   struct radv_rasterization_info rs;
-   struct radv_discard_rectangle_info dr;
-
-   struct radv_multisample_info ms;
-   struct radv_depth_stencil_info ds;
-   struct radv_rendering_info ri;
-   struct radv_color_blend_info cb;
-
-   struct radv_fragment_shading_rate_info fsr;
-
-   /* VK_AMD_mixed_attachment_samples */
-   uint8_t color_att_samples;
-   uint8_t ds_att_samples;
-};
 
 enum radv_depth_clamp_mode {
    RADV_DEPTH_CLAMP_MODE_VIEWPORT = 0,       /* Clamp to the viewport min/max depth bounds */
@@ -2130,6 +1985,12 @@ struct radv_pipeline {
    /* Pipeline layout info. */
    uint32_t push_constant_size;
    uint32_t dynamic_offset_count;
+
+   /* For graphics pipeline library */
+   bool retain_shaders;
+   struct {
+      nir_shader *nir;
+   } retained_shaders[MESA_VULKAN_SHADER_STAGES];
 };
 
 struct radv_graphics_pipeline {
@@ -2192,6 +2053,9 @@ struct radv_graphics_pipeline {
 
    unsigned rast_prim;
    float line_width;
+
+   /* For vk_graphics_pipeline_state */
+   void *state_data;
 };
 
 struct radv_compute_pipeline {
@@ -2219,6 +2083,16 @@ struct radv_library_pipeline {
    } *hashes;
 };
 
+struct radv_graphics_lib_pipeline {
+   struct radv_graphics_pipeline base;
+
+   struct radv_pipeline_layout layout;
+
+   struct vk_graphics_pipeline_state graphics_state;
+
+   VkGraphicsPipelineLibraryFlagsEXT lib_flags;
+};
+
 #define RADV_DECL_PIPELINE_DOWNCAST(pipe_type, pipe_enum)            \
    static inline struct radv_##pipe_type##_pipeline *                \
    radv_pipeline_to_##pipe_type(struct radv_pipeline *pipeline)      \
@@ -2228,6 +2102,7 @@ struct radv_library_pipeline {
    }
 
 RADV_DECL_PIPELINE_DOWNCAST(graphics, RADV_PIPELINE_GRAPHICS)
+RADV_DECL_PIPELINE_DOWNCAST(graphics_lib, RADV_PIPELINE_GRAPHICS_LIB)
 RADV_DECL_PIPELINE_DOWNCAST(compute, RADV_PIPELINE_COMPUTE)
 RADV_DECL_PIPELINE_DOWNCAST(library, RADV_PIPELINE_LIBRARY)
 

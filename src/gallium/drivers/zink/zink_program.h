@@ -29,6 +29,17 @@
 extern "C" {
 #endif
 
+
+struct gfx_pipeline_cache_entry {
+   struct zink_gfx_pipeline_state state;
+   VkPipeline pipeline;
+};
+
+struct compute_pipeline_cache_entry {
+   struct zink_compute_pipeline_state state;
+   VkPipeline pipeline;
+};
+
 #define ZINK_MAX_INLINED_VARIANTS 5
 
 static inline enum zink_descriptor_type
@@ -108,7 +119,12 @@ bool
 zink_program_descriptor_is_buffer(struct zink_context *ctx, gl_shader_stage stage, enum zink_descriptor_type type, unsigned i);
 
 void
-zink_update_gfx_program(struct zink_context *ctx, struct zink_gfx_program *prog);
+zink_gfx_program_update(struct zink_context *ctx);
+
+
+uint32_t hash_gfx_output(const void *key);
+uint32_t hash_gfx_input(const void *key);
+uint32_t hash_gfx_input_dynamic(const void *key);
 
 struct zink_gfx_program *
 zink_create_gfx_program(struct zink_context *ctx,
@@ -118,12 +134,6 @@ zink_create_gfx_program(struct zink_context *ctx,
 void
 zink_destroy_gfx_program(struct zink_context *ctx,
                          struct zink_gfx_program *prog);
-
-VkPipeline
-zink_get_gfx_pipeline(struct zink_context *ctx,
-                      struct zink_gfx_program *prog,
-                      struct zink_gfx_pipeline_state *state,
-                      enum pipe_prim_type mode);
 
 void
 zink_program_init(struct zink_context *ctx);
@@ -287,6 +297,8 @@ zink_set_fs_point_coord_key(struct zink_context *ctx)
 bool
 zink_set_rasterizer_discard(struct zink_context *ctx, bool disable);
 
+equals_gfx_pipeline_state_func
+zink_get_gfx_pipeline_eq_func(struct zink_screen *screen, struct zink_gfx_program *prog);
 #ifdef __cplusplus
 }
 #endif

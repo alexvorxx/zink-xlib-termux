@@ -31,6 +31,10 @@
 #define ZINK_BIND_TRANSIENT (1 << 30) //transient fb attachment
 #define ZINK_BIND_VIDEO (1 << 31)
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 bool
 zink_screen_resource_init(struct pipe_screen *pscreen);
 
@@ -80,9 +84,9 @@ zink_is_swapchain(const struct zink_resource *res)
    return res->swapchain;
 }
 
-#ifndef __cplusplus
 #include "zink_batch.h"
 #include "zink_bo.h"
+#include "zink_kopper.h"
 
 static inline bool
 zink_resource_usage_is_unflushed(const struct zink_resource *res)
@@ -139,5 +143,32 @@ zink_resource_object_usage_unset(struct zink_resource_object *obj, struct zink_b
    return zink_bo_usage_unset(obj->bo, bs);
 }
 
+static inline void
+zink_batch_resource_usage_set(struct zink_batch *batch, struct zink_resource *res, bool write, bool is_buffer)
+{
+   if (is_buffer) {
+      /* multiple array entries are fine */
+      if (!res->obj->coherent && res->obj->persistent_maps)
+         util_dynarray_append(&batch->state->persistent_resources, struct zink_resource_object*, res->obj);
+   } else {
+      if (res->obj->dt) {
+         VkSemaphore acquire = zink_kopper_acquire_submit(zink_screen(batch->state->ctx->base.screen), res);
+         if (acquire)
+            util_dynarray_append(&batch->state->acquires, VkSemaphore, acquire);
+      }
+      if (write && !res->obj->is_buffer) {
+         if (!res->valid && res->fb_binds)
+            batch->state->ctx->rp_loadop_changed = true;
+         res->valid = true;
+      }
+   }
+   zink_resource_usage_set(res, batch->state, write);
+
+   batch->has_work = true;
+}
+
+#ifdef __cplusplus
+}
 #endif
+
 #endif

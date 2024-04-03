@@ -347,9 +347,10 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
    aco_ptr<Instruction>& exec_val = block.instructions[exec_val_idx];
    aco_ptr<Instruction>& exec_copy = block.instructions[exec_copy_idx];
 
-   if (exec_copy->opcode != aco_opcode::s_and_saveexec_b32 &&
-       exec_copy->opcode != aco_opcode::s_and_saveexec_b64 &&
-       exec_copy->opcode != aco_opcode::p_parallelcopy)
+   const aco_opcode and_saveexec = ctx.program->lane_mask == s2 ? aco_opcode::s_and_saveexec_b64
+                                                                : aco_opcode::s_and_saveexec_b32;
+
+   if (exec_copy->opcode != and_saveexec && exec_copy->opcode != aco_opcode::p_parallelcopy)
       return;
 
    if (exec_val->definitions.size() > 1)
@@ -361,8 +362,7 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
    const bool vopc = v_cmpx_op != aco_opcode::num_opcodes;
 
    /* If s_and_saveexec is used, we'll need to insert a new instruction to save the old exec. */
-   const bool save_original_exec = exec_copy->opcode == aco_opcode::s_and_saveexec_b32 ||
-                                   exec_copy->opcode == aco_opcode::s_and_saveexec_b64;
+   const bool save_original_exec = exec_copy->opcode == and_saveexec;
    /* Position where the original exec mask copy should be inserted. */
    const int save_original_exec_idx = exec_val_idx;
    /* The copy can be removed when it kills its operand.
@@ -370,8 +370,6 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
     */
    const bool can_remove_copy =
       exec_copy->operands[0].isKill() || (vopc && ctx.program->gfx_level < GFX10);
-   /* Whether exec_val and exec_copy are adjacent (with p_logical_end inbetween). */
-   const bool val_and_copy_adjacent = exec_val_idx == exec_copy_idx - 2;
 
    /* Always allow reassigning when the value is written by (usable) VOPC.
     * Note, VOPC implicitly contains "& exec" because it yields zero on inactive lanes.
@@ -390,31 +388,29 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
    const Definition exec_wr_def = exec_val->definitions[0];
    const Definition exec_copy_def = exec_copy->definitions[0];
 
-   if (!val_and_copy_adjacent) {
-      /* When exec_val and exec_copy are non-adjacent, check whether there are any
-       * instructions inbetween (besides p_logical_end) which may inhibit the optimization.
-       */
-      for (int idx = exec_val_idx + 1; idx < exec_copy_idx; ++idx) {
-         aco_ptr<Instruction>& instr = block.instructions[idx];
+   /* When exec_val and exec_copy are non-adjacent, check whether there are any
+    * instructions inbetween (besides p_logical_end) which may inhibit the optimization.
+    */
+   for (int idx = exec_val_idx + 1; idx < exec_copy_idx; ++idx) {
+      aco_ptr<Instruction>& instr = block.instructions[idx];
 
-         if (save_original_exec) {
-            /* Check if the instruction uses the exec_copy_def register, in which case we can't
-             * optimize. */
-            for (const Operand& op : instr->operands)
-               if (regs_intersect(exec_copy_def, op))
-                  return;
-            for (const Definition& def : instr->definitions)
-               if (regs_intersect(exec_copy_def, def))
-                  return;
-         }
-
-         /* Check if the instruction may implicitly read VCC, eg. v_cndmask or add with carry.
-          * Some of these may be fine to convert to VOP3 but there are edge cases, eg. SDWA.
-          * Better leave these instructions alone.
-          */
-         if (instr->isVALU() && instr->operands.size() >= 3 && !instr->isVOP3())
-            return;
+      if (save_original_exec) {
+         /* Check if the instruction uses the exec_copy_def register, in which case we can't
+          * optimize. */
+         for (const Operand& op : instr->operands)
+            if (regs_intersect(exec_copy_def, op))
+               return;
+         for (const Definition& def : instr->definitions)
+            if (regs_intersect(exec_copy_def, def))
+               return;
       }
+
+      /* Check if the instruction may implicitly read VCC, eg. v_cndmask or add with carry.
+       * Rewriting these operands may require format conversion because of encoding limitations.
+       */
+      if (exec_wr_def.physReg() == vcc && instr->isVALU() && instr->operands.size() >= 3 &&
+          !instr->isVOP3())
+         return;
    }
 
    if (save_original_exec) {
@@ -471,17 +467,17 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
       exec_val->definitions[0] = Definition(exec, ctx.program->lane_mask);
    }
 
-   if (!val_and_copy_adjacent) {
-      /* If there are other instructions (besides p_logical_end) between
-       * writing the value and copying it to exec, reassign uses
-       * of the old definition.
-       */
-      for (int idx = exec_val_idx + 1; idx < exec_copy_idx; ++idx) {
-         aco_ptr<Instruction>& instr = block.instructions[idx];
-         for (Operand& op : instr->operands) {
-            if (!op.isConstant() && op.physReg() == exec_wr_def.physReg())
-               op = Operand(exec, ctx.program->lane_mask);
-         }
+   /* If there are other instructions (besides p_logical_end) between
+    * writing the value and copying it to exec, reassign uses
+    * of the old definition.
+    */
+   for (int idx = exec_val_idx + 1; idx < exec_copy_idx; ++idx) {
+      aco_ptr<Instruction>& instr = block.instructions[idx];
+      for (Operand& op : instr->operands) {
+         if (op.physReg() == exec_wr_def.physReg())
+            op = Operand(exec, op.regClass());
+         if (exec_wr_def.size() == 2 && op.physReg() == exec_wr_def.physReg().advance(4))
+            op = Operand(exec_hi, op.regClass());
       }
    }
 
@@ -500,7 +496,7 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
        exec_val->operands[0].constantValue()) {
       /* Remove the branch instruction when exec is constant non-zero. */
       aco_ptr<Instruction>& branch = block.instructions.back();
-      if (branch->isBranch() && branch->operands.size() && branch->operands[0].physReg() == exec)
+      if (branch->opcode == aco_opcode::p_cbranch_z && branch->operands[0].physReg() == exec)
          block.instructions.back().reset();
    }
 
@@ -551,6 +547,7 @@ eliminate_useless_exec_writes_in_block(ssa_elimination_ctx& ctx, Block& block)
 
    bool logical_end_found = false;
    bool branch_reads_exec = false;
+   bool branch_exec_val_found = false;
    int branch_exec_val_idx = -1;
    int branch_exec_copy_idx = -1;
    unsigned branch_exec_tempid = 0;
@@ -581,13 +578,15 @@ eliminate_useless_exec_writes_in_block(ssa_elimination_ctx& ctx, Block& block)
 
       /* For a newly encountered exec write, clear the used flag. */
       if (writes_exec) {
-         if (!logical_end_found && branch_reads_exec && instr->operands.size()) {
+         if (!logical_end_found && branch_reads_exec && instr->operands.size() &&
+             !branch_exec_val_found) {
             /* We are in a branch that jumps according to exec.
              * We just found the instruction that copies to exec before the branch.
              */
             assert(branch_exec_copy_idx == -1);
             branch_exec_copy_idx = i;
             branch_exec_tempid = instr->operands[0].tempId();
+            branch_exec_val_found = true;
          } else if (branch_exec_val_idx == -1) {
             /* The current instruction overwrites exec before branch_exec_val_idx was
              * found, therefore we can't optimize the branching sequence.

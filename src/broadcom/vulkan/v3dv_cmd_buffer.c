@@ -357,7 +357,8 @@ job_compute_frame_tiling(struct v3dv_job *job,
                          uint32_t layers,
                          uint32_t render_target_count,
                          uint8_t max_internal_bpp,
-                         bool msaa)
+                         bool msaa,
+                         bool double_buffer)
 {
    assert(job);
    struct v3dv_frame_tiling *tiling = &job->frame_tiling;
@@ -368,18 +369,9 @@ job_compute_frame_tiling(struct v3dv_job *job,
    tiling->render_target_count = render_target_count;
    tiling->msaa = msaa;
    tiling->internal_bpp = max_internal_bpp;
+   tiling->double_buffer = double_buffer;
 
-   /* We can use double-buffer when MSAA is disabled to reduce tile store
-    * overhead.
-    *
-    * FIXME: if we are emitting any tile loads the hardware will serialize
-    * loads and stores across tiles effectivley disabling double buffering,
-    * so we would want to check for that and not enable it in that case to
-    * avoid reducing the tile size.
-    */
-   tiling->double_buffer =
-      unlikely(V3D_DEBUG & V3D_DEBUG_DOUBLE_BUFFER) && !msaa;
-
+   /* Double-buffer is incompatible with MSAA */
    assert(!tiling->msaa || !tiling->double_buffer);
 
    v3d_choose_tile_size(render_target_count, max_internal_bpp,
@@ -412,41 +404,17 @@ job_compute_frame_tiling(struct v3dv_job *job,
    return tiling;
 }
 
-void
-v3dv_job_start_frame(struct v3dv_job *job,
-                     uint32_t width,
-                     uint32_t height,
-                     uint32_t layers,
-                     bool allocate_tile_state_for_all_layers,
-                     uint32_t render_target_count,
-                     uint8_t max_internal_bpp,
-                     bool msaa)
+bool
+v3dv_job_allocate_tile_state(struct v3dv_job *job)
 {
-   assert(job);
-
-   /* Start by computing frame tiling spec for this job */
-   const struct v3dv_frame_tiling *tiling =
-      job_compute_frame_tiling(job,
-                               width, height, layers,
-                               render_target_count, max_internal_bpp, msaa);
-
-   v3dv_cl_ensure_space_with_branch(&job->bcl, 256);
-   v3dv_return_if_oom(NULL, job);
-
-   /* We only need to allocate tile state for all layers if the binner
-    * writes primitives to layers other than the first. This can only be
-    * done using layered rendering (writing gl_Layer from a geometry shader),
-    * so for other cases of multilayered framebuffers (typically with
-    * meta copy/clear operations) that won't use layered rendering, we only
-    * need one layer worth of of tile state for the binner.
-    */
-   if (!allocate_tile_state_for_all_layers)
-      layers = 1;
+   struct v3dv_frame_tiling *tiling = &job->frame_tiling;
+   const uint32_t layers =
+      job->allocate_tile_state_for_all_layers ? tiling->layers : 1;
 
    /* The PTB will request the tile alloc initial size per tile at start
     * of tile binning.
     */
-   uint32_t tile_alloc_size = 64 * tiling->layers *
+   uint32_t tile_alloc_size = 64 * layers *
                               tiling->draw_tiles_x *
                               tiling->draw_tiles_y;
 
@@ -469,47 +437,121 @@ v3dv_job_start_frame(struct v3dv_job *job,
                                    "tile_alloc", true);
    if (!job->tile_alloc) {
       v3dv_flag_oom(NULL, job);
-      return;
+      return false;
    }
 
    v3dv_job_add_bo_unchecked(job, job->tile_alloc);
 
    const uint32_t tsda_per_tile_size = 256;
-   const uint32_t tile_state_size = tiling->layers *
+   const uint32_t tile_state_size = layers *
                                     tiling->draw_tiles_x *
                                     tiling->draw_tiles_y *
                                     tsda_per_tile_size;
    job->tile_state = v3dv_bo_alloc(job->device, tile_state_size, "TSDA", true);
    if (!job->tile_state) {
       v3dv_flag_oom(NULL, job);
-      return;
+      return false;
    }
 
    v3dv_job_add_bo_unchecked(job, job->tile_state);
+   return true;
+}
 
-   v3dv_X(job->device, job_emit_binning_prolog)(job, tiling, layers);
+void
+v3dv_job_start_frame(struct v3dv_job *job,
+                     uint32_t width,
+                     uint32_t height,
+                     uint32_t layers,
+                     bool allocate_tile_state_for_all_layers,
+                     bool allocate_tile_state_now,
+                     uint32_t render_target_count,
+                     uint8_t max_internal_bpp,
+                     bool msaa)
+{
+   assert(job);
+
+   /* Start by computing frame tiling spec for this job assuming that
+    * double-buffer mode is disabled.
+    */
+   const struct v3dv_frame_tiling *tiling =
+      job_compute_frame_tiling(job, width, height, layers,
+                               render_target_count, max_internal_bpp,
+                               msaa, false);
+
+   v3dv_cl_ensure_space_with_branch(&job->bcl, 256);
+   v3dv_return_if_oom(NULL, job);
+
+   job->allocate_tile_state_for_all_layers = allocate_tile_state_for_all_layers;
+
+   /* For subpass jobs we postpone tile state allocation until we are finishing
+    * the job and have made a decision about double-buffer.
+    */
+   if (allocate_tile_state_now) {
+      if (!v3dv_job_allocate_tile_state(job))
+         return;
+   }
+
+   v3dv_X(job->device, job_emit_binning_prolog)(job, tiling,
+      allocate_tile_state_for_all_layers ? tiling->layers : 1);
 
    job->ez_state = V3D_EZ_UNDECIDED;
    job->first_ez_state = V3D_EZ_UNDECIDED;
 }
 
+static bool
+job_should_enable_double_buffer(struct v3dv_job *job)
+{
+   /* Inocmpatibility with double-buffer */
+   if (!job->can_use_double_buffer)
+      return false;
+
+   /* Too much geometry processing */
+   if (job->double_buffer_score.geom > 2000000)
+      return false;
+
+   /* Too little rendering to make up for tile store latency */
+   if (job->double_buffer_score.render < 100000)
+      return false;
+
+   return true;
+}
+
 static void
 cmd_buffer_end_render_pass_frame(struct v3dv_cmd_buffer *cmd_buffer)
 {
-   assert(cmd_buffer->state.job);
+   struct v3dv_job *job = cmd_buffer->state.job;
+   assert(job);
 
-   /* Typically, we have a single job for each subpass and we emit the job's RCL
-    * here when we are ending the frame for the subpass. However, some commands
-    * such as vkCmdClearAttachments need to run in their own separate job and
-    * they emit their own RCL even if they execute inside a subpass. In this
-    * scenario, we don't want to emit subpass RCL when we end the frame for
-    * those jobs, so we only emit the subpass RCL if the job has not recorded
-    * any RCL commands of its own.
+
+   /* For subpass jobs we always emit the RCL here */
+   assert(v3dv_cl_offset(&job->rcl) == 0);
+
+   /* Decide if we want to enable double-buffer for this job. If we do, then
+    * we need to rewrite the TILE_BINNING_MODE_CFG packet in the BCL.
     */
-   if (v3dv_cl_offset(&cmd_buffer->state.job->rcl) == 0)
-      v3dv_X(cmd_buffer->device, cmd_buffer_emit_render_pass_rcl)(cmd_buffer);
+   if (job_should_enable_double_buffer(job)) {
+      assert(!job->frame_tiling.double_buffer);
+      job_compute_frame_tiling(job,
+                               job->frame_tiling.width,
+                               job->frame_tiling.height,
+                               job->frame_tiling.layers,
+                               job->frame_tiling.render_target_count,
+                               job->frame_tiling.internal_bpp,
+                               job->frame_tiling.msaa,
+                               true);
 
-   v3dv_X(cmd_buffer->device, job_emit_binning_flush)(cmd_buffer->state.job);
+      v3dv_X(job->device, job_emit_enable_double_buffer)(job);
+   }
+
+   /* At this point we have decided whether we want to use double-buffer or
+    * not and the job's frame tiling represents that decision so we can
+    * allocate the tile state, which we need to do before we emit the RCL.
+    */
+   v3dv_job_allocate_tile_state(job);
+
+   v3dv_X(cmd_buffer->device, cmd_buffer_emit_render_pass_rcl)(cmd_buffer);
+
+   v3dv_X(cmd_buffer->device, job_emit_binning_flush)(job);
 }
 
 struct v3dv_job *
@@ -979,6 +1021,13 @@ cmd_buffer_begin_render_pass_secondary(
    cmd_buffer->state.render_area.extent.height =
       framebuffer ? framebuffer->height : V3D_MAX_IMAGE_DIMENSION;
 
+   /* We only really execute double-buffer mode in primary jobs, so allow this
+    * mode in render pass secondaries to keep track of the double-buffer mode
+    * score in them and update the primaries accordingly when they are executed
+    * into them.
+    */
+    job->can_use_double_buffer = true;
+
    return VK_SUCCESS;
 }
 
@@ -1399,6 +1448,173 @@ cmd_buffer_emit_subpass_clears(struct v3dv_cmd_buffer *cmd_buffer)
    v3dv_CmdClearAttachments(_cmd_buffer, att_count, atts, 1, &rect);
 }
 
+bool
+v3dv_cmd_buffer_check_needs_load(const struct v3dv_cmd_buffer_state *state,
+                                 VkImageAspectFlags aspect,
+                                 uint32_t first_subpass_idx,
+                                 VkAttachmentLoadOp load_op)
+{
+   /* We call this with image->vk.aspects & aspect, so 0 means the aspect we are
+    * testing does not exist in the image.
+    */
+   if (!aspect)
+      return false;
+
+   /* Attachment (or view) load operations apply on the first subpass that
+    * uses the attachment (or view), otherwise we always need to load.
+    */
+   if (state->job->first_subpass > first_subpass_idx)
+      return true;
+
+   /* If the job is continuing a subpass started in another job, we always
+    * need to load.
+    */
+   if (state->job->is_subpass_continue)
+      return true;
+
+   /* If the area is not aligned to tile boundaries, we always need to load */
+   if (!state->tile_aligned_render_area)
+      return true;
+
+   /* The attachment load operations must be LOAD */
+   return load_op == VK_ATTACHMENT_LOAD_OP_LOAD;
+}
+
+bool
+v3dv_cmd_buffer_check_needs_store(const struct v3dv_cmd_buffer_state *state,
+                                  VkImageAspectFlags aspect,
+                                  uint32_t last_subpass_idx,
+                                  VkAttachmentStoreOp store_op)
+{
+   /* We call this with image->vk.aspects & aspect, so 0 means the aspect we are
+    * testing does not exist in the image.
+    */
+   if (!aspect)
+      return false;
+
+   /* Attachment (or view) store operations only apply on the last subpass
+    * where the attachment (or view)  is used, in other subpasses we always
+    * need to store.
+    */
+   if (state->subpass_idx < last_subpass_idx)
+      return true;
+
+   /* Attachment store operations only apply on the last job we emit on the the
+    * last subpass where the attachment is used, otherwise we always need to
+    * store.
+    */
+   if (!state->job->is_subpass_finish)
+      return true;
+
+   /* The attachment store operation must be STORE */
+   return store_op == VK_ATTACHMENT_STORE_OP_STORE;
+}
+
+static void
+cmd_buffer_subpass_check_double_buffer_mode(struct v3dv_cmd_buffer *cmd_buffer,
+                                            bool msaa)
+{
+   const struct v3dv_cmd_buffer_state *state = &cmd_buffer->state;
+   struct v3dv_job *job = cmd_buffer->state.job;
+   assert(job);
+
+   job->can_use_double_buffer = false;
+
+   /* Double-buffer can only be used if requested via V3D_DEBUG */
+   if (!unlikely(V3D_DEBUG & V3D_DEBUG_DOUBLE_BUFFER))
+      return;
+
+   /* Double-buffer cannot be enabled for MSAA jobs */
+   if (msaa)
+      return;
+
+   const struct v3dv_render_pass *pass = state->pass;
+   const struct v3dv_subpass *subpass = &pass->subpasses[state->subpass_idx];
+
+   /* FIXME: For now we discard multiview jobs (which have an implicit geometry
+    * shader) for this optimization. If we want to enable this with multiview
+    * we would need to check if any view (layer) in any attachment used by the
+    * job has loads and/or stores as we do below for regular attachments. Also,
+    * we would want to have a heuristic that doesn't automatically disable
+    * double-buffer in the presence of geometry shaders.
+    */
+   if (state->pass->multiview_enabled)
+      return;
+
+   /* Tile loads are serialized against stores, in which case we don't get
+    * any benefits from enabling double-buffer and would just pay the price
+    * of a smaller tile size instead. Similarly, we only benefit from
+    * double-buffer if we have tile stores, as the point of this mode is
+    * to execute rendering of a new tile while we store the previous one to
+    * hide latency on the tile store operation.
+    */
+   bool has_stores = false;
+   for (uint32_t i = 0; i < subpass->color_count; i++) {
+      uint32_t attachment_idx = subpass->color_attachments[i].attachment;
+      if (attachment_idx == VK_ATTACHMENT_UNUSED)
+         continue;
+
+      const struct v3dv_render_pass_attachment *attachment =
+         &state->pass->attachments[attachment_idx];
+
+      /* FIXME: This will check 'tile_aligned_render_area' but that was
+       * computed with a tile size without double-buffer. That is okay
+       * because if the larger tile size is aligned then we know the smaller
+       * tile size for double-buffer will be as well. However, we might
+       * still benefit from doing this check with the smaller tile size
+       * because it can happen that the smaller size is aligned and the
+       * larger size is not.
+       */
+      if (v3dv_cmd_buffer_check_needs_load(state,
+                                           VK_IMAGE_ASPECT_COLOR_BIT,
+                                           attachment->first_subpass,
+                                           attachment->desc.loadOp)) {
+         return;
+      }
+
+      if (v3dv_cmd_buffer_check_needs_store(state,
+                                            VK_IMAGE_ASPECT_COLOR_BIT,
+                                            attachment->last_subpass,
+                                            attachment->desc.storeOp)) {
+         has_stores = true;
+      }
+   }
+
+   if (subpass->ds_attachment.attachment != VK_ATTACHMENT_UNUSED) {
+      uint32_t ds_attachment_idx = subpass->ds_attachment.attachment;
+      const struct v3dv_render_pass_attachment *ds_attachment =
+         &state->pass->attachments[ds_attachment_idx];
+
+      const VkImageAspectFlags ds_aspects =
+         vk_format_aspects(ds_attachment->desc.format);
+
+      if (v3dv_cmd_buffer_check_needs_load(state,
+                                           ds_aspects & VK_IMAGE_ASPECT_DEPTH_BIT,
+                                           ds_attachment->first_subpass,
+                                           ds_attachment->desc.loadOp)) {
+         return;
+      }
+
+      if (v3dv_cmd_buffer_check_needs_load(state,
+                                           ds_aspects & VK_IMAGE_ASPECT_STENCIL_BIT,
+                                           ds_attachment->first_subpass,
+                                           ds_attachment->desc.stencilLoadOp)) {
+         return;
+      }
+
+      has_stores |= v3dv_cmd_buffer_check_needs_store(state,
+                                                      ds_aspects & VK_IMAGE_ASPECT_DEPTH_BIT,
+                                                      ds_attachment->last_subpass,
+                                                      ds_attachment->desc.storeOp);
+      has_stores |= v3dv_cmd_buffer_check_needs_store(state,
+                                                      ds_aspects & VK_IMAGE_ASPECT_STENCIL_BIT,
+                                                      ds_attachment->last_subpass,
+                                                      ds_attachment->desc.stencilStoreOp);
+   }
+
+   job->can_use_double_buffer = has_stores;
+}
+
 static struct v3dv_job *
 cmd_buffer_subpass_create_job(struct v3dv_cmd_buffer *cmd_buffer,
                               uint32_t subpass_idx,
@@ -1458,7 +1674,7 @@ cmd_buffer_subpass_create_job(struct v3dv_cmd_buffer *cmd_buffer,
                            framebuffer->width,
                            framebuffer->height,
                            layers,
-                           true,
+                           true, false,
                            subpass->color_count,
                            internal_bpp,
                            msaa);
@@ -1485,6 +1701,9 @@ v3dv_cmd_buffer_subpass_start(struct v3dv_cmd_buffer *cmd_buffer,
     * and with that the tile size selected by the hardware can change too.
     */
    cmd_buffer_update_tile_alignment(cmd_buffer);
+
+   /* Decide if we can use double-buffer for this subpass job */
+   cmd_buffer_subpass_check_double_buffer_mode(cmd_buffer, job->frame_tiling.msaa);
 
    cmd_buffer_update_attachment_resolve_state(cmd_buffer);
 
@@ -2419,7 +2638,7 @@ cmd_buffer_restart_job_for_msaa_if_needed(struct v3dv_cmd_buffer *cmd_buffer)
                         old_job->frame_tiling.width,
                         old_job->frame_tiling.height,
                         old_job->frame_tiling.layers,
-                        true,
+                        true, false,
                         old_job->frame_tiling.render_target_count,
                         old_job->frame_tiling.internal_bpp,
                         true /* msaa */);
@@ -2513,9 +2732,64 @@ consume_bcl_sync(struct v3dv_cmd_buffer *cmd_buffer, struct v3dv_job *job)
    cmd_buffer->state.barrier.bcl_image_access = 0;
 }
 
+static inline uint32_t
+compute_prog_score(struct v3dv_shader_variant *vs)
+{
+   const uint32_t inst_count = vs->qpu_insts_size / sizeof(uint64_t);
+   const uint32_t tmu_count = vs->prog_data.base->tmu_count +
+                              vs->prog_data.base->tmu_spills +
+                              vs->prog_data.base->tmu_fills;
+   return inst_count + 4 * tmu_count;
+}
+
+static void
+job_update_double_buffer_score(struct v3dv_job *job,
+                               struct v3dv_pipeline *pipeline,
+                               uint32_t vertex_count,
+                               VkExtent2D *render_area)
+{
+   /* FIXME: assume anything with GS workloads is too expensive */
+   struct v3dv_shader_variant *gs_bin =
+      pipeline->shared_data->variants[BROADCOM_SHADER_GEOMETRY_BIN];
+   if (gs_bin) {
+      job->can_use_double_buffer = false;
+      return;
+   }
+
+   /* Keep track of vertex processing: too much geometry processing would not
+    * be good for double-buffer.
+    */
+   struct v3dv_shader_variant *vs_bin =
+      pipeline->shared_data->variants[BROADCOM_SHADER_VERTEX_BIN];
+   assert(vs_bin);
+   uint32_t geom_score = vertex_count * compute_prog_score(vs_bin);
+
+   struct v3dv_shader_variant *vs =
+      pipeline->shared_data->variants[BROADCOM_SHADER_VERTEX];
+   assert(vs);
+   uint32_t vs_score = vertex_count * compute_prog_score(vs);
+   geom_score += vs_score;
+
+   job->double_buffer_score.geom += geom_score;
+
+   /* Compute pixel rendering cost.
+    *
+    * We estimate that on average a draw would render 0.2% of the pixels in
+    * the render area. That would be a 64x64 region in a 1920x1080 area.
+    */
+   struct v3dv_shader_variant *fs =
+      pipeline->shared_data->variants[BROADCOM_SHADER_FRAGMENT];
+   assert(fs);
+   uint32_t pixel_count = 0.002f * render_area->width * render_area->height;
+   uint32_t render_score = vs_score + pixel_count * compute_prog_score(fs);
+
+   job->double_buffer_score.render += render_score;
+}
+
 void
 v3dv_cmd_buffer_emit_pre_draw(struct v3dv_cmd_buffer *cmd_buffer,
-                              bool indexed, bool indirect)
+                              bool indexed, bool indirect,
+                              uint32_t vertex_count)
 {
    assert(cmd_buffer->state.gfx.pipeline);
    assert(!(cmd_buffer->state.gfx.pipeline->active_stages & VK_SHADER_STAGE_COMPUTE_BIT));
@@ -2620,6 +2894,16 @@ v3dv_cmd_buffer_emit_pre_draw(struct v3dv_cmd_buffer *cmd_buffer,
    if (*dirty & (V3DV_CMD_DIRTY_PIPELINE | V3DV_CMD_DIRTY_COLOR_WRITE_ENABLE))
       v3dv_X(device, cmd_buffer_emit_color_write_mask)(cmd_buffer);
 
+   /* We disable double-buffer mode if indirect draws are used because in that
+    * case we don't know the vertex count.
+    */
+   if (indirect) {
+      job->can_use_double_buffer = false;
+   } else if (job->can_use_double_buffer) {
+      job_update_double_buffer_score(job, pipeline, vertex_count,
+                                      &cmd_buffer->state.render_area.extent);
+   }
+
    cmd_buffer->state.dirty &= ~V3DV_CMD_DIRTY_PIPELINE;
 }
 
@@ -2635,10 +2919,12 @@ static void
 cmd_buffer_draw(struct v3dv_cmd_buffer *cmd_buffer,
                 struct v3dv_draw_info *info)
 {
+   uint32_t vertex_count =
+      info->vertex_count * info->instance_count;
 
    struct v3dv_render_pass *pass = cmd_buffer->state.pass;
    if (likely(!pass->multiview_enabled)) {
-      v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, false, false);
+      v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, false, false, vertex_count);
       v3dv_X(cmd_buffer->device, cmd_buffer_emit_draw)(cmd_buffer, info);
       return;
    }
@@ -2646,7 +2932,7 @@ cmd_buffer_draw(struct v3dv_cmd_buffer *cmd_buffer,
    uint32_t view_mask = pass->subpasses[cmd_buffer->state.subpass_idx].view_mask;
    while (view_mask) {
       cmd_buffer_set_view_index(cmd_buffer, u_bit_scan(&view_mask));
-      v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, false, false);
+      v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, false, false, vertex_count);
       v3dv_X(cmd_buffer->device, cmd_buffer_emit_draw)(cmd_buffer, info);
    }
 }
@@ -2684,9 +2970,11 @@ v3dv_CmdDrawIndexed(VkCommandBuffer commandBuffer,
 
    V3DV_FROM_HANDLE(v3dv_cmd_buffer, cmd_buffer, commandBuffer);
 
+   uint32_t vertex_count = indexCount * instanceCount;
+
    struct v3dv_render_pass *pass = cmd_buffer->state.pass;
    if (likely(!pass->multiview_enabled)) {
-      v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, true, false);
+      v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, true, false, vertex_count);
       v3dv_X(cmd_buffer->device, cmd_buffer_emit_draw_indexed)
          (cmd_buffer, indexCount, instanceCount,
           firstIndex, vertexOffset, firstInstance);
@@ -2696,7 +2984,7 @@ v3dv_CmdDrawIndexed(VkCommandBuffer commandBuffer,
    uint32_t view_mask = pass->subpasses[cmd_buffer->state.subpass_idx].view_mask;
    while (view_mask) {
       cmd_buffer_set_view_index(cmd_buffer, u_bit_scan(&view_mask));
-      v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, true, false);
+      v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, true, false, vertex_count);
       v3dv_X(cmd_buffer->device, cmd_buffer_emit_draw_indexed)
          (cmd_buffer, indexCount, instanceCount,
           firstIndex, vertexOffset, firstInstance);
@@ -2719,7 +3007,7 @@ v3dv_CmdDrawIndirect(VkCommandBuffer commandBuffer,
 
    struct v3dv_render_pass *pass = cmd_buffer->state.pass;
    if (likely(!pass->multiview_enabled)) {
-      v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, false, true);
+      v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, false, true, 0);
       v3dv_X(cmd_buffer->device, cmd_buffer_emit_draw_indirect)
          (cmd_buffer, buffer, offset, drawCount, stride);
       return;
@@ -2728,7 +3016,7 @@ v3dv_CmdDrawIndirect(VkCommandBuffer commandBuffer,
    uint32_t view_mask = pass->subpasses[cmd_buffer->state.subpass_idx].view_mask;
    while (view_mask) {
       cmd_buffer_set_view_index(cmd_buffer, u_bit_scan(&view_mask));
-      v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, false, true);
+      v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, false, true, 0);
       v3dv_X(cmd_buffer->device, cmd_buffer_emit_draw_indirect)
          (cmd_buffer, buffer, offset, drawCount, stride);
    }
@@ -2750,7 +3038,7 @@ v3dv_CmdDrawIndexedIndirect(VkCommandBuffer commandBuffer,
 
    struct v3dv_render_pass *pass = cmd_buffer->state.pass;
    if (likely(!pass->multiview_enabled)) {
-      v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, true, true);
+      v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, true, true, 0);
       v3dv_X(cmd_buffer->device, cmd_buffer_emit_indexed_indirect)
          (cmd_buffer, buffer, offset, drawCount, stride);
       return;
@@ -2759,7 +3047,7 @@ v3dv_CmdDrawIndexedIndirect(VkCommandBuffer commandBuffer,
    uint32_t view_mask = pass->subpasses[cmd_buffer->state.subpass_idx].view_mask;
    while (view_mask) {
       cmd_buffer_set_view_index(cmd_buffer, u_bit_scan(&view_mask));
-      v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, true, true);
+      v3dv_cmd_buffer_emit_pre_draw(cmd_buffer, true, true, 0);
       v3dv_X(cmd_buffer->device, cmd_buffer_emit_indexed_indirect)
          (cmd_buffer, buffer, offset, drawCount, stride);
    }

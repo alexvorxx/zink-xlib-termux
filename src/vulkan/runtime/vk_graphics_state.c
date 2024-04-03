@@ -106,10 +106,6 @@ fully_dynamic_state_groups(const BITSET_WORD *dynamic)
    if (BITSET_TEST(dynamic, MESA_VK_DYNAMIC_VI))
       groups |= MESA_VK_GRAPHICS_STATE_VERTEX_INPUT_BIT;
 
-   if (BITSET_TEST(dynamic, MESA_VK_DYNAMIC_IA_PRIMITIVE_TOPOLOGY) &&
-       BITSET_TEST(dynamic, MESA_VK_DYNAMIC_IA_PRIMITIVE_RESTART_ENABLE))
-      groups |= MESA_VK_GRAPHICS_STATE_INPUT_ASSEMBLY_BIT;
-
    if (BITSET_TEST(dynamic, MESA_VK_DYNAMIC_FSR))
       groups |= MESA_VK_GRAPHICS_STATE_FRAGMENT_SHADING_RATE_BIT;
 
@@ -294,12 +290,16 @@ vk_input_assembly_state_init(struct vk_input_assembly_state *ia,
                              const BITSET_WORD *dynamic,
                              const VkPipelineInputAssemblyStateCreateInfo *ia_info)
 {
-   if (IS_DYNAMIC(IA_PRIMITIVE_TOPOLOGY)) {
-      ia->primitive_topology = -1;
-   } else {
-      assert(ia_info->topology <= UINT8_MAX);
-      ia->primitive_topology = ia_info->topology;
-   }
+   /* From the Vulkan 1.3.224 spec:
+    *
+    *    "VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY specifies that the topology
+    *    state in VkPipelineInputAssemblyStateCreateInfo only specifies the
+    *    topology class, and the specific topology order and adjacency must be
+    *    set dynamically with vkCmdSetPrimitiveTopology before any drawing
+    *    commands."
+   */
+   assert(ia_info->topology <= UINT8_MAX);
+   ia->primitive_topology = ia_info->topology;
 
    ia->primitive_restart_enable = ia_info->primitiveRestartEnable;
 }
@@ -403,11 +403,11 @@ vk_discard_rectangles_state_init(struct vk_discard_rectangles_state *dr,
    if (dr_info == NULL)
       return;
 
+   assert(dr_info->discardRectangleCount <= MESA_VK_MAX_DISCARD_RECTANGLES);
    dr->mode = dr_info->discardRectangleMode;
+   dr->rectangle_count = dr_info->discardRectangleCount;
 
    if (!IS_DYNAMIC(DR_RECTANGLES)) {
-      assert(dr_info->discardRectangleCount <= MESA_VK_MAX_DISCARD_RECTANGLES);
-      dr->rectangle_count = dr_info->discardRectangleCount;
       typed_memcpy(dr->rectangles, dr_info->pDiscardRectangles,
                    dr_info->discardRectangleCount);
    }
@@ -962,6 +962,17 @@ vk_render_pass_state_init(struct vk_render_pass_state *rp,
       rp->color_self_dependencies = rsd_info->colorSelfDependencies;
       rp->depth_self_dependency = rsd_info->depthSelfDependency;
       rp->stencil_self_dependency = rsd_info->stencilSelfDependency;
+   }
+
+   const VkAttachmentSampleCountInfoAMD *asc_info =
+      vk_get_pipeline_sample_count_info_amd(info);
+   if (asc_info != NULL) {
+      assert(asc_info->colorAttachmentCount == rp->color_attachment_count);
+      for (uint32_t i = 0; i < asc_info->colorAttachmentCount; i++) {
+         rp->color_attachment_samples[i] = asc_info->pColorAttachmentSamples[i];
+      }
+
+      rp->depth_stencil_attachment_samples = asc_info->depthStencilAttachmentSamples;
    }
 }
 

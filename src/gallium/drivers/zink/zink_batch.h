@@ -38,10 +38,6 @@ extern "C" {
 #endif
 
 
-/* not real api don't use */
-bool
-batch_ptr_add_usage(struct zink_batch *batch, struct set *s, void *ptr);
-
 void
 zink_reset_batch_state(struct zink_context *ctx, struct zink_batch_state *bs);
 
@@ -67,9 +63,6 @@ zink_end_batch(struct zink_context *ctx, struct zink_batch *batch);
 
 void
 zink_batch_add_wait_semaphore(struct zink_batch *batch, VkSemaphore sem);
-
-void
-zink_batch_resource_usage_set(struct zink_batch *batch, struct zink_resource *res, bool write);
 
 void
 zink_batch_reference_resource_rw(struct zink_batch *batch,

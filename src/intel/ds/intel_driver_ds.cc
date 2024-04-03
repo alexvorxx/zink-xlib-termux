@@ -139,15 +139,14 @@ PERFETTO_DEFINE_DATA_SOURCE_STATIC_MEMBERS(IntelRenderpassDataSource);
 
 using perfetto::protos::pbzero::InternedGpuRenderStageSpecification_RenderStageCategory;
 
-enum InternedGpuRenderStageSpecification_RenderStageCategory
+InternedGpuRenderStageSpecification_RenderStageCategory
 i915_engine_class_to_category(enum drm_i915_gem_engine_class engine_class)
 {
    switch (engine_class) {
    case I915_ENGINE_CLASS_RENDER:
-      return InternedGpuRenderStageSpecification_RenderStageCategory::
-         InternedGpuRenderStageSpecification_RenderStageCategory_GRAPHICS;
+      return InternedGpuRenderStageSpecification_RenderStageCategory::GRAPHICS;
    default:
-      return InternedGpuRenderStageSpecification_RenderStageCategory::InternedGpuRenderStageSpecification_RenderStageCategory_OTHER;
+      return InternedGpuRenderStageSpecification_RenderStageCategory::OTHER;
    }
 }
 
@@ -217,10 +216,10 @@ send_descriptors(IntelRenderpassDataSource::TraceContext &ctx,
          desc->set_pid(getpid());
          switch (device->api) {
          case INTEL_DS_API_OPENGL:
-            desc->set_api(perfetto::protos::pbzero::InternedGraphicsContext_Api_OPEN_GL);
+            desc->set_api(perfetto::protos::pbzero::InternedGraphicsContext_Api::OPEN_GL);
             break;
          case INTEL_DS_API_VULKAN:
-            desc->set_api(perfetto::protos::pbzero::InternedGraphicsContext_Api_VULKAN);
+            desc->set_api(perfetto::protos::pbzero::InternedGraphicsContext_Api::VULKAN);
             break;
          default:
             break;
@@ -516,7 +515,7 @@ intel_driver_ds_init(void)
 
 void
 intel_ds_device_init(struct intel_ds_device *device,
-                     struct intel_device_info *devinfo,
+                     const struct intel_device_info *devinfo,
                      int drm_fd,
                      uint32_t gpu_id,
                      enum intel_ds_api api)

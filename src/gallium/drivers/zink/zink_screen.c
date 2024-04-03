@@ -456,6 +456,7 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_SEAMLESS_CUBE_MAP_PER_TEXTURE:
    case PIPE_CAP_LOAD_CONSTBUF:
    case PIPE_CAP_MULTISAMPLE_Z_RESOLVE:
+   case PIPE_CAP_RGB_OVERRIDE_DST_ALPHA_BLEND:
       return 1;
 
    case PIPE_CAP_DRAW_VERTEX_STATE:
@@ -1257,13 +1258,6 @@ zink_is_format_supported(struct pipe_screen *pscreen,
 
       if (bind & PIPE_BIND_SHADER_IMAGE &&
           !(props.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT))
-         return false;
-   }
-
-   if (util_format_is_compressed(format)) {
-      const struct util_format_description *desc = util_format_description(format);
-      if (desc->layout == UTIL_FORMAT_LAYOUT_BPTC &&
-          !screen->info.feats.features.textureCompressionBC)
          return false;
    }
 

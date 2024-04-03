@@ -100,6 +100,15 @@ typedef enum {
    ZINK_DYNAMIC_VERTEX_INPUT,
 } zink_dynamic_state;
 
+typedef enum {
+   ZINK_PIPELINE_NO_DYNAMIC_STATE,
+   ZINK_PIPELINE_DYNAMIC_STATE,
+   ZINK_PIPELINE_DYNAMIC_STATE2,
+   ZINK_PIPELINE_DYNAMIC_STATE2_PCP,
+   ZINK_PIPELINE_DYNAMIC_VERTEX_INPUT,
+   ZINK_PIPELINE_DYNAMIC_VERTEX_INPUT_PCP,
+} zink_pipeline_dynamic_state;
+
 enum zink_blit_flags {
    ZINK_BLIT_NORMAL = 1 << 0,
    ZINK_BLIT_SAVE_FS = 1 << 1,
@@ -308,6 +317,7 @@ struct zink_descriptor_layout {
 struct zink_descriptor_pool_key {
    unsigned use_count;
    unsigned num_type_sizes;
+   unsigned id;
    VkDescriptorPoolSize sizes[4];
    struct zink_descriptor_layout_key *layout;
 };
@@ -344,18 +354,6 @@ struct zink_program_descriptor_data {
    VkDescriptorUpdateTemplate templates[ZINK_DESCRIPTOR_TYPES + 1];
 };
 
-struct zink_batch_descriptor_data {
-   bool has_fbfetch;
-   struct util_dynarray overflowed_pools;
-   struct hash_table pools[ZINK_DESCRIPTOR_TYPES];
-   struct zink_descriptor_pool *push_pool[2];
-   struct zink_program *pg[2]; //gfx, compute
-   uint32_t compat_id[2];
-   VkDescriptorSetLayout dsl[2][ZINK_DESCRIPTOR_TYPES];
-   VkDescriptorSet sets[2][ZINK_DESCRIPTOR_TYPES + 1];
-   unsigned push_usage[2];
-};
-
 struct zink_descriptor_pool {
    unsigned set_idx;
    unsigned sets_alloc;
@@ -363,6 +361,25 @@ struct zink_descriptor_pool {
    VkDescriptorSet sets[MAX_LAZY_DESCRIPTORS];
 };
 
+struct zink_descriptor_pool_multi {
+   bool reinit_overflow;
+   unsigned overflow_idx;
+   struct util_dynarray overflowed_pools[2];
+   struct zink_descriptor_pool *pool;
+   const struct zink_descriptor_pool_key *pool_key;
+};
+
+struct zink_batch_descriptor_data {
+   bool has_fbfetch;
+   unsigned pool_size[ZINK_DESCRIPTOR_TYPES];
+   struct util_dynarray pools[ZINK_DESCRIPTOR_TYPES];
+   struct zink_descriptor_pool_multi push_pool[2];
+   struct zink_program *pg[2]; //gfx, compute
+   uint32_t compat_id[2];
+   VkDescriptorSetLayout dsl[2][ZINK_DESCRIPTOR_TYPES];
+   VkDescriptorSet sets[2][ZINK_DESCRIPTOR_TYPES + 1];
+   unsigned push_usage[2];
+};
 
 /** batch types */
 /* zink_batch_usage concepts:
@@ -424,11 +441,11 @@ struct zink_batch_state {
 
    struct util_queue_fence flush_completed;
 
-   struct set *programs;
+   struct set programs;
 
-   struct set *resources;
-   struct set *surfaces;
-   struct set *bufferviews;
+   struct set resources[2];
+   struct set surfaces;
+   struct set bufferviews;
 
    struct util_dynarray unref_resources;
    struct util_dynarray bindless_releases[2];
@@ -437,7 +454,7 @@ struct zink_batch_state {
    struct util_dynarray zombie_samplers;
    struct util_dynarray dead_framebuffers;
 
-   struct set *active_queries; /* zink_query objects which were active at some point in this batch */
+   struct set active_queries; /* zink_query objects which were active at some point in this batch */
 
    struct zink_batch_descriptor_data dd;
 
@@ -620,8 +637,7 @@ struct zink_gfx_pipeline_state {
    uint32_t _pad1 : 6;
    uint32_t force_persample_interp:1; //duplicated for gpl hashing
    /* order matches zink_gfx_output_key: uint16_t offset */
-   uint32_t rast_samples:8; //2 extra bits
-   uint32_t void_alpha_attachments:PIPE_MAX_COLOR_BUFS;
+   uint32_t rast_samples:16; //10 extra bits
    VkSampleMask sample_mask;
    unsigned rp_state;
    uint32_t blend_id;
@@ -657,9 +673,6 @@ struct zink_gfx_pipeline_state {
    uint32_t vertex_strides[PIPE_MAX_ATTRIBS];
    struct zink_vertex_elements_hw_state *element_state;
    bool sample_locations_enabled;
-   bool have_EXT_extended_dynamic_state;
-   bool have_EXT_extended_dynamic_state2;
-   bool extendedDynamicState2PatchControlPoints;
    uint8_t has_points; //either gs outputs points or prim type is points
    struct {
       struct zink_shader_key key[5];
@@ -710,7 +723,6 @@ struct zink_cs_push_constant {
  * allowing us to skip going through shader keys
  */
 struct zink_shader_module {
-   struct list_head list;
    VkShaderModule shader;
    uint32_t hash;
    bool default_variant;
@@ -739,6 +751,7 @@ struct zink_program {
    bool removed;
 };
 
+typedef bool (*equals_gfx_pipeline_state_func)(const void *a, const void *b);
 
 struct zink_gfx_library_key {
    uint32_t hw_rast_state;
@@ -763,8 +776,7 @@ struct zink_gfx_input_key {
 struct zink_gfx_output_key {
    uint32_t _pad:15;
    uint32_t force_persample_interp:1;
-   uint32_t rast_samples:8;
-   uint32_t void_alpha_attachments:PIPE_MAX_COLOR_BUFS;
+   uint32_t rast_samples:16;
    VkSampleMask sample_mask;
 
    unsigned rp_state;
@@ -782,13 +794,17 @@ struct zink_gfx_program {
 
    struct zink_shader *last_vertex_stage;
 
-   struct list_head shader_cache[ZINK_GFX_SHADER_COUNT][2][2]; //normal, nonseamless cubes, inline uniforms
+   struct util_dynarray shader_cache[ZINK_GFX_SHADER_COUNT][2][2]; //normal, nonseamless cubes, inline uniforms
    unsigned inlined_variant_count[ZINK_GFX_SHADER_COUNT];
 
    struct zink_shader *shaders[ZINK_GFX_SHADER_COUNT];
-   struct hash_table pipelines[11]; // number of draw modes we support
+   struct hash_table pipelines[2][11]; // [dynamic, renderpass][number of draw modes we support]
    uint32_t default_variant_hash;
    uint32_t last_variant_hash;
+   uint8_t inline_variants; //which stages are using inlined uniforms
+
+   uint32_t last_finalized_hash[2][4]; //[dynamic, renderpass][primtype idx]
+   VkPipeline last_pipeline[2][4]; //[dynamic, renderpass][primtype idx]
 
    struct set libs[4]; //zink_gfx_library_key[primtype] -> VkPipeline
 };
@@ -799,7 +815,7 @@ struct zink_compute_program {
    struct zink_shader_module *curr;
 
    struct zink_shader_module *module; //base
-   struct list_head shader_cache[2]; //nonseamless cubes, inline uniforms
+   struct util_dynarray shader_cache[2]; //nonseamless cubes, inline uniforms
    unsigned inlined_variant_count;
 
    struct zink_shader *shader;
@@ -1360,7 +1376,8 @@ struct zink_context {
    struct zink_fence *last_fence; //the last command buffer submitted
    struct zink_batch_state *batch_states; //list of submitted batch states: ordered by increasing timeline id
    unsigned batch_states_count; //number of states in `batch_states`
-   struct util_dynarray free_batch_states; //unused batch states
+   struct zink_batch_state *free_batch_states; //unused batch states
+   struct zink_batch_state *last_free_batch_state; //for appending
    bool oom_flush;
    bool oom_stall;
    struct zink_batch batch;

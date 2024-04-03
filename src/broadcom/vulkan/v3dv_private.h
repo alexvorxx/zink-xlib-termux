@@ -1080,6 +1080,37 @@ struct v3dv_job {
     */
    bool uses_buffer_device_address;
 
+   /* True if we have not identified anything that would be incompatible
+    * with double-buffer (like MSAA) or that would make double-buffer mode
+    * not efficient (like tile loads or not having any stores).
+    */
+   bool can_use_double_buffer;
+
+   /* This structure keeps track of various scores to inform a heuristic
+    * for double-buffer mode.
+    */
+   struct {
+      /* Cost of geometry shading */
+      uint32_t geom;
+      /* Cost of shader rendering */
+      uint32_t render;
+   } double_buffer_score;
+
+   /* We only need to allocate tile state for all layers if the binner
+    * writes primitives to layers other than the first. This can only be
+    * done using layered rendering (writing gl_Layer from a geometry shader),
+    * so for other cases of multilayered framebuffers (typically with
+    * meta copy/clear operations) that won't use layered rendering, we only
+    * need one layer worth of of tile state for the binner.
+    */
+   bool allocate_tile_state_for_all_layers;
+
+   /* A pointer to the location of the TILE_BINNING_MODE_CFG packet so we can
+    * rewrite it to enable double-buffer mode by the time we have enough info
+    * about the job to make that decision.
+    */
+   struct v3dv_cl_out *bcl_tile_binning_mode_ptr;
+
    enum v3dv_job_type type;
 
    struct v3dv_device *device;
@@ -1188,6 +1219,7 @@ void v3dv_job_start_frame(struct v3dv_job *job,
                           uint32_t height,
                           uint32_t layers,
                           bool allocate_tile_state_for_all_layers,
+                          bool allocate_tile_state_now,
                           uint32_t render_target_count,
                           uint8_t max_internal_bpp,
                           bool msaa);
@@ -1211,7 +1243,10 @@ v3dv_cmd_buffer_ensure_array_state(struct v3dv_cmd_buffer *cmd_buffer,
                                    void **ptr);
 
 void v3dv_cmd_buffer_emit_pre_draw(struct v3dv_cmd_buffer *cmd_buffer,
-                                   bool indexed, bool indirect);
+                                   bool indexed, bool indirect,
+                                   uint32_t vertex_count);
+
+bool v3dv_job_allocate_tile_state(struct v3dv_job *job);
 
 /* FIXME: only used on v3dv_cmd_buffer and v3dvx_cmd_buffer, perhaps move to a
  * cmd_buffer specific header?
@@ -1582,6 +1617,16 @@ void v3dv_cmd_buffer_add_private_obj(struct v3dv_cmd_buffer *cmd_buffer,
 
 void v3dv_cmd_buffer_merge_barrier_state(struct v3dv_barrier_state *dst,
                                          struct v3dv_barrier_state *src);
+
+bool v3dv_cmd_buffer_check_needs_load(const struct v3dv_cmd_buffer_state *state,
+                                      VkImageAspectFlags aspect,
+                                      uint32_t first_subpass_idx,
+                                      VkAttachmentLoadOp load_op);
+
+bool v3dv_cmd_buffer_check_needs_store(const struct v3dv_cmd_buffer_state *state,
+                                       VkImageAspectFlags aspect,
+                                       uint32_t last_subpass_idx,
+                                       VkAttachmentStoreOp store_op);
 
 struct v3dv_event {
    struct vk_object_base base;

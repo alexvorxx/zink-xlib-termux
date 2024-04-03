@@ -323,6 +323,7 @@ radv_device_finish_accel_struct_build_state(struct radv_device *device)
    dispatch->DestroyPipeline(_device, state->accel_struct_build.lbvh_generate_ir_pipeline, &state->alloc);
    dispatch->DestroyPipeline(_device, state->accel_struct_build.lbvh_main_pipeline, &state->alloc);
    dispatch->DestroyPipeline(_device, state->accel_struct_build.leaf_pipeline, &state->alloc);
+   dispatch->DestroyPipeline(_device, state->accel_struct_build.leaf_updateable_pipeline, &state->alloc);
    dispatch->DestroyPipeline(_device, state->accel_struct_build.encode_pipeline, &state->alloc);
    dispatch->DestroyPipeline(_device, state->accel_struct_build.encode_compact_pipeline, &state->alloc);
    dispatch->DestroyPipeline(_device, state->accel_struct_build.header_pipeline, &state->alloc);

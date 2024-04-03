@@ -36,7 +36,7 @@
 
 #include "common/intel_hang_dump.h"
 
-#include "drm-uapi/i915_drm.h"
+#include "intel/dev/intel_device_info.h"
 
 static inline void
 _fail(const char *prefix, const char *format, ...)
@@ -176,7 +176,7 @@ struct bo {
    uint8_t *data;
    uint64_t size;
 
-   enum drm_i915_gem_engine_class engine_class;
+   enum intel_engine_class engine_class;
    int engine_instance;
 
    struct list_head link;
@@ -185,7 +185,7 @@ struct bo {
 static struct bo *
 find_or_create(struct list_head *bo_list, uint64_t addr,
                enum address_space gtt,
-               enum drm_i915_gem_engine_class engine_class,
+               enum intel_engine_class engine_class,
                int engine_instance)
 {
    list_for_each_entry(struct bo, bo_entry, bo_list, link) {
@@ -208,24 +208,24 @@ find_or_create(struct list_head *bo_list, uint64_t addr,
 
 static void
 engine_from_name(const char *engine_name,
-                 enum drm_i915_gem_engine_class *engine_class,
+                 enum intel_engine_class *engine_class,
                  int *engine_instance)
 {
    const struct {
       const char *match;
-      enum drm_i915_gem_engine_class engine_class;
+      enum intel_engine_class engine_class;
       bool parse_instance;
    } rings[] = {
-      { "rcs", I915_ENGINE_CLASS_RENDER, true },
-      { "vcs", I915_ENGINE_CLASS_VIDEO, true },
-      { "vecs", I915_ENGINE_CLASS_VIDEO_ENHANCE, true },
-      { "bcs", I915_ENGINE_CLASS_COPY, true },
-      { "global", I915_ENGINE_CLASS_INVALID, false },
-      { "render command stream", I915_ENGINE_CLASS_RENDER, false },
-      { "blt command stream", I915_ENGINE_CLASS_COPY, false },
-      { "bsd command stream", I915_ENGINE_CLASS_VIDEO, false },
-      { "vebox command stream", I915_ENGINE_CLASS_VIDEO_ENHANCE, false },
-      { NULL, I915_ENGINE_CLASS_INVALID },
+      { "rcs", INTEL_ENGINE_CLASS_RENDER, true },
+      { "vcs", INTEL_ENGINE_CLASS_VIDEO, true },
+      { "vecs", INTEL_ENGINE_CLASS_VIDEO_ENHANCE, true },
+      { "bcs", INTEL_ENGINE_CLASS_COPY, true },
+      { "global", INTEL_ENGINE_CLASS_INVALID, false },
+      { "render command stream", INTEL_ENGINE_CLASS_RENDER, false },
+      { "blt command stream", INTEL_ENGINE_CLASS_COPY, false },
+      { "bsd command stream", INTEL_ENGINE_CLASS_VIDEO, false },
+      { "vebox command stream", INTEL_ENGINE_CLASS_VIDEO_ENHANCE, false },
+      { NULL, INTEL_ENGINE_CLASS_INVALID },
    }, *r;
 
    for (r = rings; r->match; r++) {
@@ -345,7 +345,7 @@ main(int argc, char *argv[])
       return in_filename ? EXIT_SUCCESS : EXIT_FAILURE;
    }
 
-   enum drm_i915_gem_engine_class capture_engine;
+   enum intel_engine_class capture_engine;
    engine_from_name(capture_engine_name, &capture_engine, &c);
 
    if (out_filename == NULL) {
@@ -370,7 +370,7 @@ main(int argc, char *argv[])
 
    struct bo *last_bo = NULL;
 
-   enum drm_i915_gem_engine_class active_engine_class = I915_ENGINE_CLASS_INVALID;
+   enum intel_engine_class active_engine_class = INTEL_ENGINE_CLASS_INVALID;
    int active_engine_instance = -1;
 
    char *line = NULL;

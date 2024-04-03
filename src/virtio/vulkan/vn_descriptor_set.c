@@ -413,9 +413,8 @@ vn_DestroyDescriptorPool(VkDevice device,
 }
 
 static struct vn_descriptor_pool_state_mutable *
-vn_find_mutable_state_for_binding(
-   const struct vn_descriptor_pool *pool,
-   const struct vn_descriptor_set_layout_binding *binding)
+vn_get_mutable_state(const struct vn_descriptor_pool *pool,
+                     const struct vn_descriptor_set_layout_binding *binding)
 {
    for (uint32_t i = 0; i < pool->mutable_states_count; i++) {
       struct vn_descriptor_pool_state_mutable *mutable_state =
@@ -435,25 +434,19 @@ vn_find_mutable_state_for_binding(
    return NULL;
 }
 
-static void
+static inline void
 vn_pool_restore_mutable_states(struct vn_descriptor_pool *pool,
                                const struct vn_descriptor_set_layout *layout,
-                               uint32_t max_binding_index,
-                               uint32_t last_binding_descriptor_count)
+                               uint32_t binding_index,
+                               uint32_t descriptor_count)
 {
-   for (uint32_t i = 0; i <= max_binding_index; i++) {
-      if (layout->bindings[i].type != VN_DESCRIPTOR_TYPE_MUTABLE_EXT)
-         continue;
-
-      const uint32_t count = i == layout->last_binding
-                                ? last_binding_descriptor_count
-                                : layout->bindings[i].count;
-
-      struct vn_descriptor_pool_state_mutable *mutable_state =
-         vn_find_mutable_state_for_binding(pool, &layout->bindings[i]);
-      assert(mutable_state && mutable_state->used >= count);
-      mutable_state->used -= count;
-   }
+   assert(layout->bindings[binding_index].type ==
+          VN_DESCRIPTOR_TYPE_MUTABLE_EXT);
+   assert(descriptor_count);
+   struct vn_descriptor_pool_state_mutable *mutable_state =
+      vn_get_mutable_state(pool, &layout->bindings[binding_index]);
+   assert(mutable_state && mutable_state->used >= descriptor_count);
+   mutable_state->used -= descriptor_count;
 }
 
 static bool
@@ -509,8 +502,7 @@ vn_descriptor_pool_alloc_descriptors(
           * - vn_descriptor_pool_state_mutable::{max - used} is enough
           */
          struct vn_descriptor_pool_state_mutable *mutable_state =
-            vn_find_mutable_state_for_binding(
-               pool, &layout->bindings[binding_index]);
+            vn_get_mutable_state(pool, &layout->bindings[binding_index]);
 
          if (mutable_state &&
              mutable_state->max - mutable_state->used >= count) {
@@ -532,9 +524,10 @@ vn_descriptor_pool_alloc_descriptors(
 fail:
    /* restore pool state before this allocation */
    pool->used = recovery;
-   if (binding_index > 0) {
-      vn_pool_restore_mutable_states(pool, layout, binding_index - 1,
-                                     last_binding_descriptor_count);
+   for (uint32_t j = 0; j < binding_index; j++) {
+      const uint32_t count = layout->bindings[j].count;
+      if (count && layout->bindings[j].type == VN_DESCRIPTOR_TYPE_MUTABLE_EXT)
+         vn_pool_restore_mutable_states(pool, layout, j, count);
    }
    return false;
 }
@@ -547,16 +540,17 @@ vn_descriptor_pool_free_descriptors(
 {
    assert(pool->async_set_allocation);
 
-   vn_pool_restore_mutable_states(pool, layout, layout->last_binding,
-                                  last_binding_descriptor_count);
-
    for (uint32_t i = 0; i <= layout->last_binding; i++) {
-      const enum vn_descriptor_type type = layout->bindings[i].type;
       const uint32_t count = i == layout->last_binding
                                 ? last_binding_descriptor_count
                                 : layout->bindings[i].count;
+      if (!count)
+         continue;
 
-      if (type != VN_DESCRIPTOR_TYPE_MUTABLE_EXT) {
+      const enum vn_descriptor_type type = layout->bindings[i].type;
+      if (type == VN_DESCRIPTOR_TYPE_MUTABLE_EXT) {
+         vn_pool_restore_mutable_states(pool, layout, i, count);
+      } else {
          pool->used.descriptor_counts[type] -= count;
 
          if (type == VN_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK)

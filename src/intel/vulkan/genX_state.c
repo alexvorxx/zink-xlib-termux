@@ -350,7 +350,6 @@ init_render_queue_state(struct anv_queue *queue)
       }
    }
 
-#if GFX_VERx10 < 125
    /* an unknown issue is causing vs push constants to become
     * corrupted during object-level preemption. For now, restrict
     * to command buffer level preemption to avoid rendering
@@ -365,18 +364,6 @@ init_render_queue_state(struct anv_queue *queue)
       cc1.DisablePreemptionandHighPriorityPausingdueto3DPRIMITIVECommandMask = true;
 #endif
    }
-#endif
-
-   /* Wa_14015207028
-    *
-    * Disable batch level preemption for some primitive topologies.
-    */
-#if GFX_VERx10 == 125
-      anv_batch_write_reg(&batch, GENX(VFG_PREEMPTION_CHICKEN_BITS), vfgc) {
-         vfgc.PolygonTrifanLineLoopPreemptionDisable = true;
-         vfgc.PolygonTrifanLineLoopPreemptionDisableMask = true;
-      }
-#endif
 
 #if GFX_VERx10 == 120
    /* Wa_1806527549 says to disable the following HiZ optimization when the
@@ -485,10 +472,10 @@ genX(init_device_state)(struct anv_device *device)
    for (uint32_t i = 0; i < device->queue_count; i++) {
       struct anv_queue *queue = &device->queues[i];
       switch (queue->family->engine_class) {
-      case I915_ENGINE_CLASS_RENDER:
+      case INTEL_ENGINE_CLASS_RENDER:
          res = init_render_queue_state(queue);
          break;
-      case I915_ENGINE_CLASS_COMPUTE:
+      case INTEL_ENGINE_CLASS_COMPUTE:
          res = init_compute_queue_state(queue);
          break;
       default:
@@ -571,41 +558,6 @@ genX(init_cps_device_state)(struct anv_device *device)
    }
 #endif /* GFX_VER >= 12 */
 }
-
-#if GFX_VER >= 12
-static uint32_t
-get_cps_state_offset(struct anv_device *device, bool cps_enabled,
-                     const struct vk_fragment_shading_rate_state *fsr)
-{
-   if (!cps_enabled)
-      return device->cps_states.offset;
-
-   uint32_t offset;
-   static const uint32_t size_index[] = {
-      [1] = 0,
-      [2] = 1,
-      [4] = 2,
-   };
-
-#if GFX_VERx10 >= 125
-   offset =
-      1 + /* skip disabled */
-      fsr->combiner_ops[0] * 5 * 3 * 3 +
-      fsr->combiner_ops[1] * 3 * 3 +
-      size_index[fsr->fragment_size.width] * 3 +
-      size_index[fsr->fragment_size.height];
-#else
-   offset =
-      1 + /* skip disabled */
-      size_index[fsr->fragment_size.width] * 3 +
-      size_index[fsr->fragment_size.height];
-#endif
-
-   offset *= MAX_VIEWPORTS * GENX(CPS_STATE_length) * 4;
-
-   return device->cps_states.offset + offset;
-}
-#endif /* GFX_VER >= 12 */
 
 void
 genX(emit_l3_config)(struct anv_batch *batch,
@@ -740,52 +692,6 @@ genX(emit_sample_pattern)(struct anv_batch *batch,
       }
    }
 }
-
-#if GFX_VER >= 11
-void
-genX(emit_shading_rate)(struct anv_batch *batch,
-                        const struct anv_graphics_pipeline *pipeline,
-                        const struct vk_fragment_shading_rate_state *fsr)
-{
-   const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
-   const bool cps_enable = wm_prog_data && wm_prog_data->per_coarse_pixel_dispatch;
-
-#if GFX_VER == 11
-   anv_batch_emit(batch, GENX(3DSTATE_CPS), cps) {
-      cps.CoarsePixelShadingMode = cps_enable ? CPS_MODE_CONSTANT : CPS_MODE_NONE;
-      if (cps_enable) {
-         cps.MinCPSizeX = fsr->fragment_size.width;
-         cps.MinCPSizeY = fsr->fragment_size.height;
-      }
-   }
-#elif GFX_VER >= 12
-   /* TODO: we can optimize this flush in the following cases:
-    *
-    *    In the case where the last geometry shader emits a value that is not
-    *    constant, we can avoid this stall because we can synchronize the
-    *    pixel shader internally with
-    *    3DSTATE_PS::EnablePSDependencyOnCPsizeChange.
-    *
-    *    If we know that the previous pipeline and the current one are using
-    *    the same fragment shading rate.
-    */
-   anv_batch_emit(batch, GENX(PIPE_CONTROL), pc) {
-#if GFX_VERx10 >= 125
-      pc.PSSStallSyncEnable = true;
-#else
-      pc.PSDSyncEnable = true;
-#endif
-   }
-
-   anv_batch_emit(batch, GENX(3DSTATE_CPS_POINTERS), cps) {
-      struct anv_device *device = pipeline->base.device;
-
-      cps.CoarsePixelShadingStateArrayPointer =
-         get_cps_state_offset(device, cps_enable, fsr);
-   }
-#endif
-}
-#endif /* GFX_VER >= 11 */
 
 static uint32_t
 vk_to_intel_tex_filter(VkFilter filter, bool anisotropyEnable)

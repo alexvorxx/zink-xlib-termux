@@ -2929,6 +2929,8 @@ Converter::visit(nir_alu_instr *insn)
       mkCmp(OP_SET, cc, TYPE_U32, newDefs[0], sTypes[0], getSrc(&insn->src[0]), src1);
       break;
    }
+   case nir_op_b2i8:
+   case nir_op_b2i16:
    case nir_op_b2i32: {
       DEFAULT_CHECKS;
       LValues &newDefs = convert(&insn->dest);
@@ -3320,7 +3322,13 @@ Converter::run()
    subgroup_options.ballot_components = 1;
    subgroup_options.lower_elect = true;
 
+   unsigned lower_flrp = (nir->options->lower_flrp16 ? 16 : 0) |
+                         (nir->options->lower_flrp32 ? 32 : 0) |
+                         (nir->options->lower_flrp64 ? 64 : 0);
+   assert(lower_flrp);
+
    /* prepare for IO lowering */
+   NIR_PASS_V(nir, nir_lower_flrp, lower_flrp, false);
    NIR_PASS_V(nir, nir_opt_deref);
    NIR_PASS_V(nir, nir_lower_regs_to_ssa);
    NIR_PASS_V(nir, nir_lower_vars_to_ssa);
@@ -3348,7 +3356,6 @@ Converter::run()
     *      nir_opt_idiv_const effectively before this.
     */
    nir_lower_idiv_options idiv_options = {
-      .imprecise_32bit_lowering = false,
       .allow_fp16 = true,
    };
    NIR_PASS(progress, nir, nir_lower_idiv, &idiv_options);

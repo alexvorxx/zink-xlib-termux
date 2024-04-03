@@ -1019,20 +1019,21 @@ get_intersection_mask(int a_start, int a_size, int b_start, int b_size)
    return u_bit_consecutive(intersection_start, intersection_end - intersection_start) & mask;
 }
 
+/* src1 are bytes 0-3. dst/src0 are bytes 4-7. */
 void
-create_bperm(Builder& bld, uint8_t swiz[4], Definition dst, Operand src0,
-             Operand src1 = Operand(v1))
+create_bperm(Builder& bld, uint8_t swiz[4], Definition dst, Operand src1,
+             Operand src0 = Operand(v1))
 {
    uint32_t swiz_packed =
       swiz[0] | ((uint32_t)swiz[1] << 8) | ((uint32_t)swiz[2] << 16) | ((uint32_t)swiz[3] << 24);
 
    dst = Definition(PhysReg(dst.physReg().reg()), v1);
-   if (!src0.isConstant())
-      src0 = Operand(PhysReg(src0.physReg().reg()), v1);
-   if (src1.isUndefined())
-      src1 = Operand(dst.physReg(), v1);
-   else if (!src1.isConstant())
+   if (!src1.isConstant())
       src1 = Operand(PhysReg(src1.physReg().reg()), v1);
+   if (src0.isUndefined())
+      src0 = Operand(dst.physReg(), v1);
+   else if (!src0.isConstant())
+      src0 = Operand(PhysReg(src0.physReg().reg()), v1);
    bld.vop3(aco_opcode::v_perm_b32, dst, src0, src1, Operand::c32(swiz_packed));
 }
 
@@ -2388,7 +2389,15 @@ lower_to_hw_instr(Program* program)
             /* Check if the branch instruction can be removed.
              * This is beneficial when executing the next block with an empty exec mask
              * is faster than the branch instruction itself.
+             *
+             * Override this judgement when:
+             * - The application prefers to remove control flow
+             * - The compiler stack knows that it's a divergent branch always taken
              */
+            const bool prefer_remove =
+               (branch->selection_control == nir_selection_control_flatten ||
+                branch->selection_control == nir_selection_control_divergent_always_taken) &&
+               ctx.program->gfx_level >= GFX10;
             bool can_remove = block->index < target;
             unsigned num_scalar = 0;
             unsigned num_vector = 0;
@@ -2427,29 +2436,36 @@ lower_to_hw_instr(Program* program)
                               num_scalar++;
                         }
                      }
-                  } else if (inst->isVMEM() || inst->isFlatLike() || inst->isDS() ||
-                             inst->isEXP() || inst->isLDSDIR()) {
-                     // TODO: GFX6-9 can use vskip
+                  } else if (inst->isEXP()) {
+                     /* Export instructions with exec=0 can hang some GFX10+ (unclear on old GPUs). */
                      can_remove = false;
+                  } else if (inst->isVMEM() || inst->isFlatLike() || inst->isDS() ||
+                             inst->isLDSDIR()) {
+                     // TODO: GFX6-9 can use vskip
+                     can_remove = prefer_remove;
                   } else if (inst->isSMEM()) {
                      /* SMEM are at least as expensive as branches */
-                     can_remove = false;
+                     can_remove = prefer_remove;
                   } else if (inst->isBarrier()) {
-                     can_remove = false;
+                     can_remove = prefer_remove;
                   } else {
                      can_remove = false;
                      assert(false && "Pseudo instructions should be lowered by this point.");
                   }
 
-                  /* Under these conditions, we shouldn't remove the branch */
-                  unsigned est_cycles;
-                  if (ctx.program->gfx_level >= GFX10)
-                     est_cycles = num_scalar * 2 + num_vector;
-                  else
-                     est_cycles = num_scalar * 4 + num_vector * 4;
+                  if (!prefer_remove) {
+                     /* Under these conditions, we shouldn't remove the branch.
+                      * Don't care about the estimated cycles when the shader prefers flattening.
+                      */
+                     unsigned est_cycles;
+                     if (ctx.program->gfx_level >= GFX10)
+                        est_cycles = num_scalar * 2 + num_vector;
+                     else
+                        est_cycles = num_scalar * 4 + num_vector * 4;
 
-                  if (est_cycles > 16)
-                     can_remove = false;
+                     if (est_cycles > 16)
+                        can_remove = false;
+                  }
 
                   if (!can_remove)
                      break;

@@ -121,8 +121,6 @@ softpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
       return 1;
    case PIPE_CAP_ANISOTROPIC_FILTER:
       return 1;
-   case PIPE_CAP_POINT_SPRITE:
-      return 1;
    case PIPE_CAP_MAX_RENDER_TARGETS:
       return PIPE_MAX_COLOR_BUFS;
    case PIPE_CAP_MAX_DUAL_SOURCE_RENDER_TARGETS:
@@ -197,8 +195,6 @@ softpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_FRAGMENT_COLOR_CLAMPED:
    case PIPE_CAP_VERTEX_COLOR_UNCLAMPED: /* draw module */
    case PIPE_CAP_VERTEX_COLOR_CLAMPED: /* draw module */
-      return 1;
-   case PIPE_CAP_MIXED_COLORBUFFER_FORMATS:
       return 1;
    case PIPE_CAP_GLSL_FEATURE_LEVEL:
    case PIPE_CAP_GLSL_FEATURE_LEVEL_COMPATIBILITY:
@@ -520,12 +516,6 @@ softpipe_flush_frontbuffer(struct pipe_screen *_screen,
       winsys->displaytarget_display(winsys, texture->dt, context_private, sub_box);
 }
 
-static uint64_t
-softpipe_get_timestamp(struct pipe_screen *_screen)
-{
-   return os_time_get_nano();
-}
-
 static int
 softpipe_get_compute_param(struct pipe_screen *_screen,
                            enum pipe_shader_ir ir_type,
@@ -603,7 +593,7 @@ softpipe_create_screen(struct sw_winsys *winsys)
    screen->base.get_param = softpipe_get_param;
    screen->base.get_shader_param = softpipe_get_shader_param;
    screen->base.get_paramf = softpipe_get_paramf;
-   screen->base.get_timestamp = softpipe_get_timestamp;
+   screen->base.get_timestamp = u_default_get_timestamp;
    screen->base.is_format_supported = softpipe_is_format_supported;
    screen->base.context_create = softpipe_create_context;
    screen->base.flush_frontbuffer = softpipe_flush_frontbuffer;

@@ -90,6 +90,10 @@ spirv_builder_emit_decoration(struct spirv_builder *b, SpvId target,
                               SpvDecoration decoration);
 
 void
+spirv_builder_emit_rounding_mode(struct spirv_builder *b, SpvId target,
+                                 SpvFPRoundingMode rounding);
+
+void
 spirv_builder_emit_input_attachment_index(struct spirv_builder *b, SpvId target, uint32_t id);
 
 void
@@ -390,6 +394,10 @@ spirv_builder_type_image(struct spirv_builder *b, SpvId sampled_type,
 
 SpvId
 spirv_builder_type_sampled_image(struct spirv_builder *b, SpvId image_type);
+SpvId
+spirv_builder_type_sampler(struct spirv_builder *b);
+SpvId
+spirv_builder_emit_sampled_image(struct spirv_builder *b, SpvId result_type, SpvId image, SpvId sampler);
 
 SpvId
 spirv_builder_type_pointer(struct spirv_builder *b,

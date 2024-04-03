@@ -40,7 +40,10 @@
 extern "C" {
 #endif
 
-#define PIPE_H265_MAX_REFERENCES 15
+#define PIPE_H265_MAX_REFERENCES      15
+#define PIPE_DEFAULT_FRAME_RATE_DEN   1
+#define PIPE_DEFAULT_FRAME_RATE_NUM   30
+#define PIPE_H2645_EXTENDED_SAR       255
 
 /*
  * see table 6-12 in the spec
@@ -428,12 +431,19 @@ struct pipe_h264_enc_pic_control
 {
    unsigned enc_cabac_enable;
    unsigned enc_cabac_init_idc;
-   unsigned enc_constraint_set_flags;
-   unsigned enc_frame_cropping_flag;
-   unsigned enc_frame_crop_left_offset;
-   unsigned enc_frame_crop_right_offset;
-   unsigned enc_frame_crop_top_offset;
-   unsigned enc_frame_crop_bottom_offset;
+   unsigned chroma_qp_index_offset;
+   unsigned second_chroma_qp_index_offset;
+   struct {
+      uint32_t deblocking_filter_control_present_flag : 1;
+      uint32_t redundant_pic_cnt_present_flag : 1;
+   };
+};
+
+struct pipe_h264_enc_dbk_param
+{
+   unsigned  disable_deblocking_filter_idc;
+   signed   alpha_c0_offset_div2;
+   signed   beta_offset_div2;
 };
 
 struct h264_slice_descriptor
@@ -456,14 +466,38 @@ struct h265_slice_descriptor
    enum pipe_h265_slice_type slice_type;
 };
 
+struct pipe_h264_enc_seq_param
+{
+   unsigned enc_constraint_set_flags;
+   unsigned enc_frame_cropping_flag;
+   unsigned enc_frame_crop_left_offset;
+   unsigned enc_frame_crop_right_offset;
+   unsigned enc_frame_crop_top_offset;
+   unsigned enc_frame_crop_bottom_offset;
+   unsigned pic_order_cnt_type;
+   unsigned num_temporal_layers;
+   uint32_t vui_parameters_present_flag;
+   struct {
+      uint32_t aspect_ratio_info_present_flag: 1;
+      uint32_t timing_info_present_flag: 1;
+   } vui_flags;
+   uint32_t aspect_ratio_idc;
+   uint32_t sar_width;
+   uint32_t sar_height;
+   uint32_t num_units_in_tick;
+   uint32_t time_scale;
+};
+
 struct pipe_h264_enc_picture_desc
 {
    struct pipe_picture_desc base;
 
+   struct pipe_h264_enc_seq_param seq;
    struct pipe_h264_enc_rate_control rate_ctrl[4];
 
    struct pipe_h264_enc_motion_estimation motion_est;
    struct pipe_h264_enc_pic_control pic_ctrl;
+   struct pipe_h264_enc_dbk_param dbk;
 
    unsigned quant_i_frames;
    unsigned quant_p_frames;
@@ -477,7 +511,6 @@ struct pipe_h264_enc_picture_desc
    unsigned idr_pic_id;
    unsigned gop_cnt;
    unsigned pic_order_cnt;
-   unsigned pic_order_cnt_type;
    unsigned num_ref_idx_l0_active_minus1;
    unsigned num_ref_idx_l1_active_minus1;
    unsigned ref_idx_l0_list[32];
@@ -485,7 +518,6 @@ struct pipe_h264_enc_picture_desc
    unsigned ref_idx_l1_list[32];
    bool l1_is_long_term[32];
    unsigned gop_size;
-   unsigned num_temporal_layers;
    struct pipe_enc_quality_modes quality_modes;
 
    bool not_referenced;
@@ -526,6 +558,16 @@ struct pipe_h265_enc_seq_param
    uint16_t conf_win_right_offset;
    uint16_t conf_win_top_offset;
    uint16_t conf_win_bottom_offset;
+   uint32_t vui_parameters_present_flag;
+   struct {
+      uint32_t aspect_ratio_info_present_flag: 1;
+      uint32_t timing_info_present_flag: 1;
+   } vui_flags;
+   uint32_t aspect_ratio_idc;
+   uint32_t sar_width;
+   uint32_t sar_height;
+   uint32_t num_units_in_tick;
+   uint32_t time_scale;
 };
 
 struct pipe_h265_enc_pic_param
@@ -871,14 +913,16 @@ struct pipe_vp9_picture_desc
       int8_t uv_ac_delta_q;
       int8_t uv_dc_delta_q;
       uint8_t abs_delta;
+      uint8_t ref_deltas[4];
+      uint8_t mode_deltas[2];
    } picture_parameter;
 
    struct {
-      uint32_t slice_data_size;
-      uint32_t slice_data_offset;
-
-      uint32_t slice_data_flag;
-
+      bool slice_info_present;
+      uint32_t slice_count;
+      uint32_t slice_data_size[128];
+      uint32_t slice_data_offset[128];
+      enum pipe_slice_buffer_placement_type slice_data_flag[128];
       struct vp9_segment_parameter seg_param[8];
    } slice_parameter;
 };
@@ -1096,7 +1140,7 @@ enum pipe_h265_enc_pred_direction
    PIPE_H265_PRED_DIRECTION_BI_NOT_EMPTY = 0x4,
 };
 
-/* To be used on each h265 feature bit field 
+/* To be used on each h265 feature bit field
    defined in pipe_h265_enc_cap_features
 */
 enum pipe_h265_enc_feature

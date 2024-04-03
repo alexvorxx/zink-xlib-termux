@@ -43,6 +43,7 @@
 
 #include "common/intel_clflush.h"
 #include "common/intel_decoder.h"
+#include "common/intel_engine.h"
 #include "common/intel_gem.h"
 #include "common/intel_l3_config.h"
 #include "common/intel_measure.h"
@@ -347,17 +348,6 @@ anv_clamp_f(float f, float min, float max)
       return f;
 }
 
-static inline bool
-anv_clear_mask(uint32_t *inout_mask, uint32_t clear_mask)
-{
-   if (*inout_mask & clear_mask) {
-      *inout_mask &= ~clear_mask;
-      return true;
-   } else {
-      return false;
-   }
-}
-
 static inline union isl_color_value
 vk_to_isl_color(VkClearColorValue color)
 {
@@ -389,20 +379,6 @@ vk_to_isl_color_with_format(VkClearColorValue color, enum isl_format format)
 #undef COPY_COLOR_CHANNEL
 
    return isl_color;
-}
-
-static inline void *anv_unpack_ptr(uintptr_t ptr, int bits, int *flags)
-{
-   uintptr_t mask = (1ull << bits) - 1;
-   *flags = ptr & mask;
-   return (void *) (ptr & ~mask);
-}
-
-static inline uintptr_t anv_pack_ptr(void *ptr, int bits, int flags)
-{
-   uintptr_t value = (uintptr_t) ptr;
-   uintptr_t mask = (1ull << bits) - 1;
-   return value | (mask & flags);
 }
 
 /**
@@ -926,7 +902,7 @@ struct anv_queue_family {
    uint32_t       queueCount;
 
    /* Driver internal information */
-   enum drm_i915_gem_engine_class engine_class;
+   enum intel_engine_class engine_class;
 };
 
 #define ANV_MAX_QUEUE_FAMILIES 3
@@ -947,12 +923,9 @@ struct anv_memory_heap {
     * Align it to 64 bits to make atomic operations faster on 32 bit platforms.
     */
    VkDeviceSize      used __attribute__ ((aligned (8)));
-
-   bool              is_local_mem;
 };
 
 struct anv_memregion {
-   struct drm_i915_gem_memory_class_instance region;
    uint64_t size;
    uint64_t available;
 };
@@ -1037,11 +1010,6 @@ struct anv_physical_device {
       bool                                      need_clflush;
     } memory;
 
-    /* Either we have a single vram region and it's all mappable, or we have
-     * both mappable & non-mappable parts. System memory is always available.
-     */
-    struct anv_memregion                        vram_mappable;
-    struct anv_memregion                        vram_non_mappable;
     struct anv_memregion                        sys;
     uint8_t                                     driver_build_sha1[20];
     uint8_t                                     pipeline_cache_uuid[VK_UUID_SIZE];
@@ -1061,17 +1029,11 @@ struct anv_physical_device {
     bool                                        has_master;
     int64_t                                     master_major;
     int64_t                                     master_minor;
-    struct drm_i915_query_engine_info *         engine_info;
+    struct intel_query_engine_info *            engine_info;
 
     void (*cmd_emit_timestamp)(struct anv_batch *, struct anv_device *, struct anv_address, bool);
     struct intel_measure_device                 measure_device;
 };
-
-static inline bool
-anv_physical_device_has_vram(const struct anv_physical_device *device)
-{
-   return device->vram_mappable.size > 0;
-}
 
 struct anv_instance {
     struct vk_instance                          vk;
@@ -1343,9 +1305,6 @@ enum anv_bo_alloc_flags {
 
    /** This buffer has implicit CCS data attached to it */
    ANV_BO_ALLOC_IMPLICIT_CCS = (1 << 9),
-
-   /** This buffer is allocated from local memory and should be cpu visible */
-   ANV_BO_ALLOC_LOCAL_MEM_CPU_VISIBLE = (1 << 10),
 };
 
 VkResult anv_device_alloc_bo(struct anv_device *device,
@@ -1416,9 +1375,6 @@ void* anv_gem_mmap(struct anv_device *device,
 void anv_gem_munmap(struct anv_device *device, void *p, uint64_t size);
 uint32_t anv_gem_create(struct anv_device *device, uint64_t size);
 void anv_gem_close(struct anv_device *device, uint32_t gem_handle);
-uint32_t anv_gem_create_regions(struct anv_device *device, uint64_t anv_bo_size,
-                                uint32_t flags, uint32_t num_regions,
-                                struct drm_i915_gem_memory_class_instance *regions);
 uint32_t anv_gem_userptr(struct anv_device *device, void *mem, size_t size);
 int anv_gem_wait(struct anv_device *device, uint32_t gem_handle, int64_t *timeout_ns);
 int anv_gem_execbuffer(struct anv_device *device,
@@ -1435,12 +1391,10 @@ int anv_gem_get_tiling(struct anv_device *device, uint32_t gem_handle);
 int anv_gem_context_get_reset_stats(int fd, int context,
                                     uint32_t *active, uint32_t *pending);
 int anv_gem_handle_to_fd(struct anv_device *device, uint32_t gem_handle);
-int anv_gem_reg_read(int fd, uint32_t offset, uint64_t *result);
 uint32_t anv_gem_fd_to_handle(struct anv_device *device, int fd);
 int anv_gem_set_caching(struct anv_device *device, uint32_t gem_handle, uint32_t caching);
 int anv_i915_query(int fd, uint64_t query_id, void *buffer,
                    int32_t *buffer_len);
-struct drm_i915_query_engine_info *anv_gem_get_engine_info(int fd);
 
 uint64_t anv_vma_alloc(struct anv_device *device,
                        uint64_t size, uint64_t align,

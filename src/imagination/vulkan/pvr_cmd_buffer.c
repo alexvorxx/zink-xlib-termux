@@ -83,36 +83,37 @@ struct pvr_compute_kernel_info {
 static void pvr_cmd_buffer_free_sub_cmd(struct pvr_cmd_buffer *cmd_buffer,
                                         struct pvr_sub_cmd *sub_cmd)
 {
-   switch (sub_cmd->type) {
-   case PVR_SUB_CMD_TYPE_GRAPHICS:
-      pvr_csb_finish(&sub_cmd->gfx.control_stream);
-      pvr_bo_free(cmd_buffer->device, sub_cmd->gfx.depth_bias_bo);
-      pvr_bo_free(cmd_buffer->device, sub_cmd->gfx.scissor_bo);
-      break;
+   if (sub_cmd->owned) {
+      switch (sub_cmd->type) {
+      case PVR_SUB_CMD_TYPE_GRAPHICS:
+         pvr_csb_finish(&sub_cmd->gfx.control_stream);
+         pvr_bo_free(cmd_buffer->device, sub_cmd->gfx.depth_bias_bo);
+         pvr_bo_free(cmd_buffer->device, sub_cmd->gfx.scissor_bo);
+         break;
 
-   case PVR_SUB_CMD_TYPE_COMPUTE:
-      pvr_csb_finish(&sub_cmd->compute.control_stream);
-      break;
+      case PVR_SUB_CMD_TYPE_COMPUTE:
+         pvr_csb_finish(&sub_cmd->compute.control_stream);
+         break;
 
-   case PVR_SUB_CMD_TYPE_TRANSFER:
-      list_for_each_entry_safe (struct pvr_transfer_cmd,
-                                transfer_cmd,
-                                &sub_cmd->transfer.transfer_cmds,
-                                link) {
-         list_del(&transfer_cmd->link);
-         vk_free(&cmd_buffer->vk.pool->alloc, transfer_cmd);
+      case PVR_SUB_CMD_TYPE_TRANSFER:
+         list_for_each_entry_safe (struct pvr_transfer_cmd,
+                                   transfer_cmd,
+                                   &sub_cmd->transfer.transfer_cmds,
+                                   link) {
+            list_del(&transfer_cmd->link);
+            vk_free(&cmd_buffer->vk.pool->alloc, transfer_cmd);
+         }
+         break;
+
+      case PVR_SUB_CMD_TYPE_EVENT:
+         if (sub_cmd->event.type == PVR_EVENT_TYPE_WAIT)
+            vk_free(&cmd_buffer->vk.pool->alloc, sub_cmd->event.wait.events);
+         break;
+
+      default:
+         pvr_finishme("Unsupported sub-command type %d", sub_cmd->type);
+         break;
       }
-      break;
-
-   case PVR_SUB_CMD_TYPE_EVENT:
-      if (sub_cmd->event.type == PVR_EVENT_TYPE_WAIT)
-         vk_free(&cmd_buffer->vk.pool->alloc, sub_cmd->event.wait.events);
-
-      break;
-
-   default:
-      pvr_finishme("Unsupported sub-command type %d", sub_cmd->type);
-      break;
    }
 
    list_del(&sub_cmd->link);
@@ -544,27 +545,6 @@ err_free_usc_pixel_program:
    return result;
 }
 
-static uint32_t pvr_get_hw_clear_color(VkFormat vk_format,
-                                       const VkClearValue *clear_value)
-{
-   union util_color uc = { .ui = 0 };
-
-   switch (vk_format) {
-   case VK_FORMAT_B8G8R8A8_UNORM:
-      util_pack_color(clear_value->color.float32,
-                      PIPE_FORMAT_R8G8B8A8_UNORM,
-                      &uc);
-      break;
-
-   default:
-      assert(!"Unsupported format");
-      uc.ui[0] = 0;
-      break;
-   }
-
-   return uc.ui[0];
-}
-
 static VkResult
 pvr_load_op_constants_create_and_upload(struct pvr_cmd_buffer *cmd_buffer,
                                         const struct pvr_load_op *load_op,
@@ -580,7 +560,7 @@ pvr_load_op_constants_create_and_upload(struct pvr_cmd_buffer *cmd_buffer,
       &pass->attachments[color_init->index];
    const VkClearValue *clear_value =
       &render_pass_info->clear_values[color_init->index];
-   uint32_t hw_clear_value;
+   uint32_t hw_clear_value[PVR_CLEAR_COLOR_ARRAY_SIZE];
    struct pvr_bo *clear_bo;
    VkResult result;
 
@@ -593,10 +573,15 @@ pvr_load_op_constants_create_and_upload(struct pvr_cmd_buffer *cmd_buffer,
    assert(color_init->op == VK_ATTACHMENT_LOAD_OP_CLEAR);
 
    /* FIXME: do this at the point we store the clear values? */
-   hw_clear_value = pvr_get_hw_clear_color(attachment->vk_format, clear_value);
+   pvr_get_hw_clear_color(attachment->vk_format,
+                          clear_value->color,
+                          hw_clear_value);
+
+   if (vk_format_get_blocksize(attachment->vk_format) > 4)
+      pvr_finishme("Handle clear color greater than 32 bits.");
 
    result = pvr_cmd_buffer_upload_general(cmd_buffer,
-                                          &hw_clear_value,
+                                          &hw_clear_value[0],
                                           sizeof(hw_clear_value),
                                           &clear_bo);
    if (result != VK_SUCCESS)
@@ -1502,6 +1487,11 @@ static VkResult pvr_cmd_buffer_end_sub_cmd(struct pvr_cmd_buffer *cmd_buffer)
    if (!sub_cmd)
       return VK_SUCCESS;
 
+   if (!sub_cmd->owned) {
+      state->current_sub_cmd = NULL;
+      return VK_SUCCESS;
+   }
+
    switch (sub_cmd->type) {
    case PVR_SUB_CMD_TYPE_GRAPHICS: {
       struct pvr_sub_cmd_gfx *const gfx_sub_cmd = &sub_cmd->gfx;
@@ -1635,6 +1625,18 @@ static void pvr_reset_graphics_dirty_state(struct pvr_cmd_buffer_state *state,
    state->dirty.viewport = true;
 }
 
+static inline bool
+pvr_cmd_uses_deferred_cs_cmds(const struct pvr_cmd_buffer *const cmd_buffer)
+{
+   const VkCommandBufferUsageFlags deferred_control_stream_flags =
+      VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT &
+      VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+
+   return cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_SECONDARY &&
+          (cmd_buffer->usage_flags & deferred_control_stream_flags) ==
+             deferred_control_stream_flags;
+}
+
 static VkResult pvr_cmd_buffer_start_sub_cmd(struct pvr_cmd_buffer *cmd_buffer,
                                              enum pvr_sub_cmd_type type)
 {
@@ -1649,6 +1651,7 @@ static VkResult pvr_cmd_buffer_start_sub_cmd(struct pvr_cmd_buffer *cmd_buffer,
 
    pvr_cmd_buffer_update_barriers(cmd_buffer, type);
 
+   /* TODO: Add proper support for joining consecutive event sub_cmd? */
    if (state->current_sub_cmd) {
       if (state->current_sub_cmd->type == type) {
          /* Continue adding to the current sub command. */
@@ -1671,6 +1674,7 @@ static VkResult pvr_cmd_buffer_start_sub_cmd(struct pvr_cmd_buffer *cmd_buffer,
    }
 
    sub_cmd->type = type;
+   sub_cmd->owned = true;
 
    switch (type) {
    case PVR_SUB_CMD_TYPE_GRAPHICS:
@@ -1688,9 +1692,15 @@ static VkResult pvr_cmd_buffer_start_sub_cmd(struct pvr_cmd_buffer *cmd_buffer,
       sub_cmd->gfx.empty_cmd = true;
 
       pvr_reset_graphics_dirty_state(state, true);
-      pvr_csb_init(device,
-                   PVR_CMD_STREAM_TYPE_GRAPHICS,
-                   &sub_cmd->gfx.control_stream);
+      if (pvr_cmd_uses_deferred_cs_cmds(cmd_buffer)) {
+         pvr_csb_init(device,
+                      PVR_CMD_STREAM_TYPE_GRAPHICS_DEFERRED,
+                      &sub_cmd->gfx.control_stream);
+      } else {
+         pvr_csb_init(device,
+                      PVR_CMD_STREAM_TYPE_GRAPHICS,
+                      &sub_cmd->gfx.control_stream);
+      }
       break;
 
    case PVR_SUB_CMD_TYPE_COMPUTE:
@@ -1704,7 +1714,6 @@ static VkResult pvr_cmd_buffer_start_sub_cmd(struct pvr_cmd_buffer *cmd_buffer,
       break;
 
    case PVR_SUB_CMD_TYPE_EVENT:
-      /* TODO: Add support for joining consecutive event sub_cmd? */
       break;
 
    default:
@@ -2756,7 +2765,7 @@ pvr_setup_vertex_buffers(struct pvr_cmd_buffer *cmd_buffer,
 
    result = pvr_cmd_buffer_alloc_mem(cmd_buffer,
                                      cmd_buffer->device->heaps.pds_heap,
-                                     pds_info->data_size_in_dwords,
+                                     pds_info->data_size_in_dwords << 2,
                                      PVR_BO_ALLOC_FLAG_CPU_MAPPED,
                                      &pvr_bo);
    if (result != VK_SUCCESS)
@@ -2871,7 +2880,7 @@ static VkResult pvr_setup_descriptor_mappings(
 
    result = pvr_cmd_buffer_alloc_mem(cmd_buffer,
                                      cmd_buffer->device->heaps.pds_heap,
-                                     pds_info->data_size_in_dwords,
+                                     pds_info->data_size_in_dwords << 2,
                                      PVR_BO_ALLOC_FLAG_CPU_MAPPED,
                                      &pvr_bo);
    if (result != VK_SUCCESS)
@@ -3036,7 +3045,7 @@ static VkResult pvr_setup_descriptor_mappings(
             (struct pvr_const_map_entry_special_buffer *)entries;
 
          switch (special_buff_entry->buffer_type) {
-         case PVR_BUFFER_TYPES_COMPILE_TIME: {
+         case PVR_BUFFER_TYPE_COMPILE_TIME: {
             uint64_t addr = descriptor_state->static_consts->vma->dev_addr.addr;
 
             PVR_WRITE(qword_buffer,
@@ -4257,17 +4266,6 @@ static void pvr_setup_ppp_control(struct pvr_cmd_buffer *const cmd_buffer)
    }
 }
 
-static inline bool
-pvr_cmd_uses_deferred_cs_cmds(struct pvr_cmd_buffer *const cmd_buffer)
-{
-   const VkCommandBufferUsageFlags deferred_control_stream_flags =
-      VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT &
-      VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
-
-   return cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_SECONDARY &&
-          cmd_buffer->usage_flags & deferred_control_stream_flags;
-}
-
 /* Largest valid PPP State update in words = 31
  * 1 - Header
  * 3 - Stream Out Config words 0, 1 and 2
@@ -4535,21 +4533,31 @@ static VkResult pvr_emit_ppp_state(struct pvr_cmd_buffer *const cmd_buffer,
       struct pvr_deferred_cs_command cmd;
 
       if (deferred_secondary) {
+         const uint32_t num_dwords = pvr_cmd_length(VDMCTRL_PPP_STATE0) +
+                                     pvr_cmd_length(VDMCTRL_PPP_STATE1);
+
+         uint32_t *vdm_state = pvr_csb_alloc_dwords(control_stream, num_dwords);
+         if (!vdm_state) {
+            cmd_buffer->state.status = pvr_csb_get_status(control_stream);
+            return cmd_buffer->state.status;
+         }
+
          cmd = (struct pvr_deferred_cs_command){
             .type = PVR_DEFERRED_CS_COMMAND_TYPE_DBSC,
-            .dbsc = ppp_state->depthbias_scissor_indices,
+            .dbsc = {
+               .state = ppp_state->depthbias_scissor_indices,
+               .vdm_state = vdm_state,
+            },
          };
       } else {
-         /* clang-format off */
          cmd = (struct pvr_deferred_cs_command){
             .type = PVR_DEFERRED_CS_COMMAND_TYPE_DBSC2,
             .dbsc2 = {
                .state = ppp_state->depthbias_scissor_indices,
                .ppp_cs_bo = pvr_bo,
                .patch_offset = dbsc_patching_offset,
-            }
+            },
          };
-         /* clang-format on */
       }
 
       util_dynarray_append(&cmd_buffer->deferred_csb_commands,
@@ -5622,11 +5630,310 @@ void pvr_CmdEndRenderPass2(VkCommandBuffer commandBuffer,
    state->render_pass_info.clear_values = clear_values;
 }
 
+static VkResult
+pvr_execute_deferred_cmd_buffer(struct pvr_cmd_buffer *cmd_buffer,
+                                const struct pvr_cmd_buffer *sec_cmd_buffer)
+{
+   struct pvr_cmd_buffer_state *state = &cmd_buffer->state;
+   const uint32_t prim_db_elems =
+      util_dynarray_num_elements(&cmd_buffer->depth_bias_array,
+                                 __typeof__(state->dynamic.common.depth_bias));
+   const uint32_t prim_scissor_elems =
+      util_dynarray_num_elements(&cmd_buffer->scissor_array,
+                                 __typeof__(cmd_buffer->scissor_words));
+   const uint32_t sec_db_size =
+      util_dynarray_num_elements(&sec_cmd_buffer->depth_bias_array, char);
+   const uint32_t sec_scissor_size =
+      util_dynarray_num_elements(&sec_cmd_buffer->scissor_array, char);
+   uint32_t *addr;
+
+   util_dynarray_foreach (&sec_cmd_buffer->deferred_csb_commands,
+                          struct pvr_deferred_cs_command,
+                          cmd) {
+      switch (cmd->type) {
+      case PVR_DEFERRED_CS_COMMAND_TYPE_DBSC: {
+         const uint32_t scissor_idx =
+            prim_scissor_elems + cmd->dbsc.state.scissor_index;
+         const uint32_t db_idx =
+            prim_db_elems + cmd->dbsc.state.depthbias_index;
+         const uint32_t num_dwords =
+            pvr_cmd_length(TA_STATE_HEADER) + pvr_cmd_length(TA_STATE_ISPDBSC);
+         uint32_t ppp_state[num_dwords];
+         struct pvr_bo *pvr_bo;
+         VkResult result;
+
+         pvr_csb_pack (&ppp_state[0], TA_STATE_HEADER, header) {
+            header.pres_ispctl_dbsc = true;
+         }
+
+         pvr_csb_pack (&ppp_state[1], TA_STATE_ISPDBSC, ispdbsc) {
+            ispdbsc.dbindex = db_idx;
+            ispdbsc.scindex = scissor_idx;
+         }
+
+         result = pvr_cmd_buffer_upload_general(cmd_buffer,
+                                                &ppp_state[0],
+                                                sizeof(ppp_state),
+                                                &pvr_bo);
+         if (result != VK_SUCCESS)
+            return result;
+
+         pvr_csb_pack (&cmd->dbsc.vdm_state[0], VDMCTRL_PPP_STATE0, state) {
+            state.word_count = num_dwords;
+            state.addrmsb = pvr_bo->vma->dev_addr;
+         }
+
+         pvr_csb_pack (&cmd->dbsc.vdm_state[1], VDMCTRL_PPP_STATE1, state) {
+            state.addrlsb = pvr_bo->vma->dev_addr;
+         }
+
+         break;
+      }
+
+      case PVR_DEFERRED_CS_COMMAND_TYPE_DBSC2: {
+         const uint32_t scissor_idx =
+            prim_scissor_elems + cmd->dbsc2.state.scissor_index;
+         const uint32_t db_idx =
+            prim_db_elems + cmd->dbsc2.state.depthbias_index;
+
+         assert(cmd->dbsc2.ppp_cs_bo->bo->map);
+
+         addr = cmd->dbsc2.ppp_cs_bo->bo->map + cmd->dbsc2.patch_offset;
+
+         pvr_csb_pack (addr, TA_STATE_ISPDBSC, ispdbsc) {
+            ispdbsc.dbindex = db_idx;
+            ispdbsc.scindex = scissor_idx;
+         }
+
+         break;
+      }
+
+      default:
+         unreachable("Invalid deferred control stream command type.");
+         break;
+      }
+   }
+
+   addr =
+      util_dynarray_grow_bytes(&cmd_buffer->depth_bias_array, 1, sec_db_size);
+   memcpy(addr,
+          util_dynarray_begin(&sec_cmd_buffer->depth_bias_array),
+          sec_db_size);
+
+   addr =
+      util_dynarray_grow_bytes(&cmd_buffer->scissor_array, 1, sec_scissor_size);
+   memcpy(addr,
+          util_dynarray_begin(&sec_cmd_buffer->scissor_array),
+          sec_scissor_size);
+
+   cmd_buffer->state.dirty.depth_bias = true;
+   memset(&cmd_buffer->scissor_words[0], 0, sizeof(cmd_buffer->scissor_words));
+
+   return VK_SUCCESS;
+}
+
+/* Caller needs to make sure that it ends the current sub_cmd. This function
+ * only creates a copy of sec_sub_cmd and links it to the cmd_buffer's
+ * sub_cmd list.
+ */
+static VkResult pvr_execute_sub_cmd(struct pvr_cmd_buffer *cmd_buffer,
+                                    struct pvr_sub_cmd *sec_sub_cmd)
+{
+   struct pvr_sub_cmd *primary_sub_cmd =
+      vk_zalloc(&cmd_buffer->vk.pool->alloc,
+                sizeof(*primary_sub_cmd),
+                8,
+                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   if (!primary_sub_cmd) {
+      cmd_buffer->state.status =
+         vk_error(cmd_buffer, VK_ERROR_OUT_OF_HOST_MEMORY);
+      return cmd_buffer->state.status;
+   }
+
+   primary_sub_cmd->type = sec_sub_cmd->type;
+   primary_sub_cmd->owned = false;
+   primary_sub_cmd->flags = sec_sub_cmd->flags;
+
+   list_addtail(&primary_sub_cmd->link, &cmd_buffer->sub_cmds);
+
+   switch (sec_sub_cmd->type) {
+   case PVR_SUB_CMD_TYPE_GRAPHICS:
+      primary_sub_cmd->gfx = sec_sub_cmd->gfx;
+      break;
+
+   case PVR_SUB_CMD_TYPE_COMPUTE:
+      primary_sub_cmd->compute = sec_sub_cmd->compute;
+      break;
+
+   case PVR_SUB_CMD_TYPE_TRANSFER:
+      primary_sub_cmd->transfer = sec_sub_cmd->transfer;
+      break;
+
+   case PVR_SUB_CMD_TYPE_EVENT:
+      primary_sub_cmd->event = sec_sub_cmd->event;
+      break;
+
+   default:
+      mesa_loge("Unsupported sub-command type %d", primary_sub_cmd->type);
+      break;
+   }
+
+   return VK_SUCCESS;
+}
+
+static void
+pvr_execute_graphics_cmd_buffer(struct pvr_cmd_buffer *cmd_buffer,
+                                const struct pvr_cmd_buffer *sec_cmd_buffer)
+{
+   const struct pvr_device_info *dev_info =
+      &cmd_buffer->device->pdevice->dev_info;
+   struct pvr_cmd_buffer_state *state = &cmd_buffer->state;
+   struct pvr_sub_cmd *primary_sub_cmd = state->current_sub_cmd;
+   VkResult result;
+
+   if (list_is_empty(&sec_cmd_buffer->sub_cmds))
+      return;
+
+   list_for_each_entry (struct pvr_sub_cmd,
+                        sec_sub_cmd,
+                        &sec_cmd_buffer->sub_cmds,
+                        link) {
+      /* Only graphics secondary execution supported within a renderpass. */
+      assert(sec_sub_cmd->type == PVR_SUB_CMD_TYPE_GRAPHICS);
+
+      if (!sec_sub_cmd->gfx.empty_cmd)
+         primary_sub_cmd->gfx.empty_cmd = false;
+
+      if (pvr_cmd_uses_deferred_cs_cmds(sec_cmd_buffer)) {
+         /* TODO: In case if secondary buffer is created with
+          * VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT, then we patch the
+          * stream and copy it to primary stream using pvr_csb_copy below.
+          * This will need locking if the same secondary command buffer is
+          * executed in multiple primary buffers at the same time.
+          */
+         result = pvr_execute_deferred_cmd_buffer(cmd_buffer, sec_cmd_buffer);
+         if (result != VK_SUCCESS)
+            return;
+
+         result = pvr_csb_copy(&primary_sub_cmd->gfx.control_stream,
+                               &sec_sub_cmd->gfx.control_stream);
+         if (result != VK_SUCCESS) {
+            cmd_buffer->state.status = result;
+            return;
+         }
+      } else {
+         result = pvr_execute_deferred_cmd_buffer(cmd_buffer, sec_cmd_buffer);
+         if (result != VK_SUCCESS)
+            return;
+
+         pvr_csb_emit_link(
+            &primary_sub_cmd->gfx.control_stream,
+            pvr_csb_get_start_address(&sec_sub_cmd->gfx.control_stream),
+            true);
+      }
+
+      if (PVR_HAS_FEATURE(&cmd_buffer->device->pdevice->dev_info,
+                          compute_overlap)) {
+         primary_sub_cmd->gfx.job.disable_compute_overlap |=
+            sec_sub_cmd->gfx.job.disable_compute_overlap;
+      }
+
+      primary_sub_cmd->gfx.max_tiles_in_flight =
+         MIN2(primary_sub_cmd->gfx.max_tiles_in_flight,
+              sec_sub_cmd->gfx.max_tiles_in_flight);
+
+      /* Pass loaded depth/stencil usage from secondary command buffer. */
+      if (sec_sub_cmd->gfx.depth_usage == PVR_DEPTH_STENCIL_USAGE_NEEDED)
+         primary_sub_cmd->gfx.depth_usage = PVR_DEPTH_STENCIL_USAGE_NEEDED;
+
+      if (sec_sub_cmd->gfx.stencil_usage == PVR_DEPTH_STENCIL_USAGE_NEEDED)
+         primary_sub_cmd->gfx.stencil_usage = PVR_DEPTH_STENCIL_USAGE_NEEDED;
+
+      /* Pass depth/stencil modification state from secondary command buffer. */
+      if (sec_sub_cmd->gfx.modifies_depth)
+         primary_sub_cmd->gfx.modifies_depth = true;
+
+      if (sec_sub_cmd->gfx.modifies_stencil)
+         primary_sub_cmd->gfx.modifies_stencil = true;
+
+      pvr_finishme(
+         "Copy barrier related load/store information from secondary to primary command buffer.");
+
+      if (!PVR_HAS_FEATURE(dev_info, gs_rta_support))
+         pvr_finishme("Unimplemented path.");
+   }
+}
+
 void pvr_CmdExecuteCommands(VkCommandBuffer commandBuffer,
                             uint32_t commandBufferCount,
                             const VkCommandBuffer *pCommandBuffers)
 {
-   assert(!"Unimplemented");
+   PVR_FROM_HANDLE(pvr_cmd_buffer, cmd_buffer, commandBuffer);
+   struct pvr_cmd_buffer_state *state = &cmd_buffer->state;
+   struct pvr_cmd_buffer *last_cmd_buffer;
+
+   PVR_CHECK_COMMAND_BUFFER_BUILDING_STATE(cmd_buffer);
+
+   assert(cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+
+   /* Reset the CPU copy of the most recent PPP state of the primary command
+    * buffer.
+    *
+    * The next draw call in the primary after CmdExecuteCommands may send
+    * redundant state, if it all goes in the same geom job.
+    *
+    * Can't just copy state from the secondary because the recording state of
+    * the secondary command buffers would have been deleted at this point.
+    */
+   pvr_reset_graphics_dirty_state(state, false);
+
+   if (state->current_sub_cmd &&
+       state->current_sub_cmd->type == PVR_SUB_CMD_TYPE_GRAPHICS) {
+      for (uint32_t i = 0; i < commandBufferCount; i++) {
+         PVR_FROM_HANDLE(pvr_cmd_buffer, sec_cmd_buffer, pCommandBuffers[i]);
+
+         assert(sec_cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+
+         pvr_execute_graphics_cmd_buffer(cmd_buffer, sec_cmd_buffer);
+      }
+
+      last_cmd_buffer =
+         pvr_cmd_buffer_from_handle(pCommandBuffers[commandBufferCount - 1]);
+
+      /* Set barriers from final command secondary command buffer. */
+      for (uint32_t i = 0; i != PVR_NUM_SYNC_PIPELINE_STAGES; i++) {
+         state->barriers_needed[i] |=
+            last_cmd_buffer->state.barriers_needed[i] &
+            PVR_PIPELINE_STAGE_ALL_GRAPHICS_BITS;
+      }
+   } else {
+      for (uint32_t i = 0; i < commandBufferCount; i++) {
+         PVR_FROM_HANDLE(pvr_cmd_buffer, sec_cmd_buffer, pCommandBuffers[i]);
+         VkResult result;
+
+         assert(sec_cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+
+         result = pvr_cmd_buffer_end_sub_cmd(cmd_buffer);
+         if (result != VK_SUCCESS)
+            return;
+
+         list_for_each_entry_safe (struct pvr_sub_cmd,
+                                   sec_sub_cmd,
+                                   &sec_cmd_buffer->sub_cmds,
+                                   link) {
+            result = pvr_execute_sub_cmd(cmd_buffer, sec_sub_cmd);
+            if (result != VK_SUCCESS)
+               return;
+         }
+      }
+
+      last_cmd_buffer =
+         pvr_cmd_buffer_from_handle(pCommandBuffers[commandBufferCount - 1]);
+
+      memcpy(state->barriers_needed,
+             last_cmd_buffer->state.barriers_needed,
+             sizeof(state->barriers_needed));
+   }
 }
 
 static void pvr_insert_transparent_obj(struct pvr_cmd_buffer *const cmd_buffer,
@@ -5873,18 +6180,59 @@ static bool pvr_is_stencil_store_load_needed(
    return false;
 }
 
-static void pvr_insert_mid_frag_barrier(struct pvr_cmd_buffer *cmd_buffer)
+static VkResult
+pvr_cmd_buffer_insert_mid_frag_barrier_event(struct pvr_cmd_buffer *cmd_buffer,
+                                             uint32_t src_stage_mask,
+                                             uint32_t dst_stage_mask)
 {
-   struct pvr_sub_cmd *const curr_sub_cmd = cmd_buffer->state.current_sub_cmd;
+   struct pvr_sub_cmd_event *sub_cmd;
+   VkResult result;
 
-   assert(curr_sub_cmd->type == PVR_SUB_CMD_TYPE_GRAPHICS);
+   assert(cmd_buffer->state.current_sub_cmd->type == PVR_SUB_CMD_TYPE_GRAPHICS);
+
+   cmd_buffer->state.current_sub_cmd->gfx.empty_cmd = false;
 
    pvr_finishme("Handle mid frag barrier stencil store.");
+
+   pvr_cmd_buffer_end_sub_cmd(cmd_buffer);
+   result = pvr_cmd_buffer_start_sub_cmd(cmd_buffer, PVR_SUB_CMD_TYPE_EVENT);
+   if (result != VK_SUCCESS)
+      return result;
+
+   sub_cmd = &cmd_buffer->state.current_sub_cmd->event;
+
+   sub_cmd->type = PVR_EVENT_TYPE_BARRIER;
+   sub_cmd->barrier.in_render_pass = true;
+   sub_cmd->barrier.wait_for_stage_mask = src_stage_mask;
+   sub_cmd->barrier.wait_at_stage_mask = dst_stage_mask;
 
    pvr_cmd_buffer_end_sub_cmd(cmd_buffer);
    pvr_cmd_buffer_start_sub_cmd(cmd_buffer, PVR_SUB_CMD_TYPE_GRAPHICS);
 
    pvr_finishme("Handle mid frag barrier color attachment load.");
+
+   return VK_SUCCESS;
+}
+
+static VkResult
+pvr_cmd_buffer_insert_barrier_event(struct pvr_cmd_buffer *cmd_buffer,
+                                    uint32_t src_stage_mask,
+                                    uint32_t dst_stage_mask)
+{
+   struct pvr_sub_cmd_event *sub_cmd;
+   VkResult result;
+
+   result = pvr_cmd_buffer_start_sub_cmd(cmd_buffer, PVR_SUB_CMD_TYPE_EVENT);
+   if (result != VK_SUCCESS)
+      return result;
+
+   sub_cmd = &cmd_buffer->state.current_sub_cmd->event;
+
+   sub_cmd->type = PVR_EVENT_TYPE_BARRIER;
+   sub_cmd->barrier.wait_for_stage_mask = src_stage_mask;
+   sub_cmd->barrier.wait_at_stage_mask = dst_stage_mask;
+
+   return pvr_cmd_buffer_end_sub_cmd(cmd_buffer);
 }
 
 /* This is just enough to handle vkCmdPipelineBarrier().
@@ -6012,10 +6360,23 @@ void pvr_CmdPipelineBarrier2(VkCommandBuffer commandBuffer,
                                        pDependencyInfo->pImageMemoryBarriers);
 
    if (is_stencil_store_load_needed) {
-      pvr_insert_mid_frag_barrier(cmd_buffer);
+      VkResult result;
+
+      result = pvr_cmd_buffer_insert_mid_frag_barrier_event(cmd_buffer,
+                                                            src_stage_mask,
+                                                            dst_stage_mask);
+      if (result != VK_SUCCESS)
+         mesa_loge("Failed to insert mid frag barrier event.");
    } else {
-      if (is_barrier_needed)
-         pvr_finishme("Insert barrier if needed.");
+      if (is_barrier_needed) {
+         VkResult result;
+
+         result = pvr_cmd_buffer_insert_barrier_event(cmd_buffer,
+                                                      src_stage_mask,
+                                                      dst_stage_mask);
+         if (result != VK_SUCCESS)
+            mesa_loge("Failed to insert pipeline barrier event.");
+      }
    }
 }
 

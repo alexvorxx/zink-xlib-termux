@@ -53,7 +53,7 @@ struct blorp_params;
 #define IRIS_MAX_SSBOS 16
 #define IRIS_MAX_VIEWPORTS 16
 #define IRIS_MAX_CLIP_PLANES 8
-#define IRIS_MAX_GLOBAL_BINDINGS 32
+#define IRIS_MAX_GLOBAL_BINDINGS 128
 
 enum iris_param_domain {
    BRW_PARAM_DOMAIN_BUILTIN = 0,
@@ -477,6 +477,8 @@ struct iris_binding_table {
 
    /** Mask of surfaces used in each group. */
    uint64_t used_mask[IRIS_SURFACE_GROUP_COUNT];
+
+   uint64_t samplers_used_mask;
 };
 
 /**
@@ -606,6 +608,9 @@ struct iris_context {
 
    /** A debug callback for KHR_debug output. */
    struct util_debug_callback dbg;
+
+   /** Whether the context protected (through EGL_EXT_protected_content) */
+   bool protected;
 
    /** A device reset status callback for notifying that the GPU is hosed. */
    struct pipe_device_reset_callback reset;

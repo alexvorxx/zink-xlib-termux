@@ -999,6 +999,18 @@ static void
 init_aux_map_state(struct iris_batch *batch);
 #endif
 
+/* This updates a register. Caller should stall the pipeline as needed. */
+static void
+iris_disable_rhwo_optimization(struct iris_batch *batch, bool disable)
+{
+#if GFX_VERx10 == 120
+   iris_emit_reg(batch, GENX(COMMON_SLICE_CHICKEN1), c1) {
+      c1.RCCRHWOOptimizationDisable = disable;
+      c1.RCCRHWOOptimizationDisableMask = true;
+   };
+#endif
+}
+
 /**
  * Upload initial GPU state for any kind of context.
  *
@@ -1037,6 +1049,42 @@ iris_init_common_context(struct iris_batch *batch)
 #endif
 }
 
+static void
+toggle_protected(struct iris_batch *batch)
+{
+   struct iris_context *ice;
+
+   if (batch->name == IRIS_BATCH_RENDER)
+      ice =container_of(batch, struct iris_context, batches[IRIS_BATCH_RENDER]);
+   else if (batch->name == IRIS_BATCH_COMPUTE)
+      ice = container_of(batch, struct iris_context, batches[IRIS_BATCH_COMPUTE]);
+   else
+      unreachable("unhandled batch");
+
+   if (!ice->protected)
+      return;
+
+#if GFX_VER >= 12
+   iris_emit_cmd(batch, GENX(PIPE_CONTROL), pc) {
+      pc.CommandStreamerStallEnable = true;
+      pc.RenderTargetCacheFlushEnable = true;
+      pc.ProtectedMemoryDisable = true;
+   }
+   iris_emit_cmd(batch, GENX(MI_SET_APPID), appid) {
+      /* Default value for single session. */
+      appid.ProtectedMemoryApplicationID = 0xf;
+      appid.ProtectedMemoryApplicationIDType = DISPLAY_APP;
+   }
+   iris_emit_cmd(batch, GENX(PIPE_CONTROL), pc) {
+      pc.CommandStreamerStallEnable = true;
+      pc.RenderTargetCacheFlushEnable = true;
+      pc.ProtectedMemoryEnable = true;
+   }
+#else
+   unreachable("Not supported");
+#endif
+}
+
 /**
  * Upload the initial GPU state for a render context.
  *
@@ -1052,19 +1100,13 @@ iris_init_render_context(struct iris_batch *batch)
 
    emit_pipeline_select(batch, _3D);
 
+   toggle_protected(batch);
+
    iris_emit_l3_config(batch, batch->screen->l3_config_3d);
 
    init_state_base_address(batch);
 
    iris_init_common_context(batch);
-
-#if GFX_VERx10 == 125
-   /* Wa_14015207028 */
-   iris_emit_reg(batch, GENX(VFG_PREEMPTION_CHICKEN_BITS), vfgc) {
-      vfgc.PolygonTrifanLineLoopPreemptionDisable = true;
-      vfgc.PolygonTrifanLineLoopPreemptionDisableMask = true;
-   };
-#endif
 
 #if GFX_VER >= 9
    iris_emit_reg(batch, GENX(CS_DEBUG_MODE2), reg) {
@@ -1112,6 +1154,22 @@ iris_init_render_context(struct iris_batch *batch)
 #endif
 
 #if GFX_VERx10 == 120
+   /* Wa_1508744258
+    *
+    *    Disable RHWO by setting 0x7010[14] by default except during resolve
+    *    pass.
+    *
+    * We implement global disabling of the optimization here and we toggle it
+    * in iris_resolve_color.
+    *
+    * iris_init_compute_context is unmodified because we don't expect to
+    * access the RCC in the compute context. iris_mcs_partial_resolve is
+    * unmodified because that pass doesn't use a HW bit to perform the
+    * resolve (related HSDs specifically call out the RenderTargetResolveType
+    * field in the 3DSTATE_PS instruction).
+    */
+   iris_disable_rhwo_optimization(batch, true);
+
    /* Wa_1806527549 says to disable the following HiZ optimization when the
     * depth buffer is D16_UNORM. We've found the WA to help with more depth
     * buffer configurations however, so we always disable it just to be safe.
@@ -1184,6 +1242,8 @@ iris_init_compute_context(struct iris_batch *batch)
 #else
    emit_pipeline_select(batch, GPGPU);
 #endif
+
+   toggle_protected(batch);
 
    iris_emit_l3_config(batch, batch->screen->l3_config_cs);
 
@@ -2072,7 +2132,7 @@ fill_sampler_state(uint32_t *sampler_state,
       samp.TCYAddressControlMode = translate_wrap(state->wrap_t);
       samp.TCZAddressControlMode = translate_wrap(state->wrap_r);
       samp.CubeSurfaceControlMode = state->seamless_cube_map;
-      samp.NonnormalizedCoordinateEnable = !state->normalized_coords;
+      samp.NonnormalizedCoordinateEnable = state->unnormalized_coords;
       samp.MinModeFilter = state->min_img_filter;
       samp.MagModeFilter = mag_img_filter;
       samp.MipModeFilter = translate_mip_filter(state->min_mip_filter);
@@ -2201,15 +2261,15 @@ static void
 iris_upload_sampler_states(struct iris_context *ice, gl_shader_stage stage)
 {
    struct iris_screen *screen = (struct iris_screen *) ice->ctx.screen;
+   struct iris_compiled_shader *shader = ice->shaders.prog[stage];
    struct iris_shader_state *shs = &ice->state.shaders[stage];
-   const struct shader_info *info = iris_get_shader_info(ice, stage);
    struct iris_border_color_pool *border_color_pool =
       iris_bufmgr_get_border_color_pool(screen->bufmgr);
 
    /* We assume gallium frontends will call pipe->bind_sampler_states()
     * if the program's number of textures changes.
     */
-   unsigned count = info ? BITSET_LAST_BIT(info->samplers_used) : 0;
+   unsigned count = util_last_bit64(shader->bt.samplers_used_mask);
 
    if (!count)
       return;
@@ -4451,9 +4511,23 @@ KSP(const struct iris_compiled_shader *shader)
    return iris_bo_offset_from_base_address(res->bo) + shader->assembly.offset;
 }
 
+static uint32_t
+encode_sampler_count(const struct iris_compiled_shader *shader)
+{
+   uint32_t count = util_last_bit64(shader->bt.samplers_used_mask);
+   uint32_t count_by_4 = DIV_ROUND_UP(count, 4);
+
+   /* We can potentially have way more than 32 samplers and that's ok.
+    * However, the 3DSTATE_XS packets only have 3 bits to specify how
+    * many to pre-fetch and all values above 4 are marked reserved.
+    */
+   return MIN2(count_by_4, 4);
+}
+
 #define INIT_THREAD_DISPATCH_FIELDS(pkt, prefix, stage)                   \
    pkt.KernelStartPointer = KSP(shader);                                  \
    pkt.BindingTableEntryCount = shader->bt.size_bytes / 4;                \
+   pkt.SamplerCount = encode_sampler_count(shader);                       \
    pkt.FloatingPointMode = prog_data->use_alt_mode;                       \
                                                                           \
    pkt.DispatchGRFStartRegisterForURBData =                               \
@@ -4668,6 +4742,7 @@ iris_store_fs_state(const struct intel_device_info *devinfo,
    iris_pack_command(GENX(3DSTATE_PS), ps_state, ps) {
       ps.VectorMaskEnable = wm_prog_data->uses_vmask;
       ps.BindingTableEntryCount = shader->bt.size_bytes / 4;
+      ps.SamplerCount = encode_sampler_count(shader);
       ps.FloatingPointMode = prog_data->use_alt_mode;
       ps.MaximumNumberofThreadsPerPSD =
          devinfo->max_threads_per_psd - (GFX_VER == 8 ? 2 : 1);
@@ -4734,7 +4809,10 @@ iris_store_cs_state(const struct intel_device_info *devinfo,
       assert(cs_prog_data->push.cross_thread.regs == 0);
 #endif
       desc.BarrierEnable = cs_prog_data->uses_barrier;
-      desc.BindingTableEntryCount = MIN2(shader->bt.size_bytes / 4, 31);
+      /* Typically set to 0 to avoid prefetching on every thread dispatch. */
+      desc.BindingTableEntryCount = devinfo->verx10 == 125 ?
+         0 : MIN2(shader->bt.size_bytes / 4, 31);
+      desc.SamplerCount = encode_sampler_count(shader);
 #if GFX_VER >= 12
       /* TODO: Check if we are missing workarounds and enable mid-thread
        * preemption.
@@ -4993,7 +5071,8 @@ use_sampler_view(struct iris_context *ice,
                  struct iris_sampler_view *isv)
 {
    enum isl_aux_usage aux_usage =
-      iris_resource_texture_aux_usage(ice, isv->res, isv->view.format);
+      iris_resource_texture_aux_usage(ice, isv->res, isv->view.format,
+                                      isv->view.base_level, isv->view.levels);
 
    if (!isv->surface_state.ref.res)
       upload_surface_states(ice->state.surface_uploader, &isv->surface_state);
@@ -7182,6 +7261,8 @@ iris_upload_compute_walker(struct iris_context *ice,
    if (grid->indirect)
       iris_load_indirect_location(ice, batch, grid);
 
+   iris_measure_snapshot(ice, batch, INTEL_SNAPSHOT_COMPUTE, NULL, NULL, NULL);
+
    iris_emit_cmd(batch, GENX(COMPUTE_WALKER), cw) {
       cw.IndirectParameterEnable        = grid->indirect;
       cw.SIMDSize                       = dispatch.simd_size / 16;
@@ -7201,8 +7282,11 @@ iris_upload_compute_walker(struct iris_context *ice,
             encode_slm_size(GFX_VER, prog_data->total_shared),
          .NumberOfBarriers = cs_prog_data->uses_barrier,
          .SamplerStatePointer = shs->sampler_table.offset,
+         .SamplerCount = encode_sampler_count(shader),
          .BindingTablePointer = binder->bt_offset[MESA_SHADER_COMPUTE],
-         .BindingTableEntryCount = MIN2(shader->bt.size_bytes / 4, 31),
+         /* Typically set to 0 to avoid prefetching on every thread dispatch. */
+         .BindingTableEntryCount = devinfo->verx10 == 125 ?
+            0 : MIN2(shader->bt.size_bytes / 4, 31),
       };
 
       assert(brw_cs_push_const_total_size(cs_prog_data, dispatch.threads) == 0);
@@ -7304,7 +7388,7 @@ iris_upload_gpgpu_walker(struct iris_context *ice,
    for (unsigned i = 0; i < IRIS_MAX_GLOBAL_BINDINGS; i++) {
       struct pipe_resource *res = ice->state.global_bindings[i];
       if (!res)
-         continue;
+         break;
 
       iris_use_pinned_bo(batch, iris_resource_bo(res),
                          true, IRIS_DOMAIN_NONE);
@@ -8475,6 +8559,7 @@ genX(init_screen_state)(struct iris_screen *screen)
    screen->vtbl.populate_fs_key = iris_populate_fs_key;
    screen->vtbl.populate_cs_key = iris_populate_cs_key;
    screen->vtbl.lost_genx_state = iris_lost_genx_state;
+   screen->vtbl.disable_rhwo_optimization = iris_disable_rhwo_optimization;
 }
 
 void

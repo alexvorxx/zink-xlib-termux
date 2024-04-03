@@ -34,7 +34,7 @@
 
 struct cache_entry {
    union {
-      unsigned char sha1[20];
+      unsigned char sha1[SHA1_DIGEST_LENGTH];
       uint32_t sha1_dw[5];
    };
    uint32_t binary_sizes[MESA_VULKAN_SHADER_STAGES];
@@ -73,7 +73,7 @@ radv_is_cache_disabled(struct radv_device *device)
           (device->physical_device->use_llvm ? 0 : aco_get_codegen_flags());
 }
 
-void
+static void
 radv_pipeline_cache_init(struct radv_pipeline_cache *cache, struct radv_device *device)
 {
    vk_object_base_init(&device->vk, &cache->base, VK_OBJECT_TYPE_PIPELINE_CACHE);
@@ -82,7 +82,6 @@ radv_pipeline_cache_init(struct radv_pipeline_cache *cache, struct radv_device *
    mtx_init(&cache->mutex, mtx_plain);
    cache->flags = 0;
 
-   cache->modified = false;
    cache->kernel_count = 0;
    cache->total_size = 0;
    cache->table_size = 1024;
@@ -98,7 +97,7 @@ radv_pipeline_cache_init(struct radv_pipeline_cache *cache, struct radv_device *
       memset(cache->hash_table, 0, byte_size);
 }
 
-void
+static void
 radv_pipeline_cache_finish(struct radv_pipeline_cache *cache)
 {
    for (unsigned i = 0; i < cache->table_size; ++i)
@@ -118,7 +117,7 @@ radv_pipeline_cache_finish(struct radv_pipeline_cache *cache)
 }
 
 static uint32_t
-entry_size(struct cache_entry *entry)
+entry_size(const struct cache_entry *entry)
 {
    size_t ret = sizeof(*entry);
    for (int i = 0; i < MESA_VULKAN_SHADER_STAGES; ++i)
@@ -202,6 +201,12 @@ radv_hash_rt_shaders(unsigned char *hash, const VkRayTracingPipelineCreateInfoKH
 
    if (!radv_rt_pipeline_has_dynamic_stack_size(pCreateInfo))
       _mesa_sha1_update(&ctx, &pCreateInfo->maxPipelineRayRecursionDepth, 4);
+
+   const uint32_t pipeline_flags =
+      pCreateInfo->flags & (VK_PIPELINE_CREATE_RAY_TRACING_SKIP_TRIANGLES_BIT_KHR |
+                            VK_PIPELINE_CREATE_RAY_TRACING_SKIP_AABBS_BIT_KHR);
+   _mesa_sha1_update(&ctx, &pipeline_flags, 4);
+
    _mesa_sha1_update(&ctx, &flags, 4);
    _mesa_sha1_final(&ctx, hash);
 }
@@ -334,16 +339,16 @@ radv_create_shaders_from_pipeline_cache(
       /* Don't cache when we want debug info, since this isn't
        * present in the cache.
        */
-      if (radv_is_cache_disabled(device) || !device->physical_device->disk_cache) {
+      if (radv_is_cache_disabled(device) || !device->physical_device->vk.disk_cache) {
          radv_pipeline_cache_unlock(cache);
          return false;
       }
 
-      uint8_t disk_sha1[20];
-      disk_cache_compute_key(device->physical_device->disk_cache, sha1, 20, disk_sha1);
+      uint8_t disk_sha1[SHA1_DIGEST_LENGTH];
+      disk_cache_compute_key(device->physical_device->vk.disk_cache, sha1, SHA1_DIGEST_LENGTH, disk_sha1);
 
       entry =
-         (struct cache_entry *)disk_cache_get(device->physical_device->disk_cache, disk_sha1, NULL);
+         (struct cache_entry *)disk_cache_get(device->physical_device->vk.disk_cache, disk_sha1, NULL);
       if (!entry) {
          radv_pipeline_cache_unlock(cache);
          return false;
@@ -367,6 +372,8 @@ radv_create_shaders_from_pipeline_cache(
       }
    }
 
+   struct radv_shader_binary *binaries[MESA_VULKAN_SHADER_STAGES] = {NULL};
+   struct radv_shader_binary *gs_copy_binary = NULL;
    bool needs_upload = false;
    char *p = entry->code;
    for (int i = 0; i < MESA_VULKAN_SHADER_STAGES; ++i) {
@@ -378,6 +385,7 @@ radv_create_shaders_from_pipeline_cache(
          entry->shaders[i] = radv_shader_create(device, binary, false, true, NULL);
 
          needs_upload = true;
+         binaries[i] = binary;
       } else if (entry->binary_sizes[i]) {
          p += entry->binary_sizes[i];
       }
@@ -390,22 +398,17 @@ radv_create_shaders_from_pipeline_cache(
       /* For the GS copy shader, RADV uses the compute shader slot to avoid a new cache entry. */
       pipeline->gs_copy_shader = pipeline->shaders[MESA_SHADER_COMPUTE];
       pipeline->shaders[MESA_SHADER_COMPUTE] = NULL;
+      gs_copy_binary = binaries[MESA_SHADER_COMPUTE];
    }
 
    if (needs_upload) {
-      result = radv_upload_shaders(device, pipeline);
+      result = radv_upload_shaders(device, pipeline, binaries, gs_copy_binary);
 
       for (int i = 0; i < MESA_VULKAN_SHADER_STAGES; ++i) {
-         if (pipeline->shaders[i]) {
-            free(pipeline->shaders[i]->binary);
-            pipeline->shaders[i]->binary = NULL;
-         }
+         if (pipeline->shaders[i])
+            free(binaries[i]);
       }
-
-      if (pipeline->gs_copy_shader) {
-         free(pipeline->gs_copy_shader->binary);
-         pipeline->gs_copy_shader->binary = NULL;
-      }
+      free(gs_copy_binary);
 
       if (result != VK_SUCCESS) {
          radv_pipeline_cache_unlock(cache);
@@ -447,6 +450,7 @@ radv_create_shaders_from_pipeline_cache(
 void
 radv_pipeline_cache_insert_shaders(struct radv_device *device, struct radv_pipeline_cache *cache,
                                    const unsigned char *sha1, struct radv_pipeline *pipeline,
+                                   struct radv_shader_binary *const *binaries,
                                    const struct radv_pipeline_shader_stack_size *stack_sizes,
                                    uint32_t num_stack_sizes)
 {
@@ -484,14 +488,9 @@ radv_pipeline_cache_insert_shaders(struct radv_device *device, struct radv_pipel
    }
 
    size_t size = sizeof(*entry) + sizeof(*stack_sizes) * num_stack_sizes;
-   for (int i = 0; i < MESA_VULKAN_SHADER_STAGES; ++i) {
-      struct radv_shader *shader = pipeline->shaders[i];
-      if (!shader)
-         continue;
-
-      size += shader->binary->total_size;
-   }
-
+   for (int i = 0; i < MESA_VULKAN_SHADER_STAGES; ++i)
+      if (pipeline->shaders[i])
+         size += binaries[i]->total_size;
    const size_t size_without_align = size;
    size = align(size_without_align, alignof(struct cache_entry));
 
@@ -502,20 +501,18 @@ radv_pipeline_cache_insert_shaders(struct radv_device *device, struct radv_pipel
    }
 
    memset(entry, 0, sizeof(*entry));
-   memcpy(entry->sha1, sha1, 20);
+   memcpy(entry->sha1, sha1, SHA1_DIGEST_LENGTH);
 
    char *p = entry->code;
 
    for (int i = 0; i < MESA_VULKAN_SHADER_STAGES; ++i) {
-      struct radv_shader *shader = pipeline->shaders[i];
-
-      if (!shader)
+      if (!pipeline->shaders[i])
          continue;
 
-      entry->binary_sizes[i] = shader->binary->total_size;
+      entry->binary_sizes[i] = binaries[i]->total_size;
 
-      memcpy(p, shader->binary, shader->binary->total_size);
-      p += shader->binary->total_size;
+      memcpy(p, binaries[i], binaries[i]->total_size);
+      p += binaries[i]->total_size;
    }
 
    if (num_stack_sizes) {
@@ -535,11 +532,11 @@ radv_pipeline_cache_insert_shaders(struct radv_device *device, struct radv_pipel
     *
     * Make sure to exclude meta shaders because they are stored in a different cache file.
     */
-   if (device->physical_device->disk_cache && cache != &device->meta_state.cache) {
-      uint8_t disk_sha1[20];
-      disk_cache_compute_key(device->physical_device->disk_cache, sha1, 20, disk_sha1);
+   if (device->physical_device->vk.disk_cache && cache != radv_pipeline_cache_from_handle(device->meta_state.cache)) {
+      uint8_t disk_sha1[SHA1_DIGEST_LENGTH];
+      disk_cache_compute_key(device->physical_device->vk.disk_cache, sha1, SHA1_DIGEST_LENGTH, disk_sha1);
 
-      disk_cache_put(device->physical_device->disk_cache, disk_sha1, entry, entry_size(entry),
+      disk_cache_put(device->physical_device->vk.disk_cache, disk_sha1, entry, entry_size(entry),
                      NULL);
    }
 
@@ -565,12 +562,11 @@ radv_pipeline_cache_insert_shaders(struct radv_device *device, struct radv_pipel
 
    radv_pipeline_cache_add_entry(cache, entry);
 
-   cache->modified = true;
    radv_pipeline_cache_unlock(cache);
    return;
 }
 
-bool
+static bool
 radv_pipeline_cache_load(struct radv_pipeline_cache *cache, const void *data, size_t size)
 {
    struct radv_device *device = cache->device;

@@ -1010,6 +1010,7 @@ panfrost_ptr_map(struct pipe_context *pctx,
 
         if (!create_new_bo &&
             !(usage & PIPE_MAP_UNSYNCHRONIZED) &&
+            !(resource->flags & PIPE_RESOURCE_FLAG_MAP_PERSISTENT) &&
             (usage & PIPE_MAP_WRITE) &&
             !(resource->target == PIPE_BUFFER
               && !util_ranges_intersect(&rsrc->valid_buffer_range, box->x, box->x + box->width)) &&
@@ -1399,6 +1400,8 @@ panfrost_generate_mipmap(
         unsigned last_layer)
 {
         struct panfrost_resource *rsrc = pan_resource(prsrc);
+
+        perf_debug_ctx(pan_context(pctx), "Unoptimized mipmap generation");
 
         /* Generating a mipmap invalidates the written levels, so make that
          * explicit so we don't try to wallpaper them back and end up with

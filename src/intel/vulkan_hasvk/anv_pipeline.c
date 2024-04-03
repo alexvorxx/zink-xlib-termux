@@ -1168,7 +1168,7 @@ anv_graphics_pipeline_init_keys(struct anv_graphics_pipeline *pipeline,
 
       int64_t stage_start = os_time_get_nano();
 
-      vk_pipeline_hash_shader_stage(stages[s].info, stages[s].shader_sha1);
+      vk_pipeline_hash_shader_stage(stages[s].info, NULL, stages[s].shader_sha1);
 
       const struct anv_device *device = pipeline->base.device;
       switch (stages[s].stage) {
@@ -1619,7 +1619,7 @@ anv_pipeline_compile_cs(struct anv_compute_pipeline *pipeline,
          .flags = VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT,
       },
    };
-   vk_pipeline_hash_shader_stage(&info->stage, stage.shader_sha1);
+   vk_pipeline_hash_shader_stage(&info->stage, NULL, stage.shader_sha1);
 
    struct anv_shader_bin *bin = NULL;
 
@@ -1892,7 +1892,8 @@ anv_graphics_pipeline_init(struct anv_graphics_pipeline *pipeline,
    vk_dynamic_graphics_state_fill(&pipeline->dynamic_state, state);
 
    pipeline->depth_clamp_enable = state->rs->depth_clamp_enable;
-   pipeline->depth_clip_enable = state->rs->depth_clip_enable;
+   pipeline->depth_clip_enable =
+      vk_rasterization_state_depth_clip_enable(state->rs);
    pipeline->view_mask = state->rp->view_mask;
 
    result = anv_graphics_pipeline_compile(pipeline, cache, pCreateInfo, state);

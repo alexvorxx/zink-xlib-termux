@@ -244,6 +244,20 @@ VkResult pvr_srv_winsys_transfer_submit(
       }
    }
 
+   if (submit_info->barrier) {
+      struct pvr_srv_sync *srv_wait_sync = to_srv_sync(submit_info->barrier);
+
+      if (srv_wait_sync->fd >= 0) {
+         int ret;
+
+         ret = sync_accumulate("", &in_fd, srv_wait_sync->fd);
+         if (ret) {
+            result = vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
+            goto end_close_in_fd;
+         }
+      }
+   }
+
    job_num = submit_info->job_num;
 
    do {
@@ -262,7 +276,6 @@ VkResult pvr_srv_winsys_transfer_submit(
                                             (uint8_t **)cmds_ptr_arr,
                                             cmd_flags,
                                             job_num,
-                                            /* TODO: Add sync PMR support. */
                                             0U,
                                             NULL,
                                             NULL,

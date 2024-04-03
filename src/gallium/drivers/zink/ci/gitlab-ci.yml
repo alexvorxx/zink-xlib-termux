@@ -10,7 +10,7 @@
     # Fix non-conformant llvmpipe filter defaults
     GALLIVM_PERF: "no_quad_lod"
 
-zink:
+zink-lvp:
   tags:
     - mesa-swrast
   extends:
@@ -64,3 +64,4 @@ zink-freedreno-a630-traces:
     HWCI_START_XORG: ""
     WAFFLE_PLATFORM: gbm
     PIGLIT_PLATFORM: gbm
+    ZINK_DEBUG: rp

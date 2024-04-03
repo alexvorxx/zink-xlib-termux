@@ -88,7 +88,8 @@ build_resolve_compute_shader(struct radv_device *dev, bool is_integer, bool is_s
 
    nir_variable *color = nir_local_variable_create(b.impl, glsl_vec4_type(), "color");
 
-   radv_meta_build_resolve_shader_core(&b, is_integer, samples, input_img, color, src_coord);
+   radv_meta_build_resolve_shader_core(&b, is_integer, samples, input_img, color, src_coord,
+                                       dev->physical_device->rad_info.gfx_level);
 
    nir_ssa_def *outval = nir_load_var(&b, color);
    if (is_srgb)
@@ -315,7 +316,7 @@ create_resolve_pipeline(struct radv_device *device, int samples, bool is_integer
    };
 
    result = radv_CreateComputePipelines(radv_device_to_handle(device),
-                                        radv_pipeline_cache_to_handle(&device->meta_state.cache), 1,
+                                        device->meta_state.cache, 1,
                                         &vk_pipeline_info, NULL, pipeline);
    if (result != VK_SUCCESS)
       goto fail;
@@ -361,7 +362,7 @@ create_depth_stencil_resolve_pipeline(struct radv_device *device, int samples, i
    };
 
    result = radv_CreateComputePipelines(radv_device_to_handle(device),
-                                        radv_pipeline_cache_to_handle(&device->meta_state.cache), 1,
+                                        device->meta_state.cache, 1,
                                         &vk_pipeline_info, NULL, pipeline);
    if (result != VK_SUCCESS)
       goto fail;

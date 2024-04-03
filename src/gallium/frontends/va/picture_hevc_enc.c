@@ -135,7 +135,8 @@ vlVaHandleVAEncSliceParameterBufferTypeHEVC(vlVaDriver *drv, vlVaContext *contex
    context->desc.h265enc.slice.slice_loop_filter_across_slices_enabled_flag = h265->slice_fields.bits.slice_loop_filter_across_slices_enabled_flag;
 
    /* Handle the slice control parameters */
-   struct h265_slice_descriptor slice_descriptor = { };
+   struct h265_slice_descriptor slice_descriptor;
+   memset(&slice_descriptor, 0, sizeof(slice_descriptor));
    slice_descriptor.slice_segment_address = h265->slice_segment_address;
    slice_descriptor.num_ctu_in_slice = h265->num_ctu_in_slice;
    slice_descriptor.slice_type = h265->slice_type;
@@ -153,6 +154,7 @@ VAStatus
 vlVaHandleVAEncSequenceParameterBufferTypeHEVC(vlVaDriver *drv, vlVaContext *context, vlVaBuffer *buf)
 {
    VAEncSequenceParameterBufferHEVC *h265 = (VAEncSequenceParameterBufferHEVC *)buf->data;
+   uint32_t num_units_in_tick = 0, time_scale = 0;
 
    if (!context->decoder) {
       context->templat.max_references = PIPE_H265_MAX_REFERENCES;
@@ -186,8 +188,32 @@ vlVaHandleVAEncSequenceParameterBufferTypeHEVC(vlVaDriver *drv, vlVaContext *con
    context->desc.h265enc.seq.log2_diff_max_min_transform_block_size = h265->log2_diff_max_min_transform_block_size;
    context->desc.h265enc.seq.max_transform_hierarchy_depth_inter = h265->max_transform_hierarchy_depth_inter;
    context->desc.h265enc.seq.max_transform_hierarchy_depth_intra = h265->max_transform_hierarchy_depth_intra;
-   context->desc.h265enc.rc.frame_rate_num = h265->vui_time_scale;
-   context->desc.h265enc.rc.frame_rate_den = h265->vui_num_units_in_tick;
+
+   context->desc.h265enc.seq.vui_parameters_present_flag = h265->vui_parameters_present_flag;
+   if (h265->vui_parameters_present_flag) {
+      context->desc.h265enc.seq.vui_flags.aspect_ratio_info_present_flag =
+         h265->vui_fields.bits.aspect_ratio_info_present_flag;
+         context->desc.h265enc.seq.aspect_ratio_idc = h265->aspect_ratio_idc;
+      context->desc.h265enc.seq.sar_width = h265->sar_width;
+      context->desc.h265enc.seq.sar_height = h265->sar_height;
+
+      context->desc.h265enc.seq.vui_flags.timing_info_present_flag =
+         h265->vui_fields.bits.vui_timing_info_present_flag;
+      num_units_in_tick = h265->vui_num_units_in_tick;
+      time_scale  = h265->vui_time_scale;
+   } else
+      context->desc.h265enc.seq.vui_flags.timing_info_present_flag = 0;
+
+   if (!context->desc.h265enc.seq.vui_flags.timing_info_present_flag) {
+      /* if not present, set default value */
+      num_units_in_tick = PIPE_DEFAULT_FRAME_RATE_DEN;
+      time_scale  = PIPE_DEFAULT_FRAME_RATE_NUM;
+   }
+
+   context->desc.h265enc.seq.num_units_in_tick = num_units_in_tick;
+   context->desc.h265enc.seq.time_scale = time_scale;
+   context->desc.h265enc.rc.frame_rate_num = time_scale;
+   context->desc.h265enc.rc.frame_rate_den = num_units_in_tick;
 
    return VA_STATUS_SUCCESS;
 }

@@ -443,6 +443,15 @@ enum pipe_flush_flags
 #define PIPE_CONTEXT_LOSE_CONTEXT_ON_RESET (1 << 6)
 
 /**
+ * Create a protected context to access protected content (surfaces,
+ * textures, ...)
+ *
+ * This is required to access protected images and surfaces if
+ * EGL_EXT_protected_surface is not supported.
+ */
+#define PIPE_CONTEXT_PROTECTED         (1 << 7)
+
+/**
  * Flags for pipe_context::memory_barrier.
  */
 #define PIPE_BARRIER_MAPPED_BUFFER     (1 << 0)
@@ -730,7 +739,6 @@ enum pipe_cap
    PIPE_CAP_NPOT_TEXTURES,
    PIPE_CAP_MAX_DUAL_SOURCE_RENDER_TARGETS,
    PIPE_CAP_ANISOTROPIC_FILTER,
-   PIPE_CAP_POINT_SPRITE,
    PIPE_CAP_MAX_RENDER_TARGETS,
    PIPE_CAP_OCCLUSION_QUERY,
    PIPE_CAP_QUERY_TIME_ELAPSED,
@@ -756,7 +764,6 @@ enum pipe_cap
    PIPE_CAP_FS_COORD_ORIGIN_LOWER_LEFT,
    PIPE_CAP_FS_COORD_PIXEL_CENTER_HALF_INTEGER,
    PIPE_CAP_FS_COORD_PIXEL_CENTER_INTEGER,
-   PIPE_CAP_POINT_COORD_ORIGIN_UPPER_LEFT,
    PIPE_CAP_DEPTH_CLIP_DISABLE,
    PIPE_CAP_DEPTH_CLIP_DISABLE_SEPARATE,
    PIPE_CAP_DEPTH_CLAMP_ENABLE,
@@ -976,7 +983,8 @@ enum pipe_cap
    PIPE_CAP_NO_CLIP_ON_COPY_TEX,
    PIPE_CAP_MAX_TEXTURE_MB,
    PIPE_CAP_SHADER_ATOMIC_INT64,
-   PIPE_CAP_DEVICE_PROTECTED_CONTENT,
+   /** For EGL_EXT_protected_surface */
+   PIPE_CAP_DEVICE_PROTECTED_SURFACE,
    PIPE_CAP_PREFER_REAL_BUFFER_IN_CONSTBUF0,
    PIPE_CAP_GL_CLAMP,
    PIPE_CAP_TEXRECT,
@@ -1002,6 +1010,8 @@ enum pipe_cap
    PIPE_CAP_FBFETCH_ZS,
    PIPE_CAP_TIMELINE_SEMAPHORE_IMPORT,
    PIPE_CAP_QUERY_TIMESTAMP_BITS,
+   /** For EGL_EXT_protected_content */
+   PIPE_CAP_DEVICE_PROTECTED_CONTEXT,
 
    PIPE_CAP_LAST,
    /* XXX do not add caps after PIPE_CAP_LAST! */

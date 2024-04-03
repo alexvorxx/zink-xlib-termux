@@ -43,6 +43,10 @@ static const uint32_t lbvh_internal_spv[] = {
 #include "bvh/lbvh_internal.comp.spv.h"
 };
 
+static const uint32_t ploc_spv[] = {
+#include "bvh/ploc_internal.comp.spv.h"
+};
+
 static const uint32_t copy_spv[] = {
 #include "bvh/copy.comp.spv.h"
 };
@@ -55,25 +59,46 @@ static const uint32_t convert_internal_spv[] = {
 #include "bvh/converter_internal.comp.spv.h"
 };
 
-/* Min and max bounds of the bvh used to compute morton codes */
-#define SCRATCH_TOTAL_BOUNDS_SIZE (6 * sizeof(float))
-
 #define KEY_ID_PAIR_SIZE 8
 
+enum radv_accel_struct_build_type {
+   RADV_ACCEL_STRUCT_BUILD_TYPE_LBVH,
+   RADV_ACCEL_STRUCT_BUILD_TYPE_PLOC,
+};
+
 struct acceleration_structure_layout {
+   uint32_t bvh_offset;
    uint32_t size;
 };
 
 struct scratch_layout {
    uint32_t size;
 
-   uint32_t bounds_offset;
+   uint32_t header_offset;
 
    uint32_t sort_buffer_offset[2];
    uint32_t sort_internal_offset;
 
+   uint32_t ploc_prefix_sum_partition_offset;
+
    uint32_t ir_offset;
 };
+
+static enum radv_accel_struct_build_type
+build_type(uint32_t leaf_count, const VkAccelerationStructureBuildGeometryInfoKHR *build_info)
+{
+   if (leaf_count <= 4)
+      return RADV_ACCEL_STRUCT_BUILD_TYPE_LBVH;
+
+   if (build_info->type == VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR)
+      return RADV_ACCEL_STRUCT_BUILD_TYPE_LBVH;
+
+   if (!(build_info->flags & VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR) &&
+       !(build_info->flags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR))
+      return RADV_ACCEL_STRUCT_BUILD_TYPE_PLOC;
+   else
+      return RADV_ACCEL_STRUCT_BUILD_TYPE_LBVH;
+}
 
 static void
 get_build_layout(struct radv_device *device, uint32_t leaf_count,
@@ -117,10 +142,20 @@ get_build_layout(struct radv_device *device, uint32_t leaf_count,
    }
 
    if (accel_struct) {
+      uint64_t bvh_size =
+         bvh_leaf_size * leaf_count + sizeof(struct radv_bvh_box32_node) * internal_count;
       uint32_t offset = 0;
-      offset += ALIGN(sizeof(struct radv_accel_struct_header), 64);
-      offset += bvh_leaf_size * leaf_count;
-      offset += sizeof(struct radv_bvh_box32_node) * internal_count;
+      offset += sizeof(struct radv_accel_struct_header);
+
+      /* Parent links, which have to go directly before bvh_offset as we index them using negative
+       * offsets from there. */
+      offset += bvh_size / 64 * 4;
+
+      /* The BVH and hence bvh_offset needs 64 byte alignment for RT nodes. */
+      offset = ALIGN(offset, 64);
+      accel_struct->bvh_offset = offset;
+
+      offset += bvh_size;
       offset += sizeof(struct radv_accel_struct_geometry_info) * build_info->geometryCount;
 
       accel_struct->size = offset;
@@ -133,8 +168,14 @@ get_build_layout(struct radv_device *device, uint32_t leaf_count,
 
       uint32_t offset = 0;
 
-      scratch->bounds_offset = offset;
-      offset += SCRATCH_TOTAL_BOUNDS_SIZE;
+      uint32_t ploc_scratch_space = 0;
+
+      if (build_type(leaf_count, build_info))
+         ploc_scratch_space = DIV_ROUND_UP(leaf_count, PLOC_WORKGROUP_SIZE) *
+                              sizeof(struct ploc_prefix_scan_partition);
+
+      scratch->header_offset = offset;
+      offset += sizeof(struct radv_ir_header);
 
       scratch->sort_buffer_offset[0] = offset;
       offset += requirements.keyvals_size;
@@ -143,7 +184,10 @@ get_build_layout(struct radv_device *device, uint32_t leaf_count,
       offset += requirements.keyvals_size;
 
       scratch->sort_internal_offset = offset;
-      offset += requirements.internal_size;
+      /* Internal sorting data is not needed when PLOC is invoked,
+       * save space by aliasing them */
+      scratch->ploc_prefix_sum_partition_offset = offset;
+      offset += MAX2(requirements.internal_size, ploc_scratch_space);
 
       scratch->ir_offset = offset;
       offset += ir_leaf_size * leaf_count;
@@ -201,6 +245,7 @@ radv_CreateAccelerationStructureKHR(VkDevice _device,
    accel->size = pCreateInfo->size;
    accel->bo = buffer->bo;
    accel->va = radv_buffer_get_va(accel->bo) + accel->mem_offset;
+   accel->type = pCreateInfo->type;
 
    *pAccelerationStructure = radv_acceleration_structure_to_handle(accel);
    return VK_SUCCESS;
@@ -257,24 +302,13 @@ radv_CopyAccelerationStructureKHR(VkDevice _device, VkDeferredOperationKHR defer
    return VK_ERROR_FEATURE_NOT_PRESENT;
 }
 
-static nir_builder
-create_accel_build_shader(struct radv_device *device, const char *name)
-{
-   nir_builder b = radv_meta_init_shader(device, MESA_SHADER_COMPUTE, "%s", name);
-   b.shader->info.workgroup_size[0] = 64;
-
-   assert(b.shader->info.workgroup_size[1] == 1);
-   assert(b.shader->info.workgroup_size[2] == 1);
-   assert(!b.shader->info.workgroup_size_variable);
-
-   return b;
-}
-
 void
 radv_device_finish_accel_struct_build_state(struct radv_device *device)
 {
    struct radv_meta_state *state = &device->meta_state;
    radv_DestroyPipeline(radv_device_to_handle(device), state->accel_struct_build.copy_pipeline,
+                        &state->alloc);
+   radv_DestroyPipeline(radv_device_to_handle(device), state->accel_struct_build.ploc_pipeline,
                         &state->alloc);
    radv_DestroyPipeline(radv_device_to_handle(device),
                         state->accel_struct_build.lbvh_internal_pipeline, &state->alloc);
@@ -288,6 +322,8 @@ radv_device_finish_accel_struct_build_state(struct radv_device *device)
                         &state->alloc);
    radv_DestroyPipelineLayout(radv_device_to_handle(device),
                               state->accel_struct_build.copy_p_layout, &state->alloc);
+   radv_DestroyPipelineLayout(radv_device_to_handle(device),
+                              state->accel_struct_build.ploc_p_layout, &state->alloc);
    radv_DestroyPipelineLayout(radv_device_to_handle(device),
                               state->accel_struct_build.lbvh_internal_p_layout, &state->alloc);
    radv_DestroyPipelineLayout(radv_device_to_handle(device),
@@ -352,7 +388,7 @@ create_build_pipeline_spv(struct radv_device *device, const uint32_t *spv, uint3
    };
 
    result = radv_CreateComputePipelines(radv_device_to_handle(device),
-                                        radv_pipeline_cache_to_handle(&device->meta_state.cache), 1,
+                                        device->meta_state.cache, 1,
                                         &pipeline_info, &device->meta_state.alloc, pipeline);
 
 cleanup:
@@ -392,6 +428,12 @@ radv_device_init_accel_struct_build_state(struct radv_device *device)
    if (result != VK_SUCCESS)
       return result;
 
+   result = create_build_pipeline_spv(device, ploc_spv, sizeof(ploc_spv), sizeof(struct ploc_args),
+                                      &device->meta_state.accel_struct_build.ploc_pipeline,
+                                      &device->meta_state.accel_struct_build.ploc_p_layout);
+   if (result != VK_SUCCESS)
+      return result;
+
    result = create_build_pipeline_spv(device, convert_leaf_spv, sizeof(convert_leaf_spv),
                                       sizeof(struct convert_leaf_args),
                                       &device->meta_state.accel_struct_build.convert_leaf_pipeline,
@@ -423,7 +465,7 @@ radv_device_init_accel_struct_build_state(struct radv_device *device)
 
    device->meta_state.accel_struct_build.radix_sort =
       radv_create_radix_sort_u64(radv_device_to_handle(device), &device->meta_state.alloc,
-                                 radv_pipeline_cache_to_handle(&device->meta_state.cache));
+                                 device->meta_state.cache);
 
    struct radix_sort_vk_sort_devaddr_info *radix_sort_info =
       &device->meta_state.accel_struct_build.radix_sort_info;
@@ -445,6 +487,7 @@ struct bvh_state {
 
    struct acceleration_structure_layout accel_struct;
    struct scratch_layout scratch;
+   enum radv_accel_struct_build_type type;
 };
 
 static void
@@ -459,7 +502,7 @@ build_leaves(VkCommandBuffer commandBuffer, uint32_t infoCount,
    for (uint32_t i = 0; i < infoCount; ++i) {
       struct leaf_args leaf_consts = {
          .bvh = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.ir_offset,
-         .bounds = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.bounds_offset,
+         .header = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.header_offset,
          .ids = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.sort_buffer_offset[0],
          .dst_offset = 0,
       };
@@ -552,7 +595,7 @@ morton_generate(VkCommandBuffer commandBuffer, uint32_t infoCount,
    for (uint32_t i = 0; i < infoCount; ++i) {
       const struct morton_args consts = {
          .bvh = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.ir_offset,
-         .bounds = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.bounds_offset,
+         .header = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.header_offset,
          .ids = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.sort_buffer_offset[0],
       };
 
@@ -619,6 +662,9 @@ lbvh_build_internal(VkCommandBuffer commandBuffer, uint32_t infoCount,
    for (unsigned iter = 0; progress; ++iter) {
       progress = false;
       for (uint32_t i = 0; i < infoCount; ++i) {
+         if (bvh_states[i].type != RADV_ACCEL_STRUCT_BUILD_TYPE_LBVH)
+            continue;
+
          if (iter && bvh_states[i].node_count == 1)
             continue;
 
@@ -628,7 +674,6 @@ lbvh_build_internal(VkCommandBuffer commandBuffer, uint32_t infoCount,
          progress = true;
 
          uint32_t dst_node_count = MAX2(1, DIV_ROUND_UP(bvh_states[i].node_count, 2));
-         bool final_iter = dst_node_count == 1;
 
          uint32_t src_scratch_offset = bvh_states[i].scratch_offset;
          uint32_t dst_scratch_offset =
@@ -638,17 +683,12 @@ lbvh_build_internal(VkCommandBuffer commandBuffer, uint32_t infoCount,
 
          uint32_t dst_node_offset = bvh_states[i].node_offset;
 
-         /* Make sure we build the BVH so the hardcoded root node is valid. */
-         STATIC_ASSERT(RADV_BVH_ROOT_NODE ==
-                       DIV_ROUND_UP(sizeof(struct radv_accel_struct_header), 64) * 8 +
-                          radv_bvh_node_internal);
-
          const struct lbvh_internal_args consts = {
             .bvh = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.ir_offset,
             .src_ids = pInfos[i].scratchData.deviceAddress + src_scratch_offset,
             .dst_ids = pInfos[i].scratchData.deviceAddress + dst_scratch_offset,
             .dst_offset = dst_node_offset,
-            .is_root_and_count = bvh_states[i].node_count | (final_iter ? 0x80000000U : 0),
+            .src_count = bvh_states[i].node_count,
          };
 
          radv_CmdPushConstants(
@@ -661,7 +701,64 @@ lbvh_build_internal(VkCommandBuffer commandBuffer, uint32_t infoCount,
          bvh_states[i].scratch_offset = dst_scratch_offset;
       }
    }
-   cmd_buffer->state.flush_bits |= flush_bits;
+
+   for (uint32_t i = 0; i < infoCount; ++i) {
+      if (bvh_states[i].type != RADV_ACCEL_STRUCT_BUILD_TYPE_LBVH)
+         continue;
+
+      radv_update_buffer_cp(cmd_buffer,
+                            pInfos[i].scratchData.deviceAddress +
+                               bvh_states[i].scratch.header_offset +
+                               offsetof(struct radv_ir_header, ir_internal_node_count),
+                            &bvh_states[i].internal_node_count, 4);
+   }
+}
+
+static void
+ploc_build_internal(VkCommandBuffer commandBuffer, uint32_t infoCount,
+                    const VkAccelerationStructureBuildGeometryInfoKHR *pInfos,
+                    struct bvh_state *bvh_states)
+{
+   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   radv_CmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+                        cmd_buffer->device->meta_state.accel_struct_build.ploc_pipeline);
+
+   for (uint32_t i = 0; i < infoCount; ++i) {
+      if (bvh_states[i].type != RADV_ACCEL_STRUCT_BUILD_TYPE_PLOC)
+         continue;
+
+      struct radv_global_sync_data initial_sync_data = {
+         .current_phase_end_counter = DIV_ROUND_UP(bvh_states[i].node_count, PLOC_WORKGROUP_SIZE),
+         /* Will be updated by the first PLOC shader invocation */
+         .task_counts = {TASK_INDEX_INVALID, TASK_INDEX_INVALID},
+      };
+      radv_update_buffer_cp(cmd_buffer,
+                            pInfos[i].scratchData.deviceAddress +
+                               bvh_states[i].scratch.header_offset +
+                               offsetof(struct radv_ir_header, sync_data),
+                            &initial_sync_data, sizeof(struct radv_global_sync_data));
+
+      uint32_t src_scratch_offset = bvh_states[i].scratch_offset;
+      uint32_t dst_scratch_offset =
+         (src_scratch_offset == bvh_states[i].scratch.sort_buffer_offset[0])
+            ? bvh_states[i].scratch.sort_buffer_offset[1]
+            : bvh_states[i].scratch.sort_buffer_offset[0];
+
+      const struct ploc_args consts = {
+         .bvh = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.ir_offset,
+         .header = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.header_offset,
+         .ids_0 = pInfos[i].scratchData.deviceAddress + src_scratch_offset,
+         .ids_1 = pInfos[i].scratchData.deviceAddress + dst_scratch_offset,
+         .prefix_scan_partitions = pInfos[i].scratchData.deviceAddress +
+                                   bvh_states[i].scratch.ploc_prefix_sum_partition_offset,
+         .internal_node_offset = bvh_states[i].node_offset,
+      };
+
+      radv_CmdPushConstants(commandBuffer,
+                            cmd_buffer->device->meta_state.accel_struct_build.ploc_p_layout,
+                            VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(consts), &consts);
+      radv_CmdDispatch(commandBuffer, MAX2(DIV_ROUND_UP(bvh_states[i].node_count, 64), 1), 1, 1);
+   }
 }
 
 static void
@@ -681,9 +778,9 @@ convert_leaf_nodes(VkCommandBuffer commandBuffer, uint32_t infoCount,
 
       const struct convert_leaf_args args = {
          .intermediate_bvh = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.ir_offset,
-         .output_bvh = accel_struct->va,
-         .geometry_type = pInfos->pGeometries ? pInfos->pGeometries[0].geometryType
-                                              : pInfos->ppGeometries[0]->geometryType,
+         .output_bvh = accel_struct->va + bvh_states[i].accel_struct.bvh_offset,
+         .geometry_type = pInfos[i].pGeometries ? pInfos[i].pGeometries[0].geometryType
+                                                : pInfos[i].ppGeometries[0]->geometryType,
       };
       radv_CmdPushConstants(commandBuffer,
                             cmd_buffer->device->meta_state.accel_struct_build.convert_leaf_p_layout,
@@ -712,20 +809,24 @@ convert_internal_nodes(VkCommandBuffer commandBuffer, uint32_t infoCount,
        * because it will be multiplied with 0.
        */
       if (pInfos[i].geometryCount)
-         geometry_type = pInfos->pGeometries ? pInfos->pGeometries[0].geometryType
-                                             : pInfos->ppGeometries[0]->geometryType;
+         geometry_type = pInfos[i].pGeometries ? pInfos[i].pGeometries[0].geometryType
+                                               : pInfos[i].ppGeometries[0]->geometryType;
 
       const struct convert_internal_args args = {
          .intermediate_bvh = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.ir_offset,
-         .output_bvh = accel_struct->va,
+         .output_bvh = accel_struct->va + bvh_states[i].accel_struct.bvh_offset,
+         .header = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.header_offset,
+         .output_bvh_offset = bvh_states[i].accel_struct.bvh_offset,
          .leaf_node_count = bvh_states[i].leaf_node_count,
-         .internal_node_count = bvh_states[i].internal_node_count,
          .geometry_type = geometry_type,
       };
       radv_CmdPushConstants(
          commandBuffer, cmd_buffer->device->meta_state.accel_struct_build.convert_internal_p_layout,
          VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(args), &args);
-      radv_unaligned_dispatch(cmd_buffer, bvh_states[i].internal_node_count, 1, 1);
+      radv_indirect_unaligned_dispatch(cmd_buffer, NULL,
+                                       pInfos[i].scratchData.deviceAddress +
+                                          bvh_states[i].scratch.header_offset +
+                                          offsetof(struct radv_ir_header, ir_internal_node_count));
    }
    /* This is the final access to the leaf nodes, no need to flush */
 }
@@ -752,16 +853,6 @@ radv_CmdBuildAccelerationStructuresKHR(
    struct bvh_state *bvh_states = calloc(infoCount, sizeof(struct bvh_state));
 
    for (uint32_t i = 0; i < infoCount; ++i) {
-      /* Clear the bvh bounds with int max/min. */
-      si_cp_dma_clear_buffer(cmd_buffer, pInfos[i].scratchData.deviceAddress, 3 * sizeof(float),
-                             0x7fffffff);
-      si_cp_dma_clear_buffer(cmd_buffer, pInfos[i].scratchData.deviceAddress + 3 * sizeof(float),
-                             3 * sizeof(float), 0x80000000);
-   }
-
-   cmd_buffer->state.flush_bits |= flush_bits;
-
-   for (uint32_t i = 0; i < infoCount; ++i) {
       uint32_t leaf_node_count = 0;
       for (uint32_t j = 0; j < pInfos[i].geometryCount; ++j) {
          leaf_node_count += ppBuildRangeInfos[i][j].primitiveCount;
@@ -769,7 +860,23 @@ radv_CmdBuildAccelerationStructuresKHR(
 
       get_build_layout(cmd_buffer->device, leaf_node_count, pInfos + i, &bvh_states[i].accel_struct,
                        &bvh_states[i].scratch);
+      bvh_states[i].type = build_type(leaf_node_count, pInfos + i);
+
+      /* The internal node count is updated in lbvh_build_internal for LBVH
+       * and from the PLOC shader for PLOC. */
+      struct radv_ir_header header = {
+         .min_bounds = {0x7fffffff, 0x7fffffff, 0x7fffffff},
+         .max_bounds = {0x80000000, 0x80000000, 0x80000000},
+         .dispatch_size_y = 1,
+         .dispatch_size_z = 1,
+      };
+
+      radv_update_buffer_cp(
+         cmd_buffer, pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.header_offset,
+         &header, sizeof(header));
    }
+
+   cmd_buffer->state.flush_bits |= flush_bits;
 
    build_leaves(commandBuffer, infoCount, pInfos, ppBuildRangeInfos, bvh_states, flush_bits);
 
@@ -777,7 +884,12 @@ radv_CmdBuildAccelerationStructuresKHR(
 
    morton_sort(commandBuffer, infoCount, pInfos, bvh_states, flush_bits);
 
+   cmd_buffer->state.flush_bits |= flush_bits;
+
    lbvh_build_internal(commandBuffer, infoCount, pInfos, bvh_states, flush_bits);
+   ploc_build_internal(commandBuffer, infoCount, pInfos, bvh_states);
+
+   cmd_buffer->state.flush_bits |= flush_bits;
 
    convert_leaf_nodes(commandBuffer, infoCount, pInfos, bvh_states);
 
@@ -795,7 +907,7 @@ radv_CmdBuildAccelerationStructuresKHR(
          pInfos[i].geometryCount * sizeof(struct radv_accel_struct_geometry_info);
 
       header.instance_offset =
-         align(sizeof(struct radv_accel_struct_header), 64) + sizeof(struct radv_bvh_box32_node);
+         bvh_states[i].accel_struct.bvh_offset + sizeof(struct radv_bvh_box32_node);
       header.instance_count = is_tlas ? bvh_states[i].leaf_node_count : 0;
       header.compacted_size = bvh_states[i].accel_struct.size;
 
@@ -814,7 +926,6 @@ radv_CmdBuildAccelerationStructuresKHR(
 
       header.build_flags = pInfos[i].flags;
       header.geometry_count = pInfos[i].geometryCount;
-      header.internal_node_count = bvh_states[i].internal_node_count;
 
       struct radv_accel_struct_geometry_info *geometry_infos = malloc(geometry_infos_size);
       if (!geometry_infos)
@@ -828,9 +939,8 @@ radv_CmdBuildAccelerationStructuresKHR(
          geometry_infos[j].primitive_count = ppBuildRangeInfos[i][j].primitiveCount;
       }
 
-      radv_update_buffer_cp(cmd_buffer,
-                            radv_buffer_get_va(accel_struct->bo) + accel_struct->mem_offset + base,
-                            (const char *)&header + base, sizeof(header) - base);
+      radv_update_buffer_cp(cmd_buffer, accel_struct->va + base, (const char *)&header + base,
+                            sizeof(header) - base);
 
       VkDeviceSize geometry_infos_offset = header.compacted_size - geometry_infos_size;
 
@@ -889,12 +999,10 @@ radv_GetDeviceAccelerationStructureCompatibilityKHR(
    VkAccelerationStructureCompatibilityKHR *pCompatibility)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
-   uint8_t zero[VK_UUID_SIZE] = {
-      0,
-   };
    bool compat =
       memcmp(pVersionInfo->pVersionData, device->physical_device->driver_uuid, VK_UUID_SIZE) == 0 &&
-      memcmp(pVersionInfo->pVersionData + VK_UUID_SIZE, zero, VK_UUID_SIZE) == 0;
+      memcmp(pVersionInfo->pVersionData + VK_UUID_SIZE, device->physical_device->cache_uuid,
+             VK_UUID_SIZE) == 0;
    *pCompatibility = compat ? VK_ACCELERATION_STRUCTURE_COMPATIBILITY_COMPATIBLE_KHR
                             : VK_ACCELERATION_STRUCTURE_COMPATIBILITY_INCOMPATIBLE_KHR;
 }
@@ -979,8 +1087,10 @@ radv_CmdCopyAccelerationStructureToMemoryKHR(
    radv_meta_restore(&saved_state, cmd_buffer);
 
    /* Set the header of the serialized data. */
-   uint8_t header_data[2 * VK_UUID_SIZE] = {0};
+   uint8_t header_data[2 * VK_UUID_SIZE];
    memcpy(header_data, cmd_buffer->device->physical_device->driver_uuid, VK_UUID_SIZE);
+   memcpy(header_data + VK_UUID_SIZE, cmd_buffer->device->physical_device->cache_uuid,
+          VK_UUID_SIZE);
 
    radv_update_buffer_cp(cmd_buffer, pInfo->dst.deviceAddress, header_data, sizeof(header_data));
 }

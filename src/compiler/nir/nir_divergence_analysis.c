@@ -156,13 +156,22 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_ring_task_payload_amd:
    case nir_intrinsic_load_sample_positions_amd:
    case nir_intrinsic_load_rasterization_samples_amd:
+   case nir_intrinsic_load_ring_gsvs_amd:
+   case nir_intrinsic_load_streamout_config_amd:
+   case nir_intrinsic_load_streamout_write_index_amd:
+   case nir_intrinsic_load_streamout_offset_amd:
    case nir_intrinsic_load_task_ring_entry_amd:
    case nir_intrinsic_load_task_ib_addr:
    case nir_intrinsic_load_task_ib_stride:
+   case nir_intrinsic_load_ring_attr_amd:
+   case nir_intrinsic_load_ring_attr_offset_amd:
    case nir_intrinsic_load_sample_positions_pan:
    case nir_intrinsic_load_workgroup_num_input_vertices_amd:
    case nir_intrinsic_load_workgroup_num_input_primitives_amd:
-   case nir_intrinsic_load_shader_query_enabled_amd:
+   case nir_intrinsic_load_pipeline_stat_query_enabled_amd:
+   case nir_intrinsic_load_prim_gen_query_enabled_amd:
+   case nir_intrinsic_load_prim_xfb_query_enabled_amd:
+   case nir_intrinsic_load_merged_wave_info_amd:
    case nir_intrinsic_load_cull_front_face_enabled_amd:
    case nir_intrinsic_load_cull_back_face_enabled_amd:
    case nir_intrinsic_load_cull_ccw_amd:
@@ -189,6 +198,9 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_num_vertices_per_primitive_amd:
    case nir_intrinsic_load_streamout_buffer_amd:
    case nir_intrinsic_load_ordered_id_amd:
+   case nir_intrinsic_load_provoking_vtx_in_prim_amd:
+   case nir_intrinsic_load_lds_ngg_scratch_base_amd:
+   case nir_intrinsic_load_lds_ngg_gs_out_vertex_base_amd:
       is_divergent = false;
       break;
 
@@ -275,6 +287,10 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
          is_divergent = !(options & nir_divergence_single_patch_per_tes_subgroup);
       else if (stage == MESA_SHADER_GEOMETRY || stage == MESA_SHADER_VERTEX)
          is_divergent = true;
+      else if (stage == MESA_SHADER_ANY_HIT ||
+               stage == MESA_SHADER_CLOSEST_HIT ||
+               stage == MESA_SHADER_INTERSECTION)
+         is_divergent = true;
       else
          unreachable("Invalid stage for load_primitive_id");
       break;
@@ -348,6 +364,9 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
                      instr->src[1].ssa->divergent || instr->src[2].ssa->divergent || instr->src[3].ssa->divergent;
       break;
 
+   case nir_intrinsic_optimization_barrier_vgpr_amd:
+      is_divergent = instr->src[0].ssa->divergent;
+      break;
 
    /* Intrinsics with divergence depending on sources */
    case nir_intrinsic_ballot_bitfield_extract:
@@ -398,7 +417,8 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_image_deref_load_param_intel:
    case nir_intrinsic_image_load_raw_intel:
    case nir_intrinsic_get_ubo_size:
-   case nir_intrinsic_load_ssbo_address: {
+   case nir_intrinsic_load_ssbo_address:
+   case nir_intrinsic_load_desc_set_address_intel: {
       unsigned num_srcs = nir_intrinsic_infos[instr->intrinsic].num_srcs;
       for (unsigned i = 0; i < num_srcs; i++) {
          if (instr->src[i].ssa->divergent) {
@@ -623,8 +643,7 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_tlb_color_v3d:
    case nir_intrinsic_load_tess_rel_patch_id_amd:
    case nir_intrinsic_load_gs_vertex_offset_amd:
-   case nir_intrinsic_has_input_vertex_amd:
-   case nir_intrinsic_has_input_primitive_amd:
+   case nir_intrinsic_is_subgroup_invocation_lt_amd:
    case nir_intrinsic_load_packed_passthrough_primitive_amd:
    case nir_intrinsic_load_initial_edgeflags_amd:
    case nir_intrinsic_gds_atomic_add_amd:
@@ -635,6 +654,21 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_topology_id_intel:
    case nir_intrinsic_load_scratch_base_ptr:
    case nir_intrinsic_ordered_xfb_counter_add_amd:
+   case nir_intrinsic_load_stack:
+   case nir_intrinsic_load_ray_launch_id:
+   case nir_intrinsic_load_ray_instance_custom_index:
+   case nir_intrinsic_load_ray_geometry_index:
+   case nir_intrinsic_load_ray_world_direction:
+   case nir_intrinsic_load_ray_world_origin:
+   case nir_intrinsic_load_ray_object_origin:
+   case nir_intrinsic_load_ray_object_direction:
+   case nir_intrinsic_load_ray_t_min:
+   case nir_intrinsic_load_ray_t_max:
+   case nir_intrinsic_load_ray_object_to_world:
+   case nir_intrinsic_load_ray_world_to_object:
+   case nir_intrinsic_load_ray_hit_kind:
+   case nir_intrinsic_load_ray_flags:
+   case nir_intrinsic_load_cull_mask:
       is_divergent = true;
       break;
 

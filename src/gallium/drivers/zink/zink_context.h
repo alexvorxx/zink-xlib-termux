@@ -78,6 +78,14 @@ zink_program_cache_stages(uint32_t stages_present)
                              (1 << MESA_SHADER_GEOMETRY))) >> 1;
 }
 
+static inline bool
+zink_is_zsbuf_used(const struct zink_context *ctx)
+{
+   return !ctx->tc || ctx->blitting ||
+         !zink_screen(ctx->base.screen)->driver_workarounds.track_renderpasses ||
+         tc_renderpass_info_is_zsbuf_used(&ctx->dynamic_fb.tc_info);
+}
+
 void
 zink_fence_wait(struct pipe_context *ctx);
 
@@ -235,6 +243,11 @@ zink_copy_image_buffer(struct zink_context *ctx, struct zink_resource *dst, stru
 
 void
 zink_destroy_buffer_view(struct zink_screen *screen, struct zink_buffer_view *buffer_view);
+
+struct pipe_surface *
+zink_get_dummy_pipe_surface(struct zink_context *ctx, int samples_index);
+struct zink_surface *
+zink_get_dummy_surface(struct zink_context *ctx, int samples_index);
 
 void
 debug_describe_zink_buffer_view(char *buf, const struct zink_buffer_view *ptr);

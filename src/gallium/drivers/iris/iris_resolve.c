@@ -465,6 +465,18 @@ iris_resolve_color(struct iris_context *ice,
    iris_emit_end_of_pipe_sync(batch, "color resolve: pre-flush",
                               PIPE_CONTROL_RENDER_TARGET_FLUSH);
 
+   /* Wa_1508744258
+    *
+    *    Disable RHWO by setting 0x7010[14] by default except during resolve
+    *    pass.
+    *
+    * We implement global disabling of the RHWO optimization during
+    * iris_init_render_context. We toggle it around the blorp resolve call.
+    */
+   assert(resolve_op == ISL_AUX_OP_FULL_RESOLVE ||
+          resolve_op == ISL_AUX_OP_PARTIAL_RESOLVE);
+   batch->screen->vtbl.disable_rhwo_optimization(batch, false);
+
    iris_batch_sync_region_start(batch);
    struct blorp_batch blorp_batch;
    blorp_batch_init(&ice->blorp, &blorp_batch, batch, 0);
@@ -475,6 +487,9 @@ iris_resolve_color(struct iris_context *ice,
    /* See comment above */
    iris_emit_end_of_pipe_sync(batch, "color resolve: post-flush",
                               PIPE_CONTROL_RENDER_TARGET_FLUSH);
+
+   batch->screen->vtbl.disable_rhwo_optimization(batch, true);
+
    iris_batch_sync_region_end(batch);
 }
 
@@ -893,7 +908,9 @@ iris_resource_set_aux_state(struct iris_context *ice,
 enum isl_aux_usage
 iris_resource_texture_aux_usage(struct iris_context *ice,
                                 const struct iris_resource *res,
-                                enum isl_format view_format)
+                                enum isl_format view_format,
+                                unsigned start_level,
+                                unsigned num_levels)
 {
    struct iris_screen *screen = (void *) ice->ctx.screen;
    struct intel_device_info *devinfo = &screen->devinfo;
@@ -918,7 +935,7 @@ iris_resource_texture_aux_usage(struct iris_context *ice,
        * ISL_AUX_USAGE_NONE.  This way, texturing won't even look at the
        * aux surface and we can save some bandwidth.
        */
-      if (!iris_has_invalid_primary(res, 0, INTEL_REMAINING_LEVELS,
+      if (!iris_has_invalid_primary(res, start_level, num_levels,
                                     0, INTEL_REMAINING_LAYERS))
          return ISL_AUX_USAGE_NONE;
 
@@ -957,9 +974,12 @@ iris_image_view_aux_usage(struct iris_context *ice,
    const struct intel_device_info *devinfo = &screen->devinfo;
    struct iris_resource *res = (void *) pview->resource;
 
+   const unsigned level = res->base.b.target != PIPE_BUFFER ?
+                          pview->u.tex.level : 0;
+
    enum isl_format view_format = iris_image_view_get_format(ice, pview);
    enum isl_aux_usage aux_usage =
-      iris_resource_texture_aux_usage(ice, res, view_format);
+      iris_resource_texture_aux_usage(ice, res, view_format, level, 1);
 
    bool uses_atomic_load_store =
       ice->shaders.uncompiled[info->stage]->uses_atomic_load_store;
@@ -1020,7 +1040,8 @@ iris_resource_prepare_texture(struct iris_context *ice,
    const struct intel_device_info *devinfo = &screen->devinfo;
 
    enum isl_aux_usage aux_usage =
-      iris_resource_texture_aux_usage(ice, res, view_format);
+      iris_resource_texture_aux_usage(ice, res, view_format,
+                                      start_level, num_levels);
 
    bool clear_supported = isl_aux_usage_has_fast_clears(aux_usage);
 

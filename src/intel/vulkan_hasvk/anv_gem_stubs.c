@@ -45,14 +45,6 @@ anv_gem_close(struct anv_device *device, uint32_t gem_handle)
    close(gem_handle);
 }
 
-uint32_t
-anv_gem_create_regions(struct anv_device *device, uint64_t anv_bo_size,
-                       uint32_t flags, uint32_t num_regions,
-                       struct drm_i915_gem_memory_class_instance *regions)
-{
-   return 0;
-}
-
 void*
 anv_gem_mmap(struct anv_device *device, uint32_t gem_handle,
              uint64_t offset, uint64_t size, uint32_t flags)
@@ -170,18 +162,6 @@ anv_gem_fd_to_handle(struct anv_device *device, int fd)
 int
 anv_i915_query(int fd, uint64_t query_id, void *buffer,
                int32_t *buffer_len)
-{
-   unreachable("Unused");
-}
-
-struct drm_i915_query_engine_info *
-anv_gem_get_engine_info(int fd)
-{
-   unreachable("Unused");
-}
-
-int
-anv_gem_reg_read(int fd, uint32_t offset, uint64_t *result)
 {
    unreachable("Unused");
 }

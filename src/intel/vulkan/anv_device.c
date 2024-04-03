@@ -279,6 +279,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .KHR_maintenance4                      = true,
       .KHR_maintenance5                      = true,
       .KHR_maintenance6                      = true,
+      .KHR_maintenance7                      = true,
       .KHR_map_memory2                       = true,
       .KHR_multiview                         = true,
       .KHR_performance_query =
@@ -967,6 +968,9 @@ get_features(const struct anv_physical_device *pdevice,
 
       /* VK_MESA_image_alignment_control */
       .imageAlignmentControl = true,
+
+      /* VK_KHR_maintenance7 */
+      .maintenance7 = true,
    };
 
    /* The new DOOM and Wolfenstein games require depthBounds without
@@ -1513,6 +1517,18 @@ get_properties(const struct anv_physical_device *pdevice,
       props->blockTexelViewCompatibleMultipleLayers = true;
       props->maxCombinedImageSamplerDescriptorCount = 3;
       props->fragmentShadingRateClampCombinerInputs = true;
+   }
+
+   /* VK_KHR_maintenance7 */
+   {
+      props->robustFragmentShadingRateAttachmentAccess = true;
+      props->separateDepthStencilAttachmentAccess = true;
+      props->maxDescriptorSetTotalUniformBuffersDynamic = MAX_DYNAMIC_BUFFERS;
+      props->maxDescriptorSetTotalStorageBuffersDynamic = MAX_DYNAMIC_BUFFERS;
+      props->maxDescriptorSetTotalBuffersDynamic = MAX_DYNAMIC_BUFFERS;
+      props->maxDescriptorSetUpdateAfterBindTotalUniformBuffersDynamic = MAX_DYNAMIC_BUFFERS;
+      props->maxDescriptorSetUpdateAfterBindTotalStorageBuffersDynamic = MAX_DYNAMIC_BUFFERS;
+      props->maxDescriptorSetUpdateAfterBindTotalBuffersDynamic = MAX_DYNAMIC_BUFFERS;
    }
 
    /* VK_KHR_performance_query */

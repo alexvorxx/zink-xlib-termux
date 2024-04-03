@@ -36,7 +36,10 @@
 
 #include "error_decode_lib.h"
 #include "error2hangdump_lib.h"
+#include "error2hangdump_xe.h"
 #include "intel/dev/intel_device_info.h"
+
+#define XE_KMD_ERROR_DUMP_IDENTIFIER "**** Xe Device Coredump ****"
 
 static int zlib_inflate(uint32_t **ptr, int len)
 {
@@ -372,6 +375,8 @@ main(int argc, char *argv[])
       { "engine",     required_argument, NULL,     'e' },
       { NULL,         0,                 NULL,     0 }
    };
+   char *line = NULL;
+   size_t line_size;
 
    i = 0;
    while ((c = getopt_long(argc, argv, "ho:v", aubinator_opts, &i)) != -1) {
@@ -416,8 +421,14 @@ main(int argc, char *argv[])
    FILE *hang_file = fopen(out_filename, "w");
    fail_if(!hang_file, "Failed to open aub file \"%s\": %m\n", out_filename);
 
-   read_i915_data_file(err_file, hang_file, verbose, capture_engine);
+   getline(&line, &line_size, err_file);
+   rewind(err_file);
+   if (strncmp(line, XE_KMD_ERROR_DUMP_IDENTIFIER, strlen(XE_KMD_ERROR_DUMP_IDENTIFIER)) == 0)
+      read_xe_data_file(err_file, hang_file, verbose);
+   else
+      read_i915_data_file(err_file, hang_file, verbose, capture_engine);
 
+   free(line);
    free(out_filename);
    if (err_file)
       fclose(err_file);

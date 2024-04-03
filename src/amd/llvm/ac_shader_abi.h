@@ -49,6 +49,14 @@ struct ac_shader_abi {
    LLVMValueRef color0, color1;
    LLVMValueRef user_data;
 
+   /* replaced registers when culling enabled */
+   LLVMValueRef vertex_id_replaced;
+   LLVMValueRef instance_id_replaced;
+   LLVMValueRef tes_u_replaced;
+   LLVMValueRef tes_v_replaced;
+   LLVMValueRef tes_rel_patch_id_replaced;
+   LLVMValueRef tes_patch_id_replaced;
+
    /* Varying -> attribute number mapping. Also NIR-only */
    unsigned fs_input_attr_indices[MAX_VARYING];
 
@@ -100,6 +108,10 @@ struct ac_shader_abi {
                                      bool image, bool write, bool bindless);
 
    LLVMValueRef (*load_sample_position)(struct ac_shader_abi *abi, LLVMValueRef sample_id);
+
+   LLVMValueRef (*load_user_clip_plane)(struct ac_shader_abi *abi, unsigned ucp_id);
+
+   LLVMValueRef (*load_streamout_buffer)(struct ac_shader_abi *abi, unsigned buffer);
 
    LLVMValueRef (*emit_fbfetch)(struct ac_shader_abi *abi);
 

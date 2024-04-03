@@ -2871,6 +2871,9 @@ typedef struct {
    /* Estimated cost (in number of instructions) of the loop */
    unsigned instr_cost;
 
+   /* Contains fp64 ops that will be lowered */
+   bool has_soft_fp64;
+
    /* Guessed trip count based on array indexing */
    unsigned guessed_trip_count;
 
@@ -3495,6 +3498,7 @@ typedef struct nir_shader_compiler_options {
     * for IO purposes and would prefer loads/stores be vectorized.
     */
    bool vectorize_io;
+   bool vectorize_tess_levels;
    bool lower_to_scalar;
    nir_instr_filter_cb lower_to_scalar_filter;
 
@@ -3618,6 +3622,7 @@ typedef struct nir_shader_compiler_options {
 
    unsigned max_unroll_iterations;
    unsigned max_unroll_iterations_aggressive;
+   unsigned max_unroll_iterations_fp64;
 
    bool lower_uniforms_to_ubo;
 
@@ -3759,6 +3764,17 @@ nir_shader_get_entrypoint(const nir_shader *shader)
    assert(func->num_params == 0);
    assert(func->impl);
    return func->impl;
+}
+
+static inline nir_function *
+nir_shader_get_function_for_name(const nir_shader *shader, const char *name)
+{
+   nir_foreach_function(func, shader) {
+      if (strcmp(func->name, name) == 0)
+         return func;
+   }
+
+   return NULL;
 }
 
 void nir_remove_non_entrypoints(nir_shader *shader);
@@ -5323,6 +5339,7 @@ bool nir_lower_gs_intrinsics(nir_shader *shader, nir_lower_gs_intrinsics_flags o
 
 typedef struct {
    bool payload_to_shared_for_atomics : 1;
+   bool payload_to_shared_for_small_types : 1;
 } nir_lower_task_shader_options;
 
 bool nir_lower_task_shader(nir_shader *shader, nir_lower_task_shader_options options);

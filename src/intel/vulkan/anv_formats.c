@@ -840,6 +840,21 @@ get_buffer_format_features2(const struct intel_device_info *devinfo,
    if (isl_format == ISL_FORMAT_R32_SINT || isl_format == ISL_FORMAT_R32_UINT)
       flags |= VK_FORMAT_FEATURE_2_STORAGE_TEXEL_BUFFER_ATOMIC_BIT;
 
+   if (devinfo->has_ray_tracing) {
+      switch (vk_format) {
+      case VK_FORMAT_R32G32_SFLOAT:
+      case VK_FORMAT_R32G32B32_SFLOAT:
+      case VK_FORMAT_R16G16_SFLOAT:
+      case VK_FORMAT_R16G16B16A16_SFLOAT:
+      case VK_FORMAT_R16G16_SNORM:
+      case VK_FORMAT_R16G16B16A16_SNORM:
+         flags |= VK_FORMAT_FEATURE_ACCELERATION_STRUCTURE_VERTEX_BUFFER_BIT_KHR;
+         break;
+      default:
+         break;
+      }
+   }
+
    return flags;
 }
 
@@ -974,7 +989,8 @@ anv_get_image_format_properties(
    struct anv_physical_device *physical_device,
    const VkPhysicalDeviceImageFormatInfo2 *info,
    VkImageFormatProperties *pImageFormatProperties,
-   VkSamplerYcbcrConversionImageFormatProperties *pYcbcrImageFormatProperties)
+   VkSamplerYcbcrConversionImageFormatProperties *pYcbcrImageFormatProperties,
+   bool from_wsi)
 {
    VkFormatFeatureFlags2 format_feature_flags;
    VkExtent3D maxExtent;
@@ -1199,7 +1215,7 @@ anv_get_image_format_properties(
       }
    }
 
-   if (info->flags & VK_IMAGE_CREATE_ALIAS_BIT) {
+   if ((info->flags & VK_IMAGE_CREATE_ALIAS_BIT) && !from_wsi) {
       /* Reject aliasing of images with non-linear DRM format modifiers because:
        *
        * 1. For modifiers with compression, we store aux tracking state in
@@ -1209,6 +1225,9 @@ anv_get_image_format_properties(
        * 2. For tiled modifiers without compression, we may attempt to compress
        *    them behind the scenes, in which case both the aux tracking state
        *    and the CCS data are bound to ANV_IMAGE_MEMORY_BINDING_PRIVATE.
+       *
+       * 3. For WSI we should ignore ALIAS_BIT because we have the ability to
+       *    bind the ANV_MEMORY_BINDING_PRIVATE from the other WSI image.
        */
       if (info->tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT &&
           isl_mod_info->modifier != DRM_FORMAT_MOD_LINEAR) {
@@ -1288,7 +1307,7 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties(
    };
 
    return anv_get_image_format_properties(physical_device, &info,
-                                          pImageFormatProperties, NULL);
+                                          pImageFormatProperties, NULL, false);
 }
 
 
@@ -1354,10 +1373,11 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
    VkSamplerYcbcrConversionImageFormatProperties *ycbcr_props = NULL;
    VkAndroidHardwareBufferUsageANDROID *android_usage = NULL;
    VkResult result;
+   bool from_wsi = false;
 
    /* Extract input structs */
    vk_foreach_struct_const(s, base_info->pNext) {
-      switch (s->sType) {
+      switch ((unsigned)s->sType) {
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO:
          external_info = (const void *) s;
          break;
@@ -1367,6 +1387,9 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
          break;
       case VK_STRUCTURE_TYPE_IMAGE_STENCIL_USAGE_CREATE_INFO:
          /* Ignore but don't warn */
+         break;
+      case VK_STRUCTURE_TYPE_WSI_IMAGE_CREATE_INFO_MESA:
+         from_wsi = true;
          break;
       default:
          anv_debug_ignored_stype(s->sType);
@@ -1393,7 +1416,7 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
    }
 
    result = anv_get_image_format_properties(physical_device, base_info,
-               &base_props->imageFormatProperties, ycbcr_props);
+               &base_props->imageFormatProperties, ycbcr_props, from_wsi);
    if (result != VK_SUCCESS)
       goto fail;
 

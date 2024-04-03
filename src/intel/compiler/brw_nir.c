@@ -536,7 +536,14 @@ brw_nir_optimize(nir_shader *nir, const struct brw_compiler *compiler,
 
    do {
       progress = false;
-      OPT(nir_split_array_vars, nir_var_function_temp);
+      /* This pass is causing problems with types used by OpenCL :
+       *    https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/13955
+       *
+       * Running with it disabled made no difference in the resulting assembly
+       * code.
+       */
+      if (nir->info.stage != MESA_SHADER_KERNEL)
+         OPT(nir_split_array_vars, nir_var_function_temp);
       OPT(nir_shrink_vec_array_vars, nir_var_function_temp);
       OPT(nir_opt_deref);
       if (OPT(nir_opt_memcpy))
@@ -1165,7 +1172,7 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
    }
 
    if (gl_shader_stage_can_set_fragment_shading_rate(nir->info.stage))
-      brw_nir_lower_shading_rate_output(nir);
+      NIR_PASS(_, nir, brw_nir_lower_shading_rate_output);
 
    brw_nir_optimize(nir, compiler, is_scalar, false);
 
@@ -1397,7 +1404,8 @@ get_subgroup_size(const struct shader_info *info, unsigned max_subgroup_size)
    case SUBGROUP_SIZE_REQUIRE_8:
    case SUBGROUP_SIZE_REQUIRE_16:
    case SUBGROUP_SIZE_REQUIRE_32:
-      assert(gl_shader_stage_uses_workgroup(info->stage));
+      assert(gl_shader_stage_uses_workgroup(info->stage) ||
+             (info->stage >= MESA_SHADER_RAYGEN && info->stage <= MESA_SHADER_CALLABLE));
       /* These enum values are expressly chosen to be equal to the subgroup
        * size that they require.
        */

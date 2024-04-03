@@ -98,26 +98,41 @@ struct agx_batch {
    struct pipe_surface *zsbuf;
 
    /* PIPE_CLEAR_* bitmask */
-   uint32_t clear, draw;
+   uint32_t clear, draw, load;
+
+   /* Base of uploaded texture descriptors */
+   uint64_t textures;
 
    float clear_color[4];
    double clear_depth;
    unsigned clear_stencil;
 
+   /* Whether we're drawing points, lines, or triangles */
+   enum pipe_prim_type reduced_prim;
+
+   /* Current varyings linkage structures */
+   uint32_t varyings;
+
    /* Resource list requirements, represented as a bit set indexed by BO
-    * handles (GEM handles on Linux, or IOGPU's equivalent on macOS) */
-   BITSET_WORD bo_list[256];
+    * handles (GEM handles on Linux, or IOGPU's equivalent on macOS)
+    */
+   struct {
+      BITSET_WORD *set;
+      unsigned word_count;
+   } bo_list;
 
    struct agx_pool pool, pipeline_pool;
    struct agx_bo *encoder;
    uint8_t *encoder_current;
+   uint8_t *encoder_end;
 
    struct agx_array scissor, depth_bias;
 };
 
 struct agx_zsa {
    struct pipe_depth_stencil_alpha_state base;
-   struct agx_rasterizer_face_packed front, back;
+   struct agx_fragment_face_packed depth;
+   struct agx_fragment_stencil_packed front_stencil, back_stencil;
 };
 
 struct agx_blend {
@@ -141,6 +156,19 @@ enum agx_dirty {
    AGX_DIRTY_VERTEX   = BITFIELD_BIT(0),
    AGX_DIRTY_VIEWPORT = BITFIELD_BIT(1),
    AGX_DIRTY_SCISSOR_ZBIAS  = BITFIELD_BIT(2),
+   AGX_DIRTY_ZS        = BITFIELD_BIT(3),
+   AGX_DIRTY_STENCIL_REF = BITFIELD_BIT(4),
+   AGX_DIRTY_RS         = BITFIELD_BIT(5),
+   AGX_DIRTY_SPRITE_COORD_MODE = BITFIELD_BIT(6),
+   AGX_DIRTY_PRIM       = BITFIELD_BIT(7),
+
+   /* Vertex/fragment pipelines, including uniforms and textures */
+   AGX_DIRTY_VS         = BITFIELD_BIT(8),
+   AGX_DIRTY_FS         = BITFIELD_BIT(9),
+
+   /* Just the progs themselves */
+   AGX_DIRTY_VS_PROG    = BITFIELD_BIT(10),
+   AGX_DIRTY_FS_PROG    = BITFIELD_BIT(11),
 };
 
 struct agx_context {
@@ -156,7 +184,7 @@ struct agx_context {
    struct agx_stage stage[PIPE_SHADER_TYPES];
    struct agx_attribute *attributes;
    struct agx_rasterizer *rast;
-   struct agx_zsa zs;
+   struct agx_zsa *zs;
    struct agx_blend *blend;
    struct pipe_blend_color blend_color;
    struct pipe_viewport_state viewport;
@@ -181,6 +209,15 @@ static inline struct agx_context *
 agx_context(struct pipe_context *pctx)
 {
    return (struct agx_context *) pctx;
+}
+
+static inline void
+agx_dirty_all(struct agx_context *ctx)
+{
+   ctx->dirty = ~0;
+
+   for (unsigned i = 0; i < ARRAY_SIZE(ctx->stage); ++i)
+      ctx->stage[i].dirty = ~0;
 }
 
 struct agx_rasterizer {
@@ -257,9 +294,6 @@ struct agx_resource {
     * resources.
     */
    struct agx_resource *separate_stencil;
-
-   /* Internal format, since many depth/stencil formats are emulated. */
-   enum pipe_format internal_format;
 };
 
 static inline struct agx_resource *
@@ -276,10 +310,10 @@ agx_map_texture_cpu(struct agx_resource *rsrc, unsigned level, unsigned z)
 }
 
 static inline uint64_t
-agx_map_texture_gpu(struct agx_resource *rsrc, unsigned level, unsigned z)
+agx_map_texture_gpu(struct agx_resource *rsrc, unsigned z)
 {
    return rsrc->bo->ptr.gpu +
-          (uint64_t) ail_get_layer_level_B(&rsrc->layout, z, level);
+          (uint64_t) ail_get_layer_offset_B(&rsrc->layout, z);
 }
 
 struct agx_transfer {
@@ -314,19 +348,54 @@ agx_build_reload_pipeline(struct agx_context *ctx, uint32_t code, struct pipe_su
 /* Add a BO to a batch. This needs to be amortized O(1) since it's called in
  * hot paths. To achieve this we model BO lists by bit sets */
 
+static unsigned
+agx_batch_bo_list_bits(struct agx_batch *batch)
+{
+   return batch->bo_list.word_count * sizeof(BITSET_WORD) * 8;
+}
+
 static inline void
 agx_batch_add_bo(struct agx_batch *batch, struct agx_bo *bo)
 {
-   if (unlikely(bo->handle > (sizeof(batch->bo_list) * 8)))
-      unreachable("todo: growable");
+   /* Double the size of the BO list if we run out, this is amortized O(1) */
+   if (unlikely(bo->handle > agx_batch_bo_list_bits(batch))) {
+      batch->bo_list.set = rerzalloc(batch, batch->bo_list.set, BITSET_WORD,
+                                     batch->bo_list.word_count,
+                                     batch->bo_list.word_count * 2);
+      batch->bo_list.word_count *= 2;
+   }
 
-   BITSET_SET(batch->bo_list, bo->handle);
+   BITSET_SET(batch->bo_list.set, bo->handle);
 }
 
+static unsigned
+agx_batch_num_bo(struct agx_batch *batch)
+{
+   return __bitset_count(batch->bo_list.set, batch->bo_list.word_count);
+}
+
+#define AGX_BATCH_FOREACH_BO_HANDLE(batch, handle) \
+   BITSET_FOREACH_SET(handle, (batch)->bo_list.set, agx_batch_bo_list_bits(batch))
+
 /* Blit shaders */
+void
+agx_blitter_save(struct agx_context *ctx, struct blitter_context *blitter,
+                 bool render_cond);
+
 void agx_blit(struct pipe_context *pipe,
               const struct pipe_blit_info *info);
 
 void agx_internal_shaders(struct agx_device *dev);
+
+/* Batch logic */
+static void
+agx_flush_all(struct agx_context *ctx, const char *reason)
+{
+   //printf("Flushing due to: %s\n", reason);
+   ctx->base.flush(&ctx->base, NULL, 0);
+}
+
+void
+agx_batch_init_state(struct agx_batch *batch);
 
 #endif

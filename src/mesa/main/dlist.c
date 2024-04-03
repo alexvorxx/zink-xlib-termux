@@ -739,6 +739,11 @@ void mesa_print_display_list(GLuint list);
 static void
 vbo_destroy_vertex_list(struct gl_context *ctx, struct vbo_save_vertex_list *node)
 {
+   struct gl_buffer_object *bo = node->cold->VAO[0]->BufferBinding[0].BufferObj;
+
+   if (_mesa_bufferobj_mapped(bo, MAP_INTERNAL))
+      _mesa_bufferobj_unmap(ctx, bo, MAP_INTERNAL);
+
    for (gl_vertex_processing_mode mode = VP_MODE_FF; mode < VP_MODE_MAX; ++mode) {
       _mesa_reference_vao(ctx, &node->cold->VAO[mode], NULL);
       if (node->private_refcount[mode]) {
@@ -13450,7 +13455,6 @@ _mesa_CallList(GLuint list)
    /* also restore API function pointers to point to "save" versions */
    if (save_compile_flag) {
       ctx->CurrentServerDispatch = ctx->Save;
-       _glapi_set_dispatch(ctx->CurrentServerDispatch);
       if (!ctx->GLThread.enabled) {
          ctx->CurrentClientDispatch = ctx->CurrentServerDispatch;
       }
@@ -13574,7 +13578,6 @@ _mesa_CallLists(GLsizei n, GLenum type, const GLvoid * lists)
    /* also restore API function pointers to point to "save" versions */
    if (save_compile_flag) {
       ctx->CurrentServerDispatch = ctx->Save;
-      _glapi_set_dispatch(ctx->CurrentServerDispatch);
       if (!ctx->GLThread.enabled) {
          ctx->CurrentClientDispatch = ctx->CurrentServerDispatch;
       }
@@ -13597,13 +13600,9 @@ _mesa_ListBase(GLuint base)
 /**
  * Setup the given dispatch table to point to Mesa's display list
  * building functions.
- *
- * This does not include any of the tnl functions - they are
- * initialized from _mesa_init_api_defaults and from the active vtxfmt
- * struct.
  */
 void
-_mesa_initialize_save_table(const struct gl_context *ctx)
+_mesa_init_dispatch_save(const struct gl_context *ctx)
 {
    struct _glapi_table *table = ctx->Save;
    int numEntries = MAX2(_gloffset_COUNT, _glapi_get_dispatch_table_size());
@@ -13612,7 +13611,7 @@ _mesa_initialize_save_table(const struct gl_context *ctx)
     * normal-execution dispatch table.  This lets us skip populating functions
     * that should be called directly instead of compiled into display lists.
     */
-   memcpy(table, ctx->Exec, numEntries * sizeof(_glapi_proc));
+   memcpy(table, ctx->OutsideBeginEnd, numEntries * sizeof(_glapi_proc));
 
 #include "api_save_init.h"
 }
@@ -14091,7 +14090,7 @@ _mesa_init_display_list(struct gl_context *ctx)
 
 
 void
-_mesa_install_save_vtxfmt(struct gl_context *ctx)
+_mesa_init_dispatch_save_begin_end(struct gl_context *ctx)
 {
    struct _glapi_table *tab = ctx->Save;
    assert(ctx->API == API_OPENGL_COMPAT);
@@ -14101,5 +14100,5 @@ _mesa_install_save_vtxfmt(struct gl_context *ctx)
 #define NAME(x) save_##x
 #define NAME_ES(x) save_##x
 
-   #include "api_vtxfmt_init.h"
+   #include "api_beginend_init.h"
 }

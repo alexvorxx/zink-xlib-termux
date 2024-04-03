@@ -559,6 +559,9 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
                                   PIPE_TEXTURE_2D, 0, 0,
                                   PIPE_BIND_SAMPLER_VIEW);
 
+   ctx->Const.QueryCounterBits.Timestamp =
+      screen->get_param(screen, PIPE_CAP_QUERY_TIMESTAMP_BITS);
+
    st->has_stencil_export =
       screen->get_param(screen, PIPE_CAP_SHADER_STENCIL_EXPORT);
    st->has_etc1 = screen->is_format_supported(screen, PIPE_FORMAT_ETC1_RGB8,
@@ -584,6 +587,15 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
    st->has_astc_5x5_ldr =
       screen->is_format_supported(screen, PIPE_FORMAT_ASTC_5x5_SRGB,
                                   PIPE_TEXTURE_2D, 0, 0, PIPE_BIND_SAMPLER_VIEW);
+   st->has_s3tc = screen->is_format_supported(screen, PIPE_FORMAT_DXT5_RGBA,
+                                              PIPE_TEXTURE_2D, 0, 0,
+                                              PIPE_BIND_SAMPLER_VIEW);
+   st->has_rgtc = screen->is_format_supported(screen, PIPE_FORMAT_RGTC2_UNORM,
+                                              PIPE_TEXTURE_2D, 0, 0,
+                                              PIPE_BIND_SAMPLER_VIEW);
+   st->has_latc = screen->is_format_supported(screen, PIPE_FORMAT_LATC2_UNORM,
+                                              PIPE_TEXTURE_2D, 0, 0,
+                                              PIPE_BIND_SAMPLER_VIEW);
    st->has_bptc = screen->is_format_supported(screen, PIPE_FORMAT_BPTC_SRGBA,
                                               PIPE_TEXTURE_2D, 0, 0,
                                               PIPE_BIND_SAMPLER_VIEW);
@@ -877,6 +889,9 @@ st_create_context(gl_api api, struct pipe_context *pipe,
 
    if (pipe->screen->get_param(pipe->screen, PIPE_CAP_INVALIDATE_BUFFER))
       ctx->has_invalidate_buffer = true;
+
+   if (pipe->screen->get_param(pipe->screen, PIPE_CAP_STRING_MARKER))
+      ctx->has_string_marker = true;
 
    st = st_create_context_priv(ctx, pipe, options);
    if (!st) {

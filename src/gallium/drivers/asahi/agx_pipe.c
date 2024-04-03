@@ -52,6 +52,9 @@ static const struct debug_named_value agx_debug_options[] = {
    {"trace",     AGX_DBG_TRACE,    "Trace the command stream"},
    {"deqp",      AGX_DBG_DEQP,     "Hacks for dEQP"},
    {"no16",      AGX_DBG_NO16,     "Disable 16-bit support"},
+#ifndef NDEBUG
+   {"dirty",     AGX_DBG_DIRTY,    "Disable dirty tracking"},
+#endif
    DEBUG_NAMED_VALUE_END
 };
 
@@ -164,7 +167,10 @@ agx_resource_create(struct pipe_screen *screen,
 
    nresource->modifier = agx_select_modifier(nresource);
    nresource->mipmapped = (templ->last_level > 0);
-   nresource->internal_format = nresource->base.format;
+
+   assert(templ->format != PIPE_FORMAT_Z24X8_UNORM &&
+          templ->format != PIPE_FORMAT_Z24_UNORM_S8_UINT &&
+          "u_transfer_helper should have lowered");
 
    nresource->layout = (struct ail_layout) {
       .tiling = (nresource->modifier == DRM_FORMAT_MOD_LINEAR) ?
@@ -265,9 +271,9 @@ agx_transfer_map(struct pipe_context *pctx,
       return NULL;
 
    if (ctx->batch->cbufs[0] && resource == ctx->batch->cbufs[0]->texture)
-      pctx->flush(pctx, NULL, 0);
+      agx_flush_all(ctx, "Transfer to colour buffer");
    if (ctx->batch->zsbuf && resource == ctx->batch->zsbuf->texture)
-      pctx->flush(pctx, NULL, 0);
+      agx_flush_all(ctx, "Transfer to depth buffer");
 
    struct agx_transfer *transfer = CALLOC_STRUCT(agx_transfer);
    transfer->base.level = level;
@@ -279,10 +285,10 @@ agx_transfer_map(struct pipe_context *pctx,
 
    if (rsrc->modifier == DRM_FORMAT_MOD_APPLE_TWIDDLED) {
       transfer->base.stride =
-         util_format_get_stride(resource->format, box->width);
+         util_format_get_stride(rsrc->layout.format, box->width);
 
       transfer->base.layer_stride =
-         util_format_get_2d_size(resource->format, transfer->base.stride,
+         util_format_get_2d_size(rsrc->layout.format, transfer->base.stride,
                                  box->height);
 
       transfer->map = calloc(transfer->base.layer_stride, box->depth);
@@ -362,20 +368,33 @@ agx_clear(struct pipe_context *pctx, unsigned buffers, const struct pipe_scissor
 {
    struct agx_context *ctx = agx_context(pctx);
 
-   /* TODO: support partial clears */
-   if (ctx->batch->clear | ctx->batch->draw)
-      pctx->flush(pctx, NULL, 0);
+   unsigned fastclear = buffers & ~(ctx->batch->draw | ctx->batch->load);
+   unsigned slowclear = buffers & ~fastclear;
 
-   ctx->batch->clear |= buffers;
+   assert(scissor_state == NULL && "we don't support PIPE_CAP_CLEAR_SCISSORED");
 
-   if (buffers & PIPE_CLEAR_COLOR0)
+   /* Fast clears configure the batch */
+   if (fastclear & PIPE_CLEAR_COLOR0)
       memcpy(ctx->batch->clear_color, color->f, sizeof(color->f));
 
-   if (buffers & PIPE_CLEAR_DEPTH)
+   if (fastclear & PIPE_CLEAR_DEPTH)
       ctx->batch->clear_depth = depth;
 
-   if (buffers & PIPE_CLEAR_STENCIL)
+   if (fastclear & PIPE_CLEAR_STENCIL)
       ctx->batch->clear_stencil = stencil;
+
+   /* Slow clears draw a fullscreen rectangle */
+   if (slowclear) {
+      agx_blitter_save(ctx, ctx->blitter, false /* render cond */);
+      util_blitter_clear(ctx->blitter, ctx->framebuffer.width,
+            ctx->framebuffer.height,
+            util_framebuffer_get_num_layers(&ctx->framebuffer),
+            slowclear, color, depth, stencil,
+            util_framebuffer_get_num_samples(&ctx->framebuffer) > 1);
+   }
+
+   ctx->batch->clear |= fastclear;
+   assert((ctx->batch->draw & slowclear) == slowclear);
 }
 
 
@@ -494,14 +513,14 @@ agx_flush(struct pipe_context *pctx,
    }
 
    unsigned handle_count =
-      BITSET_COUNT(batch->bo_list) +
+      agx_batch_num_bo(batch) +
       agx_pool_num_bos(&batch->pool) +
       agx_pool_num_bos(&batch->pipeline_pool);
 
    uint32_t *handles = calloc(sizeof(uint32_t), handle_count);
    unsigned handle = 0, handle_i = 0;
 
-   BITSET_FOREACH_SET(handle, batch->bo_list, sizeof(batch->bo_list) * 8) {
+   AGX_BATCH_FOREACH_BO_HANDLE(batch, handle) {
       handles[handle_i++] = handle;
    }
 
@@ -529,6 +548,7 @@ agx_flush(struct pipe_context *pctx,
                pipeline_reload,
                pipeline_store,
                clear_pipeline_textures,
+               ctx->batch->clear,
                ctx->batch->clear_depth,
                ctx->batch->clear_stencil);
 
@@ -547,16 +567,20 @@ agx_flush(struct pipe_context *pctx,
       agxdecode_next_frame();
    }
 
-   memset(batch->bo_list, 0, sizeof(batch->bo_list));
+   memset(batch->bo_list.set, 0, batch->bo_list.word_count * sizeof(BITSET_WORD));
    agx_pool_cleanup(&ctx->batch->pool);
    agx_pool_cleanup(&ctx->batch->pipeline_pool);
    agx_pool_init(&ctx->batch->pool, dev, AGX_MEMORY_TYPE_FRAMEBUFFER, true);
    agx_pool_init(&ctx->batch->pipeline_pool, dev, AGX_MEMORY_TYPE_CMDBUF_32, true);
    ctx->batch->clear = 0;
    ctx->batch->draw = 0;
+   ctx->batch->load = 0;
    ctx->batch->encoder_current = ctx->batch->encoder->ptr.cpu;
+   ctx->batch->encoder_end = ctx->batch->encoder_current + ctx->batch->encoder->size;
    ctx->batch->scissor.count = 0;
-   ctx->dirty = ~0;
+
+   agx_dirty_all(ctx);
+   agx_batch_init_state(ctx->batch);
 }
 
 static void
@@ -572,7 +596,7 @@ agx_destroy_context(struct pipe_context *pctx)
 
    util_unreference_framebuffer_state(&ctx->framebuffer);
 
-   FREE(ctx);
+   ralloc_free(ctx);
 }
 
 static void
@@ -585,7 +609,7 @@ static struct pipe_context *
 agx_create_context(struct pipe_screen *screen,
                    void *priv, unsigned flags)
 {
-   struct agx_context *ctx = CALLOC_STRUCT(agx_context);
+   struct agx_context *ctx = rzalloc(NULL, struct agx_context);
    struct pipe_context *pctx = &ctx->base;
 
    if (!ctx)
@@ -594,13 +618,16 @@ agx_create_context(struct pipe_screen *screen,
    pctx->screen = screen;
    pctx->priv = priv;
 
-   ctx->batch = CALLOC_STRUCT(agx_batch);
+   ctx->batch = rzalloc(ctx, struct agx_batch);
+   ctx->batch->bo_list.set = rzalloc_array(ctx->batch, BITSET_WORD, 128);
+   ctx->batch->bo_list.word_count = 128;
    agx_pool_init(&ctx->batch->pool,
                  agx_device(screen), AGX_MEMORY_TYPE_FRAMEBUFFER, true);
    agx_pool_init(&ctx->batch->pipeline_pool,
                  agx_device(screen), AGX_MEMORY_TYPE_SHADER, true);
    ctx->batch->encoder = agx_bo_create(agx_device(screen), 0x80000, AGX_MEMORY_TYPE_FRAMEBUFFER);
    ctx->batch->encoder_current = ctx->batch->encoder->ptr.cpu;
+   ctx->batch->encoder_end = ctx->batch->encoder_current + ctx->batch->encoder->size;
    ctx->batch->scissor.bo = agx_bo_create(agx_device(screen), 0x80000, AGX_MEMORY_TYPE_FRAMEBUFFER);
    ctx->batch->depth_bias.bo = agx_bo_create(agx_device(screen), 0x80000, AGX_MEMORY_TYPE_FRAMEBUFFER);
 
@@ -741,7 +768,6 @@ agx_get_param(struct pipe_screen* pscreen, enum pipe_cap param)
    case PIPE_CAP_TEXTURE_FLOAT_LINEAR:
    case PIPE_CAP_TEXTURE_HALF_FLOAT_LINEAR:
    case PIPE_CAP_SHADER_ARRAY_COMPONENTS:
-   case PIPE_CAP_CS_DERIVED_SYSTEM_VALUES_SUPPORTED:
    case PIPE_CAP_PACKED_UNIFORMS:
       return 1;
 
@@ -805,7 +831,6 @@ agx_get_param(struct pipe_screen* pscreen, enum pipe_cap param)
    case PIPE_CAP_SEAMLESS_CUBE_MAP:
    case PIPE_CAP_SEAMLESS_CUBE_MAP_PER_TEXTURE:
       return true;
-   case PIPE_CAP_POINT_COORD_ORIGIN_UPPER_LEFT:
    case PIPE_CAP_FS_POINT_IS_SYSVAL:
       return false;
 
@@ -1117,7 +1142,7 @@ agx_resource_get_stencil(struct pipe_resource *prsrc)
 static enum pipe_format
 agx_resource_get_internal_format(struct pipe_resource *prsrc)
 {
-   return agx_resource(prsrc)->internal_format;
+   return agx_resource(prsrc)->layout.format;
 }
 
 static const struct u_transfer_vtbl transfer_vtbl = {

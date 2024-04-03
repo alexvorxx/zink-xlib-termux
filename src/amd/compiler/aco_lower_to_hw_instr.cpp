@@ -2004,6 +2004,8 @@ lower_to_hw_instr(Program* program)
 {
    Block* discard_block = NULL;
 
+   bool should_dealloc_vgprs = dealloc_vgprs(program);
+
    for (int block_idx = program->blocks.size() - 1; block_idx >= 0; block_idx--) {
       Block* block = &program->blocks[block_idx];
       lower_context ctx;
@@ -2126,6 +2128,8 @@ lower_to_hw_instr(Program* program)
                   block = &program->blocks[block_idx];
 
                   bld.reset(discard_block);
+                  if (should_dealloc_vgprs)
+                     bld.sopp(aco_opcode::s_sendmsg, -1, sendmsg_dealloc_vgprs);
                   bld.exp(aco_opcode::exp, Operand(v1), Operand(v1), Operand(v1), Operand(v1), 0,
                           program->gfx_level >= GFX11 ? V_008DFC_SQ_EXP_MRT : V_008DFC_SQ_EXP_NULL,
                           false, true, true);
@@ -2414,7 +2418,7 @@ lower_to_hw_instr(Program* program)
                         can_remove = false;
                   } else if (inst->isSALU()) {
                      num_scalar++;
-                  } else if (inst->isVALU() || inst->isVINTRP()) {
+                  } else if (inst->isVALU() || inst->isVINTRP() || instr->isVINTERP_INREG()) {
                      num_vector++;
                      /* VALU which writes SGPRs are always executed on GFX10+ */
                      if (ctx.program->gfx_level >= GFX10) {
@@ -2424,7 +2428,7 @@ lower_to_hw_instr(Program* program)
                         }
                      }
                   } else if (inst->isVMEM() || inst->isFlatLike() || inst->isDS() ||
-                             inst->isEXP()) {
+                             inst->isEXP() || inst->isLDSDIR()) {
                      // TODO: GFX6-9 can use vskip
                      can_remove = false;
                   } else if (inst->isSMEM()) {

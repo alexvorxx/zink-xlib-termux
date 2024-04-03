@@ -21,28 +21,16 @@ struct vn_physical_device_features {
    VkPhysicalDeviceFeatures vulkan_1_0;
    VkPhysicalDeviceVulkan11Features vulkan_1_1;
    VkPhysicalDeviceVulkan12Features vulkan_1_2;
+   VkPhysicalDeviceVulkan13Features vulkan_1_3;
 
-   /* Vulkan 1.3 */
-   VkPhysicalDevice4444FormatsFeaturesEXT argb_4444_formats;
-   VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering;
+   /* Vulkan 1.3: The extensions for the below structs were promoted, but some
+    * struct members were omitted from VkPhysicalDeviceVulkan13Features.
+    */
+   VkPhysicalDevice4444FormatsFeaturesEXT _4444_formats;
    VkPhysicalDeviceExtendedDynamicStateFeaturesEXT extended_dynamic_state;
    VkPhysicalDeviceExtendedDynamicState2FeaturesEXT extended_dynamic_state_2;
-   VkPhysicalDeviceImageRobustnessFeatures image_robustness;
-   VkPhysicalDeviceInlineUniformBlockFeatures inline_uniform_block;
-   VkPhysicalDeviceMaintenance4Features maintenance4;
-   VkPhysicalDevicePipelineCreationCacheControlFeatures
-      pipeline_creation_cache_control;
-   VkPhysicalDevicePrivateDataFeatures private_data;
-   VkPhysicalDeviceShaderDemoteToHelperInvocationFeatures
-      shader_demote_to_helper_invocation;
-   VkPhysicalDeviceShaderIntegerDotProductFeatures shader_integer_dot_product;
-   VkPhysicalDeviceShaderTerminateInvocationFeatures
-      shader_terminate_invocation;
-   VkPhysicalDeviceSubgroupSizeControlFeatures subgroup_size_control;
-   VkPhysicalDeviceTextureCompressionASTCHDRFeatures
-      texture_compression_astc_hdr;
-   VkPhysicalDeviceZeroInitializeWorkgroupMemoryFeatures
-      zero_initialize_workgroup_memory;
+   VkPhysicalDeviceTexelBufferAlignmentFeaturesEXT texel_buffer_alignment;
+   VkPhysicalDeviceYcbcr2Plane444FormatsFeaturesEXT ycbcr_2plane_444_formats;
 
    /* EXT */
    VkPhysicalDeviceConditionalRenderingFeaturesEXT conditional_rendering;
@@ -51,34 +39,28 @@ struct vn_physical_device_features {
    VkPhysicalDeviceImageViewMinLodFeaturesEXT image_view_min_lod;
    VkPhysicalDeviceIndexTypeUint8FeaturesEXT index_type_uint8;
    VkPhysicalDeviceLineRasterizationFeaturesEXT line_rasterization;
+   VkPhysicalDeviceMultiDrawFeaturesEXT multi_draw;
+   VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT mutable_descriptor_type;
    VkPhysicalDevicePrimitiveTopologyListRestartFeaturesEXT
       primitive_topology_list_restart;
    VkPhysicalDeviceProvokingVertexFeaturesEXT provoking_vertex;
    VkPhysicalDeviceRobustness2FeaturesEXT robustness_2;
-   VkPhysicalDeviceTexelBufferAlignmentFeaturesEXT texel_buffer_alignment;
    VkPhysicalDeviceTransformFeedbackFeaturesEXT transform_feedback;
    VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT vertex_attribute_divisor;
-   VkPhysicalDeviceYcbcr2Plane444FormatsFeaturesEXT ycbcr_2plane_444_formats;
 };
 
 struct vn_physical_device_properties {
    VkPhysicalDeviceProperties vulkan_1_0;
    VkPhysicalDeviceVulkan11Properties vulkan_1_1;
    VkPhysicalDeviceVulkan12Properties vulkan_1_2;
-
-   /* Vulkan 1.3 */
-   VkPhysicalDeviceInlineUniformBlockProperties inline_uniform_block;
-   VkPhysicalDeviceMaintenance4Properties maintenance4;
-   VkPhysicalDeviceShaderIntegerDotProductProperties
-      shader_integer_dot_product;
-   VkPhysicalDeviceSubgroupSizeControlProperties subgroup_size_control;
-   VkPhysicalDeviceTexelBufferAlignmentProperties texel_buffer_alignment;
+   VkPhysicalDeviceVulkan13Properties vulkan_1_3;
 
    /* EXT */
    VkPhysicalDeviceConservativeRasterizationPropertiesEXT
       conservative_rasterization;
    VkPhysicalDeviceCustomBorderColorPropertiesEXT custom_border_color;
    VkPhysicalDeviceLineRasterizationPropertiesEXT line_rasterization;
+   VkPhysicalDeviceMultiDrawPropertiesEXT multi_draw;
    VkPhysicalDeviceProvokingVertexPropertiesEXT provoking_vertex;
    VkPhysicalDeviceRobustness2PropertiesEXT robustness_2;
    VkPhysicalDeviceTransformFeedbackPropertiesEXT transform_feedback;

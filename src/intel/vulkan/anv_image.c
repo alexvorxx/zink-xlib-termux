@@ -793,7 +793,7 @@ add_aux_surface_if_supported(struct anv_device *device,
          return VK_SUCCESS;
       }
 
-      if ((image->vk.create_flags & VK_IMAGE_CREATE_ALIAS_BIT)) {
+      if ((image->vk.create_flags & VK_IMAGE_CREATE_ALIAS_BIT) && !image->from_wsi) {
          /* The image may alias a plane of a multiplanar image. Above we ban
           * CCS on multiplanar images.
           *
@@ -1037,6 +1037,7 @@ check_memory_bindings(const struct anv_device *device,
        * live in a VkDeviceMemory.  The one exception is swapchain images.
        */
       assert(!(image->vk.create_flags & VK_IMAGE_CREATE_ALIAS_BIT) ||
+             image->from_wsi ||
              image->bindings[ANV_IMAGE_MEMORY_BINDING_PRIVATE].memory_range.size == 0);
 
       /* Check primary surface */
@@ -1459,6 +1460,9 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
    }
 
    image->n_planes = anv_get_format_planes(image->vk.format);
+
+   image->from_wsi =
+      vk_find_struct_const(pCreateInfo->pNext, WSI_IMAGE_CREATE_INFO_MESA) != NULL;
 
    /* The Vulkan 1.2.165 glossary says:
     *
@@ -2367,6 +2371,9 @@ anv_layout_to_fast_clear_type(const struct intel_device_info * const devinfo,
    enum isl_aux_state aux_state =
       anv_layout_to_aux_state(devinfo, image, aspect, layout);
 
+   const VkImageUsageFlags layout_usage =
+      vk_image_layout_to_usage_flags(layout, aspect);
+
    switch (aux_state) {
    case ISL_AUX_STATE_CLEAR:
       unreachable("We never use this state");
@@ -2385,6 +2392,12 @@ anv_layout_to_fast_clear_type(const struct intel_device_info * const devinfo,
           * must get partially resolved before we leave the render pass.
           */
          return ANV_FAST_CLEAR_ANY;
+      } else if (layout_usage & (VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                                 VK_IMAGE_USAGE_TRANSFER_DST_BIT)) {
+         /* Fast clear with non zero color is not supported during transfer
+          * operations since transfer may do format reinterpretation.
+          */
+         return ANV_FAST_CLEAR_DEFAULT_VALUE;
       } else if (image->planes[plane].aux_usage == ISL_AUX_USAGE_MCS ||
                  image->planes[plane].aux_usage == ISL_AUX_USAGE_CCS_E) {
          if (devinfo->ver >= 11) {

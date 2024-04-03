@@ -279,6 +279,7 @@ _eglFindDisplay(_EGLPlatformType plat, void *plat_dpy,
       goto out;
 
    simple_mtx_init(&disp->Mutex, mtx_plain);
+   u_rwlock_init(&disp->TerminateLock);
    disp->Platform = plat;
    disp->PlatformDisplay = plat_dpy;
    num_attribs = _eglNumAttribs(attrib_list);
@@ -369,27 +370,13 @@ _eglCleanupDisplay(_EGLDisplay *disp)
       disp->Configs = NULL;
    }
 
-   /* XXX incomplete */
-}
+   /* do not reset disp->Driver */
+   disp->ClientAPIsString[0] = 0;
+   disp->Initialized = EGL_FALSE;
 
-
-/**
- * Return EGL_TRUE if the given handle is a valid handle to a display.
- */
-EGLBoolean
-_eglCheckDisplayHandle(EGLDisplay dpy)
-{
-   _EGLDisplay *cur;
-
-   simple_mtx_lock(_eglGlobal.Mutex);
-   cur = _eglGlobal.DisplayList;
-   while (cur) {
-      if (cur == (_EGLDisplay *) dpy)
-         break;
-      cur = cur->Next;
-   }
-   simple_mtx_unlock(_eglGlobal.Mutex);
-   return (cur != NULL);
+   /* Reset blob cache funcs on terminate. */
+   disp->BlobCacheSet = NULL;
+   disp->BlobCacheGet = NULL;
 }
 
 
@@ -442,8 +429,7 @@ void
 _eglGetResource(_EGLResource *res)
 {
    assert(res && res->RefCount > 0);
-   /* hopefully a resource is always manipulated with its display locked */
-   res->RefCount++;
+   p_atomic_inc(&res->RefCount);
 }
 
 
@@ -454,8 +440,7 @@ EGLBoolean
 _eglPutResource(_EGLResource *res)
 {
    assert(res && res->RefCount > 0);
-   res->RefCount--;
-   return (!res->RefCount);
+   return p_atomic_dec_zero(&res->RefCount);
 }
 
 

@@ -28,11 +28,15 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
+#include "util/u_prim.h"
 
 struct gfx_pipeline_cache_entry {
    struct zink_gfx_pipeline_state state;
    VkPipeline pipeline;
+   /* GPL only */
+   struct zink_gfx_input_key *ikey;
+   struct zink_gfx_library_key *gkey;
+   struct zink_gfx_output_key *okey;
 };
 
 struct compute_pipeline_cache_entry {
@@ -120,11 +124,32 @@ zink_program_descriptor_is_buffer(struct zink_context *ctx, gl_shader_stage stag
 
 void
 zink_gfx_program_update(struct zink_context *ctx);
+void
+zink_gfx_program_update_optimal(struct zink_context *ctx);
 
 
+struct zink_gfx_library_key *
+zink_create_pipeline_lib(struct zink_screen *screen, struct zink_gfx_program *prog, struct zink_gfx_pipeline_state *state);
 uint32_t hash_gfx_output(const void *key);
+uint32_t hash_gfx_output_ds3(const void *key);
 uint32_t hash_gfx_input(const void *key);
 uint32_t hash_gfx_input_dynamic(const void *key);
+
+
+static inline unsigned
+get_primtype_idx(enum pipe_prim_type mode)
+{
+   if (mode == PIPE_PRIM_PATCHES)
+      return 3;
+   switch (u_reduced_prim(mode)) {
+   case PIPE_PRIM_POINTS:
+      return 0;
+   case PIPE_PRIM_LINES:
+      return 1;
+   default:
+      return 2;
+   }
+}
 
 struct zink_gfx_program *
 zink_create_gfx_program(struct zink_context *ctx,
@@ -132,7 +157,7 @@ zink_create_gfx_program(struct zink_context *ctx,
                         unsigned vertices_per_patch);
 
 void
-zink_destroy_gfx_program(struct zink_context *ctx,
+zink_destroy_gfx_program(struct zink_screen *screen,
                          struct zink_gfx_program *prog);
 
 void
@@ -145,7 +170,7 @@ void
 debug_describe_zink_gfx_program(char* buf, const struct zink_gfx_program *ptr);
 
 static inline bool
-zink_gfx_program_reference(struct zink_context *ctx,
+zink_gfx_program_reference(struct zink_screen *screen,
                            struct zink_gfx_program **dst,
                            struct zink_gfx_program *src)
 {
@@ -154,7 +179,7 @@ zink_gfx_program_reference(struct zink_context *ctx,
 
    if (pipe_reference_described(old_dst ? &old_dst->base.reference : NULL, &src->base.reference,
                                 (debug_reference_descriptor)debug_describe_zink_gfx_program)) {
-      zink_destroy_gfx_program(ctx, old_dst);
+      zink_destroy_gfx_program(screen, old_dst);
       ret = true;
    }
    if (dst) *dst = src;
@@ -162,14 +187,14 @@ zink_gfx_program_reference(struct zink_context *ctx,
 }
 
 void
-zink_destroy_compute_program(struct zink_context *ctx,
+zink_destroy_compute_program(struct zink_screen *screen,
                              struct zink_compute_program *comp);
 
 void
 debug_describe_zink_compute_program(char* buf, const struct zink_compute_program *ptr);
 
 static inline bool
-zink_compute_program_reference(struct zink_context *ctx,
+zink_compute_program_reference(struct zink_screen *screen,
                            struct zink_compute_program **dst,
                            struct zink_compute_program *src)
 {
@@ -178,7 +203,7 @@ zink_compute_program_reference(struct zink_context *ctx,
 
    if (pipe_reference_described(old_dst ? &old_dst->base.reference : NULL, &src->base.reference,
                                 (debug_reference_descriptor)debug_describe_zink_compute_program)) {
-      zink_destroy_compute_program(ctx, old_dst);
+      zink_destroy_compute_program(screen, old_dst);
       ret = true;
    }
    if (dst) *dst = src;
@@ -186,7 +211,7 @@ zink_compute_program_reference(struct zink_context *ctx,
 }
 
 static inline bool
-zink_program_reference(struct zink_context *ctx,
+zink_program_reference(struct zink_screen *screen,
                        struct zink_program **dst,
                        struct zink_program *src)
 {
@@ -195,10 +220,10 @@ zink_program_reference(struct zink_context *ctx,
       return false;
    if (pg->is_compute) {
       struct zink_compute_program *comp = (struct zink_compute_program*)pg;
-      return zink_compute_program_reference(ctx, &comp, NULL);
+      return zink_compute_program_reference(screen, &comp, NULL);
    } else {
       struct zink_gfx_program *prog = (struct zink_gfx_program*)pg;
-      return zink_gfx_program_reference(ctx, &prog, NULL);
+      return zink_gfx_program_reference(screen, &prog, NULL);
    }
 }
 
@@ -223,23 +248,29 @@ zink_program_has_descriptors(const struct zink_program *pg)
 static inline struct zink_fs_key *
 zink_set_fs_key(struct zink_context *ctx)
 {
-   ctx->dirty_shader_stages |= BITFIELD_BIT(MESA_SHADER_FRAGMENT);
-   return (struct zink_fs_key *)&ctx->gfx_pipeline_state.shader_keys.key[MESA_SHADER_FRAGMENT];
+   ctx->dirty_gfx_stages |= BITFIELD_BIT(MESA_SHADER_FRAGMENT);
+   return zink_screen(ctx->base.screen)->optimal_keys ?
+          &ctx->gfx_pipeline_state.shader_keys_optimal.key.fs :
+          &ctx->gfx_pipeline_state.shader_keys.key[MESA_SHADER_FRAGMENT].key.fs;
 }
 
 static inline const struct zink_fs_key *
 zink_get_fs_key(struct zink_context *ctx)
 {
-   return (const struct zink_fs_key *)&ctx->gfx_pipeline_state.shader_keys.key[MESA_SHADER_FRAGMENT];
+   return zink_screen(ctx->base.screen)->optimal_keys ?
+          &ctx->gfx_pipeline_state.shader_keys_optimal.key.fs :
+          &ctx->gfx_pipeline_state.shader_keys.key[MESA_SHADER_FRAGMENT].key.fs;
 }
 
 static inline bool
 zink_set_tcs_key_patches(struct zink_context *ctx, uint8_t patch_vertices)
 {
-   struct zink_tcs_key *tcs = (struct zink_tcs_key*)&ctx->gfx_pipeline_state.shader_keys.key[MESA_SHADER_TESS_CTRL];
+   struct zink_tcs_key *tcs = zink_screen(ctx->base.screen)->optimal_keys ?
+                              &ctx->gfx_pipeline_state.shader_keys_optimal.key.tcs :
+                              &ctx->gfx_pipeline_state.shader_keys.key[MESA_SHADER_TESS_CTRL].key.tcs;
    if (tcs->patch_vertices == patch_vertices)
       return false;
-   ctx->dirty_shader_stages |= BITFIELD_BIT(MESA_SHADER_TESS_CTRL);
+   ctx->dirty_gfx_stages |= BITFIELD_BIT(MESA_SHADER_TESS_CTRL);
    tcs->patch_vertices = patch_vertices;
    return true;
 }
@@ -247,7 +278,9 @@ zink_set_tcs_key_patches(struct zink_context *ctx, uint8_t patch_vertices)
 static inline const struct zink_tcs_key *
 zink_get_tcs_key(struct zink_context *ctx)
 {
-   return (const struct zink_tcs_key *)&ctx->gfx_pipeline_state.shader_keys.key[MESA_SHADER_TESS_CTRL];
+   return zink_screen(ctx->base.screen)->optimal_keys ?
+          &ctx->gfx_pipeline_state.shader_keys_optimal.key.tcs :
+          &ctx->gfx_pipeline_state.shader_keys.key[MESA_SHADER_TESS_CTRL].key.tcs;
 }
 
 void
@@ -256,27 +289,33 @@ zink_update_fs_key_samples(struct zink_context *ctx);
 static inline struct zink_vs_key *
 zink_set_vs_key(struct zink_context *ctx)
 {
-   ctx->dirty_shader_stages |= BITFIELD_BIT(MESA_SHADER_VERTEX);
-   return (struct zink_vs_key *)&ctx->gfx_pipeline_state.shader_keys.key[MESA_SHADER_VERTEX];
+   ctx->dirty_gfx_stages |= BITFIELD_BIT(MESA_SHADER_VERTEX);
+   assert(!zink_screen(ctx->base.screen)->optimal_keys);
+   return &ctx->gfx_pipeline_state.shader_keys.key[MESA_SHADER_VERTEX].key.vs;
 }
 
 static inline const struct zink_vs_key *
 zink_get_vs_key(struct zink_context *ctx)
 {
-   return (const struct zink_vs_key *)&ctx->gfx_pipeline_state.shader_keys.key[MESA_SHADER_VERTEX];
+   assert(!zink_screen(ctx->base.screen)->optimal_keys);
+   return &ctx->gfx_pipeline_state.shader_keys.key[MESA_SHADER_VERTEX].key.vs;
 }
 
 static inline struct zink_vs_key_base *
 zink_set_last_vertex_key(struct zink_context *ctx)
 {
    ctx->last_vertex_stage_dirty = true;
-   return (struct zink_vs_key_base *)&ctx->gfx_pipeline_state.shader_keys.last_vertex;
+   return zink_screen(ctx->base.screen)->optimal_keys ?
+          &ctx->gfx_pipeline_state.shader_keys_optimal.key.vs_base :
+          &ctx->gfx_pipeline_state.shader_keys.last_vertex.key.vs_base;
 }
 
 static inline const struct zink_vs_key_base *
 zink_get_last_vertex_key(struct zink_context *ctx)
 {
-   return (const struct zink_vs_key_base *)&ctx->gfx_pipeline_state.shader_keys.last_vertex;
+   return zink_screen(ctx->base.screen)->optimal_keys ?
+          &ctx->gfx_pipeline_state.shader_keys_optimal.key.vs_base :
+          &ctx->gfx_pipeline_state.shader_keys.last_vertex.key.vs_base;
 }
 
 static inline void
@@ -292,9 +331,29 @@ zink_set_fs_point_coord_key(struct zink_context *ctx)
    }
 }
 
+static inline const struct zink_shader_key_base *
+zink_get_shader_key_base(struct zink_context *ctx, gl_shader_stage pstage)
+{
+   assert(!zink_screen(ctx->base.screen)->optimal_keys);
+   return &ctx->gfx_pipeline_state.shader_keys.key[pstage].base;
+}
+
+static inline struct zink_shader_key_base *
+zink_set_shader_key_base(struct zink_context *ctx, gl_shader_stage pstage)
+{
+   ctx->dirty_gfx_stages |= BITFIELD_BIT(pstage);
+   assert(!zink_screen(ctx->base.screen)->optimal_keys);
+   return &ctx->gfx_pipeline_state.shader_keys.key[pstage].base;
+}
+
 bool
 zink_set_rasterizer_discard(struct zink_context *ctx, bool disable);
-
+void
+zink_driver_thread_add_job(struct pipe_screen *pscreen, void *data,
+                           struct util_queue_fence *fence,
+                           pipe_driver_thread_func execute,
+                           pipe_driver_thread_func cleanup,
+                           const size_t job_size);
 equals_gfx_pipeline_state_func
 zink_get_gfx_pipeline_eq_func(struct zink_screen *screen, struct zink_gfx_program *prog);
 #ifdef __cplusplus

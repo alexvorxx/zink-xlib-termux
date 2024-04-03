@@ -691,6 +691,63 @@ anv_cmd_buffer_alloc_dynamic_state(struct anv_cmd_buffer *cmd_buffer,
                                  size, alignment);
 }
 
+/** Allocate space associated with a command buffer
+ *
+ * Some commands like vkCmdBuildAccelerationStructuresKHR() can end up needing
+ * large amount of temporary buffers. This function is here to deal with those
+ * potentially larger allocations, using a side BO if needed.
+ *
+ */
+struct anv_cmd_alloc
+anv_cmd_buffer_alloc_space(struct anv_cmd_buffer *cmd_buffer,
+                           size_t size, uint32_t alignment)
+{
+   /* Below 16k, source memory from dynamic state, otherwise allocate a BO. */
+   if (size < 16 * 1024) {
+      struct anv_state state =
+         anv_state_stream_alloc(&cmd_buffer->dynamic_state_stream,
+                                size, alignment);
+
+      return (struct anv_cmd_alloc) {
+         .address = (struct anv_address) {
+            .bo = cmd_buffer->device->dynamic_state_pool.block_pool.bo,
+            .offset = state.offset,
+         },
+         .map = state.map,
+         .size = size,
+      };
+   }
+
+   assert(alignment <= 4096);
+
+   struct anv_bo *bo = NULL;
+   VkResult result =
+      anv_device_alloc_bo(cmd_buffer->device,
+                          "cmd-buffer-space",
+                          align_u32(size, 4096),
+                          ANV_BO_ALLOC_MAPPED,
+                          0,
+                          &bo);
+   if (result != VK_SUCCESS) {
+      anv_batch_set_error(&cmd_buffer->batch, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+      return ANV_EMPTY_ALLOC;
+   }
+
+   struct anv_bo **bo_entry =
+      u_vector_add(&cmd_buffer->dynamic_bos);
+   if (bo_entry == NULL) {
+      anv_batch_set_error(&cmd_buffer->batch, VK_ERROR_OUT_OF_HOST_MEMORY);
+      return ANV_EMPTY_ALLOC;
+   }
+   *bo_entry = bo;
+
+   return (struct anv_cmd_alloc) {
+      .address = (struct anv_address) { .bo = bo },
+      .map = bo->map,
+      .size = size,
+   };
+}
+
 VkResult
 anv_cmd_buffer_new_binding_table_block(struct anv_cmd_buffer *cmd_buffer)
 {
@@ -879,10 +936,10 @@ anv_cmd_buffer_end_batch_buffer(struct anv_cmd_buffer *cmd_buffer)
           */
          if (cmd_buffer->batch_bos.next == cmd_buffer->batch_bos.prev) {
             const struct intel_device_info *devinfo = cmd_buffer->device->info;
+            const enum drm_i915_gem_engine_class engine_class = cmd_buffer->queue_family->engine_class;
             /* Careful to have everything in signed integer. */
-            int32_t prefetch_len = devinfo->cs_prefetch_size;
-            int32_t batch_len =
-               cmd_buffer->batch.next - cmd_buffer->batch.start;
+            int32_t prefetch_len = devinfo->engine_class_prefetch[engine_class];
+            int32_t batch_len = cmd_buffer->batch.next - cmd_buffer->batch.start;
 
             for (int32_t i = 0; i < (prefetch_len - batch_len); i += 4)
                anv_batch_emit(&cmd_buffer->batch, GFX8_MI_NOOP, noop);
@@ -1318,6 +1375,14 @@ setup_execbuf_for_cmd_buffer(struct anv_execbuf *execbuf,
    u_vector_foreach(bbo, &cmd_buffer->seen_bbos) {
       result = anv_execbuf_add_bo(cmd_buffer->device, execbuf,
                                   (*bbo)->bo, &(*bbo)->relocs, 0);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   struct anv_bo **bo_entry;
+   u_vector_foreach(bo_entry, &cmd_buffer->dynamic_bos) {
+      result = anv_execbuf_add_bo(cmd_buffer->device, execbuf,
+                                  *bo_entry, NULL, 0);
       if (result != VK_SUCCESS)
          return result;
    }

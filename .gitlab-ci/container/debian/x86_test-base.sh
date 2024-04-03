@@ -19,6 +19,7 @@ STABLE_EPHEMERAL=" \
       bison \
       bzip2 \
       ccache \
+      cmake \
       clang-11 \
       flex \
       glslang-tools \
@@ -35,14 +36,18 @@ STABLE_EPHEMERAL=" \
       libwayland-dev \
       libx11-xcb-dev \
       libxext-dev \
+      llvm-13-dev \
+      llvm-11-dev \
       make \
       meson \
       patch \
       pkg-config \
+      protobuf-compiler \
       python3-dev \
       python3-pip \
       python3-setuptools \
       python3-wheel \
+      spirv-tools \
       wayland-protocols \
       xz-utils \
       "
@@ -54,11 +59,15 @@ add-apt-repository "deb https://apt.llvm.org/bullseye/ llvm-toolchain-bullseye-1
 apt-get update
 apt-get dist-upgrade -y
 
+apt-get install -y \
+      sysvinit-core
+
 apt-get install -y --no-remove \
       git \
       git-lfs \
       inetutils-syslogd \
       iptables \
+      jq \
       libasan6 \
       libexpat1 \
       libllvm13 \
@@ -83,7 +92,6 @@ apt-get install -y --no-remove \
       python3-six \
       python3-yaml \
       socat \
-      sysvinit-core \
       vulkan-tools \
       waffle-utils \
       wget \
@@ -111,6 +119,20 @@ mkdir -p /lava-files/
 # Needed for ci-fairy, this revision is able to upload files to MinIO
 # and doesn't depend on git
 pip3 install git+http://gitlab.freedesktop.org/freedesktop/ci-templates@34f4ade99434043f88e164933f570301fd18b125
+
+# Needed for manipulation with traces yaml files.
+pip3 install yq
+
+# Needed for crosvm compilation.
+update-alternatives --install /usr/bin/clang clang /usr/bin/clang-11 100
+
+############### Build LLVM-SPIRV translator
+
+. .gitlab-ci/container/build-llvm-spirv.sh
+
+############### Build libclc
+
+. .gitlab-ci/container/build-libclc.sh
 
 ############### Build libdrm
 

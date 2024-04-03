@@ -833,8 +833,9 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader,
    case nir_intrinsic_write_invocation_amd:
       if (shader->info.stage == MESA_SHADER_FRAGMENT)
          shader->info.fs.needs_all_helper_invocations = true;
-      if (shader->info.stage == MESA_SHADER_COMPUTE)
-         shader->info.cs.uses_wide_subgroup_intrinsics = true;
+      if (shader->info.stage == MESA_SHADER_COMPUTE ||
+          gl_shader_stage_is_mesh(shader->info.stage))
+         shader->info.uses_wide_subgroup_intrinsics = true;
       break;
 
    case nir_intrinsic_end_primitive:
@@ -1045,6 +1046,9 @@ nir_shader_gather_info(nir_shader *shader, nir_function_impl *entrypoint)
    if (shader->info.stage == MESA_SHADER_TESS_CTRL) {
       shader->info.tess.tcs_cross_invocation_inputs_read = 0;
       shader->info.tess.tcs_cross_invocation_outputs_read = 0;
+   }
+   if (shader->info.stage == MESA_SHADER_MESH) {
+      shader->info.mesh.ms_cross_invocation_output_access = 0;
    }
 
    if (shader->info.stage != MESA_SHADER_FRAGMENT)

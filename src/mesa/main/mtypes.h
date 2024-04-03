@@ -1408,7 +1408,6 @@ struct gl_buffer_object
 {
    GLint RefCount;
    GLuint Name;
-   GLchar *Label;       /**< GL_KHR_debug */
 
    /**
     * The context that holds a global buffer reference for the lifetime of
@@ -1438,29 +1437,7 @@ struct gl_buffer_object
    struct gl_context *Ctx;
    GLint CtxRefCount;   /**< Non-atomic references held by Ctx. */
 
-   GLenum16 Usage;      /**< GL_STREAM_DRAW_ARB, GL_STREAM_READ_ARB, etc. */
-   GLbitfield StorageFlags; /**< GL_MAP_PERSISTENT_BIT, etc. */
-   GLsizeiptrARB Size;  /**< Size of buffer storage in bytes */
-   GLubyte *Data;       /**< Location of storage either in RAM or VRAM. */
-   GLboolean DeletePending;   /**< true if buffer object is removed from the hash */
-   GLboolean Written;   /**< Ever written to? (for debugging) */
-   GLboolean Immutable; /**< GL_ARB_buffer_storage */
    gl_buffer_usage UsageHistory; /**< How has this buffer been used so far? */
-
-   /** Counters used for buffer usage warnings */
-   GLuint NumSubDataCalls;
-   GLuint NumMapBufferWriteCalls;
-
-   struct gl_buffer_mapping Mappings[MAP_COUNT];
-
-   /** Memoization of min/max index computations for static index buffers */
-   simple_mtx_t MinMaxCacheMutex;
-   struct hash_table *MinMaxCache;
-   unsigned MinMaxCacheHitIndices;
-   unsigned MinMaxCacheMissIndices;
-   bool MinMaxCacheDirty;
-
-   bool HandleAllocated; /**< GL_ARB_bindless_texture */
 
    struct pipe_resource *buffer;
    struct gl_context *private_refcount_ctx;
@@ -1480,6 +1457,27 @@ struct gl_buffer_object
     */
    int private_refcount;
 
+   GLbitfield StorageFlags; /**< GL_MAP_PERSISTENT_BIT, etc. */
+
+   /** Memoization of min/max index computations for static index buffers */
+   unsigned MinMaxCacheHitIndices;
+   unsigned MinMaxCacheMissIndices;
+   struct hash_table *MinMaxCache;
+   simple_mtx_t MinMaxCacheMutex;
+   bool MinMaxCacheDirty:1;
+
+   bool DeletePending:1;  /**< true if buffer object is removed from the hash */
+   bool Immutable:1;    /**< GL_ARB_buffer_storage */
+   bool HandleAllocated:1; /**< GL_ARB_bindless_texture */
+   GLenum16 Usage;      /**< GL_STREAM_DRAW_ARB, GL_STREAM_READ_ARB, etc. */
+   GLchar *Label;       /**< GL_KHR_debug */
+   GLsizeiptrARB Size;  /**< Size of buffer storage in bytes */
+
+   /** Counters used for buffer usage warnings */
+   GLuint NumSubDataCalls;
+   GLuint NumMapBufferWriteCalls;
+
+   struct gl_buffer_mapping Mappings[MAP_COUNT];
    struct pipe_transfer *transfer[MAP_COUNT];
 };
 
@@ -2793,6 +2791,7 @@ struct gl_matrix_stack
    GLuint Depth;       /**< 0 <= Depth < MaxDepth */
    GLuint MaxDepth;    /**< size of Stack[] array */
    GLuint DirtyFlag;   /**< _NEW_MODELVIEW or _NEW_PROJECTION, for example */
+   bool ChangedSincePush;
 };
 
 
@@ -3631,6 +3630,7 @@ struct gl_context
    struct st_config_options *st_opts;
    struct cso_context *cso_context;
    bool has_invalidate_buffer;
+   bool has_string_marker;
    /* On old libGL's for linux we need to invalidate the drawables
     * on glViewpport calls, this is set via a option.
     */
@@ -3672,6 +3672,9 @@ struct gl_context
    /*@}*/
 
    bool shader_builtin_ref;
+
+   struct pipe_draw_start_count_bias *tmp_draws;
+   unsigned num_tmp_draws;
 };
 
 #ifndef NDEBUG

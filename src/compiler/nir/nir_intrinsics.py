@@ -1303,6 +1303,9 @@ store("global_amd", [1, 1], indices=[BASE, ACCESS, ALIGN_MUL, ALIGN_OFFSET, WRIT
 # Same as shared_atomic_add, but with GDS. src[] = {store_val, gds_addr, m0}
 intrinsic("gds_atomic_add_amd",  src_comp=[1, 1, 1], dest_comp=1, indices=[BASE])
 
+# src[] = { sample_id, num_samples }
+intrinsic("load_sample_positions_amd", src_comp=[1, 1], dest_comp=2, flags=[CAN_ELIMINATE, CAN_REORDER])
+
 # Descriptor where TCS outputs are stored for TES
 system_value("ring_tess_offchip_amd", 4)
 system_value("ring_tess_offchip_offset_amd", 1)
@@ -1331,6 +1334,8 @@ system_value("tcs_num_patches_amd", 1)
 system_value("tess_rel_patch_id_amd", 1)
 # Vertex offsets used for GS per-vertex inputs
 system_value("gs_vertex_offset_amd", 1, [BASE])
+# Number of rasterization samples
+system_value("rasterization_samples_amd", 1)
 
 # AMD merged shader intrinsics
 
@@ -1398,6 +1403,9 @@ system_value("intersection_opaque_amd", 1, bit_sizes=[1])
 # Used for indirect ray tracing.
 system_value("ray_launch_size_addr_amd", 1, bit_sizes=[64])
 
+# Scratch base of callable stack for ray tracing.
+system_value("rt_dynamic_callable_stack_base_amd", 1)
+
 # Load forced VRS rates.
 intrinsic("load_force_vrs_rates_amd", dest_comp=1, bit_sizes=[32], flags=[CAN_ELIMINATE, CAN_REORDER])
 
@@ -1424,6 +1432,21 @@ system_value("hs_out_patch_data_offset_amd", 1)
 # line_width * 0.5 / abs(viewport_scale[2])
 system_value("clip_half_line_width_amd", 2)
 
+# Number of vertices in a primitive
+system_value("num_vertices_per_primitive_amd", 1)
+
+# Load streamout buffer desc
+# BASE = buffer index
+intrinsic("load_streamout_buffer_amd", dest_comp=4, indices=[BASE], bit_sizes=[32], flags=[CAN_ELIMINATE, CAN_REORDER])
+
+# An ID for each workgroup ordered by primitve sequence
+system_value("ordered_id_amd", 1)
+
+# Add to global streamout buffer counter in specified order
+# src[] = { ordered_id, counter }
+# WRITE_MASK = mask for counter channel to update
+intrinsic("ordered_xfb_counter_add_amd", dest_comp=0, src_comp=[1, 0], indices=[WRITE_MASK], bit_sizes=[32])
+
 # V3D-specific instrinc for tile buffer color reads.
 #
 # The hardware requires that we read the samples and components of a pixel
@@ -1448,6 +1471,10 @@ intrinsic("load_fb_layers_v3d", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER])
 
 # Logical complement of load_front_face, mapping to an AGX system value
 system_value("back_face_agx", 1, bit_sizes=[1, 32])
+
+# Loads the texture descriptor base for indexed (non-bindless) textures. On G13,
+# the referenced array has stride 24.
+system_value("texture_base_agx", 1, bit_sizes=[64])
 
 # Intel-specific query for loading from the brw_image_param struct passed
 # into the shader as a uniform.  The variable is a deref to the image

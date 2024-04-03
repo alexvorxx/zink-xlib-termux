@@ -73,7 +73,8 @@ tu_bo_init_new_explicit_iova(struct tu_device *dev,
                              struct tu_bo **out_bo,
                              uint64_t size,
                              uint64_t client_iova,
-                             enum tu_bo_alloc_flags flags)
+                             enum tu_bo_alloc_flags flags,
+                             const char *name)
 {
    assert(client_iova == 0);
 
@@ -101,6 +102,7 @@ tu_bo_init_new_explicit_iova(struct tu_device *dev,
       .size = req.mmapsize,
       .iova = req.gpuaddr,
       .refcnt = 1,
+      .name = tu_debug_bos_add(dev, req.mmapsize, name),
    };
 
    *out_bo = bo;
@@ -149,6 +151,7 @@ tu_bo_init_dmabuf(struct tu_device *dev,
       .size = info_req.size,
       .iova = info_req.gpuaddr,
       .refcnt = 1,
+      .name = tu_debug_bos_add(dev, info_req.size, "dmabuf"),
    };
 
    *out_bo = bo;
@@ -223,13 +226,17 @@ tu_enumerate_devices(struct vk_instance *vk_instance)
    static const char path[] = "/dev/kgsl-3d0";
    int fd;
 
-   if (instance->vk.enabled_extensions.KHR_display)
-      return vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
+   if (instance->vk.enabled_extensions.KHR_display) {
+      return vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
                        "I can't KHR_display");
+   }
 
    fd = open(path, O_RDWR | O_CLOEXEC);
    if (fd < 0) {
-      return vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
+      if (errno == ENOENT)
+         return VK_SUCCESS;
+
+      return vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
                        "failed to open device %s", path);
    }
 
@@ -265,6 +272,8 @@ tu_enumerate_devices(struct vk_instance *vk_instance)
    device->dev_id.chip_id = info.chip_id;
    device->gmem_size = env_var_as_unsigned("TU_GMEM", info.gmem_sizebytes);
    device->gmem_base = gmem_iova;
+
+   device->submitqueue_priority_count = 1;
 
    device->heap.size = tu_get_system_heap_size();
    device->heap.used = 0u;
@@ -536,6 +545,9 @@ tu_QueueSubmit2(VkQueue _queue,
          }
       }
    }
+
+   tu_debug_bos_print_stats(queue->device);
+
 fail:
    vk_free(&queue->device->vk.alloc, cmds);
 

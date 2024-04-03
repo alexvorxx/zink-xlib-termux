@@ -775,10 +775,7 @@ static void r600_disk_cache_create(struct r600_common_screen *rscreen)
 
 	/* These flags affect shader compilation. */
 	uint64_t shader_debug_flags =
-		rscreen->debug_flags &
-		(DBG_NIR |
-		 DBG_NIR_PREFERRED |
-		 DBG_USE_TGSI);
+		rscreen->debug_flags & DBG_USE_TGSI;
 
 	rscreen->disk_shader_cache =
 		disk_cache_create(r600_get_family_name(rscreen),
@@ -1365,7 +1362,8 @@ bool r600_common_screen_init(struct r600_common_screen *rscreen,
 		.lower_to_scalar_filter = r600_lower_to_scalar_instr_filter,
 		.linker_ignore_precision = true,
 		.lower_fpow = true,
-		.lower_int64_options = ~0
+		.lower_int64_options = ~0,
+		.lower_cs_local_index_to_id = true
 	};
 
 	rscreen->nir_options = nir_options;
@@ -1391,7 +1389,7 @@ bool r600_common_screen_init(struct r600_common_screen *rscreen,
 			nir_lower_dtrunc;
 	}
 
-	if (!(rscreen->debug_flags & DBG_NIR_PREFERRED)) {
+	if (rscreen->debug_flags & DBG_USE_TGSI) {
 
 		rscreen->nir_options.lower_fpow = false;
 		/* TGSI is vector, and NIR-to-TGSI doesn't like it when the

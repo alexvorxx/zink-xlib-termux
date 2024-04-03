@@ -262,7 +262,7 @@ virgl_get_param(struct pipe_screen *screen, enum pipe_cap param)
       return vscreen->caps.caps.v2.shader_buffer_offset_alignment;
    case PIPE_CAP_DOUBLES:
       return vscreen->caps.caps.v1.bset.has_fp64 ||
-            (vscreen->caps.caps.v2.capability_bits & VIRGL_CAP_FAKE_FP64);
+            (vscreen->caps.caps.v2.capability_bits & VIRGL_CAP_HOST_IS_GLES);
    case PIPE_CAP_MAX_SHADER_PATCH_VARYINGS:
       return vscreen->caps.caps.v2.max_shader_patch_varyings;
    case PIPE_CAP_SAMPLER_VIEW_TARGET:
@@ -338,6 +338,8 @@ virgl_get_param(struct pipe_screen *screen, enum pipe_cap param)
       if (vscreen->caps.caps.v2.capability_bits_v2 & VIRGL_CAP_V2_VIDEO_MEMORY)
          return vscreen->caps.caps.v2.max_video_memory;
       return 0;
+   case PIPE_CAP_TEXTURE_SHADOW_LOD:
+      return vscreen->caps.caps.v2.capability_bits_v2 & VIRGL_CAP_V2_TEXTURE_SHADOW_LOD;
    case PIPE_CAP_NATIVE_FENCE_FD:
       return vscreen->vws->supports_fences;
    case PIPE_CAP_DEST_SURFACE_SRGB_CONTROL:
@@ -356,6 +358,10 @@ virgl_get_param(struct pipe_screen *screen, enum pipe_cap param)
        return vscreen->caps.caps.v2.capability_bits_v2 & VIRGL_CAP_V2_IMPLICIT_MSAA;
    case PIPE_CAP_IMAGE_STORE_FORMATTED:
       return 1;
+   case PIPE_CAP_MAX_CONSTANT_BUFFER_SIZE_UINT:
+      if (vscreen->caps.caps.v2.host_feature_check_version >= 13)
+         return vscreen->caps.caps.v2.max_uniform_block_size;
+      FALLTHROUGH;
    default:
       return u_pipe_screen_get_param_defaults(screen, param);
    }

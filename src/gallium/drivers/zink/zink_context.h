@@ -100,6 +100,8 @@ zink_resource_access_is_write(VkAccessFlags flags);
 
 void
 zink_resource_buffer_barrier(struct zink_context *ctx, struct zink_resource *res, VkAccessFlags flags, VkPipelineStageFlags pipeline);
+void
+zink_resource_buffer_barrier2(struct zink_context *ctx, struct zink_resource *res, VkAccessFlags flags, VkPipelineStageFlags pipeline);
 bool
 zink_resource_image_needs_barrier(struct zink_resource *res, VkImageLayout new_layout, VkAccessFlags flags, VkPipelineStageFlags pipeline);
 bool
@@ -107,7 +109,8 @@ zink_resource_image_barrier_init(VkImageMemoryBarrier *imb, struct zink_resource
 void
 zink_resource_image_barrier(struct zink_context *ctx, struct zink_resource *res,
                       VkImageLayout new_layout, VkAccessFlags flags, VkPipelineStageFlags pipeline);
-
+void
+zink_resource_image_barrier2(struct zink_context *ctx, struct zink_resource *res, VkImageLayout new_layout, VkAccessFlags flags, VkPipelineStageFlags pipeline);
 bool
 zink_resource_needs_barrier(struct zink_resource *res, VkImageLayout layout, VkAccessFlags flags, VkPipelineStageFlags pipeline);
 void
@@ -159,7 +162,7 @@ zink_init_draw_functions(struct zink_context *ctx, struct zink_screen *screen);
 void
 zink_init_grid_functions(struct zink_context *ctx);
 struct zink_context *
-zink_tc_context_unwrap(struct pipe_context *pctx);
+zink_tc_context_unwrap(struct pipe_context *pctx, bool threaded);
 #ifdef __cplusplus
 }
 #endif

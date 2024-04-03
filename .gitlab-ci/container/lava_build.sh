@@ -50,6 +50,7 @@ elif [[ "$DEBIAN_ARCH" = "armhf" ]]; then
     DEVICE_TREES="arch/arm/boot/dts/rk3288-veyron-jaq.dtb"
     DEVICE_TREES+=" arch/arm/boot/dts/sun8i-h3-libretech-all-h3-cc.dtb"
     DEVICE_TREES+=" arch/arm/boot/dts/imx6q-cubox-i.dtb"
+    DEVICE_TREES+=" arch/arm/boot/dts/tegra124-jetson-tk1.dtb"
     KERNEL_IMAGE_NAME="zImage"
     . .gitlab-ci/container/create-cross-file.sh armhf
 else
@@ -59,7 +60,7 @@ else
     DEFCONFIG="arch/x86/configs/x86_64_defconfig"
     DEVICE_TREES=""
     KERNEL_IMAGE_NAME="bzImage"
-    ARCH_PACKAGES="libasound2-dev libcap-dev libfdt-dev libva-dev wayland-protocols"
+    ARCH_PACKAGES="libasound2-dev libcap-dev libfdt-dev libva-dev wayland-protocols p7zip"
 fi
 
 # Determine if we're in a cross build.
@@ -109,6 +110,7 @@ apt-get install -y --no-remove \
                    libxkbcommon-dev \
                    ninja-build \
                    patch \
+                   protobuf-compiler \
                    python-is-python3 \
                    python3-distutils \
                    python3-mako \
@@ -134,6 +136,20 @@ if [[ "$DEBIAN_ARCH" = "armhf" ]]; then
                        libxkbcommon-dev:armhf
 fi
 
+mkdir -p "/lava-files/rootfs-${DEBIAN_ARCH}"
+
+############### Setuping
+if [ "$DEBIAN_ARCH" = "amd64" ]; then
+  . .gitlab-ci/container/setup-wine.sh "/dxvk-wine64"
+  . .gitlab-ci/container/install-wine-dxvk.sh
+  mv /dxvk-wine64 "/lava-files/rootfs-${DEBIAN_ARCH}/"
+fi
+
+############### Installing
+. .gitlab-ci/container/install-wine-apitrace.sh
+mkdir -p "/lava-files/rootfs-${DEBIAN_ARCH}/apitrace-msvc-win64"
+mv /apitrace-msvc-win64/bin "/lava-files/rootfs-${DEBIAN_ARCH}/apitrace-msvc-win64"
+rm -rf /apitrace-msvc-win64
 
 ############### Building
 STRIP_CMD="${GCC_ARCH}-strip"
@@ -219,8 +235,9 @@ set -e
 
 cp .gitlab-ci/container/create-rootfs.sh /lava-files/rootfs-${DEBIAN_ARCH}/.
 cp .gitlab-ci/container/debian/llvm-snapshot.gpg.key /lava-files/rootfs-${DEBIAN_ARCH}/.
+cp .gitlab-ci/container/debian/winehq.gpg.key /lava-files/rootfs-${DEBIAN_ARCH}/.
 chroot /lava-files/rootfs-${DEBIAN_ARCH} sh /create-rootfs.sh
-rm /lava-files/rootfs-${DEBIAN_ARCH}/llvm-snapshot.gpg.key
+rm /lava-files/rootfs-${DEBIAN_ARCH}/{llvm-snapshot,winehq}.gpg.key
 rm /lava-files/rootfs-${DEBIAN_ARCH}/create-rootfs.sh
 
 

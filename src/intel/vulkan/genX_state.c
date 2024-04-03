@@ -36,6 +36,11 @@
 #include "genxml/genX_pack.h"
 
 #include "vk_standard_sample_locations.h"
+
+#if GFX_VERx10 >= 125 && ANV_SUPPORT_RT
+#include "grl/genX_grl.h"
+#endif
+
 #include "vk_util.h"
 
 static void
@@ -228,6 +233,29 @@ init_common_queue_state(struct anv_queue *queue, struct anv_batch *batch)
       sba.L1CacheControl = L1CC_WB;
    }
 #endif
+
+#if GFX_VERx10 >= 125
+   if (ANV_SUPPORT_RT && device->info->has_ray_tracing) {
+      anv_batch_emit(batch, GENX(3DSTATE_BTD), btd) {
+         /* TODO: This is the timeout after which the bucketed thread
+          *       dispatcher will kick off a wave of threads. We go with the
+          *       lowest value for now. It could be tweaked on a per
+          *       application basis (drirc).
+          */
+         btd.DispatchTimeoutCounter = _64clocks;
+         /* BSpec 43851: "This field must be programmed to 6h i.e. memory
+          *               backed buffer must be 128KB."
+          */
+         btd.PerDSSMemoryBackedBufferSize = 6;
+         btd.MemoryBackedBufferBasePointer = (struct anv_address) {
+            /* This batch doesn't have a reloc list so we can't use the BO
+             * here.  We just use the address directly.
+             */
+            .offset = device->btd_fifo_bo->offset,
+         };
+      }
+   }
+#endif
 }
 
 static VkResult
@@ -322,6 +350,7 @@ init_render_queue_state(struct anv_queue *queue)
       }
    }
 
+#if GFX_VERx10 < 125
    /* an unknown issue is causing vs push constants to become
     * corrupted during object-level preemption. For now, restrict
     * to command buffer level preemption to avoid rendering
@@ -336,6 +365,18 @@ init_render_queue_state(struct anv_queue *queue)
       cc1.DisablePreemptionandHighPriorityPausingdueto3DPRIMITIVECommandMask = true;
 #endif
    }
+#endif
+
+   /* Wa_14015207028
+    *
+    * Disable batch level preemption for some primitive topologies.
+    */
+#if GFX_VERx10 == 125
+      anv_batch_write_reg(&batch, GENX(VFG_PREEMPTION_CHICKEN_BITS), vfgc) {
+         vfgc.PolygonTrifanLineLoopPreemptionDisable = true;
+         vfgc.PolygonTrifanLineLoopPreemptionDisableMask = true;
+      }
+#endif
 
 #if GFX_VERx10 == 120
    /* Wa_1806527549 says to disable the following HiZ optimization when the
@@ -430,6 +471,9 @@ void
 genX(init_physical_device_state)(ASSERTED struct anv_physical_device *pdevice)
 {
    assert(pdevice->info.verx10 == GFX_VERx10);
+#if GFX_VERx10 >= 125 && ANV_SUPPORT_RT
+   genX(grl_load_rt_uuid)(pdevice->rt_uuid);
+#endif
 }
 
 VkResult
@@ -609,17 +653,8 @@ genX(emit_l3_config)(struct anv_batch *batch,
 }
 
 void
-genX(emit_multisample)(struct anv_batch *batch, uint32_t samples,
-                       const struct vk_sample_locations_state *sl)
+genX(emit_multisample)(struct anv_batch *batch, uint32_t samples)
 {
-   if (sl != NULL) {
-      assert(sl->per_pixel == samples);
-      assert(sl->grid_size.width == 1);
-      assert(sl->grid_size.height == 1);
-   } else {
-      sl = vk_standard_sample_locations_state(samples);
-   }
-
    anv_batch_emit(batch, GENX(3DSTATE_MULTISAMPLE), ms) {
       ms.NumberofMultisamples       = __builtin_ffs(samples) - 1;
 

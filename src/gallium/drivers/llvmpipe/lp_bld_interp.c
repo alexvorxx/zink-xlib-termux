@@ -157,6 +157,7 @@ static void
 calc_centroid_offsets(struct lp_build_interp_soa_context *bld,
                       struct gallivm_state *gallivm,
                       LLVMValueRef loop_iter,
+                      LLVMTypeRef mask_type,
                       LLVMValueRef mask_store,
                       LLVMValueRef pix_center_offset,
                       LLVMValueRef *centroid_x, LLVMValueRef *centroid_y)
@@ -171,7 +172,7 @@ calc_centroid_offsets(struct lp_build_interp_soa_context *bld,
       LLVMValueRef s_mask_idx = LLVMBuildMul(builder, bld->num_loop, lp_build_const_int32(gallivm, s), "");
 
       s_mask_idx = LLVMBuildAdd(builder, s_mask_idx, loop_iter, "");
-      sample_cov = lp_build_pointer_get(builder, mask_store, s_mask_idx);
+      sample_cov = lp_build_pointer_get2(builder, mask_type, mask_store, s_mask_idx);
       if (s == bld->coverage_samples - 1)
          s_mask_and = sample_cov;
       else
@@ -180,8 +181,10 @@ calc_centroid_offsets(struct lp_build_interp_soa_context *bld,
       LLVMValueRef x_val_idx = lp_build_const_int32(gallivm, s * 2);
       LLVMValueRef y_val_idx = lp_build_const_int32(gallivm, s * 2 + 1);
 
-      x_val_idx = lp_build_array_get(gallivm, bld->sample_pos_array, x_val_idx);
-      y_val_idx = lp_build_array_get(gallivm, bld->sample_pos_array, y_val_idx);
+      x_val_idx = lp_build_array_get2(gallivm, bld->sample_pos_array_type,
+                                      bld->sample_pos_array, x_val_idx);
+      y_val_idx = lp_build_array_get2(gallivm, bld->sample_pos_array_type,
+                                      bld->sample_pos_array, y_val_idx);
       x_val_idx = lp_build_broadcast_scalar(coeff_bld, x_val_idx);
       y_val_idx = lp_build_broadcast_scalar(coeff_bld, y_val_idx);
       centroid_x_offset = lp_build_select(coeff_bld, sample_cov, x_val_idx, centroid_x_offset);
@@ -284,6 +287,7 @@ static void
 attribs_update_simple(struct lp_build_interp_soa_context *bld,
                       struct gallivm_state *gallivm,
                       LLVMValueRef loop_iter,
+                      LLVMTypeRef mask_type,
                       LLVMValueRef mask_store,
                       LLVMValueRef sample_id,
                       int start,
@@ -336,7 +340,8 @@ attribs_update_simple(struct lp_build_interp_soa_context *bld,
                   dadx = coeff_bld->one;
                   if (sample_id) {
                      LLVMValueRef x_val_idx = LLVMBuildMul(gallivm->builder, sample_id, lp_build_const_int32(gallivm, 2), "");
-                     x_val_idx = lp_build_array_get(gallivm, bld->sample_pos_array, x_val_idx);
+                     x_val_idx = lp_build_array_get2(gallivm, bld->sample_pos_array_type,
+                                                     bld->sample_pos_array, x_val_idx);
                      a = lp_build_broadcast_scalar(coeff_bld, x_val_idx);
                   } else {
                      a = lp_build_const_vec(gallivm, coeff_bld->type, bld->pos_offset);
@@ -347,7 +352,8 @@ attribs_update_simple(struct lp_build_interp_soa_context *bld,
                   if (sample_id) {
                      LLVMValueRef y_val_idx = LLVMBuildMul(gallivm->builder, sample_id, lp_build_const_int32(gallivm, 2), "");
                      y_val_idx = LLVMBuildAdd(gallivm->builder, y_val_idx, lp_build_const_int32(gallivm, 1), "");
-                     y_val_idx = lp_build_array_get(gallivm, bld->sample_pos_array, y_val_idx);
+                     y_val_idx = lp_build_array_get2(gallivm, bld->sample_pos_array_type,
+                                                     bld->sample_pos_array, y_val_idx);
                      a = lp_build_broadcast_scalar(coeff_bld, y_val_idx);
                   } else {
                      a = lp_build_const_vec(gallivm, coeff_bld->type, bld->pos_offset);
@@ -371,12 +377,14 @@ attribs_update_simple(struct lp_build_interp_soa_context *bld,
                         LLVMValueRef x_val_idx = LLVMBuildMul(gallivm->builder, sample_id, lp_build_const_int32(gallivm, 2), "");
                         LLVMValueRef y_val_idx = LLVMBuildAdd(gallivm->builder, x_val_idx, lp_build_const_int32(gallivm, 1), "");
 
-                        x_val_idx = lp_build_array_get(gallivm, bld->sample_pos_array, x_val_idx);
-                        y_val_idx = lp_build_array_get(gallivm, bld->sample_pos_array, y_val_idx);
+                        x_val_idx = lp_build_array_get2(gallivm, bld->sample_pos_array_type,
+                                                       bld->sample_pos_array, x_val_idx);
+                        y_val_idx = lp_build_array_get2(gallivm, bld->sample_pos_array_type,
+                                                        bld->sample_pos_array, y_val_idx);
                         xoffset = lp_build_broadcast_scalar(coeff_bld, x_val_idx);
                         yoffset = lp_build_broadcast_scalar(coeff_bld, y_val_idx);
                      } else if (loc == TGSI_INTERPOLATE_LOC_CENTROID) {
-                        calc_centroid_offsets(bld, gallivm, loop_iter, mask_store,
+                        calc_centroid_offsets(bld, gallivm, loop_iter, mask_type, mask_store,
                                               pix_center_offset, &xoffset, &yoffset);
                      }
                      chan_pixoffx = lp_build_add(coeff_bld, chan_pixoffx, xoffset);
@@ -508,6 +516,7 @@ LLVMValueRef
 lp_build_interp_soa(struct lp_build_interp_soa_context *bld,
                     struct gallivm_state *gallivm,
                     LLVMValueRef loop_iter,
+                    LLVMTypeRef mask_type,
                     LLVMValueRef mask_store,
                     unsigned attrib, unsigned chan,
                     enum tgsi_interpolate_loc loc,
@@ -579,7 +588,7 @@ lp_build_interp_soa(struct lp_build_interp_soa_context *bld,
       /* for centroid find covered samples for this quad. */
       /* if all samples are covered use pixel centers */
       if (bld->coverage_samples > 1) {
-         calc_centroid_offsets(bld, gallivm, loop_iter, mask_store,
+         calc_centroid_offsets(bld, gallivm, loop_iter, mask_type, mask_store,
                                pix_center_offset, &centroid_x_offset,
                                &centroid_y_offset);
 
@@ -675,6 +684,7 @@ lp_build_interp_soa_init(struct lp_build_interp_soa_context *bld,
                          const struct lp_shader_input *inputs,
                          boolean pixel_center_integer,
                          unsigned coverage_samples,
+                         LLVMTypeRef sample_pos_array_type,
                          LLVMValueRef sample_pos_array,
                          LLVMValueRef num_loop,
                          LLVMBuilderRef builder,
@@ -747,6 +757,7 @@ lp_build_interp_soa_init(struct lp_build_interp_soa_context *bld,
    }
    bld->coverage_samples = coverage_samples;
    bld->num_loop = num_loop;
+   bld->sample_pos_array_type = sample_pos_array_type;
    bld->sample_pos_array = sample_pos_array;
 
    pos_init(bld, x0, y0);
@@ -793,10 +804,11 @@ void
 lp_build_interp_soa_update_inputs_dyn(struct lp_build_interp_soa_context *bld,
                                       struct gallivm_state *gallivm,
                                       LLVMValueRef quad_start_index,
+                                      LLVMTypeRef mask_type,
                                       LLVMValueRef mask_store,
                                       LLVMValueRef sample_id)
 {
-   attribs_update_simple(bld, gallivm, quad_start_index, mask_store, sample_id, 1, bld->num_attribs);
+   attribs_update_simple(bld, gallivm, quad_start_index, mask_type, mask_store, sample_id, 1, bld->num_attribs);
 }
 
 void
@@ -805,6 +817,6 @@ lp_build_interp_soa_update_pos_dyn(struct lp_build_interp_soa_context *bld,
                                    LLVMValueRef quad_start_index,
                                    LLVMValueRef sample_id)
 {
-   attribs_update_simple(bld, gallivm, quad_start_index, NULL, sample_id, 0, 1);
+   attribs_update_simple(bld, gallivm, quad_start_index, NULL, NULL, sample_id, 0, 1);
 }
 

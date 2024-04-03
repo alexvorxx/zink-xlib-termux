@@ -50,6 +50,7 @@
 #include "dev/intel_device_info.h"
 #include "blorp/blorp.h"
 #include "compiler/brw_compiler.h"
+#include "compiler/brw_kernel.h"
 #include "compiler/brw_rt.h"
 #include "ds/intel_driver_ds.h"
 #include "util/bitset.h"
@@ -69,6 +70,7 @@
 #include "vk_command_buffer.h"
 #include "vk_command_pool.h"
 #include "vk_debug_report.h"
+#include "vk_descriptor_update_template.h"
 #include "vk_device.h"
 #include "vk_drm_syncobj.h"
 #include "vk_enum_defines.h"
@@ -84,6 +86,10 @@
 #include "vk_util.h"
 #include "vk_queue.h"
 #include "vk_log.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* Pre-declarations needed for WSI entrypoints */
 struct wl_surface;
@@ -155,8 +161,8 @@ struct intel_perf_query_result;
 #define INSTRUCTION_STATE_POOL_MIN_ADDRESS 0x000180000000ULL /* 6 GiB */
 #define INSTRUCTION_STATE_POOL_MAX_ADDRESS 0x0001bfffffffULL
 #define CLIENT_VISIBLE_HEAP_MIN_ADDRESS    0x0001c0000000ULL /* 7 GiB */
-#define CLIENT_VISIBLE_HEAP_MAX_ADDRESS    0x0002bfffffffULL
-#define HIGH_HEAP_MIN_ADDRESS              0x0002c0000000ULL /* 11 GiB */
+#define CLIENT_VISIBLE_HEAP_MAX_ADDRESS    0x0009bfffffffULL
+#define HIGH_HEAP_MIN_ADDRESS              0x0009c0000000ULL /* 39 GiB */
 
 #define GENERAL_STATE_POOL_SIZE     \
    (GENERAL_STATE_POOL_MAX_ADDRESS - GENERAL_STATE_POOL_MIN_ADDRESS + 1)
@@ -466,6 +472,62 @@ void __anv_perf_warn(struct anv_device *device,
 #define anv_assert(x)
 #endif
 
+enum anv_bo_alloc_flags {
+   /** Specifies that the BO must have a 32-bit address
+    *
+    * This is the opposite of EXEC_OBJECT_SUPPORTS_48B_ADDRESS.
+    */
+   ANV_BO_ALLOC_32BIT_ADDRESS =  (1 << 0),
+
+   /** Specifies that the BO may be shared externally */
+   ANV_BO_ALLOC_EXTERNAL =       (1 << 1),
+
+   /** Specifies that the BO should be mapped */
+   ANV_BO_ALLOC_MAPPED =         (1 << 2),
+
+   /** Specifies that the BO should be snooped so we get coherency */
+   ANV_BO_ALLOC_SNOOPED =        (1 << 3),
+
+   /** Specifies that the BO should be captured in error states */
+   ANV_BO_ALLOC_CAPTURE =        (1 << 4),
+
+   /** Specifies that the BO will have an address assigned by the caller
+    *
+    * Such BOs do not exist in any VMA heap.
+    */
+   ANV_BO_ALLOC_FIXED_ADDRESS = (1 << 5),
+
+   /** Enables implicit synchronization on the BO
+    *
+    * This is the opposite of EXEC_OBJECT_ASYNC.
+    */
+   ANV_BO_ALLOC_IMPLICIT_SYNC =  (1 << 6),
+
+   /** Enables implicit synchronization on the BO
+    *
+    * This is equivalent to EXEC_OBJECT_WRITE.
+    */
+   ANV_BO_ALLOC_IMPLICIT_WRITE = (1 << 7),
+
+   /** Has an address which is visible to the client */
+   ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS = (1 << 8),
+
+   /** This buffer has implicit CCS data attached to it */
+   ANV_BO_ALLOC_IMPLICIT_CCS = (1 << 9),
+
+   /** This buffer is allocated from local memory and should be cpu visible */
+   ANV_BO_ALLOC_LOCAL_MEM_CPU_VISIBLE = (1 << 10),
+
+   /** For non device local allocations */
+   ANV_BO_ALLOC_NO_LOCAL_MEM = (1 << 11),
+
+   /** For local memory, ensure that the writes are combined.
+    *
+    * Should be faster for bo pools, which write but do not read
+    */
+   ANV_BO_ALLOC_WRITE_COMBINE = (1 << 12),
+};
+
 struct anv_bo {
    const char *name;
 
@@ -539,6 +601,9 @@ struct anv_bo {
 
    /** True if this BO has implicit CCS data attached to it */
    bool has_implicit_ccs:1;
+
+   /** True if this BO should be mapped with Write Combine enabled */
+   bool map_wc:1;
 };
 
 static inline struct anv_bo *
@@ -583,6 +648,18 @@ anv_address_add(struct anv_address addr, uint64_t offset)
 {
    addr.offset += offset;
    return addr;
+}
+
+static inline void *
+anv_address_map(struct anv_address addr)
+{
+   if (addr.bo == NULL)
+      return NULL;
+
+   if (addr.bo->map == NULL)
+      return NULL;
+
+   return addr.bo->map + addr.offset;
 }
 
 /* Represents a lock-free linked list of "free" things.  This is used by
@@ -648,6 +725,8 @@ struct anv_block_pool {
    uint32_t center_bo_offset;
 
    struct anv_block_state state;
+
+   enum anv_bo_alloc_flags bo_alloc_flags;
 };
 
 /* Block pools are backed by a fixed-size 1GB memfd */
@@ -802,6 +881,8 @@ struct anv_bo_pool {
 
    struct anv_device *device;
 
+   enum anv_bo_alloc_flags bo_alloc_flags;
+
    struct util_sparse_array_free_list free_list[16];
 };
 
@@ -904,7 +985,6 @@ struct anv_physical_device {
      * end.
      */
     uint32_t                                    n_perf_query_commands;
-    int                                         cmd_parser_version;
     bool                                        has_exec_async;
     bool                                        has_exec_capture;
     int                                         max_context_priority;
@@ -958,6 +1038,7 @@ struct anv_physical_device {
     uint8_t                                     pipeline_cache_uuid[VK_UUID_SIZE];
     uint8_t                                     driver_uuid[VK_UUID_SIZE];
     uint8_t                                     device_uuid[VK_UUID_SIZE];
+    uint8_t                                     rt_uuid[VK_UUID_SIZE];
 
     struct vk_sync_type                         sync_syncobj_type;
     struct vk_sync_timeline_type                sync_timeline_type;
@@ -996,6 +1077,7 @@ struct anv_instance {
     bool                                        assume_full_subgroups;
     bool                                        limit_trig_input_range;
     bool                                        sample_mask_out_opengl_behaviour;
+    float                                       lower_depth_range_rate;
 };
 
 VkResult anv_init_wsi(struct anv_physical_device *physical_device);
@@ -1057,6 +1139,11 @@ anv_device_upload_nir(struct anv_device *device,
                       struct vk_pipeline_cache *cache,
                       const struct nir_shader *nir,
                       unsigned char sha1_key[20]);
+
+enum anv_rt_bvh_build_method {
+   ANV_BVH_BUILD_METHOD_TRIVIAL,
+   ANV_BVH_BUILD_METHOD_NEW_SAH,
+};
 
 struct anv_device {
     struct vk_device                            vk;
@@ -1127,6 +1214,8 @@ struct anv_device {
 
     struct anv_scratch_pool                     scratch_pool;
     struct anv_bo                              *rt_scratch_bos[16];
+    struct anv_bo                              *btd_fifo_bo;
+    struct anv_address                          rt_uuid_addr;
 
     /** Shadow ray query BO
      *
@@ -1145,6 +1234,8 @@ struct anv_device {
 
     struct anv_shader_bin                      *rt_trampoline;
     struct anv_shader_bin                      *rt_trivial_return;
+
+    enum anv_rt_bvh_build_method                bvh_build_method;
 
     pthread_mutex_t                             mutex;
     pthread_cond_t                              queue_submit;
@@ -1191,53 +1282,6 @@ anv_mocs(const struct anv_device *device,
 
 void anv_device_init_blorp(struct anv_device *device);
 void anv_device_finish_blorp(struct anv_device *device);
-
-enum anv_bo_alloc_flags {
-   /** Specifies that the BO must have a 32-bit address
-    *
-    * This is the opposite of EXEC_OBJECT_SUPPORTS_48B_ADDRESS.
-    */
-   ANV_BO_ALLOC_32BIT_ADDRESS =  (1 << 0),
-
-   /** Specifies that the BO may be shared externally */
-   ANV_BO_ALLOC_EXTERNAL =       (1 << 1),
-
-   /** Specifies that the BO should be mapped */
-   ANV_BO_ALLOC_MAPPED =         (1 << 2),
-
-   /** Specifies that the BO should be snooped so we get coherency */
-   ANV_BO_ALLOC_SNOOPED =        (1 << 3),
-
-   /** Specifies that the BO should be captured in error states */
-   ANV_BO_ALLOC_CAPTURE =        (1 << 4),
-
-   /** Specifies that the BO will have an address assigned by the caller
-    *
-    * Such BOs do not exist in any VMA heap.
-    */
-   ANV_BO_ALLOC_FIXED_ADDRESS = (1 << 5),
-
-   /** Enables implicit synchronization on the BO
-    *
-    * This is the opposite of EXEC_OBJECT_ASYNC.
-    */
-   ANV_BO_ALLOC_IMPLICIT_SYNC =  (1 << 6),
-
-   /** Enables implicit synchronization on the BO
-    *
-    * This is equivalent to EXEC_OBJECT_WRITE.
-    */
-   ANV_BO_ALLOC_IMPLICIT_WRITE = (1 << 7),
-
-   /** Has an address which is visible to the client */
-   ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS = (1 << 8),
-
-   /** This buffer has implicit CCS data attached to it */
-   ANV_BO_ALLOC_IMPLICIT_CCS = (1 << 9),
-
-   /** This buffer is allocated from local memory and should be cpu visible */
-   ANV_BO_ALLOC_LOCAL_MEM_CPU_VISIBLE = (1 << 10),
-};
 
 VkResult anv_device_alloc_bo(struct anv_device *device,
                              const char *name, uint64_t size,
@@ -1835,44 +1879,6 @@ struct anv_descriptor_pool {
    char data[0];
 };
 
-struct anv_descriptor_template_entry {
-   /* The type of descriptor in this entry */
-   VkDescriptorType type;
-
-   /* Binding in the descriptor set */
-   uint32_t binding;
-
-   /* Offset at which to write into the descriptor set binding */
-   uint32_t array_element;
-
-   /* Number of elements to write into the descriptor set binding */
-   uint32_t array_count;
-
-   /* Offset into the user provided data */
-   size_t offset;
-
-   /* Stride between elements into the user provided data */
-   size_t stride;
-};
-
-struct anv_descriptor_update_template {
-    struct vk_object_base base;
-
-    VkPipelineBindPoint bind_point;
-
-   /* The descriptor set this template corresponds to. This value is only
-    * valid if the template was created with the templateType
-    * VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET.
-    */
-   uint8_t set;
-
-   /* Number of entries in this template */
-   uint32_t entry_count;
-
-   /* Entries of the template */
-   struct anv_descriptor_template_entry entries[0];
-};
-
 size_t
 anv_descriptor_set_layout_size(const struct anv_descriptor_set_layout *layout,
                                uint32_t var_desc_count);
@@ -1927,7 +1933,7 @@ void
 anv_descriptor_set_write_template(struct anv_device *device,
                                   struct anv_descriptor_set *set,
                                   struct anv_state_stream *alloc_stream,
-                                  const struct anv_descriptor_update_template *template,
+                                  const struct vk_descriptor_update_template *template,
                                   const void *data);
 
 #define ANV_DESCRIPTOR_SET_NULL             (UINT8_MAX - 4)
@@ -2086,7 +2092,6 @@ enum anv_pipe_bits {
    ANV_PIPE_STATE_CACHE_INVALIDATE_BIT | \
    ANV_PIPE_CONSTANT_CACHE_INVALIDATE_BIT | \
    ANV_PIPE_VF_CACHE_INVALIDATE_BIT | \
-   ANV_PIPE_HDC_PIPELINE_FLUSH_BIT | \
    ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT | \
    ANV_PIPE_INSTRUCTION_CACHE_INVALIDATE_BIT | \
    ANV_PIPE_AUX_TABLE_INVALIDATE_BIT)
@@ -2104,6 +2109,7 @@ anv_pipe_flush_bits_for_access_flags(struct anv_device *device,
       switch ((VkAccessFlags2)BITFIELD64_BIT(b)) {
       case VK_ACCESS_2_SHADER_WRITE_BIT:
       case VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT:
+      case VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR:
          /* We're transitioning a buffer that was previously used as write
           * destination through the data port. To make its content available
           * to future operations, flush the hdc pipeline.
@@ -2672,6 +2678,15 @@ struct anv_cmd_buffer {
    uint32_t                                     total_batch_size;
 
    /**
+    * A vector of anv_bo pointers for chunks of memory used by the command
+    * buffer that are too large to be allocated through dynamic_state_stream.
+    * This is the case for large enough acceleration structures.
+    *
+    * initialized by anv_cmd_buffer_init_batch_bo_chain()
+    */
+   struct u_vector                              dynamic_bos;
+
+   /**
     *
     */
    struct u_trace                               trace;
@@ -2725,6 +2740,30 @@ anv_cmd_buffer_alloc_surface_state(struct anv_cmd_buffer *cmd_buffer);
 struct anv_state
 anv_cmd_buffer_alloc_dynamic_state(struct anv_cmd_buffer *cmd_buffer,
                                    uint32_t size, uint32_t alignment);
+
+/**
+ * A allocation tied to a command buffer.
+ *
+ * Don't use anv_cmd_alloc::address::map to write memory from userspace, use
+ * anv_cmd_alloc::map instead.
+ */
+struct anv_cmd_alloc {
+   struct anv_address  address;
+   void               *map;
+   size_t              size;
+};
+
+#define ANV_EMPTY_ALLOC ((struct anv_cmd_alloc) { .map = NULL, .size = 0 })
+
+static inline bool
+anv_cmd_alloc_is_empty(struct anv_cmd_alloc alloc)
+{
+   return alloc.size == 0;
+}
+
+struct anv_cmd_alloc
+anv_cmd_buffer_alloc_space(struct anv_cmd_buffer *cmd_buffer,
+                           size_t size, uint32_t alignment);
 
 VkResult
 anv_cmd_buffer_new_binding_table_block(struct anv_cmd_buffer *cmd_buffer);
@@ -2799,9 +2838,12 @@ struct anv_pipeline_bind_map {
 
    uint32_t surface_count;
    uint32_t sampler_count;
+   uint16_t kernel_args_size;
+   uint16_t kernel_arg_count;
 
    struct anv_pipeline_binding *                surface_to_descriptor;
    struct anv_pipeline_binding *                sampler_to_descriptor;
+   struct brw_kernel_arg_desc *                 kernel_args;
 
    struct anv_push_range                        push_ranges[4];
 };
@@ -2987,6 +3029,9 @@ struct anv_ray_tracing_pipeline {
     * client has requested a dynamic stack size.
     */
    uint32_t                                     stack_size;
+
+   /* Maximum scratch size for all shaders in this pipeline. */
+   uint32_t                                     scratch_size;
 };
 
 #define ANV_DECL_PIPELINE_DOWNCAST(pipe_type, pipe_enum)             \
@@ -3096,6 +3141,24 @@ void
 anv_pipeline_finish(struct anv_pipeline *pipeline,
                     struct anv_device *device,
                     const VkAllocationCallbacks *pAllocator);
+
+struct anv_kernel_arg {
+   bool is_ptr;
+   uint16_t size;
+
+   union {
+      uint64_t u64;
+      void *ptr;
+   };
+};
+
+struct anv_kernel {
+#ifndef NDEBUG
+   const char *name;
+#endif
+   struct anv_shader_bin *bin;
+   const struct intel_l3_config *l3_config;
+};
 
 struct anv_format_plane {
    enum isl_format isl_format:16;
@@ -3297,6 +3360,11 @@ struct anv_image {
     * VK_IMAGE_CREATE_DISJOINT_BIT.
     */
    bool disjoint;
+
+   /**
+    * Image is a WSI image
+    */
+   bool from_wsi;
 
    /**
     * Image was imported from an struct AHardwareBuffer.  We have to delay
@@ -4012,9 +4080,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(anv_descriptor_set, base, VkDescriptorSet,
 VK_DEFINE_NONDISP_HANDLE_CASTS(anv_descriptor_set_layout, base,
                                VkDescriptorSetLayout,
                                VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT)
-VK_DEFINE_NONDISP_HANDLE_CASTS(anv_descriptor_update_template, base,
-                               VkDescriptorUpdateTemplate,
-                               VK_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(anv_device_memory, base, VkDeviceMemory,
                                VK_OBJECT_TYPE_DEVICE_MEMORY)
 VK_DEFINE_NONDISP_HANDLE_CASTS(anv_event, base, VkEvent, VK_OBJECT_TYPE_EVENT)
@@ -4073,6 +4138,10 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(anv_performance_configuration_intel, base,
 #  define genX(x) gfx125_##x
 #  include "anv_genX.h"
 #  undef genX
+#endif
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif /* ANV_PRIVATE_H */

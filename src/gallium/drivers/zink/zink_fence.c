@@ -28,6 +28,7 @@
 #include "zink_resource.h"
 #include "zink_screen.h"
 
+#include "util/os_file.h"
 #include "util/set.h"
 #include "util/u_memory.h"
 
@@ -36,7 +37,8 @@ destroy_fence(struct zink_screen *screen, struct zink_tc_fence *mfence)
 {
    mfence->fence = NULL;
    tc_unflushed_batch_token_reference(&mfence->tc_token, NULL);
-   VKSCR(DestroySemaphore)(screen->dev, mfence->sem, NULL);
+   if (mfence->sem)
+      VKSCR(DestroySemaphore)(screen->dev, mfence->sem, NULL);
    FREE(mfence);
 }
 
@@ -224,6 +226,32 @@ fence_finish(struct pipe_screen *pscreen, struct pipe_context *pctx,
                             timeout_ns);
 }
 
+static int
+fence_get_fd(struct pipe_screen *pscreen, struct pipe_fence_handle *pfence)
+{
+   struct zink_screen *screen = zink_screen(pscreen);
+   if (screen->device_lost)
+      return -1;
+
+   struct zink_tc_fence *mfence = (struct zink_tc_fence *)pfence;
+   if (!mfence->sem)
+      return -1;
+
+   const VkSemaphoreGetFdInfoKHR sgfi = {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR,
+      .semaphore = mfence->sem,
+      .handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT,
+   };
+   int fd = -1;
+   VkResult result = VKSCR(GetSemaphoreFdKHR)(screen->dev, &sgfi, &fd);
+   if (!zink_screen_handle_vkresult(screen, result)) {
+      mesa_loge("ZINK: vkGetSemaphoreFdKHR failed (%s)", vk_Result_to_str(result));
+      return -1;
+   }
+
+   return fd;
+}
+
 void
 zink_fence_server_signal(struct pipe_context *pctx, struct pipe_fence_handle *pfence)
 {
@@ -254,49 +282,66 @@ zink_fence_server_sync(struct pipe_context *pctx, struct pipe_fence_handle *pfen
    VkPipelineStageFlags flag = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
    util_dynarray_append(&ctx->batch.state->wait_semaphores, VkSemaphore, mfence->sem);
    util_dynarray_append(&ctx->batch.state->wait_semaphore_stages, VkPipelineStageFlags, flag);
+
+   /* transfer the external wait sempahore ownership to the next submit */
+   mfence->sem = VK_NULL_HANDLE;
 }
 
 void
 zink_create_fence_fd(struct pipe_context *pctx, struct pipe_fence_handle **pfence, int fd, enum pipe_fd_type type)
 {
    struct zink_screen *screen = zink_screen(pctx->screen);
-   VkResult ret = VK_ERROR_UNKNOWN;
-   VkSemaphoreCreateInfo sci = {
-      VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-      NULL,
-      0
-   };
+   VkResult result;
+
+   assert(fd >= 0);
+
    struct zink_tc_fence *mfence = zink_create_tc_fence();
-   VkExternalSemaphoreHandleTypeFlagBits flags[] = {
+   if (!mfence)
+      goto fail_tc_fence_create;
+
+   const VkSemaphoreCreateInfo sci = {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+   };
+   result = VKSCR(CreateSemaphore)(screen->dev, &sci, NULL, &mfence->sem);
+   if (result != VK_SUCCESS) {
+      mesa_loge("ZINK: vkCreateSemaphore failed (%s)", vk_Result_to_str(result));
+      goto fail_sem_create;
+   }
+
+   int dup_fd = os_dupfd_cloexec(fd);
+   if (dup_fd < 0)
+      goto fail_fd_dup;
+
+   static const VkExternalSemaphoreHandleTypeFlagBits flags[] = {
       [PIPE_FD_TYPE_NATIVE_SYNC] = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT,
       [PIPE_FD_TYPE_SYNCOBJ] = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT,
    };
-   VkImportSemaphoreFdInfoKHR sdi = {0};
    assert(type < ARRAY_SIZE(flags));
 
-   *pfence = NULL;
-
-   VkResult result = VKSCR(CreateSemaphore)(screen->dev, &sci, NULL, &mfence->sem);
-   if (result != VK_SUCCESS) {
-      mesa_loge("ZINK: vkCreateSemaphore failed (%s)", vk_Result_to_str(result));
-      FREE(mfence);
-      return;
+   const VkImportSemaphoreFdInfoKHR sdi = {
+      .sType = VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_FD_INFO_KHR,
+      .semaphore = mfence->sem,
+      .flags = VK_SEMAPHORE_IMPORT_TEMPORARY_BIT,
+      .handleType = flags[type],
+      .fd = dup_fd,
+   };
+   result = VKSCR(ImportSemaphoreFdKHR)(screen->dev, &sdi);
+   if (!zink_screen_handle_vkresult(screen, result)) {
+      mesa_loge("ZINK: vkImportSemaphoreFdKHR failed (%s)", vk_Result_to_str(result));
+      goto fail_sem_import;
    }
 
-   sdi.sType = VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_FD_INFO_KHR;
-   sdi.semaphore = mfence->sem;
-   sdi.handleType = flags[type];
-   sdi.fd = fd;
-   ret = VKSCR(ImportSemaphoreFdKHR)(screen->dev, &sdi);
-
-   if (!zink_screen_handle_vkresult(screen, ret))
-      goto fail;
    *pfence = (struct pipe_fence_handle *)mfence;
    return;
 
-fail:
+fail_sem_import:
+   close(dup_fd);
+fail_fd_dup:
    VKSCR(DestroySemaphore)(screen->dev, mfence->sem, NULL);
+fail_sem_create:
    FREE(mfence);
+fail_tc_fence_create:
+   *pfence = NULL;
 }
 
 #ifdef _WIN32
@@ -348,4 +393,5 @@ zink_screen_fence_init(struct pipe_screen *pscreen)
 {
    pscreen->fence_reference = fence_reference;
    pscreen->fence_finish = fence_finish;
+   pscreen->fence_get_fd = fence_get_fd;
 }

@@ -1826,21 +1826,19 @@ emit_intrinsic_barycentric(struct ir3_context *ctx, nir_intrinsic_instr *intr,
 {
    gl_system_value sysval = nir_intrinsic_barycentric_sysval(intr);
 
-   if (!ctx->so->key.msaa) {
+   if (!ctx->so->key.msaa && ctx->compiler->gen < 6) {
       switch (sysval) {
       case SYSTEM_VALUE_BARYCENTRIC_PERSP_SAMPLE:
          sysval = SYSTEM_VALUE_BARYCENTRIC_PERSP_PIXEL;
          break;
       case SYSTEM_VALUE_BARYCENTRIC_PERSP_CENTROID:
-         if (ctx->compiler->gen < 6)
-            sysval = SYSTEM_VALUE_BARYCENTRIC_PERSP_PIXEL;
+         sysval = SYSTEM_VALUE_BARYCENTRIC_PERSP_PIXEL;
          break;
       case SYSTEM_VALUE_BARYCENTRIC_LINEAR_SAMPLE:
          sysval = SYSTEM_VALUE_BARYCENTRIC_LINEAR_PIXEL;
          break;
       case SYSTEM_VALUE_BARYCENTRIC_LINEAR_CENTROID:
-         if (ctx->compiler->gen < 6)
-            sysval = SYSTEM_VALUE_BARYCENTRIC_LINEAR_PIXEL;
+         sysval = SYSTEM_VALUE_BARYCENTRIC_LINEAR_PIXEL;
          break;
       default:
          break;
@@ -2471,9 +2469,13 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
          kill = ir3_KILL(b, cond, 0);
       }
 
-      /* Side-effects should not be moved on a different side of the kill */
-      kill->barrier_class = IR3_BARRIER_IMAGE_W | IR3_BARRIER_BUFFER_W;
-      kill->barrier_conflict = IR3_BARRIER_IMAGE_W | IR3_BARRIER_BUFFER_W;
+      /* - Side-effects should not be moved on a different side of the kill
+       * - Instructions that depend on active fibers should not be reordered
+       */
+      kill->barrier_class = IR3_BARRIER_IMAGE_W | IR3_BARRIER_BUFFER_W |
+                            IR3_BARRIER_ACTIVE_FIBERS_W;
+      kill->barrier_conflict = IR3_BARRIER_IMAGE_W | IR3_BARRIER_BUFFER_W |
+                               IR3_BARRIER_ACTIVE_FIBERS_R;
       kill->srcs[0]->num = regid(REG_P0, 0);
       array_insert(ctx->ir, ctx->ir->predicates, kill);
 
@@ -2566,6 +2568,10 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
          array_insert(ctx->ir, ctx->ir->predicates, ballot);
          ctx->max_stack = MAX2(ctx->max_stack, ctx->stack + 1);
       }
+
+      ballot->barrier_class = IR3_BARRIER_ACTIVE_FIBERS_R;
+      ballot->barrier_conflict = IR3_BARRIER_ACTIVE_FIBERS_W;
+
       ir3_split_dest(ctx->block, dst, ballot, 0, components);
       break;
    }
@@ -4124,6 +4130,9 @@ setup_output(struct ir3_context *ctx, nir_intrinsic_instr *intr)
     */
    unsigned slot = io.location + (io.per_view ? 0 : offset);
 
+   if (io.per_view && offset > 0)
+      so->multi_pos_output = true;
+
    if (ctx->so->type == MESA_SHADER_FRAGMENT) {
       switch (slot) {
       case FRAG_RESULT_DEPTH:
@@ -4134,6 +4143,8 @@ setup_output(struct ir3_context *ctx, nir_intrinsic_instr *intr)
             so->color0_mrt = 1;
          } else {
             slot = FRAG_RESULT_DATA0 + io.dual_source_blend_index;
+            if (io.dual_source_blend_index > 0)
+               so->dual_src_blend = true;
          }
          break;
       case FRAG_RESULT_SAMPLE_MASK:
@@ -4144,6 +4155,8 @@ setup_output(struct ir3_context *ctx, nir_intrinsic_instr *intr)
          break;
       default:
          slot += io.dual_source_blend_index; /* For dual-src blend */
+         if (io.dual_source_blend_index > 0)
+            so->dual_src_blend = true;
          if (slot >= FRAG_RESULT_DATA0)
             break;
          ir3_context_error(ctx, "unknown FS output name: %s\n",

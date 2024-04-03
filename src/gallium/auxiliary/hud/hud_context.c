@@ -1276,6 +1276,9 @@ hud_parse_env_var(struct hud_context *hud, struct pipe_screen *screen,
       else if (strcmp(name, "API-thread-num-syncs") == 0) {
          hud_thread_counter_install(pane, name, HUD_COUNTER_SYNCS);
       }
+      else if (strcmp(name, "API-thread-num-batches") == 0) {
+         hud_thread_counter_install(pane, name, HUD_COUNTER_BATCHES);
+      }
       else if (strcmp(name, "main-thread-busy") == 0) {
          hud_thread_busy_install(pane, name, true);
       }
@@ -1440,8 +1443,7 @@ hud_parse_env_var(struct hud_context *hud, struct pipe_screen *screen,
          if (added && !list_is_empty(&pane->graph_list)) {
             struct hud_graph *graph;
             graph = list_entry(pane->graph_list.prev, struct hud_graph, head);
-            strncpy(graph->name, s, sizeof(graph->name)-1);
-            graph->name[sizeof(graph->name)-1] = 0;
+            snprintf(graph->name, sizeof(graph->name), "%s", s);
          }
       }
 

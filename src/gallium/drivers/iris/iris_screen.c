@@ -277,7 +277,6 @@ iris_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_COMPUTE_SHADER_DERIVATIVES:
    case PIPE_CAP_INVALIDATE_BUFFER:
    case PIPE_CAP_SURFACE_REINTERPRET_BLOCKS:
-   case PIPE_CAP_CS_DERIVED_SYSTEM_VALUES_SUPPORTED:
    case PIPE_CAP_TEXTURE_SHADOW_LOD:
    case PIPE_CAP_SHADER_SAMPLES_IDENTICAL:
    case PIPE_CAP_GL_SPIRV:
@@ -408,6 +407,9 @@ iris_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
        */
       return devinfo->ver >= 11;
 
+   case PIPE_CAP_QUERY_TIMESTAMP_BITS:
+      return TIMESTAMP_BITS;
+
    default:
       return u_pipe_screen_get_param_defaults(pscreen, param);
    }
@@ -501,9 +503,11 @@ iris_get_shader_param(struct pipe_screen *pscreen,
    case PIPE_SHADER_CAP_GLSL_16BIT_CONSTS:
       return 0;
    case PIPE_SHADER_CAP_MAX_TEXTURE_SAMPLERS:
+      return IRIS_MAX_SAMPLERS;
    case PIPE_SHADER_CAP_MAX_SAMPLER_VIEWS:
+      return IRIS_MAX_TEXTURES;
    case PIPE_SHADER_CAP_MAX_SHADER_IMAGES:
-      return IRIS_MAX_TEXTURE_SAMPLERS;
+      return IRIS_MAX_IMAGES;
    case PIPE_SHADER_CAP_MAX_SHADER_BUFFERS:
       return IRIS_MAX_ABOS + IRIS_MAX_SSBOS;
    case PIPE_SHADER_CAP_MAX_HW_ATOMIC_COUNTERS:
@@ -773,6 +777,19 @@ iris_init_identifier_bo(struct iris_screen *screen)
 struct pipe_screen *
 iris_screen_create(int fd, const struct pipe_screen_config *config)
 {
+   struct iris_screen *screen = rzalloc(NULL, struct iris_screen);
+   if (!screen)
+      return NULL;
+
+   if (!intel_get_device_info_from_fd(fd, &screen->devinfo))
+      return NULL;
+   screen->pci_id = screen->devinfo.pci_device_id;
+
+   p_atomic_set(&screen->refcount, 1);
+
+   if (screen->devinfo.ver < 8 || screen->devinfo.platform == INTEL_PLATFORM_CHV)
+      return NULL;
+
    /* Here are the i915 features we need for Iris (in chronological order) :
     *    - I915_PARAM_HAS_EXEC_NO_RELOC     (3.10)
     *    - I915_PARAM_HAS_EXEC_HANDLE_LUT   (3.10)
@@ -786,19 +803,6 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
       debug_error("Kernel is too old for Iris. Consider upgrading to kernel v4.16.\n");
       return NULL;
    }
-
-   struct iris_screen *screen = rzalloc(NULL, struct iris_screen);
-   if (!screen)
-      return NULL;
-
-   if (!intel_get_device_info_from_fd(fd, &screen->devinfo))
-      return NULL;
-   screen->pci_id = screen->devinfo.pci_device_id;
-
-   p_atomic_set(&screen->refcount, 1);
-
-   if (screen->devinfo.ver < 8 || screen->devinfo.platform == INTEL_PLATFORM_CHV)
-      return NULL;
 
    driParseConfigFiles(config->options, config->options_info, 0, "iris",
                        NULL, NULL, NULL, 0, NULL, 0);
@@ -825,7 +829,7 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
    screen->id = iris_bufmgr_create_screen_id(screen->bufmgr);
 
    screen->workaround_bo =
-      iris_bo_alloc(screen->bufmgr, "workaround", 4096, 1,
+      iris_bo_alloc(screen->bufmgr, "workaround", 4096, 4096,
                     IRIS_MEMZONE_OTHER, BO_ALLOC_NO_SUBALLOC);
    if (!screen->workaround_bo)
       return NULL;
@@ -843,6 +847,8 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
       driQueryOptionb(config->options, "sync_compile");
    screen->driconf.limit_trig_input_range =
       driQueryOptionb(config->options, "limit_trig_input_range");
+   screen->driconf.lower_depth_range_rate =
+      driQueryOptionf(config->options, "lower_depth_range_rate");
 
    screen->precompile = env_var_as_boolean("shader_precompile", true);
 

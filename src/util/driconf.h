@@ -335,6 +335,10 @@
    DRI_CONF_OPT_I(pp_jimenezmlaa_color, def, min, max, \
                   "Morphological anti-aliasing based on Jimenez' MLAA. 0 to disable, 8 for default quality. Color version, usable with 2d GL apps")
 
+#define DRI_CONF_PP_LOWER_DEPTH_RANGE_RATE() \
+   DRI_CONF_OPT_F(lower_depth_range_rate, 1.0, 0.0, 1.0, \
+                  "Lower depth range for fixing misrendering issues due to z coordinate float point interpolation accuracy")
+
 /**
  * \brief Performance-related options
  */
@@ -475,14 +479,6 @@
    DRI_CONF_OPT_B(force_sw_rendering_on_cpu, def, \
                   "If set to false, emulates software rendering on the requested device, else uses a software renderer.")
 
-/**
- * \brief radeonsi specific configuration options
- */
-
-#define DRI_CONF_RADEONSI_ZERO_ALL_VRAM_ALLOCS(def) \
-   DRI_CONF_OPT_B(radeonsi_zerovram, def, \
-                  "Zero all vram allocations")
-
 #define DRI_CONF_V3D_NONMSAA_TEXTURE_SIZE_LIMIT(def) \
    DRI_CONF_OPT_B(v3d_nonmsaa_texture_size_limit, def, \
                   "Report the non-MSAA-only texture size limit")
@@ -586,6 +582,10 @@
   DRI_CONF_OPT_B( \
       radv_flush_before_query_copy, def, \
       "Wait for timestamps to be written before a query copy command")
+
+#define DRI_CONF_RADV_ENABLE_UNIFIED_HEAP_ON_APU(def) \
+   DRI_CONF_OPT_B(radv_enable_unified_heap_on_apu, def, \
+                  "Enable an unified heap with DEVICE_LOCAL on integrated GPUs")
 
 /**
  * \brief ANV specific configuration options

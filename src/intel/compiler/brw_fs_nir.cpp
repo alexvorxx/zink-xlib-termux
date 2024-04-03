@@ -118,7 +118,7 @@ fs_visitor::nir_setup_uniforms()
        */
       uint32_t *param = brw_stage_prog_data_add_params(prog_data, 1);
       *param = BRW_PARAM_BUILTIN_SUBGROUP_ID;
-      subgroup_id = fs_reg(UNIFORM, uniforms++, BRW_REGISTER_TYPE_UD);
+      uniforms++;
    }
 }
 
@@ -757,7 +757,7 @@ fs_visitor::resolve_inot_sources(const fs_builder &bld, nir_alu_instr *instr,
          assert(!op[i].negate);
          op[i].negate = true;
       } else {
-         op[i] = resolve_source_modifiers(op[i]);
+         op[i] = resolve_source_modifiers(bld, op[i]);
       }
    }
 }
@@ -1273,8 +1273,8 @@ fs_visitor::nir_emit_alu(const fs_builder &bld, nir_alu_instr *instr,
       fs_reg tmp = bld.vgrf(result.type);
 
       if (devinfo->ver >= 8) {
-         op[0] = resolve_source_modifiers(op[0]);
-         op[1] = resolve_source_modifiers(op[1]);
+         op[0] = resolve_source_modifiers(bld, op[0]);
+         op[1] = resolve_source_modifiers(bld, op[1]);
       }
 
       /* AVG(x, y) - ((x ^ y) & 1) */
@@ -1522,7 +1522,7 @@ fs_visitor::nir_emit_alu(const fs_builder &bld, nir_alu_instr *instr,
                unreachable("impossible opcode");
             }
          }
-         op[0] = resolve_source_modifiers(op[0]);
+         op[0] = resolve_source_modifiers(bld, op[0]);
       }
       bld.NOT(result, op[0]);
       break;
@@ -2035,8 +2035,7 @@ fs_visitor::nir_emit_load_const(const fs_builder &bld,
 
    case 64:
       assert(devinfo->ver >= 7);
-      if (devinfo->ver == 7) {
-         /* We don't get 64-bit integer types until gfx8 */
+      if (!devinfo->has_64bit_int) {
          for (unsigned i = 0; i < instr->def.num_components; i++) {
             bld.MOV(retype(offset(reg, bld, i), BRW_REGISTER_TYPE_DF),
                     setup_imm_df(bld, instr->value[i].f64));
@@ -2337,11 +2336,10 @@ fs_visitor::emit_gs_control_data_bits(const fs_reg &vertex_count)
       sources[i] = this->control_data_bits;
 
    fs_reg srcs[URB_LOGICAL_NUM_SRCS];
-   srcs[URB_LOGICAL_SRC_HANDLE] = fs_reg(retype(brw_vec8_grf(1, 0), BRW_REGISTER_TYPE_UD));
+   srcs[URB_LOGICAL_SRC_HANDLE] = gs_payload().urb_handles;
    srcs[URB_LOGICAL_SRC_PER_SLOT_OFFSETS] = per_slot_offset;
    srcs[URB_LOGICAL_SRC_CHANNEL_MASK] = channel_mask;
-   srcs[URB_LOGICAL_SRC_DATA] = fs_reg(VGRF, alloc.allocate(length),
-                                       BRW_REGISTER_TYPE_F);
+   srcs[URB_LOGICAL_SRC_DATA] = bld.vgrf(BRW_REGISTER_TYPE_F, length);
    abld.LOAD_PAYLOAD(srcs[URB_LOGICAL_SRC_DATA], sources, length, 0);
 
    fs_inst *inst = abld.emit(SHADER_OPCODE_URB_WRITE_LOGICAL, reg_undef,
@@ -2522,8 +2520,7 @@ fs_visitor::emit_gs_input_load(const fs_reg &dst,
    /* Resort to the pull model.  Ensure the VUE handles are provided. */
    assert(gs_prog_data->base.include_vue_handles);
 
-   unsigned first_icp_handle = gs_prog_data->include_primitive_id ? 3 : 2;
-   fs_reg start = retype(brw_vec8_grf(first_icp_handle, 0), BRW_REGISTER_TYPE_UD);
+   fs_reg start = gs_payload().icp_handle_start;
    fs_reg icp_handle = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
 
    if (gs_prog_data->invocations == 1) {
@@ -2542,13 +2539,12 @@ fs_visitor::emit_gs_input_load(const fs_reg &dst,
           * by 32 (shifting by 5), and add the two together.  This is
           * the final indirect byte offset.
           */
-         fs_reg sequence = bld.vgrf(BRW_REGISTER_TYPE_UW, 1);
+         fs_reg sequence =
+            nir_system_values[SYSTEM_VALUE_SUBGROUP_INVOCATION];
          fs_reg channel_offsets = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
          fs_reg vertex_offset_bytes = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
          fs_reg icp_offset_bytes = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
 
-         /* sequence = <7, 6, 5, 4, 3, 2, 1, 0> */
-         bld.MOV(sequence, fs_reg(brw_imm_v(0x76543210)));
          /* channel_offsets = 4 * sequence = <28, 24, 20, 16, 12, 8, 4, 0> */
          bld.SHL(channel_offsets, sequence, brw_imm_ud(2u));
          /* Convert vertex_index to bytes (multiply by 32) */
@@ -2716,8 +2712,7 @@ fs_visitor::get_tcs_single_patch_icp_handle(const fs_builder &bld,
    const nir_src &vertex_src = instr->src[0];
    nir_intrinsic_instr *vertex_intrin = nir_src_as_intrinsic(vertex_src);
 
-   /* ICP Handles start in r1. */
-   fs_reg start = retype(brw_vec8_grf(1, 0), BRW_REGISTER_TYPE_UD);
+   const fs_reg start = tcs_payload().icp_handle_start;
 
    fs_reg icp_handle;
 
@@ -2759,11 +2754,9 @@ fs_visitor::get_tcs_multi_patch_icp_handle(const fs_builder &bld,
                                            nir_intrinsic_instr *instr)
 {
    struct brw_tcs_prog_key *tcs_key = (struct brw_tcs_prog_key *) key;
-   struct brw_tcs_prog_data *tcs_prog_data = brw_tcs_prog_data(prog_data);
    const nir_src &vertex_src = instr->src[0];
 
-   fs_reg start = retype(brw_vec8_grf(tcs_prog_data->include_primitive_id ? 3 : 2, 0),
-                         BRW_REGISTER_TYPE_UD);
+   const fs_reg start = tcs_payload().icp_handle_start;
 
    if (nir_src_is_const(vertex_src))
       return byte_offset(start, nir_src_as_uint(vertex_src) * REG_SIZE);
@@ -2780,13 +2773,11 @@ fs_visitor::get_tcs_multi_patch_icp_handle(const fs_builder &bld,
     * the final indirect byte offset.
     */
    fs_reg icp_handle = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
-   fs_reg sequence = bld.vgrf(BRW_REGISTER_TYPE_UW, 1);
+   fs_reg sequence = nir_system_values[SYSTEM_VALUE_SUBGROUP_INVOCATION];
    fs_reg channel_offsets = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
    fs_reg vertex_offset_bytes = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
    fs_reg icp_offset_bytes = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
 
-   /* sequence = <7, 6, 5, 4, 3, 2, 1, 0> */
-   bld.MOV(sequence, fs_reg(brw_imm_v(0x76543210)));
    /* channel_offsets = 4 * sequence = <28, 24, 20, 16, 12, 8, 4, 0> */
    bld.SHL(channel_offsets, sequence, brw_imm_ud(2u));
    /* Convert vertex_index to bytes (multiply by 32) */
@@ -2805,19 +2796,6 @@ fs_visitor::get_tcs_multi_patch_icp_handle(const fs_builder &bld,
    return icp_handle;
 }
 
-struct brw_reg
-fs_visitor::get_tcs_output_urb_handle()
-{
-   struct brw_vue_prog_data *vue_prog_data = brw_vue_prog_data(prog_data);
-
-   if (vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_SINGLE_PATCH) {
-      return retype(brw_vec1_grf(0, 0), BRW_REGISTER_TYPE_UD);
-   } else {
-      assert(vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_MULTI_PATCH);
-      return retype(brw_vec8_grf(1, 0), BRW_REGISTER_TYPE_UD);
-   }
-}
-
 void
 fs_visitor::nir_emit_tcs_intrinsic(const fs_builder &bld,
                                    nir_intrinsic_instr *instr)
@@ -2827,17 +2805,13 @@ fs_visitor::nir_emit_tcs_intrinsic(const fs_builder &bld,
    struct brw_tcs_prog_data *tcs_prog_data = brw_tcs_prog_data(prog_data);
    struct brw_vue_prog_data *vue_prog_data = &tcs_prog_data->base;
 
-   bool multi_patch =
-      vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_MULTI_PATCH;
-
    fs_reg dst;
    if (nir_intrinsic_infos[instr->intrinsic].has_dest)
       dst = get_nir_dest(instr->dest);
 
    switch (instr->intrinsic) {
    case nir_intrinsic_load_primitive_id:
-      bld.MOV(dst, fs_reg(multi_patch ? brw_vec8_grf(2, 0)
-                                      : brw_vec1_grf(0, 1)));
+      bld.MOV(dst, tcs_payload().primitive_id);
       break;
    case nir_intrinsic_load_invocation_id:
       bld.MOV(retype(dst, invocation_id.type), invocation_id);
@@ -2850,43 +2824,7 @@ fs_visitor::nir_emit_tcs_intrinsic(const fs_builder &bld,
    case nir_intrinsic_control_barrier: {
       if (tcs_prog_data->instances == 1)
          break;
-
-      fs_reg m0 = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
-      fs_reg m0_2 = component(m0, 2);
-
-      const fs_builder chanbld = bld.exec_all().group(1, 0);
-
-      /* Zero the message header */
-      bld.exec_all().MOV(m0, brw_imm_ud(0u));
-
-      if (devinfo->verx10 >= 125) {
-         /* From BSpec: 54006, mov r0.2[31:24] into m0.2[31:24] and m0.2[23:16] */
-         fs_reg m0_10ub = component(retype(m0, BRW_REGISTER_TYPE_UB), 10);
-         fs_reg r0_11ub =
-            stride(suboffset(retype(brw_vec1_grf(0, 0), BRW_REGISTER_TYPE_UB), 11),
-                   0, 1, 0);
-         bld.exec_all().group(2, 0).MOV(m0_10ub, r0_11ub);
-      } else if (devinfo->ver >= 11) {
-         chanbld.AND(m0_2, retype(brw_vec1_grf(0, 2), BRW_REGISTER_TYPE_UD),
-                     brw_imm_ud(INTEL_MASK(30, 24)));
-
-         /* Set the Barrier Count and the enable bit */
-         chanbld.OR(m0_2, m0_2,
-                    brw_imm_ud(tcs_prog_data->instances << 8 | (1 << 15)));
-      } else {
-         /* Copy "Barrier ID" from r0.2, bits 16:13 */
-         chanbld.AND(m0_2, retype(brw_vec1_grf(0, 2), BRW_REGISTER_TYPE_UD),
-                     brw_imm_ud(INTEL_MASK(16, 13)));
-
-         /* Shift it up to bits 27:24. */
-         chanbld.SHL(m0_2, m0_2, brw_imm_ud(11));
-
-         /* Set the Barrier Count and the enable bit */
-         chanbld.OR(m0_2, m0_2,
-                    brw_imm_ud(tcs_prog_data->instances << 9 | (1 << 15)));
-      }
-
-      bld.emit(SHADER_OPCODE_BARRIER, bld.null_reg_ud(), m0);
+      emit_tcs_barrier();
       break;
    }
 
@@ -2900,9 +2838,12 @@ fs_visitor::nir_emit_tcs_intrinsic(const fs_builder &bld,
       unsigned imm_offset = nir_intrinsic_base(instr);
       fs_inst *inst;
 
-      fs_reg icp_handle =
-         multi_patch ? get_tcs_multi_patch_icp_handle(bld, instr)
-                     : get_tcs_single_patch_icp_handle(bld, instr);
+      const bool multi_patch =
+         vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_MULTI_PATCH;
+
+      fs_reg icp_handle = multi_patch ?
+         get_tcs_multi_patch_icp_handle(bld, instr) :
+         get_tcs_single_patch_icp_handle(bld, instr);
 
       /* We can only read two double components with each URB read, so
        * we send two read messages in that case, each one loading up to
@@ -2974,15 +2915,13 @@ fs_visitor::nir_emit_tcs_intrinsic(const fs_builder &bld,
       unsigned imm_offset = nir_intrinsic_base(instr);
       unsigned first_component = nir_intrinsic_component(instr);
 
-      struct brw_reg output_handles = get_tcs_output_urb_handle();
-
       fs_inst *inst;
       if (indirect_offset.file == BAD_FILE) {
          /* This MOV replicates the output handle to all enabled channels
           * is SINGLE_PATCH mode.
           */
          fs_reg patch_handle = bld.vgrf(BRW_REGISTER_TYPE_UD, 1);
-         bld.MOV(patch_handle, output_handles);
+         bld.MOV(patch_handle, tcs_payload().patch_urb_output);
 
          {
             fs_reg srcs[URB_LOGICAL_NUM_SRCS];
@@ -3010,7 +2949,7 @@ fs_visitor::nir_emit_tcs_intrinsic(const fs_builder &bld,
       } else {
          /* Indirect indexing - use per-slot offsets as well. */
          fs_reg srcs[URB_LOGICAL_NUM_SRCS];
-         srcs[URB_LOGICAL_SRC_HANDLE] = output_handles;
+         srcs[URB_LOGICAL_SRC_HANDLE] = tcs_payload().patch_urb_output;
          srcs[URB_LOGICAL_SRC_PER_SLOT_OFFSETS] = indirect_offset;
 
          if (first_component != 0) {
@@ -3072,11 +3011,10 @@ fs_visitor::nir_emit_tcs_intrinsic(const fs_builder &bld,
       const unsigned length = num_components + first_component;
 
       fs_reg srcs[URB_LOGICAL_NUM_SRCS];
-      srcs[URB_LOGICAL_SRC_HANDLE] = get_tcs_output_urb_handle();
+      srcs[URB_LOGICAL_SRC_HANDLE] = tcs_payload().patch_urb_output;
       srcs[URB_LOGICAL_SRC_PER_SLOT_OFFSETS] = indirect_offset;
       srcs[URB_LOGICAL_SRC_CHANNEL_MASK] = mask_reg;
-      srcs[URB_LOGICAL_SRC_DATA] = fs_reg(VGRF, alloc.allocate(length),
-                                          BRW_REGISTER_TYPE_F);
+      srcs[URB_LOGICAL_SRC_DATA] = bld.vgrf(BRW_REGISTER_TYPE_F, length);
       bld.LOAD_PAYLOAD(srcs[URB_LOGICAL_SRC_DATA], sources, length, 0);
 
       fs_inst *inst = bld.emit(SHADER_OPCODE_URB_WRITE_LOGICAL, reg_undef,
@@ -3105,13 +3043,12 @@ fs_visitor::nir_emit_tes_intrinsic(const fs_builder &bld,
 
    switch (instr->intrinsic) {
    case nir_intrinsic_load_primitive_id:
-      bld.MOV(dest, fs_reg(brw_vec1_grf(0, 1)));
+      bld.MOV(dest, tes_payload().primitive_id);
       break;
+
    case nir_intrinsic_load_tess_coord:
-      /* gl_TessCoord is part of the payload in g1-3 */
-      for (unsigned i = 0; i < 3; i++) {
-         bld.MOV(offset(dest, bld, i), fs_reg(brw_vec8_grf(1 + i, 0)));
-      }
+      for (unsigned i = 0; i < 3; i++)
+         bld.MOV(offset(dest, bld, i), tes_payload().coords[i]);
       break;
 
    case nir_intrinsic_load_input:
@@ -3140,8 +3077,7 @@ fs_visitor::nir_emit_tes_intrinsic(const fs_builder &bld,
          } else {
             /* Replicate the patch handle to all enabled channels */
             fs_reg srcs[URB_LOGICAL_NUM_SRCS];
-            srcs[URB_LOGICAL_SRC_HANDLE] =
-               retype(brw_vec1_grf(0, 0), BRW_REGISTER_TYPE_UD);
+            srcs[URB_LOGICAL_SRC_HANDLE] = tes_payload().patch_urb_input;
 
             if (first_component != 0) {
                unsigned read_components =
@@ -3172,8 +3108,7 @@ fs_visitor::nir_emit_tes_intrinsic(const fs_builder &bld,
          unsigned num_components = instr->num_components;
 
          fs_reg srcs[URB_LOGICAL_NUM_SRCS];
-         srcs[URB_LOGICAL_SRC_HANDLE] =
-            retype(brw_vec1_grf(0, 0), BRW_REGISTER_TYPE_UD);
+         srcs[URB_LOGICAL_SRC_HANDLE] = tes_payload().patch_urb_input;
          srcs[URB_LOGICAL_SRC_PER_SLOT_OFFSETS] = indirect_offset;
 
          if (first_component != 0) {
@@ -3218,8 +3153,7 @@ fs_visitor::nir_emit_gs_intrinsic(const fs_builder &bld,
    case nir_intrinsic_load_primitive_id:
       assert(stage == MESA_SHADER_GEOMETRY);
       assert(brw_gs_prog_data(prog_data)->include_primitive_id);
-      bld.MOV(retype(dest, BRW_REGISTER_TYPE_UD),
-              retype(fs_reg(brw_vec8_grf(2, 0)), BRW_REGISTER_TYPE_UD));
+      bld.MOV(retype(dest, BRW_REGISTER_TYPE_UD), gs_payload().primitive_id);
       break;
 
    case nir_intrinsic_load_input:
@@ -3827,12 +3761,7 @@ fs_visitor::nir_emit_cs_intrinsic(const fs_builder &bld,
       break;
 
    case nir_intrinsic_load_subgroup_id:
-      if (devinfo->verx10 >= 125)
-         bld.AND(retype(dest, BRW_REGISTER_TYPE_UD),
-                 retype(brw_vec1_grf(0, 2), BRW_REGISTER_TYPE_UD),
-                 brw_imm_ud(INTEL_MASK(7, 0)));
-      else
-         bld.MOV(retype(dest, BRW_REGISTER_TYPE_UD), subgroup_id);
+      cs_payload().load_subgroup_id(bld, dest);
       break;
 
    case nir_intrinsic_load_local_invocation_id:
@@ -4021,6 +3950,7 @@ fs_visitor::nir_emit_bs_intrinsic(const fs_builder &bld,
                                   nir_intrinsic_instr *instr)
 {
    assert(brw_shader_stage_is_bindless(stage));
+   const bs_thread_payload &payload = bs_payload();
 
    fs_reg dest;
    if (nir_intrinsic_infos[instr->intrinsic].has_dest)
@@ -4028,19 +3958,16 @@ fs_visitor::nir_emit_bs_intrinsic(const fs_builder &bld,
 
    switch (instr->intrinsic) {
    case nir_intrinsic_load_btd_global_arg_addr_intel:
-      bld.MOV(dest, retype(brw_vec1_grf(2, 0), dest.type));
+      bld.MOV(dest, retype(payload.global_arg_ptr, dest.type));
       break;
 
    case nir_intrinsic_load_btd_local_arg_addr_intel:
-      bld.MOV(dest, retype(brw_vec1_grf(2, 2), dest.type));
+      bld.MOV(dest, retype(payload.local_arg_ptr, dest.type));
       break;
 
-   case nir_intrinsic_load_btd_shader_type_intel: {
-      fs_reg ud_dest = retype(dest, BRW_REGISTER_TYPE_UD);
-      bld.MOV(ud_dest, retype(brw_vec1_grf(0, 3), ud_dest.type));
-      bld.AND(ud_dest, ud_dest, brw_imm_ud(0xf));
+   case nir_intrinsic_load_btd_shader_type_intel:
+      payload.load_shader_type(bld, dest);
       break;
-   }
 
    default:
       nir_emit_intrinsic(bld, instr);

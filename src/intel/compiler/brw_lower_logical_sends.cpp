@@ -151,7 +151,7 @@ static void
 lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
                             const struct brw_wm_prog_data *prog_data,
                             const brw_wm_prog_key *key,
-                            const fs_visitor::thread_payload &payload)
+                            const fs_thread_payload &payload)
 {
    assert(inst->src[FB_WRITE_LOGICAL_SRC_COMPONENTS].file == IMM);
    const intel_device_info *devinfo = bld.shader->devinfo;
@@ -1068,6 +1068,11 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
       }
 
       bld.MOV(sources[length++], min_lod);
+
+      /* Wa_14014595444: Populate MLOD as parameter 5 (twice). */
+       if (devinfo->verx10 == 125 && op == FS_OPCODE_TXB &&
+          !inst->shadow_compare)
+         bld.MOV(sources[length++], min_lod);
    }
 
    const fs_reg src_payload =
@@ -1983,7 +1988,7 @@ emit_a64_oword_block_header(const fs_builder &bld, const fs_reg &addr)
       /* We can't do stride 1 with the UNIFORM file, it requires stride 0 */
       expanded_addr = ubld.vgrf(BRW_REGISTER_TYPE_UQ);
       expanded_addr.stride = 0;
-      ubld.MOV(expanded_addr, addr);
+      ubld.MOV(expanded_addr, retype(addr, BRW_REGISTER_TYPE_UQ));
    }
 
    fs_reg header = ubld.vgrf(BRW_REGISTER_TYPE_UD);
@@ -2676,7 +2681,7 @@ fs_visitor::lower_logical_sends()
          lower_fb_write_logical_send(ibld, inst,
                                      brw_wm_prog_data(prog_data),
                                      (const brw_wm_prog_key *)key,
-                                     payload);
+                                     fs_payload());
          break;
 
       case FS_OPCODE_FB_READ_LOGICAL:

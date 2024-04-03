@@ -33,9 +33,12 @@ blit_resolve(struct zink_context *ctx, const struct pipe_blit_info *info, bool *
        info->alpha_blend)
       return false;
 
-   if (info->src.box.width != info->dst.box.width ||
-       info->src.box.height != info->dst.box.height ||
-       info->src.box.depth != info->dst.box.depth)
+   if (info->src.box.width < 0 ||
+       info->dst.box.width < 0 ||
+       info->src.box.height < 0 ||
+       info->dst.box.height < 0 ||
+       info->src.box.depth < 0 ||
+       info->dst.box.depth < 0)
       return false;
 
    if (info->render_condition_enable &&
@@ -281,10 +284,6 @@ zink_blit(struct pipe_context *pctx,
    const struct util_format_description *src_desc = util_format_description(info->src.format);
    const struct util_format_description *dst_desc = util_format_description(info->dst.format);
 
-   if (info->render_condition_enable &&
-       unlikely(!zink_screen(pctx->screen)->info.have_EXT_conditional_rendering && !zink_check_conditional_render(ctx)))
-      return;
-
    struct zink_resource *src = zink_resource(info->src.resource);
    struct zink_resource *dst = zink_resource(info->dst.resource);
    bool needs_present_readback = false;
@@ -394,7 +393,7 @@ zink_blit_begin(struct zink_context *ctx, enum zink_blit_flags flags)
       util_blitter_save_blend(ctx->blitter, ctx->gfx_pipeline_state.blend_state);
       util_blitter_save_depth_stencil_alpha(ctx->blitter, ctx->dsa_state);
       util_blitter_save_stencil_ref(ctx->blitter, &ctx->stencil_ref);
-      util_blitter_save_sample_mask(ctx->blitter, ctx->gfx_pipeline_state.sample_mask, 0);
+      util_blitter_save_sample_mask(ctx->blitter, ctx->gfx_pipeline_state.sample_mask, ctx->gfx_pipeline_state.min_samples + 1);
       util_blitter_save_scissor(ctx->blitter, ctx->vp_state.scissor_states);
       /* also util_blitter_save_window_rectangles when we have that? */
 

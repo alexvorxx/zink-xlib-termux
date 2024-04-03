@@ -377,7 +377,8 @@ vn_fix_graphics_pipeline_create_info(
       } has_dynamic_state = { 0 };
 
       if (info->pDynamicState) {
-         for (uint32_t j = 0; j < info->pDynamicState->dynamicStateCount; j++) {
+         for (uint32_t j = 0; j < info->pDynamicState->dynamicStateCount;
+              j++) {
             switch (info->pDynamicState->pDynamicStates[j]) {
             case VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE:
                has_dynamic_state.rasterizer_discard_enable = true;
@@ -409,8 +410,8 @@ vn_fix_graphics_pipeline_create_info(
 
       /* TODO: Ignore VkPipelineRenderingCreateInfo when not using dynamic
        * rendering. This requires either a deep rewrite of
-       * VkGraphicsPipelineCreateInfo::pNext or a fix in the generated protocol
-       * code.
+       * VkGraphicsPipelineCreateInfo::pNext or a fix in the generated
+       * protocol code.
        *
        * The Vulkan spec (1.3.223) says about VkPipelineRenderingCreateInfo:
        *    If a graphics pipeline is created with a valid VkRenderPass,
@@ -427,9 +428,9 @@ vn_fix_graphics_pipeline_create_info(
        *
        * Without VK_EXT_graphics_pipeline_library, most states are
        * unconditionally included in the pipeline. Despite that, we still
-       * reference the state bools in the ignore rules because (a) it makes the
-       * ignore condition easier to validate against the text of the relevant
-       * VUs; and (b) it makes it easier to enable
+       * reference the state bools in the ignore rules because (a) it makes
+       * the ignore condition easier to validate against the text of the
+       * relevant VUs; and (b) it makes it easier to enable
        * VK_EXT_graphics_pipeline_library because we won't need to carefully
        * revisit the text of each VU to untangle the missing pipeline state
        * bools.
@@ -456,9 +457,9 @@ vn_fix_graphics_pipeline_create_info(
        * The Vulkan spec (1.3.223) says:
        *    If the value of [...]rasterizerDiscardEnable in the
        *    pre-rasterization shader state is VK_FALSE or the
-       *    VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE dynamic state is enabled
-       *    fragment shader state and fragment output interface state is
-       *    included in a complete graphics pipeline.
+       *    VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE dynamic state is
+       *    enabled fragment shader state and fragment output interface state
+       *    is included in a complete graphics pipeline.
        */
       const bool has_raster_state =
          has_dynamic_state.rasterizer_discard_enable ||
@@ -585,9 +586,11 @@ vn_fix_graphics_pipeline_create_info(
 
       /* Ignore basePipelineHandle?
        *    VUID-VkGraphicsPipelineCreateInfo-flags-00722
+       *    VUID-VkGraphicsPipelineCreateInfo-flags-00724
+       *    VUID-VkGraphicsPipelineCreateInfo-flags-00725
        */
-      if (!(info->flags & VK_PIPELINE_CREATE_DERIVATIVE_BIT) ||
-          info->basePipelineIndex != -1) {
+      if (info->basePipelineHandle != VK_NULL_HANDLE &&
+          !(info->flags & VK_PIPELINE_CREATE_DERIVATIVE_BIT)) {
          fix.ignore_base_pipeline_handle = true;
          any_fix = true;
       }
@@ -645,6 +648,31 @@ vn_fix_graphics_pipeline_create_info(
    return fixes->create_infos;
 }
 
+/**
+ * We invalidate each VkPipelineCreationFeedback. This is a legal but useless
+ * implementation.
+ *
+ * We invalidate because the venus protocol (as of 2022-08-25) does not know
+ * that the VkPipelineCreationFeedback structs in the
+ * VkGraphicsPipelineCreateInfo pNext are output parameters. Before
+ * VK_EXT_pipeline_creation_feedback, the pNext chain was input-only.
+ */
+static void
+vn_invalidate_pipeline_creation_feedback(const VkBaseInStructure *chain)
+{
+   const VkPipelineCreationFeedbackCreateInfo *feedback_info =
+      vk_find_struct_const(chain, PIPELINE_CREATION_FEEDBACK_CREATE_INFO);
+
+   if (!feedback_info)
+      return;
+
+   feedback_info->pPipelineCreationFeedback->flags = 0;
+
+   for (uint32_t i = 0; i < feedback_info->pipelineStageCreationFeedbackCount;
+        i++)
+      feedback_info->pPipelineStageCreationFeedbacks[i].flags = 0;
+}
+
 VkResult
 vn_CreateGraphicsPipelines(VkDevice device,
                            VkPipelineCache pipelineCache,
@@ -661,6 +689,8 @@ vn_CreateGraphicsPipelines(VkDevice device,
    bool want_sync = false;
    VkResult result;
 
+   memset(pPipelines, 0, sizeof(*pPipelines) * createInfoCount);
+
    pCreateInfos = vn_fix_graphics_pipeline_create_info(
       dev, createInfoCount, pCreateInfos, alloc, &fixes);
    if (!pCreateInfos)
@@ -672,10 +702,11 @@ vn_CreateGraphicsPipelines(VkDevice device,
    }
 
    for (uint32_t i = 0; i < createInfoCount; i++) {
-      if ((pCreateInfos[i].flags & VN_PIPELINE_CREATE_SYNC_MASK)) {
+      if ((pCreateInfos[i].flags & VN_PIPELINE_CREATE_SYNC_MASK))
          want_sync = true;
-         break;
-      }
+
+      vn_invalidate_pipeline_creation_feedback(
+         (const VkBaseInStructure *)pCreateInfos[i].pNext);
    }
 
    if (want_sync) {
@@ -711,14 +742,17 @@ vn_CreateComputePipelines(VkDevice device,
    bool want_sync = false;
    VkResult result;
 
+   memset(pPipelines, 0, sizeof(*pPipelines) * createInfoCount);
+
    if (!vn_create_pipeline_handles(dev, createInfoCount, pPipelines, alloc))
       return vn_error(dev->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    for (uint32_t i = 0; i < createInfoCount; i++) {
-      if ((pCreateInfos[i].flags & VN_PIPELINE_CREATE_SYNC_MASK)) {
+      if ((pCreateInfos[i].flags & VN_PIPELINE_CREATE_SYNC_MASK))
          want_sync = true;
-         break;
-      }
+
+      vn_invalidate_pipeline_creation_feedback(
+         (const VkBaseInStructure *)pCreateInfos[i].pNext);
    }
 
    if (want_sync) {

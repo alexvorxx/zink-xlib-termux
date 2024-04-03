@@ -97,6 +97,8 @@ typedef enum {
    ZINK_NO_DYNAMIC_STATE,
    ZINK_DYNAMIC_STATE,
    ZINK_DYNAMIC_STATE2,
+   ZINK_DYNAMIC_VERTEX_INPUT2,
+   ZINK_DYNAMIC_STATE3,
    ZINK_DYNAMIC_VERTEX_INPUT,
 } zink_dynamic_state;
 
@@ -105,6 +107,10 @@ typedef enum {
    ZINK_PIPELINE_DYNAMIC_STATE,
    ZINK_PIPELINE_DYNAMIC_STATE2,
    ZINK_PIPELINE_DYNAMIC_STATE2_PCP,
+   ZINK_PIPELINE_DYNAMIC_VERTEX_INPUT2,
+   ZINK_PIPELINE_DYNAMIC_VERTEX_INPUT2_PCP,
+   ZINK_PIPELINE_DYNAMIC_STATE3,
+   ZINK_PIPELINE_DYNAMIC_STATE3_PCP,
    ZINK_PIPELINE_DYNAMIC_VERTEX_INPUT,
    ZINK_PIPELINE_DYNAMIC_VERTEX_INPUT_PCP,
 } zink_pipeline_dynamic_state;
@@ -184,6 +190,7 @@ enum zink_debug {
    ZINK_DEBUG_SYNC = (1<<4),
    ZINK_DEBUG_COMPACT = (1<<5),
    ZINK_DEBUG_NOREORDER = (1<<6),
+   ZINK_DEBUG_GPL = (1<<7),
 };
 
 
@@ -225,15 +232,16 @@ struct zink_vertex_elements_hw_state {
       } b;
       VkVertexInputBindingDescription2EXT dynbindings[PIPE_MAX_ATTRIBS];
    };
+   uint8_t binding_map[PIPE_MAX_ATTRIBS];
 };
 
 struct zink_vertex_elements_state {
+   bool has_decomposed_attrs;
    struct {
       uint32_t binding;
       VkVertexInputRate inputRate;
    } bindings[PIPE_MAX_ATTRIBS];
    uint32_t divisor[PIPE_MAX_ATTRIBS];
-   uint8_t binding_map[PIPE_MAX_ATTRIBS];
    uint32_t min_stride[PIPE_MAX_ATTRIBS]; //for dynamic_state1
    uint32_t decomposed_attrs;
    unsigned decomposed_attrs_size;
@@ -252,13 +260,11 @@ struct zink_rasterizer_hw_state {
    unsigned polygon_mode : 2; //VkPolygonMode
    unsigned line_mode : 2; //VkLineRasterizationModeEXT
    unsigned depth_clip:1;
+   unsigned depth_clamp:1;
    unsigned pv_last:1;
    unsigned line_stipple_enable:1;
-   unsigned force_persample_interp:1;
    unsigned clip_halfz:1;
 };
-#define ZINK_RAST_HW_STATE_SIZE 9
-
 
 struct zink_rasterizer_state {
    struct pipe_rasterizer_state base;
@@ -273,6 +279,12 @@ struct zink_rasterizer_state {
 struct zink_blend_state {
    uint32_t hash;
    VkPipelineColorBlendAttachmentState attachments[PIPE_MAX_COLOR_BUFS];
+
+   struct {
+      VkBool32 enables[PIPE_MAX_COLOR_BUFS];
+      VkColorBlendEquationEXT eq[PIPE_MAX_COLOR_BUFS];
+      VkColorComponentFlags wrmask[PIPE_MAX_COLOR_BUFS];
+   } ds3;
 
    VkBool32 logicop_enable;
    VkLogicOp logicop_func;
@@ -419,6 +431,11 @@ struct zink_batch_usage {
    bool unflushed;
 };
 
+struct zink_batch_obj_list {
+   unsigned max_buffers;
+   unsigned num_buffers;
+   struct zink_resource_object **objs;
+};
 
 struct zink_batch_state {
    struct zink_fence fence;
@@ -438,14 +455,25 @@ struct zink_batch_state {
    struct util_dynarray acquires;
    struct util_dynarray acquire_flags;
    struct util_dynarray dead_swapchains;
+   struct util_dynarray unref_semaphores;
 
    struct util_queue_fence flush_completed;
 
    struct set programs;
 
-   struct set resources[2];
-   struct set surfaces;
-   struct set bufferviews;
+#define BUFFER_HASHLIST_SIZE 32768
+   /* buffer_indices_hashlist[hash(bo)] returns -1 if the bo
+    * isn't part of any buffer lists or the index where the bo could be found.
+    * Since 1) hash collisions of 2 different bo can happen and 2) we use a
+    * single hashlist for the 3 buffer list, this is only a hint.
+    * batch_find_resource uses this hint to speed up buffers look up.
+    */
+   int16_t buffer_indices_hashlist[BUFFER_HASHLIST_SIZE];
+   struct zink_batch_obj_list real_objs;
+   struct zink_batch_obj_list slab_objs;
+   struct zink_batch_obj_list sparse_objs;
+   struct zink_resource_object *last_added_obj;
+   struct util_dynarray swapchain_obj; //this doesn't have a zink_bo and must be handled differently
 
    struct util_dynarray unref_resources;
    struct util_dynarray bindless_releases[2];
@@ -631,14 +659,18 @@ struct zink_pipeline_dynamic_state2 {
    uint16_t vertices_per_patch; //5 bits
 };
 
+#define zink_pipeline_dynamic_state3 zink_rasterizer_hw_state
+
 struct zink_gfx_pipeline_state {
-   uint32_t rast_state : ZINK_RAST_HW_STATE_SIZE; //zink_rasterizer_hw_state
-   uint32_t _pad1 : 6;
-   uint32_t force_persample_interp:1; //duplicated for gpl hashing
-   /* order matches zink_gfx_output_key: uint16_t offset */
-   uint32_t rast_samples:16; //10 extra bits
+   /* order matches zink_gfx_output_key */
+   unsigned force_persample_interp:1;
+   uint32_t rast_samples:6;
+   uint32_t min_samples:6;
+   uint32_t feedback_loop : 1;
+   uint32_t feedback_loop_zs : 1;
+   uint32_t rast_attachment_order : 1;
+   uint32_t rp_state : 16;
    VkSampleMask sample_mask;
-   unsigned rp_state;
    uint32_t blend_id;
 
    /* Pre-hashed value for table lookup, invalid when zero.
@@ -649,10 +681,12 @@ struct zink_gfx_pipeline_state {
    struct zink_pipeline_dynamic_state1 dyn_state1;
 
    struct zink_pipeline_dynamic_state2 dyn_state2;
+   struct zink_pipeline_dynamic_state3 dyn_state3;
 
-   uint32_t _pad;
-   uint32_t gkey; //for pipeline library lookups
-   VkShaderModule modules[MESA_SHADER_STAGES - 1];
+   union {
+      VkShaderModule modules[MESA_SHADER_STAGES - 1];
+      uint32_t optimal_key;
+   };
    bool modules_changed;
 
    uint32_t vertex_hash;
@@ -673,10 +707,15 @@ struct zink_gfx_pipeline_state {
    struct zink_vertex_elements_hw_state *element_state;
    bool sample_locations_enabled;
    uint8_t has_points; //either gs outputs points or prim type is points
-   struct {
-      struct zink_shader_key key[5];
-      struct zink_shader_key last_vertex;
-   } shader_keys;
+   union {
+      struct {
+         struct zink_shader_key key[5];
+         struct zink_shader_key last_vertex;
+      } shader_keys;
+      struct {
+         union zink_shader_key_optimal key;
+      } shader_keys_optimal;
+   };
    struct zink_blend_state *blend_state;
    struct zink_render_pass *render_pass;
    struct zink_render_pass *next_render_pass; //will be used next time rp is begun
@@ -751,10 +790,11 @@ struct zink_program {
    bool removed;
 };
 
+#define STAGE_MASK_OPTIMAL (1<<16)
 typedef bool (*equals_gfx_pipeline_state_func)(const void *a, const void *b);
 
 struct zink_gfx_library_key {
-   uint32_t hw_rast_state;
+   uint32_t optimal_key; //equals_pipeline_lib_optimal
    VkShaderModule modules[ZINK_GFX_SHADER_COUNT];
    VkPipeline pipeline;
 };
@@ -774,12 +814,22 @@ struct zink_gfx_input_key {
 };
 
 struct zink_gfx_output_key {
-   uint32_t _pad:15;
-   uint32_t force_persample_interp:1;
-   uint32_t rast_samples:16;
-   VkSampleMask sample_mask;
+   /* order matches zink_gfx_output_key */
+   union {
+      struct {
+         unsigned force_persample_interp:1;
+         uint32_t rast_samples:6;
+         uint32_t min_samples:6;
+         uint32_t feedback_loop : 1;
+         uint32_t feedback_loop_zs : 1;
+         uint32_t rast_attachment_order : 1;
+         uint32_t rp_state : 16;
+      };
+      uint32_t key;
+   };
 
-   unsigned rp_state;
+   /* TODO: compress these */
+   VkSampleMask sample_mask;
    uint32_t blend_id;
    VkPipeline pipeline;
 };
@@ -787,10 +837,14 @@ struct zink_gfx_output_key {
 struct zink_gfx_program {
    struct zink_program base;
 
+   struct zink_context *ctx; //the owner context
+
    uint32_t stages_present; //mask of stages present in this program
+   uint32_t stages_remaining; //mask of zink_shader remaining in this program
    struct nir_shader *nir[ZINK_GFX_SHADER_COUNT];
 
-   struct zink_shader_module *modules[ZINK_GFX_SHADER_COUNT]; // compute stage doesn't belong here
+   VkShaderModule modules[ZINK_GFX_SHADER_COUNT]; // compute stage doesn't belong here
+   uint32_t module_hash[ZINK_GFX_SHADER_COUNT];
 
    struct zink_shader *last_vertex_stage;
 
@@ -806,7 +860,7 @@ struct zink_gfx_program {
    uint32_t last_finalized_hash[2][4]; //[dynamic, renderpass][primtype idx]
    VkPipeline last_pipeline[2][4]; //[dynamic, renderpass][primtype idx]
 
-   struct set libs[4]; //zink_gfx_library_key[primtype] -> VkPipeline
+   struct set libs; //zink_gfx_library_key -> VkPipeline
 };
 
 struct zink_compute_program {
@@ -839,15 +893,17 @@ struct zink_rt_attrib {
      bool clear_stencil;
      bool fbfetch;
   };
-  union {
-     bool invalid;
 
-     bool swapchain;
+  bool invalid;
 
-     bool needs_write;
-  };
+  bool swapchain;
+
+  bool needs_write;
   bool resolve;
+
   bool mixed_zs;
+
+  bool feedback_loop;
 };
 
 struct zink_render_pass_state {
@@ -907,6 +963,8 @@ struct zink_resource_object {
    unsigned persistent_maps; //if nonzero, requires vkFlushMappedMemoryRanges during batch use
 
    VkBuffer storage_buffer;
+   simple_mtx_t view_lock;
+   struct util_dynarray views;
 
    union {
       VkBuffer buffer;
@@ -970,14 +1028,15 @@ struct zink_resource {
          uint32_t ssbo_bind_mask[MESA_SHADER_STAGES];
       };
       struct {
+         bool linear;
+         bool need_2D;
+         bool valid;
+         uint8_t fb_bind_count; //not counted in all_binds
+         uint16_t fb_binds; /* mask of attachment idx; zs is PIPE_MAX_COLOR_BUFS */
          VkSparseImageMemoryRequirements sparse;
          VkFormat format;
          VkImageLayout layout;
          VkImageAspectFlags aspect;
-         bool linear;
-         bool need_2D;
-         bool valid;
-         uint8_t fb_binds; //not counted in all_binds
       };
    };
    uint32_t sampler_binds[MESA_SHADER_STAGES];
@@ -1106,10 +1165,13 @@ struct zink_screen {
    struct zink_device_info info;
    struct nir_shader_compiler_options nir_options;
 
+   bool optimal_keys;
+   bool have_full_ds3;
    bool have_X8_D24_UNORM_PACK32;
    bool have_D24_UNORM_S8_UINT;
    bool have_D32_SFLOAT_S8_UINT;
    bool have_triangle_fans;
+   bool need_decompose_attrs;
    bool need_2D_zs;
    bool need_2D_sparse;
    bool faked_e5sparse; //drivers may not expose R9G9B9E5 but cts requires it
@@ -1131,29 +1193,29 @@ struct zink_screen {
 
    struct vk_dispatch_table vk;
 
+   void (*buffer_barrier)(struct zink_context *ctx, struct zink_resource *res, VkAccessFlags flags, VkPipelineStageFlags pipeline);
+   void (*image_barrier)(struct zink_context *ctx, struct zink_resource *res, VkImageLayout new_layout, VkAccessFlags flags, VkPipelineStageFlags pipeline);
+
    bool compact_descriptors;
    uint8_t desc_set_id[ZINK_MAX_DESCRIPTOR_SETS];
 
    struct {
       bool dual_color_blend_by_location;
+      bool glsl_correct_derivatives_after_discard;
       bool inline_uniforms;
    } driconf;
 
    VkFormatProperties format_props[PIPE_FORMAT_COUNT];
    struct zink_modifier_prop modifier_props[PIPE_FORMAT_COUNT];
-   struct {
-      uint32_t image_view;
-      uint32_t buffer_view;
-   } null_descriptor_hashes;
 
    VkExtent2D maxSampleLocationGridSize[5];
 
    struct {
       bool broken_l4a4;
-      bool color_write_missing;
       bool depth_clip_control_missing;
       bool implicit_sync;
-      bool force_pipeline_library;
+      bool always_feedback_loop;
+      bool always_feedback_loop_zs;
       unsigned z16_unscaled_bias;
       unsigned z24_unscaled_bias;
    } driver_workarounds;
@@ -1192,6 +1254,7 @@ struct zink_surface {
    VkImageView simage_view;//old iview after storage replacement/rebind
    void *obj; //backing resource object
    uint32_t hash;
+
    struct zink_batch_usage *batch_uses;
 
    struct util_dynarray framebuffer_refs;
@@ -1269,7 +1332,6 @@ struct zink_framebuffer {
 struct zink_sampler_state {
    VkSampler sampler;
    VkSampler sampler_clamped;
-   struct zink_batch_usage *batch_uses;
    bool custom_border_color;
    bool emulate_nonseamless;
 };
@@ -1280,7 +1342,6 @@ struct zink_buffer_view {
    VkBufferViewCreateInfo bvci;
    VkBufferView buffer_view;
    uint32_t hash;
-   struct zink_batch_usage *batch_uses;
 };
 
 struct zink_sampler_view {
@@ -1424,6 +1485,7 @@ struct zink_context {
     * thus only 3 stages need to be considered, giving 2^3 = 8 program caches.
     */
    struct hash_table program_cache[8];
+   simple_mtx_t program_lock[8];
    uint32_t gfx_hash;
    struct zink_gfx_program *curr_program;
    struct set gfx_inputs;
@@ -1435,8 +1497,9 @@ struct zink_context {
    struct zink_compute_program *curr_compute;
 
    unsigned shader_stages : ZINK_GFX_SHADER_COUNT; /* mask of bound gfx shader stages */
-   unsigned dirty_shader_stages : 6; /* mask of changed shader stages */
+   uint8_t dirty_gfx_stages; /* mask of changed gfx shader stages */
    bool last_vertex_stage_dirty;
+   bool compute_dirty;
 
    struct {
       VkRenderingAttachmentInfo attachments[PIPE_MAX_COLOR_BUFS + 2]; //+depth, +stencil
@@ -1447,7 +1510,6 @@ struct zink_context {
    struct set rendering_state_cache;
    struct set render_pass_state_cache;
    struct hash_table *render_pass_cache;
-   bool new_swapchain;
    VkExtent2D swapchain_size;
    bool fb_changed;
    bool rp_changed; //force renderpass restart
@@ -1460,6 +1522,7 @@ struct zink_context {
    uint16_t rp_clears_enabled;
    uint16_t void_clears;
    uint16_t fbfetch_outputs;
+   uint16_t feedback_loops;
    struct zink_resource *needs_present;
 
    struct pipe_vertex_buffer vertex_buffers[PIPE_MAX_ATTRIBS];
@@ -1571,6 +1634,7 @@ struct zink_context {
    bool primitive_restart;
    bool vertex_state_changed : 1;
    bool blend_state_changed : 1;
+   bool sample_mask_changed : 1;
    bool rast_state_changed : 1;
    bool dsa_state_changed : 1;
    bool stencil_ref_changed : 1;

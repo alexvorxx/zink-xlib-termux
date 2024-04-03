@@ -42,7 +42,7 @@ static void blorp_measure_start(struct blorp_batch *_batch,
    struct anv_cmd_buffer *cmd_buffer = _batch->driver_batch;
    trace_intel_begin_blorp(&cmd_buffer->trace);
    anv_measure_snapshot(cmd_buffer,
-                        params->snapshot_type,
+                        blorp_op_to_intel_measure_snapshot(params->op),
                         NULL, 0);
 }
 
@@ -51,12 +51,13 @@ static void blorp_measure_end(struct blorp_batch *_batch,
 {
    struct anv_cmd_buffer *cmd_buffer = _batch->driver_batch;
    trace_intel_end_blorp(&cmd_buffer->trace,
+                         params->op,
                          params->x1 - params->x0,
                          params->y1 - params->y0,
-                         params->hiz_op,
-                         params->fast_clear_op,
-                         params->shader_type,
-                         params->shader_pipeline);
+                         params->num_samples,
+                         params->shader_pipeline,
+                         params->dst.view.format,
+                         params->src.view.format);
 }
 
 static void *

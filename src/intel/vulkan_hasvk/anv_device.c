@@ -77,6 +77,10 @@ static const driOptionDescription anv_dri_options[] = {
       DRI_CONF_VK_WSI_FORCE_BGRA8_UNORM_FIRST(false)
       DRI_CONF_LIMIT_TRIG_INPUT_RANGE(false)
    DRI_CONF_SECTION_END
+
+   DRI_CONF_SECTION_QUALITY
+      DRI_CONF_PP_LOWER_DEPTH_RANGE_RATE()
+   DRI_CONF_SECTION_END
 };
 
 /* This is probably far to big but it reflects the max size used for messages
@@ -258,6 +262,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_conditional_rendering             = device->info.verx10 >= 75,
       .EXT_conservative_rasterization        = device->info.ver >= 9,
       .EXT_custom_border_color               = device->info.ver >= 8,
+      .EXT_depth_clamp_zero_one              = true,
       .EXT_depth_clip_control                = true,
       .EXT_depth_clip_enable                 = true,
       .EXT_descriptor_indexing               = device->has_a64_buffer_access &&
@@ -674,11 +679,6 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
                                  I915_ENGINE_CLASS_RENDER);
       int g_count = 0;
       int c_count = 0;
-      if (env_var_as_boolean("INTEL_COMPUTE_CLASS", false))
-         c_count = intel_gem_count_engines(pdevice->engine_info,
-                                           I915_ENGINE_CLASS_COMPUTE);
-      enum drm_i915_gem_engine_class compute_class =
-         c_count < 1 ? I915_ENGINE_CLASS_RENDER : I915_ENGINE_CLASS_COMPUTE;
 
       anv_override_engine_counts(&gc_count, &g_count, &c_count);
 
@@ -704,7 +704,7 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
             .queueFlags = VK_QUEUE_COMPUTE_BIT |
                           VK_QUEUE_TRANSFER_BIT,
             .queueCount = c_count,
-            .engine_class = compute_class,
+            .engine_class = I915_ENGINE_CLASS_RENDER,
          };
       }
       /* Increase count below when other families are added as a reminder to
@@ -1101,6 +1101,8 @@ anv_init_dri_options(struct anv_instance *instance)
             driQueryOptionb(&instance->dri_options, "limit_trig_input_range");
     instance->sample_mask_out_opengl_behaviour =
             driQueryOptionb(&instance->dri_options, "anv_sample_mask_out_opengl_behaviour");
+    instance->lower_depth_range_rate =
+            driQueryOptionf(&instance->dri_options, "lower_depth_range_rate");
 }
 
 VkResult anv_CreateInstance(
@@ -1434,6 +1436,13 @@ void anv_GetPhysicalDeviceFeatures2(
             (VkPhysicalDeviceCustomBorderColorFeaturesEXT *)ext;
          features->customBorderColors = pdevice->info.ver >= 8;
          features->customBorderColorWithoutFormat = pdevice->info.ver >= 8;
+         break;
+      }
+
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_CLAMP_ZERO_ONE_FEATURES_EXT: {
+         VkPhysicalDeviceDepthClampZeroOneFeaturesEXT *features =
+            (VkPhysicalDeviceDepthClampZeroOneFeaturesEXT *)ext;
+         features->depthClampZeroOne = true;
          break;
       }
 

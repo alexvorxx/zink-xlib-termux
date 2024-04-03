@@ -17,6 +17,18 @@
     paths:
       - results/
 
+rustfmt:
+  # Cancel job if a newer commit is pushed to the same branch
+  interruptible: true
+  stage: lint
+  extends:
+    - .use-debian/x86_build
+    - .lint-rustfmt-rules
+  variables:
+    GIT_STRATEGY: fetch
+  script:
+    - git ls-files */{lib,app}.rs | xargs rustfmt --check
+
 .test-gl:
   extends:
     - .test
@@ -39,7 +51,6 @@
     - .use-debian/x86_test-gl
   needs:
     - debian/x86_test-gl
-    - debian-clover-testing
 
 .vkd3d-proton-test:
   artifacts:
@@ -66,21 +77,21 @@
 .piglit-traces-test:
   extends:
     - .piglit-test
-  cache:
-    key: ${CI_JOB_NAME}
-    paths:
-      - replayer-db/
   artifacts:
     when: on_failure
     name: "mesa_${CI_JOB_NAME}"
     reports:
       junit: results/junit.xml
     paths:
-      - results/summary/
-      - results/*.txt
+      - results/
+    exclude:
+      - results/*.shader_cache
   variables:
     PIGLIT_REPLAY_EXTRA_ARGS:  --keep-image --db-path ${CI_PROJECT_DIR}/replayer-db/ --minio_host=minio-packet.freedesktop.org --minio_bucket=mesa-tracie-public --role-session-name=${CI_PROJECT_PATH}:${CI_JOB_ID} --jwt-file=${CI_JOB_JWT_FILE}
   script:
+    - echo -e "\e[0Ksection_start:$(date +%s):variables[collapsed=true]\r\e[0KVariables passed through:"
+    - install/common/generate-env.sh
+    - echo -e "\e[0Ksection_end:$(date +%s):variables\r\e[0K"
     - install/piglit/piglit-traces.sh
 
 .deqp-test:

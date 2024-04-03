@@ -915,6 +915,7 @@ static struct pipe_context *si_pipe_create_context(struct pipe_screen *screen, v
                                        si_create_fence : NULL,
                                  .is_resource_busy = si_is_resource_busy,
                                  .driver_calls_flush_notify = true,
+                                 .unsynchronized_create_fence_fd = true,
                               },
                               &((struct si_context *)ctx)->tc);
 
@@ -1216,7 +1217,7 @@ static struct pipe_screen *radeonsi_screen_create_impl(struct radeon_winsys *ws,
              1 << util_logbase2(sscreen->force_aniso));
    }
 
-   (void)mtx_init(&sscreen->aux_context_lock, mtx_recursive);
+   (void)mtx_init(&sscreen->aux_context_lock, mtx_plain | mtx_recursive);
    (void)simple_mtx_init(&sscreen->async_compute_context_lock, mtx_plain);
    (void)simple_mtx_init(&sscreen->gpu_load_mutex, mtx_plain);
    (void)simple_mtx_init(&sscreen->gds_mutex, mtx_plain);

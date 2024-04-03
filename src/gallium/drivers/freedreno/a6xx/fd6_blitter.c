@@ -25,6 +25,8 @@
  *    Rob Clark <robclark@freedesktop.org>
  */
 
+#define FD_BO_NO_HARDPIN 1
+
 #include "util/format_srgb.h"
 #include "util/half_float.h"
 #include "util/u_dump.h"
@@ -412,16 +414,16 @@ emit_blit_buffer(struct fd_context *ctx, struct fd_ringbuffer *ring,
       OUT_RING(ring, 0x3f);
       OUT_WFI5(ring);
 
-      OUT_PKT4(ring, REG_A6XX_RB_UNKNOWN_8E04, 1);
-      OUT_RING(ring, ctx->screen->info->a6xx.magic.RB_UNKNOWN_8E04_blit);
+      OUT_PKT4(ring, REG_A6XX_RB_DBG_ECO_CNTL, 1);
+      OUT_RING(ring, ctx->screen->info->a6xx.magic.RB_DBG_ECO_CNTL_blit);
 
       OUT_PKT7(ring, CP_BLIT, 1);
       OUT_RING(ring, CP_BLIT_0_OP(BLIT_OP_SCALE));
 
       OUT_WFI5(ring);
 
-      OUT_PKT4(ring, REG_A6XX_RB_UNKNOWN_8E04, 1);
-      OUT_RING(ring, 0); /* RB_UNKNOWN_8E04 */
+      OUT_PKT4(ring, REG_A6XX_RB_DBG_ECO_CNTL, 1);
+      OUT_RING(ring, 0); /* RB_DBG_ECO_CNTL */
    }
 }
 
@@ -507,16 +509,16 @@ fd6_clear_ubwc(struct fd_batch *batch, struct fd_resource *rsc) assert_dt
       OUT_RING(ring, 0x3f);
       OUT_WFI5(ring);
 
-      OUT_PKT4(ring, REG_A6XX_RB_UNKNOWN_8E04, 1);
-      OUT_RING(ring, batch->ctx->screen->info->a6xx.magic.RB_UNKNOWN_8E04_blit);
+      OUT_PKT4(ring, REG_A6XX_RB_DBG_ECO_CNTL, 1);
+      OUT_RING(ring, batch->ctx->screen->info->a6xx.magic.RB_DBG_ECO_CNTL_blit);
 
       OUT_PKT7(ring, CP_BLIT, 1);
       OUT_RING(ring, CP_BLIT_0_OP(BLIT_OP_SCALE));
 
       OUT_WFI5(ring);
 
-      OUT_PKT4(ring, REG_A6XX_RB_UNKNOWN_8E04, 1);
-      OUT_RING(ring, 0); /* RB_UNKNOWN_8E04 */
+      OUT_PKT4(ring, REG_A6XX_RB_DBG_ECO_CNTL, 1);
+      OUT_RING(ring, 0); /* RB_DBG_ECO_CNTL */
 
       offset += w * h;
       size -= w * h;
@@ -685,16 +687,16 @@ emit_blit_texture(struct fd_context *ctx, struct fd_ringbuffer *ring,
       OUT_RING(ring, 0x3f);
       OUT_WFI5(ring);
 
-      OUT_PKT4(ring, REG_A6XX_RB_UNKNOWN_8E04, 1);
-      OUT_RING(ring, ctx->screen->info->a6xx.magic.RB_UNKNOWN_8E04_blit);
+      OUT_PKT4(ring, REG_A6XX_RB_DBG_ECO_CNTL, 1);
+      OUT_RING(ring, ctx->screen->info->a6xx.magic.RB_DBG_ECO_CNTL_blit);
 
       OUT_PKT7(ring, CP_BLIT, 1);
       OUT_RING(ring, CP_BLIT_0_OP(BLIT_OP_SCALE));
 
       OUT_WFI5(ring);
 
-      OUT_PKT4(ring, REG_A6XX_RB_UNKNOWN_8E04, 1);
-      OUT_RING(ring, 0); /* RB_UNKNOWN_8E04 */
+      OUT_PKT4(ring, REG_A6XX_RB_DBG_ECO_CNTL, 1);
+      OUT_RING(ring, 0); /* RB_DBG_ECO_CNTL */
    }
 }
 
@@ -813,16 +815,16 @@ fd6_clear_surface(struct fd_context *ctx, struct fd_ringbuffer *ring,
       OUT_RING(ring, 0x3f);
       OUT_WFI5(ring);
 
-      OUT_PKT4(ring, REG_A6XX_RB_UNKNOWN_8E04, 1);
-      OUT_RING(ring, ctx->screen->info->a6xx.magic.RB_UNKNOWN_8E04_blit);
+      OUT_PKT4(ring, REG_A6XX_RB_DBG_ECO_CNTL, 1);
+      OUT_RING(ring, ctx->screen->info->a6xx.magic.RB_DBG_ECO_CNTL_blit);
 
       OUT_PKT7(ring, CP_BLIT, 1);
       OUT_RING(ring, CP_BLIT_0_OP(BLIT_OP_SCALE));
 
       OUT_WFI5(ring);
 
-      OUT_PKT4(ring, REG_A6XX_RB_UNKNOWN_8E04, 1);
-      OUT_RING(ring, 0); /* RB_UNKNOWN_8E04 */
+      OUT_PKT4(ring, REG_A6XX_RB_DBG_ECO_CNTL, 1);
+      OUT_RING(ring, 0); /* RB_DBG_ECO_CNTL */
    }
 }
 

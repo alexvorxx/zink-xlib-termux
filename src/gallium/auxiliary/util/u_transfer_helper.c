@@ -25,7 +25,6 @@
 
 #include "util/u_box.h"
 #include "util/format/u_format.h"
-#include "util/format/u_format_rgtc.h"
 #include "util/format/u_format_zs.h"
 #include "util/u_inlines.h"
 #include "util/u_transfer_helper.h"
@@ -35,7 +34,6 @@ struct u_transfer_helper {
    const struct u_transfer_vtbl *vtbl;
    bool separate_z32s8; /**< separate z32 and s8 */
    bool separate_stencil; /**< separate stencil for all formats */
-   bool fake_rgtc;
    bool msaa_map;
    bool z24_in_z32f; /* the z24 values are stored in a z32 - translate them. */
    bool interleave_in_place;
@@ -79,7 +77,7 @@ static inline bool handle_transfer(struct pipe_resource *prsc)
  */
 struct u_transfer {
    struct pipe_transfer base;
-   /* Note that in case of MSAA resolve for transfer plus z32s8 or fake rgtc
+   /* Note that in case of MSAA resolve for transfer plus z32s8
     * we end up with stacked u_transfer's.  The MSAA resolve case doesn't call
     * helper->vtbl fxns directly, but calls back to pctx->transfer_map()/etc
     * so the format related handling can work in conjunction with MSAA resolve.
@@ -129,10 +127,9 @@ u_transfer_helper_resource_create(struct pipe_screen *pscreen,
       }
 
       helper->vtbl->set_stencil(prsc, stencil);
-   } else if ((util_format_description(format)->layout == UTIL_FORMAT_LAYOUT_RGTC) &&
-         helper->fake_rgtc) {
+   } else if (format == PIPE_FORMAT_Z24X8_UNORM && helper->z24_in_z32f) {
       struct pipe_resource t = *templ;
-      t.format = PIPE_FORMAT_R8G8B8A8_UNORM;
+      t.format = PIPE_FORMAT_Z32_FLOAT;
 
       prsc = helper->vtbl->resource_create(pscreen, &t);
       if (!prsc)
@@ -172,7 +169,7 @@ static bool needs_pack(unsigned usage)
 
 /* In the case of transfer_map of a multi-sample resource, call back into
  * pctx->transfer_map() to map the staging resource, to handle cases of
- * MSAA + separate_z32s8 or fake_rgtc
+ * MSAA + separate_z32s8
  */
 static void *
 transfer_map_msaa(struct pipe_context *pctx,
@@ -315,47 +312,36 @@ u_transfer_helper_transfer_map(struct pipe_context *pctx,
                                                           width, height);
             break;
          case PIPE_FORMAT_Z24_UNORM_S8_UINT:
-            assert(!helper->z24_in_z32f);
-            util_format_z24_unorm_s8_uint_pack_separate(trans->staging,
-                                                        ptrans->stride,
-                                                        trans->ptr,
-                                                        trans->trans->stride,
-                                                        trans->ptr2,
-                                                        trans->trans2->stride,
-                                                        width, height);
+            if (helper->z24_in_z32f) {
+               util_format_z24_unorm_s8_uint_pack_z_float(trans->staging,
+                                                          ptrans->stride,
+                                                          trans->ptr,
+                                                          trans->trans->stride,
+                                                          width, height);
+               util_format_z24_unorm_s8_uint_pack_s_8uint(trans->staging,
+                                                          ptrans->stride,
+                                                          trans->ptr2,
+                                                          trans->trans2->stride,
+                                                          width, height);
+            } else {
+               util_format_z24_unorm_s8_uint_pack_separate(trans->staging,
+                                                           ptrans->stride,
+                                                           trans->ptr,
+                                                           trans->trans->stride,
+                                                           trans->ptr2,
+                                                           trans->trans2->stride,
+                                                           width, height);
+            }
             break;
          default:
             unreachable("Unexpected format");
          }
       }
-   } else if (util_format_description(prsc->format)->layout == UTIL_FORMAT_LAYOUT_RGTC) {
-      if (needs_pack(usage)) {
-         switch (prsc->format) {
-         case PIPE_FORMAT_RGTC1_UNORM:
-         case PIPE_FORMAT_RGTC1_SNORM:
-         case PIPE_FORMAT_LATC1_UNORM:
-         case PIPE_FORMAT_LATC1_SNORM:
-            util_format_rgtc1_unorm_pack_rgba_8unorm(trans->staging,
-                                                     ptrans->stride,
-                                                     trans->ptr,
-                                                     trans->trans->stride,
-                                                     width, height);
-            break;
-         case PIPE_FORMAT_RGTC2_UNORM:
-         case PIPE_FORMAT_RGTC2_SNORM:
-         case PIPE_FORMAT_LATC2_UNORM:
-         case PIPE_FORMAT_LATC2_SNORM:
-            util_format_rgtc2_unorm_pack_rgba_8unorm(trans->staging,
-                                                     ptrans->stride,
-                                                     trans->ptr,
-                                                     trans->trans->stride,
-                                                     width, height);
-            break;
-         default:
-            assert(!"Unexpected format");
-            break;
-         }
-      }
+   } else if (prsc->format == PIPE_FORMAT_Z24X8_UNORM) {
+         assert(helper->z24_in_z32f);
+         util_format_z24x8_unorm_pack_z_float(trans->staging, ptrans->stride,
+                                              trans->ptr, trans->trans->stride,
+                                              width, height);
    } else {
       unreachable("bleh");
    }
@@ -469,26 +455,6 @@ flush_region(struct pipe_context *pctx, struct pipe_transfer *ptrans,
                                                    width, height);
       break;
 
-   case PIPE_FORMAT_RGTC1_UNORM:
-   case PIPE_FORMAT_RGTC1_SNORM:
-   case PIPE_FORMAT_LATC1_UNORM:
-   case PIPE_FORMAT_LATC1_SNORM:
-      util_format_rgtc1_unorm_unpack_rgba_8unorm(dst,
-                                                 trans->trans->stride,
-                                                 src,
-                                                 ptrans->stride,
-                                                 width, height);
-      break;
-   case PIPE_FORMAT_RGTC2_UNORM:
-   case PIPE_FORMAT_RGTC2_SNORM:
-   case PIPE_FORMAT_LATC2_UNORM:
-   case PIPE_FORMAT_LATC2_SNORM:
-      util_format_rgtc2_unorm_unpack_rgba_8unorm(dst,
-                                                 trans->trans->stride,
-                                                 src,
-                                                 ptrans->stride,
-                                                 width, height);
-      break;
    default:
       assert(!"Unexpected staging transfer type");
       break;
@@ -582,7 +548,6 @@ u_transfer_helper_create(const struct u_transfer_vtbl *vtbl,
    helper->vtbl = vtbl;
    helper->separate_z32s8 = flags & U_TRANSFER_HELPER_SEPARATE_Z32S8;
    helper->separate_stencil = flags & U_TRANSFER_HELPER_SEPARATE_STENCIL;
-   helper->fake_rgtc = flags & U_TRANSFER_HELPER_FAKE_RGTC;
    helper->msaa_map = flags & U_TRANSFER_HELPER_MSAA_MAP;
    helper->z24_in_z32f = flags & U_TRANSFER_HELPER_Z24_IN_Z32F;
    helper->interleave_in_place = flags & U_TRANSFER_HELPER_INTERLEAVE_IN_PLACE;

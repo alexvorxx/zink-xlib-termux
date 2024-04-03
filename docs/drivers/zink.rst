@@ -75,7 +75,6 @@ supported:
   * `VK_EXT_transform_feedback`_
   * `VK_EXT_conditional_rendering`_
 
-
 OpenGL 3.1
 ^^^^^^^^^^
 
@@ -180,13 +179,6 @@ supported:
 
     * `VK_KHR_shader_draw_parameters`_
 
-* Formats requiring ``VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT``:
-
-   * ``VK_FORMAT_BC7_UNORM_BLOCK``
-   * ``VK_FORMAT_BC7_SRGB_BLOCK``
-   * ``VK_FORMAT_BC6H_SFLOAT_BLOCK``
-   * ``VK_FORMAT_BC6H_UFLOAT_BLOCK``
-
 OpenGL 4.3
 ^^^^^^^^^^
 
@@ -281,6 +273,8 @@ variable:
    Use a maximum of 4 descriptor sets
 ``noreorder``
    Do not reorder or optimize GL command streams
+``gpl``
+   Force using Graphics Pipeline Library for all shaders
 
 Vulkan Validation Layers
 ^^^^^^^^^^^^^^^^^^^^^^^^

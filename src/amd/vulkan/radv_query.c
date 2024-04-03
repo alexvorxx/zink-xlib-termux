@@ -2001,8 +2001,8 @@ radv_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool,
     * code gets a completed query value and doesn't hang, but the
     * query returns 0.
     */
-   if (cmd_buffer->state.subpass && cmd_buffer->state.subpass->view_mask) {
-      for (unsigned i = 1; i < util_bitcount(cmd_buffer->state.subpass->view_mask); i++) {
+   if (cmd_buffer->state.render.view_mask) {
+      for (unsigned i = 1; i < util_bitcount(cmd_buffer->state.render.view_mask); i++) {
          va += pool->stride;
          avail_va += 4;
          emit_begin_query(cmd_buffer, pool, va, pool->type, 0, 0);
@@ -2033,8 +2033,8 @@ radv_CmdWriteTimestamp2(VkCommandBuffer commandBuffer, VkPipelineStageFlags2 sta
    emit_query_flush(cmd_buffer, pool);
 
    int num_queries = 1;
-   if (cmd_buffer->state.subpass && cmd_buffer->state.subpass->view_mask)
-      num_queries = util_bitcount(cmd_buffer->state.subpass->view_mask);
+   if (cmd_buffer->state.render.view_mask)
+      num_queries = util_bitcount(cmd_buffer->state.render.view_mask);
 
    ASSERTED unsigned cdw_max = radeon_check_space(cmd_buffer->device->ws, cs, 28 * num_queries);
 
@@ -2088,7 +2088,7 @@ radv_CmdWriteAccelerationStructuresPropertiesKHR(
 
    for (uint32_t i = 0; i < accelerationStructureCount; ++i) {
       RADV_FROM_HANDLE(radv_acceleration_structure, accel_struct, pAccelerationStructures[i]);
-      uint64_t va = radv_accel_struct_get_va(accel_struct);
+      uint64_t va = accel_struct->va;
 
       switch (queryType) {
       case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR:

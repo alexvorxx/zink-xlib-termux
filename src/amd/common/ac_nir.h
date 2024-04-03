@@ -131,6 +131,7 @@ ac_nir_lower_ngg_nogs(nir_shader *shader,
                       bool provoking_vtx_last,
                       bool use_edgeflags,
                       bool has_prim_query,
+                      bool disable_streamout,
                       uint32_t instance_rate_inputs,
                       uint32_t clipdist_enable_mask,
                       uint32_t user_clip_plane_enable_mask);
@@ -143,7 +144,8 @@ ac_nir_lower_ngg_gs(nir_shader *shader,
                     unsigned gs_out_vtx_bytes,
                     unsigned gs_total_out_vtx_bytes,
                     bool provoking_vtx_last,
-                    bool can_cull);
+                    bool can_cull,
+                    bool disable_streamout);
 
 void
 ac_nir_lower_ngg_ms(nir_shader *shader,

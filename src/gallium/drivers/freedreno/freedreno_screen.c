@@ -77,7 +77,7 @@ static const struct debug_named_value fd_debug_options[] = {
    {"perf",      FD_DBG_PERF,     "Enable performance warnings"},
    {"nobin",     FD_DBG_NOBIN,    "Disable hw binning"},
    {"sysmem",    FD_DBG_SYSMEM,   "Use sysmem only rendering (no tiling)"},
-   {"serialc",   FD_DBG_SERIALC,"Disable asynchronous shader compile"},
+   {"serialc",   FD_DBG_SERIALC,  "Disable asynchronous shader compile"},
    {"shaderdb",  FD_DBG_SHADERDB, "Enable shaderdb output"},
    {"flush",     FD_DBG_FLUSH,    "Force flush after every draw"},
    {"deqp",      FD_DBG_DEQP,     "Enable dEQP hacks"},
@@ -216,7 +216,7 @@ fd_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_VERTEX_BUFFER_OFFSET_4BYTE_ALIGNED_ONLY:
    case PIPE_CAP_VERTEX_BUFFER_STRIDE_4BYTE_ALIGNED_ONLY:
    case PIPE_CAP_VERTEX_ELEMENT_SRC_OFFSET_4BYTE_ALIGNED_ONLY:
-      return !is_a2xx(screen);
+      return is_a2xx(screen);
 
    case PIPE_CAP_FS_COORD_PIXEL_CENTER_INTEGER:
       return is_a2xx(screen);
@@ -1031,12 +1031,27 @@ fd_screen_create(struct fd_device *dev, struct renderonly *ro,
    screen->chip_id = val;
    screen->gen = fd_dev_gen(screen->dev_id);
 
-   if (fd_pipe_get_param(screen->pipe, FD_NR_RINGS, &val)) {
+   if (fd_pipe_get_param(screen->pipe, FD_NR_PRIORITIES, &val)) {
       DBG("could not get # of rings");
       screen->priority_mask = 0;
    } else {
       /* # of rings equates to number of unique priority values: */
       screen->priority_mask = (1 << val) - 1;
+
+      /* Lowest numerical value (ie. zero) is highest priority: */
+      screen->prio_high = 0;
+
+      /* Highest numerical value is lowest priority: */
+      screen->prio_low = val - 1;
+
+      /* Pick midpoint for normal priority.. note that whatever the
+       * range of possible priorities, since we divide by 2 the
+       * result will either be an integer or an integer plus 0.5,
+       * in which case it will round down to an integer, so int
+       * division will give us an appropriate result in either
+       * case:
+       */
+      screen->prio_norm = val / 2;
    }
 
    if (fd_device_version(dev) >= FD_VERSION_ROBUSTNESS)

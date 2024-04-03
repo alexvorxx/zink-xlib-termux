@@ -106,6 +106,7 @@ lp_sampler_static_texture_state(struct lp_static_texture_state *state,
    const struct pipe_resource *texture = view->texture;
 
    state->format = view->format;
+   state->res_format = view->texture->format;
    state->swizzle_r = view->swizzle_r;
    state->swizzle_g = view->swizzle_g;
    state->swizzle_b = view->swizzle_b;
@@ -144,6 +145,7 @@ lp_sampler_static_texture_state_image(struct lp_static_texture_state *state,
    const struct pipe_resource *resource = view->resource;
 
    state->format = view->format;
+   state->res_format = view->resource->format;
    state->swizzle_r = PIPE_SWIZZLE_X;
    state->swizzle_g = PIPE_SWIZZLE_Y;
    state->swizzle_b = PIPE_SWIZZLE_Z;
@@ -340,7 +342,6 @@ lp_build_rho(struct lp_build_sample_context *bld,
              LLVMValueRef s,
              LLVMValueRef t,
              LLVMValueRef r,
-             LLVMValueRef cube_rho,
              const struct lp_derivatives *derivs)
 {
    struct gallivm_state *gallivm = bld->gallivm;
@@ -381,29 +382,7 @@ lp_build_rho(struct lp_build_sample_context *bld,
    int_size = lp_build_minify(int_size_bld, bld->int_size, first_level_vec, TRUE);
    float_size = lp_build_int_to_float(float_size_bld, int_size);
 
-   if (cube_rho) {
-      LLVMValueRef cubesize;
-      LLVMValueRef index0 = lp_build_const_int32(gallivm, 0);
-
-      /*
-       * Cube map code did already everything except size mul and per-quad extraction.
-       * Luckily cube maps are always quadratic!
-       */
-      if (rho_per_quad) {
-         rho = lp_build_pack_aos_scalars(bld->gallivm, coord_bld->type,
-                                         rho_bld->type, cube_rho, 0);
-      }
-      else {
-         rho = lp_build_swizzle_scalar_aos(coord_bld, cube_rho, 0, 4);
-      }
-      /* Could optimize this for single quad just skip the broadcast */
-      cubesize = lp_build_extract_broadcast(gallivm, bld->float_size_in_type,
-                                            rho_bld->type, float_size, index0);
-      /* skipping sqrt hence returning rho squared */
-      cubesize = lp_build_mul(rho_bld, cubesize, cubesize);
-      rho = lp_build_mul(rho_bld, cubesize, rho);
-   }
-   else if (derivs) {
+   if (derivs) {
       LLVMValueRef ddmax[3] = { NULL }, ddx[3] = { NULL }, ddy[3] = { NULL };
       for (i = 0; i < dims; i++) {
          LLVMValueRef floatdim;
@@ -818,7 +797,6 @@ lp_build_ilog2_sqrt(struct lp_build_context *bld,
  * \param derivs  partial derivatives of (s, t, r, q) with respect to X and Y
  * \param lod_bias  optional float vector with the shader lod bias
  * \param explicit_lod  optional float vector with the explicit lod
- * \param cube_rho  rho calculated by cube coord mapping (optional)
  * \param out_lod_ipart  integer part of lod
  * \param out_lod_fpart  float part of lod (never larger than 1 but may be negative)
  * \param out_lod_positive  (mask) if lod is positive (i.e. texture is minified)
@@ -833,7 +811,6 @@ lp_build_lod_selector(struct lp_build_sample_context *bld,
                       LLVMValueRef s,
                       LLVMValueRef t,
                       LLVMValueRef r,
-                      LLVMValueRef cube_rho,
                       const struct lp_derivatives *derivs,
                       LLVMValueRef lod_bias, /* optional */
                       LLVMValueRef explicit_lod, /* optional */
@@ -892,15 +869,14 @@ lp_build_lod_selector(struct lp_build_sample_context *bld,
       }
       else {
          LLVMValueRef rho;
-         boolean rho_squared = (bld->no_rho_approx &&
-                                (bld->dims > 1)) || cube_rho;
+         boolean rho_squared = bld->no_rho_approx && (bld->dims > 1);
 
          if (bld->static_sampler_state->aniso &&
              !explicit_lod) {
             rho = lp_build_pmin(bld, texture_unit, s, t, max_aniso);
             rho_squared = true;
          } else
-            rho = lp_build_rho(bld, texture_unit, s, t, r, cube_rho, derivs);
+            rho = lp_build_rho(bld, texture_unit, s, t, r, derivs);
 
          /*
           * Compute lod = log2(rho)
@@ -1175,7 +1151,7 @@ load_mip(struct gallivm_state *gallivm, LLVMValueRef offsets, LLVMValueRef index
    LLVMValueRef zero = lp_build_const_int32(gallivm, 0);
    LLVMValueRef indexes[2] = {zero, index1};
    LLVMValueRef ptr = LLVMBuildGEP(gallivm->builder, offsets, indexes, ARRAY_SIZE(indexes), "");
-   return LLVMBuildLoad(gallivm->builder, ptr, "");
+   return LLVMBuildLoad2(gallivm->builder, LLVMInt32TypeInContext(gallivm->context), ptr, "");
 }
 
 /**
@@ -1302,6 +1278,54 @@ lp_build_minify(struct lp_build_context *bld,
    }
 }
 
+/*
+ * Scale image dimensions with block sizes.
+ *
+ * tex_blocksize is the resource format blocksize
+ * view_blocksize is the view format blocksize
+ *
+ * This must be applied post-minification, but
+ * only when blocksizes are different.
+ *
+ * ret = (size + (tex_blocksize - 1)) >> log2(tex_blocksize);
+ * ret *= blocksize;
+ */
+LLVMValueRef
+lp_build_scale_view_dims(struct lp_build_context *bld, LLVMValueRef size,
+                         LLVMValueRef tex_blocksize,
+                         LLVMValueRef tex_blocksize_log2,
+                         LLVMValueRef view_blocksize)
+{
+   LLVMBuilderRef builder = bld->gallivm->builder;
+   LLVMValueRef ret;
+
+   ret = LLVMBuildAdd(builder, size, LLVMBuildSub(builder, tex_blocksize, lp_build_const_int_vec(bld->gallivm, bld->type, 1), ""), "");
+   ret = LLVMBuildLShr(builder, ret, tex_blocksize_log2, "");
+   ret = LLVMBuildMul(builder, ret, view_blocksize, "");
+   return ret;
+}
+
+/*
+ * Scale a single image dimension.
+ *
+ * Scale one image between resource and view blocksizes.
+ * noop if sizes are the same.
+ */
+LLVMValueRef
+lp_build_scale_view_dim(struct gallivm_state *gallivm, LLVMValueRef size,
+                        unsigned tex_blocksize, unsigned view_blocksize)
+{
+   LLVMBuilderRef builder = gallivm->builder;
+   LLVMValueRef ret;
+
+   if (tex_blocksize == view_blocksize)
+      return size;
+
+   ret = LLVMBuildAdd(builder, size, lp_build_const_int32(gallivm, tex_blocksize - 1), "");
+   ret = LLVMBuildLShr(builder, ret, lp_build_const_int32(gallivm, util_logbase2(tex_blocksize)), "");
+   ret = LLVMBuildMul(builder, ret, lp_build_const_int32(gallivm, view_blocksize), "");
+   return ret;
+}
 
 /**
  * Dereference stride_array[mipmap_level] array to get a stride.
@@ -1368,9 +1392,15 @@ lp_build_mipmap_level_sizes(struct lp_build_sample_context *bld,
    if (bld->num_mips == 1) {
       ilevel_vec = lp_build_broadcast_scalar(&bld->int_size_bld, ilevel);
       *out_size = lp_build_minify(&bld->int_size_bld, bld->int_size, ilevel_vec, TRUE);
+      *out_size = lp_build_scale_view_dims(&bld->int_size_bld, *out_size,
+                                           bld->int_tex_blocksize,
+                                           bld->int_tex_blocksize_log2,
+                                           bld->int_view_blocksize);
    }
    else {
       LLVMValueRef int_size_vec;
+      LLVMValueRef int_tex_blocksize_vec, int_tex_blocksize_log2_vec;
+      LLVMValueRef int_view_blocksize_vec;
       LLVMValueRef tmp[LP_MAX_VECTOR_LENGTH];
       unsigned num_quads = bld->coord_bld.type.length / 4;
       unsigned i;
@@ -1396,10 +1426,19 @@ lp_build_mipmap_level_sizes(struct lp_build_sample_context *bld,
             assert(bld->int_size_in_bld.type.length == 1);
             int_size_vec = lp_build_broadcast_scalar(&bld4,
                                                      bld->int_size);
+            int_tex_blocksize_vec = lp_build_broadcast_scalar(&bld4,
+                                                              bld->int_tex_blocksize);
+            int_tex_blocksize_log2_vec = lp_build_broadcast_scalar(&bld4,
+                                                                   bld->int_tex_blocksize_log2);
+            int_view_blocksize_vec = lp_build_broadcast_scalar(&bld4,
+                                                               bld->int_view_blocksize);
          }
          else {
             assert(bld->int_size_in_bld.type.length == 4);
             int_size_vec = bld->int_size;
+            int_tex_blocksize_vec = bld->int_tex_blocksize;
+            int_tex_blocksize_log2_vec = bld->int_tex_blocksize_log2;
+            int_view_blocksize_vec = bld->int_view_blocksize;
          }
 
          for (i = 0; i < num_quads; i++) {
@@ -1412,6 +1451,10 @@ lp_build_mipmap_level_sizes(struct lp_build_sample_context *bld,
                                                  ilevel,
                                                  indexi);
             tmp[i] = lp_build_minify(&bld4, int_size_vec, ileveli, TRUE);
+            tmp[i] = lp_build_scale_view_dims(&bld4, tmp[i],
+                                              int_tex_blocksize_vec,
+                                              int_tex_blocksize_log2_vec,
+                                              int_view_blocksize_vec);
          }
          /*
           * out_size is [w0, h0, d0, _, w1, h1, d1, _, ...] vector for dims > 1,
@@ -1438,7 +1481,17 @@ lp_build_mipmap_level_sizes(struct lp_build_sample_context *bld,
             assert(bld->int_size_in_bld.type.length == 1);
             int_size_vec = lp_build_broadcast_scalar(&bld->int_coord_bld,
                                                      bld->int_size);
+            int_tex_blocksize_vec = lp_build_broadcast_scalar(&bld->int_coord_bld,
+                                                              bld->int_tex_blocksize);
+            int_tex_blocksize_log2_vec = lp_build_broadcast_scalar(&bld->int_coord_bld,
+                                                                   bld->int_tex_blocksize_log2);
+            int_view_blocksize_vec = lp_build_broadcast_scalar(&bld->int_coord_bld,
+                                                               bld->int_view_blocksize);
             *out_size = lp_build_minify(&bld->int_coord_bld, int_size_vec, ilevel, FALSE);
+            *out_size = lp_build_scale_view_dims(&bld->int_coord_bld, *out_size,
+                                                 int_tex_blocksize_vec,
+                                                 int_tex_blocksize_log2_vec,
+                                                 int_view_blocksize_vec);
          }
          else {
             LLVMValueRef ilevel1;
@@ -1448,6 +1501,10 @@ lp_build_mipmap_level_sizes(struct lp_build_sample_context *bld,
                                                     bld->int_size_in_bld.type, ilevel, indexi);
                tmp[i] = bld->int_size;
                tmp[i] = lp_build_minify(&bld->int_size_in_bld, tmp[i], ilevel1, TRUE);
+               tmp[i] = lp_build_scale_view_dims(&bld->int_size_in_bld, tmp[i],
+                                                 bld->int_tex_blocksize,
+                                                 bld->int_tex_blocksize_log2,
+                                                 bld->int_view_blocksize);
             }
             *out_size = lp_build_concat(bld->gallivm, tmp,
                                         bld->int_size_in_bld.type,
@@ -1757,7 +1814,6 @@ void
 lp_build_cube_lookup(struct lp_build_sample_context *bld,
                      LLVMValueRef *coords,
                      const struct lp_derivatives *derivs_in, /* optional */
-                     LLVMValueRef *rho,
                      struct lp_derivatives *derivs_out, /* optional */
                      boolean need_derivs)
 {
@@ -1770,16 +1826,7 @@ lp_build_cube_lookup(struct lp_build_sample_context *bld,
     * Do per-pixel face selection. We cannot however (as we used to do)
     * simply calculate the derivs afterwards (which is very bogus for
     * explicit derivs btw) because the values would be "random" when
-    * not all pixels lie on the same face. So what we do here is just
-    * calculate the derivatives after scaling the coords by the absolute
-    * value of the inverse major axis, and essentially do rho calculation
-    * steps as if it were a 3d texture. This is perfect if all pixels hit
-    * the same face, but not so great at edges, I believe the max error
-    * should be sqrt(2) with no_rho_approx or 2 otherwise (essentially measuring
-    * the 3d distance between 2 points on the cube instead of measuring up/down
-    * the edge). Still this is possibly a win over just selecting the same face
-    * for all pixels. Unfortunately, something like that doesn't work for
-    * explicit derivatives.
+    * not all pixels lie on the same face.
     */
    struct lp_build_context *cint_bld = &bld->int_coord_bld;
    struct lp_type intctype = cint_bld->type;
@@ -2031,11 +2078,9 @@ lp_build_cube_lookup(struct lp_build_sample_context *bld,
    coords[2] = LLVMBuildOr(builder, face, signma, "face");
 
    /* project coords */
-   if (!need_derivs) {
-      imahalfpos = lp_build_cube_imapos(coord_bld, ma);
-      face_s = lp_build_mul(coord_bld, face_s, imahalfpos);
-      face_t = lp_build_mul(coord_bld, face_t, imahalfpos);
-   }
+   imahalfpos = lp_build_cube_imapos(coord_bld, ma);
+   face_s = lp_build_mul(coord_bld, face_s, imahalfpos);
+   face_t = lp_build_mul(coord_bld, face_t, imahalfpos);
 
    coords[0] = lp_build_add(coord_bld, face_s, posHalf);
    coords[1] = lp_build_add(coord_bld, face_t, posHalf);

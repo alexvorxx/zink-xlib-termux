@@ -77,6 +77,10 @@ static const driOptionDescription anv_dri_options[] = {
       DRI_CONF_VK_WSI_FORCE_BGRA8_UNORM_FIRST(false)
       DRI_CONF_LIMIT_TRIG_INPUT_RANGE(false)
    DRI_CONF_SECTION_END
+
+   DRI_CONF_SECTION_QUALITY
+      DRI_CONF_PP_LOWER_DEPTH_RANGE_RATE()
+   DRI_CONF_SECTION_END
 };
 
 /* This is probably far to big but it reflects the max size used for messages
@@ -187,6 +191,9 @@ get_device_extensions(const struct anv_physical_device *device,
    *ext = (struct vk_device_extension_table) {
       .KHR_8bit_storage                      = true,
       .KHR_16bit_storage                     = true,
+      .KHR_acceleration_structure            = device->info.has_ray_tracing,
+      .KHR_acceleration_structure            = ANV_SUPPORT_RT &&
+                                               device->info.has_ray_tracing,
       .KHR_bind_memory2                      = true,
       .KHR_buffer_device_address             = true,
       .KHR_copy_commands2                    = true,
@@ -224,8 +231,12 @@ get_device_extensions(const struct anv_physical_device *device,
           INTEL_DEBUG(DEBUG_NO_OACONFIG)) &&
          device->use_call_secondary,
       .KHR_pipeline_executable_properties    = true,
+      .KHR_pipeline_library                  = true,
       .KHR_push_descriptor                   = true,
-      .KHR_ray_query                         = device->info.has_ray_tracing,
+      .KHR_ray_query                         =
+         ANV_SUPPORT_RT && device->info.has_ray_tracing,
+      .KHR_ray_tracing_pipeline              =
+         ANV_SUPPORT_RT && device->info.has_ray_tracing,
       .KHR_relaxed_block_layout              = true,
       .KHR_sampler_mirror_clamp_to_edge      = true,
       .KHR_sampler_ycbcr_conversion          = true,
@@ -261,6 +272,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_conditional_rendering             = true,
       .EXT_conservative_rasterization        = true,
       .EXT_custom_border_color               = true,
+      .EXT_depth_clamp_zero_one              = true,
       .EXT_depth_clip_control                = true,
       .EXT_depth_clip_enable                 = true,
       .EXT_descriptor_indexing               = true,
@@ -291,6 +303,7 @@ get_device_extensions(const struct anv_physical_device *device,
                                                 device->vram_mappable.available > 0) &&
                                                device->sys.available,
       .EXT_mesh_shader                       = device->info.has_mesh_shading,
+      .EXT_mutable_descriptor_type           = true,
       .EXT_non_seamless_cube_map             = true,
       .EXT_pci_bus_info                      = true,
       .EXT_physical_device_drm               = true,
@@ -800,8 +813,6 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
 
    device->info = devinfo;
 
-   device->cmd_parser_version = -1;
-
    if (!anv_gem_get_param(fd, I915_PARAM_HAS_WAIT_TIMEOUT)) {
       result = vk_errorf(device, VK_ERROR_INITIALIZATION_FAILED,
                          "kernel missing gem wait");
@@ -1057,6 +1068,8 @@ anv_init_dri_options(struct anv_instance *instance)
             driQueryOptionb(&instance->dri_options, "limit_trig_input_range");
     instance->sample_mask_out_opengl_behaviour =
             driQueryOptionb(&instance->dri_options, "anv_sample_mask_out_opengl_behaviour");
+    instance->lower_depth_range_rate =
+            driQueryOptionf(&instance->dri_options, "lower_depth_range_rate");
 }
 
 VkResult anv_CreateInstance(
@@ -1336,11 +1349,13 @@ void anv_GetPhysicalDeviceFeatures2(
 
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR: {
          VkPhysicalDeviceAccelerationStructureFeaturesKHR *features = (void *)ext;
-         features->accelerationStructure = false;
-         features->accelerationStructureCaptureReplay = false;
-         features->accelerationStructureIndirectBuild = false;
+         features->accelerationStructure =
+            ANV_SUPPORT_RT && pdevice->info.has_ray_tracing;
+         features->accelerationStructureCaptureReplay = false; /* TODO */
+         features->accelerationStructureIndirectBuild = false; /* TODO */
          features->accelerationStructureHostCommands = false;
-         features->descriptorBindingAccelerationStructureUpdateAfterBind = true;
+         features->descriptorBindingAccelerationStructureUpdateAfterBind =
+            ANV_SUPPORT_RT && pdevice->info.has_ray_tracing;
          break;
       }
 
@@ -1396,6 +1411,13 @@ void anv_GetPhysicalDeviceFeatures2(
             (VkPhysicalDeviceCustomBorderColorFeaturesEXT *)ext;
          features->customBorderColors = true;
          features->customBorderColorWithoutFormat = true;
+         break;
+      }
+
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_CLAMP_ZERO_ONE_FEATURES_EXT: {
+         VkPhysicalDeviceDepthClampZeroOneFeaturesEXT *features =
+            (VkPhysicalDeviceDepthClampZeroOneFeaturesEXT *)ext;
+         features->depthClampZeroOne = true;
          break;
       }
 
@@ -1487,12 +1509,13 @@ void anv_GetPhysicalDeviceFeatures2(
          features->taskShader = pdevice->vk.supported_extensions.EXT_mesh_shader;
          features->multiviewMeshShader = false;
          features->primitiveFragmentShadingRateMeshShader = features->meshShader;
+         features->meshShaderQueries = false;
          break;
       }
 
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MUTABLE_DESCRIPTOR_TYPE_FEATURES_VALVE: {
-         VkPhysicalDeviceMutableDescriptorTypeFeaturesVALVE *features =
-            (VkPhysicalDeviceMutableDescriptorTypeFeaturesVALVE *)ext;
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MUTABLE_DESCRIPTOR_TYPE_FEATURES_EXT: {
+         VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT *features =
+            (VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT *)ext;
          features->mutableDescriptorType = true;
          break;
       }
@@ -1532,7 +1555,17 @@ void anv_GetPhysicalDeviceFeatures2(
 
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR: {
          VkPhysicalDeviceRayQueryFeaturesKHR *features = (void *)ext;
-         features->rayQuery = pdevice->info.has_ray_tracing;
+         features->rayQuery = ANV_SUPPORT_RT && pdevice->info.has_ray_tracing;
+         break;
+      }
+
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR: {
+         VkPhysicalDeviceRayTracingPipelineFeaturesKHR *features = (void *)ext;
+         features->rayTracingPipeline = pdevice->info.has_ray_tracing;
+         features->rayTracingPipelineShaderGroupHandleCaptureReplay = false;
+         features->rayTracingPipelineShaderGroupHandleCaptureReplayMixed = false;
+         features->rayTracingPipelineTraceRaysIndirect = true;
+         features->rayTraversalPrimitiveCulling = false;
          break;
       }
 
@@ -2455,7 +2488,6 @@ void anv_GetPhysicalDeviceProperties2(
          properties->prefersLocalInvocationPrimitiveOutput = false;
          properties->prefersCompactVertexOutput = false;
          properties->prefersCompactPrimitiveOutput = false;
-         properties->meshShadingAffectedPipelineStatistics = 0;
 
          /* Spec minimum values */
          assert(properties->maxTaskWorkGroupTotalCount >= (1U << 22));
@@ -2540,6 +2572,22 @@ void anv_GetPhysicalDeviceProperties2(
          VkPhysicalDevicePushDescriptorPropertiesKHR *properties =
             (VkPhysicalDevicePushDescriptorPropertiesKHR *) ext;
          properties->maxPushDescriptors = MAX_PUSH_DESCRIPTORS;
+         break;
+      }
+
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR: {
+         VkPhysicalDeviceRayTracingPipelinePropertiesKHR *props = (void *)ext;
+         /* TODO */
+         props->shaderGroupHandleSize = 32;
+         props->maxRayRecursionDepth = 31;
+         /* MemRay::hitGroupSRStride is 16 bits */
+         props->maxShaderGroupStride = UINT16_MAX;
+         /* MemRay::hitGroupSRBasePtr requires 16B alignment */
+         props->shaderGroupBaseAlignment = 16;
+         props->shaderGroupHandleAlignment = 16;
+         props->shaderGroupHandleCaptureReplaySize = 32;
+         props->maxRayDispatchInvocationCount = 1U << 30; /* required min limit */
+         props->maxRayHitAttributeSize = BRW_RT_SIZEOF_HIT_ATTRIB_DATA;
          break;
       }
 
@@ -3365,7 +3413,9 @@ VkResult anv_CreateDevice(
 
    result = anv_device_alloc_bo(device, "workaround", 4096,
                                 ANV_BO_ALLOC_CAPTURE |
-                                ANV_BO_ALLOC_MAPPED,
+                                ANV_BO_ALLOC_MAPPED |
+                                (device->info->has_local_mem ?
+                                 ANV_BO_ALLOC_WRITE_COMBINE : 0),
                                 0 /* explicit_address */,
                                 &device->workaround_bo);
    if (result != VK_SUCCESS)
@@ -3378,6 +3428,11 @@ VkResult anv_CreateDevice(
                                        device->workaround_bo->size,
                                        "Anv") + 8, 8),
    };
+
+   device->rt_uuid_addr = anv_address_add(device->workaround_address, 8);
+   memcpy(device->rt_uuid_addr.bo->map + device->rt_uuid_addr.offset,
+          physical_device->rt_uuid,
+          sizeof(physical_device->rt_uuid));
 
    device->debug_frame_desc =
       intel_debug_get_identifier_block(device->workaround_bo->map,
@@ -3440,16 +3495,30 @@ VkResult anv_CreateDevice(
    /* TODO(RT): Do we want some sort of data structure for this? */
    memset(device->rt_scratch_bos, 0, sizeof(device->rt_scratch_bos));
 
+   if (ANV_SUPPORT_RT && device->info->has_ray_tracing) {
+      /* The docs say to always allocate 128KB per DSS */
+      const uint32_t btd_fifo_bo_size =
+         128 * 1024 * intel_device_info_dual_subslice_id_bound(device->info);
+      result = anv_device_alloc_bo(device,
+                                   "rt-btd-fifo",
+                                   btd_fifo_bo_size,
+                                   0 /* alloc_flags */,
+                                   0 /* explicit_address */,
+                                   &device->btd_fifo_bo);
+      if (result != VK_SUCCESS)
+         goto fail_trivial_batch_bo_and_scratch_pool;
+   }
+
    result = anv_genX(device->info, init_device_state)(device);
    if (result != VK_SUCCESS)
-      goto fail_trivial_batch_bo_and_scratch_pool;
+      goto fail_btd_fifo_bo;
 
    struct vk_pipeline_cache_create_info pcc_info = { };
    device->default_pipeline_cache =
       vk_pipeline_cache_create(&device->vk, &pcc_info, NULL);
    if (!device->default_pipeline_cache) {
       result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-      goto fail_trivial_batch_bo_and_scratch_pool;
+      goto fail_btd_fifo_bo;
    }
 
    /* Internal shaders need their own pipeline cache because, unlike the rest
@@ -3487,6 +3556,9 @@ VkResult anv_CreateDevice(
    vk_pipeline_cache_destroy(device->internal_cache, NULL);
  fail_default_pipeline_cache:
    vk_pipeline_cache_destroy(device->default_pipeline_cache, NULL);
+ fail_btd_fifo_bo:
+   if (ANV_SUPPORT_RT && device->info->has_ray_tracing)
+      anv_device_release_bo(device, device->btd_fifo_bo);
  fail_trivial_batch_bo_and_scratch_pool:
    anv_scratch_pool_finish(device, &device->scratch_pool);
  fail_trivial_batch:
@@ -3556,6 +3628,9 @@ void anv_DestroyDevice(
 
    vk_pipeline_cache_destroy(device->internal_cache, NULL);
    vk_pipeline_cache_destroy(device->default_pipeline_cache, NULL);
+
+   if (ANV_SUPPORT_RT && device->info->has_ray_tracing)
+      anv_device_release_bo(device, device->btd_fifo_bo);
 
 #ifdef HAVE_VALGRIND
    /* We only need to free these to prevent valgrind errors.  The backing
@@ -3844,6 +3919,16 @@ VkResult anv_AllocateMemory(
        (mem_type->propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) &&
        (mem_type->propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
       alloc_flags |= ANV_BO_ALLOC_LOCAL_MEM_CPU_VISIBLE;
+
+   if (!(mem_type->propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT))
+      alloc_flags |= ANV_BO_ALLOC_NO_LOCAL_MEM;
+
+   /* If the allocated buffer might end up in local memory and it's host
+    * visible, make CPU writes are combined, it should be faster.
+    */
+   if (!(alloc_flags & ANV_BO_ALLOC_NO_LOCAL_MEM) &&
+       (mem_type->propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
+      alloc_flags |= ANV_BO_ALLOC_WRITE_COMBINE;
 
    if (vk_flags & VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT)
       alloc_flags |= ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS;
@@ -4737,9 +4822,9 @@ vk_icdNegotiateLoaderICDInterfaceVersion(uint32_t* pSupportedVersion)
     *
     *    - Loader interface v4 differs from v3 in:
     *        - The ICD must implement vk_icdGetPhysicalDeviceProcAddr().
-    * 
+    *
     *    - Loader interface v5 differs from v4 in:
-    *        - The ICD must support Vulkan API version 1.1 and must not return 
+    *        - The ICD must support Vulkan API version 1.1 and must not return
     *          VK_ERROR_INCOMPATIBLE_DRIVER from vkCreateInstance() unless a
     *          Vulkan Loader with interface v4 or smaller is being used and the
     *          application provides an API version that is greater than 1.0.

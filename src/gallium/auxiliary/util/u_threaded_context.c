@@ -2282,8 +2282,30 @@ tc_buffer_map(struct pipe_context *_pipe,
       /* We can't let resource_copy_region disable the CPU storage. */
       assert(!(tres->b.flags & PIPE_RESOURCE_FLAG_DONT_MAP_DIRECTLY));
 
-      if (!tres->cpu_storage)
+      if (!tres->cpu_storage) {
          tres->cpu_storage = align_malloc(resource->width0, tc->map_buffer_alignment);
+
+         if (tres->cpu_storage && tres->valid_buffer_range.end) {
+            /* The GPU buffer contains valid data. Copy them to the CPU storage. */
+            struct pipe_box box2;
+            struct pipe_transfer *transfer2;
+
+            unsigned valid_range_len = tres->valid_buffer_range.end - tres->valid_buffer_range.start;
+            u_box_1d(tres->valid_buffer_range.start, valid_range_len, &box2);
+
+            tc_sync_msg(tc, "cpu storage GPU -> CPU copy");
+            tc_set_driver_thread(tc);
+
+            void *ret = pipe->buffer_map(pipe, tres->latest ? tres->latest : resource,
+                                         0, PIPE_MAP_READ, &box2, &transfer2);
+            memcpy(&((uint8_t*)tres->cpu_storage)[tres->valid_buffer_range.start],
+                   ret,
+                   valid_range_len);
+            pipe->buffer_unmap(pipe, transfer2);
+
+            tc_clear_driver_thread(tc);
+         }
+      }
 
       if (tres->cpu_storage) {
          struct threaded_transfer *ttrans = slab_zalloc(&tc->pool_transfers);
@@ -2709,6 +2731,12 @@ tc_buffer_subdata(struct pipe_context *_pipe,
 
       u_box_1d(offset, size, &box);
 
+      /* CPU storage is only useful for partial updates. It can add overhead
+       * on glBufferData calls so avoid using it.
+       */
+      if (!tres->cpu_storage && offset == 0 && size == resource->width0)
+         usage |= TC_TRANSFER_MAP_UPLOAD_CPU_STORAGE;
+
       map = tc_buffer_map(_pipe, resource, 0, usage, &box, &transfer);
       if (map) {
          memcpy(map, data, size);
@@ -2961,7 +2989,9 @@ tc_create_fence_fd(struct pipe_context *_pipe,
    struct threaded_context *tc = threaded_context(_pipe);
    struct pipe_context *pipe = tc->pipe;
 
-   tc_sync(tc);
+   if (!tc->options.unsynchronized_create_fence_fd)
+      tc_sync(tc);
+
    pipe->create_fence_fd(pipe, fence, fd, type);
 }
 
@@ -3501,6 +3531,7 @@ tc_draw_vbo(struct pipe_context *_pipe, const struct pipe_draw_info *info,
          return;
 
       int total_offset = 0;
+      unsigned offset = 0;
       while (num_draws) {
          struct tc_batch *next = &tc->batch_slots[tc->next];
 
@@ -3517,11 +3548,18 @@ tc_draw_vbo(struct pipe_context *_pipe, const struct pipe_draw_info *info,
             tc_add_slot_based_call(tc, TC_CALL_draw_multi, tc_draw_multi,
                                    dr);
          memcpy(&p->info, info, DRAW_INFO_SIZE_WITHOUT_INDEXBUF_AND_MIN_MAX_INDEX);
-         p->info.index.resource = buffer;
+
+         if (total_offset == 0)
+            /* the first slot inherits the reference from u_upload_alloc() */
+            p->info.index.resource = buffer;
+         else
+            /* all following slots need a new reference */
+            tc_set_resource_reference(&p->info.index.resource, buffer);
+
          p->num_draws = dr;
 
          /* Upload index buffers. */
-         for (unsigned i = 0, offset = 0; i < dr; i++) {
+         for (unsigned i = 0; i < dr; i++) {
             unsigned count = draws[i + total_offset].count;
 
             if (!count) {

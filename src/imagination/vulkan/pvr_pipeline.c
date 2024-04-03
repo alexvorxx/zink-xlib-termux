@@ -279,6 +279,10 @@ static void pvr_pds_vertex_attrib_init_dma_descriptions(
       const VkVertexInputAttributeDescription *const attrib_desc =
          &vertex_input_state->pVertexAttributeDescriptions[i];
       const VkVertexInputBindingDescription *binding_desc = NULL;
+      struct pvr_pds_vertex_dma *const dma_desc = &dma_descriptions[dma_count];
+      size_t location = attrib_desc->location;
+
+      assert(location < vs_data->inputs.num_input_vars);
 
       /* Finding the matching binding description. */
       for (uint32_t j = 0;
@@ -300,15 +304,8 @@ static void pvr_pds_vertex_attrib_init_dma_descriptions(
        *    pVertexAttributeDescriptions, a
        *    VkVertexInputBindingDescription must exist in
        *    pVertexBindingDescriptions with the same value of binding"
-       *
-       * So we don't check if we found the matching binding description
-       * or not.
        */
-
-      struct pvr_pds_vertex_dma *const dma_desc = &dma_descriptions[dma_count];
-
-      size_t location = attrib_desc->location;
-      assert(location < vs_data->inputs.num_input_vars);
+      assert(binding_desc);
 
       dma_desc->offset = attrib_desc->offset;
       dma_desc->stride = binding_desc->stride;
@@ -1778,12 +1775,11 @@ static void pvr_graphics_pipeline_init_dynamic_state(
 
       /* TODO: Do we need the depthBiasEnable check? */
       if (!(dynamic_states & PVR_DYNAMIC_STATE_BIT_DEPTH_BIAS)) {
-         internal_dynamic_state->depth_bias.constant_factor =
-            rasterization_state->depthBiasConstantFactor;
-         internal_dynamic_state->depth_bias.clamp =
-            rasterization_state->depthBiasClamp;
-         internal_dynamic_state->depth_bias.slope_factor =
-            rasterization_state->depthBiasSlopeFactor;
+         internal_dynamic_state->depth_bias = (struct pvr_depth_bias_state){
+            .constant_factor = rasterization_state->depthBiasConstantFactor,
+            .slope_factor = rasterization_state->depthBiasSlopeFactor,
+            .clamp = rasterization_state->depthBiasClamp,
+         };
       }
    }
 

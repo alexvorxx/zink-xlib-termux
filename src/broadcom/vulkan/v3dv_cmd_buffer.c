@@ -74,18 +74,13 @@ cmd_buffer_init(struct v3dv_cmd_buffer *cmd_buffer,
    cmd_buffer->status = V3DV_CMD_BUFFER_STATUS_INITIALIZED;
 }
 
-static void cmd_buffer_destroy(struct vk_command_buffer *cmd_buffer);
-
-static const struct vk_command_buffer_ops cmd_buffer_ops = {
-   .destroy = cmd_buffer_destroy,
-};
-
 static VkResult
-cmd_buffer_create(struct v3dv_device *device,
-                  struct vk_command_pool *pool,
-                  VkCommandBufferLevel level,
-                  VkCommandBuffer *pCommandBuffer)
+cmd_buffer_create(struct vk_command_pool *pool,
+                  struct vk_command_buffer **cmd_buffer_out)
 {
+   struct v3dv_device *device =
+      container_of(pool->base.device, struct v3dv_device, vk);
+
    struct v3dv_cmd_buffer *cmd_buffer;
    cmd_buffer = vk_zalloc(&pool->alloc,
                           sizeof(*cmd_buffer),
@@ -94,9 +89,13 @@ cmd_buffer_create(struct v3dv_device *device,
    if (cmd_buffer == NULL)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
+   /* Here we pass 0 as level because this callback hook doesn't have the level
+    * info, but that's fine, vk_common_AllocateCommandBuffers will fix it up
+    * after creation.
+    */
    VkResult result;
    result = vk_command_buffer_init(pool, &cmd_buffer->vk,
-                                   &cmd_buffer_ops, level);
+                                   &v3dv_cmd_buffer_ops, 0 /* level */);
    if (result != VK_SUCCESS) {
       vk_free(&pool->alloc, cmd_buffer);
       return result;
@@ -104,7 +103,7 @@ cmd_buffer_create(struct v3dv_device *device,
 
    cmd_buffer_init(cmd_buffer, device);
 
-   *pCommandBuffer = v3dv_cmd_buffer_to_handle(cmd_buffer);
+   *cmd_buffer_out = &cmd_buffer->vk;
 
    return VK_SUCCESS;
 }
@@ -833,10 +832,13 @@ v3dv_cmd_buffer_start_job(struct v3dv_cmd_buffer *cmd_buffer,
    return job;
 }
 
-static VkResult
-cmd_buffer_reset(struct v3dv_cmd_buffer *cmd_buffer,
+static void
+cmd_buffer_reset(struct vk_command_buffer *vk_cmd_buffer,
                  VkCommandBufferResetFlags flags)
 {
+   struct v3dv_cmd_buffer *cmd_buffer =
+      container_of(vk_cmd_buffer, struct v3dv_cmd_buffer, vk);
+
    vk_command_buffer_reset(&cmd_buffer->vk);
    if (cmd_buffer->status != V3DV_CMD_BUFFER_STATUS_INITIALIZED) {
       struct v3dv_device *device = cmd_buffer->device;
@@ -851,37 +853,6 @@ cmd_buffer_reset(struct v3dv_cmd_buffer *cmd_buffer,
    }
 
    assert(cmd_buffer->status == V3DV_CMD_BUFFER_STATUS_INITIALIZED);
-   return VK_SUCCESS;
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
-v3dv_AllocateCommandBuffers(VkDevice _device,
-                            const VkCommandBufferAllocateInfo *pAllocateInfo,
-                            VkCommandBuffer *pCommandBuffers)
-{
-   V3DV_FROM_HANDLE(v3dv_device, device, _device);
-   VK_FROM_HANDLE(vk_command_pool, pool, pAllocateInfo->commandPool);
-
-   VkResult result = VK_SUCCESS;
-   uint32_t i;
-
-   for (i = 0; i < pAllocateInfo->commandBufferCount; i++) {
-      result = cmd_buffer_create(device, pool, pAllocateInfo->level,
-                                 &pCommandBuffers[i]);
-      if (result != VK_SUCCESS)
-         break;
-   }
-
-   if (result != VK_SUCCESS) {
-      while (i--) {
-         VK_FROM_HANDLE(vk_command_buffer, cmd_buffer, pCommandBuffers[i]);
-         cmd_buffer_destroy(cmd_buffer);
-      }
-      for (i = 0; i < pAllocateInfo->commandBufferCount; i++)
-         pCommandBuffers[i] = VK_NULL_HANDLE;
-   }
-
-   return result;
 }
 
 static void
@@ -1035,6 +1006,12 @@ cmd_buffer_begin_render_pass_secondary(
    return VK_SUCCESS;
 }
 
+const struct vk_command_buffer_ops v3dv_cmd_buffer_ops = {
+   .create = cmd_buffer_create,
+   .reset = cmd_buffer_reset,
+   .destroy = cmd_buffer_destroy,
+};
+
 VKAPI_ATTR VkResult VKAPI_CALL
 v3dv_BeginCommandBuffer(VkCommandBuffer commandBuffer,
                         const VkCommandBufferBeginInfo *pBeginInfo)
@@ -1045,9 +1022,7 @@ v3dv_BeginCommandBuffer(VkCommandBuffer commandBuffer,
     * command buffer's state. Otherwise, we must reset its state. In both
     * cases we reset it.
     */
-   VkResult result = cmd_buffer_reset(cmd_buffer, 0);
-   if (result != VK_SUCCESS)
-      return result;
+   cmd_buffer_reset(&cmd_buffer->vk, 0);
 
    assert(cmd_buffer->status == V3DV_CMD_BUFFER_STATUS_INITIALIZED);
 
@@ -1055,7 +1030,7 @@ v3dv_BeginCommandBuffer(VkCommandBuffer commandBuffer,
 
    if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_SECONDARY) {
       if (pBeginInfo->flags & VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT) {
-         result =
+         VkResult result =
             cmd_buffer_begin_render_pass_secondary(cmd_buffer,
                                                    pBeginInfo->pInheritanceInfo);
          if (result != VK_SUCCESS)
@@ -1066,14 +1041,6 @@ v3dv_BeginCommandBuffer(VkCommandBuffer commandBuffer,
    cmd_buffer->status = V3DV_CMD_BUFFER_STATUS_RECORDING;
 
    return VK_SUCCESS;
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
-v3dv_ResetCommandBuffer(VkCommandBuffer commandBuffer,
-                        VkCommandBufferResetFlags flags)
-{
-   V3DV_FROM_HANDLE(v3dv_cmd_buffer, cmd_buffer, commandBuffer);
-   return cmd_buffer_reset(cmd_buffer, flags);
 }
 
 static void
@@ -1456,7 +1423,9 @@ bool
 v3dv_cmd_buffer_check_needs_load(const struct v3dv_cmd_buffer_state *state,
                                  VkImageAspectFlags aspect,
                                  uint32_t first_subpass_idx,
-                                 VkAttachmentLoadOp load_op)
+                                 VkAttachmentLoadOp load_op,
+                                 uint32_t last_subpass_idx,
+                                 VkAttachmentStoreOp store_op)
 {
    /* We call this with image->vk.aspects & aspect, so 0 means the aspect we are
     * testing does not exist in the image.
@@ -1476,9 +1445,14 @@ v3dv_cmd_buffer_check_needs_load(const struct v3dv_cmd_buffer_state *state,
    if (state->job->is_subpass_continue)
       return true;
 
-   /* If the area is not aligned to tile boundaries, we always need to load */
-   if (!state->tile_aligned_render_area)
+   /* If the area is not aligned to tile boundaries and we are going to store,
+    * then we need to load to preserve contents outside the render area.
+    */
+   if (!state->tile_aligned_render_area &&
+       v3dv_cmd_buffer_check_needs_store(state, aspect, last_subpass_idx,
+                                         store_op)) {
       return true;
+   }
 
    /* The attachment load operations must be LOAD */
    return load_op == VK_ATTACHMENT_LOAD_OP_LOAD;
@@ -1572,7 +1546,9 @@ cmd_buffer_subpass_check_double_buffer_mode(struct v3dv_cmd_buffer *cmd_buffer,
       if (v3dv_cmd_buffer_check_needs_load(state,
                                            VK_IMAGE_ASPECT_COLOR_BIT,
                                            attachment->first_subpass,
-                                           attachment->desc.loadOp)) {
+                                           attachment->desc.loadOp,
+                                           attachment->last_subpass,
+                                           attachment->desc.storeOp)) {
          return;
       }
 
@@ -1595,14 +1571,18 @@ cmd_buffer_subpass_check_double_buffer_mode(struct v3dv_cmd_buffer *cmd_buffer,
       if (v3dv_cmd_buffer_check_needs_load(state,
                                            ds_aspects & VK_IMAGE_ASPECT_DEPTH_BIT,
                                            ds_attachment->first_subpass,
-                                           ds_attachment->desc.loadOp)) {
+                                           ds_attachment->desc.loadOp,
+                                           ds_attachment->last_subpass,
+                                           ds_attachment->desc.storeOp)) {
          return;
       }
 
       if (v3dv_cmd_buffer_check_needs_load(state,
                                            ds_aspects & VK_IMAGE_ASPECT_STENCIL_BIT,
                                            ds_attachment->first_subpass,
-                                           ds_attachment->desc.stencilLoadOp)) {
+                                           ds_attachment->desc.stencilLoadOp,
+                                           ds_attachment->last_subpass,
+                                           ds_attachment->desc.stencilStoreOp)) {
          return;
       }
 
@@ -2143,6 +2123,33 @@ v3dv_viewport_compute_xform(const VkViewport *viewport,
    const float min_abs_scale = 0.000009f;
    if (fabs(scale[2]) < min_abs_scale)
       scale[2] = min_abs_scale * (scale[2] < 0 ? -1.0f : 1.0f);
+}
+
+/* Considers the pipeline's negative_one_to_one state and applies it to the
+ * current viewport transform if needed to produce the resulting Z translate
+ * and scale parameters.
+ */
+void
+v3dv_cmd_buffer_state_get_viewport_z_xform(struct v3dv_cmd_buffer_state *state,
+                                           uint32_t vp_idx,
+                                           float *translate_z, float *scale_z)
+{
+   const struct v3dv_viewport_state *vp_state = &state->dynamic.viewport;
+
+   float t = vp_state->translate[vp_idx][2];
+   float s = vp_state->scale[vp_idx][2];
+
+   assert(state->gfx.pipeline);
+   if (state->gfx.pipeline->negative_one_to_one) {
+      t = (t + vp_state->viewports[vp_idx].maxDepth) * 0.5f;
+      s *= 0.5f;
+   }
+
+   if (translate_z)
+      *translate_z = t;
+
+   if (scale_z)
+      *scale_z = s;
 }
 
 VKAPI_ATTR void VKAPI_CALL

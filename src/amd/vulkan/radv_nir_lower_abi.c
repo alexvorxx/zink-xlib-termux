@@ -92,7 +92,16 @@ lower_abi_instr(nir_builder *b, nir_instr *instr, void *state)
       replacement = ac_nir_load_arg(b, &s->args->ac, s->args->ac.tess_offchip_offset);
       break;
    case nir_intrinsic_load_tcs_num_patches_amd:
-      replacement = nir_imm_int(b, s->info->num_tess_patches);
+      if (s->pl_key->dynamic_patch_control_points) {
+         if (stage == MESA_SHADER_TESS_CTRL) {
+            nir_ssa_def *arg = ac_nir_load_arg(b, &s->args->ac, s->args->tcs_offchip_layout);
+            replacement = nir_ubfe_imm(b, arg, 6, 8);
+         } else {
+            replacement = ac_nir_load_arg(b, &s->args->ac, s->args->tes_num_patches);
+         }
+      } else {
+         replacement = nir_imm_int(b, s->info->num_tess_patches);
+      }
       break;
    case nir_intrinsic_load_ring_esgs_amd:
       if (s->use_llvm)
@@ -121,10 +130,16 @@ lower_abi_instr(nir_builder *b, nir_instr *instr, void *state)
       }
       break;
    case nir_intrinsic_load_patch_vertices_in:
-      if (stage == MESA_SHADER_TESS_CTRL)
-         replacement = nir_imm_int(b, s->pl_key->tcs.tess_input_vertices);
-      else if (stage == MESA_SHADER_TESS_EVAL)
+      if (stage == MESA_SHADER_TESS_CTRL) {
+         if (s->pl_key->dynamic_patch_control_points) {
+            nir_ssa_def *arg = ac_nir_load_arg(b, &s->args->ac, s->args->tcs_offchip_layout);
+            replacement = nir_ubfe_imm(b, arg, 0, 6);
+         } else {
+            replacement = nir_imm_int(b, s->pl_key->tcs.tess_input_vertices);
+         }
+      } else if (stage == MESA_SHADER_TESS_EVAL) {
          replacement = nir_imm_int(b, b->shader->info.tess.tcs_vertices_out);
+      }
       else
          unreachable("invalid tessellation shader stage");
       break;
@@ -218,14 +233,53 @@ lower_abi_instr(nir_builder *b, nir_instr *instr, void *state)
       break;
    }
    case nir_intrinsic_load_hs_out_patch_data_offset_amd: {
-      unsigned num_patches = s->info->num_tess_patches;
       unsigned out_vertices_per_patch = b->shader->info.tess.tcs_vertices_out;
       unsigned num_tcs_outputs = stage == MESA_SHADER_TESS_CTRL ?
          s->info->tcs.num_linked_outputs : s->info->tes.num_linked_inputs;
       int per_vertex_output_patch_size = out_vertices_per_patch * num_tcs_outputs * 16u;
-      replacement = nir_imm_int(b, num_patches * per_vertex_output_patch_size);
+
+      if (s->pl_key->dynamic_patch_control_points) {
+         nir_ssa_def *num_patches;
+
+         if (stage == MESA_SHADER_TESS_CTRL) {
+            nir_ssa_def *arg = ac_nir_load_arg(b, &s->args->ac, s->args->tcs_offchip_layout);
+            num_patches = nir_ubfe_imm(b, arg, 6, 8);
+         } else {
+            num_patches = ac_nir_load_arg(b, &s->args->ac, s->args->tes_num_patches);
+         }
+         replacement = nir_imul_imm(b, num_patches, per_vertex_output_patch_size);
+      } else {
+         unsigned num_patches = s->info->num_tess_patches;
+         replacement = nir_imm_int(b, num_patches * per_vertex_output_patch_size);
+      }
       break;
    }
+   case nir_intrinsic_load_sample_positions_amd: {
+      uint32_t sample_pos_offset = (RING_PS_SAMPLE_POSITIONS * 16) - 8;
+
+      nir_ssa_def *ring_offsets = ac_nir_load_arg(b, &s->args->ac, s->args->ring_offsets);
+      nir_ssa_def *addr = nir_pack_64_2x32(b, ring_offsets);
+      nir_ssa_def *sample_id = nir_umin(b, intrin->src[0].ssa, nir_imm_int(b, 7));
+      nir_ssa_def *offset = nir_ishl_imm(b, sample_id, 3); /* 2 floats containing samplepos.xy */
+
+      nir_const_value *const_num_samples = nir_src_as_const_value(intrin->src[1]);
+      if (const_num_samples) {
+         sample_pos_offset += (const_num_samples->u32 << 3);
+      } else {
+         offset = nir_iadd(b, offset, nir_ishl_imm(b, intrin->src[1].ssa, 3));
+      }
+
+      replacement = nir_load_global_amd(b, 2, 32, addr, offset,
+                                        .base = sample_pos_offset, .access = ACCESS_NON_WRITEABLE);
+      break;
+   }
+   case nir_intrinsic_load_rasterization_samples_amd:
+      if (s->pl_key->dynamic_rasterization_samples) {
+         replacement = ac_nir_load_arg(b, &s->args->ac, s->args->ps_num_samples);
+      } else {
+         replacement = nir_imm_int(b, s->pl_key->ps.num_samples);
+      }
+      break;
    default:
       break;
    }

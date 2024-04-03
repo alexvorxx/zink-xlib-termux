@@ -78,6 +78,8 @@ glthread_unmarshal_batch(void *job, void *gdata, int thread_index)
    /* Atomically set this to -1 if it's equal to batch_index. */
    p_atomic_cmpxchg(&ctx->GLThread.LastProgramChangeBatch, batch_index, -1);
    p_atomic_cmpxchg(&ctx->GLThread.LastDListChangeBatchIndex, batch_index, -1);
+
+   p_atomic_inc(&ctx->GLThread.stats.num_batches);
 }
 
 static void
@@ -129,13 +131,6 @@ _mesa_glthread_init(struct gl_context *ctx)
    glthread->SupportsBufferUploads =
       ctx->Const.BufferCreateMapUnsynchronizedThreadSafe &&
       ctx->Const.AllowMappedBuffersDuringExecution;
-
-   /* If the draw start index is non-zero, glthread can upload to offset 0,
-    * which means the attrib offset has to be -(first * stride).
-    * So require signed vertex buffer offsets.
-    */
-   glthread->SupportsNonVBOUploads = glthread->SupportsBufferUploads &&
-                                     ctx->Const.VertexBufferOffsetIsInt32;
 
    ctx->CurrentClientDispatch = ctx->MarshalExec;
 

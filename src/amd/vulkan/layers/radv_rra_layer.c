@@ -116,8 +116,11 @@ rra_CreateAccelerationStructureKHR(VkDevice _device,
    RADV_FROM_HANDLE(radv_acceleration_structure, structure, *pAccelerationStructure);
    simple_mtx_lock(&device->rra_trace.data_mtx);
 
-   assert(!_mesa_hash_table_u64_search(device->rra_trace.accel_struct_vas,
-                                       radv_accel_struct_get_va(structure)));
+   if (_mesa_hash_table_u64_search(device->rra_trace.accel_struct_vas, structure->va) != NULL) {
+      fprintf(stderr, "radv: Memory aliasing between acceleration structures detected. RRA "
+                      "captures might not work correctly.\n");
+      goto end;
+   }
 
    VkEvent _build_submit_event;
    radv_CreateEvent(radv_device_to_handle(device),
@@ -129,9 +132,9 @@ rra_CreateAccelerationStructureKHR(VkDevice _device,
    RADV_FROM_HANDLE(radv_event, build_submit_event, _build_submit_event);
 
    _mesa_hash_table_insert(device->rra_trace.accel_structs, structure, build_submit_event);
-   _mesa_hash_table_u64_insert(device->rra_trace.accel_struct_vas,
-                               radv_accel_struct_get_va(structure), NULL);
+   _mesa_hash_table_u64_insert(device->rra_trace.accel_struct_vas, structure->va, structure);
 
+end:
    simple_mtx_unlock(&device->rra_trace.data_mtx);
    return VK_SUCCESS;
 }
@@ -215,8 +218,7 @@ rra_DestroyAccelerationStructureKHR(VkDevice _device, VkAccelerationStructureKHR
    
    radv_DestroyEvent(_device, radv_event_to_handle(entry->data), NULL);
    _mesa_hash_table_remove(device->rra_trace.accel_structs, entry);
-   _mesa_hash_table_u64_remove(device->rra_trace.accel_struct_vas,
-                               radv_accel_struct_get_va(structure));
+   _mesa_hash_table_u64_remove(device->rra_trace.accel_struct_vas, structure->va);
    simple_mtx_unlock(&device->rra_trace.data_mtx);
 
    radv_DestroyAccelerationStructureKHR(_device, _structure, pAllocator);

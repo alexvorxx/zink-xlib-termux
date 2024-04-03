@@ -184,6 +184,13 @@ emit_so_memcpy(struct anv_batch *batch, struct anv_device *device,
          },
       });
 
+#if GFX_VERx10 == 125
+      /* Wa_14015946265: Send PC with CS stall after SO_DECL. */
+      anv_batch_emit(batch, GENX(PIPE_CONTROL), pc) {
+         pc.CommandStreamerStallEnable = true;
+      }
+#endif
+
    anv_batch_emit(batch, GENX(3DSTATE_STREAMOUT), so) {
       so.SOFunctionEnable = true;
       so.RenderingDisable = true;
@@ -194,13 +201,17 @@ emit_so_memcpy(struct anv_batch *batch, struct anv_device *device,
 
    anv_batch_emit(batch, GENX(3DPRIMITIVE), prim) {
       prim.VertexAccessType         = SEQUENTIAL;
-      prim.PrimitiveTopologyType    = _3DPRIM_POINTLIST;
       prim.VertexCountPerInstance   = size / bs;
       prim.StartVertexLocation      = 0;
       prim.InstanceCount            = 1;
       prim.StartInstanceLocation    = 0;
       prim.BaseVertexLocation       = 0;
    }
+
+#if GFX_VERx10 == 125
+   genX(batch_emit_dummy_post_sync_op)(batch, device, _3DPRIM_POINTLIST,
+                                       size / bs);
+#endif
 }
 
 void

@@ -426,10 +426,8 @@ vn_cmd_end_render_pass(struct vn_command_buffer *cmd)
 
    if (pass->present_release_count) {
       vn_cmd_transfer_present_src_images(
-         cmd, false,
-         images + pass->present_acquire_count,
-         pass->present_release_attachments,
-         pass->present_release_count);
+         cmd, false, images + pass->present_acquire_count,
+         pass->present_release_attachments, pass->present_release_count);
    }
 
    vk_free(&cmd->allocator, images);
@@ -658,6 +656,7 @@ vn_fix_command_buffer_begin_info(struct vn_command_buffer *cmd,
    const bool has_continue =
       begin_info->flags & VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
    const bool has_renderpass =
+      is_cmd_secondary &&
       begin_info->pInheritanceInfo->renderPass != VK_NULL_HANDLE;
 
    /* Can early-return if dynamic rendering is used and no structures need to
@@ -1776,4 +1775,36 @@ void
 vn_CmdEndConditionalRenderingEXT(VkCommandBuffer commandBuffer)
 {
    VN_CMD_ENQUEUE(vkCmdEndConditionalRenderingEXT, commandBuffer);
+}
+
+void
+vn_CmdDrawMultiEXT(VkCommandBuffer commandBuffer,
+                   uint32_t drawCount,
+                   const VkMultiDrawInfoEXT *pVertexInfo,
+                   uint32_t instanceCount,
+                   uint32_t firstInstance,
+                   uint32_t stride)
+{
+   VN_CMD_ENQUEUE(vkCmdDrawMultiEXT, commandBuffer, drawCount, pVertexInfo,
+                  instanceCount, firstInstance, stride);
+
+   vn_cmd_count_draw_and_submit_on_batch_limit(
+      vn_command_buffer_from_handle(commandBuffer));
+}
+
+void
+vn_CmdDrawMultiIndexedEXT(VkCommandBuffer commandBuffer,
+                          uint32_t drawCount,
+                          const VkMultiDrawIndexedInfoEXT *pIndexInfo,
+                          uint32_t instanceCount,
+                          uint32_t firstInstance,
+                          uint32_t stride,
+                          const int32_t *pVertexOffset)
+{
+   VN_CMD_ENQUEUE(vkCmdDrawMultiIndexedEXT, commandBuffer, drawCount,
+                  pIndexInfo, instanceCount, firstInstance, stride,
+                  pVertexOffset);
+
+   vn_cmd_count_draw_and_submit_on_batch_limit(
+      vn_command_buffer_from_handle(commandBuffer));
 }

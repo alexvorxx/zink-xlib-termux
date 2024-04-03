@@ -103,10 +103,7 @@ void genX(emit_l3_config)(struct anv_batch *batch,
 void genX(cmd_buffer_config_l3)(struct anv_cmd_buffer *cmd_buffer,
                                 const struct intel_l3_config *cfg);
 
-void genX(cmd_buffer_flush_state)(struct anv_cmd_buffer *cmd_buffer);
 void genX(cmd_buffer_flush_dynamic_state)(struct anv_cmd_buffer *cmd_buffer);
-
-void genX(cmd_buffer_flush_compute_state)(struct anv_cmd_buffer *cmd_buffer);
 
 void genX(cmd_buffer_enable_pma_fix)(struct anv_cmd_buffer *cmd_buffer,
                                      bool enable);
@@ -130,8 +127,7 @@ genX(emit_urb_setup)(struct anv_device *device, struct anv_batch *batch,
                      const unsigned entry_size[4],
                      enum intel_urb_deref_block_size *deref_block_size);
 
-void genX(emit_multisample)(struct anv_batch *batch, uint32_t samples,
-                            const struct vk_sample_locations_state *sl);
+void genX(emit_multisample)(struct anv_batch *batch, uint32_t samples);
 
 void genX(emit_sample_pattern)(struct anv_batch *batch,
                                const struct vk_sample_locations_state *sl);
@@ -144,6 +140,12 @@ void genX(cmd_buffer_so_memcpy)(struct anv_cmd_buffer *cmd_buffer,
                                 struct anv_address dst, struct anv_address src,
                                 uint32_t size);
 
+void genX(cmd_buffer_dispatch_kernel)(struct anv_cmd_buffer *cmd_buffer,
+                                      struct anv_kernel *kernel,
+                                      const uint32_t *global_size, /* NULL for indirect */
+                                      uint32_t arg_count,
+                                      const struct anv_kernel_arg *args);
+
 void genX(blorp_exec)(struct blorp_batch *batch,
                       const struct blorp_params *params);
 
@@ -151,6 +153,11 @@ void genX(cmd_emit_timestamp)(struct anv_batch *batch,
                               struct anv_device *device,
                               struct anv_address addr,
                               bool end_of_pipe);
+
+void genX(batch_emit_dummy_post_sync_op)(struct anv_batch *batch,
+                                         struct anv_device *device,
+                                         uint32_t primitive_topology,
+                                         uint32_t vertex_count);
 
 void
 genX(rasterization_mode)(VkPolygonMode raster_mode,

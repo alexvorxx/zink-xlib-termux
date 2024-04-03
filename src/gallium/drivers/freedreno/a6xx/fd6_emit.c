@@ -25,6 +25,8 @@
  *    Rob Clark <robclark@freedesktop.org>
  */
 
+#define FD_BO_NO_HARDPIN 1
+
 #include "pipe/p_state.h"
 #include "util/format/u_format.h"
 #include "util/u_helpers.h"
@@ -837,6 +839,11 @@ build_ibo(struct fd6_emit *emit) assert_dt
       assert(ir3_shader_nibo(emit->gs) == 0);
    }
 
+   unsigned nibo = ir3_shader_nibo(emit->fs);
+
+   if (nibo == 0)
+      return NULL;
+
    struct fd_ringbuffer *ibo_state =
       fd6_build_ibo_state(ctx, emit->fs, PIPE_SHADER_FRAGMENT);
    struct fd_ringbuffer *ring = fd_submit_new_ringbuffer(
@@ -847,7 +854,7 @@ build_ibo(struct fd6_emit *emit) assert_dt
                      CP_LOAD_STATE6_0_STATE_TYPE(ST6_SHADER) |
                      CP_LOAD_STATE6_0_STATE_SRC(SS6_INDIRECT) |
                      CP_LOAD_STATE6_0_STATE_BLOCK(SB6_IBO) |
-                     CP_LOAD_STATE6_0_NUM_UNIT(ir3_shader_nibo(emit->fs)));
+                     CP_LOAD_STATE6_0_NUM_UNIT(nibo));
    OUT_RB(ring, ibo_state);
 
    OUT_PKT4(ring, REG_A6XX_SP_IBO, 2);
@@ -857,7 +864,7 @@ build_ibo(struct fd6_emit *emit) assert_dt
     * de-duplicate this from program->config_stateobj
     */
    OUT_PKT4(ring, REG_A6XX_SP_IBO_COUNT, 1);
-   OUT_RING(ring, ir3_shader_nibo(emit->fs));
+   OUT_RING(ring, nibo);
 
    fd_ringbuffer_del(ibo_state);
 
@@ -993,11 +1000,11 @@ fd6_emit_non_ring(struct fd_ringbuffer *ring, struct fd6_emit *emit) assert_dt
                                                     .vert = guardband_y));
    }
 
-   /* The clamp ranges are only used when the rasterizer disables
-    * depth clip.
+   /* The clamp ranges are only used when the rasterizer wants depth
+    * clamping.
     */
    if ((dirty & (FD_DIRTY_VIEWPORT | FD_DIRTY_RASTERIZER)) &&
-       fd_depth_clip_disabled(ctx)) {
+       fd_depth_clamp_enabled(ctx)) {
       float zmin, zmax;
       util_viewport_zmin_zmax(&ctx->viewport, ctx->rasterizer->clip_halfz,
                               &zmin, &zmax);
@@ -1047,7 +1054,7 @@ fd6_emit_state(struct fd_ringbuffer *ring, struct fd6_emit *emit)
          state = fd6_zsa_state(
             ctx,
             util_format_is_pure_integer(pipe_surface_format(pfb->cbufs[0])),
-            fd_depth_clip_disabled(ctx));
+            fd_depth_clamp_enabled(ctx));
          fd_ringbuffer_ref(state);
          break;
       case FD6_GROUP_LRZ:
@@ -1256,18 +1263,18 @@ fd6_emit_restore(struct fd_batch *batch, struct fd_ringbuffer *ring)
 
    OUT_WFI5(ring);
 
-   WRITE(REG_A6XX_RB_UNKNOWN_8E04, 0x0);
+   WRITE(REG_A6XX_RB_DBG_ECO_CNTL, 0x0);
    WRITE(REG_A6XX_SP_FLOAT_CNTL, A6XX_SP_FLOAT_CNTL_F16_NO_INF);
-   WRITE(REG_A6XX_SP_UNKNOWN_AE00, 0);
+   WRITE(REG_A6XX_SP_DBG_ECO_CNTL, 0);
    WRITE(REG_A6XX_SP_PERFCTR_ENABLE, 0x3f);
    WRITE(REG_A6XX_TPL1_UNKNOWN_B605, 0x44);
    WRITE(REG_A6XX_TPL1_DBG_ECO_CNTL, screen->info->a6xx.magic.TPL1_DBG_ECO_CNTL);
    WRITE(REG_A6XX_HLSQ_UNKNOWN_BE00, 0x80);
    WRITE(REG_A6XX_HLSQ_UNKNOWN_BE01, 0);
 
-   WRITE(REG_A6XX_VPC_UNKNOWN_9600, 0);
+   WRITE(REG_A6XX_VPC_DBG_ECO_CNTL, 0);
    WRITE(REG_A6XX_GRAS_DBG_ECO_CNTL, 0x880);
-   WRITE(REG_A6XX_HLSQ_UNKNOWN_BE04, 0x80000);
+   WRITE(REG_A6XX_HLSQ_DBG_ECO_CNTL, 0x80000);
    WRITE(REG_A6XX_SP_CHICKEN_BITS, 0x1430);
    WRITE(REG_A6XX_SP_IBO_COUNT, 0);
    WRITE(REG_A6XX_SP_UNKNOWN_B182, 0);

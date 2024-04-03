@@ -90,22 +90,61 @@ shared_type_info(const struct glsl_type *type, unsigned *size, unsigned *align)
    *align = comp_size * (length == 3 ? 4 : length);
 }
 
+static bool
+brw_nir_lower_launch_mesh_workgroups_instr(nir_builder *b, nir_instr *instr, void *data)
+{
+   if (instr->type != nir_instr_type_intrinsic)
+      return false;
+
+   nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+
+   if (intrin->intrinsic != nir_intrinsic_launch_mesh_workgroups)
+      return false;
+
+   b->cursor = nir_before_instr(&intrin->instr);
+
+   nir_ssa_def *local_invocation_index = nir_load_local_invocation_index(b);
+
+   /* Make sure that the mesh workgroup size is taken from the first invocation
+    * (nir_intrinsic_launch_mesh_workgroups requirement)
+    */
+   nir_ssa_def *cmp = nir_ieq(b, local_invocation_index, nir_imm_int(b, 0));
+   nir_if *if_stmt = nir_push_if(b, cmp);
+   {
+      /* TUE header contains 4 words:
+       *
+       * - Word 0 for Task Count.
+       *
+       * - Words 1-3 used for "Dispatch Dimensions" feature, to allow mapping a
+       *   3D dispatch into the 1D dispatch supported by HW.
+       */
+      nir_ssa_def *x = nir_channel(b, intrin->src[0].ssa, 0);
+      nir_ssa_def *y = nir_channel(b, intrin->src[0].ssa, 1);
+      nir_ssa_def *z = nir_channel(b, intrin->src[0].ssa, 2);
+      nir_ssa_def *task_count = nir_imul(b, x, nir_imul(b, y, z));
+      nir_ssa_def *tue_header = nir_vec4(b, task_count, x, y, z);
+      nir_store_task_payload(b, tue_header, nir_imm_int(b, 0));
+   }
+   nir_pop_if(b, if_stmt);
+
+   nir_instr_remove(instr);
+
+   return true;
+}
+
+static bool
+brw_nir_lower_launch_mesh_workgroups(nir_shader *nir)
+{
+   return nir_shader_instructions_pass(nir,
+                                       brw_nir_lower_launch_mesh_workgroups_instr,
+                                       nir_metadata_none,
+                                       NULL);
+}
+
 static void
 brw_nir_lower_tue_outputs(nir_shader *nir, brw_tue_map *map)
 {
    memset(map, 0, sizeof(*map));
-
-   /* TUE header contains 4 words:
-    *
-    * - Word 0 for Task Count.
-    *
-    * - Words 1-3 used for "Dispatch Dimensions" feature, to allow mapping a
-    *   3D dispatch into the 1D dispatch supported by HW.  Currently not used.
-    */
-   nir_foreach_shader_out_variable(var, nir) {
-      assert(var->data.location == VARYING_SLOT_TASK_COUNT);
-      var->data.driver_location = 0;
-   }
 
    NIR_PASS(_, nir, nir_lower_io, nir_var_shader_out,
             type_size_scalar_dwords, nir_lower_io_lower_64bit_to_32);
@@ -203,6 +242,16 @@ brw_compile_task(const struct brw_compiler *compiler,
    struct brw_task_prog_data *prog_data = params->prog_data;
    const bool debug_enabled = INTEL_DEBUG(DEBUG_TASK);
 
+   brw_nir_lower_tue_outputs(nir, &prog_data->map);
+
+   nir_lower_task_shader_options lower_ts_opt = {
+      .payload_to_shared_for_atomics = true,
+      .payload_to_shared_for_small_types = true,
+   };
+   NIR_PASS(_, nir, nir_lower_task_shader, lower_ts_opt);
+
+   NIR_PASS(_, nir, brw_nir_lower_launch_mesh_workgroups);
+
    prog_data->base.base.stage = MESA_SHADER_TASK;
    prog_data->base.base.total_shared = nir->info.shared_size;
    prog_data->base.base.total_scratch = 0;
@@ -213,8 +262,6 @@ brw_compile_task(const struct brw_compiler *compiler,
 
    prog_data->uses_drawid =
       BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_DRAW_ID);
-
-   brw_nir_lower_tue_outputs(nir, &prog_data->map);
 
    const unsigned required_dispatch_width =
       brw_required_dispatch_width(&nir->info);
@@ -530,8 +577,6 @@ brw_nir_lower_mue_outputs(nir_shader *nir, const struct brw_mue_map *map)
 
    NIR_PASS(_, nir, nir_lower_io, nir_var_shader_out,
             type_size_scalar_dwords, nir_lower_io_lower_64bit_to_32);
-
-   NIR_PASS(_, nir, brw_nir_lower_shading_rate_output);
 }
 
 static void
@@ -1147,18 +1192,17 @@ fs_visitor::nir_emit_task_intrinsic(const fs_builder &bld,
                                     nir_intrinsic_instr *instr)
 {
    assert(stage == MESA_SHADER_TASK);
-
-   fs_reg urb_handle = retype(brw_vec1_grf(0, 6), BRW_REGISTER_TYPE_UD);
+   const task_mesh_thread_payload &payload = task_mesh_payload();
 
    switch (instr->intrinsic) {
    case nir_intrinsic_store_output:
    case nir_intrinsic_store_task_payload:
-      emit_task_mesh_store(bld, instr, urb_handle);
+      emit_task_mesh_store(bld, instr, payload.urb_output);
       break;
 
    case nir_intrinsic_load_output:
    case nir_intrinsic_load_task_payload:
-      emit_task_mesh_load(bld, instr, urb_handle);
+      emit_task_mesh_load(bld, instr, payload.urb_output);
       break;
 
    default:
@@ -1172,25 +1216,23 @@ fs_visitor::nir_emit_mesh_intrinsic(const fs_builder &bld,
                                     nir_intrinsic_instr *instr)
 {
    assert(stage == MESA_SHADER_MESH);
-
-   unsigned subreg = instr->intrinsic == nir_intrinsic_load_task_payload ? 7 : 6;
-   fs_reg urb_handle = retype(brw_vec1_grf(0, subreg), BRW_REGISTER_TYPE_UD);
+   const task_mesh_thread_payload &payload = task_mesh_payload();
 
    switch (instr->intrinsic) {
    case nir_intrinsic_store_per_primitive_output:
    case nir_intrinsic_store_per_vertex_output:
    case nir_intrinsic_store_output:
-      emit_task_mesh_store(bld, instr, urb_handle);
+      emit_task_mesh_store(bld, instr, payload.urb_output);
       break;
 
    case nir_intrinsic_load_per_vertex_output:
    case nir_intrinsic_load_per_primitive_output:
    case nir_intrinsic_load_output:
-      emit_task_mesh_load(bld, instr, urb_handle);
+      emit_task_mesh_load(bld, instr, payload.urb_output);
       break;
 
    case nir_intrinsic_load_task_payload:
-      emit_task_mesh_load(bld, instr, urb_handle);
+      emit_task_mesh_load(bld, instr, payload.task_urb_input);
       break;
 
    default:
@@ -1204,30 +1246,28 @@ fs_visitor::nir_emit_task_mesh_intrinsic(const fs_builder &bld,
                                          nir_intrinsic_instr *instr)
 {
    assert(stage == MESA_SHADER_MESH || stage == MESA_SHADER_TASK);
+   const task_mesh_thread_payload &payload = task_mesh_payload();
 
    fs_reg dest;
    if (nir_intrinsic_infos[instr->intrinsic].has_dest)
       dest = get_nir_dest(instr->dest);
 
    switch (instr->intrinsic) {
-   case nir_intrinsic_load_mesh_inline_data_intel:
-      assert(payload.num_regs == 3 || payload.num_regs == 4);
-      /* Inline Parameter is the last element of the payload. */
-      bld.MOV(dest, retype(brw_vec1_grf(payload.num_regs - 1,
-                                        nir_intrinsic_align_offset(instr)),
-                           dest.type));
+   case nir_intrinsic_load_mesh_inline_data_intel: {
+      fs_reg data = offset(payload.inline_parameter, 1, nir_intrinsic_align_offset(instr));
+      bld.MOV(dest, retype(data, dest.type));
       break;
+   }
 
    case nir_intrinsic_load_draw_id:
-      /* DrawID comes from Extended Parameter 0 (XP0). */
-      bld.MOV(dest, brw_vec1_grf(0, 3));
+      dest = retype(dest, BRW_REGISTER_TYPE_UD);
+      bld.MOV(dest, payload.extended_parameter_0);
       break;
 
    case nir_intrinsic_load_local_invocation_index:
    case nir_intrinsic_load_local_invocation_id:
-      /* Local_ID.X is given by the HW in the shader payload. */
       dest = retype(dest, BRW_REGISTER_TYPE_UD);
-      bld.MOV(dest, retype(brw_vec8_grf(1, 0), BRW_REGISTER_TYPE_UW));
+      bld.MOV(dest, payload.local_index);
       /* Task/Mesh only use one dimension. */
       if (instr->intrinsic == nir_intrinsic_load_local_invocation_id) {
          bld.MOV(offset(dest, bld, 1), brw_imm_uw(0));

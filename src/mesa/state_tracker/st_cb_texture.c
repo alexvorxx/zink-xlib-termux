@@ -46,6 +46,8 @@
 #include "main/texcompress_astc.h"
 #include "main/texcompress_bptc.h"
 #include "main/texcompress_etc.h"
+#include "main/texcompress_rgtc.h"
+#include "main/texcompress_s3tc.h"
 #include "main/texgetimage.h"
 #include "main/teximage.h"
 #include "main/texobj.h"
@@ -189,7 +191,7 @@ copy_to_staging_dest(struct gl_context * ctx, struct pipe_resource *dst,
    struct st_context *st = st_context(ctx);
    struct pipe_context *pipe = st->pipe;
    struct gl_texture_object *stObj = texImage->TexObject;
-   struct pipe_resource *src = stObj->pt;
+   ASSERTED struct pipe_resource *src = stObj->pt;
    enum pipe_format dst_format = dst->format;
    mesa_format mesa_format;
    GLenum gl_target = texImage->TexObject->Target;
@@ -439,6 +441,12 @@ st_compressed_format_fallback(struct st_context *st, mesa_format format)
       return !st->has_etc1;
    case MESA_FORMAT_LAYOUT_ETC2:
       return !st->has_etc2;
+   case MESA_FORMAT_LAYOUT_S3TC:
+      return !st->has_s3tc;
+   case MESA_FORMAT_LAYOUT_RGTC:
+      return !st->has_rgtc;
+   case MESA_FORMAT_LAYOUT_LATC:
+      return !st->has_latc;
    case MESA_FORMAT_LAYOUT_BPTC:
       return !st->has_bptc;
    case MESA_FORMAT_LAYOUT_ASTC:
@@ -635,6 +643,19 @@ st_UnmapTextureImage(struct gl_context *ctx,
                                         itransfer->temp_stride,
                                         transfer->box.width, transfer->box.height,
                                         texImage->TexFormat);
+            } else if (_mesa_is_format_s3tc(texImage->TexFormat)) {
+               _mesa_unpack_s3tc(map, transfer->stride,
+                                 itransfer->temp_data,
+                                 itransfer->temp_stride,
+                                 transfer->box.width, transfer->box.height,
+                                 texImage->TexFormat);
+            } else if (_mesa_is_format_rgtc(texImage->TexFormat) ||
+                       _mesa_is_format_latc(texImage->TexFormat)) {
+               _mesa_unpack_rgtc(map, transfer->stride,
+                                 itransfer->temp_data,
+                                 itransfer->temp_stride,
+                                 transfer->box.width, transfer->box.height,
+                                 texImage->TexFormat);
             } else if (_mesa_is_format_bptc(texImage->TexFormat)) {
                _mesa_unpack_bptc(map, transfer->stride,
                                  itransfer->temp_data,
@@ -1808,6 +1829,7 @@ try_pbo_download(struct st_context *st,
       struct pipe_sampler_view templ;
       struct pipe_sampler_view *sampler_view;
       struct pipe_sampler_state sampler = {0};
+      sampler.normalized_coords = true;
       const struct pipe_sampler_state *samplers[1] = {&sampler};
       unsigned level = texImage->TexObject->Attrib.MinLevel + texImage->Level;
       unsigned max_layer = util_max_layer(texture, level);
@@ -1975,12 +1997,6 @@ st_TexSubImage(struct gl_context *ctx, GLuint dims,
    }
 
    if (!st->prefer_blit_based_texture_transfer) {
-      goto fallback;
-   }
-
-   /* XXX Fallback for depth-stencil formats due to an incomplete stencil
-    * blit implementation in some drivers. */
-   if (format == GL_DEPTH_STENCIL) {
       goto fallback;
    }
 
@@ -2453,6 +2469,8 @@ st_GetTexSubImage(struct gl_context * ctx,
           texImage->TexFormat != MESA_FORMAT_ETC1_RGB8);
 
    st_flush_bitmap_cache(st);
+   if (st->force_compute_based_texture_transfer)
+      goto non_blit_transfer;
 
    /* GetTexImage only returns a single face for cubemaps. */
    if (gl_target == GL_TEXTURE_CUBE_MAP) {
@@ -2562,7 +2580,7 @@ st_GetTexSubImage(struct gl_context * ctx,
 non_blit_transfer:
    if (done)
       return;
-   if (st->allow_compute_based_texture_transfer) {
+   if (st->allow_compute_based_texture_transfer || st->force_compute_based_texture_transfer) {
       if (st_GetTexSubImage_shader(ctx, xoffset, yoffset, zoffset, width, height, depth, format, type, pixels, texImage))
          return;
    }

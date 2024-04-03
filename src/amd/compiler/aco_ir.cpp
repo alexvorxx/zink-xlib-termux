@@ -32,6 +32,8 @@
 
 namespace aco {
 
+thread_local aco::monotonic_buffer_resource instruction_buffer(65536);
+
 uint64_t debug_flags = 0;
 
 static const struct debug_control aco_debug_options[] = {{"validateir", DEBUG_VALIDATE_IR},
@@ -80,6 +82,8 @@ init_program(Program* program, Stage stage, const struct aco_shader_info* info,
       case GFX8: program->family = CHIP_POLARIS10; break;
       case GFX9: program->family = CHIP_VEGA10; break;
       case GFX10: program->family = CHIP_NAVI10; break;
+      case GFX10_3: program->family = CHIP_NAVI21; break;
+      case GFX11: program->family = CHIP_GFX1100; break;
       default: program->family = CHIP_UNKNOWN; break;
       }
    } else {
@@ -95,7 +99,7 @@ init_program(Program* program, Stage stage, const struct aco_shader_info* info,
    /* apparently gfx702 also has 16-bank LDS but I can't find a family for that */
    program->dev.has_16bank_lds = family == CHIP_KABINI || family == CHIP_STONEY;
 
-   program->dev.vgpr_limit = 256;
+   program->dev.vgpr_limit = gfx_level >= GFX11 ? 128 : 256; //TODO: fix encoding for 16-bit v128+
    program->dev.physical_vgprs = 256;
    program->dev.vgpr_alloc_granule = 4;
 
@@ -195,6 +199,7 @@ get_sync_info(const Instruction* instr)
    case Format::GLOBAL:
    case Format::SCRATCH: return instr->flatlike().sync;
    case Format::DS: return instr->ds().sync;
+   case Format::LDSDIR: return instr->ldsdir().sync;
    default: return memory_sync_info();
    }
 }
@@ -438,6 +443,13 @@ can_use_opsel(amd_gfx_level gfx_level, aco_opcode op, int idx)
    case aco_opcode::v_cvt_pknorm_u16_f16: return idx != -1;
    case aco_opcode::v_mad_u32_u16:
    case aco_opcode::v_mad_i32_i16: return idx >= 0 && idx < 2;
+   case aco_opcode::v_dot2_f16_f16:
+   case aco_opcode::v_dot2_bf16_bf16: return idx == -1 || idx == 2;
+   // TODO: This matches what LLVM allows. We should see if this matches what the hardware allows.
+   case aco_opcode::v_interp_p10_f16_f32_inreg:
+   case aco_opcode::v_interp_p10_rtz_f16_f32_inreg: return idx == 0 || idx == 2;
+   case aco_opcode::v_interp_p2_f16_f32_inreg:
+   case aco_opcode::v_interp_p2_rtz_f16_f32_inreg: return idx == -1 || idx == 0;
    default: return false;
    }
 }
@@ -445,6 +457,8 @@ can_use_opsel(amd_gfx_level gfx_level, aco_opcode op, int idx)
 bool
 instr_is_16bit(amd_gfx_level gfx_level, aco_opcode op)
 {
+   // TODO: VINTERP (v_interp_p2_f16_f32, v_interp_p2_rtz_f16_f32)
+
    /* partial register writes are GFX9+, only */
    if (gfx_level < GFX9)
       return false;
@@ -821,15 +835,28 @@ wait_imm::wait_imm(uint16_t vm_, uint16_t exp_, uint16_t lgkm_, uint16_t vs_)
 
 wait_imm::wait_imm(enum amd_gfx_level gfx_level, uint16_t packed) : vs(unset_counter)
 {
-   vm = packed & 0xf;
-   if (gfx_level >= GFX9)
-      vm |= (packed >> 10) & 0x30;
+   if (gfx_level == GFX11) {
+      vm = (packed >> 10) & 0x3f;
+      lgkm = (packed >> 4) & 0x3f;
+      exp = packed & 0x7;
+   } else {
+      vm = packed & 0xf;
+      if (gfx_level >= GFX9)
+         vm |= (packed >> 10) & 0x30;
 
-   exp = (packed >> 4) & 0x7;
+      exp = (packed >> 4) & 0x7;
 
-   lgkm = (packed >> 8) & 0xf;
-   if (gfx_level >= GFX10)
-      lgkm |= (packed >> 8) & 0x30;
+      lgkm = (packed >> 8) & 0xf;
+      if (gfx_level >= GFX10)
+         lgkm |= (packed >> 8) & 0x30;
+   }
+
+   if (vm == (gfx_level >= GFX9 ? 0x3f : 0xf))
+      vm = wait_imm::unset_counter;
+   if (exp == 0x7)
+      exp = wait_imm::unset_counter;
+   if (lgkm == (gfx_level >= GFX10 ? 0x3f : 0xf))
+      lgkm = wait_imm::unset_counter;
 }
 
 uint16_t
@@ -914,6 +941,30 @@ should_form_clause(const Instruction* a, const Instruction* b)
       return a->operands[0].tempId() == b->operands[0].tempId();
 
    return false;
+}
+
+bool
+dealloc_vgprs(Program* program)
+{
+   if (program->gfx_level < GFX11)
+      return false;
+
+   /* skip if deallocating VGPRs won't increase occupancy */
+   uint16_t max_waves = program->dev.max_wave64_per_simd * (64 / program->wave_size);
+   max_waves = max_suitable_waves(program, max_waves);
+   if (program->max_reg_demand.vgpr <= get_addr_vgpr_from_waves(program, max_waves))
+      return false;
+
+   Block& block = program->blocks.back();
+
+   /* don't bother checking if there is a pending VMEM store or export: there almost always is */
+   Builder bld(program);
+   if (!block.instructions.empty() && block.instructions.back()->opcode == aco_opcode::s_endpgm) {
+      bld.reset(&block.instructions, block.instructions.begin() + (block.instructions.size() - 1));
+      bld.sopp(aco_opcode::s_sendmsg, -1, sendmsg_dealloc_vgprs);
+   }
+
+   return true;
 }
 
 } // namespace aco

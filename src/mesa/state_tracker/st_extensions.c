@@ -392,8 +392,6 @@ void st_init_limits(struct pipe_screen *screen,
       screen->get_param(screen, PIPE_CAP_GLSL_TESS_LEVELS_AS_INPUTS);
    c->LowerTessLevel =
       !screen->get_param(screen, PIPE_CAP_NIR_COMPACT_ARRAYS);
-   c->LowerCsDerivedVariables =
-      !screen->get_param(screen, PIPE_CAP_CS_DERIVED_SYSTEM_VALUES_SUPPORTED);
    c->PrimitiveRestartForPatches = false;
 
    c->MaxCombinedTextureImageUnits =
@@ -950,11 +948,25 @@ void st_init_extensions(struct pipe_screen *screen,
           PIPE_FORMAT_RGTC2_UNORM,
           PIPE_FORMAT_RGTC2_SNORM } },
 
+      /* RGTC software fallback support. */
+      { { o(ARB_texture_compression_rgtc) },
+        { PIPE_FORMAT_R8_UNORM,
+          PIPE_FORMAT_R8_SNORM,
+          PIPE_FORMAT_R8G8_UNORM,
+          PIPE_FORMAT_R8G8_SNORM } },
+
       { { o(EXT_texture_compression_latc) },
         { PIPE_FORMAT_LATC1_UNORM,
           PIPE_FORMAT_LATC1_SNORM,
           PIPE_FORMAT_LATC2_UNORM,
           PIPE_FORMAT_LATC2_SNORM } },
+
+      /* LATC software fallback support. */
+      { { o(EXT_texture_compression_latc) },
+        { PIPE_FORMAT_L8_UNORM,
+          PIPE_FORMAT_L8_SNORM,
+          PIPE_FORMAT_L8A8_UNORM,
+          PIPE_FORMAT_L8A8_SNORM } },
 
       { { o(EXT_texture_compression_s3tc),
           o(ANGLE_texture_compression_dxt) },
@@ -963,11 +975,20 @@ void st_init_extensions(struct pipe_screen *screen,
           PIPE_FORMAT_DXT3_RGBA,
           PIPE_FORMAT_DXT5_RGBA } },
 
+      /* S3TC software fallback support. */
+      { { o(EXT_texture_compression_s3tc),
+          o(ANGLE_texture_compression_dxt) },
+        { PIPE_FORMAT_R8G8B8A8_UNORM } },
+
       { { o(EXT_texture_compression_s3tc_srgb) },
         { PIPE_FORMAT_DXT1_SRGB,
           PIPE_FORMAT_DXT1_SRGBA,
           PIPE_FORMAT_DXT3_SRGBA,
           PIPE_FORMAT_DXT5_SRGBA } },
+
+      /* S3TC SRGB software fallback support. */
+      { { o(EXT_texture_compression_s3tc_srgb) },
+        { PIPE_FORMAT_R8G8B8A8_SRGB } },
 
       { { o(ARB_texture_compression_bptc) },
         { PIPE_FORMAT_BPTC_RGBA_UNORM,
@@ -1049,6 +1070,9 @@ void st_init_extensions(struct pipe_screen *screen,
 
       { { o(ATI_texture_compression_3dc) },
         { PIPE_FORMAT_LATC2_UNORM } },
+
+      { { o(ATI_texture_compression_3dc) },
+        { PIPE_FORMAT_L8A8_UNORM } },
 
       { { o(MESA_ycbcr_texture) },
         { PIPE_FORMAT_UYVY,

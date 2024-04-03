@@ -646,6 +646,36 @@ _mesa_is_format_astc_2d(mesa_format format)
 
 
 /**
+ * Return TRUE if format is an S3TC compressed format.
+ */
+bool
+_mesa_is_format_s3tc(mesa_format format)
+{
+   return _mesa_get_format_layout(format) == MESA_FORMAT_LAYOUT_S3TC;
+}
+
+
+/**
+ * Return TRUE if format is an RGTC compressed format.
+ */
+bool
+_mesa_is_format_rgtc(mesa_format format)
+{
+   return _mesa_get_format_layout(format) == MESA_FORMAT_LAYOUT_RGTC;
+}
+
+
+/**
+ * Return TRUE if format is an LATC compressed format.
+ */
+bool
+_mesa_is_format_latc(mesa_format format)
+{
+   return _mesa_get_format_layout(format) == MESA_FORMAT_LAYOUT_LATC;
+}
+
+
+/**
  * Return TRUE if format is an BPTC compressed format.
  */
 bool

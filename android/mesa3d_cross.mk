@@ -69,7 +69,7 @@ $(M_TARGET_PREFIX)MESA3D_LIBEGL_BIN      := $(MESON_OUT_DIR)/install/usr/local/l
 $(M_TARGET_PREFIX)MESA3D_LIBGLESV1_BIN   := $(MESON_OUT_DIR)/install/usr/local/lib/libGLESv1_CM.so.1.1.0
 $(M_TARGET_PREFIX)MESA3D_LIBGLESV2_BIN   := $(MESON_OUT_DIR)/install/usr/local/lib/libGLESv2.so.2.0.0
 $(M_TARGET_PREFIX)MESA3D_LIBGLAPI_BIN    := $(MESON_OUT_DIR)/install/usr/local/lib/libglapi.so.0.0.0
-$(M_TARGET_PREFIX)MESA3D_LIBGBM_BIN      := $(MESON_OUT_DIR)/install/usr/local/lib/libgbm.so.1.0.0
+$(M_TARGET_PREFIX)MESA3D_LIBGBM_BIN      := $(MESON_OUT_DIR)/install/usr/local/lib/$(MESA_LIBGBM_NAME).so.1.0.0
 
 
 MESA3D_GLES_BINS := \
@@ -149,6 +149,7 @@ $(MESON_GEN_FILES_TARGET): PRIVATE_TARGET_CRTEND_SO_O := $(my_target_crtend_so_o
 ##
 
 define m-lld-flags
+  -Wl,-e,main \
   -nostdlib -Wl,--gc-sections \
   $(PRIVATE_TARGET_CRTBEGIN_SO_O) \
   $(PRIVATE_ALL_OBJECTS) \
@@ -169,13 +170,14 @@ define m-lld-flags
 endef
 
 define m-lld-flags-cleaned
+  $(patsubst -Wl$(comma)--build-id=%,, \
   $(subst prebuilts/,$(AOSP_ABSOLUTE_PATH)/prebuilts/, \
   $(subst $(OUT_DIR)/,$(call relative-to-absolute,$(OUT_DIR))/, \
   $(subst -Wl$(comma)--fatal-warnings,,                \
   $(subst -Wl$(comma)--no-undefined-version,,          \
   $(subst -Wl$(comma)--gc-sections,,                   \
   $(patsubst %dummy.o,,                                \
-    $(m-lld-flags)))))))
+    $(m-lld-flags))))))))
 endef
 
 define m-cpp-flags

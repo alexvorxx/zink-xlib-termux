@@ -31,30 +31,31 @@
 enum agx_push_type {
    /* Array of 64-bit pointers to the base addresses (BASES) and array of
     * 16-bit sizes for optional bounds checking (SIZES) */
-   AGX_PUSH_UBO_BASES = 0,
-   AGX_PUSH_UBO_SIZES = 1,
-   AGX_PUSH_VBO_BASES = 2,
-   AGX_PUSH_VBO_SIZES = 3,
-   AGX_PUSH_SSBO_BASES = 4,
-   AGX_PUSH_SSBO_SIZES = 5,
+   AGX_PUSH_UBO_BASES,
+   AGX_PUSH_UBO_SIZES,
+   AGX_PUSH_VBO_SIZES,
+   AGX_PUSH_SSBO_BASES,
+   AGX_PUSH_SSBO_SIZES,
+
+   /* 64-bit VBO base pointer */
+   AGX_PUSH_VBO_BASE,
 
    /* Push the attached constant memory */
-   AGX_PUSH_CONSTANTS = 6,
+   AGX_PUSH_CONSTANTS,
 
    /* Push the content of a UBO */
-   AGX_PUSH_UBO_DATA = 7,
+   AGX_PUSH_UBO_DATA,
 
    /* RGBA blend constant (FP32) */
-   AGX_PUSH_BLEND_CONST = 8,
+   AGX_PUSH_BLEND_CONST,
 
-   /* Array of 16-bit (array_size - 1) for indexed array textures, used to
-    * lower access to indexed array textures
-    */
-   AGX_PUSH_ARRAY_SIZE_MINUS_1 = 9,
+   AGX_PUSH_TEXTURE_BASE,
 
    /* Keep last */
    AGX_PUSH_NUM_TYPES
 };
+
+static_assert(AGX_PUSH_NUM_TYPES < (1 << 8), "type overflow");
 
 struct agx_push {
    /* Contents to push */
@@ -77,6 +78,8 @@ struct agx_push {
          uint16_t ubo;
          uint16_t offset;
       } ubo_data;
+
+      uint32_t vbo;
    };
 };
 
@@ -164,6 +167,9 @@ struct agx_shader_info {
 
    /* Does the shader control the sample mask? */
    bool writes_sample_mask;
+
+   /* Is colour output omitted? */
+   bool no_colour_output;
 };
 
 #define AGX_MAX_RTS (8)
@@ -240,6 +246,18 @@ struct agx_vs_shader_key {
 
 struct agx_fs_shader_key {
    enum agx_format tib_formats[AGX_MAX_RTS];
+
+   /* Normally, access to the tilebuffer must be guarded by appropriate fencing
+    * instructions to ensure correct results in the presence of out-of-order
+    * hardware optimizations. However, specially dispatched clear shaders are
+    * not subject to these conditions and can omit the wait instructions.
+    *
+    * Must (only) be set for special clear shaders.
+    *
+    * Must not be used with sample mask writes (including discards) or
+    * tilebuffer loads (including blending).
+    */
+   bool ignore_tib_dependencies;
 };
 
 struct agx_shader_key {
@@ -280,7 +298,6 @@ static const nir_shader_compiler_options agx_nir_options = {
    .lower_insert_word = true,
    .lower_cs_local_index_to_id = true,
    .has_cs_global_id = true,
-   .lower_wpos_pntc = true,
    .vectorize_io = true,
    .use_interpolated_input_intrinsics = true,
    .lower_rotate = true,

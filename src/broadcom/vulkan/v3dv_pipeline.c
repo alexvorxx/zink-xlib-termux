@@ -1036,7 +1036,8 @@ static void
 pipeline_populate_v3d_key(struct v3d_key *key,
                           const struct v3dv_pipeline_stage *p_stage,
                           uint32_t ucp_enables,
-                          bool robust_buffer_access)
+                          bool robust_buffer_access,
+                          bool robust_image_access)
 {
    assert(p_stage->pipeline->shared_data &&
           p_stage->pipeline->shared_data->maps[p_stage->stage]);
@@ -1100,6 +1101,7 @@ pipeline_populate_v3d_key(struct v3d_key *key,
    key->ucp_enables = ucp_enables;
 
    key->robust_buffer_access = robust_buffer_access;
+   key->robust_image_access = robust_image_access;
 
    key->environment = V3D_ENVIRONMENT_VULKAN;
 }
@@ -1151,7 +1153,8 @@ pipeline_populate_v3d_fs_key(struct v3d_fs_key *key,
    memset(key, 0, sizeof(*key));
 
    const bool rba = p_stage->pipeline->device->features.robustBufferAccess;
-   pipeline_populate_v3d_key(&key->base, p_stage, ucp_enables, rba);
+   const bool ria = p_stage->pipeline->device->ext_features.robustImageAccess;
+   pipeline_populate_v3d_key(&key->base, p_stage, ucp_enables, rba, ria);
 
    const VkPipelineInputAssemblyStateCreateInfo *ia_info =
       pCreateInfo->pInputAssemblyState;
@@ -1269,7 +1272,8 @@ pipeline_populate_v3d_gs_key(struct v3d_gs_key *key,
    memset(key, 0, sizeof(*key));
 
    const bool rba = p_stage->pipeline->device->features.robustBufferAccess;
-   pipeline_populate_v3d_key(&key->base, p_stage, 0, rba);
+   const bool ria = p_stage->pipeline->device->ext_features.robustImageAccess;
+   pipeline_populate_v3d_key(&key->base, p_stage, 0, rba, ria);
 
    struct v3dv_pipeline *pipeline = p_stage->pipeline;
 
@@ -1311,7 +1315,8 @@ pipeline_populate_v3d_vs_key(struct v3d_vs_key *key,
    memset(key, 0, sizeof(*key));
 
    const bool rba = p_stage->pipeline->device->features.robustBufferAccess;
-   pipeline_populate_v3d_key(&key->base, p_stage, 0, rba);
+   const bool ria = p_stage->pipeline->device->ext_features.robustImageAccess;
+   pipeline_populate_v3d_key(&key->base, p_stage, 0, rba, ria);
 
    struct v3dv_pipeline *pipeline = p_stage->pipeline;
 
@@ -1431,6 +1436,7 @@ pipeline_stage_create_binning(const struct v3dv_pipeline_stage *src,
     * we only have to run the relevant NIR lowerings once for render shaders
     */
    p_stage->nir = NULL;
+   p_stage->program_id = src->program_id;
    p_stage->spec_info = src->spec_info;
    p_stage->feedback = (VkPipelineCreationFeedback) { 0 };
    memcpy(p_stage->shader_sha1, src->shader_sha1, 20);
@@ -1943,6 +1949,9 @@ pipeline_populate_graphics_key(struct v3dv_pipeline *pipeline,
    key->robust_buffer_access =
       pipeline->device->features.robustBufferAccess;
 
+   key->robust_image_access =
+      pipeline->device->ext_features.robustImageAccess;
+
    const bool raster_enabled =
       !pCreateInfo->pRasterizationState->rasterizerDiscardEnable;
 
@@ -2034,6 +2043,8 @@ pipeline_populate_compute_key(struct v3dv_pipeline *pipeline,
    memset(key, 0, sizeof(*key));
    key->robust_buffer_access =
       pipeline->device->features.robustBufferAccess;
+   key->robust_image_access =
+      pipeline->device->ext_features.robustImageAccess;
 }
 
 static struct v3dv_pipeline_shared_data *
@@ -2370,12 +2381,6 @@ pipeline_compile_graphics(struct v3dv_pipeline *pipeline,
       if (p_stage == NULL)
          return VK_ERROR_OUT_OF_HOST_MEMORY;
 
-      /* Note that we are assigning program_id slightly differently that
-       * v3d. Here we are assigning one per pipeline stage, so vs and vs_bin
-       * would have a different program_id, while v3d would have the same for
-       * both. For the case of v3dv, it is more natural to have an id this way,
-       * as right now we are using it for debugging, not for shader-db.
-       */
       p_stage->program_id =
          p_atomic_inc_return(&physical_device->next_program_id);
 
@@ -2928,6 +2933,7 @@ pipeline_init(struct v3dv_pipeline *pipeline,
 
    V3DV_FROM_HANDLE(v3dv_pipeline_layout, layout, pCreateInfo->layout);
    pipeline->layout = layout;
+   v3dv_pipeline_layout_ref(pipeline->layout);
 
    V3DV_FROM_HANDLE(v3dv_render_pass, render_pass, pCreateInfo->renderPass);
    assert(pCreateInfo->subpass < render_pass->subpass_count);
@@ -2975,6 +2981,14 @@ pipeline_init(struct v3dv_pipeline *pipeline,
       cb_info ? vk_find_struct_const(cb_info->pNext,
                                      PIPELINE_COLOR_WRITE_CREATE_INFO_EXT) :
                 NULL;
+
+   if (vp_info) {
+      const VkPipelineViewportDepthClipControlCreateInfoEXT *depth_clip_control =
+         vk_find_struct_const(vp_info->pNext,
+                              PIPELINE_VIEWPORT_DEPTH_CLIP_CONTROL_CREATE_INFO_EXT);
+      if (depth_clip_control)
+         pipeline->negative_one_to_one = depth_clip_control->negativeOneToOne;
+   }
 
    pipeline_init_dynamic_state(pipeline,
                                pCreateInfo->pDynamicState,
@@ -3025,8 +3039,6 @@ pipeline_init(struct v3dv_pipeline *pipeline,
 
    /* This must be done after the pipeline has been compiled */
    pipeline_set_ez_state(pipeline, ds_info);
-
-   v3dv_pipeline_layout_ref(pipeline->layout);
 
    return result;
 }
@@ -3220,8 +3232,9 @@ pipeline_compile_compute(struct v3dv_pipeline *pipeline,
 
    struct v3d_key key;
    memset(&key, 0, sizeof(key));
-   pipeline_populate_v3d_key(&key, p_stage, 0,
-                             pipeline->device->features.robustBufferAccess);
+   const bool rba = pipeline->device->features.robustBufferAccess;
+   const bool ria = pipeline->device->ext_features.robustImageAccess;
+   pipeline_populate_v3d_key(&key, p_stage, 0, rba, ria);
    pipeline->shared_data->variants[BROADCOM_SHADER_COMPUTE] =
       pipeline_compile_shader_variant(p_stage, &key, sizeof(key),
                                       alloc, &result);
@@ -3267,12 +3280,11 @@ compute_pipeline_init(struct v3dv_pipeline *pipeline,
 
    pipeline->device = device;
    pipeline->layout = layout;
+   v3dv_pipeline_layout_ref(pipeline->layout);
 
    VkResult result = pipeline_compile_compute(pipeline, cache, info, alloc);
    if (result != VK_SUCCESS)
       return result;
-
-   v3dv_pipeline_layout_ref(pipeline->layout);
 
    return result;
 }

@@ -227,16 +227,6 @@ void DCEVisitor::visit(Block *block)
    }
 }
 
-void visit(ControlFlowInstr *instr)
-{
-   (void)instr;
-}
-
-void visit(IfInstr *instr)
-{
-   (void)instr;
-}
-
 class CopyPropFwdVisitor : public InstrVisitor {
 public:
    CopyPropFwdVisitor();
@@ -244,7 +234,7 @@ public:
    void visit(AluInstr *instr) override;
    void visit(AluGroup *instr) override;
    void visit(TexInstr *instr) override;
-   void visit(ExportInstr *instr) override {(void)instr;}
+   void visit(ExportInstr *instr) override;
    void visit(FetchInstr *instr) override;
    void visit(Block *instr) override;
    void visit(ControlFlowInstr *instr) override {(void)instr;}
@@ -260,6 +250,8 @@ public:
    // TODO: these two should use copy propagation
    void visit(LDSAtomicInstr *instr) override {(void)instr;};
    void visit(LDSReadInstr *instr) override {(void)instr;};
+
+   void propagate_to(RegisterVec4& src, Instr *instr);
 
    bool progress;
 };
@@ -358,13 +350,38 @@ void CopyPropFwdVisitor::visit(AluInstr *instr)
    auto src = instr->psrc(0);
    auto dest = instr->dest();
 
-   for (auto& i : instr->dest()->uses()) {
+   for (auto& i : dest->uses()) {
       /* SSA can always be propagated, registers only in the same block
-       * and only if they are not assigned to more than once */
-      if (dest->is_ssa() ||
-          (instr->block_id() == i->block_id() &&
-           instr->index() < i->index() &&
-           dest->uses().size() == 1)) {
+       * and only if they are assigned in the same block */
+      bool can_propagate = dest->is_ssa();
+
+      if (!can_propagate) {
+
+         /* Register can propagate if the assigment was in the same
+          * block, and we don't have a second assignment coming later
+          * (e.g. helper invocation evaluation does
+          *
+          * 1: MOV R0.x, -1
+          * 2: FETCH R0.0 VPM
+          * 3: MOV SN.x, R0.x
+          *
+          * Here we can't prpagate the move in 1 to SN.x in 3 */
+         if ((instr->block_id() == i->block_id() &&
+              instr->index() < i->index())) {
+            can_propagate = true;
+            if (dest->parents().size() > 1) {
+               for (auto p : dest->parents()) {
+                  if (p->block_id() == i->block_id() &&
+                      p->index() > instr->index()) {
+                      can_propagate = false;
+                      break;
+                  }
+               }
+            }
+         }
+      }
+
+      if (can_propagate) {
          sfn_log << SfnLog::opt << "   Try replace in "
                  << i->block_id() << ":" << i->index()
                  << *i<< "\n";
@@ -386,7 +403,69 @@ void CopyPropFwdVisitor::visit(AluGroup *instr)
 
 void CopyPropFwdVisitor::visit(TexInstr *instr)
 {
-   (void)instr;
+   propagate_to(instr->src(), instr);
+}
+
+void CopyPropFwdVisitor::visit(ExportInstr *instr)
+{
+   propagate_to(instr->value(), instr);
+}
+
+void CopyPropFwdVisitor::propagate_to(RegisterVec4& src, Instr *instr)
+{
+   AluInstr *parents[4] = {nullptr};
+   for (int i = 0; i < 4; ++i) {
+      if (src[i]->chan() < 4 && src[i]->is_ssa()) {
+         /*  We have a pre-define value, so we can't propagate a copy */
+         if (src[i]->parents().empty())
+            return;
+
+         assert(src[i]->parents().size() == 1);
+         parents[i] = (*src[i]->parents().begin())->as_alu();
+      }
+   }
+   PRegister new_src[4] = {0};
+
+   int sel = -1;
+   for (int i = 0; i < 4; ++i) {
+      if (!parents[i])
+         continue;
+      if ((parents[i]->opcode() != op1_mov) ||
+          parents[i]->has_alu_flag(alu_src0_neg) ||
+          parents[i]->has_alu_flag(alu_src0_abs) ||
+          parents[i]->has_alu_flag(alu_dst_clamp) ||
+          parents[i]->has_alu_flag(alu_src0_rel)) {
+         return;
+      } else {
+         auto src = parents[i]->src(0).as_register();
+         if (!src)
+            return;
+         else if (!src->is_ssa())
+            return;
+         else if (sel < 0)
+            sel = src->sel();
+         else if (sel != src->sel())
+            return;
+         new_src[i] = src;
+      }
+   }
+
+   for (int i = 0; i < 4; ++i) {
+      if (parents[i]) {
+         src.del_use(instr);
+         src.set_value(i, new_src[i]);
+         if (new_src[i]->pin() != pin_fully) {
+            if (new_src[i]->pin() == pin_chan)
+               new_src[i]->set_pin(pin_chgr);
+            else
+               new_src[i]->set_pin(pin_group);
+         }
+         src.add_use(instr);
+         progress |= true;
+      }
+   }
+   if (progress)
+      src.validate();
 }
 
 void CopyPropFwdVisitor::visit(FetchInstr *instr)
@@ -520,8 +599,26 @@ bool simplify_source_vectors(Shader& sh)
 
 void SimplifySourceVecVisitor::visit(TexInstr *instr)
 {
+
    if (instr->opcode() != TexInstr::get_resinfo) {
-      replace_src(instr, instr->src());
+      auto& src = instr->src();
+      replace_src(instr, src);
+      int nvals = 0;
+      for (int i = 0; i < 4; ++i)
+         if (src[i]->chan() < 4)
+            ++nvals;
+      if (nvals == 1) {
+         for (int i = 0; i < 4; ++i)
+            if (src[i]->chan() < 4) {
+               if (src[i]->pin() == pin_group)
+                  src[i]->set_pin(pin_free);
+               else if (src[i]->pin() == pin_chgr)
+                  src[i]->set_pin(pin_chan);
+            }
+      }
+   }
+   for (auto& prep : instr->prepare_instr()) {
+      prep->accept(*this);
    }
 }
 

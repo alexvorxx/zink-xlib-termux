@@ -343,8 +343,13 @@ enum virgl_formats {
    VIRGL_FORMAT_A8L8_SNORM              = 260,
    VIRGL_FORMAT_A8L8_SRGB               = 261,
 
-   VIRGL_FORMAT_X8B8G8R8_SNORM          = 268,
+   VIRGL_FORMAT_A1B5G5R5_UNORM          = 262,
+   VIRGL_FORMAT_A1R5G5B5_UNORM          = 263,
+   VIRGL_FORMAT_A2B10G10R10_UNORM       = 264,
+   VIRGL_FORMAT_A2R10G10B10_UNORM       = 265,
+   VIRGL_FORMAT_A4R4G4B4_UNORM          = 266,
 
+   VIRGL_FORMAT_X8B8G8R8_SNORM          = 268,
 
    /* etc2 compressed */
    VIRGL_FORMAT_ETC2_RGB8               = 269,
@@ -393,6 +398,17 @@ enum virgl_formats {
 
    VIRGL_FORMAT_R8_SRGB                 = 312,
    VIRGL_FORMAT_R8G8_SRGB               = 313,
+
+   VIRGL_FORMAT_P010                    = 314,
+   VIRGL_FORMAT_P012                    = 315,
+   VIRGL_FORMAT_P016                    = 316,
+
+   VIRGL_FORMAT_B8G8R8_UNORM            = 317,
+   VIRGL_FORMAT_R3G3B2_UNORM            = 318,
+   VIRGL_FORMAT_R4G4B4A4_UNORM          = 319,
+   VIRGL_FORMAT_R5G5B5A1_UNORM          = 320,
+   VIRGL_FORMAT_R5G6B5_UNORM            = 321,
+
    VIRGL_FORMAT_MAX /* = PIPE_FORMAT_COUNT */,
 
    /* Below formats must not be used in the guest. */
@@ -422,7 +438,7 @@ enum virgl_formats {
 #define VIRGL_CAP_QBO                  (1 << 16)
 #define VIRGL_CAP_TRANSFER             (1 << 17)
 #define VIRGL_CAP_FBO_MIXED_COLOR_FORMATS  (1 << 18)
-#define VIRGL_CAP_FAKE_FP64            (1 << 19)
+#define VIRGL_CAP_HOST_IS_GLES         (1 << 19)
 #define VIRGL_CAP_BIND_COMMAND_ARGS    (1 << 20)
 #define VIRGL_CAP_MULTI_DRAW_INDIRECT  (1 << 21)
 #define VIRGL_CAP_INDIRECT_PARAMS      (1 << 22)
@@ -436,6 +452,9 @@ enum virgl_formats {
 #define VIRGL_CAP_CLEAR_TEXTURE        (1 << 30)
 #define VIRGL_CAP_ARB_BUFFER_STORAGE   (1u << 31)
 
+// Legacy alias
+#define VIRGL_CAP_FAKE_FP64            VIRGL_CAP_HOST_IS_GLES
+
 /* These are used by the capability_bits_v2 field in virgl_caps_v2. */
 #define VIRGL_CAP_V2_BLEND_EQUATION       (1 << 0)
 #define VIRGL_CAP_V2_UNTYPED_RESOURCE     (1 << 1)
@@ -446,6 +465,7 @@ enum virgl_formats {
 #define VIRGL_CAP_V2_COPY_TRANSFER_BOTH_DIRECTIONS (1 << 7)
 #define VIRGL_CAP_V2_SCANOUT_USES_GBM     (1 << 8)
 #define VIRGL_CAP_V2_SSO                  (1 << 9)
+#define VIRGL_CAP_V2_TEXTURE_SHADOW_LOD   (1 << 10)
 /* virgl bind flags - these are compatible with mesa 10.5 gallium.
  * but are fixed, no other should be passed to virgl either.
  */
@@ -625,6 +645,7 @@ struct virgl_caps_v2 {
         uint32_t max_const_buffer_size[6]; // PIPE_SHADER_TYPES
         uint32_t num_video_caps;
         struct virgl_video_caps video_caps[32];
+        uint32_t max_uniform_block_size;
 };
 
 union virgl_caps {

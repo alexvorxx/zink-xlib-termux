@@ -27,7 +27,7 @@ project(
   ).stdout(),
   license : 'MIT',
   meson_version : '>= 0.53',
-  default_options : ['buildtype=debugoptimized', 'b_ndebug=if-release', 'c_std=c11', 'cpp_std=c++14']
+  default_options : ['buildtype=debugoptimized', 'b_ndebug=if-release', 'c_std=c11', 'cpp_std=c++17', 'rust_std=2021']
 )
 
 # In recent versions, meson can inject some extra arguments to get richer
@@ -283,6 +283,11 @@ with_imagination_srv = get_option('imagination-srv')
 with_microsoft_vk = _vulkan_drivers.contains('microsoft-experimental')
 with_any_vk = _vulkan_drivers.length() != 0
 
+_vulkan_rt_drivers = get_option('vulkan-rt-drivers')
+if _vulkan_rt_drivers.contains('intel')
+  error('Use -Dintel-clc=enabled to enable Intel Vulkan Ray Tracing')
+endif
+
 with_any_broadcom = with_gallium_vc4 or with_gallium_v3d or with_broadcom_vk
 with_any_intel = with_intel_vk or with_intel_hasvk or with_gallium_iris or with_gallium_crocus or with_intel_tools
 
@@ -298,6 +303,7 @@ endif
 
 with_microsoft_clc = get_option('microsoft-clc').enabled()
 with_intel_clc = get_option('intel-clc').enabled()
+with_intel_vk_rt = with_intel_clc
 with_clc = with_microsoft_clc or with_intel_clc
 with_libclc = with_clc
 with_spirv_to_dxil = get_option('spirv-to-dxil')
@@ -824,9 +830,9 @@ if not system_has_kms_drm
   else
     _va = 'disabled'
   endif
-elif not (with_gallium_r600 or with_gallium_radeonsi or with_gallium_nouveau or with_gallium_d3d12_video)
+elif not (with_gallium_r600 or with_gallium_radeonsi or with_gallium_nouveau or with_gallium_d3d12_video or with_gallium_virgl)
   if _va == 'enabled'
-    error('VA state tracker requires at least one of the following gallium drivers: r600, radeonsi, nouveau, d3d12 (with option gallium-d3d12-video).')
+    error('VA state tracker requires at least one of the following gallium drivers: r600, radeonsi, nouveau, d3d12 (with option gallium-d3d12-video), virgl.')
   else
     _va = 'disabled'
   endif
@@ -951,6 +957,22 @@ if _opencl != 'disabled'
 else
   with_gallium_opencl = false
   with_opencl_icd = false
+endif
+
+with_gallium_rusticl = get_option('gallium-rusticl')
+if with_gallium_rusticl
+  if not with_gallium
+    error('rusticl requires at least one gallium driver.')
+  endif
+
+  if meson.version().version_compare('< 0.61.4')
+    error('rusticl requires meson 0.61.4 or newer')
+  endif
+
+  add_languages('rust', required: true)
+
+  with_clc = true
+  with_libclc = true
 endif
 
 dep_clc = null_dep
@@ -1437,7 +1459,6 @@ functions_to_detect = {
   'flock': '',
   'strtok_r': '',
   'getrandom': '',
-  'qsort_r': '',
   'qsort_s': '',
 }
 
@@ -1446,6 +1467,37 @@ foreach f, prefix: functions_to_detect
     pre_args += '-DHAVE_@0@'.format(f.to_upper())
   endif
 endforeach
+
+if cpp.links('''
+    #define _GNU_SOURCE
+    #include <stdlib.h>
+
+    static int dcomp(const void *l, const void *r, void *t) { return 0; }
+
+    int main(int ac, char **av) {
+      int arr[] = { 1 };
+      void *t = NULL;
+      qsort_r((void*)&arr[0], 1, 1, dcomp, t);
+      return (0);
+    }''',
+    args : pre_args,
+    name : 'GNU qsort_r')
+  pre_args += '-DHAVE_GNU_QSORT_R'
+elif cpp.links('''
+    #include <stdlib.h>
+
+    static int dcomp(void *t, const void *l, const void *r) { return 0; }
+
+    int main(int ac, char **av) {
+      int arr[] = { 1 };
+      void *t = NULL;
+      qsort_r((void*)&arr[0], 1, 1, t, dcomp);
+      return (0);
+    }''',
+    args : pre_args,
+    name : 'BSD qsort_r')
+  pre_args += '-DHAVE_BSD_QSORT_R'
+endif
 
 if cc.has_header_symbol('time.h', 'struct timespec')
    pre_args += '-DHAVE_STRUCT_TIMESPEC'
@@ -1725,7 +1777,9 @@ if draw_with_llvm
   llvm_modules += 'native'
 endif
 
-if with_amd_vk or with_gallium_radeonsi or with_gallium_opencl
+if with_intel_clc
+  _llvm_version = '>= 13.0.0'
+elif with_amd_vk or with_gallium_radeonsi or with_gallium_opencl
   _llvm_version = '>= 11.0.0'
 elif with_clc
   _llvm_version = '>= 10.0.0'
@@ -1842,12 +1896,18 @@ if with_opencl_spirv
 
   # Require an SPIRV-LLVM-Translator version compatible with the chosen LLVM
   # one.
+
+  # This first version check is still needed as maybe LLVM 8.0 was picked but
+  # we do not want to accept SPIRV-LLVM-Translator 8.0.0.1 as that version
+  # does not have the required API and those are only available starting from
+  # 8.0.1.3.
+  _llvmspirvlib_min_version = '>= 8.0.1.3'
+  if with_intel_clc
+    _llvmspirvlib_min_version = '>= 13.0.0.0'
+  endif
+
   _llvmspirvlib_version = [
-    # This first version check is still needed as maybe LLVM 8.0 was picked but
-    # we do not want to accept SPIRV-LLVM-Translator 8.0.0.1 as that version does
-    # not have the required API and those are only available starting from
-    # 8.0.1.3.
-    '>= 8.0.1.3',
+    _llvmspirvlib_min_version,
     '>= @0@.@1@'.format(chosen_llvm_version_major, chosen_llvm_version_minor),
     '< @0@.@1@'.format(chosen_llvm_version_major, chosen_llvm_version_minor + 1) ]
 
@@ -1887,21 +1947,12 @@ if host_machine.system() == 'windows'
   dep_version = cpp.find_library('version')
 endif
 
-with_opencl_native = _opencl != 'disabled' and get_option('opencl-native')
-
-if (with_amd_vk or with_gallium_radeonsi or
-    (with_gallium_opencl and with_opencl_native) or
-    (with_gallium_r600 and with_llvm))
-  if with_platform_windows
-    dep_elf = dependency('libelf', required : false, fallback : ['libelf', 'libelf_dep'])
-  else
-    dep_elf = dependency('libelf', required : false)
-  endif
-  if not dep_elf.found()
-    dep_elf = cc.find_library('elf')
-  endif
-else
-  dep_elf = null_dep
+dep_elf = dependency('libelf', required : false)
+if not with_platform_windows and not dep_elf.found()
+  dep_elf = cc.find_library('elf', required : false)
+endif
+if dep_elf.found()
+  pre_args += '-DUSE_LIBELF'
 endif
 
 dep_glvnd = null_dep

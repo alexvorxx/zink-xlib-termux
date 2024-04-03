@@ -240,6 +240,7 @@ new_texture_handle(struct gl_context *ctx, struct gl_texture_object *texObj,
                                                     true, false);
    } else {
       view = st_get_buffer_sampler_view_from_stobj(st, texObj, false);
+      sampler.normalized_coords = 1;
    }
 
    return pipe->create_texture_handle(pipe, view, &sampler);
@@ -423,7 +424,7 @@ _mesa_init_shared_handles(struct gl_shared_state *shared)
 {
    shared->TextureHandles = _mesa_hash_table_u64_create(NULL);
    shared->ImageHandles = _mesa_hash_table_u64_create(NULL);
-   mtx_init(&shared->HandlesMutex, mtx_recursive);
+   mtx_init(&shared->HandlesMutex, mtx_plain | mtx_recursive);
 }
 
 void

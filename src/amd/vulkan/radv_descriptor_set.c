@@ -46,7 +46,7 @@ radv_descriptor_type_buffer_count(VkDescriptorType type)
       case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
       case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
       case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-      case VK_DESCRIPTOR_TYPE_MUTABLE_VALVE:
+      case VK_DESCRIPTOR_TYPE_MUTABLE_EXT:
          return 3;
       default:
          return 1;
@@ -119,8 +119,8 @@ radv_CreateDescriptorSetLayout(VkDevice _device, const VkDescriptorSetLayoutCrea
    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO);
    const VkDescriptorSetLayoutBindingFlagsCreateInfo *variable_flags =
       vk_find_struct_const(pCreateInfo->pNext, DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO);
-   const VkMutableDescriptorTypeCreateInfoVALVE *mutable_info =
-      vk_find_struct_const(pCreateInfo->pNext, MUTABLE_DESCRIPTOR_TYPE_CREATE_INFO_VALVE);
+   const VkMutableDescriptorTypeCreateInfoEXT *mutable_info =
+      vk_find_struct_const(pCreateInfo->pNext, MUTABLE_DESCRIPTOR_TYPE_CREATE_INFO_EXT);
 
    uint32_t num_bindings = 0;
    uint32_t immutable_sampler_count = 0;
@@ -262,7 +262,7 @@ radv_CreateDescriptorSetLayout(VkDevice _device, const VkDescriptorSetLayoutCrea
          set_layout->binding[b].size = 16;
          alignment = 16;
          break;
-      case VK_DESCRIPTOR_TYPE_MUTABLE_VALVE: {
+      case VK_DESCRIPTOR_TYPE_MUTABLE_EXT: {
          uint64_t mutable_size = 0, mutable_align = 0;
          radv_mutable_descriptor_type_size_alignment(&mutable_info->pMutableDescriptorTypeLists[j],
                                                      &mutable_size, &mutable_align);
@@ -370,8 +370,8 @@ radv_GetDescriptorSetLayoutSupport(VkDevice device,
       vk_find_struct_const(pCreateInfo->pNext, DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO);
    VkDescriptorSetVariableDescriptorCountLayoutSupport *variable_count = vk_find_struct(
       (void *)pCreateInfo->pNext, DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT);
-   const VkMutableDescriptorTypeCreateInfoVALVE *mutable_info =
-      vk_find_struct_const(pCreateInfo->pNext, MUTABLE_DESCRIPTOR_TYPE_CREATE_INFO_VALVE);
+   const VkMutableDescriptorTypeCreateInfoEXT *mutable_info =
+      vk_find_struct_const(pCreateInfo->pNext, MUTABLE_DESCRIPTOR_TYPE_CREATE_INFO_EXT);
    if (variable_count) {
       variable_count->maxVariableDescriptorCount = 0;
    }
@@ -423,7 +423,7 @@ radv_GetDescriptorSetLayoutSupport(VkDevice device,
          descriptor_size = descriptor_count;
          descriptor_count = 1;
          break;
-      case VK_DESCRIPTOR_TYPE_MUTABLE_VALVE:
+      case VK_DESCRIPTOR_TYPE_MUTABLE_EXT:
          if (!radv_mutable_descriptor_type_size_alignment(
                 &mutable_info->pMutableDescriptorTypeLists[i], &descriptor_size,
                 &descriptor_alignment)) {
@@ -784,8 +784,8 @@ radv_CreateDescriptorPool(VkDevice _device, const VkDescriptorPoolCreateInfo *pC
    uint64_t size = sizeof(struct radv_descriptor_pool);
    uint64_t bo_size = 0, bo_count = 0, range_count = 0;
 
-   const VkMutableDescriptorTypeCreateInfoVALVE *mutable_info =
-      vk_find_struct_const(pCreateInfo->pNext, MUTABLE_DESCRIPTOR_TYPE_CREATE_INFO_VALVE);
+   const VkMutableDescriptorTypeCreateInfoEXT *mutable_info =
+      vk_find_struct_const(pCreateInfo->pNext, MUTABLE_DESCRIPTOR_TYPE_CREATE_INFO_EXT);
 
    vk_foreach_struct_const(ext, pCreateInfo->pNext)
    {
@@ -827,7 +827,7 @@ radv_CreateDescriptorPool(VkDevice _device, const VkDescriptorPoolCreateInfo *pC
       case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
          bo_size += 64 * pCreateInfo->pPoolSizes[i].descriptorCount;
          break;
-      case VK_DESCRIPTOR_TYPE_MUTABLE_VALVE:
+      case VK_DESCRIPTOR_TYPE_MUTABLE_EXT:
          /* Per spec, if a mutable descriptor type list is provided for the pool entry, we
           * allocate enough memory to hold any subset of that list.
           * If there is no mutable descriptor type list available,
@@ -1191,11 +1191,9 @@ write_combined_image_sampler_descriptor(struct radv_device *device,
 }
 
 static ALWAYS_INLINE void
-write_sampler_descriptor(struct radv_device *device, unsigned *dst,
-                         const VkDescriptorImageInfo *image_info)
+write_sampler_descriptor(unsigned *dst, VkSampler _sampler)
 {
-   RADV_FROM_HANDLE(radv_sampler, sampler, image_info->sampler);
-
+   RADV_FROM_HANDLE(radv_sampler, sampler, _sampler);
    memcpy(dst, sampler->state, 16);
 }
 
@@ -1203,7 +1201,7 @@ static ALWAYS_INLINE void
 write_accel_struct(void *ptr, VkAccelerationStructureKHR _accel_struct)
 {
    RADV_FROM_HANDLE(radv_acceleration_structure, accel_struct, _accel_struct);
-   uint64_t va = accel_struct ? radv_accel_struct_get_va(accel_struct) : 0;
+   uint64_t va = accel_struct ? accel_struct->va : 0;
    memcpy(ptr, &va, sizeof(va));
 }
 
@@ -1291,7 +1289,8 @@ radv_update_descriptor_sets_impl(struct radv_device *device, struct radv_cmd_buf
          }
          case VK_DESCRIPTOR_TYPE_SAMPLER:
             if (!binding_layout->immutable_samplers_offset) {
-               write_sampler_descriptor(device, ptr, writeset->pImageInfo + j);
+               const VkDescriptorImageInfo *pImageInfo = writeset->pImageInfo + j;
+               write_sampler_descriptor(ptr, pImageInfo->sampler);
             } else if (copy_immutable_samplers) {
                unsigned idx = writeset->dstArrayElement + j;
                memcpy(ptr, samplers + 4 * idx, 16);
@@ -1583,8 +1582,10 @@ radv_update_descriptor_set_with_template_impl(struct radv_device *device,
             }
             break;
          case VK_DESCRIPTOR_TYPE_SAMPLER:
-            if (templ->entry[i].has_sampler)
-               write_sampler_descriptor(device, pDst, (struct VkDescriptorImageInfo *)pSrc);
+            if (templ->entry[i].has_sampler) {
+               const VkDescriptorImageInfo *pImageInfo = (struct VkDescriptorImageInfo *)pSrc;
+               write_sampler_descriptor(pDst, pImageInfo->sampler);
+            }
             else if (cmd_buffer && templ->entry[i].immutable_samplers)
                memcpy(pDst, templ->entry[i].immutable_samplers + 4 * j, 16);
             break;

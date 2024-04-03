@@ -166,13 +166,13 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
         case PIPE_CAP_TEXTURE_FLOAT_LINEAR:
         case PIPE_CAP_TEXTURE_HALF_FLOAT_LINEAR:
         case PIPE_CAP_SHADER_ARRAY_COMPONENTS:
-        case PIPE_CAP_CS_DERIVED_SYSTEM_VALUES_SUPPORTED:
         case PIPE_CAP_TEXTURE_BUFFER_OBJECTS:
         case PIPE_CAP_TEXTURE_BUFFER_SAMPLER:
         case PIPE_CAP_PACKED_UNIFORMS:
         case PIPE_CAP_IMAGE_LOAD_FORMATTED:
         case PIPE_CAP_CUBE_MAP_ARRAY:
         case PIPE_CAP_COMPUTE:
+        case PIPE_CAP_INT64:
                 return 1;
 
         /* We need this for OES_copy_image, but currently there are some awful
@@ -192,7 +192,7 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
                 return 1;
 
         case PIPE_CAP_MAX_TEXTURE_ARRAY_LAYERS:
-                return 256;
+                return 2048;
 
         case PIPE_CAP_GLSL_FEATURE_LEVEL:
         case PIPE_CAP_GLSL_FEATURE_LEVEL_COMPATIBILITY:
@@ -530,7 +530,6 @@ panfrost_is_format_supported( struct pipe_screen *screen,
                               unsigned bind)
 {
         struct panfrost_device *dev = pan_device(screen);
-        const struct util_format_description *format_desc;
 
         assert(target == PIPE_BUFFER ||
                target == PIPE_TEXTURE_1D ||
@@ -541,8 +540,6 @@ panfrost_is_format_supported( struct pipe_screen *screen,
                target == PIPE_TEXTURE_3D ||
                target == PIPE_TEXTURE_CUBE ||
                target == PIPE_TEXTURE_CUBE_ARRAY);
-
-        format_desc = util_format_description(format);
 
         /* MSAA 2x gets rounded up to 4x. MSAA 8x/16x only supported on v5+.
          * TODO: debug MSAA 8x/16x */
@@ -579,13 +576,12 @@ panfrost_is_format_supported( struct pipe_screen *screen,
 
         /* Also check that compressed texture formats are supported on this
          * particular chip. They may not be depending on system integration
-         * differences. RGTC can be emulated so is always supported. */
+         * differences. */
 
-        bool is_rgtc = format_desc->layout == UTIL_FORMAT_LAYOUT_RGTC;
         bool supported = panfrost_supports_compressed_format(dev,
                         MALI_EXTRACT_INDEX(fmt.hw));
 
-        if (!is_rgtc && !supported)
+        if (!supported)
                 return false;
 
         return MALI_EXTRACT_INDEX(fmt.hw) && ((relevant_bind & ~fmt.bind) == 0);

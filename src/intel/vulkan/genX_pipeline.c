@@ -756,8 +756,7 @@ emit_ms_state(struct anv_graphics_pipeline *pipeline,
 {
    /* On Gfx8+ 3DSTATE_MULTISAMPLE only holds the number of samples. */
    genX(emit_multisample)(&pipeline->base.batch,
-                          pipeline->rasterization_samples,
-                          NULL);
+                          pipeline->rasterization_samples);
 
    /* From the Vulkan 1.0 spec:
     *    If pSampleMask is NULL, it is treated as if the mask has all bits
@@ -1241,6 +1240,13 @@ emit_3dstate_streamout(struct anv_graphics_pipeline *pipeline,
                .Stream3Decl = so_decl[3][i],
             });
       }
+
+#if GFX_VERx10 == 125
+      /* Wa_14015946265: Send PC with CS stall after SO_DECL. */
+      anv_batch_emit(&pipeline->base.batch, GENX(PIPE_CONTROL), pc) {
+         pc.CommandStreamerStallEnable = true;
+      }
+#endif
    }
 
    struct GENX(3DSTATE_STREAMOUT) so = {
@@ -1867,6 +1873,11 @@ static void
 emit_3dstate_primitive_replication(struct anv_graphics_pipeline *pipeline,
                                    const struct vk_render_pass_state *rp)
 {
+   if (anv_pipeline_is_mesh(pipeline)) {
+      anv_batch_emit(&pipeline->base.batch, GENX(3DSTATE_PRIMITIVE_REPLICATION), pr);
+      return;
+   }
+
    const int replication_count =
       anv_pipeline_get_last_vue_prog_data(pipeline)->vue_map.num_pos_slots;
 

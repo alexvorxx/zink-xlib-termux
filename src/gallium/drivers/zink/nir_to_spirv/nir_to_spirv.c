@@ -87,6 +87,8 @@ struct ntv_context {
    bool block_started;
    SpvId loop_break, loop_cont;
 
+   SpvId shared_block_var[5]; //8, 16, 32, unused, 64
+
    SpvId front_face_var, instance_id_var, vertex_id_var,
          primitive_id_var, invocation_id_var, // geometry
          sample_mask_type, sample_id_var, sample_pos_var, sample_mask_in_var,
@@ -96,7 +98,6 @@ struct ntv_context {
          local_invocation_id_var, global_invocation_id_var,
          local_invocation_index_var, helper_invocation_var,
          local_group_size_var,
-         shared_block_var,
          base_vertex_var, base_instance_var, draw_id_var;
 
    SpvId subgroup_eq_mask_var,
@@ -213,13 +214,39 @@ emit_access_decorations(struct ntv_context *ctx, nir_variable *var, SpvId var_id
 }
 
 static SpvOp
-get_atomic_op(nir_intrinsic_op op)
+get_atomic_op(struct ntv_context *ctx, unsigned bit_size, nir_intrinsic_op op)
 {
    switch (op) {
 #define CASE_ATOMIC_OP(type) \
    case nir_intrinsic_deref_atomic_##type: \
    case nir_intrinsic_image_deref_atomic_##type: \
    case nir_intrinsic_shared_atomic_##type
+
+#define ATOMIC_FCAP(NAME) \
+   do {\
+      if (bit_size == 16) \
+         spirv_builder_emit_cap(&ctx->builder, SpvCapabilityAtomicFloat16##NAME##EXT); \
+      if (bit_size == 32) \
+         spirv_builder_emit_cap(&ctx->builder, SpvCapabilityAtomicFloat32##NAME##EXT); \
+      if (bit_size == 64) \
+         spirv_builder_emit_cap(&ctx->builder, SpvCapabilityAtomicFloat64##NAME##EXT); \
+   } while (0)
+
+   CASE_ATOMIC_OP(fadd):
+      ATOMIC_FCAP(Add);
+      if (bit_size == 16)
+         spirv_builder_emit_extension(&ctx->builder, "SPV_EXT_shader_atomic_float16_add");
+      else
+         spirv_builder_emit_extension(&ctx->builder, "SPV_EXT_shader_atomic_float_add");
+      return SpvOpAtomicFAddEXT;
+   CASE_ATOMIC_OP(fmax):
+      ATOMIC_FCAP(MinMax);
+      spirv_builder_emit_extension(&ctx->builder, "SPV_EXT_shader_atomic_float_min_max");
+      return SpvOpAtomicFMaxEXT;
+   CASE_ATOMIC_OP(fmin):
+      ATOMIC_FCAP(MinMax);
+      spirv_builder_emit_extension(&ctx->builder, "SPV_EXT_shader_atomic_float_min_max");
+      return SpvOpAtomicFMinEXT;
 
    CASE_ATOMIC_OP(add):
       return SpvOpAtomicIAdd;
@@ -247,7 +274,22 @@ get_atomic_op(nir_intrinsic_op op)
    }
    return 0;
 }
+
+static bool
+atomic_op_is_float(nir_intrinsic_op op)
+{
+   switch (op) {
+   CASE_ATOMIC_OP(fadd):
+   CASE_ATOMIC_OP(fmax):
+   CASE_ATOMIC_OP(fmin):
+      return true;
+   default:
+      break;
+   }
+   return false;
+}
 #undef CASE_ATOMIC_OP
+
 static SpvId
 emit_float_const(struct ntv_context *ctx, int bit_size, double value)
 {
@@ -455,19 +497,31 @@ get_glsl_type(struct ntv_context *ctx, const struct glsl_type *type)
 }
 
 static void
-create_shared_block(struct ntv_context *ctx, unsigned shared_size)
+create_shared_block(struct ntv_context *ctx, unsigned shared_size, unsigned bit_size)
 {
-   SpvId type = spirv_builder_type_uint(&ctx->builder, 32);
-   SpvId array = spirv_builder_type_array(&ctx->builder, type, emit_uint_const(ctx, 32, shared_size / 4));
-   spirv_builder_emit_array_stride(&ctx->builder, array, 4);
+   unsigned idx = bit_size >> 4;
+   SpvId type = spirv_builder_type_uint(&ctx->builder, bit_size);
+   unsigned block_size = shared_size / (bit_size / 8);
+   assert(block_size);
+   SpvId array = spirv_builder_type_array(&ctx->builder, type, emit_uint_const(ctx, 32, block_size));
+   spirv_builder_emit_array_stride(&ctx->builder, array, bit_size / 8);
    SpvId ptr_type = spirv_builder_type_pointer(&ctx->builder,
                                                SpvStorageClassWorkgroup,
                                                array);
-   ctx->shared_block_var = spirv_builder_emit_var(&ctx->builder, ptr_type, SpvStorageClassWorkgroup);
+   ctx->shared_block_var[idx] = spirv_builder_emit_var(&ctx->builder, ptr_type, SpvStorageClassWorkgroup);
    if (ctx->spirv_1_4_interfaces) {
       assert(ctx->num_entry_ifaces < ARRAY_SIZE(ctx->entry_ifaces));
-      ctx->entry_ifaces[ctx->num_entry_ifaces++] = ctx->shared_block_var;
+      ctx->entry_ifaces[ctx->num_entry_ifaces++] = ctx->shared_block_var[idx];
    }
+}
+
+static SpvId
+get_shared_block(struct ntv_context *ctx, unsigned bit_size)
+{
+   unsigned idx = bit_size >> 4;
+   if (!ctx->shared_block_var[idx])
+      create_shared_block(ctx, ctx->nir->info.shared_size, bit_size);
+   return ctx->shared_block_var[idx];
 }
 
 #define HANDLE_EMIT_BUILTIN(SLOT, BUILTIN) \
@@ -1013,8 +1067,7 @@ get_bo_struct_type(struct ntv_context *ctx, struct nir_variable *var)
    if (ssbo && glsl_get_length(bare_type) > 1) {
        const struct glsl_type *last_member = glsl_get_struct_field(bare_type, glsl_get_length(bare_type) - 1);
        if (glsl_type_is_unsized_array(last_member)) {
-          bool is_64bit = glsl_type_is_64bit(glsl_without_array(last_member));
-          runtime_array = spirv_builder_type_runtime_array(&ctx->builder, get_uvec_type(ctx, is_64bit ? 64 : bitsize, 1));
+          runtime_array = spirv_builder_type_runtime_array(&ctx->builder, get_uvec_type(ctx, bitsize, 1));
           spirv_builder_emit_array_stride(&ctx->builder, runtime_array, glsl_get_explicit_stride(last_member));
        }
    }
@@ -1036,7 +1089,7 @@ get_bo_struct_type(struct ntv_context *ctx, struct nir_variable *var)
 }
 
 static void
-emit_bo(struct ntv_context *ctx, struct nir_variable *var)
+emit_bo(struct ntv_context *ctx, struct nir_variable *var, bool aliased)
 {
    unsigned bitsize = glsl_get_bit_size(glsl_get_array_element(glsl_get_struct_field(glsl_without_array(var->type), 0)));
    bool ssbo = var->data.mode == nir_var_mem_ssbo;
@@ -1052,12 +1105,16 @@ emit_bo(struct ntv_context *ctx, struct nir_variable *var)
    if (var->name)
       spirv_builder_emit_name(&ctx->builder, var_id, var->name);
 
+   if (aliased)
+      spirv_builder_emit_decoration(&ctx->builder, var_id, SpvDecorationAliased);
+
    unsigned idx = bitsize >> 4;
    assert(idx < ARRAY_SIZE(ctx->ssbos));
    if (ssbo) {
       assert(!ctx->ssbos[idx]);
       ctx->ssbos[idx] = var_id;
-      ctx->ssbo_vars = var;
+      if (bitsize == 32)
+         ctx->ssbo_vars = var;
    } else {
       assert(!ctx->ubos[var->data.driver_location][idx]);
       ctx->ubos[var->data.driver_location][idx] = var_id;
@@ -1071,20 +1128,6 @@ emit_bo(struct ntv_context *ctx, struct nir_variable *var)
 
    spirv_builder_emit_descriptor_set(&ctx->builder, var_id, var->data.descriptor_set);
    spirv_builder_emit_binding(&ctx->builder, var_id, var->data.binding);
-}
-
-static void
-emit_uniform(struct ntv_context *ctx, struct nir_variable *var)
-{
-   if (var->data.mode == nir_var_mem_ubo || var->data.mode == nir_var_mem_ssbo)
-      emit_bo(ctx, var);
-   else {
-      assert(var->data.mode == nir_var_uniform ||
-             var->data.mode == nir_var_image);
-      const struct glsl_type *type = glsl_without_array(var->type);
-      if (glsl_type_is_sampler(type) || glsl_type_is_image(type))
-         emit_image(ctx, var, false);
-   }
 }
 
 static SpvId
@@ -1614,7 +1657,7 @@ emit_so_outputs(struct ntv_context *ctx,
                for (unsigned c = 0; c < so_output.num_components; c++) {
                   components[c] = so_output.start_component + c;
                   /* this is the second half of a 2 * vec4 array */
-                  if (slot == VARYING_SLOT_CLIP_DIST1)
+                  if (slot == VARYING_SLOT_CLIP_DIST1 || slot == VARYING_SLOT_CULL_DIST1)
                      components[c] += 4;
                }
                /* OpVectorShuffle can select vector members into a differently-sized vector */
@@ -1645,7 +1688,7 @@ emit_so_outputs(struct ntv_context *ctx,
                 uint32_t member = so_output.start_component + c;
                 SpvId base_type = get_glsl_basetype(ctx, glsl_get_base_type(bare_type));
 
-                if (slot == VARYING_SLOT_CLIP_DIST1)
+                if (slot == VARYING_SLOT_CLIP_DIST1 || slot == VARYING_SLOT_CULL_DIST1)
                    member += 4;
                 components[idx] = spirv_builder_emit_composite_extract(&ctx->builder, base_type, src, &member, 1);
                 if (glsl_type_is_64bit(bare_type)) {
@@ -1901,19 +1944,6 @@ needs_derivative_control(nir_alu_instr *alu)
    }
 }
 
-static SpvId
-unswizzle_src(struct ntv_context *ctx, nir_ssa_def *ssa, SpvId src, unsigned num_components)
-{
-   /* value may have already been cast to ivec, so cast back */
-   SpvId cast_type = get_uvec_type(ctx, ssa->bit_size, num_components);
-   src = emit_bitcast(ctx, cast_type, src);
-
-   /* extract from swizzled vec */
-   SpvId type = spirv_builder_type_uint(&ctx->builder, ssa->bit_size);
-   uint32_t idx = 0;
-   return spirv_builder_emit_composite_extract(&ctx->builder, type, src, &idx, 1);
-}
-
 static void
 emit_alu(struct ntv_context *ctx, nir_alu_instr *alu)
 {
@@ -1929,34 +1959,6 @@ emit_alu(struct ntv_context *ctx, nir_alu_instr *alu)
 
    if (needs_derivative_control(alu))
       spirv_builder_emit_cap(&ctx->builder, SpvCapabilityDerivativeControl);
-
-   /* modify params here */
-   switch (alu->op) {
-   /* Offset must be an integer type scalar.
-    * Offset is the lowest-order bit of the bit field.
-    * It is consumed as an unsigned value.
-    *
-    * Count must be an integer type scalar.
-    *
-    * if these ops have more than one component in the dest, then their offset and count
-    * are swizzled like ssa_1.xxx, but only a single scalar can be provided
-    */
-   case nir_op_ubitfield_extract:
-   case nir_op_ibitfield_extract:
-      if (num_components > 1) {
-         src[1] = unswizzle_src(ctx, alu->src[1].src.ssa, src[1], num_components);
-         src[2] = unswizzle_src(ctx, alu->src[2].src.ssa, src[2], num_components);
-      }
-      break;
-   case nir_op_bitfield_insert:
-      if (num_components > 1) {
-         src[2] = unswizzle_src(ctx, alu->src[2].src.ssa, src[2], num_components);
-         src[3] = unswizzle_src(ctx, alu->src[3].src.ssa, src[3], num_components);
-      }
-      break;
-   default:
-      break;
-   }
 
    SpvId result = 0;
    switch (alu->op) {
@@ -2067,9 +2069,13 @@ emit_alu(struct ntv_context *ctx, nir_alu_instr *alu)
       result = emit_builtin_unop(ctx, GLSLstd450PackHalf2x16, get_dest_type(ctx, &alu->dest.dest, nir_type_uint), src[0]);
       break;
 
+   case nir_op_unpack_64_2x32:
+      assert(nir_op_infos[alu->op].num_inputs == 1);
+      result = emit_builtin_unop(ctx, GLSLstd450UnpackDouble2x32, get_dest_type(ctx, &alu->dest.dest, nir_type_uint), src[0]);
+      break;
+
    BUILTIN_UNOPF(nir_op_unpack_half_2x16, GLSLstd450UnpackHalf2x16)
    BUILTIN_UNOPF(nir_op_pack_64_2x32, GLSLstd450PackDouble2x32)
-   BUILTIN_UNOPF(nir_op_unpack_64_2x32, GLSLstd450UnpackDouble2x32)
 #undef BUILTIN_UNOP
 #undef BUILTIN_UNOPF
 
@@ -2398,7 +2404,7 @@ emit_store_deref(struct ntv_context *ctx, nir_intrinsic_instr *intr)
       } else
          member_type = result_type = get_glsl_type(ctx, glsl_get_array_element(gtype));
       SpvId ptr_type = spirv_builder_type_pointer(&ctx->builder,
-                                                  SpvStorageClassOutput,
+                                                  get_storage_class(var),
                                                   result_type);
       for (unsigned i = 0; i < 4; i++)
          if (wrmask & BITFIELD_BIT(i)) {
@@ -2433,18 +2439,19 @@ emit_load_shared(struct ntv_context *ctx, nir_intrinsic_instr *intr)
    SpvId dest_type = get_dest_type(ctx, &intr->dest, nir_type_uint);
    unsigned num_components = nir_dest_num_components(intr->dest);
    unsigned bit_size = nir_dest_bit_size(intr->dest);
-   SpvId uint_type = get_uvec_type(ctx, 32, 1);
+   SpvId uint_type = get_uvec_type(ctx, bit_size, 1);
    SpvId ptr_type = spirv_builder_type_pointer(&ctx->builder,
                                                SpvStorageClassWorkgroup,
                                                uint_type);
    SpvId offset = get_src(ctx, &intr->src[0]);
    SpvId constituents[NIR_MAX_VEC_COMPONENTS];
+   SpvId shared_block = get_shared_block(ctx, bit_size);
    /* need to convert array -> vec */
    for (unsigned i = 0; i < num_components; i++) {
       SpvId member = spirv_builder_emit_access_chain(&ctx->builder, ptr_type,
-                                                     ctx->shared_block_var, &offset, 1);
+                                                     shared_block, &offset, 1);
       constituents[i] = spirv_builder_emit_load(&ctx->builder, uint_type, member);
-      offset = emit_binop(ctx, SpvOpIAdd, uint_type, offset, emit_uint_const(ctx, 32, 1));
+      offset = emit_binop(ctx, SpvOpIAdd, spirv_builder_type_uint(&ctx->builder, 32), offset, emit_uint_const(ctx, 32, 1));
    }
    SpvId result;
    if (num_components > 1)
@@ -2458,31 +2465,24 @@ static void
 emit_store_shared(struct ntv_context *ctx, nir_intrinsic_instr *intr)
 {
    SpvId src = get_src(ctx, &intr->src[0]);
-   bool qword = nir_src_bit_size(intr->src[0]) == 64;
 
-   unsigned num_writes = util_bitcount(nir_intrinsic_write_mask(intr));
    unsigned wrmask = nir_intrinsic_write_mask(intr);
-   /* this is a partial write, so we have to loop and do a per-component write */
-   SpvId uint_type = get_uvec_type(ctx, 32, 1);
+   unsigned bit_size = nir_src_bit_size(intr->src[0]);
+   SpvId uint_type = get_uvec_type(ctx, bit_size, 1);
    SpvId ptr_type = spirv_builder_type_pointer(&ctx->builder,
                                                SpvStorageClassWorkgroup,
                                                uint_type);
    SpvId offset = get_src(ctx, &intr->src[1]);
-
-   for (unsigned i = 0; num_writes; i++) {
-      if ((wrmask >> i) & 1) {
-         for (unsigned j = 0; j < 1 + !!qword; j++) {
-            unsigned comp = ((1 + !!qword) * i) + j;
-            SpvId shared_offset = emit_binop(ctx, SpvOpIAdd, uint_type, offset, emit_uint_const(ctx, 32, comp));
-            SpvId val = src;
-            if (nir_src_num_components(intr->src[0]) != 1 || qword)
-               val = spirv_builder_emit_composite_extract(&ctx->builder, uint_type, src, &comp, 1);
-            SpvId member = spirv_builder_emit_access_chain(&ctx->builder, ptr_type,
-                                                           ctx->shared_block_var, &shared_offset, 1);
-            spirv_builder_emit_store(&ctx->builder, member, val);
-         }
-         num_writes--;
-      }
+   SpvId shared_block = get_shared_block(ctx, bit_size);
+   /* this is a partial write, so we have to loop and do a per-component write */
+   u_foreach_bit(i, wrmask) {
+      SpvId shared_offset = emit_binop(ctx, SpvOpIAdd, spirv_builder_type_uint(&ctx->builder, 32), offset, emit_uint_const(ctx, 32, i));
+      SpvId val = src;
+      if (nir_src_num_components(intr->src[0]) != 1)
+         val = spirv_builder_emit_composite_extract(&ctx->builder, uint_type, src, &i, 1);
+      SpvId member = spirv_builder_emit_access_chain(&ctx->builder, ptr_type,
+                                                     shared_block, &shared_offset, 1);
+      spirv_builder_emit_store(&ctx->builder, member, val);
    }
 }
 
@@ -2676,7 +2676,7 @@ static void
 handle_atomic_op(struct ntv_context *ctx, nir_intrinsic_instr *intr, SpvId ptr, SpvId param, SpvId param2, nir_alu_type type)
 {
    SpvId dest_type = get_dest_type(ctx, &intr->dest, type);
-   SpvId result = emit_atomic(ctx, get_atomic_op(intr->intrinsic), dest_type, ptr, param, param2);
+   SpvId result = emit_atomic(ctx, get_atomic_op(ctx, nir_dest_bit_size(intr->dest), intr->intrinsic), dest_type, ptr, param, param2);
    assert(result);
    store_dest(ctx, &intr->dest, result, type);
 }
@@ -2689,31 +2689,37 @@ emit_deref_atomic_intrinsic(struct ntv_context *ctx, nir_intrinsic_instr *intr)
 
    SpvId param2 = 0;
 
+   if (nir_src_bit_size(intr->src[1]) == 64)
+      spirv_builder_emit_cap(&ctx->builder, SpvCapabilityInt64Atomics);
+
    if (intr->intrinsic == nir_intrinsic_deref_atomic_comp_swap)
       param2 = get_src(ctx, &intr->src[2]);
 
-   handle_atomic_op(ctx, intr, ptr, param, param2, nir_type_uint32);
+   handle_atomic_op(ctx, intr, ptr, param, param2, atomic_op_is_float(intr->intrinsic) ? nir_type_float : nir_type_uint32);
 }
 
 static void
 emit_shared_atomic_intrinsic(struct ntv_context *ctx, nir_intrinsic_instr *intr)
 {
-   SpvId dest_type = get_dest_type(ctx, &intr->dest, nir_type_uint32);
+   unsigned bit_size = nir_src_bit_size(intr->src[1]);
+   SpvId dest_type = get_dest_type(ctx, &intr->dest, nir_type_uint);
    SpvId param = get_src(ctx, &intr->src[1]);
 
    SpvId pointer_type = spirv_builder_type_pointer(&ctx->builder,
                                                    SpvStorageClassWorkgroup,
                                                    dest_type);
-   SpvId offset = emit_binop(ctx, SpvOpUDiv, get_uvec_type(ctx, 32, 1), get_src(ctx, &intr->src[0]), emit_uint_const(ctx, 32, 4));
+   SpvId offset = emit_binop(ctx, SpvOpUDiv, get_uvec_type(ctx, 32, 1), get_src(ctx, &intr->src[0]), emit_uint_const(ctx, 32, bit_size / 8));
+   SpvId shared_block = get_shared_block(ctx, bit_size);
    SpvId ptr = spirv_builder_emit_access_chain(&ctx->builder, pointer_type,
-                                               ctx->shared_block_var, &offset, 1);
-
+                                               shared_block, &offset, 1);
+   if (nir_src_bit_size(intr->src[1]) == 64)
+      spirv_builder_emit_cap(&ctx->builder, SpvCapabilityInt64Atomics);
    SpvId param2 = 0;
 
    if (intr->intrinsic == nir_intrinsic_shared_atomic_comp_swap)
       param2 = get_src(ctx, &intr->src[2]);
 
-   handle_atomic_op(ctx, intr, ptr, param, param2, nir_type_uint32);
+   handle_atomic_op(ctx, intr, ptr, param, param2, atomic_op_is_float(intr->intrinsic) ? nir_type_float : nir_type_uint32);
 }
 
 static void
@@ -3015,11 +3021,24 @@ emit_vote(struct ntv_context *ctx, nir_intrinsic_instr *intr)
 }
 
 static void
+emit_is_helper_invocation(struct ntv_context *ctx, nir_intrinsic_instr *intr)
+{
+   spirv_builder_emit_extension(&ctx->builder,
+                                "SPV_EXT_demote_to_helper_invocation");
+   SpvId result = spirv_is_helper_invocation(&ctx->builder);
+   store_dest(ctx, &intr->dest, result, nir_type_bool);
+}
+
+static void
 emit_intrinsic(struct ntv_context *ctx, nir_intrinsic_instr *intr)
 {
    switch (intr->intrinsic) {
    case nir_intrinsic_discard:
       emit_discard(ctx, intr);
+      break;
+
+   case nir_intrinsic_demote:
+      spirv_builder_emit_demote(&ctx->builder);
       break;
 
    case nir_intrinsic_load_deref:
@@ -3172,6 +3191,10 @@ emit_intrinsic(struct ntv_context *ctx, nir_intrinsic_instr *intr)
                                         SpvMemorySemanticsAcquireReleaseMask);
       break;
 
+   case nir_intrinsic_deref_atomic_fadd:
+   case nir_intrinsic_deref_atomic_fmin:
+   case nir_intrinsic_deref_atomic_fmax:
+   case nir_intrinsic_deref_atomic_fcomp_swap:
    case nir_intrinsic_deref_atomic_add:
    case nir_intrinsic_deref_atomic_umin:
    case nir_intrinsic_deref_atomic_imin:
@@ -3185,6 +3208,9 @@ emit_intrinsic(struct ntv_context *ctx, nir_intrinsic_instr *intr)
       emit_deref_atomic_intrinsic(ctx, intr);
       break;
 
+   case nir_intrinsic_shared_atomic_fadd:
+   case nir_intrinsic_shared_atomic_fmin:
+   case nir_intrinsic_shared_atomic_fmax:
    case nir_intrinsic_shared_atomic_add:
    case nir_intrinsic_shared_atomic_umin:
    case nir_intrinsic_shared_atomic_imin:
@@ -3308,6 +3334,10 @@ emit_intrinsic(struct ntv_context *ctx, nir_intrinsic_instr *intr)
 
    case nir_intrinsic_is_sparse_texels_resident:
       emit_is_sparse_texels_resident(ctx, intr);
+      break;
+
+   case nir_intrinsic_is_helper_invocation:
+      emit_is_helper_invocation(ctx, intr);
       break;
 
    default:
@@ -4149,6 +4179,9 @@ nir_to_spirv(struct nir_shader *s, const struct zink_shader_info *sinfo, uint32_
          spirv_builder_emit_cap(&ctx.builder, SpvCapabilitySampleMaskPostDepthCoverage);
       if (s->info.fs.uses_sample_shading)
          spirv_builder_emit_cap(&ctx.builder, SpvCapabilitySampleRateShading);
+      if (s->info.fs.uses_demote)
+         spirv_builder_emit_extension(&ctx.builder,
+                                      "SPV_EXT_demote_to_helper_invocation");
       break;
 
    case MESA_SHADER_VERTEX:
@@ -4305,13 +4338,23 @@ nir_to_spirv(struct nir_shader *s, const struct zink_shader_info *sinfo, uint32_
       emit_so_info(&ctx, sinfo, max_output);
    uint32_t tcs_vertices_out_word = 0;
 
-   /* we have to reverse iterate to match what's done in zink_compiler.c */
-   foreach_list_typed_reverse(nir_variable, var, node, &s->variables)
-      if (_nir_shader_variable_has_mode(var, nir_var_uniform |
-                                        nir_var_image |
-                                        nir_var_mem_ubo |
-                                        nir_var_mem_ssbo))
-         emit_uniform(&ctx, var);
+   unsigned ubo_counter[2] = {0};
+   nir_foreach_variable_with_modes(var, s, nir_var_mem_ubo)
+      ubo_counter[var->data.driver_location != 0]++;
+   nir_foreach_variable_with_modes(var, s, nir_var_mem_ubo)
+      emit_bo(&ctx, var, ubo_counter[var->data.driver_location != 0] > 1);
+
+   unsigned ssbo_counter = 0;
+   nir_foreach_variable_with_modes(var, s, nir_var_mem_ssbo)
+      ssbo_counter++;
+   nir_foreach_variable_with_modes(var, s, nir_var_mem_ssbo)
+      emit_bo(&ctx, var, ssbo_counter > 1);
+
+   nir_foreach_variable_with_modes(var, s, nir_var_uniform | nir_var_image) {
+      const struct glsl_type *type = glsl_without_array(var->type);
+      if (glsl_type_is_sampler(type) || glsl_type_is_image(type))
+         emit_image(&ctx, var, false);
+   }
 
    switch (s->info.stage) {
    case MESA_SHADER_FRAGMENT:
@@ -4377,9 +4420,6 @@ nir_to_spirv(struct nir_shader *s, const struct zink_shader_info *sinfo, uint32_
                                            MAX2(s->info.gs.vertices_out, 1));
       break;
    case MESA_SHADER_COMPUTE:
-      if (s->info.shared_size)
-         create_shared_block(&ctx, s->info.shared_size);
-
       if (s->info.workgroup_size[0] || s->info.workgroup_size[1] || s->info.workgroup_size[2])
          spirv_builder_emit_exec_mode_literal3(&ctx.builder, entry_point, SpvExecutionModeLocalSize,
                                                (uint32_t[3]){(uint32_t)s->info.workgroup_size[0], (uint32_t)s->info.workgroup_size[1],

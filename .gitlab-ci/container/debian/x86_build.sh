@@ -29,7 +29,6 @@ apt-get install -y --no-remove \
       libclang-cpp11-dev \
       libgbm-dev \
       libglvnd-dev \
-      libllvmspirvlib-dev \
       liblua5.3-dev \
       libxcb-dri2-0-dev \
       libxcb-dri3-dev \
@@ -51,6 +50,7 @@ apt-get install -y --no-remove \
       shellcheck \
       strace \
       time \
+      yamllint \
       zstd
 
 
@@ -67,6 +67,10 @@ wget $XORG_RELEASES/util/$XORGMACROS_VERSION.tar.bz2
 tar -xvf $XORGMACROS_VERSION.tar.bz2 && rm $XORGMACROS_VERSION.tar.bz2
 cd $XORGMACROS_VERSION; ./configure; make install; cd ..
 rm -rf $XORGMACROS_VERSION
+
+. .gitlab-ci/container/build-llvm-spirv.sh
+
+. .gitlab-ci/container/build-libclc.sh
 
 . .gitlab-ci/container/build-libdrm.sh
 
@@ -89,6 +93,12 @@ popd
 rm -rf DirectX-Headers
 
 pip3 install git+https://git.lavasoftware.org/lava/lavacli@3db3ddc45e5358908bc6a17448059ea2340492b7
+
+# install bindgen
+RUSTFLAGS='-L native=/usr/local/lib' cargo install \
+  bindgen --version 0.59.2 \
+  -j ${FDO_CI_CONCURRENT:-4} \
+  --root /usr/local
 
 ############### Uninstall the build software
 

@@ -32,6 +32,7 @@ struct zink_vs_key_base {
    bool clip_halfz : 1;
    bool push_drawid : 1;
    bool last_vertex_stage : 1;
+   uint8_t pad : 5;
 };
 
 struct zink_vs_key {
@@ -61,6 +62,7 @@ struct zink_fs_key {
    bool force_dual_color_blend : 1;
    bool force_persample_interp : 1;
    bool fbfetch_ms : 1;
+   uint8_t pad : 3;
    uint8_t coord_replace_bits;
 };
 
@@ -89,6 +91,20 @@ struct zink_shader_key {
    struct zink_shader_key_base base;
    unsigned inline_uniforms:1;
    uint32_t size;
+};
+
+union zink_shader_key_optimal {
+   struct {
+      struct zink_vs_key_base vs_base;
+      struct zink_tcs_key tcs;
+      struct zink_fs_key fs;
+   };
+   struct {
+      uint8_t vs_bits;
+      uint8_t tcs_bits;
+      uint16_t fs_bits;
+   };
+   uint32_t val;
 };
 
 static inline const struct zink_fs_key *

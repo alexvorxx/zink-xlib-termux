@@ -23,8 +23,8 @@
  */
 
 #include "aco_ir.h"
+#include "aco_util.h"
 
-#include <map>
 #include <unordered_map>
 #include <vector>
 
@@ -98,7 +98,8 @@ struct InstrHash {
 
       switch (instr->format) {
       case Format::SMEM: return hash_murmur_32<SMEM_instruction>(instr);
-      case Format::VINTRP: return hash_murmur_32<Interp_instruction>(instr);
+      case Format::VINTRP: return hash_murmur_32<VINTRP_instruction>(instr);
+      case Format::VINTERP_INREG: return hash_murmur_32<VINTERP_inreg_instruction>(instr);
       case Format::DS: return hash_murmur_32<DS_instruction>(instr);
       case Format::SOPP: return hash_murmur_32<SOPP_instruction>(instr);
       case Format::SOPK: return hash_murmur_32<SOPK_instruction>(instr);
@@ -217,8 +218,8 @@ struct InstrPred {
                 aS.disable_wqm == bS.disable_wqm && aS.prevent_overflow == bS.prevent_overflow;
       }
       case Format::VINTRP: {
-         Interp_instruction& aI = a->vintrp();
-         Interp_instruction& bI = b->vintrp();
+         VINTRP_instruction& aI = a->vintrp();
+         VINTRP_instruction& bI = b->vintrp();
          if (aI.attribute != bI.attribute)
             return false;
          if (aI.component != bI.component)
@@ -235,6 +236,12 @@ struct InstrPred {
          return a3P.opsel_lo == b3P.opsel_lo && a3P.opsel_hi == b3P.opsel_hi &&
                 a3P.clamp == b3P.clamp;
       }
+      case Format::VINTERP_INREG: {
+         VINTERP_inreg_instruction& aI = a->vinterp_inreg();
+         VINTERP_inreg_instruction& bI = b->vinterp_inreg();
+         return aI.wait_exp == bI.wait_exp && aI.clamp == bI.clamp && aI.opsel == bI.opsel &&
+                aI.neg[0] == bI.neg[0] && aI.neg[1] == bI.neg[1] && aI.neg[2] == bI.neg[2];
+      }
       case Format::PSEUDO_REDUCTION: {
          Pseudo_reduction_instruction& aR = a->reduction();
          Pseudo_reduction_instruction& bR = b->reduction();
@@ -248,6 +255,12 @@ struct InstrPred {
          DS_instruction& bD = b->ds();
          return aD.sync == bD.sync && aD.pass_flags == bD.pass_flags && aD.gds == bD.gds &&
                 aD.offset0 == bD.offset0 && aD.offset1 == bD.offset1;
+      }
+      case Format::LDSDIR: {
+         LDSDIR_instruction& aD = a->ldsdir();
+         LDSDIR_instruction& bD = b->ldsdir();
+         return aD.sync == bD.sync && aD.attr == bD.attr && aD.attr_chan == bD.attr_chan &&
+                aD.wait_vdst == bD.wait_vdst;
       }
       case Format::MTBUF: {
          MTBUF_instruction& aM = a->mtbuf();
@@ -284,12 +297,13 @@ struct InstrPred {
    }
 };
 
-using expr_set = std::unordered_map<Instruction*, uint32_t, InstrHash, InstrPred>;
+using expr_set = aco::unordered_map<Instruction*, uint32_t, InstrHash, InstrPred>;
 
 struct vn_ctx {
    Program* program;
+   monotonic_buffer_resource m;
    expr_set expr_values;
-   std::map<uint32_t, Temp> renames;
+   aco::unordered_map<uint32_t, Temp> renames;
 
    /* The exec id should be the same on the same level of control flow depth.
     * Together with the check for dominator relations, it is safe to assume
@@ -298,7 +312,7 @@ struct vn_ctx {
     */
    uint32_t exec_id = 1;
 
-   vn_ctx(Program* program_) : program(program_)
+   vn_ctx(Program* program_) : program(program_), m(), expr_values(m), renames(m)
    {
       static_assert(sizeof(Temp) == 4, "Temp must fit in 32bits");
       unsigned size = 0;
@@ -433,7 +447,7 @@ process_block(vn_ctx& ctx, Block& block)
 }
 
 void
-rename_phi_operands(Block& block, std::map<uint32_t, Temp>& renames)
+rename_phi_operands(Block& block, aco::unordered_map<uint32_t, Temp>& renames)
 {
    for (aco_ptr<Instruction>& phi : block.instructions) {
       if (phi->opcode != aco_opcode::p_phi && phi->opcode != aco_opcode::p_linear_phi)

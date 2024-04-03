@@ -37,6 +37,7 @@ Linux, FreeBSD, and other operating systems.
    self
    history
    developers
+   amber
    systems
    license
    faq
@@ -118,6 +119,7 @@ Linux, FreeBSD, and other operating systems.
    vulkan/index
    nir/index
    isl/index
+   rusticl
    android
    macos
    Linux Kernel Drivers <https://www.kernel.org/doc/html/latest/gpu/>

@@ -907,12 +907,14 @@ cleanup_culling_shader_after_dce(nir_shader *shader,
          case nir_intrinsic_load_instance_id:
             uses_vs_instance_id = true;
             break;
-         case nir_intrinsic_load_input:
-            if (s->options->instance_rate_inputs & BITFIELD_BIT(nir_intrinsic_base(intrin)))
+         case nir_intrinsic_load_input: {
+            const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
+            if (s->options->instance_rate_inputs & BITFIELD_BIT(io_sem.location))
                uses_vs_instance_id = true;
             else
                uses_vs_vertex_id = true;
             break;
+         }
          case nir_intrinsic_load_tess_coord:
             uses_tes_u = uses_tes_v = true;
             break;

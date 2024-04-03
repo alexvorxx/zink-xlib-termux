@@ -159,7 +159,7 @@
   extends:
     - .zink-test
     - .test-radv
-    - .b2c-test-gl
+    - .b2c-x86_64-test-gl
   variables:
     DEQP_SUITE: zink-radv
     HWCI_TEST_SCRIPT: ./install/deqp-runner.sh

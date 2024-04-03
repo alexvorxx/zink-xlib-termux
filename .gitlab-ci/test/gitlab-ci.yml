@@ -405,7 +405,7 @@ python-test:
     reports:
       junit: results/**/junit.xml
 
-.b2c-test-vk:
+.b2c-x86_64-test-vk:
   extends:
     - .use-debian/x86_64_test-vk
     - .b2c-test
@@ -414,7 +414,7 @@ python-test:
     - debian-testing
     - !reference [.required-for-hardware-jobs, needs]
 
-.b2c-test-gl:
+.b2c-x86_64-test-gl:
   extends:
     - .use-debian/x86_64_test-gl
     - .b2c-test

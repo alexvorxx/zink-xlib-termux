@@ -242,7 +242,7 @@
   extends:
     - .radv-valve-rules
     - .test-radv
-    - .b2c-test-vk
+    - .b2c-x86_64-test-vk
   variables:
     B2C_KERNEL_URL: https://fs.mupuf.org/linux-6.6-b2c-radv-ci # 6.6
 

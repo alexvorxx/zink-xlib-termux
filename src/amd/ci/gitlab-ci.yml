@@ -263,7 +263,7 @@ vkcts-vangogh-valve:
 
 glcts-vangogh-valve:
   extends:
-    - .b2c-test-gl
+    - .b2c-x86_64-test-gl
     - .deqp-test-valve
     - .vangogh-test-valve
     - .radeonsi-valve-manual-rules

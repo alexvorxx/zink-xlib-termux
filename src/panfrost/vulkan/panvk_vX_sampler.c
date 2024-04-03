@@ -10,7 +10,9 @@
 #include "panvk_sampler.h"
 
 #include "pan_encoder.h"
+#include "pan_format.h"
 
+#include "vk_format.h"
 #include "vk_log.h"
 
 static enum mali_mipmap_mode
@@ -54,6 +56,26 @@ panvk_translate_sampler_compare_func(const VkSamplerCreateInfo *pCreateInfo)
    return panfrost_flip_compare_func((enum mali_func)pCreateInfo->compareOp);
 }
 
+static void
+swizzle_border_color(VkClearColorValue *border_color, VkFormat fmt)
+{
+   if (PAN_ARCH != 7)
+      return;
+
+   enum pipe_format pfmt = vk_format_to_pipe_format(fmt);
+   if (panfrost_format_is_yuv(pfmt) || util_format_is_depth_or_stencil(pfmt))
+      return;
+
+   const struct util_format_description *fdesc = util_format_description(pfmt);
+   if (fdesc->swizzle[0] == PIPE_SWIZZLE_Z &&
+       fdesc->swizzle[2] == PIPE_SWIZZLE_X) {
+      uint32_t red = border_color->uint32[0];
+
+      border_color->uint32[0] = border_color->uint32[2];
+      border_color->uint32[2] = red;
+   }
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 panvk_per_arch(CreateSampler)(VkDevice _device,
                               const VkSamplerCreateInfo *pCreateInfo,
@@ -72,8 +94,11 @@ panvk_per_arch(CreateSampler)(VkDevice _device,
 
    STATIC_ASSERT(sizeof(sampler->desc) >= pan_size(SAMPLER));
 
+   VkFormat fmt;
    VkClearColorValue border_color =
-      vk_sampler_border_color_value(pCreateInfo, NULL);
+      vk_sampler_border_color_value(pCreateInfo, &fmt);
+
+   swizzle_border_color(&border_color, fmt);
 
    pan_pack(sampler->desc.opaque, SAMPLER, cfg) {
       cfg.magnify_nearest = pCreateInfo->magFilter == VK_FILTER_NEAREST;

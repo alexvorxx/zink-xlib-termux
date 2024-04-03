@@ -86,6 +86,8 @@ static void
 get_features(const struct panvk_physical_device *device,
              struct vk_features *features)
 {
+   unsigned arch = pan_arch(device->kmod.props.gpu_prod_id);
+
    *features = (struct vk_features){
       /* Vulkan 1.0 */
       .robustBufferAccess = true,
@@ -199,7 +201,13 @@ get_features(const struct panvk_physical_device *device,
 
       /* VK_EXT_custom_border_color */
       .customBorderColors = true,
-      .customBorderColorWithoutFormat = true,
+
+      /* v7 doesn't support AFBC(BGR). We need to tweak the texture swizzle to
+       * make it work, which forces us to apply the same swizzle on the border
+       * color, meaning we need to know the format when preparing the border
+       * color.
+       */
+      .customBorderColorWithoutFormat = arch != 7,
 
       /* VK_KHR_shader_expect_assume */
       .shaderExpectAssume = true,

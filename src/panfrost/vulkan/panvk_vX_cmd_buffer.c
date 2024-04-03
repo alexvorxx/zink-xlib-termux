@@ -1182,6 +1182,10 @@ panvk_draw_prepare_tiler_job(struct panvk_cmd_buffer *cmdbuf,
    struct panfrost_ptr ptr =
       pan_pool_alloc_desc(&cmdbuf->desc_pool.base, TILER_JOB);
 
+   /* If the vertex job doesn't write the position, we don't need a tiler job. */
+   if (!draw->position)
+      return;
+
    util_dynarray_append(&batch->jobs, void *, ptr.cpu);
    draw->jobs.tiler = ptr;
 
@@ -1298,7 +1302,7 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
       pan_jc_add_job(&cmdbuf->desc_pool.base, &batch->jc, MALI_JOB_TYPE_VERTEX,
                      false, false, 0, 0, &draw->jobs.vertex, false);
 
-   if (pipeline->rast.enable) {
+   if (pipeline->rast.enable && draw->position) {
       pan_jc_add_job(&cmdbuf->desc_pool.base, &batch->jc, MALI_JOB_TYPE_TILER,
                      false, false, vjob_id, 0, &draw->jobs.tiler, false);
    }

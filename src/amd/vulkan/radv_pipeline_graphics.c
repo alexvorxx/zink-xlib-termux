@@ -1473,10 +1473,6 @@ radv_link_vs(const struct radv_device *device, struct radv_shader_stage *vs_stag
 
       next_stage->info.gs.num_linked_inputs = vs2gs.num_linked_io_vars;
       next_stage->info.inputs_linked = true;
-   } else {
-      nir_foreach_shader_out_variable (var, vs_stage->nir) {
-         var->data.driver_location = var->data.location;
-      }
    }
 }
 
@@ -1530,10 +1526,6 @@ radv_link_tes(const struct radv_device *device, struct radv_shader_stage *tes_st
 
       next_stage->info.gs.num_linked_inputs = tes2gs.num_linked_io_vars;
       next_stage->info.inputs_linked = true;
-   } else {
-      nir_foreach_shader_out_variable (var, tes_stage->nir) {
-         var->data.driver_location = var->data.location;
-      }
    }
 }
 
@@ -1551,10 +1543,6 @@ radv_link_gs(const struct radv_device *device, struct radv_shader_stage *gs_stag
       assert(fs_stage->nir->info.stage == MESA_SHADER_FRAGMENT);
 
       radv_link_shaders(device, gs_stage, fs_stage, gfx_state);
-   }
-
-   nir_foreach_shader_out_variable (var, gs_stage->nir) {
-      var->data.driver_location = var->data.location;
    }
 }
 

@@ -484,10 +484,10 @@ radv_GetDescriptorSetLayoutSupport(VkDevice device, const VkDescriptorSetLayoutC
              (pass == 1 && descriptor_alignment == first_alignment))
             continue;
 
-         if (size && !align_u64(size, descriptor_alignment)) {
+         if (size && !align64(size, descriptor_alignment)) {
             supported = false;
          }
-         size = align_u64(size, descriptor_alignment);
+         size = align64(size, descriptor_alignment);
 
          uint64_t max_count = INT32_MAX;
          if (binding->descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK)
@@ -681,7 +681,7 @@ radv_descriptor_set_create(struct radv_device *device, struct radv_descriptor_po
 
       layout_size = layout->binding[layout->binding_count - 1].offset + *variable_count * stride;
    }
-   layout_size = align_u32(layout_size, 32);
+   layout_size = align(layout_size, 32);
    set->header.size = layout_size;
 
    /* try to allocate linearly first, so that we don't spend

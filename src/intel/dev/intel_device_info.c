@@ -1904,7 +1904,18 @@ intel_device_info_wa_stepping(struct intel_device_info *devinfo)
     * 'compiler_field' in intel_device_info.py
     */
 
-   if (devinfo->platform == INTEL_PLATFORM_TGL) {
+   if (devinfo->platform == INTEL_PLATFORM_LNL) {
+      switch (devinfo->revision) {
+      case 0:
+         return INTEL_STEPPING_A0;
+      case 1:
+         return INTEL_STEPPING_A1;
+      case 4:
+         return INTEL_STEPPING_B0;
+      default:
+         return INTEL_STEPPING_RELEASE;
+      }
+   } else if (devinfo->platform == INTEL_PLATFORM_TGL) {
       /* TGL production steppings: B0 and C0 */
       switch (devinfo->revision) {
       case 1:

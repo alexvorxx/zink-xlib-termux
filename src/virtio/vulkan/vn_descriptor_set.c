@@ -1024,7 +1024,7 @@ vn_CreateDescriptorUpdateTemplate(
 
    const size_t templ_size =
       offsetof(struct vn_descriptor_update_template,
-               entries[pCreateInfo->descriptorUpdateEntryCount + 1]);
+               entries[pCreateInfo->descriptorUpdateEntryCount]);
    struct vn_descriptor_update_template *templ = vk_zalloc(
       alloc, templ_size, VN_DEFAULT_ALIGN, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    if (!templ)

@@ -335,7 +335,7 @@ gfx10_make_texture_descriptor(struct radv_device *device, struct radv_image *ima
    if (nbc_view && nbc_view->valid)
       max_mip = nbc_view->num_levels - 1;
 
-   unsigned min_lod_clamped = radv_float_to_ufixed(CLAMP(min_lod, 0, 15), 8);
+   unsigned min_lod_clamped = util_unsigned_fixed(CLAMP(min_lod, 0, 15), 8);
    if (pdev->info.gfx_level >= GFX11) {
       state[1] |= S_00A004_MAX_MIP(max_mip);
       state[5] |= S_00A014_MIN_LOD_LO(min_lod_clamped);
@@ -475,7 +475,7 @@ gfx6_make_texture_descriptor(struct radv_device *device, struct radv_image *imag
       depth = image->vk.array_layers / 6;
 
    state[0] = 0;
-   state[1] = (S_008F14_MIN_LOD(radv_float_to_ufixed(CLAMP(min_lod, 0, 15), 8)) | S_008F14_DATA_FORMAT(data_format) |
+   state[1] = (S_008F14_MIN_LOD(util_unsigned_fixed(CLAMP(min_lod, 0, 15), 8)) | S_008F14_DATA_FORMAT(data_format) |
                S_008F14_NUM_FORMAT(num_format));
    state[2] = (S_008F18_WIDTH(width - 1) | S_008F18_HEIGHT(height - 1) | S_008F18_PERF_MOD(4));
    state[3] = (S_008F1C_DST_SEL_X(radv_map_swizzle(swizzle[0])) | S_008F1C_DST_SEL_Y(radv_map_swizzle(swizzle[1])) |

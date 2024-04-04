@@ -132,18 +132,6 @@ radv_is_aligned(uintmax_t n, uintmax_t a)
    return (n & (a - 1)) == 0;
 }
 
-static inline int
-radv_float_to_sfixed(float value, unsigned frac_bits)
-{
-   return value * (1 << frac_bits);
-}
-
-static inline unsigned int
-radv_float_to_ufixed(float value, unsigned frac_bits)
-{
-   return value * (1 << frac_bits);
-}
-
 #ifdef __cplusplus
 }
 #endif

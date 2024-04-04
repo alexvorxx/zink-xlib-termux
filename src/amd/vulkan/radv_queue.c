@@ -2526,3 +2526,22 @@ radv_queue_ring(const struct radv_queue *queue)
    const struct radv_physical_device *pdev = radv_device_physical(device);
    return radv_queue_family_to_ring(pdev, queue->state.qf);
 }
+
+enum amd_ip_type
+radv_queue_family_to_ring(const struct radv_physical_device *pdev, enum radv_queue_family f)
+{
+   switch (f) {
+   case RADV_QUEUE_GENERAL:
+      return AMD_IP_GFX;
+   case RADV_QUEUE_COMPUTE:
+      return AMD_IP_COMPUTE;
+   case RADV_QUEUE_TRANSFER:
+      return AMD_IP_SDMA;
+   case RADV_QUEUE_VIDEO_DEC:
+      return pdev->vid_decode_ip;
+   case RADV_QUEUE_VIDEO_ENC:
+      return AMD_IP_VCN_ENC;
+   default:
+      unreachable("Unknown queue family");
+   }
+}

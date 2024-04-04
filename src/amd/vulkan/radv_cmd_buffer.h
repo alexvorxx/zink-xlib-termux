@@ -652,8 +652,6 @@ radv_emit_shader_pointer(const struct radv_device *device, struct radeon_cmdbuf 
 
 bool radv_cmd_buffer_uses_mec(struct radv_cmd_buffer *cmd_buffer);
 
-enum amd_ip_type radv_queue_family_to_ring(const struct radv_physical_device *dev, enum radv_queue_family f);
-
 void radv_cmd_buffer_reset_rendering(struct radv_cmd_buffer *cmd_buffer);
 
 bool radv_cmd_buffer_upload_alloc_aligned(struct radv_cmd_buffer *cmd_buffer, unsigned size, unsigned alignment,

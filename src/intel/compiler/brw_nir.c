@@ -900,7 +900,7 @@ lower_xehp_tg4_offset_filter(const nir_instr *instr, UNUSED const void *data)
  */
 void
 brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
-                   const nir_shader *softfp64)
+                   const struct brw_nir_compiler_opts *opts)
 {
    const struct intel_device_info *devinfo = compiler->devinfo;
    UNUSED bool progress; /* Written by OPT */
@@ -921,7 +921,13 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
        !(devinfo->ver >= 10 || devinfo->platform == INTEL_PLATFORM_KBL))
       OPT(brw_nir_apply_trig_workarounds);
 
-   if (devinfo->ver >= 12)
+   /* This workaround existing for performance reasons. Since it requires not
+    * setting RENDER_SURFACE_STATE::SurfaceArray when the array length is 1,
+    * we're loosing the HW robustness feature in that case.
+    *
+    * So when robust image access is enabled, just avoid the workaround.
+    */
+   if (devinfo->ver >= 12 && !opts->robust_image_access)
       OPT(brw_nir_clamp_image_1d_2d_array_sizes);
 
    const nir_lower_tex_options tex_options = {
@@ -951,10 +957,11 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
 
    brw_nir_optimize(nir, compiler, is_scalar, true);
 
-   OPT(nir_lower_doubles, softfp64, nir->options->lower_doubles_options);
+   OPT(nir_lower_doubles, opts->softfp64, nir->options->lower_doubles_options);
    if (OPT(nir_lower_int64)) {
       OPT(nir_opt_algebraic);
-      OPT(nir_lower_doubles, softfp64, nir->options->lower_doubles_options);
+      OPT(nir_lower_doubles, opts->softfp64,
+          nir->options->lower_doubles_options);
    }
 
    OPT(nir_lower_bit_size, lower_bit_size_callback, (void *)compiler);
@@ -1451,19 +1458,6 @@ brw_nir_apply_sampler_key(nir_shader *nir,
    /* Prior to Haswell, we have to lower gradients on shadow samplers */
    tex_options.lower_txd_shadow = devinfo->verx10 <= 70;
 
-   tex_options.lower_y_uv_external = key_tex->y_uv_image_mask;
-   tex_options.lower_y_u_v_external = key_tex->y_u_v_image_mask;
-   tex_options.lower_yx_xuxv_external = key_tex->yx_xuxv_image_mask;
-   tex_options.lower_xy_uxvx_external = key_tex->xy_uxvx_image_mask;
-   tex_options.lower_ayuv_external = key_tex->ayuv_image_mask;
-   tex_options.lower_xyuv_external = key_tex->xyuv_image_mask;
-   tex_options.bt709_external = key_tex->bt709_mask;
-   tex_options.bt2020_external = key_tex->bt2020_mask;
-
-   /* Setup array of scaling factors for each texture. */
-   memcpy(&tex_options.scale_factors, &key_tex->scale_factors,
-          sizeof(tex_options.scale_factors));
-
    return nir_lower_tex(nir, &tex_options);
 }
 
@@ -1751,7 +1745,8 @@ brw_nir_create_passthrough_tcs(void *mem_ctx, const struct brw_compiler *compile
 
    nir_validate_shader(nir, "in brw_nir_create_passthrough_tcs");
 
-   brw_preprocess_nir(compiler, nir, NULL);
+   struct brw_nir_compiler_opts opts = {};
+   brw_preprocess_nir(compiler, nir, &opts);
 
    return nir;
 }

@@ -127,12 +127,18 @@ struct intel_device_info
 
    bool has_pln;
    bool has_64bit_float;
+   bool has_64bit_float_via_math_pipe;
    bool has_64bit_int;
    bool has_integer_dword_mul;
    bool has_compr4;
    bool has_surface_tile_offset;
    bool supports_simd16_3src;
    bool disable_ccs_repack;
+
+   /**
+    * True if CCS needs to be initialized before use.
+    */
+   bool has_illegal_ccs_values;
 
    /**
     * True if CCS uses a flat virtual address translation to a memory

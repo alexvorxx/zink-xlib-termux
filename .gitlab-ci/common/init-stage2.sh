@@ -45,6 +45,16 @@ set -ex
     echo -n $HWCI_KERNEL_MODULES | xargs -d, -n1 /usr/sbin/modprobe
 }
 
+# Set up ZRAM
+HWCI_ZRAM_SIZE=2G
+if zramctl --find --size $HWCI_ZRAM_SIZE -a zstd; then
+    mkswap /dev/zram0
+    swapon /dev/zram0
+    echo "zram: $HWCI_ZRAM_SIZE activated"
+else
+    echo "zram: skipping, not supported"
+fi
+
 #
 # Load the KVM module specific to the detected CPU virtualization extensions:
 # - vmx for Intel VT
@@ -135,7 +145,7 @@ if [ -n "$HWCI_START_WESTON" ]; then
   export XDG_RUNTIME_DIR=/run/user
   mkdir -p $XDG_RUNTIME_DIR
 
-  weston -Bheadless-backend.so -Swayland-0 &
+  weston -Bheadless-backend.so --use-gl -Swayland-0 &
   export WAYLAND_DISPLAY=wayland-0
   sleep 1
 fi

@@ -6,8 +6,8 @@
 
 #include "agx_state.h"
 
-#define foreach_batch(ctx, idx) \
-        BITSET_FOREACH_SET(idx, ctx->batches.active, AGX_MAX_BATCHES)
+#define foreach_batch(ctx, idx)                                                \
+   BITSET_FOREACH_SET(idx, ctx->batches.active, AGX_MAX_BATCHES)
 
 static unsigned
 agx_batch_idx(struct agx_batch *batch)
@@ -42,15 +42,18 @@ agx_batch_init(struct agx_context *ctx,
       batch->bo_list.set = rzalloc_array(ctx, BITSET_WORD, 128);
       batch->bo_list.word_count = 128;
    } else {
-      memset(batch->bo_list.set, 0, batch->bo_list.word_count * sizeof(BITSET_WORD));
+      memset(batch->bo_list.set, 0,
+             batch->bo_list.word_count * sizeof(BITSET_WORD));
    }
 
-   batch->encoder = agx_bo_create(dev, 0x80000, AGX_MEMORY_TYPE_FRAMEBUFFER, "Encoder");
+   batch->encoder =
+      agx_bo_create(dev, 0x80000, AGX_MEMORY_TYPE_FRAMEBUFFER, "Encoder");
    batch->encoder_current = batch->encoder->ptr.cpu;
    batch->encoder_end = batch->encoder_current + batch->encoder->size;
 
    util_dynarray_init(&batch->scissor, ctx);
    util_dynarray_init(&batch->depth_bias, ctx);
+   util_dynarray_init(&batch->occlusion_queries, ctx);
 
    batch->clear = 0;
    batch->draw = 0;
@@ -85,6 +88,10 @@ agx_batch_cleanup(struct agx_context *ctx, struct agx_batch *batch)
    if (ctx->batch == batch)
       ctx->batch = NULL;
 
+   agx_finish_batch_occlusion_queries(batch);
+   batch->occlusion_buffer.cpu = NULL;
+   batch->occlusion_buffer.gpu = 0;
+
    /* There is no more writer for anything we wrote recorded on this context */
    hash_table_foreach(ctx->writer, ent) {
       if (ent->data == batch)
@@ -102,6 +109,7 @@ agx_batch_cleanup(struct agx_context *ctx, struct agx_batch *batch)
 
    util_dynarray_fini(&batch->scissor);
    util_dynarray_fini(&batch->depth_bias);
+   util_dynarray_fini(&batch->occlusion_queries);
    util_unreference_framebuffer_state(&batch->key);
 
    unsigned batch_idx = agx_batch_idx(batch);
@@ -177,7 +185,8 @@ agx_flush_all(struct agx_context *ctx, const char *reason)
 }
 
 void
-agx_flush_batch_for_reason(struct agx_context *ctx, struct agx_batch *batch, const char *reason)
+agx_flush_batch_for_reason(struct agx_context *ctx, struct agx_batch *batch,
+                           const char *reason)
 {
    if (reason)
       perf_debug_ctx(ctx, "Flushing due to: %s\n", reason);
@@ -186,10 +195,8 @@ agx_flush_batch_for_reason(struct agx_context *ctx, struct agx_batch *batch, con
 }
 
 static void
-agx_flush_readers_except(struct agx_context *ctx,
-                         struct agx_resource *rsrc,
-                         struct agx_batch *except,
-                         const char *reason)
+agx_flush_readers_except(struct agx_context *ctx, struct agx_resource *rsrc,
+                         struct agx_batch *except, const char *reason)
 {
    unsigned idx;
 
@@ -207,10 +214,8 @@ agx_flush_readers_except(struct agx_context *ctx,
 }
 
 static void
-agx_flush_writer_except(struct agx_context *ctx,
-                        struct agx_resource *rsrc,
-                        struct agx_batch *except,
-                        const char *reason)
+agx_flush_writer_except(struct agx_context *ctx, struct agx_resource *rsrc,
+                        struct agx_batch *except, const char *reason)
 {
    struct hash_entry *ent = _mesa_hash_table_search(ctx->writer, rsrc);
 
@@ -220,14 +225,30 @@ agx_flush_writer_except(struct agx_context *ctx,
    }
 }
 
+bool
+agx_any_batch_uses_resource(struct agx_context *ctx, struct agx_resource *rsrc)
+{
+   unsigned idx;
+   foreach_batch(ctx, idx) {
+      struct agx_batch *batch = &ctx->batches.slots[idx];
+
+      if (agx_batch_uses_bo(batch, rsrc->bo))
+         return true;
+   }
+
+   return false;
+}
+
 void
-agx_flush_readers(struct agx_context *ctx, struct agx_resource *rsrc, const char *reason)
+agx_flush_readers(struct agx_context *ctx, struct agx_resource *rsrc,
+                  const char *reason)
 {
    agx_flush_readers_except(ctx, rsrc, NULL, reason);
 }
 
 void
-agx_flush_writer(struct agx_context *ctx, struct agx_resource *rsrc, const char *reason)
+agx_flush_writer(struct agx_context *ctx, struct agx_resource *rsrc,
+                 const char *reason)
 {
    agx_flush_writer_except(ctx, rsrc, NULL, reason);
 }
@@ -266,4 +287,26 @@ agx_batch_writes(struct agx_batch *batch, struct agx_resource *rsrc)
    /* We are now the new writer */
    assert(!_mesa_hash_table_search(ctx->writer, rsrc));
    _mesa_hash_table_insert(ctx->writer, rsrc, batch);
+}
+
+/*
+ * The OpenGL specification says that
+ *
+ *    It must always be true that if any query object returns a result
+ *    available of TRUE, all queries of the same type issued prior to that
+ *    query must also return TRUE.
+ *
+ * To implement this, we need to be able to flush all batches writing occlusion
+ * queries so we ensure ordering.
+ */
+void
+agx_flush_occlusion_queries(struct agx_context *ctx)
+{
+   unsigned i;
+   foreach_batch(ctx, i) {
+      struct agx_batch *other = &ctx->batches.slots[i];
+
+      if (other->occlusion_queries.size != 0)
+         agx_flush_batch_for_reason(ctx, other, "Occlusion query ordering");
+   }
 }

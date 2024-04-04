@@ -207,10 +207,13 @@ typedef enum {
    nir_var_read_only_modes = nir_var_shader_in | nir_var_uniform |
                              nir_var_system_value | nir_var_mem_constant |
                              nir_var_mem_ubo,
-   /** Modes where vector derefs can be indexed as arrays */
+   /* Modes where vector derefs can be indexed as arrays. nir_var_shader_out is only for mesh
+    * stages.
+    */
    nir_var_vec_indexable_modes = nir_var_mem_ubo | nir_var_mem_ssbo |
                                  nir_var_mem_shared | nir_var_mem_global |
-                                 nir_var_mem_push_const,
+                                 nir_var_mem_push_const | nir_var_mem_task_payload |
+                                 nir_var_shader_out,
    nir_num_variable_modes  = 16,
    nir_var_all             = (1 << nir_num_variable_modes) - 1,
 } nir_variable_mode;
@@ -1210,7 +1213,7 @@ typedef struct {
     *
     * Ignored if dest.is_ssa is true
     */
-   unsigned write_mask : NIR_MAX_VEC_COMPONENTS;
+   nir_component_mask_t write_mask;
 } nir_alu_dest;
 
 /** NIR sized and unsized types
@@ -1992,6 +1995,7 @@ nir_intrinsic_can_reorder(nir_intrinsic_instr *instr)
    if (nir_intrinsic_has_access(instr) &&
        nir_intrinsic_access(instr) & ACCESS_VOLATILE)
       return false;
+
    if (instr->intrinsic == nir_intrinsic_load_deref) {
       nir_deref_instr *deref = nir_src_as_deref(instr->src[0]);
       return nir_deref_mode_is_in_set(deref, nir_var_read_only_modes) ||
@@ -2195,6 +2199,7 @@ typedef enum {
    nir_texop_fragment_fetch_amd,      /**< Multisample fragment color texture fetch */
    nir_texop_fragment_mask_fetch_amd, /**< Multisample fragment mask texture fetch */
    nir_texop_descriptor_amd,     /**< Returns a buffer or image descriptor. */
+   nir_texop_sampler_descriptor_amd, /**< Returns a sampler descriptor. */
 } nir_texop;
 
 /** Represents a texture instruction */
@@ -3292,6 +3297,7 @@ typedef enum {
    nir_divergence_view_index_uniform = (1 << 3),
    nir_divergence_single_frag_shading_rate_per_subgroup = (1 << 4),
    nir_divergence_multiple_workgroup_per_compute_subgroup = (1 << 5),
+   nir_divergence_shader_record_ptr_uniform = (1 << 6),
 } nir_divergence_options;
 
 typedef enum {
@@ -5029,6 +5035,9 @@ bool nir_lower_subgroups(nir_shader *shader,
 
 bool nir_lower_system_values(nir_shader *shader);
 
+nir_ssa_def *
+nir_build_lowered_load_helper_invocation(struct nir_builder *b);
+
 typedef struct nir_lower_compute_system_values_options {
    bool has_base_global_invocation_id:1;
    bool has_base_workgroup_id:1;
@@ -5301,6 +5310,11 @@ typedef struct nir_lower_image_options {
     * If true, lower cube size operations.
     */
    bool lower_cube_size;
+
+   /**
+    * Lower multi sample image load and samples_identical to use fragment_mask_load.
+    */
+   bool lower_to_fragment_mask_load_amd;
 } nir_lower_image_options;
 
 bool nir_lower_image(nir_shader *nir,
@@ -5440,6 +5454,7 @@ bool nir_lower_gs_intrinsics(nir_shader *shader, nir_lower_gs_intrinsics_flags o
 typedef struct {
    bool payload_to_shared_for_atomics : 1;
    bool payload_to_shared_for_small_types : 1;
+   uint32_t payload_offset_in_bytes;
 } nir_lower_task_shader_options;
 
 bool nir_lower_task_shader(nir_shader *shader, nir_lower_task_shader_options options);
@@ -5476,7 +5491,7 @@ struct nir_fold_tex_srcs_options {
 
 struct nir_fold_16bit_tex_image_options {
    nir_rounding_mode rounding_mode;
-   bool fold_tex_dest;
+   nir_alu_type fold_tex_dest_types;
    bool fold_image_load_store_data;
    bool fold_image_srcs;
    unsigned fold_srcs_options_count;

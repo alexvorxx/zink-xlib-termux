@@ -18,16 +18,28 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+radv_entrypoints_gen_command = [
+  prog_python, '@INPUT0@', '--xml', '@INPUT1@', '--proto', '--weak',
+  '--out-h', '@OUTPUT0@', '--out-c', '@OUTPUT1@',
+]
+
+radv_entrypoints_gen_command += [
+  # RADV entrypooints
+  '--prefix', 'radv',
+
+  # Tracing layer entrypoints
+  '--device-prefix', 'sqtt',
+  '--device-prefix', 'rra',
+
+  # Application layer entrypoints
+  '--device-prefix', 'metro_exodus',
+]
+
 radv_entrypoints = custom_target(
   'radv_entrypoints',
   input : [vk_entrypoints_gen, vk_api_xml],
   output : ['radv_entrypoints.h', 'radv_entrypoints.c'],
-  command : [
-    prog_python, '@INPUT0@', '--xml', '@INPUT1@', '--proto', '--weak',
-    '--out-h', '@OUTPUT0@', '--out-c', '@OUTPUT1@', '--prefix', 'radv',
-    '--device-prefix', 'sqtt', '--device-prefix', 'metro_exodus',
-    '--device-prefix', 'rra',
-  ],
+  command : radv_entrypoints_gen_command,
   depend_files : vk_entrypoints_gen_depend_files,
 )
 
@@ -99,13 +111,6 @@ libradv_files = files(
   'si_cmd_buffer.c',
   'vk_format.h',
 )
-
-files_drirc = files('00-radv-defaults.conf')
-
-# Only install the drirc file if we build with support for parsing drirc files
-if use_xmlconfig
-  install_data(files_drirc, install_dir : join_paths(get_option('datadir'), 'drirc.d'))
-endif
 
 if not with_platform_windows
   libradv_files += files(

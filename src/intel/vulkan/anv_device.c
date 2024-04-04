@@ -72,6 +72,7 @@ static const driOptionDescription anv_dri_options[] = {
       DRI_CONF_ANV_ASSUME_FULL_SUBGROUPS(false)
       DRI_CONF_ANV_SAMPLE_MASK_OUT_OPENGL_BEHAVIOUR(false)
       DRI_CONF_ANV_FP64_WORKAROUND_ENABLED(false)
+      DRI_CONF_ANV_GENERATED_INDIRECT_THRESHOLD(4)
    DRI_CONF_SECTION_END
 
    DRI_CONF_SECTION_DEBUG
@@ -185,15 +186,14 @@ get_device_extensions(const struct anv_physical_device *device,
    const bool has_syncobj_wait =
       (device->sync_syncobj_type.features & VK_SYNC_FEATURE_CPU_WAIT) != 0;
 
+   const bool rt_enabled = ANV_SUPPORT_RT && device->info.has_ray_tracing;
    const bool nv_mesh_shading_enabled =
       debug_get_bool_option("ANV_EXPERIMENTAL_NV_MESH_SHADER", false);
 
    *ext = (struct vk_device_extension_table) {
       .KHR_8bit_storage                      = true,
       .KHR_16bit_storage                     = true,
-      .KHR_acceleration_structure            = device->info.has_ray_tracing,
-      .KHR_acceleration_structure            = ANV_SUPPORT_RT &&
-                                               device->info.has_ray_tracing,
+      .KHR_acceleration_structure            = rt_enabled,
       .KHR_bind_memory2                      = true,
       .KHR_buffer_device_address             = true,
       .KHR_copy_commands2                    = true,
@@ -244,10 +244,9 @@ get_device_extensions(const struct anv_physical_device *device,
          driQueryOptionb(&device->instance->dri_options, "vk_khr_present_wait") ||
          wsi_common_vk_instance_supports_present_wait(&device->instance->vk),
       .KHR_push_descriptor                   = true,
-      .KHR_ray_query                         =
-         ANV_SUPPORT_RT && device->info.has_ray_tracing,
-      .KHR_ray_tracing_pipeline              =
-         ANV_SUPPORT_RT && device->info.has_ray_tracing,
+      .KHR_ray_query                         = rt_enabled,
+      .KHR_ray_tracing_maintenance1          = rt_enabled,
+      .KHR_ray_tracing_pipeline              = rt_enabled,
       .KHR_relaxed_block_layout              = true,
       .KHR_sampler_mirror_clamp_to_edge      = true,
       .KHR_sampler_ycbcr_conversion          = true,
@@ -925,6 +924,12 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    if (debug_get_bool_option("ANV_QUEUE_THREAD_DISABLE", false))
       device->has_exec_timeline = false;
 
+
+   device->generated_indirect_draws =
+      device->info.ver >= 11 &&
+      debug_get_bool_option("ANV_ENABLE_GENERATED_INDIRECT_DRAWS",
+                            true);
+
    unsigned st_idx = 0;
 
    device->sync_syncobj_type = vk_drm_syncobj_get_type(fd);
@@ -1106,6 +1111,8 @@ anv_init_dri_options(struct anv_instance *instance)
             driQueryOptionf(&instance->dri_options, "lower_depth_range_rate");
     instance->fp64_workaround_enabled =
             driQueryOptionb(&instance->dri_options, "fp64_workaround_enabled");
+    instance->generated_indirect_threshold =
+            driQueryOptioni(&instance->dri_options, "generated_indirect_threshold");
 }
 
 VkResult anv_CreateInstance(
@@ -1366,6 +1373,8 @@ void anv_GetPhysicalDeviceFeatures2(
    };
    anv_get_physical_device_features_1_3(pdevice, &core_1_3);
 
+   const bool rt_enabled = ANV_SUPPORT_RT && pdevice->info.has_ray_tracing;
+
    vk_foreach_struct(ext, pFeatures->pNext) {
       if (vk_get_physical_device_core_1_1_feature_ext(ext, &core_1_1))
          continue;
@@ -1385,13 +1394,12 @@ void anv_GetPhysicalDeviceFeatures2(
 
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR: {
          VkPhysicalDeviceAccelerationStructureFeaturesKHR *features = (void *)ext;
-         features->accelerationStructure =
-            ANV_SUPPORT_RT && pdevice->info.has_ray_tracing;
+         features->accelerationStructure = rt_enabled;
          features->accelerationStructureCaptureReplay = false; /* TODO */
          features->accelerationStructureIndirectBuild = false; /* TODO */
          features->accelerationStructureHostCommands = false;
          features->descriptorBindingAccelerationStructureUpdateAfterBind =
-            ANV_SUPPORT_RT && pdevice->info.has_ray_tracing;
+            rt_enabled;
          break;
       }
 
@@ -1591,17 +1599,24 @@ void anv_GetPhysicalDeviceFeatures2(
 
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR: {
          VkPhysicalDeviceRayQueryFeaturesKHR *features = (void *)ext;
-         features->rayQuery = ANV_SUPPORT_RT && pdevice->info.has_ray_tracing;
+         features->rayQuery = rt_enabled;
+         break;
+      }
+
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_MAINTENANCE_1_FEATURES_KHR: {
+         VkPhysicalDeviceRayTracingMaintenance1FeaturesKHR *features = (void *)ext;
+         features->rayTracingMaintenance1 = rt_enabled;
+         features->rayTracingPipelineTraceRaysIndirect2 = rt_enabled;
          break;
       }
 
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR: {
          VkPhysicalDeviceRayTracingPipelineFeaturesKHR *features = (void *)ext;
-         features->rayTracingPipeline = pdevice->info.has_ray_tracing;
+         features->rayTracingPipeline = rt_enabled;
          features->rayTracingPipelineShaderGroupHandleCaptureReplay = false;
          features->rayTracingPipelineShaderGroupHandleCaptureReplayMixed = false;
-         features->rayTracingPipelineTraceRaysIndirect = true;
-         features->rayTraversalPrimitiveCulling = true;
+         features->rayTracingPipelineTraceRaysIndirect = rt_enabled;
+         features->rayTraversalPrimitiveCulling = rt_enabled;
          break;
       }
 
@@ -2086,7 +2101,7 @@ anv_get_physical_device_properties_1_2(struct anv_physical_device *pdevice,
     * Restriction : Half-float denorms are always retained."
     */
    p->shaderDenormFlushToZeroFloat16         = false;
-   p->shaderDenormPreserveFloat16            = pdevice->info.ver > 8;
+   p->shaderDenormPreserveFloat16            = true;
    p->shaderRoundingModeRTEFloat16           = true;
    p->shaderRoundingModeRTZFloat16           = true;
    p->shaderSignedZeroInfNanPreserveFloat16  = true;
@@ -2934,21 +2949,6 @@ void anv_GetPhysicalDeviceMemoryProperties2(
    }
 }
 
-void
-anv_GetDeviceGroupPeerMemoryFeatures(
-    VkDevice                                    device,
-    uint32_t                                    heapIndex,
-    uint32_t                                    localDeviceIndex,
-    uint32_t                                    remoteDeviceIndex,
-    VkPeerMemoryFeatureFlags*                   pPeerMemoryFeatures)
-{
-   assert(localDeviceIndex == 0 && remoteDeviceIndex == 0);
-   *pPeerMemoryFeatures = VK_PEER_MEMORY_FEATURE_COPY_SRC_BIT |
-                          VK_PEER_MEMORY_FEATURE_COPY_DST_BIT |
-                          VK_PEER_MEMORY_FEATURE_GENERIC_SRC_BIT |
-                          VK_PEER_MEMORY_FEATURE_GENERIC_DST_BIT;
-}
-
 PFN_vkVoidFunction anv_GetInstanceProcAddr(
     VkInstance                                  _instance,
     const char*                                 pName)
@@ -3302,6 +3302,12 @@ VkResult anv_CreateDevice(
       vk_device_dispatch_table_from_entrypoints(&dispatch_table, &hitman3_device_entrypoints, true);
       override_initial_entrypoints = false;
    }
+   if (physical_device->info.ver < 12 &&
+       physical_device->instance->vk.app_info.app_name &&
+       !strcmp(physical_device->instance->vk.app_info.app_name, "DOOM 64")) {
+      vk_device_dispatch_table_from_entrypoints(&dispatch_table, &doom64_device_entrypoints, true);
+      override_initial_entrypoints = false;
+   }
    vk_device_dispatch_table_from_entrypoints(&dispatch_table,
       anv_genX(&physical_device->info, device_entrypoints),
       override_initial_entrypoints);
@@ -3545,6 +3551,8 @@ VkResult anv_CreateDevice(
                                        "Anv") + 8, 8),
    };
 
+   device->workarounds.doom64_images = NULL;
+
    device->rt_uuid_addr = anv_address_add(device->workaround_address, 8);
    memcpy(device->rt_uuid_addr.bo->map + device->rt_uuid_addr.offset,
           physical_device->rt_uuid,
@@ -3669,6 +3677,8 @@ VkResult anv_CreateDevice(
 
    anv_device_init_border_colors(device);
 
+   anv_device_init_generated_indirect_draws(device);
+
    anv_device_perf_init(device);
 
    anv_device_utrace_init(device);
@@ -3755,6 +3765,8 @@ void anv_DestroyDevice(
    anv_device_finish_blorp(device);
 
    anv_device_finish_rt_shaders(device);
+
+   anv_device_finish_generated_indirect_draws(device);
 
    vk_pipeline_cache_destroy(device->internal_cache, NULL);
    vk_pipeline_cache_destroy(device->default_pipeline_cache, NULL);

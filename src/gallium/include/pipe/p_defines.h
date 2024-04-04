@@ -1012,6 +1012,7 @@ enum pipe_cap
    PIPE_CAP_QUERY_TIMESTAMP_BITS,
    /** For EGL_EXT_protected_content */
    PIPE_CAP_DEVICE_PROTECTED_CONTEXT,
+   PIPE_CAP_ALLOW_GLTHREAD_BUFFER_SUBDATA_OPT,
 
    PIPE_CAP_LAST,
    /* XXX do not add caps after PIPE_CAP_LAST! */
@@ -1028,7 +1029,7 @@ enum pipe_texture_transfer_mode {
  * return a bitmask of the supported priorities.  If the driver does not
  * support prioritized contexts, it can return 0.
  *
- * Note that these match __DRI2_RENDERER_HAS_CONTEXT_PRIORITY_*
+ * Note that these match __EGL_CONTEXT_PRIORITY_*_BIT.
  */
 #define PIPE_CONTEXT_PRIORITY_LOW     (1 << 0)
 #define PIPE_CONTEXT_PRIORITY_MEDIUM  (1 << 1)

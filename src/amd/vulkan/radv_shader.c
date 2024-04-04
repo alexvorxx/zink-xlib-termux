@@ -723,7 +723,7 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_pipeline_
       /* Only compute shaders currently support requiring a
        * specific subgroup size.
        */
-      assert(stage->stage == MESA_SHADER_COMPUTE);
+      assert(stage->stage >= MESA_SHADER_COMPUTE);
       subgroup_size = key->cs.compute_subgroup_size;
       ballot_bit_size = key->cs.compute_subgroup_size;
    }
@@ -834,6 +834,7 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_pipeline_
                .func = radv_spirv_nir_debug,
                .private_data = &spirv_debug_data,
             },
+         .force_tex_non_uniform = key->tex_non_uniform,
       };
       nir = spirv_to_nir(spirv, stage->spirv.size / 4, spec_entries, num_spec_entries, stage->stage,
                          stage->entrypoint, &spirv_options,
@@ -1026,8 +1027,6 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_pipeline_
                .lower_subgroup_masks = 1,
                .lower_relative_shuffle = 1,
                .lower_shuffle_to_32bit = 1,
-               /* TODO: Verify shared VGPRs on GFX11. */
-               .lower_shuffle = device->physical_device->rad_info.gfx_level >= GFX11,
                .lower_vote_eq = 1,
                .lower_quad_broadcast_dynamic = 1,
                .lower_quad_broadcast_dynamic_to_const = gfx7minus,
@@ -1077,9 +1076,11 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_pipeline_
           nir->info.stage == MESA_SHADER_MESH)
          var_modes |= nir_var_mem_task_payload;
 
-      if (!nir->info.shared_memory_explicit_layout) {
+      if (!nir->info.shared_memory_explicit_layout)
          NIR_PASS(_, nir, nir_lower_vars_to_explicit_types, var_modes, shared_var_info);
-      }
+      else if (var_modes & ~nir_var_mem_shared)
+         NIR_PASS(_, nir, nir_lower_vars_to_explicit_types, var_modes & ~nir_var_mem_shared,
+                  shared_var_info);
       NIR_PASS(_, nir, nir_lower_explicit_io, var_modes, nir_address_format_32bit_offset);
 
       if (nir->info.zero_initialize_shared_memory && nir->info.shared_size > 0) {
@@ -2370,7 +2371,7 @@ radv_fill_nir_compiler_options(struct radv_nir_compiler_options *options,
    options->address32_hi = device->physical_device->rad_info.address32_hi;
    options->has_ls_vgpr_init_bug = device->physical_device->rad_info.has_ls_vgpr_init_bug;
    options->enable_mrt_output_nan_fixup =
-      !is_meta_shader && options->key.ps.enable_mrt_output_nan_fixup;
+      !is_meta_shader && options->key.ps.epilog.enable_mrt_output_nan_fixup;
 }
 
 static struct radv_shader *
@@ -2485,7 +2486,7 @@ radv_create_trap_handler_shader(struct radv_device *device)
 
    info.wave_size = 64;
 
-   struct radv_shader_args args;
+   struct radv_shader_args args = {0};
    args.explicit_scratch_args = true;
    args.is_trap_handler_shader = true;
    radv_declare_shader_args(device->physical_device->rad_info.gfx_level, &key, &info, stage, false,
@@ -2643,7 +2644,7 @@ radv_create_ps_epilog(struct radv_device *device, const struct radv_ps_epilog_ke
                                   device->instance->debug_flags & RADV_DEBUG_HANG, false);
 
    struct radv_shader_info info = {0};
-   info.wave_size = key->wave32 ? 32 : 64;
+   info.wave_size = device->physical_device->ps_wave_size;
    info.workgroup_size = 64;
 
    radv_declare_ps_epilog_args(device->physical_device->rad_info.gfx_level, key, &args);

@@ -839,6 +839,67 @@ emit_reduction(lower_context* ctx, aco_opcode op, ReduceOp reduce_op, unsigned c
 }
 
 void
+emit_gfx11_wave64_bpermute(Program* program, aco_ptr<Instruction>& instr, Builder& bld)
+{
+   /* Emulates proper bpermute on GFX11 in wave64 mode.
+    *
+    * Similar to emit_gfx10_wave64_bpermute, but uses the new
+    * v_permlane64_b32 instruction to swap data between lo and hi halves.
+    */
+
+   assert(program->gfx_level >= GFX11);
+   assert(program->wave_size == 64);
+
+   Definition dst = instr->definitions[0];
+   Definition tmp_exec = instr->definitions[1];
+   Definition clobber_scc = instr->definitions[2];
+   Operand tmp_op = instr->operands[0];
+   Operand index_x4 = instr->operands[1];
+   Operand input_data = instr->operands[2];
+   Operand same_half = instr->operands[3];
+
+   assert(dst.regClass() == v1);
+   assert(tmp_exec.regClass() == bld.lm);
+   assert(clobber_scc.isFixed() && clobber_scc.physReg() == scc);
+   assert(same_half.regClass() == bld.lm);
+   assert(tmp_op.regClass() == v1.as_linear());
+   assert(index_x4.regClass() == v1);
+   assert(input_data.regClass().type() == RegType::vgpr);
+   assert(input_data.bytes() <= 4);
+
+   Definition tmp_def(tmp_op.physReg(), tmp_op.regClass());
+
+   /* Permute the input within the same half-wave. */
+   bld.ds(aco_opcode::ds_bpermute_b32, dst, index_x4, input_data);
+
+   /* Save EXEC and enable all lanes. */
+   bld.sop1(aco_opcode::s_or_saveexec_b64, tmp_exec, clobber_scc, Definition(exec, s2),
+            Operand::c32(-1u), Operand(exec, s2));
+
+   /* Copy input data from other half to current half's linear VGPR. */
+   bld.vop1(aco_opcode::v_permlane64_b32, tmp_def, input_data);
+
+   /* Permute the input from the other half-wave, write to linear VGPR. */
+   bld.ds(aco_opcode::ds_bpermute_b32, tmp_def, index_x4, tmp_op);
+
+   /* Restore saved EXEC. */
+   bld.sop1(aco_opcode::s_mov_b64, Definition(exec, s2), Operand(tmp_exec.physReg(), s2));
+
+   /* Select correct permute result. */
+   bld.vop2_e64(aco_opcode::v_cndmask_b32, dst, tmp_op, Operand(dst.physReg(), dst.regClass()),
+                same_half);
+
+   /* RA assumes that the result is always in the low part of the register, so we have to shift,
+    * if it's not there already.
+    */
+   if (input_data.physReg().byte()) {
+      unsigned right_shift = input_data.physReg().byte() * 8;
+      bld.vop2(aco_opcode::v_lshrrev_b32, dst, Operand::c32(right_shift),
+               Operand(dst.physReg(), dst.regClass()));
+   }
+}
+
+void
 emit_gfx10_wave64_bpermute(Program* program, aco_ptr<Instruction>& instr, Builder& bld)
 {
    /* Emulates proper bpermute on GFX10 in wave64 mode.
@@ -848,7 +909,7 @@ emit_gfx10_wave64_bpermute(Program* program, aco_ptr<Instruction>& instr, Builde
     * manually swap the data between the two halves using two shared VGPRs.
     */
 
-   assert(program->gfx_level >= GFX10);
+   assert(program->gfx_level >= GFX10 && program->gfx_level <= GFX10_3);
    assert(program->wave_size == 64);
 
    unsigned shared_vgpr_reg_0 = align(program->config->num_vgprs, 4) + 256;
@@ -907,8 +968,9 @@ emit_gfx10_wave64_bpermute(Program* program, aco_ptr<Instruction>& instr, Builde
    /* Restore saved EXEC */
    bld.sop1(aco_opcode::s_mov_b64, Definition(exec, s2), Operand(tmp_exec.physReg(), s2));
 
-   /* RA assumes that the result is always in the low part of the register, so we have to shift, if
-    * it's not there already */
+   /* RA assumes that the result is always in the low part of the register, so we have to shift,
+    * if it's not there already.
+    */
    if (input_data.physReg().byte()) {
       unsigned right_shift = input_data.physReg().byte() * 8;
       bld.vop2(aco_opcode::v_lshrrev_b32, dst, Operand::c32(right_shift),
@@ -976,8 +1038,10 @@ split_copy(lower_context* ctx, unsigned offset, Definition* def, Operand* op,
    def_reg.reg_b += offset;
    op_reg.reg_b += offset;
 
-   /* 64-bit VGPR copies (implemented with v_lshrrev_b64) are slow before GFX10 */
-   if (ctx->program->gfx_level < GFX10 && src.def.regClass().type() == RegType::vgpr)
+   /* 64-bit VGPR copies (implemented with v_lshrrev_b64) are slow before GFX10, and on GFX11
+    * v_lshrrev_b64 doesn't get dual issued. */
+   if ((ctx->program->gfx_level < GFX10 || ctx->program->gfx_level >= GFX11) &&
+       src.def.regClass().type() == RegType::vgpr)
       max_size = MIN2(max_size, 4);
    unsigned max_align = src.def.regClass().type() == RegType::vgpr ? 4 : 16;
 
@@ -1451,8 +1515,8 @@ do_pack_2x16(lower_context* ctx, Builder& bld, Definition def, Operand lo, Opera
 
    /* a single alignbyte can be sufficient: hi can be a 32-bit integer constant */
    if (lo.physReg().byte() == 2 && hi.physReg().byte() == 0 &&
-       (!hi.isConstant() || !Operand::c32(hi.constantValue()).isLiteral() ||
-        ctx->program->gfx_level >= GFX10)) {
+       (!hi.isConstant() || (hi.constantValue() && (!Operand::c32(hi.constantValue()).isLiteral() ||
+                                                    ctx->program->gfx_level >= GFX10)))) {
       if (hi.isConstant())
          bld.vop3(aco_opcode::v_alignbyte_b32, def, Operand::c32(hi.constantValue()), lo,
                   Operand::c32(2u));
@@ -1470,18 +1534,22 @@ do_pack_2x16(lower_context* ctx, Builder& bld, Definition def, Operand lo, Opera
          bld.vop2(aco_opcode::v_lshlrev_b32, def_hi, Operand::c32(16u), hi);
       else
          bld.vop2(aco_opcode::v_and_b32, def_hi, Operand::c32(~0xFFFFu), hi);
-      bld.vop2(aco_opcode::v_or_b32, def, Operand::c32(lo.constantValue()),
-               Operand(def.physReg(), v1));
+      if (lo.constantValue())
+         bld.vop2(aco_opcode::v_or_b32, def, Operand::c32(lo.constantValue()),
+                  Operand(def.physReg(), v1));
       return;
    }
    if (hi.isConstant()) {
       /* move lo and zero high bits */
       if (lo.physReg().byte() == 2)
          bld.vop2(aco_opcode::v_lshrrev_b32, def_lo, Operand::c32(16u), lo);
+      else if (ctx->program->gfx_level >= GFX11)
+         bld.vop1(aco_opcode::v_cvt_u32_u16, def, lo);
       else
          bld.vop2(aco_opcode::v_and_b32, def_lo, Operand::c32(0xFFFFu), lo);
-      bld.vop2(aco_opcode::v_or_b32, def, Operand::c32(hi.constantValue() << 16u),
-               Operand(def.physReg(), v1));
+      if (hi.constantValue())
+         bld.vop2(aco_opcode::v_or_b32, def, Operand::c32(hi.constantValue() << 16u),
+                  Operand(def.physReg(), v1));
       return;
    }
 
@@ -2130,9 +2198,12 @@ lower_to_hw_instr(Program* program)
                   block = &program->blocks[block_idx];
 
                   bld.reset(discard_block);
+                  unsigned target = V_008DFC_SQ_EXP_NULL;
+                  if (program->gfx_level >= GFX11)
+                     target =
+                        program->has_color_exports ? V_008DFC_SQ_EXP_MRT : V_008DFC_SQ_EXP_MRTZ;
                   bld.exp(aco_opcode::exp, Operand(v1), Operand(v1), Operand(v1), Operand(v1), 0,
-                          program->gfx_level >= GFX11 ? V_008DFC_SQ_EXP_MRT : V_008DFC_SQ_EXP_NULL,
-                          false, true, true);
+                          target, false, true, true);
                   if (should_dealloc_vgprs)
                      bld.sopp(aco_opcode::s_sendmsg, -1, sendmsg_dealloc_vgprs);
                   bld.sopp(aco_opcode::s_endpgm);
@@ -2187,13 +2258,16 @@ lower_to_hw_instr(Program* program)
                }
                break;
             }
-            case aco_opcode::p_bpermute: {
-               if (ctx.program->gfx_level <= GFX7)
-                  emit_gfx6_bpermute(program, instr, bld);
-               else if (ctx.program->gfx_level >= GFX10 && ctx.program->wave_size == 64)
-                  emit_gfx10_wave64_bpermute(program, instr, bld);
-               else
-                  unreachable("Current hardware supports ds_bpermute, don't emit p_bpermute.");
+            case aco_opcode::p_bpermute_gfx6: {
+               emit_gfx6_bpermute(program, instr, bld);
+               break;
+            }
+            case aco_opcode::p_bpermute_gfx10w64: {
+               emit_gfx10_wave64_bpermute(program, instr, bld);
+               break;
+            }
+            case aco_opcode::p_bpermute_gfx11w64: {
+               emit_gfx11_wave64_bpermute(program, instr, bld);
                break;
             }
             case aco_opcode::p_constaddr: {
@@ -2237,6 +2311,9 @@ lower_to_hw_instr(Program* program)
                   if (offset == (32 - bits) && op.regClass() != s1) {
                      bld.vop2(signext ? aco_opcode::v_ashrrev_i32 : aco_opcode::v_lshrrev_b32, dst,
                               Operand::c32(offset), op);
+                  } else if (offset == 0 && bits == 16 && ctx.program->gfx_level >= GFX11) {
+                     bld.vop1(signext ? aco_opcode::v_cvt_i32_i16 : aco_opcode::v_cvt_u32_u16, dst,
+                              op);
                   } else {
                      bld.vop3(signext ? aco_opcode::v_bfe_i32 : aco_opcode::v_bfe_u32, dst, op,
                               Operand::c32(offset), Operand::c32(bits));

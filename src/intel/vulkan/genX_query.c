@@ -161,9 +161,16 @@ VkResult genX(CreateQueryPool)(
       break;
 #if GFX_VERx10 >= 125
    case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR:
-   case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR:
-      uint64s_per_slot = 1 + 1 /* availability + size */;
+   case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SIZE_KHR:
+      uint64s_per_slot = 1 + 1 /* availability + size (PostbuildInfoCurrentSize, PostbuildInfoCompactedSize) */;
       break;
+
+   case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR:
+   case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_BOTTOM_LEVEL_POINTERS_KHR:
+      uint64s_per_slot = 1 + 2 /* availability + size (PostbuildInfoSerializationDesc) */;
+      break;
+      break;
+
 #endif
    default:
       assert(!"Invalid query type");
@@ -457,6 +464,8 @@ VkResult genX(GetQueryPoolResults)(
 #if GFX_VERx10 >= 125
    pool->type == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR ||
    pool->type == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR ||
+   pool->type == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SIZE_KHR ||
+   pool->type == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_BOTTOM_LEVEL_POINTERS_KHR ||
 #endif
    pool->type == VK_QUERY_TYPE_OCCLUSION ||
    pool->type == VK_QUERY_TYPE_PIPELINE_STATISTICS ||
@@ -528,15 +537,9 @@ VkResult genX(GetQueryPoolResults)(
          uint64_t *slot = query_slot(pool, firstQuery + i);
          uint32_t statistics = pool->pipeline_statistics;
          while (statistics) {
-            uint32_t stat = u_bit_scan(&statistics);
+            UNUSED uint32_t stat = u_bit_scan(&statistics);
             if (write_results) {
                uint64_t result = slot[idx * 2 + 2] - slot[idx * 2 + 1];
-
-               /* WaDividePSInvocationCountBy4:BDW */
-               if (device->info->ver == 8 &&
-                   (1 << stat) == VK_QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT)
-                  result >>= 2;
-
                cpu_write_query_result(pData, flags, idx, result);
             }
             idx++;
@@ -557,9 +560,25 @@ VkResult genX(GetQueryPoolResults)(
       }
 
 #if GFX_VERx10 >= 125
+      case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SIZE_KHR:
       case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR:
-      case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR:
+      case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR: {
+         uint64_t *slot = query_slot(pool, firstQuery + i);
+         if (write_results)
+            cpu_write_query_result(pData, flags, idx, slot[1]);
+         idx++;
+         break;
+      }
+
+      case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_BOTTOM_LEVEL_POINTERS_KHR: {
+         uint64_t *slot = query_slot(pool, firstQuery + i);
+         if (write_results)
+            cpu_write_query_result(pData, flags, idx, slot[2]);
+         idx++;
+         break;
+      }
 #endif
+
       case VK_QUERY_TYPE_TIMESTAMP: {
          uint64_t *slot = query_slot(pool, firstQuery + i);
          if (write_results)
@@ -746,6 +765,8 @@ void genX(CmdResetQueryPool)(
 #if GFX_VERx10 >= 125
    case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR:
    case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR:
+   case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SIZE_KHR:
+   case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_BOTTOM_LEVEL_POINTERS_KHR:
 #endif
       for (uint32_t i = 0; i < queryCount; i++) {
          emit_query_pc_availability(cmd_buffer,
@@ -1472,17 +1493,9 @@ void genX(CmdCopyQueryPoolResults)(
       case VK_QUERY_TYPE_PIPELINE_STATISTICS: {
          uint32_t statistics = pool->pipeline_statistics;
          while (statistics) {
-            uint32_t stat = u_bit_scan(&statistics);
-
+            UNUSED uint32_t stat = u_bit_scan(&statistics);
             result = compute_query_result(&b, anv_address_add(query_addr,
                                                               idx * 16 + 8));
-
-            /* WaDividePSInvocationCountBy4:BDW */
-            if (cmd_buffer->device->info->ver == 8 &&
-                (1 << stat) == VK_QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT) {
-               result = mi_ushr32_imm(&b, result, 2);
-            }
-
             gpu_write_query_result(&b, dest_addr, flags, idx++, result);
          }
          assert(idx == util_bitcount(pool->pipeline_statistics));
@@ -1497,13 +1510,23 @@ void genX(CmdCopyQueryPoolResults)(
          break;
 
       case VK_QUERY_TYPE_TIMESTAMP:
-#if GFX_VERx10 >= 125
-      case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR:
-      case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR:
-#endif
          result = mi_mem64(anv_address_add(query_addr, 8));
          gpu_write_query_result(&b, dest_addr, flags, idx++, result);
          break;
+
+#if GFX_VERx10 >= 125
+      case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR:
+      case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR:
+      case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SIZE_KHR:
+         result = mi_mem64(anv_address_add(query_addr, 8));
+         gpu_write_query_result(&b, dest_addr, flags, idx++, result);
+         break;
+
+      case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_BOTTOM_LEVEL_POINTERS_KHR:
+         result = mi_mem64(anv_address_add(query_addr, 16));
+         gpu_write_query_result(&b, dest_addr, flags, idx++, result);
+         break;
+#endif
 
       case VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR:
          unreachable("Copy KHR performance query results not implemented");
@@ -1540,7 +1563,9 @@ genX(CmdWriteAccelerationStructuresPropertiesKHR)(
    ANV_FROM_HANDLE(anv_query_pool, pool, queryPool);
 
    assert(queryType == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR ||
-          queryType == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR);
+          queryType == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR ||
+          queryType == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SIZE_KHR ||
+          queryType == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_BOTTOM_LEVEL_POINTERS_KHR);
 
    struct mi_builder b;
    mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
@@ -1550,15 +1575,28 @@ genX(CmdWriteAccelerationStructuresPropertiesKHR)(
       struct anv_address query_addr =
          anv_address_add(anv_query_address(pool, firstQuery + i), 8);
 
-      if (queryType == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR) {
+      switch (queryType) {
+      case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR:
          genX(grl_postbuild_info_compacted_size)(cmd_buffer,
                                                  anv_address_physical(accel->address),
                                                  anv_address_physical(query_addr));
-      } else {
-         assert(queryType == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR);
+         break;
+
+      case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SIZE_KHR:
+         genX(grl_postbuild_info_current_size)(cmd_buffer,
+                                               anv_address_physical(accel->address),
+                                               anv_address_physical(query_addr));
+         break;
+
+      case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR:
+      case VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_BOTTOM_LEVEL_POINTERS_KHR:
          genX(grl_postbuild_info_serialized_size)(cmd_buffer,
                                                   anv_address_physical(accel->address),
                                                   anv_address_physical(query_addr));
+         break;
+
+      default:
+         unreachable("unhandled query type");
       }
    }
 

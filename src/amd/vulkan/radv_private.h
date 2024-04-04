@@ -369,6 +369,8 @@ struct radv_instance {
    bool disable_sinking_load_input_fs;
    bool flush_before_query_copy;
    bool enable_unified_heap_on_apu;
+   bool tex_non_uniform;
+   char *app_layer;
 };
 
 VkResult radv_init_wsi(struct radv_physical_device *physical_device);
@@ -760,6 +762,8 @@ struct radv_queue_state {
    struct radeon_cmdbuf *initial_preamble_cs;
    struct radeon_cmdbuf *initial_full_flush_preamble_cs;
    struct radeon_cmdbuf *continue_preamble_cs;
+   struct radeon_cmdbuf *gang_wait_preamble_cs;
+   struct radeon_cmdbuf *gang_wait_postamble_cs;
 };
 
 struct radv_queue {
@@ -769,6 +773,7 @@ struct radv_queue {
    enum radeon_ctx_priority priority;
    struct radv_queue_state state;
    struct radv_queue_state *ace_internal_state;
+   struct radeon_winsys_bo *gang_sem_bo;
 };
 
 #define RADV_BORDER_COLOR_COUNT       4096
@@ -799,6 +804,18 @@ struct radv_notifier {
    thrd_t thread;
 };
 
+struct radv_rra_accel_struct_data {
+   VkEvent build_event;
+   uint64_t va;
+   uint64_t size;
+   VkBuffer buffer;
+   VkDeviceMemory memory;
+   VkAccelerationStructureTypeKHR type;
+   bool is_dead;
+};
+
+void radv_destroy_rra_accel_struct_data(VkDevice device, struct radv_rra_accel_struct_data *data);
+
 struct radv_rra_trace_data {
    int elapsed_frames;
    int trace_frame;
@@ -809,11 +826,27 @@ struct radv_rra_trace_data {
    bool validate_as;
 };
 
+enum radv_dispatch_table {
+   RADV_DEVICE_DISPATCH_TABLE,
+   RADV_APP_DISPATCH_TABLE,
+   RADV_RGP_DISPATCH_TABLE,
+   RADV_RRA_DISPATCH_TABLE,
+   RADV_DISPATCH_TABLE_COUNT,
+};
+
+struct radv_layer_dispatch_tables {
+   struct vk_device_dispatch_table app;
+   struct vk_device_dispatch_table rgp;
+   struct vk_device_dispatch_table rra;
+};
+
 struct radv_device {
    struct vk_device vk;
 
    struct radv_instance *instance;
    struct radeon_winsys *ws;
+
+   struct radv_layer_dispatch_tables layer_dispatch;
 
    struct radeon_winsys_ctx *hw_ctx[RADV_NUM_HW_CTX];
    struct radv_meta_state meta_state;
@@ -1124,7 +1157,9 @@ enum radv_dynamic_state_bits {
    RADV_DYNAMIC_DEPTH_CLAMP_ENABLE = 1ull << 40,
    RADV_DYNAMIC_COLOR_WRITE_MASK = 1ull << 41,
    RADV_DYNAMIC_COLOR_BLEND_ENABLE = 1ull << 42,
-   RADV_DYNAMIC_ALL = (1ull << 43) - 1,
+   RADV_DYNAMIC_RASTERIZATION_SAMPLES = 1ull << 43,
+   RADV_DYNAMIC_LINE_RASTERIZATION_MODE = 1ull << 44,
+   RADV_DYNAMIC_ALL = (1ull << 45) - 1,
 };
 
 enum radv_cmd_dirty_bits {
@@ -1173,13 +1208,15 @@ enum radv_cmd_dirty_bits {
    RADV_CMD_DIRTY_DYNAMIC_DEPTH_CLAMP_ENABLE = 1ull << 40,
    RADV_CMD_DIRTY_DYNAMIC_COLOR_WRITE_MASK = 1ull << 41,
    RADV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_ENABLE = 1ull << 42,
-   RADV_CMD_DIRTY_DYNAMIC_ALL = (1ull << 43) - 1,
-   RADV_CMD_DIRTY_PIPELINE = 1ull << 43,
-   RADV_CMD_DIRTY_INDEX_BUFFER = 1ull << 44,
-   RADV_CMD_DIRTY_FRAMEBUFFER = 1ull << 45,
-   RADV_CMD_DIRTY_VERTEX_BUFFER = 1ull << 46,
-   RADV_CMD_DIRTY_STREAMOUT_BUFFER = 1ull << 47,
-   RADV_CMD_DIRTY_GUARDBAND = 1ull << 48,
+   RADV_CMD_DIRTY_DYNAMIC_RASTERIZATION_SAMPLES = 1ull << 43,
+   RADV_CMD_DIRTY_DYNAMIC_LINE_RASTERIZATION_MODE = 1ull << 44,
+   RADV_CMD_DIRTY_DYNAMIC_ALL = (1ull << 45) - 1,
+   RADV_CMD_DIRTY_PIPELINE = 1ull << 45,
+   RADV_CMD_DIRTY_INDEX_BUFFER = 1ull << 46,
+   RADV_CMD_DIRTY_FRAMEBUFFER = 1ull << 47,
+   RADV_CMD_DIRTY_VERTEX_BUFFER = 1ull << 48,
+   RADV_CMD_DIRTY_STREAMOUT_BUFFER = 1ull << 49,
+   RADV_CMD_DIRTY_GUARDBAND = 1ull << 50,
 };
 
 enum radv_cmd_flush_bits {
@@ -1403,6 +1440,10 @@ struct radv_dynamic_state {
    uint32_t color_write_mask;
 
    uint32_t color_blend_enable;
+
+   VkSampleCountFlagBits rasterization_samples;
+
+   VkLineRasterizationModeEXT line_rasterization_mode;
 };
 
 extern const struct radv_dynamic_state default_dynamic_state;
@@ -1488,6 +1529,8 @@ struct radv_rendering_state {
    VkRect2D area;
    uint32_t layer_count;
    uint32_t view_mask;
+   uint32_t color_samples;
+   uint32_t ds_samples;
    uint32_t max_samples;
    struct radv_sample_locations_state sample_locations;
    uint32_t color_att_count;
@@ -1554,7 +1597,6 @@ struct radv_cmd_state {
    uint64_t index_va;
    int32_t last_index_type;
 
-   int32_t last_primitive_reset_en;
    uint32_t last_primitive_reset_index;
    enum radv_cmd_flush_bits flush_bits;
    unsigned active_occlusion_queries;
@@ -1747,7 +1789,7 @@ void si_write_scissors(struct radeon_cmdbuf *cs, int count, const VkRect2D *scis
                        const VkViewport *viewports);
 
 void si_write_guardband(struct radeon_cmdbuf *cs, int count, const VkViewport *viewports,
-                        unsigned rast_prim, float line_width);
+                        unsigned rast_prim, unsigned polygon_mode, float line_width);
 
 uint32_t si_get_ia_multi_vgt_param(struct radv_cmd_buffer *cmd_buffer, bool instanced_draw,
                                    bool indirect_draw, bool count_from_stream_output,
@@ -1943,7 +1985,7 @@ void radv_hash_shaders(unsigned char *hash, const struct radv_pipeline_stage *st
                        const struct radv_pipeline_key *key, uint32_t flags);
 
 void radv_hash_rt_shaders(unsigned char *hash, const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
-                          uint32_t flags);
+                          const struct radv_pipeline_key *key, uint32_t flags);
 
 uint32_t radv_get_hash_flags(const struct radv_device *device, bool stats);
 
@@ -1969,11 +2011,8 @@ extern const VkFormat radv_fs_key_format_exemplars[NUM_META_FS_KEYS];
 unsigned radv_format_meta_fs_key(struct radv_device *device, VkFormat format);
 
 struct radv_multisample_state {
-   uint32_t db_eqaa;
-   uint32_t pa_sc_mode_cntl_0;
-   uint32_t pa_sc_mode_cntl_1;
-   uint32_t pa_sc_aa_config;
-   unsigned num_samples;
+   bool sample_shading_enable;
+   float min_sample_shading;
 };
 
 struct radv_vrs_state {
@@ -2084,7 +2123,6 @@ struct radv_graphics_pipeline {
    uint64_t dynamic_states;
    struct radv_multisample_state ms;
    struct radv_vrs_state vrs;
-   uint32_t spi_baryc_cntl;
    unsigned esgs_ring_size;
    unsigned gsvs_ring_size;
    uint32_t vtx_base_sgpr;
@@ -2103,6 +2141,8 @@ struct radv_graphics_pipeline {
    uint32_t vb_desc_usage_mask;
    uint32_t vb_desc_alloc_size;
    uint32_t vgt_tf_param;
+   uint32_t pa_sc_mode_cntl_1;
+   uint32_t db_render_control;
 
    /* Last pre-PS API stage */
    gl_shader_stage last_vgt_api_stage;
@@ -3054,6 +3094,24 @@ static inline bool
 radv_rast_prim_is_points_or_lines(unsigned rast_prim)
 {
    return radv_rast_prim_is_point(rast_prim) || radv_rast_prim_is_line(rast_prim);
+}
+
+static inline bool
+radv_polygon_mode_is_point(unsigned polygon_mode)
+{
+   return polygon_mode == V_028814_X_DRAW_POINTS;
+}
+
+static inline bool
+radv_polygon_mode_is_line(unsigned polygon_mode)
+{
+   return polygon_mode == V_028814_X_DRAW_LINES;
+}
+
+static inline bool
+radv_polygon_mode_is_points_or_lines(unsigned polygon_mode)
+{
+   return radv_polygon_mode_is_point(polygon_mode) || radv_polygon_mode_is_line(polygon_mode);
 }
 
 static inline unsigned

@@ -94,6 +94,18 @@ uint32_t
 zink_debug;
 
 
+static const struct debug_named_value
+zink_descriptor_options[] = {
+   { "auto", ZINK_DESCRIPTOR_MODE_AUTO, "Automatically detect best mode" },
+   { "lazy", ZINK_DESCRIPTOR_MODE_LAZY, "Don't cache, do least amount of updates" },
+   { "db", ZINK_DESCRIPTOR_MODE_DB, "Use descriptor buffers" },
+   DEBUG_NAMED_VALUE_END
+};
+
+DEBUG_GET_ONCE_FLAGS_OPTION(zink_descriptor_mode, "ZINK_DESCRIPTORS", zink_descriptor_options, ZINK_DESCRIPTOR_MODE_AUTO)
+
+enum zink_descriptor_mode zink_descriptor_mode;
+
 static const char *
 zink_get_vendor(struct pipe_screen *pscreen)
 {
@@ -2497,6 +2509,25 @@ init_driver_workarounds(struct zink_screen *screen)
       screen->driver_workarounds.no_linestipple = true;
    }
 
+   if (screen->info.driver_props.driverID ==
+       VK_DRIVER_ID_IMAGINATION_PROPRIETARY) {
+      assert(screen->info.feats.features.geometryShader);
+      screen->driver_workarounds.no_linesmooth = true;
+   }
+
+   /* This is a workarround for the lack of
+    * gl_PointSize + glPolygonMode(..., GL_LINE), in the imagination
+    * proprietary driver.
+    */
+   switch (screen->info.driver_props.driverID) {
+   case VK_DRIVER_ID_IMAGINATION_PROPRIETARY:
+      screen->driver_workarounds.no_hw_gl_point = true;
+      break;
+   default:
+      screen->driver_workarounds.no_hw_gl_point = false;
+      break;
+   }
+
    if (screen->info.driver_props.driverID == VK_DRIVER_ID_AMD_OPEN_SOURCE || 
        screen->info.driver_props.driverID == VK_DRIVER_ID_AMD_PROPRIETARY || 
        screen->info.driver_props.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY || 
@@ -2594,6 +2625,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
    screen->abort_on_hang = debug_get_bool_option("ZINK_HANG_ABORT", false);
 
    zink_debug = debug_get_option_zink_debug();
+   zink_descriptor_mode = debug_get_option_zink_descriptor_mode();
 
    screen->loader_lib = util_dl_open(VK_LIBNAME);
    if (!screen->loader_lib)
@@ -2699,6 +2731,9 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
       screen->desc_set_id[ZINK_DESCRIPTOR_TYPE_SSBO] = 3;
       screen->desc_set_id[ZINK_DESCRIPTOR_TYPE_IMAGE] = 4;
       screen->desc_set_id[ZINK_DESCRIPTOR_BINDLESS] = 5;
+   }
+   if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_AUTO) {
+      zink_descriptor_mode = ZINK_DESCRIPTOR_MODE_LAZY;
    }
 
    if (screen->info.have_EXT_calibrated_timestamps && !check_have_device_time(screen))
@@ -2847,6 +2882,51 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
       simple_mtx_init(&screen->framebuffer_mtx, mtx_plain);
       _mesa_hash_table_init(&screen->framebuffer_cache, screen, hash_framebuffer_state, equals_framebuffer_state);
    }
+   
+   if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB) {
+      if (!screen->info.have_EXT_descriptor_buffer) {
+         mesa_loge("Cannot use db descriptor mode without EXT_descriptor_buffer");
+         goto fail;
+      }
+      if (!screen->resizable_bar) {
+         mesa_loge("Cannot use db descriptor mode without resizable bar");
+         goto fail;
+      }
+      if (!screen->info.have_EXT_non_seamless_cube_map) {
+         mesa_loge("Cannot use db descriptor mode without EXT_non_seamless_cube_map");
+         goto fail;
+      }
+      if (!screen->info.rb2_feats.nullDescriptor) {
+         mesa_loge("Cannot use db descriptor mode without robustness2.nullDescriptor");
+         goto fail;
+      }
+      if (screen->compact_descriptors) {
+         /* TODO: bindless */
+         if (screen->info.db_props.maxDescriptorBufferBindings < 3) {
+            mesa_loge("Cannot use db descriptor mode with compact descriptors with maxDescriptorBufferBindings < 3");
+            goto fail;
+         }
+      } else {
+         if (screen->info.db_props.maxDescriptorBufferBindings < 5) {
+            mesa_loge("Cannot use db descriptor mode with maxDescriptorBufferBindings < 5");
+            goto fail;
+         }
+      }
+      const uint32_t sampler_size = MAX2(screen->info.db_props.combinedImageSamplerDescriptorSize, screen->info.db_props.robustUniformTexelBufferDescriptorSize);
+      const uint32_t image_size = MAX2(screen->info.db_props.storageImageDescriptorSize, screen->info.db_props.robustStorageTexelBufferDescriptorSize);
+      if (screen->compact_descriptors) {
+         screen->db_size[ZINK_DESCRIPTOR_TYPE_UBO] = screen->info.db_props.robustUniformBufferDescriptorSize +
+                                                     screen->info.db_props.robustStorageBufferDescriptorSize;
+         screen->db_size[ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW] = sampler_size + image_size;
+      } else {
+         screen->db_size[ZINK_DESCRIPTOR_TYPE_UBO] = screen->info.db_props.robustUniformBufferDescriptorSize;
+         screen->db_size[ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW] = sampler_size;
+         screen->db_size[ZINK_DESCRIPTOR_TYPE_SSBO] = screen->info.db_props.robustStorageBufferDescriptorSize;
+         screen->db_size[ZINK_DESCRIPTOR_TYPE_IMAGE] = image_size;
+      }
+      screen->db_size[ZINK_DESCRIPTOR_TYPE_UNIFORMS] = screen->info.db_props.robustUniformBufferDescriptorSize;
+      screen->info.have_KHR_push_descriptor = false;
+   }
 
    simple_mtx_init(&screen->dt_lock, mtx_plain);
 
@@ -2883,7 +2963,9 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
    screen->optimal_keys = !screen->need_decompose_attrs &&
                           screen->info.have_EXT_non_seamless_cube_map &&
                           !screen->driconf.inline_uniforms &&
-                          !screen->driver_workarounds.no_linestipple;
+                          !screen->driver_workarounds.no_linestipple &&
+                          !screen->driver_workarounds.no_linesmooth &&
+                          !screen->driver_workarounds.no_hw_gl_point;
    if (!screen->optimal_keys)
       screen->info.have_EXT_graphics_pipeline_library = false;
 

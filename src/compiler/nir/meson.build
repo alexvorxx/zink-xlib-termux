@@ -403,6 +403,7 @@ if with_tests
         'tests/lower_returns_tests.cpp',
         'tests/negative_equal_tests.cpp',
         'tests/opt_if_tests.cpp',
+        'tests/opt_shrink_vectors_tests.cpp',
         'tests/serialize_tests.cpp',
         'tests/ssa_def_bits_used_tests.cpp',
         'tests/vars_tests.cpp',
@@ -437,7 +438,7 @@ if with_tests
     ),
     suite : ['compiler', 'nir'],
     # TODO: Use a negative filter for gtest instead of the expect failure here.
-    should_fail : meson.get_cross_property('xfail', '').contains('load_store_vectorizer'),
+    should_fail : meson.get_external_property('xfail', '').contains('load_store_vectorizer'),
     protocol : gtest_test_protocol,
   )
 

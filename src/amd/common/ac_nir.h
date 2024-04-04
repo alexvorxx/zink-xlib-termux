@@ -64,6 +64,10 @@ nir_ssa_def *
 ac_nir_load_arg(nir_builder *b, const struct ac_shader_args *ac_args, struct ac_arg arg);
 
 nir_ssa_def *
+ac_nir_unpack_arg(nir_builder *b, const struct ac_shader_args *ac_args, struct ac_arg arg,
+                  unsigned rshift, unsigned bitwidth);
+
+nir_ssa_def *
 ac_nir_calc_io_offset(nir_builder *b,
                       nir_intrinsic_instr *intrin,
                       nir_ssa_def *base_stride,
@@ -183,6 +187,16 @@ ac_nir_lower_global_access(nir_shader *shader);
 
 bool ac_nir_lower_resinfo(nir_shader *nir, enum amd_gfx_level gfx_level);
 
+typedef struct ac_nir_gs_output_info {
+   const uint8_t *streams;
+   const uint8_t *streams_16bit_lo;
+   const uint8_t *streams_16bit_hi;
+
+   const uint8_t *usage_mask;
+   const uint8_t *usage_mask_16bit_lo;
+   const uint8_t *usage_mask_16bit_hi;
+} ac_nir_gs_output_info;
+
 nir_shader *
 ac_nir_create_gs_copy_shader(const nir_shader *gs_nir,
                              bool disable_streamout,
@@ -193,6 +207,21 @@ ac_nir_create_gs_copy_shader(const nir_shader *gs_nir,
 
 void
 ac_nir_lower_legacy_vs(nir_shader *nir, int primitive_id_location, bool disable_streamout);
+
+bool
+ac_nir_gs_shader_query(nir_builder *b,
+                       bool has_gen_prim_query,
+                       bool has_pipeline_stats_query,
+                       unsigned num_vertices_per_primitive,
+                       unsigned wave_size,
+                       nir_ssa_def *vertex_count[4],
+                       nir_ssa_def *primitive_count[4]);
+
+void
+ac_nir_lower_legacy_gs(nir_shader *nir,
+                       bool has_gen_prim_query,
+                       bool has_pipeline_stats_query,
+                       ac_nir_gs_output_info *output_info);
 
 #ifdef __cplusplus
 }

@@ -2844,7 +2844,8 @@ vtn_handle_texture(struct vtn_builder *b, SpvOp opcode,
       vtn_fail("unexpected nir_texop_tex_prefetch");
       break;
    case nir_texop_descriptor_amd:
-      vtn_fail("unexpected nir_texop_descriptor_amd");
+   case nir_texop_sampler_descriptor_amd:
+      vtn_fail("unexpected nir_texop_*descriptor_amd");
       break;
    }
 
@@ -3103,6 +3104,9 @@ vtn_handle_texture(struct vtn_builder *b, SpvOp opcode,
 
    if (operands & SpvImageOperandsNontemporalMask)
       access |= ACCESS_STREAM_CACHE_POLICY;
+
+   if (sampler && b->options->force_tex_non_uniform)
+      access |= ACCESS_NON_UNIFORM;
 
    if (sampled_val->propagated_non_uniform)
       access |= ACCESS_NON_UNIFORM;
@@ -3860,7 +3864,7 @@ vtn_handle_atomics(struct vtn_builder *b, SpvOp opcode,
    nir_builder_instr_insert(&b->nb, &atomic->instr);
 
    if (opcode == SpvOpAtomicFlagTestAndSet) {
-      vtn_push_nir_ssa(b, w[2], nir_i2b1(&b->nb, &atomic->dest.ssa));
+      vtn_push_nir_ssa(b, w[2], nir_i2b(&b->nb, &atomic->dest.ssa));
    }
    if (after_semantics)
       vtn_emit_memory_barrier(b, scope, after_semantics);
@@ -5303,6 +5307,41 @@ vtn_handle_execution_mode(struct vtn_builder *b, struct vtn_value *entry_point,
                   "SpvExecutionModeSubgroupUniformControlFlowKHR not supported.");
       break;
 
+   case SpvExecutionModeEarlyAndLateFragmentTestsAMD:
+      vtn_assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
+      b->shader->info.fs.early_and_late_fragment_tests = true;
+      break;
+
+   case SpvExecutionModeStencilRefGreaterFrontAMD:
+      vtn_assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
+      b->shader->info.fs.stencil_front_layout = FRAG_STENCIL_LAYOUT_GREATER;
+      break;
+
+   case SpvExecutionModeStencilRefLessFrontAMD:
+      vtn_assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
+      b->shader->info.fs.stencil_front_layout = FRAG_STENCIL_LAYOUT_LESS;
+      break;
+
+   case SpvExecutionModeStencilRefUnchangedFrontAMD:
+      vtn_assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
+      b->shader->info.fs.stencil_front_layout = FRAG_STENCIL_LAYOUT_UNCHANGED;
+      break;
+
+   case SpvExecutionModeStencilRefGreaterBackAMD:
+      vtn_assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
+      b->shader->info.fs.stencil_back_layout = FRAG_STENCIL_LAYOUT_GREATER;
+      break;
+
+   case SpvExecutionModeStencilRefLessBackAMD:
+      vtn_assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
+      b->shader->info.fs.stencil_back_layout = FRAG_STENCIL_LAYOUT_LESS;
+      break;
+
+   case SpvExecutionModeStencilRefUnchangedBackAMD:
+      vtn_assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
+      b->shader->info.fs.stencil_back_layout = FRAG_STENCIL_LAYOUT_UNCHANGED;
+      break;
+
    default:
       vtn_fail("Unhandled execution mode: %s (%u)",
                spirv_executionmode_to_string(mode->exec_mode),
@@ -5819,7 +5858,7 @@ vtn_handle_ray_query_intrinsic(struct vtn_builder *b, SpvOp opcode,
    case SpvOpRayQueryGetIntersectionWorldToObjectKHR:
       ray_query_load_intrinsic_create(b, opcode, w,
                                       vtn_ssa_value(b, w[3])->def,
-                                      nir_i2b1(&b->nb, vtn_ssa_value(b, w[4])->def));
+                                      nir_i2b(&b->nb, vtn_ssa_value(b, w[4])->def));
       break;
 
    case SpvOpRayQueryGetRayTMinKHR:

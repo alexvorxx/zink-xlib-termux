@@ -59,21 +59,28 @@ memory_range_end(struct anv_image_memory_range memory_range)
 static struct anv_image_binding *
 image_aspect_to_binding(struct anv_image *image, VkImageAspectFlags aspect)
 {
-   uint32_t plane;
+   uint32_t plane = 0;
 
    assert(image->disjoint);
 
    if (image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
       /* Spec requires special aspects for modifier images. */
-      assert(aspect >= VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT &&
-             aspect <= VK_IMAGE_ASPECT_MEMORY_PLANE_3_BIT_EXT);
+      assert(aspect == VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT ||
+             aspect == VK_IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT ||
+             aspect == VK_IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT ||
+             aspect == VK_IMAGE_ASPECT_MEMORY_PLANE_3_BIT_EXT);
 
       /* We don't advertise DISJOINT for modifiers with aux, and therefore we
        * don't handle queries of the modifier's "aux plane" here.
        */
       assert(!isl_drm_modifier_has_aux(image->vk.drm_format_mod));
 
-      plane = aspect - VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT;
+      switch(aspect) {
+         case VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT: plane = 0; break;
+         case VK_IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT: plane = 1; break;
+         case VK_IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT: plane = 2; break;
+         case VK_IMAGE_ASPECT_MEMORY_PLANE_3_BIT_EXT: plane = 3; break;
+      }
    } else {
       plane = anv_image_aspect_to_plane(image, aspect);
    }
@@ -365,27 +372,6 @@ can_fast_clear_with_non_zero_color(const struct intel_device_info *devinfo,
 
       if (!isl_formats_have_same_bits_per_channel(img_format, view_format))
          return false;
-
-      /* Switching between any of those format types on Gfx7/8 will cause
-       * problems https://gitlab.freedesktop.org/mesa/mesa/-/issues/1711
-       */
-      if (devinfo->ver <= 8) {
-         if (isl_format_has_float_channel(img_format) &&
-             !isl_format_has_float_channel(view_format))
-            return false;
-
-         if (isl_format_has_int_channel(img_format) &&
-             !isl_format_has_int_channel(view_format))
-            return false;
-
-         if (isl_format_has_unorm_channel(img_format) &&
-             !isl_format_has_unorm_channel(view_format))
-            return false;
-
-         if (isl_format_has_snorm_channel(img_format) &&
-             !isl_format_has_snorm_channel(view_format))
-            return false;
-      }
    }
 
    return true;
@@ -685,12 +671,6 @@ add_aux_surface_if_supported(struct anv_device *device,
 
       if (image->vk.mip_levels > 1) {
          anv_perf_warn(VK_LOG_OBJS(&image->vk.base), "Enable multi-LOD HiZ");
-         return VK_SUCCESS;
-      }
-
-      if (device->info->ver == 8 && image->vk.samples > 1) {
-         anv_perf_warn(VK_LOG_OBJS(&image->vk.base),
-                       "Enable gfx8 multisampled HiZ");
          return VK_SUCCESS;
       }
 
@@ -2456,12 +2436,6 @@ anv_image_fill_surface_state(struct anv_device *device,
                                            &offset_B, &tile_x_sa, &tile_y_sa);
          assert(ok);
          isl_surf = &tmp_surf;
-
-         if (device->info->ver <= 8) {
-            assert(surface->isl.tiling == ISL_TILING_LINEAR);
-            assert(tile_x_sa == 0);
-            assert(tile_y_sa == 0);
-         }
       }
 
       state_inout->address = anv_address_add(address, offset_B);
@@ -2490,7 +2464,10 @@ anv_image_fill_surface_state(struct anv_device *device,
                           .mocs = anv_mocs(device, state_inout->address.bo,
                                            view_usage),
                           .x_offset_sa = tile_x_sa,
-                          .y_offset_sa = tile_y_sa);
+                          .y_offset_sa = tile_y_sa,
+                          .robust_image_access =
+                             device->vk.enabled_features.robustImageAccess ||
+                             device->vk.enabled_features.robustImageAccess2);
 
       /* With the exception of gfx8, the bottom 12 bits of the MCS base address
        * are used to store other information.  This should be ok, however,

@@ -50,6 +50,7 @@ anv_cmd_state_init(struct anv_cmd_buffer *cmd_buffer)
 
    state->current_pipeline = UINT32_MAX;
    state->gfx.restart_index = UINT32_MAX;
+   state->gfx.object_preemption = true;
    state->gfx.dirty = 0;
 }
 
@@ -103,6 +104,7 @@ anv_create_cmd_buffer(struct vk_command_pool *pool,
       &cmd_buffer->state.gfx.sample_locations;
 
    cmd_buffer->batch.status = VK_SUCCESS;
+   cmd_buffer->generation_batch.status = VK_SUCCESS;
 
    cmd_buffer->device = device;
 
@@ -127,6 +129,8 @@ anv_create_cmd_buffer(struct vk_command_pool *pool,
       goto fail_batch_bo;
 
    cmd_buffer->self_mod_locations = NULL;
+
+   cmd_buffer->generation_return_addr = ANV_NULL_ADDRESS;
 
    anv_cmd_state_init(cmd_buffer);
 
@@ -855,7 +859,7 @@ anv_cmd_buffer_push_descriptor_set(struct anv_cmd_buffer *cmd_buffer,
       set->layout = layout;
    }
    set->is_push = true;
-   set->size = anv_descriptor_set_layout_size(layout, 0);
+   set->size = anv_descriptor_set_layout_size(layout, false /* host_only */, 0);
    set->buffer_view_count = layout->buffer_view_count;
    set->descriptor_count = layout->descriptor_count;
    set->buffer_views = (*push_set)->buffer_views;
@@ -1010,13 +1014,6 @@ void anv_CmdPushDescriptorSetWithTemplateKHR(
 
    anv_cmd_buffer_bind_descriptor_set(cmd_buffer, template->bind_point,
                                       layout, _set, set, NULL, NULL);
-}
-
-void anv_CmdSetDeviceMask(
-    VkCommandBuffer                             commandBuffer,
-    uint32_t                                    deviceMask)
-{
-   /* No-op */
 }
 
 void anv_CmdSetRayTracingPipelineStackSizeKHR(

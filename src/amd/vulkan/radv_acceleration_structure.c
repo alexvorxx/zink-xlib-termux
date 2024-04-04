@@ -31,6 +31,8 @@
 
 #include "bvh/build_interface.h"
 
+#include "vk_common_entrypoints.h"
+
 static const uint32_t leaf_spv[] = {
 #include "bvh/leaf.comp.spv.h"
 };
@@ -260,7 +262,6 @@ radv_CreateAccelerationStructureKHR(VkDevice _device,
    accel->size = pCreateInfo->size;
    accel->bo = buffer->bo;
    accel->va = va;
-   accel->type = pCreateInfo->type;
 
    *pAccelerationStructure = radv_acceleration_structure_to_handle(accel);
    return VK_SUCCESS;
@@ -746,7 +747,7 @@ ploc_build_internal(VkCommandBuffer commandBuffer, uint32_t infoCount,
          continue;
 
       struct radv_global_sync_data initial_sync_data = {
-         .current_phase_end_counter = DIV_ROUND_UP(bvh_states[i].node_count, PLOC_WORKGROUP_SIZE),
+         .current_phase_end_counter = TASK_INDEX_INVALID,
          /* Will be updated by the first PLOC shader invocation */
          .task_counts = {TASK_INDEX_INVALID, TASK_INDEX_INVALID},
       };
@@ -775,7 +776,8 @@ ploc_build_internal(VkCommandBuffer commandBuffer, uint32_t infoCount,
       radv_CmdPushConstants(commandBuffer,
                             cmd_buffer->device->meta_state.accel_struct_build.ploc_p_layout,
                             VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(consts), &consts);
-      radv_CmdDispatch(commandBuffer, MAX2(DIV_ROUND_UP(bvh_states[i].node_count, 64), 1), 1, 1);
+      vk_common_CmdDispatch(commandBuffer,
+                            MAX2(DIV_ROUND_UP(bvh_states[i].node_count, 64), 1), 1, 1);
    }
 }
 
@@ -1068,7 +1070,7 @@ radv_CmdCopyMemoryToAccelerationStructureKHR(
                          cmd_buffer->device->meta_state.accel_struct_build.copy_p_layout,
                          VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(consts), &consts);
 
-   radv_CmdDispatch(commandBuffer, 512, 1, 1);
+   vk_common_CmdDispatch(commandBuffer, 512, 1, 1);
    radv_meta_restore(&saved_state, cmd_buffer);
 }
 

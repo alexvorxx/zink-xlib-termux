@@ -21,22 +21,23 @@
  * SOFTWARE.
  */
 
-#include "agx_pack.h"
 #include "agx_formats.h"
 #include "agx_internal_formats.h"
+#include "agx_pack.h"
 
-#define T true
-#define F false
+#define T                     true
+#define F                     false
 #define AGX_INTERNAL_FORMAT__ PIPE_FORMAT_NONE
 
-#define AGX_FMT(pipe, channels_, type_, is_renderable, internal_fmt) \
-   [PIPE_FORMAT_ ## pipe] = { \
-      .channels = AGX_CHANNELS_ ## channels_, \
-      .type = AGX_TEXTURE_TYPE_ ## type_, \
-      .renderable = is_renderable, \
-      .internal = (enum pipe_format) AGX_INTERNAL_FORMAT_ ## internal_fmt,\
+#define AGX_FMT(pipe, channels_, type_, is_renderable, internal_fmt)           \
+   [PIPE_FORMAT_##pipe] = {                                                    \
+      .channels = AGX_CHANNELS_##channels_,                                    \
+      .type = AGX_TEXTURE_TYPE_##type_,                                        \
+      .renderable = is_renderable,                                             \
+      .internal = (enum pipe_format)AGX_INTERNAL_FORMAT_##internal_fmt,        \
    }
 
+/* clang-format off */
 const struct agx_pixel_format_entry agx_pixel_format[PIPE_FORMAT_COUNT] = {
    AGX_FMT(R8_UNORM,                R8,            UNORM,  T, U8NORM),
    AGX_FMT(R8G8_UNORM,              R8G8,          UNORM,  T, U8NORM),
@@ -115,6 +116,9 @@ const struct agx_pixel_format_entry agx_pixel_format[PIPE_FORMAT_COUNT] = {
    AGX_FMT(Z32_FLOAT_S8X24_UINT,    R32,           FLOAT,  F, _),
    AGX_FMT(S8_UINT,                 R8,            UINT,   F, _),
 
+   /* The stencil part of Z32F + S8 is just S8 */
+   AGX_FMT(X32_S8X24_UINT,          R8,            UINT,   F, _),
+
    /* These must be lowered by u_transfer_helper to Z32F + S8 */
    AGX_FMT(Z24X8_UNORM,             R32,           FLOAT,  F, _),
    AGX_FMT(Z24_UNORM_S8_UINT,       R32,           FLOAT,  F, _),
@@ -190,69 +194,4 @@ const struct agx_pixel_format_entry agx_pixel_format[PIPE_FORMAT_COUNT] = {
    AGX_FMT(BPTC_RGBA_UNORM,         BC7,           UNORM,  F, _),
    AGX_FMT(BPTC_SRGBA,              BC7,           UNORM,  F, _),
 };
-
-const enum agx_format
-agx_vertex_format[PIPE_FORMAT_COUNT] = {
-   [PIPE_FORMAT_R32_FLOAT] = AGX_FORMAT_I32,
-   [PIPE_FORMAT_R32_SINT] = AGX_FORMAT_I32,
-   [PIPE_FORMAT_R32_UINT] = AGX_FORMAT_I32,
-   [PIPE_FORMAT_R32G32_FLOAT] = AGX_FORMAT_I32,
-   [PIPE_FORMAT_R32G32_SINT] = AGX_FORMAT_I32,
-   [PIPE_FORMAT_R32G32_UINT] = AGX_FORMAT_I32,
-   [PIPE_FORMAT_R32G32B32_FLOAT] = AGX_FORMAT_I32,
-   [PIPE_FORMAT_R32G32B32_UINT] = AGX_FORMAT_I32,
-   [PIPE_FORMAT_R32G32B32_SINT] = AGX_FORMAT_I32,
-   [PIPE_FORMAT_R32G32B32A32_FLOAT] = AGX_FORMAT_I32,
-   [PIPE_FORMAT_R32G32B32A32_UINT] = AGX_FORMAT_I32,
-   [PIPE_FORMAT_R32G32B32A32_SINT] = AGX_FORMAT_I32,
-
-   [PIPE_FORMAT_R8_UNORM] = AGX_FORMAT_U8NORM,
-   [PIPE_FORMAT_R8G8_UNORM] = AGX_FORMAT_U8NORM,
-   [PIPE_FORMAT_R8G8B8_UNORM] = AGX_FORMAT_U8NORM,
-   [PIPE_FORMAT_R8G8B8A8_UNORM] = AGX_FORMAT_U8NORM,
-
-   [PIPE_FORMAT_R8_SNORM] = AGX_FORMAT_S8NORM,
-   [PIPE_FORMAT_R8G8_SNORM] = AGX_FORMAT_S8NORM,
-   [PIPE_FORMAT_R8G8B8_SNORM] = AGX_FORMAT_S8NORM,
-   [PIPE_FORMAT_R8G8B8A8_SNORM] = AGX_FORMAT_S8NORM,
-
-   [PIPE_FORMAT_R16_UNORM] = AGX_FORMAT_U16NORM,
-   [PIPE_FORMAT_R16G16_UNORM] = AGX_FORMAT_U16NORM,
-   [PIPE_FORMAT_R16G16B16_UNORM] = AGX_FORMAT_U16NORM,
-   [PIPE_FORMAT_R16G16B16A16_UNORM] = AGX_FORMAT_U16NORM,
-
-   [PIPE_FORMAT_R16_SNORM] = AGX_FORMAT_S16NORM,
-   [PIPE_FORMAT_R16G16_SNORM] = AGX_FORMAT_S16NORM,
-   [PIPE_FORMAT_R16G16B16_SNORM] = AGX_FORMAT_S16NORM,
-   [PIPE_FORMAT_R16G16B16A16_SNORM] = AGX_FORMAT_S16NORM,
-
-   [PIPE_FORMAT_R8_UINT] = AGX_FORMAT_I8,
-   [PIPE_FORMAT_R8G8_UINT] = AGX_FORMAT_I8,
-   [PIPE_FORMAT_R8G8B8_UINT] = AGX_FORMAT_I8,
-   [PIPE_FORMAT_R8G8B8A8_UINT] = AGX_FORMAT_I8,
-
-   [PIPE_FORMAT_R8_SINT] = AGX_FORMAT_I8,
-   [PIPE_FORMAT_R8G8_SINT] = AGX_FORMAT_I8,
-   [PIPE_FORMAT_R8G8B8_SINT] = AGX_FORMAT_I8,
-   [PIPE_FORMAT_R8G8B8A8_SINT] = AGX_FORMAT_I8,
-
-   [PIPE_FORMAT_R16_UINT] = AGX_FORMAT_I16,
-   [PIPE_FORMAT_R16G16_UINT] = AGX_FORMAT_I16,
-   [PIPE_FORMAT_R16G16B16_UINT] = AGX_FORMAT_I16,
-   [PIPE_FORMAT_R16G16B16A16_UINT] = AGX_FORMAT_I16,
-
-   [PIPE_FORMAT_R16_SINT] = AGX_FORMAT_I16,
-   [PIPE_FORMAT_R16G16_SINT] = AGX_FORMAT_I16,
-   [PIPE_FORMAT_R16G16B16_SINT] = AGX_FORMAT_I16,
-   [PIPE_FORMAT_R16G16B16A16_SINT] = AGX_FORMAT_I16,
-
-   [PIPE_FORMAT_R32_UINT] = AGX_FORMAT_I32,
-   [PIPE_FORMAT_R32G32_UINT] = AGX_FORMAT_I32,
-   [PIPE_FORMAT_R32G32B32_UINT] = AGX_FORMAT_I32,
-   [PIPE_FORMAT_R32G32B32A32_UINT] = AGX_FORMAT_I32,
-
-   [PIPE_FORMAT_R32_SINT] = AGX_FORMAT_I32,
-   [PIPE_FORMAT_R32G32_SINT] = AGX_FORMAT_I32,
-   [PIPE_FORMAT_R32G32B32_SINT] = AGX_FORMAT_I32,
-   [PIPE_FORMAT_R32G32B32A32_SINT] = AGX_FORMAT_I32,
-};
+/* clang-format on */

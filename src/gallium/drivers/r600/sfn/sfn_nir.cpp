@@ -642,6 +642,7 @@ static bool
 optimize_once(nir_shader *shader)
 {
    bool progress = false;
+   NIR_PASS(progress, shader, nir_lower_alu_to_scalar, r600_lower_to_scalar_instr_filter, NULL);
    NIR_PASS(progress, shader, nir_lower_vars_to_ssa);
    NIR_PASS(progress, shader, nir_copy_prop);
    NIR_PASS(progress, shader, nir_opt_dce);
@@ -773,6 +774,9 @@ r600_finalize_nir(pipe_screen *screen, void *shader)
    NIR_PASS_V(nir, r600_lower_shared_io);
    NIR_PASS_V(nir, r600_nir_lower_atomics);
 
+   if (rs->b.gfx_level == CAYMAN)
+      NIR_PASS_V(nir, r600_legalize_image_load_store);
+
    while (optimize_once(nir))
       ;
 
@@ -858,7 +862,7 @@ r600_shader_from_nir(struct r600_context *rctx,
        (sh->info.stage == MESA_SHADER_VERTEX && key->vs.as_ls)) {
       auto prim_type = sh->info.stage == MESA_SHADER_TESS_EVAL
                           ? u_tess_prim_from_shader(sh->info.tess._primitive_mode)
-                          : key->tcs.prim_mode;
+                          : (pipe_prim_type)key->tcs.prim_mode;
       NIR_PASS_V(sh, r600_lower_tess_io, static_cast<pipe_prim_type>(prim_type));
    }
 
@@ -1025,11 +1029,13 @@ r600_shader_from_nir(struct r600_context *rctx,
                       rscreen->b.family,
                       rscreen->has_compressed_msaa_texturing);
 
+
    r600::sfn_log << r600::SfnLog::shader_info << "pipeshader->shader.processor_type = "
                  << pipeshader->shader.processor_type << "\n";
 
    pipeshader->shader.bc.type = pipeshader->shader.processor_type;
    pipeshader->shader.bc.isa = rctx->isa;
+   pipeshader->shader.bc.ngpr = shader->required_registers();
 
    r600::Assembler afs(&pipeshader->shader, *key);
    if (!afs.lower(scheduled_shader)) {

@@ -1274,13 +1274,13 @@ var_fill_const_array(struct ntd_context *ctx, const struct nir_constant *c,
                                                  offset);
    } else if (glsl_type_is_array(type)) {
       assert(!glsl_type_is_unsized_array(type));
-      const struct glsl_type *without = glsl_without_array(type);
-      unsigned stride = glsl_get_explicit_stride(without);
+      const struct glsl_type *without = glsl_get_array_element(type);
+      unsigned stride = glsl_get_explicit_stride(type);
 
       for (unsigned elt = 0; elt < glsl_get_length(type); elt++) {
          var_fill_const_array(ctx, c->elements[elt], without,
-                              const_vals, offset + (elt * stride));
-         offset += glsl_get_cl_size(without);
+                              const_vals, offset);
+         offset += stride;
       }
    } else if (glsl_type_is_struct(type)) {
       for (unsigned int elt = 0; elt < glsl_get_length(type); elt++) {
@@ -4559,7 +4559,7 @@ emit_intrinsic(struct ntd_context *ctx, nir_intrinsic_instr *intr)
    case nir_intrinsic_load_sample_pos_from_id:
       return emit_load_sample_pos_from_id(ctx, intr);
 
-   case nir_intrinsic_load_helper_invocation:
+   case nir_intrinsic_is_helper_invocation:
       return emit_load_unary_external_function(
          ctx, intr, "dx.op.isHelperLane", DXIL_INTR_IS_HELPER_LANE);
 
@@ -5342,9 +5342,10 @@ static bool
 emit_loop(struct ntd_context *ctx, nir_loop *loop)
 {
    nir_block *first_block = nir_loop_first_block(loop);
+   nir_block *last_block = nir_loop_last_block(loop);
 
-   assert(nir_loop_last_block(loop)->successors[0]);
-   assert(!nir_loop_last_block(loop)->successors[1]);
+   assert(last_block->successors[0]);
+   assert(!last_block->successors[1]);
 
    if (!emit_branch(ctx, first_block->index))
       return false;
@@ -5352,7 +5353,12 @@ emit_loop(struct ntd_context *ctx, nir_loop *loop)
    if (!emit_cf_list(ctx, &loop->body))
       return false;
 
-   if (!emit_branch(ctx, first_block->index))
+   /* If the loop's last block doesn't explicitly jump somewhere, then there's
+    * an implicit continue that should take it back to the first loop block
+    */
+   nir_instr *last_instr = nir_block_last_instr(last_block);
+   if ((!last_instr || last_instr->type != nir_instr_type_jump) &&
+       !emit_branch(ctx, first_block->index))
       return false;
 
    return true;
@@ -5958,9 +5964,9 @@ allocate_sysvalues(struct ntd_context *ctx)
 {
    unsigned driver_location = 0;
    nir_foreach_variable_with_modes(var, ctx->shader, nir_var_shader_in)
-      driver_location++;
+      driver_location = MAX2(driver_location, var->data.driver_location + 1);
    nir_foreach_variable_with_modes(var, ctx->shader, nir_var_system_value)
-      driver_location++;
+      driver_location = MAX2(driver_location, var->data.driver_location + 1);
 
    if (ctx->shader->info.stage == MESA_SHADER_FRAGMENT &&
        ctx->shader->info.inputs_read &&
@@ -6097,6 +6103,12 @@ nir_to_dxil(struct nir_shader *s, const struct nir_to_dxil_options *opts,
    NIR_PASS_V(s, nir_lower_pack);
    NIR_PASS_V(s, dxil_nir_lower_system_values);
    NIR_PASS_V(s, nir_lower_io_to_scalar, nir_var_shader_in | nir_var_system_value | nir_var_shader_out);
+   if (opts->shader_model_max < SHADER_MODEL_6_6) {
+      /* In a later pass, load_helper_invocation will be lowered to sample mask based fallback,
+       * so both load- and is- will be emulated eventually.
+       */
+      NIR_PASS_V(s, nir_lower_is_helper_invocation);
+   }
 
    if (ctx->mod.shader_kind == DXIL_HULL_SHADER)
       NIR_PASS_V(s, dxil_nir_split_tess_ctrl, &ctx->tess_ctrl_patch_constant_func);
@@ -6219,27 +6231,4 @@ out:
    ralloc_free(ctx->ralloc_ctx);
    free(ctx);
    return retval;
-}
-
-enum dxil_sysvalue_type
-nir_var_to_dxil_sysvalue_type(nir_variable *var, uint64_t other_stage_mask)
-{
-   switch (var->data.location) {
-   case VARYING_SLOT_FACE:
-      return DXIL_GENERATED_SYSVALUE;
-   case VARYING_SLOT_POS:
-   case VARYING_SLOT_PRIMITIVE_ID:
-   case VARYING_SLOT_CLIP_DIST0:
-   case VARYING_SLOT_CLIP_DIST1:
-   case VARYING_SLOT_PSIZ:
-   case VARYING_SLOT_TESS_LEVEL_INNER:
-   case VARYING_SLOT_TESS_LEVEL_OUTER:
-   case VARYING_SLOT_VIEWPORT:
-   case VARYING_SLOT_LAYER:
-      if (!((1ull << var->data.location) & other_stage_mask))
-         return DXIL_SYSVALUE;
-      FALLTHROUGH;
-   default:
-      return DXIL_NO_SYSVALUE;
-   }
 }

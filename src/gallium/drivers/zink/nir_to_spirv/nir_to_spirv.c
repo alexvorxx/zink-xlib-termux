@@ -990,9 +990,9 @@ get_bare_image_type(struct ntv_context *ctx, struct nir_variable *var, bool is_s
    }
    if (dimension == SpvDimBuffer) {
       if (is_sampler)
-         spirv_builder_emit_cap(&ctx->builder, SpvCapabilityImageBuffer);
-      else
          spirv_builder_emit_cap(&ctx->builder, SpvCapabilitySampledBuffer);
+      else
+         spirv_builder_emit_cap(&ctx->builder, SpvCapabilityImageBuffer);
    }
 
    bool arrayed = glsl_sampler_type_is_array(type);
@@ -2185,13 +2185,6 @@ emit_alu(struct ntv_context *ctx, nir_alu_instr *alu)
                                             nir_src_bit_size(alu->src[0].src),
                                             num_components, 0));
       break;
-   case nir_op_i2b1:
-      assert(nir_op_infos[alu->op].num_inputs == 1);
-      result = emit_binop(ctx, SpvOpINotEqual, dest_type, src[0],
-                          get_ivec_constant(ctx,
-                                            nir_src_bit_size(alu->src[0].src),
-                                            num_components, 0));
-      break;
 
 
 #define BINOP(nir_op, spirv_op) \
@@ -3292,7 +3285,7 @@ emit_intrinsic(struct ntv_context *ctx, nir_intrinsic_instr *intr)
       emit_load_uint_input(ctx, intr, &ctx->sample_mask_in_var, "gl_SampleMaskIn", SpvBuiltInSampleMask);
       break;
 
-   case nir_intrinsic_emit_vertex_with_counter:
+   case nir_intrinsic_emit_vertex:
       /* geometry shader emits copied xfb outputs just prior to EmitVertex(),
        * since that's the end of the shader
        */
@@ -3303,11 +3296,7 @@ emit_intrinsic(struct ntv_context *ctx, nir_intrinsic_instr *intr)
                                    ctx->nir->info.stage == MESA_SHADER_GEOMETRY && util_bitcount(ctx->nir->info.gs.active_stream_mask) > 1);
       break;
 
-   case nir_intrinsic_set_vertex_and_primitive_count:
-      /* do nothing */
-      break;
-
-   case nir_intrinsic_end_primitive_with_counter:
+   case nir_intrinsic_end_primitive:
       spirv_builder_end_primitive(&ctx->builder, nir_intrinsic_stream_id(intr),
                                   ctx->nir->info.stage == MESA_SHADER_GEOMETRY && util_bitcount(ctx->nir->info.gs.active_stream_mask) > 1);
       break;

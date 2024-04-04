@@ -48,6 +48,8 @@ static void
 lower_rt_intrinsics_impl(nir_function_impl *impl,
                          const struct intel_device_info *devinfo)
 {
+   bool progress = false;
+
    nir_builder build;
    nir_builder_init(&build, impl);
    nir_builder *b = &build;
@@ -232,6 +234,10 @@ lower_rt_intrinsics_impl(nir_function_impl *impl,
             sysval = nir_u2u32(b, world_ray_in.inst_leaf_ptr);
             break;
 
+         case nir_intrinsic_load_cull_mask:
+            sysval = nir_u2u32(b, world_ray_in.ray_mask);
+            break;
+
          case nir_intrinsic_load_ray_geometry_index: {
             nir_ssa_def *geometry_index_dw =
                nir_load_global(b, nir_iadd_imm(b, hit_in.prim_leaf_ptr, 4), 4,
@@ -327,6 +333,8 @@ lower_rt_intrinsics_impl(nir_function_impl *impl,
             continue;
          }
 
+         progress = true;
+
          if (sysval) {
             nir_ssa_def_rewrite_uses(&intrin->dest.ssa,
                                      sysval);
@@ -335,8 +343,11 @@ lower_rt_intrinsics_impl(nir_function_impl *impl,
       }
    }
 
-   nir_metadata_preserve(impl, nir_metadata_block_index |
-                               nir_metadata_dominance);
+   nir_metadata_preserve(impl,
+                         progress ?
+                         nir_metadata_none :
+                         (nir_metadata_block_index |
+                          nir_metadata_dominance));
 }
 
 /** Lower ray-tracing system values and intrinsics

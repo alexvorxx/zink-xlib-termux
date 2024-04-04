@@ -117,6 +117,7 @@ NEST = immediate("nest")
 INVERT_COND = immediate("invert_cond")
 NEST = immediate("nest")
 TARGET = immediate("target", "agx_block *")
+ZS = immediate("zs")
 PERSPECTIVE = immediate("perspective", "bool")
 SR = enum("sr", {
    0:  'threadgroup_position_in_grid.x',
@@ -236,7 +237,7 @@ op("texture_load",
 # sources are base, index
 op("device_load",
       encoding_32 = (0x05, 0x7F, 6, 8),
-      srcs = 2, imms = [FORMAT, MASK, SCOREBOARD], can_reorder = False)
+      srcs = 2, imms = [FORMAT, MASK, SHIFT, SCOREBOARD], can_reorder = False)
 
 # sources are value, index
 # TODO: Consider permitting the short form
@@ -250,6 +251,10 @@ op("wait", (0x38, 0xFF, 2, _), dests = 0,
 op("get_sr", (0x72, 0x7F | L, 4, _), dests = 1, imms = [SR])
 
 op("sample_mask", (0x7fc1, 0xffff, 6, _), dests = 0, srcs = 1, can_eliminate = False)
+
+# Sources: sample mask, combined depth/stencil
+op("zs_emit", (0x41, 0xFF | L, 4, _), dests = 0, srcs = 2,
+              can_eliminate = False, imms = [ZS])
 
 # Essentially same encoding. Last source is the sample mask
 op("ld_tile", (0x49, 0x7F, 8, _), dests = 1, srcs = 1,

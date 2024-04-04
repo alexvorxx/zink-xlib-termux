@@ -73,7 +73,7 @@ cs_program_emit(struct fd_context *ctx, struct fd_ringbuffer *ring,
                A6XX_SP_CS_CTRL_REG0_BRANCHSTACK(ir3_shader_branchstack_hw(v)));
 
    uint32_t shared_size =
-      MAX2(((int)v->cs.req_local_mem + variable_shared_size- 1) / 1024, 1);
+      MAX2(((int)(v->cs.req_local_mem + variable_shared_size) - 1) / 1024, 1);
    OUT_PKT4(ring, REG_A6XX_SP_CS_UNKNOWN_A9B1, 1);
    OUT_RING(ring, A6XX_SP_CS_UNKNOWN_A9B1_SHARED_SIZE(shared_size) |
                      A6XX_SP_CS_UNKNOWN_A9B1_UNK6);
@@ -121,6 +121,10 @@ fd6_launch_grid(struct fd_context *ctx, const struct pipe_grid_info *info) in_dt
    struct ir3_shader_variant *v;
    struct fd_ringbuffer *ring = ctx->batch->draw;
    unsigned nglobal = 0;
+
+   trace_start_compute(&ctx->batch->trace, ring, !!info->indirect, info->work_dim,
+                       info->block[0], info->block[1], info->block[2],
+                       info->grid[0],  info->grid[1],  info->grid[2]);
 
    v = ir3_shader_variant(ir3_get_shader(ctx->compute), key, false, &ctx->debug);
    if (!v)
@@ -176,9 +180,6 @@ fd6_launch_grid(struct fd_context *ctx, const struct pipe_grid_info *info) in_dt
    OUT_RING(ring, 1); /* HLSQ_CS_KERNEL_GROUP_X */
    OUT_RING(ring, 1); /* HLSQ_CS_KERNEL_GROUP_Y */
    OUT_RING(ring, 1); /* HLSQ_CS_KERNEL_GROUP_Z */
-
-   trace_grid_info(&ctx->batch->trace, ring, info);
-   trace_start_compute(&ctx->batch->trace, ring);
 
    if (info->indirect) {
       struct fd_resource *rsc = fd_resource(info->indirect);

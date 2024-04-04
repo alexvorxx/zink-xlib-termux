@@ -49,8 +49,7 @@
 #include "nir/tgsi_to_nir.h"
 
 #define KEY_INIT_NO_ID()                              \
-   .base.tex.swizzles[0 ... BRW_MAX_SAMPLERS - 1] = 0x688,   \
-   .base.tex.compressed_multisample_layout_mask = ~0
+   .base.tex.swizzles[0 ... BRW_MAX_SAMPLERS - 1] = 0x688
 #define KEY_INIT()                                                        \
    .base.program_string_id = ish->program_id,                             \
    .base.limit_trig_input_range = screen->driconf.limit_trig_input_range, \
@@ -161,7 +160,6 @@ crocus_populate_sampler_prog_key_data(struct crocus_context *ice,
 
       struct crocus_sampler_view *texture = ice->state.shaders[stage].textures[s];
       key->swizzles[s] = SWIZZLE_NOOP;
-      key->scale_factors[s] = 0.0f;
 
       if (!texture)
          continue;
@@ -2711,7 +2709,8 @@ crocus_create_uncompiled_shader(struct pipe_context *ctx,
    else
      ish->needs_edge_flag = false;
 
-   brw_preprocess_nir(screen->compiler, nir, NULL);
+   struct brw_nir_compiler_opts opts = {};
+   brw_preprocess_nir(screen->compiler, nir, &opts);
 
    NIR_PASS_V(nir, brw_nir_lower_storage_image, devinfo);
    NIR_PASS_V(nir, crocus_lower_storage_image_derefs);

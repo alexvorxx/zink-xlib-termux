@@ -141,6 +141,7 @@ _blorp_combine_address(struct blorp_batch *batch, void *location,
 #define __gen_combine_address _blorp_combine_address
 
 #include "genxml/genX_pack.h"
+#include "common/intel_genX_state.h"
 
 #define _blorp_cmd_length(cmd) cmd ## _length
 #define _blorp_cmd_length_bias(cmd) cmd ## _length_bias
@@ -593,6 +594,10 @@ blorp_emit_vertex_elements(struct blorp_batch *batch,
       sgvs.InstanceIDElementOffset = 0;
    }
 
+#if GFX_VER >= 11
+   blorp_emit(batch, GENX(3DSTATE_VF_SGVS_2), sgvs);
+#endif
+
    for (unsigned i = 0; i < num_elements; i++) {
       blorp_emit(batch, GENX(3DSTATE_VF_INSTANCING), vf) {
          vf.VertexElementIndex = i;
@@ -838,6 +843,7 @@ blorp_emit_ps_config(struct blorp_batch *batch,
     */
 
 #if GFX_VER >= 8
+   const struct intel_device_info *devinfo = batch->blorp->compiler->devinfo;
 
    blorp_emit(batch, GENX(3DSTATE_WM), wm);
 
@@ -854,23 +860,8 @@ blorp_emit_ps_config(struct blorp_batch *batch,
          ps.SamplerCount = 0;
 
       if (prog_data) {
-         ps._8PixelDispatchEnable = prog_data->dispatch_8;
-         ps._16PixelDispatchEnable = prog_data->dispatch_16;
-         ps._32PixelDispatchEnable = prog_data->dispatch_32;
-
-         /* From the Sky Lake PRM 3DSTATE_PS::32 Pixel Dispatch Enable:
-          *
-          *    "When NUM_MULTISAMPLES = 16 or FORCE_SAMPLE_COUNT = 16, SIMD32
-          *    Dispatch must not be enabled for PER_PIXEL dispatch mode."
-          *
-          * Since 16x MSAA is first introduced on SKL, we don't need to apply
-          * the workaround on any older hardware.
-          */
-         if (GFX_VER >= 9 && !prog_data->persample_dispatch &&
-             params->num_samples == 16) {
-            assert(ps._8PixelDispatchEnable || ps._16PixelDispatchEnable);
-            ps._32PixelDispatchEnable = false;
-         }
+         intel_set_ps_dispatch_state(&ps, devinfo, prog_data,
+                                     params->num_samples);
 
          ps.DispatchGRFStartRegisterForConstantSetupData0 =
             brw_wm_prog_data_dispatch_grf_start_reg(prog_data, ps, 0);
@@ -894,7 +885,6 @@ blorp_emit_ps_config(struct blorp_batch *batch,
        *
        * In Gfx8 the format is U8-2 whereas in Gfx9+ it is U9-1.
        */
-      const struct intel_device_info *devinfo = batch->blorp->compiler->devinfo;
       ps.MaximumNumberofThreadsPerPSD =
          devinfo->max_threads_per_psd - (GFX_VER == 8 ? 2 : 1);
 
@@ -943,6 +933,7 @@ blorp_emit_ps_config(struct blorp_batch *batch,
    }
 
 #elif GFX_VER >= 7
+   const struct intel_device_info *devinfo = batch->blorp->compiler->devinfo;
 
    blorp_emit(batch, GENX(3DSTATE_WM), wm) {
       switch (params->hiz_op) {
@@ -989,9 +980,8 @@ blorp_emit_ps_config(struct blorp_batch *batch,
 #endif
 
       if (prog_data) {
-         ps._8PixelDispatchEnable = prog_data->dispatch_8;
-         ps._16PixelDispatchEnable = prog_data->dispatch_16;
-         ps._32PixelDispatchEnable = prog_data->dispatch_32;
+         intel_set_ps_dispatch_state(&ps, devinfo, prog_data,
+                                     params->num_samples);
 
          ps.DispatchGRFStartRegisterForConstantSetupData0 =
             brw_wm_prog_data_dispatch_grf_start_reg(prog_data, ps, 0);

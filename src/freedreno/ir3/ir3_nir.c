@@ -134,7 +134,10 @@ ir3_optimize_loop(struct ir3_compiler *compiler, nir_shader *s)
           */
          .uniform_max = (1 << 9) - 1,
 
-         .shared_max = (1 << 13) - 1,
+         /* STL/LDL have 13b for offset with MSB being a sign bit, but this opt
+          * doesn't deal with negative offsets.
+          */
+         .shared_max = (1 << 12) - 1,
 
          .buffer_max = ~0,
       };
@@ -766,7 +769,7 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so, nir_shader *s)
          };
          struct nir_fold_16bit_tex_image_options fold_16bit_options = {
             .rounding_mode = nir_rounding_mode_rtz,
-            .fold_tex_dest = true,
+            .fold_tex_dest_types = nir_type_float,
             /* blob dumps have no half regs on pixel 2's ldib or stib, so only enable for a6xx+. */
             .fold_image_load_store_data = so->compiler->gen >= 6,
             .fold_srcs_options_count = 1,

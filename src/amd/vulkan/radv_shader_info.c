@@ -64,9 +64,6 @@ gather_intrinsic_store_output_info(const nir_shader *nir, const nir_intrinsic_in
    unsigned write_mask = nir_intrinsic_write_mask(instr);
    uint8_t *output_usage_mask = NULL;
 
-   if (instr->src[0].ssa->bit_size == 64)
-      write_mask = util_widen_mask(write_mask, 2);
-
    switch (nir->info.stage) {
    case MESA_SHADER_VERTEX:
       output_usage_mask = info->vs.output_usage_mask;
@@ -78,8 +75,12 @@ gather_intrinsic_store_output_info(const nir_shader *nir, const nir_intrinsic_in
       output_usage_mask = info->gs.output_usage_mask;
       break;
    case MESA_SHADER_FRAGMENT:
-      if (idx >= FRAG_RESULT_DATA0)
+      if (idx >= FRAG_RESULT_DATA0) {
          info->ps.colors_written |= 0xf << (4 * (idx - FRAG_RESULT_DATA0));
+
+         if (idx == FRAG_RESULT_DATA0)
+            info->ps.color0_written = write_mask;
+      }
       break;
    default:
       break;
@@ -89,6 +90,11 @@ gather_intrinsic_store_output_info(const nir_shader *nir, const nir_intrinsic_in
       for (unsigned i = 0; i < num_slots; i++) {
          output_usage_mask[idx + i] |= ((write_mask >> (i * 4)) & 0xf) << component;
       }
+   }
+
+   if (nir->info.stage == MESA_SHADER_GEOMETRY) {
+      uint8_t gs_streams = nir_intrinsic_io_semantics(instr).gs_streams;
+      info->gs.output_streams[idx] |= gs_streams << (component * 2);
    }
 }
 
@@ -212,6 +218,9 @@ gather_intrinsic_info(const nir_shader *nir, const nir_intrinsic_instr *instr,
       break;
    case nir_intrinsic_load_rt_dynamic_callable_stack_base_amd:
       info->cs.uses_dynamic_rt_callable_stack = true;
+      break;
+   case nir_intrinsic_bvh64_intersect_ray_amd:
+      info->cs.uses_rt = true;
       break;
    default:
       break;
@@ -452,12 +461,10 @@ gather_shader_info_gs(const nir_shader *nir, struct radv_shader_info *info)
    nir_foreach_shader_out_variable(var, nir) {
       unsigned num_components = glsl_get_component_slots(var->type);
       unsigned stream = var->data.stream;
-      unsigned idx = var->data.location;
 
       assert(stream < 4);
 
       info->gs.num_stream_output_components[stream] += num_components;
-      info->gs.output_streams[idx] = stream | (stream << 2) | (stream << 4) | (stream << 6);
    }
 }
 
@@ -524,7 +531,11 @@ gather_shader_info_fs(const nir_shader *nir, const struct radv_pipeline_key *pip
    info->ps.num_interp = nir->num_inputs - num_per_primitive_inputs;
    info->ps.num_prim_interp = num_per_primitive_inputs;
    info->ps.can_discard = nir->info.fs.uses_discard;
-   info->ps.early_fragment_test = nir->info.fs.early_fragment_tests;
+   info->ps.early_fragment_test = nir->info.fs.early_fragment_tests ||
+                                  (nir->info.fs.early_and_late_fragment_tests &&
+                                   nir->info.fs.depth_layout == FRAG_DEPTH_LAYOUT_NONE &&
+                                   nir->info.fs.stencil_front_layout == FRAG_STENCIL_LAYOUT_NONE &&
+                                   nir->info.fs.stencil_back_layout == FRAG_STENCIL_LAYOUT_NONE);
    info->ps.post_depth_coverage = nir->info.fs.post_depth_coverage;
    info->ps.depth_layout = nir->info.fs.depth_layout;
    info->ps.uses_sample_shading = nir->info.fs.uses_sample_shading;
@@ -562,6 +573,10 @@ gather_shader_info_fs(const nir_shader *nir, const struct radv_pipeline_key *pip
    info->ps.spi_ps_input = radv_compute_spi_ps_input(pipeline_key, info);
 
    info->ps.has_epilog = pipeline_key->ps.has_epilog;
+
+   info->ps.writes_mrt0_alpha =
+      (pipeline_key->ps.alpha_to_coverage_via_mrtz && (info->ps.color0_written & 0x8)) &&
+      (info->ps.writes_z || info->ps.writes_stencil || info->ps.writes_sample_mask);
 
    nir_foreach_shader_in_variable(var, nir) {
       unsigned attrib_count = glsl_count_attribute_slots(var->type, false);
@@ -611,8 +626,12 @@ gather_shader_info_cs(struct radv_device *device, const nir_shader *nir,
    unsigned req_subgroup_size = subgroup_size;
    bool require_full_subgroups = pipeline_key->cs.require_full_subgroups;
 
+   unsigned default_wave_size = device->physical_device->cs_wave_size;
+   if (info->cs.uses_rt)
+      default_wave_size = device->physical_device->rt_wave_size;
+
    if (!subgroup_size)
-      subgroup_size = device->physical_device->cs_wave_size;
+      subgroup_size = default_wave_size;
 
    unsigned local_size =
       nir->info.workgroup_size[0] * nir->info.workgroup_size[1] * nir->info.workgroup_size[2];
@@ -620,8 +639,8 @@ gather_shader_info_cs(struct radv_device *device, const nir_shader *nir,
    /* Games don't always request full subgroups when they should, which can cause bugs if cswave32
     * is enabled.
     */
-   if (device->physical_device->cs_wave_size == 32 && nir->info.uses_wide_subgroup_intrinsics &&
-       !req_subgroup_size && local_size % RADV_SUBGROUP_SIZE == 0)
+   if (default_wave_size == 32 && nir->info.uses_wide_subgroup_intrinsics && !req_subgroup_size &&
+       local_size % RADV_SUBGROUP_SIZE == 0)
       require_full_subgroups = true;
 
    if (require_full_subgroups && !req_subgroup_size) {

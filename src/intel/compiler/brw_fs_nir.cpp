@@ -4348,34 +4348,9 @@ fs_nir_emit_cs_intrinsic(nir_to_brw_state &ntb,
 
       dest = retype(dest, dest_type);
       fs_reg src0 = retype(get_nir_src(ntb, instr->src[0]), dest_type);
-      const fs_reg dest_hf = dest;
 
       fs_builder bld16 = bld.exec_all().group(16, 0);
       fs_builder bldn = devinfo->ver >= 20 ? bld16 : bld.exec_all().group(8, 0);
-
-      /* DG2 cannot have the destination or source 0 of DPAS be float16. It is
-       * still advantageous to support these formats for memory and bandwidth
-       * savings.
-       *
-       * The float16 source must be expanded to float32.
-       */
-      if (devinfo->verx10 == 125 && dest_type == BRW_TYPE_HF &&
-          !s.compiler->lower_dpas) {
-         dest = bldn.vgrf(BRW_TYPE_F, rcount);
-
-         if (src0.file != ARF) {
-            const fs_reg src0_hf = src0;
-
-            src0 = bldn.vgrf(BRW_TYPE_F, rcount);
-
-            for (unsigned i = 0; i < 4; i++) {
-               bld16.MOV(byte_offset(src0, REG_SIZE * i * 2),
-                         byte_offset(src0_hf, REG_SIZE * i));
-            }
-         } else {
-            src0 = retype(src0, BRW_TYPE_F);
-         }
-      }
 
       bldn.DPAS(dest,
                 src0,
@@ -4384,14 +4359,6 @@ fs_nir_emit_cs_intrinsic(nir_to_brw_state &ntb,
                 sdepth,
                 rcount)
          ->saturate = nir_intrinsic_saturate(instr);
-
-      /* Compact the destination to float16 (from float32). */
-      if (!dest.equals(dest_hf)) {
-         for (unsigned i = 0; i < 4; i++) {
-            bld16.MOV(byte_offset(dest_hf, REG_SIZE * i),
-                      byte_offset(dest, REG_SIZE * i * 2));
-         }
-      }
 
       cs_prog_data->uses_systolic = true;
       break;

@@ -620,7 +620,6 @@ static const struct intel_device_info intel_device_info_chv = {
    .has_sample_with_hiz = true,                     \
    .has_illegal_ccs_values = true,                                    \
    .cooperative_matrix_configurations = {                             \
-    { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16 }, \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT32, INTEL_CMAT_FLOAT32 }, \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 32, INTEL_CMAT_SINT8, INTEL_CMAT_SINT8, INTEL_CMAT_SINT32, INTEL_CMAT_SINT32 },       \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 32, INTEL_CMAT_UINT8, INTEL_CMAT_UINT8, INTEL_CMAT_UINT32, INTEL_CMAT_UINT32 },       \
@@ -852,7 +851,6 @@ static const struct intel_device_info intel_device_info_cfl_gt3 = {
    .num_subslices = _subslices,                       \
    .max_eus_per_subslice = 8,                                         \
    .cooperative_matrix_configurations = {                             \
-    { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16 }, \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT32, INTEL_CMAT_FLOAT32 }, \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 32, INTEL_CMAT_SINT8, INTEL_CMAT_SINT8, INTEL_CMAT_SINT32, INTEL_CMAT_SINT32 },       \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 32, INTEL_CMAT_UINT8, INTEL_CMAT_UINT8, INTEL_CMAT_UINT32, INTEL_CMAT_UINT32 },       \
@@ -985,7 +983,6 @@ static const struct intel_device_info intel_device_info_ehl_2x4 = {
          .writecombining = PAT_ENTRY(1, WC, NONE),              \
    },                                                           \
    .cooperative_matrix_configurations = {                       \
-    { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16 }, \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT32, INTEL_CMAT_FLOAT32 }, \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 32, INTEL_CMAT_SINT8, INTEL_CMAT_SINT8, INTEL_CMAT_SINT32, INTEL_CMAT_SINT32 },       \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 32, INTEL_CMAT_UINT8, INTEL_CMAT_UINT8, INTEL_CMAT_UINT32, INTEL_CMAT_UINT32 },       \
@@ -1117,7 +1114,6 @@ static const struct intel_device_info intel_device_info_sg1 = {
    .has_aux_map = false,                                        \
    .simulator_id = 29,                                          \
    .cooperative_matrix_configurations = {                       \
-    { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16 }, \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT32, INTEL_CMAT_FLOAT32 }, \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 32, INTEL_CMAT_SINT8, INTEL_CMAT_SINT8, INTEL_CMAT_SINT32, INTEL_CMAT_SINT32 },       \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 32, INTEL_CMAT_UINT8, INTEL_CMAT_UINT8, INTEL_CMAT_UINT32, INTEL_CMAT_UINT32 },       \

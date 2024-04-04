@@ -2940,6 +2940,18 @@ fs_visitor::allocate_registers(bool allow_spilling)
 
    debug_optimizer(nir, "post_ra_alloc_scheduling", 96, 2);
 
+   /* Lowering VGRF to FIXED_GRF is currently done as a separate pass instead
+    * of part of assign_regs since both bank conflicts optimization and post
+    * RA scheduling take advantage of distinguishing references to registers
+    * that were allocated from references that were already fixed.
+    *
+    * TODO: Change the passes above, then move this lowering to be part of
+    * assign_regs.
+    */
+   brw_fs_lower_vgrfs_to_fixed_grfs(*this);
+
+   debug_optimizer(nir, "lowered_vgrfs_to_fixed_grfs", 96, 3);
+
    if (last_scratch > 0) {
       ASSERTED unsigned max_scratch_size = 2 * 1024 * 1024;
 

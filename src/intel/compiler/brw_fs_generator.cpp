@@ -64,80 +64,13 @@ brw_math_function(enum opcode op)
    }
 }
 
-
-static enum brw_reg_file
-brw_file_from_reg(fs_reg *reg)
-{
-   switch (reg->file) {
-   case ARF:
-      return BRW_ARCHITECTURE_REGISTER_FILE;
-   case FIXED_GRF:
-   case VGRF:
-      return BRW_GENERAL_REGISTER_FILE;
-   case IMM:
-      return BRW_IMMEDIATE_VALUE;
-   case BAD_FILE:
-   case ATTR:
-   case UNIFORM:
-      unreachable("not reached");
-   }
-   return BRW_ARCHITECTURE_REGISTER_FILE;
-}
-
 static struct brw_reg
 brw_reg_from_fs_reg(const struct intel_device_info *devinfo, fs_inst *inst,
-                    fs_reg *reg, bool compressed)
+                    fs_reg *reg)
 {
    struct brw_reg brw_reg;
 
    switch (reg->file) {
-   case VGRF:
-      if (reg->stride == 0) {
-         brw_reg = brw_vec1_reg(brw_file_from_reg(reg), reg->nr, 0);
-      } else {
-         /* From the Haswell PRM:
-          *
-          *  "VertStride must be used to cross GRF register boundaries. This
-          *   rule implies that elements within a 'Width' cannot cross GRF
-          *   boundaries."
-          *
-          * The maximum width value that could satisfy this restriction is:
-          */
-         const unsigned reg_width = REG_SIZE / (reg->stride * type_sz(reg->type));
-
-         /* Because the hardware can only split source regions at a whole
-          * multiple of width during decompression (i.e. vertically), clamp
-          * the value obtained above to the physical execution size of a
-          * single decompressed chunk of the instruction:
-          */
-         const unsigned phys_width = compressed ? inst->exec_size / 2 :
-                                     inst->exec_size;
-
-         const unsigned max_hw_width = 16;
-
-         /* XXX - The equation above is strictly speaking not correct on
-          *       hardware that supports unbalanced GRF writes -- On Gfx9+
-          *       each decompressed chunk of the instruction may have a
-          *       different execution size when the number of components
-          *       written to each destination GRF is not the same.
-          */
-         if (reg->stride > 4) {
-            assert(reg != &inst->dst);
-            assert(reg->stride * type_sz(reg->type) <= REG_SIZE);
-            brw_reg = brw_vecn_reg(1, brw_file_from_reg(reg), reg->nr, 0);
-            brw_reg = stride(brw_reg, reg->stride, 1, 0);
-         } else {
-            const unsigned width = MIN3(reg_width, phys_width, max_hw_width);
-            brw_reg = brw_vecn_reg(width, brw_file_from_reg(reg), reg->nr, 0);
-            brw_reg = stride(brw_reg, width * reg->stride, width, reg->stride);
-         }
-      }
-
-      brw_reg = retype(brw_reg, reg->type);
-      brw_reg = byte_offset(brw_reg, reg->offset);
-      brw_reg.abs = reg->abs;
-      brw_reg.negate = reg->negate;
-      break;
    case ARF:
    case FIXED_GRF:
    case IMM:
@@ -148,6 +81,7 @@ brw_reg_from_fs_reg(const struct intel_device_info *devinfo, fs_inst *inst,
       /* Probably unused. */
       brw_reg = brw_null_reg();
       break;
+   case VGRF:
    case ATTR:
    case UNIFORM:
       unreachable("not reached");
@@ -913,22 +847,6 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
       if (unlikely(debug_flag))
          disasm_annotate(disasm_info, inst, p->next_insn_offset);
 
-      /* If the instruction writes to more than one register, it needs to be
-       * explicitly marked as compressed on Gen <= 5.  On Gen >= 6 the
-       * hardware figures out by itself what the right compression mode is,
-       * but we still need to know whether the instruction is compressed to
-       * set up the source register regions appropriately.
-       *
-       * XXX - This is wrong for instructions that write a single register but
-       *       read more than one which should strictly speaking be treated as
-       *       compressed.  For instructions that don't write any registers it
-       *       relies on the destination being a null register of the correct
-       *       type and regioning so the instruction is considered compressed
-       *       or not accordingly.
-       */
-      const bool compressed =
-           inst->dst.component_size(inst->exec_size) > REG_SIZE;
-
       if (devinfo->ver >= 20 && inst->group % 8 != 0) {
          assert(inst->force_writemask_all);
          assert(!inst->predicate && !inst->conditional_mod);
@@ -941,8 +859,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
       }
 
       for (unsigned int i = 0; i < inst->sources; i++) {
-         src[i] = brw_reg_from_fs_reg(devinfo, inst,
-                                      &inst->src[i], compressed);
+         src[i] = brw_reg_from_fs_reg(devinfo, inst, &inst->src[i]);
 	 /* The accumulator result appears to get used for the
 	  * conditional modifier generation.  When negating a UD
 	  * value, there is a 33rd bit generated for the sign in the
@@ -953,8 +870,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
 		inst->src[i].type != BRW_REGISTER_TYPE_UD ||
 		!inst->src[i].negate);
       }
-      dst = brw_reg_from_fs_reg(devinfo, inst,
-                                &inst->dst, compressed);
+      dst = brw_reg_from_fs_reg(devinfo, inst, &inst->dst);
 
       brw_set_default_access_mode(p, BRW_ALIGN_1);
       brw_set_default_predicate_control(p, inst->predicate);

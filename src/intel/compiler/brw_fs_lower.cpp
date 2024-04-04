@@ -612,3 +612,95 @@ brw_fs_lower_alu_restrictions(fs_visitor &s)
 
    return progress;
 }
+
+static void
+brw_fs_lower_vgrf_to_fixed_grf(const struct intel_device_info *devinfo, fs_inst *inst,
+                               fs_reg *reg, bool compressed)
+{
+   if (reg->file != VGRF)
+      return;
+
+   struct brw_reg new_reg;
+
+   if (reg->stride == 0) {
+      new_reg = brw_vec1_grf(reg->nr, 0);
+   } else if (reg->stride > 4) {
+      assert(reg != &inst->dst);
+      assert(reg->stride * type_sz(reg->type) <= REG_SIZE);
+      new_reg = brw_vecn_grf(1, reg->nr, 0);
+      new_reg = stride(new_reg, reg->stride, 1, 0);
+   } else {
+      /* From the Haswell PRM:
+       *
+       *  "VertStride must be used to cross GRF register boundaries. This
+       *   rule implies that elements within a 'Width' cannot cross GRF
+       *   boundaries."
+       *
+       * The maximum width value that could satisfy this restriction is:
+       */
+      const unsigned reg_width = REG_SIZE / (reg->stride * type_sz(reg->type));
+
+      /* Because the hardware can only split source regions at a whole
+       * multiple of width during decompression (i.e. vertically), clamp
+       * the value obtained above to the physical execution size of a
+       * single decompressed chunk of the instruction:
+       */
+      const bool compressed = inst->dst.component_size(inst->exec_size) > REG_SIZE;
+      const unsigned phys_width = compressed ? inst->exec_size / 2 :
+                                  inst->exec_size;
+
+      /* XXX - The equation above is strictly speaking not correct on
+       *       hardware that supports unbalanced GRF writes -- On Gfx9+
+       *       each decompressed chunk of the instruction may have a
+       *       different execution size when the number of components
+       *       written to each destination GRF is not the same.
+       */
+
+      const unsigned max_hw_width = 16;
+
+      const unsigned width = MIN3(reg_width, phys_width, max_hw_width);
+      new_reg = brw_vecn_grf(width, reg->nr, 0);
+      new_reg = stride(new_reg, width * reg->stride, width, reg->stride);
+   }
+
+   new_reg = retype(new_reg, reg->type);
+   new_reg = byte_offset(new_reg, reg->offset);
+   new_reg.abs = reg->abs;
+   new_reg.negate = reg->negate;
+
+   *reg = new_reg;
+}
+
+void
+brw_fs_lower_vgrfs_to_fixed_grfs(fs_visitor &s)
+{
+   assert(s.grf_used || !"Must be called after register allocation");
+
+   foreach_block_and_inst(block, fs_inst, inst, s.cfg) {
+      /* If the instruction writes to more than one register, it needs to be
+       * explicitly marked as compressed on Gen <= 5.  On Gen >= 6 the
+       * hardware figures out by itself what the right compression mode is,
+       * but we still need to know whether the instruction is compressed to
+       * set up the source register regions appropriately.
+       *
+       * XXX - This is wrong for instructions that write a single register but
+       *       read more than one which should strictly speaking be treated as
+       *       compressed.  For instructions that don't write any registers it
+       *       relies on the destination being a null register of the correct
+       *       type and regioning so the instruction is considered compressed
+       *       or not accordingly.
+       */
+
+      const bool compressed =
+           inst->dst.component_size(inst->exec_size) > REG_SIZE;
+
+      brw_fs_lower_vgrf_to_fixed_grf(s.devinfo, inst, &inst->dst, compressed);
+      for (int i = 0; i < inst->sources; i++) {
+         brw_fs_lower_vgrf_to_fixed_grf(s.devinfo, inst, &inst->src[i], compressed);
+      }
+   }
+
+   s.invalidate_analysis(DEPENDENCY_INSTRUCTION_DATA_FLOW |
+                         DEPENDENCY_VARIABLES);
+}
+

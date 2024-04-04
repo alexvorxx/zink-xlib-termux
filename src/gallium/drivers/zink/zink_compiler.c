@@ -5830,13 +5830,13 @@ zink_gfx_shader_free(struct zink_screen *screen, struct zink_shader *shader)
       unsigned idx = zink_program_cache_stages(stages_present);
       if (!prog->base.removed && prog->stages_present == prog->stages_remaining &&
           (stage == MESA_SHADER_FRAGMENT || !shader->non_fs.is_generated)) {
-         struct hash_table *ht = &prog->ctx->program_cache[idx];
-         simple_mtx_lock(&prog->ctx->program_lock[idx]);
+         struct hash_table *ht = &prog->base.ctx->program_cache[idx];
+         simple_mtx_lock(&prog->base.ctx->program_lock[idx]);
          struct hash_entry *he = _mesa_hash_table_search(ht, prog->shaders);
          assert(he && he->data == prog);
          _mesa_hash_table_remove(ht, he);
          prog->base.removed = true;
-         simple_mtx_unlock(&prog->ctx->program_lock[idx]);
+         simple_mtx_unlock(&prog->base.ctx->program_lock[idx]);
          util_queue_fence_wait(&prog->base.cache_fence);
 
          for (unsigned r = 0; r < ARRAY_SIZE(prog->pipelines); r++) {

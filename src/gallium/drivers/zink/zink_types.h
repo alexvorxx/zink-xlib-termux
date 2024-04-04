@@ -1111,7 +1111,6 @@ struct zink_gfx_program {
    struct zink_program base;
 
    bool is_separable; //not a full program
-   struct zink_context *ctx; //the owner context
 
    uint32_t stages_present; //mask of stages present in this program
    uint32_t stages_remaining; //mask of zink_shader remaining in this program

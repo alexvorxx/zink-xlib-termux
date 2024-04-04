@@ -41,7 +41,7 @@ foreach cl : nvk_classes
 endforeach
 
 _libnvidia_headers = static_library(
-  'nvidia_headers',
+  'nvidia_headers_c',
   ['nv_push.c', cl_generated],
   include_directories : ['.', 'nvidia/classes', inc_include, inc_src],
   c_args : [no_override_init_args],
@@ -61,3 +61,40 @@ executable(
   build_by_default : with_tools.contains('nouveau'),
   install : with_tools.contains('nouveau'),
 )
+
+# Only generate Rust bindings for NVK
+if with_nouveau_vk
+  add_languages('rust', required: true)
+  rust = import('rust')
+
+  cl_rs_generated = []
+  foreach cl : nvk_classes
+    cl_rs_generated += custom_target(
+      'nvh_' + cl + '.rs',
+      input : ['class_parser.py', 'nvidia/classes/'+cl+'.h'],
+      output : ['nvh_'+cl+'.rs'],
+      command : [prog_python, '@INPUT0@', '--in-h', '@INPUT1@',
+                 '--out-rs', '@OUTPUT0@'],
+      depend_files: nvk_cl_header_depend_files,
+    )
+  endforeach
+
+  _nvidia_headers_lib_rs = custom_target(
+    'lib.rs',
+    input : ['lib_rs_gen.py'],
+    output : ['lib.rs'],
+    command : [prog_python, '@INPUT0@', '--out-rs', '@OUTPUT0@',
+               cl_rs_generated]
+  )
+
+  _nvidia_headers_rs = static_library(
+    'nvidia_headers',
+    _nvidia_headers_lib_rs,
+    gnu_symbol_visibility : 'hidden',
+    rust_abi : 'rust',
+  )
+
+  idep_nvidia_headers_rs = declare_dependency(
+    link_with : _nvidia_headers_rs,
+  )
+endif

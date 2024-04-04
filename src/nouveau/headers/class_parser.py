@@ -222,6 +222,14 @@ P_DUMP_${nvcl}_MTHD_DATA(FILE *fp, uint16_t idx, uint32_t data,
 }
 """)
 
+TEMPLATE_RS = Template("""\
+// parsed class ${nvcl}
+
+% if version is not None:
+pub const ${version[0]}: u16 = ${version[1]};
+% endif
+""")
+
 def glob_match(glob, name):
     if glob.endswith('*'):
         return name.startswith(glob[:-1])
@@ -339,8 +347,9 @@ def parse_header(nvcl, f):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--out-h', required=True, help='Output C header.')
-    parser.add_argument('--out-c', required=True, help='Output C file.')
+    parser.add_argument('--out-h', required=False, help='Output C header.')
+    parser.add_argument('--out-c', required=False, help='Output C file.')
+    parser.add_argument('--out-rs', required=False, help='Output C file.')
     parser.add_argument('--in-h',
                         help='Input class header file.',
                         required=True)
@@ -358,7 +367,6 @@ def main():
 
     environment = {
         'clheader': clheader,
-        'header': os.path.basename(args.out_h),
         'nvcl': nvcl,
         'version': version,
         'mthddict': mthddict,
@@ -366,10 +374,16 @@ def main():
     }
 
     try:
-        with open(args.out_h, 'w', encoding='utf-8') as f:
-            f.write(TEMPLATE_H.render(**environment))
-        with open(args.out_c, 'w', encoding='utf-8') as f:
-            f.write(TEMPLATE_C.render(**environment))
+        if args.out_h is not None:
+            environment['header'] = os.path.basename(args.out_h)
+            with open(args.out_h, 'w', encoding='utf-8') as f:
+                f.write(TEMPLATE_H.render(**environment))
+        if args.out_c is not None:
+            with open(args.out_c, 'w', encoding='utf-8') as f:
+                f.write(TEMPLATE_C.render(**environment))
+        if args.out_rs is not None:
+            with open(args.out_rs, 'w', encoding='utf-8') as f:
+                f.write(TEMPLATE_RS.render(**environment))
 
     except Exception:
         # In the event there's an error, this imports some helpers from mako

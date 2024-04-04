@@ -97,6 +97,24 @@ panvk_per_arch(CreateImageView)(VkDevice _device,
    };
    panvk_convert_swizzle(&view->vk.swizzle, view->pview.swizzle);
 
+   /* We need to patch the view format when the image contains both
+    * depth and stencil but the view only contains one of these components, so
+    * we can ignore the component we don't use.
+    */
+   if (image->vk.format == VK_FORMAT_D32_SFLOAT_S8_UINT &&
+       view->vk.view_format != VK_FORMAT_D32_SFLOAT_S8_UINT)
+      view->pview.format = view->vk.view_format == VK_FORMAT_D32_SFLOAT
+                              ? PIPE_FORMAT_Z32_FLOAT_S8X24_UINT
+                              : PIPE_FORMAT_X32_S8X24_UINT;
+
+   if (image->vk.format == VK_FORMAT_D24_UNORM_S8_UINT &&
+       view->vk.view_format == VK_FORMAT_S8_UINT)
+      view->pview.format = PIPE_FORMAT_X24S8_UINT;
+
+   if (image->vk.format == VK_FORMAT_D32_SFLOAT_S8_UINT &&
+       view->vk.view_format == VK_FORMAT_S8_UINT)
+      view->pview.format = PIPE_FORMAT_X32_S8X24_UINT;
+
    if (view->vk.usage &
        (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) {
       /* Use a temporary pan_image_view so we can tweak it for texture

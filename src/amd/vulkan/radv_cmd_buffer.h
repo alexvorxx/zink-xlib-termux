@@ -675,8 +675,6 @@ bool radv_gang_init(struct radv_cmd_buffer *cmd_buffer);
 void radv_set_descriptor_set(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoint bind_point,
                              struct radv_descriptor_set *set, unsigned idx);
 
-const struct radv_userdata_info *radv_get_user_sgpr(const struct radv_shader *shader, int idx);
-
 void radv_update_ds_clear_metadata(struct radv_cmd_buffer *cmd_buffer, const struct radv_image_view *iview,
                                    VkClearDepthStencilValue ds_clear_value, VkImageAspectFlags aspects);
 

@@ -2965,6 +2965,12 @@ radv_compute_spi_ps_input(const struct radv_graphics_state_key *gfx_state, const
    return spi_ps_input;
 }
 
+const struct radv_userdata_info *
+radv_get_user_sgpr(const struct radv_shader *shader, int idx)
+{
+   return &shader->info.user_sgprs_locs.shader_data[idx];
+}
+
 VkResult
 radv_dump_shader_stats(struct radv_device *device, struct radv_pipeline *pipeline, struct radv_shader *shader,
                        gl_shader_stage stage, FILE *output)

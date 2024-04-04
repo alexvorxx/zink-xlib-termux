@@ -944,12 +944,6 @@ radv_save_descriptors(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoint bi
    radv_write_data(cmd_buffer, V_370_ME, va, MAX_SETS * 2, data, false);
 }
 
-const struct radv_userdata_info *
-radv_get_user_sgpr(const struct radv_shader *shader, int idx)
-{
-   return &shader->info.user_sgprs_locs.shader_data[idx];
-}
-
 static void
 radv_emit_userdata_address(struct radv_device *device, struct radeon_cmdbuf *cs, struct radv_shader *shader,
                            uint32_t base_reg, int idx, uint64_t va)

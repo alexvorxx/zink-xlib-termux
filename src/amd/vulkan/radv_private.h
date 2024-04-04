@@ -124,12 +124,6 @@ extern "C" {
 #define CLOCK_MONOTONIC_RAW CLOCK_MONOTONIC_FAST
 #endif
 
-static inline uint32_t
-align_u32_npot(uint32_t v, uint32_t a)
-{
-   return (v + a - 1) / a * a;
-}
-
 /** Alignment must be a power of 2. */
 static inline bool
 radv_is_aligned(uintmax_t n, uintmax_t a)

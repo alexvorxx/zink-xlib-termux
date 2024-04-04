@@ -10564,9 +10564,9 @@ radv_emit_dispatch_packets(struct radv_cmd_buffer *cmd_buffer, const struct radv
          /* If aligned, these should be an entire block size,
           * not 0.
           */
-         remainder[0] = blocks[0] + cs_block_size[0] - align_u32_npot(blocks[0], cs_block_size[0]);
-         remainder[1] = blocks[1] + cs_block_size[1] - align_u32_npot(blocks[1], cs_block_size[1]);
-         remainder[2] = blocks[2] + cs_block_size[2] - align_u32_npot(blocks[2], cs_block_size[2]);
+         remainder[0] = blocks[0] + cs_block_size[0] - ALIGN_NPOT(blocks[0], cs_block_size[0]);
+         remainder[1] = blocks[1] + cs_block_size[1] - ALIGN_NPOT(blocks[1], cs_block_size[1]);
+         remainder[2] = blocks[2] + cs_block_size[2] - ALIGN_NPOT(blocks[2], cs_block_size[2]);
 
          blocks[0] = DIV_ROUND_UP(blocks[0], cs_block_size[0]);
          blocks[1] = DIV_ROUND_UP(blocks[1], cs_block_size[1]);

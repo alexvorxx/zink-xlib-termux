@@ -721,29 +721,10 @@ void si_init_compute_blit_functions(struct si_context *sctx)
    sctx->b.clear_buffer = si_pipe_clear_buffer;
 }
 
-static bool si_should_blit_clamp_xy(const struct pipe_blit_info *info)
+static bool si_should_blit_clamp_to_edge(const struct pipe_blit_info *info, unsigned coord_mask)
 {
-   int src_width = u_minify(info->src.resource->width0, info->src.level);
-   int src_height = u_minify(info->src.resource->height0, info->src.level);
-   struct pipe_box box = info->src.box;
-
-   /* Eliminate negative width/height/depth. */
-   if (box.width < 0) {
-      box.x += box.width;
-      box.width *= -1;
-   }
-   if (box.height < 0) {
-      box.y += box.height;
-      box.height *= -1;
-   }
-
-   bool in_bounds = box.x >= 0 && box.x < src_width &&
-                    box.y >= 0 && box.y < src_height &&
-                    box.x + box.width > 0 && box.x + box.width <= src_width &&
-                    box.y + box.height > 0 && box.y + box.height <= src_height;
-
-   /* Return if the box is not in bounds. */
-   return !in_bounds;
+   return util_is_box_out_of_bounds(&info->src.box, coord_mask, info->src.resource->width0,
+                                    info->src.resource->height0, info->src.level);
 }
 
 bool si_compute_clear_image(struct si_context *sctx, struct pipe_resource *tex,
@@ -1140,7 +1121,8 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
       options.sample0_only = sample0_only;
       unsigned num_samples = MAX2(src_samples, dst_samples);
       options.log2_samples = sample0_only ? 0 : util_logbase2(num_samples);
-      options.xy_clamp_to_edge = si_should_blit_clamp_xy(info);
+      options.x_clamp_to_edge = si_should_blit_clamp_to_edge(info, BITFIELD_BIT(0));
+      options.y_clamp_to_edge = si_should_blit_clamp_to_edge(info, BITFIELD_BIT(1));
       options.flip_x = info->src.box.width < 0;
       options.flip_y = info->src.box.height < 0;
       options.sint_to_uint = util_format_is_pure_sint(info->src.format) &&

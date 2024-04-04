@@ -1649,7 +1649,8 @@ union si_compute_blit_shader_key {
       uint8_t log2_samples:4;
       bool sample0_only:1; /* src is MSAA, dst is not MSAA, log2_samples is ignored */
       /* Source coordinate modifiers. */
-      bool xy_clamp_to_edge:1;
+      bool x_clamp_to_edge:1;
+      bool y_clamp_to_edge:1;
       bool flip_x:1;
       bool flip_y:1;
       /* Output modifiers. */

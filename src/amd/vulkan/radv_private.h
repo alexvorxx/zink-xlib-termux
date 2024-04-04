@@ -107,11 +107,6 @@ extern "C" {
 #define RADV_USE_WSI_PLATFORM
 #endif
 
-/* The "RAW" clocks on Linux are called "FAST" on FreeBSD */
-#if !defined(CLOCK_MONOTONIC_RAW) && defined(CLOCK_MONOTONIC_FAST)
-#define CLOCK_MONOTONIC_RAW CLOCK_MONOTONIC_FAST
-#endif
-
 #ifdef __cplusplus
 }
 #endif

@@ -46,6 +46,11 @@
 #include <xf86drm.h>
 #endif
 
+/* The "RAW" clocks on Linux are called "FAST" on FreeBSD */
+#if !defined(CLOCK_MONOTONIC_RAW) && defined(CLOCK_MONOTONIC_FAST)
+#define CLOCK_MONOTONIC_RAW CLOCK_MONOTONIC_FAST
+#endif
+
 struct radv_binning_settings {
    unsigned context_states_per_bin;    /* allowed range: [1, 6] */
    unsigned persistent_states_per_bin; /* allowed range: [1, 32] */

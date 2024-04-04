@@ -236,11 +236,11 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
       return 1;
 
    case PIPE_CAP_MAX_TEXTURE_2D_SIZE:
-      return 1 << (MAX_MIP_LEVELS - 1);
+      return 1 << (PAN_MAX_MIP_LEVELS - 1);
 
    case PIPE_CAP_MAX_TEXTURE_3D_LEVELS:
    case PIPE_CAP_MAX_TEXTURE_CUBE_LEVELS:
-      return MAX_MIP_LEVELS;
+      return PAN_MAX_MIP_LEVELS;
 
    case PIPE_CAP_FS_COORD_ORIGIN_LOWER_LEFT:
    case PIPE_CAP_FS_COORD_PIXEL_CENTER_INTEGER:

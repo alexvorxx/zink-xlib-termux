@@ -211,10 +211,6 @@ void radv_cs_emit_cache_flush(struct radeon_winsys *ws, struct radeon_cmdbuf *cs
                               uint64_t gfx9_eop_bug_va);
 void radv_emit_cond_exec(const struct radv_device *device, struct radeon_cmdbuf *cs, uint64_t va, uint32_t count);
 
-void radv_emit_default_sample_locations(struct radeon_cmdbuf *cs, int nr_samples);
-unsigned radv_get_default_max_sample_dist(int log_samples);
-void radv_device_init_msaa(struct radv_device *device);
-
 void radv_cs_write_data_imm(struct radeon_cmdbuf *cs, unsigned engine_sel, uint64_t va, uint32_t imm);
 
 struct radv_ray_tracing_group;

@@ -713,6 +713,142 @@ fail:
    device->ws->cs_destroy(cs);
 }
 
+/* For MSAA sample positions. */
+#define FILL_SREG(s0x, s0y, s1x, s1y, s2x, s2y, s3x, s3y)                                                              \
+   ((((unsigned)(s0x)&0xf) << 0) | (((unsigned)(s0y)&0xf) << 4) | (((unsigned)(s1x)&0xf) << 8) |                       \
+    (((unsigned)(s1y)&0xf) << 12) | (((unsigned)(s2x)&0xf) << 16) | (((unsigned)(s2y)&0xf) << 20) |                    \
+    (((unsigned)(s3x)&0xf) << 24) | (((unsigned)(s3y)&0xf) << 28))
+
+/* For obtaining location coordinates from registers */
+#define SEXT4(x)               ((int)((x) | ((x)&0x8 ? 0xfffffff0 : 0)))
+#define GET_SFIELD(reg, index) SEXT4(((reg) >> ((index)*4)) & 0xf)
+#define GET_SX(reg, index)     GET_SFIELD((reg)[(index) / 4], ((index) % 4) * 2)
+#define GET_SY(reg, index)     GET_SFIELD((reg)[(index) / 4], ((index) % 4) * 2 + 1)
+
+/* 1x MSAA */
+static const uint32_t sample_locs_1x = FILL_SREG(0, 0, 0, 0, 0, 0, 0, 0);
+static const unsigned max_dist_1x = 0;
+static const uint64_t centroid_priority_1x = 0x0000000000000000ull;
+
+/* 2xMSAA */
+static const uint32_t sample_locs_2x = FILL_SREG(4, 4, -4, -4, 0, 0, 0, 0);
+static const unsigned max_dist_2x = 4;
+static const uint64_t centroid_priority_2x = 0x1010101010101010ull;
+
+/* 4xMSAA */
+static const uint32_t sample_locs_4x = FILL_SREG(-2, -6, 6, -2, -6, 2, 2, 6);
+static const unsigned max_dist_4x = 6;
+static const uint64_t centroid_priority_4x = 0x3210321032103210ull;
+
+/* 8xMSAA */
+static const uint32_t sample_locs_8x[] = {
+   FILL_SREG(1, -3, -1, 3, 5, 1, -3, -5),
+   FILL_SREG(-5, 5, -7, -1, 3, 7, 7, -7),
+   /* The following are unused by hardware, but we emit them to IBs
+    * instead of multiple SET_CONTEXT_REG packets. */
+   0,
+   0,
+};
+static const unsigned max_dist_8x = 7;
+static const uint64_t centroid_priority_8x = 0x7654321076543210ull;
+
+unsigned
+radv_get_default_max_sample_dist(int log_samples)
+{
+   unsigned max_dist[] = {
+      max_dist_1x,
+      max_dist_2x,
+      max_dist_4x,
+      max_dist_8x,
+   };
+   return max_dist[log_samples];
+}
+
+void
+radv_emit_default_sample_locations(struct radeon_cmdbuf *cs, int nr_samples)
+{
+   switch (nr_samples) {
+   default:
+   case 1:
+      radeon_set_context_reg_seq(cs, R_028BD4_PA_SC_CENTROID_PRIORITY_0, 2);
+      radeon_emit(cs, (uint32_t)centroid_priority_1x);
+      radeon_emit(cs, centroid_priority_1x >> 32);
+      radeon_set_context_reg(cs, R_028BF8_PA_SC_AA_SAMPLE_LOCS_PIXEL_X0Y0_0, sample_locs_1x);
+      radeon_set_context_reg(cs, R_028C08_PA_SC_AA_SAMPLE_LOCS_PIXEL_X1Y0_0, sample_locs_1x);
+      radeon_set_context_reg(cs, R_028C18_PA_SC_AA_SAMPLE_LOCS_PIXEL_X0Y1_0, sample_locs_1x);
+      radeon_set_context_reg(cs, R_028C28_PA_SC_AA_SAMPLE_LOCS_PIXEL_X1Y1_0, sample_locs_1x);
+      break;
+   case 2:
+      radeon_set_context_reg_seq(cs, R_028BD4_PA_SC_CENTROID_PRIORITY_0, 2);
+      radeon_emit(cs, (uint32_t)centroid_priority_2x);
+      radeon_emit(cs, centroid_priority_2x >> 32);
+      radeon_set_context_reg(cs, R_028BF8_PA_SC_AA_SAMPLE_LOCS_PIXEL_X0Y0_0, sample_locs_2x);
+      radeon_set_context_reg(cs, R_028C08_PA_SC_AA_SAMPLE_LOCS_PIXEL_X1Y0_0, sample_locs_2x);
+      radeon_set_context_reg(cs, R_028C18_PA_SC_AA_SAMPLE_LOCS_PIXEL_X0Y1_0, sample_locs_2x);
+      radeon_set_context_reg(cs, R_028C28_PA_SC_AA_SAMPLE_LOCS_PIXEL_X1Y1_0, sample_locs_2x);
+      break;
+   case 4:
+      radeon_set_context_reg_seq(cs, R_028BD4_PA_SC_CENTROID_PRIORITY_0, 2);
+      radeon_emit(cs, (uint32_t)centroid_priority_4x);
+      radeon_emit(cs, centroid_priority_4x >> 32);
+      radeon_set_context_reg(cs, R_028BF8_PA_SC_AA_SAMPLE_LOCS_PIXEL_X0Y0_0, sample_locs_4x);
+      radeon_set_context_reg(cs, R_028C08_PA_SC_AA_SAMPLE_LOCS_PIXEL_X1Y0_0, sample_locs_4x);
+      radeon_set_context_reg(cs, R_028C18_PA_SC_AA_SAMPLE_LOCS_PIXEL_X0Y1_0, sample_locs_4x);
+      radeon_set_context_reg(cs, R_028C28_PA_SC_AA_SAMPLE_LOCS_PIXEL_X1Y1_0, sample_locs_4x);
+      break;
+   case 8:
+      radeon_set_context_reg_seq(cs, R_028BD4_PA_SC_CENTROID_PRIORITY_0, 2);
+      radeon_emit(cs, (uint32_t)centroid_priority_8x);
+      radeon_emit(cs, centroid_priority_8x >> 32);
+      radeon_set_context_reg_seq(cs, R_028BF8_PA_SC_AA_SAMPLE_LOCS_PIXEL_X0Y0_0, 14);
+      radeon_emit_array(cs, sample_locs_8x, 4);
+      radeon_emit_array(cs, sample_locs_8x, 4);
+      radeon_emit_array(cs, sample_locs_8x, 4);
+      radeon_emit_array(cs, sample_locs_8x, 2);
+      break;
+   }
+}
+
+static void
+radv_get_sample_position(struct radv_device *device, unsigned sample_count, unsigned sample_index, float *out_value)
+{
+   const uint32_t *sample_locs;
+
+   switch (sample_count) {
+   case 1:
+   default:
+      sample_locs = &sample_locs_1x;
+      break;
+   case 2:
+      sample_locs = &sample_locs_2x;
+      break;
+   case 4:
+      sample_locs = &sample_locs_4x;
+      break;
+   case 8:
+      sample_locs = sample_locs_8x;
+      break;
+   }
+
+   out_value[0] = (GET_SX(sample_locs, sample_index) + 8) / 16.0f;
+   out_value[1] = (GET_SY(sample_locs, sample_index) + 8) / 16.0f;
+}
+
+static void
+radv_device_init_msaa(struct radv_device *device)
+{
+   int i;
+
+   radv_get_sample_position(device, 1, 0, device->sample_locations_1x[0]);
+
+   for (i = 0; i < 2; i++)
+      radv_get_sample_position(device, 2, i, device->sample_locations_2x[i]);
+   for (i = 0; i < 4; i++)
+      radv_get_sample_position(device, 4, i, device->sample_locations_4x[i]);
+   for (i = 0; i < 8; i++)
+      radv_get_sample_position(device, 8, i, device->sample_locations_8x[i]);
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCreateInfo,
                   const VkAllocationCallbacks *pAllocator, VkDevice *pDevice)

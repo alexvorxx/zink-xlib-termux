@@ -1277,8 +1277,8 @@ radv_clear_dcc_comp_to_single(struct radv_cmd_buffer *cmd_buffer, struct radv_im
       if (!radv_dcc_enabled(image, range->baseMipLevel + l))
          continue;
 
-      width = radv_minify(image->vk.extent.width, range->baseMipLevel + l);
-      height = radv_minify(image->vk.extent.height, range->baseMipLevel + l);
+      width = u_minify(image->vk.extent.width, range->baseMipLevel + l);
+      height = u_minify(image->vk.extent.height, range->baseMipLevel + l);
 
       radv_image_view_init(&iview, device,
                            &(VkImageViewCreateInfo){
@@ -1950,8 +1950,8 @@ radv_clear_image_layer(struct radv_cmd_buffer *cmd_buffer, struct radv_image *im
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_image_view iview;
-   uint32_t width = radv_minify(image->vk.extent.width, range->baseMipLevel + level);
-   uint32_t height = radv_minify(image->vk.extent.height, range->baseMipLevel + level);
+   uint32_t width = u_minify(image->vk.extent.width, range->baseMipLevel + level);
+   uint32_t height = u_minify(image->vk.extent.height, range->baseMipLevel + level);
 
    radv_image_view_init(&iview, device,
                         &(VkImageViewCreateInfo){
@@ -2053,8 +2053,8 @@ radv_fast_clear_range(struct radv_cmd_buffer *cmd_buffer, struct radv_image *ima
             .offset = {0, 0},
             .extent =
                {
-                  radv_minify(image->vk.extent.width, range->baseMipLevel),
-                  radv_minify(image->vk.extent.height, range->baseMipLevel),
+                  u_minify(image->vk.extent.width, range->baseMipLevel),
+                  u_minify(image->vk.extent.height, range->baseMipLevel),
                },
          },
       .baseArrayLayer = range->baseArrayLayer,
@@ -2142,7 +2142,7 @@ radv_cmd_clear_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *imag
 
       for (uint32_t l = 0; l < vk_image_subresource_level_count(&image->vk, range); ++l) {
          const uint32_t layer_count = image->vk.image_type == VK_IMAGE_TYPE_3D
-                                         ? radv_minify(image->vk.extent.depth, range->baseMipLevel + l)
+                                         ? u_minify(image->vk.extent.depth, range->baseMipLevel + l)
                                          : vk_image_subresource_layer_count(&image->vk, range);
          if (cs) {
             for (uint32_t s = 0; s < layer_count; ++s) {

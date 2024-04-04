@@ -1199,8 +1199,7 @@ fixup_gfx9_cs_copy(struct radv_cmd_buffer *cmd_buffer, const struct radv_meta_bl
    /* The hardware-calculated extent of the selected mip
     * (naive divide-by-two integer math)
     */
-   VkExtent2D hw_mip_extent = {radv_minify(hw_base_extent.width, mip_level),
-                               radv_minify(hw_base_extent.height, mip_level)};
+   VkExtent2D hw_mip_extent = {u_minify(hw_base_extent.width, mip_level), u_minify(hw_base_extent.height, mip_level)};
 
    /* The actual extent we want to copy */
    VkExtent2D mip_extent = {rect->width, rect->height};

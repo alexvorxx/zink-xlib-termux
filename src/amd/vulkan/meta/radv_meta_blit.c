@@ -195,11 +195,11 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
                VkRect2D dst_box, VkSampler sampler)
 {
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
-   uint32_t src_width = radv_minify(src_iview->image->vk.extent.width, src_iview->vk.base_mip_level);
-   uint32_t src_height = radv_minify(src_iview->image->vk.extent.height, src_iview->vk.base_mip_level);
-   uint32_t src_depth = radv_minify(src_iview->image->vk.extent.depth, src_iview->vk.base_mip_level);
-   uint32_t dst_width = radv_minify(dst_iview->image->vk.extent.width, dst_iview->vk.base_mip_level);
-   uint32_t dst_height = radv_minify(dst_iview->image->vk.extent.height, dst_iview->vk.base_mip_level);
+   uint32_t src_width = u_minify(src_iview->image->vk.extent.width, src_iview->vk.base_mip_level);
+   uint32_t src_height = u_minify(src_iview->image->vk.extent.height, src_iview->vk.base_mip_level);
+   uint32_t src_depth = u_minify(src_iview->image->vk.extent.depth, src_iview->vk.base_mip_level);
+   uint32_t dst_width = u_minify(dst_iview->image->vk.extent.width, dst_iview->vk.base_mip_level);
+   uint32_t dst_height = u_minify(dst_iview->image->vk.extent.height, dst_iview->vk.base_mip_level);
 
    assert(src_image->vk.samples == dst_image->vk.samples);
 

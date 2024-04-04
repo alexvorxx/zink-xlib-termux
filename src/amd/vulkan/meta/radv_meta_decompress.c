@@ -390,8 +390,8 @@ radv_process_depth_image_layer(struct radv_cmd_buffer *cmd_buffer, struct radv_i
    struct radv_image_view iview;
    uint32_t width, height;
 
-   width = radv_minify(image->vk.extent.width, range->baseMipLevel + level);
-   height = radv_minify(image->vk.extent.height, range->baseMipLevel + level);
+   width = u_minify(image->vk.extent.width, range->baseMipLevel + level);
+   height = u_minify(image->vk.extent.height, range->baseMipLevel + level);
 
    radv_image_view_init(&iview, device,
                         &(VkImageViewCreateInfo){
@@ -479,8 +479,8 @@ radv_process_depth_stencil(struct radv_cmd_buffer *cmd_buffer, struct radv_image
       if (!radv_htile_enabled(image, subresourceRange->baseMipLevel + l))
          continue;
 
-      uint32_t width = radv_minify(image->vk.extent.width, subresourceRange->baseMipLevel + l);
-      uint32_t height = radv_minify(image->vk.extent.height, subresourceRange->baseMipLevel + l);
+      uint32_t width = u_minify(image->vk.extent.width, subresourceRange->baseMipLevel + l);
+      uint32_t height = u_minify(image->vk.extent.height, subresourceRange->baseMipLevel + l);
 
       radv_CmdSetViewport(
          cmd_buffer_h, 0, 1,
@@ -525,8 +525,8 @@ radv_expand_depth_stencil_compute(struct radv_cmd_buffer *cmd_buffer, struct rad
       if (!radv_htile_enabled(image, subresourceRange->baseMipLevel + l))
          continue;
 
-      width = radv_minify(image->vk.extent.width, subresourceRange->baseMipLevel + l);
-      height = radv_minify(image->vk.extent.height, subresourceRange->baseMipLevel + l);
+      width = u_minify(image->vk.extent.width, subresourceRange->baseMipLevel + l);
+      height = u_minify(image->vk.extent.height, subresourceRange->baseMipLevel + l);
 
       for (uint32_t s = 0; s < vk_image_subresource_layer_count(&image->vk, subresourceRange); s++) {
          radv_image_view_init(&load_iview, device,

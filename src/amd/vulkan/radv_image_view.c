@@ -776,7 +776,7 @@ radv_image_view_init(struct radv_image_view *iview, struct radv_device *device,
       break;
    case VK_IMAGE_TYPE_3D:
       assert(range->baseArrayLayer + vk_image_subresource_layer_count(&image->vk, range) - 1 <=
-             radv_minify(image->vk.extent.depth, range->baseMipLevel));
+             u_minify(image->vk.extent.depth, range->baseMipLevel));
       break;
    default:
       unreachable("bad VkImageType");
@@ -872,8 +872,8 @@ radv_image_view_init(struct radv_image_view *iview, struct radv_device *device,
             iview->extent.width = plane->surface.u.gfx9.base_mip_width;
             iview->extent.height = plane->surface.u.gfx9.base_mip_height;
          } else {
-            unsigned lvl_width = radv_minify(image->vk.extent.width, range->baseMipLevel);
-            unsigned lvl_height = radv_minify(image->vk.extent.height, range->baseMipLevel);
+            unsigned lvl_width = u_minify(image->vk.extent.width, range->baseMipLevel);
+            unsigned lvl_height = u_minify(image->vk.extent.height, range->baseMipLevel);
 
             lvl_width = DIV_ROUND_UP(lvl_width * view_bw, plane_bw);
             lvl_height = DIV_ROUND_UP(lvl_height * view_bh, plane_bh);
@@ -889,8 +889,8 @@ radv_image_view_init(struct radv_image_view *iview, struct radv_device *device,
              * extents accordingly.
              */
             if (pdev->info.gfx_level >= GFX10 &&
-                (radv_minify(iview->extent.width, range->baseMipLevel) < lvl_width ||
-                 radv_minify(iview->extent.height, range->baseMipLevel) < lvl_height) &&
+                (u_minify(iview->extent.width, range->baseMipLevel) < lvl_width ||
+                 u_minify(iview->extent.height, range->baseMipLevel) < lvl_height) &&
                 iview->vk.layer_count == 1) {
                compute_non_block_compressed_view(device, iview, &iview->nbc_view);
             }

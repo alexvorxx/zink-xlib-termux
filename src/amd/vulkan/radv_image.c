@@ -40,6 +40,7 @@
 #include "radv_radeon_winsys.h"
 #include "radv_rmv.h"
 #include "radv_video.h"
+#include "radv_wsi.h"
 #include "sid.h"
 #include "vk_debug_utils.h"
 #include "vk_format.h"

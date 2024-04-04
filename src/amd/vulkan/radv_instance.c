@@ -28,6 +28,7 @@
 #include "radv_instance.h"
 #include "radv_debug.h"
 #include "radv_private.h"
+#include "radv_wsi.h"
 
 #include "util/driconf.h"
 

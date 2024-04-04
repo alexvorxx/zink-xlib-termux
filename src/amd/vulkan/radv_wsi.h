@@ -30,6 +30,11 @@
 
 #include "radv_physical_device.h"
 
+#if defined(VK_USE_PLATFORM_WAYLAND_KHR) || defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_XLIB_KHR) ||   \
+   defined(VK_USE_PLATFORM_DISPLAY_KHR)
+#define RADV_USE_WSI_PLATFORM
+#endif
+
 VkResult radv_init_wsi(struct radv_physical_device *pdev);
 
 void radv_finish_wsi(struct radv_physical_device *pdev);

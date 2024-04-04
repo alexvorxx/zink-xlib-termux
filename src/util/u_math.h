@@ -808,6 +808,17 @@ util_clamped_uadd(unsigned a, unsigned b)
    return res;
 }
 
+/**
+ * Checks the value 'n' is aligned to 'a'.
+ * The alignment must be a power of two.
+ */
+static inline bool
+util_is_aligned(uintmax_t n, uintmax_t a)
+{
+   assert(a == (a & -a));
+   return (n & (a - 1)) == 0;
+}
+
 #ifdef __cplusplus
 }
 #endif

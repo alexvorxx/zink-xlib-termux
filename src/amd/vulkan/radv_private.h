@@ -113,12 +113,6 @@ extern "C" {
 #define RADV_API_VERSION VK_MAKE_VERSION(1, 3, VK_HEADER_VERSION)
 #endif
 
-#ifdef _WIN32
-#define RADV_SUPPORT_CALIBRATED_TIMESTAMPS 0
-#else
-#define RADV_SUPPORT_CALIBRATED_TIMESTAMPS 1
-#endif
-
 /* The "RAW" clocks on Linux are called "FAST" on FreeBSD */
 #if !defined(CLOCK_MONOTONIC_RAW) && defined(CLOCK_MONOTONIC_FAST)
 #define CLOCK_MONOTONIC_RAW CLOCK_MONOTONIC_FAST

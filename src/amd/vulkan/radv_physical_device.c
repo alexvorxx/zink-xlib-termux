@@ -57,6 +57,12 @@ typedef void *drmDevicePtr;
 #include "ac_llvm_util.h"
 #endif
 
+#ifdef _WIN32
+#define RADV_SUPPORT_CALIBRATED_TIMESTAMPS 0
+#else
+#define RADV_SUPPORT_CALIBRATED_TIMESTAMPS 1
+#endif
+
 static bool
 radv_perf_query_supported(const struct radv_physical_device *pdev)
 {

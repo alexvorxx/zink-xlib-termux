@@ -711,12 +711,7 @@ update_descriptor_state_ubo(struct zink_context *ctx, gl_shader_stage shader, un
          ctx->di.t.ubos[shader][slot].range = VK_WHOLE_SIZE;
       }
    }
-   if (!slot) {
-      if (res)
-         ctx->di.push_valid |= BITFIELD64_BIT(shader);
-      else
-         ctx->di.push_valid &= ~BITFIELD64_BIT(shader);
-   }
+
    return res;
 }
 

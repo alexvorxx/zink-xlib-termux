@@ -1963,7 +1963,6 @@ struct zink_context {
 
    struct {
       /* descriptor info */
-      uint32_t push_valid;
       uint8_t num_ubos[MESA_SHADER_STAGES];
 
       uint8_t num_ssbos[MESA_SHADER_STAGES];

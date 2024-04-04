@@ -28,10 +28,27 @@
 #ifndef RADV_PRINTF_H
 #define RADV_PRINTF_H
 
-#include "radv_device.h"
+#include <inttypes.h>
+#include <stdbool.h>
+#include <stdio.h>
 
+#include <vulkan/vulkan_core.h>
+
+#include "util/u_dynarray.h"
+
+struct radv_device;
 typedef struct nir_builder nir_builder;
+typedef struct nir_shader nir_shader;
 typedef struct nir_def nir_def;
+
+struct radv_printf_data {
+   uint32_t buffer_size;
+   VkBuffer buffer;
+   VkDeviceMemory memory;
+   VkDeviceAddress buffer_addr;
+   void *data;
+   struct util_dynarray formats;
+};
 
 struct radv_printf_format {
    char *string;

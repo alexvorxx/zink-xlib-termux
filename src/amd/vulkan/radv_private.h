@@ -124,14 +124,6 @@ extern "C" {
 #define CLOCK_MONOTONIC_RAW CLOCK_MONOTONIC_FAST
 #endif
 
-/** Alignment must be a power of 2. */
-static inline bool
-radv_is_aligned(uintmax_t n, uintmax_t a)
-{
-   assert(a == (a & -a));
-   return (n & (a - 1)) == 0;
-}
-
 #ifdef __cplusplus
 }
 #endif

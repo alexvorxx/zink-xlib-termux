@@ -72,13 +72,13 @@ radv_sdma_check_pitches(const unsigned pitch, const unsigned slice_pitch, const 
    ASSERTED const unsigned pitch_alignment = MAX2(1, 4 / bpp);
    assert(pitch);
    assert(pitch <= (1 << 14));
-   assert(radv_is_aligned(pitch, pitch_alignment));
+   assert(util_is_aligned(pitch, pitch_alignment));
 
    if (uses_depth) {
       ASSERTED const unsigned slice_pitch_alignment = 4;
       assert(slice_pitch);
       assert(slice_pitch <= (1 << 28));
-      assert(radv_is_aligned(slice_pitch, slice_pitch_alignment));
+      assert(util_is_aligned(slice_pitch, slice_pitch_alignment));
    }
 }
 
@@ -597,13 +597,13 @@ radv_sdma_use_unaligned_buffer_image_copy(const struct radv_device *device, cons
                                           const struct radv_sdma_surf *img, const VkExtent3D ext)
 {
    const unsigned pitch_blocks = radv_sdma_pixels_to_blocks(buf->pitch, img->blk_w);
-   if (!radv_is_aligned(pitch_blocks, radv_sdma_pitch_alignment(device, img->bpp)))
+   if (!util_is_aligned(pitch_blocks, radv_sdma_pitch_alignment(device, img->bpp)))
       return true;
 
    const bool uses_depth = img->offset.z != 0 || ext.depth != 1;
    if (!img->is_linear && uses_depth) {
       const unsigned slice_pitch_blocks = radv_sdma_pixel_area_to_blocks(buf->slice_pitch, img->blk_w, img->blk_h);
-      if (!radv_is_aligned(slice_pitch_blocks, 4))
+      if (!util_is_aligned(slice_pitch_blocks, 4))
          return true;
    }
 
@@ -742,17 +742,17 @@ radv_sdma_use_t2t_scanline_copy(const struct radv_device *device, const struct r
    const VkOffset3D src_offset_blk = radv_sdma_pixel_offset_to_blocks(src->offset, src->blk_w, src->blk_h);
    const VkOffset3D dst_offset_blk = radv_sdma_pixel_offset_to_blocks(dst->offset, dst->blk_w, dst->blk_h);
 
-   if (!radv_is_aligned(copy_extent_blk.width, alignment->width) ||
-       !radv_is_aligned(copy_extent_blk.height, alignment->height) ||
-       !radv_is_aligned(copy_extent_blk.depth, alignment->depth))
+   if (!util_is_aligned(copy_extent_blk.width, alignment->width) ||
+       !util_is_aligned(copy_extent_blk.height, alignment->height) ||
+       !util_is_aligned(copy_extent_blk.depth, alignment->depth))
       return true;
 
-   if (!radv_is_aligned(src_offset_blk.x, alignment->width) || !radv_is_aligned(src_offset_blk.y, alignment->height) ||
-       !radv_is_aligned(src_offset_blk.z, alignment->depth))
+   if (!util_is_aligned(src_offset_blk.x, alignment->width) || !util_is_aligned(src_offset_blk.y, alignment->height) ||
+       !util_is_aligned(src_offset_blk.z, alignment->depth))
       return true;
 
-   if (!radv_is_aligned(dst_offset_blk.x, alignment->width) || !radv_is_aligned(dst_offset_blk.y, alignment->height) ||
-       !radv_is_aligned(dst_offset_blk.z, alignment->depth))
+   if (!util_is_aligned(dst_offset_blk.x, alignment->width) || !util_is_aligned(dst_offset_blk.y, alignment->height) ||
+       !util_is_aligned(dst_offset_blk.z, alignment->depth))
       return true;
 
    return false;

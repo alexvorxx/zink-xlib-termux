@@ -603,7 +603,7 @@ radv_emit_task_rings(struct radv_device *device, struct radeon_cmdbuf *cs, struc
       return;
 
    const uint64_t task_ctrlbuf_va = radv_buffer_get_va(task_rings_bo);
-   assert(radv_is_aligned(task_ctrlbuf_va, 256));
+   assert(util_is_aligned(task_ctrlbuf_va, 256));
    radv_cs_add_buffer(device->ws, cs, task_rings_bo);
 
    /* Tell the GPU where the task control buffer is. */

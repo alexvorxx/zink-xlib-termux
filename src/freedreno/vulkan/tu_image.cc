@@ -167,7 +167,7 @@ tu_image_view_init(struct tu_device *device,
                    const VkImageViewCreateInfo *pCreateInfo,
                    bool has_z24uint_s8uint)
 {
-   TU_FROM_HANDLE(tu_image, image, pCreateInfo->image);
+   VK_FROM_HANDLE(tu_image, image, pCreateInfo->image);
    const VkImageSubresourceRange *range = &pCreateInfo->subresourceRange;
    VkFormat vk_format = pCreateInfo->format;
    VkImageAspectFlags aspect_mask = pCreateInfo->subresourceRange.aspectMask;
@@ -680,7 +680,7 @@ tu_CreateImage(VkDevice _device,
    uint64_t modifier = DRM_FORMAT_MOD_INVALID;
    const VkSubresourceLayout *plane_layouts = NULL;
 
-   TU_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device, device, _device);
 
 #ifdef TU_USE_WSI_PLATFORM
    /* Ignore swapchain creation info on Android. Since we don't have an
@@ -771,8 +771,8 @@ tu_DestroyImage(VkDevice _device,
                 VkImage _image,
                 const VkAllocationCallbacks *pAllocator)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
-   TU_FROM_HANDLE(tu_image, image, _image);
+   VK_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_image, image, _image);
 
    if (!image)
       return;
@@ -796,11 +796,11 @@ tu_BindImageMemory2(VkDevice _device,
                     uint32_t bindInfoCount,
                     const VkBindImageMemoryInfo *pBindInfos)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device, device, _device);
 
    for (uint32_t i = 0; i < bindInfoCount; ++i) {
-      TU_FROM_HANDLE(tu_image, image, pBindInfos[i].image);
-      TU_FROM_HANDLE(tu_device_memory, mem, pBindInfos[i].memory);
+      VK_FROM_HANDLE(tu_image, image, pBindInfos[i].image);
+      VK_FROM_HANDLE(tu_device_memory, mem, pBindInfos[i].memory);
 
       /* Ignore this struct on Android, we cannot access swapchain structures there. */
 #ifdef TU_USE_WSI_PLATFORM
@@ -810,7 +810,7 @@ tu_BindImageMemory2(VkDevice _device,
       if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE) {
          VkImage _wsi_image = wsi_common_get_image(swapchain_info->swapchain,
                                                    swapchain_info->imageIndex);
-         TU_FROM_HANDLE(tu_image, wsi_img, _wsi_image);
+         VK_FROM_HANDLE(tu_image, wsi_img, _wsi_image);
 
          image->bo = wsi_img->bo;
          image->map = NULL;
@@ -880,8 +880,8 @@ tu_GetImageMemoryRequirements2(VkDevice _device,
                                const VkImageMemoryRequirementsInfo2 *pInfo,
                                VkMemoryRequirements2 *pMemoryRequirements)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
-   TU_FROM_HANDLE(tu_image, image, pInfo->image);
+   VK_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_image, image, pInfo->image);
 
    tu_get_image_memory_requirements(device, image, pMemoryRequirements);
 }
@@ -902,7 +902,7 @@ tu_GetDeviceImageMemoryRequirements(
    const VkDeviceImageMemoryRequirements *pInfo,
    VkMemoryRequirements2 *pMemoryRequirements)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device, device, _device);
 
    struct tu_image image = {0};
 
@@ -957,7 +957,7 @@ tu_GetImageSubresourceLayout2KHR(VkDevice _device,
                                  const VkImageSubresource2KHR *pSubresource,
                                  VkSubresourceLayout2KHR *pLayout)
 {
-   TU_FROM_HANDLE(tu_image, image, _image);
+   VK_FROM_HANDLE(tu_image, image, _image);
 
    tu_get_image_subresource_layout(image, pSubresource, pLayout);
 }
@@ -967,7 +967,7 @@ tu_GetDeviceImageSubresourceLayoutKHR(VkDevice _device,
                                       const VkDeviceImageSubresourceInfoKHR *pInfo,
                                       VkSubresourceLayout2KHR *pLayout)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device, device, _device);
 
    struct tu_image image = {0};
 
@@ -983,7 +983,7 @@ tu_CreateImageView(VkDevice _device,
                    const VkAllocationCallbacks *pAllocator,
                    VkImageView *pView)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device, device, _device);
    struct tu_image_view *view;
 
    view = (struct tu_image_view *) vk_object_alloc(
@@ -1003,8 +1003,8 @@ tu_DestroyImageView(VkDevice _device,
                     VkImageView _iview,
                     const VkAllocationCallbacks *pAllocator)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
-   TU_FROM_HANDLE(tu_image_view, iview, _iview);
+   VK_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_image_view, iview, _iview);
 
    if (!iview)
       return;
@@ -1017,7 +1017,7 @@ tu_buffer_view_init(struct tu_buffer_view *view,
                     struct tu_device *device,
                     const VkBufferViewCreateInfo *pCreateInfo)
 {
-   TU_FROM_HANDLE(tu_buffer, buffer, pCreateInfo->buffer);
+   VK_FROM_HANDLE(tu_buffer, buffer, pCreateInfo->buffer);
 
    view->buffer = buffer;
 
@@ -1037,7 +1037,7 @@ tu_CreateBufferView(VkDevice _device,
                     const VkAllocationCallbacks *pAllocator,
                     VkBufferView *pView)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_device, device, _device);
    struct tu_buffer_view *view;
 
    view = (struct tu_buffer_view *) vk_object_alloc(
@@ -1057,8 +1057,8 @@ tu_DestroyBufferView(VkDevice _device,
                      VkBufferView bufferView,
                      const VkAllocationCallbacks *pAllocator)
 {
-   TU_FROM_HANDLE(tu_device, device, _device);
-   TU_FROM_HANDLE(tu_buffer_view, view, bufferView);
+   VK_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_buffer_view, view, bufferView);
 
    if (!view)
       return;

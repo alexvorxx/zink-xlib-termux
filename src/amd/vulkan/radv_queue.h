@@ -124,6 +124,8 @@ void radv_queue_finish(struct radv_queue *queue);
 
 enum radeon_ctx_priority radv_get_queue_global_priority(const VkDeviceQueueGlobalPriorityCreateInfoKHR *pObj);
 
+void radv_emit_graphics(struct radv_device *device, struct radeon_cmdbuf *cs);
+
 bool radv_queue_internal_submit(struct radv_queue *queue, struct radeon_cmdbuf *cs);
 
 enum amd_ip_type radv_queue_ring(const struct radv_queue *queue);

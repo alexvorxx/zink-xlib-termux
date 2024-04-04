@@ -1356,8 +1356,14 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          assert(src[2].type == BRW_REGISTER_TYPE_UD);
          const unsigned component = src[1].ud;
          const unsigned cluster_size = src[2].ud;
-         assert(inst->src[0].file != ARF && inst->src[0].file != FIXED_GRF);
-         const unsigned s = inst->src[0].stride;
+         assert(inst->src[0].file != ARF);
+
+         unsigned s;
+         if (inst->src[0].file == FIXED_GRF) {
+            s = inst->src[0].hstride ? 1 << (inst->src[0].hstride - 1) : 0;
+         } else {
+            s = inst->src[0].stride;
+         }
          unsigned vstride = cluster_size * s;
          unsigned width = cluster_size;
 

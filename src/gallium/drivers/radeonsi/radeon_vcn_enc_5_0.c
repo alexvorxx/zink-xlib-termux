@@ -24,6 +24,9 @@
 #define RENCODE_IB_PARAM_METADATA_BUFFER                   0x0000001c
 #define RENCODE_IB_PARAM_ENCODE_CONTEXT_BUFFER_OVERRIDE    0x0000001d
 #define RENCODE_IB_PARAM_HEVC_ENCODE_PARAMS                0x00100004
+
+#define RENCODE_AV1_IB_PARAM_TILE_CONFIG                   0x00300002
+#define RENCODE_AV1_IB_PARAM_BITSTREAM_INSTRUCTION         0x00300003
 #define RENCODE_IB_PARAM_AV1_ENCODE_PARAMS                 0x00300004
 
 
@@ -161,6 +164,36 @@ static void radeon_enc_encode_params_h264(struct radeon_encoder *enc)
    RADEON_ENC_CS(enc->enc_pic.h264_enc_params.lsm_reference_pictures[0].list_index);
    RADEON_ENC_CS(enc->enc_pic.h264_enc_params.lsm_reference_pictures[1].list);
    RADEON_ENC_CS(enc->enc_pic.h264_enc_params.lsm_reference_pictures[1].list_index);
+   RADEON_ENC_END();
+}
+
+static void radeon_enc_spec_misc_av1(struct radeon_encoder *enc)
+{
+   RADEON_ENC_BEGIN(enc->cmd.spec_misc_av1);
+   RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.palette_mode_enable);
+   RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.mv_precision);
+   RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.cdef_mode);
+   RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.cdef_bits);
+   RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.cdef_damping_minus3);
+   for (int i = 0; i < RENCODE_AV1_CDEF_MAX_NUM; i++)
+      RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.cdef_y_pri_strength[i]);
+   for (int i = 0; i < RENCODE_AV1_CDEF_MAX_NUM; i++)
+      RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.cdef_y_sec_strength[i]);
+   for (int i = 0; i < RENCODE_AV1_CDEF_MAX_NUM; i++)
+      RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.cdef_uv_pri_strength[i]);
+   for (int i = 0; i < RENCODE_AV1_CDEF_MAX_NUM; i++)
+      RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.cdef_uv_sec_strength[i]);
+   RADEON_ENC_CS(0);
+   RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.disable_cdf_update);
+   RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.disable_frame_end_update_cdf);
+   RADEON_ENC_CS(0);
+   RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.delta_q_y_dc);
+   RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.delta_q_u_dc);
+   RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.delta_q_u_ac);
+   RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.delta_q_v_dc);
+   RADEON_ENC_CS(enc->enc_pic.av1_spec_misc.delta_q_v_ac);
+   RADEON_ENC_CS(0);
+   RADEON_ENC_CS(0);
    RADEON_ENC_END();
 }
 
@@ -306,6 +339,49 @@ static void radeon_enc_rc_per_pic(struct radeon_encoder *enc)
    RADEON_ENC_END();
 }
 
+static void radeon_enc_encode_params_hevc(struct radeon_encoder *enc)
+{
+   enc->enc_pic.hevc_enc_params.lsm_reference_pictures_list_index = 0;
+   enc->enc_pic.hevc_enc_params.ref_list0[0] =
+            enc->enc_pic.enc_params.reference_picture_index;
+   enc->enc_pic.hevc_enc_params.num_active_references_l0 =
+            (enc->enc_pic.enc_params.pic_type == RENCODE_PICTURE_TYPE_I) ? 0 : 1;
+
+   RADEON_ENC_BEGIN(enc->cmd.enc_params_hevc);
+   RADEON_ENC_CS(enc->enc_pic.hevc_enc_params.ref_list0[0]);
+   for (int i = 1; i < RENCODE_HEVC_MAX_REFERENCE_LIST_SIZE; i++)
+      RADEON_ENC_CS(0x00000000);
+   RADEON_ENC_CS(enc->enc_pic.hevc_enc_params.num_active_references_l0);
+   RADEON_ENC_CS(enc->enc_pic.hevc_enc_params.lsm_reference_pictures_list_index);
+   RADEON_ENC_END();
+}
+
+static void radeon_enc_spec_misc_hevc(struct radeon_encoder *enc)
+{
+   enc->enc_pic.hevc_spec_misc.transform_skip_discarded = 0;
+   enc->enc_pic.hevc_spec_misc.cu_qp_delta_enabled_flag = 0;
+
+   RADEON_ENC_BEGIN(enc->cmd.spec_misc_hevc);
+   RADEON_ENC_CS(enc->enc_pic.hevc_spec_misc.log2_min_luma_coding_block_size_minus3);
+   RADEON_ENC_CS(enc->enc_pic.hevc_spec_misc.amp_disabled);
+   RADEON_ENC_CS(enc->enc_pic.hevc_spec_misc.strong_intra_smoothing_enabled);
+   RADEON_ENC_CS(enc->enc_pic.hevc_spec_misc.constrained_intra_pred_flag);
+   RADEON_ENC_CS(enc->enc_pic.hevc_spec_misc.cabac_init_flag);
+   RADEON_ENC_CS(enc->enc_pic.hevc_spec_misc.half_pel_enabled);
+   RADEON_ENC_CS(enc->enc_pic.hevc_spec_misc.quarter_pel_enabled);
+   RADEON_ENC_CS(enc->enc_pic.hevc_spec_misc.transform_skip_discarded);
+   RADEON_ENC_CS(0);
+   RADEON_ENC_CS(enc->enc_pic.hevc_spec_misc.cu_qp_delta_enabled_flag);
+   RADEON_ENC_END();
+}
+
+/* TODO */
+static void radeon_enc_tile_config_av1(struct radeon_encoder *enc)
+{
+   RADEON_ENC_BEGIN(enc->cmd.tile_config_av1);
+   RADEON_ENC_END();
+}
+
 void radeon_enc_5_0_init(struct radeon_encoder *enc)
 {
    radeon_enc_4_0_init(enc);
@@ -320,14 +396,22 @@ void radeon_enc_5_0_init(struct radeon_encoder *enc)
    if (u_reduce_video_profile(enc->base.profile) == PIPE_VIDEO_FORMAT_MPEG4_AVC) {
       enc->spec_misc = radeon_enc_spec_misc;
       enc->encode_params_codec_spec = radeon_enc_encode_params_h264;
+   } else if (u_reduce_video_profile(enc->base.profile) == PIPE_VIDEO_FORMAT_HEVC) {
+      enc->encode_params_codec_spec = radeon_enc_encode_params_hevc;
+      enc->spec_misc = radeon_enc_spec_misc_hevc;
    } else if (u_reduce_video_profile(enc->base.profile) == PIPE_VIDEO_FORMAT_AV1) {
       /* TODO adding other functions*/
       enc->cdf_default_table = radeon_enc_cdf_default_table;
+      enc->spec_misc = radeon_enc_spec_misc_av1;
+      enc->tile_config = radeon_enc_tile_config_av1;
    }
 
    enc->cmd.rc_per_pic = RENCODE_IB_PARAM_RATE_CONTROL_PER_PICTURE;
    enc->cmd.metadata = RENCODE_IB_PARAM_METADATA_BUFFER;
    enc->cmd.ctx_override = RENCODE_IB_PARAM_ENCODE_CONTEXT_BUFFER_OVERRIDE;
+   enc->cmd.enc_params_hevc = RENCODE_IB_PARAM_HEVC_ENCODE_PARAMS;
+   enc->cmd.tile_config_av1 = RENCODE_AV1_IB_PARAM_TILE_CONFIG;
+   enc->cmd.bitstream_instruction_av1 = RENCODE_AV1_IB_PARAM_BITSTREAM_INSTRUCTION;
 
    enc->enc_pic.session_info.interface_version =
       ((RENCODE_FW_INTERFACE_MAJOR_VERSION << RENCODE_IF_MAJOR_VERSION_SHIFT) |

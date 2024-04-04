@@ -678,8 +678,22 @@ static void radeon_vcn_enc_av1_get_spec_misc_param(struct radeon_encoder *enc,
    enc->enc_pic.av1_spec_misc.cdef_mode = pic->seq.seq_bits.enable_cdef;
    enc->enc_pic.av1_spec_misc.disable_cdf_update = pic->disable_cdf_update;
    enc->enc_pic.av1_spec_misc.disable_frame_end_update_cdf = pic->disable_frame_end_update_cdf;
+   /* tile has moved to tile config from vcn5 */
    enc->enc_pic.av1_spec_misc.num_tiles_per_picture = pic->num_tiles_in_pic;
    enc->enc_pic.av1_spec_misc.palette_mode_enable = pic->palette_mode_enable;
+   enc->enc_pic.av1_spec_misc.cdef_bits = pic->cdef.cdef_bits;
+   enc->enc_pic.av1_spec_misc.cdef_damping_minus3 = pic->cdef.cdef_damping_minus_3;
+   for (int i = 0; i < (pic->cdef.cdef_bits << 1); i++ ){
+      enc->enc_pic.av1_spec_misc.cdef_y_pri_strength[i] = (pic->cdef.cdef_y_strengths[i] >> 2);
+      enc->enc_pic.av1_spec_misc.cdef_y_sec_strength[i] = (pic->cdef.cdef_y_strengths[i] & 0x3);
+      enc->enc_pic.av1_spec_misc.cdef_uv_pri_strength[i] = (pic->cdef.cdef_uv_strengths[i] >> 2);
+      enc->enc_pic.av1_spec_misc.cdef_uv_sec_strength[i] = (pic->cdef.cdef_uv_strengths[i] & 0x3);
+   }
+   enc->enc_pic.av1_spec_misc.delta_q_y_dc = pic->quantization.y_dc_delta_q;
+   enc->enc_pic.av1_spec_misc.delta_q_u_dc = pic->quantization.u_dc_delta_q;
+   enc->enc_pic.av1_spec_misc.delta_q_u_ac = pic->quantization.u_ac_delta_q;
+   enc->enc_pic.av1_spec_misc.delta_q_v_dc = pic->quantization.v_dc_delta_q;
+   enc->enc_pic.av1_spec_misc.delta_q_v_ac = pic->quantization.v_ac_delta_q;
 
    if (enc->enc_pic.disable_screen_content_tools) {
        enc->enc_pic.force_integer_mv  = 0;

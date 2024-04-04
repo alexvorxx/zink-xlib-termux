@@ -255,7 +255,7 @@ CHIPSET(0x56be, dg2_g10, "DG2", "Intel(R) Arc(tm) A750E Graphics")
 CHIPSET(0x56bf, dg2_g10, "DG2", "Intel(R) Arc(tm) A580E Graphics")
 CHIPSET(0x56c0, atsm_g10, "ATS-M", "Intel(R) Data Center GPU Flex 170")
 CHIPSET(0x56c1, atsm_g11, "ATS-M", "Intel(R) Data Center GPU Flex 140")
-CHIPSET(0x56c2, atsm_g10, "ATS-M", "Intel(R) Data Center GPU Flex 170G")
+CHIPSET(0x56c2, atsm_g10, "ATS-M", "Intel(R) Data Center GPU Flex 170V")
 
 CHIPSET(0x7d40, mtl_u, "MTL", "Intel(R) Graphics")
 CHIPSET(0x7d45, mtl_h, "MTL", "Intel(R) Graphics")

@@ -710,8 +710,6 @@ struct radv_resolve_barrier {
 
 void radv_emit_resolve_barrier(struct radv_cmd_buffer *cmd_buffer, const struct radv_resolve_barrier *barrier);
 
-uint32_t radv_get_vgt_index_size(uint32_t type);
-
 void radv_meta_push_descriptor_set(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoint pipelineBindPoint,
                                    VkPipelineLayout _layout, uint32_t set, uint32_t descriptorWriteCount,
                                    const VkWriteDescriptorSet *pDescriptorWrites);

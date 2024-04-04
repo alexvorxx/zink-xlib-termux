@@ -38,9 +38,9 @@
 #include "util/u_atomic.h"
 #include "radv_cs.h"
 #include "radv_debug.h"
+#include "radv_entrypoints.h"
 #include "radv_nir_to_llvm.h"
 #include "radv_printf.h"
-#include "radv_private.h"
 #include "radv_sdma.h"
 #include "radv_shader_args.h"
 
@@ -52,6 +52,7 @@
 #endif
 #include "aco_interface.h"
 #include "sid.h"
+#include "vk_debug_report.h"
 #include "vk_format.h"
 #include "vk_nir.h"
 #include "vk_semaphore.h"

@@ -24,7 +24,8 @@
 #include "nir/nir.h"
 #include "nir/nir_builder.h"
 #include "radv_nir.h"
-#include "radv_private.h"
+#include "radv_pipeline_graphics.h"
+#include "sid.h"
 
 typedef struct {
    bool dynamic_rasterization_samples;

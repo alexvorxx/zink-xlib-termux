@@ -30,7 +30,6 @@
 #include "radv_buffer.h"
 #include "radv_cs.h"
 #include "radv_formats.h"
-#include "radv_private.h"
 
 struct radv_sdma_chunked_copy_info {
    unsigned extent_horizontal_blocks;

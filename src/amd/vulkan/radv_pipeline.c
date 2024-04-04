@@ -38,7 +38,6 @@
 #include "radv_cs.h"
 #include "radv_debug.h"
 #include "radv_pipeline_rt.h"
-#include "radv_private.h"
 #include "radv_rmv.h"
 #include "radv_shader.h"
 #include "radv_shader_args.h"
@@ -54,6 +53,7 @@
 #include "sid.h"
 #include "vk_format.h"
 #include "vk_nir_convert_ycbcr.h"
+#include "vk_ycbcr_conversion.h"
 
 bool
 radv_shader_need_indirect_descriptor_sets(const struct radv_shader *shader)

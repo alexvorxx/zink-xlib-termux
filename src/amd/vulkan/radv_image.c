@@ -34,9 +34,9 @@
 #include "radv_buffer_view.h"
 #include "radv_debug.h"
 #include "radv_device_memory.h"
+#include "radv_entrypoints.h"
 #include "radv_formats.h"
 #include "radv_image_view.h"
-#include "radv_private.h"
 #include "radv_radeon_winsys.h"
 #include "radv_rmv.h"
 #include "radv_video.h"
@@ -44,6 +44,7 @@
 #include "sid.h"
 #include "vk_debug_utils.h"
 #include "vk_format.h"
+#include "vk_log.h"
 #include "vk_render_pass.h"
 #include "vk_util.h"
 

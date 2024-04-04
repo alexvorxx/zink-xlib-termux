@@ -30,7 +30,7 @@
 
 #include "compiler/spirv/spirv.h"
 
-#include "radv_private.h"
+struct radv_device;
 
 nir_def *build_addr_to_node(nir_builder *b, nir_def *addr);
 

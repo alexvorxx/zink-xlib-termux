@@ -24,10 +24,13 @@
 #include "ac_shader_util.h"
 #include "nir.h"
 #include "nir_builder.h"
+#include "radv_descriptor_set.h"
+#include "radv_device.h"
 #include "radv_nir.h"
-#include "radv_private.h"
+#include "radv_physical_device.h"
 #include "radv_shader.h"
 #include "radv_shader_args.h"
+#include "sid.h"
 
 typedef struct {
    enum amd_gfx_level gfx_level;

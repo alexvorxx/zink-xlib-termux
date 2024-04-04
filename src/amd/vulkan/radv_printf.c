@@ -5,7 +5,7 @@
  */
 
 #include "radv_printf.h"
-#include "radv_private.h"
+#include "radv_physical_device.h"
 
 #include "util/hash_table.h"
 #include "util/strndup.h"

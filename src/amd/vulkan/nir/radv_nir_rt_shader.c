@@ -31,7 +31,6 @@
 #include "ac_nir.h"
 #include "radv_pipeline_cache.h"
 #include "radv_pipeline_rt.h"
-#include "radv_private.h"
 #include "radv_shader.h"
 
 #include "vk_pipeline.h"

@@ -31,15 +31,18 @@
 #include <sys/sysmacros.h>
 #endif
 
+#include "vk_log.h"
+#include "vk_shader_module.h"
+
 #include "util/disk_cache.h"
 #include "util/hex.h"
 #include "util/u_debug.h"
 #include "radv_android.h"
 #include "radv_debug.h"
+#include "radv_entrypoints.h"
 #include "radv_instance.h"
 #include "radv_physical_device.h"
 #include "radv_pipeline_rt.h"
-#include "radv_private.h"
 #include "radv_video.h"
 #include "radv_wsi.h"
 

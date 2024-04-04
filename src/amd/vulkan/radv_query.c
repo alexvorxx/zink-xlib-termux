@@ -34,13 +34,14 @@
 #include "util/u_atomic.h"
 #include "vulkan/vulkan_core.h"
 #include "radv_cs.h"
+#include "radv_entrypoints.h"
 #include "radv_perfcounter.h"
-#include "radv_private.h"
 #include "radv_query.h"
 #include "radv_rmv.h"
 #include "sid.h"
 #include "vk_acceleration_structure.h"
 #include "vk_common_entrypoints.h"
+#include "vk_shader_module.h"
 
 #define TIMESTAMP_NOT_READY UINT64_MAX
 

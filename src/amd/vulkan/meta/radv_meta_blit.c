@@ -23,6 +23,7 @@
 
 #include "nir/nir_builder.h"
 #include "radv_meta.h"
+#include "vk_command_pool.h"
 #include "vk_common_entrypoints.h"
 
 struct blit_region {

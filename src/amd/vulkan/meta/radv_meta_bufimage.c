@@ -22,8 +22,10 @@
  * IN THE SOFTWARE.
  */
 #include "nir/nir_builder.h"
+#include "radv_entrypoints.h"
 #include "radv_meta.h"
 #include "vk_common_entrypoints.h"
+#include "vk_shader_module.h"
 
 /*
  * GFX queue: Compute shader implementation of image->buffer copy

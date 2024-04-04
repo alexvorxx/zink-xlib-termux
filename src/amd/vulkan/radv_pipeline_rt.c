@@ -24,11 +24,14 @@
 #include "nir/nir.h"
 #include "nir/nir_builder.h"
 
+#include "vk_shader_module.h"
+
 #include "nir/radv_nir.h"
 #include "radv_debug.h"
+#include "radv_descriptor_set.h"
+#include "radv_entrypoints.h"
 #include "radv_pipeline_cache.h"
 #include "radv_pipeline_rt.h"
-#include "radv_private.h"
 #include "radv_rmv.h"
 #include "radv_shader.h"
 

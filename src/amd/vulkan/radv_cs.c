@@ -30,7 +30,6 @@
 #include "radv_buffer.h"
 #include "radv_cs.h"
 #include "radv_debug.h"
-#include "radv_private.h"
 #include "radv_shader.h"
 #include "radv_sqtt.h"
 #include "sid.h"

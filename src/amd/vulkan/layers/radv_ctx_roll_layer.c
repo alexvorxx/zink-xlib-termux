@@ -21,8 +21,9 @@
  * IN THE SOFTWARE.
  */
 
+#include "radv_cmd_buffer.h"
 #include "radv_device.h"
-#include "radv_private.h"
+#include "radv_entrypoints.h"
 
 VKAPI_ATTR VkResult VKAPI_CALL
 ctx_roll_QueuePresentKHR(VkQueue _queue, const VkPresentInfoKHR *pPresentInfo)

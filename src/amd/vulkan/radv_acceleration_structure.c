@@ -21,12 +21,12 @@
  * IN THE SOFTWARE.
  */
 
-#include "radv_private.h"
 #include "radv_sqtt.h"
 
 #include "meta/radv_meta.h"
 #include "nir_builder.h"
 #include "radv_cs.h"
+#include "radv_entrypoints.h"
 
 #include "radix_sort/common/vk/barrier.h"
 #include "radix_sort/radv_radix_sort.h"

@@ -23,13 +23,14 @@
 
 #include "nir/nir_builder.h"
 #include "radv_debug.h"
+#include "radv_entrypoints.h"
 #include "radv_formats.h"
 #include "radv_meta.h"
-#include "radv_private.h"
 
 #include "util/format_rgb9e5.h"
 #include "vk_common_entrypoints.h"
 #include "vk_format.h"
+#include "vk_shader_module.h"
 
 enum { DEPTH_CLEAR_SLOW, DEPTH_CLEAR_FAST };
 

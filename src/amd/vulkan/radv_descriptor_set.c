@@ -29,16 +29,20 @@
 #include "util/mesa-sha1.h"
 #include "radv_buffer.h"
 #include "radv_buffer_view.h"
+#include "radv_cmd_buffer.h"
+#include "radv_descriptor_set.h"
+#include "radv_entrypoints.h"
 #include "radv_image.h"
 #include "radv_image_view.h"
-#include "radv_private.h"
 #include "radv_rmv.h"
 #include "radv_sampler.h"
 #include "sid.h"
 #include "vk_acceleration_structure.h"
 #include "vk_descriptors.h"
 #include "vk_format.h"
+#include "vk_log.h"
 #include "vk_util.h"
+#include "vk_ycbcr_conversion.h"
 
 static unsigned
 radv_descriptor_type_buffer_count(VkDescriptorType type)

@@ -23,13 +23,14 @@
 
 #include "radv_device_generated_commands.h"
 #include "meta/radv_meta.h"
-#include "radv_private.h"
+#include "radv_entrypoints.h"
 
 #include "ac_rgp.h"
 
 #include "nir_builder.h"
 
 #include "vk_common_entrypoints.h"
+#include "vk_shader_module.h"
 
 static void
 radv_get_sequence_size_compute(const struct radv_indirect_command_layout *layout,

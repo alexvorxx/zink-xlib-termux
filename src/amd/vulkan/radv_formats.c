@@ -25,14 +25,15 @@
 #include "radv_formats.h"
 #include "radv_android.h"
 #include "radv_debug.h"
+#include "radv_entrypoints.h"
 #include "radv_image.h"
-#include "radv_private.h"
 
 #include "sid.h"
 
 #include "vk_android.h"
 #include "vk_enum_defines.h"
 #include "vk_format.h"
+#include "vk_log.h"
 #include "vk_util.h"
 
 #include "util/format_r11g11b10f.h"

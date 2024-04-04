@@ -21,7 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#include "radv_private.h"
+#include "radv_device.h"
+#include "radv_entrypoints.h"
 #include "vk_common_entrypoints.h"
 
 VKAPI_ATTR VkResult VKAPI_CALL

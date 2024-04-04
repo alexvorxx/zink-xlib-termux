@@ -25,9 +25,13 @@
  * IN THE SOFTWARE.
  */
 
-#include "radv_event.h"
+#include "vk_alloc.h"
+#include "vk_log.h"
+
 #include "radv_buffer.h"
-#include "radv_private.h"
+#include "radv_device.h"
+#include "radv_entrypoints.h"
+#include "radv_event.h"
 #include "radv_rmv.h"
 
 static void

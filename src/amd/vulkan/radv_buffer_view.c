@@ -29,9 +29,11 @@
 
 #include "radv_buffer.h"
 #include "radv_buffer_view.h"
+#include "radv_entrypoints.h"
 #include "radv_formats.h"
 #include "radv_image.h"
-#include "radv_private.h"
+
+#include "vk_log.h"
 
 void
 radv_make_texel_buffer_descriptor(struct radv_device *device, uint64_t va, VkFormat vk_format, unsigned offset,

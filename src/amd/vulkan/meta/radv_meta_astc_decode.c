@@ -24,7 +24,6 @@
 #include <stdbool.h>
 
 #include "radv_meta.h"
-#include "radv_private.h"
 #include "sid.h"
 #include "vk_common_entrypoints.h"
 #include "vk_format.h"

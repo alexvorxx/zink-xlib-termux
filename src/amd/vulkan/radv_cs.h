@@ -28,7 +28,10 @@
 #include <assert.h>
 #include <stdint.h>
 #include <string.h>
-#include "radv_private.h"
+
+#include "radv_cmd_buffer.h"
+#include "radv_physical_device.h"
+#include "radv_radeon_winsys.h"
 #include "sid.h"
 
 static inline unsigned

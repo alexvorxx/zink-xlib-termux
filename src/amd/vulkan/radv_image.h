@@ -32,7 +32,6 @@
 
 #include "radv_device.h"
 #include "radv_physical_device.h"
-#include "radv_private.h"
 #include "radv_radeon_winsys.h"
 
 #include "vk_format.h"

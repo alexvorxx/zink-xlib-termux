@@ -25,7 +25,6 @@
 #include "ac_surface.h"
 
 #include "radv_meta.h"
-#include "radv_private.h"
 #include "vk_common_entrypoints.h"
 
 static nir_shader *

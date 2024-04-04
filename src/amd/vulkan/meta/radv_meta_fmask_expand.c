@@ -24,7 +24,6 @@
 
 #include "radv_formats.h"
 #include "radv_meta.h"
-#include "radv_private.h"
 #include "vk_format.h"
 
 static VkResult radv_device_init_meta_fmask_expand_state_internal(struct radv_device *device, uint32_t samples_log2);

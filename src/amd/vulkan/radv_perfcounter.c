@@ -26,8 +26,8 @@
 #include "ac_perfcounter.h"
 #include "amdgfxregs.h"
 #include "radv_cs.h"
+#include "radv_entrypoints.h"
 #include "radv_perfcounter.h"
-#include "radv_private.h"
 #include "radv_sqtt.h"
 #include "sid.h"
 

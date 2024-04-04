@@ -23,8 +23,8 @@
 
 #include "radv_cmd_buffer.h"
 #include "radv_cs.h"
+#include "radv_entrypoints.h"
 #include "radv_pipeline_rt.h"
-#include "radv_private.h"
 #include "radv_queue.h"
 #include "radv_shader.h"
 #include "radv_sqtt.h"

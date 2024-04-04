@@ -23,7 +23,9 @@
 
 #include "rmv/vk_rmv_common.h"
 #include "rmv/vk_rmv_tokens.h"
-#include "radv_private.h"
+#include "radv_device.h"
+#include "radv_entrypoints.h"
+#include "radv_queue.h"
 #include "vk_common_entrypoints.h"
 
 VKAPI_ATTR VkResult VKAPI_CALL

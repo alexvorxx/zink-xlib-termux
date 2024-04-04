@@ -25,14 +25,23 @@
  * IN THE SOFTWARE.
  */
 
+#ifdef HAVE_VALGRIND
+#include <memcheck.h>
+#include <valgrind.h>
+#define VG(x) x
+#else
+#define VG(x) ((void)0)
+#endif
+
 #include "radv_instance.h"
 #include "radv_debug.h"
-#include "radv_private.h"
+#include "radv_entrypoints.h"
 #include "radv_wsi.h"
 
 #include "util/driconf.h"
 
 #include "vk_instance.h"
+#include "vk_log.h"
 #include "vk_util.h"
 
 static const struct debug_control radv_debug_options[] = {{"nofastclears", RADV_DEBUG_NO_FAST_CLEARS},

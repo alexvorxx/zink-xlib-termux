@@ -21,13 +21,13 @@
  * IN THE SOFTWARE.
  */
 
-#include "radv_buffer.h"
 #include "radv_android.h"
+#include "radv_buffer.h"
 #include "radv_device.h"
 #include "radv_device_memory.h"
+#include "radv_entrypoints.h"
 #include "radv_image.h"
 #include "radv_physical_device.h"
-#include "radv_private.h"
 
 #if DETECT_OS_ANDROID
 #include <libsync.h>
@@ -45,6 +45,7 @@
 #include "util/os_file.h"
 
 #include "vk_android.h"
+#include "vk_log.h"
 #include "vk_util.h"
 
 #if DETECT_OS_ANDROID

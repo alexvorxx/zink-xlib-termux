@@ -25,8 +25,8 @@
 #include <stdbool.h>
 
 #include "nir/nir_builder.h"
+#include "radv_entrypoints.h"
 #include "radv_meta.h"
-#include "radv_private.h"
 #include "sid.h"
 #include "vk_format.h"
 

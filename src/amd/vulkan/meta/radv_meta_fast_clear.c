@@ -25,7 +25,6 @@
 #include <stdbool.h>
 
 #include "radv_meta.h"
-#include "radv_private.h"
 #include "sid.h"
 
 enum radv_color_op {

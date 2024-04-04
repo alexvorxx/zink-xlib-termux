@@ -31,17 +31,19 @@
 #include "radv_cmd_buffer.h"
 #include "radv_device.h"
 #include "radv_device_memory.h"
+#include "radv_entrypoints.h"
 #include "radv_image.h"
 #include "radv_image_view.h"
 #include "radv_physical_device.h"
 #include "radv_pipeline.h"
 #include "radv_pipeline_compute.h"
 #include "radv_pipeline_graphics.h"
-#include "radv_private.h"
 #include "radv_queue.h"
 #include "radv_shader.h"
 #include "radv_shader_object.h"
 #include "radv_sqtt.h"
+
+#include "vk_shader_module.h"
 
 #ifdef __cplusplus
 extern "C" {

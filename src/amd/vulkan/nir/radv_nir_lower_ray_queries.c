@@ -30,7 +30,6 @@
 #include "nir/radv_nir_rt_common.h"
 #include "radv_debug.h"
 #include "radv_nir.h"
-#include "radv_private.h"
 #include "radv_shader.h"
 
 /* Traversal stack size. Traversal supports backtracking so we can go deeper than this size if

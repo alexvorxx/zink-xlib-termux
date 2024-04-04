@@ -31,7 +31,6 @@
 #include "vk_object.h"
 
 #include "radv_android.h"
-#include "radv_private.h"
 
 struct radv_device;
 

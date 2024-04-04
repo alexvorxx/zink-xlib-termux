@@ -24,7 +24,6 @@
 #include "meta/radv_meta.h"
 #include "util/u_process.h"
 #include "radv_event.h"
-#include "radv_private.h"
 #include "radv_rra.h"
 #include "vk_acceleration_structure.h"
 #include "vk_common_entrypoints.h"

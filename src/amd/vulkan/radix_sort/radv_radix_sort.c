@@ -23,7 +23,7 @@
 
 #include "radv_radix_sort.h"
 #include "targets/u64/config.h"
-#include "radv_private.h"
+#include "radv_cmd_buffer.h"
 #include "target.h"
 
 static const uint32_t init_spv[] = {

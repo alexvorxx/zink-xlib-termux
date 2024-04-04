@@ -25,7 +25,9 @@
 #include "bvh/bvh.h"
 #include "util/half_float.h"
 #include "amd_family.h"
-#include "radv_private.h"
+#include "radv_device.h"
+#include "radv_entrypoints.h"
+#include "radv_physical_device.h"
 #include "vk_acceleration_structure.h"
 #include "vk_common_entrypoints.h"
 

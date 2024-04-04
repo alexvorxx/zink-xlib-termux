@@ -27,12 +27,13 @@
 #include "nir/nir_builder.h"
 #include "nir/nir_format_convert.h"
 
+#include "radv_entrypoints.h"
 #include "radv_formats.h"
 #include "radv_meta.h"
-#include "radv_private.h"
 #include "sid.h"
 #include "vk_common_entrypoints.h"
 #include "vk_format.h"
+#include "vk_shader_module.h"
 
 static nir_def *
 radv_meta_build_resolve_srgb_conversion(nir_builder *b, nir_def *input)

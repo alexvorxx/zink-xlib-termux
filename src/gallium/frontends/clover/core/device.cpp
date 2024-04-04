@@ -30,6 +30,7 @@
 #include "util/u_debug.h"
 #include "spirv/invocation.hpp"
 #include "nir/invocation.hpp"
+#include "nir.h"
 #include <fstream>
 
 using namespace clover;
@@ -134,6 +135,27 @@ namespace {
 
       return version;
    }
+
+   static cl_device_type
+   parse_env_device_type() {
+      const char* val = getenv("CLOVER_DEVICE_TYPE");
+      if (!val) {
+         return 0;
+      }
+      if (strcmp(val, "cpu") == 0) {
+         return CL_DEVICE_TYPE_CPU;
+      }
+      if (strcmp(val, "gpu") == 0) {
+         return CL_DEVICE_TYPE_GPU;
+      }
+      if (strcmp(val, "accelerator") == 0) {
+         return CL_DEVICE_TYPE_ACCELERATOR;
+      }
+      /* CL_DEVICE_TYPE_CUSTOM isn't implemented
+      because CL_DEVICE_TYPE_CUSTOM is OpenCL 1.2
+      and Clover is OpenCL 1.1. */
+      return 0;
+   }
 }
 
 device::device(clover::platform &platform, pipe_loader_device *ldev) :
@@ -189,6 +211,11 @@ device::operator==(const device &dev) const {
 
 cl_device_type
 device::type() const {
+   cl_device_type type = parse_env_device_type();
+   if (type != 0) {
+      return type;
+   }
+
    switch (ldev->type) {
    case PIPE_LOADER_DEVICE_SOFTWARE:
       return CL_DEVICE_TYPE_CPU;
@@ -333,7 +360,12 @@ device::image_support() const {
 
 bool
 device::has_doubles() const {
-   return pipe->get_param(pipe, PIPE_CAP_DOUBLES);
+   nir_shader_compiler_options *options =
+         (nir_shader_compiler_options *)pipe->get_compiler_options(pipe,
+                                                                   PIPE_SHADER_IR_NIR,
+                                                                   PIPE_SHADER_COMPUTE);
+   return pipe->get_param(pipe, PIPE_CAP_DOUBLES) &&
+         !(options->lower_doubles_options & nir_lower_fp64_full_software);
 }
 
 bool

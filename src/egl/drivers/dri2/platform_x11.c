@@ -35,12 +35,13 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
+#include <vulkan/vulkan.h>
 #ifdef HAVE_LIBDRM
 #include <xf86drm.h>
 #endif
 #include <sys/types.h>
 #include <sys/stat.h>
-#include "util/debug.h"
+#include "util/u_debug.h"
 #include "util/macros.h"
 #include "util/bitscan.h"
 
@@ -1323,19 +1324,22 @@ static const __DRIswrastLoaderExtension swrast_loader_extension = {
    .getImage        = swrastGetImage,
 };
 
+static_assert(sizeof(struct kopper_vk_surface_create_storage) >= sizeof(VkXcbSurfaceCreateInfoKHR), "");
+
 static void
 kopperSetSurfaceCreateInfo(void *_draw, struct kopper_loader_info *ci)
 {
     struct dri2_egl_surface *dri2_surf = _draw;
     struct dri2_egl_display *dri2_dpy = dri2_egl_display(dri2_surf->base.Resource.Display);
+    VkXcbSurfaceCreateInfoKHR *xcb = (VkXcbSurfaceCreateInfoKHR *)&ci->bos;
 
     if (dri2_surf->base.Type != EGL_WINDOW_BIT)
        return;
-    ci->xcb.sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR;
-    ci->xcb.pNext = NULL;
-    ci->xcb.flags = 0;
-    ci->xcb.connection = dri2_dpy->conn;
-    ci->xcb.window = dri2_surf->drawable;
+    xcb->sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR;
+    xcb->pNext = NULL;
+    xcb->flags = 0;
+    xcb->connection = dri2_dpy->conn;
+    xcb->window = dri2_surf->drawable;
     ci->has_alpha = dri2_surf->depth == 32;
 }
 
@@ -1714,12 +1718,12 @@ dri2_initialize_x11(_EGLDisplay *disp)
       return dri2_initialize_x11_swrast(disp);
 
 #ifdef HAVE_DRI3
-   if (!env_var_as_boolean("LIBGL_DRI3_DISABLE", false))
+   if (!debug_get_bool_option("LIBGL_DRI3_DISABLE", false))
       if (dri2_initialize_x11_dri3(disp))
          return EGL_TRUE;
 #endif
 
-   if (!env_var_as_boolean("LIBGL_DRI2_DISABLE", false))
+   if (!debug_get_bool_option("LIBGL_DRI2_DISABLE", false))
       if (dri2_initialize_x11_dri2(disp))
          return EGL_TRUE;
 

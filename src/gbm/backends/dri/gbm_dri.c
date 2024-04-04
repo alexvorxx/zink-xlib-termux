@@ -50,7 +50,7 @@
 #include "loader_dri_helper.h"
 #include "kopper_interface.h"
 #include "loader.h"
-#include "util/debug.h"
+#include "util/u_debug.h"
 #include "util/macros.h"
 
 /* For importing wl_buffer */
@@ -295,18 +295,18 @@ struct dri_extension_match {
 
 static struct dri_extension_match dri_core_extensions[] = {
    { __DRI2_FLUSH, 1, offsetof(struct gbm_dri_device, flush), false },
-   { __DRI_IMAGE, 1, offsetof(struct gbm_dri_device, image), false },
+   { __DRI_IMAGE, 6, offsetof(struct gbm_dri_device, image), false },
    { __DRI2_FENCE, 1, offsetof(struct gbm_dri_device, fence), true },
 };
 
 static struct dri_extension_match gbm_dri_device_extensions[] = {
    { __DRI_CORE, 1, offsetof(struct gbm_dri_device, core), false },
-   { __DRI_DRI2, 1, offsetof(struct gbm_dri_device, dri2), false },
+   { __DRI_DRI2, 4, offsetof(struct gbm_dri_device, dri2), false },
 };
 
 static struct dri_extension_match gbm_swrast_device_extensions[] = {
    { __DRI_CORE, 1, offsetof(struct gbm_dri_device, core), false },
-   { __DRI_SWRAST, 1, offsetof(struct gbm_dri_device, swrast), false },
+   { __DRI_SWRAST, 4, offsetof(struct gbm_dri_device, swrast), false },
    { __DRI_KOPPER, 1, offsetof(struct gbm_dri_device, kopper), true },
 };
 
@@ -430,16 +430,10 @@ dri_screen_create_dri2(struct gbm_dri_device *dri, char *driver_name)
    if (dri->dri2 == NULL)
       return -1;
 
-   if (dri->dri2->base.version >= 4) {
-      dri->screen = dri->dri2->createNewScreen2(0, dri->base.v0.fd,
-                                                dri->loader_extensions,
-                                                dri->driver_extensions,
-                                                &dri->driver_configs, dri);
-   } else {
-      dri->screen = dri->dri2->createNewScreen(0, dri->base.v0.fd,
-                                               dri->loader_extensions,
-                                               &dri->driver_configs, dri);
-   }
+   dri->screen = dri->dri2->createNewScreen2(0, dri->base.v0.fd,
+                                             dri->loader_extensions,
+                                             dri->driver_extensions,
+                                             &dri->driver_configs, dri);
    if (dri->screen == NULL)
       return -1;
 
@@ -482,14 +476,9 @@ dri_screen_create_swrast(struct gbm_dri_device *dri)
    if (dri->swrast == NULL)
       return -1;
 
-   if (dri->swrast->base.version >= 4) {
-      dri->screen = dri->swrast->createNewScreen2(0, dri->loader_extensions,
-                                                  dri->driver_extensions,
-                                                  &dri->driver_configs, dri);
-   } else {
-      dri->screen = dri->swrast->createNewScreen(0, dri->loader_extensions,
-                                                 &dri->driver_configs, dri);
-   }
+   dri->screen = dri->swrast->createNewScreen2(0, dri->loader_extensions,
+                                               dri->driver_extensions,
+                                               &dri->driver_configs, dri);
    if (dri->screen == NULL)
       return -1;
 
@@ -991,8 +980,7 @@ gbm_dri_bo_import(struct gbm_device *gbm,
    unsigned dri_use = 0;
    int gbm_format;
 
-   /* Required for query image WIDTH & HEIGHT */
-   if (dri->image == NULL || dri->image->base.version < 4) {
+   if (dri->image == NULL) {
       errno = ENOSYS;
       return NULL;
    }
@@ -1123,8 +1111,7 @@ gbm_dri_bo_import(struct gbm_device *gbm,
       dri_use |= __DRI_IMAGE_USE_SCANOUT;
    if (usage & GBM_BO_USE_CURSOR)
       dri_use |= __DRI_IMAGE_USE_CURSOR;
-   if (dri->image->base.version >= 2 &&
-       !dri->image->validateUsage(bo->image, dri_use)) {
+   if (!dri->image->validateUsage(bo->image, dri_use)) {
       errno = EINVAL;
       dri->image->destroyImage(bo->image);
       free(bo);
@@ -1478,7 +1465,7 @@ dri_device_create(int fd, uint32_t gbm_backend_version)
 
    mtx_init(&dri->mutex, mtx_plain);
 
-   force_sw = env_var_as_boolean("GBM_ALWAYS_SOFTWARE", false);
+   force_sw = debug_get_bool_option("GBM_ALWAYS_SOFTWARE", false);
    if (!force_sw) {
       ret = dri_screen_create(dri);
       if (ret)

@@ -639,7 +639,7 @@ genX(rasterization_mode)(VkPolygonMode raster_mode,
        */
       switch (line_mode) {
       case VK_LINE_RASTERIZATION_MODE_RECTANGULAR_EXT:
-         *api_mode = DX100;
+         *api_mode = DX101;
 #if GFX_VER <= 9
          /* Prior to ICL, the algorithm the HW uses to draw wide lines
           * doesn't quite match what the CTS expects, at least for rectangular
@@ -662,7 +662,7 @@ genX(rasterization_mode)(VkPolygonMode raster_mode,
          unreachable("Unsupported line rasterization mode");
       }
    } else {
-      *api_mode = DX100;
+      *api_mode = DX101;
       *msaa_rasterization_enable = true;
    }
 }
@@ -724,6 +724,7 @@ emit_rs_state(struct anv_graphics_pipeline *pipeline,
 
    raster.ConservativeRasterizationEnable =
       rs->conservative_mode != VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT;
+   raster.APIMode = DX101;
 
    GENX(3DSTATE_SF_pack)(NULL, pipeline->gfx8.sf, &sf);
    GENX(3DSTATE_RASTER_pack)(NULL, pipeline->gfx8.raster, &raster);
@@ -1695,6 +1696,7 @@ emit_task_state(struct anv_graphics_pipeline *pipeline)
       tc.TaskShaderEnable = true;
       tc.ScratchSpaceBuffer =
          get_scratch_surf(&pipeline->base, MESA_SHADER_TASK, task_bin);
+      tc.MaximumNumberofThreadGroups = 511;
    }
 
    const struct intel_device_info *devinfo = pipeline->base.device->info;
@@ -1751,8 +1753,7 @@ emit_mesh_state(struct anv_graphics_pipeline *pipeline)
       mc.MeshShaderEnable = true;
       mc.ScratchSpaceBuffer =
          get_scratch_surf(&pipeline->base, MESA_SHADER_MESH, mesh_bin);
-
-      /* TODO(mesh): MaximumNumberofThreadGroups. */
+      mc.MaximumNumberofThreadGroups = 511;
    }
 
    const struct intel_device_info *devinfo = pipeline->base.device->info;
@@ -1807,8 +1808,8 @@ emit_mesh_state(struct anv_graphics_pipeline *pipeline)
    /* Recommended values from "Task and Mesh Distribution Programming". */
    anv_batch_emit(&pipeline->base.batch, GENX(3DSTATE_MESH_DISTRIB), distrib) {
       distrib.DistributionMode = MESH_RR_FREE;
-      distrib.TaskDistributionBatchSize = devinfo->num_slices > 2 ? 8 : 9; /* 2^N thread groups */
-      distrib.MeshDistributionBatchSize = devinfo->num_slices > 2 ? 5 : 3; /* 2^N thread groups */
+      distrib.TaskDistributionBatchSize = devinfo->num_slices > 2 ? 4 : 9; /* 2^N thread groups */
+      distrib.MeshDistributionBatchSize = devinfo->num_slices > 2 ? 3 : 3; /* 2^N thread groups */
    }
 }
 #endif

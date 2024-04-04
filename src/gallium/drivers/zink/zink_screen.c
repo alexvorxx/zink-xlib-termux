@@ -21,6 +21,9 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "frontend/sw_winsys.h"
+extern struct pipe_context* zink_xlib_context;
+
 #include "zink_screen.h"
 
 #include "zink_kopper.h"
@@ -50,10 +53,6 @@
 #include "util/u_cpu_detect.h"
 
 #include "driver_trace/tr_context.h"
-
-#include "frontend/sw_winsys.h"
-
-extern struct pipe_context* zink_xlib_context;
 
 #if DETECT_OS_WINDOWS
 #include <io.h>
@@ -94,17 +93,6 @@ DEBUG_GET_ONCE_FLAGS_OPTION(zink_debug, "ZINK_DEBUG", zink_debug_options, 0)
 uint32_t
 zink_debug;
 
-
-static const struct debug_named_value
-zink_descriptor_options[] = {
-   { "auto", ZINK_DESCRIPTOR_MODE_AUTO, "Automatically detect best mode" },
-   { "lazy", ZINK_DESCRIPTOR_MODE_LAZY, "Don't cache, do least amount of updates" },
-   DEBUG_NAMED_VALUE_END
-};
-
-DEBUG_GET_ONCE_FLAGS_OPTION(zink_descriptor_mode, "ZINK_DESCRIPTORS", zink_descriptor_options, ZINK_DESCRIPTOR_MODE_AUTO)
-
-enum zink_descriptor_mode zink_descriptor_mode;
 
 static const char *
 zink_get_vendor(struct pipe_screen *pscreen)
@@ -248,12 +236,14 @@ disk_cache_init(struct zink_screen *screen)
    struct mesa_sha1 ctx;
    _mesa_sha1_init(&ctx);
 
+#ifdef HAVE_DL_ITERATE_PHDR
    /* Hash in the zink driver build. */
    //const struct build_id_note *note =
-       build_id_find_nhdr_for_addr(disk_cache_init);
+       //build_id_find_nhdr_for_addr(disk_cache_init);
    //unsigned build_id_len = build_id_length(note);
    //assert(note && build_id_len == 20); /* sha1 */
    //_mesa_sha1_update(&ctx, build_id_data(note), build_id_len);
+#endif
 
    /* Hash in the Vulkan pipeline cache UUID to identify the combination of
    *  vulkan device and driver (or any inserted layer that would invalidate our
@@ -705,7 +695,8 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    }
 
    case PIPE_CAP_MAX_TEXTURE_2D_SIZE:
-      return screen->info.props.limits.maxImageDimension2D;
+      return MIN2(screen->info.props.limits.maxImageDimension1D,
+                  screen->info.props.limits.maxImageDimension2D);
    case PIPE_CAP_MAX_TEXTURE_3D_LEVELS:
       return 1 + util_logbase2(screen->info.props.limits.maxImageDimension3D);
    case PIPE_CAP_MAX_TEXTURE_CUBE_LEVELS:
@@ -2470,6 +2461,7 @@ init_driver_workarounds(struct zink_screen *screen)
             screen->info.dynamic_state3_feats.extendedDynamicState3ColorBlendEnable &&
             screen->info.dynamic_state3_feats.extendedDynamicState3RasterizationSamples &&
             screen->info.dynamic_state3_feats.extendedDynamicState3ColorWriteMask &&
+            screen->info.dynamic_state3_feats.extendedDynamicState3ColorBlendEquation &&
             screen->info.dynamic_state3_feats.extendedDynamicState3LogicOpEnable &&
             screen->info.dynamic_state2_feats.extendedDynamicState2LogicOp)
       screen->have_full_ds3 = true;
@@ -2493,6 +2485,18 @@ init_driver_workarounds(struct zink_screen *screen)
       /* performance */
       screen->info.border_color_feats.customBorderColorWithoutFormat = VK_FALSE;
    }
+
+   if ((!screen->info.have_EXT_line_rasterization ||
+        !screen->info.line_rast_feats.stippledBresenhamLines) &&
+       screen->info.feats.features.geometryShader &&
+       screen->info.feats.features.sampleRateShading) {
+      /* we're using stippledBresenhamLines as a proxy for all of these, to
+       * avoid accidentally changing behavior on VK-drivers where we don't
+       * want to add emulation.
+       */
+      screen->driver_workarounds.no_linestipple = true;
+   }
+
    if (screen->info.driver_props.driverID == VK_DRIVER_ID_AMD_OPEN_SOURCE || 
        screen->info.driver_props.driverID == VK_DRIVER_ID_AMD_PROPRIETARY || 
        screen->info.driver_props.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY || 
@@ -2590,7 +2594,6 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
    screen->abort_on_hang = debug_get_bool_option("ZINK_HANG_ABORT", false);
 
    zink_debug = debug_get_option_zink_debug();
-   zink_descriptor_mode = debug_get_option_zink_descriptor_mode();
 
    screen->loader_lib = util_dl_open(VK_LIBNAME);
    if (!screen->loader_lib)
@@ -2603,7 +2606,6 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
       goto fail;
 
    screen->instance_info.loader_version = zink_get_loader_version(screen);
-#if WITH_XMLCONFIG
    if (config) {
       driParseConfigFiles(config->options, config->options_info, 0, "zink",
                           NULL, NULL, NULL, 0, NULL, 0);
@@ -2612,7 +2614,6 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
       //screen->driconf.inline_uniforms = driQueryOptionb(config->options, "radeonsi_inline_uniforms");
       screen->instance_info.disable_xcb_surface = driQueryOptionb(config->options, "disable_xcb_surface");
    }
-#endif
 
    if (!zink_create_instance(screen))
       goto fail;
@@ -2698,9 +2699,6 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
       screen->desc_set_id[ZINK_DESCRIPTOR_TYPE_SSBO] = 3;
       screen->desc_set_id[ZINK_DESCRIPTOR_TYPE_IMAGE] = 4;
       screen->desc_set_id[ZINK_DESCRIPTOR_BINDLESS] = 5;
-   }
-   if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_AUTO) {
-      zink_descriptor_mode = ZINK_DESCRIPTOR_MODE_LAZY;
    }
 
    if (screen->info.have_EXT_calibrated_timestamps && !check_have_device_time(screen))
@@ -2882,7 +2880,10 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
       goto fail;
    }
 
-   screen->optimal_keys = !screen->need_decompose_attrs && screen->info.have_EXT_non_seamless_cube_map && !screen->driconf.inline_uniforms;
+   screen->optimal_keys = !screen->need_decompose_attrs &&
+                          screen->info.have_EXT_non_seamless_cube_map &&
+                          !screen->driconf.inline_uniforms &&
+                          !screen->driver_workarounds.no_linestipple;
    if (!screen->optimal_keys)
       screen->info.have_EXT_graphics_pipeline_library = false;
 

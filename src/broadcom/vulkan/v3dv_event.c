@@ -86,34 +86,6 @@ get_wait_event_cs()
    return b.shader;
 }
 
-static VkResult
-create_compute_pipeline_from_nir(struct v3dv_device *device,
-                                 nir_shader *nir,
-                                 VkPipelineLayout pipeline_layout,
-                                 VkPipeline *pipeline)
-{
-   struct vk_shader_module cs_m = vk_shader_module_from_nir(nir);
-
-   VkPipelineShaderStageCreateInfo set_event_cs_stage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = vk_shader_module_to_handle(&cs_m),
-      .pName = "main",
-   };
-
-   VkComputePipelineCreateInfo info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage = set_event_cs_stage,
-      .layout = pipeline_layout,
-   };
-
-   VkResult result =
-      v3dv_CreateComputePipelines(v3dv_device_to_handle(device), VK_NULL_HANDLE,
-                                  1, &info, &device->vk.alloc, pipeline);
-
-   return result;
-}
-
 static bool
 create_event_pipelines(struct v3dv_device *device)
 {
@@ -173,10 +145,10 @@ create_event_pipelines(struct v3dv_device *device)
 
    if (!device->events.set_event_pipeline) {
       nir_shader *set_event_cs_nir = get_set_event_cs();
-      result = create_compute_pipeline_from_nir(device,
-                                                set_event_cs_nir,
-                                                device->events.pipeline_layout,
-                                                &pipeline);
+      result = v3dv_create_compute_pipeline_from_nir(device,
+                                                     set_event_cs_nir,
+                                                     device->events.pipeline_layout,
+                                                     &pipeline);
       ralloc_free(set_event_cs_nir);
       if (result != VK_SUCCESS)
          return false;
@@ -186,10 +158,10 @@ create_event_pipelines(struct v3dv_device *device)
 
    if (!device->events.wait_event_pipeline) {
       nir_shader *wait_event_cs_nir = get_wait_event_cs();
-      result = create_compute_pipeline_from_nir(device,
-                                                wait_event_cs_nir,
-                                                device->events.pipeline_layout,
-                                                &pipeline);
+      result = v3dv_create_compute_pipeline_from_nir(device,
+                                                     wait_event_cs_nir,
+                                                     device->events.pipeline_layout,
+                                                     &pipeline);
       ralloc_free(wait_event_cs_nir);
       if (result != VK_SUCCESS)
          return false;
@@ -223,7 +195,15 @@ destroy_event_pipelines(struct v3dv_device *device)
    device->events.descriptor_set_layout = VK_NULL_HANDLE;
 }
 
-bool
+static void
+init_event(struct v3dv_device *device, struct v3dv_event *event, uint32_t index)
+{
+   vk_object_base_init(&device->vk, &event->base, VK_OBJECT_TYPE_EVENT);
+   event->index = index;
+   list_addtail(&event->link, &device->events.free_list);
+}
+
+VkResult
 v3dv_event_allocate_resources(struct v3dv_device *device)
 {
    VkResult result = VK_SUCCESS;
@@ -231,8 +211,11 @@ v3dv_event_allocate_resources(struct v3dv_device *device)
 
    /* BO with event states. Make sure we always align to a page size (4096)
     * to ensure we use all the memory the kernel will allocate for the BO.
+    *
+    * CTS has tests that require over 8192 active events (yes, really) so
+    * let's make sure we allow for that.
     */
-   const uint32_t bo_size = 4096;
+   const uint32_t bo_size = 3 * 4096;
    struct v3dv_bo *bo = v3dv_bo_alloc(device, bo_size, "events", true);
    if (!bo) {
       result = vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
@@ -246,22 +229,20 @@ v3dv_event_allocate_resources(struct v3dv_device *device)
       goto fail;
    }
 
-   /* List of free event state slots in the BO, 1 byte per slot */
-   device->events.desc_count = bo_size;
-   device->events.desc =
-      vk_alloc2(&device->vk.alloc, NULL,
-                device->events.desc_count * sizeof(struct v3dv_event_desc), 8,
-                VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
-   if (!device->events.desc) {
+   /* Pre-allocate our events, each event requires 1 byte of BO storage */
+   device->events.event_count = bo_size;
+   device->events.events =
+      vk_zalloc2(&device->vk.alloc, NULL,
+                 device->events.event_count * sizeof(struct v3dv_event), 8,
+                 VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+   if (!device->events.events) {
       result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
       goto fail;
    }
 
    list_inithead(&device->events.free_list);
-   for (int i = 0; i < device->events.desc_count; i++) {
-      device->events.desc[i].index = i;
-      list_addtail(&device->events.desc[i].link, &device->events.free_list);
-   }
+   for (int i = 0; i < device->events.event_count; i++)
+      init_event(device, &device->events.events[i], i);
 
    /* Vulkan buffer for the event state BO */
    VkBufferCreateInfo buf_info = {
@@ -362,14 +343,16 @@ v3dv_event_free_resources(struct v3dv_device *device)
       device->events.bo = NULL;
    }
 
-   if (device->events.desc) {
-      vk_free2(&device->vk.alloc, NULL, device->events.desc);
-      device->events.desc = NULL;
+   if (device->events.events) {
+      vk_free2(&device->vk.alloc, NULL, device->events.events);
+      device->events.events = NULL;
    }
 
-   vk_object_free(&device->vk, NULL,
-                  v3dv_device_memory_from_handle(device->events.mem));
-   device->events.mem = VK_NULL_HANDLE;
+   if (device->events.mem) {
+      vk_object_free(&device->vk, NULL,
+                     v3dv_device_memory_from_handle(device->events.mem));
+      device->events.mem = VK_NULL_HANDLE;
+   }
 
    v3dv_DestroyBuffer(v3dv_device_to_handle(device),
                       device->events.buffer, NULL);
@@ -388,8 +371,8 @@ v3dv_event_free_resources(struct v3dv_device *device)
    destroy_event_pipelines(device);
 }
 
-static struct v3dv_event_desc *
-allocate_event_descriptor(struct v3dv_device *device)
+static struct v3dv_event *
+allocate_event(struct v3dv_device *device)
 {
    mtx_lock(&device->events.lock);
    if (list_is_empty(&device->events.free_list)) {
@@ -397,20 +380,20 @@ allocate_event_descriptor(struct v3dv_device *device)
       return NULL;
    }
 
-   struct v3dv_event_desc *desc =
-      list_first_entry(&device->events.free_list, struct v3dv_event_desc, link);
-   list_del(&desc->link);
+   struct v3dv_event *event =
+      list_first_entry(&device->events.free_list, struct v3dv_event, link);
+   list_del(&event->link);
    mtx_unlock(&device->events.lock);
 
-   return desc;
+   return event;
 }
 
 static void
-free_event_descriptor(struct v3dv_device *device, uint32_t index)
+free_event(struct v3dv_device *device, uint32_t index)
 {
+   assert(index < device->events.event_count);
    mtx_lock(&device->events.lock);
-   assert(index < device->events.desc_count);
-   list_addtail(&device->events.desc[index].link, &device->events.free_list);
+   list_addtail(&device->events.events[index].link, &device->events.free_list);
    mtx_unlock(&device->events.lock);
 }
 
@@ -440,21 +423,12 @@ v3dv_CreateEvent(VkDevice _device,
    V3DV_FROM_HANDLE(v3dv_device, device, _device);
    VkResult result = VK_SUCCESS;
 
-   struct v3dv_event *event =
-      vk_object_zalloc(&device->vk, pAllocator, sizeof(*event),
-                       VK_OBJECT_TYPE_EVENT);
+   struct v3dv_event *event = allocate_event(device);
    if (!event) {
-      result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-      goto fail;
-   }
-
-   struct v3dv_event_desc *desc = allocate_event_descriptor(device);
-   if (!desc) {
       result = vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
       goto fail;
    }
 
-   event->index = desc->index;
    event_set_value(device, event, 0);
    *pEvent = v3dv_event_to_handle(event);
    return VK_SUCCESS;
@@ -474,8 +448,7 @@ v3dv_DestroyEvent(VkDevice _device,
    if (!event)
       return;
 
-   free_event_descriptor(device, event->index);
-   vk_object_free(&device->vk, pAllocator, event);
+   free_event(device, event->index);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -525,7 +498,7 @@ cmd_buffer_emit_set_event(struct v3dv_cmd_buffer *cmd_buffer,
                               device->events.pipeline_layout,
                               0, 1, &device->events.descriptor_set, 0, NULL);
 
-   assert(event->index < device->events.desc_count);
+   assert(event->index < device->events.event_count);
    uint32_t offset = event->index;
    v3dv_CmdPushConstants(commandBuffer,
                          device->events.pipeline_layout,
@@ -560,7 +533,7 @@ cmd_buffer_emit_wait_event(struct v3dv_cmd_buffer *cmd_buffer,
                               device->events.pipeline_layout,
                               0, 1, &device->events.descriptor_set, 0, NULL);
 
-   assert(event->index < device->events.desc_count);
+   assert(event->index < device->events.event_count);
    uint32_t offset = event->index;
    v3dv_CmdPushConstants(commandBuffer,
                          device->events.pipeline_layout,
@@ -586,8 +559,62 @@ v3dv_CmdSetEvent2(VkCommandBuffer commandBuffer,
    assert(cmd_buffer->state.pass == NULL);
    assert(cmd_buffer->state.job == NULL);
 
-   v3dv_CmdPipelineBarrier2(commandBuffer, pDependencyInfo);
+   /* We need to add the compute stage to the dstStageMask of all dependencies,
+    * so let's go ahead and patch the dependency info we receive.
+    */
+   struct v3dv_device *device = cmd_buffer->device;
+
+   uint32_t memory_barrier_count = pDependencyInfo->memoryBarrierCount;
+   VkMemoryBarrier2 *memory_barriers = memory_barrier_count ?
+      vk_alloc2(&device->vk.alloc, NULL,
+                memory_barrier_count * sizeof(memory_barriers[0]), 8,
+                VK_SYSTEM_ALLOCATION_SCOPE_COMMAND) : NULL;
+   for (int i = 0; i < memory_barrier_count; i++) {
+      memory_barriers[i] = pDependencyInfo->pMemoryBarriers[i];
+      memory_barriers[i].dstStageMask |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+   }
+
+   uint32_t buffer_barrier_count = pDependencyInfo->bufferMemoryBarrierCount;
+   VkBufferMemoryBarrier2 *buffer_barriers = buffer_barrier_count ?
+      vk_alloc2(&device->vk.alloc, NULL,
+                buffer_barrier_count * sizeof(buffer_barriers[0]), 8,
+                VK_SYSTEM_ALLOCATION_SCOPE_COMMAND) : NULL;
+   for (int i = 0; i < buffer_barrier_count; i++) {
+      buffer_barriers[i] = pDependencyInfo->pBufferMemoryBarriers[i];
+      buffer_barriers[i].dstStageMask |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+   }
+
+   uint32_t image_barrier_count = pDependencyInfo->imageMemoryBarrierCount;
+   VkImageMemoryBarrier2 *image_barriers = image_barrier_count ?
+      vk_alloc2(&device->vk.alloc, NULL,
+                image_barrier_count * sizeof(image_barriers[0]), 8,
+                VK_SYSTEM_ALLOCATION_SCOPE_COMMAND) : NULL;
+   for (int i = 0; i < image_barrier_count; i++) {
+      image_barriers[i] = pDependencyInfo->pImageMemoryBarriers[i];
+      image_barriers[i].dstStageMask |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+   }
+
+   VkDependencyInfo info = {
+      .sType = pDependencyInfo->sType,
+      .dependencyFlags = pDependencyInfo->dependencyFlags,
+      .memoryBarrierCount = memory_barrier_count,
+      .pMemoryBarriers = memory_barriers,
+      .bufferMemoryBarrierCount = buffer_barrier_count,
+      .pBufferMemoryBarriers = buffer_barriers,
+      .imageMemoryBarrierCount = image_barrier_count,
+      .pImageMemoryBarriers = image_barriers,
+   };
+
+   v3dv_cmd_buffer_emit_pipeline_barrier(cmd_buffer, &info);
+
    cmd_buffer_emit_set_event(cmd_buffer, event, 1);
+
+   if (memory_barriers)
+      vk_free2(&device->vk.alloc, NULL, memory_barriers);
+   if (buffer_barriers)
+      vk_free2(&device->vk.alloc, NULL, buffer_barriers);
+   if (image_barriers)
+      vk_free2(&device->vk.alloc, NULL, image_barriers);
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -604,6 +631,18 @@ v3dv_CmdResetEvent2(VkCommandBuffer commandBuffer,
    assert(cmd_buffer->state.pass == NULL);
    assert(cmd_buffer->state.job == NULL);
 
+   VkMemoryBarrier2 barrier = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+      .srcStageMask = stageMask,
+      .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+   };
+   VkDependencyInfo info = {
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .memoryBarrierCount = 1,
+      .pMemoryBarriers = &barrier,
+   };
+   v3dv_cmd_buffer_emit_pipeline_barrier(cmd_buffer, &info);
+
    cmd_buffer_emit_set_event(cmd_buffer, event, 0);
 }
 
@@ -611,11 +650,69 @@ VKAPI_ATTR void VKAPI_CALL
 v3dv_CmdWaitEvents2(VkCommandBuffer commandBuffer,
                     uint32_t eventCount,
                     const VkEvent *pEvents,
-                    const VkDependencyInfo *pDependencyInfos)
+                    const VkDependencyInfo *pDependencyInfo)
 {
    V3DV_FROM_HANDLE(v3dv_cmd_buffer, cmd_buffer, commandBuffer);
    for (uint32_t i = 0; i < eventCount; i++) {
       struct v3dv_event *event = v3dv_event_from_handle(pEvents[i]);;
       cmd_buffer_emit_wait_event(cmd_buffer, event);
+   }
+
+   /* We need to add the compute stage to the srcStageMask of all dependencies,
+    * so let's go ahead and patch the dependency info we receive.
+    */
+   struct v3dv_device *device = cmd_buffer->device;
+   for (int e = 0; e < eventCount; e++) {
+      const VkDependencyInfo *info = &pDependencyInfo[e];
+
+      uint32_t memory_barrier_count = info->memoryBarrierCount;
+      VkMemoryBarrier2 *memory_barriers = memory_barrier_count ?
+         vk_alloc2(&device->vk.alloc, NULL,
+                   memory_barrier_count * sizeof(memory_barriers[0]), 8,
+                   VK_SYSTEM_ALLOCATION_SCOPE_COMMAND) : NULL;
+      for (int i = 0; i < memory_barrier_count; i++) {
+         memory_barriers[i] = info->pMemoryBarriers[i];
+         memory_barriers[i].srcStageMask |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+      }
+
+      uint32_t buffer_barrier_count = info->bufferMemoryBarrierCount;
+      VkBufferMemoryBarrier2 *buffer_barriers = buffer_barrier_count ?
+         vk_alloc2(&device->vk.alloc, NULL,
+                   buffer_barrier_count * sizeof(buffer_barriers[0]), 8,
+                   VK_SYSTEM_ALLOCATION_SCOPE_COMMAND) : NULL;
+      for (int i = 0; i < buffer_barrier_count; i++) {
+         buffer_barriers[i] = info->pBufferMemoryBarriers[i];
+         buffer_barriers[i].srcStageMask |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+      }
+
+      uint32_t image_barrier_count = info->imageMemoryBarrierCount;
+      VkImageMemoryBarrier2 *image_barriers = image_barrier_count ?
+         vk_alloc2(&device->vk.alloc, NULL,
+                   image_barrier_count * sizeof(image_barriers[0]), 8,
+                   VK_SYSTEM_ALLOCATION_SCOPE_COMMAND) : NULL;
+      for (int i = 0; i < image_barrier_count; i++) {
+         image_barriers[i] = info->pImageMemoryBarriers[i];
+         image_barriers[i].srcStageMask |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+      }
+
+      VkDependencyInfo new_info = {
+         .sType = info->sType,
+         .dependencyFlags = info->dependencyFlags,
+         .memoryBarrierCount = memory_barrier_count,
+         .pMemoryBarriers = memory_barriers,
+         .bufferMemoryBarrierCount = buffer_barrier_count,
+         .pBufferMemoryBarriers = buffer_barriers,
+         .imageMemoryBarrierCount = image_barrier_count,
+         .pImageMemoryBarriers = image_barriers,
+      };
+
+      v3dv_cmd_buffer_emit_pipeline_barrier(cmd_buffer, &new_info);
+
+      if (memory_barriers)
+         vk_free2(&device->vk.alloc, NULL, memory_barriers);
+      if (buffer_barriers)
+         vk_free2(&device->vk.alloc, NULL, buffer_barriers);
+      if (image_barriers)
+         vk_free2(&device->vk.alloc, NULL, image_barriers);
    }
 }

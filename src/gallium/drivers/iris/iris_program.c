@@ -37,7 +37,7 @@
 #include "pipe/p_screen.h"
 #include "util/u_atomic.h"
 #include "util/u_upload_mgr.h"
-#include "util/debug.h"
+#include "util/u_debug.h"
 #include "util/u_async_debug.h"
 #include "compiler/nir/nir.h"
 #include "compiler/nir/nir_builder.h"
@@ -466,7 +466,7 @@ setup_vec4_image_sysval(uint32_t *sysvals, uint32_t idx,
  * ideal situation (though the backend can reduce this).
  */
 static void
-iris_setup_uniforms(const struct brw_compiler *compiler,
+iris_setup_uniforms(ASSERTED const struct intel_device_info *devinfo,
                     void *mem_ctx,
                     nir_shader *nir,
                     struct brw_stage_prog_data *prog_data,
@@ -475,8 +475,6 @@ iris_setup_uniforms(const struct brw_compiler *compiler,
                     unsigned *out_num_system_values,
                     unsigned *out_num_cbufs)
 {
-   UNUSED const struct intel_device_info *devinfo = compiler->devinfo;
-
    unsigned system_values_start = ALIGN(kernel_input_size, sizeof(uint32_t));
 
    const unsigned IRIS_MAX_SYSTEM_VALUES =
@@ -511,6 +509,13 @@ iris_setup_uniforms(const struct brw_compiler *compiler,
          nir_ssa_def *offset;
 
          switch (intrin->intrinsic) {
+         case nir_intrinsic_load_base_workgroup_id: {
+            /* GL doesn't have a concept of base workgroup */
+            b.cursor = nir_instr_remove(&intrin->instr);
+            nir_ssa_def_rewrite_uses(&intrin->dest.ssa,
+                                     nir_imm_zero(&b, 3, 32));
+            continue;
+         }
          case nir_intrinsic_load_constant: {
             unsigned load_size = intrin->dest.ssa.num_components *
                                  intrin->dest.ssa.bit_size / 8;
@@ -534,11 +539,11 @@ iris_setup_uniforms(const struct brw_compiler *compiler,
                nir_load_reloc_const_intel(&b, BRW_SHADER_RELOC_CONST_DATA_ADDR_HIGH));
 
             nir_ssa_def *data =
-               nir_load_global(&b, nir_iadd(&b, const_data_base_addr,
-                                                nir_u2u64(&b, offset)),
-                               load_align,
-                               intrin->dest.ssa.num_components,
-                               intrin->dest.ssa.bit_size);
+               nir_load_global_constant(&b, nir_iadd(&b, const_data_base_addr,
+                                                     nir_u2u64(&b, offset)),
+                                        load_align,
+                                        intrin->dest.ssa.num_components,
+                                        intrin->dest.ssa.bit_size);
 
             nir_ssa_def_rewrite_uses(&intrin->dest.ssa,
                                      data);
@@ -873,7 +878,7 @@ skip_compacting_binding_tables(void)
 {
    static int skip = -1;
    if (skip < 0)
-      skip = env_var_as_boolean("INTEL_DISABLE_COMPACT_BINDING_TABLE", false);
+      skip = debug_get_bool_option("INTEL_DISABLE_COMPACT_BINDING_TABLE", false);
    return skip;
 }
 
@@ -1348,7 +1353,7 @@ iris_compile_vs(struct iris_screen *screen,
 
    prog_data->use_alt_mode = nir->info.use_legacy_math_rules;
 
-   iris_setup_uniforms(compiler, mem_ctx, nir, prog_data, 0, &system_values,
+   iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data, 0, &system_values,
                        &num_system_values, &num_cbufs);
 
    struct iris_binding_table bt;
@@ -1503,8 +1508,6 @@ iris_compile_tcs(struct iris_screen *screen,
                  struct iris_compiled_shader *shader)
 {
    const struct brw_compiler *compiler = screen->compiler;
-   const struct nir_shader_compiler_options *options =
-      compiler->nir_options[MESA_SHADER_TESS_CTRL];
    void *mem_ctx = ralloc_context(NULL);
    struct brw_tcs_prog_data *tcs_prog_data =
       rzalloc(mem_ctx, struct brw_tcs_prog_data);
@@ -1525,14 +1528,14 @@ iris_compile_tcs(struct iris_screen *screen,
    if (ish) {
       nir = nir_shader_clone(mem_ctx, ish->nir);
 
-      iris_setup_uniforms(compiler, mem_ctx, nir, prog_data, 0, &system_values,
+      iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data, 0, &system_values,
                           &num_system_values, &num_cbufs);
       iris_setup_binding_table(devinfo, nir, &bt, /* num_render_targets */ 0,
                                num_system_values, num_cbufs);
       brw_nir_analyze_ubo_ranges(compiler, nir, NULL, prog_data->ubo_ranges);
    } else {
       nir =
-         brw_nir_create_passthrough_tcs(mem_ctx, compiler, options, &brw_key);
+         brw_nir_create_passthrough_tcs(mem_ctx, compiler, &brw_key);
 
       /* Reserve space for passing the default tess levels as constants. */
       num_cbufs = 1;
@@ -1715,7 +1718,7 @@ iris_compile_tes(struct iris_screen *screen,
       nir_shader_gather_info(nir, impl);
    }
 
-   iris_setup_uniforms(compiler, mem_ctx, nir, prog_data, 0, &system_values,
+   iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data, 0, &system_values,
                        &num_system_values, &num_cbufs);
 
    struct iris_binding_table bt;
@@ -1854,7 +1857,7 @@ iris_compile_gs(struct iris_screen *screen,
       nir_shader_gather_info(nir, impl);
    }
 
-   iris_setup_uniforms(compiler, mem_ctx, nir, prog_data, 0, &system_values,
+   iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data, 0, &system_values,
                        &num_system_values, &num_cbufs);
 
    struct iris_binding_table bt;
@@ -1980,7 +1983,7 @@ iris_compile_fs(struct iris_screen *screen,
 
    prog_data->use_alt_mode = nir->info.use_legacy_math_rules;
 
-   iris_setup_uniforms(compiler, mem_ctx, nir, prog_data, 0, &system_values,
+   iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data, 0, &system_values,
                        &num_system_values, &num_cbufs);
 
    /* Lower output variables to load_output intrinsics before setting up
@@ -2272,7 +2275,7 @@ iris_compile_cs(struct iris_screen *screen,
 
    NIR_PASS_V(nir, brw_nir_lower_cs_intrinsics);
 
-   iris_setup_uniforms(compiler, mem_ctx, nir, prog_data,
+   iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data,
                        ish->kernel_input_size,
                        &system_values, &num_system_values, &num_cbufs);
 
@@ -2430,7 +2433,7 @@ iris_get_scratch_surf(struct iris_context *ice,
    struct iris_bo *scratch_bo =
       iris_get_scratch_space(ice, per_thread_scratch, MESA_SHADER_COMPUTE);
 
-   void *map = upload_state(ice->state.bindless_uploader, ref,
+   void *map = upload_state(ice->state.scratch_surface_uploader, ref,
                             screen->isl_dev.ss.size, 64);
 
    isl_buffer_fill_state(&screen->isl_dev, map,
@@ -2534,7 +2537,7 @@ iris_create_compute_state(struct pipe_context *ctx,
    struct iris_uncompiled_shader *ish =
       iris_create_uncompiled_shader(screen, nir, NULL);
    ish->kernel_input_size = state->req_input_mem;
-   ish->kernel_shared_size = state->req_local_mem;
+   ish->kernel_shared_size = state->static_shared_mem;
 
    // XXX: disallow more than 64KB of shared variables
 

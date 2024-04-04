@@ -33,6 +33,9 @@
 #include "vk_common_entrypoints.h"
 #include "vk_device.h"
 #include "vk_format.h"
+#include "vk_format_info.h"
+#include "vk_log.h"
+#include "vk_physical_device.h"
 #include "vk_render_pass.h"
 #include "vk_util.h"
 #include "vulkan/wsi/wsi_common.h"
@@ -184,8 +187,6 @@ VkImageUsageFlags
 vk_image_usage(const struct vk_image *image,
                VkImageAspectFlags aspect_mask)
 {
-   assert(!(aspect_mask & ~image->aspects));
-
    /* From the Vulkan 1.2.131 spec:
     *
     *    "If the image was has a depth-stencil format and was created with
@@ -368,22 +369,13 @@ vk_image_view_init(struct vk_device *device,
    const VkImageSubresourceRange *range = &pCreateInfo->subresourceRange;
 
    if (driver_internal) {
-      /* For driver internal images, all we require is that the block sizes
-       * match.  Otherwise, we trust the driver to use a format it knows what
-       * to do with.  Combined depth/stencil images might not match if the
-       * driver only cares about one of the two aspects.
-       */
-      if (image->aspects == VK_IMAGE_ASPECT_COLOR_BIT ||
-          image->aspects == VK_IMAGE_ASPECT_DEPTH_BIT ||
-          image->aspects == VK_IMAGE_ASPECT_STENCIL_BIT) {
-         assert(vk_format_get_blocksize(image->format) ==
-                vk_format_get_blocksize(image_view->format));
-      }
       image_view->aspects = range->aspectMask;
       image_view->view_format = pCreateInfo->format;
    } else {
       image_view->aspects =
          vk_image_expand_aspect_mask(image, range->aspectMask);
+
+      assert(!(image_view->aspects & ~image->aspects));
 
       /* From the Vulkan 1.2.184 spec:
        *
@@ -602,6 +594,143 @@ vk_image_layout_is_depth_only(VkImageLayout layout)
    default:
       return false;
    }
+}
+
+static VkResult
+vk_image_create_get_format_list_uncompressed(struct vk_device *device,
+                                             const VkImageCreateInfo *pCreateInfo,
+                                             const VkAllocationCallbacks *pAllocator,
+                                             VkFormat **formats,
+                                             uint32_t *format_count)
+{
+   const struct vk_format_class_info *class =
+      vk_format_get_class_info(pCreateInfo->format);
+
+   *formats = NULL;
+   *format_count = 0;
+
+   if (class->format_count < 2)
+      return VK_SUCCESS;
+
+   *formats = vk_alloc2(&device->alloc, pAllocator,
+                        sizeof(VkFormat) * class->format_count,
+                        alignof(VkFormat), VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+   if (*formats == NULL)
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   memcpy(*formats, class->formats, sizeof(VkFormat) * class->format_count);
+   *format_count = class->format_count;
+
+   return VK_SUCCESS;
+}
+
+static VkResult
+vk_image_create_get_format_list_compressed(struct vk_device *device,
+                                           const VkImageCreateInfo *pCreateInfo,
+                                           const VkAllocationCallbacks *pAllocator,
+                                           VkFormat **formats,
+                                           uint32_t *format_count)
+{
+   if ((pCreateInfo->flags & VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT) == 0) {
+      return vk_image_create_get_format_list_uncompressed(device,
+                                                          pCreateInfo,
+                                                          pAllocator,
+                                                          formats,
+                                                          format_count);
+   }
+
+   const struct vk_format_class_info *class =
+      vk_format_get_class_info(pCreateInfo->format);
+   const struct vk_format_class_info *uncompr_class = NULL;
+
+   switch (vk_format_get_blocksizebits(pCreateInfo->format)) {
+   case 64:
+      uncompr_class = vk_format_class_get_info(MESA_VK_FORMAT_CLASS_64_BIT);
+      break;
+   case 128:
+      uncompr_class = vk_format_class_get_info(MESA_VK_FORMAT_CLASS_128_BIT);
+      break;
+   }
+
+   if (!uncompr_class)
+      return vk_error(device, VK_ERROR_FORMAT_NOT_SUPPORTED);
+
+   uint32_t fmt_count = class->format_count + uncompr_class->format_count;
+
+   *formats = vk_alloc2(&device->alloc, pAllocator,
+                        sizeof(VkFormat) * fmt_count,
+                        alignof(VkFormat), VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+   if (*formats == NULL)
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   memcpy(*formats, class->formats, sizeof(VkFormat) * class->format_count);
+   memcpy(*formats + class->format_count, uncompr_class->formats,
+          sizeof(VkFormat) * uncompr_class->format_count);
+   *format_count = class->format_count + uncompr_class->format_count;
+
+   return VK_SUCCESS;
+}
+
+/* Get a list of compatible formats when VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT
+ * or VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT is set. This list is
+ * either retrieved from a VkImageFormatListCreateInfo passed to the creation
+ * chain, or forged from the default compatible list specified in the
+ * "formats-compatibility-classes" section of the spec.
+ *
+ * The value returned in *formats must be freed with
+ * vk_free2(&device->alloc, pAllocator), and should not live past the
+ * vkCreateImage() call (allocated in the COMMAND scope).
+ */
+VkResult
+vk_image_create_get_format_list(struct vk_device *device,
+                                const VkImageCreateInfo *pCreateInfo,
+                                const VkAllocationCallbacks *pAllocator,
+                                VkFormat **formats,
+                                uint32_t *format_count)
+{
+   *formats = NULL;
+   *format_count = 0;
+
+   if (!(pCreateInfo->flags &
+         (VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT |
+          VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT))) {
+      return VK_SUCCESS;
+   }
+
+   /* "Each depth/stencil format is only compatible with itself." */
+   if (vk_format_is_depth_or_stencil(pCreateInfo->format))
+      return VK_SUCCESS;
+
+   const VkImageFormatListCreateInfo *format_list = (const VkImageFormatListCreateInfo *)
+      vk_find_struct_const(pCreateInfo->pNext, IMAGE_FORMAT_LIST_CREATE_INFO);
+
+   if (format_list) {
+      if (!format_list->viewFormatCount)
+         return VK_SUCCESS;
+
+      *formats = vk_alloc2(&device->alloc, pAllocator,
+                           sizeof(VkFormat) * format_list->viewFormatCount,
+                           alignof(VkFormat), VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+      if (*formats == NULL)
+         return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+      memcpy(*formats, format_list->pViewFormats, sizeof(VkFormat) * format_list->viewFormatCount);
+      *format_count = format_list->viewFormatCount;
+      return VK_SUCCESS;
+   }
+
+   if (vk_format_is_compressed(pCreateInfo->format))
+      return vk_image_create_get_format_list_compressed(device,
+                                                        pCreateInfo,
+                                                        pAllocator,
+                                                        formats,
+                                                        format_count);
+
+   return vk_image_create_get_format_list_uncompressed(device,
+                                                       pCreateInfo,
+                                                       pAllocator,
+                                                       formats,
+                                                       format_count);
 }
 
 /* From the Vulkan Specification 1.2.166 - VkAttachmentReference2:

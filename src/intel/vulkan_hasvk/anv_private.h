@@ -962,9 +962,6 @@ struct anv_physical_device {
     bool                                        has_exec_async;
     bool                                        has_exec_capture;
     int                                         max_context_priority;
-    bool                                        has_context_isolation;
-    bool                                        has_mmap_offset;
-    bool                                        has_userptr_probe;
     uint64_t                                    gtt_size;
 
     bool                                        use_relocations;
@@ -1116,7 +1113,7 @@ struct anv_device {
     struct anv_physical_device *                physical;
     const struct intel_device_info *            info;
     struct isl_device                           isl_dev;
-    int                                         context_id;
+    uint32_t                                    context_id;
     int                                         fd;
     bool                                        can_chain_batches;
     bool                                        robust_buffer_access;
@@ -1381,12 +1378,9 @@ int anv_gem_execbuffer(struct anv_device *device,
                        struct drm_i915_gem_execbuffer2 *execbuf);
 int anv_gem_set_tiling(struct anv_device *device, uint32_t gem_handle,
                        uint32_t stride, uint32_t tiling);
-int anv_gem_create_context(struct anv_device *device);
 bool anv_gem_has_context_priority(int fd, int priority);
-int anv_gem_destroy_context(struct anv_device *device, int context);
-int anv_gem_set_context_param(int fd, int context, uint32_t param,
+int anv_gem_set_context_param(int fd, uint32_t context, uint32_t param,
                               uint64_t value);
-int anv_gem_get_param(int fd, uint32_t param);
 int anv_gem_get_tiling(struct anv_device *device, uint32_t gem_handle);
 int anv_gem_context_get_reset_stats(int fd, int context,
                                     uint32_t *active, uint32_t *pending);
@@ -2748,6 +2742,8 @@ struct anv_cmd_buffer {
    struct u_trace                               trace;
 };
 
+extern const struct vk_command_buffer_ops anv_cmd_buffer_ops;
+
 /* Determine whether we can chain a given cmd_buffer to another one. We need
  * softpin and we also need to make sure that we can edit the end of the batch
  * to point to next one, which requires the command buffer to not be used
@@ -2778,7 +2774,8 @@ VkResult anv_cmd_buffer_execbuf(struct anv_queue *queue,
                                 VkFence fence,
                                 int perf_query_pass);
 
-VkResult anv_cmd_buffer_reset(struct anv_cmd_buffer *cmd_buffer);
+void anv_cmd_buffer_reset(struct vk_command_buffer *vk_cmd_buffer,
+                          UNUSED VkCommandBufferResetFlags flags);
 
 struct anv_state anv_cmd_buffer_emit_dynamic(struct anv_cmd_buffer *cmd_buffer,
                                              const void *data, uint32_t size, uint32_t alignment);

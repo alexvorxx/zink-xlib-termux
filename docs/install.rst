@@ -35,8 +35,8 @@ you're willing to maintain support for other compiler get in touch.
 Third party/extra tools.
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
--  `Python <https://www.python.org/>`__ - Python 3.5 or newer is required.
--  `Python Mako module <http://www.makotemplates.org/>`__ - Python Mako
+-  `Python <https://www.python.org/>`__ - Python 3.7 or newer is required.
+-  `Python Mako module <https://www.makotemplates.org/>`__ - Python Mako
    module is required. Version 0.8.0 or later should work.
 -  Lex / Yacc - for building the Mesa IR and GLSL compiler.
 
@@ -49,7 +49,7 @@ Third party/extra tools.
       mingw-get install msys-flex msys-bison
 
    For MSVC on Windows, install `Win
-   flex-bison <http://winflexbison.sourceforge.net/>`__.
+   flex-bison <https://sourceforge.net/projects/winflexbison/>`__.
 
 .. note::
 
@@ -124,7 +124,7 @@ like this:
 
 .. code-block:: console
 
-   meson builddir/ -Dprefix="$MESA_INSTALLDIR" -Ddri-drivers= \
+   meson builddir/ -Dprefix="$MESA_INSTALLDIR" \
       -Dgallium-drivers=swrast -Dvulkan-drivers=swrast
    ninja -C builddir/ install
 
@@ -182,10 +182,10 @@ here are a few things to check:
     32-bit and your Mesa build is probably 64-bit by default.
 
  4. 32 and 64-bit builds in the same local install directory doesn't typically
-    work.  Distros go to great lengths to make this work in your system install
-    and it's hard to get it right for a local install.  If you've recently
-    built 64-bit and are now building 32-bit, throw away the install directory
-    first to prevent conflicts.
+    work.  Distributions go to great lengths to make this work in your system
+    install and it's hard to get it right for a local install.  If you've
+    recently built 64-bit and are now building 32-bit, throw away the install
+    directory first to prevent conflicts.
 
 4. Building with AOSP (Android)
 -------------------------------

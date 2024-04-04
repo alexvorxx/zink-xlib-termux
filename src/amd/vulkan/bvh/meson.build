@@ -20,7 +20,8 @@
 
 bvh_shaders = [
   'copy.comp',
-  'lbvh_internal.comp',
+  'lbvh_generate_ir.comp',
+  'lbvh_main.comp',
   'leaf.comp',
   'morton.comp',
   'ploc_internal.comp',
@@ -28,7 +29,7 @@ bvh_shaders = [
   'converter_leaf.comp',
 ]
 
-bvh_include_dir = meson.source_root() + '/src/amd/vulkan/bvh'
+bvh_include_dir = dir_source_root + '/src/amd/vulkan/bvh'
 
 bvh_includes = files(
   'build_helpers.h',
@@ -43,7 +44,7 @@ foreach s : bvh_shaders
     input : s,
     output : s + '.spv.h',
     command : [
-      prog_glslang, '-V', '-I' + bvh_include_dir, '--target-env', 'vulkan1.2', '-x', '-o', '@OUTPUT@', '@INPUT@'
+      prog_glslang, '-V', '-I' + bvh_include_dir, '--target-env', 'spirv1.5', '-x', '-o', '@OUTPUT@', '@INPUT@'
     ] + glslang_quiet,
     depend_files: bvh_includes
   )

@@ -59,7 +59,6 @@ static const struct debug_named_value panfrost_debug_options[] = {
         {"deqp",      PAN_DBG_DEQP,     "Hacks for dEQP"},
         {"dirty",     PAN_DBG_DIRTY,    "Always re-emit all state"},
         {"sync",      PAN_DBG_SYNC,     "Wait for each job's completion and abort on GPU faults"},
-        {"precompile", PAN_DBG_PRECOMPILE, "Precompile shaders for shader-db"},
         {"nofp16",     PAN_DBG_NOFP16,     "Disable 16-bit support"},
         {"gl3",       PAN_DBG_GL3,      "Enable experimental GL 3.x implementation, up to 3.3"},
         {"noafbc",    PAN_DBG_NO_AFBC,  "Disable AFBC support"},
@@ -211,8 +210,16 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
         case PIPE_CAP_QUERY_TIMESTAMP:
                 return is_gl3;
 
-        /* TODO: Where does this req come from in practice? */
-        case PIPE_CAP_VERTEX_BUFFER_STRIDE_4BYTE_ALIGNED_ONLY:
+        /* The hardware requires element alignment for data conversion to work
+         * as expected. If data conversion is not required, this restriction is
+         * lifted on Midgard at a performance penalty. We conservatively
+         * require element alignment for vertex buffers, using u_vbuf to
+         * translate to match the hardware requirement.
+         *
+         * This is less heavy-handed than the 4BYTE_ALIGNED_ONLY caps, which
+         * would needlessly require alignment even for 8-bit formats.
+         */
+        case PIPE_CAP_VERTEX_ATTRIB_ELEMENT_ALIGNED_ONLY:
                 return 1;
 
         case PIPE_CAP_MAX_TEXTURE_2D_SIZE:
@@ -754,6 +761,8 @@ panfrost_destroy_screen(struct pipe_screen *pscreen)
         if (dev->ro)
                 dev->ro->destroy(dev->ro);
         panfrost_close_device(dev);
+
+        disk_cache_destroy(screen->disk_cache);
         ralloc_free(pscreen);
 }
 
@@ -854,6 +863,30 @@ panfrost_screen_get_compiler_options(struct pipe_screen *pscreen,
         return pan_screen(pscreen)->vtbl.get_compiler_options();
 }
 
+static struct disk_cache *
+panfrost_get_disk_shader_cache(struct pipe_screen *pscreen)
+{
+        return pan_screen(pscreen)->disk_cache;
+}
+
+int
+panfrost_get_driver_query_info(struct pipe_screen *pscreen, unsigned index,
+                               struct pipe_driver_query_info *info)
+{
+        int num_queries = ARRAY_SIZE(panfrost_driver_query_list);
+
+        if (!info)
+           return num_queries;
+
+        if (index >= num_queries)
+           return 0;
+
+        *info = panfrost_driver_query_list[index];
+
+        return 1;
+}
+
+
 struct pipe_screen *
 panfrost_create_screen(int fd, struct renderonly *ro)
 {
@@ -886,6 +919,7 @@ panfrost_create_screen(int fd, struct renderonly *ro)
         screen->base.get_name = panfrost_get_name;
         screen->base.get_vendor = panfrost_get_vendor;
         screen->base.get_device_vendor = panfrost_get_device_vendor;
+        screen->base.get_driver_query_info = panfrost_get_driver_query_info;
         screen->base.get_param = panfrost_get_param;
         screen->base.get_shader_param = panfrost_get_shader_param;
         screen->base.get_compute_param = panfrost_get_compute_param;
@@ -897,12 +931,16 @@ panfrost_create_screen(int fd, struct renderonly *ro)
                panfrost_is_dmabuf_modifier_supported;
         screen->base.context_create = panfrost_create_context;
         screen->base.get_compiler_options = panfrost_screen_get_compiler_options;
+        screen->base.get_disk_shader_cache = panfrost_get_disk_shader_cache;
         screen->base.fence_reference = panfrost_fence_reference;
         screen->base.fence_finish = panfrost_fence_finish;
         screen->base.set_damage_region = panfrost_resource_set_damage_region;
 
         panfrost_resource_screen_init(&screen->base);
         pan_blend_shaders_init(dev);
+
+        panfrost_disk_cache_init(screen);
+
         panfrost_pool_init(&screen->indirect_draw.bin_pool, NULL, dev,
                            PAN_BO_EXECUTE, 65536, "Indirect draw shaders",
                            false, true);

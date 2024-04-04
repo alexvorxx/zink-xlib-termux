@@ -373,14 +373,14 @@ void vlVaHandlePictureParameterBufferAV1(vlVaDriver *drv, vlVaContext *context, 
    context->desc.av1.picture_parameter.film_grain_info.cr_offset = av1->film_grain_info.cr_offset;
 
    for (i = 0 ; i < AV1_NUM_REF_FRAMES; ++i) {
-      if (av1->pic_info_fields.bits.frame_type == 0)
+      if (av1->pic_info_fields.bits.frame_type == 0 && av1->pic_info_fields.bits.show_frame)
          context->desc.av1.ref[i] = NULL;
       else
          vlVaGetReferenceFrame(drv, av1->ref_frame_map[i], &context->desc.av1.ref[i]);
    }
 }
 
-void vlVaHandleSliceParameterBufferAV1(vlVaContext *context, vlVaBuffer *buf, unsigned num_slice_buffers, unsigned num_slices)
+void vlVaHandleSliceParameterBufferAV1(vlVaContext *context, vlVaBuffer *buf, unsigned num_slices)
 {
    for (uint32_t buffer_idx = 0; buffer_idx < buf->num_elements; buffer_idx++) {
       uint32_t slice_index =

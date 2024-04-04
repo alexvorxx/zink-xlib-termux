@@ -43,7 +43,7 @@ it's easy to add support, see the commit ``cff7de4bb597e9`` as an example.
 LLVM is *not* required by Panfrost's compilers. LLVM support in Mesa can
 safely be disabled for most OpenGL ES users with Panfrost.
 
-Build like ``meson . build/ -Ddri-drivers= -Dvulkan-drivers=
+Build like ``meson . build/ -Dvulkan-drivers=
 -Dgallium-drivers=panfrost -Dllvm=disabled`` for a build directory
 ``build``.
 
@@ -54,8 +54,8 @@ Chat
 ----
 
 Panfrost developers and users hang out on IRC at ``#panfrost`` on OFTC. Note
-that registering and authenticating with `NickServ` is required to prevent
-spam. `Join the chat. <https://webchat.oftc.net/?channels=#panfrost>`_
+that registering and authenticating with ``NickServ`` is required to prevent
+spam. `Join the chat. <https://webchat.oftc.net/?channels=panfrost>`_
 
 drm-shim
 --------

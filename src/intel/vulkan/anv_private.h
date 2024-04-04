@@ -139,31 +139,36 @@ struct intel_perf_query_result;
  * heap. This is to work around a VF cache issue described in a comment in
  * anv_physical_device_init_heaps.
  *
- * (2) the binding table pool is located at lower addresses than the surface
- * state pool, within a 4 GiB range. This allows surface state base addresses
- * to cover both binding tables (16 bit offsets) and surface states (32 bit
- * offsets).
+ * (2) the binding table pool is located at lower addresses than the BT
+ * (binding table) surface state pool, within a 4 GiB range which also
+ * contains the bindless surface state pool. This allows surface state base
+ * addresses to cover both binding tables (16 bit offsets), the internal
+ * surface states (32 bit offsets) and the bindless surface states.
  *
  * (3) the last 4 GiB of the address space is withheld from the high
  * heap. Various hardware units will read past the end of an object for
  * various reasons. This healthy margin prevents reads from wrapping around
  * 48-bit addresses.
  */
-#define GENERAL_STATE_POOL_MIN_ADDRESS     0x000000200000ULL /* 2 MiB */
-#define GENERAL_STATE_POOL_MAX_ADDRESS     0x00003fffffffULL
-#define LOW_HEAP_MIN_ADDRESS               0x000040000000ULL /* 1 GiB */
-#define LOW_HEAP_MAX_ADDRESS               0x00007fffffffULL
-#define DYNAMIC_STATE_POOL_MIN_ADDRESS     0x0000c0000000ULL /* 3 GiB */
-#define DYNAMIC_STATE_POOL_MAX_ADDRESS     0x0000ffffffffULL
-#define BINDING_TABLE_POOL_MIN_ADDRESS     0x000100000000ULL /* 4 GiB */
-#define BINDING_TABLE_POOL_MAX_ADDRESS     0x00013fffffffULL
-#define SURFACE_STATE_POOL_MIN_ADDRESS     0x000140000000ULL /* 5 GiB */
-#define SURFACE_STATE_POOL_MAX_ADDRESS     0x00017fffffffULL
-#define INSTRUCTION_STATE_POOL_MIN_ADDRESS 0x000180000000ULL /* 6 GiB */
-#define INSTRUCTION_STATE_POOL_MAX_ADDRESS 0x0001bfffffffULL
-#define CLIENT_VISIBLE_HEAP_MIN_ADDRESS    0x0001c0000000ULL /* 7 GiB */
-#define CLIENT_VISIBLE_HEAP_MAX_ADDRESS    0x0009bfffffffULL
-#define HIGH_HEAP_MIN_ADDRESS              0x0009c0000000ULL /* 39 GiB */
+#define GENERAL_STATE_POOL_MIN_ADDRESS             0x000000200000ULL /* 2 MiB */
+#define GENERAL_STATE_POOL_MAX_ADDRESS             0x00003fffffffULL
+#define LOW_HEAP_MIN_ADDRESS                       0x000040000000ULL /* 1 GiB */
+#define LOW_HEAP_MAX_ADDRESS                       0x00007fffffffULL
+#define DYNAMIC_STATE_POOL_MIN_ADDRESS             0x0000c0000000ULL /* 3 GiB */
+#define DYNAMIC_STATE_POOL_MAX_ADDRESS             0x0000ffffffffULL
+#define BINDING_TABLE_POOL_MIN_ADDRESS             0x000100000000ULL /* 4 GiB */
+#define BINDING_TABLE_POOL_MAX_ADDRESS             0x00013fffffffULL
+#define INTERNAL_SURFACE_STATE_POOL_MIN_ADDRESS    0x000140000000ULL /* 5 GiB */
+#define INTERNAL_SURFACE_STATE_POOL_MAX_ADDRESS    0x0001bfffffffULL
+#define SCRATCH_SURFACE_STATE_POOL_MIN_ADDRESS     0x000140000000ULL /* 5 GiB (8MiB overlaps surface state pool) */
+#define SCRATCH_SURFACE_STATE_POOL_MAX_ADDRESS     0x0001407fffffULL
+#define BINDLESS_SURFACE_STATE_POOL_MIN_ADDRESS    0x0001c0000000ULL /* 7 GiB (64MiB) */
+#define BINDLESS_SURFACE_STATE_POOL_MAX_ADDRESS    0x0001c3ffffffULL
+#define INSTRUCTION_STATE_POOL_MIN_ADDRESS         0x000200000000ULL /* 8 GiB */
+#define INSTRUCTION_STATE_POOL_MAX_ADDRESS         0x00023fffffffULL
+#define CLIENT_VISIBLE_HEAP_MIN_ADDRESS            0x000240000000ULL /* 9 GiB */
+#define CLIENT_VISIBLE_HEAP_MAX_ADDRESS            0x000a3fffffffULL
+#define HIGH_HEAP_MIN_ADDRESS                      0x000a40000000ULL /* 41 GiB */
 
 #define GENERAL_STATE_POOL_SIZE     \
    (GENERAL_STATE_POOL_MAX_ADDRESS - GENERAL_STATE_POOL_MIN_ADDRESS + 1)
@@ -174,8 +179,12 @@ struct intel_perf_query_result;
 #define BINDING_TABLE_POOL_SIZE     \
    (BINDING_TABLE_POOL_MAX_ADDRESS - BINDING_TABLE_POOL_MIN_ADDRESS + 1)
 #define BINDING_TABLE_POOL_BLOCK_SIZE (65536)
-#define SURFACE_STATE_POOL_SIZE     \
-   (SURFACE_STATE_POOL_MAX_ADDRESS - SURFACE_STATE_POOL_MIN_ADDRESS + 1)
+#define SCRATCH_SURFACE_STATE_POOL_SIZE \
+   (SCRATCH_SURFACE_STATE_POOL_MAX_ADDRESS - SCRATCH_SURFACE_STATE_POOL_MIN_ADDRESS + 1)
+#define BINDLESS_SURFACE_STATE_POOL_SIZE \
+   (BINDLESS_SURFACE_STATE_POOL_MAX_ADDRESS - BINDLESS_SURFACE_STATE_POOL_MIN_ADDRESS + 1)
+#define INTERNAL_SURFACE_STATE_POOL_SIZE \
+   (INTERNAL_SURFACE_STATE_POOL_MAX_ADDRESS - INTERNAL_SURFACE_STATE_POOL_MIN_ADDRESS + 1)
 #define INSTRUCTION_STATE_POOL_SIZE \
    (INSTRUCTION_STATE_POOL_MAX_ADDRESS - INSTRUCTION_STATE_POOL_MIN_ADDRESS + 1)
 #define CLIENT_VISIBLE_HEAP_SIZE               \
@@ -734,7 +743,7 @@ struct anv_fixed_size_state_pool {
 };
 
 #define ANV_MIN_STATE_SIZE_LOG2 6
-#define ANV_MAX_STATE_SIZE_LOG2 21
+#define ANV_MAX_STATE_SIZE_LOG2 22
 
 #define ANV_STATE_BUCKETS (ANV_MAX_STATE_SIZE_LOG2 - ANV_MIN_STATE_SIZE_LOG2 + 1)
 
@@ -814,6 +823,16 @@ void anv_state_pool_finish(struct anv_state_pool *pool);
 struct anv_state anv_state_pool_alloc(struct anv_state_pool *pool,
                                       uint32_t state_size, uint32_t alignment);
 void anv_state_pool_free(struct anv_state_pool *pool, struct anv_state state);
+
+static inline struct anv_address
+anv_state_pool_state_address(struct anv_state_pool *pool, struct anv_state state)
+{
+   return (struct anv_address) {
+      .bo = pool->block_pool.bo,
+      .offset = state.offset - pool->start_offset,
+   };
+}
+
 void anv_state_stream_init(struct anv_state_stream *stream,
                            struct anv_state_pool *state_pool,
                            uint32_t block_size);
@@ -963,9 +982,6 @@ struct anv_physical_device {
     bool                                        has_exec_async;
     bool                                        has_exec_capture;
     VkQueueGlobalPriorityKHR                    max_context_priority;
-    bool                                        has_context_isolation;
-    bool                                        has_mmap_offset;
-    bool                                        has_userptr_probe;
     uint64_t                                    gtt_size;
 
     bool                                        always_use_bindless;
@@ -1003,7 +1019,9 @@ struct anv_physical_device {
       struct anv_memory_type                    types[VK_MAX_MEMORY_TYPES];
       uint32_t                                  heap_count;
       struct anv_memory_heap                    heaps[VK_MAX_MEMORY_HEAPS];
+#ifdef SUPPORT_INTEL_INTEGRATED_GPUS
       bool                                      need_clflush;
+#endif
     } memory;
 
     /* Either we have a single vram region and it's all mappable, or we have
@@ -1135,7 +1153,7 @@ struct anv_device {
     struct anv_physical_device *                physical;
     const struct intel_device_info *            info;
     struct isl_device                           isl_dev;
-    int                                         context_id;
+    uint32_t                                    context_id;
     int                                         fd;
     bool                                        robust_buffer_access;
 
@@ -1156,7 +1174,9 @@ struct anv_device {
     struct anv_state_pool                       dynamic_state_pool;
     struct anv_state_pool                       instruction_state_pool;
     struct anv_state_pool                       binding_table_pool;
-    struct anv_state_pool                       surface_state_pool;
+    struct anv_state_pool                       scratch_surface_state_pool;
+    struct anv_state_pool                       internal_surface_state_pool;
+    struct anv_state_pool                       bindless_surface_state_pool;
 
     struct anv_state_reserved_pool              custom_border_colors;
 
@@ -1258,6 +1278,14 @@ anv_binding_table_pool_free(struct anv_device *device, struct anv_state state)
    anv_state_pool_free(&device->binding_table_pool, state);
 }
 
+static inline struct anv_state
+anv_bindless_state_for_binding_table(struct anv_state state)
+{
+   state.offset += BINDLESS_SURFACE_STATE_POOL_MIN_ADDRESS -
+                   INTERNAL_SURFACE_STATE_POOL_MIN_ADDRESS;
+   return state;
+}
+
 static inline uint32_t
 anv_mocs(const struct anv_device *device,
          const struct anv_bo *bo,
@@ -1346,12 +1374,9 @@ int anv_gem_execbuffer(struct anv_device *device,
                        struct drm_i915_gem_execbuffer2 *execbuf);
 int anv_gem_set_tiling(struct anv_device *device, uint32_t gem_handle,
                        uint32_t stride, uint32_t tiling);
-int anv_gem_create_context(struct anv_device *device);
 bool anv_gem_has_context_priority(int fd, VkQueueGlobalPriorityKHR priority);
-int anv_gem_destroy_context(struct anv_device *device, int context);
-int anv_gem_set_context_param(int fd, int context, uint32_t param,
+int anv_gem_set_context_param(int fd, uint32_t context, uint32_t param,
                               uint64_t value);
-int anv_gem_get_param(int fd, uint32_t param);
 int anv_gem_get_tiling(struct anv_device *device, uint32_t gem_handle);
 int anv_gem_context_get_reset_stats(int fd, int context,
                                     uint32_t *active, uint32_t *pending);
@@ -2574,6 +2599,17 @@ struct anv_cmd_state {
     */
    enum anv_depth_reg_mode                      depth_reg_mode;
 
+   /**
+    * Whether RHWO optimization is enabled (Wa_1508744258).
+    */
+   bool                                         rhwo_optimization_enabled;
+
+   /**
+    * Pending state of the RHWO optimization, to be applied at the next
+    * genX(cmd_buffer_apply_pipe_flushes).
+    */
+   bool                                         pending_rhwo_optimization_enabled;
+
    bool                                         conditional_render_enabled;
 
    /**
@@ -2695,6 +2731,8 @@ struct anv_cmd_buffer {
    struct u_trace                               trace;
 };
 
+extern const struct vk_command_buffer_ops anv_cmd_buffer_ops;
+
 /* Determine whether we can chain a given cmd_buffer to another one. We need
  * softpin and we also need to make sure that we can edit the end of the batch
  * to point to next one, which requires the command buffer to not be used
@@ -2725,7 +2763,8 @@ VkResult anv_cmd_buffer_execbuf(struct anv_queue *queue,
                                 VkFence fence,
                                 int perf_query_pass);
 
-VkResult anv_cmd_buffer_reset(struct anv_cmd_buffer *cmd_buffer);
+void anv_cmd_buffer_reset(struct vk_command_buffer *vk_cmd_buffer,
+                          UNUSED VkCommandBufferResetFlags flags);
 
 struct anv_state anv_cmd_buffer_emit_dynamic(struct anv_cmd_buffer *cmd_buffer,
                                              const void *data, uint32_t size, uint32_t alignment);
@@ -3433,13 +3472,6 @@ struct anv_image {
       struct anv_surface primary_surface;
 
       /**
-       * A surface which shadows the main surface and may have different
-       * tiling. This is used for sampling using a tiling that isn't supported
-       * for other operations.
-       */
-      struct anv_surface shadow_surface;
-
-      /**
        * The base aux usage for this image.  For color images, this can be
        * either CCS_E or CCS_D depending on whether or not we can reliably
        * leave CCS on all the time.
@@ -3748,13 +3780,6 @@ anv_image_ccs_op(struct anv_cmd_buffer *cmd_buffer,
                  enum isl_aux_op ccs_op, union isl_color_value *clear_value,
                  bool predicate);
 
-void
-anv_image_copy_to_shadow(struct anv_cmd_buffer *cmd_buffer,
-                         const struct anv_image *image,
-                         VkImageAspectFlagBits aspect,
-                         uint32_t base_level, uint32_t level_count,
-                         uint32_t base_layer, uint32_t layer_count);
-
 enum isl_aux_state ATTRIBUTE_PURE
 anv_layout_to_aux_state(const struct intel_device_info * const devinfo,
                         const struct anv_image *image,
@@ -3823,6 +3848,8 @@ struct anv_image_view {
        */
       struct anv_surface_state storage_surface_state;
       struct anv_surface_state lowered_storage_surface_state;
+
+      bool lowered_surface_state_is_null;
    } planes[3];
 };
 

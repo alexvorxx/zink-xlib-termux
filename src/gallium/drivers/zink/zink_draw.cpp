@@ -360,13 +360,35 @@ update_gfx_pipeline(struct zink_context *ctx, struct zink_batch_state *bs, enum 
 }
 
 static enum pipe_prim_type
-zink_rast_prim(const struct zink_context *ctx,
+zink_prim_type(const struct zink_context *ctx,
                const struct pipe_draw_info *dinfo)
 {
    if (ctx->gfx_pipeline_state.shader_rast_prim != PIPE_PRIM_MAX)
       return ctx->gfx_pipeline_state.shader_rast_prim;
 
    return u_reduced_prim((enum pipe_prim_type)dinfo->mode);
+}
+
+static enum pipe_prim_type
+zink_rast_prim(const struct zink_context *ctx,
+               const struct pipe_draw_info *dinfo)
+{
+   enum pipe_prim_type prim_type = zink_prim_type(ctx, dinfo);
+   assert(prim_type != PIPE_PRIM_MAX);
+
+   if (prim_type == PIPE_PRIM_TRIANGLES &&
+       ctx->rast_state->base.fill_front != PIPE_POLYGON_MODE_FILL) {
+      switch(ctx->rast_state->base.fill_front) {
+      case PIPE_POLYGON_MODE_POINT:
+         return PIPE_PRIM_POINTS;
+      case PIPE_POLYGON_MODE_LINE:
+         return PIPE_PRIM_LINES;
+      default:
+         unreachable("unexpected polygon mode");
+      }
+   }
+
+   return prim_type;
 }
 
 template <zink_multidraw HAS_MULTIDRAW, zink_dynamic_state DYNAMIC_STATE, bool BATCH_CHANGED, bool DRAW_STATE>
@@ -503,12 +525,19 @@ zink_draw(struct pipe_context *pctx,
       zink_set_last_vertex_key(ctx)->push_drawid = drawid_broken;
 
    bool rast_prim_changed = false;
-   if (mode_changed || ctx->gfx_pipeline_state.modules_changed) {
+   bool lines_changed = false;
+   bool rast_state_changed = ctx->rast_state_changed;
+   if (mode_changed || ctx->gfx_pipeline_state.modules_changed ||
+       rast_state_changed) {
       enum pipe_prim_type rast_prim = zink_rast_prim(ctx, dinfo);
       if (rast_prim != ctx->gfx_pipeline_state.rast_prim) {
          bool points_changed =
             (ctx->gfx_pipeline_state.rast_prim == PIPE_PRIM_POINTS) !=
             (rast_prim == PIPE_PRIM_POINTS);
+
+         lines_changed =
+            (ctx->gfx_pipeline_state.rast_prim == PIPE_PRIM_LINES) !=
+            (rast_prim == PIPE_PRIM_LINES);
 
          ctx->gfx_pipeline_state.rast_prim = rast_prim;
          rast_prim_changed = true;
@@ -518,6 +547,10 @@ zink_draw(struct pipe_context *pctx,
       }
    }
    ctx->gfx_pipeline_state.gfx_prim_mode = mode;
+
+   if (lines_changed || rast_state_changed ||
+       ctx->gfx_pipeline_state.modules_changed)
+      zink_set_line_stipple_keys(ctx);
 
    if (index_size) {
       const VkIndexType index_type[3] = {
@@ -641,13 +674,12 @@ zink_draw(struct pipe_context *pctx,
    }
    ctx->dsa_state_changed = false;
 
-   bool rast_state_changed = ctx->rast_state_changed;
    if (DYNAMIC_STATE != ZINK_NO_DYNAMIC_STATE && (BATCH_CHANGED || rast_state_changed)) {
       VKCTX(CmdSetFrontFaceEXT)(batch->state->cmdbuf, (VkFrontFace)ctx->gfx_pipeline_state.dyn_state1.front_face);
       VKCTX(CmdSetCullModeEXT)(batch->state->cmdbuf, ctx->gfx_pipeline_state.dyn_state1.cull_mode);
    }
    if ((BATCH_CHANGED || rast_state_changed) &&
-       (DYNAMIC_STATE >= ZINK_DYNAMIC_STATE3 || (screen->info.have_EXT_line_rasterization && rast_state->base.line_stipple_enable)))
+       (DYNAMIC_STATE >= ZINK_DYNAMIC_STATE3 || (!screen->driver_workarounds.no_linestipple && rast_state->base.line_stipple_enable)))
       VKCTX(CmdSetLineStippleEXT)(batch->state->cmdbuf, rast_state->base.line_stipple_factor, rast_state->base.line_stipple_pattern);
 
    if ((BATCH_CHANGED || rast_state_changed) && DYNAMIC_STATE >= ZINK_DYNAMIC_STATE3) {
@@ -680,26 +712,18 @@ zink_draw(struct pipe_context *pctx,
       }
    }
 
-   if (BATCH_CHANGED || rast_state_changed || rast_prim_changed) {
-      bool depth_bias = false;
-      switch (ctx->gfx_pipeline_state.rast_prim) {
-      case PIPE_PRIM_POINTS:
-         depth_bias = rast_state->offset_point;
-         break;
-
-      case PIPE_PRIM_LINES:
-         depth_bias = rast_state->offset_line;
-         break;
-
-      case PIPE_PRIM_TRIANGLES:
-         depth_bias = rast_state->offset_tri;
-         break;
-
-      default:
-         unreachable("unexpected reduced prim");
-      }
-
+   if ((BATCH_CHANGED || rast_state_changed || rast_prim_changed) &&
+       ctx->gfx_pipeline_state.rast_prim == PIPE_PRIM_LINES) {
       VKCTX(CmdSetLineWidth)(batch->state->cmdbuf, rast_state->line_width);
+   }
+
+   if (BATCH_CHANGED || mode_changed ||
+       ctx->gfx_pipeline_state.modules_changed ||
+       rast_state_changed) {
+      bool depth_bias =
+         zink_prim_type(ctx, dinfo) == PIPE_PRIM_TRIANGLES &&
+         rast_state->offset_fill;
+
       if (depth_bias) {
          if (rast_state->base.offset_units_unscaled) {
             VKCTX(CmdSetDepthBias)(batch->state->cmdbuf, rast_state->offset_units * ctx->depth_bias_scale_factor, rast_state->offset_clamp, rast_state->offset_scale);
@@ -770,10 +794,32 @@ zink_draw(struct pipe_context *pctx,
                          offsetof(struct zink_gfx_push_constant, draw_mode_is_indexed), sizeof(unsigned),
                          &draw_mode_is_indexed);
    }
-   if (ctx->curr_program->shaders[MESA_SHADER_TESS_CTRL] && ctx->curr_program->shaders[MESA_SHADER_TESS_CTRL]->is_generated) {
+   if (ctx->curr_program->shaders[MESA_SHADER_TESS_CTRL] &&
+       ctx->curr_program->shaders[MESA_SHADER_TESS_CTRL]->non_fs.is_generated) {
       VKCTX(CmdPushConstants)(batch->state->cmdbuf, ctx->curr_program->base.layout, VK_SHADER_STAGE_ALL_GRAPHICS,
                          offsetof(struct zink_gfx_push_constant, default_inner_level), sizeof(float) * 6,
                          &ctx->tess_levels[0]);
+   }
+   if (zink_get_fs_key(ctx)->lower_line_stipple) {
+      assert(zink_get_gs_key(ctx)->lower_line_stipple);
+
+      float viewport_scale[2] = {
+         ctx->vp_state.viewport_states[0].scale[0],
+         ctx->vp_state.viewport_states[0].scale[1]
+      };
+      VKCTX(CmdPushConstants)(batch->state->cmdbuf,
+                              ctx->curr_program->base.layout,
+                              VK_SHADER_STAGE_ALL_GRAPHICS,
+                              offsetof(struct zink_gfx_push_constant, viewport_scale),
+                              sizeof(float) * 2, &viewport_scale);
+
+      uint32_t stipple = ctx->rast_state->base.line_stipple_pattern;
+      stipple |= ctx->rast_state->base.line_stipple_factor << 16;
+      VKCTX(CmdPushConstants)(batch->state->cmdbuf,
+                              ctx->curr_program->base.layout,
+                              VK_SHADER_STAGE_ALL_GRAPHICS,
+                              offsetof(struct zink_gfx_push_constant, line_stipple_pattern),
+                              sizeof(uint32_t), &stipple);
    }
 
    if (have_streamout) {

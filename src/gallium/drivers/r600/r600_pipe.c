@@ -295,6 +295,7 @@ static int r600_get_param(struct pipe_screen* pscreen, enum pipe_cap param)
 	case PIPE_CAP_VS_WINDOW_SPACE_POSITION:
 	case PIPE_CAP_VS_LAYER_VIEWPORT:
 	case PIPE_CAP_SAMPLE_SHADING:
+        case PIPE_CAP_MEMOBJ:
 	case PIPE_CAP_CLIP_HALFZ:
 	case PIPE_CAP_POLYGON_OFFSET_CLAMP:
 	case PIPE_CAP_CONDITIONAL_RENDER_INVERTED:
@@ -683,6 +684,9 @@ static struct pipe_resource *r600_resource_create(struct pipe_screen *screen,
 	return r600_resource_create_common(screen, templ);
 }
 
+char *
+r600_finalize_nir(struct pipe_screen *screen, void *shader);
+
 struct pipe_screen *r600_screen_create(struct radeon_winsys *ws,
 				       const struct pipe_screen_config *config)
 {
@@ -723,6 +727,9 @@ struct pipe_screen *r600_screen_create(struct radeon_winsys *ws,
 		FREE(rscreen);
 		return NULL;
 	}
+
+   if (is_nir_enabled(&rscreen->b))
+       rscreen->b.b.finalize_nir = r600_finalize_nir;
 
 	rscreen->b.has_streamout = true;
 

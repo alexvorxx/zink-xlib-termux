@@ -67,6 +67,8 @@ struct aco_ps_epilog_key {
    uint8_t color_is_int8;
    uint8_t color_is_int10;
    uint8_t enable_mrt_output_nan_fixup;
+
+   bool mrt0_is_dual_src;
 };
 
 struct aco_vp_output_info {
@@ -84,20 +86,6 @@ struct aco_vp_output_info {
    bool writes_primitive_shading_rate_per_primitive;
    bool export_prim_id;
    bool export_clip_dists;
-};
-
-struct aco_stream_output {
-   uint8_t location;
-   uint8_t buffer;
-   uint16_t offset;
-   uint8_t component_mask;
-   uint8_t stream;
-};
-
-struct aco_streamout_info {
-   uint16_t num_outputs;
-   struct aco_stream_output outputs[ACO_MAX_SO_OUTPUTS];
-   uint16_t strides[ACO_MAX_SO_BUFFERS];
 };
 
 struct aco_shader_info {
@@ -141,7 +129,6 @@ struct aco_shader_info {
    struct {
       uint8_t subgroup_size;
    } cs;
-   struct aco_streamout_info so;
 
    uint32_t gfx9_gs_ring_lds_size;
 };
@@ -173,6 +160,7 @@ struct aco_stage_input {
 
       /* Used to export alpha through MRTZ for alpha-to-coverage (GFX11+). */
       bool alpha_to_coverage_via_mrtz;
+      bool mrt0_is_dual_src;
    } ps;
 };
 
@@ -192,6 +180,20 @@ struct aco_compiler_options {
       void (*func)(void *private_data, enum aco_compiler_debug_level level, const char *message);
       void *private_data;
    } debug;
+};
+
+enum aco_statistic {
+   aco_statistic_hash,
+   aco_statistic_instructions,
+   aco_statistic_copies,
+   aco_statistic_branches,
+   aco_statistic_latency,
+   aco_statistic_inv_throughput,
+   aco_statistic_vmem_clauses,
+   aco_statistic_smem_clauses,
+   aco_statistic_sgpr_presched,
+   aco_statistic_vgpr_presched,
+   aco_num_statistics
 };
 
 #ifdef __cplusplus

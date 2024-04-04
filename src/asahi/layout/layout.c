@@ -73,12 +73,28 @@ ail_get_max_tile_size(unsigned blocksize_B)
    }
 }
 
+/*
+ * Calculate the number of bytes in a block. This must take both block
+ * dimensions and multisampling into account.
+ */
+static uint32_t
+ail_get_block_size_B(struct ail_layout *layout)
+{
+   ASSERTED const struct util_format_description *desc =
+      util_format_description(layout->format);
+
+   assert(((layout->sample_count_sa == 1) ||
+           (desc->block.width == 1 && desc->block.height == 1)) &&
+          "multisampling and block-compression are mutually-exclusive");
+
+   return util_format_get_blocksize(layout->format) * layout->sample_count_sa;
+}
+
 static void
 ail_initialize_twiddled(struct ail_layout *layout)
 {
    unsigned offset_B = 0;
-   unsigned blocksize_B = util_format_get_blocksize(layout->format);
-
+   unsigned blocksize_B = ail_get_block_size_B(layout);
    unsigned w_el = util_format_get_nblocksx(layout->format, layout->width_px);
    unsigned h_el = util_format_get_nblocksy(layout->format, layout->height_px);
 
@@ -147,9 +163,51 @@ ail_initialize_twiddled(struct ail_layout *layout)
       poth_el = u_minify(poth_el, 1);
    }
 
-   /* Arrays and cubemaps have the entire miptree duplicated and page aligned */
-   layout->layer_stride_B = ALIGN_POT(offset_B, AIL_PAGESIZE);
+   /* Align layer size if we have mipmaps and one miptree is larger than one page */
+   layout->page_aligned_layers = layout->levels != 1 && offset_B > AIL_PAGESIZE;
+
+   /* Single-layer images are not padded unless they are Z/S */
+   if (layout->depth_px == 1 && !util_format_is_depth_or_stencil(layout->format))
+      layout->page_aligned_layers = false;
+
+   if (layout->page_aligned_layers)
+      layout->layer_stride_B = ALIGN_POT(offset_B, AIL_PAGESIZE);
+   else
+      layout->layer_stride_B = offset_B;
+
    layout->size_B = layout->layer_stride_B * layout->depth_px;
+}
+
+static void
+ail_initialize_compression(struct ail_layout *layout)
+{
+   assert(!util_format_is_compressed(layout->format) && "Compressed pixel formats not supported");
+   assert(util_format_get_blockwidth(layout->format) == 1);
+   assert(util_format_get_blockheight(layout->format) == 1);
+   assert(layout->width_px >= 16 && "Small textures are never compressed");
+   assert(layout->height_px >= 16 && "Small textures are never compressed");
+
+   layout->metadata_offset_B = layout->size_B;
+
+   unsigned width_px = ALIGN_POT(layout->width_px, 16);
+   unsigned height_px = ALIGN_POT(layout->height_px, 16);
+
+   unsigned compbuf_B = 0;
+
+   for (unsigned l = 0; l < layout->levels; ++l) {
+      if (width_px < 16 && height_px < 16)
+         break;
+
+      /* The compression buffer seems to have 8 bytes per 16 x 16 pixel block. */
+      unsigned cmpw_el = DIV_ROUND_UP(util_next_power_of_two(width_px), 16);
+      unsigned cmph_el = DIV_ROUND_UP(util_next_power_of_two(height_px), 16);
+      compbuf_B += ALIGN_POT(cmpw_el * cmph_el * 8, AIL_CACHELINE);
+
+      width_px = DIV_ROUND_UP(width_px, 2);
+      height_px = DIV_ROUND_UP(height_px, 2);
+   }
+
+   layout->size_B += compbuf_B * layout->depth_px;
 }
 
 void
@@ -161,6 +219,8 @@ ail_make_miptree(struct ail_layout *layout)
    if (layout->tiling == AIL_TILING_LINEAR) {
       assert(layout->depth_px == 1 && "Invalid linear layout");
       assert(layout->levels == 1 && "Invalid linear layout");
+      assert(layout->sample_count_sa == 1 &&
+             "Multisampled linear layouts not supported");
       assert(util_format_get_blockwidth(layout->format) == 1 &&
             "Strided linear block formats unsupported");
       assert(util_format_get_blockheight(layout->format) == 1 &&
@@ -169,18 +229,27 @@ ail_make_miptree(struct ail_layout *layout)
       assert(layout->linear_stride_B == 0 && "Invalid nonlinear layout");
       assert(layout->depth_px >= 1 && "Invalid dimensions");
       assert(layout->levels >= 1 && "Invalid dimensions");
+      assert(layout->sample_count_sa >= 1 && "Invalid samplt count");
    }
 
    assert(util_format_get_blockdepth(layout->format) == 1 &&
          "Deep formats unsupported");
 
-   if (layout->tiling == AIL_TILING_LINEAR)
+   switch (layout->tiling) {
+   case AIL_TILING_LINEAR:
       ail_initialize_linear(layout);
-   else if (layout->tiling == AIL_TILING_TWIDDLED)
+      break;
+   case AIL_TILING_TWIDDLED:
       ail_initialize_twiddled(layout);
-   else
+      break;
+   case AIL_TILING_TWIDDLED_COMPRESSED:
+      ail_initialize_twiddled(layout);
+      ail_initialize_compression(layout);
+      break;
+   default:
       unreachable("Unsupported tiling");
+   }
 
-   layout->size_B = ALIGN_POT(layout->size_B, AIL_PAGESIZE);
+   layout->size_B = ALIGN_POT(layout->size_B, AIL_CACHELINE);
    assert(layout->size_B > 0 && "Invalid dimensions");
 }

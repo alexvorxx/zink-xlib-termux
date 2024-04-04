@@ -28,7 +28,6 @@
 #include <windows.h>
 
 #include "glapi/glapi.h"
-#include "util/debug.h"
 #include "util/u_debug.h"
 #include "util/u_math.h"
 #include "util/u_memory.h"
@@ -128,7 +127,7 @@ stw_init(const struct stw_winsys *stw_winsys)
 {
    static struct stw_device stw_dev_storage;
 
-   if (env_var_as_boolean("WGL_DISABLE_ERROR_DIALOGS", false))
+   if (debug_get_bool_option("WGL_DISABLE_ERROR_DIALOGS", false))
       debug_disable_win32_error_dialogs();
 
    assert(!stw_dev);
@@ -217,7 +216,7 @@ stw_cleanup(void)
 {
    DHGLRC dhglrc;
 
-   debug_printf("%s\n", __FUNCTION__);
+   debug_printf("%s\n", __func__);
 
    if (!stw_dev)
       return;
@@ -230,7 +229,7 @@ stw_cleanup(void)
    dhglrc = handle_table_get_first_handle(stw_dev->ctx_table);
    stw_unlock_contexts(stw_dev);
    if (dhglrc) {
-      debug_printf("%s: contexts still active -- cleanup aborted\n", __FUNCTION__);
+      debug_printf("%s: contexts still active -- cleanup aborted\n", __func__);
       stw_dev = NULL;
       return;
    }

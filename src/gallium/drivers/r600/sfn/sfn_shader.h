@@ -164,7 +164,6 @@ public:
    virtual bool load_input(nir_intrinsic_instr *intr) = 0;
    virtual bool store_output(nir_intrinsic_instr *intr) = 0;
 
-   bool load_uniform(nir_intrinsic_instr *intr);
    bool load_ubo(nir_intrinsic_instr *intr);
 
    ValueFactory& value_factory();
@@ -244,6 +243,8 @@ public:
 
    PRegister emit_load_to_register(PVirtualValue src);
 
+   virtual unsigned image_size_const_offset() { return 0;}
+
 protected:
    enum ESlots {
       es_face,
@@ -265,7 +266,7 @@ protected:
 
    std::bitset<es_last> m_sv_values;
 
-   Shader(const char *type_id);
+   Shader(const char *type_id, unsigned atomic_base);
 
    const ShaderInput& input(int base) const;
 
@@ -283,11 +284,6 @@ private:
    bool allocate_arrays_from_string(std::istream& is);
 
    bool read_chipclass(std::istream& is);
-
-   bool load_uniform_indirect(nir_intrinsic_instr *intr,
-                              PVirtualValue addr,
-                              int offset,
-                              int buffer_id);
 
    bool scan_shader(const nir_function *impl);
    bool scan_uniforms(nir_variable *uniform);

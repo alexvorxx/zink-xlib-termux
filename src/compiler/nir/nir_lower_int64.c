@@ -170,6 +170,8 @@ lower_ishl64(nir_builder *b, nir_ssa_def *x, nir_ssa_def *y)
     *
     * uint64_t lshift(uint64_t x, int c)
     * {
+    *    c %= 64;
+    *
     *    if (c == 0) return x;
     *
     *    uint32_t lo = LO(x), hi = HI(x);
@@ -187,6 +189,7 @@ lower_ishl64(nir_builder *b, nir_ssa_def *x, nir_ssa_def *y)
     */
    nir_ssa_def *x_lo = nir_unpack_64_2x32_split_x(b, x);
    nir_ssa_def *x_hi = nir_unpack_64_2x32_split_y(b, x);
+   y = nir_iand_imm(b, y, 0x3f);
 
    nir_ssa_def *reverse_count = nir_iabs(b, nir_iadd(b, y, nir_imm_int(b, -32)));
    nir_ssa_def *lo_shifted = nir_ishl(b, x_lo, y);
@@ -212,6 +215,8 @@ lower_ishr64(nir_builder *b, nir_ssa_def *x, nir_ssa_def *y)
     *
     * uint64_t arshift(uint64_t x, int c)
     * {
+    *    c %= 64;
+    *
     *    if (c == 0) return x;
     *
     *    uint32_t lo = LO(x);
@@ -231,6 +236,7 @@ lower_ishr64(nir_builder *b, nir_ssa_def *x, nir_ssa_def *y)
     */
    nir_ssa_def *x_lo = nir_unpack_64_2x32_split_x(b, x);
    nir_ssa_def *x_hi = nir_unpack_64_2x32_split_y(b, x);
+   y = nir_iand_imm(b, y, 0x3f);
 
    nir_ssa_def *reverse_count = nir_iabs(b, nir_iadd(b, y, nir_imm_int(b, -32)));
    nir_ssa_def *lo_shifted = nir_ushr(b, x_lo, y);
@@ -256,6 +262,8 @@ lower_ushr64(nir_builder *b, nir_ssa_def *x, nir_ssa_def *y)
     *
     * uint64_t rshift(uint64_t x, int c)
     * {
+    *    c %= 64;
+    *
     *    if (c == 0) return x;
     *
     *    uint32_t lo = LO(x), hi = HI(x);
@@ -274,6 +282,7 @@ lower_ushr64(nir_builder *b, nir_ssa_def *x, nir_ssa_def *y)
 
    nir_ssa_def *x_lo = nir_unpack_64_2x32_split_x(b, x);
    nir_ssa_def *x_hi = nir_unpack_64_2x32_split_y(b, x);
+   y = nir_iand_imm(b, y, 0x3f);
 
    nir_ssa_def *reverse_count = nir_iabs(b, nir_iadd(b, y, nir_imm_int(b, -32)));
    nir_ssa_def *lo_shifted = nir_ushr(b, x_lo, y);
@@ -813,10 +822,15 @@ lower_f2(nir_builder *b, nir_ssa_def *x, bool dst_is_signed)
    if (dst_is_signed)
       x = nir_fabs(b, x);
 
-   nir_ssa_def *div = nir_imm_floatN_t(b, 1ULL << 32, x->bit_size);
-   nir_ssa_def *res_hi = nir_f2u32(b, nir_fdiv(b, x, div));
-   nir_ssa_def *res_lo = nir_f2u32(b, nir_frem(b, x, div));
-   nir_ssa_def *res = nir_pack_64_2x32_split(b, res_lo, res_hi);
+   nir_ssa_def *res;
+   if (x->bit_size < 32) {
+      res = nir_pack_64_2x32_split(b, nir_f2u32(b, x), nir_imm_int(b, 0));
+   } else {
+      nir_ssa_def *div = nir_imm_floatN_t(b, 1ULL << 32, x->bit_size);
+      nir_ssa_def *res_hi = nir_f2u32(b, nir_fdiv(b, x, div));
+      nir_ssa_def *res_lo = nir_f2u32(b, nir_frem(b, x, div));
+      res = nir_pack_64_2x32_split(b, res_lo, res_hi);
+   }
 
    if (dst_is_signed)
       res = nir_bcsel(b, nir_flt(b, x_sign, nir_imm_floatN_t(b, 0, x->bit_size)),

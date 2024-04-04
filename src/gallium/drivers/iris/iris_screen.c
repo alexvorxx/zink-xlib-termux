@@ -37,7 +37,7 @@
 #include "pipe/p_state.h"
 #include "pipe/p_context.h"
 #include "pipe/p_screen.h"
-#include "util/debug.h"
+#include "util/u_debug.h"
 #include "util/os_file.h"
 #include "util/u_cpu_detect.h"
 #include "util/u_inlines.h"
@@ -115,7 +115,7 @@ iris_enable_clover()
 {
    static int enable = -1;
    if (enable < 0)
-      enable = env_var_as_boolean("IRIS_ENABLE_CLOVER", false);
+      enable = debug_get_bool_option("IRIS_ENABLE_CLOVER", false);
    return enable;
 }
 
@@ -141,6 +141,19 @@ iris_get_name(struct pipe_screen *pscreen)
 
    snprintf(buf, sizeof(buf), "Mesa %s", devinfo->name);
    return buf;
+}
+
+static const char *
+iris_get_cl_cts_version(struct pipe_screen *pscreen)
+{
+   struct iris_screen *screen = (struct iris_screen *)pscreen;
+   const struct intel_device_info *devinfo = &screen->devinfo;
+
+   /* https://www.khronos.org/conformance/adopters/conformant-products/opencl#submission_405 */
+   if (devinfo->verx10 == 120)
+      return "v2022-04-22-00";
+
+   return NULL;
 }
 
 static int
@@ -285,6 +298,7 @@ iris_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_FENCE_SIGNAL:
    case PIPE_CAP_IMAGE_STORE_FORMATTED:
    case PIPE_CAP_LEGACY_MATH_RULES:
+   case PIPE_CAP_ALPHA_TO_COVERAGE_DITHER_CONTROL:
       return true;
    case PIPE_CAP_UMA:
       return iris_bufmgr_vram_size(screen->bufmgr) == 0;
@@ -363,6 +377,11 @@ iris_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_MAX_SHADER_PATCH_VARYINGS:
    case PIPE_CAP_MAX_VARYINGS:
       return 32;
+   case PIPE_CAP_PREFER_IMM_ARRAYS_AS_CONSTBUF:
+      /* We want immediate arrays to go get uploaded as nir->constant_data by
+       * nir_opt_large_constants() instead.
+       */
+      return 0;
    case PIPE_CAP_RESOURCE_FROM_USER_MEMORY:
       /* AMD_pinned_memory assumes the flexibility of using client memory
        * for any buffer (incl. vertex buffers) which rules out the prospect
@@ -568,7 +587,7 @@ iris_get_compute_param(struct pipe_screen *pscreen,
       RET((uint64_t []) { 3 });
 
    case PIPE_COMPUTE_CAP_MAX_GRID_SIZE:
-      RET(((uint64_t []) { 65535, 65535, 65535 }));
+      RET(((uint64_t []) { UINT32_MAX, UINT32_MAX, UINT32_MAX }));
 
    case PIPE_COMPUTE_CAP_MAX_BLOCK_SIZE:
       /* MaxComputeWorkGroupSize[0..2] */
@@ -675,28 +694,6 @@ iris_get_disk_shader_cache(struct pipe_screen *pscreen)
    return screen->disk_cache;
 }
 
-static int
-iris_getparam(int fd, int param, int *value)
-{
-   struct drm_i915_getparam gp = { .param = param, .value = value };
-
-   if (ioctl(fd, DRM_IOCTL_I915_GETPARAM, &gp) == -1)
-      return -errno;
-
-   return 0;
-}
-
-static int
-iris_getparam_integer(int fd, int param)
-{
-   int value = -1;
-
-   if (iris_getparam(fd, param, &value) == 0)
-      return value;
-
-   return -1;
-}
-
 static const struct intel_l3_config *
 iris_get_default_l3_config(const struct intel_device_info *devinfo,
                            bool compute)
@@ -801,7 +798,7 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
     *
     * Checking the last feature availability will include all previous ones.
     */
-   if (iris_getparam_integer(fd, I915_PARAM_HAS_CONTEXT_ISOLATION) <= 0) {
+   if (!screen->devinfo.has_context_isolation) {
       debug_error("Kernel is too old (4.16+ required) or unusable for Iris.\n"
                   "Check your dmesg logs for loading failures.\n");
       return NULL;
@@ -853,7 +850,7 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
    screen->driconf.lower_depth_range_rate =
       driQueryOptionf(config->options, "lower_depth_range_rate");
 
-   screen->precompile = env_var_as_boolean("shader_precompile", true);
+   screen->precompile = debug_get_bool_option("shader_precompile", true);
 
    isl_device_init(&screen->isl_dev, &screen->devinfo);
 
@@ -883,6 +880,7 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
    pscreen->get_name = iris_get_name;
    pscreen->get_vendor = iris_get_vendor;
    pscreen->get_device_vendor = iris_get_device_vendor;
+   pscreen->get_cl_cts_version = iris_get_cl_cts_version;
    pscreen->get_param = iris_get_param;
    pscreen->get_shader_param = iris_get_shader_param;
    pscreen->get_compute_param = iris_get_compute_param;

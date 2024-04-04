@@ -49,14 +49,14 @@
 #include "intel/common/intel_gem.h"
 #include "intel/ds/intel_tracepoints.h"
 #include "util/hash_table.h"
-#include "util/debug.h"
+#include "util/u_debug.h"
 #include "util/set.h"
 #include "util/u_upload_mgr.h"
 
 #include <errno.h>
 #include <xf86drm.h>
 
-#if HAVE_VALGRIND
+#ifdef HAVE_VALGRIND
 #include <valgrind.h>
 #include <memcheck.h>
 #define VG(x) x
@@ -141,6 +141,9 @@ decode_get_bo(void *v_batch, bool ppgtt, uint64_t address)
       uint64_t bo_address = bo->address & (~0ull >> 16);
 
       if (address >= bo_address && address < bo_address + bo->size) {
+         if (bo->real.mmap_mode == IRIS_MMAP_NONE)
+            return (struct intel_batch_decode_bo) { };
+
          return (struct intel_batch_decode_bo) {
             .addr = bo_address,
             .size = bo->size,
@@ -257,12 +260,12 @@ iris_init_non_engine_contexts(struct iris_context *ice, int priority)
    iris_foreach_batch(ice, batch) {
       batch->ctx_id = iris_create_hw_context(screen->bufmgr, ice->protected);
       batch->exec_flags = I915_EXEC_RENDER;
-      batch->has_engines_context = false;
       assert(batch->ctx_id);
       iris_hw_context_set_priority(screen->bufmgr, batch->ctx_id, priority);
    }
 
    ice->batches[IRIS_BATCH_BLITTER].exec_flags = I915_EXEC_BLT;
+   ice->has_engines_context = false;
 }
 
 static int
@@ -292,21 +295,20 @@ iris_create_engines_context(struct iris_context *ice, int priority)
    /* Blitter is only supported on Gfx12+ */
    unsigned num_batches = IRIS_BATCH_COUNT - (devinfo->ver >= 12 ? 0 : 1);
 
-   if (env_var_as_boolean("INTEL_COMPUTE_CLASS", false) &&
+   if (debug_get_bool_option("INTEL_COMPUTE_CLASS", false) &&
        intel_engines_count(engines_info, INTEL_ENGINE_CLASS_COMPUTE) > 0)
       engine_classes[IRIS_BATCH_COMPUTE] = INTEL_ENGINE_CLASS_COMPUTE;
 
-   int engines_ctx =
-      intel_gem_create_context_engines(fd, engines_info, num_batches,
-                                       engine_classes);
-
-   if (engines_ctx < 0) {
+   uint32_t engines_ctx;
+   if (!intel_gem_create_context_engines(fd, engines_info, num_batches,
+                                         engine_classes, &engines_ctx)) {
       free(engines_info);
       return -1;
    }
 
    iris_hw_context_set_unrecoverable(screen->bufmgr, engines_ctx);
    iris_hw_context_set_vm_id(screen->bufmgr, engines_ctx);
+   iris_hw_context_set_priority(screen->bufmgr, engines_ctx, priority);
 
    free(engines_info);
    return engines_ctx;
@@ -319,16 +321,13 @@ iris_init_engines_context(struct iris_context *ice, int priority)
    if (engines_ctx < 0)
       return false;
 
-   struct iris_screen *screen = (void *) ice->ctx.screen;
-   iris_hw_context_set_priority(screen->bufmgr, engines_ctx, priority);
-
    iris_foreach_batch(ice, batch) {
       unsigned i = batch - &ice->batches[0];
       batch->ctx_id = engines_ctx;
       batch->exec_flags = i;
-      batch->has_engines_context = true;
    }
 
+   ice->has_engines_context = true;
    return true;
 }
 
@@ -559,7 +558,7 @@ iris_batch_reset(struct iris_batch *batch)
 }
 
 static void
-iris_batch_free(struct iris_batch *batch)
+iris_batch_free(const struct iris_context *ice, struct iris_batch *batch)
 {
    struct iris_screen *screen = batch->screen;
    struct iris_bufmgr *bufmgr = screen->bufmgr;
@@ -586,8 +585,10 @@ iris_batch_free(struct iris_batch *batch)
    batch->map = NULL;
    batch->map_next = NULL;
 
-   /* iris_destroy_batches() will destroy engines contexts. */
-   if (!batch->has_engines_context)
+   /* destroy the engines context on the first batch or destroy each batch
+    * context
+    */
+   if (!ice->has_engines_context || &ice->batches[0] == batch)
       iris_destroy_kernel_context(bufmgr, batch->ctx_id);
 
    iris_destroy_batch_measure(batch->measure);
@@ -604,17 +605,8 @@ iris_batch_free(struct iris_batch *batch)
 void
 iris_destroy_batches(struct iris_context *ice)
 {
-   /* If we are using an engines context, then a single kernel context is
-    * created, with multiple hardware contexts. So, we only need to destroy
-    * the context on the first batch.
-    */
-   if (ice->batches[0].has_engines_context) {
-      iris_destroy_kernel_context(ice->batches[0].screen->bufmgr,
-                                  ice->batches[0].ctx_id);
-   }
-
    iris_foreach_batch(ice, batch)
-      iris_batch_free(batch);
+      iris_batch_free(ice, batch);
 }
 
 /**
@@ -733,9 +725,9 @@ replace_kernel_ctx(struct iris_batch *batch)
 {
    struct iris_screen *screen = batch->screen;
    struct iris_bufmgr *bufmgr = screen->bufmgr;
+   struct iris_context *ice = batch->ice;
 
-   if (batch->has_engines_context) {
-      struct iris_context *ice = batch->ice;
+   if (ice->has_engines_context) {
       int priority = iris_kernel_context_get_priority(bufmgr, batch->ctx_id);
       uint32_t old_ctx = batch->ctx_id;
       int new_ctx = iris_create_engines_context(ice, priority);
@@ -1090,7 +1082,7 @@ _iris_batch_flush(struct iris_batch *batch, const char *file, int line)
       iris_bo_wait_rendering(batch->bo); /* if execbuf failed; this is a nop */
    }
 
-   if (u_trace_context_actively_tracing(&ice->ds.trace_context))
+   if (u_trace_should_process(&ice->ds.trace_context))
       iris_utrace_flush(batch, submission_id);
 
    /* Start a new batch buffer. */

@@ -37,14 +37,21 @@
 #include "util/bitset.h"
 #include "util/set.h"
 #include "util/log.h"
+#include "util/disk_cache.h"
 
 #include "pan_device.h"
 #include "pan_mempool.h"
 
+#define PAN_QUERY_DRAW_CALLS (PIPE_QUERY_DRIVER_SPECIFIC + 0)
+
+static const struct pipe_driver_query_info panfrost_driver_query_list[] = {
+        {"draw-calls", PAN_QUERY_DRAW_CALLS, { 0 }},
+};
+
 struct panfrost_batch;
 struct panfrost_context;
 struct panfrost_resource;
-struct panfrost_shader_state;
+struct panfrost_compiled_shader;
 struct pan_fb_info;
 struct pan_blend_state;
 
@@ -53,7 +60,7 @@ struct pan_blend_state;
 struct panfrost_vtable {
         /* Prepares the renderer state descriptor or shader program descriptor
          * for a given compiled shader, and if desired uploads it as well */
-        void (*prepare_shader)(struct panfrost_shader_state *,
+        void (*prepare_shader)(struct panfrost_compiled_shader *,
                             struct panfrost_pool *, bool);
 
         /* Emits a thread local storage descriptor */
@@ -107,6 +114,7 @@ struct panfrost_screen {
         } indirect_draw;
 
         struct panfrost_vtable vtbl;
+        struct disk_cache *disk_cache;
 };
 
 static inline struct panfrost_screen *
@@ -123,6 +131,10 @@ pan_device(struct pipe_screen *p)
 
 struct pipe_fence_handle *
 panfrost_fence_create(struct panfrost_context *ctx);
+
+int
+panfrost_get_driver_query_info(struct pipe_screen *pscreen, unsigned index,
+                               struct pipe_driver_query_info *info);
 
 void panfrost_cmdstream_screen_init_v4(struct panfrost_screen *screen);
 void panfrost_cmdstream_screen_init_v5(struct panfrost_screen *screen);

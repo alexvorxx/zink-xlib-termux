@@ -36,7 +36,7 @@
 #include "genxml/genX_bits.h"
 #include "perf/intel_perf.h"
 
-#include "util/debug.h"
+#include "util/u_debug.h"
 #include "util/perf/u_trace.h"
 
 /** \file anv_batch_chain.c
@@ -388,8 +388,10 @@ anv_batch_bo_link(struct anv_cmd_buffer *cmd_buffer,
    uint64_t *map = prev_bbo->bo->map + bb_start_offset + 4;
    *map = intel_canonical_address(next_bbo->bo->offset + next_bbo_offset);
 
+#ifdef SUPPORT_INTEL_INTEGRATED_GPUS
    if (cmd_buffer->device->physical->memory.need_clflush)
       intel_flush_range(map, sizeof(uint64_t));
+#endif
 }
 
 static void
@@ -709,10 +711,9 @@ anv_cmd_buffer_alloc_space(struct anv_cmd_buffer *cmd_buffer,
                                 size, alignment);
 
       return (struct anv_cmd_alloc) {
-         .address = (struct anv_address) {
-            .bo = cmd_buffer->device->dynamic_state_pool.block_pool.bo,
-            .offset = state.offset,
-         },
+         .address = anv_state_pool_state_address(
+            &cmd_buffer->device->dynamic_state_pool,
+            state),
          .map = state.map,
          .size = size,
       };
@@ -1443,7 +1444,15 @@ setup_execbuf_for_cmd_buffers(struct anv_execbuf *execbuf,
    }
 
    /* Add all the global BOs to the object list for softpin case. */
-   result = pin_state_pool(device, execbuf, &device->surface_state_pool);
+   result = pin_state_pool(device, execbuf, &device->scratch_surface_state_pool);
+   if (result != VK_SUCCESS)
+      return result;
+
+   result = pin_state_pool(device, execbuf, &device->bindless_surface_state_pool);
+   if (result != VK_SUCCESS)
+      return result;
+
+   result = pin_state_pool(device, execbuf, &device->internal_surface_state_pool);
    if (result != VK_SUCCESS)
       return result;
 
@@ -1500,6 +1509,7 @@ setup_execbuf_for_cmd_buffers(struct anv_execbuf *execbuf,
       first_batch_bo->bo->exec_obj_index = last_idx;
    }
 
+#ifdef SUPPORT_INTEL_INTEGRATED_GPUS
    if (device->physical->memory.need_clflush) {
       __builtin_ia32_mfence();
       struct anv_batch_bo **bbo;
@@ -1510,6 +1520,7 @@ setup_execbuf_for_cmd_buffers(struct anv_execbuf *execbuf,
          }
       }
    }
+#endif
 
    execbuf->execbuf = (struct drm_i915_gem_execbuffer2) {
       .buffers_ptr = (uintptr_t) execbuf->objects,
@@ -1586,8 +1597,10 @@ setup_utrace_execbuf(struct anv_execbuf *execbuf, struct anv_queue *queue,
       flush->batch_bo->exec_obj_index = last_idx;
    }
 
+#ifdef SUPPORT_INTEL_INTEGRATED_GPUS
    if (device->physical->memory.need_clflush)
       intel_flush_range(flush->batch_bo->map, flush->batch_bo->size);
+#endif
 
    execbuf->execbuf = (struct drm_i915_gem_execbuffer2) {
       .buffers_ptr = (uintptr_t) execbuf->objects,
@@ -2056,8 +2069,10 @@ anv_queue_submit_simple_batch(struct anv_queue *queue,
       return result;
 
    memcpy(batch_bo->map, batch->start, batch_size);
+#ifdef SUPPORT_INTEL_INTEGRATED_GPUS
    if (device->physical->memory.need_clflush)
       intel_flush_range(batch_bo->map, batch_size);
+#endif
 
    if (INTEL_DEBUG(DEBUG_BATCH)) {
       intel_print_batch(&device->decoder_ctx,

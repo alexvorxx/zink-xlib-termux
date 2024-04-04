@@ -25,7 +25,6 @@ enum tu_draw_state_group_id
    TU_DRAW_STATE_PROGRAM,
    TU_DRAW_STATE_PROGRAM_BINNING,
    TU_DRAW_STATE_VB,
-   TU_DRAW_STATE_RAST,
    TU_DRAW_STATE_CONST,
    TU_DRAW_STATE_DESC_SETS,
    TU_DRAW_STATE_DESC_SETS_LOAD,
@@ -55,7 +54,7 @@ enum tu_cmd_dirty_bits
 {
    TU_CMD_DIRTY_VERTEX_BUFFERS = BIT(0),
    TU_CMD_DIRTY_VB_STRIDE = BIT(1),
-   TU_CMD_DIRTY_GRAS_SU_CNTL = BIT(2),
+   TU_CMD_DIRTY_RAST = BIT(2),
    TU_CMD_DIRTY_RB_DEPTH_CNTL = BIT(3),
    TU_CMD_DIRTY_RB_STENCIL_CNTL = BIT(4),
    TU_CMD_DIRTY_DESC_SETS_LOAD = BIT(5),
@@ -63,7 +62,7 @@ enum tu_cmd_dirty_bits
    TU_CMD_DIRTY_SHADER_CONSTS = BIT(7),
    TU_CMD_DIRTY_LRZ = BIT(8),
    TU_CMD_DIRTY_VS_PARAMS = BIT(9),
-   TU_CMD_DIRTY_RASTERIZER_DISCARD = BIT(10),
+   TU_CMD_DIRTY_PC_RASTER_CNTL = BIT(10),
    TU_CMD_DIRTY_VIEWPORTS = BIT(11),
    TU_CMD_DIRTY_BLEND = BIT(12),
    TU_CMD_DIRTY_PATCH_CONTROL_POINTS = BIT(13),
@@ -336,17 +335,21 @@ struct tu_cmd_state
    bool stencil_front_write;
    bool stencil_back_write;
 
-   uint32_t gras_su_cntl, rb_depth_cntl, rb_stencil_cntl;
+   uint32_t gras_su_cntl, gras_cl_cntl, rb_depth_cntl, rb_stencil_cntl;
    uint32_t pc_raster_cntl, vpc_unknown_9107;
+   enum a6xx_polygon_mode polygon_mode;
    uint32_t rb_mrt_control[MAX_RTS], rb_mrt_blend_control[MAX_RTS];
    uint32_t rb_mrt_control_rop;
    uint32_t rb_blend_cntl, sp_blend_cntl;
-   uint32_t pipeline_color_write_enable, pipeline_blend_enable;
+   uint32_t pipeline_color_write_enable, blend_enable;
    uint32_t color_write_enable;
    bool logic_op_enabled;
    bool rop_reads_dst;
+   bool alpha_to_coverage;
    enum pc_di_primtype primtype;
    bool primitive_restart_enable;
+   bool tess_upper_left_domain_origin;
+   bool provoking_vertex_last;
 
    /* saved states to re-emit in TU_CMD_DIRTY_DRAW_STATE case */
    struct tu_draw_state dynamic_state[TU_DYNAMIC_STATE_COUNT];
@@ -526,15 +529,6 @@ struct tu_cmd_state
    struct tu_primitive_params last_prim_params;
 };
 
-enum tu_cmd_buffer_status
-{
-   TU_CMD_BUFFER_STATUS_INVALID,
-   TU_CMD_BUFFER_STATUS_INITIAL,
-   TU_CMD_BUFFER_STATUS_RECORDING,
-   TU_CMD_BUFFER_STATUS_EXECUTABLE,
-   TU_CMD_BUFFER_STATUS_PENDING,
-};
-
 struct tu_cmd_buffer
 {
    struct vk_command_buffer vk;
@@ -549,7 +543,6 @@ struct tu_cmd_buffer
    struct tu_autotune_results_buffer* autotune_buffer;
 
    VkCommandBufferUsageFlags usage_flags;
-   enum tu_cmd_buffer_status status;
 
    VkQueryPipelineStatisticFlags inherited_pipeline_statistics;
 
@@ -606,28 +599,32 @@ extern const struct vk_command_buffer_ops tu_cmd_buffer_ops;
 
 static inline uint32_t
 tu_attachment_gmem_offset(struct tu_cmd_buffer *cmd,
-                          const struct tu_render_pass_attachment *att)
+                          const struct tu_render_pass_attachment *att,
+                          uint32_t layer)
 {
    assert(cmd->state.gmem_layout < TU_GMEM_LAYOUT_COUNT);
-   return att->gmem_offset[cmd->state.gmem_layout];
+   return att->gmem_offset[cmd->state.gmem_layout] +
+      layer * cmd->state.tiling->tile0.width * cmd->state.tiling->tile0.height *
+      att->cpp;
 }
 
 static inline uint32_t
 tu_attachment_gmem_offset_stencil(struct tu_cmd_buffer *cmd,
-                                  const struct tu_render_pass_attachment *att)
+                                  const struct tu_render_pass_attachment *att,
+                                  uint32_t layer)
 {
    assert(cmd->state.gmem_layout < TU_GMEM_LAYOUT_COUNT);
-   return att->gmem_offset_stencil[cmd->state.gmem_layout];
+   return att->gmem_offset_stencil[cmd->state.gmem_layout] +
+      layer * cmd->state.tiling->tile0.width * cmd->state.tiling->tile0.height;
 }
 
 void tu_render_pass_state_merge(struct tu_render_pass_state *dst,
                                 const struct tu_render_pass_state *src);
 
 VkResult tu_cmd_buffer_begin(struct tu_cmd_buffer *cmd_buffer,
-                             VkCommandBufferUsageFlags usage_flags);
+                             const VkCommandBufferBeginInfo *pBeginInfo);
 
-void tu_emit_cache_flush_renderpass(struct tu_cmd_buffer *cmd_buffer,
-                                    struct tu_cs *cs);
+void tu_emit_cache_flush_renderpass(struct tu_cmd_buffer *cmd_buffer);
 
 void tu_emit_cache_flush_ccu(struct tu_cmd_buffer *cmd_buffer,
                              struct tu_cs *cs,

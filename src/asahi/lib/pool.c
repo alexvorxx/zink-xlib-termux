@@ -36,8 +36,8 @@
 static struct agx_bo *
 agx_pool_alloc_backing(struct agx_pool *pool, size_t bo_sz)
 {
-   struct agx_bo *bo = agx_bo_create(pool->dev, bo_sz,
-                            pool->create_flags);
+   struct agx_bo *bo = agx_bo_create(pool->dev, bo_sz, pool->create_flags,
+                                     "Pool");
 
    util_dynarray_append(&pool->bos, struct agx_bo *, bo);
    pool->transient_bo = bo;
@@ -79,9 +79,9 @@ agx_pool_get_bo_handles(struct agx_pool *pool, uint32_t *handles)
 }
 
 struct agx_ptr
-agx_pool_alloc_aligned(struct agx_pool *pool, size_t sz, unsigned alignment)
+agx_pool_alloc_aligned_with_bo(struct agx_pool *pool, size_t sz,
+                               unsigned alignment, struct agx_bo **out_bo)
 {
-	alignment = MAX2(alignment, 4096);
    assert(alignment == util_next_power_of_two(alignment));
 
    /* Find or create a suitable BO */
@@ -102,6 +102,9 @@ agx_pool_alloc_aligned(struct agx_pool *pool, size_t sz, unsigned alignment)
       .gpu = bo->ptr.gpu + offset,
    };
 
+   if (out_bo)
+      *out_bo = bo;
+
    return ret;
 }
 
@@ -112,10 +115,12 @@ agx_pool_upload(struct agx_pool *pool, const void *data, size_t sz)
 }
 
 uint64_t
-agx_pool_upload_aligned(struct agx_pool *pool, const void *data, size_t sz, unsigned alignment)
+agx_pool_upload_aligned_with_bo(struct agx_pool *pool, const void *data,
+                                size_t sz, unsigned alignment,
+                                struct agx_bo **bo)
 {
-	alignment = MAX2(alignment, 4096);
-   struct agx_ptr transfer = agx_pool_alloc_aligned(pool, sz, alignment);
+   struct agx_ptr transfer =
+      agx_pool_alloc_aligned_with_bo(pool, sz, alignment, bo);
    memcpy(transfer.cpu, data, sz);
    return transfer.gpu;
 }

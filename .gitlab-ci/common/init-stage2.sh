@@ -131,6 +131,15 @@ if [ -n "$HWCI_START_XORG" ]; then
   export DISPLAY=:0
 fi
 
+if [ -n "$HWCI_START_WESTON" ]; then
+  export XDG_RUNTIME_DIR=/run/user
+  mkdir -p $XDG_RUNTIME_DIR
+
+  weston -Bheadless-backend.so -Swayland-0 &
+  export WAYLAND_DISPLAY=wayland-0
+  sleep 1
+fi
+
 RESULT=fail
 set +e
 sh -c "$HWCI_TEST_SCRIPT"
@@ -150,8 +159,7 @@ cleanup
 # upload artifacts
 if [ -n "$MINIO_RESULTS_UPLOAD" ]; then
   tar --zstd -cf results.tar.zst results/;
-  ci-fairy minio login --token-file "${CI_JOB_JWT_FILE}";
-  ci-fairy minio cp results.tar.zst minio://"$MINIO_RESULTS_UPLOAD"/results.tar.zst;
+  ci-fairy s3cp --token-file "${CI_JOB_JWT_FILE}" results.tar.zst https://"$MINIO_RESULTS_UPLOAD"/results.tar.zst;
 fi
 
 # We still need to echo the hwci: mesa message, as some scripts rely on it, such

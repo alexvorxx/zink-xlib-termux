@@ -146,15 +146,6 @@ enum zink_descriptor_type {
    ZINK_DESCRIPTOR_NON_BINDLESS_TYPES = ZINK_DESCRIPTOR_BASE_TYPES + 1, /**< for struct sizing */
 };
 
-enum zink_descriptor_mode {
-   ZINK_DESCRIPTOR_MODE_AUTO,
-   ZINK_DESCRIPTOR_MODE_LAZY,
-};
-
-struct zink_descriptor_refs {
-   struct util_dynarray refs;
-};
-
 /* indexing for descriptor template management */
 enum zink_descriptor_size_index {
    ZDS_INDEX_UBO,
@@ -298,7 +289,7 @@ struct zink_rasterizer_hw_state {
 
 struct zink_rasterizer_state {
    struct pipe_rasterizer_state base;
-   bool offset_point, offset_line, offset_tri;
+   bool offset_fill;
    float offset_units, offset_clamp, offset_scale;
    float line_width;
    VkFrontFace front_face;
@@ -695,9 +686,15 @@ struct zink_shader {
    struct set *programs;
 
    union {
-      struct zink_shader *generated; // a generated shader that this shader "owns"
-      bool is_generated; // if this is a driver-created shader (e.g., tcs)
-      nir_variable *fbfetch; //for fs output
+      struct {
+         struct zink_shader *generated_tcs; // a generated shader that this shader "owns"; only valid in the tes stage
+         struct zink_shader *generated_gs; // a generated shader that this shader "owns"
+         bool is_generated; // if this is a driver-created shader (e.g., tcs)
+      } non_fs;
+
+      struct {
+         nir_variable *fbfetch; //for fs output
+      } fs;
    };
 };
 
@@ -809,6 +806,8 @@ struct zink_gfx_push_constant {
    unsigned framebuffer_is_layered;
    float default_inner_level[2];
    float default_outer_level[4];
+   uint32_t line_stipple_pattern;
+   float viewport_scale[2];
 };
 
 /* The order of the enums MUST match the order of the zink_gfx_push_constant
@@ -820,6 +819,8 @@ enum zink_gfx_push_constant_member {
    ZINK_GFX_PUSHCONST_FRAMEBUFFER_IS_LAYERED,
    ZINK_GFX_PUSHCONST_DEFAULT_INNER_LEVEL,
    ZINK_GFX_PUSHCONST_DEFAULT_OUTER_LEVEL,
+   ZINK_GFX_PUSHCONST_LINE_STIPPLE_PATTERN,
+   ZINK_GFX_PUSHCONST_VIEWPORT_SCALE,
    ZINK_GFX_PUSHCONST_MAX
 };
 
@@ -1306,6 +1307,7 @@ struct zink_screen {
       bool always_feedback_loop_zs;
       bool needs_sanitised_layer;
       bool track_renderpasses;
+      bool no_linestipple;
       unsigned z16_unscaled_bias;
       unsigned z24_unscaled_bias;
    } driver_workarounds;

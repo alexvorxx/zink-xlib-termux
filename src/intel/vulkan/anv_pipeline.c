@@ -288,7 +288,6 @@ anv_shader_stage_to_nir(struct anv_device *device,
 
    const nir_opt_access_options opt_access_options = {
       .is_vulkan = true,
-      .infer_non_readable = true,
    };
    NIR_PASS(_, nir, nir_opt_access, &opt_access_options);
 
@@ -2103,8 +2102,6 @@ anv_pipeline_compile_cs(struct anv_compute_pipeline *pipeline,
          return vk_error(pipeline, VK_ERROR_UNKNOWN);
       }
 
-      NIR_PASS(_, stage.nir, anv_nir_add_base_work_group_id);
-
       anv_pipeline_lower_nir(&pipeline->base, mem_ctx, &stage, layout,
                              false /* use_primitive_replication */);
 
@@ -2469,6 +2466,8 @@ compile_upload_rt_shader(struct anv_ray_tracing_pipeline *pipeline,
          .address_format = nir_address_format_64bit_global,
          .stack_alignment = BRW_BTD_STACK_ALIGN,
          .localized_loads = true,
+         .vectorizer_callback = brw_nir_should_vectorize_mem,
+         .vectorizer_data = NULL,
       };
 
       NIR_PASS(_, nir, nir_lower_shader_calls, &opts,
@@ -2777,8 +2776,6 @@ anv_pipeline_compile_ray_tracing(struct anv_ray_tracing_pipeline *pipeline,
          return vk_error(pipeline, VK_ERROR_OUT_OF_HOST_MEMORY);
       }
 
-      stages[i].nir->info.subgroup_size = SUBGROUP_SIZE_REQUIRE_8;
-
       anv_pipeline_lower_nir(&pipeline->base, pipeline_ctx, &stages[i],
                              layout, false /* use_primitive_replication */);
 
@@ -3019,8 +3016,6 @@ anv_device_init_rt_shaders(struct anv_device *device)
       void *tmp_ctx = ralloc_context(NULL);
       nir_shader *trivial_return_nir =
          brw_nir_create_trivial_return_shader(device->physical->compiler, tmp_ctx);
-
-      trivial_return_nir->info.subgroup_size = SUBGROUP_SIZE_REQUIRE_8;
 
       NIR_PASS_V(trivial_return_nir, brw_nir_lower_rt_intrinsics, device->info);
 

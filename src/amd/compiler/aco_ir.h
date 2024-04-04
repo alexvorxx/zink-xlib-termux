@@ -1857,7 +1857,8 @@ inline bool
 is_dead(const std::vector<uint16_t>& uses, const Instruction* instr)
 {
    if (instr->definitions.empty() || instr->isBranch() ||
-       instr->opcode == aco_opcode::p_init_scratch)
+       instr->opcode == aco_opcode::p_init_scratch ||
+       instr->opcode == aco_opcode::p_dual_src_export_gfx11)
       return false;
 
    if (std::any_of(instr->definitions.begin(), instr->definitions.end(),
@@ -2024,7 +2025,6 @@ enum class SWStage : uint16_t {
    CS = 1 << 5,     /* Compute Shader */
    TS = 1 << 6,     /* Task Shader */
    MS = 1 << 7,     /* Mesh Shader */
-   GSCopy = 1 << 8, /* GS Copy Shader (internal) */
 
    /* Stage combinations merged to run on a single HWStage */
    VS_GS = VS | GS,
@@ -2089,7 +2089,6 @@ static constexpr Stage vertex_vs(HWStage::VS, SWStage::VS);
 static constexpr Stage fragment_fs(HWStage::FS, SWStage::FS);
 static constexpr Stage compute_cs(HWStage::CS, SWStage::CS);
 static constexpr Stage tess_eval_vs(HWStage::VS, SWStage::TES);
-static constexpr Stage gs_copy_vs(HWStage::VS, SWStage::GSCopy);
 /* Mesh shading pipeline */
 static constexpr Stage task_cs(HWStage::CS, SWStage::TS);
 static constexpr Stage mesh_ngg(HWStage::NGG, SWStage::MS);
@@ -2110,20 +2109,6 @@ static constexpr Stage tess_eval_es(HWStage::ES,
                                     SWStage::TES); /* tesselation evaluation before geometry */
 static constexpr Stage geometry_gs(HWStage::GS, SWStage::GS);
 
-enum statistic {
-   statistic_hash,
-   statistic_instructions,
-   statistic_copies,
-   statistic_branches,
-   statistic_latency,
-   statistic_inv_throughput,
-   statistic_vmem_clauses,
-   statistic_smem_clauses,
-   statistic_sgpr_presched,
-   statistic_vgpr_presched,
-   num_statistics
-};
-
 struct DeviceInfo {
    uint16_t lds_encoding_granule;
    uint16_t lds_alloc_granule;
@@ -2134,7 +2119,7 @@ struct DeviceInfo {
    uint16_t vgpr_limit;
    uint16_t sgpr_limit;
    uint16_t sgpr_alloc_granule;
-   uint16_t vgpr_alloc_granule; /* must be power of two */
+   uint16_t vgpr_alloc_granule;
    unsigned max_wave64_per_simd;
    unsigned simd_per_cu;
    bool has_fast_fma32 = false;
@@ -2185,7 +2170,7 @@ public:
    CompilationProgress progress;
 
    bool collect_statistics = false;
-   uint32_t statistics[num_statistics];
+   uint32_t statistics[aco_num_statistics];
 
    float_mode next_fp_mode;
    unsigned next_loop_depth = 0;
@@ -2265,10 +2250,6 @@ void select_program(Program* program, unsigned shader_count, struct nir_shader* 
                     ac_shader_config* config, const struct aco_compiler_options* options,
                     const struct aco_shader_info* info,
                     const struct radv_shader_args* args);
-void select_gs_copy_shader(Program* program, struct nir_shader* gs_shader, ac_shader_config* config,
-                           const struct aco_compiler_options* options,
-                           const struct aco_shader_info* info,
-                           const struct radv_shader_args* args);
 void select_trap_handler_shader(Program* program, struct nir_shader* shader,
                                 ac_shader_config* config,
                                 const struct aco_compiler_options* options,

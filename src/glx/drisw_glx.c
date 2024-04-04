@@ -33,7 +33,8 @@
 #include "drisw_priv.h"
 #include <X11/extensions/shmproto.h>
 #include <assert.h>
-#include "util/debug.h"
+#include <vulkan/vulkan.h>
+#include "util/u_debug.h"
 #include "kopper_interface.h"
 #include "loader_dri_helper.h"
 
@@ -367,16 +368,19 @@ static const __DRIswrastLoaderExtension swrastLoaderExtension = {
    .getImage2           = swrastGetImage2,
 };
 
+static_assert(sizeof(struct kopper_vk_surface_create_storage) >= sizeof(VkXcbSurfaceCreateInfoKHR), "");
+
 static void
 kopperSetSurfaceCreateInfo(void *_draw, struct kopper_loader_info *out)
 {
     __GLXDRIdrawable *draw = _draw;
+    VkXcbSurfaceCreateInfoKHR *xcb = (VkXcbSurfaceCreateInfoKHR *)&out->bos;
 
-    out->xcb.sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR;
-    out->xcb.pNext = NULL;
-    out->xcb.flags = 0;
-    out->xcb.connection = XGetXCBConnection(draw->psc->dpy);
-    out->xcb.window = draw->xDrawable;
+    xcb->sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR;
+    xcb->pNext = NULL;
+    xcb->flags = 0;
+    xcb->connection = XGetXCBConnection(draw->psc->dpy);
+    xcb->window = draw->xDrawable;
 }
 
 static const __DRIkopperLoaderExtension kopperLoaderExtension = {
@@ -436,7 +440,7 @@ drisw_bind_context(struct glx_context *context, struct glx_context *old,
    pdraw = (struct drisw_drawable *) driFetchDrawable(context, draw);
    pread = (struct drisw_drawable *) driFetchDrawable(context, read);
 
-   driReleaseDrawables(old);
+   driReleaseDrawables(context);
 
    if (!psc->core->bindContext(context->driContext,
                                pdraw ? pdraw->driDrawable : NULL,
@@ -563,9 +567,6 @@ drisw_create_context_attribs(struct glx_screen *base,
    unsigned num_ctx_attribs = 0;
 
    if (!psc->base.driScreen)
-      return NULL;
-
-   if (psc->swrast->base.version < 3)
       return NULL;
 
    *error = dri_convert_glx_attribs(num_attribs, attribs, &dca);
@@ -715,14 +716,14 @@ driswCreateDrawable(struct glx_screen *base, XID xDrawable,
    /* Create a new drawable */
    if (kopper) {
       pdp->driDrawable =
-         (*kopper->createNewDrawable) (psc->driScreen, config->driConfig, pdp, !(type & GLX_WINDOW_BIT));
+         kopper->createNewDrawable(psc->driScreen, config->driConfig, pdp, !(type & GLX_WINDOW_BIT));
 
       pdp->swapInterval = dri_get_initial_swap_interval(psc->driScreen, psc->config);
       psc->kopper->setSwapInterval(pdp->driDrawable, pdp->swapInterval);
    }
    else
       pdp->driDrawable =
-         (*swrast->createNewDrawable) (psc->driScreen, config->driConfig, pdp);
+         swrast->createNewDrawable(psc->driScreen, config->driConfig, pdp);
 
    if (!pdp->driDrawable) {
       XDestroyDrawable(pdp, psc->base.dpy, xDrawable);
@@ -808,19 +809,15 @@ driswBindExtensions(struct drisw_screen *psc, const __DRIextension **extensions)
    int i;
 
    __glXEnableDirectExtension(&psc->base, "GLX_SGI_make_current_read");
+   __glXEnableDirectExtension(&psc->base, "GLX_ARB_create_context");
+   __glXEnableDirectExtension(&psc->base, "GLX_ARB_create_context_profile");
+   __glXEnableDirectExtension(&psc->base, "GLX_EXT_no_config_context");
 
-   if (psc->swrast->base.version >= 3) {
-      __glXEnableDirectExtension(&psc->base, "GLX_ARB_create_context");
-      __glXEnableDirectExtension(&psc->base, "GLX_ARB_create_context_profile");
-      __glXEnableDirectExtension(&psc->base, "GLX_EXT_no_config_context");
-
-      /* DRISW version >= 2 implies support for OpenGL ES.
-       */
-      __glXEnableDirectExtension(&psc->base,
-                                 "GLX_EXT_create_context_es_profile");
-      __glXEnableDirectExtension(&psc->base,
-                                 "GLX_EXT_create_context_es2_profile");
-   }
+   /* DRISW version >= 2 implies support for OpenGL ES. */
+   __glXEnableDirectExtension(&psc->base,
+                              "GLX_EXT_create_context_es_profile");
+   __glXEnableDirectExtension(&psc->base,
+                              "GLX_EXT_create_context_es2_profile");
 
    if (psc->copySubBuffer)
       __glXEnableDirectExtension(&psc->base, "GLX_MESA_copy_sub_buffer");
@@ -831,11 +828,7 @@ driswBindExtensions(struct drisw_screen *psc, const __DRIextension **extensions)
          psc->texBuffer = (__DRItexBufferExtension *) extensions[i];
          __glXEnableDirectExtension(&psc->base, "GLX_EXT_texture_from_pixmap");
       }
-      /* DRISW version 3 is also required because GLX_MESA_query_renderer
-       * requires GLX_ARB_create_context_profile.
-       */
-      if (psc->swrast->base.version >= 3
-          && strcmp(extensions[i]->name, __DRI2_RENDERER_QUERY) == 0) {
+      if (strcmp(extensions[i]->name, __DRI2_RENDERER_QUERY) == 0) {
          psc->rendererQuery = (__DRI2rendererQueryExtension *) extensions[i];
          __glXEnableDirectExtension(&psc->base, "GLX_MESA_query_renderer");
          unsigned int no_error = 0;
@@ -971,21 +964,15 @@ driswCreateScreenDriver(int screen, struct glx_display *priv,
          psc->copySubBuffer = (__DRIcopySubBufferExtension *) extensions[i];
    }
 
-   if (psc->core == NULL || psc->swrast == NULL) {
+   if (psc->core == NULL || psc->swrast == NULL || psc->swrast->base.version < 4) {
       ErrorMessageF("core dri extension not found\n");
       goto handle_error;
    }
 
-   if (psc->swrast->base.version >= 4) {
-      psc->driScreen =
-         psc->swrast->createNewScreen2(screen, loader_extensions_local,
-                                       extensions,
-                                       &driver_configs, psc);
-   } else {
-      psc->driScreen =
-         psc->swrast->createNewScreen(screen, loader_extensions_local,
-                                      &driver_configs, psc);
-   }
+   psc->driScreen =
+      psc->swrast->createNewScreen2(screen, loader_extensions_local,
+                                    extensions,
+                                    &driver_configs, psc);
    if (psc->driScreen == NULL) {
       ErrorMessageF("glx: failed to create drisw screen\n");
       goto handle_error;
@@ -1054,8 +1041,11 @@ static struct glx_screen *
 driswCreateScreen(int screen, struct glx_display *priv)
 {
    const struct drisw_display *pdpyp = (struct drisw_display *)priv->driswDisplay;
+   if (pdpyp->zink && !debug_get_bool_option("LIBGL_KOPPER_DISABLE", false)) {
+      return driswCreateScreenDriver(screen, priv, "zink");
+   }
 
-   return driswCreateScreenDriver(screen, priv, pdpyp->zink ? "zink" : "swrast");
+   return driswCreateScreenDriver(screen, priv, "swrast");
 }
 
 /* Called from __glXFreeDisplayPrivate.

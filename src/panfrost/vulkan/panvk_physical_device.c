@@ -271,6 +271,18 @@ panvk_physical_device_init(struct panvk_physical_device *device,
    if (instance->debug_flags & PANVK_DEBUG_STARTUP)
       vk_logi(VK_LOG_NO_OBJS(instance), "Found compatible device '%s'.", path);
 
+   device->kmod.dev = pan_kmod_dev_create(fd, PAN_KMOD_DEV_FLAG_OWNS_FD,
+                                          &instance->kmod.allocator);
+   pan_kmod_dev_query_props(device->kmod.dev, &device->kmod.props);
+
+   unsigned arch = pan_arch(device->kmod.props.gpu_prod_id);
+
+   if (arch <= 5 || arch >= 8) {
+      result = vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
+                         "%s not supported", device->model->name);
+      goto fail;
+   }
+
    struct vk_device_extension_table supported_extensions;
    get_device_extensions(device, &supported_extensions);
 
@@ -301,22 +313,10 @@ panvk_physical_device_init(struct panvk_physical_device *device,
 
    device->master_fd = master_fd;
 
-   device->kmod.dev = pan_kmod_dev_create(fd, PAN_KMOD_DEV_FLAG_OWNS_FD,
-                                          &instance->kmod.allocator);
-   pan_kmod_dev_query_props(device->kmod.dev, &device->kmod.props);
-
-   unsigned arch = pan_arch(device->kmod.props.gpu_prod_id);
-
    device->model = panfrost_get_model(device->kmod.props.gpu_prod_id,
                                       device->kmod.props.gpu_variant);
    device->formats.all = panfrost_format_table(arch);
    device->formats.blendable = panfrost_blendable_format_table(arch);
-
-   if (arch <= 5 || arch >= 8) {
-      result = vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
-                         "%s not supported", device->model->name);
-      goto fail;
-   }
 
    memset(device->name, 0, sizeof(device->name));
    sprintf(device->name, "%s", device->model->name);
@@ -324,7 +324,7 @@ panvk_physical_device_init(struct panvk_physical_device *device,
    if (get_cache_uuid(device->kmod.props.gpu_prod_id, device->cache_uuid)) {
       result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
                          "cannot generate UUID");
-      goto fail_close_device;
+      goto fail;
    }
 
    vk_warn_non_conformant_implementation("panvk");
@@ -346,14 +346,18 @@ panvk_physical_device_init(struct panvk_physical_device *device,
    result = panvk_wsi_init(device);
    if (result != VK_SUCCESS) {
       vk_error(instance, result);
-      goto fail_close_device;
+      goto fail;
    }
 
    return VK_SUCCESS;
 
-fail_close_device:
-   pan_kmod_dev_destroy(device->kmod.dev);
 fail:
+   if (device->vk.instance)
+      vk_physical_device_finish(&device->vk);
+
+   if (device->kmod.dev)
+      pan_kmod_dev_destroy(device->kmod.dev);
+
    if (fd != -1)
       close(fd);
    if (master_fd != -1)

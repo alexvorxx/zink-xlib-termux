@@ -888,7 +888,7 @@ static struct vn_update_descriptor_sets *
 vn_update_descriptor_sets_parse_template(
    const VkDescriptorUpdateTemplateCreateInfo *create_info,
    const VkAllocationCallbacks *alloc,
-   struct vn_descriptor_update_template_entry *entries)
+   VkDescriptorUpdateTemplateEntry *entries)
 {
    uint32_t img_count = 0;
    uint32_t buf_count = 0;
@@ -1000,6 +1000,46 @@ vn_update_descriptor_sets_parse_template(
    return update;
 }
 
+static void
+vn_descriptor_update_template_init(
+   struct vn_descriptor_update_template *templ,
+   const VkDescriptorUpdateTemplateCreateInfo *create_info)
+{
+   templ->entry_count = create_info->descriptorUpdateEntryCount;
+   for (uint32_t i = 0; i < create_info->descriptorUpdateEntryCount; i++) {
+      const VkDescriptorUpdateTemplateEntry *entry =
+         &create_info->pDescriptorUpdateEntries[i];
+      templ->entries[i] = *entry;
+      switch (entry->descriptorType) {
+      case VK_DESCRIPTOR_TYPE_SAMPLER:
+      case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+      case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+      case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+      case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+         templ->img_info_count += entry->descriptorCount;
+         break;
+      case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+      case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
+         templ->bview_count += entry->descriptorCount;
+         break;
+      case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+      case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+      case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+      case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+         templ->buf_info_count += entry->descriptorCount;
+         break;
+      case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK:
+         templ->iub_count += 1;
+         break;
+      case VK_DESCRIPTOR_TYPE_MUTABLE_EXT:
+         break;
+      default:
+         unreachable("unhandled descriptor type");
+         break;
+      }
+   }
+}
+
 VkResult
 vn_CreateDescriptorUpdateTemplate(
    VkDevice device,
@@ -1040,10 +1080,11 @@ vn_CreateDescriptorUpdateTemplate(
 
    mtx_init(&templ->mutex, mtx_plain);
 
+   vn_descriptor_update_template_init(templ, pCreateInfo);
+
    /* no host object */
-   VkDescriptorUpdateTemplate templ_handle =
+   *pDescriptorUpdateTemplate =
       vn_descriptor_update_template_to_handle(templ);
-   *pDescriptorUpdateTemplate = templ_handle;
 
    return VK_SUCCESS;
 }
@@ -1151,6 +1192,106 @@ vn_update_descriptor_set_with_template_locked(
 }
 
 void
+vn_descriptor_set_fill_update_with_template(
+   struct vn_descriptor_update_template *templ,
+   VkDescriptorSet set_handle,
+   const uint8_t *data,
+   struct vn_descriptor_set_update *update)
+{
+   struct vn_descriptor_set *set = vn_descriptor_set_from_handle(set_handle);
+   const struct vn_descriptor_set_layout *set_layout =
+      templ->push.set_layout ? templ->push.set_layout : set->layout;
+
+   update->write_count = templ->entry_count;
+
+   uint32_t img_info_offset = 0;
+   uint32_t buf_info_offset = 0;
+   uint32_t bview_offset = 0;
+   uint32_t iub_offset = 0;
+   for (uint32_t i = 0; i < templ->entry_count; i++) {
+      const VkDescriptorUpdateTemplateEntry *entry = &templ->entries[i];
+      const uint8_t *ptr = data + entry->offset;
+      bool ignore_sampler = true;
+      bool ignore_iview = false;
+      VkDescriptorImageInfo *img_infos = NULL;
+      VkDescriptorBufferInfo *buf_infos = NULL;
+      VkBufferView *bview_handles = NULL;
+      VkWriteDescriptorSetInlineUniformBlock *iub = NULL;
+      switch (entry->descriptorType) {
+      case VK_DESCRIPTOR_TYPE_SAMPLER:
+         ignore_iview = true;
+         FALLTHROUGH;
+      case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+         ignore_sampler =
+            set_layout->bindings[entry->dstBinding].has_immutable_samplers;
+         FALLTHROUGH;
+      case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+      case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+      case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+         img_infos = &update->img_infos[img_info_offset];
+         for (uint32_t j = 0; j < entry->descriptorCount; j++) {
+            const VkDescriptorImageInfo *src = (const void *)ptr;
+            img_infos[j] = (VkDescriptorImageInfo){
+               .sampler = ignore_sampler ? VK_NULL_HANDLE : src->sampler,
+               .imageView = ignore_iview ? VK_NULL_HANDLE : src->imageView,
+               .imageLayout = src->imageLayout,
+            };
+            ptr += entry->stride;
+         }
+         img_info_offset += entry->descriptorCount;
+         break;
+      case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+      case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
+         bview_handles = &update->bview_handles[bview_offset];
+         for (uint32_t j = 0; j < entry->descriptorCount; j++) {
+            bview_handles[j] = *(const VkBufferView *)ptr;
+            ptr += entry->stride;
+         }
+         bview_offset += entry->descriptorCount;
+         break;
+      case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+      case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+      case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+      case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+         buf_infos = &update->buf_infos[buf_info_offset];
+         for (uint32_t j = 0; j < entry->descriptorCount; j++) {
+            buf_infos[j] = *(const VkDescriptorBufferInfo *)ptr;
+            ptr += entry->stride;
+         }
+         buf_info_offset += entry->descriptorCount;
+         break;
+      case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK:
+         iub = &update->iubs[iub_offset];
+         *iub = (VkWriteDescriptorSetInlineUniformBlock){
+            .sType =
+               VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK,
+            .dataSize = entry->descriptorCount,
+            .pData = (const void *)ptr,
+         };
+         iub_offset++;
+         break;
+      case VK_DESCRIPTOR_TYPE_MUTABLE_EXT:
+         break;
+      default:
+         unreachable("unhandled descriptor type");
+         break;
+      }
+      update->writes[i] = (VkWriteDescriptorSet){
+         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+         .pNext = iub,
+         .dstSet = set_handle,
+         .dstBinding = entry->dstBinding,
+         .dstArrayElement = entry->dstArrayElement,
+         .descriptorCount = entry->descriptorCount,
+         .descriptorType = entry->descriptorType,
+         .pImageInfo = img_infos,
+         .pBufferInfo = buf_infos,
+         .pTexelBufferView = bview_handles,
+      };
+   }
+}
+
+void
 vn_UpdateDescriptorSetWithTemplate(
    VkDevice device,
    VkDescriptorSet descriptorSet,
@@ -1160,15 +1301,29 @@ vn_UpdateDescriptorSetWithTemplate(
    struct vn_device *dev = vn_device_from_handle(device);
    struct vn_descriptor_update_template *templ =
       vn_descriptor_update_template_from_handle(descriptorUpdateTemplate);
-   mtx_lock(&templ->mutex);
 
-   struct vn_update_descriptor_sets *update =
-      vn_update_descriptor_set_with_template_locked(templ, descriptorSet,
-                                                    pData);
+   STACK_ARRAY(VkWriteDescriptorSet, writes, templ->entry_count);
+   STACK_ARRAY(VkDescriptorImageInfo, img_infos, templ->img_info_count);
+   STACK_ARRAY(VkDescriptorBufferInfo, buf_infos, templ->buf_info_count);
+   STACK_ARRAY(VkBufferView, bview_handles, templ->bview_count);
+   STACK_ARRAY(VkWriteDescriptorSetInlineUniformBlock, iubs,
+               templ->iub_count);
+   struct vn_descriptor_set_update update = {
+      .writes = writes,
+      .img_infos = img_infos,
+      .buf_infos = buf_infos,
+      .bview_handles = bview_handles,
+      .iubs = iubs,
+   };
+   vn_descriptor_set_fill_update_with_template(templ, descriptorSet, pData,
+                                               &update);
 
-   vn_async_vkUpdateDescriptorSets(dev->primary_ring, device,
-                                   update->write_count, update->writes, 0,
-                                   NULL);
+   vn_async_vkUpdateDescriptorSets(
+      dev->primary_ring, device, update.write_count, update.writes, 0, NULL);
 
-   mtx_unlock(&templ->mutex);
+   STACK_ARRAY_FINISH(writes);
+   STACK_ARRAY_FINISH(img_infos);
+   STACK_ARRAY_FINISH(buf_infos);
+   STACK_ARRAY_FINISH(bview_handles);
+   STACK_ARRAY_FINISH(iubs);
 }

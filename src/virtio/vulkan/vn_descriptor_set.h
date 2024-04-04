@@ -108,11 +108,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(vn_descriptor_set,
                                VkDescriptorSet,
                                VK_OBJECT_TYPE_DESCRIPTOR_SET)
 
-struct vn_descriptor_update_template_entry {
-   size_t offset;
-   size_t stride;
-};
-
 struct vn_descriptor_update_template {
    struct vn_object_base base;
 
@@ -124,7 +119,12 @@ struct vn_descriptor_update_template {
    mtx_t mutex;
    struct vn_update_descriptor_sets *update;
 
-   struct vn_descriptor_update_template_entry entries[];
+   uint32_t entry_count;
+   uint32_t img_info_count;
+   uint32_t buf_info_count;
+   uint32_t bview_count;
+   uint32_t iub_count;
+   VkDescriptorUpdateTemplateEntry entries[];
 };
 VK_DEFINE_NONDISP_HANDLE_CASTS(vn_descriptor_update_template,
                                base.base,
@@ -134,6 +134,15 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(vn_descriptor_update_template,
 struct vn_descriptor_set_writes {
    VkWriteDescriptorSet *writes;
    VkDescriptorImageInfo *img_infos;
+};
+
+struct vn_descriptor_set_update {
+   uint32_t write_count;
+   VkWriteDescriptorSet *writes;
+   VkDescriptorImageInfo *img_infos;
+   VkDescriptorBufferInfo *buf_infos;
+   VkBufferView *bview_handles;
+   VkWriteDescriptorSetInlineUniformBlock *iubs;
 };
 
 uint32_t
@@ -151,6 +160,13 @@ vn_update_descriptor_set_with_template_locked(
    struct vn_descriptor_update_template *templ,
    VkDescriptorSet set_handle,
    const uint8_t *data);
+
+void
+vn_descriptor_set_fill_update_with_template(
+   struct vn_descriptor_update_template *templ,
+   VkDescriptorSet set_handle,
+   const uint8_t *data,
+   struct vn_descriptor_set_update *update);
 
 void
 vn_descriptor_set_layout_destroy(struct vn_device *dev,

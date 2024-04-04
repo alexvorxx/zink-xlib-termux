@@ -1153,7 +1153,7 @@ vn_update_descriptor_set_with_template_locked(
             *dst = *src;
          }
          break;
-      case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK:;
+      case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK:
          VkWriteDescriptorSetInlineUniformBlock *iub_data =
             (VkWriteDescriptorSetInlineUniformBlock *)vk_find_struct_const(
                write->pNext, WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK);

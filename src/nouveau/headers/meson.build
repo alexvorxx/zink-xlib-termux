@@ -77,6 +77,16 @@ if with_nouveau_vk
                  '--out-rs', '@OUTPUT0@'],
       depend_files: nvk_cl_header_depend_files,
     )
+
+    if cl.endswith('97')
+      cl_rs_generated += custom_target(
+        'nvh_' + cl + 'tex.rs',
+        input : ['struct_parser.py', 'nvidia/classes/'+cl+'tex.h'],
+        output : ['nvh_'+cl+'_tex.rs'],
+        command : [prog_python, '@INPUT0@', '--in-h', '@INPUT1@',
+                   '--out-rs', '@OUTPUT0@']
+      )
+    endif
   endforeach
 
   _nvidia_headers_lib_rs = custom_target(

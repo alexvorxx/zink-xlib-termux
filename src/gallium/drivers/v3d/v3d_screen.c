@@ -681,6 +681,7 @@ v3d_screen_is_format_supported(struct pipe_screen *pscreen,
 }
 
 static const nir_shader_compiler_options v3d_nir_options = {
+        .compact_arrays = true,
         .lower_uadd_sat = true,
         .lower_usub_sat = true,
         .lower_iadd_sat = true,

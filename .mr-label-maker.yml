@@ -113,7 +113,7 @@ merge_requests:
     paths:
         '^.gitlab/issue_templates/' : ['docs']
         '^.gitlab-ci' : ['CI']
-        '^.*/gitlab-ci.yml' : ['CI']
+        '^.*/gitlab-ci(-inc)?.yml' : ['CI']
         '^.*/ci/' : ['CI']
         '^.gitlab-ci/windows/' : ['Windows']
         '^bin/__init__.py$' : ['maintainer-scripts']

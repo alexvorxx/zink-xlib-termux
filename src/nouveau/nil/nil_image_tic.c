@@ -2,7 +2,7 @@
  * Copyright © 2022 Collabora Ltd.
  * SPDX-License-Identifier: MIT
  */
-#include "nil_image.h"
+#include "nil.h"
 
 #include "nil_format_table.h"
 #include "util/bitpack_helpers.h"

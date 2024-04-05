@@ -4,8 +4,7 @@
  */
 #include "nvk_buffer_view.h"
 
-#include "nil_format.h"
-#include "nil_image.h"
+#include "nil.h"
 #include "nvk_buffer.h"
 #include "nvk_entrypoints.h"
 #include "nvk_device.h"

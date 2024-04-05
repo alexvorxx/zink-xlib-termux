@@ -2,10 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 libnil_files = files(
+  'nil.h',
   'nil_format.c',
-  'nil_format.h',
   'nil_image.c',
-  'nil_image.h',
   'nil_image_tic.c',
 )
 

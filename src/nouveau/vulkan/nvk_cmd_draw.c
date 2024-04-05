@@ -13,7 +13,6 @@
 #include "nvk_physical_device.h"
 #include "nvk_shader.h"
 
-#include "nil_format.h"
 #include "util/bitpack_helpers.h"
 #include "vk_format.h"
 #include "vk_render_pass.h"

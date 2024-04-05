@@ -10,7 +10,6 @@
 #include "nvk_format.h"
 #include "nvk_physical_device.h"
 
-#include "nil_format.h"
 #include "vk_format.h"
 
 #include "clb097.h"

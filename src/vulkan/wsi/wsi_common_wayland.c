@@ -1826,6 +1826,8 @@ wsi_wl_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain,
    VkResult ret;
    int err;
 
+   MESA_TRACE_FUNC();
+
    uint64_t atimeout;
    if (timeout == 0 || timeout == UINT64_MAX)
       atimeout = timeout;

@@ -16,6 +16,34 @@ renaming_overrides_prefixing = true
 "nv_device_info" = "struct nv_device_info"
 "pipe_format" = "enum pipe_format"
 "pipe_swizzle" = "enum pipe_swizzle"
+"GOB_DEPTH" = "NIL_GOB_DEPTH"
+"GOB_WIDTH_B" = "NIL_GOB_WIDTH_B"
+"MAX_LEVELS" = "NIL_MAX_LEVELS"
+
+# This is annoying. rename_types doesn't seem to work
+"Extent4D" = "nil_extent4d"
+"Format" = "nil_format"
+"Image" = "nil_image"
+"ImageDim" = "nil_image_dim"
+"ImageInitInfo" = "nil_image_init_info"
+"ImageLevel" = "nil_image_level"
+"Offset4D" = "nil_offset4d"
+"SampleLayout" = "nil_sample_layout"
+"Tiling" = "nil_tiling"
+"View" = "nil_view"
+"ViewType" = "nil_view_type"
+
+# There's just no good solution for this one
+"ImageUsageFlags" = "nil_image_usage_flags"
+"IMAGE_USAGE_RENDER_TARGET_BIT" = "NIL_IMAGE_USAGE_RENDER_TARGET_BIT"
+"IMAGE_USAGE_DEPTH_BIT" = "NIL_IMAGE_USAGE_DEPTH_BIT"
+"IMAGE_USAGE_STENCIL_BIT" = "NIL_IMAGE_USAGE_STENCIL_BIT"
+"IMAGE_USAGE_TEXTURE_BIT" = "NIL_IMAGE_USAGE_TEXTURE_BIT"
+"IMAGE_USAGE_STORAGE_BIT" = "NIL_IMAGE_USAGE_STORAGE_BIT"
+"IMAGE_USAGE_CUBE_BIT" = "NIL_IMAGE_USAGE_CUBE_BIT"
+"IMAGE_USAGE_2D_VIEW_BIT" = "NIL_IMAGE_USAGE_2D_VIEW_BIT"
+"IMAGE_USAGE_LINEAR_BIT" = "NIL_IMAGE_USAGE_LINEAR_BIT"
+"IMAGE_USAGE_SPARSE_RESIDENCY_BIT" = "NIL_IMAGE_USAGE_SPARSE_RESIDENCY_BIT"
 
 [macro_expansion]
 bitflags = true # We need this for the bitflags crate

@@ -161,7 +161,7 @@ push_add_image_plane_bind(struct push_builder *pb,
    const uint32_t level = bind->subresource.mipLevel;
 
    const struct nil_tiling plane_tiling = plane->nil.levels[level].tiling;
-   const uint32_t tile_size_B = nil_tiling_size_B(plane_tiling);
+   const uint32_t tile_size_B = nil_tiling_size_B(&plane_tiling);
 
    const struct nil_extent4d bind_extent_px = {
       .width = bind->extent.width,
@@ -179,17 +179,17 @@ push_add_image_plane_bind(struct push_builder *pb,
    const struct nil_extent4d level_extent_px =
       nil_image_level_extent_px(&plane->nil, level);
    const struct nil_extent4d level_extent_tl =
-      nil_extent4d_px_to_tl(level_extent_px, plane_tiling,
+      nil_extent4d_px_to_tl(level_extent_px, &plane_tiling,
                             plane->nil.format,
                             plane->nil.sample_layout);
 
    /* Convert the extent and offset to tiles */
    struct nil_extent4d bind_extent_tl =
-      nil_extent4d_px_to_tl(bind_extent_px, plane_tiling,
+      nil_extent4d_px_to_tl(bind_extent_px, &plane_tiling,
                             plane->nil.format,
                             plane->nil.sample_layout);
    struct nil_offset4d bind_offset_tl =
-      nil_offset4d_px_to_tl(bind_offset_px, plane_tiling,
+      nil_offset4d_px_to_tl(bind_offset_px, &plane_tiling,
                             plane->nil.format,
                             plane->nil.sample_layout);
 

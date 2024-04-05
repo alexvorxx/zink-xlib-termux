@@ -800,8 +800,8 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
 
       if (nil_image.dim == NIL_IMAGE_DIM_3D) {
          uint64_t level_offset_B;
-         nil_image_3d_level_as_2d_array(&nil_image, mip_level,
-                                        &nil_image, &level_offset_B);
+         nil_image = nil_image_3d_level_as_2d_array(&nil_image, mip_level,
+                                                    &level_offset_B);
          addr += level_offset_B;
          mip_level = 0;
          base_array_layer = 0;

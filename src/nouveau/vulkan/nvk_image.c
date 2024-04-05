@@ -465,7 +465,7 @@ nvk_fill_sparse_image_fmt_props(VkImageAspectFlags aspects,
                                 const enum nil_sample_layout sample_layout)
 {
    struct nil_extent4d sparse_block_extent_px =
-      nil_sparse_block_extent_px(format, dim, sample_layout);
+      nil_sparse_block_extent_px(nil_format(format), dim, sample_layout);
 
    assert(sparse_block_extent_px.array_len == 1);
 
@@ -545,6 +545,8 @@ nvk_image_init(struct nvk_device *dev,
                struct nvk_image *image,
                const VkImageCreateInfo *pCreateInfo)
 {
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
+
    vk_image_init(&dev->vk, &image->vk, pCreateInfo);
 
    if ((image->vk.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
@@ -559,7 +561,7 @@ nvk_image_init(struct nvk_device *dev,
    if (image->vk.usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
       image->vk.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-   enum nil_image_usage_flags usage = 0; /* TODO */
+   nil_image_usage_flags usage = 0;
    if (pCreateInfo->tiling == VK_IMAGE_TILING_LINEAR)
       usage |= NIL_IMAGE_USAGE_LINEAR_BIT;
    if (pCreateInfo->flags & VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT)
@@ -596,7 +598,7 @@ nvk_image_init(struct nvk_device *dev,
          ycbcr_info->planes[plane].denominator_scales[1] : 1;
       struct nil_image_init_info nil_info = {
          .dim = vk_image_type_to_nil_dim(pCreateInfo->imageType),
-         .format = vk_format_to_pipe_format(format),
+         .format = nil_format(vk_format_to_pipe_format(format)),
          .extent_px = {
             .width = pCreateInfo->extent.width / width_scale,
             .height = pCreateInfo->extent.height / height_scale,
@@ -608,15 +610,13 @@ nvk_image_init(struct nvk_device *dev,
          .usage = usage,
       };
 
-      ASSERTED bool ok = nil_image_init(&nvk_device_physical(dev)->info,
-                                        &image->planes[plane].nil, &nil_info);
-      assert(ok);
+      image->planes[plane].nil = nil_image_new(&pdev->info, &nil_info);
    }
 
    if (image->vk.format == VK_FORMAT_D32_SFLOAT_S8_UINT) {
       struct nil_image_init_info stencil_nil_info = {
          .dim = vk_image_type_to_nil_dim(pCreateInfo->imageType),
-         .format = PIPE_FORMAT_R32_UINT,
+         .format = nil_format(PIPE_FORMAT_R32_UINT),
          .extent_px = {
             .width = pCreateInfo->extent.width,
             .height = pCreateInfo->extent.height,
@@ -628,10 +628,8 @@ nvk_image_init(struct nvk_device *dev,
          .usage = usage,
       };
 
-      ASSERTED bool ok = nil_image_init(&nvk_device_physical(dev)->info,
-                                        &image->stencil_copy_temp.nil,
-                                        &stencil_nil_info);
-      assert(ok);
+      image->stencil_copy_temp.nil =
+         nil_image_new(&pdev->info, &stencil_nil_info);
    }
 
    return VK_SUCCESS;
@@ -872,7 +870,7 @@ nvk_fill_sparse_image_memory_reqs(const struct nil_image *nil,
                                   VkImageAspectFlags aspects)
 {
    VkSparseImageFormatProperties sparse_format_props =
-      nvk_fill_sparse_image_fmt_props(aspects, nil->format,
+      nvk_fill_sparse_image_fmt_props(aspects, nil->format.p_format,
                                       nil->dim, nil->sample_layout);
 
    assert(nil->mip_tail_first_lod <= nil->num_levels);

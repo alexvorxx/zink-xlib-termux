@@ -16,7 +16,6 @@ prog_cbindgen = find_program('cbindgen', required : false, native : true)
 
 libnil_files = files(
   'nil.h',
-  'nil_image.c',
   'nil_image_tic.c',
 )
 
@@ -38,7 +37,10 @@ libnil_deps = [
 
 _libnil_rs_files = files(
   'lib.rs', # lib.rs has to come first
+  'extent.rs',
   'format.rs',
+  'image.rs',
+  'tiling.rs',
 )
 
 _libnil_rs_deps = [

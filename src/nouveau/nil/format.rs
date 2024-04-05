@@ -4,6 +4,8 @@
 use nil_rs_bindings::*;
 use nvidia_headers::{cla297, clb097};
 
+use crate::extent::Extent4D;
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Format {
@@ -35,6 +37,22 @@ impl From<Format> for pipe_format {
 impl Format {
     fn description(&self) -> &'static util_format_description {
         unsafe { &*util_format_description((*self).into()) }
+    }
+
+    pub(crate) fn el_size_B(&self) -> u32 {
+        let bits = self.description().block.bits;
+        debug_assert!(bits % 8 == 0);
+        bits / 8
+    }
+
+    pub(crate) fn el_extent_sa(&self) -> Extent4D {
+        let desc = self.description();
+        Extent4D {
+            width: desc.block.width,
+            height: desc.block.height,
+            depth: desc.block.depth,
+            array_len: 1,
+        }
     }
 
     fn info(&self) -> &nil_format_info {

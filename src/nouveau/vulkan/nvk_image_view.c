@@ -51,7 +51,7 @@ image_single_level_view(struct nil_image *image,
    assert(view->num_levels == 1);
 
    uint64_t offset_B;
-   nil_image_for_level(image, view->base_level, image, &offset_B);
+   *image = nil_image_for_level(image, view->base_level, &offset_B);
    *base_addr += offset_B;
    view->base_level = 0;
 }
@@ -64,7 +64,7 @@ image_uncompressed_view(struct nil_image *image,
    assert(view->num_levels == 1);
 
    uint64_t offset_B;
-   nil_image_level_as_uncompressed(image, view->base_level, image, &offset_B);
+   *image = nil_image_level_as_uncompressed(image, view->base_level, &offset_B);
    *base_addr += offset_B;
    view->base_level = 0;
 }
@@ -79,7 +79,7 @@ image_3d_view_as_2d_array(struct nil_image *image,
    assert(view->num_levels == 1);
 
    uint64_t offset_B;
-   nil_image_3d_level_as_2d_array(image, view->base_level, image, &offset_B);
+   *image = nil_image_3d_level_as_2d_array(image, view->base_level, &offset_B);
    *base_addr += offset_B;
    view->base_level = 0;
 }
@@ -164,7 +164,7 @@ nvk_image_view_init(struct nvk_device *dev,
          .min_lod_clamp = view->vk.min_lod,
       };
 
-      if (util_format_is_compressed(nil_image.format) &&
+      if (util_format_is_compressed(nil_image.format.p_format) &&
          !util_format_is_compressed(nil_view.format))
          image_uncompressed_view(&nil_image, &nil_view, &base_addr);
 
@@ -212,7 +212,7 @@ nvk_image_view_init(struct nvk_device *dev,
          }
 
          if (image->vk.samples != VK_SAMPLE_COUNT_1_BIT)
-            nil_msaa_image_as_sa(&nil_image, &nil_image);
+            nil_image = nil_msaa_image_as_sa(&nil_image);
 
          uint32_t tic[8];
          nil_image_fill_tic(&nvk_device_physical(dev)->info,

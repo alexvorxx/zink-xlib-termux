@@ -326,7 +326,7 @@ nv9097_nil_image_fill_tic(const struct nil_image *image,
                           uint64_t base_address,
                           void *desc_out)
 {
-   assert(util_format_get_blocksize(image->format) ==
+   assert(util_format_get_blocksize(image->format.p_format) ==
           util_format_get_blocksize(view->format));
    assert(view->base_level + view->num_levels <= image->num_levels);
    assert(view->base_array_layer + view->array_len <=
@@ -417,7 +417,7 @@ nvb097_nil_image_fill_tic(struct nv_device_info *dev,
                           uint64_t base_address,
                           void *desc_out)
 {
-   assert(util_format_get_blocksize(image->format) ==
+   assert(util_format_get_blocksize(image->format.p_format) ==
           util_format_get_blocksize(view->format));
    assert(view->base_level + view->num_levels <= image->num_levels);
 

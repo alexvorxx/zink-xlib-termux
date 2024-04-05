@@ -74,7 +74,7 @@ static const struct debug_named_value etna_debug_options[] = {
    {"deqp",           ETNA_DBG_DEQP, "Hacks to run dEQP GLES3 tests"}, /* needs MESA_GLES_VERSION_OVERRIDE=3.0 */
    {"nocache",        ETNA_DBG_NOCACHE,    "Disable shader cache"},
    {"linear_pe",      ETNA_DBG_LINEAR_PE, "Enable linear PE"},
-   {"msaa",           ETNA_DBG_MSAA, "Enable MSAA support"},
+   {"no_msaa",        ETNA_DBG_NO_MSAA, "Disable MSAA support"},
    {"shared_ts",      ETNA_DBG_SHARED_TS, "Enable TS sharing"},
    {"perf",           ETNA_DBG_PERF, "Enable performance warnings"},
    {"npu_no_parallel",ETNA_DBG_NPU_NO_PARALLEL, "Disable parallelism inside NPU batches"},
@@ -513,8 +513,8 @@ gpu_supports_render_format(struct etna_screen *screen, enum pipe_format format,
       return false;
 
    if (sample_count > 1) {
-      /* Explicitly enabled. */
-      if (!DBG_ENABLED(ETNA_DBG_MSAA))
+      /* Explicitly disabled. */
+      if (DBG_ENABLED(ETNA_DBG_NO_MSAA))
          return false;
 
       /* The hardware supports it. */

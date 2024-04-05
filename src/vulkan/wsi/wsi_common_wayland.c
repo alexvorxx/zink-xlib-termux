@@ -1994,6 +1994,13 @@ wsi_wl_swapchain_queue_present(struct wsi_swapchain *wsi_chain,
 
    MESA_TRACE_FUNC_FLOW(&flow_id);
 
+   /* In case we're sending presentation feedback requests, make sure the
+    * queue their events are in is dispatched.
+    */
+   struct timespec instant = {0};
+   if (dispatch_present_id_queue(wsi_chain, &instant) == VK_ERROR_OUT_OF_DATE_KHR)
+      return VK_ERROR_OUT_OF_DATE_KHR;
+
    /* While the specification suggests we can keep presenting already acquired
     * images on a retired swapchain, there is no requirement to support that.
     * From spec 1.3.278:
@@ -2066,7 +2073,7 @@ wsi_wl_swapchain_queue_present(struct wsi_swapchain *wsi_chain,
       chain->fifo_ready = true;
    }
 
-   if (present_id > 0) {
+   if (present_id > 0 || util_perfetto_is_tracing_enabled()) {
       struct wsi_wl_present_id *id =
          vk_zalloc(chain->wsi_wl_surface->display->wsi_wl->alloc, sizeof(*id), sizeof(uintptr_t),
                    VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);

@@ -77,7 +77,7 @@ unsigned rc_constants_add_state(struct rc_constant_list * c, unsigned state0, un
 
 	memset(&constant, 0, sizeof(constant));
 	constant.Type = RC_CONSTANT_STATE;
-	constant.Size = 4;
+	constant.UseMask = RC_MASK_XYZW;
 	constant.u.State[0] = state0;
 	constant.u.State[1] = state1;
 
@@ -103,7 +103,7 @@ unsigned rc_constants_add_immediate_vec4(struct rc_constant_list * c, const floa
 
 	memset(&constant, 0, sizeof(constant));
 	constant.Type = RC_CONSTANT_IMMEDIATE;
-	constant.Size = 4;
+	constant.UseMask = RC_MASK_XYZW;
 	memcpy(constant.u.Immediate, data, sizeof(float) * 4);
 
 	return rc_constants_add(c, &constant);
@@ -116,35 +116,39 @@ unsigned rc_constants_add_immediate_vec4(struct rc_constant_list * c, const floa
  */
 unsigned rc_constants_add_immediate_scalar(struct rc_constant_list * c, float data, unsigned * swizzle)
 {
-	unsigned index;
+	unsigned index, free_comp;
 	int free_index = -1;
 	struct rc_constant constant;
 
 	for(index = 0; index < c->Count; ++index) {
 		if (c->Constants[index].Type == RC_CONSTANT_IMMEDIATE) {
 			unsigned comp;
-			for(comp = 0; comp < c->Constants[index].Size; ++comp) {
-				if (c->Constants[index].u.Immediate[comp] == data) {
-					*swizzle = RC_MAKE_SWIZZLE_SMEAR(comp);
-					return index;
+			for(comp = 0; comp < 4; ++comp) {
+				if (c->Constants[index].UseMask & 1 << comp) {
+					if (c->Constants[index].u.Immediate[comp] == data) {
+						*swizzle = RC_MAKE_SWIZZLE_SMEAR(comp);
+						return index;
+					}
+				} else {
+					if (free_index == -1) {
+						free_index = index;
+						free_comp = comp;
+					}
 				}
 			}
-
-			if (c->Constants[index].Size < 4)
-				free_index = index;
 		}
 	}
 
 	if (free_index >= 0) {
-		unsigned comp = c->Constants[free_index].Size++;
-		c->Constants[free_index].u.Immediate[comp] = data;
-		*swizzle = RC_MAKE_SWIZZLE_SMEAR(comp);
+		c->Constants[free_index].u.Immediate[free_comp] = data;
+		c->Constants[free_index].UseMask |= 1 << free_comp;
+		*swizzle = RC_MAKE_SWIZZLE_SMEAR(free_comp);
 		return free_index;
 	}
 
 	memset(&constant, 0, sizeof(constant));
 	constant.Type = RC_CONSTANT_IMMEDIATE;
-	constant.Size = 1;
+	constant.UseMask = RC_MASK_X;
 	constant.u.Immediate[0] = data;
 	*swizzle = RC_SWIZZLE_XXXX;
 

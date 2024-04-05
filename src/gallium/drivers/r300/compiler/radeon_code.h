@@ -58,7 +58,7 @@ enum {
 
 struct rc_constant {
 	unsigned Type:2; /**< RC_CONSTANT_xxx */
-	unsigned Size:3;
+	unsigned UseMask:4;
 
 	union {
 		unsigned External;

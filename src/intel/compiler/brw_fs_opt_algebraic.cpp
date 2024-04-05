@@ -290,6 +290,87 @@ brw_fs_opt_algebraic(fs_visitor &s)
             }
          }
          break;
+      case BRW_OPCODE_CSEL:
+         if (brw_type_is_float(inst->dst.type)) {
+            /* This transformation can both clean up spurious modifiers
+             * (making assembly dumps easier to read) and convert GE with -abs
+             * to LE with abs. See abs handling below.
+             */
+            if (inst->src[2].negate) {
+               inst->conditional_mod = brw_swap_cmod(inst->conditional_mod);
+               inst->src[2].negate = false;
+               progress = true;
+            }
+
+            if (inst->src[2].abs) {
+               switch (inst->conditional_mod) {
+               case BRW_CONDITIONAL_Z:
+               case BRW_CONDITIONAL_NZ:
+                  inst->src[2].abs = false;
+                  progress = true;
+                  break;
+
+               case BRW_CONDITIONAL_LE:
+                  /* Converting to Z can help constant propagation into src0
+                   * and src1.
+                   */
+                  inst->conditional_mod = BRW_CONDITIONAL_Z;
+                  inst->src[2].abs = false;
+                  progress = true;
+                  break;
+
+               default:
+                  /* GE or L conditions with absolute value could be used to
+                   * implement isnan(x) in CSEL. Transforming G with absolute
+                   * value to NZ is **not** NaN safe.
+                   */
+                  break;
+               }
+            }
+         } else if (brw_type_is_sint(inst->src[2].type)) {
+            /* Integer transformations are more challenging than floating
+             * point transformations due to INT_MIN == -(INT_MIN) ==
+             * abs(INT_MIN).
+             */
+            if (inst->src[2].negate && inst->src[2].abs) {
+               switch (inst->conditional_mod) {
+               case BRW_CONDITIONAL_GE:
+                  inst->src[2].negate = false;
+                  inst->src[2].abs = false;
+                  inst->conditional_mod = BRW_CONDITIONAL_Z;
+                  progress = true;
+                  break;
+               case BRW_CONDITIONAL_L:
+                  inst->src[2].negate = false;
+                  inst->src[2].abs = false;
+                  inst->conditional_mod = BRW_CONDITIONAL_NZ;
+                  progress = true;
+                  break;
+               case BRW_CONDITIONAL_G:
+                  /* This is a contradtion. -abs(x) cannot be > 0. */
+                  inst->opcode = BRW_OPCODE_MOV;
+                  inst->src[0] = inst->src[1];
+                  inst->resize_sources(1);
+                  progress = true;
+                  break;
+               case BRW_CONDITIONAL_LE:
+                  /* This is a tautology. -abs(x) must be <= 0. */
+                  inst->opcode = BRW_OPCODE_MOV;
+                  inst->resize_sources(1);
+                  progress = true;
+                  break;
+               case BRW_CONDITIONAL_Z:
+               case BRW_CONDITIONAL_NZ:
+                  inst->src[2].negate = false;
+                  inst->src[2].abs = false;
+                  progress = true;
+                  break;
+               default:
+                  unreachable("Impossible icsel condition.");
+               }
+            }
+         }
+         break;
       case BRW_OPCODE_MAD:
          if (inst->src[0].type != BRW_TYPE_F ||
              inst->src[1].type != BRW_TYPE_F ||

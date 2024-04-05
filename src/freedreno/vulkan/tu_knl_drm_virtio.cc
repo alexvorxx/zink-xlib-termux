@@ -29,7 +29,6 @@
 #include "tu_dynamic_rendering.h"
 #include "tu_knl_drm.h"
 
-#define VIRGL_RENDERER_UNSTABLE_APIS 1
 #include "virglrenderer_hw.h"
 #include "msm_proto.h"
 

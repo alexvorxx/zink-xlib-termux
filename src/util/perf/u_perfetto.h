@@ -46,6 +46,10 @@ void util_perfetto_trace_begin(const char *name);
 
 void util_perfetto_trace_end(void);
 
+void util_perfetto_trace_begin_flow(const char *fname, uint64_t id);
+
+uint64_t util_perfetto_next_id(void);
+
 #else /* HAVE_PERFETTO */
 
 static inline void
@@ -67,6 +71,15 @@ util_perfetto_trace_begin(const char *name)
 static inline void
 util_perfetto_trace_end(void)
 {
+}
+
+static inline void util_perfetto_trace_begin_flow(const char *fname, uint64_t id)
+{
+}
+
+static inline uint64_t util_perfetto_next_id(void)
+{
+   return 0;
 }
 
 #endif /* HAVE_PERFETTO */

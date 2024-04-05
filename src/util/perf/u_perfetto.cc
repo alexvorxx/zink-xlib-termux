@@ -39,6 +39,8 @@ PERFETTO_TRACK_EVENT_STATIC_STORAGE();
 
 int util_perfetto_tracing_state;
 
+static uint64_t util_perfetto_unique_id = 1;
+
 static void
 util_perfetto_update_tracing_state(void)
 {
@@ -60,6 +62,20 @@ util_perfetto_trace_end(void)
    TRACE_EVENT_END(UTIL_PERFETTO_CATEGORY_DEFAULT_STR);
 
    util_perfetto_update_tracing_state();
+}
+
+void
+util_perfetto_trace_begin_flow(const char *fname, uint64_t id)
+{
+   TRACE_EVENT_BEGIN(
+      UTIL_PERFETTO_CATEGORY_DEFAULT_STR, nullptr, perfetto::Flow::ProcessScoped(id),
+      [&](perfetto::EventContext ctx) { ctx.event()->set_name(fname); });
+}
+
+uint64_t
+util_perfetto_next_id(void)
+{
+   return p_atomic_inc_return(&util_perfetto_unique_id);
 }
 
 class UtilPerfettoObserver : public perfetto::TrackEventSessionObserver {

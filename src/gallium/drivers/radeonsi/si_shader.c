@@ -1463,7 +1463,8 @@ static void si_dump_shader_key(const struct si_shader *shader, FILE *f)
       if (shader->selector->screen->info.gfx_level >= GFX9)
          si_dump_shader_key_vs(key, f);
 
-      fprintf(f, "  part.tcs.epilog.prim_mode = %u\n", key->ge.part.tcs.epilog.prim_mode);
+      fprintf(f, "  opt.tes_prim_mode = %u\n", key->ge.opt.tes_prim_mode);
+      fprintf(f, "  opt.tes_reads_tess_factors = %u\n", key->ge.opt.tes_reads_tess_factors);
       fprintf(f, "  opt.prefer_mono = %u\n", key->ge.opt.prefer_mono);
       fprintf(f, "  opt.same_patch_vertices = %u\n", key->ge.opt.same_patch_vertices);
       break;
@@ -1807,7 +1808,7 @@ static bool si_lower_io_to_mem(struct si_shader *shader, nir_shader *nir,
                  key->ge.opt.same_patch_vertices);
 
       /* Used by hs_emit_write_tess_factors() when monolithic shader. */
-      nir->info.tess._primitive_mode = key->ge.part.tcs.epilog.prim_mode;
+      nir->info.tess._primitive_mode = key->ge.opt.tes_prim_mode;
 
       NIR_PASS_V(nir, ac_nir_lower_hs_outputs_to_mem, si_map_io_driver_location,
                  sel->screen->info.gfx_level,

@@ -3656,8 +3656,6 @@ static void si_bind_tcs_shader(struct pipe_context *ctx, void *state)
 
    sctx->shader.tcs.cso = sel;
    sctx->shader.tcs.current = (sel && sel->variants_count) ? sel->variants[0] : NULL;
-   sctx->shader.tcs.key.ge.part.tcs.epilog.invoc0_tess_factors_are_def =
-      sel ? sel->info.tessfactors_are_def_in_all_invocs : 0;
    si_update_tess_uses_prim_id(sctx);
    si_update_tess_in_out_patch_vertices(sctx);
 
@@ -3683,10 +3681,10 @@ static void si_bind_tes_shader(struct pipe_context *ctx, void *state)
    sctx->ia_multi_vgt_param_key.u.uses_tess = sel != NULL;
    si_update_tess_uses_prim_id(sctx);
 
-   sctx->shader.tcs.key.ge.part.tcs.epilog.prim_mode =
+   sctx->shader.tcs.key.ge.opt.tes_prim_mode =
       sel ? sel->info.base.tess._primitive_mode : 0;
 
-   sctx->shader.tcs.key.ge.part.tcs.epilog.tes_reads_tess_factors =
+   sctx->shader.tcs.key.ge.opt.tes_reads_tess_factors =
       sel ? sel->info.reads_tess_factors : 0;
 
    if (sel) {
@@ -4372,9 +4370,6 @@ bool si_set_tcs_to_fixed_func_shader(struct si_context *sctx)
    }
 
    sctx->shader.tcs.cso = tcs;
-   sctx->shader.tcs.key.ge.part.tcs.epilog.invoc0_tess_factors_are_def =
-      tcs->info.tessfactors_are_def_in_all_invocs;
-
    return true;
 }
 

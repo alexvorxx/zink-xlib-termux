@@ -150,7 +150,7 @@ struct vn_update_descriptor_sets *
 vn_update_descriptor_set_with_template_locked(
    struct vn_descriptor_update_template *templ,
    VkDescriptorSet set_handle,
-   const void *data);
+   const uint8_t *data);
 
 void
 vn_descriptor_set_layout_destroy(struct vn_device *dev,

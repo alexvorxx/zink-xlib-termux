@@ -1086,14 +1086,12 @@ struct vn_update_descriptor_sets *
 vn_update_descriptor_set_with_template_locked(
    struct vn_descriptor_update_template *templ,
    VkDescriptorSet set_handle,
-   const void *data)
+   const uint8_t *data)
 {
    struct vn_update_descriptor_sets *update = templ->update;
    struct vn_descriptor_set *set = vn_descriptor_set_from_handle(set_handle);
 
    for (uint32_t i = 0; i < update->write_count; i++) {
-      const struct vn_descriptor_update_template_entry *entry =
-         &templ->entries[i];
       const struct vn_descriptor_set_layout *set_layout =
          templ->push.set_layout ? templ->push.set_layout : set->layout;
       const struct vn_descriptor_set_layout_binding *binding =
@@ -1103,6 +1101,8 @@ vn_update_descriptor_set_with_template_locked(
 
       write->dstSet = set_handle;
 
+      const uint8_t *ptr = data + templ->entries[i].offset;
+      const size_t stride = templ->entries[i].stride;
       switch (write->descriptorType) {
       case VK_DESCRIPTOR_TYPE_SAMPLER:
       case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
@@ -1117,23 +1117,23 @@ vn_update_descriptor_set_with_template_locked(
                !binding->has_immutable_samplers;
             const bool need_view =
                write->descriptorType != VK_DESCRIPTOR_TYPE_SAMPLER;
-            const VkDescriptorImageInfo *src =
-               data + entry->offset + entry->stride * j;
+            const VkDescriptorImageInfo *src = (const void *)ptr;
             VkDescriptorImageInfo *dst =
                (VkDescriptorImageInfo *)&write->pImageInfo[j];
 
             dst->sampler = need_sampler ? src->sampler : VK_NULL_HANDLE;
             dst->imageView = need_view ? src->imageView : VK_NULL_HANDLE;
             dst->imageLayout = src->imageLayout;
+            ptr += stride;
          }
          break;
       case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
       case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
          for (uint32_t j = 0; j < write->descriptorCount; j++) {
-            const VkBufferView *src =
-               data + entry->offset + entry->stride * j;
+            const VkBufferView *src = (const void *)ptr;
             VkBufferView *dst = (VkBufferView *)&write->pTexelBufferView[j];
             *dst = *src;
+            ptr += stride;
          }
          break;
       case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
@@ -1141,18 +1141,18 @@ vn_update_descriptor_set_with_template_locked(
       case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
       case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
          for (uint32_t j = 0; j < write->descriptorCount; j++) {
-            const VkDescriptorBufferInfo *src =
-               data + entry->offset + entry->stride * j;
+            const VkDescriptorBufferInfo *src = (const void *)ptr;
             VkDescriptorBufferInfo *dst =
                (VkDescriptorBufferInfo *)&write->pBufferInfo[j];
             *dst = *src;
+            ptr += stride;
          }
          break;
       case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK:
          VkWriteDescriptorSetInlineUniformBlock *iub_data =
             (VkWriteDescriptorSetInlineUniformBlock *)vk_find_struct_const(
                write->pNext, WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK);
-         iub_data->pData = data + entry->offset;
+         iub_data->pData = (const void *)ptr;
          break;
       case VK_DESCRIPTOR_TYPE_MUTABLE_EXT:
          break;

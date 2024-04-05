@@ -353,9 +353,6 @@ void st_init_limits(struct pipe_screen *screen,
          can_ubo = false;
       }
 
-      if (!screen->get_param(screen, PIPE_CAP_NIR_COMPACT_ARRAYS))
-         options->LowerCombinedClipCullDistance = true;
-
       if (sh == PIPE_SHADER_VERTEX || sh == PIPE_SHADER_GEOMETRY) {
          if (screen->get_param(screen, PIPE_CAP_VIEWPORT_TRANSFORM_LOWERED))
             options->LowerBuiltinVariablesXfb |= VARYING_BIT_POS;

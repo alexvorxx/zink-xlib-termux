@@ -2297,7 +2297,7 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
             *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
                .queueFlags = VK_QUEUE_VIDEO_DECODE_BIT_KHR,
                .queueCount = pdev->info.ip[pdev->vid_decode_ip].num_queues,
-               .timestampValidBits = 64,
+               .timestampValidBits = 0,
                .minImageTransferGranularity = (VkExtent3D){1, 1, 1},
             };
             idx++;
@@ -2323,7 +2323,7 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
             *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
                .queueFlags = VK_QUEUE_VIDEO_ENCODE_BIT_KHR,
                .queueCount = pdev->info.ip[AMD_IP_VCN_ENC].num_queues,
-               .timestampValidBits = 64,
+               .timestampValidBits = 0,
                .minImageTransferGranularity = (VkExtent3D){1, 1, 1},
             };
             idx++;

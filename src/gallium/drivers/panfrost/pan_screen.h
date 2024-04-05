@@ -118,6 +118,12 @@ struct panfrost_screen {
    struct disk_cache *disk_cache;
    unsigned max_afbc_packing_ratio;
    bool force_afbc_packing;
+
+   struct {
+      unsigned chunk_size;
+      unsigned initial_chunks;
+      unsigned max_chunks;
+   } csf_tiler_heap;
 };
 
 static inline struct panfrost_screen *

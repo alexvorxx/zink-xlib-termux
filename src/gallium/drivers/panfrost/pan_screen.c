@@ -861,6 +861,13 @@ panfrost_create_screen(int fd, const struct pipe_screen_config *config,
       screen->force_afbc_packing = driQueryOptionb(config->options,
                                                    "pan_force_afbc_packing");
 
+   screen->csf_tiler_heap.chunk_size = driQueryOptioni(config->options,
+                                                       "pan_csf_chunk_size");
+   screen->csf_tiler_heap.initial_chunks = driQueryOptioni(config->options,
+                                                           "pan_csf_initial_chunks");
+   screen->csf_tiler_heap.max_chunks = driQueryOptioni(config->options,
+                                                       "pan_csf_max_chunks");
+
    dev->ro = ro;
 
    screen->base.destroy = panfrost_destroy_screen;

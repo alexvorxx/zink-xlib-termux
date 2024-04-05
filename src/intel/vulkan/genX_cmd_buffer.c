@@ -5168,10 +5168,7 @@ void genX(CmdBeginRendering)(
          }
 
          if (is_multiview) {
-            uint32_t clear_view_mask = pRenderingInfo->viewMask;
-            while (clear_view_mask) {
-               int view = u_bit_scan(&clear_view_mask);
-
+            u_foreach_bit(view, gfx->view_mask) {
                uint32_t level = ds_iview->vk.base_mip_level;
                uint32_t layer = ds_iview->vk.base_array_layer + view;
 

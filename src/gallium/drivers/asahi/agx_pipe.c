@@ -1551,7 +1551,6 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_SHADER_PACK_HALF_FLOAT:
    case PIPE_CAP_FS_FINE_DERIVATIVE:
    case PIPE_CAP_CULL_DISTANCE_NOCOMBINE:
-   case PIPE_CAP_NIR_COMPACT_ARRAYS:
    case PIPE_CAP_GLSL_TESS_LEVELS_AS_INPUTS:
    case PIPE_CAP_DOUBLES:
       return 1;

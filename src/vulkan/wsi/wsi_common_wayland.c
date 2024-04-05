@@ -164,6 +164,8 @@ struct wsi_wl_surface {
    struct {
       const VkAllocationCallbacks *pAllocator;
       char *latency_str;
+      uint64_t presenting;
+      uint64_t presentation_track_id;
    } analytics;
 
    struct zwp_linux_dmabuf_feedback_v1 *wl_dmabuf_feedback;
@@ -234,6 +236,15 @@ find_format(struct u_vector *formats, VkFormat format)
          return f;
 
    return NULL;
+}
+
+static char *
+stringify_wayland_id(uint32_t id)
+{
+   char *out;
+
+   asprintf(&out, "wl%d", id);
+   return out;
 }
 
 static struct wsi_wl_format *
@@ -1584,10 +1595,17 @@ wsi_wl_surface_analytics_init(struct wsi_wl_surface *wsi_wl_surface,
                               const VkAllocationCallbacks *pAllocator)
 {
    uint64_t wl_id;
+   char *track_name;
 
    wl_id = wl_proxy_get_id((struct wl_proxy *) wsi_wl_surface->surface);
 
    wsi_wl_surface->analytics.pAllocator = pAllocator;
+   wl_id = wl_proxy_get_id((struct wl_proxy *) wsi_wl_surface->surface);
+   track_name = vk_asprintf(pAllocator, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT,
+                            "wl%" PRIu64 " presentation", wl_id);
+   wsi_wl_surface->analytics.presentation_track_id = util_perfetto_new_track(track_name);
+   vk_free(pAllocator, track_name);
+
    wsi_wl_surface->analytics.latency_str =
       vk_asprintf(pAllocator,
                   VK_SYSTEM_ALLOCATION_SCOPE_OBJECT,
@@ -1693,6 +1711,7 @@ struct wsi_wl_present_id {
    uint64_t submission_time;
    const VkAllocationCallbacks *alloc;
    struct wsi_wl_swapchain *chain;
+   int buffer_id;
    struct wl_list link;
 };
 
@@ -1960,9 +1979,30 @@ trace_present(const struct wsi_wl_present_id *id,
 {
    struct wsi_wl_swapchain *chain = id->chain;
    struct wsi_wl_surface *surface = chain->wsi_wl_surface;
+   char *buffer_name;
 
    MESA_TRACE_SET_COUNTER(surface->analytics.latency_str,
                           (presentation_time - id->submission_time) / 1000000.0);
+
+   /* Close the previous image display interval first, if there is one. */
+   if (surface->analytics.presenting && util_perfetto_is_tracing_enabled()) {
+      buffer_name = stringify_wayland_id(surface->analytics.presenting);
+      MESA_TRACE_TIMESTAMP_END(buffer_name,
+                               surface->analytics.presentation_track_id,
+                               presentation_time);
+      free(buffer_name);
+   }
+
+   surface->analytics.presenting = id->buffer_id;
+
+   if (util_perfetto_is_tracing_enabled()) {
+      buffer_name = stringify_wayland_id(id->buffer_id);
+      MESA_TRACE_TIMESTAMP_BEGIN(buffer_name,
+                                 surface->analytics.presentation_track_id,
+                                 id->flow_id,
+                                 presentation_time);
+      free(buffer_name);
+   }
 }
 
 static void
@@ -2133,6 +2173,9 @@ wsi_wl_swapchain_queue_present(struct wsi_swapchain *wsi_chain,
       id->present_id = present_id;
       id->alloc = chain->wsi_wl_surface->display->wsi_wl->alloc;
       id->flow_id = flow_id;
+      id->buffer_id =
+         wl_proxy_get_id((struct wl_proxy *)chain->images[image_index].buffer);
+
       id->submission_time = os_time_get_nano();
 
       pthread_mutex_lock(&chain->present_ids.lock);

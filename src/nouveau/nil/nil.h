@@ -12,6 +12,8 @@
 #include "util/macros.h"
 #include "util/format/u_format.h"
 
+#include "nil_rs.h"
+
 struct nv_device_info;
 
 /* We don't have our own format enum; we use PIPE_FORMAT for everything */

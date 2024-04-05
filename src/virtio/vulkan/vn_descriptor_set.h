@@ -116,9 +116,10 @@ struct vn_descriptor_update_template_entry {
 struct vn_descriptor_update_template {
    struct vn_object_base base;
 
-   bool is_push_descriptor;
-   VkPipelineBindPoint pipeline_bind_point;
-   struct vn_pipeline_layout *pipeline_layout;
+   struct {
+      VkPipelineBindPoint pipeline_bind_point;
+      struct vn_descriptor_set_layout *set_layout;
+   } push;
 
    mtx_t mutex;
    struct vn_update_descriptor_sets *update;
@@ -148,7 +149,7 @@ vn_descriptor_set_get_writes(uint32_t write_count,
 struct vn_update_descriptor_sets *
 vn_update_descriptor_set_with_template_locked(
    struct vn_descriptor_update_template *templ,
-   struct vn_descriptor_set *set,
+   VkDescriptorSet set_handle,
    const void *data);
 
 void

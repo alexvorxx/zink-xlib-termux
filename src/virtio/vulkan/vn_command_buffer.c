@@ -2237,7 +2237,7 @@ vn_CmdPushDescriptorSetWithTemplateKHR(
       vn_update_descriptor_set_with_template_locked(templ, VK_NULL_HANDLE,
                                                     pData);
    VN_CMD_ENQUEUE(vkCmdPushDescriptorSetKHR, commandBuffer,
-                  templ->pipeline_bind_point, layout, set,
+                  templ->push.pipeline_bind_point, layout, set,
                   update->write_count, update->writes);
 
    mtx_unlock(&templ->mutex);

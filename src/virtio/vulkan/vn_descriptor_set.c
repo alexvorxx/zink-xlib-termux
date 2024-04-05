@@ -1040,13 +1040,12 @@ vn_CreateDescriptorUpdateTemplate(
       return vn_error(dev->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
-   templ->is_push_descriptor =
-      pCreateInfo->templateType ==
-      VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR;
-   if (templ->is_push_descriptor) {
-      templ->pipeline_bind_point = pCreateInfo->pipelineBindPoint;
-      templ->pipeline_layout =
+   if (pCreateInfo->templateType ==
+       VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR) {
+      struct vn_pipeline_layout *pipeline_layout =
          vn_pipeline_layout_from_handle(pCreateInfo->pipelineLayout);
+      templ->push.pipeline_bind_point = pCreateInfo->pipelineBindPoint;
+      templ->push.set_layout = pipeline_layout->push_descriptor_set_layout;
    }
 
    mtx_init(&templ->mutex, mtx_plain);
@@ -1086,27 +1085,23 @@ vn_DestroyDescriptorUpdateTemplate(
 struct vn_update_descriptor_sets *
 vn_update_descriptor_set_with_template_locked(
    struct vn_descriptor_update_template *templ,
-   struct vn_descriptor_set *set,
+   VkDescriptorSet set_handle,
    const void *data)
 {
    struct vn_update_descriptor_sets *update = templ->update;
+   struct vn_descriptor_set *set = vn_descriptor_set_from_handle(set_handle);
 
    for (uint32_t i = 0; i < update->write_count; i++) {
       const struct vn_descriptor_update_template_entry *entry =
          &templ->entries[i];
-
       const struct vn_descriptor_set_layout *set_layout =
-         templ->is_push_descriptor
-            ? templ->pipeline_layout->push_descriptor_set_layout
-            : set->layout;
+         templ->push.set_layout ? templ->push.set_layout : set->layout;
       const struct vn_descriptor_set_layout_binding *binding =
          &set_layout->bindings[update->writes[i].dstBinding];
 
       VkWriteDescriptorSet *write = &update->writes[i];
 
-      write->dstSet = templ->is_push_descriptor
-                         ? VK_NULL_HANDLE
-                         : vn_descriptor_set_to_handle(set);
+      write->dstSet = set_handle;
 
       switch (write->descriptorType) {
       case VK_DESCRIPTOR_TYPE_SAMPLER:
@@ -1179,12 +1174,11 @@ vn_UpdateDescriptorSetWithTemplate(
    struct vn_device *dev = vn_device_from_handle(device);
    struct vn_descriptor_update_template *templ =
       vn_descriptor_update_template_from_handle(descriptorUpdateTemplate);
-   struct vn_descriptor_set *set =
-      vn_descriptor_set_from_handle(descriptorSet);
    mtx_lock(&templ->mutex);
 
    struct vn_update_descriptor_sets *update =
-      vn_update_descriptor_set_with_template_locked(templ, set, pData);
+      vn_update_descriptor_set_with_template_locked(templ, descriptorSet,
+                                                    pData);
 
    vn_async_vkUpdateDescriptorSets(dev->primary_ring, device,
                                    update->write_count, update->writes, 0,

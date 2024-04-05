@@ -803,42 +803,32 @@ vn_descriptor_set_get_writes(uint32_t write_count,
          pipeline_layout
             ? pipeline_layout->push_descriptor_set_layout
             : vn_descriptor_set_from_handle(writes[i].dstSet)->layout;
-      const struct vn_descriptor_set_layout_binding *binding =
-         &set_layout->bindings[writes[i].dstBinding];
       VkWriteDescriptorSet *write = &local->writes[i];
       VkDescriptorImageInfo *img_infos = &local->img_infos[img_info_count];
-
+      bool ignore_sampler = true;
+      bool ignore_iview = false;
       switch (write->descriptorType) {
       case VK_DESCRIPTOR_TYPE_SAMPLER:
+         ignore_iview = true;
+         FALLTHROUGH;
       case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+         ignore_sampler =
+            set_layout->bindings[write->dstBinding].has_immutable_samplers;
+         FALLTHROUGH;
       case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
       case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
       case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
          typed_memcpy(img_infos, write->pImageInfo, write->descriptorCount);
-         img_info_count += write->descriptorCount;
-
          for (uint32_t j = 0; j < write->descriptorCount; j++) {
-            switch (write->descriptorType) {
-            case VK_DESCRIPTOR_TYPE_SAMPLER:
-               img_infos[j].imageView = VK_NULL_HANDLE;
-               FALLTHROUGH;
-            case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-               if (binding->has_immutable_samplers)
-                  img_infos[j].sampler = VK_NULL_HANDLE;
-               break;
-            case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-            case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-            case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+            if (ignore_sampler)
                img_infos[j].sampler = VK_NULL_HANDLE;
-               break;
-            default:
-               break;
-            }
+            if (ignore_iview)
+               img_infos[j].imageView = VK_NULL_HANDLE;
          }
-
          write->pImageInfo = img_infos;
          write->pBufferInfo = NULL;
          write->pTexelBufferView = NULL;
+         img_info_count += write->descriptorCount;
          break;
       case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
       case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
@@ -1090,39 +1080,35 @@ vn_update_descriptor_set_with_template_locked(
 {
    struct vn_update_descriptor_sets *update = templ->update;
    struct vn_descriptor_set *set = vn_descriptor_set_from_handle(set_handle);
+   const struct vn_descriptor_set_layout *set_layout =
+      templ->push.set_layout ? templ->push.set_layout : set->layout;
 
    for (uint32_t i = 0; i < update->write_count; i++) {
-      const struct vn_descriptor_set_layout *set_layout =
-         templ->push.set_layout ? templ->push.set_layout : set->layout;
-      const struct vn_descriptor_set_layout_binding *binding =
-         &set_layout->bindings[update->writes[i].dstBinding];
-
       VkWriteDescriptorSet *write = &update->writes[i];
 
       write->dstSet = set_handle;
 
       const uint8_t *ptr = data + templ->entries[i].offset;
       const size_t stride = templ->entries[i].stride;
+      bool ignore_sampler = true;
+      bool ignore_iview = false;
       switch (write->descriptorType) {
       case VK_DESCRIPTOR_TYPE_SAMPLER:
+         ignore_iview = true;
+         FALLTHROUGH;
       case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+         ignore_sampler =
+            set_layout->bindings[write->dstBinding].has_immutable_samplers;
+         FALLTHROUGH;
       case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
       case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
       case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
          for (uint32_t j = 0; j < write->descriptorCount; j++) {
-            const bool need_sampler =
-               (write->descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER ||
-                write->descriptorType ==
-                   VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) &&
-               !binding->has_immutable_samplers;
-            const bool need_view =
-               write->descriptorType != VK_DESCRIPTOR_TYPE_SAMPLER;
             const VkDescriptorImageInfo *src = (const void *)ptr;
             VkDescriptorImageInfo *dst =
                (VkDescriptorImageInfo *)&write->pImageInfo[j];
-
-            dst->sampler = need_sampler ? src->sampler : VK_NULL_HANDLE;
-            dst->imageView = need_view ? src->imageView : VK_NULL_HANDLE;
+            dst->sampler = ignore_sampler ? VK_NULL_HANDLE : src->sampler;
+            dst->imageView = ignore_iview ? VK_NULL_HANDLE : src->imageView;
             dst->imageLayout = src->imageLayout;
             ptr += stride;
          }

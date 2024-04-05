@@ -160,6 +160,12 @@ struct wsi_wl_surface {
    struct wl_surface *surface;
    struct wsi_wl_display *display;
 
+   /* This has no functional use, and is here only for perfetto */
+   struct {
+      const VkAllocationCallbacks *pAllocator;
+      char *latency_str;
+   } analytics;
+
    struct zwp_linux_dmabuf_feedback_v1 *wl_dmabuf_feedback;
    struct dmabuf_feedback dmabuf_feedback, pending_dmabuf_feedback;
 
@@ -1327,6 +1333,14 @@ wsi_wl_surface_get_present_rectangles(VkIcdSurfaceBase *surface,
    return vk_outarray_status(&out);
 }
 
+static void
+wsi_wl_surface_analytics_fini(struct wsi_wl_surface *wsi_wl_surface)
+{
+   const VkAllocationCallbacks *pAllocator = wsi_wl_surface->analytics.pAllocator;
+
+   vk_free(pAllocator, wsi_wl_surface->analytics.latency_str);
+}
+
 void
 wsi_wl_surface_destroy(VkIcdSurfaceBase *icd_surface, VkInstance _instance,
                        const VkAllocationCallbacks *pAllocator)
@@ -1349,6 +1363,8 @@ wsi_wl_surface_destroy(VkIcdSurfaceBase *icd_surface, VkInstance _instance,
 
    if (wsi_wl_surface->display)
       wsi_wl_display_destroy(wsi_wl_surface->display);
+
+   wsi_wl_surface_analytics_fini(wsi_wl_surface);
 
    vk_free2(&instance->alloc, pAllocator, wsi_wl_surface);
 }
@@ -1563,8 +1579,24 @@ fail:
    return VK_ERROR_OUT_OF_HOST_MEMORY;
 }
 
+static void
+wsi_wl_surface_analytics_init(struct wsi_wl_surface *wsi_wl_surface,
+                              const VkAllocationCallbacks *pAllocator)
+{
+   uint64_t wl_id;
+
+   wl_id = wl_proxy_get_id((struct wl_proxy *) wsi_wl_surface->surface);
+
+   wsi_wl_surface->analytics.pAllocator = pAllocator;
+   wsi_wl_surface->analytics.latency_str =
+      vk_asprintf(pAllocator,
+                  VK_SYSTEM_ALLOCATION_SCOPE_OBJECT,
+                  "wl%" PRIu64 " latency", wl_id);
+}
+
 static VkResult wsi_wl_surface_init(struct wsi_wl_surface *wsi_wl_surface,
-                                    struct wsi_device *wsi_device)
+                                    struct wsi_device *wsi_device,
+                                    const VkAllocationCallbacks *pAllocator)
 {
    struct wsi_wayland *wsi =
       (struct wsi_wayland *)wsi_device->wsi[VK_ICD_WSI_PLATFORM_WAYLAND];
@@ -1608,6 +1640,7 @@ static VkResult wsi_wl_surface_init(struct wsi_wl_surface *wsi_wl_surface,
          goto fail;
    }
 
+   wsi_wl_surface_analytics_init(wsi_wl_surface, pAllocator);
    return VK_SUCCESS;
 
 fail:
@@ -1657,6 +1690,7 @@ struct wsi_wl_present_id {
    struct wl_callback *frame;
    uint64_t present_id;
    uint64_t flow_id;
+   uint64_t submission_time;
    const VkAllocationCallbacks *alloc;
    struct wsi_wl_swapchain *chain;
    struct wl_list link;
@@ -1921,6 +1955,17 @@ wsi_wl_presentation_update_present_id(struct wsi_wl_present_id *id)
 }
 
 static void
+trace_present(const struct wsi_wl_present_id *id,
+              uint64_t presentation_time)
+{
+   struct wsi_wl_swapchain *chain = id->chain;
+   struct wsi_wl_surface *surface = chain->wsi_wl_surface;
+
+   MESA_TRACE_SET_COUNTER(surface->analytics.latency_str,
+                          (presentation_time - id->submission_time) / 1000000.0);
+}
+
+static void
 presentation_handle_presented(void *data,
                               struct wp_presentation_feedback *feedback,
                               uint32_t tv_sec_hi, uint32_t tv_sec_lo,
@@ -1929,8 +1974,15 @@ presentation_handle_presented(void *data,
                               uint32_t flags)
 {
    struct wsi_wl_present_id *id = data;
+   struct timespec presentation_ts;
+   uint64_t presentation_time;
 
    MESA_TRACE_FUNC_FLOW(&id->flow_id);
+
+   presentation_ts.tv_sec = ((uint64_t)tv_sec_hi << 32) + tv_sec_lo;
+   presentation_ts.tv_nsec = tv_nsec;
+   presentation_time = timespec_to_nsec(&presentation_ts);
+   trace_present(id, presentation_time);
 
    wsi_wl_presentation_update_present_id(id);
    wp_presentation_feedback_destroy(feedback);
@@ -2081,6 +2133,7 @@ wsi_wl_swapchain_queue_present(struct wsi_swapchain *wsi_chain,
       id->present_id = present_id;
       id->alloc = chain->wsi_wl_surface->display->wsi_wl->alloc;
       id->flow_id = flow_id;
+      id->submission_time = os_time_get_nano();
 
       pthread_mutex_lock(&chain->present_ids.lock);
 
@@ -2388,7 +2441,7 @@ wsi_wl_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
    chain->wsi_wl_surface = wsi_wl_surface;
    wsi_wl_surface->chain = chain;
 
-   result = wsi_wl_surface_init(wsi_wl_surface, wsi_device);
+   result = wsi_wl_surface_init(wsi_wl_surface, wsi_device, pAllocator);
    if (result != VK_SUCCESS)
       goto fail;
 

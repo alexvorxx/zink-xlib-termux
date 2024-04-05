@@ -177,7 +177,9 @@ struct radv_meta_state {
       VkPipelineLayout img_p_layout;
       VkDescriptorSetLayout img_ds_layout;
       VkPipeline pipeline[MAX_SAMPLES_LOG2];
-      VkPipeline pipeline_3d;
+      VkPipeline pipeline_2d_3d;
+      VkPipeline pipeline_3d_2d;
+      VkPipeline pipeline_3d_3d;
    } itoi;
    struct {
       VkPipelineLayout img_p_layout;

@@ -1303,6 +1303,14 @@ prelink_lowering(const struct gl_constants *consts,
          consts->ShaderCompilerOptions[shader->Stage].NirOptions;
       struct gl_program *prog = shader->Program;
 
+      /* NIR drivers that support tess shaders and compact arrays need to use
+      * GLSLTessLevelsAsInputs / PIPE_CAP_GLSL_TESS_LEVELS_AS_INPUTS. The NIR
+      * linker doesn't support linking these as compat arrays of sysvals.
+      */
+      assert(consts->GLSLTessLevelsAsInputs || !options->compact_arrays ||
+             !exts->ARB_tessellation_shader);
+
+
       /* ES 3.0+ vertex shaders may still have dead varyings but its now safe
        * to remove them as validation is now done according to the spec.
        */

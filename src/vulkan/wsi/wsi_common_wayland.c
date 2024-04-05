@@ -1656,6 +1656,7 @@ struct wsi_wl_present_id {
     * which uses frame callback to signal DRI3 COMPLETE. */
    struct wl_callback *frame;
    uint64_t present_id;
+   uint64_t flow_id;
    const VkAllocationCallbacks *alloc;
    struct wsi_wl_swapchain *chain;
    struct wl_list link;
@@ -1928,6 +1929,9 @@ presentation_handle_presented(void *data,
                               uint32_t flags)
 {
    struct wsi_wl_present_id *id = data;
+
+   MESA_TRACE_FUNC_FLOW(&id->flow_id);
+
    wsi_wl_presentation_update_present_id(id);
    wp_presentation_feedback_destroy(feedback);
 }
@@ -1937,6 +1941,9 @@ presentation_handle_discarded(void *data,
                               struct wp_presentation_feedback *feedback)
 {
    struct wsi_wl_present_id *id = data;
+
+   MESA_TRACE_FUNC_FLOW(&id->flow_id);
+
    wsi_wl_presentation_update_present_id(id);
    wp_presentation_feedback_destroy(feedback);
 }
@@ -2066,6 +2073,7 @@ wsi_wl_swapchain_queue_present(struct wsi_swapchain *wsi_chain,
       id->chain = chain;
       id->present_id = present_id;
       id->alloc = chain->wsi_wl_surface->display->wsi_wl->alloc;
+      id->flow_id = flow_id;
 
       pthread_mutex_lock(&chain->present_ids.lock);
 

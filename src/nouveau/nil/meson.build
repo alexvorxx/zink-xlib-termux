@@ -16,7 +16,6 @@ prog_cbindgen = find_program('cbindgen', required : false, native : true)
 
 libnil_files = files(
   'nil.h',
-  'nil_format.c',
   'nil_image.c',
   'nil_image_tic.c',
 )
@@ -38,10 +37,12 @@ libnil_deps = [
 ]
 
 _libnil_rs_files = files(
-  'lib.rs',
+  'lib.rs', # lib.rs has to come first
+  'format.rs',
 )
 
 _libnil_rs_deps = [
+  idep_nvidia_headers_rs,
 ]
 
 _libnil_rs_rust_args = [
@@ -58,20 +59,27 @@ _libnil_rs_rust_args = [
 ]
 
 _nil_bindings_rs = rust.bindgen(
-  input: ['nil_bindings.h'],
+  input: ['nil_bindings.h', nil_format_table],
   output: 'nil_bindings.rs',
   c_args: [
     pre_args,
   ],
-  include_directories : [inc_include, inc_src],
+  include_directories : [inc_include, inc_src, include_directories('.')],
   args: [
     '--raw-line', '#![allow(non_camel_case_types)]',
     '--raw-line', '#![allow(non_snake_case)]',
     '--raw-line', '#![allow(non_upper_case_globals)]',
+    '--allowlist-function', 'util_format_description',
+    '--allowlist-function', 'util_format_get_blocksize',
+    '--allowlist-function', 'util_format_is_compressed',
+    '--allowlist-function', 'util_format_is_pure_integer',
+    '--allowlist-function', 'util_format_is_srgb',
+    '--allowlist-type', 'nil_format_support_flags',
     '--allowlist-type', 'nv_device_info',
     '--allowlist-type', 'nv_device_type',
     '--allowlist-type', 'pipe_format',
     '--allowlist-type', 'pipe_swizzle',
+    '--allowlist-var', 'nil_format_table',
     '--no-prepend-enum-name',
   ],
   dependencies: _libnil_rs_deps,

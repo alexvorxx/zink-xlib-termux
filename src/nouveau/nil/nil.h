@@ -16,33 +16,6 @@
 
 struct nv_device_info;
 
-/* We don't have our own format enum; we use PIPE_FORMAT for everything */
-
-bool nil_format_supports_texturing(struct nv_device_info *dev,
-                                   enum pipe_format format);
-
-bool nil_format_supports_filtering(struct nv_device_info *dev,
-                                   enum pipe_format format);
-
-bool nil_format_supports_buffer(struct nv_device_info *dev,
-                                enum pipe_format format);
-
-bool nil_format_supports_storage(struct nv_device_info *dev,
-                                 enum pipe_format format);
-
-bool nil_format_supports_color_targets(struct nv_device_info *dev,
-                                       enum pipe_format format);
-
-bool nil_format_supports_blending(struct nv_device_info *dev,
-                                  enum pipe_format format);
-
-bool nil_format_supports_depth_stencil(struct nv_device_info *dev,
-                                       enum pipe_format format);
-
-uint8_t nil_format_to_color_target(enum pipe_format format);
-
-uint8_t nil_format_to_depth_stencil(enum pipe_format format);
-
 enum ENUM_PACKED nil_image_dim {
    NIL_IMAGE_DIM_1D = 1,
    NIL_IMAGE_DIM_2D = 2,

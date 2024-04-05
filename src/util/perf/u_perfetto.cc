@@ -72,6 +72,12 @@ util_perfetto_trace_begin_flow(const char *fname, uint64_t id)
       [&](perfetto::EventContext ctx) { ctx.event()->set_name(fname); });
 }
 
+void
+util_perfetto_counter_set(const char *name, double value)
+{
+   TRACE_COUNTER(UTIL_PERFETTO_CATEGORY_DEFAULT_STR, name, value);
+}
+
 uint64_t
 util_perfetto_next_id(void)
 {

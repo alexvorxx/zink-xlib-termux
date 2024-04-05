@@ -35,6 +35,12 @@
          util_perfetto_trace_end();                                          \
    } while (0)
 
+#define _MESA_TRACE_SET_COUNTER(name, value)                                 \
+   do {                                                                      \
+      if (unlikely(util_perfetto_is_tracing_enabled()))                      \
+         util_perfetto_counter_set(name, value);                             \
+   } while (0)
+
 /* NOTE: for now disable atrace for C++ to workaround a ndk bug with ordering
  * between stdatomic.h and atomic.h.  See:
  *
@@ -49,12 +55,14 @@
 #define _MESA_TRACE_END() atrace_end(ATRACE_TAG_GRAPHICS)
 #define _MESA_TRACE_FLOW_BEGIN(name, id)                                     \
    atrace_begin(ATRACE_TAG_GRAPHICS, name)
+#define _MESA_TRACE_SET_COUNTER(name, value)
 
 #else
 
 #define _MESA_TRACE_BEGIN(name)
 #define _MESA_TRACE_END()
 #define _MESA_TRACE_FLOW_BEGIN(name, id)
+#define _MESA_TRACE_SET_COUNTER(name, value)
 
 #endif /* HAVE_PERFETTO */
 
@@ -128,6 +136,7 @@ _mesa_trace_scope_end(UNUSED int *scope)
 #define MESA_TRACE_SCOPE_FLOW(name, id) _MESA_TRACE_SCOPE_FLOW(name, id)
 #define MESA_TRACE_FUNC() _MESA_TRACE_SCOPE(__func__)
 #define MESA_TRACE_FUNC_FLOW(id) _MESA_TRACE_SCOPE_FLOW(__func__, id)
+#define MESA_TRACE_SET_COUNTER(name, value) _MESA_TRACE_SET_COUNTER(name, value)
 
 static inline void
 util_cpu_trace_init()

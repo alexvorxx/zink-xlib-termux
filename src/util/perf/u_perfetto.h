@@ -48,6 +48,8 @@ void util_perfetto_trace_end(void);
 
 void util_perfetto_trace_begin_flow(const char *fname, uint64_t id);
 
+void util_perfetto_counter_set(const char *name, double value);
+
 uint64_t util_perfetto_next_id(void);
 
 #else /* HAVE_PERFETTO */
@@ -74,6 +76,10 @@ util_perfetto_trace_end(void)
 }
 
 static inline void util_perfetto_trace_begin_flow(const char *fname, uint64_t id)
+{
+}
+
+static inline void util_perfetto_counter_set(const char *name, double value)
 {
 }
 

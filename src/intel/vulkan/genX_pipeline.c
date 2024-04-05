@@ -1795,7 +1795,7 @@ emit_task_state(struct anv_graphics_pipeline *pipeline)
       task.SharedLocalMemorySize             =
          intel_compute_slm_encode_size(GFX_VER, task_prog_data->base.base.total_shared);
       task.PreferredSLMAllocationSize        =
-         preferred_slm_allocation_size(devinfo);
+         intel_compute_preferred_slm_calc_encode_size(devinfo, task_prog_data->base.base.total_shared);
 
       /*
        * 3DSTATE_TASK_SHADER_DATA.InlineData[0:1] will be used for an address
@@ -1876,7 +1876,7 @@ emit_mesh_state(struct anv_graphics_pipeline *pipeline)
       mesh.SharedLocalMemorySize             =
          intel_compute_slm_encode_size(GFX_VER, mesh_prog_data->base.base.total_shared);
       mesh.PreferredSLMAllocationSize        =
-         preferred_slm_allocation_size(devinfo);
+         intel_compute_preferred_slm_calc_encode_size(devinfo, mesh_prog_data->base.base.total_shared);
 
       /*
        * 3DSTATE_MESH_SHADER_DATA.InlineData[0:1] will be used for an address

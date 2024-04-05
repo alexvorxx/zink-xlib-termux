@@ -137,7 +137,7 @@ static struct slm_encode xe2_preferred_slm_allocation_size_table[] = {
   { .encode = 0xA, .size_in_kb = 384, },
 };
 
-uint32_t
+static uint32_t
 intel_compute_preferred_slm_encode_size(unsigned gen, uint32_t bytes)
 {
    struct slm_encode *table;
@@ -152,4 +152,24 @@ intel_compute_preferred_slm_encode_size(unsigned gen, uint32_t bytes)
    }
 
    return slm_encode_lookup(table, table_len, bytes)->encode;
+}
+
+uint32_t
+intel_compute_preferred_slm_calc_encode_size(const struct intel_device_info *devinfo, uint32_t slm_size)
+{
+   /* Older platforms than Xe2 has a encode = 0 that sets preferred SLM
+    * allocation to maximum supported, so keeping it until we come up
+    * with a formula to calculate the optimal preferred slm allocation.
+    */
+   if (devinfo->ver < 20)
+      return 0;
+
+   /* Xe2 has 2 requirements for preferred SLM size:
+    * - this value needs to be >= then SLM size
+    * - this value must be less than shared SLM/L1$ RAM in the sub-slice of platform
+    *
+    * For now it is not calculating the optimal preferred SLM allocation,
+    * it is just setting the minimum value that comply with first restriction.
+    */
+   return intel_compute_preferred_slm_encode_size(devinfo->ver, slm_size);
 }

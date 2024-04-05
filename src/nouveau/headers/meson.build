@@ -34,8 +34,8 @@ foreach cl : nvk_classes
     cl + '.h',
     input : ['class_parser.py', 'nvidia/classes/'+cl+'.h'],
     output : ['nvk_'+cl+'.h', 'nvk_'+cl+'.c'],
-    command : [prog_python, '@INPUT0@', '--in_h', '@INPUT1@',
-               '--out_h', '@OUTPUT0@', '--out_c', '@OUTPUT1@'],
+    command : [prog_python, '@INPUT0@', '--in-h', '@INPUT1@',
+               '--out-h', '@OUTPUT0@', '--out-c', '@OUTPUT1@'],
     depend_files: nvk_cl_header_depend_files,
   )
 endforeach

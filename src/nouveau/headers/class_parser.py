@@ -252,6 +252,7 @@ def parse_header(nvcl, f):
     # state 2 looking for enums for a fields in a method
     # blank lines reset the state machine to 0
 
+    version = None
     state = 0
     mthddict = {}
     curmthd = {}
@@ -271,6 +272,9 @@ def parse_header(nvcl, f):
                 continue
 
             if not list[1].startswith(nvcl):
+                if len(list) > 2 and list[2].startswith("0x"):
+                    assert version is None
+                    version = (list[1], list[2])
                 continue
 
             if list[1].endswith("TYPEDEF"):
@@ -331,13 +335,13 @@ def parse_header(nvcl, f):
                 curmthd = x
                 state = 1
 
-    return mthddict
+    return (version, mthddict)
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--out_h', required=True, help='Output C header.')
-    parser.add_argument('--out_c', required=True, help='Output C file.')
-    parser.add_argument('--in_h',
+    parser.add_argument('--out-h', required=True, help='Output C header.')
+    parser.add_argument('--out-c', required=True, help='Output C file.')
+    parser.add_argument('--in-h',
                         help='Input class header file.',
                         required=True)
     args = parser.parse_args()
@@ -350,12 +354,13 @@ def main():
     nvcl = "NV" + nvcl
 
     with open(args.in_h, 'r', encoding='utf-8') as f:
-        mthddict = parse_header(nvcl, f)
+        (version, mthddict) = parse_header(nvcl, f)
 
     environment = {
         'clheader': clheader,
         'header': os.path.basename(args.out_h),
         'nvcl': nvcl,
+        'version': version,
         'mthddict': mthddict,
         'bs': '\\'
     }

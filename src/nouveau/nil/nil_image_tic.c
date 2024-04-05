@@ -4,7 +4,7 @@
  */
 #include "nil_image.h"
 
-#include "nil_format.h"
+#include "nil_format_table.h"
 #include "util/bitpack_helpers.h"
 
 #include "nouveau_device.h"
@@ -93,6 +93,14 @@ __set_bool(uint32_t *o, bool b, unsigned lo, unsigned hi)
 
 #define TH_NVC097_SET_U(o, VER, FIELD, val) \
    TH_SET_U((o), NVC097, _##VER, FIELD, (val));
+
+static const struct nil_tic_format *
+nil_tic_format_for_pipe(enum pipe_format format)
+{
+   assert(format < PIPE_FORMAT_COUNT);
+   const struct nil_format_info *fmt = &nil_format_table[format];
+   return fmt->tic.comp_sizes == 0 ? NULL : &fmt->tic;
+}
 
 static inline uint32_t
 nv9097_th_bl_source(const struct nil_tic_format *fmt,

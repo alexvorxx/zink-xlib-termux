@@ -102,11 +102,3 @@ nil_format_to_depth_stencil(enum pipe_format format)
    assert(fmt->support & NIL_FORMAT_SUPPORTS_DEPTH_STENCIL_BIT);
    return fmt->czt;
 }
-
-const struct nil_tic_format *
-nil_tic_format_for_pipe(enum pipe_format format)
-{
-   assert(format < PIPE_FORMAT_COUNT);
-   const struct nil_format_info *fmt = &nil_format_table[format];
-   return fmt->tic.comp_sizes == 0 ? NULL : &fmt->tic;
-}

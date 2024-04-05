@@ -477,6 +477,7 @@ add_surface_state_relocs(struct anv_cmd_buffer *cmd_buffer,
 static void
 transition_depth_buffer(struct anv_cmd_buffer *cmd_buffer,
                         const struct anv_image *image,
+                        uint32_t base_level, uint32_t level_count,
                         uint32_t base_layer, uint32_t layer_count,
                         VkImageLayout initial_layout,
                         VkImageLayout final_layout,
@@ -488,10 +489,8 @@ transition_depth_buffer(struct anv_cmd_buffer *cmd_buffer,
       return;
 
    /* If will_full_fast_clear is set, the caller promises to fast-clear the
-    * largest portion of the specified range as it can.  For depth images,
-    * that means the entire image because we don't support multi-LOD HiZ.
+    * largest portion of the specified range as it can.
     */
-   assert(image->planes[0].primary_surface.isl.levels == 1);
    if (will_full_fast_clear)
       return;
 
@@ -521,14 +520,29 @@ transition_depth_buffer(struct anv_cmd_buffer *cmd_buffer,
     */
    assert(final_state != ISL_AUX_STATE_PASS_THROUGH);
 
+   enum isl_aux_op hiz_op = ISL_AUX_OP_NONE;
    if (final_needs_depth && !initial_depth_valid) {
       assert(initial_hiz_valid);
-      anv_image_hiz_op(cmd_buffer, image, VK_IMAGE_ASPECT_DEPTH_BIT,
-                       0, base_layer, layer_count, ISL_AUX_OP_FULL_RESOLVE);
+      hiz_op = ISL_AUX_OP_FULL_RESOLVE;
    } else if (final_needs_hiz && !initial_hiz_valid) {
       assert(initial_depth_valid);
-      anv_image_hiz_op(cmd_buffer, image, VK_IMAGE_ASPECT_DEPTH_BIT,
-                       0, base_layer, layer_count, ISL_AUX_OP_AMBIGUATE);
+      hiz_op = ISL_AUX_OP_AMBIGUATE;
+   }
+
+   if (hiz_op != ISL_AUX_OP_NONE) {
+      for (uint32_t l = 0; l < level_count; l++) {
+         const uint32_t level = base_level + l;
+
+         uint32_t aux_layers =
+            anv_image_aux_layers(image, VK_IMAGE_ASPECT_DEPTH_BIT, level);
+         if (base_layer >= aux_layers)
+            break; /* We will only get fewer layers as level increases */
+         uint32_t level_layer_count =
+            MIN2(layer_count, aux_layers - base_layer);
+
+         anv_image_hiz_op(cmd_buffer, image, VK_IMAGE_ASPECT_DEPTH_BIT,
+                          l, base_layer, level_layer_count, hiz_op);
+      }
    }
 
    /* Additional tile cache flush for MTL:
@@ -4019,6 +4033,7 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
 
       if (range->aspectMask & VK_IMAGE_ASPECT_DEPTH_BIT) {
          transition_depth_buffer(cmd_buffer, image,
+                                 range->baseMipLevel, level_count,
                                  base_layer, layer_count,
                                  old_layout, new_layout,
                                  false /* will_full_fast_clear */);
@@ -5110,6 +5125,7 @@ void genX(CmdBeginRendering)(
             if (is_multiview) {
                u_foreach_bit(view, gfx->view_mask) {
                   transition_depth_buffer(cmd_buffer, d_iview->image,
+                                          d_iview->vk.base_mip_level, 1,
                                           d_iview->vk.base_array_layer + view,
                                           1 /* layer_count */,
                                           initial_depth_layout, depth_layout,
@@ -5117,6 +5133,7 @@ void genX(CmdBeginRendering)(
                }
             } else {
                transition_depth_buffer(cmd_buffer, d_iview->image,
+                                       d_iview->vk.base_mip_level, 1,
                                        d_iview->vk.base_array_layer,
                                        gfx->layer_count,
                                        initial_depth_layout, depth_layout,
@@ -5397,7 +5414,7 @@ void genX(CmdEndRendering)(
        * depth attachment first to get rid of any HiZ that we may not be
        * able to handle.
        */
-      transition_depth_buffer(cmd_buffer, src_iview->image,
+      transition_depth_buffer(cmd_buffer, src_iview->image, 0, 1,
                               src_iview->planes[0].isl.base_array_layer,
                               layers,
                               gfx->depth_att.layout,
@@ -5412,7 +5429,7 @@ void genX(CmdEndRendering)(
        * inefficient but, since HiZ resolves aren't destructive, going from
        * less HiZ to more is generally a no-op.
        */
-      transition_depth_buffer(cmd_buffer, src_iview->image,
+      transition_depth_buffer(cmd_buffer, src_iview->image, 0, 1,
                               src_iview->planes[0].isl.base_array_layer,
                               layers,
                               VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,

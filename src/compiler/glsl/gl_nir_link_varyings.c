@@ -1468,7 +1468,8 @@ static bool
 process_xfb_layout_qualifiers(void *mem_ctx, const struct gl_linked_shader *sh,
                               struct gl_shader_program *prog,
                               unsigned *num_xfb_decls,
-                              char ***varying_names)
+                              char ***varying_names,
+                              bool *compact_arrays)
 {
    bool has_xfb_qualifiers = false;
 
@@ -1483,6 +1484,7 @@ process_xfb_layout_qualifiers(void *mem_ctx, const struct gl_linked_shader *sh,
       }
    }
 
+   *compact_arrays = sh->Program->nir->options->compact_arrays;
    nir_foreach_shader_out_variable(var, sh->Program->nir) {
       /* From the ARB_enhanced_layouts spec:
        *
@@ -1505,6 +1507,7 @@ process_xfb_layout_qualifiers(void *mem_ctx, const struct gl_linked_shader *sh,
 
    if (*num_xfb_decls == 0)
       return has_xfb_qualifiers;
+
 
    unsigned i = 0;
    *varying_names = ralloc_array(mem_ctx, char *, *num_xfb_decls);
@@ -1547,7 +1550,7 @@ process_xfb_layout_qualifiers(void *mem_ctx, const struct gl_linked_shader *sh,
 static void
 xfb_decl_init(struct xfb_decl *xfb_decl, const struct gl_constants *consts,
               const struct gl_extensions *exts, const void *mem_ctx,
-              const char *input)
+              const char *input, bool compact_arrays)
 {
    /* We don't have to be pedantic about what is a valid GLSL variable name,
     * because any variable with an invalid name can't exist in the IR anyway.
@@ -1604,11 +1607,11 @@ xfb_decl_init(struct xfb_decl *xfb_decl, const struct gl_constants *consts,
     * class must behave specially to account for the fact that gl_ClipDistance
     * is converted from a float[8] to a vec4[2].
     */
-   if (consts->ShaderCompilerOptions[MESA_SHADER_VERTEX].LowerCombinedClipCullDistance &&
+   if (!compact_arrays &&
        strcmp(xfb_decl->var_name, "gl_ClipDistance") == 0) {
       xfb_decl->lowered_builtin_array_variable = clip_distance;
    }
-   if (consts->ShaderCompilerOptions[MESA_SHADER_VERTEX].LowerCombinedClipCullDistance &&
+   if (!compact_arrays &&
        strcmp(xfb_decl->var_name, "gl_CullDistance") == 0) {
       xfb_decl->lowered_builtin_array_variable = cull_distance;
    }
@@ -2081,10 +2084,10 @@ parse_xfb_decls(const struct gl_constants *consts,
                 const struct gl_extensions *exts,
                 struct gl_shader_program *prog,
                 const void *mem_ctx, unsigned num_names,
-                char **varying_names, struct xfb_decl *decls)
+                char **varying_names, struct xfb_decl *decls, bool compact_arrays)
 {
    for (unsigned i = 0; i < num_names; ++i) {
-      xfb_decl_init(&decls[i], consts, exts, mem_ctx, varying_names[i]);
+      xfb_decl_init(&decls[i], consts, exts, mem_ctx, varying_names[i], compact_arrays);
 
       if (!xfb_decl_is_varying(&decls[i]))
          continue;
@@ -4251,6 +4254,7 @@ link_varyings(struct gl_shader_program *prog, unsigned first,
    bool has_xfb_qualifiers = false;
    unsigned num_xfb_decls = 0;
    char **varying_names = NULL;
+   bool compact_arrays = false;
    struct xfb_decl *xfb_decls = NULL;
 
    if (last > MESA_SHADER_FRAGMENT)
@@ -4270,7 +4274,8 @@ link_varyings(struct gl_shader_program *prog, unsigned first,
          has_xfb_qualifiers =
             process_xfb_layout_qualifiers(mem_ctx, prog->_LinkedShaders[i],
                                           prog, &num_xfb_decls,
-                                          &varying_names);
+                                          &varying_names,
+                                          &compact_arrays);
          break;
       }
    }
@@ -4298,7 +4303,7 @@ link_varyings(struct gl_shader_program *prog, unsigned first,
       xfb_decls = rzalloc_array(mem_ctx, struct xfb_decl,
                                       num_xfb_decls);
       if (!parse_xfb_decls(consts, exts, prog, mem_ctx, num_xfb_decls,
-                           varying_names, xfb_decls))
+                           varying_names, xfb_decls, compact_arrays))
          return false;
    }
 

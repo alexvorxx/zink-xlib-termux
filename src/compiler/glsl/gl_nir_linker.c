@@ -1343,7 +1343,7 @@ prelink_lowering(const struct gl_constants *consts,
       opt_access_options.is_vulkan = false;
       NIR_PASS(_, nir, nir_opt_access, &opt_access_options);
 
-      if (consts->ShaderCompilerOptions[i].LowerCombinedClipCullDistance) {
+      if (!nir->options->compact_arrays) {
          NIR_PASS(_, nir, nir_lower_clip_cull_distance_to_vec4s);
       }
 

@@ -73,6 +73,34 @@ util_perfetto_trace_begin_flow(const char *fname, uint64_t id)
 }
 
 void
+util_perfetto_trace_full_begin(const char *fname, uint64_t track_id, uint64_t id, uint64_t timestamp)
+{
+   TRACE_EVENT_BEGIN(
+      UTIL_PERFETTO_CATEGORY_DEFAULT_STR, nullptr, perfetto::Track(track_id),
+      timestamp, perfetto::Flow::ProcessScoped(id),
+      [&](perfetto::EventContext ctx) { ctx.event()->set_name(fname); });
+}
+
+uint64_t
+util_perfetto_new_track(const char *name)
+{
+   uint64_t track_id = util_perfetto_next_id();
+   auto track = perfetto::Track(track_id);
+   auto desc = track.Serialize();
+   desc.set_name(name);
+   perfetto::TrackEvent::SetTrackDescriptor(track, desc);
+   return track_id;
+}
+
+void
+util_perfetto_trace_full_end(const char *name, uint64_t track_id, uint64_t timestamp)
+{
+   TRACE_EVENT_END(UTIL_PERFETTO_CATEGORY_DEFAULT_STR, perfetto::Track(track_id), timestamp);
+
+   util_perfetto_update_tracing_state();
+}
+
+void
 util_perfetto_counter_set(const char *name, double value)
 {
    TRACE_COUNTER(UTIL_PERFETTO_CATEGORY_DEFAULT_STR, name, value);

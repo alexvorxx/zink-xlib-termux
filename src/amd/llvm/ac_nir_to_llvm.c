@@ -2198,13 +2198,6 @@ static void get_image_coords(struct ac_nir_context *ctx, const nir_intrinsic_ins
                              enum glsl_sampler_dim dim, bool is_array)
 {
    LLVMValueRef src0 = get_src(ctx, instr->src[1]);
-   LLVMValueRef masks[] = {
-      ctx->ac.i32_0,
-      ctx->ac.i32_1,
-      LLVMConstInt(ctx->ac.i32, 2, false),
-      LLVMConstInt(ctx->ac.i32, 3, false),
-   };
-
    int count;
    ASSERTED bool add_frag_pos =
       (dim == GLSL_SAMPLER_DIM_SUBPASS || dim == GLSL_SAMPLER_DIM_SUBPASS_MS);
@@ -2215,7 +2208,7 @@ static void get_image_coords(struct ac_nir_context *ctx, const nir_intrinsic_ins
 
    if (count == 1 && !gfx9_1d) {
       if (instr->src[1].ssa->num_components)
-         args->coords[0] = LLVMBuildExtractElement(ctx->ac.builder, src0, masks[0], "");
+         args->coords[0] = ac_llvm_extract_elem(&ctx->ac, src0, 0);
       else
          args->coords[0] = src0;
    } else {

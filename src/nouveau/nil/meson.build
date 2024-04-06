@@ -20,11 +20,7 @@ dep_paste = dependency('paste',
   required : true,
 )
 
-libnil_files = files(
-  'nil.h',
-)
-
-nil_format_table = custom_target(
+_nil_format_table = custom_target(
   'nil_format_table',
   input : files('nil_format_table_gen.py', 'nil_formats.csv'),
   output : ['nil_format_table.h', 'nil_format_table.c'],
@@ -34,13 +30,16 @@ nil_format_table = custom_target(
   ],
 )
 
-libnil_deps = [
-  idep_mesautil,
-  idep_nouveau_ws,
-  idep_nvidia_headers,
-]
+_libnil_format_table = static_library(
+  'libnil_format_table',
+  _nil_format_table,
+  include_directories : [inc_include, inc_src],
+  dependencies : idep_nvidia_headers,
+  gnu_symbol_visibility: 'hidden',
+)
 
-_libnil_rs_files = files(
+# Thanks to cbindgen, this does need to include everything
+_libnil_files = files(
   'lib.rs', # lib.rs has to come first
   'extent.rs',
   'format.rs',
@@ -49,13 +48,13 @@ _libnil_rs_files = files(
   'tiling.rs',
 )
 
-_libnil_rs_deps = [
+_libnil_deps = [
   dep_paste,
   idep_bitview_rs,
   idep_nvidia_headers_rs,
 ]
 
-_libnil_rs_rust_args = [
+_libnil_rust_args = [
   '-Aclippy::identity_op',
   '-Aclippy::len_zero',
   '-Aclippy::manual_range_contains',
@@ -69,7 +68,7 @@ _libnil_rs_rust_args = [
 ]
 
 _nil_bindings_rs = rust.bindgen(
-  input: ['nil_bindings.h', nil_format_table],
+  input: ['nil_bindings.h', _nil_format_table],
   output: 'nil_bindings.rs',
   c_args: [
     pre_args,
@@ -92,7 +91,7 @@ _nil_bindings_rs = rust.bindgen(
     '--allowlist-var', 'nil_format_table',
     '--no-prepend-enum-name',
   ],
-  dependencies: _libnil_rs_deps,
+  dependencies: _libnil_deps,
 )
 
 _libnil_rs_bindings = static_library(
@@ -102,37 +101,28 @@ _libnil_rs_bindings = static_library(
   rust_abi: 'rust',
 )
 
-_libnil_rs_c_abi = static_library(
-  'libnil_rs_c_abi',
+_libnil = static_library(
+  'libnil',
   files('lib.rs'),
   gnu_symbol_visibility: 'hidden',
   rust_abi: 'c',
-  rust_args: _libnil_rs_rust_args,
-  link_with: [_libnil_rs_bindings],
-  dependencies: _libnil_rs_deps,
+  rust_args: _libnil_rust_args,
+  link_with: [_libnil_format_table, _libnil_rs_bindings],
+  dependencies: _libnil_deps,
 )
 
-_nil_rs_h = custom_target(
-  'nil_rs_h',
-  input : [files('cbindgen.toml'), _libnil_rs_files],
-  output : ['nil_rs.h'],
+_nil_h = custom_target(
+  'nil_h',
+  input : [files('cbindgen.toml'), _libnil_files],
+  output : ['nil.h'],
   command : [
     prog_cbindgen, '-q', '--config', '@INPUT0@', '--lang', 'c',
     '--output', '@OUTPUT0@', '--', '@INPUT1@'
   ],
 )
 
-_libnil = static_library(
-  'nil',
-  [libnil_files, nil_format_table, _nil_rs_h],
-  include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium],
-  dependencies : libnil_deps,
-  c_args : [no_override_init_args],
-  link_with : [_libnil_rs_c_abi],
-  gnu_symbol_visibility : 'hidden',
-)
-
 idep_nil = declare_dependency(
   include_directories : include_directories('.'),
   link_with : _libnil,
+  sources : [_nil_h],
 )

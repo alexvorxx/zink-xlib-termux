@@ -25,8 +25,6 @@ enum class pred_defined : uint8_t {
 MESA_DEFINE_CPP_ENUM_BITFIELD_OPERATORS(pred_defined);
 
 struct ssa_state {
-   bool checked_preds_for_uniform;
-   bool all_preds_uniform;
    unsigned loop_nest_depth;
 
    std::vector<pred_defined> any_pred_defined;
@@ -302,16 +300,7 @@ void
 lower_divergent_bool_phi(Program* program, ssa_state* state, Block* block,
                          aco_ptr<Instruction>& phi)
 {
-   if (!state->checked_preds_for_uniform) {
-      state->all_preds_uniform = !(block->kind & block_kind_merge) &&
-                                 block->linear_preds.size() == block->logical_preds.size();
-      for (unsigned pred : block->logical_preds)
-         state->all_preds_uniform =
-            state->all_preds_uniform && (program->blocks[pred].kind & block_kind_uniform);
-      state->checked_preds_for_uniform = true;
-   }
-
-   if (state->all_preds_uniform) {
+   if (block->linear_preds == block->logical_preds) {
       phi->opcode = aco_opcode::p_linear_phi;
       return;
    }
@@ -377,7 +366,6 @@ lower_phis(Program* program)
    ssa_state state;
 
    for (Block& block : program->blocks) {
-      state.checked_preds_for_uniform = false;
       for (aco_ptr<Instruction>& phi : block.instructions) {
          if (phi->opcode == aco_opcode::p_phi) {
             assert(program->wave_size == 64 ? phi->definitions[0].regClass() != s1

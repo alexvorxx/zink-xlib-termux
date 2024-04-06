@@ -2326,7 +2326,7 @@ static LLVMValueRef visit_image_load(struct ac_nir_context *ctx, const nir_intri
       args.opcode = ac_image_load;
       args.resource = ctx->abi->load_sampler_desc(ctx->abi, dynamic_index, AC_DESC_FMASK);
       get_image_coords(ctx, instr, dynamic_index, &args, GLSL_SAMPLER_DIM_2D, is_array);
-      args.dmask = 0xf;
+      args.dmask = 0x1;
       args.dim = is_array ? ac_image_2darray : ac_image_2d;
       args.attributes = AC_ATTR_INVARIANT_LOAD;
       args.a16 = ac_get_elem_bits(&ctx->ac, LLVMTypeOf(args.coords[0])) == 16;
@@ -2341,7 +2341,10 @@ static LLVMValueRef visit_image_load(struct ac_nir_context *ctx, const nir_intri
       args.dim = ac_get_image_dim(ctx->ac.gfx_level, dim, is_array);
       if (!level_zero)
          args.lod = get_src(ctx, instr->src[3]);
-      args.dmask = 15;
+      /* TODO: Fix in LLVM. LLVM doesn't reduce DMASK for D16 if optimization barriers are
+       * present and even if the vector is trimmed before the optimization barriers.
+       */
+      args.dmask = BITFIELD_MASK(instr->def.num_components);
       args.attributes = access & ACCESS_CAN_REORDER ? AC_ATTR_INVARIANT_LOAD : 0;
       args.d16 = instr->def.bit_size == 16;
       args.a16 = ac_get_elem_bits(&ctx->ac, LLVMTypeOf(args.coords[0])) == 16;
@@ -2365,6 +2368,9 @@ static LLVMValueRef visit_image_load(struct ac_nir_context *ctx, const nir_intri
       LLVMValueRef values[5] = {x, ctx->ac.i64_0, ctx->ac.i64_0, w, code};
       res = ac_build_gather_values(&ctx->ac, values, 4 + args.tfe);
    }
+
+   if (instr->def.num_components < 4)
+      res = ac_trim_vector(&ctx->ac, res, instr->def.num_components);
 
    return exit_waterfall(ctx, &wctx, res);
 }

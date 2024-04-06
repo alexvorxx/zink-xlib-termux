@@ -3221,6 +3221,10 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       result = get_src(ctx, instr->src[0]);
       ac_build_optimization_barrier(&ctx->ac, &result, false);
       break;
+   case nir_intrinsic_optimization_barrier_sgpr_amd:
+      result = get_src(ctx, instr->src[0]);
+      ac_build_optimization_barrier(&ctx->ac, &result, true);
+      break;
    case nir_intrinsic_shared_atomic:
    case nir_intrinsic_shared_atomic_swap: {
       LLVMValueRef ptr = get_memory_ptr(ctx, instr->src[0], 0);

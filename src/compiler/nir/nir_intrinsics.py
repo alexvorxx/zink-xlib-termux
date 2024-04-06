@@ -1453,8 +1453,11 @@ store("tf_r600", [])
 # This barrier is a hint that prevents moving the instruction that computes
 # src after this barrier. It's a constraint for the instruction scheduler.
 # Otherwise it's identical to a move instruction.
-# On AMD, it also forces the src value to be stored in a VGPR.
+# The VGPR version forces the src value to be stored in a VGPR, while the SGPR
+# version enforces an SGPR.
 intrinsic("optimization_barrier_vgpr_amd", dest_comp=0, src_comp=[0],
+          flags=[CAN_ELIMINATE])
+intrinsic("optimization_barrier_sgpr_amd", dest_comp=0, src_comp=[0],
           flags=[CAN_ELIMINATE])
 
 # These are no-op intrinsics used as a simple source and user of SSA defs for testing.

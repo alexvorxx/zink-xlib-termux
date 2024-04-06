@@ -697,7 +697,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
          .opt_tex_dest_types = nir_type_float,
          .opt_image_dest_types = nir_type_float,
          .opt_image_store_data = true,
-         .opt_image_srcs = !radv_use_llvm_for_stage(pdev, stage->stage),
+         .opt_image_srcs = true,
          .opt_srcs_options_count = separate_g16 ? 2 : 1,
          .opt_srcs_options = opt_srcs_options,
       };

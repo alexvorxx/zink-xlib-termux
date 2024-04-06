@@ -2220,11 +2220,9 @@ static void get_image_coords(struct ac_nir_context *ctx, const nir_intrinsic_ins
       }
 
       if (gfx9_1d) {
-         if (is_array) {
+         if (is_array)
             args->coords[2] = args->coords[1];
-            args->coords[1] = ctx->ac.i32_0;
-         } else
-            args->coords[1] = ctx->ac.i32_0;
+         args->coords[1] = LLVMConstInt(LLVMTypeOf(args->coords[0]), 0, 0);
          count++;
       }
       if (ctx->ac.gfx_level == GFX9 && dim == GLSL_SAMPLER_DIM_2D && !is_array) {
@@ -2264,7 +2262,8 @@ static void get_image_coords(struct ac_nir_context *ctx, const nir_intrinsic_ins
             }
          }
 
-         args->coords[count] = first_layer;
+         args->coords[count] = LLVMBuildTrunc(ctx->ac.builder, first_layer,
+                                              LLVMTypeOf(args->coords[0]), "");
          count++;
       }
 
@@ -2344,8 +2343,8 @@ static LLVMValueRef visit_image_load(struct ac_nir_context *ctx, const nir_intri
          args.lod = get_src(ctx, instr->src[3]);
       args.dmask = 15;
       args.attributes = access & ACCESS_CAN_REORDER ? AC_ATTR_INVARIANT_LOAD : 0;
-
       args.d16 = instr->def.bit_size == 16;
+      args.a16 = ac_get_elem_bits(&ctx->ac, LLVMTypeOf(args.coords[0])) == 16;
 
       res = ac_build_image_opcode(&ctx->ac, &args);
    }
@@ -2414,6 +2413,7 @@ static void visit_image_store(struct ac_nir_context *ctx, const nir_intrinsic_in
          args.lod = get_src(ctx, instr->src[4]);
       args.dmask = 15;
       args.d16 = ac_get_elem_bits(&ctx->ac, LLVMTypeOf(args.data[0])) == 16;
+      args.a16 = ac_get_elem_bits(&ctx->ac, LLVMTypeOf(args.coords[0])) == 16;
 
       ac_build_image_opcode(&ctx->ac, &args);
    }
@@ -2532,6 +2532,7 @@ static LLVMValueRef visit_image_atomic(struct ac_nir_context *ctx, const nir_int
       args.resource = ctx->abi->load_sampler_desc(ctx->abi, dynamic_index, AC_DESC_IMAGE);
       get_image_coords(ctx, instr, dynamic_index, &args, dim, is_array);
       args.dim = ac_get_image_dim(ctx->ac.gfx_level, dim, is_array);
+      args.a16 = ac_get_elem_bits(&ctx->ac, LLVMTypeOf(args.coords[0])) == 16;
       args.access = ac_get_mem_access_flags(instr);
 
       result = ac_build_image_opcode(&ctx->ac, &args);

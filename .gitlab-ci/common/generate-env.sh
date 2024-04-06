@@ -117,6 +117,8 @@ VARS=(
     WAFFLE_PLATFORM
     VK_CPU
     VK_DRIVER
+    # required by virglrender CI
+    VK_DRIVER_FILES
     VKD3D_PROTON_RESULTS
     VKD3D_CONFIG
     VKD3D_TEST_EXCLUDE

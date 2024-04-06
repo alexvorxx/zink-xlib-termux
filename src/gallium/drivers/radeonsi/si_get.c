@@ -180,7 +180,7 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return !(sscreen->debug_flags & DBG(NO_FAST_DISPLAY_LIST));
 
    case PIPE_CAP_SHADER_SAMPLES_IDENTICAL:
-      return sscreen->info.gfx_level < GFX11;
+      return sscreen->info.gfx_level < GFX11 && !(sscreen->debug_flags & DBG(NO_FMASK));
 
    case PIPE_CAP_GLSL_ZERO_INIT:
       return 2;

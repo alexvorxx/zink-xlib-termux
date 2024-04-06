@@ -294,7 +294,8 @@ static void si_lower_nir(struct si_screen *sscreen, struct nir_shader *nir)
 
    const struct nir_lower_image_options lower_image_options = {
       .lower_cube_size = true,
-      .lower_to_fragment_mask_load_amd = sscreen->info.gfx_level < GFX11,
+      .lower_to_fragment_mask_load_amd = sscreen->info.gfx_level < GFX11 &&
+                                         !(sscreen->debug_flags & DBG(NO_FMASK)),
    };
    NIR_PASS_V(nir, nir_lower_image, &lower_image_options);
 

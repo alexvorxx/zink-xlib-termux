@@ -41,7 +41,9 @@ struct zink_rt_attrib {
   };
   union {
      bool invalid;
+
      bool swapchain;
+
      bool needs_write;
   };
   bool resolve;

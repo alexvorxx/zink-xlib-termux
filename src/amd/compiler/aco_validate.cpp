@@ -195,7 +195,8 @@ validate_ir(Program* program)
             if (instr->opcode == aco_opcode::v_interp_p1ll_f16 ||
                 instr->opcode == aco_opcode::v_interp_p1lv_f16 ||
                 instr->opcode == aco_opcode::v_interp_p2_legacy_f16 ||
-                instr->opcode == aco_opcode::v_interp_p2_f16) {
+                instr->opcode == aco_opcode::v_interp_p2_f16 ||
+                instr->opcode == aco_opcode::v_interp_p2_hi_f16) {
                /* v_interp_*_fp16 are considered VINTRP by the compiler but
                 * they are emitted as VOP3.
                 */
@@ -1067,6 +1068,7 @@ validate_subdword_definition(amd_gfx_level gfx_level, const aco_ptr<Instruction>
       return true;
 
    switch (instr->opcode) {
+   case aco_opcode::v_interp_p2_hi_f16:
    case aco_opcode::v_fma_mixhi_f16:
    case aco_opcode::buffer_load_ubyte_d16_hi:
    case aco_opcode::buffer_load_sbyte_d16_hi:
@@ -1094,7 +1096,7 @@ get_subdword_bytes_written(Program* program, const aco_ptr<Instruction>& instr, 
 
    if (instr->isPseudo())
       return gfx_level >= GFX8 ? def.bytes() : def.size() * 4u;
-   if (instr->isVALU()) {
+   if (instr->isVALU() || instr->isVINTRP()) {
       assert(def.bytes() <= 2);
       if (instr->isSDWA())
          return instr->sdwa().dst_sel.size();

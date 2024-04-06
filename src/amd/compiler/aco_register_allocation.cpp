@@ -617,7 +617,7 @@ get_subdword_definition_info(Program* program, const aco_ptr<Instruction>& instr
          return std::make_pair(4, rc.size() * 4u);
    }
 
-   if (instr->isVALU() || instr->isVINTRP()) {
+   if (instr->isVALU()) {
       assert(rc.bytes() <= 2);
 
       if (can_use_SDWA(gfx_level, instr, false))
@@ -636,6 +636,7 @@ get_subdword_definition_info(Program* program, const aco_ptr<Instruction>& instr
    }
 
    switch (instr->opcode) {
+   case aco_opcode::v_interp_p2_f16: return std::make_pair(2u, 2u);
    /* D16 loads with _hi version */
    case aco_opcode::ds_read_u8_d16:
    case aco_opcode::ds_read_i8_d16:
@@ -715,6 +716,8 @@ add_subdword_definition(Program* program, aco_ptr<Instruction>& instr, PhysReg r
 
    if (reg.byte() == 0)
       return;
+   else if (instr->opcode == aco_opcode::v_interp_p2_f16)
+      instr->opcode = aco_opcode::v_interp_p2_hi_f16;
    else if (instr->opcode == aco_opcode::buffer_load_ubyte_d16)
       instr->opcode = aco_opcode::buffer_load_ubyte_d16_hi;
    else if (instr->opcode == aco_opcode::buffer_load_sbyte_d16)

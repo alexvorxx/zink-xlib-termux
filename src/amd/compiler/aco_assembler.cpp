@@ -369,7 +369,8 @@ emit_vintrp_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instructio
    if (instr->opcode == aco_opcode::v_interp_p1ll_f16 ||
        instr->opcode == aco_opcode::v_interp_p1lv_f16 ||
        instr->opcode == aco_opcode::v_interp_p2_legacy_f16 ||
-       instr->opcode == aco_opcode::v_interp_p2_f16) {
+       instr->opcode == aco_opcode::v_interp_p2_f16 ||
+       instr->opcode == aco_opcode::v_interp_p2_hi_f16) {
       if (ctx.gfx_level == GFX8 || ctx.gfx_level == GFX9) {
          encoding = (0b110100 << 26);
       } else if (ctx.gfx_level >= GFX10) {
@@ -378,7 +379,10 @@ emit_vintrp_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instructio
          unreachable("Unknown gfx_level.");
       }
 
+      unsigned opsel = instr->opcode == aco_opcode::v_interp_p2_hi_f16 ? 0x8 : 0;
+
       encoding |= opcode << 16;
+      encoding |= opsel << 11;
       encoding |= reg(ctx, instr->definitions[0], 8);
       out.push_back(encoding);
 
@@ -388,6 +392,7 @@ emit_vintrp_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instructio
       encoding |= interp.high_16bits << 8;
       encoding |= reg(ctx, instr->operands[0]) << 9;
       if (instr->opcode == aco_opcode::v_interp_p2_f16 ||
+          instr->opcode == aco_opcode::v_interp_p2_hi_f16 ||
           instr->opcode == aco_opcode::v_interp_p2_legacy_f16 ||
           instr->opcode == aco_opcode::v_interp_p1lv_f16) {
          encoding |= reg(ctx, instr->operands[2]) << 18;

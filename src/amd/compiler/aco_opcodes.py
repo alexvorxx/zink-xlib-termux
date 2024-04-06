@@ -1205,6 +1205,7 @@ VOP3 = {
    ("v_interp_p1lv_f16",       True, True, dst(1), src(1, M0, 1), op(gfx8=0x275, gfx10=0x343, gfx11=-1)),
    ("v_interp_p2_legacy_f16",  True, True, dst(1), src(1, M0, 1), op(gfx8=0x276, gfx10=-1)),
    ("v_interp_p2_f16",         True, True, dst(1), src(1, M0, 1), op(gfx9=0x277, gfx10=0x35a, gfx11=-1)),
+   ("v_interp_p2_hi_f16",      True, True, dst(1), src(1, M0, 1), op(gfx9=0x277, gfx10=0x35a, gfx11=-1)),
    ("v_ldexp_f32",             False, True, dst(1), src(1, 1), op(0x12b, gfx8=0x288, gfx10=0x362, gfx11=0x31c)),
    ("v_readlane_b32_e64",      False, False, dst(1), src(1, 1), op(gfx8=0x289, gfx10=0x360)),
    ("v_writelane_b32_e64",     False, False, dst(1), src(1, 1, 1), op(gfx8=0x28a, gfx10=0x361)),
@@ -1861,6 +1862,9 @@ for ver in Opcode._fields:
                 continue
             # v_mac_legacy_f32 is replaced with v_fmac_legacy_f32 on GFX10.3
             if ver == 'gfx10' and names == set(['v_mac_legacy_f32', 'v_fmac_legacy_f32']):
+                continue
+            # These are the same opcodes, but hi uses opsel
+            if names == set(['v_interp_p2_f16', 'v_interp_p2_hi_f16']):
                 continue
 
             print('%s and %s share the same opcode number (%s)' % (op_to_name[key], inst.name, ver))

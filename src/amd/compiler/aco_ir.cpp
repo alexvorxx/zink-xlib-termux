@@ -595,6 +595,7 @@ instr_is_16bit(amd_gfx_level gfx_level, aco_opcode op)
    case aco_opcode::v_fma_legacy_f16:
    case aco_opcode::v_div_fixup_legacy_f16: return false;
    case aco_opcode::v_interp_p2_f16:
+   case aco_opcode::v_interp_p2_hi_f16:
    case aco_opcode::v_fma_mixlo_f16:
    case aco_opcode::v_fma_mixhi_f16:
    /* VOP2 */

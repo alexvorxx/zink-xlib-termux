@@ -623,6 +623,7 @@ can_apply_sgprs(opt_ctx& ctx, aco_ptr<Instruction>& instr)
           instr->opcode != aco_opcode::v_interp_p1lv_f16 &&
           instr->opcode != aco_opcode::v_interp_p2_legacy_f16 &&
           instr->opcode != aco_opcode::v_interp_p2_f16 &&
+          instr->opcode != aco_opcode::v_interp_p2_hi_f16 &&
           instr->opcode != aco_opcode::v_interp_p10_f32_inreg &&
           instr->opcode != aco_opcode::v_interp_p2_f32_inreg &&
           instr->opcode != aco_opcode::v_interp_p10_f16_f32_inreg &&

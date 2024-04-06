@@ -7,5 +7,3 @@ dEQP-VK.rasterization.provoking_vertex.transform_feedback.per_pipeline.triangle_
 dEQP-VK.pipeline.shader_object_linked_spirv.vertex_input.max_attributes.query_max_attributes.binding_one_to_one.interleaved,Fail
 
 dEQP-VK.api.version_check.unavailable_entry_points,Fail
-
-dEQP-VK.spirv_assembly.instruction.terminate_invocation.terminate.no_null_pointer_load,Crash

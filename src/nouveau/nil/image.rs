@@ -11,16 +11,10 @@ use nvidia_headers::{cl9097, clc597};
 
 pub const MAX_LEVELS: usize = 16;
 
-pub type ImageUsageFlags = u16;
-pub const IMAGE_USAGE_RENDER_TARGET_BIT: ImageUsageFlags = 1 << 0;
-pub const IMAGE_USAGE_DEPTH_BIT: ImageUsageFlags = 1 << 1;
-pub const IMAGE_USAGE_STENCIL_BIT: ImageUsageFlags = 1 << 2;
-pub const IMAGE_USAGE_TEXTURE_BIT: ImageUsageFlags = 1 << 3;
-pub const IMAGE_USAGE_STORAGE_BIT: ImageUsageFlags = 1 << 4;
-pub const IMAGE_USAGE_CUBE_BIT: ImageUsageFlags = 1 << 5;
-pub const IMAGE_USAGE_2D_VIEW_BIT: ImageUsageFlags = 1 << 6;
-pub const IMAGE_USAGE_LINEAR_BIT: ImageUsageFlags = 1 << 7;
-pub const IMAGE_USAGE_SPARSE_RESIDENCY_BIT: ImageUsageFlags = 1 << 8;
+pub type ImageUsageFlags = u8;
+pub const IMAGE_USAGE_2D_VIEW_BIT: ImageUsageFlags = 1 << 0;
+pub const IMAGE_USAGE_LINEAR_BIT: ImageUsageFlags = 1 << 1;
+pub const IMAGE_USAGE_SPARSE_RESIDENCY_BIT: ImageUsageFlags = 1 << 2;
 
 #[derive(Clone, Debug, Copy, PartialEq, Default)]
 #[repr(u8)]

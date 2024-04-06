@@ -653,19 +653,6 @@ agx_translate_tex_dim(enum pipe_texture_target dim, unsigned samples)
    }
 }
 
-static enum agx_sample_count
-agx_translate_sample_count(unsigned samples)
-{
-   switch (samples) {
-   case 2:
-      return AGX_SAMPLE_COUNT_2;
-   case 4:
-      return AGX_SAMPLE_COUNT_4;
-   default:
-      unreachable("Invalid sample count");
-   }
-}
-
 static bool
 target_is_cube(enum pipe_texture_target target)
 {

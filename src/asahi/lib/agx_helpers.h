@@ -82,6 +82,19 @@ agx_translate_layout(enum ail_tiling tiling)
    unreachable("Invalid tiling");
 }
 
+static enum agx_sample_count
+agx_translate_sample_count(unsigned samples)
+{
+   switch (samples) {
+   case 2:
+      return AGX_SAMPLE_COUNT_2;
+   case 4:
+      return AGX_SAMPLE_COUNT_4;
+   default:
+      unreachable("Invalid sample count");
+   }
+}
+
 static inline enum agx_index_size
 agx_translate_index_size(uint8_t size_B)
 {

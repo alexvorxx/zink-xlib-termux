@@ -57,6 +57,8 @@
 #define XXH_INLINE_ALL
 #include "util/xxhash.h"
 
+struct pipe_context* zink_xlib_context;
+
 static void
 calc_descriptor_hash_sampler_state(struct zink_sampler_state *sampler_state)
 {
@@ -4199,8 +4201,6 @@ zink_emit_string_marker(struct pipe_context *pctx,
    screen->vk.CmdInsertDebugUtilsLabelEXT(batch->state->cmdbuf, &label);
    free(temp);
 }
-
-struct pipe_context* zink_xlib_context;
 
 struct pipe_context *
 zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)

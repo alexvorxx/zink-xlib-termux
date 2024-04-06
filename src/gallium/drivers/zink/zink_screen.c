@@ -55,6 +55,9 @@
 
 #include "driver_trace/tr_context.h"
 
+#include "frontend/sw_winsys.h"
+extern struct pipe_context* zink_xlib_context;
+
 #if DETECT_OS_WINDOWS
 #include <io.h>
 #define VK_LIBNAME "vulkan-1.dll"
@@ -1413,9 +1416,6 @@ init_queue(struct zink_screen *screen)
    else
       screen->thread_queue = screen->queue;
 }
-
-#include "frontend/sw_winsys.h"
-extern struct pipe_context* zink_xlib_context;
 
 static void
 zink_flush_frontbuffer(struct pipe_screen *pscreen,

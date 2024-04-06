@@ -1182,20 +1182,23 @@ llvmpipe_allocate_memory_fd(struct pipe_screen *pscreen,
                             int *fd,
                             bool dmabuf)
 {
-   struct llvmpipe_screen *screen = llvmpipe_screen(pscreen);
    struct llvmpipe_memory_fd_alloc *alloc = CALLOC_STRUCT(llvmpipe_memory_fd_alloc);
    if (!alloc)
       goto fail;
 
    alloc->mem_fd = -1;
    alloc->dmabuf_fd = -1;
+#ifdef HAVE_LIBDRM
    if (dmabuf) {
+      struct llvmpipe_screen *screen = llvmpipe_screen(pscreen);
       alloc->type = LLVMPIPE_MEMORY_FD_TYPE_DMA_BUF;
       alloc->data = llvmpipe_resource_alloc_udmabuf(screen, alloc, size);
 
       if (alloc->data)
          *fd = os_dupfd_cloexec(alloc->dmabuf_fd);
-   } else {
+   } else
+#endif
+   {
       alloc->type = LLVMPIPE_MEMORY_FD_TYPE_OPAQUE;
       uint64_t alignment;
       if (!os_get_page_size(&alignment))
@@ -1224,6 +1227,7 @@ llvmpipe_import_memory_fd(struct pipe_screen *screen,
    struct llvmpipe_memory_fd_alloc *alloc = CALLOC_STRUCT(llvmpipe_memory_fd_alloc);
    alloc->mem_fd = -1;
    alloc->dmabuf_fd = -1;
+#ifdef HAVE_LIBDRM
    if (dmabuf) {
       off_t mmap_size = lseek(fd, 0, SEEK_END);
       lseek(fd, 0, SEEK_SET);
@@ -1242,7 +1246,9 @@ llvmpipe_import_memory_fd(struct pipe_screen *screen,
       *size = mmap_size;
 
       return true;
-   } else {
+   } else
+#endif
+   {
       bool ret = os_import_memory_fd(fd, (void**)&alloc->data, size, driver_id);
 
       if (!ret) {
@@ -1265,13 +1271,16 @@ llvmpipe_free_memory_fd(struct pipe_screen *screen,
    struct llvmpipe_memory_fd_alloc *alloc = (struct llvmpipe_memory_fd_alloc*)pmem;
    if (alloc->type == LLVMPIPE_MEMORY_FD_TYPE_OPAQUE) {
       os_free_fd(alloc->data);
-   } else {
+   }
+#ifdef HAVE_LIBDRM
+   else {
       munmap(alloc->data, alloc->size);
       if (alloc->dmabuf_fd >= 0)
          close(alloc->dmabuf_fd);
       if (alloc->mem_fd >= 0)
          close(alloc->mem_fd);
    }
+#endif
 
    free(alloc);
 }

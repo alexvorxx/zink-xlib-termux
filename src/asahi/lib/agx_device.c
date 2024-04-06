@@ -264,6 +264,9 @@ agx_bo_import(struct agx_device *dev, int fd)
    }
    pthread_mutex_unlock(&dev->bo_map_lock);
 
+   if (dev->debug & AGX_DBG_TRACE)
+      agxdecode_track_alloc(dev->agxdecode, bo);
+
    return bo;
 
 error:

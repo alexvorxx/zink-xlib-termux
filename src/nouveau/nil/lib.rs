@@ -7,6 +7,7 @@ extern crate nvidia_headers;
 mod extent;
 mod format;
 mod image;
+mod tic;
 mod tiling;
 
 pub trait ILog2Ceil {

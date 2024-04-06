@@ -14,9 +14,14 @@ endif
 
 prog_cbindgen = find_program('cbindgen', required : false, native : true)
 
+dep_paste = dependency('paste',
+  version : '>= 1.0.14',
+  fallback : ['paste', 'dep_paste'],
+  required : true,
+)
+
 libnil_files = files(
   'nil.h',
-  'nil_image_tic.c',
 )
 
 nil_format_table = custom_target(
@@ -40,10 +45,13 @@ _libnil_rs_files = files(
   'extent.rs',
   'format.rs',
   'image.rs',
+  'tic.rs',
   'tiling.rs',
 )
 
 _libnil_rs_deps = [
+  dep_paste,
+  idep_bitview_rs,
   idep_nvidia_headers_rs,
 ]
 

@@ -55,12 +55,16 @@ impl Format {
         }
     }
 
-    fn info(&self) -> &nil_format_info {
+    pub(crate) fn info(&self) -> &nil_format_info {
         unsafe { &nil_format_table[self.p_format as usize] }
     }
 
-    pub fn is_integer(&self) -> bool {
+    pub(crate) fn is_integer(&self) -> bool {
         unsafe { util_format_is_pure_integer((*self).into()) }
+    }
+
+    pub(crate) fn is_srgb(&self) -> bool {
+        self.description().colorspace == UTIL_FORMAT_COLORSPACE_SRGB
     }
 
     pub fn supports_texturing(&self, dev: &nv_device_info) -> bool {
@@ -83,7 +87,7 @@ impl Format {
         self.supports_texturing(dev) && !self.is_integer()
     }
 
-    pub fn supports_buffer(&self, _dev: &nv_device_info) -> bool {
+    pub fn supports_buffer(&self) -> bool {
         self.info().support() & NIL_FORMAT_SUPPORTS_BUFFER_BIT != 0
     }
 
@@ -128,10 +132,10 @@ pub extern "C" fn nil_format_supports_filtering(
 
 #[no_mangle]
 pub extern "C" fn nil_format_supports_buffer(
-    dev: &nv_device_info,
+    _dev: &nv_device_info,
     p_format: pipe_format,
 ) -> bool {
-    Format::try_from(p_format).is_ok_and(|f| f.supports_buffer(dev))
+    Format::try_from(p_format).is_ok_and(|f| f.supports_buffer())
 }
 
 #[no_mangle]

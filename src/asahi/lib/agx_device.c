@@ -83,6 +83,7 @@ agx_bo_alloc(struct agx_device *dev, size_t size, size_t align,
    struct agx_bo *bo;
    unsigned handle = 0;
 
+   assert(size > 0);
    size = ALIGN_POT(size, dev->params.vm_page_size);
 
    /* executable implies low va */

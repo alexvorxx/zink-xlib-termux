@@ -358,9 +358,7 @@ agx_open_device(void *memctx, struct agx_device *dev)
 void
 agx_close_device(struct agx_device *dev)
 {
-   if (dev->helper)
-      agx_bo_unreference(dev->helper);
-
+   agx_bo_unreference(dev->helper);
    agx_bo_cache_evict_all(dev);
    util_sparse_array_finish(&dev->bo_map);
 

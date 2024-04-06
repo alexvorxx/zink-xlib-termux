@@ -105,13 +105,13 @@ nil_offset4d_px_to_el(struct nil_offset4d offset_px,
                       enum nil_sample_layout sample_layout);
 
 #define NIL_GOB_WIDTH_B 64
-#define NIL_GOB_HEIGHT(gob_height_8) ((gob_height_8) ? 8 : 4)
+#define NIL_GOB_HEIGHT(gob_height_is_8) ((gob_height_is_8) ? 8 : 4)
 #define NIL_GOB_DEPTH 1
 #define NIL_MAX_LEVELS 16
 
 struct nil_tiling {
    bool is_tiled:1;
-   bool gob_height_8:1; /**< GOB height is 4 or 8 */
+   bool gob_height_is_8:1; /**< GOB height is 4 or 8 */
    uint8_t x_log2:3; /**< log2 of the Y tile dimension in GOBs */
    uint8_t y_log2:3; /**< log2 of the Y tile dimension in GOBs */
    uint8_t z_log2:3; /**< log2 of the Z tile dimension in GOBs */

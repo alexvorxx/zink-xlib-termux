@@ -348,7 +348,7 @@ nv9097_nil_image_fill_tic(const struct nil_image *image,
    if (tiling->is_tiled) {
       TH_NV9097_SET_E(th, 2, MEMORY_LAYOUT, BLOCKLINEAR);
 
-      assert(tiling->gob_height_8);
+      assert(tiling->gob_height_is_8);
       assert(tiling->x_log2 == 0);
       TH_NV9097_SET_E(th, 2, GOBS_PER_BLOCK_WIDTH, ONE_GOB);
       TH_NV9097_SET_U(th, 2, GOBS_PER_BLOCK_HEIGHT, tiling->y_log2);
@@ -448,7 +448,7 @@ nvb097_nil_image_fill_tic(struct nv_device_info *dev,
       TH_NVB097_SET_U(th, BL, ADDRESS_BITS31TO9, (uint32_t)layer_address >> 9);
       TH_NVB097_SET_U(th, BL, ADDRESS_BITS47TO32, layer_address >> 32);
 
-      assert(tiling->gob_height_8);
+      assert(tiling->gob_height_is_8);
       TH_NVB097_SET_E(th, BL, GOBS_PER_BLOCK_WIDTH, ONE_GOB);
       TH_NVB097_SET_U(th, BL, GOBS_PER_BLOCK_HEIGHT, tiling->y_log2);
       TH_NVB097_SET_U(th, BL, GOBS_PER_BLOCK_DEPTH, tiling->z_log2);

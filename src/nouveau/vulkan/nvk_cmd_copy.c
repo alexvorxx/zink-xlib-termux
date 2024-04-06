@@ -237,7 +237,7 @@ nouveau_copy_rect(struct nvk_cmd_buffer *cmd, struct nouveau_copy *copy)
             .width = 0, /* Tiles are always 1 GOB wide */
             .height = copy->src.tiling.y_log2,
             .depth = copy->src.tiling.z_log2,
-            .gob_height = copy->src.tiling.gob_height_8 ?
+            .gob_height = copy->src.tiling.gob_height_is_8 ?
                           GOB_HEIGHT_GOB_HEIGHT_FERMI_8 :
                           GOB_HEIGHT_GOB_HEIGHT_TESLA_4,
          });
@@ -278,7 +278,7 @@ nouveau_copy_rect(struct nvk_cmd_buffer *cmd, struct nouveau_copy *copy)
             .width = 0, /* Tiles are always 1 GOB wide */
             .height = copy->dst.tiling.y_log2,
             .depth = copy->dst.tiling.z_log2,
-            .gob_height = copy->dst.tiling.gob_height_8 ?
+            .gob_height = copy->dst.tiling.gob_height_is_8 ?
                           GOB_HEIGHT_GOB_HEIGHT_FERMI_8 :
                           GOB_HEIGHT_GOB_HEIGHT_TESLA_4,
          });

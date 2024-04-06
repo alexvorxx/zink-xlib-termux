@@ -177,11 +177,11 @@ nil_offset4d_px_to_B(struct nil_offset4d offset_px,
 
 static struct nil_extent4d
 nil_extent4d_B_to_GOB(struct nil_extent4d extent_B,
-                      bool gob_height_8)
+                      bool gob_height_is_8)
 {
    const struct nil_extent4d gob_extent_B = {
       .w = NIL_GOB_WIDTH_B,
-      .h = NIL_GOB_HEIGHT(gob_height_8),
+      .h = NIL_GOB_HEIGHT(gob_height_is_8),
       .d = NIL_GOB_DEPTH,
       .a = 1,
    };
@@ -195,7 +195,7 @@ nil_tiling_extent_B(struct nil_tiling tiling)
    if (tiling.is_tiled) {
       return (struct nil_extent4d) {
          .w = NIL_GOB_WIDTH_B << tiling.x_log2,
-         .h = NIL_GOB_HEIGHT(tiling.gob_height_8) << tiling.y_log2,
+         .h = NIL_GOB_HEIGHT(tiling.gob_height_is_8) << tiling.y_log2,
          .d = NIL_GOB_DEPTH << tiling.z_log2,
          .a = 1,
       };
@@ -224,7 +224,7 @@ nil_tiling_clamp(struct nil_tiling tiling, struct nil_extent4d extent_B)
       tiling.x_log2 = 0;
 
    const struct nil_extent4d extent_GOB =
-      nil_extent4d_B_to_GOB(extent_B, tiling.gob_height_8);
+      nil_extent4d_B_to_GOB(extent_B, tiling.gob_height_is_8);
 
    tiling.y_log2 = MIN2(tiling.y_log2, util_logbase2_ceil(extent_GOB.h));
    tiling.z_log2 = MIN2(tiling.z_log2, util_logbase2_ceil(extent_GOB.d));
@@ -263,7 +263,7 @@ choose_tiling(struct nil_extent4d extent_px,
 
    struct nil_tiling tiling = {
       .is_tiled = true,
-      .gob_height_8 = true,
+      .gob_height_is_8 = true,
       .y_log2 = 5,
       .z_log2 = 5,
    };
@@ -343,13 +343,13 @@ sparse_tiling(enum pipe_format format, enum nil_image_dim dim)
    assert(util_is_power_of_two_or_zero(sparse_block_extent_B.h));
    assert(util_is_power_of_two_or_zero(sparse_block_extent_B.d));
 
-   const bool gob_height_8 = true;
+   const bool gob_height_is_8 = true;
    const struct nil_extent4d sparse_block_extent_GOB =
-      nil_extent4d_B_to_GOB(sparse_block_extent_B, gob_height_8);
+      nil_extent4d_B_to_GOB(sparse_block_extent_B, gob_height_is_8);
 
    return (struct nil_tiling) {
       .is_tiled = true,
-      .gob_height_8 = gob_height_8,
+      .gob_height_is_8 = gob_height_is_8,
       .x_log2 = util_logbase2(sparse_block_extent_GOB.w),
       .y_log2 = util_logbase2(sparse_block_extent_GOB.h),
       .z_log2 = util_logbase2(sparse_block_extent_GOB.d),

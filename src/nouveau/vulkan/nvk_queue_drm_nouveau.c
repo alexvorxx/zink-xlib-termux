@@ -164,10 +164,10 @@ push_add_image_plane_bind(struct push_builder *pb,
    const uint32_t tile_size_B = nil_tiling_size_B(plane_tiling);
 
    const struct nil_extent4d bind_extent_px = {
-      .w = bind->extent.width,
-      .h = bind->extent.height,
-      .d = bind->extent.depth,
-      .a = 1,
+      .width = bind->extent.width,
+      .height = bind->extent.height,
+      .depth = bind->extent.depth,
+      .array_len = 1,
    };
    const struct nil_offset4d bind_offset_px = {
       .x = bind->offset.x,
@@ -350,7 +350,7 @@ push_add_image_plane_mip_tail_bind(struct push_builder *pb,
    const uint64_t mip_tail_stride_B = plane->nil.array_stride_B;
 
    const uint64_t whole_mip_tail_size_B =
-      mip_tail_size_B * plane->nil.extent_px.a;
+      mip_tail_size_B * plane->nil.extent_px.array_len;
 
    uint64_t plane_offset_B, mem_offset_B, bind_size_B;
    if (!next_opaque_bind_plane(bind, whole_mip_tail_size_B, plane->nil.align_B,

@@ -467,15 +467,15 @@ nvk_fill_sparse_image_fmt_props(VkImageAspectFlags aspects,
    struct nil_extent4d sparse_block_extent_px =
       nil_sparse_block_extent_px(format, dim, sample_layout);
 
-   assert(sparse_block_extent_px.a == 1);
+   assert(sparse_block_extent_px.array_len == 1);
 
    VkSparseImageFormatProperties sparse_format_props = {
       .aspectMask = aspects,
       .flags = VK_SPARSE_IMAGE_FORMAT_SINGLE_MIPTAIL_BIT,
       .imageGranularity = {
-         .width = sparse_block_extent_px.w,
-         .height = sparse_block_extent_px.h,
-         .depth = sparse_block_extent_px.d,
+         .width = sparse_block_extent_px.width,
+         .height = sparse_block_extent_px.height,
+         .depth = sparse_block_extent_px.depth,
       },
    };
 
@@ -598,10 +598,10 @@ nvk_image_init(struct nvk_device *dev,
          .dim = vk_image_type_to_nil_dim(pCreateInfo->imageType),
          .format = vk_format_to_pipe_format(format),
          .extent_px = {
-            .w = pCreateInfo->extent.width / width_scale,
-            .h = pCreateInfo->extent.height / height_scale,
-            .d = pCreateInfo->extent.depth,
-            .a = pCreateInfo->arrayLayers,
+            .width = pCreateInfo->extent.width / width_scale,
+            .height = pCreateInfo->extent.height / height_scale,
+            .depth = pCreateInfo->extent.depth,
+            .array_len = pCreateInfo->arrayLayers,
          },
          .levels = pCreateInfo->mipLevels,
          .samples = pCreateInfo->samples,
@@ -618,10 +618,10 @@ nvk_image_init(struct nvk_device *dev,
          .dim = vk_image_type_to_nil_dim(pCreateInfo->imageType),
          .format = PIPE_FORMAT_R32_UINT,
          .extent_px = {
-            .w = pCreateInfo->extent.width,
-            .h = pCreateInfo->extent.height,
-            .d = pCreateInfo->extent.depth,
-            .a = pCreateInfo->arrayLayers,
+            .width = pCreateInfo->extent.width,
+            .height = pCreateInfo->extent.height,
+            .depth = pCreateInfo->extent.depth,
+            .array_len = pCreateInfo->arrayLayers,
          },
          .levels = pCreateInfo->mipLevels,
          .samples = pCreateInfo->samples,
@@ -887,7 +887,7 @@ nvk_fill_sparse_image_memory_reqs(const struct nil_image *nil,
       sparse_memory_reqs.imageMipTailOffset = 0;
    } else if (nil->mip_tail_first_lod < nil->num_levels) {
       sparse_memory_reqs.imageMipTailSize =
-         nil_image_mip_tail_size_B(nil) * nil->extent_px.a;
+         nil_image_mip_tail_size_B(nil) * nil->extent_px.array_len;
       sparse_memory_reqs.imageMipTailOffset = NVK_MIP_TAIL_START_OFFSET;
    } else {
       sparse_memory_reqs.imageMipTailSize = 0;

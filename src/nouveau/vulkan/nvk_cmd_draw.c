@@ -707,7 +707,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
             const uint32_t row_stride_el =
                level->row_stride_B / util_format_get_blocksize(p_format);
             P_NV9097_SET_COLOR_TARGET_WIDTH(p, i, row_stride_el);
-            P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.h);
+            P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.height);
             const uint8_t ct_format = nil_format_to_color_target(p_format);
             P_NV9097_SET_COLOR_TARGET_FORMAT(p, i, ct_format);
 
@@ -740,7 +740,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
              * takes row pitch
              */
             P_NV9097_SET_COLOR_TARGET_WIDTH(p, i, pitch);
-            P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.h);
+            P_NV9097_SET_COLOR_TARGET_HEIGHT(p, i, level_extent_sa.height);
 
             const uint8_t ct_format = nil_format_to_color_target(p_format);
             P_NV9097_SET_COLOR_TARGET_FORMAT(p, i, ct_format);
@@ -845,7 +845,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
 
       P_MTHD(p, NV9097, SET_ZT_SIZE_A);
       P_NV9097_SET_ZT_SIZE_A(p, row_stride_el);
-      P_NV9097_SET_ZT_SIZE_B(p, level_extent_sa.h);
+      P_NV9097_SET_ZT_SIZE_B(p, level_extent_sa.height);
       P_NV9097_SET_ZT_SIZE_C(p, {
          .third_dimension  = base_array_layer + layer_count,
          .control          = CONTROL_THIRD_DIMENSION_DEFINES_ARRAY_SIZE,

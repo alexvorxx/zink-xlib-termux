@@ -117,8 +117,8 @@ write_storage_image_view_desc(struct nvk_descriptor_set *set,
 
       const struct nil_extent4d px_extent_sa =
          nil_px_extent_sa(view->planes[plane].sample_layout);
-      desc.sw_log2 = util_logbase2(px_extent_sa.w);
-      desc.sh_log2 = util_logbase2(px_extent_sa.h);
+      desc.sw_log2 = util_logbase2(px_extent_sa.width);
+      desc.sh_log2 = util_logbase2(px_extent_sa.height);
    }
 
    write_desc(set, binding, elem, &desc, sizeof(desc));

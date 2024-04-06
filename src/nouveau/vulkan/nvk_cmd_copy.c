@@ -197,7 +197,8 @@ nouveau_copy_rect(struct nvk_cmd_buffer *cmd, struct nouveau_copy *copy)
    }
 
    assert(copy->extent_el.depth == 1 || copy->extent_el.array_len == 1);
-   for (unsigned z = 0; z < MAX2(copy->extent_el.d, copy->extent_el.a); z++) {
+   uint32_t layers = MAX2(copy->extent_el.depth, copy->extent_el.array_len);
+   for (unsigned z = 0; z < layers; z++) {
       VkDeviceSize src_addr = copy->src.base_addr;
       VkDeviceSize dst_addr = copy->dst.base_addr;
 
@@ -454,7 +455,7 @@ nvk_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer,
       }
 
       nouveau_copy_rect(cmd, &copy);
-      if (copy2.extent_el.w > 0)
+      if (copy2.extent_el.width > 0)
          nouveau_copy_rect(cmd, &copy2);
 
       vk_foreach_struct_const(ext, region->pNext) {
@@ -561,7 +562,7 @@ nvk_CmdCopyImageToBuffer2(VkCommandBuffer commandBuffer,
       }
 
       nouveau_copy_rect(cmd, &copy);
-      if (copy2.extent_el.w > 0)
+      if (copy2.extent_el.width > 0)
          nouveau_copy_rect(cmd, &copy2);
 
       vk_foreach_struct_const(ext, region->pNext) {

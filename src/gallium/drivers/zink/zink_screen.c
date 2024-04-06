@@ -56,7 +56,6 @@
 #include "driver_trace/tr_context.h"
 
 #include "frontend/sw_winsys.h"
-
 extern struct pipe_context* zink_xlib_context;
 
 #if DETECT_OS_WINDOWS
@@ -1482,7 +1481,6 @@ zink_flush_frontbuffer(struct pipe_screen *pscreen,
       }
       winsys->displaytarget_unmap(winsys, res->dt);
    }
-
    winsys->displaytarget_display(winsys, res->dt, winsys_drawable_handle, sub_box);
 }
 
@@ -1809,9 +1807,9 @@ zink_screen_init_semaphore(struct zink_screen *screen)
    } else {
       mesa_loge("ZINK: vkCreateSemaphore failed");
    }
-   
+
    screen->info.have_KHR_timeline_semaphore = false;
-   
+
    return false;
 }
 
@@ -2454,7 +2452,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
           screen->info.mem_props.memoryHeaps[screen->info.mem_props.memoryTypes[vram].heapIndex].size * 0.9)
          screen->resizable_bar = true;
    }
-   
+
    if (!screen->info.have_KHR_imageless_framebuffer) {
       simple_mtx_init(&screen->framebuffer_mtx, mtx_plain);
       _mesa_hash_table_init(&screen->framebuffer_cache, screen, hash_framebuffer_state, equals_framebuffer_state);

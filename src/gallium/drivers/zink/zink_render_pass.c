@@ -353,6 +353,7 @@ zink_create_render_pass(struct zink_screen *screen,
    //rp->render_pass = create_render_pass2(screen, state, pstate);
    rp->render_pass = screen->vk_version >= VK_MAKE_VERSION(1,2,0) ?
                      create_render_pass2(screen, state, pstate) : create_render_pass(screen, state, pstate);
+
    if (!rp->render_pass)
       goto fail;
    memcpy(&rp->state, state, sizeof(struct zink_render_pass_state));
@@ -591,7 +592,7 @@ setup_framebuffer(struct zink_context *ctx)
    //zink_init_framebuffer(screen, ctx->framebuffer, rp);
    
    ctx->init_framebuffer(screen, ctx->framebuffer, rp);
-   
+
    ctx->fb_changed = false;
    ctx->gfx_pipeline_state.render_pass = rp;
 }
@@ -694,8 +695,9 @@ begin_render_pass(struct zink_context *ctx)
    infos.pAttachments = att;
    if (!prep_fb_attachments(ctx, att))
       return 0;
-  
+
    if (zink_screen(ctx->base.screen)->info.have_KHR_imageless_framebuffer) {  
+
 #ifndef NDEBUG
    const unsigned cresolve_offset = ctx->fb_state.nr_cbufs + !!ctx->fb_state.zsbuf;
    for (int i = 0; i < ctx->fb_state.nr_cbufs; i++) {
@@ -730,7 +732,7 @@ begin_render_pass(struct zink_context *ctx)
 #endif
    rpbi.pNext = &infos;
    }
-   
+
    VKCTX(CmdBeginRenderPass)(batch->state->cmdbuf, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
    batch->in_rp = true;
    ctx->new_swapchain = false;

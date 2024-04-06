@@ -324,7 +324,9 @@ zink_create_sampler_state(struct pipe_context *pctx,
    VkSamplerCreateInfo sci = {0};
    VkSamplerCustomBorderColorCreateInfoEXT cbci = {0};
    sci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+
    //sci.unnormalizedCoordinates = !state->normalized_coords;
+
    sci.magFilter = zink_filter(state->mag_img_filter);
    if (sci.unnormalizedCoordinates)
       sci.minFilter = sci.magFilter;
@@ -2440,11 +2442,14 @@ reapply_color_write(struct zink_context *ctx)
 static void
 stall(struct zink_context *ctx)
 {
-   //struct zink_screen *screen = zink_screen(ctx->base.screen);
+   struct zink_screen *screen = zink_screen(ctx->base.screen);
    sync_flush(ctx, zink_batch_state(ctx->last_fence));
    //zink_screen_timeline_wait(screen, ctx->last_fence->batch_id, PIPE_TIMEOUT_INFINITE);
-   zink_vkfence_wait(zink_screen(ctx->base.screen), ctx->last_fence, PIPE_TIMEOUT_INFINITE);
-   
+   if (ctx->have_timelines)
+      zink_screen_timeline_wait(screen, ctx->last_fence->batch_id, PIPE_TIMEOUT_INFINITE);
+   else   
+      zink_vkfence_wait(screen, ctx->last_fence, PIPE_TIMEOUT_INFINITE);
+
    zink_batch_reset_all(ctx);
 }
 
@@ -3187,7 +3192,9 @@ zink_flush(struct pipe_context *pctx,
          * in some cases in order to correctly draw the first frame, though it's
          * unknown at this time why this is the case
          */
-         if (!ctx->first_frame_done)
+         if (screen->info.have_KHR_timeline_semaphore)
+            zink_screen_timeline_wait(screen, fence->batch_id, PIPE_TIMEOUT_INFINITE);
+         else
             zink_vkfence_wait(screen, fence, PIPE_TIMEOUT_INFINITE);
 		
          ctx->first_frame_done = true;
@@ -3218,6 +3225,7 @@ zink_wait_on_batch(struct zink_context *ctx, uint32_t batch_id)
       batch_id = bs->fence.batch_id;
    }
    assert(batch_id);
+
    //if (!zink_screen_timeline_wait(zink_screen(ctx->base.screen), batch_id, UINT64_MAX))
       //check_device_lost(ctx);
    if (ctx->have_timelines) {
@@ -3820,6 +3828,7 @@ zink_rebind_framebuffer(struct zink_context *ctx, struct zink_resource *res)
       return;
 
    zink_batch_no_rp(ctx);
+
    /*struct zink_framebuffer *fb = zink_get_framebuffer(ctx);
    ctx->fb_changed |= ctx->framebuffer != fb;
    ctx->framebuffer = fb;*/
@@ -4203,7 +4212,7 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
       goto fail;
 
    ctx->have_timelines = screen->info.have_KHR_timeline_semaphore;
-   
+
    ctx->pipeline_changed[0] = ctx->pipeline_changed[1] = true;
    ctx->gfx_pipeline_state.dirty = true;
    ctx->gfx_pipeline_state.dyn_state2.vertices_per_patch = 1;
@@ -4218,7 +4227,7 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
 
    ctx->base.screen = pscreen;
    ctx->base.priv = priv;
-   
+
    if (screen->info.have_KHR_imageless_framebuffer) {
       ctx->get_framebuffer = zink_get_framebuffer_imageless;
       ctx->init_framebuffer = zink_init_framebuffer_imageless;
@@ -4396,7 +4405,7 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
          util_dynarray_init(&ctx->di.bindless[i].resident, NULL);
       }
    }
-   
+ 
    ctx->have_timelines = screen->info.have_KHR_timeline_semaphore;
    simple_mtx_init(&ctx->batch_mtx, mtx_plain);
 

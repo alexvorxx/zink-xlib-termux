@@ -3,7 +3,7 @@
 
 ======================================================
 
-Build dependencies (Termux)
+Build deps
 ---------------
 
 Taken from (https://github.com/termux/termux-packages/issues/10103#issuecomment-1333002785).
@@ -23,7 +23,7 @@ Build Mesa Zink using this repository (https://github.com/alexvorxx/zink-xlib-te
 
 Go to the folder with Mesa code and run the commands:
 
-  $ LDFLAGS='-l:libandroid-shmem.a -llog' meson . build -Dgallium-va=false -Dgallium-drivers=virgl,zink,swrast -Ddri3=false -Dvulkan-drivers= -Dglx=xlib -Dplatforms=x11 -Dllvm=disabled -Dbuildtype=release
+  $ LDFLAGS='-l:libandroid-shmem.a -llog' meson . build -Dgallium-va=disabled -Dgallium-drivers=virgl,zink,swrast -Ddri3=disabled -Dvulkan-drivers= -Dglx=xlib -Dplatforms=x11 -Dllvm=disabled -Dbuildtype=release
   
   $ ninja -C build install
 
@@ -50,6 +50,7 @@ Source
 ------
 
 This repository lives at https://gitlab.freedesktop.org/mesa/mesa.
+
 Other repositories are likely forks, and code found there is not supported.  
 
 Support

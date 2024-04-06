@@ -1532,6 +1532,21 @@ agx_get_name(struct pipe_screen *pscreen)
    return dev->name;
 }
 
+static void
+agx_query_memory_info(struct pipe_screen *pscreen,
+                      struct pipe_memory_info *info)
+{
+   uint64_t mem_B = 0;
+   os_get_total_physical_memory(&mem_B);
+
+   uint64_t mem_kB = mem_B / 1024;
+
+   *info = (struct pipe_memory_info){
+      .total_device_memory = mem_kB,
+      .avail_device_memory = mem_kB,
+   };
+}
+
 static int
 agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 {
@@ -1566,6 +1581,7 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_QUERY_TIMESTAMP:
    case PIPE_CAP_QUERY_TIME_ELAPSED:
    case PIPE_CAP_QUERY_SO_OVERFLOW:
+   case PIPE_CAP_QUERY_MEMORY_INFO:
    case PIPE_CAP_PRIMITIVE_RESTART:
    case PIPE_CAP_PRIMITIVE_RESTART_FIXED_INDEX:
    case PIPE_CAP_ANISOTROPIC_FILTER:
@@ -2233,6 +2249,7 @@ agx_screen_create(int fd, struct renderonly *ro,
    screen->get_paramf = agx_get_paramf;
    screen->is_format_supported = agx_is_format_supported;
    screen->query_dmabuf_modifiers = agx_query_dmabuf_modifiers;
+   screen->query_memory_info = agx_query_memory_info;
    screen->is_dmabuf_modifier_supported = agx_is_dmabuf_modifier_supported;
    screen->context_create = agx_create_context;
    screen->resource_from_handle = agx_resource_from_handle;

@@ -8,7 +8,6 @@
 #include <stdbool.h>
 #include "asahi/compiler/agx_compile.h"
 #include "asahi/layout/layout.h"
-#include "pipe/p_defines.h"
 #include "agx_pack.h"
 #include "agx_ppp.h"
 

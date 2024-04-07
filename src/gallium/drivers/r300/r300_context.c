@@ -25,6 +25,7 @@
 #include "util/u_memory.h"
 #include "util/u_sampler.h"
 #include "util/u_upload_mgr.h"
+#include "util/u_debug_cb.h"
 #include "util/os_time.h"
 #include "vl/vl_decoder.h"
 #include "vl/vl_video_buffer.h"
@@ -367,18 +368,6 @@ static void r300_init_states(struct pipe_context *pipe)
     }
 }
 
-static void
-r300_set_debug_callback(struct pipe_context *context,
-                        const struct util_debug_callback *cb)
-{
-    struct r300_context *r300 = r300_context(context);
-
-    if (cb)
-        r300->debug = *cb;
-    else
-        memset(&r300->debug, 0, sizeof(r300->debug));
-}
-
 struct pipe_context* r300_create_context(struct pipe_screen* screen,
                                          void *priv, unsigned flags)
 {
@@ -394,7 +383,7 @@ struct pipe_context* r300_create_context(struct pipe_screen* screen,
 
     r300->context.screen = screen;
     r300->context.priv = priv;
-    r300->context.set_debug_callback = r300_set_debug_callback;
+    r300->context.set_debug_callback = u_default_set_debug_callback;
 
     r300->context.destroy = r300_destroy_context;
 
@@ -511,7 +500,7 @@ struct pipe_context* r300_create_context(struct pipe_screen* screen,
 #endif
         fprintf(stderr,
                 "r300: DRM version: %d.%d.%d, Name: %s, ID: 0x%04x, GB: %d, Z: %d\n"
-                "r300: GART size: %"PRIu64" MB, VRAM size: %"PRIu64" MB\n"
+                "r300: GART size: %u MB, VRAM size: %u MB\n"
                 "r300: AA compression RAM: %s, Z compression RAM: %s, HiZ RAM: %s\n",
                 r300->screen->info.drm_major,
                 r300->screen->info.drm_minor,
@@ -520,8 +509,8 @@ struct pipe_context* r300_create_context(struct pipe_screen* screen,
                 r300->screen->info.pci_id,
                 r300->screen->info.r300_num_gb_pipes,
                 r300->screen->info.r300_num_z_pipes,
-                r300->screen->info.gart_size >> 20,
-                r300->screen->info.vram_size >> 20,
+                r300->screen->info.gart_size_kb >> 10,
+                r300->screen->info.vram_size_kb >> 10,
                 "YES", /* XXX really? */
                 r300->screen->caps.zmask_ram ? "YES" : "NO",
                 r300->screen->caps.hiz_ram ? "YES" : "NO");

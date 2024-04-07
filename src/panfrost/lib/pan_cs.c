@@ -74,6 +74,7 @@ mali_sampling_mode(const struct pan_image_view *view)
         return MALI_MSAA_SINGLE;
 }
 
+#if PAN_ARCH >= 5
 static inline enum mali_sample_pattern
 pan_sample_pattern(unsigned samples)
 {
@@ -85,10 +86,25 @@ pan_sample_pattern(unsigned samples)
         default: unreachable("Unsupported sample count");
         }
 }
+#endif
 
 int
-GENX(pan_select_crc_rt)(const struct pan_fb_info *fb)
+GENX(pan_select_crc_rt)(const struct pan_fb_info *fb, unsigned tile_size)
 {
+        /* Disable CRC when the tile size is not 16x16. In the hardware, CRC
+         * tiles are the same size as the tiles of the framebuffer. However,
+         * our code only handles 16x16 tiles. Therefore under the current
+         * implementation, we must disable CRC when 16x16 tiles are not used.
+         *
+         * This may hurt performance. However, smaller tile sizes are rare, and
+         * CRCs are more expensive at smaller tile sizes, reducing the benefit.
+         * Restricting CRC to 16x16 should work in practice.
+         */
+        if (tile_size != 16 * 16) {
+                assert(tile_size < 16 * 16);
+                return -1;
+        }
+
 #if PAN_ARCH <= 6
         if (fb->rt_count == 1 && fb->rts[0].view && !fb->rts[0].discard &&
             fb->rts[0].view->image->layout.crc_mode != PAN_IMAGE_CRC_NONE)
@@ -305,34 +321,37 @@ pan_bytes_per_pixel_tib(enum pipe_format format)
 }
 
 static unsigned
-pan_internal_cbuf_size(const struct pan_fb_info *fb,
-                       unsigned *tile_size)
+pan_cbuf_bytes_per_pixel(const struct pan_fb_info *fb)
 {
-        unsigned total_size = 0;
+        unsigned sum = 0;
 
-        *tile_size = 16 * 16;
         for (int cb = 0; cb < fb->rt_count; ++cb) {
                 const struct pan_image_view *rt = fb->rts[cb].view;
 
                 if (!rt)
                         continue;
 
-                total_size += pan_bytes_per_pixel_tib(rt->format) *
-                              rt->nr_samples * (*tile_size);
+                sum += pan_bytes_per_pixel_tib(rt->format) * rt->nr_samples;
         }
 
-        /* We have a 4KB budget, let's reduce the tile size until it fits. */
-        while (total_size > 4096) {
-                total_size >>= 1;
-                *tile_size >>= 1;
-        }
+        return sum;
+}
 
-        /* Align on 1k. */
-        total_size = ALIGN_POT(total_size, 1024);
+/*
+ * Select the largest tile size that fits within the tilebuffer budget.
+ * Formally, maximize (pixels per tile) such that it is a power of two and
+ *
+ *      (bytes per pixel) (pixels per tile) <= (max bytes per tile)
+ *
+ * A bit of algebra gives the following formula.
+ */
+static unsigned
+pan_select_max_tile_size(unsigned tile_buffer_bytes, unsigned bytes_per_pixel)
+{
+        assert(util_is_power_of_two_nonzero(tile_buffer_bytes));
+        assert(tile_buffer_bytes >= 1024);
 
-        /* Minimum tile size is 4x4. */
-        assert(*tile_size >= 4 * 4);
-        return total_size;
+        return tile_buffer_bytes >> util_logbase2_ceil(bytes_per_pixel);
 }
 
 static enum mali_color_format
@@ -549,7 +568,7 @@ GENX(pan_emit_tls)(const struct pan_tls_info *info,
                         assert((info->wls.ptr & 0xffffffff00000000ULL) == ((info->wls.ptr + info->wls.size - 1) & 0xffffffff00000000ULL));
                         cfg.wls_base_pointer = info->wls.ptr;
                         unsigned wls_size = pan_wls_adjust_size(info->wls.size);
-                        cfg.wls_instances = pan_wls_instances(&info->wls.dim);
+                        cfg.wls_instances = info->wls.instances;
                         cfg.wls_size_scale = util_logbase2(wls_size) + 1;
                 } else {
                         cfg.wls_instances = MALI_LOCAL_STORAGE_NO_WORKGROUP_MEM;
@@ -691,10 +710,20 @@ GENX(pan_emit_fbd)(const struct panfrost_device *dev,
                            pan_section_ptr(fbd, FRAMEBUFFER, LOCAL_STORAGE));
 #endif
 
-        unsigned tile_size;
-        unsigned internal_cbuf_size = pan_internal_cbuf_size(fb, &tile_size);
-        int crc_rt = GENX(pan_select_crc_rt)(fb);
-        bool has_zs_crc_ext = pan_fbd_has_zs_crc_ext(fb);
+        unsigned bytes_per_pixel = pan_cbuf_bytes_per_pixel(fb);
+        unsigned tile_size = pan_select_max_tile_size(dev->optimal_tib_size,
+                                                      bytes_per_pixel);
+
+        /* Clamp tile size to hardware limits */
+        tile_size = MIN2(tile_size, 16 * 16);
+        assert(tile_size >= 4 * 4);
+
+        /* Colour buffer allocations must be 1K aligned. */
+        unsigned cbuf_allocation = ALIGN_POT(bytes_per_pixel * tile_size, 1024);
+        assert(cbuf_allocation <= dev->optimal_tib_size && "tile too big");
+
+        int crc_rt = GENX(pan_select_crc_rt)(fb, tile_size);
+        bool has_zs_crc_ext = (fb->zs.view.zs || fb->zs.view.s || crc_rt >= 0);
 
         pan_section_pack(fbd, FRAMEBUFFER, PARAMETERS, cfg) {
 #if PAN_ARCH >= 6
@@ -725,7 +754,7 @@ GENX(pan_emit_fbd)(const struct panfrost_device *dev,
 
                 cfg.z_clear = fb->zs.clear_value.depth;
                 cfg.s_clear = fb->zs.clear_value.stencil;
-                cfg.color_buffer_allocation = internal_cbuf_size;
+                cfg.color_buffer_allocation = cbuf_allocation;
                 cfg.sample_count = fb->nr_samples;
                 cfg.sample_pattern = pan_sample_pattern(fb->nr_samples);
                 cfg.z_write_enable = (fb->zs.view.zs && !fb->zs.discard.z);
@@ -750,6 +779,7 @@ GENX(pan_emit_fbd)(const struct panfrost_device *dev,
 
 #if PAN_ARCH >= 9
                 cfg.point_sprite_coord_origin_max_y = fb->sprite_coord_origin;
+                cfg.first_provoking_vertex = fb->first_provoking_vertex;
 #endif
         }
 
@@ -923,6 +953,7 @@ void
 GENX(pan_emit_tiler_ctx)(const struct panfrost_device *dev,
                          unsigned fb_width, unsigned fb_height,
                          unsigned nr_samples,
+                         bool first_provoking_vertex,
                          mali_ptr heap,
                          void *out)
 {
@@ -945,6 +976,9 @@ GENX(pan_emit_tiler_ctx)(const struct panfrost_device *dev,
                 tiler.fb_height = fb_height;
                 tiler.heap = heap;
                 tiler.sample_pattern = pan_sample_pattern(nr_samples);
+#if PAN_ARCH >= 9
+                tiler.first_provoking_vertex = first_provoking_vertex;
+#endif
         }
 }
 #endif

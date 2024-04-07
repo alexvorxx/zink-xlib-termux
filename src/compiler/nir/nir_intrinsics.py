@@ -319,7 +319,7 @@ intrinsic("deref_mode_is", src_comp=[-1], dest_comp=1,
 intrinsic("addr_mode_is", src_comp=[-1], dest_comp=1,
           indices=[MEMORY_MODES], flags=[CAN_ELIMINATE, CAN_REORDER])
 
-intrinsic("is_sparse_texels_resident", dest_comp=1, src_comp=[1], bit_sizes=[1],
+intrinsic("is_sparse_texels_resident", dest_comp=1, src_comp=[1], bit_sizes=[1,32],
           flags=[CAN_ELIMINATE, CAN_REORDER])
 # result code is resident only if both inputs are resident
 intrinsic("sparse_residency_code_and", dest_comp=1, src_comp=[1, 1], bit_sizes=[32],
@@ -500,6 +500,11 @@ intrinsic("set_vertex_and_primitive_count", src_comp=[1, 1], indices=[STREAM_ID]
 # src[] = {vec(x, y, z)}
 intrinsic("launch_mesh_workgroups", src_comp=[3], indices=[BASE, RANGE])
 
+# Launches mesh shader workgroups from a task shader, with task_payload variable deref.
+# Same rules as launch_mesh_workgroups apply here as well.
+# src[] = {vec(x, y, z), payload pointer}
+intrinsic("launch_mesh_workgroups_with_payload_deref", src_comp=[3, -1], indices=[])
+
 # Trace a ray through an acceleration structure
 #
 # This instruction has a lot of parameters:
@@ -649,6 +654,11 @@ image("size",    dest_comp=0, src_comp=[1], flags=[CAN_ELIMINATE, CAN_REORDER])
 image("samples", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER])
 image("atomic_inc_wrap",  src_comp=[4, 1, 1], dest_comp=1)
 image("atomic_dec_wrap",  src_comp=[4, 1, 1], dest_comp=1)
+# This returns true if all samples within the pixel have equal color values.
+image("samples_identical", dest_comp=1, src_comp=[4], flags=[CAN_ELIMINATE])
+# Non-uniform access is not lowered for image_descriptor_amd.
+# dest_comp can be either 4 (buffer) or 8 (image).
+image("descriptor_amd", dest_comp=0, src_comp=[], flags=[CAN_ELIMINATE, CAN_REORDER])
 # CL-specific format queries
 image("format", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER])
 image("order", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER])
@@ -723,6 +733,9 @@ intrinsic("load_vulkan_descriptor", src_comp=[-1], dest_comp=0,
 #    in shared_atomic_add, etc).
 # 2: For CompSwap only: the second data parameter.
 #
+# The 2x32 global variants use a vec2 for the memory address where component X
+# has the low 32-bit and component Y has the high 32-bit.
+#
 # IR3 global operations take 32b vec2 as memory address. IR3 doesn't support
 # float atomics.
 
@@ -732,6 +745,7 @@ def memory_atomic_data1(name):
     intrinsic("shared_atomic_" + name,  src_comp=[1, 1], dest_comp=1, indices=[BASE])
     intrinsic("task_payload_atomic_" + name,  src_comp=[1, 1], dest_comp=1, indices=[BASE])
     intrinsic("global_atomic_" + name,  src_comp=[1, 1], dest_comp=1, indices=[])
+    intrinsic("global_atomic_" + name + "_2x32",  src_comp=[2, 1], dest_comp=1, indices=[])
     intrinsic("global_atomic_" + name + "_amd",  src_comp=[1, 1, 1], dest_comp=1, indices=[BASE])
     if not name.startswith('f'):
         intrinsic("global_atomic_" + name + "_ir3",  src_comp=[2, 1], dest_comp=1, indices=[BASE])
@@ -742,6 +756,7 @@ def memory_atomic_data2(name):
     intrinsic("shared_atomic_" + name,  src_comp=[1, 1, 1], dest_comp=1, indices=[BASE])
     intrinsic("task_payload_atomic_" + name,  src_comp=[1, 1, 1], dest_comp=1, indices=[BASE])
     intrinsic("global_atomic_" + name,  src_comp=[1, 1, 1], dest_comp=1, indices=[])
+    intrinsic("global_atomic_" + name + "_2x32",  src_comp=[2, 1, 1], dest_comp=1, indices=[])
     intrinsic("global_atomic_" + name + "_amd",  src_comp=[1, 1, 1, 1], dest_comp=1, indices=[BASE])
     if not name.startswith('f'):
         intrinsic("global_atomic_" + name + "_ir3",  src_comp=[2, 1, 1], dest_comp=1, indices=[BASE])
@@ -866,8 +881,6 @@ system_value("cull_mask", 1)
 #
 # Panfrost needs to implement all coordinate transformation in the
 # vertex shader; system values allow us to share this routine in NIR.
-#
-# RADV uses these for NGG primitive culling.
 system_value("viewport_x_scale", 1)
 system_value("viewport_y_scale", 1)
 system_value("viewport_z_scale", 1)
@@ -876,6 +889,8 @@ system_value("viewport_y_offset", 1)
 system_value("viewport_z_offset", 1)
 system_value("viewport_scale", 3)
 system_value("viewport_offset", 3)
+# Pack xy scale and offset into a vec4 load (used by AMD NGG primitive culling)
+system_value("viewport_xy_scale_and_offset", 4)
 
 # Blend constant color values.  Float values are clamped. Vectored versions are
 # provided as well for driver convenience
@@ -932,8 +947,8 @@ barycentric("at_offset", 2, [2])
 intrinsic("load_sample_pos_from_id", src_comp=[1], dest_comp=2,
           flags=[CAN_ELIMINATE, CAN_REORDER])
 
-# Loads what I believe is the primitive size, for scaling ij to pixel size:
-intrinsic("load_size_ir3", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER])
+intrinsic("load_persp_center_rhw_ir3", dest_comp=1,
+          flags=[CAN_ELIMINATE, CAN_REORDER])
 
 # Load texture scaling values:
 #
@@ -1020,6 +1035,8 @@ load("constant", [1], [BASE, RANGE, ALIGN_MUL, ALIGN_OFFSET],
 # src[] = { address }.
 load("global", [1], [ACCESS, ALIGN_MUL, ALIGN_OFFSET], [CAN_ELIMINATE])
 # src[] = { address }.
+load("global_2x32", [2], [ACCESS, ALIGN_MUL, ALIGN_OFFSET], [CAN_ELIMINATE])
+# src[] = { address }.
 load("global_constant", [1], [ACCESS, ALIGN_MUL, ALIGN_OFFSET],
      [CAN_ELIMINATE, CAN_REORDER])
 # src[] = { base_address, offset }.
@@ -1055,6 +1072,8 @@ store("shared", [1], [BASE, WRITE_MASK, ALIGN_MUL, ALIGN_OFFSET])
 store("task_payload", [1], [BASE, WRITE_MASK, ALIGN_MUL, ALIGN_OFFSET])
 # src[] = { value, address }.
 store("global", [1], [WRITE_MASK, ACCESS, ALIGN_MUL, ALIGN_OFFSET])
+# src[] = { value, address }.
+store("global_2x32", [2], [WRITE_MASK, ACCESS, ALIGN_MUL, ALIGN_OFFSET])
 # src[] = { value, offset }.
 store("scratch", [1], [ALIGN_MUL, ALIGN_OFFSET, WRITE_MASK])
 
@@ -1284,6 +1303,9 @@ store("global_amd", [1, 1], indices=[BASE, ACCESS, ALIGN_MUL, ALIGN_OFFSET, WRIT
 # Same as shared_atomic_add, but with GDS. src[] = {store_val, gds_addr, m0}
 intrinsic("gds_atomic_add_amd",  src_comp=[1, 1, 1], dest_comp=1, indices=[BASE])
 
+# src[] = { sample_id, num_samples }
+intrinsic("load_sample_positions_amd", src_comp=[1, 1], dest_comp=2, flags=[CAN_ELIMINATE, CAN_REORDER])
+
 # Descriptor where TCS outputs are stored for TES
 system_value("ring_tess_offchip_amd", 4)
 system_value("ring_tess_offchip_offset_amd", 1)
@@ -1312,6 +1334,8 @@ system_value("tcs_num_patches_amd", 1)
 system_value("tess_rel_patch_id_amd", 1)
 # Vertex offsets used for GS per-vertex inputs
 system_value("gs_vertex_offset_amd", 1, [BASE])
+# Number of rasterization samples
+system_value("rasterization_samples_amd", 1)
 
 # AMD merged shader intrinsics
 
@@ -1379,6 +1403,9 @@ system_value("intersection_opaque_amd", 1, bit_sizes=[1])
 # Used for indirect ray tracing.
 system_value("ray_launch_size_addr_amd", 1, bit_sizes=[64])
 
+# Scratch base of callable stack for ray tracing.
+system_value("rt_dynamic_callable_stack_base_amd", 1)
+
 # Load forced VRS rates.
 intrinsic("load_force_vrs_rates_amd", dest_comp=1, bit_sizes=[32], flags=[CAN_ELIMINATE, CAN_REORDER])
 
@@ -1398,6 +1425,27 @@ intrinsic("store_shared2_amd", [2, 1], indices=[OFFSET0, OFFSET1, ST64])
 
 # Vertex stride in LS-HS buffer
 system_value("lshs_vertex_stride_amd", 1)
+
+# Per patch data offset in HS VRAM output buffer
+system_value("hs_out_patch_data_offset_amd", 1)
+
+# line_width * 0.5 / abs(viewport_scale[2])
+system_value("clip_half_line_width_amd", 2)
+
+# Number of vertices in a primitive
+system_value("num_vertices_per_primitive_amd", 1)
+
+# Load streamout buffer desc
+# BASE = buffer index
+intrinsic("load_streamout_buffer_amd", dest_comp=4, indices=[BASE], bit_sizes=[32], flags=[CAN_ELIMINATE, CAN_REORDER])
+
+# An ID for each workgroup ordered by primitve sequence
+system_value("ordered_id_amd", 1)
+
+# Add to global streamout buffer counter in specified order
+# src[] = { ordered_id, counter }
+# WRITE_MASK = mask for counter channel to update
+intrinsic("ordered_xfb_counter_add_amd", dest_comp=0, src_comp=[1, 0], indices=[WRITE_MASK], bit_sizes=[32])
 
 # V3D-specific instrinc for tile buffer color reads.
 #
@@ -1423,6 +1471,10 @@ intrinsic("load_fb_layers_v3d", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER])
 
 # Logical complement of load_front_face, mapping to an AGX system value
 system_value("back_face_agx", 1, bit_sizes=[1, 32])
+
+# Loads the texture descriptor base for indexed (non-bindless) textures. On G13,
+# the referenced array has stride 24.
+system_value("texture_base_agx", 1, bit_sizes=[64])
 
 # Intel-specific query for loading from the brw_image_param struct passed
 # into the shader as a uniform.  The variable is a deref to the image
@@ -1517,3 +1569,10 @@ system_value("leaf_procedural_intel", 1, bit_sizes=[1])
 #  3: Intersection
 system_value("btd_shader_type_intel", 1)
 system_value("ray_query_global_intel", 1, bit_sizes=[64])
+
+# In order to deal with flipped render targets, gl_PointCoord may be flipped
+# in the shader requiring a shader key or extra instructions or it may be
+# flipped in hardware based on a state bit.  This version of gl_PointCoord
+# is defined to be whatever thing the hardware can easily give you, so long as
+# it's in normalized coordinates in the range [0, 1] across the point.
+intrinsic("load_point_coord_maybe_flipped", dest_comp=2, bit_sizes=[32])

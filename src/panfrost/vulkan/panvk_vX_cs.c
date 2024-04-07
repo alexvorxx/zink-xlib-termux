@@ -32,10 +32,13 @@
 #include "pan_encoder.h"
 #include "pan_pool.h"
 #include "pan_shader.h"
+#include "pan_earlyzs.h"
 
 #include "panvk_cs.h"
 #include "panvk_private.h"
 #include "panvk_varyings.h"
+
+#include "vk_sampler.h"
 
 static enum mali_mipmap_mode
 panvk_translate_sampler_mipmap_mode(VkSamplerMipmapMode mode)
@@ -57,43 +60,6 @@ panvk_translate_sampler_address_mode(VkSamplerAddressMode mode)
    case VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER: return MALI_WRAP_MODE_CLAMP_TO_BORDER;
    case VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE: return MALI_WRAP_MODE_MIRRORED_CLAMP_TO_EDGE;
    default: unreachable("Invalid wrap");
-   }
-}
-
-static void
-panvk_translate_sampler_border_color(const VkSamplerCreateInfo *pCreateInfo,
-                                     uint32_t border_color[4])
-{
-   const VkSamplerCustomBorderColorCreateInfoEXT *pBorderColor =
-      vk_find_struct_const(pCreateInfo->pNext, SAMPLER_CUSTOM_BORDER_COLOR_CREATE_INFO_EXT);
-
-   switch (pCreateInfo->borderColor) {
-   case VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK:
-   case VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK:
-      border_color[0] = border_color[1] = border_color[2] = fui(0.0);
-      border_color[3] =
-         pCreateInfo->borderColor == VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK ?
-         fui(1.0) : fui(0.0);
-      break;
-   case VK_BORDER_COLOR_INT_OPAQUE_BLACK:
-   case VK_BORDER_COLOR_INT_TRANSPARENT_BLACK:
-      border_color[0] = border_color[1] = border_color[2] = 0;
-      border_color[3] =
-         pCreateInfo->borderColor == VK_BORDER_COLOR_INT_OPAQUE_BLACK ?
-         1 : 0;
-      break;
-   case VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE:
-      border_color[0] = border_color[1] = border_color[2] = border_color[3] = fui(1.0);
-      break;
-   case VK_BORDER_COLOR_INT_OPAQUE_WHITE:
-      border_color[0] = border_color[1] = border_color[2] = border_color[3] = 1;
-      break;
-   case VK_BORDER_COLOR_FLOAT_CUSTOM_EXT:
-   case VK_BORDER_COLOR_INT_CUSTOM_EXT:
-      memcpy(border_color, pBorderColor->customBorderColor.int32, sizeof(uint32_t) * 4);
-      break;
-   default:
-      unreachable("Invalid border color");
    }
 }
 
@@ -274,9 +240,8 @@ void
 panvk_per_arch(emit_sampler)(const VkSamplerCreateInfo *pCreateInfo,
                              void *desc)
 {
-   uint32_t border_color[4];
-
-   panvk_translate_sampler_border_color(pCreateInfo, border_color);
+   VkClearColorValue border_color =
+      vk_sampler_border_color_value(pCreateInfo, NULL);
 
    pan_pack(desc, SAMPLER, cfg) {
       cfg.magnify_nearest = pCreateInfo->magFilter == VK_FILTER_NEAREST;
@@ -291,10 +256,10 @@ panvk_per_arch(emit_sampler)(const VkSamplerCreateInfo *pCreateInfo,
       cfg.wrap_mode_t = panvk_translate_sampler_address_mode(pCreateInfo->addressModeV);
       cfg.wrap_mode_r = panvk_translate_sampler_address_mode(pCreateInfo->addressModeW);
       cfg.compare_function = panvk_per_arch(translate_sampler_compare_func)(pCreateInfo);
-      cfg.border_color_r = border_color[0];
-      cfg.border_color_g = border_color[1];
-      cfg.border_color_b = border_color[2];
-      cfg.border_color_a = border_color[3];
+      cfg.border_color_r = border_color.uint32[0];
+      cfg.border_color_g = border_color.uint32[1];
+      cfg.border_color_b = border_color.uint32[2];
+      cfg.border_color_a = border_color.uint32[3];
    }
 }
 
@@ -364,9 +329,9 @@ panvk_per_arch(emit_ubos)(const struct panvk_pipeline *pipeline,
       memset(&ubos[PANVK_PUSH_CONST_UBO_INDEX], 0, sizeof(*ubos));
    }
 
-   for (unsigned s = 0; s < pipeline->layout->num_sets; s++) {
+   for (unsigned s = 0; s < pipeline->layout->vk.set_count; s++) {
       const struct panvk_descriptor_set_layout *set_layout =
-         pipeline->layout->sets[s].layout;
+         vk_to_panvk_descriptor_set_layout(pipeline->layout->vk.set_layouts[s]);
       const struct panvk_descriptor_set *set = state->sets[s];
 
       unsigned ubo_start =
@@ -758,6 +723,17 @@ panvk_per_arch(emit_base_fs_rsd)(const struct panvk_device *dev,
                  !(rt_mask & ~rt_written) &&
                  !pipeline->ms.alpha_to_coverage &&
                  !pipeline->blend.reads_dest;
+
+         bool writes_zs = pipeline->zs.z_write || pipeline->zs.s_test;
+         bool zs_always_passes = !pipeline->zs.z_test && !pipeline->zs.s_test;
+         bool oq = false; /* TODO: Occlusion queries */
+
+         struct pan_earlyzs_state earlyzs =
+            pan_earlyzs_get(pan_earlyzs_analyze(info), writes_zs || oq,
+                            pipeline->ms.alpha_to_coverage, zs_always_passes);
+
+         cfg.properties.pixel_kill_operation = earlyzs.kill;
+         cfg.properties.zs_update_operation = earlyzs.update;
       } else {
          cfg.properties.depth_source = MALI_DEPTH_SOURCE_FIXED_FUNCTION;
          cfg.properties.allow_forward_pixel_to_kill = true;

@@ -85,6 +85,18 @@ rebind_resource_in_ctx(struct fd_context *ctx,
       }
    }
 
+   /* xfb/so buffers: */
+   if (rsc->dirty & FD_DIRTY_STREAMOUT) {
+      struct fd_streamout_stateobj *so = &ctx->streamout;
+
+      for (unsigned i = 0;
+            i < so->num_targets && !(ctx->dirty & FD_DIRTY_STREAMOUT);
+            i++) {
+         if (so->targets[i]->buffer == prsc)
+            fd_context_dirty(ctx, FD_DIRTY_STREAMOUT);
+      }
+   }
+
    const enum fd_dirty_3d_state per_stage_dirty =
       FD_DIRTY_CONST | FD_DIRTY_TEX | FD_DIRTY_IMAGE | FD_DIRTY_SSBO;
 
@@ -453,7 +465,7 @@ fd_try_shadow_resource(struct fd_context *ctx, struct fd_resource *rsc,
     * by any batches, but the existing rsc (probably) is.  We need to
     * transfer those references over:
     */
-   debug_assert(shadow->track->batch_mask == 0);
+   assert(shadow->track->batch_mask == 0);
    foreach_batch (batch, &ctx->screen->batch_cache, rsc->track->batch_mask) {
       struct set_entry *entry = _mesa_set_search_pre_hashed(batch->resources, rsc->hash, rsc);
       _mesa_set_remove(batch->resources, entry);
@@ -558,7 +570,7 @@ fd_resource_uncompress(struct fd_context *ctx, struct fd_resource *rsc, bool lin
    bool success = fd_try_shadow_resource(ctx, rsc, 0, NULL, modifier);
 
    /* shadow should not fail in any cases where we need to uncompress: */
-   debug_assert(success);
+   assert(success);
 }
 
 /**
@@ -710,7 +722,10 @@ fd_resource_transfer_unmap(struct pipe_context *pctx,
       pipe_resource_reference(&trans->staging_prsc, NULL);
    }
 
-   if (!(ptrans->usage & PIPE_MAP_UNSYNCHRONIZED)) {
+   if (trans->upload_ptr) {
+      fd_bo_upload(rsc->bo, trans->upload_ptr, ptrans->box.x, ptrans->box.width);
+      free(trans->upload_ptr);
+   } else if (!(ptrans->usage & PIPE_MAP_UNSYNCHRONIZED)) {
       fd_bo_cpu_fini(rsc->bo);
    }
 
@@ -739,6 +754,12 @@ invalidate_resource(struct fd_resource *rsc, unsigned usage) assert_dt
    } else {
       util_range_set_empty(&rsc->valid_buffer_range);
    }
+}
+
+static bool
+valid_range(struct fd_resource *rsc, const struct pipe_box *box)
+{
+   return util_ranges_intersect(&rsc->valid_buffer_range, box->x, box->x + box->width);
 }
 
 static void *
@@ -788,6 +809,14 @@ resource_transfer_map_unsync(struct pipe_context *pctx,
    enum pipe_format format = prsc->format;
    uint32_t offset;
    char *buf;
+
+   if ((prsc->target == PIPE_BUFFER) &&
+       !(usage & (PIPE_MAP_READ | PIPE_MAP_DIRECTLY | PIPE_MAP_PERSISTENT)) &&
+       ((usage & PIPE_MAP_DISCARD_RANGE) || !valid_range(rsc, box)) &&
+       fd_bo_prefer_upload(rsc->bo, box->width)) {
+      trans->upload_ptr = malloc(box->width);
+      return trans->upload_ptr;
+   }
 
    buf = fd_bo_map(rsc->bo);
 
@@ -948,8 +977,7 @@ improve_transfer_map_usage(struct fd_context *ctx, struct fd_resource *rsc,
       if (ctx->in_shadow && !(usage & PIPE_MAP_READ)) {
          usage |= PIPE_MAP_UNSYNCHRONIZED;
       } else if ((usage & PIPE_MAP_WRITE) && (rsc->b.b.target == PIPE_BUFFER) &&
-                 !util_ranges_intersect(&rsc->valid_buffer_range, box->x,
-                                        box->x + box->width)) {
+                 !valid_range(rsc, box)) {
          /* We are trying to write to a previously uninitialized range. No need
           * to synchronize.
           */
@@ -1078,9 +1106,9 @@ fd_resource_resize(struct pipe_resource *prsc, uint32_t sz)
 {
    struct fd_resource *rsc = fd_resource(prsc);
 
-   debug_assert(prsc->width0 == 0);
-   debug_assert(prsc->target == PIPE_BUFFER);
-   debug_assert(prsc->bind == PIPE_BIND_QUERY_BUFFER);
+   assert(prsc->width0 == 0);
+   assert(prsc->target == PIPE_BUFFER);
+   assert(prsc->bind == PIPE_BIND_QUERY_BUFFER);
 
    prsc->width0 = sz;
    realloc_bo(rsc, fd_screen(prsc->screen)->setup_slices(rsc));
@@ -1187,6 +1215,13 @@ get_best_layout(struct fd_screen *screen, struct pipe_resource *prsc,
    if (FD_DBG(NOUBWC))
       ubwc_ok = false;
 
+   /* Disallow UBWC for front-buffer rendering.  The GPU does not atomically
+    * write pixel and header data, nor does the display atomically read it.
+    * The result can be visual corruption (ie. moreso than normal tearing).
+    */
+   if (tmpl->bind & PIPE_BIND_USE_FRONT_RENDERING)
+      ubwc_ok = false;
+
    if (ubwc_ok && !implicit_modifiers &&
        !drm_find_modifier(DRM_FORMAT_MOD_QCOM_COMPRESSED, modifiers, count)) {
       perf_debug("%" PRSC_FMT
@@ -1283,7 +1318,7 @@ fd_resource_allocate_and_resolve(struct pipe_screen *pscreen,
     */
    if (size == 0) {
       /* note, semi-intention == instead of & */
-      debug_assert(prsc->bind == PIPE_BIND_QUERY_BUFFER);
+      assert(prsc->bind == PIPE_BIND_QUERY_BUFFER);
       *psize = 0;
       return prsc;
    }
@@ -1637,7 +1672,6 @@ void
 fd_resource_screen_init(struct pipe_screen *pscreen)
 {
    struct fd_screen *screen = fd_screen(pscreen);
-   bool fake_rgtc = screen->gen < 4;
 
    pscreen->resource_create = u_transfer_helper_resource_create;
    /* NOTE: u_transfer_helper does not yet support the _with_modifiers()
@@ -1649,7 +1683,9 @@ fd_resource_screen_init(struct pipe_screen *pscreen)
    pscreen->resource_destroy = u_transfer_helper_resource_destroy;
 
    pscreen->transfer_helper =
-      u_transfer_helper_create(&transfer_vtbl, true, false, fake_rgtc, true, false);
+      u_transfer_helper_create(&transfer_vtbl,
+                               U_TRANSFER_HELPER_SEPARATE_Z32S8 |
+                               U_TRANSFER_HELPER_MSAA_MAP);
 
    if (!screen->layout_resource_for_modifier)
       screen->layout_resource_for_modifier = fd_layout_resource_for_modifier;

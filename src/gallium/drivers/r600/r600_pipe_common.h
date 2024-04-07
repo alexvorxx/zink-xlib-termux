@@ -360,6 +360,7 @@ struct r600_common_screen {
 	/* GPU load thread. */
 	mtx_t				gpu_load_mutex;
 	thrd_t				gpu_load_thread;
+	bool				gpu_load_thread_created;
 	union r600_mmio_counters	mmio_counters;
 	volatile unsigned		gpu_load_stop_thread; /* bool */
 
@@ -400,7 +401,8 @@ struct r600_common_screen {
 		unsigned compute_to_L2;
 	} barrier_flags;
 
-        struct nir_shader_compiler_options nir_options;
+	struct nir_shader_compiler_options nir_options;
+	struct nir_shader_compiler_options nir_options_fs;
 };
 
 /* This encapsulates a state or an operation which can emitted into the GPU

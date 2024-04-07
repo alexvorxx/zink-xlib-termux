@@ -34,23 +34,15 @@
 #include <vulkan/vulkan.h>
 
 #include "hwdef/rogue_hw_defs.h"
-#include "pvr_rogue_fw.h"
 #include "pvr_limits.h"
+#include "pvr_rogue_fw.h"
+#include "pvr_types.h"
 #include "util/macros.h"
 #include "util/vma.h"
 #include "vk_sync.h"
 
 struct pvr_device_info;
 struct pvr_device_runtime_info;
-
-/* device virtual address */
-typedef struct pvr_dev_addr {
-   uint64_t addr;
-} pvr_dev_addr_t;
-
-/* clang-format off */
-#define PVR_DEV_ADDR_INVALID (pvr_dev_addr_t){ .addr = 0 }
-/* clang-format on */
 
 struct pvr_winsys_heaps {
    struct pvr_winsys_heap *general_heap;
@@ -315,12 +307,12 @@ struct pvr_winsys_compute_submit_info {
 
    struct {
       uint64_t tpu_border_colour_table;
-      uint64_t cdm_item;
-      uint32_t compute_cluster;
       uint64_t cdm_ctrl_stream_base;
       uint64_t cdm_ctx_state_base_addr;
       uint32_t tpu;
       uint32_t cdm_resume_pds1;
+      uint32_t cdm_item;
+      uint32_t compute_cluster;
    } regs;
 
    /* Must be 0 or a combination of PVR_WINSYS_COMPUTE_FLAG_* flags. */

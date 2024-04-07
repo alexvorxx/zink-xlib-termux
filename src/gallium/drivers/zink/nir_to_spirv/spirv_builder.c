@@ -255,32 +255,32 @@ spirv_builder_emit_builtin(struct spirv_builder *b, SpvId target,
 }
 
 void
-spirv_builder_emit_vertex(struct spirv_builder *b, uint32_t stream)
+spirv_builder_emit_vertex(struct spirv_builder *b, uint32_t stream, bool multistream)
 {
    unsigned words = 1;
    SpvOp op = SpvOpEmitVertex;
-   if (stream > 0) {
+   if (multistream) {
       op = SpvOpEmitStreamVertex;
       words++;
    }
    spirv_buffer_prepare(&b->instructions, b->mem_ctx, words);
    spirv_buffer_emit_word(&b->instructions, op | (words << 16));
-   if (stream)
+   if (multistream)
       spirv_buffer_emit_word(&b->instructions, spirv_builder_const_uint(b, 32, stream));
 }
 
 void
-spirv_builder_end_primitive(struct spirv_builder *b, uint32_t stream)
+spirv_builder_end_primitive(struct spirv_builder *b, uint32_t stream, bool multistream)
 {
    unsigned words = 1;
    SpvOp op = SpvOpEndPrimitive;
-   if (stream > 0) {
+   if (multistream || stream > 0) {
       op = SpvOpEndStreamPrimitive;
       words++;
    }
    spirv_buffer_prepare(&b->instructions, b->mem_ctx, words);
    spirv_buffer_emit_word(&b->instructions, op | (words << 16));
-   if (stream)
+   if (multistream || stream > 0)
       spirv_buffer_emit_word(&b->instructions, spirv_builder_const_uint(b, 32, stream));
 }
 
@@ -403,6 +403,28 @@ spirv_builder_function_end(struct spirv_builder *b)
    spirv_buffer_prepare(&b->instructions, b->mem_ctx, 1);
    spirv_buffer_emit_word(&b->instructions, SpvOpFunctionEnd | (1 << 16));
 }
+
+SpvId
+spirv_builder_function_call(struct spirv_builder *b, SpvId result_type,
+                            SpvId function, const SpvId arguments[],
+                            size_t num_arguments)
+{
+   SpvId result = spirv_builder_new_id(b);
+
+   int words = 4 + num_arguments;
+   spirv_buffer_prepare(&b->instructions, b->mem_ctx, words);
+   spirv_buffer_emit_word(&b->instructions,
+                          SpvOpFunctionCall | (words << 16));
+   spirv_buffer_emit_word(&b->instructions, result_type);
+   spirv_buffer_emit_word(&b->instructions, result);
+   spirv_buffer_emit_word(&b->instructions, function);
+
+   for (int i = 0; i < num_arguments; ++i)
+      spirv_buffer_emit_word(&b->instructions, arguments[i]);
+
+   return result;
+}
+
 
 void
 spirv_builder_label(struct spirv_builder *b, SpvId label)
@@ -734,6 +756,27 @@ spirv_builder_emit_kill(struct spirv_builder *b)
 {
    spirv_buffer_prepare(&b->instructions, b->mem_ctx, 1);
    spirv_buffer_emit_word(&b->instructions, SpvOpKill | (1 << 16));
+}
+
+void
+spirv_builder_emit_demote(struct spirv_builder *b)
+{
+   spirv_buffer_prepare(&b->instructions, b->mem_ctx, 1);
+   spirv_buffer_emit_word(&b->instructions, SpvOpDemoteToHelperInvocation | (1 << 16));
+}
+
+SpvId
+spirv_is_helper_invocation(struct spirv_builder *b)
+{
+   SpvId result = spirv_builder_new_id(b);
+   SpvId result_type = spirv_builder_type_bool(b);
+
+   int words = 3;
+   spirv_buffer_prepare(&b->instructions, b->mem_ctx, words);
+   spirv_buffer_emit_word(&b->instructions, SpvOpIsHelperInvocationEXT | (words << 16));
+   spirv_buffer_emit_word(&b->instructions, result_type);
+   spirv_buffer_emit_word(&b->instructions, result);
+   return result;
 }
 
 SpvId

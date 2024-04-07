@@ -54,7 +54,6 @@
  * be a performance penalty.
  */
 
-#define BI_NUM_GENERAL_SLOTS 3
 #define BI_NUM_REGISTERS 64
 
 /*
@@ -91,8 +90,6 @@ bi_write_mask(bi_instr *I)
    uint64_t mask = 0;
 
    bi_foreach_dest(I, d) {
-      if (bi_is_null(I->dest[d])) continue;
-
       assert(I->dest[d].type == BI_INDEX_REGISTER);
 
       unsigned reg = I->dest[d].value;
@@ -199,6 +196,31 @@ bi_set_dependencies(bi_block *block, bi_instr *I, struct bi_scoreboard_state *st
    if (bi_is_memory_access(I)) {
       u_foreach_bit(slot, st->memory)
          I->flow |= bi_pop_slot(st, slot);
+   }
+
+   /* We need to wait for all general slots before a barrier. The reason is
+    * unknown. In theory, this is redundant, since the BARRIER instruction will
+    * be followed immediately by .wait which waits for all slots. However, that
+    * doesn't seem to work properly in practice.
+    *
+    * The DDK is observed to use the same workaround, going so far as
+    * introducing a NOP before a BARRIER at the beginning of a basic block when
+    * there are outstanding stores.
+    *
+    *     NOP.wait12
+    *     BARRIER.slot7.wait
+    *
+    * Luckily, this situation is pretty rare. The wait introduced here can
+    * usually be merged into the preceding instruction.
+    *
+    * We also use the same workaround to serialize all async instructions when
+    * debugging this pass with the BIFROST_MESA_DEBUG=nosb option.
+    */
+   if (I->op == BI_OPCODE_BARRIER || (bifrost_debug & BIFROST_DBG_NOSB)) {
+      for (unsigned i = 0; i < VA_NUM_GENERAL_SLOTS; ++i) {
+         if (st->write[i] || ((st->varying | st->memory) & BITFIELD_BIT(i)))
+            I->flow |= bi_pop_slot(st, i);
+      }
    }
 }
 
@@ -405,6 +427,10 @@ va_insert_flow_control_nops(bi_context *ctx)
          /* Insert waits for tilebuffer and depth/stencil instructions. These
           * only happen in regular fragment shaders, as the required waits are
           * assumed to already have happened in blend shaders.
+          *
+          * For discarded thread handling, ATEST must be serialized against all
+          * other asynchronous instructions and should be serialized against all
+          * instructions. Wait for slot 0 immediately after the ATEST.
           */
          case BI_OPCODE_BLEND:
          case BI_OPCODE_LD_TILE:
@@ -413,6 +439,9 @@ va_insert_flow_control_nops(bi_context *ctx)
                bi_flow(ctx, bi_before_instr(I), VA_FLOW_WAIT);
             break;
          case BI_OPCODE_ATEST:
+            bi_flow(ctx, bi_before_instr(I), VA_FLOW_WAIT0126);
+            bi_flow(ctx, bi_after_instr(I), VA_FLOW_WAIT0);
+            break;
          case BI_OPCODE_ZS_EMIT:
             if (!ctx->inputs->is_blend)
                bi_flow(ctx, bi_before_instr(I), VA_FLOW_WAIT0126);
@@ -429,7 +458,7 @@ va_insert_flow_control_nops(bi_context *ctx)
              * waits on general slots. The dataflow analysis should be ignoring
              * the special slots #6 and #7, which are handled separately.
              */
-            assert((I->flow & ~BITFIELD_MASK(BI_NUM_GENERAL_SLOTS)) == 0);
+            assert((I->flow & ~BITFIELD_MASK(VA_NUM_GENERAL_SLOTS)) == 0);
 
             bi_flow(ctx, bi_before_instr(I), I->flow);
             I->flow = 0;

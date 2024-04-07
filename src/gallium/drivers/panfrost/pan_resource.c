@@ -619,8 +619,7 @@ panfrost_resource_create_with_modifier(struct pipe_screen *screen,
 
         util_range_init(&so->valid_buffer_range);
 
-        if (template->bind & (PIPE_BIND_DISPLAY_TARGET | PIPE_BIND_SCANOUT |
-                              PIPE_BIND_SHARED)) {
+        if (template->bind & PAN_BIND_SHARED_MASK) {
                 /* For compatibility with older consumers that may not be
                  * modifiers aware, treat INVALID as LINEAR for shared
                  * resources.
@@ -814,7 +813,7 @@ pan_alloc_staging(struct panfrost_context *ctx, struct panfrost_resource *rsc,
         }
         tmpl.last_level = 0;
         tmpl.bind |= PIPE_BIND_LINEAR;
-        tmpl.bind &= ~(PIPE_BIND_DISPLAY_TARGET | PIPE_BIND_SCANOUT | PIPE_BIND_SHARED);
+        tmpl.bind &= ~PAN_BIND_SHARED_MASK;
 
         struct pipe_resource *pstaging =
                 pctx->screen->resource_create(pctx->screen, &tmpl);
@@ -1450,10 +1449,6 @@ static const struct u_transfer_vtbl transfer_vtbl = {
 void
 panfrost_resource_screen_init(struct pipe_screen *pscreen)
 {
-        struct panfrost_device *dev = pan_device(pscreen);
-
-        bool fake_rgtc = !panfrost_supports_compressed_format(dev, MALI_BC4_UNORM);
-
         pscreen->resource_create_with_modifiers =
                 panfrost_resource_create_with_modifiers;
         pscreen->resource_create = u_transfer_helper_resource_create;
@@ -1462,8 +1457,8 @@ panfrost_resource_screen_init(struct pipe_screen *pscreen)
         pscreen->resource_get_handle = panfrost_resource_get_handle;
         pscreen->resource_get_param = panfrost_resource_get_param;
         pscreen->transfer_helper = u_transfer_helper_create(&transfer_vtbl,
-                                        true, false,
-                                        fake_rgtc, true, false);
+                                        U_TRANSFER_HELPER_SEPARATE_Z32S8 |
+                                        U_TRANSFER_HELPER_MSAA_MAP);
 }
 void
 panfrost_resource_screen_destroy(struct pipe_screen *pscreen)
@@ -1488,4 +1483,5 @@ panfrost_resource_context_init(struct pipe_context *pctx)
         pctx->transfer_flush_region = u_transfer_helper_transfer_flush_region;
         pctx->buffer_subdata = u_default_buffer_subdata;
         pctx->texture_subdata = u_default_texture_subdata;
+        pctx->clear_buffer = u_default_clear_buffer;
 }

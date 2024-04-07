@@ -34,16 +34,6 @@
 static void
 lower_split_src(bi_context *ctx, bi_instr *I, unsigned s)
 {
-   /* Fix up for mismatch between IR and Valhall BLEND */
-   if (I->op == BI_OPCODE_BLEND) {
-      /* Only the blend descriptor needs lowering */
-      if (s != 1)
-         return;
-
-      /* But it is in a different place! */
-      s = 2;
-   }
-
    /* Skip sources that are already split properly */
    bi_index offset_fau = I->src[s];
    offset_fau.offset++;
@@ -57,11 +47,8 @@ lower_split_src(bi_context *ctx, bi_instr *I, unsigned s)
    /* Allocate temporary before the instruction */
    bi_builder b = bi_init_builder(ctx, bi_before_instr(I));
    bi_index vec = bi_temp(ctx);
-   bi_instr *collect = bi_collect_i32_to(&b, vec);
-   collect->nr_srcs = 2;
-
-   bi_instr *split = bi_split_i32_to(&b, bi_null(), vec);
-   split->nr_dests = 2;
+   bi_instr *collect = bi_collect_i32_to(&b, vec, 2);
+   bi_instr *split = bi_split_i32_to(&b, 2, vec);
 
    /* Emit collect */
    for (unsigned w = 0; w < 2; ++w) {
@@ -77,7 +64,7 @@ va_lower_split_64bit(bi_context *ctx)
 {
    bi_foreach_instr_global(ctx, I) {
       bi_foreach_src(I, s) {
-         if (bi_is_null(I->src[s]))
+         if (bi_is_null(I->src[s]) || s >= 4)
             continue;
 
          struct va_src_info info = va_src_info(I->op, s);

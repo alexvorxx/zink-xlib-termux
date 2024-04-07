@@ -890,7 +890,7 @@ void r300_mark_fb_state_dirty(struct r300_context *r300,
 
     if (r300->cmask_in_use) {
         r300->fb_state.size += 6;
-        if (r300->screen->caps.is_r500 && r300->screen->info.drm_minor >= 29) {
+        if (r300->screen->caps.is_r500) {
             r300->fb_state.size += 3;
         }
     }
@@ -1064,7 +1064,8 @@ static void* r300_create_fs_state(struct pipe_context* pipe,
     tgsi_scan_shader(fs->state.tokens, &info);
     for (int i = 0; i < PIPE_MAX_SHADER_SAMPLER_VIEWS; i++) {
         if (info.sampler_targets[i] == TGSI_TEXTURE_SHADOW1D ||
-            info.sampler_targets[i] == TGSI_TEXTURE_SHADOW2D) {
+            info.sampler_targets[i] == TGSI_TEXTURE_SHADOW2D ||
+            info.sampler_targets[i] == TGSI_TEXTURE_SHADOWRECT) {
             precompile_state.unit[i].compare_mode_enabled = true;
             precompile_state.unit[i].texture_compare_func = PIPE_FUNC_LESS;
         }

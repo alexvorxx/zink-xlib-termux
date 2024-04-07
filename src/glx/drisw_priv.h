@@ -35,13 +35,6 @@ struct drisw_display
    bool zink;
 };
 
-struct drisw_context
-{
-   struct glx_context base;
-   __DRIcontext *driContext;
-
-};
-
 struct drisw_screen
 {
    struct glx_screen base;
@@ -51,6 +44,8 @@ struct drisw_screen
    const __DRIcoreExtension *core;
    const __DRIswrastExtension *swrast;
    const __DRIkopperExtension *kopper;
+   const __DRI2flushExtension *f;
+   const __DRI2configQueryExtension *config;
    const __DRItexBufferExtension *texBuffer;
    const __DRIcopySubBufferExtension *copySubBuffer;
    const __DRI2rendererQueryExtension *rendererQuery;

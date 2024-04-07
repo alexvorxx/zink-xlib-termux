@@ -126,9 +126,8 @@ struct panfrost_batch {
         bool scissor_culls_everything;
 
         /* BOs referenced not in the pool */
-        int first_bo, last_bo;
         unsigned num_bos;
-        struct util_sparse_array bos;
+        struct util_dynarray bos;
 
         /* Pool owned by this batch (released when the batch is released) used for temporary descriptors */
         struct panfrost_pool pool;
@@ -191,6 +190,7 @@ struct panfrost_batch {
          * per draw.
          */
         struct pan_tristate sprite_coord_origin;
+        struct pan_tristate first_provoking_vertex;
 
         /* Referenced resources */
         struct set *resources;
@@ -221,7 +221,7 @@ panfrost_batch_write_rsrc(struct panfrost_batch *batch,
 
 struct panfrost_bo *
 panfrost_batch_create_bo(struct panfrost_batch *batch, size_t size,
-                         uint32_t create_flags, uint32_t access_flags,
+                         uint32_t create_flags, enum pipe_shader_type stage,
                          const char *label);
 
 void
@@ -241,7 +241,7 @@ void
 panfrost_batch_adjust_stack_size(struct panfrost_batch *batch);
 
 struct panfrost_bo *
-panfrost_batch_get_scratchpad(struct panfrost_batch *batch, unsigned size, unsigned thread_tls_alloc, unsigned core_count);
+panfrost_batch_get_scratchpad(struct panfrost_batch *batch, unsigned size, unsigned thread_tls_alloc, unsigned core_id_range);
 
 struct panfrost_bo *
 panfrost_batch_get_shared_memory(struct panfrost_batch *batch, unsigned size, unsigned workgroup_count);

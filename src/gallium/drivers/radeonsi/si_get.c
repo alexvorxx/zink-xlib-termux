@@ -164,6 +164,10 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_IMAGE_ATOMIC_INC_WRAP:
    case PIPE_CAP_IMAGE_STORE_FORMATTED:
    case PIPE_CAP_ALLOW_DRAW_OUT_OF_ORDER:
+   case PIPE_CAP_QUERY_SO_OVERFLOW:
+   case PIPE_CAP_GLSL_TESS_LEVELS_AS_INPUTS:
+   case PIPE_CAP_DEVICE_RESET_STATUS_QUERY:
+   case PIPE_CAP_TEXTURE_MULTISAMPLE:
       return 1;
 
    case PIPE_CAP_TEXTURE_TRANSFER_MODES:
@@ -184,9 +188,6 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_CUBE_MAP_ARRAY:
       return sscreen->info.has_3d_cube_border_color_mipmap;
 
-   case PIPE_CAP_QUERY_SO_OVERFLOW:
-      return !sscreen->use_ngg_streamout;
-
    case PIPE_CAP_POST_DEPTH_COVERAGE:
       return sscreen->info.gfx_level >= GFX10;
 
@@ -196,14 +197,8 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_RESOURCE_FROM_USER_MEMORY:
       return !SI_BIG_ENDIAN && sscreen->info.has_userptr;
 
-   case PIPE_CAP_DEVICE_RESET_STATUS_QUERY:
-      return sscreen->info.has_gpu_reset_status_query;
-
    case PIPE_CAP_DEVICE_PROTECTED_CONTENT:
       return sscreen->info.has_tmz_support;
-
-   case PIPE_CAP_TEXTURE_MULTISAMPLE:
-      return sscreen->info.has_2d_tiling;
 
    case PIPE_CAP_MIN_MAP_BUFFER_ALIGNMENT:
       return SI_MAP_BUFFER_ALIGNMENT;
@@ -222,8 +217,6 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 
    case PIPE_CAP_GLSL_FEATURE_LEVEL:
    case PIPE_CAP_GLSL_FEATURE_LEVEL_COMPATIBILITY:
-      if (!sscreen->info.has_indirect_compute_dispatch)
-         return 420;
       return 460;
 
    case PIPE_CAP_MAX_TEXTURE_UPLOAD_MEMORY_BUDGET:
@@ -394,7 +387,7 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_DEVICE_ID:
       return sscreen->info.pci_id;
    case PIPE_CAP_VIDEO_MEMORY:
-      return sscreen->info.vram_size >> 20;
+      return sscreen->info.vram_size_kb >> 10;
    case PIPE_CAP_PCI_GROUP:
       return sscreen->info.pci_domain;
    case PIPE_CAP_PCI_BUS:
@@ -476,9 +469,8 @@ static int si_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_typ
    case PIPE_SHADER_CAP_SUPPORTED_IRS:
       if (shader == PIPE_SHADER_COMPUTE) {
          return (1 << PIPE_SHADER_IR_NATIVE) |
-                (sscreen->info.has_indirect_compute_dispatch ?
-                    (1 << PIPE_SHADER_IR_NIR) |
-                    (1 << PIPE_SHADER_IR_TGSI) : 0);
+                (1 << PIPE_SHADER_IR_NIR) |
+                (1 << PIPE_SHADER_IR_TGSI);
       }
       return (1 << PIPE_SHADER_IR_TGSI) |
              (1 << PIPE_SHADER_IR_NIR);
@@ -498,14 +490,15 @@ static int si_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_typ
    case PIPE_SHADER_CAP_INDIRECT_OUTPUT_ADDR: /* lowered in finalize_nir */
       return 1;
 
+   case PIPE_SHADER_CAP_FP16_CONST_BUFFERS:
+      /* We need f16c for fast FP16 conversions in glUniform. */
+      if (!util_get_cpu_caps()->has_f16c)
+         return 0;
+      FALLTHROUGH;
    case PIPE_SHADER_CAP_FP16:
    case PIPE_SHADER_CAP_FP16_DERIVATIVES:
    case PIPE_SHADER_CAP_GLSL_16BIT_CONSTS:
-      return sscreen->options.fp16;
-
-   case PIPE_SHADER_CAP_FP16_CONST_BUFFERS:
-      /* We need f16c for fast FP16 conversions in glUniform. */
-      return sscreen->options.fp16 && util_get_cpu_caps()->has_f16c;
+      return sscreen->info.gfx_level >= GFX8 && sscreen->options.fp16;
 
    /* Unsupported boolean features. */
    case PIPE_SHADER_CAP_INT16:
@@ -579,9 +572,9 @@ static int si_get_video_param(struct pipe_screen *screen, enum pipe_video_profil
    enum pipe_video_format codec = u_reduce_video_profile(profile);
 
    if (entrypoint == PIPE_VIDEO_ENTRYPOINT_ENCODE) {
-      if (!(sscreen->info.has_video_hw.vce_encode ||
-            sscreen->info.has_video_hw.uvd_encode ||
-            sscreen->info.has_video_hw.vcn_encode))
+      if (!(sscreen->info.ip[AMD_IP_VCE].num_queues ||
+            sscreen->info.ip[AMD_IP_UVD_ENC].num_queues ||
+            sscreen->info.ip[AMD_IP_VCN_ENC].num_queues))
          return 0;
 
       switch (param) {
@@ -625,10 +618,29 @@ static int si_get_video_param(struct pipe_screen *screen, enum pipe_video_profil
             return 4;
          else
             return 0;
-      case PIPE_VIDEO_CAP_EFC_SUPPORTED:
-         return ((sscreen->info.family >= CHIP_RENOIR) &&
-                 (sscreen->info.family < CHIP_NAVI21) &&
-                 !(sscreen->debug_flags & DBG(NO_EFC)));
+      case PIPE_VIDEO_CAP_ENC_QUALITY_LEVEL:
+         if (sscreen->info.family >= CHIP_RAVEN)
+            return 32;
+         else
+            return 0;
+      case PIPE_VIDEO_CAP_ENC_SUPPORTS_MAX_FRAME_SIZE:
+         return (sscreen->info.family >= CHIP_RAVEN) ? 1 : 0;
+
+      case PIPE_VIDEO_CAP_ENC_HEVC_FEATURE_FLAGS:
+         if ((sscreen->info.family >= CHIP_RENOIR) &&
+                  (profile == PIPE_VIDEO_PROFILE_HEVC_MAIN ||
+                   profile == PIPE_VIDEO_PROFILE_HEVC_MAIN_10)) {
+            union pipe_h265_enc_cap_features pipe_features;
+            pipe_features.value = 0;
+
+            pipe_features.bits.sao = PIPE_H265_ENC_FEATURE_SUPPORTED;
+            return pipe_features.value;
+         } else
+            return 0;
+
+      case PIPE_VIDEO_CAP_ENC_SUPPORTS_ASYNC_OPERATION:
+         return (sscreen->info.family >= CHIP_RAVEN) ? 1 : 0;
+
       default:
          return 0;
       }
@@ -640,7 +652,7 @@ static int si_get_video_param(struct pipe_screen *screen, enum pipe_video_profil
           sscreen->info.family >= CHIP_NAVI24)
          return false;
       if (codec != PIPE_VIDEO_FORMAT_JPEG &&
-          !(sscreen->info.has_video_hw.uvd_decode ||
+          !(sscreen->info.ip[AMD_IP_UVD].num_queues ||
             sscreen->info.has_video_hw.vcn_decode))
          return false;
 
@@ -677,7 +689,7 @@ static int si_get_video_param(struct pipe_screen *screen, enum pipe_video_profil
          return false;
       case PIPE_VIDEO_FORMAT_JPEG:
          if (sscreen->info.family >= CHIP_RAVEN) {
-            if (!sscreen->info.has_video_hw.jpeg_decode)
+            if (!sscreen->info.ip[AMD_IP_VCN_JPEG].num_queues)
                return false;
             else
                return true;
@@ -928,14 +940,14 @@ static int si_get_compute_param(struct pipe_screen *screen, enum pipe_shader_ir 
    case PIPE_COMPUTE_CAP_MAX_CLOCK_FREQUENCY:
       if (ret) {
          uint32_t *max_clock_frequency = ret;
-         *max_clock_frequency = sscreen->info.max_shader_clock;
+         *max_clock_frequency = sscreen->info.max_gpu_freq_mhz;
       }
       return sizeof(uint32_t);
 
    case PIPE_COMPUTE_CAP_MAX_COMPUTE_UNITS:
       if (ret) {
          uint32_t *max_compute_units = ret;
-         *max_compute_units = sscreen->info.num_good_compute_units;
+         *max_compute_units = sscreen->info.num_cu;
       }
       return sizeof(uint32_t);
 
@@ -1005,7 +1017,7 @@ static void si_query_memory_info(struct pipe_screen *screen, struct pipe_memory_
 
    info->device_memory_evicted = ws->query_value(ws, RADEON_NUM_BYTES_MOVED) / 1024;
 
-   if (sscreen->info.is_amdgpu && sscreen->info.drm_minor >= 4)
+   if (sscreen->info.is_amdgpu)
       info->nr_device_memory_evictions = ws->query_value(ws, RADEON_NUM_EVICTIONS);
    else
       /* Just return the number of evicted 64KB pages. */
@@ -1052,9 +1064,9 @@ void si_init_screen_get_functions(struct si_screen *sscreen)
    sscreen->b.query_memory_info = si_query_memory_info;
    sscreen->b.get_disk_shader_cache = si_get_disk_shader_cache;
 
-   if (sscreen->info.has_video_hw.uvd_decode || sscreen->info.has_video_hw.vcn_decode ||
-       sscreen->info.has_video_hw.jpeg_decode || sscreen->info.has_video_hw.vce_encode ||
-       sscreen->info.has_video_hw.uvd_encode || sscreen->info.has_video_hw.vcn_encode) {
+   if (sscreen->info.ip[AMD_IP_UVD].num_queues || sscreen->info.has_video_hw.vcn_decode ||
+       sscreen->info.ip[AMD_IP_VCN_JPEG].num_queues || sscreen->info.ip[AMD_IP_VCE].num_queues ||
+       sscreen->info.ip[AMD_IP_UVD_ENC].num_queues || sscreen->info.ip[AMD_IP_VCN_ENC].num_queues) {
       sscreen->b.get_video_param = si_get_video_param;
       sscreen->b.is_video_format_supported = si_vid_is_format_supported;
    } else {
@@ -1069,6 +1081,7 @@ void si_init_screen_get_functions(struct si_screen *sscreen)
       sscreen->info.gfx_level >= GFX9 && sscreen->options.force_use_fma32;
 
    const struct nir_shader_compiler_options nir_options = {
+      .vertex_id_zero_based = true,
       .lower_scmp = true,
       .lower_flrp16 = true,
       .lower_flrp32 = true,
@@ -1123,8 +1136,8 @@ void si_init_screen_get_functions(struct si_screen *sscreen)
       .max_unroll_iterations_aggressive = LLVM_VERSION_MAJOR >= 13 ? 128 : 32,
       .use_interpolated_input_intrinsics = true,
       .lower_uniforms_to_ubo = true,
-      .support_16bit_alu = sscreen->options.fp16,
-      .vectorize_vec2_16bit = sscreen->options.fp16,
+      .support_16bit_alu = sscreen->info.gfx_level >= GFX8,
+      .vectorize_vec2_16bit = sscreen->info.has_packed_math_16bit,
       .pack_varying_options =
          nir_pack_varying_interp_mode_none |
          nir_pack_varying_interp_mode_smooth |

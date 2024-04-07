@@ -4,11 +4,15 @@
 # exiting, since any console output may interfere with LAVA signals handling,
 # which based on the log console.
 cleanup() {
+  if [ "$BACKGROUND_PIDS" = "" ]; then
+    return 0
+  fi
+
   set +x
   echo "Killing all child processes"
   for pid in $BACKGROUND_PIDS
   do
-    kill "$pid"
+    kill "$pid" 2>/dev/null || true
   done
 
   # Sleep just a little to give enough time for subprocesses to be gracefully
@@ -18,6 +22,9 @@ cleanup() {
   do
     kill -9 "$pid" 2>/dev/null || true
   done
+
+  BACKGROUND_PIDS=
+  set -x
 }
 trap cleanup INT TERM EXIT
 
@@ -135,15 +142,24 @@ mv -f ${CI_PROJECT_DIR}/results ./ 2>/dev/null || true
 
 [ ${EXIT_CODE} -ne 0 ] || rm -rf results/trace/"$PIGLIT_REPLAY_DEVICE_NAME"
 
+# Make sure that capture-devcoredump is done before we start trying to tar up
+# artifacts -- if it's writing while tar is reading, tar will throw an error and
+# kill the job.
+cleanup
+
 # upload artifacts
 if [ -n "$MINIO_RESULTS_UPLOAD" ]; then
-  tar -czf results.tar.gz results/;
+  tar --zstd -cf results.tar.zst results/;
   ci-fairy minio login --token-file "${CI_JOB_JWT_FILE}";
-  ci-fairy minio cp results.tar.gz minio://"$MINIO_RESULTS_UPLOAD"/results.tar.gz;
+  ci-fairy minio cp results.tar.zst minio://"$MINIO_RESULTS_UPLOAD"/results.tar.zst;
 fi
 
 # We still need to echo the hwci: mesa message, as some scripts rely on it, such
 # as the python ones inside the bare-metal folder
 [ ${EXIT_CODE} -eq 0 ] && RESULT=pass
+
+set +x
 echo "hwci: mesa: $RESULT"
+# Sleep a bit to avoid kernel dump message interleave from LAVA ENDTC signal
+sleep 1
 exit $EXIT_CODE

@@ -110,7 +110,17 @@ choose_dxcore_adapter(IDXCoreAdapterFactory *factory, LUID *adapter_luid)
       }
 #endif
 
-      // No adapter specified or not found, pick 0 as the default
+      // Adapter not specified or not found, so pick an integrated adapter if possible
+      for (unsigned i = 0; i < list->GetAdapterCount(); ++i) {
+         if (SUCCEEDED(list->GetAdapter(i, &adapter))) {
+            bool is_integrated;
+            if (SUCCEEDED(adapter->GetProperty(DXCoreAdapterProperty::IsIntegrated, &is_integrated)) && is_integrated)
+               return adapter;
+            adapter->Release();
+         }
+      }
+
+      // No integrated GPUs, so pick the first valid one
       if (list->GetAdapterCount() > 0 && SUCCEEDED(list->GetAdapter(0, &adapter)))
          return adapter;
    }
@@ -200,6 +210,9 @@ d3d12_init_dxcore_screen(struct d3d12_screen *dscreen)
    }
 
    screen->base.vendor_id = hardware_ids.vendorID;
+   screen->base.device_id = hardware_ids.deviceID;
+   screen->base.subsys_id = hardware_ids.subSysID;
+   screen->base.revision = hardware_ids.revision;
    screen->base.memory_size_megabytes = (dedicated_video_memory + dedicated_system_memory + shared_system_memory) >> 20;
    screen->base.base.get_name = dxcore_get_name;
    screen->base.get_memory_info = dxcore_get_memory_info;

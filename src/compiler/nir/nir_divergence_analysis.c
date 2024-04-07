@@ -130,6 +130,7 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_viewport_x_offset:
    case nir_intrinsic_load_viewport_y_offset:
    case nir_intrinsic_load_viewport_z_offset:
+   case nir_intrinsic_load_viewport_xy_scale_and_offset:
    case nir_intrinsic_load_blend_const_color_a_float:
    case nir_intrinsic_load_blend_const_color_b_float:
    case nir_intrinsic_load_blend_const_color_g_float:
@@ -153,6 +154,8 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_ring_es2gs_offset_amd:
    case nir_intrinsic_load_ring_task_draw_amd:
    case nir_intrinsic_load_ring_task_payload_amd:
+   case nir_intrinsic_load_sample_positions_amd:
+   case nir_intrinsic_load_rasterization_samples_amd:
    case nir_intrinsic_load_task_ring_entry_amd:
    case nir_intrinsic_load_task_ib_addr:
    case nir_intrinsic_load_task_ib_stride:
@@ -172,6 +175,7 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_tess_level_outer_default:
    case nir_intrinsic_load_scalar_arg_amd:
    case nir_intrinsic_load_smem_amd:
+   case nir_intrinsic_load_rt_dynamic_callable_stack_base_amd:
    case nir_intrinsic_load_global_const_block_intel:
    case nir_intrinsic_load_reloc_const_intel:
    case nir_intrinsic_load_global_block_intel:
@@ -180,6 +184,11 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_mesh_inline_data_intel:
    case nir_intrinsic_load_ray_num_dss_rt_stacks_intel:
    case nir_intrinsic_load_lshs_vertex_stride_amd:
+   case nir_intrinsic_load_hs_out_patch_data_offset_amd:
+   case nir_intrinsic_load_clip_half_line_width_amd:
+   case nir_intrinsic_load_num_vertices_per_primitive_amd:
+   case nir_intrinsic_load_streamout_buffer_amd:
+   case nir_intrinsic_load_ordered_id_amd:
       is_divergent = false;
       break;
 
@@ -322,6 +331,13 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
       is_divergent = instr->src[0].ssa->divergent && (nir_intrinsic_access(instr) & ACCESS_NON_UNIFORM);
       break;
 
+   case nir_intrinsic_image_samples_identical:
+   case nir_intrinsic_image_deref_samples_identical:
+   case nir_intrinsic_bindless_image_samples_identical:
+      is_divergent = (instr->src[0].ssa->divergent && (nir_intrinsic_access(instr) & ACCESS_NON_UNIFORM)) ||
+                     instr->src[1].ssa->divergent;
+      break;
+
    case nir_intrinsic_image_load:
    case nir_intrinsic_image_deref_load:
    case nir_intrinsic_bindless_image_load:
@@ -350,6 +366,7 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_shared:
    case nir_intrinsic_load_shared2_amd:
    case nir_intrinsic_load_global:
+   case nir_intrinsic_load_global_2x32:
    case nir_intrinsic_load_global_constant:
    case nir_intrinsic_load_global_amd:
    case nir_intrinsic_load_uniform:
@@ -364,6 +381,9 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_image_size:
    case nir_intrinsic_image_deref_size:
    case nir_intrinsic_bindless_image_size:
+   case nir_intrinsic_image_descriptor_amd:
+   case nir_intrinsic_image_deref_descriptor_amd:
+   case nir_intrinsic_bindless_image_descriptor_amd:
    case nir_intrinsic_copy_deref:
    case nir_intrinsic_vulkan_resource_index:
    case nir_intrinsic_vulkan_resource_reindex:
@@ -402,6 +422,7 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_sample_id_no_per_sample:
    case nir_intrinsic_load_sample_mask_in:
    case nir_intrinsic_load_interpolated_input:
+   case nir_intrinsic_load_point_coord_maybe_flipped:
    case nir_intrinsic_load_barycentric_pixel:
    case nir_intrinsic_load_barycentric_centroid:
    case nir_intrinsic_load_barycentric_sample:
@@ -556,6 +577,20 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_global_atomic_fmin_amd:
    case nir_intrinsic_global_atomic_fmax_amd:
    case nir_intrinsic_global_atomic_fcomp_swap_amd:
+   case nir_intrinsic_global_atomic_add_2x32:
+   case nir_intrinsic_global_atomic_imin_2x32:
+   case nir_intrinsic_global_atomic_umin_2x32:
+   case nir_intrinsic_global_atomic_imax_2x32:
+   case nir_intrinsic_global_atomic_umax_2x32:
+   case nir_intrinsic_global_atomic_and_2x32:
+   case nir_intrinsic_global_atomic_or_2x32:
+   case nir_intrinsic_global_atomic_xor_2x32:
+   case nir_intrinsic_global_atomic_exchange_2x32:
+   case nir_intrinsic_global_atomic_comp_swap_2x32:
+   case nir_intrinsic_global_atomic_fadd_2x32:
+   case nir_intrinsic_global_atomic_fmin_2x32:
+   case nir_intrinsic_global_atomic_fmax_2x32:
+   case nir_intrinsic_global_atomic_fcomp_swap_2x32:
    case nir_intrinsic_atomic_counter_add:
    case nir_intrinsic_atomic_counter_min:
    case nir_intrinsic_atomic_counter_max:
@@ -599,6 +634,7 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_btd_stack_id_intel:
    case nir_intrinsic_load_topology_id_intel:
    case nir_intrinsic_load_scratch_base_ptr:
+   case nir_intrinsic_ordered_xfb_counter_add_amd:
       is_divergent = true;
       break;
 

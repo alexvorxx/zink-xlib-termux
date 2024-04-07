@@ -116,8 +116,11 @@ namespace {
          return TGL_PIPE_NONE;
       else if (devinfo->verx10 < 125)
          return TGL_PIPE_FLOAT;
-      else if (inst->opcode == SHADER_OPCODE_MOV_INDIRECT &&
-               type_sz(t) >= 8)
+      else if (inst->opcode == SHADER_OPCODE_MOV_INDIRECT ||
+               inst->opcode == SHADER_OPCODE_BROADCAST ||
+               inst->opcode == SHADER_OPCODE_SHUFFLE ||
+               (inst->opcode == SHADER_OPCODE_SEL_EXEC &&
+                type_sz(inst->dst.type) > 4))
          return TGL_PIPE_INT;
       else if (inst->opcode == SHADER_OPCODE_BROADCAST &&
                !devinfo->has_64bit_float && type_sz(t) >= 8)
@@ -1155,7 +1158,7 @@ namespace {
                   sb.get(brw_uvec_mrf(8, inst->base_mrf + j, 0))));
          }
 
-         if (is_unordered(inst))
+         if (is_unordered(inst) && !inst->eot)
             add_dependency(ids, deps[ip],
                            dependency(TGL_SBID_SET, ip, exec_all));
 

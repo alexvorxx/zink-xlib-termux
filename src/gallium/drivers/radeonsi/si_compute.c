@@ -394,12 +394,7 @@ void si_emit_initial_compute_regs(struct si_context *sctx, struct radeon_cmdbuf 
        * (number of compute units) * 4 * (waves per simd) - 1
        */
       radeon_set_sh_reg(R_00B82C_COMPUTE_MAX_WAVE_ID, 0x190 /* Default value */);
-
-      if (sctx->screen->info.si_TA_CS_BC_BASE_ADDR_allowed) {
-         uint64_t bc_va = sctx->border_color_buffer->gpu_address;
-
-         radeon_set_config_reg(R_00950C_TA_CS_BC_BASE_ADDR, bc_va >> 8);
-      }
+      radeon_set_config_reg(R_00950C_TA_CS_BC_BASE_ADDR, sctx->border_color_buffer->gpu_address >> 8);
    }
 
    if (sctx->gfx_level >= GFX7) {
@@ -572,7 +567,7 @@ static bool si_switch_compute_shader(struct si_context *sctx, struct si_compute 
 
    if (sctx->gfx_level >= GFX11) {
       radeon_set_sh_reg(R_00B8A0_COMPUTE_PGM_RSRC3,
-                        S_00B8A0_INST_PREF_SIZE(si_calc_inst_pref_size(shader)));
+                        S_00B8A0_INST_PREF_SIZE(si_get_shader_prefetch_size(shader)));
    }
 
    if (sctx->gfx_level >= GFX11 && shader->scratch_bo) {
@@ -947,6 +942,8 @@ static void si_launch_grid(struct pipe_context *ctx, const struct pipe_grid_info
 
    if (program->ir_type != PIPE_SHADER_IR_NATIVE && program->shader.compilation_failed)
       return;
+
+   si_check_dirty_buffers_textures(sctx);
 
    if (sctx->has_graphics) {
       if (sctx->last_num_draw_calls != sctx->num_draw_calls) {

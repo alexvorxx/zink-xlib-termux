@@ -18,6 +18,25 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+inc_anv = include_directories('.')
+
+anv_flags = [
+  no_override_init_args,
+  c_sse2_args,
+]
+
+anv_cpp_flags = []
+
+if with_intel_vk_rt
+  subdir('grl')
+  optional_libgrl = [libgrl]
+  anv_flags += '-DANV_SUPPORT_RT=1'
+else
+  idep_grl = null_dep
+  optional_libgrl = []
+  anv_flags += '-DANV_SUPPORT_RT=0'
+endif
+
 anv_entrypoints = custom_target(
   'anv_entrypoints',
   input : [vk_entrypoints_gen, vk_api_xml],
@@ -25,9 +44,9 @@ anv_entrypoints = custom_target(
   command : [
     prog_python, '@INPUT0@', '--xml', '@INPUT1@', '--proto', '--weak',
     '--out-h', '@OUTPUT0@', '--out-c', '@OUTPUT1@', '--prefix', 'anv',
-    '--device-prefix', 'gfx7', '--device-prefix', 'gfx75',
-    '--device-prefix', 'gfx8', '--device-prefix', 'gfx9',
-    '--device-prefix', 'gfx11', '--device-prefix', 'gfx12',
+    '--device-prefix', 'gfx9',
+    '--device-prefix', 'gfx11',
+    '--device-prefix', 'gfx12',
     '--device-prefix', 'gfx125',
   ],
   depend_files : vk_entrypoints_gen_depend_files,
@@ -76,9 +95,13 @@ anv_per_hw_ver_files = files(
   'genX_query.c',
   'genX_state.c',
 )
-foreach g : [['70', ['gfx7_cmd_buffer.c']], ['75', ['gfx7_cmd_buffer.c']],
-             ['80', ['gfx8_cmd_buffer.c']], ['90', ['gfx8_cmd_buffer.c']],
-             ['110', ['gfx8_cmd_buffer.c']], ['120', ['gfx8_cmd_buffer.c']],
+if with_intel_vk_rt
+  anv_per_hw_ver_files += files('genX_acceleration_structure.c',)
+endif
+
+foreach g : [['90', ['gfx8_cmd_buffer.c']],
+             ['110', ['gfx8_cmd_buffer.c']],
+             ['120', ['gfx8_cmd_buffer.c']],
              ['125', ['gfx8_cmd_buffer.c']]]
   _gfx_ver = g[0]
   libanv_per_hw_ver_libs += static_library(
@@ -87,21 +110,18 @@ foreach g : [['70', ['gfx7_cmd_buffer.c']], ['75', ['gfx7_cmd_buffer.c']],
     include_directories : [
       inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_compiler, inc_intel,
     ],
-    c_args : [
-      no_override_init_args, c_sse2_args,
-      '-DGFX_VERx10=@0@'.format(_gfx_ver),
-    ],
+    c_args : anv_flags + ['-DGFX_VERx10=@0@'.format(_gfx_ver)],
     gnu_symbol_visibility : 'hidden',
     dependencies : [
       dep_libdrm, dep_valgrind, idep_nir_headers, idep_genxml,
       idep_vulkan_util_headers, idep_vulkan_wsi_headers,
       idep_vulkan_runtime_headers, idep_intel_driver_ds_headers,
+      idep_grl,
     ],
   )
 endforeach
 
 libanv_files = files(
-  'anv_acceleration_structure.c',
   'anv_allocator.c',
   'anv_android.h',
   'anv_batch_chain.c',
@@ -141,12 +161,6 @@ anv_deps = [
   idep_vulkan_runtime_headers,
   idep_vulkan_wsi_headers,
 ]
-anv_flags = [
-  no_override_init_args,
-  c_sse2_args,
-]
-
-anv_cpp_flags = []
 
 if with_platform_x11
   anv_deps += dep_xcb_dri3
@@ -190,7 +204,7 @@ libvulkan_intel = shared_library(
   include_directories : [
     inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_intel, inc_compiler,
   ],
-  link_whole : [libanv_common, libanv_per_hw_ver_libs],
+  link_whole : [libanv_common, libanv_per_hw_ver_libs] + optional_libgrl,
   link_with : [
     libintel_compiler, libintel_dev, libisl, libblorp, libintel_perf,
   ],
@@ -230,7 +244,7 @@ if with_tests
     link_with : [
       libanv_per_hw_ver_libs, libintel_compiler, libintel_common, libintel_dev,
       libisl, libblorp, libintel_perf,
-    ],
+    ] + optional_libgrl,
     dependencies : [
       dep_thread, dep_dl, dep_m, anv_deps,
       idep_nir, idep_vulkan_util, idep_vulkan_wsi, idep_vulkan_runtime,

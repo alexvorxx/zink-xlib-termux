@@ -139,6 +139,7 @@ lima_program_optimize_vs_nir(struct nir_shader *s)
       NIR_PASS(progress, s, lima_nir_lower_ftrunc);
       NIR_PASS(progress, s, nir_opt_constant_folding);
       NIR_PASS(progress, s, nir_opt_undef);
+      NIR_PASS(progress, s, nir_lower_undef_to_zero);
       NIR_PASS(progress, s, nir_opt_loop_unroll);
       NIR_PASS(progress, s, nir_lower_undef_to_zero);
    } while (progress);
@@ -153,6 +154,7 @@ lima_program_optimize_vs_nir(struct nir_shader *s)
    NIR_PASS_V(s, lima_nir_split_loads);
    NIR_PASS_V(s, nir_lower_locals_to_regs);
    NIR_PASS_V(s, nir_convert_from_ssa, true);
+   NIR_PASS_V(s, nir_opt_dce);
    NIR_PASS_V(s, nir_remove_dead_variables, nir_var_function_temp, NULL);
    nir_sweep(s);
 }
@@ -309,7 +311,7 @@ lima_fs_compile_shader(struct lima_context *ctx,
    if (lima_debug & LIMA_DEBUG_PP)
       nir_print_shader(nir, stdout);
 
-   if (!ppir_compile_nir(fs, nir, screen->pp_ra, &ctx->debug)) {
+   if (!ppir_compile_nir(fs, nir, screen->pp_ra, &ctx->base.debug)) {
       ralloc_free(nir);
       return false;
    }
@@ -485,7 +487,7 @@ lima_vs_compile_shader(struct lima_context *ctx,
    if (lima_debug & LIMA_DEBUG_GP)
       nir_print_shader(nir, stdout);
 
-   if (!gpir_compile_nir(vs, nir, &ctx->debug)) {
+   if (!gpir_compile_nir(vs, nir, &ctx->base.debug)) {
       ralloc_free(nir);
       return false;
    }

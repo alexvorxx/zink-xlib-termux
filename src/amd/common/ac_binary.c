@@ -27,8 +27,6 @@
 #include "util/u_math.h"
 #include "util/u_memory.h"
 
-#include <gelf.h>
-#include <libelf.h>
 #include <sid.h>
 #include <stdio.h>
 
@@ -138,6 +136,6 @@ void ac_parse_shader_binary_config(const char *data, size_t nbytes, unsigned wav
     * - denormals break v_mad_f32
     * - GFX6 & GFX7 would be very slow
     */
-   conf->float_mode &= ~V_00B028_FP_ALL_DENORMS;
-   conf->float_mode |= V_00B028_FP_64_DENORMS;
+   conf->float_mode &= ~V_00B028_FP_32_DENORMS;
+   conf->float_mode |= V_00B028_FP_16_64_DENORMS;
 }

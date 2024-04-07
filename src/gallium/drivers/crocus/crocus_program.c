@@ -44,12 +44,12 @@
 #include "compiler/nir/nir_serialize.h"
 #include "intel/compiler/brw_compiler.h"
 #include "intel/compiler/brw_nir.h"
+#include "intel/compiler/brw_prim.h"
 #include "crocus_context.h"
 #include "nir/tgsi_to_nir.h"
 
 #define KEY_INIT_NO_ID()                              \
-   .base.subgroup_size_type = BRW_SUBGROUP_SIZE_UNIFORM, \
-   .base.tex.swizzles[0 ... MAX_SAMPLERS - 1] = 0x688,   \
+   .base.tex.swizzles[0 ... BRW_MAX_SAMPLERS - 1] = 0x688,   \
    .base.tex.compressed_multisample_layout_mask = ~0
 #define KEY_INIT()                                                        \
    .base.program_string_id = ish->program_id,                             \
@@ -60,7 +60,7 @@ static void
 crocus_sanitize_tex_key(struct brw_sampler_prog_key_data *key)
 {
    key->gather_channel_quirk_mask = 0;
-   for (unsigned s = 0; s < MAX_SAMPLERS; s++) {
+   for (unsigned s = 0; s < BRW_MAX_SAMPLERS; s++) {
       key->swizzles[s] = SWIZZLE_NOOP;
       key->gfx6_gather_wa[s] = 0;
    }
@@ -356,8 +356,6 @@ crocus_fix_edge_flags(nir_shader *nir)
                                nir_metadata_dominance |
                                nir_metadata_live_ssa_defs |
                                nir_metadata_loop_analysis);
-      } else {
-         nir_metadata_preserve(f->impl, nir_metadata_all);
       }
    }
 

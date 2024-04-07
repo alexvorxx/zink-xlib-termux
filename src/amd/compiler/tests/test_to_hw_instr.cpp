@@ -790,7 +790,6 @@ BEGIN_TEST(to_hw_instr.copy_linear_vgpr_scc)
       return;
 
    PhysReg reg_s0{0};
-   PhysReg reg_s1{1};
    PhysReg v0_lo{256};
    PhysReg v0_b3{256};
    v0_b3.reg_b += 3;
@@ -835,6 +834,30 @@ BEGIN_TEST(to_hw_instr.swap_linear_vgpr)
       Definition(reg_v0, v1_linear), Definition(reg_v1, v1_linear),
       Operand(reg_v1, v1_linear), Operand(reg_v0, v1_linear));
    instr->pseudo().scratch_sgpr = m0;
+
+   finish_to_hw_instr_test();
+END_TEST
+
+BEGIN_TEST(to_hw_instr.pack2x16_alignbyte_constant)
+   PhysReg v0_lo{256};
+   PhysReg v0_hi{256};
+   PhysReg v1_hi{257};
+   v0_hi.reg_b += 2;
+   v1_hi.reg_b += 2;
+
+   if (!setup_cs(NULL, GFX10))
+      return;
+
+   /* prevent usage of v_pack_b32_f16 */
+   program->blocks[0].fp_mode.denorm16_64 = fp_denorm_flush;
+
+   //>> p_unit_test 0
+   //! v1: %_:v[0] = v_alignbyte_b32 0x3800, %_:v[1][16:32], 2
+   bld.pseudo(aco_opcode::p_unit_test, Operand::zero());
+   bld.pseudo(aco_opcode::p_parallelcopy, Definition(v0_lo, v2b), Definition(v0_hi, v2b),
+              Operand(v1_hi, v2b), Operand::c16(0x3800));
+
+   //! s_endpgm
 
    finish_to_hw_instr_test();
 END_TEST

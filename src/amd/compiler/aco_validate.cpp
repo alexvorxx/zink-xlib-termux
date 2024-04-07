@@ -91,7 +91,7 @@ validate_ir(Program* program)
          FILE* const memf = u_memstream_get(&mem);
 
          fprintf(memf, "%s: ", msg);
-         aco_print_instr(instr, memf);
+         aco_print_instr(program->gfx_level, instr, memf);
          u_memstream_close(&mem);
 
          aco_err(program, "%s", out);
@@ -261,8 +261,10 @@ validate_ir(Program* program)
                bool flat = instr->isFlatLike();
                bool can_be_undef = is_phi(instr) || instr->isEXP() || instr->isReduction() ||
                                    instr->opcode == aco_opcode::p_create_vector ||
+                                   instr->opcode == aco_opcode::p_jump_to_epilog ||
                                    (flat && i == 1) || (instr->isMIMG() && (i == 1 || i == 2)) ||
-                                   ((instr->isMUBUF() || instr->isMTBUF()) && i == 1);
+                                   ((instr->isMUBUF() || instr->isMTBUF()) && i == 1) ||
+                                   (instr->isScratch() && i == 0);
                check(can_be_undef, "Undefs can only be used in certain operands", instr.get());
             } else {
                check(instr->operands[i].isFixed() || instr->operands[i].isTemp() ||
@@ -279,7 +281,7 @@ validate_ir(Program* program)
                      instr.get());
          }
 
-         if (instr->isSALU() || instr->isVALU()) {
+         if (instr->isSALU() || instr->isVALU() || instr->isVINTERP_INREG()) {
             /* check literals */
             Operand literal(s1);
             for (unsigned i = 0; i < instr->operands.size(); i++) {
@@ -301,7 +303,7 @@ validate_ir(Program* program)
             }
 
             /* check num sgprs for VALU */
-            if (instr->isVALU()) {
+            if (instr->isVALU() || instr->isVINTERP_INREG()) {
                bool is_shift64 = instr->opcode == aco_opcode::v_lshlrev_b64 ||
                                  instr->opcode == aco_opcode::v_lshrrev_b64 ||
                                  instr->opcode == aco_opcode::v_ashrrev_i64;
@@ -309,7 +311,8 @@ validate_ir(Program* program)
                if (program->gfx_level >= GFX10 && !is_shift64)
                   const_bus_limit = 2;
 
-               uint32_t scalar_mask = instr->isVOP3() || instr->isVOP3P() ? 0x7 : 0x5;
+               uint32_t scalar_mask =
+                  instr->isVOP3() || instr->isVOP3P() || instr->isVINTERP_INREG() ? 0x7 : 0x5;
                if (instr->isSDWA())
                   scalar_mask = program->gfx_level >= GFX9 ? 0x7 : 0x4;
                else if (instr->isDPP())
@@ -379,8 +382,9 @@ validate_ir(Program* program)
             }
 
             if (instr->isSOP1() || instr->isSOP2()) {
-               check(instr->definitions[0].getTemp().type() == RegType::sgpr,
-                     "Wrong Definition type for SALU instruction", instr.get());
+               if (!instr->definitions.empty())
+                  check(instr->definitions[0].getTemp().type() == RegType::sgpr,
+                        "Wrong Definition type for SALU instruction", instr.get());
                for (const Operand& op : instr->operands) {
                   check(op.isConstant() || op.regClass().type() <= RegType::sgpr,
                         "Wrong Operand type for SALU instruction", instr.get());
@@ -509,6 +513,18 @@ validate_ir(Program* program)
                unsigned comp = data_bits / MAX2(op_bits, 1);
                check(instr->operands[1].constantValue() < comp, "Index must be in-bounds",
                      instr.get());
+            } else if (instr->opcode == aco_opcode::p_jump_to_epilog) {
+               check(instr->definitions.size() == 0, "p_jump_to_epilog must have 0 definitions",
+                     instr.get());
+               check(instr->operands.size() > 0 &&
+                        instr->operands[0].getTemp().type() == RegType::sgpr &&
+                        instr->operands[0].getTemp().size() == 2,
+                     "First operand of p_jump_to_epilog must be a SGPR", instr.get());
+               for (unsigned i = 1; i < instr->operands.size(); i++) {
+                  check(instr->operands[i].getTemp().type() == RegType::vgpr ||
+                           instr->operands[i].isUndefined(),
+                        "Other operands of p_jump_to_epilog must be VGPRs or undef", instr.get());
+               }
             }
             break;
          }
@@ -657,19 +673,35 @@ validate_ir(Program* program)
                   instr.get());
             FALLTHROUGH;
          case Format::GLOBAL:
-         case Format::SCRATCH: {
             check(
                instr->operands[0].isTemp() && instr->operands[0].regClass().type() == RegType::vgpr,
-               "FLAT/GLOBAL/SCRATCH address must be vgpr", instr.get());
+               "FLAT/GLOBAL address must be vgpr", instr.get());
+            FALLTHROUGH;
+         case Format::SCRATCH: {
+            check(instr->operands[0].hasRegClass() &&
+                     instr->operands[0].regClass().type() == RegType::vgpr,
+                  "FLAT/GLOBAL/SCRATCH address must be undefined or vgpr", instr.get());
             check(instr->operands[1].hasRegClass() &&
                      instr->operands[1].regClass().type() == RegType::sgpr,
                   "FLAT/GLOBAL/SCRATCH sgpr address must be undefined or sgpr", instr.get());
+            if (instr->format == Format::SCRATCH && program->gfx_level < GFX10_3)
+               check(instr->operands[0].isTemp() || instr->operands[1].isTemp(),
+                     "SCRATCH must have either SADDR or ADDR operand", instr.get());
             if (!instr->definitions.empty())
                check(instr->definitions[0].getTemp().type() == RegType::vgpr,
                      "FLAT/GLOBAL/SCRATCH result must be vgpr", instr.get());
             else
                check(instr->operands[2].regClass().type() == RegType::vgpr,
                      "FLAT/GLOBAL/SCRATCH data must be vgpr", instr.get());
+            break;
+         }
+         case Format::LDSDIR: {
+            check(instr->definitions.size() == 1 && instr->definitions[0].regClass() == v1, "LDSDIR must have an v1 definition", instr.get());
+            check(instr->operands.size() == 1, "LDSDIR must have an operand", instr.get());
+            if (!instr->operands.empty()) {
+               check(instr->operands[0].regClass() == s1, "LDSDIR must have an s1 operand", instr.get());
+               check(instr->operands[0].isFixed() && instr->operands[0].physReg() == m0, "LDSDIR must have an operand fixed to m0", instr.get());
+            }
             break;
          }
          default: break;
@@ -744,14 +776,14 @@ ra_fail(Program* program, Location loc, Location loc2, const char* fmt, ...)
 
    fprintf(memf, "RA error found at instruction in BB%d:\n", loc.block->index);
    if (loc.instr) {
-      aco_print_instr(loc.instr, memf);
+      aco_print_instr(program->gfx_level, loc.instr, memf);
       fprintf(memf, "\n%s", msg);
    } else {
       fprintf(memf, "%s", msg);
    }
    if (loc2.block) {
       fprintf(memf, " in BB%d:\n", loc2.block->index);
-      aco_print_instr(loc2.instr, memf);
+      aco_print_instr(program->gfx_level, loc2.instr, memf);
    }
    fprintf(memf, "\n\n");
    u_memstream_close(&mem);
@@ -840,6 +872,7 @@ validate_subdword_definition(amd_gfx_level gfx_level, const aco_ptr<Instruction>
       return true;
 
    switch (instr->opcode) {
+   case aco_opcode::v_fma_mixhi_f16:
    case aco_opcode::buffer_load_ubyte_d16_hi:
    case aco_opcode::buffer_load_sbyte_d16_hi:
    case aco_opcode::buffer_load_short_d16_hi:
@@ -866,7 +899,7 @@ get_subdword_bytes_written(Program* program, const aco_ptr<Instruction>& instr, 
 
    if (instr->isPseudo())
       return gfx_level >= GFX8 ? def.bytes() : def.size() * 4u;
-   if (instr->isVALU()) {
+   if (instr->isVALU() || instr->isVINTERP_INREG()) {
       assert(def.bytes() <= 2);
       if (instr->isSDWA())
          return instr->sdwa().dst_sel.size();

@@ -481,12 +481,6 @@ _mesa_init_constants(struct gl_constants *consts, gl_api api)
 
    consts->GLSLLowerConstArrays = true;
 
-   /* Assume that if GLSL 1.30+ (or GLSL ES 3.00+) is supported that
-    * gl_VertexID is implemented using a native hardware register with OpenGL
-    * semantics.
-    */
-   consts->VertexID_is_zero_based = false;
-
    /* GL_ARB_draw_buffers */
    consts->MaxDrawBuffers = MAX_DRAW_BUFFERS;
 
@@ -934,14 +928,14 @@ void
 _mesa_initialize_dispatch_tables(struct gl_context *ctx)
 {
    /* Do the code-generated setup of the exec table in api_exec_init.c. */
-   _mesa_initialize_exec_table(ctx);
+   _mesa_init_dispatch(ctx);
 
    if (ctx->Save)
-      _mesa_initialize_save_table(ctx);
+      _mesa_init_dispatch_save(ctx);
 
-   vbo_install_exec_vtxfmt(ctx);
+   vbo_init_dispatch_begin_end(ctx);
    if (ctx->API == API_OPENGL_COMPAT)
-      _mesa_install_save_vtxfmt(ctx);
+      _mesa_init_dispatch_save_begin_end(ctx);
 }
 
 /**
@@ -1077,7 +1071,7 @@ _mesa_initialize_context(struct gl_context *ctx,
       break;
    }
    ctx->VertexProgram.PointSizeEnabled = ctx->API == API_OPENGLES2;
-   ctx->PointSizeIsOne = GL_TRUE;
+   ctx->PointSizeIsSet = GL_TRUE;
 
    ctx->FirstTimeCurrent = GL_TRUE;
 
@@ -1194,6 +1188,7 @@ _mesa_free_context_data(struct gl_context *ctx, bool destroy_debug_output)
    }
 
    free(ctx->Const.SpirVExtensions);
+   free(ctx->tmp_draws);
 }
 
 
@@ -1493,11 +1488,6 @@ _mesa_make_current( struct gl_context *newCtx,
       st_glFlush(curCtx, 0);
    }
 
-   /* Call this periodically to detect when the user has begun using
-    * GL rendering from multiple threads.
-    */
-   _glapi_check_multithread();
-
    if (!newCtx) {
       _glapi_set_dispatch(NULL);  /* none current */
       /* We need old ctx to correctly release Draw/ReadBuffer
@@ -1611,25 +1601,6 @@ struct gl_context *
 _mesa_get_current_context( void )
 {
    return (struct gl_context *) _glapi_get_context();
-}
-
-
-/**
- * Get context's current API dispatch table.
- *
- * It'll either be the immediate-mode execute dispatcher, the display list
- * compile dispatcher, or the thread marshalling dispatcher.
- *
- * \param ctx GL context.
- *
- * \return pointer to dispatch_table.
- *
- * Simply returns __struct gl_contextRec::CurrentClientDispatch.
- */
-struct _glapi_table *
-_mesa_get_dispatch(struct gl_context *ctx)
-{
-   return ctx->CurrentClientDispatch;
 }
 
 /*@}*/

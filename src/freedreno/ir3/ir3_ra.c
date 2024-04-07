@@ -1797,10 +1797,15 @@ handle_precolored_input(struct ra_ctx *ctx, struct ir3_instruction *instr)
    if (instr->dsts[0]->num == INVALID_REG)
       return;
 
+   struct ra_file *file = ra_get_file(ctx, instr->dsts[0]);
    struct ra_interval *interval = &ctx->intervals[instr->dsts[0]->name];
    physreg_t physreg = ra_reg_get_physreg(instr->dsts[0]);
    allocate_dst_fixed(ctx, instr->dsts[0], physreg);
-   insert_dst(ctx, instr->dsts[0]);
+
+   d("insert precolored dst %u physreg %u", instr->dsts[0]->name,
+     ra_interval_get_physreg(interval));
+
+   ra_file_insert(file, interval);
    interval->frozen = true;
 }
 
@@ -2037,7 +2042,7 @@ insert_liveout_copy(struct ir3_block *block, physreg_t dst, physreg_t src,
    struct ir3_instruction *old_pcopy = NULL;
    if (!list_is_empty(&block->instr_list)) {
       struct ir3_instruction *last =
-         LIST_ENTRY(struct ir3_instruction, block->instr_list.prev, node);
+         list_entry(block->instr_list.prev, struct ir3_instruction, node);
       if (last->opc == OPC_META_PARALLEL_COPY)
          old_pcopy = last;
    }

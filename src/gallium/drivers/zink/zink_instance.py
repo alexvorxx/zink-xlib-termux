@@ -38,6 +38,7 @@ EXTENSIONS = [
     Extension("VK_EXT_debug_utils"),
     Extension("VK_KHR_get_physical_device_properties2"),
     Extension("VK_KHR_external_memory_capabilities"),
+    Extension("VK_KHR_external_semaphore_capabilities"),
     Extension("VK_MVK_moltenvk",
         nonstandard=True),
     Extension("VK_KHR_surface"),
@@ -118,9 +119,9 @@ struct pipe_resource;
 """
 
 impl_code = """
+#include "vk_enum_to_str.h"
 #include "zink_instance.h"
 #include "zink_screen.h"
-#include "vk_enum_to_str.h"
 
 bool
 zink_create_instance(struct zink_screen *screen)

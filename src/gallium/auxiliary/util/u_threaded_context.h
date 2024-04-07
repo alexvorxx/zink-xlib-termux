@@ -315,6 +315,17 @@ typedef bool (*tc_is_resource_busy)(struct pipe_screen *screen,
 struct threaded_resource {
    struct pipe_resource b;
 
+   /* Pointer to the TC that first used this threaded_resource (buffer). This is used to
+    * allow TCs to determine whether they have been given a buffer that was created by a
+    * different TC, in which case all TCs have to disable busyness tracking and buffer
+    * replacement for that particular buffer.
+    * DO NOT DEREFERENCE. The only operation allowed on this pointer is equality-checking
+    * since it might be dangling if a buffer has been shared and its first_user has
+    * already been destroyed. The pointer is const void to discourage such disallowed usage.
+    * This is NULL if no TC has used this buffer yet.
+    */
+   const void *first_user;
+
    /* Since buffer invalidations are queued, we can't use the base resource
     * for unsychronized mappings. This points to the latest version of
     * the buffer after the latest invalidation. It's only used for unsychro-
@@ -341,6 +352,12 @@ struct threaded_resource {
     * memory.
     */
    struct util_range valid_buffer_range;
+
+   /* True if multiple threaded contexts have accessed this buffer.
+    * Disables non-multicontext-safe optimizations in TC.
+    * We can't just re-use is_shared for that purpose as that would confuse drivers.
+    */
+   bool used_by_multiple_contexts;
 
    /* Drivers are required to update this for shared resources and user
     * pointers. */
@@ -414,6 +431,12 @@ struct tc_batch {
 #endif
    uint16_t num_total_slots;
    uint16_t buffer_list_index;
+
+   /* The last mergeable call that was added to this batch (i.e.
+    * buffer subdata). This might be out-of-date or NULL.
+    */
+   struct tc_call_base *last_mergeable_call;
+
    struct util_queue_fence fence;
    struct tc_unflushed_batch_token *token;
    uint64_t slots[TC_SLOTS_PER_BATCH];
@@ -442,6 +465,9 @@ struct threaded_context_options {
     * safe to call without synchronizing with driver thread.
     */
    bool unsynchronized_get_device_reset_status;
+
+   /* If true, create_fence_fd doesn't access the context in the driver. */
+   bool unsynchronized_create_fence_fd;
 };
 
 struct threaded_context {
@@ -479,7 +505,7 @@ struct threaded_context {
     * there are cases where the queue is flushed directly
     * from the frontend thread
     */
-   thread_id driver_thread;
+   thrd_t driver_thread;
 #endif
 
    bool seen_tcs;
@@ -594,7 +620,7 @@ tc_assert_driver_thread(struct threaded_context *tc)
    if (!tc)
       return;
 #ifndef NDEBUG
-   assert(util_thread_id_equal(tc->driver_thread, util_get_thread_id()));
+   assert(u_thread_is_self(tc->driver_thread));
 #endif
 }
 

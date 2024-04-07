@@ -229,11 +229,11 @@ try_override_shader_variant(struct ir3_shader_variant *v,
 }
 
 static void
-assemble_variant(struct ir3_shader_variant *v)
+assemble_variant(struct ir3_shader_variant *v, bool internal)
 {
    v->bin = ir3_shader_assemble(v);
 
-   bool dbg_enabled = shader_debug_enabled(v->type);
+   bool dbg_enabled = shader_debug_enabled(v->type, internal);
    if (dbg_enabled || ir3_shader_override_path || v->disasm_info.write_disasm) {
       unsigned char sha1[21];
       char sha1buf[41];
@@ -297,7 +297,7 @@ compile_variant(struct ir3_shader *shader, struct ir3_shader_variant *v)
       return false;
    }
 
-   assemble_variant(v);
+   assemble_variant(v, shader->nir->info.internal);
    if (!v->bin) {
       mesa_loge("assemble failed! (%s:%s)", shader->nir->info.name,
                 shader->nir->info.label);
@@ -362,6 +362,7 @@ alloc_variant(struct ir3_shader *shader, const struct ir3_shader_key *key,
       break;
 
    case MESA_SHADER_COMPUTE:
+   case MESA_SHADER_KERNEL:
       v->cs.req_input_mem = shader->cs.req_input_mem;
       v->cs.req_local_mem = shader->cs.req_local_mem;
       break;
@@ -376,8 +377,10 @@ alloc_variant(struct ir3_shader *shader, const struct ir3_shader_key *key,
    v->api_wavesize = shader->api_wavesize;
    v->real_wavesize = shader->real_wavesize;
 
-   if (!v->binning_pass)
+   if (!v->binning_pass) {
       v->const_state = rzalloc_size(v, sizeof(*v->const_state));
+      v->const_state->shared_consts_enable = shader->shared_consts_enable;
+   }
 
    return v;
 }
@@ -541,11 +544,11 @@ ir3_setup_used_key(struct ir3_shader *shader)
       }
 
       /* Only used for deciding on behavior of
-       * nir_intrinsic_load_barycentric_sample, or the centroid demotion
+       * nir_intrinsic_load_barycentric_sample and the centroid demotion
        * on older HW.
        */
-      key->msaa = info->fs.uses_sample_qualifier ||
-                  (shader->compiler->gen < 6 &&
+      key->msaa = shader->compiler->gen < 6 &&
+                  (info->fs.uses_sample_qualifier ||
                    (BITSET_TEST(info->system_values_read,
                                 SYSTEM_VALUE_BARYCENTRIC_PERSP_CENTROID) ||
                     BITSET_TEST(info->system_values_read,
@@ -612,13 +615,31 @@ ir3_trim_constlen(struct ir3_shader_variant **variants,
 {
    unsigned constlens[MESA_SHADER_STAGES] = {};
 
+   bool shared_consts_enable = false;
+
    for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
-      if (variants[i])
+      if (variants[i]) {
          constlens[i] = variants[i]->constlen;
+         shared_consts_enable =
+            ir3_const_state(variants[i])->shared_consts_enable;
+      }
    }
 
    uint32_t trimmed = 0;
    STATIC_ASSERT(MESA_SHADER_STAGES <= 8 * sizeof(trimmed));
+
+   /* Use a hw quirk for geometry shared consts, not matched with actual
+    * shared consts size (on a6xx).
+    */
+   uint32_t shared_consts_size_geom = shared_consts_enable ?
+      compiler->geom_shared_consts_size_quirk : 0;
+
+   uint32_t shared_consts_size = shared_consts_enable ?
+      compiler->shared_consts_size : 0;
+
+   uint32_t safe_shared_consts_size = shared_consts_enable  ?
+      ALIGN_POT(MAX2(DIV_ROUND_UP(shared_consts_size_geom, 4),
+                     DIV_ROUND_UP(shared_consts_size, 5)), 4) : 0;
 
    /* There are two shared limits to take into account, the geometry limit on
     * a6xx and the total limit. The frag limit on a6xx only matters for a
@@ -627,11 +648,13 @@ ir3_trim_constlen(struct ir3_shader_variant **variants,
    if (compiler->gen >= 6) {
       trimmed |=
          trim_constlens(constlens, MESA_SHADER_VERTEX, MESA_SHADER_GEOMETRY,
-                        compiler->max_const_geom, compiler->max_const_safe);
+                        compiler->max_const_geom - shared_consts_size_geom,
+                        compiler->max_const_safe - safe_shared_consts_size);
    }
    trimmed |=
       trim_constlens(constlens, MESA_SHADER_VERTEX, MESA_SHADER_FRAGMENT,
-                     compiler->max_const_pipeline, compiler->max_const_safe);
+                     compiler->max_const_pipeline - shared_consts_size,
+                     compiler->max_const_safe - safe_shared_consts_size);
 
    return trimmed;
 }
@@ -653,6 +676,7 @@ ir3_shader_from_nir(struct ir3_compiler *compiler, nir_shader *nir,
    shader->num_reserved_user_consts = options->reserved_user_consts;
    shader->api_wavesize = options->api_wavesize;
    shader->real_wavesize = options->real_wavesize;
+   shader->shared_consts_enable = options->shared_consts_enable;
    shader->nir = nir;
 
    ir3_disk_cache_init_shader_key(compiler, shader);
@@ -863,8 +887,8 @@ ir3_shader_disasm(struct ir3_shader_variant *so, uint32_t *bin, FILE *out)
       dump_reg(
          out, "pos (ij_centroid)",
          ir3_find_sysval_regid(so, SYSTEM_VALUE_BARYCENTRIC_PERSP_CENTROID));
-      dump_reg(out, "pos (ij_size)",
-               ir3_find_sysval_regid(so, SYSTEM_VALUE_BARYCENTRIC_PERSP_SIZE));
+      dump_reg(out, "pos (center_rhw)",
+               ir3_find_sysval_regid(so, SYSTEM_VALUE_BARYCENTRIC_PERSP_CENTER_RHW));
       dump_output(out, so, FRAG_RESULT_DEPTH, "posz");
       if (so->color0_mrt) {
          dump_output(out, so, FRAG_RESULT_COLOR, "color");

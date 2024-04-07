@@ -45,6 +45,7 @@
 #include "pvr_job_render.h"
 #include "pvr_limits.h"
 #include "pvr_pds.h"
+#include "pvr_types.h"
 #include "pvr_winsys.h"
 #include "rogue/rogue.h"
 #include "util/bitscan.h"
@@ -52,6 +53,7 @@
 #include "util/log.h"
 #include "util/macros.h"
 #include "util/u_dynarray.h"
+#include "vk_buffer.h"
 #include "vk_command_buffer.h"
 #include "vk_device.h"
 #include "vk_image.h"
@@ -75,6 +77,7 @@
 #define PVR_WORKGROUP_DIMENSIONS 3U
 
 #define PVR_SAMPLER_DESCRIPTOR_SIZE 4U
+#define PVR_IMAGE_DESCRIPTOR_SIZE 4U
 
 #define PVR_STATE_PBE_DWORDS 2U
 
@@ -108,6 +111,18 @@ enum pvr_sub_cmd_type {
    PVR_SUB_CMD_TYPE_GRAPHICS,
    PVR_SUB_CMD_TYPE_COMPUTE,
    PVR_SUB_CMD_TYPE_TRANSFER,
+   PVR_SUB_CMD_TYPE_EVENT,
+};
+
+enum pvr_event_type {
+   PVR_EVENT_TYPE_SET,
+   PVR_EVENT_TYPE_RESET,
+   PVR_EVENT_TYPE_WAIT,
+   PVR_EVENT_TYPE_BARRIER,
+};
+
+enum pvr_sub_command_flags {
+   PVR_SUB_COMMAND_FLAG_WAIT_ON_PREVIOUS_FRAG = BITFIELD_BIT(0),
 };
 
 enum pvr_depth_stencil_usage {
@@ -172,6 +187,57 @@ enum pvr_scissor_accum_state {
    PVR_SCISSOR_ACCUM_ENABLED,
 };
 
+#define PVR_STATIC_CLEAR_PDS_STATE_COUNT          \
+   (pvr_cmd_length(TA_STATE_PDS_SHADERBASE) +     \
+    pvr_cmd_length(TA_STATE_PDS_TEXUNICODEBASE) + \
+    pvr_cmd_length(TA_STATE_PDS_SIZEINFO1) +      \
+    pvr_cmd_length(TA_STATE_PDS_SIZEINFO2) +      \
+    pvr_cmd_length(TA_STATE_PDS_VARYINGBASE) +    \
+    pvr_cmd_length(TA_STATE_PDS_TEXTUREDATABASE))
+
+/* These can be used as offsets within a PVR_STATIC_CLEAR_PDS_STATE_COUNT dwords
+ * sized array to get the respective state word.
+ *
+ * The values are based on the lengths of the state words.
+ */
+enum pvr_static_clear_ppp_pds_state_type {
+   /* Words enabled by pres_pds_state_ptr0. */
+   PVR_STATIC_CLEAR_PPP_PDS_TYPE_SHADERBASE = 0,
+   PVR_STATIC_CLEAR_PPP_PDS_TYPE_TEXUNICODEBASE = 1,
+   PVR_STATIC_CLEAR_PPP_PDS_TYPE_SIZEINFO1 = 2,
+   PVR_STATIC_CLEAR_PPP_PDS_TYPE_SIZEINFO2 = 3,
+
+   /* Word enabled by pres_pds_state_ptr1. */
+   PVR_STATIC_CLEAR_PPP_PDS_TYPE_VARYINGBASE = 4,
+
+   /* Word enabled by pres_pds_state_ptr2. */
+   PVR_STATIC_CLEAR_PPP_PDS_TYPE_TEXTUREDATABASE = 5,
+};
+
+static_assert(PVR_STATIC_CLEAR_PPP_PDS_TYPE_TEXTUREDATABASE + 1 ==
+                 PVR_STATIC_CLEAR_PDS_STATE_COUNT,
+              "pvr_static_clear_ppp_pds_state_type might require fixing.");
+
+enum pvr_static_clear_variant_bits {
+   PVR_STATIC_CLEAR_DEPTH_BIT = BITFIELD_BIT(0),
+   PVR_STATIC_CLEAR_STENCIL_BIT = BITFIELD_BIT(1),
+   PVR_STATIC_CLEAR_COLOR_BIT = BITFIELD_BIT(2),
+};
+
+#define PVR_STATIC_CLEAR_VARIANT_COUNT (PVR_STATIC_CLEAR_COLOR_BIT << 1U)
+
+enum pvr_event_state {
+   PVR_EVENT_STATE_SET_BY_HOST,
+   PVR_EVENT_STATE_RESET_BY_HOST,
+   PVR_EVENT_STATE_SET_BY_DEVICE,
+   PVR_EVENT_STATE_RESET_BY_DEVICE
+};
+
+enum pvr_deferred_cs_command_type {
+   PVR_DEFERRED_CS_COMMAND_TYPE_DBSC,
+   PVR_DEFERRED_CS_COMMAND_TYPE_DBSC2,
+};
+
 struct pvr_bo;
 struct pvr_compute_ctx;
 struct pvr_compute_pipeline;
@@ -180,16 +246,6 @@ struct pvr_graphics_pipeline;
 struct pvr_instance;
 struct pvr_render_ctx;
 struct rogue_compiler;
-
-struct pvr_descriptor_limits {
-   uint32_t max_per_stage_resources;
-   uint32_t max_per_stage_samplers;
-   uint32_t max_per_stage_uniform_buffers;
-   uint32_t max_per_stage_storage_buffers;
-   uint32_t max_per_stage_sampled_images;
-   uint32_t max_per_stage_storage_images;
-   uint32_t max_per_stage_input_attachments;
-};
 
 struct pvr_physical_device {
    struct vk_physical_device vk;
@@ -206,9 +262,7 @@ struct pvr_physical_device {
    struct pvr_winsys *ws;
    struct pvr_device_info dev_info;
 
-   struct pvr_device_runtime_info {
-      uint32_t core_count;
-   } dev_runtime_info;
+   struct pvr_device_runtime_info dev_runtime_info;
 
    VkPhysicalDeviceMemoryProperties memory;
 
@@ -255,6 +309,48 @@ struct pvr_pds_upload {
    uint32_t code_size;
 };
 
+struct pvr_static_clear_ppp_base {
+   uint32_t wclamp;
+   uint32_t varying_word[3];
+   uint32_t ppp_ctrl;
+   uint32_t stream_out0;
+};
+
+struct pvr_static_clear_ppp_template {
+   /* Pre-packed control words. */
+   uint32_t header;
+   uint32_t ispb;
+
+   bool requires_pds_state;
+
+   /* Configurable control words.
+    * These are initialized and can be modified as needed before emitting them.
+    */
+   struct {
+      struct PVRX(TA_STATE_ISPCTL) ispctl;
+      struct PVRX(TA_STATE_ISPA) ispa;
+
+      /* In case the template requires_pds_state this needs to be a valid
+       * pointer to a pre-packed PDS state before emitting.
+       *
+       * Note: this is a pointer to an array of const uint32_t and not an array
+       * of pointers or a function pointer.
+       */
+      const uint32_t (*pds_state)[PVR_STATIC_CLEAR_PDS_STATE_COUNT];
+
+      struct PVRX(TA_REGION_CLIP0) region_clip0;
+      struct PVRX(TA_REGION_CLIP1) region_clip1;
+
+      struct PVRX(TA_OUTPUT_SEL) output_sel;
+   } config;
+};
+
+#define PVR_CLEAR_VDM_STATE_DWORD_COUNT                                        \
+   (pvr_cmd_length(VDMCTRL_VDM_STATE0) + pvr_cmd_length(VDMCTRL_VDM_STATE2) +  \
+    pvr_cmd_length(VDMCTRL_VDM_STATE3) + pvr_cmd_length(VDMCTRL_VDM_STATE4) +  \
+    pvr_cmd_length(VDMCTRL_VDM_STATE5) + pvr_cmd_length(VDMCTRL_INDEX_LIST0) + \
+    pvr_cmd_length(VDMCTRL_INDEX_LIST2))
+
 struct pvr_device {
    struct vk_device vk;
    struct pvr_instance *instance;
@@ -279,12 +375,41 @@ struct pvr_device {
 
    uint32_t pixel_event_data_size_in_dwords;
 
+   uint64_t input_attachment_sampler;
+
    struct pvr_pds_upload pds_compute_fence_program;
 
    struct {
       struct pvr_pds_upload pds;
       struct pvr_bo *usc;
    } nop_program;
+
+   /* Issue Data Fence, Wait for Data Fence state. */
+   struct {
+      uint32_t usc_shareds;
+      struct pvr_bo *usc;
+
+      /* Buffer in which the IDF/WDF program performs store ops. */
+      struct pvr_bo *store_bo;
+      /* Contains the initialization values for the shared registers. */
+      struct pvr_bo *shareds_bo;
+
+      struct pvr_pds_upload pds;
+      struct pvr_pds_upload sw_compute_barrier_pds;
+   } idfwdf_state;
+
+   struct pvr_device_static_clear_state {
+      struct pvr_bo *usc_vertex_shader_bo;
+      struct pvr_bo *vertices_bo;
+      struct pvr_pds_upload pds;
+
+      struct pvr_static_clear_ppp_base ppp_base;
+      struct pvr_static_clear_ppp_template
+         ppp_templates[PVR_STATIC_CLEAR_VARIANT_COUNT];
+
+      uint32_t vdm_words[PVR_CLEAR_VDM_STATE_DWORD_COUNT];
+      uint32_t large_clear_vdm_words[PVR_CLEAR_VDM_STATE_DWORD_COUNT];
+   } static_clear_state;
 
    VkPhysicalDeviceFeatures features;
 };
@@ -329,10 +454,7 @@ struct pvr_image {
 };
 
 struct pvr_buffer {
-   struct vk_object_base base;
-
-   /* Saved information from pCreateInfo */
-   VkDeviceSize size;
+   struct vk_buffer vk;
 
    /* Derived and other state */
    uint32_t alignment;
@@ -345,16 +467,25 @@ struct pvr_buffer {
 struct pvr_image_view {
    struct vk_image_view vk;
 
-   /* Saved information from pCreateInfo. */
-   const struct pvr_image *image;
-
    /* Prepacked Texture Image dword 0 and 1. It will be copied to the
-    * descriptor info during pvr_UpdateDescriptorSets.
+    * descriptor info during pvr_UpdateDescriptorSets().
     *
     * We create separate texture states for sampling, storage and input
     * attachment cases.
     */
    uint64_t texture_state[PVR_TEXTURE_STATE_MAX_ENUM][2];
+};
+
+struct pvr_buffer_view {
+   struct vk_object_base base;
+
+   uint64_t range;
+   VkFormat format;
+
+   /* Prepacked Texture dword 0 and 1. It will be copied to the descriptor
+    * during pvr_UpdateDescriptorSets().
+    */
+   uint64_t texture_state[2];
 };
 
 union pvr_sampler_descriptor {
@@ -483,12 +614,20 @@ struct pvr_descriptor_pool {
 struct pvr_descriptor {
    VkDescriptorType type;
 
-   /* TODO: Follow anv_descriptor layout when adding support for
-    * other descriptor types.
-    */
-   pvr_dev_addr_t buffer_dev_addr;
-   VkDeviceSize buffer_desc_range;
-   VkDeviceSize buffer_create_info_size;
+   union {
+      struct {
+         struct pvr_buffer_view *bview;
+         pvr_dev_addr_t buffer_dev_addr;
+         VkDeviceSize buffer_desc_range;
+         VkDeviceSize buffer_create_info_size;
+      };
+
+      struct {
+         VkImageLayout layout;
+         const struct pvr_image_view *iview;
+         const struct pvr_sampler *sampler;
+      };
+   };
 };
 
 struct pvr_descriptor_set {
@@ -505,6 +644,13 @@ struct pvr_descriptor_set {
 
    /* Array of size layout::descriptor_count. */
    struct pvr_descriptor descriptors[0];
+};
+
+struct pvr_event {
+   struct vk_object_base base;
+
+   enum pvr_event_state state;
+   struct vk_sync *sync;
 };
 
 struct pvr_descriptor_state {
@@ -524,81 +670,116 @@ struct pvr_transfer_cmd {
    VkBufferCopy2 regions[0];
 };
 
+struct pvr_sub_cmd_gfx {
+   const struct pvr_framebuffer *framebuffer;
+
+   struct pvr_render_job job;
+
+   struct pvr_bo *depth_bias_bo;
+   struct pvr_bo *scissor_bo;
+
+   /* Tracking how the loaded depth/stencil values are being used. */
+   enum pvr_depth_stencil_usage depth_usage;
+   enum pvr_depth_stencil_usage stencil_usage;
+
+   /* Tracking whether the subcommand modifies depth/stencil. */
+   bool modifies_depth;
+   bool modifies_stencil;
+
+   /* Control stream builder object */
+   struct pvr_csb control_stream;
+
+   uint32_t hw_render_idx;
+
+   uint32_t max_tiles_in_flight;
+
+   bool empty_cmd;
+
+   /* True if any fragment shader used in this sub command uses atomic
+    * operations.
+    */
+   bool frag_uses_atomic_ops;
+
+   bool disable_compute_overlap;
+
+   /* True if any fragment shader used in this sub command has side
+    * effects.
+    */
+   bool frag_has_side_effects;
+
+   /* True if any vertex shader used in this sub command contains both
+    * texture reads and texture writes.
+    */
+   bool vertex_uses_texture_rw;
+
+   /* True if any fragment shader used in this sub command contains
+    * both texture reads and texture writes.
+    */
+   bool frag_uses_texture_rw;
+};
+
+struct pvr_sub_cmd_compute {
+   /* Control stream builder object. */
+   struct pvr_csb control_stream;
+
+   struct pvr_winsys_compute_submit_info submit_info;
+
+   uint32_t num_shared_regs;
+
+   /* True if any shader used in this sub command uses atomic
+    * operations.
+    */
+   bool uses_atomic_ops;
+
+   bool uses_barrier;
+
+   bool pds_sw_barrier_requires_clearing;
+};
+
+struct pvr_sub_cmd_transfer {
+   /* List of pvr_transfer_cmd type structures. */
+   struct list_head transfer_cmds;
+};
+
+struct pvr_sub_cmd_event {
+   enum pvr_event_type type;
+
+   union {
+      struct {
+         struct pvr_event *event;
+         /* Stages to wait for until the event is set. */
+         uint32_t wait_for_stage_mask;
+      } set;
+
+      struct {
+         struct pvr_event *event;
+         /* Stages to wait for until the event is reset. */
+         uint32_t wait_for_stage_mask;
+      } reset;
+
+      struct {
+         uint32_t count;
+         /* Events to wait for before resuming. */
+         struct pvr_event **events;
+         /* Stages to wait at. */
+         uint32_t *wait_at_stage_masks;
+      } wait;
+   };
+};
+
 struct pvr_sub_cmd {
    /* This links the subcommand in pvr_cmd_buffer:sub_cmds list. */
    struct list_head link;
 
    enum pvr_sub_cmd_type type;
 
+   enum pvr_sub_command_flags flags;
+
    union {
-      struct {
-         const struct pvr_framebuffer *framebuffer;
-
-         struct pvr_render_job job;
-
-         struct pvr_bo *depth_bias_bo;
-         struct pvr_bo *scissor_bo;
-
-         /* Tracking how the loaded depth/stencil values are being used. */
-         enum pvr_depth_stencil_usage depth_usage;
-         enum pvr_depth_stencil_usage stencil_usage;
-
-         /* Tracking whether the subcommand modifies depth/stencil. */
-         bool modifies_depth;
-         bool modifies_stencil;
-
-         /* Control stream builder object */
-         struct pvr_csb control_stream;
-
-         uint32_t hw_render_idx;
-
-         uint32_t max_tiles_in_flight;
-
-         bool empty_cmd;
-
-         /* True if any fragment shader used in this sub command uses atomic
-          * operations.
-          */
-         bool frag_uses_atomic_ops;
-
-         bool disable_compute_overlap;
-
-         /* True if any fragment shader used in this sub command has side
-          * effects.
-          */
-         bool frag_has_side_effects;
-
-         /* True if any vertex shader used in this sub command contains both
-          * texture reads and texture writes.
-          */
-         bool vertex_uses_texture_rw;
-
-         /* True if any fragment shader used in this sub command contains
-          * both texture reads and texture writes.
-          */
-         bool frag_uses_texture_rw;
-      } gfx;
-
-      struct {
-         /* Control stream builder object. */
-         struct pvr_csb control_stream;
-
-         struct pvr_winsys_compute_submit_info submit_info;
-
-         uint32_t num_shared_regs;
-
-         /* True if any shader used in this sub command uses atomic
-          * operations.
-          */
-         bool uses_atomic_ops;
-
-         bool uses_barrier;
-      } compute;
-
-      struct {
-         /* List of pvr_transfer_cmd type structures. */
-         struct list_head transfer_cmds;
-      } transfer;
+      struct pvr_sub_cmd_gfx gfx;
+      struct pvr_sub_cmd_compute compute;
+      struct pvr_sub_cmd_transfer transfer;
+      struct pvr_sub_cmd_event event;
    };
 };
 
@@ -620,7 +801,7 @@ struct pvr_render_pass_info {
 
    bool process_empty_tiles;
    bool enable_bg_tag;
-   uint32_t userpass_spawn;
+   uint32_t isp_userpass;
 
    /* Have we had to scissor a depth/stencil clear because render area was not
     * tile aligned?
@@ -628,33 +809,12 @@ struct pvr_render_pass_info {
    bool scissor_ds_clear;
 };
 
-struct pvr_emit_state {
-   bool ppp_control : 1;
-   bool isp : 1;
-   bool isp_fb : 1;
-   bool isp_ba : 1;
-   bool isp_bb : 1;
-   bool isp_dbsc : 1;
-   bool pds_fragment_stateptr0 : 1;
-   bool pds_fragment_stateptr1 : 1;
-   bool pds_fragment_stateptr2 : 1;
-   bool pds_fragment_stateptr3 : 1;
-   bool region_clip : 1;
-   bool viewport : 1;
-   bool wclamp : 1;
-   bool output_selects : 1;
-   bool varying_word0 : 1;
-   bool varying_word1 : 1;
-   bool varying_word2 : 1;
-   bool stream_out : 1;
-};
-
 struct pvr_ppp_state {
    uint32_t header;
 
    struct {
       /* TODO: Can we get rid of the "control" field? */
-      struct pvr_cmd_struct(TA_STATE_ISPCTL) control_struct;
+      struct PVRX(TA_STATE_ISPCTL) control_struct;
       uint32_t control;
 
       uint32_t front_a;
@@ -663,7 +823,7 @@ struct pvr_ppp_state {
       uint32_t back_b;
    } isp;
 
-   struct {
+   struct pvr_ppp_dbsc {
       uint16_t scissor_index;
       uint16_t depthbias_index;
    } depthbias_scissor_indices;
@@ -701,6 +861,23 @@ struct pvr_ppp_state {
    uint32_t ppp_control;
 };
 
+/* Represents a control stream related command that is deferred for execution in
+ * a secondary command buffer.
+ */
+struct pvr_deferred_cs_command {
+   enum pvr_deferred_cs_command_type type;
+   union {
+      struct pvr_ppp_dbsc dbsc;
+
+      struct {
+         struct pvr_ppp_dbsc state;
+
+         struct pvr_bo *ppp_cs_bo;
+         uint32_t patch_offset;
+      } dbsc2;
+   };
+};
+
 #define PVR_DYNAMIC_STATE_BIT_VIEWPORT BITFIELD_BIT(0U)
 #define PVR_DYNAMIC_STATE_BIT_SCISSOR BITFIELD_BIT(1U)
 #define PVR_DYNAMIC_STATE_BIT_LINE_WIDTH BITFIELD_BIT(2U)
@@ -734,11 +911,14 @@ struct pvr_dynamic_state {
    /* Saved information from pCreateInfo. */
    float line_width;
 
-   struct {
+   /* Do not change this. This is the format used for the depth_bias_array
+    * elements uploaded to the device.
+    */
+   struct pvr_depth_bias_state {
       /* Saved information from pCreateInfo. */
       float constant_factor;
-      float clamp;
       float slope_factor;
+      float clamp;
    } depth_bias;
    float blend_constants[4];
    struct {
@@ -776,13 +956,7 @@ struct pvr_cmd_buffer_state {
 
    struct pvr_ppp_state ppp_state;
 
-   union {
-      struct pvr_emit_state emit_state;
-      /* This is intended to allow setting and clearing of all bits. This
-       * shouldn't be used to access specific bits of ppp_state.
-       */
-      uint32_t emit_state_bits;
-   };
+   struct PVRX(TA_STATE_HEADER) emit_header;
 
    struct {
       /* FIXME: Check if we need a dirty state flag for the given scissor
@@ -844,7 +1018,7 @@ struct pvr_cmd_buffer_state {
       bool write_mask : 1;
       bool reference : 1;
 
-      bool userpass_spawn : 1;
+      bool isp_userpass : 1;
 
       /* Some draw state needs to be tracked for changes between draw calls
        * i.e. if we get a draw with baseInstance=0, followed by a call with
@@ -868,14 +1042,9 @@ struct pvr_cmd_buffer_state {
    /* Address of data segment for vertex attrib upload program. */
    uint32_t pds_vertex_attrib_offset;
 
-   uint32_t pds_fragment_uniform_data_offset;
-   uint32_t pds_compute_uniform_data_offset;
+   uint32_t pds_fragment_descriptor_data_offset;
+   uint32_t pds_compute_descriptor_data_offset;
 };
-
-static_assert(
-   sizeof(((struct pvr_cmd_buffer_state *)(0))->emit_state) <=
-      sizeof(((struct pvr_cmd_buffer_state *)(0))->emit_state_bits),
-   "Size of emit_state_bits must be greater that or equal to emit_state.");
 
 struct pvr_cmd_buffer {
    struct vk_command_buffer vk;
@@ -894,6 +1063,11 @@ struct pvr_cmd_buffer {
    uint32_t scissor_words[2];
 
    struct pvr_cmd_buffer_state state;
+
+   /* List of struct pvr_deferred_cs_command control stream related commands to
+    * execute in secondary command buffer.
+    */
+   struct util_dynarray deferred_csb_commands;
 
    /* List of pvr_bo structs associated with this cmd buffer. */
    struct list_head bo_list;
@@ -948,7 +1122,7 @@ struct pvr_pipeline_cache {
    struct pvr_device *device;
 };
 
-struct pvr_stage_allocation_uniform_state {
+struct pvr_stage_allocation_descriptor_state {
    struct pvr_pds_upload pds_code;
    /* Since we upload the code segment separately from the data segment
     * pds_code->data_size might be 0 whilst
@@ -956,6 +1130,9 @@ struct pvr_stage_allocation_uniform_state {
     * referring to the code upload.
     */
    struct pvr_pds_info pds_info;
+
+   /* Already setup compile time static consts. */
+   struct pvr_bo *static_consts;
 };
 
 struct pvr_pds_attrib_program {
@@ -1003,10 +1180,9 @@ struct pvr_vertex_shader_state {
 
    struct pvr_pipeline_stage_state stage_state;
    /* FIXME: Move this into stage_state? */
-   struct pvr_stage_allocation_uniform_state uniform_state;
+   struct pvr_stage_allocation_descriptor_state descriptor_state;
    uint32_t vertex_input_size;
    uint32_t vertex_output_size;
-   uint32_t output_selects;
    uint32_t user_clip_planes_mask;
 };
 
@@ -1017,7 +1193,7 @@ struct pvr_fragment_shader_state {
 
    struct pvr_pipeline_stage_state stage_state;
    /* FIXME: Move this into stage_state? */
-   struct pvr_stage_allocation_uniform_state uniform_state;
+   struct pvr_stage_allocation_descriptor_state descriptor_state;
    uint32_t pass_type;
 
    struct pvr_pds_upload pds_coeff_program;
@@ -1037,7 +1213,10 @@ struct pvr_compute_pipeline {
    struct pvr_pipeline base;
 
    struct {
-      struct {
+      /* TODO: Change this to be an anonymous struct once the shader hardcoding
+       * is removed.
+       */
+      struct pvr_compute_pipeline_shader_state {
          /* Pointer to a buffer object that contains the shader binary. */
          struct pvr_bo *bo;
 
@@ -1056,7 +1235,7 @@ struct pvr_compute_pipeline {
          uint32_t base_workgroup : 1;
       } flags;
 
-      struct pvr_stage_allocation_uniform_state uniform;
+      struct pvr_stage_allocation_descriptor_state descriptor;
 
       struct pvr_pds_upload primary_program;
       struct pvr_pds_info primary_program_info;
@@ -1210,7 +1389,7 @@ struct pvr_render_subpass {
 
    uint32_t index;
 
-   uint32_t userpass_spawn;
+   uint32_t isp_userpass;
 
    VkPipelineBindPoint pipeline_bind_point;
 };
@@ -1242,6 +1421,8 @@ struct pvr_load_op {
 
    uint32_t clear_mask;
 
+   bool load_depth;
+
    struct pvr_bo *usc_frag_prog_bo;
    uint32_t const_shareds_count;
    uint32_t shareds_dest_offset;
@@ -1251,7 +1432,17 @@ struct pvr_load_op {
 
    struct pvr_pds_upload pds_tex_state_prog;
    uint32_t temps_count;
+
+   union {
+      const struct pvr_renderpass_hwsetup_render *hw_render;
+      const struct pvr_render_subpass *subpass;
+   };
 };
+
+uint32_t pvr_calc_fscommon_size_and_tiles_in_flight(
+   const struct pvr_physical_device *pdevice,
+   uint32_t fs_common_size,
+   uint32_t min_tiles_in_flight);
 
 VkResult pvr_wsi_init(struct pvr_physical_device *pdevice);
 void pvr_wsi_finish(struct pvr_physical_device *pdevice);
@@ -1300,6 +1491,27 @@ VkResult pvr_cmd_buffer_alloc_mem(struct pvr_cmd_buffer *cmd_buffer,
                                   uint32_t flags,
                                   struct pvr_bo **const pvr_bo_out);
 
+void pvr_calculate_vertex_cam_size(const struct pvr_device_info *dev_info,
+                                   const uint32_t vs_output_size,
+                                   const bool raster_enable,
+                                   uint32_t *const cam_size_out,
+                                   uint32_t *const vs_max_instances_out);
+
+VkResult pvr_emit_ppp_from_template(
+   struct pvr_csb *const csb,
+   const struct pvr_static_clear_ppp_template *const template,
+   struct pvr_bo **const pvr_bo_out);
+
+VkResult
+pvr_copy_or_resolve_color_image_region(struct pvr_cmd_buffer *cmd_buffer,
+                                       const struct pvr_image *src,
+                                       const struct pvr_image *dst,
+                                       const VkImageCopy2 *region);
+
+void pvr_get_image_subresource_layout(const struct pvr_image *image,
+                                      const VkImageSubresource *subresource,
+                                      VkSubresourceLayout *layout);
+
 static inline struct pvr_compute_pipeline *
 to_pvr_compute_pipeline(struct pvr_pipeline *pipeline)
 {
@@ -1312,6 +1524,72 @@ to_pvr_graphics_pipeline(struct pvr_pipeline *pipeline)
 {
    assert(pipeline->type == PVR_PIPELINE_TYPE_GRAPHICS);
    return container_of(pipeline, struct pvr_graphics_pipeline, base);
+}
+
+static inline const struct pvr_image *
+vk_to_pvr_image(const struct vk_image *image)
+{
+   return container_of(image, const struct pvr_image, vk);
+}
+
+static enum pvr_pipeline_stage_bits
+pvr_stage_mask(VkPipelineStageFlags2 stage_mask)
+{
+   enum pvr_pipeline_stage_bits stages = 0;
+
+   if (stage_mask & VK_PIPELINE_STAGE_ALL_COMMANDS_BIT)
+      return PVR_PIPELINE_STAGE_ALL_BITS;
+
+   if (stage_mask & (VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT))
+      stages |= PVR_PIPELINE_STAGE_ALL_GRAPHICS_BITS;
+
+   if (stage_mask & (VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT |
+                     VK_PIPELINE_STAGE_VERTEX_INPUT_BIT |
+                     VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                     VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT |
+                     VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT |
+                     VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT)) {
+      stages |= PVR_PIPELINE_STAGE_GEOM_BIT;
+   }
+
+   if (stage_mask & (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                     VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                     VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT |
+                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)) {
+      stages |= PVR_PIPELINE_STAGE_FRAG_BIT;
+   }
+
+   if (stage_mask & (VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT |
+                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)) {
+      stages |= PVR_PIPELINE_STAGE_COMPUTE_BIT;
+   }
+
+   if (stage_mask & (VK_PIPELINE_STAGE_TRANSFER_BIT))
+      stages |= PVR_PIPELINE_STAGE_TRANSFER_BIT;
+
+   return stages;
+}
+
+static inline enum pvr_pipeline_stage_bits
+pvr_stage_mask_src(VkPipelineStageFlags2KHR stage_mask)
+{
+   /* If the source is bottom of pipe, all stages will need to be waited for. */
+   if (stage_mask & VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT)
+      return PVR_PIPELINE_STAGE_ALL_BITS;
+
+   return pvr_stage_mask(stage_mask);
+}
+
+static inline enum pvr_pipeline_stage_bits
+pvr_stage_mask_dst(VkPipelineStageFlags2KHR stage_mask)
+{
+   /* If the destination is top of pipe, all stages should be blocked by prior
+    * commands.
+    */
+   if (stage_mask & VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT)
+      return PVR_PIPELINE_STAGE_ALL_BITS;
+
+   return pvr_stage_mask(stage_mask);
 }
 
 VkResult pvr_pds_fragment_program_create_and_upload(
@@ -1357,11 +1635,18 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_pipeline_cache,
                                base,
                                VkPipelineCache,
                                VK_OBJECT_TYPE_PIPELINE_CACHE)
-VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_buffer, base, VkBuffer, VK_OBJECT_TYPE_BUFFER)
+VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_buffer,
+                               vk.base,
+                               VkBuffer,
+                               VK_OBJECT_TYPE_BUFFER)
 VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_image_view,
                                vk.base,
                                VkImageView,
                                VK_OBJECT_TYPE_IMAGE_VIEW)
+VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_buffer_view,
+                               base,
+                               VkBufferView,
+                               VK_OBJECT_TYPE_BUFFER_VIEW)
 VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_descriptor_set_layout,
                                base,
                                VkDescriptorSetLayout,
@@ -1370,6 +1655,7 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_descriptor_set,
                                base,
                                VkDescriptorSet,
                                VK_OBJECT_TYPE_DESCRIPTOR_SET)
+VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_event, base, VkEvent, VK_OBJECT_TYPE_EVENT)
 VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_descriptor_pool,
                                base,
                                VkDescriptorPool,

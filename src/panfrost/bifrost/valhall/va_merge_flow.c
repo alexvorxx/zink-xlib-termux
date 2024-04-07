@@ -83,9 +83,11 @@ merge_end_reconverge(bi_block *block)
    if (last->op != BI_OPCODE_NOP) return;
    if (last->flow != VA_FLOW_RECONVERGE && last->flow != VA_FLOW_END) return;
 
-   /* End implies all other flow control, so remove blocking flow control */
+   /* End implies all other flow control except for waiting on barriers (slot
+    * #7, with VA_FLOW_WAIT), so remove blocking flow control.
+    */
    if (last->flow == VA_FLOW_END) {
-      while (penult->op == BI_OPCODE_NOP) {
+      while (penult->op == BI_OPCODE_NOP && penult->flow != VA_FLOW_WAIT) {
          bi_remove_instruction(penult);
 
          /* There may be nothing left */
@@ -104,12 +106,6 @@ merge_end_reconverge(bi_block *block)
    bi_remove_instruction(last);
 }
 
-static bool
-is_wait_or_none(enum va_flow flow)
-{
-   return (flow <= VA_FLOW_WAIT);
-}
-
 /*
  * Calculate the union of two waits. We may wait on any combination of slots #0,
  * #1, #2 or the entirety of 0126 and 01267. If we wait on the entirety, the
@@ -120,7 +116,7 @@ is_wait_or_none(enum va_flow flow)
 static enum va_flow
 union_waits(enum va_flow x, enum va_flow y)
 {
-   assert(is_wait_or_none(x) && is_wait_or_none(y));
+   assert(va_flow_is_wait_or_none(x) && va_flow_is_wait_or_none(y));
 
    if ((x == VA_FLOW_WAIT) || (y == VA_FLOW_WAIT))
       return VA_FLOW_WAIT;
@@ -138,7 +134,7 @@ merge_waits(bi_block *block)
 
    bi_foreach_instr_in_block_safe(block, I) {
       if (last_free != NULL &&
-          I->op == BI_OPCODE_NOP && is_wait_or_none(I->flow)) {
+          I->op == BI_OPCODE_NOP && va_flow_is_wait_or_none(I->flow)) {
 
          /* Merge waits with compatible instructions */
          last_free->flow = union_waits(last_free->flow, I->flow);
@@ -157,7 +153,7 @@ merge_waits(bi_block *block)
        * This includes such an instruction after merging in a wait. It also
        * includes async instructions.
        */
-      if (is_wait_or_none(I->flow))
+      if (va_flow_is_wait_or_none(I->flow))
          last_free = I;
    }
 }
@@ -199,7 +195,7 @@ merge_discard(bi_block *block)
          /* If there's nowhere to merge and this is the end of the shader, just
           * remove the discard.
           */
-         if (!block->successors[0] && !block->successors[1]) {
+         if (bi_num_successors(block) == 0) {
             bi_remove_instruction(I);
             continue;
          }

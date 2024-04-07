@@ -184,6 +184,19 @@ bifrost_blend_type_from_nir(nir_alu_type nir_type)
                 return 0;
         }
 }
+
+#if PAN_ARCH <= 7
+enum mali_register_file_format
+GENX(pan_fixup_blend_type)(nir_alu_type T_size, enum pipe_format format)
+{
+        const struct util_format_description *desc = util_format_description(format);
+        unsigned size = nir_alu_type_get_type_size(T_size);
+        nir_alu_type T_format = pan_unpacked_type_for_format(desc);
+        nir_alu_type T = nir_alu_type_get_base_type(T_format) | size;
+
+        return bifrost_blend_type_from_nir(T);
+}
+#endif
 #endif
 
 void
@@ -215,8 +228,9 @@ GENX(pan_shader_compile)(nir_shader *s,
 
         switch (info->stage) {
         case MESA_SHADER_VERTEX:
-                info->attribute_count = util_bitcount64(s->info.inputs_read);
                 info->attributes_read = s->info.inputs_read;
+                info->attributes_read_count = util_bitcount64(info->attributes_read);
+                info->attribute_count = info->attributes_read_count;
 
 #if PAN_ARCH <= 5
                 bool vertex_id = BITSET_TEST(s->info.system_values_read,
@@ -251,10 +265,8 @@ GENX(pan_shader_compile)(nir_shader *s,
 
                 info->fs.outputs_read = s->info.outputs_read >> FRAG_RESULT_DATA0;
                 info->fs.outputs_written = s->info.outputs_written >> FRAG_RESULT_DATA0;
-
-                /* EXT_shader_framebuffer_fetch requires per-sample */
-                info->fs.sample_shading = s->info.fs.uses_sample_shading ||
-                                          info->fs.outputs_read;
+                info->fs.sample_shading = s->info.fs.uses_sample_shading;
+                info->fs.untyped_color_outputs = s->info.fs.untyped_color_outputs;
 
                 info->fs.can_discard = s->info.fs.uses_discard;
                 info->fs.early_fragment_tests = s->info.fs.early_fragment_tests;
@@ -302,11 +314,10 @@ GENX(pan_shader_compile)(nir_shader *s,
                                  &info->varyings.input_count);
 #endif
                 break;
-        case MESA_SHADER_COMPUTE:
+        default:
+                /* Everything else treated as compute */
                 info->wls_size = s->info.shared_size;
                 break;
-        default:
-                unreachable("Unknown shader state");
         }
 
         info->outputs_written = s->info.outputs_written;
@@ -320,6 +331,10 @@ GENX(pan_shader_compile)(nir_shader *s,
         info->writes_global = s->info.writes_memory;
 
         info->sampler_count = info->texture_count = BITSET_LAST_BIT(s->info.textures_used);
+
+        unsigned execution_mode = s->info.float_controls_execution_mode;
+        info->ftz_fp16 = nir_is_denorm_flush_to_zero(execution_mode, 16);
+        info->ftz_fp32 = nir_is_denorm_flush_to_zero(execution_mode, 32);
 
 #if PAN_ARCH >= 6
         /* This is "redundant" information, but is needed in a draw-time hot path */

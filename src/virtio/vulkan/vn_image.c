@@ -288,6 +288,7 @@ vn_CreateImage(VkDevice device,
                const VkAllocationCallbacks *pAllocator,
                VkImage *pImage)
 {
+   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    const VkAllocationCallbacks *alloc =
       pAllocator ? pAllocator : &dev->base.base.alloc;
@@ -342,6 +343,7 @@ vn_DestroyImage(VkDevice device,
                 VkImage image,
                 const VkAllocationCallbacks *pAllocator)
 {
+   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    struct vn_image *img = vn_image_from_handle(image);
    const VkAllocationCallbacks *alloc =
@@ -745,4 +747,32 @@ vn_DestroySamplerYcbcrConversion(VkDevice device,
 
    vn_object_base_fini(&conv->base);
    vk_free(alloc, conv);
+}
+
+void
+vn_GetDeviceImageMemoryRequirements(
+   VkDevice device,
+   const VkDeviceImageMemoryRequirements *pInfo,
+   VkMemoryRequirements2 *pMemoryRequirements)
+{
+   struct vn_device *dev = vn_device_from_handle(device);
+
+   /* TODO per-device cache */
+   vn_call_vkGetDeviceImageMemoryRequirements(dev->instance, device, pInfo,
+                                              pMemoryRequirements);
+}
+
+void
+vn_GetDeviceImageSparseMemoryRequirements(
+   VkDevice device,
+   const VkDeviceImageMemoryRequirements *pInfo,
+   uint32_t *pSparseMemoryRequirementCount,
+   VkSparseImageMemoryRequirements2 *pSparseMemoryRequirements)
+{
+   struct vn_device *dev = vn_device_from_handle(device);
+
+   /* TODO per-device cache */
+   vn_call_vkGetDeviceImageSparseMemoryRequirements(
+      dev->instance, device, pInfo, pSparseMemoryRequirementCount,
+      pSparseMemoryRequirements);
 }

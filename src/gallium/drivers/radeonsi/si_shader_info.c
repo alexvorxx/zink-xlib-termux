@@ -435,15 +435,6 @@ static void scan_instruction(const struct nir_shader *nir, struct si_shader_info
             if (!nir_src_is_const(intr->src[1]))
                info->uses_vmem_load_other = true;
             break;
-         case nir_intrinsic_load_constant:
-            info->uses_vmem_load_other = true;
-            break;
-
-         case nir_intrinsic_load_barycentric_at_sample: /* This loads sample positions. */
-         case nir_intrinsic_load_tess_level_outer: /* TES input read from memory */
-         case nir_intrinsic_load_tess_level_inner: /* TES input read from memory */
-            info->uses_vmem_load_other = true;
-            break;
 
          case nir_intrinsic_load_input:
          case nir_intrinsic_load_input_vertex:
@@ -451,6 +442,12 @@ static void scan_instruction(const struct nir_shader *nir, struct si_shader_info
             if (nir->info.stage == MESA_SHADER_VERTEX ||
                 nir->info.stage == MESA_SHADER_TESS_EVAL)
                info->uses_vmem_load_other = true;
+            break;
+
+         case nir_intrinsic_load_constant:
+         case nir_intrinsic_load_barycentric_at_sample: /* This loads sample positions. */
+         case nir_intrinsic_load_buffer_amd:
+            info->uses_vmem_load_other = true;
             break;
 
          default:
@@ -625,6 +622,11 @@ void si_nir_scan_shader(struct si_screen *sscreen, const struct nir_shader *nir,
       info->tessfactors_are_def_in_all_invocs = are_tessfactors_def_in_all_invocs(nir);
    }
 
+   /* tess factors are loaded as input instead of system value */
+   info->reads_tess_factors = nir->info.patch_inputs_read &
+      (BITFIELD64_BIT(VARYING_SLOT_TESS_LEVEL_INNER) |
+       BITFIELD64_BIT(VARYING_SLOT_TESS_LEVEL_OUTER));
+
    info->uses_frontface = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_FRONT_FACE);
    info->uses_instanceid = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_INSTANCE_ID);
    info->uses_base_vertex = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BASE_VERTEX);
@@ -639,8 +641,6 @@ void si_nir_scan_shader(struct si_screen *sscreen, const struct nir_shader *nir,
    info->uses_primid = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_PRIMITIVE_ID) ||
                        nir->info.inputs_read & VARYING_BIT_PRIMITIVE_ID;
    info->reads_samplemask = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_SAMPLE_MASK_IN);
-   info->reads_tess_factors = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_TESS_LEVEL_INNER) ||
-                              BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_TESS_LEVEL_OUTER);
    info->uses_linear_sample = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BARYCENTRIC_LINEAR_SAMPLE);
    info->uses_linear_centroid = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BARYCENTRIC_LINEAR_CENTROID);
    info->uses_linear_center = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BARYCENTRIC_LINEAR_PIXEL);
@@ -684,12 +684,6 @@ void si_nir_scan_shader(struct si_screen *sscreen, const struct nir_shader *nir,
       info->output_semantic[info->num_outputs] = VARYING_SLOT_PRIMITIVE_ID;
       info->output_type[info->num_outputs] = nir_type_uint32;
       info->output_usagemask[info->num_outputs] = 0x1;
-   }
-
-   if (nir->info.stage == MESA_SHADER_TESS_EVAL) {
-      /* This is a hack to simplify loading tess levels in TES. */
-      info->input[info->num_inputs].semantic = VARYING_SLOT_TESS_LEVEL_OUTER;
-      info->input[info->num_inputs + 1].semantic = VARYING_SLOT_TESS_LEVEL_INNER;
    }
 
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
@@ -837,55 +831,5 @@ void si_nir_scan_shader(struct si_screen *sscreen, const struct nir_shader *nir,
          else if (info->input[i].semantic == VARYING_SLOT_COL1)
             info->color_attr_index[1] = i;
       }
-
-      /* DB_SHADER_CONTROL */
-      info->db_shader_control = S_02880C_Z_EXPORT_ENABLE(info->writes_z) |
-                                S_02880C_STENCIL_TEST_VAL_EXPORT_ENABLE(info->writes_stencil) |
-                                S_02880C_MASK_EXPORT_ENABLE(info->writes_samplemask) |
-                                S_02880C_KILL_ENABLE(info->base.fs.uses_discard);
-
-      switch (info->base.fs.depth_layout) {
-      case FRAG_DEPTH_LAYOUT_GREATER:
-         info->db_shader_control |= S_02880C_CONSERVATIVE_Z_EXPORT(V_02880C_EXPORT_GREATER_THAN_Z);
-         break;
-      case FRAG_DEPTH_LAYOUT_LESS:
-         info->db_shader_control |= S_02880C_CONSERVATIVE_Z_EXPORT(V_02880C_EXPORT_LESS_THAN_Z);
-         break;
-      default:;
-      }
-
-      /* Z_ORDER, EXEC_ON_HIER_FAIL and EXEC_ON_NOOP should be set as following:
-       *
-       *   | early Z/S | writes_mem | allow_ReZ? |      Z_ORDER       | EXEC_ON_HIER_FAIL | EXEC_ON_NOOP
-       * --|-----------|------------|------------|--------------------|-------------------|-------------
-       * 1a|   false   |   false    |   true     | EarlyZ_Then_ReZ    |         0         |     0
-       * 1b|   false   |   false    |   false    | EarlyZ_Then_LateZ  |         0         |     0
-       * 2 |   false   |   true     |   n/a      |       LateZ        |         1         |     0
-       * 3 |   true    |   false    |   n/a      | EarlyZ_Then_LateZ  |         0         |     0
-       * 4 |   true    |   true     |   n/a      | EarlyZ_Then_LateZ  |         0         |     1
-       *
-       * In cases 3 and 4, HW will force Z_ORDER to EarlyZ regardless of what's set in the register.
-       * In case 2, NOOP_CULL is a don't care field. In case 2, 3 and 4, ReZ doesn't make sense.
-       *
-       * Don't use ReZ without profiling !!!
-       *
-       * ReZ decreases performance by 15% in DiRT: Showdown on Ultra settings, which has pretty complex
-       * shaders.
-       */
-      if (info->base.fs.early_fragment_tests) {
-         /* Cases 3, 4. */
-         info->db_shader_control |= S_02880C_DEPTH_BEFORE_SHADER(1) |
-                                    S_02880C_Z_ORDER(V_02880C_EARLY_Z_THEN_LATE_Z) |
-                                    S_02880C_EXEC_ON_NOOP(info->base.writes_memory);
-      } else if (info->base.writes_memory) {
-         /* Case 2. */
-         info->db_shader_control |= S_02880C_Z_ORDER(V_02880C_LATE_Z) | S_02880C_EXEC_ON_HIER_FAIL(1);
-      } else {
-         /* Case 1. */
-         info->db_shader_control |= S_02880C_Z_ORDER(V_02880C_EARLY_Z_THEN_LATE_Z);
-      }
-
-      if (info->base.fs.post_depth_coverage)
-         info->db_shader_control |= S_02880C_PRE_SHADER_DEPTH_COVERAGE_ENABLE(1);
    }
 }

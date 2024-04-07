@@ -22,12 +22,14 @@
  */
 
 #include "zink_context.h"
+#include "zink_clear.h"
 #include "zink_framebuffer.h"
 #include "zink_kopper.h"
 #include "zink_query.h"
 #include "zink_render_pass.h"
 #include "zink_resource.h"
 #include "zink_screen.h"
+#include "zink_surface.h"
 
 #include "util/u_memory.h"
 #include "util/u_string.h"
@@ -151,6 +153,32 @@ create_render_pass(struct zink_screen *screen, struct zink_render_pass_state *st
    return render_pass;
 }
 
+static VkAttachmentLoadOp
+get_rt_loadop(const struct zink_rt_attrib *rt, bool clear)
+{
+   return clear ? VK_ATTACHMENT_LOAD_OP_CLEAR :
+                  /* TODO: need replicate EXT */
+                  //rt->resolve || rt->invalid ?
+                  rt->invalid ?
+                  VK_ATTACHMENT_LOAD_OP_DONT_CARE :
+                  VK_ATTACHMENT_LOAD_OP_LOAD;
+}
+
+static VkImageLayout
+get_color_rt_layout(const struct zink_rt_attrib *rt)
+{
+   return rt->feedback_loop ? VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT : rt->fbfetch ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+}
+
+static VkImageLayout
+get_zs_rt_layout(const struct zink_rt_attrib *rt)
+{
+   bool has_clear = rt->clear_color || rt->clear_stencil;
+   if (rt->feedback_loop)
+      return VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT;
+   return rt->needs_write || has_clear ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+}
+
 static VkRenderPass
 create_render_pass2(struct zink_screen *screen, struct zink_render_pass_state *state, struct zink_render_pass_pipeline_state *pstate)
 {
@@ -167,6 +195,7 @@ create_render_pass2(struct zink_screen *screen, struct zink_render_pass_state *s
    pstate->num_attachments = state->num_cbufs;
    pstate->num_cresolves = state->num_cresolves;
    pstate->num_zsresolves = state->num_zsresolves;
+   pstate->fbfetch = 0;
    for (int i = 0; i < state->num_cbufs; i++) {
       struct zink_rt_attrib *rt = state->rts + i;
       attachments[i].sType = VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_2;
@@ -174,12 +203,7 @@ create_render_pass2(struct zink_screen *screen, struct zink_render_pass_state *s
       attachments[i].flags = 0;
       pstate->attachments[i].format = attachments[i].format = rt->format;
       pstate->attachments[i].samples = attachments[i].samples = rt->samples;
-      attachments[i].loadOp = rt->clear_color ? VK_ATTACHMENT_LOAD_OP_CLEAR :
-                                                /* TODO: need replicate EXT */
-                                                //rt->resolve || rt->invalid ?
-                                                rt->invalid ?
-                                                VK_ATTACHMENT_LOAD_OP_DONT_CARE :
-                                                VK_ATTACHMENT_LOAD_OP_LOAD;
+      attachments[i].loadOp = get_rt_loadop(rt, rt->clear_color);
 
       /* TODO: need replicate EXT */
       //attachments[i].storeOp = rt->resolve ? VK_ATTACHMENT_STORE_OP_DONT_CARE : VK_ATTACHMENT_STORE_OP_STORE;
@@ -187,7 +211,7 @@ create_render_pass2(struct zink_screen *screen, struct zink_render_pass_state *s
       attachments[i].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
       attachments[i].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
       /* if layout changes are ever handled here, need VkAttachmentSampleLocationsEXT */
-      VkImageLayout layout = rt->fbfetch ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+      VkImageLayout layout = get_color_rt_layout(rt);
       attachments[i].initialLayout = layout;
       attachments[i].finalLayout = layout;
       color_refs[i].sType = VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_2;
@@ -221,26 +245,18 @@ create_render_pass2(struct zink_screen *screen, struct zink_render_pass_state *s
    int num_attachments = state->num_cbufs;
    if (state->have_zsbuf)  {
       struct zink_rt_attrib *rt = state->rts + state->num_cbufs;
-      bool has_clear = rt->clear_color || rt->clear_stencil;
-      VkImageLayout layout;
-      if (rt->mixed_zs)
-         layout = VK_IMAGE_LAYOUT_GENERAL;
-      else
-         layout = rt->needs_write || has_clear ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+      VkImageLayout layout = get_zs_rt_layout(rt);
       attachments[num_attachments].sType = VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_2;
       attachments[num_attachments].pNext = NULL;
       attachments[num_attachments].flags = 0;
       pstate->attachments[num_attachments].format = attachments[num_attachments].format = rt->format;
       pstate->attachments[num_attachments].samples = attachments[num_attachments].samples = rt->samples;
-      attachments[num_attachments].loadOp = rt->clear_color ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
-      attachments[num_attachments].stencilLoadOp = rt->clear_stencil ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+      attachments[num_attachments].loadOp = get_rt_loadop(rt, rt->clear_color);
+      attachments[num_attachments].stencilLoadOp = get_rt_loadop(rt, rt->clear_stencil);
       /* TODO: need replicate EXT */
       //attachments[num_attachments].storeOp = rt->resolve ? VK_ATTACHMENT_LOAD_OP_DONT_CARE : VK_ATTACHMENT_STORE_OP_STORE;
       //attachments[num_attachments].stencilStoreOp = rt->resolve ? VK_ATTACHMENT_LOAD_OP_DONT_CARE : VK_ATTACHMENT_STORE_OP_STORE;
-      if (rt->mixed_zs)
-         attachments[num_attachments].storeOp = VK_ATTACHMENT_STORE_OP_NONE;
-      else
-         attachments[num_attachments].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+      attachments[num_attachments].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
       attachments[num_attachments].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
       /* if layout changes are ever handled here, need VkAttachmentSampleLocationsEXT */
       attachments[num_attachments].initialLayout = layout;
@@ -272,12 +288,9 @@ create_render_pass2(struct zink_screen *screen, struct zink_render_pass_state *s
       }
       pstate->num_attachments++;
    }
-   if (dep_access & VK_ACCESS_COLOR_ATTACHMENT_READ_BIT)
-      pstate->color_read = true;
-   if (dep_access & VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT)
-      pstate->depth_read = true;
-   if (dep_access & VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
-      pstate->depth_write = true;
+   pstate->color_read = (dep_access & VK_ACCESS_COLOR_ATTACHMENT_READ_BIT) > 0;
+   pstate->depth_read = (dep_access & VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT) > 0;
+   pstate->depth_write = (dep_access & VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT) > 0;
 
    if (!screen->info.have_KHR_synchronization2)
       dep_pipeline = MAX2(dep_pipeline, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
@@ -303,6 +316,8 @@ create_render_pass2(struct zink_screen *screen, struct zink_render_pass_state *s
    };
 
    VkSubpassDescription2 subpass = {0};
+   if (pstate->fbfetch && screen->info.have_EXT_rasterization_order_attachment_access)
+      subpass.flags |= VK_SUBPASS_DESCRIPTION_RASTERIZATION_ORDER_ATTACHMENT_COLOR_ACCESS_BIT_EXT;
    VkSubpassDescriptionDepthStencilResolve zsresolve;
    subpass.sType = VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_2;
    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -333,8 +348,9 @@ create_render_pass2(struct zink_screen *screen, struct zink_render_pass_state *s
    rpci.pDependencies = input_count ? fbfetch_deps : deps;
 
    VkRenderPass render_pass;
-   if (VKSCR(CreateRenderPass2)(screen->dev, &rpci, NULL, &render_pass) != VK_SUCCESS) {
-      mesa_loge("ZINK: vkCreateRenderPass2 failed");
+   VkResult result = VKSCR(CreateRenderPass2)(screen->dev, &rpci, NULL, &render_pass);
+   if (result != VK_SUCCESS) {
+      mesa_loge("ZINK: vkCreateRenderPass2 failed (%s)", vk_Result_to_str(result));
       return VK_NULL_HANDLE;
    }
 
@@ -383,20 +399,15 @@ zink_render_pass_attachment_get_barrier_info(const struct zink_rt_attrib *rt, bo
       *access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
       if (!rt->clear_color && !rt->invalid)
          *access |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
-      return rt->fbfetch ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+      return get_color_rt_layout(rt);
    }
 
    *pipeline = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-   if (rt->mixed_zs) {
-      *access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-      return VK_IMAGE_LAYOUT_GENERAL;
-   }
    if (!rt->clear_color && !rt->clear_stencil)
       *access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-   if (!rt->clear_color && !rt->clear_stencil && !rt->needs_write)
-      return VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-   *access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-   return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+   if (rt->clear_color || rt->clear_stencil || rt->needs_write)
+      *access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+   return get_zs_rt_layout(rt);
 }
 
 
@@ -451,20 +462,18 @@ zink_init_zs_attachment(struct zink_context *ctx, struct zink_rt_attrib *rt)
    rt->clear_stencil = zink_fb_clear_enabled(ctx, PIPE_MAX_COLOR_BUFS) &&
                                            !zink_fb_clear_first_needs_explicit(fb_clear) &&
                                            (zink_fb_clear_element(fb_clear, 0)->zs.bits & PIPE_CLEAR_STENCIL);
-   const uint64_t outputs_written = ctx->gfx_stages[PIPE_SHADER_FRAGMENT] ?
-                                    ctx->gfx_stages[PIPE_SHADER_FRAGMENT]->nir->info.outputs_written : 0;
+   const uint64_t outputs_written = ctx->gfx_stages[MESA_SHADER_FRAGMENT] ?
+                                    ctx->gfx_stages[MESA_SHADER_FRAGMENT]->nir->info.outputs_written : 0;
    bool needs_write_z = (ctx->dsa_state && ctx->dsa_state->hw_state.depth_write) ||
                        outputs_written & BITFIELD64_BIT(FRAG_RESULT_DEPTH);
-   needs_write_z |= transient || rt->clear_color;
+   needs_write_z |= transient || rt->clear_color ||
+                    (zink_fb_clear_enabled(ctx, PIPE_MAX_COLOR_BUFS) && (zink_fb_clear_element(fb_clear, 0)->zs.bits & PIPE_CLEAR_DEPTH));
 
-   bool needs_write_s = rt->clear_stencil || outputs_written & BITFIELD64_BIT(FRAG_RESULT_STENCIL);
-   if (!needs_write_z && (!ctx->dsa_state || !ctx->dsa_state->base.depth_enabled))
-      /* depth sample, stencil write */
-      rt->mixed_zs = needs_write_s && zsbuf->bind_count[0];
-   else
-      /* depth write + sample */
-      rt->mixed_zs = needs_write_z && zsbuf->bind_count[0];
+   bool needs_write_s = rt->clear_stencil || (outputs_written & BITFIELD64_BIT(FRAG_RESULT_STENCIL)) ||
+                        (zink_fb_clear_enabled(ctx, PIPE_MAX_COLOR_BUFS) && (zink_fb_clear_element(fb_clear, 0)->zs.bits & PIPE_CLEAR_STENCIL));
    rt->needs_write = needs_write_z | needs_write_s;
+   rt->invalid = !zsbuf->valid;
+   rt->feedback_loop = (ctx->feedback_loops & BITFIELD_BIT(PIPE_MAX_COLOR_BUFS)) > 0;
 }
 
 void
@@ -478,8 +487,9 @@ zink_init_color_attachment(struct zink_context *ctx, unsigned i, struct zink_rt_
       rt->format = surf->info.format[0];
       rt->samples = MAX3(transient ? transient->base.nr_samples : 0, psurf->texture->nr_samples, 1);
       rt->clear_color = zink_fb_clear_enabled(ctx, i) && !zink_fb_clear_first_needs_explicit(&ctx->fb_clears[i]);
-      rt->invalid = !zink_resource(psurf->texture)->valid || (ctx->new_swapchain && (psurf->texture->bind & PIPE_BIND_DISPLAY_TARGET));
+      rt->invalid = !zink_resource(psurf->texture)->valid;
       rt->fbfetch = (ctx->fbfetch_outputs & BITFIELD_BIT(i)) > 0;
+      rt->feedback_loop = (ctx->feedback_loops & BITFIELD_BIT(i)) > 0;
    } else {
       memset(rt, 0, sizeof(struct zink_rt_attrib));
       rt->format = VK_FORMAT_R8G8B8A8_UNORM;
@@ -563,6 +573,37 @@ get_render_pass(struct zink_context *ctx)
    return rp;
 }
 
+/* check whether the active rp needs to be split to replace it with rp2 */
+static bool
+rp_must_change(const struct zink_render_pass *rp, const struct zink_render_pass *rp2, bool in_rp)
+{
+   if (rp == rp2)
+      return false;
+   unsigned num_cbufs = rp->state.num_cbufs;
+   if (rp->pipeline_state != rp2->pipeline_state) {
+      /* if any core attrib bits are different, must split */
+      if (rp->state.val != rp2->state.val)
+         return true;
+      for (unsigned i = 0; i < num_cbufs; i++) {
+         const struct zink_rt_attrib *rt = &rp->state.rts[i];
+         const struct zink_rt_attrib *rt2 = &rp2->state.rts[i];
+         /* if layout changed, must split */
+         if (get_color_rt_layout(rt) != get_color_rt_layout(rt2))
+            return true;
+      }
+   }
+   if (rp->state.have_zsbuf) {
+      const struct zink_rt_attrib *rt = &rp->state.rts[num_cbufs];
+      const struct zink_rt_attrib *rt2 = &rp2->state.rts[num_cbufs];
+      /* if zs layout has gone from read-only to read-write, split renderpass */
+      if (get_zs_rt_layout(rt) == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL &&
+          get_zs_rt_layout(rt2) == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+         return true;
+   }
+   /* any other change doesn't require splitting a renderpass */
+   return !in_rp;
+}
+
 static void
 setup_framebuffer(struct zink_context *ctx)
 {
@@ -571,17 +612,37 @@ setup_framebuffer(struct zink_context *ctx)
 
    zink_update_vk_sample_locations(ctx);
 
-   if (rp)
-      ctx->rp_changed |= ctx->rp_clears_enabled != rp->state.clears;
-   if (ctx->rp_changed)
+   if (ctx->rp_changed || ctx->rp_layout_changed || ctx->rp_loadop_changed) {
+      /* 0. ensure no stale pointers are set */
+      ctx->gfx_pipeline_state.next_render_pass = NULL;
+      /* 1. calc new rp */
       rp = get_render_pass(ctx);
-
-   ctx->fb_changed |= rp != ctx->gfx_pipeline_state.render_pass;
+      /* 2. evaluate whether to use new rp */
+      if (ctx->gfx_pipeline_state.render_pass) {
+         /* 2a. if previous rp exists, check whether new rp MUST be used */
+         bool must_change = rp_must_change(ctx->gfx_pipeline_state.render_pass, rp, ctx->batch.in_rp);
+         ctx->fb_changed |= must_change;
+         if (!must_change)
+            /* 2b. if non-essential attribs have changed, store for later use and continue on */
+            ctx->gfx_pipeline_state.next_render_pass = rp;
+      } else {
+         /* 2c. no previous rp in use, use this one */
+         ctx->fb_changed = true;
+      }
+   } else if (ctx->gfx_pipeline_state.next_render_pass) {
+      /* previous rp was calculated but deferred: use it */
+      assert(!ctx->batch.in_rp);
+      rp = ctx->gfx_pipeline_state.next_render_pass;
+      ctx->gfx_pipeline_state.next_render_pass = NULL;
+      ctx->fb_changed = true;
+   }
    if (rp->pipeline_state != ctx->gfx_pipeline_state.rp_state) {
       ctx->gfx_pipeline_state.rp_state = rp->pipeline_state;
       ctx->gfx_pipeline_state.dirty = true;
    }
 
+   ctx->rp_loadop_changed = false;
+   ctx->rp_layout_changed = false;
    ctx->rp_changed = false;
    zink_render_update_swapchain(ctx);
 
@@ -595,6 +656,7 @@ setup_framebuffer(struct zink_context *ctx)
 
    ctx->fb_changed = false;
    ctx->gfx_pipeline_state.render_pass = rp;
+   zink_batch_no_rp(ctx);
 }
 
 static bool
@@ -659,7 +721,7 @@ begin_render_pass(struct zink_context *ctx)
             continue;
       }
       /* we now know there's one clear that can be done here */
-      zink_fb_clear_util_unpack_clear_color(clear, fb_state->cbufs[i]->format, (void*)&clears[i].color);
+      memcpy(&clears[i].color, &clear->color, sizeof(float) * 4);
       rpbi.clearValueCount = i + 1;
       clear_validate |= PIPE_CLEAR_COLOR0 << i;
       assert(ctx->framebuffer->rp->state.clears);
@@ -707,7 +769,7 @@ begin_render_pass(struct zink_context *ctx)
             surf = zink_csurface(ctx->dummy_surface[util_logbase2_ceil(ctx->fb_state.samples)]);
             assert(zink_resource(surf->base.texture)->obj->vkusage == ctx->framebuffer->state.infos[i].usage);
          } else {
-            struct zink_surface *transient = zink_transient_surface(&surf->base);
+            struct zink_surface *transient = zink_transient_surface(ctx->fb_state.cbufs[i]);
             if (surf->base.format == ctx->fb_state.cbufs[i]->format) {
                if (transient) {
                   assert(zink_resource(transient->base.texture)->obj->vkusage == ctx->framebuffer->state.infos[i].usage);
@@ -735,7 +797,6 @@ begin_render_pass(struct zink_context *ctx)
 
    VKCTX(CmdBeginRenderPass)(batch->state->cmdbuf, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
    batch->in_rp = true;
-   ctx->new_swapchain = false;
    return clear_buffers;
 }
 
@@ -743,6 +804,8 @@ unsigned
 zink_begin_render_pass(struct zink_context *ctx)
 {
    setup_framebuffer(ctx);
+   if (ctx->batch.in_rp)
+      return 0;
    /* TODO: need replicate EXT */
    if (ctx->framebuffer->rp->state.msaa_expand_mask) {
       uint32_t rp_state = ctx->gfx_pipeline_state.rp_state;
@@ -768,11 +831,12 @@ zink_begin_render_pass(struct zink_context *ctx)
          util_blitter_blit_generic(ctx->blitter, dst_view, &dstbox,
                                    src_view, &dstbox, ctx->fb_state.width, ctx->fb_state.height,
                                    PIPE_MASK_RGBAZS, PIPE_TEX_FILTER_NEAREST, NULL,
-                                   false, false);
+                                   false, false, 0);
 
          pipe_sampler_view_reference(&src_view, NULL);
          csurf->transient_init = true;
       }
+      ctx->rp_layout_changed = ctx->rp_loadop_changed = false;
       ctx->fb_changed = ctx->rp_changed = false;
       ctx->gfx_pipeline_state.rp_state = rp_state;
       ctx->gfx_pipeline_state.render_pass = rp;

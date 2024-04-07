@@ -50,7 +50,9 @@ struct u_trace;
 #define READ_ONCE(x) (*(volatile __typeof__(x) *)&(x))
 #define WRITE_ONCE(x, v) *(volatile __typeof__(x) *)&(x) = (v)
 
-#define IRIS_MAX_TEXTURE_SAMPLERS 32
+#define IRIS_MAX_TEXTURES 128
+#define IRIS_MAX_SAMPLERS 32
+#define IRIS_MAX_IMAGES 64
 #define IRIS_MAX_SOL_BUFFERS 4
 #define IRIS_MAP_BUFFER_ALIGNMENT 64
 
@@ -182,13 +184,12 @@ struct iris_screen {
       bool always_flush_cache;
       bool sync_compile;
       bool limit_trig_input_range;
+      float lower_depth_range_rate;
    } driconf;
 
    /** Does the kernel support various features (KERNEL_HAS_* bitfield)? */
    unsigned kernel_features;
 #define KERNEL_HAS_WAIT_FOR_SUBMIT (1<<0)
-
-   uint64_t aperture_bytes;
 
    /**
     * Last sequence number allocated by the cache tracking mechanism.

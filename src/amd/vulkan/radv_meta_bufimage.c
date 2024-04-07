@@ -198,8 +198,8 @@ radv_device_finish_meta_itob_state(struct radv_device *device)
 
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->itob.img_p_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device), state->itob.img_ds_layout,
-                                   &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(radv_device_to_handle(device),
+                                                        state->itob.img_ds_layout, &state->alloc);
    radv_DestroyPipeline(radv_device_to_handle(device), state->itob.pipeline, &state->alloc);
    radv_DestroyPipeline(radv_device_to_handle(device), state->itob.pipeline_3d, &state->alloc);
 }
@@ -374,8 +374,8 @@ radv_device_finish_meta_btoi_state(struct radv_device *device)
 
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->btoi.img_p_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device), state->btoi.img_ds_layout,
-                                   &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(radv_device_to_handle(device),
+                                                        state->btoi.img_ds_layout, &state->alloc);
    radv_DestroyPipeline(radv_device_to_handle(device), state->btoi.pipeline, &state->alloc);
    radv_DestroyPipeline(radv_device_to_handle(device), state->btoi.pipeline_3d, &state->alloc);
 }
@@ -523,8 +523,8 @@ radv_device_finish_meta_btoi_r32g32b32_state(struct radv_device *device)
 
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->btoi_r32g32b32.img_p_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device),
-                                   state->btoi_r32g32b32.img_ds_layout, &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(
+      radv_device_to_handle(device), state->btoi_r32g32b32.img_ds_layout, &state->alloc);
    radv_DestroyPipeline(radv_device_to_handle(device), state->btoi_r32g32b32.pipeline,
                         &state->alloc);
 }
@@ -718,8 +718,8 @@ radv_device_finish_meta_itoi_state(struct radv_device *device)
 
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->itoi.img_p_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device), state->itoi.img_ds_layout,
-                                   &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(radv_device_to_handle(device),
+                                                        state->itoi.img_ds_layout, &state->alloc);
 
    for (uint32_t i = 0; i < MAX_SAMPLES_LOG2; ++i) {
       radv_DestroyPipeline(radv_device_to_handle(device), state->itoi.pipeline[i], &state->alloc);
@@ -878,8 +878,8 @@ radv_device_finish_meta_itoi_r32g32b32_state(struct radv_device *device)
 
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->itoi_r32g32b32.img_p_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device),
-                                   state->itoi_r32g32b32.img_ds_layout, &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(
+      radv_device_to_handle(device), state->itoi_r32g32b32.img_ds_layout, &state->alloc);
    radv_DestroyPipeline(radv_device_to_handle(device), state->itoi_r32g32b32.pipeline,
                         &state->alloc);
 }
@@ -1032,8 +1032,8 @@ radv_device_finish_meta_cleari_state(struct radv_device *device)
 
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->cleari.img_p_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device), state->cleari.img_ds_layout,
-                                   &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(radv_device_to_handle(device),
+                                                        state->cleari.img_ds_layout, &state->alloc);
 
    for (uint32_t i = 0; i < MAX_SAMPLES_LOG2; ++i) {
       radv_DestroyPipeline(radv_device_to_handle(device), state->cleari.pipeline[i], &state->alloc);
@@ -1149,8 +1149,8 @@ radv_device_finish_meta_cleari_r32g32b32_state(struct radv_device *device)
 
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->cleari_r32g32b32.img_p_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device),
-                                   state->cleari_r32g32b32.img_ds_layout, &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(
+      radv_device_to_handle(device), state->cleari_r32g32b32.img_ds_layout, &state->alloc);
    radv_DestroyPipeline(radv_device_to_handle(device), state->cleari_r32g32b32.pipeline,
                         &state->alloc);
 }
@@ -1174,48 +1174,33 @@ radv_device_init_meta_bufimage_state(struct radv_device *device)
 
    result = radv_device_init_meta_itob_state(device);
    if (result != VK_SUCCESS)
-      goto fail_itob;
+      return result;
 
    result = radv_device_init_meta_btoi_state(device);
    if (result != VK_SUCCESS)
-      goto fail_btoi;
+      return result;
 
    result = radv_device_init_meta_btoi_r32g32b32_state(device);
    if (result != VK_SUCCESS)
-      goto fail_btoi_r32g32b32;
+      return result;
 
    result = radv_device_init_meta_itoi_state(device);
    if (result != VK_SUCCESS)
-      goto fail_itoi;
+      return result;
 
    result = radv_device_init_meta_itoi_r32g32b32_state(device);
    if (result != VK_SUCCESS)
-      goto fail_itoi_r32g32b32;
+      return result;
 
    result = radv_device_init_meta_cleari_state(device);
    if (result != VK_SUCCESS)
-      goto fail_cleari;
+      return result;
 
    result = radv_device_init_meta_cleari_r32g32b32_state(device);
    if (result != VK_SUCCESS)
-      goto fail_cleari_r32g32b32;
+      return result;
 
    return VK_SUCCESS;
-fail_cleari_r32g32b32:
-   radv_device_finish_meta_cleari_r32g32b32_state(device);
-fail_cleari:
-   radv_device_finish_meta_cleari_state(device);
-fail_itoi_r32g32b32:
-   radv_device_finish_meta_itoi_r32g32b32_state(device);
-fail_itoi:
-   radv_device_finish_meta_itoi_state(device);
-fail_btoi_r32g32b32:
-   radv_device_finish_meta_btoi_r32g32b32_state(device);
-fail_btoi:
-   radv_device_finish_meta_btoi_state(device);
-fail_itob:
-   radv_device_finish_meta_itob_state(device);
-   return result;
 }
 
 static void
@@ -1264,7 +1249,7 @@ create_buffer_from_image(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_bl
    struct radv_device *device = cmd_buffer->device;
    struct radv_device_memory mem;
 
-   radv_device_memory_init(&mem, device, surf->image->bo);
+   radv_device_memory_init(&mem, device, surf->image->bindings[0].bo);
 
    radv_CreateBuffer(radv_device_to_handle(device),
                      &(VkBufferCreateInfo){
@@ -1281,7 +1266,7 @@ create_buffer_from_image(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_bl
                              .sType = VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO,
                              .buffer = *buffer,
                              .memory = radv_device_memory_to_handle(&mem),
-                             .memoryOffset = surf->image->offset,
+                             .memoryOffset = surf->image->bindings[0].offset,
                           }});
 
    radv_device_memory_finish(&mem);
@@ -1316,6 +1301,92 @@ create_bview_for_r32g32b32(struct radv_cmd_buffer *cmd_buffer, struct radv_buffe
                             .offset = offset,
                             .range = VK_WHOLE_SIZE,
                          });
+}
+
+/* GFX9+ has an issue where the HW does not calculate mipmap degradations
+ * for block-compressed images correctly (see the comment in
+ * radv_image_view_init). Some texels are unaddressable and cannot be copied
+ * to/from by a compute shader. Here we will perform a buffer copy to copy the
+ * texels that the hardware missed.
+ *
+ * GFX10 will not use this workaround because it can be fixed by adjusting its
+ * image view descriptors instead.
+ */
+static void
+fixup_gfx9_cs_copy(struct radv_cmd_buffer *cmd_buffer,
+                   const struct radv_meta_blit2d_buffer *buf_bsurf,
+                   const struct radv_meta_blit2d_surf *img_bsurf,
+                   const struct radv_meta_blit2d_rect *rect, bool to_image)
+{
+   const unsigned mip_level = img_bsurf->level;
+   const struct radv_image *image = img_bsurf->image;
+   const struct radeon_surf *surf = &image->planes[0].surface;
+   const struct radv_device *device = cmd_buffer->device;
+   const struct radeon_info *rad_info = &device->physical_device->rad_info;
+   struct ac_addrlib *addrlib = device->ws->get_addrlib(device->ws);
+
+   /* GFX10 will use a different workaround unless this is not a 2D image */
+   if (rad_info->gfx_level < GFX9 ||
+       (rad_info->gfx_level >= GFX10 && image->vk.image_type == VK_IMAGE_TYPE_2D) ||
+       image->vk.mip_levels == 1 || !vk_format_is_block_compressed(image->vk.format))
+      return;
+
+   /* The physical extent of the base mip */
+   VkExtent2D hw_base_extent = {surf->u.gfx9.base_mip_width, surf->u.gfx9.base_mip_height};
+
+   /* The hardware-calculated extent of the selected mip
+    * (naive divide-by-two integer math)
+    */
+   VkExtent2D hw_mip_extent = {radv_minify(hw_base_extent.width, mip_level),
+                               radv_minify(hw_base_extent.height, mip_level)};
+
+   /* The actual extent we want to copy */
+   VkExtent2D mip_extent = {rect->width, rect->height};
+
+   VkOffset2D mip_offset = {to_image ? rect->dst_x : rect->src_x,
+                            to_image ? rect->dst_y : rect->src_y};
+
+   if (hw_mip_extent.width >= mip_offset.x + mip_extent.width &&
+       hw_mip_extent.height >= mip_offset.y + mip_extent.height)
+      return;
+
+   if (!to_image) {
+      /* If we are writing to a buffer, then we need to wait for the compute
+       * shader to finish because it may write over the unaddressable texels
+       * while we're fixing them. If we're writing to an image, we do not need
+       * to wait because the compute shader cannot write to those texels
+       */
+      cmd_buffer->state.flush_bits |=
+         RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_INV_L2 | RADV_CMD_FLAG_INV_VCACHE;
+   }
+
+   for (uint32_t y = 0; y < mip_extent.width; y++) {
+      uint32_t coordY = y + mip_offset.y;
+      /* If the default copy algorithm (done previously) has already seen this
+       * scanline, then we can bias the starting X coordinate over to skip the
+       * region already copied by the default copy.
+       */
+      uint32_t x = (coordY < hw_mip_extent.height) ? hw_mip_extent.width : 0;
+      for (; x < mip_extent.width; x++) {
+         uint32_t coordX = x + mip_offset.x;
+         uint64_t addr = ac_surface_addr_from_coord(addrlib, rad_info, surf, &image->info,
+                                                    mip_level, coordX, coordY, img_bsurf->layer,
+                                                    image->vk.image_type == VK_IMAGE_TYPE_3D);
+         struct radeon_winsys_bo *img_bo = image->bindings[0].bo;
+         struct radeon_winsys_bo *mem_bo = buf_bsurf->buffer->bo;
+         const uint64_t img_offset = image->bindings[0].offset + addr;
+         /* buf_bsurf->offset already includes the layer offset */
+         const uint64_t mem_offset = buf_bsurf->buffer->offset +
+                                     buf_bsurf->offset +
+                                     y * buf_bsurf->pitch * surf->bpe +
+                                     x * surf->bpe;
+         if (to_image) {
+            radv_copy_buffer(cmd_buffer, mem_bo, img_bo, mem_offset, img_offset, surf->bpe);
+         } else {
+            radv_copy_buffer(cmd_buffer, img_bo, mem_bo, img_offset, mem_offset, surf->bpe);
+         }
+      }
+   }
 }
 
 static unsigned
@@ -1393,6 +1464,7 @@ radv_meta_image_to_buffer(struct radv_cmd_buffer *cmd_buffer, struct radv_meta_b
                             16, push_constants);
 
       radv_unaligned_dispatch(cmd_buffer, rects[r].width, rects[r].height, 1);
+      fixup_gfx9_cs_copy(cmd_buffer, dst, src, &rects[r], false);
    }
 
    radv_image_view_finish(&src_view);
@@ -1547,6 +1619,7 @@ radv_meta_buffer_to_image_cs(struct radv_cmd_buffer *cmd_buffer,
                             16, push_constants);
 
       radv_unaligned_dispatch(cmd_buffer, rects[r].width, rects[r].height, 1);
+      fixup_gfx9_cs_copy(cmd_buffer, src, dst, &rects[r], true);
    }
 
    radv_image_view_finish(&dst_view);

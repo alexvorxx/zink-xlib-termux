@@ -829,12 +829,12 @@ static struct ruvd_vc1 get_vc1_msg(struct pipe_vc1_picture_desc *pic)
    result.chroma_format = 1;
 
 #if 0
-//(((unsigned int)(pPicParams->advance.reserved1))        << SPS_INFO_VC1_RESERVED_SHIFT)
-uint32_t 	slice_count
-uint8_t 	picture_type
-uint8_t 	frame_coding_mode
-uint8_t 	deblockEnable
-uint8_t 	pquant
+//(((unsigned int)(pPicParams->advance.reserved1)) << SPS_INFO_VC1_RESERVED_SHIFT)
+uint32_t  slice_count
+uint8_t   picture_type
+uint8_t   frame_coding_mode
+uint8_t   deblockEnable
+uint8_t   pquant
 #endif
 
    return result;
@@ -952,14 +952,14 @@ static struct ruvd_mpeg4 get_mpeg4_msg(struct ruvd_decoder *dec,
    }
 
    /*
-   int32_t 	trd [2]
-   int32_t 	trb [2]
-   uint8_t 	vop_coding_type
-   uint8_t 	vop_fcode_forward
-   uint8_t 	vop_fcode_backward
-   uint8_t 	rounding_control
-   uint8_t 	alternate_vertical_scan_flag
-   uint8_t 	top_field_first
+   int32_t    trd [2]
+   int32_t    trb [2]
+   uint8_t    vop_coding_type
+   uint8_t    vop_fcode_forward
+   uint8_t    vop_fcode_backward
+   uint8_t    rounding_control
+   uint8_t    alternate_vertical_scan_flag
+   uint8_t    top_field_first
    */
 
    return result;
@@ -1317,7 +1317,7 @@ struct pipe_video_codec *si_common_uvd_create_decoder(struct pipe_context *conte
       si_vid_clear_buffer(context, &dec->ctx);
    }
 
-   if (sctx->family >= CHIP_POLARIS10 && sctx->screen->info.drm_minor >= 3) {
+   if (sctx->family >= CHIP_POLARIS10) {
       if (!si_vid_create_buffer(dec->screen, &dec->sessionctx, UVD_SESSION_CONTEXT_SIZE,
                                 PIPE_USAGE_DEFAULT)) {
          RVID_ERR("Can't allocated session ctx.\n");

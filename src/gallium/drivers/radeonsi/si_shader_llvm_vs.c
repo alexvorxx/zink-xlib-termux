@@ -39,6 +39,53 @@ static LLVMValueRef unpack_sint16(struct si_shader_context *ctx, LLVMValueRef i3
                         ctx->ac.i32, "");
 }
 
+static LLVMValueRef get_vertex_index(struct si_shader_context *ctx,
+                                     struct si_vs_prolog_bits *key, unsigned input_index,
+                                     LLVMValueRef instance_divisor_constbuf,
+                                     unsigned start_instance, unsigned base_vertex)
+{
+   LLVMValueRef instance_id = ctx->abi.instance_id_replaced ?
+      ctx->abi.instance_id_replaced : ctx->abi.instance_id;
+   LLVMValueRef vertex_id = ctx->abi.vertex_id_replaced ?
+      ctx->abi.vertex_id_replaced : ctx->abi.vertex_id;
+
+   bool divisor_is_one = key->instance_divisor_is_one & (1u << input_index);
+   bool divisor_is_fetched =key->instance_divisor_is_fetched & (1u << input_index);
+
+   LLVMValueRef index = NULL;
+   if (divisor_is_one)
+      index = instance_id;
+   else if (divisor_is_fetched) {
+      LLVMValueRef udiv_factors[4];
+
+      for (unsigned j = 0; j < 4; j++) {
+         udiv_factors[j] = si_buffer_load_const(
+            ctx, instance_divisor_constbuf,
+            LLVMConstInt(ctx->ac.i32, input_index * 16 + j * 4, 0));
+         udiv_factors[j] = ac_to_integer(&ctx->ac, udiv_factors[j]);
+      }
+
+      /* The faster NUW version doesn't work when InstanceID == UINT_MAX.
+       * Such InstanceID might not be achievable in a reasonable time though.
+       */
+      index = ac_build_fast_udiv_nuw(
+         &ctx->ac, instance_id, udiv_factors[0],
+         udiv_factors[1], udiv_factors[2], udiv_factors[3]);
+   }
+
+   if (divisor_is_one || divisor_is_fetched) {
+      /* Add StartInstance. */
+      index = LLVMBuildAdd(ctx->ac.builder, index,
+                           LLVMGetParam(ctx->main_fn, start_instance), "");
+   } else {
+      /* VertexID + BaseVertex */
+      index = LLVMBuildAdd(ctx->ac.builder, vertex_id,
+                           LLVMGetParam(ctx->main_fn, base_vertex), "");
+   }
+
+   return index;
+}
+
 static void load_input_vs(struct si_shader_context *ctx, unsigned input_index, LLVMValueRef out[4])
 {
    const struct si_shader_info *info = &ctx->shader->selector->info;
@@ -114,7 +161,7 @@ static void load_input_vs(struct si_shader_context *ctx, unsigned input_index, L
    unsigned num_vbos_in_user_sgprs = ctx->shader->selector->info.num_vbos_in_user_sgprs;
    union si_vs_fix_fetch fix_fetch;
    LLVMValueRef vb_desc;
-   LLVMValueRef vertex_index;
+   LLVMValueRef vertex_index = NULL;
    LLVMValueRef tmp;
 
    if (input_index < num_vbos_in_user_sgprs) {
@@ -125,7 +172,19 @@ static void load_input_vs(struct si_shader_context *ctx, unsigned input_index, L
                                       LLVMConstInt(ctx->ac.i32, index, 0));
    }
 
-   vertex_index = LLVMGetParam(ctx->main_fn, ctx->vertex_index0.arg_index + input_index);
+   if (ctx->abi.vertex_id_replaced) {
+      /* Only ngg culling will replace vertex_id, and ngg culling is an optimization key
+       * field, so the shader must be monolithic.
+       */
+      assert(ctx->shader->is_monolithic);
+      assert(ctx->abi.instance_id_replaced);
+
+      vertex_index = get_vertex_index(ctx, &ctx->shader->key.ge.part.vs.prolog,
+                                      input_index, ctx->instance_divisor_constbuf,
+                                      ctx->args.start_instance.arg_index,
+                                      ctx->args.base_vertex.arg_index);
+   } else
+      vertex_index = LLVMGetParam(ctx->main_fn, ctx->vertex_index0.arg_index + input_index);
 
    /* Use the open-coded implementation for all loads of doubles and
     * of dword-sized data that needs fixups. We need to insert conversion
@@ -470,7 +529,7 @@ static void si_vertex_color_clamping(struct si_shader_context *ctx,
       return;
 
    /* The state is in the first bit of the user SGPR. */
-   LLVMValueRef cond = ac_get_arg(&ctx->ac, ctx->vs_state_bits);
+   LLVMValueRef cond = GET_FIELD(ctx, VS_STATE_CLAMP_VERTEX_COLOR);
    cond = LLVMBuildTrunc(ctx->ac.builder, cond, ctx->ac.i1, "");
 
    ac_build_ifcc(&ctx->ac, cond, 6502);
@@ -499,7 +558,7 @@ static void si_vertex_color_clamping(struct si_shader_context *ctx,
          continue;
 
       for (unsigned j = 0; j < 4; j++) {
-         outputs[i].values[j] = LLVMBuildLoad(ctx->ac.builder, addr[i][j], "");
+         outputs[i].values[j] = LLVMBuildLoad2(ctx->ac.builder, ctx->ac.f32, addr[i][j], "");
       }
    }
 }
@@ -794,7 +853,7 @@ void si_llvm_build_vs_exports(struct si_shader_context *ctx, LLVMValueRef num_ex
       for (unsigned i = 0; i < shader->info.nr_param_exports; i++) {
          for (unsigned chan = 0; chan < 4; chan++) {
             param_exports[i].out[chan] =
-               LLVMBuildLoad(ctx->ac.builder, param_exports[i].out[chan], "");
+               LLVMBuildLoad2(ctx->ac.builder, ctx->ac.f32, param_exports[i].out[chan], "");
          }
 
          LLVMValueRef vdata = ac_build_gather_values_extended(&ctx->ac, param_exports[i].out,
@@ -826,7 +885,7 @@ void si_llvm_vs_build_end(struct si_shader_context *ctx)
       outputs[i].semantic = info->output_semantic[i];
 
       for (j = 0; j < 4; j++) {
-         outputs[i].values[j] = LLVMBuildLoad(ctx->ac.builder, addrs[4 * i + j], "");
+         outputs[i].values[j] = LLVMBuildLoad2(ctx->ac.builder, ctx->ac.f32, addrs[4 * i + j], "");
          outputs[i].vertex_streams = info->output_streams[i];
       }
    }
@@ -932,10 +991,9 @@ void si_llvm_build_vs_prolog(struct si_shader_context *ctx, union si_shader_part
    if (key->vs_prolog.load_vgprs_after_culling) {
       for (i = 5; i <= 8; i++) {
          bool is_tes_rel_patch_id = i == 7;
-         input_vgprs[i] = LLVMBuildIntToPtr(ctx->ac.builder, input_vgprs[i],
-                                            LLVMPointerType(is_tes_rel_patch_id ? ctx->ac.i8 : ctx->ac.i32,
-                                                            AC_ADDR_SPACE_LDS), "");
-         input_vgprs[i] = LLVMBuildLoad(ctx->ac.builder, input_vgprs[i], "");
+         LLVMTypeRef t = is_tes_rel_patch_id ? ctx->ac.i8 : ctx->ac.i32;
+         input_vgprs[i] = LLVMBuildIntToPtr(ctx->ac.builder, input_vgprs[i], LLVMPointerType(t, AC_ADDR_SPACE_LDS), "");
+         input_vgprs[i] = LLVMBuildLoad2(ctx->ac.builder, t, input_vgprs[i], "");
          if (is_tes_rel_patch_id)
             input_vgprs[i] = LLVMBuildZExt(ctx->ac.builder, input_vgprs[i], ctx->ac.i32, "");
       }
@@ -948,6 +1006,8 @@ void si_llvm_build_vs_prolog(struct si_shader_context *ctx, union si_shader_part
 
    ctx->abi.vertex_id = input_vgprs[vertex_id_vgpr];
    ctx->abi.instance_id = input_vgprs[instance_id_vgpr];
+   ctx->abi.vertex_id_replaced = NULL;
+   ctx->abi.instance_id_replaced = NULL;
 
    /* Copy inputs to outputs. This should be no-op, as the registers match,
     * but it will prevent the compiler from overwriting them unintentionally.
@@ -979,37 +1039,10 @@ void si_llvm_build_vs_prolog(struct si_shader_context *ctx, union si_shader_part
    }
 
    for (i = 0; i < key->vs_prolog.num_inputs; i++) {
-      bool divisor_is_one = key->vs_prolog.states.instance_divisor_is_one & (1u << i);
-      bool divisor_is_fetched = key->vs_prolog.states.instance_divisor_is_fetched & (1u << i);
-      LLVMValueRef index = NULL;
-
-      if (divisor_is_one) {
-         index = ctx->abi.instance_id;
-      } else if (divisor_is_fetched) {
-         LLVMValueRef udiv_factors[4];
-
-         for (unsigned j = 0; j < 4; j++) {
-            udiv_factors[j] = si_buffer_load_const(ctx, instance_divisor_constbuf,
-                                                   LLVMConstInt(ctx->ac.i32, i * 16 + j * 4, 0));
-            udiv_factors[j] = ac_to_integer(&ctx->ac, udiv_factors[j]);
-         }
-         /* The faster NUW version doesn't work when InstanceID == UINT_MAX.
-          * Such InstanceID might not be achievable in a reasonable time though.
-          */
-         index = ac_build_fast_udiv_nuw(&ctx->ac, ctx->abi.instance_id, udiv_factors[0],
-                                        udiv_factors[1], udiv_factors[2], udiv_factors[3]);
-      }
-
-      if (divisor_is_one || divisor_is_fetched) {
-         /* Add StartInstance. */
-         index =
-            LLVMBuildAdd(ctx->ac.builder, index,
-                         LLVMGetParam(ctx->main_fn, user_sgpr_base + SI_SGPR_START_INSTANCE), "");
-      } else {
-         /* VertexID + BaseVertex */
-         index = LLVMBuildAdd(ctx->ac.builder, ctx->abi.vertex_id,
-                              LLVMGetParam(func, user_sgpr_base + SI_SGPR_BASE_VERTEX), "");
-      }
+      LLVMValueRef index = get_vertex_index(ctx, &key->vs_prolog.states, i,
+                                            instance_divisor_constbuf,
+                                            user_sgpr_base + SI_SGPR_START_INSTANCE,
+                                            user_sgpr_base + SI_SGPR_BASE_VERTEX);
 
       index = ac_to_float(&ctx->ac, index);
       ret = LLVMBuildInsertValue(ctx->ac.builder, ret, index, ctx->args.arg_count + i, "");

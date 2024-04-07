@@ -159,10 +159,25 @@ vk_format_is_compressed(VkFormat format)
    return vk_format_get_blockwidth(format) > 1;
 }
 
+static inline bool
+vk_format_is_block_compressed(VkFormat format)
+{
+   return util_format_is_compressed(vk_format_to_pipe_format(format));
+}
+
 static inline const struct util_format_description *
 vk_format_description(VkFormat format)
 {
    return util_format_description(vk_format_to_pipe_format(format));
+}
+
+static inline unsigned
+vk_format_get_component_bits(VkFormat format, enum util_format_colorspace colorspace,
+                             unsigned component)
+{
+   return util_format_get_component_bits(vk_format_to_pipe_format(format),
+                                         colorspace,
+                                         component);
 }
 
 static inline unsigned

@@ -27,15 +27,7 @@
 
 #include <gtest/gtest.h>
 
-static inline void
-case_cb(bi_context *ctx)
-{
-   bi_foreach_instr_global(ctx, I) {
-      va_lower_isel(I);
-   }
-}
-
-#define CASE(instr, expected) INSTRUCTION_CASE(instr, expected, case_cb)
+#define CASE(instr, expected) INSTRUCTION_CASE(instr, expected, va_lower_isel)
 #define NEGCASE(instr) CASE(instr, instr)
 
 class LowerIsel : public testing::Test {
@@ -123,6 +115,14 @@ TEST_F(LowerIsel, MuxInt8) {
    NEGCASE(bi_mux_v4i8(b, x, y, z, BI_MUX_INT_ZERO));
    NEGCASE(bi_mux_v4i8(b, x, y, z, BI_MUX_NEG));
    NEGCASE(bi_mux_v4i8(b, x, y, z, BI_MUX_FP_ZERO));
+}
+
+TEST_F(LowerIsel, FaddRscale) {
+   CASE(bi_fadd_rscale_f32_to(b, reg, x, y, z, BI_SPECIAL_NONE),
+        bi_fma_rscale_f32_to(b, reg, x, bi_imm_f32(1.0), y, z, BI_SPECIAL_NONE));
+
+   CASE(bi_fadd_rscale_f32_to(b, reg, x, y, z, BI_SPECIAL_N),
+        bi_fma_rscale_f32_to(b, reg, x, bi_imm_f32(1.0), y, z, BI_SPECIAL_N));
 }
 
 TEST_F(LowerIsel, Smoke) {

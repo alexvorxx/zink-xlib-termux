@@ -56,7 +56,7 @@ lower_nv_task_output(nir_builder *b,
       b->cursor = nir_after_instr(instr);
       nir_ssa_def *load =
          nir_load_shared(b, 1, 32, nir_imm_int(b, 0),
-                           .base = s->task_count_shared_addr);
+                         .base = s->task_count_shared_addr);
       nir_ssa_def_rewrite_uses(&intrin->dest.ssa, load);
       nir_instr_remove(instr);
       return true;
@@ -66,7 +66,7 @@ lower_nv_task_output(nir_builder *b,
       b->cursor = nir_after_instr(instr);
       nir_ssa_def *store_val = intrin->src[0].ssa;
       nir_store_shared(b, store_val, nir_imm_int(b, 0),
-                        .base = s->task_count_shared_addr);
+                       .base = s->task_count_shared_addr);
       nir_instr_remove(instr);
       return true;
    }
@@ -88,10 +88,23 @@ append_launch_mesh_workgroups_to_nv_task(nir_builder *b,
    nir_ssa_def *zero = nir_imm_int(b, 0);
    nir_store_shared(b, zero, zero, .base = s->task_count_shared_addr);
 
+   nir_scoped_barrier(b,
+         .execution_scope = NIR_SCOPE_WORKGROUP,
+         .memory_scope = NIR_SCOPE_WORKGROUP,
+         .memory_semantics = NIR_MEMORY_RELEASE,
+         .memory_modes = nir_var_mem_shared);
+
    /* At the end of the shader, read the task count from shared memory
     * and emit launch_mesh_workgroups.
     */
    b->cursor = nir_after_cf_list(&b->impl->body);
+
+   nir_scoped_barrier(b,
+         .execution_scope = NIR_SCOPE_WORKGROUP,
+         .memory_scope = NIR_SCOPE_WORKGROUP,
+         .memory_semantics = NIR_MEMORY_ACQUIRE,
+         .memory_modes = nir_var_mem_shared);
+
    nir_ssa_def *task_count =
       nir_load_shared(b, 1, 32, zero, .base = s->task_count_shared_addr);
 
@@ -307,7 +320,7 @@ lower_task_intrin(nir_builder *b,
 }
 
 static bool
-uses_task_payload_atomics(nir_shader *shader)
+requires_payload_in_shared(nir_shader *shader, bool atomics, bool small_types)
 {
    nir_foreach_function(func, shader) {
       if (!func->impl)
@@ -334,7 +347,17 @@ uses_task_payload_atomics(nir_shader *shader)
                case nir_intrinsic_task_payload_atomic_fmin:
                case nir_intrinsic_task_payload_atomic_fmax:
                case nir_intrinsic_task_payload_atomic_fcomp_swap:
-                  return true;
+                  if (atomics)
+                     return true;
+                  break;
+               case nir_intrinsic_load_task_payload:
+                  if (small_types && nir_dest_bit_size(intrin->dest) < 32)
+                     return true;
+                  break;
+               case nir_intrinsic_store_task_payload:
+                  if (small_types && nir_src_bit_size(intrin->src[0]) < 32)
+                     return true;
+                  break;
                default:
                   break;
             }
@@ -343,6 +366,13 @@ uses_task_payload_atomics(nir_shader *shader)
    }
 
    return false;
+}
+
+static bool
+nir_lower_task_intrins(nir_shader *shader, lower_task_state *state)
+{
+   return nir_shader_instructions_pass(shader, lower_task_intrin,
+                                       nir_metadata_none, state);
 }
 
 /**
@@ -380,19 +410,22 @@ nir_lower_task_shader(nir_shader *shader,
        * If the shader writes TASK_COUNT, lower that to emit
        * the new launch_mesh_workgroups intrinsic instead.
        */
-      nir_lower_nv_task_count(shader);
+      NIR_PASS_V(shader, nir_lower_nv_task_count);
    } else {
       /* To make sure that task shaders always have a code path that
        * executes a launch_mesh_workgroups, let's add one at the end.
        * If the shader already had a launch_mesh_workgroups by any chance,
        * this will be removed.
        */
-      builder.cursor = nir_after_cf_list(&builder.impl->body);
+      nir_block *last_block = nir_impl_last_block(impl);
+      builder.cursor = nir_after_block_before_jump(last_block);
       nir_launch_mesh_workgroups(&builder, nir_imm_zero(&builder, 3, 32));
    }
 
-   bool payload_in_shared = options.payload_to_shared_for_atomics &&
-                            uses_task_payload_atomics(shader);
+   bool atomics = options.payload_to_shared_for_atomics;
+   bool small_types = options.payload_to_shared_for_small_types;
+   bool payload_in_shared = (atomics || small_types) &&
+                            requires_payload_in_shared(shader, atomics, small_types);
 
    lower_task_state state = {
       .payload_shared_addr = ALIGN(shader->info.shared_size, 16),
@@ -403,13 +436,13 @@ nir_lower_task_shader(nir_shader *shader,
       shader->info.shared_size =
          state.payload_shared_addr + shader->info.task_payload_size;
 
-   nir_shader_instructions_pass(shader, lower_task_intrin,
-                                nir_metadata_none, &state);
+   NIR_PASS(_, shader, nir_lower_task_intrins, &state);
 
    /* Delete all code that potentially can't be reached due to
     * launch_mesh_workgroups being a terminating instruction.
     */
-   nir_lower_returns(shader);
+   NIR_PASS(_, shader, nir_lower_returns);
+
    bool progress;
    do {
       progress = false;

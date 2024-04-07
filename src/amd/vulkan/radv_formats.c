@@ -147,55 +147,35 @@ radv_translate_buffer_numformat(const struct util_format_description *desc, int 
    }
 }
 
-void
-radv_translate_vertex_format(const struct radv_physical_device *pdevice, VkFormat format,
-                             const struct util_format_description *desc, unsigned *dfmt,
-                             unsigned *nfmt, bool *post_shuffle,
-                             enum radv_vs_input_alpha_adjust *alpha_adjust)
+static bool
+radv_is_vertex_buffer_format_supported(VkFormat format)
 {
-   assert(desc->channel[0].type != UTIL_FORMAT_TYPE_VOID);
-   *nfmt = radv_translate_buffer_numformat(desc, 0);
-   *dfmt = radv_translate_buffer_dataformat(desc, 0);
+   if (format == VK_FORMAT_B10G11R11_UFLOAT_PACK32)
+      return true;
+   if (format == VK_FORMAT_UNDEFINED || vk_format_is_srgb(format))
+      return false;
 
-   *alpha_adjust = ALPHA_ADJUST_NONE;
-   if (pdevice->rad_info.gfx_level <= GFX8 && pdevice->rad_info.family != CHIP_STONEY) {
-      switch (format) {
-      case VK_FORMAT_A2R10G10B10_SNORM_PACK32:
-      case VK_FORMAT_A2B10G10R10_SNORM_PACK32:
-         *alpha_adjust = ALPHA_ADJUST_SNORM;
-         break;
-      case VK_FORMAT_A2R10G10B10_SSCALED_PACK32:
-      case VK_FORMAT_A2B10G10R10_SSCALED_PACK32:
-         *alpha_adjust = ALPHA_ADJUST_SSCALED;
-         break;
-      case VK_FORMAT_A2R10G10B10_SINT_PACK32:
-      case VK_FORMAT_A2B10G10R10_SINT_PACK32:
-         *alpha_adjust = ALPHA_ADJUST_SINT;
-         break;
-      default:
-         break;
-      }
-   }
+   int first_non_void = vk_format_get_first_non_void_channel(format);
+   if (first_non_void < 0)
+      return false;
 
-   switch (format) {
-   case VK_FORMAT_B8G8R8A8_UNORM:
-   case VK_FORMAT_B8G8R8A8_SNORM:
-   case VK_FORMAT_B8G8R8A8_USCALED:
-   case VK_FORMAT_B8G8R8A8_SSCALED:
-   case VK_FORMAT_B8G8R8A8_UINT:
-   case VK_FORMAT_B8G8R8A8_SINT:
-   case VK_FORMAT_B8G8R8A8_SRGB:
-   case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
-   case VK_FORMAT_A2R10G10B10_SNORM_PACK32:
-   case VK_FORMAT_A2R10G10B10_USCALED_PACK32:
-   case VK_FORMAT_A2R10G10B10_SSCALED_PACK32:
-   case VK_FORMAT_A2R10G10B10_UINT_PACK32:
-   case VK_FORMAT_A2R10G10B10_SINT_PACK32:
-      *post_shuffle = true;
-      break;
+   const struct util_format_description *desc = vk_format_description(format);
+   unsigned type = desc->channel[first_non_void].type;
+   if (type == UTIL_FORMAT_TYPE_FIXED)
+      return false;
+
+   if (desc->nr_channels == 4 && desc->channel[0].size == 10 && desc->channel[1].size == 10 &&
+       desc->channel[2].size == 10 && desc->channel[3].size == 2)
+      return true;
+
+   switch (desc->channel[first_non_void].size) {
+   case 8:
+   case 16:
+   case 32:
+   case 64:
+      return true;
    default:
-      *post_shuffle = false;
-      break;
+      return false;
    }
 }
 
@@ -208,8 +188,6 @@ radv_translate_tex_dataformat(VkFormat format, const struct util_format_descript
 
    assert(vk_format_get_plane_count(format) == 1);
 
-   if (!desc)
-      return ~0;
    /* Colorspace (return non-RGB formats directly). */
    switch (desc->colorspace) {
       /* Depth stencil formats */
@@ -522,7 +500,7 @@ radv_is_sampler_format_supported(VkFormat format, bool *linear_sampling)
 {
    const struct util_format_description *desc = vk_format_description(format);
    uint32_t num_format;
-   if (!desc || format == VK_FORMAT_UNDEFINED || format == VK_FORMAT_R64_UINT ||
+   if (format == VK_FORMAT_UNDEFINED || format == VK_FORMAT_R64_UINT ||
        format == VK_FORMAT_R64_SINT)
       return false;
    num_format =
@@ -555,7 +533,7 @@ radv_is_storage_image_format_supported(struct radv_physical_device *physical_dev
 {
    const struct util_format_description *desc = vk_format_description(format);
    unsigned data_format, num_format;
-   if (!desc || format == VK_FORMAT_UNDEFINED)
+   if (format == VK_FORMAT_UNDEFINED)
       return false;
 
    data_format =
@@ -610,7 +588,7 @@ radv_is_buffer_format_supported(VkFormat format, bool *scaled)
 {
    const struct util_format_description *desc = vk_format_description(format);
    unsigned data_format, num_format;
-   if (!desc || format == VK_FORMAT_UNDEFINED)
+   if (format == VK_FORMAT_UNDEFINED)
       return false;
 
    data_format =
@@ -700,8 +678,7 @@ radv_physical_device_get_format_properties(struct radv_physical_device *physical
    bool blendable;
    bool scaled = false;
    /* TODO: implement some software emulation of SUBSAMPLED formats. */
-   if (!desc || vk_format_to_pipe_format(format) == PIPE_FORMAT_NONE ||
-       desc->layout == UTIL_FORMAT_LAYOUT_SUBSAMPLED) {
+   if (desc->format == PIPE_FORMAT_NONE || desc->layout == UTIL_FORMAT_LAYOUT_SUBSAMPLED) {
       out_properties->linearTilingFeatures = linear;
       out_properties->optimalTilingFeatures = tiled;
       out_properties->bufferFeatures = buffer;
@@ -716,7 +693,8 @@ radv_physical_device_get_format_properties(struct radv_physical_device *physical
       return;
    }
 
-   if (vk_format_get_plane_count(format) > 1 || desc->layout == UTIL_FORMAT_LAYOUT_SUBSAMPLED) {
+   const bool multiplanar = vk_format_get_plane_count(format) > 1;
+   if (multiplanar || desc->layout == UTIL_FORMAT_LAYOUT_SUBSAMPLED) {
       uint64_t tiling = VK_FORMAT_FEATURE_2_TRANSFER_SRC_BIT |
                         VK_FORMAT_FEATURE_2_TRANSFER_DST_BIT |
                         VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT |
@@ -727,6 +705,9 @@ radv_physical_device_get_format_properties(struct radv_physical_device *physical
       if (desc->layout != UTIL_FORMAT_LAYOUT_SUBSAMPLED) {
          tiling |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT;
       }
+
+      if (multiplanar)
+         tiling |= VK_FORMAT_FEATURE_2_DISJOINT_BIT;
 
       /* Fails for unknown reasons with linear tiling & subsampled formats. */
       out_properties->linearTilingFeatures =
@@ -745,12 +726,13 @@ radv_physical_device_get_format_properties(struct radv_physical_device *physical
                 VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT;
    }
 
+   if (radv_is_vertex_buffer_format_supported(format))
+      buffer |= VK_FORMAT_FEATURE_2_VERTEX_BUFFER_BIT;
+
    if (radv_is_buffer_format_supported(format, &scaled)) {
-      if (format != VK_FORMAT_R64_UINT && format != VK_FORMAT_R64_SINT) {
-         buffer |= VK_FORMAT_FEATURE_2_VERTEX_BUFFER_BIT;
-         if (!scaled && !vk_format_is_srgb(format))
-            buffer |= VK_FORMAT_FEATURE_2_UNIFORM_TEXEL_BUFFER_BIT;
-      }
+      if (format != VK_FORMAT_R64_UINT && format != VK_FORMAT_R64_SINT && !scaled &&
+          !vk_format_is_srgb(format))
+         buffer |= VK_FORMAT_FEATURE_2_UNIFORM_TEXEL_BUFFER_BIT;
       buffer |= VK_FORMAT_FEATURE_2_STORAGE_TEXEL_BUFFER_BIT |
                 VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT |
                 VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT;
@@ -1211,6 +1193,9 @@ radv_get_modifier_flags(struct radv_physical_device *dev, VkFormat format, uint6
    else
       features = props->optimalTilingFeatures;
 
+   /* Unconditionally disable DISJOINT support for modifiers for now */
+   features &= ~VK_FORMAT_FEATURE_2_DISJOINT_BIT;
+
    if (ac_modifier_has_dcc(modifier)) {
       /* Only disable support for STORAGE_IMAGE on modifiers that
        * do not support DCC image stores.
@@ -1356,7 +1341,7 @@ radv_check_modifier_support(struct radv_physical_device *dev,
    if (info->type != VK_IMAGE_TYPE_2D)
       return VK_ERROR_FORMAT_NOT_SUPPORTED;
 
-   if (!desc || (desc->layout == UTIL_FORMAT_LAYOUT_ETC && dev->emulate_etc2))
+   if (desc->layout == UTIL_FORMAT_LAYOUT_ETC && dev->emulate_etc2)
       return VK_ERROR_FORMAT_NOT_SUPPORTED;
 
    /* We did not add modifiers for sparse textures. */
@@ -1627,7 +1612,7 @@ radv_get_image_format_properties(struct radv_physical_device *physical_device,
       if (physical_device->rad_info.gfx_level < GFX8)
          goto unsupported;
 
-      if (vk_format_get_plane_count(format) > 1 || info->type != VK_IMAGE_TYPE_2D ||
+      if (vk_format_get_plane_count(format) > 1 || info->type == VK_IMAGE_TYPE_1D ||
           info->tiling != VK_IMAGE_TILING_OPTIMAL || vk_format_is_depth_or_stencil(format))
          goto unsupported;
    }
@@ -1682,7 +1667,7 @@ get_external_image_format_properties(struct radv_physical_device *physical_devic
    VkExternalMemoryHandleTypeFlags compat_flags = 0;
    const struct util_format_description *desc = vk_format_description(pImageFormatInfo->format);
 
-   if (!desc || (desc->layout == UTIL_FORMAT_LAYOUT_ETC && physical_device->emulate_etc2))
+   if (desc->layout == UTIL_FORMAT_LAYOUT_ETC && physical_device->emulate_etc2)
       return;
 
    if (pImageFormatInfo->flags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT)
@@ -1876,8 +1861,8 @@ fail:
 }
 
 static void
-fill_sparse_image_format_properties(struct radv_physical_device *pdev, VkFormat format,
-                                    VkSparseImageFormatProperties *prop)
+fill_sparse_image_format_properties(struct radv_physical_device *pdev, VkImageType type,
+                                    VkFormat format, VkSparseImageFormatProperties *prop)
 {
    prop->aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
    prop->flags = 0;
@@ -1888,12 +1873,29 @@ fill_sparse_image_format_properties(struct radv_physical_device *pdev, VkFormat 
    if (pdev->rad_info.gfx_level < GFX9)
       prop->flags |= VK_SPARSE_IMAGE_FORMAT_SINGLE_MIPTAIL_BIT;
 
-   /* This assumes the sparse image tile size is always 64 KiB (1 << 16) */
-   unsigned l2_size = 16 - util_logbase2(vk_format_get_blocksize(format));
-   unsigned w = (1u << ((l2_size + 1) / 2)) * vk_format_get_blockwidth(format);
-   unsigned h = (1u << (l2_size / 2)) * vk_format_get_blockheight(format);
-
-   prop->imageGranularity = (VkExtent3D){w, h, 1};
+   unsigned w, h;
+   unsigned d = 1;
+   if (type == VK_IMAGE_TYPE_3D) {
+      if (pdev->rad_info.gfx_level >= GFX9) {
+         unsigned l2_size = 16 - util_logbase2(vk_format_get_blocksize(format));
+         w = (1u << ((l2_size + 2) / 3)) * vk_format_get_blockwidth(format);
+         h = (1u << ((l2_size + 1) / 3)) * vk_format_get_blockheight(format);
+         d = (1u << ((l2_size + 0) / 3));
+      } else {
+         /* GFX7/GFX8 thick tiling modes */
+         unsigned bs = vk_format_get_blocksize(format);
+         unsigned l2_size = 16 - util_logbase2(bs) - (bs <= 4 ? 2 : 0);
+         w = (1u << ((l2_size + 1) / 2)) * vk_format_get_blockwidth(format);
+         h = (1u << (l2_size / 2)) * vk_format_get_blockheight(format);
+         d = bs <= 4 ? 4 : 1;
+      }
+   } else {
+      /* This assumes the sparse image tile size is always 64 KiB (1 << 16) */
+      unsigned l2_size = 16 - util_logbase2(vk_format_get_blocksize(format));
+      w = (1u << ((l2_size + 1) / 2)) * vk_format_get_blockwidth(format);
+      h = (1u << (l2_size / 2)) * vk_format_get_blockheight(format);
+   }
+   prop->imageGranularity = (VkExtent3D){w, h, d};
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -1928,7 +1930,8 @@ radv_GetPhysicalDeviceSparseImageFormatProperties2(
 
    vk_outarray_append_typed(VkSparseImageFormatProperties2, &out, prop)
    {
-      fill_sparse_image_format_properties(pdev, pFormatInfo->format, &prop->properties);
+      fill_sparse_image_format_properties(pdev, pFormatInfo->type, pFormatInfo->format,
+                                          &prop->properties);
    };
 }
 
@@ -1951,7 +1954,8 @@ radv_GetImageSparseMemoryRequirements2(VkDevice _device,
 
    vk_outarray_append_typed(VkSparseImageMemoryRequirements2, &out, req)
    {
-      fill_sparse_image_format_properties(device->physical_device, image->vk.format,
+      fill_sparse_image_format_properties(device->physical_device, image->vk.image_type,
+                                          image->vk.format,
                                           &req->memoryRequirements.formatProperties);
       req->memoryRequirements.imageMipTailFirstLod = image->planes[0].surface.first_mip_tail_level;
 

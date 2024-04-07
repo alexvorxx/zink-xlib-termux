@@ -224,10 +224,12 @@ vn_instance_init_experimental_features(struct vn_instance *instance)
              "VkVenusExperimentalFeatures100000MESA is as below:"
              "\n\tmemoryResourceAllocationSize = %u"
              "\n\tglobalFencing = %u"
-             "\n\tlargeRing = %u",
+             "\n\tlargeRing = %u"
+             "\n\tsyncFdFencing = %u",
              instance->experimental.memoryResourceAllocationSize,
              instance->experimental.globalFencing,
-             instance->experimental.largeRing);
+             instance->experimental.largeRing,
+             instance->experimental.syncFdFencing);
    }
 
    return VK_SUCCESS;
@@ -293,6 +295,8 @@ vn_instance_init_renderer(struct vn_instance *instance)
              renderer_info->vk_mesa_venus_protocol_spec_version);
       vn_log(instance, "supports blob id 0: %d",
              renderer_info->supports_blob_id_0);
+      vn_log(instance, "allow_vk_wait_syncs: %d",
+             renderer_info->allow_vk_wait_syncs);
    }
 
    return VK_SUCCESS;
@@ -689,6 +693,7 @@ vn_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
                   const VkAllocationCallbacks *pAllocator,
                   VkInstance *pInstance)
 {
+   VN_TRACE_FUNC();
    const VkAllocationCallbacks *alloc =
       pAllocator ? pAllocator : vk_default_allocator();
    struct vn_instance *instance;
@@ -830,6 +835,7 @@ void
 vn_DestroyInstance(VkInstance _instance,
                    const VkAllocationCallbacks *pAllocator)
 {
+   VN_TRACE_FUNC();
    struct vn_instance *instance = vn_instance_from_handle(_instance);
    const VkAllocationCallbacks *alloc =
       pAllocator ? pAllocator : &instance->base.base.alloc;

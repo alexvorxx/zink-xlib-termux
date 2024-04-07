@@ -91,6 +91,11 @@ static const nir_shader_compiler_options sp_compiler_options = {
    .lower_int64_options = nir_lower_imul_2x32_64,
    .max_unroll_iterations = 32,
    .use_interpolated_input_intrinsics = true,
+
+   /* TGSI doesn't have a semantic for local or global index, just local and
+    * workgroup id.
+    */
+   .lower_cs_local_index_to_id = true,
 };
 
 static const void *
@@ -414,8 +419,6 @@ softpipe_is_format_supported( struct pipe_screen *screen,
       return false;
 
    format_desc = util_format_description(format);
-   if (!format_desc)
-      return false;
 
    if (sample_count > 1)
       return false;

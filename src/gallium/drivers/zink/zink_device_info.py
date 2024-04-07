@@ -63,6 +63,7 @@ EXTENSIONS = [
         required=True),
     Extension("VK_KHR_maintenance2"),
     Extension("VK_KHR_maintenance3"),
+    Extension("VK_KHR_maintenance4", alias="maint4", features=True),
     Extension("VK_KHR_external_memory"),
     Extension("VK_KHR_external_memory_fd"),
     Extension("VK_KHR_vulkan_memory_model"),
@@ -85,8 +86,11 @@ EXTENSIONS = [
     Extension("VK_KHR_get_memory_requirements2"),
     Extension("VK_EXT_post_depth_coverage"),
     Extension("VK_EXT_depth_clip_control", alias="clip_control", features=True),
+    Extension("VK_EXT_depth_clamp_zero_one", alias="clamp_01", features=True),
     Extension("VK_EXT_shader_subgroup_ballot"),
+    Extension("VK_EXT_shader_subgroup_vote"),
     Extension("VK_EXT_shader_atomic_float", alias="atomic_float", features=True),
+    Extension("VK_KHR_shader_atomic_int64", alias="atomic_int", features=True),
     Extension("VK_KHR_8bit_storage",
               alias="storage_8bit",
               features=True,
@@ -103,6 +107,9 @@ EXTENSIONS = [
         properties=True),
     Extension("VK_EXT_memory_budget"),
     Extension("VK_KHR_draw_indirect_count"),
+    Extension("VK_EXT_attachment_feedback_loop_layout",
+              alias="feedback_loop",
+              features=True),
     Extension("VK_EXT_fragment_shader_interlock",
        alias="interlock",
        features=True,
@@ -166,6 +173,12 @@ EXTENSIONS = [
         properties=True,
         features=True,
         conditions=["$feats.customBorderColors"]),
+    Extension("VK_EXT_non_seamless_cube_map",
+        alias="nonseamless",
+        features=True),
+    Extension("VK_EXT_border_color_swizzle",
+        alias="border_swizzle",
+        features=True),
     Extension("VK_EXT_blend_operation_advanced",
         alias="blend",
         properties=True,
@@ -179,16 +192,18 @@ EXTENSIONS = [
         alias="dynamic_state2",
         features=True,
         conditions=["$feats.extendedDynamicState2"]),
+    Extension("VK_EXT_extended_dynamic_state3",
+        alias="dynamic_state3",
+        properties=True,
+        features=True),
     Extension("VK_EXT_pipeline_creation_cache_control",
         alias="pipeline_cache_control",
         features=True,
         conditions=["$feats.pipelineCreationCacheControl"]),
     Extension("VK_EXT_shader_stencil_export",
         alias="stencil_export"),
-    Extension("VK_EXTX_portability_subset",
-        alias="portability_subset_extx",
-        nonstandard=True,
-        properties=True,
+    Extension("VK_KHR_portability_subset",
+        alias="portability_subset",
         features=True,
         guard=True),
     Extension("VK_KHR_timeline_semaphore", alias="timeline", features=True),
@@ -201,6 +216,10 @@ EXTENSIONS = [
         features=True,
         conditions=["$feats.scalarBlockLayout"]),
     Extension("VK_KHR_swapchain"),
+    Extension("VK_EXT_rasterization_order_attachment_access",
+              alias="rast_order_access",
+              features=True,
+              conditions=["$feats.rasterizationOrderColorAttachmentAccess"]),
     Extension("VK_KHR_shader_float16_int8",
               alias="shader_float16_int8",
               features=True),
@@ -212,11 +231,16 @@ EXTENSIONS = [
     Extension("VK_EXT_primitives_generated_query",
               alias="primgen",
 	             features=True),
+    Extension("VK_KHR_pipeline_library"),
+    Extension("VK_EXT_graphics_pipeline_library",
+              alias="gpl",
+	             features=True,
+	             properties=True),
     Extension("VK_KHR_push_descriptor",
         alias="push",
         properties=True),
     Extension("VK_KHR_descriptor_update_template",
-        alias="template"),
+        alias="template", required=True),
     Extension("VK_EXT_line_rasterization",
         alias="line_rast",
         properties=True,
@@ -236,6 +260,13 @@ EXTENSIONS = [
         features=True,
         properties=True,
         conditions=["$feats.descriptorBindingPartiallyBound"]),
+    Extension("VK_EXT_depth_clip_enable",
+        alias="depth_clip_enable",
+        features=True),
+    Extension("VK_EXT_shader_demote_to_helper_invocation",
+        alias="demote",
+        features=True,
+        conditions=["$feats.shaderDemoteToHelperInvocation"]),
 ]
 
 # constructor: Versions(device_version(major, minor, patch), struct_version(major, minor))
@@ -247,15 +278,13 @@ EXTENSIONS = [
 VERSIONS = [
     Version((1,1,0), (1,1)),
     Version((1,2,0), (1,2)),
+    Version((1,3,0), (1,3)),
 ]
 
 # There exists some inconsistencies regarding the enum constants, fix them.
 # This is basically generated_code.replace(key, value).
 REPLACEMENTS = {
-    "ROBUSTNESS2": "ROBUSTNESS_2",
     "PROPERTIES_PROPERTIES": "PROPERTIES",
-    "EXTENDED_DYNAMIC_STATE2": "EXTENDED_DYNAMIC_STATE_2",
-    "SYNCHRONIZATION2": "SYNCHRONIZATION_2",
 }
 
 
@@ -355,6 +384,7 @@ void zink_stub_${cmd.lstrip("vk")}(void);
 impl_code = """
 <%namespace name="helpers" file="helpers"/>
 
+#include "vk_enum_to_str.h"
 #include "zink_device_info.h"
 #include "zink_screen.h"
 
@@ -373,14 +403,16 @@ zink_get_physical_device_info(struct zink_screen *screen)
    screen->vk.GetPhysicalDeviceMemoryProperties(screen->pdev, &info->mem_props);
 
    // enumerate device supported extensions
-   if (screen->vk.EnumerateDeviceExtensionProperties(screen->pdev, NULL, &num_extensions, NULL) != VK_SUCCESS) {
-      mesa_loge("ZINK: vkEnumerateDeviceExtensionProperties failed");
+   VkResult result = screen->vk.EnumerateDeviceExtensionProperties(screen->pdev, NULL, &num_extensions, NULL);
+   if (result != VK_SUCCESS) {
+      mesa_loge("ZINK: vkEnumerateDeviceExtensionProperties failed (%s)", vk_Result_to_str(result));
    } else {
       if (num_extensions > 0) {
          VkExtensionProperties *extensions = MALLOC(sizeof(VkExtensionProperties) * num_extensions);
          if (!extensions) goto fail;
-         if (screen->vk.EnumerateDeviceExtensionProperties(screen->pdev, NULL, &num_extensions, extensions) != VK_SUCCESS) {
-            mesa_loge("ZINK: vkEnumerateDeviceExtensionProperties failed");
+         result = screen->vk.EnumerateDeviceExtensionProperties(screen->pdev, NULL, &num_extensions, extensions);
+         if (result != VK_SUCCESS) {
+            mesa_loge("ZINK: vkEnumerateDeviceExtensionProperties failed (%s)", vk_Result_to_str(result));
          }
 
          for (uint32_t i = 0; i < num_extensions; ++i) {
@@ -575,6 +607,7 @@ zink_verify_device_extensions(struct zink_screen *screen)
 {
 %for ext in extensions:
 %if registry.in_registry(ext.name):
+<%helpers:guard ext="${ext}">
    if (screen->info.have_${ext.name_with_vendor()}) {
 %for cmd in registry.get_registry_entry(ext.name).device_commands:
 %if cmd.find("win32"):
@@ -592,6 +625,7 @@ zink_verify_device_extensions(struct zink_screen *screen)
 %endif
 %endfor
    }
+</%helpers:guard>
 %endif
 %endfor
 }

@@ -32,7 +32,9 @@
 #include "p_format.h"
 #include "p_video_enums.h"
 #include "p_defines.h"
+#include "util/u_debug.h"
 #include <stdio.h>
+#include "frontend/winsys_handle.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -103,6 +105,12 @@ struct pipe_context {
     */
    struct u_upload_mgr *stream_uploader; /* everything but shader constants */
    struct u_upload_mgr *const_uploader;  /* shader constants only */
+
+   /**
+    * Debug callback set by u_default_set_debug_callback. Frontends should use
+    * set_debug_callback in case drivers need to flush compiler queues.
+    */
+   struct util_debug_callback debug;
 
    void (*destroy)( struct pipe_context * );
 
@@ -1185,6 +1193,15 @@ struct pipe_context {
                                                                    const struct pipe_video_buffer *templat,
                                                                    const uint64_t *modifiers,
                                                                    unsigned int modifiers_count);
+
+   /**
+    * Creates a video buffer as decoding target, from external memory
+    */
+   struct pipe_video_buffer *(*video_buffer_from_handle)( struct pipe_context *context,
+                                                     const struct pipe_video_buffer *templat,
+                                                     struct winsys_handle *handle,
+                                                     unsigned usage );
+
 };
 
 

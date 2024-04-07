@@ -577,7 +577,7 @@ vir_compile_init(const struct v3d_compiler *compiler,
         c->disable_general_tmu_sched = disable_general_tmu_sched;
         c->disable_tmu_pipelining = disable_tmu_pipelining;
         c->disable_constant_ubo_load_sorting = disable_constant_ubo_load_sorting;
-        c->disable_loop_unrolling = V3D_DEBUG & V3D_DEBUG_NO_LOOP_UNROLL
+        c->disable_loop_unrolling = V3D_DBG(NO_LOOP_UNROLL)
                 ? true : disable_loop_unrolling;
 
         s = nir_shader_clone(c, s);
@@ -650,15 +650,30 @@ v3d_lower_nir(struct v3d_compile *c)
                 }
         }
 
-        NIR_PASS_V(c->s, nir_lower_tex, &tex_options);
-        NIR_PASS_V(c->s, nir_lower_system_values);
-        NIR_PASS_V(c->s, nir_lower_compute_system_values, NULL);
+        NIR_PASS(_, c->s, nir_lower_tex, &tex_options);
+        NIR_PASS(_, c->s, nir_lower_system_values);
 
-        NIR_PASS_V(c->s, nir_lower_vars_to_scratch,
-                   nir_var_function_temp,
-                   0,
-                   glsl_get_natural_size_align_bytes);
-        NIR_PASS_V(c->s, v3d_nir_lower_scratch);
+        if (c->s->info.zero_initialize_shared_memory &&
+            c->s->info.shared_size > 0) {
+                /* All our BOs allocate full pages, so the underlying allocation
+                 * for shared memory will always be a multiple of 4KB. This
+                 * ensures that we can do an exact number of full chunk_size
+                 * writes to initialize the memory independently of the actual
+                 * shared_size used by the shader, which is a requirement of
+                 * the initialization pass.
+                 */
+                const unsigned chunk_size = 16; /* max single store size */
+                NIR_PASS(_, c->s, nir_zero_initialize_shared_memory,
+                         ALIGN(c->s->info.shared_size, chunk_size), chunk_size);
+        }
+
+        NIR_PASS(_, c->s, nir_lower_compute_system_values, NULL);
+
+        NIR_PASS(_, c->s, nir_lower_vars_to_scratch,
+                 nir_var_function_temp,
+                 0,
+                 glsl_get_natural_size_align_bytes);
+        NIR_PASS(_, c->s, v3d_nir_lower_scratch);
 }
 
 static void
@@ -855,10 +870,12 @@ v3d_set_prog_data(struct v3d_compile *c,
         prog_data->spill_size = c->spill_size;
         prog_data->tmu_spills = c->spills;
         prog_data->tmu_fills = c->fills;
+        prog_data->tmu_count = c->tmu.total_count;
         prog_data->qpu_read_stalls = c->qpu_inst_stalled_count;
         prog_data->compile_strategy_idx = c->compile_strategy_idx;
         prog_data->tmu_dirty_rcl = c->tmu_dirty_rcl;
         prog_data->has_control_barrier = c->s->info.uses_control_barrier;
+        prog_data->has_global_address = c->has_global_address;
 
         v3d_set_prog_data_uniforms(c, prog_data);
 
@@ -902,32 +919,32 @@ v3d_nir_lower_vs_early(struct v3d_compile *c)
         /* Split our I/O vars and dead code eliminate the unused
          * components.
          */
-        NIR_PASS_V(c->s, nir_lower_io_to_scalar_early,
-                   nir_var_shader_in | nir_var_shader_out);
+        NIR_PASS(_, c->s, nir_lower_io_to_scalar_early,
+                 nir_var_shader_in | nir_var_shader_out);
         uint64_t used_outputs[4] = {0};
         for (int i = 0; i < c->vs_key->num_used_outputs; i++) {
                 int slot = v3d_slot_get_slot(c->vs_key->used_outputs[i]);
                 int comp = v3d_slot_get_component(c->vs_key->used_outputs[i]);
                 used_outputs[comp] |= 1ull << slot;
         }
-        NIR_PASS_V(c->s, nir_remove_unused_io_vars,
-                   nir_var_shader_out, used_outputs, NULL); /* demotes to globals */
-        NIR_PASS_V(c->s, nir_lower_global_vars_to_local);
+        NIR_PASS(_, c->s, nir_remove_unused_io_vars,
+                 nir_var_shader_out, used_outputs, NULL); /* demotes to globals */
+        NIR_PASS(_, c->s, nir_lower_global_vars_to_local);
         v3d_optimize_nir(c, c->s);
-        NIR_PASS_V(c->s, nir_remove_dead_variables, nir_var_shader_in, NULL);
+        NIR_PASS(_, c->s, nir_remove_dead_variables, nir_var_shader_in, NULL);
 
         /* This must go before nir_lower_io */
         if (c->vs_key->per_vertex_point_size)
-                NIR_PASS_V(c->s, nir_lower_point_size, 1.0f, 0.0f);
+                NIR_PASS(_, c->s, nir_lower_point_size, 1.0f, 0.0f);
 
-        NIR_PASS_V(c->s, nir_lower_io, nir_var_shader_in | nir_var_shader_out,
-                   type_size_vec4,
-                   (nir_lower_io_options)0);
+        NIR_PASS(_, c->s, nir_lower_io, nir_var_shader_in | nir_var_shader_out,
+                 type_size_vec4,
+                 (nir_lower_io_options)0);
         /* clean up nir_lower_io's deref_var remains and do a constant folding pass
          * on the code it generated.
          */
-        NIR_PASS_V(c->s, nir_opt_dce);
-        NIR_PASS_V(c->s, nir_opt_constant_folding);
+        NIR_PASS(_, c->s, nir_opt_dce);
+        NIR_PASS(_, c->s, nir_opt_constant_folding);
 }
 
 static void
@@ -936,32 +953,32 @@ v3d_nir_lower_gs_early(struct v3d_compile *c)
         /* Split our I/O vars and dead code eliminate the unused
          * components.
          */
-        NIR_PASS_V(c->s, nir_lower_io_to_scalar_early,
-                   nir_var_shader_in | nir_var_shader_out);
+        NIR_PASS(_, c->s, nir_lower_io_to_scalar_early,
+                 nir_var_shader_in | nir_var_shader_out);
         uint64_t used_outputs[4] = {0};
         for (int i = 0; i < c->gs_key->num_used_outputs; i++) {
                 int slot = v3d_slot_get_slot(c->gs_key->used_outputs[i]);
                 int comp = v3d_slot_get_component(c->gs_key->used_outputs[i]);
                 used_outputs[comp] |= 1ull << slot;
         }
-        NIR_PASS_V(c->s, nir_remove_unused_io_vars,
-                   nir_var_shader_out, used_outputs, NULL); /* demotes to globals */
-        NIR_PASS_V(c->s, nir_lower_global_vars_to_local);
+        NIR_PASS(_, c->s, nir_remove_unused_io_vars,
+                 nir_var_shader_out, used_outputs, NULL); /* demotes to globals */
+        NIR_PASS(_, c->s, nir_lower_global_vars_to_local);
         v3d_optimize_nir(c, c->s);
-        NIR_PASS_V(c->s, nir_remove_dead_variables, nir_var_shader_in, NULL);
+        NIR_PASS(_, c->s, nir_remove_dead_variables, nir_var_shader_in, NULL);
 
         /* This must go before nir_lower_io */
         if (c->gs_key->per_vertex_point_size)
-                NIR_PASS_V(c->s, nir_lower_point_size, 1.0f, 0.0f);
+                NIR_PASS(_, c->s, nir_lower_point_size, 1.0f, 0.0f);
 
-        NIR_PASS_V(c->s, nir_lower_io, nir_var_shader_in | nir_var_shader_out,
-                   type_size_vec4,
-                   (nir_lower_io_options)0);
+        NIR_PASS(_, c->s, nir_lower_io, nir_var_shader_in | nir_var_shader_out,
+                 type_size_vec4,
+                 (nir_lower_io_options)0);
         /* clean up nir_lower_io's deref_var remains and do a constant folding pass
          * on the code it generated.
          */
-        NIR_PASS_V(c->s, nir_opt_dce);
-        NIR_PASS_V(c->s, nir_opt_constant_folding);
+        NIR_PASS(_, c->s, nir_opt_dce);
+        NIR_PASS(_, c->s, nir_opt_constant_folding);
 }
 
 static void
@@ -1000,11 +1017,11 @@ v3d_nir_lower_fs_early(struct v3d_compile *c)
         if (c->fs_key->int_color_rb || c->fs_key->uint_color_rb)
                 v3d_fixup_fs_output_types(c);
 
-        NIR_PASS_V(c->s, v3d_nir_lower_logic_ops, c);
+        NIR_PASS(_, c->s, v3d_nir_lower_logic_ops, c);
 
         if (c->fs_key->line_smoothing) {
-                v3d_nir_lower_line_smooth(c->s);
-                NIR_PASS_V(c->s, nir_lower_global_vars_to_local);
+                NIR_PASS(_, c->s, v3d_nir_lower_line_smooth);
+                NIR_PASS(_, c->s, nir_lower_global_vars_to_local);
                 /* The lowering pass can introduce new sysval reads */
                 nir_shader_gather_info(c->s, nir_shader_get_entrypoint(c->s));
         }
@@ -1014,8 +1031,8 @@ static void
 v3d_nir_lower_gs_late(struct v3d_compile *c)
 {
         if (c->key->ucp_enables) {
-                NIR_PASS_V(c->s, nir_lower_clip_gs, c->key->ucp_enables,
-                           false, NULL);
+                NIR_PASS(_, c->s, nir_lower_clip_gs, c->key->ucp_enables,
+                         false, NULL);
         }
 
         /* Note: GS output scalarizing must happen after nir_lower_clip_gs. */
@@ -1026,8 +1043,8 @@ static void
 v3d_nir_lower_vs_late(struct v3d_compile *c)
 {
         if (c->key->ucp_enables) {
-                NIR_PASS_V(c->s, nir_lower_clip_vs, c->key->ucp_enables,
-                           false, false, NULL);
+                NIR_PASS(_, c->s, nir_lower_clip_vs, c->key->ucp_enables,
+                         false, false, NULL);
                 NIR_PASS_V(c->s, nir_lower_io_to_scalar,
                            nir_var_shader_out);
         }
@@ -1047,7 +1064,7 @@ v3d_nir_lower_fs_late(struct v3d_compile *c)
          * are using.
          */
         if (c->key->ucp_enables)
-                NIR_PASS_V(c->s, nir_lower_clip_fs, c->key->ucp_enables, true);
+                NIR_PASS(_, c->s, nir_lower_clip_fs, c->key->ucp_enables, true);
 
         NIR_PASS_V(c->s, nir_lower_io_to_scalar, nir_var_shader_in);
 }
@@ -1146,6 +1163,13 @@ v3d_instr_delay_cb(nir_instr *instr, void *data)
    case nir_instr_type_phi:
       return 1;
 
+   /* We should not use very large delays for TMU instructions. Typically,
+    * thread switches will be sufficient to hide all or most of the latency,
+    * so we typically only need a little bit of extra room. If we over-estimate
+    * the latency here we may end up unnecesarily delaying the critical path in
+    * the shader, which would have a negative effect in performance, so here
+    * we are trying to strike a balance based on empirical testing.
+    */
    case nir_instr_type_intrinsic: {
       if (!c->disable_general_tmu_sched) {
          nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
@@ -1154,10 +1178,10 @@ v3d_instr_delay_cb(nir_instr *instr, void *data)
          case nir_intrinsic_load_scratch:
          case nir_intrinsic_load_shared:
          case nir_intrinsic_image_load:
-            return 30;
+            return 3;
          case nir_intrinsic_load_ubo:
             if (nir_src_is_divergent(intr->src[1]))
-               return 30;
+               return 3;
             FALLTHROUGH;
          default:
             return 1;
@@ -1169,7 +1193,7 @@ v3d_instr_delay_cb(nir_instr *instr, void *data)
    }
 
    case nir_instr_type_tex:
-      return 50;
+      return 5;
    }
 
    return 0;
@@ -1551,32 +1575,37 @@ v3d_attempt_compile(struct v3d_compile *c)
                 break;
         }
 
-        NIR_PASS_V(c->s, v3d_nir_lower_io, c);
-        NIR_PASS_V(c->s, v3d_nir_lower_txf_ms, c);
-        NIR_PASS_V(c->s, v3d_nir_lower_image_load_store);
+        NIR_PASS(_, c->s, v3d_nir_lower_io, c);
+        NIR_PASS(_, c->s, v3d_nir_lower_txf_ms, c);
+        NIR_PASS(_, c->s, v3d_nir_lower_image_load_store);
+
+        NIR_PASS(_, c->s, nir_opt_idiv_const, 8);
         nir_lower_idiv_options idiv_options = {
-                .imprecise_32bit_lowering = true,
                 .allow_fp16 = true,
         };
-        NIR_PASS_V(c->s, nir_lower_idiv, &idiv_options);
+        NIR_PASS(_, c->s, nir_lower_idiv, &idiv_options);
+        NIR_PASS(_, c->s, nir_lower_alu);
 
         if (c->key->robust_buffer_access) {
-           /* v3d_nir_lower_robust_buffer_access assumes constant buffer
-            * indices on ubo/ssbo intrinsics so run copy propagation and
-            * constant folding passes before we run the lowering to warrant
-            * this. We also want to run the lowering before v3d_optimize to
-            * clean-up redundant get_buffer_size calls produced in the pass.
-            */
-           NIR_PASS_V(c->s, nir_copy_prop);
-           NIR_PASS_V(c->s, nir_opt_constant_folding);
-           NIR_PASS_V(c->s, v3d_nir_lower_robust_buffer_access, c);
+                /* v3d_nir_lower_robust_buffer_access assumes constant buffer
+                 * indices on ubo/ssbo intrinsics so run copy propagation and
+                 * constant folding passes before we run the lowering to warrant
+                 * this. We also want to run the lowering before v3d_optimize to
+                 * clean-up redundant get_buffer_size calls produced in the pass.
+                 */
+                NIR_PASS(_, c->s, nir_copy_prop);
+                NIR_PASS(_, c->s, nir_opt_constant_folding);
+                NIR_PASS(_, c->s, v3d_nir_lower_robust_buffer_access, c);
         }
 
-        NIR_PASS_V(c->s, nir_lower_wrmasks, should_split_wrmask, c->s);
+        if (c->key->robust_image_access)
+                v3d_nir_lower_robust_image_access(c->s, c);
 
-        NIR_PASS_V(c->s, v3d_nir_lower_load_store_bitsize, c);
+        NIR_PASS(_, c->s, nir_lower_wrmasks, should_split_wrmask, c->s);
 
-        NIR_PASS_V(c->s, v3d_nir_lower_subgroup_intrinsics, c);
+        NIR_PASS(_, c->s, v3d_nir_lower_load_store_bitsize, c);
+
+        NIR_PASS(_, c->s, v3d_nir_lower_subgroup_intrinsics, c);
 
         v3d_optimize_nir(c, c->s);
 
@@ -1589,16 +1618,16 @@ v3d_attempt_compile(struct v3d_compile *c)
         while (more_late_algebraic) {
                 more_late_algebraic = false;
                 NIR_PASS(more_late_algebraic, c->s, nir_opt_algebraic_late);
-                NIR_PASS_V(c->s, nir_opt_constant_folding);
-                NIR_PASS_V(c->s, nir_copy_prop);
-                NIR_PASS_V(c->s, nir_opt_dce);
-                NIR_PASS_V(c->s, nir_opt_cse);
+                NIR_PASS(_, c->s, nir_opt_constant_folding);
+                NIR_PASS(_, c->s, nir_copy_prop);
+                NIR_PASS(_, c->s, nir_opt_dce);
+                NIR_PASS(_, c->s, nir_opt_cse);
         }
 
-        NIR_PASS_V(c->s, nir_lower_bool_to_int32);
-        nir_convert_to_lcssa(c->s, true, true);
+        NIR_PASS(_, c->s, nir_lower_bool_to_int32);
+        NIR_PASS(_, c->s, nir_convert_to_lcssa, true, true);
         NIR_PASS_V(c->s, nir_divergence_analysis);
-        NIR_PASS_V(c->s, nir_convert_from_ssa, true);
+        NIR_PASS(_, c->s, nir_convert_from_ssa, true);
 
         struct nir_schedule_options schedule_options = {
                 /* Schedule for about half our register space, to enable more
@@ -1625,9 +1654,9 @@ v3d_attempt_compile(struct v3d_compile *c)
         NIR_PASS_V(c->s, nir_schedule, &schedule_options);
 
         if (!c->disable_constant_ubo_load_sorting)
-                NIR_PASS_V(c->s, v3d_nir_sort_constant_ubo_loads, c);
+                NIR_PASS(_, c->s, v3d_nir_sort_constant_ubo_loads, c);
 
-        NIR_PASS_V(c->s, nir_opt_move, nir_move_load_uniform |
+        NIR_PASS(_, c->s, nir_opt_move, nir_move_load_uniform |
                                        nir_move_const_undef);
 
         v3d_nir_to_vir(c);
@@ -1787,7 +1816,7 @@ uint64_t *v3d_compile(const struct v3d_compiler *compiler,
                                            c->program_id, c->variant_id);
 
                         if (ret >= 0) {
-                                if (unlikely(V3D_DEBUG & V3D_DEBUG_PERF))
+                                if (V3D_DBG(PERF))
                                         fprintf(stderr, "%s\n", debug_msg);
 
                                 c->debug_output(debug_msg, c->debug_output_data);
@@ -1835,7 +1864,7 @@ uint64_t *v3d_compile(const struct v3d_compiler *compiler,
                                 best_spill_fill_count = c->spills + c->fills;
                         }
 
-                        if (unlikely(V3D_DEBUG & V3D_DEBUG_PERF)) {
+                        if (V3D_DBG(PERF)) {
                                 char *debug_msg;
                                 int ret = asprintf(&debug_msg,
                                                    "Compiled %s prog %d/%d with %d "
@@ -1866,7 +1895,7 @@ uint64_t *v3d_compile(const struct v3d_compiler *compiler,
                 c = best_c;
         }
 
-        if (unlikely(V3D_DEBUG & V3D_DEBUG_PERF) &&
+        if (V3D_DBG(PERF) &&
             c->compilation_result !=
             V3D_COMPILATION_FAILED_REGISTER_ALLOCATION &&
             c->spills > 0) {
@@ -1902,7 +1931,7 @@ uint64_t *v3d_compile(const struct v3d_compiler *compiler,
         char *shaderdb;
         int ret = v3d_shaderdb_dump(c, &shaderdb);
         if (ret >= 0) {
-                if (V3D_DEBUG & V3D_DEBUG_SHADERDB)
+                if (V3D_DBG(SHADERDB))
                         fprintf(stderr, "SHADER-DB-%s - %s\n", s->info.name, shaderdb);
 
                 c->debug_output(shaderdb, c->debug_output_data);
@@ -2043,6 +2072,12 @@ try_opt_ldunif(struct v3d_compile *c, uint32_t index, struct qreg *unif)
         if (!prev_inst)
                 return false;
 
+        /* Only reuse the ldunif result if it was written to a temp register,
+         * otherwise there may be special restrictions (for example, ldunif
+         * may write directly to unifa, which is a write-only register).
+         */
+        if (prev_inst->dst.file != QFILE_TEMP)
+                return false;
 
         list_for_each_entry_from(struct qinst, inst, prev_inst->link.next,
                                  &c->cur_block->instructions, link) {

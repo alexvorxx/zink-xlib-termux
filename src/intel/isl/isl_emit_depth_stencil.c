@@ -170,7 +170,7 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
 #if GFX_VER >= 6
    struct GENX(3DSTATE_STENCIL_BUFFER) sb = {
       GENX(3DSTATE_STENCIL_BUFFER_header),
-      sb.MOCS = info->mocs,
+      .MOCS = info->mocs,
    };
 #else
 #  define sb db
@@ -217,7 +217,7 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
        * to match the depth-buffer value for `Depth`. It may be a
        * documentation bug, since the other fields don't require this.
        *
-       * TODO: Confirm documentation and remove seeting of `Depth` if not
+       * TODO: Confirm documentation and remove setting of `Depth` if not
        * required.
        */
       sb.Depth = db.Depth;
@@ -274,7 +274,7 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
        * value of RENDER_SURFACE_STATE::AuxiliarySurfaceMode say:
        *
        *    "If Number of multisamples > 1, programming this value means MSAA
-       *    compression is enabled for that surface. Auxillary surface is MSC
+       *    compression is enabled for that surface. Auxiliary surface is MSC
        *    with tile y."
        *
        * Since this interpretation ignores whether the surface is

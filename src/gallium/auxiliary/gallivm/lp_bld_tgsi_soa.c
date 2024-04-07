@@ -68,6 +68,7 @@
 #include "lp_bld_printf.h"
 #include "lp_bld_sample.h"
 #include "lp_bld_struct.h"
+#include "lp_bld_jit_types.h"
 
 #define DUMP_GS_EMITS 0
 
@@ -1971,7 +1972,7 @@ emit_store(
 }
 
 static unsigned
-tgsi_to_pipe_tex_target(unsigned tgsi_target)
+tgsi_to_pipe_tex_target(enum tgsi_texture_type tgsi_target)
 {
    switch (tgsi_target) {
    case TGSI_TEXTURE_BUFFER:
@@ -2609,7 +2610,8 @@ emit_size_query( struct lp_build_tgsi_soa_context *bld,
    unsigned has_lod;
    unsigned i;
    unsigned unit = inst->Src[1].Register.Index;
-   unsigned target, pipe_target;
+   enum tgsi_texture_type target;
+   enum pipe_texture_target pipe_target;
    struct lp_sampler_size_query_params params;
 
    if (is_sviewinfo) {
@@ -2622,6 +2624,8 @@ emit_size_query( struct lp_build_tgsi_soa_context *bld,
    case TGSI_TEXTURE_BUFFER:
    case TGSI_TEXTURE_RECT:
    case TGSI_TEXTURE_SHADOWRECT:
+   case TGSI_TEXTURE_2D_MSAA:
+   case TGSI_TEXTURE_2D_ARRAY_MSAA:
       has_lod = 0;
       break;
    default:
@@ -2650,6 +2654,7 @@ emit_size_query( struct lp_build_tgsi_soa_context *bld,
 
    params.int_type = bld->bld_base.int_bld.type;
    params.texture_unit = unit;
+   params.texture_unit_offset = NULL;
    params.target = pipe_target;
    params.context_ptr = bld->context_ptr;
    params.is_sviewinfo = TRUE;
@@ -2957,10 +2962,11 @@ lp_emit_declaration_soa(
       unsigned idx2D = decl->Dim.Index2D;
       LLVMValueRef index2D = lp_build_const_int32(gallivm, idx2D);
       assert(idx2D < LP_MAX_TGSI_CONST_BUFFERS);
-      bld->consts[idx2D] =
-         lp_build_array_get(gallivm, bld->consts_ptr, index2D);
-      bld->consts_sizes[idx2D] =
-         lp_build_array_get(gallivm, bld->const_sizes_ptr, index2D);
+      bld->consts[idx2D] = lp_llvm_buffer_base(gallivm, bld->consts_ptr,
+                                               index2D, LP_MAX_TGSI_CONST_BUFFERS);
+      bld->consts[idx2D] = LLVMBuildBitCast(gallivm->builder, bld->consts[idx2D], LLVMPointerType(LLVMFloatTypeInContext(gallivm->context), 0), "");
+      bld->consts_sizes[idx2D] = lp_llvm_buffer_num_elements(gallivm, bld->consts_ptr,
+                                                             index2D, LP_MAX_TGSI_CONST_BUFFERS);
    }
    break;
    case TGSI_FILE_BUFFER:
@@ -2969,9 +2975,11 @@ lp_emit_declaration_soa(
       LLVMValueRef index = lp_build_const_int32(gallivm, idx);
       assert(idx < LP_MAX_TGSI_SHADER_BUFFERS);
       bld->ssbos[idx] =
-         lp_build_array_get(gallivm, bld->ssbo_ptr, index);
+         lp_llvm_buffer_base(gallivm, bld->ssbo_ptr,
+                             index, LP_MAX_TGSI_SHADER_BUFFERS);
       bld->ssbo_sizes[idx] =
-         lp_build_array_get(gallivm, bld->ssbo_sizes_ptr, index);
+         lp_llvm_buffer_num_elements(gallivm, bld->ssbo_ptr,
+                             index, LP_MAX_TGSI_SHADER_BUFFERS);
 
    }
    break;
@@ -3371,9 +3379,10 @@ lod_emit(
                FALSE, LP_SAMPLER_OP_LODQ, emit_data->output);
 }
 
-static void target_to_dims_layer(unsigned target,
-                                 unsigned *dims,
-                                 unsigned *layer_coord)
+static void
+target_to_dims_layer(enum tgsi_texture_type target,
+                     unsigned *dims,
+                     unsigned *layer_coord)
 {
    *layer_coord = 0;
    switch (target) {
@@ -3416,7 +3425,7 @@ img_load_emit(
    LLVMValueRef coords[5];
    LLVMValueRef coord_undef = LLVMGetUndef(bld->bld_base.base.int_vec_type);
    unsigned dims;
-   unsigned target = emit_data->inst->Memory.Texture;
+   enum tgsi_texture_type target = emit_data->inst->Memory.Texture;
    unsigned layer_coord;
 
    target_to_dims_layer(target, &dims, &layer_coord);
@@ -3565,7 +3574,7 @@ img_store_emit(
    LLVMValueRef coords[5];
    LLVMValueRef coord_undef = LLVMGetUndef(bld->bld_base.base.int_vec_type);
    unsigned dims;
-   unsigned target = emit_data->inst->Memory.Texture;
+   enum tgsi_texture_type target = emit_data->inst->Memory.Texture;
    unsigned layer_coord;
 
    target_to_dims_layer(target, &dims, &layer_coord);
@@ -3684,7 +3693,7 @@ resq_emit(
    assert(bufreg->Register.File == TGSI_FILE_BUFFER || bufreg->Register.File == TGSI_FILE_IMAGE);
 
    if (bufreg->Register.File == TGSI_FILE_IMAGE) {
-      unsigned target = emit_data->inst->Memory.Texture;
+      enum tgsi_texture_type target = emit_data->inst->Memory.Texture;
       struct lp_sampler_size_query_params params = { 0 };
       params.int_type = bld->bld_base.int_bld.type;
       params.texture_unit = buf;
@@ -3715,7 +3724,7 @@ img_atomic_emit(
    LLVMValueRef coord_undef = LLVMGetUndef(bld->bld_base.base.int_vec_type);
    unsigned dims;
    unsigned layer_coord;
-   unsigned target = emit_data->inst->Memory.Texture;
+   enum tgsi_texture_type target = emit_data->inst->Memory.Texture;
 
    target_to_dims_layer(target, &dims, &layer_coord);
 
@@ -4449,9 +4458,7 @@ lp_build_tgsi_soa(struct gallivm_state *gallivm,
    bld.inputs = params->inputs;
    bld.outputs = outputs;
    bld.consts_ptr = params->consts_ptr;
-   bld.const_sizes_ptr = params->const_sizes_ptr;
    bld.ssbo_ptr = params->ssbo_ptr;
-   bld.ssbo_sizes_ptr = params->ssbo_sizes_ptr;
    bld.sampler = params->sampler;
    bld.bld_base.info = params->info;
    bld.indirect_files = params->info->indirect_files;
@@ -4573,7 +4580,7 @@ lp_build_tgsi_soa(struct gallivm_state *gallivm,
       /* There's no specific value for this because it should always
        * be set, but apps using ext_geometry_shader4 quite often
        * were forgetting so we're using MAX_VERTEX_VARYING from
-       * that spec even though we could debug_assert if it's not
+       * that spec even though we could assert if it's not
        * set, but that's a lot uglier. */
       uint max_output_vertices;
 

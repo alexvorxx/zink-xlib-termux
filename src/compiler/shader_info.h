@@ -74,6 +74,7 @@ struct spirv_supported_capabilities {
    bool kernel_image_read_write;
    bool linkage;
    bool literal_sampler;
+   bool mesh_shading;
    bool mesh_shading_nv;
    bool min_lod;
    bool multiview;
@@ -172,6 +173,9 @@ typedef struct shader_info {
    uint64_t per_primitive_inputs;
    uint64_t per_primitive_outputs;
 
+   /* Which I/O is per-view */
+   uint64_t per_view_outputs;
+
    /* Which 16-bit inputs and outputs are used corresponding to
     * VARYING_SLOT_VARn_16BIT.
     */
@@ -237,6 +241,13 @@ typedef struct shader_info {
     */
    uint16_t workgroup_size[3];
 
+   enum gl_subgroup_size subgroup_size;
+
+   /**
+    * Uses subgroup intrinsics which can communicate across a quad.
+    */
+   bool uses_wide_subgroup_intrinsics;
+
    /* Transform feedback buffer strides in dwords, max. 1K - 4. */
    uint8_t xfb_stride[MAX_XFB_BUFFERS];
 
@@ -251,6 +262,9 @@ typedef struct shader_info {
 
    /* Whether or not this shader ever uses textureGather() */
    bool uses_texture_gather:1;
+
+   /* Whether texture size, levels, or samples is queried. */
+   bool uses_resource_info_query:1;
 
    /**
     * True if this shader uses the fddx/fddy opcodes.
@@ -292,6 +306,9 @@ typedef struct shader_info {
    /* Whether explicit barriers are used */
    bool uses_control_barrier : 1;
    bool uses_memory_barrier : 1;
+
+   /* Whether ARB_bindless_texture ops or variables are used */
+   bool uses_bindless : 1;
 
    /**
     * Shared memory types have explicit layout set.  Used for
@@ -482,22 +499,12 @@ typedef struct shader_info {
          enum gl_derivative_group derivative_group:2;
 
          /**
-          * Explicit subgroup size if set by the shader, otherwise 0.
-          */
-         unsigned subgroup_size;
-
-         /**
           * pointer size is:
           *   AddressingModelLogical:    0    (default)
           *   AddressingModelPhysical32: 32
           *   AddressingModelPhysical64: 64
           */
          unsigned ptr_size;
-
-         /**
-          * Uses subgroup intrinsics which can communicate across a quad.
-          */
-         bool uses_wide_subgroup_intrinsics;
       } cs;
 
       /* Applies to both TCS and TES. */
@@ -533,6 +540,9 @@ typedef struct shader_info {
          uint16_t max_vertices_out;
          uint16_t max_primitives_out;
          uint16_t primitive_type;  /* GL_POINTS, GL_LINES or GL_TRIANGLES. */
+
+         /* TODO: remove this when we stop supporting NV_mesh_shader. */
+         bool nv;
       } mesh;
    };
 } shader_info;

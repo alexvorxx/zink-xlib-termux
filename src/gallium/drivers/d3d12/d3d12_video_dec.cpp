@@ -28,6 +28,8 @@
 #include "d3d12_surface.h"
 #include "d3d12_video_dec.h"
 #include "d3d12_video_dec_h264.h"
+#include "d3d12_video_dec_hevc.h"
+#include "d3d12_video_dec_av1.h"
 #include "d3d12_video_buffer.h"
 #include "d3d12_residency.h"
 
@@ -298,12 +300,24 @@ d3d12_video_decoder_store_upper_layer_references(struct d3d12_video_decoder *pD3
                                                  struct pipe_video_buffer *target,
                                                  struct pipe_picture_desc *picture)
 {
+   pD3D12Dec->m_pCurrentDecodeTarget = target;
    switch (pD3D12Dec->m_d3d12DecProfileType) {
       case d3d12_video_decode_profile_type_h264:
       {
          pipe_h264_picture_desc *pPicControlH264 = (pipe_h264_picture_desc *) picture;
-         pD3D12Dec->m_pCurrentDecodeTarget = target;
          pD3D12Dec->m_pCurrentReferenceTargets = pPicControlH264->ref;
+      } break;
+
+      case d3d12_video_decode_profile_type_hevc:
+      {
+         pipe_h265_picture_desc *pPicControlHevc = (pipe_h265_picture_desc *) picture;
+         pD3D12Dec->m_pCurrentReferenceTargets = pPicControlHevc->ref;
+      } break;
+
+      case d3d12_video_decode_profile_type_av1:
+      {
+         pipe_av1_picture_desc *pPicControlAV1 = (pipe_av1_picture_desc *) picture;
+         pD3D12Dec->m_pCurrentReferenceTargets = pPicControlAV1->ref;
       } break;
 
       default:
@@ -401,6 +415,7 @@ d3d12_video_decoder_end_frame(struct pipe_video_codec *codec,
                   "buffer_subdata to upload compressed bitstream.\n");
    pD3D12Screen->base.fence_finish(&pD3D12Screen->base, NULL, pUploadGPUCompletionFence, PIPE_TIMEOUT_INFINITE);
    pD3D12Screen->base.fence_reference(&pD3D12Screen->base, &pUploadGPUCompletionFence, NULL);
+   pipe_resource_reference(&pPipeCompressedBufferObj, NULL);
 
    // [After buffer_subdata GPU work is finished] Clear CPU staging buffer now that end_frame is called and was uploaded
    // to GPU for DecodeFrame call.
@@ -493,7 +508,7 @@ d3d12_video_decoder_end_frame(struct pipe_video_codec *codec,
       };
    }
 
-   if (pD3D12Dec->m_InverseQuantMatrixBuffer.size() > 0) {
+   if (pD3D12Dec->qp_matrix_frame_argument_enabled && (pD3D12Dec->m_InverseQuantMatrixBuffer.size() > 0)) {
       d3d12InputArguments.NumFrameArguments++;
       d3d12InputArguments.FrameArguments[d3d12InputArguments.NumFrameArguments - 1] = {
          D3D12_VIDEO_DECODE_ARGUMENT_TYPE_INVERSE_QUANTIZATION_MATRIX,
@@ -523,8 +538,7 @@ d3d12_video_decoder_end_frame(struct pipe_video_codec *codec,
       d3d12OutputArguments.ConversionArguments.pReferenceTexture2D = pRefOnlyOutputD3D12Texture;
       d3d12OutputArguments.ConversionArguments.ReferenceSubresource = refOnlyOutputD3D12Subresource;
 
-      const D3D12_RESOURCE_DESC &descReference =
-         d3d12OutputArguments.ConversionArguments.pReferenceTexture2D->GetDesc();
+      const D3D12_RESOURCE_DESC &descReference = GetDesc(d3d12OutputArguments.ConversionArguments.pReferenceTexture2D);
       d3d12OutputArguments.ConversionArguments.DecodeColorSpace = d3d12_convert_from_legacy_color_space(
          !util_format_is_yuv(d3d12_get_pipe_format(descReference.Format)),
          util_format_get_blocksize(d3d12_get_pipe_format(descReference.Format)) * 8 /*bytes to bits conversion*/,
@@ -532,7 +546,7 @@ d3d12_video_decoder_end_frame(struct pipe_video_codec *codec,
          /* P709= */ true,
          /* StudioYUV= */ true);
 
-      const D3D12_RESOURCE_DESC &descOutput = d3d12OutputArguments.pOutputTexture2D->GetDesc();
+      const D3D12_RESOURCE_DESC &descOutput = GetDesc(d3d12OutputArguments.pOutputTexture2D);
       d3d12OutputArguments.ConversionArguments.OutputColorSpace = d3d12_convert_from_legacy_color_space(
          !util_format_is_yuv(d3d12_get_pipe_format(descOutput.Format)),
          util_format_get_blocksize(d3d12_get_pipe_format(descOutput.Format)) * 8 /*bytes to bits conversion*/,
@@ -540,14 +554,14 @@ d3d12_video_decoder_end_frame(struct pipe_video_codec *codec,
          /* P709= */ true,
          /* StudioYUV= */ true);
 
-      const D3D12_VIDEO_DECODER_HEAP_DESC &HeapDesc = pD3D12Dec->m_spVideoDecoderHeap->GetDesc();
+      const D3D12_VIDEO_DECODER_HEAP_DESC &HeapDesc = GetDesc(pD3D12Dec->m_spVideoDecoderHeap.Get());
       d3d12OutputArguments.ConversionArguments.OutputWidth = HeapDesc.DecodeWidth;
       d3d12OutputArguments.ConversionArguments.OutputHeight = HeapDesc.DecodeHeight;
    } else {
       d3d12OutputArguments.ConversionArguments.Enable = FALSE;
    }
 
-   CD3DX12_RESOURCE_DESC outputDesc(d3d12OutputArguments.pOutputTexture2D->GetDesc());
+   CD3DX12_RESOURCE_DESC outputDesc(GetDesc(d3d12OutputArguments.pOutputTexture2D));
    uint32_t MipLevel, PlaneSlice, ArraySlice;
    D3D12DecomposeSubresource(d3d12OutputArguments.OutputSubresource,
                              outputDesc.MipLevels,
@@ -642,6 +656,7 @@ d3d12_video_decoder_end_frame(struct pipe_video_codec *codec,
                      "resource_copy_region on decoded frame.\n");
       pD3D12Screen->base.fence_finish(&pD3D12Screen->base, NULL, completion_fence, PIPE_TIMEOUT_INFINITE);
       pD3D12Screen->base.fence_reference(&pD3D12Screen->base, &completion_fence, NULL);
+      pipe_resource_reference(&pPipeSrc, NULL);
    }
 }
 
@@ -776,16 +791,6 @@ d3d12_video_decoder_create_command_objects(const struct d3d12_screen *pD3D12Scre
 
    if (FAILED(hr)) {
       debug_printf("[d3d12_video_decoder] d3d12_video_decoder_create_command_objects - Call to CreateCommandList "
-                      "failed with HR %x\n",
-                      hr);
-      return false;
-   }
-
-   D3D12_COMMAND_QUEUE_DESC copyQueueDesc = { D3D12_COMMAND_LIST_TYPE_COPY };
-   hr = pD3D12Screen->dev->CreateCommandQueue(&copyQueueDesc, IID_PPV_ARGS(pD3D12Dec->m_spCopyQueue.GetAddressOf()));
-
-   if (FAILED(hr)) {
-      debug_printf("[d3d12_video_decoder] d3d12_video_decoder_create_command_objects - Call to CreateCommandQueue "
                       "failed with HR %x\n",
                       hr);
       return false;
@@ -958,7 +963,7 @@ d3d12_video_decoder_prepare_for_decode_frame(struct d3d12_video_decoder *pD3D12D
                                                            needsTransitionToDecodeWrite);
       assert(needsTransitionToDecodeWrite);
 
-      CD3DX12_RESOURCE_DESC outputDesc((*ppRefOnlyOutTexture2D)->GetDesc());
+      CD3DX12_RESOURCE_DESC outputDesc(GetDesc(*ppRefOnlyOutTexture2D));
       uint32_t MipLevel, PlaneSlice, ArraySlice;
       D3D12DecomposeSubresource(*pRefOnlyOutSubresourceIndex,
                                 outputDesc.MipLevels,
@@ -1003,6 +1008,20 @@ d3d12_video_decoder_prepare_for_decode_frame(struct d3d12_video_decoder *pD3D12D
                                                                    currentFrameDPBEntrySubresource);
       } break;
 
+      case d3d12_video_decode_profile_type_hevc:
+      {
+         d3d12_video_decoder_prepare_current_frame_references_hevc(pD3D12Dec,
+                                                                   pCurrentFrameDPBEntry,
+                                                                   currentFrameDPBEntrySubresource);
+      } break;
+
+      case d3d12_video_decode_profile_type_av1:
+      {
+         d3d12_video_decoder_prepare_current_frame_references_av1(pD3D12Dec,
+                                                                   pCurrentFrameDPBEntry,
+                                                                   currentFrameDPBEntrySubresource);
+      } break;
+
       default:
       {
          unreachable("Unsupported d3d12_video_decode_profile_type");
@@ -1024,7 +1043,7 @@ d3d12_video_decoder_reconfigure_dpb(struct d3d12_video_decoder *pD3D12Dec,
    d3d12_video_decoder_get_frame_info(pD3D12Dec, &width, &height, &maxDPB, isInterlaced);
 
    ID3D12Resource *pPipeD3D12DstResource = d3d12_resource_resource(pD3D12VideoBuffer->texture);
-   D3D12_RESOURCE_DESC outputResourceDesc = pPipeD3D12DstResource->GetDesc();
+   D3D12_RESOURCE_DESC outputResourceDesc = GetDesc(pPipeD3D12DstResource);
 
    pD3D12VideoBuffer->base.interlaced = isInterlaced;
    D3D12_VIDEO_FRAME_CODED_INTERLACE_TYPE interlaceTypeRequested =
@@ -1035,7 +1054,7 @@ d3d12_video_decoder_reconfigure_dpb(struct d3d12_video_decoder *pD3D12Dec,
       D3D12_VIDEO_DECODER_DESC decoderDesc = pD3D12Dec->m_decoderDesc;
       decoderDesc.Configuration.InterlaceType = interlaceTypeRequested;
       decoderDesc.Configuration.DecodeProfile =
-         d3d12_video_decoder_resolve_profile(pD3D12Dec->m_d3d12DecProfileType);
+         d3d12_video_decoder_resolve_profile(pD3D12Dec->m_d3d12DecProfileType, pD3D12Dec->m_decodeFormat);
       pD3D12Dec->m_spVideoDecoder.Reset();
       HRESULT hr =
          pD3D12Dec->m_spD3D12VideoDevice->CreateVideoDecoder(&decoderDesc,
@@ -1116,6 +1135,16 @@ d3d12_video_decoder_refresh_dpb_active_references(struct d3d12_video_decoder *pD
          d3d12_video_decoder_refresh_dpb_active_references_h264(pD3D12Dec);
       } break;
 
+      case d3d12_video_decode_profile_type_hevc:
+      {
+         d3d12_video_decoder_refresh_dpb_active_references_hevc(pD3D12Dec);
+      } break;
+
+      case d3d12_video_decode_profile_type_av1:
+      {
+         d3d12_video_decoder_refresh_dpb_active_references_av1(pD3D12Dec);
+      } break;
+
       default:
       {
          unreachable("Unsupported d3d12_video_decode_profile_type");
@@ -1136,6 +1165,16 @@ d3d12_video_decoder_get_frame_info(
       case d3d12_video_decode_profile_type_h264:
       {
          d3d12_video_decoder_get_frame_info_h264(pD3D12Dec, pWidth, pHeight, pMaxDPB, isInterlaced);
+      } break;
+
+      case d3d12_video_decode_profile_type_hevc:
+      {
+         d3d12_video_decoder_get_frame_info_hevc(pD3D12Dec, pWidth, pHeight, pMaxDPB, isInterlaced);
+      } break;
+
+      case d3d12_video_decode_profile_type_av1:
+      {
+         d3d12_video_decoder_get_frame_info_av1(pD3D12Dec, pWidth, pHeight, pMaxDPB, isInterlaced);
       } break;
 
       default:
@@ -1194,13 +1233,14 @@ d3d12_video_decoder_store_converted_dxva_picparams_from_pipe_input(
 
    d3d12_video_decode_profile_type profileType =
       d3d12_video_decoder_convert_pipe_video_profile_to_profile_type(codec->base.profile);
+   ID3D12Resource *pPipeD3D12DstResource = d3d12_resource_resource(pD3D12VideoBuffer->texture);
+   D3D12_RESOURCE_DESC outputResourceDesc = GetDesc(pPipeD3D12DstResource);
+   pD3D12Dec->qp_matrix_frame_argument_enabled = false;
    switch (profileType) {
       case d3d12_video_decode_profile_type_h264:
       {
          size_t dxvaPicParamsBufferSize = sizeof(DXVA_PicParams_H264);
          pipe_h264_picture_desc *pPicControlH264 = (pipe_h264_picture_desc *) picture;
-         ID3D12Resource *pPipeD3D12DstResource = d3d12_resource_resource(pD3D12VideoBuffer->texture);
-         D3D12_RESOURCE_DESC outputResourceDesc = pPipeD3D12DstResource->GetDesc();
          DXVA_PicParams_H264 dxvaPicParamsH264 =
             d3d12_video_decoder_dxva_picparams_from_pipe_picparams_h264(pD3D12Dec->m_fenceValue,
                                                                         codec->base.profile,
@@ -1216,7 +1256,44 @@ d3d12_video_decoder_store_converted_dxva_picparams_from_pipe_input(
          DXVA_Qmatrix_H264 dxvaQmatrixH264 = {};
          d3d12_video_decoder_dxva_qmatrix_from_pipe_picparams_h264((pipe_h264_picture_desc *) picture,
                                                                    dxvaQmatrixH264);
+         pD3D12Dec->qp_matrix_frame_argument_enabled = true; // We don't have a way of knowing from the pipe params so send always  
          d3d12_video_decoder_store_dxva_qmatrix_in_qmatrix_buffer(codec, &dxvaQmatrixH264, dxvaQMatrixBufferSize);
+      } break;
+
+      case d3d12_video_decode_profile_type_hevc:
+      {
+         size_t dxvaPicParamsBufferSize = sizeof(DXVA_PicParams_HEVC);
+         pipe_h265_picture_desc *pPicControlHEVC = (pipe_h265_picture_desc *) picture;
+         DXVA_PicParams_HEVC dxvaPicParamsHEVC =
+            d3d12_video_decoder_dxva_picparams_from_pipe_picparams_hevc(pD3D12Dec,
+                                                                        codec->base.profile,
+                                                                        pPicControlHEVC);
+
+         d3d12_video_decoder_store_dxva_picparams_in_picparams_buffer(codec,
+                                                                      &dxvaPicParamsHEVC,
+                                                                      dxvaPicParamsBufferSize);
+
+         size_t dxvaQMatrixBufferSize = sizeof(DXVA_Qmatrix_HEVC);
+         DXVA_Qmatrix_HEVC dxvaQmatrixHEVC = {};
+         pD3D12Dec->qp_matrix_frame_argument_enabled = false; 
+         d3d12_video_decoder_dxva_qmatrix_from_pipe_picparams_hevc((pipe_h265_picture_desc *) picture,
+                                                                   dxvaQmatrixHEVC,
+                                                                   pD3D12Dec->qp_matrix_frame_argument_enabled);
+         d3d12_video_decoder_store_dxva_qmatrix_in_qmatrix_buffer(codec, &dxvaQmatrixHEVC, dxvaQMatrixBufferSize);
+      } break;
+      case d3d12_video_decode_profile_type_av1:
+      {
+         size_t dxvaPicParamsBufferSize = sizeof(DXVA_PicParams_AV1);
+         pipe_av1_picture_desc *pPicControlAV1 = (pipe_av1_picture_desc *) picture;
+         DXVA_PicParams_AV1 dxvaPicParamsAV1 =
+            d3d12_video_decoder_dxva_picparams_from_pipe_picparams_av1(pD3D12Dec->m_fenceValue,
+                                                                        codec->base.profile,
+                                                                        pPicControlAV1);
+
+         d3d12_video_decoder_store_dxva_picparams_in_picparams_buffer(codec,
+                                                                      &dxvaPicParamsAV1,
+                                                                      dxvaPicParamsBufferSize);
+         pD3D12Dec->qp_matrix_frame_argument_enabled = false;
       } break;
       default:
       {
@@ -1236,37 +1313,23 @@ d3d12_video_decoder_prepare_dxva_slices_control(
    switch (profileType) {
       case d3d12_video_decode_profile_type_h264:
       {
-         
-         std::vector<DXVA_Slice_H264_Short> pOutSliceControlBuffers;
-         struct pipe_h264_picture_desc* picture_h264 = (struct pipe_h264_picture_desc*) picture;
-         d3d12_video_decoder_prepare_dxva_slices_control_h264(pD3D12Dec, pOutSliceControlBuffers, picture_h264);
-
-         assert(sizeof(pOutSliceControlBuffers.data()[0]) == sizeof(DXVA_Slice_H264_Short));
-         uint64_t DXVAStructSize = pOutSliceControlBuffers.size() * sizeof((pOutSliceControlBuffers.data()[0]));
-         assert((DXVAStructSize % sizeof(DXVA_Slice_H264_Short)) == 0);
-         d3d12_video_decoder_store_dxva_slicecontrol_in_slicecontrol_buffer(pD3D12Dec,
-                                                                            pOutSliceControlBuffers.data(),
-                                                                            DXVAStructSize);
-         assert(pD3D12Dec->m_SliceControlBuffer.size() == DXVAStructSize);
+         d3d12_video_decoder_prepare_dxva_slices_control_h264(pD3D12Dec, pD3D12Dec->m_SliceControlBuffer, (struct pipe_h264_picture_desc*) picture);
       } break;
+
+      case d3d12_video_decode_profile_type_hevc:
+      {
+         d3d12_video_decoder_prepare_dxva_slices_control_hevc(pD3D12Dec, pD3D12Dec->m_SliceControlBuffer, (struct pipe_h265_picture_desc*) picture);
+      } break;
+      case d3d12_video_decode_profile_type_av1:
+      {
+         d3d12_video_decoder_prepare_dxva_slices_control_av1(pD3D12Dec, pD3D12Dec->m_SliceControlBuffer, (struct pipe_av1_picture_desc*) picture);
+      } break;
+
       default:
       {
          unreachable("Unsupported d3d12_video_decode_profile_type");
       } break;
    }
-}
-
-void
-d3d12_video_decoder_store_dxva_slicecontrol_in_slicecontrol_buffer(struct d3d12_video_decoder *pD3D12Dec,
-                                                                   void *pDXVAStruct,
-                                                                   uint64_t DXVAStructSize)
-{
-   if (pD3D12Dec->m_SliceControlBuffer.capacity() < DXVAStructSize) {
-      pD3D12Dec->m_SliceControlBuffer.reserve(DXVAStructSize);
-   }
-
-   pD3D12Dec->m_SliceControlBuffer.resize(DXVAStructSize);
-   memcpy(pD3D12Dec->m_SliceControlBuffer.data(), pDXVAStruct, DXVAStructSize);
 }
 
 void
@@ -1302,6 +1365,8 @@ d3d12_video_decoder_supports_aot_dpb(D3D12_FEATURE_DATA_VIDEO_DECODE_SUPPORT dec
    bool supportedProfile = false;
    switch (profileType) {
       case d3d12_video_decode_profile_type_h264:
+      case d3d12_video_decode_profile_type_hevc:
+      case d3d12_video_decode_profile_type_av1:
          supportedProfile = true;
          break;
       default:
@@ -1323,6 +1388,11 @@ d3d12_video_decoder_convert_pipe_video_profile_to_profile_type(enum pipe_video_p
       case PIPE_VIDEO_PROFILE_MPEG4_AVC_HIGH:
       case PIPE_VIDEO_PROFILE_MPEG4_AVC_HIGH10:
          return d3d12_video_decode_profile_type_h264;
+      case PIPE_VIDEO_PROFILE_HEVC_MAIN:
+      case PIPE_VIDEO_PROFILE_HEVC_MAIN_10:
+         return d3d12_video_decode_profile_type_hevc;
+      case PIPE_VIDEO_PROFILE_AV1_MAIN:
+         return d3d12_video_decode_profile_type_av1;
       default:
       {
          unreachable("Unsupported pipe video profile");
@@ -1341,17 +1411,38 @@ d3d12_video_decoder_convert_pipe_video_profile_to_d3d12_profile(enum pipe_video_
       case PIPE_VIDEO_PROFILE_MPEG4_AVC_HIGH:
       case PIPE_VIDEO_PROFILE_MPEG4_AVC_HIGH10:
          return D3D12_VIDEO_DECODE_PROFILE_H264;
+      case PIPE_VIDEO_PROFILE_HEVC_MAIN:
+         return D3D12_VIDEO_DECODE_PROFILE_HEVC_MAIN;
+      case PIPE_VIDEO_PROFILE_HEVC_MAIN_10:
+         return D3D12_VIDEO_DECODE_PROFILE_HEVC_MAIN10;
+      case PIPE_VIDEO_PROFILE_AV1_MAIN:
+         return D3D12_VIDEO_DECODE_PROFILE_AV1_PROFILE0;
       default:
          return {};
    }
 }
 
 GUID
-d3d12_video_decoder_resolve_profile(d3d12_video_decode_profile_type profileType)
+d3d12_video_decoder_resolve_profile(d3d12_video_decode_profile_type profileType, DXGI_FORMAT decode_format)
 {
    switch (profileType) {
       case d3d12_video_decode_profile_type_h264:
          return D3D12_VIDEO_DECODE_PROFILE_H264;
+      case d3d12_video_decode_profile_type_hevc:
+      {
+         switch (decode_format) {
+            case DXGI_FORMAT_NV12:
+               return D3D12_VIDEO_DECODE_PROFILE_HEVC_MAIN;
+            case DXGI_FORMAT_P010:
+               return D3D12_VIDEO_DECODE_PROFILE_HEVC_MAIN10;
+            default:
+            {
+               unreachable("Unsupported decode_format");
+            } break;
+         }
+      } break;
+      case d3d12_video_decode_profile_type_av1:
+         return D3D12_VIDEO_DECODE_PROFILE_AV1_PROFILE0;
          break;
       default:
       {

@@ -785,7 +785,10 @@ clc_compile_to_llvm_module(LLVMContext &llvm_ctx,
       // LLVM's optimizations can produce code that the translator can't translate
       "-O0",
       // Ensure inline functions are actually emitted
-      "-fgnu89-inline"
+      "-fgnu89-inline",
+      // Undefine clang added SPIR(V) defines so we don't magically enable extensions
+      "-U__SPIR__",
+      "-U__SPIRV__",
    };
    // We assume there's appropriate defines for __OPENCL_VERSION__ and __IMAGE_SUPPORT__
    // being provided by the caller here.
@@ -871,6 +874,9 @@ clc_compile_to_llvm_module(LLVMContext &llvm_ctx,
    c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+cl_khr_global_int32_extended_atomics");
    c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+cl_khr_local_int32_base_atomics");
    c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+cl_khr_local_int32_extended_atomics");
+   if (args->features.fp16) {
+      c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+cl_khr_fp16");
+   }
    if (args->features.fp64) {
       c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+cl_khr_fp64");
       c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+__opencl_c_fp64");
@@ -888,6 +894,12 @@ clc_compile_to_llvm_module(LLVMContext &llvm_ctx,
    if (args->features.images_write_3d) {
       c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+cl_khr_3d_image_writes");
       c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+__opencl_c_3d_image_writes");
+   }
+   if (args->features.intel_subgroups) {
+      c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+cl_intel_subgroups");
+   }
+   if (args->features.subgroups) {
+      c->getTargetOpts().OpenCLExtensionsAsWritten.push_back("+cl_khr_subgroups");
    }
 #endif
 

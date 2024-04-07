@@ -133,7 +133,7 @@ generate_compute(struct llvmpipe_context *lp,
 
    coro = LLVMAddFunction(gallivm->module, func_name_coro, coro_func_type);
    LLVMSetFunctionCallConv(coro, LLVMCCallConv);
-   LLVMAddTargetDependentFunctionAttr(coro, "coroutine.presplit", "0");
+   lp_build_coro_add_presplit(coro);
 
    variant->function = function;
 
@@ -251,16 +251,16 @@ generate_compute(struct llvmpipe_context *lp,
       args[17] = coro_hdl_idx;
 
       args[18] = coro_mem;
-      LLVMValueRef coro_entry = LLVMBuildGEP(gallivm->builder, coro_hdls, &coro_hdl_idx, 1, "");
+      LLVMValueRef coro_entry = LLVMBuildGEP2(gallivm->builder, hdl_ptr_type, coro_hdls, &coro_hdl_idx, 1, "");
 
-      LLVMValueRef coro_hdl = LLVMBuildLoad(gallivm->builder, coro_entry, "coro_hdl");
+      LLVMValueRef coro_hdl = LLVMBuildLoad2(gallivm->builder, hdl_ptr_type, coro_entry, "coro_hdl");
 
       struct lp_build_if_state ifstate;
       LLVMValueRef cmp = LLVMBuildICmp(gallivm->builder, LLVMIntEQ, loop_state[3].counter,
                                        lp_build_const_int32(gallivm, 0), "");
       /* first time here - call the coroutine function entry point */
       lp_build_if(&ifstate, gallivm, cmp);
-      LLVMValueRef coro_ret = LLVMBuildCall(gallivm->builder, coro, args, 19, "");
+      LLVMValueRef coro_ret = LLVMBuildCall2(gallivm->builder, coro_func_type, coro, args, 19, "");
       LLVMBuildStore(gallivm->builder, coro_ret, coro_entry);
       lp_build_else(&ifstate);
       /* subsequent calls for this invocation - check if done. */
@@ -290,8 +290,10 @@ generate_compute(struct llvmpipe_context *lp,
                           lp_build_const_int32(gallivm, end_coroutine),
                           NULL, LLVMIntEQ);
 
-   LLVMValueRef coro_mem_ptr = LLVMBuildLoad(builder, coro_mem, "");
-   LLVMBuildCall(gallivm->builder, gallivm->coro_free_hook, &coro_mem_ptr, 1, "");
+   LLVMValueRef coro_mem_ptr = LLVMBuildLoad2(builder, hdl_ptr_type, coro_mem, "");
+   LLVMTypeRef mem_ptr_type = LLVMPointerType(LLVMInt8TypeInContext(gallivm->context), 0);
+   LLVMTypeRef free_type = LLVMFunctionType(LLVMVoidTypeInContext(gallivm->context), &mem_ptr_type, 1, 0);
+   LLVMBuildCall2(gallivm->builder, free_type, gallivm->coro_free_hook, &coro_mem_ptr, 1, "");
 
    LLVMBuildRetVoid(builder);
 
@@ -319,21 +321,27 @@ generate_compute(struct llvmpipe_context *lp,
    block = LLVMAppendBasicBlockInContext(gallivm->context, coro, "entry");
    LLVMPositionBuilderAtEnd(builder, block);
    {
-      LLVMValueRef consts_ptr, num_consts_ptr;
-      LLVMValueRef ssbo_ptr, num_ssbo_ptr;
+      LLVMValueRef consts_ptr;
+      LLVMValueRef ssbo_ptr;
       LLVMValueRef shared_ptr;
       LLVMValueRef kernel_args_ptr;
       struct lp_build_mask_context mask;
       struct lp_bld_tgsi_system_values system_values;
 
       memset(&system_values, 0, sizeof(system_values));
-      consts_ptr = lp_jit_cs_context_constants(gallivm, context_ptr);
-      num_consts_ptr = lp_jit_cs_context_num_constants(gallivm, context_ptr);
-      ssbo_ptr = lp_jit_cs_context_ssbos(gallivm, context_ptr);
-      num_ssbo_ptr = lp_jit_cs_context_num_ssbos(gallivm, context_ptr);
-      kernel_args_ptr = lp_jit_cs_context_kernel_args(gallivm, context_ptr);
+      consts_ptr = lp_jit_cs_context_constants(gallivm,
+                                               variant->jit_cs_context_type,
+                                               context_ptr);
+      ssbo_ptr = lp_jit_cs_context_ssbos(gallivm,
+                                         variant->jit_cs_context_type,
+                                         context_ptr);
+      kernel_args_ptr = lp_jit_cs_context_kernel_args(gallivm,
+                                                      variant->jit_cs_context_type,
+                                                      context_ptr);
 
-      shared_ptr = lp_jit_cs_thread_data_shared(gallivm, thread_data_ptr);
+      shared_ptr = lp_jit_cs_thread_data_shared(gallivm,
+                                                variant->jit_cs_thread_data_type,
+                                                thread_data_ptr);
 
       LLVMValueRef coro_num_hdls = LLVMBuildMul(gallivm->builder, num_x_loop, block_y_size_arg, "");
       coro_num_hdls = LLVMBuildMul(gallivm->builder, coro_num_hdls, block_z_size_arg, "");
@@ -341,9 +349,9 @@ generate_compute(struct llvmpipe_context *lp,
       /* these are coroutine entrypoint necessities */
       LLVMValueRef coro_id = lp_build_coro_id(gallivm);
       LLVMValueRef coro_entry = lp_build_coro_alloc_mem_array(gallivm, coro_mem, coro_idx, coro_num_hdls);
-
-      LLVMValueRef alloced_ptr = LLVMBuildLoad(gallivm->builder, coro_mem, "");
-      alloced_ptr = LLVMBuildGEP(gallivm->builder, alloced_ptr, &coro_entry, 1, "");
+      LLVMTypeRef mem_ptr_type = LLVMInt8TypeInContext(gallivm->context);
+      LLVMValueRef alloced_ptr = LLVMBuildLoad2(gallivm->builder, hdl_ptr_type, coro_mem, "");
+      alloced_ptr = LLVMBuildGEP2(gallivm->builder, mem_ptr_type, alloced_ptr, &coro_entry, 1, "");
       LLVMValueRef coro_hdl = lp_build_coro_begin(gallivm, coro_id, alloced_ptr);
       LLVMValueRef has_partials = LLVMBuildICmp(gallivm->builder, LLVMIntNE, partials, lp_build_const_int32(gallivm, 0), "");
       LLVMValueRef tid_vals[3];
@@ -407,20 +415,21 @@ generate_compute(struct llvmpipe_context *lp,
       LLVMValueRef last_x_loop = LLVMBuildICmp(gallivm->builder, LLVMIntEQ, x_size_arg, LLVMBuildSub(gallivm->builder, num_x_loop, lp_build_const_int32(gallivm, 1), ""), "");
       LLVMValueRef use_partial_mask = LLVMBuildAnd(gallivm->builder, last_x_loop, has_partials, "");
       struct lp_build_if_state if_state;
-      LLVMValueRef mask_val = lp_build_alloca(gallivm, LLVMVectorType(int32_type, cs_type.length), "mask");
+      LLVMTypeRef mask_type = LLVMVectorType(int32_type, cs_type.length);
+      LLVMValueRef mask_val = lp_build_alloca(gallivm, mask_type, "mask");
       LLVMValueRef full_mask_val = lp_build_const_int_vec(gallivm, cs_type, ~0);
       LLVMBuildStore(gallivm->builder, full_mask_val, mask_val);
 
       lp_build_if(&if_state, gallivm, use_partial_mask);
       struct lp_build_loop_state mask_loop_state;
       lp_build_loop_begin(&mask_loop_state, gallivm, partials);
-      LLVMValueRef tmask_val = LLVMBuildLoad(gallivm->builder, mask_val, "");
+      LLVMValueRef tmask_val = LLVMBuildLoad2(gallivm->builder, mask_type, mask_val, "");
       tmask_val = LLVMBuildInsertElement(gallivm->builder, tmask_val, lp_build_const_int32(gallivm, 0), mask_loop_state.counter, "");
       LLVMBuildStore(gallivm->builder, tmask_val, mask_val);
       lp_build_loop_end_cond(&mask_loop_state, vec_length, NULL, LLVMIntUGE);
       lp_build_endif(&if_state);
 
-      mask_val = LLVMBuildLoad(gallivm->builder, mask_val, "");
+      mask_val = LLVMBuildLoad2(gallivm->builder, mask_type, mask_val, "");
       lp_build_mask_begin(&mask, gallivm, cs_type, mask_val);
 
       struct lp_build_coro_suspend_info coro_info;
@@ -437,18 +446,18 @@ generate_compute(struct llvmpipe_context *lp,
       params.type = cs_type;
       params.mask = &mask;
       params.consts_ptr = consts_ptr;
-      params.const_sizes_ptr = num_consts_ptr;
       params.system_values = &system_values;
       params.context_ptr = context_ptr;
       params.sampler = sampler;
       params.info = &shader->info.base;
       params.ssbo_ptr = ssbo_ptr;
-      params.ssbo_sizes_ptr = num_ssbo_ptr;
       params.image = image;
       params.shared_ptr = shared_ptr;
       params.coro = &coro_info;
       params.kernel_args = kernel_args_ptr;
-      params.aniso_filter_table = lp_jit_cs_context_aniso_filter_table(gallivm, context_ptr);
+      params.aniso_filter_table = lp_jit_cs_context_aniso_filter_table(gallivm,
+                                                                       variant->jit_cs_context_type,
+                                                                       context_ptr);
 
       if (shader->base.type == PIPE_SHADER_IR_TGSI)
          lp_build_tgsi_soa(gallivm, shader->base.tokens, &params, NULL);
@@ -468,8 +477,8 @@ generate_compute(struct llvmpipe_context *lp,
       LLVMBuildRet(builder, coro_hdl);
    }
 
-   sampler->destroy(sampler);
-   image->destroy(image);
+   lp_llvm_sampler_soa_destroy(sampler);
+   lp_llvm_image_soa_destroy(image);
 
    gallivm_verify_function(gallivm, coro);
    gallivm_verify_function(gallivm, function);
@@ -634,7 +643,7 @@ make_variant_key(struct llvmpipe_context *lp,
           * This will still work, the only downside is that not actually
           * used views may be included in the shader key.
           */
-         if(shader->info.base.file_mask[TGSI_FILE_SAMPLER_VIEW] & (1u << (i & 31))) {
+         if((shader->info.base.file_mask[TGSI_FILE_SAMPLER_VIEW] & (1u << (i & 31))) || i > 31) {
             lp_sampler_static_texture_state(&cs_sampler[i].texture_state,
                                             lp->sampler_views[PIPE_SHADER_COMPUTE][i]);
          }
@@ -643,7 +652,7 @@ make_variant_key(struct llvmpipe_context *lp,
    else {
       key->nr_sampler_views = key->nr_samplers;
       for(i = 0; i < key->nr_sampler_views; ++i) {
-         if(shader->info.base.file_mask[TGSI_FILE_SAMPLER] & (1 << i)) {
+         if((shader->info.base.file_mask[TGSI_FILE_SAMPLER] & (1 << i)) || i > 31) {
             lp_sampler_static_texture_state(&cs_sampler[i].texture_state,
                                             lp->sampler_views[PIPE_SHADER_COMPUTE][i]);
          }
@@ -653,8 +662,11 @@ make_variant_key(struct llvmpipe_context *lp,
    struct lp_image_static_state *lp_image;
    lp_image = lp_cs_variant_key_images(key);
    key->nr_images = shader->info.base.file_max[TGSI_FILE_IMAGE] + 1;
+   if (key->nr_images)
+      memset(lp_image, 0,
+             key->nr_images * sizeof *lp_image);
    for (i = 0; i < key->nr_images; ++i) {
-      if (shader->info.base.file_mask[TGSI_FILE_IMAGE] & (1 << i)) {
+      if ((shader->info.base.file_mask[TGSI_FILE_IMAGE] & (1 << i)) || i > 31) {
          lp_sampler_static_texture_state_image(&lp_image[i].image_state,
                                                &lp->images[PIPE_SHADER_COMPUTE][i]);
       }
@@ -1178,11 +1190,7 @@ lp_csctx_set_cs_images(struct lp_cs_context *csctx,
 
          if (llvmpipe_resource_is_texture(res)) {
             uint32_t mip_offset = lp_res->mip_offsets[image->u.tex.level];
-            const uint32_t bw = util_format_get_blockwidth(image->resource->format);
-            const uint32_t bh = util_format_get_blockheight(image->resource->format);
 
-            jit_image->width = DIV_ROUND_UP(jit_image->width, bw);
-            jit_image->height = DIV_ROUND_UP(jit_image->height, bh);
             jit_image->width = u_minify(jit_image->width, image->u.tex.level);
             jit_image->height = u_minify(jit_image->height, image->u.tex.level);
 
@@ -1239,14 +1247,14 @@ update_csctx_consts(struct llvmpipe_context *llvmpipe)
 
       if (current_data && current_size >= sizeof(float)) {
          current_data += csctx->constants[i].current.buffer_offset;
-         csctx->cs.current.jit_context.constants[i] = (const float *)current_data;
-         csctx->cs.current.jit_context.num_constants[i] =
+         csctx->cs.current.jit_context.constants[i].f = (const float *)current_data;
+         csctx->cs.current.jit_context.constants[i].num_elements =
             DIV_ROUND_UP(csctx->constants[i].current.buffer_size,
                          lp_get_constant_buffer_stride(llvmpipe->pipe.screen));
       } else {
          static const float fake_const_buf[4];
-         csctx->cs.current.jit_context.constants[i] = fake_const_buf;
-         csctx->cs.current.jit_context.num_constants[i] = 0;
+         csctx->cs.current.jit_context.constants[i].f = fake_const_buf;
+         csctx->cs.current.jit_context.constants[i].num_elements = 0;
       }
    }
 }
@@ -1266,17 +1274,17 @@ update_csctx_ssbo(struct llvmpipe_context *llvmpipe)
       if (current_data) {
          current_data += csctx->ssbos[i].current.buffer_offset;
 
-         csctx->cs.current.jit_context.ssbos[i] = (const uint32_t *)current_data;
-         csctx->cs.current.jit_context.num_ssbos[i] = csctx->ssbos[i].current.buffer_size;
+         csctx->cs.current.jit_context.ssbos[i].u = (const uint32_t *)current_data;
+         csctx->cs.current.jit_context.ssbos[i].num_elements = csctx->ssbos[i].current.buffer_size;
       } else {
-         csctx->cs.current.jit_context.ssbos[i] = NULL;
-         csctx->cs.current.jit_context.num_ssbos[i] = 0;
+         csctx->cs.current.jit_context.ssbos[i].u = NULL;
+         csctx->cs.current.jit_context.ssbos[i].num_elements = 0;
       }
    }
 }
 
 static void
-llvmpipe_cs_update_derived(struct llvmpipe_context *llvmpipe, void *input)
+llvmpipe_cs_update_derived(struct llvmpipe_context *llvmpipe, const void *input)
 {
    if (llvmpipe->cs_dirty & LP_CSNEW_CONSTANTS) {
       lp_csctx_set_cs_constants(llvmpipe->csctx,

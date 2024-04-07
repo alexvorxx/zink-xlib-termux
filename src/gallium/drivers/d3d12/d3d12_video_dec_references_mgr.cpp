@@ -23,6 +23,8 @@
 
 #include "d3d12_video_dec_references_mgr.h"
 #include "d3d12_video_dec_h264.h"
+#include "d3d12_video_dec_hevc.h"
+#include "d3d12_video_dec_av1.h"
 #include "d3d12_video_texture_array_dpb_manager.h"
 #include "d3d12_video_array_of_textures_dpb_manager.h"
 #include "d3d12_screen.h"
@@ -40,6 +42,10 @@ GetInvalidReferenceIndex(d3d12_video_decode_profile_type DecodeProfileType)
    switch (DecodeProfileType) {
       case d3d12_video_decode_profile_type_h264:
          return DXVA_H264_INVALID_PICTURE_INDEX;
+      case d3d12_video_decode_profile_type_hevc:
+         return DXVA_HEVC_INVALID_PICTURE_INDEX;
+      case d3d12_video_decode_profile_type_av1:
+         return DXVA_AV1_INVALID_PICTURE_INDEX;
       default:
          return 0;
    };
@@ -111,7 +117,7 @@ d3d12_video_decoder_references_manager::get_current_frame_decode_output_texture(
             *ppOutTexture2D       = d3d12_resource_resource(vidBuffer->texture);
             *pOutSubresourceIndex = 0;
             #if DEBUG
-               D3D12_RESOURCE_DESC desc = (*ppOutTexture2D)->GetDesc();
+               D3D12_RESOURCE_DESC desc = GetDesc(*ppOutTexture2D);
                assert(desc.DepthOrArraySize == 1);
                // if the underlying resource is a texture array at some point (if the impl. changes)
                // we need to also return the correct underlying subresource in *pOutSubresourceIndex = <subres>
@@ -432,7 +438,7 @@ d3d12_video_decoder_references_manager::print_dpb()
    debug_printf("[D3D12 Video Decoder Picture Manager] Decode session information:\n"
                "\tDPB Maximum Size (max_ref_count + one_slot_curpic): %d\n"
                "\tDXGI_FORMAT: %d\n"
-               "\tTexture resolution: (%ld, %d)\n"
+               "\tTexture resolution: (%" PRIu64 ", %d)\n"
                "\tD3D12_RESOURCE_FLAG_VIDEO_DECODE_REFERENCE_ONLY enforced: %d\n"
                "\tAllocation Mode: %s\n"
                "\n ----------------------\n\tCurrent frame information:\n"

@@ -60,6 +60,15 @@ struct aco_vs_prolog_key {
    gl_shader_stage next_stage;
 };
 
+struct aco_ps_epilog_key {
+   uint32_t spi_shader_col_format;
+
+   /* Bitmasks, each bit represents one of the 8 MRTs. */
+   uint8_t color_is_int8;
+   uint8_t color_is_int10;
+   uint8_t enable_mrt_output_nan_fixup;
+};
+
 struct aco_vp_output_info {
    uint8_t vs_output_param_offset[VARYING_SLOT_MAX];
    uint8_t clip_dist_mask;
@@ -96,16 +105,16 @@ struct aco_shader_info {
    bool is_ngg;
    bool has_ngg_culling;
    bool has_ngg_early_prim_export;
-   uint32_t num_tess_patches;
    unsigned workgroup_size;
+   struct aco_vp_output_info outinfo;
    struct {
-      struct aco_vp_output_info outinfo;
       bool as_es;
       bool as_ls;
       bool tcs_in_out_eq;
       uint64_t tcs_temp_only_input_mask;
       bool use_per_attribute_vb_descs;
       uint32_t vb_desc_usage_mask;
+      uint32_t input_slot_usage_mask;
       bool has_prolog;
       bool dynamic_inputs;
    } vs;
@@ -119,22 +128,19 @@ struct aco_shader_info {
       uint32_t num_lds_blocks;
    } tcs;
    struct {
-      struct aco_vp_output_info outinfo;
       bool as_es;
    } tes;
    struct {
       bool writes_z;
       bool writes_stencil;
       bool writes_sample_mask;
+      bool has_epilog;
       uint32_t num_interp;
       unsigned spi_ps_input;
    } ps;
    struct {
       uint8_t subgroup_size;
    } cs;
-   struct {
-      struct aco_vp_output_info outinfo;
-   } ms;
    struct aco_streamout_info so;
 
    uint32_t gfx9_gs_ring_lds_size;
@@ -164,7 +170,6 @@ struct aco_stage_input {
 
    struct {
       uint32_t col_format;
-      uint8_t num_samples;
 
       /* Used to export alpha through MRTZ for alpha-to-coverage (GFX11+). */
       bool alpha_to_coverage_via_mrtz;

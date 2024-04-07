@@ -320,8 +320,8 @@ radv_device_finish_meta_depth_decomp_state(struct radv_device *device)
                         state->expand_depth_stencil_compute_pipeline, &state->alloc);
    radv_DestroyPipelineLayout(radv_device_to_handle(device),
                               state->expand_depth_stencil_compute_p_layout, &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device),
-                                   state->expand_depth_stencil_compute_ds_layout, &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(
+      radv_device_to_handle(device), state->expand_depth_stencil_compute_ds_layout, &state->alloc);
 }
 
 VkResult
@@ -335,7 +335,7 @@ radv_device_init_meta_depth_decomp_state(struct radv_device *device, bool on_dem
 
       res = create_pipeline_layout(device, &state->depth_decomp[i].p_layout);
       if (res != VK_SUCCESS)
-         goto fail;
+         return res;
 
       if (on_demand)
          continue;
@@ -343,23 +343,15 @@ radv_device_init_meta_depth_decomp_state(struct radv_device *device, bool on_dem
       res = create_pipeline(device, samples, state->depth_decomp[i].p_layout, DEPTH_DECOMPRESS,
                             &state->depth_decomp[i].decompress_pipeline);
       if (res != VK_SUCCESS)
-         goto fail;
+         return res;
 
       res = create_pipeline(device, samples, state->depth_decomp[i].p_layout, DEPTH_RESUMMARIZE,
                             &state->depth_decomp[i].resummarize_pipeline);
       if (res != VK_SUCCESS)
-         goto fail;
+         return res;
    }
 
-   res = create_expand_depth_stencil_compute(device);
-   if (res != VK_SUCCESS)
-      goto fail;
-
-   return VK_SUCCESS;
-
-fail:
-   radv_device_finish_meta_depth_decomp_state(device);
-   return res;
+   return create_expand_depth_stencil_compute(device);
 }
 
 static VkPipeline *
@@ -377,14 +369,14 @@ radv_get_depth_pipeline(struct radv_cmd_buffer *cmd_buffer, struct radv_image *i
       ret = create_pipeline(cmd_buffer->device, samples, state->depth_decomp[samples_log2].p_layout,
                             DEPTH_DECOMPRESS, &state->depth_decomp[samples_log2].decompress_pipeline);
       if (ret != VK_SUCCESS) {
-         cmd_buffer->record_result = ret;
+         vk_command_buffer_set_error(&cmd_buffer->vk, ret);
          return NULL;
       }
 
       ret = create_pipeline(cmd_buffer->device, samples, state->depth_decomp[samples_log2].p_layout,
                             DEPTH_RESUMMARIZE, &state->depth_decomp[samples_log2].resummarize_pipeline);
       if (ret != VK_SUCCESS) {
-         cmd_buffer->record_result = ret;
+         vk_command_buffer_set_error(&cmd_buffer->vk, ret);
          return NULL;
       }
    }
@@ -478,7 +470,7 @@ radv_process_depth_stencil(struct radv_cmd_buffer *cmd_buffer, struct radv_image
 
    radv_meta_save(
       &saved_state, cmd_buffer,
-      RADV_META_SAVE_GRAPHICS_PIPELINE | RADV_META_SAVE_SAMPLE_LOCATIONS | RADV_META_SAVE_PASS);
+      RADV_META_SAVE_GRAPHICS_PIPELINE | RADV_META_SAVE_RENDER);
 
    pipeline = radv_get_depth_pipeline(cmd_buffer, image, subresourceRange, op);
 

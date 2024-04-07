@@ -1145,7 +1145,7 @@ amdgpu_bo_sparse_create(struct amdgpu_winsys *ws, uint64_t size,
    if (r)
       goto error_va_alloc;
 
-   r = amdgpu_bo_va_op_raw(ws->dev, NULL, 0, size, bo->va,
+   r = amdgpu_bo_va_op_raw(ws->dev, NULL, 0, map_size, bo->va,
                            AMDGPU_VM_PAGE_PRT, AMDGPU_VA_OP_MAP);
    if (r)
       goto error_va_map;
@@ -1544,6 +1544,7 @@ static struct pb_buffer *amdgpu_bo_from_handle(struct radeon_winsys *rws,
        * if it can be used for scanout.
        */
       flags |= RADEON_FLAG_ENCRYPTED;
+      *((bool*)&rws->uses_secure_bos) = true;
    }
 
    /* Initialize the structure. */
@@ -1660,7 +1661,8 @@ static bool amdgpu_bo_get_handle(struct radeon_winsys *rws,
 }
 
 static struct pb_buffer *amdgpu_bo_from_ptr(struct radeon_winsys *rws,
-					    void *pointer, uint64_t size)
+					    void *pointer, uint64_t size,
+					    enum radeon_bo_flag flags)
 {
     struct amdgpu_winsys *ws = amdgpu_winsys(rws);
     amdgpu_bo_handle buf_handle;

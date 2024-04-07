@@ -744,6 +744,7 @@ static const _mesa_glsl_extension _mesa_glsl_supported_extensions[] = {
    EXT(AMD_vertex_shader_layer),
    EXT(AMD_vertex_shader_viewport_index),
    EXT(ANDROID_extension_pack_es31a),
+   EXT(ARM_shader_framebuffer_fetch_depth_stencil),
    EXT(EXT_blend_func_extended),
    EXT(EXT_demote_to_helper_invocation),
    EXT(EXT_frag_depth),
@@ -781,6 +782,7 @@ static const _mesa_glsl_extension _mesa_glsl_supported_extensions[] = {
    EXT(NV_image_formats),
    EXT(NV_shader_atomic_float),
    EXT(NV_shader_atomic_int64),
+   EXT(NV_shader_noperspective_interpolation),
    EXT(NV_viewport_array2),
 };
 
@@ -2389,7 +2391,6 @@ do_common_optimization(exec_list *ir, bool linked,
    OPT(propagate_invariance, ir);
    OPT(do_if_simplification, ir);
    OPT(opt_flatten_nested_if_blocks, ir);
-   OPT(opt_conditional_discard, ir);
    OPT(do_copy_propagation_elements, ir);
 
    if (options->OptimizeForAOS && !linked)
@@ -2414,7 +2415,6 @@ do_common_optimization(exec_list *ir, bool linked,
        options->EmitNoCont);
    OPT(do_vec_index_to_swizzle, ir);
    OPT(lower_vector_insert, ir, false);
-   OPT(optimize_swizzles, ir);
 
    /* Some drivers only call do_common_optimization() once rather than in a
     * loop, and split arrays causes each element of a constant array to

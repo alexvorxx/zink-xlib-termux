@@ -32,21 +32,7 @@
 #include "ac_spm.h"
 #include "ac_sqtt.h"
 #include "ac_gpu_info.h"
-#ifdef _WIN32
-#define AMDGPU_VRAM_TYPE_UNKNOWN 0
-#define AMDGPU_VRAM_TYPE_GDDR1 1
-#define AMDGPU_VRAM_TYPE_DDR2  2
-#define AMDGPU_VRAM_TYPE_GDDR3 3
-#define AMDGPU_VRAM_TYPE_GDDR4 4
-#define AMDGPU_VRAM_TYPE_GDDR5 5
-#define AMDGPU_VRAM_TYPE_HBM   6
-#define AMDGPU_VRAM_TYPE_DDR3  7
-#define AMDGPU_VRAM_TYPE_DDR4  8
-#define AMDGPU_VRAM_TYPE_GDDR6 9
-#define AMDGPU_VRAM_TYPE_DDR5  10
-#else
-#include "drm-uapi/amdgpu_drm.h"
-#endif
+#include "amd_family.h"
 
 #include <stdbool.h>
 #include <string.h>
@@ -381,48 +367,25 @@ static enum sqtt_gfxip_level ac_gfx_level_to_sqtt_gfxip_level(enum amd_gfx_level
 static enum sqtt_memory_type ac_vram_type_to_sqtt_memory_type(uint32_t vram_type)
 {
    switch (vram_type) {
-   case AMDGPU_VRAM_TYPE_UNKNOWN:
+   case AMD_VRAM_TYPE_UNKNOWN:
       return SQTT_MEMORY_TYPE_UNKNOWN;
-   case AMDGPU_VRAM_TYPE_DDR2:
+   case AMD_VRAM_TYPE_DDR2:
       return SQTT_MEMORY_TYPE_DDR2;
-   case AMDGPU_VRAM_TYPE_DDR3:
+   case AMD_VRAM_TYPE_DDR3:
       return SQTT_MEMORY_TYPE_DDR3;
-   case AMDGPU_VRAM_TYPE_DDR4:
+   case AMD_VRAM_TYPE_DDR4:
       return SQTT_MEMORY_TYPE_DDR4;
-   case AMDGPU_VRAM_TYPE_GDDR5:
+   case AMD_VRAM_TYPE_GDDR5:
       return SQTT_MEMORY_TYPE_GDDR5;
-   case AMDGPU_VRAM_TYPE_HBM:
+   case AMD_VRAM_TYPE_HBM:
       return SQTT_MEMORY_TYPE_HBM;
-   case AMDGPU_VRAM_TYPE_GDDR6:
+   case AMD_VRAM_TYPE_GDDR6:
       return SQTT_MEMORY_TYPE_GDDR6;
-   case AMDGPU_VRAM_TYPE_DDR5:
+   case AMD_VRAM_TYPE_DDR5:
       return SQTT_MEMORY_TYPE_LPDDR5;
-   case AMDGPU_VRAM_TYPE_GDDR1:
-   case AMDGPU_VRAM_TYPE_GDDR3:
-   case AMDGPU_VRAM_TYPE_GDDR4:
-   default:
-      unreachable("Invalid vram type");
-   }
-}
-
-static uint32_t ac_memory_ops_per_clock(uint32_t vram_type)
-{
-   switch (vram_type) {
-   case AMDGPU_VRAM_TYPE_UNKNOWN:
-      return 0;
-   case AMDGPU_VRAM_TYPE_DDR2:
-   case AMDGPU_VRAM_TYPE_DDR3:
-   case AMDGPU_VRAM_TYPE_DDR4:
-   case AMDGPU_VRAM_TYPE_HBM:
-      return 2;
-   case AMDGPU_VRAM_TYPE_DDR5:
-   case AMDGPU_VRAM_TYPE_GDDR5:
-      return 4;
-   case AMDGPU_VRAM_TYPE_GDDR6:
-      return 16;
-   case AMDGPU_VRAM_TYPE_GDDR1:
-   case AMDGPU_VRAM_TYPE_GDDR3:
-   case AMDGPU_VRAM_TYPE_GDDR4:
+   case AMD_VRAM_TYPE_GDDR1:
+   case AMD_VRAM_TYPE_GDDR3:
+   case AMD_VRAM_TYPE_GDDR4:
    default:
       unreachable("Invalid vram type");
    }
@@ -451,8 +414,8 @@ static void ac_sqtt_fill_asic_info(struct radeon_info *rad_info,
    if (rad_info->gfx_level >= GFX9)
       chunk->flags |= SQTT_FILE_CHUNK_ASIC_INFO_FLAG_PS1_EVENT_TOKENS_ENABLED;
 
-   chunk->trace_shader_core_clock = rad_info->max_shader_clock * 1000000;
-   chunk->trace_memory_clock = rad_info->max_memory_clock * 1000000;
+   chunk->trace_shader_core_clock = rad_info->max_gpu_freq_mhz * 1000000ull;
+   chunk->trace_memory_clock = rad_info->memory_freq_mhz * 1000000ull;
 
    /* RGP gets very confused if these clocks are 0. The numbers here are for profile_peak on
     * VGH since that is the chips where we've seen the need for this workaround. */
@@ -486,8 +449,8 @@ static void ac_sqtt_fill_asic_info(struct radeon_info *rad_info,
    chunk->ce_ram_size_graphics = 0;
    chunk->ce_ram_size_compute = 0;
 
-   chunk->vram_bus_width = rad_info->vram_bit_width;
-   chunk->vram_size = rad_info->vram_size;
+   chunk->vram_bus_width = rad_info->memory_bus_width;
+   chunk->vram_size = (uint64_t)rad_info->vram_size_kb * 1024;
    chunk->l2_cache_size = rad_info->l2_cache_size;
    chunk->l1_cache_size = rad_info->l1_cache_size;
    chunk->lds_size = rad_info->lds_size_per_workgroup;
@@ -506,8 +469,8 @@ static void ac_sqtt_fill_asic_info(struct radeon_info *rad_info,
    chunk->pixels_per_clock = 0.0;
 
    chunk->gpu_timestamp_frequency = rad_info->clock_crystal_freq * 1000;
-   chunk->max_shader_core_clock = rad_info->max_shader_clock * 1000000;
-   chunk->max_memory_clock = rad_info->max_memory_clock * 1000000;
+   chunk->max_shader_core_clock = rad_info->max_gpu_freq_mhz * 1000000;
+   chunk->max_memory_clock = rad_info->memory_freq_mhz * 1000000;
    chunk->memory_ops_per_clock = ac_memory_ops_per_clock(rad_info->vram_type);
    chunk->memory_chip_type = ac_vram_type_to_sqtt_memory_type(rad_info->vram_type);
    chunk->lds_granularity = rad_info->lds_encode_granularity;
@@ -1002,6 +965,7 @@ static void ac_sqtt_dump_spm(const struct ac_spm_trace_data *spm_trace,
    fseek(output, file_offset, SEEK_SET);
 }
 
+#if defined(USE_LIBELF)
 static void ac_sqtt_dump_data(struct radeon_info *rad_info,
                               struct ac_thread_trace *thread_trace,
                               const struct ac_spm_trace_data *spm_trace,
@@ -1188,11 +1152,15 @@ static void ac_sqtt_dump_data(struct radeon_info *rad_info,
       ac_sqtt_dump_spm(spm_trace, file_offset, output);
    }
 }
+#endif
 
 int ac_dump_rgp_capture(struct radeon_info *info,
                         struct ac_thread_trace *thread_trace,
                         const struct ac_spm_trace_data *spm_trace)
 {
+#if !defined(USE_LIBELF)
+   return -1;
+#else
    char filename[2048];
    struct tm now;
    time_t t;
@@ -1215,4 +1183,5 @@ int ac_dump_rgp_capture(struct radeon_info *info,
 
    fclose(f);
    return 0;
+#endif
 }

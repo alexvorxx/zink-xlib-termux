@@ -26,6 +26,7 @@
 import xml.parsers.expat
 import sys
 import operator
+import math
 from functools import reduce
 
 global_prefix = "agx"
@@ -42,44 +43,11 @@ pack_header = """
 #define AGX_PACK_H
 
 #include <stdio.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <assert.h>
-#include <math.h>
 #include <inttypes.h>
-#include "util/macros.h"
-#include "util/u_math.h"
+
+#include "util/bitpack_helpers.h"
 
 #define __gen_unpack_float(x, y, z) uif(__gen_unpack_uint(x, y, z))
-
-static inline uint64_t
-__gen_uint(uint64_t v, uint32_t start, uint32_t end)
-{
-#ifndef NDEBUG
-   const int width = end - start + 1;
-   if (width < 64) {
-      const uint64_t max = (1ull << width) - 1;
-      assert(v <= max);
-   }
-#endif
-
-   return v << start;
-}
-
-static inline uint32_t
-__gen_sint(int32_t v, uint32_t start, uint32_t end)
-{
-#ifndef NDEBUG
-   const int width = end - start + 1;
-   if (width < 64) {
-      const int64_t max = (1ll << (width - 1)) - 1;
-      const int64_t min = -(1ll << (width - 1));
-      assert(min <= v && v <= max);
-   }
-#endif
-
-   return (((uint32_t) v) << start) & ((2ll << end) - 1);
-}
 
 static inline uint64_t
 __gen_unpack_uint(const uint8_t *restrict cl, uint32_t start, uint32_t end)
@@ -100,9 +68,10 @@ __gen_unpack_uint(const uint8_t *restrict cl, uint32_t start, uint32_t end)
  * avoid undefined behaviour for out-of-bounds inputs like +/- infinity.
  */
 static inline uint32_t
-__float_to_lod(float f)
+__gen_pack_lod(float f, uint32_t start, uint32_t end)
 {
-    return (uint32_t) CLAMP(f * (1 << 6), 0 /* 0.0 */, 0x380 /* 14.0 */);
+    uint32_t fixed = CLAMP(f * (1 << 6), 0 /* 0.0 */, 0x380 /* 14.0 */);
+    return util_bitpack_uint(fixed, start, end);
 }
 
 static inline float
@@ -117,8 +86,7 @@ __gen_unpack_sint(const uint8_t *restrict cl, uint32_t start, uint32_t end)
    int size = end - start + 1;
    int64_t val = __gen_unpack_uint(cl, start, end);
 
-   /* Get the sign bit extended. */
-   return (val << (64 - size)) >> (64 - size);
+   return util_sign_extend(val, size);
 }
 
 #define agx_prepare(dst, T)                                 \\
@@ -402,7 +370,7 @@ class Group(object):
             elif field.modifier[0] == "log2":
                 print("   assert(util_is_power_of_two_nonzero(values->{}));".format(field.name))
 
-        for index in range(self.length // 4):
+        for index in range(math.ceil(self.length / 4)):
             # Handle MBZ words
             if not index in words:
                 print("   cl[%2d] = 0;" % index)
@@ -436,23 +404,23 @@ class Group(object):
                         value = "util_logbase2({})".format(value)
 
                 if field.type in ["uint", "hex", "Pixel Format", "address"]:
-                    s = "__gen_uint(%s, %d, %d)" % \
+                    s = "util_bitpack_uint(%s, %d, %d)" % \
                         (value, start, end)
                 elif field.type in self.parser.enums:
-                    s = "__gen_uint(%s, %d, %d)" % \
+                    s = "util_bitpack_uint(%s, %d, %d)" % \
                         (value, start, end)
                 elif field.type == "int":
-                    s = "__gen_sint(%s, %d, %d)" % \
+                    s = "util_bitpack_sint(%s, %d, %d)" % \
                         (value, start, end)
                 elif field.type == "bool":
-                    s = "__gen_uint(%s, %d, %d)" % \
+                    s = "util_bitpack_uint(%s, %d, %d)" % \
                         (value, start, end)
                 elif field.type == "float":
                     assert(start == 0 and end == 31)
-                    s = "__gen_uint(fui({}), 0, 32)".format(value)
+                    s = "util_bitpack_float({})".format(value)
                 elif field.type == "lod":
                     assert(end - start + 1 == 10)
-                    s = "__gen_uint(__float_to_lod(%s), %d, %d)" % (value, start, end)
+                    s = "__gen_pack_lod(%s, %d, %d)" % (value, start, end)
                 else:
                     s = "#error unhandled field {}, type {}".format(contributor.path, field.type)
 

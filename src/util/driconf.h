@@ -261,6 +261,9 @@
 #define DRI_CONF_FORCE_GL_NAMES_REUSE(def) \
    DRI_CONF_OPT_B(force_gl_names_reuse, def, "Force GL names reuse")
 
+#define DRI_CONF_FORCE_GL_MAP_BUFFER_SYNCHRONIZED(def) \
+   DRI_CONF_OPT_B(force_gl_map_buffer_synchronized, def, "Override GL_MAP_UNSYNCHRONIZED_BIT.")
+
 #define DRI_CONF_TRANSCODE_ETC(def) \
    DRI_CONF_OPT_B(transcode_etc, def, "Transcode ETC formats to DXTC if unsupported")
 
@@ -279,9 +282,9 @@
    DRI_CONF_OPT_S_NODEF(indirect_gl_extension_override, \
                   "Allow enabling/disabling a list of indirect-GL extensions")
 
-#define DRI_CONF_DISABLE_PROTECTED_CONTENT_CHECK(def) \
-   DRI_CONF_OPT_B(disable_protected_content_check, def, \
-                  "Don't reject image import if protected_content attribute doesn't match")
+#define DRI_CONF_FORCE_PROTECTED_CONTENT_CHECK(def) \
+   DRI_CONF_OPT_B(force_protected_content_check, def, \
+                  "Reject image import if protected_content attribute doesn't match")
 
 #define DRI_CONF_IGNORE_MAP_UNSYNCHRONIZED(def) \
    DRI_CONF_OPT_B(ignore_map_unsynchronized, def, \
@@ -331,6 +334,10 @@
 #define DRI_CONF_PP_JIMENEZMLAA_COLOR(def,min,max) \
    DRI_CONF_OPT_I(pp_jimenezmlaa_color, def, min, max, \
                   "Morphological anti-aliasing based on Jimenez' MLAA. 0 to disable, 8 for default quality. Color version, usable with 2d GL apps")
+
+#define DRI_CONF_PP_LOWER_DEPTH_RANGE_RATE() \
+   DRI_CONF_OPT_F(lower_depth_range_rate, 1.0, 0.0, 1.0, \
+                  "Lower depth range for fixing misrendering issues due to z coordinate float point interpolation accuracy")
 
 /**
  * \brief Performance-related options
@@ -472,14 +479,6 @@
    DRI_CONF_OPT_B(force_sw_rendering_on_cpu, def, \
                   "If set to false, emulates software rendering on the requested device, else uses a software renderer.")
 
-/**
- * \brief radeonsi specific configuration options
- */
-
-#define DRI_CONF_RADEONSI_ZERO_ALL_VRAM_ALLOCS(def) \
-   DRI_CONF_OPT_B(radeonsi_zerovram, def, \
-                  "Zero all vram allocations")
-
 #define DRI_CONF_V3D_NONMSAA_TEXTURE_SIZE_LIMIT(def) \
    DRI_CONF_OPT_B(v3d_nonmsaa_texture_size_limit, def, \
                   "Report the non-MSAA-only texture size limit")
@@ -563,17 +562,9 @@
    DRI_CONF_OPT_B(radv_disable_dcc, def, \
                   "Disable DCC for color images")
 
-#define DRI_CONF_RADV_REPORT_APU_AS_DGPU(def) \
-   DRI_CONF_OPT_B(radv_report_apu_as_dgpu, def, \
-                  "Report APUs as discrete GPUs instead of integrated GPUs")
-
 #define DRI_CONF_RADV_REQUIRE_ETC2(def)                                        \
   DRI_CONF_OPT_B(radv_require_etc2, def,                                       \
                  "Implement emulated ETC2 on HW that does not support it")
-
-#define DRI_CONF_RADV_DISABLE_HTILE_LAYERS(def) \
-   DRI_CONF_OPT_B(radv_disable_htile_layers, def, \
-                  "Disable HTILE for layered depth/stencil formats")
 
 #define DRI_CONF_RADV_DISABLE_ANISO_SINGLE_LEVEL(def) \
   DRI_CONF_OPT_B(radv_disable_aniso_single_level, def, \
@@ -582,6 +573,19 @@
 #define DRI_CONF_RADV_DISABLE_SINKING_LOAD_INPUT_FS(def) \
    DRI_CONF_OPT_B(radv_disable_sinking_load_input_fs, def, \
                   "Disable sinking load inputs for fragment shaders")
+
+#define DRI_CONF_RADV_DGC(def) \
+   DRI_CONF_OPT_B(radv_dgc, def, \
+                  "Expose an experimental implementation of VK_NV_device_generated_commands")
+
+#define DRI_CONF_RADV_FLUSH_BEFORE_QUERY_COPY(def) \
+  DRI_CONF_OPT_B( \
+      radv_flush_before_query_copy, def, \
+      "Wait for timestamps to be written before a query copy command")
+
+#define DRI_CONF_RADV_ENABLE_UNIFIED_HEAP_ON_APU(def) \
+   DRI_CONF_OPT_B(radv_enable_unified_heap_on_apu, def, \
+                  "Enable an unified heap with DEVICE_LOCAL on integrated GPUs")
 
 /**
  * \brief ANV specific configuration options

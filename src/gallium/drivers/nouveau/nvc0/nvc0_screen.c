@@ -317,6 +317,7 @@ nvc0_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_ALLOW_DYNAMIC_VAO_FASTPATH:
    case PIPE_CAP_SHAREABLE_SHADERS:
    case PIPE_CAP_PREFER_BACK_BUFFER_REUSE:
+   case PIPE_CAP_QUERY_MEMORY_INFO:
       return 1;
    case PIPE_CAP_TEXTURE_TRANSFER_MODES:
       return nouveau_screen(pscreen)->vram_domain & NOUVEAU_BO_VRAM ? PIPE_TEXTURE_TRANSFER_BLIT : 0;
@@ -370,14 +371,12 @@ nvc0_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_VERTEX_ATTRIB_ELEMENT_ALIGNED_ONLY:
    case PIPE_CAP_FAKE_SW_MSAA:
    case PIPE_CAP_VS_WINDOW_SPACE_POSITION:
-   case PIPE_CAP_VERTEXID_NOBASE:
    case PIPE_CAP_RESOURCE_FROM_USER_MEMORY:
    case PIPE_CAP_FS_POSITION_IS_SYSVAL:
    case PIPE_CAP_FS_POINT_IS_SYSVAL:
    case PIPE_CAP_GENERATE_MIPMAP:
    case PIPE_CAP_BUFFER_SAMPLER_VIEW_RGBA_ONLY:
    case PIPE_CAP_SURFACE_REINTERPRET_BLOCKS:
-   case PIPE_CAP_QUERY_MEMORY_INFO:
    case PIPE_CAP_PCI_GROUP:
    case PIPE_CAP_PCI_BUS:
    case PIPE_CAP_PCI_DEVICE:
@@ -410,7 +409,6 @@ nvc0_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_ATOMIC_FLOAT_MINMAX:
    case PIPE_CAP_CONSERVATIVE_RASTER_INNER_COVERAGE:
    case PIPE_CAP_FRAGMENT_SHADER_INTERLOCK:
-   case PIPE_CAP_CS_DERIVED_SYSTEM_VALUES_SUPPORTED:
    case PIPE_CAP_FBFETCH_COHERENT:
    case PIPE_CAP_TGSI_TG4_COMPONENT_IN_SWIZZLE:
    case PIPE_CAP_OPENCL_INTEGER_FUNCTIONS: /* could be done */
@@ -437,6 +435,7 @@ nvc0_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_SPARSE_TEXTURE_FULL_ARRAY_CUBE_MIPMAPS:
    case PIPE_CAP_QUERY_SPARSE_TEXTURE_RESIDENCY:
    case PIPE_CAP_CLAMP_SPARSE_TEXTURE_LOD:
+   case PIPE_CAP_HARDWARE_GL_SELECT:
       return 0;
 
    case PIPE_CAP_VENDOR_ID:
@@ -614,6 +613,7 @@ nvc0_screen_get_compute_param(struct pipe_screen *pscreen,
                               enum pipe_compute_cap param, void *data)
 {
    struct nvc0_screen *screen = nvc0_screen(pscreen);
+   struct nouveau_device *dev = screen->base.device;
    const uint16_t obj_class = screen->compute->oclass;
 
 #define RET(x) do {                  \
@@ -642,7 +642,7 @@ nvc0_screen_get_compute_param(struct pipe_screen *pscreen,
          RET((uint64_t []) { 512 });
       }
    case PIPE_COMPUTE_CAP_MAX_GLOBAL_SIZE: /* g[] */
-      RET((uint64_t []) { 1ULL << 40 });
+      RET((uint64_t []) { nouveau_device_get_global_mem_size(dev) });
    case PIPE_COMPUTE_CAP_MAX_LOCAL_SIZE: /* s[] */
       switch (obj_class) {
       case GM200_COMPUTE_CLASS:
@@ -659,7 +659,7 @@ nvc0_screen_get_compute_param(struct pipe_screen *pscreen,
    case PIPE_COMPUTE_CAP_SUBGROUP_SIZE:
       RET((uint32_t []) { 32 });
    case PIPE_COMPUTE_CAP_MAX_MEM_ALLOC_SIZE:
-      RET((uint64_t []) { 1ULL << 40 });
+      RET((uint64_t []) { nouveau_device_get_global_mem_size(dev) });
    case PIPE_COMPUTE_CAP_IMAGES_SUPPORTED:
       RET((uint32_t []) { NVC0_MAX_IMAGES });
    case PIPE_COMPUTE_CAP_MAX_COMPUTE_UNITS:
@@ -713,11 +713,6 @@ nvc0_screen_destroy(struct pipe_screen *pscreen)
    if (!nouveau_drm_screen_unref(&screen->base))
       return;
 
-   nouveau_fence_cleanup(&screen->base);
-
-   if (screen->base.pushbuf)
-      screen->base.pushbuf->user_priv = NULL;
-
    if (screen->blitter)
       nvc0_blitter_destroy(screen);
    if (screen->pm.prog) {
@@ -745,6 +740,7 @@ nvc0_screen_destroy(struct pipe_screen *pscreen)
    nouveau_object_del(&screen->nvsw);
 
    nouveau_screen_fini(&screen->base);
+   simple_mtx_destroy(&screen->state_lock);
 
    FREE(screen);
 }
@@ -859,10 +855,11 @@ nvc0_magic_3d_init(struct nouveau_pushbuf *push, uint16_t obj_class)
 }
 
 static void
-nvc0_screen_fence_emit(struct pipe_screen *pscreen, u32 *sequence)
+nvc0_screen_fence_emit(struct pipe_context *pcontext, u32 *sequence)
 {
-   struct nvc0_screen *screen = nvc0_screen(pscreen);
-   struct nouveau_pushbuf *push = screen->base.pushbuf;
+   struct nvc0_context *nvc0 = nvc0_context(pcontext);
+   struct nvc0_screen *screen = nvc0->screen;
+   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
 
    /* we need to do it after possible flush in MARK_RING */
    *sequence = ++screen->base.fence.sequence;
@@ -934,7 +931,7 @@ nvc0_screen_resize_tls_area(struct nvc0_screen *screen,
     * segment, as it may have commands that will reference it.
     */
    if (screen->tls)
-      PUSH_REFN(screen->base.pushbuf, screen->tls,
+      PUSH_REF1(screen->base.pushbuf, screen->tls,
                 NV_VRAM_DOMAIN(&screen->base) | NOUVEAU_BO_RDWR);
    nouveau_bo_ref(NULL, &screen->tls);
    screen->tls = bo;
@@ -942,9 +939,9 @@ nvc0_screen_resize_tls_area(struct nvc0_screen *screen,
 }
 
 int
-nvc0_screen_resize_text_area(struct nvc0_screen *screen, uint64_t size)
+nvc0_screen_resize_text_area(struct nvc0_screen *screen, struct nouveau_pushbuf *push,
+                             uint64_t size)
 {
-   struct nouveau_pushbuf *push = screen->base.pushbuf;
    struct nouveau_bo *bo;
    int ret;
 
@@ -957,7 +954,7 @@ nvc0_screen_resize_text_area(struct nvc0_screen *screen, uint64_t size)
     * segment, as it may have commands that will reference it.
     */
    if (screen->text)
-      PUSH_REFN(push, screen->text,
+      PUSH_REF1(screen->base.pushbuf, screen->text,
                 NV_VRAM_DOMAIN(&screen->base) | NOUVEAU_BO_RD);
    nouveau_bo_ref(NULL, &screen->text);
    screen->text = bo;
@@ -986,12 +983,10 @@ nvc0_screen_resize_text_area(struct nvc0_screen *screen, uint64_t size)
 }
 
 void
-nvc0_screen_bind_cb_3d(struct nvc0_screen *screen, bool *can_serialize,
-                       int stage, int index, int size, uint64_t addr)
+nvc0_screen_bind_cb_3d(struct nvc0_screen *screen, struct nouveau_pushbuf *push,
+                       bool *can_serialize, int stage, int index, int size, uint64_t addr)
 {
    assert(stage != 5);
-
-   struct nouveau_pushbuf *push = screen->base.pushbuf;
 
    if (screen->base.class_3d >= GM107_3D_CLASS) {
       struct nvc0_cb_binding *binding = &screen->cb_bindings[stage][index];
@@ -1072,12 +1067,13 @@ nvc0_screen_create(struct nouveau_device *dev)
    pscreen = &screen->base.base;
    pscreen->destroy = nvc0_screen_destroy;
 
+   simple_mtx_init(&screen->state_lock, mtx_plain);
+
    ret = nouveau_screen_init(&screen->base, dev);
    if (ret)
       FAIL_SCREEN_INIT("Base screen init failed: %d\n", ret);
    chan = screen->base.channel;
    push = screen->base.pushbuf;
-   push->user_priv = screen;
    push->rsvd_kick = 5;
 
    /* TODO: could this be higher on Kepler+? how does reclocking vs no
@@ -1122,7 +1118,7 @@ nvc0_screen_create(struct nouveau_device *dev)
    ret = nouveau_bo_new(dev, flags, 0, 4096, NULL, &screen->fence.bo);
    if (ret)
       FAIL_SCREEN_INIT("Error allocating fence BO: %d\n", ret);
-   nouveau_bo_map(screen->fence.bo, 0, NULL);
+   BO_MAP(&screen->base, screen->fence.bo, 0, NULL);
    screen->fence.map = screen->fence.bo->map;
    screen->base.fence.emit = nvc0_screen_fence_emit;
    screen->base.fence.update = nvc0_screen_fence_update;
@@ -1310,7 +1306,7 @@ nvc0_screen_create(struct nouveau_device *dev)
 
    nvc0_magic_3d_init(push, screen->eng3d->oclass);
 
-   ret = nvc0_screen_resize_text_area(screen, 1 << 19);
+   ret = nvc0_screen_resize_text_area(screen, push, 1 << 19);
    if (ret)
       FAIL_SCREEN_INIT("Error allocating TEXT area: %d\n", ret);
 
@@ -1320,7 +1316,7 @@ nvc0_screen_create(struct nouveau_device *dev)
    if (ret)
       FAIL_SCREEN_INIT("Error allocating uniform BO: %d\n", ret);
 
-   PUSH_REFN (push, screen->uniform_bo, NV_VRAM_DOMAIN(&screen->base) | NOUVEAU_BO_WR);
+   PUSH_REF1 (push, screen->uniform_bo, NV_VRAM_DOMAIN(&screen->base) | NOUVEAU_BO_WR);
 
    /* return { 0.0, 0.0, 0.0, 0.0 } for out-of-bounds vtxbuf access */
    BEGIN_NVC0(push, NVC0_3D(CB_SIZE), 3);
@@ -1524,7 +1520,7 @@ nvc0_screen_create(struct nouveau_device *dev)
 
       /* TIC and TSC entries for each unit (nve4+ only) */
       /* auxiliary constants (6 user clip planes, base instance id) */
-      nvc0_screen_bind_cb_3d(screen, NULL, i, 15, NVC0_CB_AUX_SIZE,
+      nvc0_screen_bind_cb_3d(screen, push, NULL, i, 15, NVC0_CB_AUX_SIZE,
                              screen->uniform_bo->offset + NVC0_CB_AUX_INFO(i));
       if (screen->eng3d->oclass >= NVE4_3D_CLASS) {
          unsigned j;
@@ -1570,8 +1566,6 @@ nvc0_screen_create(struct nouveau_device *dev)
 
    if (!nvc0_blitter_create(screen))
       goto fail;
-
-   nouveau_fence_new(&screen->base, &screen->base.fence.current);
 
    return &screen->base;
 

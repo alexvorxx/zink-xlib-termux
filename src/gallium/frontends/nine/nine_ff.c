@@ -455,6 +455,9 @@ nine_ff_build_vs(struct NineDevice9 *device, struct vs_build_ctx *vs)
             ureg_ADD(ureg, ureg_writemask(tmp, TGSI_WRITEMASK_XY), ureg_src(tmp), ureg_imm1f(ureg, -1.0f));
             /* Y needs to be reversed */
             ureg_MOV(ureg, ureg_writemask(tmp, TGSI_WRITEMASK_Y), ureg_negate(ureg_src(tmp)));
+            /* Replace w by 1 if it equals to 0 */
+            ureg_CMP(ureg, ureg_writemask(tmp, TGSI_WRITEMASK_W), ureg_negate(ureg_abs(ureg_scalar(ureg_src(tmp), TGSI_SWIZZLE_W))),
+                     ureg_scalar(ureg_src(tmp), TGSI_SWIZZLE_W), ureg_imm1f(ureg, 1.0f));
             /* inverse rhw */
             ureg_RCP(ureg, ureg_writemask(tmp, TGSI_WRITEMASK_W), _W(tmp));
             /* multiply X, Y, Z by w */
@@ -1574,7 +1577,7 @@ nine_ff_get_vs(struct NineDevice9 *device)
     unsigned s, i;
     boolean has_indexes = false;
     boolean has_weights = false;
-    char input_texture_coord[8];
+    int8_t input_texture_coord[8];
 
     assert(sizeof(key) <= sizeof(key.value32));
 

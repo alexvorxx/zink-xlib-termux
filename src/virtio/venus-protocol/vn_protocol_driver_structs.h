@@ -575,6 +575,73 @@ vn_encode_VkSamplerYcbcrConversionInfo(struct vn_cs_encoder *enc, const VkSample
     vn_encode_VkSamplerYcbcrConversionInfo_self(enc, val);
 }
 
+/* struct VkShaderModuleCreateInfo chain */
+
+static inline size_t
+vn_sizeof_VkShaderModuleCreateInfo_pnext(const void *val)
+{
+    /* no known/supported struct */
+    return vn_sizeof_simple_pointer(NULL);
+}
+
+static inline size_t
+vn_sizeof_VkShaderModuleCreateInfo_self(const VkShaderModuleCreateInfo *val)
+{
+    size_t size = 0;
+    /* skip val->{sType,pNext} */
+    size += vn_sizeof_VkFlags(&val->flags);
+    size += vn_sizeof_size_t(&val->codeSize);
+    if (val->pCode) {
+        size += vn_sizeof_array_size(val->codeSize / 4);
+        size += vn_sizeof_uint32_t_array(val->pCode, val->codeSize / 4);
+    } else {
+        size += vn_sizeof_array_size(0);
+    }
+    return size;
+}
+
+static inline size_t
+vn_sizeof_VkShaderModuleCreateInfo(const VkShaderModuleCreateInfo *val)
+{
+    size_t size = 0;
+
+    size += vn_sizeof_VkStructureType(&val->sType);
+    size += vn_sizeof_VkShaderModuleCreateInfo_pnext(val->pNext);
+    size += vn_sizeof_VkShaderModuleCreateInfo_self(val);
+
+    return size;
+}
+
+static inline void
+vn_encode_VkShaderModuleCreateInfo_pnext(struct vn_cs_encoder *enc, const void *val)
+{
+    /* no known/supported struct */
+    vn_encode_simple_pointer(enc, NULL);
+}
+
+static inline void
+vn_encode_VkShaderModuleCreateInfo_self(struct vn_cs_encoder *enc, const VkShaderModuleCreateInfo *val)
+{
+    /* skip val->{sType,pNext} */
+    vn_encode_VkFlags(enc, &val->flags);
+    vn_encode_size_t(enc, &val->codeSize);
+    if (val->pCode) {
+        vn_encode_array_size(enc, val->codeSize / 4);
+        vn_encode_uint32_t_array(enc, val->pCode, val->codeSize / 4);
+    } else {
+        vn_encode_array_size(enc, 0);
+    }
+}
+
+static inline void
+vn_encode_VkShaderModuleCreateInfo(struct vn_cs_encoder *enc, const VkShaderModuleCreateInfo *val)
+{
+    assert(val->sType == VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO);
+    vn_encode_VkStructureType(enc, &(VkStructureType){ VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO });
+    vn_encode_VkShaderModuleCreateInfo_pnext(enc, val->pNext);
+    vn_encode_VkShaderModuleCreateInfo_self(enc, val);
+}
+
 /* struct VkViewport */
 
 static inline size_t
@@ -783,6 +850,101 @@ static inline void
 vn_encode_VkClearColorValue(struct vn_cs_encoder *enc, const VkClearColorValue *val)
 {
     vn_encode_VkClearColorValue_tag(enc, val, 2); /* union with default tag */
+}
+
+/* struct VkMutableDescriptorTypeListEXT */
+
+static inline size_t
+vn_sizeof_VkMutableDescriptorTypeListEXT(const VkMutableDescriptorTypeListEXT *val)
+{
+    size_t size = 0;
+    size += vn_sizeof_uint32_t(&val->descriptorTypeCount);
+    if (val->pDescriptorTypes) {
+        size += vn_sizeof_array_size(val->descriptorTypeCount);
+        size += vn_sizeof_VkDescriptorType_array(val->pDescriptorTypes, val->descriptorTypeCount);
+    } else {
+        size += vn_sizeof_array_size(0);
+    }
+    return size;
+}
+
+static inline void
+vn_encode_VkMutableDescriptorTypeListEXT(struct vn_cs_encoder *enc, const VkMutableDescriptorTypeListEXT *val)
+{
+    vn_encode_uint32_t(enc, &val->descriptorTypeCount);
+    if (val->pDescriptorTypes) {
+        vn_encode_array_size(enc, val->descriptorTypeCount);
+        vn_encode_VkDescriptorType_array(enc, val->pDescriptorTypes, val->descriptorTypeCount);
+    } else {
+        vn_encode_array_size(enc, 0);
+    }
+}
+
+/* struct VkMutableDescriptorTypeCreateInfoEXT chain */
+
+static inline size_t
+vn_sizeof_VkMutableDescriptorTypeCreateInfoEXT_pnext(const void *val)
+{
+    /* no known/supported struct */
+    return vn_sizeof_simple_pointer(NULL);
+}
+
+static inline size_t
+vn_sizeof_VkMutableDescriptorTypeCreateInfoEXT_self(const VkMutableDescriptorTypeCreateInfoEXT *val)
+{
+    size_t size = 0;
+    /* skip val->{sType,pNext} */
+    size += vn_sizeof_uint32_t(&val->mutableDescriptorTypeListCount);
+    if (val->pMutableDescriptorTypeLists) {
+        size += vn_sizeof_array_size(val->mutableDescriptorTypeListCount);
+        for (uint32_t i = 0; i < val->mutableDescriptorTypeListCount; i++)
+            size += vn_sizeof_VkMutableDescriptorTypeListEXT(&val->pMutableDescriptorTypeLists[i]);
+    } else {
+        size += vn_sizeof_array_size(0);
+    }
+    return size;
+}
+
+static inline size_t
+vn_sizeof_VkMutableDescriptorTypeCreateInfoEXT(const VkMutableDescriptorTypeCreateInfoEXT *val)
+{
+    size_t size = 0;
+
+    size += vn_sizeof_VkStructureType(&val->sType);
+    size += vn_sizeof_VkMutableDescriptorTypeCreateInfoEXT_pnext(val->pNext);
+    size += vn_sizeof_VkMutableDescriptorTypeCreateInfoEXT_self(val);
+
+    return size;
+}
+
+static inline void
+vn_encode_VkMutableDescriptorTypeCreateInfoEXT_pnext(struct vn_cs_encoder *enc, const void *val)
+{
+    /* no known/supported struct */
+    vn_encode_simple_pointer(enc, NULL);
+}
+
+static inline void
+vn_encode_VkMutableDescriptorTypeCreateInfoEXT_self(struct vn_cs_encoder *enc, const VkMutableDescriptorTypeCreateInfoEXT *val)
+{
+    /* skip val->{sType,pNext} */
+    vn_encode_uint32_t(enc, &val->mutableDescriptorTypeListCount);
+    if (val->pMutableDescriptorTypeLists) {
+        vn_encode_array_size(enc, val->mutableDescriptorTypeListCount);
+        for (uint32_t i = 0; i < val->mutableDescriptorTypeListCount; i++)
+            vn_encode_VkMutableDescriptorTypeListEXT(enc, &val->pMutableDescriptorTypeLists[i]);
+    } else {
+        vn_encode_array_size(enc, 0);
+    }
+}
+
+static inline void
+vn_encode_VkMutableDescriptorTypeCreateInfoEXT(struct vn_cs_encoder *enc, const VkMutableDescriptorTypeCreateInfoEXT *val)
+{
+    assert(val->sType == VK_STRUCTURE_TYPE_MUTABLE_DESCRIPTOR_TYPE_CREATE_INFO_EXT);
+    vn_encode_VkStructureType(enc, &(VkStructureType){ VK_STRUCTURE_TYPE_MUTABLE_DESCRIPTOR_TYPE_CREATE_INFO_EXT });
+    vn_encode_VkMutableDescriptorTypeCreateInfoEXT_pnext(enc, val->pNext);
+    vn_encode_VkMutableDescriptorTypeCreateInfoEXT_self(enc, val);
 }
 
 /* struct VkMemoryDedicatedRequirements chain */

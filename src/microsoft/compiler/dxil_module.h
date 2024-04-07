@@ -176,6 +176,7 @@ struct dxil_module {
    void *ralloc_ctx;
    enum dxil_shader_kind shader_kind;
    unsigned major_version, minor_version;
+   unsigned major_validator, minor_validator;
    struct dxil_features feats;
    unsigned raw_and_structured_buffers : 1;
    struct dxil_shader_info info;
@@ -308,6 +309,12 @@ const struct dxil_type *
 dxil_module_get_samplepos_type(struct dxil_module *m);
 
 const struct dxil_type *
+dxil_module_get_res_bind_type(struct dxil_module *m);
+
+const struct dxil_type *
+dxil_module_get_res_props_type(struct dxil_module *m);
+
+const struct dxil_type *
 dxil_module_get_struct_type(struct dxil_module *m,
                             const char *name,
                             const struct dxil_type **elem_types,
@@ -376,6 +383,18 @@ dxil_module_get_array_const(struct dxil_module *m, const struct dxil_type *type,
 
 const struct dxil_value *
 dxil_module_get_undef(struct dxil_module *m, const struct dxil_type *type);
+
+const struct dxil_value *
+dxil_module_get_res_bind_const(struct dxil_module *m,
+                               uint32_t lower_bound,
+                               uint32_t upper_bound,
+                               uint32_t space,
+                               uint8_t class);
+
+const struct dxil_value *
+dxil_module_get_res_props_const(struct dxil_module *m,
+                                enum dxil_resource_class class,
+                                const struct dxil_mdnode *mdnode);
 
 const struct dxil_mdnode *
 dxil_get_metadata_string(struct dxil_module *m, const char *str);

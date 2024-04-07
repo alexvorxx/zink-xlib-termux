@@ -71,8 +71,8 @@ radv_init_trace(struct radv_device *device)
 
    result = ws->buffer_create(
       ws, TRACE_BO_SIZE, 8, RADEON_DOMAIN_VRAM,
-      RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_ZERO_VRAM,
-      RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, &device->trace_bo);
+      RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_ZERO_VRAM |
+      RADEON_FLAG_VA_UNCACHED, RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, &device->trace_bo);
    if (result != VK_SUCCESS)
       return false;
 
@@ -225,7 +225,7 @@ radv_dump_descriptor_set(struct radv_device *device, struct radv_descriptor_set 
          break;
       case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
       case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
-      case VK_DESCRIPTOR_TYPE_MUTABLE_VALVE:
+      case VK_DESCRIPTOR_TYPE_MUTABLE_EXT:
       case VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR:
          /* todo */
          break;
@@ -488,17 +488,17 @@ radv_dump_vertex_descriptors(struct radv_graphics_pipeline *pipeline, FILE *f)
    }
 }
 
-static struct radv_shader_prolog *
+static struct radv_shader_part *
 radv_get_saved_vs_prolog(struct radv_device *device)
 {
    uint64_t *ptr = (uint64_t *)device->trace_id_ptr;
-   return *(struct radv_shader_prolog **)(ptr + 4);
+   return *(struct radv_shader_part **)(ptr + 4);
 }
 
 static void
 radv_dump_vs_prolog(struct radv_pipeline *pipeline, FILE *f)
 {
-   struct radv_shader_prolog *vs_prolog = radv_get_saved_vs_prolog(pipeline->device);
+   struct radv_shader_part *vs_prolog = radv_get_saved_vs_prolog(pipeline->device);
    struct radv_shader *vs_shader = radv_get_shader(pipeline, MESA_SHADER_VERTEX);
 
    if (!vs_prolog || !vs_shader || !vs_shader->info.vs.has_prolog)
@@ -663,7 +663,7 @@ radv_dump_umr_waves(struct radv_queue *queue, FILE *f)
    if (ring != AMD_IP_GFX)
       return;
 
-   sprintf(cmd, "umr -O bits,halt_waves -wa %s 2>&1",
+   sprintf(cmd, "umr -O bits,halt_waves -go 0 -wa %s -go 1 2>&1",
            device->physical_device->rad_info.gfx_level >= GFX10 ? "gfx_0.0.0" : "gfx");
 
    fprintf(f, "\nUMR GFX waves:\n\n");
@@ -739,19 +739,19 @@ radv_check_gpu_hangs(struct radv_queue *queue, struct radeon_cmdbuf *cs)
    }
 
    if (!(device->instance->debug_flags & RADV_DEBUG_NO_UMR)) {
-      /* Dump UMR ring. */
-      snprintf(dump_path, sizeof(dump_path), "%s/%s", dump_dir, "umr_ring.log");
-      f = fopen(dump_path, "w+");
-      if (f) {
-         radv_dump_umr_ring(queue, f);
-         fclose(f);
-      }
-
       /* Dump UMR waves. */
       snprintf(dump_path, sizeof(dump_path), "%s/%s", dump_dir, "umr_waves.log");
       f = fopen(dump_path, "w+");
       if (f) {
          radv_dump_umr_waves(queue, f);
+         fclose(f);
+      }
+
+      /* Dump UMR ring. */
+      snprintf(dump_path, sizeof(dump_path), "%s/%s", dump_dir, "umr_ring.log");
+      f = fopen(dump_path, "w+");
+      if (f) {
+         radv_dump_umr_ring(queue, f);
          fclose(f);
       }
    }

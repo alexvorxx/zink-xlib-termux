@@ -43,7 +43,7 @@ descriptor_bo_map(struct v3dv_device *device,
     */
    uint32_t bo_size = v3dv_X(device, descriptor_bo_size)(binding_layout->type);
    assert(bo_size > 0 ||
-          binding_layout->type == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT);
+          binding_layout->type == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK);
 
    return set->pool->bo->map +
       set->base_offset + binding_layout->descriptor_offset +
@@ -132,7 +132,7 @@ v3dv_descriptor_map_get_descriptor_bo(struct v3dv_device *device,
    const struct v3dv_descriptor_set_binding_layout *binding_layout =
       &set->layout->binding[binding_number];
 
-   assert(binding_layout->type == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT ||
+   assert(binding_layout->type == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK ||
           v3dv_X(device, descriptor_bo_size)(binding_layout->type) > 0);
    if (out_type)
       *out_type = binding_layout->type;
@@ -339,6 +339,7 @@ v3dv_CreatePipelineLayout(VkDevice _device,
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    layout->num_sets = pCreateInfo->setLayoutCount;
+   layout->ref_cnt = 1;
 
    uint32_t dynamic_offset_count = 0;
    for (uint32_t set = 0; set < pCreateInfo->setLayoutCount; set++) {
@@ -381,6 +382,19 @@ v3dv_CreatePipelineLayout(VkDevice _device,
    return VK_SUCCESS;
 }
 
+void
+v3dv_pipeline_layout_destroy(struct v3dv_device *device,
+                             struct v3dv_pipeline_layout *layout,
+                             const VkAllocationCallbacks *alloc)
+{
+   assert(layout);
+
+   for (uint32_t i = 0; i < layout->num_sets; i++)
+      v3dv_descriptor_set_layout_unref(device, layout->set[i].layout);
+
+   vk_object_free(&device->vk, alloc, layout);
+}
+
 VKAPI_ATTR void VKAPI_CALL
 v3dv_DestroyPipelineLayout(VkDevice _device,
                           VkPipelineLayout _pipelineLayout,
@@ -392,10 +406,7 @@ v3dv_DestroyPipelineLayout(VkDevice _device,
    if (!pipeline_layout)
       return;
 
-   for (uint32_t i = 0; i < pipeline_layout->num_sets; i++)
-      v3dv_descriptor_set_layout_unref(device, pipeline_layout->set[i].layout);
-
-   vk_object_free(&device->vk, pAllocator, pipeline_layout);
+   v3dv_pipeline_layout_unref(device, pipeline_layout, pAllocator);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -421,7 +432,6 @@ v3dv_CreateDescriptorPool(VkDevice _device,
       vk_find_struct_const(pCreateInfo->pNext,
                            DESCRIPTOR_POOL_INLINE_UNIFORM_BLOCK_CREATE_INFO);
 
-   assert(pCreateInfo->poolSizeCount > 0);
    for (unsigned i = 0; i < pCreateInfo->poolSizeCount; ++i) {
       /* Verify supported descriptor type */
       switch(pCreateInfo->pPoolSizes[i].type) {
@@ -436,7 +446,7 @@ v3dv_CreateDescriptorPool(VkDevice _device,
       case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
       case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
       case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
-      case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT:
+      case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK:
          break;
       default:
          unreachable("Unimplemented descriptor type");
@@ -445,12 +455,12 @@ v3dv_CreateDescriptorPool(VkDevice _device,
 
       assert(pCreateInfo->pPoolSizes[i].descriptorCount > 0);
       if (pCreateInfo->pPoolSizes[i].type ==
-          VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT) {
+          VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK) {
          /* Inline uniform blocks are specified to use the descriptor array
           * size as the size in bytes of the block.
           */
          assert(inline_info);
-         descriptor_count++;
+         descriptor_count += inline_info->maxInlineUniformBlockBindings;
          bo_size += pCreateInfo->pPoolSizes[i].descriptorCount;
       } else {
          descriptor_count += pCreateInfo->pPoolSizes[i].descriptorCount;
@@ -695,7 +705,7 @@ v3dv_CreateDescriptorSetLayout(VkDevice _device,
       case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
       case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
       case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
-      case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT:
+      case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK:
          /* Nothing here, just to keep the descriptor type filtering below */
          break;
       default:
@@ -723,7 +733,7 @@ v3dv_CreateDescriptorSetLayout(VkDevice _device,
 
       set_layout->shader_stages |= binding->stageFlags;
 
-      if (binding->descriptorType != VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT) {
+      if (binding->descriptorType != VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK) {
          dynamic_offset_count += binding->descriptorCount *
             set_layout->binding[binding_number].dynamic_offset_count;
 
@@ -1058,8 +1068,8 @@ write_inline_uniform_descriptor(struct v3dv_device *device,
                                 size_t offset,
                                 size_t size)
 {
-   assert(binding_layout->type == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT);
-   descriptor->type = VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT;
+   assert(binding_layout->type == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK);
+   descriptor->type = VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK;
    descriptor->buffer = NULL;
 
    void *desc_map = descriptor_bo_map(device, set, binding_layout, 0);
@@ -1098,7 +1108,7 @@ v3dv_UpdateDescriptorSets(VkDevice  _device,
        * to specify the size (in bytes) of the update.
        */
       uint32_t descriptor_count;
-      if (writeset->descriptorType != VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT) {
+      if (writeset->descriptorType != VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK) {
          descriptor += writeset->dstArrayElement;
          descriptor_count = writeset->descriptorCount;
       } else {
@@ -1160,7 +1170,7 @@ v3dv_UpdateDescriptorSets(VkDevice  _device,
                                          writeset->dstArrayElement + j);
             break;
          }
-         case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT: {
+         case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK: {
             const VkWriteDescriptorSetInlineUniformBlock *inline_write =
                vk_find_struct_const(writeset->pNext,
                                     WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK);
@@ -1405,7 +1415,7 @@ v3dv_UpdateDescriptorSetWithTemplate(
          }
          break;
 
-      case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT: {
+      case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK: {
          write_inline_uniform_descriptor(device, descriptor, set,
                                          binding_layout,
                                          pData + entry->offset,

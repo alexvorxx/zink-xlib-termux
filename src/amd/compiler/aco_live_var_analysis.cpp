@@ -227,20 +227,36 @@ process_live_temps_per_block(Program* program, live& lives, Block* block, unsign
       phi_info[pred_idx].linear_phi_defs = linear_phi_defs;
 
    /* now, we need to merge the live-ins into the live-out sets */
-   for (unsigned t : live) {
-      RegClass rc = program->temp_rc[t];
-      std::vector<unsigned>& preds = rc.is_linear() ? block->linear_preds : block->logical_preds;
+   bool fast_merge =
+      block->logical_preds.size() == 0 || block->logical_preds == block->linear_preds;
 
 #ifndef NDEBUG
-      if (preds.empty())
-         aco_err(program, "Temporary never defined or are defined after use: %%%d in BB%d", t,
-                 block->index);
+   if ((block->linear_preds.empty() && !live.empty()) ||
+       (block->logical_preds.empty() && new_demand.vgpr > 0))
+      fast_merge = false; /* we might have errors */
 #endif
 
-      for (unsigned pred_idx : preds) {
-         auto it = lives.live_out[pred_idx].insert(t);
-         if (it.second)
+   if (fast_merge) {
+      for (unsigned pred_idx : block->linear_preds) {
+         if (lives.live_out[pred_idx].insert(live))
             worklist = std::max(worklist, pred_idx + 1);
+      }
+   } else {
+      for (unsigned t : live) {
+         RegClass rc = program->temp_rc[t];
+         std::vector<unsigned>& preds = rc.is_linear() ? block->linear_preds : block->logical_preds;
+
+#ifndef NDEBUG
+         if (preds.empty())
+            aco_err(program, "Temporary never defined or are defined after use: %%%d in BB%d", t,
+                    block->index);
+#endif
+
+         for (unsigned pred_idx : preds) {
+            auto it = lives.live_out[pred_idx].insert(t);
+            if (it.second)
+               worklist = std::max(worklist, pred_idx + 1);
+         }
       }
    }
 
@@ -293,12 +309,14 @@ calc_waves_per_workgroup(Program* program)
 uint16_t
 get_extra_sgprs(Program* program)
 {
+   /* We don't use this register on GFX6-8 and it's removed on GFX10+. */
+   bool needs_flat_scr = program->config->scratch_bytes_per_wave && program->gfx_level == GFX9;
+
    if (program->gfx_level >= GFX10) {
-      assert(!program->needs_flat_scr);
       assert(!program->dev.xnack_enabled);
       return 0;
    } else if (program->gfx_level >= GFX8) {
-      if (program->needs_flat_scr)
+      if (needs_flat_scr)
          return 6;
       else if (program->dev.xnack_enabled)
          return 4;
@@ -308,7 +326,7 @@ get_extra_sgprs(Program* program)
          return 0;
    } else {
       assert(!program->dev.xnack_enabled);
-      if (program->needs_flat_scr)
+      if (needs_flat_scr)
          return 4;
       else if (program->needs_vcc)
          return 2;

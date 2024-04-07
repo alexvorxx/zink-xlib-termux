@@ -115,6 +115,11 @@
 #define PKT3_DISPATCH_DIRECT                0x15
 #define PKT3_DISPATCH_INDIRECT              0x16
 #define PKT3_ATOMIC_MEM                     0x1E
+#define ATOMIC_OP(x)                        ((unsigned)((x)&0x7f) << 0)
+#define TC_OP_ATOMIC_CMPSWAP_32             0x48
+#define ATOMIC_COMMAND(x)                   ((unsigned)((x)&0x3) << 8)
+#define ATOMIC_COMMAND_SINGLE_PASS          0x0
+#define ATOMIC_COMMAND_LOOP                 0x1
 #define PKT3_OCCLUSION_QUERY                0x1F /* new for CIK */
 #define PKT3_SET_PREDICATION                0x20
 #define PKT3_COND_EXEC                      0x22
@@ -265,6 +270,7 @@
 #define PKT3_IT_OPCODE_C      0xFFFF00FF
 #define PKT3_PREDICATE(x)     (((x) >> 0) & 0x1)
 #define PKT3_SHADER_TYPE_S(x) (((unsigned)(x)&0x1) << 1)
+#define PKT3_RESET_FILTER_CAM(x) (((unsigned)(x)&0x1) << 2)
 #define PKT0(index, count)    (PKT_TYPE_S(0) | PKT0_BASE_INDEX_S(index) | PKT_COUNT_S(count))
 #define PKT3(op, count, predicate)                                                                 \
    (PKT_TYPE_S(3) | PKT_COUNT_S(count) | PKT3_IT_OPCODE_S(op) | PKT3_PREDICATE(predicate))

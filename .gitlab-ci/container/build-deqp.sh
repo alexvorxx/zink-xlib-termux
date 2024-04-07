@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2086 # we want word splitting
 
 set -ex
 
@@ -6,7 +7,7 @@ git config --global user.email "mesa@example.com"
 git config --global user.name "Mesa CI"
 git clone \
     https://github.com/KhronosGroup/VK-GL-CTS.git \
-    -b vulkan-cts-1.3.2.0 \
+    -b vulkan-cts-1.3.3.0 \
     --depth 1 \
     /VK-GL-CTS
 pushd /VK-GL-CTS
@@ -60,6 +61,9 @@ cp \
 cp \
     /deqp/external/openglcts/modules/gl_cts/data/mustpass/gl/khronos_mustpass/4.6.1.x/*-master.txt \
     /deqp/mustpass/.
+cp \
+    /deqp/external/openglcts/modules/gl_cts/data/mustpass/gl/khronos_mustpass_single/4.6.1.x/*-single.txt \
+    /deqp/mustpass/.
 
 # Save *some* executor utils, but otherwise strip things down
 # to reduct deqp build size:
@@ -77,10 +81,11 @@ rm -rf /deqp/external/openglcts/modules/cts-runner
 rm -rf /deqp/modules/internal
 rm -rf /deqp/execserver
 rm -rf /deqp/framework
+# shellcheck disable=SC2038,SC2185 # TODO: rewrite find
 find -iname '*cmake*' -o -name '*ninja*' -o -name '*.o' -o -name '*.a' | xargs rm -rf
 ${STRIP_CMD:-strip} external/vulkancts/modules/vulkan/deqp-vk
 ${STRIP_CMD:-strip} external/openglcts/modules/glcts
 ${STRIP_CMD:-strip} modules/*/deqp-*
-du -sh *
+du -sh ./*
 rm -rf /VK-GL-CTS
 popd

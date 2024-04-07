@@ -26,6 +26,8 @@
 #ifndef SHADER_ENUMS_H
 #define SHADER_ENUMS_H
 
+#include "util/macros.h"
+
 #include <stdbool.h>
 
 /* Project-wide (GL and Vulkan) maximum. */
@@ -42,16 +44,23 @@ extern "C" {
  * The GLSL linker assumes that if i<j, then the j-th shader is
  * executed later than the i-th shader.
  */
-typedef enum
+typedef enum pipe_shader_type
 {
    MESA_SHADER_NONE = -1,
    MESA_SHADER_VERTEX = 0,
+   PIPE_SHADER_VERTEX = MESA_SHADER_VERTEX,
    MESA_SHADER_TESS_CTRL = 1,
+   PIPE_SHADER_TESS_CTRL = MESA_SHADER_TESS_CTRL,
    MESA_SHADER_TESS_EVAL = 2,
+   PIPE_SHADER_TESS_EVAL = MESA_SHADER_TESS_EVAL,
    MESA_SHADER_GEOMETRY = 3,
+   PIPE_SHADER_GEOMETRY = MESA_SHADER_GEOMETRY,
    MESA_SHADER_FRAGMENT = 4,
+   PIPE_SHADER_FRAGMENT = MESA_SHADER_FRAGMENT,
    MESA_SHADER_COMPUTE = 5,
+   PIPE_SHADER_COMPUTE = MESA_SHADER_COMPUTE,
 
+   PIPE_SHADER_TYPES = (PIPE_SHADER_COMPUTE + 1),
    /* Vulkan-only stages. */
    MESA_SHADER_TASK         = 6,
    MESA_SHADER_MESH         = 7,
@@ -800,7 +809,7 @@ typedef enum
    SYSTEM_VALUE_BARYCENTRIC_PERSP_PIXEL,
    SYSTEM_VALUE_BARYCENTRIC_PERSP_SAMPLE,
    SYSTEM_VALUE_BARYCENTRIC_PERSP_CENTROID,
-   SYSTEM_VALUE_BARYCENTRIC_PERSP_SIZE,
+   SYSTEM_VALUE_BARYCENTRIC_PERSP_CENTER_RHW,
    SYSTEM_VALUE_BARYCENTRIC_LINEAR_PIXEL,
    SYSTEM_VALUE_BARYCENTRIC_LINEAR_CENTROID,
    SYSTEM_VALUE_BARYCENTRIC_LINEAR_SAMPLE,
@@ -1214,6 +1223,43 @@ enum cl_sampler_filter_mode {
 #define MAT_BIT_BACK_SHININESS        (1<<MAT_ATTRIB_BACK_SHININESS)
 #define MAT_BIT_FRONT_INDEXES         (1<<MAT_ATTRIB_FRONT_INDEXES)
 #define MAT_BIT_BACK_INDEXES          (1<<MAT_ATTRIB_BACK_INDEXES)
+
+/** An enum representing what kind of input gl_SubgroupSize is. */
+enum PACKED gl_subgroup_size
+{
+   /** Actual subgroup size, whatever that happens to be */
+   SUBGROUP_SIZE_VARYING = 0,
+
+   /** Subgroup size must appear to be draw or dispatch-uniform
+    *
+    * This is the OpenGL behavior
+    */
+   SUBGROUP_SIZE_UNIFORM,
+
+   /** Subgroup size must appear to be the API advertised constant
+    *
+    * This is the default Vulkan 1.1 behavior
+    */
+   SUBGROUP_SIZE_API_CONSTANT,
+
+   /** Subgroup size must actually be the API advertised constant
+    *
+    * Not only must the subgroup size match the API advertised constant as
+    * with SUBGROUP_SIZE_API_CONSTANT but it must also be dispatched such that
+    * all the subgroups are full if there are enough invocations.
+    */
+   SUBGROUP_SIZE_FULL_SUBGROUPS,
+
+   /* These enums are specifically chosen so that the value of the enum is
+    * also the subgroup size.  If any new values are added, they must respect
+    * this invariant.
+    */
+   SUBGROUP_SIZE_REQUIRE_8   = 8,   /**< VK_EXT_subgroup_size_control */
+   SUBGROUP_SIZE_REQUIRE_16  = 16,  /**< VK_EXT_subgroup_size_control */
+   SUBGROUP_SIZE_REQUIRE_32  = 32,  /**< VK_EXT_subgroup_size_control */
+   SUBGROUP_SIZE_REQUIRE_64  = 64,  /**< VK_EXT_subgroup_size_control */
+   SUBGROUP_SIZE_REQUIRE_128 = 128, /**< VK_EXT_subgroup_size_control */
+};
 
 #ifdef __cplusplus
 } /* extern "C" */

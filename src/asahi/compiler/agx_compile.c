@@ -3411,6 +3411,8 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
       }
    }
 
+   info->stage = nir->info.stage;
+
    if (nir->info.stage == MESA_SHADER_VERTEX) {
       info->nonzero_viewport = nir->info.outputs_written & VARYING_BIT_VIEWPORT;
 

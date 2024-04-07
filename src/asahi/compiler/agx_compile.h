@@ -60,8 +60,11 @@ struct agx_interp_info {
    uint64_t flat;
    uint64_t linear;
 };
+static_assert(sizeof(struct agx_interp_info) == 16, "packed");
 
 struct agx_shader_info {
+   enum pipe_shader_type stage;
+
    union agx_varyings varyings;
 
    /* Number of uniforms */

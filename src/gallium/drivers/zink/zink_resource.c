@@ -945,8 +945,8 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
    mai.pNext = NULL;
    mai.allocationSize = reqs.size;
    enum zink_heap heap = zink_heap_from_domain_flags(flags, aflags);
-   mai.memoryTypeIndex = screen->heap_map[heap];
-   if (unlikely(!(reqs.memoryTypeBits & BITFIELD_BIT(mai.memoryTypeIndex)))) {
+   mai.memoryTypeIndex = zink_heap_idx_from_bits(screen, heap, reqs.memoryTypeBits);
+   if (mai.memoryTypeIndex == UINT32_MAX) {
       /* not valid based on reqs; demote to more compatible type */
       switch (heap) {
       case ZINK_HEAP_DEVICE_LOCAL_VISIBLE:
@@ -958,9 +958,10 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
       default:
          break;
       }
-      mai.memoryTypeIndex = screen->heap_map[heap];
-      assert(reqs.memoryTypeBits & BITFIELD_BIT(mai.memoryTypeIndex));
+      mai.memoryTypeIndex = zink_heap_idx_from_bits(screen, heap, reqs.memoryTypeBits);
+      assert(mai.memoryTypeIndex != UINT32_MAX);
    }
+   assert(reqs.memoryTypeBits & BITFIELD_BIT(mai.memoryTypeIndex));
 
    VkMemoryDedicatedAllocateInfo ded_alloc_info = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
@@ -1037,7 +1038,7 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
       alignment = MAX2(alignment, screen->info.props.limits.minMemoryMapAlignment);
    obj->alignment = alignment;
 retry:
-   obj->bo = zink_bo(zink_bo_create(screen, reqs.size, alignment, heap, mai.pNext ? ZINK_ALLOC_NO_SUBALLOC : 0, mai.pNext));
+   obj->bo = zink_bo(zink_bo_create(screen, reqs.size, alignment, heap, mai.pNext ? ZINK_ALLOC_NO_SUBALLOC : 0, mai.memoryTypeIndex, mai.pNext));
    if (!obj->bo) {
       if (heap == ZINK_HEAP_DEVICE_LOCAL_VISIBLE) {
          if (templ->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT || templ->usage == PIPE_USAGE_DYNAMIC)
@@ -1055,9 +1056,9 @@ retry:
       obj->size = zink_bo_get_size(obj->bo);
    }
 
-   obj->coherent = obj->bo->base.placement & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+   obj->coherent = screen->info.mem_props.memoryTypes[obj->bo->base.placement].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
    if (!(templ->flags & PIPE_RESOURCE_FLAG_SPARSE)) {
-      obj->host_visible = obj->bo->base.placement & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+      obj->host_visible = screen->info.mem_props.memoryTypes[obj->bo->base.placement].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
    }
 
    if (templ->target == PIPE_BUFFER) {
@@ -1871,7 +1872,9 @@ zink_buffer_map(struct pipe_context *pctx,
          goto success;
       usage |= PIPE_MAP_UNSYNCHRONIZED;
    } else if (!(usage & PIPE_MAP_UNSYNCHRONIZED) &&
-              (((usage & PIPE_MAP_READ) && !(usage & PIPE_MAP_PERSISTENT) && res->base.b.usage != PIPE_USAGE_STAGING) || !res->obj->host_visible)) {
+              (((usage & PIPE_MAP_READ) && !(usage & PIPE_MAP_PERSISTENT) &&
+               ((screen->info.mem_props.memoryTypes[res->obj->bo->base.placement].propertyFlags & VK_STAGING_RAM) != VK_STAGING_RAM)) ||
+              !res->obj->host_visible)) {
       assert(!(usage & (TC_TRANSFER_MAP_THREADED_UNSYNC | PIPE_MAP_THREAD_SAFE)));
       if (!res->obj->host_visible || !(usage & PIPE_MAP_ONCE)) {
          trans->offset = box->x % screen->info.props.limits.minMemoryMapAlignment;

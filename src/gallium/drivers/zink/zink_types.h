@@ -63,7 +63,7 @@
 
 
 /* the descriptor binding id for fbfetch/input attachment */
-#define ZINK_FBFETCH_BINDING 6 //COMPUTE+1
+#define ZINK_FBFETCH_BINDING 5
 #define ZINK_GFX_SHADER_COUNT 5
 
 /* number of descriptors to allocate in a pool */
@@ -145,7 +145,6 @@ enum zink_descriptor_type {
 enum zink_descriptor_mode {
    ZINK_DESCRIPTOR_MODE_AUTO,
    ZINK_DESCRIPTOR_MODE_LAZY,
-   ZINK_DESCRIPTOR_MODE_COMPACT,
 };
 
 /* indexing for descriptor template management */
@@ -1210,8 +1209,8 @@ struct zink_screen {
       unsigned min_alloc_size;
       uint32_t next_bo_unique_id;
    } pb;
-   uint8_t heap_map[VK_MAX_MEMORY_TYPES];
-   VkMemoryPropertyFlags heap_flags[VK_MAX_MEMORY_TYPES];
+   uint8_t heap_map[ZINK_HEAP_MAX][VK_MAX_MEMORY_TYPES];
+   uint8_t heap_count[ZINK_HEAP_MAX];
    bool resizable_bar;
 
    uint64_t total_video_mem;

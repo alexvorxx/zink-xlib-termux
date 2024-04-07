@@ -59,6 +59,7 @@ pub enum InternalKernelArgType {
     InlineSampler((cl_addressing_mode, cl_filter_mode, bool)),
     FormatArray,
     OrderArray,
+    WorkDim,
 }
 
 #[derive(Hash, PartialEq, Eq, Clone)]
@@ -210,6 +211,7 @@ impl InternalKernelArg {
             }
             InternalKernelArgType::FormatArray => bin.push(4),
             InternalKernelArgType::OrderArray => bin.push(5),
+            InternalKernelArgType::WorkDim => bin.push(6),
         }
 
         bin
@@ -231,6 +233,7 @@ impl InternalKernelArg {
             }
             4 => InternalKernelArgType::FormatArray,
             5 => InternalKernelArgType::OrderArray,
+            6 => InternalKernelArgType::WorkDim,
             _ => return None,
         };
 
@@ -486,7 +489,13 @@ fn lower_and_optimize_nir_late(
         );
     }
 
+    // run before gather info
+    nir.pass0(nir_lower_system_values);
+    let mut compute_options = nir_lower_compute_system_values_options::default();
+    compute_options.set_has_base_global_invocation_id(true);
+    nir.pass1(nir_lower_compute_system_values, &compute_options);
     nir.pass1(nir_shader_gather_info, nir.entrypoint());
+
     if nir.num_images() > 0 {
         res.push(InternalKernelArg {
             kind: InternalKernelArgType::FormatArray,
@@ -515,6 +524,20 @@ fn lower_and_optimize_nir_late(
         );
     }
 
+    if nir.reads_sysval(gl_system_value::SYSTEM_VALUE_WORK_DIM) {
+        res.push(InternalKernelArg {
+            kind: InternalKernelArgType::WorkDim,
+            size: 1,
+            offset: 0,
+        });
+        lower_state.work_dim = nir.add_var(
+            nir_variable_mode::nir_var_uniform,
+            unsafe { glsl_uint8_t_type() },
+            args.len() + res.len() - 1,
+            "work_dim",
+        );
+    }
+
     nir.pass2(
         nir_lower_vars_to_explicit_types,
         nir_variable_mode::nir_var_mem_shared
@@ -539,10 +562,6 @@ fn lower_and_optimize_nir_late(
         nir_variable_mode::nir_var_mem_global | nir_variable_mode::nir_var_mem_constant,
         global_address_format,
     );
-    nir.pass0(nir_lower_system_values);
-    let mut compute_options = nir_lower_compute_system_values_options::default();
-    compute_options.set_has_base_global_invocation_id(true);
-    nir.pass1(nir_lower_compute_system_values, &compute_options);
 
     nir.pass1(rusticl_lower_intrinsics, &mut lower_state);
     nir.pass2(
@@ -898,6 +917,9 @@ impl Kernel {
                 InternalKernelArgType::OrderArray => {
                     input.extend_from_slice(&cl_prop::<&Vec<u16>>(&tex_orders));
                     input.extend_from_slice(&cl_prop::<&Vec<u16>>(&img_orders));
+                }
+                InternalKernelArgType::WorkDim => {
+                    input.extend_from_slice(&[work_dim as u8; 1]);
                 }
             }
         }

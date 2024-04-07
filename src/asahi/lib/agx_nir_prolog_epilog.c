@@ -154,6 +154,7 @@ agx_nir_vs_prolog(nir_builder *b, const void *key_)
 
       if (vec_idx != a) {
          vec = nir_load_input(b, 4, 32, nir_imm_int(b, 0), .base = a);
+         vec_idx = a;
       }
 
       /* ABI: attributes passed starting at r8 */

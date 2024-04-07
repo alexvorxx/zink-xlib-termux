@@ -1796,18 +1796,11 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
       attrib_components_read);
 
    if (so->type == PIPE_SHADER_FRAGMENT) {
-      epilog_key.sample_shading = nir->info.fs.uses_sample_shading;
-
       /* XXX: don't replicate this all over the driver */
       epilog_key.rt_spill_base = BITSET_LAST_BIT(nir->info.textures_used) +
                                  (2 * BITSET_LAST_BIT(nir->info.images_used));
 
       compiled->epilog_key = epilog_key;
-
-      if (epilog_key.broadcast_rt0)
-         outputs = ~0;
-      else
-         outputs = nir->info.outputs_written >> FRAG_RESULT_DATA0;
    }
 
    compiled->so = so;
@@ -2428,7 +2421,6 @@ agx_update_fs(struct agx_batch *batch)
 
       .epilog.fs.nr_samples = nr_samples,
       .epilog.fs.link = ctx->fs->epilog_key,
-      .epilog.fs.rt_written = ctx->fs->b.info.outputs,
       .epilog.fs.force_small_tile = dev->debug & AGX_DBG_SMALLTILE,
 
       .main = ctx->fs,

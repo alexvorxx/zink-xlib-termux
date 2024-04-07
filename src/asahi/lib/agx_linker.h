@@ -121,12 +121,13 @@ struct agx_fs_epilog_link_info {
     * This happens in the epilog for correctness when the epilog discards.
     */
    bool write_z, write_s;
-};
 
-struct agx_fs_epilog_key {
    /* Mask of render targets written by the main shader */
    uint8_t rt_written;
+};
+static_assert(sizeof(struct agx_fs_epilog_link_info) == 8, "packed");
 
+struct agx_fs_epilog_key {
    struct agx_fs_epilog_link_info link;
 
    /* Blend state. Blending happens in the epilog. */

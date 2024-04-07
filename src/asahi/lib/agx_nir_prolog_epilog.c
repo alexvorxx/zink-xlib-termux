@@ -290,7 +290,7 @@ agx_nir_fs_epilog(nir_builder *b, const void *key_)
    /* First, construct a passthrough shader reading each colour and outputting
     * the value.
     */
-   u_foreach_bit(rt, key->rt_written) {
+   u_foreach_bit(rt, key->link.rt_written) {
       bool dual_src = (rt == 1) && blend_uses_2src(key->blend.rt[0]);
       unsigned read_rt = (key->link.broadcast_rt0 && !dual_src) ? 0 : rt;
       unsigned size = (key->link.size_32 & BITFIELD_BIT(read_rt)) ? 32 : 16;
@@ -461,6 +461,7 @@ lower_output_to_epilog(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    if (sem.location == FRAG_RESULT_COLOR) {
       sem.location = FRAG_RESULT_DATA0;
       info->broadcast_rt0 = true;
+      info->rt_written = ~0;
    }
 
    /* We don't use the epilog for sample mask writes */
@@ -475,8 +476,9 @@ lower_output_to_epilog(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    if (sem.dual_source_blend_index) {
       assert(rt == 0);
       rt = 1;
-      b->shader->info.outputs_written |= BITFIELD64_BIT(FRAG_RESULT_DATA1);
    }
+
+   info->rt_written |= BITFIELD_BIT(rt);
 
    b->cursor = nir_instr_remove(&intr->instr);
    nir_def *vec = intr->src[0].ssa;
@@ -509,9 +511,12 @@ bool
 agx_nir_lower_fs_output_to_epilog(nir_shader *s,
                                   struct agx_fs_epilog_link_info *out)
 {
-   return nir_shader_intrinsics_pass(
-      s, lower_output_to_epilog,
-      nir_metadata_dominance | nir_metadata_block_index, out);
+   nir_shader_intrinsics_pass(s, lower_output_to_epilog,
+                              nir_metadata_dominance | nir_metadata_block_index,
+                              out);
+
+   out->sample_shading = s->info.fs.uses_sample_shading;
+   return true;
 }
 
 bool

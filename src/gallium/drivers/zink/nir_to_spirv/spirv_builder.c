@@ -1539,7 +1539,16 @@ SpvId
 spirv_builder_spec_const_uint(struct spirv_builder *b, int width)
 {
    assert(width <= 32);
-   return spirv_builder_emit_unop(b, SpvOpSpecConstant, spirv_builder_type_uint(b, width), 0);
+   SpvId result = spirv_builder_new_id(b);
+   spirv_buffer_prepare(&b->types_const_defs, b->mem_ctx, 4);
+   spirv_buffer_emit_word(&b->types_const_defs, SpvOpSpecConstant | (4 << 16));
+   spirv_buffer_emit_word(&b->types_const_defs, spirv_builder_type_uint(b, width));
+   spirv_buffer_emit_word(&b->types_const_defs, result);
+   /* this is the default value for spec constants;
+    * if any users need a different default, add a param to pass for it
+    */
+   spirv_buffer_emit_word(&b->types_const_defs, 1);
+   return result;
 }
 
 SpvId

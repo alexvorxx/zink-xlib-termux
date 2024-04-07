@@ -625,7 +625,7 @@ if with_gallium_d3d12 or with_microsoft_clc or with_microsoft_vk
   dep_dxheaders = dependency('directx-headers', required : false)
   if not dep_dxheaders.found()
     dep_dxheaders = dependency('DirectX-Headers',
-      version : '>= 1.602.0',
+      version : '>= 1.606.4',
       fallback : ['DirectX-Headers', 'dep_dxheaders'],
       required : with_gallium_d3d12 or with_microsoft_vk
     )
@@ -1598,8 +1598,15 @@ elif with_shader_cache
   error('Shader Cache requires compression')
 endif
 
-dep_thread = dependency('threads')
-if dep_thread.found() and host_machine.system() != 'windows'
+if host_machine.system() == 'windows'
+  # For MSVC and MinGW we aren't using pthreads, and dependency('threads') will add linkage
+  # to pthread for MinGW, so leave the dependency null_dep for Windows. For Windows linking to
+  # kernel32 is enough for c11/threads.h and it's already linked by meson by default
+  dep_thread = null_dep
+else
+  dep_thread = dependency('threads')
+endif
+if dep_thread.found()
   pre_args += '-DHAVE_PTHREAD'
   if host_machine.system() != 'netbsd' and cc.has_function(
       'pthread_setaffinity_np',
@@ -1616,6 +1623,10 @@ elif host_machine.system() != 'windows'
                          required: not with_platform_android)
 else
   dep_expat = null_dep
+endif
+# Predefined macros for windows
+if host_machine.system() == 'windows'
+  pre_args += '-DWIN32_LEAN_AND_MEAN' # http://msdn2.microsoft.com/en-us/library/6dwk3a1z.aspx
 endif
 # this only exists on linux so either this is linux and it will be found, or
 # it's not linux and wont

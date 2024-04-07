@@ -2845,10 +2845,12 @@ static LLVMValueRef visit_image_atomic(struct ac_nir_context *ctx, const nir_int
       atomic_name = "dec";
       atomic_subop = ac_atomic_dec_wrap;
       break;
+   case nir_intrinsic_bindless_image_atomic_fmin:
    case nir_intrinsic_image_deref_atomic_fmin:
       atomic_name = "fmin";
       atomic_subop = ac_atomic_fmin;
       break;
+   case nir_intrinsic_bindless_image_atomic_fmax:
    case nir_intrinsic_image_deref_atomic_fmax:
       atomic_name = "fmax";
       atomic_subop = ac_atomic_fmax;
@@ -3614,6 +3616,7 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
    case nir_intrinsic_load_cull_front_face_enabled_amd:
    case nir_intrinsic_load_cull_small_prim_precision_amd:
    case nir_intrinsic_load_cull_small_primitives_enabled_amd:
+   case nir_intrinsic_load_provoking_vtx_in_prim_amd:
       result = ctx->abi->intrinsic_load(ctx->abi, instr->intrinsic);
       break;
    case nir_intrinsic_load_user_clip_plane:
@@ -3857,6 +3860,8 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
    case nir_intrinsic_bindless_image_atomic_comp_swap:
    case nir_intrinsic_bindless_image_atomic_inc_wrap:
    case nir_intrinsic_bindless_image_atomic_dec_wrap:
+   case nir_intrinsic_bindless_image_atomic_fmin:
+   case nir_intrinsic_bindless_image_atomic_fmax:
       result = visit_image_atomic(ctx, instr, true);
       break;
    case nir_intrinsic_image_deref_atomic_add:

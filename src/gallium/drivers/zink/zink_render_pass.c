@@ -758,8 +758,10 @@ begin_render_pass(struct zink_context *ctx)
    if (!prep_fb_attachments(ctx, att))
       return 0;
 
-   if (zink_screen(ctx->base.screen)->info.have_KHR_imageless_framebuffer) {  
+   /* this can be set if fbfetch is activated */
+   ctx->rp_changed = false;
 
+   if (zink_screen(ctx->base.screen)->info.have_KHR_imageless_framebuffer) {  
 #ifndef NDEBUG
    const unsigned cresolve_offset = ctx->fb_state.nr_cbufs + !!ctx->fb_state.zsbuf;
    for (int i = 0; i < ctx->fb_state.nr_cbufs; i++) {

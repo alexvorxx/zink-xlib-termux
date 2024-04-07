@@ -900,6 +900,13 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    device->supports_48bit_addresses =
       device->gtt_size > (4ULL << 30 /* GiB */);
 
+   /* We currently only have the right bits for instructions in Gen12+. If the
+    * kernel ever starts supporting that feature on previous generations,
+    * we'll need to edit genxml prior to enabling here.
+    */
+   device->has_protected_contexts = device->info.ver >= 12 &&
+      intel_gem_supports_protected_context(fd);
+
    result = anv_physical_device_init_heaps(device, fd);
    if (result != VK_SUCCESS)
       goto fail_base;
@@ -985,16 +992,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
 
    get_device_extensions(device, &device->vk.supported_extensions);
 
-   result = anv_init_wsi(device);
-   if (result != VK_SUCCESS)
-      goto fail_perf;
-
-   anv_measure_device_init(device);
-
-   anv_genX(&device->info, init_physical_device_state)(device);
-
-   *out = &device->vk;
-
+   /* Gather major/minor before WSI. */
    struct stat st;
 
    if (stat(primary_path, &st) == 0) {
@@ -1016,6 +1014,16 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       device->local_major = 0;
       device->local_minor = 0;
    }
+
+   result = anv_init_wsi(device);
+   if (result != VK_SUCCESS)
+      goto fail_perf;
+
+   anv_measure_device_init(device);
+
+   anv_genX(&device->info, init_physical_device_state)(device);
+
+   *out = &device->vk;
 
    return VK_SUCCESS;
 

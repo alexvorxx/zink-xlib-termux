@@ -50,6 +50,7 @@
 #include "vk_command_buffer.h"
 #include "vk_command_pool.h"
 #include "vk_queue.h"
+#include "vk_pipeline.h"
 
 #include <xf86drm.h>
 
@@ -312,8 +313,6 @@ struct v3dv_meta_texel_buffer_copy_pipeline {
 };
 
 struct v3dv_pipeline_key {
-   bool robust_buffer_access;
-   bool robust_image_access;
    uint8_t topology;
    uint8_t logicop_func;
    bool msaa;
@@ -519,11 +518,6 @@ struct v3dv_device {
     * attributes will create their own BO.
     */
    struct v3dv_bo *default_attribute_float;
-
-   VkPhysicalDeviceFeatures features;
-   struct {
-      bool robustImageAccess;
-   } ext_features;
 
    void *device_address_mem_ctx;
    struct util_dynarray device_address_bo_list; /* Array of struct v3dv_bo * */
@@ -1710,6 +1704,8 @@ struct v3dv_pipeline_stage {
    uint32_t program_id;
 
    VkPipelineCreationFeedback feedback;
+
+   struct vk_pipeline_robustness_state robustness;
 };
 
 /* We are using the descriptor pool entry for two things:
@@ -1732,6 +1728,9 @@ struct v3dv_descriptor_pool_entry
 
 struct v3dv_descriptor_pool {
    struct vk_object_base base;
+
+   /* A list with all descriptor sets allocated from the pool. */
+   struct list_head set_list;
 
    /* If this descriptor pool has been allocated for the driver for internal
     * use, typically to implement meta operations.
@@ -1761,6 +1760,9 @@ struct v3dv_descriptor_pool {
 
 struct v3dv_descriptor_set {
    struct vk_object_base base;
+
+   /* List link into the list of all sets allocated from the pool */
+   struct list_head pool_link;
 
    struct v3dv_descriptor_pool *pool;
 

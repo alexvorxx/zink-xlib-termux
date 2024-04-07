@@ -503,7 +503,6 @@ struct zink_batch_state {
    struct zink_resource *swapchain;
    struct util_dynarray acquires;
    struct util_dynarray acquire_flags;
-   struct util_dynarray dead_swapchains;
    struct util_dynarray unref_semaphores;
 
    struct util_queue_fence flush_completed;
@@ -1323,33 +1322,47 @@ zink_screen(struct pipe_screen *pipe)
 
 /** surface types */
 
+/* info for validating/creating imageless framebuffers */
 struct zink_surface_info {
    VkImageCreateFlags flags;
    VkImageUsageFlags usage;
    uint32_t width;
    uint32_t height;
    uint32_t layerCount;
-   VkFormat format[2];
+   VkFormat format[2]; //base format, srgb format (for srgb framebuffer)
 };
 
+/* an imageview for a zink_resource:
+   - may be a fb attachment, samplerview, or shader image
+   - cached on the parent zink_resource_object
+   - also handles swapchains
+ */
 struct zink_surface {
    struct pipe_surface base;
+   /* all the info for creating a new imageview */
    VkImageViewCreateInfo ivci;
    VkImageViewUsageCreateInfo usage_info;
-   struct zink_surface_info info; //TODO: union with fb refs
+
    uint32_t info_hash; ///
+
+   /* for framebuffer use */
+   struct zink_surface_info info;
    bool is_swapchain;
+   /* the current imageview */
    VkImageView image_view;
-   void *dt;
+   /* array of imageviews for swapchains, one for each image */
    VkImageView *swapchain;
    unsigned swapchain_size;
+
    VkImageView *old_swapchain;
    unsigned old_swapchain_size;
    VkImageView simage_view;//old iview after storage replacement/rebind
-   void *obj; //backing resource object
-   uint32_t hash;
-   
+
    struct util_dynarray framebuffer_refs;
+
+   void *obj; //backing resource object; used to determine rebinds
+   void *dt; //current swapchain object; used to determine swapchain rebinds
+   uint32_t hash; //for surface caching
 };
 
 /* wrapper object that preserves the gallium expectation of having
@@ -1357,10 +1370,10 @@ struct zink_surface {
  */
 struct zink_ctx_surface {
    struct pipe_surface base;
-   struct zink_surface *surf;
-   struct zink_ctx_surface *transient; //zink_ctx_surface
-   /* TODO: need replicate EXT */
-   bool transient_init;
+   struct zink_surface *surf; //the actual surface
+   /* TODO: use VK_EXT_multisampled_render_to_single_sampled */
+   struct zink_ctx_surface *transient; //for use with EXT_multisample_render_to_texture
+   bool transient_init; //whether the transient surface has data
 };
 
 /* use this cast for framebuffer surfaces */

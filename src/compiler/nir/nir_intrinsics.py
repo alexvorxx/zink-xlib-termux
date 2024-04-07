@@ -1439,6 +1439,22 @@ system_value("ray_launch_size_addr_amd", 1, bit_sizes=[64])
 # Scratch base of callable stack for ray tracing.
 system_value("rt_dynamic_callable_stack_base_amd", 1)
 
+# Ray Tracing Traversal inputs
+system_value("sbt_offset_amd", 1)
+system_value("sbt_stride_amd", 1)
+system_value("accel_struct_amd", 1, bit_sizes=[64])
+
+#   0. SBT Index
+#   1. Ray Tmax
+#   2. Primitive Id
+#   3. Instance Addr
+#   4. Geometry Id and Flags
+#   5. Hit Kind
+intrinsic("execute_closest_hit_amd", src_comp=[1, 1, 1, 1, 1, 1])
+
+#   0. Ray Tmax
+intrinsic("execute_miss_amd", src_comp=[1])
+
 # Load forced VRS rates.
 intrinsic("load_force_vrs_rates_amd", dest_comp=1, bit_sizes=[32], flags=[CAN_ELIMINATE, CAN_REORDER])
 
@@ -1492,6 +1508,11 @@ system_value("provoking_vtx_in_prim_amd", 1)
 intrinsic("atomic_add_gs_emit_prim_count_amd", [1])
 intrinsic("atomic_add_gen_prim_count_amd", [1], indices=[STREAM_ID])
 intrinsic("atomic_add_xfb_prim_count_amd", [1], indices=[STREAM_ID])
+
+# LDS offset for scratch section in NGG shader
+system_value("lds_ngg_scratch_base_amd", 1)
+# LDS offset for NGG GS shader vertex emit
+system_value("lds_ngg_gs_out_vertex_base_amd", 1)
 
 # V3D-specific instrinc for tile buffer color reads.
 #

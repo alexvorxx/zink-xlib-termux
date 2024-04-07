@@ -1108,8 +1108,13 @@ struct agx_encoder agx_encoder_allocate(struct agx_batch *batch,
 
 void agx_batch_init_state(struct agx_batch *batch);
 
-uint64_t agx_build_meta(struct agx_batch *batch, bool store,
-                        bool partial_render);
+struct asahi_bg_eot {
+   uint64_t usc;
+   struct agx_counts_packed counts;
+};
+
+struct asahi_bg_eot agx_build_meta(struct agx_batch *batch, bool store,
+                                   bool partial_render);
 
 /* Query management */
 uint16_t agx_get_oq_index(struct agx_batch *batch, struct agx_query *query);

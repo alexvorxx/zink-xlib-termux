@@ -3030,7 +3030,7 @@ agx_build_pipeline(struct agx_batch *batch, struct agx_compiled_shader *cs,
    return agx_usc_fini(&b);
 }
 
-uint64_t
+struct asahi_bg_eot
 agx_build_meta(struct agx_batch *batch, bool store, bool partial_render)
 {
    struct agx_context *ctx = batch->ctx;
@@ -3082,6 +3082,7 @@ agx_build_meta(struct agx_batch *batch, bool store, bool partial_render)
 
    bool needs_sampler = false;
    unsigned uniforms = 0;
+   unsigned nr_tex = 0;
 
    for (unsigned rt = 0; rt < PIPE_MAX_COLOR_BUFS; ++rt) {
       if (key.op[rt] == AGX_META_OP_LOAD) {
@@ -3109,6 +3110,7 @@ agx_build_meta(struct agx_batch *batch, bool store, bool partial_render)
             cfg.buffer = texture.gpu;
          }
 
+         nr_tex = (rt * 2) + 1;
       } else if (key.op[rt] == AGX_META_OP_CLEAR) {
          assert(batch->uploaded_clear_color[rt] && "set when cleared");
          agx_usc_uniform(&b, 4 + (8 * rt), 8, batch->uploaded_clear_color[rt]);
@@ -3129,6 +3131,8 @@ agx_build_meta(struct agx_batch *batch, bool store, bool partial_render)
             cfg.count = 1;
             cfg.buffer = pbe.gpu;
          }
+
+         nr_tex = rt + 1;
       }
    }
 
@@ -3145,6 +3149,8 @@ agx_build_meta(struct agx_batch *batch, bool store, bool partial_render)
          cfg.count = 2 * batch->key.nr_cbufs;
          cfg.buffer = descs.gpu;
       }
+
+      nr_tex = MAX2(nr_tex, 2 * batch->key.nr_cbufs);
 
       /* Bind the base as u0_u1 for bindless access */
       agx_usc_uniform(&b, 0, 4,
@@ -3199,7 +3205,20 @@ agx_build_meta(struct agx_batch *batch, bool store, bool partial_render)
          ;
    }
 
-   return agx_usc_fini(&b);
+   struct asahi_bg_eot ret = {.usc = agx_usc_fini(&b)};
+
+   agx_pack(&ret.counts, COUNTS, cfg) {
+      cfg.uniforms = shader->info.push_count;
+      cfg.preshader_gprs = shader->info.nr_preamble_gprs;
+      cfg.texture_states = nr_tex;
+      cfg.sampler_states =
+         agx_translate_sampler_state_count(needs_sampler ? 1 : 0, false);
+
+      if (!store)
+         cfg.unknown = 0xFFFF;
+   }
+
+   return ret;
 }
 
 /*

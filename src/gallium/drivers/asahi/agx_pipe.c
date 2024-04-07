@@ -1277,9 +1277,13 @@ agx_flush_batch(struct agx_context *ctx, struct agx_batch *batch)
    uint8_t stop[5 + 64] = {0x00, 0x00, 0x00, 0xc0, 0x00};
    memcpy(batch->vdm.current, stop, sizeof(stop));
 
-   uint64_t pipeline_background = agx_build_meta(batch, false, false);
-   uint64_t pipeline_background_partial = agx_build_meta(batch, false, true);
-   uint64_t pipeline_store = agx_build_meta(batch, true, false);
+   struct asahi_bg_eot pipeline_background =
+      agx_build_meta(batch, false, false);
+
+   struct asahi_bg_eot pipeline_background_partial =
+      agx_build_meta(batch, false, true);
+
+   struct asahi_bg_eot pipeline_store = agx_build_meta(batch, true, false);
 
    bool clear_pipeline_textures =
       agx_tilebuffer_spills(&batch->tilebuffer_layout);

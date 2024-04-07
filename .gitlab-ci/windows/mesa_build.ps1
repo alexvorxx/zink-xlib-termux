@@ -49,7 +49,10 @@ meson `
 -Dshared-llvm=disabled `
 -Dvulkan-drivers="swrast,amd,microsoft-experimental" `
 -Dgallium-drivers="swrast,d3d12,zink" `
+-Dgallium-va=true `
+-Dvideo-codecs="h264dec,h264enc,h265dec,h265enc,vc1dec" `
 -Dshared-glapi=enabled `
+-Dgles1=enabled `
 -Dgles2=enabled `
 -Dgallium-opencl=icd `
 -Dgallium-rusticl=false `
@@ -61,7 +64,6 @@ meson `
 -Dwerror=true `
 -Dwarning_level=2 `
 -Dzlib:warning_level=1 `
--Dlibelf:warning_level=1 `
 $sourcedir && `
 meson install --skip-subprojects && `
 meson test --num-processes 32 --print-errorlogs

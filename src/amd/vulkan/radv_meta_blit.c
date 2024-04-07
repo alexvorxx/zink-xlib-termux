@@ -48,7 +48,7 @@ build_nir_vertex_shader(struct radv_device *dev)
    tex_pos_out->data.location = VARYING_SLOT_VAR0;
    tex_pos_out->data.interpolation = INTERP_MODE_SMOOTH;
 
-   nir_ssa_def *outvec = radv_meta_gen_rect_vertices(&b);
+   nir_ssa_def *outvec = nir_gen_rect_vertices(&b, NULL, NULL);
 
    nir_store_var(&b, pos_out, outvec, 0xf);
 
@@ -241,8 +241,7 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
                struct radv_image_view *src_iview, VkImageLayout src_image_layout,
                float src_offset_0[3], float src_offset_1[3], struct radv_image *dest_image,
                struct radv_image_view *dest_iview, VkImageLayout dest_image_layout,
-               VkOffset2D dest_offset_0, VkOffset2D dest_offset_1, VkRect2D dest_box,
-               VkSampler sampler)
+               VkRect2D dest_box, VkSampler sampler)
 {
    struct radv_device *device = cmd_buffer->device;
    uint32_t src_width = radv_minify(src_iview->image->info.width, src_iview->vk.base_mip_level);
@@ -267,20 +266,10 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
    unsigned fs_key = 0;
    VkFormat format = VK_FORMAT_UNDEFINED;
 
-   VkRenderingAttachmentInfo color_att = {0}, depth_att = {0}, stencil_att = {0};
-
    switch (src_iview->vk.aspects) {
    case VK_IMAGE_ASPECT_COLOR_BIT: {
-      unsigned dst_layout = radv_meta_dst_layout_from_layout(dest_image_layout);
-      VkImageLayout layout = radv_meta_dst_layout_to_layout(dst_layout);
       fs_key = radv_format_meta_fs_key(device, dest_image->vk.format);
       format = radv_fs_key_format_exemplars[fs_key];
-
-      color_att.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-      color_att.imageView = radv_image_view_to_handle(dest_iview);
-      color_att.imageLayout = layout;
-      color_att.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-      color_att.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
       switch (src_image->vk.image_type) {
       case VK_IMAGE_TYPE_1D:
@@ -298,15 +287,7 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
       break;
    }
    case VK_IMAGE_ASPECT_DEPTH_BIT: {
-      enum radv_blit_ds_layout ds_layout = radv_meta_blit_ds_to_type(dest_image_layout);
-      VkImageLayout layout = radv_meta_blit_ds_to_layout(ds_layout);
       format = VK_FORMAT_D32_SFLOAT;
-
-      depth_att.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-      depth_att.imageView = radv_image_view_to_handle(dest_iview);
-      depth_att.imageLayout = layout;
-      depth_att.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-      depth_att.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
       switch (src_image->vk.image_type) {
       case VK_IMAGE_TYPE_1D:
@@ -324,15 +305,7 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
       break;
    }
    case VK_IMAGE_ASPECT_STENCIL_BIT: {
-      enum radv_blit_ds_layout ds_layout = radv_meta_blit_ds_to_type(dest_image_layout);
-      VkImageLayout layout = radv_meta_blit_ds_to_layout(ds_layout);
       format = VK_FORMAT_S8_UINT;
-
-      stencil_att.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-      stencil_att.imageView = radv_image_view_to_handle(dest_iview);
-      stencil_att.imageLayout = layout;
-      stencil_att.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-      stencil_att.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
       switch (src_image->vk.image_type) {
       case VK_IMAGE_TYPE_1D:
@@ -358,7 +331,7 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
                                     translate_sampler_dim(src_image->vk.image_type),
                                     format, pipeline);
       if (ret != VK_SUCCESS) {
-         cmd_buffer->record_result = ret;
+         vk_command_buffer_set_error(&cmd_buffer->vk, ret);
          return;
       }
    }
@@ -383,22 +356,6 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
                                    },
                                 }}});
 
-   radv_CmdSetViewport(radv_cmd_buffer_to_handle(cmd_buffer), 0, 1,
-                       &(VkViewport){.x = dest_offset_0.x,
-                                     .y = dest_offset_0.y,
-                                     .width = dest_offset_1.x - dest_offset_0.x,
-                                     .height = dest_offset_1.y - dest_offset_0.y,
-                                     .minDepth = 0.0f,
-                                     .maxDepth = 1.0f});
-
-   radv_CmdSetScissor(radv_cmd_buffer_to_handle(cmd_buffer), 0, 1,
-                      &(VkRect2D){
-                         .offset = (VkOffset2D){MIN2(dest_offset_0.x, dest_offset_1.x),
-                                                MIN2(dest_offset_0.y, dest_offset_1.y)},
-                         .extent = (VkExtent2D){abs(dest_offset_1.x - dest_offset_0.x),
-                                                abs(dest_offset_1.y - dest_offset_0.y)},
-                      });
-
    VkRenderingInfo rendering_info = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
       .renderArea = {
@@ -408,17 +365,50 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
       .layerCount = 1,
    };
 
-   switch (src_iview->image->vk.aspects) {
-   case VK_IMAGE_ASPECT_COLOR_BIT:
+   VkRenderingAttachmentInfo color_att;
+   if (src_iview->image->vk.aspects == VK_IMAGE_ASPECT_COLOR_BIT) {
+      unsigned dst_layout = radv_meta_dst_layout_from_layout(dest_image_layout);
+      VkImageLayout layout = radv_meta_dst_layout_to_layout(dst_layout);
+
+      color_att = (VkRenderingAttachmentInfo) {
+         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+         .imageView = radv_image_view_to_handle(dest_iview),
+         .imageLayout = layout,
+         .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+      };
       rendering_info.colorAttachmentCount = 1;
       rendering_info.pColorAttachments = &color_att;
-      break;
-   case VK_IMAGE_ASPECT_DEPTH_BIT:
+   }
+
+   VkRenderingAttachmentInfo depth_att;
+   if (src_iview->image->vk.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
+      enum radv_blit_ds_layout ds_layout = radv_meta_blit_ds_to_type(dest_image_layout);
+      VkImageLayout layout = radv_meta_blit_ds_to_layout(ds_layout);
+
+      depth_att = (VkRenderingAttachmentInfo) {
+         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+         .imageView = radv_image_view_to_handle(dest_iview),
+         .imageLayout = layout,
+         .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+      };
       rendering_info.pDepthAttachment = &depth_att;
-      break;
-   case VK_IMAGE_ASPECT_STENCIL_BIT:
+   }
+
+   VkRenderingAttachmentInfo stencil_att;
+   if (src_iview->image->vk.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
+      enum radv_blit_ds_layout ds_layout = radv_meta_blit_ds_to_type(dest_image_layout);
+      VkImageLayout layout = radv_meta_blit_ds_to_layout(ds_layout);
+
+      stencil_att = (VkRenderingAttachmentInfo) {
+         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+         .imageView = radv_image_view_to_handle(dest_iview),
+         .imageLayout = layout,
+         .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+      };
       rendering_info.pStencilAttachment = &stencil_att;
-      break;
    }
 
    radv_CmdBeginRendering(radv_cmd_buffer_to_handle(cmd_buffer), &rendering_info);
@@ -457,7 +447,6 @@ blit_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
    const VkImageSubresourceLayers *dst_res = &region->dstSubresource;
    struct radv_device *device = cmd_buffer->device;
    struct radv_meta_saved_state saved_state;
-   bool old_predicating;
    VkSampler sampler;
 
    /* From the Vulkan 1.0 spec:
@@ -477,17 +466,14 @@ blit_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
                          .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
                          .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
                       },
-                      &cmd_buffer->pool->vk.alloc, &sampler);
-
-   radv_meta_save(
-      &saved_state, cmd_buffer,
-      RADV_META_SAVE_GRAPHICS_PIPELINE | RADV_META_SAVE_CONSTANTS | RADV_META_SAVE_DESCRIPTORS);
+                      &cmd_buffer->vk.pool->alloc, &sampler);
 
    /* VK_EXT_conditional_rendering says that blit commands should not be
     * affected by conditional rendering.
     */
-   old_predicating = cmd_buffer->state.predicating;
-   cmd_buffer->state.predicating = false;
+   radv_meta_save(&saved_state, cmd_buffer,
+                  RADV_META_SAVE_GRAPHICS_PIPELINE | RADV_META_SAVE_CONSTANTS |
+                     RADV_META_SAVE_DESCRIPTORS | RADV_META_SUSPEND_PREDICATING);
 
    unsigned dst_start, dst_end;
    if (dst_image->vk.image_type == VK_IMAGE_TYPE_3D) {
@@ -540,18 +526,34 @@ blit_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
    dst_box.extent.width = dst_x1 - dst_x0;
    dst_box.extent.height = dst_y1 - dst_y0;
 
+   const VkOffset2D dst_offset_0 = {
+      .x = dst_x0,
+      .y = dst_y0,
+   };
+   const VkOffset2D dst_offset_1 = {
+      .x = dst_x1,
+      .y = dst_y1,
+   };
+
+   radv_CmdSetViewport(radv_cmd_buffer_to_handle(cmd_buffer), 0, 1,
+                       &(VkViewport){.x = dst_offset_0.x,
+                                     .y = dst_offset_0.y,
+                                     .width = dst_offset_1.x - dst_offset_0.x,
+                                     .height = dst_offset_1.y - dst_offset_0.y,
+                                     .minDepth = 0.0f,
+                                     .maxDepth = 1.0f});
+
+   radv_CmdSetScissor(radv_cmd_buffer_to_handle(cmd_buffer), 0, 1,
+                      &(VkRect2D){
+                         .offset = (VkOffset2D){MIN2(dst_offset_0.x, dst_offset_1.x),
+                                                MIN2(dst_offset_0.y, dst_offset_1.y)},
+                         .extent = (VkExtent2D){abs(dst_offset_1.x - dst_offset_0.x),
+                                                abs(dst_offset_1.y - dst_offset_0.y)},
+                      });
+
    const unsigned num_layers = dst_end - dst_start;
    for (unsigned i = 0; i < num_layers; i++) {
       struct radv_image_view dst_iview, src_iview;
-
-      const VkOffset2D dst_offset_0 = {
-         .x = dst_x0,
-         .y = dst_y0,
-      };
-      const VkOffset2D dst_offset_1 = {
-         .x = dst_x1,
-         .y = dst_y1,
-      };
 
       float src_offset_0[3] = {
          src_x0,
@@ -595,19 +597,15 @@ blit_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
                            },
                            0, NULL);
       meta_emit_blit(cmd_buffer, src_image, &src_iview, src_image_layout, src_offset_0,
-                     src_offset_1, dst_image, &dst_iview, dst_image_layout, dst_offset_0,
-                     dst_offset_1, dst_box, sampler);
+                     src_offset_1, dst_image, &dst_iview, dst_image_layout, dst_box, sampler);
 
       radv_image_view_finish(&dst_iview);
       radv_image_view_finish(&src_iview);
    }
 
-   /* Restore conditional rendering. */
-   cmd_buffer->state.predicating = old_predicating;
-
    radv_meta_restore(&saved_state, cmd_buffer);
 
-   radv_DestroySampler(radv_device_to_handle(device), sampler, &cmd_buffer->pool->vk.alloc);
+   radv_DestroySampler(radv_device_to_handle(device), sampler, &cmd_buffer->vk.pool->alloc);
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -654,8 +652,8 @@ radv_device_finish_meta_blit_state(struct radv_device *device)
 
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->blit.pipeline_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device), state->blit.ds_layout,
-                                   &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(radv_device_to_handle(device),
+                                                        state->blit.ds_layout, &state->alloc);
 }
 
 static VkResult
@@ -939,7 +937,7 @@ radv_device_init_meta_blit_state(struct radv_device *device, bool on_demand)
       radv_CreateDescriptorSetLayout(radv_device_to_handle(device), &ds_layout_info,
                                      &device->meta_state.alloc, &device->meta_state.blit.ds_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    const VkPushConstantRange push_constant_range = {VK_SHADER_STAGE_VERTEX_BIT, 0, 20};
 
@@ -954,20 +952,15 @@ radv_device_init_meta_blit_state(struct radv_device *device, bool on_demand)
                                       &device->meta_state.alloc,
                                       &device->meta_state.blit.pipeline_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    result = radv_device_init_meta_blit_color(device, on_demand);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    result = radv_device_init_meta_blit_depth(device, on_demand);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
-   result = radv_device_init_meta_blit_stencil(device, on_demand);
-
-fail:
-   if (result != VK_SUCCESS)
-      radv_device_finish_meta_blit_state(device);
-   return result;
+   return radv_device_init_meta_blit_stencil(device, on_demand);
 }

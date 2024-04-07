@@ -280,6 +280,27 @@ trace_screen_is_format_supported(struct pipe_screen *_screen,
 }
 
 static void
+trace_screen_driver_thread_add_job(struct pipe_screen *_screen,
+                                   void *data, struct util_queue_fence *fence,
+                                   pipe_driver_thread_func execute,
+                                   pipe_driver_thread_func cleanup,
+                                   const size_t job_size)
+{
+   struct trace_screen *tr_scr = trace_screen(_screen);
+   struct pipe_screen *screen = tr_scr->screen;
+
+   trace_dump_call_begin("pipe_screen", "driver_thread_add_job");
+
+   trace_dump_arg(ptr, screen);
+   trace_dump_arg(ptr, data);
+   trace_dump_arg(ptr, fence);
+
+   screen->driver_thread_add_job(screen, data, fence, execute, cleanup, job_size);
+
+   trace_dump_call_end();
+}
+
+static void
 trace_context_replace_buffer_storage(struct pipe_context *_pipe,
                                      struct pipe_resource *dst,
                                      struct pipe_resource *src,
@@ -987,6 +1008,7 @@ static void
 trace_screen_create_fence_win32(struct pipe_screen *_screen,
                                 struct pipe_fence_handle **fence,
                                 void *handle,
+                                const void *name,
                                 enum pipe_fd_type type)
 {
    struct trace_screen *tr_scr = trace_screen(_screen);
@@ -998,11 +1020,12 @@ trace_screen_create_fence_win32(struct pipe_screen *_screen,
    if (fence)
       trace_dump_arg(ptr, *fence);
    trace_dump_arg(ptr, handle);
+   trace_dump_arg(ptr, name);
    trace_dump_arg_enum(type, tr_util_pipe_fd_type_name(type));
 
    trace_dump_call_end();
 
-   screen->create_fence_win32(screen, fence, handle, type);
+   screen->create_fence_win32(screen, fence, handle, name, type);
 }
 
 
@@ -1330,6 +1353,22 @@ static void trace_screen_vertex_state_destroy(struct pipe_screen *_screen,
    screen->vertex_state_destroy(screen, state);
 }
 
+static void trace_screen_set_fence_timeline_value(struct pipe_screen *_screen,
+                                                  struct pipe_fence_handle *fence,
+                                                  uint64_t value)
+{
+   struct trace_screen *tr_scr = trace_screen(_screen);
+   struct pipe_screen *screen = tr_scr->screen;
+
+   trace_dump_call_begin("pipe_screen", "set_fence_timeline_value");
+   trace_dump_arg(ptr, screen);
+   trace_dump_arg(ptr, fence);
+   trace_dump_arg(uint, value);
+   trace_dump_call_end();
+
+   screen->set_fence_timeline_value(screen, fence, value);
+}
+
 bool
 trace_enabled(void)
 {
@@ -1434,6 +1473,8 @@ trace_screen_create(struct pipe_screen *screen)
    SCR_INIT(vertex_state_destroy);
    tr_scr->base.transfer_helper = screen->transfer_helper;
    SCR_INIT(get_sparse_texture_virtual_page_size);
+   SCR_INIT(set_fence_timeline_value);
+   SCR_INIT(driver_thread_add_job);
 
    tr_scr->screen = screen;
 

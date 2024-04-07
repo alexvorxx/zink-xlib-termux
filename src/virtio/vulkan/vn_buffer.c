@@ -16,6 +16,7 @@
 #include "vn_android.h"
 #include "vn_device.h"
 #include "vn_device_memory.h"
+#include "vn_physical_device.h"
 
 /* buffer commands */
 
@@ -120,12 +121,12 @@ vn_buffer_cache_entries_create(struct vn_device *dev,
 
       buf = vn_buffer_from_handle(buf_handle);
 
-      /* TODO remove below after VK_KHR_maintenance4 is available */
+      /* TODO remove below after VK_KHR_maintenance4 becomes a requirement */
       if (buf->requirements.memory.memoryRequirements.alignment <
           buf->requirements.memory.memoryRequirements.size) {
          vk_free(alloc, entries);
-         *out_entries = entries;
-         *out_entry_count = entry_count;
+         *out_entries = NULL;
+         *out_entry_count = 0;
          return VK_SUCCESS;
       }
 
@@ -155,8 +156,8 @@ static VkResult
 vn_buffer_get_max_buffer_size(struct vn_device *dev,
                               uint64_t *out_max_buffer_size)
 {
-   /* TODO use VK_KHR_maintenance4 when available */
    const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
+   struct vn_physical_device *pdev = dev->physical_device;
    VkDevice dev_handle = vn_device_to_handle(dev);
    VkBuffer buf_handle;
    VkBufferCreateInfo create_info = {
@@ -168,6 +169,16 @@ vn_buffer_get_max_buffer_size(struct vn_device *dev,
    uint8_t begin = 0;
    uint8_t end = 64;
 
+   if (pdev->features.vulkan_1_3.maintenance4) {
+      *out_max_buffer_size = pdev->properties.vulkan_1_3.maxBufferSize;
+      return VK_SUCCESS;
+   }
+
+   /* For drivers that don't support VK_KHR_maintenance4, we try to estimate
+    * the maxBufferSize using binary search.
+    * TODO remove all the search code after VK_KHR_maintenance4 becomes
+    * a requirement.
+    */
    while (begin < end) {
       uint8_t mid = (begin + end) >> 1;
       create_info.size = 1ull << mid;
@@ -253,12 +264,14 @@ vn_buffer_cache_get_memory_requirements(
     */
    for (uint32_t i = 0; i < cache->entry_count; i++) {
       const struct vn_buffer_cache_entry *entry = &cache->entries[i];
+      // TODO: Fix the spec regarding the usage and alignment behavior
       if ((entry->create_info->flags == create_info->flags) &&
           ((entry->create_info->usage & create_info->usage) ==
            create_info->usage)) {
          *out = entry->requirements;
 
-         /* TODO remove the comment after VK_KHR_maintenance4 is available
+         /* TODO remove the comment after VK_KHR_maintenance4 becomes a
+          * requirement
           *
           * This is based on below implementation defined behavior:
           *
@@ -271,6 +284,35 @@ vn_buffer_cache_get_memory_requirements(
    }
 
    return false;
+}
+
+static void
+vn_copy_cached_memory_requirements(
+   const struct vn_buffer_memory_requirements *cached,
+   VkMemoryRequirements2 *out_mem_req)
+{
+   union {
+      VkBaseOutStructure *pnext;
+      VkMemoryRequirements2 *two;
+      VkMemoryDedicatedRequirements *dedicated;
+   } u = { .two = out_mem_req };
+
+   while (u.pnext) {
+      switch (u.pnext->sType) {
+      case VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2:
+         u.two->memoryRequirements = cached->memory.memoryRequirements;
+         break;
+      case VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS:
+         u.dedicated->prefersDedicatedAllocation =
+            cached->dedicated.prefersDedicatedAllocation;
+         u.dedicated->requiresDedicatedAllocation =
+            cached->dedicated.requiresDedicatedAllocation;
+         break;
+      default:
+         break;
+      }
+      u.pnext = u.pnext->pNext;
+   }
 }
 
 static VkResult
@@ -345,6 +387,7 @@ vn_CreateBuffer(VkDevice device,
                 const VkAllocationCallbacks *pAllocator,
                 VkBuffer *pBuffer)
 {
+   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    const VkAllocationCallbacks *alloc =
       pAllocator ? pAllocator : &dev->base.base.alloc;
@@ -377,6 +420,7 @@ vn_DestroyBuffer(VkDevice device,
                  VkBuffer buffer,
                  const VkAllocationCallbacks *pAllocator)
 {
+   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    struct vn_buffer *buf = vn_buffer_from_handle(buffer);
    const VkAllocationCallbacks *alloc =
@@ -416,29 +460,9 @@ vn_GetBufferMemoryRequirements2(VkDevice device,
                                 VkMemoryRequirements2 *pMemoryRequirements)
 {
    const struct vn_buffer *buf = vn_buffer_from_handle(pInfo->buffer);
-   union {
-      VkBaseOutStructure *pnext;
-      VkMemoryRequirements2 *two;
-      VkMemoryDedicatedRequirements *dedicated;
-   } u = { .two = pMemoryRequirements };
 
-   while (u.pnext) {
-      switch (u.pnext->sType) {
-      case VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2:
-         u.two->memoryRequirements =
-            buf->requirements.memory.memoryRequirements;
-         break;
-      case VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS:
-         u.dedicated->prefersDedicatedAllocation =
-            buf->requirements.dedicated.prefersDedicatedAllocation;
-         u.dedicated->requiresDedicatedAllocation =
-            buf->requirements.dedicated.requiresDedicatedAllocation;
-         break;
-      default:
-         break;
-      }
-      u.pnext = u.pnext->pNext;
-   }
+   vn_copy_cached_memory_requirements(&buf->requirements,
+                                      pMemoryRequirements);
 }
 
 VkResult
@@ -527,4 +551,24 @@ vn_DestroyBufferView(VkDevice device,
 
    vn_object_base_fini(&view->base);
    vk_free(alloc, view);
+}
+
+void
+vn_GetDeviceBufferMemoryRequirements(
+   VkDevice device,
+   const VkDeviceBufferMemoryRequirements *pInfo,
+   VkMemoryRequirements2 *pMemoryRequirements)
+{
+   struct vn_device *dev = vn_device_from_handle(device);
+   struct vn_buffer_memory_requirements cached;
+
+   if (vn_buffer_cache_get_memory_requirements(&dev->buffer_cache,
+                                               pInfo->pCreateInfo, &cached)) {
+      vn_copy_cached_memory_requirements(&cached, pMemoryRequirements);
+      return;
+   }
+
+   /* make the host call if not found in cache */
+   vn_call_vkGetDeviceBufferMemoryRequirements(dev->instance, device, pInfo,
+                                               pMemoryRequirements);
 }

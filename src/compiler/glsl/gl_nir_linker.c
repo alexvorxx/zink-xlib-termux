@@ -75,7 +75,7 @@ gl_nir_opts(nir_shader *nir)
          NIR_PASS(progress, nir, nir_copy_prop);
          NIR_PASS(progress, nir, nir_opt_dce);
       }
-      NIR_PASS(progress, nir, nir_opt_if, false);
+      NIR_PASS(progress, nir, nir_opt_if, 0);
       NIR_PASS(progress, nir, nir_opt_dead_cf);
       NIR_PASS(progress, nir, nir_opt_cse);
       NIR_PASS(progress, nir, nir_opt_peephole_select, 8, true, true);
@@ -111,7 +111,9 @@ gl_nir_opts(nir_shader *nir)
 
       NIR_PASS(progress, nir, nir_opt_undef);
       NIR_PASS(progress, nir, nir_opt_conditional_discard);
-      if (nir->options->max_unroll_iterations) {
+      if (nir->options->max_unroll_iterations ||
+            (nir->options->max_unroll_iterations_fp64 &&
+               (nir->options->lower_doubles_options & nir_lower_fp64_full_software))) {
          NIR_PASS(progress, nir, nir_opt_loop_unroll);
       }
    } while (progress);

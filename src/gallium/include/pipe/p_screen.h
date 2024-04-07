@@ -65,6 +65,7 @@ struct disk_cache;
 struct driOptionCache;
 struct u_transfer_helper;
 struct pipe_screen;
+struct util_queue_fence;
 
 typedef struct pipe_vertex_state *
    (*pipe_create_vertex_state_func)(struct pipe_screen *screen,
@@ -75,6 +76,7 @@ typedef struct pipe_vertex_state *
                                     uint32_t full_velem_mask);
 typedef void (*pipe_vertex_state_destroy_func)(struct pipe_screen *screen,
                                                struct pipe_vertex_state *);
+typedef void (*pipe_driver_thread_func)(void *job, void *gdata, int thread_index);
 
 /**
  * Gallium screen/adapter context.  Basically everything
@@ -416,6 +418,7 @@ struct pipe_screen {
    void (*create_fence_win32)(struct pipe_screen *screen,
                               struct pipe_fence_handle **fence,
                               void *handle,
+                              const void *name,
                               enum pipe_fd_type type);
 
    /**
@@ -570,7 +573,14 @@ struct pipe_screen {
     */
    bool (*is_parallel_shader_compilation_finished)(struct pipe_screen *screen,
                                                    void *shader,
-                                                   unsigned shader_type);
+                                                   enum pipe_shader_type shader_type);
+
+   void (*driver_thread_add_job)(struct pipe_screen *screen,
+                                 void *job,
+                                 struct util_queue_fence *fence,
+                                 pipe_driver_thread_func execute,
+                                 pipe_driver_thread_func cleanup,
+                                 const size_t job_size);
 
    /**
     * Set the damage region (called when KHR_partial_update() is invoked).
@@ -723,6 +733,14 @@ struct pipe_screen {
     */
    pipe_create_vertex_state_func create_vertex_state;
    pipe_vertex_state_destroy_func vertex_state_destroy;
+
+   /**
+    * Update a timeline semaphore value stored within a driver fence object.
+    * Future waits and signals will use the new value.
+    */
+   void (*set_fence_timeline_value)(struct pipe_screen *screen,
+                                    struct pipe_fence_handle *fence,
+                                    uint64_t value);
 };
 
 

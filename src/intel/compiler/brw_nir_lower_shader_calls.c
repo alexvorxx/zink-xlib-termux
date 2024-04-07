@@ -25,6 +25,28 @@
 #include "brw_nir_rt_builder.h"
 #include "nir_phi_builder.h"
 
+UNUSED static bool
+no_load_scratch_base_ptr_intrinsic(nir_shader *shader)
+{
+   nir_foreach_function(func, shader) {
+      if (!func->impl)
+         continue;
+
+      nir_foreach_block(block, func->impl) {
+         nir_foreach_instr(instr, block) {
+            if (instr->type != nir_instr_type_intrinsic)
+               continue;
+
+            nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+            if (intrin->intrinsic == nir_intrinsic_load_scratch_base_ptr)
+               return false;
+         }
+      }
+   }
+
+   return true;
+}
+
 /** Insert the appropriate return instruction at the end of the shader */
 void
 brw_nir_lower_shader_returns(nir_shader *shader)
@@ -46,9 +68,9 @@ brw_nir_lower_shader_returns(nir_shader *shader)
     * This isn't needed for ray-gen shaders because they end the thread and
     * never return to the calling trampoline shader.
     */
-   assert(shader->scratch_size == 0);
+   assert(no_load_scratch_base_ptr_intrinsic(shader));
    if (shader->info.stage != MESA_SHADER_RAYGEN)
-      shader->scratch_size = BRW_BTD_STACK_CALLEE_DATA_SIZE;
+      shader->scratch_size += BRW_BTD_STACK_CALLEE_DATA_SIZE;
 
    nir_builder b;
    nir_builder_init(&b, impl);
@@ -63,12 +85,18 @@ brw_nir_lower_shader_returns(nir_shader *shader)
           * it ends, we retire the bindless stack ID and no further shaders
           * will be executed.
           */
+         assert(impl->end_block->predecessors->entries == 1);
          brw_nir_btd_retire(&b);
          break;
 
       case MESA_SHADER_ANY_HIT:
          /* The default action of an any-hit shader is to accept the ray
-          * intersection.
+          * intersection.  Any-hit shaders may have more than one exit.  Only
+          * the final "normal" exit will actually need to accept the
+          * intersection as any others should come from nir_jump_halt
+          * instructions inserted after ignore_ray_intersection or
+          * terminate_ray or the like.  However, inserting an accept after
+          * the ignore or terminate is safe because it'll get deleted later.
           */
          nir_accept_ray_intersection(&b);
          break;
@@ -80,6 +108,7 @@ brw_nir_lower_shader_returns(nir_shader *shader)
           * action at the end.  They simply return back to the previous shader
           * in the call stack.
           */
+         assert(impl->end_block->predecessors->entries == 1);
          brw_nir_btd_return(&b);
          break;
 
@@ -90,9 +119,6 @@ brw_nir_lower_shader_returns(nir_shader *shader)
       default:
          unreachable("Invalid callable shader stage");
       }
-
-      assert(impl->end_block->predecessors->entries == 1);
-      break;
    }
 
    nir_metadata_preserve(impl, nir_metadata_block_index |
@@ -266,7 +292,7 @@ brw_nir_lower_shader_calls(nir_shader *shader)
  * return to the caller.
  *
  * By default, our HW has the ability to handle the fact that a shader is not
- * available and will execute the next folowing shader in the tracing call.
+ * available and will execute the next following shader in the tracing call.
  * For instance, a RAYGEN shader traces a ray, the tracing generates a hit,
  * but there is no ANYHIT shader available. The HW should follow up by
  * execution the CLOSESTHIT shader.
@@ -336,7 +362,8 @@ brw_nir_create_trivial_return_shader(const struct brw_compiler *compiler,
 
          nir_trace_ray_intel(b,
                              nir_load_btd_global_arg_addr_intel(b),
-                             ray_level, ray_op);
+                             ray_level, ray_op,
+                             .synchronous = false);
       }
       nir_push_else(b, NULL);
       {

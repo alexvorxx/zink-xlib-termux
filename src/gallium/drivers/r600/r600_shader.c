@@ -179,14 +179,15 @@ int r600_pipe_shader_create(struct pipe_context *ctx,
 		pipe_shader_type_from_mesa(sel->nir->info.stage);
 	
 	bool dump = r600_can_dump_shader(&rctx->screen->b, processor);
-	unsigned use_sb = !(rctx->screen->b.debug_flags & (DBG_NO_SB | DBG_NIR)) ||
-                          (rctx->screen->b.debug_flags & DBG_NIR_SB);
+	unsigned use_sb = (rctx->screen->b.debug_flags & DBG_USE_TGSI &&
+                      !(rctx->screen->b.debug_flags & DBG_NO_SB)) ||
+                     (rctx->screen->b.debug_flags & DBG_NIR_SB);
 	unsigned sb_disasm;
 	unsigned export_shader;
 	
 	shader->shader.bc.isa = rctx->isa;
 	
-	if (!(rscreen->b.debug_flags & DBG_NIR_PREFERRED)) {
+	if (rscreen->b.debug_flags & DBG_USE_TGSI) {
 		assert(sel->ir_type == PIPE_SHADER_IR_TGSI);
 		r = r600_shader_from_tgsi(rctx, shader, key);
 		if (r) {
@@ -195,6 +196,8 @@ int r600_pipe_shader_create(struct pipe_context *ctx,
 		}
 	} else {
 		if (sel->ir_type == PIPE_SHADER_IR_TGSI) {
+			if (sel->nir)
+				ralloc_free(sel->nir);
 			sel->nir = tgsi_to_nir(sel->tokens, ctx->screen, true);
                         const nir_shader_compiler_options *nir_options =
                               (const nir_shader_compiler_options *)
@@ -221,7 +224,7 @@ int r600_pipe_shader_create(struct pipe_context *ctx,
 				tgsi_dump(sel->tokens, 0);
 			}
 			
-			if (rscreen->b.debug_flags & (DBG_NIR_PREFERRED)) {
+			if (!(rscreen->b.debug_flags & DBG_USE_TGSI)) {
 				fprintf(stderr, "--NIR --------------------------------------------------------\n");
 				nir_print_shader(sel->nir, stderr);
 			}
@@ -258,11 +261,15 @@ int r600_pipe_shader_create(struct pipe_context *ctx,
 	use_sb &= !shader->shader.uses_images;
 	use_sb &= !shader->shader.uses_helper_invocation;
 
+	/* SB can't handle READ_SCRATCH properly */
+	use_sb &= !(shader->shader.needs_scratch_space && rscreen->b.gfx_level < R700);
+
 	/* sb has bugs in array reg allocation
 	 * (dEQP-GLES2.functional.shaders.struct.local.struct_array_dynamic_index_fragment
 	 * with NTT)
 	 */
 	use_sb &= !(shader->shader.indirect_files & (1 << TGSI_FILE_TEMPORARY));
+	use_sb &= !(shader->shader.indirect_files & (1 << TGSI_FILE_CONSTANT));
 
 	/* sb has scheduling assertion fails with interpolate_at. */
 	use_sb &= !shader->shader.uses_interpolate_at_sample;
@@ -290,29 +297,10 @@ int r600_pipe_shader_create(struct pipe_context *ctx,
 		}
 	}
 
-        if (dump) {
-           FILE *f;
-           char fname[1024];
-           snprintf(fname, 1024, "shader_from_%s_%d.cpp",
-                    (sel->ir_type == PIPE_SHADER_IR_TGSI ?
-                        (rscreen->b.debug_flags & DBG_NIR_PREFERRED ? "tgsi-nir" : "tgsi")
-                      : "nir"), nshader);
-           f = fopen(fname, "w");
-           print_shader_info(f, nshader++, &shader->shader);
-           print_shader_info(stderr, nshader++, &shader->shader);
-           print_pipe_info(stderr, &sel->info);
-           if (sel->ir_type == PIPE_SHADER_IR_TGSI) {
-              fprintf(f, "/****TGSI**********************************\n");
-              tgsi_dump_to_file(sel->tokens, 0, f);
-           }
-
-           if (rscreen->b.debug_flags & DBG_NIR_PREFERRED){
-              fprintf(f, "/****NIR **********************************\n");
-              nir_print_shader(sel->nir, f);
-           }
-           fprintf(f, "******************************************/\n");
-           fclose(f);
-        }
+	if (dump) {
+		print_shader_info(stderr, nshader++, &shader->shader);
+		print_pipe_info(stderr, &sel->info);
+	}
 
 	if (shader->gs_copy_shader) {
 		if (dump) {
@@ -382,10 +370,11 @@ int r600_pipe_shader_create(struct pipe_context *ctx,
 		goto error;
 	}
 
-	util_debug_message(&rctx->b.debug, SHADER_INFO, "%s shader: %d dw, %d gprs, %d loops, %d cf, %d stack",
+	util_debug_message(&rctx->b.debug, SHADER_INFO, "%s shader: %d dw, %d gprs, %d alu_groups, %d loops, %d cf, %d stack",
 		           _mesa_shader_stage_to_abbrev(tgsi_processor_to_shader_stage(processor)),
 	                   shader->shader.bc.ndw,
 	                   shader->shader.bc.ngpr,
+			   shader->shader.bc.nalu_groups,
 			   shader->shader.num_loops,
 			   shader->shader.bc.ncf,
 			   shader->shader.bc.nstack);

@@ -1,26 +1,11 @@
 #!/usr/bin/env python3
 #
-# Copyright (C) 2020, 2021 Collabora Limited
-# Author: Gustavo Padovan <gustavo.padovan@collabora.com>
+# Copyright (C) 2020 - 2022 Collabora Limited
+# Authors:
+#     Gustavo Padovan <gustavo.padovan@collabora.com>
+#     Guilherme Gallo <guilherme.gallo@collabora.com>
 #
-# Permission is hereby granted, free of charge, to any person obtaining a
-# copy of this software and associated documentation files (the "Software"),
-# to deal in the Software without restriction, including without limitation
-# the rights to use, copy, modify, merge, publish, distribute, sublicense,
-# and/or sell copies of the Software, and to permit persons to whom the
-# Software is furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice (including the next
-# paragraph) shall be included in all copies or substantial portions of the
-# Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
-# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+# SPDX-License-Identifier: MIT
 
 """Send a job to LAVA, track it and collect log back"""
 
@@ -42,9 +27,20 @@ import lavacli
 import yaml
 from lava.exceptions import (
     MesaCIException,
+    MesaCIKnownIssueException,
     MesaCIParseException,
     MesaCIRetryError,
     MesaCITimeoutError,
+)
+from lava.utils import CONSOLE_LOG
+from lava.utils import DEFAULT_GITLAB_SECTION_TIMEOUTS as GL_SECTION_TIMEOUTS
+from lava.utils import (
+    GitlabSection,
+    LogFollower,
+    LogSectionType,
+    fatal_err,
+    hide_sensitive_data,
+    print_log,
 )
 from lavacli.utils import loader
 
@@ -64,25 +60,6 @@ NUMBER_OF_RETRIES_TIMEOUT_DETECTION = int(getenv("LAVA_NUMBER_OF_RETRIES_TIMEOUT
 
 # How many attempts should be made when a timeout happen during LAVA device boot.
 NUMBER_OF_ATTEMPTS_LAVA_BOOT = int(getenv("LAVA_NUMBER_OF_ATTEMPTS_LAVA_BOOT", 3))
-
-# Helper constants to colorize the job output
-CONSOLE_LOG_COLOR_GREEN = "\x1b[1;32;5;197m"
-CONSOLE_LOG_COLOR_RED = "\x1b[1;38;5;197m"
-CONSOLE_LOG_COLOR_RESET = "\x1b[0m"
-
-
-def print_log(msg):
-    # Reset color from timestamp, since `msg` can tint the terminal color
-    print(f"{CONSOLE_LOG_COLOR_RESET}{datetime.now()}: {msg}")
-
-
-def fatal_err(msg):
-    print_log(msg)
-    sys.exit(1)
-
-
-def hide_sensitive_data(yaml_data, hide_tag="HIDEME"):
-    return "".join(line for line in yaml_data.splitlines(True) if hide_tag not in line)
 
 
 def generate_lava_yaml(args):
@@ -119,8 +96,8 @@ def generate_lava_yaml(args):
         'url': '{}/{}'.format(args.kernel_url_prefix, args.kernel_image_name),
       },
       'nfsrootfs': {
-        'url': '{}/lava-rootfs.tgz'.format(args.rootfs_url_prefix),
-        'compression': 'gz',
+        'url': '{}/lava-rootfs.tar.zst'.format(args.rootfs_url_prefix),
+        'compression': 'zstd',
       }
     }
     if args.kernel_image_type:
@@ -184,13 +161,19 @@ def generate_lava_yaml(args):
     else:
         run_steps += [
             "echo Could not find jwt file, disabling MINIO requests...",
-            "unset MINIO_RESULTS_UPLOAD",
+            "sed -i '/MINIO_RESULTS_UPLOAD/d' /set-job-env-vars.sh",
         ]
 
     run_steps += [
       'mkdir -p {}'.format(args.ci_project_dir),
-      'wget -S --progress=dot:giga -O- {} | tar -xz -C {}'.format(args.build_url, args.ci_project_dir),
+      'wget -S --progress=dot:giga -O- {} | tar --zstd -x -C {}'.format(args.build_url, args.ci_project_dir),
       'wget -S --progress=dot:giga -O- {} | tar -xz -C /'.format(args.job_rootfs_overlay_url),
+
+      # Sleep a bit to give time for bash to dump shell xtrace messages into
+      # console which may cause interleaving with LAVA_SIGNAL_STARTTC in some
+      # devices like a618.
+      'sleep 1',
+
       # Putting CI_JOB name as the testcase name, it may help LAVA farm
       # maintainers with monitoring
       f"lava-test-case 'mesa-ci_{args.mesa_job_name}' --shell /init-stage2.sh",
@@ -241,7 +224,12 @@ def _call_proxy(fn, *args):
 
 
 class LAVAJob:
-    color_status_map = {"pass": CONSOLE_LOG_COLOR_GREEN}
+    COLOR_STATUS_MAP = {
+        "pass": CONSOLE_LOG["FG_GREEN"],
+        "hung": CONSOLE_LOG["FG_YELLOW"],
+        "fail": CONSOLE_LOG["FG_RED"],
+        "canceled": CONSOLE_LOG["FG_MAGENTA"],
+    }
 
     def __init__(self, proxy, definition):
         self.job_id = None
@@ -287,8 +275,6 @@ class LAVAJob:
         # When there is no new log data, the YAML is empty
         if loaded_lines := yaml.load(str(data), Loader=loader(False)):
             lines = loaded_lines
-            # If we had non-empty log data, we can assure that the device is alive.
-            self.heartbeat()
             self.last_log_line += len(lines)
         return lines
 
@@ -305,26 +291,23 @@ class LAVAJob:
                 f"Could not get LAVA job logs. Reason: {mesa_ci_err}"
             ) from mesa_ci_err
 
-    def parse_job_result_from_log(self, lava_lines: list[dict[str, str]]) -> None:
+    def parse_job_result_from_log(
+        self, lava_lines: list[dict[str, str]]
+    ) -> list[dict[str, str]]:
         """Use the console log to catch if the job has completed successfully or
-        not.
-        Returns true only the job finished by looking into the log result
-        parsing.
-        """
-        log_lines = [l["msg"] for l in lava_lines if l["lvl"] == "target"]
-        for line in log_lines:
-            if result := re.search(r"hwci: mesa: (\S*)", line):
+        not. Returns the list of log lines until the result line."""
+
+        last_line = None  # Print all lines. lines[:None] == lines[:]
+
+        for idx, line in enumerate(lava_lines):
+            if result := re.search(r"hwci: mesa: (pass|fail)", line):
                 self.is_finished = True
                 self.status = result.group(1)
-                color = LAVAJob.color_status_map.get(self.status, CONSOLE_LOG_COLOR_RED)
-                print_log(
-                    f"{color}"
-                    f"LAVA Job finished with result: {self.status}"
-                    f"{CONSOLE_LOG_COLOR_RESET}"
-                )
 
+                last_line = idx + 1
                 # We reached the log end here. hwci script has finished.
                 break
+        return lava_lines[:last_line]
 
 
 def find_exception_from_metadata(metadata, job_id):
@@ -366,77 +349,29 @@ def find_lava_error(job) -> None:
 
 
 def show_job_data(job):
-    show = _call_proxy(job.proxy.scheduler.jobs.show, job.job_id)
-    for field, value in show.items():
-        print("{}\t: {}".format(field, value))
+    with GitlabSection(
+        "job_data",
+        "LAVA job info",
+        type=LogSectionType.LAVA_POST_PROCESSING,
+        start_collapsed=True,
+    ):
+        show = _call_proxy(job.proxy.scheduler.jobs.show, job.job_id)
+        for field, value in show.items():
+            print("{}\t: {}".format(field, value))
 
 
-def fix_lava_color_log(line):
-    """This function is a temporary solution for the color escape codes mangling
-    problem. There is some problem in message passing between the LAVA
-    dispatcher and the device under test (DUT). Here \x1b character is missing
-    before `[:digit::digit:?m` ANSI TTY color codes. When this problem is fixed
-    on the LAVA side, one should remove this function.
-    """
-    line["msg"] = re.sub(r"(\[\d{1,2}m)", "\x1b" + r"\1", line["msg"])
-
-
-def fix_lava_gitlab_section_log(line):
-    """This function is a temporary solution for the Gitlab section markers
-    mangling problem. Gitlab parses the following lines to define a collapsible
-    gitlab section in their log:
-    - \x1b[0Ksection_start:timestamp:section_id[collapsible=true/false]\r\x1b[0Ksection_header
-    - \x1b[0Ksection_end:timestamp:section_id\r\x1b[0K
-    There is some problem in message passing between the LAVA dispatcher and the
-    device under test (DUT), that digests \x1b and \r control characters
-    incorrectly. When this problem is fixed on the LAVA side, one should remove
-    this function.
-    """
-    if match := re.match(r"\[0K(section_\w+):(\d+):(\S+)\[0K([\S ]+)?", line["msg"]):
-        marker, timestamp, id_collapsible, header = match.groups()
-        # The above regex serves for both section start and end lines.
-        # When the header is None, it means we are dealing with `section_end` line
-        header = header or ""
-        line["msg"] = f"\x1b[0K{marker}:{timestamp}:{id_collapsible}\r\x1b[0K{header}"
-
-
-def parse_lava_lines(new_lines) -> list[str]:
-    parsed_lines: list[str] = []
-    for line in new_lines:
-        prefix = ""
-        suffix = ""
-
-        if line["lvl"] in ["results", "feedback"]:
-            continue
-        elif line["lvl"] in ["warning", "error"]:
-            prefix = CONSOLE_LOG_COLOR_RED
-            suffix = CONSOLE_LOG_COLOR_RESET
-        elif line["lvl"] == "input":
-            prefix = "$ "
-            suffix = ""
-        elif line["lvl"] == "target":
-            fix_lava_color_log(line)
-            fix_lava_gitlab_section_log(line)
-
-        line = f'{prefix}{line["msg"]}{suffix}'
-        parsed_lines.append(line)
-
-    return parsed_lines
-
-
-def fetch_logs(job, max_idle_time) -> None:
+def fetch_logs(job, max_idle_time, log_follower) -> None:
     # Poll to check for new logs, assuming that a prolonged period of
     # silence means that the device has died and we should try it again
     if datetime.now() - job.last_log_time > max_idle_time:
         max_idle_time_min = max_idle_time.total_seconds() / 60
-        print_log(
-            f"No log output for {max_idle_time_min} minutes; "
-            "assuming device has died, retrying"
-        )
 
         raise MesaCITimeoutError(
+            f"{CONSOLE_LOG['BOLD']}"
+            f"{CONSOLE_LOG['FG_YELLOW']}"
             f"LAVA job {job.job_id} does not respond for {max_idle_time_min} "
-            "minutes. Retry.",
+            "minutes. Retry."
+            f"{CONSOLE_LOG['RESET']}",
             timeout_duration=max_idle_time,
         )
 
@@ -451,12 +386,22 @@ def fetch_logs(job, max_idle_time) -> None:
     else:
         raise MesaCIParseException
 
-    parsed_lines = parse_lava_lines(new_log_lines)
+    if log_follower.feed(new_log_lines):
+        # If we had non-empty log data, we can assure that the device is alive.
+        job.heartbeat()
+    parsed_lines = log_follower.flush()
+
+    # Only parse job results when the script reaches the end of the logs.
+    # Depending on how much payload the RPC scheduler.jobs.logs get, it may
+    # reach the LAVA_POST_PROCESSING phase.
+    if log_follower.current_section.type in (
+        LogSectionType.TEST_CASE,
+        LogSectionType.LAVA_POST_PROCESSING,
+    ):
+        parsed_lines = job.parse_job_result_from_log(parsed_lines)
 
     for line in parsed_lines:
         print_log(line)
-
-    job.parse_job_result_from_log(new_log_lines)
 
 
 def follow_job_execution(job):
@@ -472,11 +417,21 @@ def follow_job_execution(job):
         time.sleep(WAIT_FOR_DEVICE_POLLING_TIME_SEC)
     print_log(f"Job {job.job_id} started.")
 
+    gl = GitlabSection(
+        id="lava_boot",
+        header="LAVA boot",
+        type=LogSectionType.LAVA_BOOT,
+        start_collapsed=True,
+    )
+    print(gl.start())
     max_idle_time = timedelta(seconds=DEVICE_HANGING_TIMEOUT_SEC)
-    # Start to check job's health
-    job.heartbeat()
-    while not job.is_finished:
-        fetch_logs(job, max_idle_time)
+    with LogFollower(current_section=gl) as lf:
+
+        max_idle_time = timedelta(seconds=DEVICE_HANGING_TIMEOUT_SEC)
+        # Start to check job's health
+        job.heartbeat()
+        while not job.is_finished:
+            fetch_logs(job, max_idle_time, lf)
 
     show_job_data(job)
 
@@ -487,6 +442,18 @@ def follow_job_execution(job):
         find_lava_error(job)
 
 
+def print_job_final_status(job):
+    if job.status == "running":
+        job.status = "hung"
+
+    color = LAVAJob.COLOR_STATUS_MAP.get(job.status, CONSOLE_LOG["FG_RED"])
+    print_log(
+        f"{color}"
+        f"LAVA Job finished with status: {job.status}"
+        f"{CONSOLE_LOG['RESET']}"
+    )
+
+
 def retriable_follow_job(proxy, job_definition) -> LAVAJob:
     retry_count = NUMBER_OF_RETRIES_TIMEOUT_DETECTION
 
@@ -495,6 +462,9 @@ def retriable_follow_job(proxy, job_definition) -> LAVAJob:
         try:
             follow_job_execution(job)
             return job
+        except MesaCIKnownIssueException as found_issue:
+            print_log(found_issue)
+            job.status = "canceled"
         except MesaCIException as mesa_exception:
             print_log(mesa_exception)
             job.cancel()
@@ -503,10 +473,19 @@ def retriable_follow_job(proxy, job_definition) -> LAVAJob:
             job.cancel()
             raise e
         finally:
-            print_log(f"Finished executing LAVA job in the attempt #{attempt_no}")
+            print_log(
+                f"{CONSOLE_LOG['BOLD']}"
+                f"Finished executing LAVA job in the attempt #{attempt_no}"
+                f"{CONSOLE_LOG['RESET']}"
+            )
+            print_job_final_status(job)
 
     raise MesaCIRetryError(
-        "Job failed after it exceeded the number of " f"{retry_count} retries.",
+        f"{CONSOLE_LOG['BOLD']}"
+        f"{CONSOLE_LOG['FG_RED']}"
+        "Job failed after it exceeded the number of "
+        f"{retry_count} retries."
+        f"{CONSOLE_LOG['RESET']}",
         retry_count=retry_count,
     )
 
@@ -519,11 +498,23 @@ def treat_mesa_job_name(args):
 def main(args):
     proxy = setup_lava_proxy()
 
+    # Overwrite the timeout for the testcases with the value offered by the
+    # user. The testcase running time should be at least 4 times greater than
+    # the other sections (boot and setup), so we can safely ignore them.
+    # If LAVA fails to stop the job at this stage, it will fall back to the
+    # script section timeout with a reasonable delay.
+    GL_SECTION_TIMEOUTS[LogSectionType.TEST_CASE] = timedelta(minutes=args.job_timeout)
+
     job_definition = generate_lava_yaml(args)
 
     if args.dump_yaml:
-        print("LAVA job definition (YAML):")
-        print(hide_sensitive_data(job_definition))
+        with GitlabSection(
+            "yaml_dump",
+            "LAVA job definition (YAML)",
+            type=LogSectionType.LAVA_BOOT,
+            start_collapsed=True,
+        ):
+            print(hide_sensitive_data(job_definition))
     job = LAVAJob(proxy, job_definition)
 
     if errors := job.validate():
@@ -562,6 +553,7 @@ def create_parser():
     parser.add_argument("--mesa-job-name")
 
     return parser
+
 
 if __name__ == "__main__":
     # given that we proxy from DUT -> LAVA dispatcher -> LAVA primary -> us ->

@@ -154,7 +154,7 @@ ir3_context_init(struct ir3_compiler *compiler, struct ir3_shader *shader,
       }
    }
 
-   if (shader_debug_enabled(so->type)) {
+   if (shader_debug_enabled(so->type, ctx->s->info.internal)) {
       mesa_logi("NIR (final form) for %s shader %s:", ir3_shader_stage(so),
                 so->name);
       nir_log_shaderi(ctx->s);
@@ -344,7 +344,7 @@ ir3_create_collect(struct ir3_block *block, struct ir3_instruction *const *arr,
          elem = ir3_MOV(block, elem, type);
       }
 
-      debug_assert(dest_flags(elem) == flags);
+      assert(dest_flags(elem) == flags);
       __ssa_src(collect, elem, flags);
    }
 
@@ -368,7 +368,7 @@ ir3_split_dest(struct ir3_block *block, struct ir3_instruction **dst,
    }
 
    if (src->opc == OPC_META_COLLECT) {
-      debug_assert((base + n) <= src->srcs_count);
+      assert((base + n) <= src->srcs_count);
 
       for (int i = 0; i < n; i++) {
          dst[i] = ssa(src->srcs[i + base]);

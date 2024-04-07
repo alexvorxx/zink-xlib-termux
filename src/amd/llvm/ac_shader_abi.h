@@ -38,7 +38,9 @@
  * radv to share a compiler backend.
  */
 struct ac_shader_abi {
+   /* Each entry is a pointer to a f32 or a f16 value (only possible for FS) */
    LLVMValueRef outputs[AC_LLVM_MAX_OUTPUTS * 4];
+   bool is_16bit[AC_LLVM_MAX_OUTPUTS * 4];
 
    /* These input registers sometimes need to be fixed up. */
    LLVMValueRef vertex_id;
@@ -46,6 +48,14 @@ struct ac_shader_abi {
    LLVMValueRef persp_centroid, linear_centroid;
    LLVMValueRef color0, color1;
    LLVMValueRef user_data;
+
+   /* replaced registers when culling enabled */
+   LLVMValueRef vertex_id_replaced;
+   LLVMValueRef instance_id_replaced;
+   LLVMValueRef tes_u_replaced;
+   LLVMValueRef tes_v_replaced;
+   LLVMValueRef tes_rel_patch_id_replaced;
+   LLVMValueRef tes_patch_id_replaced;
 
    /* Varying -> attribute number mapping. Also NIR-only */
    unsigned fs_input_attr_indices[MAX_VARYING];
@@ -68,12 +78,6 @@ struct ac_shader_abi {
                                       LLVMValueRef vertex_index, LLVMValueRef param_index,
                                       unsigned driver_location, unsigned component,
                                       unsigned num_components, bool load_inputs);
-
-   void (*store_tcs_outputs)(struct ac_shader_abi *abi,
-                             LLVMValueRef vertex_index, LLVMValueRef param_index,
-                             LLVMValueRef src, unsigned writemask,
-                             unsigned component, unsigned location, unsigned driver_location);
-
 
    LLVMValueRef (*load_ubo)(struct ac_shader_abi *abi, LLVMValueRef index);
 
@@ -105,6 +109,10 @@ struct ac_shader_abi {
 
    LLVMValueRef (*load_sample_position)(struct ac_shader_abi *abi, LLVMValueRef sample_id);
 
+   LLVMValueRef (*load_user_clip_plane)(struct ac_shader_abi *abi, unsigned ucp_id);
+
+   LLVMValueRef (*load_streamout_buffer)(struct ac_shader_abi *abi, unsigned buffer);
+
    LLVMValueRef (*emit_fbfetch)(struct ac_shader_abi *abi);
 
    LLVMValueRef (*intrinsic_load)(struct ac_shader_abi *abi, nir_intrinsic_op op);
@@ -132,6 +140,9 @@ struct ac_shader_abi {
    /* Whether to detect divergent textures/samplers index and apply
     * waterfall to avoid incorrect rendering. */
    bool use_waterfall_for_divergent_tex_samplers;
+
+   /* Number of all interpolated inputs */
+   unsigned num_interp;
 };
 
 #endif /* AC_SHADER_ABI_H */

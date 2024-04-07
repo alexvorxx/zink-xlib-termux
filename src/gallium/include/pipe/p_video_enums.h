@@ -95,7 +95,60 @@ enum pipe_video_cap
    PIPE_VIDEO_CAP_ENC_MAX_SLICES_PER_FRAME = 13,
    PIPE_VIDEO_CAP_ENC_SLICES_STRUCTURE = 14,
    PIPE_VIDEO_CAP_ENC_MAX_REFERENCES_PER_FRAME = 15,
+   PIPE_VIDEO_CAP_VPP_ORIENTATION_MODES = 16,
+   PIPE_VIDEO_CAP_VPP_BLEND_MODES = 17,
+   PIPE_VIDEO_CAP_VPP_MAX_INPUT_WIDTH = 18,
+   PIPE_VIDEO_CAP_VPP_MAX_INPUT_HEIGHT = 19,
+   PIPE_VIDEO_CAP_VPP_MIN_INPUT_WIDTH = 20,
+   PIPE_VIDEO_CAP_VPP_MIN_INPUT_HEIGHT = 21,
+   PIPE_VIDEO_CAP_VPP_MAX_OUTPUT_WIDTH = 22,
+   PIPE_VIDEO_CAP_VPP_MAX_OUTPUT_HEIGHT = 23,
+   PIPE_VIDEO_CAP_VPP_MIN_OUTPUT_WIDTH = 24,
+   PIPE_VIDEO_CAP_VPP_MIN_OUTPUT_HEIGHT = 25,
+   PIPE_VIDEO_CAP_ENC_QUALITY_LEVEL = 26,
+   /* If true, when mapping planar textures like NV12 or P016 the mapped buffer contains
+   all the planes contiguously. This allows for use with some frontends functions that
+   require this like vaDeriveImage */
+   PIPE_VIDEO_CAP_SUPPORTS_CONTIGUOUS_PLANES_MAP = 27,
+   PIPE_VIDEO_CAP_ENC_SUPPORTS_MAX_FRAME_SIZE = 28,
+   PIPE_VIDEO_CAP_ENC_HEVC_BLOCK_SIZES = 29,
+   PIPE_VIDEO_CAP_ENC_HEVC_FEATURE_FLAGS = 30,
+   PIPE_VIDEO_CAP_ENC_HEVC_PREDICTION_DIRECTION = 31,
+   /*
+      If reported by the driver, then pipe_video_codec.flush(...)
+      needs to be called after pipe_video_codec.end_frame(...)
+      to kick off the work in the device
+   */
+   PIPE_VIDEO_CAP_REQUIRES_FLUSH_ON_END_FRAME = 32,
+
+   /*
+      If reported by the driver, then multiple p_video_codec encode
+      operations can be asynchronously enqueued (and also flushed)
+      with different feedback values in the device before get_feedback
+      is called on them to synchronize. The device can block on begin_frame
+      when it has reached its maximum async depth capacity
+   */
+   PIPE_VIDEO_CAP_ENC_SUPPORTS_ASYNC_OPERATION = 33,
 };
+
+/* To be used with PIPE_VIDEO_CAP_VPP_ORIENTATION_MODES and for VPP state*/
+enum pipe_video_vpp_orientation
+{
+   PIPE_VIDEO_VPP_ORIENTATION_DEFAULT = 0x0,
+   PIPE_VIDEO_VPP_ROTATION_90 = 0x01,
+   PIPE_VIDEO_VPP_ROTATION_180 = 0x02,
+   PIPE_VIDEO_VPP_ROTATION_270 = 0x04,
+   PIPE_VIDEO_VPP_FLIP_HORIZONTAL = 0x08,
+   PIPE_VIDEO_VPP_FLIP_VERTICAL = 0x10,
+};
+
+/* To be used with PIPE_VIDEO_CAP_VPP_BLEND_MODES and for VPP state*/
+enum pipe_video_vpp_blend_mode
+{
+   PIPE_VIDEO_VPP_BLEND_MODE_NONE = 0x0,
+   PIPE_VIDEO_VPP_BLEND_MODE_GLOBAL_ALPHA = 0x1,
+};
+
 
 /* To be used with cap PIPE_VIDEO_CAP_ENC_SLICES_STRUCTURE*/
 /**
@@ -138,7 +191,8 @@ enum pipe_video_entrypoint
    PIPE_VIDEO_ENTRYPOINT_BITSTREAM,
    PIPE_VIDEO_ENTRYPOINT_IDCT,
    PIPE_VIDEO_ENTRYPOINT_MC,
-   PIPE_VIDEO_ENTRYPOINT_ENCODE
+   PIPE_VIDEO_ENTRYPOINT_ENCODE,
+   PIPE_VIDEO_ENTRYPOINT_PROCESSING,
 };
 
 #if defined(__cplusplus)

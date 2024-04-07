@@ -29,6 +29,7 @@
 #include "util/set.h"
 #include "util/slab.h"
 #include "util/u_debug.h"
+#include "util/macros.h"
 #include "util/u_threaded_context.h"
 #include "intel/blorp/blorp.h"
 #include "intel/dev/intel_debug.h"
@@ -47,7 +48,6 @@ struct blorp_batch;
 struct blorp_params;
 
 #define IRIS_MAX_TEXTURE_BUFFER_SIZE (1 << 27)
-#define IRIS_MAX_TEXTURE_SAMPLERS 32
 /* IRIS_MAX_ABOS and IRIS_MAX_SSBOS must be the same. */
 #define IRIS_MAX_ABOS 16
 #define IRIS_MAX_SSBOS 16
@@ -206,15 +206,23 @@ enum iris_nos_dep {
  * Program cache keys for state based recompiles.
  */
 
-struct iris_base_prog_key {
-   unsigned program_string_id;
-   bool limit_trig_input_range;
-};
+/* Provide explicit padding for each member, to ensure that the compiler
+ * initializes every bit in the shader cache keys.  The keys will be compared
+ * with memcmp.
+ */
+PRAGMA_DIAGNOSTIC_PUSH
+PRAGMA_DIAGNOSTIC_ERROR(-Wpadded)
 
 /**
  * Note, we need to take care to have padding explicitly declared
  * for key since we will directly memcmp the whole struct.
  */
+struct iris_base_prog_key {
+   unsigned program_string_id;
+   bool limit_trig_input_range;
+   unsigned padding:24;
+};
+
 struct iris_vue_prog_key {
    struct iris_base_prog_key base;
 
@@ -234,6 +242,7 @@ struct iris_tcs_prog_key {
    uint8_t input_vertices;
 
    bool quads_workaround;
+   unsigned padding:16;
 
    /** A bitfield of per-patch outputs written. */
    uint32_t patch_outputs_written;
@@ -259,6 +268,9 @@ struct iris_gs_prog_key {
 struct iris_fs_prog_key {
    struct iris_base_prog_key base;
 
+   uint64_t input_slots_valid;
+   uint8_t color_outputs_valid;
+
    unsigned nr_color_regions:5;
    bool flat_shade:1;
    bool alpha_test_replicate_alpha:1;
@@ -268,9 +280,7 @@ struct iris_fs_prog_key {
    bool multisample_fbo:1;
    bool force_dual_color_blend:1;
    bool coherent_fb_fetch:1;
-
-   uint8_t color_outputs_valid;
-   uint64_t input_slots_valid;
+   uint64_t padding:43;
 };
 
 struct iris_cs_prog_key {
@@ -287,6 +297,9 @@ union iris_any_prog_key {
    struct iris_fs_prog_key fs;
    struct iris_cs_prog_key cs;
 };
+
+/* Restore the pack alignment to default. */
+PRAGMA_DIAGNOSTIC_POP
 
 /** @} */
 
@@ -344,6 +357,7 @@ enum pipe_control_flags
    PIPE_CONTROL_FLUSH_HDC                       = (1 << 26),
    PIPE_CONTROL_PSS_STALL_SYNC                  = (1 << 27),
    PIPE_CONTROL_L3_READ_ONLY_CACHE_INVALIDATE   = (1 << 28),
+   PIPE_CONTROL_UNTYPED_DATAPORT_CACHE_FLUSH    = (1 << 29),
 };
 
 #define PIPE_CONTROL_CACHE_FLUSH_BITS \
@@ -351,6 +365,7 @@ enum pipe_control_flags
     PIPE_CONTROL_DATA_CACHE_FLUSH |   \
     PIPE_CONTROL_TILE_CACHE_FLUSH |   \
     PIPE_CONTROL_FLUSH_HDC | \
+    PIPE_CONTROL_UNTYPED_DATAPORT_CACHE_FLUSH |   \
     PIPE_CONTROL_RENDER_TARGET_FLUSH)
 
 #define PIPE_CONTROL_CACHE_INVALIDATE_BITS  \
@@ -437,7 +452,8 @@ enum iris_surface_group {
    IRIS_SURFACE_GROUP_RENDER_TARGET,
    IRIS_SURFACE_GROUP_RENDER_TARGET_READ,
    IRIS_SURFACE_GROUP_CS_WORK_GROUPS,
-   IRIS_SURFACE_GROUP_TEXTURE,
+   IRIS_SURFACE_GROUP_TEXTURE_LOW64,
+   IRIS_SURFACE_GROUP_TEXTURE_HIGH64,
    IRIS_SURFACE_GROUP_IMAGE,
    IRIS_SURFACE_GROUP_UBO,
    IRIS_SURFACE_GROUP_SSBO,
@@ -543,18 +559,18 @@ struct iris_shader_state {
    struct iris_image_view image[PIPE_MAX_SHADER_IMAGES];
 
    struct iris_state_ref sampler_table;
-   struct iris_sampler_state *samplers[IRIS_MAX_TEXTURE_SAMPLERS];
-   struct iris_sampler_view *textures[IRIS_MAX_TEXTURE_SAMPLERS];
+   struct iris_sampler_state *samplers[IRIS_MAX_SAMPLERS];
+   struct iris_sampler_view *textures[IRIS_MAX_TEXTURES];
 
    /** Bitfield of which constant buffers are bound (non-null). */
    uint32_t bound_cbufs;
    uint32_t dirty_cbufs;
 
    /** Bitfield of which image views are bound (non-null). */
-   uint32_t bound_image_views;
+   uint64_t bound_image_views;
 
    /** Bitfield of which sampler views are bound (non-null). */
-   uint32_t bound_sampler_views;
+   BITSET_DECLARE(bound_sampler_views, IRIS_MAX_TEXTURES);
 
    /** Bitfield of which shader storage buffers are bound (non-null). */
    uint32_t bound_ssbos;

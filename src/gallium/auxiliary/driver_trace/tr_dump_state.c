@@ -139,6 +139,7 @@ void trace_dump_rasterizer_state(const struct pipe_rasterizer_state *state)
    trace_dump_member(bool, state, no_ms_sample_mask_out);
    trace_dump_member(bool, state, force_persample_interp);
    trace_dump_member(bool, state, line_smooth);
+   trace_dump_member(bool, state, line_rectangular);
    trace_dump_member(bool, state, line_stipple_enable);
    trace_dump_member(bool, state, line_last_pixel);
 
@@ -149,6 +150,7 @@ void trace_dump_rasterizer_state(const struct pipe_rasterizer_state *state)
 
    trace_dump_member(bool, state, rasterizer_discard);
 
+   trace_dump_member(bool, state, depth_clamp);
    trace_dump_member(bool, state, depth_clip_near);
    trace_dump_member(bool, state, depth_clip_far);
 
@@ -276,11 +278,21 @@ void trace_dump_shader_state(const struct pipe_shader_state *state)
 
    trace_dump_struct_begin("pipe_shader_state");
 
+   trace_dump_member(uint, state, type);
+
    trace_dump_member_begin("tokens");
    if (state->tokens) {
       static char str[64 * 1024];
       tgsi_dump_str(state->tokens, 0, str, sizeof(str));
       trace_dump_string(str);
+   } else {
+      trace_dump_null();
+   }
+   trace_dump_member_end();
+
+   trace_dump_member_begin("ir");
+   if (state->type == PIPE_SHADER_IR_NIR) {
+      trace_dump_nir(state->ir.nir);
    } else {
       trace_dump_null();
    }
@@ -539,6 +551,7 @@ void trace_dump_sampler_state(const struct pipe_sampler_state *state)
    trace_dump_member(float, state, min_lod);
    trace_dump_member(float, state, max_lod);
    trace_dump_member_array(float, state, border_color.f);
+   trace_dump_member(format, state, border_color_format);
 
    trace_dump_struct_end();
 }

@@ -118,7 +118,7 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
    if (batch->tlsinfo.tls.size) {
       unsigned size = panfrost_get_total_stack_size(batch->tlsinfo.tls.size,
                                                     pdev->thread_tls_alloc,
-                                                    pdev->core_count);
+                                                    pdev->core_id_range);
       batch->tlsinfo.tls.ptr =
          pan_pool_alloc_aligned(&cmdbuf->tls_pool.base, size, 4096).gpu;
    }
@@ -905,9 +905,7 @@ VkResult
 panvk_per_arch(EndCommandBuffer)(VkCommandBuffer commandBuffer)
 {
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
-   VkResult ret =
-      cmdbuf->vk.level == VK_COMMAND_BUFFER_LEVEL_SECONDARY ?
-      cmdbuf->vk.cmd_queue.error : cmdbuf->record_result;
+   VkResult ret = vk_command_buffer_get_record_result(&cmdbuf->vk);
 
    panvk_per_arch(cmd_close_batch)(cmdbuf);
    cmdbuf->status = ret == VK_SUCCESS ?
@@ -918,7 +916,7 @@ panvk_per_arch(EndCommandBuffer)(VkCommandBuffer commandBuffer)
 
 void
 panvk_per_arch(CmdEndRenderPass2)(VkCommandBuffer commandBuffer,
-                                  const VkSubpassEndInfoKHR *pSubpassEndInfo)
+                                  const VkSubpassEndInfo *pSubpassEndInfo)
 {
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
 
@@ -934,7 +932,7 @@ panvk_per_arch(CmdEndRenderPass2)(VkCommandBuffer commandBuffer,
 void
 panvk_per_arch(CmdEndRenderPass)(VkCommandBuffer cmd)
 {
-   VkSubpassEndInfoKHR einfo = {
+   VkSubpassEndInfo einfo = {
       .sType = VK_STRUCTURE_TYPE_SUBPASS_END_INFO,
    };
 
@@ -1073,8 +1071,6 @@ panvk_reset_cmdbuf(struct panvk_cmd_buffer *cmdbuf)
 {
    vk_command_buffer_reset(&cmdbuf->vk);
 
-   cmdbuf->record_result = VK_SUCCESS;
-
    list_for_each_entry_safe(struct panvk_batch, batch, &cmdbuf->batches, node) {
       list_del(&batch->node);
       util_dynarray_fini(&batch->jobs);
@@ -1091,7 +1087,7 @@ panvk_reset_cmdbuf(struct panvk_cmd_buffer *cmdbuf)
    for (unsigned i = 0; i < MAX_BIND_POINTS; i++)
       memset(&cmdbuf->bind_points[i].desc_state.sets, 0, sizeof(cmdbuf->bind_points[0].desc_state.sets));
 
-   return cmdbuf->record_result;
+   return vk_command_buffer_get_record_result(&cmdbuf->vk);
 }
 
 static void
@@ -1129,7 +1125,8 @@ panvk_create_cmdbuf(struct panvk_device *device,
    if (!cmdbuf)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   VkResult result = vk_command_buffer_init(&cmdbuf->vk, &pool->vk, level);
+   VkResult result = vk_command_buffer_init(&pool->vk, &cmdbuf->vk,
+                                            NULL, level);
    if (result != VK_SUCCESS) {
       vk_free(&device->vk.alloc, cmdbuf);
       return result;
@@ -1188,7 +1185,8 @@ panvk_per_arch(AllocateCommandBuffers)(VkDevice _device,
          list_addtail(&cmdbuf->pool_link, &pool->active_cmd_buffers);
 
          vk_command_buffer_finish(&cmdbuf->vk);
-         result = vk_command_buffer_init(&cmdbuf->vk, &pool->vk, pAllocateInfo->level);
+         result = vk_command_buffer_init(&pool->vk, &cmdbuf->vk, NULL,
+                                         pAllocateInfo->level);
       } else {
          result = panvk_create_cmdbuf(device, pool, pAllocateInfo->level, &cmdbuf);
       }

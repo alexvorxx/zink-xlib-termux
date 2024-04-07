@@ -25,6 +25,8 @@
  *    Rob Clark <robclark@freedesktop.org>
  */
 
+#define FD_BO_NO_HARDPIN 1
+
 #include "pipe/p_state.h"
 #include "util/format/u_format.h"
 #include "util/hash_table.h"
@@ -34,7 +36,6 @@
 
 #include "freedreno_dev_info.h"
 #include "fd6_emit.h"
-#include "fd6_format.h"
 #include "fd6_resource.h"
 #include "fd6_texture.h"
 

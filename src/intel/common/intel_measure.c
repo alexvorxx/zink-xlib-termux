@@ -64,8 +64,12 @@ intel_measure_init(struct intel_measure_device *device)
       if (!env)
          return;
 
+      char env_copy[1024];
+      strncpy(env_copy, env, 1024);
+      env_copy[1023] = '\0';
+
       config.file = stderr;
-      config.flags = parse_debug_string(env, debug_control);
+      config.flags = parse_debug_string(env_copy, debug_control);
       if (!config.flags)
          config.flags = INTEL_MEASURE_DRAW;
       config.enabled = true;
@@ -87,15 +91,15 @@ intel_measure_init(struct intel_measure_device *device)
       const int DEFAULT_BUFFER_SIZE = 64 * 1024;
       config.buffer_size = DEFAULT_BUFFER_SIZE;
 
-      const char *filename = strstr(env, "file=");
-      const char *start_frame_s = strstr(env, "start=");
-      const char *count_frame_s = strstr(env, "count=");
-      const char *control_path = strstr(env, "control=");
-      const char *interval_s = strstr(env, "interval=");
-      const char *batch_size_s = strstr(env, "batch_size=");
-      const char *buffer_size_s = strstr(env, "buffer_size=");
+      const char *filename = strstr(env_copy, "file=");
+      const char *start_frame_s = strstr(env_copy, "start=");
+      const char *count_frame_s = strstr(env_copy, "count=");
+      const char *control_path = strstr(env_copy, "control=");
+      const char *interval_s = strstr(env_copy, "interval=");
+      const char *batch_size_s = strstr(env_copy, "batch_size=");
+      const char *buffer_size_s = strstr(env_copy, "buffer_size=");
       while (true) {
-         char *sep = strrchr(env, ',');
+         char *sep = strrchr(env_copy, ',');
          if (sep == NULL)
             break;
          *sep = '\0';
@@ -211,6 +215,7 @@ intel_measure_init(struct intel_measure_device *device)
 
    device->config = NULL;
    device->frame = 0;
+   device->release_batch = NULL;
    pthread_mutex_init(&device->mutex, NULL);
    list_inithead(&device->queued_snapshots);
 
@@ -402,7 +407,7 @@ intel_measure_push_result(struct intel_measure_device *device,
 
    uint64_t *timestamps = batch->timestamps;
    assert(timestamps != NULL);
-   assert(timestamps[0] != 0);
+   assert(batch->index == 0 || timestamps[0] != 0);
 
    for (int i = 0; i < batch->index; i += 2) {
       const struct intel_measure_snapshot *begin = &batch->snapshots[i];
@@ -563,7 +568,7 @@ buffered_event_count(struct intel_measure_device *device)
 static void
 print_combined_results(struct intel_measure_device *measure_device,
                        int result_count,
-                       struct intel_device_info *info)
+                       const struct intel_device_info *info)
 {
    if (result_count == 0)
       return;
@@ -614,7 +619,7 @@ print_combined_results(struct intel_measure_device *measure_device,
  */
 static void
 intel_measure_print(struct intel_measure_device *device,
-                    struct intel_device_info *info)
+                    const struct intel_device_info *info)
 {
    while (true) {
       const int events_to_combine = buffered_event_count(device);
@@ -630,7 +635,7 @@ intel_measure_print(struct intel_measure_device *device,
  */
 void
 intel_measure_gather(struct intel_measure_device *measure_device,
-                     struct intel_device_info *info)
+                     const struct intel_device_info *info)
 {
    pthread_mutex_lock(&measure_device->mutex);
 
@@ -657,6 +662,8 @@ intel_measure_gather(struct intel_measure_device *measure_device,
 
       batch->index = 0;
       batch->frame = 0;
+      if (measure_device->release_batch)
+         measure_device->release_batch(batch);
    }
 
    intel_measure_print(measure_device, info);

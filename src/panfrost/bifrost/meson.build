@@ -52,6 +52,7 @@ libpanfrost_bifrost_files = files(
   'valhall/va_lower_isel.c',
   'valhall/va_lower_split_64bit.c',
   'valhall/va_optimize.c',
+  'valhall/va_mark_last.c',
   'valhall/va_merge_flow.c',
   'valhall/va_pack.c',
   'valhall/va_perf.c',
@@ -127,8 +128,7 @@ bifrost_nir_algebraic_c = custom_target(
   input : 'bifrost_nir_algebraic.py',
   output : 'bifrost_nir_algebraic.c',
   command : [
-    prog_python, '@INPUT@',
-    '-p', join_paths(meson.source_root(), 'src/compiler/nir/'),
+    prog_python, '@INPUT@', '-p', dir_compiler_nir,
   ],
   capture : true,
   depend_files : nir_algebraic_depends,
@@ -164,6 +164,7 @@ if with_tests
       files(
         'test/test-constant-fold.cpp',
         'test/test-dual-texture.cpp',
+        'test/test-lower-swizzle.cpp',
         'test/test-message-preload.cpp',
 	'test/test-optimizer.cpp',
 	'test/test-pack-formats.cpp',
@@ -174,6 +175,7 @@ if with_tests
         'valhall/test/test-insert-flow.cpp',
         'valhall/test/test-lower-isel.cpp',
         'valhall/test/test-lower-constants.cpp',
+        'valhall/test/test-mark-last.cpp',
         'valhall/test/test-merge-flow.cpp',
         'valhall/test/test-packing.cpp',
       ),

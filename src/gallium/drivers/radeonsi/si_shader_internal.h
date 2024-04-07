@@ -110,10 +110,9 @@ struct si_shader_context {
    struct ac_arg tcs_offchip_layout;
 
    /* API TCS */
-   /* Offsets where TCS outputs and TCS patch outputs live in LDS:
-    *   [0:15] = TCS output patch0 offset / 16, max = NUM_PATCHES * 32 * 32 = 64K (TODO: not enough bits)
-    *   [16:31] = TCS output patch0 offset for per-patch / 16
-    *             max = (NUM_PATCHES + 1) * 32*32 = 66624 (TODO: not enough bits)
+   /* Offsets where TCS outputs and TCS patch outputs live in LDS (<= 16K):
+    *   [0:15] = TCS output patch0 offset / 4, max = 16K / 4 = 4K
+    *   [16:31] = TCS output patch0 offset for per-patch / 4, max = 16K / 4 = 4K
     */
    struct ac_arg tcs_out_lds_offsets;
    /* Layout of TCS outputs / TES inputs:
@@ -136,15 +135,12 @@ struct si_shader_context {
 
    struct ac_llvm_compiler *compiler;
 
-   /* GS vertex offsets unpacked with the gfx6-9 tristrip_adj bug workaround. */
-   LLVMValueRef gs_vtx_offset[6];
-
    /* Preloaded descriptors. */
    LLVMValueRef esgs_ring;
    LLVMValueRef gsvs_ring[4];
    LLVMValueRef tess_offchip_ring;
+   LLVMValueRef instance_divisor_constbuf;
 
-   LLVMValueRef invoc0_tess_factors[6]; /* outer[4], inner[2] */
    LLVMValueRef gs_next_vertex[4];
    LLVMValueRef gs_curprim_verts[4];
    LLVMValueRef gs_generated_prims[4];
@@ -173,9 +169,7 @@ bool si_vs_needs_prolog(const struct si_shader_selector *sel,
 void si_get_vs_prolog_key(const struct si_shader_info *info, unsigned num_input_sgprs,
                           bool ngg_cull_shader, const struct si_vs_prolog_bits *prolog_key,
                           struct si_shader *shader_out, union si_shader_part_key *key);
-struct nir_shader *si_get_nir_shader(struct si_shader_selector *sel,
-                                     const union si_shader_key *key,
-                                     bool *free_nir,
+struct nir_shader *si_get_nir_shader(struct si_shader *shader, bool *free_nir,
                                      uint64_t tcs_vgpr_only_inputs);
 void si_get_tcs_epilog_key(struct si_shader *shader, union si_shader_part_key *key);
 bool si_need_ps_prolog(const union si_shader_part_key *key);
@@ -244,14 +238,14 @@ void si_llvm_gs_build_end(struct si_shader_context *ctx);
 void si_llvm_init_gs_callbacks(struct si_shader_context *ctx);
 
 /* si_shader_llvm_tess.c */
+LLVMValueRef si_get_rel_patch_id(struct si_shader_context *ctx);
 LLVMValueRef si_get_tcs_in_vertex_dw_stride(struct si_shader_context *ctx);
 LLVMValueRef si_get_num_tcs_out_vertices(struct si_shader_context *ctx);
-void si_llvm_preload_tes_rings(struct si_shader_context *ctx);
+void si_llvm_preload_tess_rings(struct si_shader_context *ctx);
 void si_llvm_ls_build_end(struct si_shader_context *ctx);
 void si_llvm_build_tcs_epilog(struct si_shader_context *ctx, union si_shader_part_key *key);
 void si_llvm_tcs_build_end(struct si_shader_context *ctx);
 void si_llvm_init_tcs_callbacks(struct si_shader_context *ctx);
-void si_llvm_init_tes_callbacks(struct si_shader_context *ctx, bool ngg_cull_shader);
 
 /* si_shader_llvm_ps.c */
 LLVMValueRef si_get_sample_id(struct si_shader_context *ctx);

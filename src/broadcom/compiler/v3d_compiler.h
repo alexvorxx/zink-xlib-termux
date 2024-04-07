@@ -405,6 +405,7 @@ struct v3d_key {
         uint8_t ucp_enables;
         bool is_last_geometry_stage;
         bool robust_buffer_access;
+        bool robust_image_access;
 
         enum v3d_execution_environment environment;
 };
@@ -645,6 +646,7 @@ struct v3d_compile {
                         uint8_t component_mask;
                 } flush[MAX_TMU_QUEUE_SIZE];
                 uint32_t flush_count;
+                uint32_t total_count;
         } tmu;
 
         /**
@@ -904,6 +906,7 @@ struct v3d_compile {
         enum v3d_compilation_result compilation_result;
 
         bool tmu_dirty_rcl;
+        bool has_global_address;
 };
 
 struct v3d_uniform_list {
@@ -918,6 +921,7 @@ struct v3d_prog_data {
         uint32_t spill_size;
         uint32_t tmu_spills;
         uint32_t tmu_fills;
+        uint32_t tmu_count;
 
         uint32_t qpu_read_stalls;
 
@@ -933,6 +937,8 @@ struct v3d_prog_data {
         bool tmu_dirty_rcl;
 
         bool has_control_barrier;
+
+        bool has_global_address;
 };
 
 struct v3d_vs_prog_data {
@@ -1153,15 +1159,15 @@ bool vir_opt_redundant_flags(struct v3d_compile *c);
 bool vir_opt_small_immediates(struct v3d_compile *c);
 bool vir_opt_vpm(struct v3d_compile *c);
 bool vir_opt_constant_alu(struct v3d_compile *c);
-void v3d_nir_lower_blend(nir_shader *s, struct v3d_compile *c);
-void v3d_nir_lower_io(nir_shader *s, struct v3d_compile *c);
-void v3d_nir_lower_line_smooth(nir_shader *shader);
-void v3d_nir_lower_logic_ops(nir_shader *s, struct v3d_compile *c);
-void v3d_nir_lower_robust_buffer_access(nir_shader *shader, struct v3d_compile *c);
-void v3d_nir_lower_scratch(nir_shader *s);
-void v3d_nir_lower_txf_ms(nir_shader *s, struct v3d_compile *c);
-void v3d_nir_lower_image_load_store(nir_shader *s);
-void v3d_nir_lower_load_store_bitsize(nir_shader *s, struct v3d_compile *c);
+bool v3d_nir_lower_io(nir_shader *s, struct v3d_compile *c);
+bool v3d_nir_lower_line_smooth(nir_shader *shader);
+bool v3d_nir_lower_logic_ops(nir_shader *s, struct v3d_compile *c);
+bool v3d_nir_lower_robust_buffer_access(nir_shader *s, struct v3d_compile *c);
+bool v3d_nir_lower_robust_image_access(nir_shader *s, struct v3d_compile *c);
+bool v3d_nir_lower_scratch(nir_shader *s);
+bool v3d_nir_lower_txf_ms(nir_shader *s, struct v3d_compile *c);
+bool v3d_nir_lower_image_load_store(nir_shader *s);
+bool v3d_nir_lower_load_store_bitsize(nir_shader *s, struct v3d_compile *c);
 
 void v3d33_vir_vpm_read_setup(struct v3d_compile *c, int num_components);
 void v3d33_vir_vpm_write_setup(struct v3d_compile *c);

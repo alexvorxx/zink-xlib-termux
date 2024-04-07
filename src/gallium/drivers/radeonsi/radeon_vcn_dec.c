@@ -28,7 +28,6 @@
 #include "radeon_vcn_dec.h"
 
 #include "pipe/p_video_codec.h"
-#include "radeon_video.h"
 #include "radeonsi/si_pipe.h"
 #include "util/u_memory.h"
 #include "util/u_video.h"
@@ -385,7 +384,7 @@ static rvcn_dec_message_hevc_t get_h265_msg(struct radeon_decoder *dec,
    result.curr_poc = pic->CurrPicOrderCntVal;
 
    for (i = 0; i < ARRAY_SIZE(dec->render_pic_list); i++) {
-      for (j = 0; 
+      for (j = 0;
            (pic->ref[j] != NULL) && (j < ARRAY_SIZE(dec->render_pic_list));
            j++) {
          if (dec->render_pic_list[i] == pic->ref[j])
@@ -629,25 +628,25 @@ static rvcn_dec_message_vp9_t get_vp9_msg(struct radeon_decoder *dec,
    //clear the dec->render list if it is not used as a reference
    for (i = 0; i < ARRAY_SIZE(dec->render_pic_list); i++) {
       if (dec->render_pic_list[i]) {
-          for (j=0;j<8;j++) {
+         for (j=0;j<8;j++) {
             if (dec->render_pic_list[i] == pic->ref[j])
-                 break;
-	  }
-	  if(j == 8)
-             dec->render_pic_list[i] = NULL;
+               break;
+         }
+         if (j == 8)
+            dec->render_pic_list[i] = NULL;
       }
    }
 
    for (i = 0; i < ARRAY_SIZE(dec->render_pic_list); ++i) {
       if (dec->render_pic_list[i] && dec->render_pic_list[i] == target) {
-	if (target->codec != NULL){
-	    result.curr_pic_idx =(uintptr_t)vl_video_buffer_get_associated_data(target, &dec->base);
-	} else {
-	    result.curr_pic_idx = i;
-	    vl_video_buffer_set_associated_data(target, &dec->base, (void *)(uintptr_t)i,
-						&radeon_dec_destroy_associated_data);
-	}
-	break;
+         if (target->codec != NULL) {
+            result.curr_pic_idx =(uintptr_t)vl_video_buffer_get_associated_data(target, &dec->base);
+         } else {
+            result.curr_pic_idx = i;
+            vl_video_buffer_set_associated_data(target, &dec->base, (void *)(uintptr_t)i,
+            &radeon_dec_destroy_associated_data);
+         }
+         break;
       } else if (!dec->render_pic_list[i]) {
          dec->render_pic_list[i] = target;
          result.curr_pic_idx = i;
@@ -1318,33 +1317,33 @@ static void rvcn_av1_default_coef_probs(void *prob, int index)
 
 static void rvcn_vcn4_av1_default_coef_probs(void *prob, int index)
 {
-	rvcn_av1_vcn4_frame_context_t * fc = (rvcn_av1_vcn4_frame_context_t*)prob;
-	void *p;
-	int i, j;
-	unsigned size;
+   rvcn_av1_vcn4_frame_context_t *fc = (rvcn_av1_vcn4_frame_context_t*)prob;
+   void *p;
+   int i, j;
+   unsigned size;
 
-	memcpy(fc->txb_skip_cdf, av1_default_txb_skip_cdfs[index], sizeof(av1_default_txb_skip_cdfs[index]));
+   memcpy(fc->txb_skip_cdf, av1_default_txb_skip_cdfs[index], sizeof(av1_default_txb_skip_cdfs[index]));
 
-	p = (void *)fc->eob_extra_cdf;
-	size = sizeof(av1_default_eob_extra_cdfs[0][0][0][0]) * EOB_COEF_CONTEXTS_VCN4;
-	for (i = 0; i < AV1_TX_SIZES; i++) {
-		for ( j = 0; j < AV1_PLANE_TYPES; j++) {
-			memcpy(p, &av1_default_eob_extra_cdfs[index][i][j][3], size);
-			p += size;
-		}
-	}
+   p = (void *)fc->eob_extra_cdf;
+   size = sizeof(av1_default_eob_extra_cdfs[0][0][0][0]) * EOB_COEF_CONTEXTS_VCN4;
+   for (i = 0; i < AV1_TX_SIZES; i++) {
+      for ( j = 0; j < AV1_PLANE_TYPES; j++) {
+         memcpy(p, &av1_default_eob_extra_cdfs[index][i][j][3], size);
+         p += size;
+      }
+   }
 
-	memcpy(fc->dc_sign_cdf, av1_default_dc_sign_cdfs[index], sizeof(av1_default_dc_sign_cdfs[index]));
-	memcpy(fc->coeff_br_cdf, av1_default_coeff_lps_multi_cdfs[index], sizeof(av1_default_coeff_lps_multi_cdfs[index]));
-	memcpy(fc->coeff_base_cdf, av1_default_coeff_base_multi_cdfs[index], sizeof(av1_default_coeff_base_multi_cdfs[index]));
-	memcpy(fc->coeff_base_eob_cdf, av1_default_coeff_base_eob_multi_cdfs[index], sizeof(av1_default_coeff_base_eob_multi_cdfs[index]));
-	memcpy(fc->eob_flag_cdf16, av1_default_eob_multi16_cdfs[index], sizeof(av1_default_eob_multi16_cdfs[index]));
-	memcpy(fc->eob_flag_cdf32, av1_default_eob_multi32_cdfs[index], sizeof(av1_default_eob_multi32_cdfs[index]));
-	memcpy(fc->eob_flag_cdf64, av1_default_eob_multi64_cdfs[index], sizeof(av1_default_eob_multi64_cdfs[index]));
-	memcpy(fc->eob_flag_cdf128, av1_default_eob_multi128_cdfs[index], sizeof(av1_default_eob_multi128_cdfs[index]));
-	memcpy(fc->eob_flag_cdf256, av1_default_eob_multi256_cdfs[index], sizeof(av1_default_eob_multi256_cdfs[index]));
-	memcpy(fc->eob_flag_cdf512, av1_default_eob_multi512_cdfs[index], sizeof(av1_default_eob_multi512_cdfs[index]));
-	memcpy(fc->eob_flag_cdf1024, av1_default_eob_multi1024_cdfs[index], sizeof(av1_default_eob_multi1024_cdfs[index]));
+   memcpy(fc->dc_sign_cdf, av1_default_dc_sign_cdfs[index], sizeof(av1_default_dc_sign_cdfs[index]));
+   memcpy(fc->coeff_br_cdf, av1_default_coeff_lps_multi_cdfs[index], sizeof(av1_default_coeff_lps_multi_cdfs[index]));
+   memcpy(fc->coeff_base_cdf, av1_default_coeff_base_multi_cdfs[index], sizeof(av1_default_coeff_base_multi_cdfs[index]));
+   memcpy(fc->coeff_base_eob_cdf, av1_default_coeff_base_eob_multi_cdfs[index], sizeof(av1_default_coeff_base_eob_multi_cdfs[index]));
+   memcpy(fc->eob_flag_cdf16, av1_default_eob_multi16_cdfs[index], sizeof(av1_default_eob_multi16_cdfs[index]));
+   memcpy(fc->eob_flag_cdf32, av1_default_eob_multi32_cdfs[index], sizeof(av1_default_eob_multi32_cdfs[index]));
+   memcpy(fc->eob_flag_cdf64, av1_default_eob_multi64_cdfs[index], sizeof(av1_default_eob_multi64_cdfs[index]));
+   memcpy(fc->eob_flag_cdf128, av1_default_eob_multi128_cdfs[index], sizeof(av1_default_eob_multi128_cdfs[index]));
+   memcpy(fc->eob_flag_cdf256, av1_default_eob_multi256_cdfs[index], sizeof(av1_default_eob_multi256_cdfs[index]));
+   memcpy(fc->eob_flag_cdf512, av1_default_eob_multi512_cdfs[index], sizeof(av1_default_eob_multi512_cdfs[index]));
+   memcpy(fc->eob_flag_cdf1024, av1_default_eob_multi1024_cdfs[index], sizeof(av1_default_eob_multi1024_cdfs[index]));
 }
 
 static unsigned calc_ctx_size_h265_main(struct radeon_decoder *dec)
@@ -2034,10 +2033,9 @@ static struct pb_buffer *rvcn_dec_message_decode(struct radeon_decoder *dec,
       index_codec->message_id = RDECODE_MESSAGE_AV1;
 
       if (dec->ctx.res == NULL) {
-
          unsigned frame_ctxt_size = dec->av1_version == RDECODE_AV1_VER_0
-		                                   ? align(sizeof(rvcn_av1_frame_context_t), 2048)
-		                                   : align(sizeof(rvcn_av1_vcn4_frame_context_t), 2048);
+                                       ? align(sizeof(rvcn_av1_frame_context_t), 2048)
+                                       : align(sizeof(rvcn_av1_vcn4_frame_context_t), 2048);
 
          unsigned ctx_size = (9 + 4) * frame_ctxt_size + 9 * 64 * 34 * 512 + 9 * 64 * 34 * 256 * 5;
          int num_64x64_CTB_8k = 68;
@@ -2124,9 +2122,18 @@ static void rvcn_dec_message_feedback(struct radeon_decoder *dec)
    header->num_buffers = 0;
 }
 
+static void rvcn_dec_sq_tail(struct radeon_decoder *dec)
+{
+   if (dec->vcn_dec_sw_ring == false)
+      return;
+
+   rvcn_sq_tail(&dec->cs, &dec->sq);
+}
 /* flush IB to the hardware */
 static int flush(struct radeon_decoder *dec, unsigned flags)
 {
+   rvcn_dec_sq_tail(dec);
+
    return dec->ws->cs_flush(&dec->cs, flags, NULL);
 }
 
@@ -2155,6 +2162,7 @@ static void send_cmd(struct radeon_decoder *dec, unsigned cmd, struct pb_buffer 
    }
 
    if (!dec->cs.current.cdw) {
+      rvcn_sq_header(&dec->cs, &dec->sq, false);
       rvcn_decode_ib_package_t *ib_header =
          (rvcn_decode_ib_package_t *)&(dec->cs.current.buf[dec->cs.current.cdw]);
 
@@ -2770,8 +2778,13 @@ struct pipe_video_codec *radeon_create_decoder(struct pipe_context *context,
    dec->ws = ws;
 
    if (u_reduce_video_profile(templ->profile) != PIPE_VIDEO_FORMAT_JPEG &&
-       sctx->gfx_level >= GFX11)
+       sctx->gfx_level >= GFX11) {
       dec->vcn_dec_sw_ring = true;
+      ring = AMD_IP_VCN_UNIFIED;
+   }
+
+   dec->sq.ib_total_size_in_dw = NULL;
+   dec->sq.ib_checksum = NULL;
 
    if (!ws->cs_create(&dec->cs, sctx->ctx, ring, NULL, NULL, false)) {
       RVID_ERR("Can't get command submission context.\n");
@@ -2916,7 +2929,9 @@ struct pipe_video_codec *radeon_create_decoder(struct pipe_context *context,
       dec->jpg.direct_reg = true;
       break;
    case CHIP_GFX1100:
+   case CHIP_GFX1101:
    case CHIP_GFX1102:
+   case CHIP_GFX1103:
       dec->jpg.direct_reg = true;
       dec->addr_gfx_mode = RDECODE_ARRAY_MODE_ADDRLIB_SEL_GFX11;
       dec->av1_version = RDECODE_AV1_VER_1;

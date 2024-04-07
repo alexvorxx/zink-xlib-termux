@@ -52,6 +52,7 @@
 #include "GL/gl.h"
 #include "compiler/shader_enums.h"
 #include "main/config.h"
+#include "glheader.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -128,7 +129,9 @@ struct glthread_client_attrib {
 struct glthread_attrib_node {
    GLbitfield Mask;
    int ActiveTexture;
-   GLenum MatrixMode;
+   GLenum16 MatrixMode;
+   bool CullFace;
+   bool DepthTest;
 };
 
 typedef enum {
@@ -152,9 +155,10 @@ struct glthread_state
 
    /** Whether GLThread is enabled. */
    bool enabled;
+   bool inside_begin_end;
 
    /** Display lists. */
-   GLenum ListMode; /**< Zero if not inside display list, else list mode. */
+   GLenum16 ListMode; /**< Zero if not inside display list, else list mode. */
    unsigned ListBase;
    unsigned ListCallDepth;
 
@@ -184,7 +188,6 @@ struct glthread_state
 
    /** Caps. */
    GLboolean SupportsBufferUploads;
-   GLboolean SupportsNonVBOUploads;
 
    /** Primitive restart state. */
    bool PrimitiveRestart;
@@ -223,16 +226,18 @@ struct glthread_state
 
    /** Basic matrix state tracking. */
    int ActiveTexture;
-   GLenum MatrixMode;
+   GLenum16 MatrixMode;
    gl_matrix_index MatrixIndex;
    struct glthread_attrib_node AttribStack[MAX_ATTRIB_STACK_DEPTH];
    int AttribStackDepth;
    int MatrixStackDepth[M_NUM_MATRIX_STACKS];
 
    /** Enable states. */
+   bool DepthTest;
    bool CullFace;
 
    GLuint CurrentDrawFramebuffer;
+   GLuint CurrentReadFramebuffer;
    GLuint CurrentProgram;
 };
 
@@ -245,7 +250,8 @@ void _mesa_glthread_finish_before(struct gl_context *ctx, const char *func);
 void _mesa_glthread_upload(struct gl_context *ctx, const void *data,
                            GLsizeiptr size, unsigned *out_offset,
                            struct gl_buffer_object **out_buffer,
-                           uint8_t **out_ptr);
+                           uint8_t **out_ptr,
+                           unsigned start_offset);
 void _mesa_glthread_reset_vao(struct glthread_vao *vao);
 void _mesa_error_glthread_safe(struct gl_context *ctx, GLenum error,
                                bool glthread, const char *format, ...);

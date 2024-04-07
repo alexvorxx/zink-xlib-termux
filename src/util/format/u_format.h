@@ -1337,6 +1337,12 @@ util_format_luminance_to_red(enum pipe_format format)
    case PIPE_FORMAT_L32A32_SINT:
       return PIPE_FORMAT_R32A32_SINT;
 
+   case PIPE_FORMAT_L8_SRGB:
+      return PIPE_FORMAT_R8_SRGB;
+
+   case PIPE_FORMAT_L8A8_SRGB:
+      return PIPE_FORMAT_R8G8_SRGB;
+
    /* We don't have compressed red-alpha variants for these. */
    case PIPE_FORMAT_LATC2_UNORM:
    case PIPE_FORMAT_LATC2_SNORM:
@@ -1692,6 +1698,9 @@ util_format_rgb_to_bgr(enum pipe_format format);
 /* Returns the pipe format with SNORM formats cast to UNORM, otherwise the original pipe format. */
 enum pipe_format
 util_format_snorm_to_unorm(enum pipe_format format);
+
+enum pipe_format
+util_format_rgbx_to_rgba(enum pipe_format format);
 
 #ifdef __cplusplus
 } // extern "C" {

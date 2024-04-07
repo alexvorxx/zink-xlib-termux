@@ -619,9 +619,12 @@ static bool noop_check_resource_capability(struct pipe_screen *screen,
 static void noop_create_fence_win32(struct pipe_screen *screen,
                                     struct pipe_fence_handle **fence,
                                     void *handle,
+                                    const void *name,
                                     enum pipe_fd_type type)
 {
-   screen->create_fence_win32(screen, fence, handle, type);
+   struct noop_pipe_screen *noop_screen = (struct noop_pipe_screen *)screen;
+   struct pipe_screen *oscreen = noop_screen->oscreen;
+   oscreen->create_fence_win32(oscreen, fence, handle, name, type);
 }
 
 static void noop_set_max_shader_compiler_threads(struct pipe_screen *screen,
@@ -631,7 +634,7 @@ static void noop_set_max_shader_compiler_threads(struct pipe_screen *screen,
 
 static bool noop_is_parallel_shader_compilation_finished(struct pipe_screen *screen,
                                                          void *shader,
-                                                         unsigned shader_type)
+                                                         enum pipe_shader_type shader_type)
 {
    return true;
 }
@@ -740,6 +743,15 @@ static void noop_vertex_state_destroy(struct pipe_screen *screen,
    FREE(state);
 }
 
+static void noop_set_fence_timeline_value(struct pipe_screen *screen,
+                                          struct pipe_fence_handle *fence,
+                                          uint64_t value)
+{
+   struct noop_pipe_screen *noop_screen = (struct noop_pipe_screen *)screen;
+   struct pipe_screen *oscreen = noop_screen->oscreen;
+   oscreen->set_fence_timeline_value(oscreen, fence, value);
+}
+
 struct pipe_screen *noop_screen_create(struct pipe_screen *oscreen)
 {
    struct noop_pipe_screen *noop_screen;
@@ -797,6 +809,8 @@ struct pipe_screen *noop_screen_create(struct pipe_screen *oscreen)
    screen->vertex_state_destroy = noop_vertex_state_destroy;
    if (oscreen->get_sparse_texture_virtual_page_size)
       screen->get_sparse_texture_virtual_page_size = noop_get_sparse_texture_virtual_page_size;
+   if (oscreen->set_fence_timeline_value)
+      screen->set_fence_timeline_value = noop_set_fence_timeline_value;
 
    slab_create_parent(&noop_screen->pool_transfers,
                       sizeof(struct pipe_transfer), 64);

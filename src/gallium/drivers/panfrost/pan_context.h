@@ -33,6 +33,7 @@
 #include "pan_blend_cso.h"
 #include "pan_encoder.h"
 #include "pan_texture.h"
+#include "pan_earlyzs.h"
 
 #include "pipe/p_compiler.h"
 #include "pipe/p_config.h"
@@ -290,6 +291,8 @@ struct panfrost_shader_state {
 
         struct pan_shader_info info;
 
+        struct pan_earlyzs_lut earlyzs;
+
         /* Attached transform feedback program, if one exists */
         struct panfrost_shader_state *xfb;
 
@@ -401,7 +404,9 @@ panfrost_shader_compile(struct pipe_screen *pscreen,
                         struct panfrost_pool *shader_pool,
                         struct panfrost_pool *desc_pool,
                         const nir_shader *ir,
-                        struct panfrost_shader_state *state);
+                        struct util_debug_callback *dbg,
+                        struct panfrost_shader_state *state,
+                        unsigned req_local_mem);
 
 void
 panfrost_analyze_sysvals(struct panfrost_shader_state *ss);

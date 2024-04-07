@@ -81,6 +81,9 @@ public:
 
    void create_function(ir_function_signature *ir);
 
+   /* True if we have any output rvalues */
+   bool has_output_rvalue;
+
 private:
    void add_instr(nir_instr *instr, unsigned num_components, unsigned bit_size);
    nir_ssa_def *evaluate_rvalue(ir_rvalue *ir);
@@ -253,10 +256,27 @@ glsl_to_nir(const struct gl_constants *consts,
    if (shader_prog->Label)
       shader->info.label = ralloc_strdup(shader, shader_prog->Label);
 
+   shader->info.subgroup_size = SUBGROUP_SIZE_UNIFORM;
+
    if (shader->info.stage == MESA_SHADER_FRAGMENT) {
       shader->info.fs.pixel_center_integer = sh->Program->info.fs.pixel_center_integer;
       shader->info.fs.origin_upper_left = sh->Program->info.fs.origin_upper_left;
       shader->info.fs.advanced_blend_modes = sh->Program->info.fs.advanced_blend_modes;
+
+      nir_foreach_variable_with_modes(var, shader,
+                                      nir_var_shader_in |
+                                      nir_var_system_value) {
+         if (var->data.mode == nir_var_system_value &&
+             (var->data.location == SYSTEM_VALUE_SAMPLE_ID ||
+              var->data.location == SYSTEM_VALUE_SAMPLE_POS))
+            shader->info.fs.uses_sample_shading = true;
+
+         if (var->data.mode == nir_var_shader_in && var->data.sample)
+            shader->info.fs.uses_sample_shading = true;
+      }
+
+      if (v1.has_output_rvalue)
+         shader->info.fs.uses_sample_shading = true;
    }
 
    return shader;
@@ -267,6 +287,7 @@ nir_visitor::nir_visitor(const struct gl_constants *consts, nir_shader *shader)
    this->supports_std430 = consts->UseSTD430AsDefaultPacking;
    this->shader = shader;
    this->is_global = true;
+   this->has_output_rvalue = false;
    this->var_table = _mesa_pointer_hash_table_create(NULL);
    this->overload_table = _mesa_pointer_hash_table_create(NULL);
    this->sparse_variable_set = _mesa_pointer_set_create(NULL);
@@ -469,13 +490,6 @@ get_nir_how_declared(unsigned how_declared)
 void
 nir_visitor::visit(ir_variable *ir)
 {
-   /* TODO: In future we should switch to using the NIR lowering pass but for
-    * now just ignore these variables as GLSL IR should have lowered them.
-    * Anything remaining are just dead vars that weren't cleaned up.
-    */
-   if (ir->data.mode == ir_var_shader_shared)
-      return;
-
    /* FINISHME: inout parameters */
    assert(ir->data.mode != ir_var_function_inout);
 
@@ -573,6 +587,10 @@ nir_visitor::visit(ir_variable *ir)
 
    case ir_var_system_value:
       var->data.mode = nir_var_system_value;
+      break;
+
+   case ir_var_shader_shared:
+      var->data.mode = nir_var_mem_shared;
       break;
 
    default:
@@ -1686,7 +1704,7 @@ nir_visitor::visit(ir_call *ir)
          nir_ssa_def *val = evaluate_rvalue(param_rvalue);
          nir_src src = nir_src_for_ssa(val);
 
-         nir_src_copy(&call->params[i], &src);
+         nir_src_copy(&call->params[i], &src, &call->instr);
       } else if (sig_param->data.mode == ir_var_function_inout) {
          unreachable("unimplemented: inout parameters");
       }
@@ -1824,6 +1842,9 @@ nir_visitor::evaluate_rvalue(ir_rvalue* ir)
 
       enum gl_access_qualifier access = deref_get_qualifier(this->deref);
       this->result = nir_load_deref_with_access(&b, this->deref, access);
+
+      if (nir_deref_mode_is(this->deref, nir_var_shader_out))
+         this->has_output_rvalue = true;
    }
 
    return this->result;

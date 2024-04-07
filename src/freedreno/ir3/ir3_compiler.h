@@ -184,6 +184,21 @@ struct ir3_compiler {
    bool has_preamble;
 
    bool push_ubo_with_preamble;
+
+   /* Where the shared consts start in constants file, in vec4's. */
+   uint16_t shared_consts_base_offset;
+
+   /* The size of shared consts for CS and FS(in vec4's).
+    * Also the size that is actually used on geometry stages (on a6xx).
+    */
+   uint64_t shared_consts_size;
+
+   /* Found on a6xx for geometry stages, that is different from
+    * actually used shared consts.
+    *
+    * TODO: Keep an eye on this for next gens.
+    */
+   uint64_t geom_shared_consts_size_quirk;
 };
 
 struct ir3_compiler_options {
@@ -251,6 +266,7 @@ enum ir3_shader_debug {
    IR3_DBG_NOCACHE = BITFIELD_BIT(11),
    IR3_DBG_SPILLALL = BITFIELD_BIT(12),
    IR3_DBG_NOPREAMBLE = BITFIELD_BIT(13),
+   IR3_DBG_SHADER_INTERNAL = BITFIELD_BIT(14),
 
    /* DEBUG-only options: */
    IR3_DBG_SCHEDMSGS = BITFIELD_BIT(20),
@@ -264,8 +280,11 @@ extern enum ir3_shader_debug ir3_shader_debug;
 extern const char *ir3_shader_override_path;
 
 static inline bool
-shader_debug_enabled(gl_shader_stage type)
+shader_debug_enabled(gl_shader_stage type, bool internal)
 {
+   if (internal)
+      return !!(ir3_shader_debug & IR3_DBG_SHADER_INTERNAL);
+
    if (ir3_shader_debug & IR3_DBG_DISASM)
       return true;
 
@@ -284,7 +303,7 @@ shader_debug_enabled(gl_shader_stage type)
    case MESA_SHADER_KERNEL:
       return !!(ir3_shader_debug & IR3_DBG_SHADER_CS);
    default:
-      debug_assert(0);
+      assert(0);
       return false;
    }
 }

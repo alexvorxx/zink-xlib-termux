@@ -1211,6 +1211,7 @@ struct __DRIdri2ExtensionRec {
 #define __DRI_IMAGE_FORMAT_ABGR16161616F 0x1015
 #define __DRI_IMAGE_FORMAT_SXRGB8       0x1016
 #define __DRI_IMAGE_FORMAT_ABGR16161616 0x1017
+#define __DRI_IMAGE_FORMAT_XBGR16161616 0x1018
 
 #define __DRI_IMAGE_USE_SHARE		0x0001
 #define __DRI_IMAGE_USE_SCANOUT		0x0002
@@ -1223,6 +1224,7 @@ struct __DRIdri2ExtensionRec {
 #define __DRI_IMAGE_USE_BACKBUFFER      0x0010
 #define __DRI_IMAGE_USE_PROTECTED       0x0020
 #define __DRI_IMAGE_USE_PRIME_BUFFER    0x0040
+#define __DRI_IMAGE_USE_FRONT_RENDERING 0x0080
 
 
 #define __DRI_IMAGE_TRANSFER_READ            0x1
@@ -1241,7 +1243,6 @@ struct __DRIdri2ExtensionRec {
 #define __DRI_IMAGE_FOURCC_SARGB8888	0x83324258
 #define __DRI_IMAGE_FOURCC_SABGR8888	0x84324258
 #define __DRI_IMAGE_FOURCC_SXRGB8888	0x85324258
-#define __DRI_IMAGE_FOURCC_RGBA16161616 0x38344152  /* fourcc_code('R', 'A', '4', '8' ) */
 
 /**
  * Queryable on images created by createImageFromNames.

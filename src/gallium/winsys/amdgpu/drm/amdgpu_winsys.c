@@ -95,7 +95,7 @@ static bool do_winsys_init(struct amdgpu_winsys *ws,
                            const struct pipe_screen_config *config,
                            int fd)
 {
-   if (!ac_query_gpu_info(fd, ws->dev, &ws->info, &ws->amdinfo))
+   if (!ac_query_gpu_info(fd, ws->dev, &ws->info))
       goto fail;
 
    /* TODO: Enable this once the kernel handles it efficiently. */
@@ -363,6 +363,34 @@ static bool amdgpu_cs_is_secure(struct radeon_cmdbuf *rcs)
    return cs->csc->secure;
 }
 
+static uint32_t
+radeon_to_amdgpu_pstate(enum radeon_ctx_pstate pstate)
+{
+   switch (pstate) {
+   case RADEON_CTX_PSTATE_NONE:
+      return AMDGPU_CTX_STABLE_PSTATE_NONE;
+   case RADEON_CTX_PSTATE_STANDARD:
+      return AMDGPU_CTX_STABLE_PSTATE_STANDARD;
+   case RADEON_CTX_PSTATE_MIN_SCLK:
+      return AMDGPU_CTX_STABLE_PSTATE_MIN_SCLK;
+   case RADEON_CTX_PSTATE_MIN_MCLK:
+      return AMDGPU_CTX_STABLE_PSTATE_MIN_MCLK;
+   case RADEON_CTX_PSTATE_PEAK:
+      return AMDGPU_CTX_STABLE_PSTATE_PEAK;
+   default:
+      unreachable("Invalid pstate");
+   }
+}
+
+static bool
+amdgpu_cs_set_pstate(struct radeon_cmdbuf *rcs, enum radeon_ctx_pstate pstate)
+{
+   struct amdgpu_cs *cs = amdgpu_cs(rcs);
+   uint32_t amdgpu_pstate = radeon_to_amdgpu_pstate(pstate);
+   return amdgpu_cs_ctx_stable_pstate(cs->ctx->ctx,
+      AMDGPU_CTX_OP_SET_STABLE_PSTATE, amdgpu_pstate, NULL) == 0;
+}
+
 PUBLIC struct radeon_winsys *
 amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
 		     radeon_screen_create_t screen_create)
@@ -453,7 +481,7 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
       /* Create managers. */
       pb_cache_init(&aws->bo_cache, RADEON_NUM_HEAPS,
                     500000, aws->check_vm ? 1.0f : 2.0f, 0,
-                    (aws->info.vram_size + aws->info.gart_size) / 8, aws,
+                    ((uint64_t)aws->info.vram_size_kb + aws->info.gart_size_kb) * 1024 / 8, aws,
                     /* Cast to void* because one of the function parameters
                      * is a struct pointer instead of void*. */
                     (void*)amdgpu_bo_destroy, (void*)amdgpu_bo_can_reclaim);
@@ -532,6 +560,7 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
    ws->base.read_registers = amdgpu_read_registers;
    ws->base.pin_threads_to_L3_cache = amdgpu_pin_threads_to_L3_cache;
    ws->base.cs_is_secure = amdgpu_cs_is_secure;
+   ws->base.cs_set_pstate = amdgpu_cs_set_pstate;
 
    amdgpu_bo_init_functions(ws);
    amdgpu_cs_init_functions(ws);

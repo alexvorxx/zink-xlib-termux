@@ -33,7 +33,7 @@
 extern "C" {
 #endif
 
-#define SI_NUM_GRAPHICS_SHADERS (PIPE_SHADER_TESS_EVAL + 1)
+#define SI_NUM_GRAPHICS_SHADERS (PIPE_SHADER_FRAGMENT + 1)
 #define SI_NUM_SHADERS          (PIPE_SHADER_COMPUTE + 1)
 
 #define SI_NUM_VERTEX_BUFFERS SI_MAX_ATTRIBS
@@ -91,6 +91,7 @@ struct si_state_rasterizer {
    unsigned poly_stipple_enable : 1;
    unsigned line_smooth : 1;
    unsigned poly_smooth : 1;
+   unsigned point_smooth : 1;
    unsigned uses_poly_offset : 1;
    unsigned clamp_fragment_color : 1;
    unsigned clamp_vertex_color : 1;
@@ -167,7 +168,6 @@ struct si_vertex_elements {
 
    uint8_t count;
 
-   uint16_t first_vb_use_mask;
    /* Vertex buffer descriptor list size aligned for optimal prefetch. */
    uint16_t vb_desc_list_alloc_size;
    uint16_t instance_divisor_is_one;     /* bitmask of inputs */
@@ -583,7 +583,6 @@ void si_vs_key_update_inputs(struct si_context *sctx);
 void si_get_vs_key_inputs(struct si_context *sctx, union si_shader_key *key,
                           struct si_vs_prolog_bits *prolog_key);
 void si_update_ps_inputs_read_or_disabled(struct si_context *sctx);
-void si_update_ps_kill_enable(struct si_context *sctx);
 void si_update_vrs_flat_shading(struct si_context *sctx);
 unsigned si_get_input_prim(const struct si_shader_selector *gs, const union si_shader_key *key);
 bool si_update_ngg(struct si_context *sctx);
@@ -597,7 +596,8 @@ void si_ps_key_update_framebuffer_rasterizer_sample_shading(struct si_context *s
 void si_init_tess_factor_ring(struct si_context *sctx);
 bool si_update_gs_ring_buffers(struct si_context *sctx);
 bool si_update_spi_tmpring_size(struct si_context *sctx, unsigned bytes);
-unsigned si_calc_inst_pref_size(struct si_shader *shader);
+unsigned si_get_shader_prefetch_size(struct si_shader *shader);
+bool si_set_tcs_to_fixed_func_shader(struct si_context *sctx);
 
 /* si_state_draw.cpp */
 void si_cp_dma_prefetch(struct si_context *sctx, struct pipe_resource *buf,

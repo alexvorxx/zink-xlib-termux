@@ -23,6 +23,7 @@ inc_egl_dri2 = include_directories('drivers/dri2')
 
 c_args_for_egl = [asan_c_args]
 cpp_args_for_egl = []
+override_for_egl = []
 link_for_egl = []
 deps_for_egl = []
 incs_for_egl = [inc_include, inc_src, inc_egl]
@@ -106,7 +107,7 @@ if with_dri2
       files_egl += files('drivers/dri2/platform_x11_dri3.c')
       link_for_egl += libloader_dri3_helper
     endif
-    deps_for_egl += [dep_x11_xcb, dep_xcb_dri2, dep_xcb_xfixes]
+    deps_for_egl += [dep_x11_xcb, dep_xcb_dri2, dep_xcb_xrandr, dep_xcb_xfixes]
   endif
   if with_gbm and not with_platform_android
     files_egl += files('drivers/dri2/platform_drm.c')
@@ -131,7 +132,8 @@ if with_dri2
     if dep_android_mapper4.found()
       files_egl += files('drivers/dri2/platform_android_mapper.cpp')
       c_args_for_egl += '-DUSE_IMAPPER4_METADATA_API'
-      cpp_args_for_egl += ['-std=c++17', '-DUSE_IMAPPER4_METADATA_API']
+      cpp_args_for_egl += '-DUSE_IMAPPER4_METADATA_API'
+      override_for_egl += 'cpp_std=c++17'
     endif
   endif
 elif with_platform_haiku
@@ -183,7 +185,7 @@ egl_def = custom_target(
   output : 'egl.def',
   command : [prog_python, gen_vs_module_defs_py,
              '--in_file', '@INPUT@', '--out_file', '@OUTPUT@',
-             '--compiler_id', cc.get_id(), '--cpu_family', host_machine.cpu_family()]
+             '--compiler_id', cc.get_argument_syntax(), '--cpu_family', host_machine.cpu_family()]
 )
 
 libegl = shared_library(
@@ -194,6 +196,7 @@ libegl = shared_library(
     '-D_EGL_NATIVE_PLATFORM=_EGL_PLATFORM_@0@'.format(egl_native_platform.to_upper()),
   ],
   cpp_args : [cpp_args_for_egl],
+  override_options : override_for_egl,
   gnu_symbol_visibility : 'hidden',
   include_directories : incs_for_egl,
   link_with : [link_for_egl, libglapi],

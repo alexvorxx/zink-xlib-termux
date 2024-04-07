@@ -204,41 +204,6 @@ debug_get_num_option(const char *name, long dfault);
 void
 debug_get_version_option(const char *name, unsigned *major, unsigned *minor);
 
-#ifdef _MSC_VER
-__declspec(noreturn)
-#endif
-void _debug_assert_fail(const char *expr,
-                        const char *file,
-                        unsigned line,
-                        const char *function)
-#if defined(__GNUC__) && !defined(DEBUG)
-   __attribute__((noreturn))
-#endif
-;
-
-
-/**
- * Assert macro
- *
- * Do not expect that the assert call terminates -- errors must be handled
- * regardless of assert behavior.
- *
- * For non debug builds the assert macro will expand to a no-op, so do not
- * call functions with side effects in the assert expression.
- */
-#ifndef NDEBUG
-#define debug_assert(expr) ((expr) ? (void)0 : _debug_assert_fail(#expr, __FILE__, __LINE__, __FUNCTION__))
-#else
-#define debug_assert(expr) (void)(0 && (expr))
-#endif
-
-
-/** Override standard assert macro */
-#ifdef assert
-#undef assert
-#endif
-#define assert(expr) debug_assert(expr)
-
 
 /**
  * Output the current function name.
@@ -422,14 +387,8 @@ void debug_funclog_enter_exit(const char* f, const int line, const char* file);
 /**
  * Get option.
  *
- * It is an alias for getenv on Linux.
+ * It is an alias for getenv on Unix and Windows.
  *
- * On Windows it reads C:\gallium.cfg, which is a text file with CR+LF line
- * endings with one option per line as
- *
- *   NAME=value
- *
- * This file must be terminated with an extra empty line.
  */
 const char *
 debug_get_option(const char *name, const char *dfault);
@@ -466,29 +425,6 @@ __check_suid(void)
       return true;
 #endif
    return false;
-}
-
-/**
- * Define a getter for a debug option which specifies a 'FILE *'
- * to open, with additional checks for suid executables.  Note
- * that if the return is not NULL, the caller owns the 'FILE *'
- * reference.
- */
-#define DEBUG_GET_ONCE_FILE_OPTION(suffix, name, dfault, mode) \
-static FILE * \
-debug_get_option_ ## suffix (void) \
-{ \
-   static bool initialized = false; \
-   static const char * value; \
-   if (__check_suid()) \
-      return NULL; \
-   if (!initialized) { \
-      initialized = true; \
-      value = debug_get_option(name, dfault); \
-   } \
-   if (!value) \
-      return NULL; \
-   return fopen(value, mode); \
 }
 
 #define DEBUG_GET_ONCE_BOOL_OPTION(sufix, name, dfault) \

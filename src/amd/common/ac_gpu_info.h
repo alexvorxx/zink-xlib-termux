@@ -33,6 +33,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "util/macros.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -49,27 +51,43 @@ struct amd_ip_info {
 };
 
 struct radeon_info {
+   /* Device info. */
+   const char *name;
+   char lowercase_name[32];
+   const char *marketing_name;
+   uint32_t num_se;           /* only enabled SEs */
+   uint32_t num_rb;           /* only enabled RBs */
+   uint32_t num_cu;           /* only enabled CUs */
+   uint32_t max_gpu_freq_mhz; /* also known as the shader clock */
+   uint32_t max_gflops;
+   uint32_t l1_cache_size;
+   uint32_t l2_cache_size;
+   uint32_t l3_cache_size_mb;
+   uint32_t num_tcc_blocks; /* also the number of memory channels */
+   uint32_t memory_freq_mhz;
+   uint32_t memory_freq_mhz_effective;
+   uint32_t memory_bus_width;
+   uint32_t memory_bandwidth_gbps;
+   uint32_t clock_crystal_freq;
+   struct amd_ip_info ip[AMD_NUM_IP_TYPES];
+
+   /* Identification. */
    /* PCI info: domain:bus:dev:func */
    uint32_t pci_domain;
    uint32_t pci_bus;
    uint32_t pci_dev;
    uint32_t pci_func;
 
-   /* Device info. */
-   const char *name;
-   char lowercase_name[32];
-   const char *marketing_name;
-   bool is_pro_graphics;
    uint32_t pci_id;
    uint32_t pci_rev_id;
    enum radeon_family family;
    enum amd_gfx_level gfx_level;
    uint32_t family_id;
    uint32_t chip_external_rev;
-   uint32_t clock_crystal_freq;
+   uint32_t chip_rev; /* 0 = A0, 1 = A1, etc. */
 
-   /* Features. */
-   struct amd_ip_info ip[AMD_NUM_IP_TYPES];
+   /* Flags. */
+   bool is_pro_graphics;
    bool has_graphics; /* false if the chip is compute-only */
    uint32_t ib_pad_dw_mask[AMD_NUM_IP_TYPES];
    bool has_clear_state;
@@ -98,6 +116,7 @@ struct radeon_info {
    bool has_sqtt_auto_flush_mode_bug;
    bool never_send_perfcounter_stop;
    bool discardable_allows_big_page;
+   bool has_export_conflict_bug;
 
    /* Display features. */
    /* There are 2 display DCC codepaths, because display expects unaligned DCC. */
@@ -111,10 +130,7 @@ struct radeon_info {
    uint32_t gart_page_size;
    uint32_t gart_size_kb;
    uint32_t vram_size_kb;
-   uint64_t gart_size;
-   uint64_t vram_size;
-   uint64_t vram_vis_size;
-   uint32_t vram_bit_width;
+   uint64_t vram_vis_size_kb;
    uint32_t vram_type;
    uint32_t max_heap_size_kb;
    uint32_t min_alloc_size;
@@ -125,16 +141,12 @@ struct radeon_info {
    bool has_l2_uncached;
    bool r600_has_virtual_memory;
    uint32_t max_tcc_blocks;
-   uint32_t num_tcc_blocks;
    uint32_t tcc_cache_line_size;
    bool tcc_rb_non_coherent; /* whether L2 inv is needed for render->texture transitions */
    unsigned pc_lines;
    uint32_t lds_size_per_workgroup;
    uint32_t lds_alloc_granularity;
    uint32_t lds_encode_granularity;
-   uint32_t max_memory_clock;
-   uint32_t l1_cache_size;
-   uint32_t l2_cache_size;
 
    /* CP info. */
    bool gfx_ib_pad_with_type2;
@@ -148,12 +160,7 @@ struct radeon_info {
 
    /* Multimedia info. */
    struct {
-      bool uvd_decode;
-      bool vcn_decode;
-      bool jpeg_decode;
-      bool vce_encode;
-      bool uvd_encode;
-      bool vcn_encode;
+      bool vcn_decode; /* TODO: remove */
    } has_video_hw;
 
    uint32_t uvd_fw_version;
@@ -180,19 +187,9 @@ struct radeon_info {
    bool has_timeline_syncobj;
    bool has_fence_to_handle;
    bool has_local_buffers;
-   bool kernel_flushes_hdp_before_ib;
-   bool htile_cmask_support_1d_tiling;
-   bool si_TA_CS_BC_BASE_ADDR_allowed;
    bool has_bo_metadata;
-   bool has_gpu_reset_status_query;
    bool has_eqaa_surface_allocator;
-   bool has_format_bc1_through_bc7;
-   bool kernel_flushes_tc_l2_after_ib;
-   bool has_indirect_compute_dispatch;
-   bool has_unaligned_shader_loads;
    bool has_sparse_vm_mappings;
-   bool has_2d_tiling;
-   bool has_read_registers_query;
    bool has_scheduled_fence_dependency;
    bool has_stable_pstate;
    /* Whether SR-IOV is enabled or amdgpu.mcbp=1 was set on the kernel command line. */
@@ -203,12 +200,9 @@ struct radeon_info {
    /* Shader cores. */
    uint32_t cu_mask[AMD_MAX_SE][AMD_MAX_SA_PER_SE];
    uint32_t r600_max_quad_pipes; /* wave size / 16 */
-   uint32_t max_shader_clock;
-   uint32_t num_good_compute_units;
    uint32_t max_good_cu_per_sa;
    uint32_t min_good_cu_per_sa; /* min != max if SAs have different # of CUs */
    uint32_t max_se;             /* number of shader engines incl. disabled ones */
-   uint32_t num_se;             /* number of enabled shader engines */
    uint32_t max_sa_per_se;      /* shader arrays per shader engine */
    uint32_t max_wave64_per_simd;
    uint32_t num_physical_sgprs_per_simd;
@@ -247,8 +241,7 @@ struct radeon_info {
    uint32_t spi_cu_en;
 };
 
-bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
-                       struct amdgpu_gpu_info *amdinfo);
+bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info);
 
 void ac_compute_driver_uuid(char *uuid, size_t size);
 
@@ -259,8 +252,9 @@ void ac_get_raster_config(struct radeon_info *info, uint32_t *raster_config_p,
                           uint32_t *raster_config_1_p, uint32_t *se_tile_repeat_p);
 void ac_get_harvested_configs(struct radeon_info *info, unsigned raster_config,
                               unsigned *cik_raster_config_1_p, unsigned *raster_config_se);
-unsigned ac_get_compute_resource_limits(struct radeon_info *info, unsigned waves_per_threadgroup,
-                                        unsigned max_waves_per_sh, unsigned threadgroups_per_cu);
+unsigned ac_get_compute_resource_limits(const struct radeon_info *info,
+                                        unsigned waves_per_threadgroup, unsigned max_waves_per_sh,
+                                        unsigned threadgroups_per_cu);
 
 struct ac_hs_info {
    uint32_t tess_offchip_block_dw_size;
@@ -317,6 +311,8 @@ struct ac_task_info {
 
 void ac_get_task_info(struct radeon_info *info,
                       struct ac_task_info *task_info);
+
+uint32_t ac_memory_ops_per_clock(uint32_t vram_type);
 
 #ifdef __cplusplus
 }

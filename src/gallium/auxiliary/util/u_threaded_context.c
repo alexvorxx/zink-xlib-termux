@@ -97,7 +97,7 @@ static void
 tc_set_driver_thread(struct threaded_context *tc)
 {
 #ifndef NDEBUG
-   tc->driver_thread = util_get_thread_id();
+   tc->driver_thread = thrd_current();
 #endif
 }
 
@@ -237,6 +237,7 @@ tc_batch_execute(void *job, UNUSED void *gdata, int thread_index)
    tc_clear_driver_thread(batch->tc);
    tc_batch_check(batch);
    batch->num_total_slots = 0;
+   batch->last_mergeable_call = NULL;
 }
 
 static void
@@ -295,6 +296,7 @@ tc_add_sized_call(struct threaded_context *tc, enum tc_call_id id,
       tc_batch_flush(tc);
       next = &tc->batch_slots[tc->next];
       tc_assert(next->num_total_slots == 0);
+      tc_assert(next->last_mergeable_call == NULL);
    }
 
    tc_assert(util_queue_fence_is_signalled(&next->fence));
@@ -322,6 +324,56 @@ tc_add_sized_call(struct threaded_context *tc, enum tc_call_id id,
 #define tc_add_slot_based_call(tc, execute, type, num_slots) \
    ((struct type*)tc_add_sized_call(tc, execute, \
                                     call_size_with_slots(type, num_slots)))
+
+/* Returns the last mergeable call that was added to the unflushed
+ * batch, or NULL if the address of that call is not currently known
+ * or no such call exists in the unflushed batch.
+ */
+static struct tc_call_base *
+tc_get_last_mergeable_call(struct threaded_context *tc)
+{
+   struct tc_batch *batch = &tc->batch_slots[tc->next];
+   struct tc_call_base *call = batch->last_mergeable_call;
+
+   tc_assert(call == NULL || call->num_slots <= batch->num_total_slots);
+
+   if (call && (uint64_t *)call == &batch->slots[batch->num_total_slots - call->num_slots])
+      return call;
+   else
+      return NULL;
+}
+
+/* Increases the size of the last call in the unflushed batch to the
+ * given number of slots, if possible, without changing the call's data.
+ */
+static bool
+tc_enlarge_last_mergeable_call(struct threaded_context *tc, unsigned desired_num_slots)
+{
+   struct tc_batch *batch = &tc->batch_slots[tc->next];
+   struct tc_call_base *call = tc_get_last_mergeable_call(tc);
+
+   tc_assert(call);
+   tc_assert(desired_num_slots >= call->num_slots);
+
+   unsigned added_slots = desired_num_slots - call->num_slots;
+
+   if (unlikely(batch->num_total_slots + added_slots > TC_SLOTS_PER_BATCH))
+      return false;
+
+   batch->num_total_slots += added_slots;
+   call->num_slots += added_slots;
+
+   return true;
+}
+
+static void
+tc_mark_call_mergeable(struct threaded_context *tc, struct tc_call_base *call)
+{
+   struct tc_batch *batch = &tc->batch_slots[tc->next];
+   tc_assert(call->num_slots <= batch->num_total_slots);
+   tc_assert((uint64_t *)call == &batch->slots[batch->num_total_slots - call->num_slots]);
+   batch->last_mergeable_call = call;
+}
 
 static bool
 tc_is_sync(struct threaded_context *tc)
@@ -406,18 +458,51 @@ threaded_context_flush(struct pipe_context *_pipe,
    }
 }
 
-static void
-tc_add_to_buffer_list(struct tc_buffer_list *next, struct pipe_resource *buf)
+/* Must be called before TC binds, maps, invalidates, or adds a buffer to a buffer list. */
+static void tc_touch_buffer(struct threaded_context *tc, struct threaded_resource *buf)
 {
-   uint32_t id = threaded_resource(buf)->buffer_id_unique;
+   const struct threaded_context *first_user = buf->first_user;
+
+   /* Fast path exit to avoid additional branches */
+   if (likely(first_user == tc))
+      return;
+
+   if (!first_user)
+      first_user = p_atomic_cmpxchg_ptr(&buf->first_user, NULL, tc);
+
+   /* The NULL check might seem unnecessary here but it's actually critical:
+    * p_atomic_cmpxchg will return NULL if it succeeds, meaning that NULL is
+    * equivalent to "we're the first user" here. (It's equally important not
+    * to ignore the result of the cmpxchg above, since it might fail.)
+    * Without the NULL check, we'd set the flag unconditionally, which is bad.
+    */
+   if (first_user && first_user != tc && !buf->used_by_multiple_contexts)
+      buf->used_by_multiple_contexts = true;
+}
+
+static bool tc_is_buffer_shared(struct threaded_resource *buf)
+{
+   return buf->is_shared || buf->used_by_multiple_contexts;
+}
+
+static void
+tc_add_to_buffer_list(struct threaded_context *tc, struct tc_buffer_list *next, struct pipe_resource *buf)
+{
+   struct threaded_resource *tbuf = threaded_resource(buf);
+   tc_touch_buffer(tc, tbuf);
+
+   uint32_t id = tbuf->buffer_id_unique;
    BITSET_SET(next->buffer_list, id & TC_BUFFER_ID_MASK);
 }
 
 /* Set a buffer binding and add it to the buffer list. */
 static void
-tc_bind_buffer(uint32_t *binding, struct tc_buffer_list *next, struct pipe_resource *buf)
+tc_bind_buffer(struct threaded_context *tc, uint32_t *binding, struct tc_buffer_list *next, struct pipe_resource *buf)
 {
-   uint32_t id = threaded_resource(buf)->buffer_id_unique;
+   struct threaded_resource *tbuf = threaded_resource(buf);
+   tc_touch_buffer(tc, tbuf);
+
+   uint32_t id = tbuf->buffer_id_unique;
    *binding = id;
    BITSET_SET(next->buffer_list, id & TC_BUFFER_ID_MASK);
 }
@@ -675,6 +760,8 @@ threaded_resource_init(struct pipe_resource *res, bool allow_cpu_storage)
 {
    struct threaded_resource *tres = threaded_resource(res);
 
+   tres->first_user = NULL;
+   tres->used_by_multiple_contexts = false;
    tres->latest = &tres->b;
    tres->cpu_storage = NULL;
    util_range_init(&tres->valid_buffer_range);
@@ -933,7 +1020,7 @@ tc_get_query_result_resource(struct pipe_context *_pipe,
    p->result_type = result_type;
    p->index = index;
    tc_set_resource_reference(&p->resource, resource);
-   tc_add_to_buffer_list(&tc->buffer_lists[tc->next_buf_list], resource);
+   tc_add_to_buffer_list(tc, &tc->buffer_lists[tc->next_buf_list], resource);
    p->offset = offset;
 }
 
@@ -1225,7 +1312,7 @@ tc_set_constant_buffer(struct pipe_context *_pipe,
       tc_set_resource_reference(&p->cb.buffer, buffer);
 
    if (buffer) {
-      tc_bind_buffer(&tc->const_buffers[shader][index],
+      tc_bind_buffer(tc, &tc->const_buffers[shader][index],
                      &tc->buffer_lists[tc->next_buf_list], buffer);
    } else {
       tc_unbind_buffer(&tc->const_buffers[shader][index]);
@@ -1425,7 +1512,7 @@ tc_set_sampler_views(struct pipe_context *_pipe,
 
          for (unsigned i = 0; i < count; i++) {
             if (views[i] && views[i]->target == PIPE_BUFFER) {
-               tc_bind_buffer(&tc->sampler_buffers[shader][start + i], next,
+               tc_bind_buffer(tc, &tc->sampler_buffers[shader][start + i], next,
                               views[i]->texture);
             } else {
                tc_unbind_buffer(&tc->sampler_buffers[shader][start + i]);
@@ -1437,7 +1524,7 @@ tc_set_sampler_views(struct pipe_context *_pipe,
             pipe_sampler_view_reference(&p->slot[i], views[i]);
 
             if (views[i] && views[i]->target == PIPE_BUFFER) {
-               tc_bind_buffer(&tc->sampler_buffers[shader][start + i], next,
+               tc_bind_buffer(tc, &tc->sampler_buffers[shader][start + i], next,
                               views[i]->texture);
             } else {
                tc_unbind_buffer(&tc->sampler_buffers[shader][start + i]);
@@ -1516,7 +1603,7 @@ tc_set_shader_images(struct pipe_context *_pipe,
          tc_set_resource_reference(&p->slot[i].resource, resource);
 
          if (resource && resource->target == PIPE_BUFFER) {
-            tc_bind_buffer(&tc->image_buffers[shader][start + i], next, resource);
+            tc_bind_buffer(tc, &tc->image_buffers[shader][start + i], next, resource);
 
             if (images[i].access & PIPE_IMAGE_ACCESS_WRITE) {
                struct threaded_resource *tres = threaded_resource(resource);
@@ -1611,7 +1698,7 @@ tc_set_shader_buffers(struct pipe_context *_pipe,
          if (src->buffer) {
             struct threaded_resource *tres = threaded_resource(src->buffer);
 
-            tc_bind_buffer(&tc->shader_buffers[shader][start + i], next, &tres->b);
+            tc_bind_buffer(tc, &tc->shader_buffers[shader][start + i], next, &tres->b);
 
             if (writable_bitmask & BITFIELD_BIT(i)) {
                tc_buffer_disable_cpu_storage(src->buffer);
@@ -1687,7 +1774,7 @@ tc_set_vertex_buffers(struct pipe_context *_pipe,
             struct pipe_resource *buf = buffers[i].buffer.resource;
 
             if (buf) {
-               tc_bind_buffer(&tc->vertex_buffers[start + i], next, buf);
+               tc_bind_buffer(tc, &tc->vertex_buffers[start + i], next, buf);
             } else {
                tc_unbind_buffer(&tc->vertex_buffers[start + i]);
             }
@@ -1705,7 +1792,7 @@ tc_set_vertex_buffers(struct pipe_context *_pipe,
             dst->buffer_offset = src->buffer_offset;
 
             if (buf) {
-               tc_bind_buffer(&tc->vertex_buffers[start + i], next, buf);
+               tc_bind_buffer(tc, &tc->vertex_buffers[start + i], next, buf);
             } else {
                tc_unbind_buffer(&tc->vertex_buffers[start + i]);
             }
@@ -1762,7 +1849,7 @@ tc_set_stream_output_targets(struct pipe_context *_pipe,
       pipe_so_target_reference(&p->targets[i], tgs[i]);
       if (tgs[i]) {
          tc_buffer_disable_cpu_storage(tgs[i]->buffer);
-         tc_bind_buffer(&tc->streamout_buffers[i], next, tgs[i]->buffer);
+         tc_bind_buffer(tc, &tc->streamout_buffers[i], next, tgs[i]->buffer);
       } else {
          tc_unbind_buffer(&tc->streamout_buffers[i]);
       }
@@ -1996,7 +2083,9 @@ tc_call_replace_buffer_storage(struct pipe_context *pipe, void *call, uint64_t *
    return call_size(tc_replace_buffer_storage);
 }
 
-/* Return true if the buffer has been invalidated or is idle. */
+/* Return true if the buffer has been invalidated or is idle.
+ * Note that callers must've called tc_touch_buffer before calling
+ * this function. */
 static bool
 tc_invalidate_buffer(struct threaded_context *tc,
                      struct threaded_resource *tbuf)
@@ -2017,7 +2106,7 @@ tc_invalidate_buffer(struct threaded_context *tc,
    struct pipe_resource *new_buf;
 
    /* Shared, pinned, and sparse buffers can't be reallocated. */
-   if (tbuf->is_shared ||
+   if (tc_is_buffer_shared(tbuf) ||
        tbuf->is_user_ptr ||
        tbuf->b.flags & (PIPE_RESOURCE_FLAG_SPARSE | PIPE_RESOURCE_FLAG_UNMAPPABLE))
       return false;
@@ -2062,6 +2151,8 @@ tc_invalidate_buffer(struct threaded_context *tc,
    return true;
 }
 
+/* Note that callers must've called tc_touch_buffer first before
+ * calling tc_improve_map_buffer_flags. */
 static unsigned
 tc_improve_map_buffer_flags(struct threaded_context *tc,
                             struct threaded_resource *tres, unsigned usage,
@@ -2176,6 +2267,14 @@ tc_buffer_map(struct pipe_context *_pipe,
    if (usage & PIPE_MAP_THREAD_SAFE)
       tc_buffer_disable_cpu_storage(resource);
 
+   tc_touch_buffer(tc, tres);
+
+   /* CPU storage relies on buffer invalidation never failing. With shared buffers,
+    * invalidation might not always be possible, so CPU storage can't be used.
+    */
+   if (tc_is_buffer_shared(tres))
+      tc_buffer_disable_cpu_storage(resource);
+
    usage = tc_improve_map_buffer_flags(tc, tres, usage, box->x, box->width);
 
    /* If the CPU storage is enabled, return it directly. */
@@ -2183,8 +2282,30 @@ tc_buffer_map(struct pipe_context *_pipe,
       /* We can't let resource_copy_region disable the CPU storage. */
       assert(!(tres->b.flags & PIPE_RESOURCE_FLAG_DONT_MAP_DIRECTLY));
 
-      if (!tres->cpu_storage)
+      if (!tres->cpu_storage) {
          tres->cpu_storage = align_malloc(resource->width0, tc->map_buffer_alignment);
+
+         if (tres->cpu_storage && tres->valid_buffer_range.end) {
+            /* The GPU buffer contains valid data. Copy them to the CPU storage. */
+            struct pipe_box box2;
+            struct pipe_transfer *transfer2;
+
+            unsigned valid_range_len = tres->valid_buffer_range.end - tres->valid_buffer_range.start;
+            u_box_1d(tres->valid_buffer_range.start, valid_range_len, &box2);
+
+            tc_sync_msg(tc, "cpu storage GPU -> CPU copy");
+            tc_set_driver_thread(tc);
+
+            void *ret = pipe->buffer_map(pipe, tres->latest ? tres->latest : resource,
+                                         0, PIPE_MAP_READ, &box2, &transfer2);
+            memcpy(&((uint8_t*)tres->cpu_storage)[tres->valid_buffer_range.start],
+                   ret,
+                   valid_range_len);
+            pipe->buffer_unmap(pipe, transfer2);
+
+            tc_clear_driver_thread(tc);
+         }
+      }
 
       if (tres->cpu_storage) {
          struct threaded_transfer *ttrans = slab_zalloc(&tc->pool_transfers);
@@ -2370,8 +2491,14 @@ tc_transfer_flush_region(struct pipe_context *_pipe,
          tc_buffer_do_flush_region(tc, ttrans, &box);
       }
 
-      /* Staging transfers don't send the call to the driver. */
-      if (ttrans->staging)
+      /* Staging transfers don't send the call to the driver.
+       *
+       * Transfers using the CPU storage shouldn't call transfer_flush_region
+       * in the driver because the buffer is not really mapped on the driver
+       * side and the CPU storage always re-uploads everything (flush_region
+       * makes no difference).
+       */
+      if (ttrans->staging || ttrans->cpu_storage_mapped)
          return;
    }
 
@@ -2450,7 +2577,10 @@ tc_buffer_unmap(struct pipe_context *_pipe, struct pipe_transfer *transfer)
       assert(tres->cpu_storage);
 
       if (tres->cpu_storage) {
-         tc_invalidate_buffer(tc, tres);
+         /* Invalidations shouldn't fail as long as CPU storage is allowed. */
+         ASSERTED bool invalidated = tc_invalidate_buffer(tc, tres);
+         assert(invalidated);
+
          tc_buffer_subdata(&tc->base, &tres->b,
                            PIPE_MAP_UNSYNCHRONIZED |
                            TC_TRANSFER_MAP_UPLOAD_CPU_STORAGE,
@@ -2552,6 +2682,20 @@ tc_call_buffer_subdata(struct pipe_context *pipe, void *call, uint64_t *last)
    return p->base.num_slots;
 }
 
+static bool
+is_mergeable_buffer_subdata(const struct tc_call_base *previous_call,
+                            unsigned usage, unsigned offset,
+                            struct pipe_resource *resource)
+{
+   if (!previous_call || previous_call->call_id != TC_CALL_buffer_subdata)
+      return false;
+
+   struct tc_buffer_subdata *subdata = (struct tc_buffer_subdata *)previous_call;
+
+   return subdata->usage == usage && subdata->resource == resource
+          && (subdata->offset + subdata->size) == offset;
+}
+
 static void
 tc_buffer_subdata(struct pipe_context *_pipe,
                   struct pipe_resource *resource,
@@ -2563,6 +2707,8 @@ tc_buffer_subdata(struct pipe_context *_pipe,
 
    if (!size)
       return;
+
+   tc_touch_buffer(tc, tres);
 
    usage |= PIPE_MAP_WRITE;
 
@@ -2585,6 +2731,12 @@ tc_buffer_subdata(struct pipe_context *_pipe,
 
       u_box_1d(offset, size, &box);
 
+      /* CPU storage is only useful for partial updates. It can add overhead
+       * on glBufferData calls so avoid using it.
+       */
+      if (!tres->cpu_storage && offset == 0 && size == resource->width0)
+         usage |= TC_TRANSFER_MAP_UPLOAD_CPU_STORAGE;
+
       map = tc_buffer_map(_pipe, resource, 0, usage, &box, &transfer);
       if (map) {
          memcpy(map, data, size);
@@ -2595,6 +2747,32 @@ tc_buffer_subdata(struct pipe_context *_pipe,
 
    util_range_add(&tres->b, &tres->valid_buffer_range, offset, offset + size);
 
+   /* We can potentially merge this subdata call with the previous one (if any),
+    * if the application does a whole-buffer upload piecewise. */
+   {
+      struct tc_call_base *last_call = tc_get_last_mergeable_call(tc);
+      struct tc_buffer_subdata *merge_dest = (struct tc_buffer_subdata *)last_call;
+
+      if (is_mergeable_buffer_subdata(last_call, usage, offset, resource) &&
+         tc_enlarge_last_mergeable_call(tc, call_size_with_slots(tc_buffer_subdata, merge_dest->size + size))) {
+         memcpy(merge_dest->slot + merge_dest->size, data, size);
+         merge_dest->size += size;
+
+         /* TODO: We *could* do an invalidate + upload here if we detect that
+          * the merged subdata call overwrites the entire buffer. However, that's
+          * a little complicated since we can't add further calls to our batch
+          * until we have removed the merged subdata call, which means that
+          * calling tc_invalidate_buffer before we have removed the call will
+          * blow things up.
+          * 
+          * Just leave a large, merged subdata call in the batch for now, which is
+          * at least better than tons of tiny subdata calls.
+          */
+
+         return;
+      }
+   }
+
    /* The upload is small. Enqueue it. */
    struct tc_buffer_subdata *p =
       tc_add_slot_based_call(tc, TC_CALL_buffer_subdata, tc_buffer_subdata, size);
@@ -2603,11 +2781,13 @@ tc_buffer_subdata(struct pipe_context *_pipe,
    /* This is will always be busy because if it wasn't, tc_improve_map_buffer-
     * _flags would set UNSYNCHRONIZED and we wouldn't get here.
     */
-   tc_add_to_buffer_list(&tc->buffer_lists[tc->next_buf_list], resource);
+   tc_add_to_buffer_list(tc, &tc->buffer_lists[tc->next_buf_list], resource);
    p->usage = usage;
    p->offset = offset;
    p->size = size;
    memcpy(p->slot, data, size);
+
+   tc_mark_call_mergeable(tc, &p->base);
 }
 
 struct tc_texture_subdata {
@@ -2809,7 +2989,9 @@ tc_create_fence_fd(struct pipe_context *_pipe,
    struct threaded_context *tc = threaded_context(_pipe);
    struct pipe_context *pipe = tc->pipe;
 
-   tc_sync(tc);
+   if (!tc->options.unsynchronized_create_fence_fd)
+      tc_sync(tc);
+
    pipe->create_fence_fd(pipe, fence, fd, type);
 }
 
@@ -2841,27 +3023,14 @@ tc_fence_server_sync(struct pipe_context *_pipe,
    screen->fence_reference(screen, &call->fence, fence);
 }
 
-static uint16_t
-tc_call_fence_server_signal(struct pipe_context *pipe, void *call, uint64_t *last)
-{
-   struct pipe_fence_handle *fence = to_call(call, tc_fence_call)->fence;
-
-   pipe->fence_server_signal(pipe, fence);
-   pipe->screen->fence_reference(pipe->screen, &fence, NULL);
-   return call_size(tc_fence_call);
-}
-
 static void
 tc_fence_server_signal(struct pipe_context *_pipe,
                            struct pipe_fence_handle *fence)
 {
    struct threaded_context *tc = threaded_context(_pipe);
-   struct pipe_screen *screen = tc->pipe->screen;
-   struct tc_fence_call *call = tc_add_call(tc, TC_CALL_fence_server_signal,
-                                            tc_fence_call);
-
-   call->fence = NULL;
-   screen->fence_reference(screen, &call->fence, fence);
+   struct pipe_context *pipe = tc->pipe;
+   tc_sync(tc);
+   pipe->fence_server_signal(pipe, fence);
 }
 
 static struct pipe_video_codec *
@@ -3233,9 +3402,6 @@ tc_draw_vbo(struct pipe_context *_pipe, const struct pipe_draw_info *info,
    unsigned index_size = info->index_size;
    bool has_user_indices = info->has_user_indices;
 
-   if (unlikely(tc->add_all_gfx_bindings_to_buffer_list))
-      tc_add_all_gfx_bindings_to_buffer_list(tc);
-
    if (unlikely(indirect)) {
       assert(!has_user_indices);
       assert(num_draws == 1);
@@ -3249,7 +3415,7 @@ tc_draw_vbo(struct pipe_context *_pipe, const struct pipe_draw_info *info,
             tc_set_resource_reference(&p->info.index.resource,
                                       info->index.resource);
          }
-         tc_add_to_buffer_list(next, info->index.resource);
+         tc_add_to_buffer_list(tc, next, info->index.resource);
       }
       memcpy(&p->info, info, DRAW_INFO_SIZE_WITHOUT_MIN_MAX_INDEX);
 
@@ -3261,14 +3427,18 @@ tc_draw_vbo(struct pipe_context *_pipe, const struct pipe_draw_info *info,
                                indirect->count_from_stream_output);
 
       if (indirect->buffer)
-         tc_add_to_buffer_list(next, indirect->buffer);
+         tc_add_to_buffer_list(tc, next, indirect->buffer);
       if (indirect->indirect_draw_count)
-         tc_add_to_buffer_list(next, indirect->indirect_draw_count);
+         tc_add_to_buffer_list(tc, next, indirect->indirect_draw_count);
       if (indirect->count_from_stream_output)
-         tc_add_to_buffer_list(next, indirect->count_from_stream_output->buffer);
+         tc_add_to_buffer_list(tc, next, indirect->count_from_stream_output->buffer);
 
       memcpy(&p->indirect, indirect, sizeof(*indirect));
       p->draw.start = draws[0].start;
+
+      /* This must be after tc_add_call, which can flush the batch. */
+      if (unlikely(tc->add_all_gfx_bindings_to_buffer_list))
+         tc_add_all_gfx_bindings_to_buffer_list(tc);
       return;
    }
 
@@ -3313,7 +3483,7 @@ tc_draw_vbo(struct pipe_context *_pipe, const struct pipe_draw_info *info,
                tc_set_resource_reference(&p->info.index.resource,
                                          info->index.resource);
             }
-            tc_add_to_buffer_list(&tc->buffer_lists[tc->next_buf_list], info->index.resource);
+            tc_add_to_buffer_list(tc, &tc->buffer_lists[tc->next_buf_list], info->index.resource);
          }
          if (drawid_offset > 0)
             ((struct tc_draw_single_drawid*)p)->drawid_offset = drawid_offset;
@@ -3323,6 +3493,10 @@ tc_draw_vbo(struct pipe_context *_pipe, const struct pipe_draw_info *info,
          p->info.max_index = draws[0].count;
          p->index_bias = draws[0].index_bias;
       }
+
+      /* This must be after tc_add_call, which can flush the batch. */
+      if (unlikely(tc->add_all_gfx_bindings_to_buffer_list))
+         tc_add_all_gfx_bindings_to_buffer_list(tc);
       return;
    }
 
@@ -3357,6 +3531,7 @@ tc_draw_vbo(struct pipe_context *_pipe, const struct pipe_draw_info *info,
          return;
 
       int total_offset = 0;
+      unsigned offset = 0;
       while (num_draws) {
          struct tc_batch *next = &tc->batch_slots[tc->next];
 
@@ -3373,11 +3548,18 @@ tc_draw_vbo(struct pipe_context *_pipe, const struct pipe_draw_info *info,
             tc_add_slot_based_call(tc, TC_CALL_draw_multi, tc_draw_multi,
                                    dr);
          memcpy(&p->info, info, DRAW_INFO_SIZE_WITHOUT_INDEXBUF_AND_MIN_MAX_INDEX);
-         p->info.index.resource = buffer;
+
+         if (total_offset == 0)
+            /* the first slot inherits the reference from u_upload_alloc() */
+            p->info.index.resource = buffer;
+         else
+            /* all following slots need a new reference */
+            tc_set_resource_reference(&p->info.index.resource, buffer);
+
          p->num_draws = dr;
 
          /* Upload index buffers. */
-         for (unsigned i = 0, offset = 0; i < dr; i++) {
+         for (unsigned i = 0; i < dr; i++) {
             unsigned count = draws[i + total_offset].count;
 
             if (!count) {
@@ -3424,7 +3606,7 @@ tc_draw_vbo(struct pipe_context *_pipe, const struct pipe_draw_info *info,
                tc_set_resource_reference(&p->info.index.resource,
                                          info->index.resource);
             }
-            tc_add_to_buffer_list(&tc->buffer_lists[tc->next_buf_list], info->index.resource);
+            tc_add_to_buffer_list(tc, &tc->buffer_lists[tc->next_buf_list], info->index.resource);
          }
          take_index_buffer_ownership = false;
          memcpy(&p->info, info, DRAW_INFO_SIZE_WITHOUT_MIN_MAX_INDEX);
@@ -3435,6 +3617,10 @@ tc_draw_vbo(struct pipe_context *_pipe, const struct pipe_draw_info *info,
          total_offset += dr;
       }
    }
+
+   /* This must be after tc_add_*call, which can flush the batch. */
+   if (unlikely(tc->add_all_gfx_bindings_to_buffer_list))
+      tc_add_all_gfx_bindings_to_buffer_list(tc);
 }
 
 struct tc_draw_vstate_single {
@@ -3533,9 +3719,6 @@ tc_draw_vertex_state(struct pipe_context *_pipe,
 {
    struct threaded_context *tc = threaded_context(_pipe);
 
-   if (unlikely(tc->add_all_gfx_bindings_to_buffer_list))
-      tc_add_all_gfx_bindings_to_buffer_list(tc);
-
    if (num_draws == 1) {
       /* Single draw. */
       struct tc_draw_vstate_single *p =
@@ -3554,6 +3737,11 @@ tc_draw_vertex_state(struct pipe_context *_pipe,
          tc_set_vertex_state_reference(&p->state, state);
       else
          p->state = state;
+
+
+      /* This must be after tc_add_*call, which can flush the batch. */
+      if (unlikely(tc->add_all_gfx_bindings_to_buffer_list))
+         tc_add_all_gfx_bindings_to_buffer_list(tc);
       return;
    }
 
@@ -3595,6 +3783,11 @@ tc_draw_vertex_state(struct pipe_context *_pipe,
 
       total_offset += dr;
    }
+
+
+   /* This must be after tc_add_*call, which can flush the batch. */
+   if (unlikely(tc->add_all_gfx_bindings_to_buffer_list))
+      tc_add_all_gfx_bindings_to_buffer_list(tc);
 }
 
 struct tc_launch_grid_call {
@@ -3621,14 +3814,15 @@ tc_launch_grid(struct pipe_context *_pipe,
                                                tc_launch_grid_call);
    assert(info->input == NULL);
 
-   if (unlikely(tc->add_all_compute_bindings_to_buffer_list))
-      tc_add_all_compute_bindings_to_buffer_list(tc);
-
    tc_set_resource_reference(&p->info.indirect, info->indirect);
    memcpy(&p->info, info, sizeof(*info));
 
    if (info->indirect)
-      tc_add_to_buffer_list(&tc->buffer_lists[tc->next_buf_list], info->indirect);
+      tc_add_to_buffer_list(tc, &tc->buffer_lists[tc->next_buf_list], info->indirect);
+
+   /* This must be after tc_add_*call, which can flush the batch. */
+   if (unlikely(tc->add_all_compute_bindings_to_buffer_list))
+      tc_add_all_compute_bindings_to_buffer_list(tc);
 }
 
 static uint16_t
@@ -3671,8 +3865,8 @@ tc_resource_copy_region(struct pipe_context *_pipe,
    if (dst->target == PIPE_BUFFER) {
       struct tc_buffer_list *next = &tc->buffer_lists[tc->next_buf_list];
 
-      tc_add_to_buffer_list(next, src);
-      tc_add_to_buffer_list(next, dst);
+      tc_add_to_buffer_list(tc, next, src);
+      tc_add_to_buffer_list(tc, next, dst);
 
       util_range_add(&tdst->b, &tdst->valid_buffer_range,
                      dstx, dstx + src_box->width);
@@ -3808,7 +4002,10 @@ tc_invalidate_resource(struct pipe_context *_pipe,
    struct threaded_context *tc = threaded_context(_pipe);
 
    if (resource->target == PIPE_BUFFER) {
-      tc_invalidate_buffer(tc, threaded_resource(resource));
+      /* This can fail, in which case we simply ignore the invalidation request. */
+      struct threaded_resource *tbuf = threaded_resource(resource);
+      tc_touch_buffer(tc, tbuf);
+      tc_invalidate_buffer(tc, tbuf);
       return;
    }
 
@@ -3976,7 +4173,7 @@ tc_clear_buffer(struct pipe_context *_pipe, struct pipe_resource *res,
    tc_buffer_disable_cpu_storage(res);
 
    tc_set_resource_reference(&p->res, res);
-   tc_add_to_buffer_list(&tc->buffer_lists[tc->next_buf_list], res);
+   tc_add_to_buffer_list(tc, &tc->buffer_lists[tc->next_buf_list], res);
    p->offset = offset;
    p->size = size;
    memcpy(p->clear_value, clear_value, clear_value_size);

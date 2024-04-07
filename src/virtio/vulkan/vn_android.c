@@ -17,7 +17,6 @@
 #include <vulkan/vk_icd.h>
 
 #include "drm-uapi/drm_fourcc.h"
-#include "util/libsync.h"
 #include "util/os_file.h"
 
 #include "vn_buffer.h"
@@ -104,6 +103,8 @@ struct cros_gralloc0_buffer_info {
 struct vn_android_gralloc_buffer_properties {
    uint32_t drm_fourcc;
    uint64_t modifier;
+
+   /* plane order matches VkImageDrmFormatModifierExplicitCreateInfoEXT */
    uint32_t offset[4];
    uint32_t stride[4];
 };
@@ -131,6 +132,18 @@ vn_android_gralloc_get_buffer_properties(
       out_props->stride[i] = info.stride[i];
       out_props->offset[i] = info.offset[i];
    }
+
+   /* YVU420 has a chroma order of CrCb. So we must swap the planes for CrCb
+    * to align with VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM. This is to serve
+    * VkImageDrmFormatModifierExplicitCreateInfoEXT explicit plane layouts.
+    */
+   if (info.drm_fourcc == DRM_FORMAT_YVU420) {
+      out_props->stride[1] = info.stride[2];
+      out_props->offset[1] = info.offset[2];
+      out_props->stride[2] = info.stride[1];
+      out_props->offset[2] = info.offset[1];
+   }
+
    out_props->modifier = info.modifier;
 
    return true;
@@ -226,6 +239,10 @@ vn_hal_open(const struct hw_module_t *mod,
 static uint32_t
 vn_android_ahb_format_from_vk_format(VkFormat format)
 {
+   /* Only non-external AHB compatible formats are expected at:
+    * - image format query
+    * - memory export allocation
+    */
    switch (format) {
    case VK_FORMAT_R8G8B8A8_UNORM:
       return AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM;
@@ -237,8 +254,6 @@ vn_android_ahb_format_from_vk_format(VkFormat format)
       return AHARDWAREBUFFER_FORMAT_R16G16B16A16_FLOAT;
    case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
       return AHARDWAREBUFFER_FORMAT_R10G10B10A2_UNORM;
-   case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM:
-      return AHARDWAREBUFFER_FORMAT_Y8Cb8Cr8_420;
    default:
       return 0;
    }
@@ -295,6 +310,7 @@ vn_android_drm_format_to_vk_format(uint32_t format)
    case DRM_FORMAT_ABGR2101010:
       return VK_FORMAT_A2B10G10R10_UNORM_PACK32;
    case DRM_FORMAT_YVU420:
+      return VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
    case DRM_FORMAT_NV12:
       return VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
    default:
@@ -779,17 +795,39 @@ vn_AcquireImageANDROID(VkDevice device,
    return vn_result(dev->instance, result);
 }
 
+static VkResult
+vn_android_sync_fence_create(struct vn_queue *queue, bool external)
+{
+   struct vn_device *dev = queue->device;
+
+   const VkExportFenceCreateInfo export_info = {
+      .sType = VK_STRUCTURE_TYPE_EXPORT_FENCE_CREATE_INFO,
+      .pNext = NULL,
+      .handleTypes = VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT,
+   };
+   const VkFenceCreateInfo create_info = {
+      .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+      .pNext = external ? &export_info : NULL,
+      .flags = 0,
+   };
+   return vn_CreateFence(vn_device_to_handle(dev), &create_info, NULL,
+                         &queue->sync_fence);
+}
+
 VkResult
-vn_QueueSignalReleaseImageANDROID(VkQueue queue,
+vn_QueueSignalReleaseImageANDROID(VkQueue _queue,
                                   uint32_t waitSemaphoreCount,
                                   const VkSemaphore *pWaitSemaphores,
                                   VkImage image,
                                   int *pNativeFenceFd)
 {
    VN_TRACE_FUNC();
-   struct vn_queue *que = vn_queue_from_handle(queue);
-   struct vn_device *dev = que->device;
+   struct vn_queue *queue = vn_queue_from_handle(_queue);
+   struct vn_device *dev = queue->device;
    const VkAllocationCallbacks *alloc = &dev->base.base.alloc;
+   const bool has_sync_fd_fence_export =
+      dev->physical_device->renderer_sync_fd_fence_features &
+      VK_EXTERNAL_FENCE_FEATURE_EXPORTABLE_BIT;
    VkDevice device = vn_device_to_handle(dev);
    VkPipelineStageFlags local_stage_masks[8];
    VkPipelineStageFlags *stage_masks = local_stage_masks;
@@ -799,6 +837,13 @@ vn_QueueSignalReleaseImageANDROID(VkQueue queue,
    if (waitSemaphoreCount == 0) {
       *pNativeFenceFd = -1;
       return VK_SUCCESS;
+   }
+
+   /* lazily create sync fence for Android wsi */
+   if (queue->sync_fence == VK_NULL_HANDLE) {
+      result = vn_android_sync_fence_create(queue, has_sync_fd_fence_export);
+      if (result != VK_SUCCESS)
+         return result;
    }
 
    if (waitSemaphoreCount > ARRAY_SIZE(local_stage_masks)) {
@@ -823,14 +868,7 @@ vn_QueueSignalReleaseImageANDROID(VkQueue queue,
       .signalSemaphoreCount = 0,
       .pSignalSemaphores = NULL,
    };
-   /* XXX When globalFencing is supported, our implementation is not able to
-    * reset the fence during vn_GetFenceFdKHR currently. Thus to ensure proper
-    * host driver behavior, we pass VK_NULL_HANDLE here.
-    */
-   result = vn_QueueSubmit(
-      queue, 1, &submit_info,
-      dev->instance->experimental.globalFencing == VK_TRUE ? VK_NULL_HANDLE
-                                                           : que->wait_fence);
+   result = vn_QueueSubmit(_queue, 1, &submit_info, queue->sync_fence);
 
    if (stage_masks != local_stage_masks)
       vk_free(alloc, stage_masks);
@@ -838,29 +876,21 @@ vn_QueueSignalReleaseImageANDROID(VkQueue queue,
    if (result != VK_SUCCESS)
       return vn_error(dev->instance, result);
 
-   if (dev->instance->experimental.globalFencing == VK_TRUE) {
-      /* With globalFencing, the external queue fence was not passed in the
-       * above vn_QueueSubmit to hint it to be synchronous. So we need to wait
-       * for the ring here before vn_GetFenceFdKHR which is pure kernel ops.
-       * Skip ring wait if async queue submit is disabled.
-       */
-      if (!VN_PERF(NO_ASYNC_QUEUE_SUBMIT))
-         vn_instance_ring_wait(dev->instance);
-
+   if (has_sync_fd_fence_export) {
       const VkFenceGetFdInfoKHR fd_info = {
          .sType = VK_STRUCTURE_TYPE_FENCE_GET_FD_INFO_KHR,
          .pNext = NULL,
-         .fence = que->wait_fence,
+         .fence = queue->sync_fence,
          .handleType = VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT,
       };
       result = vn_GetFenceFdKHR(device, &fd_info, &fd);
    } else {
       result =
-         vn_WaitForFences(device, 1, &que->wait_fence, VK_TRUE, UINT64_MAX);
+         vn_WaitForFences(device, 1, &queue->sync_fence, VK_TRUE, UINT64_MAX);
       if (result != VK_SUCCESS)
          return vn_error(dev->instance, result);
 
-      result = vn_ResetFences(device, 1, &que->wait_fence);
+      result = vn_ResetFences(device, 1, &queue->sync_fence);
    }
 
    if (result != VK_SUCCESS)
@@ -935,17 +965,18 @@ vn_android_get_ahb_format_properties(
     * Applications should treat these values as sensible defaults to use in the
     * absence of more reliable information obtained through some other means.
     */
+   const bool is_yuv = vn_android_drm_format_is_yuv(buf_props.drm_fourcc);
    const VkSamplerYcbcrModelConversion model =
-      vn_android_drm_format_is_yuv(buf_props.drm_fourcc)
-         ? VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601
-         : VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY;
+      is_yuv ? VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601
+             : VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY;
 
    /* ANGLE expects VK_FORMAT_UNDEFINED with externalFormat resolved from
     * AHARDWAREBUFFER_FORMAT_IMPLEMENTATION_DEFINED and any supported planar
-    * AHB formats (venus supports AHARDWAREBUFFER_FORMAT_Y8Cb8Cr8_420).
+    * AHB formats. Venus supports below explicit ones:
+    * - AHARDWAREBUFFER_FORMAT_Y8Cb8Cr8_420 (DRM_FORMAT_NV12)
+    * - AHARDWAREBUFFER_FORMAT_YV12 (DRM_FORMAT_YVU420)
     */
-   if (desc.format == AHARDWAREBUFFER_FORMAT_IMPLEMENTATION_DEFINED ||
-       desc.format == AHARDWAREBUFFER_FORMAT_Y8Cb8Cr8_420)
+   if (desc.format == AHARDWAREBUFFER_FORMAT_IMPLEMENTATION_DEFINED || is_yuv)
       format = VK_FORMAT_UNDEFINED;
 
    *out_props = (VkAndroidHardwareBufferFormatPropertiesANDROID) {
@@ -961,7 +992,8 @@ vn_android_get_ahb_format_properties(
          .a = VK_COMPONENT_SWIZZLE_IDENTITY,
       },
       .suggestedYcbcrModel = model,
-      .suggestedYcbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL,
+      /* match EGL_YUV_NARROW_RANGE_EXT used in egl platform_android */
+      .suggestedYcbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW,
       .suggestedXChromaOffset = VK_CHROMA_LOCATION_MIDPOINT,
       .suggestedYChromaOffset = VK_CHROMA_LOCATION_MIDPOINT,
    };
@@ -975,6 +1007,7 @@ vn_GetAndroidHardwareBufferPropertiesANDROID(
    const struct AHardwareBuffer *buffer,
    VkAndroidHardwareBufferPropertiesANDROID *pProperties)
 {
+   VN_TRACE_FUNC();
    struct vn_device *dev = vn_device_from_handle(device);
    VkResult result = VK_SUCCESS;
    int dma_buf_fd = -1;

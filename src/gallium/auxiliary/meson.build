@@ -166,8 +166,6 @@ files_libgallium = files(
   'rbug/rbug_shader.h',
   'rbug/rbug_texture.c',
   'rbug/rbug_texture.h',
-  'rtasm/rtasm_cpu.c',
-  'rtasm/rtasm_cpu.h',
   'rtasm/rtasm_execmem.c',
   'rtasm/rtasm_execmem.h',
   'rtasm/rtasm_x86sse.c',
@@ -232,14 +230,13 @@ files_libgallium = files(
   'util/u_cache.h',
   'util/u_compute.c',
   'util/u_compute.h',
+  'util/u_debug_cb.h',
   'util/u_debug_flush.c',
   'util/u_debug_flush.h',
   'util/u_debug_image.c',
   'util/u_debug_image.h',
   'util/u_dirty_flags.h',
   'util/u_dirty_surfaces.h',
-  'util/u_dl.c',
-  'util/u_dl.h',
   'util/u_draw.c',
   'util/u_draw.h',
   'util/u_draw_quad.c',
@@ -270,7 +267,6 @@ files_libgallium = files(
   'util/u_network.c',
   'util/u_network.h',
   'util/u_pack_color.h',
-  'util/u_pointer.h',
   'util/u_prim.h',
   'util/u_prim.c',
   'util/u_prim_restart.c',
@@ -374,6 +370,8 @@ if draw_with_llvm
     'gallivm/lp_bld_intr.h',
     'gallivm/lp_bld_ir_common.c',
     'gallivm/lp_bld_ir_common.h',
+    'gallivm/lp_bld_jit_types.h',
+    'gallivm/lp_bld_jit_types.c',
     'gallivm/lp_bld_limits.h',
     'gallivm/lp_bld_logic.c',
     'gallivm/lp_bld_logic.h',
@@ -477,7 +475,7 @@ endif
 
 if with_glx == 'xlib' or with_glx == 'gallium-xlib'
   files_libgalliumvlwinsys += files('vl/vl_winsys_xlib_swrast.c')
-else
+elif with_gallium_drisw_kms
   files_libgalliumvlwinsys += files('vl/vl_winsys_dri_vgem.c')
 endif
 

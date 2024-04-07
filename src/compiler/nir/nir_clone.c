@@ -244,7 +244,7 @@ __clone_src(clone_state *state, void *ninstr_or_if,
    } else {
       nsrc->reg.reg = remap_reg(state, src->reg.reg);
       if (src->reg.indirect) {
-         nsrc->reg.indirect = malloc(sizeof(nir_src));
+         nsrc->reg.indirect = gc_alloc(state->ns->gctx, nir_src, 1);
          __clone_src(state, ninstr_or_if, nsrc->reg.indirect, src->reg.indirect);
       }
       nsrc->reg.base_offset = src->reg.base_offset;
@@ -264,7 +264,7 @@ __clone_dst(clone_state *state, nir_instr *ninstr,
    } else {
       ndst->reg.reg = remap_reg(state, dst->reg.reg);
       if (dst->reg.indirect) {
-         ndst->reg.indirect = malloc(sizeof(nir_src));
+         ndst->reg.indirect = gc_alloc(state->ns->gctx, nir_src, 1);
          __clone_src(state, ninstr, ndst->reg.indirect, dst->reg.indirect);
       }
       ndst->reg.base_offset = dst->reg.base_offset;
@@ -449,7 +449,7 @@ clone_phi(clone_state *state, const nir_phi_instr *phi, nir_block *nblk)
     */
    nir_instr_insert_after_block(nblk, &nphi->instr);
 
-   foreach_list_typed(nir_phi_src, src, node, &phi->srcs) {
+   nir_foreach_phi_src(src, phi) {
       nir_phi_src *nsrc = nir_phi_instr_add_src(nphi, src->pred, src->src);
 
       /* Stash it in the list of phi sources.  We'll walk this list and fix up
@@ -814,10 +814,6 @@ nir_shader_replace(nir_shader *dst, nir_shader *src)
    ralloc_adopt(dead_ctx, dst);
    ralloc_free(dead_ctx);
 
-   list_for_each_entry_safe(nir_instr, instr, &dst->gc_list, gc_node) {
-      nir_instr_free(instr);
-   }
-
    /* Re-parent all of src's ralloc children to dst */
    ralloc_adopt(dst, src);
 
@@ -826,8 +822,6 @@ nir_shader_replace(nir_shader *dst, nir_shader *src)
    /* We have to move all the linked lists over separately because we need the
     * pointers in the list elements to point to the lists in dst and not src.
     */
-   list_replace(&src->gc_list, &dst->gc_list);
-   list_inithead(&src->gc_list);
    exec_list_move_nodes_to(&src->variables, &dst->variables);
 
    /* Now move the functions over.  This takes a tiny bit more work */

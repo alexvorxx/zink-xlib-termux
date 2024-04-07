@@ -775,10 +775,7 @@ static void r600_disk_cache_create(struct r600_common_screen *rscreen)
 
 	/* These flags affect shader compilation. */
 	uint64_t shader_debug_flags =
-		rscreen->debug_flags &
-		(DBG_NIR |
-		 DBG_NIR_PREFERRED |
-		 DBG_USE_TGSI);
+		rscreen->debug_flags & DBG_USE_TGSI;
 
 	rscreen->disk_shader_cache =
 		disk_cache_create(r600_get_family_name(rscreen),
@@ -1022,14 +1019,14 @@ static int r600_get_compute_param(struct pipe_screen *screen,
 	case PIPE_COMPUTE_CAP_MAX_CLOCK_FREQUENCY:
 		if (ret) {
 			uint32_t *max_clock_frequency = ret;
-			*max_clock_frequency = rscreen->info.max_shader_clock;
+			*max_clock_frequency = rscreen->info.max_gpu_freq_mhz;
 		}
 		return sizeof(uint32_t);
 
 	case PIPE_COMPUTE_CAP_MAX_COMPUTE_UNITS:
 		if (ret) {
 			uint32_t *max_compute_units = ret;
-			*max_compute_units = rscreen->info.num_good_compute_units;
+			*max_compute_units = rscreen->info.num_cu;
 		}
 		return sizeof(uint32_t);
 
@@ -1137,8 +1134,8 @@ static void r600_query_memory_info(struct pipe_screen *screen,
 	struct radeon_winsys *ws = rscreen->ws;
 	unsigned vram_usage, gtt_usage;
 
-	info->total_device_memory = rscreen->info.vram_size / 1024;
-	info->total_staging_memory = rscreen->info.gart_size / 1024;
+	info->total_device_memory = rscreen->info.vram_size_kb;
+	info->total_staging_memory = rscreen->info.gart_size_kb;
 
 	/* The real TTM memory usage is somewhat random, because:
 	 *
@@ -1186,7 +1183,10 @@ r600_get_compiler_options(struct pipe_screen *screen,
 
        struct r600_common_screen *rscreen = (struct r600_common_screen *)screen;
 
-       return &rscreen->nir_options;
+       if (shader != PIPE_SHADER_FRAGMENT)
+          return &rscreen->nir_options;
+       else
+          return &rscreen->nir_options_fs;
 }
 
 extern bool r600_lower_to_scalar_instr_filter(const nir_instr *instr, const void *);
@@ -1244,7 +1244,7 @@ bool r600_common_screen_init(struct r600_common_screen *rscreen,
 	rscreen->b.resource_from_user_memory = r600_buffer_from_user_memory;
 	rscreen->b.query_memory_info = r600_query_memory_info;
 
-	if (rscreen->info.has_video_hw.uvd_decode) {
+	if (rscreen->info.ip[AMD_IP_UVD].num_queues) {
 		rscreen->b.get_video_param = rvid_get_video_param;
 		rscreen->b.is_video_format_supported = rvid_is_format_supported;
 	} else {
@@ -1283,16 +1283,16 @@ bool r600_common_screen_init(struct r600_common_screen *rscreen,
 		printf("gfx_level = %i\n", rscreen->info.gfx_level);
 		printf("pte_fragment_size = %u\n", rscreen->info.pte_fragment_size);
 		printf("gart_page_size = %u\n", rscreen->info.gart_page_size);
-		printf("gart_size = %i MB\n", (int)DIV_ROUND_UP(rscreen->info.gart_size, 1024*1024));
-		printf("vram_size = %i MB\n", (int)DIV_ROUND_UP(rscreen->info.vram_size, 1024*1024));
-		printf("vram_vis_size = %i MB\n", (int)DIV_ROUND_UP(rscreen->info.vram_vis_size, 1024*1024));
+		printf("gart_size = %i MB\n", (int)DIV_ROUND_UP(rscreen->info.gart_size_kb, 1024));
+		printf("vram_size = %i MB\n", (int)DIV_ROUND_UP(rscreen->info.vram_size_kb, 1024));
+		printf("vram_vis_size = %i MB\n", (int)DIV_ROUND_UP(rscreen->info.vram_vis_size_kb, 1024));
 		printf("max_heap_size = %i MB\n",
 		       (int)DIV_ROUND_UP(rscreen->info.max_heap_size_kb, 1024));
 		printf("min_alloc_size = %u\n", rscreen->info.min_alloc_size);
 		printf("has_dedicated_vram = %u\n", rscreen->info.has_dedicated_vram);
 		printf("r600_has_virtual_memory = %i\n", rscreen->info.r600_has_virtual_memory);
 		printf("gfx_ib_pad_with_type2 = %i\n", rscreen->info.gfx_ib_pad_with_type2);
-		printf("uvd_decode = %u\n", rscreen->info.has_video_hw.uvd_decode);
+		printf("ip[AMD_IP_UVD] = %u\n", rscreen->info.ip[AMD_IP_UVD].num_queues);
 		printf("ip[AMD_IP_SDMA] = %i\n", rscreen->info.ip[AMD_IP_SDMA].num_queues);
 		printf("ip[AMD_IP_COMPUTE] = %u\n", rscreen->info.ip[AMD_IP_COMPUTE].num_queues);
 		printf("uvd_fw_version = %u\n", rscreen->info.uvd_fw_version);
@@ -1308,8 +1308,8 @@ bool r600_common_screen_init(struct r600_common_screen *rscreen,
 		printf("has_syncobj = %u\n", rscreen->info.has_syncobj);
 
 		printf("r600_max_quad_pipes = %i\n", rscreen->info.r600_max_quad_pipes);
-		printf("max_shader_clock = %i\n", rscreen->info.max_shader_clock);
-		printf("num_good_compute_units = %i\n", rscreen->info.num_good_compute_units);
+		printf("max_gpu_freq_mhz = %i\n", rscreen->info.max_gpu_freq_mhz);
+		printf("num_cu = %i\n", rscreen->info.num_cu);
 		printf("max_se = %i\n", rscreen->info.max_se);
 		printf("max_sh_per_se = %i\n", rscreen->info.max_sa_per_se);
 
@@ -1347,28 +1347,29 @@ bool r600_common_screen_init(struct r600_common_screen *rscreen,
 		.vectorize_io = true,
 		.has_umad24 = true,
 		.has_umul24 = true,
+		.has_fmulz = true,
 		.use_interpolated_input_intrinsics = true,
 		.has_fsub = true,
 		.has_isub = true,
 		.lower_iabs = true,
+		.lower_uadd_sat = true,
+		.lower_usub_sat = true,
 		.lower_bitfield_extract = true,
 		.lower_bitfield_insert_to_bitfield_select = true,
 		.has_fused_comp_and_csel = true,
 		.lower_find_msb_to_reverse = true,
-                .lower_to_scalar = true,
-                .lower_to_scalar_filter = r600_lower_to_scalar_instr_filter,
-                .linker_ignore_precision = true,
+		.lower_to_scalar = true,
+		.lower_to_scalar_filter = r600_lower_to_scalar_instr_filter,
+		.linker_ignore_precision = true,
+		.lower_fpow = true,
+		.lower_int64_options = ~0,
+		.lower_cs_local_index_to_id = true
 	};
 
 	rscreen->nir_options = nir_options;
 
-        /* The TGSI code path handles OPCODE_POW, but has problems with the
-         * lowered version, the NIT code path does the rightthing with the
-         * lowered code */
-        rscreen->nir_options.lower_fpow = rscreen->debug_flags & DBG_NIR_PREFERRED;
-
-        if (rscreen->info.family < CHIP_CEDAR)
-           rscreen->nir_options.force_indirect_unrolling_sampler = true;
+	if (rscreen->info.family < CHIP_CEDAR)
+		rscreen->nir_options.force_indirect_unrolling_sampler = true;
 
 	if (rscreen->info.gfx_level < EVERGREEN) {
 		/* Pre-EG doesn't have these ALU ops */
@@ -1376,21 +1377,21 @@ bool r600_common_screen_init(struct r600_common_screen *rscreen,
 		rscreen->nir_options.lower_bitfield_reverse = true;
 	}
 
-        if (rscreen->info.gfx_level < CAYMAN) {
-           rscreen->nir_options.lower_doubles_options = nir_lower_fp64_full_software;
-           rscreen->nir_options.lower_int64_options = ~0;
-        } else {
-           rscreen->nir_options.lower_doubles_options =
-                 nir_lower_ddiv |
-                 nir_lower_dfloor |
-                 nir_lower_dceil |
-                 nir_lower_dmod |
-                 nir_lower_dsub |
-                 nir_lower_dtrunc;
-           rscreen->nir_options.lower_int64_options = ~0;
-        }
+	if (rscreen->info.gfx_level < CAYMAN) {
+		rscreen->nir_options.lower_doubles_options = nir_lower_fp64_full_software;
+	} else {
+		rscreen->nir_options.lower_doubles_options =
+			nir_lower_ddiv |
+			nir_lower_dfloor |
+			nir_lower_dceil |
+			nir_lower_dmod |
+			nir_lower_dsub |
+			nir_lower_dtrunc;
+	}
 
-	if (!(rscreen->debug_flags & DBG_NIR_PREFERRED)) {
+	if (rscreen->debug_flags & DBG_USE_TGSI) {
+
+		rscreen->nir_options.lower_fpow = false;
 		/* TGSI is vector, and NIR-to-TGSI doesn't like it when the
 		 * input vars have been scalarized.
 		 */
@@ -1410,7 +1411,12 @@ bool r600_common_screen_init(struct r600_common_screen *rscreen,
 
 		/* TGSI's ifind is reversed from ours, keep it the TGSI way. */
 		rscreen->nir_options.lower_find_msb_to_reverse = false;
-	}
+	} else {
+      rscreen->nir_options.has_fmulz = true;
+   }
+
+	rscreen->nir_options_fs = rscreen->nir_options;
+	rscreen->nir_options_fs.lower_all_io_to_temps = true;
 
 	return true;
 }

@@ -35,6 +35,9 @@
 #define LAYOUT_CONVERT_THRESHOLD 8
 #define PAN_MAX_BATCHES 32
 
+#define PAN_BIND_SHARED_MASK (PIPE_BIND_DISPLAY_TARGET | PIPE_BIND_SCANOUT | \
+                              PIPE_BIND_SHARED)
+
 struct panfrost_resource {
         struct pipe_resource base;
         struct {
@@ -120,6 +123,9 @@ void panfrost_resource_screen_destroy(struct pipe_screen *screen);
 void panfrost_resource_context_init(struct pipe_context *pctx);
 
 /* Blitting */
+
+void
+panfrost_blitter_save(struct panfrost_context *ctx, bool render_cond);
 
 void
 panfrost_blit(struct pipe_context *pipe,

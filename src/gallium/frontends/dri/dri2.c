@@ -304,6 +304,10 @@ dri2_allocate_buffer(__DRIscreen *sPriv,
    unsigned bind = 0;
    struct winsys_handle whandle;
 
+   /* struct pipe_resource height0 is 16-bit, avoid overflow */
+   if (height > 0xffff)
+      return NULL;
+
    switch (attachment) {
       case __DRI_BUFFER_FRONT_LEFT:
       case __DRI_BUFFER_FAKE_FRONT_LEFT:
@@ -448,6 +452,12 @@ dri2_allocate_textures(struct dri_context *ctx,
    unsigned num_buffers = statts_count;
 
    assert(num_buffers <= __DRI_BUFFER_COUNT);
+
+   /* Wait for glthread to finish because we can't use pipe_context from
+    * multiple threads.
+    */
+   if (ctx->st->thread_finish)
+      ctx->st->thread_finish(ctx->st);
 
    /* First get the buffers from the loader */
    if (image) {
@@ -748,6 +758,12 @@ dri2_flush_frontbuffer(struct dri_context *ctx,
        (!ctx->is_shared_buffer_bound || statt != ST_ATTACHMENT_BACK_LEFT))
          return false;
 
+   /* Wait for glthread to finish because we can't use pipe_context from
+    * multiple threads.
+    */
+   if (ctx->st->thread_finish)
+      ctx->st->thread_finish(ctx->st);
+
    if (drawable->stvis.samples > 1) {
       /* Resolve the buffer used for front rendering. */
       dri_pipe_blit(ctx->st->pipe, drawable->textures[statt],
@@ -953,7 +969,7 @@ dri2_create_image_from_winsys(__DRIscreen *_screen,
        * content protection status of tex and img.
        */
       const struct driOptionCache *optionCache = &screen->dev->option_cache;
-      if (!driQueryOptionb(optionCache, "disable_protected_content_check") &&
+      if (driQueryOptionb(optionCache, "force_protected_content_check") &&
           (tex->bind & PIPE_BIND_PROTECTED) != (bind & PIPE_BIND_PROTECTED)) {
          pipe_resource_reference(&img->texture, NULL);
          pipe_resource_reference(&tex, NULL);
@@ -1142,6 +1158,8 @@ dri2_create_image_common(__DRIscreen *_screen,
       tex_usage |= PIPE_BIND_PROTECTED;
    if (use & __DRI_IMAGE_USE_PRIME_BUFFER)
       tex_usage |= PIPE_BIND_PRIME_BLIT_DST;
+   if (use & __DRI_IMAGE_USE_FRONT_RENDERING)
+      tex_usage |= PIPE_BIND_USE_FRONT_RENDERING;
 
    img = CALLOC_STRUCT(__DRIimageRec);
    if (!img)
@@ -1442,6 +1460,7 @@ dri2_dup_image(__DRIimage *image, void *loaderPrivate)
    img->level = image->level;
    img->layer = image->layer;
    img->dri_format = image->dri_format;
+   img->internal_format = image->internal_format;
    /* This should be 0 for sub images, but dup is also used for base images. */
    img->dri_components = image->dri_components;
    img->use = image->use;
@@ -1748,6 +1767,12 @@ dri2_blit_image(__DRIcontext *context, __DRIimage *dst, __DRIimage *src,
    if (!dst || !src)
       return;
 
+   /* Wait for glthread to finish because we can't use pipe_context from
+    * multiple threads.
+    */
+   if (ctx->st->thread_finish)
+      ctx->st->thread_finish(ctx->st);
+
    handle_in_fence(context, dst);
 
    memset(&blit, 0, sizeof(blit));
@@ -1800,6 +1825,12 @@ dri2_map_image(__DRIcontext *context, __DRIimage *image,
    if (plane >= dri2_get_mapping_by_format(image->dri_format)->nplanes)
       return NULL;
 
+   /* Wait for glthread to finish because we can't use pipe_context from
+    * multiple threads.
+    */
+   if (ctx->st->thread_finish)
+      ctx->st->thread_finish(ctx->st);
+
    handle_in_fence(context, image);
 
    struct pipe_resource *resource = image->texture;
@@ -1826,6 +1857,12 @@ dri2_unmap_image(__DRIcontext *context, __DRIimage *image, void *data)
 {
    struct dri_context *ctx = dri_context(context);
    struct pipe_context *pipe = ctx->st->pipe;
+
+   /* Wait for glthread to finish because we can't use pipe_context from
+    * multiple threads.
+    */
+   if (ctx->st->thread_finish)
+      ctx->st->thread_finish(ctx->st);
 
    pipe_texture_unmap(pipe, (struct pipe_transfer *)data);
 }
@@ -2000,6 +2037,10 @@ dri2_interop_export_object(__DRIcontext *_ctx,
    if ((target == GL_RENDERBUFFER || target == GL_ARRAY_BUFFER) &&
        in->miplevel != 0)
       return MESA_GLINTEROP_INVALID_MIP_LEVEL;
+
+   /* Wait for glthread to finish to get up-to-date GL object lookups. */
+   if (st->thread_finish)
+      st->thread_finish(st);
 
    /* Validate the OpenGL object and get pipe_resource. */
    simple_mtx_lock(&ctx->Shared->Mutex);
@@ -2361,6 +2402,7 @@ static const __DRIextension *dri_screen_extensions_base[] = {
    &dri2InteropExtension.base,
    &driBlobExtension.base,
    &driMutableRenderBufferExtension.base,
+   &dri2FlushControlExtension.base,
 };
 
 /**
@@ -2507,7 +2549,7 @@ release_pipe:
  * Returns the struct gl_config supported by this driver.
  */
 static const __DRIconfig **
-dri_kms_init_screen(__DRIscreen * sPriv)
+dri_swrast_kms_init_screen(__DRIscreen * sPriv)
 {
 #if defined(GALLIUM_SOFTPIPE)
    const __DRIconfig **configs;
@@ -2523,10 +2565,12 @@ dri_kms_init_screen(__DRIscreen * sPriv)
 
    sPriv->driverPrivate = (void *)screen;
 
+#ifdef HAVE_DRISW_KMS
    if (pipe_loader_sw_probe_kms(&screen->dev, screen->fd)) {
       pscreen = pipe_loader_create_screen(screen->dev);
       dri_init_options(screen);
    }
+#endif
 
    if (!pscreen)
        goto release_pipe;
@@ -2611,8 +2655,8 @@ static const struct __DRIDriverVtableExtensionRec galliumdrm_vtable = {
  * hook. The latter is used to explicitly initialise the kms_swrast driver
  * rather than selecting the approapriate driver as suggested by the loader.
  */
-const struct __DriverAPIRec dri_kms_driver_api = {
-   .InitScreen = dri_kms_init_screen,
+const struct __DriverAPIRec dri_swrast_kms_driver_api = {
+   .InitScreen = dri_swrast_kms_init_screen,
    .DestroyScreen = dri_destroy_screen,
    .CreateBuffer = dri2_create_buffer,
    .DestroyBuffer = dri_destroy_buffer,
@@ -2631,17 +2675,17 @@ const __DRIextension *galliumdrm_driver_extensions[] = {
     NULL
 };
 
-static const struct __DRIDriverVtableExtensionRec dri_kms_vtable = {
+static const struct __DRIDriverVtableExtensionRec dri_swrast_kms_vtable = {
    .base = { __DRI_DRIVER_VTABLE, 1 },
-   .vtable = &dri_kms_driver_api,
+   .vtable = &dri_swrast_kms_driver_api,
 };
 
-const __DRIextension *dri_kms_driver_extensions[] = {
+const __DRIextension *dri_swrast_kms_driver_extensions[] = {
     &driCoreExtension.base,
     &driImageDriverExtension.base,
-    &driDRI2Extension.base,
+    &swkmsDRI2Extension.base,
     &gallium_config_options.base,
-    &dri_kms_vtable.base,
+    &dri_swrast_kms_vtable.base,
     NULL
 };
 

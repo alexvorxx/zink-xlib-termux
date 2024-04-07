@@ -73,7 +73,7 @@ static const struct debug_named_value vc4_debug_options[] = {
 };
 
 DEBUG_GET_ONCE_FLAGS_OPTION(vc4_debug, "VC4_DEBUG", vc4_debug_options, 0)
-uint32_t vc4_debug;
+uint32_t vc4_mesa_debug;
 
 static const char *
 vc4_screen_get_name(struct pipe_screen *pscreen)
@@ -175,8 +175,7 @@ vc4_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
         case PIPE_CAP_MAX_TEXTURE_CUBE_LEVELS:
                 return VC4_MAX_MIP_LEVELS;
         case PIPE_CAP_MAX_TEXTURE_3D_LEVELS:
-                /* Note: Not supported in hardware, just faking it. */
-                return 5;
+                return 0;
 
         case PIPE_CAP_MAX_VARYINGS:
                 return 8;
@@ -589,9 +588,7 @@ vc4_screen_create(int fd, struct renderonly *ro)
 
         vc4_fence_screen_init(screen);
 
-        vc4_debug = debug_get_option_vc4_debug();
-        if (vc4_debug & VC4_DEBUG_SHADERDB)
-                vc4_debug |= VC4_DEBUG_NORAST;
+        vc4_mesa_debug = debug_get_option_vc4_debug();
 
 #ifdef USE_VC4_SIMULATOR
         vc4_simulator_init(screen);

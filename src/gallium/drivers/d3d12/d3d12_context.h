@@ -162,6 +162,7 @@ struct d3d12_context {
    struct pipe_context base;
    struct slab_child_pool transfer_pool;
    struct slab_child_pool transfer_pool_unsync;
+   struct list_head context_list_entry;
    struct threaded_context *threaded_context;
    struct primconvert_context *primconvert;
    struct blitter_context *blitter;
@@ -174,9 +175,14 @@ struct d3d12_context {
    struct hash_table *gs_variant_cache;
    struct hash_table *tcs_variant_cache;
    struct hash_table *compute_transform_cache;
+   struct hash_table_u64 *bo_state_table;
 
    struct d3d12_batch batches[4];
    unsigned current_batch_idx;
+
+   struct util_dynarray recently_destroyed_bos;
+   struct util_dynarray barrier_scratch;
+   struct set *pending_barriers_bos;
 
    struct pipe_constant_buffer cbufs[PIPE_SHADER_TYPES][PIPE_MAX_CONSTANT_BUFFERS];
    struct pipe_framebuffer_state fb;
@@ -239,6 +245,7 @@ struct d3d12_context {
 
    uint64_t submit_id;
    ID3D12GraphicsCommandList *cmdlist;
+   ID3D12GraphicsCommandList *state_fixup_cmdlist;
 
    struct list_head active_queries;
    bool queries_disabled;
@@ -305,16 +312,17 @@ void
 d3d12_flush_cmdlist_and_wait(struct d3d12_context *ctx);
 
 
-enum d3d12_bind_invalidate_option {
-   D3D12_BIND_INVALIDATE_NONE,
-   D3D12_BIND_INVALIDATE_FULL,
+enum d3d12_transition_flags {
+   D3D12_TRANSITION_FLAG_NONE = 0,
+   D3D12_TRANSITION_FLAG_INVALIDATE_BINDINGS = 1,
+   D3D12_TRANSITION_FLAG_ACCUMULATE_STATE = 2,
 };
 
 void
 d3d12_transition_resource_state(struct d3d12_context* ctx,
                                 struct d3d12_resource* res,
                                 D3D12_RESOURCE_STATES state,
-                                d3d12_bind_invalidate_option bind_invalidate);
+                                d3d12_transition_flags flags);
 
 void
 d3d12_transition_subresources_state(struct d3d12_context *ctx,
@@ -323,7 +331,7 @@ d3d12_transition_subresources_state(struct d3d12_context *ctx,
                                     unsigned start_layer, unsigned num_layers,
                                     unsigned start_plane, unsigned num_planes,
                                     D3D12_RESOURCE_STATES state,
-                                    d3d12_bind_invalidate_option bind_invalidate);
+                                    d3d12_transition_flags flags);
 
 void
 d3d12_apply_resource_states(struct d3d12_context* ctx, bool is_implicit_dispatch);
@@ -352,6 +360,9 @@ d3d12_need_zero_one_depth_range(struct d3d12_context *ctx);
 
 void
 d3d12_init_sampler_view_descriptor(struct d3d12_sampler_view *sampler_view);
+
+void
+d3d12_invalidate_context_bindings(struct d3d12_context *ctx, struct d3d12_resource *res);
 
 #ifdef HAVE_GALLIUM_D3D12_VIDEO
 struct pipe_video_codec* d3d12_video_create_codec( struct pipe_context *context,

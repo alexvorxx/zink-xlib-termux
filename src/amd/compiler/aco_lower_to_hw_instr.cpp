@@ -1452,7 +1452,11 @@ do_pack_2x16(lower_context* ctx, Builder& bld, Definition def, Operand lo, Opera
    if (lo.physReg().byte() == 2 && hi.physReg().byte() == 0 &&
        (!hi.isConstant() || !Operand::c32(hi.constantValue()).isLiteral() ||
         ctx->program->gfx_level >= GFX10)) {
-      bld.vop3(aco_opcode::v_alignbyte_b32, def, hi, lo, Operand::c32(2u));
+      if (hi.isConstant())
+         bld.vop3(aco_opcode::v_alignbyte_b32, def, Operand::c32(hi.constantValue()), lo,
+                  Operand::c32(2u));
+      else
+         bld.vop3(aco_opcode::v_alignbyte_b32, def, hi, lo, Operand::c32(2u));
       return;
    }
 
@@ -1969,10 +1973,7 @@ emit_set_mode(Builder& bld, float_mode new_mode, bool set_round, bool set_denorm
          bld.sopp(aco_opcode::s_denorm_mode, -1, new_mode.denorm);
    } else if (set_round || set_denorm) {
       /* "((size - 1) << 11) | register" (MODE is encoded as register 1) */
-      Instruction* instr =
-         bld.sopk(aco_opcode::s_setreg_imm32_b32, Operand::c8(new_mode.val), (7 << 11) | 1).instr;
-      /* has to be a literal */
-      instr->operands[0].setFixed(PhysReg{255});
+      bld.sopk(aco_opcode::s_setreg_imm32_b32, Operand::literal32(new_mode.val), (7 << 11) | 1);
    }
 }
 
@@ -2003,11 +2004,14 @@ lower_to_hw_instr(Program* program)
 {
    Block* discard_block = NULL;
 
+   bool should_dealloc_vgprs = dealloc_vgprs(program);
+
    for (int block_idx = program->blocks.size() - 1; block_idx >= 0; block_idx--) {
       Block* block = &program->blocks[block_idx];
       lower_context ctx;
       ctx.program = program;
       ctx.block = block;
+      ctx.instructions.reserve(block->instructions.size());
       Builder bld(program, &ctx.instructions);
 
       emit_set_mode_from_block(bld, *program, block, (block_idx == 0));
@@ -2120,9 +2124,12 @@ lower_to_hw_instr(Program* program)
 
                if (!discard_block) {
                   discard_block = program->create_and_insert_block();
+                  discard_block->kind = block_kind_discard_early_exit;
                   block = &program->blocks[block_idx];
 
                   bld.reset(discard_block);
+                  if (should_dealloc_vgprs)
+                     bld.sopp(aco_opcode::s_sendmsg, -1, sendmsg_dealloc_vgprs);
                   bld.exp(aco_opcode::exp, Operand(v1), Operand(v1), Operand(v1), Operand(v1), 0,
                           program->gfx_level >= GFX11 ? V_008DFC_SQ_EXP_MRT : V_008DFC_SQ_EXP_NULL,
                           false, true, true);
@@ -2132,8 +2139,7 @@ lower_to_hw_instr(Program* program)
                }
 
                assert(instr->operands[0].physReg() == scc);
-               bld.sopp(aco_opcode::s_cbranch_scc0, Definition(exec, s2), instr->operands[0],
-                        discard_block->index);
+               bld.sopp(aco_opcode::s_cbranch_scc0, instr->operands[0], discard_block->index);
 
                discard_block->linear_preds.push_back(block->index);
                block->linear_succs.push_back(discard_block->index);
@@ -2326,6 +2332,51 @@ lower_to_hw_instr(Program* program)
                }
                break;
             }
+            case aco_opcode::p_init_scratch: {
+               assert(program->gfx_level >= GFX8 && program->gfx_level <= GFX10_3);
+               if (!program->config->scratch_bytes_per_wave)
+                  break;
+
+               Operand scratch_addr = instr->operands[0];
+               Operand scratch_addr_lo(scratch_addr.physReg(), s1);
+               if (program->stage.hw != HWStage::CS) {
+                  bld.smem(aco_opcode::s_load_dwordx2, instr->definitions[0], scratch_addr,
+                           Operand::zero());
+                  scratch_addr_lo.setFixed(instr->definitions[0].physReg());
+               }
+               Operand scratch_addr_hi(scratch_addr_lo.physReg().advance(4), s1);
+
+               /* Since we know what the high 16 bits of scratch_hi is, we can set all the high 16
+                * bits in the same instruction that we add the carry.
+                */
+               uint32_t hi_add = 0xffff0000 - S_008F04_SWIZZLE_ENABLE_GFX6(1);
+
+               if (program->gfx_level >= GFX10) {
+                  Operand scratch_lo(instr->definitions[0].physReg(), s1);
+                  Operand scratch_hi(instr->definitions[0].physReg().advance(4), s1);
+
+                  bld.sop2(aco_opcode::s_add_u32, Definition(scratch_lo.physReg(), s1),
+                           Definition(scc, s1), scratch_addr_lo, instr->operands[1]);
+                  bld.sop2(aco_opcode::s_addc_u32, Definition(scratch_hi.physReg(), s1),
+                           Definition(scc, s1), scratch_addr_hi, Operand::c32(hi_add),
+                           Operand(scc, s1));
+
+                  /* "((size - 1) << 11) | register" (FLAT_SCRATCH_LO/HI is encoded as register
+                   * 20/21) */
+                  bld.sopk(aco_opcode::s_setreg_b32, scratch_lo, (31 << 11) | 20);
+                  bld.sopk(aco_opcode::s_setreg_b32, scratch_hi, (31 << 11) | 21);
+               } else {
+                  bld.sop2(aco_opcode::s_add_u32, Definition(flat_scr_lo, s1), Definition(scc, s1),
+                           scratch_addr_lo, instr->operands[1]);
+                  bld.sop2(aco_opcode::s_addc_u32, Definition(flat_scr_hi, s1), Definition(scc, s1),
+                           scratch_addr_hi, Operand::c32(hi_add), Operand(scc, s1));
+               }
+               break;
+            }
+            case aco_opcode::p_jump_to_epilog: {
+               bld.sop1(aco_opcode::s_setpc_b64, instr->operands[0]);
+               break;
+            }
             default: break;
             }
          } else if (instr->isBranch()) {
@@ -2367,7 +2418,7 @@ lower_to_hw_instr(Program* program)
                         can_remove = false;
                   } else if (inst->isSALU()) {
                      num_scalar++;
-                  } else if (inst->isVALU() || inst->isVINTRP()) {
+                  } else if (inst->isVALU() || inst->isVINTRP() || instr->isVINTERP_INREG()) {
                      num_vector++;
                      /* VALU which writes SGPRs are always executed on GFX10+ */
                      if (ctx.program->gfx_level >= GFX10) {
@@ -2377,7 +2428,7 @@ lower_to_hw_instr(Program* program)
                         }
                      }
                   } else if (inst->isVMEM() || inst->isFlatLike() || inst->isDS() ||
-                             inst->isEXP()) {
+                             inst->isEXP() || inst->isLDSDIR()) {
                      // TODO: GFX6-9 can use vskip
                      can_remove = false;
                   } else if (inst->isSMEM()) {
@@ -2474,7 +2525,7 @@ lower_to_hw_instr(Program* program)
             ctx.instructions.emplace_back(std::move(instr));
          }
       }
-      block->instructions.swap(ctx.instructions);
+      block->instructions = std::move(ctx.instructions);
    }
 }
 

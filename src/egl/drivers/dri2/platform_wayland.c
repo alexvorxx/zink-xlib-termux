@@ -937,9 +937,8 @@ create_dri_image_from_dmabuf_feedback(struct dri2_egl_surface *dri2_surf,
       /* Ignore tranches that do not contain dri2_surf->format */
       if (!BITSET_TEST(tranche->formats.formats_bitmap, visual_idx))
          continue;
-      modifiers = util_dynarray_begin(&tranche->formats.modifiers[visual_idx]);
-      num_modifiers = util_dynarray_num_elements(&tranche->formats.modifiers[visual_idx],
-                                                 uint64_t);
+      modifiers = u_vector_tail(&tranche->formats.modifiers[visual_idx]);
+      num_modifiers = u_vector_length(&tranche->formats.modifiers[visual_idx]);
 
       /* For the purposes of this function, an INVALID modifier on
        * its own means the modifiers aren't supported. */
@@ -1528,6 +1527,17 @@ dri2_wl_swap_buffers_with_damage(_EGLDisplay *disp,
       if (dri2_surf->color_buffers[i].age > 0)
          dri2_surf->color_buffers[i].age++;
 
+   /* Flush (and finish glthread) before:
+    *   - update_buffers_if_needed because the unmarshalling thread
+    *     may be running currently, and we would concurrently alloc/free
+    *     the back bo.
+    *   - swapping current/back because flushing may free the buffer and
+    *     dri_image and reallocate them using get_back_bo (which causes a
+    *     a crash because 'current' becomes NULL).
+    */
+   dri2_flush_drawable_for_swapbuffers(disp, draw);
+   dri2_dpy->flush->invalidate(dri2_surf->dri_drawable);
+
    /* Make sure we have a back buffer in case we're swapping without ever
     * rendering. */
    if (update_buffers_if_needed(dri2_surf) < 0)
@@ -1589,9 +1599,6 @@ dri2_wl_swap_buffers_with_damage(_EGLDisplay *disp,
                                  0, 0, dri2_surf->base.Width,
                                  dri2_surf->base.Height, 0);
    }
-
-   dri2_flush_drawable_for_swapbuffers(disp, draw);
-   dri2_dpy->flush->invalidate(dri2_surf->dri_drawable);
 
    wl_surface_commit(dri2_surf->wl_surface_wrapper);
 
@@ -1932,10 +1939,10 @@ registry_handle_global_drm(void *data, struct wl_registry *registry,
 {
    struct dri2_egl_display *dri2_dpy = data;
 
-   if (strcmp(interface, "wl_drm") == 0) {
+   if (strcmp(interface, wl_drm_interface.name) == 0) {
       dri2_dpy->wl_drm_version = MIN2(version, 2);
       dri2_dpy->wl_drm_name = name;
-   } else if (strcmp(interface, "zwp_linux_dmabuf_v1") == 0 && version >= 3) {
+   } else if (strcmp(interface, zwp_linux_dmabuf_v1_interface.name) == 0 && version >= 3) {
       dri2_dpy->wl_dmabuf =
          wl_registry_bind(registry, name, &zwp_linux_dmabuf_v1_interface,
                           MIN2(version, ZWP_LINUX_DMABUF_V1_GET_DEFAULT_FEEDBACK_SINCE_VERSION));
@@ -2615,7 +2622,7 @@ registry_handle_global_swrast(void *data, struct wl_registry *registry,
 {
    struct dri2_egl_display *dri2_dpy = data;
 
-   if (strcmp(interface, "wl_shm") == 0) {
+   if (strcmp(interface, wl_shm_interface.name) == 0) {
       dri2_dpy->wl_shm =
          wl_registry_bind(registry, name, &wl_shm_interface, 1);
       wl_shm_add_listener(dri2_dpy->wl_shm, &shm_listener, dri2_dpy);

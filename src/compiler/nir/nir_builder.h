@@ -741,6 +741,13 @@ nir_iand_imm(nir_builder *build, nir_ssa_def *x, uint64_t y)
 }
 
 static inline nir_ssa_def *
+nir_test_mask(nir_builder *build, nir_ssa_def *x, uint64_t mask)
+{
+   assert(mask <= BITFIELD64_MASK(x->bit_size));
+   return nir_ine_imm(build, nir_iand_imm(build, x, mask), 0);
+}
+
+static inline nir_ssa_def *
 nir_ior_imm(nir_builder *build, nir_ssa_def *x, uint64_t y)
 {
    assert(x->bit_size <= 64);
@@ -1708,6 +1715,9 @@ nir_f2iN(nir_builder *b, nir_ssa_def *src, unsigned bit_size)
    return nir_type_convert(b, src, nir_type_float,
          (nir_alu_type) (nir_type_int | bit_size));
 }
+
+nir_ssa_def *
+nir_gen_rect_vertices(nir_builder *b, nir_ssa_def *z, nir_ssa_def *w);
 
 #ifdef __cplusplus
 } /* extern "C" */

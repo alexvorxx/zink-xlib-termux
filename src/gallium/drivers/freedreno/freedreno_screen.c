@@ -77,7 +77,7 @@ static const struct debug_named_value fd_debug_options[] = {
    {"perf",      FD_DBG_PERF,     "Enable performance warnings"},
    {"nobin",     FD_DBG_NOBIN,    "Disable hw binning"},
    {"sysmem",    FD_DBG_SYSMEM,   "Use sysmem only rendering (no tiling)"},
-   {"serialc",   FD_DBG_SERIALC,"Disable asynchronous shader compile"},
+   {"serialc",   FD_DBG_SERIALC,  "Disable asynchronous shader compile"},
    {"shaderdb",  FD_DBG_SHADERDB, "Enable shaderdb output"},
    {"flush",     FD_DBG_FLUSH,    "Force flush after every draw"},
    {"deqp",      FD_DBG_DEQP,     "Enable dEQP hacks"},
@@ -96,6 +96,7 @@ static const struct debug_named_value fd_debug_options[] = {
    {"layout",    FD_DBG_LAYOUT,   "Dump resource layouts"},
    {"nofp16",    FD_DBG_NOFP16,   "Disable mediump precision lowering"},
    {"nohw",      FD_DBG_NOHW,     "Disable submitting commands to the HW"},
+   {"nosbin",    FD_DBG_NOSBIN,   "Execute GMEM bins in raster order instead of 'S' pattern"},
    DEBUG_NAMED_VALUE_END
 };
 /* clang-format on */
@@ -131,7 +132,7 @@ fd_screen_get_timestamp(struct pipe_screen *pscreen)
    if (screen->has_timestamp) {
       uint64_t n;
       fd_pipe_get_param(screen->pipe, FD_TIMESTAMP, &n);
-      debug_assert(screen->max_freq > 0);
+      assert(screen->max_freq > 0);
       return n * 1000000000 / screen->max_freq;
    } else {
       int64_t cpu_time = os_time_get() * 1000;
@@ -215,7 +216,7 @@ fd_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_VERTEX_BUFFER_OFFSET_4BYTE_ALIGNED_ONLY:
    case PIPE_CAP_VERTEX_BUFFER_STRIDE_4BYTE_ALIGNED_ONLY:
    case PIPE_CAP_VERTEX_ELEMENT_SRC_OFFSET_4BYTE_ALIGNED_ONLY:
-      return !is_a2xx(screen);
+      return is_a2xx(screen);
 
    case PIPE_CAP_FS_COORD_PIXEL_CENTER_INTEGER:
       return is_a2xx(screen);
@@ -228,9 +229,6 @@ fd_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_ROBUST_BUFFER_ACCESS_BEHAVIOR:
    case PIPE_CAP_DEVICE_RESET_STATUS_QUERY:
       return screen->has_robustness;
-
-   case PIPE_CAP_VERTEXID_NOBASE:
-      return is_a3xx(screen) || is_a4xx(screen);
 
    case PIPE_CAP_COMPUTE:
       return has_compute(screen);
@@ -426,6 +424,14 @@ fd_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return is_a2xx(screen);
 
    case PIPE_CAP_CLIP_PLANES:
+      /* Gens that support GS, have GS lowered into a quasi-VS which confuses
+       * the frontend clip-plane lowering.  So we handle this in the backend
+       *
+       */
+      if (pscreen->get_shader_param(pscreen, PIPE_SHADER_GEOMETRY,
+                                    PIPE_SHADER_CAP_MAX_INSTRUCTIONS))
+         return 1;
+
       /* On a3xx, there is HW support for GL user clip planes that
        * occasionally has to fall back to shader key-based lowering to clip
        * distances in the VS, and we don't support clip distances so that is
@@ -439,8 +445,10 @@ fd_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
        * On a5xx-a6xx, we have the HW clip distances hooked up, so we just let
        * mesa/st lower desktop GL's clip planes to clip distances in the last
        * vertex shader stage.
+       *
+       * NOTE: but see comment above about geometry shaders
        */
-      return !is_a5xx(screen) && !is_a6xx(screen);
+      return !is_a5xx(screen);
 
    /* Stream output. */
    case PIPE_CAP_MAX_STREAM_OUTPUT_BUFFERS:
@@ -515,6 +523,14 @@ fd_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 
       if (!os_get_total_physical_memory(&system_memory))
          return 0;
+
+      if (fd_device_version(screen->dev) >= FD_VERSION_VA_SIZE) {
+         uint64_t va_size;
+
+         if (!fd_pipe_get_param(screen->pipe, FD_VA_SIZE, &va_size)) {
+            system_memory = MIN2(system_memory, va_size);
+         }
+      }
 
       return (int)(system_memory >> 20);
    }
@@ -792,7 +808,7 @@ fd_get_compute_param(struct pipe_screen *pscreen, enum pipe_shader_ir ir_type,
 
 static const void *
 fd_get_compiler_options(struct pipe_screen *pscreen, enum pipe_shader_ir ir,
-                        unsigned shader)
+                        enum pipe_shader_type shader)
 {
    struct fd_screen *screen = fd_screen(pscreen);
 
@@ -1015,12 +1031,27 @@ fd_screen_create(struct fd_device *dev, struct renderonly *ro,
    screen->chip_id = val;
    screen->gen = fd_dev_gen(screen->dev_id);
 
-   if (fd_pipe_get_param(screen->pipe, FD_NR_RINGS, &val)) {
+   if (fd_pipe_get_param(screen->pipe, FD_NR_PRIORITIES, &val)) {
       DBG("could not get # of rings");
       screen->priority_mask = 0;
    } else {
       /* # of rings equates to number of unique priority values: */
       screen->priority_mask = (1 << val) - 1;
+
+      /* Lowest numerical value (ie. zero) is highest priority: */
+      screen->prio_high = 0;
+
+      /* Highest numerical value is lowest priority: */
+      screen->prio_low = val - 1;
+
+      /* Pick midpoint for normal priority.. note that whatever the
+       * range of possible priorities, since we divide by 2 the
+       * result will either be an integer or an integer plus 0.5,
+       * in which case it will round down to an integer, so int
+       * division will give us an appropriate result in either
+       * case:
+       */
+      screen->prio_norm = val / 2;
    }
 
    if (fd_device_version(dev) >= FD_VERSION_ROBUSTNESS)

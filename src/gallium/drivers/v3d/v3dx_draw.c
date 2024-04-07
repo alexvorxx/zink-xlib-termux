@@ -936,30 +936,6 @@ v3d_update_job_ez(struct v3d_context *v3d, struct v3d_job *job)
                 job->first_ez_state = job->ez_state;
 }
 
-static uint32_t
-v3d_hw_prim_type(enum pipe_prim_type prim_type)
-{
-        switch (prim_type) {
-        case PIPE_PRIM_POINTS:
-        case PIPE_PRIM_LINES:
-        case PIPE_PRIM_LINE_LOOP:
-        case PIPE_PRIM_LINE_STRIP:
-        case PIPE_PRIM_TRIANGLES:
-        case PIPE_PRIM_TRIANGLE_STRIP:
-        case PIPE_PRIM_TRIANGLE_FAN:
-                return prim_type;
-
-        case PIPE_PRIM_LINES_ADJACENCY:
-        case PIPE_PRIM_LINE_STRIP_ADJACENCY:
-        case PIPE_PRIM_TRIANGLES_ADJACENCY:
-        case PIPE_PRIM_TRIANGLE_STRIP_ADJACENCY:
-                return 8 + (prim_type - PIPE_PRIM_LINES_ADJACENCY);
-
-        default:
-                unreachable("Unsupported primitive type");
-        }
-}
-
 static bool
 v3d_check_compiled_shaders(struct v3d_context *v3d)
 {
@@ -1332,7 +1308,7 @@ v3d_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
                 v3d_flush(pctx);
         }
 
-        if (unlikely(V3D_DEBUG & V3D_DEBUG_ALWAYS_FLUSH))
+        if (V3D_DBG(ALWAYS_FLUSH))
                 v3d_flush(pctx);
 }
 
@@ -1494,7 +1470,7 @@ v3d_launch_grid(struct pipe_context *pctx, const struct pipe_grid_info *info)
 
         v3d->last_perfmon = v3d->active_perfmon;
 
-        if (!(unlikely(V3D_DEBUG & V3D_DEBUG_NORAST))) {
+        if (!V3D_DBG(NORAST)) {
                 int ret = v3d_ioctl(screen->fd, DRM_IOCTL_V3D_SUBMIT_CSD,
                                     &submit);
                 static bool warned = false;
@@ -1541,14 +1517,6 @@ v3d_draw_clear(struct v3d_context *v3d,
                const union pipe_color_union *color,
                double depth, unsigned stencil)
 {
-        static const union pipe_color_union dummy_color = {};
-
-        /* The blitter util dereferences the color regardless, even though the
-         * gallium clear API may not pass one in when only Z/S are cleared.
-         */
-        if (!color)
-                color = &dummy_color;
-
         v3d_blitter_save(v3d, false);
         util_blitter_clear(v3d->blitter,
                            v3d->framebuffer.width,

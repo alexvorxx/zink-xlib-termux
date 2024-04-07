@@ -90,7 +90,6 @@ copy_buffer_to_image(struct radv_cmd_buffer *cmd_buffer, struct radv_buffer *buf
                      const VkBufferImageCopy2 *region)
 {
    struct radv_meta_saved_state saved_state;
-   bool old_predicating;
    bool cs;
 
    /* The Vulkan 1.0 spec says "dstImage must have a sample count equal to
@@ -101,15 +100,13 @@ copy_buffer_to_image(struct radv_cmd_buffer *cmd_buffer, struct radv_buffer *buf
    cs = cmd_buffer->qf == RADV_QUEUE_COMPUTE ||
         !radv_image_is_renderable(cmd_buffer->device, image);
 
-   radv_meta_save(&saved_state, cmd_buffer,
-                  (cs ? RADV_META_SAVE_COMPUTE_PIPELINE : RADV_META_SAVE_GRAPHICS_PIPELINE) |
-                     RADV_META_SAVE_CONSTANTS | RADV_META_SAVE_DESCRIPTORS);
-
    /* VK_EXT_conditional_rendering says that copy commands should not be
     * affected by conditional rendering.
     */
-   old_predicating = cmd_buffer->state.predicating;
-   cmd_buffer->state.predicating = false;
+   radv_meta_save(&saved_state, cmd_buffer,
+                  (cs ? RADV_META_SAVE_COMPUTE_PIPELINE : RADV_META_SAVE_GRAPHICS_PIPELINE) |
+                     RADV_META_SAVE_CONSTANTS | RADV_META_SAVE_DESCRIPTORS |
+                     RADV_META_SUSPEND_PREDICATING);
 
    /**
     * From the Vulkan 1.0.6 spec: 18.3 Copying Data Between Images
@@ -139,7 +136,7 @@ copy_buffer_to_image(struct radv_cmd_buffer *cmd_buffer, struct radv_buffer *buf
                                                          cmd_buffer->qf);
       bool compressed =
          radv_layout_dcc_compressed(cmd_buffer->device, image, region->imageSubresource.mipLevel,
-                                    layout, false, queue_mask);
+                                    layout, queue_mask);
       if (compressed) {
          radv_decompress_dcc(cmd_buffer, image,
                              &(VkImageSubresourceRange){
@@ -195,9 +192,6 @@ copy_buffer_to_image(struct radv_cmd_buffer *cmd_buffer, struct radv_buffer *buf
          slice_array++;
    }
 
-   /* Restore conditional rendering. */
-   cmd_buffer->state.predicating = old_predicating;
-
    radv_meta_restore(&saved_state, cmd_buffer);
 }
 
@@ -244,23 +238,19 @@ copy_image_to_buffer(struct radv_cmd_buffer *cmd_buffer, struct radv_buffer *buf
       assert(image->info.height == region->imageExtent.height);
       ASSERTED bool res = radv_sdma_copy_image(cmd_buffer, image, buffer, region);
       assert(res);
-      radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, image->bo);
+      radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, image->bindings[0].bo);
       radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, buffer->bo);
       return;
    }
 
    struct radv_meta_saved_state saved_state;
-   bool old_predicating;
-
-   radv_meta_save(
-      &saved_state, cmd_buffer,
-      RADV_META_SAVE_COMPUTE_PIPELINE | RADV_META_SAVE_CONSTANTS | RADV_META_SAVE_DESCRIPTORS);
 
    /* VK_EXT_conditional_rendering says that copy commands should not be
     * affected by conditional rendering.
     */
-   old_predicating = cmd_buffer->state.predicating;
-   cmd_buffer->state.predicating = false;
+   radv_meta_save(&saved_state, cmd_buffer,
+                  RADV_META_SAVE_COMPUTE_PIPELINE | RADV_META_SAVE_CONSTANTS |
+                     RADV_META_SAVE_DESCRIPTORS | RADV_META_SUSPEND_PREDICATING);
 
    /**
     * From the Vulkan 1.0.6 spec: 18.3 Copying Data Between Images
@@ -295,7 +285,7 @@ copy_image_to_buffer(struct radv_cmd_buffer *cmd_buffer, struct radv_buffer *buf
                                                          cmd_buffer->qf);
       bool compressed =
          radv_layout_dcc_compressed(cmd_buffer->device, image, region->imageSubresource.mipLevel,
-                                    layout, false, queue_mask);
+                                    layout, queue_mask);
       if (compressed) {
          radv_decompress_dcc(cmd_buffer, image,
                              &(VkImageSubresourceRange){
@@ -341,9 +331,6 @@ copy_image_to_buffer(struct radv_cmd_buffer *cmd_buffer, struct radv_buffer *buf
          slice_array++;
    }
 
-   /* Restore conditional rendering. */
-   cmd_buffer->state.predicating = old_predicating;
-
    radv_meta_restore(&saved_state, cmd_buffer);
 }
 
@@ -368,7 +355,6 @@ copy_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
            VkImageLayout dst_image_layout, const VkImageCopy2 *region)
 {
    struct radv_meta_saved_state saved_state;
-   bool old_predicating;
    bool cs;
 
    /* From the Vulkan 1.0 spec:
@@ -381,15 +367,13 @@ copy_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
    cs = cmd_buffer->qf == RADV_QUEUE_COMPUTE ||
         !radv_image_is_renderable(cmd_buffer->device, dst_image);
 
-   radv_meta_save(&saved_state, cmd_buffer,
-                  (cs ? RADV_META_SAVE_COMPUTE_PIPELINE : RADV_META_SAVE_GRAPHICS_PIPELINE) |
-                     RADV_META_SAVE_CONSTANTS | RADV_META_SAVE_DESCRIPTORS);
-
    /* VK_EXT_conditional_rendering says that copy commands should not be
     * affected by conditional rendering.
     */
-   old_predicating = cmd_buffer->state.predicating;
-   cmd_buffer->state.predicating = false;
+   radv_meta_save(&saved_state, cmd_buffer,
+                  (cs ? RADV_META_SAVE_COMPUTE_PIPELINE : RADV_META_SAVE_GRAPHICS_PIPELINE) |
+                     RADV_META_SAVE_CONSTANTS | RADV_META_SAVE_DESCRIPTORS |
+                     RADV_META_SUSPEND_PREDICATING);
 
    if (cs) {
       /* For partial copies, HTILE should be decompressed before copying because the metadata is
@@ -399,7 +383,7 @@ copy_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
                                                          cmd_buffer->qf);
 
       if (radv_layout_is_htile_compressed(cmd_buffer->device, dst_image, dst_image_layout,
-                                          false, queue_mask) &&
+                                          queue_mask) &&
           (region->dstOffset.x || region->dstOffset.y || region->dstOffset.z ||
            region->extent.width != dst_image->info.width ||
            region->extent.height != dst_image->info.height ||
@@ -449,12 +433,12 @@ copy_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
          dst_image, cmd_buffer->qf, cmd_buffer->qf);
       bool dst_compressed = radv_layout_dcc_compressed(cmd_buffer->device, dst_image,
                                                        region->dstSubresource.mipLevel,
-                                                       dst_image_layout, false, dst_queue_mask);
+                                                       dst_image_layout, dst_queue_mask);
       uint32_t src_queue_mask = radv_image_queue_family_mask(
          src_image, cmd_buffer->qf, cmd_buffer->qf);
       bool src_compressed = radv_layout_dcc_compressed(cmd_buffer->device, src_image,
                                                        region->srcSubresource.mipLevel,
-                                                       src_image_layout, false, src_queue_mask);
+                                                       src_image_layout, src_queue_mask);
       bool need_dcc_sign_reinterpret = false;
 
       if (!src_compressed ||
@@ -553,7 +537,7 @@ copy_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
                                                          cmd_buffer->qf);
 
       if (radv_layout_is_htile_compressed(cmd_buffer->device, dst_image, dst_image_layout,
-                                          false, queue_mask)) {
+                                          queue_mask)) {
 
          cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_INV_VCACHE;
 
@@ -570,9 +554,6 @@ copy_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
          cmd_buffer->state.flush_bits |= radv_clear_htile(cmd_buffer, dst_image, &range, htile_value);
       }
    }
-
-   /* Restore conditional rendering. */
-   cmd_buffer->state.predicating = old_predicating;
 
    radv_meta_restore(&saved_state, cmd_buffer);
 }

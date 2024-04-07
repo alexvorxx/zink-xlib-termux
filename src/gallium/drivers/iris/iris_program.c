@@ -44,18 +44,18 @@
 #include "compiler/nir/nir_serialize.h"
 #include "intel/compiler/brw_compiler.h"
 #include "intel/compiler/brw_nir.h"
+#include "intel/compiler/brw_prim.h"
 #include "iris_context.h"
 #include "nir/tgsi_to_nir.h"
 
 #define KEY_INIT(prefix)                                                   \
    .prefix.program_string_id = ish->program_id,                            \
    .prefix.limit_trig_input_range = screen->driconf.limit_trig_input_range
-#define BRW_KEY_INIT(gen, prog_id, limit_trig_input)     \
-   .base.program_string_id = prog_id,                    \
-   .base.limit_trig_input_range = limit_trig_input,      \
-   .base.subgroup_size_type = BRW_SUBGROUP_SIZE_UNIFORM, \
-   .base.tex.swizzles[0 ... MAX_SAMPLERS - 1] = 0x688,   \
-   .base.tex.compressed_multisample_layout_mask = ~0,    \
+#define BRW_KEY_INIT(gen, prog_id, limit_trig_input)       \
+   .base.program_string_id = prog_id,                      \
+   .base.limit_trig_input_range = limit_trig_input,        \
+   .base.tex.swizzles[0 ... BRW_MAX_SAMPLERS - 1] = 0x688, \
+   .base.tex.compressed_multisample_layout_mask = ~0,      \
    .base.tex.msaa_16 = (gen >= 9 ? ~0 : 0)
 
 struct iris_threaded_compile_job {
@@ -386,8 +386,6 @@ iris_fix_edge_flags(nir_shader *nir)
                                         nir_metadata_dominance |
                                         nir_metadata_live_ssa_defs |
                                         nir_metadata_loop_analysis);
-      } else {
-         nir_metadata_preserve(f->impl, nir_metadata_all);
       }
    }
 
@@ -737,7 +735,8 @@ static const char *surface_group_names[] = {
    [IRIS_SURFACE_GROUP_RENDER_TARGET]      = "render target",
    [IRIS_SURFACE_GROUP_RENDER_TARGET_READ] = "non-coherent render target read",
    [IRIS_SURFACE_GROUP_CS_WORK_GROUPS]     = "CS work groups",
-   [IRIS_SURFACE_GROUP_TEXTURE]            = "texture",
+   [IRIS_SURFACE_GROUP_TEXTURE_LOW64]      = "texture",
+   [IRIS_SURFACE_GROUP_TEXTURE_HIGH64]     = "texture",
    [IRIS_SURFACE_GROUP_UBO]                = "ubo",
    [IRIS_SURFACE_GROUP_SSBO]               = "ssbo",
    [IRIS_SURFACE_GROUP_IMAGE]              = "image",
@@ -914,8 +913,15 @@ iris_setup_binding_table(const struct intel_device_info *devinfo,
       bt->sizes[IRIS_SURFACE_GROUP_CS_WORK_GROUPS] = 1;
    }
 
-   bt->sizes[IRIS_SURFACE_GROUP_TEXTURE] = BITSET_LAST_BIT(info->textures_used);
-   bt->used_mask[IRIS_SURFACE_GROUP_TEXTURE] = info->textures_used[0];
+   assert(ARRAY_SIZE(info->textures_used) >= 4);
+   int max_tex = BITSET_LAST_BIT(info->textures_used);
+   assert(max_tex <= 128);
+   bt->sizes[IRIS_SURFACE_GROUP_TEXTURE_LOW64] = MIN2(64, max_tex);
+   bt->sizes[IRIS_SURFACE_GROUP_TEXTURE_HIGH64] = MAX2(0, max_tex - 64);
+   bt->used_mask[IRIS_SURFACE_GROUP_TEXTURE_LOW64] =
+      info->textures_used[0] | ((uint64_t)info->textures_used[1]) << 32;
+   bt->used_mask[IRIS_SURFACE_GROUP_TEXTURE_HIGH64] =
+      info->textures_used[2] | ((uint64_t)info->textures_used[3]) << 32;
 
    bt->sizes[IRIS_SURFACE_GROUP_IMAGE] = info->num_images;
 
@@ -1039,9 +1045,15 @@ iris_setup_binding_table(const struct intel_device_info *devinfo,
       nir_foreach_instr (instr, block) {
          if (instr->type == nir_instr_type_tex) {
             nir_tex_instr *tex = nir_instr_as_tex(instr);
-            tex->texture_index =
-               iris_group_index_to_bti(bt, IRIS_SURFACE_GROUP_TEXTURE,
-                                       tex->texture_index);
+            if (tex->texture_index < 64) {
+               tex->texture_index =
+                  iris_group_index_to_bti(bt, IRIS_SURFACE_GROUP_TEXTURE_LOW64,
+                                          tex->texture_index);
+            } else {
+               tex->texture_index =
+                  iris_group_index_to_bti(bt, IRIS_SURFACE_GROUP_TEXTURE_HIGH64,
+                                          tex->texture_index - 64);
+            }
             continue;
          }
 
@@ -1280,8 +1292,6 @@ iris_schedule_compile(struct iris_screen *screen,
                       util_queue_execute_func execute)
 
 {
-   util_queue_fence_init(ready_fence);
-
    struct util_async_debug_callback async_debug;
 
    if (dbg) {
@@ -1613,7 +1623,7 @@ iris_update_compiled_tcs(struct iris_context *ice)
       .vue.base.program_string_id = tcs ? tcs->program_id : 0,
       ._tes_primitive_mode = tes_info->tess._primitive_mode,
       .input_vertices =
-         !tcs || compiler->use_tcs_8_patch ? ice->state.vertices_per_patch : 0,
+         !tcs || compiler->use_tcs_multi_patch ? ice->state.vertices_per_patch : 0,
       .quads_workaround = devinfo->ver < 9 &&
                           tes_info->tess._primitive_mode == TESS_PRIMITIVE_QUADS &&
                           tes_info->tess.spacing == TESS_SPACING_EQUAL,
@@ -2391,7 +2401,8 @@ iris_get_scratch_space(struct iris_context *ice,
    if (!*bop) {
       assert(stage < ARRAY_SIZE(devinfo->max_scratch_ids));
       uint32_t size = per_thread_scratch * devinfo->max_scratch_ids[stage];
-      *bop = iris_bo_alloc(bufmgr, "scratch", size, 1, IRIS_MEMZONE_SHADER, 0);
+      *bop = iris_bo_alloc(bufmgr, "scratch", size, 1024,
+                           IRIS_MEMZONE_SHADER, 0);
    }
 
    return *bop;
@@ -2456,6 +2467,7 @@ iris_create_uncompiled_shader(struct iris_screen *screen,
    pipe_reference_init(&ish->ref, 1);
    list_inithead(&ish->variants);
    simple_mtx_init(&ish->lock, mtx_plain);
+   util_queue_fence_init(&ish->ready);
 
    ish->uses_atomic_load_store = iris_uses_image_atomic(nir);
 
@@ -2621,12 +2633,12 @@ iris_create_shader_state(struct pipe_context *ctx,
          .patch_outputs_written = info->patch_outputs_written,
       };
 
-      /* 8_PATCH mode needs the key to contain the input patch dimensionality.
+      /* MULTI_PATCH mode needs the key to contain the input patch dimensionality.
        * We don't have that information, so we randomly guess that the input
        * and output patches are the same size.  This is a bad guess, but we
        * can't do much better.
        */
-      if (screen->compiler->use_tcs_8_patch)
+      if (screen->compiler->use_tcs_multi_patch)
          key.tcs.input_vertices = info->tess.tcs_vertices_out;
 
       key_size = sizeof(key.tcs);
@@ -2789,8 +2801,8 @@ bind_shader_state(struct iris_context *ice,
    const struct shader_info *old_info = iris_get_shader_info(ice, stage);
    const struct shader_info *new_info = ish ? &ish->nir->info : NULL;
 
-   if ((old_info ? BITSET_LAST_BIT(old_info->textures_used) : 0) !=
-       (new_info ? BITSET_LAST_BIT(new_info->textures_used) : 0)) {
+   if ((old_info ? BITSET_LAST_BIT(old_info->samplers_used) : 0) !=
+       (new_info ? BITSET_LAST_BIT(new_info->samplers_used) : 0)) {
       ice->state.stage_dirty |= IRIS_STAGE_DIRTY_SAMPLER_STATES_VS << stage;
    }
 

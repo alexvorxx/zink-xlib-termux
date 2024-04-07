@@ -740,9 +740,6 @@ _eglCheckMakeCurrent(_EGLContext *ctx, _EGLSurface *draw, _EGLSurface *read)
    _EGLThreadInfo *t = _eglGetCurrentThread();
    _EGLDisplay *disp;
 
-   if (_eglIsCurrentThreadDummy())
-      return _eglError(EGL_BAD_ALLOC, "eglMakeCurrent");
-
    /* this is easy */
    if (!ctx) {
       if (draw || read)
@@ -788,11 +785,6 @@ _eglCheckMakeCurrent(_EGLContext *ctx, _EGLSurface *draw, _EGLSurface *read)
       /* Otherwise we must be using the EGL_KHR_no_config_context
        * extension */
       assert(disp->Extensions.KHR_no_config_context);
-
-      /* The extension doesn't permit binding draw and read buffers with
-       * differing contexts */
-      if (draw && read && draw->Config != read->Config)
-         return _eglError(EGL_BAD_MATCH, "eglMakeCurrent");
    }
 
    return EGL_TRUE;

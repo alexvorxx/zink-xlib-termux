@@ -77,9 +77,6 @@
 #include <memcheck.h>
 #include <valgrind.h>
 #define VG(x) x
-#ifdef DEBUG
-#define __gen_validate_value(x) VALGRIND_CHECK_MEM_IS_DEFINED(&(x), sizeof(x))
-#endif
 #else
 #define VG(x)
 #endif
@@ -3374,8 +3371,14 @@ crocus_set_viewport_states(struct pipe_context *ctx,
                            const struct pipe_viewport_state *states)
 {
    struct crocus_context *ice = (struct crocus_context *) ctx;
+   struct crocus_screen *screen = (struct crocus_screen *)ctx->screen;
 
    memcpy(&ice->state.viewports[start_slot], states, sizeof(*states) * count);
+
+   /* Fix depth test misrenderings by lowering translated depth range */
+   if (screen->driconf.lower_depth_range_rate != 1.0f)
+      ice->state.viewports[start_slot].translate[2] *=
+         screen->driconf.lower_depth_range_rate;
 
    ice->state.dirty |= CROCUS_DIRTY_SF_CL_VIEWPORT;
    ice->state.dirty |= CROCUS_DIRTY_RASTER;
@@ -4275,12 +4278,12 @@ static uint32_t *
 crocus_create_so_decl_list(const struct pipe_stream_output_info *info,
                            const struct brw_vue_map *vue_map)
 {
-   struct GENX(SO_DECL) so_decl[MAX_VERTEX_STREAMS][128];
-   int buffer_mask[MAX_VERTEX_STREAMS] = {0, 0, 0, 0};
-   int next_offset[MAX_VERTEX_STREAMS] = {0, 0, 0, 0};
-   int decls[MAX_VERTEX_STREAMS] = {0, 0, 0, 0};
+   struct GENX(SO_DECL) so_decl[PIPE_MAX_VERTEX_STREAMS][128];
+   int buffer_mask[PIPE_MAX_VERTEX_STREAMS] = {0, 0, 0, 0};
+   int next_offset[PIPE_MAX_VERTEX_STREAMS] = {0, 0, 0, 0};
+   int decls[PIPE_MAX_VERTEX_STREAMS] = {0, 0, 0, 0};
    int max_decls = 0;
-   STATIC_ASSERT(ARRAY_SIZE(so_decl[0]) >= MAX_PROGRAM_OUTPUTS);
+   STATIC_ASSERT(ARRAY_SIZE(so_decl[0]) >= PIPE_MAX_SO_OUTPUTS);
 
    memset(so_decl, 0, sizeof(so_decl));
 
@@ -4292,7 +4295,7 @@ crocus_create_so_decl_list(const struct pipe_stream_output_info *info,
       const int buffer = output->output_buffer;
       const int varying = output->register_index;
       const unsigned stream_id = output->stream;
-      assert(stream_id < MAX_VERTEX_STREAMS);
+      assert(stream_id < PIPE_MAX_VERTEX_STREAMS);
 
       buffer_mask[stream_id] |= 1 << buffer;
 
@@ -6732,9 +6735,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
          cl.UserClipDistanceCullTestEnableBitmask =
             brw_vue_prog_data(ice->shaders.prog[MESA_SHADER_VERTEX]->prog_data)->cull_distance_mask;
 
-         if (wm_prog_data->barycentric_interp_modes &
-             BRW_BARYCENTRIC_NONPERSPECTIVE_BITS)
-            cl.NonPerspectiveBarycentricEnable = true;
+         cl.NonPerspectiveBarycentricEnable = wm_prog_data->uses_nonperspective_interp_modes;
 
          cl.ForceZeroRTAIndexEnable = cso_fb->layers <= 1;
          cl.MaximumVPIndex = ice->state.num_viewports - 1;

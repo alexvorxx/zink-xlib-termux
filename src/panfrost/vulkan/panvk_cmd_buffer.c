@@ -381,7 +381,7 @@ panvk_CreateCommandPool(VkDevice _device,
    if (pool == NULL)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   VkResult result = vk_command_pool_init(&pool->vk, &device->vk,
+   VkResult result = vk_command_pool_init(&device->vk, &pool->vk,
                                           pCreateInfo, pAllocator);
    if (result != VK_SUCCESS) {
       vk_free2(&device->vk.alloc, pAllocator, pool);
@@ -522,19 +522,6 @@ panvk_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
    panvk_cmd_prepare_clear_values(cmdbuf, pRenderPassBegin->pClearValues);
    panvk_cmd_fb_info_init(cmdbuf);
    panvk_cmd_fb_info_set_subpass(cmdbuf);
-}
-
-void
-panvk_CmdBeginRenderPass(VkCommandBuffer cmd,
-                         const VkRenderPassBeginInfo *info,
-                         VkSubpassContents contents)
-{
-   VkSubpassBeginInfo subpass_info = {
-      .sType = VK_STRUCTURE_TYPE_SUBPASS_BEGIN_INFO,
-      .contents = contents
-   };
-
-   return panvk_CmdBeginRenderPass2(cmd, info, &subpass_info);
 }
 
 void

@@ -35,7 +35,9 @@
 #include "vl/vl_winsys.h"
 
 #include "va_private.h"
+#ifdef HAVE_DRISW_KMS
 #include "loader/loader.h"
+#endif
 
 #include <va/va_drmcommon.h>
 
@@ -99,6 +101,10 @@ static struct VADriverVTable vtable =
    NULL, /* vaQueryProcessingRate */
    &vlVaExportSurfaceHandle,
 #endif
+#if VA_CHECK_VERSION(1, 15, 0)
+   NULL, /* vaSyncSurface2 */
+   &vlVaSyncBuffer,
+#endif
 };
 
 static struct VADriverVTableVPP vtable_vpp =
@@ -142,12 +148,14 @@ VA_DRIVER_INIT_FUNC(VADriverContextP ctx)
          FREE(drv);
          return VA_STATUS_ERROR_INVALID_PARAMETER;
       }
+#ifdef HAVE_DRISW_KMS
       char* drm_driver_name = loader_get_driver_for_fd(drm_info->fd);
       if(drm_driver_name) {
          if (strcmp(drm_driver_name, "vgem") == 0)
             drv->vscreen = vl_vgem_drm_screen_create(drm_info->fd);
          FREE(drm_driver_name);
       }
+#endif
       if(!drv->vscreen)
          drv->vscreen = vl_drm_screen_create(drm_info->fd);
       break;
@@ -249,10 +257,13 @@ vlVaCreateContext(VADriverContextP ctx, VAConfigID config_id, int picture_width,
    if (!context)
       return VA_STATUS_ERROR_ALLOCATION_FAILED;
 
-   if (is_vpp) {
+   if (is_vpp && !drv->vscreen->pscreen->get_video_param(drv->vscreen->pscreen,
+                                                         PIPE_VIDEO_PROFILE_UNKNOWN,
+                                                         PIPE_VIDEO_ENTRYPOINT_PROCESSING,
+                                                         PIPE_VIDEO_CAP_SUPPORTED)) {
       context->decoder = NULL;
    } else {
-      if (config->entrypoint != PIPE_VIDEO_ENTRYPOINT_UNKNOWN) {
+      if (config->entrypoint != PIPE_VIDEO_ENTRYPOINT_PROCESSING) {
          max_supported_width = drv->vscreen->pscreen->get_video_param(drv->vscreen->pscreen,
                         config->profile, config->entrypoint,
                         PIPE_VIDEO_CAP_MAX_WIDTH);

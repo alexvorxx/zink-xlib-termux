@@ -233,7 +233,7 @@ struct gl_extensions
    GLboolean AMD_vertex_shader_layer;
    GLboolean AMD_vertex_shader_viewport_index;
    GLboolean ANDROID_extension_pack_es31a;
-   GLboolean APPLE_object_purgeable;
+   GLboolean ARM_shader_framebuffer_fetch_depth_stencil;
    GLboolean ATI_meminfo;
    GLboolean ATI_texture_compression_3dc;
    GLboolean ATI_texture_mirror_once;
@@ -285,6 +285,7 @@ struct gl_extensions
    GLboolean OES_draw_texture;
    GLboolean OES_depth_texture_cube_map;
    GLboolean OES_EGL_image_external;
+   GLboolean OES_texture_3D;
    GLboolean OES_texture_float;
    GLboolean OES_texture_float_linear;
    GLboolean OES_texture_half_float;
@@ -685,19 +686,16 @@ struct gl_constants
    GLboolean ForceIntegerTexNearest;
 
    /**
+    * Treat 32-bit floating-point textures using GL_LINEAR filters as
+    * GL_NEAREST.
+    */
+   GLboolean ForceFloat32TexNearest;
+
+   /**
     * Does the driver support real 32-bit integers?  (Otherwise, integers are
     * simulated via floats.)
     */
    GLboolean NativeIntegers;
-
-   /**
-    * Does VertexID count from zero or from base vertex?
-    *
-    * \note
-    * If desktop GLSL 1.30 or GLSL ES 3.00 are not supported, this field is
-    * ignored and need not be set.
-    */
-   bool VertexID_is_zero_based;
 
    /**
     * If the driver supports real 32-bit integers, what integer value should be
@@ -909,9 +907,6 @@ struct gl_constants
    GLuint MaxTessControlTotalOutputComponents;
    bool LowerTessLevel; /**< Lower gl_TessLevel* from float[n] to vecn? */
    bool PrimitiveRestartForPatches;
-   bool LowerCsDerivedVariables;    /**< Lower gl_GlobalInvocationID and
-                                     *   gl_LocalInvocationIndex based on
-                                     *   other builtin variables. */
 
    /** GL_OES_primitive_bounding_box */
    bool NoPrimitiveBoundingBoxOutput;
@@ -930,6 +925,9 @@ struct gl_constants
     * deletion is thread-safe.
     */
    bool BufferCreateMapUnsynchronizedThreadSafe;
+
+   /** Override GL_MAP_UNSYNCHRONIZED_BIT */
+   bool ForceMapBufferSynchronized;
 
    /** GL_ARB_get_program_binary */
    GLuint NumProgramBinaryFormats;

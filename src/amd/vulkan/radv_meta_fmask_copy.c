@@ -106,7 +106,7 @@ build_fmask_copy_compute_shader(struct radv_device *dev, int samples)
       frag_fetch->src[2].src = nir_src_for_ssa(input_img_deref);
       frag_fetch->src[3].src_type = nir_tex_src_ms_index;
       frag_fetch->src[3].src = nir_src_for_ssa(sample_id);
-      frag_fetch->dest_type = nir_type_uint32;
+      frag_fetch->dest_type = nir_type_float32;
       frag_fetch->is_array = false;
       frag_fetch->coord_components = 2;
 
@@ -132,8 +132,8 @@ radv_device_finish_meta_fmask_copy_state(struct radv_device *device)
 
    radv_DestroyPipelineLayout(radv_device_to_handle(device), state->fmask_copy.p_layout,
                               &state->alloc);
-   radv_DestroyDescriptorSetLayout(radv_device_to_handle(device), state->fmask_copy.ds_layout,
-                                   &state->alloc);
+   device->vk.dispatch_table.DestroyDescriptorSetLayout(radv_device_to_handle(device),
+                                                        state->fmask_copy.ds_layout, &state->alloc);
 
    for (uint32_t i = 0; i < MAX_SAMPLES_LOG2; ++i) {
       radv_DestroyPipeline(radv_device_to_handle(device), state->fmask_copy.pipeline[i], &state->alloc);
@@ -195,7 +195,7 @@ radv_device_init_meta_fmask_copy_state(struct radv_device *device)
                                            &device->meta_state.alloc,
                                            &device->meta_state.fmask_copy.ds_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    VkPipelineLayoutCreateInfo pl_create_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -209,19 +209,16 @@ radv_device_init_meta_fmask_copy_state(struct radv_device *device)
       radv_CreatePipelineLayout(radv_device_to_handle(device), &pl_create_info,
                                 &device->meta_state.alloc, &device->meta_state.fmask_copy.p_layout);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    for (uint32_t i = 0; i < MAX_SAMPLES_LOG2; i++) {
       uint32_t samples = 1 << i;
       result = create_fmask_copy_pipeline(device, samples, &device->meta_state.fmask_copy.pipeline[i]);
       if (result != VK_SUCCESS)
-         goto fail;
+         return result;
    }
 
    return VK_SUCCESS;
-fail:
-   radv_device_finish_meta_fmask_copy_state(device);
-   return result;
 }
 
 static void
@@ -239,10 +236,11 @@ radv_fixup_copy_dst_metadata(struct radv_cmd_buffer *cmd_buffer, const struct ra
 
    /* Copy CMASK+FMASK. */
    size = src_image->planes[0].surface.cmask_size + src_image->planes[0].surface.fmask_size;
-   src_offset = src_image->offset + src_image->planes[0].surface.fmask_offset;
-   dst_offset = dst_image->offset + dst_image->planes[0].surface.fmask_offset;
+   src_offset = src_image->bindings[0].offset + src_image->planes[0].surface.fmask_offset;
+   dst_offset = dst_image->bindings[0].offset + dst_image->planes[0].surface.fmask_offset;
 
-   radv_copy_buffer(cmd_buffer, src_image->bo, dst_image->bo, src_offset, dst_offset, size);
+   radv_copy_buffer(cmd_buffer, src_image->bindings[0].bo, dst_image->bindings[0].bo,
+                    src_offset, dst_offset, size);
 }
 
 bool

@@ -263,7 +263,7 @@ _eglFindDisplay(_EGLPlatformType plat, void *plat_dpy,
    if (plat == _EGL_INVALID_PLATFORM)
       return NULL;
 
-   mtx_lock(_eglGlobal.Mutex);
+   simple_mtx_lock(_eglGlobal.Mutex);
 
    /* search the display list first */
    for (disp = _eglGlobal.DisplayList; disp; disp = disp->Next) {
@@ -278,7 +278,8 @@ _eglFindDisplay(_EGLPlatformType plat, void *plat_dpy,
    if (!disp)
       goto out;
 
-   mtx_init(&disp->Mutex, mtx_plain);
+   simple_mtx_init(&disp->Mutex, mtx_plain);
+   u_rwlock_init(&disp->TerminateLock);
    disp->Platform = plat;
    disp->PlatformDisplay = plat_dpy;
    num_attribs = _eglNumAttribs(attrib_list);
@@ -298,7 +299,7 @@ _eglFindDisplay(_EGLPlatformType plat, void *plat_dpy,
    _eglGlobal.DisplayList = disp;
 
 out:
-   mtx_unlock(_eglGlobal.Mutex);
+   simple_mtx_unlock(_eglGlobal.Mutex);
 
    return disp;
 }
@@ -312,6 +313,8 @@ _eglReleaseDisplayResources(_EGLDisplay *display)
 {
    _EGLResource *list;
    const _EGLDriver *drv = display->Driver;
+
+   simple_mtx_assert_locked(&display->Mutex);
 
    list = display->ResourceLists[_EGL_RESOURCE_CONTEXT];
    while (list) {
@@ -367,27 +370,13 @@ _eglCleanupDisplay(_EGLDisplay *disp)
       disp->Configs = NULL;
    }
 
-   /* XXX incomplete */
-}
+   /* do not reset disp->Driver */
+   disp->ClientAPIsString[0] = 0;
+   disp->Initialized = EGL_FALSE;
 
-
-/**
- * Return EGL_TRUE if the given handle is a valid handle to a display.
- */
-EGLBoolean
-_eglCheckDisplayHandle(EGLDisplay dpy)
-{
-   _EGLDisplay *cur;
-
-   mtx_lock(_eglGlobal.Mutex);
-   cur = _eglGlobal.DisplayList;
-   while (cur) {
-      if (cur == (_EGLDisplay *) dpy)
-         break;
-      cur = cur->Next;
-   }
-   mtx_unlock(_eglGlobal.Mutex);
-   return (cur != NULL);
+   /* Reset blob cache funcs on terminate. */
+   disp->BlobCacheSet = NULL;
+   disp->BlobCacheGet = NULL;
 }
 
 
@@ -400,6 +389,8 @@ _eglCheckResource(void *res, _EGLResourceType type, _EGLDisplay *disp)
 {
    _EGLResource *list = disp->ResourceLists[type];
    
+   simple_mtx_assert_locked(&disp->Mutex);
+
    if (!res)
       return EGL_FALSE;
 
@@ -438,8 +429,7 @@ void
 _eglGetResource(_EGLResource *res)
 {
    assert(res && res->RefCount > 0);
-   /* hopefully a resource is always manipulated with its display locked */
-   res->RefCount++;
+   p_atomic_inc(&res->RefCount);
 }
 
 
@@ -450,8 +440,7 @@ EGLBoolean
 _eglPutResource(_EGLResource *res)
 {
    assert(res && res->RefCount > 0);
-   res->RefCount--;
-   return (!res->RefCount);
+   return p_atomic_dec_zero(&res->RefCount);
 }
 
 
@@ -462,6 +451,7 @@ void
 _eglLinkResource(_EGLResource *res, _EGLResourceType type)
 {
    assert(res->Display);
+   simple_mtx_assert_locked(&res->Display->Mutex);
 
    res->IsLinked = EGL_TRUE;
    res->Next = res->Display->ResourceLists[type];
@@ -477,6 +467,8 @@ void
 _eglUnlinkResource(_EGLResource *res, _EGLResourceType type)
 {
    _EGLResource *prev;
+
+   simple_mtx_assert_locked(&res->Display->Mutex);
 
    prev = res->Display->ResourceLists[type];
    if (prev != res) {

@@ -293,6 +293,8 @@ struct fdl6_view {
 
    bool ubwc_enabled;
 
+   enum pipe_format format;
+
    uint32_t descriptor[FDL6_TEX_CONST_DWORDS];
 
    /* Descriptor for use as a storage image as opposed to a sampled image.
@@ -313,6 +315,8 @@ struct fdl6_view {
    uint32_t RB_2D_DST_INFO;
 
    uint32_t RB_BLIT_DST_INFO;
+
+   uint32_t GRAS_LRZ_DEPTH_VIEW;
 };
 
 void
@@ -321,5 +325,9 @@ fdl6_view_init(struct fdl6_view *view, const struct fdl_layout **layouts,
 void
 fdl6_buffer_view_init(uint32_t *descriptor, enum pipe_format format,
                       const uint8_t *swiz, uint64_t iova, uint32_t size);
+
+void
+fdl6_format_swiz(enum pipe_format format, bool has_z24uint_s8uint,
+                 unsigned char *format_swiz);
 
 #endif /* FREEDRENO_LAYOUT_H_ */

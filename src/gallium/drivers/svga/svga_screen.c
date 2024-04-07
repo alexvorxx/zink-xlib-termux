@@ -761,6 +761,7 @@ vgpu10_get_shader_param(struct pipe_screen *screen,
    .lower_rotate = true,                                                      \
    .lower_uniforms_to_ubo = true,                                             \
    .lower_vector_cmp = true,                                                  \
+   .lower_cs_local_index_to_id = true,                                        \
    .max_unroll_iterations = 32,                                               \
    .use_interpolated_input_intrinsics = true
 
@@ -1317,7 +1318,7 @@ svga_screen_create(struct svga_winsys_screen *sws)
    }
 
    (void) mtx_init(&svgascreen->tex_mutex, mtx_plain);
-   (void) mtx_init(&svgascreen->swc_mutex, mtx_recursive);
+   (void) mtx_init(&svgascreen->swc_mutex, mtx_plain | mtx_recursive);
 
    svga_screen_cache_init(svgascreen);
 

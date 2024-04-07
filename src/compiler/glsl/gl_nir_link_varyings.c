@@ -310,7 +310,8 @@ xfb_decl_num_components(struct xfb_decl *xfb_decl)
 static bool
 xfb_decl_assign_location(struct xfb_decl *xfb_decl,
                          const struct gl_constants *consts,
-                         struct gl_shader_program *prog)
+                         struct gl_shader_program *prog,
+                         bool disable_varying_packing, bool xfb_enabled)
 {
    assert(xfb_decl_is_varying(xfb_decl));
 
@@ -358,8 +359,18 @@ xfb_decl_assign_location(struct xfb_decl *xfb_decl,
                          actual_array_size);
             return false;
          }
+
+         bool array_will_be_lowered =
+            lower_packed_varying_needs_lowering(prog->last_vert_prog->nir,
+                                                xfb_decl->matched_candidate->toplevel_var,
+                                                nir_var_shader_out,
+                                                disable_varying_packing,
+                                                xfb_enabled) ||
+            strcmp(xfb_decl->matched_candidate->toplevel_var->name, "gl_ClipDistance") == 0 ||
+            strcmp(xfb_decl->matched_candidate->toplevel_var->name, "gl_CullDistance") == 0;
+
          unsigned array_elem_size = xfb_decl->lowered_builtin_array_variable ?
-            1 : vector_elements * matrix_cols * dmul;
+            1 : (array_will_be_lowered ? vector_elements : 4) * matrix_cols * dmul;
          fine_location += array_elem_size * xfb_decl->array_subscript;
          xfb_decl->size = 1;
       } else {
@@ -1620,17 +1631,19 @@ varying_matches_store_locations(struct varying_matches *vm)
       /* Find locations suitable for native packing via
        * ARB_enhanced_layouts.
        */
-      if (producer_var && consumer_var) {
-         if (vm->enhanced_layouts_enabled) {
-            const struct glsl_type *type =
-               get_varying_type(producer_var, vm->producer_stage);
+      if (vm->enhanced_layouts_enabled) {
+         nir_variable *var = producer_var ? producer_var : consumer_var;
+         unsigned stage = producer_var ? vm->producer_stage : vm->consumer_stage;
+         const struct glsl_type *type =
+            get_varying_type(var, stage);
+         unsigned comp_slots = glsl_get_component_slots(type) + offset;
+         unsigned slots = comp_slots / 4;
+         if (comp_slots % 4)
+            slots += 1;
+
+         if (producer_var && consumer_var) {
             if (glsl_type_is_array_or_matrix(type) || glsl_type_is_struct(type) ||
                 glsl_type_is_64bit(type)) {
-               unsigned comp_slots = glsl_get_component_slots(type) + offset;
-               unsigned slots = comp_slots / 4;
-               if (comp_slots % 4)
-                  slots += 1;
-
                for (unsigned j = 0; j < slots; j++) {
                   pack_loc[slot + j] = true;
                }
@@ -1640,9 +1653,11 @@ varying_matches_store_locations(struct varying_matches *vm)
             } else {
                loc_type[slot][offset] = type;
             }
+         } else {
+            for (unsigned j = 0; j < slots; j++) {
+               pack_loc[slot + j] = true;
+            }
          }
-      } else {
-         pack_loc[slot] = true;
       }
    }
 
@@ -2776,7 +2791,8 @@ assign_final_varying_locations(const struct gl_constants *consts,
 
    for (unsigned i = 0; i < num_xfb_decls; ++i) {
       if (xfb_decl_is_varying(&xfb_decls[i])) {
-         if (!xfb_decl_assign_location(&xfb_decls[i], consts, prog))
+         if (!xfb_decl_assign_location(&xfb_decls[i], consts, prog,
+             vm->disable_varying_packing, vm->xfb_enabled))
             return false;
       }
    }

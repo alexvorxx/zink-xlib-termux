@@ -27,6 +27,22 @@
 #include "vk_descriptors.h"
 #include "vk_util.h"
 
+#include "util/mesa-sha1.h"
+
+static uint32_t
+translate_desc_stages(VkShaderStageFlags in)
+{
+   if (in == VK_SHADER_STAGE_ALL)
+      in = VK_SHADER_STAGE_ALL_GRAPHICS | VK_SHADER_STAGE_COMPUTE_BIT;
+
+   uint32_t out = 0;
+
+   u_foreach_bit(s, in)
+      out |= BITFIELD_BIT(vk_to_mesa_shader_stage(BITFIELD_BIT(s)));
+
+   return out;
+}
+
 static D3D12_SHADER_VISIBILITY
 translate_desc_visibility(VkShaderStageFlags in)
 {
@@ -82,6 +98,13 @@ dzn_descriptor_type_depends_on_shader_usage(VkDescriptorType type)
           type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
 }
 
+static inline bool
+dzn_desc_type_has_sampler(VkDescriptorType type)
+{
+   return type == VK_DESCRIPTOR_TYPE_SAMPLER ||
+          type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+}
+
 static uint32_t
 num_descs_for_type(VkDescriptorType type, bool static_sampler)
 {
@@ -101,25 +124,10 @@ num_descs_for_type(VkDescriptorType type, bool static_sampler)
       num_descs++;
 
    /* Don't count immutable samplers, they have their own descriptor. */
-   if (static_sampler &&
-       (type == VK_DESCRIPTOR_TYPE_SAMPLER ||
-        type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER))
+   if (static_sampler && dzn_desc_type_has_sampler(type))
       num_descs--;
 
    return num_descs;
-}
-
-static void
-dzn_descriptor_set_layout_destroy(struct dzn_descriptor_set_layout *set_layout,
-                                  const VkAllocationCallbacks *pAllocator)
-{
-   if (!set_layout)
-      return;
-
-   struct dzn_device *device = container_of(set_layout->base.device, struct dzn_device, vk);
-
-   vk_object_base_finish(&set_layout->base);
-   vk_free2(&device->vk.alloc, pAllocator, set_layout);
 }
 
 static VkResult
@@ -142,9 +150,7 @@ dzn_descriptor_set_layout_create(struct dzn_device *device,
       D3D12_SHADER_VISIBILITY visibility =
          translate_desc_visibility(bindings[i].stageFlags);
       VkDescriptorType desc_type = bindings[i].descriptorType;
-      bool has_sampler =
-         desc_type == VK_DESCRIPTOR_TYPE_SAMPLER ||
-         desc_type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+      bool has_sampler = dzn_desc_type_has_sampler(desc_type);
 
       /* From the Vulkan 1.1.97 spec for VkDescriptorSetLayoutBinding:
        *
@@ -211,11 +217,9 @@ dzn_descriptor_set_layout_create(struct dzn_device *device,
    VK_MULTIALLOC_DECL(&ma, struct dzn_descriptor_set_layout_binding, binfos,
                       binding_count);
 
-   if (!vk_multialloc_zalloc2(&ma, &device->vk.alloc, pAllocator,
-                              VK_SYSTEM_ALLOCATION_SCOPE_OBJECT))
+   if (!vk_descriptor_set_layout_multizalloc(&device->vk, &ma))
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   vk_object_base_init(&device->vk, &set_layout->base, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT);
    set_layout->static_samplers = static_samplers;
    set_layout->static_sampler_count = static_sampler_count;
    set_layout->immutable_samplers = immutable_samplers;
@@ -263,9 +267,7 @@ dzn_descriptor_set_layout_create(struct dzn_device *device,
       VkDescriptorType desc_type = ordered_bindings[i].descriptorType;
       uint32_t binding = ordered_bindings[i].binding;
       uint32_t desc_count = ordered_bindings[i].descriptorCount;
-      bool has_sampler =
-         desc_type == VK_DESCRIPTOR_TYPE_SAMPLER ||
-         desc_type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+      bool has_sampler = dzn_desc_type_has_sampler(desc_type);
       bool has_immutable_samplers =
          has_sampler &&
          ordered_bindings[i].pImmutableSamplers != NULL;
@@ -275,6 +277,9 @@ dzn_descriptor_set_layout_create(struct dzn_device *device,
       D3D12_SHADER_VISIBILITY visibility =
          translate_desc_visibility(ordered_bindings[i].stageFlags);
       binfos[binding].type = desc_type;
+      binfos[binding].stages =
+         translate_desc_stages(ordered_bindings[i].stageFlags);
+      set_layout->stages |= binfos[binding].stages;
       binfos[binding].visibility = visibility;
       binfos[binding].base_shader_register = base_register;
       assert(base_register + desc_count >= base_register);
@@ -453,23 +458,41 @@ dzn_CreateDescriptorSetLayout(VkDevice device,
 }
 
 VKAPI_ATTR void VKAPI_CALL
-dzn_DestroyDescriptorSetLayout(VkDevice device,
-                               VkDescriptorSetLayout descriptorSetLayout,
-                               const VkAllocationCallbacks *pAllocator)
+dzn_GetDescriptorSetLayoutSupport(VkDevice device,
+                                  const VkDescriptorSetLayoutCreateInfo *pCreateInfo,
+                                  VkDescriptorSetLayoutSupport *pSupport)
 {
-   dzn_descriptor_set_layout_destroy(dzn_descriptor_set_layout_from_handle(descriptorSetLayout),
-                                     pAllocator);
+   const VkDescriptorSetLayoutBinding *bindings = pCreateInfo->pBindings;
+   uint32_t sampler_count = 0, other_desc_count = 0;
+
+   for (uint32_t i = 0; i < pCreateInfo->bindingCount; i++) {
+      VkDescriptorType desc_type = bindings[i].descriptorType;
+      bool has_sampler = dzn_desc_type_has_sampler(desc_type);
+
+      if (has_sampler)
+         sampler_count += bindings[i].descriptorCount;
+      if (desc_type != VK_DESCRIPTOR_TYPE_SAMPLER)
+         other_desc_count += bindings[i].descriptorCount;
+      if (dzn_descriptor_type_depends_on_shader_usage(desc_type))
+         other_desc_count += bindings[i].descriptorCount;
+   }
+
+   pSupport->supported =
+      sampler_count <= (MAX_DESCS_PER_SAMPLER_HEAP / MAX_SETS) &&
+      other_desc_count <= (MAX_DESCS_PER_CBV_SRV_UAV_HEAP / MAX_SETS);
 }
 
 static void
-dzn_pipeline_layout_destroy(struct dzn_pipeline_layout *layout)
+dzn_pipeline_layout_destroy(struct vk_device *vk_device,
+                            struct vk_pipeline_layout *vk_layout)
 {
-   struct dzn_device *device = container_of(layout->base.device, struct dzn_device, vk);
+   struct dzn_pipeline_layout *layout =
+      container_of(vk_layout, struct dzn_pipeline_layout, vk);
 
    if (layout->root.sig)
       ID3D12RootSignature_Release(layout->root.sig);
 
-   vk_free(&device->vk.alloc, layout);
+   vk_pipeline_layout_destroy(vk_device, &layout->vk);
 }
 
 // Reserve two root parameters for the push constants and sysvals CBVs.
@@ -481,6 +504,44 @@ dzn_pipeline_layout_destroy(struct dzn_pipeline_layout *layout)
 
 // Maximum number of DWORDS (32-bit words) that can be used for a root signature
 #define MAX_ROOT_DWORDS 64
+
+static void
+dzn_pipeline_layout_hash_stages(struct dzn_pipeline_layout *layout,
+                                const VkPipelineLayoutCreateInfo *info)
+{
+   uint32_t stages = 0;
+   for (uint32_t stage = 0; stage < ARRAY_SIZE(layout->stages); stage++) {
+      for (uint32_t set = 0; set < info->setLayoutCount; set++) {
+         VK_FROM_HANDLE(dzn_descriptor_set_layout, set_layout, info->pSetLayouts[set]);
+
+         stages |= set_layout->stages;
+      }
+   }
+
+   for (uint32_t stage = 0; stage < ARRAY_SIZE(layout->stages); stage++) {
+      if (!(stages & BITFIELD_BIT(stage)))
+         continue;
+
+      struct mesa_sha1 ctx;
+
+      _mesa_sha1_init(&ctx);
+      for (uint32_t set = 0; set < info->setLayoutCount; set++) {
+         VK_FROM_HANDLE(dzn_descriptor_set_layout, set_layout, info->pSetLayouts[set]);
+         if (!(BITFIELD_BIT(stage) & set_layout->stages))
+            continue;
+
+         for (uint32_t b = 0; b < set_layout->binding_count; b++) {
+            if (!(BITFIELD_BIT(stage) & set_layout->bindings[b].stages))
+               continue;
+
+            _mesa_sha1_update(&ctx, &b, sizeof(b));
+            _mesa_sha1_update(&ctx, &set_layout->bindings[b].base_shader_register,
+                              sizeof(set_layout->bindings[b].base_shader_register));
+         }
+      }
+      _mesa_sha1_final(&ctx, layout->stages[stage].hash);
+   }
+}
 
 static VkResult
 dzn_pipeline_layout_create(struct dzn_device *device,
@@ -501,14 +562,12 @@ dzn_pipeline_layout_create(struct dzn_device *device,
 
    VK_MULTIALLOC(ma);
    VK_MULTIALLOC_DECL(&ma, struct dzn_pipeline_layout, layout, 1);
-   VK_MULTIALLOC_DECL(&ma, struct dxil_spirv_vulkan_binding,
-                      bindings, binding_count);
+   VK_MULTIALLOC_DECL(&ma, uint32_t, binding_translation, binding_count);
 
-   if (!vk_multialloc_zalloc(&ma, &device->vk.alloc,
-                             VK_SYSTEM_ALLOCATION_SCOPE_DEVICE))
+   if (!vk_pipeline_layout_multizalloc(&device->vk, &ma, pCreateInfo))
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   vk_object_base_init(&device->vk, &layout->base, VK_OBJECT_TYPE_PIPELINE_LAYOUT);
+   layout->vk.destroy = dzn_pipeline_layout_destroy;
 
    for (uint32_t s = 0; s < pCreateInfo->setLayoutCount; s++) {
       VK_FROM_HANDLE(dzn_descriptor_set_layout, set_layout, pCreateInfo->pSetLayouts[s]);
@@ -516,13 +575,11 @@ dzn_pipeline_layout_create(struct dzn_device *device,
       if (!set_layout || !set_layout->binding_count)
          continue;
 
-      layout->binding_translation[s].bindings = bindings;
-      bindings += set_layout->binding_count;
+      layout->binding_translation[s].base_reg = binding_translation;
+      binding_translation += set_layout->binding_count;
    }
 
    uint32_t range_count = 0, static_sampler_count = 0;
-
-   p_atomic_set(&layout->refcount, 1);
 
    layout->root.param_count = 0;
    dzn_foreach_pool_type (type)
@@ -531,15 +588,14 @@ dzn_pipeline_layout_create(struct dzn_device *device,
    layout->set_count = pCreateInfo->setLayoutCount;
    for (uint32_t j = 0; j < layout->set_count; j++) {
       VK_FROM_HANDLE(dzn_descriptor_set_layout, set_layout, pCreateInfo->pSetLayouts[j]);
-      struct dxil_spirv_vulkan_binding *bindings =
-         (struct dxil_spirv_vulkan_binding *)layout->binding_translation[j].bindings;
+      uint32_t *binding_trans = layout->binding_translation[j].base_reg;
 
       layout->sets[j].dynamic_buffer_count = set_layout->dynamic_buffers.count;
       memcpy(layout->sets[j].range_desc_count, set_layout->range_desc_count,
              sizeof(layout->sets[j].range_desc_count));
       layout->binding_translation[j].binding_count = set_layout->binding_count;
       for (uint32_t b = 0; b < set_layout->binding_count; b++)
-         bindings[b].base_register = set_layout->bindings[b].base_shader_register;
+         binding_trans[b] = set_layout->bindings[b].base_shader_register;
 
       static_sampler_count += set_layout->static_sampler_count;
       dzn_foreach_pool_type (type) {
@@ -571,7 +627,7 @@ dzn_pipeline_layout_create(struct dzn_device *device,
       vk_alloc2(&device->vk.alloc, pAllocator, sizeof(*ranges) * range_count, 8,
                 VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
    if (range_count && !ranges) {
-      dzn_pipeline_layout_destroy(layout);
+      vk_pipeline_layout_unref(&device->vk, &layout->vk);
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
@@ -581,7 +637,7 @@ dzn_pipeline_layout_create(struct dzn_device *device,
                 VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
    if (static_sampler_count && !static_sampler_descs) {
       vk_free2(&device->vk.alloc, pAllocator, ranges);
-      dzn_pipeline_layout_destroy(layout);
+      vk_pipeline_layout_unref(&device->vk, &layout->vk);
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
@@ -689,30 +745,13 @@ dzn_pipeline_layout_create(struct dzn_device *device,
    vk_free2(&device->vk.alloc, pAllocator, static_sampler_descs);
 
    if (!layout->root.sig) {
-      dzn_pipeline_layout_destroy(layout);
+      vk_pipeline_layout_unref(&device->vk, &layout->vk);
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
+   dzn_pipeline_layout_hash_stages(layout, pCreateInfo);
    *out = dzn_pipeline_layout_to_handle(layout);
    return VK_SUCCESS;
-}
-
-struct dzn_pipeline_layout *
-dzn_pipeline_layout_ref(struct dzn_pipeline_layout *layout)
-{
-   if (layout)
-      p_atomic_inc(&layout->refcount);
-
-   return layout;
-}
-
-void
-dzn_pipeline_layout_unref(struct dzn_pipeline_layout *layout)
-{
-   if (layout) {
-      if (p_atomic_dec_zero(&layout->refcount))
-         dzn_pipeline_layout_destroy(layout);
-   }
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -723,16 +762,6 @@ dzn_CreatePipelineLayout(VkDevice device,
 {
    return dzn_pipeline_layout_create(dzn_device_from_handle(device),
                                      pCreateInfo, pAllocator, pPipelineLayout);
-}
-
-VKAPI_ATTR void VKAPI_CALL
-dzn_DestroyPipelineLayout(VkDevice device,
-                          VkPipelineLayout layout,
-                          const VkAllocationCallbacks *pAllocator)
-{
-   VK_FROM_HANDLE(dzn_pipeline_layout, playout, layout);
-
-   dzn_pipeline_layout_unref(playout);
 }
 
 static D3D12_DESCRIPTOR_HEAP_TYPE
@@ -796,12 +825,10 @@ dzn_descriptor_heap_init(struct dzn_descriptor_heap *heap,
                       VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
-   D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle;
-   ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(heap->heap, &cpu_handle);
+   D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle = dzn_ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(heap->heap);
    heap->cpu_base = cpu_handle.ptr;
    if (shader_visible) {
-      D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle;
-      ID3D12DescriptorHeap_GetGPUDescriptorHandleForHeapStart(heap->heap, &gpu_handle);
+      D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle = dzn_ID3D12DescriptorHeap_GetGPUDescriptorHandleForHeapStart(heap->heap);
       heap->gpu_base = gpu_handle.ptr;
    }
 
@@ -1272,8 +1299,7 @@ dzn_descriptor_set_init(struct dzn_descriptor_set *set,
    if (layout->immutable_sampler_count) {
       for (uint32_t b = 0; b < layout->binding_count; b++) {
          bool has_samplers =
-            layout->bindings[b].type == VK_DESCRIPTOR_TYPE_SAMPLER ||
-            layout->bindings[b].type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            dzn_desc_type_has_sampler(layout->bindings[b].type);
 
          if (!has_samplers || layout->bindings[b].immutable_sampler_idx == ~0)
             continue;
@@ -1614,7 +1640,6 @@ dzn_FreeDescriptorSets(VkDevice dev,
                        const VkDescriptorSet *pDescriptorSets)
 {
    VK_FROM_HANDLE(dzn_descriptor_pool, pool, descriptorPool);
-   VK_FROM_HANDLE(dzn_device, device, dev);
 
    for (uint32_t s = 0; s < count; s++) {
       VK_FROM_HANDLE(dzn_descriptor_set, set, pDescriptorSets[s]);
@@ -1792,7 +1817,7 @@ dzn_descriptor_set_copy(const VkCopyDescriptorSet *pDescriptorCopy)
           copied_count < pDescriptorCopy->descriptorCount) {
       VkDescriptorType src_type =
          dzn_descriptor_set_ptr_get_vk_type(src_set->layout, &src_ptr);
-      VkDescriptorType dst_type =
+      ASSERTED VkDescriptorType dst_type =
          dzn_descriptor_set_ptr_get_vk_type(dst_set->layout, &dst_ptr);
 
       assert(src_type == dst_type);
@@ -1863,8 +1888,6 @@ dzn_UpdateDescriptorSets(VkDevice _device,
                          uint32_t descriptorCopyCount,
                          const VkCopyDescriptorSet *pDescriptorCopies)
 {
-   VK_FROM_HANDLE(dzn_device, dev, _device);
-
    for (unsigned i = 0; i < descriptorWriteCount; i++)
       dzn_descriptor_set_write(&pDescriptorWrites[i]);
 
@@ -1903,7 +1926,7 @@ dzn_descriptor_update_template_create(struct dzn_device *device,
                                   info->pDescriptorUpdateEntries[e].dstBinding,
                                   info->pDescriptorUpdateEntries[e].dstArrayElement);
       uint32_t desc_count = info->pDescriptorUpdateEntries[e].descriptorCount;
-      VkDescriptorType type = info->pDescriptorUpdateEntries[e].descriptorType;
+      ASSERTED VkDescriptorType type = info->pDescriptorUpdateEntries[e].descriptorType;
       uint32_t d = 0;
 
       while (dzn_descriptor_set_ptr_is_valid(&ptr) && d < desc_count) {
@@ -1948,13 +1971,12 @@ dzn_descriptor_update_template_create(struct dzn_device *device,
 
          entry->type = type;
          entry->desc_count = MIN2(desc_count - d, ndescs);
-	 entry->user_data.stride = user_data_stride;
+         entry->user_data.stride = user_data_stride;
          entry->user_data.offset = user_data_offset;
          memset(&entry->heap_offsets, ~0, sizeof(entry->heap_offsets));
 
          assert(dzn_descriptor_set_ptr_get_vk_type(set_layout, &ptr) == type);
-         if (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
-             type == VK_DESCRIPTOR_TYPE_SAMPLER) {
+         if (dzn_desc_type_has_sampler(type)) {
             entry->heap_offsets.sampler =
                dzn_descriptor_set_ptr_get_heap_offset(set_layout,
                                                       D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER,

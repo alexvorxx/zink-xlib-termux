@@ -138,6 +138,7 @@ files_libnir = files(
   'nir_lower_bool_to_bitsize.c',
   'nir_lower_bool_to_float.c',
   'nir_lower_bool_to_int32.c',
+  'nir_lower_cl_images.c',
   'nir_lower_clamp_color_outputs.c',
   'nir_lower_clip.c',
   'nir_lower_clip_cull_distance_arrays.c',
@@ -187,6 +188,8 @@ files_libnir = files(
   'nir_lower_pntc_ytransform.c',
   'nir_lower_point_size.c',
   'nir_lower_point_size_mov.c',
+  'nir_lower_point_smooth.c',
+  'nir_lower_poly_line_smooth.c',
   'nir_lower_printf.c',
   'nir_lower_regs_to_ssa.c',
   'nir_lower_readonly_images_to_tex.c',
@@ -194,6 +197,7 @@ files_libnir = files(
   'nir_lower_samplers.c',
   'nir_lower_scratch.c',
   'nir_lower_shader_calls.c',
+  'nir_lower_single_sampled.c',
   'nir_lower_ssbo.c',
   'nir_lower_subgroups.c',
   'nir_lower_system_values.c',
@@ -243,6 +247,7 @@ files_libnir = files(
   'nir_opt_memcpy.c',
   'nir_opt_move.c',
   'nir_opt_move_discards_to_top.c',
+  'nir_opt_non_uniform_access.c',
   'nir_opt_offsets.c',
   'nir_opt_peephole_select.c',
   'nir_opt_phi_precision.c',
@@ -367,10 +372,12 @@ _libnir = static_library(
   build_by_default : false,
 )
 
+inc_nir = include_directories('.')
+
 # Headers-only dependency
 idep_nir_headers = declare_dependency(
   sources : [nir_opcodes_h, nir_builder_opcodes_h, nir_intrinsics_h, nir_intrinsics_indices_h],
-  include_directories : include_directories('.'),
+  include_directories : inc_nir,
 )
 
 # Also link with nir

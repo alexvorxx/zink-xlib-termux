@@ -55,6 +55,9 @@ typedef unsigned (*ac_nir_map_io_driver_location)(unsigned semantic);
 struct nir_builder;
 typedef struct nir_builder nir_builder;
 
+/* Executed by ac_nir_cull when the current primitive is accepted. */
+typedef void (*ac_nir_cull_accepted)(nir_builder *b, void *state);
+
 nir_ssa_def *
 ac_nir_load_arg(nir_builder *b, const struct ac_shader_args *ac_args, struct ac_arg arg);
 
@@ -89,25 +92,26 @@ ac_nir_lower_hs_outputs_to_mem(nir_shader *shader,
                                uint64_t tes_patch_inputs_read,
                                unsigned num_reserved_tcs_outputs,
                                unsigned num_reserved_tcs_patch_outputs,
+                               unsigned wave_size,
+                               bool no_inputs_in_lds,
+                               bool pass_tessfactors_by_reg,
                                bool emit_tess_factor_write);
 
 void
 ac_nir_lower_tes_inputs_to_mem(nir_shader *shader,
-                               ac_nir_map_io_driver_location map,
-                               unsigned num_reserved_tcs_outputs,
-                               unsigned num_reserved_tcs_patch_outputs);
+                               ac_nir_map_io_driver_location map);
 
 void
 ac_nir_lower_es_outputs_to_mem(nir_shader *shader,
                                ac_nir_map_io_driver_location map,
                                enum amd_gfx_level gfx_level,
-                               unsigned num_reserved_es_outputs);
+                               unsigned esgs_itemsize);
 
 void
 ac_nir_lower_gs_inputs_to_mem(nir_shader *shader,
                               ac_nir_map_io_driver_location map,
                               enum amd_gfx_level gfx_level,
-                              unsigned num_reserved_es_outputs);
+                              bool triangle_strip_adjacency_fix);
 
 bool
 ac_nir_lower_indirect_derefs(nir_shader *shader,
@@ -115,6 +119,7 @@ ac_nir_lower_indirect_derefs(nir_shader *shader,
 
 void
 ac_nir_lower_ngg_nogs(nir_shader *shader,
+                      enum radeon_family family,
                       unsigned max_num_es_vertices,
                       unsigned num_vertices_per_primitive,
                       unsigned max_workgroup_size,
@@ -126,7 +131,10 @@ ac_nir_lower_ngg_nogs(nir_shader *shader,
                       bool provoking_vtx_last,
                       bool use_edgeflags,
                       bool has_prim_query,
-                      uint32_t instance_rate_inputs);
+                      bool disable_streamout,
+                      uint32_t instance_rate_inputs,
+                      uint32_t clipdist_enable_mask,
+                      uint32_t user_clip_plane_enable_mask);
 
 void
 ac_nir_lower_ngg_gs(nir_shader *shader,
@@ -135,7 +143,9 @@ ac_nir_lower_ngg_gs(nir_shader *shader,
                     unsigned esgs_ring_lds_bytes,
                     unsigned gs_out_vtx_bytes,
                     unsigned gs_total_out_vtx_bytes,
-                    bool provoking_vtx_last);
+                    bool provoking_vtx_last,
+                    bool can_cull,
+                    bool disable_streamout);
 
 void
 ac_nir_lower_ngg_ms(nir_shader *shader,
@@ -157,12 +167,17 @@ ac_nir_lower_mesh_inputs_to_mem(nir_shader *shader,
                                 unsigned task_num_entries);
 
 nir_ssa_def *
-ac_nir_cull_triangle(nir_builder *b,
-                     nir_ssa_def *initially_accepted,
-                     nir_ssa_def *pos[3][4]);
+ac_nir_cull_primitive(nir_builder *b,
+                      nir_ssa_def *initially_accepted,
+                      nir_ssa_def *pos[3][4],
+                      unsigned num_vertices,
+                      ac_nir_cull_accepted accept_func,
+                      void *state);
 
 bool
 ac_nir_lower_global_access(nir_shader *shader);
+
+bool ac_nir_lower_resinfo(nir_shader *nir, enum amd_gfx_level gfx_level);
 
 #ifdef __cplusplus
 }

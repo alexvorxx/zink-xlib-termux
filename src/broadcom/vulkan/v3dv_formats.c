@@ -81,10 +81,10 @@ uint8_t
 v3dv_get_tex_return_size(const struct v3dv_format *vf,
                          bool compare_enable)
 {
-   if (unlikely(V3D_DEBUG & V3D_DEBUG_TMU_16BIT))
+   if (V3D_DBG(TMU_16BIT))
       return 16;
 
-   if (unlikely(V3D_DEBUG & V3D_DEBUG_TMU_32BIT))
+   if (V3D_DBG(TMU_32BIT))
       return 32;
 
    if (compare_enable)
@@ -123,7 +123,7 @@ v3dv_get_compatible_tfu_format(struct v3dv_device *device,
    return format;
 }
 
-static VkFormatFeatureFlags2KHR
+static VkFormatFeatureFlags2
 image_format_features(struct v3dv_physical_device *pdevice,
                       VkFormat vk_format,
                       const struct v3dv_format *v3dv_format,
@@ -150,7 +150,7 @@ image_format_features(struct v3dv_physical_device *pdevice,
       return 0;
    }
 
-   VkFormatFeatureFlags2KHR flags = 0;
+   VkFormatFeatureFlags2 flags = 0;
 
    /* Raster format is only supported for 1D textures, so let's just
     * always require optimal tiling for anything that requires sampling.
@@ -180,7 +180,6 @@ image_format_features(struct v3dv_physical_device *pdevice,
 
    const struct util_format_description *desc =
       vk_format_description(vk_format);
-   assert(desc);
 
    if (tiling != VK_IMAGE_TILING_LINEAR) {
       if (desc->layout == UTIL_FORMAT_LAYOUT_PLAIN && desc->is_array) {
@@ -209,7 +208,7 @@ image_format_features(struct v3dv_physical_device *pdevice,
    return flags;
 }
 
-static VkFormatFeatureFlags2KHR
+static VkFormatFeatureFlags2
 buffer_format_features(VkFormat vk_format, const struct v3dv_format *v3dv_format)
 {
    if (!v3dv_format || !v3dv_format->supported)
@@ -226,9 +225,8 @@ buffer_format_features(VkFormat vk_format, const struct v3dv_format *v3dv_format
 
    const struct util_format_description *desc =
       vk_format_description(vk_format);
-   assert(desc);
 
-   VkFormatFeatureFlags2KHR flags = 0;
+   VkFormatFeatureFlags2 flags = 0;
    if (desc->layout == UTIL_FORMAT_LAYOUT_PLAIN &&
        desc->colorspace == UTIL_FORMAT_COLORSPACE_RGB &&
        desc->is_array) {
@@ -260,10 +258,10 @@ buffer_format_features(VkFormat vk_format, const struct v3dv_format *v3dv_format
 bool
 v3dv_buffer_format_supports_features(struct v3dv_device *device,
                                      VkFormat vk_format,
-                                     VkFormatFeatureFlags2KHR features)
+                                     VkFormatFeatureFlags2 features)
 {
    const struct v3dv_format *v3dv_format = v3dv_X(device, get_format)(vk_format);
-   const VkFormatFeatureFlags2KHR supported =
+   const VkFormatFeatureFlags2 supported =
       buffer_format_features(vk_format, v3dv_format);
    return (supported & features) == features;
 }
@@ -272,7 +270,7 @@ v3dv_buffer_format_supports_features(struct v3dv_device *device,
  * place?
  */
 static inline VkFormatFeatureFlags
-features2_to_features(VkFormatFeatureFlags2KHR features2)
+features2_to_features(VkFormatFeatureFlags2 features2)
 {
    return features2 & VK_ALL_FORMAT_FEATURE_FLAG_BITS;
 }
@@ -285,7 +283,7 @@ v3dv_GetPhysicalDeviceFormatProperties2(VkPhysicalDevice physicalDevice,
    V3DV_FROM_HANDLE(v3dv_physical_device, pdevice, physicalDevice);
    const struct v3dv_format *v3dv_format = v3dv_X(pdevice, get_format)(format);
 
-   VkFormatFeatureFlags2KHR linear2, optimal2, buffer2;
+   VkFormatFeatureFlags2 linear2, optimal2, buffer2;
    linear2 = image_format_features(pdevice, format, v3dv_format,
                                    VK_IMAGE_TILING_LINEAR);
    optimal2 = image_format_features(pdevice, format, v3dv_format,
@@ -324,8 +322,31 @@ v3dv_GetPhysicalDeviceFormatProperties2(VkPhysicalDevice physicalDevice,
          }
          break;
       }
-      case VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3_KHR: {
-         VkFormatProperties3KHR *props = (VkFormatProperties3KHR *)ext;
+      case VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_2_EXT: {
+         struct VkDrmFormatModifierPropertiesList2EXT *list = (void *)ext;
+         VK_OUTARRAY_MAKE_TYPED(VkDrmFormatModifierProperties2EXT, out,
+                                list->pDrmFormatModifierProperties,
+                                &list->drmFormatModifierCount);
+         if (linear2) {
+            vk_outarray_append_typed(VkDrmFormatModifierProperties2EXT,
+                                     &out, mod_props) {
+               mod_props->drmFormatModifier = DRM_FORMAT_MOD_LINEAR;
+               mod_props->drmFormatModifierPlaneCount = 1;
+               mod_props->drmFormatModifierTilingFeatures = linear2;
+            }
+         }
+         if (optimal2) {
+            vk_outarray_append_typed(VkDrmFormatModifierProperties2EXT,
+                                     &out, mod_props) {
+               mod_props->drmFormatModifier = DRM_FORMAT_MOD_BROADCOM_UIF;
+               mod_props->drmFormatModifierPlaneCount = 1;
+               mod_props->drmFormatModifierTilingFeatures = optimal2;
+            }
+         }
+         break;
+      }
+      case VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3: {
+         VkFormatProperties3 *props = (VkFormatProperties3 *)ext;
          props->linearTilingFeatures = linear2;
          props->optimalTilingFeatures = optimal2;
          props->bufferFeatures = buffer2;
@@ -347,7 +368,7 @@ get_image_format_properties(
    VkSamplerYcbcrConversionImageFormatProperties *pYcbcrImageFormatProperties)
 {
    const struct v3dv_format *v3dv_format = v3dv_X(physical_device, get_format)(info->format);
-   VkFormatFeatureFlags2KHR format_feature_flags =
+   VkFormatFeatureFlags2 format_feature_flags =
       image_format_features(physical_device, info->format, v3dv_format, tiling);
    if (!format_feature_flags)
       goto unsupported;
@@ -437,31 +458,27 @@ get_image_format_properties(
       }
    }
 
-   /* FIXME: these are taken from VkPhysicalDeviceLimits, we should just put
-    * these limits available in the physical device and read them from there
-    * wherever we need them.
-    */
    switch (info->type) {
    case VK_IMAGE_TYPE_1D:
-      pImageFormatProperties->maxExtent.width = 4096;
+      pImageFormatProperties->maxExtent.width = V3D_MAX_IMAGE_DIMENSION;
       pImageFormatProperties->maxExtent.height = 1;
       pImageFormatProperties->maxExtent.depth = 1;
-      pImageFormatProperties->maxArrayLayers = 2048;
-      pImageFormatProperties->maxMipLevels = 13; /* log2(maxWidth) + 1 */
+      pImageFormatProperties->maxArrayLayers = V3D_MAX_ARRAY_LAYERS;
+      pImageFormatProperties->maxMipLevels = V3D_MAX_MIP_LEVELS;
       break;
    case VK_IMAGE_TYPE_2D:
-      pImageFormatProperties->maxExtent.width = 4096;
-      pImageFormatProperties->maxExtent.height = 4096;
+      pImageFormatProperties->maxExtent.width = V3D_MAX_IMAGE_DIMENSION;
+      pImageFormatProperties->maxExtent.height = V3D_MAX_IMAGE_DIMENSION;
       pImageFormatProperties->maxExtent.depth = 1;
-      pImageFormatProperties->maxArrayLayers = 2048;
-      pImageFormatProperties->maxMipLevels = 13; /* log2(maxWidth) + 1 */
+      pImageFormatProperties->maxArrayLayers = V3D_MAX_ARRAY_LAYERS;
+      pImageFormatProperties->maxMipLevels = V3D_MAX_MIP_LEVELS;
       break;
    case VK_IMAGE_TYPE_3D:
-      pImageFormatProperties->maxExtent.width = 4096;
-      pImageFormatProperties->maxExtent.height = 4096;
-      pImageFormatProperties->maxExtent.depth = 4096;
+      pImageFormatProperties->maxExtent.width = V3D_MAX_IMAGE_DIMENSION;
+      pImageFormatProperties->maxExtent.height = V3D_MAX_IMAGE_DIMENSION;
+      pImageFormatProperties->maxExtent.depth = V3D_MAX_IMAGE_DIMENSION;
       pImageFormatProperties->maxArrayLayers = 1;
-      pImageFormatProperties->maxMipLevels = 13; /* log2(maxWidth) + 1 */
+      pImageFormatProperties->maxMipLevels = V3D_MAX_MIP_LEVELS;
       break;
    default:
       unreachable("bad VkImageType");

@@ -40,6 +40,7 @@
 #include "pvr_srv_job_common.h"
 #include "pvr_srv_job_render.h"
 #include "pvr_srv_sync.h"
+#include "pvr_types.h"
 #include "pvr_winsys.h"
 #include "util/libsync.h"
 #include "util/log.h"
@@ -294,8 +295,6 @@ static void pvr_srv_render_ctx_fw_static_state_init(
       &create_info->static_state;
    struct rogue_fwif_ta_regs_cswitch *regs =
       &static_state->ctx_switch_geom_regs[0];
-
-   STATIC_ASSERT(ARRAY_SIZE(static_state->ctx_switch_geom_regs) == 1);
 
    memset(static_state, 0, sizeof(*static_state));
 
@@ -571,7 +570,7 @@ VkResult pvr_srv_winsys_render_submit(
          ret = sync_accumulate("", &in_geom_fd, srv_wait_sync->fd);
          if (ret) {
             result = vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
-            goto err_close_in_fds;
+            goto end_close_in_fds;
          }
 
          submit_info->stage_flags[i] &= ~PVR_PIPELINE_STAGE_GEOM_BIT;
@@ -581,7 +580,7 @@ VkResult pvr_srv_winsys_render_submit(
          ret = sync_accumulate("", &in_frag_fd, srv_wait_sync->fd);
          if (ret) {
             result = vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
-            goto err_close_in_fds;
+            goto end_close_in_fds;
          }
 
          submit_info->stage_flags[i] &= ~PVR_PIPELINE_STAGE_FRAG_BIT;
@@ -678,7 +677,7 @@ VkResult pvr_srv_winsys_render_submit(
    } while (result == VK_NOT_READY);
 
    if (result != VK_SUCCESS)
-      goto err_close_in_fds;
+      goto end_close_in_fds;
 
    if (signal_sync_geom) {
       srv_signal_sync_geom = to_srv_sync(signal_sync_geom);
@@ -694,9 +693,7 @@ VkResult pvr_srv_winsys_render_submit(
       close(fence_frag);
    }
 
-   return VK_SUCCESS;
-
-err_close_in_fds:
+end_close_in_fds:
    if (in_geom_fd >= 0)
       close(in_geom_fd);
 

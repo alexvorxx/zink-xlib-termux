@@ -51,15 +51,6 @@ anv_measure_device_init(struct anv_physical_device *device)
    case 90:
       device->cmd_emit_timestamp = &gfx9_cmd_emit_timestamp;
       break;
-   case 80:
-      device->cmd_emit_timestamp = &gfx8_cmd_emit_timestamp;
-      break;
-   case 75:
-      device->cmd_emit_timestamp = &gfx75_cmd_emit_timestamp;
-      break;
-   case 70:
-      device->cmd_emit_timestamp = &gfx7_cmd_emit_timestamp;
-      break;
    default:
       assert(false);
    }
@@ -323,7 +314,7 @@ anv_measure_reset(struct anv_cmd_buffer *cmd_buffer)
     * yet been processed
     */
    intel_measure_gather(&device->physical->measure_device,
-                        &device->info);
+                        device->info);
 
    assert(cmd_buffer->device != NULL);
 
@@ -332,16 +323,6 @@ anv_measure_reset(struct anv_cmd_buffer *cmd_buffer)
    measure->base.frame = 0;
    measure->base.event_count = 0;
    list_inithead(&measure->base.link);
-
-   anv_device_release_bo(device, measure->bo);
-   ASSERTED VkResult result =
-      anv_device_alloc_bo(device, "measure data",
-                          config->batch_size * sizeof(uint64_t),
-                          ANV_BO_ALLOC_MAPPED,
-                          0,
-                          (struct anv_bo**)&measure->bo);
-   measure->base.timestamps = measure->bo->map;
-   assert(result == VK_SUCCESS);
 }
 
 void
@@ -403,18 +384,24 @@ _anv_measure_submit(struct anv_cmd_buffer *cmd_buffer)
    if (measure == NULL)
       return;
 
-   if (measure->base.index == 0)
+   struct intel_measure_batch *base = &measure->base;
+   if (base->index == 0)
       /* no snapshots were started */
       return;
 
    /* finalize snapshots and enqueue them */
    static unsigned cmd_buffer_count = 0;
-   measure->base.batch_count = p_atomic_inc_return(&cmd_buffer_count);
+   base->batch_count = p_atomic_inc_return(&cmd_buffer_count);
 
-   if (measure->base.index %2 == 1) {
-      anv_measure_end_snapshot(cmd_buffer, measure->base.event_count);
-      measure->base.event_count = 0;
+   if (base->index %2 == 1) {
+      anv_measure_end_snapshot(cmd_buffer, base->event_count);
+      base->event_count = 0;
    }
+
+   /* Mark the final timestamp as 'not completed'.  This marker will be used
+    * to verify that rendering is complete.
+    */
+   base->timestamps[base->index - 1] = 0;
 
    /* add to the list of submitted snapshots */
    pthread_mutex_lock(&measure_device->mutex);

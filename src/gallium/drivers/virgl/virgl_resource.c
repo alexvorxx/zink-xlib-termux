@@ -101,7 +101,7 @@ static bool virgl_can_copy_transfer_from_host(struct virgl_screen *vs,
    return virgl_can_use_staging(vs, res) &&
          !is_stencil_array(res) &&
          virgl_has_readback_format(&vs->base, pipe_to_virgl_format(res->b.format), false) &&
-         ((!(vs->caps.caps.v2.capability_bits & VIRGL_CAP_FAKE_FP64)) ||
+         ((!(vs->caps.caps.v2.capability_bits & VIRGL_CAP_HOST_IS_GLES)) ||
           virgl_can_readback_from_rendertarget(vs, res) ||
           virgl_can_readback_from_scanout(vs, res, bind));
 }
@@ -253,11 +253,6 @@ virgl_resource_transfer_prepare(struct virgl_context *vctx,
          else
             return VIRGL_TRANSFER_MAP_WRITE_TO_STAGING_WITH_READBACK;
       }
-      /* Readback is yet another command and is transparent to the state
-       * trackers.  It should be waited for in all cases, including when
-       * PIPE_MAP_UNSYNCHRONIZED is set.
-       */
-      wait = true;
 
       /* When the transfer queue has pending writes to this transfer's region,
        * we have to flush before readback.
@@ -281,8 +276,16 @@ virgl_resource_transfer_prepare(struct virgl_context *vctx,
       return VIRGL_TRANSFER_MAP_ERROR;
 
    if (readback) {
+      /* Readback is yet another command and is transparent to the state
+       * trackers.  It should be waited for in all cases, including when
+       * PIPE_MAP_UNSYNCHRONIZED is set.
+       */
+      vws->resource_wait(vws, res->hw_res);
       vws->transfer_get(vws, res->hw_res, &xfer->base.box, xfer->base.stride,
                         xfer->l_stride, xfer->offset, xfer->base.level);
+      /* transfer_get puts the resource into a maybe_busy state, so we will have
+       * to wait another time if we want to use that resource. */
+      wait = true;
    }
 
    if (wait)
@@ -493,6 +496,18 @@ virgl_resource_transfer_map(struct pipe_context *ctx,
    /* Multisampled resources require resolve before mapping. */
    assert(resource->nr_samples <= 1);
 
+   /* If virgl resource was created using persistence and coherency flags,
+    * then its memory mapping can be only made in accordance to these
+    * flags. We record the "usage" flags in struct virgl_transfer and
+    * then virgl_buffer_transfer_unmap() uses them to differentiate
+    * unmapping of a host blob resource from guest.
+    */
+   if (resource->flags & PIPE_RESOURCE_FLAG_MAP_PERSISTENT)
+      usage |= PIPE_MAP_PERSISTENT;
+
+   if (resource->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT)
+      usage |= PIPE_MAP_COHERENT;
+
    trans = virgl_resource_create_transfer(vctx, resource,
                                           &vres->metadata, level, usage, box);
 
@@ -693,6 +708,8 @@ static struct pipe_resource *virgl_resource_from_handle(struct pipe_screen *scre
 {
    uint32_t winsys_stride, plane_offset, plane;
    uint64_t modifier;
+   uint32_t storage_size;
+
    struct virgl_screen *vs = virgl_screen(screen);
    if (templ->target == PIPE_BUFFER)
       return NULL;
@@ -723,6 +740,19 @@ static struct pipe_resource *virgl_resource_from_handle(struct pipe_screen *scre
       FREE(res);
       return NULL;
    }
+
+   /*
+   *  If the overall resource is larger than a single page in size, we can
+   *  compare it with the amount of memory allocated on the guest to determine
+   *  if we should be using the staging path.
+   *
+   *  If not, the decision is not as clear. However, since the resource can
+   *  fit within a single page, the import will function correctly.
+   */
+  storage_size = vs->vws->resource_get_storage_size(vs->vws, res->hw_res);
+
+   if (res->metadata.total_size > storage_size)
+      res->use_staging = 1;
 
    /* assign blob resource a type in case it was created untyped */
    if (res->blob_mem && plane == 0 &&

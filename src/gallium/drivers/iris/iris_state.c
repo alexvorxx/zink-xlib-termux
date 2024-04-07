@@ -77,9 +77,6 @@
 #include <valgrind.h>
 #include <memcheck.h>
 #define VG(x) x
-#ifdef DEBUG
-#define __gen_validate_value(x) VALGRIND_CHECK_MEM_IS_DEFINED(&(x), sizeof(x))
-#endif
 #else
 #define VG(x)
 #endif
@@ -654,6 +651,7 @@ emit_pipeline_select(struct iris_batch *batch, uint32_t pipeline)
                                  PIPE_CONTROL_RENDER_TARGET_FLUSH |
                                  PIPE_CONTROL_DEPTH_CACHE_FLUSH |
                                  PIPE_CONTROL_DATA_CACHE_FLUSH |
+                                 PIPE_CONTROL_UNTYPED_DATAPORT_CACHE_FLUSH |
                                  PIPE_CONTROL_CS_STALL);
 
     iris_emit_pipe_control_flush(batch,
@@ -739,6 +737,9 @@ init_state_base_address(struct iris_batch *batch)
       sba.IndirectObjectBufferSize = 0xfffff;
       sba.InstructionBufferSize    = 0xfffff;
       sba.DynamicStateBufferSize   = 0xfffff;
+#if GFX_VERx10 >= 125
+      sba.L1CacheControl = L1CC_WB;
+#endif
    }
 
    flush_after_state_base_change(batch);
@@ -1057,6 +1058,14 @@ iris_init_render_context(struct iris_batch *batch)
 
    iris_init_common_context(batch);
 
+#if GFX_VERx10 == 125
+   /* Wa_14015207028 */
+   iris_emit_reg(batch, GENX(VFG_PREEMPTION_CHICKEN_BITS), vfgc) {
+      vfgc.PolygonTrifanLineLoopPreemptionDisable = true;
+      vfgc.PolygonTrifanLineLoopPreemptionDisableMask = true;
+   };
+#endif
+
 #if GFX_VER >= 9
    iris_emit_reg(batch, GENX(CS_DEBUG_MODE2), reg) {
       reg.CONSTANT_BUFFERAddressOffsetDisable = true;
@@ -1099,6 +1108,17 @@ iris_init_render_context(struct iris_batch *batch)
          reg.DisableRepackingforCompression = true;
          reg.DisableRepackingforCompressionMask = true;
       }
+   }
+#endif
+
+#if GFX_VERx10 == 120
+   /* Wa_1806527549 says to disable the following HiZ optimization when the
+    * depth buffer is D16_UNORM. We've found the WA to help with more depth
+    * buffer configurations however, so we always disable it just to be safe.
+    */
+   iris_emit_reg(batch, GENX(HIZ_CHICKEN), reg) {
+      reg.HZDepthTestLEGEOptimizationDisable = true;
+      reg.HZDepthTestLEGEOptimizationDisableMask = true;
    }
 #endif
 
@@ -1206,11 +1226,11 @@ struct iris_depth_buffer_state {
 };
 
 #if GFX_VERx10 == 120
-   enum iris_depth_reg_mode {
-      IRIS_DEPTH_REG_MODE_HW_DEFAULT = 0,
-      IRIS_DEPTH_REG_MODE_D16,
-      IRIS_DEPTH_REG_MODE_UNKNOWN,
-   };
+enum iris_depth_reg_mode {
+   IRIS_DEPTH_REG_MODE_HW_DEFAULT = 0,
+   IRIS_DEPTH_REG_MODE_D16_1X_MSAA,
+   IRIS_DEPTH_REG_MODE_UNKNOWN,
+};
 #endif
 
 /**
@@ -1663,7 +1683,8 @@ want_pma_fix(struct iris_context *ice)
    /* 3DSTATE_DEPTH_BUFFER::SURFACE_TYPE != NULL &&
     * 3DSTATE_DEPTH_BUFFER::HIZ Enable &&
     */
-   if (!zres || !iris_resource_level_has_hiz(zres, cso_fb->zsbuf->u.tex.level))
+   if (!zres ||
+       !iris_resource_level_has_hiz(devinfo, zres, cso_fb->zsbuf->u.tex.level))
       return false;
 
    /* 3DSTATE_WM::EDSC_Mode != EDSC_PREPS */
@@ -2154,7 +2175,7 @@ iris_bind_sampler_states(struct pipe_context *ctx,
    gl_shader_stage stage = stage_from_pipe(p_stage);
    struct iris_shader_state *shs = &ice->state.shaders[stage];
 
-   assert(start + count <= IRIS_MAX_TEXTURE_SAMPLERS);
+   assert(start + count <= IRIS_MAX_SAMPLERS);
 
    bool dirty = false;
 
@@ -2188,7 +2209,7 @@ iris_upload_sampler_states(struct iris_context *ice, gl_shader_stage stage)
    /* We assume gallium frontends will call pipe->bind_sampler_states()
     * if the program's number of textures changes.
     */
-   unsigned count = info ? BITSET_LAST_BIT(info->textures_used) : 0;
+   unsigned count = info ? BITSET_LAST_BIT(info->samplers_used) : 0;
 
    if (!count)
       return;
@@ -2634,22 +2655,10 @@ iris_create_surface(struct pipe_context *ctx,
    }
 
    struct iris_surface *surf = calloc(1, sizeof(struct iris_surface));
-   struct pipe_surface *psurf = &surf->base;
    struct iris_resource *res = (struct iris_resource *) tex;
 
    if (!surf)
       return NULL;
-
-   pipe_reference_init(&psurf->reference, 1);
-   pipe_resource_reference(&psurf->texture, tex);
-   psurf->context = ctx;
-   psurf->format = tmpl->format;
-   psurf->width = tex->width0;
-   psurf->height = tex->height0;
-   psurf->texture = tex;
-   psurf->u.tex.first_layer = tmpl->u.tex.first_layer;
-   psurf->u.tex.last_layer = tmpl->u.tex.last_layer;
-   psurf->u.tex.level = tmpl->u.tex.level;
 
    uint32_t array_len = tmpl->u.tex.last_layer - tmpl->u.tex.first_layer + 1;
 
@@ -2710,13 +2719,54 @@ iris_create_surface(struct pipe_context *ctx,
    }
 #endif
 
+   struct isl_surf isl_surf = res->surf;
+   uint64_t offset_B = 0;
+   uint32_t tile_x_el = 0, tile_y_el = 0;
+   if (isl_format_is_compressed(res->surf.format)) {
+      /* The resource has a compressed format, which is not renderable, but we
+       * have a renderable view format.  We must be attempting to upload
+       * blocks of compressed data via an uncompressed view.
+       *
+       * In this case, we can assume there are no auxiliary buffers, a single
+       * miplevel, and that the resource is single-sampled.  Gallium may try
+       * and create an uncompressed view with multiple layers, however.
+       */
+      assert(res->aux.usage == ISL_AUX_USAGE_NONE);
+      assert(res->surf.samples == 1);
+      assert(view->levels == 1);
+
+      bool ok = isl_surf_get_uncompressed_surf(&screen->isl_dev,
+                                               &res->surf, view,
+                                               &isl_surf, view, &offset_B,
+                                               &tile_x_el, &tile_y_el);
+      if (!ok) {
+         free(surf);
+         return NULL;
+      }
+   }
+
    surf->clear_color = res->aux.clear_color;
+
+   struct pipe_surface *psurf = &surf->base;
+   pipe_reference_init(&psurf->reference, 1);
+   pipe_resource_reference(&psurf->texture, tex);
+   psurf->context = ctx;
+   psurf->format = tmpl->format;
+   psurf->width = isl_surf.logical_level0_px.width;
+   psurf->height = isl_surf.logical_level0_px.height;
+   psurf->texture = tex;
+   psurf->u.tex.first_layer = tmpl->u.tex.first_layer;
+   psurf->u.tex.last_layer = tmpl->u.tex.last_layer;
+   psurf->u.tex.level = tmpl->u.tex.level;
 
    /* Bail early for depth/stencil - we don't want SURFACE_STATE for them. */
    if (res->surf.usage & (ISL_SURF_USAGE_DEPTH_BIT |
                           ISL_SURF_USAGE_STENCIL_BIT))
       return psurf;
 
+   /* Fill out a SURFACE_STATE for each possible auxiliary surface mode and
+    * return the pipe_surface.
+    */
    unsigned aux_usages = 0;
 
    if ((res->aux.usage == ISL_AUX_USAGE_CCS_E ||
@@ -2730,64 +2780,16 @@ iris_create_surface(struct pipe_context *ctx,
 
    alloc_surface_states(&surf->surface_state, aux_usages);
    surf->surface_state.bo_address = res->bo->address;
+   fill_surface_states(&screen->isl_dev, &surf->surface_state, res,
+                       &isl_surf, view, offset_B, tile_x_el, tile_y_el);
 
 #if GFX_VER == 8
    alloc_surface_states(&surf->surface_state_read, aux_usages);
    surf->surface_state_read.bo_address = res->bo->address;
+   fill_surface_states(&screen->isl_dev, &surf->surface_state_read, res,
+                       &read_surf, read_view, read_surf_offset_B,
+                       read_surf_tile_x_sa, read_surf_tile_y_sa);
 #endif
-
-   if (!isl_format_is_compressed(res->surf.format)) {
-      /* This is a normal surface.  Fill out a SURFACE_STATE for each possible
-       * auxiliary surface mode and return the pipe_surface.
-       */
-      fill_surface_states(&screen->isl_dev, &surf->surface_state, res,
-                          &res->surf, view, 0, 0, 0);
-#if GFX_VER == 8
-      fill_surface_states(&screen->isl_dev, &surf->surface_state_read, res,
-                          &read_surf, read_view, read_surf_offset_B,
-                          read_surf_tile_x_sa, read_surf_tile_y_sa);
-#endif
-      return psurf;
-   }
-
-   /* The resource has a compressed format, which is not renderable, but we
-    * have a renderable view format.  We must be attempting to upload blocks
-    * of compressed data via an uncompressed view.
-    *
-    * In this case, we can assume there are no auxiliary buffers, a single
-    * miplevel, and that the resource is single-sampled.  Gallium may try
-    * and create an uncompressed view with multiple layers, however.
-    */
-   assert(!isl_format_is_compressed(fmt.fmt));
-   assert(res->aux.usage == ISL_AUX_USAGE_NONE);
-   assert(res->surf.samples == 1);
-   assert(view->levels == 1);
-
-   struct isl_surf isl_surf;
-   uint64_t offset_B = 0;
-   uint32_t tile_x_el = 0, tile_y_el = 0;
-   bool ok = isl_surf_get_uncompressed_surf(&screen->isl_dev, &res->surf,
-                                            view, &isl_surf, view,
-                                            &offset_B, &tile_x_el, &tile_y_el);
-   if (!ok) {
-      free(surf);
-      return NULL;
-   }
-
-   psurf->width = isl_surf.logical_level0_px.width;
-   psurf->height = isl_surf.logical_level0_px.height;
-
-   struct isl_surf_fill_state_info f = {
-      .surf = &isl_surf,
-      .view = view,
-      .mocs = iris_mocs(res->bo, &screen->isl_dev,
-                        ISL_SURF_USAGE_RENDER_TARGET_BIT),
-      .address = res->bo->address + offset_B,
-      .x_offset_sa = tile_x_el, /* Single-sampled, so el == sa */
-      .y_offset_sa = tile_y_el, /* Single-sampled, so el == sa */
-   };
-
-   isl_surf_fill_state_s(&screen->isl_dev, surf->surface_state.cpu, &f);
 
    return psurf;
 }
@@ -2842,7 +2844,7 @@ iris_set_shader_images(struct pipe_context *ctx,
 #endif
 
    shs->bound_image_views &=
-      ~u_bit_consecutive(start_slot, count + unbind_num_trailing_slots);
+      ~u_bit_consecutive64(start_slot, count + unbind_num_trailing_slots);
 
    for (unsigned i = 0; i < count; i++) {
       struct iris_image_view *iv = &shs->image[start_slot + i];
@@ -2853,7 +2855,7 @@ iris_set_shader_images(struct pipe_context *ctx,
 
          util_copy_image_view(&iv->base, img);
 
-         shs->bound_image_views |= 1 << (start_slot + i);
+         shs->bound_image_views |= BITFIELD64_BIT(start_slot + i);
 
          res->bind_history |= PIPE_BIND_SHADER_IMAGE;
          res->bind_stages |= 1 << stage;
@@ -2957,8 +2959,11 @@ iris_set_sampler_views(struct pipe_context *ctx,
    struct iris_shader_state *shs = &ice->state.shaders[stage];
    unsigned i;
 
-   shs->bound_sampler_views &=
-      ~u_bit_consecutive(start, count + unbind_num_trailing_slots);
+   if (count == 0 && unbind_num_trailing_slots == 0)
+      return;
+
+   BITSET_CLEAR_RANGE(shs->bound_sampler_views, start,
+                      start + count + unbind_num_trailing_slots - 1);
 
    for (i = 0; i < count; i++) {
       struct pipe_sampler_view *pview = views ? views[i] : NULL;
@@ -2982,7 +2987,7 @@ iris_set_sampler_views(struct pipe_context *ctx,
          view->res->bind_history |= PIPE_BIND_SAMPLER_VIEW;
          view->res->bind_stages |= 1 << stage;
 
-         shs->bound_sampler_views |= 1 << (start + i);
+         BITSET_SET(shs->bound_sampler_views, start + i);
 
          update_surface_state_addrs(ice->state.surface_uploader,
                                     &view->surface_state, view->res->bo);
@@ -3198,8 +3203,14 @@ iris_set_viewport_states(struct pipe_context *ctx,
                          const struct pipe_viewport_state *states)
 {
    struct iris_context *ice = (struct iris_context *) ctx;
+   struct iris_screen *screen = (struct iris_screen *)ctx->screen;
 
    memcpy(&ice->state.viewports[start_slot], states, sizeof(*states) * count);
+
+   /* Fix depth test misrenderings by lowering translated depth range */
+   if (screen->driconf.lower_depth_range_rate != 1.0f)
+      ice->state.viewports[start_slot].translate[2] *=
+         screen->driconf.lower_depth_range_rate;
 
    ice->state.dirty |= IRIS_DIRTY_SF_CL_VIEWPORT;
 
@@ -3220,6 +3231,7 @@ iris_set_framebuffer_state(struct pipe_context *ctx,
 {
    struct iris_context *ice = (struct iris_context *) ctx;
    struct iris_screen *screen = (struct iris_screen *)ctx->screen;
+   const struct intel_device_info *devinfo = &screen->devinfo;
    struct isl_device *isl_dev = &screen->isl_dev;
    struct pipe_framebuffer_state *cso = &ice->state.framebuffer;
    struct iris_resource *zres;
@@ -3289,7 +3301,7 @@ iris_set_framebuffer_state(struct pipe_context *ctx,
 
          view.format = zres->surf.format;
 
-         if (iris_resource_level_has_hiz(zres, view.base_level)) {
+         if (iris_resource_level_has_hiz(devinfo, zres, view.base_level)) {
             info.hiz_usage = zres->aux.usage;
             info.hiz_surf = &zres->aux.surf;
             info.hiz_address = zres->aux.bo->address + zres->aux.offset;
@@ -3966,12 +3978,12 @@ static uint32_t *
 iris_create_so_decl_list(const struct pipe_stream_output_info *info,
                          const struct brw_vue_map *vue_map)
 {
-   struct GENX(SO_DECL) so_decl[MAX_VERTEX_STREAMS][128];
-   int buffer_mask[MAX_VERTEX_STREAMS] = {0, 0, 0, 0};
-   int next_offset[MAX_VERTEX_STREAMS] = {0, 0, 0, 0};
-   int decls[MAX_VERTEX_STREAMS] = {0, 0, 0, 0};
+   struct GENX(SO_DECL) so_decl[PIPE_MAX_VERTEX_STREAMS][128];
+   int buffer_mask[PIPE_MAX_VERTEX_STREAMS] = {0, 0, 0, 0};
+   int next_offset[PIPE_MAX_VERTEX_STREAMS] = {0, 0, 0, 0};
+   int decls[PIPE_MAX_VERTEX_STREAMS] = {0, 0, 0, 0};
    int max_decls = 0;
-   STATIC_ASSERT(ARRAY_SIZE(so_decl[0]) >= MAX_PROGRAM_OUTPUTS);
+   STATIC_ASSERT(ARRAY_SIZE(so_decl[0]) >= PIPE_MAX_SO_OUTPUTS);
 
    memset(so_decl, 0, sizeof(so_decl));
 
@@ -3983,7 +3995,7 @@ iris_create_so_decl_list(const struct pipe_stream_output_info *info,
       const int buffer = output->output_buffer;
       const int varying = output->register_index;
       const unsigned stream_id = output->stream;
-      assert(stream_id < MAX_VERTEX_STREAMS);
+      assert(stream_id < PIPE_MAX_VERTEX_STREAMS);
 
       buffer_mask[stream_id] |= 1 << buffer;
 
@@ -5141,8 +5153,15 @@ iris_populate_binding_table(struct iris_context *ice,
       }
    }
 
-   foreach_surface_used(i, IRIS_SURFACE_GROUP_TEXTURE) {
+   foreach_surface_used(i, IRIS_SURFACE_GROUP_TEXTURE_LOW64) {
       struct iris_sampler_view *view = shs->textures[i];
+      uint32_t addr = view ? use_sampler_view(ice, batch, view)
+                           : use_null_surface(batch, ice);
+      push_bt_entry(addr);
+   }
+
+   foreach_surface_used(i, IRIS_SURFACE_GROUP_TEXTURE_HIGH64) {
+      struct iris_sampler_view *view = shs->textures[64 + i];
       uint32_t addr = view ? use_sampler_view(ice, batch, view)
                            : use_null_surface(batch, ice);
       push_bt_entry(addr);
@@ -5509,6 +5528,9 @@ iris_update_binder_address(struct iris_batch *batch,
 #if GFX_VER >= 9
       sba.BindlessSurfaceStateMOCS    = mocs;
 #endif
+#if GFX_VERx10 >= 125
+      sba.L1CacheControl = L1CC_WB;
+#endif
    }
 #endif
 
@@ -5730,15 +5752,16 @@ genX(emit_depth_state_workarounds)(struct iris_context *ice,
                                    const struct isl_surf *surf)
 {
 #if GFX_VERx10 == 120
-   const bool fmt_is_d16 = surf->format == ISL_FORMAT_R16_UNORM;
+   const bool is_d16_1x_msaa = surf->format == ISL_FORMAT_R16_UNORM &&
+                               surf->samples == 1;
 
    switch (ice->state.genx->depth_reg_mode) {
    case IRIS_DEPTH_REG_MODE_HW_DEFAULT:
-      if (!fmt_is_d16)
+      if (!is_d16_1x_msaa)
          return;
       break;
-   case IRIS_DEPTH_REG_MODE_D16:
-      if (fmt_is_d16)
+   case IRIS_DEPTH_REG_MODE_D16_1X_MSAA:
+      if (is_d16_1x_msaa)
          return;
       break;
    case IRIS_DEPTH_REG_MODE_UNKNOWN:
@@ -5760,21 +5783,13 @@ genX(emit_depth_state_workarounds)(struct iris_context *ice,
     * Surface Format is D16_UNORM , surface type is not NULL & 1X_MSAA”.
     */
    iris_emit_reg(batch, GENX(COMMON_SLICE_CHICKEN1), reg) {
-      reg.HIZPlaneOptimizationdisablebit = fmt_is_d16 && surf->samples == 1;
+      reg.HIZPlaneOptimizationdisablebit = is_d16_1x_msaa;
       reg.HIZPlaneOptimizationdisablebitMask = true;
    }
 
-   /* Wa_1806527549
-    *
-    * Set HIZ_CHICKEN (7018h) bit 13 = 1 when depth buffer is D16_UNORM.
-    */
-   iris_emit_reg(batch, GENX(HIZ_CHICKEN), reg) {
-      reg.HZDepthTestLEGEOptimizationDisable = fmt_is_d16;
-      reg.HZDepthTestLEGEOptimizationDisableMask = true;
-   }
-
    ice->state.genx->depth_reg_mode =
-      fmt_is_d16 ? IRIS_DEPTH_REG_MODE_D16 : IRIS_DEPTH_REG_MODE_HW_DEFAULT;
+      is_d16_1x_msaa ? IRIS_DEPTH_REG_MODE_D16_1X_MSAA :
+                       IRIS_DEPTH_REG_MODE_HW_DEFAULT;
 #endif
 }
 
@@ -6283,6 +6298,13 @@ iris_upload_dirty_render_state(struct iris_context *ice,
          uint32_t *decl_list =
             ice->state.streamout + GENX(3DSTATE_STREAMOUT_length);
          iris_batch_emit(batch, decl_list, 4 * ((decl_list[0] & 0xff) + 2));
+
+#if GFX_VERx10 == 125
+         /* Wa_14015946265: Send PC with CS stall after SO_DECL. */
+         iris_emit_pipe_control_flush(batch,
+                                      "workaround: cs stall after so_decl",
+                                      PIPE_CONTROL_CS_STALL);
+#endif
       }
 
       if (dirty & IRIS_DIRTY_STREAMOUT) {
@@ -6332,9 +6354,7 @@ iris_upload_dirty_render_state(struct iris_context *ice,
          cl.PerspectiveDivideDisable = ice->state.window_space_position;
          cl.ViewportXYClipTestEnable = !points_or_lines;
 
-         if (wm_prog_data->barycentric_interp_modes &
-             BRW_BARYCENTRIC_NONPERSPECTIVE_BITS)
-            cl.NonPerspectiveBarycentricEnable = true;
+         cl.NonPerspectiveBarycentricEnable = wm_prog_data->uses_nonperspective_interp_modes;
 
          cl.ForceZeroRTAIndexEnable = cso_fb->layers <= 1;
          cl.MaximumVPIndex = ice->state.num_viewports - 1;
@@ -6850,6 +6870,23 @@ flush_vbos(struct iris_context *ice, struct iris_batch *batch)
    }
 }
 
+static bool
+point_or_line_list(enum pipe_prim_type prim_type)
+{
+   switch (prim_type) {
+   case PIPE_PRIM_POINTS:
+   case PIPE_PRIM_LINES:
+   case PIPE_PRIM_LINE_STRIP:
+   case PIPE_PRIM_LINES_ADJACENCY:
+   case PIPE_PRIM_LINE_STRIP_ADJACENCY:
+   case PIPE_PRIM_LINE_LOOP:
+      return true;
+   default:
+      return false;
+   }
+   return false;
+}
+
 static void
 iris_upload_render_state(struct iris_context *ice,
                          struct iris_batch *batch,
@@ -7072,6 +7109,17 @@ iris_upload_render_state(struct iris_context *ice,
       }
    }
 
+#if GFX_VERx10 == 125
+   if (point_or_line_list(ice->state.prim_mode) ||
+       indirect || (sc->count == 1 || sc->count == 2)) {
+         iris_emit_pipe_control_write(batch, "Wa_14016118574",
+                                      PIPE_CONTROL_WRITE_IMMEDIATE,
+                                      batch->screen->workaround_bo,
+                                      batch->screen->workaround_address.offset,
+                                      0ull);
+   }
+#endif
+
    iris_batch_sync_region_end(batch);
 
    trace_intel_end_draw(&batch->trace, 0);
@@ -7124,7 +7172,7 @@ iris_upload_compute_walker(struct iris_context *ice,
    if (stage_dirty & IRIS_STAGE_DIRTY_CS) {
       iris_emit_cmd(batch, GENX(CFE_STATE), cfe) {
          cfe.MaximumNumberofThreads =
-            devinfo->max_cs_threads * devinfo->subslice_total - 1;
+            devinfo->max_cs_threads * devinfo->subslice_total;
          uint32_t scratch_addr = pin_scratch_space(ice, batch, prog_data,
                                                    MESA_SHADER_COMPUTE);
          cfe.ScratchSpaceBuffer = scratch_addr >> 4;
@@ -7422,7 +7470,7 @@ iris_destroy_state(struct iris_context *ice)
          pipe_resource_reference(&shs->ssbo[i].buffer, NULL);
          pipe_resource_reference(&shs->ssbo_surf_state[i].res, NULL);
       }
-      for (int i = 0; i < IRIS_MAX_TEXTURE_SAMPLERS; i++) {
+      for (int i = 0; i < IRIS_MAX_TEXTURES; i++) {
          pipe_sampler_view_reference((struct pipe_sampler_view **)
                                      &shs->textures[i], NULL);
       }
@@ -7559,9 +7607,8 @@ iris_rebind_buffer(struct iris_context *ice,
       }
 
       if (res->bind_history & PIPE_BIND_SAMPLER_VIEW) {
-         uint32_t bound_sampler_views = shs->bound_sampler_views;
-         while (bound_sampler_views) {
-            const int i = u_bit_scan(&bound_sampler_views);
+         int i;
+         BITSET_FOREACH_SET(i, shs->bound_sampler_views, IRIS_MAX_TEXTURES) {
             struct iris_sampler_view *isv = shs->textures[i];
             struct iris_bo *bo = isv->res->bo;
 
@@ -7573,9 +7620,9 @@ iris_rebind_buffer(struct iris_context *ice,
       }
 
       if (res->bind_history & PIPE_BIND_SHADER_IMAGE) {
-         uint32_t bound_image_views = shs->bound_image_views;
+         uint64_t bound_image_views = shs->bound_image_views;
          while (bound_image_views) {
-            const int i = u_bit_scan(&bound_image_views);
+            const int i = u_bit_scan64(&bound_image_views);
             struct iris_image_view *iv = &shs->image[i];
             struct iris_bo *bo = iris_resource_bo(iv->base.resource);
 
@@ -8095,7 +8142,7 @@ iris_emit_raw_pipe_control(struct iris_batch *batch,
 
    if (INTEL_DEBUG(DEBUG_PIPE_CONTROL)) {
       fprintf(stderr,
-              "  PC [%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%"PRIx64"]: %s\n",
+              "  PC [%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%"PRIx64"]: %s\n",
               (flags & PIPE_CONTROL_FLUSH_ENABLE) ? "PipeCon " : "",
               (flags & PIPE_CONTROL_CS_STALL) ? "CS " : "",
               (flags & PIPE_CONTROL_STALL_AT_SCOREBOARD) ? "Scoreboard " : "",
@@ -8121,6 +8168,7 @@ iris_emit_raw_pipe_control(struct iris_batch *batch,
               (flags & PIPE_CONTROL_WRITE_TIMESTAMP) ? "WriteTimestamp " : "",
               (flags & PIPE_CONTROL_FLUSH_HDC) ? "HDC " : "",
               (flags & PIPE_CONTROL_PSS_STALL_SYNC) ? "PSS " : "",
+              (flags & PIPE_CONTROL_UNTYPED_DATAPORT_CACHE_FLUSH) ? "UntypedDataPortCache " : "",
               imm, reason);
    }
 
@@ -8142,6 +8190,12 @@ iris_emit_raw_pipe_control(struct iris_batch *batch,
 #endif
 #if GFX_VER >= 11
       pc.HDCPipelineFlushEnable = flags & PIPE_CONTROL_FLUSH_HDC;
+#endif
+#if GFX_VERx10 >= 125
+      pc.UntypedDataPortCacheFlushEnable =
+         (flags & PIPE_CONTROL_UNTYPED_DATAPORT_CACHE_FLUSH) &&
+         IS_COMPUTE_PIPELINE(batch);
+      pc.HDCPipelineFlushEnable |= pc.UntypedDataPortCacheFlushEnable;
 #endif
       pc.LRIPostSyncOperation = NoLRIOperation;
       pc.PipeControlFlushEnable = flags & PIPE_CONTROL_FLUSH_ENABLE;

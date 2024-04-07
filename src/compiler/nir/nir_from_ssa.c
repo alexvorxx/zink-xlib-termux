@@ -408,6 +408,9 @@ isolate_phi_nodes_block(nir_shader *shader, nir_block *block, void *dead_ctx)
       nir_phi_instr *phi = nir_instr_as_phi(instr);
       assert(phi->dest.is_ssa);
       nir_foreach_phi_src(src, phi) {
+         if (nir_src_is_undef(src->src))
+            continue;
+
          nir_parallel_copy_instr *pcopy =
             get_parallel_copy_at_end_of_block(src->pred);
          assert(pcopy);
@@ -460,6 +463,9 @@ coalesce_phi_nodes_block(nir_block *block, struct from_ssa_state *state)
 
       nir_foreach_phi_src(src, phi) {
          assert(src->src.is_ssa);
+         if (nir_src_is_undef(src->src))
+            continue;
+
          merge_node *src_node = get_merge_node(src->src.ssa, state);
          if (src_node->set != dest_node->set)
             merge_merge_sets(dest_node->set, src_node->set);
@@ -638,7 +644,7 @@ emit_copy(nir_builder *b, nir_src src, nir_src dest_src)
       assert(src.reg.reg->num_components >= dest_src.reg.reg->num_components);
 
    nir_alu_instr *mov = nir_alu_instr_create(b->shader, nir_op_mov);
-   nir_src_copy(&mov->src[0].src, &src);
+   nir_src_copy(&mov->src[0].src, &src, &mov->instr);
    mov->dest.dest = nir_dest_for_reg(dest_src.reg.reg);
    mov->dest.write_mask = (1 << dest_src.reg.reg->num_components) - 1;
 

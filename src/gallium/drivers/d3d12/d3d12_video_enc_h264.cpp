@@ -65,7 +65,7 @@ d3d12_video_encoder_update_current_rate_control_h264(struct d3d12_video_encoder 
           */
          if (D3D12_VIDEO_ENC_CBR_FORCE_VBV_EQUAL_BITRATE) {
             debug_printf("[d3d12_video_encoder_h264] d3d12_video_encoder_update_current_rate_control_h264 D3D12_VIDEO_ENC_CBR_FORCE_VBV_EQUAL_BITRATE environment variable is set, "
-                       ", forcing VBV Size = Target Bitrate = %ld (bits)\n", pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Config.m_Configuration_CBR.TargetBitRate);
+                       ", forcing VBV Size = Target Bitrate = %" PRIu64 " (bits)\n", pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Config.m_Configuration_CBR.TargetBitRate);
             pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Flags |=
                D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_VBV_SIZES;
             pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Config.m_Configuration_CBR.VBVCapacity =
@@ -113,14 +113,14 @@ d3d12_video_encoder_update_current_frame_pic_params_info_h264(struct d3d12_video
 {
    struct pipe_h264_enc_picture_desc *h264Pic = (struct pipe_h264_enc_picture_desc *) picture;
    d3d12_video_bitstream_builder_h264 *pH264BitstreamBuilder =
-      dynamic_cast<d3d12_video_bitstream_builder_h264 *>(pD3D12Enc->m_upBitstreamBuilder.get());
+      static_cast<d3d12_video_bitstream_builder_h264 *>(pD3D12Enc->m_upBitstreamBuilder.get());
    assert(pH264BitstreamBuilder != nullptr);
 
    bUsedAsReference = !h264Pic->not_referenced;
 
    picParams.pH264PicData->pic_parameter_set_id = pH264BitstreamBuilder->get_active_pps_id();
    picParams.pH264PicData->idr_pic_id = h264Pic->idr_pic_id;
-   picParams.pH264PicData->FrameType = d3d12_video_encoder_convert_frame_type(h264Pic->picture_type);
+   picParams.pH264PicData->FrameType = d3d12_video_encoder_convert_frame_type_h264(h264Pic->picture_type);
    picParams.pH264PicData->PictureOrderCountNumber = h264Pic->pic_order_cnt;
    picParams.pH264PicData->FrameDecodingOrderNumber = h264Pic->frame_num;
 
@@ -141,7 +141,7 @@ d3d12_video_encoder_update_current_frame_pic_params_info_h264(struct d3d12_video
 }
 
 D3D12_VIDEO_ENCODER_FRAME_TYPE_H264
-d3d12_video_encoder_convert_frame_type(enum pipe_h2645_enc_picture_type picType)
+d3d12_video_encoder_convert_frame_type_h264(enum pipe_h2645_enc_picture_type picType)
 {
    switch (picType) {
       case PIPE_H2645_ENC_PICTURE_TYPE_P:
@@ -265,6 +265,9 @@ d3d12_video_encoder_negotiate_current_h264_slices_configuration(struct d3d12_vid
                          "enable the OS environment variable D3D12_VIDEO_ENC_FALLBACK_SLICE_CONFIG");
          return false;
       }
+   } else {
+      debug_printf("[d3d12_video_encoder_h264] Requested slice control mode is full frame. m_SlicesPartition_H264.NumberOfSlicesPerFrame = %d - m_encoderSliceConfigMode = %d \n",
+      requestedSlicesConfig.NumberOfSlicesPerFrame, requestedSlicesMode);
    }
 
    if (!d3d12_video_encoder_compare_slice_config_h264_hevc(
@@ -518,8 +521,10 @@ d3d12_video_encoder_update_h264_gop_configuration(struct d3d12_video_encoder *pD
 
 D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264
 d3d12_video_encoder_convert_h264_codec_configuration(struct d3d12_video_encoder *pD3D12Enc,
-                                                     pipe_h264_enc_picture_desc *picture)
+                                                     pipe_h264_enc_picture_desc *picture,
+                                                     bool &is_supported)
 {
+   is_supported = true;
    D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264 config = {
       D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264_FLAG_NONE,
       D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264_DIRECT_MODES_DISABLED,
@@ -528,6 +533,41 @@ d3d12_video_encoder_convert_h264_codec_configuration(struct d3d12_video_encoder 
 
    if (picture->pic_ctrl.enc_cabac_enable) {
       config.ConfigurationFlags |= D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264_FLAG_ENABLE_CABAC_ENCODING;
+   }
+
+   pD3D12Enc->m_currentEncodeCapabilities.m_encoderCodecSpecificConfigCaps.m_H264CodecCaps = 
+   {
+      D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT_H264_FLAG_NONE,
+      D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264_SLICES_DEBLOCKING_MODE_FLAG_NONE
+   };
+
+   D3D12_FEATURE_DATA_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT capCodecConfigData = { };
+   capCodecConfigData.NodeIndex = pD3D12Enc->m_NodeIndex;
+   capCodecConfigData.Codec = D3D12_VIDEO_ENCODER_CODEC_H264;
+   D3D12_VIDEO_ENCODER_PROFILE_H264 prof = d3d12_video_encoder_convert_profile_to_d3d12_enc_profile_h264(pD3D12Enc->base.profile);
+   capCodecConfigData.Profile.pH264Profile = &prof;
+   capCodecConfigData.Profile.DataSize = sizeof(prof);
+   capCodecConfigData.CodecSupportLimits.pH264Support = &pD3D12Enc->m_currentEncodeCapabilities.m_encoderCodecSpecificConfigCaps.m_H264CodecCaps;
+   capCodecConfigData.CodecSupportLimits.DataSize = sizeof(pD3D12Enc->m_currentEncodeCapabilities.m_encoderCodecSpecificConfigCaps.m_H264CodecCaps);
+
+   if(FAILED(pD3D12Enc->m_spD3D12VideoDevice->CheckFeatureSupport(D3D12_FEATURE_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT, &capCodecConfigData, sizeof(capCodecConfigData))
+      || !capCodecConfigData.IsSupported))
+   {
+         debug_printf("D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION arguments not supported - DisableDeblockingFilterConfig (value %d) "
+                  "not allowed by DisableDeblockingFilterSupportedModes 0x%x cap reporting.",
+                  config.DisableDeblockingFilterConfig,
+                  capCodecConfigData.CodecSupportLimits.pH264Support->DisableDeblockingFilterSupportedModes);
+         is_supported = false;
+         return config;
+   }
+
+   if(((config.ConfigurationFlags & D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264_FLAG_ENABLE_CABAC_ENCODING) != 0)
+      && ((capCodecConfigData.CodecSupportLimits.pH264Support->SupportFlags & D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT_H264_FLAG_CABAC_ENCODING_SUPPORT) == 0))
+   {
+      debug_printf("D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION arguments are not supported - CABAC encoding mode not supported."
+         " Ignoring the request for this feature flag on this encode session");
+         // Disable it and keep going with a warning
+         config.ConfigurationFlags &= ~D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264_FLAG_ENABLE_CABAC_ENCODING;
    }
 
    return config;
@@ -603,7 +643,12 @@ d3d12_video_encoder_update_current_encoder_config_state_h264(struct d3d12_video_
    pD3D12Enc->m_currentEncodeConfig.m_encoderLevelDesc.m_H264LevelSetting = targetLevel;
 
    // Set codec config
-   auto targetCodecConfig = d3d12_video_encoder_convert_h264_codec_configuration(pD3D12Enc, h264Pic);
+   bool is_supported = false;
+   auto targetCodecConfig = d3d12_video_encoder_convert_h264_codec_configuration(pD3D12Enc, h264Pic, is_supported);
+   if (!is_supported) {
+      return false;
+   }
+
    if (memcmp(&pD3D12Enc->m_currentEncodeConfig.m_encoderCodecSpecificConfigDesc.m_H264Config,
               &targetCodecConfig,
               sizeof(D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264)) != 0) {
@@ -774,7 +819,7 @@ d3d12_video_encoder_build_codec_headers_h264(struct d3d12_video_encoder *pD3D12E
                            D3D12_VIDEO_ENCODER_SEQUENCE_CONTROL_FLAG_RESOLUTION_CHANGE) != 0);
 
    d3d12_video_bitstream_builder_h264 *pH264BitstreamBuilder =
-      dynamic_cast<d3d12_video_bitstream_builder_h264 *>(pD3D12Enc->m_upBitstreamBuilder.get());
+      static_cast<d3d12_video_bitstream_builder_h264 *>(pD3D12Enc->m_upBitstreamBuilder.get());
    assert(pH264BitstreamBuilder);
 
    uint32_t active_seq_parameter_set_id = pH264BitstreamBuilder->get_active_sps_id();

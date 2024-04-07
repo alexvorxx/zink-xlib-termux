@@ -182,6 +182,9 @@ _mesa_tex_param_enum_to_count(GLenum pname)
    case GL_TEXTURE_MAX_ANISOTROPY_EXT:
    case GL_TEXTURE_LOD_BIAS:
    case GL_TEXTURE_TILING_EXT:
+   case GL_TEXTURE_SPARSE_ARB:
+   case GL_VIRTUAL_PAGE_SIZE_INDEX_ARB:
+   case GL_NUM_SPARSE_LEVELS_ARB:
       return 1;
    case GL_TEXTURE_CROP_RECT_OES:
    case GL_TEXTURE_SWIZZLE_RGBA:
@@ -438,6 +441,19 @@ _mesa_get_matrix_index(struct gl_context *ctx, GLenum mode)
    return M_DUMMY;
 }
 
+static inline bool
+_mesa_matrix_is_identity(const float *m)
+{
+   static float identity[16] = {
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 1, 0,
+      0, 0, 0, 1
+   };
+
+   return !memcmp(m, identity, sizeof(identity));
+}
+
 static inline void
 _mesa_glthread_Enable(struct gl_context *ctx, GLenum cap)
 {
@@ -451,6 +467,9 @@ _mesa_glthread_Enable(struct gl_context *ctx, GLenum cap)
       break;
    case GL_DEBUG_OUTPUT_SYNCHRONOUS_ARB:
       _mesa_glthread_destroy(ctx, "Enable(DEBUG_OUTPUT_SYNCHRONOUS)");
+      break;
+   case GL_DEPTH_TEST:
+      ctx->GLThread.DepthTest = true;
       break;
    case GL_CULL_FACE:
       ctx->GLThread.CullFace = true;
@@ -472,15 +491,24 @@ _mesa_glthread_Disable(struct gl_context *ctx, GLenum cap)
    case GL_CULL_FACE:
       ctx->GLThread.CullFace = false;
       break;
+   case GL_DEPTH_TEST:
+      ctx->GLThread.DepthTest = false;
+      break;
    }
 }
 
 static inline int
 _mesa_glthread_IsEnabled(struct gl_context *ctx, GLenum cap)
 {
+   /* This will generate GL_INVALID_OPERATION, as it should. */
+   if (ctx->GLThread.inside_begin_end)
+      return -1;
+
    switch (cap) {
    case GL_CULL_FACE:
       return ctx->GLThread.CullFace;
+   case GL_DEPTH_TEST:
+      return ctx->GLThread.DepthTest;
    case GL_VERTEX_ARRAY:
       return !!(ctx->GLThread.CurrentVAO->UserEnabled & VERT_BIT_POS);
    case GL_NORMAL_ARRAY:
@@ -506,6 +534,12 @@ _mesa_glthread_PushAttrib(struct gl_context *ctx, GLbitfield mask)
 
    attr->Mask = mask;
 
+   if (mask & (GL_POLYGON_BIT | GL_ENABLE_BIT))
+      attr->CullFace = ctx->GLThread.CullFace;
+
+   if (mask & (GL_DEPTH_BUFFER_BIT | GL_ENABLE_BIT))
+      attr->DepthTest = ctx->GLThread.DepthTest;
+
    if (mask & GL_TEXTURE_BIT)
       attr->ActiveTexture = ctx->GLThread.ActiveTexture;
 
@@ -522,6 +556,12 @@ _mesa_glthread_PopAttrib(struct gl_context *ctx)
    struct glthread_attrib_node *attr =
       &ctx->GLThread.AttribStack[--ctx->GLThread.AttribStackDepth];
    unsigned mask = attr->Mask;
+
+   if (mask & (GL_POLYGON_BIT | GL_ENABLE_BIT))
+      ctx->GLThread.CullFace = attr->CullFace;
+
+   if (mask & (GL_DEPTH_BUFFER_BIT | GL_ENABLE_BIT))
+      ctx->GLThread.DepthTest = attr->DepthTest;
 
    if (mask & GL_TEXTURE_BIT)
       ctx->GLThread.ActiveTexture = attr->ActiveTexture;
@@ -586,7 +626,7 @@ _mesa_glthread_MatrixMode(struct gl_context *ctx, GLenum mode)
       return;
 
    ctx->GLThread.MatrixIndex = _mesa_get_matrix_index(ctx, mode);
-   ctx->GLThread.MatrixMode = mode;
+   ctx->GLThread.MatrixMode = MIN2(mode, 0xffff);
 }
 
 static inline void
@@ -729,10 +769,10 @@ _mesa_glthread_CallLists(struct gl_context *ctx, GLsizei n, GLenum type,
 }
 
 static inline void
-_mesa_glthread_NewList(struct gl_context *ctx, GLuint list, GLuint mode)
+_mesa_glthread_NewList(struct gl_context *ctx, GLuint list, GLenum mode)
 {
    if (!ctx->GLThread.ListMode)
-      ctx->GLThread.ListMode = mode;
+      ctx->GLThread.ListMode = MIN2(mode, 0xffff);
 }
 
 static inline void
@@ -757,6 +797,37 @@ _mesa_glthread_DeleteLists(struct gl_context *ctx, GLsizei range)
    /* Track the last display list change. */
    p_atomic_set(&ctx->GLThread.LastDListChangeBatchIndex, ctx->GLThread.next);
    _mesa_glthread_flush_batch(ctx);
+}
+
+static inline void
+_mesa_glthread_BindFramebuffer(struct gl_context *ctx, GLenum target, GLuint id)
+{
+   switch (target) {
+   case GL_FRAMEBUFFER:
+      ctx->GLThread.CurrentDrawFramebuffer = id;
+      ctx->GLThread.CurrentReadFramebuffer = id;
+      break;
+   case GL_DRAW_FRAMEBUFFER:
+      ctx->GLThread.CurrentDrawFramebuffer = id;
+      break;
+   case GL_READ_FRAMEBUFFER:
+      ctx->GLThread.CurrentReadFramebuffer = id;
+      break;
+   }
+}
+
+static inline void
+_mesa_glthread_DeleteFramebuffers(struct gl_context *ctx, GLsizei n,
+                                  const GLuint *ids)
+{
+   if (ctx->GLThread.CurrentDrawFramebuffer) {
+      for (int i = 0; i < n; i++) {
+         if (ctx->GLThread.CurrentDrawFramebuffer == ids[i])
+            ctx->GLThread.CurrentDrawFramebuffer = 0;
+         if (ctx->GLThread.CurrentReadFramebuffer == ids[i])
+            ctx->GLThread.CurrentReadFramebuffer = 0;
+      }
+   }
 }
 
 struct marshal_cmd_CallList

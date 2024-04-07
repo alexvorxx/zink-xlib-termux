@@ -214,7 +214,7 @@ union packed_var {
       unsigned data_encoding:2;
       unsigned type_same_as_last:1;
       unsigned interface_type_same_as_last:1;
-      unsigned _pad:1;
+      unsigned ray_query:1;
       unsigned num_members:16;
    } u;
 };
@@ -284,6 +284,8 @@ write_variable(write_ctx *ctx, const nir_variable *var)
       else
          flags.u.data_encoding = var_encode_full;
    }
+
+   flags.u.ray_query = var->data.ray_query;
 
    blob_write_uint32(ctx->blob, flags.u32);
 
@@ -385,6 +387,8 @@ read_variable(read_ctx *ctx)
 
       ctx->last_var_data = var->data;
    }
+
+   var->data.ray_query = flags.u.ray_query;
 
    var->num_state_slots = flags.u.num_state_slots;
    if (var->num_state_slots != 0) {
@@ -541,7 +545,7 @@ write_src(write_ctx *ctx, const nir_src *src)
 }
 
 static union packed_src
-read_src(read_ctx *ctx, nir_src *src, void *mem_ctx)
+read_src(read_ctx *ctx, nir_src *src)
 {
    STATIC_ASSERT(sizeof(union packed_src) == 4);
    union packed_src header;
@@ -554,8 +558,8 @@ read_src(read_ctx *ctx, nir_src *src, void *mem_ctx)
       src->reg.reg = read_lookup_object(ctx, header.any.object_idx);
       src->reg.base_offset = blob_read_uint32(ctx->blob);
       if (header.any.is_indirect) {
-         src->reg.indirect = malloc(sizeof(nir_src));
-         read_src(ctx, src->reg.indirect, mem_ctx);
+         src->reg.indirect = gc_alloc(ctx->nir->gctx, nir_src, 1);
+         read_src(ctx, src->reg.indirect);
       } else {
          src->reg.indirect = NULL;
       }
@@ -665,9 +669,9 @@ union packed_instr {
    struct {
       unsigned instr_type:4;
       unsigned num_srcs:4;
-      unsigned op:4;
+      unsigned op:5;
+      unsigned _pad:11;
       unsigned dest:8;
-      unsigned _pad:12;
    } tex;
    struct {
       unsigned instr_type:4;
@@ -775,8 +779,8 @@ read_dest(read_ctx *ctx, nir_dest *dst, nir_instr *instr,
       dst->reg.reg = read_object(ctx);
       dst->reg.base_offset = blob_read_uint32(ctx->blob);
       if (dest.reg.is_indirect) {
-         dst->reg.indirect = malloc(sizeof(nir_src));
-         read_src(ctx, dst->reg.indirect, instr);
+         dst->reg.indirect = gc_alloc(ctx->nir->gctx, nir_src, 1);
+         read_src(ctx, dst->reg.indirect);
       }
    }
 }
@@ -932,7 +936,7 @@ read_alu(read_ctx *ctx, union packed_instr header)
       }
    } else {
       for (unsigned i = 0; i < num_srcs; i++) {
-         union packed_src src = read_src(ctx, &alu->src[i].src, &alu->instr);
+         union packed_src src = read_src(ctx, &alu->src[i].src);
          unsigned src_channels = nir_ssa_alu_instr_src_components(alu, i);
          unsigned src_components = nir_src_num_components(alu->src[i].src);
          bool packed = src_components <= 4 && src_channels <= 4;
@@ -1111,7 +1115,7 @@ read_deref(read_ctx *ctx, union packed_instr header)
       break;
 
    case nir_deref_type_struct:
-      read_src(ctx, &deref->parent, &deref->instr);
+      read_src(ctx, &deref->parent);
       parent = nir_src_as_deref(deref->parent);
       deref->strct.index = blob_read_uint32(ctx->blob);
       deref->type = glsl_get_struct_field(parent->type, deref->strct.index);
@@ -1125,8 +1129,8 @@ read_deref(read_ctx *ctx, union packed_instr header)
          deref->arr.index.is_ssa = true;
          deref->arr.index.ssa = read_lookup_object(ctx, blob_read_uint16(ctx->blob));
       } else {
-         read_src(ctx, &deref->parent, &deref->instr);
-         read_src(ctx, &deref->arr.index, &deref->instr);
+         read_src(ctx, &deref->parent);
+         read_src(ctx, &deref->arr.index);
       }
 
       deref->arr.in_bounds = header.deref.in_bounds;
@@ -1139,7 +1143,7 @@ read_deref(read_ctx *ctx, union packed_instr header)
       break;
 
    case nir_deref_type_cast:
-      read_src(ctx, &deref->parent, &deref->instr);
+      read_src(ctx, &deref->parent);
       deref->cast.ptr_stride = blob_read_uint32(ctx->blob);
       deref->cast.align_mul = blob_read_uint32(ctx->blob);
       deref->cast.align_offset = blob_read_uint32(ctx->blob);
@@ -1152,7 +1156,7 @@ read_deref(read_ctx *ctx, union packed_instr header)
       break;
 
    case nir_deref_type_array_wildcard:
-      read_src(ctx, &deref->parent, &deref->instr);
+      read_src(ctx, &deref->parent);
       parent = nir_src_as_deref(deref->parent);
       deref->type = glsl_get_array_element(parent->type);
       break;
@@ -1252,7 +1256,7 @@ read_intrinsic(read_ctx *ctx, union packed_instr header)
       read_dest(ctx, &intrin->dest, &intrin->instr, header);
 
    for (unsigned i = 0; i < num_srcs; i++)
-      read_src(ctx, &intrin->src[i], &intrin->instr);
+      read_src(ctx, &intrin->src[i]);
 
    /* Vectorized instrinsics have num_components same as dst or src that has
     * 0 components in the info. Find it.
@@ -1319,7 +1323,7 @@ write_load_const(write_ctx *ctx, const nir_load_const_instr *lc)
             /* packed_value contains high 19 bits, low bits are 0 */
             header.load_const.packing = load_const_scalar_hi_19bits;
             header.load_const.packed_value = lc->value[0].u64 >> 45;
-         } else if (((lc->value[0].i64 << 45) >> 45) == lc->value[0].i64) {
+         } else if (util_mask_sign_extend(lc->value[0].i64, 19) == lc->value[0].i64) {
             /* packed_value contains low 19 bits, high bits are sign-extended */
             header.load_const.packing = load_const_scalar_lo_19bits_sext;
             header.load_const.packed_value = lc->value[0].u64;
@@ -1330,7 +1334,7 @@ write_load_const(write_ctx *ctx, const nir_load_const_instr *lc)
          if ((lc->value[0].u32 & 0x1fff) == 0) {
             header.load_const.packing = load_const_scalar_hi_19bits;
             header.load_const.packed_value = lc->value[0].u32 >> 13;
-         } else if (((lc->value[0].i32 << 13) >> 13) == lc->value[0].i32) {
+         } else if (util_mask_sign_extend(lc->value[0].i32, 19) == lc->value[0].i32) {
             header.load_const.packing = load_const_scalar_lo_19bits_sext;
             header.load_const.packed_value = lc->value[0].u32;
          }
@@ -1389,6 +1393,7 @@ read_load_const(read_ctx *ctx, union packed_instr header)
    nir_load_const_instr *lc =
       nir_load_const_instr_create(ctx->nir, header.load_const.last_component + 1,
                                   decode_bit_size_3bits(header.load_const.bit_size));
+   lc->def.divergent = false;
 
    switch (header.load_const.packing) {
    case load_const_scalar_hi_19bits:
@@ -1478,6 +1483,8 @@ read_ssa_undef(read_ctx *ctx, union packed_instr header)
       nir_ssa_undef_instr_create(ctx->nir, header.undef.last_component + 1,
                                  decode_bit_size_3bits(header.undef.bit_size));
 
+   undef->def.divergent = false;
+
    read_add_object(ctx, &undef->def);
    return undef;
 }
@@ -1504,7 +1511,7 @@ static void
 write_tex(write_ctx *ctx, const nir_tex_instr *tex)
 {
    assert(tex->num_srcs < 16);
-   assert(tex->op < 16);
+   assert(tex->op < 32);
 
    union packed_instr header;
    header.u32 = 0;
@@ -1572,7 +1579,7 @@ read_tex(read_ctx *ctx, union packed_instr header)
    tex->array_is_lowered_cube = packed.u.array_is_lowered_cube;
 
    for (unsigned i = 0; i < tex->num_srcs; i++) {
-      union packed_src src = read_src(ctx, &tex->src[i].src, &tex->instr);
+      union packed_src src = read_src(ctx, &tex->src[i].src);
       tex->src[i].src_type = src.tex.src_type;
    }
 
@@ -1718,7 +1725,7 @@ read_call(read_ctx *ctx)
    nir_call_instr *call = nir_call_instr_create(ctx->nir, callee);
 
    for (unsigned i = 0; i < call->num_params; i++)
-      read_src(ctx, &call->params[i], call);
+      read_src(ctx, &call->params[i]);
 
    return call;
 }
@@ -1871,7 +1878,7 @@ read_if(read_ctx *ctx, struct exec_list *cf_list)
 {
    nir_if *nif = nir_if_create(ctx->nir);
 
-   read_src(ctx, &nif->condition, nif);
+   read_src(ctx, &nif->condition);
    nif->control = blob_read_uint8(ctx->blob);
 
    nir_cf_node_insert_end(cf_list, &nif->cf_node);
@@ -2138,6 +2145,21 @@ nir_serialize(struct blob *blob, const nir_shader *nir, bool strip)
 
    write_xfb_info(&ctx, nir->xfb_info);
 
+   if (nir->info.stage == MESA_SHADER_KERNEL) {
+      blob_write_uint32(blob, nir->printf_info_count);
+      for (int i = 0; i < nir->printf_info_count; i++) {
+         u_printf_info *info = &nir->printf_info[i];
+         blob_write_uint32(blob, info->num_args);
+         blob_write_uint32(blob, info->string_size);
+         blob_write_bytes(blob, info->arg_sizes,
+                          info->num_args * sizeof(*info->arg_sizes));
+         /* we can't use blob_write_string, because it contains multiple NULL
+          * terminated strings */
+         blob_write_bytes(blob, info->strings,
+                          info->string_size * sizeof(*info->strings));
+      }
+   }
+
    blob_overwrite_uint32(blob, idx_size_offset, ctx.next_idx);
 
    _mesa_hash_table_destroy(ctx.remap_table, NULL);
@@ -2194,6 +2216,24 @@ nir_deserialize(void *mem_ctx,
    }
 
    ctx.nir->xfb_info = read_xfb_info(&ctx);
+
+   if (ctx.nir->info.stage == MESA_SHADER_KERNEL) {
+      ctx.nir->printf_info_count = blob_read_uint32(blob);
+      ctx.nir->printf_info =
+         ralloc_array(ctx.nir, u_printf_info, ctx.nir->printf_info_count);
+
+      for (int i = 0; i < ctx.nir->printf_info_count; i++) {
+         u_printf_info *info = &ctx.nir->printf_info[i];
+         info->num_args = blob_read_uint32(blob);
+         info->string_size = blob_read_uint32(blob);
+         info->arg_sizes = ralloc_array(ctx.nir, unsigned, info->num_args);
+         blob_copy_bytes(blob, info->arg_sizes,
+                         info->num_args * sizeof(*info->arg_sizes));
+         info->strings = ralloc_array(ctx.nir, char, info->string_size);
+         blob_copy_bytes(blob, info->strings,
+                         info->string_size * sizeof(*info->strings));
+      }
+   }
 
    free(ctx.idx_table);
 

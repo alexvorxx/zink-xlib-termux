@@ -85,15 +85,26 @@ aco_ptr<Instruction> create_s_mov(Definition dst, Operand src);
 
 enum sendmsg {
    sendmsg_none = 0,
-   _sendmsg_gs = 2,
-   _sendmsg_gs_done = 3,
-   sendmsg_save_wave = 4,
-   sendmsg_stall_wave_gen = 5,
-   sendmsg_halt_waves = 6,
-   sendmsg_ordered_ps_done = 7,
-   sendmsg_early_prim_dealloc = 8,
-   sendmsg_gs_alloc_req = 9,
-   sendmsg_id_mask = 0xf,
+   _sendmsg_gs = 2, /* gfx6 to gfx10.3 */
+   _sendmsg_gs_done = 3, /* gfx6 to gfx10.3 */
+   sendmsg_hs_tessfactor = 2, /* gfx11+ */
+   sendmsg_dealloc_vgprs = 3, /* gfx11+ */
+   sendmsg_save_wave = 4, /* gfx8 to gfx10.3 */
+   sendmsg_stall_wave_gen = 5, /* gfx9+ */
+   sendmsg_halt_waves = 6, /* gfx9+ */
+   sendmsg_ordered_ps_done = 7, /* gfx9+ */
+   sendmsg_early_prim_dealloc = 8, /* gfx9 to gfx10 */
+   sendmsg_gs_alloc_req = 9, /* gfx9+ */
+   sendmsg_get_doorbell = 10, /* gfx9 to gfx10.3 */
+   sendmsg_get_ddid = 11, /* gfx10 to gfx10.3 */
+   sendmsg_rtn_get_doorbell = 128, /* gfx11+ */
+   sendmsg_rtn_get_ddid = 129, /* gfx11+ */
+   sendmsg_rtn_get_tma = 130, /* gfx11+ */
+   sendmsg_rtn_get_realtime = 131, /* gfx11+ */
+   sendmsg_rtn_save_wave = 132, /* gfx11+ */
+   sendmsg_rtn_get_tba = 133, /* gfx11+ */
+   sendmsg_id_mask_gfx6 = 0xf,
+   sendmsg_id_mask_gfx11 = 0xff,
 };
 
 inline sendmsg
@@ -515,10 +526,11 @@ formats = [("pseudo", [Format.PSEUDO], 'Pseudo_instruction', list(itertools.prod
            ("sopc", [Format.SOPC], 'SOPC_instruction', [(1, 2)]),
            ("smem", [Format.SMEM], 'SMEM_instruction', [(0, 4), (0, 3), (1, 0), (1, 3), (1, 2), (0, 0)]),
            ("ds", [Format.DS], 'DS_instruction', [(1, 1), (1, 2), (0, 3), (0, 4)]),
+           ("ldsdir", [Format.LDSDIR], 'LDSDIR_instruction', [(1, 1)]),
            ("mubuf", [Format.MUBUF], 'MUBUF_instruction', [(0, 4), (1, 3)]),
            ("mtbuf", [Format.MTBUF], 'MTBUF_instruction', [(0, 4), (1, 3)]),
            ("mimg", [Format.MIMG], 'MIMG_instruction', itertools.product([0, 1], [3, 4, 5, 6, 7])),
-           ("exp", [Format.EXP], 'Export_instruction', [(0, 4)]),
+           ("exp", [Format.EXP], 'Export_instruction', [(0, 4), (0, 5)]),
            ("branch", [Format.PSEUDO_BRANCH], 'Pseudo_branch_instruction', itertools.product([1], [0, 1])),
            ("barrier", [Format.PSEUDO_BARRIER], 'Pseudo_barrier_instruction', [(0, 0)]),
            ("reduction", [Format.PSEUDO_REDUCTION], 'Pseudo_reduction_instruction', [(3, 2)]),
@@ -530,7 +542,8 @@ formats = [("pseudo", [Format.PSEUDO], 'Pseudo_instruction', list(itertools.prod
            ("vopc_sdwa", [Format.VOPC, Format.SDWA], 'SDWA_instruction', itertools.product([1, 2], [2])),
            ("vop3", [Format.VOP3], 'VOP3_instruction', [(1, 3), (1, 2), (1, 1), (2, 2)]),
            ("vop3p", [Format.VOP3P], 'VOP3P_instruction', [(1, 2), (1, 3)]),
-           ("vintrp", [Format.VINTRP], 'Interp_instruction', [(1, 2), (1, 3)]),
+           ("vinterp_inreg", [Format.VINTERP_INREG], 'VINTERP_inreg_instruction', [(1, 3)]),
+           ("vintrp", [Format.VINTRP], 'VINTRP_instruction', [(1, 2), (1, 3)]),
            ("vop1_dpp", [Format.VOP1, Format.DPP16], 'DPP16_instruction', [(1, 1)]),
            ("vop2_dpp", [Format.VOP2, Format.DPP16], 'DPP16_instruction', itertools.product([1, 2], [2, 3])),
            ("vopc_dpp", [Format.VOPC, Format.DPP16], 'DPP16_instruction', itertools.product([1, 2], [2])),
@@ -541,7 +554,8 @@ formats = [("pseudo", [Format.PSEUDO], 'Pseudo_instruction', list(itertools.prod
            ("vop2_e64", [Format.VOP2, Format.VOP3], 'VOP3_instruction', itertools.product([1, 2], [2, 3])),
            ("vopc_e64", [Format.VOPC, Format.VOP3], 'VOP3_instruction', itertools.product([1, 2], [2])),
            ("flat", [Format.FLAT], 'FLAT_instruction', [(0, 3), (1, 2)]),
-           ("global", [Format.GLOBAL], 'FLAT_instruction', [(0, 3), (1, 2)])]
+           ("global", [Format.GLOBAL], 'FLAT_instruction', [(0, 3), (1, 2)]),
+           ("scratch", [Format.SCRATCH], 'FLAT_instruction', [(0, 3), (1, 2)])]
 formats = [(f if len(f) == 5 else f + ('',)) for f in formats]
 %>\\
 % for name, formats, struct, shapes, extra_field_setup in formats:

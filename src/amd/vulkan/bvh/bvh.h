@@ -25,7 +25,8 @@
 #define BVH_BVH_H
 
 #define radv_bvh_node_triangle 0
-#define radv_bvh_node_internal 5
+#define radv_bvh_node_box16    4
+#define radv_bvh_node_box32    5
 #define radv_bvh_node_instance 6
 #define radv_bvh_node_aabb 7
 
@@ -39,6 +40,8 @@
 #else
 #include <vulkan/vulkan.h>
 typedef struct radv_ir_node radv_ir_node;
+
+typedef uint16_t float16_t;
 
 typedef struct {
    float values[3][4];
@@ -154,7 +157,7 @@ struct radv_bvh_instance_node {
 
 struct radv_bvh_box16_node {
    uint32_t children[4];
-   uint32_t coords[4][3];
+   float16_t coords[4][2][3];
 };
 
 struct radv_bvh_box32_node {
@@ -163,8 +166,7 @@ struct radv_bvh_box32_node {
    uint32_t reserved[4];
 };
 
-/* a box32 node */
-#define RADV_BVH_ROOT_NODE radv_bvh_node_internal
+#define RADV_BVH_ROOT_NODE radv_bvh_node_box32
 #define RADV_BVH_INVALID_NODE 0xffffffffu
 
 #endif

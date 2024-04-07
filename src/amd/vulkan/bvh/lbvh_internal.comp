@@ -29,6 +29,7 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_buffer_reference2 : require
@@ -86,7 +87,7 @@ main(void)
    DEREF(dst_node).base.aabb[1][0] = total_bounds.max.x;
    DEREF(dst_node).base.aabb[1][1] = total_bounds.max.y;
    DEREF(dst_node).base.aabb[1][2] = total_bounds.max.z;
-   DEREF(dst_node).in_final_tree = FINAL_TREE_UNKNOWN;
+   DEREF(dst_node).in_final_tree = is_active ? FINAL_TREE_UNKNOWN : FINAL_TREE_NOT_PRESENT;
 
    /* An internal node is considered inactive if it has no children. Set the resulting scratch node
     * id to RADV_BVH_INVALID_NODE for more internal nodes to become inactive.

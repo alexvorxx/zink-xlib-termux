@@ -425,17 +425,14 @@ zink_descriptor_program_init(struct zink_context *ctx, struct zink_program *pg)
 
       gl_shader_stage stage = shader->nir->info.stage;
       VkShaderStageFlagBits stage_flags = mesa_to_vk_shader_stage(stage);
+      /* uniform ubos handled in push */
+      if (shader->has_uniforms) {
+         pg->dd.push_usage |= BITFIELD64_BIT(stage);
+         push_count++;
+      }
       for (int j = 0; j < ZINK_DESCRIPTOR_BASE_TYPES; j++) {
          unsigned desc_type = screen->desc_set_id[j] - 1;
          for (int k = 0; k < shader->num_bindings[j]; k++) {
-            /* dynamic ubos handled in push */
-            if (shader->bindings[j][k].type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) {
-               pg->dd.push_usage |= BITFIELD64_BIT(stage);
-
-               push_count++;
-               continue;
-            }
-
             assert(num_bindings[desc_type] < ARRAY_SIZE(bindings[desc_type]));
             VkDescriptorSetLayoutBinding *binding = &bindings[desc_type][num_bindings[desc_type]];
             binding->binding = shader->bindings[j][k].binding;
@@ -915,7 +912,7 @@ zink_descriptors_update(struct zink_context *ctx, bool is_compute)
    if (batch_changed) {
       /* update all sets and bind null sets */
       ctx->dd.state_changed[is_compute] = pg->dd.binding_usage & BITFIELD_MASK(ZINK_DESCRIPTOR_TYPE_UNIFORMS);
-      ctx->dd.push_state_changed[is_compute] = !!pg->dd.push_usage;
+      ctx->dd.push_state_changed[is_compute] = !!pg->dd.push_usage || ctx->dd.has_fbfetch != bs->dd.has_fbfetch;
    }
 
    if (pg != bs->dd.pg[is_compute]) {
@@ -935,15 +932,6 @@ zink_descriptors_update(struct zink_context *ctx, bool is_compute)
    }
 
    uint8_t changed_sets = pg->dd.binding_usage & ctx->dd.state_changed[is_compute];
-   bool need_push = pg->dd.push_usage &&
-                    (ctx->dd.push_state_changed[is_compute] || batch_changed);
-   VkDescriptorSet push_set = VK_NULL_HANDLE;
-   if (need_push && !have_KHR_push_descriptor) {
-      struct zink_descriptor_pool *pool = check_push_pool_alloc(ctx, &bs->dd.push_pool[pg->is_compute], bs, pg->is_compute);
-      push_set = get_descriptor_set(pool);
-      if (!push_set)
-         mesa_loge("ZINK: failed to get push descriptor set! prepare to crash!");
-   }
    /*
     * when binding a pipeline, the pipeline can correctly access any previously bound
     * descriptor sets which were bound with compatible pipeline layouts
@@ -957,13 +945,17 @@ zink_descriptors_update(struct zink_context *ctx, bool is_compute)
                                                         pg->layout, 0, ctx);
       } else {
          if (ctx->dd.push_state_changed[is_compute]) {
+            struct zink_descriptor_pool *pool = check_push_pool_alloc(ctx, &bs->dd.push_pool[pg->is_compute], bs, pg->is_compute);
+            VkDescriptorSet push_set = get_descriptor_set(pool);
+            if (!push_set)
+               mesa_loge("ZINK: failed to get push descriptor set! prepare to crash!");
             VKCTX(UpdateDescriptorSetWithTemplate)(screen->dev, push_set, pg->dd.templates[0], ctx);
             bs->dd.sets[is_compute][0] = push_set;
          }
-         assert(push_set || bs->dd.sets[is_compute][0]);
+         assert(bs->dd.sets[is_compute][0]);
          VKCTX(CmdBindDescriptorSets)(bs->cmdbuf,
                                  is_compute ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                 pg->layout, 0, 1, push_set ? &push_set : &bs->dd.sets[is_compute][0],
+                                 pg->layout, 0, 1, &bs->dd.sets[is_compute][0],
                                  0, NULL);
       }
    }

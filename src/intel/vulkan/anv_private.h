@@ -2951,21 +2951,14 @@ struct anv_graphics_pipeline {
    /* These fields are required with dynamic primitive topology,
     * rasterization_samples used only with gen < 8.
     */
-   VkLineRasterizationModeEXT                   line_mode;
-   VkPolygonMode                                polygon_mode;
    uint32_t                                     patch_control_points;
    uint32_t                                     rasterization_samples;
-
-   VkColorComponentFlags                        color_comp_writes[MAX_RTS];
 
    uint32_t                                     view_mask;
    uint32_t                                     instance_multiplier;
 
-   bool                                         depth_clamp_enable;
-   bool                                         depth_clip_enable;
    bool                                         kill_pixel;
    bool                                         force_fragment_thread_dispatch;
-   bool                                         negative_one_to_one;
 
    uint32_t                                     vb_used;
    struct anv_pipeline_vertex_binding {
@@ -2987,7 +2980,6 @@ struct anv_graphics_pipeline {
       uint32_t                                  sf[4];
       uint32_t                                  raster[5];
       uint32_t                                  wm[2];
-      uint32_t                                  ps_blend[2];
       uint32_t                                  blend_state[1 + MAX_RTS * 2];
       uint32_t                                  streamout_state[5];
    } gfx8;
@@ -3077,7 +3069,7 @@ anv_cmd_buffer_all_color_write_masked(const struct anv_cmd_buffer *cmd_buffer)
 
    /* Or all write masks are empty */
    for (uint32_t i = 0; i < state->color_att_count; i++) {
-      if (state->pipeline->color_comp_writes[i] != 0)
+      if (dyn->cb.attachments[i].write_mask != 0)
          return false;
    }
 
@@ -3852,6 +3844,55 @@ anv_rasterization_aa_mode(VkPolygonMode raster_mode,
        line_mode == VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_EXT)
       return true;
    return false;
+}
+
+static inline VkLineRasterizationModeEXT
+anv_line_rasterization_mode(VkLineRasterizationModeEXT line_mode,
+                            unsigned rasterization_samples)
+{
+   if (line_mode == VK_LINE_RASTERIZATION_MODE_DEFAULT_EXT) {
+      if (rasterization_samples > 1) {
+         return VK_LINE_RASTERIZATION_MODE_RECTANGULAR_EXT;
+      } else {
+         return VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT;
+      }
+   }
+   return line_mode;
+}
+
+/* Fill provoking vertex mode to packet. */
+#define ANV_SETUP_PROVOKING_VERTEX(cmd, mode)         \
+   switch (dyn->rs.provoking_vertex) {                \
+   case VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT:    \
+      cmd.TriangleStripListProvokingVertexSelect = 0; \
+      cmd.LineStripListProvokingVertexSelect = 0;     \
+      cmd.TriangleFanProvokingVertexSelect = 1;       \
+      break;                                          \
+   case VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT:     \
+      cmd.TriangleStripListProvokingVertexSelect = 2; \
+      cmd.LineStripListProvokingVertexSelect = 1;     \
+      cmd.TriangleFanProvokingVertexSelect = 2;       \
+      break;                                          \
+   default:                                           \
+      unreachable("Invalid provoking vertex mode");   \
+   }                                                  \
+
+static inline bool
+anv_is_dual_src_blend_factor(VkBlendFactor factor)
+{
+   return factor == VK_BLEND_FACTOR_SRC1_COLOR ||
+          factor == VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR ||
+          factor == VK_BLEND_FACTOR_SRC1_ALPHA ||
+          factor == VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA;
+}
+
+static inline bool
+anv_is_dual_src_blend_equation(const struct vk_color_blend_attachment_state *cb)
+{
+   return anv_is_dual_src_blend_factor(cb->src_color_blend_factor) &&
+          anv_is_dual_src_blend_factor(cb->dst_color_blend_factor) &&
+          anv_is_dual_src_blend_factor(cb->src_alpha_blend_factor) &&
+          anv_is_dual_src_blend_factor(cb->dst_alpha_blend_factor);
 }
 
 VkFormatFeatureFlags2

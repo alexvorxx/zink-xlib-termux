@@ -30,15 +30,6 @@ extern "C" {
 #endif
 #include "util/u_prim.h"
 
-struct gfx_pipeline_cache_entry {
-   struct zink_gfx_pipeline_state state;
-   VkPipeline pipeline;
-   /* GPL only */
-   struct zink_gfx_input_key *ikey;
-   struct zink_gfx_library_key *gkey;
-   struct zink_gfx_output_key *okey;
-};
-
 struct compute_pipeline_cache_entry {
    struct zink_compute_pipeline_state state;
    VkPipeline pipeline;
@@ -135,6 +126,8 @@ uint32_t hash_gfx_output_ds3(const void *key);
 uint32_t hash_gfx_input(const void *key);
 uint32_t hash_gfx_input_dynamic(const void *key);
 
+void
+zink_gfx_program_compile_queue(struct zink_context *ctx, struct zink_gfx_pipeline_cache_entry *pc_entry);
 
 static inline unsigned
 get_primtype_idx(enum pipe_prim_type mode)

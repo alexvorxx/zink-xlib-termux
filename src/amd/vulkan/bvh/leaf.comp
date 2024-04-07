@@ -188,6 +188,8 @@ build_instance(inout AABB bounds, VOID_REF src_ptr, VOID_REF dst_ptr, uint32_t g
    REF(radv_ir_instance_node) node = REF(radv_ir_instance_node)(dst_ptr);
 
    AccelerationStructureInstance instance = DEREF(REF(AccelerationStructureInstance)(src_ptr));
+   DEREF(node).base_ptr = instance.accelerationStructureReference;
+
    if (instance.accelerationStructureReference == 0)
       return false;
 
@@ -195,7 +197,6 @@ build_instance(inout AABB bounds, VOID_REF src_ptr, VOID_REF dst_ptr, uint32_t g
 
    radv_accel_struct_header instance_header =
       DEREF(REF(radv_accel_struct_header)(instance.accelerationStructureReference));
-   DEREF(node).base_ptr = instance.accelerationStructureReference;
 
    bounds = calculate_instance_node_bounds(DEREF(node).base_ptr, DEREF(node).otw_matrix);
 
@@ -307,7 +308,7 @@ main(void)
       is_active = build_instance(bounds, src_ptr, dst_ptr, global_id);
    }
 
-   DEREF(id_ptr).id = is_active ? pack_ir_node_id(dst_offset, node_type) : NULL_NODE_ID;
+   DEREF(id_ptr).id = is_active ? pack_ir_node_id(dst_offset, node_type) : RADV_BVH_INVALID_NODE;
 
    min_float_emulated(INDEX(int32_t, args.bounds, 0), bounds.min.x);
    min_float_emulated(INDEX(int32_t, args.bounds, 1), bounds.min.y);

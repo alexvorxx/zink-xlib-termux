@@ -83,6 +83,7 @@ zink_debug_options[] = {
    { "compact", ZINK_DEBUG_COMPACT, "Use only 4 descriptor sets" },
    { "noreorder", ZINK_DEBUG_NOREORDER, "Do not reorder command streams" },
    { "gpl", ZINK_DEBUG_GPL, "Force using Graphics Pipeline Library for all shaders" },
+   { "shaderdb", ZINK_DEBUG_SHADERDB, "Do stuff to make shader-db work" },
    DEBUG_NAMED_VALUE_END
 };
 
@@ -195,11 +196,18 @@ zink_set_max_shader_compiler_threads(struct pipe_screen *pscreen, unsigned max_t
 static bool
 zink_is_parallel_shader_compilation_finished(struct pipe_screen *screen, void *shader, enum pipe_shader_type shader_type)
 {
-   /* not supported yet */
-   if (shader_type != MESA_SHADER_COMPUTE)
-      return true;
-   struct zink_program *pg = shader;
-   return !pg->can_precompile || util_queue_fence_is_signalled(&pg->cache_fence);
+   if (shader_type == MESA_SHADER_COMPUTE) {
+      struct zink_program *pg = shader;
+      return !pg->can_precompile || util_queue_fence_is_signalled(&pg->cache_fence);
+   }
+
+   struct zink_shader *zs = shader;
+   bool finished = true;
+   set_foreach(zs->programs, entry) {
+      struct zink_gfx_program *prog = (void*)entry->key;
+      finished &= util_queue_fence_is_signalled(&prog->base.cache_fence);
+   }
+   return finished;
 }
 
 static VkDeviceSize
@@ -217,6 +225,8 @@ get_video_mem(struct zink_screen *screen)
 static bool
 disk_cache_init(struct zink_screen *screen)
 {
+   if (zink_debug & ZINK_DEBUG_SHADERDB)
+      return true;
 #ifdef ENABLE_SHADER_CACHE
    static char buf[1000];
    snprintf(buf, sizeof(buf), "zink_%x04x", screen->info.props.vendorID);

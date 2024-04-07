@@ -208,7 +208,7 @@ zink_get_gfx_pipeline(struct zink_context *ctx,
    const int rp_idx = state->render_pass ? 1 : 0;
    if (DYNAMIC_STATE == ZINK_DYNAMIC_VERTEX_INPUT || DYNAMIC_STATE == ZINK_DYNAMIC_VERTEX_INPUT2) {
       if (prog->last_finalized_hash[rp_idx][idx] == state->final_hash && !prog->inline_variants && likely(prog->last_pipeline[rp_idx][idx])) {
-         state->pipeline = prog->last_pipeline[rp_idx][idx];
+         state->pipeline = prog->last_pipeline[rp_idx][idx]->pipeline;
          return state->pipeline;
       }
    }
@@ -217,10 +217,12 @@ zink_get_gfx_pipeline(struct zink_context *ctx,
    if (!entry) {
       util_queue_fence_wait(&prog->base.cache_fence);
       VkPipeline pipeline = VK_NULL_HANDLE;
-      struct gfx_pipeline_cache_entry *pc_entry = CALLOC_STRUCT(gfx_pipeline_cache_entry);
+      struct zink_gfx_pipeline_cache_entry *pc_entry = CALLOC_STRUCT(zink_gfx_pipeline_cache_entry);
       if (!pc_entry)
          return VK_NULL_HANDLE;
       memcpy(&pc_entry->state, state, sizeof(*state));
+      pc_entry->prog = prog;
+      util_queue_fence_init(&pc_entry->fence);
       entry = _mesa_hash_table_insert_pre_hashed(&prog->pipelines[rp_idx][idx], state->final_hash, pc_entry, pc_entry);
       if (HAVE_LIB &&
           /* TODO: if there's ever a dynamic render extension with input attachments */
@@ -247,20 +249,23 @@ zink_get_gfx_pipeline(struct zink_context *ctx,
          pc_entry->okey = okey;
          pipeline = zink_create_gfx_pipeline_combined(screen, prog, ikey->pipeline, gkey->pipeline, okey->pipeline, true);
       } else {
-         pipeline = zink_create_gfx_pipeline(screen, prog, state, state->element_state->binding_map, vkmode);
+         /* optimize by default only when expecting precompiles in order to reduce stuttering */
+         pipeline = zink_create_gfx_pipeline(screen, prog, state, state->element_state->binding_map, vkmode, !HAVE_LIB);
       }
       if (pipeline == VK_NULL_HANDLE)
          return VK_NULL_HANDLE;
 
       zink_screen_update_pipeline_cache(screen, &prog->base, false);
       pc_entry->pipeline = pipeline;
+      if (HAVE_LIB)
+         zink_gfx_program_compile_queue(ctx, pc_entry);
    }
 
-   struct gfx_pipeline_cache_entry *cache_entry = (struct gfx_pipeline_cache_entry *)entry->data;
+   struct zink_gfx_pipeline_cache_entry *cache_entry = (struct zink_gfx_pipeline_cache_entry *)entry->data;
    state->pipeline = cache_entry->pipeline;
    if (DYNAMIC_STATE >= ZINK_DYNAMIC_VERTEX_INPUT) {
       prog->last_finalized_hash[rp_idx][idx] = state->final_hash;
-      prog->last_pipeline[rp_idx][idx] = state->pipeline;
+      prog->last_pipeline[rp_idx][idx] = cache_entry;
    }
    return state->pipeline;
 }

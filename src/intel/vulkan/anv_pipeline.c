@@ -137,7 +137,7 @@ anv_nir_lower_mesh_ext_instr(nir_builder *b, nir_instr *instr, void *data)
       assert(intrin->src[1].is_ssa);
       uint8_t components = intrin->src[1].ssa->num_components;
 
-      unsigned vertices_per_primitive =
+      ASSERTED unsigned vertices_per_primitive =
             num_mesh_vertices_per_primitive(b->shader->info.mesh.primitive_type);
       assert(vertices_per_primitive == components);
       assert(nir_intrinsic_write_mask(intrin) == (1u << components) - 1);
@@ -1975,7 +1975,7 @@ anv_pipeline_compile_cs(struct anv_compute_pipeline *pipeline,
                         struct vk_pipeline_cache *cache,
                         const VkComputePipelineCreateInfo *info)
 {
-   const VkPipelineShaderStageCreateInfo *sinfo = &info->stage;
+   ASSERTED const VkPipelineShaderStageCreateInfo *sinfo = &info->stage;
    assert(sinfo->stage == VK_SHADER_STAGE_COMPUTE_BIT);
 
    VkPipelineCreationFeedback pipeline_feedback = {
@@ -2252,9 +2252,6 @@ anv_graphics_pipeline_init(struct anv_graphics_pipeline *pipeline,
    pipeline->dynamic_state.ms.sample_locations = &pipeline->sample_locations;
    vk_dynamic_graphics_state_fill(&pipeline->dynamic_state, state);
 
-   pipeline->depth_clamp_enable = state->rs->depth_clamp_enable;
-   pipeline->depth_clip_enable =
-      vk_rasterization_state_depth_clip_enable(state->rs);
    pipeline->view_mask = state->rp->view_mask;
 
    result = anv_graphics_pipeline_compile(pipeline, cache, pCreateInfo, state);
@@ -2297,33 +2294,13 @@ anv_graphics_pipeline_init(struct anv_graphics_pipeline *pipeline,
       /* TODO(mesh): Mesh vs. Multiview with Instancing. */
    }
 
-   pipeline->negative_one_to_one =
-      state->vp != NULL && state->vp->depth_clip_negative_one_to_one;
-
-   /* Store line mode, polygon mode and rasterization samples, these are used
+   /* Store line mode and rasterization samples, these are used
     * for dynamic primitive topology.
     */
-   pipeline->polygon_mode = state->rs->polygon_mode;
    pipeline->rasterization_samples =
       state->ms != NULL ? state->ms->rasterization_samples : 1;
-   pipeline->line_mode = state->rs->line.mode;
-   if (pipeline->line_mode == VK_LINE_RASTERIZATION_MODE_DEFAULT_EXT) {
-      if (pipeline->rasterization_samples > 1) {
-         pipeline->line_mode = VK_LINE_RASTERIZATION_MODE_RECTANGULAR_EXT;
-      } else {
-         pipeline->line_mode = VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT;
-      }
-   }
    pipeline->patch_control_points =
       state->ts != NULL ? state->ts->patch_control_points : 0;
-
-   /* Store the color write masks, to be merged with color write enable if
-    * dynamic.
-    */
-   if (state->cb != NULL) {
-      for (unsigned i = 0; i < state->cb->attachment_count; i++)
-         pipeline->color_comp_writes[i] = state->cb->attachments[i].write_mask;
-   }
 
    return VK_SUCCESS;
 }

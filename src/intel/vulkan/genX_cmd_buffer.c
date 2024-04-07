@@ -3142,7 +3142,10 @@ cmd_buffer_emit_clip(struct anv_cmd_buffer *cmd_buffer)
 
    if (!(cmd_buffer->state.gfx.dirty & ANV_CMD_DIRTY_PIPELINE) &&
        !BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_IA_PRIMITIVE_TOPOLOGY) &&
-       !BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_VP_VIEWPORT_COUNT))
+       !BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_VP_DEPTH_CLIP_NEGATIVE_ONE_TO_ONE) &&
+       !BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_VP_VIEWPORT_COUNT) &&
+       !BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_POLYGON_MODE) &&
+       !BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_PROVOKING_VERTEX))
       return;
 
    /* Take dynamic primitive topology in to account with
@@ -3150,13 +3153,18 @@ cmd_buffer_emit_clip(struct anv_cmd_buffer *cmd_buffer)
     */
    VkPolygonMode dynamic_raster_mode =
       genX(raster_polygon_mode)(cmd_buffer->state.gfx.pipeline,
+                                dyn->rs.polygon_mode,
                                 dyn->ia.primitive_topology);
    bool xy_clip_test_enable = (dynamic_raster_mode == VK_POLYGON_MODE_FILL);
 
    struct GENX(3DSTATE_CLIP) clip = {
       GENX(3DSTATE_CLIP_header),
+      .APIMode = dyn->vp.depth_clip_negative_one_to_one ? APIMODE_OGL : APIMODE_D3D,
       .ViewportXYClipTestEnable = xy_clip_test_enable,
    };
+
+   ANV_SETUP_PROVOKING_VERTEX(clip, dyn->rs.provoking_vertex);
+
    uint32_t dwords[GENX(3DSTATE_CLIP_length)];
 
    /* TODO(mesh): Multiview. */
@@ -3193,10 +3201,7 @@ cmd_buffer_emit_viewport(struct anv_cmd_buffer *cmd_buffer)
    struct anv_state sf_clip_state =
       anv_cmd_buffer_alloc_dynamic_state(cmd_buffer, count * 64, 64);
 
-   bool negative_one_to_one =
-      cmd_buffer->state.gfx.pipeline->negative_one_to_one;
-
-   float scale = negative_one_to_one ? 0.5f : 1.0f;
+   float scale = dyn->vp.depth_clip_negative_one_to_one ? 0.5f : 1.0f;
 
    for (uint32_t i = 0; i < count; i++) {
       const VkViewport *vp = &viewports[i];
@@ -3209,7 +3214,7 @@ cmd_buffer_emit_viewport(struct anv_cmd_buffer *cmd_buffer)
          .ViewportMatrixElementm22 = (vp->maxDepth - vp->minDepth) * scale,
          .ViewportMatrixElementm30 = vp->x + vp->width / 2,
          .ViewportMatrixElementm31 = vp->y + vp->height / 2,
-         .ViewportMatrixElementm32 = negative_one_to_one ?
+         .ViewportMatrixElementm32 = dyn->vp.depth_clip_negative_one_to_one ?
             (vp->minDepth + vp->maxDepth) * scale : vp->minDepth,
          .XMinClipGuardband = -1.0f,
          .XMaxClipGuardband = 1.0f,
@@ -3288,8 +3293,7 @@ cmd_buffer_emit_viewport(struct anv_cmd_buffer *cmd_buffer)
 }
 
 static void
-cmd_buffer_emit_depth_viewport(struct anv_cmd_buffer *cmd_buffer,
-                               bool depth_clamp_enable)
+cmd_buffer_emit_depth_viewport(struct anv_cmd_buffer *cmd_buffer)
 {
    const struct vk_dynamic_graphics_state *dyn =
       &cmd_buffer->vk.dynamic_graphics_state;
@@ -3310,8 +3314,8 @@ cmd_buffer_emit_depth_viewport(struct anv_cmd_buffer *cmd_buffer,
       float max_depth = MAX2(vp->minDepth, vp->maxDepth);
 
       struct GENX(CC_VIEWPORT) cc_viewport = {
-         .MinimumDepth = depth_clamp_enable ? min_depth : 0.0f,
-         .MaximumDepth = depth_clamp_enable ? max_depth : 1.0f,
+         .MinimumDepth = dyn->rs.depth_clamp_enable ? min_depth : 0.0f,
+         .MaximumDepth = dyn->rs.depth_clamp_enable ? max_depth : 1.0f,
       };
 
       GENX(CC_VIEWPORT_pack)(NULL, cc_state.map + i * 8, &cc_viewport);
@@ -3424,7 +3428,22 @@ cmd_buffer_emit_streamout(struct anv_cmd_buffer *cmd_buffer)
    struct GENX(3DSTATE_STREAMOUT) so = {
       GENX(3DSTATE_STREAMOUT_header),
       .RenderingDisable = dyn->rs.rasterizer_discard_enable,
+      .RenderStreamSelect = dyn->rs.rasterization_stream,
    };
+
+   switch (dyn->rs.provoking_vertex) {
+   case VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT:
+      so.ReorderMode = LEADING;
+      break;
+
+   case VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT:
+      so.ReorderMode = TRAILING;
+      break;
+
+   default:
+      unreachable("Invalid provoking vertex mode");
+   }
+
    GENX(3DSTATE_STREAMOUT_pack)(NULL, dwords, &so);
    anv_batch_emit_merge(&cmd_buffer->batch, dwords, pipeline->gfx8.streamout_state);
 }
@@ -3623,16 +3642,19 @@ genX(cmd_buffer_flush_gfx_state)(struct anv_cmd_buffer *cmd_buffer)
 
    if ((cmd_buffer->state.gfx.dirty & (ANV_CMD_DIRTY_PIPELINE |
                                        ANV_CMD_DIRTY_XFB_ENABLE)) ||
-       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_RASTERIZER_DISCARD_ENABLE))
+       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_RASTERIZER_DISCARD_ENABLE) ||
+       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_RASTERIZATION_STREAM) ||
+       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_PROVOKING_VERTEX))
       cmd_buffer_emit_streamout(cmd_buffer);
 
    if ((cmd_buffer->state.gfx.dirty & (ANV_CMD_DIRTY_PIPELINE |
                                        ANV_CMD_DIRTY_RENDER_TARGETS)) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_VP_VIEWPORTS) ||
-       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_VP_SCISSORS)) {
+       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_VP_SCISSORS) ||
+       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_DEPTH_CLAMP_ENABLE) ||
+       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_VP_DEPTH_CLIP_NEGATIVE_ONE_TO_ONE)) {
       cmd_buffer_emit_viewport(cmd_buffer);
-      cmd_buffer_emit_depth_viewport(cmd_buffer,
-                                     pipeline->depth_clamp_enable);
+      cmd_buffer_emit_depth_viewport(cmd_buffer);
       cmd_buffer_emit_scissor(cmd_buffer);
    }
 
@@ -5096,8 +5118,9 @@ emit_compute_walker(struct anv_cmd_buffer *cmd_buffer,
             cmd_buffer->state.samplers[MESA_SHADER_COMPUTE].offset,
          .BindingTablePointer =
             cmd_buffer->state.binding_tables[MESA_SHADER_COMPUTE].offset,
-         .BindingTableEntryCount =
-            1 + MIN2(pipeline->cs->bind_map.surface_count, 30),
+         /* Typically set to 0 to avoid prefetching on every thread dispatch. */
+         .BindingTableEntryCount = devinfo->verx10 == 125 ?
+            0 : 1 + MIN2(pipeline->cs->bind_map.surface_count, 30),
          .NumberofThreadsinGPGPUThreadGroup = dispatch.threads,
          .SharedLocalMemorySize = encode_slm_size(GFX_VER,
                                                   prog_data->base.total_shared),

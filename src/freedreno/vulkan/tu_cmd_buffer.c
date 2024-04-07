@@ -84,6 +84,53 @@ tu6_lazy_emit_tessfactor_addr(struct tu_cmd_buffer *cmd)
 }
 
 static void
+tu6_lazy_emit_vsc(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
+{
+   struct tu_device *dev = cmd->device;
+
+   /* VSC buffers:
+    * use vsc pitches from the largest values used so far with this device
+    * if there hasn't been overflow, there will already be a scratch bo
+    * allocated for these sizes
+    *
+    * if overflow is detected, the stream size is increased by 2x
+    */
+   mtx_lock(&dev->mutex);
+
+   struct tu6_global *global = dev->global_bo->map;
+
+   uint32_t vsc_draw_overflow = global->vsc_draw_overflow;
+   uint32_t vsc_prim_overflow = global->vsc_prim_overflow;
+
+   if (vsc_draw_overflow >= dev->vsc_draw_strm_pitch)
+      dev->vsc_draw_strm_pitch = (dev->vsc_draw_strm_pitch - VSC_PAD) * 2 + VSC_PAD;
+
+   if (vsc_prim_overflow >= dev->vsc_prim_strm_pitch)
+      dev->vsc_prim_strm_pitch = (dev->vsc_prim_strm_pitch - VSC_PAD) * 2 + VSC_PAD;
+
+   cmd->vsc_prim_strm_pitch = dev->vsc_prim_strm_pitch;
+   cmd->vsc_draw_strm_pitch = dev->vsc_draw_strm_pitch;
+
+   mtx_unlock(&dev->mutex);
+
+   struct tu_bo *vsc_bo;
+   uint32_t size0 = cmd->vsc_prim_strm_pitch * MAX_VSC_PIPES +
+                    cmd->vsc_draw_strm_pitch * MAX_VSC_PIPES;
+
+   tu_get_scratch_bo(dev, size0 + MAX_VSC_PIPES * 4, &vsc_bo);
+
+   tu_cs_emit_regs(cs,
+                   A6XX_VSC_DRAW_STRM_SIZE_ADDRESS(.bo = vsc_bo, .bo_offset = size0));
+   tu_cs_emit_regs(cs,
+                   A6XX_VSC_PRIM_STRM_ADDRESS(.bo = vsc_bo));
+   tu_cs_emit_regs(cs,
+                   A6XX_VSC_DRAW_STRM_ADDRESS(.bo = vsc_bo,
+                                              .bo_offset = cmd->vsc_prim_strm_pitch * MAX_VSC_PIPES));
+
+   cmd->vsc_initialized = true;
+}
+
+static void
 tu6_emit_flushes(struct tu_cmd_buffer *cmd_buffer,
                  struct tu_cs *cs,
                  enum tu_cmd_flush_bits flushes)
@@ -951,45 +998,6 @@ tu6_init_hw(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
                    A6XX_SP_PS_TP_BORDER_COLOR_BASE_ADDR(.bo = dev->global_bo,
                                                         .bo_offset = gb_offset(bcolor_builtin)));
 
-   /* VSC buffers:
-    * use vsc pitches from the largest values used so far with this device
-    * if there hasn't been overflow, there will already be a scratch bo
-    * allocated for these sizes
-    *
-    * if overflow is detected, the stream size is increased by 2x
-    */
-   mtx_lock(&dev->mutex);
-
-   struct tu6_global *global = dev->global_bo->map;
-
-   uint32_t vsc_draw_overflow = global->vsc_draw_overflow;
-   uint32_t vsc_prim_overflow = global->vsc_prim_overflow;
-
-   if (vsc_draw_overflow >= dev->vsc_draw_strm_pitch)
-      dev->vsc_draw_strm_pitch = (dev->vsc_draw_strm_pitch - VSC_PAD) * 2 + VSC_PAD;
-
-   if (vsc_prim_overflow >= dev->vsc_prim_strm_pitch)
-      dev->vsc_prim_strm_pitch = (dev->vsc_prim_strm_pitch - VSC_PAD) * 2 + VSC_PAD;
-
-   cmd->vsc_prim_strm_pitch = dev->vsc_prim_strm_pitch;
-   cmd->vsc_draw_strm_pitch = dev->vsc_draw_strm_pitch;
-
-   mtx_unlock(&dev->mutex);
-
-   struct tu_bo *vsc_bo;
-   uint32_t size0 = cmd->vsc_prim_strm_pitch * MAX_VSC_PIPES +
-                    cmd->vsc_draw_strm_pitch * MAX_VSC_PIPES;
-
-   tu_get_scratch_bo(dev, size0 + MAX_VSC_PIPES * 4, &vsc_bo);
-
-   tu_cs_emit_regs(cs,
-                   A6XX_VSC_DRAW_STRM_SIZE_ADDRESS(.bo = vsc_bo, .bo_offset = size0));
-   tu_cs_emit_regs(cs,
-                   A6XX_VSC_PRIM_STRM_ADDRESS(.bo = vsc_bo));
-   tu_cs_emit_regs(cs,
-                   A6XX_VSC_DRAW_STRM_ADDRESS(.bo = vsc_bo,
-                                              .bo_offset = cmd->vsc_prim_strm_pitch * MAX_VSC_PIPES));
-
    tu_cs_sanity_check(cs);
 }
 
@@ -1378,6 +1386,10 @@ tu6_tile_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
    tu_emit_cache_flush_ccu(cmd, cs, TU_CMD_CCU_GMEM);
 
    if (use_hw_binning(cmd)) {
+      if (!cmd->vsc_initialized) {
+         tu6_lazy_emit_vsc(cmd, cs);
+      }
+
       tu6_emit_bin_size(cs, tiling->tile0.width, tiling->tile0.height,
                         A6XX_RB_BIN_CONTROL_RENDER_MODE(BINNING_PASS) |
                         A6XX_RB_BIN_CONTROL_LRZ_FEEDBACK_ZMODE_MASK(0x6));
@@ -1712,6 +1724,7 @@ tu_reset_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer,
    u_trace_init(&cmd_buffer->trace, &cmd_buffer->device->trace_context);
 
    cmd_buffer->state.max_vbs_bound = 0;
+   cmd_buffer->vsc_initialized = false;
 
    cmd_buffer->status = TU_CMD_BUFFER_STATUS_INITIAL;
 }
@@ -5148,6 +5161,30 @@ tu_dispatch(struct tu_cmd_buffer *cmd,
    struct tu_cs *cs = &cmd->cs;
    struct tu_pipeline *pipeline = cmd->state.compute_pipeline;
 
+   bool emit_instrlen_workaround =
+      pipeline->program.cs_instrlen >
+      cmd->device->physical_device->info->a6xx.instr_cache_size;
+
+   /* There appears to be a HW bug where in some rare circumstances it appears
+    * to accidentally use the FS instrlen instead of the CS instrlen, which
+    * affects all known gens. Based on various experiments it appears that the
+    * issue is that when prefetching a branch destination and there is a cache
+    * miss, when fetching from memory the HW bounds-checks the fetch against
+    * SP_CS_INSTRLEN, except when one of the two register contexts is active
+    * it accidentally fetches SP_FS_INSTRLEN from the other (inactive)
+    * context. To workaround it we set the FS instrlen here and do a dummy
+    * event to roll the context (because it fetches SP_FS_INSTRLEN from the
+    * "wrong" context). Because the bug seems to involve cache misses, we
+    * don't emit this if the entire CS program fits in cache, which will
+    * hopefully be the majority of cases.
+    *
+    * See https://gitlab.freedesktop.org/mesa/mesa/-/issues/5892
+    */
+   if (emit_instrlen_workaround) {
+      tu_cs_emit_regs(cs, A6XX_SP_FS_INSTRLEN(pipeline->program.cs_instrlen));
+      tu6_emit_event_write(cmd, cs, LABEL);
+   }
+
    /* TODO: We could probably flush less if we add a compute_flush_bits
     * bitfield.
     */
@@ -5209,6 +5246,16 @@ tu_dispatch(struct tu_cmd_buffer *cmd,
                      info->indirect != NULL,
                      local_size[0], local_size[1], local_size[2],
                      info->blocks[0], info->blocks[1], info->blocks[2]);
+
+   /* For the workaround above, because it's using the "wrong" context for
+    * SP_FS_INSTRLEN we should emit another dummy event write to avoid a
+    * potential race between writing the register and the CP_EXEC_CS we just
+    * did. We don't need to reset the register because it will be re-emitted
+    * anyway when the next renderpass starts.
+    */
+   if (emit_instrlen_workaround) {
+      tu6_emit_event_write(cmd, cs, LABEL);
+   }
 
    tu_cs_emit_wfi(cs);
 }

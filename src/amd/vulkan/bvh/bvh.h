@@ -64,8 +64,8 @@ struct radv_accel_struct_geometry_info {
 };
 
 struct radv_accel_struct_header {
+   uint32_t bvh_offset;
    uint32_t reserved;
-   uint32_t reserved2;
    float aabb[2][3];
 
    /* Everything after this gets updated/copied from the CPU. */
@@ -81,14 +81,16 @@ struct radv_accel_struct_header {
 };
 
 struct radv_ir_node {
-   float sah_cost;
-   uint32_t parent;
    float aabb[2][3];
 };
 
+#define FINAL_TREE_PRESENT 0
+#define FINAL_TREE_NOT_PRESENT 1
+#define FINAL_TREE_UNKNOWN 2
 struct radv_ir_box_node {
    radv_ir_node base;
    uint32_t children[2];
+   uint32_t in_final_tree;
 };
 
 struct radv_ir_aabb_node {
@@ -134,7 +136,7 @@ struct radv_bvh_aabb_node {
 };
 
 struct radv_bvh_instance_node {
-   uint64_t base_ptr;
+   uint64_t bvh_ptr;
    /* lower 24 bits are the custom instance index, upper 8 bits are the visibility mask */
    uint32_t custom_instance_and_mask;
    /* lower 24 bits are the sbt offset, upper 8 bits are VkGeometryInstanceFlagsKHR */
@@ -143,7 +145,8 @@ struct radv_bvh_instance_node {
    mat3x4 wto_matrix;
 
    uint32_t instance_id;
-   uint32_t reserved[3];
+   uint32_t bvh_offset;
+   uint32_t reserved[2];
 
    /* Object to world matrix transposed from the initial transform. */
    mat3x4 otw_matrix;
@@ -160,7 +163,8 @@ struct radv_bvh_box32_node {
    uint32_t reserved[4];
 };
 
-/* 128 bytes of header & a box32 node */
-#define RADV_BVH_ROOT_NODE (0x10 + radv_bvh_node_internal)
+/* a box32 node */
+#define RADV_BVH_ROOT_NODE radv_bvh_node_internal
+#define RADV_BVH_INVALID_NODE 0xffffffffu
 
 #endif

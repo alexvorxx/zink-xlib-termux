@@ -62,7 +62,7 @@ struct lbvh_internal_args {
    REF(key_id_pair) src_ids;
    REF(key_id_pair) dst_ids;
    uint32_t dst_offset;
-   uint32_t is_root_and_count;
+   uint32_t src_count;
 };
 
 #define RADV_COPY_MODE_COPY        0
@@ -78,6 +78,7 @@ struct copy_args {
 struct convert_internal_args {
    VOID_REF intermediate_bvh;
    VOID_REF output_bvh;
+   uint32_t output_bvh_offset;
    uint32_t leaf_node_count;
    uint32_t internal_node_count;
    uint32_t geometry_type;

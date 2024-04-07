@@ -250,8 +250,6 @@ TYPE(radv_ir_triangle_node, 4);
 TYPE(radv_ir_aabb_node, 4);
 TYPE(radv_ir_instance_node, 8);
 
-#define NULL_NODE_ID 0xFFFFFFFF
-
 uint32_t
 id_to_offset(uint32_t id)
 {
@@ -302,7 +300,7 @@ ir_type_to_bvh_type(uint32_t type)
       return radv_bvh_node_aabb;
    }
    /* unreachable in valid nodes */
-   return NULL_NODE_ID;
+   return RADV_BVH_INVALID_NODE;
 }
 
 AABB
@@ -359,7 +357,8 @@ calculate_node_bounds(VOID_REF bvh, uint32_t id)
    }
    case radv_bvh_node_instance: {
       radv_bvh_instance_node instance = DEREF(REF(radv_bvh_instance_node)(node));
-      aabb = calculate_instance_node_bounds(instance.base_ptr, instance.otw_matrix);
+      aabb = calculate_instance_node_bounds(instance.bvh_ptr - instance.bvh_offset,
+                                            instance.otw_matrix);
       break;
    }
    case radv_bvh_node_aabb: {

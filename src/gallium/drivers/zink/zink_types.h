@@ -187,6 +187,7 @@ enum zink_debug {
    ZINK_DEBUG_COMPACT = (1<<5),
    ZINK_DEBUG_NOREORDER = (1<<6),
    ZINK_DEBUG_GPL = (1<<7),
+   ZINK_DEBUG_SHADERDB = (1<<8),
 };
 
 
@@ -830,6 +831,18 @@ struct zink_gfx_output_key {
    VkPipeline pipeline;
 };
 
+struct zink_gfx_pipeline_cache_entry {
+   struct zink_gfx_pipeline_state state;
+   VkPipeline pipeline;
+   /* GPL only */
+   struct util_queue_fence fence;
+   struct zink_gfx_input_key *ikey;
+   struct zink_gfx_library_key *gkey;
+   struct zink_gfx_output_key *okey;
+   struct zink_gfx_program *prog;
+   VkPipeline unoptimized_pipeline;
+};
+
 struct zink_gfx_program {
    struct zink_program base;
 
@@ -854,7 +867,7 @@ struct zink_gfx_program {
    uint8_t inline_variants; //which stages are using inlined uniforms
 
    uint32_t last_finalized_hash[2][4]; //[dynamic, renderpass][primtype idx]
-   VkPipeline last_pipeline[2][4]; //[dynamic, renderpass][primtype idx]
+   struct zink_gfx_pipeline_cache_entry *last_pipeline[2][4]; //[dynamic, renderpass][primtype idx]
 
    struct set libs; //zink_gfx_library_key -> VkPipeline
 };

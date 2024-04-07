@@ -2813,8 +2813,26 @@ nir_block_last_phi_instr(nir_block *block)
 
 typedef enum {
    nir_selection_control_none = 0x0,
+
+   /**
+    * Defined by SPIR-V spec 3.22 "Selection Control".
+    * The application prefers to remove control flow.
+    */
    nir_selection_control_flatten = 0x1,
+
+   /**
+    * Defined by SPIR-V spec 3.22 "Selection Control".
+    * The application prefers to keep control flow.
+    */
    nir_selection_control_dont_flatten = 0x2,
+
+   /**
+    * May be applied by the compiler stack when it knows
+    * that a branch is divergent, and:
+    * - either both the if and else are always taken
+    * - the if or else is empty and the other is always taken
+    */
+   nir_selection_control_divergent_always_taken = 0x3,
 } nir_selection_control;
 
 typedef struct nir_if {

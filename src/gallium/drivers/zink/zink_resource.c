@@ -1138,9 +1138,11 @@ resource_create(struct pipe_screen *pscreen,
 
    res->base.b = *templ;
 
-   bool allow_cpu_storage = (templ->target == PIPE_BUFFER) &&
+   /*bool allow_cpu_storage = (templ->target == PIPE_BUFFER) &&
                             (templ->width0 < 0x1000);
-   threaded_resource_init(&res->base.b, allow_cpu_storage);
+   threaded_resource_init(&res->base.b, allow_cpu_storage);*/
+   threaded_resource_init(&res->base.b, false);
+   
    pipe_reference_init(&res->base.b.reference, 1);
    res->base.b.screen = pscreen;
 
@@ -1440,8 +1442,8 @@ zink_resource_get_handle(struct pipe_screen *pscreen,
                          struct winsys_handle *whandle,
                          unsigned usage)
 {
-   if (tex->target == PIPE_BUFFER)
-      tc_buffer_disable_cpu_storage(tex);
+   /*if (tex->target == PIPE_BUFFER)
+      tc_buffer_disable_cpu_storage(tex);*/
    if (whandle->type == WINSYS_HANDLE_TYPE_FD || whandle->type == WINSYS_HANDLE_TYPE_KMS) {
 #ifdef ZINK_USE_DMABUF
       struct zink_resource *res = zink_resource(tex);
@@ -1542,8 +1544,8 @@ zink_resource_from_handle(struct pipe_screen *pscreen,
       res->drm_format = whandle->format;
       if (pres->target != PIPE_BUFFER)
          res->valid = true;
-      else
-         tc_buffer_disable_cpu_storage(pres);
+      /*else
+         tc_buffer_disable_cpu_storage(pres);*/
    }
    return pres;
 #else
@@ -1607,12 +1609,15 @@ zink_resource_from_memobj(struct pipe_screen *pscreen,
    struct zink_memory_object *memobj = (struct zink_memory_object *)pmemobj;
 
    struct pipe_resource *pres = resource_create(pscreen, templ, &memobj->whandle, 0, NULL, 0, NULL);
-   if (pres) {
+   /*if (pres) {
       if (pres->target != PIPE_BUFFER)
          zink_resource(pres)->valid = true;
       else
          tc_buffer_disable_cpu_storage(pres);
-   }
+   }*/
+   if (pres && pres->target != PIPE_BUFFER)
+      zink_resource(pres)->valid = true;
+
    return pres;
 }
 

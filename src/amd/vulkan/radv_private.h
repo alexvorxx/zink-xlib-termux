@@ -302,11 +302,6 @@ struct radv_physical_device {
    /* Whether to emulate ETC2 image support on HW without support. */
    bool emulate_etc2;
 
-   /* This is the drivers on-disk cache used as a fallback as opposed to
-    * the pipeline cache defined by apps.
-    */
-   struct disk_cache *disk_cache;
-
    VkPhysicalDeviceMemoryProperties memory_properties;
    enum radeon_bo_domain memory_domains[VK_MAX_MEMORY_TYPES];
    enum radeon_bo_flag memory_flags[VK_MAX_MEMORY_TYPES];
@@ -382,7 +377,6 @@ struct radv_pipeline_cache {
    uint32_t table_size;
    uint32_t kernel_count;
    struct cache_entry **hash_table;
-   bool modified;
 
    VkAllocationCallbacks alloc;
 };
@@ -390,10 +384,6 @@ struct radv_pipeline_cache {
 struct radv_shader_binary;
 struct radv_shader;
 struct radv_pipeline_shader_stack_size;
-
-void radv_pipeline_cache_init(struct radv_pipeline_cache *cache, struct radv_device *device);
-void radv_pipeline_cache_finish(struct radv_pipeline_cache *cache);
-bool radv_pipeline_cache_load(struct radv_pipeline_cache *cache, const void *data, size_t size);
 
 bool radv_create_shaders_from_pipeline_cache(
    struct radv_device *device, struct radv_pipeline_cache *cache, const unsigned char *sha1,
@@ -450,7 +440,8 @@ radv_meta_dst_layout_to_layout(enum radv_meta_dst_layout layout)
 struct radv_meta_state {
    VkAllocationCallbacks alloc;
 
-   struct radv_pipeline_cache cache;
+   VkPipelineCache cache;
+   uint32_t initial_cache_entries;
 
    /*
     * For on-demand pipeline creation, makes sure that

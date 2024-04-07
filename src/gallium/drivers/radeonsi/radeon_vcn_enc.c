@@ -92,6 +92,17 @@ static void radeon_vcn_enc_h264_get_cropping_param(struct radeon_encoder *enc,
    }
 }
 
+static void radeon_vcn_enc_h264_get_dbk_param(struct radeon_encoder *enc,
+                                              struct pipe_h264_enc_picture_desc *pic)
+{
+   enc->enc_pic.h264_deblock.disable_deblocking_filter_idc =
+      CLAMP(pic->dbk.disable_deblocking_filter_idc, 0, 2);
+   enc->enc_pic.h264_deblock.alpha_c0_offset_div2 = pic->dbk.alpha_c0_offset_div2;
+   enc->enc_pic.h264_deblock.beta_offset_div2 = pic->dbk.beta_offset_div2;
+   enc->enc_pic.h264_deblock.cb_qp_offset = pic->pic_ctrl.chroma_qp_index_offset;
+   enc->enc_pic.h264_deblock.cr_qp_offset = pic->pic_ctrl.second_chroma_qp_index_offset;
+}
+
 static void radeon_vcn_enc_h264_get_spec_misc_param(struct radeon_encoder *enc,
                                                     struct pipe_h264_enc_picture_desc *pic)
 {
@@ -104,6 +115,10 @@ static void radeon_vcn_enc_h264_get_spec_misc_param(struct radeon_encoder *enc,
 
    enc->enc_pic.spec_misc.cabac_init_idc = enc->enc_pic.spec_misc.cabac_enable ?
                                            pic->pic_ctrl.enc_cabac_init_idc : 0;
+   enc->enc_pic.spec_misc.deblocking_filter_control_present_flag =
+      pic->pic_ctrl.deblocking_filter_control_present_flag;
+   enc->enc_pic.spec_misc.redundant_pic_cnt_present_flag =
+      pic->pic_ctrl.redundant_pic_cnt_present_flag;
 }
 
 static void radeon_vcn_enc_h264_get_rc_param(struct radeon_encoder *enc,
@@ -179,6 +194,28 @@ static void radeon_vcn_enc_h264_get_vui_param(struct radeon_encoder *enc,
    enc->enc_pic.vui_info.time_scale = pic->seq.time_scale;
 }
 
+/* only checking the first slice to get num of mbs in slice to
+ * determine the number of slices in this frame, only fixed MB mode
+ * is supported now, the last slice in frame could have less number of
+ * MBs.
+ */
+static void radeon_vcn_enc_h264_get_slice_ctrl_param(struct radeon_encoder *enc,
+                                                     struct pipe_h264_enc_picture_desc *pic)
+{
+   uint32_t width_in_mb, height_in_mb, num_mbs_in_slice;
+
+   width_in_mb = PIPE_ALIGN_IN_BLOCK_SIZE(enc->base.width, PIPE_H264_MB_SIZE);
+   height_in_mb = PIPE_ALIGN_IN_BLOCK_SIZE(enc->base.height, PIPE_H264_MB_SIZE);
+
+   if (pic->slices_descriptors[0].num_macroblocks >= width_in_mb * height_in_mb ||
+       pic->slices_descriptors[0].num_macroblocks == 0)
+      num_mbs_in_slice = width_in_mb * height_in_mb;
+   else
+      num_mbs_in_slice = pic->slices_descriptors[0].num_macroblocks;
+
+   enc->enc_pic.slice_ctrl.num_mbs_per_slice = num_mbs_in_slice;
+}
+
 static void radeon_vcn_enc_h264_get_param(struct radeon_encoder *enc,
                                           struct pipe_h264_enc_picture_desc *pic)
 {
@@ -198,9 +235,11 @@ static void radeon_vcn_enc_h264_get_param(struct radeon_encoder *enc,
    enc->enc_pic.is_ltr = pic->is_ltr;
    enc->enc_pic.ltr_idx = pic->is_ltr ? pic->ltr_index : 0;
    radeon_vcn_enc_h264_get_cropping_param(enc, pic);
+   radeon_vcn_enc_h264_get_dbk_param(enc, pic);
    radeon_vcn_enc_h264_get_rc_param(enc, pic);
    radeon_vcn_enc_h264_get_spec_misc_param(enc, pic);
    radeon_vcn_enc_h264_get_vui_param(enc, pic);
+   radeon_vcn_enc_h264_get_slice_ctrl_param(enc, pic);
 }
 
 static void radeon_vcn_enc_hevc_get_cropping_param(struct radeon_encoder *enc,
@@ -313,6 +352,34 @@ static void radeon_vcn_enc_hevc_get_vui_param(struct radeon_encoder *enc,
    enc->enc_pic.vui_info.time_scale = pic->seq.time_scale;
 }
 
+/* only checking the first slice to get num of ctbs in slice to
+ * determine the number of slices in this frame, only fixed CTB mode
+ * is supported now, the last slice in frame could have less number of
+ * ctbs.
+ */
+static void radeon_vcn_enc_hevc_get_slice_ctrl_param(struct radeon_encoder *enc,
+                                                     struct pipe_h265_enc_picture_desc *pic)
+{
+   uint32_t width_in_ctb, height_in_ctb, num_ctbs_in_slice;
+
+   width_in_ctb = PIPE_ALIGN_IN_BLOCK_SIZE(pic->seq.pic_width_in_luma_samples,
+                                           PIPE_H265_ENC_CTB_SIZE);
+   height_in_ctb = PIPE_ALIGN_IN_BLOCK_SIZE(pic->seq.pic_height_in_luma_samples,
+                                            PIPE_H265_ENC_CTB_SIZE);
+
+   if (pic->slices_descriptors[0].num_ctu_in_slice >= width_in_ctb * height_in_ctb ||
+       pic->slices_descriptors[0].num_ctu_in_slice == 0)
+      num_ctbs_in_slice = width_in_ctb * height_in_ctb;
+   else
+      num_ctbs_in_slice = pic->slices_descriptors[0].num_ctu_in_slice;
+
+   enc->enc_pic.hevc_slice_ctrl.fixed_ctbs_per_slice.num_ctbs_per_slice =
+      num_ctbs_in_slice;
+
+   enc->enc_pic.hevc_slice_ctrl.fixed_ctbs_per_slice.num_ctbs_per_slice_segment =
+      num_ctbs_in_slice;
+}
+
 static void radeon_vcn_enc_hevc_get_param(struct radeon_encoder *enc,
                                           struct pipe_h265_enc_picture_desc *pic)
 {
@@ -369,6 +436,7 @@ static void radeon_vcn_enc_hevc_get_param(struct radeon_encoder *enc,
    radeon_vcn_enc_hevc_get_rc_param(enc, pic);
    radeon_vcn_enc_hevc_get_rc_param(enc, pic);
    radeon_vcn_enc_hevc_get_vui_param(enc, pic);
+   radeon_vcn_enc_hevc_get_slice_ctrl_param(enc, pic);
 }
 
 static void radeon_vcn_enc_get_param(struct radeon_encoder *enc, struct pipe_picture_desc *picture)

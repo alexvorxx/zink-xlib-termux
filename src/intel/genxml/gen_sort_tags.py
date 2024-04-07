@@ -91,24 +91,6 @@ GENXML_DESC = {
     'register'    : [ 'name', 'length', 'num', ],
 }
 
-space_delta = 2
-
-def print_node(f: typing.TextIO, offset: int, node: et.Element) -> None:
-    if node.tag in [ 'enum', 'struct', 'instruction', 'register' ]:
-        f.write('\n')
-    spaces = ''.rjust(offset * space_delta)
-    f.write('{0}<{1}'.format(spaces, node.tag))
-    for k, v in node.attrib.items():
-        f.write(f' {k}="{v}"')
-    children = list(node)
-    if len(children) > 0:
-        f.write('>\n')
-        for c in children:
-            print_node(f, offset + 1, c)
-        f.write('{0}</{1}>\n'.format(spaces, node.tag))
-    else:
-        f.write('/>\n')
-
 
 def node_validator(old: et.Element, new: et.Element) -> bool:
     """Compare to ElementTree Element nodes.
@@ -143,12 +125,9 @@ def process_attribs(elem: et.Element) -> None:
         process_attribs(e)
 
 
-def process(filename: pathlib.Path, validate: bool) -> None:
-    xml = et.parse(filename)
-    genxml: et.Element = xml.getroot()
-    original = copy.deepcopy(genxml) if validate else genxml
-
-    enums = sorted(genxml.findall('enum'), key=get_name)
+def process(xml: et.ElementTree) -> None:
+    genxml = xml.getroot()
+    enums = sorted(xml.findall('enum'), key=get_name)
     enum_dict: typing.Dict[str, et.Element] = {}
     for e in enums:
         e[:] = sorted(e, key=get_value)
@@ -184,21 +163,9 @@ def process(filename: pathlib.Path, validate: bool) -> None:
     for n in new_elems:
         process_attribs(n)
     genxml[:] = new_elems
-
-    if validate:
-        for old, new in zip(original, genxml):
-            assert node_validator(old, new), f'{filename} is invalid, run gen_sort_tags.py and commit that'
-    else:
-
-        tmp = filename.with_suffix(f'{filename.suffix}.tmp')
-        with tmp.open('w') as f:
-            f.write('<?xml version="1.0" ?>\n')
-            print_node(f, 0, genxml)
-        filename.unlink()
-        tmp.rename(filename)
     
 
-if __name__ == '__main__':
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('files', nargs='*',
                         default=pathlib.Path(__file__).parent.glob('*.xml'),
@@ -207,9 +174,26 @@ if __name__ == '__main__':
     parser.add_argument('--quiet', action='store_true')
     args: Args = parser.parse_args()
 
-    for f in args.files:
+    for filename in args.files:
         if not args.quiet:
-            print('Processing {}... '.format(f), end='', flush=True)
-        process(f, args.validate)
+            print('Processing {}... '.format(filename), end='', flush=True)
+
+        xml = et.parse(filename)
+        original = copy.deepcopy(xml) if args.validate else xml
+        process(xml)
+
+        if args.validate:
+            for old, new in zip(original.getroot(), xml.getroot()):
+                assert node_validator(old, new), f'{filename} is invalid, run gen_sort_tags.py and commit that'
+        else:
+            tmp = filename.with_suffix(f'{filename.suffix}.tmp')
+            et.indent(xml, space='  ')
+            xml.write(tmp, encoding="utf-8", xml_declaration=True)
+            tmp.replace(filename)
+
         if not args.quiet:
             print('done.')
+
+
+if __name__ == '__main__':
+    main()

@@ -268,19 +268,6 @@ radv_CopyAccelerationStructureKHR(VkDevice _device, VkDeferredOperationKHR defer
    return VK_ERROR_FEATURE_NOT_PRESENT;
 }
 
-static nir_builder
-create_accel_build_shader(struct radv_device *device, const char *name)
-{
-   nir_builder b = radv_meta_init_shader(device, MESA_SHADER_COMPUTE, "%s", name);
-   b.shader->info.workgroup_size[0] = 64;
-
-   assert(b.shader->info.workgroup_size[1] == 1);
-   assert(b.shader->info.workgroup_size[2] == 1);
-   assert(!b.shader->info.workgroup_size_variable);
-
-   return b;
-}
-
 void
 radv_device_finish_accel_struct_build_state(struct radv_device *device)
 {
@@ -363,7 +350,7 @@ create_build_pipeline_spv(struct radv_device *device, const uint32_t *spv, uint3
    };
 
    result = radv_CreateComputePipelines(radv_device_to_handle(device),
-                                        radv_pipeline_cache_to_handle(&device->meta_state.cache), 1,
+                                        device->meta_state.cache, 1,
                                         &pipeline_info, &device->meta_state.alloc, pipeline);
 
 cleanup:
@@ -434,7 +421,7 @@ radv_device_init_accel_struct_build_state(struct radv_device *device)
 
    device->meta_state.accel_struct_build.radix_sort =
       radv_create_radix_sort_u64(radv_device_to_handle(device), &device->meta_state.alloc,
-                                 radv_pipeline_cache_to_handle(&device->meta_state.cache));
+                                 device->meta_state.cache);
 
    struct radix_sort_vk_sort_devaddr_info *radix_sort_info =
       &device->meta_state.accel_struct_build.radix_sort_info;

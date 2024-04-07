@@ -135,6 +135,11 @@
 
 #define RENCODE_MAX_NUM_TEMPORAL_LAYERS                                             4
 
+#define PIPE_H265_ENC_CTB_SIZE                                                      64
+#define PIPE_H264_MB_SIZE                                                           16
+
+#define PIPE_ALIGN_IN_BLOCK_SIZE(value, align) (((value) + ((align) - 1))/(align))
+
 #define RADEON_ENC_CS(value) (enc->cs.current.buf[enc->cs.current.cdw++] = (value))
 #define RADEON_ENC_BEGIN(cmd)                                                                      \
    {                                                                                               \
@@ -226,6 +231,10 @@ typedef struct rvcn_enc_h264_spec_misc_s {
    uint32_t level_idc;
    uint32_t b_picture_enabled;
    uint32_t weighted_bipred_idc;
+   struct {
+      uint32_t deblocking_filter_control_present_flag:1;
+      uint32_t redundant_pic_cnt_present_flag:1;
+   };
 } rvcn_enc_h264_spec_misc_t;
 
 typedef struct rvcn_enc_hevc_spec_misc_s {

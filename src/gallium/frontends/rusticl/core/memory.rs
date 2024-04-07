@@ -11,12 +11,14 @@ use mesa_rust::pipe::context::*;
 use mesa_rust::pipe::resource::*;
 use mesa_rust::pipe::transfer::*;
 use mesa_rust_gen::*;
+use mesa_rust_util::math::*;
 use mesa_rust_util::properties::Properties;
 use rusticl_opencl_gen::*;
 
 use std::cmp;
 use std::collections::HashMap;
 use std::convert::TryInto;
+use std::mem::size_of;
 use std::ops::AddAssign;
 use std::os::raw::c_void;
 use std::ptr;
@@ -66,6 +68,7 @@ pub trait CLImageDescInfo {
     fn row_pitch(&self) -> CLResult<u32>;
     fn slice_pitch(&self) -> CLResult<u32>;
     fn size(&self) -> CLVec<usize>;
+    fn api_size(&self) -> CLVec<usize>;
 
     fn dims(&self) -> u8 {
         self.type_info().0
@@ -122,6 +125,17 @@ impl CLImageDescInfo for cl_image_desc {
         depth = cmp::max(depth, 1);
 
         CLVec::new([self.image_width, height, depth])
+    }
+
+    fn api_size(&self) -> CLVec<usize> {
+        let mut size = self.size();
+
+        if self.is_array() && self.dims() == 1 {
+            size[1] = size[2];
+            size[2] = 1;
+        }
+
+        size
     }
 
     fn bx(&self) -> CLResult<pipe_box> {
@@ -599,8 +613,24 @@ impl Mem {
 
         let res = self.get_res()?.get(&q.device).unwrap();
         let bx = create_box(origin, region, self.mem_type)?;
-        let mut new_pattern = vec![0; self.image_format.pixel_size().unwrap() as usize];
+        // make sure we allocate multiples of 4 bytes so drivers don't read out of bounds or
+        // unaligned.
+        // TODO: use div_ceil once it's available
+        let size = align(
+            self.image_format.pixel_size().unwrap() as usize,
+            size_of::<u32>(),
+        );
+        let mut new_pattern: Vec<u32> = vec![0; size / size_of::<u32>()];
 
+        // we don't support CL_DEPTH for now
+        assert!(pattern.len() == 4);
+
+        // SAFETY: pointers have to be valid for read/writes of exactly one pixel of their
+        // respective format.
+        // `new_pattern` has the correct size due to the `size` above.
+        // `pattern` is validated through the CL API and allows undefined behavior if not followed
+        // by CL API rules. It's expected to be a 4 component array of 32 bit values, except for
+        // CL_DEPTH where it's just one value.
         unsafe {
             util_format_pack_rgba(
                 self.image_format.to_pipe_format().unwrap(),

@@ -965,6 +965,7 @@ generate_vs(struct draw_llvm_variant *variant,
    params.consts_ptr = consts_ptr;
    params.system_values = system_values;
    params.inputs = inputs;
+   params.context_type = variant->context_type;
    params.context_ptr = context_ptr;
    params.sampler = draw_sampler;
    params.info = &llvm->draw->vs.vertex_shader->info;
@@ -1283,6 +1284,7 @@ convert_to_aos(struct gallivm_state *gallivm,
                LLVMValueRef clipmask,
                int num_outputs,
                struct lp_type soa_type,
+               int primid_slot,
                boolean need_edgeflag)
 {
    LLVMBuilderRef builder = gallivm->builder;
@@ -1296,7 +1298,7 @@ convert_to_aos(struct gallivm_state *gallivm,
       LLVMValueRef aos[LP_MAX_VECTOR_WIDTH / 32];
       for (chan = 0; chan < TGSI_NUM_CHANNELS; ++chan) {
          if (outputs[attrib][chan]) {
-            LLVMTypeRef single_type = lp_build_vec_type(gallivm, soa_type);
+            LLVMTypeRef single_type = (attrib == primid_slot) ? lp_build_int_vec_type(gallivm, soa_type) : lp_build_vec_type(gallivm, soa_type);
             LLVMValueRef out = LLVMBuildLoad2(builder, single_type, outputs[attrib][chan], "");
             lp_build_name(out, "output%u.%c", attrib, "xyzw"[chan]);
 #if DEBUG_STORE
@@ -1809,7 +1811,8 @@ draw_gs_llvm_emit_vertex(const struct lp_build_gs_iface *gs_base,
    LLVMValueRef cnd = LLVMBuildICmp(builder, LLVMIntULT, stream_idx, lp_build_const_int32(gallivm, variant->shader->base.num_vertex_streams), "");
    struct lp_build_if_state if_ctx;
    lp_build_if(&if_ctx, gallivm, cnd);
-   io = lp_build_pointer_get(builder, io, LLVMBuildExtractElement(builder, stream_id, lp_build_const_int32(gallivm, 0), ""));
+   io = lp_build_pointer_get2(builder, variant->vertex_header_ptr_type,
+                              io, LLVMBuildExtractElement(builder, stream_id, lp_build_const_int32(gallivm, 0), ""));
 
    if (variant->key.clamp_vertex_color) {
       do_clamp_vertex_color(gallivm, gs_type,
@@ -1819,6 +1822,7 @@ draw_gs_llvm_emit_vertex(const struct lp_build_gs_iface *gs_base,
                   io, indices,
                   outputs, clipmask,
                   gs_info->num_outputs, gs_type,
+                  -1,
                   FALSE);
    lp_build_endif(&if_ctx);
 }
@@ -2336,7 +2340,7 @@ draw_llvm_generate(struct draw_llvm *llvm, struct draw_llvm_variant *variant)
        * and transformed positions in data
        */
       convert_to_aos(gallivm, variant->vertex_header_type, io, NULL, outputs, clipmask,
-                     vs_info->num_outputs, vs_type,
+                     vs_info->num_outputs, vs_type, -1,
                      enable_cliptest && key->need_edgeflags);
    }
    lp_build_loop_end_cond(&lp_loop, count, step, LLVMIntUGE);
@@ -2869,6 +2873,7 @@ draw_gs_llvm_generate(struct draw_llvm *llvm,
    params.mask = &mask;
    params.consts_ptr = consts_ptr;
    params.system_values = &system_values;
+   params.context_type = variant->context_type;
    params.context_ptr = context_ptr;
    params.sampler = sampler;
    params.info = &llvm->draw->gs.geometry_shader->info;
@@ -3530,6 +3535,7 @@ draw_tcs_llvm_generate(struct draw_llvm *llvm,
       params.mask = &mask;
       params.consts_ptr = consts_ptr;
       params.system_values = &system_values;
+      params.context_type = variant->context_type;
       params.context_ptr = context_ptr;
       params.sampler = sampler;
       params.info = &llvm->draw->tcs.tess_ctrl_shader->info;
@@ -3917,6 +3923,7 @@ draw_tes_llvm_generate(struct draw_llvm *llvm,
    LLVMValueRef step;
    struct lp_type tes_type;
    unsigned vector_length = variant->shader->base.vector_length;
+   int primid_slot = -1;
 
    memset(&system_values, 0, sizeof(system_values));
    memset(&outputs, 0, sizeof(outputs));
@@ -4019,6 +4026,7 @@ draw_tes_llvm_generate(struct draw_llvm *llvm,
          outputs[slot][i] = lp_build_alloca(gallivm, lp_build_int_vec_type(gallivm, tes_type), "primid");
          LLVMBuildStore(builder, system_values.prim_id, outputs[slot][i]);
       }
+      primid_slot = slot;
    }
    struct lp_build_loop_state lp_loop;
    lp_build_loop_begin(&lp_loop, gallivm, bld.zero);
@@ -4038,12 +4046,12 @@ draw_tes_llvm_generate(struct draw_llvm *llvm,
             if (i == 2) {
                if (variant->shader->base.prim_mode == PIPE_PRIM_TRIANGLES) {
                   tc_val = lp_build_const_float(gallivm, 1.0);
-                  tc_val = LLVMBuildFSub(builder, tc_val, lp_build_pointer_get(builder, tess_coord[0], idx), "");
-                  tc_val = LLVMBuildFSub(builder, tc_val, lp_build_pointer_get(builder, tess_coord[1], idx), "");
+                  tc_val = LLVMBuildFSub(builder, tc_val, lp_build_pointer_get2(builder, flt_type, tess_coord[0], idx), "");
+                  tc_val = LLVMBuildFSub(builder, tc_val, lp_build_pointer_get2(builder, flt_type, tess_coord[1], idx), "");
                } else
                   tc_val = lp_build_const_float(gallivm, 0.0);
             } else
-               tc_val = lp_build_pointer_get(builder, tess_coord[i], idx);
+               tc_val = lp_build_pointer_get2(builder, flt_type, tess_coord[i], idx);
 
             tess_coord_chan = LLVMBuildInsertElement(builder, tess_coord_chan, tc_val, lp_build_const_int32(gallivm, j), "");
          }
@@ -4057,6 +4065,7 @@ draw_tes_llvm_generate(struct draw_llvm *llvm,
       params.mask = &mask;
       params.consts_ptr = consts_ptr;
       params.system_values = &system_values;
+      params.context_type = variant->context_type;
       params.context_ptr = context_ptr;
       params.sampler = sampler;
       params.info = &llvm->draw->tes.tess_eval_shader->info;
@@ -4082,7 +4091,7 @@ draw_tes_llvm_generate(struct draw_llvm *llvm,
                                                      lp_int_type(tes_type), 0);
 
       convert_to_aos(gallivm, variant->vertex_header_type, io, NULL, outputs, clipmask,
-                     draw_total_tes_outputs(llvm->draw), tes_type, FALSE);
+                     draw_total_tes_outputs(llvm->draw), tes_type, primid_slot, FALSE);
    }
    lp_build_loop_end_cond(&lp_loop, num_tess_coord, step, LLVMIntUGE);
    draw_llvm_sampler_soa_destroy(sampler);

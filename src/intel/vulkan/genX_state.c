@@ -350,7 +350,6 @@ init_render_queue_state(struct anv_queue *queue)
       }
    }
 
-#if GFX_VERx10 < 125
    /* an unknown issue is causing vs push constants to become
     * corrupted during object-level preemption. For now, restrict
     * to command buffer level preemption to avoid rendering
@@ -365,18 +364,6 @@ init_render_queue_state(struct anv_queue *queue)
       cc1.DisablePreemptionandHighPriorityPausingdueto3DPRIMITIVECommandMask = true;
 #endif
    }
-#endif
-
-   /* Wa_14015207028
-    *
-    * Disable batch level preemption for some primitive topologies.
-    */
-#if GFX_VERx10 == 125
-      anv_batch_write_reg(&batch, GENX(VFG_PREEMPTION_CHICKEN_BITS), vfgc) {
-         vfgc.PolygonTrifanLineLoopPreemptionDisable = true;
-         vfgc.PolygonTrifanLineLoopPreemptionDisableMask = true;
-      }
-#endif
 
 #if GFX_VERx10 == 120
    /* Wa_1806527549 says to disable the following HiZ optimization when the
@@ -485,10 +472,10 @@ genX(init_device_state)(struct anv_device *device)
    for (uint32_t i = 0; i < device->queue_count; i++) {
       struct anv_queue *queue = &device->queues[i];
       switch (queue->family->engine_class) {
-      case I915_ENGINE_CLASS_RENDER:
+      case INTEL_ENGINE_CLASS_RENDER:
          res = init_render_queue_state(queue);
          break;
-      case I915_ENGINE_CLASS_COMPUTE:
+      case INTEL_ENGINE_CLASS_COMPUTE:
          res = init_compute_queue_state(queue);
          break;
       default:

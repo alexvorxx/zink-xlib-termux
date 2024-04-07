@@ -143,7 +143,7 @@ anv_gem_set_context_param(int fd, int context, uint32_t param, uint64_t value)
 }
 
 bool
-anv_gem_has_context_priority(int fd, int priority)
+anv_gem_has_context_priority(int fd, VkQueueGlobalPriorityKHR priority)
 {
    unreachable("Unused");
 }
@@ -170,18 +170,6 @@ anv_gem_fd_to_handle(struct anv_device *device, int fd)
 int
 anv_i915_query(int fd, uint64_t query_id, void *buffer,
                int32_t *buffer_len)
-{
-   unreachable("Unused");
-}
-
-struct drm_i915_query_engine_info *
-anv_gem_get_engine_info(int fd)
-{
-   unreachable("Unused");
-}
-
-int
-anv_gem_reg_read(int fd, uint32_t offset, uint64_t *result)
 {
    unreachable("Unused");
 }

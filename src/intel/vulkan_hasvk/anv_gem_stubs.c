@@ -173,15 +173,3 @@ anv_i915_query(int fd, uint64_t query_id, void *buffer,
 {
    unreachable("Unused");
 }
-
-struct drm_i915_query_engine_info *
-anv_gem_get_engine_info(int fd)
-{
-   unreachable("Unused");
-}
-
-int
-anv_gem_reg_read(int fd, uint32_t offset, uint64_t *result)
-{
-   unreachable("Unused");
-}

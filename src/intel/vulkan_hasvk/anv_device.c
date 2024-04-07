@@ -675,8 +675,8 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
 
    if (pdevice->engine_info) {
       int gc_count =
-         intel_gem_count_engines(pdevice->engine_info,
-                                 I915_ENGINE_CLASS_RENDER);
+         intel_engines_count(pdevice->engine_info,
+                             INTEL_ENGINE_CLASS_RENDER);
       int g_count = 0;
       int c_count = 0;
 
@@ -688,7 +688,7 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
                           VK_QUEUE_COMPUTE_BIT |
                           VK_QUEUE_TRANSFER_BIT,
             .queueCount = gc_count,
-            .engine_class = I915_ENGINE_CLASS_RENDER,
+            .engine_class = INTEL_ENGINE_CLASS_RENDER,
          };
       }
       if (g_count > 0) {
@@ -946,8 +946,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
 
    /* Check if we can read the GPU timestamp register from the CPU */
    uint64_t u64_ignore;
-   device->has_reg_timestamp = anv_gem_reg_read(fd, TIMESTAMP | I915_REG_READ_8B_WA,
-                                                &u64_ignore) == 0;
+   device->has_reg_timestamp = intel_gem_read_render_timestamp(fd, &u64_ignore);
 
    device->always_flush_cache = INTEL_DEBUG(DEBUG_STALL) ||
       driQueryOptionb(&instance->dri_options, "always_flush_cache");
@@ -992,7 +991,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    }
    device->master_fd = master_fd;
 
-   device->engine_info = anv_gem_get_engine_info(fd);
+   device->engine_info = intel_engine_get_info(fd);
    anv_physical_device_init_queue_families(device);
 
    device->local_fd = fd;
@@ -2880,7 +2879,7 @@ anv_device_setup_context(struct anv_device *device,
    if (device->physical->engine_info) {
       /* The kernel API supports at most 64 engines */
       assert(num_queues <= 64);
-      uint16_t engine_classes[64];
+      enum intel_engine_class engine_classes[64];
       int engine_count = 0;
       for (uint32_t i = 0; i < pCreateInfo->queueCreateInfoCount; i++) {
          const VkDeviceQueueCreateInfo *queueCreateInfo =
@@ -4453,7 +4452,6 @@ VkResult anv_GetCalibratedTimestampsEXT(
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
    uint64_t timestamp_frequency = device->info->timestamp_frequency;
-   int  ret;
    int d;
    uint64_t begin, end;
    uint64_t max_clock_period = 0;
@@ -4467,10 +4465,7 @@ VkResult anv_GetCalibratedTimestampsEXT(
    for (d = 0; d < timestampCount; d++) {
       switch (pTimestampInfos[d].timeDomain) {
       case VK_TIME_DOMAIN_DEVICE_EXT:
-         ret = anv_gem_reg_read(device->fd, TIMESTAMP | I915_REG_READ_8B_WA,
-                                &pTimestamps[d]);
-
-         if (ret != 0) {
+         if (!intel_gem_read_render_timestamp(device->fd, &pTimestamps[d])) {
             return vk_device_set_lost(&device->vk, "Failed to read the "
                                       "TIMESTAMP register: %m");
          }

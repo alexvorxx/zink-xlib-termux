@@ -775,6 +775,12 @@ struct pvr_sub_cmd {
 
    enum pvr_sub_command_flags flags;
 
+   /* True if the sub_cmd is owned by this command buffer. False if taken from
+    * a secondary command buffer, in that case we are not supposed to free any
+    * resources associated with the sub_cmd.
+    */
+   bool owned;
+
    union {
       struct pvr_sub_cmd_gfx gfx;
       struct pvr_sub_cmd_compute compute;
@@ -867,7 +873,11 @@ struct pvr_ppp_state {
 struct pvr_deferred_cs_command {
    enum pvr_deferred_cs_command_type type;
    union {
-      struct pvr_ppp_dbsc dbsc;
+      struct {
+         struct pvr_ppp_dbsc state;
+
+         uint32_t *vdm_state;
+      } dbsc;
 
       struct {
          struct pvr_ppp_dbsc state;

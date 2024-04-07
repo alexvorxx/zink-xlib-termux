@@ -26,6 +26,7 @@
  */
 
 #include "zink_context.h"
+#include "zink_compiler.h"
 #include "zink_descriptors.h"
 #include "zink_program.h"
 #include "zink_render_pass.h"
@@ -308,7 +309,7 @@ init_template_entry(struct zink_shader *shader, enum zink_descriptor_type type,
                     unsigned idx, VkDescriptorUpdateTemplateEntry *entry, unsigned *entry_idx)
 {
     int index = shader->bindings[type][idx].index;
-    gl_shader_stage stage = shader->nir->info.stage;
+    gl_shader_stage stage = clamp_stage(shader->nir);
     entry->dstArrayElement = 0;
     entry->dstBinding = shader->bindings[type][idx].binding;
     entry->descriptorCount = shader->bindings[type][idx].size;
@@ -323,6 +324,8 @@ init_template_entry(struct zink_shader *shader, enum zink_descriptor_type type,
        entry->offset = offsetof(struct zink_context, di.ubos[stage][index]);
        entry->stride = sizeof(VkDescriptorBufferInfo);
        break;
+    case VK_DESCRIPTOR_TYPE_SAMPLER:
+    case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
     case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
        entry->offset = offsetof(struct zink_context, di.textures[stage][index]);
        entry->stride = sizeof(VkDescriptorImageInfo);
@@ -357,7 +360,8 @@ descriptor_program_num_sizes(VkDescriptorPoolSize *sizes, enum zink_descriptor_t
       return !!sizes[ZDS_INDEX_UBO].descriptorCount;
    case ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW:
       return !!sizes[ZDS_INDEX_COMBINED_SAMPLER].descriptorCount +
-             !!sizes[ZDS_INDEX_UNIFORM_TEXELS].descriptorCount;
+             !!sizes[ZDS_INDEX_UNIFORM_TEXELS].descriptorCount +
+             !!sizes[ZDS_INDEX_SAMPLER].descriptorCount;
    case ZINK_DESCRIPTOR_TYPE_SSBO:
       return !!sizes[ZDS_INDEX_STORAGE_BUFFER].descriptorCount;
    case ZINK_DESCRIPTOR_TYPE_IMAGE:
@@ -377,6 +381,7 @@ descriptor_program_num_sizes_compact(VkDescriptorPoolSize *sizes, unsigned desc_
    case ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW:
       return !!sizes[ZDS_INDEX_COMP_COMBINED_SAMPLER].descriptorCount +
              !!sizes[ZDS_INDEX_COMP_UNIFORM_TEXELS].descriptorCount +
+             !!sizes[ZDS_INDEX_COMP_SAMPLER].descriptorCount +
              !!sizes[ZDS_INDEX_COMP_STORAGE_IMAGE].descriptorCount +
              !!sizes[ZDS_INDEX_COMP_STORAGE_TEXELS].descriptorCount;
    case ZINK_DESCRIPTOR_TYPE_SSBO:
@@ -400,7 +405,7 @@ zink_descriptor_program_init(struct zink_context *ctx, struct zink_program *pg)
    uint8_t has_bindings = 0;
    unsigned push_count = 0;
    uint16_t num_type_sizes[ZINK_DESCRIPTOR_BASE_TYPES];
-   VkDescriptorPoolSize sizes[6] = {0}; //zink_descriptor_size_index
+   VkDescriptorPoolSize sizes[ZDS_INDEX_MAX] = {0}; //zink_descriptor_size_index
 
    struct zink_shader **stages;
    if (pg->is_compute)
@@ -423,7 +428,7 @@ zink_descriptor_program_init(struct zink_context *ctx, struct zink_program *pg)
       if (!shader)
          continue;
 
-      gl_shader_stage stage = shader->nir->info.stage;
+      gl_shader_stage stage = clamp_stage(shader->nir);
       VkShaderStageFlagBits stage_flags = mesa_to_vk_shader_stage(stage);
       /* uniform ubos handled in push */
       if (shader->has_uniforms) {
@@ -484,8 +489,8 @@ zink_descriptor_program_init(struct zink_context *ctx, struct zink_program *pg)
                                                       zink_descriptor_type_to_size_idx(desc_type);
          /* some sets can have multiple descriptor types: ensure the size arrays for these types are contiguous for creating the pool key */
          VkDescriptorPoolSize *sz = &sizes[idx];
-         VkDescriptorPoolSize sz2[4];
-         if (screen->compact_descriptors) {
+         VkDescriptorPoolSize sz2[5];
+         if (screen->compact_descriptors || (pg->is_compute && stages[0]->nir->info.stage == MESA_SHADER_KERNEL)) {
             unsigned found = 0;
             while (found < num_type_sizes[desc_type]) {
                if (sz->descriptorCount) {

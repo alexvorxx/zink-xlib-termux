@@ -366,13 +366,9 @@ panfrost_get_shader_param(struct pipe_screen *screen,
 
         /* We only allow observable side effects (memory writes) in compute and
          * fragment shaders. Side effects in the geometry pipeline cause
-         * trouble with IDVS.
-         *
-         * This restriction doesn't apply to Midgard, which does not implement
-         * IDVS and therefore executes vertex shaders exactly once.
+         * trouble with IDVS and conflict with our transform feedback lowering.
          */
-        bool allow_side_effects = (shader != PIPE_SHADER_VERTEX) ||
-                                  (dev->arch <= 5);
+        bool allow_side_effects = (shader != PIPE_SHADER_VERTEX);
 
         switch (param) {
         case PIPE_SHADER_CAP_MAX_INSTRUCTIONS:
@@ -686,9 +682,16 @@ panfrost_get_compute_param(struct pipe_screen *pscreen, enum pipe_shader_ir ir_t
 
         case PIPE_COMPUTE_CAP_MAX_BLOCK_SIZE:
                 /* Unpredictable behaviour at larger sizes. Mali-G52 advertises
-                 * 384x384x384. The smaller size is advertised by Mali-T628,
-                 * use min until we have a need to key by arch */
-		RET(((uint64_t []) { 256, 256, 256 }));
+                 * 384x384x384.
+                 *
+                 * On Midgard, we don't allow more than 128 threads in each
+                 * direction to match PIPE_COMPUTE_CAP_MAX_THREADS_PER_BLOCK.
+                 * That still exceeds the minimum-maximum.
+                 */
+                if (dev->arch >= 6)
+                        RET(((uint64_t []) { 256, 256, 256 }));
+                else
+                        RET(((uint64_t []) { 128, 128, 128 }));
 
 	case PIPE_COMPUTE_CAP_MAX_THREADS_PER_BLOCK:
                 /* On Bifrost and newer, all GPUs can support at least 256 threads

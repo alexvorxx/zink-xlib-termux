@@ -156,9 +156,11 @@ enum zink_descriptor_size_index {
    ZDS_INDEX_UBO,
    ZDS_INDEX_COMBINED_SAMPLER,
    ZDS_INDEX_UNIFORM_TEXELS,
+   ZDS_INDEX_SAMPLER,
    ZDS_INDEX_STORAGE_BUFFER,
    ZDS_INDEX_STORAGE_IMAGE,
    ZDS_INDEX_STORAGE_TEXELS,
+   ZDS_INDEX_MAX,
 };
 
 /* indexing for descriptor template management in COMPACT mode */
@@ -167,6 +169,7 @@ enum zink_descriptor_size_index_compact {
    ZDS_INDEX_COMP_STORAGE_BUFFER,
    ZDS_INDEX_COMP_COMBINED_SAMPLER,
    ZDS_INDEX_COMP_UNIFORM_TEXELS,
+   ZDS_INDEX_COMP_SAMPLER,
    ZDS_INDEX_COMP_STORAGE_IMAGE,
    ZDS_INDEX_COMP_STORAGE_TEXELS,
 };
@@ -654,6 +657,7 @@ struct zink_shader_info {
    struct pipe_stream_output_info so_info;
    unsigned so_info_slots[PIPE_MAX_SO_OUTPUTS];
    uint32_t so_propagate; //left shifted by 32
+   uint32_t sampler_mask;
    bool last_vertex;
    bool have_xfb;
    bool have_sparse;
@@ -812,11 +816,6 @@ enum zink_gfx_push_constant_member {
    ZINK_GFX_PUSHCONST_DEFAULT_INNER_LEVEL,
    ZINK_GFX_PUSHCONST_DEFAULT_OUTER_LEVEL,
    ZINK_GFX_PUSHCONST_MAX
-};
-
-/* create_cs_pushconst must be kept in sync with this struct */
-struct zink_cs_push_constant {
-   unsigned work_dim;
 };
 
 /* The order of the enums MUST match the order of the zink_cs_push_constant

@@ -35,7 +35,6 @@
 #include "sw/xlib/xlib_sw_winsys.h"
 #include "xm_public.h"
 
-#include "state_tracker/st_gl_api.h"
 #include "target-helpers/inline_sw_helper.h"
 #include "target-helpers/inline_debug_helper.h"
 
@@ -78,7 +77,6 @@ fail:
 static struct xm_driver xlib_driver = 
 {
    .create_pipe_screen = swrast_xlib_create_screen,
-   .create_st_api = st_gl_api_create,
 };
 
 
@@ -105,29 +103,3 @@ extern void (*linker_foo(const unsigned char *procName))()
 {
    return glXGetProcAddress(procName);
 }
-
-
-/**
- * When GLX_INDIRECT_RENDERING is defined, some symbols are missing in
- * libglapi.a.  We need to define them here.
- */
-#ifdef GLX_INDIRECT_RENDERING
-
-#define GL_GLEXT_PROTOTYPES
-#include "main/glheader.h"
-#include "glapi/glapi.h"
-#include "glapi/glapitable.h"
-
-#define NAME(func)  gl##func
-
-#define DISPATCH(FUNC, ARGS, MESSAGE)		\
-   GET_DISPATCH()->FUNC ARGS
-
-#define RETURN_DISPATCH(FUNC, ARGS, MESSAGE) 	\
-   return GET_DISPATCH()->FUNC ARGS
-
-/* skip normal ones */
-#define _GLAPI_SKIP_NORMAL_ENTRY_POINTS
-#include "glapitemp.h"
-
-#endif /* GLX_INDIRECT_RENDERING */

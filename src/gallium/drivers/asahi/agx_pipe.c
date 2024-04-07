@@ -41,6 +41,7 @@
 #include "gallium/auxiliary/util/u_transfer_helper.h"
 #include "gallium/auxiliary/util/u_surface.h"
 #include "gallium/auxiliary/util/u_framebuffer.h"
+#include "gallium/auxiliary/util/u_debug_cb.h"
 #include "agx_public.h"
 #include "agx_state.h"
 #include "magic.h"
@@ -55,6 +56,7 @@ static const struct debug_named_value agx_debug_options[] = {
 #ifndef NDEBUG
    {"dirty",     AGX_DBG_DIRTY,    "Disable dirty tracking"},
 #endif
+   {"precompile",AGX_DBG_PRECOMPILE,"Precompile shaders for shader-db"},
    DEBUG_NAMED_VALUE_END
 };
 
@@ -567,6 +569,10 @@ agx_flush(struct pipe_context *pctx,
       agxdecode_next_frame();
    }
 
+   AGX_BATCH_FOREACH_BO_HANDLE(batch, handle) {
+      agx_bo_unreference(agx_lookup_bo(dev, handle));
+   }
+
    memset(batch->bo_list.set, 0, batch->bo_list.word_count * sizeof(BITSET_WORD));
    agx_pool_cleanup(&ctx->batch->pool);
    agx_pool_cleanup(&ctx->batch->pipeline_pool);
@@ -661,6 +667,7 @@ agx_create_context(struct pipe_screen *screen,
 
    pctx->buffer_subdata = u_default_buffer_subdata;
    pctx->texture_subdata = u_default_texture_subdata;
+   pctx->set_debug_callback = u_default_set_debug_callback;
    pctx->invalidate_resource = agx_invalidate_resource;
    agx_init_state_functions(pctx);
 

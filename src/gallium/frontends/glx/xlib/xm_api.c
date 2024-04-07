@@ -82,7 +82,6 @@
  * global.
  */
 static struct xm_driver driver;
-static struct st_api *stapi;
 
 /* Default strict invalidate to false.  This means we will not call
  * XGetGeometry after every swapbuffers, which allows swapbuffers to
@@ -109,7 +108,6 @@ boolean xmesa_strict_invalidate = FALSE;
 void xmesa_set_driver( const struct xm_driver *templ )
 {
    driver = *templ;
-   stapi = driver.create_st_api();
 
    xmesa_strict_invalidate =
       debug_get_bool_option("XMESA_STRICT_INVALIDATE", FALSE);
@@ -607,7 +605,7 @@ xmesa_free_buffer(XMesaBuffer buffer)
          /* Notify the st manager that the associated framebuffer interface
           * object is no longer valid.
           */
-         stapi->destroy_drawable(stapi, buffer->stfb);
+         st_api_destroy_drawable(buffer->stfb);
 
          /* XXX we should move the buffer to a delete-pending list and destroy
           * the buffer until it is no longer current.
@@ -914,7 +912,7 @@ void XMesaDestroyVisual( XMesaVisual v )
 const char *
 xmesa_get_name(void)
 {
-   return stapi->name;
+   return "Mesa " PACKAGE_VERSION;
 }
 
 
@@ -1014,7 +1012,7 @@ XMesaContext XMesaCreateContext( XMesaVisual v, XMesaContext share_list,
       goto no_st;
    }
 
-   c->st = stapi->create_context(stapi, xmdpy->smapi, &attribs,
+   c->st = st_api_create_context(xmdpy->smapi, &attribs,
          &ctx_err, (share_list) ? share_list->st : NULL);
    if (c->st == NULL)
       goto no_st;
@@ -1298,7 +1296,7 @@ GLboolean XMesaMakeCurrent2( XMesaContext c, XMesaBuffer drawBuffer,
       c->xm_buffer = drawBuffer;
       c->xm_read_buffer = readBuffer;
 
-      stapi->make_current(stapi, c->st,
+      st_api_make_current(c->st,
                           drawBuffer ? drawBuffer->stfb : NULL,
                           readBuffer ? readBuffer->stfb : NULL);
 
@@ -1308,7 +1306,7 @@ GLboolean XMesaMakeCurrent2( XMesaContext c, XMesaBuffer drawBuffer,
    }
    else {
       /* Detach */
-      stapi->make_current(stapi, NULL, NULL, NULL);
+      st_api_make_current(NULL, NULL, NULL);
 
    }
    return GL_TRUE;
@@ -1327,7 +1325,7 @@ GLboolean XMesaUnbindContext( XMesaContext c )
 
 XMesaContext XMesaGetCurrentContext( void )
 {
-   struct st_context_iface *st = stapi->get_current(stapi);
+   struct st_context_iface *st = st_api_get_current();
    return (XMesaContext) (st) ? st->st_manager_private : NULL;
 }
 
@@ -1470,7 +1468,7 @@ PUBLIC void
 XMesaBindTexImage(Display *dpy, XMesaBuffer drawable, int buffer,
                   const int *attrib_list)
 {
-   struct st_context_iface *st = stapi->get_current(stapi);
+   struct st_context_iface *st = st_api_get_current();
    struct st_framebuffer_iface* stfbi = drawable->stfb;
    struct pipe_resource *res;
    int x, y, w, h;

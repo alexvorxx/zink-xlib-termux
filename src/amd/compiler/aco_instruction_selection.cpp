@@ -1822,14 +1822,17 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
       }
       break;
    }
-   case nir_op_uclz: {
+   case nir_op_ufind_msb_rev:
+   case nir_op_ifind_msb_rev: {
       Temp src = get_alu_src(ctx, instr->src[0]);
       if (src.regClass() == s1) {
-         Temp msb_rev = bld.sop1(aco_opcode::s_flbit_i32_b32, bld.def(s1), src);
-         bld.sop2(aco_opcode::s_min_u32, Definition(dst), Operand::c32(32u), msb_rev);
+         aco_opcode op = instr->op == nir_op_ufind_msb_rev ? aco_opcode::s_flbit_i32_b32
+                                                           : aco_opcode::s_flbit_i32;
+         bld.sop1(op, Definition(dst), src);
       } else if (src.regClass() == v1) {
-         Temp msb_rev = bld.vop1(aco_opcode::v_ffbh_u32, bld.def(v1), src);
-         bld.vop2(aco_opcode::v_min_u32, Definition(dst), Operand::c32(32u), msb_rev);
+         aco_opcode op =
+            instr->op == nir_op_ufind_msb_rev ? aco_opcode::v_ffbh_u32 : aco_opcode::v_ffbh_i32;
+         emit_vop1_instruction(ctx, instr, op, dst);
       } else {
          isel_err(&instr->instr, "Unimplemented NIR instr bit size");
       }
@@ -10869,6 +10872,9 @@ create_vs_exports(isel_context* ctx)
       export_vs_varying(ctx, VARYING_SLOT_CLIP_DIST0, true, &next_pos);
    if (ctx->num_clip_distances + ctx->num_cull_distances > 4)
       export_vs_varying(ctx, VARYING_SLOT_CLIP_DIST1, true, &next_pos);
+
+   if (ctx->program->gfx_level >= GFX11)
+      return;
 
    if (ctx->export_clip_dists) {
       if (ctx->num_clip_distances + ctx->num_cull_distances > 0)

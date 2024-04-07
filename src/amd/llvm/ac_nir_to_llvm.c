@@ -1072,19 +1072,26 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
       result = ac_find_lsb(&ctx->ac, ctx->ac.i32, src[0]);
       break;
    case nir_op_ufind_msb:
-      result = ac_build_umsb(&ctx->ac, src[0], ctx->ac.i32);
+      result = ac_build_umsb(&ctx->ac, src[0], ctx->ac.i32, false);
       break;
    case nir_op_ifind_msb:
       result = ac_build_imsb(&ctx->ac, src[0], ctx->ac.i32);
       break;
-  case nir_op_uclz: {
+   case nir_op_ufind_msb_rev:
+      result = ac_build_umsb(&ctx->ac, src[0], ctx->ac.i32, true);
+      break;
+   case nir_op_ifind_msb_rev:
+      result = ac_build_intrinsic(&ctx->ac, "llvm.amdgcn.sffbh.i32", ctx->ac.i32, &src[0], 1,
+                                  AC_FUNC_ATTR_READNONE);
+      break;
+   case nir_op_uclz: {
       LLVMValueRef params[2] = {
          src[0],
          ctx->ac.i1false,
       };
       result = ac_build_intrinsic(&ctx->ac, "llvm.ctlz.i32", ctx->ac.i32, params, 2, AC_FUNC_ATTR_READNONE);
       break;
-  }
+   }
    case nir_op_uadd_carry:
       result = emit_uint_carry(&ctx->ac, "llvm.uadd.with.overflow.i32", src[0], src[1]);
       break;
@@ -3598,6 +3605,7 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
    case nir_intrinsic_load_ring_tess_offchip_offset_amd:
    case nir_intrinsic_load_ring_esgs_amd:
    case nir_intrinsic_load_ring_es2gs_offset_amd:
+   case nir_intrinsic_load_ring_attr_amd:
    case nir_intrinsic_load_lshs_vertex_stride_amd:
    case nir_intrinsic_load_tcs_num_patches_amd:
    case nir_intrinsic_load_hs_out_patch_data_offset_amd:
@@ -5083,7 +5091,7 @@ static void visit_ssa_undef(struct ac_nir_context *ctx, const nir_ssa_undef_inst
    } else {
       LLVMValueRef zero = LLVMConstInt(type, 0, false);
       if (num_components > 1) {
-         zero = ac_build_gather_values_extended(&ctx->ac, &zero, 4, 0, false);
+         zero = ac_build_gather_values_extended(&ctx->ac, &zero, num_components, 0, false);
       }
       ctx->ssa_defs[instr->def.index] = zero;
    }

@@ -37,7 +37,6 @@
 #include "pipe/p_screen.h"
 #include "pipe/p_format.h"
 #include "pipe-loader/pipe_loader.h"
-#include "state_tracker/st_gl_api.h" /* for st_gl_api_create */
 #include "frontend/drm_driver.h"
 
 #include "util/u_debug.h"
@@ -439,7 +438,6 @@ dri_fill_in_modes(struct dri_screen *screen)
    uint8_t depth_bits_array[5];
    uint8_t stencil_bits_array[5];
    unsigned depth_buffer_factor;
-   unsigned msaa_samples_max;
    unsigned i;
    struct pipe_screen *p_screen = screen->base.screen;
    bool pf_z16, pf_x8z24, pf_z24x8, pf_s8z24, pf_z24s8, pf_z32;
@@ -466,9 +464,6 @@ dri_fill_in_modes(struct dri_screen *screen)
    allow_rgba_ordering = dri_loader_get_cap(screen, DRI_LOADER_CAP_RGBA_ORDERING);
    allow_rgb10 = driQueryOptionb(&screen->dev->option_cache, "allow_rgb10_configs");
    allow_fp16 = dri_loader_get_cap(screen, DRI_LOADER_CAP_FP16);
-
-   msaa_samples_max = (screen->st_api->feature_mask & ST_API_FEATURE_MS_VISUALS_MASK)
-      ? MSAA_VISUAL_MAX_SAMPLES : 1;
 
    pf_x8z24 = p_screen->is_format_supported(p_screen, PIPE_FORMAT_Z24X8_UNORM,
 					    PIPE_TEXTURE_2D, 0, 0,
@@ -545,7 +540,7 @@ dri_fill_in_modes(struct dri_screen *screen)
                                          PIPE_BIND_DISPLAY_TARGET))
          continue;
 
-      for (i = 1; i <= msaa_samples_max; i++) {
+      for (i = 1; i <= MSAA_VISUAL_MAX_SAMPLES; i++) {
          int samples = i > 1 ? i : 0;
 
          if (p_screen->is_format_supported(p_screen, pipe_formats[format],
@@ -778,9 +773,6 @@ dri_destroy_screen_helper(struct dri_screen * screen)
    if (screen->base.destroy)
       screen->base.destroy(&screen->base);
 
-   if (screen->st_api && screen->st_api->destroy)
-      screen->st_api->destroy(screen->st_api);
-
    if (screen->base.screen)
       screen->base.screen->destroy(screen->base.screen);
 
@@ -844,10 +836,6 @@ dri_init_screen_helper(struct dri_screen *screen,
    if (screen->validate_egl_image)
       screen->base.validate_egl_image = dri_validate_egl_image;
 
-   screen->st_api = st_gl_api_create();
-   if (!screen->st_api)
-      return NULL;
-
    if(pscreen->get_param(pscreen, PIPE_CAP_NPOT_TEXTURES))
       screen->target = PIPE_TEXTURE_2D;
    else
@@ -855,12 +843,12 @@ dri_init_screen_helper(struct dri_screen *screen,
 
    dri_postprocessing_init(screen);
 
-   screen->st_api->query_versions(screen->st_api, &screen->base,
-                                  &screen->options,
-                                  &screen->sPriv->max_gl_core_version,
-                                  &screen->sPriv->max_gl_compat_version,
-                                  &screen->sPriv->max_gl_es1_version,
-                                  &screen->sPriv->max_gl_es2_version);
+   st_api_query_versions(&screen->base,
+                         &screen->options,
+                         &screen->sPriv->max_gl_core_version,
+                         &screen->sPriv->max_gl_compat_version,
+                         &screen->sPriv->max_gl_es1_version,
+                         &screen->sPriv->max_gl_es2_version);
 
    return dri_fill_in_modes(screen);
 }

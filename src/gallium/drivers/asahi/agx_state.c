@@ -53,6 +53,7 @@
 #include "util/u_resource.h"
 #include "util/u_transfer.h"
 #include "util/u_upload_mgr.h"
+#include "agx_bg_eot.h"
 #include "agx_bo.h"
 #include "agx_device.h"
 #include "agx_disk_cache.h"
@@ -3031,12 +3032,12 @@ agx_build_pipeline(struct agx_batch *batch, struct agx_compiled_shader *cs,
 }
 
 struct asahi_bg_eot
-agx_build_meta(struct agx_batch *batch, bool store, bool partial_render)
+agx_build_bg_eot(struct agx_batch *batch, bool store, bool partial_render)
 {
    struct agx_context *ctx = batch->ctx;
 
    /* Construct the key */
-   struct agx_meta_key key = {.tib = batch->tilebuffer_layout};
+   struct agx_bg_eot_key key = {.tib = batch->tilebuffer_layout};
 
    bool needs_textures_for_spilled_rts =
       agx_tilebuffer_spills(&batch->tilebuffer_layout) && !partial_render &&
@@ -3050,13 +3051,13 @@ agx_build_meta(struct agx_batch *batch, bool store, bool partial_render)
 
       if (store) {
          /* TODO: Suppress stores to discarded render targets */
-         key.op[rt] = AGX_META_OP_STORE;
+         key.op[rt] = AGX_EOT_STORE;
       } else if (batch->tilebuffer_layout.spilled[rt] && partial_render) {
          /* Partial render programs exist only to store/load the tilebuffer to
           * main memory. When render targets are already spilled to main memory,
           * there's nothing to do.
           */
-         key.op[rt] = AGX_META_OP_NONE;
+         key.op[rt] = AGX_BG_EOT_NONE;
       } else {
          bool valid = (batch->load & (PIPE_CLEAR_COLOR0 << rt));
          bool clear = (batch->clear & (PIPE_CLEAR_COLOR0 << rt));
@@ -3070,9 +3071,9 @@ agx_build_meta(struct agx_batch *batch, bool store, bool partial_render)
           */
          load |= partial_render;
 
-         key.op[rt] = load    ? AGX_META_OP_LOAD
-                      : clear ? AGX_META_OP_CLEAR
-                              : AGX_META_OP_NONE;
+         key.op[rt] = load    ? AGX_BG_LOAD
+                      : clear ? AGX_BG_CLEAR
+                              : AGX_BG_EOT_NONE;
       }
    }
 
@@ -3085,7 +3086,7 @@ agx_build_meta(struct agx_batch *batch, bool store, bool partial_render)
    unsigned nr_tex = 0;
 
    for (unsigned rt = 0; rt < PIPE_MAX_COLOR_BUFS; ++rt) {
-      if (key.op[rt] == AGX_META_OP_LOAD) {
+      if (key.op[rt] == AGX_BG_LOAD) {
          /* Each reloaded render target is textured */
          needs_sampler = true;
 
@@ -3111,11 +3112,11 @@ agx_build_meta(struct agx_batch *batch, bool store, bool partial_render)
          }
 
          nr_tex = (rt * 2) + 1;
-      } else if (key.op[rt] == AGX_META_OP_CLEAR) {
+      } else if (key.op[rt] == AGX_BG_CLEAR) {
          assert(batch->uploaded_clear_color[rt] && "set when cleared");
          agx_usc_uniform(&b, 4 + (8 * rt), 8, batch->uploaded_clear_color[rt]);
          uniforms = MAX2(uniforms, 4 + (8 * rt) + 8);
-      } else if (key.op[rt] == AGX_META_OP_STORE) {
+      } else if (key.op[rt] == AGX_EOT_STORE) {
          struct pipe_image_view view =
             image_view_for_surface(batch->key.cbufs[rt]);
          struct agx_ptr pbe =
@@ -3185,7 +3186,7 @@ agx_build_meta(struct agx_batch *batch, bool store, bool partial_render)
 
    /* Get the shader */
    key.reserved_preamble = uniforms;
-   struct agx_meta_shader *shader = agx_get_meta_shader(&ctx->meta, &key);
+   struct agx_bg_eot_shader *shader = agx_get_bg_eot_shader(&ctx->bg_eot, &key);
    agx_batch_add_bo(batch, shader->bo);
 
    agx_usc_pack(&b, SHADER, cfg) {

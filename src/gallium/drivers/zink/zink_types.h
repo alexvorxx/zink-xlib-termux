@@ -131,15 +131,19 @@ enum zink_blit_flags {
 };
 
 /* descriptor types; also the ordering of the sets
- * ...except that ZINK_DESCRIPTOR_TYPES is actually set 0, which is the uniform data (UBO0) for all stages
+ * ...except that ZINK_DESCRIPTOR_BASE_TYPES is actually ZINK_DESCRIPTOR_TYPE_UNIFORMS,
+ * and all base type values are thus +1 to get the set id (using screen->desc_set_id[idx])
  */
 enum zink_descriptor_type {
    ZINK_DESCRIPTOR_TYPE_UBO,
    ZINK_DESCRIPTOR_TYPE_SAMPLER_VIEW,
    ZINK_DESCRIPTOR_TYPE_SSBO,
    ZINK_DESCRIPTOR_TYPE_IMAGE,
-   ZINK_DESCRIPTOR_TYPES,
+   ZINK_DESCRIPTOR_BASE_TYPES, /**< the count/iterator for basic descriptor types */
    ZINK_DESCRIPTOR_BINDLESS,
+   ZINK_DESCRIPTOR_ALL_TYPES,
+   ZINK_DESCRIPTOR_TYPE_UNIFORMS = ZINK_DESCRIPTOR_BASE_TYPES, /**< this is aliased for convenience */
+   ZINK_DESCRIPTOR_NON_BINDLESS_TYPES = ZINK_DESCRIPTOR_BASE_TYPES + 1, /**< for struct sizing */
 };
 
 enum zink_descriptor_mode {
@@ -386,11 +390,11 @@ struct zink_program_descriptor_data {
    /* bitmask of which sets are used by the program */
    uint8_t binding_usage;
    /* all the pool keys for the program */
-   struct zink_descriptor_pool_key *pool_key[ZINK_DESCRIPTOR_TYPES]; //push set doesn't need one
+   struct zink_descriptor_pool_key *pool_key[ZINK_DESCRIPTOR_BASE_TYPES]; //push set doesn't need one
    /* all the layouts for the program */
-   struct zink_descriptor_layout *layouts[ZINK_DESCRIPTOR_TYPES + 1];
+   struct zink_descriptor_layout *layouts[ZINK_DESCRIPTOR_NON_BINDLESS_TYPES];
    /* all the templates for the program */
-   VkDescriptorUpdateTemplate templates[ZINK_DESCRIPTOR_TYPES + 1];
+   VkDescriptorUpdateTemplate templates[ZINK_DESCRIPTOR_NON_BINDLESS_TYPES];
 };
 
 struct zink_descriptor_pool {
@@ -422,18 +426,18 @@ struct zink_batch_descriptor_data {
    /* pools have fbfetch initialized */
    bool has_fbfetch;
    /* real size of 'pools' */
-   unsigned pool_size[ZINK_DESCRIPTOR_TYPES];
+   unsigned pool_size[ZINK_DESCRIPTOR_BASE_TYPES];
    /* this array is sized based on the max zink_descriptor_pool_key::id used by the batch; members may be NULL */
-   struct util_dynarray pools[ZINK_DESCRIPTOR_TYPES];
+   struct util_dynarray pools[ZINK_DESCRIPTOR_BASE_TYPES];
    struct zink_descriptor_pool_multi push_pool[2]; //gfx, compute
    /* the current program (for descriptor updating) */
    struct zink_program *pg[2]; //gfx, compute
    /* the current pipeline compatibility id (for pipeline compatibility rules) */
    uint32_t compat_id[2]; //gfx, compute
    /* the current set layout */
-   VkDescriptorSetLayout dsl[2][ZINK_DESCRIPTOR_TYPES]; //gfx, compute
+   VkDescriptorSetLayout dsl[2][ZINK_DESCRIPTOR_BASE_TYPES]; //gfx, compute
    /* the current set for a given type; used for rebinding if pipeline compat id changes and current set must be rebound */
-   VkDescriptorSet sets[2][ZINK_DESCRIPTOR_TYPES + 1]; //gfx, compute
+   VkDescriptorSet sets[2][ZINK_DESCRIPTOR_NON_BINDLESS_TYPES]; //gfx, compute
    /* mask of push descriptor usage */
    unsigned push_usage[2]; //gfx, compute
 };
@@ -669,8 +673,8 @@ struct zink_shader {
       int binding;
       VkDescriptorType type;
       unsigned char size;
-   } bindings[ZINK_DESCRIPTOR_TYPES][ZINK_MAX_DESCRIPTORS_PER_TYPE];
-   size_t num_bindings[ZINK_DESCRIPTOR_TYPES];
+   } bindings[ZINK_DESCRIPTOR_BASE_TYPES][ZINK_MAX_DESCRIPTORS_PER_TYPE];
+   size_t num_bindings[ZINK_DESCRIPTOR_BASE_TYPES];
    unsigned num_texel_buffers;
    uint32_t ubos_used; // bitfield of which ubo indices are used
    uint32_t ssbos_used; // bitfield of which ssbo indices are used
@@ -828,7 +832,7 @@ struct zink_program {
 
    uint32_t compat_id;
    VkPipelineLayout layout;
-   VkDescriptorSetLayout dsl[ZINK_DESCRIPTOR_TYPES + 2]; // one for each type + push + bindless
+   VkDescriptorSetLayout dsl[ZINK_DESCRIPTOR_ALL_TYPES]; // one for each type + push + bindless
    unsigned num_dsl;
 
    bool removed;
@@ -1198,9 +1202,9 @@ struct zink_screen {
    struct util_queue cache_get_thread;
 
    simple_mtx_t desc_set_layouts_lock;
-   struct hash_table desc_set_layouts[ZINK_DESCRIPTOR_TYPES];
+   struct hash_table desc_set_layouts[ZINK_DESCRIPTOR_BASE_TYPES];
    simple_mtx_t desc_pool_keys_lock;
-   struct set desc_pool_keys[ZINK_DESCRIPTOR_TYPES];
+   struct set desc_pool_keys[ZINK_DESCRIPTOR_BASE_TYPES];
    struct util_live_shader_cache shaders;
 
    struct {
@@ -1259,8 +1263,8 @@ struct zink_screen {
    void (*buffer_barrier)(struct zink_context *ctx, struct zink_resource *res, VkAccessFlags flags, VkPipelineStageFlags pipeline);
    void (*image_barrier)(struct zink_context *ctx, struct zink_resource *res, VkImageLayout new_layout, VkAccessFlags flags, VkPipelineStageFlags pipeline);
 
-   bool compact_descriptors;
-   uint8_t desc_set_id[ZINK_MAX_DESCRIPTOR_SETS];
+   bool compact_descriptors; /**< toggled if descriptor set ids are compacted */
+   uint8_t desc_set_id[ZINK_MAX_DESCRIPTOR_SETS]; /**< converts enum zink_descriptor_type -> the actual set id */
 
    struct {
       bool dual_color_blend_by_location;
@@ -1652,7 +1656,7 @@ struct zink_context {
 
       VkDescriptorImageInfo fbfetch;
 
-      struct zink_resource *descriptor_res[ZINK_DESCRIPTOR_TYPES][MESA_SHADER_STAGES][PIPE_MAX_SAMPLERS];
+      struct zink_resource *descriptor_res[ZINK_DESCRIPTOR_BASE_TYPES][MESA_SHADER_STAGES][PIPE_MAX_SAMPLERS];
 
       struct {
          struct util_idalloc tex_slots;

@@ -1365,6 +1365,8 @@ zink_destroy_screen(struct pipe_screen *pscreen)
 
    util_vertex_state_cache_deinit(&screen->vertex_state_cache);
 
+   VKSCR(DestroyPipelineLayout)(screen->dev, screen->gfx_push_constant_layout, NULL);
+
    u_transfer_helper_destroy(pscreen->transfer_helper);
    util_queue_finish(&screen->cache_get_thread);
    util_queue_destroy(&screen->cache_get_thread);
@@ -2484,6 +2486,17 @@ init_driver_workarounds(struct zink_screen *screen)
    default:
       break;
    }
+   /* these drivers cannot handle OOB gl_Layer values, and therefore need clamping in shader.
+    * TODO: Vulkan extension that details whether vulkan driver can handle OOB layer values
+    */
+   switch (screen->info.driver_props.driverID) {
+   case VK_DRIVER_ID_IMAGINATION_PROPRIETARY:
+      screen->driver_workarounds.needs_sanitised_layer = true;
+      break;
+   default:
+      screen->driver_workarounds.needs_sanitised_layer = false;
+      break;
+   }
 }
 
 static struct zink_screen *
@@ -2778,6 +2791,10 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
       screen->image_barrier = zink_resource_image_barrier;
       screen->buffer_barrier = zink_resource_buffer_barrier;
    }
+
+   screen->gfx_push_constant_layout = zink_pipeline_layout_create(screen, NULL, 0, false);
+   if (screen->gfx_push_constant_layout == VK_NULL_HANDLE)
+      goto fail;
 
    if (!zink_descriptor_layouts_init(screen))
       goto fail;

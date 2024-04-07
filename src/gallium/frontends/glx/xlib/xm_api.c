@@ -73,15 +73,10 @@
 #include "main/errors.h"
 #include "main/mtypes.h"
 
-#include "xm_public.h"
 #include <GL/glx.h>
 
-
-/* Driver interface routines, set up by xlib backend on library
- * _init().  These are global in the same way that function names are
- * global.
- */
-static struct xm_driver driver;
+extern struct pipe_screen *
+xlib_create_screen(Display *display);
 
 /* Default strict invalidate to false.  This means we will not call
  * XGetGeometry after every swapbuffers, which allows swapbuffers to
@@ -103,16 +98,13 @@ static struct xm_driver driver;
  * invalidation.  Xcb almost looks as if it could provide this, but
  * the API doesn't seem to quite be there.
  */
-boolean xmesa_strict_invalidate = FALSE;
+DEBUG_GET_ONCE_BOOL_OPTION(xmesa_strict_invalidate, "XMESA_STRICT_INVALIDATE", false)
 
-void xmesa_set_driver( const struct xm_driver *templ )
+bool
+xmesa_strict_invalidate(void)
 {
-   driver = *templ;
-
-   xmesa_strict_invalidate =
-      debug_get_bool_option("XMESA_STRICT_INVALIDATE", FALSE);
+   return debug_get_option_xmesa_strict_invalidate();
 }
-
 
 static int
 xmesa_get_param(struct st_manager *smapi,
@@ -120,7 +112,7 @@ xmesa_get_param(struct st_manager *smapi,
 {
    switch(param) {
    case ST_MANAGER_BROKEN_INVALIDATE:
-      return !xmesa_strict_invalidate;
+      return !xmesa_strict_invalidate();
    default:
       return 0;
    }
@@ -242,7 +234,7 @@ xmesa_init_display( Display *display )
       return NULL;
    }
 
-   xmdpy->screen = driver.create_pipe_screen(display);
+   xmdpy->screen = xlib_create_screen(display);
    if (!xmdpy->screen) {
       free(xmdpy->smapi);
       Xfree(info);

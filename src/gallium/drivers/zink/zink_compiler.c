@@ -45,21 +45,54 @@
 bool
 zink_lower_cubemap_to_array(nir_shader *s, uint32_t nonseamless_cube_mask);
 
+#define SIZEOF_FIELD(type, field) sizeof(((type *)0)->field)
+
 static void
-create_vs_pushconst(nir_shader *nir)
+create_gfx_pushconst(nir_shader *nir)
 {
-   nir_variable *vs_pushconst;
+#define PUSHCONST_MEMBER(member_idx, field)                                                                     \
+fields[member_idx].type =                                                                                       \
+   glsl_array_type(glsl_uint_type(), SIZEOF_FIELD(struct zink_gfx_push_constant, field) / sizeof(uint32_t), 0); \
+fields[member_idx].name = ralloc_asprintf(nir, #field);                                                         \
+fields[member_idx].offset = offsetof(struct zink_gfx_push_constant, field);
+
+   nir_variable *pushconst;
    /* create compatible layout for the ntv push constant loader */
-   struct glsl_struct_field *fields = rzalloc_array(nir, struct glsl_struct_field, 2);
-   fields[0].type = glsl_array_type(glsl_uint_type(), 1, 0);
-   fields[0].name = ralloc_asprintf(nir, "draw_mode_is_indexed");
-   fields[0].offset = offsetof(struct zink_gfx_push_constant, draw_mode_is_indexed);
-   fields[1].type = glsl_array_type(glsl_uint_type(), 1, 0);
-   fields[1].name = ralloc_asprintf(nir, "draw_id");
-   fields[1].offset = offsetof(struct zink_gfx_push_constant, draw_id);
-   vs_pushconst = nir_variable_create(nir, nir_var_mem_push_const,
-                                                 glsl_struct_type(fields, 2, "struct", false), "vs_pushconst");
-   vs_pushconst->data.location = INT_MAX; //doesn't really matter
+   struct glsl_struct_field *fields = rzalloc_array(nir, struct glsl_struct_field, ZINK_GFX_PUSHCONST_MAX);
+   PUSHCONST_MEMBER(ZINK_GFX_PUSHCONST_DRAW_MODE_IS_INDEXED, draw_mode_is_indexed);
+   PUSHCONST_MEMBER(ZINK_GFX_PUSHCONST_DRAW_ID, draw_id);
+   PUSHCONST_MEMBER(ZINK_GFX_PUSHCONST_FRAMEBUFFER_IS_LAYERED, framebuffer_is_layered);
+   PUSHCONST_MEMBER(ZINK_GFX_PUSHCONST_DEFAULT_INNER_LEVEL, default_inner_level);
+   PUSHCONST_MEMBER(ZINK_GFX_PUSHCONST_DEFAULT_OUTER_LEVEL, default_outer_level);
+
+   pushconst = nir_variable_create(nir, nir_var_mem_push_const,
+                                   glsl_struct_type(fields, ZINK_GFX_PUSHCONST_MAX, "struct", false),
+                                   "gfx_pushconst");
+   pushconst->data.location = INT_MAX; //doesn't really matter
+
+#undef PUSHCONST_MEMBER
+}
+
+static void
+create_cs_pushconst(nir_shader *nir)
+{
+#define PUSHCONST_MEMBER(member_idx, field)                                                                    \
+fields[member_idx].type =                                                                                      \
+   glsl_array_type(glsl_uint_type(), SIZEOF_FIELD(struct zink_cs_push_constant, field) / sizeof(uint32_t), 0); \
+fields[member_idx].name = ralloc_asprintf(nir, #field);                                                        \
+fields[member_idx].offset = offsetof(struct zink_cs_push_constant, field);
+
+   nir_variable *pushconst;
+   /* create compatible layout for the ntv push constant loader */
+   struct glsl_struct_field *fields = rzalloc_array(nir, struct glsl_struct_field, ZINK_CS_PUSHCONST_MAX);
+   PUSHCONST_MEMBER(ZINK_CS_PUSHCONST_WORK_DIM, work_dim);
+
+   pushconst = nir_variable_create(nir, nir_var_mem_push_const,
+                                   glsl_struct_type(fields, ZINK_CS_PUSHCONST_MAX, "struct", false),
+                                   "cs_pushconst");
+   pushconst->data.location = INT_MAX; //doesn't really matter
+
+#undef PUSHCONST_MEMBER
 }
 
 static bool
@@ -80,7 +113,7 @@ lower_work_dim_instr(nir_builder *b, nir_instr *in, void *data)
    if (instr->intrinsic == nir_intrinsic_load_work_dim) {
       b->cursor = nir_after_instr(&instr->instr);
       nir_intrinsic_instr *load = nir_intrinsic_instr_create(b->shader, nir_intrinsic_load_push_constant);
-      load->src[0] = nir_src_for_ssa(nir_imm_int(b, 0));
+      load->src[0] = nir_src_for_ssa(nir_imm_int(b, ZINK_CS_PUSHCONST_WORK_DIM));
       nir_intrinsic_set_range(load, 3 * sizeof(uint32_t));
       load->num_components = 1;
       nir_ssa_dest_init(&load->instr, &load->dest, 1, 32, "work_dim");
@@ -237,7 +270,7 @@ lower_basevertex_instr(nir_builder *b, nir_instr *in, void *data)
 
    b->cursor = nir_after_instr(&instr->instr);
    nir_intrinsic_instr *load = nir_intrinsic_instr_create(b->shader, nir_intrinsic_load_push_constant);
-   load->src[0] = nir_src_for_ssa(nir_imm_int(b, 0));
+   load->src[0] = nir_src_for_ssa(nir_imm_int(b, ZINK_GFX_PUSHCONST_DRAW_MODE_IS_INDEXED));
    nir_intrinsic_set_range(load, 4);
    load->num_components = 1;
    nir_ssa_dest_init(&load->instr, &load->dest, 1, 32, "draw_mode_is_indexed");
@@ -278,7 +311,7 @@ lower_drawid_instr(nir_builder *b, nir_instr *in, void *data)
 
    b->cursor = nir_before_instr(&instr->instr);
    nir_intrinsic_instr *load = nir_intrinsic_instr_create(b->shader, nir_intrinsic_load_push_constant);
-   load->src[0] = nir_src_for_ssa(nir_imm_int(b, 1));
+   load->src[0] = nir_src_for_ssa(nir_imm_int(b, ZINK_GFX_PUSHCONST_DRAW_ID));
    nir_intrinsic_set_range(load, 4);
    load->num_components = 1;
    nir_ssa_dest_init(&load->instr, &load->dest, 1, 32, "draw_id");
@@ -1414,6 +1447,115 @@ remove_bo_access(nir_shader *shader, struct zink_shader *zs)
    return nir_shader_instructions_pass(shader, remove_bo_access_instr, nir_metadata_dominance, &bo);
 }
 
+static bool
+find_var_deref(nir_shader *nir, nir_variable *var)
+{
+   nir_foreach_function(function, nir) {
+      if (!function->impl)
+         continue;
+
+      nir_foreach_block(block, function->impl) {
+         nir_foreach_instr(instr, block) {
+            if (instr->type != nir_instr_type_deref)
+               continue;
+            nir_deref_instr *deref = nir_instr_as_deref(instr);
+            if (deref->deref_type == nir_deref_type_var && deref->var == var)
+               return true;
+         }
+      }
+   }
+   return false;
+}
+
+struct clamp_layer_output_state {
+   nir_variable *original;
+   nir_variable *clamped;
+};
+
+static void
+clamp_layer_output_emit(nir_builder *b, struct clamp_layer_output_state *state)
+{
+   nir_ssa_def *is_layered = nir_load_push_constant(b, 1, 32,
+                                                    nir_imm_int(b, ZINK_GFX_PUSHCONST_FRAMEBUFFER_IS_LAYERED),
+                                                    .base = ZINK_GFX_PUSHCONST_FRAMEBUFFER_IS_LAYERED, .range = 4);
+   nir_deref_instr *original_deref = nir_build_deref_var(b, state->original);
+   nir_deref_instr *clamped_deref = nir_build_deref_var(b, state->clamped);
+   nir_ssa_def *layer = nir_bcsel(b, nir_ieq_imm(b, is_layered, 1),
+                                  nir_load_deref(b, original_deref),
+                                  nir_imm_int(b, 0));
+   nir_store_deref(b, clamped_deref, layer, 0);
+}
+
+static bool
+clamp_layer_output_instr(nir_builder *b, nir_instr *instr, void *data)
+{
+   struct clamp_layer_output_state *state = data;
+   switch (instr->type) {
+   case nir_instr_type_intrinsic: {
+      nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
+      if (intr->intrinsic != nir_intrinsic_emit_vertex_with_counter)
+         return false;
+      b->cursor = nir_before_instr(instr);
+      clamp_layer_output_emit(b, state);
+      return true;
+   }
+   default: return false;
+   }
+}
+
+static bool
+clamp_layer_output(nir_shader *vs, nir_shader *fs, unsigned *next_location)
+{
+   switch (vs->info.stage) {
+   case MESA_SHADER_VERTEX:
+   case MESA_SHADER_GEOMETRY:
+   case MESA_SHADER_TESS_EVAL:
+      break;
+   default:
+      unreachable("invalid last vertex stage!");
+   }
+   struct clamp_layer_output_state state = {0};
+   state.original = nir_find_variable_with_location(vs, nir_var_shader_out, VARYING_SLOT_LAYER);
+   if (!state.original || !find_var_deref(vs, state.original))
+      return false;
+   state.clamped = nir_variable_create(vs, nir_var_shader_out, glsl_int_type(), "layer_clamped");
+   state.clamped->data.location = VARYING_SLOT_LAYER;
+   nir_variable *fs_var = nir_find_variable_with_location(fs, nir_var_shader_in, VARYING_SLOT_LAYER);
+   if ((state.original->data.explicit_xfb_buffer || fs_var) && *next_location < MAX_VARYING) {
+      state.original->data.location = VARYING_SLOT_VAR0; // Anything but a built-in slot
+      state.original->data.driver_location = (*next_location)++;
+      if (fs_var) {
+         fs_var->data.location = state.original->data.location;
+         fs_var->data.driver_location = state.original->data.driver_location;
+      }
+   } else {
+      if (state.original->data.explicit_xfb_buffer) {
+         /* Will xfb the clamped output but still better than nothing */
+         state.clamped->data.explicit_xfb_buffer = state.original->data.explicit_xfb_buffer;
+         state.clamped->data.xfb.buffer = state.original->data.xfb.buffer;
+         state.clamped->data.xfb.stride = state.original->data.xfb.stride;
+         state.clamped->data.offset = state.original->data.offset;
+         state.clamped->data.stream = state.original->data.stream;
+      }
+      state.original->data.mode = nir_var_shader_temp;
+      nir_fixup_deref_modes(vs);
+   }
+   if (vs->info.stage == MESA_SHADER_GEOMETRY) {
+      nir_shader_instructions_pass(vs, clamp_layer_output_instr, nir_metadata_dominance, &state);
+   } else {
+      nir_builder b;
+      nir_function_impl *impl = nir_shader_get_entrypoint(vs);
+      nir_builder_init(&b, impl);
+      assert(impl->end_block->predecessors->entries == 1);
+      b.cursor = nir_after_cf_list(&impl->body);
+      clamp_layer_output_emit(&b, &state);
+      nir_metadata_preserve(impl, nir_metadata_dominance);
+   }
+   optimize_nir(vs, NULL);
+   NIR_PASS_V(vs, nir_remove_dead_variables, nir_var_shader_temp, NULL);
+   return true;
+}
+
 static void
 assign_producer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reserved, unsigned char *slot_map)
 {
@@ -1545,7 +1687,7 @@ rewrite_read_as_0(nir_builder *b, nir_instr *instr, void *data)
 }
 
 void
-zink_compiler_assign_io(nir_shader *producer, nir_shader *consumer)
+zink_compiler_assign_io(struct zink_screen *screen, nir_shader *producer, nir_shader *consumer)
 {
    unsigned reserved = 0;
    unsigned char slot_map[VARYING_SLOT_MAX];
@@ -1581,6 +1723,8 @@ zink_compiler_assign_io(nir_shader *producer, nir_shader *consumer)
             nir_shader_instructions_pass(consumer, rewrite_read_as_0, nir_metadata_dominance, var);
          }
       }
+      if (consumer->info.stage == MESA_SHADER_FRAGMENT && screen->driver_workarounds.needs_sanitised_layer)
+         do_fixup |= clamp_layer_output(producer, consumer, &reserved);
    }
    if (!do_fixup)
       return;
@@ -2112,26 +2256,6 @@ zink_shader_spirv_compile(struct zink_screen *screen, struct zink_shader *zs, st
    bool success = zink_screen_handle_vkresult(screen, ret);
    assert(success);
    return success ? mod : VK_NULL_HANDLE;
-}
-
-static bool
-find_var_deref(nir_shader *nir, nir_variable *var)
-{
-   nir_foreach_function(function, nir) {
-      if (!function->impl)
-         continue;
-
-      nir_foreach_block(block, function->impl) {
-         nir_foreach_instr(instr, block) {
-            if (instr->type != nir_instr_type_deref)
-               continue;
-            nir_deref_instr *deref = nir_instr_as_deref(instr);
-            if (deref->deref_type == nir_deref_type_var && deref->var == var)
-               return true;
-         }
-      }
-   }
-   return false;
 }
 
 static void
@@ -3105,9 +3229,12 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir,
    NIR_PASS_V(nir, nir_lower_indirect_derefs, indirect_derefs_modes,
               UINT32_MAX);
 
-   if (nir->info.stage == MESA_SHADER_VERTEX)
-      create_vs_pushconst(nir);
-   else if (nir->info.stage == MESA_SHADER_TESS_CTRL ||
+   if (nir->info.stage == MESA_SHADER_KERNEL)
+      create_cs_pushconst(nir);
+   else
+      create_gfx_pushconst(nir);
+
+   if (nir->info.stage == MESA_SHADER_TESS_CTRL ||
             nir->info.stage == MESA_SHADER_TESS_EVAL)
       NIR_PASS_V(nir, nir_lower_io_arrays_to_elements_no_indirects, false);
 
@@ -3450,24 +3577,14 @@ zink_shader_tcs_create(struct zink_screen *screen, struct zink_shader *vs, unsig
    gl_TessLevelOuter->data.location = VARYING_SLOT_TESS_LEVEL_OUTER;
    gl_TessLevelOuter->data.patch = 1;
 
-   /* hacks so we can size these right for now */
-   struct glsl_struct_field *fields = rzalloc_array(nir, struct glsl_struct_field, 3);
-   /* just use a single blob for padding here because it's easier */
-   fields[0].type = glsl_array_type(glsl_uint_type(), offsetof(struct zink_gfx_push_constant, default_inner_level) / 4, 0);
-   fields[0].name = ralloc_asprintf(nir, "padding");
-   fields[0].offset = 0;
-   fields[1].type = glsl_array_type(glsl_uint_type(), 2, 0);
-   fields[1].name = ralloc_asprintf(nir, "gl_TessLevelInner");
-   fields[1].offset = offsetof(struct zink_gfx_push_constant, default_inner_level);
-   fields[2].type = glsl_array_type(glsl_uint_type(), 4, 0);
-   fields[2].name = ralloc_asprintf(nir, "gl_TessLevelOuter");
-   fields[2].offset = offsetof(struct zink_gfx_push_constant, default_outer_level);
-   nir_variable *pushconst = nir_variable_create(nir, nir_var_mem_push_const,
-                                                 glsl_struct_type(fields, 3, "struct", false), "pushconst");
-   pushconst->data.location = VARYING_SLOT_VAR0;
+   create_gfx_pushconst(nir);
 
-   nir_ssa_def *load_inner = nir_load_push_constant(&b, 2, 32, nir_imm_int(&b, 1), .base = 1, .range = 8);
-   nir_ssa_def *load_outer = nir_load_push_constant(&b, 4, 32, nir_imm_int(&b, 2), .base = 2, .range = 16);
+   nir_ssa_def *load_inner = nir_load_push_constant(&b, 2, 32,
+                                                    nir_imm_int(&b, ZINK_GFX_PUSHCONST_DEFAULT_INNER_LEVEL),
+                                                    .base = 1, .range = 8);
+   nir_ssa_def *load_outer = nir_load_push_constant(&b, 4, 32,
+                                                    nir_imm_int(&b, ZINK_GFX_PUSHCONST_DEFAULT_OUTER_LEVEL),
+                                                    .base = 2, .range = 16);
 
    for (unsigned i = 0; i < 2; i++) {
       nir_deref_instr *store_idx = nir_build_deref_array_imm(&b, nir_build_deref_var(&b, gl_TessLevelInner), i);

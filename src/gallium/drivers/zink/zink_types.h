@@ -793,15 +793,39 @@ struct zink_compute_pipeline_state {
 
 
 /** program types */
+
+/* create_gfx_pushconst must be kept in sync with this struct */
 struct zink_gfx_push_constant {
    unsigned draw_mode_is_indexed;
    unsigned draw_id;
+   unsigned framebuffer_is_layered;
    float default_inner_level[2];
    float default_outer_level[4];
 };
 
+/* The order of the enums MUST match the order of the zink_gfx_push_constant
+ * members.
+ */
+enum zink_gfx_push_constant_member {
+   ZINK_GFX_PUSHCONST_DRAW_MODE_IS_INDEXED,
+   ZINK_GFX_PUSHCONST_DRAW_ID,
+   ZINK_GFX_PUSHCONST_FRAMEBUFFER_IS_LAYERED,
+   ZINK_GFX_PUSHCONST_DEFAULT_INNER_LEVEL,
+   ZINK_GFX_PUSHCONST_DEFAULT_OUTER_LEVEL,
+   ZINK_GFX_PUSHCONST_MAX
+};
+
+/* create_cs_pushconst must be kept in sync with this struct */
 struct zink_cs_push_constant {
    unsigned work_dim;
+};
+
+/* The order of the enums MUST match the order of the zink_cs_push_constant
+ * members.
+ */
+enum zink_cs_push_constant_member {
+   ZINK_CS_PUSHCONST_WORK_DIM,
+   ZINK_CS_PUSHCONST_MAX
 };
 
 /* a shader module is used for directly reusing a shader module between programs,
@@ -1277,6 +1301,7 @@ struct zink_screen {
    struct zink_modifier_prop modifier_props[PIPE_FORMAT_COUNT];
 
    VkExtent2D maxSampleLocationGridSize[5];
+   VkPipelineLayout gfx_push_constant_layout;
 
    struct {
       bool broken_l4a4;
@@ -1284,6 +1309,7 @@ struct zink_screen {
       bool implicit_sync;
       bool always_feedback_loop;
       bool always_feedback_loop_zs;
+      bool needs_sanitised_layer;
       unsigned z16_unscaled_bias;
       unsigned z24_unscaled_bias;
    } driver_workarounds;

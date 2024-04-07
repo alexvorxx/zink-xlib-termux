@@ -525,21 +525,18 @@ static void emit_state(struct rendering_state *state)
    }
 
    for (sh = 0; sh < PIPE_SHADER_COMPUTE; sh++) {
-
-      if (!state->sv_dirty[sh])
-         continue;
-
-      state->pctx->set_sampler_views(state->pctx, sh, 0, state->num_sampler_views[sh],
-                                     0, false, state->sv[sh]);
-      state->sv_dirty[sh] = false;
+      if (state->sv_dirty[sh]) {
+         state->pctx->set_sampler_views(state->pctx, sh, 0, state->num_sampler_views[sh],
+                                        0, false, state->sv[sh]);
+         state->sv_dirty[sh] = false;
+      }
    }
 
    for (sh = 0; sh < PIPE_SHADER_COMPUTE; sh++) {
-      if (!state->ss_dirty[sh])
-         continue;
-
-      cso_set_samplers(state->cso, sh, state->num_sampler_states[sh], state->cso_ss_ptr[sh]);
-      state->ss_dirty[sh] = false;
+      if (state->ss_dirty[sh]) {
+         cso_set_samplers(state->cso, sh, state->num_sampler_states[sh], state->cso_ss_ptr[sh]);
+         state->ss_dirty[sh] = false;
+      }
    }
 
    if (state->vp_dirty) {
@@ -744,11 +741,10 @@ static void handle_graphics_pipeline(struct vk_cmd_queue_entry *cmd,
       if (BITSET_TEST(ps->dynamic, MESA_VK_DYNAMIC_RS_DEPTH_CLIP_ENABLE)) {
          state->depth_clamp_sets_clip = false;
       } else {
-         if (!ps->rs->depth_clip_present)
-            state->rs_state.depth_clip_near = state->rs_state.depth_clip_far = !state->rs_state.depth_clamp;
-         else
-            state->rs_state.depth_clip_near = state->rs_state.depth_clip_far = ps->rs->depth_clip_enable;
-         state->depth_clamp_sets_clip = !ps->rs->depth_clip_present;
+         state->rs_state.depth_clip_near = state->rs_state.depth_clip_far =
+            vk_rasterization_state_depth_clip_enable(ps->rs);
+         state->depth_clamp_sets_clip =
+            ps->rs->depth_clip_enable == VK_MESA_DEPTH_CLIP_ENABLE_NOT_CLAMP;
       }
 
       if (!BITSET_TEST(ps->dynamic, MESA_VK_DYNAMIC_RS_RASTERIZER_DISCARD_ENABLE))

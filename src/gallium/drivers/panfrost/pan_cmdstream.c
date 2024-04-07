@@ -217,7 +217,7 @@ panfrost_create_sampler_state(
                 cfg.magnify_nearest = cso->mag_img_filter == PIPE_TEX_FILTER_NEAREST;
                 cfg.minify_nearest = cso->min_img_filter == PIPE_TEX_FILTER_NEAREST;
 
-                cfg.normalized_coordinates = cso->normalized_coords;
+                cfg.normalized_coordinates = !cso->unnormalized_coords;
                 cfg.lod_bias = FIXED_16(cso->lod_bias, true);
                 cfg.minimum_lod = FIXED_16(cso->min_lod, false);
                 cfg.maximum_lod = FIXED_16(cso->max_lod, false);
@@ -4198,19 +4198,6 @@ panfrost_launch_grid(struct pipe_context *pipe,
 
         struct panfrost_ptr t =
                 pan_pool_alloc_desc(&batch->pool.base, COMPUTE_JOB);
-
-        /* We implement OpenCL inputs as uniforms (or a UBO -- same thing), so
-         * reuse the graphics path for this by lowering to Gallium */
-
-        struct pipe_constant_buffer ubuf = {
-                .buffer = NULL,
-                .buffer_offset = 0,
-                .buffer_size = ctx->shader[PIPE_SHADER_COMPUTE]->req_input_mem,
-                .user_buffer = info->input
-        };
-
-        if (info->input)
-                pipe->set_constant_buffer(pipe, PIPE_SHADER_COMPUTE, 0, false, &ubuf);
 
         /* Invoke according to the grid info */
 

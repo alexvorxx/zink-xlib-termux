@@ -569,6 +569,7 @@ optimize_once(nir_shader *shader)
    NIR_PASS(progress, shader, nir_opt_conditional_discard);
    NIR_PASS(progress, shader, nir_opt_dce);
    NIR_PASS(progress, shader, nir_opt_undef);
+   NIR_PASS(progress, shader, nir_opt_loop_unroll);
    return progress;
 }
 
@@ -638,6 +639,9 @@ bool r600_lower_to_scalar_instr_filter(const nir_instr *instr, const void *)
 
 class MallocPoolRelease {
 public:
+   MallocPoolRelease() {
+      r600::init_pool();
+   }
    ~MallocPoolRelease() {
       r600::release_pool();
    }
@@ -759,17 +763,21 @@ int r600_shader_from_nir(struct r600_context *rctx,
    NIR_PASS_V(sh, r600::r600_nir_lower_tex_to_backend, rctx->b.gfx_level);
 
 
-   NIR_PASS_V(sh, r600::r600_nir_split_64bit_io);
-   NIR_PASS_V(sh, r600::r600_split_64bit_alu_and_phi);
-   NIR_PASS_V(sh, nir_split_64bit_vec3_and_vec4);
-   NIR_PASS_V(sh, nir_lower_int64);
+   if ((sh->info.bit_sizes_float | sh->info.bit_sizes_int) & 64) {
+      NIR_PASS_V(sh, r600::r600_nir_split_64bit_io);
+      NIR_PASS_V(sh, r600::r600_split_64bit_alu_and_phi);
+      NIR_PASS_V(sh, nir_split_64bit_vec3_and_vec4);
+      NIR_PASS_V(sh, nir_lower_int64);
+   }
 
    NIR_PASS_V(sh, nir_lower_ubo_vec4);
 
    if (lower_64bit)
       NIR_PASS_V(sh, r600::r600_nir_64_to_vec2);
 
-   NIR_PASS_V(sh, r600::r600_split_64bit_uniforms_and_ubo);
+   if ((sh->info.bit_sizes_float | sh->info.bit_sizes_int) & 64)
+      NIR_PASS_V(sh, r600::r600_split_64bit_uniforms_and_ubo);
+
    /* Lower to scalar to let some optimization work out better */
    while(optimize_once(sh));
 
@@ -897,7 +905,7 @@ int r600_shader_from_nir(struct r600_context *rctx,
       R600_ERR("%s: Lowering to assembly failed\n", __func__);
 
       scheduled_shader->print(std::cerr);
-      /* For now crash if the shader could not be benerated */
+      /* For now crash if the shader could not be generated */
       assert(0);
       return -1;
    }
@@ -909,5 +917,7 @@ int r600_shader_from_nir(struct r600_context *rctx,
    } else {
       r600::sfn_log << r600::SfnLog::shader_info << "This is not a Geometry shader\n";
    }
+   ralloc_free(sh);
+
    return 0;
 }

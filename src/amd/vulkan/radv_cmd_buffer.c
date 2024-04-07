@@ -4180,6 +4180,10 @@ radv_flush_ngg_query_state(struct radv_cmd_buffer *cmd_buffer)
    if (cmd_buffer->state.active_prims_gen_gds_queries)
       ngg_query_state |= radv_ngg_query_prim_gen;
 
+   if (cmd_buffer->state.active_prims_xfb_gds_queries) {
+      ngg_query_state |= radv_ngg_query_prim_xfb | radv_ngg_query_prim_gen;
+   }
+
    base_reg = pipeline->base.user_data_0[stage];
    assert(loc->sgpr_idx != -1);
 
@@ -8880,6 +8884,19 @@ radv_unaligned_dispatch(struct radv_cmd_buffer *cmd_buffer, uint32_t x, uint32_t
    info.blocks[0] = x;
    info.blocks[1] = y;
    info.blocks[2] = z;
+   info.unaligned = 1;
+
+   radv_compute_dispatch(cmd_buffer, &info);
+}
+
+void
+radv_indirect_unaligned_dispatch(struct radv_cmd_buffer *cmd_buffer, struct radeon_winsys_bo *bo,
+                                 uint64_t va)
+{
+   struct radv_dispatch_info info = {0};
+
+   info.indirect = bo;
+   info.va = va;
    info.unaligned = 1;
 
    radv_compute_dispatch(cmd_buffer, &info);

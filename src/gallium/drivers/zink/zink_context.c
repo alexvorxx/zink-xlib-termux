@@ -3810,10 +3810,10 @@ zink_check_batch_completion(struct zink_context *ctx, uint64_t batch_id, bool ha
       return success;
    }
    struct zink_fence *fence;
-
+///
    if (!have_lock)
       simple_mtx_lock(&ctx->batch_mtx);
-
+///
    if (ctx->last_fence && batch_id == zink_batch_state(ctx->last_fence)->fence.batch_id)
       fence = ctx->last_fence;
    else {
@@ -3825,15 +3825,19 @@ zink_check_batch_completion(struct zink_context *ctx, uint64_t batch_id, bool ha
             break;
       }
       if (!bs || bs->fence.batch_id != batch_id) {
+///      
          if (!have_lock)
             simple_mtx_unlock(&ctx->batch_mtx);
+///            
          /* return compare against last_finished, since this has info from all contexts */
          return zink_screen_check_last_finished(zink_screen(ctx->base.screen), batch_id);
       }
       fence = &bs->fence;
    }
+///   
    if (!have_lock)
       simple_mtx_unlock(&ctx->batch_mtx);
+///      
    assert(fence);
    if (zink_screen(ctx->base.screen)->threaded &&
        !util_queue_fence_is_signalled(&zink_batch_state(fence)->flush_completed))

@@ -269,11 +269,13 @@ create_batch_state(struct zink_context *ctx)
    if (!zink_batch_descriptor_init(screen, bs))
       goto fail;
 
-   VkFenceCreateInfo fci = {0};
-   fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+   if (!screen->info.have_KHR_timeline_semaphore) {
+      VkFenceCreateInfo fci = {0};
+      fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 
-   if (VKSCR(CreateFence)(screen->dev, &fci, NULL, &bs->fence.fence) != VK_SUCCESS)
-      goto fail;
+      if (VKSCR(CreateFence)(screen->dev, &fci, NULL, &bs->fence.fence) != VK_SUCCESS)
+         goto fail;
+   }
 
    util_queue_fence_init(&bs->flush_completed);
 
@@ -320,7 +322,7 @@ get_batch_state(struct zink_context *ctx, struct zink_batch *batch)
    simple_mtx_unlock(&ctx->batch_mtx);
    
    if (bs) {
-      if (bs->fence.submitted && !bs->fence.completed)
+      if (bs->fence.submitted && !bs->fence.completed && bs->fence.fence)
          /* this fence is already done, so we need vulkan to release the cmdbuf */
          zink_vkfence_wait(screen, &bs->fence, PIPE_TIMEOUT_INFINITE);
 
@@ -395,8 +397,8 @@ post_submit(void *data, void *gdata, int thread_index)
       screen->device_lost = true;
    /*} else if (bs->ctx->batch_states_count > 5000) {
       zink_screen_timeline_wait(screen, bs->fence.batch_id - 2500, PIPE_TIMEOUT_INFINITE);*/
-   } else if (bs->ctx->batch_states_count > screen->max_fences) {
-      zink_screen_batch_id_wait(screen, bs->fence.batch_id - (screen->max_fences / 2), PIPE_TIMEOUT_INFINITE);  
+   } else if (bs->ctx->batch_states_count > 5000) {
+      zink_screen_batch_id_wait(screen, bs->fence.batch_id - 2500, PIPE_TIMEOUT_INFINITE);
    }
    memset(&bs->buffer_indices_hashlist, -1, sizeof(bs->buffer_indices_hashlist));
 }
@@ -422,7 +424,7 @@ submit_queue(void *data, void *gdata, int thread_index)
       }
    }
    
-   if (VKSCR(ResetFences)(screen->dev, 1, &bs->fence.fence) != VK_SUCCESS) {
+   if (bs->fence.fence && VKSCR(ResetFences)(screen->dev, 1, &bs->fence.fence) != VK_SUCCESS) {
       mesa_loge("ZINK: vkResetFences failed");
    }
 
@@ -538,7 +540,7 @@ zink_end_batch(struct zink_context *ctx, struct zink_batch *batch)
 	 if (!zink_check_batch_completion(ctx, fence->batch_id, true))	 
             break;
 
-         if (bs->fence.submitted && !bs->fence.completed)
+         if (bs->fence.submitted && !bs->fence.completed && bs->fence.fence)
             /* this fence is already done, so we need vulkan to release the cmdbuf */
             zink_vkfence_wait(screen, &bs->fence, PIPE_TIMEOUT_INFINITE);
 

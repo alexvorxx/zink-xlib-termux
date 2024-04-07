@@ -117,7 +117,6 @@ v3d_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
         switch (param) {
                 /* Supported features (boolean caps). */
         case PIPE_CAP_VERTEX_COLOR_UNCLAMPED:
-        case PIPE_CAP_BUFFER_MAP_PERSISTENT_COHERENT:
         case PIPE_CAP_NPOT_TEXTURES:
         case PIPE_CAP_BLEND_EQUATION_SEPARATE:
         case PIPE_CAP_TEXTURE_MULTISAMPLE:
@@ -131,7 +130,6 @@ v3d_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
         case PIPE_CAP_EMULATE_NONFIXED_PRIMITIVE_RESTART:
         case PIPE_CAP_PRIMITIVE_RESTART:
         case PIPE_CAP_OCCLUSION_QUERY:
-        case PIPE_CAP_POINT_SPRITE:
         case PIPE_CAP_STREAM_OUTPUT_PAUSE_RESUME:
         case PIPE_CAP_DRAW_INDIRECT:
         case PIPE_CAP_MULTI_DRAW_INDIRECT:
@@ -226,7 +224,6 @@ v3d_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
                         return 0;
 
         case PIPE_CAP_MIXED_FRAMEBUFFER_SIZES:
-        case PIPE_CAP_MIXED_COLORBUFFER_FORMATS:
         case PIPE_CAP_MIXED_COLOR_DEPTH_BITS:
                 return 1;
 
@@ -732,7 +729,6 @@ static const nir_shader_compiler_options v3d_nir_options = {
         .lower_int64_options = nir_lower_imul_2x32_64,
         .has_fsub = true,
         .has_isub = true,
-        .lower_mul_high = true,
         .divergence_analysis_options =
                 nir_divergence_multiple_workgroup_per_compute_subgroup,
         /* This will enable loop unrolling in the state tracker so we won't

@@ -280,6 +280,9 @@ Intel driver environment variables
       emit messages about buffer objects
    ``bt``
       emit messages binding tables
+   ``capture-all``
+      flag all buffers to be captured by the kernel driver when
+      generating an error stage after a GPU hang
    ``clip``
       emit messages about the clip unit (for old gens, includes the CLIP
       program)
@@ -437,7 +440,7 @@ Intel driver environment variables
    if set, determines the directory to be used for overriding shader
    assembly. The binaries with custom assembly should be placed in
    this folder and have a name formatted as ``sha1_of_assembly.bin``.
-   The sha1 of a shader assembly is printed when assembly is dumped via
+   The SHA-1 of a shader assembly is printed when assembly is dumped via
    corresponding :envvar:`INTEL_DEBUG` flag (e.g. ``vs`` for vertex shader).
    A binary could be generated from a dumped assembly by ``i965_asm``.
    For :envvar:`INTEL_SHADER_ASM_READ_PATH` to work it is necessary to enable
@@ -445,7 +448,7 @@ Intel driver environment variables
    It is advised to use ``nocompact`` flag of :envvar:`INTEL_DEBUG` when
    dumping and overriding shader assemblies.
    The success of assembly override would be signified by "Successfully
-   overrode shader with sha1 <sha1>" in stderr replacing the original
+   overrode shader with sha1 <SHA-1>" in stderr replacing the original
    assembly.
 
 
@@ -461,12 +464,12 @@ Vulkan mesa device select layer environment variables
 
 :envvar:`MESA_VK_DEVICE_SELECT`
    when set to "list" prints the list of devices.
-   when set to "vid:did" number from pci device. That pci device is
+   when set to "vid:did" number from PCI device. That PCI device is
    selected as default. The default device is returned as the first
-   device in vkEnumeratePhysicalDevices api.
+   device in vkEnumeratePhysicalDevices API.
 :envvar:`MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE`
    when set to 1, the device identified as default will be the only
-   one returned in vkEnumeratePhysicalDevices api.
+   one returned in vkEnumeratePhysicalDevices API.
 
 
 EGL environment variables
@@ -545,6 +548,23 @@ Clover environment variables
    appended after the options set by the OpenCL program in
    ``clLinkProgram``.
 
+Rusticl environment variables
+-----------------------------
+
+:envvar:`RUSTICL_DEVICE_TYPE`
+   allows to overwrite the device type of devices. Possible values are
+   `accelerator`, `cpu`, `custom` and `gpu`
+:envvar:`RUSTICL_CL_VERSION`
+   overwrites the auto detected OpenCL version of all devices. Specified as
+   `major.minor`.
+:envvar:`RUSTICL_ENABLE`
+   a comma-separated list of drivers to enable CL on. An optional list of
+   comma-separated integers can be passed per driver to specify which devices
+   to enable. Examples:
+
+   -  `RUSTICL_ENABLE=iris` (enables all iris devices)
+   -  `RUSTICL_ENABLE=iris:1,radeonsi:0,2` (enables second iris and first
+      and third radeonsi device)
 
 Nine frontend environment variables
 -----------------------------------
@@ -749,7 +769,7 @@ RADV driver environment variables
 
 :envvar:`RADV_FORCE_VRS`
    allow to force per-pipeline vertex VRS rates on GFX10.3+. This is only
-   forced for pipelines that don't explicitely use VRS or flat shading.
+   forced for pipelines that don't explicitly use VRS or flat shading.
    The supported values are 2x2, 1x2, 2x1 and 1x1. Only for testing purposes.
 
 :envvar:`RADV_FORCE_VRS_CONFIG_FILE`
@@ -794,7 +814,7 @@ RADV driver environment variables
    force anisotropy filter (up to 16)
 
 :envvar:`RADV_THREAD_TRACE`
-   enable frame based SQTT/RGP captures (eg. `export RADV_THREAD_TRACE=100`
+   enable frame based SQTT/RGP captures (e.g. `export RADV_THREAD_TRACE=100`
    will capture the frame #100)
 
 :envvar:`RADV_THREAD_TRACE_BUFFER_SIZE`
@@ -808,7 +828,7 @@ RADV driver environment variables
    enable/disable SQTT/RGP instruction timing (enabled by default)
 
 :envvar:`RADV_THREAD_TRACE_TRIGGER`
-   enable trigger file based SQTT/RGP captures (eg.
+   enable trigger file based SQTT/RGP captures (e.g.
    `export RADV_THREAD_TRACE_TRIGGER=/tmp/radv_sqtt_trigger` and then
    `touch /tmp/radv_sqtt_trigger` to capture a frame)
 
@@ -817,7 +837,7 @@ RADV driver environment variables
    (e.g. `export RADV_RRA_TRACE=100` will capture the frame #100)
 
 :envvar:`RADV_RRA_TRACE_TRIGGER`
-   enable trigger file based RRA captures (eg.
+   enable trigger file based RRA captures (e.g.
    `export RADV_RRA_TRACE_TRIGGER=/tmp/radv_rra_trigger` and then
    `touch /tmp/radv_rra_trigger` to capture a frame)
 
@@ -831,6 +851,8 @@ RADV driver environment variables
    ``validateir``
       validate the ACO IR at various points of compilation (enabled by
       default for debug/debugoptimized builds)
+   ``novalidateir``
+      disable ACO IR validation in debug/debugoptimized builds
    ``validatera``
       validate register assignment of ACO IR and catches many RA bugs
    ``perfwarn``
@@ -848,7 +870,7 @@ RADV driver environment variables
    ``liveinfo``
       print liveness and register demand information before scheduling
 
-radeonsi driver environment variables
+RadeonSI driver environment variables
 -------------------------------------
 
 :envvar:`radeonsi_no_infinite_interp`

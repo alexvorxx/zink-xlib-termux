@@ -140,7 +140,6 @@ vc4_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
                 /* Supported features (boolean caps). */
         case PIPE_CAP_VERTEX_COLOR_UNCLAMPED:
         case PIPE_CAP_FRAGMENT_COLOR_CLAMPED:
-        case PIPE_CAP_BUFFER_MAP_PERSISTENT_COHERENT:
         case PIPE_CAP_NPOT_TEXTURES:
         case PIPE_CAP_BLEND_EQUATION_SEPARATE:
         case PIPE_CAP_TEXTURE_MULTISAMPLE:
@@ -155,10 +154,6 @@ vc4_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
         case PIPE_CAP_TILE_RASTER_ORDER:
                 return vc4_has_feature(screen,
                                        DRM_VC4_PARAM_SUPPORTS_FIXED_RCL_ORDER);
-
-                /* lying for GL 2.0 */
-        case PIPE_CAP_POINT_SPRITE:
-                return 1;
 
         case PIPE_CAP_FS_COORD_ORIGIN_UPPER_LEFT:
         case PIPE_CAP_FS_COORD_PIXEL_CENTER_HALF_INTEGER:

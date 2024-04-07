@@ -257,15 +257,17 @@ fill_ubo0(struct rendering_state *state, uint8_t *mem, enum pipe_shader_type pst
 static void
 update_pcbuf(struct rendering_state *state, enum pipe_shader_type pstage)
 {
-   uint8_t *mem;
-   struct pipe_constant_buffer cbuf;
    unsigned size = calc_ubo0_size(state, pstage);
-   cbuf.buffer_size = size;
-   cbuf.buffer = NULL;
-   cbuf.user_buffer = NULL;
-   u_upload_alloc(state->uploader, 0, size, 64, &cbuf.buffer_offset, &cbuf.buffer, (void**)&mem);
-   fill_ubo0(state, mem, pstage);
-   state->pctx->set_constant_buffer(state->pctx, pstage, 0, true, &cbuf);
+   if (size) {
+      uint8_t *mem;
+      struct pipe_constant_buffer cbuf;
+      cbuf.buffer_size = size;
+      cbuf.buffer = NULL;
+      cbuf.user_buffer = NULL;
+      u_upload_alloc(state->uploader, 0, size, 64, &cbuf.buffer_offset, &cbuf.buffer, (void**)&mem);
+      fill_ubo0(state, mem, pstage);
+      state->pctx->set_constant_buffer(state->pctx, pstage, 0, true, &cbuf);
+   }
    state->pcbuf_dirty[pstage] = false;
 }
 
@@ -525,21 +527,18 @@ static void emit_state(struct rendering_state *state)
    }
 
    for (sh = 0; sh < PIPE_SHADER_COMPUTE; sh++) {
-
-      if (!state->sv_dirty[sh])
-         continue;
-
-      state->pctx->set_sampler_views(state->pctx, sh, 0, state->num_sampler_views[sh],
-                                     0, false, state->sv[sh]);
-      state->sv_dirty[sh] = false;
+      if (state->sv_dirty[sh]) {
+         state->pctx->set_sampler_views(state->pctx, sh, 0, state->num_sampler_views[sh],
+                                        0, false, state->sv[sh]);
+         state->sv_dirty[sh] = false;
+      }
    }
 
    for (sh = 0; sh < PIPE_SHADER_COMPUTE; sh++) {
-      if (!state->ss_dirty[sh])
-         continue;
-
-      cso_set_samplers(state->cso, sh, state->num_sampler_states[sh], state->cso_ss_ptr[sh]);
-      state->ss_dirty[sh] = false;
+      if (state->ss_dirty[sh]) {
+         cso_set_samplers(state->cso, sh, state->num_sampler_states[sh], state->cso_ss_ptr[sh]);
+         state->ss_dirty[sh] = false;
+      }
    }
 
    if (state->vp_dirty) {
@@ -744,11 +743,10 @@ static void handle_graphics_pipeline(struct vk_cmd_queue_entry *cmd,
       if (BITSET_TEST(ps->dynamic, MESA_VK_DYNAMIC_RS_DEPTH_CLIP_ENABLE)) {
          state->depth_clamp_sets_clip = false;
       } else {
-         if (!ps->rs->depth_clip_present)
-            state->rs_state.depth_clip_near = state->rs_state.depth_clip_far = !state->rs_state.depth_clamp;
-         else
-            state->rs_state.depth_clip_near = state->rs_state.depth_clip_far = ps->rs->depth_clip_enable;
-         state->depth_clamp_sets_clip = !ps->rs->depth_clip_present;
+         state->rs_state.depth_clip_near = state->rs_state.depth_clip_far =
+            vk_rasterization_state_depth_clip_enable(ps->rs);
+         state->depth_clamp_sets_clip =
+            ps->rs->depth_clip_enable == VK_MESA_DEPTH_CLIP_ENABLE_NOT_CLAMP;
       }
 
       if (!BITSET_TEST(ps->dynamic, MESA_VK_DYNAMIC_RS_RASTERIZER_DISCARD_ENABLE))

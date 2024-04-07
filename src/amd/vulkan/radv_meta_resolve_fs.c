@@ -56,7 +56,8 @@ build_resolve_fragment_shader(struct radv_device *dev, bool is_integer, int samp
    nir_ssa_def *img_coord = nir_channels(&b, nir_iadd(&b, pos_int, src_offset), 0x3);
    nir_variable *color = nir_local_variable_create(b.impl, glsl_vec4_type(), "color");
 
-   radv_meta_build_resolve_shader_core(&b, is_integer, samples, input_img, color, img_coord);
+   radv_meta_build_resolve_shader_core(&b, is_integer, samples, input_img, color, img_coord,
+                                       dev->physical_device->rad_info.gfx_level);
 
    nir_ssa_def *outval = nir_load_var(&b, color);
    nir_store_var(&b, color_out, outval, 0xf);
@@ -219,7 +220,7 @@ create_resolve_pipeline(struct radv_device *device, int samples_log2, VkFormat f
    const struct radv_graphics_pipeline_create_info radv_pipeline_info = {.use_rectlist = true};
 
    result = radv_graphics_pipeline_create(
-      radv_device_to_handle(device), radv_pipeline_cache_to_handle(&device->meta_state.cache),
+      radv_device_to_handle(device), device->meta_state.cache,
       &vk_pipeline_info, &radv_pipeline_info, &device->meta_state.alloc, pipeline);
    ralloc_free(vs);
    ralloc_free(fs);
@@ -508,7 +509,7 @@ create_depth_stencil_resolve_pipeline(struct radv_device *device, int samples_lo
    const struct radv_graphics_pipeline_create_info radv_pipeline_info = {.use_rectlist = true};
 
    result = radv_graphics_pipeline_create(
-      radv_device_to_handle(device), radv_pipeline_cache_to_handle(&device->meta_state.cache),
+      radv_device_to_handle(device), device->meta_state.cache,
       &vk_pipeline_info, &radv_pipeline_info, &device->meta_state.alloc, pipeline);
 
    ralloc_free(vs);

@@ -84,6 +84,13 @@ vlVaHandleVAEncPictureParameterBufferTypeH264(vlVaDriver *drv, vlVaContext *cont
    context->desc.h264enc.pic_ctrl.enc_cabac_enable = h264->pic_fields.bits.entropy_coding_mode_flag;
    context->desc.h264enc.num_ref_idx_l0_active_minus1 = h264->num_ref_idx_l0_active_minus1;
    context->desc.h264enc.num_ref_idx_l1_active_minus1 = h264->num_ref_idx_l1_active_minus1;
+   context->desc.h264enc.pic_ctrl.deblocking_filter_control_present_flag
+      = h264->pic_fields.bits.deblocking_filter_control_present_flag;
+   context->desc.h264enc.pic_ctrl.redundant_pic_cnt_present_flag
+      = h264->pic_fields.bits.redundant_pic_cnt_present_flag;
+   context->desc.h264enc.pic_ctrl.chroma_qp_index_offset = h264->chroma_qp_index_offset;
+   context->desc.h264enc.pic_ctrl.second_chroma_qp_index_offset
+      = h264->second_chroma_qp_index_offset;
 
    return VA_STATUS_SUCCESS;
 }
@@ -122,7 +129,8 @@ vlVaHandleVAEncSliceParameterBufferTypeH264(vlVaDriver *drv, vlVaContext *contex
     *  Slice type.
     *  Range: 0..2, 5..7, i.e. no switching slices.
    */
-   struct h264_slice_descriptor slice_descriptor = { };
+   struct h264_slice_descriptor slice_descriptor;
+   memset(&slice_descriptor, 0, sizeof(slice_descriptor));
    slice_descriptor.macroblock_address = h264->macroblock_address;
    slice_descriptor.num_macroblocks = h264->num_macroblocks;
 
@@ -148,6 +156,9 @@ vlVaHandleVAEncSliceParameterBufferTypeH264(vlVaDriver *drv, vlVaContext *contex
    }
 
    context->desc.h264enc.pic_ctrl.enc_cabac_init_idc = h264->cabac_init_idc;
+   context->desc.h264enc.dbk.disable_deblocking_filter_idc = h264->disable_deblocking_filter_idc;
+   context->desc.h264enc.dbk.alpha_c0_offset_div2 = h264->slice_alpha_c0_offset_div2;
+   context->desc.h264enc.dbk.beta_offset_div2 = h264->slice_beta_offset_div2;
 
    /* Handle the slice control parameters */
    if (context->desc.h264enc.num_slice_descriptors < ARRAY_SIZE(context->desc.h264enc.slices_descriptors)) {
@@ -162,6 +173,8 @@ vlVaHandleVAEncSliceParameterBufferTypeH264(vlVaDriver *drv, vlVaContext *contex
 VAStatus
 vlVaHandleVAEncSequenceParameterBufferTypeH264(vlVaDriver *drv, vlVaContext *context, vlVaBuffer *buf)
 {
+   uint32_t num_units_in_tick = 0, time_scale  = 0;
+
    VAEncSequenceParameterBufferH264 *h264 = (VAEncSequenceParameterBufferH264 *)buf->data;
    if (!context->decoder) {
       context->templat.max_references = h264->max_num_ref_frames;
@@ -177,16 +190,38 @@ vlVaHandleVAEncSequenceParameterBufferTypeH264(vlVaDriver *drv, vlVaContext *con
    if (context->gop_coeff > VL_VA_ENC_GOP_COEFF)
       context->gop_coeff = VL_VA_ENC_GOP_COEFF;
    context->desc.h264enc.gop_size = h264->intra_idr_period * context->gop_coeff;
-   context->desc.h264enc.rate_ctrl[0].frame_rate_num = h264->time_scale / 2;
-   context->desc.h264enc.rate_ctrl[0].frame_rate_den = h264->num_units_in_tick;
-   context->desc.h264enc.pic_order_cnt_type = h264->seq_fields.bits.pic_order_cnt_type;
+   context->desc.h264enc.seq.pic_order_cnt_type = h264->seq_fields.bits.pic_order_cnt_type;
+   context->desc.h264enc.seq.vui_parameters_present_flag = h264->vui_parameters_present_flag;
+   if (h264->vui_parameters_present_flag) {
+      context->desc.h264enc.seq.vui_flags.aspect_ratio_info_present_flag =
+         h264->vui_fields.bits.aspect_ratio_info_present_flag;
+      context->desc.h264enc.seq.aspect_ratio_idc = h264->aspect_ratio_idc;
+      context->desc.h264enc.seq.sar_width = h264->sar_width;
+      context->desc.h264enc.seq.sar_height = h264->sar_height;
+      context->desc.h264enc.seq.vui_flags.timing_info_present_flag =
+         h264->vui_fields.bits.timing_info_present_flag;
+      num_units_in_tick = h264->num_units_in_tick;
+      time_scale = h264->time_scale;
+   } else
+      context->desc.h264enc.seq.vui_flags.timing_info_present_flag = 0;
+
+   if (!context->desc.h264enc.seq.vui_flags.timing_info_present_flag) {
+      /* if not present, set default value */
+      num_units_in_tick = PIPE_DEFAULT_FRAME_RATE_DEN;
+      time_scale = PIPE_DEFAULT_FRAME_RATE_NUM * 2;
+   }
+
+   context->desc.h264enc.seq.num_units_in_tick = num_units_in_tick;
+   context->desc.h264enc.seq.time_scale = time_scale;
+   context->desc.h264enc.rate_ctrl[0].frame_rate_num = time_scale / 2;
+   context->desc.h264enc.rate_ctrl[0].frame_rate_den = num_units_in_tick;
 
    if (h264->frame_cropping_flag) {
-      context->desc.h264enc.pic_ctrl.enc_frame_cropping_flag = h264->frame_cropping_flag;
-      context->desc.h264enc.pic_ctrl.enc_frame_crop_left_offset = h264->frame_crop_left_offset;
-      context->desc.h264enc.pic_ctrl.enc_frame_crop_right_offset = h264->frame_crop_right_offset;
-      context->desc.h264enc.pic_ctrl.enc_frame_crop_top_offset = h264->frame_crop_top_offset;
-      context->desc.h264enc.pic_ctrl.enc_frame_crop_bottom_offset = h264->frame_crop_bottom_offset;
+      context->desc.h264enc.seq.enc_frame_cropping_flag = h264->frame_cropping_flag;
+      context->desc.h264enc.seq.enc_frame_crop_left_offset = h264->frame_crop_left_offset;
+      context->desc.h264enc.seq.enc_frame_crop_right_offset = h264->frame_crop_right_offset;
+      context->desc.h264enc.seq.enc_frame_crop_top_offset = h264->frame_crop_top_offset;
+      context->desc.h264enc.seq.enc_frame_crop_bottom_offset = h264->frame_crop_bottom_offset;
    }
    return VA_STATUS_SUCCESS;
 }
@@ -210,8 +245,8 @@ vlVaHandleVAEncMiscParameterTypeRateControlH264(vlVaContext *context, VAEncMiscP
       context->desc.h264enc.rate_ctrl[temporal_id].target_bitrate =
          rc->bits_per_second * (rc->target_percentage / 100.0);
 
-   if (context->desc.h264enc.num_temporal_layers > 0 &&
-       temporal_id >= context->desc.h264enc.num_temporal_layers)
+   if (context->desc.h264enc.seq.num_temporal_layers > 0 &&
+       temporal_id >= context->desc.h264enc.seq.num_temporal_layers)
       return VA_STATUS_ERROR_INVALID_PARAMETER;
 
    context->desc.h264enc.rate_ctrl[temporal_id].fill_data_enable = !(rc->rc_flags.bits.disable_bit_stuffing);
@@ -241,8 +276,8 @@ vlVaHandleVAEncMiscParameterTypeFrameRateH264(vlVaContext *context, VAEncMiscPar
                  fr->framerate_flags.bits.temporal_id :
                  0;
 
-   if (context->desc.h264enc.num_temporal_layers > 0 &&
-       temporal_id >= context->desc.h264enc.num_temporal_layers)
+   if (context->desc.h264enc.seq.num_temporal_layers > 0 &&
+       temporal_id >= context->desc.h264enc.seq.num_temporal_layers)
       return VA_STATUS_ERROR_INVALID_PARAMETER;
 
    if (fr->framerate & 0xffff0000) {
@@ -261,7 +296,7 @@ vlVaHandleVAEncMiscParameterTypeTemporalLayerH264(vlVaContext *context, VAEncMis
 {
    VAEncMiscParameterTemporalLayerStructure *tl = (VAEncMiscParameterTemporalLayerStructure *)misc->data;
 
-   context->desc.h264enc.num_temporal_layers = tl->number_of_layers;
+   context->desc.h264enc.seq.num_temporal_layers = tl->number_of_layers;
 
    return VA_STATUS_SUCCESS;
 }

@@ -112,6 +112,7 @@ void vlVaHandlePictureParameterBufferAV1(vlVaDriver *drv, vlVaContext *context, 
 {
    VADecPictureParameterBufferAV1 *av1 = buf->data;
    int i, j;
+   bool use_lr;
 
    assert(buf->size >= sizeof(VADecPictureParameterBufferAV1) && buf->num_elements == 1);
 
@@ -208,9 +209,12 @@ void vlVaHandlePictureParameterBufferAV1(vlVaDriver *drv, vlVaContext *context, 
    context->desc.av1.picture_parameter.v_ac_delta_q = av1->v_ac_delta_q;
    context->desc.av1.picture_parameter.qmatrix_fields.using_qmatrix =
       av1->qmatrix_fields.bits.using_qmatrix;
-   context->desc.av1.picture_parameter.qmatrix_fields.qm_y = av1->qmatrix_fields.bits.qm_y & 0xf;
-   context->desc.av1.picture_parameter.qmatrix_fields.qm_u = av1->qmatrix_fields.bits.qm_u & 0xf;
-   context->desc.av1.picture_parameter.qmatrix_fields.qm_v = av1->qmatrix_fields.bits.qm_v & 0xf;
+   context->desc.av1.picture_parameter.qmatrix_fields.qm_y = av1->qmatrix_fields.bits.using_qmatrix
+      ? av1->qmatrix_fields.bits.qm_y : 0xf;
+   context->desc.av1.picture_parameter.qmatrix_fields.qm_u = av1->qmatrix_fields.bits.using_qmatrix
+      ? av1->qmatrix_fields.bits.qm_u : 0xf;
+   context->desc.av1.picture_parameter.qmatrix_fields.qm_v = av1->qmatrix_fields.bits.using_qmatrix
+      ? av1->qmatrix_fields.bits.qm_v : 0xf;
 
    /* Segmentation Params */
    context->desc.av1.picture_parameter.seg_info.segment_info_fields.enabled =
@@ -287,13 +291,19 @@ void vlVaHandlePictureParameterBufferAV1(vlVaDriver *drv, vlVaContext *context, 
       av1->loop_restoration_fields.bits.lr_unit_shift;
    context->desc.av1.picture_parameter.loop_restoration_fields.lr_uv_shift =
       av1->loop_restoration_fields.bits.lr_uv_shift;
-   if (!av1->loop_restoration_fields.bits.lr_unit_shift) {
-      context->desc.av1.picture_parameter.lr_unit_size[0] =
-         256 >> (2 - av1->loop_restoration_fields.bits.lr_unit_shift);
-      context->desc.av1.picture_parameter.lr_unit_size[1] =
-         context->desc.av1.picture_parameter.lr_unit_size[2] =
-         (context->desc.av1.picture_parameter.lr_unit_size[0] >>
-          av1->loop_restoration_fields.bits.lr_uv_shift);
+
+   use_lr = av1->loop_restoration_fields.bits.yframe_restoration_type ||
+            av1->loop_restoration_fields.bits.cbframe_restoration_type ||
+            av1->loop_restoration_fields.bits.crframe_restoration_type;
+
+   if (use_lr) {
+      context->desc.av1.picture_parameter.lr_unit_size[0]
+         = 1 << (6 + av1->loop_restoration_fields.bits.lr_unit_shift);
+      context->desc.av1.picture_parameter.lr_unit_size[1]
+         = 1 << (6 + av1->loop_restoration_fields.bits.lr_unit_shift
+                   - av1->loop_restoration_fields.bits.lr_uv_shift);
+      context->desc.av1.picture_parameter.lr_unit_size[2]
+         = context->desc.av1.picture_parameter.lr_unit_size[1];
    } else {
       for (i = 0; i < 3; ++i)
          context->desc.av1.picture_parameter.lr_unit_size[i] = (1 << 8);

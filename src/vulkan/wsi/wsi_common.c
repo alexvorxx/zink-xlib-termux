@@ -87,8 +87,11 @@ wsi_device_init(struct wsi_device *wsi,
    WSI_GET_CB(GetPhysicalDeviceQueueFamilyProperties);
 #undef WSI_GET_CB
 
+   wsi->drm_info.sType =
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRM_PROPERTIES_EXT;
    wsi->pci_bus_info.sType =
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PCI_BUS_INFO_PROPERTIES_EXT;
+   wsi->pci_bus_info.pNext = &wsi->drm_info;
    VkPhysicalDeviceProperties2 pdp2 = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
       .pNext = &wsi->pci_bus_info,
@@ -256,6 +259,13 @@ wsi_DestroySurfaceKHR(VkInstance _instance,
 
    if (!surface)
       return;
+
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+   if (surface->platform == VK_ICD_WSI_PLATFORM_WAYLAND) {
+      wsi_wl_surface_destroy(surface, _instance, pAllocator);
+      return;
+   }
+#endif
 
    vk_free2(&instance->alloc, pAllocator, surface);
 }

@@ -89,8 +89,6 @@ virgl_get_param(struct pipe_screen *screen, enum pipe_cap param)
       return 1;
    case PIPE_CAP_ANISOTROPIC_FILTER:
       return vscreen->caps.caps.v2.max_anisotropy > 1.0;
-   case PIPE_CAP_POINT_SPRITE:
-      return 1;
    case PIPE_CAP_MAX_RENDER_TARGETS:
       return vscreen->caps.caps.v1.max_render_targets;
    case PIPE_CAP_MAX_DUAL_SOURCE_RENDER_TARGETS:
@@ -941,12 +939,6 @@ static int virgl_fence_get_fd(struct pipe_screen *screen,
    return vws->fence_get_fd(vws, fence);
 }
 
-static uint64_t
-virgl_get_timestamp(struct pipe_screen *_screen)
-{
-   return os_time_get_nano();
-}
-
 static void
 virgl_destroy_screen(struct pipe_screen *screen)
 {
@@ -1149,7 +1141,7 @@ virgl_create_screen(struct virgl_winsys *vws, const struct pipe_screen_config *c
    screen->base.destroy = virgl_destroy_screen;
    screen->base.context_create = virgl_context_create;
    screen->base.flush_frontbuffer = virgl_flush_frontbuffer;
-   screen->base.get_timestamp = virgl_get_timestamp;
+   screen->base.get_timestamp = u_default_get_timestamp;
    screen->base.fence_reference = virgl_fence_reference;
    //screen->base.fence_signalled = virgl_fence_signalled;
    screen->base.fence_finish = virgl_fence_finish;

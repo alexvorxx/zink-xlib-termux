@@ -54,10 +54,6 @@
 
 #include "nir_opcodes.h"
 
-#if defined(_WIN32) && !defined(snprintf)
-#define snprintf _snprintf
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -2813,8 +2809,26 @@ nir_block_last_phi_instr(nir_block *block)
 
 typedef enum {
    nir_selection_control_none = 0x0,
+
+   /**
+    * Defined by SPIR-V spec 3.22 "Selection Control".
+    * The application prefers to remove control flow.
+    */
    nir_selection_control_flatten = 0x1,
+
+   /**
+    * Defined by SPIR-V spec 3.22 "Selection Control".
+    * The application prefers to keep control flow.
+    */
    nir_selection_control_dont_flatten = 0x2,
+
+   /**
+    * May be applied by the compiler stack when it knows
+    * that a branch is divergent, and:
+    * - either both the if and else are always taken
+    * - the if or else is empty and the other is always taken
+    */
+   nir_selection_control_divergent_always_taken = 0x3,
 } nir_selection_control;
 
 typedef struct nir_if {
@@ -3494,6 +3508,11 @@ typedef struct nir_shader_compiler_options {
    bool lower_mul_32x16;
 
    /**
+    * Set if uclz should be lowered to find_msb_rev.
+    */
+   bool lower_uclz;
+
+   /**
     * Should IO be re-vectorized?  Some scalar ISAs still operate on vec4's
     * for IO purposes and would prefer loads/stores be vectorized.
     */
@@ -3597,6 +3616,9 @@ typedef struct nir_shader_compiler_options {
 
    /** Backend supports fmulz (and ffmaz if lower_ffma32=false) */
    bool has_fmulz;
+
+   /** Backend supports 32bit ufind_msb_rev and ifind_msb_rev. */
+   bool has_find_msb_rev;
 
    /**
     * Is this the Intel vec4 backend?
@@ -4812,10 +4834,22 @@ bool nir_lower_explicit_io(nir_shader *shader,
                            nir_variable_mode modes,
                            nir_address_format);
 
+typedef struct nir_lower_shader_calls_options {
+   /* Address format used for load/store operations on the call stack. */
+   nir_address_format address_format;
+
+   /* Stack alignment */
+   unsigned stack_alignment;
+
+   /* Put loads from the stack as close as possible from where they're needed.
+    * You might want to disable combined_loads for best effects.
+    */
+   bool localized_loads;
+} nir_lower_shader_calls_options;
+
 bool
 nir_lower_shader_calls(nir_shader *shader,
-                       nir_address_format address_format,
-                       unsigned stack_alignment,
+                       const nir_lower_shader_calls_options *options,
                        nir_shader ***resume_shaders_out,
                        uint32_t *num_resume_shaders_out,
                        void *mem_ctx);
@@ -4883,6 +4917,11 @@ void nir_lower_io_to_scalar(nir_shader *shader, nir_variable_mode mask);
 bool nir_lower_io_to_scalar_early(nir_shader *shader, nir_variable_mode mask);
 bool nir_lower_io_to_vector(nir_shader *shader, nir_variable_mode mask);
 bool nir_vectorize_tess_levels(nir_shader *shader);
+nir_shader * nir_create_passthrough_tcs_impl(const nir_shader_compiler_options *options,
+                                             unsigned *locations, unsigned num_locations,
+                                             uint8_t patch_vertices);
+nir_shader * nir_create_passthrough_tcs(const nir_shader_compiler_options *options,
+                                        const nir_shader *vs, uint8_t patch_vertices);
 
 bool nir_lower_fragcolor(nir_shader *shader, unsigned max_cbufs);
 bool nir_lower_fragcoord_wtrans(nir_shader *shader);
@@ -5218,18 +5257,6 @@ bool nir_lower_non_uniform_access(nir_shader *shader,
                                   const nir_lower_non_uniform_access_options *options);
 
 typedef struct {
-   /* If true, a 32-bit division lowering based on NV50LegalizeSSA::handleDIV()
-    * is used. It is the faster of the two but it is not exact in some cases
-    * (for example, 1091317713u / 1034u gives 5209173 instead of 1055432).
-    *
-    * If false, a lowering based on AMDGPUTargetLowering::LowerUDIVREM() and
-    * AMDGPUTargetLowering::LowerSDIVREM() is used. It requires more
-    * instructions than the nv50 path and many of them are integer
-    * multiplications, so it is probably slower. It should always return the
-    * correct result, though.
-    */
-   bool imprecise_32bit_lowering;
-
    /* Whether 16-bit floating point arithmetic should be allowed in 8-bit
     * division lowering
     */

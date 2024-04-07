@@ -23,6 +23,7 @@ rust = import('unstable-rust')
 libmesa_rust_util_files = files(
   'util/lib.rs',
   'util/assert.rs',
+  'util/bitset.rs',
   'util/properties.rs',
   'util/ptr.rs',
   'util/string.rs',
@@ -228,6 +229,8 @@ rusticl_mesa_bindings_rs = rust.bindgen(
     '--allowlist-function', 'u_.*',
     '--allowlist-function', 'util_format_.*',
     '--allowlist-type', 'pipe_endian',
+    '--allowlist-type', 'pipe_resource_usage',
+    '--bitfield-enum', 'pipe_resource_usage',
     '--allowlist-type', 'clc_kernel_arg_access_qualifier',
     '--bitfield-enum', 'clc_kernel_arg_access_qualifier',
     '--allowlist-type', 'clc_kernel_arg_type_qualifier',

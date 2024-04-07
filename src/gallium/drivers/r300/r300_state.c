@@ -1219,7 +1219,7 @@ static void* r300_create_rs_state(struct pipe_context* pipe,
 
     /* Line control. */
     line_control = pack_float_16_6x(state->line_width) |
-        R300_GA_LINE_CNTL_END_TYPE_COMP;
+        (state->line_smooth ? R300_GA_LINE_CNTL_END_TYPE_COMP : R300_GA_LINE_CNTL_END_TYPE_SQR);
 
     /* Enable polygon mode */
     polygon_mode = 0;
@@ -2076,7 +2076,7 @@ static void r300_set_constant_buffer(struct pipe_context *pipe,
         struct r300_resource *rbuf = r300_resource(cb->buffer);
 
         if (rbuf && rbuf->malloced_buffer)
-            mapped = (uint32_t*)rbuf->malloced_buffer;
+            mapped = (uint32_t*)(rbuf->malloced_buffer + cb->buffer_offset);
         else
             return;
     }

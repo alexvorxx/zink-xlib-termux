@@ -29,7 +29,7 @@
 #include "freedreno_drmif.h"
 #include "freedreno_priv.h"
 
-simple_mtx_t table_lock = _SIMPLE_MTX_INITIALIZER_NP;
+simple_mtx_t table_lock = SIMPLE_MTX_INITIALIZER;
 void bo_del(struct fd_bo *bo);
 
 /* set buffer name, and add to table, call w/ table_lock held: */
@@ -527,10 +527,15 @@ fd_bo_cpu_prep(struct fd_bo *bo, struct fd_pipe *pipe, uint32_t op)
     */
    bo_flush(bo);
 
+   op &= ~FD_BO_PREP_FLUSH;
+
+   if (!op)
+      return 0;
+
    /* FD_BO_PREP_FLUSH is purely a frontend flag, and is not seen/handled
     * by backend or kernel:
     */
-   return bo->funcs->cpu_prep(bo, pipe, op & ~FD_BO_PREP_FLUSH);
+   return bo->funcs->cpu_prep(bo, pipe, op);
 }
 
 void

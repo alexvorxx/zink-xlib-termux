@@ -69,6 +69,16 @@ emit_common_so_memcpy(struct anv_batch *batch, struct anv_device *device,
    anv_batch_emit(batch, GENX(3DSTATE_GS), gs);
    anv_batch_emit(batch, GENX(3DSTATE_PS), gs);
 
+#if GFX_VERx10 >= 125
+   /* Disable Mesh, we can't have this and streamout enabled at the same
+    * time.
+    */
+   if (device->info->has_mesh_shading) {
+      anv_batch_emit(batch, GENX(3DSTATE_MESH_CONTROL), mesh);
+      anv_batch_emit(batch, GENX(3DSTATE_TASK_CONTROL), task);
+   }
+#endif
+
    anv_batch_emit(batch, GENX(3DSTATE_SBE), sbe) {
       sbe.VertexURBEntryReadOffset = 1;
       sbe.NumberofSFOutputAttributes = 1;
@@ -280,7 +290,9 @@ genX(cmd_buffer_so_memcpy)(struct anv_cmd_buffer *cmd_buffer,
       genX(cmd_buffer_config_l3)(cmd_buffer, cfg);
    }
 
+#if GFX_VER == 9
    genX(cmd_buffer_set_binding_for_gfx8_vb_flush)(cmd_buffer, 32, src, size);
+#endif
    genX(cmd_buffer_apply_pipe_flushes)(cmd_buffer);
 
    genX(flush_pipeline_select_3d)(cmd_buffer);
@@ -289,8 +301,10 @@ genX(cmd_buffer_so_memcpy)(struct anv_cmd_buffer *cmd_buffer,
                          cmd_buffer->state.current_l3_config);
    emit_so_memcpy(&cmd_buffer->batch, cmd_buffer->device, dst, src, size);
 
+#if GFX_VER == 9
    genX(cmd_buffer_update_dirty_vbs_for_gfx8_vb_flush)(cmd_buffer, SEQUENTIAL,
                                                        1ull << 32);
+#endif
 
    /* Invalidate pipeline & raster discard since we touch
     * 3DSTATE_STREAMOUT.

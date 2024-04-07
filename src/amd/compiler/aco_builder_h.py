@@ -97,14 +97,18 @@ enum sendmsg {
    sendmsg_gs_alloc_req = 9, /* gfx9+ */
    sendmsg_get_doorbell = 10, /* gfx9 to gfx10.3 */
    sendmsg_get_ddid = 11, /* gfx10 to gfx10.3 */
-   sendmsg_rtn_get_doorbell = 128, /* gfx11+ */
-   sendmsg_rtn_get_ddid = 129, /* gfx11+ */
-   sendmsg_rtn_get_tma = 130, /* gfx11+ */
-   sendmsg_rtn_get_realtime = 131, /* gfx11+ */
-   sendmsg_rtn_save_wave = 132, /* gfx11+ */
-   sendmsg_rtn_get_tba = 133, /* gfx11+ */
-   sendmsg_id_mask_gfx6 = 0xf,
-   sendmsg_id_mask_gfx11 = 0xff,
+   sendmsg_id_mask = 0xf,
+};
+
+/* gfx11+ */
+enum sendmsg_rtn {
+   sendmsg_rtn_get_doorbell = 0,
+   sendmsg_rtn_get_ddid = 1,
+   sendmsg_rtn_get_tma = 2,
+   sendmsg_rtn_get_realtime = 3,
+   sendmsg_rtn_save_wave = 4,
+   sendmsg_rtn_get_tba = 5,
+   sendmsg_rtn_mask = 0xff,
 };
 
 inline sendmsg
@@ -525,7 +529,7 @@ formats = [("pseudo", [Format.PSEUDO], 'Pseudo_instruction', list(itertools.prod
            ("sopp", [Format.SOPP], 'SOPP_instruction', itertools.product([0, 1], [0, 1])),
            ("sopc", [Format.SOPC], 'SOPC_instruction', [(1, 2)]),
            ("smem", [Format.SMEM], 'SMEM_instruction', [(0, 4), (0, 3), (1, 0), (1, 3), (1, 2), (0, 0)]),
-           ("ds", [Format.DS], 'DS_instruction', [(1, 1), (1, 2), (0, 3), (0, 4)]),
+           ("ds", [Format.DS], 'DS_instruction', [(1, 1), (1, 2), (1, 3), (0, 3), (0, 4)]),
            ("ldsdir", [Format.LDSDIR], 'LDSDIR_instruction', [(1, 1)]),
            ("mubuf", [Format.MUBUF], 'MUBUF_instruction', [(0, 4), (1, 3)]),
            ("mtbuf", [Format.MTBUF], 'MTBUF_instruction', [(0, 4), (1, 3)]),

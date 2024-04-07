@@ -354,7 +354,6 @@ files_libmesa = files(
   'state_tracker/st_format.h',
   'state_tracker/st_gen_mipmap.c',
   'state_tracker/st_gen_mipmap.h',
-  'state_tracker/st_gl_api.h',
   'state_tracker/st_glsl_to_ir.cpp',
   'state_tracker/st_glsl_to_ir.h',
   'state_tracker/st_glsl_to_nir.cpp',
@@ -457,6 +456,7 @@ files_libmesa += [
   ir_expression_operation_h,
   main_remap_helper_h,
   sha1_h,
+  main_unmarshal_table_c,
 ] + main_marshal_generated_c
 
 if with_sse41

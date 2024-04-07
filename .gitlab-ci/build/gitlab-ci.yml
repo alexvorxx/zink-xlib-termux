@@ -171,7 +171,6 @@ debian-build-testing:
       -D dri3=enabled
       -D gallium-extra-hud=true
       -D gallium-vdpau=enabled
-      -D gallium-xvmc=enabled
       -D gallium-omx=bellagio
       -D gallium-va=enabled
       -D gallium-xa=enabled
@@ -183,7 +182,7 @@ debian-build-testing:
     EXTRA_OPTION: >
       -D spirv-to-dxil=true
       -D osmesa=true
-      -D tools=drm-shim,etnaviv,freedreno,glsl,intel,intel-ui,nir,nouveau,xvmc,lima,panfrost,asahi
+      -D tools=drm-shim,etnaviv,freedreno,glsl,intel,intel-ui,nir,nouveau,lima,panfrost,asahi
   script:
     - .gitlab-ci/lava/lava-pytest.sh
     - .gitlab-ci/run-shellcheck.sh
@@ -206,7 +205,6 @@ debian-release:
       -D dri3=enabled
       -D gallium-extra-hud=true
       -D gallium-vdpau=enabled
-      -D gallium-xvmc=disabled
       -D gallium-omx=disabled
       -D gallium-va=enabled
       -D gallium-xa=enabled
@@ -257,7 +255,6 @@ fedora-release:
       -D dri3=enabled
       -D gallium-extra-hud=true
       -D gallium-vdpau=enabled
-      -D gallium-xvmc=disabled
       -D gallium-omx=disabled
       -D gallium-va=enabled
       -D gallium-xa=enabled
@@ -304,7 +301,6 @@ debian-android:
     GALLIUM_ST: >
       -D dri3=disabled
       -D gallium-vdpau=disabled
-      -D gallium-xvmc=disabled
       -D gallium-omx=disabled
       -D gallium-va=disabled
       -D gallium-xa=disabled
@@ -337,7 +333,6 @@ debian-android:
     GALLIUM_ST: >
       -D dri3=enabled
       -D gallium-vdpau=disabled
-      -D gallium-xvmc=disabled
       -D gallium-omx=disabled
       -D gallium-va=disabled
       -D gallium-xa=disabled
@@ -438,7 +433,6 @@ debian-clang:
       -D dri3=enabled
       -D gallium-extra-hud=true
       -D gallium-vdpau=enabled
-      -D gallium-xvmc=enabled
       -D gallium-omx=bellagio
       -D gallium-va=enabled
       -D gallium-xa=enabled
@@ -456,7 +450,7 @@ debian-clang:
       -D spirv-to-dxil=true
       -D osmesa=true
       -D imagination-srv=true
-      -D tools=drm-shim,etnaviv,freedreno,glsl,intel,intel-ui,nir,nouveau,xvmc,lima,panfrost,asahi,imagination
+      -D tools=drm-shim,etnaviv,freedreno,glsl,intel,intel-ui,nir,nouveau,lima,panfrost,asahi,imagination
       -D vulkan-layers=device-select,overlay
       -D build-aco-tests=true
       -D intel-clc=enabled
@@ -468,6 +462,9 @@ debian-clang-release:
   extends: debian-clang
   variables:
     BUILDTYPE: "release"
+    DRI_LOADERS: >
+      -D glx=xlib
+      -D platforms=x11,wayland
 
 windows-vs2019:
   extends:
@@ -501,7 +498,6 @@ debian-clover:
     GALLIUM_ST: >
       -D dri3=disabled
       -D gallium-vdpau=disabled
-      -D gallium-xvmc=disabled
       -D gallium-omx=disabled
       -D gallium-va=disabled
       -D gallium-xa=disabled
@@ -516,7 +512,6 @@ debian-rusticl:
     GALLIUM_ST: >
       -D dri3=disabled
       -D gallium-vdpau=disabled
-      -D gallium-xvmc=disabled
       -D gallium-omx=disabled
       -D gallium-va=disabled
       -D gallium-xa=disabled
@@ -538,7 +533,6 @@ debian-vulkan:
     GALLIUM_ST: >
       -D dri3=enabled
       -D gallium-vdpau=disabled
-      -D gallium-xvmc=disabled
       -D gallium-omx=disabled
       -D gallium-va=disabled
       -D gallium-xa=disabled
@@ -620,7 +614,10 @@ debian-mingw32-x86_64:
       -D microsoft-clc=enabled
       -D static-libclc=all
       -D llvm=enabled
+      -D gallium-va=true
+      -D video-codecs=h264dec,h264enc,h265dec,h265enc,vc1dec
     EXTRA_OPTION: >
+      -D min-windows-version=7
       -D spirv-to-dxil=true
       -D gles1=enabled
       -D gles2=enabled

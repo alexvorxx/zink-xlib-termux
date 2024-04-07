@@ -97,7 +97,6 @@ struct gl_extensions
    GLboolean ARB_occlusion_query;
    GLboolean ARB_occlusion_query2;
    GLboolean ARB_pipeline_statistics_query;
-   GLboolean ARB_point_sprite;
    GLboolean ARB_polygon_offset_clamp;
    GLboolean ARB_post_depth_coverage;
    GLboolean ARB_query_buffer_object;
@@ -994,8 +993,5 @@ struct gl_constants
 
    /** Use hardware accelerated GL_SELECT */
    bool HardwareAcceleratedSelect;
-
-   /** Origin of point coordinates. True if upper left, false if lower left. */
-   bool PointCoordOriginUpperLeft;
 };
 #endif

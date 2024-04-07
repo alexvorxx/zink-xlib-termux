@@ -88,14 +88,6 @@ files_libgallium = files(
   'driver_noop/noop_pipe.c',
   'driver_noop/noop_public.h',
   'driver_noop/noop_state.c',
-  'driver_rbug/rbug_context.c',
-  'driver_rbug/rbug_context.h',
-  'driver_rbug/rbug_core.c',
-  'driver_rbug/rbug_objects.c',
-  'driver_rbug/rbug_objects.h',
-  'driver_rbug/rbug_public.h',
-  'driver_rbug/rbug_screen.c',
-  'driver_rbug/rbug_screen.h',
   'driver_trace/tr_context.c',
   'driver_trace/tr_context.h',
   'driver_trace/tr_dump.c',
@@ -152,20 +144,6 @@ files_libgallium = files(
   'postprocess/pp_private.h',
   'postprocess/pp_program.c',
   'postprocess/pp_run.c',
-  'rbug/rbug_connection.c',
-  'rbug/rbug_connection.h',
-  'rbug/rbug_context.c',
-  'rbug/rbug_context.h',
-  'rbug/rbug_core.c',
-  'rbug/rbug_core.h',
-  'rbug/rbug_demarshal.c',
-  'rbug/rbug.h',
-  'rbug/rbug_internal.h',
-  'rbug/rbug_proto.h',
-  'rbug/rbug_shader.c',
-  'rbug/rbug_shader.h',
-  'rbug/rbug_texture.c',
-  'rbug/rbug_texture.h',
   'rtasm/rtasm_execmem.c',
   'rtasm/rtasm_execmem.h',
   'rtasm/rtasm_x86sse.c',
@@ -264,8 +242,6 @@ files_libgallium = files(
   'util/u_live_shader_cache.h',
   'util/u_log.c',
   'util/u_log.h',
-  'util/u_network.c',
-  'util/u_network.h',
   'util/u_pack_color.h',
   'util/u_prim.h',
   'util/u_prim.c',
@@ -460,8 +436,12 @@ files_libgalliumvl = files(
 )
 
 vlwinsys_deps = []
-files_libgalliumvlwinsys = files('vl/vl_winsys.h',
-                                 'vl/vl_winsys_drm.c')
+files_libgalliumvlwinsys = files('vl/vl_winsys.h')
+if host_machine.system() == 'windows'
+  files_libgalliumvlwinsys += files('vl/vl_winsys_win32.c')
+else
+  files_libgalliumvlwinsys += files('vl/vl_winsys_drm.c')
+endif
 if with_dri2 and with_platform_x11
   files_libgalliumvlwinsys += files('vl/vl_winsys_dri.c')
   if with_dri3
@@ -473,7 +453,7 @@ if with_dri2 and with_platform_x11
   endif
 endif
 
-if with_glx == 'xlib' or with_glx == 'gallium-xlib'
+if with_glx == 'xlib'
   files_libgalliumvlwinsys += files('vl/vl_winsys_xlib_swrast.c')
 elif with_gallium_drisw_kms
   files_libgalliumvlwinsys += files('vl/vl_winsys_dri_vgem.c')

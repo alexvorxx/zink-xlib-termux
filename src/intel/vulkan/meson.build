@@ -27,16 +27,6 @@ anv_flags = [
 
 anv_cpp_flags = []
 
-if with_intel_vk_rt
-  subdir('grl')
-  optional_libgrl = [libgrl]
-  anv_flags += '-DANV_SUPPORT_RT=1'
-else
-  idep_grl = null_dep
-  optional_libgrl = []
-  anv_flags += '-DANV_SUPPORT_RT=0'
-endif
-
 anv_entrypoints = custom_target(
   'anv_entrypoints',
   input : [vk_entrypoints_gen, vk_api_xml],
@@ -48,9 +38,38 @@ anv_entrypoints = custom_target(
     '--device-prefix', 'gfx11',
     '--device-prefix', 'gfx12',
     '--device-prefix', 'gfx125',
+    '--device-prefix', 'hitman3'
   ],
   depend_files : vk_entrypoints_gen_depend_files,
 )
+
+float64_spv_h = custom_target(
+  'float64_spv.h',
+  input : [glsl2spirv, float64_glsl_file],
+  output : 'float64_spv.h',
+  command : [
+    prog_python, '@INPUT@', '@OUTPUT@',
+    '--create-entry', 'main',
+    '--vn', 'float64_spv_source',
+    '--glsl-version', '450',
+    '-Olib',
+  ]
+)
+
+idep_anv_headers = declare_dependency(
+  sources : [anv_entrypoints[0]],
+  include_directories : inc_anv,
+)
+
+if with_intel_vk_rt
+  subdir('grl')
+  optional_libgrl = [libgrl]
+  anv_flags += '-DANV_SUPPORT_RT=1'
+else
+  idep_grl = null_dep
+  optional_libgrl = []
+  anv_flags += '-DANV_SUPPORT_RT=0'
+endif
 
 intel_icd = custom_target(
   'intel_icd',
@@ -122,6 +141,8 @@ foreach g : [['90', ['gfx8_cmd_buffer.c']],
 endforeach
 
 libanv_files = files(
+  'layers/anv_hitman3.c',
+  'anv_acceleration_structure.c',
   'anv_allocator.c',
   'anv_android.h',
   'anv_batch_chain.c',
@@ -142,6 +163,7 @@ libanv_files = files(
   'anv_nir_lower_multiview.c',
   'anv_nir_lower_ubo_loads.c',
   'anv_nir_lower_ycbcr_textures.c',
+  'anv_nir_push_descriptor_analysis.c',
   'anv_perf.c',
   'anv_pipeline.c',
   'anv_pipeline_cache.c',
@@ -186,7 +208,7 @@ libanv_common = static_library(
   'anv_common',
   [
     libanv_files, anv_entrypoints, sha1_h,
-    gen_xml_pack,
+    gen_xml_pack, float64_spv_h,
   ],
   include_directories : [
     inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_intel, inc_compiler,

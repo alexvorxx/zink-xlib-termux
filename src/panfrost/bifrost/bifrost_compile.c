@@ -1107,12 +1107,11 @@ bi_emit_load_ubo(bi_builder *b, nir_intrinsic_instr *instr)
         bool offset_is_const = nir_src_is_const(*offset);
         bi_index dyn_offset = bi_src_index(offset);
         uint32_t const_offset = offset_is_const ? nir_src_as_uint(*offset) : 0;
-        bool kernel_input = (instr->intrinsic == nir_intrinsic_load_kernel_input);
 
         bi_load_ubo_to(b, instr->num_components * nir_dest_bit_size(instr->dest),
                         bi_dest_index(&instr->dest), offset_is_const ?
                         bi_imm_u32(const_offset) : dyn_offset,
-                        kernel_input ? bi_zero() : bi_src_index(&instr->src[0]));
+                        bi_src_index(&instr->src[0]));
 }
 
 static void
@@ -1640,7 +1639,6 @@ bi_emit_intrinsic(bi_builder *b, nir_intrinsic_instr *instr)
                 break;
 
         case nir_intrinsic_load_ubo:
-        case nir_intrinsic_load_kernel_input:
                 bi_emit_load_ubo(b, instr);
                 break;
 
@@ -1824,10 +1822,8 @@ bi_emit_intrinsic(bi_builder *b, nir_intrinsic_instr *instr)
 
         case nir_intrinsic_load_work_dim:
         case nir_intrinsic_load_num_vertices:
-                bi_load_sysval_nir(b, instr, 1, 0);
-                break;
-
         case nir_intrinsic_load_first_vertex:
+        case nir_intrinsic_load_draw_id:
                 bi_load_sysval_nir(b, instr, 1, 0);
                 break;
 
@@ -1836,13 +1832,6 @@ bi_emit_intrinsic(bi_builder *b, nir_intrinsic_instr *instr)
                 break;
 
         case nir_intrinsic_load_base_instance:
-                bi_load_sysval_nir(b, instr, 1, 8);
-                break;
-
-        case nir_intrinsic_load_draw_id:
-                bi_load_sysval_nir(b, instr, 1, 0);
-                break;
-
         case nir_intrinsic_get_ssbo_size:
                 bi_load_sysval_nir(b, instr, 1, 8);
                 break;
@@ -4973,7 +4962,7 @@ bi_finalize_nir(nir_shader *nir, unsigned gpu_id, bool is_blend)
                 NIR_PASS_V(nir, nir_io_add_const_offset_to_base,
                            nir_var_shader_in | nir_var_shader_out);
                 NIR_PASS_V(nir, nir_io_add_intrinsic_xfb_info);
-                NIR_PASS_V(nir, bifrost_nir_lower_xfb);
+                NIR_PASS_V(nir, pan_lower_xfb);
         }
 
         bi_optimize_nir(nir, gpu_id, is_blend);

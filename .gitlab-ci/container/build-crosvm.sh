@@ -17,7 +17,7 @@ rm -rf third_party/virglrenderer
 git clone --single-branch -b master --no-checkout https://gitlab.freedesktop.org/virgl/virglrenderer.git third_party/virglrenderer
 pushd third_party/virglrenderer
 git checkout "$VIRGLRENDERER_VERSION"
-meson build/ -Dvenus-experimental=true $EXTRA_MESON_ARGS
+meson build/ -Drender-server=true -Drender-server-worker=process -Dvenus-experimental=true $EXTRA_MESON_ARGS
 ninja -C build install
 popd
 
@@ -25,6 +25,7 @@ RUSTFLAGS='-L native=/usr/local/lib' cargo install \
   bindgen \
   -j ${FDO_CI_CONCURRENT:-4} \
   --root /usr/local \
+  --version 0.60.1 \
   $EXTRA_CARGO_ARGS
 
 RUSTFLAGS='-L native=/usr/local/lib' cargo install \

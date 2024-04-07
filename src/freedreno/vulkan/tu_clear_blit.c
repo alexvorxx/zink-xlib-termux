@@ -760,7 +760,7 @@ r3d_common(struct tu_cmd_buffer *cmd, struct tu_cs *cs, bool blit,
    }
    tu_cs_emit_regs(cs, A6XX_VFD_MULTIVIEW_CNTL());
 
-   tu6_emit_vpc(cs, vs, NULL, NULL, NULL, fs, 0);
+   tu6_emit_vpc(cs, vs, NULL, NULL, NULL, fs);
 
    /* REPL_MODE for varying with RECTLIST (2 vertices only) */
    tu_cs_emit_regs(cs, A6XX_VPC_VARYING_INTERP_MODE(0, 0));
@@ -2274,7 +2274,7 @@ resolve_sysmem(struct tu_cmd_buffer *cmd,
 
    for_each_layer(i, layer_mask, layers) {
       if (src_separate_ds) {
-         if (vk_src_format == VK_FORMAT_D32_SFLOAT) {
+         if (vk_src_format == VK_FORMAT_D32_SFLOAT || vk_dst_format == VK_FORMAT_D32_SFLOAT) {
             r2d_src_depth(cmd, cs, src, i, VK_FILTER_NEAREST);
          } else {
             r2d_src_stencil(cmd, cs, src, i, VK_FILTER_NEAREST);

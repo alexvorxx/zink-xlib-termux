@@ -41,6 +41,7 @@
 #include "gallium/auxiliary/util/u_transfer_helper.h"
 #include "gallium/auxiliary/util/u_surface.h"
 #include "gallium/auxiliary/util/u_framebuffer.h"
+#include "gallium/auxiliary/util/u_debug_cb.h"
 #include "agx_public.h"
 #include "agx_state.h"
 #include "magic.h"
@@ -55,6 +56,7 @@ static const struct debug_named_value agx_debug_options[] = {
 #ifndef NDEBUG
    {"dirty",     AGX_DBG_DIRTY,    "Disable dirty tracking"},
 #endif
+   {"precompile",AGX_DBG_PRECOMPILE,"Precompile shaders for shader-db"},
    DEBUG_NAMED_VALUE_END
 };
 
@@ -567,6 +569,10 @@ agx_flush(struct pipe_context *pctx,
       agxdecode_next_frame();
    }
 
+   AGX_BATCH_FOREACH_BO_HANDLE(batch, handle) {
+      agx_bo_unreference(agx_lookup_bo(dev, handle));
+   }
+
    memset(batch->bo_list.set, 0, batch->bo_list.word_count * sizeof(BITSET_WORD));
    agx_pool_cleanup(&ctx->batch->pool);
    agx_pool_cleanup(&ctx->batch->pipeline_pool);
@@ -661,6 +667,7 @@ agx_create_context(struct pipe_screen *screen,
 
    pctx->buffer_subdata = u_default_buffer_subdata;
    pctx->texture_subdata = u_default_texture_subdata;
+   pctx->set_debug_callback = u_default_set_debug_callback;
    pctx->invalidate_resource = agx_invalidate_resource;
    agx_init_state_functions(pctx);
 
@@ -725,7 +732,6 @@ agx_get_param(struct pipe_screen* pscreen, enum pipe_cap param)
    case PIPE_CAP_FRAGMENT_SHADER_TEXTURE_LOD:
    case PIPE_CAP_VERTEX_COLOR_UNCLAMPED:
    case PIPE_CAP_DEPTH_CLIP_DISABLE:
-   case PIPE_CAP_MIXED_COLORBUFFER_FORMATS:
    case PIPE_CAP_MIXED_FRAMEBUFFER_SIZES:
    case PIPE_CAP_FRAGMENT_SHADER_DERIVATIVES:
    case PIPE_CAP_FRAMEBUFFER_NO_ATTACHMENT:
@@ -918,7 +924,6 @@ agx_get_shader_param(struct pipe_screen* pscreen,
                      enum pipe_shader_type shader,
                      enum pipe_shader_cap param)
 {
-   bool is_deqp = agx_device(pscreen)->debug & AGX_DBG_DEQP;
    bool is_no16 = agx_device(pscreen)->debug & AGX_DBG_NO16;
 
    if (shader != PIPE_SHADER_VERTEX &&
@@ -962,8 +967,6 @@ agx_get_shader_param(struct pipe_screen* pscreen,
       return 0;
 
    case PIPE_SHADER_CAP_INDIRECT_CONST_ADDR:
-      return is_deqp;
-
    case PIPE_SHADER_CAP_INTEGERS:
       return true;
 
@@ -1088,12 +1091,6 @@ agx_is_format_supported(struct pipe_screen* pscreen,
    return true;
 }
 
-static uint64_t
-agx_get_timestamp(struct pipe_screen *pscreen)
-{
-   return 0;
-}
-
 static void
 agx_destroy_screen(struct pipe_screen *screen)
 {
@@ -1157,7 +1154,7 @@ static const struct u_transfer_vtbl transfer_vtbl = {
 };
 
 struct pipe_screen *
-agx_screen_create(struct sw_winsys *winsys)
+agx_screen_create(int fd, struct renderonly *ro, struct sw_winsys *winsys)
 {
    struct agx_screen *agx_screen;
    struct pipe_screen *screen;
@@ -1205,7 +1202,7 @@ agx_screen_create(struct sw_winsys *winsys)
    screen->resource_from_handle = agx_resource_from_handle;
    screen->resource_get_handle = agx_resource_get_handle;
    screen->flush_frontbuffer = agx_flush_frontbuffer;
-   screen->get_timestamp = agx_get_timestamp;
+   screen->get_timestamp = u_default_get_timestamp;
    screen->fence_reference = agx_fence_reference;
    screen->fence_finish = agx_fence_finish;
    screen->get_compiler_options = agx_get_compiler_options;

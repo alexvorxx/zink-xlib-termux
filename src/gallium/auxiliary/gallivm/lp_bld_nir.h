@@ -242,16 +242,14 @@ struct lp_build_nir_soa_context
    struct lp_build_context uint_elem_bld;
 
    LLVMValueRef consts_ptr;
-   LLVMValueRef consts[LP_MAX_TGSI_CONST_BUFFERS];
-   LLVMValueRef consts_sizes[LP_MAX_TGSI_CONST_BUFFERS];
    const LLVMValueRef (*inputs)[TGSI_NUM_CHANNELS];
    LLVMValueRef (*outputs)[TGSI_NUM_CHANNELS];
+   LLVMTypeRef context_type;
    LLVMValueRef context_ptr;
+   LLVMTypeRef thread_data_type;
    LLVMValueRef thread_data_ptr;
 
    LLVMValueRef ssbo_ptr;
-   LLVMValueRef ssbos[LP_MAX_TGSI_SHADER_BUFFERS];
-   LLVMValueRef ssbo_sizes[LP_MAX_TGSI_SHADER_BUFFERS];
 
    LLVMValueRef shared_ptr;
    LLVMValueRef scratch_ptr;

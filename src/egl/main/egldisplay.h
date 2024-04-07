@@ -38,6 +38,9 @@
 #include "egldefines.h"
 #include "eglarray.h"
 
+#ifdef HAVE_X11_PLATFORM
+#include <X11/Xlib.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -109,6 +112,7 @@ struct _egl_extensions
    EGLBoolean EXT_image_dma_buf_import;
    EGLBoolean EXT_image_dma_buf_import_modifiers;
    EGLBoolean EXT_pixel_format_float;
+   EGLBoolean EXT_protected_content;
    EGLBoolean EXT_protected_surface;
    EGLBoolean EXT_present_opaque;
    EGLBoolean EXT_surface_CTA861_3_metadata;

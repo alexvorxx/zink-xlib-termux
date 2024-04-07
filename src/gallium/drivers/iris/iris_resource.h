@@ -311,7 +311,10 @@ iris_mocs(const struct iris_bo *bo,
           const struct isl_device *dev,
           isl_surf_usage_flags_t usage)
 {
-   return isl_mocs(dev, usage, bo && iris_bo_is_external(bo));
+   return isl_mocs(dev,
+                   usage |
+                   ((bo && bo->real.protected) ? ISL_SURF_USAGE_PROTECTED_BIT : 0),
+                   bo && iris_bo_is_external(bo));
 }
 
 struct iris_format_info iris_format_for_usage(const struct intel_device_info *,
@@ -461,7 +464,9 @@ iris_resource_access_raw(struct iris_context *ice,
 
 enum isl_aux_usage iris_resource_texture_aux_usage(struct iris_context *ice,
                                                    const struct iris_resource *res,
-                                                   enum isl_format view_fmt);
+                                                   enum isl_format view_fmt,
+                                                   unsigned start_level,
+                                                   unsigned num_levels);
 void iris_resource_prepare_texture(struct iris_context *ice,
                                    struct iris_resource *res,
                                    enum isl_format view_format,

@@ -156,9 +156,9 @@ valid_prim_mode_custom(struct gl_context *ctx, GLenum mode,
                        GLbitfield valid_prim_mask)
 {
 #if DEBUG
-   unsigned mask = ctx->ValidPrimMask;
-   unsigned mask_indexed = ctx->ValidPrimMaskIndexed;
-   bool drawpix_valid = ctx->DrawPixValid;
+   ASSERTED unsigned mask = ctx->ValidPrimMask;
+   ASSERTED unsigned mask_indexed = ctx->ValidPrimMaskIndexed;
+   ASSERTED bool drawpix_valid = ctx->DrawPixValid;
    _mesa_update_valid_to_render_state(ctx);
    assert(mask == ctx->ValidPrimMask &&
           mask_indexed == ctx->ValidPrimMaskIndexed &&
@@ -1393,8 +1393,8 @@ _mesa_DrawArrays(GLenum mode, GLint start, GLsizei count)
  * display list mode).
  */
 void GLAPIENTRY
-_mesa_DrawArraysInstancedARB(GLenum mode, GLint start, GLsizei count,
-                             GLsizei numInstances)
+_mesa_DrawArraysInstanced(GLenum mode, GLint start, GLsizei count,
+                          GLsizei numInstances)
 {
    GET_CURRENT_CONTEXT(ctx);
    FLUSH_FOR_DRAW(ctx);
@@ -1835,8 +1835,8 @@ _mesa_DrawElementsBaseVertex(GLenum mode, GLsizei count, GLenum type,
  * Called by glDrawElementsInstanced() in immediate mode.
  */
 void GLAPIENTRY
-_mesa_DrawElementsInstancedARB(GLenum mode, GLsizei count, GLenum type,
-                               const GLvoid * indices, GLsizei numInstances)
+_mesa_DrawElementsInstanced(GLenum mode, GLsizei count, GLenum type,
+                            const GLvoid * indices, GLsizei numInstances)
 {
    GET_CURRENT_CONTEXT(ctx);
    FLUSH_FOR_DRAW(ctx);
@@ -2076,8 +2076,8 @@ _mesa_validated_multidrawelements(struct gl_context *ctx, GLenum mode,
 
 
 void GLAPIENTRY
-_mesa_MultiDrawElementsEXT(GLenum mode, const GLsizei *count, GLenum type,
-                           const GLvoid * const *indices, GLsizei primcount)
+_mesa_MultiDrawElements(GLenum mode, const GLsizei *count, GLenum type,
+                        const GLvoid * const *indices, GLsizei primcount)
 {
    GET_CURRENT_CONTEXT(ctx);
    FLUSH_FOR_DRAW(ctx);

@@ -75,6 +75,9 @@ zink_resource_object_init_storage(struct zink_context *ctx, struct zink_resource
 bool
 zink_resource_object_init_mutable(struct zink_context *ctx, struct zink_resource *res);
 
+VkDeviceAddress
+zink_resource_get_address(struct zink_screen *screen, struct zink_resource *res);
+
 static inline bool
 zink_resource_has_binds(const struct zink_resource *res)
 {
@@ -126,6 +129,12 @@ static inline bool
 zink_resource_usage_check_completion(struct zink_screen *screen, struct zink_resource *res, enum zink_resource_access access)
 {
    return zink_bo_usage_check_completion(screen, res->obj->bo, access);
+}
+
+static inline void
+zink_resource_usage_try_wait(struct zink_context *ctx, struct zink_resource *res, enum zink_resource_access access)
+{
+   zink_bo_usage_try_wait(ctx, res->obj->bo, access);
 }
 
 static inline void

@@ -11,6 +11,8 @@ use crate::impl_cl_type_trait;
 use mesa_rust::compiler::clc::*;
 use mesa_rust::compiler::nir::*;
 use mesa_rust::pipe::context::RWFlags;
+use mesa_rust::pipe::context::ResourceMapType;
+use mesa_rust::pipe::screen::ResourceType;
 use mesa_rust_gen::*;
 use mesa_rust_util::math::*;
 use mesa_rust_util::serialize::*;
@@ -623,6 +625,11 @@ fn convert_spirv_to_nir(
         } else {
             let mut nir = p.to_nir(name, d);
 
+            /* this is a hack until we support fp16 properly and check for denorms inside
+             * vstore/vload_half
+             */
+            nir.preserve_fp16_denorms();
+
             lower_and_optimize_nir_pre_inputs(d, &mut nir, &d.lib_clc);
             let mut args = KernelArg::from_spirv_nir(&args, &mut nir);
             let internal_args = lower_and_optimize_nir_late(d, &mut nir, &mut args);
@@ -843,7 +850,7 @@ impl Kernel {
                     let res = Arc::new(
                         q.device
                             .screen()
-                            .resource_create_buffer(buf.len() as u32)
+                            .resource_create_buffer(buf.len() as u32, ResourceType::Normal)
                             .unwrap(),
                     );
                     q.device
@@ -858,8 +865,12 @@ impl Kernel {
                     input.extend_from_slice(&cl_prop::<[u64; 3]>(offsets));
                 }
                 InternalKernelArgType::PrintfBuffer => {
-                    let buf =
-                        Arc::new(q.device.screen.resource_create_buffer(printf_size).unwrap());
+                    let buf = Arc::new(
+                        q.device
+                            .screen
+                            .resource_create_buffer(printf_size, ResourceType::Normal)
+                            .unwrap(),
+                    );
 
                     input.extend_from_slice(&[0; 8]);
                     resource_info.push((Some(buf.clone()), arg.offset));
@@ -933,7 +944,13 @@ impl Kernel {
 
             if let Some(printf_buf) = &printf_buf {
                 let tx = ctx
-                    .buffer_map(printf_buf, 0, printf_size as i32, true, RWFlags::RD)
+                    .buffer_map(
+                        printf_buf,
+                        0,
+                        printf_size as i32,
+                        RWFlags::RD,
+                        ResourceMapType::Normal,
+                    )
                     .with_ctx(ctx);
                 let mut buf: &[u8] =
                     unsafe { slice::from_raw_parts(tx.ptr().cast(), printf_size as usize) };

@@ -148,7 +148,7 @@ agx_nir_vs_prolog(nir_builder *b, const void *key_)
    unsigned i = 0;
    nir_def *vec = NULL;
    unsigned vec_idx = ~0;
-   BITSET_FOREACH_SET(i, key->component_mask, VERT_ATTRIB_MAX * 4) {
+   BITSET_FOREACH_SET(i, key->component_mask, AGX_MAX_ATTRIBS * 4) {
       unsigned a = i / 4;
       unsigned c = i % 4;
 

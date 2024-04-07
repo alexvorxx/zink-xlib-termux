@@ -54,7 +54,7 @@ struct agx_vs_prolog_key {
    struct agx_velem_key attribs[AGX_MAX_VBUFS];
 
    /* Bit mask of attribute components to load */
-   BITSET_DECLARE(component_mask, VERT_ATTRIB_MAX * 4);
+   BITSET_DECLARE(component_mask, AGX_MAX_ATTRIBS * 4);
 
    /* Whether running as a hardware vertex shader (versus compute) */
    bool hw;

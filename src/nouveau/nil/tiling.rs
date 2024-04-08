@@ -126,7 +126,7 @@ pub fn sparse_block_extent_px(
 }
 
 pub fn sparse_block_extent_B(format: Format, dim: ImageDim) -> Extent4D {
-    sparse_block_extent_el(format, dim).el_to_B(format.el_size_B())
+    sparse_block_extent_el(format, dim).el_to_B(format)
 }
 
 #[no_mangle]

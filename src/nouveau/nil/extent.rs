@@ -78,15 +78,15 @@ impl Extent4D {
         self.px_to_sa(sample_layout).div_ceil(format.el_extent_sa())
     }
 
-    pub fn el_to_B(self, bytes_per_element: u32) -> Self {
+    pub fn el_to_B(self, format: Format) -> Self {
         Self {
-            width: self.width * bytes_per_element,
+            width: self.width * format.el_size_B(),
             ..self
         }
     }
     pub fn px_to_B(self, format: Format, sample_layout: SampleLayout) -> Self {
         self.px_to_el(format, sample_layout)
-            .el_to_B(format.el_size_B())
+            .el_to_B(format)
     }
 
     pub fn B_to_GOB(self, gob_height_is_8: bool) -> Self {
@@ -194,20 +194,12 @@ impl Offset4D {
 
     pub fn px_to_B(self, format: Format, sample_layout: SampleLayout) -> Self {
         self.px_to_el(format, sample_layout)
-            .el_to_B(format.el_size_B())
+            .el_to_B(format)
     }
 
-    #[no_mangle]
-    pub extern "C" fn nil_offset4d_el_to_B(
-        self,
-        bytes_per_element: u32,
-    ) -> Self {
-        self.el_to_B(bytes_per_element)
-    }
-
-    pub fn el_to_B(self, bytes_per_element: u32) -> Self {
+    pub fn el_to_B(self, format: Format) -> Self {
         let mut offset_B = self;
-        offset_B.x *= bytes_per_element;
+        offset_B.x *= format.el_size_B();
         offset_B
     }
 }

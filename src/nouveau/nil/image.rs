@@ -258,7 +258,7 @@ impl Image {
         let level_extent_px = self.level_extent_px(level);
         let level_extent_el =
             level_extent_px.px_to_el(self.format, self.sample_layout);
-        level_extent_el.el_to_B(self.format.el_size_B())
+        level_extent_el.el_to_B(self.format)
     }
 
     #[no_mangle]

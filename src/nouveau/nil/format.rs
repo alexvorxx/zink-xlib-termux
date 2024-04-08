@@ -47,12 +47,7 @@ impl Format {
 
     pub(crate) fn el_extent_sa(&self) -> Extent4D {
         let desc = self.description();
-        Extent4D {
-            width: desc.block.width,
-            height: desc.block.height,
-            depth: desc.block.depth,
-            array_len: 1,
-        }
+        Extent4D::new(desc.block.width, desc.block.height, desc.block.depth, 1)
     }
 
     pub(crate) fn info(&self) -> &nil_format_info {

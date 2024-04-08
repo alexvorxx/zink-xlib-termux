@@ -1,7 +1,7 @@
 // Copyright © 2024 Collabora, Ltd.
 // SPDX-License-Identifier: MIT
 
-use crate::extent::{nil_extent4d, Extent4D};
+use crate::extent::Extent4D;
 use crate::format::Format;
 use crate::image::{
     ImageDim, ImageUsageFlags, SampleLayout, IMAGE_USAGE_2D_VIEW_BIT,
@@ -76,20 +76,15 @@ impl Tiling {
 
     pub fn extent_B(&self) -> Extent4D {
         if self.is_tiled {
-            Extent4D {
-                width: GOB_WIDTH_B << self.x_log2,
-                height: gob_height(self.gob_height_is_8) << self.y_log2,
-                depth: GOB_DEPTH << self.z_log2,
-                array_len: 1,
-            }
+            Extent4D::new(
+                GOB_WIDTH_B << self.x_log2,
+                gob_height(self.gob_height_is_8) << self.y_log2,
+                GOB_DEPTH << self.z_log2,
+                1,
+            )
         } else {
             // We handle linear images in Image::new()
-            Extent4D {
-                width: 1,
-                height: 1,
-                depth: 1,
-                array_len: 1,
-            }
+            Extent4D::new(1, 1, 1, 1)
         }
     }
 }
@@ -101,19 +96,19 @@ pub fn sparse_block_extent_el(format: Format, dim: ImageDim) -> Extent4D {
     // Image Block Shapes".
     match dim {
         ImageDim::_2D => match bits {
-            8 => nil_extent4d(256, 256, 1, 1),
-            16 => nil_extent4d(256, 128, 1, 1),
-            32 => nil_extent4d(128, 128, 1, 1),
-            64 => nil_extent4d(128, 64, 1, 1),
-            128 => nil_extent4d(64, 64, 1, 1),
+            8 => Extent4D::new(256, 256, 1, 1),
+            16 => Extent4D::new(256, 128, 1, 1),
+            32 => Extent4D::new(128, 128, 1, 1),
+            64 => Extent4D::new(128, 64, 1, 1),
+            128 => Extent4D::new(64, 64, 1, 1),
             other => panic!("Invalid texel size {other}"),
         },
         ImageDim::_3D => match bits {
-            8 => nil_extent4d(64, 32, 32, 1),
-            16 => nil_extent4d(32, 32, 32, 1),
-            32 => nil_extent4d(32, 32, 16, 1),
-            64 => nil_extent4d(32, 16, 16, 1),
-            128 => nil_extent4d(16, 16, 16, 1),
+            8 => Extent4D::new(64, 32, 32, 1),
+            16 => Extent4D::new(32, 32, 32, 1),
+            32 => Extent4D::new(32, 32, 16, 1),
+            64 => Extent4D::new(32, 16, 16, 1),
+            128 => Extent4D::new(16, 16, 16, 1),
             _ => panic!("Invalid texel size"),
         },
         _ => panic!("Invalid sparse image dimension"),

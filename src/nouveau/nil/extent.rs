@@ -31,6 +31,20 @@ pub extern "C" fn nil_extent4d(
 }
 
 impl Extent4D {
+    pub fn new(
+        width: u32,
+        height: u32,
+        depth: u32,
+        array_len: u32,
+    ) -> Extent4D {
+        Extent4D {
+            width,
+            height,
+            depth,
+            array_len,
+        }
+    }
+
     pub fn size(&self) -> u32 {
         self.width * self.height * self.depth
     }

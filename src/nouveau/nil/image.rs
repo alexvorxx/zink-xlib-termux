@@ -55,20 +55,13 @@ impl SampleLayout {
     }
 
     pub fn px_extent_sa(&self) -> Extent4D {
-        let (width, height) = match self {
-            SampleLayout::_1x1 => (1, 1),
-            SampleLayout::_2x1 => (2, 1),
-            SampleLayout::_2x2 => (2, 2),
-            SampleLayout::_4x2 => (4, 2),
-            SampleLayout::_4x4 => (4, 4),
+        match self {
+            SampleLayout::_1x1 => Extent4D::new(1, 1, 1, 1),
+            SampleLayout::_2x1 => Extent4D::new(2, 1, 1, 1),
+            SampleLayout::_2x2 => Extent4D::new(2, 2, 1, 1),
+            SampleLayout::_4x2 => Extent4D::new(4, 2, 1, 1),
+            SampleLayout::_4x4 => Extent4D::new(4, 4, 1, 1),
             SampleLayout::Invalid => panic!("Invalid sample layout"),
-        };
-
-        Extent4D {
-            width,
-            height,
-            depth: 1,
-            array_len: 1,
         }
     }
 

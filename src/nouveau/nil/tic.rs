@@ -212,13 +212,7 @@ fn nil_rs_max_mip_level(image: &Image, view: &View) -> u32 {
 }
 
 fn normalize_extent(image: &Image, view: &View) -> Extent4D {
-    let mut extent = Extent4D {
-        width: image.extent_px.width,
-        height: image.extent_px.height,
-        depth: 0,
-        array_len: 0,
-    };
-
+    let mut extent = image.extent_px;
     match view.view_type {
         ViewType::_1D
         | ViewType::_2D
@@ -241,6 +235,7 @@ fn normalize_extent(image: &Image, view: &View) -> Extent4D {
             extent.depth = view.array_len;
         }
     }
+    extent.array_len = 0;
 
     extent
 }

@@ -454,13 +454,8 @@ gather_shader_info_ngg_query(struct radv_device *device, struct radv_shader_info
 }
 
 uint64_t
-radv_gather_unlinked_io_mask(const uint64_t nir_mask)
+radv_gather_unlinked_io_mask(const uint64_t nir_io_mask)
 {
-   /* Select the correct NIR IO mask.
-    * Exclude per-patch built-in variables, because in NIR they are not part of the patch I/O masks.
-    */
-   const uint64_t nir_io_mask = nir_mask & ~(VARYING_BIT_TESS_LEVEL_OUTER | VARYING_BIT_TESS_LEVEL_INNER);
-
    /* Create a mask of driver locations mapped from NIR semantics. */
    uint64_t radv_io_mask = 0;
    u_foreach_bit64 (semantic, nir_io_mask) {
@@ -473,54 +468,6 @@ radv_gather_unlinked_io_mask(const uint64_t nir_mask)
    }
 
    return radv_io_mask;
-}
-
-static void
-gather_info_unlinked_input(struct radv_shader_info *info, const nir_shader *nir)
-{
-   if (info->inputs_linked)
-      return;
-
-   const uint64_t io_mask = radv_gather_unlinked_io_mask(nir->info.inputs_read);
-   const unsigned num_linked_inputs = util_last_bit64(io_mask);
-
-   switch (nir->info.stage) {
-   case MESA_SHADER_TESS_CTRL:
-      info->tcs.num_linked_inputs = num_linked_inputs;
-      break;
-   case MESA_SHADER_TESS_EVAL:
-      info->tes.num_linked_inputs = num_linked_inputs;
-      break;
-   case MESA_SHADER_GEOMETRY:
-      info->gs.num_linked_inputs = num_linked_inputs;
-      break;
-   default:
-      unreachable("Stage doesn't have linked inputs.");
-   }
-}
-
-static void
-gather_info_unlinked_output(struct radv_shader_info *info, const nir_shader *nir)
-{
-   if (info->outputs_linked)
-      return;
-
-   const uint64_t io_mask = radv_gather_unlinked_io_mask(nir->info.outputs_written);
-   const unsigned num_linked_outputs = util_last_bit64(io_mask);
-
-   switch (nir->info.stage) {
-   case MESA_SHADER_VERTEX:
-      info->vs.num_linked_outputs = num_linked_outputs;
-      break;
-   case MESA_SHADER_TESS_CTRL:
-      info->tcs.num_linked_outputs = num_linked_outputs;
-      break;
-   case MESA_SHADER_TESS_EVAL:
-      info->tes.num_linked_outputs = num_linked_outputs;
-      break;
-   default:
-      unreachable("Stage doesn't have linked outputs.");
-   }
 }
 
 static void
@@ -552,7 +499,8 @@ gather_shader_info_vs(struct radv_device *device, const nir_shader *nir,
     */
    info->vs.dynamic_num_verts_per_prim = gfx_state->ia.topology == V_008958_DI_PT_NONE && info->is_ngg && nir->xfb_info;
 
-   gather_info_unlinked_output(info, nir);
+   if (!info->outputs_linked)
+      info->vs.num_linked_outputs = util_last_bit64(radv_gather_unlinked_io_mask(nir->info.outputs_written));
 
    if (info->next_stage == MESA_SHADER_TESS_CTRL) {
       info->vs.as_ls = true;
@@ -587,8 +535,11 @@ gather_shader_info_tcs(struct radv_device *device, const nir_shader *nir,
    info->tcs.tes_inputs_read = ~0ULL;
    info->tcs.tes_patch_inputs_read = ~0ULL;
 
-   gather_info_unlinked_input(info, nir);
-   gather_info_unlinked_output(info, nir);
+   if (!info->inputs_linked)
+      info->tcs.num_linked_inputs = util_last_bit64(radv_gather_unlinked_io_mask(nir->info.inputs_read));
+   if (!info->outputs_linked)
+      info->tcs.num_linked_outputs = util_last_bit64(radv_gather_unlinked_io_mask(
+         nir->info.outputs_written & ~(VARYING_BIT_TESS_LEVEL_OUTER | VARYING_BIT_TESS_LEVEL_INNER)));
 
    if (gfx_state->ts.patch_control_points) {
       /* Number of tessellation patches per workgroup processed by the current pipeline. */
@@ -616,8 +567,11 @@ gather_shader_info_tes(struct radv_device *device, const nir_shader *nir, struct
    info->tes.reads_tess_factors =
       !!(nir->info.inputs_read & (VARYING_BIT_TESS_LEVEL_INNER | VARYING_BIT_TESS_LEVEL_OUTER));
 
-   gather_info_unlinked_input(info, nir);
-   gather_info_unlinked_output(info, nir);
+   if (!info->inputs_linked)
+      info->tes.num_linked_inputs = util_last_bit64(radv_gather_unlinked_io_mask(
+         nir->info.inputs_read & ~(VARYING_BIT_TESS_LEVEL_OUTER | VARYING_BIT_TESS_LEVEL_INNER)));
+   if (!info->outputs_linked)
+      info->tes.num_linked_outputs = util_last_bit64(radv_gather_unlinked_io_mask(nir->info.outputs_written));
 
    if (info->next_stage == MESA_SHADER_GEOMETRY) {
       info->tes.as_es = true;
@@ -797,7 +751,8 @@ gather_shader_info_gs(struct radv_device *device, const nir_shader *nir, struct 
       }
    }
 
-   gather_info_unlinked_input(info, nir);
+   if (!info->inputs_linked)
+      info->gs.num_linked_inputs = util_last_bit64(radv_gather_unlinked_io_mask(nir->info.inputs_read));
 
    if (info->is_ngg) {
       gather_shader_info_ngg_query(device, info);

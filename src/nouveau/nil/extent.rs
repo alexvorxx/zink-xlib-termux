@@ -15,21 +15,6 @@ pub struct Extent4D {
     pub array_len: u32,
 }
 
-#[no_mangle]
-pub extern "C" fn nil_extent4d(
-    width: u32,
-    height: u32,
-    depth: u32,
-    array_len: u32,
-) -> Extent4D {
-    Extent4D {
-        width,
-        height,
-        depth,
-        array_len,
-    }
-}
-
 impl Extent4D {
     pub fn new(
         width: u32,
@@ -143,11 +128,6 @@ pub struct Offset4D {
     pub y: u32,
     pub z: u32,
     pub a: u32,
-}
-
-#[no_mangle]
-pub extern "C" fn nil_offset4d(x: u32, y: u32, z: u32, a: u32) -> Offset4D {
-    Offset4D { x, y, z, a }
 }
 
 impl Offset4D {

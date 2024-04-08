@@ -68,13 +68,23 @@ nouveau_copy_rect_buffer(struct nvk_buffer *buf,
 static struct nil_offset4d
 vk_to_nil_offset(VkOffset3D offset, uint32_t base_array_layer)
 {
-   return nil_offset4d(offset.x, offset.y, offset.z, base_array_layer);
+   return (struct nil_offset4d) {
+      .x = offset.x,
+      .y = offset.y,
+      .z = offset.z,
+      .a = base_array_layer
+   };
 }
 
 static struct nil_extent4d
 vk_to_nil_extent(VkExtent3D extent, uint32_t array_layers)
 {
-   return nil_extent4d(extent.width, extent.height, extent.depth, array_layers);
+   return (struct nil_extent4d) {
+      .width      = extent.width,
+      .height     = extent.height,
+      .depth      = extent.depth,
+      .array_len  = array_layers,
+   };
 }
 
 static struct nouveau_copy_buffer

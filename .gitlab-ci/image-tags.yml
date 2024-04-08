@@ -16,7 +16,7 @@ variables:
    DEBIAN_BASE_TAG: "20240401-wlproto"
 
    DEBIAN_X86_64_BUILD_IMAGE_PATH: "debian/x86_64_build"
-   DEBIAN_BUILD_TAG: "20240401-wlproto"
+   DEBIAN_BUILD_TAG: "20240408-cbindgen"
 
    DEBIAN_X86_64_TEST_BASE_IMAGE: "debian/x86_64_test-base"
 
@@ -31,7 +31,7 @@ variables:
 
    ALPINE_X86_64_BUILD_TAG: "20240401-wlproto"
    ALPINE_X86_64_LAVA_SSH_TAG: "20240401-wlproto"
-   FEDORA_X86_64_BUILD_TAG: "20240401-wlproto"
+   FEDORA_X86_64_BUILD_TAG: "20240408-cbindgen"
    KERNEL_TAG: "v6.6.21-mesa-19fc"
    KERNEL_REPO: "gfx-ci/linux"
    PKG_REPO_REV: "3cc12a2a"

@@ -135,8 +135,11 @@ const struct agx_pixel_format_entry agx_pixel_format[PIPE_FORMAT_COUNT] = {
    AGX_FMT(R10G10B10A2_UINT,        R10G10B10A2,           UINT,  I16),
    AGX_FMT(B10G10R10A2_UINT,        R10G10B10A2,           UINT,  I16),
 
-   AGX_FMT(R10G10B10A2_SINT,        R10G10B10A2,           SINT,  I16),
-   AGX_FMT(B10G10R10A2_SINT,        R10G10B10A2,           SINT,  I16),
+   /* I don't see why this wouldn't be renderable, but it doesn't seem to work
+    * properly and it's not in Metal.
+    */
+   AGX_FMT(R10G10B10A2_SINT,        R10G10B10A2,           SINT,  _),
+   AGX_FMT(B10G10R10A2_SINT,        R10G10B10A2,           SINT,  _),
 
    AGX_FMT(R11G11B10_FLOAT,         R11G11B10,             FLOAT, RG11B10F),
 

@@ -313,6 +313,21 @@ can_eliminate(aco_ptr<Instruction>& instr)
    return true;
 }
 
+bool
+is_trivial_phi(Block& block, Instruction* instr)
+{
+   if (!is_phi(instr))
+      return false;
+
+   /* Logical LCSSA phis must be kept in order to prevent the optimizer
+    * from doing invalid transformations. */
+   if (instr->opcode == aco_opcode::p_phi && (block.kind & block_kind_loop_exit))
+      return false;
+
+   return std::all_of(instr->operands.begin(), instr->operands.end(),
+                      [&](Operand& op) { return op == instr->operands[0]; });
+}
+
 void
 process_block(vn_ctx& ctx, Block& block)
 {
@@ -333,18 +348,18 @@ process_block(vn_ctx& ctx, Block& block)
           instr->opcode == aco_opcode::p_demote_to_helper || instr->opcode == aco_opcode::p_end_wqm)
          ctx.exec_id++;
 
-      if (!can_eliminate(instr)) {
-         new_instructions.emplace_back(std::move(instr));
-         continue;
-      }
-
       /* simple copy-propagation through renaming */
       bool copy_instr =
-         instr->opcode == aco_opcode::p_parallelcopy ||
+         is_trivial_phi(block, instr.get()) || instr->opcode == aco_opcode::p_parallelcopy ||
          (instr->opcode == aco_opcode::p_create_vector && instr->operands.size() == 1);
       if (copy_instr && !instr->definitions[0].isFixed() && instr->operands[0].isTemp() &&
           instr->operands[0].regClass() == instr->definitions[0].regClass()) {
          ctx.renames[instr->definitions[0].tempId()] = instr->operands[0].getTemp();
+         continue;
+      }
+
+      if (!can_eliminate(instr)) {
+         new_instructions.emplace_back(std::move(instr));
          continue;
       }
 
@@ -388,7 +403,7 @@ void
 rename_phi_operands(Block& block, aco::unordered_map<uint32_t, Temp>& renames)
 {
    for (aco_ptr<Instruction>& phi : block.instructions) {
-      if (phi->opcode != aco_opcode::p_phi && phi->opcode != aco_opcode::p_linear_phi)
+      if (!is_phi(phi))
          break;
 
       for (Operand& op : phi->operands) {

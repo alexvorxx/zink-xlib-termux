@@ -3091,20 +3091,19 @@ isl_surf_supports_ccs(const struct isl_device *dev,
          if (surf->samples > 1)
             return false;
 
-         /* No CCS support for 3D Depth/Stencil values
-          *
-          * According to HSD 22015614752, there are issues with multiple engines
-          * accessing the same CCS cacheline in parallel. For 2D depth/stencil,
-          * we can upgrade to Tile64 to avoid any issues,
-          * but we can't do the same for 3D depth/stencil.
-          *
-          * For that case, we can't use Tile64 because the depth/stencil
-          * hardware can't actually output 3D Tile64 data.
-          *
-          * Let's just disable CCS instead.
+         /* Wa_22015614752: There are issues with multiple engines accessing
+          * the same CCS cacheline in parallel. We need a 64KB alignment
+          * between image subresources in order to avoid those issues, but as
+          * can be seen from isl_gfx125_filter_tiling, we can't use Tile64 to
+          * achieve that for 3D surfaces. We're limited to rely on other
+          * layout parameters which can't help us to achieve the target
+          * in all cases. So, we choose to disable CCS.
           */
-         if (surf->dim == ISL_SURF_DIM_3D)
+         if (intel_needs_workaround(dev->info, 22015614752) &&
+             surf->dim == ISL_SURF_DIM_3D) {
+            assert(surf->tiling == ISL_TILING_4);
             return false;
+         }
       } else if (isl_surf_usage_is_depth(surf->usage)) {
          const struct isl_surf *hiz_surf = hiz_or_mcs_surf;
 
@@ -3112,20 +3111,19 @@ isl_surf_supports_ccs(const struct isl_device *dev,
          if (hiz_surf == NULL || hiz_surf->size_B == 0)
             return false;
 
-         /* No CCS support for 3D Depth/Stencil values
-          *
-          * According to HSD 22015614752, there are issues with multiple engines
-          * accessing the same CCS cacheline in parallel. For 2D depth/stencil,
-          * we can upgrade to Tile64 to avoid any issues,
-          * but we can't do the same for 3D depth/stencil.
-          *
-          * For that case, we can't use Tile64 because the depth/stencil
-          * hardware can't actually output 3D Tile64 data.
-          *
-          * Let's just disable CCS instead.
+         /* Wa_22015614752: There are issues with multiple engines accessing
+          * the same CCS cacheline in parallel. We need a 64KB alignment
+          * between image subresources in order to avoid those issues, but as
+          * can be seen from isl_gfx125_filter_tiling, we can't use Tile64 to
+          * achieve that for 3D surfaces. We're limited to rely on other
+          * layout parameters which can't help us to achieve the target
+          * in all cases. So, we choose to disable CCS.
           */
-         if (surf->dim == ISL_SURF_DIM_3D)
+         if (intel_needs_workaround(dev->info, 22015614752) &&
+             surf->dim == ISL_SURF_DIM_3D) {
+            assert(surf->tiling == ISL_TILING_4);
             return false;
+         }
 
          assert(hiz_surf->usage & ISL_SURF_USAGE_HIZ_BIT);
          assert(hiz_surf->tiling == ISL_TILING_HIZ);

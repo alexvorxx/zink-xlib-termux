@@ -1285,6 +1285,7 @@ anv_get_image_format_properties(
    VkSamplerYcbcrConversionImageFormatProperties *ycbcr_props = NULL;
    VkAndroidHardwareBufferUsageANDROID *android_usage = NULL;
    VkTextureLODGatherFormatPropertiesAMD *texture_lod_gather_props = NULL;
+   VkImageCompressionPropertiesEXT *comp_props = NULL;
    bool from_wsi = false;
 
    /* Extract input structs */
@@ -1308,6 +1309,9 @@ anv_get_image_format_properties(
       case VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR:
          /* Ignore but don't warn */
          break;
+      case VK_STRUCTURE_TYPE_IMAGE_COMPRESSION_CONTROL_EXT:
+         /* Ignore but don't warn */
+         break;
       default:
          anv_debug_ignored_stype(s->sType);
          break;
@@ -1328,6 +1332,9 @@ anv_get_image_format_properties(
          break;
       case VK_STRUCTURE_TYPE_TEXTURE_LOD_GATHER_FORMAT_PROPERTIES_AMD:
          texture_lod_gather_props = (void *) s;
+         break;
+      case VK_STRUCTURE_TYPE_IMAGE_COMPRESSION_PROPERTIES_EXT:
+         comp_props = (void *) s;
          break;
       default:
          anv_debug_ignored_stype(s->sType);
@@ -1744,6 +1751,18 @@ anv_get_image_format_properties(
       }
    }
 
+   if (comp_props) {
+      bool ccs_supported =
+         anv_formats_ccs_e_compatible(devinfo, info->flags, info->format,
+                                      info->tiling, info->usage,
+                                      format_list_info);
+      comp_props->imageCompressionFixedRateFlags =
+         VK_IMAGE_COMPRESSION_FIXED_RATE_NONE_EXT;
+      comp_props->imageCompressionFlags = ccs_supported ?
+         VK_IMAGE_COMPRESSION_DEFAULT_EXT :
+         VK_IMAGE_COMPRESSION_DISABLED_EXT;
+   }
+
    return VK_SUCCESS;
 
 unsupported:
@@ -1845,7 +1864,8 @@ void anv_GetPhysicalDeviceSparseImageFormatProperties2(
       isl_surf_usage_flags_t isl_usage =
          anv_image_choose_isl_surf_usage(physical_device,
                                          vk_create_flags, pFormatInfo->usage,
-                                         0, aspect);
+                                         0, aspect,
+                                         VK_IMAGE_COMPRESSION_DEFAULT_EXT);
 
       const enum isl_surf_dim isl_surf_dim =
          pFormatInfo->type == VK_IMAGE_TYPE_1D ? ISL_SURF_DIM_1D :

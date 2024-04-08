@@ -91,6 +91,7 @@ static const driOptionDescription anv_dri_options[] = {
       DRI_CONF_ANV_FORCE_INDIRECT_DESCRIPTORS(false)
       DRI_CONF_SHADER_SPILLING_RATE(0)
       DRI_CONF_OPT_B(intel_tbimr, true, "Enable TBIMR tiled rendering")
+      DRI_CONF_ANV_COMPRESSION_CONTROL_ENABLED(false)
    DRI_CONF_SECTION_END
 
    DRI_CONF_SECTION_DEBUG
@@ -362,6 +363,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_graphics_pipeline_library         = !debug_get_bool_option("ANV_NO_GPL", false),
       .EXT_host_query_reset                  = true,
       .EXT_image_2d_view_of_3d               = true,
+      .EXT_image_compression_control         = device->instance->compression_control_enabled,
       .EXT_image_robustness                  = true,
       .EXT_image_drm_format_modifier         = true,
       .EXT_image_sliced_view_of_3d           = true,
@@ -923,6 +925,9 @@ get_features(const struct anv_physical_device *pdevice,
       /* VK_EXT_swapchain_maintenance1 */
       .swapchainMaintenance1 = true,
 #endif
+
+      /* VK_EXT_image_compression_control */
+      .imageCompressionControl = true,
    };
 
    /* The new DOOM and Wolfenstein games require depthBounds without
@@ -2628,6 +2633,8 @@ anv_init_dri_options(struct anv_instance *instance)
             driQueryOptionb(&instance->dri_options, "anv_disable_fcv");
     instance->external_memory_implicit_sync =
             driQueryOptionb(&instance->dri_options, "anv_external_memory_implicit_sync");
+    instance->compression_control_enabled =
+       driQueryOptionb(&instance->dri_options, "compression_control_enabled");
 }
 
 VkResult anv_CreateInstance(

@@ -236,6 +236,21 @@ static void add_const(unsigned reg, unsigned c0, unsigned c1, unsigned c2, unsig
 	const_state->immediates[idx * 4 + 3] = c3;
 }
 
+static void add_buf_init_val(uint32_t val)
+{
+	assert(info->num_bufs > 0);
+	unsigned idx = info->num_bufs - 1;
+
+	if (!info->buf_init_data[idx]) {
+		unsigned sz = info->buf_sizes[idx] * 4;
+		info->buf_init_data[idx] = malloc(sz);
+		memset(info->buf_init_data[idx], 0, sz);
+	}
+
+	assert(info->buf_init_data_sizes[idx] < info->buf_sizes[idx]);
+	info->buf_init_data[idx][info->buf_init_data_sizes[idx]++] = val;
+}
+
 static void add_sysval(unsigned reg, unsigned compmask, gl_system_value sysval)
 {
 	unsigned n = variant->inputs_count++;
@@ -752,6 +767,11 @@ const_header:      T_A_CONST '(' T_CONSTANT ')' const_val ',' const_val ',' cons
                        add_const($3, $5, $7, $9, $11);
 }
 
+buf_header_init_val:  const_val { add_buf_init_val($1); }
+buf_header_init_vals: buf_header_init_val
+|                     buf_header_init_val ',' buf_header_init_vals
+|
+
 buf_header_addr_reg:
                    '(' T_CONSTANT ')' {
                        assert(($2 & 0x1) == 0);  /* half-reg not allowed */
@@ -767,7 +787,7 @@ buf_header:        T_A_BUF const_val {
                        int idx = info->num_bufs++;
                        assert(idx < MAX_BUFS);
                        info->buf_sizes[idx] = $2;
-} buf_header_addr_reg
+} buf_header_addr_reg buf_header_init_vals
 
 invocationid_header: T_A_INVOCATIONID '(' T_REGISTER ')' {
                        assert(($3 & 0x1) == 0);  /* half-reg not allowed */

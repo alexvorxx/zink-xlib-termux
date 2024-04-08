@@ -1033,9 +1033,9 @@ schedule_VMEM_store(sched_ctx& ctx, Block* block, std::vector<RegisterDemand>& r
    init_hazard_query(ctx, &hq);
 
    DownwardsCursor cursor = ctx.mv.downwards_init(idx, true, true);
-   unsigned skip = 0;
+   int skip = 0;
 
-   for (int i = 0; i < VMEM_CLAUSE_MAX_GRAB_DIST; i++) {
+   for (int i = 0; (i - skip) < VMEM_CLAUSE_MAX_GRAB_DIST; i++) {
       aco_ptr<Instruction>& candidate = block->instructions[cursor.source_idx];
       if (candidate->opcode == aco_opcode::p_logical_start)
          break;

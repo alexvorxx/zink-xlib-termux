@@ -1279,6 +1279,8 @@ RADV driver environment variables
       disable Delta Color Compression (DCC) on displayable images
    ``nodynamicbounds``
       do not check OOB access for dynamic descriptors
+   ``noeso``
+      disable VK_EXT_shader_object
    ``nofastclears``
       disable fast color/depthstencil clears
    ``nofmask``
@@ -1378,8 +1380,6 @@ RADV driver environment variables
       enable wave64 for ray tracing shaders (GFX10-10.3)
    ``sam``
       enable optimizations to move more driver internal objects to VRAM.
-   ``shader_object``
-      enable experimental implementation of VK_EXT_shader_object
    ``transfer_queue``
       enable experimental transfer queue support (GFX9+, not yet spec compliant)
    ``video_decode``

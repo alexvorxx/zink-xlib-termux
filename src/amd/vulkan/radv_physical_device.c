@@ -99,13 +99,6 @@ radv_calibrated_timestamps_enabled(const struct radv_physical_device *pdev)
    return RADV_SUPPORT_CALIBRATED_TIMESTAMPS && !(pdev->info.family == CHIP_RAVEN || pdev->info.family == CHIP_RAVEN2);
 }
 
-static bool
-radv_shader_object_enabled(const struct radv_physical_device *pdev)
-{
-   const struct radv_instance *instance = radv_physical_device_instance(pdev);
-   return !pdev->use_llvm && instance->perftest_flags & RADV_PERFTEST_SHADER_OBJECT;
-}
-
 bool
 radv_enable_rt(const struct radv_physical_device *pdev, bool rt_pipelines)
 {
@@ -655,7 +648,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_shader_demote_to_helper_invocation = true,
       .EXT_shader_image_atomic_int64 = true,
       .EXT_shader_module_identifier = true,
-      .EXT_shader_object = radv_shader_object_enabled(pdev),
+      .EXT_shader_object = !pdev->use_llvm && !(instance->debug_flags & RADV_DEBUG_NO_ESO),
       .EXT_shader_stencil_export = true,
       .EXT_shader_subgroup_ballot = true,
       .EXT_shader_subgroup_vote = true,

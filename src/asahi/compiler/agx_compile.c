@@ -1999,6 +1999,14 @@ agx_emit_tex(agx_builder *b, nir_tex_instr *instr)
       }
    }
 
+   enum agx_lod_mode lod_mode = agx_lod_mode_for_nir(
+      instr->op, nir_tex_instr_src_index(instr, nir_tex_src_bias) >= 0);
+
+   if (lod_mode == AGX_LOD_MODE_AUTO_LOD) {
+      /* Ignored logically but asserted 0 */
+      lod = agx_immediate(0);
+   }
+
    agx_index dst = agx_def_index(&instr->def);
 
    /* Pack shadow reference value (compare) and packed offset together */
@@ -2014,10 +2022,8 @@ agx_emit_tex(agx_builder *b, nir_tex_instr *instr)
    agx_index tmp = agx_vec_temp(b->shader, dst.size, 4);
    agx_instr *I = agx_texture_sample_to(
       b, tmp, coords, lod, bindless, texture, sampler, compare_offset,
-      agx_tex_dim(instr->sampler_dim, instr->is_array),
-      agx_lod_mode_for_nir(
-         instr->op, nir_tex_instr_src_index(instr, nir_tex_src_bias) >= 0),
-      0, !agx_is_null(packed_offset), !agx_is_null(compare),
+      agx_tex_dim(instr->sampler_dim, instr->is_array), lod_mode, 0,
+      !agx_is_null(packed_offset), !agx_is_null(compare),
       instr->op == nir_texop_lod, agx_gather_for_nir(instr));
 
    if (instr->op == nir_texop_txf || instr->op == nir_texop_txf_ms)

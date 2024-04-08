@@ -1344,11 +1344,6 @@ dealloc_vgprs(Program* program)
    if (program->gfx_level < GFX11)
       return false;
 
-   /* skip if deallocating VGPRs won't increase occupancy */
-   uint16_t max_waves = max_suitable_waves(program, program->dev.max_waves_per_simd);
-   if (program->max_reg_demand.vgpr <= get_addr_vgpr_from_waves(program, max_waves))
-      return false;
-
    /* sendmsg(dealloc_vgprs) releases scratch, so this isn't safe if there is a in-progress scratch
     * store. */
    if (uses_scratch(program))

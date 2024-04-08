@@ -180,11 +180,14 @@ BEGIN_TEST(isel.discard_early_exit.mrtz)
    );
 
    /* On GFX11, the discard early exit must use mrtz if the shader exports only depth. */
-   //>> exp mrtz v0, off, off, off done ; $_ $_
-   //! s_endpgm                         ; $_
+   //>> exp mrtz v0, off, off, off done     ; $_ $_
+   //! s_nop 0                              ; $_
+   //! s_sendmsg sendmsg(MSG_DEALLOC_VGPRS) ; $_
+   //! s_endpgm                             ; $_
    //! BB1:
-   //! exp mrtz off, off, off, off done ; $_ $_
-   //! s_endpgm                         ; $_
+   //! exp mrtz off, off, off, off done     ; $_ $_
+   //! s_sendmsg sendmsg(MSG_DEALLOC_VGPRS) ; $_
+   //! s_endpgm                             ; $_
 
    PipelineBuilder pbld(get_vk_device(GFX11));
    pbld.add_vsfs(vs, fs);
@@ -205,11 +208,14 @@ BEGIN_TEST(isel.discard_early_exit.mrt0)
    );
 
    /* On GFX11, the discard early exit must use mrt0 if the shader exports color. */
-   //>> exp mrt0 v0, v0, v0, v0 done    ; $_ $_
-   //! s_endpgm                         ; $_
+   //>> exp mrt0 v0, v0, v0, v0 done        ; $_ $_
+   //! s_nop 0                              ; $_
+   //! s_sendmsg sendmsg(MSG_DEALLOC_VGPRS) ; $_
+   //! s_endpgm                             ; $_
    //! BB1:
-   //! exp mrt0 off, off, off, off done ; $_ $_
-   //! s_endpgm                         ; $_
+   //! exp mrt0 off, off, off, off done     ; $_ $_
+   //! s_sendmsg sendmsg(MSG_DEALLOC_VGPRS) ; $_
+   //! s_endpgm                             ; $_
 
    PipelineBuilder pbld(get_vk_device(GFX11));
    pbld.add_vsfs(vs, fs);

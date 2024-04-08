@@ -1079,13 +1079,10 @@ uint32_t ac_compute_num_tess_patches(const struct radeon_info *info, uint32_t nu
 
    /* Make sure that the data fits in LDS. This assumes the shaders only
     * use LDS for the inputs and outputs.
-    *
-    * The maximum allowed LDS size is 32K. Higher numbers can hang.
-    * Use 16K as the maximum, so that we can fit 2 workgroups on the same CU.
     */
    if (lds_per_patch) {
-      ASSERTED const unsigned max_lds_size = 32 * 1024; /* hw limit */
-      const unsigned target_lds_size = 16 * 1024; /* target at least 2 workgroups per CU, 16K each */
+      ASSERTED const unsigned max_lds_size = info->gfx_level >= GFX9 ? 64 * 1024 : 32 * 1024; /* hw limit */
+      const unsigned target_lds_size = max_lds_size / 2; /* target at least 2 workgroups per CU */
       num_patches = MIN2(num_patches, target_lds_size / lds_per_patch);
       assert(num_patches * lds_per_patch <= max_lds_size);
    }
@@ -1116,7 +1113,7 @@ ac_compute_tess_lds_size(const struct radeon_info *info, uint32_t lds_per_patch,
 {
    const unsigned lds_size = lds_per_patch * num_patches;
 
-   assert(lds_size <= (info->gfx_level >= GFX7 ? 65536 : 32768));
+   assert(lds_size <= (info->gfx_level >= GFX9 ? 65536 : 32768));
 
    return align(lds_size, info->lds_encode_granularity) / info->lds_encode_granularity;
 }

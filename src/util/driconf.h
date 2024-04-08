@@ -787,7 +787,11 @@
 #define DRI_CONF_ANV_EXTERNAL_MEMORY_IMPLICIT_SYNC(def) \
    DRI_CONF_OPT_B(anv_external_memory_implicit_sync, def, "Implicit sync on external BOs")
 
-#define DRI_CONF_ANV_HASVK_OVERRIDE_API_VERSION(def) \
+/**
+ * \brief HASVK specific configuration options
+ */
+
+#define DRI_CONF_HASVK_OVERRIDE_API_VERSION(def) \
    DRI_CONF_OPT_B(hasvk_report_vk_1_3_version, def, \
                   "Override intel_hasvk API version")
 

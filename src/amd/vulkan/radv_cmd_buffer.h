@@ -290,6 +290,27 @@ enum rgp_flush_bits {
    RGP_FLUSH_INVAL_L1 = 0x8000,
 };
 
+enum radv_tracked_reg {
+   RADV_TRACKED_DB_COUNT_CONTROL,
+   RADV_TRACKED_DB_SHADER_CONTROL,
+
+   RADV_TRACKED_PA_SC_BINNER_CNTL_0,
+
+   /* 3 consecutive registers */
+   RADV_TRACKED_SX_PS_DOWNCONVERT,
+   RADV_TRACKED_SX_BLEND_OPT_EPSILON,
+   RADV_TRACKED_SX_BLEND_OPT_CONTROL,
+
+   RADV_TRACKED_VGT_MULTI_PRIM_IB_RESET_INDX, /* GFX6-7 */
+
+   RADV_NUM_ALL_TRACKED_REGS,
+};
+
+struct radv_tracked_regs {
+   BITSET_DECLARE(reg_saved_mask, RADV_NUM_ALL_TRACKED_REGS);
+   uint32_t reg_value[RADV_NUM_ALL_TRACKED_REGS];
+};
+
 struct radv_cmd_state {
    /* Vertex descriptors */
    uint64_t vb_va;
@@ -326,7 +347,6 @@ struct radv_cmd_state {
    uint64_t index_va;
    int32_t last_index_type;
 
-   uint32_t last_primitive_reset_index; /* only relevant on GFX6-7 */
    enum radv_cmd_flush_bits flush_bits;
    unsigned active_occlusion_queries;
    bool perfect_occlusion_queries_enabled;
@@ -347,14 +367,6 @@ struct radv_cmd_state {
    uint32_t last_vertex_offset;
    uint32_t last_drawid;
    uint32_t last_subpass_color_count;
-
-   uint32_t last_sx_ps_downconvert;
-   uint32_t last_sx_blend_opt_epsilon;
-   uint32_t last_sx_blend_opt_control;
-
-   uint32_t last_db_count_control;
-
-   uint32_t last_db_shader_control;
 
    /* Whether CP DMA is busy/idle. */
    bool dma_is_busy;
@@ -424,9 +436,6 @@ struct radv_cmd_state {
    unsigned spi_shader_col_format;
    unsigned cb_shader_mask;
 
-   /* Binning state */
-   unsigned last_pa_sc_binner_cntl_0;
-
    struct radv_multisample_state ms;
 
    /* Custom blend mode for internal operations. */
@@ -471,6 +480,8 @@ struct radv_cmd_buffer_upload {
 
 struct radv_cmd_buffer {
    struct vk_command_buffer vk;
+
+   struct radv_tracked_regs tracked_regs;
 
    VkCommandBufferUsageFlags usage_flags;
    struct radeon_cmdbuf *cs;

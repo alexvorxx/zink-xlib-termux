@@ -224,7 +224,7 @@ lower_regular_texture(nir_builder *b, nir_instr *instr, UNUSED void *data)
     */
    nir_def *layer = NULL;
 
-   if (tex->is_array) {
+   if (tex->is_array && tex->op != nir_texop_lod) {
       unsigned lidx = coord->num_components - 1;
       nir_def *unclamped_layer = nir_channel(b, coord, lidx);
       coord = nir_trim_vector(b, coord, lidx);

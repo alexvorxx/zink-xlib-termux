@@ -1062,7 +1062,7 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
       SET(PS_BLEND, ps_blend.ColorBufferBlendEnable, GET(blend.rts[0].ColorBufferBlendEnable));
       SET(PS_BLEND, ps_blend.SourceAlphaBlendFactor, GET(blend.rts[0].SourceAlphaBlendFactor));
       SET(PS_BLEND, ps_blend.DestinationAlphaBlendFactor, gfx->alpha_blend_zero ?
-                                                          BLENDFACTOR_CONST_COLOR :
+                                                          BLENDFACTOR_CONST_ALPHA :
                                                           GET(blend.rts[0].DestinationAlphaBlendFactor));
       SET(PS_BLEND, ps_blend.SourceBlendFactor, GET(blend.rts[0].SourceBlendFactor));
       SET(PS_BLEND, ps_blend.DestinationBlendFactor, gfx->color_blend_zero ?

@@ -2270,9 +2270,12 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
                   break;
                }
 
-               format(file, " dst_len = %u,", brw_message_desc_rlen(devinfo, imm_desc));
-               format(file, " src0_len = %u,", brw_message_desc_mlen(devinfo, imm_desc));
-               format(file, " src1_len = %d", brw_message_ex_desc_ex_mlen(devinfo, imm_ex_desc));
+               format(file, " dst_len = %u,",
+                      brw_message_desc_rlen(devinfo, imm_desc) / reg_unit(devinfo));
+               format(file, " src0_len = %u,",
+                      brw_message_desc_mlen(devinfo, imm_desc) / reg_unit(devinfo));
+               format(file, " src1_len = %d",
+                      brw_message_ex_desc_ex_mlen(devinfo, imm_ex_desc) / reg_unit(devinfo));
                err |= control(file, "address_type", lsc_addr_surface_type,
                               lsc_msg_desc_addr_type(devinfo, imm_desc), &space);
                format(file, " )");
@@ -2378,12 +2381,14 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
                   break;
                }
             }
-            format(file, " dst_len = %u,", brw_message_desc_rlen(devinfo, imm_desc));
-            format(file, " src0_len = %u,", brw_message_desc_mlen(devinfo, imm_desc));
+            format(file, " dst_len = %u,",
+                   brw_message_desc_rlen(devinfo, imm_desc) / reg_unit(devinfo));
+            format(file, " src0_len = %u,",
+                   brw_message_desc_mlen(devinfo, imm_desc) / reg_unit(devinfo));
 
             if (!brw_inst_send_sel_reg32_ex_desc(devinfo, inst))
                format(file, " src1_len = %d",
-                      brw_message_ex_desc_ex_mlen(devinfo, imm_ex_desc));
+                      brw_message_ex_desc_ex_mlen(devinfo, imm_ex_desc) / reg_unit(devinfo));
 
             err |= control(file, "address_type", lsc_addr_surface_type,
                            lsc_msg_desc_addr_type(devinfo, imm_desc), &space);
@@ -2520,13 +2525,13 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
             lsc_disassemble_ex_desc(devinfo, imm_desc, imm_ex_desc, file);
       } else {
          if (has_imm_desc)
-            format(file, " mlen %u", brw_message_desc_mlen(devinfo, imm_desc));
+            format(file, " mlen %u", brw_message_desc_mlen(devinfo, imm_desc) / reg_unit(devinfo));
          if (has_imm_ex_desc) {
             format(file, " ex_mlen %u",
-                   brw_message_ex_desc_ex_mlen(devinfo, imm_ex_desc));
+                   brw_message_ex_desc_ex_mlen(devinfo, imm_ex_desc) / reg_unit(devinfo));
          }
          if (has_imm_desc)
-            format(file, " rlen %u", brw_message_desc_rlen(devinfo, imm_desc));
+            format(file, " rlen %u", brw_message_desc_rlen(devinfo, imm_desc) / reg_unit(devinfo));
       }
    }
    pad(file, 64);

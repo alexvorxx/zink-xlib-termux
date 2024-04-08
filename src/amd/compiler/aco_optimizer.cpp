@@ -1962,30 +1962,6 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
          ctx.info[instr->definitions[0].tempId()].set_temp(
             ctx.info[instr->operands[1].tempId()].temp);
       break;
-   case aco_opcode::p_linear_phi: {
-      /* lower_bool_phis() can create phis like this */
-      bool all_same_temp = instr->operands[0].isTemp();
-      /* this check is needed when moving uniform loop counters out of a divergent loop */
-      if (all_same_temp)
-         all_same_temp = instr->definitions[0].regClass() == instr->operands[0].regClass();
-      for (unsigned i = 1; all_same_temp && (i < instr->operands.size()); i++) {
-         if (!instr->operands[i].isTemp() ||
-             instr->operands[i].tempId() != instr->operands[0].tempId())
-            all_same_temp = false;
-      }
-      if (all_same_temp) {
-         ctx.info[instr->definitions[0].tempId()].set_temp(instr->operands[0].getTemp());
-      } else {
-         bool all_undef = instr->operands[0].isUndefined();
-         for (unsigned i = 1; all_undef && (i < instr->operands.size()); i++) {
-            if (!instr->operands[i].isUndefined())
-               all_undef = false;
-         }
-         if (all_undef)
-            ctx.info[instr->definitions[0].tempId()].set_undefined();
-      }
-      break;
-   }
    case aco_opcode::v_add_u32:
    case aco_opcode::v_add_co_u32:
    case aco_opcode::v_add_co_u32_e64:

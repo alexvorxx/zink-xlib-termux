@@ -70,6 +70,26 @@ enum etna_core_type {
    ETNA_CORE_NPU,
 };
 
+struct etna_core_gpu_info {
+   unsigned max_instructions;          /* vertex/fragment shader max instructions */
+   unsigned vertex_output_buffer_size; /* size of vertex shader output buffer */
+   unsigned vertex_cache_size;         /* size of a cached vertex (?) */
+   unsigned shader_core_count;         /* number of shader cores */
+   unsigned stream_count;              /* number of vertex streams */
+   unsigned max_registers;             /* maximum number of registers */
+   unsigned pixel_pipes;               /* available pixel pipes */
+   unsigned max_varyings;              /* maximum number of varyings */
+   unsigned num_constants;             /* number of constants */
+};
+
+struct etna_core_npu_info {
+   unsigned nn_core_count;             /* number of NN cores */
+   unsigned nn_mad_per_core;           /* number of MAD units per NN core */
+   unsigned tp_core_count;             /* number of TP cores */
+   unsigned on_chip_sram_size;         /* Size of on-chip SRAM */
+   unsigned axi_sram_size;             /* Size of SRAM behind AXI */
+};
+
 struct etna_core_info {
    uint32_t model;
    uint32_t revision;
@@ -78,6 +98,11 @@ struct etna_core_info {
    uint32_t customer_id;
 
    enum etna_core_type type;
+
+   union {
+      struct etna_core_gpu_info gpu;
+      struct etna_core_npu_info npu;
+   };
 
    BITSET_DECLARE(feature, ETNA_FEATURE_NUM);
 };

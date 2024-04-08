@@ -673,7 +673,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
          const struct nil_image *nil_image = &image->planes[ip].nil;
          const struct nil_image_level *level =
             &nil_image->levels[iview->vk.base_mip_level];
-         struct nil_extent4d level_extent_sa =
+         struct nil_Extent4D_Samples level_extent_sa =
             nil_image_level_extent_sa(nil_image, iview->vk.base_mip_level);
 
          assert(sample_layout == NIL_SAMPLE_LAYOUT_INVALID ||
@@ -833,7 +833,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
 
       P_IMMD(p, NV9097, SET_ZT_SELECT, 1 /* target_count */);
 
-      struct nil_extent4d level_extent_sa =
+      struct nil_Extent4D_Samples level_extent_sa =
          nil_image_level_extent_sa(&nil_image, mip_level);
 
       /* We use the stride for depth/stencil targets because the Z/S hardware

@@ -464,7 +464,7 @@ nvk_fill_sparse_image_fmt_props(VkImageAspectFlags aspects,
                                 const enum nil_image_dim dim,
                                 const enum nil_sample_layout sample_layout)
 {
-   struct nil_extent4d sparse_block_extent_px =
+   struct nil_Extent4D_Pixels sparse_block_extent_px =
       nil_sparse_block_extent_px(nil_format(format), dim, sample_layout);
 
    assert(sparse_block_extent_px.array_len == 1);

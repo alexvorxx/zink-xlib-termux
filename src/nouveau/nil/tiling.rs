@@ -1,7 +1,7 @@
 // Copyright © 2024 Collabora, Ltd.
 // SPDX-License-Identifier: MIT
 
-use crate::extent::Extent4D;
+use crate::extent::{units, Extent4D};
 use crate::format::Format;
 use crate::image::{
     ImageDim, ImageUsageFlags, SampleLayout, IMAGE_USAGE_2D_VIEW_BIT,
@@ -38,7 +38,7 @@ impl Tiling {
     /// Clamps the tiling to less than 2x the given extent in each dimension.
     ///
     /// This operation is done by the hardware at each LOD.
-    pub fn clamp(&self, extent_B: Extent4D) -> Self {
+    pub fn clamp(&self, extent_B: Extent4D<units::Bytes>) -> Self {
         let mut tiling = *self;
 
         if !self.is_tiled {
@@ -54,7 +54,7 @@ impl Tiling {
             tiling.x_log2 = 0;
         }
 
-        let extent_GOB = extent_B.B_to_GOB(tiling.gob_height_is_8);
+        let extent_GOB = extent_B.to_GOB(tiling.gob_height_is_8);
 
         let ceil_h = extent_GOB.height.ilog2_ceil() as u8;
         let ceil_d = extent_GOB.depth.ilog2_ceil() as u8;
@@ -74,7 +74,7 @@ impl Tiling {
         self.size_B()
     }
 
-    pub fn extent_B(&self) -> Extent4D {
+    pub fn extent_B(&self) -> Extent4D<units::Bytes> {
         if self.is_tiled {
             Extent4D::new(
                 GOB_WIDTH_B << self.x_log2,
@@ -89,7 +89,10 @@ impl Tiling {
     }
 }
 
-pub fn sparse_block_extent_el(format: Format, dim: ImageDim) -> Extent4D {
+pub fn sparse_block_extent_el(
+    format: Format,
+    dim: ImageDim,
+) -> Extent4D<units::Elements> {
     let bits = format.el_size_B() * 8;
 
     // Taken from Vulkan 1.3.279 spec section entitled "Standard Sparse
@@ -119,14 +122,17 @@ pub fn sparse_block_extent_px(
     format: Format,
     dim: ImageDim,
     sample_layout: SampleLayout,
-) -> Extent4D {
+) -> Extent4D<units::Pixels> {
     sparse_block_extent_el(format, dim)
-        .mul(format.el_extent_sa())
-        .div_ceil(sample_layout.px_extent_sa())
+        .to_sa(format)
+        .to_px(sample_layout)
 }
 
-pub fn sparse_block_extent_B(format: Format, dim: ImageDim) -> Extent4D {
-    sparse_block_extent_el(format, dim).el_to_B(format)
+pub fn sparse_block_extent_B(
+    format: Format,
+    dim: ImageDim,
+) -> Extent4D<units::Bytes> {
+    sparse_block_extent_el(format, dim).to_B(format)
 }
 
 #[no_mangle]
@@ -134,7 +140,7 @@ pub extern "C" fn nil_sparse_block_extent_px(
     format: Format,
     dim: ImageDim,
     sample_layout: SampleLayout,
-) -> Extent4D {
+) -> Extent4D<units::Pixels> {
     sparse_block_extent_px(format, dim, sample_layout)
 }
 
@@ -148,7 +154,7 @@ impl Tiling {
 
         let gob_height_is_8 = true;
         let sparse_block_extent_gob =
-            sparse_block_extent_B.B_to_GOB(gob_height_is_8);
+            sparse_block_extent_B.to_GOB(gob_height_is_8);
 
         Self {
             is_tiled: true,
@@ -160,7 +166,7 @@ impl Tiling {
     }
 
     pub fn choose(
-        extent_px: Extent4D,
+        extent_px: Extent4D<units::Pixels>,
         format: Format,
         sample_layout: SampleLayout,
         usage: ImageUsageFlags,
@@ -181,7 +187,6 @@ impl Tiling {
             tiling.z_log2 = 0;
         }
 
-        let extent_B = extent_px.px_to_B(format, sample_layout);
-        tiling.clamp(extent_B)
+        tiling.clamp(extent_px.to_B(format, sample_layout))
     }
 }

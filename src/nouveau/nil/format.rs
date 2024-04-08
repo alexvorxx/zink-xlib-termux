@@ -4,7 +4,7 @@
 use nil_rs_bindings::*;
 use nvidia_headers::{cla297, clb097};
 
-use crate::extent::Extent4D;
+use crate::extent::{units, Extent4D};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,7 +45,7 @@ impl Format {
         bits / 8
     }
 
-    pub(crate) fn el_extent_sa(&self) -> Extent4D {
+    pub(crate) fn el_extent_sa(&self) -> Extent4D<units::Samples> {
         let desc = self.description();
         Extent4D::new(desc.block.width, desc.block.height, desc.block.depth, 1)
     }

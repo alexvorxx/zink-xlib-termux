@@ -21,7 +21,6 @@ renaming_overrides_prefixing = true
 "MAX_LEVELS" = "NIL_MAX_LEVELS"
 
 # This is annoying. rename_types doesn't seem to work
-"Extent4D" = "nil_extent4d"
 "Format" = "nil_format"
 "Image" = "nil_image"
 "ImageDim" = "nil_image_dim"

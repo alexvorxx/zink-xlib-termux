@@ -163,32 +163,32 @@ push_add_image_plane_bind(struct push_builder *pb,
    const struct nil_tiling plane_tiling = plane->nil.levels[level].tiling;
    const uint32_t tile_size_B = nil_tiling_size_B(&plane_tiling);
 
-   const struct nil_extent4d bind_extent_px = {
+   const struct nil_Extent4D_Pixels bind_extent_px = {
       .width = bind->extent.width,
       .height = bind->extent.height,
       .depth = bind->extent.depth,
       .array_len = 1,
    };
-   const struct nil_offset4d bind_offset_px = {
+   const struct nil_Offset4D_Pixels bind_offset_px = {
       .x = bind->offset.x,
       .y = bind->offset.y,
       .z = bind->offset.z,
       .a = layer,
    };
 
-   const struct nil_extent4d level_extent_px =
+   const struct nil_Extent4D_Pixels level_extent_px =
       nil_image_level_extent_px(&plane->nil, level);
-   const struct nil_extent4d level_extent_tl =
+   const struct nil_Extent4D_Tiles level_extent_tl =
       nil_extent4d_px_to_tl(level_extent_px, &plane_tiling,
                             plane->nil.format,
                             plane->nil.sample_layout);
 
    /* Convert the extent and offset to tiles */
-   struct nil_extent4d bind_extent_tl =
+   const struct nil_Extent4D_Tiles bind_extent_tl =
       nil_extent4d_px_to_tl(bind_extent_px, &plane_tiling,
                             plane->nil.format,
                             plane->nil.sample_layout);
-   struct nil_offset4d bind_offset_tl =
+   const struct nil_Offset4D_Tiles bind_offset_tl =
       nil_offset4d_px_to_tl(bind_offset_px, &plane_tiling,
                             plane->nil.format,
                             plane->nil.sample_layout);

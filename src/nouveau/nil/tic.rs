@@ -17,7 +17,7 @@ use nvidia_headers::clc097::PASCAL_A;
 use paste::paste;
 use std::ops::Range;
 
-use crate::extent::Extent4D;
+use crate::extent::{units, Extent4D};
 use crate::format::Format;
 use crate::image::Image;
 use crate::image::ImageDim;
@@ -211,7 +211,7 @@ fn nil_rs_max_mip_level(image: &Image, view: &View) -> u32 {
     }
 }
 
-fn normalize_extent(image: &Image, view: &View) -> Extent4D {
+fn normalize_extent(image: &Image, view: &View) -> Extent4D<units::Pixels> {
     let mut extent = image.extent_px;
     match view.view_type {
         ViewType::_1D

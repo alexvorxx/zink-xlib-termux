@@ -1,7 +1,7 @@
 // Copyright © 2024 Collabora, Ltd.
 // SPDX-License-Identifier: MIT
 
-use crate::extent::Extent4D;
+use crate::extent::{units, Extent4D};
 use crate::format::Format;
 use crate::tiling::Tiling;
 use crate::Minify;
@@ -54,7 +54,7 @@ impl SampleLayout {
         }
     }
 
-    pub fn px_extent_sa(&self) -> Extent4D {
+    pub fn px_extent_sa(&self) -> Extent4D<units::Samples> {
         match self {
             SampleLayout::_1x1 => Extent4D::new(1, 1, 1, 1),
             SampleLayout::_2x1 => Extent4D::new(2, 1, 1, 1),
@@ -66,7 +66,7 @@ impl SampleLayout {
     }
 
     #[no_mangle]
-    pub extern "C" fn nil_px_extent_sa(self) -> Extent4D {
+    pub extern "C" fn nil_px_extent_sa(self) -> Extent4D<units::Samples> {
         self.px_extent_sa()
     }
 }
@@ -76,7 +76,7 @@ impl SampleLayout {
 pub struct ImageInitInfo {
     pub dim: ImageDim,
     pub format: Format,
-    pub extent_px: Extent4D,
+    pub extent_px: Extent4D<units::Pixels>,
     pub levels: u32,
     pub samples: u32,
     pub usage: ImageUsageFlags,
@@ -96,7 +96,7 @@ pub struct ImageLevel {
 pub struct Image {
     pub dim: ImageDim,
     pub format: Format,
-    pub extent_px: Extent4D,
+    pub extent_px: Extent4D<units::Pixels>,
     pub sample_layout: SampleLayout,
     pub num_levels: u32,
     pub mip_tail_first_lod: u32,
@@ -254,19 +254,20 @@ impl Image {
     }
 
     /// The size in bytes of an extent at a given level.
-    fn level_extent_B(&self, level: u32) -> Extent4D {
-        let level_extent_px = self.level_extent_px(level);
-        let level_extent_el =
-            level_extent_px.px_to_el(self.format, self.sample_layout);
-        level_extent_el.el_to_B(self.format)
+    fn level_extent_B(&self, level: u32) -> Extent4D<units::Bytes> {
+        self.level_extent_px(level)
+            .to_B(self.format, self.sample_layout)
     }
 
     #[no_mangle]
-    pub extern "C" fn nil_image_level_extent_px(&self, level: u32) -> Extent4D {
+    pub extern "C" fn nil_image_level_extent_px(
+        &self,
+        level: u32,
+    ) -> Extent4D<units::Pixels> {
         self.level_extent_px(level)
     }
 
-    pub fn level_extent_px(&self, level: u32) -> Extent4D {
+    pub fn level_extent_px(&self, level: u32) -> Extent4D<units::Pixels> {
         assert!(level == 0 || self.sample_layout == SampleLayout::_1x1);
         self.extent_px.minify(level)
     }
@@ -309,13 +310,15 @@ impl Image {
     }
 
     #[no_mangle]
-    pub extern "C" fn nil_image_level_extent_sa(&self, level: u32) -> Extent4D {
+    pub extern "C" fn nil_image_level_extent_sa(
+        &self,
+        level: u32,
+    ) -> Extent4D<units::Samples> {
         self.level_extent_sa(level)
     }
 
-    pub fn level_extent_sa(&self, level: u32) -> Extent4D {
-        let level_extent_px = self.level_extent_px(level);
-        level_extent_px.px_to_sa(self.sample_layout)
+    pub fn level_extent_sa(&self, level: u32) -> Extent4D<units::Samples> {
+        self.level_extent_px(level).to_sa(self.sample_layout)
     }
 
     #[no_mangle]
@@ -330,7 +333,7 @@ impl Image {
 
         if level.tiling.is_tiled {
             let lvl_tiling_ext_B = level.tiling.extent_B();
-            lvl_ext_B.align(&&lvl_tiling_ext_B).size().into()
+            lvl_ext_B.align(&lvl_tiling_ext_B).size_B().into()
         } else {
             assert!(lvl_ext_B.depth == 1);
             let row_stride = level.row_stride_B * lvl_ext_B.height;
@@ -435,7 +438,8 @@ impl Image {
         image_out.format = uc_format.try_into().unwrap();
         image_out.extent_px = lvl_image
             .extent_px
-            .px_to_el(lvl_image.format, lvl_image.sample_layout);
+            .to_el(lvl_image.format, lvl_image.sample_layout)
+            .cast_units();
 
         image_out
     }
@@ -628,9 +632,9 @@ impl Image {
         assert!(self.dim == ImageDim::_2D);
         assert!(self.num_levels == 1);
 
-        let extent_in_samples = self.extent_px.px_to_sa(self.sample_layout);
+        let extent_sa = self.extent_px.to_sa(self.sample_layout);
         let mut out = self.clone();
-        out.extent_px = extent_in_samples;
+        out.extent_px = extent_sa.cast_units();
         out.sample_layout = SampleLayout::_1x1;
         out
     }
@@ -654,7 +658,7 @@ impl Image {
         let z_gob = z & ((1 << lvl_tiling.z_log2) - 1);
 
         let lvl_extent_tl =
-            lvl_extent_px.px_to_tl(lvl_tiling, self.format, self.sample_layout);
+            lvl_extent_px.to_tl(lvl_tiling, self.format, self.sample_layout);
         let offset_B = u64::from(
             lvl_extent_tl.width
                 * lvl_extent_tl.height

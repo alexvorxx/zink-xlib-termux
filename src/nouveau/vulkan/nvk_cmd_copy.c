@@ -33,8 +33,8 @@ nvk_cmd_buffer_copy_cls(struct nvk_cmd_buffer *cmd)
 struct nouveau_copy_buffer {
    uint64_t base_addr;
    VkImageType image_type;
-   struct nil_offset4d offset_el;
-   struct nil_extent4d extent_el;
+   struct nil_Offset4D_Elements offset_el;
+   struct nil_Extent4D_Elements extent_el;
    uint32_t bpp;
    uint32_t row_stride;
    uint32_t array_stride;
@@ -48,7 +48,7 @@ struct nouveau_copy {
       uint8_t comp_size;
       uint8_t dst[4];
    } remap;
-   struct nil_extent4d extent_el;
+   struct nil_Extent4D_Elements extent_el;
 };
 
 static struct nouveau_copy_buffer
@@ -65,10 +65,10 @@ nouveau_copy_rect_buffer(struct nvk_buffer *buf,
    };
 }
 
-static struct nil_offset4d
+static struct nil_Offset4D_Pixels
 vk_to_nil_offset(VkOffset3D offset, uint32_t base_array_layer)
 {
-   return (struct nil_offset4d) {
+   return (struct nil_Offset4D_Pixels) {
       .x = offset.x,
       .y = offset.y,
       .z = offset.z,
@@ -76,10 +76,10 @@ vk_to_nil_offset(VkOffset3D offset, uint32_t base_array_layer)
    };
 }
 
-static struct nil_extent4d
+static struct nil_Extent4D_Pixels
 vk_to_nil_extent(VkExtent3D extent, uint32_t array_layers)
 {
-   return (struct nil_extent4d) {
+   return (struct nil_Extent4D_Pixels) {
       .width      = extent.width,
       .height     = extent.height,
       .depth      = extent.depth,
@@ -93,11 +93,11 @@ nouveau_copy_rect_image(struct nvk_image *img,
                         VkOffset3D offset_px,
                         const VkImageSubresourceLayers *sub_res)
 {
-   const struct nil_extent4d lvl_extent4d_px =
+   const struct nil_Extent4D_Pixels lvl_extent4d_px =
       nil_image_level_extent_px(&plane->nil, sub_res->mipLevel);
 
    offset_px = vk_image_sanitize_offset(&img->vk, offset_px);
-   const struct nil_offset4d offset4d_px =
+   const struct nil_Offset4D_Pixels offset4d_px =
       vk_to_nil_offset(offset_px, sub_res->baseArrayLayer);
 
    struct nouveau_copy_buffer buf = {
@@ -396,7 +396,7 @@ nvk_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer,
          vk_image_sanitize_extent(&dst->vk, region->imageExtent);
       const uint32_t layer_count =
          vk_image_subresource_layer_count(&dst->vk, &region->imageSubresource);
-      const struct nil_extent4d extent4d_px =
+      const struct nil_Extent4D_Pixels extent4d_px =
          vk_to_nil_extent(extent_px, layer_count);
 
       const VkImageAspectFlagBits aspects = region->imageSubresource.aspectMask;
@@ -503,7 +503,7 @@ nvk_CmdCopyImageToBuffer2(VkCommandBuffer commandBuffer,
          vk_image_sanitize_extent(&src->vk, region->imageExtent);
       const uint32_t layer_count =
          vk_image_subresource_layer_count(&src->vk, &region->imageSubresource);
-      const struct nil_extent4d extent4d_px =
+      const struct nil_Extent4D_Pixels extent4d_px =
          vk_to_nil_extent(extent_px, layer_count);
 
       const VkImageAspectFlagBits aspects = region->imageSubresource.aspectMask;
@@ -614,7 +614,7 @@ nvk_CmdCopyImage2(VkCommandBuffer commandBuffer,
          vk_image_sanitize_extent(&src->vk, region->extent);
       const uint32_t layer_count =
          vk_image_subresource_layer_count(&src->vk, &region->srcSubresource);
-      const struct nil_extent4d extent4d_px =
+      const struct nil_Extent4D_Pixels extent4d_px =
          vk_to_nil_extent(extent_px, layer_count);
 
       const VkImageAspectFlagBits src_aspects =

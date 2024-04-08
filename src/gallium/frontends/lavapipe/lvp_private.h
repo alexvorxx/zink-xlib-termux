@@ -649,7 +649,7 @@ struct lvp_cmd_buffer {
    uint8_t push_constants[MAX_PUSH_CONSTANTS_SIZE];
 };
 
-struct lvp_indirect_command_layout {
+struct lvp_indirect_command_layout_nv {
    struct vk_object_base base;
    uint8_t stream_count;
    uint8_t token_count;
@@ -716,7 +716,7 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(lvp_query_pool, base, VkQueryPool,
                                VK_OBJECT_TYPE_QUERY_POOL)
 VK_DEFINE_NONDISP_HANDLE_CASTS(lvp_sampler, vk.base, VkSampler,
                                VK_OBJECT_TYPE_SAMPLER)
-VK_DEFINE_NONDISP_HANDLE_CASTS(lvp_indirect_command_layout, base, VkIndirectCommandsLayoutNV,
+VK_DEFINE_NONDISP_HANDLE_CASTS(lvp_indirect_command_layout_nv, base, VkIndirectCommandsLayoutNV,
                                VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NV)
 
 void lvp_add_enqueue_cmd_entrypoints(struct vk_device_dispatch_table *disp);

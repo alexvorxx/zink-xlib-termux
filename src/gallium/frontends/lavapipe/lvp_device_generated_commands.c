@@ -30,12 +30,12 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateIndirectCommandsLayoutNV(
     VkIndirectCommandsLayoutNV*                 pIndirectCommandsLayout)
 {
    LVP_FROM_HANDLE(lvp_device, device, _device);
-   struct lvp_indirect_command_layout *dlayout;
+   struct lvp_indirect_command_layout_nv *dlayout;
 
    size_t size = sizeof(*dlayout) + pCreateInfo->tokenCount * sizeof(VkIndirectCommandsLayoutTokenNV);
 
    dlayout =
-      vk_zalloc2(&device->vk.alloc, pAllocator, size, alignof(struct lvp_indirect_command_layout),
+      vk_zalloc2(&device->vk.alloc, pAllocator, size, alignof(struct lvp_indirect_command_layout_nv),
                 VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    if (!dlayout)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
@@ -48,7 +48,7 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateIndirectCommandsLayoutNV(
       dlayout->stream_strides[i] = pCreateInfo->pStreamStrides[i];
    typed_memcpy(dlayout->tokens, pCreateInfo->pTokens, pCreateInfo->tokenCount);
 
-   *pIndirectCommandsLayout = lvp_indirect_command_layout_to_handle(dlayout);
+   *pIndirectCommandsLayout = lvp_indirect_command_layout_nv_to_handle(dlayout);
    return VK_SUCCESS;
 }
 
@@ -58,7 +58,7 @@ VKAPI_ATTR void VKAPI_CALL lvp_DestroyIndirectCommandsLayoutNV(
     const VkAllocationCallbacks*                pAllocator)
 {
    LVP_FROM_HANDLE(lvp_device, device, _device);
-   VK_FROM_HANDLE(lvp_indirect_command_layout, layout, indirectCommandsLayout);
+   VK_FROM_HANDLE(lvp_indirect_command_layout_nv, layout, indirectCommandsLayout);
 
    if (!layout)
       return;
@@ -106,7 +106,7 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetGeneratedCommandsMemoryRequirementsNV(
     const VkGeneratedCommandsMemoryRequirementsInfoNV* pInfo,
     VkMemoryRequirements2*                      pMemoryRequirements)
 {
-   VK_FROM_HANDLE(lvp_indirect_command_layout, dlayout, pInfo->indirectCommandsLayout);
+   VK_FROM_HANDLE(lvp_indirect_command_layout_nv, dlayout, pInfo->indirectCommandsLayout);
 
    size_t size = sizeof(struct list_head);
 

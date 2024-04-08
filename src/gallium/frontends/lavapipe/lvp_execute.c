@@ -3920,7 +3920,7 @@ get_buffer(struct rendering_state *state, const uint8_t *ptr, size_t *offset)
 
 static size_t
 process_sequence(struct rendering_state *state,
-                 VkPipeline pipeline, struct lvp_indirect_command_layout *dlayout,
+                 VkPipeline pipeline, struct lvp_indirect_command_layout_nv *dlayout,
                  struct list_head *list, uint8_t *pbuf, size_t max_size,
                  uint8_t **map_streams, const VkIndirectCommandsStreamNV *pstreams, uint32_t seq, bool print_cmds)
 {
@@ -4068,7 +4068,7 @@ static void
 handle_preprocess_generated_commands(struct vk_cmd_queue_entry *cmd, struct rendering_state *state, bool print_cmds)
 {
    VkGeneratedCommandsInfoNV *pre = cmd->u.preprocess_generated_commands_nv.generated_commands_info;
-   VK_FROM_HANDLE(lvp_indirect_command_layout, dlayout, pre->indirectCommandsLayout);
+   VK_FROM_HANDLE(lvp_indirect_command_layout_nv, dlayout, pre->indirectCommandsLayout);
    struct pipe_transfer *stream_maps[16];
    uint8_t *streams[16];
    for (unsigned i = 0; i < pre->streamCount; i++) {

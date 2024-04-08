@@ -1606,6 +1606,17 @@ struct v3dv_cmd_buffer_state {
 
    /* This is dynamic state since VK_EXT_extended_dynamic_state. */
    bool z_updates_enable;
+
+   /* ez_state can be dynamic since VK_EXT_extended_dynamic_state so we need
+    * to keep track of it in the cmd_buffer state
+    */
+   enum v3dv_ez_state ez_state;
+
+   /* incompatible_ez_test can be dynamic since VK_EXT_extended_dynamic_state
+    * so we need to keep track of it in the cmd_buffer state
+    */
+   bool incompatible_ez_test;
+
 };
 
 void
@@ -2686,6 +2697,13 @@ v3dv_update_image_layout(struct v3dv_device *device,
 float
 v3dv_get_aa_line_width(struct v3dv_pipeline *pipeline,
                        struct v3dv_cmd_buffer *buffer);
+
+
+void
+v3dv_compute_ez_state(struct vk_dynamic_graphics_state *dyn,
+                      struct v3dv_pipeline *pipeline,
+                      enum v3dv_ez_state *ez_state,
+                      bool *incompatible_ez_test);
 
 #if DETECT_OS_ANDROID
 VkResult

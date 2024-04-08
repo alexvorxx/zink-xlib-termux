@@ -2646,10 +2646,10 @@ compute_vpm_config(struct v3dv_pipeline *pipeline)
 }
 
 static bool
-stencil_op_is_no_op(const VkStencilOpState *stencil)
+stencil_op_is_no_op(struct vk_stencil_test_face_state *stencil)
 {
-   return stencil->depthFailOp == VK_STENCIL_OP_KEEP &&
-          stencil->compareOp == VK_COMPARE_OP_ALWAYS;
+   return stencil->op.depth_fail == VK_STENCIL_OP_KEEP &&
+          stencil->op.compare == VK_COMPARE_OP_ALWAYS;
 }
 
 static void
@@ -2672,39 +2672,45 @@ enable_depth_bias(struct v3dv_pipeline *pipeline,
    pipeline->depth_bias.enabled = true;
 }
 
-static void
-pipeline_set_ez_state(struct v3dv_pipeline *pipeline,
-                      const VkPipelineDepthStencilStateCreateInfo *ds_info)
+/* Computes the ez_state based on a given vk_dynamic_graphics_state.  Note
+ * that the parameter dyn doesn't need to be pipeline->dynamic_graphics_state,
+ * as this method can be used by the cmd_buffer too.
+ */
+void
+v3dv_compute_ez_state(struct vk_dynamic_graphics_state *dyn,
+                      struct v3dv_pipeline *pipeline,
+                      enum v3dv_ez_state *ez_state,
+                      bool *incompatible_ez_test)
 {
-   if (!ds_info || !ds_info->depthTestEnable) {
-      pipeline->ez_state = V3D_EZ_DISABLED;
+   if (!dyn->ds.depth.test_enable)  {
+      *ez_state = V3D_EZ_DISABLED;
       return;
    }
 
-   switch (ds_info->depthCompareOp) {
+   switch (dyn->ds.depth.compare_op) {
    case VK_COMPARE_OP_LESS:
    case VK_COMPARE_OP_LESS_OR_EQUAL:
-      pipeline->ez_state = V3D_EZ_LT_LE;
+      *ez_state = V3D_EZ_LT_LE;
       break;
    case VK_COMPARE_OP_GREATER:
    case VK_COMPARE_OP_GREATER_OR_EQUAL:
-      pipeline->ez_state = V3D_EZ_GT_GE;
+      *ez_state = V3D_EZ_GT_GE;
       break;
    case VK_COMPARE_OP_NEVER:
    case VK_COMPARE_OP_EQUAL:
-      pipeline->ez_state = V3D_EZ_UNDECIDED;
+      *ez_state = V3D_EZ_UNDECIDED;
       break;
    default:
-      pipeline->ez_state = V3D_EZ_DISABLED;
-      pipeline->incompatible_ez_test = true;
+      *ez_state = V3D_EZ_DISABLED;
+      *incompatible_ez_test = true;
       break;
    }
 
    /* If stencil is enabled and is not a no-op, we need to disable EZ */
-   if (ds_info->stencilTestEnable &&
-       (!stencil_op_is_no_op(&ds_info->front) ||
-        !stencil_op_is_no_op(&ds_info->back))) {
-         pipeline->ez_state = V3D_EZ_DISABLED;
+   if (dyn->ds.stencil.test_enable &&
+       (!stencil_op_is_no_op(&dyn->ds.stencil.front) ||
+        !stencil_op_is_no_op(&dyn->ds.stencil.back))) {
+      *ez_state = V3D_EZ_DISABLED;
    }
 
    /* If the FS writes Z, then it may update against the chosen EZ direction */
@@ -2712,9 +2718,10 @@ pipeline_set_ez_state(struct v3dv_pipeline *pipeline,
       pipeline->shared_data->variants[BROADCOM_SHADER_FRAGMENT];
    if (fs_variant && fs_variant->prog_data.fs->writes_z &&
        !fs_variant->prog_data.fs->writes_z_from_fep) {
-      pipeline->ez_state = V3D_EZ_DISABLED;
+      *ez_state = V3D_EZ_DISABLED;
    }
 }
+
 
 static void
 pipeline_set_sample_mask(struct v3dv_pipeline *pipeline,
@@ -3001,7 +3008,10 @@ pipeline_init(struct v3dv_pipeline *pipeline,
    }
 
    /* This must be done after the pipeline has been compiled */
-   pipeline_set_ez_state(pipeline, ds_info);
+   v3dv_compute_ez_state(&pipeline->dynamic_graphics_state,
+                         pipeline,
+                         &pipeline->ez_state,
+                         &pipeline->incompatible_ez_test);
 
    return result;
 }

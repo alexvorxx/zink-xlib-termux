@@ -1784,14 +1784,32 @@ v3dX(cmd_buffer_emit_varyings_state)(struct v3dv_cmd_buffer *cmd_buffer)
 }
 
 #if V3D_VERSION == 42
-/* Updates job early Z state tracking. Returns False if EZ must be disabled
- * for the current draw call.
+/* Updates cmd_buffer, and their job, early z state tracking. Returns false if
+ * EZ must be disabled for the current draw call.
  */
 static bool
-job_update_ez_state(struct v3dv_job *job,
-                    struct v3dv_pipeline *pipeline,
-                    struct v3dv_cmd_buffer *cmd_buffer)
+cmd_buffer_update_ez_state(struct v3dv_cmd_buffer *cmd_buffer,
+                           struct v3dv_pipeline *pipeline)
 {
+   struct vk_dynamic_graphics_state *dyn = &cmd_buffer->vk.dynamic_graphics_state;
+   /* Update first cmd_buffer ez_state tracking. If possible we reuse the
+    * values from the pipeline
+    */
+   if (!BITSET_TEST(dyn->set, MESA_VK_DYNAMIC_DS_STENCIL_OP) &&
+       !BITSET_TEST(dyn->set, MESA_VK_DYNAMIC_DS_STENCIL_TEST_ENABLE) &&
+       !BITSET_TEST(dyn->set, MESA_VK_DYNAMIC_DS_DEPTH_TEST_ENABLE) &&
+       !BITSET_TEST(dyn->set, MESA_VK_DYNAMIC_DS_DEPTH_COMPARE_OP)) {
+      cmd_buffer->state.ez_state = pipeline->ez_state;
+      cmd_buffer->state.incompatible_ez_test =
+         pipeline->incompatible_ez_test;
+   } else {
+      v3dv_compute_ez_state(dyn, pipeline,
+                            &cmd_buffer->state.ez_state,
+                            &cmd_buffer->state.incompatible_ez_test);
+   }
+
+   struct v3dv_job *job = cmd_buffer->state.job;
+   assert(job);
    /* If first_ez_state is V3D_EZ_DISABLED it means that we have already
     * determined that we should disable EZ completely for all draw calls in
     * this job. This will cause us to disable EZ for the entire job in the
@@ -1818,7 +1836,7 @@ job_update_ez_state(struct v3dv_job *job,
    /* If this is the first time we update EZ state for this job we first check
     * if there is anything that requires disabling it completely for the entire
     * job (based on state that is not related to the current draw call and
-    * pipeline state).
+    * pipeline/cmd_buffer state).
     */
    if (!job->decided_global_ez_enable) {
       job->decided_global_ez_enable = true;
@@ -1884,11 +1902,12 @@ job_update_ez_state(struct v3dv_job *job,
    }
 
    /* Otherwise, we can decide to selectively enable or disable EZ for draw
-    * calls using the CFG_BITS packet based on the bound pipeline state.
+    * calls using the CFG_BITS packet based on the bound pipeline state, or
+    * cmd_buffer state if some stencil/depth flags were dynamic.
     */
    bool disable_ez = false;
    bool incompatible_test = false;
-   switch (pipeline->ez_state) {
+   switch (cmd_buffer->state.ez_state) {
    case V3D_EZ_UNDECIDED:
       /* If the pipeline didn't pick a direction but didn't disable, then go
        * along with the current EZ state. This allows EZ optimization for Z
@@ -1902,7 +1921,7 @@ job_update_ez_state(struct v3dv_job *job,
        * direction if we've decided on one.
        */
       if (job->ez_state == V3D_EZ_UNDECIDED) {
-         job->ez_state = pipeline->ez_state;
+         job->ez_state = cmd_buffer->state.ez_state;
       } else if (job->ez_state != pipeline->ez_state) {
          disable_ez = true;
          incompatible_test = true;
@@ -1911,7 +1930,7 @@ job_update_ez_state(struct v3dv_job *job,
 
    case V3D_EZ_DISABLED:
          disable_ez = true;
-         incompatible_test = pipeline->incompatible_ez_test;
+         incompatible_test = cmd_buffer->state.incompatible_ez_test;
       break;
    }
 
@@ -1964,7 +1983,7 @@ v3dX(cmd_buffer_emit_configuration_bits)(struct v3dv_cmd_buffer *cmd_buffer)
 
       cmd_buffer->state.z_updates_enable = config.z_updates_enable;
 #if V3D_VERSION == 42
-      bool enable_ez = job_update_ez_state(job, pipeline, cmd_buffer);
+      bool enable_ez = cmd_buffer_update_ez_state(cmd_buffer, pipeline);
       config.early_z_enable = enable_ez;
       config.early_z_updates_enable = config.early_z_enable &&
          cmd_buffer->state.z_updates_enable;

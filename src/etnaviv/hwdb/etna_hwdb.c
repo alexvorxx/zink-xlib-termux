@@ -23,6 +23,11 @@ etna_query_feature_db(struct etna_core_info *info)
    if (!db)
       return false;
 
+   if (db->NNCoreCount)
+      info->type = ETNA_CORE_NPU;
+   else
+      info->type = ETNA_CORE_GPU;
+
    ETNA_FEATURE(REG_FastClear, FAST_CLEAR);
    ETNA_FEATURE(REG_FE20BitIndex, 32_BIT_INDICES);
    ETNA_FEATURE(REG_MSAA, MSAA);

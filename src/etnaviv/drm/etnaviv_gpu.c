@@ -61,6 +61,7 @@ static void
 query_features_from_kernel(struct etna_gpu *gpu)
 {
 	uint32_t features[VIV_FEATURES_WORD_COUNT];
+	uint64_t nn_core_count;
 
 	STATIC_ASSERT(ETNA_GPU_FEATURES_0  == 0x3);
 	STATIC_ASSERT(ETNA_GPU_FEATURES_1  == 0x4);
@@ -82,6 +83,14 @@ query_features_from_kernel(struct etna_gpu *gpu)
 		etna_gpu_get_param(gpu, i, &val);
 		features[i - ETNA_GPU_FEATURES_0] = val;
 	}
+
+	etna_gpu_get_param(gpu, ETNA_GPU_NN_CORE_COUNT, &nn_core_count);
+
+	if (nn_core_count)
+		gpu->info.type = ETNA_CORE_NPU;
+	else
+		gpu->info.type = ETNA_CORE_GPU;
+
 
 	ETNA_FEATURE(chipFeatures, FAST_CLEAR);
 	ETNA_FEATURE(chipFeatures, 32_BIT_INDICES);

@@ -64,12 +64,20 @@ enum etna_feature {
    ETNA_FEATURE_NUM,
 };
 
+enum etna_core_type {
+   ETNA_CORE_NOT_SUPPORTED = 0,
+   ETNA_CORE_GPU,
+   ETNA_CORE_NPU,
+};
+
 struct etna_core_info {
    uint32_t model;
    uint32_t revision;
    uint32_t product_id;
    uint32_t eco_id;
    uint32_t customer_id;
+
+   enum etna_core_type type;
 
    BITSET_DECLARE(feature, ETNA_FEATURE_NUM);
 };

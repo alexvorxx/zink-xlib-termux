@@ -183,10 +183,6 @@ query_limits_from_kernel(struct etna_gpu *gpu)
 		info->gpu.pixel_pipes = val;
 
 		etna_gpu_get_param(gpu, ETNA_GPU_NUM_CONSTANTS, &val);
-		if (val == 0) {
-			fprintf(stderr, "Warning: zero num constants (update kernel?)\n");
-			val = 168;
-		}
 		info->gpu.num_constants = val;
 
 		etna_gpu_get_param(gpu, ETNA_GPU_NUM_VARYINGS, &val);

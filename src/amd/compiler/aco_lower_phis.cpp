@@ -367,12 +367,12 @@ lower_phis(Program* program)
 
    for (Block& block : program->blocks) {
       for (aco_ptr<Instruction>& phi : block.instructions) {
-         if (phi->opcode == aco_opcode::p_phi) {
-            assert(program->wave_size == 64 ? phi->definitions[0].regClass() != s1
-                                            : phi->definitions[0].regClass() != s2);
-            if (phi->definitions[0].regClass() == program->lane_mask)
-               lower_divergent_bool_phi(program, &state, &block, phi);
-            else if (phi->definitions[0].regClass().is_subdword())
+         if (phi->opcode == aco_opcode::p_boolean_phi) {
+            assert(program->wave_size == 64 ? phi->definitions[0].regClass() == s2
+                                            : phi->definitions[0].regClass() == s1);
+            lower_divergent_bool_phi(program, &state, &block, phi);
+         } else if (phi->opcode == aco_opcode::p_phi) {
+            if (phi->definitions[0].regClass().is_subdword())
                lower_subdword_phis(program, &block, phi);
          } else if (!is_phi(phi)) {
             break;

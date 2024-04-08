@@ -10037,6 +10037,10 @@ visit_phi(isel_context* ctx, nir_phi_instr* instr)
    bool logical = !dst.is_linear() || instr->def.divergent;
    logical |= (ctx->block->kind & block_kind_merge) != 0;
    aco_opcode opcode = logical ? aco_opcode::p_phi : aco_opcode::p_linear_phi;
+   if (instr->def.bit_size == 1) {
+      logical = true;
+      opcode = aco_opcode::p_boolean_phi;
+   }
 
    /* we want a sorted list of sources, since the predecessor list is also sorted */
    std::map<unsigned, nir_def*> phi_src;
@@ -10432,7 +10436,7 @@ visit_loop(isel_context* ctx, nir_loop* loop)
             else
                instr->operands.back() =
                   create_continue_phis(ctx, loop_header_idx, ctx->block->index, instr, vals);
-         } else if (!is_phi(instr)) {
+         } else if (!is_phi(instr) && instr->opcode != aco_opcode::p_boolean_phi) {
             break;
          }
       }

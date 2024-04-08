@@ -329,6 +329,7 @@ insn("p_startpgm")
 insn("p_return")
 insn("p_phi")
 insn("p_linear_phi")
+insn("p_boolean_phi")
 insn("p_as_uniform")
 insn("p_unit_test")
 

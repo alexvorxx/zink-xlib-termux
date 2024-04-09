@@ -1400,7 +1400,7 @@ system_value("prim_xfb_query_enabled_amd", dest_comp=1, bit_sizes=[1])
 # GS Wave ID, 24-27 is the wave index in the workgroup, and 28-31 is the workgroup size in waves.
 system_value("merged_wave_info_amd", dest_comp=1)
 # Whether the shader should clamp vertex color outputs to [0, 1].
-system_value("clamp_vertex_color_amd", dest_comp=1, bit_sizes=[1])
+#system_value("clamp_vertex_color_amd", dest_comp=1, bit_sizes=[1])
 # Whether the shader should cull front facing triangles.
 intrinsic("load_cull_front_face_enabled_amd", dest_comp=1, bit_sizes=[1], flags=[CAN_ELIMINATE])
 # Whether the shader should cull back facing triangles.

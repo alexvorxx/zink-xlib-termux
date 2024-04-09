@@ -1501,6 +1501,7 @@ struct radv_descriptor_state {
    struct radv_push_descriptor_set push_set;
    bool push_dirty;
    uint32_t dynamic_buffers[4 * MAX_DYNAMIC_BUFFERS];
+   uint64_t descriptor_buffers[MAX_SETS];
 };
 
 enum rgp_flush_bits {
@@ -1665,6 +1666,8 @@ struct radv_cmd_buffer {
    struct radv_descriptor_set_header meta_push_descriptors;
 
    struct radv_descriptor_state descriptors[MAX_BIND_POINTS];
+
+   uint64_t descriptor_buffers[MAX_SETS];
 
    struct radv_cmd_buffer_upload upload;
 
@@ -2000,7 +2003,14 @@ enum radv_pipeline_type {
 };
 
 struct radv_pipeline_group_handle {
-   uint32_t handles[2];
+   union {
+      uint32_t general_index;
+      uint32_t closest_hit_index;
+   };
+   union {
+      uint32_t intersection_index;
+      uint32_t any_hit_index;
+   };
 };
 
 struct radv_pipeline_shader_stack_size {

@@ -174,8 +174,10 @@ agx_resource_from_handle(struct pipe_screen *pscreen,
    /* We need strides to be aligned. ail asserts this, but we want to fail
     * gracefully so the app can handle the error.
     */
-   if (rsc->modifier == DRM_FORMAT_MOD_LINEAR && (whandle->stride % 16) != 0)
+   if (rsc->modifier == DRM_FORMAT_MOD_LINEAR && (whandle->stride % 16) != 0) {
+      FREE(rsc);
       return false;
+   }
 
    prsc = &rsc->base;
 
@@ -390,8 +392,10 @@ agx_resource_create_with_modifiers(struct pipe_screen *screen,
       nresource->modifier = agx_select_modifier_from_list(nresource, modifiers, count);
 
       /* There may not be a matching modifier, bail if so */
-      if (nresource->modifier == DRM_FORMAT_MOD_INVALID)
+      if (nresource->modifier == DRM_FORMAT_MOD_INVALID) {
+         free(nresource);
          return NULL;
+      }
    } else {
       nresource->modifier = agx_select_best_modifier(nresource);
 

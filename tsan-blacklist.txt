@@ -1,1 +1,12 @@
-# Placeholder file, will be filled with surpressions for TSAN
+# For performance reasons we don't use a lock here and reading
+# a stale value is of no consequence
+fun:util_queue_fence_is_signalled
+# We also have to blacklist this function, because otherwise tsan will
+# still report the unlocked read above
+fun:util_queue_fence_signal
+
+# lavapipe:
+# Same as above for perf reasons the fence signal value is is read without
+# lock
+fun:lp_fence_signalled
+fun:lp_fence_signal

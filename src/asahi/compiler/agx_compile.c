@@ -144,10 +144,20 @@ gather_cf(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 
       BITSET_SET_RANGE(set, start_comp, start_comp + nr - 1);
    } else {
-      unsigned start_comp = sem.location * 4;
-      unsigned count = sem.num_slots * 4;
+      unsigned start_comp = (sem.location * 4) + nir_intrinsic_component(intr);
+      bool compact = sem.location == VARYING_SLOT_CLIP_DIST0 ||
+                     sem.location == VARYING_SLOT_CLIP_DIST1;
+      unsigned stride = compact ? 1 : 4;
 
-      BITSET_SET_RANGE(set, start_comp, start_comp + count - 1);
+      /* For now we have to assign CF for the whole vec4 to make indirect
+       * indexiing work. This could be optimized later.
+       */
+      nr = stride;
+
+      for (unsigned i = 0; i < sem.num_slots; ++i) {
+         BITSET_SET_RANGE(set, start_comp + (i * stride),
+                          start_comp + (i * stride) + nr - 1);
+      }
    }
 
    return false;

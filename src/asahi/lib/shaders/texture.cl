@@ -137,19 +137,28 @@ calculate_twiddled_coordinates(ushort2 coord, uint16_t tile_w_px,
 uint64_t
 libagx_image_texel_address(constant const struct agx_atomic_software_packed *ptr,
                            uint4 coord, uint sample_idx,
-                           uint bytes_per_sample_B, bool is_msaa,
+                           uint bytes_per_sample_B, bool is_1d, bool is_msaa,
                            bool is_layered, bool return_index)
 {
    agx_unpack(NULL, ptr, ATOMIC_SOFTWARE, d);
 
    /* We do not allow atomics on linear 2D or linear 2D arrays, as there are no
-    * known use cases. So we're twiddled in this path.
+    * known use cases. So we're twiddled in this path, unless we're handling a
+    * 1D image which will be always linear, even if it uses a twiddled layout
+    * degrading to linear-equivalent 1x1 tiles. (1D uses this path, not the
+    * buffer path, for 1D arrays.)
     */
-   uint total_px = calculate_twiddled_coordinates(
-      convert_ushort2(coord.xy), d.tile_width, d.tile_height, d.tiles_per_row);
+   uint total_px;
+   if (is_1d) {
+      total_px = coord.x;
+   } else {
+      total_px =
+         calculate_twiddled_coordinates(convert_ushort2(coord.xy), d.tile_width,
+                                        d.tile_height, d.tiles_per_row);
+   }
 
    if (is_layered)
-      total_px += coord.z * d.layer_stride_pixels;
+      total_px += coord[is_1d ? 1 : 2] * d.layer_stride_pixels;
 
    uint sample_count = is_msaa ? d.sample_count : 1;
    uint total_sa = (total_px * d.sample_count) + sample_idx;

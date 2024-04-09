@@ -484,6 +484,7 @@ image_texel_address(nir_builder *b, nir_intrinsic_instr *intr,
    } else {
       return libagx_image_texel_address(
          b, meta_ptr, coord, nir_u2u32(b, intr->src[2].ssa), blocksize_B,
+         nir_imm_bool(b, dim == GLSL_SAMPLER_DIM_1D),
          nir_imm_bool(b, dim == GLSL_SAMPLER_DIM_MS), nir_imm_bool(b, layered),
          nir_imm_bool(b, return_index));
    }

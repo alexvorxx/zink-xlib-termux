@@ -1571,10 +1571,10 @@ intrinsic("load_fb_layers_v3d", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER])
 #
 # src[] = { sample mask }
 # base = offset
-load("local_pixel_agx", [1], [BASE, FORMAT], [CAN_REORDER, CAN_ELIMINATE])
+#load("local_pixel_agx", [1], [BASE, FORMAT], [CAN_REORDER, CAN_ELIMINATE])
 # src[] = { value, sample mask }
 # base = offset
-store("local_pixel_agx", [1], [BASE, WRITE_MASK, FORMAT], [CAN_REORDER])
+#store("local_pixel_agx", [1], [BASE, WRITE_MASK, FORMAT], [CAN_REORDER])
 
 # Store a block from local memory into a bound image. Used to write out render
 # targets within the end-of-tile shader, although it is valid in general compute
@@ -1588,8 +1588,8 @@ store("local_pixel_agx", [1], [BASE, WRITE_MASK, FORMAT], [CAN_REORDER])
 # non-multisampled images. It must be 2D or MS.
 #
 # src[] = { image index, logical offset within shared memory }
-intrinsic("block_image_store_agx", [1, 1], bit_sizes=[32, 16],
-          indices=[FORMAT, IMAGE_DIM], flags=[CAN_REORDER])
+#intrinsic("block_image_store_agx", [1, 1], bit_sizes=[32, 16],
+#          indices=[FORMAT, IMAGE_DIM], flags=[CAN_REORDER])
 
 # Logical complement of load_front_face, mapping to an AGX system value
 system_value("back_face_agx", 1, bit_sizes=[1, 32])

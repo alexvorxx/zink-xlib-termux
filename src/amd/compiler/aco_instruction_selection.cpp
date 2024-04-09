@@ -10051,7 +10051,6 @@ visit_phi(isel_context* ctx, nir_phi_instr* instr)
    unsigned num_operands = 0;
    Operand* const operands = (Operand*)alloca(
       (std::max(exec_list_length(&instr->srcs), (unsigned)preds.size()) + 1) * sizeof(Operand));
-   unsigned num_defined = 0;
    unsigned cur_pred_idx = 0;
    for (std::pair<unsigned, nir_def*> src : phi_src) {
       if (cur_pred_idx < preds.size()) {
@@ -10076,7 +10075,6 @@ visit_phi(isel_context* ctx, nir_phi_instr* instr)
       cur_pred_idx++;
       Operand op = get_phi_operand(ctx, src.second, dst.regClass(), logical);
       operands[num_operands++] = op;
-      num_defined += !op.isUndefined();
    }
    /* handle block_kind_continue_or_break at loop exit blocks */
    while (cur_pred_idx++ < preds.size())
@@ -10091,32 +10089,6 @@ visit_phi(isel_context* ctx, nir_phi_instr* instr)
       nir_block* last = nir_loop_last_block(loop);
       if (last->successors[0] != instr->instr.block)
          operands[num_operands++] = Operand(RegClass());
-   }
-
-   /* we can use a linear phi in some cases if one src is undef */
-   if (dst.is_linear() && ctx->block->kind & block_kind_merge && num_defined == 1) {
-      phi.reset(create_instruction(aco_opcode::p_linear_phi, Format::PSEUDO, num_operands, 1));
-
-      Block* linear_else = &ctx->program->blocks[ctx->block->linear_preds[1]];
-      Block* invert = &ctx->program->blocks[linear_else->linear_preds[0]];
-      assert(invert->kind & block_kind_invert);
-
-      unsigned then_block = invert->linear_preds[0];
-
-      Block* insert_block = NULL;
-      for (unsigned i = 0; i < num_operands; i++) {
-         Operand op = operands[i];
-         if (op.isUndefined())
-            continue;
-         insert_block = ctx->block->logical_preds[i] == then_block ? invert : ctx->block;
-         phi->operands[0] = op;
-         break;
-      }
-      assert(insert_block); /* should be handled by the "num_defined == 0" case above */
-      phi->operands[1] = Operand(dst.regClass());
-      phi->definitions[0] = Definition(dst);
-      insert_block->instructions.emplace(insert_block->instructions.begin(), std::move(phi));
-      return;
    }
 
    phi.reset(create_instruction(opcode, Format::PSEUDO, num_operands, 1));

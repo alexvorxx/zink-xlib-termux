@@ -147,6 +147,7 @@ agx_resource_setup(struct agx_device *dev,
       .width_px = templ->width0,
       .height_px = templ->height0,
       .depth_px = templ->depth0 * templ->array_size,
+      .sample_count_sa = MAX2(templ->nr_samples, 1),
       .levels = templ->last_level + 1,
    };
 }
@@ -527,6 +528,27 @@ agx_transfer_flush_region(struct pipe_context *pipe,
 {
 }
 
+/*
+ * Perform the required synchronization before a transfer_map operation can
+ * complete. This may require flushing batches.
+ */
+static void
+agx_prepare_for_map(struct agx_context *ctx,
+                    struct agx_resource *rsrc,
+                    unsigned level,
+                    unsigned usage,  /* a combination of PIPE_MAP_x */
+                    const struct pipe_box *box)
+{
+   /* If the access is unsynchronized, there's nothing to do */
+   if (usage & PIPE_MAP_UNSYNCHRONIZED)
+      return;
+
+   agx_flush_writer(ctx, rsrc, "Unsynchronized transfer");
+
+   if (usage & PIPE_MAP_WRITE)
+      agx_flush_readers(ctx, rsrc, "Unsynchronized read");
+}
+
 static void *
 agx_transfer_map(struct pipe_context *pctx,
                  struct pipe_resource *resource,
@@ -542,13 +564,7 @@ agx_transfer_map(struct pipe_context *pctx,
    if ((usage & PIPE_MAP_DIRECTLY) && rsrc->modifier != DRM_FORMAT_MOD_LINEAR)
       return NULL;
 
-   /* Synchronize */
-   if (!(usage & PIPE_MAP_UNSYNCHRONIZED)) {
-      agx_flush_writer(ctx, rsrc, "Unsynchronized transfer");
-
-      if (usage & PIPE_MAP_WRITE)
-         agx_flush_readers(ctx, rsrc, "Unsynchronized read");
-   }
+   agx_prepare_for_map(ctx, rsrc, level, usage, box);
 
    struct agx_transfer *transfer = CALLOC_STRUCT(agx_transfer);
    transfer->base.level = level;
@@ -644,41 +660,49 @@ agx_clear(struct pipe_context *pctx, unsigned buffers, const struct pipe_scissor
           const union pipe_color_union *color, double depth, unsigned stencil)
 {
    struct agx_context *ctx = agx_context(pctx);
+   struct agx_batch *batch = agx_get_batch(ctx);
 
-   unsigned fastclear = buffers & ~(ctx->batch->draw | ctx->batch->load);
+   unsigned fastclear = buffers & ~(batch->draw | batch->load);
    unsigned slowclear = buffers & ~fastclear;
 
    assert(scissor_state == NULL && "we don't support PIPE_CAP_CLEAR_SCISSORED");
 
    /* Fast clears configure the batch */
-   if (fastclear & PIPE_CLEAR_COLOR0)
-      memcpy(ctx->batch->clear_color, color->f, sizeof(color->f));
+   for (unsigned rt = 0; rt < PIPE_MAX_COLOR_BUFS; ++rt) {
+      if (!(fastclear & (PIPE_CLEAR_COLOR0 << rt)))
+         continue;
+
+      static_assert(sizeof(color->f) == 16, "mismatched structure");
+
+      batch->uploaded_clear_color[rt] =
+         agx_pool_upload_aligned(&batch->pool, color->f, sizeof(color->f), 16);
+   }
 
    if (fastclear & PIPE_CLEAR_DEPTH)
-      ctx->batch->clear_depth = depth;
+      batch->clear_depth = depth;
 
    if (fastclear & PIPE_CLEAR_STENCIL)
-      ctx->batch->clear_stencil = stencil;
+      batch->clear_stencil = stencil;
 
    /* Slow clears draw a fullscreen rectangle */
    if (slowclear) {
       agx_blitter_save(ctx, ctx->blitter, false /* render cond */);
       util_blitter_clear(ctx->blitter, ctx->framebuffer.width,
-            ctx->framebuffer.height,
-            util_framebuffer_get_num_layers(&ctx->framebuffer),
-            slowclear, color, depth, stencil,
-            util_framebuffer_get_num_samples(&ctx->framebuffer) > 1);
+                         ctx->framebuffer.height,
+                         util_framebuffer_get_num_layers(&ctx->framebuffer),
+                         slowclear, color, depth, stencil,
+                         util_framebuffer_get_num_samples(&ctx->framebuffer) > 1);
    }
 
-   ctx->batch->clear |= fastclear;
-   assert((ctx->batch->draw & slowclear) == slowclear);
+   batch->clear |= fastclear;
+   assert((batch->draw & slowclear) == slowclear);
 }
-
 
 static void
 agx_flush_resource(struct pipe_context *ctx,
                    struct pipe_resource *resource)
 {
+   agx_flush_writer(agx_context(ctx), agx_resource(resource), "flush_resource");
 }
 
 /*
@@ -694,7 +718,7 @@ agx_flush(struct pipe_context *pctx,
    if (fence)
       *fence = NULL;
 
-   agx_flush_batch(ctx, ctx->batch);
+   agx_flush_all(ctx, "Gallium flush");
 }
 
 void
@@ -702,66 +726,41 @@ agx_flush_batch(struct agx_context *ctx, struct agx_batch *batch)
 {
    struct agx_device *dev = agx_device(ctx->base.screen);
 
+   assert(agx_batch_is_active(batch));
+
    /* Nothing to do */
-   if (!(batch->draw | batch->clear))
+   if (!(batch->draw | batch->clear)) {
+      agx_batch_cleanup(ctx, batch);
       return;
+   }
 
    /* Finalize the encoder */
    uint8_t stop[5 + 64] = { 0x00, 0x00, 0x00, 0xc0, 0x00 };
    memcpy(batch->encoder_current, stop, sizeof(stop));
 
-   /* Emit the commandbuffer */
-   uint64_t pipeline_clear = 0, pipeline_reload = 0;
+   uint64_t pipeline_background = agx_build_meta(batch, false, false);
+   uint64_t pipeline_background_partial = agx_build_meta(batch, false, true);
+   uint64_t pipeline_store = agx_build_meta(batch, true, false);
+
    bool clear_pipeline_textures = false;
 
-   uint16_t clear_colour[4] = {
-      _mesa_float_to_half(batch->clear_color[0]),
-      _mesa_float_to_half(batch->clear_color[1]),
-      _mesa_float_to_half(batch->clear_color[2]),
-      _mesa_float_to_half(batch->clear_color[3])
-   };
-
-   pipeline_clear = agx_build_clear_pipeline(ctx,
-         dev->internal.clear,
-         agx_pool_upload(&batch->pool, clear_colour, sizeof(clear_colour)));
-
-   if (batch->cbufs[0]) {
-      enum pipe_format fmt = batch->cbufs[0]->format;
-      enum agx_format internal = agx_pixel_format[fmt].internal;
-      uint32_t shader = dev->reload.format[internal];
-
-      pipeline_reload = agx_build_reload_pipeline(ctx, shader,
-                               batch->cbufs[0]);
-   }
-
-   if (batch->cbufs[0] && !(batch->clear & PIPE_CLEAR_COLOR0)) {
-      clear_pipeline_textures = true;
-      pipeline_clear = pipeline_reload;
-   }
-
-   uint64_t pipeline_store = 0;
-
-   if (batch->cbufs[0]) {
-      pipeline_store =
-         agx_build_store_pipeline(ctx,
-                                  dev->internal.store,
-                                  agx_pool_upload(&batch->pool, ctx->render_target[0], sizeof(ctx->render_target)));
-   }
-
-   for (unsigned i = 0; i < batch->nr_cbufs; ++i) {
-      struct pipe_surface *surf = batch->cbufs[i];
+   for (unsigned i = 0; i < batch->key.nr_cbufs; ++i) {
+      struct pipe_surface *surf = batch->key.cbufs[i];
 
       if (surf && surf->texture) {
          struct agx_resource *rt = agx_resource(surf->texture);
          BITSET_SET(rt->data_valid, surf->u.tex.level);
+
+         if (!(batch->clear & (PIPE_CLEAR_COLOR0 << i)))
+            clear_pipeline_textures = true;
       }
    }
 
-   struct agx_resource *zbuf = batch->zsbuf ?
-      agx_resource(batch->zsbuf->texture) : NULL;
+   struct agx_resource *zbuf = batch->key.zsbuf ?
+      agx_resource(batch->key.zsbuf->texture) : NULL;
 
    if (zbuf) {
-      unsigned level = ctx->batch->zsbuf->u.tex.level;
+      unsigned level = batch->key.zsbuf->u.tex.level;
       BITSET_SET(zbuf->data_valid, level);
 
       if (zbuf->separate_stencil)
@@ -777,8 +776,6 @@ agx_flush_batch(struct agx_context *ctx, struct agx_batch *batch)
    agx_batch_add_bo(batch, batch->encoder);
    agx_batch_add_bo(batch, batch->scissor.bo);
    agx_batch_add_bo(batch, batch->depth_bias.bo);
-   agx_batch_add_bo(batch, dev->internal.bo);
-   agx_batch_add_bo(batch, dev->reload.bo);
 
    unsigned handle_count =
       agx_batch_num_bo(batch) +
@@ -807,13 +804,13 @@ agx_flush_batch(struct agx_context *ctx, struct agx_batch *batch)
    unsigned cmdbuf_size = demo_cmdbuf(dev->cmdbuf.ptr.cpu,
                dev->cmdbuf.size,
                &batch->pool,
-               &ctx->framebuffer,
+               &batch->key,
                batch->encoder->ptr.gpu,
                encoder_id,
                batch->scissor.bo->ptr.gpu,
                batch->depth_bias.bo->ptr.gpu,
-               pipeline_clear,
-               pipeline_reload,
+               pipeline_background,
+               pipeline_background_partial,
                pipeline_store,
                clear_pipeline_textures,
                batch->clear,
@@ -826,8 +823,6 @@ agx_flush_batch(struct agx_context *ctx, struct agx_batch *batch)
 
    free(handles);
 
-   agx_submit_cmdbuf(dev, dev->cmdbuf.handle, dev->memmap.handle, dev->queue.id);
-
    agx_wait_queue(dev->queue);
 
    if (dev->debug & AGX_DBG_TRACE) {
@@ -835,37 +830,7 @@ agx_flush_batch(struct agx_context *ctx, struct agx_batch *batch)
       agxdecode_next_frame();
    }
 
-   AGX_BATCH_FOREACH_BO_HANDLE(batch, handle) {
-      agx_bo_unreference(agx_lookup_bo(dev, handle));
-   }
-
-   /* There is no more writer for anything we wrote recorded on this context */
-   hash_table_foreach(ctx->writer, ent) {
-      if (ent->data == batch)
-         _mesa_hash_table_remove(ctx->writer, ent);
-   }
-
-   memset(batch->bo_list.set, 0, batch->bo_list.word_count * sizeof(BITSET_WORD));
-   agx_pool_cleanup(&batch->pool);
-   agx_pool_cleanup(&batch->pipeline_pool);
-   agx_pool_init(&batch->pool, dev, AGX_MEMORY_TYPE_FRAMEBUFFER, true);
-   agx_pool_init(&batch->pipeline_pool, dev, AGX_MEMORY_TYPE_CMDBUF_32, true);
-   batch->clear = 0;
-   batch->draw = 0;
-   batch->load = 0;
-   batch->encoder_current = batch->encoder->ptr.cpu;
-   batch->encoder_end = batch->encoder_current + batch->encoder->size;
-   batch->scissor.count = 0;
-
-   agx_dirty_all(ctx);
-   agx_batch_init_state(batch);
-
-   /* After resetting the batch, rebind the framebuffer so we update resource
-    * tracking logic and the BO lists.
-    *
-    * XXX: This is a hack to workaround lack of proper batch tracking.
-    */
-   ctx->base.set_framebuffer_state(&ctx->base, &ctx->framebuffer);
+   agx_batch_cleanup(ctx, batch);
 }
 
 static void
@@ -903,20 +868,6 @@ agx_create_context(struct pipe_screen *screen,
    pctx->screen = screen;
    pctx->priv = priv;
 
-   ctx->batch = rzalloc(ctx, struct agx_batch);
-   ctx->batch->ctx = ctx;
-   ctx->batch->bo_list.set = rzalloc_array(ctx->batch, BITSET_WORD, 128);
-   ctx->batch->bo_list.word_count = 128;
-   agx_pool_init(&ctx->batch->pool,
-                 agx_device(screen), AGX_MEMORY_TYPE_FRAMEBUFFER, true);
-   agx_pool_init(&ctx->batch->pipeline_pool,
-                 agx_device(screen), AGX_MEMORY_TYPE_SHADER, true);
-   ctx->batch->encoder = agx_bo_create(agx_device(screen), 0x80000, AGX_MEMORY_TYPE_FRAMEBUFFER);
-   ctx->batch->encoder_current = ctx->batch->encoder->ptr.cpu;
-   ctx->batch->encoder_end = ctx->batch->encoder_current + ctx->batch->encoder->size;
-   ctx->batch->scissor.bo = agx_bo_create(agx_device(screen), 0x80000, AGX_MEMORY_TYPE_FRAMEBUFFER);
-   ctx->batch->depth_bias.bo = agx_bo_create(agx_device(screen), 0x80000, AGX_MEMORY_TYPE_FRAMEBUFFER);
-
    ctx->writer = _mesa_pointer_hash_table_create(ctx);
 
    /* Upload fixed shaders (TODO: compile them?) */
@@ -953,6 +904,7 @@ agx_create_context(struct pipe_screen *screen,
    pctx->invalidate_resource = agx_invalidate_resource;
    agx_init_state_functions(pctx);
 
+   agx_meta_init(&ctx->meta, agx_device(screen), ctx);
 
    ctx->blitter = util_blitter_create(pctx);
 
@@ -1343,8 +1295,6 @@ agx_is_format_supported(struct pipe_screen* pscreen,
 
       if ((usage & PIPE_BIND_RENDER_TARGET) && !ent.renderable)
          return false;
-      if ((usage & PIPE_BIND_RENDER_TARGET) && !util_format_is_unorm8(util_format_description(format)))
-         return false;
    }
 
    /* TODO: formats */
@@ -1552,8 +1502,6 @@ agx_screen_create(int fd, struct renderonly *ro, struct sw_winsys *winsys)
                                                       U_TRANSFER_HELPER_SEPARATE_STENCIL |
                                                       U_TRANSFER_HELPER_MSAA_MAP |
                                                       U_TRANSFER_HELPER_Z24_IN_Z32F);
-
-   agx_internal_shaders(&agx_screen->dev);
 
    return screen;
 }

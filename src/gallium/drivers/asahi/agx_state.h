@@ -33,11 +33,13 @@
 #include "asahi/lib/agx_bo.h"
 #include "asahi/lib/agx_device.h"
 #include "asahi/lib/pool.h"
+#include "asahi/lib/agx_tilebuffer.h"
 #include "asahi/compiler/agx_compile.h"
 #include "asahi/layout/layout.h"
 #include "compiler/nir/nir_lower_blend.h"
 #include "util/hash_table.h"
 #include "util/bitset.h"
+#include "agx_meta.h"
 
 struct agx_streamout_target {
    struct pipe_stream_output_target base;
@@ -94,10 +96,10 @@ struct agx_array {
 
 struct agx_batch {
    struct agx_context *ctx;
+   struct pipe_framebuffer_state key;
+   uint64_t seqnum;
 
-   unsigned width, height, nr_cbufs;
-   struct pipe_surface *cbufs[8];
-   struct pipe_surface *zsbuf;
+   struct agx_tilebuffer_layout tilebuffer_layout;
 
    /* PIPE_CLEAR_* bitmask */
    uint32_t clear, draw, load;
@@ -105,7 +107,7 @@ struct agx_batch {
    /* Base of uploaded texture descriptors */
    uint64_t textures;
 
-   float clear_color[4];
+   uint64_t uploaded_clear_color[PIPE_MAX_COLOR_BUFS];
    double clear_depth;
    unsigned clear_stencil;
 
@@ -177,10 +179,23 @@ enum agx_dirty {
    AGX_DIRTY_FS_PROG    = BITFIELD_BIT(11),
 };
 
+#define AGX_MAX_BATCHES (2)
+
 struct agx_context {
    struct pipe_context base;
    struct agx_compiled_shader *vs, *fs;
    uint32_t dirty;
+
+   /* Set of batches. When full, the LRU entry (the batch with the smallest
+    * seqnum) is flushed to free a slot.
+    */
+   struct {
+      uint64_t seqnum;
+      struct agx_batch slots[AGX_MAX_BATCHES];
+
+      /** Set of active batches for faster traversal */
+      BITSET_DECLARE(active, AGX_MAX_BATCHES);
+   } batches;
 
    struct agx_batch *batch;
 
@@ -207,12 +222,12 @@ struct agx_context {
    struct util_debug_callback debug;
    bool is_noop;
 
-   uint8_t render_target[8][AGX_RENDER_TARGET_LENGTH];
-
    struct blitter_context *blitter;
 
    /* Map of agx_resource to agx_batch that writes that resource */
    struct hash_table *writer;
+
+   struct agx_meta_cache meta;
 };
 
 static inline struct agx_context *
@@ -350,18 +365,14 @@ agx_transfer(struct pipe_transfer *p)
 }
 
 uint64_t
-agx_push_location(struct agx_context *ctx, struct agx_push push,
+agx_push_location(struct agx_batch *batch, struct agx_push push,
                   enum pipe_shader_type stage);
 
-uint64_t
-agx_build_clear_pipeline(struct agx_context *ctx, uint32_t code, uint64_t clear_buf);
+bool
+agx_batch_is_active(struct agx_batch *batch);
 
 uint64_t
-agx_build_store_pipeline(struct agx_context *ctx, uint32_t code,
-                         uint64_t render_target);
-
-uint64_t
-agx_build_reload_pipeline(struct agx_context *ctx, uint32_t code, struct pipe_surface *surf);
+agx_batch_upload_pbe(struct agx_batch *batch, unsigned rt);
 
 /* Add a BO to a batch. This needs to be amortized O(1) since it's called in
  * hot paths. To achieve this we model BO lists by bit sets */
@@ -386,7 +397,7 @@ agx_batch_add_bo(struct agx_batch *batch, struct agx_bo *bo)
 {
    /* Double the size of the BO list if we run out, this is amortized O(1) */
    if (unlikely(bo->handle > agx_batch_bo_list_bits(batch))) {
-      batch->bo_list.set = rerzalloc(batch, batch->bo_list.set, BITSET_WORD,
+      batch->bo_list.set = rerzalloc(batch->ctx, batch->bo_list.set, BITSET_WORD,
                                      batch->bo_list.word_count,
                                      batch->bo_list.word_count * 2);
       batch->bo_list.word_count *= 2;
@@ -411,12 +422,16 @@ agx_batch_num_bo(struct agx_batch *batch)
    BITSET_FOREACH_SET(handle, (batch)->bo_list.set, agx_batch_bo_list_bits(batch))
 
 void agx_flush_batch(struct agx_context *ctx, struct agx_batch *batch);
+void agx_flush_all(struct agx_context *ctx, const char *reason);
 void agx_flush_readers(struct agx_context *ctx, struct agx_resource *rsrc, const char *reason);
 void agx_flush_writer(struct agx_context *ctx, struct agx_resource *rsrc, const char *reason);
 
 /* Use these instead of batch_add_bo for proper resource tracking */
 void agx_batch_reads(struct agx_batch *batch, struct agx_resource *rsrc);
 void agx_batch_writes(struct agx_batch *batch, struct agx_resource *rsrc);
+
+struct agx_batch *agx_get_batch(struct agx_context *ctx);
+void agx_batch_cleanup(struct agx_context *ctx, struct agx_batch *batch);
 
 /* Blit shaders */
 void
@@ -426,17 +441,12 @@ agx_blitter_save(struct agx_context *ctx, struct blitter_context *blitter,
 void agx_blit(struct pipe_context *pipe,
               const struct pipe_blit_info *info);
 
-void agx_internal_shaders(struct agx_device *dev);
-
 /* Batch logic */
-static void
-agx_flush_all(struct agx_context *ctx, const char *reason)
-{
-   perf_debug_ctx(ctx, "Flushing due to: %s\n", reason);
-   ctx->base.flush(&ctx->base, NULL, 0);
-}
 
 void
 agx_batch_init_state(struct agx_batch *batch);
+
+uint64_t
+agx_build_meta(struct agx_batch *batch, bool store, bool partial_render);
 
 #endif

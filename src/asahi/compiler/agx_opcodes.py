@@ -94,6 +94,7 @@ SHIFT = immediate("shift")
 MASK = immediate("mask")
 BFI_MASK = immediate("bfi_mask")
 LOD_MODE = immediate("lod_mode", "enum agx_lod_mode")
+PIXEL_OFFSET = immediate("pixel_offset")
 
 DIM = enum("dim", {
     0: '1d',
@@ -103,7 +104,8 @@ DIM = enum("dim", {
     4: '2d_ms',
     5: '3d',
     6: 'cube',
-    7: 'cube_array'
+    7: 'cube_array',
+    8: '2d_ms_array',
 })
 
 OFFSET = immediate("offset", "bool")
@@ -249,11 +251,12 @@ op("get_sr", (0x72, 0x7F | L, 4, _), dests = 1, imms = [SR])
 
 op("sample_mask", (0x7fc1, 0xffff, 6, _), dests = 0, srcs = 1, can_eliminate = False)
 
-# Essentially same encoding
-op("ld_tile", (0x49, 0x7F, 8, _), dests = 1, srcs = 0, imms = [FORMAT, MASK], can_reorder = False)
+# Essentially same encoding. Last source is the sample mask
+op("ld_tile", (0x49, 0x7F, 8, _), dests = 1, srcs = 1,
+        imms = [FORMAT, MASK, PIXEL_OFFSET], can_reorder = False)
 
-op("st_tile", (0x09, 0x7F, 8, _), dests = 0, srcs = 1,
-      can_eliminate = False, imms = [FORMAT, MASK])
+op("st_tile", (0x09, 0x7F, 8, _), dests = 0, srcs = 2,
+      can_eliminate = False, imms = [FORMAT, MASK, PIXEL_OFFSET])
 
 for (name, exact) in [("any", 0xC000), ("none", 0xC200)]:
    op("jmp_exec_" + name, (exact, (1 << 16) - 1, 6, _), dests = 0, srcs = 0,
@@ -283,6 +286,11 @@ op("st_vary", None, dests = 0, srcs = 2, can_eliminate = False)
 op("stop", (0x88, 0xFFFF, 2, _), dests = 0, can_eliminate = False)
 op("trap", (0x08, 0xFFFF, 2, _), dests = 0, can_eliminate = False)
 op("writeout", (0x48, 0xFF, 4, _), dests = 0, imms = [WRITEOUT], can_eliminate = False)
+
+# Sources are the image and the offset within shared memory
+# TODO: Do we need the short encoding?
+op("block_image_store", (0xB1, 0xFF, 10, _), dests = 0, srcs = 2,
+   imms = [FORMAT, DIM], can_eliminate = False)
 
 # Convenient aliases.
 op("mov", _, srcs = 1)

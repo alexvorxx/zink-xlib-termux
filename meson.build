@@ -1909,6 +1909,23 @@ else
   asan_c_args = ['-DBUILT_WITH_ASAN=0']
 endif
 
+# ThreadSanitizer can't deal with futexes, and reports races for cases we don't care about
+# so add a define to work silence these issues.
+if get_option('b_sanitize') == 'thread'
+  pre_args += '-DTHREAD_SANITIZER=1'
+  # meson versions prior to 1.4 will warn "Consider using the built-in option for sanitizers ..." 
+  # later on because it only checks whether the option starts with "-fsanitize",
+  # but there is no built-in option for adding a blacklist
+  tsan_blacklist = '-fsanitize-blacklist=@0@'.format(join_paths(meson.project_source_root(), 'tsan-blacklist.txt'))
+  if cc.has_argument(tsan_blacklist)
+    pre_args += tsan_blacklist
+  else
+    warning('Compiler does not support "-fsanitize-blacklist", expected race conditions will not be surpressed')
+  endif
+else
+  pre_args += '-DTHREAD_SANITIZER=0'
+endif
+
 yacc_is_bison = true
 needs_flex_bison = with_any_opengl or with_freedreno_vk or with_intel_tools or with_gallium
 

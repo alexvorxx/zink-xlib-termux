@@ -10013,13 +10013,12 @@ visit_tex(isel_context* ctx, nir_tex_instr* instr)
 }
 
 Operand
-get_phi_operand(isel_context* ctx, nir_def* ssa, RegClass rc, bool logical)
+get_phi_operand(isel_context* ctx, nir_def* ssa, RegClass rc)
 {
    Temp tmp = get_ssa_temp(ctx, ssa);
    if (ssa->parent_instr->type == nir_instr_type_undef) {
       return Operand(rc);
-   } else if (logical && ssa->bit_size == 1 &&
-              ssa->parent_instr->type == nir_instr_type_load_const) {
+   } else if (ssa->bit_size == 1 && ssa->parent_instr->type == nir_instr_type_load_const) {
       bool val = nir_instr_as_load_const(ssa->parent_instr)->value[0].b;
       return Operand::c32_or_c64(val ? -1 : 0, ctx->program->lane_mask == s2);
    } else {
@@ -10030,59 +10029,19 @@ get_phi_operand(isel_context* ctx, nir_def* ssa, RegClass rc, bool logical)
 void
 visit_phi(isel_context* ctx, nir_phi_instr* instr)
 {
-   aco_ptr<Instruction> phi;
    Temp dst = get_ssa_temp(ctx, &instr->def);
    assert(instr->def.bit_size != 1 || dst.regClass() == ctx->program->lane_mask);
-
-   bool logical = !dst.is_linear() || instr->def.divergent;
-   logical |= ctx->block->kind & (block_kind_merge | block_kind_loop_header);
-   aco_opcode opcode = logical ? aco_opcode::p_phi : aco_opcode::p_linear_phi;
-   if (instr->def.bit_size == 1) {
-      logical = true;
-      opcode = aco_opcode::p_boolean_phi;
-   }
+   aco_opcode opcode = instr->def.bit_size == 1 ? aco_opcode::p_boolean_phi : aco_opcode::p_phi;
 
    /* we want a sorted list of sources, since the predecessor list is also sorted */
    std::map<unsigned, nir_def*> phi_src;
    nir_foreach_phi_src (src, instr)
       phi_src[src->pred->index] = src->src.ssa;
 
-   Block::edge_vec& preds = logical ? ctx->block->logical_preds : ctx->block->linear_preds;
-   unsigned num_operands = 0;
-   Operand* const operands = (Operand*)alloca(
-      (std::max(exec_list_length(&instr->srcs), (unsigned)preds.size()) + 1) * sizeof(Operand));
-   unsigned cur_pred_idx = 0;
-   for (std::pair<unsigned, nir_def*> src : phi_src) {
-      if (cur_pred_idx < preds.size()) {
-         /* handle missing preds (IF merges with discard/break) and extra preds
-          * (loop exit with discard) */
-         unsigned block = ctx->cf_info.nir_to_aco[src.first];
-         unsigned skipped = 0;
-         while (cur_pred_idx + skipped < preds.size() && preds[cur_pred_idx + skipped] != block)
-            skipped++;
-         if (cur_pred_idx + skipped < preds.size()) {
-            for (unsigned i = 0; i < skipped; i++)
-               operands[num_operands++] = Operand(dst.regClass());
-            cur_pred_idx += skipped;
-         } else {
-            continue;
-         }
-      }
-      /* Handle missing predecessors at the end. This shouldn't happen with loop
-       * headers and we can't ignore these sources for loop header phis. */
-      if (!(ctx->block->kind & block_kind_loop_header) && cur_pred_idx >= preds.size())
-         continue;
-      cur_pred_idx++;
-      Operand op = get_phi_operand(ctx, src.second, dst.regClass(), logical);
-      operands[num_operands++] = op;
-   }
-   /* handle block_kind_continue_or_break at loop exit blocks */
-   while (cur_pred_idx++ < preds.size())
-      operands[num_operands++] = Operand(dst.regClass());
-
-   phi.reset(create_instruction(opcode, Format::PSEUDO, num_operands, 1));
-   for (unsigned i = 0; i < num_operands; i++)
-      phi->operands[i] = operands[i];
+   Instruction* phi = create_instruction(opcode, Format::PSEUDO, phi_src.size(), 1);
+   unsigned i = 0;
+   for (std::pair<unsigned, nir_def*> src : phi_src)
+      phi->operands[i++] = get_phi_operand(ctx, src.second, dst.regClass());
    phi->definitions[0] = Definition(dst);
    ctx->block->instructions.emplace(ctx->block->instructions.begin(), std::move(phi));
 }

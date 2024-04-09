@@ -89,7 +89,7 @@ vk_address_binding_report(struct vk_instance *instance,
                           uint64_t size,
                           VkDeviceAddressBindingTypeEXT type)
 {
-   if (list_is_empty(&instance->debug_utils.instance_callbacks))
+   if (list_is_empty(&instance->debug_utils.callbacks))
       return;
 
    VkDeviceAddressBindingCallbackDataEXT addr_binding = {

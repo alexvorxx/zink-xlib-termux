@@ -2130,10 +2130,7 @@ ntr_emit_impl(struct ntr_compile *c, nir_function_impl *impl)
    /* Emit the ntr insns */
    ntr_emit_cf_list(c, &impl->body);
 
-   /* Don't do optimized RA if the driver requests it, unless the number of
-    * temps is too large to be covered by the 16 bit signed int that TGSI
-    * allocates for the register index */
-   if (!c->options->unoptimized_ra || c->num_temps > 0x7fff)
+   if (c->s->info.stage == MESA_SHADER_FRAGMENT)
       ntr_allocate_regs(c, impl);
    else
       ntr_allocate_regs_unoptimized(c, impl);

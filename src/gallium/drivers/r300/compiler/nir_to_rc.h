@@ -17,7 +17,6 @@ struct nir_to_rc_options {
    bool lower_cmp;
    /* Emit MAX(a,-a) instead of abs src modifier) */
    bool lower_fabs;
-   bool unoptimized_ra;
    bool lower_ssbo_bindings;
    uint32_t ubo_vec4_max;
 };

@@ -1922,9 +1922,7 @@ static void* r300_create_vs_state(struct pipe_context* pipe,
 
     if (vs->state.type == PIPE_SHADER_IR_NIR) {
        static const struct nir_to_rc_options swtcl_options = {0};
-       static const struct nir_to_rc_options hwtcl_r300_options = {
-           .lower_fabs = true,
-       };
+       static const struct nir_to_rc_options hwtcl_r300_options = {0};
        static const struct nir_to_rc_options hwtcl_r500_options = {0};
        const struct nir_to_rc_options *ntr_options;
        if (r300->screen->caps.has_tcl) {

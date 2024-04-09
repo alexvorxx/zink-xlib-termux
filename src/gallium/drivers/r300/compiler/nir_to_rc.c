@@ -56,6 +56,9 @@ struct ntr_compile {
    struct pipe_screen *screen;
    struct ureg_program *ureg;
 
+   /* Options */
+   bool lower_fabs;
+
    bool addr_declared[3];
    struct ureg_dst addr_reg[3];
 
@@ -991,11 +994,11 @@ ntr_get_alu_src(struct ntr_compile *c, nir_alu_instr *instr, int i)
     * officially supported by TGSI is 32-bit integer negates, but even those are
     * broken on virglrenderer, so skip lowering all integer and f64 float mods.
     *
-    * The options->lower_fabs requests that we not have native source modifiers
+    * The lower_fabs requests that we not have native source modifiers
     * for fabs, and instead emit MAX(a,-a) for nir_op_fabs.
     */
    nir_legacy_alu_src src =
-      nir_legacy_chase_alu_src(&instr->src[i], !c->options->lower_fabs);
+      nir_legacy_chase_alu_src(&instr->src[i], !c->lower_fabs);
    struct ureg_src usrc = ntr_get_chased_src(c, &src.src);
 
    usrc = ureg_swizzle(usrc,
@@ -1217,10 +1220,10 @@ ntr_emit_alu(struct ntr_compile *c, nir_alu_instr *instr)
       switch (instr->op) {
       case nir_op_fabs:
          /* Try to eliminate */
-         if (!c->options->lower_fabs && nir_legacy_float_mod_folds(instr))
+         if (!c->lower_fabs && nir_legacy_float_mod_folds(instr))
             break;
 
-         if (c->options->lower_fabs)
+         if (c->lower_fabs)
             ntr_MAX(c, dst, src[0], ureg_negate(src[0]));
          else
             ntr_MOV(c, dst, ureg_abs(src[0]));
@@ -2344,6 +2347,9 @@ const void *nir_to_rc_options(struct nir_shader *s,
    struct ntr_compile *c;
    const void *tgsi_tokens;
    bool is_r500 = r300_screen(screen)->caps.is_r500;
+   c = rzalloc(NULL, struct ntr_compile);
+   c->screen = screen;
+   c->lower_fabs = !is_r500 && s->info.stage == MESA_SHADER_VERTEX;
 
    /* Lower array indexing on FS inputs.  Since we don't set
     * ureg->supports_any_inout_decl_range, the TGSI input decls will be split to
@@ -2429,15 +2435,13 @@ const void *nir_to_rc_options(struct nir_shader *s,
    NIR_PASS_V(s, nir_opt_dce);
 
    /* See comment in ntr_get_alu_src for supported modifiers */
-   NIR_PASS_V(s, nir_legacy_trivialize, !options->lower_fabs);
+   NIR_PASS_V(s, nir_legacy_trivialize, !c->lower_fabs);
 
    if (NIR_DEBUG(TGSI)) {
       fprintf(stderr, "NIR before translation to TGSI:\n");
       nir_print_shader(s, stderr);
    }
 
-   c = rzalloc(NULL, struct ntr_compile);
-   c->screen = screen;
    c->options = options;
 
    c->s = s;

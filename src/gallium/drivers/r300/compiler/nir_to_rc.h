@@ -15,7 +15,6 @@ struct pipe_shader_state;
 
 struct nir_to_rc_options {
    /* Emit MAX(a,-a) instead of abs src modifier) */
-   bool lower_fabs;
    bool lower_ssbo_bindings;
 };
 

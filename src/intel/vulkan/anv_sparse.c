@@ -1025,8 +1025,6 @@ anv_sparse_bind_image_memory(struct anv_queue *queue,
       image->planes[plane].primary_surface.memory_range.offset;
    const struct isl_format_layout *layout =
       isl_format_get_layout(surf->format);
-   struct isl_tile_info tile_info;
-   isl_surf_get_tile_info(surf, &tile_info);
 
    sparse_debug("\n=== [%s:%d] [%s] BEGIN\n", __FILE__, __LINE__, __func__);
    sparse_debug("--> mip_level:%d array_layer:%d\n",

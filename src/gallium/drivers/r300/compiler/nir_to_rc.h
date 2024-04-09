@@ -18,7 +18,6 @@ struct nir_to_rc_options {
    /* Emit MAX(a,-a) instead of abs src modifier) */
    bool lower_fabs;
    bool lower_ssbo_bindings;
-   uint32_t ubo_vec4_max;
 };
 
 const void *nir_to_rc(struct nir_shader *s,

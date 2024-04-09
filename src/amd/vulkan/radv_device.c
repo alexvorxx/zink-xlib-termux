@@ -439,6 +439,7 @@ static const struct vk_instance_extension_table radv_instance_extensions_support
    .KHR_get_surface_capabilities2 = true,
    .KHR_surface = true,
    .KHR_surface_protected_capabilities = true,
+   .EXT_swapchain_colorspace = true,
 #endif
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
    .KHR_wayland_surface = true,
@@ -629,7 +630,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .AMD_shader_core_properties2 = true,
       /* TODO: Figure out if it's possible to implement it on gfx11. */
       .AMD_shader_explicit_vertex_parameter = device->rad_info.gfx_level < GFX11,
-      .AMD_shader_fragment_mask = device->rad_info.gfx_level < GFX11,
+      .AMD_shader_fragment_mask = device->use_fmask,
       .AMD_shader_image_load_store_lod = true,
       .AMD_shader_trinary_minmax = true,
       .AMD_texture_gather_bias_lod = device->rad_info.gfx_level < GFX11,
@@ -860,6 +861,9 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
 
    device->dcc_msaa_allowed = (device->instance->perftest_flags & RADV_PERFTEST_DCC_MSAA);
 
+   device->use_fmask = device->rad_info.gfx_level < GFX11 &&
+                       !(device->instance->debug_flags & RADV_DEBUG_NO_FMASK);
+
    device->use_ngg = (device->rad_info.gfx_level >= GFX10 &&
                      device->rad_info.family != CHIP_NAVI14 &&
                      !(device->instance->debug_flags & RADV_DEBUG_NO_NGG)) ||
@@ -1044,6 +1048,7 @@ static const struct debug_control radv_debug_options[] = {
    {"prologs", RADV_DEBUG_DUMP_PROLOGS},
    {"nodma", RADV_DEBUG_NO_DMA_BLIT},
    {"epilogs", RADV_DEBUG_DUMP_EPILOGS},
+   {"nofmask", RADV_DEBUG_NO_FMASK},
    {NULL, 0}};
 
 const char *

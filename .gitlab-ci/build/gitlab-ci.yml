@@ -183,6 +183,7 @@ debian-build-testing:
       -D spirv-to-dxil=true
       -D osmesa=true
       -D tools=drm-shim,etnaviv,freedreno,glsl,intel,intel-ui,nir,nouveau,lima,panfrost,asahi
+    LLVM_VERSION: 13
   script:
     - .gitlab-ci/lava/lava-pytest.sh
     - .gitlab-ci/run-shellcheck.sh
@@ -224,7 +225,7 @@ debian-release:
   script:
     - .gitlab-ci/meson/build.sh
 
-alpine-testing:
+alpine-build-testing:
   extends:
     - .meson-build
     - .use-alpine/x86_build
@@ -271,9 +272,6 @@ fedora-release:
     C_ARGS: >
       -Wno-error=array-bounds
       -Wno-error=stringop-overread
-      -Wno-error=uninitialized
-    CPP_ARGS: >
-      -Wno-error=array-bounds
     DRI_LOADERS: >
       -D glx=dri
       -D gbm=enabled
@@ -323,9 +321,6 @@ debian-android:
       -Wno-error=initializer-overrides
       -Wno-error=missing-braces
       -Wno-error=sometimes-uninitialized
-      -Wno-error=unused-function
-    CPP_ARGS: >
-      -Wno-error=deprecated-declarations
     DRI_LOADERS: >
       -D glx=disabled
       -D gbm=disabled
@@ -459,7 +454,6 @@ debian-clang:
       -Wno-error=implicit-const-int-float-conversion
       -Wno-error=overloaded-virtual
       -Wno-error=tautological-constant-out-of-range-compare
-      -Wno-error=unused-const-variable
       -Wno-error=unused-private-field
     DRI_LOADERS: >
       -D glx=dri

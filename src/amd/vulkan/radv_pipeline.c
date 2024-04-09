@@ -1195,3 +1195,12 @@ radv_copy_shader_stage_create_info(struct radv_device *device, uint32_t stageCou
 
    return new_stages;
 }
+
+void
+radv_pipeline_hash(const struct radv_device *device, const struct radv_pipeline_layout *pipeline_layout,
+                   struct mesa_sha1 *ctx)
+{
+   _mesa_sha1_update(ctx, device->cache_hash, sizeof(device->cache_hash));
+   if (pipeline_layout)
+      _mesa_sha1_update(ctx, pipeline_layout->sha1, sizeof(pipeline_layout->sha1));
+}

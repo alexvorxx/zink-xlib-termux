@@ -24,6 +24,7 @@ struct radv_shader_stage;
 struct radv_pipeline_layout;
 struct radv_graphics_state_key;
 struct radv_shader_layout;
+struct mesa_sha1;
 
 enum radv_pipeline_type {
    RADV_PIPELINE_GRAPHICS,
@@ -102,5 +103,8 @@ bool radv_shader_should_clear_lds(const struct radv_device *device, const nir_sh
 VkPipelineShaderStageCreateInfo *radv_copy_shader_stage_create_info(struct radv_device *device, uint32_t stageCount,
                                                                     const VkPipelineShaderStageCreateInfo *pStages,
                                                                     void *mem_ctx);
+
+void radv_pipeline_hash(const struct radv_device *device, const struct radv_pipeline_layout *pipeline_layout,
+                        struct mesa_sha1 *ctx);
 
 #endif /* RADV_PIPELINE_H */

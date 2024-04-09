@@ -14,6 +14,7 @@
 #include "nir_serialize.h"
 #include "radv_debug.h"
 #include "radv_descriptor_set.h"
+#include "radv_pipeline.h"
 #include "radv_pipeline_rt.h"
 #include "radv_shader.h"
 #include "vk_pipeline.h"
@@ -27,11 +28,11 @@ radv_hash_shaders(const struct radv_device *device, unsigned char *hash, const s
    struct mesa_sha1 ctx;
 
    _mesa_sha1_init(&ctx);
-   _mesa_sha1_update(&ctx, device->cache_hash, sizeof(device->cache_hash));
+
+   radv_pipeline_hash(device, layout, &ctx);
+
    if (gfx_state)
       _mesa_sha1_update(&ctx, gfx_state, sizeof(*gfx_state));
-   if (layout)
-      _mesa_sha1_update(&ctx, layout->sha1, sizeof(layout->sha1));
 
    for (unsigned s = 0; s < stage_count; s++) {
       if (!stages[s].entrypoint)
@@ -63,9 +64,7 @@ radv_hash_rt_shaders(const struct radv_device *device, unsigned char *hash, cons
    struct mesa_sha1 ctx;
 
    _mesa_sha1_init(&ctx);
-   _mesa_sha1_update(&ctx, device->cache_hash, sizeof(device->cache_hash));
-   if (layout)
-      _mesa_sha1_update(&ctx, layout->sha1, sizeof(layout->sha1));
+   radv_pipeline_hash(device, layout, &ctx);
 
    for (uint32_t i = 0; i < pCreateInfo->stageCount; i++) {
       _mesa_sha1_update(&ctx, stages[i].sha1, sizeof(stages[i].sha1));

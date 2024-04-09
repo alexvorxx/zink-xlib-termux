@@ -10035,7 +10035,7 @@ visit_phi(isel_context* ctx, nir_phi_instr* instr)
    assert(instr->def.bit_size != 1 || dst.regClass() == ctx->program->lane_mask);
 
    bool logical = !dst.is_linear() || instr->def.divergent;
-   logical |= (ctx->block->kind & block_kind_merge) != 0;
+   logical |= ctx->block->kind & (block_kind_merge | block_kind_loop_header);
    aco_opcode opcode = logical ? aco_opcode::p_phi : aco_opcode::p_linear_phi;
    if (instr->def.bit_size == 1) {
       logical = true;
@@ -10079,17 +10079,6 @@ visit_phi(isel_context* ctx, nir_phi_instr* instr)
    /* handle block_kind_continue_or_break at loop exit blocks */
    while (cur_pred_idx++ < preds.size())
       operands[num_operands++] = Operand(dst.regClass());
-
-   /* If the loop ends with a break, still add a linear continue edge in case
-    * that break is divergent or continue_or_break is used. We'll either remove
-    * this operand later in visit_loop() if it's not necessary or replace the
-    * undef with something correct. */
-   if (!logical && ctx->block->kind & block_kind_loop_header) {
-      nir_loop* loop = nir_cf_node_as_loop(instr->instr.block->cf_node.parent);
-      nir_block* last = nir_loop_last_block(loop);
-      if (last->successors[0] != instr->instr.block)
-         operands[num_operands++] = Operand(RegClass());
-   }
 
    phi.reset(create_instruction(opcode, Format::PSEUDO, num_operands, 1));
    for (unsigned i = 0; i < num_operands; i++)
@@ -10334,52 +10323,6 @@ visit_block(isel_context* ctx, nir_block* block)
       ctx->cf_info.nir_to_aco[block->index] = ctx->block->index;
 }
 
-static Operand
-create_continue_phis(isel_context* ctx, unsigned first, unsigned last,
-                     aco_ptr<Instruction>& header_phi, Operand* vals)
-{
-   vals[0] = Operand(header_phi->definitions[0].getTemp());
-   RegClass rc = vals[0].regClass();
-
-   unsigned loop_nest_depth = ctx->program->blocks[first].loop_nest_depth;
-
-   unsigned next_pred = 1;
-
-   for (unsigned idx = first + 1; idx <= last; idx++) {
-      Block& block = ctx->program->blocks[idx];
-      if (block.loop_nest_depth != loop_nest_depth) {
-         vals[idx - first] = vals[idx - 1 - first];
-         continue;
-      }
-
-      if ((block.kind & block_kind_continue) && block.index != last) {
-         vals[idx - first] = header_phi->operands[next_pred];
-         next_pred++;
-         continue;
-      }
-
-      bool all_same = true;
-      for (unsigned i = 1; all_same && (i < block.linear_preds.size()); i++)
-         all_same = vals[block.linear_preds[i] - first] == vals[block.linear_preds[0] - first];
-
-      Operand val;
-      if (all_same) {
-         val = vals[block.linear_preds[0] - first];
-      } else {
-         aco_ptr<Instruction> phi(create_instruction(aco_opcode::p_linear_phi, Format::PSEUDO,
-                                                     block.linear_preds.size(), 1));
-         for (unsigned i = 0; i < block.linear_preds.size(); i++)
-            phi->operands[i] = vals[block.linear_preds[i] - first];
-         val = Operand(ctx->program->allocateTmp(rc));
-         phi->definitions[0] = Definition(val.getTemp());
-         block.instructions.emplace(block.instructions.begin(), std::move(phi));
-      }
-      vals[idx - first] = val;
-   }
-
-   return vals[last - first];
-}
-
 static void begin_uniform_if_then(isel_context* ctx, if_context* ic, Temp cond);
 static void begin_uniform_if_else(isel_context* ctx, if_context* ic);
 static void end_uniform_if(isel_context* ctx, if_context* ic);
@@ -10392,27 +10335,6 @@ visit_loop(isel_context* ctx, nir_loop* loop)
    begin_loop(ctx, &lc);
 
    visit_cf_list(ctx, &loop->body);
-
-   unsigned loop_header_idx = ctx->cf_info.parent_loop.header_idx;
-
-   /* We add an operand when creating ACO phis for NIR ones in case if it might end with a divergent
-    * break, in which case we need to insert a linear continue edge. Fixup linear phis by either
-    * removing that operand if it's not actually necessary, or give it the correct value. */
-   if (nir_loop_last_block(loop)->successors[0] != nir_loop_first_block(loop)) {
-      unsigned num_vals = ctx->cf_info.has_branch ? 1 : (ctx->block->index - loop_header_idx + 1);
-      Operand* const vals = (Operand*)alloca(num_vals * sizeof(Operand));
-      for (aco_ptr<Instruction>& instr : ctx->program->blocks[loop_header_idx].instructions) {
-         if (instr->opcode == aco_opcode::p_linear_phi) {
-            if (ctx->cf_info.has_branch)
-               instr->operands.pop_back();
-            else
-               instr->operands.back() =
-                  create_continue_phis(ctx, loop_header_idx, ctx->block->index, instr, vals);
-         } else if (!is_phi(instr) && instr->opcode != aco_opcode::p_boolean_phi) {
-            break;
-         }
-      }
-   }
 
    end_loop(ctx, &lc);
 }

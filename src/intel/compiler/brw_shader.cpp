@@ -577,6 +577,14 @@ fs_inst::remove(bblock_t *block, bool defer_later_block_ip_updates)
 {
    assert(inst_is_in_block(block, this) || !"Instruction not in block");
 
+   if (exec_list_is_singular(&block->instructions)) {
+      this->opcode = BRW_OPCODE_NOP;
+      this->resize_sources(0);
+      this->dst = fs_reg();
+      this->size_written = 0;
+      return;
+   }
+
    if (defer_later_block_ip_updates) {
       block->end_ip_delta--;
    } else {

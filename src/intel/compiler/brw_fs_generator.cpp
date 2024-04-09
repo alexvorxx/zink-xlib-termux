@@ -901,6 +901,9 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
       assert(inst->mlen <= BRW_MAX_MSG_LENGTH * reg_unit(devinfo));
 
       switch (inst->opcode) {
+      case BRW_OPCODE_NOP:
+         brw_NOP(p);
+         break;
       case BRW_OPCODE_SYNC:
          assert(src[0].file == BRW_IMMEDIATE_VALUE);
          brw_SYNC(p, tgl_sync_function(src[0].ud));

@@ -71,6 +71,7 @@ static const struct debug_named_value agx_debug_options[] = {
    {"trace",     AGX_DBG_TRACE,    "Trace the command stream"},
    {"deqp",      AGX_DBG_DEQP,     "Hacks for dEQP"},
    {"no16",      AGX_DBG_NO16,     "Disable 16-bit support"},
+   {"perf",      AGX_DBG_PERF,     "Print performance warnings"},
 #ifndef NDEBUG
    {"dirty",     AGX_DBG_DIRTY,    "Disable dirty tracking"},
 #endif
@@ -166,10 +167,13 @@ agx_resource_from_handle(struct pipe_screen *pscreen,
    if (!rsc)
       return NULL;
 
+   rsc->modifier = whandle->modifier == DRM_FORMAT_MOD_INVALID ?
+                   DRM_FORMAT_MOD_LINEAR : whandle->modifier;
+
    /* We need strides to be aligned. ail asserts this, but we want to fail
     * gracefully so the app can handle the error.
     */
-   if ((whandle->stride % 16) != 0)
+   if (rsc->modifier == DRM_FORMAT_MOD_LINEAR && (whandle->stride % 16) != 0)
       return false;
 
    prsc = &rsc->base;
@@ -188,8 +192,6 @@ agx_resource_from_handle(struct pipe_screen *pscreen,
             return NULL;
    }
 
-   rsc->modifier = whandle->modifier == DRM_FORMAT_MOD_INVALID ?
-                   DRM_FORMAT_MOD_LINEAR : whandle->modifier;
    agx_resource_setup(dev, rsc);
 
    if (rsc->layout.tiling == AIL_TILING_LINEAR)
@@ -498,13 +500,16 @@ agx_resource_destroy(struct pipe_screen *screen,
                      struct pipe_resource *prsrc)
 {
    struct agx_resource *rsrc = (struct agx_resource *)prsrc;
+   struct agx_screen *agx_screen = (struct agx_screen*)screen;
 
    if (rsrc->dt) {
       /* display target */
-      struct agx_screen *agx_screen = (struct agx_screen*)screen;
       struct sw_winsys *winsys = agx_screen->winsys;
       winsys->displaytarget_destroy(winsys, rsrc->dt);
    }
+
+   if (rsrc->scanout)
+      renderonly_scanout_destroy(rsrc->scanout, agx_screen->dev.ro);
 
    agx_bo_unreference(rsrc->bo);
    FREE(rsrc);
@@ -743,20 +748,24 @@ agx_flush_batch(struct agx_context *ctx, struct agx_batch *batch)
                                   agx_pool_upload(&batch->pool, ctx->render_target[0], sizeof(ctx->render_target)));
    }
 
-   /* Pipelines must 64 aligned */
    for (unsigned i = 0; i < batch->nr_cbufs; ++i) {
-      struct agx_resource *rt = agx_resource(batch->cbufs[i]->texture);
-      BITSET_SET(rt->data_valid, 0);
+      struct pipe_surface *surf = batch->cbufs[i];
+
+      if (surf && surf->texture) {
+         struct agx_resource *rt = agx_resource(surf->texture);
+         BITSET_SET(rt->data_valid, surf->u.tex.level);
+      }
    }
 
    struct agx_resource *zbuf = batch->zsbuf ?
       agx_resource(batch->zsbuf->texture) : NULL;
 
    if (zbuf) {
-      BITSET_SET(zbuf->data_valid, 0);
+      unsigned level = ctx->batch->zsbuf->u.tex.level;
+      BITSET_SET(zbuf->data_valid, level);
 
       if (zbuf->separate_stencil)
-         BITSET_SET(zbuf->separate_stencil->data_valid, 0);
+         BITSET_SET(zbuf->separate_stencil->data_valid, level);
    }
 
    /* BO list for a given batch consists of:
@@ -1318,22 +1327,29 @@ agx_is_format_supported(struct pipe_screen* pscreen,
       return false;
 
    if (usage & (PIPE_BIND_RENDER_TARGET | PIPE_BIND_SAMPLER_VIEW)) {
-      struct agx_pixel_format_entry ent = agx_pixel_format[format];
+      enum pipe_format tex_format = format;
 
-      if (!agx_is_valid_pixel_format(format))
+      /* Mimic the fixup done in create_sampler_view and u_transfer_helper so we
+       * advertise GL_OES_texture_stencil8. Alternatively, we could make mesa/st
+       * less stupid?
+       */
+      if (tex_format == PIPE_FORMAT_X24S8_UINT)
+         tex_format = PIPE_FORMAT_S8_UINT;
+
+      struct agx_pixel_format_entry ent = agx_pixel_format[tex_format];
+
+      if (!agx_is_valid_pixel_format(tex_format))
          return false;
 
       if ((usage & PIPE_BIND_RENDER_TARGET) && !ent.renderable)
+         return false;
+      if ((usage & PIPE_BIND_RENDER_TARGET) && !util_format_is_unorm8(util_format_description(format)))
          return false;
    }
 
    /* TODO: formats */
    if (usage & PIPE_BIND_VERTEX_BUFFER) {
       switch (format) {
-      case PIPE_FORMAT_R16_FLOAT:
-      case PIPE_FORMAT_R16G16_FLOAT:
-      case PIPE_FORMAT_R16G16B16_FLOAT:
-      case PIPE_FORMAT_R16G16B16A16_FLOAT:
       case PIPE_FORMAT_R32_FLOAT:
       case PIPE_FORMAT_R32G32_FLOAT:
       case PIPE_FORMAT_R32G32B32_FLOAT:

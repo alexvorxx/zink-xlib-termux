@@ -109,19 +109,20 @@ const struct agx_pixel_format_entry agx_pixel_format[PIPE_FORMAT_COUNT] = {
    AGX_FMT(Z16_UNORM,               R16,           UNORM,  F, _),
    AGX_FMT(Z32_FLOAT,               R32,           FLOAT,  F, _),
    AGX_FMT(Z32_FLOAT_S8X24_UINT,    R32,           FLOAT,  F, _),
+   AGX_FMT(S8_UINT,                 R8,            UINT,   F, _),
 
-   /* These must be lowered by u_transfer_helper to Z32F */
+   /* These must be lowered by u_transfer_helper to Z32F + S8 */
    AGX_FMT(Z24X8_UNORM,             R32,           FLOAT,  F, _),
    AGX_FMT(Z24_UNORM_S8_UINT,       R32,           FLOAT,  F, _),
 
    AGX_FMT(R10G10B10A2_UNORM,       R10G10B10A2,   UNORM,  T, RGB10A2),
    AGX_FMT(B10G10R10A2_UNORM,       R10G10B10A2,   UNORM,  T, RGB10A2),
 
-   AGX_FMT(R10G10B10A2_UINT,        R10G10B10A2,   UINT,   T, _),
-   AGX_FMT(B10G10R10A2_UINT,        R10G10B10A2,   UINT,   T, _),
+   AGX_FMT(R10G10B10A2_UINT,        R10G10B10A2,   UINT,   T, I16),
+   AGX_FMT(B10G10R10A2_UINT,        R10G10B10A2,   UINT,   T, I16),
 
-   AGX_FMT(R10G10B10A2_SINT,        R10G10B10A2,   SINT,   T, _),
-   AGX_FMT(B10G10R10A2_SINT,        R10G10B10A2,   SINT,   T, _),
+   AGX_FMT(R10G10B10A2_SINT,        R10G10B10A2,   SINT,   T, I16),
+   AGX_FMT(B10G10R10A2_SINT,        R10G10B10A2,   SINT,   T, I16),
 
    AGX_FMT(R11G11B10_FLOAT,         R11G11B10,     FLOAT,  T, RG11B10F),
    AGX_FMT(R9G9B9E5_FLOAT,          R9G9B9E5,      FLOAT,  F, RGB9E5),

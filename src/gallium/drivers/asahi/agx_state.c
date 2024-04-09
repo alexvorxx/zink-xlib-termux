@@ -46,6 +46,7 @@
 #include "asahi/lib/agx_pack.h"
 #include "asahi/lib/agx_formats.h"
 #include "asahi/lib/agx_ppp.h"
+#include "asahi/lib/agx_usc.h"
 
 static struct pipe_stream_output_target *
 agx_create_stream_output_target(struct pipe_context *pctx,
@@ -128,14 +129,15 @@ agx_create_blend_state(struct pipe_context *ctx,
    if (state->logicop_enable) {
       so->logicop_enable = true;
       so->logicop_func = state->logicop_func;
-      return so;
    }
 
    for (unsigned i = 0; i < PIPE_MAX_COLOR_BUFS; ++i) {
       unsigned rti = state->independent_blend_enable ? i : 0;
       struct pipe_rt_blend_state rt = state->rt[rti];
 
-      if (!rt.blend_enable) {
+      if (state->logicop_enable) {
+         /* No blending, but we get the colour mask below */
+      } else if (!rt.blend_enable) {
          static const nir_lower_blend_channel replace = {
             .func = BLEND_FUNC_ADD,
             .src_factor = BLEND_FACTOR_ZERO,
@@ -159,7 +161,7 @@ agx_create_blend_state(struct pipe_context *ctx,
          so->rt[i].alpha.dst_factor = util_blend_factor_to_shader(rt.alpha_dst_factor);
          so->rt[i].alpha.invert_dst_factor = util_blend_factor_is_inverted(rt.alpha_dst_factor);
 
-	 so->blend_enable = true;
+         so->blend_enable = true;
       }
 
       so->rt[i].colormask = rt.colormask;
@@ -441,17 +443,46 @@ agx_translate_texture_dimension(enum pipe_texture_target dim)
 
 static struct pipe_sampler_view *
 agx_create_sampler_view(struct pipe_context *pctx,
-                        struct pipe_resource *texture,
+                        struct pipe_resource *orig_texture,
                         const struct pipe_sampler_view *state)
 {
-   struct agx_resource *rsrc = agx_resource(texture);
+   struct agx_resource *rsrc = agx_resource(orig_texture);
    struct agx_sampler_view *so = CALLOC_STRUCT(agx_sampler_view);
 
    if (!so)
       return NULL;
 
+   struct pipe_resource *texture = orig_texture;
+   enum pipe_format format = state->format;
+
+   /* Use stencil attachment, separate stencil always used on G13 */
+   if (rsrc->separate_stencil) {
+      rsrc = rsrc->separate_stencil;
+      texture = &rsrc->base;
+      format = texture->format;
+   }
+
+   /* Save off the BO that we actually use, with the stencil fixed up */
+   so->bo = rsrc->bo;
+
    const struct util_format_description *desc =
-      util_format_description(state->format);
+      util_format_description(format);
+
+   assert(agx_is_valid_pixel_format(format));
+
+   uint8_t format_swizzle[4] = {
+      desc->swizzle[0], desc->swizzle[1], desc->swizzle[2], desc->swizzle[3],
+   };
+
+   if (util_format_has_stencil(desc)) {
+      assert(!util_format_has_depth(desc) && "separate stencil always used");
+
+      /* Broadcast stencil */
+      format_swizzle[0] = 0;
+      format_swizzle[1] = 0;
+      format_swizzle[2] = 0;
+      format_swizzle[3] = 0;
+   }
 
    /* We only have a single swizzle for the user swizzle and the format fixup,
     * so compose them now. */
@@ -461,7 +492,7 @@ agx_create_sampler_view(struct pipe_context *pctx,
       state->swizzle_b, state->swizzle_a
    };
 
-   util_format_compose_swizzles(desc->swizzle, view_swizzle, out_swizzle);
+   util_format_compose_swizzles(format_swizzle, view_swizzle, out_swizzle);
 
    assert(state->u.tex.first_layer == 0);
 
@@ -473,8 +504,8 @@ agx_create_sampler_view(struct pipe_context *pctx,
    agx_pack(&so->desc, TEXTURE, cfg) {
       cfg.dimension = agx_translate_texture_dimension(state->target);
       cfg.layout = agx_translate_layout(rsrc->layout.tiling);
-      cfg.channels = agx_pixel_format[state->format].channels;
-      cfg.type = agx_pixel_format[state->format].type;
+      cfg.channels = agx_pixel_format[format].channels;
+      cfg.type = agx_pixel_format[format].type;
       cfg.swizzle_r = agx_channel_from_pipe(out_swizzle[0]);
       cfg.swizzle_g = agx_channel_from_pipe(out_swizzle[1]);
       cfg.swizzle_b = agx_channel_from_pipe(out_swizzle[2]);
@@ -507,10 +538,9 @@ agx_create_sampler_view(struct pipe_context *pctx,
       }
    }
 
-   /* Initialize base object */
    so->base = *state;
    so->base.texture = NULL;
-   pipe_resource_reference(&so->base.texture, texture);
+   pipe_resource_reference(&so->base.texture, orig_texture);
    pipe_reference_init(&so->base.reference, 1);
    so->base.context = pctx;
    return &so->base;
@@ -758,15 +788,19 @@ agx_set_framebuffer_state(struct pipe_context *pctx,
    ctx->batch->width = state->width;
    ctx->batch->height = state->height;
    ctx->batch->nr_cbufs = state->nr_cbufs;
-   ctx->batch->cbufs[0] = state->cbufs[0];
    ctx->batch->zsbuf = state->zsbuf;
    ctx->dirty = ~0;
 
    if (state->zsbuf)
       agx_batch_writes(ctx->batch, agx_resource(state->zsbuf->texture));
 
+   /* Clear out stale pointers */
+   memset(ctx->batch->cbufs, 0, sizeof(ctx->batch->cbufs));
+
    for (unsigned i = 0; i < state->nr_cbufs; ++i) {
       struct pipe_surface *surf = state->cbufs[i];
+      ctx->batch->cbufs[i] = surf;
+
       struct agx_resource *tex = agx_resource(surf->texture);
       const struct util_format_description *desc =
          util_format_description(surf->format);
@@ -798,9 +832,7 @@ agx_set_framebuffer_state(struct pipe_context *pctx,
          cfg.height = state->height;
          cfg.level = surf->u.tex.level;
          cfg.buffer = agx_map_texture_gpu(tex, layer);
-
-         if (tex->mipmapped)
-            cfg.unk_55 = 0x8;
+         cfg.unk_mipmapped = tex->mipmapped;
 
          if (tex->layout.tiling == AIL_TILING_LINEAR) {
             cfg.stride = ail_get_linear_stride_B(&tex->layout, level) - 4;
@@ -1078,6 +1110,7 @@ agx_compile_variant(struct agx_device *dev,
       }
    }
 
+   agx_preprocess_nir(nir);
    agx_compile_shader_nir(nir, &key->base, debug, &binary, &compiled->info);
 
    if (binary.size) {
@@ -1253,87 +1286,6 @@ agx_delete_shader_state(struct pipe_context *ctx,
    struct agx_uncompiled_shader *so = cso;
    _mesa_hash_table_destroy(so->variants, agx_delete_compiled_shader);
    free(so);
-}
-
-struct agx_usc_builder {
-   struct agx_ptr T;
-   uint8_t *head;
-
-#ifndef NDEBUG
-   size_t size;
-#endif
-};
-
-static struct agx_usc_builder
-agx_alloc_usc_control(struct agx_pool *pool,
-                      unsigned num_reg_bindings)
-{
-   STATIC_ASSERT(AGX_USC_UNIFORM_HIGH_LENGTH == AGX_USC_UNIFORM_LENGTH);
-   STATIC_ASSERT(AGX_USC_TEXTURE_LENGTH == AGX_USC_UNIFORM_LENGTH);
-   STATIC_ASSERT(AGX_USC_SAMPLER_LENGTH == AGX_USC_UNIFORM_LENGTH);
-
-   size_t size = AGX_USC_UNIFORM_LENGTH * num_reg_bindings;
-
-   size += AGX_USC_SHARED_LENGTH;
-   size += AGX_USC_SHADER_LENGTH;
-   size += AGX_USC_REGISTERS_LENGTH;
-   size += MAX2(AGX_USC_NO_PRESHADER_LENGTH, AGX_USC_PRESHADER_LENGTH);
-   size += AGX_USC_FRAGMENT_PROPERTIES_LENGTH;
-
-   struct agx_usc_builder b = {
-      .T = agx_pool_alloc_aligned(pool, size, 64),
-
-#ifndef NDEBUG
-      .size = size,
-#endif
-   };
-
-   b.head = (uint8_t *) b.T.cpu;
-
-   return b;
-}
-
-static bool
-agx_usc_builder_validate(struct agx_usc_builder *b, size_t size)
-{
-#ifndef NDEBUG
-   assert(((b->head - (uint8_t *) b->T.cpu) + size) <= b->size);
-#endif
-
-   return true;
-}
-
-#define agx_usc_pack(b, struct_name, template) \
-   for (bool it = agx_usc_builder_validate((b), AGX_USC_##struct_name##_LENGTH); \
-        it; it = false, (b)->head += AGX_USC_##struct_name##_LENGTH) \
-      agx_pack((b)->head, USC_##struct_name, template)
-
-static void
-agx_usc_uniform(struct agx_usc_builder *b, unsigned start_halfs,
-                unsigned size_halfs, uint64_t buffer)
-{
-   assert((start_halfs + size_halfs) < (1 << 9) && "uniform file overflow");
-
-   if (start_halfs & BITFIELD_BIT(8)) {
-      agx_usc_pack(b, UNIFORM_HIGH, cfg) {
-         cfg.start_halfs = start_halfs & BITFIELD_MASK(8);
-         cfg.size_halfs = size_halfs;
-         cfg.buffer = buffer;
-      }
-   } else {
-      agx_usc_pack(b, UNIFORM, cfg) {
-         cfg.start_halfs = start_halfs;
-         cfg.size_halfs = size_halfs;
-         cfg.buffer = buffer;
-      }
-   }
-}
-
-static uint32_t
-agx_usc_fini(struct agx_usc_builder *b)
-{
-   assert(b->T.gpu <= (1ull << 32) && "pipelines must be in low memory");
-   return b->T.gpu;
 }
 
 static uint32_t
@@ -1625,6 +1577,19 @@ agx_point_object_type(struct agx_rasterizer *rast)
           AGX_OBJECT_TYPE_POINT_SPRITE_UV10;
 }
 
+static enum agx_pass_type
+agx_pass_type_for_shader(struct agx_shader_info *info)
+{
+   if (info->reads_tib && info->writes_sample_mask)
+      return AGX_PASS_TYPE_TRANSLUCENT_PUNCH_THROUGH;
+   else if (info->reads_tib)
+      return AGX_PASS_TYPE_TRANSLUCENT;
+   else if (info->writes_sample_mask)
+      return AGX_PASS_TYPE_PUNCH_THROUGH;
+   else
+      return AGX_PASS_TYPE_OPAQUE;
+}
+
 #define MAX_PPP_UPDATES 2
 
 static uint8_t *
@@ -1754,8 +1719,7 @@ agx_encode_state(struct agx_context *ctx, uint8_t *out,
       agx_ppp_push(&ppp, FRAGMENT_CONTROL_2, cfg) {
          cfg.lines_or_points = (is_lines || is_points);
          cfg.no_colour_output = ctx->fs->info.no_colour_output;
-         cfg.reads_tilebuffer = ctx->fs->info.reads_tib;
-         cfg.sample_mask_from_shader = ctx->fs->info.writes_sample_mask;
+         cfg.pass_type = agx_pass_type_for_shader(&ctx->fs->info);
       }
    }
 

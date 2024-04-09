@@ -171,41 +171,6 @@
     <field name="Base coefficient register" size="8" start="16" type="uint"/>
   </struct>
 
-  <struct name="Render Target" size="24">
-    <field name="Unknown" size="4" start="0" type="hex" default="0x2"/>
-    <field name="Layout" size="2" start="4" type="Layout"/>
-    <field name="Channels" size="7" start="6" type="Channels"/>
-    <field name="Type" size="3" start="13" type="Texture Type"/>
-    <field name="Swizzle R" size="2" start="16" type="Channel"/>
-    <field name="Swizzle G" size="2" start="18" type="Channel"/>
-    <field name="Swizzle B" size="2" start="20" type="Channel"/>
-    <field name="Swizzle A" size="2" start="22" type="Channel"/>
-    <field name="Width" size="14" start="24" type="uint" modifier="minus(1)"/>
-    <field name="Height" size="14" start="38" type="uint" modifier="minus(1)"/>
-    <field name="Unk 52" size="1" start="52" type="bool"/>
-    <field name="Rotate 90" size="1" start="53" type="bool" default="false"/>
-    <field name="Flip vertical" size="1" start="54" type="bool" default="false"/>
-    <!-- not 1c0, tried setting . setting 0x20/0x10/0x8 breaks render. not
-    0x4/0x2. 0x1 distorts in a funny way, renders upside-down with jitter
-    around the edges (like it's doing a 2x2 tiling or something).
-
-    When enabling mipmapping, Metal sets 0x8 and sets stride to 0x100009 -->
-    <field name="Unk 55" size="9" start="55" type="hex" default="0x00"/>
-    <field name="Buffer" size="36" start="64" type="address" modifier="shr(4)"/>
-    <!-- N.b. sRGB is not specified here -->
-    <field name="Level" size="4" start="100" type="uint"/>
-
-    <!-- If layout is not linear -->
-    <field name="Levels" size="6" start="104" type="uint" modifier="minus(1)"/>
-    <field name="Unk tiled" size="1" start="124" type="bool"/>
-
-    <!-- If layout is linear. Off by 4? -->
-    <field name="Stride" size="24" start="104" type="hex"/>
-
-    <!-- If layout is compressed -->
-    <field name="Acceleration buffer" size="64" start="128" type="address"/>
-  </struct>
-
   <enum name="Texture dimension">
     <value name="1D" value="0"/>
     <value name="1D Array" value="1"/>
@@ -222,6 +187,38 @@
     <value name="2" value="0"/>
     <value name="4" value="1"/>
   </enum>
+
+  <struct name="Render Target" size="24">
+    <!-- 2D or 2D Multisampled, no layering -->
+    <field name="Dimension" size="4" start="0" type="Texture dimension" default="2D"/>
+    <field name="Layout" size="2" start="4" type="Layout"/>
+    <field name="Channels" size="7" start="6" type="Channels"/>
+    <field name="Type" size="3" start="13" type="Texture Type"/>
+    <field name="Swizzle R" size="2" start="16" type="Channel"/>
+    <field name="Swizzle G" size="2" start="18" type="Channel"/>
+    <field name="Swizzle B" size="2" start="20" type="Channel"/>
+    <field name="Swizzle A" size="2" start="22" type="Channel"/>
+    <field name="Width" size="14" start="24" type="uint" modifier="minus(1)"/>
+    <field name="Height" size="14" start="38" type="uint" modifier="minus(1)"/>
+    <field name="Unk 52" size="1" start="52" type="bool"/>
+    <field name="Rotate 90" size="1" start="53" type="bool" default="false"/>
+    <field name="Flip vertical" size="1" start="54" type="bool" default="false"/>
+    <field name="Samples" size="1" start="56" type="Sample Count"/>
+    <field name="Unk mipmapped" size="1" start="58" type="bool"/>
+    <field name="Buffer" size="36" start="64" type="address" modifier="shr(4)"/>
+    <!-- N.b. sRGB is not specified here -->
+    <field name="Level" size="4" start="100" type="uint"/>
+
+    <!-- If layout is not linear -->
+    <field name="Levels" size="6" start="104" type="uint" modifier="minus(1)"/>
+    <field name="Unk tiled" size="1" start="124" type="bool"/>
+
+    <!-- If layout is linear. Off by 4? -->
+    <field name="Stride" size="24" start="104" type="hex"/>
+
+    <!-- If layout is compressed -->
+    <field name="Acceleration buffer" size="64" start="128" type="address"/>
+  </struct>
 
   <struct name="Texture" size="24">
     <field name="Dimension" size="4" start="0" type="Texture dimension" default="2D"/>
@@ -384,13 +381,22 @@
     <field name="Unk fill lines" size="1" start="26" type="hex" default="0x0"/> <!-- set when drawing LINES -->
   </struct>
 
+  <enum name="Pass type">
+    <value name="Opaque" value="0"/>
+    <value name="Translucent" value="1"/>
+    <value name="Punch through" value="2"/>
+    <value name="Translucent punch through" value="3"/>
+    <!-- See PASSTYPE in rogue_ppp.xml if more values are observed on AGX...
+         Translucent punch through seems notably different though? -->
+  </enum>
+
   <struct name="Fragment control 2" size="4">
     <field name="Unk 1" size="1" start="9" type="bool" default="true"/>
     <!-- Or discards? -->
     <field name="No colour output" size="1" start="21" type="bool"/>
+    <field name="Sample mask after depth/stencil" size="1" start="25" type="bool"/>
     <field name="Lines or points" size="1" start="26" type="bool"/>
-    <field name="Reads tilebuffer" size="1" start="29" type="bool"/>
-    <field name="Sample mask from shader" size="1" start="30" type="bool"/>
+    <field name="Pass type" size="3" start="29" type="Pass type"/>
   </struct>
 
   <struct name="Fragment occlusion query" size="4">
@@ -824,6 +830,7 @@
     <field name="Deflake 3" start="94:0" size="64" type="address"/>
     <field name="Unk 112" start="96:0" size="32" default="0x1" type="hex"/>
     <field name="Unk 114" start="98:0" size="32" default="0x1c" type="hex"/>
+    <field name="Memoryless render targets used" start="100:0" size="1" type="bool"/>
     <field name="OpenGL depth clipping" start="100:24" size="1" type="bool"/>
     <field name="Unk 118" start="102:0" size="32" default="0xffffffff" type="hex"/>
     <field name="Unk 119" start="103:0" size="32" default="0xffffffff" type="hex"/>
@@ -884,6 +891,7 @@
     <field name="Stencil buffer 3" start="344:0" size="64" type="address"/>
     <field name="Stencil acceleration buffer 3" start="346:0" size="64" type="address"/>
     <!-- maybe only set when doing a depth clear? -->
+    <!-- 0x1000000 bit set with memoryless render targets? -->
     <field name="Unk 352" start="352:0" size="32" default="0x1" type="hex"/>
     <field name="Unk 360" start="360:0" size="32" default="0x1c" type="hex"/>
     <field name="Encoder ID" start="362:0" size="32" type="hex"/>

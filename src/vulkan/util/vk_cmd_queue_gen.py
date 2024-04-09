@@ -51,14 +51,16 @@ MANUAL_COMMANDS = [
 
     # Incomplete struct copies which lead to an use after free.
     'CmdBuildAccelerationStructuresKHR',
+
+    # pData's size cannot be calculated from the xml
+    'CmdPushDescriptorSetWithTemplate2KHR',
+    'CmdPushDescriptorSetWithTemplateKHR',
 ]
 
 NO_ENQUEUE_COMMANDS = [
     # pData's size cannot be calculated from the xml
     'CmdPushConstants2KHR',
     'CmdPushDescriptorSet2KHR',
-    'CmdPushDescriptorSetWithTemplate2KHR',
-    'CmdPushDescriptorSetWithTemplateKHR',
 
     # These don't return void
     'CmdSetPerformanceMarkerINTEL',

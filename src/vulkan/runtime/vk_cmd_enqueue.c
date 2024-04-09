@@ -25,9 +25,248 @@
 #include "vk_alloc.h"
 #include "vk_cmd_enqueue_entrypoints.h"
 #include "vk_command_buffer.h"
+#include "vk_descriptor_update_template.h"
 #include "vk_device.h"
 #include "vk_pipeline_layout.h"
 #include "vk_util.h"
+
+static inline unsigned
+vk_descriptor_type_update_size(VkDescriptorType type)
+{
+   switch (type) {
+   case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK:
+      unreachable("handled in caller");
+
+   case VK_DESCRIPTOR_TYPE_SAMPLER:
+   case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+   case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+   case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+   case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+      return sizeof(VkDescriptorImageInfo);
+
+   case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+   case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
+      return sizeof(VkBufferView);
+
+   case VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR:
+      return sizeof(VkAccelerationStructureKHR);
+
+   case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+   case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+   case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+   case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+   default:
+      return sizeof(VkDescriptorBufferInfo);
+   }
+}
+
+static void
+vk_cmd_push_descriptor_set_with_template2_khr_free(
+   struct vk_cmd_queue *queue, struct vk_cmd_queue_entry *cmd)
+{
+   struct vk_command_buffer *cmd_buffer =
+      container_of(queue, struct vk_command_buffer, cmd_queue);
+   struct vk_device *device = cmd_buffer->base.device;
+
+   struct vk_cmd_push_descriptor_set_with_template2_khr *info_ =
+      &cmd->u.push_descriptor_set_with_template2_khr;
+
+   VkPushDescriptorSetWithTemplateInfoKHR *info =
+      info_->push_descriptor_set_with_template_info;
+
+   VK_FROM_HANDLE(vk_descriptor_update_template, templ,
+                  info->descriptorUpdateTemplate);
+   VK_FROM_HANDLE(vk_pipeline_layout, layout, info->layout);
+
+   vk_descriptor_update_template_unref(device, templ);
+   vk_pipeline_layout_unref(device, layout);
+
+   if (info->pNext) {
+      VkPipelineLayoutCreateInfo *pnext = (void *)info->pNext;
+
+      vk_free(queue->alloc, (void *)pnext->pSetLayouts);
+      vk_free(queue->alloc, (void *)pnext->pPushConstantRanges);
+      vk_free(queue->alloc, pnext);
+   }
+}
+
+VKAPI_ATTR void VKAPI_CALL
+vk_cmd_enqueue_CmdPushDescriptorSetWithTemplate2KHR(
+   VkCommandBuffer commandBuffer,
+   const VkPushDescriptorSetWithTemplateInfoKHR *pPushDescriptorSetWithTemplateInfo)
+{
+   VK_FROM_HANDLE(vk_command_buffer, cmd_buffer, commandBuffer);
+
+   struct vk_cmd_queue *queue = &cmd_buffer->cmd_queue;
+
+   struct vk_cmd_queue_entry *cmd =
+      vk_zalloc(cmd_buffer->cmd_queue.alloc, sizeof(*cmd), 8,
+                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   if (!cmd)
+      return;
+
+   cmd->type = VK_CMD_PUSH_DESCRIPTOR_SET_WITH_TEMPLATE2_KHR;
+   cmd->driver_free_cb = vk_cmd_push_descriptor_set_with_template2_khr_free;
+   list_addtail(&cmd->cmd_link, &cmd_buffer->cmd_queue.cmds);
+
+   VkPushDescriptorSetWithTemplateInfoKHR *info =
+      vk_zalloc(cmd_buffer->cmd_queue.alloc,
+                sizeof(VkPushDescriptorSetWithTemplateInfoKHR), 8,
+                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+
+   cmd->u.push_descriptor_set_with_template2_khr
+      .push_descriptor_set_with_template_info = info;
+
+   /* From the application's perspective, the vk_cmd_queue_entry can outlive the
+    * template. Therefore, we take a reference here and free it when the
+    * vk_cmd_queue_entry is freed, tying the lifetimes.
+    */
+   info->descriptorUpdateTemplate =
+      pPushDescriptorSetWithTemplateInfo->descriptorUpdateTemplate;
+
+   VK_FROM_HANDLE(vk_descriptor_update_template, templ,
+                  info->descriptorUpdateTemplate);
+   vk_descriptor_update_template_ref(templ);
+
+   info->set = pPushDescriptorSetWithTemplateInfo->set;
+   info->sType = pPushDescriptorSetWithTemplateInfo->sType;
+
+   /* Similar concerns for the pipeline layout */
+   info->layout = pPushDescriptorSetWithTemplateInfo->layout;
+
+   VK_FROM_HANDLE(vk_pipeline_layout, layout, info->layout);
+   vk_pipeline_layout_ref(layout);
+
+   /* What makes this tricky is that the size of pData is implicit. We determine
+    * it by walking the template and determining the ranges read by the driver.
+    */
+   size_t data_size = 0;
+   for (unsigned i = 0; i < templ->entry_count; ++i) {
+      struct vk_descriptor_template_entry entry = templ->entries[i];
+      unsigned end = 0;
+
+      /* From the spec:
+       *
+       *    If descriptorType is VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK then
+       *    the value of stride is ignored and the stride is assumed to be 1,
+       *    i.e. the descriptor update information for them is always specified
+       *    as a contiguous range.
+       */
+      if (entry.type == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK) {
+         end = entry.offset + entry.array_count;
+      } else if (entry.array_count > 0) {
+         end = entry.offset + ((entry.array_count - 1) * entry.stride) +
+               vk_descriptor_type_update_size(entry.type);
+      }
+
+      data_size = MAX2(data_size, end);
+   }
+
+   uint8_t *out_pData = vk_zalloc(cmd_buffer->cmd_queue.alloc, data_size, 8,
+                                  VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   const uint8_t *pData = pPushDescriptorSetWithTemplateInfo->pData;
+
+   /* Now walk the template again, copying what we actually need */
+   for (unsigned i = 0; i < templ->entry_count; ++i) {
+      struct vk_descriptor_template_entry entry = templ->entries[i];
+      unsigned size = 0;
+
+      if (entry.type == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK) {
+         size = entry.array_count;
+      } else if (entry.array_count > 0) {
+         size = ((entry.array_count - 1) * entry.stride) +
+                vk_descriptor_type_update_size(entry.type);
+      }
+
+      memcpy(out_pData + entry.offset, pData + entry.offset, size);
+   }
+
+   info->pData = out_pData;
+
+   const VkBaseInStructure *pnext = pPushDescriptorSetWithTemplateInfo->pNext;
+
+   if (pnext) {
+      switch ((int32_t)pnext->sType) {
+      /* TODO: The set layouts below would need to be reference counted. Punting
+       * until there's a cmd_enqueue-based driver implementing
+       * VK_NV_per_stage_descriptor_set.
+       */
+#if 0
+      case VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO:
+         info->pNext =
+            vk_zalloc(queue->alloc, sizeof(VkPipelineLayoutCreateInfo), 8,
+                      VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+         if (info->pNext == NULL)
+            goto err;
+
+         memcpy((void *)info->pNext, pnext,
+                sizeof(VkPipelineLayoutCreateInfo));
+
+         VkPipelineLayoutCreateInfo *tmp_dst2 = (void *)info->pNext;
+         VkPipelineLayoutCreateInfo *tmp_src2 = (void *)pnext;
+
+         if (tmp_src2->pSetLayouts) {
+            tmp_dst2->pSetLayouts = vk_zalloc(
+               queue->alloc,
+               sizeof(*tmp_dst2->pSetLayouts) * tmp_dst2->setLayoutCount, 8,
+               VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+            if (tmp_dst2->pSetLayouts == NULL)
+               goto err;
+
+            memcpy(
+               (void *)tmp_dst2->pSetLayouts, tmp_src2->pSetLayouts,
+               sizeof(*tmp_dst2->pSetLayouts) * tmp_dst2->setLayoutCount);
+         }
+
+         if (tmp_src2->pPushConstantRanges) {
+            tmp_dst2->pPushConstantRanges =
+               vk_zalloc(queue->alloc,
+                         sizeof(*tmp_dst2->pPushConstantRanges) *
+                            tmp_dst2->pushConstantRangeCount,
+                         8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+            if (tmp_dst2->pPushConstantRanges == NULL)
+               goto err;
+
+            memcpy((void *)tmp_dst2->pPushConstantRanges,
+                   tmp_src2->pPushConstantRanges,
+                   sizeof(*tmp_dst2->pPushConstantRanges) *
+                      tmp_dst2->pushConstantRangeCount);
+         }
+         break;
+#endif
+
+      default:
+         goto err;
+      }
+   }
+
+   return;
+
+err:
+   if (cmd)
+      vk_cmd_push_descriptor_set_with_template2_khr_free(queue, cmd);
+
+   vk_command_buffer_set_error(cmd_buffer, VK_ERROR_OUT_OF_HOST_MEMORY);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+vk_cmd_enqueue_CmdPushDescriptorSetWithTemplateKHR(
+    VkCommandBuffer                             commandBuffer,
+    VkDescriptorUpdateTemplate                  descriptorUpdateTemplate,
+    VkPipelineLayout                            layout,
+    uint32_t                                    set,
+    const void*                                 pData)
+{
+   const VkPushDescriptorSetWithTemplateInfoKHR two = {
+      .sType = VK_STRUCTURE_TYPE_PUSH_DESCRIPTOR_SET_WITH_TEMPLATE_INFO_KHR,
+      .descriptorUpdateTemplate = descriptorUpdateTemplate,
+      .layout = layout,
+      .set = set,
+      .pData = pData,
+   };
+
+   vk_cmd_enqueue_CmdPushDescriptorSetWithTemplate2KHR(commandBuffer, &two);
+}
 
 VKAPI_ATTR void VKAPI_CALL
 vk_cmd_enqueue_CmdDrawMultiEXT(VkCommandBuffer commandBuffer,

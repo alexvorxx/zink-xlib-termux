@@ -1,2 +1,1 @@
-# Placeholder file, will be filled with surpressions for TSAN 
-
+# Placeholder file, will be filled with surpressions for TSAN

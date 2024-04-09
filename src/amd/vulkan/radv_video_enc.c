@@ -923,7 +923,7 @@ radv_enc_slice_header_hevc(struct radv_cmd_buffer *cmd_buffer, const VkVideoEnco
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
-   unsigned nal_unit_type = vk_video_get_h265_nal_unit(pic->pic_type, pic->flags.IrapPicFlag);
+   unsigned nal_unit_type = vk_video_get_h265_nal_unit(pic);
 
    ENC_BEGIN;
    radeon_emit(cs, pdev->vcn_enc_cmds.slice_header);

@@ -1283,30 +1283,15 @@ ntr_emit_alu(struct ntr_compile *c, nir_alu_instr *instr)
          break;
 
       case nir_op_fcsel:
-         /* If CMP isn't supported, then the flags that enable NIR to generate
-          * this opcode should also not be set.
-          */
-         assert(!c->options->lower_cmp);
-
          /* Implement this as CMP(-abs(src0), src1, src2). */
          ntr_CMP(c, dst, ureg_negate(ureg_abs(src[0])), src[1], src[2]);
          break;
 
       case nir_op_fcsel_gt:
-         /* If CMP isn't supported, then the flags that enable NIR to generate
-          * these opcodes should also not be set.
-          */
-         assert(!c->options->lower_cmp);
-
          ntr_CMP(c, dst, ureg_negate(src[0]), src[1], src[2]);
          break;
 
       case nir_op_fcsel_ge:
-         /* If CMP isn't supported, then the flags that enable NIR to generate
-          * these opcodes should also not be set.
-          */
-         assert(!c->options->lower_cmp);
-
          /* Implement this as if !(src0 < 0.0) was identical to src0 >= 0.0. */
          ntr_CMP(c, dst, src[0], src[2], src[1]);
          break;
@@ -2402,7 +2387,7 @@ const void *nir_to_rc_options(struct nir_shader *s,
    NIR_PASS_V(s, nir_copy_prop);
    NIR_PASS_V(s, r300_nir_post_integer_lowering);
    NIR_PASS_V(s, nir_lower_bool_to_float,
-              !options->lower_cmp && !options->lower_fabs);
+              is_r500 || s->info.stage == MESA_SHADER_FRAGMENT);
    /* bool_to_float generates MOVs for b2f32 that we want to clean up. */
    NIR_PASS_V(s, nir_copy_prop);
    /* CSE cleanup after late ftrunc lowering. */

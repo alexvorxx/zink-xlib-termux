@@ -89,8 +89,8 @@ struct radv_pipeline_key {
       uint32_t is_int8;
       uint32_t is_int10;
       uint32_t cb_target_mask;
-      uint8_t log2_ps_iter_samples;
       uint8_t num_samples;
+      bool sample_shading_enable;
       bool mrt0_is_dual_src;
 
       bool lower_discard_to_demote;
@@ -420,6 +420,7 @@ struct radv_ps_epilog_key {
    uint8_t color_is_int10;
    uint8_t enable_mrt_output_nan_fixup;
 
+   bool mrt0_is_dual_src;
    bool wave32;
 };
 
@@ -761,5 +762,9 @@ bool radv_force_primitive_shading_rate(nir_shader *nir, struct radv_device *devi
 
 bool radv_lower_fs_intrinsics(nir_shader *nir, const struct radv_pipeline_stage *fs_stage,
                               const struct radv_pipeline_key *key);
+
+nir_shader *create_rt_shader(struct radv_device *device,
+                             const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
+                             struct radv_pipeline_shader_stack_size *stack_sizes);
 
 #endif

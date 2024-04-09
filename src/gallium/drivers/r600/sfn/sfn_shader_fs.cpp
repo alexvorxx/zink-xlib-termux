@@ -40,18 +40,18 @@ namespace r600 {
 using std::string;
 
 FragmentShader::FragmentShader(const r600_shader_key& key):
-    Shader("FS"),
+    Shader("FS", key.ps.first_atomic_counter),
     m_dual_source_blend(key.ps.dual_source_blend),
     m_max_color_exports(MAX2(key.ps.nr_cbufs, 1)),
     m_export_highest(0),
     m_num_color_exports(0),
     m_color_export_mask(0),
-    m_depth_exports(0),
     m_last_pixel_export(nullptr),
     m_pos_input(127, false),
     m_fs_write_all(false),
     m_apply_sample_mask(key.ps.apply_sample_id_mask),
-    m_rat_base(key.ps.nr_cbufs)
+    m_rat_base(key.ps.nr_cbufs),
+    m_image_size_const_offset(key.ps.image_size_const_offset)
 {
 }
 
@@ -510,8 +510,7 @@ FragmentShader::emit_export_pixel(nir_intrinsic_instr& intr)
          unsigned location =
             (m_dual_source_blend && (semantics.location == FRAG_RESULT_COLOR)
                 ? semantics.dual_source_blend_index
-                : driver_location) +
-            k - m_depth_exports;
+                : driver_location) + k;
 
          sfn_log << SfnLog::io << "Pixel output at loc:" << location << "\n";
 
@@ -546,7 +545,6 @@ FragmentShader::emit_export_pixel(nir_intrinsic_instr& intr)
    } else if (semantics.location == FRAG_RESULT_DEPTH ||
               semantics.location == FRAG_RESULT_STENCIL ||
               semantics.location == FRAG_RESULT_SAMPLE_MASK) {
-      m_depth_exports++;
       emit_instruction(new ExportInstr(ExportInstr::pixel, 61, value));
       int semantic = TGSI_SEMANTIC_POSITION;
       if (semantics.location == FRAG_RESULT_STENCIL)

@@ -547,6 +547,7 @@ Khronos extensions that are not part of any Vulkan version:
   VK_EXT_depth_clip_control                             DONE (anv, lvp, radv, tu, v3dv, vn)
   VK_EXT_depth_clip_enable                              DONE (anv, lvp, radv, tu, vn)
   VK_EXT_depth_range_unrestricted                       DONE (radv, lvp)
+  VK_EXT_descriptor_buffer                              DONE (radv)
   VK_EXT_discard_rectangles                             DONE (radv)
   VK_EXT_display_control                                DONE (anv, radv, tu)
   VK_EXT_extended_dynamic_state3                        DONE (lvp, radv, tu)
@@ -618,6 +619,7 @@ Khronos extensions that are not part of any Vulkan version:
   VK_AMD_texture_gather_bias_lod                        DONE (radv)
   VK_ARM_rasterization_order_attachment_access          DONE (lvp, tu)
   VK_EXT_mutable_descriptor_type                        DONE (anv, radv, tu, vn)
+  VK_EXT_swapchain_colorspace                           DONE (radv, anv, tu)
 
 
 OpenCL 1.0 -- all DONE:

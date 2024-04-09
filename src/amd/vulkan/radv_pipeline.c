@@ -1204,3 +1204,15 @@ radv_pipeline_hash(const struct radv_device *device, const struct radv_pipeline_
    if (pipeline_layout)
       _mesa_sha1_update(ctx, pipeline_layout->sha1, sizeof(pipeline_layout->sha1));
 }
+
+void
+radv_pipeline_hash_shader_stage(const VkPipelineShaderStageCreateInfo *sinfo,
+                                const struct radv_shader_stage_key *stage_key, struct mesa_sha1 *ctx)
+{
+   unsigned char shader_sha1[SHA1_DIGEST_LENGTH];
+
+   vk_pipeline_hash_shader_stage(sinfo, NULL, shader_sha1);
+
+   _mesa_sha1_update(ctx, shader_sha1, sizeof(shader_sha1));
+   _mesa_sha1_update(ctx, stage_key, sizeof(*stage_key));
+}

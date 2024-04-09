@@ -195,11 +195,28 @@ radv_compile_cs(struct radv_device *device, struct vk_pipeline_cache *cache, str
    return cs_shader;
 }
 
+static void
+radv_compute_pipeline_hash(const struct radv_device *device, const VkComputePipelineCreateInfo *pCreateInfo,
+                           unsigned char *hash)
+{
+   VkPipelineCreateFlags2KHR create_flags = vk_compute_pipeline_create_flags(pCreateInfo);
+   VK_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->layout);
+   const VkPipelineShaderStageCreateInfo *sinfo = &pCreateInfo->stage;
+   struct mesa_sha1 ctx;
+
+   struct radv_shader_stage_key stage_key =
+      radv_pipeline_get_shader_key(device, sinfo, create_flags, pCreateInfo->pNext);
+
+   _mesa_sha1_init(&ctx);
+   radv_pipeline_hash(device, pipeline_layout, &ctx);
+   radv_pipeline_hash_shader_stage(sinfo, &stage_key, &ctx);
+   _mesa_sha1_final(&ctx, hash);
+}
+
 static VkResult
-radv_compute_pipeline_compile(struct radv_compute_pipeline *pipeline, struct radv_pipeline_layout *pipeline_layout,
-                              struct radv_device *device, struct vk_pipeline_cache *cache,
-                              const struct radv_shader_stage_key *stage_key,
-                              const VkPipelineShaderStageCreateInfo *pStage,
+radv_compute_pipeline_compile(const VkComputePipelineCreateInfo *pCreateInfo, struct radv_compute_pipeline *pipeline,
+                              struct radv_pipeline_layout *pipeline_layout, struct radv_device *device,
+                              struct vk_pipeline_cache *cache, const VkPipelineShaderStageCreateInfo *pStage,
                               const VkPipelineCreationFeedbackCreateInfo *creation_feedback)
 {
    struct radv_shader_binary *cs_binary = NULL;
@@ -215,9 +232,7 @@ radv_compute_pipeline_compile(struct radv_compute_pipeline *pipeline, struct rad
 
    int64_t pipeline_start = os_time_get_nano();
 
-   radv_pipeline_stage_init(pStage, pipeline_layout, stage_key, &cs_stage);
-
-   radv_hash_shaders(device, hash, &cs_stage, 1, pipeline_layout, NULL);
+   radv_compute_pipeline_hash(device, pCreateInfo, hash);
 
    pipeline->base.pipeline_hash = *(uint64_t *)hash;
 
@@ -241,6 +256,11 @@ radv_compute_pipeline_compile(struct radv_compute_pipeline *pipeline, struct rad
       return VK_PIPELINE_COMPILE_REQUIRED;
 
    int64_t stage_start = os_time_get_nano();
+
+   const struct radv_shader_stage_key stage_key =
+      radv_pipeline_get_shader_key(device, &pCreateInfo->stage, pipeline->base.create_flags, pCreateInfo->pNext);
+
+   radv_pipeline_stage_init(pStage, pipeline_layout, &stage_key, &cs_stage);
 
    pipeline->base.shaders[MESA_SHADER_COMPUTE] = radv_compile_cs(
       device, cache, &cs_stage, keep_executable_info, keep_statistic_info, pipeline->base.is_internal, &cs_binary);
@@ -295,10 +315,7 @@ radv_compute_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkC
    const VkPipelineCreationFeedbackCreateInfo *creation_feedback =
       vk_find_struct_const(pCreateInfo->pNext, PIPELINE_CREATION_FEEDBACK_CREATE_INFO);
 
-   struct radv_shader_stage_key stage_key =
-      radv_pipeline_get_shader_key(device, &pCreateInfo->stage, pipeline->base.create_flags, pCreateInfo->pNext);
-
-   result = radv_compute_pipeline_compile(pipeline, pipeline_layout, device, cache, &stage_key, &pCreateInfo->stage,
+   result = radv_compute_pipeline_compile(pCreateInfo, pipeline, pipeline_layout, device, cache, &pCreateInfo->stage,
                                           creation_feedback);
    if (result != VK_SUCCESS) {
       radv_pipeline_destroy(device, &pipeline->base, pAllocator);

@@ -107,4 +107,7 @@ VkPipelineShaderStageCreateInfo *radv_copy_shader_stage_create_info(struct radv_
 void radv_pipeline_hash(const struct radv_device *device, const struct radv_pipeline_layout *pipeline_layout,
                         struct mesa_sha1 *ctx);
 
+void radv_pipeline_hash_shader_stage(const VkPipelineShaderStageCreateInfo *sinfo,
+                                     const struct radv_shader_stage_key *stage_key, struct mesa_sha1 *ctx);
+
 #endif /* RADV_PIPELINE_H */

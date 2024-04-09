@@ -568,8 +568,7 @@ st_link_glsl_to_nir(struct gl_context *ctx,
                              &opts))
          return GL_FALSE;
    } else {
-      if (!gl_nir_link_glsl(&ctx->Const, &ctx->Extensions, ctx->API,
-                            shader_program))
+      if (!gl_nir_link_glsl(ctx, shader_program))
          return GL_FALSE;
    }
 

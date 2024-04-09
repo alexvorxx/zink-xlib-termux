@@ -35,6 +35,7 @@ extern "C" {
 #endif
 
 struct gl_constants;
+struct gl_context;
 struct gl_extensions;
 struct gl_linked_shader;
 struct gl_shader_program;
@@ -63,9 +64,7 @@ bool gl_nir_link_spirv(const struct gl_constants *consts,
                        struct gl_shader_program *prog,
                        const struct gl_nir_linker_options *options);
 
-bool gl_nir_link_glsl(const struct gl_constants *consts,
-                      const struct gl_extensions *exts,
-                      gl_api api,
+bool gl_nir_link_glsl(struct gl_context *ctx,
                       struct gl_shader_program *prog);
 
 bool gl_nir_link_uniforms(const struct gl_constants *consts,

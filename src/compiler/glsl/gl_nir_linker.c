@@ -31,6 +31,7 @@
 #include "string_to_uint_map.h"
 #include "main/shader_types.h"
 #include "main/consts_exts.h"
+#include "main/context.h"
 #include "main/shaderobj.h"
 #include "ir_uniform.h" /* for gl_uniform_storage */
 #include "util/glheader.h"
@@ -300,6 +301,40 @@ gl_nir_mode_string(const nir_variable *var)
 
    assert(!"Should not get here.");
    return "invalid variable";
+}
+
+static void
+remove_dead_functions(nir_shader *shader)
+{
+   struct set *fn_set =
+      _mesa_set_create(NULL, _mesa_hash_pointer, _mesa_key_pointer_equal);
+
+   /* Find all function prototypes adding them to a list then removing them
+    * if they are ever called.
+    */
+   nir_foreach_function_impl(impl, shader) {
+      _mesa_set_add(fn_set, impl->function);
+   }
+
+   nir_foreach_function_impl(impl, shader) {
+      nir_foreach_block(block, impl) {
+         nir_foreach_instr(instr, block) {
+            if (instr->type == nir_instr_type_call) {
+               nir_call_instr *call = nir_instr_as_call(instr);
+               _mesa_set_remove_key(fn_set, call->callee);
+            }
+         }
+      }
+   }
+
+   /* Any functions remaining in the list must be unused so remove them. */
+   set_foreach(fn_set, entry) {
+      nir_function *func = (nir_function *) entry->key;
+      if (!func->is_entrypoint)
+         exec_node_remove(&func->node);
+   }
+
+   _mesa_set_destroy(fn_set, NULL);
 }
 
 bool
@@ -2396,16 +2431,319 @@ validate_invariant_builtins(const struct gl_constants *consts,
    return true;
 }
 
-bool
-gl_nir_link_glsl(const struct gl_constants *consts,
-                 const struct gl_extensions *exts,
-                 gl_api api,
-                 struct gl_shader_program *prog)
+static void
+find_assignments(nir_shader *shader, nir_variable *var1, nir_variable *var2,
+                 nir_variable *var3, bool *var1_written, bool *var2_written,
+                 bool *var3_written)
 {
+   nir_foreach_function_impl(impl, shader) {
+      nir_foreach_block(block, impl) {
+         nir_foreach_instr(instr, block) {
+            if (instr->type == nir_instr_type_intrinsic) {
+               nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+               if (intrin->intrinsic == nir_intrinsic_store_deref ||
+                   intrin->intrinsic == nir_intrinsic_copy_deref) {
+                  nir_deref_instr *deref = nir_src_as_deref(intrin->src[0]);
+                  nir_variable *var = nir_deref_instr_get_variable(deref);
+                  if (!var)
+                     continue;
+
+                  if (var == var1)
+                     *var1_written = true;
+                  else if (var == var2)
+                     *var2_written = true;
+                  else if (var == var3)
+                     *var3_written = true;
+               }
+            }
+         }
+      }
+   }
+}
+
+/**
+ * Set clip_distance_array_size based and cull_distance_array_size on the given
+ * shader.
+ *
+ * Also check for errors based on incorrect usage of gl_ClipVertex and
+ * gl_ClipDistance and gl_CullDistance.
+ * Additionally test whether the arrays gl_ClipDistance and gl_CullDistance
+ * exceed the maximum size defined by gl_MaxCombinedClipAndCullDistances.
+ */
+static void
+analyze_clip_cull_usage(struct gl_shader_program *prog, nir_shader *shader,
+                        const struct gl_constants *consts,
+                        struct shader_info *info)
+{
+   if (consts->DoDCEBeforeClipCullAnalysis) {
+      /* Remove dead functions to avoid raising an error (eg: dead function
+       * writes to gl_ClipVertex, and main() writes to gl_ClipDistance).
+       */
+      remove_dead_functions(shader);
+   }
+
+   info->clip_distance_array_size = 0;
+   info->cull_distance_array_size = 0;
+
+   if (prog->GLSL_Version >= (prog->IsES ? 300 : 130)) {
+      /* From section 7.1 (Vertex Shader Special Variables) of the
+       * GLSL 1.30 spec:
+       *
+       *   "It is an error for a shader to statically write both
+       *   gl_ClipVertex and gl_ClipDistance."
+       *
+       * This does not apply to GLSL ES shaders, since GLSL ES defines neither
+       * gl_ClipVertex nor gl_ClipDistance. However with
+       * GL_EXT_clip_cull_distance, this functionality is exposed in ES 3.0.
+       */
+      nir_variable *clip_dist =
+         nir_find_variable_with_location(shader,
+                                         nir_var_shader_out,
+                                         VARYING_SLOT_CLIP_DIST0);
+      nir_variable *cull_dist =
+         nir_find_variable_with_location(shader,
+                                         nir_var_shader_out,
+                                         VARYING_SLOT_CULL_DIST0);
+      nir_variable *clip_vert =
+         nir_find_variable_with_location(shader,
+                                         nir_var_shader_out,
+                                         VARYING_SLOT_CLIP_VERTEX);
+
+      bool clip_dist_written = false;
+      bool cull_dist_written = false;
+      bool clip_vert_written = false;
+      find_assignments(shader, clip_dist, cull_dist, clip_vert,
+                       &clip_dist_written, &cull_dist_written,
+                       &clip_vert_written);
+
+      /* From the ARB_cull_distance spec:
+       *
+       * It is a compile-time or link-time error for the set of shaders forming
+       * a program to statically read or write both gl_ClipVertex and either
+       * gl_ClipDistance or gl_CullDistance.
+       *
+       * This does not apply to GLSL ES shaders, since GLSL ES doesn't define
+       * gl_ClipVertex.
+       */
+      if (!prog->IsES) {
+         if (clip_vert_written && clip_dist_written) {
+            linker_error(prog, "%s shader writes to both `gl_ClipVertex' "
+                         "and `gl_ClipDistance'\n",
+                         _mesa_shader_stage_to_string(info->stage));
+            return;
+         }
+         if (clip_vert_written && cull_dist_written) {
+            linker_error(prog, "%s shader writes to both `gl_ClipVertex' "
+                         "and `gl_CullDistance'\n",
+                         _mesa_shader_stage_to_string(info->stage));
+            return;
+         }
+      }
+
+      if (clip_dist_written)
+         info->clip_distance_array_size = glsl_get_length(clip_dist->type);
+
+      if (cull_dist_written)
+         info->cull_distance_array_size = glsl_get_length(cull_dist->type);
+
+      /* From the ARB_cull_distance spec:
+       *
+       * It is a compile-time or link-time error for the set of shaders forming
+       * a program to have the sum of the sizes of the gl_ClipDistance and
+       * gl_CullDistance arrays to be larger than
+       * gl_MaxCombinedClipAndCullDistances.
+       */
+      if ((uint32_t)(info->clip_distance_array_size + info->cull_distance_array_size) >
+          consts->MaxClipPlanes) {
+          linker_error(prog, "%s shader: the combined size of "
+                       "'gl_ClipDistance' and 'gl_CullDistance' size cannot "
+                       "be larger than "
+                       "gl_MaxCombinedClipAndCullDistances (%u)",
+                       _mesa_shader_stage_to_string(info->stage),
+                       consts->MaxClipPlanes);
+      }
+   }
+}
+
+/**
+ * Verify that a vertex shader executable meets all semantic requirements.
+ *
+ * Also sets info.clip_distance_array_size and
+ * info.cull_distance_array_size as a side effect.
+ *
+ * \param shader  Vertex shader executable to be verified
+ */
+static void
+validate_vertex_shader_executable(struct gl_shader_program *prog,
+                                  nir_shader *shader,
+                                  const struct gl_constants *consts)
+{
+   if (shader == NULL)
+      return;
+
+   /* From the GLSL 1.10 spec, page 48:
+    *
+    *     "The variable gl_Position is available only in the vertex
+    *      language and is intended for writing the homogeneous vertex
+    *      position. All executions of a well-formed vertex shader
+    *      executable must write a value into this variable. [...] The
+    *      variable gl_Position is available only in the vertex
+    *      language and is intended for writing the homogeneous vertex
+    *      position. All executions of a well-formed vertex shader
+    *      executable must write a value into this variable."
+    *
+    * while in GLSL 1.40 this text is changed to:
+    *
+    *     "The variable gl_Position is available only in the vertex
+    *      language and is intended for writing the homogeneous vertex
+    *      position. It can be written at any time during shader
+    *      execution. It may also be read back by a vertex shader
+    *      after being written. This value will be used by primitive
+    *      assembly, clipping, culling, and other fixed functionality
+    *      operations, if present, that operate on primitives after
+    *      vertex processing has occurred. Its value is undefined if
+    *      the vertex shader executable does not write gl_Position."
+    *
+    * All GLSL ES Versions are similar to GLSL 1.40--failing to write to
+    * gl_Position is not an error.
+    */
+   if (prog->GLSL_Version < (prog->IsES ? 300 : 140)) {
+      nir_variable *gl_position =
+         nir_find_variable_with_location(shader,
+                                         nir_var_shader_out,
+                                         VARYING_SLOT_POS);
+
+      bool gl_position_written = false;
+      find_assignments(shader, gl_position, NULL, NULL, &gl_position_written,
+                       NULL, NULL);
+      if (!gl_position_written) {
+        if (prog->IsES) {
+          linker_warning(prog,
+                         "vertex shader does not write to `gl_Position'. "
+                         "Its value is undefined. \n");
+        } else {
+          linker_error(prog,
+                       "vertex shader does not write to `gl_Position'. \n");
+        }
+         return;
+      }
+   }
+
+   analyze_clip_cull_usage(prog, shader, consts, &shader->info);
+}
+
+static void
+validate_tess_eval_shader_executable(struct gl_shader_program *prog,
+                                     nir_shader *shader,
+                                     const struct gl_constants *consts)
+{
+   if (shader == NULL)
+      return;
+
+   analyze_clip_cull_usage(prog, shader, consts, &shader->info);
+}
+
+/**
+ * Verify that a fragment shader executable meets all semantic requirements
+ *
+ * \param shader  Fragment shader executable to be verified
+ */
+static void
+validate_fragment_shader_executable(struct gl_shader_program *prog,
+                                    nir_shader *shader)
+{
+   if (shader == NULL)
+      return;
+
+   nir_variable *gl_frag_color =
+      nir_find_variable_with_location(shader,
+                                      nir_var_shader_out,
+                                      FRAG_RESULT_COLOR);
+   nir_variable *gl_frag_data =
+      nir_find_variable_with_location(shader,
+                                      nir_var_shader_out,
+                                      FRAG_RESULT_DATA0);
+
+   bool gl_frag_color_written = false;
+   bool gl_frag_data_written = false;
+   find_assignments(shader, gl_frag_color, gl_frag_data, NULL,
+                    &gl_frag_color_written, &gl_frag_data_written, NULL);
+
+   if (gl_frag_color_written && gl_frag_data_written) {
+      linker_error(prog,  "fragment shader writes to both "
+                   "`gl_FragColor' and `gl_FragData'\n");
+   }
+}
+
+/**
+ * Verify that a geometry shader executable meets all semantic requirements
+ *
+ * Also sets prog->Geom.VerticesIn, and info.clip_distance_array_sizeand
+ * info.cull_distance_array_size as a side effect.
+ *
+ * \param shader Geometry shader executable to be verified
+ */
+static void
+validate_geometry_shader_executable(struct gl_shader_program *prog,
+                                    nir_shader *shader,
+                                    const struct gl_constants *consts)
+{
+   if (shader == NULL)
+      return;
+
+   unsigned num_vertices =
+      mesa_vertices_per_prim(shader->info.gs.input_primitive);
+   shader->info.gs.vertices_in  = num_vertices;
+
+   analyze_clip_cull_usage(prog, shader, consts, &shader->info);
+}
+
+bool
+gl_nir_link_glsl(struct gl_context *ctx, struct gl_shader_program *prog)
+{
+   const struct gl_constants *consts = &ctx->Const;
+   const struct gl_extensions *exts = &ctx->Extensions;
+   gl_api api = ctx->API;
+
    if (prog->NumShaders == 0)
       return true;
 
    MESA_TRACE_FUNC();
+
+   /* Link all shaders for a particular stage and validate the result.
+    */
+   for (int stage = 0; stage < MESA_SHADER_STAGES; stage++) {
+      struct gl_linked_shader *sh = prog->_LinkedShaders[stage];
+      if (sh) {
+         nir_shader *shader = sh->Program->nir;
+
+         switch (stage) {
+         case MESA_SHADER_VERTEX:
+            validate_vertex_shader_executable(prog, shader, consts);
+            break;
+         case MESA_SHADER_TESS_CTRL:
+            /* nothing to be done */
+            break;
+         case MESA_SHADER_TESS_EVAL:
+            validate_tess_eval_shader_executable(prog, shader, consts);
+            break;
+         case MESA_SHADER_GEOMETRY:
+            validate_geometry_shader_executable(prog, shader, consts);
+            break;
+         case MESA_SHADER_FRAGMENT:
+            validate_fragment_shader_executable(prog, shader);
+            break;
+         }
+         if (!prog->data->LinkStatus) {
+            _mesa_delete_linked_shader(ctx, sh);
+
+            prog->_LinkedShaders[stage] = NULL;
+            prog->data->linked_stages ^= 1 << stage;
+
+            return false;
+         }
+      }
+   }
 
    /* Here begins the inter-stage linking phase.  Some initial validation is
     * performed, then locations are assigned for uniforms, attributes, and

@@ -23,7 +23,7 @@
  * SOFTWARE.
  */
 
-#include "main/glheader.h"
+#include "util/glheader.h"
 #include "compiler/nir_types.h"
 #include "compiler/nir/nir_builder.h"
 #include "util/u_debug.h"
@@ -441,12 +441,17 @@ agx_emit_load_vary(agx_builder *b, agx_index dest, nir_intrinsic_instr *instr)
    nir_src *offset = nir_get_io_offset_src(instr);
    assert(nir_src_is_const(*offset) && "no indirects");
 
+   assert(nir_ssa_def_components_read(&instr->dest.ssa) ==
+          nir_component_mask(components) &&
+          "iter does not handle write-after-write hazards");
+
    /* For perspective interpolation, we need W */
    agx_index J = !perspective ? agx_zero() :
                   agx_get_cf(b->shader, true, false, VARYING_SLOT_POS, 3, 1);
 
    agx_index I = agx_get_cf(b->shader, true, perspective,
-                           sem.location + nir_src_as_uint(*offset), 0,
+                           sem.location + nir_src_as_uint(*offset),
+                           nir_intrinsic_component(instr),
                            components);
 
    agx_iter_to(b, dest, I, J, components, perspective);
@@ -488,7 +493,6 @@ agx_emit_fragment_out(agx_builder *b, nir_intrinsic_instr *instr)
    } else if (b->shader->did_writeout) {
 	   agx_writeout(b, 0x0004);
    } else {
-	   agx_writeout(b, 0xC200);
 	   agx_writeout(b, 0x000C);
    }
 
@@ -518,7 +522,6 @@ agx_emit_load_tile(agx_builder *b, agx_index dest, nir_intrinsic_instr *instr)
 
    /* TODO: Reverse-engineer interactions with MRT */
    assert(!b->shader->key->fs.ignore_tib_dependencies && "invalid usage");
-   agx_writeout(b, 0xC200);
    agx_writeout(b, 0x0008);
    b->shader->did_writeout = true;
    b->shader->out->reads_tib = true;
@@ -656,7 +659,6 @@ static agx_instr *
 agx_emit_discard(agx_builder *b, nir_intrinsic_instr *instr)
 {
    assert(!b->shader->key->fs.ignore_tib_dependencies && "invalid usage");
-   agx_writeout(b, 0xC200);
    agx_writeout(b, 0x0001);
    b->shader->did_writeout = true;
 
@@ -869,6 +871,9 @@ agx_emit_alu(agx_builder *b, nir_alu_instr *instr)
    UNOP(mov, mov);
    UNOP(u2u16, mov);
    UNOP(u2u32, mov);
+   UNOP(bitfield_reverse, bitrev);
+   UNOP(bit_count, popcount);
+   UNOP(ufind_msb, ffs);
    UNOP(inot, not);
    BINOP(iand, and);
    BINOP(ior, or);
@@ -890,6 +895,8 @@ agx_emit_alu(agx_builder *b, nir_alu_instr *instr)
    case nir_op_isub: return agx_iadd_to(b, dst, s0, agx_neg(s1), 0);
    case nir_op_ineg: return agx_iadd_to(b, dst, agx_zero(), agx_neg(s0), 0);
    case nir_op_imul: return agx_imad_to(b, dst, s0, s1, agx_zero(), 0);
+   case nir_op_umul_2x32_64: return agx_imad_to(b, dst, agx_abs(s0), agx_abs(s1), agx_zero(), 0);
+   case nir_op_imul_2x32_64: return agx_imad_to(b, dst, s0, s1, agx_zero(), 0);
    case nir_op_umul_high: return agx_umul_high_to(b, dst, s0, s1);
 
    case nir_op_ishl: return agx_bfi_to(b, dst, agx_zero(), s0, s1, 0);
@@ -1018,6 +1025,19 @@ agx_emit_alu(agx_builder *b, nir_alu_instr *instr)
       return agx_convert_to(b, dst, agx_immediate(mode), s0, AGX_ROUND_RTE);
    }
 
+   /* Split a 64-bit word into 32-bit parts. Do not use null destinations to
+    * let us CSE (and coalesce) the splits when both x and y are split.
+    */
+   case nir_op_unpack_64_2x32_split_x:
+   case nir_op_unpack_64_2x32_split_y:
+   {
+      agx_instr *split = agx_split(b, 2, s0);
+      unsigned comp = instr->op == nir_op_unpack_64_2x32_split_y ? 1 : 0;
+      split->dest[comp] = dst;
+      split->dest[1 - comp] = agx_temp(b->shader, dst.size);
+      return split;
+   }
+
    case nir_op_vec2:
    case nir_op_vec3:
    case nir_op_vec4:
@@ -1081,17 +1101,6 @@ agx_lod_mode_for_nir(nir_texop op)
 static void
 agx_emit_tex(agx_builder *b, nir_tex_instr *instr)
 {
-   switch (instr->op) {
-   case nir_texop_tex:
-   case nir_texop_txf:
-   case nir_texop_txl:
-   case nir_texop_txb:
-   case nir_texop_txd:
-      break;
-   default:
-      unreachable("Unhandled texture op");
-   }
-
    agx_index coords = agx_null(),
              texture = agx_immediate(instr->texture_index),
              sampler = agx_immediate(instr->sampler_index),
@@ -1678,6 +1687,7 @@ agx_optimize_nir(nir_shader *nir, unsigned *preamble_size)
       NIR_PASS(progress, nir, nir_opt_dead_cf);
       NIR_PASS(progress, nir, nir_opt_cse);
       NIR_PASS(progress, nir, nir_opt_peephole_select, 64, false, true);
+      NIR_PASS(progress, nir, nir_opt_phi_precision);
       NIR_PASS(progress, nir, nir_opt_algebraic);
       NIR_PASS(progress, nir, nir_opt_constant_folding);
 
@@ -1690,6 +1700,11 @@ agx_optimize_nir(nir_shader *nir, unsigned *preamble_size)
    NIR_PASS_V(nir, agx_nir_opt_preamble, preamble_size);
    NIR_PASS_V(nir, nir_opt_algebraic_late);
    NIR_PASS_V(nir, nir_opt_constant_folding);
+
+   /* Must run after uses are fixed but before a last round of copyprop + DCE */
+   if (nir->info.stage == MESA_SHADER_FRAGMENT)
+      NIR_PASS_V(nir, agx_nir_lower_load_mask);
+
    NIR_PASS_V(nir, nir_copy_prop);
    NIR_PASS_V(nir, nir_opt_dce);
    NIR_PASS_V(nir, nir_opt_cse);
@@ -1808,6 +1823,7 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
 
    if (likely(!(agx_debug & AGX_DBG_NOOPT))) {
       agx_optimizer(ctx);
+      agx_opt_cse(ctx);
       agx_dce(ctx);
       agx_validate(ctx, "Optimization");
 

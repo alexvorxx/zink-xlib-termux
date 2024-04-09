@@ -335,7 +335,7 @@ u_pipe_screen_get_param_defaults(struct pipe_screen *pscreen,
       return 1;
 
    case PIPE_CAP_PREFER_IMM_ARRAYS_AS_CONSTBUF:
-      /* Don't unset this unless your driver can do better */
+      /* Don't unset this unless your driver can do better, like using nir_opt_large_constants() */
       return 1;
 
    case PIPE_CAP_POST_DEPTH_COVERAGE:
@@ -423,7 +423,7 @@ u_pipe_screen_get_param_defaults(struct pipe_screen *pscreen,
       return 0;
 
    case PIPE_CAP_DMABUF:
-#if defined(PIPE_OS_LINUX) || defined(PIPE_OS_BSD)
+#if DETECT_OS_LINUX || DETECT_OS_BSD
       return 1;
 #else
       return 0;

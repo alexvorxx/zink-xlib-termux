@@ -45,7 +45,7 @@
 
 #include "drm-uapi/panfrost_drm.h"
 
-#include "util/debug.h"
+#include "util/u_debug.h"
 #include "util/disk_cache.h"
 #include "util/strtod.h"
 #include "vk_format.h"
@@ -76,7 +76,7 @@ _panvk_device_set_lost(struct panvk_device *device,
    vfprintf(stderr, msg, ap);
    va_end(ap);
 
-   if (env_var_as_boolean("PANVK_ABORT_ON_DEVICE_LOSS", false))
+   if (debug_get_bool_option("PANVK_ABORT_ON_DEVICE_LOSS", false))
       abort();
 
    return VK_ERROR_DEVICE_LOST;
@@ -894,14 +894,17 @@ panvk_CreateDevice(VkPhysicalDevice physicalDevice,
       return vk_error(physical_device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    const struct vk_device_entrypoint_table *dev_entrypoints;
+   const struct vk_command_buffer_ops *cmd_buffer_ops;
    struct vk_device_dispatch_table dispatch_table;
 
    switch (physical_device->pdev.arch) {
    case 6:
       dev_entrypoints = &panvk_v6_device_entrypoints;
+      cmd_buffer_ops = &panvk_v6_cmd_buffer_ops;
       break;
    case 7:
       dev_entrypoints = &panvk_v7_device_entrypoints;
+      cmd_buffer_ops = &panvk_v7_cmd_buffer_ops;
       break;
    default:
       unreachable("Unsupported architecture");
@@ -947,6 +950,7 @@ panvk_CreateDevice(VkPhysicalDevice physicalDevice,
     * whole struct.
     */
    device->vk.command_dispatch_table = &device->cmd_dispatch;
+   device->vk.command_buffer_ops = cmd_buffer_ops;
 
    device->instance = physical_device->instance;
    device->physical_device = physical_device;

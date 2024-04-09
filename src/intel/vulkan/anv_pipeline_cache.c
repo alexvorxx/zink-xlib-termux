@@ -23,7 +23,7 @@
 
 #include "util/blob.h"
 #include "util/hash_table.h"
-#include "util/debug.h"
+#include "util/u_debug.h"
 #include "util/disk_cache.h"
 #include "util/mesa-sha1.h"
 #include "nir/nir_serialize.h"
@@ -446,13 +446,13 @@ anv_load_fp64_shader(struct anv_device *device)
          .int16 = true,
          .int64 = true,
       },
-      .environment = MESA_SHADER_VERTEX,
+      .environment = NIR_SPIRV_VULKAN,
       .create_library = true
    };
 
    nir_shader* nir =
       spirv_to_nir(float64_spv_source, sizeof(float64_spv_source) / 4,
-                   NULL, 0, PIPE_SHADER_VERTEX, "main",
+                   NULL, 0, MESA_SHADER_VERTEX, "main",
                    &spirv_options, nir_options);
 
    assert(nir != NULL);

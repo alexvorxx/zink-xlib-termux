@@ -8,7 +8,7 @@ variables:
           rm download-git-cache.sh
           set +o xtrace
   CI_JOB_JWT_FILE: /minio_jwt
-  MINIO_HOST: minio-packet.freedesktop.org
+  MINIO_HOST: s3.freedesktop.org
   # per-pipeline artifact storage on MinIO
   PIPELINE_ARTIFACTS_BASE: ${MINIO_HOST}/artifacts/${CI_PROJECT_PATH}/${CI_PIPELINE_ID}
   # per-job artifact storage on MinIO
@@ -23,6 +23,7 @@ variables:
   LIMA_FARM: "online"
   IGALIA_FARM: "online"
   ANHOLT_FARM: "online"
+  VALVE_FARM: "online"
 
 default:
   before_script:
@@ -47,12 +48,13 @@ default:
 
 include:
   - project: 'freedesktop/ci-templates'
-    ref: 34f4ade99434043f88e164933f570301fd18b125
+    ref: ffe4d1b10aab7534489f0c4bbc4c5899df17d3f2
     file:
       - '/templates/ci-fairy.yml'
   - project: 'freedesktop/ci-templates'
     ref: *ci-templates-commit
     file:
+      - '/templates/alpine.yml'
       - '/templates/debian.yml'
       - '/templates/fedora.yml'
   - local: '.gitlab-ci/image-tags.yml'
@@ -127,6 +129,8 @@ stages:
 
 
 .docs-base:
+  variables:
+    BUILDER: html
   extends:
     - .fdo.ci-fairy
     - .build-rules
@@ -134,7 +138,7 @@ stages:
   - apk --no-cache add graphviz doxygen
   - pip3 install sphinx===5.1.1 breathe===4.34.0 mako===1.2.3 sphinx_rtd_theme===1.0.0
   - docs/doxygen-wrapper.py --out-dir=docs/doxygen_xml
-  - sphinx-build -W -b html docs public
+  - sphinx-build -W -b $BUILDER docs public
 
 pages:
   extends: .docs-base
@@ -179,6 +183,18 @@ test-docs-mr:
       changes: *docs-or-ci
       when: on_success
     # Other cases default to never
+
+lincheck-docs:
+  extends: .docs-base
+  # Cancel job if a newer commit is pushed to the same branch
+  interruptible: true
+  stage: deploy
+  needs: []
+  rules:
+    - !reference [.scheduled_pipeline-rules, rules]
+  allow_failure: true
+  variables:
+    BUILDER: linkcheck
 
 # When to automatically run the CI for build jobs
 .build-rules:
@@ -264,9 +280,7 @@ make git archive:
     # compress the current folder
     - tar -cvzf ../$CI_PROJECT_NAME.tar.gz .
 
-    # login with the JWT token file
-    - ci-fairy minio login --token-file "${CI_JOB_JWT_FILE}"
-    - ci-fairy minio cp ../$CI_PROJECT_NAME.tar.gz minio://$MINIO_HOST/git-cache/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME/$CI_PROJECT_NAME.tar.gz
+    - ci-fairy s3cp --token-file "${CI_JOB_JWT_FILE}" ../$CI_PROJECT_NAME.tar.gz https://$MINIO_HOST/git-cache/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME/$CI_PROJECT_NAME.tar.gz
 
 
 # Sanity checks of MR settings and commit logs

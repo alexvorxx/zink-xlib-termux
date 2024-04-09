@@ -82,6 +82,7 @@ agx_size_align_16(enum agx_size size)
    unreachable("Invalid size");
 }
 
+/* Keep synced with hash_index */
 typedef struct {
    /* Sufficient for as many SSA values as we need. Immediates and uniforms fit in 16-bits */
    unsigned value : 22;
@@ -269,6 +270,7 @@ enum agx_lod_mode {
 /* Forward declare for branch target */
 struct agx_block;
 
+/* Keep synced with hash_instr */
 typedef struct {
    /* Must be first */
    struct list_head link;
@@ -335,6 +337,12 @@ typedef struct {
    bool saturate : 1;
    unsigned mask : 4;
 } agx_instr;
+
+static inline void
+agx_replace_src(agx_instr *I, unsigned src_index, agx_index replacement)
+{
+   I->src[src_index] = agx_replace_index(I->src[src_index], replacement);
+}
 
 struct agx_block;
 
@@ -549,6 +557,14 @@ agx_start_block(agx_context *ctx)
 #define agx_foreach_dest(ins, v) \
    for (unsigned v = 0; v < ins->nr_dests; ++v)
 
+#define agx_foreach_ssa_src(ins, v) \
+   agx_foreach_src(ins, v) \
+      if (ins->src[v].type == AGX_INDEX_NORMAL)
+
+#define agx_foreach_ssa_dest(ins, v) \
+   agx_foreach_dest(ins, v) \
+      if (ins->dest[v].type == AGX_INDEX_NORMAL)
+
 /* Phis only come at the start so we stop as soon as we hit a non-phi */
 #define agx_foreach_phi_in_block(block, v) \
    agx_foreach_instr_in_block(block, v) \
@@ -754,6 +770,7 @@ void agx_print_block(agx_block *block, FILE *fp);
 void agx_print_shader(agx_context *ctx, FILE *fp);
 void agx_optimizer(agx_context *ctx);
 void agx_lower_pseudo(agx_context *ctx);
+void agx_opt_cse(agx_context *ctx);
 void agx_dce(agx_context *ctx);
 void agx_ra(agx_context *ctx);
 void agx_lower_64bit_postra(agx_context *ctx);
@@ -771,12 +788,8 @@ struct agx_copy {
    /* Base register destination of the copy */
    unsigned dest;
 
-   /* Base register source (or uniform base) of the copy */
-   unsigned src;
-   bool is_uniform;
-
-   /* Size of the copy */
-   enum agx_size size;
+   /* Source of the copy */
+   agx_index src;
 
    /* Whether the copy has been handled. Callers must leave to false. */
    bool done;
@@ -791,6 +804,7 @@ void agx_liveness_ins_update(BITSET_WORD *live, agx_instr *I);
 bool agx_lower_resinfo(nir_shader *s);
 bool agx_nir_lower_array_texture(nir_shader *s);
 bool agx_nir_opt_preamble(nir_shader *s, unsigned *preamble_size);
+bool agx_nir_lower_load_mask(nir_shader *shader);
 
 #ifdef __cplusplus
 } /* extern C */

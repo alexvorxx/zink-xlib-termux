@@ -76,7 +76,7 @@
  */
 
 
-#include "glheader.h"
+#include "util/glheader.h"
 
 #include "accum.h"
 #include "arrayobj.h"
@@ -87,7 +87,6 @@
 #include "bufferobj.h"
 #include "conservativeraster.h"
 #include "context.h"
-#include "cpuinfo.h"
 #include "debug.h"
 #include "debug_output.h"
 #include "depth.h"
@@ -124,7 +123,7 @@
 #include "shaderobj.h"
 #include "shaderimage.h"
 #include "state.h"
-#include "util/debug.h"
+#include "util/u_debug.h"
 #include "util/disk_cache.h"
 #include "util/strtod.h"
 #include "util/u_call_once.h"
@@ -217,7 +216,6 @@ one_time_init(const char *extensions_override)
 
    _mesa_one_time_init_extension_overrides(extensions_override);
 
-   _mesa_get_cpu_features();
 
    for (i = 0; i < 256; i++) {
       _mesa_ubyte_to_float_color_tab[i] = (float) i / 255.0F;
@@ -714,7 +712,7 @@ init_attrib_groups(struct gl_context *ctx)
    ctx->ErrorValue = GL_NO_ERROR;
    ctx->ShareGroupReset = false;
    ctx->VertexProgram._VaryingInputs = VERT_BIT_ALL;
-   ctx->IntelBlackholeRender = env_var_as_boolean("INTEL_BLACKHOLE_DEFAULT", false);
+   ctx->IntelBlackholeRender = debug_get_bool_option("INTEL_BLACKHOLE_DEFAULT", false);
 
    return GL_TRUE;
 }

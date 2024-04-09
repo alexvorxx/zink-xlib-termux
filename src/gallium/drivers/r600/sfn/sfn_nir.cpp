@@ -28,7 +28,9 @@
 
 #include "../r600_pipe.h"
 #include "../r600_shader.h"
+#include "nir.h"
 #include "nir_builder.h"
+#include "nir_intrinsics.h"
 #include "sfn_assembler.h"
 #include "sfn_debug.h"
 #include "sfn_instr_tex.h"
@@ -226,8 +228,7 @@ private:
       auto intr = nir_instr_as_intrinsic(instr);
       nir_ssa_def *output[8] = {nullptr};
 
-      // for UBO loads we correct the buffer ID by adding 1
-      auto buf_id = nir_imm_int(b, R600_BUFFER_INFO_CONST_BUFFER - 1);
+      auto buf_id = nir_imm_int(b, R600_BUFFER_INFO_CONST_BUFFER);
 
       assert(intr->src[0].is_ssa);
       auto clip_vtx = intr->src[0].ssa;
@@ -268,6 +269,67 @@ private:
    int m_clipplane1;
    int m_clipvtx;
    pipe_stream_output_info& m_so_info;
+};
+
+/* lower_uniforms_to_ubo adds a 1 to the UBO buffer ID.
+ * If the buffer ID is a non-constant value we end up
+ * with "iadd bufid, 1", bot on r600 we can put that constant
+ * "1" as constant cache ID into the CF instruction and don't need
+ * to execute that extra ADD op, so eliminate the addition here
+ * again and move the buffer base ID into the base value of
+ * the intrinsic that is not used otherwise */
+class OptIndirectUBOLoads : public NirLowerInstruction {
+private:
+   bool filter(const nir_instr *instr) const override
+   {
+      if (instr->type != nir_instr_type_intrinsic)
+         return false;
+
+      auto intr = nir_instr_as_intrinsic(instr);
+      if (intr->intrinsic != nir_intrinsic_load_ubo_vec4)
+         return false;
+
+      if (nir_src_as_const_value(intr->src[0]) != nullptr)
+         return false;
+
+      return nir_intrinsic_base(intr) == 0;
+   }
+
+   nir_ssa_def *lower(nir_instr *instr) override
+   {
+      auto intr = nir_instr_as_intrinsic(instr);
+      assert(intr->intrinsic == nir_intrinsic_load_ubo_vec4);
+      assert(intr->src[0].is_ssa);
+
+      auto parent = intr->src[0].ssa->parent_instr;
+
+      if (parent->type != nir_instr_type_alu)
+         return nullptr;
+
+      auto alu = nir_instr_as_alu(parent);
+
+      if (alu->op != nir_op_iadd)
+         return nullptr;
+
+      int new_base = 0;
+      nir_src *new_bufid = nullptr;
+      auto src0 = nir_src_as_const_value(alu->src[0].src);
+      if (src0) {
+         new_bufid = &alu->src[1].src;
+         new_base = src0->i32;
+      } else if (auto src1 = nir_src_as_const_value(alu->src[1].src)) {
+         new_bufid = &alu->src[0].src;
+         new_base = src1->i32;
+      } else {
+         return nullptr;
+      }
+
+      assert(new_bufid->is_ssa);
+
+      nir_intrinsic_set_base(intr, new_base);
+      nir_instr_rewrite_src(instr, &intr->src[0], nir_src_for_ssa(new_bufid->ssa));
+      return &intr->dest.ssa;
+   }
 };
 
 } // namespace r600
@@ -558,6 +620,12 @@ r600_lower_fs_pos_input(nir_shader *shader)
                                         nullptr);
 };
 
+bool
+r600_opt_indirect_fbo_loads(nir_shader *shader)
+{
+   return r600::OptIndirectUBOLoads().run(shader);
+}
+
 static bool
 optimize_once(nir_shader *shader)
 {
@@ -659,11 +727,52 @@ public:
    ~MallocPoolRelease() { r600::release_pool(); }
 };
 
+extern "C" char *
+r600_finalize_nir(pipe_screen *screen, void *shader)
+{
+   r600_screen *rs = (r600_screen *)screen;
+
+   nir_shader *nir = (nir_shader *)shader;
+
+   NIR_PASS_V(nir, nir_lower_regs_to_ssa);
+   const int nir_lower_flrp_mask = 16 | 32 | 64;
+
+   NIR_PASS_V(nir, nir_lower_flrp, nir_lower_flrp_mask, false);
+
+   nir_lower_idiv_options idiv_options = {0};
+   NIR_PASS_V(nir, nir_lower_idiv, &idiv_options);
+
+   NIR_PASS_V(nir, r600_nir_lower_trigen, rs->b.gfx_level);
+   NIR_PASS_V(nir, nir_lower_phis_to_scalar, false);
+   NIR_PASS_V(nir, nir_lower_undef_to_zero);
+
+   struct nir_lower_tex_options lower_tex_options = {0};
+   lower_tex_options.lower_txp = ~0u;
+   lower_tex_options.lower_txf_offset = true;
+   lower_tex_options.lower_invalid_implicit_lod = true;
+   lower_tex_options.lower_tg4_offsets = true;
+
+   NIR_PASS_V(nir, nir_lower_tex, &lower_tex_options);
+   NIR_PASS_V(nir, r600_nir_lower_txl_txf_array_or_cube);
+   NIR_PASS_V(nir, r600_nir_lower_cube_to_2darray);
+
+   NIR_PASS_V(nir, r600_nir_lower_pack_unpack_2x16);
+
+   NIR_PASS_V(nir, r600_lower_shared_io);
+   NIR_PASS_V(nir, r600_nir_lower_atomics);
+
+   while (optimize_once(nir))
+      ;
+
+   return NULL;
+}
+
 int
 r600_shader_from_nir(struct r600_context *rctx,
                      struct r600_pipe_shader *pipeshader,
                      r600_shader_key *key)
 {
+
    MallocPoolRelease pool_release;
 
    struct r600_pipe_shader_selector *sel = pipeshader->selector;
@@ -680,78 +789,51 @@ r600_shader_from_nir(struct r600_context *rctx,
       fprintf(stderr, "END PRE-OPT-NIR--------------------------------------\n\n");
    }
 
+   auto sh = nir_shader_clone(sel->nir, sel->nir);
    r600::sort_uniforms(sel->nir);
 
-   /* Cayman seems very crashy about accessing images that don't exists or are
-    * accessed out of range, this lowering seems to help (but it can also be
-    * another problem */
 
-   NIR_PASS_V(sel->nir, nir_lower_regs_to_ssa);
-   nir_lower_idiv_options idiv_options = {0};
-   idiv_options.allow_fp16 = true;
-
-   NIR_PASS_V(sel->nir, nir_lower_idiv, &idiv_options);
-   NIR_PASS_V(sel->nir, r600_nir_lower_trigen, rctx->b.gfx_level);
-   NIR_PASS_V(sel->nir, nir_lower_phis_to_scalar, false);
-   NIR_PASS_V(sel->nir, nir_lower_undef_to_zero);
-
-   if (lower_64bit)
-      NIR_PASS_V(sel->nir, nir_lower_int64);
-   while (optimize_once(sel->nir))
+   while (optimize_once(sh))
       ;
 
-   NIR_PASS_V(sel->nir, r600_lower_shared_io);
-   NIR_PASS_V(sel->nir, r600_nir_lower_atomics);
 
-   struct nir_lower_tex_options lower_tex_options = {0};
-   lower_tex_options.lower_txp = ~0u;
-   lower_tex_options.lower_txf_offset = true;
-   lower_tex_options.lower_invalid_implicit_lod = true;
-   lower_tex_options.lower_tg4_offsets = true;
+   if (sh->info.stage == MESA_SHADER_VERTEX)
+      NIR_PASS_V(sh, r600_vectorize_vs_inputs);
 
-   NIR_PASS_V(sel->nir, nir_lower_tex, &lower_tex_options);
-   NIR_PASS_V(sel->nir, r600_nir_lower_txl_txf_array_or_cube);
-   NIR_PASS_V(sel->nir, r600_nir_lower_cube_to_2darray);
-
-   NIR_PASS_V(sel->nir, r600_nir_lower_pack_unpack_2x16);
-
-   if (sel->nir->info.stage == MESA_SHADER_VERTEX)
-      NIR_PASS_V(sel->nir, r600_vectorize_vs_inputs);
-
-   if (sel->nir->info.stage == MESA_SHADER_FRAGMENT) {
-      NIR_PASS_V(sel->nir, nir_lower_fragcoord_wtrans);
-      NIR_PASS_V(sel->nir, r600_lower_fs_out_to_vector);
+   if (sh->info.stage == MESA_SHADER_FRAGMENT) {
+      NIR_PASS_V(sh, nir_lower_fragcoord_wtrans);
+      NIR_PASS_V(sh, r600_lower_fs_out_to_vector);
    }
    nir_variable_mode io_modes = nir_var_uniform | nir_var_shader_in | nir_var_shader_out;
 
-   NIR_PASS_V(sel->nir, nir_opt_combine_stores, nir_var_shader_out);
-   NIR_PASS_V(sel->nir,
+   NIR_PASS_V(sh, nir_opt_combine_stores, nir_var_shader_out);
+   NIR_PASS_V(sh,
               nir_lower_io,
               io_modes,
               r600_glsl_type_size,
               nir_lower_io_lower_64bit_to_32);
 
-   if (sel->nir->info.stage == MESA_SHADER_FRAGMENT)
-      NIR_PASS_V(sel->nir, r600_lower_fs_pos_input);
+   if (sh->info.stage == MESA_SHADER_FRAGMENT)
+      NIR_PASS_V(sh, r600_lower_fs_pos_input);
 
    /**/
    if (lower_64bit)
-      NIR_PASS_V(sel->nir, nir_lower_indirect_derefs, nir_var_function_temp, 10);
+      NIR_PASS_V(sh, nir_lower_indirect_derefs, nir_var_function_temp, 10);
 
-   NIR_PASS_V(sel->nir, nir_opt_constant_folding);
-   NIR_PASS_V(sel->nir, nir_io_add_const_offset_to_base, io_modes);
+   NIR_PASS_V(sh, nir_opt_constant_folding);
+   NIR_PASS_V(sh, nir_io_add_const_offset_to_base, io_modes);
 
-   NIR_PASS_V(sel->nir, nir_lower_alu_to_scalar, r600_lower_to_scalar_instr_filter, NULL);
-   NIR_PASS_V(sel->nir, nir_lower_phis_to_scalar, false);
+   NIR_PASS_V(sh, nir_lower_alu_to_scalar, r600_lower_to_scalar_instr_filter, NULL);
+   NIR_PASS_V(sh, nir_lower_phis_to_scalar, false);
    if (lower_64bit)
-      NIR_PASS_V(sel->nir, r600::r600_nir_split_64bit_io);
-   NIR_PASS_V(sel->nir, nir_lower_alu_to_scalar, r600_lower_to_scalar_instr_filter, NULL);
-   NIR_PASS_V(sel->nir, nir_lower_phis_to_scalar, false);
-   NIR_PASS_V(sel->nir, nir_lower_alu_to_scalar, r600_lower_to_scalar_instr_filter, NULL);
-   NIR_PASS_V(sel->nir, nir_copy_prop);
-   NIR_PASS_V(sel->nir, nir_opt_dce);
+      NIR_PASS_V(sh, r600::r600_nir_split_64bit_io);
+   NIR_PASS_V(sh, nir_lower_alu_to_scalar, r600_lower_to_scalar_instr_filter, NULL);
+   NIR_PASS_V(sh, nir_lower_phis_to_scalar, false);
+   NIR_PASS_V(sh, nir_lower_alu_to_scalar, r600_lower_to_scalar_instr_filter, NULL);
+   NIR_PASS_V(sh, nir_copy_prop);
+   NIR_PASS_V(sh, nir_opt_dce);
 
-   auto sh = nir_shader_clone(sel->nir, sel->nir);
+
 
    if (r600_is_last_vertex_stage(sh, *key))
       r600_lower_clipvertex_to_clipdist(sh, sel->so);
@@ -788,6 +870,7 @@ r600_shader_from_nir(struct r600_context *rctx,
    }
 
    NIR_PASS_V(sh, nir_lower_ubo_vec4);
+   NIR_PASS_V(sh, r600_opt_indirect_fbo_loads);
 
    if (lower_64bit)
       NIR_PASS_V(sh, r600::r600_nir_64_to_vec2);

@@ -286,11 +286,6 @@ with_imagination_srv = get_option('imagination-srv')
 with_microsoft_vk = _vulkan_drivers.contains('microsoft-experimental')
 with_any_vk = _vulkan_drivers.length() != 0
 
-_vulkan_rt_drivers = get_option('vulkan-rt-drivers')
-if _vulkan_rt_drivers.contains('intel')
-  error('Use -Dintel-clc=enabled to enable Intel Vulkan Ray Tracing')
-endif
-
 with_any_broadcom = with_gallium_vc4 or with_gallium_v3d or with_broadcom_vk
 with_any_intel = with_intel_vk or with_intel_hasvk or with_gallium_iris or with_gallium_crocus or with_intel_tools
 
@@ -305,8 +300,13 @@ if with_aco_tests and not with_amd_vk
 endif
 
 with_microsoft_clc = get_option('microsoft-clc').enabled()
-with_intel_clc = get_option('intel-clc').enabled()
-with_intel_vk_rt = with_intel_clc
+if ['x86_64'].contains(host_machine.cpu_family())
+  with_intel_clc = get_option('intel-clc').enabled()
+  with_intel_vk_rt = with_intel_vk and with_intel_clc
+else
+  with_intel_clc = false
+  with_intel_vk_rt = false
+endif
 with_clc = with_microsoft_clc or with_intel_clc
 with_libclc = with_clc
 with_spirv_to_dxil = get_option('spirv-to-dxil')
@@ -326,6 +326,10 @@ else
 endif
 
 with_vulkan_beta = get_option('vulkan-beta')
+if host_machine.system() == 'darwin'
+  #macOS seems to need beta extensions to build for now:
+  with_vulkan_beta = true
+endif
 if with_vulkan_beta
   pre_args += '-DVK_ENABLE_BETA_EXTENSIONS'
 endif
@@ -456,9 +460,6 @@ if host_machine.system() == 'darwin'
   cpp_args += '-DVK_USE_PLATFORM_MACOS_MVK'
   c_args += '-DVK_USE_PLATFORM_METAL_EXT'
   cpp_args += '-DVK_USE_PLATFORM_METAL_EXT'
-  #macOS seems to need beta extensions to build for now:
-  c_args += '-DVK_ENABLE_BETA_EXTENSIONS'
-  cpp_args += '-DVK_ENABLE_BETA_EXTENSIONS'
 endif
 
 _egl = get_option('egl')
@@ -689,8 +690,8 @@ if vdpau_drivers_path == ''
   vdpau_drivers_path = join_paths(get_option('libdir'), 'vdpau')
 endif
 
-if with_vulkan_overlay_layer or with_aco_tests or with_amd_vk
-  prog_glslang = find_program('glslangValidator')
+if with_vulkan_overlay_layer or with_aco_tests or with_amd_vk or with_intel_vk
+  prog_glslang = find_program('glslangValidator', native : true)
   if run_command(prog_glslang, [ '--quiet', '--version' ], check : false).returncode() == 0
     glslang_quiet = ['--quiet']
   else
@@ -852,7 +853,8 @@ if with_gallium_st_nine
     error('The nine state tracker requires gallium softpipe/llvmpipe.')
   elif not (with_gallium_radeonsi or with_gallium_nouveau or with_gallium_r600
             or with_gallium_r300 or with_gallium_svga or with_gallium_i915
-            or with_gallium_iris or with_gallium_crocus or with_gallium_zink)
+            or with_gallium_iris or with_gallium_crocus or with_gallium_zink
+            or with_gallium_freedreno)
     error('The nine state tracker requires at least one non-swrast gallium driver.')
   endif
   if not with_dri3
@@ -1148,6 +1150,7 @@ else
     '-Werror=incompatible-pointer-types',
     '-Werror=int-conversion',
     '-Wimplicit-fallthrough',
+    '-Wmisleading-indentation',
     '-Wno-missing-field-initializers',
     '-Wno-format-truncation',
     '-fno-math-errno',
@@ -1161,6 +1164,7 @@ else
   _trial_cpp = [
     '-Werror=return-type',
     '-Werror=empty-body',
+    '-Wmisleading-indentation',
     '-Wno-non-virtual-dtor',
     '-Wno-missing-field-initializers',
     '-Wno-format-truncation',
@@ -2358,6 +2362,7 @@ if with_any_vk
   if with_any_vulkan_layers
     lines += 'Vulkan layers:   ' + ' '.join(get_option('vulkan-layers'))
   endif
+  lines += 'Vulkan Intel Ray Tracing:  ' + (with_intel_vk_rt ? 'yes' : 'no')
 else
   lines += 'Vulkan drivers:  no'
 endif

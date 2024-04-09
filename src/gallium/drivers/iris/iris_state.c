@@ -980,16 +980,17 @@ iris_alloc_push_constants(struct iris_batch *batch)
    }
 
 #if GFX_VERx10 == 125
-   /* Wa_22011440098
+   /* DG2: Wa_22011440098
+    * MTL: Wa_18022330953
     *
     * In 3D mode, after programming push constant alloc command immediately
     * program push constant command(ZERO length) without any commit between
     * them.
     */
-   if (intel_device_info_is_dg2(devinfo)) {
-      iris_emit_cmd(batch, GENX(3DSTATE_CONSTANT_ALL), c) {
-         c.MOCS = iris_mocs(NULL, &batch->screen->isl_dev, 0);
-      }
+   iris_emit_cmd(batch, GENX(3DSTATE_CONSTANT_ALL), c) {
+      /* Update empty push constants for all stages (bitmask = 11111b) */
+      c.ShaderUpdateEnable = 0x1f;
+      c.MOCS = iris_mocs(NULL, &batch->screen->isl_dev, 0);
    }
 #endif
 }
@@ -1477,7 +1478,7 @@ iris_create_blend_state(struct pipe_context *ctx,
       bs.AlphaToCoverageEnable = state->alpha_to_coverage;
       bs.IndependentAlphaBlendEnable = indep_alpha_blend;
       bs.AlphaToOneEnable = state->alpha_to_one;
-      bs.AlphaToCoverageDitherEnable = state->alpha_to_coverage;
+      bs.AlphaToCoverageDitherEnable = state->alpha_to_coverage_dither;
       bs.ColorDitherEnable = state->dither;
       /* bl.AlphaTestEnable and bs.AlphaTestFunction are filled in later. */
    }
@@ -7402,7 +7403,7 @@ iris_upload_gpgpu_walker(struct iris_context *ice,
 
       iris_pack_state(GENX(INTERFACE_DESCRIPTOR_DATA), desc, idd) {
          idd.SharedLocalMemorySize =
-            encode_slm_size(GFX_VER, ish->kernel_shared_size);
+            encode_slm_size(GFX_VER, ish->kernel_shared_size + grid->variable_shared_mem);
          idd.KernelStartPointer =
             KSP(shader) + brw_cs_prog_data_prog_offset(cs_prog_data,
                                                        dispatch.simd_size);

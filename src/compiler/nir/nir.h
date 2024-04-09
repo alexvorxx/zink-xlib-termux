@@ -49,7 +49,7 @@
 #include <stdio.h>
 
 #ifndef NDEBUG
-#include "util/debug.h"
+#include "util/u_debug.h"
 #endif /* NDEBUG */
 
 #include "nir_opcodes.h"
@@ -226,6 +226,30 @@ typedef enum {
    nir_rounding_mode_rd    = 3, /* round down */
    nir_rounding_mode_rtz   = 4, /* round towards zero */
 } nir_rounding_mode;
+
+/**
+ * Ray query values that can read from a RayQueryKHR object.
+ */
+typedef enum {
+   nir_ray_query_value_intersection_type,
+   nir_ray_query_value_intersection_t,
+   nir_ray_query_value_intersection_instance_custom_index,
+   nir_ray_query_value_intersection_instance_id,
+   nir_ray_query_value_intersection_instance_sbt_index,
+   nir_ray_query_value_intersection_geometry_index,
+   nir_ray_query_value_intersection_primitive_index,
+   nir_ray_query_value_intersection_barycentrics,
+   nir_ray_query_value_intersection_front_face,
+   nir_ray_query_value_intersection_object_ray_direction,
+   nir_ray_query_value_intersection_object_ray_origin,
+   nir_ray_query_value_intersection_object_to_world,
+   nir_ray_query_value_intersection_world_to_object,
+   nir_ray_query_value_intersection_candidate_aabb_opaque,
+   nir_ray_query_value_tmin,
+   nir_ray_query_value_flags,
+   nir_ray_query_value_world_ray_direction,
+   nir_ray_query_value_world_ray_origin,
+} nir_ray_query_value;
 
 typedef union {
    bool b;
@@ -1965,6 +1989,9 @@ void nir_rewrite_image_intrinsic(nir_intrinsic_instr *instr,
 static inline bool
 nir_intrinsic_can_reorder(nir_intrinsic_instr *instr)
 {
+   if (nir_intrinsic_has_access(instr) &&
+       nir_intrinsic_access(instr) & ACCESS_VOLATILE)
+      return false;
    if (instr->intrinsic == nir_intrinsic_load_deref) {
       nir_deref_instr *deref = nir_src_as_deref(instr->src[0]);
       return nir_deref_mode_is_in_set(deref, nir_var_read_only_modes) ||
@@ -1983,6 +2010,22 @@ nir_intrinsic_can_reorder(nir_intrinsic_instr *instr)
 }
 
 bool nir_intrinsic_writes_external_memory(const nir_intrinsic_instr *instr);
+
+static inline bool
+nir_intrinsic_is_ray_query(nir_intrinsic_op intrinsic)
+{
+   switch (intrinsic) {
+   case nir_intrinsic_rq_confirm_intersection:
+   case nir_intrinsic_rq_generate_intersection:
+   case nir_intrinsic_rq_initialize:
+   case nir_intrinsic_rq_load:
+   case nir_intrinsic_rq_proceed:
+   case nir_intrinsic_rq_terminate:
+      return true;
+   default:
+      return false;
+   }
+}
 
 /** Texture instruction source type */
 typedef enum {
@@ -5493,7 +5536,7 @@ bool nir_lower_ssa_defs_to_regs_block(nir_block *block);
 bool nir_rematerialize_derefs_in_use_blocks_impl(nir_function_impl *impl);
 
 bool nir_lower_samplers(nir_shader *shader);
-bool nir_lower_cl_images(nir_shader *shader);
+bool nir_lower_cl_images(nir_shader *shader, bool lower_image_derefs, bool lower_sampler_derefs);
 bool nir_dedup_inline_samplers(nir_shader *shader);
 bool nir_lower_ssbo(nir_shader *shader);
 
@@ -5511,7 +5554,6 @@ bool nir_opt_comparison_pre(nir_shader *shader);
 
 typedef struct nir_opt_access_options {
    bool is_vulkan;
-   bool infer_non_readable;
 } nir_opt_access_options;
 
 bool nir_opt_access(nir_shader *shader, const nir_opt_access_options *options);
@@ -5635,6 +5677,8 @@ bool nir_opt_move_discards_to_top(nir_shader *shader);
 
 bool nir_opt_ray_queries(nir_shader *shader);
 
+bool nir_opt_ray_query_ranges(nir_shader *shader);
+
 typedef bool (*nir_should_vectorize_mem_func)(unsigned align_mul,
                                               unsigned align_offset,
                                               unsigned bit_size,
@@ -5700,27 +5744,6 @@ bool
 nir_addition_might_overflow(nir_shader *shader, struct hash_table *range_ht,
                             nir_ssa_scalar ssa, unsigned const_val,
                             const nir_unsigned_upper_bound_config *config);
-
-typedef enum {
-   nir_ray_query_value_intersection_type,
-   nir_ray_query_value_intersection_t,
-   nir_ray_query_value_intersection_instance_custom_index,
-   nir_ray_query_value_intersection_instance_id,
-   nir_ray_query_value_intersection_instance_sbt_index,
-   nir_ray_query_value_intersection_geometry_index,
-   nir_ray_query_value_intersection_primitive_index,
-   nir_ray_query_value_intersection_barycentrics,
-   nir_ray_query_value_intersection_front_face,
-   nir_ray_query_value_intersection_object_ray_direction,
-   nir_ray_query_value_intersection_object_ray_origin,
-   nir_ray_query_value_intersection_object_to_world,
-   nir_ray_query_value_intersection_world_to_object,
-   nir_ray_query_value_intersection_candidate_aabb_opaque,
-   nir_ray_query_value_tmin,
-   nir_ray_query_value_flags,
-   nir_ray_query_value_world_ray_direction,
-   nir_ray_query_value_world_ray_origin,
-} nir_ray_query_value;
 
 typedef struct {
    /* True if gl_DrawID is considered uniform, i.e. if the preamble is run

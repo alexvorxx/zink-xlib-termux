@@ -193,7 +193,7 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
       sba.DynamicStateBufferSizeModifyEnable    = true;
       sba.InstructionBuffersizeModifyEnable     = true;
       sba.BindlessSurfaceStateBaseAddress =
-         (struct anv_address) { device->surface_state_pool.block_pool.bo, 0 };
+         (struct anv_address) { device->bindless_surface_state_pool.block_pool.bo, 0 };
       sba.BindlessSurfaceStateSize = (1 << 20) - 1;
       sba.BindlessSurfaceStateMOCS = mocs;
       sba.BindlessSurfaceStateBaseAddressModifyEnable = true;
@@ -945,7 +945,7 @@ genX(copy_fast_clear_dwords)(struct anv_cmd_buffer *cmd_buffer,
    assert(image->vk.aspects & VK_IMAGE_ASPECT_ANY_COLOR_BIT_ANV);
 
    struct anv_address ss_clear_addr = {
-      .bo = cmd_buffer->device->surface_state_pool.block_pool.bo,
+      .bo = cmd_buffer->device->internal_surface_state_pool.block_pool.bo,
       .offset = surface_state.offset +
                 cmd_buffer->device->isl_dev.ss.clear_value_offset,
    };
@@ -1058,24 +1058,6 @@ transition_color_buffer(struct anv_cmd_buffer *cmd_buffer,
    }
 
    const uint32_t plane = anv_image_aspect_to_plane(image, aspect);
-
-   if (anv_surface_is_valid(&image->planes[plane].shadow_surface) &&
-       final_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-      /* This surface is a linear compressed image with a tiled shadow surface
-       * for texturing.  The client is about to use it in READ_ONLY_OPTIMAL so
-       * we need to ensure the shadow copy is up-to-date.
-       */
-      assert(image->vk.tiling != VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT);
-      assert(image->vk.aspects == VK_IMAGE_ASPECT_COLOR_BIT);
-      assert(image->planes[plane].primary_surface.isl.tiling == ISL_TILING_LINEAR);
-      assert(image->planes[plane].shadow_surface.isl.tiling != ISL_TILING_LINEAR);
-      assert(isl_format_is_compressed(image->planes[plane].primary_surface.isl.format));
-      assert(plane == 0);
-      anv_image_copy_to_shadow(cmd_buffer, image,
-                               VK_IMAGE_ASPECT_COLOR_BIT,
-                               base_level, level_count,
-                               base_layer, layer_count);
-   }
 
    if (base_layer >= anv_image_aux_layers(image, aspect, base_level))
       return;
@@ -1443,7 +1425,7 @@ genX(BeginCommandBuffer)(
     *    VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT not set. It then puts
     *    the command buffer in the recording state.
     */
-   anv_cmd_buffer_reset(cmd_buffer);
+   anv_cmd_buffer_reset(&cmd_buffer->vk, 0);
    anv_cmd_buffer_reset_rendering(cmd_buffer);
 
    cmd_buffer->usage_flags = pBeginInfo->flags;
@@ -1691,7 +1673,7 @@ genX(CmdExecuteCommands)(
           * we allocated for them in BeginCommandBuffer.
           */
          struct anv_bo *ss_bo =
-            primary->device->surface_state_pool.block_pool.bo;
+            primary->device->internal_surface_state_pool.block_pool.bo;
          struct anv_state src_state = primary->state.gfx.att_states;
          struct anv_state dst_state = secondary->state.gfx.att_states;
          assert(src_state.alloc_size == dst_state.alloc_size);
@@ -2098,6 +2080,21 @@ genX(emit_apply_pipe_flushes)(struct anv_batch *batch,
 ALWAYS_INLINE void
 genX(cmd_buffer_apply_pipe_flushes)(struct anv_cmd_buffer *cmd_buffer)
 {
+#if GFX_VERx10 == 120
+   /* If we're changing the state of the RHWO optimization, we need to have
+    * sb_stall+cs_stall.
+    */
+   const bool rhwo_opt_change =
+      cmd_buffer->state.rhwo_optimization_enabled !=
+      cmd_buffer->state.pending_rhwo_optimization_enabled;
+   if (rhwo_opt_change) {
+      anv_add_pending_pipe_bits(cmd_buffer,
+                                ANV_PIPE_STALL_AT_SCOREBOARD_BIT |
+                                ANV_PIPE_END_OF_PIPE_SYNC_BIT,
+                                "change RHWO optimization");
+   }
+#endif
+
    enum anv_pipe_bits bits = cmd_buffer->state.pending_pipe_bits;
 
    if (unlikely(cmd_buffer->device->physical->always_flush_cache))
@@ -2127,6 +2124,19 @@ genX(cmd_buffer_apply_pipe_flushes)(struct anv_cmd_buffer *cmd_buffer)
                                     cmd_buffer->device,
                                     cmd_buffer->state.current_pipeline,
                                     bits);
+
+#if GFX_VERx10 == 120
+   /* Wa_1508744258 handling */
+   if (rhwo_opt_change) {
+      anv_batch_write_reg(&cmd_buffer->batch, GENX(COMMON_SLICE_CHICKEN1), c1) {
+         c1.RCCRHWOOptimizationDisable =
+            !cmd_buffer->state.pending_rhwo_optimization_enabled;
+         c1.RCCRHWOOptimizationDisableMask = true;
+      }
+      cmd_buffer->state.rhwo_optimization_enabled =
+         cmd_buffer->state.pending_rhwo_optimization_enabled;
+   }
+#endif
 
    if (trace_flush) {
       trace_intel_end_stall(&cmd_buffer->trace, bits,
@@ -2277,16 +2287,17 @@ cmd_buffer_alloc_push_constants(struct anv_cmd_buffer *cmd_buffer)
    }
 
 #if GFX_VERx10 == 125
-   /* Wa_22011440098
+   /* DG2: Wa_22011440098
+    * MTL: Wa_18022330953
     *
     * In 3D mode, after programming push constant alloc command immediately
     * program push constant command(ZERO length) without any commit between
     * them.
     */
-   if (intel_device_info_is_dg2(cmd_buffer->device->info)) {
-      anv_batch_emit(&cmd_buffer->batch, GENX(3DSTATE_CONSTANT_ALL), c) {
-         c.MOCS = anv_mocs(cmd_buffer->device, NULL, 0);
-      }
+   anv_batch_emit(&cmd_buffer->batch, GENX(3DSTATE_CONSTANT_ALL), c) {
+      /* Update empty push constants for all stages (bitmask = 11111b) */
+      c.ShaderUpdateEnable = 0x1f;
+      c.MOCS = anv_mocs(cmd_buffer->device, NULL, 0);
    }
 #endif
 
@@ -2425,7 +2436,8 @@ emit_binding_table(struct anv_cmd_buffer *cmd_buffer,
                   (desc->layout == VK_IMAGE_LAYOUT_GENERAL) ?
                   desc->image_view->planes[binding->plane].general_sampler_surface_state :
                   desc->image_view->planes[binding->plane].optimal_sampler_surface_state;
-               surface_state = sstate.state;
+               surface_state =
+                  anv_bindless_state_for_binding_table(sstate.state);
                assert(surface_state.alloc_size);
             } else {
                surface_state = cmd_buffer->device->null_surface_state;
@@ -2439,7 +2451,8 @@ emit_binding_table(struct anv_cmd_buffer *cmd_buffer,
                   binding->lowered_storage_surface
                   ? desc->image_view->planes[binding->plane].lowered_storage_surface_state
                   : desc->image_view->planes[binding->plane].storage_surface_state;
-               surface_state = sstate.state;
+               surface_state =
+                  anv_bindless_state_for_binding_table(sstate.state);
                assert(surface_state.alloc_size);
                if (surface_state.offset == 0) {
                   mesa_loge("Bound a image to a descriptor where the "
@@ -2473,7 +2486,8 @@ emit_binding_table(struct anv_cmd_buffer *cmd_buffer,
 
          case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
             if (desc->buffer_view) {
-               surface_state = desc->buffer_view->surface_state;
+               surface_state = anv_bindless_state_for_binding_table(
+                  desc->buffer_view->surface_state);
                assert(surface_state.alloc_size);
             } else {
                surface_state = cmd_buffer->device->null_surface_state;
@@ -2499,8 +2513,7 @@ emit_binding_table(struct anv_cmd_buffer *cmd_buffer,
                struct anv_address address =
                   anv_address_add(desc->buffer->address, offset);
 
-               surface_state =
-                  anv_state_stream_alloc(&cmd_buffer->surface_state_stream, 64, 64);
+               surface_state = anv_cmd_buffer_alloc_surface_state(cmd_buffer);
                enum isl_format format =
                   anv_isl_format_for_descriptor_type(cmd_buffer->device,
                                                      desc->type);
@@ -2521,9 +2534,10 @@ emit_binding_table(struct anv_cmd_buffer *cmd_buffer,
 
          case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
             if (desc->buffer_view) {
-               surface_state = binding->lowered_storage_surface
+               surface_state = anv_bindless_state_for_binding_table(
+                  binding->lowered_storage_surface
                   ? desc->buffer_view->lowered_storage_surface_state
-                  : desc->buffer_view->storage_surface_state;
+                  : desc->buffer_view->storage_surface_state);
                assert(surface_state.alloc_size);
             } else {
                surface_state = cmd_buffer->device->null_surface_state;
@@ -2534,6 +2548,7 @@ emit_binding_table(struct anv_cmd_buffer *cmd_buffer,
             assert(!"Invalid descriptor type");
             continue;
          }
+
          assert(surface_state.map);
          bt_map[s] = surface_state.offset + state_offset;
          break;
@@ -2671,7 +2686,6 @@ flush_push_descriptor_set(struct anv_cmd_buffer *cmd_buffer,
                           struct anv_cmd_pipeline_state *state,
                           struct anv_pipeline *pipeline)
 {
-   const struct isl_device *isl_dev = &cmd_buffer->device->isl_dev;
    struct anv_descriptor_set *set = &state->push_descriptor->set;
    struct anv_descriptor_set_layout *layout = set->layout;
 
@@ -2681,9 +2695,7 @@ flush_push_descriptor_set(struct anv_cmd_buffer *cmd_buffer,
          struct anv_descriptor *desc = &set->descriptors[desc_idx];
          struct anv_buffer_view *bview = desc->set_buffer_view;
 
-         bview->surface_state =
-            anv_state_stream_alloc(&cmd_buffer->surface_state_stream,
-                                   isl_dev->ss.size, isl_dev->ss.align);
+         bview->surface_state = anv_cmd_buffer_alloc_surface_state(cmd_buffer);
          anv_descriptor_write_surface_state(cmd_buffer->device, desc,
                                             bview->surface_state);
       }
@@ -2694,9 +2706,7 @@ flush_push_descriptor_set(struct anv_cmd_buffer *cmd_buffer,
          anv_isl_format_for_descriptor_type(cmd_buffer->device,
                                             VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 
-      set->desc_surface_state =
-         anv_state_stream_alloc(&cmd_buffer->surface_state_stream,
-                                isl_dev->ss.size, isl_dev->ss.align);
+      set->desc_surface_state = anv_cmd_buffer_alloc_surface_state(cmd_buffer);
       anv_fill_buffer_surface_state(cmd_buffer->device,
                                     set->desc_surface_state,
                                     format, ISL_SWIZZLE_IDENTITY,

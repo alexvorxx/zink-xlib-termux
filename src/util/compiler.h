@@ -37,34 +37,32 @@
 #include <assert.h>
 
 #include "util/macros.h"
-
+#include "util/u_endian.h"
 
 /**
- * Either define MESA_BIG_ENDIAN or MESA_LITTLE_ENDIAN, and CPU_TO_LE32.
+ * Define CPU_TO_LE32
  * Do not use these unless absolutely necessary!
  * Try to use a runtime test instead.
  * For now, only used by some DRI hardware drivers for color/texel packing.
  */
-#if defined(BYTE_ORDER) && defined(BIG_ENDIAN) && BYTE_ORDER == BIG_ENDIAN
+#if UTIL_ARCH_BIG_ENDIAN
 #if defined(__linux__)
 #include <byteswap.h>
-#define CPU_TO_LE32( x )	bswap_32( x )
+#define CPU_TO_LE32( x ) bswap_32( x )
 #elif defined(__APPLE__)
 #include <CoreFoundation/CFByteOrder.h>
-#define CPU_TO_LE32( x )	CFSwapInt32HostToLittle( x )
+#define CPU_TO_LE32( x ) CFSwapInt32HostToLittle( x )
 #elif defined(__OpenBSD__)
 #include <sys/types.h>
-#define CPU_TO_LE32( x )	htole32( x )
+#define CPU_TO_LE32( x ) htole32( x )
 #else /*__linux__ */
 #include <sys/endian.h>
-#define CPU_TO_LE32( x )	bswap32( x )
+#define CPU_TO_LE32( x ) bswap32( x )
 #endif /*__linux__*/
-#define MESA_BIG_ENDIAN 1
 #else
-#define CPU_TO_LE32( x )	( x )
-#define MESA_LITTLE_ENDIAN 1
+#define CPU_TO_LE32( x ) ( x )
 #endif
-#define LE32_TO_CPU( x )	CPU_TO_LE32( x )
+#define LE32_TO_CPU( x ) CPU_TO_LE32( x )
 
 
 

@@ -96,6 +96,13 @@ radv_create_merged_rt_create_info(const VkRayTracingPipelineCreateInfoKHR *pCrea
    return local_create_info;
 }
 
+static void
+vk_shader_module_finish(void *_module)
+{
+   struct vk_shader_module *module = _module;
+   vk_object_base_finish(&module->base);
+}
+
 static VkResult
 radv_rt_pipeline_library_create(VkDevice _device, VkPipelineCache _cache,
                                 const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
@@ -111,6 +118,8 @@ radv_rt_pipeline_library_create(VkDevice _device, VkPipelineCache _cache,
 
    radv_pipeline_init(device, &pipeline->base, RADV_PIPELINE_LIBRARY);
 
+   pipeline->ctx = ralloc_context(NULL);
+
    VkRayTracingPipelineCreateInfoKHR local_create_info =
       radv_create_merged_rt_create_info(pCreateInfo);
    if (!local_create_info.pStages || !local_create_info.pGroups)
@@ -120,17 +129,19 @@ radv_rt_pipeline_library_create(VkDevice _device, VkPipelineCache _cache,
       pipeline->stage_count = local_create_info.stageCount;
 
       size_t size = sizeof(VkPipelineShaderStageCreateInfo) * local_create_info.stageCount;
-      pipeline->stages = malloc(size);
+      pipeline->stages = ralloc_size(pipeline->ctx, size);
       if (!pipeline->stages)
          goto fail;
 
       memcpy(pipeline->stages, local_create_info.pStages, size);
 
-      pipeline->hashes = malloc(sizeof(*pipeline->hashes) * local_create_info.stageCount);
+      pipeline->hashes =
+         ralloc_size(pipeline->ctx, sizeof(*pipeline->hashes) * local_create_info.stageCount);
       if (!pipeline->hashes)
          goto fail;
 
-      pipeline->identifiers = malloc(sizeof(*pipeline->identifiers) * local_create_info.stageCount);
+      pipeline->identifiers =
+         ralloc_size(pipeline->ctx, sizeof(*pipeline->identifiers) * local_create_info.stageCount);
       if (!pipeline->identifiers)
          goto fail;
 
@@ -142,8 +153,45 @@ radv_rt_pipeline_library_create(VkDevice _device, VkPipelineCache _cache,
                                  PIPELINE_SHADER_STAGE_MODULE_IDENTIFIER_CREATE_INFO_EXT);
 
          if (module) {
-            struct vk_shader_module *new_module = vk_shader_module_clone(NULL, module);
+            struct vk_shader_module *new_module =
+               ralloc_size(pipeline->ctx, sizeof(struct vk_shader_module) + module->size);
+            if (!new_module)
+               goto fail;
+
+            ralloc_set_destructor(new_module, vk_shader_module_finish);
+            vk_object_base_init(&device->vk, &new_module->base, VK_OBJECT_TYPE_SHADER_MODULE);
+
+            new_module->nir = NULL;
+            memcpy(new_module->sha1, module->sha1, sizeof(module->sha1));
+            new_module->size = module->size;
+            memcpy(new_module->data, module->data, module->size);
+
+            const VkSpecializationInfo *spec = pipeline->stages[i].pSpecializationInfo;
+            if (spec) {
+               VkSpecializationInfo *new_spec = ralloc(pipeline->ctx, VkSpecializationInfo);
+               if (!new_spec)
+                  goto fail;
+
+               new_spec->mapEntryCount = spec->mapEntryCount;
+               uint32_t map_entries_size = sizeof(VkSpecializationMapEntry) * spec->mapEntryCount;
+               new_spec->pMapEntries = ralloc_size(pipeline->ctx, map_entries_size);
+               if (!new_spec->pMapEntries)
+                  goto fail;
+               memcpy((void *)new_spec->pMapEntries, spec->pMapEntries, map_entries_size);
+
+               new_spec->dataSize = spec->dataSize;
+               new_spec->pData = ralloc_size(pipeline->ctx, spec->dataSize);
+               if (!new_spec->pData)
+                  goto fail;
+               memcpy((void *)new_spec->pData, spec->pData, spec->dataSize);
+
+               pipeline->stages[i].pSpecializationInfo = new_spec;
+            }
+
             pipeline->stages[i].module = vk_shader_module_to_handle(new_module);
+            pipeline->stages[i].pName = ralloc_strdup(pipeline->ctx, pipeline->stages[i].pName);
+            if (!pipeline->stages[i].pName)
+               goto fail;
             pipeline->stages[i].pNext = NULL;
          } else {
             assert(iinfo);
@@ -164,7 +212,7 @@ radv_rt_pipeline_library_create(VkDevice _device, VkPipelineCache _cache,
    if (local_create_info.groupCount) {
       size_t size = sizeof(VkRayTracingShaderGroupCreateInfoKHR) * local_create_info.groupCount;
       pipeline->group_count = local_create_info.groupCount;
-      pipeline->groups = malloc(size);
+      pipeline->groups = ralloc_size(pipeline->ctx, size);
       if (!pipeline->groups)
          goto fail;
       memcpy(pipeline->groups, local_create_info.pGroups, size);
@@ -176,10 +224,7 @@ radv_rt_pipeline_library_create(VkDevice _device, VkPipelineCache _cache,
    free((void *)local_create_info.pStages);
    return VK_SUCCESS;
 fail:
-   free(pipeline->groups);
-   free(pipeline->stages);
-   free(pipeline->hashes);
-   free(pipeline->identifiers);
+   ralloc_free(pipeline->ctx);
    free((void *)local_create_info.pGroups);
    free((void *)local_create_info.pStages);
    return VK_ERROR_OUT_OF_HOST_MEMORY;
@@ -1165,10 +1210,10 @@ handle_candidate_triangle(nir_builder *b, struct radv_triangle_intersection *int
    nir_ssa_def *hit_kind =
       nir_bcsel(b, intersection->frontface, nir_imm_int(b, 0xFE), nir_imm_int(b, 0xFF));
 
-   nir_store_scratch(
-      b, intersection->barycentrics,
-      nir_iadd_imm(b, nir_load_var(b, data->vars->stack_ptr), RADV_HIT_ATTRIB_OFFSET),
-      .align_mul = 16);
+   nir_ssa_def *barycentrics_addr =
+      nir_iadd_imm(b, nir_load_var(b, data->vars->stack_ptr), RADV_HIT_ATTRIB_OFFSET);
+   nir_ssa_def *prev_barycentrics = nir_load_scratch(b, 2, 32, barycentrics_addr, .align_mul = 16);
+   nir_store_scratch(b, intersection->barycentrics, barycentrics_addr, .align_mul = 16);
 
    nir_store_var(b, data->vars->ahit_accept, nir_imm_true(b), 0x1);
    nir_store_var(b, data->vars->ahit_terminate, nir_imm_false(b), 0x1);
@@ -1191,6 +1236,7 @@ handle_candidate_triangle(nir_builder *b, struct radv_triangle_intersection *int
 
       nir_push_if(b, nir_inot(b, nir_load_var(b, data->vars->ahit_accept)));
       {
+         nir_store_scratch(b, prev_barycentrics, barycentrics_addr, .align_mul = 16);
          nir_jump(b, nir_jump_continue);
       }
       nir_pop_if(b, NULL);
@@ -1278,44 +1324,6 @@ handle_candidate_aabb(nir_builder *b, struct radv_leaf_intersection *intersectio
 
       inner_vars.stage_idx = shader_id;
       insert_rt_case(b, nir_stage, &inner_vars, nir_load_var(b, inner_vars.idx), 0, i + 2);
-   }
-   nir_push_else(b, NULL);
-   {
-      nir_ssa_def *vec3_zero = nir_channels(b, nir_imm_vec4(b, 0, 0, 0, 0), 0x7);
-      nir_ssa_def *vec3_inf =
-         nir_channels(b, nir_imm_vec4(b, INFINITY, INFINITY, INFINITY, 0), 0x7);
-
-      nir_ssa_def *bvh_lo =
-         nir_build_load_global(b, 3, 32, nir_iadd_imm(b, intersection->node_addr, 0));
-      nir_ssa_def *bvh_hi =
-         nir_build_load_global(b, 3, 32, nir_iadd_imm(b, intersection->node_addr, 12));
-
-      bvh_lo = nir_fsub(b, bvh_lo, nir_load_var(b, data->trav_vars->origin));
-      bvh_hi = nir_fsub(b, bvh_hi, nir_load_var(b, data->trav_vars->origin));
-      nir_ssa_def *t_vec =
-         nir_fmin(b, nir_fmul(b, bvh_lo, nir_load_var(b, data->trav_vars->inv_dir)),
-                  nir_fmul(b, bvh_hi, nir_load_var(b, data->trav_vars->inv_dir)));
-      nir_ssa_def *t2_vec =
-         nir_fmax(b, nir_fmul(b, bvh_lo, nir_load_var(b, data->trav_vars->inv_dir)),
-                  nir_fmul(b, bvh_hi, nir_load_var(b, data->trav_vars->inv_dir)));
-      /* If we run parallel to one of the edges the range should be [0, inf) not [0,0] */
-      t2_vec = nir_bcsel(b, nir_feq(b, nir_load_var(b, data->trav_vars->dir), vec3_zero), vec3_inf,
-                         t2_vec);
-
-      nir_ssa_def *t_min = nir_fmax(b, nir_channel(b, t_vec, 0), nir_channel(b, t_vec, 1));
-      t_min = nir_fmax(b, t_min, nir_channel(b, t_vec, 2));
-
-      nir_ssa_def *t_max = nir_fmin(b, nir_channel(b, t2_vec, 0), nir_channel(b, t2_vec, 1));
-      t_max = nir_fmin(b, t_max, nir_channel(b, t2_vec, 2));
-
-      nir_push_if(b, nir_iand(b, nir_fge(b, nir_load_var(b, data->vars->tmax), t_min),
-                              nir_fge(b, t_max, nir_load_var(b, data->vars->tmin))));
-      {
-         nir_store_var(b, data->vars->ahit_accept, nir_imm_true(b), 0x1);
-         nir_store_var(b, inner_vars.tmax, nir_fmax(b, t_min, nir_load_var(b, data->vars->tmin)),
-                       1);
-      }
-      nir_pop_if(b, NULL);
    }
    nir_pop_if(b, NULL);
 

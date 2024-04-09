@@ -26,7 +26,7 @@
 
 #include "aco_builder.h"
 
-#include "util/debug.h"
+#include "util/u_debug.h"
 
 #include "c11/threads.h"
 
@@ -111,14 +111,20 @@ init_program(Program* program, Stage stage, const struct aco_shader_info* info,
 
    if (gfx_level >= GFX10) {
       program->dev.physical_sgprs = 5120; /* doesn't matter as long as it's at least 128 * 40 */
-      program->dev.physical_vgprs = program->wave_size == 32 ? 1024 : 512;
       program->dev.sgpr_alloc_granule = 128;
       program->dev.sgpr_limit =
          108; /* includes VCC, which can be treated as s[106-107] on GFX10+ */
-      if (gfx_level == GFX10_3)
-         program->dev.vgpr_alloc_granule = program->wave_size == 32 ? 16 : 8;
-      else
-         program->dev.vgpr_alloc_granule = program->wave_size == 32 ? 8 : 4;
+
+      if (family == CHIP_GFX1100 || family == CHIP_GFX1101) {
+         program->dev.physical_vgprs = program->wave_size == 32 ? 1536 : 768;
+         program->dev.vgpr_alloc_granule = program->wave_size == 32 ? 24 : 12;
+      } else {
+         program->dev.physical_vgprs = program->wave_size == 32 ? 1024 : 512;
+         if (gfx_level >= GFX10_3)
+            program->dev.vgpr_alloc_granule = program->wave_size == 32 ? 16 : 8;
+         else
+            program->dev.vgpr_alloc_granule = program->wave_size == 32 ? 8 : 4;
+      }
    } else if (program->gfx_level >= GFX8) {
       program->dev.physical_sgprs = 800;
       program->dev.sgpr_alloc_granule = 16;
@@ -152,7 +158,7 @@ init_program(Program* program, Stage stage, const struct aco_shader_info* info,
    default: break;
    }
 
-   program->dev.sram_ecc_enabled = program->family == CHIP_ARCTURUS;
+   program->dev.sram_ecc_enabled = program->family == CHIP_MI100;
    /* apparently gfx702 also has fast v_fma_f32 but I can't find a family for that */
    program->dev.has_fast_fma32 = program->gfx_level >= GFX9;
    if (program->family == CHIP_TAHITI || program->family == CHIP_CARRIZO ||
@@ -162,7 +168,7 @@ init_program(Program* program, Stage stage, const struct aco_shader_info* info,
 
    program->dev.fused_mad_mix = program->gfx_level >= GFX10;
    if (program->family == CHIP_VEGA12 || program->family == CHIP_VEGA20 ||
-       program->family == CHIP_ARCTURUS || program->family == CHIP_ALDEBARAN)
+       program->family == CHIP_MI100 || program->family == CHIP_MI200)
       program->dev.fused_mad_mix = true;
 
    if (program->gfx_level >= GFX11) {

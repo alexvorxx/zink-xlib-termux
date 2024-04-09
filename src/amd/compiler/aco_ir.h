@@ -2110,20 +2110,6 @@ static constexpr Stage tess_eval_es(HWStage::ES,
                                     SWStage::TES); /* tesselation evaluation before geometry */
 static constexpr Stage geometry_gs(HWStage::GS, SWStage::GS);
 
-enum statistic {
-   statistic_hash,
-   statistic_instructions,
-   statistic_copies,
-   statistic_branches,
-   statistic_latency,
-   statistic_inv_throughput,
-   statistic_vmem_clauses,
-   statistic_smem_clauses,
-   statistic_sgpr_presched,
-   statistic_vgpr_presched,
-   num_statistics
-};
-
 struct DeviceInfo {
    uint16_t lds_encoding_granule;
    uint16_t lds_alloc_granule;
@@ -2134,7 +2120,7 @@ struct DeviceInfo {
    uint16_t vgpr_limit;
    uint16_t sgpr_limit;
    uint16_t sgpr_alloc_granule;
-   uint16_t vgpr_alloc_granule; /* must be power of two */
+   uint16_t vgpr_alloc_granule;
    unsigned max_wave64_per_simd;
    unsigned simd_per_cu;
    bool has_fast_fma32 = false;
@@ -2185,7 +2171,7 @@ public:
    CompilationProgress progress;
 
    bool collect_statistics = false;
-   uint32_t statistics[num_statistics];
+   uint32_t statistics[aco_num_statistics];
 
    float_mode next_fp_mode;
    unsigned next_loop_depth = 0;

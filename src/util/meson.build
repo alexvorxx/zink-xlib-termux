@@ -18,7 +18,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-inc_util = include_directories('.')
+# inc_util only depends inc_include, this folder and nothing else under src
+# so we use include_directories('..') instead of inc_src to tell the fact
+# util is self contained.
+inc_util = [inc_include, include_directories('..')]
 
 subdir('format')
 
@@ -40,8 +43,6 @@ files_mesa_util = files(
   'crc32.c',
   'crc32.h',
   'dag.c',
-  'debug.c',
-  'debug.h',
   'disk_cache.c',
   'disk_cache.h',
   'disk_cache_os.c',
@@ -58,6 +59,7 @@ files_mesa_util = files(
   'fossilize_db.h',
   'futex.c',
   'futex.h',
+  'glheader.h',
   'half_float.c',
   'half_float.h',
   'hash_table.c',
@@ -131,7 +133,6 @@ files_mesa_util = files(
   'u_dl.h',
   'u_dynarray.h',
   'u_endian.h',
-  'u_fifo.h',
   'u_hash_table.c',
   'u_hash_table.h',
   'u_pointer.h',
@@ -261,11 +262,11 @@ u_unfilled_gen_c = custom_target(
 )
 
 libmesa_util_sse41 = static_library(
-		'mesa_util_sse41',
-		files('streaming-load-memcpy.c'),
-		c_args : [c_msvc_compat_args, sse41_args],
-		include_directories : [inc_include, inc_src, inc_mesa],
-		gnu_symbol_visibility : 'hidden',
+  'mesa_util_sse41',
+  files('streaming-load-memcpy.c'),
+  c_args : [c_msvc_compat_args, sse41_args],
+  include_directories : [inc_include, inc_src, inc_mesa],
+  gnu_symbol_visibility : 'hidden',
 )
 
 _libmesa_util = static_library(
@@ -282,7 +283,7 @@ _libmesa_util = static_library(
 idep_mesautil = declare_dependency(
   link_with : _libmesa_util,
   include_directories : [inc_util, inc_gallium],
-  dependencies : [dep_zlib, dep_clock, dep_thread, dep_atomic, dep_m, dep_valgrind, dep_futex],
+  dependencies : deps_for_libmesa_util,
 )
 
 xmlconfig_deps = []
@@ -347,6 +348,8 @@ if with_tests
     'tests/half_float_test.cpp',
     'tests/int_min_max.cpp',
     'tests/mesa-sha1_test.cpp',
+    'tests/os_mman_test.cpp',
+    'tests/perf/u_trace_test.cpp',
     'tests/rb_tree_test.cpp',
     'tests/register_allocate_test.cpp',
     'tests/roundeven_test.cpp',
@@ -356,6 +359,7 @@ if with_tests
     'tests/u_atomic_test.cpp',
     'tests/u_call_once_test.cpp',
     'tests/u_debug_stack_test.cpp',
+    'tests/u_debug_test.cpp',
     'tests/u_printf_test.cpp',
     'tests/u_qsort_test.cpp',
     'tests/vector_test.cpp',

@@ -643,6 +643,7 @@ brw_nir_optimize(nir_shader *nir, const struct brw_compiler *compiler,
       OPT(nir_opt_combine_stores, nir_var_all);
 
       OPT(nir_opt_ray_queries);
+      OPT(nir_opt_ray_query_ranges);
 
       if (is_scalar) {
          OPT(nir_lower_alu_to_scalar, NULL, NULL);
@@ -951,13 +952,12 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
    brw_nir_optimize(nir, compiler, is_scalar, true);
 
    OPT(nir_lower_doubles, softfp64, nir->options->lower_doubles_options);
-   OPT(nir_lower_int64);
+   if (OPT(nir_lower_int64)) {
+      OPT(nir_opt_algebraic);
+      OPT(nir_lower_doubles, softfp64, nir->options->lower_doubles_options);
+   }
 
    OPT(nir_lower_bit_size, lower_bit_size_callback, (void *)compiler);
-
-   if (is_scalar) {
-      OPT(nir_lower_load_const_to_scalar);
-   }
 
    /* Lower a bunch of stuff */
    OPT(nir_lower_var_copies);
@@ -967,6 +967,10 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
     */
    if (compiler->supports_shader_constants) {
       OPT(nir_opt_large_constants, NULL, 32);
+   }
+
+   if (is_scalar) {
+      OPT(nir_lower_load_const_to_scalar);
    }
 
    OPT(nir_lower_system_values);
@@ -1282,6 +1286,9 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
       /* Try and fuse multiply-adds */
       OPT(brw_nir_opt_peephole_ffma);
    }
+
+   if (is_scalar)
+      OPT(brw_nir_opt_peephole_imul32x16);
 
    if (OPT(nir_opt_comparison_pre)) {
       OPT(nir_copy_prop);

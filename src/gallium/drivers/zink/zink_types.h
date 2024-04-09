@@ -146,11 +146,6 @@ enum zink_descriptor_type {
    ZINK_DESCRIPTOR_NON_BINDLESS_TYPES = ZINK_DESCRIPTOR_BASE_TYPES + 1, /**< for struct sizing */
 };
 
-enum zink_descriptor_mode {
-   ZINK_DESCRIPTOR_MODE_AUTO,
-   ZINK_DESCRIPTOR_MODE_LAZY,
-};
-
 /* indexing for descriptor template management */
 enum zink_descriptor_size_index {
    ZDS_INDEX_UBO,
@@ -294,7 +289,7 @@ struct zink_rasterizer_hw_state {
 
 struct zink_rasterizer_state {
    struct pipe_rasterizer_state base;
-   bool offset_point, offset_line, offset_tri;
+   bool offset_fill;
    float offset_units, offset_clamp, offset_scale;
    float line_width;
    VkFrontFace front_face;
@@ -691,9 +686,17 @@ struct zink_shader {
    struct set *programs;
 
    union {
-      struct zink_shader *generated; // a generated shader that this shader "owns"
-      bool is_generated; // if this is a driver-created shader (e.g., tcs)
-      nir_variable *fbfetch; //for fs output
+      struct {
+         struct zink_shader *generated; // a generated shader that this shader "owns"
+      } tes;
+
+      struct {
+         bool is_generated; // if this is a driver-created shader (e.g., tcs)
+      } tcs;
+
+      struct {
+         nir_variable *fbfetch; //for fs output
+      } fs;
    };
 };
 

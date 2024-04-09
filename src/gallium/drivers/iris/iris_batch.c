@@ -49,7 +49,7 @@
 #include "intel/common/intel_gem.h"
 #include "intel/ds/intel_tracepoints.h"
 #include "util/hash_table.h"
-#include "util/debug.h"
+#include "util/u_debug.h"
 #include "util/set.h"
 #include "util/u_upload_mgr.h"
 
@@ -292,15 +292,13 @@ iris_create_engines_context(struct iris_context *ice, int priority)
    /* Blitter is only supported on Gfx12+ */
    unsigned num_batches = IRIS_BATCH_COUNT - (devinfo->ver >= 12 ? 0 : 1);
 
-   if (env_var_as_boolean("INTEL_COMPUTE_CLASS", false) &&
+   if (debug_get_bool_option("INTEL_COMPUTE_CLASS", false) &&
        intel_engines_count(engines_info, INTEL_ENGINE_CLASS_COMPUTE) > 0)
       engine_classes[IRIS_BATCH_COMPUTE] = INTEL_ENGINE_CLASS_COMPUTE;
 
-   int engines_ctx =
-      intel_gem_create_context_engines(fd, engines_info, num_batches,
-                                       engine_classes);
-
-   if (engines_ctx < 0) {
+   uint32_t engines_ctx;
+   if (!intel_gem_create_context_engines(fd, engines_info, num_batches,
+                                         engine_classes, &engines_ctx)) {
       free(engines_info);
       return -1;
    }
@@ -1090,7 +1088,7 @@ _iris_batch_flush(struct iris_batch *batch, const char *file, int line)
       iris_bo_wait_rendering(batch->bo); /* if execbuf failed; this is a nop */
    }
 
-   if (u_trace_context_actively_tracing(&ice->ds.trace_context))
+   if (u_trace_should_process(&ice->ds.trace_context))
       iris_utrace_flush(batch, submission_id);
 
    /* Start a new batch buffer. */

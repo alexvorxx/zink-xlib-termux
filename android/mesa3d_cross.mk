@@ -85,7 +85,6 @@ MESON_GEN_NINJA := \
 	-Ddri-search-path=/vendor/$(MESA3D_LIB_DIR)/dri                              \
 	-Dplatforms=android                                                          \
 	-Dplatform-sdk-version=$(PLATFORM_SDK_VERSION)                               \
-	-Ddri-drivers=                                                               \
 	-Dgallium-drivers=$(subst $(space),$(comma),$(BOARD_MESA3D_GALLIUM_DRIVERS)) \
 	-Dvulkan-drivers=$(subst $(space),$(comma),$(subst radeon,amd,$(BOARD_MESA3D_VULKAN_DRIVERS)))   \
 	-Dgbm=enabled                                                                \
@@ -203,7 +202,7 @@ define m-c-flags
 endef
 
 define filter-c-flags
-  $(filter-out -std=gnu++17 -std=gnu99 -fno-rtti, \
+  $(filter-out -std=gnu++17 -std=gnu++14 -std=gnu99 -fno-rtti, \
     $(patsubst  -W%,, $1))
 endef
 

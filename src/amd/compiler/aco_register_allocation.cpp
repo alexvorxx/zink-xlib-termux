@@ -607,7 +607,9 @@ get_subdword_definition_info(Program* program, const aco_ptr<Instruction>& instr
    amd_gfx_level gfx_level = program->gfx_level;
 
    if (instr->isPseudo()) {
-      if (gfx_level >= GFX8)
+      if (instr->opcode == aco_opcode::p_interp_gfx11)
+         return std::make_pair(4u, 4u);
+      else if (gfx_level >= GFX8)
          return std::make_pair(rc.bytes() % 2 == 0 ? 2 : 1, rc.bytes());
       else
          return std::make_pair(4, rc.size() * 4u);
@@ -3147,7 +3149,8 @@ register_allocation(Program* program, std::vector<IDSet>& live_out_per_block, ra
    } /* end for BB */
 
    /* num_gpr = rnd_up(max_used_gpr + 1) */
-   program->config->num_vgprs = get_vgpr_alloc(program, ctx.max_used_vgpr + 1);
+   program->config->num_vgprs =
+      std::min<uint16_t>(get_vgpr_alloc(program, ctx.max_used_vgpr + 1), 256);
    program->config->num_sgprs = get_sgpr_alloc(program, ctx.max_used_sgpr + 1);
 
    program->progress = CompilationProgress::after_ra;

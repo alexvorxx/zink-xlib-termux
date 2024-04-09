@@ -24,7 +24,7 @@
  *    Rob Clark <robclark@freedesktop.org>
  */
 
-#include "os/os_mman.h"
+#include "util/os_mman.h"
 
 #include "freedreno_drmif.h"
 #include "freedreno_priv.h"
@@ -150,8 +150,7 @@ _fd_bo_set_name(struct fd_bo *bo, const char *fmt, va_list ap)
 struct fd_bo *
 fd_bo_new_ring(struct fd_device *dev, uint32_t size)
 {
-   uint32_t flags = FD_BO_GPUREADONLY | FD_BO_CACHED_COHERENT;
-   struct fd_bo *bo = bo_new(dev, size, flags, &dev->ring_cache);
+   struct fd_bo *bo = bo_new(dev, size, RING_FLAGS, &dev->ring_cache);
    if (bo) {
       bo->bo_reuse = RING_CACHE;
       bo->reloc_flags |= FD_RELOC_DUMP;

@@ -37,7 +37,7 @@
 #include "pipe/p_state.h"
 #include "pipe/p_context.h"
 #include "pipe/p_screen.h"
-#include "util/debug.h"
+#include "util/u_debug.h"
 #include "util/os_file.h"
 #include "util/u_cpu_detect.h"
 #include "util/u_inlines.h"
@@ -115,7 +115,7 @@ iris_enable_clover()
 {
    static int enable = -1;
    if (enable < 0)
-      enable = env_var_as_boolean("IRIS_ENABLE_CLOVER", false);
+      enable = debug_get_bool_option("IRIS_ENABLE_CLOVER", false);
    return enable;
 }
 
@@ -285,6 +285,7 @@ iris_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_FENCE_SIGNAL:
    case PIPE_CAP_IMAGE_STORE_FORMATTED:
    case PIPE_CAP_LEGACY_MATH_RULES:
+   case PIPE_CAP_ALPHA_TO_COVERAGE_DITHER_CONTROL:
       return true;
    case PIPE_CAP_UMA:
       return iris_bufmgr_vram_size(screen->bufmgr) == 0;
@@ -363,6 +364,11 @@ iris_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_MAX_SHADER_PATCH_VARYINGS:
    case PIPE_CAP_MAX_VARYINGS:
       return 32;
+   case PIPE_CAP_PREFER_IMM_ARRAYS_AS_CONSTBUF:
+      /* We want immediate arrays to go get uploaded as nir->constant_data by
+       * nir_opt_large_constants() instead.
+       */
+      return 0;
    case PIPE_CAP_RESOURCE_FROM_USER_MEMORY:
       /* AMD_pinned_memory assumes the flexibility of using client memory
        * for any buffer (incl. vertex buffers) which rules out the prospect
@@ -675,28 +681,6 @@ iris_get_disk_shader_cache(struct pipe_screen *pscreen)
    return screen->disk_cache;
 }
 
-static int
-iris_getparam(int fd, int param, int *value)
-{
-   struct drm_i915_getparam gp = { .param = param, .value = value };
-
-   if (ioctl(fd, DRM_IOCTL_I915_GETPARAM, &gp) == -1)
-      return -errno;
-
-   return 0;
-}
-
-static int
-iris_getparam_integer(int fd, int param)
-{
-   int value = -1;
-
-   if (iris_getparam(fd, param, &value) == 0)
-      return value;
-
-   return -1;
-}
-
 static const struct intel_l3_config *
 iris_get_default_l3_config(const struct intel_device_info *devinfo,
                            bool compute)
@@ -801,7 +785,7 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
     *
     * Checking the last feature availability will include all previous ones.
     */
-   if (iris_getparam_integer(fd, I915_PARAM_HAS_CONTEXT_ISOLATION) <= 0) {
+   if (!screen->devinfo.has_context_isolation) {
       debug_error("Kernel is too old (4.16+ required) or unusable for Iris.\n"
                   "Check your dmesg logs for loading failures.\n");
       return NULL;
@@ -853,7 +837,7 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
    screen->driconf.lower_depth_range_rate =
       driQueryOptionf(config->options, "lower_depth_range_rate");
 
-   screen->precompile = env_var_as_boolean("shader_precompile", true);
+   screen->precompile = debug_get_bool_option("shader_precompile", true);
 
    isl_device_init(&screen->isl_dev, &screen->devinfo);
 

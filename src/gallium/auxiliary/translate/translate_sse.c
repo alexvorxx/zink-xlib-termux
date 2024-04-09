@@ -26,7 +26,7 @@
  */
 
 
-#include "pipe/p_config.h"
+#include "util/detect.h"
 #include "pipe/p_compiler.h"
 #include "util/u_memory.h"
 #include "util/u_cpu_detect.h"
@@ -36,7 +36,7 @@
 #include "translate.h"
 
 
-#if (defined(PIPE_ARCH_X86) || defined(PIPE_ARCH_X86_64)) && !defined(EMBEDDED_DEVICE)
+#if DETECT_ARCH_X86 || DETECT_ARCH_X86_64
 
 #include "rtasm/rtasm_x86sse.h"
 

@@ -189,7 +189,7 @@ debian/android_build:
 debian/x86_test-base:
   extends: debian/x86_build-base
   variables:
-    KERNEL_URL: &kernel-rootfs-url "https://gitlab.freedesktop.org/gfx-ci/linux/-/archive/v5.19-for-mesa-ci-d4efddaec194/linux-v5.17-for-mesa-ci-b78f7870d97b.tar.bz2"
+    KERNEL_URL: &kernel-rootfs-url "https://gitlab.freedesktop.org/gfx-ci/linux/-/archive/v6.0-for-mesa-ci-93bd820c433b/linux-v6.0-for-mesa-ci-93bd820c433b.tar.bz2"
     MESA_IMAGE_TAG: &debian-x86_test-base ${DEBIAN_BASE_TAG}
 
 .use-debian/x86_test-base:
@@ -254,6 +254,24 @@ debian/arm_build:
   needs:
     - debian/arm_build
 
+
+# Alpine based x86 build image
+alpine/x86_build:
+  extends:
+    - .fdo.container-build@alpine
+    - .container
+  variables:
+    FDO_DISTRIBUTION_VERSION: "3.16"
+    MESA_IMAGE_TAG: &alpine-x86_build ${ALPINE_X86_BUILD_TAG}
+
+.use-alpine/x86_build:
+  extends:
+    - .set-image
+  variables:
+    MESA_IMAGE_PATH: "alpine/x86_build"
+    MESA_IMAGE_TAG: *alpine-x86_build
+  needs:
+    - alpine/x86_build
 
 # Fedora 34 based x86 build image
 fedora/x86_build:

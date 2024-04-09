@@ -30,7 +30,7 @@
 #include "drm-uapi/drm_fourcc.h"
 
 #include "anv_private.h"
-#include "util/debug.h"
+#include "util/u_debug.h"
 #include "vk_util.h"
 #include "util/u_math.h"
 
@@ -319,46 +319,6 @@ add_surface(struct anv_device *device,
                              surf->isl.size_B,
                              surf->isl.alignment_B,
                              &surf->memory_range);
-}
-
-/**
- * Do hardware limitations require the image plane to use a shadow surface?
- *
- * If hardware limitations force us to use a shadow surface, then the same
- * limitations may also constrain the tiling of the primary surface; therefore
- * parameter @a inout_primary_tiling_flags.
- *
- * If the image plane is a separate stencil plane and if the user provided
- * VkImageStencilUsageCreateInfo, then @a usage must be stencilUsage.
- *
- * @see anv_image::planes[]::shadow_surface
- */
-static bool
-anv_image_plane_needs_shadow_surface(const struct intel_device_info *devinfo,
-                                     struct anv_format_plane plane_format,
-                                     VkImageTiling vk_tiling,
-                                     VkImageUsageFlags vk_plane_usage,
-                                     VkImageCreateFlags vk_create_flags,
-                                     isl_tiling_flags_t *inout_primary_tiling_flags)
-{
-   if (devinfo->ver <= 8 &&
-       (vk_create_flags & VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT) &&
-       vk_tiling == VK_IMAGE_TILING_OPTIMAL) {
-      /* We must fallback to a linear surface because we may not be able to
-       * correctly handle the offsets if tiled. (On gfx9,
-       * RENDER_SURFACE_STATE::X/Y Offset are sufficient). To prevent garbage
-       * performance while texturing, we maintain a tiled shadow surface.
-       */
-      assert(isl_format_is_compressed(plane_format.isl_format));
-
-      if (inout_primary_tiling_flags) {
-         *inout_primary_tiling_flags = ISL_TILING_LINEAR_BIT;
-      }
-
-      return true;
-   }
-
-   return false;
 }
 
 static bool
@@ -868,42 +828,6 @@ add_aux_surface_if_supported(struct anv_device *device,
    return VK_SUCCESS;
 }
 
-static VkResult
-add_shadow_surface(struct anv_device *device,
-                   struct anv_image *image,
-                   uint32_t plane,
-                   struct anv_format_plane plane_format,
-                   uint32_t stride,
-                   VkImageUsageFlags vk_plane_usage)
-{
-   ASSERTED bool ok;
-
-   ok = isl_surf_init(&device->isl_dev,
-                      &image->planes[plane].shadow_surface.isl,
-                     .dim = vk_to_isl_surf_dim[image->vk.image_type],
-                     .format = plane_format.isl_format,
-                     .width = image->vk.extent.width,
-                     .height = image->vk.extent.height,
-                     .depth = image->vk.extent.depth,
-                     .levels = image->vk.mip_levels,
-                     .array_len = image->vk.array_layers,
-                     .samples = image->vk.samples,
-                     .min_alignment_B = 0,
-                     .row_pitch_B = stride,
-                     .usage = ISL_SURF_USAGE_TEXTURE_BIT |
-                              (vk_plane_usage & ISL_SURF_USAGE_CUBE_BIT),
-                     .tiling_flags = ISL_TILING_ANY_MASK);
-
-   /* isl_surf_init() will fail only if provided invalid input. Invalid input
-    * here is illegal in Vulkan.
-    */
-   assert(ok);
-
-   return add_surface(device, image, &image->planes[plane].shadow_surface,
-                      ANV_IMAGE_MEMORY_BINDING_PLANE_0 + plane,
-                      ANV_OFFSET_IMPLICIT);
-}
-
 /**
  * Initialize the anv_image::*_surface selected by \a aspect. Then update the
  * image's memory requirements (that is, the image's size and alignment).
@@ -1045,13 +969,6 @@ check_memory_bindings(const struct anv_device *device,
                          .test_surface = &plane->primary_surface,
                          .expect_binding = primary_binding);
 
-      /* Check shadow surface */
-      if (anv_surface_is_valid(&plane->shadow_surface)) {
-         check_memory_range(accum_ranges,
-                            .test_surface = &plane->shadow_surface,
-                            .expect_binding = primary_binding);
-      }
-
       /* Check aux_surface */
       if (anv_surface_is_valid(&plane->aux_surface)) {
          enum anv_image_memory_binding binding = primary_binding;
@@ -1159,7 +1076,6 @@ check_drm_format_mod(const struct anv_device *device,
       assert(isl_layout->txc == ISL_TXC_NONE);
       assert(isl_layout->colorspace == ISL_COLORSPACE_LINEAR ||
              isl_layout->colorspace == ISL_COLORSPACE_SRGB);
-      assert(!anv_surface_is_valid(&plane->shadow_surface));
 
       if (isl_mod_info->aux_usage != ISL_AUX_USAGE_NONE) {
          /* Reject DISJOINT for consistency with the GL driver. */
@@ -1207,27 +1123,11 @@ add_all_surfaces_implicit_layout(
          choose_isl_surf_usage(image->vk.create_flags, vk_usage,
                                isl_extra_usage_flags, aspect);
 
-      /* Must call this before adding any surfaces because it may modify
-       * isl_tiling_flags.
-       */
-      bool needs_shadow =
-         anv_image_plane_needs_shadow_surface(devinfo, plane_format,
-                                              image->vk.tiling, vk_usage,
-                                              image->vk.create_flags,
-                                              &isl_tiling_flags);
-
       result = add_primary_surface(device, image, plane, plane_format,
                                    ANV_OFFSET_IMPLICIT, stride,
                                    isl_tiling_flags, isl_usage);
       if (result != VK_SUCCESS)
          return result;
-
-      if (needs_shadow) {
-         result = add_shadow_surface(device, image, plane, plane_format,
-                                     stride, vk_usage);
-         if (result != VK_SUCCESS)
-            return result;
-      }
 
       /* Disable aux if image supports export without modifiers. */
       if (image->vk.external_handle_types != 0 &&
@@ -2434,9 +2334,9 @@ anv_layout_to_fast_clear_type(const struct intel_device_info * const devinfo,
 
 
 static struct anv_state
-alloc_surface_state(struct anv_device *device)
+alloc_bindless_surface_state(struct anv_device *device)
 {
-   return anv_state_pool_alloc(&device->surface_state_pool, 64, 64);
+   return anv_state_pool_alloc(&device->bindless_surface_state_pool, 64, 64);
 }
 
 static enum isl_channel_select
@@ -2473,20 +2373,6 @@ anv_image_fill_surface_state(struct anv_device *device,
 
    struct isl_view view = *view_in;
    view.usage |= view_usage;
-
-   /* For texturing with VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL from a
-    * compressed surface with a shadow surface, we use the shadow instead of
-    * the primary surface.  The shadow surface will be tiled, unlike the main
-    * surface, so it should get significantly better performance.
-    */
-   if (anv_surface_is_valid(&image->planes[plane].shadow_surface) &&
-       isl_format_is_compressed(view.format) &&
-       (flags & ANV_IMAGE_VIEW_STATE_TEXTURE_OPTIMAL)) {
-      assert(isl_format_is_compressed(surface->isl.format));
-      assert(surface->isl.tiling == ISL_TILING_LINEAR);
-      assert(image->planes[plane].shadow_surface.isl.tiling != ISL_TILING_LINEAR);
-      surface = &image->planes[plane].shadow_surface;
-   }
 
    if (view_usage == ISL_SURF_USAGE_RENDER_TARGET_BIT)
       view.swizzle = anv_swizzle_for_render(view.swizzle);
@@ -2724,8 +2610,10 @@ anv_CreateImageView(VkDevice _device,
 
       if (iview->vk.usage & (VK_IMAGE_USAGE_SAMPLED_BIT |
                              VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) {
-         iview->planes[vplane].optimal_sampler_surface_state.state = alloc_surface_state(device);
-         iview->planes[vplane].general_sampler_surface_state.state = alloc_surface_state(device);
+         iview->planes[vplane].optimal_sampler_surface_state.state =
+            alloc_bindless_surface_state(device);
+         iview->planes[vplane].general_sampler_surface_state.state =
+            alloc_bindless_surface_state(device);
 
          enum isl_aux_usage general_aux_usage =
             anv_layout_to_aux_usage(device->info, image, 1UL << iaspect_bit,
@@ -2757,7 +2645,8 @@ anv_CreateImageView(VkDevice _device,
             anv_layout_to_aux_usage(device->info, image, 1UL << iaspect_bit,
                                     VK_IMAGE_USAGE_STORAGE_BIT,
                                     VK_IMAGE_LAYOUT_GENERAL);
-         iview->planes[vplane].storage_surface_state.state = alloc_surface_state(device);
+         iview->planes[vplane].storage_surface_state.state =
+            alloc_bindless_surface_state(device);
          anv_image_fill_surface_state(device, image, 1ULL << iaspect_bit,
                                       &iview->planes[vplane].isl,
                                       ISL_SURF_USAGE_STORAGE_BIT,
@@ -2765,10 +2654,9 @@ anv_CreateImageView(VkDevice _device,
                                       0,
                                       &iview->planes[vplane].storage_surface_state);
 
+         iview->planes[vplane].lowered_storage_surface_state.state =
+            alloc_bindless_surface_state(device);
          if (isl_is_storage_image_format(format.isl_format)) {
-            iview->planes[vplane].lowered_storage_surface_state.state =
-               alloc_surface_state(device);
-
             anv_image_fill_surface_state(device, image, 1ULL << iaspect_bit,
                                          &iview->planes[vplane].isl,
                                          ISL_SURF_USAGE_STORAGE_BIT,
@@ -2784,8 +2672,13 @@ anv_CreateImageView(VkDevice _device,
              */
             assert(isl_format_supports_typed_writes(device->info,
                                                     format.isl_format));
-            iview->planes[vplane].lowered_storage_surface_state.state =
-               device->null_surface_state;
+            isl_null_fill_state(&device->isl_dev,
+                                iview->planes[vplane].lowered_storage_surface_state.state.map,
+                                .size = {
+                                   .w = image->vk.extent.width,
+                                   .h = image->vk.extent.height,
+                                   .d = image->vk.extent.depth,
+                                });
          }
       }
    }
@@ -2806,27 +2699,23 @@ anv_DestroyImageView(VkDevice _device, VkImageView _iview,
       return;
 
    for (uint32_t plane = 0; plane < iview->n_planes; plane++) {
-      /* Check offset instead of alloc_size because this they might be
-       * device->null_surface_state which always has offset == 0.  We don't
-       * own that one so we don't want to accidentally free it.
-       */
-      if (iview->planes[plane].optimal_sampler_surface_state.state.offset) {
-         anv_state_pool_free(&device->surface_state_pool,
+      if (iview->planes[plane].optimal_sampler_surface_state.state.alloc_size) {
+         anv_state_pool_free(&device->bindless_surface_state_pool,
                              iview->planes[plane].optimal_sampler_surface_state.state);
       }
 
-      if (iview->planes[plane].general_sampler_surface_state.state.offset) {
-         anv_state_pool_free(&device->surface_state_pool,
+      if (iview->planes[plane].general_sampler_surface_state.state.alloc_size) {
+         anv_state_pool_free(&device->bindless_surface_state_pool,
                              iview->planes[plane].general_sampler_surface_state.state);
       }
 
-      if (iview->planes[plane].storage_surface_state.state.offset) {
-         anv_state_pool_free(&device->surface_state_pool,
+      if (iview->planes[plane].storage_surface_state.state.alloc_size) {
+         anv_state_pool_free(&device->bindless_surface_state_pool,
                              iview->planes[plane].storage_surface_state.state);
       }
 
-      if (iview->planes[plane].lowered_storage_surface_state.state.offset) {
-         anv_state_pool_free(&device->surface_state_pool,
+      if (iview->planes[plane].lowered_storage_surface_state.state.alloc_size) {
+         anv_state_pool_free(&device->bindless_surface_state_pool,
                              iview->planes[plane].lowered_storage_surface_state.state);
       }
    }
@@ -2862,7 +2751,7 @@ anv_CreateBufferView(VkDevice _device,
    view->address = anv_address_add(buffer->address, pCreateInfo->offset);
 
    if (buffer->vk.usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT) {
-      view->surface_state = alloc_surface_state(device);
+      view->surface_state = alloc_bindless_surface_state(device);
 
       anv_fill_buffer_surface_state(device, view->surface_state,
                                     format.isl_format, format.swizzle,
@@ -2873,8 +2762,8 @@ anv_CreateBufferView(VkDevice _device,
    }
 
    if (buffer->vk.usage & VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) {
-      view->storage_surface_state = alloc_surface_state(device);
-      view->lowered_storage_surface_state = alloc_surface_state(device);
+      view->storage_surface_state = alloc_bindless_surface_state(device);
+      view->lowered_storage_surface_state = alloc_bindless_surface_state(device);
 
       anv_fill_buffer_surface_state(device, view->storage_surface_state,
                                     format.isl_format, format.swizzle,
@@ -2922,15 +2811,15 @@ anv_DestroyBufferView(VkDevice _device, VkBufferView bufferView,
       return;
 
    if (view->surface_state.alloc_size > 0)
-      anv_state_pool_free(&device->surface_state_pool,
+      anv_state_pool_free(&device->bindless_surface_state_pool,
                           view->surface_state);
 
    if (view->storage_surface_state.alloc_size > 0)
-      anv_state_pool_free(&device->surface_state_pool,
+      anv_state_pool_free(&device->bindless_surface_state_pool,
                           view->storage_surface_state);
 
    if (view->lowered_storage_surface_state.alloc_size > 0)
-      anv_state_pool_free(&device->surface_state_pool,
+      anv_state_pool_free(&device->bindless_surface_state_pool,
                           view->lowered_storage_surface_state);
 
    vk_object_free(&device->vk, pAllocator, view);

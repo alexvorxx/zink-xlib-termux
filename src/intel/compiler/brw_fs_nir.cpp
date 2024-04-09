@@ -1316,28 +1316,23 @@ fs_visitor::nir_emit_alu(const fs_builder &bld, nir_alu_instr *instr,
    case nir_op_imul_32x16:
    case nir_op_umul_32x16: {
       const bool ud = instr->op == nir_op_umul_32x16;
-
-      assert(nir_dest_bit_size(instr->dest.dest) == 32);
-
-      /* Before Gfx7, the order of the 32-bit source and the 16-bit source was
-       * swapped.  The extension isn't enabled on those platforms, so don't
-       * pretend to support the differences.
-       */
-      assert(devinfo->ver >= 7);
-
-      if (op[1].file == IMM)
-         op[1] = ud ? brw_imm_uw(op[1].ud) : brw_imm_w(op[1].d);
-      else {
-         const enum brw_reg_type word_type =
-            ud ? BRW_REGISTER_TYPE_UW : BRW_REGISTER_TYPE_W;
-
-         op[1] = subscript(op[1], word_type, 0);
-      }
-
+      const enum brw_reg_type word_type =
+         ud ? BRW_REGISTER_TYPE_UW : BRW_REGISTER_TYPE_W;
       const enum brw_reg_type dword_type =
          ud ? BRW_REGISTER_TYPE_UD : BRW_REGISTER_TYPE_D;
 
-      bld.MUL(result, retype(op[0], dword_type), op[1]);
+      assert(nir_dest_bit_size(instr->dest.dest) == 32);
+
+      /* Before copy propagation there are no immediate values. */
+      assert(op[0].file != IMM && op[1].file != IMM);
+
+      op[1] = subscript(op[1], word_type, 0);
+
+      if (devinfo->ver >= 7)
+         bld.MUL(result, retype(op[0], dword_type), op[1]);
+      else
+         bld.MUL(result, op[1], retype(op[0], dword_type));
+
       break;
    }
 
@@ -2122,24 +2117,6 @@ fs_visitor::get_nir_dest(const nir_dest &dest)
       assert(dest.reg.indirect == NULL);
       return offset(nir_locals[dest.reg.reg->index], bld,
                     dest.reg.base_offset * dest.reg.reg->num_components);
-   }
-}
-
-void
-fs_visitor::emit_percomp(const fs_builder &bld, const fs_inst &inst,
-                         unsigned wr_mask)
-{
-   for (unsigned i = 0; i < 4; i++) {
-      if (!((wr_mask >> i) & 1))
-         continue;
-
-      fs_inst *new_inst = new(mem_ctx) fs_inst(inst);
-      new_inst->dst = offset(new_inst->dst, bld, i);
-      for (unsigned j = 0; j < new_inst->sources; j++)
-         if (new_inst->src[j].file == VGRF)
-            new_inst->src[j] = offset(new_inst->src[j], bld, i);
-
-      bld.emit(new_inst);
    }
 }
 

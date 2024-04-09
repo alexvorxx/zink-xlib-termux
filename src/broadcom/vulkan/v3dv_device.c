@@ -44,13 +44,13 @@
 #include "compiler/v3d_compiler.h"
 
 #include "drm-uapi/v3d_drm.h"
-#include "format/u_format.h"
 #include "vk_drm_syncobj.h"
 #include "vk_util.h"
 #include "git_sha1.h"
 
 #include "util/build_id.h"
-#include "util/debug.h"
+#include "util/u_debug.h"
+#include "util/format/u_format.h"
 
 #ifdef VK_USE_PLATFORM_XCB_KHR
 #include <xcb/xcb.h>
@@ -2104,11 +2104,9 @@ v3dv_CreateDevice(VkPhysicalDevice physicalDevice,
                       device->device_address_mem_ctx);
 
    mtx_init(&device->events.lock, mtx_plain);
-   if (!device->events.bo) {
-      result = v3dv_event_allocate_resources(device);
-      if (result != VK_SUCCESS)
-         goto fail;
-   }
+   result = v3dv_event_allocate_resources(device);
+   if (result != VK_SUCCESS)
+      goto fail;
 
    if (list_is_empty(&device->events.free_list)) {
       result = vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
@@ -2122,6 +2120,9 @@ v3dv_CreateDevice(VkPhysicalDevice physicalDevice,
 fail:
    cnd_destroy(&device->query_ended);
    mtx_destroy(&device->query_mutex);
+   queue_finish(&device->queue);
+   destroy_device_meta(device);
+   v3dv_pipeline_cache_finish(&device->default_pipeline_cache);
    vk_device_finish(&device->vk);
    vk_free(&device->vk.alloc, device);
 
@@ -2277,7 +2278,7 @@ device_import_bo(struct v3dv_device *device,
    assert(*bo);
 
    if ((*bo)->refcnt == 0)
-      v3dv_bo_init(*bo, handle, size, get_offset.offset, "import", false);
+      v3dv_bo_init_import(*bo, handle, size, get_offset.offset, false);
    else
       p_atomic_inc(&(*bo)->refcnt);
 

@@ -64,6 +64,8 @@ struct radv_pipeline_key {
    uint32_t primitives_generated_query : 1;
    uint32_t dynamic_patch_control_points : 1;
    uint32_t dynamic_rasterization_samples : 1;
+   uint32_t dynamic_color_write_mask : 1;
+   uint32_t dynamic_provoking_vtx_mode : 1;
 
    struct {
       uint32_t instance_rate_inputs;
@@ -140,11 +142,12 @@ enum radv_ud_index {
    AC_UD_VIEW_INDEX = 4,
    AC_UD_STREAMOUT_BUFFERS = 5,
    AC_UD_NGG_QUERY_STATE = 6,
-   AC_UD_NGG_CULLING_SETTINGS = 7,
-   AC_UD_NGG_VIEWPORT = 8,
-   AC_UD_FORCE_VRS_RATES = 9,
-   AC_UD_TASK_RING_ENTRY = 10,
-   AC_UD_SHADER_START = 11,
+   AC_UD_NGG_PROVOKING_VTX = 7,
+   AC_UD_NGG_CULLING_SETTINGS = 8,
+   AC_UD_NGG_VIEWPORT = 9,
+   AC_UD_FORCE_VRS_RATES = 10,
+   AC_UD_TASK_RING_ENTRY = 11,
+   AC_UD_SHADER_START = 12,
    AC_UD_VS_VERTEX_BUFFERS = AC_UD_SHADER_START,
    AC_UD_VS_BASE_VERTEX_START_INSTANCE,
    AC_UD_VS_PROLOG_INPUTS,
@@ -247,6 +250,8 @@ struct radv_shader_info {
    bool is_ngg_passthrough;
    bool has_ngg_culling;
    bool has_ngg_early_prim_export;
+   bool has_ngg_prim_query;
+   bool has_ngg_xfb_query;
    uint32_t num_lds_blocks_when_not_culling;
    uint32_t num_tess_patches;
    uint32_t esgs_itemsize; /* Only for VS or TES as ES */
@@ -284,6 +289,7 @@ struct radv_shader_info {
       unsigned invocations;
       unsigned es_type; /* GFX9: VS or TES */
       uint8_t num_linked_inputs;
+      bool has_ngg_pipeline_stat_query;
    } gs;
    struct {
       uint8_t output_usage_mask[VARYING_SLOT_VAR31 + 1];

@@ -28,13 +28,13 @@ The boards need to be able to have a kernel/initramfs supplied by the
 gitlab-runner system, since Mesa often needs to update the kernel either for new
 DRM functionality, or to fix kernel bugs.
 
-The boards must have networking, so that we can extract the dEQP .xml results to
+The boards must have networking, so that we can extract the dEQP XML results to
 artifacts on GitLab, and so that we can download traces (too large for an
 initramfs) for trace replay testing.  Given that we need networking already, and
-our dEQP/piglit/etc. payload is large, we use nfs from the x86 runner system
+our dEQP/Piglit/etc. payload is large, we use NFS from the x86 runner system
 rather than initramfs.
 
-See `src/freedreno/ci/gitlab-ci.yml` for an example of fastboot on DB410c and
+See ``src/freedreno/ci/gitlab-ci.yml`` for an example of fastboot on DB410c and
 DB820c (freedreno-a306 and freedreno-a530).
 
 Requirements (Servo)
@@ -48,7 +48,7 @@ at /tftp in the container.
 
 Since we're going the TFTP route, we also use NFS root.  This avoids
 packing the rootfs and sending it to the board as a ramdisk, which
-means we can support larger rootfses (for piglit testing), at the cost
+means we can support larger rootfses (for Piglit testing), at the cost
 of needing more storage on the runner.
 
 Telling the board about where its TFTP and NFS should come from is
@@ -74,7 +74,7 @@ call "servo"::
   dhcp-option=tag:cheza1,option:root-path,/srv/nfs/cheza1
   dhcp-option=tag:cheza2,option:root-path,/srv/nfs/cheza2
 
-See `src/freedreno/ci/gitlab-ci.yml` for an example of Servo on cheza.  Note
+See ``src/freedreno/ci/gitlab-ci.yml`` for an example of Servo on cheza.  Note
 that other Servo boards in CI are managed using LAVA.
 
 Requirements (POE)
@@ -124,12 +124,12 @@ With that set up, you should be able to power on/off a port with something like:
 Note that the "1.3.6..." SNMP OID changes between switches.  The last digit
 above is the interface id (port number).  You can probably find the right OID by
 google, that was easier than figuring it out from finding the switch's MIB
-database.  You can query the POE status from the switch serial using the `show
-power inline` command.
+database.  You can query the POE status from the switch serial using the ``show
+power inline`` command.
 
-Other than that, find the dnsmasq/tftp/nfs setup for your boards "servo" above.
+Other than that, find the dnsmasq/tftp/NFS setup for your boards "servo" above.
 
-See `src/broadcom/ci/gitlab-ci.yml` and `src/nouveau/ci/gitlab-ci.yml` for an
+See ``src/broadcom/ci/gitlab-ci.yml`` and ``src/nouveau/ci/gitlab-ci.yml`` for an
 examples of POE for Raspberry Pi 3/4, and Jetson Nano.
 
 Setup
@@ -219,12 +219,12 @@ Enable the site and restart nginx:
   sudo service nginx restart
 
   # First download will hit the internet
-  wget http://localhost/cache/?uri=https://minio-packet.freedesktop.org/mesa-tracie-public/itoral-gl-terrain-demo/demo.trace
+  wget http://localhost/cache/?uri=https://s3.freedesktop.org/mesa-tracie-public/itoral-gl-terrain-demo/demo.trace
   # Second download should be cached.
-  wget http://localhost/cache/?uri=https://minio-packet.freedesktop.org/mesa-tracie-public/itoral-gl-terrain-demo/demo.trace
+  wget http://localhost/cache/?uri=https://s3.freedesktop.org/mesa-tracie-public/itoral-gl-terrain-demo/demo.trace
 
 Now, set ``download-url`` in your ``traces-*.yml`` entry to something like
-``http://10.42.0.1:8888/cache/?uri=https://minio-packet.freedesktop.org/mesa-tracie-public``
+``http://10.42.0.1:8888/cache/?uri=https://s3.freedesktop.org/mesa-tracie-public``
 and you should have cached downloads for traces.  Add it to
 ``FDO_HTTP_CACHE_URI=`` in your ``config.toml`` runner environment lines and you
 can use it for cached artifact downloads instead of going all the way to

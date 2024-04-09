@@ -41,7 +41,6 @@ bool dxil_nir_lower_loads_stores_to_dxil(nir_shader *shader);
 bool dxil_nir_lower_atomics_to_dxil(nir_shader *shader);
 bool dxil_nir_lower_deref_ssbo(nir_shader *shader);
 bool dxil_nir_opt_alu_deref_srcs(nir_shader *shader);
-bool dxil_nir_lower_memcpy_deref(nir_shader *shader);
 bool dxil_nir_lower_upcast_phis(nir_shader *shader, unsigned min_bit_size);
 bool dxil_nir_lower_fp16_casts(nir_shader *shader);
 bool dxil_nir_split_clip_cull_distance(nir_shader *shader);
@@ -77,6 +76,7 @@ bool dxil_nir_lower_ubo_array_one_to_static(nir_shader *s);
 bool dxil_nir_fix_io_uint_type(nir_shader *s, uint64_t in_mask, uint64_t out_mask);
 bool dxil_nir_lower_discard_and_terminate(nir_shader* s);
 bool dxil_nir_ensure_position_writes(nir_shader *s);
+bool dxil_nir_lower_sample_pos(nir_shader *s);
 
 #ifdef __cplusplus
 }

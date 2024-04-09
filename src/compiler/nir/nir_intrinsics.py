@@ -263,6 +263,9 @@ index("struct nir_io_semantics", "io_semantics")
 index("struct nir_io_xfb", "io_xfb")
 index("struct nir_io_xfb", "io_xfb2")
 
+# Ray query values accessible from the RayQueryKHR object
+index("nir_ray_query_value", "ray_query_value")
+
 # Rounding mode for conversions
 index("nir_rounding_mode", "rounding_mode")
 
@@ -550,8 +553,8 @@ intrinsic("rq_proceed", src_comp=[-1], dest_comp=1)
 intrinsic("rq_generate_intersection", src_comp=[-1, 1])
 # src[] = { query }
 intrinsic("rq_confirm_intersection", src_comp=[-1])
-# src[] = { query, committed } BASE=nir_ray_query_value
-intrinsic("rq_load", src_comp=[-1, 1], dest_comp=0, indices=[BASE,COLUMN])
+# src[] = { query, committed }
+intrinsic("rq_load", src_comp=[-1, 1], dest_comp=0, indices=[RAY_QUERY_VALUE,COLUMN])
 
 # Driver independent raytracing helpers
 
@@ -1275,8 +1278,8 @@ intrinsic("shared_atomic_comp_swap_dxil", src_comp=[1, 1, 1], dest_comp=1)
 
 # src[] = { value }
 store("raw_output_pan", [], [])
-store("combined_output_pan", [1, 1, 1, 4], [BASE, COMPONENT, SRC_TYPE, DEST_TYPE])
-load("raw_output_pan", [1], [BASE], [CAN_ELIMINATE, CAN_REORDER])
+store("combined_output_pan", [1, 1, 1, 4], [IO_SEMANTICS, COMPONENT, SRC_TYPE, DEST_TYPE])
+load("raw_output_pan", [1], [IO_SEMANTICS], [CAN_ELIMINATE, CAN_REORDER])
 
 # Loads the sampler paramaters <min_lod, max_lod, lod_bias>
 # src[] = { sampler_index }
@@ -1396,6 +1399,8 @@ system_value("prim_xfb_query_enabled_amd", dest_comp=1, bit_sizes=[1])
 # Merged wave info. Bits 0-7 are the ES thread count, 8-15 are the GS thread count, 16-24 is the
 # GS Wave ID, 24-27 is the wave index in the workgroup, and 28-31 is the workgroup size in waves.
 system_value("merged_wave_info_amd", dest_comp=1)
+# Whether the shader should clamp vertex color outputs to [0, 1].
+system_value("clamp_vertex_color_amd", dest_comp=1, bit_sizes=[1])
 # Whether the shader should cull front facing triangles.
 intrinsic("load_cull_front_face_enabled_amd", dest_comp=1, bit_sizes=[1], flags=[CAN_ELIMINATE])
 # Whether the shader should cull back facing triangles.

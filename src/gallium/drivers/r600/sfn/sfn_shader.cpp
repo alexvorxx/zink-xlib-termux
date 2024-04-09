@@ -28,6 +28,7 @@
 
 #include "gallium/drivers/r600/r600_shader.h"
 #include "nir.h"
+#include "nir_intrinsics.h"
 #include "sfn_debug.h"
 #include "sfn_instr.h"
 #include "sfn_instr_alugroup.h"
@@ -333,7 +334,7 @@ Shader::allocate_registers_from_string(std::istream& is, Pin pin)
          auto regs = value_factory().dest_vec4_from_string(reg_str, swz, pin);
          for (int i = 0; i < 4; ++i) {
             if (swz[i] < 4 && pin == pin_fully) {
-               regs[i]->pin_live_range(true, false);
+               regs[i]->set_flag(Register::pin_start);
             }
          }
       }
@@ -820,8 +821,6 @@ Shader::process_intrinsic(nir_intrinsic_instr *intr)
       return store_output(intr);
    case nir_intrinsic_load_input:
       return load_input(intr);
-   case nir_intrinsic_load_uniform:
-      return load_uniform(intr);
    case nir_intrinsic_load_ubo_vec4:
       return load_ubo(intr);
    case nir_intrinsic_store_scratch:
@@ -1173,58 +1172,6 @@ Shader::emit_instruction(PInst instr)
 }
 
 bool
-Shader::load_uniform(nir_intrinsic_instr *intr)
-{
-   auto literal = nir_src_as_const_value(intr->src[0]);
-
-   if (literal) {
-      AluInstr *ir = nullptr;
-      auto pin = intr->dest.is_ssa && nir_dest_num_components(intr->dest) == 1 ? pin_free
-                                                                               : pin_none;
-      for (unsigned i = 0; i < nir_dest_num_components(intr->dest); ++i) {
-
-         sfn_log << SfnLog::io << "uniform " << intr->dest.ssa.index << " const[" << i
-                 << "]: " << intr->const_index[i] << "\n";
-
-         auto uniform = value_factory().uniform(intr, i);
-         ir = new AluInstr(op1_mov,
-                           value_factory().dest(intr->dest, i, pin),
-                           uniform,
-                           {alu_write});
-         emit_instruction(ir);
-      }
-      if (ir)
-         ir->set_alu_flag(alu_last_instr);
-      return true;
-   } else {
-      auto addr = value_factory().src(intr->src[0], 0);
-      return load_uniform_indirect(intr, addr, 16 * nir_intrinsic_base(intr), 0);
-   }
-}
-
-bool
-Shader::load_uniform_indirect(nir_intrinsic_instr *intr,
-                              PVirtualValue addr,
-                              int offset,
-                              int buffer_id)
-{
-   auto addr_reg = addr->as_register();
-   if (!addr) {
-      auto tmp = value_factory().temp_register();
-      emit_instruction(new AluInstr(op1_mov, tmp, addr, AluInstr::last_write));
-      addr = tmp;
-   }
-
-   RegisterVec4 dest = value_factory().dest_vec4(intr->dest, pin_group);
-
-   auto ir = new LoadFromBuffer(
-      dest, {0, 1, 2, 3}, addr_reg, offset, buffer_id, nullptr, fmt_32_32_32_32_float);
-   emit_instruction(ir);
-   m_flags.set(sh_indirect_const_file);
-   return true;
-}
-
-bool
 Shader::emit_load_tcs_param_base(nir_intrinsic_instr *instr, int offset)
 {
    auto src = value_factory().temp_register();
@@ -1282,6 +1229,7 @@ Shader::load_ubo(nir_intrinsic_instr *instr)
 {
    auto bufid = nir_src_as_const_value(instr->src[0]);
    auto buf_offset = nir_src_as_const_value(instr->src[1]);
+   auto base_id = nir_intrinsic_base(instr);
 
    if (!buf_offset) {
       /* TODO: if bufid is constant then this can also be solved by using the
@@ -1299,11 +1247,11 @@ Shader::load_ubo(nir_intrinsic_instr *instr)
       LoadFromBuffer *ir;
       if (bufid) {
          ir = new LoadFromBuffer(
-            dest, dest_swz, addr, 0, 1 + bufid->u32, nullptr, fmt_32_32_32_32_float);
+            dest, dest_swz, addr, 0, bufid->u32, nullptr, fmt_32_32_32_32_float);
       } else {
          auto buffer_id = emit_load_to_register(value_factory().src(instr->src[0], 0));
          ir = new LoadFromBuffer(
-            dest, dest_swz, addr, 0, 1, buffer_id, fmt_32_32_32_32_float);
+            dest, dest_swz, addr, 0, base_id, buffer_id, fmt_32_32_32_32_float);
       }
       emit_instruction(ir);
       return true;
@@ -1323,7 +1271,7 @@ Shader::load_ubo(nir_intrinsic_instr *instr)
                  << " const[" << i << "]: " << instr->const_index[i] << "\n";
 
          auto uniform =
-            value_factory().uniform(512 + buf_offset->u32, i + buf_cmp, bufid->u32 + 1);
+            value_factory().uniform(512 + buf_offset->u32, i + buf_cmp, bufid->u32);
          ir = new AluInstr(op1_mov,
                            value_factory().dest(instr->dest, i, pin),
                            uniform,
@@ -1340,7 +1288,8 @@ Shader::load_ubo(nir_intrinsic_instr *instr)
 
       for (unsigned i = 0; i < nir_dest_num_components(instr->dest); ++i) {
          int cmp = buf_cmp + i;
-         auto u = new UniformValue(512 + buf_offset->u32, cmp, kc_id);
+         auto u =
+            new UniformValue(512 + buf_offset->u32, cmp, kc_id, nir_intrinsic_base(instr));
          auto dest = value_factory().dest(instr->dest, i, pin_none);
          ir = new AluInstr(op1_mov, dest, u, AluInstr::write);
          emit_instruction(ir);

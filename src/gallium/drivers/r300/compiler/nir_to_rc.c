@@ -52,7 +52,6 @@ struct ntr_reg_interval {
 struct ntr_compile {
    nir_shader *s;
    nir_function_impl *impl;
-   const struct nir_to_rc_options *options;
    struct pipe_screen *screen;
    struct ureg_program *ureg;
 
@@ -2325,14 +2324,6 @@ nir_to_rc_lower_txp(nir_shader *s)
    NIR_PASS_V(s, nir_lower_tex, &lower_tex_options);
 }
 
-const void *
-nir_to_rc(struct nir_shader *s,
-            struct pipe_screen *screen)
-{
-   static const struct nir_to_rc_options default_ntr_options = {0};
-   return nir_to_rc_options(s, screen, &default_ntr_options);
-}
-
 /**
  * Translates the NIR shader to TGSI.
  *
@@ -2340,9 +2331,8 @@ nir_to_rc(struct nir_shader *s,
  * We take ownership of the NIR shader passed, returning a reference to the new
  * TGSI tokens instead.  If you need to keep the NIR, then pass us a clone.
  */
-const void *nir_to_rc_options(struct nir_shader *s,
-                                struct pipe_screen *screen,
-                                const struct nir_to_rc_options *options)
+const void *nir_to_rc(struct nir_shader *s,
+                      struct pipe_screen *screen)
 {
    struct ntr_compile *c;
    const void *tgsi_tokens;
@@ -2441,8 +2431,6 @@ const void *nir_to_rc_options(struct nir_shader *s,
       fprintf(stderr, "NIR before translation to TGSI:\n");
       nir_print_shader(s, stderr);
    }
-
-   c->options = options;
 
    c->s = s;
    c->ureg = ureg_create(pipe_shader_type_from_mesa(s->info.stage));

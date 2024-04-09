@@ -163,10 +163,6 @@ radv_pipeline_get_shader_key(const struct radv_device *device, const VkPipelineS
    const VkPipelineRobustnessCreateInfoEXT *stage_robust_info =
       vk_find_struct_const(stage->pNext, PIPELINE_ROBUSTNESS_CREATE_INFO_EXT);
 
-   /* map any hit to intersection as these shaders get merged */
-   if (s == MESA_SHADER_ANY_HIT)
-      s = MESA_SHADER_INTERSECTION;
-
    enum radv_buffer_robustness storage_robustness = device->buffer_robustness;
    enum radv_buffer_robustness uniform_robustness = device->buffer_robustness;
    enum radv_buffer_robustness vertex_robustness = device->buffer_robustness;

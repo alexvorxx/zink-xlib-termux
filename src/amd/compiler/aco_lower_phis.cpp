@@ -298,24 +298,27 @@ init_state(Program* program, Block* block, ssa_state* state, aco_ptr<Instruction
 }
 
 void
-lower_divergent_bool_phi(Program* program, ssa_state* state, Block* block,
-                         aco_ptr<Instruction>& phi)
+lower_phi_to_linear(Program* program, ssa_state* state, Block* block, aco_ptr<Instruction>& phi)
 {
    if (block->linear_preds == block->logical_preds) {
       phi->opcode = aco_opcode::p_linear_phi;
       return;
    }
 
-   if (phi->operands.size() == 2 && phi->operands[1].isConstant() &&
-       (block->kind & block_kind_merge)) {
+   if ((block->kind & block_kind_merge) && phi->opcode == aco_opcode::p_boolean_phi &&
+       phi->operands.size() == 2 && phi->operands[1].isConstant()) {
       build_const_else_merge_code(program, program->blocks[block->linear_idom], phi);
       return;
    }
 
    init_state(program, block, state, phi);
 
-   for (unsigned i = 0; i < phi->operands.size(); i++)
-      build_merge_code(program, state, &program->blocks[block->logical_preds[i]], phi->operands[i]);
+   if (phi->opcode == aco_opcode::p_boolean_phi) {
+      /* Divergent boolean phis are lowered to logical arithmetic and linear phis. */
+      for (unsigned i = 0; i < phi->operands.size(); i++)
+         build_merge_code(program, state, &program->blocks[block->logical_preds[i]],
+                          phi->operands[i]);
+   }
 
    unsigned num_preds = block->linear_preds.size();
    if (phi->operands.size() != num_preds) {
@@ -371,9 +374,11 @@ lower_phis(Program* program)
          if (phi->opcode == aco_opcode::p_boolean_phi) {
             assert(program->wave_size == 64 ? phi->definitions[0].regClass() == s2
                                             : phi->definitions[0].regClass() == s1);
-            lower_divergent_bool_phi(program, &state, &block, phi);
+            lower_phi_to_linear(program, &state, &block, phi);
          } else if (phi->opcode == aco_opcode::p_phi) {
-            if (phi->definitions[0].regClass().is_subdword())
+            if (phi->definitions[0].regClass().type() == RegType::sgpr)
+               lower_phi_to_linear(program, &state, &block, phi);
+            else if (phi->definitions[0].regClass().is_subdword())
                lower_subdword_phis(program, &block, phi);
          } else if (!is_phi(phi)) {
             break;

@@ -120,18 +120,6 @@ libetnaviv = static_library(
   dependencies : [dep_libdrm, idep_nir_headers, idep_mesautil, idep_libetnaviv_decode],
 )
 
-etnaviv_compiler = executable(
-  'etnaviv_compiler',
-  'etnaviv_compiler_cmdline.c',
-  include_directories : [
-    inc_include, inc_src, inc_gallium, inc_gallium_aux, inc_etnaviv,
-  ],
-  link_with : [libgallium, libetnaviv, libetnaviv_drm],
-  build_by_default : with_tools.contains('etnaviv'),
-  install : with_tools.contains('etnaviv'),
-  dependencies : [idep_mesautil, dep_libdrm, idep_nir],
-)
-
 driver_etnaviv = declare_dependency(
   compile_args : '-DGALLIUM_ETNAVIV',
   link_with : [libetnaviv, libetnavivdrm],

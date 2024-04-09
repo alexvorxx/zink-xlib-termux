@@ -26,7 +26,7 @@ project(
     check : true
   ).stdout(),
   license : 'MIT',
-  meson_version : '>= 0.53',
+  meson_version : '>= 0.54',
   default_options : ['buildtype=debugoptimized', 'b_ndebug=if-release', 'c_std=c11', 'cpp_std=c++17', 'rust_std=2021']
 )
 
@@ -1137,6 +1137,7 @@ if cc.get_argument_syntax() == 'msvc'
     '/wd5105',  # macro expansion producing 'defined' has undefined behavior (winbase.h, need Windows SDK upgrade)
     '/we4020',  # Error when passing the wrong number of parameters
     '/we4024',  # Error when passing different type of parameter
+    '/we4189',  # 'identifier' : local variable is initialized but not referenced
     '/Zc:__cplusplus', #Set __cplusplus macro to match the /std:c++<version> on the command line
   ]
   c_args += cc.get_supported_arguments(_trial)

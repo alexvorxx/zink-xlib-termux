@@ -2737,7 +2737,7 @@ static void handle_index_buffer2(struct vk_cmd_queue_entry *cmd,
       state->index_buffer = lvp_buffer_from_handle(ib->buffer)->bo;
    } else {
       state->index_size = 4;
-      state->index_buffer_size = sizeof(uint32_t);
+      state->index_buffer_size = UINT32_MAX;
       state->index_offset = 0;
       state->index_buffer = state->device->zero_buffer;
    }

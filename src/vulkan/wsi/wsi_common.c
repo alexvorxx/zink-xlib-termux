@@ -371,6 +371,7 @@ configure_image(const struct wsi_swapchain *chain,
                 const struct wsi_base_image_params *params,
                 struct wsi_image_info *info)
 {
+   info->image_type = params->image_type;
    switch (params->image_type) {
    case WSI_IMAGE_TYPE_CPU: {
       const struct wsi_cpu_image_params *cpu_params =
@@ -1804,7 +1805,8 @@ wsi_create_buffer_blit_context(const struct wsi_swapchain *chain,
    struct wsi_memory_allocate_info memory_wsi_info = {
       .sType = VK_STRUCTURE_TYPE_WSI_MEMORY_ALLOCATE_INFO_MESA,
       .pNext = NULL,
-      .implicit_sync = !info->explicit_sync,
+      .implicit_sync = info->image_type == WSI_IMAGE_TYPE_DRM &&
+                       !info->explicit_sync,
    };
    VkMemoryDedicatedAllocateInfo buf_mem_dedicated_info = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
@@ -2200,7 +2202,6 @@ wsi_configure_cpu_image(const struct wsi_swapchain *chain,
                                  1 /* size_align */,
                                  info);
 
-      info->explicit_sync = true;
       info->select_blit_dst_memory_type = wsi_select_host_memory_type;
       info->select_image_memory_type = wsi_select_device_memory_type;
       info->create_mem = wsi_create_cpu_buffer_image_mem;

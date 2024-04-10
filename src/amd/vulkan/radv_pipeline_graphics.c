@@ -255,16 +255,12 @@ radv_pipeline_needs_ps_epilog(const struct vk_graphics_pipeline_state *state,
 }
 
 static struct radv_blend_state
-radv_pipeline_init_blend_state(struct radv_graphics_pipeline *pipeline, const struct vk_graphics_pipeline_state *state,
-                               VkGraphicsPipelineLibraryFlagBitsEXT lib_flags)
+radv_pipeline_init_blend_state(struct radv_graphics_pipeline *pipeline)
 {
    const struct radv_shader *ps = pipeline->base.shaders[MESA_SHADER_FRAGMENT];
    struct radv_blend_state blend = {0};
 
-   if (!ps)
-      return blend;
-
-   if (radv_pipeline_needs_ps_epilog(state, lib_flags))
+   if (!ps || ps->info.has_epilog)
       return blend;
 
    blend.cb_shader_mask = ac_get_cb_shader_mask(ps->info.ps.spi_shader_col_format);
@@ -4070,7 +4066,7 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
       radv_pipeline_init_input_assembly_state(device, pipeline);
    radv_pipeline_init_dynamic_state(device, pipeline, &state, pCreateInfo);
 
-   struct radv_blend_state blend = radv_pipeline_init_blend_state(pipeline, &state, needed_lib_flags);
+   struct radv_blend_state blend = radv_pipeline_init_blend_state(pipeline);
 
    /* Copy the non-compacted SPI_SHADER_COL_FORMAT which is used to emit RBPLUS state. */
    pipeline->col_format_non_compacted = blend.spi_shader_col_format;

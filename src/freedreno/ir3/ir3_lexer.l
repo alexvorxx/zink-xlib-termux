@@ -436,6 +436,7 @@ static int parse_reg(const char *str)
 "s"                               return 's';
 "k"                               return 'k';
 "u"                               return 'u';
+"v"                               return 'v';
 "base"[0-9]+                      ir3_yylval.num = strtol(yytext+4, NULL, 10); return T_BASE;
 "offset"[0-9]+                    ir3_yylval.num = strtol(yytext+6, NULL, 10); return T_OFFSET;
 "uniform"                         return T_UNIFORM;

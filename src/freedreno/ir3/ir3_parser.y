@@ -716,7 +716,7 @@ static void print_token(FILE *file, int type, YYSTYPE value)
 %token <tok> T_MOD_MEM
 %token <tok> T_MOD_RT
 
-%type <num> integer offset
+%type <num> integer offset uoffset
 %type <num> flut_immed
 %type <flt> float
 %type <reg> src dst const cat0_src1 cat0_src2
@@ -1079,8 +1079,9 @@ cat4_instr:        cat4_opc dst_reg ',' src_reg_or_const_or_rel_or_imm
 cat5_opc_dsxypp:   T_OP_DSXPP_1   { new_instr(OPC_DSXPP_1)->cat5.type = TYPE_F32; }
 |                  T_OP_DSYPP_1   { new_instr(OPC_DSYPP_1)->cat5.type = TYPE_F32; }
 
-cat5_opc:          T_OP_ISAM      { new_instr(OPC_ISAM); }
-|                  T_OP_ISAML     { new_instr(OPC_ISAML); }
+cat5_opc_isam:     T_OP_ISAM      { new_instr(OPC_ISAM)->flags |= IR3_INSTR_INV_1D; }
+
+cat5_opc:          T_OP_ISAML     { new_instr(OPC_ISAML); }
 |                  T_OP_ISAMM     { new_instr(OPC_ISAMM); }
 |                  T_OP_SAM       { new_instr(OPC_SAM); }
 |                  T_OP_SAMB      { new_instr(OPC_SAMB); }
@@ -1117,6 +1118,7 @@ cat5_flag:         '.' T_3D       { instr->flags |= IR3_INSTR_3D; }
 |                  '.' 'p'        { instr->flags |= IR3_INSTR_P; }
 |                  '.' 's'        { instr->flags |= IR3_INSTR_S; }
 |                  '.' T_S2EN     { instr->flags |= IR3_INSTR_S2EN; }
+|                  '.' T_1D       { instr->flags &= ~IR3_INSTR_INV_1D; }
 |                  '.' T_UNIFORM  { }
 |                  '.' T_NONUNIFORM  { instr->flags |= IR3_INSTR_NONUNIF; }
 |                  '.' T_BASE     { instr->flags |= IR3_INSTR_B; instr->cat5.tex_base = $2; }
@@ -1143,6 +1145,9 @@ cat5_instr:        cat5_opc_dsxypp cat5_flags dst_reg ',' src_reg
 |                  cat5_opc cat5_flags cat5_type dst_reg ',' src_reg ',' cat5_samp_tex_all
 |                  cat5_opc cat5_flags cat5_type dst_reg ',' cat5_samp_tex
 |                  cat5_opc cat5_flags cat5_type dst_reg
+|                  cat5_opc_isam cat5_flags cat5_type dst_reg ',' src_reg ',' src_reg ',' cat5_samp_tex_all
+|                  cat5_opc_isam cat5_flags cat5_type dst_reg ',' src_reg ',' cat5_samp_tex_all
+|                  cat5_opc_isam '.' 'v' cat5_flags cat5_type dst_reg ',' src_reg src_uoffset ',' cat5_samp_tex_all { instr->flags |= IR3_INSTR_V; }
 |                  T_OP_TCINV { new_instr(OPC_TCINV); }
 
 cat6_typed:        '.' T_UNTYPED  { instr->cat6.typed = 0; }
@@ -1506,9 +1511,13 @@ src_reg_or_rel_or_imm: src_reg
 |                  relative
 |                  immediate
 
-offset:            { $$ = 0; }
+uoffset:           { $$ = 0; }
 |                  '+' integer { $$ = $2; }
+
+offset:            uoffset
 |                  '-' integer { $$ = -$2; }
+
+src_uoffset:       uoffset { new_src(0, IR3_REG_IMMED)->uim_val = $1; if ($1) instr->flags |= IR3_INSTR_IMM_OFFSET; }
 
 relative_gpr_src:  'r' '<' T_A0 offset '>'  { new_src(0, IR3_REG_RELATIV)->array.offset = $4; }
 |                  T_HR '<' T_A0 offset '>'  { new_src(0, IR3_REG_RELATIV | IR3_REG_HALF)->array.offset = $4; }

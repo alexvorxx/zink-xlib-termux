@@ -200,6 +200,8 @@ print_instr_name(struct log_stream *stream, struct ir3_instruction *instr,
          mesa_log_stream_printf(stream, ".p");
       if (instr->flags & IR3_INSTR_S)
          mesa_log_stream_printf(stream, ".s");
+      if (instr->flags & IR3_INSTR_V)
+         mesa_log_stream_printf(stream, ".v");
       if (instr->flags & IR3_INSTR_A1EN)
          mesa_log_stream_printf(stream, ".a1en");
       if (instr->flags & IR3_INSTR_U)

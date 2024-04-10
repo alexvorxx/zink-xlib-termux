@@ -1136,11 +1136,9 @@ radv_should_export_multiview(const struct radv_shader_stage *stage, const struct
 {
    /* Export the layer in the last VGT stage if multiview is used.
     * Also checks for NONE stage, which happens when we have depth-only rendering.
-    * When the next stage is unknown (with graphics pipeline library), the layer is exported unconditionally.
+    * When the next stage is unknown (with GPL or ESO), the layer is exported unconditionally.
     */
-   return gfx_state->has_multiview_view_index &&
-          (stage->info.next_stage == MESA_SHADER_FRAGMENT || stage->info.next_stage == MESA_SHADER_NONE ||
-           !(gfx_state->lib_flags & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT)) &&
+   return gfx_state->has_multiview_view_index && radv_is_last_vgt_stage(stage) &&
           !(stage->nir->info.outputs_written & VARYING_BIT_LAYER);
 }
 

@@ -44,8 +44,15 @@ radv_buffer_finish(struct radv_buffer *buffer)
 static void
 radv_destroy_buffer(struct radv_device *device, const VkAllocationCallbacks *pAllocator, struct radv_buffer *buffer)
 {
+   struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
+
    if ((buffer->vk.create_flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT) && buffer->bo)
       radv_bo_destroy(device, &buffer->vk.base, buffer->bo);
+
+   if (buffer->bo_va)
+      vk_address_binding_report(&instance->vk, &buffer->vk.base, buffer->bo_va + buffer->offset, buffer->bo_size,
+                                VK_DEVICE_ADDRESS_BINDING_TYPE_UNBIND_EXT);
 
    radv_rmv_log_resource_destroy(device, (uint64_t)radv_buffer_to_handle(buffer));
    radv_buffer_finish(buffer);
@@ -75,6 +82,8 @@ radv_create_buffer(struct radv_device *device, const VkBufferCreateInfo *pCreate
    vk_buffer_init(&device->vk, &buffer->vk, pCreateInfo);
    buffer->bo = NULL;
    buffer->offset = 0;
+   buffer->bo_va = 0;
+   buffer->bo_size = 0;
 
    if (pCreateInfo->flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT) {
       enum radeon_bo_flag flags = RADEON_FLAG_VIRTUAL;
@@ -159,6 +168,9 @@ radv_BindBufferMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindBuf
 
       buffer->bo = mem->bo;
       buffer->offset = pBindInfos[i].memoryOffset;
+      buffer->bo_va = radv_buffer_get_va(mem->bo);
+      buffer->bo_size = mem->bo->size;
+
       radv_rmv_log_buffer_bind(device, pBindInfos[i].buffer);
 
       vk_address_binding_report(&instance->vk, &buffer->vk.base, radv_buffer_get_va(buffer->bo) + buffer->offset,

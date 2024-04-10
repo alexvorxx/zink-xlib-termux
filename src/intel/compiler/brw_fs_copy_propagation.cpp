@@ -937,8 +937,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
 
 
 static bool
-try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
-                       acp_entry *entry, int arg)
+try_constant_propagate(fs_inst *inst, acp_entry *entry, int arg)
 {
    bool progress = false;
 
@@ -1300,7 +1299,7 @@ opt_copy_propagation_local(const brw_compiler *compiler, linear_ctx *lin_ctx,
               iter != acp.end() && (*iter)->dst.nr == inst->src[i].nr;
               ++iter) {
             if ((*iter)->src.file == IMM) {
-               if (try_constant_propagate(compiler, inst, *iter, i)) {
+               if (try_constant_propagate(inst, *iter, i)) {
                   instruction_progress = true;
                   break;
                }

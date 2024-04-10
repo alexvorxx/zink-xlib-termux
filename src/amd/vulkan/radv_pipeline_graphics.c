@@ -260,17 +260,15 @@ radv_pipeline_init_blend_state(struct radv_graphics_pipeline *pipeline, const st
 {
    const struct radv_shader *ps = pipeline->base.shaders[MESA_SHADER_FRAGMENT];
    struct radv_blend_state blend = {0};
-   unsigned spi_shader_col_format = 0;
+
+   if (!ps)
+      return blend;
 
    if (radv_pipeline_needs_ps_epilog(state, lib_flags))
       return blend;
 
-   if (ps) {
-      spi_shader_col_format = ps->info.ps.spi_shader_col_format;
-   }
-
-   blend.cb_shader_mask = ac_get_cb_shader_mask(spi_shader_col_format);
-   blend.spi_shader_col_format = spi_shader_col_format;
+   blend.cb_shader_mask = ac_get_cb_shader_mask(ps->info.ps.spi_shader_col_format);
+   blend.spi_shader_col_format = ps->info.ps.spi_shader_col_format;
 
    return blend;
 }

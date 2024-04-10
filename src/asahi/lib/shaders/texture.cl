@@ -92,13 +92,23 @@ libagx_texture_levels(constant struct agx_texture_packed *ptr)
  * it), maybe check if G15 is affected.
  */
 uint
-libagx_lower_txf_robustness(constant struct agx_texture_packed *ptr, ushort lod,
-                            uint x)
+libagx_lower_txf_robustness(constant struct agx_texture_packed *ptr,
+                            bool check_lod, ushort lod, bool check_layer,
+                            uint layer, uint x)
 {
    agx_unpack(NULL, ptr, TEXTURE, d);
 
-   bool oob = (lod > (d.last_level - d.first_level));
-   return oob ? 0xFFFF : x;
+   bool valid = true;
+
+   if (check_lod)
+      valid &= lod <= (d.last_level - d.first_level);
+
+   if (check_layer) {
+      bool linear = (d.layout == AGX_LAYOUT_LINEAR);
+      valid &= layer < (linear ? d.depth_linear : d.depth);
+   }
+
+   return valid ? x : 0xFFFF;
 }
 
 static uint32_t

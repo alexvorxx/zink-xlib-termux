@@ -1077,13 +1077,10 @@ push_loop_stack(struct brw_codegen *p, brw_inst *inst)
       p->loop_stack_array_size *= 2;
       p->loop_stack = reralloc(p->mem_ctx, p->loop_stack, int,
 			       p->loop_stack_array_size);
-      p->if_depth_in_loop = reralloc(p->mem_ctx, p->if_depth_in_loop, int,
-				     p->loop_stack_array_size);
    }
 
    p->loop_stack[p->loop_stack_depth] = inst - p->store;
    p->loop_stack_depth++;
-   p->if_depth_in_loop[p->loop_stack_depth] = 0;
 }
 
 static brw_inst *
@@ -1127,7 +1124,6 @@ brw_IF(struct brw_codegen *p, unsigned execute_size)
    brw_inst_set_mask_control(devinfo, insn, BRW_MASK_ENABLE);
 
    push_if_stack(p, insn);
-   p->if_depth_in_loop[p->loop_stack_depth]++;
    return insn;
 }
 
@@ -1239,7 +1235,6 @@ brw_ENDIF(struct brw_codegen *p)
    insn = next_insn(p, BRW_OPCODE_ENDIF);
 
    /* Pop the IF and (optional) ELSE instructions from the stack */
-   p->if_depth_in_loop[p->loop_stack_depth]--;
    tmp = pop_if_stack(p);
    if (brw_inst_opcode(p->isa, tmp) == BRW_OPCODE_ELSE) {
       else_inst = tmp;

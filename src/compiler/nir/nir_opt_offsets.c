@@ -173,6 +173,16 @@ try_fold_shared2(nir_builder *b,
    return true;
 }
 
+static uint32_t
+get_max(opt_offsets_state *state, nir_intrinsic_instr *intrin, uint32_t default_val)
+{
+   if (default_val)
+      return default_val;
+   if (state->options->max_offset_cb)
+      return state->options->max_offset_cb(intrin, state->options->max_offset_data);
+   return 0;
+}
+
 static bool
 process_instr(nir_builder *b, nir_instr *instr, void *s)
 {
@@ -184,15 +194,15 @@ process_instr(nir_builder *b, nir_instr *instr, void *s)
 
    switch (intrin->intrinsic) {
    case nir_intrinsic_load_uniform:
-      return try_fold_load_store(b, intrin, state, 0, state->options->uniform_max);
+      return try_fold_load_store(b, intrin, state, 0, get_max(state, intrin, state->options->uniform_max));
    case nir_intrinsic_load_ubo_vec4:
-      return try_fold_load_store(b, intrin, state, 1, state->options->ubo_vec4_max);
+      return try_fold_load_store(b, intrin, state, 1, get_max(state, intrin, state->options->ubo_vec4_max));
    case nir_intrinsic_load_shared:
    case nir_intrinsic_load_shared_ir3:
-      return try_fold_load_store(b, intrin, state, 0, state->options->shared_max);
+      return try_fold_load_store(b, intrin, state, 0, get_max(state, intrin, state->options->shared_max));
    case nir_intrinsic_store_shared:
    case nir_intrinsic_store_shared_ir3:
-      return try_fold_load_store(b, intrin, state, 1, state->options->shared_max);
+      return try_fold_load_store(b, intrin, state, 1, get_max(state, intrin, state->options->shared_max));
    case nir_intrinsic_load_shared2_amd:
       return try_fold_shared2(b, intrin, state, 0);
    case nir_intrinsic_store_shared2_amd:
@@ -200,7 +210,7 @@ process_instr(nir_builder *b, nir_instr *instr, void *s)
    case nir_intrinsic_load_buffer_amd:
       return try_fold_load_store(b, intrin, state, 1, state->options->buffer_max);
    case nir_intrinsic_store_buffer_amd:
-      return try_fold_load_store(b, intrin, state, 2, state->options->buffer_max);
+      return try_fold_load_store(b, intrin, state, 2, get_max(state, intrin, state->options->buffer_max));
    default:
       return false;
    }

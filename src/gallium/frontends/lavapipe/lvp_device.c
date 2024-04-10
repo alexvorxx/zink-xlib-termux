@@ -136,6 +136,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .KHR_maintenance4                      = true,
    .KHR_maintenance5                      = true,
    .KHR_maintenance6                      = true,
+   .KHR_maintenance7                      = true,
    .KHR_map_memory2                       = true,
    .KHR_multiview                         = true,
    .KHR_push_descriptor                   = true,
@@ -690,6 +691,8 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
 
       /* maintenance6 */
       .maintenance6 = true,
+      /* maintenance7 */
+      .maintenance7 = true,
 
       /* VK_KHR_shader_expect_assume */
       .shaderExpectAssume = true,
@@ -1193,6 +1196,16 @@ lvp_get_properties(const struct lvp_physical_device *device, struct vk_propertie
 
    /* maintenance6 */
    p->blockTexelViewCompatibleMultipleLayers = true,
+
+   /* maintenance7 */
+   p->robustFragmentShadingRateAttachmentAccess = false;
+   p->separateDepthStencilAttachmentAccess = true;
+   p->maxDescriptorSetTotalUniformBuffersDynamic = MAX_DESCRIPTORS;
+   p->maxDescriptorSetTotalStorageBuffersDynamic = MAX_DESCRIPTORS;
+   p->maxDescriptorSetTotalBuffersDynamic = MAX_DESCRIPTORS;
+   p->maxDescriptorSetUpdateAfterBindTotalUniformBuffersDynamic = MAX_DESCRIPTORS;
+   p->maxDescriptorSetUpdateAfterBindTotalStorageBuffersDynamic = MAX_DESCRIPTORS;
+   p->maxDescriptorSetUpdateAfterBindTotalBuffersDynamic = MAX_DESCRIPTORS;
 
    /* VK_EXT_shader_object */
    /* this is basically unsupported */

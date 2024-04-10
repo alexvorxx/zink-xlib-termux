@@ -1784,8 +1784,8 @@ radv_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
          VkPhysicalDeviceRayTracingPipelineFeaturesKHR *features =
             (VkPhysicalDeviceRayTracingPipelineFeaturesKHR *)ext;
          features->rayTracingPipeline = true;
-         features->rayTracingPipelineShaderGroupHandleCaptureReplay = false;
-         features->rayTracingPipelineShaderGroupHandleCaptureReplayMixed = false;
+         features->rayTracingPipelineShaderGroupHandleCaptureReplay = true;
+         features->rayTracingPipelineShaderGroupHandleCaptureReplayMixed = true;
          features->rayTracingPipelineTraceRaysIndirect = true;
          features->rayTraversalPrimitiveCulling = true;
          break;
@@ -2620,7 +2620,7 @@ radv_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          props->maxRayRecursionDepth = 31;    /* Minimum allowed for DXR. */
          props->maxShaderGroupStride = 16384; /* dummy */
          props->shaderGroupBaseAlignment = 16;
-         props->shaderGroupHandleCaptureReplaySize = 16;
+         props->shaderGroupHandleCaptureReplaySize = RADV_RT_HANDLE_SIZE;
          props->maxRayDispatchInvocationCount = 1024 * 1024 * 64;
          props->shaderGroupHandleAlignment = 16;
          props->maxRayHitAttributeSize = RADV_MAX_HIT_ATTRIB_SIZE;
@@ -6960,6 +6960,10 @@ radv_initialise_ds_surface(struct radv_device *device, struct radv_ds_buffer_inf
 
    va = radv_buffer_get_va(iview->image->bindings[0].bo) + iview->image->bindings[0].offset;
    s_offs = z_offs = va;
+
+   /* Recommended value for better performance with 4x and 8x. */
+   ds->db_render_override2 = S_028010_DECOMPRESS_Z_ON_FLUSH(iview->image->info.samples >= 4) |
+                             S_028010_CENTROID_COMPUTATION_MODE(device->physical_device->rad_info.gfx_level >= GFX10_3);
 
    if (device->physical_device->rad_info.gfx_level >= GFX9) {
       assert(surf->u.gfx9.surf_offset == 0);

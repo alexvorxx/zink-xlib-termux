@@ -413,7 +413,7 @@ driFetchDrawable(struct glx_context *gc, GLXDrawable glxDrawable)
    }
 
    if (__glxHashInsert(priv->drawHash, glxDrawable, pdraw)) {
-      (*pdraw->destroyDrawable) (pdraw);
+      pdraw->destroyDrawable(pdraw);
       return NULL;
    }
    pdraw->refcount = 1;
@@ -490,7 +490,7 @@ releaseDrawable(const struct glx_display *priv, GLXDrawable drawable)
 _X_HIDDEN void
 driReleaseDrawables(struct glx_context *gc)
 {
-   const struct glx_display *priv = (gc && gc->psc) ? gc->psc->display : NULL;
+   const struct glx_display *priv = gc->psc->display;
 
    if (priv == NULL)
       return;

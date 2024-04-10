@@ -163,11 +163,14 @@ ail_initialize_twiddled(struct ail_layout *layout)
       poth_el = u_minify(poth_el, 1);
    }
 
-   /* Arrays and cubemaps have the entire miptree duplicated and page aligned,
-    * but only when mipmaps are enabled and the layer is larger than one page.
-    */
-   if ((layout->levels != 1 && layout->depth_px != 1 && offset_B > AIL_PAGESIZE)
-        || layout->tiling != AIL_TILING_TWIDDLED_COMPRESSED)
+   /* Align layer size if we have mipmaps and one miptree is larger than one page */
+   layout->page_aligned_layers = layout->levels != 1 && offset_B > AIL_PAGESIZE;
+
+   /* Single-layer images are not padded unless they are Z/S */
+   if (layout->depth_px == 1 && !util_format_is_depth_or_stencil(layout->format))
+      layout->page_aligned_layers = false;
+
+   if (layout->page_aligned_layers)
       layout->layer_stride_B = ALIGN_POT(offset_B, AIL_PAGESIZE);
    else
       layout->layer_stride_B = offset_B;
@@ -186,8 +189,8 @@ ail_initialize_compression(struct ail_layout *layout)
 
    layout->metadata_offset_B = layout->size_B;
 
-   unsigned width_px = layout->width_px;
-   unsigned height_px = layout->height_px;
+   unsigned width_px = ALIGN_POT(layout->width_px, 16);
+   unsigned height_px = ALIGN_POT(layout->height_px, 16);
 
    unsigned compbuf_B = 0;
 
@@ -195,15 +198,13 @@ ail_initialize_compression(struct ail_layout *layout)
       if (width_px < 16 && height_px < 16)
          break;
 
-      /* The compression buffer seems to have one byte per 8 x 4
-       * pixel block.
-       */
-      unsigned cmpw_el = DIV_ROUND_UP(util_next_power_of_two(width_px), 8);
-      unsigned cmph_el = DIV_ROUND_UP(util_next_power_of_two(height_px), 4);
-      compbuf_B += ALIGN_POT(cmpw_el * cmph_el, AIL_CACHELINE);
+      /* The compression buffer seems to have 8 bytes per 16 x 16 pixel block. */
+      unsigned cmpw_el = DIV_ROUND_UP(util_next_power_of_two(width_px), 16);
+      unsigned cmph_el = DIV_ROUND_UP(util_next_power_of_two(height_px), 16);
+      compbuf_B += ALIGN_POT(cmpw_el * cmph_el * 8, AIL_CACHELINE);
 
-      width_px = u_minify(width_px, 1);
-      height_px = u_minify(height_px, 1);
+      width_px = DIV_ROUND_UP(width_px, 2);
+      height_px = DIV_ROUND_UP(height_px, 2);
    }
 
    layout->size_B += compbuf_B * layout->depth_px;

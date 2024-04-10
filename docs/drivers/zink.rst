@@ -157,7 +157,11 @@ supported:
 
 * ``VkPhysicalDeviceLimits``
 
+  * ``maxImageDimension1D`` ≥ 16384
   * ``maxImageDimension2D`` ≥ 16384
+  * ``maxImageDimension3D`` ≥ 2048
+  * ``maxImageDimensionCube`` ≥ 16384
+  * ``maxImageArrayLayers`` ≥ 2048
   * ``maxViewports`` ≥ 16
 
 OpenGL 4.2

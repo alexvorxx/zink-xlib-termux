@@ -211,6 +211,9 @@ struct ir3_compiler {
    /* Whether isam.v is supported to sample multiple components from SSBOs */
    bool has_isam_v;
 
+   /* Whether isam/stib/ldib have immediate offsets. */
+   bool has_ssbo_imm_offsets;
+
    /* True if 16-bit descriptors are used for both 16-bit and 32-bit access. */
    bool storage_16bit;
 

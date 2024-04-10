@@ -176,6 +176,7 @@ struct fd_dev_info {
       bool has_scalar_alu;
 
       bool has_isam_v;
+      bool has_ssbo_imm_offsets;
 
       /* Whether writing to UBWC attachment and reading the same image as input
        * attachment or as a texture reads correct values from the image.

@@ -386,7 +386,7 @@ validate_instr(struct ir3_validate_ctx *ctx, struct ir3_instruction *instr)
       case OPC_STIB:
          validate_assert(ctx, !(instr->srcs[0]->flags & IR3_REG_HALF));
          validate_assert(ctx, !(instr->srcs[1]->flags & IR3_REG_HALF));
-         validate_reg_size(ctx, instr->srcs[2], instr->cat6.type);
+         validate_reg_size(ctx, instr->srcs[3], instr->cat6.type);
          break;
       case OPC_GETFIBERID:
       case OPC_GETSPID:

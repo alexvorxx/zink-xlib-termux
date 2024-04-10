@@ -225,6 +225,7 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
       compiler->has_predication = true;
       compiler->has_scalar_alu = dev_info->a6xx.has_scalar_alu;
       compiler->has_isam_v = dev_info->a6xx.has_isam_v;
+      compiler->has_ssbo_imm_offsets = dev_info->a6xx.has_ssbo_imm_offsets;
       compiler->fs_must_have_non_zero_constlen_quirk = dev_info->a7xx.fs_must_have_non_zero_constlen_quirk;
    } else {
       compiler->max_const_pipeline = 512;
@@ -239,6 +240,7 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
 
       compiler->has_scalar_alu = false;
       compiler->has_isam_v = false;
+      compiler->has_ssbo_imm_offsets = false;
    }
 
    /* This is just a guess for a4xx. */

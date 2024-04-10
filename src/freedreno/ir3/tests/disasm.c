@@ -288,6 +288,9 @@ static const struct test {
    INSTR_6XX(c0220200_0361b800, "ldib.b.typed.1d.f32.4.imm r0.x, r0.w, 1"), /* ldib.f32.1d.4.mode0.base0 r0.x, r0.w, 1 */
 #endif
 
+   INSTR_7XX(d1260406_00e77100, "(sy)stib.b.untyped.1d.u32.4.imm.base0 r1.z, r0.x+4, 2"),
+   INSTR_7XX(c3260002_01e1b100, "ldib.b.untyped.1d.u32.4.imm.base0 r0.z, r0.y+12, 0"),
+
    /* dEQP-GLES31.functional.tessellation.invariance.outer_edge_symmetry.isolines_equal_spacing_ccw */
    INSTR_6XX(c2c21100_04800006, "stlw.f32 l[r2.x], r0.w, 4"),
    INSTR_6XX(c2c20f00_01800004, "stlw.f32 l[r1.w], r0.z, 1"),

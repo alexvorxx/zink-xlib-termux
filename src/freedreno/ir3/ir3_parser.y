@@ -1296,13 +1296,15 @@ cat6_bindless_ibo_opc_2src: T_OP_ATOMIC_B_ADD        { new_instr(OPC_ATOMIC_B_AD
 |                  T_OP_ATOMIC_B_AND        { new_instr(OPC_ATOMIC_B_AND); dummy_dst(); }
 |                  T_OP_ATOMIC_B_OR         { new_instr(OPC_ATOMIC_B_OR); dummy_dst(); }
 |                  T_OP_ATOMIC_B_XOR        { new_instr(OPC_ATOMIC_B_XOR); dummy_dst(); }
-|                  T_OP_STIB_B              { new_instr(OPC_STIB); dummy_dst(); }
 
-cat6_bindless_ibo_opc_2src_dst: T_OP_LDIB_B              { new_instr(OPC_LDIB); }
+cat6_bindless_ibo_opc_3src: T_OP_STIB_B     { new_instr(OPC_STIB); dummy_dst(); }
+
+cat6_bindless_ibo_opc_3src_dst: T_OP_LDIB_B              { new_instr(OPC_LDIB); }
 
 cat6_bindless_ibo: cat6_bindless_ibo_opc_1src cat6_typed cat6_dim cat6_type '.' cat6_immed '.' cat6_bindless_mode dst_reg ',' cat6_reg_or_immed
 |                  cat6_bindless_ibo_opc_2src cat6_typed cat6_dim cat6_type '.' cat6_immed '.' cat6_bindless_mode src_reg ',' cat6_reg_or_immed ',' cat6_reg_or_immed { swap(instr->srcs[0], instr->srcs[2]); }
-|                  cat6_bindless_ibo_opc_2src_dst cat6_typed cat6_dim cat6_type '.' cat6_immed '.' cat6_bindless_mode dst_reg ',' cat6_reg_or_immed ',' cat6_reg_or_immed { swap(instr->srcs[0], instr->srcs[1]); }
+|                  cat6_bindless_ibo_opc_3src cat6_typed cat6_dim cat6_type '.' cat6_immed '.' cat6_bindless_mode src_reg ',' cat6_reg_or_immed src_uoffset ',' cat6_reg_or_immed { swap(instr->srcs[0], instr->srcs[3]); }
+|                  cat6_bindless_ibo_opc_3src_dst cat6_typed cat6_dim cat6_type '.' cat6_immed '.' cat6_bindless_mode dst_reg ',' cat6_reg_or_immed src_uoffset ',' cat6_reg_or_immed { swap(instr->srcs[0], instr->srcs[2]); swap(instr->srcs[1], instr->srcs[2]); }
 
 cat6_bindless_ldc_opc: T_OP_LDC  { new_instr(OPC_LDC); }
 

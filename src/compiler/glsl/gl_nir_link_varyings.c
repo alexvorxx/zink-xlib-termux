@@ -1678,11 +1678,11 @@ xfb_decl_assign_location(struct xfb_decl *xfb_decl,
       switch (xfb_decl->lowered_builtin_array_variable) {
       case clip_distance:
          actual_array_size = prog->last_vert_prog ?
-            prog->last_vert_prog->info.clip_distance_array_size : 0;
+            prog->last_vert_prog->nir->info.clip_distance_array_size : 0;
          break;
       case cull_distance:
          actual_array_size = prog->last_vert_prog ?
-            prog->last_vert_prog->info.cull_distance_array_size : 0;
+            prog->last_vert_prog->nir->info.cull_distance_array_size : 0;
          break;
       case none:
       default:

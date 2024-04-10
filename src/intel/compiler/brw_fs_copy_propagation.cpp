@@ -935,38 +935,14 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
    return true;
 }
 
-
 static bool
-try_constant_propagate(fs_inst *inst, acp_entry *entry, int arg)
+try_constant_propagate_value(fs_reg val, brw_reg_type dst_type,
+                             fs_inst *inst, int arg)
 {
    bool progress = false;
 
-   if (brw_type_size_bytes(entry->src.type) > 4)
+   if (brw_type_size_bytes(val.type) > 4)
       return false;
-
-   if (inst->src[arg].file != VGRF)
-      return false;
-
-   assert(entry->dst.file == VGRF);
-   if (inst->src[arg].nr != entry->dst.nr)
-      return false;
-
-   /* Bail if inst is reading a range that isn't contained in the range
-    * that entry is writing.
-    */
-   if (!region_contained_in(inst->src[arg], inst->size_read(arg),
-                            entry->dst, entry->size_written))
-      return false;
-
-   /* If the size of the use type is larger than the size of the entry
-    * type, the entry doesn't contain all of the data that the user is
-    * trying to use.
-    */
-   if (brw_type_size_bits(inst->src[arg].type) >
-       brw_type_size_bits(entry->dst.type))
-      return false;
-
-   fs_reg val = entry->src;
 
    /* If the size of the use type is smaller than the size of the entry,
     * clamp the value to the range of the use type.  This enables constant
@@ -978,9 +954,9 @@ try_constant_propagate(fs_inst *inst, acp_entry *entry, int arg)
     *    mul(8)          g47<1>D         g86<8,8,1>D     g12<16,8,2>W
     */
    if (brw_type_size_bits(inst->src[arg].type) <
-       brw_type_size_bits(entry->dst.type)) {
+       brw_type_size_bits(dst_type)) {
       if (brw_type_size_bytes(inst->src[arg].type) != 2 ||
-          brw_type_size_bytes(entry->dst.type) != 4)
+          brw_type_size_bytes(dst_type) != 4)
          return false;
 
       assert(inst->src[arg].subnr == 0 || inst->src[arg].subnr == 2);
@@ -1254,6 +1230,35 @@ try_constant_propagate(fs_inst *inst, acp_entry *entry, int arg)
    }
 
    return progress;
+}
+
+
+static bool
+try_constant_propagate(fs_inst *inst, acp_entry *entry, int arg)
+{
+   if (inst->src[arg].file != VGRF)
+      return false;
+
+   assert(entry->dst.file == VGRF);
+   if (inst->src[arg].nr != entry->dst.nr)
+      return false;
+
+   /* Bail if inst is reading a range that isn't contained in the range
+    * that entry is writing.
+    */
+   if (!region_contained_in(inst->src[arg], inst->size_read(arg),
+                            entry->dst, entry->size_written))
+      return false;
+
+   /* If the size of the use type is larger than the size of the entry
+    * type, the entry doesn't contain all of the data that the user is
+    * trying to use.
+    */
+   if (brw_type_size_bits(inst->src[arg].type) >
+       brw_type_size_bits(entry->dst.type))
+      return false;
+
+   return try_constant_propagate_value(entry->src, entry->dst.type, inst, arg);
 }
 
 static bool

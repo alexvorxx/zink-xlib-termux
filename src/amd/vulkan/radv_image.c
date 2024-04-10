@@ -1655,12 +1655,29 @@ radv_DestroyImage(VkDevice _device, VkImage _image, const VkAllocationCallbacks 
    radv_destroy_image(device, pAllocator, image);
 }
 
+static void
+radv_bind_image_memory(struct radv_device *device, struct radv_image *image, uint32_t bind_idx,
+                       struct radeon_winsys_bo *bo, uint64_t offset)
+{
+   struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
+
+   assert(bind_idx < 3);
+
+   image->bindings[bind_idx].bo = bo;
+   image->bindings[bind_idx].offset = offset;
+
+   radv_rmv_log_image_bind(device, bind_idx, radv_image_to_handle(image));
+
+   vk_address_binding_report(&instance->vk, &image->vk.base,
+                             radv_buffer_get_va(image->bindings[bind_idx].bo) + image->bindings[bind_idx].offset,
+                             image->bindings[bind_idx].bo->size, VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_BindImageMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindImageMemoryInfo *pBindInfos)
 {
    VK_FROM_HANDLE(radv_device, device, _device);
-   struct radv_physical_device *pdev = radv_device_physical(device);
-   struct radv_instance *instance = radv_physical_device_instance(pdev);
 
    for (uint32_t i = 0; i < bindInfoCount; ++i) {
       VK_FROM_HANDLE(radv_device_memory, mem, pBindInfos[i].memory);
@@ -1679,14 +1696,7 @@ radv_BindImageMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindImag
          struct radv_image *swapchain_img =
             radv_image_from_handle(wsi_common_get_image(swapchain_info->swapchain, swapchain_info->imageIndex));
 
-         image->bindings[0].bo = swapchain_img->bindings[0].bo;
-         image->bindings[0].offset = swapchain_img->bindings[0].offset;
-
-         radv_rmv_log_image_bind(device, 0, pBindInfos[i].image);
-
-         vk_address_binding_report(&instance->vk, &image->vk.base,
-                                   radv_buffer_get_va(image->bindings[0].bo) + image->bindings[0].offset,
-                                   image->bindings[0].bo->size, VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
+         radv_bind_image_memory(device, image, 0, swapchain_img->bindings[0].bo, swapchain_img->bindings[0].offset);
          continue;
       }
 #endif
@@ -1718,15 +1728,7 @@ radv_BindImageMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindImag
          bind_idx = radv_plane_from_aspect(plane_info->planeAspect);
       }
 
-      assert(bind_idx < 3);
-      image->bindings[bind_idx].bo = mem->bo;
-      image->bindings[bind_idx].offset = pBindInfos[i].memoryOffset;
-
-      radv_rmv_log_image_bind(device, bind_idx, pBindInfos[i].image);
-
-      vk_address_binding_report(&instance->vk, &image->vk.base,
-                                radv_buffer_get_va(image->bindings[bind_idx].bo) + image->bindings[bind_idx].offset,
-                                image->bindings[bind_idx].bo->size, VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
+      radv_bind_image_memory(device, image, bind_idx, mem->bo, pBindInfos[i].memoryOffset);
    }
    return VK_SUCCESS;
 }

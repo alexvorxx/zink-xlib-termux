@@ -358,35 +358,6 @@ brw_set_desc_ex(struct brw_codegen *p, brw_inst *inst,
 }
 
 static void
-gfx7_set_dp_scratch_message(struct brw_codegen *p,
-                            brw_inst *inst,
-                            bool write,
-                            bool dword,
-                            bool invalidate_after_read,
-                            unsigned num_regs,
-                            unsigned addr_offset,
-                            unsigned mlen,
-                            unsigned rlen,
-                            bool header_present)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   assert(num_regs == 1 || num_regs == 2 || num_regs == 4 ||
-          num_regs == 8);
-   const unsigned block_size = util_logbase2(num_regs);
-
-   brw_set_desc(p, inst, brw_message_desc(
-                   devinfo, mlen, rlen, header_present));
-
-   brw_inst_set_sfid(devinfo, inst, GFX7_SFID_DATAPORT_DATA_CACHE);
-   brw_inst_set_dp_category(devinfo, inst, 1); /* Scratch Block Read/Write msgs */
-   brw_inst_set_scratch_read_write(devinfo, inst, write);
-   brw_inst_set_scratch_type(devinfo, inst, dword);
-   brw_inst_set_scratch_invalidate_after_read(devinfo, inst, invalidate_after_read);
-   brw_inst_set_scratch_block_size(devinfo, inst, block_size);
-   brw_inst_set_scratch_addr_offset(devinfo, inst, addr_offset);
-}
-
-static void
 brw_inst_set_state(const struct brw_isa_info *isa,
                    brw_inst *insn,
                    const struct brw_insn_state *state)

@@ -497,6 +497,7 @@ anv_cmd_buffer_set_ray_query_buffer(struct anv_cmd_buffer *cmd_buffer,
    pipeline_state->push_constants.ray_query_globals =
       anv_address_physical(ray_query_globals_addr);
    cmd_buffer->state.push_constants_dirty |= stages;
+   pipeline_state->push_constants_data_dirty = true;
 }
 
 /**
@@ -696,14 +697,17 @@ void anv_CmdBindPipeline(
                modified = true;
             }
          }
-         if (modified)
+         if (modified) {
             cmd_buffer->state.push_constants_dirty |= stages;
+            state->push_constants_data_dirty = true;
+         }
       }
 
       if ((new_pipeline->fs_msaa_flags & INTEL_MSAA_FLAG_ENABLE_DYNAMIC) &&
           push->gfx.fs_msaa_flags != new_pipeline->fs_msaa_flags) {
          push->gfx.fs_msaa_flags = new_pipeline->fs_msaa_flags;
          cmd_buffer->state.push_constants_dirty |= VK_SHADER_STAGE_FRAGMENT_BIT;
+         state->push_constants_data_dirty = true;
       }
 
       anv_cmd_buffer_flush_pipeline_state(cmd_buffer, old_pipeline, new_pipeline);
@@ -922,6 +926,7 @@ anv_cmd_buffer_bind_descriptor_set(struct anv_cmd_buffer *cmd_buffer,
    else
       cmd_buffer->state.descriptors_dirty |= dirty_stages;
    cmd_buffer->state.push_constants_dirty |= dirty_stages;
+   pipe_state->push_constants_data_dirty = true;
 }
 
 #define ANV_GRAPHICS_STAGE_BITS \
@@ -1306,6 +1311,7 @@ void anv_CmdPushConstants2KHR(
 
       memcpy(pipe_state->push_constants.client_data + pInfo->offset,
              pInfo->pValues, pInfo->size);
+      pipe_state->push_constants_data_dirty = true;
    }
    if (pInfo->stageFlags & VK_SHADER_STAGE_COMPUTE_BIT) {
       struct anv_cmd_pipeline_state *pipe_state =
@@ -1313,6 +1319,7 @@ void anv_CmdPushConstants2KHR(
 
       memcpy(pipe_state->push_constants.client_data + pInfo->offset,
              pInfo->pValues, pInfo->size);
+      pipe_state->push_constants_data_dirty = true;
    }
    if (pInfo->stageFlags & ANV_RT_STAGE_BITS) {
       struct anv_cmd_pipeline_state *pipe_state =
@@ -1320,6 +1327,7 @@ void anv_CmdPushConstants2KHR(
 
       memcpy(pipe_state->push_constants.client_data + pInfo->offset,
              pInfo->pValues, pInfo->size);
+      pipe_state->push_constants_data_dirty = true;
    }
 
    cmd_buffer->state.push_constants_dirty |= pInfo->stageFlags;

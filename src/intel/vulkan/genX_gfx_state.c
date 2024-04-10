@@ -1343,6 +1343,7 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
        push->gfx.tcs_input_vertices != dyn->ts.patch_control_points) {
       push->gfx.tcs_input_vertices = dyn->ts.patch_control_points;
       cmd_buffer->state.push_constants_dirty |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+      gfx->base.push_constants_data_dirty = true;
    }
 
 #undef GET

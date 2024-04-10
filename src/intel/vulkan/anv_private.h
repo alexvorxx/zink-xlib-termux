@@ -3556,6 +3556,9 @@ struct anv_cmd_pipeline_state {
 
    struct anv_push_constants push_constants;
 
+   /** Tracks whether the push constant data has changed and need to be reemitted */
+   bool                                         push_constants_data_dirty;
+
    /* Push constant state allocated when flushing push constants. */
    struct anv_state          push_constants_state;
 
@@ -3743,6 +3746,7 @@ struct anv_cmd_state {
 
    VkShaderStageFlags                           descriptors_dirty;
    VkShaderStageFlags                           push_descriptors_dirty;
+   /** Tracks the 3DSTATE_CONSTANT_* instruction that needs to be reemitted */
    VkShaderStageFlags                           push_constants_dirty;
 
    struct {

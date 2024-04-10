@@ -208,6 +208,9 @@ struct ir3_compiler {
    /* Whether SSBOs have descriptors for sampling with ISAM */
    bool has_isam_ssbo;
 
+   /* Whether isam.v is supported to sample multiple components from SSBOs */
+   bool has_isam_v;
+
    /* True if 16-bit descriptors are used for both 16-bit and 32-bit access. */
    bool storage_16bit;
 

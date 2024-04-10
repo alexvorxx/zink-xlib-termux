@@ -92,10 +92,11 @@ ir3_nir_should_scalarize_mem(const nir_instr *instr, const void *data)
 
    /* Scalarize load_ssbo's that we could otherwise lower to isam,
     * as the tex cache benefit outweighs the benefit of vectorizing
+    * Don't do this if (vectorized) isam.v is supported.
     */
    if ((intrin->intrinsic == nir_intrinsic_load_ssbo) &&
        (nir_intrinsic_access(intrin) & ACCESS_CAN_REORDER) &&
-       compiler->has_isam_ssbo) {
+       compiler->has_isam_ssbo && !compiler->has_isam_v) {
       return true;
    }
 
@@ -112,11 +113,12 @@ ir3_nir_should_vectorize_mem(unsigned align_mul, unsigned align_offset,
    unsigned byte_size = bit_size / 8;
 
    /* Don't vectorize load_ssbo's that we could otherwise lower to isam,
-    * as the tex cache benefit outweighs the benefit of vectorizing
+    * as the tex cache benefit outweighs the benefit of vectorizing. If we
+    * support isam.v, we can vectorize this though.
     */
    if ((low->intrinsic == nir_intrinsic_load_ssbo) &&
        (nir_intrinsic_access(low) & ACCESS_CAN_REORDER) &&
-       compiler->has_isam_ssbo) {
+       compiler->has_isam_ssbo && !compiler->has_isam_v) {
       return false;
    }
 

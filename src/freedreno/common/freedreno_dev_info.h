@@ -175,6 +175,8 @@ struct fd_dev_info {
       /* See ir3_compiler::has_scalar_alu. */
       bool has_scalar_alu;
 
+      bool has_isam_v;
+
       /* Whether writing to UBWC attachment and reading the same image as input
        * attachment or as a texture reads correct values from the image.
        * If this is false, we may read stale values from the flag buffer,

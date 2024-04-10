@@ -444,6 +444,7 @@ reg_cp(struct ir3_cp_ctx *ctx, struct ir3_instruction *instr,
                       (opc_cat(instr->opc) == 2) ||
                       (opc_cat(instr->opc) == 6) ||
                       is_meta(instr) ||
+                      (instr->opc == OPC_ISAM && (n == 1 || n == 2)) ||
                       (is_mad(instr->opc) && (n == 0)));
 
          if ((opc_cat(instr->opc) == 2) &&

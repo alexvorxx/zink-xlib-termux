@@ -414,6 +414,7 @@ a6xx_gen4 = A6XXProps(
         has_lrz_dir_tracking = True,
         has_per_view_viewport = True,
         has_scalar_alu = True,
+        has_isam_v = True,
     )
 
 a6xx_a690_quirk = A6XXProps(
@@ -794,6 +795,7 @@ a7xx_base = A6XXProps(
         line_width_max = 127.5,
         has_scalar_alu = True,
         has_coherent_ubwc_flag_caches = True,
+        has_isam_v = True,
     )
 
 a7xx_725 = A7XXProps(

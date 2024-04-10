@@ -23,6 +23,7 @@ mod opt_dce;
 mod opt_jump_thread;
 mod opt_lop;
 mod opt_out;
+mod qmd;
 mod repair_ssa;
 mod sph;
 mod spill_values;

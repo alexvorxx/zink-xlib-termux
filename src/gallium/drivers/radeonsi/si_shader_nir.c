@@ -193,7 +193,7 @@ static void si_late_optimize_16bit_samplers(struct si_screen *sscreen, nir_shade
     * We only use a16/g16 if all of the affected sources are 16bit.
     */
    bool has_g16 = sscreen->info.gfx_level >= GFX10;
-   struct nir_fold_tex_srcs_options fold_srcs_options[] = {
+   struct nir_opt_tex_srcs_options opt_srcs_options[] = {
       {
          .sampler_dims =
             ~(BITFIELD_BIT(GLSL_SAMPLER_DIM_CUBE) | BITFIELD_BIT(GLSL_SAMPLER_DIM_BUF)),
@@ -207,16 +207,16 @@ static void si_late_optimize_16bit_samplers(struct si_screen *sscreen, nir_shade
          .src_types = (1 << nir_tex_src_ddx) | (1 << nir_tex_src_ddy),
       },
    };
-   struct nir_fold_16bit_tex_image_options fold_16bit_options = {
+   struct nir_opt_16bit_tex_image_options opt_16bit_options = {
       .rounding_mode = nir_rounding_mode_rtz,
-      .fold_tex_dest_types = nir_type_float,
-      .fold_image_dest_types = nir_type_float,
-      .fold_image_store_data = true,
-      .fold_srcs_options_count = has_g16 ? 2 : 1,
-      .fold_srcs_options = fold_srcs_options,
+      .opt_tex_dest_types = nir_type_float,
+      .opt_image_dest_types = nir_type_float,
+      .opt_image_store_data = true,
+      .opt_srcs_options_count = has_g16 ? 2 : 1,
+      .opt_srcs_options = opt_srcs_options,
    };
    bool changed = false;
-   NIR_PASS(changed, nir, nir_fold_16bit_tex_image, &fold_16bit_options);
+   NIR_PASS(changed, nir, nir_opt_16bit_tex_image, &opt_16bit_options);
 
    if (changed) {
       si_nir_opts(sscreen, nir, false);

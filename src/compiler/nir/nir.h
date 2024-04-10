@@ -6280,23 +6280,23 @@ bool nir_force_mediump_io(nir_shader *nir, nir_variable_mode modes,
                           nir_alu_type types);
 bool nir_unpack_16bit_varying_slots(nir_shader *nir, nir_variable_mode modes);
 
-struct nir_fold_tex_srcs_options {
+struct nir_opt_tex_srcs_options {
    unsigned sampler_dims;
    unsigned src_types;
 };
 
-struct nir_fold_16bit_tex_image_options {
+struct nir_opt_16bit_tex_image_options {
    nir_rounding_mode rounding_mode;
-   nir_alu_type fold_tex_dest_types;
-   nir_alu_type fold_image_dest_types;
-   bool fold_image_store_data;
-   bool fold_image_srcs;
-   unsigned fold_srcs_options_count;
-   struct nir_fold_tex_srcs_options *fold_srcs_options;
+   nir_alu_type opt_tex_dest_types;
+   nir_alu_type opt_image_dest_types;
+   bool opt_image_store_data;
+   bool opt_image_srcs;
+   unsigned opt_srcs_options_count;
+   struct nir_opt_tex_srcs_options *opt_srcs_options;
 };
 
-bool nir_fold_16bit_tex_image(nir_shader *nir,
-                              struct nir_fold_16bit_tex_image_options *options);
+bool nir_opt_16bit_tex_image(nir_shader *nir,
+                             struct nir_opt_16bit_tex_image_options *options);
 
 typedef struct {
    bool legalize_type;         /* whether this src should be legalized */

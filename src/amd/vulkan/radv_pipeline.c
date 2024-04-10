@@ -680,7 +680,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
    }
    if (((stage->nir->info.bit_sizes_int | stage->nir->info.bit_sizes_float) & 16) && gfx_level >= GFX9) {
       bool separate_g16 = gfx_level >= GFX10;
-      struct nir_fold_tex_srcs_options fold_srcs_options[] = {
+      struct nir_opt_tex_srcs_options opt_srcs_options[] = {
          {
             .sampler_dims = ~(BITFIELD_BIT(GLSL_SAMPLER_DIM_CUBE) | BITFIELD_BIT(GLSL_SAMPLER_DIM_BUF)),
             .src_types = (1 << nir_tex_src_coord) | (1 << nir_tex_src_lod) | (1 << nir_tex_src_bias) |
@@ -692,16 +692,16 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
             .src_types = (1 << nir_tex_src_ddx) | (1 << nir_tex_src_ddy),
          },
       };
-      struct nir_fold_16bit_tex_image_options fold_16bit_options = {
+      struct nir_opt_16bit_tex_image_options opt_16bit_options = {
          .rounding_mode = nir_rounding_mode_rtz,
-         .fold_tex_dest_types = nir_type_float,
-         .fold_image_dest_types = nir_type_float,
-         .fold_image_store_data = true,
-         .fold_image_srcs = !radv_use_llvm_for_stage(pdev, stage->stage),
-         .fold_srcs_options_count = separate_g16 ? 2 : 1,
-         .fold_srcs_options = fold_srcs_options,
+         .opt_tex_dest_types = nir_type_float,
+         .opt_image_dest_types = nir_type_float,
+         .opt_image_store_data = true,
+         .opt_image_srcs = !radv_use_llvm_for_stage(pdev, stage->stage),
+         .opt_srcs_options_count = separate_g16 ? 2 : 1,
+         .opt_srcs_options = opt_srcs_options,
       };
-      NIR_PASS(_, stage->nir, nir_fold_16bit_tex_image, &fold_16bit_options);
+      NIR_PASS(_, stage->nir, nir_opt_16bit_tex_image, &opt_16bit_options);
 
       if (!stage->key.optimisations_disabled) {
          NIR_PASS(_, stage->nir, nir_opt_vectorize, opt_vectorize_callback, device);

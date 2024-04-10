@@ -483,11 +483,11 @@ lvp_shader_lower(struct lvp_device *pdevice, struct lvp_pipeline *pipeline, nir_
 
    // TODO: also optimize the tex srcs. see radeonSI for reference */
    /* Skip if there are potentially conflicting rounding modes */
-   struct nir_fold_16bit_tex_image_options fold_16bit_options = {
+   struct nir_opt_16bit_tex_image_options opt_16bit_options = {
       .rounding_mode = nir_rounding_mode_undef,
-      .fold_tex_dest_types = nir_type_float | nir_type_uint | nir_type_int,
+      .opt_tex_dest_types = nir_type_float | nir_type_uint | nir_type_int,
    };
-   NIR_PASS_V(nir, nir_fold_16bit_tex_image, &fold_16bit_options);
+   NIR_PASS_V(nir, nir_opt_16bit_tex_image, &opt_16bit_options);
 
    /* Lower texture OPs llvmpipe supports to reduce the amount of sample
     * functions that need to be pre-compiled.

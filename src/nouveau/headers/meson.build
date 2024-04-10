@@ -79,6 +79,17 @@ if with_nouveau_vk
       depend_files: nvk_cl_header_depend_files,
     )
 
+    fs = import('fs')
+    if cl.endswith('c0') and fs.is_file('nvidia/classes/'+cl+'qmd.h')
+      cl_rs_generated += custom_target(
+        'nvh_classes_' + cl + '_qmd.rs',
+        input : ['struct_parser.py', 'nvidia/classes/'+cl+'qmd.h'],
+        output : ['nvh_classes_'+cl+'_qmd.rs'],
+        command : [prog_python, '@INPUT0@', '--in-h', '@INPUT1@',
+                   '--out-rs', '@OUTPUT0@']
+      )
+    endif
+
     if cl.endswith('97')
       cl_rs_generated += custom_target(
         'nvh_classes_' + cl + '_tex.rs',

@@ -144,6 +144,34 @@ ir3_nir_try_propagate_bit_shift(nir_builder *b, nir_def *offset,
    return new_offset;
 }
 
+static nir_def *
+create_shift(nir_builder *b, nir_def *offset, int shift)
+{
+   /* If the offset to be shifted has the form "iadd constant, foo" don't shift
+    * the result but transform it to "iadd constant>>shift, (ushr foo, shift)".
+    * This ensures nir_opt_offsets (which only looks for iadds) can fold the
+    * constant into the immediate offset.
+    */
+   if (offset->parent_instr->type == nir_instr_type_alu) {
+      nir_alu_instr *offset_instr = nir_instr_as_alu(offset->parent_instr);
+
+      if (offset_instr->op == nir_op_iadd &&
+          nir_src_is_const(offset_instr->src[0].src)) {
+         nir_def *new_shift = ir3_nir_try_propagate_bit_shift(
+            b, offset_instr->src[1].src.ssa, -shift);
+
+         if (!new_shift)
+            new_shift = nir_ushr_imm(b, offset_instr->src[1].src.ssa, shift);
+
+         return nir_iadd_imm(
+            b, new_shift,
+            nir_src_as_const_value(offset_instr->src[0].src)->u32 >> shift);
+      }
+   }
+
+   return nir_ushr_imm(b, offset, shift);
+}
+
 static bool
 lower_offset_for_ssbo(nir_intrinsic_instr *intrinsic, nir_builder *b,
                       unsigned ir3_ssbo_opcode, uint8_t offset_src_idx)
@@ -208,7 +236,7 @@ lower_offset_for_ssbo(nir_intrinsic_instr *intrinsic, nir_builder *b,
    if (new_offset)
       offset = new_offset;
    else
-      offset = nir_ushr_imm(b, offset, shift);
+      offset = create_shift(b, offset, shift);
 
    /* Insert the new intrinsic right before the old one. */
    nir_builder_instr_insert(b, &new_intrinsic->instr);

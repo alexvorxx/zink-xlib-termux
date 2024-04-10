@@ -1735,13 +1735,13 @@ void anv_GetPhysicalDeviceFeatures2(
          features->extendedDynamicState3ColorBlendEnable = true;
          features->extendedDynamicState3ColorWriteMask = true;
          features->extendedDynamicState3ColorBlendEquation = true;
+         features->extendedDynamicState3SampleLocationsEnable = true;
          features->extendedDynamicState3SampleMask = true;
 
          features->extendedDynamicState3RasterizationSamples = false;
          features->extendedDynamicState3AlphaToCoverageEnable = false;
          features->extendedDynamicState3ConservativeRasterizationMode = false;
          features->extendedDynamicState3ExtraPrimitiveOverestimationSize = false;
-         features->extendedDynamicState3SampleLocationsEnable = false;
          features->extendedDynamicState3ViewportWScalingEnable = false;
          features->extendedDynamicState3ViewportSwizzle = false;
          features->extendedDynamicState3ShadingRateImageEnable = false;
@@ -3540,8 +3540,10 @@ VkResult anv_CreateDevice(
    if (result != VK_SUCCESS)
       goto fail_ray_query_bo;
 
-   if (device->info->ver >= 12 &&
-       device->vk.enabled_extensions.KHR_fragment_shading_rate) {
+   /* Emit the CPS states before running the initialization batch as those
+    * structures are referenced.
+    */
+   if (device->info->ver >= 12) {
       uint32_t n_cps_states = 3 * 3; /* All combinaisons of X by Y CP sizes (1, 2, 4) */
 
       if (device->info->has_coarse_pixel_primitive_and_cb)

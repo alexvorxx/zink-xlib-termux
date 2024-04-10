@@ -239,7 +239,8 @@ can_do_clear(const struct pipe_resource *prsc, unsigned level,
              const struct pipe_box *box)
 {
    return ok_format(prsc->format) &&
-          ok_dims(prsc, box, level);
+          ok_dims(prsc, box, level) &&
+          (fd_resource_nr_samples(prsc) == 1);
 
    return true;
 }
@@ -805,6 +806,11 @@ fd6_clear_surface(struct fd_context *ctx, struct fd_ringbuffer *ring,
    }
 
    uint32_t nr_samples = fd_resource_nr_samples(psurf->texture);
+
+   /* TODO the trick of multiplying the dimensions for MSAA sysmem clears
+    * works for linear, but falls apart with tiled/ubwc.
+    */
+
    OUT_PKT4(ring, REG_A6XX_GRAS_2D_DST_TL, 2);
    OUT_RING(ring, A6XX_GRAS_2D_DST_TL_X(box2d->x * nr_samples) |
                      A6XX_GRAS_2D_DST_TL_Y(box2d->y));

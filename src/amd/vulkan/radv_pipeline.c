@@ -1117,7 +1117,8 @@ radv_pipeline_init_multisample_state(struct radv_graphics_pipeline *pipeline,
 
    ms->pa_sc_aa_config = 0;
    ms->db_eqaa = S_028804_HIGH_QUALITY_INTERSECTIONS(1) | S_028804_INCOHERENT_EQAA_READS(1) |
-                 S_028804_INTERPOLATE_COMP_Z(1) | S_028804_STATIC_ANCHOR_ASSOCIATIONS(1);
+                 S_028804_INTERPOLATE_COMP_Z(pdevice->rad_info.gfx_level < GFX11) |
+                 S_028804_STATIC_ANCHOR_ASSOCIATIONS(1);
 
    ms->pa_sc_mode_cntl_1 =
       S_028A4C_WALK_FENCE_ENABLE(1) | // TODO linear dst fixes
@@ -2181,50 +2182,6 @@ radv_export_multiview(nir_shader *nir)
    return progress;
 }
 
-static bool
-radv_should_export_implicit_primitive_id(const struct radv_pipeline_stage *producer,
-                                         const struct radv_pipeline_stage *consumer)
-{
-   /* When the primitive ID is read by FS, we must ensure that it's exported by the previous vertex
-    * stage because it's implicit for VS or TES (but required by the Vulkan spec for GS or MS).
-    *
-    * There is two situations to handle:
-    *  - when the next stage is unknown (with graphics pipeline library), the primitive ID is
-    *  exported unconditionally
-    *  - when the pipeline uses NGG, the primitive ID is exported during NGG lowering
-    */
-   assert(producer->stage == MESA_SHADER_VERTEX || producer->stage == MESA_SHADER_TESS_EVAL);
-
-   if ((producer->nir->info.outputs_written & VARYING_BIT_PRIMITIVE_ID) || producer->info.is_ngg)
-      return false;
-
-   return !consumer || (consumer->stage == MESA_SHADER_FRAGMENT &&
-          (consumer->nir->info.inputs_read & VARYING_BIT_PRIMITIVE_ID));
-}
-
-static bool
-radv_export_implicit_primitive_id(nir_shader *nir)
-{
-   nir_function_impl *impl = nir_shader_get_entrypoint(nir);
-   nir_builder b;
-   nir_builder_init(&b, impl);
-
-   b.cursor = nir_after_cf_list(&impl->body);
-
-   nir_variable *var = nir_variable_create(nir, nir_var_shader_out, glsl_int_type(), NULL);
-   var->data.location = VARYING_SLOT_PRIMITIVE_ID;
-   var->data.interpolation = INTERP_MODE_NONE;
-
-   nir_store_var(&b, var, nir_load_primitive_id(&b), 1);
-
-   /* Update outputs_written to reflect that the pass added a new output. */
-   nir->info.outputs_written |= BITFIELD64_BIT(VARYING_SLOT_PRIMITIVE_ID);
-
-   nir_metadata_preserve(impl, nir_metadata_block_index | nir_metadata_dominance);
-
-   return true;
-}
-
 static void
 radv_remove_point_size(const struct radv_pipeline_key *pipeline_key,
                        nir_shader *producer, nir_shader *consumer)
@@ -2511,10 +2468,6 @@ radv_pipeline_link_vs(const struct radv_device *device, struct radv_pipeline_sta
 {
    assert(vs_stage->nir->info.stage == MESA_SHADER_VERTEX);
 
-   if (radv_should_export_implicit_primitive_id(vs_stage, next_stage)) {
-      NIR_PASS(_, vs_stage->nir, radv_export_implicit_primitive_id);
-   }
-
    if (radv_should_export_multiview(vs_stage, next_stage, pipeline_key)) {
       NIR_PASS(_, vs_stage->nir, radv_export_multiview);
    }
@@ -2580,10 +2533,6 @@ radv_pipeline_link_tes(const struct radv_device *device, struct radv_pipeline_st
                        const struct radv_pipeline_key *pipeline_key)
 {
    assert(tes_stage->nir->info.stage == MESA_SHADER_TESS_EVAL);
-
-   if (radv_should_export_implicit_primitive_id(tes_stage, next_stage)) {
-      NIR_PASS(_, tes_stage->nir, radv_export_implicit_primitive_id);
-   }
 
    if (radv_should_export_multiview(tes_stage, next_stage, pipeline_key)) {
       NIR_PASS(_, tes_stage->nir, radv_export_multiview);
@@ -3032,10 +2981,10 @@ radv_declare_pipeline_args(struct radv_device *device, struct radv_pipeline_stag
    }
 }
 
-static bool
-mem_vectorize_callback(unsigned align_mul, unsigned align_offset, unsigned bit_size,
-                       unsigned num_components, nir_intrinsic_instr *low, nir_intrinsic_instr *high,
-                       void *data)
+bool
+radv_mem_vectorize_callback(unsigned align_mul, unsigned align_offset, unsigned bit_size,
+                            unsigned num_components, nir_intrinsic_instr *low, nir_intrinsic_instr *high,
+                            void *data)
 {
    if (num_components > 4)
       return false;
@@ -3649,15 +3598,21 @@ radv_pipeline_create_gs_copy_shader(struct radv_pipeline *pipeline,
                                     struct radv_shader_binary **gs_copy_binary)
 {
    struct radv_device *device = pipeline->device;
-   struct radv_shader_info info = {0};
 
-   radv_nir_shader_info_pass(device, stages[MESA_SHADER_GEOMETRY].nir, pipeline_layout, pipeline_key,
-                             &info);
+   const struct radv_shader_info *gs_info = &stages[MESA_SHADER_GEOMETRY].info;
+   nir_shader *nir =
+      ac_nir_create_gs_copy_shader(stages[MESA_SHADER_GEOMETRY].nir, false, VARYING_SLOT_MAX,
+                                   gs_info->gs.output_usage_mask, gs_info->gs.output_streams, NULL);
+   nir_validate_shader(nir, "after ac_nir_create_gs_copy_shader");
+   nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
+
+   struct radv_shader_info info = {0};
+   radv_nir_shader_info_pass(device, nir, pipeline_layout, pipeline_key, &info);
    info.wave_size = 64; /* Wave32 not supported. */
    info.workgroup_size = 64; /* HW VS: separate waves, no workgroups */
-   info.ballot_bit_size = 64;
+   info.so = gs_info->so;
 
-   if (stages[MESA_SHADER_GEOMETRY].info.outinfo.export_clip_dists) {
+   if (gs_info->outinfo.export_clip_dists) {
       if (stages[MESA_SHADER_GEOMETRY].nir->info.outputs_written & VARYING_BIT_CLIP_DIST0)
          info.outinfo.vs_output_param_offset[VARYING_SLOT_CLIP_DIST0] = info.outinfo.param_exports++;
       if (stages[MESA_SHADER_GEOMETRY].nir->info.outputs_written & VARYING_BIT_CLIP_DIST1)
@@ -3674,8 +3629,12 @@ radv_pipeline_create_gs_copy_shader(struct radv_pipeline *pipeline,
    info.user_sgprs_locs = gs_copy_args.user_sgprs_locs;
    info.inline_push_constant_mask = gs_copy_args.ac.inline_push_const_mask;
 
-   return radv_create_gs_copy_shader(device, stages[MESA_SHADER_GEOMETRY].nir, &info, &gs_copy_args,
-                                     gs_copy_binary, keep_executable_info, keep_statistic_info,
+   NIR_PASS_V(nir, radv_nir_lower_abi, device->physical_device->rad_info.gfx_level, &info,
+              &gs_copy_args, pipeline_key, radv_use_llvm_for_stage(device, MESA_SHADER_VERTEX),
+              device->physical_device->rad_info.address32_hi);
+
+   return radv_create_gs_copy_shader(device, nir, &info, &gs_copy_args, gs_copy_binary,
+                                     keep_executable_info, keep_statistic_info,
                                      pipeline_key->optimisations_disabled);
 }
 
@@ -3698,13 +3657,6 @@ radv_pipeline_nir_to_asm(struct radv_pipeline *pipeline, struct radv_pipeline_st
 
    bool pipeline_has_ngg = last_vgt_api_stage != MESA_SHADER_NONE &&
                            stages[last_vgt_api_stage].info.is_ngg;
-
-   if (stages[MESA_SHADER_GEOMETRY].nir && !pipeline_has_ngg) {
-      pipeline->gs_copy_shader =
-         radv_pipeline_create_gs_copy_shader(pipeline, stages, pipeline_key, pipeline_layout,
-                                             keep_executable_info, keep_statistic_info,
-                                             gs_copy_binary);
-   }
 
    for (int s = MESA_VULKAN_SHADER_STAGES - 1; s >= 0; s--) {
       if (!(active_stages & (1 << s)) || pipeline->shaders[s])
@@ -3734,6 +3686,12 @@ radv_pipeline_nir_to_asm(struct radv_pipeline *pipeline, struct radv_pipeline_st
       pipeline->shaders[s] = radv_shader_nir_to_asm(device, &stages[s], shaders, shader_count,
                                                     pipeline_key, keep_executable_info,
                                                     keep_statistic_info, &binaries[s]);
+
+      if (s == MESA_SHADER_GEOMETRY && !pipeline_has_ngg) {
+         pipeline->gs_copy_shader = radv_pipeline_create_gs_copy_shader(
+            pipeline, stages, pipeline_key, pipeline_layout, keep_executable_info,
+            keep_statistic_info, gs_copy_binary);
+      }
 
       stages[s].feedback.duration += os_time_get_nano() - stage_start;
 
@@ -3847,7 +3805,7 @@ radv_postprocess_nir(struct radv_pipeline *pipeline,
    nir_load_store_vectorize_options vectorize_opts = {
       .modes = nir_var_mem_ssbo | nir_var_mem_ubo | nir_var_mem_push_const |
                nir_var_mem_shared | nir_var_mem_global,
-      .callback = mem_vectorize_callback,
+      .callback = radv_mem_vectorize_callback,
       .robust_modes = 0,
       /* On GFX6, read2/write2 is out-of-bounds if the offset register is negative, even if
        * the final offset is not.
@@ -3899,6 +3857,10 @@ radv_postprocess_nir(struct radv_pipeline *pipeline,
    bool lowered_ngg = pipeline_has_ngg && stage->stage == last_vgt_api_stage;
    if (lowered_ngg)
       radv_lower_ngg(device, stage, pipeline_key);
+
+   if (stage->stage == last_vgt_api_stage && stage->stage != MESA_SHADER_GEOMETRY && !lowered_ngg)
+      NIR_PASS_V(stage->nir, ac_nir_lower_legacy_vs,
+                 stage->info.outinfo.export_prim_id ? VARYING_SLOT_PRIMITIVE_ID : -1, false);
 
    NIR_PASS(_, stage->nir, nir_opt_idiv_const, 8);
 
@@ -5252,6 +5214,9 @@ gfx103_pipeline_vrs_coarse_shading(const struct radv_graphics_pipeline *pipeline
 {
    struct radv_shader *ps = pipeline->base.shaders[MESA_SHADER_FRAGMENT];
    struct radv_device *device = pipeline->base.device;
+
+   if (device->physical_device->rad_info.gfx_level != GFX10_3)
+      return false;
 
    if (device->instance->debug_flags & RADV_DEBUG_NO_VRS_FLAT_SHADING)
       return false;

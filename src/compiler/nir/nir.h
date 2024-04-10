@@ -6584,6 +6584,12 @@ typedef struct {
 
    /** Data to pass to max_offset_cb. */
    const void *max_offset_data;
+
+   /**
+    * Allow the offset calculation to wrap. If false, constant additions that
+    * might wrap will not be folded into the offset.
+    */
+   bool allow_offset_wrap;
 } nir_opt_offsets_options;
 
 bool nir_opt_offsets(nir_shader *shader, const nir_opt_offsets_options *options);

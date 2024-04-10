@@ -56,7 +56,7 @@ try_extract_const_addition(nir_builder *b, nir_scalar val, opt_offsets_state *st
     * Ignored for ints-as-floats (lower_bitops is a proxy for that), where
     * unsigned wrapping doesn't make sense.
     */
-   if (!alu->no_unsigned_wrap && !b->shader->options->lower_bitops) {
+   if (!state->options->allow_offset_wrap && !alu->no_unsigned_wrap && !b->shader->options->lower_bitops) {
       if (!state->range_ht) {
          /* Cache for nir_unsigned_upper_bound */
          state->range_ht = _mesa_pointer_hash_table_create(NULL);

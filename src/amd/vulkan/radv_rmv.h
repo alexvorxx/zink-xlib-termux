@@ -41,7 +41,7 @@ void radv_rmv_log_buffer_bind(struct radv_device *device, VkBuffer _buffer);
 void radv_rmv_log_image_create(struct radv_device *device, const VkImageCreateInfo *create_info, bool is_internal,
                                VkImage _image);
 
-void radv_rmv_log_image_bind(struct radv_device *device, VkImage _image);
+void radv_rmv_log_image_bind(struct radv_device *device, uint32_t bind_idx, VkImage _image);
 
 void radv_rmv_log_query_pool_create(struct radv_device *device, VkQueryPool pool);
 

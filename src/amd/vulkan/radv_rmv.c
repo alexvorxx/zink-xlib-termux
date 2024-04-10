@@ -596,14 +596,15 @@ radv_rmv_log_image_create(struct radv_device *device, const VkImageCreateInfo *c
 }
 
 void
-radv_rmv_log_image_bind(struct radv_device *device, VkImage _image)
+radv_rmv_log_image_bind(struct radv_device *device, uint32_t bind_idx, VkImage _image)
 {
    if (!device->vk.memory_trace_data.is_enabled)
       return;
 
    VK_FROM_HANDLE(radv_image, image, _image);
    simple_mtx_lock(&device->vk.memory_trace_data.token_mtx);
-   log_resource_bind_locked(device, (uint64_t)_image, image->bindings[0].bo, image->bindings[0].offset, image->size);
+   log_resource_bind_locked(device, (uint64_t)_image, image->bindings[bind_idx].bo, image->bindings[bind_idx].offset,
+                            image->size);
    simple_mtx_unlock(&device->vk.memory_trace_data.token_mtx);
 }
 

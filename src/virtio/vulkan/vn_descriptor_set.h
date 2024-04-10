@@ -86,15 +86,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(vn_descriptor_pool,
                                VkDescriptorPool,
                                VK_OBJECT_TYPE_DESCRIPTOR_POOL)
 
-struct vn_update_descriptor_sets {
-   uint32_t write_count;
-   VkWriteDescriptorSet *writes;
-   VkDescriptorImageInfo *images;
-   VkDescriptorBufferInfo *buffers;
-   VkBufferView *views;
-   VkWriteDescriptorSetInlineUniformBlock *iubs;
-};
-
 struct vn_descriptor_set {
    struct vn_object_base base;
 
@@ -115,9 +106,6 @@ struct vn_descriptor_update_template {
       VkPipelineBindPoint pipeline_bind_point;
       struct vn_descriptor_set_layout *set_layout;
    } push;
-
-   mtx_t mutex;
-   struct vn_update_descriptor_sets *update;
 
    uint32_t entry_count;
    uint32_t img_info_count;
@@ -154,12 +142,6 @@ vn_descriptor_set_get_writes(uint32_t write_count,
                              const VkWriteDescriptorSet *writes,
                              VkPipelineLayout pipeline_layout_handle,
                              struct vn_descriptor_set_writes *local);
-
-struct vn_update_descriptor_sets *
-vn_update_descriptor_set_with_template_locked(
-   struct vn_descriptor_update_template *templ,
-   VkDescriptorSet set_handle,
-   const uint8_t *data);
 
 void
 vn_descriptor_set_fill_update_with_template(

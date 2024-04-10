@@ -68,6 +68,8 @@ struct radv_sqtt_shaders_reloc {
 struct radv_graphics_pipeline {
    struct radv_pipeline base;
 
+   struct radv_pipeline_layout layout;
+
    bool uses_drawid;
    bool uses_baseinstance;
 
@@ -138,8 +140,6 @@ struct radv_retained_shaders {
 
 struct radv_graphics_lib_pipeline {
    struct radv_graphics_pipeline base;
-
-   struct radv_pipeline_layout layout;
 
    struct vk_graphics_pipeline_state graphics_state;
 

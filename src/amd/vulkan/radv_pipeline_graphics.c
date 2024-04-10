@@ -653,13 +653,25 @@ shader_stage_to_pipeline_library_flags(VkShaderStageFlagBits stage)
    }
 }
 
+static void
+radv_graphics_pipeline_import_layout(struct radv_pipeline_layout *dst, const struct radv_pipeline_layout *src)
+{
+   for (uint32_t s = 0; s < src->num_sets; s++) {
+      if (!src->set[s].layout)
+         continue;
+
+      radv_pipeline_layout_add_set(dst, s, src->set[s].layout);
+   }
+
+   dst->independent_sets |= src->independent_sets;
+   dst->push_constant_size = MAX2(dst->push_constant_size, src->push_constant_size);
+}
+
 static VkResult
 radv_pipeline_import_graphics_info(struct radv_device *device, struct radv_graphics_pipeline *pipeline,
-                                   struct vk_graphics_pipeline_state *state, struct radv_pipeline_layout *layout,
-                                   const VkGraphicsPipelineCreateInfo *pCreateInfo,
-                                   VkGraphicsPipelineLibraryFlagBitsEXT lib_flags)
+                                   struct vk_graphics_pipeline_state *state,
+                                   const VkGraphicsPipelineCreateInfo *pCreateInfo)
 {
-   VK_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->layout);
    VkResult result;
 
    /* Mark all states declared dynamic at pipeline creation. */
@@ -688,54 +700,13 @@ radv_pipeline_import_graphics_info(struct radv_device *device, struct radv_graph
       pipeline->last_vgt_api_stage = util_last_bit(pipeline->active_stages & BITFIELD_MASK(MESA_SHADER_FRAGMENT)) - 1;
    }
 
-   if (lib_flags == ALL_GRAPHICS_LIB_FLAGS) {
-      radv_pipeline_layout_finish(device, layout);
-      radv_pipeline_layout_init(device, layout, false /* independent_sets */);
-   }
-
-   if (pipeline_layout) {
-      /* As explained in the specification, the application can provide a non
-       * compatible pipeline layout when doing optimized linking :
-       *
-       *    "However, in the specific case that a final link is being
-       *     performed between stages and
-       *     `VK_PIPELINE_CREATE_2_LINK_TIME_OPTIMIZATION_BIT_EXT` is specified,
-       *     the application can override the pipeline layout with one that is
-       *     compatible with that union but does not have the
-       *     `VK_PIPELINE_LAYOUT_CREATE_INDEPENDENT_SETS_BIT_EXT` flag set,
-       *     allowing a more optimal pipeline layout to be used when
-       *     generating the final pipeline."
-       *
-       * In that case discard whatever was imported before.
-       */
-      if (pipeline->base.create_flags & VK_PIPELINE_CREATE_2_LINK_TIME_OPTIMIZATION_BIT_EXT &&
-          !pipeline_layout->independent_sets) {
-         radv_pipeline_layout_finish(device, layout);
-         radv_pipeline_layout_init(device, layout, false /* independent_sets */);
-      } else {
-         /* Otherwise if we include a layout that had independent_sets,
-          * propagate that property.
-          */
-         layout->independent_sets |= pipeline_layout->independent_sets;
-      }
-
-      for (uint32_t s = 0; s < pipeline_layout->num_sets; s++) {
-         if (pipeline_layout->set[s].layout == NULL)
-            continue;
-
-         radv_pipeline_layout_add_set(layout, s, pipeline_layout->set[s].layout);
-      }
-
-      layout->push_constant_size = pipeline_layout->push_constant_size;
-   }
-
    return result;
 }
 
 static void
 radv_graphics_pipeline_import_lib(const struct radv_device *device, struct radv_graphics_pipeline *pipeline,
-                                  struct vk_graphics_pipeline_state *state, struct radv_pipeline_layout *layout,
-                                  struct radv_graphics_lib_pipeline *lib, bool link_optimize)
+                                  struct vk_graphics_pipeline_state *state, struct radv_graphics_lib_pipeline *lib,
+                                  bool link_optimize)
 {
    bool import_binaries = false;
 
@@ -771,16 +742,7 @@ radv_graphics_pipeline_import_lib(const struct radv_device *device, struct radv_
    }
 
    /* Import the pipeline layout. */
-   struct radv_pipeline_layout *lib_layout = &lib->layout;
-   for (uint32_t s = 0; s < lib_layout->num_sets; s++) {
-      if (!lib_layout->set[s].layout)
-         continue;
-
-      radv_pipeline_layout_add_set(layout, s, lib_layout->set[s].layout);
-   }
-
-   layout->independent_sets = lib_layout->independent_sets;
-   layout->push_constant_size = MAX2(layout->push_constant_size, lib_layout->push_constant_size);
+   radv_graphics_pipeline_import_layout(&pipeline->layout, &lib->base.layout);
 }
 
 static void
@@ -2342,7 +2304,7 @@ radv_pipeline_import_retained_shaders(const struct radv_device *device, struct r
       const VkPipelineShaderStageCreateInfo *sinfo = &lib->stages[i];
       gl_shader_stage s = vk_to_mesa_shader_stage(sinfo->stage);
 
-      radv_pipeline_stage_init(sinfo, &lib->layout, &lib->stage_keys[s], &stages[s]);
+      radv_pipeline_stage_init(sinfo, &lib->base.layout, &lib->stage_keys[s], &stages[s]);
    }
 
    /* Import the NIR shaders (after SPIRV->NIR). */
@@ -2364,7 +2326,7 @@ radv_pipeline_import_retained_shaders(const struct radv_device *device, struct r
       memcpy(stages[s].shader_sha1, retained_shaders->stages[s].shader_sha1, sizeof(stages[s].shader_sha1));
       memcpy(&stages[s].key, &retained_shaders->stages[s].key, sizeof(stages[s].key));
 
-      radv_shader_layout_init(&lib->layout, s, &stages[s].layout);
+      radv_shader_layout_init(&lib->base.layout, s, &stages[s].layout);
 
       stages[s].feedback.flags |= VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT;
 
@@ -4046,9 +4008,9 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
                             struct vk_pipeline_cache *cache, const VkGraphicsPipelineCreateInfo *pCreateInfo,
                             const struct radv_graphics_pipeline_create_info *extra)
 {
+   VK_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->layout);
    VkGraphicsPipelineLibraryFlagBitsEXT needed_lib_flags = ALL_GRAPHICS_LIB_FLAGS;
    bool fast_linking_enabled = radv_is_fast_linking_enabled(pipeline, pCreateInfo);
-   struct radv_pipeline_layout pipeline_layout;
    struct vk_graphics_pipeline_state state = {0};
    VkResult result = VK_SUCCESS;
 
@@ -4057,7 +4019,7 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
    const VkPipelineLibraryCreateInfoKHR *libs_info =
       vk_find_struct_const(pCreateInfo->pNext, PIPELINE_LIBRARY_CREATE_INFO_KHR);
 
-   radv_pipeline_layout_init(device, &pipeline_layout, false);
+   radv_pipeline_layout_init(device, &pipeline->layout, false);
 
    /* If we have libraries, import them first. */
    if (libs_info) {
@@ -4075,33 +4037,31 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
           */
          assert(!link_optimize || gfx_pipeline_lib->base.retain_shaders);
 
-         radv_graphics_pipeline_import_lib(device, pipeline, &state, &pipeline_layout, gfx_pipeline_lib, link_optimize);
+         radv_graphics_pipeline_import_lib(device, pipeline, &state, gfx_pipeline_lib, link_optimize);
 
          needed_lib_flags &= ~gfx_pipeline_lib->lib_flags;
       }
    }
 
    /* Import graphics pipeline info that was not included in the libraries. */
-   result =
-      radv_pipeline_import_graphics_info(device, pipeline, &state, &pipeline_layout, pCreateInfo, needed_lib_flags);
-   if (result != VK_SUCCESS) {
-      radv_pipeline_layout_finish(device, &pipeline_layout);
+   result = radv_pipeline_import_graphics_info(device, pipeline, &state, pCreateInfo);
+   if (result != VK_SUCCESS)
       return result;
-   }
+
+   if (pipeline_layout)
+      radv_graphics_pipeline_import_layout(&pipeline->layout, pipeline_layout);
 
    if (radv_should_compute_pipeline_hash(device, pipeline, fast_linking_enabled))
-      radv_pipeline_layout_hash(&pipeline_layout);
+      radv_pipeline_layout_hash(&pipeline->layout);
 
    if (!radv_skip_graphics_pipeline_compile(device, pipeline, needed_lib_flags, fast_linking_enabled)) {
       struct radv_graphics_pipeline_key key =
          radv_generate_graphics_pipeline_key(device, pCreateInfo, &state, pipeline->base.type, needed_lib_flags);
 
-      result = radv_graphics_pipeline_compile(pipeline, pCreateInfo, &pipeline_layout, device, cache, &key,
+      result = radv_graphics_pipeline_compile(pipeline, pCreateInfo, &pipeline->layout, device, cache, &key,
                                               fast_linking_enabled);
-      if (result != VK_SUCCESS) {
-         radv_pipeline_layout_finish(device, &pipeline_layout);
+      if (result != VK_SUCCESS)
          return result;
-      }
    }
 
    uint32_t vgt_gs_out_prim_type = radv_pipeline_init_vgt_gs_out(pipeline, &state);
@@ -4149,8 +4109,8 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
    pipeline->uses_out_of_order_rast = state.rs->rasterization_order_amd == VK_RASTERIZATION_ORDER_RELAXED_AMD;
    pipeline->uses_vrs_attachment = radv_pipeline_uses_vrs_attachment(pipeline, &state);
 
-   pipeline->base.push_constant_size = pipeline_layout.push_constant_size;
-   pipeline->base.dynamic_offset_count = pipeline_layout.dynamic_offset_count;
+   pipeline->base.push_constant_size = pipeline->layout.push_constant_size;
+   pipeline->base.dynamic_offset_count = pipeline->layout.dynamic_offset_count;
 
    if (extra) {
       radv_pipeline_init_extra(pipeline, extra, &blend, &state, &vgt_gs_out_prim_type);
@@ -4158,7 +4118,6 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
 
    radv_pipeline_emit_pm4(device, pipeline, &blend, vgt_gs_out_prim_type, &state);
 
-   radv_pipeline_layout_finish(device, &pipeline_layout);
    return result;
 }
 
@@ -4194,6 +4153,8 @@ radv_graphics_pipeline_create(VkDevice _device, VkPipelineCache _cache, const Vk
 void
 radv_destroy_graphics_pipeline(struct radv_device *device, struct radv_graphics_pipeline *pipeline)
 {
+   radv_pipeline_layout_finish(device, &pipeline->layout);
+
    for (unsigned i = 0; i < MESA_VULKAN_SHADER_STAGES; ++i) {
       if (pipeline->base.shaders[i])
          radv_shader_unref(device, pipeline->base.shaders[i]);
@@ -4209,6 +4170,7 @@ static VkResult
 radv_graphics_lib_pipeline_init(struct radv_graphics_lib_pipeline *pipeline, struct radv_device *device,
                                 struct vk_pipeline_cache *cache, const VkGraphicsPipelineCreateInfo *pCreateInfo)
 {
+   VK_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->layout);
    VkResult result;
 
    const VkGraphicsPipelineLibraryCreateInfoEXT *lib_info =
@@ -4219,14 +4181,13 @@ radv_graphics_lib_pipeline_init(struct radv_graphics_lib_pipeline *pipeline, str
    bool fast_linking_enabled = radv_is_fast_linking_enabled(&pipeline->base, pCreateInfo);
 
    struct vk_graphics_pipeline_state *state = &pipeline->graphics_state;
-   struct radv_pipeline_layout *pipeline_layout = &pipeline->layout;
 
    pipeline->base.last_vgt_api_stage = MESA_SHADER_NONE;
    pipeline->base.retain_shaders =
       (pipeline->base.base.create_flags & VK_PIPELINE_CREATE_2_RETAIN_LINK_TIME_OPTIMIZATION_INFO_BIT_EXT) != 0;
    pipeline->lib_flags = needed_lib_flags;
 
-   radv_pipeline_layout_init(device, pipeline_layout, false);
+   radv_pipeline_layout_init(device, &pipeline->base.layout, false);
 
    /* If we have libraries, import them first. */
    if (libs_info) {
@@ -4237,8 +4198,7 @@ radv_graphics_lib_pipeline_init(struct radv_graphics_lib_pipeline *pipeline, str
          VK_FROM_HANDLE(radv_pipeline, pipeline_lib, libs_info->pLibraries[i]);
          struct radv_graphics_lib_pipeline *gfx_pipeline_lib = radv_pipeline_to_graphics_lib(pipeline_lib);
 
-         radv_graphics_pipeline_import_lib(device, &pipeline->base, state, pipeline_layout, gfx_pipeline_lib,
-                                           link_optimize);
+         radv_graphics_pipeline_import_lib(device, &pipeline->base, state, gfx_pipeline_lib, link_optimize);
 
          pipeline->lib_flags |= gfx_pipeline_lib->lib_flags;
 
@@ -4246,18 +4206,20 @@ radv_graphics_lib_pipeline_init(struct radv_graphics_lib_pipeline *pipeline, str
       }
    }
 
-   result = radv_pipeline_import_graphics_info(device, &pipeline->base, state, pipeline_layout, pCreateInfo,
-                                               needed_lib_flags);
+   result = radv_pipeline_import_graphics_info(device, &pipeline->base, state, pCreateInfo);
    if (result != VK_SUCCESS)
       return result;
 
+   if (pipeline_layout)
+      radv_graphics_pipeline_import_layout(&pipeline->base.layout, pipeline_layout);
+
    if (radv_should_compute_pipeline_hash(device, &pipeline->base, fast_linking_enabled))
-      radv_pipeline_layout_hash(pipeline_layout);
+      radv_pipeline_layout_hash(&pipeline->base.layout);
 
    struct radv_graphics_pipeline_key key =
       radv_generate_graphics_pipeline_key(device, pCreateInfo, state, pipeline->base.base.type, needed_lib_flags);
 
-   return radv_graphics_pipeline_compile(&pipeline->base, pCreateInfo, pipeline_layout, device, cache, &key,
+   return radv_graphics_pipeline_compile(&pipeline->base, pCreateInfo, &pipeline->base.layout, device, cache, &key,
                                          fast_linking_enabled);
 }
 
@@ -4295,8 +4257,6 @@ void
 radv_destroy_graphics_lib_pipeline(struct radv_device *device, struct radv_graphics_lib_pipeline *pipeline)
 {
    struct radv_retained_shaders *retained_shaders = &pipeline->retained_shaders;
-
-   radv_pipeline_layout_finish(device, &pipeline->layout);
 
    for (unsigned i = 0; i < MESA_VULKAN_SHADER_STAGES; ++i) {
       free(retained_shaders->stages[i].serialized_nir);

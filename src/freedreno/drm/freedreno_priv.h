@@ -355,27 +355,27 @@ bool fd_dbg(void);
 #define INFO_MSG(fmt, ...)                                                     \
    do {                                                                        \
       if (fd_dbg())                                                            \
-         mesa_logi("%s:%d: " fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__);      \
+         mesa_logi("%s:%d: " fmt, __func__, __LINE__, ##__VA_ARGS__);          \
    } while (0)
 #define DEBUG_MSG(fmt, ...)                                                    \
    do                                                                          \
       if (enable_debug) {                                                      \
-         mesa_logd("%s:%d: " fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__);      \
+         mesa_logd("%s:%d: " fmt, __func__, __LINE__, ##__VA_ARGS__);          \
       }                                                                        \
    while (0)
 #define WARN_MSG(fmt, ...)                                                     \
    do {                                                                        \
-      mesa_logw("%s:%d: " fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__);         \
+      mesa_logw("%s:%d: " fmt, __func__, __LINE__, ##__VA_ARGS__);             \
    } while (0)
 #define ERROR_MSG(fmt, ...)                                                    \
    do {                                                                        \
-      mesa_loge("%s:%d: " fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__);         \
+      mesa_loge("%s:%d: " fmt, __func__, __LINE__, ##__VA_ARGS__);             \
    } while (0)
 
 #define U642VOID(x) ((void *)(unsigned long)(x))
 #define VOID2U64(x) ((uint64_t)(unsigned long)(x))
 
-#if HAVE_VALGRIND
+#ifdef HAVE_VALGRIND
 #include <memcheck.h>
 
 /*

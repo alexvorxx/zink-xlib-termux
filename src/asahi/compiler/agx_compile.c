@@ -54,7 +54,7 @@ int agx_debug = 0;
 #define DBG(fmt, ...) \
    do { if (agx_debug & AGX_DBG_MSGS) \
       fprintf(stderr, "%s:%d: "fmt, \
-            __FUNCTION__, __LINE__, ##__VA_ARGS__); } while (0)
+            __func__, __LINE__, ##__VA_ARGS__); } while (0)
 
 static agx_index
 agx_cached_preload(agx_context *ctx, agx_index *cache, unsigned base, enum agx_size size)
@@ -682,8 +682,9 @@ agx_emit_load_frag_coord(agx_builder *b, agx_index dst, nir_intrinsic_instr *ins
    agx_index dests[4] = { agx_null() };
 
    u_foreach_bit(i, nir_ssa_def_components_read(&instr->dest.ssa)) {
+      agx_index fp32 = agx_temp(b->shader, AGX_SIZE_32);
+
       if (i < 2) {
-         agx_index fp32 = agx_temp(b->shader, AGX_SIZE_32);
          agx_convert_to(b, fp32, agx_immediate(AGX_CONVERT_U32_TO_F),
                   agx_get_sr(b, 32, AGX_SR_THREAD_POSITION_IN_GRID_X + i),
                   AGX_ROUND_RTE);
@@ -691,7 +692,9 @@ agx_emit_load_frag_coord(agx_builder *b, agx_index dst, nir_intrinsic_instr *ins
          dests[i] = agx_fadd(b, fp32, agx_immediate_f(0.5f));
       } else {
          agx_index cf = agx_get_cf(b->shader, true, false, VARYING_SLOT_POS, i, 1);
-         dests[i] = agx_iter(b, cf, agx_null(), 1, false);
+
+         dests[i] = fp32;
+         agx_iter_to(b, fp32, cf, agx_null(), 1, false);
       }
    }
 
@@ -1086,6 +1089,12 @@ agx_emit_alu(agx_builder *b, nir_alu_instr *instr)
                           AGX_CONVERT_S8_TO_F;
 
       return agx_convert_to(b, dst, agx_immediate(mode), s0, AGX_ROUND_RTE);
+   }
+
+   case nir_op_pack_64_2x32_split:
+   {
+      agx_index idx[] = { s0, s1 };
+      return agx_emit_collect_to(b, dst, 2, idx);
    }
 
    /* Split a 64-bit word into 32-bit parts. Do not use null destinations to
@@ -1924,6 +1933,9 @@ void
 agx_preprocess_nir(nir_shader *nir)
 {
    NIR_PASS_V(nir, nir_lower_vars_to_ssa);
+
+   if (nir->info.stage == MESA_SHADER_VERTEX)
+      NIR_PASS_V(nir, nir_lower_point_size, 1.0, 0.0);
 
    /* Lower large arrays to scratch and small arrays to csel */
    NIR_PASS_V(nir, nir_lower_vars_to_scratch, nir_var_function_temp, 16,

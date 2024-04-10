@@ -172,8 +172,6 @@ files_mesa_util = files(
 
 files_drirc = files('00-mesa-defaults.conf')
 
-install_data(files_drirc, install_dir : join_paths(get_option('datadir'), 'drirc.d'))
-
 if with_tests
   prog_xmllint = find_program('xmllint', required : false, native : true)
   if prog_xmllint.found()
@@ -286,11 +284,18 @@ idep_mesautil = declare_dependency(
   dependencies : deps_for_libmesa_util,
 )
 
+# Only install the drirc file if we build with support for parsing drirc files
+if use_xmlconfig
+   install_data(files_drirc, install_dir : join_paths(get_option('datadir'), 'drirc.d'))
+endif
+
 xmlconfig_deps = []
-if not (with_platform_android or with_platform_windows)
+if use_xmlconfig
   xmlconfig_deps += dep_expat
 endif
 xmlconfig_deps += dep_regex
+
+c_xmlconfig_arg = '-DWITH_XMLCONFIG=@0@'.format(use_xmlconfig.to_int())
 
 _libxmlconfig = static_library(
   'xmlconfig',
@@ -299,6 +304,7 @@ _libxmlconfig = static_library(
   dependencies : [idep_mesautil, dep_m, xmlconfig_deps],
   c_args : [
     c_msvc_compat_args,
+    c_xmlconfig_arg,
     '-DSYSCONFDIR="@0@"'.format(
       join_paths(get_option('prefix'), get_option('sysconfdir'))
     ),
@@ -328,7 +334,7 @@ if with_tests
         include_directories : [inc_include, inc_src],
         dependencies : [idep_mesautil, idep_xmlconfig, idep_gtest],
         override_options : ['cpp_std=c++2a'],
-        cpp_args: ['-Wno-write-strings']
+        cpp_args: ['-Wno-write-strings', c_xmlconfig_arg]
       ),
       suite : ['util'],
       env: ['HOME=' + join_paths(meson.current_source_dir(),

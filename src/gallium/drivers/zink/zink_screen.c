@@ -695,7 +695,8 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    }
 
    case PIPE_CAP_MAX_TEXTURE_2D_SIZE:
-      return screen->info.props.limits.maxImageDimension2D;
+      return MIN2(screen->info.props.limits.maxImageDimension1D,
+                  screen->info.props.limits.maxImageDimension2D);
    case PIPE_CAP_MAX_TEXTURE_3D_LEVELS:
       return 1 + util_logbase2(screen->info.props.limits.maxImageDimension3D);
    case PIPE_CAP_MAX_TEXTURE_CUBE_LEVELS:
@@ -2493,6 +2494,18 @@ init_driver_workarounds(struct zink_screen *screen)
       /* performance */
       screen->info.border_color_feats.customBorderColorWithoutFormat = VK_FALSE;
    }
+
+   if ((!screen->info.have_EXT_line_rasterization ||
+        !screen->info.line_rast_feats.stippledBresenhamLines) &&
+       screen->info.feats.features.geometryShader &&
+       screen->info.feats.features.sampleRateShading) {
+      /* we're using stippledBresenhamLines as a proxy for all of these, to
+       * avoid accidentally changing behavior on VK-drivers where we don't
+       * want to add emulation.
+       */
+      screen->driver_workarounds.no_linestipple = true;
+   }
+
    if (screen->info.driver_props.driverID == VK_DRIVER_ID_AMD_OPEN_SOURCE || 
        screen->info.driver_props.driverID == VK_DRIVER_ID_AMD_PROPRIETARY || 
        screen->info.driver_props.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY || 
@@ -2602,7 +2615,6 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
       goto fail;
 
    screen->instance_info.loader_version = zink_get_loader_version(screen);
-#if WITH_XMLCONFIG
    if (config) {
       driParseConfigFiles(config->options, config->options_info, 0, "zink",
                           NULL, NULL, NULL, 0, NULL, 0);
@@ -2611,7 +2623,6 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
       //screen->driconf.inline_uniforms = driQueryOptionb(config->options, "radeonsi_inline_uniforms");
       screen->instance_info.disable_xcb_surface = driQueryOptionb(config->options, "disable_xcb_surface");
    }
-#endif
 
    if (!zink_create_instance(screen))
       goto fail;
@@ -2878,7 +2889,10 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
       goto fail;
    }
 
-   screen->optimal_keys = !screen->need_decompose_attrs && screen->info.have_EXT_non_seamless_cube_map && !screen->driconf.inline_uniforms;
+   screen->optimal_keys = !screen->need_decompose_attrs &&
+                          screen->info.have_EXT_non_seamless_cube_map &&
+                          !screen->driconf.inline_uniforms &&
+                          !screen->driver_workarounds.no_linestipple;
    if (!screen->optimal_keys)
       screen->info.have_EXT_graphics_pipeline_library = false;
 

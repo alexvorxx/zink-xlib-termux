@@ -521,6 +521,7 @@ agx_pack_instr(struct util_dynarray *emission, struct util_dynarray *fixups, agx
       agx_index value = I->src[1];
 
       assert(index_src.type == AGX_INDEX_IMMEDIATE);
+      assert(index_src.value < BITFIELD_MASK(8));
       assert(value.type == AGX_INDEX_REGISTER);
       assert(value.size == AGX_SIZE_32);
 
@@ -528,10 +529,11 @@ agx_pack_instr(struct util_dynarray *emission, struct util_dynarray *fixups, agx
             0x11 |
             (I->last ? (1 << 7) : 0) |
             ((value.value & 0x3F) << 9) |
-            (((uint64_t) index_src.value) << 16) |
+            (((uint64_t) (index_src.value & 0x3F)) << 16) |
             (0x80 << 16) | /* XXX */
             ((value.value >> 6) << 24) |
-            (0x8 << 28); /* XXX */
+            ((index_src.value >> 6) << 26) |
+            (0x8u << 28); /* XXX */
 
       unsigned size = 4;
       memcpy(util_dynarray_grow_bytes(emission, 1, size), &raw, size);
@@ -698,7 +700,7 @@ agx_pack_instr(struct util_dynarray *emission, struct util_dynarray *fixups, agx
          (1 << 15) /* we always set length bit for now */ |
          ((F & 1) << 8) |
          ((R & BITFIELD_MASK(6)) << 9) |
-         (unk1 ? (1 << 31) : 0);
+         (unk1 ? (1u << 31) : 0);
 
       uint32_t word1 =
          (T & BITFIELD_MASK(6)) |

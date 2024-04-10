@@ -22,7 +22,8 @@ project(
   'mesa',
   ['c', 'cpp'],
   version : run_command(
-    [find_program('python3', 'python'), 'bin/meson_get_version.py'],
+    [find_program('python3', 'python'), 'bin/meson_get_version.py',
+     meson.version().version_compare('>= 0.56') ? meson.project_source_root() : meson.source_root()],
     check : true
   ).stdout(),
   license : 'MIT',
@@ -173,7 +174,7 @@ with_any_opengl = with_opengl or with_gles1 or with_gles2
 # Only build shared_glapi if at least one OpenGL API is enabled
 with_shared_glapi = with_shared_glapi and with_any_opengl
 
-system_has_kms_drm = ['openbsd', 'netbsd', 'freebsd', 'gnu/kfreebsd', 'dragonfly', 'linux', 'sunos'].contains(host_machine.system())
+system_has_kms_drm = ['openbsd', 'netbsd', 'freebsd', 'gnu/kfreebsd', 'dragonfly', 'linux', 'sunos', 'android'].contains(host_machine.system())
 
 dri_drivers = get_option('dri-drivers')
 if dri_drivers.length() != 0
@@ -1571,6 +1572,11 @@ elif with_intel_vk or with_intel_hasvk
   error('Intel "Anvil" Vulkan driver requires the dl_iterate_phdr function')
 endif
 
+# only used in Iris and ANV
+if with_any_intel and ['x86', 'x86_64'].contains(host_machine.cpu_family())
+  pre_args += '-DSUPPORT_INTEL_INTEGRATED_GPUS'
+endif
+
 # Determine whether or not the rt library is needed for time functions
 if host_machine.system() == 'windows' or cc.has_function('clock_gettime')
   dep_clock = null_dep
@@ -1627,13 +1633,21 @@ if dep_thread.found()
     pre_args += '-DHAVE_PTHREAD_SETAFFINITY'
   endif
 endif
+
+# We don't have expat on Android or Windows, which is a needed dep for xmlconfig
+supports_xmlconfig = not (with_platform_android or with_platform_windows)
+
+opt_xmlconfig = get_option('xmlconfig')
+if opt_xmlconfig.enabled() and not supports_xmlconfig
+   error('xmlconfig not available on Android or Windows')
+endif
+use_xmlconfig = supports_xmlconfig and not opt_xmlconfig.disabled()
+
 if host_machine.system() == 'darwin'
   dep_expat = meson.get_compiler('c').find_library('expat')
-elif host_machine.system() != 'windows'
-  dep_expat = dependency('expat', fallback : ['expat', 'expat_dep'],
-                         required: not with_platform_android)
 else
-  dep_expat = null_dep
+  dep_expat = dependency('expat', fallback : ['expat', 'expat_dep'],
+                         required: use_xmlconfig)
 endif
 # Predefined macros for windows
 if host_machine.system() == 'windows'
@@ -2289,6 +2303,14 @@ gcc_lto_quirk = (cc.get_id() == 'gcc') ? ['-fno-lto'] : []
 devenv = environment()
 
 dir_compiler_nir = join_paths(meson.current_source_dir(), 'src/compiler/nir/')
+if meson.version().version_compare('>= 0.56')
+  dir_source_root = meson.project_source_root()
+else
+  # source_root() returns a source root of the parent project if called from
+  # a subproject, which makes impossible to use Mesa as a meson subproject.
+  dir_source_root = meson.source_root()
+endif
+
 
 subdir('include')
 subdir('bin')

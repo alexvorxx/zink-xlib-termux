@@ -67,6 +67,15 @@
 #  define __builtin_types_compatible_p(type1, type2) (1)
 #endif
 
+/* This should match linux gcc cdecl semantics everywhere, so that we
+ * just codegen one calling convention on all platforms.
+ */
+#ifdef _MSC_VER
+#define UTIL_CDECL __cdecl
+#else
+#define UTIL_CDECL
+#endif
+
 /**
  * Static (compile-time) assertion.
  */
@@ -355,16 +364,6 @@ do {                       \
 /** Checks is a value is a power of two. Does not handle zero. */
 #define IS_POT(v) (((v) & ((v) - 1)) == 0)
 
-/**
- * Macro for declaring an explicit conversion operator.  Defaults to an
- * implicit conversion if C++11 is not supported.
- */
-#if __cplusplus >= 201103L
-#define EXPLICIT_CONVERSION explicit
-#elif defined(__cplusplus)
-#define EXPLICIT_CONVERSION
-#endif
-
 /** Set a single bit */
 #define BITFIELD_BIT(b)      (1u << (b))
 /** Set all bits up to excluding bit b */
@@ -461,9 +460,6 @@ typedef int lock_cap_t;
 #define disable_thread_safety_analysis
 
 #endif
-
-/* TODO: this could be different on non-x86 architectures. */
-#define CACHE_LINE_SIZE 64
 
 #define DO_PRAGMA(X) _Pragma (#X)
 

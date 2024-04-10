@@ -154,7 +154,7 @@ etna_screen_resource_alloc_ts(struct pipe_screen *pscreen,
    DBG_F(ETNA_DBG_RESOURCE_MSGS, "%p: Allocating tile status of size %zu",
          rsc, ts_bo_size);
 
-   if ((rsc->base.bind & PIPE_BIND_SCANOUT) && screen->ro->kms_fd >= 0) {
+   if ((rsc->base.bind & PIPE_BIND_SCANOUT) && screen->ro) {
       struct pipe_resource scanout_templat;
       struct winsys_handle handle;
 
@@ -264,8 +264,8 @@ etna_layout_multiple(const struct etna_screen *screen,
     * engine's width.  If not, we must not align resources used only for
     * textures. If this GPU uses the BLT engine, never do RS align.
     */
-   bool rs_align = !specs->use_blt && !etna_resource_sampler_only(templat) &&
-                   VIV_FEATURE(screen, chipMinorFeatures1, TEXTURE_HALIGN);
+   bool rs_align = !specs->use_blt && (!etna_resource_sampler_only(templat) ||
+                   VIV_FEATURE(screen, chipMinorFeatures1, TEXTURE_HALIGN));
    int msaa_xscale = 1, msaa_yscale = 1;
 
    /* Compressed textures are padded to their block size, but we don't have

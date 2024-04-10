@@ -117,9 +117,10 @@ radv_device_get_cache_uuid(struct radv_physical_device *pdevice, void *uuid)
 
 #ifdef RADV_BUILD_ID_OVERRIDE
    {
-      char data[strlen(RADV_BUILD_ID_OVERRIDE) / 2];
-      parse_hex(data, RADV_BUILD_ID_OVERRIDE, ARRAY_SIZE(data));
-      _mesa_sha1_update(&ctx, data, ARRAY_SIZE(data));
+      unsigned size = strlen(RADV_BUILD_ID_OVERRIDE) / 2;
+      char *data = alloca(size);
+      parse_hex(data, RADV_BUILD_ID_OVERRIDE, size);
+      _mesa_sha1_update(&ctx, data, size);
    }
 #else
    if (!disk_cache_get_function_identifier(radv_device_get_cache_uuid, &ctx))
@@ -506,7 +507,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .KHR_external_semaphore = true,
       .KHR_external_semaphore_fd = true,
       .KHR_format_feature_flags2 = true,
-      .KHR_fragment_shading_rate = device->rad_info.gfx_level >= GFX10_3,
+      .KHR_fragment_shading_rate = device->rad_info.gfx_level == GFX10_3,
       .KHR_get_memory_requirements2 = true,
       .KHR_global_priority = true,
       .KHR_image_format_list = true,
@@ -522,6 +523,15 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .KHR_performance_query = radv_perf_query_supported(device),
       .KHR_pipeline_executable_properties = true,
       .KHR_pipeline_library = !device->use_llvm,
+      /* Hide these behind dri configs for now since we cannot implement it reliably on
+       * all surfaces yet. There is no surface capability query for present wait/id,
+       * but the feature is useful enough to hide behind an opt-in mechanism for now.
+       * If the instance only enables surface extensions that unconditionally support present wait,
+       * we can also expose the extension that way. */
+      .KHR_present_id = driQueryOptionb(&device->instance->dri_options, "vk_khr_present_wait") ||
+         wsi_common_vk_instance_supports_present_wait(&device->instance->vk),
+      .KHR_present_wait = driQueryOptionb(&device->instance->dri_options, "vk_khr_present_wait") ||
+         wsi_common_vk_instance_supports_present_wait(&device->instance->vk),
       .KHR_push_descriptor = true,
       .KHR_ray_query = radv_enable_rt(device, false),
       .KHR_ray_tracing_maintenance1 = radv_enable_rt(device, false),
@@ -887,8 +897,9 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
                      !(device->instance->debug_flags & RADV_DEBUG_NO_NGG)) ||
                      device->rad_info.gfx_level >= GFX11;
 
+   /* TODO: Investigate if NGG culling helps on GFX11. */
    device->use_ngg_culling = device->use_ngg && device->rad_info.max_render_backends > 1 &&
-                             (device->rad_info.gfx_level >= GFX10_3 ||
+                             (device->rad_info.gfx_level == GFX10_3 ||
                               (device->instance->perftest_flags & RADV_PERFTEST_NGGC)) &&
                              !(device->instance->debug_flags & RADV_DEBUG_NO_NGGC);
 
@@ -1108,6 +1119,7 @@ static const driOptionDescription radv_dri_options[] = {
       DRI_CONF_VK_X11_OVERRIDE_MIN_IMAGE_COUNT(0)
       DRI_CONF_VK_X11_STRICT_IMAGE_COUNT(false)
       DRI_CONF_VK_X11_ENSURE_MIN_IMAGE_COUNT(false)
+      DRI_CONF_VK_KHR_PRESENT_WAIT(false)
       DRI_CONF_VK_XWAYLAND_WAIT_READY(true)
       DRI_CONF_RADV_REPORT_LLVM9_VERSION_STRING(false)
       DRI_CONF_RADV_ENABLE_MRT_OUTPUT_NAN_FIXUP(false)
@@ -1744,6 +1756,18 @@ radv_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
          features->sparseImageFloat32AtomicMinMax = has_shader_image_float_minmax;
          break;
       }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR: {
+         VkPhysicalDevicePresentIdFeaturesKHR *features =
+            (VkPhysicalDevicePresentIdFeaturesKHR *) ext;
+         features->presentId = pdevice->vk.supported_extensions.KHR_present_id;
+         break;
+      }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR: {
+         VkPhysicalDevicePresentWaitFeaturesKHR *features =
+            (VkPhysicalDevicePresentWaitFeaturesKHR *) ext;
+         features->presentWait = pdevice->vk.supported_extensions.KHR_present_wait;
+         break;
+      }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRIMITIVE_TOPOLOGY_LIST_RESTART_FEATURES_EXT: {
          VkPhysicalDevicePrimitiveTopologyListRestartFeaturesEXT *features =
             (VkPhysicalDevicePrimitiveTopologyListRestartFeaturesEXT *)ext;
@@ -1761,8 +1785,8 @@ radv_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
          VkPhysicalDeviceRayTracingPipelineFeaturesKHR *features =
             (VkPhysicalDeviceRayTracingPipelineFeaturesKHR *)ext;
          features->rayTracingPipeline = true;
-         features->rayTracingPipelineShaderGroupHandleCaptureReplay = false;
-         features->rayTracingPipelineShaderGroupHandleCaptureReplayMixed = false;
+         features->rayTracingPipelineShaderGroupHandleCaptureReplay = true;
+         features->rayTracingPipelineShaderGroupHandleCaptureReplayMixed = true;
          features->rayTracingPipelineTraceRaysIndirect = true;
          features->rayTraversalPrimitiveCulling = true;
          break;
@@ -2597,7 +2621,7 @@ radv_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          props->maxRayRecursionDepth = 31;    /* Minimum allowed for DXR. */
          props->maxShaderGroupStride = 16384; /* dummy */
          props->shaderGroupBaseAlignment = 16;
-         props->shaderGroupHandleCaptureReplaySize = 16;
+         props->shaderGroupHandleCaptureReplaySize = RADV_RT_HANDLE_SIZE;
          props->maxRayDispatchInvocationCount = 1024 * 1024 * 64;
          props->shaderGroupHandleAlignment = 16;
          props->maxRayHitAttributeSize = RADV_MAX_HIT_ATTRIB_SIZE;
@@ -3880,7 +3904,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
       }
    }
 
-   if (device->physical_device->rad_info.gfx_level >= GFX10_3) {
+   if (device->physical_device->rad_info.gfx_level == GFX10_3) {
       if (getenv("RADV_FORCE_VRS_CONFIG_FILE")) {
          const char *file = radv_get_force_vrs_config_file();
 
@@ -6937,6 +6961,10 @@ radv_initialise_ds_surface(struct radv_device *device, struct radv_ds_buffer_inf
 
    va = radv_buffer_get_va(iview->image->bindings[0].bo) + iview->image->bindings[0].offset;
    s_offs = z_offs = va;
+
+   /* Recommended value for better performance with 4x and 8x. */
+   ds->db_render_override2 = S_028010_DECOMPRESS_Z_ON_FLUSH(iview->image->info.samples >= 4) |
+                             S_028010_CENTROID_COMPUTATION_MODE(device->physical_device->rad_info.gfx_level >= GFX10_3);
 
    if (device->physical_device->rad_info.gfx_level >= GFX9) {
       assert(surf->u.gfx9.surf_offset == 0);

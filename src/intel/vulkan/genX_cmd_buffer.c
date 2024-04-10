@@ -87,7 +87,7 @@ convert_pc_to_bits(struct GENX(PIPE_CONTROL) *pc) {
    if (INTEL_DEBUG(DEBUG_PIPE_CONTROL)) { \
       fputs("pc: emit PC=( ", stderr); \
       anv_dump_pipe_bits(convert_pc_to_bits(&(pc))); \
-      fprintf(stderr, ") reason: %s\n", __FUNCTION__); \
+      fprintf(stderr, ") reason: %s\n", __func__); \
    }
 
 static bool
@@ -944,11 +944,13 @@ genX(copy_fast_clear_dwords)(struct anv_cmd_buffer *cmd_buffer,
    assert(cmd_buffer && image);
    assert(image->vk.aspects & VK_IMAGE_ASPECT_ANY_COLOR_BIT_ANV);
 
-   struct anv_address ss_clear_addr = {
-      .bo = cmd_buffer->device->internal_surface_state_pool.block_pool.bo,
-      .offset = surface_state.offset +
-                cmd_buffer->device->isl_dev.ss.clear_value_offset,
-   };
+   struct anv_address ss_clear_addr =
+      anv_state_pool_state_address(
+         &cmd_buffer->device->internal_surface_state_pool,
+         (struct anv_state) {
+            .offset = surface_state.offset +
+                      cmd_buffer->device->isl_dev.ss.clear_value_offset
+         });
    const struct anv_address entry_addr =
       anv_image_get_clear_color_addr(cmd_buffer->device, image, aspect);
    unsigned copy_size = cmd_buffer->device->isl_dev.ss.clear_value_size;
@@ -1672,22 +1674,17 @@ genX(CmdExecuteCommands)(
           * copy the surface states for the current subpass into the storage
           * we allocated for them in BeginCommandBuffer.
           */
-         struct anv_bo *ss_bo =
-            primary->device->internal_surface_state_pool.block_pool.bo;
          struct anv_state src_state = primary->state.gfx.att_states;
          struct anv_state dst_state = secondary->state.gfx.att_states;
          assert(src_state.alloc_size == dst_state.alloc_size);
 
-         genX(cmd_buffer_so_memcpy)(primary,
-                                    (struct anv_address) {
-                                       .bo = ss_bo,
-                                       .offset = dst_state.offset,
-                                    },
-                                    (struct anv_address) {
-                                       .bo = ss_bo,
-                                       .offset = src_state.offset,
-                                    },
-                                    src_state.alloc_size);
+         genX(cmd_buffer_so_memcpy)(
+            primary,
+            anv_state_pool_state_address(&primary->device->internal_surface_state_pool,
+                                         dst_state),
+            anv_state_pool_state_address(&primary->device->internal_surface_state_pool,
+                                         src_state),
+            src_state.alloc_size);
       }
 
       anv_cmd_buffer_add_secondary(primary, secondary);
@@ -2790,10 +2787,9 @@ get_push_range_address(struct anv_cmd_buffer *cmd_buffer,
          gfx_state->base.push_constants_state =
             anv_cmd_buffer_gfx_push_constants(cmd_buffer);
       }
-      return (struct anv_address) {
-         .bo = cmd_buffer->device->dynamic_state_pool.block_pool.bo,
-         .offset = gfx_state->base.push_constants_state.offset,
-      };
+      return anv_state_pool_state_address(
+         &cmd_buffer->device->dynamic_state_pool,
+         gfx_state->base.push_constants_state);
    }
 
    default: {
@@ -3797,10 +3793,9 @@ emit_base_vertex_instance(struct anv_cmd_buffer *cmd_buffer,
       ((uint32_t *)id_state.map)[0] = base_vertex;
       ((uint32_t *)id_state.map)[1] = base_instance;
 
-      struct anv_address addr = {
-         .bo = cmd_buffer->device->dynamic_state_pool.block_pool.bo,
-         .offset = id_state.offset,
-      };
+      struct anv_address addr =
+         anv_state_pool_state_address(&cmd_buffer->device->dynamic_state_pool,
+                                      id_state);
 
       emit_base_vertex_instance_bo(cmd_buffer, addr);
    }
@@ -3814,10 +3809,9 @@ emit_draw_index(struct anv_cmd_buffer *cmd_buffer, uint32_t draw_index)
 
    ((uint32_t *)state.map)[0] = draw_index;
 
-   struct anv_address addr = {
-      .bo = cmd_buffer->device->dynamic_state_pool.block_pool.bo,
-      .offset = state.offset,
-   };
+   struct anv_address addr =
+      anv_state_pool_state_address(&cmd_buffer->device->dynamic_state_pool,
+                                   state);
 
    emit_vertex_bo(cmd_buffer, addr, 4, ANV_DRAWID_VB_INDEX);
 }
@@ -5349,10 +5343,9 @@ void genX(CmdDispatchBase)(
       sizes[0] = groupCountX;
       sizes[1] = groupCountY;
       sizes[2] = groupCountZ;
-      cmd_buffer->state.compute.num_workgroups = (struct anv_address) {
-         .bo = cmd_buffer->device->dynamic_state_pool.block_pool.bo,
-         .offset = state.offset,
-      };
+      cmd_buffer->state.compute.num_workgroups =
+         anv_state_pool_state_address(&cmd_buffer->device->dynamic_state_pool,
+                                      state);
 
       /* The num_workgroups buffer goes in the binding table */
       cmd_buffer->state.descriptors_dirty |= VK_SHADER_STAGE_COMPUTE_BIT;
@@ -5701,10 +5694,9 @@ cmd_buffer_trace_rays(struct anv_cmd_buffer *cmd_buffer,
           &cmd_buffer->state.rt.base.push_constants,
           sizeof(struct anv_push_constants));
 
-   struct anv_address rtdg_addr = {
-      .bo = cmd_buffer->device->dynamic_state_pool.block_pool.bo,
-      .offset = rtdg_state.offset,
-   };
+   struct anv_address rtdg_addr =
+      anv_state_pool_state_address(&cmd_buffer->device->dynamic_state_pool,
+                                   rtdg_state);
 
    uint8_t local_size_log2[3];
    uint32_t global_size[3] = {};
@@ -7232,10 +7224,9 @@ void genX(CmdSetEvent2)(
 
       pc.DestinationAddressType  = DAT_PPGTT,
       pc.PostSyncOperation       = WriteImmediateData,
-      pc.Address = (struct anv_address) {
-         cmd_buffer->device->dynamic_state_pool.block_pool.bo,
-         event->state.offset
-      };
+         pc.Address = anv_state_pool_state_address(
+            &cmd_buffer->device->dynamic_state_pool,
+            event->state);
       pc.ImmediateData           = VK_EVENT_SET;
       anv_debug_dump_pc(pc);
    }
@@ -7260,10 +7251,9 @@ void genX(CmdResetEvent2)(
 
       pc.DestinationAddressType  = DAT_PPGTT;
       pc.PostSyncOperation       = WriteImmediateData;
-      pc.Address = (struct anv_address) {
-         cmd_buffer->device->dynamic_state_pool.block_pool.bo,
-         event->state.offset
-      };
+      pc.Address = anv_state_pool_state_address(
+         &cmd_buffer->device->dynamic_state_pool,
+         event->state);
       pc.ImmediateData           = VK_EVENT_RESET;
       anv_debug_dump_pc(pc);
    }
@@ -7281,13 +7271,12 @@ void genX(CmdWaitEvents2)(
       ANV_FROM_HANDLE(anv_event, event, pEvents[i]);
 
       anv_batch_emit(&cmd_buffer->batch, GENX(MI_SEMAPHORE_WAIT), sem) {
-         sem.WaitMode            = PollingMode,
-         sem.CompareOperation    = COMPARE_SAD_EQUAL_SDD,
-         sem.SemaphoreDataDword  = VK_EVENT_SET,
-         sem.SemaphoreAddress = (struct anv_address) {
-            cmd_buffer->device->dynamic_state_pool.block_pool.bo,
-            event->state.offset
-         };
+         sem.WaitMode            = PollingMode;
+         sem.CompareOperation    = COMPARE_SAD_EQUAL_SDD;
+         sem.SemaphoreDataDword  = VK_EVENT_SET;
+         sem.SemaphoreAddress    = anv_state_pool_state_address(
+            &cmd_buffer->device->dynamic_state_pool,
+            event->state);
       }
    }
 

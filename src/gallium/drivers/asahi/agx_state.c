@@ -259,6 +259,17 @@ agx_bind_zsa_state(struct pipe_context *pctx, void *cso)
    ctx->dirty |= AGX_DIRTY_ZS;
 }
 
+static enum agx_polygon_mode
+agx_translate_polygon_mode(unsigned mode)
+{
+   switch (mode) {
+   case PIPE_POLYGON_MODE_FILL: return AGX_POLYGON_MODE_FILL;
+   case PIPE_POLYGON_MODE_POINT: return AGX_POLYGON_MODE_POINT;
+   case PIPE_POLYGON_MODE_LINE: return AGX_POLYGON_MODE_LINE;
+   default: unreachable("Unsupported polygon mode");
+   }
+}
+
 static void *
 agx_create_rs_state(struct pipe_context *ctx,
                     const struct pipe_rasterizer_state *cso)
@@ -279,6 +290,16 @@ agx_create_rs_state(struct pipe_context *ctx,
       cfg.depth_clip = cso->depth_clip_near;
       cfg.depth_clamp = !cso->depth_clip_near;
    };
+
+   /* Two-sided polygon mode doesn't seem to work on G13. Apple's OpenGL
+    * implementation lowers to multiple draws with culling. Warn.
+    */
+   if (unlikely(cso->fill_front != cso->fill_back)) {
+      fprintf(stderr, "Warning: Two-sided fill modes are unsupported, "
+                      "rendering may be incorrect.\n");
+   }
+
+   so->polygon_mode = agx_translate_polygon_mode(cso->fill_front);
 
    return so;
 }
@@ -418,6 +439,7 @@ agx_translate_layout(enum ail_tiling tiling)
 {
    switch (tiling) {
    case AIL_TILING_TWIDDLED:
+   case AIL_TILING_TWIDDLED_COMPRESSED:
       return AGX_LAYOUT_TWIDDLED;
    case AIL_TILING_LINEAR:
       return AGX_LAYOUT_LINEAR;
@@ -467,7 +489,8 @@ agx_translate_sample_count(unsigned samples)
 static void
 agx_pack_texture(void *out, struct agx_resource *rsrc,
                  enum pipe_format format /* override */,
-                 const struct pipe_sampler_view *state)
+                 const struct pipe_sampler_view *state,
+                 bool include_bo)
 {
    const struct util_format_description *desc =
       util_format_description(format);
@@ -518,9 +541,21 @@ agx_pack_texture(void *out, struct agx_resource *rsrc,
       cfg.first_level = state->u.tex.first_level;
       cfg.last_level = state->u.tex.last_level;
       cfg.srgb = (desc->colorspace == UTIL_FORMAT_COLORSPACE_SRGB);
-      cfg.address = agx_map_texture_gpu(rsrc, state->u.tex.first_layer);
       cfg.unk_mipmapped = rsrc->mipmapped;
       cfg.srgb_2_channel = cfg.srgb && util_format_colormask(desc) == 0x3;
+
+      if (ail_is_compressed(&rsrc->layout)) {
+         cfg.compressed_1 = true;
+         cfg.compressed_2 = true;
+      }
+
+      if (include_bo) {
+         cfg.address = agx_map_texture_gpu(rsrc, state->u.tex.first_layer);
+
+         if (ail_is_compressed(&rsrc->layout)) {
+            cfg.acceleration_buffer = cfg.address + rsrc->layout.metadata_offset_B;
+         }
+      }
 
       if (state->target == PIPE_TEXTURE_3D) {
          cfg.depth = rsrc->base.depth0;
@@ -539,8 +574,10 @@ agx_pack_texture(void *out, struct agx_resource *rsrc,
       if (rsrc->layout.tiling == AIL_TILING_LINEAR) {
          cfg.stride = ail_get_linear_stride_B(&rsrc->layout, 0) - 16;
       } else {
-         assert(rsrc->layout.tiling == AIL_TILING_TWIDDLED);
-         cfg.unk_tiled = true;
+         assert(rsrc->layout.tiling == AIL_TILING_TWIDDLED ||
+                rsrc->layout.tiling == AIL_TILING_TWIDDLED_COMPRESSED);
+
+         cfg.page_aligned_layers = rsrc->layout.page_aligned_layers;
       }
    }
 }
@@ -566,10 +603,9 @@ agx_create_sampler_view(struct pipe_context *pctx,
       format = texture->format;
    }
 
-   agx_pack_texture(&so->desc, rsrc, format, state);
-
-   /* Save off the BO that we actually use, with the stencil fixed up */
-   so->bo = rsrc->bo;
+   /* Save off the resource that we actually use, with the stencil fixed up */
+   so->rsrc = rsrc;
+   agx_pack_texture(&so->desc, rsrc, format, state, false);
 
    so->base = *state;
    so->base.texture = NULL;
@@ -741,10 +777,10 @@ agx_upload_viewport_scissor(struct agx_pool *pool,
    util_viewport_zmin_zmax(vp, false, &minz, &maxz);
 
    /* Allocate a new scissor descriptor */
-   struct agx_scissor_packed *ptr = batch->scissor.bo->ptr.cpu;
-   unsigned index = (batch->scissor.count++);
+   unsigned index = batch->scissor.size / AGX_SCISSOR_LENGTH;
+   void *ptr = util_dynarray_grow_bytes(&batch->scissor, 1, AGX_SCISSOR_LENGTH);
 
-   agx_pack(ptr + index, SCISSOR, cfg) {
+   agx_pack(ptr, SCISSOR, cfg) {
       cfg.min_x = minx;
       cfg.min_y = miny;
       cfg.min_z = minz;
@@ -789,10 +825,11 @@ static uint16_t
 agx_upload_depth_bias(struct agx_batch *batch,
                       const struct pipe_rasterizer_state *rast)
 {
-   struct agx_depth_bias_packed *ptr = batch->depth_bias.bo->ptr.cpu;
-   unsigned index = (batch->depth_bias.count++);
+   unsigned index = batch->depth_bias.size / AGX_DEPTH_BIAS_LENGTH;
+   void *ptr = util_dynarray_grow_bytes(&batch->depth_bias, 1,
+                                        AGX_DEPTH_BIAS_LENGTH);
 
-   agx_pack(ptr + index, DEPTH_BIAS, cfg) {
+   agx_pack(ptr, DEPTH_BIAS, cfg) {
       cfg.depth_bias    = rast->offset_units;
       cfg.slope_scale   = rast->offset_scale;
       cfg.clamp         = rast->offset_clamp;
@@ -858,6 +895,12 @@ agx_batch_upload_pbe(struct agx_batch *batch, unsigned rt)
       cfg.buffer = agx_map_texture_gpu(tex, layer);
       cfg.unk_mipmapped = tex->mipmapped;
 
+      if (ail_is_compressed(&tex->layout)) {
+         cfg.compressed_1 = true;
+         cfg.compressed_2 = true;
+         cfg.acceleration_buffer = cfg.buffer + tex->layout.metadata_offset_B;
+      }
+
       if (tex->base.nr_samples > 1)
          cfg.samples = agx_translate_sample_count(tex->base.nr_samples);
 
@@ -865,7 +908,7 @@ agx_batch_upload_pbe(struct agx_batch *batch, unsigned rt)
          cfg.stride = ail_get_linear_stride_B(&tex->layout, level) - 4;
          cfg.levels = 1;
       } else {
-         cfg.unk_tiled = true;
+         cfg.page_aligned_layers = tex->layout.page_aligned_layers;
          cfg.levels = tex->base.last_level + 1;
       }
    };
@@ -1151,7 +1194,8 @@ agx_compile_variant(struct agx_device *dev,
    agx_compile_shader_nir(nir, &key->base, debug, &binary, &compiled->info);
 
    if (binary.size) {
-      compiled->bo = agx_bo_create(dev, binary.size, AGX_MEMORY_TYPE_SHADER);
+      compiled->bo = agx_bo_create(dev, binary.size, AGX_MEMORY_TYPE_SHADER,
+                                   "Executable");
       memcpy(compiled->bo->ptr.cpu, binary.data, binary.size);
    }
 
@@ -1340,17 +1384,40 @@ agx_build_pipeline(struct agx_batch *batch, struct agx_compiled_shader *cs, enum
    /* TODO: Dirty track me to save some CPU cycles and maybe improve caching */
    for (unsigned i = 0; i < nr_textures; ++i) {
       struct agx_sampler_view *tex = ctx->stage[stage].textures[i];
+
+      /* TODO: Use an actual null texture for robustness */
+      if (tex == NULL) {
+         memset(&textures[i], 0, sizeof(textures[i]));
+         continue;
+      }
+
       agx_batch_reads(batch, agx_resource(tex->base.texture));
 
-      textures[i] = tex->desc;
+      /* Without the address */
+      struct agx_texture_packed texture = tex->desc;
+
+      /* Just the address */
+      struct agx_texture_packed texture2;
+      agx_pack(&texture2, TEXTURE, cfg) {
+         cfg.address = agx_map_texture_gpu(tex->rsrc, tex->base.u.tex.first_layer);
+
+         if (ail_is_compressed(&tex->rsrc->layout)) {
+            cfg.acceleration_buffer = cfg.address + tex->rsrc->layout.metadata_offset_B;
+         }
+      }
+
+      agx_merge(texture, texture2, TEXTURE);
+      textures[i] = texture;
    }
 
    /* TODO: Dirty track me to save some CPU cycles and maybe improve caching */
-   for (unsigned i = 0; i < PIPE_MAX_SAMPLERS; ++i) {
+   for (unsigned i = 0; i < nr_samplers; ++i) {
       struct agx_sampler_state *sampler = ctx->stage[stage].samplers[i];
 
       if (sampler)
          samplers[i] = sampler->desc;
+      else
+         memset(&samplers[i], 0, sizeof(samplers[i]));
    }
 
    struct agx_usc_builder b =
@@ -1483,7 +1550,7 @@ agx_build_meta(struct agx_batch *batch, bool store, bool partial_render)
                   .first_level = surf->u.tex.level,
                   .last_level = surf->u.tex.level
                }
-         });
+         }, true);
 
          agx_usc_pack(&b, TEXTURE, cfg) {
             cfg.start = rt;
@@ -1530,7 +1597,7 @@ agx_build_meta(struct agx_batch *batch, bool store, bool partial_render)
       cfg.unk_2 = 0;
    }
 
-   agx_usc_pack(&b, REGISTERS, cfg) cfg.register_count = 256;
+   agx_usc_pack(&b, REGISTERS, cfg) cfg.register_count = shader->info.nr_gprs;
    agx_usc_pack(&b, NO_PRESHADER, cfg);
 
    return agx_usc_fini(&b);
@@ -1737,15 +1804,14 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out,
       agx_pack(&front_face, FRAGMENT_FACE, cfg) {
          cfg.stencil_reference = ctx->stencil_ref.ref_value[0];
          cfg.line_width = rast->line_width;
-         cfg.polygon_mode = AGX_POLYGON_MODE_FILL;
+         cfg.polygon_mode = rast->polygon_mode;
       };
 
       agx_pack(&back_face, FRAGMENT_FACE, cfg) {
          bool twosided = ctx->zs->base.stencil[1].enabled;
          cfg.stencil_reference = ctx->stencil_ref.ref_value[twosided ? 1 : 0];
-
          cfg.line_width = rast->line_width;
-         cfg.polygon_mode = AGX_POLYGON_MODE_FILL;
+         cfg.polygon_mode = rast->polygon_mode;
       };
 
       front_face.opaque[0] |= ctx->zs->depth.opaque[0];
@@ -2019,6 +2085,14 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
    ctx->dirty = 0;
 
    assert(batch == agx_get_batch(ctx) && "batch should not change under us");
+
+   /* The scissor/zbias arrays are indexed with 16-bit integers, imposigin a
+    * maximum of UINT16_MAX descriptors. Flush if the next draw would overflow
+    */
+   if (unlikely((batch->scissor.size / AGX_SCISSOR_LENGTH) >= UINT16_MAX) ||
+                (batch->depth_bias.size / AGX_DEPTH_BIAS_LENGTH) >= UINT16_MAX) {
+      agx_flush_batch_for_reason(ctx, batch, "Scissor/depth bias overflow");
+   }
 }
 
 static void

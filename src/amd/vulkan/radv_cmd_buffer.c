@@ -1912,7 +1912,7 @@ radv_emit_graphics_pipeline(struct radv_cmd_buffer *cmd_buffer)
       cmd_buffer->state.dirty |= RADV_CMD_DIRTY_GUARDBAND;
 
    if (!cmd_buffer->state.emitted_graphics_pipeline ||
-       cmd_buffer->state.emitted_graphics_pipeline->cb_color_control != pipeline->cb_color_control ||
+       cmd_buffer->state.emitted_graphics_pipeline->disable_dual_quad != pipeline->disable_dual_quad ||
        cmd_buffer->state.emitted_graphics_pipeline->custom_blend_mode != pipeline->custom_blend_mode)
       cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_LOGIC_OP |
                                  RADV_CMD_DIRTY_DYNAMIC_LOGIC_OP_ENABLE;
@@ -2381,8 +2381,8 @@ static void
 radv_emit_logic_op(struct radv_cmd_buffer *cmd_buffer)
 {
    const struct radv_graphics_pipeline *pipeline = cmd_buffer->state.graphics_pipeline;
-   unsigned cb_color_control = cmd_buffer->state.graphics_pipeline->cb_color_control;
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
+   unsigned cb_color_control = 0;
 
    if (d->logic_op_enable) {
       cb_color_control |= S_028808_ROP3(d->logic_op);
@@ -2391,7 +2391,8 @@ radv_emit_logic_op(struct radv_cmd_buffer *cmd_buffer)
    }
 
    if (cmd_buffer->device->physical_device->rad_info.has_rbplus) {
-      cb_color_control |= S_028808_DISABLE_DUAL_QUAD(d->logic_op_enable);
+      cb_color_control |=
+         S_028808_DISABLE_DUAL_QUAD(pipeline->disable_dual_quad || d->logic_op_enable);
    }
 
    if (pipeline->custom_blend_mode) {
@@ -2640,7 +2641,9 @@ radv_emit_fb_color_state(struct radv_cmd_buffer *cmd_buffer, int index,
       }
    }
 
-   if (G_028C70_DCC_ENABLE(cb_color_info)) {
+   if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX11
+          ? G_028C78_FDCC_ENABLE(cb_fdcc_control)
+          : G_028C70_DCC_ENABLE(cb_color_info)) {
       /* Drawing with DCC enabled also compresses colorbuffers. */
       VkImageSubresourceRange range = {
          .aspectMask = iview->vk.aspects,
@@ -4019,7 +4022,7 @@ radv_cmd_buffer_flush_dynamic_state(struct radv_cmd_buffer *cmd_buffer, bool pip
    if (states & RADV_CMD_DIRTY_DYNAMIC_SAMPLE_LOCATIONS)
       radv_emit_sample_locations(cmd_buffer);
 
-   if (states & (RADV_CMD_DIRTY_DYNAMIC_LINE_STIPPLE))
+   if (states & RADV_CMD_DIRTY_DYNAMIC_LINE_STIPPLE)
       radv_emit_line_stipple(cmd_buffer);
 
    if (states & (RADV_CMD_DIRTY_DYNAMIC_CULL_MODE | RADV_CMD_DIRTY_DYNAMIC_FRONT_FACE |
@@ -4027,7 +4030,8 @@ radv_cmd_buffer_flush_dynamic_state(struct radv_cmd_buffer *cmd_buffer, bool pip
                  RADV_CMD_DIRTY_DYNAMIC_PROVOKING_VERTEX_MODE))
       radv_emit_culling(cmd_buffer);
 
-   if (states & RADV_CMD_DIRTY_DYNAMIC_PROVOKING_VERTEX_MODE)
+   if (states & (RADV_CMD_DIRTY_DYNAMIC_PROVOKING_VERTEX_MODE |
+                 RADV_CMD_DIRTY_DYNAMIC_PRIMITIVE_TOPOLOGY))
       radv_emit_provoking_vertex_mode(cmd_buffer);
 
    if (states & RADV_CMD_DIRTY_DYNAMIC_PRIMITIVE_TOPOLOGY)
@@ -4079,7 +4083,8 @@ radv_cmd_buffer_flush_dynamic_state(struct radv_cmd_buffer *cmd_buffer, bool pip
    if (states & RADV_CMD_DIRTY_DYNAMIC_SAMPLE_MASK)
       radv_emit_sample_mask(cmd_buffer);
 
-   if (states & RADV_CMD_DIRTY_DYNAMIC_DEPTH_CLAMP_ENABLE)
+   if (states & (RADV_CMD_DIRTY_DYNAMIC_DEPTH_CLAMP_ENABLE |
+                 RADV_CMD_DIRTY_DYNAMIC_DEPTH_CLIP_ENABLE))
       radv_emit_depth_clamp_enable(cmd_buffer);
 
    if (states & RADV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_ENABLE)

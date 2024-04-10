@@ -117,7 +117,7 @@ supported, although some of these might not actually get verified:
 
 * ``VkPhysicalDeviceFeatures``:
 
-  * ``occlusionQueryPrecise``
+  * ``dualSrcBlend``
 
 * Device extensions:
 
@@ -239,7 +239,6 @@ are required to be supported
 * ``VkPhysicalDeviceFeatures``:
 
   * ``samplerAnisotropy``
-  * ``pipelineStatisticsQuery``
   * ``depthBiasClamp``
 
 * Device extensions:

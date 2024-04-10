@@ -418,6 +418,7 @@ agx_translate_layout(enum ail_tiling tiling)
 {
    switch (tiling) {
    case AIL_TILING_TWIDDLED:
+   case AIL_TILING_TWIDDLED_COMPRESSED:
       return AGX_LAYOUT_TWIDDLED;
    case AIL_TILING_LINEAR:
       return AGX_LAYOUT_LINEAR;
@@ -522,6 +523,12 @@ agx_pack_texture(void *out, struct agx_resource *rsrc,
       cfg.unk_mipmapped = rsrc->mipmapped;
       cfg.srgb_2_channel = cfg.srgb && util_format_colormask(desc) == 0x3;
 
+      if (ail_is_compressed(&rsrc->layout)) {
+         cfg.compressed_1 = true;
+         cfg.compressed_2 = true;
+         cfg.acceleration_buffer = cfg.address + rsrc->layout.metadata_offset_B;
+      }
+
       if (state->target == PIPE_TEXTURE_3D) {
          cfg.depth = rsrc->base.depth0;
       } else {
@@ -539,7 +546,9 @@ agx_pack_texture(void *out, struct agx_resource *rsrc,
       if (rsrc->layout.tiling == AIL_TILING_LINEAR) {
          cfg.stride = ail_get_linear_stride_B(&rsrc->layout, 0) - 16;
       } else {
-         assert(rsrc->layout.tiling == AIL_TILING_TWIDDLED);
+         assert(rsrc->layout.tiling == AIL_TILING_TWIDDLED ||
+                rsrc->layout.tiling == AIL_TILING_TWIDDLED_COMPRESSED);
+
          cfg.unk_tiled = true;
       }
    }
@@ -741,10 +750,10 @@ agx_upload_viewport_scissor(struct agx_pool *pool,
    util_viewport_zmin_zmax(vp, false, &minz, &maxz);
 
    /* Allocate a new scissor descriptor */
-   struct agx_scissor_packed *ptr = batch->scissor.bo->ptr.cpu;
-   unsigned index = (batch->scissor.count++);
+   unsigned index = batch->scissor.size / AGX_SCISSOR_LENGTH;
+   void *ptr = util_dynarray_grow_bytes(&batch->scissor, 1, AGX_SCISSOR_LENGTH);
 
-   agx_pack(ptr + index, SCISSOR, cfg) {
+   agx_pack(ptr, SCISSOR, cfg) {
       cfg.min_x = minx;
       cfg.min_y = miny;
       cfg.min_z = minz;
@@ -789,10 +798,11 @@ static uint16_t
 agx_upload_depth_bias(struct agx_batch *batch,
                       const struct pipe_rasterizer_state *rast)
 {
-   struct agx_depth_bias_packed *ptr = batch->depth_bias.bo->ptr.cpu;
-   unsigned index = (batch->depth_bias.count++);
+   unsigned index = batch->depth_bias.size / AGX_DEPTH_BIAS_LENGTH;
+   void *ptr = util_dynarray_grow_bytes(&batch->depth_bias, 1,
+                                        AGX_DEPTH_BIAS_LENGTH);
 
-   agx_pack(ptr + index, DEPTH_BIAS, cfg) {
+   agx_pack(ptr, DEPTH_BIAS, cfg) {
       cfg.depth_bias    = rast->offset_units;
       cfg.slope_scale   = rast->offset_scale;
       cfg.clamp         = rast->offset_clamp;
@@ -857,6 +867,12 @@ agx_batch_upload_pbe(struct agx_batch *batch, unsigned rt)
       cfg.level = surf->u.tex.level;
       cfg.buffer = agx_map_texture_gpu(tex, layer);
       cfg.unk_mipmapped = tex->mipmapped;
+
+      if (ail_is_compressed(&tex->layout)) {
+         cfg.compressed_1 = true;
+         cfg.compressed_2 = true;
+         cfg.acceleration_buffer = cfg.buffer + tex->layout.metadata_offset_B;
+      }
 
       if (tex->base.nr_samples > 1)
          cfg.samples = agx_translate_sample_count(tex->base.nr_samples);
@@ -1151,7 +1167,8 @@ agx_compile_variant(struct agx_device *dev,
    agx_compile_shader_nir(nir, &key->base, debug, &binary, &compiled->info);
 
    if (binary.size) {
-      compiled->bo = agx_bo_create(dev, binary.size, AGX_MEMORY_TYPE_SHADER);
+      compiled->bo = agx_bo_create(dev, binary.size, AGX_MEMORY_TYPE_SHADER,
+                                   "Executable");
       memcpy(compiled->bo->ptr.cpu, binary.data, binary.size);
    }
 
@@ -1346,7 +1363,7 @@ agx_build_pipeline(struct agx_batch *batch, struct agx_compiled_shader *cs, enum
    }
 
    /* TODO: Dirty track me to save some CPU cycles and maybe improve caching */
-   for (unsigned i = 0; i < PIPE_MAX_SAMPLERS; ++i) {
+   for (unsigned i = 0; i < nr_samplers; ++i) {
       struct agx_sampler_state *sampler = ctx->stage[stage].samplers[i];
 
       if (sampler)
@@ -1530,7 +1547,7 @@ agx_build_meta(struct agx_batch *batch, bool store, bool partial_render)
       cfg.unk_2 = 0;
    }
 
-   agx_usc_pack(&b, REGISTERS, cfg) cfg.register_count = 256;
+   agx_usc_pack(&b, REGISTERS, cfg) cfg.register_count = shader->info.nr_gprs;
    agx_usc_pack(&b, NO_PRESHADER, cfg);
 
    return agx_usc_fini(&b);
@@ -2019,6 +2036,14 @@ agx_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
    ctx->dirty = 0;
 
    assert(batch == agx_get_batch(ctx) && "batch should not change under us");
+
+   /* The scissor/zbias arrays are indexed with 16-bit integers, imposigin a
+    * maximum of UINT16_MAX descriptors. Flush if the next draw would overflow
+    */
+   if (unlikely((batch->scissor.size / AGX_SCISSOR_LENGTH) >= UINT16_MAX) ||
+                (batch->depth_bias.size / AGX_DEPTH_BIAS_LENGTH) >= UINT16_MAX) {
+      agx_flush_batch_for_reason(ctx, batch, "Scissor/depth bias overflow");
+   }
 }
 
 static void

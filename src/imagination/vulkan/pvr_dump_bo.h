@@ -21,22 +21,30 @@
  * SOFTWARE.
  */
 
-#ifndef PVR_DEBUG_H
-#define PVR_DEBUG_H
+#ifndef PVR_DUMP_BO_H
+#define PVR_DUMP_BO_H
 
-#include <stdint.h>
+#include <stdbool.h>
 
-#include "util/macros.h"
+#include "pvr_dump.h"
 
-extern uint32_t PVR_DEBUG;
+struct pvr_bo;
+struct pvr_device;
 
-/* clang-format off */
-#define PVR_IS_DEBUG_SET(x) unlikely(PVR_DEBUG & PVR_DEBUG_##x)
-/* clang-format on */
+struct pvr_dump_bo_ctx {
+   struct pvr_dump_buffer_ctx base;
 
-#define PVR_DEBUG_DUMP_CONTROL_STREAM BITFIELD_BIT(0)
-#define PVR_DEBUG_TRACK_BOS BITFIELD_BIT(1)
+   struct pvr_device *device;
+   struct pvr_bo *bo;
+   bool bo_mapped_in_ctx;
 
-void pvr_process_debug_variable(void);
+   /* No user-modifiable values */
+};
 
-#endif /* PVR_DEBUG_H */
+bool pvr_dump_bo_ctx_push(struct pvr_dump_bo_ctx *ctx,
+                          struct pvr_dump_ctx *parent_ctx,
+                          struct pvr_device *device,
+                          struct pvr_bo *bo);
+bool pvr_dump_bo_ctx_pop(struct pvr_dump_bo_ctx *ctx);
+
+#endif /* PVR_DUMP_BO_H */

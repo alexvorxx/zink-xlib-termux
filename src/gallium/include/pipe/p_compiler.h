@@ -41,21 +41,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-
-#if defined(_WIN32) && !defined(__WIN32__)
-#define __WIN32__
-#endif
-
-#if defined(_MSC_VER)
-
-#include <intrin.h>
-
-/* Avoid 'expression is always true' warning */
-#pragma warning(disable: 4296)
-
-#endif /* _MSC_VER */
-
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -76,33 +61,6 @@ typedef unsigned char boolean;
 #ifndef FALSE
 #define FALSE false
 #endif
-
-/* This should match linux gcc cdecl semantics everywhere, so that we
- * just codegen one calling convention on all platforms.
- */
-#ifdef _MSC_VER
-#define PIPE_CDECL __cdecl
-#else
-#define PIPE_CDECL
-#endif
-
-/**
- * Declare a variable on its own cache line.
- *
- * This helps eliminate "False sharing" to make atomic operations
- * on pipe_reference::count faster and/or access to adjacent fields faster.
- *
- * https://en.wikipedia.org/wiki/False_sharing
- *
- * CALLOC_STRUCT_CL or MALLOC_STRUCT_CL and FREE_CL should be used to allocate
- * structures that contain this.
- *
- * NOTE: Don't use PIPE_ALIGN_VAR because it causes the whole structure to be
- *       aligned, but we only want to align the field.
- */
-#define EXCLUSIVE_CACHELINE(decl) \
-   union { char __cl_space[CACHE_LINE_SIZE]; \
-           decl; }
 
 #if defined(__cplusplus)
 }

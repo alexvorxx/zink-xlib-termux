@@ -1201,12 +1201,23 @@ radv_image_create_layout(struct radv_device *device, struct radv_image_create_in
 static void
 radv_destroy_image(struct radv_device *device, const VkAllocationCallbacks *pAllocator, struct radv_image *image)
 {
+   struct radv_physical_device *pdev = radv_device_physical(device);
+   struct radv_instance *instance = radv_physical_device_instance(pdev);
+
    if ((image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT) && image->bindings[0].bo)
       radv_bo_destroy(device, &image->vk.base, image->bindings[0].bo);
 
    if (image->owned_memory != VK_NULL_HANDLE) {
       VK_FROM_HANDLE(radv_device_memory, mem, image->owned_memory);
       radv_free_memory(device, pAllocator, mem);
+   }
+
+   for (uint32_t i = 0; i < ARRAY_SIZE(image->bindings); i++) {
+      if (!image->bindings[i].bo_va)
+         continue;
+
+      vk_address_binding_report(&instance->vk, &image->vk.base, image->bindings[i].bo_va + image->bindings[i].offset,
+                                image->bindings[i].bo_size, VK_DEVICE_ADDRESS_BINDING_TYPE_UNBIND_EXT);
    }
 
    radv_rmv_log_resource_destroy(device, (uint64_t)radv_image_to_handle(image));
@@ -1666,6 +1677,8 @@ radv_bind_image_memory(struct radv_device *device, struct radv_image *image, uin
 
    image->bindings[bind_idx].bo = bo;
    image->bindings[bind_idx].offset = offset;
+   image->bindings[bind_idx].bo_va = radv_buffer_get_va(bo);
+   image->bindings[bind_idx].bo_size = bo->size;
 
    radv_rmv_log_image_bind(device, bind_idx, radv_image_to_handle(image));
 

@@ -1709,35 +1709,24 @@ radv_BindImageMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindImag
          }
       }
 
+      uint32_t bind_idx = 0;
+
       if (image->disjoint) {
          const VkBindImagePlaneMemoryInfo *plane_info =
             vk_find_struct_const(pBindInfos[i].pNext, BIND_IMAGE_PLANE_MEMORY_INFO);
 
-         switch (plane_info->planeAspect) {
-         case VK_IMAGE_ASPECT_PLANE_0_BIT:
-            image->bindings[0].bo = mem->bo;
-            image->bindings[0].offset = pBindInfos[i].memoryOffset;
-            break;
-         case VK_IMAGE_ASPECT_PLANE_1_BIT:
-            image->bindings[1].bo = mem->bo;
-            image->bindings[1].offset = pBindInfos[i].memoryOffset;
-            break;
-         case VK_IMAGE_ASPECT_PLANE_2_BIT:
-            image->bindings[2].bo = mem->bo;
-            image->bindings[2].offset = pBindInfos[i].memoryOffset;
-            break;
-         default:
-            break;
-         }
-      } else {
-         image->bindings[0].bo = mem->bo;
-         image->bindings[0].offset = pBindInfos[i].memoryOffset;
+         bind_idx = radv_plane_from_aspect(plane_info->planeAspect);
       }
+
+      assert(bind_idx < 3);
+      image->bindings[bind_idx].bo = mem->bo;
+      image->bindings[bind_idx].offset = pBindInfos[i].memoryOffset;
+
       radv_rmv_log_image_bind(device, pBindInfos[i].image);
 
       vk_address_binding_report(&instance->vk, &image->vk.base,
-                                radv_buffer_get_va(image->bindings[0].bo) + image->bindings[0].offset,
-                                image->bindings[0].bo->size, VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
+                                radv_buffer_get_va(image->bindings[bind_idx].bo) + image->bindings[bind_idx].offset,
+                                image->bindings[bind_idx].bo->size, VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
    }
    return VK_SUCCESS;
 }

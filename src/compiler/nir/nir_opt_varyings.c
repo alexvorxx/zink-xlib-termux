@@ -4000,20 +4000,20 @@ compact_varyings(struct linkage_info *linkage,
       /* Assign INTERP_MODE_EXPLICIT. Both FP32 and FP16 can occupy the same
        * slot because the vertex data is passed to FS as-is.
        */
-      fs_assign_slots(linkage, assigned_mask, NULL,
+      fs_assign_slots(linkage, assigned_mask, assigned_fs_vec4_type,
                       linkage->interp_explicit32_mask, FS_VEC4_TYPE_INTERP_EXPLICIT,
                       2, NUM_SCALAR_SLOTS, false, 0, progress);
 
-      fs_assign_slots(linkage, assigned_mask, NULL,
+      fs_assign_slots(linkage, assigned_mask, assigned_fs_vec4_type,
                       linkage->interp_explicit16_mask, FS_VEC4_TYPE_INTERP_EXPLICIT,
                       1, NUM_SCALAR_SLOTS, false, 0, progress);
 
       /* Same for strict vertex ordering. */
-      fs_assign_slots(linkage, assigned_mask, NULL,
+      fs_assign_slots(linkage, assigned_mask, assigned_fs_vec4_type,
                       linkage->interp_explicit_strict32_mask, FS_VEC4_TYPE_INTERP_EXPLICIT_STRICT,
                       2, NUM_SCALAR_SLOTS, false, 0, progress);
 
-      fs_assign_slots(linkage, assigned_mask, NULL,
+      fs_assign_slots(linkage, assigned_mask, assigned_fs_vec4_type,
                       linkage->interp_explicit_strict16_mask, FS_VEC4_TYPE_INTERP_EXPLICIT_STRICT,
                       1, NUM_SCALAR_SLOTS, false, 0, progress);
 

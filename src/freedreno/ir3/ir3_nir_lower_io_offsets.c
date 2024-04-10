@@ -287,3 +287,23 @@ ir3_nir_lower_io_offsets(nir_shader *shader)
 
    return progress;
 }
+
+uint32_t
+ir3_nir_max_imm_offset(nir_intrinsic_instr *intrin, const void *data)
+{
+   const struct ir3_compiler *compiler = data;
+
+   if (!compiler->has_ssbo_imm_offsets)
+      return 0;
+
+   switch (intrin->intrinsic) {
+   case nir_intrinsic_load_ssbo_ir3:
+      if ((nir_intrinsic_access(intrin) & ACCESS_CAN_REORDER))
+         return 255; /* isam.v */
+      return 127;    /* ldib.b */
+   case nir_intrinsic_store_ssbo_ir3:
+      return 127; /* stib.b */
+   default:
+      return 0;
+   }
+}

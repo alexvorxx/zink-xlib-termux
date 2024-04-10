@@ -215,7 +215,7 @@ ir3_optimize_loop(struct ir3_compiler *compiler, nir_shader *s)
       progress |= OPT(s, nir_lower_pack);
       progress |= OPT(s, nir_opt_constant_folding);
 
-      static const nir_opt_offsets_options offset_options = {
+      const nir_opt_offsets_options offset_options = {
          /* How large an offset we can encode in the instr's immediate field.
           */
          .uniform_max = (1 << 9) - 1,
@@ -225,7 +225,10 @@ ir3_optimize_loop(struct ir3_compiler *compiler, nir_shader *s)
           */
          .shared_max = (1 << 12) - 1,
 
-         .buffer_max = ~0,
+         .buffer_max = 0,
+         .max_offset_cb = ir3_nir_max_imm_offset,
+         .max_offset_data = compiler,
+         .allow_offset_wrap = true,
       };
       progress |= OPT(s, nir_opt_offsets, &offset_options);
 

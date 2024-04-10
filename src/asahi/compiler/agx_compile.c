@@ -1341,8 +1341,20 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
       if (nir_intrinsic_memory_scope(instr) != SCOPE_NONE) {
          nir_variable_mode modes = nir_intrinsic_memory_modes(instr);
 
-         if (modes & (nir_var_mem_global | nir_var_image))
+         if (modes & (nir_var_mem_global | nir_var_image)) {
             agx_memory_barrier(b);
+
+            /* Pull out all the big hammers to make cross-workgroup memory
+             * barriers work. Found experimentally, seems to work on G13G at
+             * least.
+             *
+             * TODO: check on other models, we may need more barriers for G13D.
+             */
+            if (nir_intrinsic_memory_scope(instr) >= SCOPE_QUEUE_FAMILY) {
+               agx_memory_barrier_2(b);
+               agx_unknown_barrier_1(b);
+            }
+         }
 
          if (modes & nir_var_image) {
             agx_image_barrier_1(b);

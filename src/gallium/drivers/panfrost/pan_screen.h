@@ -152,6 +152,7 @@ void panfrost_cmdstream_screen_init_v10(struct panfrost_screen *screen);
    do {                                                                        \
       if (unlikely(pan_device((ctx)->base.screen)->debug & PAN_DBG_PERF))      \
          mesa_logw(__VA_ARGS__);                                               \
+      util_debug_message(&ctx->base.debug, PERF_INFO, __VA_ARGS__);            \
    } while (0)
 
 #endif /* PAN_SCREEN_H */

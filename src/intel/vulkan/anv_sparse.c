@@ -846,7 +846,6 @@ anv_sparse_calc_miptail_properties(struct anv_device *device,
                                    VkDeviceSize *imageMipTailOffset,
                                    VkDeviceSize *imageMipTailStride)
 {
-   assert(__builtin_popcount(vk_aspect) == 1);
    const uint32_t plane = anv_image_aspect_to_plane(image, vk_aspect);
    struct isl_surf *surf = &image->planes[plane].primary_surface.isl;
    uint64_t binding_plane_offset =
@@ -1011,7 +1010,6 @@ anv_sparse_bind_image_memory(struct anv_queue *queue,
    uint32_t mip_level = bind->subresource.mipLevel;
    uint32_t array_layer = bind->subresource.arrayLayer;
 
-   assert(__builtin_popcount(aspect) == 1);
    assert(!(bind->flags & VK_SPARSE_MEMORY_BIND_METADATA_BIT));
 
    struct anv_image_binding *img_binding = image->disjoint ?

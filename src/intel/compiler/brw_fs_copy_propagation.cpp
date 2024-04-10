@@ -1119,7 +1119,6 @@ try_constant_propagate(fs_inst *inst, acp_entry *entry, int arg)
       break;
 
    case BRW_OPCODE_CMP:
-   case BRW_OPCODE_IF:
       if (arg == 1) {
          inst->src[arg] = val;
          progress = true;

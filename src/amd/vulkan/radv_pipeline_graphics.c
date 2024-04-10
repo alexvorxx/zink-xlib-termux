@@ -2379,7 +2379,7 @@ radv_get_rasterization_prim(const struct radv_shader_stage *stages, const struct
 
 static bool
 radv_skip_graphics_pipeline_compile(const struct radv_device *device, const struct radv_graphics_pipeline *pipeline,
-                                    VkGraphicsPipelineLibraryFlagBitsEXT lib_flags, bool fast_linking_enabled)
+                                    bool fast_linking_enabled)
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
    VkShaderStageFlagBits binary_stages = 0;
@@ -4048,7 +4048,7 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
    if (radv_should_compute_pipeline_hash(device, pipeline, fast_linking_enabled))
       radv_pipeline_layout_hash(&pipeline->layout);
 
-   if (!radv_skip_graphics_pipeline_compile(device, pipeline, needed_lib_flags, fast_linking_enabled)) {
+   if (!radv_skip_graphics_pipeline_compile(device, pipeline, fast_linking_enabled)) {
       struct radv_graphics_pipeline_key key =
          radv_generate_graphics_pipeline_key(device, pCreateInfo, &state, pipeline->base.type, needed_lib_flags);
 

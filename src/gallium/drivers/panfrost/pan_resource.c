@@ -1429,7 +1429,7 @@ panfrost_should_linear_convert(struct panfrost_context *ctx,
       ++prsrc->modifier_updates;
 
    if (prsrc->modifier_updates >= LAYOUT_CONVERT_THRESHOLD) {
-      perf_debug_ctx(ctx, "Transitioning to linear due to streaming usage");
+      perf_debug(ctx, "Transitioning to linear due to streaming usage");
       return true;
    } else {
       return false;
@@ -1549,8 +1549,8 @@ panfrost_pack_afbc(struct panfrost_context *ctx,
    if (ratio > screen->max_afbc_packing_ratio)
       return;
 
-   perf_debug_ctx(ctx, "%i%%: %i KB -> %i KB\n", ratio, old_size / 1024,
-                  new_size / 1024);
+   perf_debug(ctx, "%i%%: %i KB -> %i KB\n", ratio, old_size / 1024,
+              new_size / 1024);
 
    struct panfrost_bo *dst =
       panfrost_bo_create(dev, new_size, 0, "AFBC compact texture");
@@ -1737,7 +1737,7 @@ panfrost_generate_mipmap(struct pipe_context *pctx, struct pipe_resource *prsrc,
 {
    struct panfrost_resource *rsrc = pan_resource(prsrc);
 
-   perf_debug_ctx(pan_context(pctx), "Unoptimized mipmap generation");
+   perf_debug(pan_context(pctx), "Unoptimized mipmap generation");
 
    /* Generating a mipmap invalidates the written levels, so make that
     * explicit so we don't try to wallpaper them back and end up with

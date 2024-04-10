@@ -823,6 +823,16 @@ void anv_state_pool_finish(struct anv_state_pool *pool);
 struct anv_state anv_state_pool_alloc(struct anv_state_pool *pool,
                                       uint32_t state_size, uint32_t alignment);
 void anv_state_pool_free(struct anv_state_pool *pool, struct anv_state state);
+
+static inline struct anv_address
+anv_state_pool_state_address(struct anv_state_pool *pool, struct anv_state state)
+{
+   return (struct anv_address) {
+      .bo = pool->block_pool.bo,
+      .offset = state.offset - pool->start_offset,
+   };
+}
+
 void anv_state_stream_init(struct anv_state_stream *stream,
                            struct anv_state_pool *state_pool,
                            uint32_t block_size);
@@ -1009,7 +1019,9 @@ struct anv_physical_device {
       struct anv_memory_type                    types[VK_MAX_MEMORY_TYPES];
       uint32_t                                  heap_count;
       struct anv_memory_heap                    heaps[VK_MAX_MEMORY_HEAPS];
+#ifdef SUPPORT_INTEL_INTEGRATED_GPUS
       bool                                      need_clflush;
+#endif
     } memory;
 
     /* Either we have a single vram region and it's all mappable, or we have

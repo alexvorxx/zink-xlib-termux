@@ -1122,7 +1122,7 @@ fs_visitor::vgrf(const glsl_type *const type)
                  brw_type_for_base_type(type));
 }
 
-fs_reg::fs_reg(enum brw_reg_file file, int nr)
+fs_reg::fs_reg(enum brw_reg_file file, unsigned nr)
 {
    init();
    this->file = file;
@@ -1131,7 +1131,7 @@ fs_reg::fs_reg(enum brw_reg_file file, int nr)
    this->stride = (file == UNIFORM ? 0 : 1);
 }
 
-fs_reg::fs_reg(enum brw_reg_file file, int nr, enum brw_reg_type type)
+fs_reg::fs_reg(enum brw_reg_file file, unsigned nr, enum brw_reg_type type)
 {
    init();
    this->file = file;
@@ -2139,12 +2139,12 @@ fs_visitor::split_virtual_grfs()
     */
    compact_virtual_grfs();
 
-   int num_vars = this->alloc.count;
+   unsigned num_vars = this->alloc.count;
 
    /* Count the total number of registers */
-   int reg_count = 0;
-   int vgrf_to_reg[num_vars];
-   for (int i = 0; i < num_vars; i++) {
+   unsigned reg_count = 0;
+   unsigned vgrf_to_reg[num_vars];
+   for (unsigned i = 0; i < num_vars; i++) {
       vgrf_to_reg[i] = reg_count;
       reg_count += alloc.sizes[i];
    }
@@ -2161,14 +2161,14 @@ fs_visitor::split_virtual_grfs()
    /* Mark all used registers as fully splittable */
    foreach_block_and_inst(block, fs_inst, inst, cfg) {
       if (inst->dst.file == VGRF) {
-         int reg = vgrf_to_reg[inst->dst.nr];
+         unsigned reg = vgrf_to_reg[inst->dst.nr];
          for (unsigned j = 1; j < this->alloc.sizes[inst->dst.nr]; j++)
             split_points[reg + j] = true;
       }
 
-      for (int i = 0; i < inst->sources; i++) {
+      for (unsigned i = 0; i < inst->sources; i++) {
          if (inst->src[i].file == VGRF) {
-            int reg = vgrf_to_reg[inst->src[i].nr];
+            unsigned reg = vgrf_to_reg[inst->src[i].nr];
             for (unsigned j = 1; j < this->alloc.sizes[inst->src[i].nr]; j++)
                split_points[reg + j] = true;
          }
@@ -2183,13 +2183,13 @@ fs_visitor::split_virtual_grfs()
       }
 
       if (inst->dst.file == VGRF) {
-         int reg = vgrf_to_reg[inst->dst.nr] + inst->dst.offset / REG_SIZE;
+         unsigned reg = vgrf_to_reg[inst->dst.nr] + inst->dst.offset / REG_SIZE;
          for (unsigned j = 1; j < regs_written(inst); j++)
             split_points[reg + j] = false;
       }
-      for (int i = 0; i < inst->sources; i++) {
+      for (unsigned i = 0; i < inst->sources; i++) {
          if (inst->src[i].file == VGRF) {
-            int reg = vgrf_to_reg[inst->src[i].nr] + inst->src[i].offset / REG_SIZE;
+            unsigned reg = vgrf_to_reg[inst->src[i].nr] + inst->src[i].offset / REG_SIZE;
             for (unsigned j = 1; j < regs_read(inst, i); j++)
                split_points[reg + j] = false;
          }
@@ -2200,19 +2200,19 @@ fs_visitor::split_virtual_grfs()
    bool *vgrf_has_split = new bool[num_vars];
    memset(vgrf_has_split, 0, num_vars * sizeof(*vgrf_has_split));
 
-   int *new_virtual_grf = new int[reg_count];
-   int *new_reg_offset = new int[reg_count];
+   unsigned *new_virtual_grf = new unsigned[reg_count];
+   unsigned *new_reg_offset = new unsigned[reg_count];
 
-   int reg = 0;
+   unsigned reg = 0;
    bool has_splits = false;
-   for (int i = 0; i < num_vars; i++) {
+   for (unsigned i = 0; i < num_vars; i++) {
       /* The first one should always be 0 as a quick sanity check. */
       assert(split_points[reg] == false);
 
       /* j = 0 case */
       new_reg_offset[reg] = 0;
       reg++;
-      int offset = 1;
+      unsigned offset = 1;
 
       /* j > 0 case */
       for (unsigned j = 1; j < alloc.sizes[i]; j++) {
@@ -2223,8 +2223,8 @@ fs_visitor::split_virtual_grfs()
             has_splits = true;
             vgrf_has_split[i] = true;
             assert(offset <= MAX_VGRF_SIZE);
-            int grf = alloc.allocate(offset);
-            for (int k = reg - offset; k < reg; k++)
+            unsigned grf = alloc.allocate(offset);
+            for (unsigned k = reg - offset; k < reg; k++)
                new_virtual_grf[k] = grf;
             offset = 0;
          }
@@ -2236,7 +2236,7 @@ fs_visitor::split_virtual_grfs()
       /* The last one gets the original register number */
       assert(offset <= MAX_VGRF_SIZE);
       alloc.sizes[i] = offset;
-      for (int k = reg - offset; k < reg; k++)
+      for (unsigned k = reg - offset; k < reg; k++)
          new_virtual_grf[k] = i;
    }
    assert(reg == reg_count);
@@ -2270,7 +2270,7 @@ fs_visitor::split_virtual_grfs()
          } else {
             reg = vgrf_to_reg[inst->dst.nr];
             assert(new_reg_offset[reg] == 0);
-            assert(new_virtual_grf[reg] == (int)inst->dst.nr);
+            assert(new_virtual_grf[reg] == inst->dst.nr);
          }
          continue;
       }
@@ -2281,14 +2281,13 @@ fs_visitor::split_virtual_grfs()
             inst->dst.nr = new_virtual_grf[reg];
             inst->dst.offset = new_reg_offset[reg] * REG_SIZE +
                                inst->dst.offset % REG_SIZE;
-            assert((unsigned)new_reg_offset[reg] <
-                   alloc.sizes[new_virtual_grf[reg]]);
+            assert(new_reg_offset[reg] < alloc.sizes[new_virtual_grf[reg]]);
          } else {
             assert(new_reg_offset[reg] == inst->dst.offset / REG_SIZE);
-            assert(new_virtual_grf[reg] == (int)inst->dst.nr);
+            assert(new_virtual_grf[reg] == inst->dst.nr);
          }
       }
-      for (int i = 0; i < inst->sources; i++) {
+      for (unsigned i = 0; i < inst->sources; i++) {
 	 if (inst->src[i].file != VGRF)
             continue;
 
@@ -2297,11 +2296,10 @@ fs_visitor::split_virtual_grfs()
             inst->src[i].nr = new_virtual_grf[reg];
             inst->src[i].offset = new_reg_offset[reg] * REG_SIZE +
                                   inst->src[i].offset % REG_SIZE;
-            assert((unsigned)new_reg_offset[reg] <
-                   alloc.sizes[new_virtual_grf[reg]]);
+            assert(new_reg_offset[reg] < alloc.sizes[new_virtual_grf[reg]]);
          } else {
             assert(new_reg_offset[reg] == inst->src[i].offset / REG_SIZE);
-            assert(new_virtual_grf[reg] == (int)inst->src[i].nr);
+            assert(new_virtual_grf[reg] == inst->src[i].nr);
          }
       }
    }
@@ -6332,18 +6330,34 @@ needs_dummy_fence(const intel_device_info *devinfo, fs_inst *inst)
 {
    /* This workaround is about making sure that any instruction writing
     * through UGM has completed before we hit EOT.
-    *
-    * The workaround talks about UGM writes or atomic message but what is
-    * important is anything that hasn't completed. Usually any SEND
-    * instruction that has a destination register will be read by something
-    * else so we don't need to care about those as they will be synchronized
-    * by other parts of the shader or optimized away. What is left are
-    * instructions that don't have a destination register.
     */
    if (inst->sfid != GFX12_SFID_UGM)
       return false;
 
-   return inst->dst.file == BAD_FILE;
+   /* Any UGM, non-Scratch-surface Stores (not including Atomic) messages,
+    * where the L1-cache override is NOT among {WB, WS, WT}
+    */
+   enum lsc_opcode opcode = lsc_msg_desc_opcode(devinfo, inst->desc);
+   if (lsc_opcode_is_store(opcode)) {
+      switch (lsc_msg_desc_cache_ctrl(devinfo, inst->desc)) {
+      case LSC_CACHE_STORE_L1STATE_L3MOCS:
+      case LSC_CACHE_STORE_L1WB_L3WB:
+      case LSC_CACHE_STORE_L1S_L3UC:
+      case LSC_CACHE_STORE_L1S_L3WB:
+      case LSC_CACHE_STORE_L1WT_L3UC:
+      case LSC_CACHE_STORE_L1WT_L3WB:
+         return false;
+
+      default:
+         return true;
+      }
+   }
+
+   /* Any UGM Atomic message WITHOUT return value */
+   if (lsc_opcode_is_atomic(opcode) && inst->dst.file == BAD_FILE)
+      return true;
+
+   return false;
 }
 
 /* Wa_22013689345

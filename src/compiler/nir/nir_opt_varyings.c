@@ -991,8 +991,9 @@ can_optimize_varying(struct linkage_info *linkage, gl_varying_slot location)
           location == VARYING_SLOT_FOGC)
          return options_var;
 
-      /* The primitive ID can always be optimized in GS -> FS. */
-      if (linkage->producer_stage == MESA_SHADER_GEOMETRY &&
+      /* The primitive ID can always be optimized in GS -> FS and MS -> FS. */
+      if ((linkage->producer_stage == MESA_SHADER_GEOMETRY ||
+           linkage->producer_stage == MESA_SHADER_MESH) &&
           location == VARYING_SLOT_PRIMITIVE_ID)
          return options_var;
 

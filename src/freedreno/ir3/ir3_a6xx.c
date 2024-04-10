@@ -37,6 +37,20 @@
  * encoding compared to a4xx/a5xx.
  */
 
+static void
+lower_ssbo_offset(struct ir3_context *ctx, nir_intrinsic_instr *intr,
+                  nir_src *offset_src,
+                  struct ir3_instruction **offset, unsigned *imm_offset)
+{
+   if (ctx->compiler->has_ssbo_imm_offsets) {
+      ir3_lower_imm_offset(ctx, intr, offset_src, 7, offset, imm_offset);
+   } else {
+      assert(nir_intrinsic_base(intr) == 0);
+      *offset = ir3_get_src(ctx, offset_src)[0];
+      *imm_offset = 0;
+   }
+}
+
 /* src[] = { buffer_index, offset }. No const_index */
 static void
 emit_intrinsic_load_ssbo(struct ir3_context *ctx, nir_intrinsic_instr *intr,
@@ -45,9 +59,9 @@ emit_intrinsic_load_ssbo(struct ir3_context *ctx, nir_intrinsic_instr *intr,
    struct ir3_block *b = ctx->block;
    struct ir3_instruction *offset;
    struct ir3_instruction *ldib;
-   unsigned imm_offset_val = 0;
+   unsigned imm_offset_val;
 
-   offset = ir3_get_src(ctx, &intr->src[2])[0];
+   lower_ssbo_offset(ctx, intr, &intr->src[2], &offset, &imm_offset_val);
    struct ir3_instruction *imm_offset = create_immed(b, imm_offset_val);
 
    ldib = ir3_LDIB(b, ir3_ssbo_to_ibo(ctx, intr->src[0]), 0, offset, 0,
@@ -78,15 +92,15 @@ emit_intrinsic_store_ssbo(struct ir3_context *ctx, nir_intrinsic_instr *intr)
    struct ir3_instruction *stib, *val, *offset;
    unsigned wrmask = nir_intrinsic_write_mask(intr);
    unsigned ncomp = ffs(~wrmask) - 1;
-   unsigned imm_offset_val = 0;
+   unsigned imm_offset_val;
 
    assert(wrmask == BITFIELD_MASK(intr->num_components));
 
    /* src0 is offset, src1 is immediate offset, src2 is value:
     */
    val = ir3_create_collect(b, ir3_get_src(ctx, &intr->src[0]), ncomp);
-   offset = ir3_get_src(ctx, &intr->src[3])[0];
 
+   lower_ssbo_offset(ctx, intr, &intr->src[3], &offset, &imm_offset_val);
    struct ir3_instruction *imm_offset = create_immed(b, imm_offset_val);
 
    stib = ir3_STIB(b, ir3_ssbo_to_ibo(ctx, intr->src[1]), 0, offset, 0,

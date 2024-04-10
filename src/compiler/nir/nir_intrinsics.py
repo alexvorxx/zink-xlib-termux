@@ -1286,9 +1286,9 @@ intrinsic("cmat_copy", src_comp=[-1, -1])
 # The float versions are not handled because those are not supported
 # by the backend.
 store("ssbo_ir3", [1, 1, 1],
-      indices=[WRITE_MASK, ACCESS, ALIGN_MUL, ALIGN_OFFSET])
+      indices=[BASE, WRITE_MASK, ACCESS, ALIGN_MUL, ALIGN_OFFSET])
 load("ssbo_ir3",  [1, 1, 1],
-     indices=[ACCESS, ALIGN_MUL, ALIGN_OFFSET], flags=[CAN_ELIMINATE])
+     indices=[BASE, ACCESS, ALIGN_MUL, ALIGN_OFFSET], flags=[CAN_ELIMINATE])
 intrinsic("ssbo_atomic_ir3",       src_comp=[1, 1, 1, 1],    dest_comp=1,
           indices=[ACCESS, ATOMIC_OP])
 intrinsic("ssbo_atomic_swap_ir3",  src_comp=[1, 1, 1, 1, 1], dest_comp=1,

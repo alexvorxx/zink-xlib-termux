@@ -1129,23 +1129,19 @@ cat5_tex:          T_TEX          { instr->cat5.tex = $1; }
 cat5_type:         '(' type ')'   { instr->cat5.type = $2; }
 cat5_a1:           src_reg        { instr->flags |= IR3_INSTR_A1EN; }
 
+cat5_samp_tex:     src_reg
+|                  cat5_samp ',' cat5_tex
+|                  cat5_samp
+|                  cat5_tex
+
+cat5_samp_tex_all: cat5_samp_tex
+|                  cat5_samp ',' cat5_a1
+|                  cat5_tex ',' cat5_a1
+
 cat5_instr:        cat5_opc_dsxypp cat5_flags dst_reg ',' src_reg
-|                  cat5_opc cat5_flags cat5_type dst_reg ',' src_reg ',' src_reg ',' src_reg
-|                  cat5_opc cat5_flags cat5_type dst_reg ',' src_reg ',' src_reg ',' cat5_samp ',' cat5_tex
-|                  cat5_opc cat5_flags cat5_type dst_reg ',' src_reg ',' src_reg ',' cat5_samp ',' cat5_a1
-|                  cat5_opc cat5_flags cat5_type dst_reg ',' src_reg ',' src_reg ',' cat5_tex ',' cat5_a1
-|                  cat5_opc cat5_flags cat5_type dst_reg ',' src_reg ',' src_reg ',' cat5_samp
-|                  cat5_opc cat5_flags cat5_type dst_reg ',' src_reg ',' src_reg ',' cat5_tex
-|                  cat5_opc cat5_flags cat5_type dst_reg ',' src_reg ',' src_reg
-|                  cat5_opc cat5_flags cat5_type dst_reg ',' src_reg ',' cat5_samp ',' cat5_tex
-|                  cat5_opc cat5_flags cat5_type dst_reg ',' src_reg ',' cat5_samp ',' cat5_a1
-|                  cat5_opc cat5_flags cat5_type dst_reg ',' src_reg ',' cat5_tex ',' cat5_a1
-|                  cat5_opc cat5_flags cat5_type dst_reg ',' src_reg ',' cat5_samp
-|                  cat5_opc cat5_flags cat5_type dst_reg ',' src_reg ',' cat5_tex
-|                  cat5_opc cat5_flags cat5_type dst_reg ',' src_reg
-|                  cat5_opc cat5_flags cat5_type dst_reg ',' cat5_samp ',' cat5_tex
-|                  cat5_opc cat5_flags cat5_type dst_reg ',' cat5_samp
-|                  cat5_opc cat5_flags cat5_type dst_reg ',' cat5_tex
+|                  cat5_opc cat5_flags cat5_type dst_reg ',' src_reg ',' src_reg ',' cat5_samp_tex_all
+|                  cat5_opc cat5_flags cat5_type dst_reg ',' src_reg ',' cat5_samp_tex_all
+|                  cat5_opc cat5_flags cat5_type dst_reg ',' cat5_samp_tex
 |                  cat5_opc cat5_flags cat5_type dst_reg
 |                  T_OP_TCINV { new_instr(OPC_TCINV); }
 

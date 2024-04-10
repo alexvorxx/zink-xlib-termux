@@ -813,20 +813,28 @@ has_dst_aligned_region_restriction(const intel_device_info *devinfo,
  */
 static inline bool
 has_subdword_integer_region_restriction(const intel_device_info *devinfo,
-                                        const fs_inst *inst)
+                                        const fs_inst *inst,
+                                        const fs_reg *srcs, unsigned num_srcs)
 {
    if (devinfo->ver >= 20 &&
        brw_reg_type_is_integer(inst->dst.type) &&
        MAX2(byte_stride(inst->dst), type_sz(inst->dst.type)) < 4) {
-      for (unsigned i = 0; i < inst->sources; i++) {
-         if (brw_reg_type_is_integer(inst->src[i].type) &&
-             type_sz(inst->src[i].type) < 4 &&
-             byte_stride(inst->src[i]) >= 4)
+      for (unsigned i = 0; i < num_srcs; i++) {
+         if (brw_reg_type_is_integer(srcs[i].type) &&
+             type_sz(srcs[i].type) < 4 && byte_stride(srcs[i]) >= 4)
             return true;
       }
    }
 
    return false;
+}
+
+static inline bool
+has_subdword_integer_region_restriction(const intel_device_info *devinfo,
+                                        const fs_inst *inst)
+{
+   return has_subdword_integer_region_restriction(devinfo, inst,
+                                                  inst->src, inst->sources);
 }
 
 /**

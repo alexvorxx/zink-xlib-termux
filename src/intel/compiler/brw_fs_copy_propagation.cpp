@@ -788,6 +788,15 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
        (reg_offset(inst->dst) % (REG_SIZE * reg_unit(devinfo))) != (reg_offset(entry->src) % (REG_SIZE * reg_unit(devinfo))))
       return false;
 
+   /*
+    * Bail if the composition of both regions would be affected by the Xe2+
+    * regioning restrictions that apply to integer types smaller than a dword.
+    * See BSpec #56640 for details.
+    */
+   const fs_reg tmp = horiz_stride(entry->src, inst->src[arg].stride);
+   if (has_subdword_integer_region_restriction(devinfo, inst, &tmp, 1))
+      return false;
+
    /* The <8;8,0> regions used for FS attributes in multipolygon
     * dispatch mode could violate regioning restrictions, don't copy
     * propagate them in such cases.

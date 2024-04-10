@@ -1681,6 +1681,8 @@ radv_BindImageMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindImag
 
          image->bindings[0].bo = swapchain_img->bindings[0].bo;
          image->bindings[0].offset = swapchain_img->bindings[0].offset;
+
+         radv_rmv_log_image_bind(device, pBindInfos[i].image);
          continue;
       }
 #endif

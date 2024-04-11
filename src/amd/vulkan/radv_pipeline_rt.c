@@ -702,26 +702,16 @@ radv_rt_compile_shaders(struct radv_device *device, struct vk_pipeline_cache *ca
    }
 
    /* create traversal shader */
-   struct vk_shader_module traversal_module = {
-      .base.type = VK_OBJECT_TYPE_SHADER_MODULE,
-      .nir = radv_build_traversal_shader(device, pipeline, pCreateInfo, &traversal_info),
-   };
-   const VkPipelineShaderStageCreateInfo pStage = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-      .stage = VK_SHADER_STAGE_INTERSECTION_BIT_KHR,
-      .module = vk_shader_module_to_handle(&traversal_module),
-      .pName = "main",
-   };
+   nir_shader *traversal_nir = radv_build_traversal_shader(device, pipeline, pCreateInfo, &traversal_info);
    struct radv_shader_stage traversal_stage = {
       .stage = MESA_SHADER_INTERSECTION,
-      .nir = traversal_module.nir,
+      .nir = traversal_nir,
       .key = stage_keys[MESA_SHADER_INTERSECTION],
    };
-   vk_pipeline_hash_shader_stage(&pStage, NULL, traversal_stage.shader_sha1);
    radv_shader_layout_init(pipeline_layout, MESA_SHADER_INTERSECTION, &traversal_stage.layout);
    result = radv_rt_nir_to_asm(device, cache, pCreateInfo, pipeline, false, &traversal_stage, NULL, NULL,
                                &traversal_info, NULL, &pipeline->base.base.shaders[MESA_SHADER_INTERSECTION]);
-   ralloc_free(traversal_module.nir);
+   ralloc_free(traversal_nir);
 
 cleanup:
    for (uint32_t i = 0; i < pCreateInfo->stageCount; i++)

@@ -757,6 +757,8 @@ static void
 radv_cmd_buffer_after_draw(struct radv_cmd_buffer *cmd_buffer, enum radv_cmd_flush_bits flags)
 {
    if (unlikely(cmd_buffer->device->thread_trace.bo)) {
+      radeon_check_space(cmd_buffer->device->ws, cmd_buffer->cs, 2);
+
       radeon_emit(cmd_buffer->cs, PKT3(PKT3_EVENT_WRITE, 0, 0));
       radeon_emit(cmd_buffer->cs, EVENT_TYPE(V_028A90_THREAD_TRACE_MARKER) | EVENT_INDEX(0));
    }
@@ -765,7 +767,8 @@ radv_cmd_buffer_after_draw(struct radv_cmd_buffer *cmd_buffer, enum radv_cmd_flu
       enum rgp_flush_bits sqtt_flush_bits = 0;
       assert(flags & (RADV_CMD_FLAG_PS_PARTIAL_FLUSH | RADV_CMD_FLAG_CS_PARTIAL_FLUSH));
 
-      radeon_check_space(cmd_buffer->device->ws, cmd_buffer->cs, 4);
+      ASSERTED const unsigned cdw_max =
+         radeon_check_space(cmd_buffer->device->ws, cmd_buffer->cs, 4);
 
       /* Force wait for graphics or compute engines to be idle. */
       si_cs_emit_cache_flush(cmd_buffer->cs,
@@ -773,6 +776,8 @@ radv_cmd_buffer_after_draw(struct radv_cmd_buffer *cmd_buffer, enum radv_cmd_flu
                              &cmd_buffer->gfx9_fence_idx, cmd_buffer->gfx9_fence_va,
                              radv_cmd_buffer_uses_mec(cmd_buffer), flags, &sqtt_flush_bits,
                              cmd_buffer->gfx9_eop_bug_va);
+
+      assert(cmd_buffer->cs->cdw <= cdw_max);
 
       if (cmd_buffer->state.graphics_pipeline && (flags & RADV_CMD_FLAG_PS_PARTIAL_FLUSH) &&
           radv_pipeline_has_stage(cmd_buffer->state.graphics_pipeline, MESA_SHADER_TASK)) {
@@ -3277,8 +3282,8 @@ radv_emit_framebuffer_state(struct radv_cmd_buffer *cmd_buffer)
    int i;
    bool disable_constant_encode_ac01 = false;
    unsigned color_invalid = cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX11
-                            ? G_028C70_FORMAT_GFX11(V_028C70_COLOR_INVALID)
-                            : G_028C70_FORMAT_GFX6(V_028C70_COLOR_INVALID);
+                            ? S_028C70_FORMAT_GFX11(V_028C70_COLOR_INVALID)
+                            : S_028C70_FORMAT_GFX6(V_028C70_COLOR_INVALID);
 
    for (i = 0; i < render->color_att_count; ++i) {
       struct radv_image_view *iview = render->color_att[i].iview;
@@ -3487,7 +3492,8 @@ radv_set_db_count_control(struct radv_cmd_buffer *cmd_buffer, bool enable_occlus
             radeon_set_context_reg(cmd_buffer->cs, R_028A4C_PA_SC_MODE_CNTL_1, pa_sc_mode_cntl_1);
          }
       }
-      db_count_control = S_028004_ZPASS_INCREMENT_DISABLE(1);
+      db_count_control =
+         S_028004_ZPASS_INCREMENT_DISABLE(cmd_buffer->device->physical_device->rad_info.gfx_level < GFX11);
    } else {
       uint32_t sample_rate = util_logbase2(cmd_buffer->state.render.max_samples);
       bool gfx10_perfect =

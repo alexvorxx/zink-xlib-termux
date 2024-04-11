@@ -1472,19 +1472,8 @@ VkResult pvr_cmd_buffer_end_sub_cmd(struct pvr_cmd_buffer *cmd_buffer)
          assert(gfx_sub_cmd->query_pool);
 
          if (secondary_cont) {
-            void *buff;
-
-            buff =
-               util_dynarray_grow_bytes(&state->query_indices,
-                                        1,
-                                        gfx_sub_cmd->sec_query_indices.size);
-            if (!buff) {
-               state->status =
-                  vk_error(cmd_buffer, VK_ERROR_OUT_OF_HOST_MEMORY);
-               return state->status;
-            }
-
-            memcpy(buff, state->query_indices.data, state->query_indices.size);
+            util_dynarray_append_dynarray(&state->query_indices,
+                                          &gfx_sub_cmd->sec_query_indices);
          } else {
             const void *data = util_dynarray_begin(&state->query_indices);
 
@@ -1500,7 +1489,7 @@ VkResult pvr_cmd_buffer_end_sub_cmd(struct pvr_cmd_buffer *cmd_buffer)
             query_pool = gfx_sub_cmd->query_pool;
          }
 
-         sub_cmd->flags |= PVR_SUB_COMMAND_FLAG_OCCLUSION_QUERY;
+         gfx_sub_cmd->has_occlusion_query = true;
 
          util_dynarray_clear(&state->query_indices);
       }
@@ -2965,7 +2954,8 @@ static VkResult pvr_setup_descriptor_mappings(
 static void pvr_compute_update_shared(struct pvr_cmd_buffer *cmd_buffer,
                                       struct pvr_sub_cmd_compute *const sub_cmd)
 {
-   const struct pvr_physical_device *pdevice = cmd_buffer->device->pdevice;
+   const struct pvr_device *device = cmd_buffer->device;
+   const struct pvr_physical_device *pdevice = device->pdevice;
    struct pvr_cmd_buffer_state *state = &cmd_buffer->state;
    struct pvr_csb *csb = &sub_cmd->control_stream;
    const struct pvr_compute_pipeline *pipeline = state->compute_pipeline;
@@ -2993,8 +2983,8 @@ static void pvr_compute_update_shared(struct pvr_cmd_buffer *cmd_buffer,
 
    /* Sometimes we don't have a secondary program if there were no constants to
     * write, but we still need to run a PDS program to accomplish the
-    * allocation of the local/common store shared registers so we repurpose the
-    * deallocation PDS program.
+    * allocation of the local/common store shared registers. Use the
+    * pre-uploaded empty PDS program in this instance.
     */
    if (pipeline->state.descriptor.pds_info.code_size_in_dwords) {
       uint32_t pds_data_size_in_dwords =
@@ -3009,10 +2999,13 @@ static void pvr_compute_update_shared(struct pvr_cmd_buffer *cmd_buffer,
       assert(pipeline->state.descriptor.pds_code.code_size);
       info.pds_code_offset = pipeline->state.descriptor.pds_code.code_offset;
    } else {
-      /* FIXME: There should be a deallocation pds program already uploaded
-       * that we use at this point.
-       */
-      assert(!"Unimplemented");
+      const struct pvr_pds_upload *program = &device->pds_compute_empty_program;
+
+      info.pds_data_offset = program->data_offset;
+      info.pds_data_size =
+         DIV_ROUND_UP(program->data_size << 2U,
+                      PVRX(CDMCTRL_KERNEL0_PDS_DATA_SIZE_UNIT_SIZE));
+      info.pds_code_offset = program->code_offset;
    }
 
    /* We don't need to pad the workgroup size. */
@@ -5603,8 +5596,7 @@ pvr_resolve_unemitted_resolve_attachments(struct pvr_cmd_buffer *cmd_buffer,
       src_view->vk.image->format = src_format;
       dst_view->vk.image->format = dst_format;
 
-      state->current_sub_cmd->flags |=
-         PVR_SUB_COMMAND_FLAG_WAIT_ON_PREVIOUS_FRAG;
+      state->current_sub_cmd->transfer.serialize_with_frag = true;
 
       if (result != VK_SUCCESS)
          return result;
@@ -5627,10 +5619,6 @@ void pvr_CmdEndRenderPass2(VkCommandBuffer commandBuffer,
    assert(state->render_pass_info.pass);
    assert(state->render_pass_info.framebuffer);
 
-   /* TODO: Investigate why pvr_cmd_buffer_end_sub_cmd/EndSubCommand is called
-    * twice in this path, one here and one from
-    * pvr_resolve_unemitted_resolve_attachments.
-    */
    result = pvr_cmd_buffer_end_sub_cmd(cmd_buffer);
    if (result != VK_SUCCESS)
       return;
@@ -5662,11 +5650,6 @@ pvr_execute_deferred_cmd_buffer(struct pvr_cmd_buffer *cmd_buffer,
    const uint32_t prim_scissor_elems =
       util_dynarray_num_elements(&cmd_buffer->scissor_array,
                                  struct pvr_scissor_words);
-   const uint32_t sec_db_size =
-      util_dynarray_num_elements(&sec_cmd_buffer->depth_bias_array, char);
-   const uint32_t sec_scissor_size =
-      util_dynarray_num_elements(&sec_cmd_buffer->scissor_array, char);
-   uint32_t *addr;
 
    util_dynarray_foreach (&sec_cmd_buffer->deferred_csb_commands,
                           struct pvr_deferred_cs_command,
@@ -5717,9 +5700,10 @@ pvr_execute_deferred_cmd_buffer(struct pvr_cmd_buffer *cmd_buffer,
          const uint32_t db_idx =
             prim_db_elems + cmd->dbsc2.state.depthbias_index;
 
-         assert(cmd->dbsc2.ppp_cs_bo->bo->map);
+         uint32_t *const addr =
+            cmd->dbsc2.ppp_cs_bo->bo->map + cmd->dbsc2.patch_offset;
 
-         addr = cmd->dbsc2.ppp_cs_bo->bo->map + cmd->dbsc2.patch_offset;
+         assert(cmd->dbsc2.ppp_cs_bo->bo->map);
 
          pvr_csb_pack (addr, TA_STATE_ISPDBSC, ispdbsc) {
             ispdbsc.dbindex = db_idx;
@@ -5735,17 +5719,11 @@ pvr_execute_deferred_cmd_buffer(struct pvr_cmd_buffer *cmd_buffer,
       }
    }
 
-   addr =
-      util_dynarray_grow_bytes(&cmd_buffer->depth_bias_array, 1, sec_db_size);
-   memcpy(addr,
-          util_dynarray_begin(&sec_cmd_buffer->depth_bias_array),
-          sec_db_size);
+   util_dynarray_append_dynarray(&cmd_buffer->depth_bias_array,
+                                 &sec_cmd_buffer->depth_bias_array);
 
-   addr =
-      util_dynarray_grow_bytes(&cmd_buffer->scissor_array, 1, sec_scissor_size);
-   memcpy(addr,
-          util_dynarray_begin(&sec_cmd_buffer->scissor_array),
-          sec_scissor_size);
+   util_dynarray_append_dynarray(&cmd_buffer->scissor_array,
+                                 &sec_cmd_buffer->scissor_array);
 
    BITSET_SET(dynamic_state->dirty, MESA_VK_DYNAMIC_RS_DEPTH_BIAS_FACTORS);
    cmd_buffer->scissor_words = (struct pvr_scissor_words){ 0 };
@@ -5773,7 +5751,6 @@ static VkResult pvr_execute_sub_cmd(struct pvr_cmd_buffer *cmd_buffer,
 
    primary_sub_cmd->type = sec_sub_cmd->type;
    primary_sub_cmd->owned = false;
-   primary_sub_cmd->flags = sec_sub_cmd->flags;
 
    list_addtail(&primary_sub_cmd->link, &cmd_buffer->sub_cmds);
 
@@ -5856,22 +5833,10 @@ pvr_execute_graphics_cmd_buffer(struct pvr_cmd_buffer *cmd_buffer,
          primary_sub_cmd->gfx.empty_cmd = false;
 
       if (sec_sub_cmd->gfx.query_pool) {
-         void *buff;
-
          primary_sub_cmd->gfx.query_pool = sec_sub_cmd->gfx.query_pool;
 
-         buff =
-            util_dynarray_grow_bytes(&state->query_indices,
-                                     1,
-                                     sec_sub_cmd->gfx.sec_query_indices.size);
-         if (!buff) {
-            state->status = vk_error(cmd_buffer, VK_ERROR_OUT_OF_HOST_MEMORY);
-            return state->status;
-         }
-
-         memcpy(buff,
-                sec_sub_cmd->gfx.sec_query_indices.data,
-                sec_sub_cmd->gfx.sec_query_indices.size);
+         util_dynarray_append_dynarray(&state->query_indices,
+                                       &sec_sub_cmd->gfx.sec_query_indices);
       }
 
       if (pvr_cmd_uses_deferred_cs_cmds(sec_cmd_buffer)) {

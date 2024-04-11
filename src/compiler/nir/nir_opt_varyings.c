@@ -3645,6 +3645,26 @@ relocate_slot(struct linkage_info *linkage, struct scalar_slot *slot,
                            (new_semantic - VARYING_SLOT_COL0);
          }
 
+#if PRINT_RELOCATE_SLOT
+         unsigned bit_size =
+            (intr->intrinsic == nir_intrinsic_load_input ||
+             intr->intrinsic == nir_intrinsic_load_input_vertex ||
+             intr->intrinsic == nir_intrinsic_load_interpolated_input)
+            ? intr->def.bit_size : intr->src[0].ssa->bit_size;
+
+         assert(bit_size == 16 || bit_size == 32);
+
+         fprintf(stderr, "--- relocating: %s.%c%s%s -> %s.%c%s%s\n",
+                 gl_varying_slot_name_for_stage(sem.location, linkage->producer_stage) + 13,
+                 "xyzw"[nir_intrinsic_component(intr) % 4],
+                 (bit_size == 16 && !sem.high_16bits) ? ".lo" : "",
+                 (bit_size == 16 && sem.high_16bits) ? ".hi" : "",
+                 gl_varying_slot_name_for_stage(new_semantic, linkage->producer_stage) + 13,
+                 "xyzw"[new_component % 4],
+                 (bit_size == 16 && !new_high_16bits) ? ".lo" : "",
+                 (bit_size == 16 && new_high_16bits) ? ".hi" : "");
+#endif /* PRINT_RELOCATE_SLOT */
+
          sem.location = new_semantic;
          sem.high_16bits = new_high_16bits;
 

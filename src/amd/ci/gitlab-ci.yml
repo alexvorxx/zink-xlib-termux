@@ -78,6 +78,20 @@ radv-raven-traces:x86_64:
     PIGLIT_REPLAY_DEVICE_NAME: "vk-${GPU_VERSION}"
     PIGLIT_TRACES_FILE: traces-amd.yml
 
+radv-raven-traces-restricted:x86_64:
+  extends:
+    - .lava-piglit-traces:x86_64
+    - .radv-raven-test:x86_64
+    - .lava-lenovo-TPad-C13-Yoga-zork:x86_64
+    - .radv-collabora-rules-restricted
+  variables:
+    HWCI_START_WESTON: 1
+    PIGLIT_REPLAY_ANGLE_TAG: "2023-02-10-1"
+    PIGLIT_TRACES_FILE: restricted-traces-amd.yml
+    PIGLIT_REPLAY_DEVICE_NAME: "vk-${GPU_VERSION}"
+    PIGLIT_REPLAY_EXTRA_ARGS: --keep-image --minio_bucket=mesa-tracie-private --jwt-file=${CI_JOB_JWT_FILE}
+    FDO_CI_CONCURRENT: 10
+
 radeonsi-raven-piglit-quick_gl:x86_64:
   extends:
     - .lava-piglit:x86_64

@@ -46,6 +46,13 @@
     - !reference [.collabora-farm-rules, rules]
     - !reference [.radv-rules, rules]
 
+.radv-collabora-rules-restricted:
+  stage: amd
+  rules:
+    - !reference [.test, rules]
+    - !reference [.restricted-rules, rules]
+    - !reference [.radv-collabora-rules, rules]
+
 .radv-valve-rules:
   stage: amd
   rules:

@@ -189,6 +189,15 @@ RUN_CMD="export LD_LIBRARY_PATH=$__LD_LIBRARY_PATH; $SANITY_MESA_VERSION_CMD && 
 # run.
 rm -rf replayer-db
 
+# ANGLE: download compiled ANGLE runtime and the compiled restricted traces (all-in-one package)
+if [ -n "$PIGLIT_REPLAY_ANGLE_TAG" ]; then
+  ARCH="amd64"
+  FILE="angle-bin-${ARCH}-${PIGLIT_REPLAY_ANGLE_TAG}.tar.zst"
+  ci-fairy s3cp $S3_ARGS "https://s3.freedesktop.org/mesa-tracie-private/${FILE}" "${FILE}"
+  mkdir -p replayer-db/angle
+  tar --zstd -xf ${FILE} -C replayer-db/angle/
+fi
+
 if ! eval $RUN_CMD;
 then
     printf "%s\n" "Found $(cat /tmp/version.txt), expected $MESA_VERSION"

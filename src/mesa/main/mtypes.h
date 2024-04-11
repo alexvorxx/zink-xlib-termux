@@ -1759,8 +1759,8 @@ struct gl_array_attrib
     * The VERT_BIT_* bits effectively enabled from the current _DrawVAO.
     * This is always a subset of _mesa_get_vao_vp_inputs(_DrawVAO)
     * but may omit those arrays that shall not be referenced by the current
-    * gl_vertex_program_state::_VPMode. For example the generic attributes are
-    * maked out form the _DrawVAO's enabled arrays when a fixed function
+    * gl_vertex_program_state::_VPMode. For example, the generic attributes are
+    * masked out from the _DrawVAO's enabled arrays when a fixed function
     * array draw is executed.
     */
    GLbitfield _DrawVAOEnabledAttribs;
@@ -2852,37 +2852,6 @@ struct gl_matrix_stack
 /*@}*/
 
 
-/**
- * Composite state flags, deprecated and inefficient, do not use.
- */
-/*@{*/
-#define _NEW_LIGHT     (_NEW_LIGHT_CONSTANTS |  /* state parameters */ \
-                        _NEW_LIGHT_STATE |      /* rasterizer state */ \
-                        _NEW_MATERIAL |         /* light materials */ \
-                        _NEW_FF_VERT_PROGRAM | \
-                        _NEW_FF_FRAG_PROGRAM)
-
-#define _NEW_TEXTURE   (_NEW_TEXTURE_OBJECT | _NEW_TEXTURE_STATE | \
-                        _NEW_FF_VERT_PROGRAM | _NEW_FF_FRAG_PROGRAM)
-
-#define _MESA_NEW_NEED_EYE_COORDS         (_NEW_FF_VERT_PROGRAM | \
-                                           _NEW_FF_FRAG_PROGRAM | \
-                                           _NEW_LIGHT_CONSTANTS | \
-                                           _NEW_TEXTURE_STATE |	\
-                                           _NEW_POINT |		\
-                                           _NEW_PROGRAM |	\
-                                           _NEW_MODELVIEW)
-
-#define _MESA_NEW_SEPARATE_SPECULAR        (_NEW_LIGHT | \
-                                            _NEW_FOG | \
-                                            _NEW_PROGRAM)
-
-
-/*@}*/
-
-
-
-
 /* This has to be included here. */
 #include "dd.h"
 
@@ -3581,7 +3550,6 @@ struct gl_context
 
    GLuint TextureStateTimestamp; /**< detect changes to shared state */
 
-   GLboolean LastVertexStageDirty; /**< the last vertex stage has changed */
    GLboolean PointSizeIsSet; /**< the glPointSize value in the shader is set */
 
    /** \name For debugging/development only */

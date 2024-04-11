@@ -62,6 +62,10 @@ struct st_bitmap_cache
    /** Bounds of region used in window coords */
    GLint xmin, ymin, xmax, ymax;
 
+   /** GL states */
+   struct gl_program *fp;
+   bool scissor_enabled;
+   bool clamp_frag_color;
    GLfloat color[4];
 
    /** Bitmap's Z position */
@@ -248,12 +252,6 @@ struct st_context
 
    /** This masks out unused shader resources. Only valid in draw calls. */
    uint64_t active_states;
-
-   /* If true, further analysis of states is required to know if something
-    * has changed. Used mainly for shaders.
-    */
-   bool gfx_shaders_may_be_dirty;
-   bool compute_shader_may_be_dirty;
 
    GLboolean vertdata_edgeflags;
    GLboolean edgeflag_culls_prims;

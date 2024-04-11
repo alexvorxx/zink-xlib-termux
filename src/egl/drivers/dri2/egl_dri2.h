@@ -236,12 +236,10 @@ struct dri2_egl_display
    const __DRI2flushControlExtension *flush_control;
    const __DRItexBufferExtension *tex_buffer;
    const __DRIimageExtension *image;
-   const __DRIrobustnessExtension *robustness;
    const __DRI2configQueryExtension *config;
    const __DRI2fenceExtension *fence;
    const __DRI2bufferDamageExtension *buffer_damage;
    const __DRI2blobExtension *blob;
-   const __DRI2rendererQueryExtension *rendererQuery;
    const __DRI2interopExtension *interop;
    const __DRIconfigOptionsExtension *configOptions;
    const __DRImutableRenderBufferDriverExtension *mutable_render_buffer;

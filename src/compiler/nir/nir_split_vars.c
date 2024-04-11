@@ -308,7 +308,8 @@ nir_split_struct_vars(nir_shader *shader, nir_variable_mode modes)
     if (modes & nir_var_shader_temp) {
       has_global_splits = split_var_list_structs(shader, NULL,
                                                  &shader->variables,
-                                                 global_modes,
+                                                 //global_modes,
+                                                 nir_var_shader_temp,
                                                  var_field_map,
                                                  &complex_vars,
                                                  mem_ctx);
@@ -875,7 +876,8 @@ nir_split_array_vars(nir_shader *shader, nir_variable_mode modes)
    if (modes & nir_var_shader_temp) {
       has_global_array = init_var_list_array_infos(shader,
                                                    &shader->variables,
-                                                   modes,
+                                                   //modes,
+                                                   nir_var_shader_temp,
                                                    var_info_map,
                                                    &complex_vars,
                                                    mem_ctx);

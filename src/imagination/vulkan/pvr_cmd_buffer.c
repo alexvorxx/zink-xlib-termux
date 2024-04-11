@@ -906,10 +906,55 @@ pvr_pass_get_pixel_output_width(const struct pvr_render_pass *pass,
    return util_next_power_of_two(width);
 }
 
+/**
+ * \brief If depth and/or stencil attachment dimensions are not tile-aligned,
+ * then we may need to insert some additional transfer subcommands.
+ *
+ * It's worth noting that we check whether the dimensions are smaller than a
+ * tile here, rather than checking whether they're tile-aligned - this relies
+ * on the assumption that we can safely use any attachment with dimensions
+ * larger than a tile. If the attachment is twiddled, it will be over-allocated
+ * to the nearest power-of-two (which will be tile-aligned). If the attachment
+ * is not twiddled, we don't need to worry about tile-alignment at all.
+ */
+static void
+pvr_sub_cmd_gfx_align_zls_subtiles(const struct pvr_device_info *dev_info,
+                                   const struct pvr_render_job *job,
+                                   const struct pvr_image *image)
+{
+   uint32_t zls_tile_size_x;
+   uint32_t zls_tile_size_y;
+
+   rogue_get_zls_tile_size_xy(dev_info, &zls_tile_size_x, &zls_tile_size_y);
+
+   if (image->physical_extent.width >= zls_tile_size_x &&
+       image->physical_extent.height >= zls_tile_size_y) {
+      return;
+   }
+
+   if (PVR_HAS_FEATURE(dev_info, zls_subtile) &&
+       image->vk.samples == VK_SAMPLE_COUNT_1_BIT &&
+       (job->has_stencil_attachment || !job->has_depth_attachment)) {
+      return;
+   }
+
+   pvr_finishme("Unaligned ZLS subtile");
+   mesa_logd("Image: %ux%u   ZLS tile: %ux%u\n",
+             image->physical_extent.width,
+             image->physical_extent.height,
+             zls_tile_size_x,
+             zls_tile_size_y);
+}
+
 static VkResult pvr_sub_cmd_gfx_job_init(const struct pvr_device_info *dev_info,
                                          struct pvr_cmd_buffer *cmd_buffer,
                                          struct pvr_sub_cmd_gfx *sub_cmd)
 {
+   static const VkClearDepthStencilValue default_ds_clear_value = {
+      .depth = 1.0f,
+      .stencil = 0xFFFFFFFF,
+   };
+
    const struct vk_dynamic_graphics_state *dynamic_state =
       &cmd_buffer->vk.dynamic_graphics_state;
    struct pvr_render_pass_info *render_pass_info =
@@ -1028,64 +1073,46 @@ static VkResult pvr_sub_cmd_gfx_job_init(const struct pvr_device_info *dev_info,
          render_pass_info->attachments[hw_render->ds_attach_idx];
       const struct pvr_image *image = vk_to_pvr_image(iview->vk.image);
 
-      if (vk_format_has_depth(image->vk.format)) {
+      job->has_depth_attachment = vk_format_has_depth(image->vk.format);
+      job->has_stencil_attachment = vk_format_has_stencil(image->vk.format);
+
+      if (job->has_depth_attachment || job->has_stencil_attachment) {
          uint32_t level_pitch =
             image->mip_levels[iview->vk.base_mip_level].pitch;
 
-         /* FIXME: Is this sufficient for depth buffers? */
-         job->depth_addr = image->dev_addr;
+         job->ds.addr = image->dev_addr;
 
-         job->depth_stride =
-            pvr_stride_from_pitch(level_pitch, iview->vk.format);
-         job->depth_height = iview->vk.extent.height;
-         job->depth_physical_width =
+         job->ds.stride = pvr_stride_from_pitch(level_pitch, iview->vk.format);
+         job->ds.height = iview->vk.extent.height;
+         job->ds.physical_width =
             u_minify(image->physical_extent.width, iview->vk.base_mip_level);
-         job->depth_physical_height =
+         job->ds.physical_height =
             u_minify(image->physical_extent.height, iview->vk.base_mip_level);
-         job->depth_layer_size = image->layer_size;
+         job->ds.layer_size = image->layer_size;
+
+         job->ds_clear_value = default_ds_clear_value;
 
          if (hw_render->ds_attach_idx < render_pass_info->clear_value_count) {
-            VkClearValue *clear_values =
-               &render_pass_info->clear_values[hw_render->ds_attach_idx];
+            const VkClearDepthStencilValue *const clear_values =
+               &render_pass_info->clear_values[hw_render->ds_attach_idx]
+                   .depthStencil;
 
-            job->depth_clear_value = clear_values->depthStencil.depth;
-         } else {
-            job->depth_clear_value = 1.0f;
+            if (job->has_depth_attachment)
+               job->ds_clear_value.depth = clear_values->depth;
+
+            if (job->has_stencil_attachment)
+               job->ds_clear_value.stencil = clear_values->stencil;
          }
 
-         job->depth_vk_format = iview->vk.format;
-
-         job->depth_memlayout = image->memlayout;
-      } else {
-         job->depth_addr = PVR_DEV_ADDR_INVALID;
-         job->depth_stride = 0;
-         job->depth_height = 0;
-         job->depth_physical_width = 0;
-         job->depth_physical_height = 0;
-         job->depth_layer_size = 0;
-         job->depth_clear_value = 1.0f;
-         job->depth_vk_format = VK_FORMAT_UNDEFINED;
-         job->depth_memlayout = PVR_MEMLAYOUT_LINEAR;
+         job->ds.vk_format = iview->vk.format;
+         job->ds.memlayout = image->memlayout;
       }
 
-      if (vk_format_has_stencil(image->vk.format)) {
-         /* FIXME: Is this sufficient for stencil buffers? */
-         job->stencil_addr = image->dev_addr;
-      } else {
-         job->stencil_addr = PVR_DEV_ADDR_INVALID;
-      }
+      pvr_sub_cmd_gfx_align_zls_subtiles(dev_info, job, image);
    } else {
-      job->depth_addr = PVR_DEV_ADDR_INVALID;
-      job->depth_stride = 0;
-      job->depth_height = 0;
-      job->depth_physical_width = 0;
-      job->depth_physical_height = 0;
-      job->depth_layer_size = 0;
-      job->depth_clear_value = 1.0f;
-      job->depth_vk_format = VK_FORMAT_UNDEFINED;
-      job->depth_memlayout = PVR_MEMLAYOUT_LINEAR;
-
-      job->stencil_addr = PVR_DEV_ADDR_INVALID;
+      job->has_depth_attachment = false;
+      job->has_stencil_attachment = false;
+      job->ds_clear_value = default_ds_clear_value;
    }
 
    if (hw_render->ds_attach_idx != VK_ATTACHMENT_UNUSED) {
@@ -2959,13 +2986,22 @@ static void pvr_compute_update_shared(struct pvr_cmd_buffer *cmd_buffer,
    struct pvr_cmd_buffer_state *state = &cmd_buffer->state;
    struct pvr_csb *csb = &sub_cmd->control_stream;
    const struct pvr_compute_pipeline *pipeline = state->compute_pipeline;
-   const uint32_t const_shared_reg_count =
-      pipeline->state.shader.const_shared_reg_count;
+   const uint32_t const_shared_regs =
+      pipeline->shader_state.const_shared_reg_count;
    struct pvr_compute_kernel_info info;
 
    /* No shared regs, no need to use an allocation kernel. */
-   if (!const_shared_reg_count)
+   if (!const_shared_regs)
       return;
+
+   /* Accumulate the MAX number of shared registers across the kernels in this
+    * dispatch. This is used by the FW for context switching, so must be large
+    * enough to contain all the shared registers that might be in use for this
+    * compute job. Coefficients don't need to be included as the context switch
+    * will not happen within the execution of a single workgroup, thus nothing
+    * needs to be preserved.
+    */
+   state->max_shared_regs = MAX2(state->max_shared_regs, const_shared_regs);
 
    info = (struct pvr_compute_kernel_info){
       .indirect_buffer_addr = PVR_DEV_ADDR_INVALID,
@@ -2974,7 +3010,7 @@ static void pvr_compute_update_shared(struct pvr_cmd_buffer *cmd_buffer,
       .usc_target = PVRX(CDMCTRL_USC_TARGET_ALL),
       .usc_common_shared = true,
       .usc_common_size =
-         DIV_ROUND_UP(const_shared_reg_count,
+         DIV_ROUND_UP(const_shared_regs,
                       PVRX(CDMCTRL_KERNEL0_USC_COMMON_SIZE_UNIT_SIZE)),
 
       .local_size = { 1, 1, 1 },
@@ -2986,9 +3022,9 @@ static void pvr_compute_update_shared(struct pvr_cmd_buffer *cmd_buffer,
     * allocation of the local/common store shared registers. Use the
     * pre-uploaded empty PDS program in this instance.
     */
-   if (pipeline->state.descriptor.pds_info.code_size_in_dwords) {
+   if (pipeline->descriptor_state.pds_info.code_size_in_dwords) {
       uint32_t pds_data_size_in_dwords =
-         pipeline->state.descriptor.pds_info.data_size_in_dwords;
+         pipeline->descriptor_state.pds_info.data_size_in_dwords;
 
       info.pds_data_offset = state->pds_compute_descriptor_data_offset;
       info.pds_data_size =
@@ -2996,8 +3032,8 @@ static void pvr_compute_update_shared(struct pvr_cmd_buffer *cmd_buffer,
                       PVRX(CDMCTRL_KERNEL0_PDS_DATA_SIZE_UNIT_SIZE));
 
       /* Check that we have upload the code section. */
-      assert(pipeline->state.descriptor.pds_code.code_size);
-      info.pds_code_offset = pipeline->state.descriptor.pds_code.code_offset;
+      assert(pipeline->descriptor_state.pds_code.code_size);
+      info.pds_code_offset = pipeline->descriptor_state.pds_code.code_offset;
    } else {
       const struct pvr_pds_upload *program = &device->pds_compute_empty_program;
 
@@ -3011,7 +3047,7 @@ static void pvr_compute_update_shared(struct pvr_cmd_buffer *cmd_buffer,
    /* We don't need to pad the workgroup size. */
 
    info.max_instances =
-      pvr_compute_flat_slot_size(pdevice, const_shared_reg_count, false, 1U);
+      pvr_compute_flat_slot_size(pdevice, const_shared_regs, false, 1U);
 
    pvr_compute_generate_control_stream(csb, sub_cmd, &info);
 }
@@ -3022,6 +3058,7 @@ void pvr_compute_update_shared_private(
    struct pvr_private_compute_pipeline *pipeline)
 {
    const struct pvr_physical_device *pdevice = cmd_buffer->device->pdevice;
+   struct pvr_cmd_buffer_state *state = &cmd_buffer->state;
    const uint32_t const_shared_regs = pipeline->const_shared_regs_count;
    struct pvr_csb *csb = &sub_cmd->control_stream;
    struct pvr_compute_kernel_info info;
@@ -3029,6 +3066,9 @@ void pvr_compute_update_shared_private(
    /* No shared regs, no need to use an allocation kernel. */
    if (!const_shared_regs)
       return;
+
+   /* See comment in pvr_compute_update_shared() for details on this. */
+   state->max_shared_regs = MAX2(state->max_shared_regs, const_shared_regs);
 
    info = (struct pvr_compute_kernel_info){
       .indirect_buffer_addr = PVR_DEV_ADDR_INVALID,
@@ -3179,8 +3219,9 @@ static void pvr_compute_update_kernel(
    struct pvr_cmd_buffer_state *state = &cmd_buffer->state;
    struct pvr_csb *csb = &sub_cmd->control_stream;
    const struct pvr_compute_pipeline *pipeline = state->compute_pipeline;
-   const struct pvr_pds_info *program_info =
-      &pipeline->state.primary_program_info;
+   const struct pvr_compute_shader_state *shader_state =
+      &pipeline->shader_state;
+   const struct pvr_pds_info *program_info = &pipeline->primary_program_info;
 
    struct pvr_compute_kernel_info info = {
       .indirect_buffer_addr = indirect_addr,
@@ -3192,13 +3233,13 @@ static void pvr_compute_update_kernel(
       .pds_data_size =
          DIV_ROUND_UP(program_info->data_size_in_dwords << 2U,
                       PVRX(CDMCTRL_KERNEL0_PDS_DATA_SIZE_UNIT_SIZE)),
-      .pds_data_offset = pipeline->state.primary_program.data_offset,
-      .pds_code_offset = pipeline->state.primary_program.code_offset,
+      .pds_data_offset = pipeline->primary_program.data_offset,
+      .pds_code_offset = pipeline->primary_program.code_offset,
 
       .sd_type = PVRX(CDMCTRL_SD_TYPE_NONE),
 
       .usc_unified_size =
-         DIV_ROUND_UP(pipeline->state.shader.input_register_count << 2U,
+         DIV_ROUND_UP(shader_state->input_register_count << 2U,
                       PVRX(CDMCTRL_KERNEL0_USC_UNIFIED_SIZE_UNIT_SIZE)),
 
       /* clang-format off */
@@ -3210,7 +3251,7 @@ static void pvr_compute_update_kernel(
       /* clang-format on */
    };
 
-   uint32_t work_size = pipeline->state.shader.work_size;
+   uint32_t work_size = shader_state->work_size;
    uint32_t coeff_regs;
 
    if (work_size > ROGUE_MAX_INSTANCES_PER_TASK) {
@@ -3218,7 +3259,7 @@ static void pvr_compute_update_kernel(
        */
       coeff_regs = dev_runtime_info->cdm_max_local_mem_size_regs;
    } else {
-      coeff_regs = pipeline->state.shader.coefficient_register_count;
+      coeff_regs = shader_state->coefficient_register_count;
    }
 
    info.usc_common_size =
@@ -3228,9 +3269,9 @@ static void pvr_compute_update_kernel(
    /* Use a whole slot per workgroup. */
    work_size = MAX2(work_size, ROGUE_MAX_INSTANCES_PER_TASK);
 
-   coeff_regs += pipeline->state.shader.const_shared_reg_count;
+   coeff_regs += shader_state->const_shared_reg_count;
 
-   if (pipeline->state.shader.const_shared_reg_count > 0)
+   if (shader_state->const_shared_reg_count > 0)
       info.sd_type = PVRX(CDMCTRL_SD_TYPE_USC);
 
    work_size =
@@ -3246,13 +3287,11 @@ static void pvr_compute_update_kernel(
    pvr_compute_generate_control_stream(csb, sub_cmd, &info);
 }
 
-void pvr_CmdDispatch(VkCommandBuffer commandBuffer,
-                     uint32_t groupCountX,
-                     uint32_t groupCountY,
-                     uint32_t groupCountZ)
+static void pvr_cmd_dispatch(
+   struct pvr_cmd_buffer *const cmd_buffer,
+   const pvr_dev_addr_t indirect_addr,
+   const uint32_t workgroup_size[static const PVR_WORKGROUP_DIMENSIONS])
 {
-   const uint32_t workgroup_size[] = { groupCountX, groupCountY, groupCountZ };
-   PVR_FROM_HANDLE(pvr_cmd_buffer, cmd_buffer, commandBuffer);
    struct pvr_cmd_buffer_state *state = &cmd_buffer->state;
    const struct pvr_compute_pipeline *compute_pipeline =
       state->compute_pipeline;
@@ -3260,125 +3299,94 @@ void pvr_CmdDispatch(VkCommandBuffer commandBuffer,
       compute_pipeline->base.layout->push_constants_shader_stages;
    struct pvr_sub_cmd_compute *sub_cmd;
    VkResult result;
+
+   pvr_cmd_buffer_start_sub_cmd(cmd_buffer, PVR_SUB_CMD_TYPE_COMPUTE);
+
+   sub_cmd = &state->current_sub_cmd->compute;
+   sub_cmd->uses_atomic_ops |= compute_pipeline->shader_state.uses_atomic_ops;
+   sub_cmd->uses_barrier |= compute_pipeline->shader_state.uses_barrier;
+
+   if (push_consts_stage_mask & VK_SHADER_STAGE_COMPUTE_BIT) {
+      /* TODO: Add a dirty push constants mask in the cmd_buffer state and
+       * check for dirty compute stage.
+       */
+      pvr_finishme("Add support for push constants.");
+   }
+
+   if (compute_pipeline->shader_state.uses_num_workgroups) {
+      pvr_dev_addr_t descriptor_data_offset_out;
+
+      if (indirect_addr.addr) {
+         descriptor_data_offset_out = indirect_addr;
+      } else {
+         struct pvr_bo *num_workgroups_bo;
+
+         result = pvr_cmd_buffer_upload_general(cmd_buffer,
+                                                workgroup_size,
+                                                sizeof(*workgroup_size) *
+                                                   PVR_WORKGROUP_DIMENSIONS,
+                                                &num_workgroups_bo);
+         if (result != VK_SUCCESS)
+            return;
+
+         descriptor_data_offset_out = num_workgroups_bo->vma->dev_addr;
+      }
+
+      result = pvr_setup_descriptor_mappings(
+         cmd_buffer,
+         PVR_STAGE_ALLOCATION_COMPUTE,
+         &compute_pipeline->descriptor_state,
+         &descriptor_data_offset_out,
+         &state->pds_compute_descriptor_data_offset);
+      if (result != VK_SUCCESS)
+         return;
+   } else if ((compute_pipeline->base.layout
+                  ->per_stage_descriptor_masks[PVR_STAGE_ALLOCATION_COMPUTE] &&
+               state->dirty.compute_desc_dirty) ||
+              state->dirty.compute_pipeline_binding) {
+      result = pvr_setup_descriptor_mappings(
+         cmd_buffer,
+         PVR_STAGE_ALLOCATION_COMPUTE,
+         &compute_pipeline->descriptor_state,
+         NULL,
+         &state->pds_compute_descriptor_data_offset);
+      if (result != VK_SUCCESS)
+         return;
+   }
+
+   pvr_compute_update_shared(cmd_buffer, sub_cmd);
+   pvr_compute_update_kernel(cmd_buffer, sub_cmd, indirect_addr, workgroup_size);
+}
+
+void pvr_CmdDispatch(VkCommandBuffer commandBuffer,
+                     uint32_t groupCountX,
+                     uint32_t groupCountY,
+                     uint32_t groupCountZ)
+{
+   PVR_FROM_HANDLE(pvr_cmd_buffer, cmd_buffer, commandBuffer);
 
    PVR_CHECK_COMMAND_BUFFER_BUILDING_STATE(cmd_buffer);
 
    if (!groupCountX || !groupCountY || !groupCountZ)
       return;
 
-   pvr_cmd_buffer_start_sub_cmd(cmd_buffer, PVR_SUB_CMD_TYPE_COMPUTE);
-
-   sub_cmd = &state->current_sub_cmd->compute;
-
-   sub_cmd->uses_atomic_ops |= compute_pipeline->state.shader.uses_atomic_ops;
-   sub_cmd->uses_barrier |= compute_pipeline->state.shader.uses_barrier;
-
-   if (push_consts_stage_mask & VK_SHADER_STAGE_COMPUTE_BIT) {
-      /* TODO: Add a dirty push constants mask in the cmd_buffer state and
-       * check for dirty compute stage.
-       */
-      pvr_finishme("Add support for push constants.");
-   }
-
-   if (compute_pipeline->state.shader.uses_num_workgroups) {
-      struct pvr_bo *num_workgroups_bo;
-
-      result = pvr_cmd_buffer_upload_general(cmd_buffer,
-                                             workgroup_size,
-                                             sizeof(workgroup_size),
-                                             &num_workgroups_bo);
-      if (result != VK_SUCCESS)
-         return;
-
-      result = pvr_setup_descriptor_mappings(
-         cmd_buffer,
-         PVR_STAGE_ALLOCATION_COMPUTE,
-         &compute_pipeline->state.descriptor,
-         &num_workgroups_bo->vma->dev_addr,
-         &state->pds_compute_descriptor_data_offset);
-      if (result != VK_SUCCESS)
-         return;
-   } else if ((compute_pipeline->base.layout
-                  ->per_stage_descriptor_masks[PVR_STAGE_ALLOCATION_COMPUTE] &&
-               state->dirty.compute_desc_dirty) ||
-              state->dirty.compute_pipeline_binding) {
-      result = pvr_setup_descriptor_mappings(
-         cmd_buffer,
-         PVR_STAGE_ALLOCATION_COMPUTE,
-         &compute_pipeline->state.descriptor,
-         NULL,
-         &state->pds_compute_descriptor_data_offset);
-      if (result != VK_SUCCESS)
-         return;
-   }
-
-   pvr_compute_update_shared(cmd_buffer, sub_cmd);
-
-   pvr_compute_update_kernel(cmd_buffer,
-                             sub_cmd,
-                             PVR_DEV_ADDR_INVALID,
-                             workgroup_size);
+   pvr_cmd_dispatch(cmd_buffer,
+                    PVR_DEV_ADDR_INVALID,
+                    (uint32_t[]){ groupCountX, groupCountY, groupCountZ });
 }
 
 void pvr_CmdDispatchIndirect(VkCommandBuffer commandBuffer,
                              VkBuffer _buffer,
                              VkDeviceSize offset)
 {
-   const uint32_t workgroup_size[PVR_WORKGROUP_DIMENSIONS] = { 1, 1, 1 };
    PVR_FROM_HANDLE(pvr_cmd_buffer, cmd_buffer, commandBuffer);
-   struct pvr_cmd_buffer_state *state = &cmd_buffer->state;
-   const struct pvr_compute_pipeline *compute_pipeline =
-      state->compute_pipeline;
-   const VkShaderStageFlags push_consts_stage_mask =
-      compute_pipeline->base.layout->push_constants_shader_stages;
    PVR_FROM_HANDLE(pvr_buffer, buffer, _buffer);
-   struct pvr_sub_cmd_compute *sub_cmd;
-   pvr_dev_addr_t indirect_addr;
-   VkResult result;
 
    PVR_CHECK_COMMAND_BUFFER_BUILDING_STATE(cmd_buffer);
 
-   indirect_addr = PVR_DEV_ADDR_OFFSET(buffer->dev_addr, offset);
-
-   pvr_cmd_buffer_start_sub_cmd(cmd_buffer, PVR_SUB_CMD_TYPE_COMPUTE);
-
-   sub_cmd = &state->current_sub_cmd->compute;
-   sub_cmd->uses_atomic_ops |= compute_pipeline->state.shader.uses_atomic_ops;
-   sub_cmd->uses_barrier |= compute_pipeline->state.shader.uses_barrier;
-
-   if (push_consts_stage_mask & VK_SHADER_STAGE_COMPUTE_BIT) {
-      /* TODO: Add a dirty push constants mask in the cmd_buffer state and
-       * check for dirty compute stage.
-       */
-      pvr_finishme("Add support for push constants.");
-   }
-
-   if (compute_pipeline->state.shader.uses_num_workgroups) {
-      result = pvr_setup_descriptor_mappings(
-         cmd_buffer,
-         PVR_STAGE_ALLOCATION_COMPUTE,
-         &compute_pipeline->state.descriptor,
-         &indirect_addr,
-         &state->pds_compute_descriptor_data_offset);
-      if (result != VK_SUCCESS)
-         return;
-   } else if ((compute_pipeline->base.layout
-                  ->per_stage_descriptor_masks[PVR_STAGE_ALLOCATION_COMPUTE] &&
-               state->dirty.compute_desc_dirty) ||
-              state->dirty.compute_pipeline_binding) {
-      result = pvr_setup_descriptor_mappings(
-         cmd_buffer,
-         PVR_STAGE_ALLOCATION_COMPUTE,
-         &compute_pipeline->state.descriptor,
-         NULL,
-         &state->pds_compute_descriptor_data_offset);
-      if (result != VK_SUCCESS)
-         return;
-   }
-
-   pvr_compute_update_shared(cmd_buffer, sub_cmd);
-
-   pvr_compute_update_kernel(cmd_buffer, sub_cmd, indirect_addr, workgroup_size);
+   pvr_cmd_dispatch(cmd_buffer,
+                    PVR_DEV_ADDR_OFFSET(buffer->dev_addr, offset),
+                    (uint32_t[]){ 1, 1, 1 });
 }
 
 static void

@@ -376,6 +376,8 @@ tu_physical_device_finish(struct tu_physical_device *device)
    if (device->has_set_iova)
       util_vma_heap_finish(&device->vma);
 
+   disk_cache_destroy(device->vk.disk_cache);
+
    vk_free(&device->instance->vk.alloc, (void *)device->name);
 
    vk_physical_device_finish(&device->vk);
@@ -3147,22 +3149,6 @@ tu_GetMemoryFdPropertiesKHR(VkDevice _device,
    assert(handleType == VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT);
    pMemoryFdProperties->memoryTypeBits = 1;
    return VK_SUCCESS;
-}
-
-VKAPI_ATTR void VKAPI_CALL
-tu_GetDeviceGroupPeerMemoryFeatures(
-   VkDevice device,
-   uint32_t heapIndex,
-   uint32_t localDeviceIndex,
-   uint32_t remoteDeviceIndex,
-   VkPeerMemoryFeatureFlags *pPeerMemoryFeatures)
-{
-   assert(localDeviceIndex == remoteDeviceIndex);
-
-   *pPeerMemoryFeatures = VK_PEER_MEMORY_FEATURE_COPY_SRC_BIT |
-                          VK_PEER_MEMORY_FEATURE_COPY_DST_BIT |
-                          VK_PEER_MEMORY_FEATURE_GENERIC_SRC_BIT |
-                          VK_PEER_MEMORY_FEATURE_GENERIC_DST_BIT;
 }
 
 VKAPI_ATTR void VKAPI_CALL

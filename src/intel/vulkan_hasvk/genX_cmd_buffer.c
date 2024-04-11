@@ -34,7 +34,7 @@
 #include "common/intel_l3_config.h"
 #include "genxml/gen_macros.h"
 #include "genxml/genX_pack.h"
-#include "genxml/gen_rt_pack.h"
+#include "genxml/genX_rt_pack.h"
 #include "common/intel_guardband.h"
 #include "compiler/brw_prim.h"
 
@@ -3094,10 +3094,13 @@ cmd_buffer_emit_scissor(struct anv_cmd_buffer *cmd_buffer)
 
       uint32_t y_min = MAX2(s->offset.y, MIN2(vp->y, vp->y + vp->height));
       uint32_t x_min = MAX2(s->offset.x, vp->x);
-      uint32_t y_max = MIN2(s->offset.y + s->extent.height - 1,
+      int64_t y_max = MIN2(s->offset.y + s->extent.height - 1,
                        MAX2(vp->y, vp->y + vp->height) - 1);
-      uint32_t x_max = MIN2(s->offset.x + s->extent.width - 1,
+      int64_t x_max = MIN2(s->offset.x + s->extent.width - 1,
                        vp->x + vp->width - 1);
+
+      y_max = clamp_int64(y_max, 0, INT16_MAX >> 1);
+      x_max = clamp_int64(x_max, 0, INT16_MAX >> 1);
 
       /* Do this math using int64_t so overflow gets clamped correctly. */
       if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY) {
@@ -4507,15 +4510,6 @@ anv_cmd_buffer_push_base_group_id(struct anv_cmd_buffer *cmd_buffer,
 
       cmd_buffer->state.push_constants_dirty |= VK_SHADER_STAGE_COMPUTE_BIT;
    }
-}
-
-void genX(CmdDispatch)(
-    VkCommandBuffer                             commandBuffer,
-    uint32_t                                    x,
-    uint32_t                                    y,
-    uint32_t                                    z)
-{
-   genX(CmdDispatchBase)(commandBuffer, 0, 0, 0, x, y, z);
 }
 
 static inline void

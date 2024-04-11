@@ -1944,10 +1944,10 @@ radv_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
          features->extendedDynamicState3ProvokingVertexMode = true;
          features->extendedDynamicState3DepthClampEnable = true;
          features->extendedDynamicState3ColorWriteMask = true;
-         features->extendedDynamicState3RasterizationSamples = false; /* TODO: Zink */
+         features->extendedDynamicState3RasterizationSamples = true;
          features->extendedDynamicState3ColorBlendEquation = false; /* TODO: Zink */
-         features->extendedDynamicState3SampleLocationsEnable = false; /* TODO: Zink */
-         features->extendedDynamicState3LineRasterizationMode = false; /* TODO: Zink */
+         features->extendedDynamicState3SampleLocationsEnable = false; /* TODO */
+         features->extendedDynamicState3LineRasterizationMode = true;
          features->extendedDynamicState3ExtraPrimitiveOverestimationSize = false;
          features->extendedDynamicState3AlphaToOneEnable = false;
          features->extendedDynamicState3RasterizationStream = false;
@@ -7539,18 +7539,6 @@ radv_GetMemoryFdPropertiesKHR(VkDevice _device, VkExternalMemoryHandleTypeFlagBi
        */
       return vk_error(device, VK_ERROR_INVALID_EXTERNAL_HANDLE);
    }
-}
-
-VKAPI_ATTR void VKAPI_CALL
-radv_GetDeviceGroupPeerMemoryFeatures(VkDevice device, uint32_t heapIndex,
-                                      uint32_t localDeviceIndex, uint32_t remoteDeviceIndex,
-                                      VkPeerMemoryFeatureFlags *pPeerMemoryFeatures)
-{
-   assert(localDeviceIndex == remoteDeviceIndex);
-
-   *pPeerMemoryFeatures =
-      VK_PEER_MEMORY_FEATURE_COPY_SRC_BIT | VK_PEER_MEMORY_FEATURE_COPY_DST_BIT |
-      VK_PEER_MEMORY_FEATURE_GENERIC_SRC_BIT | VK_PEER_MEMORY_FEATURE_GENERIC_DST_BIT;
 }
 
 static const VkTimeDomainEXT radv_time_domains[] = {

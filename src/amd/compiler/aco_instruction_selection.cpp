@@ -1873,7 +1873,10 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
       Temp src0 = get_alu_src(ctx, instr->src[0]);
       Temp src1 = get_alu_src(ctx, instr->src[1]);
       if (dst.type() == RegType::vgpr && dst.bytes() <= 4) {
-         bld.vadd32(Definition(dst), Operand(src0), Operand(src1));
+         if (instr->no_unsigned_wrap)
+            bld.nuw().vadd32(Definition(dst), Operand(src0), Operand(src1));
+         else
+            bld.vadd32(Definition(dst), Operand(src0), Operand(src1));
          break;
       }
 
@@ -11481,7 +11484,7 @@ create_fs_exports(isel_context* ctx)
        * require MRT0 to be written. Just copy MRT1 into MRT0. Skipping MRT1 exports seems to be
        * fine.
        */
-      if (ctx->options->key.ps.mrt0_is_dual_src && !ctx->outputs.mask[FRAG_RESULT_DATA0] &&
+      if (ctx->options->key.ps.epilog.mrt0_is_dual_src && !ctx->outputs.mask[FRAG_RESULT_DATA0] &&
           ctx->outputs.mask[FRAG_RESULT_DATA1]) {
          u_foreach_bit (j, ctx->outputs.mask[FRAG_RESULT_DATA1]) {
             ctx->outputs.temps[FRAG_RESULT_DATA0 * 4u + j] =
@@ -11503,10 +11506,11 @@ create_fs_exports(isel_context* ctx)
 
          out.slot = compacted_mrt_index;
          out.write_mask = ctx->outputs.mask[i];
-         out.col_format = (ctx->options->key.ps.col_format >> (4 * idx)) & 0xf;
-         out.is_int8 = (ctx->options->key.ps.is_int8 >> idx) & 1;
-         out.is_int10 = (ctx->options->key.ps.is_int10 >> idx) & 1;
-         out.enable_mrt_output_nan_fixup = (ctx->options->key.ps.enable_mrt_output_nan_fixup >> idx) & 1;
+         out.col_format = (ctx->options->key.ps.epilog.spi_shader_col_format >> (4 * idx)) & 0xf;
+         out.is_int8 = (ctx->options->key.ps.epilog.color_is_int8 >> idx) & 1;
+         out.is_int10 = (ctx->options->key.ps.epilog.color_is_int10 >> idx) & 1;
+         out.enable_mrt_output_nan_fixup =
+            (ctx->options->key.ps.epilog.enable_mrt_output_nan_fixup >> idx) & 1;
 
          for (unsigned c = 0; c < 4; ++c) {
             if (out.write_mask & (1 << c)) {
@@ -11523,7 +11527,7 @@ create_fs_exports(isel_context* ctx)
       }
 
       if (exported) {
-         if (ctx->options->gfx_level >= GFX11 && ctx->options->key.ps.mrt0_is_dual_src) {
+         if (ctx->options->gfx_level >= GFX11 && ctx->options->key.ps.epilog.mrt0_is_dual_src) {
             struct aco_export_mrt* mrt0 = mrts[0].enabled_channels ? &mrts[0] : NULL;
             struct aco_export_mrt* mrt1 = mrts[1].enabled_channels ? &mrts[1] : NULL;
             create_fs_dual_src_export_gfx11(ctx, mrt0, mrt1);

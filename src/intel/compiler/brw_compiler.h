@@ -200,36 +200,9 @@ struct brw_sampler_prog_key_data {
    uint32_t gather_channel_quirk_mask;
 
    /**
-    * Whether this sampler uses the compressed multisample surface layout.
-    */
-   uint32_t compressed_multisample_layout_mask;
-
-   /**
-    * Whether this sampler is using 16x multisampling. If so fetching from
-    * this sampler will be handled with a different instruction, ld2dms_w
-    * instead of ld2dms.
-    */
-   uint32_t msaa_16;
-
-   /**
     * For Sandybridge, which shader w/a we need for gather quirks.
     */
    enum gfx6_gather_sampler_wa gfx6_gather_wa[BRW_MAX_SAMPLERS];
-
-   /**
-    * Texture units that have a YUV image bound.
-    */
-   uint32_t y_u_v_image_mask;
-   uint32_t y_uv_image_mask;
-   uint32_t yx_xuxv_image_mask;
-   uint32_t xy_uxvx_image_mask;
-   uint32_t ayuv_image_mask;
-   uint32_t xyuv_image_mask;
-   uint32_t bt709_mask;
-   uint32_t bt2020_mask;
-
-   /* Scale factor for each texture. */
-   float scale_factors[BRW_MAX_SAMPLERS];
 };
 
 struct brw_base_prog_key {

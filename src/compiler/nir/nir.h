@@ -207,10 +207,13 @@ typedef enum {
    nir_var_read_only_modes = nir_var_shader_in | nir_var_uniform |
                              nir_var_system_value | nir_var_mem_constant |
                              nir_var_mem_ubo,
-   /** Modes where vector derefs can be indexed as arrays */
+   /* Modes where vector derefs can be indexed as arrays. nir_var_shader_out is only for mesh
+    * stages.
+    */
    nir_var_vec_indexable_modes = nir_var_mem_ubo | nir_var_mem_ssbo |
                                  nir_var_mem_shared | nir_var_mem_global |
-                                 nir_var_mem_push_const,
+                                 nir_var_mem_push_const | nir_var_mem_task_payload |
+                                 nir_var_shader_out,
    nir_num_variable_modes  = 16,
    nir_var_all             = (1 << nir_num_variable_modes) - 1,
 } nir_variable_mode;
@@ -1210,7 +1213,7 @@ typedef struct {
     *
     * Ignored if dest.is_ssa is true
     */
-   unsigned write_mask : NIR_MAX_VEC_COMPONENTS;
+   nir_component_mask_t write_mask;
 } nir_alu_dest;
 
 /** NIR sized and unsized types

@@ -339,24 +339,10 @@ dri2_get_shifts_and_sizes(const __DRIcoreExtension *core,
                           const __DRIconfig *config, int *shifts,
 		          unsigned int *sizes)
 {
-   unsigned int mask;
-
-   if (core->getConfigAttrib(config, __DRI_ATTRIB_RED_SHIFT, (unsigned int *)&shifts[0])) {
-      core->getConfigAttrib(config, __DRI_ATTRIB_GREEN_SHIFT, (unsigned int *)&shifts[1]);
-      core->getConfigAttrib(config, __DRI_ATTRIB_BLUE_SHIFT, (unsigned int *)&shifts[2]);
-      core->getConfigAttrib(config, __DRI_ATTRIB_ALPHA_SHIFT, (unsigned int *)&shifts[3]);
-   } else {
-      /* Driver isn't exposing shifts, so convert masks to shifts */
-      core->getConfigAttrib(config, __DRI_ATTRIB_RED_MASK, &mask);
-      shifts[0] = ffs(mask) - 1;
-      core->getConfigAttrib(config, __DRI_ATTRIB_GREEN_MASK, &mask);
-      shifts[1] = ffs(mask) - 1;
-      core->getConfigAttrib(config, __DRI_ATTRIB_BLUE_MASK, &mask);
-      shifts[2] = ffs(mask) - 1;
-      core->getConfigAttrib(config, __DRI_ATTRIB_ALPHA_MASK, &mask);
-      shifts[3] = ffs(mask) - 1;
-   }
-
+   core->getConfigAttrib(config, __DRI_ATTRIB_RED_SHIFT, (unsigned int *)&shifts[0]);
+   core->getConfigAttrib(config, __DRI_ATTRIB_GREEN_SHIFT, (unsigned int *)&shifts[1]);
+   core->getConfigAttrib(config, __DRI_ATTRIB_BLUE_SHIFT, (unsigned int *)&shifts[2]);
+   core->getConfigAttrib(config, __DRI_ATTRIB_ALPHA_SHIFT, (unsigned int *)&shifts[3]);
    core->getConfigAttrib(config, __DRI_ATTRIB_RED_SIZE, &sizes[0]);
    core->getConfigAttrib(config, __DRI_ATTRIB_GREEN_SIZE, &sizes[1]);
    core->getConfigAttrib(config, __DRI_ATTRIB_BLUE_SIZE, &sizes[2]);
@@ -736,11 +722,9 @@ static const struct dri_extension_match swrast_core_extensions[] = {
 };
 
 static const struct dri_extension_match optional_core_extensions[] = {
-   { __DRI2_ROBUSTNESS, 1, offsetof(struct dri2_egl_display, robustness), true },
    { __DRI2_CONFIG_QUERY, 1, offsetof(struct dri2_egl_display, config), true },
    { __DRI2_FENCE, 2, offsetof(struct dri2_egl_display, fence), true },
    { __DRI2_BUFFER_DAMAGE, 1, offsetof(struct dri2_egl_display, buffer_damage), true },
-   { __DRI2_RENDERER_QUERY, 1, offsetof(struct dri2_egl_display, rendererQuery), true },
    { __DRI2_INTEROP, 1, offsetof(struct dri2_egl_display, interop), true },
    { __DRI_IMAGE, 6, offsetof(struct dri2_egl_display, image), true },
    { __DRI2_FLUSH_CONTROL, 1, offsetof(struct dri2_egl_display, flush_control), true },
@@ -803,19 +787,6 @@ dri2_load_driver_swrast(_EGLDisplay *disp)
    return dri2_load_driver_common(disp, swrast_driver_extensions, ARRAY_SIZE(swrast_driver_extensions));
 }
 
-static unsigned
-dri2_renderer_query_integer(struct dri2_egl_display *dri2_dpy, int param)
-{
-   const __DRI2rendererQueryExtension *rendererQuery = dri2_dpy->rendererQuery;
-   unsigned int value = 0;
-
-   if (!rendererQuery ||
-       rendererQuery->queryInteger(dri2_dpy->dri_screen, param, &value) == -1)
-      return 0;
-
-   return value;
-}
-
 static const char *
 dri2_query_driver_name(_EGLDisplay *disp)
 {
@@ -849,6 +820,7 @@ dri2_setup_screen(_EGLDisplay *disp)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    struct dri_screen *screen = dri_screen(dri2_dpy->dri_screen);
+   struct pipe_screen *pscreen = screen->base.screen;
    unsigned int api_mask = screen->api_mask;
 
    /*
@@ -888,12 +860,14 @@ dri2_setup_screen(_EGLDisplay *disp)
 
    disp->Extensions.EXT_pixel_format_float = EGL_TRUE;
 
-   if (dri2_renderer_query_integer(dri2_dpy,
-                                   __DRI2_RENDERER_HAS_FRAMEBUFFER_SRGB))
+   if (pscreen->is_format_supported(pscreen,
+                                    PIPE_FORMAT_B8G8R8A8_SRGB,
+                                    PIPE_TEXTURE_2D, 0, 0,
+                                    PIPE_BIND_RENDER_TARGET)) {
       disp->Extensions.KHR_gl_colorspace = EGL_TRUE;
+   }
 
-   if (dri2_dpy->robustness)
-      disp->Extensions.EXT_create_context_robustness = EGL_TRUE;
+   disp->Extensions.EXT_create_context_robustness = get_screen_param(disp, PIPE_CAP_DEVICE_RESET_STATUS_QUERY);
 
    if (dri2_dpy->fence) {
       disp->Extensions.KHR_fence_sync = EGL_TRUE;
@@ -1319,30 +1293,11 @@ dri2_fill_context_attribs(struct dri2_egl_context *dri2_ctx,
    ctx_attribs[pos++] = dri2_ctx->base.ClientMinorVersion;
 
    if (dri2_ctx->base.Flags != 0) {
-      /* If the implementation doesn't support the __DRI2_ROBUSTNESS
-       * extension, don't even try to send it the robust-access flag.
-       * It may explode.  Instead, generate the required EGL error here.
-       */
-      if ((dri2_ctx->base.Flags & EGL_CONTEXT_OPENGL_ROBUST_ACCESS_BIT_KHR) != 0
-            && !dri2_dpy->robustness) {
-         _eglError(EGL_BAD_MATCH, "eglCreateContext");
-         return false;
-      }
-
       ctx_attribs[pos++] = __DRI_CTX_ATTRIB_FLAGS;
       ctx_attribs[pos++] = dri2_ctx->base.Flags;
    }
 
    if (dri2_ctx->base.ResetNotificationStrategy != EGL_NO_RESET_NOTIFICATION_KHR) {
-      /* If the implementation doesn't support the __DRI2_ROBUSTNESS
-       * extension, don't even try to send it a reset strategy.  It may
-       * explode.  Instead, generate the required EGL error here.
-       */
-      if (!dri2_dpy->robustness) {
-         _eglError(EGL_BAD_CONFIG, "eglCreateContext");
-         return false;
-      }
-
       ctx_attribs[pos++] = __DRI_CTX_ATTRIB_RESET_STRATEGY;
       ctx_attribs[pos++] = __DRI_CTX_RESET_LOSE_CONTEXT;
    }
@@ -1414,33 +1369,8 @@ dri2_create_context(_EGLDisplay *disp, _EGLConfig *conf,
       return NULL;
    }
 
-   if (!_eglInitContext(&dri2_ctx->base, disp, conf, attrib_list))
+   if (!_eglInitContext(&dri2_ctx->base, disp, conf, share_list, attrib_list))
       goto cleanup;
-
-   /* The EGL_EXT_create_context_robustness spec says:
-    *
-    *    "Add to the eglCreateContext context creation errors: [...]
-    *
-    *     * If the reset notification behavior of <share_context> and the
-    *       newly created context are different then an EGL_BAD_MATCH error is
-    *       generated."
-    */
-   if (share_list && share_list->ResetNotificationStrategy !=
-                     dri2_ctx->base.ResetNotificationStrategy) {
-      _eglError(EGL_BAD_MATCH, "eglCreateContext");
-      goto cleanup;
-   }
-
-   /* The EGL_KHR_create_context_no_error spec says:
-    *
-    *    "BAD_MATCH is generated if the value of EGL_CONTEXT_OPENGL_NO_ERROR_KHR
-    *    used to create <share_context> does not match the value of
-    *    EGL_CONTEXT_OPENGL_NO_ERROR_KHR for the context being created."
-    */
-   if (share_list && share_list->NoError != dri2_ctx->base.NoError) {
-      _eglError(EGL_BAD_MATCH, "eglCreateContext");
-      goto cleanup;
-   }
 
    switch (dri2_ctx->base.ClientAPI) {
    case EGL_OPENGL_ES_API:

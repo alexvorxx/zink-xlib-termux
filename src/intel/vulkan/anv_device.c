@@ -909,7 +909,7 @@ get_features(const struct anv_physical_device *pdevice,
 
       /* VK_EXT_descriptor_buffer */
       .descriptorBuffer = true,
-      .descriptorBufferCaptureReplay = true,
+      .descriptorBufferCaptureReplay = false,
       .descriptorBufferImageLayoutIgnored = false,
       .descriptorBufferPushDescriptors = true,
 

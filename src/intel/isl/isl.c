@@ -1719,6 +1719,19 @@ isl_choose_miptail_start_level(const struct isl_device *dev,
    if (ISL_GFX_VER(dev) == 12 && isl_format_is_yuv(info->format))
       return 15;
 
+   if (intel_needs_workaround(dev->info, 22015614752) &&
+       isl_format_supports_ccs_e(dev->info, info->format) &&
+       !INTEL_DEBUG(DEBUG_NO_CCS) &&
+       !(info->usage & ISL_SURF_USAGE_DISABLE_AUX_BIT)) {
+      /* There are issues with multiple engines accessing the same CCS
+       * cacheline in parallel. If we're here, Tile64 is use, providing enough
+       * spacing between each miplevel. We must disable miptails to maintain
+       * the necessary alignment between miplevels.
+       */
+      assert(tile_info->tiling == ISL_TILING_64);
+      return 15;
+   }
+
    assert(isl_tiling_is_64(tile_info->tiling) ||
           isl_tiling_is_std_y(tile_info->tiling));
    assert(info->samples == 1);
@@ -3129,9 +3142,10 @@ isl_surf_supports_ccs(const struct isl_device *dev,
          /* There are issues with multiple engines accessing the same CCS
           * cacheline in parallel. This can happen if this image has multiple
           * subresources. Such conflicts can be avoided with tilings that set
-          * the subresource alignment to 64K. If we aren't using such a
-          * tiling, disable CCS.
+          * the subresource alignment to 64K and with miptails disabled. If we
+          * aren't using such a configuration, disable CCS.
           */
+         assert(surf->miptail_start_level >= surf->levels);
          if (surf->tiling != ISL_TILING_64)
             return false;
       }

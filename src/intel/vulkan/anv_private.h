@@ -752,6 +752,21 @@ struct anv_state_reserved_pool {
    uint32_t count;
 };
 
+struct anv_state_reserved_array_pool {
+   struct anv_state_pool *pool;
+   simple_mtx_t mutex;
+   /* Bitfield of usable elements */
+   BITSET_WORD *states;
+   /* Backing store */
+   struct anv_state state;
+   /* Number of elements */
+   uint32_t count;
+   /* Stride between each element */
+   uint32_t stride;
+   /* Size of each element */
+   uint32_t size;
+};
+
 struct anv_state_stream {
    struct anv_state_pool *state_pool;
 
@@ -870,6 +885,20 @@ void anv_state_reserved_pool_finish(struct anv_state_reserved_pool *pool);
 struct anv_state anv_state_reserved_pool_alloc(struct anv_state_reserved_pool *pool);
 void anv_state_reserved_pool_free(struct anv_state_reserved_pool *pool,
                                   struct anv_state state);
+
+VkResult anv_state_reserved_array_pool_init(struct anv_state_reserved_array_pool *pool,
+                                            struct anv_state_pool *parent,
+                                            uint32_t count, uint32_t size,
+                                            uint32_t alignment);
+void anv_state_reserved_array_pool_finish(struct anv_state_reserved_array_pool *pool);
+struct anv_state anv_state_reserved_array_pool_alloc(struct anv_state_reserved_array_pool *pool,
+                                                     bool alloc_back);
+struct anv_state anv_state_reserved_array_pool_alloc_index(struct anv_state_reserved_array_pool *pool,
+                                                           unsigned idx);
+uint32_t anv_state_reserved_array_pool_state_index(struct anv_state_reserved_array_pool *pool,
+                                                   struct anv_state state);
+void anv_state_reserved_array_pool_free(struct anv_state_reserved_array_pool *pool,
+                                        struct anv_state state);
 
 VkResult anv_state_table_init(struct anv_state_table *table,
                              struct anv_device *device,

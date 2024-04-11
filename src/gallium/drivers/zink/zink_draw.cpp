@@ -550,7 +550,7 @@ zink_draw(struct pipe_context *pctx,
 
    if (lines_changed || rast_state_changed ||
        ctx->gfx_pipeline_state.modules_changed)
-      zink_set_line_stipple_keys(ctx);
+      zink_set_primitive_emulation_keys(ctx);
 
    if (index_size) {
       const VkIndexType index_type[3] = {
@@ -800,8 +800,9 @@ zink_draw(struct pipe_context *pctx,
                          offsetof(struct zink_gfx_push_constant, default_inner_level), sizeof(float) * 6,
                          &ctx->tess_levels[0]);
    }
-   if (zink_get_fs_key(ctx)->lower_line_stipple) {
-      assert(zink_get_gs_key(ctx)->lower_line_stipple);
+   if (zink_get_fs_key(ctx)->lower_line_stipple ||
+       zink_get_gs_key(ctx)->lower_gl_point) {
+      assert(zink_get_fs_key(ctx)->lower_line_stipple == zink_get_gs_key(ctx)->lower_line_stipple);
 
       float viewport_scale[2] = {
          ctx->vp_state.viewport_states[0].scale[0],

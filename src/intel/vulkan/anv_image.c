@@ -170,9 +170,9 @@ image_binding_grow(const struct anv_device *device,
 
    *out_range = (struct anv_image_memory_range) {
       .binding = binding,
-      .offset = offset,
-      .size = size,
       .alignment = alignment,
+      .size = size,
+      .offset = offset,
    };
 
    return VK_SUCCESS;
@@ -1044,9 +1044,9 @@ memory_ranges_equal(struct anv_image_memory_range a,
                     struct anv_image_memory_range b)
 {
    return a.binding == b.binding &&
-          a.offset == b.offset &&
+          a.alignment == b.alignment &&
           a.size == b.size &&
-          a.alignment == b.alignment;
+          a.offset == b.offset;
 }
 #endif
 

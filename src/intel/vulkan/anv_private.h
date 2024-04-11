@@ -4987,14 +4987,14 @@ struct anv_image_memory_range {
       ANV_IMAGE_MEMORY_BINDING_END,
    } binding;
 
+   uint32_t alignment;
+   uint64_t size;
+
    /**
     * Offset is relative to the start of the binding created by
     * vkBindImageMemory, not to the start of the bo.
     */
    uint64_t offset;
-
-   uint64_t size;
-   uint32_t alignment;
 };
 
 /**

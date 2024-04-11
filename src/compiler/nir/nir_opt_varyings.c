@@ -3832,7 +3832,10 @@ fs_assign_slots(struct linkage_info *linkage,
       assert(slot_index < max_slot * 8);
       relocate_slot(linkage, &linkage->slot[i], i, new_slot_index,
                     fs_vec4_type, progress);
-      BITSET_SET(assigned_mask, slot_index);
+
+      for (unsigned i = 0; i < slot_size; ++i)
+         BITSET_SET(assigned_mask, slot_index + i);
+
       if (assigned_fs_vec4_type)
          assigned_fs_vec4_type[vec4_slot(slot_index)] = fs_vec4_type;
       slot_index += slot_size; /* move to the next slot */

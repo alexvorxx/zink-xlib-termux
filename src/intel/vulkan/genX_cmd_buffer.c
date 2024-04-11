@@ -3939,7 +3939,8 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
       /* There's no way of knowing if this memory barrier is related to sparse
        * buffers! This is pretty horrible.
        */
-      if (device->using_sparse && mask_is_write(src_flags))
+      if (mask_is_write(src_flags) &&
+          p_atomic_read(&device->num_sparse_resources) > 0)
          apply_sparse_flushes = true;
    }
 

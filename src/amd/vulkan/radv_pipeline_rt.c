@@ -274,15 +274,14 @@ static void
 radv_init_rt_stage_hashes(const struct radv_device *device, const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
                           struct radv_ray_tracing_stage *stages, const struct radv_shader_stage_key *stage_keys)
 {
-   VK_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->layout);
-
    for (uint32_t idx = 0; idx < pCreateInfo->stageCount; idx++) {
-      gl_shader_stage s = vk_to_mesa_shader_stage(pCreateInfo->pStages[idx].stage);
-      struct radv_shader_stage stage;
+      const VkPipelineShaderStageCreateInfo *sinfo = &pCreateInfo->pStages[idx];
+      gl_shader_stage s = vk_to_mesa_shader_stage(sinfo->stage);
+      struct mesa_sha1 ctx;
 
-      radv_pipeline_stage_init(&pCreateInfo->pStages[idx], pipeline_layout, &stage_keys[s], &stage);
-
-      radv_hash_shaders(device, stages[idx].sha1, &stage, 1, NULL, NULL);
+      _mesa_sha1_init(&ctx);
+      radv_pipeline_hash_shader_stage(sinfo, &stage_keys[s], &ctx);
+      _mesa_sha1_final(&ctx, stages[idx].sha1);
    }
 }
 

@@ -80,6 +80,8 @@ error2aub = executable(
 error2hangdump = executable(
   'intel_error2hangdump',
   files('error2hangdump.c',
+        'error2hangdump_lib.c',
+        'error2hangdump_lib.h',
         'error_decode_lib.c',
         'error_decode_lib.h'),
   dependencies : [dep_zlib, dep_dl, dep_thread, dep_m, idep_intel_dev],

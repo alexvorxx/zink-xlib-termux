@@ -34,33 +34,9 @@
 
 #include "util/list.h"
 
-#include "common/intel_hang_dump.h"
-
 #include "error_decode_lib.h"
+#include "error2hangdump_lib.h"
 #include "intel/dev/intel_device_info.h"
-
-static inline void
-_fail(const char *prefix, const char *format, ...)
-{
-   va_list args;
-
-   va_start(args, format);
-   if (prefix)
-      fprintf(stderr, "%s: ", prefix);
-   vfprintf(stderr, format, args);
-   va_end(args);
-
-   abort();
-}
-
-#define _fail_if(cond, prefix, ...) do { \
-   if (cond) \
-      _fail(prefix, __VA_ARGS__); \
-} while (0)
-
-#define fail_if(cond, ...) _fail_if(cond, NULL, __VA_ARGS__)
-
-#define fail(...) fail_if(true, __VA_ARGS__)
 
 static int zlib_inflate(uint32_t **ptr, int len)
 {
@@ -232,67 +208,6 @@ engine_from_name(const char *engine_name,
    }
 
    fail("Unknown engine %s\n", engine_name);
-}
-
-static void
-write_header(FILE *f)
-{
-   struct intel_hang_dump_block_header header = {
-      .base = {
-         .type = INTEL_HANG_DUMP_BLOCK_TYPE_HEADER,
-      },
-      .magic   = INTEL_HANG_DUMP_MAGIC,
-      .version = INTEL_HANG_DUMP_VERSION,
-   };
-
-   fwrite(&header, sizeof(header), 1, f);
-}
-
-static void
-write_buffer(FILE *f,
-             uint64_t offset,
-             const void *data,
-             uint64_t size,
-             const char *name)
-{
-   struct intel_hang_dump_block_bo header = {
-      .base = {
-         .type = INTEL_HANG_DUMP_BLOCK_TYPE_BO,
-      },
-      .offset  = offset,
-      .size    = size,
-   };
-   snprintf(header.name, sizeof(header.name), "%s", name);
-
-   fwrite(&header, sizeof(header), 1, f);
-   fwrite(data, size, 1, f);
-}
-
-static void
-write_hw_image_buffer(FILE *f, const void *data, uint64_t size)
-{
-   struct intel_hang_dump_block_hw_image header = {
-      .base = {
-         .type = INTEL_HANG_DUMP_BLOCK_TYPE_HW_IMAGE,
-      },
-      .size    = size,
-   };
-
-   fwrite(&header, sizeof(header), 1, f);
-   fwrite(data, size, 1, f);
-}
-
-static void
-write_exec(FILE *f, uint64_t offset)
-{
-   struct intel_hang_dump_block_exec header = {
-      .base = {
-         .type = INTEL_HANG_DUMP_BLOCK_TYPE_EXEC,
-      },
-      .offset  = offset,
-   };
-
-   fwrite(&header, sizeof(header), 1, f);
 }
 
 int

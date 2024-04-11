@@ -83,7 +83,7 @@ def lava_job_submitter(
 def test_submit_and_follow_respects_exceptions(mock_sleep, mock_proxy, exception):
     with pytest.raises(MesaCIException):
         proxy = mock_proxy(side_effect=exception)
-        job = LAVAJob(proxy, '')
+        job = LAVAJob(proxy, "")
         log_follower = bootstrap_log_follower()
         follow_job_execution(job, log_follower)
 
@@ -165,21 +165,13 @@ PROXY_SCENARIOS = {
         mock_logs(result="pass"),
         does_not_raise(),
         "pass",
-        {
-            "testsuite_results": [
-                generate_testsuite_result(result="pass")
-            ]
-        },
+        {"testsuite_results": [generate_testsuite_result(result="pass")]},
     ),
     "no retries, but testsuite fails": (
         mock_logs(result="fail"),
         does_not_raise(),
         "fail",
-        {
-            "testsuite_results": [
-                generate_testsuite_result(result="fail")
-            ]
-        },
+        {"testsuite_results": [generate_testsuite_result(result="fail")]},
     ),
     "no retries, one testsuite fails": (
         generate_n_logs(n=1, tick_fn=0, result="fail"),
@@ -188,7 +180,7 @@ PROXY_SCENARIOS = {
         {
             "testsuite_results": [
                 generate_testsuite_result(result="fail"),
-                generate_testsuite_result(result="pass")
+                generate_testsuite_result(result="pass"),
             ]
         },
     ),
@@ -438,9 +430,7 @@ def test_job_combined_status(
         "lava.lava_job_submitter.retriable_follow_job"
     ) as mock_retriable_follow_job, patch(
         "lava.lava_job_submitter.LAVAJobSubmitter._LAVAJobSubmitter__prepare_submission"
-    ) as mock_prepare_submission, patch(
-        "sys.exit"
-    ):
+    ) as mock_prepare_submission, patch("sys.exit"):
         from lava.lava_job_submitter import STRUCTURAL_LOG
 
         mock_retriable_follow_job.return_value = MagicMock(status=finished_job_status)

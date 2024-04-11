@@ -58,7 +58,7 @@ except ImportError as e:
 
 # Timeout in seconds to decide if the device from the dispatched LAVA job has
 # hung or not due to the lack of new log output.
-DEVICE_HANGING_TIMEOUT_SEC = int(getenv("DEVICE_HANGING_TIMEOUT_SEC",  5*60))
+DEVICE_HANGING_TIMEOUT_SEC = int(getenv("DEVICE_HANGING_TIMEOUT_SEC", 5 * 60))
 
 # How many seconds the script should wait before try a new polling iteration to
 # check if the dispatched LAVA job is running or waiting in the job queue.
@@ -182,7 +182,6 @@ def is_job_hanging(job, max_idle_time):
 
 
 def parse_log_lines(job, log_follower, new_log_lines):
-
     if log_follower.feed(new_log_lines):
         # If we had non-empty log data, we can assure that the device is alive.
         job.heartbeat()
@@ -200,7 +199,6 @@ def parse_log_lines(job, log_follower, new_log_lines):
 
 
 def fetch_new_log_lines(job):
-
     # The XMLRPC binary packet may be corrupted, causing a YAML scanner error.
     # Retry the log fetching several times before exposing the error.
     for _ in range(5):
@@ -509,7 +507,6 @@ class StructuredLoggerWrapper:
     def logger_context(self):
         context = contextlib.nullcontext()
         try:
-
             global STRUCTURAL_LOG
             STRUCTURAL_LOG = StructuredLogger(
                 self.__submitter.structured_log_file, truncate=True

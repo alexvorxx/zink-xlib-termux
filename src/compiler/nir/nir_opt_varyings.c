@@ -1321,11 +1321,19 @@ gather_outputs(struct nir_builder *builder, nir_intrinsic_instr *intr, void *cb_
 
    if (is_store) {
       nir_def *value = intr->src[0].ssa;
+
+      const bool constant = value->parent_instr->type == nir_instr_type_load_const;
+
       /* If the store instruction is executed in a divergent block, the value
        * that's stored in the output becomes divergent.
+       *
+       * Mesh shaders get special treatment because we can't follow their topology,
+       * so we only propagate constants.
+       * TODO: revisit this when workgroup divergence analysis is merged.
        */
-      bool divergent = value->divergent ||
-                       intr->instr.block->divergent;
+      const bool divergent = value->divergent ||
+                             intr->instr.block->divergent ||
+                             (!constant && linkage->producer_stage == MESA_SHADER_MESH);
 
       if (!out->producer.value) {
          /* This is the first store to this output. */

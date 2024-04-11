@@ -3,8 +3,6 @@ dEQP-GLES2.functional.buffer.write.use.index_array.element_array,Fail
 dEQP-GLES2.functional.clipping.line.wide_line_clip_viewport_center,Fail
 dEQP-GLES2.functional.clipping.line.wide_line_clip_viewport_corner,Fail
 dEQP-GLES2.functional.clipping.triangle_vertex.clip_three.clip_pos_y_pos_z_and_neg_x_neg_y_pos_z_and_pos_x_pos_y_neg_z,Fail
-dEQP-GLES2.functional.depth_stencil_clear.depth_stencil,Fail
-dEQP-GLES2.functional.depth_stencil_clear.depth_stencil_masked,Fail
 dEQP-GLES2.functional.draw.draw_elements.triangle_fan.single_attribute,Fail
 dEQP-GLES2.functional.fbo.render.color_clear.rbo_rgba4_depth_component16,Fail
 dEQP-GLES2.functional.fbo.render.color_clear.rbo_rgba4,Fail

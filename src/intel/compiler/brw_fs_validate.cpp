@@ -108,6 +108,17 @@ brw_fs_validate(const fs_visitor &s)
          break;
       }
 
+      /* On Xe2, the "write the accumulator in addition to the explicit
+       * destination" bit no longer exists. Try to catch uses of this feature
+       * earlier in the process.
+       */
+      if (devinfo->ver >= 20 && inst->writes_accumulator) {
+         fsv_assert(inst->dst.is_accumulator() ||
+                    inst->opcode == BRW_OPCODE_ADDC ||
+                    inst->opcode == BRW_OPCODE_MACH ||
+                    inst->opcode == BRW_OPCODE_SUBB);
+      }
+
       if (inst->is_3src(s.compiler)) {
          const unsigned integer_sources =
             brw_type_is_int(inst->src[0].type) +

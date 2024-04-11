@@ -598,7 +598,7 @@ panvk_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
    };
 
    pProperties->properties = (VkPhysicalDeviceProperties){
-      .apiVersion = VK_MAKE_VERSION(1, 0, VK_HEADER_VERSION),
+      .apiVersion = panvk_get_vk_version(),
       .driverVersion = vk_get_driver_version(),
 
       /* Arm vendor ID. */

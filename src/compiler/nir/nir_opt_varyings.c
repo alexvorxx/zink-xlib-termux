@@ -4161,6 +4161,12 @@ nir_opt_varyings_progress
 nir_opt_varyings(nir_shader *producer, nir_shader *consumer, bool spirv,
                  unsigned max_uniform_components, unsigned max_ubos_per_stage)
 {
+   /* Task -> Mesh I/O uses payload variables and not varying slots,
+    * so this pass can't do anything about it.
+    */
+   if (producer->info.stage == MESA_SHADER_TASK)
+      return 0;
+
    /* Producers before a fragment shader must have up-to-date vertex
     * divergence information.
     */

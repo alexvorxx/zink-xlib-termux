@@ -210,63 +210,9 @@ engine_from_name(const char *engine_name,
    fail("Unknown engine %s\n", engine_name);
 }
 
-int
-main(int argc, char *argv[])
+static void
+read_i915_data_file(FILE *err_file, FILE *hang_file, bool verbose, enum intel_engine_class capture_engine)
 {
-   int i, c;
-   bool help = false, verbose = false;
-   char *out_filename = NULL, *in_filename = NULL, *capture_engine_name = "rcs";
-   const struct option aubinator_opts[] = {
-      { "help",       no_argument,       NULL,     'h' },
-      { "output",     required_argument, NULL,     'o' },
-      { "verbose",    no_argument,       NULL,     'v' },
-      { "engine",     required_argument, NULL,     'e' },
-      { NULL,         0,                 NULL,     0 }
-   };
-
-   i = 0;
-   while ((c = getopt_long(argc, argv, "ho:v", aubinator_opts, &i)) != -1) {
-      switch (c) {
-      case 'h':
-         help = true;
-         break;
-      case 'o':
-         out_filename = strdup(optarg);
-         break;
-      case 'v':
-         verbose = true;
-         break;
-      case 'e':
-         capture_engine_name = optarg;
-         break;
-      default:
-         break;
-      }
-   }
-
-   if (optind < argc)
-      in_filename = argv[optind++];
-
-   if (help || argc == 1 || !in_filename) {
-      print_help(argv[0], stderr);
-      return in_filename ? EXIT_SUCCESS : EXIT_FAILURE;
-   }
-
-   enum intel_engine_class capture_engine;
-   engine_from_name(capture_engine_name, &capture_engine, &c);
-
-   if (out_filename == NULL) {
-      int out_filename_size = strlen(in_filename) + 5;
-      out_filename = malloc(out_filename_size);
-      snprintf(out_filename, out_filename_size, "%s.dmp", in_filename);
-   }
-
-   FILE *err_file = fopen(in_filename, "r");
-   fail_if(!err_file, "Failed to open error file \"%s\": %m\n", in_filename);
-
-   FILE *hang_file = fopen(out_filename, "w");
-   fail_if(!hang_file, "Failed to open aub file \"%s\": %m\n", out_filename);
-
    enum address_space active_gtt = PPGTT;
    enum address_space default_gtt = PPGTT;
 
@@ -410,8 +356,69 @@ main(int argc, char *argv[])
       free(bo_entry);
    }
 
-   free(out_filename);
    free(line);
+}
+
+int
+main(int argc, char *argv[])
+{
+   int i, c;
+   bool help = false, verbose = false;
+   char *out_filename = NULL, *in_filename = NULL, *capture_engine_name = "rcs";
+   const struct option aubinator_opts[] = {
+      { "help",       no_argument,       NULL,     'h' },
+      { "output",     required_argument, NULL,     'o' },
+      { "verbose",    no_argument,       NULL,     'v' },
+      { "engine",     required_argument, NULL,     'e' },
+      { NULL,         0,                 NULL,     0 }
+   };
+
+   i = 0;
+   while ((c = getopt_long(argc, argv, "ho:v", aubinator_opts, &i)) != -1) {
+      switch (c) {
+      case 'h':
+         help = true;
+         break;
+      case 'o':
+         out_filename = strdup(optarg);
+         break;
+      case 'v':
+         verbose = true;
+         break;
+      case 'e':
+         capture_engine_name = optarg;
+         break;
+      default:
+         break;
+      }
+   }
+
+   if (optind < argc)
+      in_filename = argv[optind++];
+
+   if (help || argc == 1 || !in_filename) {
+      print_help(argv[0], stderr);
+      return in_filename ? EXIT_SUCCESS : EXIT_FAILURE;
+   }
+
+   enum intel_engine_class capture_engine;
+   engine_from_name(capture_engine_name, &capture_engine, &c);
+
+   if (out_filename == NULL) {
+      int out_filename_size = strlen(in_filename) + 5;
+      out_filename = malloc(out_filename_size);
+      snprintf(out_filename, out_filename_size, "%s.dmp", in_filename);
+   }
+
+   FILE *err_file = fopen(in_filename, "r");
+   fail_if(!err_file, "Failed to open error file \"%s\": %m\n", in_filename);
+
+   FILE *hang_file = fopen(out_filename, "w");
+   fail_if(!hang_file, "Failed to open aub file \"%s\": %m\n", out_filename);
+
+   read_i915_data_file(err_file, hang_file, verbose, capture_engine);
+
+   free(out_filename);
    if (err_file)
       fclose(err_file);
    fclose(hang_file);

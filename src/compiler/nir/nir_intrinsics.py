@@ -279,7 +279,7 @@ index("bool", "synchronous")
 index("unsigned", "value_id")
 
 # Whether to sign-extend offsets in address arithmatic (else zero extend)
-index("bool", "sign_extend")
+#index("bool", "sign_extend")
 
 intrinsic("nop", flags=[CAN_ELIMINATE])
 
@@ -1614,9 +1614,9 @@ intrinsic("load_fb_layers_v3d", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER])
 # logically load_global_agx (etc), the _global is omitted as it adds nothing.
 #
 # src[] = { address, index }.
-load("agx", [1, 1], [ACCESS, BASE, FORMAT, SIGN_EXTEND], [CAN_ELIMINATE])
-load("constant_agx", [1, 1], [ACCESS, BASE, FORMAT, SIGN_EXTEND],
-     [CAN_ELIMINATE, CAN_REORDER])
+#load("agx", [1, 1], [ACCESS, BASE, FORMAT, SIGN_EXTEND], [CAN_ELIMINATE])
+#load("constant_agx", [1, 1], [ACCESS, BASE, FORMAT, SIGN_EXTEND],
+#     [CAN_ELIMINATE, CAN_REORDER])
 
 # Logical complement of load_front_face, mapping to an AGX system value
 system_value("back_face_agx", 1, bit_sizes=[1, 32])
@@ -1626,10 +1626,10 @@ system_value("back_face_agx", 1, bit_sizes=[1, 32])
 system_value("texture_base_agx", 1, bit_sizes=[64])
 
 # Load the base address of an indexed UBO/VBO (for lowering UBOs/VBOs)
-intrinsic("load_ubo_base_agx", src_comp=[1], dest_comp=1, bit_sizes=[64],
-          flags=[CAN_ELIMINATE, CAN_REORDER])
-intrinsic("load_vbo_base_agx", src_comp=[1], dest_comp=1, bit_sizes=[64],
-          flags=[CAN_ELIMINATE, CAN_REORDER])
+#intrinsic("load_ubo_base_agx", src_comp=[1], dest_comp=1, bit_sizes=[64],
+#          flags=[CAN_ELIMINATE, CAN_REORDER])
+#intrinsic("load_vbo_base_agx", src_comp=[1], dest_comp=1, bit_sizes=[64],
+#          flags=[CAN_ELIMINATE, CAN_REORDER])
 
 # Intel-specific query for loading from the brw_image_param struct passed
 # into the shader as a uniform.  The variable is a deref to the image

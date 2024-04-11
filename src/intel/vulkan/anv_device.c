@@ -3505,10 +3505,12 @@ VkResult anv_CreateDevice(
                                 MAX_CUSTOM_BORDER_COLORS,
                                 sizeof(struct gfx8_border_color), 64);
    if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
-      anv_state_reserved_pool_init(&device->custom_border_colors_db,
-                                   &device->dynamic_state_db_pool,
-                                   MAX_CUSTOM_BORDER_COLORS,
-                                   sizeof(struct gfx8_border_color), 64);
+      result = anv_state_reserved_array_pool_init(&device->custom_border_colors_db,
+                                                  &device->dynamic_state_db_pool,
+                                                  MAX_CUSTOM_BORDER_COLORS,
+                                                  sizeof(struct gfx8_border_color), 64);
+      if (result != VK_SUCCESS)
+         goto fail_dynamic_state_db_pool;
    }
 
    result = anv_state_pool_init(&device->instruction_state_pool, device,
@@ -3519,7 +3521,7 @@ VkResult anv_CreateDevice(
                                    .max_size     = device->physical->va.instruction_state_pool.size,
                                 });
    if (result != VK_SUCCESS)
-      goto fail_dynamic_state_db_pool;
+      goto fail_reserved_array_pool;
 
    if (device->info->verx10 >= 125) {
       /* Put the scratch surface states at the beginning of the internal
@@ -3932,12 +3934,13 @@ VkResult anv_CreateDevice(
       anv_state_pool_finish(&device->scratch_surface_state_pool);
  fail_instruction_state_pool:
    anv_state_pool_finish(&device->instruction_state_pool);
+ fail_reserved_array_pool:
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer)
+      anv_state_reserved_array_pool_finish(&device->custom_border_colors_db);
  fail_dynamic_state_db_pool:
    anv_state_reserved_pool_finish(&device->custom_border_colors);
-   if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
-      anv_state_reserved_pool_finish(&device->custom_border_colors_db);
+   if (device->vk.enabled_extensions.EXT_descriptor_buffer)
       anv_state_pool_finish(&device->dynamic_state_db_pool);
-   }
  fail_dynamic_state_pool:
    anv_state_pool_finish(&device->dynamic_state_pool);
  fail_general_state_pool:
@@ -4032,7 +4035,7 @@ void anv_DestroyDevice(
       anv_state_pool_free(&device->dynamic_state_db_pool, device->cps_states_db);
       anv_state_pool_free(&device->dynamic_state_db_pool, device->slice_hash_db);
       anv_state_pool_free(&device->dynamic_state_db_pool, device->border_colors_db);
-      anv_state_reserved_pool_finish(&device->custom_border_colors_db);
+      anv_state_reserved_array_pool_finish(&device->custom_border_colors_db);
    }
 #endif
 
@@ -5188,6 +5191,26 @@ anv_fill_buffer_surface_state(struct anv_device *device,
                          .stride_B = stride);
 }
 
+VkResult anv_GetSamplerOpaqueCaptureDescriptorDataEXT(
+    VkDevice                                    _device,
+    const VkSamplerCaptureDescriptorDataInfoEXT* pInfo,
+    void*                                       pData)
+{
+   ANV_FROM_HANDLE(anv_device, device, _device);
+   ANV_FROM_HANDLE(anv_sampler, sampler, pInfo->sampler);
+
+   if (sampler->custom_border_color_db.alloc_size != 0) {
+      *((uint32_t *)pData) =
+         anv_state_reserved_array_pool_state_index(
+            &device->custom_border_colors_db,
+            sampler->custom_border_color_db);
+   } else {
+      *((uint32_t *)pData) = 0;
+   }
+
+   return VK_SUCCESS;
+}
+
 void anv_DestroySampler(
     VkDevice                                    _device,
     VkSampler                                   _sampler,
@@ -5209,8 +5232,8 @@ void anv_DestroySampler(
                                    sampler->custom_border_color);
    }
    if (sampler->custom_border_color_db.map) {
-      anv_state_reserved_pool_free(&device->custom_border_colors_db,
-                                   sampler->custom_border_color_db);
+      anv_state_reserved_array_pool_free(&device->custom_border_colors_db,
+                                         sampler->custom_border_color_db);
    }
 
    vk_sampler_destroy(&device->vk, pAllocator, &sampler->vk);

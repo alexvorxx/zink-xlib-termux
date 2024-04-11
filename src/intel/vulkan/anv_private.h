@@ -1807,7 +1807,7 @@ struct anv_device {
     struct anv_state_pool                       push_descriptor_buffer_pool;
 
     struct anv_state_reserved_pool              custom_border_colors;
-    struct anv_state_reserved_pool              custom_border_colors_db;
+    struct anv_state_reserved_array_pool        custom_border_colors_db;
 
     /** BO used for various workarounds
      *

@@ -498,8 +498,9 @@ class LAVAJobSubmitter(PathResolver):
         if not last_attempt_job:
             # No job was run, something bad happened
             STRUCTURAL_LOG["job_combined_status"] = "script_crash"
-            current_exception = str(sys.exc_info()[0])
+            current_exception = str(sys.exc_info()[1])
             STRUCTURAL_LOG["job_combined_fail_reason"] = current_exception
+            print(f"Interrupting the script. Reason: {current_exception}")
             raise SystemExit(1)
 
         STRUCTURAL_LOG["job_combined_status"] = last_attempt_job.status

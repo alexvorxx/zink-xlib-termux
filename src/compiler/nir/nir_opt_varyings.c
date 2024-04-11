@@ -893,6 +893,14 @@ can_remove_varying(struct linkage_info *linkage, gl_varying_slot location)
           location == VARYING_SLOT_FOGC)
          return true;
 
+      /* Workaround for mesh shader multiview in RADV.
+       * A layer output is inserted by ac_nir_lower_ngg which is called later.
+       * Prevent removing the layer input from FS when producer is MS.
+       */
+      if (linkage->producer_stage == MESA_SHADER_MESH &&
+          location == VARYING_SLOT_LAYER)
+         return false;
+
       /* These can be removed as varyings, which means they will be demoted to
        * sysval-only outputs keeping their culling/rasterization functions
        * while not passing the values to FS. Drivers should handle

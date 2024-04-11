@@ -63,6 +63,7 @@ struct ir3_legalize_state {
 
 struct ir3_legalize_block_data {
    bool valid;
+   struct ir3_legalize_state begin_state;
    struct ir3_legalize_state state;
 };
 
@@ -112,12 +113,20 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
    struct ir3_instruction *last_n = NULL;
    struct list_head instr_list;
    struct ir3_legalize_state prev_state = bd->state;
-   struct ir3_legalize_state *state = &bd->state;
+   struct ir3_legalize_state *state = &bd->begin_state;
    bool last_input_needs_ss = false;
    bool has_tex_prefetch = false;
    bool mergedregs = ctx->so->mergedregs;
 
-   /* our input state is the OR of all predecessor blocks' state: */
+   /* Our input state is the OR of all predecessor blocks' state.
+    *
+    * Why don't we just zero the state at the beginning before merging in the
+    * predecessors? Because otherwise updates may not be a "lattice refinement",
+    * i.e. needs_ss may go from true to false for some register due to a (ss) we
+    * inserted the second time around (and the same for (sy)). This means that
+    * there's no solid guarantee the algorithm will converge, and in theory
+    * there may be infinite loops where we fight over the placment of an (ss).
+    */
    for (unsigned i = 0; i < block->predecessors_count; i++) {
       struct ir3_block *predecessor = block->predecessors[i];
       struct ir3_legalize_block_data *pbd = predecessor->data;
@@ -143,6 +152,9 @@ legalize_block(struct ir3_legalize_ctx *ctx, struct ir3_block *block)
 
       regmask_or_shared(&state->needs_ss, &state->needs_ss, &pstate->needs_ss);
    }
+
+   memcpy(&bd->state, state, sizeof(*state));
+   state = &bd->state;
 
    unsigned input_count = 0;
 
@@ -1161,6 +1173,9 @@ ir3_legalize(struct ir3 *ir, struct ir3_shader_variant *so, int *max_bary)
       regmask_init(&bd->state.needs_ss_war, mergedregs);
       regmask_init(&bd->state.needs_ss, mergedregs);
       regmask_init(&bd->state.needs_sy, mergedregs);
+      regmask_init(&bd->begin_state.needs_ss_war, mergedregs);
+      regmask_init(&bd->begin_state.needs_ss, mergedregs);
+      regmask_init(&bd->begin_state.needs_sy, mergedregs);
 
       block->data = bd;
    }

@@ -465,15 +465,16 @@ AluInstr::set_sources(SrcValues src)
    }
 }
 
+uint8_t AluInstr::allowed_src_chan_mask() const
+{
+   return 0xf;
+}
+
 uint8_t
 AluInstr::allowed_dest_chan_mask() const
 {
-   if (alu_slots() != 1) {
-      if (has_alu_flag(alu_is_cayman_trans)) {
+   if (alu_slots() != 1 && has_alu_flag(alu_is_cayman_trans)) {
          return (1 << alu_slots()) - 1;
-      } else {
-         return 0;
-      }
    }
    return 0xf;
 }
@@ -2818,12 +2819,10 @@ emit_alu_trans_op1_cayman(const nir_alu_instr& alu, EAluOp opcode, Shader& shade
 
    auto pin = pin_for_components(alu);
 
-   unsigned ncomp = 4; //nir_dest_num_components(alu.dest.dest) == 4 ? 4 : 3;
-
-   /* todo: Actually we need only three channels, but then we have
-    * to make sure that we don't hava w dest */
-   for (unsigned j = 0; j < ncomp; ++j) {
+   for (unsigned j = 0; j < nir_dest_num_components(alu.dest.dest); ++j) {
       if (alu.dest.write_mask & (1 << j)) {
+         unsigned ncomp =  j == 3 ? 4 : 3;
+
          AluInstr::SrcValues srcs(ncomp);
          PRegister dest = value_factory.dest(alu.dest.dest, j, pin, (1 << ncomp) - 1);
 

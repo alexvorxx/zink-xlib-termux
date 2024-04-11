@@ -581,7 +581,9 @@ emit_reduction(lower_context* ctx, aco_opcode op, ReduceOp reduce_op, unsigned c
                    Operand(stmp, bld.lm));
    }
 
-   if (src.regClass() == v1b) {
+   if (reduce_op == iadd8 || reduce_op == imul8 || reduce_op == imax8 || reduce_op == imin8 ||
+       reduce_op == umin8 || reduce_op == umax8 || reduce_op == ixor8 || reduce_op == ior8 ||
+       reduce_op == iand8) {
       if (ctx->program->gfx_level >= GFX8 && ctx->program->gfx_level < GFX11) {
          aco_ptr<Instruction> sdwa{
             create_instruction(aco_opcode::v_mov_b32, asSDWA(Format::VOP1), 1, 1)};
@@ -602,7 +604,11 @@ emit_reduction(lower_context* ctx, aco_opcode op, ReduceOp reduce_op, unsigned c
          bld.vop3(opcode, Definition(PhysReg{tmp}, v1), Operand(PhysReg{tmp}, v1), Operand::zero(),
                   Operand::c32(8u));
       }
-   } else if (src.regClass() == v2b) {
+   } else if (reduce_op == iadd16 || reduce_op == imul16 || reduce_op == imax16 ||
+              reduce_op == imin16 || reduce_op == umin16 || reduce_op == umax16 ||
+              reduce_op == ixor16 || reduce_op == ior16 || reduce_op == iand16 ||
+              reduce_op == fadd16 || reduce_op == fmul16 || reduce_op == fmin16 ||
+              reduce_op == fmax16) {
       bool is_add_cmp = reduce_op == iadd16 || reduce_op == imax16 || reduce_op == imin16 ||
                         reduce_op == umin16 || reduce_op == umax16;
       if (ctx->program->gfx_level >= GFX10 && ctx->program->gfx_level < GFX11 && is_add_cmp) {

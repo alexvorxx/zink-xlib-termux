@@ -21,6 +21,8 @@
  * IN THE SOFTWARE.
  */
 
+#include "state_tracker/st_context.h"
+
 #include <egldriver.h>
 #include <egllog.h>
 #include <eglcurrent.h>
@@ -192,20 +194,20 @@ static void
 wgl_display_destroy(_EGLDisplay *disp)
 {
    struct wgl_egl_display *wgl_dpy = wgl_egl_display(disp);
-   if (wgl_dpy->base.destroy)
-      wgl_dpy->base.destroy(&wgl_dpy->base);
+
+   st_screen_destroy(&wgl_dpy->base);
    free(wgl_dpy);
 }
 
 static int
-wgl_egl_st_get_param(struct st_manager *smapi, enum st_manager_param param)
+wgl_egl_st_get_param(struct pipe_frontend_screen *fscreen, enum st_manager_param param)
 {
    /* no-op */
    return 0;
 }
 
 static bool
-wgl_get_egl_image(struct st_manager *smapi, void *image, struct st_egl_image *out)
+wgl_get_egl_image(struct pipe_frontend_screen *fscreen, void *image, struct st_egl_image *out)
 {
    struct wgl_egl_image *wgl_img = (struct wgl_egl_image *)image;
    stw_translate_image(wgl_img->img, out);
@@ -213,9 +215,9 @@ wgl_get_egl_image(struct st_manager *smapi, void *image, struct st_egl_image *ou
 }
 
 static bool
-wgl_validate_egl_image(struct st_manager *smapi, void *image)
+wgl_validate_egl_image(struct pipe_frontend_screen *fscreen, void *image)
 {
-   struct wgl_egl_display *wgl_dpy = (struct wgl_egl_display *)smapi;
+   struct wgl_egl_display *wgl_dpy = (struct wgl_egl_display *)fscreen;
    _EGLDisplay *disp = _eglLockDisplay(wgl_dpy->parent);
    _EGLImage *img = _eglLookupImage(image, disp);
    _eglUnlockDisplay(disp);
@@ -724,7 +726,6 @@ static EGLBoolean
 wgl_bind_tex_image(_EGLDisplay *disp, _EGLSurface *surf, EGLint buffer)
 {
    struct wgl_egl_surface *wgl_surf = wgl_egl_surface(surf);
-   enum st_attachment_type target = ST_TEXTURE_2D;
 
    _EGLContext *ctx = _eglGetCurrentContext();
    struct wgl_egl_context *wgl_ctx = wgl_egl_context(ctx);
@@ -732,7 +733,7 @@ wgl_bind_tex_image(_EGLDisplay *disp, _EGLSurface *surf, EGLint buffer)
    if (!_eglBindTexImage(disp, surf, buffer))
       return EGL_FALSE;
 
-   struct pipe_resource *pres = stw_get_framebuffer_resource(wgl_surf->fb->stfb, ST_ATTACHMENT_FRONT_LEFT);
+   struct pipe_resource *pres = stw_get_framebuffer_resource(wgl_surf->fb->drawable, ST_ATTACHMENT_FRONT_LEFT);
    enum pipe_format format = pres->format;
 
    switch (surf->TextureFormat) {
@@ -770,7 +771,8 @@ wgl_bind_tex_image(_EGLDisplay *disp, _EGLSurface *surf, EGLint buffer)
       assert(!"Unexpected texture target in wgl_bind_tex_image()");
    }
 
-   wgl_ctx->ctx->st->teximage(wgl_ctx->ctx->st, target, 0, format, pres, false);
+   st_context_teximage(wgl_ctx->ctx->st, GL_TEXTURE_2D, 0, format, pres,
+                       false);
 
    return EGL_TRUE;
 }
@@ -801,7 +803,7 @@ wgl_wait_client(_EGLDisplay *disp, _EGLContext *ctx)
 {
    struct wgl_egl_context *wgl_ctx = wgl_egl_context(ctx);
    struct pipe_fence_handle *fence = NULL;
-   wgl_ctx->ctx->st->flush(wgl_ctx->ctx->st, ST_FLUSH_END_OF_FRAME | ST_FLUSH_WAIT, &fence, NULL, NULL);
+   st_context_flush(wgl_ctx->ctx->st, ST_FLUSH_END_OF_FRAME | ST_FLUSH_WAIT, &fence, NULL, NULL);
    return EGL_TRUE;
 }
 
@@ -978,7 +980,7 @@ wgl_create_sync_khr(_EGLDisplay *disp, EGLenum type, const EGLAttrib *attrib_lis
    struct wgl_egl_context *wgl_ctx = wgl_egl_context(ctx);
    struct wgl_egl_sync *wgl_sync;
 
-   struct st_context_iface *st_ctx = wgl_ctx ? wgl_ctx->ctx->st : NULL;
+   struct st_context *st = wgl_ctx ? wgl_ctx->ctx->st : NULL;
 
    wgl_sync = calloc(1, sizeof(struct wgl_egl_sync));
    if (!wgl_sync) {
@@ -993,7 +995,7 @@ wgl_create_sync_khr(_EGLDisplay *disp, EGLenum type, const EGLAttrib *attrib_lis
 
    switch (type) {
    case EGL_SYNC_FENCE_KHR:
-      st_ctx->flush(st_ctx, 0, &wgl_sync->fence, NULL, NULL);
+      st_context_flush(st, 0, &wgl_sync->fence, NULL, NULL);
       if (!wgl_sync->fence) {
          _eglError(EGL_BAD_ALLOC, "eglCreateSyncKHR");
          free(wgl_sync);

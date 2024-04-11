@@ -64,25 +64,6 @@ dump_anv_vm_bind(struct anv_device *device,
 }
 
 static void
-dump_vk_sparse_memory_bind(const VkSparseMemoryBind *bind)
-{
-   if (!INTEL_DEBUG(DEBUG_SPARSE))
-      return;
-
-   if (bind->memory != VK_NULL_HANDLE) {
-      struct anv_bo *bo = anv_device_memory_from_handle(bind->memory)->bo;
-      sparse_debug("bo:%04u ", bo->gem_handle);
-   } else {
-      sparse_debug("bo:---- ");
-   }
-
-   sparse_debug("res_offset:%08"PRIx64" size:%08"PRIx64" "
-                "mem_offset:%08"PRIx64" flags:0x%08x\n",
-                bind->resourceOffset, bind->size, bind->memoryOffset,
-                bind->flags);
-}
-
-static void
 dump_anv_image(struct anv_image *i)
 {
    if (!INTEL_DEBUG(DEBUG_SPARSE))

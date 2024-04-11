@@ -3690,22 +3690,30 @@ ms_store_prim_indices(nir_builder *b,
 
 static void
 ms_store_cull_flag(nir_builder *b,
-                   nir_def *val,
-                   nir_def *offset_src,
+                   nir_intrinsic_instr *intrin,
                    lower_ngg_ms_state *s)
 {
-   assert(val->num_components == 1);
-   assert(val->bit_size == 1);
+   /* EXT_mesh_shader cull primitive: per-primitive bool. */
+   assert(nir_src_is_const(*nir_get_io_offset_src(intrin)));
+   assert(nir_src_as_uint(*nir_get_io_offset_src(intrin)) == 0);
+   assert(nir_intrinsic_component(intrin) == 0);
+   assert(nir_intrinsic_write_mask(intrin) == 1);
+
+   nir_def *store_val = intrin->src[0].ssa;
+
+   assert(store_val->num_components == 1);
+   assert(store_val->bit_size == 1);
 
    if (s->layout.var.prm_attr.mask & BITFIELD64_BIT(VARYING_SLOT_CULL_PRIMITIVE)) {
-      nir_store_var(b, s->out_variables[VARYING_SLOT_CULL_PRIMITIVE * 4], nir_b2i32(b, val), 0x1);
+      nir_store_var(b, s->out_variables[VARYING_SLOT_CULL_PRIMITIVE * 4], nir_b2i32(b, store_val), 0x1);
       return;
    }
 
-   if (!offset_src)
-      offset_src = nir_imm_int(b, 0);
+   nir_def *arr_index = nir_get_io_arrayed_index_src(intrin)->ssa;
+   nir_def *offset = nir_imul_imm(b, arr_index, s->vertices_per_prim);
 
-   nir_store_shared(b, nir_b2i8(b, val), offset_src, .base = s->layout.lds.cull_flags_addr);
+   /* To reduce LDS use, store these as an array of 8-bit values. */
+   nir_store_shared(b, nir_b2i8(b, store_val), offset, .base = s->layout.lds.cull_flags_addr);
 }
 
 static nir_def *
@@ -3841,18 +3849,7 @@ ms_store_arrayed_output_intrin(nir_builder *b,
       ms_store_prim_indices(b, intrin, s);
       return;
    } else if (location == VARYING_SLOT_CULL_PRIMITIVE) {
-      /* EXT_mesh_shader cull primitive: per-primitive bool.
-       * To reduce LDS use, store these as an array of 8-bit values.
-       */
-      assert(nir_src_is_const(*nir_get_io_offset_src(intrin)));
-      assert(nir_src_as_uint(*nir_get_io_offset_src(intrin)) == 0);
-      assert(nir_intrinsic_component(intrin) == 0);
-      assert(nir_intrinsic_write_mask(intrin) == 1);
-
-      nir_def *store_val = intrin->src[0].ssa;
-      nir_def *arr_index = nir_get_io_arrayed_index_src(intrin)->ssa;
-      nir_def *offset = nir_imul_imm(b, arr_index, s->vertices_per_prim);
-      ms_store_cull_flag(b, store_val, offset, s);
+      ms_store_cull_flag(b, intrin, s);
       return;
    }
 

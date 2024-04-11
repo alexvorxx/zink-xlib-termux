@@ -909,7 +909,7 @@ get_features(const struct anv_physical_device *pdevice,
 
       /* VK_EXT_descriptor_buffer */
       .descriptorBuffer = true,
-      .descriptorBufferCaptureReplay = false,
+      .descriptorBufferCaptureReplay = true,
       .descriptorBufferImageLayoutIgnored = false,
       .descriptorBufferPushDescriptors = true,
 
@@ -1550,11 +1550,19 @@ get_properties(const struct anv_physical_device *pdevice,
       }
       props->maxEmbeddedImmutableSamplers = MAX_EMBEDDED_SAMPLERS;
 
-      props->bufferCaptureReplayDescriptorDataSize = 1;
-      props->imageCaptureReplayDescriptorDataSize = 1;
-      props->imageViewCaptureReplayDescriptorDataSize = 1;
-      props->samplerCaptureReplayDescriptorDataSize = 1;
-      props->accelerationStructureCaptureReplayDescriptorDataSize = 1;
+      /* Storing a 64bit address */
+      props->bufferCaptureReplayDescriptorDataSize = 8;
+      props->imageCaptureReplayDescriptorDataSize = 8;
+      /* Offset inside the reserved border color pool */
+      props->samplerCaptureReplayDescriptorDataSize = 4;
+
+      /* Not affected by replay */
+      props->imageViewCaptureReplayDescriptorDataSize = 0;
+      /* The acceleration structure virtual address backing is coming from a
+       * buffer, so as long as that buffer is captured/replayed correctly we
+       * should always get the same address.
+       */
+      props->accelerationStructureCaptureReplayDescriptorDataSize = 0;
 
       props->samplerDescriptorSize = ANV_SAMPLER_STATE_SIZE;
       props->combinedImageSamplerDescriptorSize = align(ANV_SURFACE_STATE_SIZE + ANV_SAMPLER_STATE_SIZE,

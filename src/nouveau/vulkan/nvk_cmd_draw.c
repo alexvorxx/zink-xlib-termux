@@ -50,13 +50,6 @@ nvk_mme_set_priv_reg(struct mme_builder *b)
    mme_emit(b, mme_load(b));
    mme_emit(b, mme_load(b));
 
-   /* Not sure if this has to strictly go before SET_FALCON04, but it might.
-    * We also don't really know what that value indicates and when and how it's
-    * set.
-    */
-   struct mme_value s26 = mme_state(b, NV9097_SET_MME_SHADOW_SCRATCH(26));
-   s26 = mme_merge(b, mme_zero(), s26, 0, 8, 0);
-
    mme_mthd(b, NV9097_SET_FALCON04);
    mme_emit(b, mme_load(b));
 
@@ -105,13 +98,17 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
    if (pdev->info.cls_eng3d >= TURING_A)
       P_IMMD(p, NVC597, SET_MME_DATA_FIFO_CONFIG, FIFO_SIZE_SIZE_4KB);
 
-   /* Enable FP hepler invocation memory loads
+   /* Enable FP helper invocation memory loads
     *
     * For generations with firmware support for our `SET_PRIV_REG` mme method
     * we simply use that. On older generations we'll let the kernel do it.
     * Starting with GSP we have to do it via the firmware anyway.
     *
     * This clears bit 3 of gr_gpcs_tpcs_sm_disp_ctrl
+    * 
+    * Without it,
+    * dEQP-VK.subgroups.vote.frag_helper.subgroupallequal_bvec2_fragment will
+    * occasionally fail.
     */
    if (pdev->info.cls_eng3d >= MAXWELL_B) {
       unsigned reg = pdev->info.cls_eng3d >= VOLTA_A ? 0x419ba4 : 0x419f78;

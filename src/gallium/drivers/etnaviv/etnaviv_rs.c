@@ -409,7 +409,7 @@ etna_blit_clear_zs_rs(struct pipe_context *pctx, struct pipe_surface *dst,
       }
 
       etna_resource_level_ts_mark_valid(surf->level);
-      ctx->dirty |= ETNA_DIRTY_TS | ETNA_DIRTY_DERIVE_TS;
+      ctx->dirty |= ETNA_DIRTY_TS;
    } else {
       /* If the level has valid TS state we need to flush it, as the regular
        * clear will not update the state and we must therefore invalidate it. */
@@ -431,6 +431,7 @@ etna_blit_clear_zs_rs(struct pipe_context *pctx, struct pipe_surface *dst,
    surf->level->clear_value = new_clear_value;
    resource_written(ctx, surf->base.texture);
    etna_resource_level_mark_changed(surf->level);
+   ctx->dirty |= ETNA_DIRTY_DERIVE_TS;
 }
 
 static void

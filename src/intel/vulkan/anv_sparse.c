@@ -1024,15 +1024,18 @@ anv_sparse_bind_image_memory(struct anv_queue *queue,
    const struct isl_format_layout *layout =
       isl_format_get_layout(surf->format);
 
-   sparse_debug("\n=== [%s:%d] [%s] BEGIN\n", __FILE__, __LINE__, __func__);
-   sparse_debug("--> mip_level:%d array_layer:%d\n",
-                mip_level, array_layer);
-   sparse_debug("aspect:0x%x plane:%d\n", aspect, plane);
-   sparse_debug("binding offset: [%d, %d, %d] extent: [%d, %d, %d]\n",
-                bind->offset.x, bind->offset.y, bind->offset.z,
-                bind->extent.width, bind->extent.height, bind->extent.depth);
-   dump_anv_image(image);
-   dump_isl_surf(surf);
+   if (INTEL_DEBUG(DEBUG_SPARSE)) {
+      sparse_debug("%s:", __func__);
+      sparse_debug("mip_level:%d array_layer:%d\n", mip_level, array_layer);
+      sparse_debug("aspect:0x%x plane:%d\n", aspect, plane);
+      sparse_debug("binding offset: [%d, %d, %d] extent: [%d, %d, %d]\n",
+                   bind->offset.x, bind->offset.y, bind->offset.z,
+                   bind->extent.width, bind->extent.height,
+                   bind->extent.depth);
+      dump_anv_image(image);
+      dump_isl_surf(surf);
+      sparse_debug("\n");
+   }
 
    VkExtent3D block_shape_px =
       anv_sparse_calc_block_shape(device->physical, surf);
@@ -1119,7 +1122,6 @@ anv_sparse_bind_image_memory(struct anv_queue *queue,
       }
    }
 
-   sparse_debug("\n=== [%s:%d] [%s] END\n", __FILE__, __LINE__, __func__);
    return VK_SUCCESS;
 }
 

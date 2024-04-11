@@ -237,7 +237,6 @@ public:
    void init();
    ~fs_visitor();
 
-   fs_reg vgrf(const glsl_type *const type);
    void import_uniforms(fs_visitor *v);
 
    void VARYING_PULL_CONSTANT_LOAD(const brw::fs_builder &bld,

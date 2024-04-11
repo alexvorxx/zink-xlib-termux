@@ -605,7 +605,7 @@ validate_geometry_shader_executable(struct gl_shader_program *prog,
 
    unsigned num_vertices =
       mesa_vertices_per_prim(shader->Program->info.gs.input_primitive);
-   prog->Geom.VerticesIn = num_vertices;
+   shader->Program->info.gs.vertices_in = num_vertices;
 
    analyze_clip_cull_usage(prog, shader, consts, &shader->Program->info);
 }

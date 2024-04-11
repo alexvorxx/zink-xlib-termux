@@ -4130,7 +4130,7 @@ assign_final_varying_locations(const struct gl_constants *consts,
    if (consumer) {
       unsigned consumer_vertices = 0;
       if (consumer && consumer->Stage == MESA_SHADER_GEOMETRY)
-         consumer_vertices = prog->Geom.VerticesIn;
+         consumer_vertices = consumer->Program->nir->info.gs.vertices_in;
 
       gl_nir_lower_packed_varyings(consts, prog, mem_ctx, slots_used, components,
                                    nir_var_shader_in, consumer_vertices,

@@ -160,7 +160,7 @@ etna_create_surface(struct pipe_context *pctx, struct pipe_resource *prsc,
           * Currently uses a fixed row size of 64 bytes. Some benchmarking with
           * different sizes may be in order. */
          struct etna_bo *ts_bo = etna_resource(surf->base.texture)->ts_bo;
-         etna_compile_rs_state(ctx, &surf->clear_command, &(struct rs_state) {
+         etna_compile_rs_state(ctx, &surf->ts_clear_command, &(struct rs_state) {
             .source_format = RS_FORMAT_A8R8G8B8,
             .dest_format = RS_FORMAT_A8R8G8B8,
             .dest = ts_bo,

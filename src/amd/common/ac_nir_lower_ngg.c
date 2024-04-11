@@ -3773,22 +3773,6 @@ regroup_store_val(nir_builder *b, nir_def *store_val)
    return store_val;
 }
 
-static nir_def *
-regroup_load_val(nir_builder *b, nir_def *load, unsigned dest_bit_size)
-{
-   if (dest_bit_size == load->bit_size)
-      return load;
-
-   /* Small bitsize components are not stored contiguously, take care of that here. */
-   unsigned num_components = load->num_components;
-   assert(num_components <= 4);
-   nir_def *components[4] = {0};
-   for (unsigned i = 0; i < num_components; ++i)
-      components[i] = nir_u2uN(b, nir_channel(b, load, i), dest_bit_size);
-
-   return nir_vec(b, components, num_components);
-}
-
 static const ms_out_part *
 ms_get_out_layout_part(unsigned location,
                        shader_info *info,
@@ -3974,39 +3958,16 @@ ms_load_arrayed_output(nir_builder *b,
                                  .memory_modes = nir_var_shader_out,
                                  .access = ACCESS_COHERENT);
    } else if (out_mode == ms_out_mode_var) {
+      assert(load_bit_size == 32);
       nir_def *arr[8] = {0};
-      unsigned num_32bit_components = num_components * load_bit_size / 32;
-      for (unsigned comp = 0; comp < num_32bit_components; ++comp) {
+      for (unsigned comp = 0; comp < num_components; ++comp) {
          unsigned idx = location * 4 + comp + component_addr_off;
          arr[comp] = nir_load_var(b, s->out_variables[idx]);
       }
-      if (load_bit_size > 32)
-         return nir_extract_bits(b, arr, 1, 0, num_components, load_bit_size);
       return nir_vec(b, arr, num_components);
    } else {
       unreachable("Invalid MS output mode for load");
    }
-}
-
-static nir_def *
-ms_load_arrayed_output_intrin(nir_builder *b,
-                              nir_intrinsic_instr *intrin,
-                              lower_ngg_ms_state *s)
-{
-   nir_def *arr_index = nir_get_io_arrayed_index_src(intrin)->ssa;
-   nir_def *base_offset = nir_get_io_offset_src(intrin)->ssa;
-
-   unsigned location = nir_intrinsic_io_semantics(intrin).location;
-   unsigned component_offset = nir_intrinsic_component(intrin);
-   unsigned bit_size = intrin->def.bit_size;
-   unsigned num_components = intrin->def.num_components;
-   unsigned load_bit_size = MAX2(bit_size, 32);
-
-   nir_def *load =
-      ms_load_arrayed_output(b, arr_index, base_offset, location, component_offset,
-                             num_components, load_bit_size, s);
-
-   return regroup_load_val(b, load, bit_size);
 }
 
 static nir_def *
@@ -4070,9 +4031,6 @@ lower_ms_intrinsic(nir_builder *b, nir_instr *instr, void *state)
    case nir_intrinsic_store_per_primitive_output:
       ms_store_arrayed_output_intrin(b, intrin, s);
       return NIR_LOWER_INSTR_PROGRESS_REPLACE;
-   case nir_intrinsic_load_per_vertex_output:
-   case nir_intrinsic_load_per_primitive_output:
-      return ms_load_arrayed_output_intrin(b, intrin, s);
    case nir_intrinsic_barrier:
       return update_ms_barrier(b, intrin, s);
    case nir_intrinsic_load_workgroup_index:
@@ -4095,9 +4053,7 @@ filter_ms_intrinsic(const nir_instr *instr,
    return intrin->intrinsic == nir_intrinsic_store_output ||
           intrin->intrinsic == nir_intrinsic_load_output ||
           intrin->intrinsic == nir_intrinsic_store_per_vertex_output ||
-          intrin->intrinsic == nir_intrinsic_load_per_vertex_output ||
           intrin->intrinsic == nir_intrinsic_store_per_primitive_output ||
-          intrin->intrinsic == nir_intrinsic_load_per_primitive_output ||
           intrin->intrinsic == nir_intrinsic_barrier ||
           intrin->intrinsic == nir_intrinsic_load_workgroup_index ||
           intrin->intrinsic == nir_intrinsic_set_vertex_and_primitive_count;

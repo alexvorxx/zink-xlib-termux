@@ -5181,11 +5181,6 @@ void anv_DestroySampler(
                           sampler->bindless_state);
    }
 
-   if (sampler->bindless_state_db.map) {
-      anv_state_pool_free(&device->dynamic_state_db_pool,
-                          sampler->bindless_state_db);
-   }
-
    if (sampler->custom_border_color.map) {
       anv_state_reserved_pool_free(&device->custom_border_colors,
                                    sampler->custom_border_color);

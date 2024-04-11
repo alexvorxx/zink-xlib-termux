@@ -1280,15 +1280,6 @@ VkResult genX(CreateSampler)(
       memcpy(sampler->bindless_state.map, sampler->state,
              sampler->n_planes * GENX(SAMPLER_STATE_length) * 4);
    }
-   if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
-      sampler->bindless_state_db =
-         anv_state_pool_alloc(&device->dynamic_state_db_pool,
-                              sampler->n_planes * 32, 32);
-      if (sampler->bindless_state_db.map) {
-         memcpy(sampler->bindless_state_db.map, sampler->db_state,
-                sampler->n_planes * GENX(SAMPLER_STATE_length) * 4);
-      }
-   }
 
    /* Hash the border color */
    _mesa_sha1_update(&ctx, border_color_ptr,

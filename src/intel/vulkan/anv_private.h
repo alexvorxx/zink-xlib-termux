@@ -5791,7 +5791,6 @@ struct anv_sampler {
     * and with a 32-byte stride for use as bindless samplers.
     */
    struct anv_state             bindless_state;
-   struct anv_state             bindless_state_db;
 
    struct anv_state             custom_border_color;
    struct anv_state             custom_border_color_db;

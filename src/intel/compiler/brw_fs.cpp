@@ -510,7 +510,6 @@ fs_inst::can_do_cmod() const
    case BRW_OPCODE_SHR:
    case BRW_OPCODE_SUBB:
    case BRW_OPCODE_XOR:
-   case FS_OPCODE_LINTERP:
       break;
    default:
       return false;
@@ -721,11 +720,8 @@ fs_inst::components_read(unsigned i) const
       return 0;
 
    switch (opcode) {
-   case FS_OPCODE_LINTERP:
-      if (i == 0)
-         return 2;
-      else
-         return 1;
+   case BRW_OPCODE_PLN:
+      return i == 0 ? 1 : 2;
 
    case FS_OPCODE_PIXEL_X:
    case FS_OPCODE_PIXEL_Y:
@@ -920,8 +916,8 @@ fs_inst::size_read(int arg) const
          return mlen * REG_SIZE;
       break;
 
-   case FS_OPCODE_LINTERP:
-      if (arg == 1)
+   case BRW_OPCODE_PLN:
+      if (arg == 0)
          return 16;
       break;
 
@@ -2421,9 +2417,6 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
       return "ddy_coarse";
    case FS_OPCODE_DDY_FINE:
       return "ddy_fine";
-
-   case FS_OPCODE_LINTERP:
-      return "linterp";
 
    case FS_OPCODE_PIXEL_X:
       return "pixel_x";

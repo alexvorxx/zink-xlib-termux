@@ -306,7 +306,7 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
       /* Integer division is limited to SIMD8 on all generations. */
       return MIN2(8, inst->exec_size);
 
-   case FS_OPCODE_LINTERP:
+   case BRW_OPCODE_PLN:
    case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
    case FS_OPCODE_PACK_HALF_2x16_SPLIT:
    case FS_OPCODE_INTERPOLATE_AT_SAMPLE:

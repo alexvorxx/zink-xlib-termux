@@ -500,8 +500,6 @@ private:
                       struct brw_reg payload,
                       struct brw_reg payload2);
    void generate_barrier(fs_inst *inst, struct brw_reg src);
-   bool generate_linterp(fs_inst *inst, struct brw_reg dst,
-			 struct brw_reg *src);
    void generate_ddx(const fs_inst *inst,
                      struct brw_reg dst, struct brw_reg src);
    void generate_ddy(const fs_inst *inst,

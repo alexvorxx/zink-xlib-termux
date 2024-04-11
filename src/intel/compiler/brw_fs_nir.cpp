@@ -4310,7 +4310,7 @@ fs_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
          interp.type = BRW_REGISTER_TYPE_F;
          dest.type = BRW_REGISTER_TYPE_F;
 
-         bld.emit(FS_OPCODE_LINTERP, offset(dest, bld, i), dst_xy, interp);
+         bld.PLN(offset(dest, bld, i), interp, dst_xy);
       }
       break;
    }

@@ -603,31 +603,6 @@ fs_generator::generate_barrier(fs_inst *, struct brw_reg src)
    }
 }
 
-bool
-fs_generator::generate_linterp(fs_inst *inst,
-                               struct brw_reg dst, struct brw_reg *src)
-{
-   /* PLN reads:
-    *                      /   in SIMD16   \
-    *    -----------------------------------
-    *   | src1+0 | src1+1 | src1+2 | src1+3 |
-    *   |-----------------------------------|
-    *   |(x0, x1)|(y0, y1)|(x2, x3)|(y2, y3)|
-    *    -----------------------------------
-    */
-   struct brw_reg delta_x = src[0];
-   struct brw_reg interp = src[1];
-
-   /* nir_lower_interpolation() will do the lowering to MAD instructions for
-    * us on gfx11+
-    */
-   assert(devinfo->ver < 11);
-   assert(devinfo->has_pln);
-
-   brw_PLN(p, dst, interp, delta_x);
-   return false;
-}
-
 /* For OPCODE_DDX and OPCODE_DDY, per channel of output we've got input
  * looking like:
  *
@@ -1216,8 +1191,16 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          assert(inst->opcode == SHADER_OPCODE_POW || inst->exec_size == 8);
          gfx6_math(p, dst, brw_math_function(inst->opcode), src[0], src[1]);
 	 break;
-      case FS_OPCODE_LINTERP:
-	 multiple_instructions_emitted = generate_linterp(inst, dst, src);
+      case BRW_OPCODE_PLN:
+         /* PLN reads:
+          *                      /   in SIMD16   \
+          *    -----------------------------------
+          *   | src1+0 | src1+1 | src1+2 | src1+3 |
+          *   |-----------------------------------|
+          *   |(x0, x1)|(y0, y1)|(x2, x3)|(y2, y3)|
+          *    -----------------------------------
+          */
+         brw_PLN(p, dst, src[0], src[1]);
 	 break;
       case FS_OPCODE_PIXEL_X:
          assert(src[0].type == BRW_REGISTER_TYPE_UW);

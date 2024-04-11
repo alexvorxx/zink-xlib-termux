@@ -1467,21 +1467,6 @@ brw_send_indirect_split_message(struct brw_codegen *p,
                                 bool ex_bso,
                                 bool eot);
 
-void brw_svb_write(struct brw_codegen *p,
-                   struct brw_reg dest,
-                   unsigned msg_reg_nr,
-                   struct brw_reg src0,
-                   unsigned binding_table_index,
-                   bool   send_commit_msg);
-
-brw_inst *gfx9_fb_READ(struct brw_codegen *p,
-                       struct brw_reg dst,
-                       struct brw_reg payload,
-                       unsigned binding_table_index,
-                       unsigned msg_length,
-                       unsigned response_length,
-                       bool per_sample);
-
 void gfx6_math(struct brw_codegen *p,
 	       struct brw_reg dest,
 	       unsigned function,

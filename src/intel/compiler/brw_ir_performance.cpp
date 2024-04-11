@@ -575,10 +575,6 @@ namespace {
             abort();
          }
 
-      case FS_OPCODE_FB_READ:
-         return calculate_desc(info, EU_UNIT_DP_RC, 2, 0, 0, 0, 450 /* XXX */,
-                               10 /* XXX */, 300 /* XXX */, 0, 0, 0, 0);
-
       case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
          return calculate_desc(info, EU_UNIT_DP_CC, 2, 0, 0, 0, 16 /* XXX */,
                                10 /* XXX */, 100 /* XXX */, 0, 0, 0, 0);

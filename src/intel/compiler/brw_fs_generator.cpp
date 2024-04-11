@@ -262,20 +262,6 @@ fs_generator::generate_send(fs_inst *inst,
 }
 
 void
-fs_generator::generate_fb_read(fs_inst *inst, struct brw_reg dst,
-                               struct brw_reg payload)
-{
-   assert(inst->size_written % REG_SIZE == 0);
-   struct brw_wm_prog_data *prog_data = brw_wm_prog_data(this->prog_data);
-   /* We assume that render targets start at binding table index 0. */
-   const unsigned surf_index = inst->target;
-
-   gfx9_fb_READ(p, dst, payload, surf_index,
-                inst->header_size, inst->size_written / REG_SIZE,
-                prog_data->persample_dispatch);
-}
-
-void
 fs_generator::generate_mov_indirect(fs_inst *inst,
                                     struct brw_reg dst,
                                     struct brw_reg reg,
@@ -1284,11 +1270,6 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
       case SHADER_OPCODE_MOV_RELOC_IMM:
          assert(src[0].file == BRW_IMMEDIATE_VALUE);
          brw_MOV_reloc_imm(p, dst, dst.type, src[0].ud);
-         break;
-
-      case FS_OPCODE_FB_READ:
-         generate_fb_read(inst, dst, src[0]);
-         send_count++;
          break;
 
       case BRW_OPCODE_HALT:

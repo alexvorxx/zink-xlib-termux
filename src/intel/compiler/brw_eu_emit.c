@@ -1416,36 +1416,6 @@ void gfx6_math(struct brw_codegen *p,
    brw_set_src1(p, insn, src1);
 }
 
-/**
- * Return the right surface index to access the thread scratch space using
- * stateless dataport messages.
- */
-brw_inst *
-gfx9_fb_READ(struct brw_codegen *p,
-             struct brw_reg dst,
-             struct brw_reg payload,
-             unsigned binding_table_index,
-             unsigned msg_length,
-             unsigned response_length,
-             bool per_sample)
-{
-   const struct intel_device_info *devinfo = p->devinfo;
-   assert(devinfo->ver >= 9);
-   brw_inst *insn = next_insn(p, BRW_OPCODE_SENDC);
-
-   brw_inst_set_sfid(devinfo, insn, GFX6_SFID_DATAPORT_RENDER_CACHE);
-   brw_set_dest(p, insn, dst);
-   brw_set_src0(p, insn, payload);
-   brw_set_desc(
-      p, insn,
-      brw_message_desc(devinfo, msg_length, response_length, true) |
-      brw_fb_read_desc(devinfo, binding_table_index, 0 /* msg_control */,
-                       1 << brw_get_default_exec_size(p), per_sample));
-   brw_inst_set_rt_slot_group(devinfo, insn, brw_get_default_group(p) / 16);
-
-   return insn;
-}
-
 void
 brw_send_indirect_message(struct brw_codegen *p,
                           unsigned sfid,

@@ -256,8 +256,6 @@ fs_inst::is_send_from_grf() const
       return true;
    case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
       return src[1].file == VGRF;
-   case FS_OPCODE_FB_READ:
-      return src[0].file == VGRF;
    default:
       return false;
    }
@@ -294,7 +292,6 @@ bool
 fs_inst::is_payload(unsigned arg) const
 {
    switch (opcode) {
-   case FS_OPCODE_FB_READ:
    case FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
    case FS_OPCODE_INTERPOLATE_AT_SAMPLE:
    case FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
@@ -917,7 +914,6 @@ fs_inst::size_read(int arg) const
       }
       break;
 
-   case FS_OPCODE_FB_READ:
    case FS_OPCODE_INTERPOLATE_AT_SAMPLE:
    case FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
       if (arg == 0)
@@ -2262,8 +2258,6 @@ brw_instruction_name(const struct brw_isa_info *isa, enum opcode op)
       return brw_opcode_desc(isa, op)->name;
    case FS_OPCODE_FB_WRITE_LOGICAL:
       return "fb_write_logical";
-   case FS_OPCODE_FB_READ:
-      return "fb_read";
    case FS_OPCODE_FB_READ_LOGICAL:
       return "fb_read_logical";
 

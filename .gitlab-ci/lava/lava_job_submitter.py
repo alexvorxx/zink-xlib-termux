@@ -25,6 +25,8 @@ from lavacli.utils import flow_yaml as lava_yaml
 
 from lava.exceptions import (
     MesaCIException,
+    MesaCIFatalException,
+    MesaCIRetriableException,
     MesaCIParseException,
     MesaCIRetryError,
     MesaCITimeoutError,
@@ -85,14 +87,14 @@ NUMBER_OF_RETRIES_TIMEOUT_DETECTION = int(
 def raise_exception_from_metadata(metadata: dict, job_id: int) -> None:
     """
     Investigate infrastructure errors from the job metadata.
-    If it finds an error, raise it as MesaCIException.
+    If it finds an error, raise it as MesaCIRetriableException.
     """
     if "result" not in metadata or metadata["result"] != "fail":
         return
     if "error_type" in metadata:
         error_type = metadata["error_type"]
         if error_type == "Infrastructure":
-            raise MesaCIException(
+            raise MesaCIRetriableException(
                 f"LAVA job {job_id} failed with Infrastructure Error. Retry."
             )
         if error_type == "Job":
@@ -100,12 +102,12 @@ def raise_exception_from_metadata(metadata: dict, job_id: int) -> None:
             # with mal-formed job definitions. As we are always validating the
             # jobs, only the former is probable to happen. E.g.: When some LAVA
             # action timed out more times than expected in job definition.
-            raise MesaCIException(
+            raise MesaCIRetriableException(
                 f"LAVA job {job_id} failed with JobError "
                 "(possible LAVA timeout misconfiguration/bug). Retry."
             )
     if "case" in metadata and metadata["case"] == "validate":
-        raise MesaCIException(
+        raise MesaCIRetriableException(
             f"LAVA job {job_id} failed validation (possible download error). Retry."
         )
 
@@ -214,7 +216,7 @@ def submit_job(job):
     try:
         job.submit()
     except Exception as mesa_ci_err:
-        raise MesaCIException(
+        raise MesaCIRetriableException(
             f"Could not submit LAVA job. Reason: {mesa_ci_err}"
         ) from mesa_ci_err
 
@@ -316,6 +318,8 @@ def execute_job_with_retries(
                 f"Finished executing LAVA job in the attempt #{attempt_no}"
                 f"{CONSOLE_LOG['RESET']}"
             )
+            if job.exception and not isinstance(job.exception, MesaCIRetriableException):
+                break
 
     return last_failed_job
 

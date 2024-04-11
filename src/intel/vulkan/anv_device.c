@@ -5066,15 +5066,26 @@ VkResult anv_CreateBuffer(
 
    buffer->address = ANV_NULL_ADDRESS;
    if (anv_buffer_is_sparse(buffer)) {
-      const VkBufferOpaqueCaptureAddressCreateInfo *opaque_addr_info =
-         vk_find_struct_const(pCreateInfo->pNext,
-                              BUFFER_OPAQUE_CAPTURE_ADDRESS_CREATE_INFO);
       enum anv_bo_alloc_flags alloc_flags = 0;
       uint64_t client_address = 0;
 
-      if (opaque_addr_info) {
+      if (buffer->vk.create_flags & VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT) {
          alloc_flags = ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS;
-         client_address = opaque_addr_info->opaqueCaptureAddress;
+         const VkBufferOpaqueCaptureAddressCreateInfo *opaque_addr_info =
+            vk_find_struct_const(pCreateInfo->pNext,
+                                 BUFFER_OPAQUE_CAPTURE_ADDRESS_CREATE_INFO);
+         if (opaque_addr_info)
+            client_address = opaque_addr_info->opaqueCaptureAddress;
+      }
+
+      if (buffer->vk.create_flags & VK_BUFFER_CREATE_DESCRIPTOR_BUFFER_CAPTURE_REPLAY_BIT_EXT) {
+         alloc_flags = ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS;
+
+         const VkOpaqueCaptureDescriptorDataCreateInfoEXT *opaque_info =
+            vk_find_struct_const(pCreateInfo->pNext,
+                                 OPAQUE_CAPTURE_DESCRIPTOR_DATA_CREATE_INFO_EXT);
+         if (opaque_info)
+            client_address = *((const uint64_t *)opaque_info->opaqueCaptureDescriptorData);
       }
 
       VkResult result = anv_init_sparse_bindings(device, buffer->vk.size,
@@ -5133,6 +5144,18 @@ uint64_t anv_GetBufferOpaqueCaptureAddress(
    ANV_FROM_HANDLE(anv_buffer, buffer, pInfo->buffer);
 
    return anv_address_physical(buffer->address);
+}
+
+VkResult anv_GetBufferOpaqueCaptureDescriptorDataEXT(
+    VkDevice                                    device,
+    const VkBufferCaptureDescriptorDataInfoEXT* pInfo,
+    void*                                       pData)
+{
+   ANV_FROM_HANDLE(anv_buffer, buffer, pInfo->buffer);
+
+   *((uint64_t *)pData) = anv_address_physical(buffer->address);
+
+   return VK_SUCCESS;
 }
 
 uint64_t anv_GetDeviceMemoryOpaqueCaptureAddress(

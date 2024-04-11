@@ -16,7 +16,7 @@ import sys
 import time
 from collections import defaultdict
 from dataclasses import dataclass, fields
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from os import environ, getenv, path
 from typing import Any, Optional
 
@@ -81,6 +81,17 @@ LOG_POLLING_TIME_SEC = int(getenv("LAVA_LOG_POLLING_TIME_SEC", 5))
 # How many retries should be made when a timeout happen.
 NUMBER_OF_RETRIES_TIMEOUT_DETECTION = int(
     getenv("LAVA_NUMBER_OF_RETRIES_TIMEOUT_DETECTION", 2)
+)
+
+CI_JOB_TIMEOUT_SEC = int(getenv("CI_JOB_TIMEOUT", 3600))
+# How many seconds the script will wait to let LAVA run the job and give the final details.
+EXPECTED_JOB_DURATION_SEC = int(getenv("EXPECTED_JOB_DURATION_SEC", 60 * 10))
+# CI_JOB_STARTED is given by GitLab CI/CD in UTC timezone by default.
+CI_JOB_STARTED_AT_RAW = getenv("CI_JOB_STARTED_AT", "")
+CI_JOB_STARTED_AT: datetime = (
+    datetime.fromisoformat(CI_JOB_STARTED_AT_RAW)
+    if CI_JOB_STARTED_AT_RAW
+    else datetime.now(timezone.utc)
 )
 
 
@@ -221,9 +232,23 @@ def submit_job(job):
         ) from mesa_ci_err
 
 
-def wait_for_job_get_started(job):
+def wait_for_job_get_started(job, attempt_no):
     print_log(f"Waiting for job {job.job_id} to start.")
     while not job.is_started():
+        current_job_duration_sec: int = int(
+            (datetime.now(timezone.utc) - CI_JOB_STARTED_AT).total_seconds()
+        )
+        remaining_time_sec: int = max(0, CI_JOB_TIMEOUT_SEC - current_job_duration_sec)
+        if remaining_time_sec < EXPECTED_JOB_DURATION_SEC:
+            job.cancel()
+            raise MesaCIFatalException(
+                f"{CONSOLE_LOG['BOLD']}"
+                f"{CONSOLE_LOG['FG_YELLOW']}"
+                f"Job {job.job_id} only has {remaining_time_sec} seconds "
+                "remaining to run, but it is expected to take at least "
+                f"{EXPECTED_JOB_DURATION_SEC} seconds."
+                f"{CONSOLE_LOG['RESET']}",
+            )
         time.sleep(WAIT_FOR_DEVICE_POLLING_TIME_SEC)
     job.refresh_log()
     print_log(f"Job {job.job_id} started.")
@@ -299,7 +324,7 @@ def execute_job_with_retries(
         try:
             job_log["submitter_start_time"] = datetime.now().isoformat()
             submit_job(job)
-            wait_for_job_get_started(job)
+            wait_for_job_get_started(job, attempt_no)
             log_follower: LogFollower = bootstrap_log_follower()
             follow_job_execution(job, log_follower)
             return job

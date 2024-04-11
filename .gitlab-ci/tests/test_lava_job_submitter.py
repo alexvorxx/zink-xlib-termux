@@ -15,7 +15,7 @@ from typing import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
-from lava.exceptions import MesaCIException, MesaCIRetryError
+from lava.exceptions import MesaCIException, MesaCIRetryError, MesaCIFatalException
 from lava.lava_job_submitter import (
     DEVICE_HANGING_TIMEOUT_SEC,
     NUMBER_OF_RETRIES_TIMEOUT_DETECTION,
@@ -24,6 +24,7 @@ from lava.lava_job_submitter import (
     bootstrap_log_follower,
     follow_job_execution,
     retriable_follow_job,
+    wait_for_job_get_started,
 )
 from lava.utils import LogSectionType
 
@@ -256,6 +257,27 @@ def test_simulate_a_long_wait_to_start_a_job(
     assert job.status == "pass"
     assert delta_time.total_seconds() >= wait_time
 
+
+LONG_LAVA_QUEUE_SCENARIOS = {
+    "no_time_to_run": (0, pytest.raises(MesaCIFatalException)),
+    "enough_time_to_run": (9999999999, does_not_raise()),
+}
+
+
+@pytest.mark.parametrize(
+    "job_timeout, expectation",
+    LONG_LAVA_QUEUE_SCENARIOS.values(),
+    ids=LONG_LAVA_QUEUE_SCENARIOS.keys(),
+)
+def test_wait_for_job_get_started_no_time_to_run(monkeypatch, job_timeout, expectation):
+    monkeypatch.setattr("lava.lava_job_submitter.CI_JOB_TIMEOUT_SEC", job_timeout)
+    job = MagicMock()
+    # Make it escape the loop
+    job.is_started.side_effect = (False, False, True)
+    with expectation as e:
+        wait_for_job_get_started(job, 1)
+    if e:
+        job.cancel.assert_called_with()
 
 
 CORRUPTED_LOG_SCENARIOS = {

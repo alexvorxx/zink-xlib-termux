@@ -123,7 +123,7 @@ nir_recompute_io_bases(nir_shader *nir, nir_variable_mode modes)
             num_slots = (num_slots + sem.high_16bits + 1) / 2;
 
          if (mode == nir_var_shader_in) {
-            if (nir->info.per_primitive_inputs & BITFIELD64_BIT(sem.location)) {
+            if (sem.per_primitive) {
                nir_intrinsic_set_base(intr,
                                       num_normal_inputs +
                                       BITSET_PREFIX_SUM(per_prim_inputs, sem.location));

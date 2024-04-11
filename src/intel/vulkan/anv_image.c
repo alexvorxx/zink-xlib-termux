@@ -1567,13 +1567,26 @@ anv_image_finish_sparse_bindings(struct anv_image *image)
 }
 
 static VkResult MUST_CHECK
-anv_image_init_sparse_bindings(struct anv_image *image)
+anv_image_init_sparse_bindings(struct anv_image *image,
+                               const struct anv_image_create_info *create_info)
 {
    struct anv_device *device =
       container_of(image->vk.base.device, struct anv_device, vk);
    VkResult result;
 
    assert(anv_image_is_sparse(image));
+
+   enum anv_bo_alloc_flags alloc_flags = 0;
+   uint64_t explicit_address = 0;
+   if (image->vk.create_flags & VK_IMAGE_CREATE_DESCRIPTOR_BUFFER_CAPTURE_REPLAY_BIT_EXT) {
+      alloc_flags |= ANV_BO_ALLOC_FIXED_ADDRESS;
+
+      const VkOpaqueCaptureDescriptorDataCreateInfoEXT *opaque_info =
+         vk_find_struct_const(create_info->vk_info->pNext,
+                              OPAQUE_CAPTURE_DESCRIPTOR_DATA_CREATE_INFO_EXT);
+      if (opaque_info)
+         explicit_address = *((const uint64_t *)opaque_info->opaqueCaptureDescriptorData);
+   }
 
    for (int i = 0; i < ANV_IMAGE_MEMORY_BINDING_END; i++) {
       struct anv_image_binding *b = &image->bindings[i];
@@ -1592,7 +1605,9 @@ anv_image_init_sparse_bindings(struct anv_image *image)
 
          result = anv_init_sparse_bindings(device,
                                            b->memory_range.size,
-                                           &b->sparse_data, 0, 0,
+                                           &b->sparse_data,
+                                           alloc_flags,
+                                           explicit_address,
                                            &b->address);
          if (result != VK_SUCCESS) {
             anv_image_finish_sparse_bindings(image);
@@ -1767,7 +1782,7 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
    }
 
    if (anv_image_is_sparse(image)) {
-      r = anv_image_init_sparse_bindings(image);
+      r = anv_image_init_sparse_bindings(image, create_info);
       if (r != VK_SUCCESS)
          goto fail;
    }

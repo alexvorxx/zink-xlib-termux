@@ -1289,8 +1289,7 @@ namespace {
                    */
                   const fs_builder ibld = fs_builder(shader, block, inst)
                                           .exec_all().group(1, 0);
-                  fs_inst *sync = ibld.emit(BRW_OPCODE_SYNC, ibld.null_reg_ud(),
-                                            brw_imm_ud(TGL_SYNC_NOP));
+                  fs_inst *sync = ibld.SYNC(TGL_SYNC_NOP);
                   sync->sched.sbid = dep.id;
                   sync->sched.mode = dep.unordered;
                   assert(!(sync->sched.mode & TGL_SBID_SET));
@@ -1313,8 +1312,7 @@ namespace {
                 */
                const fs_builder ibld = fs_builder(shader, block, inst)
                                        .exec_all().group(1, 0);
-               fs_inst *sync = ibld.emit(BRW_OPCODE_SYNC, ibld.null_reg_ud(),
-                                         brw_imm_ud(TGL_SYNC_NOP));
+               fs_inst *sync = ibld.SYNC(TGL_SYNC_NOP);
                sync->sched = ordered_dependency_swsb(deps[ip], jps[ip], true);
                break;
             }

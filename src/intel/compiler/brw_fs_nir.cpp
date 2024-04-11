@@ -6143,8 +6143,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
       if (devinfo->ver >= 12 &&
           (!nir_intrinsic_has_memory_scope(instr) ||
            (nir_intrinsic_memory_semantics(instr) & NIR_MEMORY_ACQUIRE))) {
-         ubld.exec_all().group(1, 0).emit(
-            BRW_OPCODE_SYNC, ubld.null_reg_ud(), brw_imm_ud(TGL_SYNC_ALLWR));
+         ubld.exec_all().group(1, 0).SYNC(TGL_SYNC_ALLWR);
       }
 
       if (devinfo->has_lsc) {
@@ -6173,9 +6172,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
                 * Before SLM fence compiler needs to insert SYNC.ALLWR in order
                 * to avoid the SLM data race.
                 */
-               ubld.exec_all().group(1, 0).emit(
-                  BRW_OPCODE_SYNC, ubld.null_reg_ud(),
-                  brw_imm_ud(TGL_SYNC_ALLWR));
+               ubld.exec_all().group(1, 0).SYNC(TGL_SYNC_ALLWR);
             }
             fence_regs[fence_regs_count++] =
                emit_fence(ubld, opcode, GFX12_SFID_SLM, desc,
@@ -7856,7 +7853,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
        * need a barrier followed by an invalidate before accessing memory.
        */
       if (synchronous) {
-         bld.emit(BRW_OPCODE_SYNC, bld.null_reg_ud(), brw_imm_ud(TGL_SYNC_ALLWR));
+         bld.SYNC(TGL_SYNC_ALLWR);
          emit_rt_lsc_fence(bld, LSC_FENCE_LOCAL, LSC_FLUSH_TYPE_INVALIDATE);
       }
       break;

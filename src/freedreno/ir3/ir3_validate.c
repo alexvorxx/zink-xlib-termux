@@ -92,6 +92,8 @@ validate_src(struct ir3_validate_ctx *ctx, struct ir3_instruction *instr,
 
    if (reg->tied) {
       validate_assert(ctx, reg->tied->tied == reg);
+      validate_assert(ctx, reg_class_flags(reg) == reg_class_flags(reg->tied));
+      validate_assert(ctx, !(reg->flags & (IR3_REG_CONST | IR3_REG_IMMED)));
       bool found = false;
       foreach_dst (dst, instr) {
          if (dst == reg->tied) {

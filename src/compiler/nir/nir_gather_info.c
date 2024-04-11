@@ -991,6 +991,8 @@ nir_shader_gather_info(nir_shader *shader, nir_function_impl *entrypoint)
    shader->info.outputs_accessed_indirectly = 0;
    shader->info.patch_inputs_read_indirectly = 0;
    shader->info.patch_outputs_accessed_indirectly = 0;
+   shader->info.per_primitive_inputs = 0;
+   shader->info.per_primitive_outputs = 0;
 
    shader->info.uses_resource_info_query = false;
 
@@ -1026,7 +1028,6 @@ nir_shader_gather_info(nir_shader *shader, nir_function_impl *entrypoint)
    gather_func_info(entrypoint, shader, visited_funcs, dead_ctx);
    ralloc_free(dead_ctx);
 
-   shader->info.per_primitive_outputs = 0;
    shader->info.per_view_outputs = 0;
    nir_foreach_shader_out_variable(var, shader) {
       if (var->data.per_primitive) {
@@ -1043,7 +1044,6 @@ nir_shader_gather_info(nir_shader *shader, nir_function_impl *entrypoint)
       }
    }
 
-   shader->info.per_primitive_inputs = 0;
    if (shader->info.stage == MESA_SHADER_FRAGMENT) {
       nir_foreach_shader_in_variable(var, shader) {
          if (var->data.per_primitive) {

@@ -1366,6 +1366,12 @@ print_intrinsic_instr(nir_intrinsic_instr *instr, print_state *state)
 
          fprintf(fp, "io location=%s slots=%u", loc, io.num_slots);
 
+         if (io.per_primitive)
+            fprintf(fp, " per_primitive");
+
+         if (io.interp_explicit_strict)
+            fprintf(fp, " explicit_strict");
+
          if (io.dual_source_blend_index)
             fprintf(fp, " dualsrc");
 

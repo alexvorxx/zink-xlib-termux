@@ -424,7 +424,7 @@ brw_fs_lower_find_live_channel(fs_visitor &s)
          break;
 
       case SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL: {
-         fs_reg tmp = ubld.vgrf(BRW_REGISTER_TYPE_UD, 1);
+         fs_reg tmp = ubld.vgrf(BRW_REGISTER_TYPE_UD);
          ubld.UNDEF(tmp);
          ubld.LZD(tmp, exec_mask);
          ubld.ADD(inst->dst, negate(tmp), brw_imm_uw(31));

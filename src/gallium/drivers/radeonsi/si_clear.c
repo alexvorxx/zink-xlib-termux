@@ -312,7 +312,8 @@ static bool gfx8_get_dcc_clear_parameters(struct si_screen *sscreen, enum pipe_f
 
 static bool gfx11_get_dcc_clear_parameters(struct si_screen *sscreen, struct si_texture *tex,
                                            unsigned level, enum pipe_format surface_format,
-                                           const union pipe_color_union *color, uint32_t *clear_value)
+                                           const union pipe_color_union *color, uint32_t *clear_value,
+                                           bool fail_if_slow)
 {
    const struct util_format_description *desc =
       util_format_description(si_simplify_cb_format(surface_format));
@@ -444,7 +445,7 @@ static bool gfx11_get_dcc_clear_parameters(struct si_screen *sscreen, struct si_
       size = 0;
 
    /* This is mostly optimal for Navi31. The scaling effect of num_rb on other chips is guessed. */
-   if (size >= sscreen->info.num_rb * 512 * 1024) {
+   if (!fail_if_slow || size >= sscreen->info.num_rb * 512 * 1024) {
       *clear_value = GFX11_DCC_CLEAR_SINGLE;
       return true;
    }
@@ -766,7 +767,7 @@ static void si_fast_clear(struct si_context *sctx, unsigned *buffers,
 
          if (sctx->gfx_level >= GFX11) {
             if (!gfx11_get_dcc_clear_parameters(sctx->screen, tex, level, fb->cbufs[i]->format,
-                                                color, &reset_value))
+                                                color, &reset_value, true))
                continue;
          } else {
             if (!gfx8_get_dcc_clear_parameters(sctx->screen, tex->buffer.b.b.format,
@@ -1276,7 +1277,7 @@ static bool si_try_normal_clear(struct si_context *sctx, struct pipe_surface *ds
                                 const union pipe_color_union *color,
                                 float depth, unsigned stencil)
 {
-   /* This is worth it only if it's a whole image clear, so that we just clear DCC/HTILE. */
+   /* This is worth it only if it's a whole image clear. */
    if (dstx == 0 && dsty == 0 &&
        width == dst->width &&
        height == dst->height &&
@@ -1312,6 +1313,75 @@ static bool si_try_normal_clear(struct si_context *sctx, struct pipe_surface *ds
    return false;
 }
 
+bool si_compute_fast_clear_image(struct si_context *sctx, struct pipe_resource *dst,
+                                 enum pipe_format format, unsigned level, const struct pipe_box *box,
+                                 const union pipe_color_union *color, bool render_condition_enable,
+                                 bool fail_if_slow)
+{
+   struct si_texture *sdst = (struct si_texture*)dst;
+
+   if (!vi_dcc_enabled(sdst, level))
+      return false;
+
+   /* Only the whole image can be cleared. */
+   if (box->x != 0 || box->y != 0 || box->width != u_minify(dst->width0, level) ||
+       box->height != u_minify(dst->height0, level) || box->depth != util_num_layers(dst, level))
+      return false;
+
+   uint32_t dcc_value;
+   bool eliminate_needed;
+
+   /* Get the DCC clear value. */
+   if (sctx->gfx_level >= GFX11) {
+      if (!gfx11_get_dcc_clear_parameters(sctx->screen, sdst, level, format,
+                                          color, &dcc_value, fail_if_slow))
+         return false;
+   } else {
+      if (!gfx8_get_dcc_clear_parameters(sctx->screen, dst->format, format, color, &dcc_value,
+                                         &eliminate_needed) ||
+          eliminate_needed)
+         return false;
+   }
+
+   /* Get DCC clear info. */
+   struct si_clear_info info[3]; /* DCC + CMASK + clear_image_dcc_single */
+   unsigned num_clears = 0, clear_types = 0;
+
+   if (!vi_dcc_get_clear_info(sctx, sdst, level, dcc_value, &info[num_clears]))
+      return false;
+
+   num_clears++;
+   clear_types |= SI_CLEAR_TYPE_DCC;
+   si_mark_display_dcc_dirty(sctx, sdst);
+
+   if (sctx->gfx_level >= GFX11 && dcc_value == GFX11_DCC_CLEAR_SINGLE) {
+      /* Put this clear first by moving other clears after it because this clear has
+       * the most GPU overhead.
+       */
+      memmove(&info[1], &info[0], sizeof(info[0]) * num_clears);
+      si_init_clear_image_dcc_single(&info[0], sdst, level, format, color);
+      num_clears++;
+   }
+
+   /* DCC fast clear with MSAA should clear CMASK to 0xC. */
+   if (dst->nr_samples >= 2 && sdst->cmask_buffer) {
+      assert(sctx->gfx_level < GFX11); /* no FMASK/CMASK on GFX11 */
+      assert(num_clears < ARRAY_SIZE(info));
+      si_init_buffer_clear(&info[num_clears++], &sdst->cmask_buffer->b.b,
+                           sdst->surface.cmask_offset, sdst->surface.cmask_size, 0xCCCCCCCC);
+      clear_types |= SI_CLEAR_TYPE_CMASK;
+
+      if (!(sdst->dirty_level_mask & BITFIELD_BIT(level))) {
+         sdst->dirty_level_mask |= BITFIELD_BIT(level);
+         p_atomic_inc(&sctx->screen->compressed_colortex_counter);
+      }
+   }
+
+   assert(num_clears <= ARRAY_SIZE(info));
+   si_execute_clears(sctx, info, num_clears, clear_types, render_condition_enable);
+   return true;
+}
+
 static void si_clear_render_target(struct pipe_context *ctx, struct pipe_surface *dst,
                                    const union pipe_color_union *color, unsigned dstx,
                                    unsigned dsty, unsigned width, unsigned height,
@@ -1320,9 +1390,23 @@ static void si_clear_render_target(struct pipe_context *ctx, struct pipe_surface
    struct si_context *sctx = (struct si_context *)ctx;
    struct si_texture *sdst = (struct si_texture *)dst->texture;
 
-   /* Fast path that just clears DCC. */
-   if (si_try_normal_clear(sctx, dst, dstx, dsty, width, height, render_condition_enabled,
+   /* For older chips that can do fast clear with any clear color (using GFX8_DCC_CLEAR_REG
+    * or CMASK).
+    */
+   if (sctx->gfx_level <= GFX10_3 &&
+       (vi_dcc_enabled(sdst, dst->u.tex.level) ||
+        /* GFX6-9 allow CMASK without MSAA and allocate it on demand, but only 8-64bpp. */
+        (sctx->gfx_level <= GFX9 && sdst->surface.bpe <= 8)) &&
+       si_try_normal_clear(sctx, dst, dstx, dsty, width, height, render_condition_enabled,
                            PIPE_CLEAR_COLOR0, color, 0, 0))
+      return;
+
+   struct pipe_box box;
+   u_box_3d(dstx, dsty, dst->u.tex.first_layer, width, height,
+            dst->u.tex.last_layer - dst->u.tex.first_layer + 1, &box);
+
+   if (si_compute_fast_clear_image(sctx, dst->texture, dst->format, dst->u.tex.level, &box, color,
+                                   render_condition_enabled, true))
       return;
 
    if (dst->texture->nr_samples <= 1 &&

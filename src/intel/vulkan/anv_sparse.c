@@ -658,12 +658,12 @@ anv_init_sparse_bindings(struct anv_device *device,
    return VK_SUCCESS;
 }
 
-VkResult
+void
 anv_free_sparse_bindings(struct anv_device *device,
                          struct anv_sparse_binding_data *sparse)
 {
    if (!sparse->address)
-      return VK_SUCCESS;
+      return;
 
    sparse_debug("%s: address:0x%016"PRIx64" size:0x%08"PRIx64"\n",
                 __func__, sparse->address, sparse->size);
@@ -686,12 +686,16 @@ anv_free_sparse_bindings(struct anv_device *device,
       .signal_count = 0,
    };
    VkResult res = anv_sparse_bind(device, &submit);
+
+   /* Our callers don't have a way to signal failure to the upper layers, so
+    * just keep the vma if we fail to unbind it. Still, let's have an
+    * assertion because this really shouldn't be happening.
+    */
+   assert(res == VK_SUCCESS);
    if (res != VK_SUCCESS)
-      return res;
+      return;
 
    anv_vma_free(device, sparse->vma_heap, sparse->address, sparse->size);
-
-   return VK_SUCCESS;
 }
 
 static VkExtent3D

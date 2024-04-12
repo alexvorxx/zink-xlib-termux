@@ -3052,8 +3052,8 @@ VkResult anv_init_sparse_bindings(struct anv_device *device,
                                   enum anv_bo_alloc_flags alloc_flags,
                                   uint64_t client_address,
                                   struct anv_address *out_address);
-VkResult anv_free_sparse_bindings(struct anv_device *device,
-                                  struct anv_sparse_binding_data *sparse);
+void anv_free_sparse_bindings(struct anv_device *device,
+                              struct anv_sparse_binding_data *sparse);
 VkResult anv_sparse_bind_buffer(struct anv_device *device,
                                 struct anv_buffer *buffer,
                                 const VkSparseMemoryBind *vk_bind,

@@ -330,7 +330,7 @@ panvk_physical_device_init(struct panvk_physical_device *device,
 
    vk_warn_non_conformant_implementation("panvk");
 
-   get_driver_uuid(&device->device_uuid);
+   get_driver_uuid(&device->driver_uuid);
    get_device_uuid(&device->device_uuid);
 
    device->drm_syncobj_type = vk_drm_syncobj_get_type(device->kmod.dev->fd);

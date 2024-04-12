@@ -1278,26 +1278,22 @@ radv_enc_rc_per_pic(struct radv_cmd_buffer *cmd_buffer, const VkVideoEncodeInfoK
    const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
 
-   unsigned qp, min_qp, max_qp;
+   unsigned qp = per_pic->qp_i;
 
-   qp = per_pic->qp_i;
-   min_qp = per_pic->min_qp_i;
-   max_qp = per_pic->max_qp_i;
-
-   if (vid->enc_rate_control_default) {
+   if (vid->enc_rate_control_method == RENCODE_RATE_CONTROL_METHOD_NONE && !vid->enc_rate_control_default) {
       switch (vid->vk.op) {
       case VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR: {
          const struct VkVideoEncodeH264PictureInfoKHR *h264_picture_info =
             vk_find_struct_const(enc_info->pNext, VIDEO_ENCODE_H264_PICTURE_INFO_KHR);
          const VkVideoEncodeH264NaluSliceInfoKHR *h264_slice = &h264_picture_info->pNaluSliceEntries[0];
-         min_qp = max_qp = qp = h264_slice->constantQp;
+         qp = h264_slice->constantQp;
          break;
       }
       case VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR: {
          const struct VkVideoEncodeH265PictureInfoKHR *h265_picture_info =
             vk_find_struct_const(enc_info->pNext, VIDEO_ENCODE_H265_PICTURE_INFO_KHR);
          const VkVideoEncodeH265NaluSliceSegmentInfoKHR *h265_slice = &h265_picture_info->pNaluSliceSegmentEntries[0];
-         min_qp = max_qp = qp = h265_slice->constantQp;
+         qp = h265_slice->constantQp;
          break;
       }
       default:
@@ -1307,8 +1303,8 @@ radv_enc_rc_per_pic(struct radv_cmd_buffer *cmd_buffer, const VkVideoEncodeInfoK
    ENC_BEGIN;
    radeon_emit(cs, pdev->vcn_enc_cmds.rc_per_pic);
    radeon_emit(cs, qp);                           // qp
-   radeon_emit(cs, min_qp);                       // min qp
-   radeon_emit(cs, max_qp);                       // max qp
+   radeon_emit(cs, per_pic->min_qp_i);            // min qp
+   radeon_emit(cs, per_pic->max_qp_i);            // max qp
    radeon_emit(cs, per_pic->max_au_size_i);       // max au
    radeon_emit(cs, per_pic->enabled_filler_data); // enabled filler
    radeon_emit(cs, per_pic->skip_frame_enable);   // skip frame eanble
@@ -1782,7 +1778,6 @@ radv_video_enc_control_video_coding(struct radv_cmd_buffer *cmd_buffer, const Vk
             vid->rc_per_pic[l].max_au_size_i = h265_layer->useMaxFrameSize ? h265_layer->maxFrameSize.frameISize : 0;
          }
 
-         vid->rc_per_pic[l].qp_i = vid->rc_per_pic[l].max_qp_i;
          vid->rc_per_pic[l].enabled_filler_data = 1;
          vid->rc_per_pic[l].skip_frame_enable = 0;
          vid->rc_per_pic[l].enforce_hrd = 1;

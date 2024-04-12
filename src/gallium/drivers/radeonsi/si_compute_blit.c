@@ -604,9 +604,11 @@ static void si_launch_grid_internal_images(struct si_context *sctx,
    }
 
    /* This must be done before the compute shader. */
-   for (unsigned i = 0; i < num_images; i++) {
-      si_make_CB_shader_coherent(sctx, images[i].resource->nr_samples, true,
-            ((struct si_texture*)images[i].resource)->surface.u.gfx9.color.dcc.pipe_aligned);
+   if (flags & SI_OP_SYNC_PS_BEFORE) {
+      for (unsigned i = 0; i < num_images; i++) {
+         si_make_CB_shader_coherent(sctx, images[i].resource->nr_samples, true,
+               ((struct si_texture*)images[i].resource)->surface.u.gfx9.color.dcc.pipe_aligned);
+      }
    }
 
    si_launch_grid_internal(sctx, info, shader, flags | SI_OP_CS_IMAGE);

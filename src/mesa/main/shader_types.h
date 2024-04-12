@@ -422,14 +422,6 @@ struct gl_shader_program
 
    struct gl_program *last_vert_prog;
 
-   /**
-    * Geometry shader state - copied into gl_program by
-    * _mesa_copy_linked_program_data().
-    */
-   struct {
-      bool UsesEndPrimitive;
-   } Geom;
-
    /** Data shared by gl_program and gl_shader_program */
    struct gl_shader_program_data *data;
 

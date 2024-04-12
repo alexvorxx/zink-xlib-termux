@@ -2657,15 +2657,6 @@ _mesa_copy_linked_program_data(const struct gl_shader_program *src,
    struct gl_program *dst = dst_sh->Program;
 
    dst->info.separate_shader = src->SeparateShader;
-
-   switch (dst_sh->Stage) {
-   case MESA_SHADER_GEOMETRY: {
-      dst->info.gs.uses_end_primitive = src->Geom.UsesEndPrimitive;
-      break;
-   }
-   default:
-      break;
-   }
 }
 
 /**

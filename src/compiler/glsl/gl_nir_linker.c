@@ -228,7 +228,7 @@ validate_geometry_shader_emissions(const struct gl_constants *consts,
                       state.invalid_stream_id, state.max_stream_allowed);
       }
       sh->Program->nir->info.gs.active_stream_mask = state.used_streams;
-      prog->Geom.UsesEndPrimitive = state.end_primitive_found;
+      sh->Program->nir->info.gs.uses_end_primitive = state.end_primitive_found;
 
       /* From the ARB_gpu_shader5 spec:
        *

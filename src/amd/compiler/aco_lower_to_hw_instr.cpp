@@ -2726,6 +2726,17 @@ lower_to_hw_instr(Program* program)
                end_with_regs_block_index = block->index;
                break;
             }
+            case aco_opcode::p_shader_cycles_hi_lo_hi: {
+               unsigned shader_cycles_lo = 29;
+               unsigned shader_cycles_hi = 30;
+               bld.sopk(aco_opcode::s_getreg_b32, instr->definitions[0],
+                        ((32 - 1) << 11) | shader_cycles_hi);
+               bld.sopk(aco_opcode::s_getreg_b32, instr->definitions[1],
+                        ((32 - 1) << 11) | shader_cycles_lo);
+               bld.sopk(aco_opcode::s_getreg_b32, instr->definitions[2],
+                        ((32 - 1) << 11) | shader_cycles_hi);
+               break;
+            }
             default: break;
             }
          } else if (instr->isBranch()) {

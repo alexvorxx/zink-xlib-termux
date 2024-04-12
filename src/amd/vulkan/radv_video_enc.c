@@ -1349,6 +1349,7 @@ radv_enc_params(struct radv_cmd_buffer *cmd_buffer, const VkVideoEncodeInfoKHR *
          pic_type = RENCODE_PICTURE_TYPE_I;
          break;
       }
+      radv_enc_layer_select(cmd_buffer, h264_pic->temporal_id);
    } else if (h265_pic) {
       switch (h265_pic->pic_type) {
       case STD_VIDEO_H265_PICTURE_TYPE_P:
@@ -1365,6 +1366,7 @@ radv_enc_params(struct radv_cmd_buffer *cmd_buffer, const VkVideoEncodeInfoKHR *
          pic_type = RENCODE_PICTURE_TYPE_I;
          break;
       }
+      radv_enc_layer_select(cmd_buffer, h265_pic->TemporalId);
    } else {
       assert(0);
       return;

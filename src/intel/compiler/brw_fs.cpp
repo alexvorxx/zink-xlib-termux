@@ -936,25 +936,37 @@ fs_inst::size_read(int arg) const
       }
       break;
 
-   case BRW_OPCODE_DPAS:
+   case BRW_OPCODE_DPAS: {
+      /* This is a little bit sketchy. There's no way to get at devinfo from
+       * here, so the regular reg_unit() cannot be used. However, on
+       * reg_unit() == 1 platforms, DPAS exec_size must be 8, and on known
+       * reg_unit() == 2 platforms, DPAS exec_size must be 16. This is not a
+       * coincidence, so this isn't so bad.
+       */
+      const unsigned reg_unit = this->exec_size / 8;
+
       switch (arg) {
       case 0:
          if (src[0].type == BRW_TYPE_HF) {
-            return rcount * REG_SIZE / 2;
+            return rcount * reg_unit * REG_SIZE / 2;
          } else {
-            return rcount * REG_SIZE;
+            return rcount * reg_unit * REG_SIZE;
          }
       case 1:
-         return sdepth * REG_SIZE;
+         return sdepth * reg_unit * REG_SIZE;
       case 2:
          /* This is simpler than the formula described in the Bspec, but it
-          * covers all of the cases that we support on DG2.
+          * covers all of the cases that we support. Each inner sdepth
+          * iteration of the DPAS consumes a single dword for int8, uint8, or
+          * float16 types. These are the one source types currently
+          * supportable through Vulkan. This is independent of reg_unit.
           */
-         return rcount * REG_SIZE;
+         return rcount * sdepth * 4;
       default:
          unreachable("Invalid source number.");
       }
       break;
+   }
 
    default:
       break;

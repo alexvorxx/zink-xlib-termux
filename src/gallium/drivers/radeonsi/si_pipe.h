@@ -804,6 +804,7 @@ struct si_framebuffer {
    bool all_DCC_pipe_aligned;
    bool has_dcc_msaa;
    bool disable_vrs_flat_shading;
+   bool has_stencil;
 };
 
 enum si_quant_mode

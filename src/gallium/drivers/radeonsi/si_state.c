@@ -3133,6 +3133,7 @@ static void si_set_framebuffer_state(struct pipe_context *ctx,
    sctx->framebuffer.has_dcc_msaa = false;
    sctx->framebuffer.min_bytes_per_pixel = 0;
    sctx->framebuffer.disable_vrs_flat_shading = false;
+   sctx->framebuffer.has_stencil = false;
 
    for (i = 0; i < state->nr_cbufs; i++) {
       if (!state->cbufs[i])
@@ -3223,6 +3224,9 @@ static void si_set_framebuffer_state(struct pipe_context *ctx,
       if (sctx->queued.named.rasterizer->uses_poly_offset &&
           surf->db_format_index != old_db_format_index)
          (sctx)->dirty_atoms |= SI_STATE_BIT(rasterizer);
+
+      if (util_format_has_stencil(util_format_description(zstex->buffer.b.b.format)))
+         sctx->framebuffer.has_stencil = true;
    }
 
    si_update_ps_colorbuf0_slot(sctx);

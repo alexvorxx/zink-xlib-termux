@@ -54,11 +54,16 @@ void si_execute_clears(struct si_context *sctx, struct si_clear_info *info,
       return;
 
    /* Flush caches and wait for idle. */
-   if (types & (SI_CLEAR_TYPE_CMASK | SI_CLEAR_TYPE_DCC))
-      sctx->flags |= si_get_flush_flags(sctx, SI_COHERENCY_CB_META, L2_LRU);
+   if (types & (SI_CLEAR_TYPE_CMASK | SI_CLEAR_TYPE_DCC)) {
+      si_make_CB_shader_coherent(sctx, sctx->framebuffer.nr_samples,
+                                 sctx->framebuffer.CB_has_shader_readable_metadata,
+                                 sctx->framebuffer.all_DCC_pipe_aligned);
+   }
 
-   if (types & SI_CLEAR_TYPE_HTILE)
-      sctx->flags |= si_get_flush_flags(sctx, SI_COHERENCY_DB_META, L2_LRU);
+   if (types & SI_CLEAR_TYPE_HTILE) {
+      si_make_DB_shader_coherent(sctx, sctx->framebuffer.nr_samples, sctx->framebuffer.has_stencil,
+                                 sctx->framebuffer.DB_has_shader_readable_metadata);
+   }
 
    /* Flush caches in case we use compute. */
    sctx->flags |= SI_CONTEXT_INV_VCACHE;

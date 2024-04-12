@@ -2664,10 +2664,6 @@ _mesa_copy_linked_program_data(const struct gl_shader_program *src,
       dst->info.gs.active_stream_mask = src->Geom.ActiveStreamMask;
       break;
    }
-   case MESA_SHADER_FRAGMENT: {
-      dst->info.fs.depth_layout = src->FragDepthLayout;
-      break;
-   }
    default:
       break;
    }

@@ -5675,60 +5675,16 @@ rework_io_vars(nir_shader *nir, nir_variable_mode mode, struct zink_shader *zs)
    loop_io_var_mask(nir, mode, false, false, mask);
 }
 
-
+/* can't scalarize these */
 static bool
-eliminate_io_wrmasks_instr(const nir_instr *instr, const void *data)
+skip_scalarize(const nir_instr *instr, const void *data)
 {
-   const nir_shader *nir = data;
    if (instr->type != nir_instr_type_intrinsic)
       return false;
 
    nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
-   switch (intr->intrinsic) {
-   case nir_intrinsic_store_output:
-   case nir_intrinsic_store_per_primitive_output:
-   case nir_intrinsic_store_per_vertex_output:
-      break;
-   default:
-      return false;
-   }
-   unsigned src_components = nir_intrinsic_src_components(intr, 0);
-   unsigned wrmask = nir_intrinsic_write_mask(intr);
-   unsigned num_components = util_bitcount(wrmask);
-   if (num_components != src_components)
-      return true;
-   if ((nir_intrinsic_src_type(intr) & NIR_ALU_TYPE_SIZE_MASK) == 64)
-      num_components *= 2;
-   if (nir->xfb_info) {
-      nir_io_semantics s = nir_intrinsic_io_semantics(intr);
-      nir_src *src_offset = nir_get_io_offset_src(intr);
-      if (nir_src_is_const(*src_offset)) {
-         unsigned slot_offset = nir_src_as_uint(*src_offset);
-         for (unsigned i = 0; i < nir->xfb_info->output_count; i++) {
-            if (nir->xfb_info->outputs[i].location == s.location + slot_offset) {
-               unsigned xfb_components = util_bitcount(nir->xfb_info->outputs[i].component_mask);
-               if (xfb_components != MIN2(4, num_components))
-                  return true;
-               num_components -= xfb_components;
-               if (!num_components)
-                  break;
-            }
-         }
-      } else {
-         for (unsigned i = 0; i <nir->xfb_info->output_count; i++) {
-            if (nir->xfb_info->outputs[i].location >= s.location &&
-               nir->xfb_info->outputs[i].location < s.location + s.num_slots) {
-               unsigned xfb_components = util_bitcount(nir->xfb_info->outputs[i].component_mask);
-               if (xfb_components < MIN2(num_components, 4))
-                  return true;
-               num_components -= xfb_components;
-               if (!num_components)
-                  break;
-            }
-         }
-      }
-   }
-   return false;
+   nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
+   return !sem.fb_fetch_output && sem.num_slots == 1;
 }
 
 static int
@@ -5899,6 +5855,10 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
       NIR_PASS_V(nir, nir_lower_alu_vec8_16_srcs);
    }
 
+   nir_variable_mode scalarize = nir_var_shader_in;
+   if (nir->info.stage != MESA_SHADER_FRAGMENT)
+      scalarize |= nir_var_shader_out;
+   NIR_PASS_V(nir, nir_lower_io_to_scalar, scalarize, skip_scalarize, NULL);
    optimize_nir(nir, NULL, true);
    nir_foreach_variable_with_modes(var, nir, nir_var_shader_in | nir_var_shader_out) {
       if (glsl_type_is_image(var->type) || glsl_type_is_sampler(var->type)) {
@@ -5906,11 +5866,8 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
          break;
       }
    }
-   NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_shader_in | nir_var_shader_out, eliminate_io_wrmasks_instr, nir);
    if (nir->info.stage < MESA_SHADER_FRAGMENT)
       nir_gather_xfb_info_from_intrinsics(nir);
-   /* clean up io to improve direct access */
-   optimize_nir(nir, NULL, true);
    NIR_PASS_V(nir, fix_vertex_input_locations);
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
    scan_nir(screen, nir, ret);

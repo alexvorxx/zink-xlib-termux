@@ -553,15 +553,30 @@ namespace brw {
                 (dst.file >= VGRF && dst.stride != 0) || \
                 (dst.file < VGRF && dst.hstride != 0));  \
          return emit(prefix##op, dst, src0);             \
+      }                                                  \
+      fs_reg                                             \
+      op(const fs_reg &src0, fs_inst **out = NULL) const \
+      {                                                  \
+         fs_inst *inst = op(vgrf(src0.type), src0);      \
+         if (out) *out = inst;                           \
+         return inst->dst;                               \
       }
 #define ALU1(op) _ALU1(BRW_OPCODE_, op)
 #define VIRT1(op) _ALU1(SHADER_OPCODE_, op)
 
-#define _ALU2(prefix, op)                                                 \
-      fs_inst *                                                           \
-      op(const fs_reg &dst, const fs_reg &src0, const fs_reg &src1) const \
-      {                                                                   \
-         return emit(prefix##op, dst, src0, src1);                        \
+#define _ALU2(prefix, op)                                                    \
+      fs_inst *                                                              \
+      op(const fs_reg &dst, const fs_reg &src0, const fs_reg &src1) const    \
+      {                                                                      \
+         return emit(prefix##op, dst, src0, src1);                           \
+      }                                                                      \
+      fs_reg                                                                 \
+      op(const fs_reg &src0, const fs_reg &src1, fs_inst **out = NULL) const \
+      {                                                                      \
+         assert(src0.type == src1.type);                                     \
+         fs_inst *inst = op(vgrf(src0.type), src0, src1);                    \
+         if (out) *out = inst;                                               \
+         return inst->dst;                                                   \
       }
 #define ALU2(op) _ALU2(BRW_OPCODE_, op)
 #define VIRT2(op) _ALU2(SHADER_OPCODE_, op)

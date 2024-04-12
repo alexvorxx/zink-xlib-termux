@@ -769,7 +769,9 @@ radv_enc_slice_header(struct radv_cmd_buffer *cmd_buffer, const VkVideoEncodeInf
       break;
    }
    radv_enc_code_ue(cmd_buffer, 0x0);
-   radv_enc_code_fixed_bits(cmd_buffer, pic->frame_num % 32, sps->log2_max_frame_num_minus4 + 4);
+
+   unsigned int max_frame_num_bits = sps->log2_max_frame_num_minus4 + 4;
+   radv_enc_code_fixed_bits(cmd_buffer, pic->frame_num % (1 << max_frame_num_bits), max_frame_num_bits);
 #if 0
    if (enc->enc_pic.h264_enc_params.input_picture_structure !=
        RENCODE_H264_PICTURE_STRUCTURE_FRAME) {
@@ -786,8 +788,10 @@ radv_enc_slice_header(struct radv_cmd_buffer *cmd_buffer, const VkVideoEncodeInf
    if (pic->flags.IdrPicFlag)
       radv_enc_code_ue(cmd_buffer, pic->idr_pic_id);
 
-   if (sps->pic_order_cnt_type == STD_VIDEO_H264_POC_TYPE_0)
-      radv_enc_code_fixed_bits(cmd_buffer, pic->PicOrderCnt % 32, sps->log2_max_pic_order_cnt_lsb_minus4 + 4);
+   if (sps->pic_order_cnt_type == STD_VIDEO_H264_POC_TYPE_0) {
+      unsigned int max_poc_bits = sps->log2_max_pic_order_cnt_lsb_minus4 + 4;
+      radv_enc_code_fixed_bits(cmd_buffer, pic->PicOrderCnt % (1 << max_poc_bits), max_poc_bits);
+   }
 
    if (pps->flags.redundant_pic_cnt_present_flag)
       radv_enc_code_ue(cmd_buffer, 0);
@@ -982,7 +986,8 @@ radv_enc_slice_header_hevc(struct radv_cmd_buffer *cmd_buffer, const VkVideoEnco
 
    if ((nal_unit_type != 19) && nal_unit_type != 20) {
       /* slice_pic_order_cnt_lsb */
-      radv_enc_code_fixed_bits(cmd_buffer, pic->PicOrderCntVal, sps->log2_max_pic_order_cnt_lsb_minus4 + 4);
+      unsigned int max_poc_bits = sps->log2_max_pic_order_cnt_lsb_minus4 + 4;
+      radv_enc_code_fixed_bits(cmd_buffer, pic->PicOrderCntVal % (1 << max_poc_bits), max_poc_bits);
       radv_enc_code_fixed_bits(cmd_buffer, pic->flags.short_term_ref_pic_set_sps_flag, 0x1);
       if (!pic->flags.short_term_ref_pic_set_sps_flag) {
          int st_rps_idx = sps->num_short_term_ref_pic_sets;

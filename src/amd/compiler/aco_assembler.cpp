@@ -1639,8 +1639,9 @@ align_block(asm_context& ctx, std::vector<uint32_t>& code, Block& block)
       /* On GFX10.3+, change the prefetch mode if the loop fits into 2 or 3 cache lines.
        * Don't use the s_inst_prefetch instruction on GFX10 as it might cause hangs.
        */
-      const bool change_prefetch =
-         ctx.program->gfx_level >= GFX10_3 && loop_num_cl > 1 && loop_num_cl <= 3;
+      const bool change_prefetch = ctx.program->gfx_level >= GFX10_3 &&
+                                   ctx.program->gfx_level <= GFX11 && loop_num_cl > 1 &&
+                                   loop_num_cl <= 3;
 
       if (change_prefetch) {
          Builder bld(ctx.program);

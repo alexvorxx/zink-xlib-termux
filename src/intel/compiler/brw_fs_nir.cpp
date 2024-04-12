@@ -7486,7 +7486,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
          allbld.ADD(idx, ntb.system_values[SYSTEM_VALUE_SUBGROUP_INVOCATION],
                          brw_imm_w(-1));
          allbld.emit(SHADER_OPCODE_SHUFFLE, shifted, scan, idx);
-         allbld.group(1, 0).MOV(component(shifted, 0), identity);
+         allbld.group(1, 0).MOV(horiz_offset(shifted, 0), identity);
          scan = shifted;
       }
 

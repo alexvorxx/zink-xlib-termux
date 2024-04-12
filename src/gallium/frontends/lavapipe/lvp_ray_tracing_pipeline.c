@@ -601,8 +601,8 @@ lvp_handle_aabb_intersection(nir_builder *b, struct lvp_leaf_intersection *inter
          .compiler = compiler,
          .ahit = ahit_stage,
       };
-      NIR_PASS(_, b->shader, nir_shader_intrinsics_pass, lvp_lower_isec_intrinsic,
-               nir_metadata_none, &isec_state);
+      nir_shader_intrinsics_pass(b->shader, lvp_lower_isec_intrinsic,
+                                 nir_metadata_none, &isec_state);
    }
 
    nir_push_if(b, nir_load_var(b, state->accept));

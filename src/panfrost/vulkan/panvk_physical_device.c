@@ -78,6 +78,7 @@ get_device_extensions(const struct panvk_physical_device *device,
       .KHR_shader_expect_assume = true,
       .KHR_storage_buffer_storage_class = true,
       .KHR_descriptor_update_template = true,
+      .KHR_driver_properties = true,
       .KHR_push_descriptor = true,
 #ifdef PANVK_USE_WSI_PLATFORM
       .KHR_swapchain = true,
@@ -470,7 +471,7 @@ get_device_properties(const struct panvk_physical_device *device,
       .supportedStencilResolveModes = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT,
       .independentResolveNone = true,
       .independentResolve = true,
-      /* XXX: VK_KHR_driver_properties */
+      /* VK_KHR_driver_properties */
       .driverID = VK_DRIVER_ID_MESA_PANVK,
       .conformanceVersion = (VkConformanceVersion){0, 0, 0, 0},
       /* XXX: VK_KHR_shader_float_controls */

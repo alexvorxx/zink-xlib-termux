@@ -387,6 +387,8 @@ validate_instr(struct ir3_validate_ctx *ctx, struct ir3_instruction *instr)
          validate_reg_size(ctx, instr->srcs[0], instr->cat6.type);
          validate_assert(ctx, !(instr->srcs[1]->flags & IR3_REG_HALF));
          break;
+      case OPC_PUSH_CONSTS_LOAD_MACRO:
+         break;
       case OPC_LDC_K:
          validate_assert(ctx, !(instr->srcs[0]->flags & IR3_REG_HALF));
          validate_assert(ctx, !(instr->srcs[1]->flags & IR3_REG_HALF));

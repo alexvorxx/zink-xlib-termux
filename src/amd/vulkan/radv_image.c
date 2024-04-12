@@ -1222,7 +1222,7 @@ radv_destroy_image(struct radv_device *device, const VkAllocationCallbacks *pAll
          continue;
 
       vk_address_binding_report(&instance->vk, &image->vk.base, image->bindings[i].bo_va + image->bindings[i].offset,
-                                image->bindings[i].bo_size, VK_DEVICE_ADDRESS_BINDING_TYPE_UNBIND_EXT);
+                                image->bindings[i].range, VK_DEVICE_ADDRESS_BINDING_TYPE_UNBIND_EXT);
    }
 
    radv_rmv_log_resource_destroy(device, (uint64_t)radv_image_to_handle(image));
@@ -1673,7 +1673,7 @@ radv_DestroyImage(VkDevice _device, VkImage _image, const VkAllocationCallbacks 
 
 static void
 radv_bind_image_memory(struct radv_device *device, struct radv_image *image, uint32_t bind_idx,
-                       struct radeon_winsys_bo *bo, uint64_t offset)
+                       struct radeon_winsys_bo *bo, uint64_t offset, uint64_t range)
 {
    struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_instance *instance = radv_physical_device_instance(pdev);
@@ -1683,13 +1683,13 @@ radv_bind_image_memory(struct radv_device *device, struct radv_image *image, uin
    image->bindings[bind_idx].bo = bo;
    image->bindings[bind_idx].offset = offset;
    image->bindings[bind_idx].bo_va = radv_buffer_get_va(bo);
-   image->bindings[bind_idx].bo_size = bo->size;
+   image->bindings[bind_idx].range = range;
 
    radv_rmv_log_image_bind(device, bind_idx, radv_image_to_handle(image));
 
    vk_address_binding_report(&instance->vk, &image->vk.base,
-                             radv_buffer_get_va(image->bindings[bind_idx].bo) + image->bindings[bind_idx].offset,
-                             image->bindings[bind_idx].bo->size, VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
+                             image->bindings[bind_idx].bo_va + image->bindings[bind_idx].offset,
+                             image->bindings[bind_idx].range, VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -1714,22 +1714,37 @@ radv_BindImageMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindImag
          struct radv_image *swapchain_img =
             radv_image_from_handle(wsi_common_get_image(swapchain_info->swapchain, swapchain_info->imageIndex));
 
-         radv_bind_image_memory(device, image, 0, swapchain_img->bindings[0].bo, swapchain_img->bindings[0].offset);
+         radv_bind_image_memory(device, image, 0,
+                                swapchain_img->bindings[0].bo, swapchain_img->bindings[0].offset,
+                                swapchain_img->bindings[0].range);
          continue;
       }
 #endif
 
+      const VkBindImagePlaneMemoryInfo *plane_info = NULL;
+      uint32_t bind_idx = 0;
+
+      if (image->disjoint) {
+         plane_info = vk_find_struct_const(pBindInfos[i].pNext, BIND_IMAGE_PLANE_MEMORY_INFO);
+         bind_idx = radv_plane_from_aspect(plane_info->planeAspect);
+      }
+
+      VkImagePlaneMemoryRequirementsInfo plane = {
+         .sType = VK_STRUCTURE_TYPE_IMAGE_PLANE_MEMORY_REQUIREMENTS_INFO,
+         .planeAspect = plane_info ? plane_info->planeAspect : 0,
+      };
+      VkImageMemoryRequirementsInfo2 info = {
+         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2,
+         .pNext = image->disjoint ? &plane : NULL,
+         .image = pBindInfos[i].image,
+      };
+      VkMemoryRequirements2 reqs = {
+         .sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2,
+      };
+
+      radv_GetImageMemoryRequirements2(_device, &info, &reqs);
+
       if (mem->alloc_size) {
-         VkImageMemoryRequirementsInfo2 info = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2,
-            .image = pBindInfos[i].image,
-         };
-         VkMemoryRequirements2 reqs = {
-            .sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2,
-         };
-
-         radv_GetImageMemoryRequirements2(_device, &info, &reqs);
-
          if (pBindInfos[i].memoryOffset + reqs.memoryRequirements.size > mem->alloc_size) {
             if (status)
                *status->pResult = VK_ERROR_UNKNOWN;
@@ -1737,16 +1752,8 @@ radv_BindImageMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindImag
          }
       }
 
-      uint32_t bind_idx = 0;
-
-      if (image->disjoint) {
-         const VkBindImagePlaneMemoryInfo *plane_info =
-            vk_find_struct_const(pBindInfos[i].pNext, BIND_IMAGE_PLANE_MEMORY_INFO);
-
-         bind_idx = radv_plane_from_aspect(plane_info->planeAspect);
-      }
-
-      radv_bind_image_memory(device, image, bind_idx, mem->bo, pBindInfos[i].memoryOffset);
+      radv_bind_image_memory(device, image, bind_idx, mem->bo, pBindInfos[i].memoryOffset,
+                             reqs.memoryRequirements.size);
    }
    return VK_SUCCESS;
 }

@@ -51,7 +51,7 @@ radv_destroy_buffer(struct radv_device *device, const VkAllocationCallbacks *pAl
       radv_bo_destroy(device, &buffer->vk.base, buffer->bo);
 
    if (buffer->bo_va)
-      vk_address_binding_report(&instance->vk, &buffer->vk.base, buffer->bo_va + buffer->offset, buffer->bo_size,
+      vk_address_binding_report(&instance->vk, &buffer->vk.base, buffer->bo_va + buffer->offset, buffer->range,
                                 VK_DEVICE_ADDRESS_BINDING_TYPE_UNBIND_EXT);
 
    radv_rmv_log_resource_destroy(device, (uint64_t)radv_buffer_to_handle(buffer));
@@ -83,7 +83,7 @@ radv_create_buffer(struct radv_device *device, const VkBufferCreateInfo *pCreate
    buffer->bo = NULL;
    buffer->offset = 0;
    buffer->bo_va = 0;
-   buffer->bo_size = 0;
+   buffer->range = 0;
 
    if (pCreateInfo->flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT) {
       enum radeon_bo_flag flags = RADEON_FLAG_VIRTUAL;
@@ -148,17 +148,17 @@ radv_BindBufferMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindBuf
       if (status)
          *status->pResult = VK_SUCCESS;
 
+      VkBufferMemoryRequirementsInfo2 info = {
+         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2,
+         .buffer = pBindInfos[i].buffer,
+      };
+      VkMemoryRequirements2 reqs = {
+         .sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2,
+      };
+
+      vk_common_GetBufferMemoryRequirements2(_device, &info, &reqs);
+
       if (mem->alloc_size) {
-         VkBufferMemoryRequirementsInfo2 info = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2,
-            .buffer = pBindInfos[i].buffer,
-         };
-         VkMemoryRequirements2 reqs = {
-            .sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2,
-         };
-
-         vk_common_GetBufferMemoryRequirements2(_device, &info, &reqs);
-
          if (pBindInfos[i].memoryOffset + reqs.memoryRequirements.size > mem->alloc_size) {
             if (status)
                *status->pResult = VK_ERROR_UNKNOWN;
@@ -169,12 +169,12 @@ radv_BindBufferMemory2(VkDevice _device, uint32_t bindInfoCount, const VkBindBuf
       buffer->bo = mem->bo;
       buffer->offset = pBindInfos[i].memoryOffset;
       buffer->bo_va = radv_buffer_get_va(mem->bo);
-      buffer->bo_size = mem->bo->size;
+      buffer->range = reqs.memoryRequirements.size;
 
       radv_rmv_log_buffer_bind(device, pBindInfos[i].buffer);
 
       vk_address_binding_report(&instance->vk, &buffer->vk.base, radv_buffer_get_va(buffer->bo) + buffer->offset,
-                                buffer->bo->size, VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
+                                buffer->range, VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
    }
    return VK_SUCCESS;
 }

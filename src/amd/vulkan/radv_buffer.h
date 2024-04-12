@@ -24,7 +24,7 @@ struct radv_buffer {
    struct radeon_winsys_bo *bo;
    VkDeviceSize offset;
    uint64_t bo_va;
-   uint64_t bo_size;
+   uint64_t range;
 };
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_buffer, vk.base, VkBuffer, VK_OBJECT_TYPE_BUFFER)

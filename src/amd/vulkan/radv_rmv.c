@@ -604,7 +604,7 @@ radv_rmv_log_image_bind(struct radv_device *device, uint32_t bind_idx, VkImage _
    VK_FROM_HANDLE(radv_image, image, _image);
    simple_mtx_lock(&device->vk.memory_trace_data.token_mtx);
    log_resource_bind_locked(device, (uint64_t)_image, image->bindings[bind_idx].bo, image->bindings[bind_idx].offset,
-                            image->size);
+                            image->bindings[bind_idx].range);
    simple_mtx_unlock(&device->vk.memory_trace_data.token_mtx);
 }
 

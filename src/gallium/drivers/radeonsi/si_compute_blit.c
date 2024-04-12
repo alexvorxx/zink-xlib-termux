@@ -434,7 +434,8 @@ void si_clear_buffer(struct si_context *sctx, struct pipe_resource *dst,
       }
 
       /* TODO: use compute for unaligned big sizes */
-      if (method == SI_AUTO_SELECT_CLEAR_METHOD && (
+      if (method == SI_AUTO_SELECT_CLEAR_METHOD &&
+          (flags & SI_OP_CS_RENDER_COND_ENABLE ||
            clear_value_size > 4 ||
            (clear_value_size == 4 && offset % 4 == 0 && size > compute_min_size))) {
          method = SI_COMPUTE_CLEAR_METHOD;
@@ -444,6 +445,7 @@ void si_clear_buffer(struct si_context *sctx, struct pipe_resource *dst,
                                      clear_value_size, flags, coher);
       } else {
          assert(clear_value_size == 4);
+         assert(!(flags & SI_OP_CS_RENDER_COND_ENABLE));
          si_cp_dma_clear_buffer(sctx, &sctx->gfx_cs, dst, offset, aligned_size, *clear_value,
                                 flags, coher, get_cache_policy(sctx, coher, size));
       }
@@ -454,6 +456,7 @@ void si_clear_buffer(struct si_context *sctx, struct pipe_resource *dst,
 
    /* Handle non-dword alignment. */
    if (size) {
+      assert(!(flags & SI_OP_CS_RENDER_COND_ENABLE));
       assert(dst);
       assert(dst->target == PIPE_BUFFER);
       assert(size < 4);

@@ -1484,7 +1484,7 @@ void si_init_buffer_clear(struct si_clear_info *info,
                           struct pipe_resource *resource, uint64_t offset,
                           uint32_t size, uint32_t clear_value);
 void si_execute_clears(struct si_context *sctx, struct si_clear_info *info,
-                       unsigned num_clears, unsigned types);
+                       unsigned num_clears, unsigned types, bool render_condition_enabled);
 void si_gfx_clear_render_target(struct pipe_context *ctx, struct pipe_surface *dst,
                                 const union pipe_color_union *color, unsigned dstx,
                                 unsigned dsty, unsigned width, unsigned height,

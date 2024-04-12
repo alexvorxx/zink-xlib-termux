@@ -2980,6 +2980,27 @@ static void handle_copy_query_pool_results(struct vk_cmd_queue_entry *cmd,
    unsigned result_size = copycmd->flags & VK_QUERY_RESULT_64_BIT ? 8 : 4;
    for (unsigned i = copycmd->first_query; i < copycmd->first_query + copycmd->query_count; i++) {
       unsigned offset = copycmd->dst_offset + (copycmd->stride * (i - copycmd->first_query));
+
+      if (pool->base_type >= PIPE_QUERY_TYPES) {
+         struct pipe_transfer *transfer;
+         uint8_t *map = pipe_buffer_map(state->pctx, lvp_buffer_from_handle(copycmd->dst_buffer)->bo, PIPE_MAP_WRITE, &transfer);
+         map += offset;
+
+         if (flags & VK_QUERY_RESULT_64_BIT) {
+            uint64_t *dst = (uint64_t *)map;
+            uint64_t *src = (uint64_t *)pool->data;
+            *dst = src[i];
+         } else {
+            uint32_t *dst = (uint32_t *)map;
+            uint64_t *src = (uint64_t *)pool->data;
+            *dst = (uint32_t) (src[i] & UINT32_MAX);
+         }
+
+         state->pctx->buffer_unmap(state->pctx, transfer);
+
+         continue;
+      }
+
       if (pool->queries[i]) {
          unsigned num_results = 0;
          if (copycmd->flags & VK_QUERY_RESULT_WITH_AVAILABILITY_BIT) {

@@ -213,9 +213,9 @@ traces:
     freedreno-a630:
       checksum: 730692659fbb9eefa44d6b1a2df2fa8e
     zink-a618:
-      checksum: 2a31ee1a56b755dcf5975b31eacbec32
+      checksum: 552e62fabd05ebfbb6d7bdd574b4e1c7
     zink-a630:
-      checksum: 2a31ee1a56b755dcf5975b31eacbec32
+      checksum: 552e62fabd05ebfbb6d7bdd574b4e1c7
 
   behdad-glyphy/glyphy-v2.trace:
     freedreno-a306:
@@ -245,9 +245,9 @@ traces:
       checksum: c45e17d98a5d598bef50494f1150f5b9
       text: helmet texture sometimes missing
     zink-a618:
-      checksum: 59e18960d8b73a93401b793b28e99f42
+      checksum: e3b2319eb85f76d4ff5fc78fcb3d7411
     zink-a630:
-      checksum: 59e18960d8b73a93401b793b28e99f42
+      checksum: e3b2319eb85f76d4ff5fc78fcb3d7411
 
   glxgears/glxgears-2-v2.trace:
     freedreno-a306:
@@ -353,7 +353,7 @@ traces:
         One of the material textures appears brighter on freedreno than
         i965 in a way that is probably wrong.
     zink-a618:
-      checksum: a09548e899293c5e37d64fdd2bb91a98
+      checksum: c5940969d617897b1847b64b3157bf34
     zink-a630:
       checksum: e64bcc59d61d1c75ce5eeb109343d9bd
 
@@ -368,9 +368,9 @@ traces:
     freedreno-a630:
       checksum: e4da2cf366cb68833569105d37aaa50d
     zink-a618:
-      checksum: dbd6130eeae3eb6d5df73f3069beae28
+      checksum: e4da2cf366cb68833569105d37aaa50d
     zink-a630:
-      checksum: dbd6130eeae3eb6d5df73f3069beae28
+      checksum: e4da2cf366cb68833569105d37aaa50d
 
   gputest/plot3d-v2.trace:
     freedreno-a306:
@@ -732,10 +732,10 @@ traces:
       label: [skip, flakes]
       checksum: a71d1ad391162acef60cbb2804d0cf64
     zink-a618:
-      checksum: 7d084f2cd05644b717cc591bd8e9dcce
+      checksum: b487c2784d458dff4a12f65e5cc46ac1
     zink-a630:
       label: [skip, flakes]
-      checksum: 7d084f2cd05644b717cc591bd8e9dcce
+      checksum: b487c2784d458dff4a12f65e5cc46ac1
       text: "intermittent gpu fault ring 0 fence 4b4 status 00CE0185 rb 0067/0067 ib1 000000010C498000/14d14 ib2 0000000000000000/0000"
 
   warzone2100/warzone2100-default.trace:

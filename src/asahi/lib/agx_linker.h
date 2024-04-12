@@ -47,7 +47,7 @@ struct agx_velem_key {
    uint32_t divisor;
    uint16_t stride;
    uint8_t format;
-   uint8_t pad;
+   bool instanced;
 };
 
 struct agx_vs_prolog_key {

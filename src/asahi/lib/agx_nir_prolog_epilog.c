@@ -65,6 +65,7 @@ lower_vbo(nir_shader *s, const struct agx_velem_key *key)
          .divisor = key[i].divisor,
          .stride = key[i].stride,
          .format = key[i].format,
+         .instanced = key[i].instanced,
       };
    }
 

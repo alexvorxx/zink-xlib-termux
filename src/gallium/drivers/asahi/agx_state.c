@@ -1447,6 +1447,7 @@ agx_create_vertex_elements(struct pipe_context *ctx, unsigned count,
          .stride = ve.src_stride,
          .format = ve.src_format,
          .divisor = ve.instance_divisor,
+         .instanced = ve.instance_divisor > 0,
       };
    }
 

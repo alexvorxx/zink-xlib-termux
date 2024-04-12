@@ -1092,7 +1092,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
    case nir_op_u2f32:
       if (optimize_extract_to_float(ntb, instr, result))
          return;
-      inst = bld.MOV(result, op[0]);
+      bld.MOV(result, op[0]);
       break;
 
    case nir_op_f2f16_rtne:
@@ -1109,7 +1109,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
          bld.exec_all().emit(SHADER_OPCODE_RND_MODE, bld.null_reg_ud(), brw_imm_d(rnd));
 
       assert(brw_type_size_bytes(op[0].type) < 8); /* brw_nir_lower_conversions */
-      inst = bld.MOV(result, op[0]);
+      bld.MOV(result, op[0]);
       break;
    }
 
@@ -1152,7 +1152,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
           op[0].type == BRW_TYPE_HF)
          assert(brw_type_size_bytes(result.type) < 8); /* brw_nir_lower_conversions */
 
-      inst = bld.MOV(result, op[0]);
+      bld.MOV(result, op[0]);
       break;
 
    case nir_op_i2i8:
@@ -1189,7 +1189,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
          }
       }
 
-      inst = bld.MOV(result, op[0]);
+      bld.MOV(result, op[0]);
       break;
    }
 
@@ -1201,14 +1201,14 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
    case nir_op_fneg:
    case nir_op_ineg:
       op[0].negate = true;
-      inst = bld.MOV(result, op[0]);
+      bld.MOV(result, op[0]);
       break;
 
    case nir_op_fabs:
    case nir_op_iabs:
       op[0].negate = false;
       op[0].abs = true;
-      inst = bld.MOV(result, op[0]);
+      bld.MOV(result, op[0]);
       break;
 
    case nir_op_f2f32:
@@ -1222,7 +1222,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       if (op[0].type == BRW_TYPE_HF)
          assert(brw_type_size_bytes(result.type) < 8); /* brw_nir_lower_conversions */
 
-      inst = bld.MOV(result, op[0]);
+      bld.MOV(result, op[0]);
       break;
 
    case nir_op_fsign:
@@ -1230,38 +1230,38 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       break;
 
    case nir_op_frcp:
-      inst = bld.emit(SHADER_OPCODE_RCP, result, op[0]);
+      bld.emit(SHADER_OPCODE_RCP, result, op[0]);
       break;
 
    case nir_op_fexp2:
-      inst = bld.emit(SHADER_OPCODE_EXP2, result, op[0]);
+      bld.emit(SHADER_OPCODE_EXP2, result, op[0]);
       break;
 
    case nir_op_flog2:
-      inst = bld.emit(SHADER_OPCODE_LOG2, result, op[0]);
+      bld.emit(SHADER_OPCODE_LOG2, result, op[0]);
       break;
 
    case nir_op_fsin:
-      inst = bld.emit(SHADER_OPCODE_SIN, result, op[0]);
+      bld.emit(SHADER_OPCODE_SIN, result, op[0]);
       break;
 
    case nir_op_fcos:
-      inst = bld.emit(SHADER_OPCODE_COS, result, op[0]);
+      bld.emit(SHADER_OPCODE_COS, result, op[0]);
       break;
 
    case nir_op_fddx_fine:
-      inst = bld.emit(FS_OPCODE_DDX_FINE, result, op[0]);
+      bld.emit(FS_OPCODE_DDX_FINE, result, op[0]);
       break;
    case nir_op_fddx:
    case nir_op_fddx_coarse:
-      inst = bld.emit(FS_OPCODE_DDX_COARSE, result, op[0]);
+      bld.emit(FS_OPCODE_DDX_COARSE, result, op[0]);
       break;
    case nir_op_fddy_fine:
-      inst = bld.emit(FS_OPCODE_DDY_FINE, result, op[0]);
+      bld.emit(FS_OPCODE_DDY_FINE, result, op[0]);
       break;
    case nir_op_fddy:
    case nir_op_fddy_coarse:
-      inst = bld.emit(FS_OPCODE_DDY_COARSE, result, op[0]);
+      bld.emit(FS_OPCODE_DDY_COARSE, result, op[0]);
       break;
 
    case nir_op_fadd:
@@ -1273,11 +1273,11 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       }
       FALLTHROUGH;
    case nir_op_iadd:
-      inst = bld.ADD(result, op[0], op[1]);
+      bld.ADD(result, op[0], op[1]);
       break;
 
    case nir_op_iadd3:
-      inst = bld.ADD3(result, op[0], op[1], op[2]);
+      bld.ADD3(result, op[0], op[1], op[2]);
       break;
 
    case nir_op_iadd_sat:
@@ -1297,7 +1297,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
    case nir_op_irhadd:
    case nir_op_urhadd:
       assert(instr->def.bit_size < 64);
-      inst = bld.AVG(result, op[0], op[1]);
+      bld.AVG(result, op[0], op[1]);
       break;
 
    case nir_op_ihadd:
@@ -1336,7 +1336,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
                              brw_imm_d(rnd));
       }
 
-      inst = bld.MUL(result, op[0], op[1]);
+      bld.MUL(result, op[0], op[1]);
       break;
 
    case nir_op_imul_2x32_64:
@@ -1585,15 +1585,15 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       unreachable("not reached: should be handled by ldexp_to_arith()");
 
    case nir_op_fsqrt:
-      inst = bld.emit(SHADER_OPCODE_SQRT, result, op[0]);
+      bld.emit(SHADER_OPCODE_SQRT, result, op[0]);
       break;
 
    case nir_op_frsq:
-      inst = bld.emit(SHADER_OPCODE_RSQ, result, op[0]);
+      bld.emit(SHADER_OPCODE_RSQ, result, op[0]);
       break;
 
    case nir_op_ftrunc:
-      inst = bld.RNDZ(result, op[0]);
+      bld.RNDZ(result, op[0]);
       break;
 
    case nir_op_fceil: {
@@ -1601,17 +1601,17 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       fs_reg temp = bld.vgrf(BRW_TYPE_F);
       bld.RNDD(temp, op[0]);
       temp.negate = true;
-      inst = bld.MOV(result, temp);
+      bld.MOV(result, temp);
       break;
    }
    case nir_op_ffloor:
-      inst = bld.RNDD(result, op[0]);
+      bld.RNDD(result, op[0]);
       break;
    case nir_op_ffract:
-      inst = bld.FRC(result, op[0]);
+      bld.FRC(result, op[0]);
       break;
    case nir_op_fround_even:
-      inst = bld.RNDE(result, op[0]);
+      bld.RNDE(result, op[0]);
       break;
 
    case nir_op_fquantize2f16: {
@@ -1643,13 +1643,13 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
    case nir_op_imin:
    case nir_op_umin:
    case nir_op_fmin:
-      inst = bld.emit_minmax(result, op[0], op[1], BRW_CONDITIONAL_L);
+      bld.emit_minmax(result, op[0], op[1], BRW_CONDITIONAL_L);
       break;
 
    case nir_op_imax:
    case nir_op_umax:
    case nir_op_fmax:
-      inst = bld.emit_minmax(result, op[0], op[1], BRW_CONDITIONAL_GE);
+      bld.emit_minmax(result, op[0], op[1], BRW_CONDITIONAL_GE);
       break;
 
    case nir_op_pack_snorm_2x16:
@@ -1668,14 +1668,14 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       assert(FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP16 & execution_mode);
       FALLTHROUGH;
    case nir_op_unpack_half_2x16_split_x:
-      inst = bld.MOV(result, subscript(op[0], BRW_TYPE_HF, 0));
+      bld.MOV(result, subscript(op[0], BRW_TYPE_HF, 0));
       break;
 
    case nir_op_unpack_half_2x16_split_y_flush_to_zero:
       assert(FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP16 & execution_mode);
       FALLTHROUGH;
    case nir_op_unpack_half_2x16_split_y:
-      inst = bld.MOV(result, subscript(op[0], BRW_TYPE_HF, 1));
+      bld.MOV(result, subscript(op[0], BRW_TYPE_HF, 1));
       break;
 
    case nir_op_pack_64_2x32_split:
@@ -1706,7 +1706,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
    }
 
    case nir_op_fpow:
-      inst = bld.emit(SHADER_OPCODE_POW, result, op[0], op[1]);
+      bld.emit(SHADER_OPCODE_POW, result, op[0], op[1]);
       break;
 
    case nir_op_bitfield_reverse:
@@ -1871,7 +1871,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
                              brw_imm_d(rnd));
       }
 
-      inst = bld.MAD(result, op[2], op[1], op[0]);
+      bld.MAD(result, op[2], op[1], op[0]);
       break;
 
    case nir_op_flrp:
@@ -1882,7 +1882,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
                              brw_imm_d(rnd));
       }
 
-      inst = bld.LRP(result, op[0], op[1], op[2]);
+      bld.LRP(result, op[0], op[1], op[2]);
       break;
 
    case nir_op_b32csel:

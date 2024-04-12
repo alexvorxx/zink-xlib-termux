@@ -372,6 +372,9 @@ panvk_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
 {
    VK_FROM_HANDLE(panvk_physical_device, pdevice, physicalDevice);
 
+   uint64_t os_page_size = 4096;
+   os_get_page_size(&os_page_size);
+
    /* HW supports MSAA 4, 8 and 16, but we limit ourselves to MSAA 4 for now. */
    VkSampleCountFlags sample_counts =
       VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_4_BIT;
@@ -559,7 +562,7 @@ panvk_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
       .viewportSubPixelBits = 0,
 
       /* Align on a page. */
-      .minMemoryMapAlignment = 4096,
+      .minMemoryMapAlignment = os_page_size,
 
       /* Some compressed texture formats require 128-byte alignment. */
       .minTexelBufferOffsetAlignment = 64,

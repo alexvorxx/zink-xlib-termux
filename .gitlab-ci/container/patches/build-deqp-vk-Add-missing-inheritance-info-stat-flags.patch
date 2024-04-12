@@ -1,0 +1,57 @@
+From d009fa3fe0387329216bf90741e077eec2690eb9 Mon Sep 17 00:00:00 2001
+From: Ricardo Garcia <rgarcia@igalia.com>
+Date: Thu, 9 Nov 2023 16:32:49 +0100
+Subject: [PATCH] Add missing inheritance info stat flags
+
+XFB PGQ pipeline_statistics_3 tests create a secondary command buffer
+that's run inside a render pass with a pipeline stats query running, but
+they do not set the pipelineStatistics inheritance flags, which violates
+VUID-vkCmdExecuteCommands-commandBuffer-00104.
+
+Affects:
+dEQP-VK.transform_feedback.primitives_generated_query.concurrent.pipeline_statistics_3.*
+
+VK-GL-CTS issue: 4784
+Components: Vulkan
+
+Change-Id: I2ed8f3fdf17d895a70e20fceeb74fa334d5f6bf9
+---
+ .../vktPrimitivesGeneratedQueryTests.cpp      | 22 ++++++++++++++++++-
+ 1 file changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/external/vulkancts/modules/vulkan/transform_feedback/vktPrimitivesGeneratedQueryTests.cpp b/external/vulkancts/modules/vulkan/transform_feedback/vktPrimitivesGeneratedQueryTests.cpp
+index 3072ce1d131e..c9e468a164f2 100644
+--- a/external/vulkancts/modules/vulkan/transform_feedback/vktPrimitivesGeneratedQueryTests.cpp
++++ b/external/vulkancts/modules/vulkan/transform_feedback/vktPrimitivesGeneratedQueryTests.cpp
+@@ -1620,7 +1620,27 @@ tcu::TestStatus ConcurrentPrimitivesGeneratedQueryTestInstance::iterate (void)
+ 
+ 	if (m_parameters.concurrentTestType == CONCURRENT_TEST_TYPE_PIPELINE_STATISTICS_3)
+ 	{
+-		beginSecondaryCommandBuffer(vk, *secondaryCmdBuffer, *renderPass, *framebuffer);
++		const VkCommandBufferInheritanceInfo inheritanceInfo =
++		{
++			VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,	//	VkStructureType					sType;
++			nullptr,											//	const void*						pNext;
++			*renderPass,										//	VkRenderPass					renderPass;
++			0u,													//	deUint32						subpass;
++			*framebuffer,										//	VkFramebuffer					framebuffer;
++			VK_FALSE,											//	VkBool32						occlusionQueryEnable;
++			queryControlFlags,									//	VkQueryControlFlags				queryFlags;
++			psCreateInfo.pipelineStatistics,					//	VkQueryPipelineStatisticFlags	pipelineStatistics;
++		};
++
++		const VkCommandBufferBeginInfo beginInfo =
++		{
++			VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,		//	VkStructureType							sType;
++			nullptr,											//	const void*								pNext;
++			VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,	//	VkCommandBufferUsageFlags				flags;
++			&inheritanceInfo,									//	const VkCommandBufferInheritanceInfo*	pInheritanceInfo;
++		};
++
++		vk.beginCommandBuffer(*secondaryCmdBuffer, &beginInfo);
+ 		vk.cmdBeginQueryIndexedEXT(*secondaryCmdBuffer, *pgqPool, 0, queryControlFlags, m_parameters.pgqStreamIndex());
+ 		vk.cmdBindPipeline(*secondaryCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
+ 		vk.cmdBindVertexBuffers(*secondaryCmdBuffer, 0, 1, &vtxBuffer.get(), &vertexBufferOffset);
+-- 
+2.44.0
+

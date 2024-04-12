@@ -57,6 +57,9 @@ vk_cts_patch_files=(
   build-deqp-vk_Fix-for-render_to_image-exceeding-maxResourceSize.patch
   # Fix for modifiers test
   0001-Add-check-for-import-export-bits-for-vk-modifier-tes.patch
+
+  # XFB fix
+  build-deqp-vk-Add-missing-inheritance-info-stat-flags.patch
 )
 
 if [ "${DEQP_TARGET}" = 'android' ]; then

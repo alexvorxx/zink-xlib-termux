@@ -4475,15 +4475,26 @@ handle_write_acceleration_structures_properties(struct vk_cmd_queue_entry *cmd, 
    for (uint32_t i = 0; i < write->acceleration_structure_count; i++) {
       VK_FROM_HANDLE(vk_acceleration_structure, accel_struct, write->acceleration_structures[i]);
 
-      if (write->query_type == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR) {
+      switch ((uint32_t)pool->base_type) {
+      case LVP_QUERY_ACCELERATION_STRUCTURE_COMPACTED_SIZE:
          dst[i] = accel_struct->size;
-         continue;
+         break;
+      case LVP_QUERY_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE: {
+         struct lvp_bvh_header *header = (void *)(uintptr_t)vk_acceleration_structure_get_va(accel_struct);
+         dst[i] = header->serialization_size;
+         break;
       }
-
-      assert (write->query_type == VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR);
-
-      struct lvp_bvh_header *header = (void *)(uintptr_t)vk_acceleration_structure_get_va(accel_struct);
-      dst[i] = header->serialization_size;
+      case LVP_QUERY_ACCELERATION_STRUCTURE_SIZE:
+         dst[i] = accel_struct->size;
+         break;
+      case LVP_QUERY_ACCELERATION_STRUCTURE_INSTANCE_COUNT: {
+         struct lvp_bvh_header *header = (void *)(uintptr_t)vk_acceleration_structure_get_va(accel_struct);
+         dst[i] = header->instance_count;
+         break;
+      }
+      default:
+         unreachable("Unsupported query type");
+      }
    }
 }
 

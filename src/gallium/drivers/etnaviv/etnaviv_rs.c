@@ -380,10 +380,10 @@ etna_blit_clear_zs_rs(struct pipe_context *pctx, struct pipe_surface *dst,
    /* Get the channels to clear */
    switch (surf->base.format) {
    case PIPE_FORMAT_Z16_UNORM:
+   case PIPE_FORMAT_X8Z24_UNORM:
       clear_bits_depth = 0xffff;
       clear_bits_stencil = 0;
       break;
-   case PIPE_FORMAT_X8Z24_UNORM:
    case PIPE_FORMAT_S8_UINT_Z24_UNORM:
       clear_bits_depth = 0xeeee;
       clear_bits_stencil = 0x1111;

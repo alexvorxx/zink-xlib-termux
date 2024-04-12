@@ -520,7 +520,7 @@ st_link_glsl_to_nir(struct gl_context *ctx,
          st->ctx->Const.ShaderCompilerOptions[shader->Stage].NirOptions;
       struct gl_program *prog = shader->Program;
 
-      _mesa_copy_linked_program_data(shader_program, shader);
+      shader->Program->info.separate_shader = shader_program->SeparateShader;
 
       assert(!prog->nir);
       prog->shader_program = shader_program;

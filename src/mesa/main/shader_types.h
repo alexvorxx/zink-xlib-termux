@@ -428,7 +428,6 @@ struct gl_shader_program
     */
    struct {
       bool UsesEndPrimitive;
-      unsigned ActiveStreamMask;
    } Geom;
 
    /** Data shared by gl_program and gl_shader_program */

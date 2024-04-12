@@ -2661,7 +2661,6 @@ _mesa_copy_linked_program_data(const struct gl_shader_program *src,
    switch (dst_sh->Stage) {
    case MESA_SHADER_GEOMETRY: {
       dst->info.gs.uses_end_primitive = src->Geom.UsesEndPrimitive;
-      dst->info.gs.active_stream_mask = src->Geom.ActiveStreamMask;
       break;
    }
    default:

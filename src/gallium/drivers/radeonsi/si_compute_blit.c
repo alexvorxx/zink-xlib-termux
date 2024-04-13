@@ -1038,9 +1038,7 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    struct si_texture *sdst = (struct si_texture *)info->dst.resource;
    bool is_3d_tiling = sdst->surface.thick_tiling;
 
-   /* Compute blits require D16 right now (see the ISA).
-    *
-    * Testing on Navi21 showed that the compute blit is slightly slower than the gfx blit.
+   /* Testing on Navi21 showed that the compute blit is slightly slower than the gfx blit.
     * The compute blit is even slower with DCC stores. VP13 CATIA_plane_pencil is a good test
     * for that because it's mostly just blits.
     *
@@ -1132,8 +1130,6 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    unsigned wg_dim = set_work_size(&grid, block_x, block_y, block_z, width, height, depth);
 
    /* Get the shader key. */
-   const struct util_format_description *dst_desc = util_format_description(info->dst.format);
-   unsigned i = util_format_get_first_non_void_channel(info->dst.format);
    union si_compute_blit_shader_key options;
    options.key = 0;
 
@@ -1174,16 +1170,6 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    options.use_integer_one = util_format_is_pure_integer(info->dst.format) &&
                              options.last_src_channel < options.last_dst_channel &&
                              options.last_dst_channel == 3;
-
-   /* WARNING: We need this option for AMD_TEST to get results identical with the gfx blit,
-    * otherwise we wouldn't be able to fully validate whether everything else works.
-    * The test expects that the behavior is identical to u_blitter.
-    *
-    * Additionally, we need to keep this enabled even when not testing because not doing fp16_rtz
-    * breaks "piglit/bin/texsubimage -auto pbo".
-    */
-   options.fp16_rtz = !util_format_is_pure_integer(info->dst.format) &&
-                      dst_desc->channel[i].size <= 10;
 
    struct hash_entry *entry = _mesa_hash_table_search(sctx->cs_blit_shaders,
                                                       (void*)(uintptr_t)options.key);

@@ -371,12 +371,6 @@ static nir_def *apply_blit_output_modifiers(nir_builder *b, nir_def *color,
    if (options->last_dst_channel < 3)
       color = nir_trim_vector(b, color, options->last_dst_channel + 1);
 
-   /* Convert to FP16 with rtz to match the pixel shader. Not necessary, but it helps verify
-    * the behavior of the whole shader by comparing it to the gfx blit.
-    */
-   if (options->fp16_rtz)
-      color = nir_f2f16_rtz(b, color);
-
    return color;
 }
 

@@ -18,13 +18,21 @@ static void *create_shader_state(struct si_context *sctx, nir_shader *nir)
    return pipe_shader_from_nir(&sctx->b, nir);
 }
 
-static nir_def *get_global_ids(nir_builder *b, unsigned num_components)
+static nir_def *get_global_ids(nir_builder *b, unsigned num_components, unsigned bit_size)
 {
    unsigned mask = BITFIELD_MASK(num_components);
 
    nir_def *local_ids = nir_channels(b, nir_load_local_invocation_id(b), mask);
    nir_def *block_ids = nir_channels(b, nir_load_workgroup_id(b), mask);
    nir_def *block_size = nir_channels(b, nir_load_workgroup_size(b), mask);
+
+   assert(bit_size == 32 || bit_size == 16);
+   if (bit_size == 16) {
+      local_ids = nir_i2iN(b, local_ids, bit_size);
+      block_ids = nir_i2iN(b, block_ids, bit_size);
+      block_size = nir_i2iN(b, block_size, bit_size);
+   }
+
    return nir_iadd(b, nir_imul(b, block_ids, block_size), local_ids);
 }
 
@@ -36,10 +44,17 @@ static void unpack_2x16(nir_builder *b, nir_def *src, nir_def **x, nir_def **y)
 }
 
 /* unpack_2x16_signed(src, x, y): x = (int32_t)((uint16_t)src); y = src >> 16; */
-static void unpack_2x16_signed(nir_builder *b, nir_def *src, nir_def **x, nir_def **y)
+static void unpack_2x16_signed(nir_builder *b, unsigned bit_size, nir_def *src, nir_def **x,
+                               nir_def **y)
 {
-   *x = nir_i2i32(b, nir_u2u16(b, src));
-   *y = nir_ishr_imm(b, src, 16);
+   assert(bit_size == 32 || bit_size == 16);
+   *x = nir_unpack_32_2x16_split_x(b, src);
+   *y = nir_unpack_32_2x16_split_y(b, src);
+
+   if (bit_size == 32) {
+      *x = nir_i2i32(b, *x);
+      *y = nir_i2i32(b, *y);
+   }
 }
 
 static nir_def *
@@ -69,7 +84,7 @@ void *si_create_dcc_retile_cs(struct si_context *sctx, struct radeon_surf *surf)
    unpack_2x16(&b, nir_channel(&b, user_sgprs, 2), &dst_dcc_pitch, &dst_dcc_height);
 
    /* Get the 2D coordinates. */
-   nir_def *coord = get_global_ids(&b, 2);
+   nir_def *coord = get_global_ids(&b, 2, 32);
    nir_def *zero = nir_imm_int(&b, 0);
 
    /* Multiply the coordinates by the DCC block size (they are DCC block coordinates). */
@@ -112,7 +127,7 @@ void *gfx9_create_clear_dcc_msaa_cs(struct si_context *sctx, struct si_texture *
    clear_value = nir_u2u16(&b, clear_value);
 
    /* Get the 2D coordinates. */
-   nir_def *coord = get_global_ids(&b, 3);
+   nir_def *coord = get_global_ids(&b, 3, 32);
    nir_def *zero = nir_imm_int(&b, 0);
 
    /* Multiply the coordinates by the DCC block size (they are DCC block coordinates). */
@@ -150,7 +165,7 @@ void *si_create_clear_buffer_rmw_cs(struct si_context *sctx)
    b.shader->info.num_ssbos = 1;
 
    /* address = blockID * 64 + threadID; */
-   nir_def *address = get_global_ids(&b, 1);
+   nir_def *address = get_global_ids(&b, 1, 32);
 
    /* address = address * 16; (byte offset, loading one vec4 per thread) */
    address = nir_ishl_imm(&b, address, 4);
@@ -353,7 +368,7 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
 
    /* Instructions. */
    /* Let's work with 0-based src and dst coordinates (thread IDs) first. */
-   nir_def *dst_xyz = nir_pad_vector_imm_int(&b, get_global_ids(&b, options->wg_dim), 0, 3);
+   nir_def *dst_xyz = nir_pad_vector_imm_int(&b, get_global_ids(&b, options->wg_dim, 32), 0, 3);
 
    /* If the blit area is unaligned, we launched extra threads to make it aligned.
     * Skip those threads here.
@@ -392,7 +407,7 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
 
    /* Add box.xyz. */
    nir_def *base_coord_src = NULL, *base_coord_dst = NULL;
-   unpack_2x16_signed(&b, nir_trim_vector(&b, nir_load_user_data_amd(&b), 3),
+   unpack_2x16_signed(&b, 32, nir_trim_vector(&b, nir_load_user_data_amd(&b), 3),
                       &base_coord_src, &base_coord_dst);
    base_coord_dst = nir_iadd(&b, base_coord_dst, dst_xyz);
    base_coord_src = nir_iadd(&b, base_coord_src, src_xyz);
@@ -615,7 +630,7 @@ void *si_clear_image_dcc_single_shader(struct si_context *sctx, bool is_msaa, un
    nir_variable *output_img = nir_variable_create(b.shader, nir_var_image, img_type, "out_img");
    output_img->data.binding = 0;
 
-   nir_def *global_id = nir_pad_vector_imm_int(&b, get_global_ids(&b, wg_dim), 0, 3);
+   nir_def *global_id = nir_pad_vector_imm_int(&b, get_global_ids(&b, wg_dim, 32), 0, 3);
    nir_def *clear_color = nir_trim_vector(&b, nir_load_user_data_amd(&b), 4);
 
    nir_def *dcc_block_width, *dcc_block_height;
@@ -644,7 +659,7 @@ void *si_create_ubyte_to_ushort_compute_shader(struct si_context *sctx)
    b.shader->info.workgroup_size[2] = 1;
    b.shader->info.num_ssbos = 2;
 
-   nir_def *load_address = get_global_ids(&b, 1);
+   nir_def *load_address = get_global_ids(&b, 1, 32);
    nir_def *store_address = nir_imul_imm(&b, load_address, 2);
 
    nir_def *ubyte_value = nir_load_ssbo(&b, 1, 8, nir_imm_int(&b, 1),
@@ -669,7 +684,7 @@ void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_
    b.shader->info.num_ssbos = is_clear ? 1 : 2;
    b.shader->info.cs.user_data_components_amd = is_clear ? num_dwords_per_thread : 0;
 
-   nir_def *thread_id = get_global_ids(&b, 1);
+   nir_def *thread_id = get_global_ids(&b, 1, 32);
    /* Convert the global thread ID into bytes. */
    nir_def *offset = nir_imul_imm(&b, thread_id, 4 * num_dwords_per_thread);
    nir_def *value;
@@ -716,7 +731,7 @@ void *si_create_fmask_expand_cs(struct si_context *sctx, unsigned num_samples, b
    }
 
    nir_def *zero = nir_imm_int(&b, 0);
-   nir_def *address = get_global_ids(&b, 2);
+   nir_def *address = get_global_ids(&b, 2, 32);
 
    nir_def *sample[8], *addresses[8];
    assert(num_samples <= ARRAY_SIZE(sample));

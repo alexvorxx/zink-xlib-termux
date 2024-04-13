@@ -703,7 +703,7 @@ radv_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice, cons
       ext->maxPPictureL0ReferenceCount = 1;
       ext->maxBPictureL0ReferenceCount = 0;
       ext->maxL1ReferenceCount = 0;
-      ext->maxSubLayerCount = 1;
+      ext->maxSubLayerCount = 4;
       ext->expectDyadicTemporalSubLayerPattern = false;
       ext->minQp = 0;
       ext->maxQp = 51;

@@ -1230,23 +1230,23 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       break;
 
    case nir_op_frcp:
-      bld.emit(SHADER_OPCODE_RCP, result, op[0]);
+      bld.RCP(result, op[0]);
       break;
 
    case nir_op_fexp2:
-      bld.emit(SHADER_OPCODE_EXP2, result, op[0]);
+      bld.EXP2(result, op[0]);
       break;
 
    case nir_op_flog2:
-      bld.emit(SHADER_OPCODE_LOG2, result, op[0]);
+      bld.LOG2(result, op[0]);
       break;
 
    case nir_op_fsin:
-      bld.emit(SHADER_OPCODE_SIN, result, op[0]);
+      bld.SIN(result, op[0]);
       break;
 
    case nir_op_fcos:
-      bld.emit(SHADER_OPCODE_COS, result, op[0]);
+      bld.COS(result, op[0]);
       break;
 
    case nir_op_fddx_fine:
@@ -1382,7 +1382,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
    case nir_op_idiv:
    case nir_op_udiv:
       assert(instr->def.bit_size < 64);
-      bld.emit(SHADER_OPCODE_INT_QUOTIENT, result, op[0], op[1]);
+      bld.INT_QUOTIENT(result, op[0], op[1]);
       break;
 
    case nir_op_uadd_carry:
@@ -1398,12 +1398,12 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
        * remainder.
        */
       assert(instr->def.bit_size < 64);
-      bld.emit(SHADER_OPCODE_INT_REMAINDER, result, op[0], op[1]);
+      bld.INT_REMAINDER(result, op[0], op[1]);
       break;
 
    case nir_op_imod: {
       /* Get a regular C-style remainder.  If a % b == 0, set the predicate. */
-      bld.emit(SHADER_OPCODE_INT_REMAINDER, result, op[0], op[1]);
+      bld.INT_REMAINDER(result, op[0], op[1]);
 
       /* Math instructions don't support conditional mod */
       inst = bld.MOV(bld.null_reg_d(), result);
@@ -1585,11 +1585,11 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       unreachable("not reached: should be handled by ldexp_to_arith()");
 
    case nir_op_fsqrt:
-      bld.emit(SHADER_OPCODE_SQRT, result, op[0]);
+      bld.SQRT(result, op[0]);
       break;
 
    case nir_op_frsq:
-      bld.emit(SHADER_OPCODE_RSQ, result, op[0]);
+      bld.RSQ(result, op[0]);
       break;
 
    case nir_op_ftrunc:
@@ -1706,7 +1706,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
    }
 
    case nir_op_fpow:
-      bld.emit(SHADER_OPCODE_POW, result, op[0], op[1]);
+      bld.POW(result, op[0], op[1]);
       break;
 
    case nir_op_bitfield_reverse:

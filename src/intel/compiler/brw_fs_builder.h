@@ -545,22 +545,26 @@ namespace brw {
        * Assorted arithmetic ops.
        * @{
        */
-#define ALU1(op)                                        \
-      fs_inst *                                     \
-      op(const fs_reg &dst, const fs_reg &src0) const \
-      {                                                 \
-         assert(_dispatch_width == 1 ||                         \
-                (dst.file >= VGRF && dst.stride != 0) ||        \
-                (dst.file < VGRF && dst.hstride != 0));         \
-         return emit(BRW_OPCODE_##op, dst, src0);       \
+#define _ALU1(prefix, op)                                \
+      fs_inst *                                          \
+      op(const fs_reg &dst, const fs_reg &src0) const    \
+      {                                                  \
+         assert(_dispatch_width == 1 ||                  \
+                (dst.file >= VGRF && dst.stride != 0) || \
+                (dst.file < VGRF && dst.hstride != 0));  \
+         return emit(prefix##op, dst, src0);             \
       }
+#define ALU1(op) _ALU1(BRW_OPCODE_, op)
+#define VIRT1(op) _ALU1(SHADER_OPCODE_, op)
 
-#define ALU2(op)                                                        \
-      fs_inst *                                                     \
+#define _ALU2(prefix, op)                                                 \
+      fs_inst *                                                           \
       op(const fs_reg &dst, const fs_reg &src0, const fs_reg &src1) const \
-      {                                                                 \
-         return emit(BRW_OPCODE_##op, dst, src0, src1);                 \
+      {                                                                   \
+         return emit(prefix##op, dst, src0, src1);                        \
       }
+#define ALU2(op) _ALU2(BRW_OPCODE_, op)
+#define VIRT2(op) _ALU2(SHADER_OPCODE_, op)
 
 #define ALU2_ACC(op)                                                    \
       fs_inst *                                                     \
@@ -622,10 +626,25 @@ namespace brw {
       ALU2_ACC(SUBB)
       ALU2(XOR)
 
+      VIRT1(RCP)
+      VIRT1(RSQ)
+      VIRT1(SQRT)
+      VIRT1(EXP2)
+      VIRT1(LOG2)
+      VIRT2(POW)
+      VIRT2(INT_QUOTIENT)
+      VIRT2(INT_REMAINDER)
+      VIRT1(SIN)
+      VIRT1(COS)
+
 #undef ALU3
 #undef ALU2_ACC
 #undef ALU2
+#undef VIRT2
+#undef _ALU2
 #undef ALU1
+#undef VIRT1
+#undef _ALU1
       /** @} */
 
       /**

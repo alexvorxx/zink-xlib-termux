@@ -859,6 +859,52 @@ bool si_compute_copy_image(struct si_context *sctx, struct pipe_resource *dst, u
    return success;
 }
 
+/* Return a power-of-two alignment of a number. */
+static unsigned compute_alignment(unsigned x)
+{
+   return x ? BITFIELD_BIT(ffs(x) - 1) : BITFIELD_BIT(31);
+}
+
+/* Set the blit info, but change the dst box and trim the src box according to the new dst box. */
+static void set_trimmed_blit(const struct pipe_blit_info *old, const struct pipe_box *box,
+                             bool is_clear, struct pipe_blit_info *out)
+{
+   assert(old->dst.box.x <= box->x);
+   assert(old->dst.box.y <= box->y);
+   assert(old->dst.box.z <= box->z);
+   assert(box->x + box->width <= old->dst.box.x + old->dst.box.width);
+   assert(box->y + box->height <= old->dst.box.y + old->dst.box.height);
+   assert(box->z + box->depth <= old->dst.box.z + old->dst.box.depth);
+   /* No scaling. */
+   assert(is_clear || old->dst.box.width == abs(old->src.box.width));
+   assert(is_clear || old->dst.box.height == abs(old->src.box.height));
+   assert(is_clear || old->dst.box.depth == abs(old->src.box.depth));
+
+   *out = *old;
+   out->dst.box = *box;
+
+   if (!is_clear) {
+      if (out->src.box.width > 0) {
+         out->src.box.x += box->x - old->dst.box.x;
+         out->src.box.width = box->width;
+      } else {
+         out->src.box.x -= box->x - old->dst.box.x;
+         out->src.box.width = -box->width;
+      }
+
+      if (out->src.box.height > 0) {
+         out->src.box.y += box->y - old->dst.box.y;
+         out->src.box.height = box->height;
+      } else {
+         out->src.box.y -= box->y - old->dst.box.y;
+         out->src.box.height = -box->height;
+      }
+
+      out->src.box.z += box->z - old->dst.box.z;
+      out->src.box.depth = box->depth;
+   }
+}
+
 typedef struct {
    unsigned x, y, z;
 } uvec3;
@@ -873,6 +919,8 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    bool is_clear = !info->src.resource;
    unsigned dst_samples = MAX2(1, sdst->buffer.b.b.nr_samples);
    unsigned src_samples = is_clear ? 1 : MAX2(1, ssrc->buffer.b.b.nr_samples);
+   bool is_resolve = !is_clear && dst_samples == 1 && src_samples >= 2 &&
+                     !util_format_is_pure_integer(info->dst.format);
    bool sample0_only = src_samples >= 2 && dst_samples == 1 &&
                        (info->sample0_only || util_format_is_pure_integer(info->dst.format));
    /* Get the channel sizes. */
@@ -934,6 +982,252 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    unsigned width = info->dst.box.width;
    unsigned height = info->dst.box.height;
    unsigned depth = info->dst.box.depth;
+   uvec3 lane_size = (uvec3){1, 1, 1};
+
+   /* Determine the size of the block of pixels that will be processed by a single lane.
+    * Generally we want to load and store about 8-16B per lane, but there are exceptions.
+    * The block sizes were fine-tuned for Navi31, and might be suboptimal on different generations.
+    */
+   if (sdst->surface.bpe <= 8 && (is_resolve ? src_samples : dst_samples) <= 4 &&
+       /* Small blits don't benefit. */
+       width * height * depth * sdst->surface.bpe * dst_samples > 128 * 1024) {
+      if (is_3d_tiling) {
+         /* Thick tiling. */
+         if (!is_clear && ssrc->surface.is_linear) {
+            /* Linear -> Thick. */
+            if (sdst->surface.bpe == 4)
+               lane_size = (uvec3){2, 1, 1}; /* 8B per lane */
+            else if (sdst->surface.bpe == 2)
+               lane_size = (uvec3){2, 1, 2}; /* 8B per lane */
+            else if (sdst->surface.bpe == 1)
+               lane_size = (uvec3){4, 1, 2}; /* 8B per lane */
+         } else {
+            if (sdst->surface.bpe == 8)
+               lane_size = (uvec3){1, 1, 2}; /* 16B per lane */
+            else if (sdst->surface.bpe == 4)
+               lane_size = (uvec3){1, 2, 2}; /* 16B per lane */
+            else if (sdst->surface.bpe == 2)
+               lane_size = (uvec3){1, 2, 4}; /* 16B per lane */
+            else
+               lane_size = (uvec3){2, 2, 2}; /* 8B per lane */
+         }
+      } else if (sdst->surface.is_linear) {
+         /* Linear layout. */
+         if (!is_clear && !ssrc->surface.is_linear) {
+            /* Tiled -> Linear. */
+            if (sdst->surface.bpe == 8 && !ssrc->surface.thick_tiling)
+               lane_size = (uvec3){2, 1, 1}; /* 16B per lane */
+            else if (sdst->surface.bpe == 4)
+               lane_size = (uvec3){1, 2, 1}; /* 8B per lane */
+            else if (sdst->surface.bpe == 2 && ssrc->surface.thick_tiling)
+               lane_size = (uvec3){2, 2, 1}; /* 8B per lane */
+            else if (sdst->surface.bpe == 1 && ssrc->surface.thick_tiling)
+               lane_size = (uvec3){2, 2, 2}; /* 8B per lane */
+            else if (sdst->surface.bpe <= 2)
+               lane_size = (uvec3){2, 4, 1}; /* 8-16B per lane */
+         } else {
+            /* Clear or Linear -> Linear. */
+            if (sdst->surface.bpe == 8)
+               lane_size = (uvec3){2, 1, 1}; /* 16B per lane */
+            else if (sdst->surface.bpe == 4)
+               lane_size = (uvec3){4, 1, 1}; /* 16B per lane */
+            else if (sdst->surface.bpe == 2)
+               lane_size = (uvec3){4, 2, 1}; /* 16B per lane */
+            else
+               lane_size = (uvec3){8, 1, 1}; /* 8B per lane */
+         }
+      } else {
+         /* Thin tiling. */
+         if (is_resolve) {
+            if (sdst->surface.bpe == 8 && src_samples == 2) {
+               lane_size = (uvec3){1, 2, 1}; /* 32B->16B per lane */
+            } else if (sdst->surface.bpe == 4) {
+               lane_size = (uvec3){2, 1, 1}; /* 32B->8B for 4 samples, 16B->8B for 2 samples */
+            } else if (sdst->surface.bpe <= 2) {
+               if (src_samples == 4)
+                  lane_size = (uvec3){2, 1, 1}; /* 16B->4B for 16bpp, 8B->2B for 8bpp */
+               else
+                  lane_size = (uvec3){2, 2, 1}; /* 16B->8B for 16bpp, 8B->4B for 8bpp */
+            }
+         } else {
+            if (sdst->surface.bpe == 8 && dst_samples == 1)
+               lane_size = (uvec3){1, 2, 1}; /* 16B per lane */
+            else if (sdst->surface.bpe == 4) {
+               if (dst_samples == 2)
+                  lane_size = (uvec3){2, 1, 1}; /* 16B per lane */
+               else if (dst_samples == 1)
+                  lane_size = (uvec3){2, 2, 1}; /* 16B per lane */
+            } else if (sdst->surface.bpe == 2) {
+               if (dst_samples == 4 || (!is_clear && ssrc->surface.is_linear))
+                  lane_size = (uvec3){2, 1, 1}; /* 16B per lane (4B for linear src) */
+               else if (dst_samples == 2)
+                  lane_size = (uvec3){2, 2, 1}; /* 16B per lane */
+               else
+                  lane_size = (uvec3){2, 4, 1}; /* 16B per lane */
+            } else if (sdst->surface.bpe == 1) {
+               if (dst_samples == 4)
+                  lane_size = (uvec3){2, 1, 1}; /* 8B per lane */
+               else if (dst_samples == 2 || (!is_clear && ssrc->surface.is_linear))
+                  lane_size = (uvec3){2, 2, 1}; /* 8B per lane (4B for linear src) */
+               else
+                  lane_size = (uvec3){2, 4, 1}; /* 8B per lane */
+            }
+         }
+      }
+   }
+
+   /* Check that the lane size fits into the shader key. */
+   static const union si_compute_blit_shader_key max_lane_size = {
+      .log_lane_width = ~0,
+      .log_lane_height = ~0,
+      .log_lane_depth = ~0,
+   };
+   assert(util_logbase2(lane_size.x) <= max_lane_size.log_lane_width);
+   assert(util_logbase2(lane_size.y) <= max_lane_size.log_lane_height);
+   assert(util_logbase2(lane_size.z) <= max_lane_size.log_lane_depth);
+
+   /* If the shader blits a block of pixels per lane, it must have the dst box aligned to that
+    * block because it can't blit a subset of pixels per lane.
+    *
+    * If the blit dst box is not aligned to the lane size, split it into multiple blits by cutting
+    * off the unaligned sides of the box and blitting the middle that's aligned to the lane size,
+    * then blit the unaligned sides separately. This splits the blit into up to 7 blits for 3D,
+    * and 5 blits for 2D.
+    */
+   if (info->dst.box.x % lane_size.x ||
+       info->dst.box.y % lane_size.y ||
+       info->dst.box.z % lane_size.z ||
+       info->dst.box.width % lane_size.x ||
+       info->dst.box.height % lane_size.y ||
+       info->dst.box.depth % lane_size.z) {
+      struct pipe_box middle;
+
+      /* Cut off unaligned regions on the sides of the box. */
+      middle.x = align(info->dst.box.x, lane_size.x);
+      middle.y = align(info->dst.box.y, lane_size.y);
+      middle.z = align(info->dst.box.z, lane_size.z);
+
+      middle.width = info->dst.box.width - (middle.x - info->dst.box.x);
+      if (middle.width > 0)
+         middle.width -= middle.width % lane_size.x;
+      middle.height = info->dst.box.height - (middle.y - info->dst.box.y);
+      if (middle.height > 0)
+         middle.height -= middle.height % lane_size.y;
+      middle.depth = info->dst.box.depth - (middle.z - info->dst.box.z);
+      if (middle.depth > 0)
+         middle.depth -= middle.depth % lane_size.z;
+
+      /* Only a few cases are regressed by this. The vast majority benefits a lot.
+       * This was fine-tuned for Navi31, and might be suboptimal on different generations.
+       */
+      bool slow = (sdst->surface.is_linear && !is_clear && ssrc->surface.is_linear && depth > 1) ||
+                  (sdst->surface.thick_tiling &&
+                   ((sdst->surface.bpe == 8 && is_clear) ||
+                    (sdst->surface.bpe == 4 &&
+                     (sdst->surface.is_linear || (!is_clear && ssrc->surface.is_linear))) ||
+                    (sdst->surface.bpe == 2 && sdst->surface.is_linear && !is_clear &&
+                     ssrc->surface.is_linear))) ||
+                  (!sdst->surface.thick_tiling &&
+                   ((sdst->surface.bpe == 4 && sdst->surface.is_linear && !is_clear &&
+                     ssrc->surface.is_linear) ||
+                    (sdst->surface.bpe == 8 && !is_clear &&
+                     sdst->surface.is_linear != ssrc->surface.is_linear) ||
+                    (is_resolve && sdst->surface.bpe == 4 && src_samples == 4) ||
+                    (is_resolve && sdst->surface.bpe == 8 && src_samples == 2)));
+
+      /* Only use this if the middle blit is large enough. */
+      if (!slow && middle.width > 0 && middle.height > 0 && middle.depth > 0 &&
+          middle.width * middle.height * middle.depth * sdst->surface.bpe * dst_samples >
+          128 * 1024) {
+         /* Compute the size of unaligned regions on all sides of the box. */
+         struct pipe_box top, left, right, bottom, front, back;
+
+         assert(!(flags & SI_OP_IS_NESTED));
+
+         top = info->dst.box;
+         top.height = middle.y - top.y;
+
+         bottom = info->dst.box;
+         bottom.y = middle.y + middle.height;
+         bottom.height = info->dst.box.height - top.height - middle.height;
+
+         left = info->dst.box;
+         left.y = middle.y;
+         left.height = middle.height;
+         left.width = middle.x - left.x;
+
+         right = info->dst.box;
+         right.y = middle.y;
+         right.height = middle.height;
+         right.x = middle.x + middle.width;
+         right.width = info->dst.box.width - left.width - middle.width;
+
+         front = info->dst.box;
+         front.x = middle.x;
+         front.y = middle.y;
+         front.width = middle.width;
+         front.height = middle.height;
+         front.depth = middle.z - front.z;
+
+         back = info->dst.box;
+         back.x = middle.x;
+         back.y = middle.y;
+         back.width = middle.width;
+         back.height = middle.height;
+         back.z = middle.z + middle.depth;
+         back.depth = info->dst.box.depth - front.depth - middle.depth;
+
+         struct pipe_box boxes[] = {middle, top, bottom, left, right, front, back};
+         int last = -1;
+
+         /* Verify that the boxes don't intersect. */
+         for (unsigned i = 0; i < ARRAY_SIZE(boxes); i++) {
+            for (unsigned j = i + 1; j < ARRAY_SIZE(boxes); j++) {
+               if (boxes[i].width > 0 && boxes[i].height > 0 && boxes[i].depth > 0 &&
+                   boxes[j].width > 0 && boxes[j].height > 0 && boxes[j].depth > 0) {
+                  if (u_box_test_intersection_3d(&boxes[i], &boxes[j])) {
+                     printf("\b   (%u, %u, %u) -> (%u, %u, %u) | (%u, %u, %u) -> (%u, %u, %u)\n",
+                            boxes[i].x, boxes[i].y, boxes[i].z,
+                            boxes[i].x + boxes[i].width - 1,
+                            boxes[i].y + boxes[i].height - 1,
+                            boxes[i].z + boxes[i].depth - 1,
+                            boxes[j].x, boxes[j].y, boxes[j].z,
+                            boxes[j].x + boxes[j].width,
+                            boxes[j].y + boxes[j].height,
+                            boxes[j].z + boxes[j].depth);
+                     assert(0);
+                  }
+               }
+            }
+         }
+
+         for (unsigned i = 0; i < ARRAY_SIZE(boxes); i++) {
+            if (boxes[i].width > 0 && boxes[i].height > 0 && boxes[i].depth > 0)
+               last = i;
+         }
+         assert(last > 0);
+
+         for (unsigned i = 0; i < ARRAY_SIZE(boxes); i++) {
+            if (boxes[i].width > 0 && boxes[i].height > 0 && boxes[i].depth > 0) {
+               struct pipe_blit_info new_info;
+               ASSERTED bool ok;
+
+               set_trimmed_blit(info, &boxes[i], is_clear, &new_info);
+               ok = si_compute_blit(sctx, &new_info, clear_color, dst_access, src_access,
+                                    (flags & ~SI_OP_SYNC_BEFORE_AFTER) | SI_OP_IS_NESTED |
+                                    (i == 0 ? flags & SI_OP_SYNC_BEFORE : 0) |
+                                    (i == last ? flags & SI_OP_SYNC_AFTER : 0));
+               assert(ok);
+            }
+         }
+         return true;
+      }
+   }
+
+   /* If the box can't blit split, at least reduce the lane size to the alignment of the box. */
+   lane_size.x = MIN3(lane_size.x, compute_alignment(info->dst.box.x), compute_alignment(width));
+   lane_size.y = MIN3(lane_size.y, compute_alignment(info->dst.box.y), compute_alignment(height));
+   lane_size.z = MIN3(lane_size.z, compute_alignment(info->dst.box.z), compute_alignment(depth));
 
    /* Determine the alignment of coordinates of the first thread of each wave. The alignment should be
     * to a 256B block or the size of 1 wave, whichever is less, but there are a few exceptions.
@@ -958,10 +1252,10 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
             align = (uvec3){2, 2, 4};
       }
 
-      /* Clamp the alignment to the size of 1 wave. */
-      align.x = MIN2(align.x, 4);
-      align.y = MIN2(align.y, 4);
-      align.z = MIN2(align.z, 4);
+      /* Clamp the alignment to the expected size of 1 wave. */
+      align.x = MIN2(align.x, 4 * lane_size.x);
+      align.y = MIN2(align.y, 4 * lane_size.y);
+      align.z = MIN2(align.z, 4 * lane_size.z);
    } else if (sdst->surface.is_linear) {
       /* 1D blits from linear to linear are faster unaligned.
        * 1D image clears don't benefit from any alignment.
@@ -969,8 +1263,10 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
       if (height == 1 && depth == 1 && (is_clear || ssrc->surface.is_linear)) {
          align = (uvec3){1, 1, 1};
       } else {
-         /* Linear blits should use the cache line size instead of 256B alignment. */
-         align.x = MIN2(64, sctx->screen->info.tcc_cache_line_size / sdst->surface.bpe);
+         /* Linear blits should use the cache line size instead of 256B alignment.
+          * Clamp it to the expected size of 1 wave.
+          */
+         align.x = MIN2(sctx->screen->info.tcc_cache_line_size / sdst->surface.bpe, 64 * lane_size.x);
          align.y = 1;
          align.z = 1;
       }
@@ -1015,9 +1311,9 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
             align = (uvec3){4, 4, 1};
       }
 
-      /* Clamp the alignment to the size of 1 wave. */
-      align.x = MIN2(align.x, 8);
-      align.y = MIN2(align.y, 8);
+      /* Clamp the alignment to the expected size of 1 wave. */
+      align.x = MIN2(align.x, 8 * lane_size.x);
+      align.y = MIN2(align.y, 8 * lane_size.y);
    }
 
    /* If we don't have much to copy, don't align. The threshold is guessed and isn't covered
@@ -1044,6 +1340,21 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    width += start_x;
    height += start_y;
    depth += start_z;
+
+   /* Divide by the dispatch parameters by the lane size. */
+   assert(start_x % lane_size.x == 0);
+   assert(start_y % lane_size.y == 0);
+   assert(start_z % lane_size.z == 0);
+   assert(width % lane_size.x == 0);
+   assert(height % lane_size.y == 0);
+   assert(depth % lane_size.z == 0);
+
+   start_x /= lane_size.x;
+   start_y /= lane_size.y;
+   start_z /= lane_size.z;
+   width /= lane_size.x;
+   height /= lane_size.y;
+   depth /= lane_size.z;
 
    /* Choose the block (i.e. wave) dimensions based on the copy area size and the image layout
     * of dst.
@@ -1094,6 +1405,9 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    options.is_clear = is_clear;
    options.wg_dim = wg_dim;
    options.has_start_xyz = start_x || start_y || start_z;
+   options.log_lane_width = util_logbase2(lane_size.x);
+   options.log_lane_height = util_logbase2(lane_size.y);
+   options.log_lane_depth = util_logbase2(lane_size.z);
    options.dst_is_1d = info->dst.resource->target == PIPE_TEXTURE_1D ||
                        info->dst.resource->target == PIPE_TEXTURE_1D_ARRAY;
    options.dst_is_msaa = dst_samples > 1;
@@ -1141,7 +1455,6 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
       options.use_integer_one = util_format_is_pure_integer(info->dst.format) &&
                                 options.last_src_channel < options.last_dst_channel &&
                                 options.last_dst_channel == 3;
-      bool is_resolve = options.src_is_msaa && !options.dst_is_msaa && !options.sample0_only;
       options.d16 = has_d16 &&
                     /* Blitting FP16 using D16 has precision issues. Resolving has precision
                      * issues all the way down to R11G11B10_FLOAT. */

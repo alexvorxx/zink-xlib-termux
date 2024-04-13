@@ -1479,6 +1479,7 @@ void si_destroy_compute(struct si_compute *program);
 #define SI_OP_SYNC_GE_BEFORE              (1 << 8) /* only sync VS, TCS, TES, GS */
 /* Only for si_compute_blit: */
 #define SI_OP_FAIL_IF_SLOW                (1 << 9)
+#define SI_OP_IS_NESTED                   (1 << 10)
 
 unsigned si_get_flush_flags(struct si_context *sctx, enum si_coherency coher,
                             enum si_cache_policy cache_policy);
@@ -1634,6 +1635,7 @@ void *gfx9_create_clear_dcc_msaa_cs(struct si_context *sctx, struct si_texture *
 void *si_create_passthrough_tcs(struct si_context *sctx);
 void *si_clear_image_dcc_single_shader(struct si_context *sctx, bool is_msaa, unsigned wg_dim);
 
+#define SI_MAX_COMPUTE_BLIT_LANE_SIZE  16
 #define SI_MAX_COMPUTE_BLIT_SAMPLES    8
 
 union si_compute_blit_shader_key {
@@ -1641,6 +1643,10 @@ union si_compute_blit_shader_key {
       /* Workgroup settings. */
       uint8_t wg_dim:2; /* 1, 2, or 3 */
       bool has_start_xyz:1;
+      /* The size of a block of pixels that a single thread will process. */
+      uint8_t log_lane_width:3;
+      uint8_t log_lane_height:2;
+      uint8_t log_lane_depth:2;
       /* Declaration modifiers. */
       bool is_clear:1;
       bool src_is_1d:1;

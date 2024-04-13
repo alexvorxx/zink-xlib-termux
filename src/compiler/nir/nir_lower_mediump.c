@@ -852,12 +852,13 @@ opt_16bit_store_data(nir_builder *b, nir_intrinsic_instr *instr)
 }
 
 static bool
-opt_16bit_destination(nir_def *ssa, nir_alu_type dest_type,
-                      unsigned exec_mode, nir_rounding_mode rdm)
+opt_16bit_destination(nir_def *ssa, nir_alu_type dest_type, unsigned exec_mode,
+                      struct nir_opt_16bit_tex_image_options *options)
 {
    bool is_f32_to_f16 = dest_type == nir_type_float32;
    bool is_i32_to_i16 = dest_type == nir_type_int32 || dest_type == nir_type_uint32;
 
+   nir_rounding_mode rdm = options->rounding_mode;
    nir_rounding_mode src_rdm =
       nir_get_rounding_mode_from_float_controls(exec_mode, nir_type_float16);
    bool allow_standard = (src_rdm == rdm || src_rdm == nir_rounding_mode_undef);
@@ -887,14 +888,14 @@ opt_16bit_destination(nir_def *ssa, nir_alu_type dest_type,
 
 static bool
 opt_16bit_image_dest(nir_intrinsic_instr *instr, unsigned exec_mode,
-                     nir_alu_type allowed_types, nir_rounding_mode rdm)
+                     struct nir_opt_16bit_tex_image_options *options)
 {
    nir_alu_type dest_type = nir_intrinsic_dest_type(instr);
 
-   if (!(nir_alu_type_get_base_type(dest_type) & allowed_types))
+   if (!(nir_alu_type_get_base_type(dest_type) & options->opt_image_dest_types))
       return false;
 
-   if (!opt_16bit_destination(&instr->def, dest_type, exec_mode, rdm))
+   if (!opt_16bit_destination(&instr->def, dest_type, exec_mode, options))
       return false;
 
    nir_intrinsic_set_dest_type(instr, (dest_type & ~32) | 16);
@@ -904,7 +905,7 @@ opt_16bit_image_dest(nir_intrinsic_instr *instr, unsigned exec_mode,
 
 static bool
 opt_16bit_tex_dest(nir_tex_instr *tex, unsigned exec_mode,
-                   nir_alu_type allowed_types, nir_rounding_mode rdm)
+                   struct nir_opt_16bit_tex_image_options *options)
 {
    /* Skip sparse residency */
    if (tex->is_sparse)
@@ -921,10 +922,10 @@ opt_16bit_tex_dest(nir_tex_instr *tex, unsigned exec_mode,
        tex->op != nir_texop_fragment_fetch_amd)
       return false;
 
-   if (!(nir_alu_type_get_base_type(tex->dest_type) & allowed_types))
+   if (!(nir_alu_type_get_base_type(tex->dest_type) & options->opt_tex_dest_types))
       return false;
 
-   if (!opt_16bit_destination(&tex->def, tex->dest_type, exec_mode, rdm))
+   if (!opt_16bit_destination(&tex->def, tex->dest_type, exec_mode, options))
       return false;
 
    tex->dest_type = (tex->dest_type & ~32) | 16;
@@ -1030,9 +1031,7 @@ opt_16bit_tex_image(nir_builder *b, nir_instr *instr, void *params)
       case nir_intrinsic_image_deref_load:
       case nir_intrinsic_image_load:
          if (options->opt_image_dest_types)
-            progress |= opt_16bit_image_dest(intrinsic, exec_mode,
-                                             options->opt_image_dest_types,
-                                             options->rounding_mode);
+            progress |= opt_16bit_image_dest(intrinsic, exec_mode, options);
          if (options->opt_image_srcs)
             progress |= opt_16bit_image_srcs(b, intrinsic, 3);
          break;
@@ -1058,8 +1057,7 @@ opt_16bit_tex_image(nir_builder *b, nir_instr *instr, void *params)
       nir_tex_instr *tex = nir_instr_as_tex(instr);
 
       if (options->opt_tex_dest_types)
-         progress |= opt_16bit_tex_dest(tex, exec_mode, options->opt_tex_dest_types,
-                                        options->rounding_mode);
+         progress |= opt_16bit_tex_dest(tex, exec_mode, options);
 
       for (unsigned i = 0; i < options->opt_srcs_options_count; i++) {
          progress |= opt_16bit_tex_srcs(b, tex, &options->opt_srcs_options[i]);

@@ -1477,6 +1477,8 @@ void si_destroy_compute(struct si_compute *program);
 #define SI_OP_CS_RENDER_COND_ENABLE       (1 << 6)
 #define SI_OP_CPDMA_SKIP_CHECK_CS_SPACE   (1 << 7) /* don't call need_cs_space */
 #define SI_OP_SYNC_GE_BEFORE              (1 << 8) /* only sync VS, TCS, TES, GS */
+/* Only for si_compute_blit: */
+#define SI_OP_FAIL_IF_SLOW                (1 << 9)
 
 unsigned si_get_flush_flags(struct si_context *sctx, enum si_coherency coher,
                             enum si_cache_policy cache_policy);
@@ -1518,7 +1520,7 @@ bool si_compute_copy_image(struct si_context *sctx, struct pipe_resource *dst, u
                            bool fail_if_slow);
 bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
                      const union pipe_color_union *clear_color, unsigned dst_access,
-                     unsigned src_access, bool fail_if_slow);
+                     unsigned src_access, unsigned flags);
 void si_init_compute_blit_functions(struct si_context *sctx);
 
 /* si_cp_dma.c */

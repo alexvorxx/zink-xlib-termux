@@ -741,7 +741,8 @@ bool si_compute_clear_image(struct si_context *sctx, struct pipe_resource *tex,
    info.mask = util_format_is_depth_or_stencil(format) ? PIPE_MASK_ZS : PIPE_MASK_RGBA;
    info.render_condition_enable = render_condition_enable;
 
-   return si_compute_blit(sctx, &info, color, 0, 0, fail_if_slow);
+   return si_compute_blit(sctx, &info, color, 0, 0,
+                          SI_OP_SYNC_BEFORE_AFTER | (fail_if_slow ? SI_OP_FAIL_IF_SLOW : 0));
 }
 
 bool si_compute_copy_image(struct si_context *sctx, struct pipe_resource *dst, unsigned dst_level,
@@ -852,7 +853,8 @@ bool si_compute_copy_image(struct si_context *sctx, struct pipe_resource *dst, u
    /* Only the compute blit can copy compressed and subsampled images. */
    fail_if_slow &= !dst_access && !src_access;
 
-   bool success = si_compute_blit(sctx, &info, NULL, dst_access, src_access, fail_if_slow);
+   bool success = si_compute_blit(sctx, &info, NULL, dst_access, src_access,
+                                  SI_OP_SYNC_BEFORE_AFTER | (fail_if_slow ? SI_OP_FAIL_IF_SLOW : 0));
    assert((!dst_access && !src_access) || success);
    return success;
 }
@@ -863,7 +865,7 @@ typedef struct {
 
 bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
                      const union pipe_color_union *clear_color, unsigned dst_access,
-                     unsigned src_access, bool fail_if_slow)
+                     unsigned src_access, unsigned flags)
 {
    struct si_texture *sdst = (struct si_texture *)info->dst.resource;
    struct si_texture *ssrc = (struct si_texture *)info->src.resource;
@@ -923,7 +925,7 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
     *
     * TODO: benchmark the performance on gfx11
     */
-   if (sctx->gfx_level < GFX11 && sctx->has_graphics && fail_if_slow)
+   if (sctx->gfx_level < GFX11 && sctx->has_graphics && flags & SI_OP_FAIL_IF_SLOW)
       return false;
 
    if (sctx->gfx_level < GFX10 && !sctx->has_graphics && vi_dcc_enabled(sdst, info->dst.level))
@@ -1207,8 +1209,7 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    image[dst_index].u.tex.first_layer = 0;
    image[dst_index].u.tex.last_layer = util_max_layer(info->dst.resource, info->dst.level);
 
-   si_launch_grid_internal_images(sctx, image, is_clear ? 1 : 2, &grid, shader,
-                                  SI_OP_SYNC_BEFORE_AFTER |
+   si_launch_grid_internal_images(sctx, image, is_clear ? 1 : 2, &grid, shader, flags |
                                   (info->render_condition_enable ? SI_OP_CS_RENDER_COND_ENABLE : 0));
    return true;
 }

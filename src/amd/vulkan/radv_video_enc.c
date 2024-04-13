@@ -617,7 +617,7 @@ radv_enc_rc_session_init(struct radv_cmd_buffer *cmd_buffer)
    ENC_BEGIN;
    radeon_emit(cs, pdev->vcn_enc_cmds.rc_session_init);
    radeon_emit(cs, vid->enc_rate_control_method); // rate_control_method);
-   radeon_emit(cs, 48);                           // vbv_buffer_level);
+   radeon_emit(cs, vid->enc_vbv_buffer_level);    // vbv_buffer_level);
    ENC_END;
 }
 
@@ -1671,6 +1671,7 @@ set_rate_control_defaults(struct radv_video_session *vid)
 {
    uint32_t frame_rate_den = 1, frame_rate_num = 30;
    vid->enc_rate_control_method = RENCODE_RATE_CONTROL_METHOD_NONE;
+   vid->enc_vbv_buffer_level = 64;
    vid->rc_layer_control.num_temporal_layers = 1;
    vid->rc_layer_control.max_num_temporal_layers = 1;
    vid->rc_per_pic[0].qp_i = 26;
@@ -1760,7 +1761,8 @@ radv_video_enc_control_video_coding(struct radv_cmd_buffer *cmd_buffer, const Vk
          radv_vcn_enc_invalid_frame_rate(&frame_rate_den, &frame_rate_num);
          vid->rc_layer_init[l].frame_rate_den = frame_rate_den;
          vid->rc_layer_init[l].frame_rate_num = frame_rate_num;
-         vid->rc_layer_init[l].vbv_buffer_size = 20000000; // rate_control->virtualBufferSizeInMs;
+         vid->rc_layer_init[l].vbv_buffer_size =
+            (rate_control->virtualBufferSizeInMs / 1000.) * layer->averageBitrate;
          vid->rc_layer_init[l].avg_target_bits_per_picture =
             radv_vcn_per_frame_integer(layer->averageBitrate, frame_rate_den, frame_rate_num);
          vid->rc_layer_init[l].peak_bits_per_picture_integer =
@@ -1782,6 +1784,10 @@ radv_video_enc_control_video_coding(struct radv_cmd_buffer *cmd_buffer, const Vk
          vid->rc_per_pic[l].skip_frame_enable = 0;
          vid->rc_per_pic[l].enforce_hrd = 1;
       }
+
+      if (rate_control->virtualBufferSizeInMs > 0)
+         vid->enc_vbv_buffer_level =
+            lroundf((float)rate_control->initialVirtualBufferSizeInMs / rate_control->virtualBufferSizeInMs * 64);
    }
 }
 

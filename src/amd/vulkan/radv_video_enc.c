@@ -1233,7 +1233,7 @@ radv_enc_bitstream(struct radv_cmd_buffer *cmd_buffer, struct radv_buffer *buffe
    radeon_emit(cs, RENCODE_REC_SWIZZLE_MODE_LINEAR);
    radeon_emit(cs, va >> 32);
    radeon_emit(cs, va & 0xffffffff);
-   radeon_emit(cs, buffer->vk.size - offset);
+   radeon_emit(cs, buffer->vk.size);
    radeon_emit(cs, offset);
    ENC_END;
 }

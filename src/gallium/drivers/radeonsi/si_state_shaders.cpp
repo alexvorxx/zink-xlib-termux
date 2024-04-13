@@ -139,8 +139,7 @@ void si_get_ir_cache_key(struct si_shader_selector *sel, bool ngg, bool es,
 
    if (ngg)
       shader_variant_flags |= 1 << 0;
-   if (sel->nir)
-      shader_variant_flags |= 1 << 1;
+   /* bit gap */
    if (wave_size == 32)
       shader_variant_flags |= 1 << 2;
    if (sel->screen->options.optimize_io)

@@ -63,6 +63,7 @@
 #define RENCODE_V2_IB_PARAM_VIDEO_BITSTREAM_BUFFER    0x00000012
 #define RENCODE_V2_IB_PARAM_FEEDBACK_BUFFER           0x00000015
 #define RENCODE_V2_IB_PARAM_ENCODE_STATISTICS         0x00000019
+#define RENCODE_V2_IB_PARAM_RATE_CONTROL_PER_PIC_EX   0x0000001d
 
 #define RENCODE_V2_HEVC_IB_PARAM_SLICE_CONTROL 0x00100001
 #define RENCODE_V2_HEVC_IB_PARAM_SPEC_MISC     0x00100002
@@ -74,7 +75,7 @@
 #define RENCODE_V2_H264_IB_PARAM_DEBLOCKING_FILTER 0x00200004
 
 #define RENCODE_V2_FW_INTERFACE_MAJOR_VERSION 1
-#define RENCODE_V2_FW_INTERFACE_MINOR_VERSION 1
+#define RENCODE_V2_FW_INTERFACE_MINOR_VERSION 18
 
 #define RENCODE_IB_PARAM_SESSION_INFO              0x00000001
 #define RENCODE_IB_PARAM_TASK_INFO                 0x00000002
@@ -91,6 +92,7 @@
 #define RENCODE_IB_PARAM_ENCODE_CONTEXT_BUFFER     0x0000000d
 #define RENCODE_IB_PARAM_VIDEO_BITSTREAM_BUFFER    0x0000000e
 #define RENCODE_IB_PARAM_FEEDBACK_BUFFER           0x00000010
+#define RENCODE_IB_PARAM_RATE_CONTROL_PER_PIC_EX   0x0000001d
 #define RENCODE_IB_PARAM_DIRECT_OUTPUT_NALU        0x00000020
 #define RENCODE_IB_PARAM_ENCODE_STATISTICS         0x00000024
 
@@ -104,7 +106,7 @@
 #define RENCODE_H264_IB_PARAM_DEBLOCKING_FILTER 0x00200004
 
 #define RENCODE_FW_INTERFACE_MAJOR_VERSION 1
-#define RENCODE_FW_INTERFACE_MINOR_VERSION 9
+#define RENCODE_FW_INTERFACE_MINOR_VERSION 15
 
 void
 radv_probe_video_encode(struct radv_physical_device *pdev)
@@ -165,7 +167,7 @@ radv_init_physical_device_encoder(struct radv_physical_device *pdev)
       pdev->vcn_enc_cmds.layer_select = RENCODE_V2_IB_PARAM_LAYER_SELECT;
       pdev->vcn_enc_cmds.rc_session_init = RENCODE_V2_IB_PARAM_RATE_CONTROL_SESSION_INIT;
       pdev->vcn_enc_cmds.rc_layer_init = RENCODE_V2_IB_PARAM_RATE_CONTROL_LAYER_INIT;
-      pdev->vcn_enc_cmds.rc_per_pic = RENCODE_V2_IB_PARAM_RATE_CONTROL_PER_PICTURE;
+      pdev->vcn_enc_cmds.rc_per_pic = RENCODE_V2_IB_PARAM_RATE_CONTROL_PER_PIC_EX;
       pdev->vcn_enc_cmds.quality_params = RENCODE_V2_IB_PARAM_QUALITY_PARAMS;
       pdev->vcn_enc_cmds.nalu = RENCODE_V2_IB_PARAM_DIRECT_OUTPUT_NALU;
       pdev->vcn_enc_cmds.slice_header = RENCODE_V2_IB_PARAM_SLICE_HEADER;
@@ -195,7 +197,7 @@ radv_init_physical_device_encoder(struct radv_physical_device *pdev)
       pdev->vcn_enc_cmds.layer_select = RENCODE_IB_PARAM_LAYER_SELECT;
       pdev->vcn_enc_cmds.rc_session_init = RENCODE_IB_PARAM_RATE_CONTROL_SESSION_INIT;
       pdev->vcn_enc_cmds.rc_layer_init = RENCODE_IB_PARAM_RATE_CONTROL_LAYER_INIT;
-      pdev->vcn_enc_cmds.rc_per_pic = RENCODE_IB_PARAM_RATE_CONTROL_PER_PICTURE;
+      pdev->vcn_enc_cmds.rc_per_pic = RENCODE_IB_PARAM_RATE_CONTROL_PER_PIC_EX;
       pdev->vcn_enc_cmds.quality_params = RENCODE_IB_PARAM_QUALITY_PARAMS;
       pdev->vcn_enc_cmds.nalu = RENCODE_IB_PARAM_DIRECT_OUTPUT_NALU;
       pdev->vcn_enc_cmds.slice_header = RENCODE_IB_PARAM_SLICE_HEADER;
@@ -1302,13 +1304,22 @@ radv_enc_rc_per_pic(struct radv_cmd_buffer *cmd_buffer, const VkVideoEncodeInfoK
    }
    ENC_BEGIN;
    radeon_emit(cs, pdev->vcn_enc_cmds.rc_per_pic);
-   radeon_emit(cs, qp);                           // qp
-   radeon_emit(cs, per_pic->min_qp_i);            // min qp
-   radeon_emit(cs, per_pic->max_qp_i);            // max qp
-   radeon_emit(cs, per_pic->max_au_size_i);       // max au
-   radeon_emit(cs, per_pic->enabled_filler_data); // enabled filler
-   radeon_emit(cs, per_pic->skip_frame_enable);   // skip frame eanble
-   radeon_emit(cs, per_pic->enforce_hrd);         // enforce hrd
+   radeon_emit(cs, qp);                           // qp_i
+   radeon_emit(cs, qp);                           // qp_p
+   radeon_emit(cs, qp);                           // qp_b
+   radeon_emit(cs, per_pic->min_qp_i);
+   radeon_emit(cs, per_pic->max_qp_i);
+   radeon_emit(cs, per_pic->min_qp_p);
+   radeon_emit(cs, per_pic->max_qp_p);
+   radeon_emit(cs, per_pic->min_qp_b);
+   radeon_emit(cs, per_pic->max_qp_b);
+   radeon_emit(cs, per_pic->max_au_size_i);
+   radeon_emit(cs, per_pic->max_au_size_p);
+   radeon_emit(cs, per_pic->max_au_size_b);
+   radeon_emit(cs, per_pic->enabled_filler_data);
+   radeon_emit(cs, per_pic->skip_frame_enable);
+   radeon_emit(cs, per_pic->enforce_hrd);
+   radeon_emit(cs, 0xFFFFFFFF);                   // reserved_0xff
    ENC_END;
 }
 
@@ -1692,9 +1703,17 @@ set_rate_control_defaults(struct radv_video_session *vid)
    vid->rc_layer_control.num_temporal_layers = 1;
    vid->rc_layer_control.max_num_temporal_layers = 1;
    vid->rc_per_pic[0].qp_i = 26;
+   vid->rc_per_pic[0].qp_p = 26;
+   vid->rc_per_pic[0].qp_b = 26;
    vid->rc_per_pic[0].min_qp_i = 0;
    vid->rc_per_pic[0].max_qp_i = 51;
+   vid->rc_per_pic[0].min_qp_p = 0;
+   vid->rc_per_pic[0].max_qp_p = 51;
+   vid->rc_per_pic[0].min_qp_b = 0;
+   vid->rc_per_pic[0].max_qp_b = 51;
    vid->rc_per_pic[0].max_au_size_i = 0;
+   vid->rc_per_pic[0].max_au_size_p = 0;
+   vid->rc_per_pic[0].max_au_size_b = 0;
    vid->rc_per_pic[0].enabled_filler_data = 1;
    vid->rc_per_pic[0].skip_frame_enable = 0;
    vid->rc_per_pic[0].enforce_hrd = 1;
@@ -1798,12 +1817,24 @@ radv_video_enc_control_video_coding(struct radv_cmd_buffer *cmd_buffer, const Vk
 
          if (h264_layer) {
             vid->rc_per_pic[l].min_qp_i = h264_layer->useMinQp ? h264_layer->minQp.qpI : 0;
+            vid->rc_per_pic[l].min_qp_p = h264_layer->useMinQp ? h264_layer->minQp.qpP : 0;
+            vid->rc_per_pic[l].min_qp_b = h264_layer->useMinQp ? h264_layer->minQp.qpB : 0;
             vid->rc_per_pic[l].max_qp_i = h264_layer->useMaxQp ? h264_layer->maxQp.qpI : 51;
+            vid->rc_per_pic[l].max_qp_p = h264_layer->useMaxQp ? h264_layer->maxQp.qpP : 51;
+            vid->rc_per_pic[l].max_qp_b = h264_layer->useMaxQp ? h264_layer->maxQp.qpB : 51;
             vid->rc_per_pic[l].max_au_size_i = h264_layer->useMaxFrameSize ? h264_layer->maxFrameSize.frameISize : 0;
+            vid->rc_per_pic[l].max_au_size_p = h264_layer->useMaxFrameSize ? h264_layer->maxFrameSize.framePSize : 0;
+            vid->rc_per_pic[l].max_au_size_b = h264_layer->useMaxFrameSize ? h264_layer->maxFrameSize.frameBSize : 0;
          } else if (h265_layer) {
             vid->rc_per_pic[l].min_qp_i = h265_layer->useMinQp ? h265_layer->minQp.qpI : 0;
+            vid->rc_per_pic[l].min_qp_p = h265_layer->useMinQp ? h265_layer->minQp.qpP : 0;
+            vid->rc_per_pic[l].min_qp_b = h265_layer->useMinQp ? h265_layer->minQp.qpB : 0;
             vid->rc_per_pic[l].max_qp_i = h265_layer->useMaxQp ? h265_layer->maxQp.qpI : 51;
+            vid->rc_per_pic[l].max_qp_p = h265_layer->useMaxQp ? h265_layer->maxQp.qpP : 51;
+            vid->rc_per_pic[l].max_qp_b = h265_layer->useMaxQp ? h265_layer->maxQp.qpB : 51;
             vid->rc_per_pic[l].max_au_size_i = h265_layer->useMaxFrameSize ? h265_layer->maxFrameSize.frameISize : 0;
+            vid->rc_per_pic[l].max_au_size_p = h265_layer->useMaxFrameSize ? h265_layer->maxFrameSize.framePSize : 0;
+            vid->rc_per_pic[l].max_au_size_b = h265_layer->useMaxFrameSize ? h265_layer->maxFrameSize.frameBSize : 0;
          }
 
          vid->rc_per_pic[l].enabled_filler_data = 1;

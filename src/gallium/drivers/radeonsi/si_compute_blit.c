@@ -1050,6 +1050,18 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    unsigned max_dst_chan_size = util_format_get_max_channel_size(info->dst.format);
    unsigned max_src_chan_size = util_format_get_max_channel_size(info->src.format);
 
+   /* Reject blits with invalid parameters. */
+   if (info->dst.box.width < 0 || info->dst.box.height < 0 || info->dst.box.depth < 0 ||
+       info->src.box.depth < 0) {
+      assert(!"invalid box parameters"); /* this is reachable and prevents hangs */
+      return true;
+   }
+
+   /* Skip zero-area blits. */
+   if (!info->dst.box.width || !info->dst.box.height || !info->dst.box.depth ||
+       !info->src.box.width || !info->src.box.height || !info->src.box.depth)
+      return true;
+
    /* MSAA image stores don't work on <= Gfx10.3. It's an issue with FMASK because
     * AMD_DEBUG=nofmask fixes them. EQAA image stores are also unimplemented.
     * MSAA image stores work fine on Gfx11 (it has neither FMASK nor EQAA).
@@ -1083,26 +1095,8 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    if (sctx->gfx_level < GFX11 && sctx->has_graphics && !testing)
       return false;
 
-   assert(info->src.box.depth >= 0);
-
    if (sctx->gfx_level < GFX10 && !sctx->has_graphics && vi_dcc_enabled(sdst, info->dst.level))
       si_texture_disable_dcc(sctx, sdst);
-
-   /* Shader images. */
-   struct pipe_image_view image[2];
-   image[0].resource = info->src.resource;
-   image[0].shader_access = image[0].access = PIPE_IMAGE_ACCESS_READ;
-   image[0].format = info->src.format;
-   image[0].u.tex.level = info->src.level;
-   image[0].u.tex.first_layer = 0;
-   image[0].u.tex.last_layer = util_max_layer(info->src.resource, info->src.level);
-
-   image[1].resource = info->dst.resource;
-   image[1].shader_access = image[1].access = PIPE_IMAGE_ACCESS_WRITE;
-   image[1].format = info->dst.format;
-   image[1].u.tex.level = info->dst.level;
-   image[1].u.tex.first_layer = 0;
-   image[1].u.tex.last_layer = util_max_layer(info->dst.resource, info->dst.level);
 
    unsigned width = info->dst.box.width;
    unsigned height = info->dst.box.height;
@@ -1325,6 +1319,22 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    sctx->cs_user_data[1] = (info->src.box.y & 0xffff) | ((info->dst.box.y & 0xffff) << 16);
    sctx->cs_user_data[2] = (info->src.box.z & 0xffff) | ((info->dst.box.z & 0xffff) << 16);
    sctx->cs_user_data[3] = (start_x & 0xff) | ((start_y & 0xff) << 8) | ((start_z & 0xff) << 16);
+
+   /* Shader images. */
+   struct pipe_image_view image[2];
+   image[0].resource = info->src.resource;
+   image[0].shader_access = image[0].access = PIPE_IMAGE_ACCESS_READ;
+   image[0].format = info->src.format;
+   image[0].u.tex.level = info->src.level;
+   image[0].u.tex.first_layer = 0;
+   image[0].u.tex.last_layer = util_max_layer(info->src.resource, info->src.level);
+
+   image[1].resource = info->dst.resource;
+   image[1].shader_access = image[1].access = PIPE_IMAGE_ACCESS_WRITE;
+   image[1].format = info->dst.format;
+   image[1].u.tex.level = info->dst.level;
+   image[1].u.tex.first_layer = 0;
+   image[1].u.tex.last_layer = util_max_layer(info->dst.resource, info->dst.level);
 
    si_launch_grid_internal_images(sctx, image, 2, &grid, shader,
                                   SI_OP_SYNC_BEFORE_AFTER |

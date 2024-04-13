@@ -384,19 +384,14 @@ static nir_def *apply_blit_output_modifiers(nir_builder *b, nir_def *color,
 
 /* The compute blit shader.
  *
- * Differences compared to u_blitter (the gfx blit):
- * - u_blitter doesn't preserve NaNs, but the compute blit does
- * - u_blitter has lower linear->SRGB precision because the CB block doesn't
- *   use FP32, but the compute blit does.
- *
- * Other than that, non-scaled blits are identical to u_blitter.
- *
  * Implementation details:
  * - Out-of-bounds dst coordinates are not clamped at all. The hw drops
  *   out-of-bounds stores for us.
  * - Out-of-bounds src coordinates are clamped by emulating CLAMP_TO_EDGE using
  *   the image_size NIR intrinsic.
- * - X/Y flipping just does this in the shader: -threadIDs - 1
+ * - X/Y flipping just does this in the shader: -threadIDs - 1, assuming the starting coordinates
+ *   are 1 pixel after the bottom-right corner, e.g. x + width, matching the gallium behavior.
+ * - This list doesn't do it justice.
  */
 void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_shader_key *options)
 {

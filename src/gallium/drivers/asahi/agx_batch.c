@@ -32,8 +32,8 @@ agx_batch_init(struct agx_context *ctx,
    util_copy_framebuffer_state(&batch->key, key);
    batch->seqnum = ++ctx->batches.seqnum;
 
-   agx_pool_init(&batch->pool, dev, AGX_MEMORY_TYPE_FRAMEBUFFER, true);
-   agx_pool_init(&batch->pipeline_pool, dev, AGX_MEMORY_TYPE_SHADER, true);
+   agx_pool_init(&batch->pool, dev, 0, true);
+   agx_pool_init(&batch->pipeline_pool, dev, AGX_BO_LOW_VA, true);
 
    /* These allocations can happen only once and will just be zeroed (not freed)
     * during batch clean up. The memory is owned by the context.
@@ -46,8 +46,7 @@ agx_batch_init(struct agx_context *ctx,
              batch->bo_list.word_count * sizeof(BITSET_WORD));
    }
 
-   batch->encoder =
-      agx_bo_create(dev, 0x80000, AGX_MEMORY_TYPE_FRAMEBUFFER, "Encoder");
+   batch->encoder = agx_bo_create(dev, 0x80000, 0, "Encoder");
    batch->encoder_current = batch->encoder->ptr.cpu;
    batch->encoder_end = batch->encoder_current + batch->encoder->size;
 
@@ -61,6 +60,7 @@ agx_batch_init(struct agx_context *ctx,
    batch->clear_depth = 0;
    batch->clear_stencil = 0;
    batch->varyings = 0;
+   batch->any_draws = false;
 
    /* We need to emit prim state at the start. Max collides with all. */
    batch->reduced_prim = PIPE_PRIM_MAX;
@@ -77,7 +77,8 @@ agx_batch_init(struct agx_context *ctx,
    unsigned batch_idx = agx_batch_idx(batch);
    BITSET_SET(ctx->batches.active, batch_idx);
 
-   agx_batch_init_state(batch);
+   if (key->width != AGX_COMPUTE_BATCH_WIDTH)
+      agx_batch_init_state(batch);
 }
 
 void
@@ -170,6 +171,16 @@ agx_get_batch(struct agx_context *ctx)
    }
 
    assert(util_framebuffer_state_equal(&ctx->framebuffer, &ctx->batch->key));
+   return ctx->batch;
+}
+
+struct agx_batch *
+agx_get_compute_batch(struct agx_context *ctx)
+{
+   agx_dirty_all(ctx);
+
+   struct pipe_framebuffer_state key = {.width = AGX_COMPUTE_BATCH_WIDTH};
+   ctx->batch = agx_get_batch_for_framebuffer(ctx, &key);
    return ctx->batch;
 }
 

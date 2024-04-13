@@ -58,7 +58,9 @@ a306_gl:
   variables:
     HWCI_START_XORG: 1
 
-a306_piglit_gl:
+# Something happened and now this hangchecks and doesn't recover.  Unkown when
+# it started.
+.a306_piglit_gl:
   extends:
     - .a306_piglit
   variables:
@@ -111,7 +113,10 @@ a530_gl:
 
 # piglit_gl since it takes a bit under 20 minutes and has a lot of flakes, so
 # leave it as manual.  The shader_tests are in the main a530_gl suite.
-a530_piglit_gl:
+#
+# Disabled for now because something reliably takes out the board 19-20 minutes in,
+# and then it reboots and tries again until the job timeout.
+.a530_piglit_gl:
   extends:
     - .a530_piglit
     - .freedreno-manual-rules
@@ -130,6 +135,7 @@ a530-traces:
   extends:
     - .lava-test:arm64
   variables:
+    FLAKES_CHANNEL: "#freedreno-ci"
     BOOT_METHOD: depthcharge
     KERNEL_IMAGE_TYPE: ""
     # Increase the hangcheck timer for our spilling tests which bump up against

@@ -908,33 +908,40 @@ VkResult anv_CreateDescriptorPool(
       buffer_view_count * sizeof(struct anv_buffer_view) +
       (host_only ? buffer_view_count * ANV_SURFACE_STATE_SIZE : 0);
 
-   pool = vk_object_alloc(&device->vk, pAllocator,
-                          sizeof(*pool) + host_mem_size,
-                          VK_OBJECT_TYPE_DESCRIPTOR_POOL);
+   pool = vk_object_zalloc(&device->vk, pAllocator,
+                           sizeof(*pool) + host_mem_size,
+                           VK_OBJECT_TYPE_DESCRIPTOR_POOL);
    if (!pool)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
+   pool->bo_mem_size = descriptor_bo_size;
    pool->host_mem_size = host_mem_size;
    util_vma_heap_init(&pool->host_heap, POOL_HEAP_OFFSET, host_mem_size);
 
    pool->host_only = host_only;
 
-   if (descriptor_bo_size > 0) {
-      VkResult result = anv_device_alloc_bo(device,
-                                            "descriptors",
-                                            descriptor_bo_size,
-                                            ANV_BO_ALLOC_MAPPED |
-                                            ANV_BO_ALLOC_SNOOPED,
-                                            0 /* explicit_address */,
-                                            &pool->bo);
-      if (result != VK_SUCCESS) {
-         vk_object_free(&device->vk, pAllocator, pool);
-         return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+   if (pool->bo_mem_size > 0) {
+      if (pool->host_only) {
+         pool->host_bo = vk_zalloc(&device->vk.alloc, pool->bo_mem_size, 8,
+                                   VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+         if (pool->host_bo == NULL) {
+            vk_object_free(&device->vk, pAllocator, pool);
+            return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+         }
+      } else {
+         VkResult result = anv_device_alloc_bo(device,
+                                               "descriptors",
+                                               descriptor_bo_size,
+                                               ANV_BO_ALLOC_MAPPED |
+                                               ANV_BO_ALLOC_SNOOPED,
+                                               0 /* explicit_address */,
+                                               &pool->bo);
+         if (result != VK_SUCCESS) {
+            vk_object_free(&device->vk, pAllocator, pool);
+            return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+         }
       }
-
-      util_vma_heap_init(&pool->bo_heap, POOL_HEAP_OFFSET, descriptor_bo_size);
-   } else {
-      pool->bo = NULL;
+      util_vma_heap_init(&pool->bo_heap, POOL_HEAP_OFFSET, pool->bo_mem_size);
    }
 
    /* All the surface states allocated by the descriptor pool are internal. We
@@ -968,9 +975,14 @@ void anv_DestroyDescriptorPool(
       anv_descriptor_set_layout_unref(device, set->layout);
    }
 
-   if (pool->bo) {
+   util_vma_heap_finish(&pool->host_heap);
+
+   if (pool->bo_mem_size) {
+      if (pool->host_bo)
+         vk_free(&device->vk.alloc, pool->host_bo);
+      if (pool->bo)
+         anv_device_release_bo(device, pool->bo);
       util_vma_heap_finish(&pool->bo_heap);
-      anv_device_release_bo(device, pool->bo);
    }
    anv_state_stream_finish(&pool->surface_state_stream);
 
@@ -994,9 +1006,9 @@ VkResult anv_ResetDescriptorPool(
    util_vma_heap_finish(&pool->host_heap);
    util_vma_heap_init(&pool->host_heap, POOL_HEAP_OFFSET, pool->host_mem_size);
 
-   if (pool->bo) {
+   if (pool->bo_mem_size) {
       util_vma_heap_finish(&pool->bo_heap);
-      util_vma_heap_init(&pool->bo_heap, POOL_HEAP_OFFSET, pool->bo->size);
+      util_vma_heap_init(&pool->bo_heap, POOL_HEAP_OFFSET, pool->bo_mem_size);
    }
 
    anv_state_stream_finish(&pool->surface_state_stream);
@@ -1127,7 +1139,11 @@ anv_descriptor_set_create(struct anv_device *device,
              pool_vma_offset - POOL_HEAP_OFFSET <= INT32_MAX);
       set->desc_mem.offset = pool_vma_offset - POOL_HEAP_OFFSET;
       set->desc_mem.alloc_size = descriptor_buffer_size;
-      set->desc_mem.map = pool->bo->map + set->desc_mem.offset;
+
+      if (pool->host_only)
+         set->desc_mem.map = pool->host_bo + set->desc_mem.offset;
+      else
+         set->desc_mem.map = pool->bo->map + set->desc_mem.offset;
 
       set->desc_addr = (struct anv_address) {
          .bo = pool->bo,
@@ -1608,7 +1624,7 @@ anv_descriptor_set_write_inline_uniform_data(struct anv_device *device,
 void
 anv_descriptor_set_write_acceleration_structure(struct anv_device *device,
                                                 struct anv_descriptor_set *set,
-                                                struct anv_acceleration_structure *accel,
+                                                struct vk_acceleration_structure *accel,
                                                 uint32_t binding,
                                                 uint32_t element)
 {
@@ -1625,7 +1641,7 @@ anv_descriptor_set_write_acceleration_structure(struct anv_device *device,
 
    struct anv_address_range_descriptor desc_data = { };
    if (accel != NULL) {
-      desc_data.address = anv_address_physical(accel->address);
+      desc_data.address = vk_acceleration_structure_get_va(accel);
       desc_data.range = accel->size;
    }
    assert(sizeof(desc_data) <= bind_layout->descriptor_stride);
@@ -1713,7 +1729,7 @@ void anv_UpdateDescriptorSets(
          assert(accel_write->accelerationStructureCount ==
                 write->descriptorCount);
          for (uint32_t j = 0; j < write->descriptorCount; j++) {
-            ANV_FROM_HANDLE(anv_acceleration_structure, accel,
+            ANV_FROM_HANDLE(vk_acceleration_structure, accel,
                             accel_write->pAccelerationStructures[j]);
             anv_descriptor_set_write_acceleration_structure(device, set, accel,
                                                             write->dstBinding,
@@ -1876,7 +1892,7 @@ anv_descriptor_set_write_template(struct anv_device *device,
          for (uint32_t j = 0; j < entry->array_count; j++) {
             VkAccelerationStructureKHR *accel_obj =
                (VkAccelerationStructureKHR *)(data + entry->offset + j * entry->stride);
-            ANV_FROM_HANDLE(anv_acceleration_structure, accel, *accel_obj);
+            ANV_FROM_HANDLE(vk_acceleration_structure, accel, *accel_obj);
 
             anv_descriptor_set_write_acceleration_structure(device, set,
                                                             accel,

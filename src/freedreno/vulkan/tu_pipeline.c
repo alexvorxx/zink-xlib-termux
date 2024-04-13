@@ -26,7 +26,7 @@
 #include "tu_cmd_buffer.h"
 #include "tu_cs.h"
 #include "tu_device.h"
-#include "tu_drm.h"
+#include "tu_knl.h"
 #include "tu_formats.h"
 #include "tu_lrz.h"
 #include "tu_pass.h"
@@ -1984,7 +1984,8 @@ tu6_emit_vertex_input(struct tu_cs *cs,
       const VkVertexInputAttributeDescription2EXT *attr = attrs[loc];
 
       if (attr) {
-         const struct tu_native_format format = tu6_format_vtx(attr->format);
+         const struct tu_native_format format = tu6_format_vtx(
+               tu_vk_format_to_pipe_format(attr->format));
          tu_cs_emit(cs, A6XX_VFD_DECODE_INSTR(0,
                           .idx = attr->binding,
                           .offset = attr->offset,
@@ -3151,7 +3152,8 @@ tu_pipeline_builder_compile_shaders(struct tu_pipeline_builder *builder,
          for (unsigned j = 0; j < ARRAY_SIZE(library->shaders); j++) {
             if (library->shaders[j].nir) {
                assert(!nir[j]);
-               nir[j] = nir_shader_clone(NULL, library->shaders[j].nir);
+               nir[j] = nir_shader_clone(builder->mem_ctx,
+                     library->shaders[j].nir);
                keys[j] = library->shaders[j].key;
                must_compile = true;
             }

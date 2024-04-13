@@ -32,124 +32,12 @@
 #include "anv_private.h"
 #include "common/intel_gem.h"
 
-/**
- * Wrapper around DRM_IOCTL_I915_GEM_CREATE.
- *
- * Return gem handle, or 0 on failure. Gem handles are never 0.
- */
-uint32_t
-anv_gem_create(struct anv_device *device, uint64_t size)
+void *
+anv_gem_mmap(struct anv_device *device, struct anv_bo *bo, uint64_t offset,
+             uint64_t size, VkMemoryPropertyFlags property_flags)
 {
-   struct drm_i915_gem_create gem_create = {
-      .size = size,
-   };
-
-   int ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_CREATE, &gem_create);
-   if (ret != 0) {
-      /* FIXME: What do we do if this fails? */
-      return 0;
-   }
-
-   return gem_create.handle;
-}
-
-void
-anv_gem_close(struct anv_device *device, uint32_t gem_handle)
-{
-   struct drm_gem_close close = {
-      .handle = gem_handle,
-   };
-
-   intel_ioctl(device->fd, DRM_IOCTL_GEM_CLOSE, &close);
-}
-
-uint32_t
-anv_gem_create_regions(struct anv_device *device, uint64_t anv_bo_size,
-                       uint32_t flags, uint32_t num_regions,
-                       struct drm_i915_gem_memory_class_instance *regions)
-{
-   /* Check for invalid flags */
-   assert((flags & ~I915_GEM_CREATE_EXT_FLAG_NEEDS_CPU_ACCESS) == 0);
-
-   struct drm_i915_gem_create_ext_memory_regions ext_regions = {
-      .base = { .name = I915_GEM_CREATE_EXT_MEMORY_REGIONS },
-      .num_regions = num_regions,
-      .regions = (uintptr_t)regions,
-   };
-
-   struct drm_i915_gem_create_ext gem_create = {
-      .size = anv_bo_size,
-      .extensions = (uintptr_t) &ext_regions,
-      .flags = flags,
-   };
-
-   int ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_CREATE_EXT,
-                         &gem_create);
-   if (ret != 0) {
-      return 0;
-   }
-
-   return gem_create.handle;
-}
-
-/**
- * Wrapper around DRM_IOCTL_I915_GEM_MMAP. Returns MAP_FAILED on error.
- */
-static void*
-anv_gem_mmap_offset(struct anv_device *device, uint32_t gem_handle,
-                    uint64_t offset, uint64_t size, uint32_t flags)
-{
-   struct drm_i915_gem_mmap_offset gem_mmap = {
-      .handle = gem_handle,
-      .flags = device->info->has_local_mem ? I915_MMAP_OFFSET_FIXED :
-         (flags & I915_MMAP_WC) ? I915_MMAP_OFFSET_WC : I915_MMAP_OFFSET_WB,
-   };
-   assert(offset == 0);
-
-   /* Get the fake offset back */
-   int ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_MMAP_OFFSET, &gem_mmap);
-   if (ret != 0)
-      return MAP_FAILED;
-
-   /* And map it */
-   void *map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
-                    device->fd, gem_mmap.offset);
-   return map;
-}
-
-static void*
-anv_gem_mmap_legacy(struct anv_device *device, uint32_t gem_handle,
-                    uint64_t offset, uint64_t size, uint32_t flags)
-{
-   assert(!device->info->has_local_mem);
-
-   struct drm_i915_gem_mmap gem_mmap = {
-      .handle = gem_handle,
-      .offset = offset,
-      .size = size,
-      .flags = flags,
-   };
-
-   int ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_MMAP, &gem_mmap);
-   if (ret != 0)
-      return MAP_FAILED;
-
-   return (void *)(uintptr_t) gem_mmap.addr_ptr;
-}
-
-/**
- * Wrapper around DRM_IOCTL_I915_GEM_MMAP. Returns MAP_FAILED on error.
- */
-void*
-anv_gem_mmap(struct anv_device *device, struct anv_bo *bo,
-             uint64_t offset, uint64_t size, uint32_t flags)
-{
-   uint32_t gem_handle = bo->gem_handle;
-   void *map;
-   if (device->physical->info.has_mmap_offset)
-      map = anv_gem_mmap_offset(device, gem_handle, offset, size, flags);
-   else
-      map = anv_gem_mmap_legacy(device, gem_handle, offset, size, flags);
+   void *map = device->kmd_backend->gem_mmap(device, bo, offset, size,
+                                             property_flags);
 
    if (map != MAP_FAILED)
       VG(VALGRIND_MALLOCLIKE_BLOCK(map, size, 0, 1));
@@ -158,7 +46,7 @@ anv_gem_mmap(struct anv_device *device, struct anv_bo *bo,
 }
 
 /* This is just a wrapper around munmap, but it also notifies valgrind that
- * this map is no longer valid.  Pair this with anv_gem_mmap().
+ * this map is no longer valid.  Pair this with gem_mmap().
  */
 void
 anv_gem_munmap(struct anv_device *device, void *p, uint64_t size)
@@ -295,4 +183,9 @@ anv_gem_fd_to_handle(struct anv_device *device, int fd)
       return 0;
 
    return args.handle;
+}
+
+const struct anv_kmd_backend *anv_stub_kmd_backend_get(void)
+{
+   return NULL;
 }

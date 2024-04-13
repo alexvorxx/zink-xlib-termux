@@ -499,6 +499,22 @@ nir_push_loop(nir_builder *build)
    return loop;
 }
 
+nir_loop *
+nir_push_continue(nir_builder *build, nir_loop *loop)
+{
+   if (loop) {
+      assert(nir_builder_is_inside_cf(build, &loop->cf_node));
+   } else {
+      nir_block *block = nir_cursor_current_block(build->cursor);
+      loop = nir_cf_node_as_loop(block->cf_node.parent);
+   }
+
+   nir_loop_add_continue_construct(loop);
+
+   build->cursor = nir_before_cf_list(&loop->continue_list);
+   return loop;
+}
+
 void
 nir_pop_loop(nir_builder *build, nir_loop *loop)
 {
@@ -552,21 +568,32 @@ nir_type_convert(nir_builder *b,
    const nir_alu_type src_base =
       (nir_alu_type) nir_alu_type_get_base_type(src_type);
 
-   /* b2b and f2b use the regular type conversion path, but i2b is implemented
-    * as src != 0.
+   /* b2b uses the regular type conversion path, but i2b and f2b are
+    * implemented as src != 0.
     */
-   if (dst_base == nir_type_bool && (src_base == nir_type_int ||
-                                     src_base == nir_type_uint)) {
+   if (dst_base == nir_type_bool && src_base != nir_type_bool) {
       nir_op opcode;
 
       const unsigned dst_bit_size = nir_alu_type_get_type_size(dest_type);
 
-      switch (dst_bit_size) {
-      case 1:  opcode = nir_op_ine;   break;
-      case 8:  opcode = nir_op_ine8;  break;
-      case 16: opcode = nir_op_ine16; break;
-      case 32: opcode = nir_op_ine32; break;
-      default: unreachable("Invalid Boolean size.");
+      if (src_base == nir_type_float) {
+         switch (dst_bit_size) {
+         case 1:  opcode = nir_op_fneu;   break;
+         case 8:  opcode = nir_op_fneu8;  break;
+         case 16: opcode = nir_op_fneu16; break;
+         case 32: opcode = nir_op_fneu32; break;
+         default: unreachable("Invalid Boolean size.");
+         }
+      } else {
+         assert(src_base == nir_type_int || src_base == nir_type_uint);
+
+         switch (dst_bit_size) {
+         case 1:  opcode = nir_op_ine;   break;
+         case 8:  opcode = nir_op_ine8;  break;
+         case 16: opcode = nir_op_ine16; break;
+         case 32: opcode = nir_op_ine32; break;
+         default: unreachable("Invalid Boolean size.");
+         }
       }
 
       return nir_build_alu(b, opcode, src,

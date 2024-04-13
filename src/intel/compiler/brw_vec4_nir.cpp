@@ -35,6 +35,11 @@ namespace brw {
 void
 vec4_visitor::emit_nir_code()
 {
+   /* Globally set the rounding mode based on the float controls.  gen7 doesn't
+    * support 16-bit floats, and gen8 switches to scalar VS.  So we don't need
+    * to do any per-instruction mode switching the way the scalar FS handles.
+    */
+   emit_shader_float_controls_execution_mode();
    if (nir->num_uniforms > 0)
       nir_setup_uniforms();
 
@@ -119,6 +124,7 @@ vec4_visitor::nir_emit_if(nir_if *if_stmt)
 void
 vec4_visitor::nir_emit_loop(nir_loop *loop)
 {
+   assert(!nir_loop_has_continue_construct(loop));
    emit(BRW_OPCODE_DO);
 
    nir_emit_cf_list(&loop->body);
@@ -708,10 +714,11 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
       break;
    }
 
-   case nir_intrinsic_scoped_barrier:
+   case nir_intrinsic_memory_barrier:
+      unreachable("expecting only nir_intrinsic_scoped_barrier");
+
+   case nir_intrinsic_scoped_barrier: {
       assert(nir_intrinsic_execution_scope(instr) == NIR_SCOPE_NONE);
-      FALLTHROUGH;
-   case nir_intrinsic_memory_barrier: {
       const vec4_builder bld =
          vec4_builder(this).at_end().annotate(current_annotation, base_ir);
       const dst_reg tmp = bld.vgrf(BRW_REGISTER_TYPE_UD);
@@ -1552,27 +1559,6 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
          emit_conversion_to_double(dst, negate(op[0]));
       } else {
          emit(MOV(dst, negate(op[0])));
-      }
-      break;
-
-   case nir_op_f2b32:
-      if (nir_src_bit_size(instr->src[0].src) == 64) {
-         /* We use a MOV with conditional_mod to check if the provided value is
-          * 0.0. We want this to flush denormalized numbers to zero, so we set a
-          * source modifier on the source operand to trigger this, as source
-          * modifiers don't affect the result of the testing against 0.0.
-          */
-         src_reg value = op[0];
-         value.abs = true;
-         vec4_instruction *inst = emit(MOV(dst_null_df(), value));
-         inst->conditional_mod = BRW_CONDITIONAL_NZ;
-
-         src_reg one = src_reg(this, glsl_type::ivec4_type);
-         emit(MOV(dst_reg(one), brw_imm_d(~0)));
-         inst = emit(BRW_OPCODE_SEL, dst, one, brw_imm_d(0));
-         inst->predicate = BRW_PREDICATE_NORMAL;
-      } else {
-         emit(CMP(dst, op[0], brw_imm_f(0.0f), BRW_CONDITIONAL_NZ));
       }
       break;
 

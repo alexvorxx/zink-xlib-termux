@@ -37,8 +37,6 @@
 
 #include "util/perf/u_trace.h"
 
-#include "i915/anv_batch_chain.h"
-
 /** \file anv_batch_chain.c
  *
  * This file contains functions related to anv_cmd_buffer as a data
@@ -1177,7 +1175,7 @@ anv_cmd_buffer_exec_batch_debug(struct anv_queue *queue,
          uint64_t pass_batch_offset =
             khr_perf_query_preamble_offset(perf_query_pool, perf_query_pass);
 
-         intel_print_batch(&device->decoder_ctx,
+         intel_print_batch(queue->decoder,
                            pass_batch_bo->map + pass_batch_offset, 64,
                            pass_batch_bo->offset + pass_batch_offset, false);
       }
@@ -1185,12 +1183,12 @@ anv_cmd_buffer_exec_batch_debug(struct anv_queue *queue,
       for (uint32_t i = 0; i < cmd_buffer_count; i++) {
          struct anv_batch_bo **bo = u_vector_tail(&cmd_buffers[i]->seen_bbos);
          device->cmd_buffer_being_decoded = cmd_buffers[i];
-         intel_print_batch(&device->decoder_ctx, (*bo)->bo->map,
+         intel_print_batch(queue->decoder, (*bo)->bo->map,
                            (*bo)->bo->size, (*bo)->bo->offset, false);
          device->cmd_buffer_being_decoded = NULL;
       }
    } else {
-      intel_print_batch(&device->decoder_ctx, device->trivial_batch_bo->map,
+      intel_print_batch(queue->decoder, device->trivial_batch_bo->map,
                         device->trivial_batch_bo->size,
                         device->trivial_batch_bo->offset, false);
    }
@@ -1214,7 +1212,7 @@ anv_cmd_buffer_exec_batch_debug(struct anv_queue *queue,
  * pool resize only rarely happen, this will almost never be contended so
  * taking a lock isn't really an expensive operation in this case.
  */
-static VkResult
+static inline VkResult
 anv_queue_exec_locked(struct anv_queue *queue,
                       uint32_t wait_count,
                       const struct vk_sync_wait *waits,
@@ -1225,10 +1223,12 @@ anv_queue_exec_locked(struct anv_queue *queue,
                       struct anv_query_pool *perf_query_pool,
                       uint32_t perf_query_pass)
 {
-   return anv_i915_queue_exec_locked(queue, wait_count, waits,
-                                     cmd_buffer_count, cmd_buffers,
-                                     signal_count, signals,
-                                     perf_query_pool, perf_query_pass);
+   struct anv_device *device = queue->device;
+   return device->kmd_backend->queue_exec_locked(queue, wait_count, waits,
+                                                 cmd_buffer_count,
+                                                 cmd_buffers, signal_count,
+                                                 signals, perf_query_pool,
+                                                 perf_query_pass);
 }
 
 static inline bool
@@ -1266,6 +1266,7 @@ anv_queue_submit_locked(struct anv_queue *queue,
          uint32_t next = n + 1;
          /* Can we chain the last buffer into the next one? */
          if (next < end &&
+             anv_cmd_buffer_is_chainable(cmd_buffers[n]) &&
              anv_cmd_buffer_is_chainable(cmd_buffers[next]) &&
              can_chain_query_pools
              (cmd_buffers[next]->perf_query_pool, perf_query_pool)) {
@@ -1341,14 +1342,16 @@ anv_queue_submit(struct vk_queue *vk_queue,
       return VK_SUCCESS;
    }
 
-   uint64_t start_ts = intel_ds_begin_submit(queue->ds);
+   uint64_t start_ts = intel_ds_begin_submit(&queue->ds);
 
    pthread_mutex_lock(&device->mutex);
    result = anv_queue_submit_locked(queue, submit);
    /* Take submission ID under lock */
    pthread_mutex_unlock(&device->mutex);
 
-   intel_ds_end_submit(queue->ds, start_ts);
+   intel_ds_end_submit(&queue->ds, start_ts);
+
+   u_trace_context_process(&device->ds.trace_context, true);
 
    return result;
 }
@@ -1382,13 +1385,14 @@ anv_queue_submit_simple_batch(struct anv_queue *queue,
 #endif
 
    if (INTEL_DEBUG(DEBUG_BATCH)) {
-      intel_print_batch(&device->decoder_ctx,
+      intel_print_batch(queue->decoder,
                         batch_bo->map,
                         batch_bo->size,
                         batch_bo->offset, false);
    }
 
-   result = anv_i915_execute_simple_batch(queue, batch_bo, batch_size);
+   result = device->kmd_backend->execute_simple_batch(queue, batch_bo,
+                                                      batch_size);
 
    anv_bo_pool_free(&device->batch_bo_pool, batch_bo);
 

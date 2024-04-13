@@ -27,9 +27,6 @@
 #include "compiler/nir/nir.h"
 #include "util/u_dynarray.h"
 
-/* Arbitrary */
-#define AGX_MAX_VARYINGS (32)
-
 struct agx_varyings_vs {
    /* The first index used for FP16 varyings. Indices less than this are treated
     * as FP32. This may require remapping slots to guarantee.
@@ -52,8 +49,10 @@ struct agx_varyings_vs {
    unsigned slots[VARYING_SLOT_MAX];
 };
 
-/* Conservative bound */
-#define AGX_MAX_CF_BINDINGS (VARYING_SLOT_MAX)
+/* Conservative bound, * 4 due to offsets (TODO: maybe worth eliminating
+ * coefficient register aliasing?)
+ */
+#define AGX_MAX_CF_BINDINGS (VARYING_SLOT_MAX * 4)
 
 struct agx_varyings_fs {
    /* Number of coefficient registers used */
@@ -174,7 +173,7 @@ struct agx_shader_key {
    };
 };
 
-void agx_preprocess_nir(nir_shader *nir);
+void agx_preprocess_nir(nir_shader *nir, bool support_lod_bias);
 
 void agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
                             struct util_debug_callback *debug,

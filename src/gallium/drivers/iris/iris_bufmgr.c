@@ -2346,12 +2346,12 @@ static bool
 iris_bufmgr_get_meminfo(struct iris_bufmgr *bufmgr,
                         struct intel_device_info *devinfo)
 {
-   bufmgr->sys.region.memory_class = devinfo->mem.sram.mem_class;
-   bufmgr->sys.region.memory_instance = devinfo->mem.sram.mem_instance;
+   bufmgr->sys.region.memory_class = devinfo->mem.sram.mem.klass;
+   bufmgr->sys.region.memory_instance = devinfo->mem.sram.mem.instance;
    bufmgr->sys.size = devinfo->mem.sram.mappable.size;
 
-   bufmgr->vram.region.memory_class = devinfo->mem.vram.mem_class;
-   bufmgr->vram.region.memory_instance = devinfo->mem.vram.mem_instance;
+   bufmgr->vram.region.memory_class = devinfo->mem.vram.mem.klass;
+   bufmgr->vram.region.memory_instance = devinfo->mem.vram.mem.instance;
    bufmgr->vram.size = devinfo->mem.vram.mappable.size;
 
    return true;
@@ -2410,6 +2410,14 @@ iris_bufmgr_create(struct intel_device_info *devinfo, int fd, bool bo_reuse)
    devinfo = &bufmgr->devinfo;
    bufmgr->bo_reuse = bo_reuse;
    iris_bufmgr_get_meminfo(bufmgr, devinfo);
+
+   struct intel_query_engine_info *engine_info;
+   engine_info = intel_engine_get_info(bufmgr->fd, bufmgr->devinfo.kmd_type);
+   if (!engine_info)
+      goto error_engine_info;
+   bufmgr->devinfo.has_compute_engine = intel_engines_count(engine_info,
+                                                            INTEL_ENGINE_CLASS_COMPUTE);
+   free(engine_info);
 
    STATIC_ASSERT(IRIS_MEMZONE_SHADER_START == 0ull);
    const uint64_t _4GB = 1ull << 32;
@@ -2471,8 +2479,7 @@ iris_bufmgr_create(struct intel_device_info *devinfo, int fd, bool bo_reuse)
                          iris_can_reclaim_slab,
                          iris_slab_alloc,
                          (void *) iris_slab_free)) {
-         free(bufmgr);
-         return NULL;
+         goto error_slabs_init;
       }
       min_slab_order = max_order + 1;
    }
@@ -2495,6 +2502,18 @@ iris_bufmgr_create(struct intel_device_info *devinfo, int fd, bool bo_reuse)
    iris_init_border_color_pool(bufmgr, &bufmgr->border_color_pool);
 
    return bufmgr;
+
+error_slabs_init:
+   for (unsigned i = 0; i < NUM_SLAB_ALLOCATORS; i++) {
+      if (!bufmgr->bo_slabs[i].groups)
+         break;
+
+      pb_slabs_deinit(&bufmgr->bo_slabs[i]);
+   }
+error_engine_info:
+   close(bufmgr->fd);
+   free(bufmgr);
+   return NULL;
 }
 
 static struct iris_bufmgr *

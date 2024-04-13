@@ -44,7 +44,6 @@
       - src/drm-shim/**/*
       - src/gbm/**/*
       - src/gtest/**/*
-      - src/hgl/**/*
       - src/include/**/*
       # Some src/util and src/compiler files use headers from mesa/ (e.g.
       # mtypes.h).  We should clean that up.
@@ -59,9 +58,9 @@
     # We only want manual jobs to show up when it's not marge's pre-merge CI
     # run, otherwise she'll wait until her timeout.  The exception is
     # performance jobs, see below.
-    - if: ('$GITLAB_USER_LOGIN == "marge-bot" &&
-           $CI_PIPELINE_SOURCE == "merge_request_event"' &&
-           $GITLAB_USER_LOGIN !~ "/performance$/")
+    - if: '($GITLAB_USER_LOGIN == "marge-bot" &&
+           $CI_PIPELINE_SOURCE == "merge_request_event" &&
+           $CI_JOB_NAME !~ "/performance$/")'
       when: never
     - !reference [.scheduled_pipeline-rules, rules]
     - changes:
@@ -329,6 +328,7 @@
   rules:
     - !reference [.performance-rules, rules]
     - !reference [.freedreno-manual-rules, rules]
+  allow_failure: true # see comment in .performance-rules, which we don't inherit this line from.
 
 .nouveau-rules:
   stage: nouveau
@@ -547,6 +547,7 @@
     - changes:
         *virgl_file_list
       when: manual
+  allow_failure: true # see comment in .performance-rules, which we don't inherit this line from.
 
 .venus-rules:
   stage: layered-backends
@@ -667,6 +668,7 @@
     - changes:
         *iris_file_list
       when: manual
+  allow_failure: true # see comment in .performance-rules, which we don't inherit this line from.
 
 .anv-rules:
   stage: intel
@@ -682,6 +684,24 @@
   stage: intel
   rules:
     - !reference [.collabora-farm-rules, rules]
+    - !reference [.vulkan-manual-rules, rules]
+    - changes:
+      - src/intel/**/*
+      when: on_success
+
+.hasvk-rules:
+  stage: intel
+  rules:
+    - !reference [.anholt-farm-rules, rules]
+    - !reference [.vulkan-rules, rules]
+    - changes:
+      - src/intel/**/*
+      when: on_success
+
+.hasvk-manual-rules:
+  stage: intel
+  rules:
+    - !reference [.anholt-farm-rules, rules]
     - !reference [.vulkan-manual-rules, rules]
     - changes:
       - src/intel/**/*
@@ -745,11 +765,11 @@
     - !reference [.turnip-rules, rules]
     - !reference [.zink-common-rules, rules]
 
-.zink-radv-rules:
+.zink-radv-manual-rules:
   stage: layered-backends
   rules:
-    - !reference [.radv-rules, rules]
-    - !reference [.zink-common-rules, rules]
+    - !reference [.radv-valve-manual-rules, rules]
+    - !reference [.zink-common-manual-rules, rules]
 
 # Unfortunately YAML doesn't let us concatenate arrays, so we have to do the
 # rules duplication manually
@@ -831,7 +851,7 @@
       when: on_success
 
 .etnaviv-manual-rules:
-  stage: intel
+  stage: etnaviv
   rules:
     - !reference [.gl-manual-rules, rules]
     - changes:

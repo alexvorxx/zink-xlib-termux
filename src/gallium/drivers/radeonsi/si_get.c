@@ -178,6 +178,7 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_DEVICE_RESET_STATUS_QUERY:
    case PIPE_CAP_TEXTURE_MULTISAMPLE:
    case PIPE_CAP_ALLOW_GLTHREAD_BUFFER_SUBDATA_OPT: /* TODO: remove if it's slow */
+   case PIPE_CAP_NULL_TEXTURES:
       return 1;
 
    case PIPE_CAP_TEXTURE_TRANSFER_MODES:
@@ -205,7 +206,7 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return sscreen->info.has_graphics;
 
    case PIPE_CAP_RESOURCE_FROM_USER_MEMORY:
-      return !SI_BIG_ENDIAN && sscreen->info.has_userptr;
+      return !UTIL_ARCH_BIG_ENDIAN && sscreen->info.has_userptr;
 
    case PIPE_CAP_DEVICE_PROTECTED_SURFACE:
       return sscreen->info.has_tmz_support;
@@ -414,6 +415,8 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 
 static float si_get_paramf(struct pipe_screen *pscreen, enum pipe_capf param)
 {
+   struct si_screen *sscreen = (struct si_screen *)pscreen;
+
    switch (param) {
    case PIPE_CAPF_MIN_LINE_WIDTH:
    case PIPE_CAPF_MIN_LINE_WIDTH_AA:
@@ -434,7 +437,8 @@ static float si_get_paramf(struct pipe_screen *pscreen, enum pipe_capf param)
    case PIPE_CAPF_MAX_TEXTURE_ANISOTROPY:
       return 16.0f;
    case PIPE_CAPF_MAX_TEXTURE_LOD_BIAS:
-      return 16.0f;
+      /* This is the maximum value of the LOD_BIAS sampler field. */
+      return sscreen->info.gfx_level >= GFX10 ? 31 : 16;
    case PIPE_CAPF_MIN_CONSERVATIVE_RASTER_DILATE:
    case PIPE_CAPF_MAX_CONSERVATIVE_RASTER_DILATE:
    case PIPE_CAPF_CONSERVATIVE_RASTER_DILATE_GRANULARITY:

@@ -233,7 +233,7 @@ for src_t in [tint, tuint, tfloat, tbool]:
    elif src_t == tuint:
       dst_types = [tfloat, tuint]
    elif src_t == tfloat:
-      dst_types = [tint, tuint, tfloat, tbool]
+      dst_types = [tint, tuint, tfloat]
 
    for dst_t in dst_types:
       for dst_bit_size in type_sizes(dst_t):
@@ -1277,6 +1277,26 @@ unop("fcos_mdg", tfloat, "cosf(3.141592653589793 * src0)")
 # is multiplied back for sin). Lowering fsin/fcos to fsin_agx requires some
 # additional ALU that NIR may be able to optimize.
 unop("fsin_agx", tfloat, "sinf(src0 * (6.2831853/4.0))")
+
+# AGX specific bitfield extraction from a pair of 32bit registers.
+# src0,src1: the two registers
+# src2: bit position of the LSB of the bitfield
+# src3: number of bits in the bitfield if src3 > 0
+#       src3 = 0 is equivalent to src3 = 32
+# NOTE: src3 is a nir constant by contract
+opcode("extr_agx", 0, tuint32,
+       [0, 0, 0, 0], [tuint32, tuint32, tuint32, tuint32], False, "", """
+    uint32_t mask = 0xFFFFFFFF;
+    uint8_t shift = src2 & 0x7F;
+    if (src3 != 0) {
+       mask = (1 << src3) - 1;
+    }
+    if (shift >= 64) {
+        dst = 0;
+    } else {
+        dst = (((((uint64_t) src1) << 32) | (uint64_t) src0) >> shift) & mask;
+    }
+""");
 
 # 24b multiply into 32b result (with sign extension)
 binop("imul24", tint32, _2src_commutative + associative,

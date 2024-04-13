@@ -43,8 +43,8 @@
 /* maybe move to fd6_program? */
 static void
 cs_program_emit(struct fd_context *ctx, struct fd_ringbuffer *ring,
-                struct ir3_shader_variant *v,
-                uint32_t variable_shared_size) assert_dt
+                struct ir3_shader_variant *v)
+   assert_dt
 {
    const struct ir3_info *i = &v->info;
    enum a6xx_threadsize thrsz = i->double_threadsize ? THREAD128 : THREAD64;
@@ -58,7 +58,7 @@ cs_program_emit(struct fd_context *ctx, struct fd_ringbuffer *ring,
    OUT_RING(ring, A6XX_HLSQ_CS_CNTL_CONSTLEN(v->constlen) |
                      A6XX_HLSQ_CS_CNTL_ENABLED);
 
-   OUT_PKT4(ring, REG_A6XX_SP_CS_CONFIG, 2);
+   OUT_PKT4(ring, REG_A6XX_SP_CS_CONFIG, 1);
    OUT_RING(ring, A6XX_SP_CS_CONFIG_ENABLED |
                      COND(v->bindless_tex, A6XX_SP_CS_CONFIG_BINDLESS_TEX) |
                      COND(v->bindless_samp, A6XX_SP_CS_CONFIG_BINDLESS_SAMP) |
@@ -66,8 +66,7 @@ cs_program_emit(struct fd_context *ctx, struct fd_ringbuffer *ring,
                      COND(v->bindless_ubo, A6XX_SP_CS_CONFIG_BINDLESS_UBO) |
                      A6XX_SP_CS_CONFIG_NIBO(ir3_shader_nibo(v)) |
                      A6XX_SP_CS_CONFIG_NTEX(v->num_samp) |
-                     A6XX_SP_CS_CONFIG_NSAMP(v->num_samp)); /* SP_VS_CONFIG */
-   OUT_RING(ring, v->instrlen);                             /* SP_VS_INSTRLEN */
+                     A6XX_SP_CS_CONFIG_NSAMP(v->num_samp)); /* SP_CS_CONFIG */
 
    OUT_PKT4(ring, REG_A6XX_SP_CS_CTRL_REG0, 1);
    OUT_RING(ring,
@@ -76,18 +75,6 @@ cs_program_emit(struct fd_context *ctx, struct fd_ringbuffer *ring,
                A6XX_SP_CS_CTRL_REG0_HALFREGFOOTPRINT(i->max_half_reg + 1) |
                COND(v->mergedregs, A6XX_SP_CS_CTRL_REG0_MERGEDREGS) |
                A6XX_SP_CS_CTRL_REG0_BRANCHSTACK(ir3_shader_branchstack_hw(v)));
-
-   uint32_t shared_size =
-      MAX2(((int)(v->cs.req_local_mem + variable_shared_size) - 1) / 1024, 1);
-   OUT_PKT4(ring, REG_A6XX_SP_CS_UNKNOWN_A9B1, 1);
-   OUT_RING(ring, A6XX_SP_CS_UNKNOWN_A9B1_SHARED_SIZE(shared_size) |
-                     A6XX_SP_CS_UNKNOWN_A9B1_UNK6);
-
-   if (ctx->screen->info->a6xx.has_lpac) {
-      OUT_PKT4(ring, REG_A6XX_HLSQ_CS_UNKNOWN_B9D0, 1);
-      OUT_RING(ring, A6XX_HLSQ_CS_UNKNOWN_B9D0_SHARED_SIZE(shared_size) |
-                        A6XX_HLSQ_CS_UNKNOWN_B9D0_UNK6);
-   }
 
    uint32_t local_invocation_id, work_group_id;
    local_invocation_id =
@@ -112,34 +99,68 @@ cs_program_emit(struct fd_context *ctx, struct fd_ringbuffer *ring,
                         A6XX_SP_CS_CNTL_1_THREADSIZE(thrsz));
    }
 
-   OUT_PKT4(ring, REG_A6XX_SP_CS_OBJ_START, 2);
-   OUT_RELOC(ring, v->bo, 0, 0, 0); /* SP_CS_OBJ_START_LO/HI */
-
-   if (v->instrlen > 0)
-      fd6_emit_shader(ctx, ring, v);
+   fd6_emit_shader(ctx, ring, v);
+   fd6_emit_immediates(ctx->screen, v, ring);
 }
 
 static void
 fd6_launch_grid(struct fd_context *ctx, const struct pipe_grid_info *info) in_dt
 {
-   struct ir3_shader_key key = {};
-   struct ir3_shader_variant *v;
+   struct fd6_compute_state *cs = ctx->compute;
    struct fd_ringbuffer *ring = ctx->batch->draw;
    unsigned nglobal = 0;
+
+   if (unlikely(!cs->v)) {
+      struct ir3_shader_key key = {};
+
+      cs->v = ir3_shader_variant(ir3_get_shader(cs->hwcso), key, false, &ctx->debug);
+      if (!cs->v)
+         return;
+
+      cs->stateobj = fd_ringbuffer_new_object(ctx->pipe, 0x1000);
+      cs_program_emit(ctx, cs->stateobj, cs->v);
+
+      cs->user_consts_cmdstream_size = fd6_user_consts_cmdstream_size(cs->v);
+   }
 
    trace_start_compute(&ctx->batch->trace, ring, !!info->indirect, info->work_dim,
                        info->block[0], info->block[1], info->block[2],
                        info->grid[0],  info->grid[1],  info->grid[2]);
 
-   v = ir3_shader_variant(ir3_get_shader(ctx->compute), key, false, &ctx->debug);
-   if (!v)
-      return;
+   if (ctx->batch->barrier)
+      fd6_barrier_flush(ctx->batch);
 
-   if (ctx->dirty_shader[PIPE_SHADER_COMPUTE] & FD_DIRTY_SHADER_PROG)
-      cs_program_emit(ctx, ring, v, info->variable_shared_mem);
+   bool emit_instrlen_workaround =
+      cs->v->instrlen > ctx->screen->info->a6xx.instr_cache_size;
 
-   fd6_emit_cs_state(ctx, ring, v);
-   fd6_emit_cs_consts(v, ring, ctx, info);
+   /* There appears to be a HW bug where in some rare circumstances it appears
+    * to accidentally use the FS instrlen instead of the CS instrlen, which
+    * affects all known gens. Based on various experiments it appears that the
+    * issue is that when prefetching a branch destination and there is a cache
+    * miss, when fetching from memory the HW bounds-checks the fetch against
+    * SP_CS_INSTRLEN, except when one of the two register contexts is active
+    * it accidentally fetches SP_FS_INSTRLEN from the other (inactive)
+    * context. To workaround it we set the FS instrlen here and do a dummy
+    * event to roll the context (because it fetches SP_FS_INSTRLEN from the
+    * "wrong" context). Because the bug seems to involve cache misses, we
+    * don't emit this if the entire CS program fits in cache, which will
+    * hopefully be the majority of cases.
+    *
+    * See https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/19023
+    */
+   if (emit_instrlen_workaround) {
+      OUT_REG(ring, A6XX_SP_FS_INSTRLEN(cs->v->instrlen));
+      fd6_event_write(ctx->batch, ring, LABEL, false);
+   }
+
+   if (ctx->gen_dirty)
+      fd6_emit_cs_state(ctx, ring, cs);
+
+   if (ctx->gen_dirty & BIT(FD6_GROUP_CONST))
+      fd6_emit_cs_user_consts(ctx, ring, cs);
+
+   if (cs->v->need_driver_params || info->input)
+      fd6_emit_cs_driver_params(ctx, ring, cs, info);
 
    u_foreach_bit (i, ctx->global_bindings.enabled_mask)
       nglobal++;
@@ -160,6 +181,18 @@ fd6_launch_grid(struct fd_context *ctx, const struct pipe_grid_info *info) in_dt
 
    OUT_PKT7(ring, CP_SET_MARKER, 1);
    OUT_RING(ring, A6XX_CP_SET_MARKER_0_MODE(RM6_COMPUTE));
+
+   uint32_t shared_size =
+      MAX2(((int)(cs->v->cs.req_local_mem + info->variable_shared_mem) - 1) / 1024, 1);
+   OUT_PKT4(ring, REG_A6XX_SP_CS_UNKNOWN_A9B1, 1);
+   OUT_RING(ring, A6XX_SP_CS_UNKNOWN_A9B1_SHARED_SIZE(shared_size) |
+                     A6XX_SP_CS_UNKNOWN_A9B1_UNK6);
+
+   if (ctx->screen->info->a6xx.has_lpac) {
+      OUT_PKT4(ring, REG_A6XX_HLSQ_CS_UNKNOWN_B9D0, 1);
+      OUT_RING(ring, A6XX_HLSQ_CS_UNKNOWN_B9D0_SHARED_SIZE(shared_size) |
+                        A6XX_HLSQ_CS_UNKNOWN_B9D0_UNK6);
+   }
 
    const unsigned *local_size =
       info->block; // v->shader->nir->info->workgroup_size;
@@ -186,9 +219,6 @@ fd6_launch_grid(struct fd_context *ctx, const struct pipe_grid_info *info) in_dt
    OUT_RING(ring, 1); /* HLSQ_CS_KERNEL_GROUP_Y */
    OUT_RING(ring, 1); /* HLSQ_CS_KERNEL_GROUP_Z */
 
-   if (ctx->batch->barrier)
-      fd6_barrier_flush(ctx->batch);
-
    if (info->indirect) {
       struct fd_resource *rsc = fd_resource(info->indirect);
 
@@ -209,9 +239,26 @@ fd6_launch_grid(struct fd_context *ctx, const struct pipe_grid_info *info) in_dt
 
    trace_end_compute(&ctx->batch->trace, ring);
 
-   OUT_WFI5(ring);
+   fd_context_all_clean(ctx);
+}
 
-   fd6_cache_flush(ctx->batch, ring);
+static void *
+fd6_compute_state_create(struct pipe_context *pctx,
+                         const struct pipe_compute_state *cso)
+{
+   struct fd6_compute_state *hwcso = calloc(1, sizeof(*hwcso));
+   hwcso->hwcso = ir3_shader_compute_state_create(pctx, cso);
+   return hwcso;
+}
+
+static void
+fd6_compute_state_delete(struct pipe_context *pctx, void *_hwcso)
+{
+   struct fd6_compute_state *hwcso = _hwcso;
+   ir3_shader_state_delete(pctx, hwcso->hwcso);
+   if (hwcso->stateobj)
+      fd_ringbuffer_del(hwcso->stateobj);
+   free(hwcso);
 }
 
 void
@@ -219,6 +266,6 @@ fd6_compute_init(struct pipe_context *pctx) disable_thread_safety_analysis
 {
    struct fd_context *ctx = fd_context(pctx);
    ctx->launch_grid = fd6_launch_grid;
-   pctx->create_compute_state = ir3_shader_compute_state_create;
-   pctx->delete_compute_state = ir3_shader_state_delete;
+   pctx->create_compute_state = fd6_compute_state_create;
+   pctx->delete_compute_state = fd6_compute_state_delete;
 }

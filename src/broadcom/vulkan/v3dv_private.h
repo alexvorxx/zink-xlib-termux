@@ -654,10 +654,13 @@ static uint8_t v3dv_plane_from_aspect(VkImageAspectFlags aspect)
    case VK_IMAGE_ASPECT_STENCIL_BIT:
    case VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT:
    case VK_IMAGE_ASPECT_PLANE_0_BIT:
+   case VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT:
       return 0;
    case VK_IMAGE_ASPECT_PLANE_1_BIT:
+   case VK_IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT:
       return 1;
    case VK_IMAGE_ASPECT_PLANE_2_BIT:
+   case VK_IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT:
       return 2;
    default:
       unreachable("invalid image aspect");
@@ -1795,6 +1798,9 @@ void v3dv_cmd_buffer_add_private_obj(struct v3dv_cmd_buffer *cmd_buffer,
 
 void v3dv_cmd_buffer_merge_barrier_state(struct v3dv_barrier_state *dst,
                                          struct v3dv_barrier_state *src);
+
+void v3dv_cmd_buffer_consume_bcl_sync(struct v3dv_cmd_buffer *cmd_buffer,
+                                      struct v3dv_job *job);
 
 bool v3dv_cmd_buffer_check_needs_load(const struct v3dv_cmd_buffer_state *state,
                                       VkImageAspectFlags aspect,

@@ -61,8 +61,11 @@ pvr_files = files(
   'pvr_query_compute.c',
   'pvr_queue.c',
   'pvr_shader.c',
+  'pvr_spm.c',
   'pvr_tex_state.c',
   'pvr_wsi.c',
+
+  'usc/pvr_uscgen.c',
 )
 
 pvr_includes = [

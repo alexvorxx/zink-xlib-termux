@@ -507,8 +507,20 @@ uint8_t AluInstr::allowed_src_chan_mask() const
     * is not important to know which is the old channel that will
     * be freed by the channel switch.*/
    int mask = 0;
+
+   /* Be conservative about channel use when using more than two
+    * slots. Currently a constellatioon of
+    *
+    *  ALU d.x = f(r0.x, r1.y)
+    *  ALU _.y = f(r2.y, r3.x)
+    *  ALU _.z = f(r4.x, r5.y)
+    *
+    * will fail to be split. To get constellations like this to be scheduled
+    * properly will need some work on the bank swizzle check.
+    */
+   int maxuse = m_alu_slots > 2 ? 2 : 3;
    for (int i = 0; i < 4; ++i) {
-       if (chan_use_count[i] < 3)
+       if (chan_use_count[i] < maxuse)
            mask |= 1 << i;
    }
    return mask;
@@ -809,6 +821,7 @@ AluInstr::split(ValueFactory& vf)
          r->del_use(this);
       }
    }
+   group->set_origin(this);
 
    return group;
 }
@@ -919,7 +932,7 @@ static std::map<std::string, OpDescr> s_alu_map_by_name;
 static std::map<std::string, OpDescr> s_lds_map_by_name;
 
 Instr::Pointer
-AluInstr::from_string(istream& is, ValueFactory& value_factory, AluGroup *group)
+AluInstr::from_string(istream& is, ValueFactory& value_factory, AluGroup *group, bool is_cayman)
 {
    vector<string> tokens;
 
@@ -991,9 +1004,27 @@ AluInstr::from_string(istream& is, ValueFactory& value_factory, AluGroup *group)
       } else {
          op_descr = op->second;
       }
+      if (is_cayman) {
+         switch (op_descr.alu_opcode) {
+         case op1_cos:
+         case op1_exp_ieee:
+         case op1_log_clamped:
+         case op1_recip_ieee:
+         case op1_recipsqrt_ieee1:
+         case op1_sqrt_ieee:
+         case op1_sin:
+         case op2_mullo_int:
+         case op2_mulhi_int:
+         case op2_mulhi_uint:
+            flags.insert(alu_is_cayman_trans);
+         default:
+         ;
+         }
+      }
    }
 
    int slots = 0;
+
 
    SrcValues sources;
    do {
@@ -1552,8 +1583,6 @@ AluInstr::from_nir(nir_alu_instr *alu, Shader& shader)
    case nir_op_b32csel:
       return emit_alu_op3(*alu, op3_cnde_int, shader, {0, 2, 1});
 
-   case nir_op_f2b32:
-      return emit_alu_comb_with_zero(*alu, op2_setne_dx10, shader);
    case nir_op_fabs:
       return emit_alu_op1(*alu, op1_mov, shader, {1 << alu_src0_abs});
    case nir_op_fadd:
@@ -2881,6 +2910,8 @@ emit_alu_trans_op1_cayman(const nir_alu_instr& alu, EAluOp opcode, Shader& shade
 
    auto pin = pin_for_components(alu);
 
+   const std::set<AluModifiers> flags({alu_write, alu_last_instr, alu_is_cayman_trans});
+
    for (unsigned j = 0; j < nir_dest_num_components(alu.dest.dest); ++j) {
       if (alu.dest.write_mask & (1 << j)) {
          unsigned ncomp =  j == 3 ? 4 : 3;
@@ -2891,7 +2922,7 @@ emit_alu_trans_op1_cayman(const nir_alu_instr& alu, EAluOp opcode, Shader& shade
          for (unsigned i = 0; i < ncomp; ++i)
             srcs[i] = value_factory.src(src0, j);
 
-         auto ir = new AluInstr(opcode, dest, srcs, AluInstr::last_write, ncomp);
+         auto ir = new AluInstr(opcode, dest, srcs, flags, ncomp);
 
          if (alu.src[0].abs)
             ir->set_alu_flag(alu_src0_abs);
@@ -2899,8 +2930,6 @@ emit_alu_trans_op1_cayman(const nir_alu_instr& alu, EAluOp opcode, Shader& shade
             ir->set_alu_flag(alu_src0_neg);
          if (alu.dest.saturate)
             ir->set_alu_flag(alu_dst_clamp);
-
-         ir->set_alu_flag(alu_is_cayman_trans);
 
          shader.emit_instruction(ir);
       }
@@ -2953,6 +2982,8 @@ emit_alu_trans_op2_cayman(const nir_alu_instr& alu, EAluOp opcode, Shader& shade
 
    unsigned last_slot = 4;
 
+   const std::set<AluModifiers> flags({alu_write, alu_last_instr, alu_is_cayman_trans});
+
    for (unsigned k = 0; k < nir_dest_num_components(alu.dest.dest); ++k) {
       if (alu.dest.write_mask & (1 << k)) {
          AluInstr::SrcValues srcs(2 * last_slot);
@@ -2963,7 +2994,7 @@ emit_alu_trans_op2_cayman(const nir_alu_instr& alu, EAluOp opcode, Shader& shade
             srcs[2 * i + 1] = value_factory.src(src1, k);
          }
 
-         auto ir = new AluInstr(opcode, dest, srcs, AluInstr::last_write, last_slot);
+         auto ir = new AluInstr(opcode, dest, srcs, flags, last_slot);
 
          if (src0.negate)
             ir->set_alu_flag(alu_src0_neg);

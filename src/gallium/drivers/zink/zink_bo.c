@@ -301,7 +301,7 @@ bo_create_internal(struct zink_screen *screen,
 
    if (init_pb_cache) {
       bo->u.real.use_reusable_pool = true;
-      pb_cache_init_entry(&screen->pb.bo_cache, bo->cache_entry, &bo->base, heap);
+      pb_cache_init_entry(&screen->pb.bo_cache, bo->cache_entry, &bo->base, mem_type_idx);
    } else {
 #ifdef ZINK_USE_DMABUF
       list_inithead(&bo->u.real.exports);
@@ -625,6 +625,7 @@ zink_bo_create(struct zink_screen *screen, uint64_t size, unsigned alignment, en
          return NULL;
 
       bo = container_of(entry, struct zink_bo, u.slab.entry);
+      assert(bo->base.placement == mem_type_idx);
       pipe_reference_init(&bo->base.reference, 1);
       bo->base.size = size;
       assert(alignment <= 1 << bo->base.alignment_log2);
@@ -653,7 +654,8 @@ no_slab:
    if (use_reusable_pool) {
        /* Get a buffer from the cache. */
        bo = (struct zink_bo*)
-            pb_cache_reclaim_buffer(&screen->pb.bo_cache, size, alignment, 0, heap);
+            pb_cache_reclaim_buffer(&screen->pb.bo_cache, size, alignment, 0, mem_type_idx);
+       assert(!bo || bo->base.placement == mem_type_idx);
        if (bo)
           return &bo->base;
    }
@@ -668,6 +670,7 @@ no_slab:
       if (!bo)
          return NULL;
    }
+   assert(bo->base.placement == mem_type_idx);
 
    return &bo->base;
 }
@@ -699,6 +702,10 @@ zink_bo_map(struct zink_screen *screen, struct zink_bo *bo)
             simple_mtx_unlock(&real->lock);
             return NULL;
          }
+         if (unlikely(zink_debug & ZINK_DEBUG_MAP)) {
+            p_atomic_add(&screen->mapped_vram, real->base.size);
+            mesa_loge("NEW MAP(%"PRIu64") TOTAL(%"PRIu64")", real->base.size, screen->mapped_vram);
+         }
          p_atomic_set(&real->u.real.cpu_ptr, cpu);
       }
       simple_mtx_unlock(&real->lock);
@@ -717,6 +724,10 @@ zink_bo_unmap(struct zink_screen *screen, struct zink_bo *bo)
 
    if (p_atomic_dec_zero(&real->u.real.map_count)) {
       p_atomic_set(&real->u.real.cpu_ptr, NULL);
+      if (unlikely(zink_debug & ZINK_DEBUG_MAP)) {
+         p_atomic_add(&screen->mapped_vram, -real->base.size);
+         mesa_loge("UNMAP(%"PRIu64") TOTAL(%"PRIu64")", real->base.size, screen->mapped_vram);
+      }
       VKSCR(UnmapMemory)(screen->dev, real->mem);
    }
 }
@@ -1271,7 +1282,7 @@ zink_bo_init(struct zink_screen *screen)
    for (uint32_t i = 0; i < screen->info.mem_props.memoryHeapCount; ++i)
       total_mem += screen->info.mem_props.memoryHeaps[i].size;
    /* Create managers. */
-   pb_cache_init(&screen->pb.bo_cache, ZINK_HEAP_MAX,
+   pb_cache_init(&screen->pb.bo_cache, screen->info.mem_props.memoryTypeCount,
                  500000, 2.0f, 0,
                  total_mem / 8, screen,
                  (void*)bo_destroy, (void*)bo_can_reclaim);
@@ -1289,7 +1300,7 @@ zink_bo_init(struct zink_screen *screen)
 
       if (!pb_slabs_init(&screen->pb.bo_slabs[i],
                          min_order, max_order,
-                         ZINK_HEAP_MAX, true,
+                         screen->info.mem_props.memoryTypeCount, true,
                          screen,
                          bo_can_reclaim_slab,
                          bo_slab_alloc_normal,

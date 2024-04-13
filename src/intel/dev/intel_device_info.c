@@ -60,7 +60,7 @@ static const struct {
    { "whl", 0x3EA1 },
    { "cml", 0x9b41 },
    { "icl", 0x8a52 },
-   { "ehl", 0x4500 },
+   { "ehl", 0x4571 },
    { "jsl", 0x4E71 },
    { "tgl", 0x9a49 },
    { "rkl", 0x4c8a },
@@ -1055,6 +1055,7 @@ static const struct intel_device_info intel_device_info_sg1 = {
    .has_lsc = true,                                             \
    .has_local_mem = true,                                       \
    .has_aux_map = false,                                        \
+   .urb.size = 768, /* For intel_stub_gpu */                    \
    .simulator_id = 29
 
 #define DG2_FEATURES                                            \

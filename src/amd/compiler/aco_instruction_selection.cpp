@@ -249,10 +249,14 @@ emit_masked_swizzle(isel_context* ctx, Builder& bld, Temp src, unsigned mask)
 
       uint16_t dpp_ctrl = 0xffff;
 
-      if (and_mask == 0x1f && or_mask < 4 && xor_mask < 4) {
+      /* DPP16 before DPP8 before v_permlane(x)16_b32
+       * because DPP16 supports modifiers and v_permlane
+       * can't be folded into valu instructions.
+       */
+      if ((and_mask & 0x1c) == 0x1c && or_mask < 4 && xor_mask < 4) {
          unsigned res[4] = {0, 1, 2, 3};
          for (unsigned i = 0; i < 4; i++)
-            res[i] = ((res[i] | or_mask) ^ xor_mask) & 0x3;
+            res[i] = (((res[i] & and_mask) | or_mask) ^ xor_mask) & 0x3;
          dpp_ctrl = dpp_quad_perm(res[0], res[1], res[2], res[3]);
       } else if (and_mask == 0x1f && !or_mask && xor_mask == 8) {
          dpp_ctrl = dpp_row_rr(8);
@@ -260,13 +264,29 @@ emit_masked_swizzle(isel_context* ctx, Builder& bld, Temp src, unsigned mask)
          dpp_ctrl = dpp_row_mirror;
       } else if (and_mask == 0x1f && !or_mask && xor_mask == 0x7) {
          dpp_ctrl = dpp_row_half_mirror;
+      } else if (ctx->options->gfx_level >= GFX11 && and_mask == 0x10 && or_mask < 0x10 &&
+                 xor_mask < 0x10) {
+         dpp_ctrl = dpp_row_share(or_mask ^ xor_mask);
+      } else if (ctx->options->gfx_level >= GFX11 && and_mask == 0x1f && !or_mask &&
+                 xor_mask < 0x10) {
+         dpp_ctrl = dpp_row_xmask(xor_mask);
       } else if (ctx->options->gfx_level >= GFX10 && (and_mask & 0x18) == 0x18 && or_mask < 8 &&
                  xor_mask < 8) {
-         // DPP8 comes last, as it does not allow several modifiers like `abs` that are available with DPP16
          Builder::Result ret = bld.vop1_dpp8(aco_opcode::v_mov_b32, bld.def(v1), src);
          for (unsigned i = 0; i < 8; i++) {
             ret->dpp8().lane_sel[i] = (((i & and_mask) | or_mask) ^ xor_mask) & 0x7;
          }
+         return ret;
+      } else if (ctx->options->gfx_level >= GFX10 && (and_mask & 0x10) == 0x10 && or_mask < 0x10) {
+         uint64_t lane_mask = 0;
+         for (unsigned i = 0; i < 16; i++)
+            lane_mask |= uint64_t(((i & and_mask) | or_mask) ^ (xor_mask & 0xf)) << i * 4;
+         aco_opcode opcode =
+            xor_mask & 0x10 ? aco_opcode::v_permlanex16_b32 : aco_opcode::v_permlane16_b32;
+         Temp op1 = bld.copy(bld.def(s1), Operand::c32(lane_mask & 0xffffffff));
+         Temp op2 = bld.copy(bld.def(s1), Operand::c32(lane_mask >> 32));
+         Builder::Result ret = bld.vop3(opcode, bld.def(v1), src, op1, op2);
+         ret->vop3().opsel = 0x3; /* set BOUND_CTRL/FETCH_INACTIVE */
          return ret;
       }
 
@@ -5178,30 +5198,6 @@ store_vmem_mubuf(isel_context* ctx, Temp src, Temp descriptor, Temp voffset, Tem
    }
 }
 
-void
-load_vmem_mubuf(isel_context* ctx, Temp dst, Temp descriptor, Temp voffset, Temp soffset, Temp idx,
-                unsigned base_const_offset, unsigned elem_size_bytes, unsigned num_components,
-                unsigned swizzle_element_size, bool glc, bool slc, memory_sync_info sync)
-{
-   assert(elem_size_bytes == 1 || elem_size_bytes == 2 || elem_size_bytes == 4 || elem_size_bytes == 8);
-   assert((num_components * elem_size_bytes) == dst.bytes());
-
-   Builder bld(ctx->program, ctx->block);
-
-   LoadEmitInfo info = {Operand(voffset), dst, num_components, elem_size_bytes, descriptor};
-   info.idx = idx;
-   info.component_stride = swizzle_element_size;
-   info.glc = glc;
-   info.slc = slc;
-   info.swizzle_component_size = swizzle_element_size ? 4 : 0;
-   info.align_mul = MIN2(elem_size_bytes, 4);
-   info.align_offset = 0;
-   info.soffset = soffset;
-   info.const_offset = base_const_offset;
-   info.sync = sync;
-   emit_load(ctx, bld, info, mubuf_load_params);
-}
-
 Temp
 wave_id_in_threadgroup(isel_context* ctx)
 {
@@ -5297,8 +5293,6 @@ load_input_from_temps(isel_context* ctx, nir_intrinsic_instr* instr, Temp dst)
    return true;
 }
 
-static void export_vs_varying(isel_context* ctx, int slot, bool is_pos, int* next_pos);
-
 void
 visit_store_output(isel_context* ctx, nir_intrinsic_instr* instr)
 {
@@ -5337,9 +5331,8 @@ emit_interp_instr_gfx11(isel_context* ctx, unsigned idx, unsigned component, Tem
       prim_mask_op.setLateKill(true); /* we don't want the bld.lm definition to use m0 */
       Operand coord2_op(coord2);
       coord2_op.setLateKill(true); /* we re-use the destination reg in the middle */
-      bld.pseudo(aco_opcode::p_interp_gfx11, Definition(dst), bld.def(bld.lm), bld.def(s1, scc),
-                 Operand(v1.as_linear()), Operand::c32(idx), Operand::c32(component), coord1,
-                 coord2_op, prim_mask_op);
+      bld.pseudo(aco_opcode::p_interp_gfx11, Definition(dst), Operand(v1.as_linear()),
+                 Operand::c32(idx), Operand::c32(component), coord1, coord2_op, prim_mask_op);
       return;
    }
 
@@ -5418,9 +5411,9 @@ emit_interp_mov_instr(isel_context* ctx, unsigned idx, unsigned component, unsig
       if (in_exec_divergent_or_in_loop(ctx)) {
          Operand prim_mask_op = bld.m0(prim_mask);
          prim_mask_op.setLateKill(true); /* we don't want the bld.lm definition to use m0 */
-         bld.pseudo(aco_opcode::p_interp_gfx11, Definition(dst), bld.def(bld.lm), bld.def(s1, scc),
-                    Operand(v1.as_linear()), Operand::c32(idx), Operand::c32(component),
-                    Operand::c32(dpp_ctrl), prim_mask_op);
+         bld.pseudo(aco_opcode::p_interp_gfx11, Definition(dst), Operand(v1.as_linear()),
+                    Operand::c32(idx), Operand::c32(component), Operand::c32(dpp_ctrl),
+                    prim_mask_op);
       } else {
          Temp p =
             bld.ldsdir(aco_opcode::lds_param_load, bld.def(v1), bld.m0(prim_mask), idx, component);
@@ -5519,58 +5512,6 @@ visit_load_interpolated_input(isel_context* ctx, nir_intrinsic_instr* instr)
    }
 }
 
-bool
-check_vertex_fetch_size(isel_context* ctx, const ac_vtx_format_info* vtx_info, unsigned offset,
-                        unsigned binding_align, unsigned channels)
-{
-   if (!(vtx_info->has_hw_format & BITFIELD_BIT(channels - 1)))
-      return false;
-
-   /* Split typed vertex buffer loads on GFX6 and GFX10+ to avoid any
-    * alignment issues that triggers memory violations and eventually a GPU
-    * hang. This can happen if the stride (static or dynamic) is unaligned and
-    * also if the VBO offset is aligned to a scalar (eg. stride is 8 and VBO
-    * offset is 2 for R16G16B16A16_SNORM).
-    */
-   unsigned vertex_byte_size = vtx_info->chan_byte_size * channels;
-   return (ctx->options->gfx_level >= GFX7 && ctx->options->gfx_level <= GFX9) ||
-          (offset % vertex_byte_size == 0 && MAX2(binding_align, 1) % vertex_byte_size == 0);
-}
-
-uint8_t
-get_fetch_format(isel_context* ctx, const ac_vtx_format_info* vtx_info, unsigned offset,
-                 unsigned* channels, unsigned max_channels, unsigned binding_align)
-{
-   if (!vtx_info->chan_byte_size) {
-      *channels = vtx_info->num_channels;
-      return vtx_info->hw_format[0];
-   }
-
-   unsigned num_channels = *channels;
-   if (!check_vertex_fetch_size(ctx, vtx_info, offset, binding_align, *channels)) {
-      unsigned new_channels = num_channels + 1;
-      /* first, assume more loads is worse and try using a larger data format */
-      while (new_channels <= max_channels &&
-             !check_vertex_fetch_size(ctx, vtx_info, offset, binding_align, new_channels)) {
-         new_channels++;
-      }
-
-      if (new_channels > max_channels) {
-         /* then try decreasing load size (at the cost of more loads) */
-         new_channels = *channels;
-         while (new_channels > 1 &&
-                !check_vertex_fetch_size(ctx, vtx_info, offset, binding_align, new_channels))
-            new_channels--;
-      }
-
-      if (new_channels < *channels)
-         *channels = new_channels;
-      num_channels = new_channels;
-   }
-
-   return vtx_info->hw_format[num_channels - 1];
-}
-
 void
 visit_load_input(isel_context* ctx, nir_intrinsic_instr* instr)
 {
@@ -5651,8 +5592,10 @@ visit_load_input(isel_context* ctx, nir_intrinsic_instr* instr)
          bool use_mubuf = vtx_info->chan_byte_size == 4 && bitsize != 16;
          unsigned fetch_fmt = V_008F0C_BUF_DATA_FORMAT_INVALID;
          if (!use_mubuf) {
-            fetch_fmt = get_fetch_format(ctx, vtx_info, fetch_offset, &fetch_component,
-                                         vtx_info->num_channels - channel_start, binding_align);
+            fetch_component = ac_get_safe_fetch_size(ctx->program->gfx_level, vtx_info, fetch_offset,
+                                                     vtx_info->num_channels - channel_start, binding_align,
+                                                     fetch_component);
+            fetch_fmt = vtx_info->hw_format[fetch_component - 1];
          } else {
             /* GFX6 only supports loading vec3 with MTBUF, split to vec2,scalar. */
             if (fetch_component == 3 && ctx->options->gfx_level == GFX6)
@@ -7241,11 +7184,13 @@ visit_load_buffer(isel_context* ctx, nir_intrinsic_instr* intrin)
    Builder bld(ctx->program, ctx->block);
 
    bool idxen = !nir_src_is_const(intrin->src[3]) || nir_src_as_uint(intrin->src[3]);
+   bool s_offset_zero = nir_src_is_const(intrin->src[2]) && !nir_src_as_uint(intrin->src[2]);
 
    Temp dst = get_ssa_temp(ctx, &intrin->dest.ssa);
    Temp descriptor = bld.as_uniform(get_ssa_temp(ctx, intrin->src[0].ssa));
    Temp v_offset = as_vgpr(ctx, get_ssa_temp(ctx, intrin->src[1].ssa));
-   Temp s_offset = bld.as_uniform(get_ssa_temp(ctx, intrin->src[2].ssa));
+   Temp s_offset =
+      s_offset_zero ? Temp(0, s1) : bld.as_uniform(get_ssa_temp(ctx, intrin->src[2].ssa));
    Temp idx = idxen ? as_vgpr(ctx, get_ssa_temp(ctx, intrin->src[3].ssa)) : Temp();
 
    bool swizzled = nir_intrinsic_access(intrin) & ACCESS_IS_SWIZZLED_AMD;
@@ -7260,8 +7205,19 @@ visit_load_buffer(isel_context* ctx, nir_intrinsic_instr* intrin)
    nir_variable_mode mem_mode = nir_intrinsic_memory_modes(intrin);
    memory_sync_info sync(aco_storage_mode_from_nir_mem_mode(mem_mode));
 
-   load_vmem_mubuf(ctx, dst, descriptor, v_offset, s_offset, idx, const_offset, elem_size_bytes,
-                   num_components, swizzle_element_size, glc, slc, sync);
+   LoadEmitInfo info = {Operand(v_offset), dst, num_components, elem_size_bytes, descriptor};
+   info.idx = idx;
+   info.component_stride = swizzle_element_size;
+   info.glc = glc;
+   info.slc = slc;
+   info.swizzle_component_size = swizzle_element_size ? 4 : 0;
+   info.align_mul = MIN2(elem_size_bytes, 4);
+   info.align_offset = 0;
+   info.soffset = s_offset;
+   info.const_offset = const_offset;
+   info.sync = sync;
+
+   emit_load(ctx, bld, info, mubuf_load_params);
 }
 
 void
@@ -8178,8 +8134,6 @@ emit_interp_center(isel_context* ctx, Temp dst, Temp bary, Temp pos1, Temp pos2)
 Temp merged_wave_info_to_mask(isel_context* ctx, unsigned i);
 Temp lanecount_to_mask(isel_context* ctx, Temp count);
 void ngg_emit_sendmsg_gs_alloc_req(isel_context* ctx, Temp vtx_cnt, Temp prm_cnt);
-static void create_primitive_exports(isel_context *ctx, Temp prim_ch1);
-static void create_vs_exports(isel_context* ctx);
 
 Temp
 get_interp_param(isel_context* ctx, nir_intrinsic_op intrin,
@@ -8862,15 +8816,6 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       emit_wqm(bld, wqm_tmp, dst);
       break;
    }
-   case nir_intrinsic_byte_permute_amd: {
-      Temp dst = get_ssa_temp(ctx, &instr->dest.ssa);
-      assert(dst.regClass() == v1);
-      assert(ctx->program->gfx_level >= GFX8);
-      bld.vop3(aco_opcode::v_perm_b32, Definition(dst), get_ssa_temp(ctx, instr->src[0].ssa),
-               as_vgpr(ctx, get_ssa_temp(ctx, instr->src[1].ssa)),
-               as_vgpr(ctx, get_ssa_temp(ctx, instr->src[2].ssa)));
-      break;
-   }
    case nir_intrinsic_lane_permute_16_amd: {
       Temp src = get_ssa_temp(ctx, instr->src[0].ssa);
       Temp dst = get_ssa_temp(ctx, &instr->dest.ssa);
@@ -9076,15 +9021,6 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       bld.copy(Definition(get_ssa_temp(ctx, &instr->dest.ssa)), lanecount_to_mask(ctx, src));
       break;
    }
-   case nir_intrinsic_export_vertex_amd: {
-      create_vs_exports(ctx);
-      break;
-   }
-   case nir_intrinsic_export_primitive_amd: {
-      Temp prim_ch1 = as_vgpr(ctx, get_ssa_temp(ctx, instr->src[0].ssa));
-      create_primitive_exports(ctx, prim_ch1);
-      break;
-   }
    case nir_intrinsic_alloc_vertices_and_primitives_amd: {
       assert(ctx->stage.hw == HWStage::NGG);
       Temp num_vertices = get_ssa_temp(ctx, instr->src[0].ssa);
@@ -9112,6 +9048,7 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
    case nir_intrinsic_load_rt_dynamic_callable_stack_base_amd:
       bld.copy(Definition(get_ssa_temp(ctx, &instr->dest.ssa)),
                get_arg(ctx, ctx->args->ac.rt_dynamic_callable_stack_base));
+      ctx->program->rt_stack = true;
       break;
    case nir_intrinsic_overwrite_vs_arguments_amd: {
       ctx->arg_temps[ctx->args->ac.vertex_id.arg_index] = get_ssa_temp(ctx, instr->src[0].ssa);
@@ -9124,11 +9061,6 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       ctx->arg_temps[ctx->args->ac.tes_rel_patch_id.arg_index] =
          get_ssa_temp(ctx, instr->src[3].ssa);
       ctx->arg_temps[ctx->args->ac.tes_patch_id.arg_index] = get_ssa_temp(ctx, instr->src[2].ssa);
-      break;
-   }
-   case nir_intrinsic_load_force_vrs_rates_amd: {
-      bld.copy(Definition(get_ssa_temp(ctx, &instr->dest.ssa)),
-               get_arg(ctx, ctx->args->ac.force_vrs_rates));
       break;
    }
    case nir_intrinsic_load_scalar_arg_amd:
@@ -9198,6 +9130,42 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       wait.vm = 0;
       bld.sopp(aco_opcode::s_waitcnt, -1, wait.pack(bld.program->gfx_level));
       bld.sopk(aco_opcode::s_waitcnt_vscnt, Definition(sgpr_null, s1), 0);
+      break;
+   }
+   case nir_intrinsic_export_amd: {
+      unsigned flags = nir_intrinsic_flags(instr);
+      unsigned target = nir_intrinsic_base(instr);
+      unsigned write_mask = nir_intrinsic_write_mask(instr);
+
+      /* Mark vertex export block. */
+      if (target == V_008DFC_SQ_EXP_POS)
+         ctx->block->kind |= block_kind_export_end;
+
+      aco_ptr<Export_instruction> exp{
+         create_instruction<Export_instruction>(aco_opcode::exp, Format::EXP, 4, 0)};
+
+      exp->dest = target;
+      exp->enabled_mask = write_mask;
+      exp->compressed = flags & AC_EXP_FLAG_COMPRESSED;
+      exp->valid_mask = flags & AC_EXP_FLAG_VALID_MASK;
+
+      /* ACO may reorder position export instructions, then mark done for last
+       * export instruction. So don't respect the nir AC_EXP_FLAG_DONE for position
+       * exports here and leave it to ACO.
+       */
+      if (target == V_008DFC_SQ_EXP_PRIM)
+         exp->done = flags & AC_EXP_FLAG_DONE;
+      else
+         exp->done = false;
+
+      Temp value = get_ssa_temp(ctx, instr->src[0].ssa);
+      for (unsigned i = 0; i < 4; i++) {
+         exp->operands[i] = write_mask & BITFIELD_BIT(i) ?
+            Operand(emit_extract_vector(ctx, value, i, v1)) :
+            Operand(v1);
+      }
+
+      ctx->block->instructions.emplace_back(std::move(exp));
       break;
    }
    default:
@@ -10383,6 +10351,7 @@ static void end_uniform_if(isel_context* ctx, if_context* ic);
 static void
 visit_loop(isel_context* ctx, nir_loop* loop)
 {
+   assert(!nir_loop_has_continue_construct(loop));
    loop_context lc;
    begin_loop(ctx, &lc);
 
@@ -10798,188 +10767,6 @@ visit_cf_list(isel_context* ctx, struct exec_list* list)
       }
    }
    return false;
-}
-
-static void
-export_vs_varying(isel_context* ctx, int slot, bool is_pos, int* next_pos)
-{
-   assert(ctx->stage.hw == HWStage::VS || ctx->stage.hw == HWStage::NGG);
-
-   const uint8_t *vs_output_param_offset =
-      ctx->program->info.outinfo.vs_output_param_offset;
-
-   assert(vs_output_param_offset);
-
-   int offset = vs_output_param_offset[slot];
-   unsigned mask = ctx->outputs.mask[slot];
-   if (!is_pos && !mask)
-      return;
-   if (!is_pos && offset == AC_EXP_PARAM_UNDEFINED)
-      return;
-   aco_ptr<Export_instruction> exp{
-      create_instruction<Export_instruction>(aco_opcode::exp, Format::EXP, 4, 0)};
-   exp->enabled_mask = mask;
-   for (unsigned i = 0; i < 4; ++i) {
-      if (mask & (1 << i))
-         exp->operands[i] = Operand(ctx->outputs.temps[slot * 4u + i]);
-      else
-         exp->operands[i] = Operand(v1);
-   }
-   /* GFX10 (Navi1x) skip POS0 exports if EXEC=0 and DONE=0, causing a hang.
-    * Setting valid_mask=1 prevents it and has no other effect.
-    */
-   exp->valid_mask = ctx->options->gfx_level == GFX10 && is_pos && *next_pos == 0;
-   exp->done = false;
-   exp->compressed = false;
-   if (is_pos)
-      exp->dest = V_008DFC_SQ_EXP_POS + (*next_pos)++;
-   else
-      exp->dest = V_008DFC_SQ_EXP_PARAM + offset;
-   ctx->block->instructions.emplace_back(std::move(exp));
-}
-
-static void
-export_vs_psiz_layer_viewport_vrs(isel_context* ctx, int* next_pos,
-                                  const aco_vp_output_info* outinfo)
-{
-   aco_ptr<Export_instruction> exp{
-      create_instruction<Export_instruction>(aco_opcode::exp, Format::EXP, 4, 0)};
-   exp->enabled_mask = 0;
-   for (unsigned i = 0; i < 4; ++i)
-      exp->operands[i] = Operand(v1);
-   if (ctx->outputs.mask[VARYING_SLOT_PSIZ]) {
-      exp->operands[0] = Operand(ctx->outputs.temps[VARYING_SLOT_PSIZ * 4u]);
-      exp->enabled_mask |= 0x1;
-   }
-   if (ctx->outputs.mask[VARYING_SLOT_LAYER] && !outinfo->writes_layer_per_primitive) {
-      exp->operands[2] = Operand(ctx->outputs.temps[VARYING_SLOT_LAYER * 4u]);
-      exp->enabled_mask |= 0x4;
-   }
-   if (ctx->outputs.mask[VARYING_SLOT_VIEWPORT] && !outinfo->writes_viewport_index_per_primitive) {
-      if (ctx->options->gfx_level < GFX9) {
-         exp->operands[3] = Operand(ctx->outputs.temps[VARYING_SLOT_VIEWPORT * 4u]);
-         exp->enabled_mask |= 0x8;
-      } else {
-         Builder bld(ctx->program, ctx->block);
-
-         Temp out = bld.vop2(aco_opcode::v_lshlrev_b32, bld.def(v1), Operand::c32(16u),
-                             Operand(ctx->outputs.temps[VARYING_SLOT_VIEWPORT * 4u]));
-         if (exp->operands[2].isTemp())
-            out = bld.vop2(aco_opcode::v_or_b32, bld.def(v1), Operand(out), exp->operands[2]);
-
-         exp->operands[2] = Operand(out);
-         exp->enabled_mask |= 0x4;
-      }
-   }
-   if (ctx->outputs.mask[VARYING_SLOT_PRIMITIVE_SHADING_RATE]) {
-      exp->operands[1] = Operand(ctx->outputs.temps[VARYING_SLOT_PRIMITIVE_SHADING_RATE * 4u]);
-      exp->enabled_mask |= 0x2;
-   }
-
-   exp->valid_mask = ctx->options->gfx_level == GFX10 && *next_pos == 0;
-   exp->done = false;
-   exp->compressed = false;
-   exp->dest = V_008DFC_SQ_EXP_POS + (*next_pos)++;
-   ctx->block->instructions.emplace_back(std::move(exp));
-}
-
-static void
-create_vs_exports(isel_context* ctx)
-{
-   assert(ctx->stage.hw == HWStage::VS || ctx->stage.hw == HWStage::NGG);
-   const aco_vp_output_info* outinfo = &ctx->program->info.outinfo;
-
-   assert(outinfo);
-   ctx->block->kind |= block_kind_export_end;
-
-   /* Hardware requires position data to always be exported, even if the
-    * application did not write gl_Position.
-    */
-   ctx->outputs.mask[VARYING_SLOT_POS] = 0xf;
-
-   /* the order these position exports are created is important */
-   int next_pos = 0;
-   export_vs_varying(ctx, VARYING_SLOT_POS, true, &next_pos);
-
-   if (outinfo->writes_pointsize || outinfo->writes_layer || outinfo->writes_viewport_index ||
-       outinfo->writes_primitive_shading_rate) {
-      export_vs_psiz_layer_viewport_vrs(ctx, &next_pos, outinfo);
-   }
-   if (ctx->num_clip_distances + ctx->num_cull_distances > 0)
-      export_vs_varying(ctx, VARYING_SLOT_CLIP_DIST0, true, &next_pos);
-   if (ctx->num_clip_distances + ctx->num_cull_distances > 4)
-      export_vs_varying(ctx, VARYING_SLOT_CLIP_DIST1, true, &next_pos);
-
-   if (ctx->program->gfx_level >= GFX11)
-      return;
-
-   if (ctx->export_clip_dists) {
-      if (ctx->num_clip_distances + ctx->num_cull_distances > 0)
-         export_vs_varying(ctx, VARYING_SLOT_CLIP_DIST0, false, &next_pos);
-      if (ctx->num_clip_distances + ctx->num_cull_distances > 4)
-         export_vs_varying(ctx, VARYING_SLOT_CLIP_DIST1, false, &next_pos);
-   }
-
-   for (unsigned i = 0; i <= VARYING_SLOT_VAR31; ++i) {
-      if (i < VARYING_SLOT_VAR0 && i != VARYING_SLOT_LAYER && i != VARYING_SLOT_PRIMITIVE_ID &&
-          i != VARYING_SLOT_VIEWPORT)
-         continue;
-      if (ctx->shader && ctx->shader->info.per_primitive_outputs & BITFIELD64_BIT(i))
-         continue;
-
-      export_vs_varying(ctx, i, false, NULL);
-   }
-}
-
-static void
-create_primitive_exports(isel_context *ctx, Temp prim_ch1)
-{
-   assert(ctx->stage.hw == HWStage::NGG);
-   const aco_vp_output_info* outinfo = &ctx->program->info.outinfo;
-
-   Builder bld(ctx->program, ctx->block);
-
-   /* When layer, viewport etc. are per-primitive, they need to be encoded in
-    * the primitive export instruction's second channel. The encoding is:
-    * bits 31..30: VRS rate Y
-    * bits 29..28: VRS rate X
-    * bits 23..20: viewport
-    * bits 19..17: layer
-    */
-   Temp ch2 = bld.copy(bld.def(v1), Operand::c32(0));
-   unsigned en_mask = 1;
-
-   if (outinfo->writes_layer_per_primitive) {
-      en_mask |= 2;
-      Temp tmp = ctx->outputs.temps[VARYING_SLOT_LAYER * 4u];
-      ch2 = bld.vop3(aco_opcode::v_lshl_or_b32, bld.def(v1), tmp, Operand::c32(17), ch2);
-   }
-   if (outinfo->writes_viewport_index_per_primitive) {
-      en_mask |= 2;
-      Temp tmp = ctx->outputs.temps[VARYING_SLOT_VIEWPORT * 4u];
-      ch2 = bld.vop3(aco_opcode::v_lshl_or_b32, bld.def(v1), tmp, Operand::c32(20), ch2);
-   }
-   if (outinfo->writes_primitive_shading_rate_per_primitive) {
-      en_mask |= 2;
-      Temp tmp = ctx->outputs.temps[VARYING_SLOT_PRIMITIVE_SHADING_RATE * 4u];
-      ch2 = bld.vop2(aco_opcode::v_or_b32, bld.def(v1), tmp, ch2);
-   }
-
-   Operand prim_ch2 = (en_mask & 2) ? Operand(ch2) : Operand(v1);
-
-   bld.exp(aco_opcode::exp, prim_ch1, prim_ch2, Operand(v1), Operand(v1),
-           en_mask /* enabled mask */, V_008DFC_SQ_EXP_PRIM /* dest */, false /* compressed */,
-           true /* done */, false /* valid mask */);
-
-   /* Export generic per-primitive attributes. */
-   for (unsigned i = 0; i <= VARYING_SLOT_VAR31; ++i) {
-      if (!(ctx->shader->info.per_primitive_outputs & BITFIELD64_BIT(i)))
-         continue;
-      if (i == VARYING_SLOT_PRIMITIVE_SHADING_RATE)
-         continue;
-
-      export_vs_varying(ctx, i, false, NULL);
-   }
 }
 
 static bool
@@ -11483,7 +11270,7 @@ add_startpgm(struct isel_context* ctx)
    /* Stash these in the program so that they can be accessed later when
     * handling spilling.
     */
-   ctx->program->private_segment_buffer = get_arg(ctx, ctx->args->ring_offsets);
+   ctx->program->private_segment_buffer = get_arg(ctx, ctx->args->ac.ring_offsets);
    if (ctx->program->gfx_level <= GFX10_3) {
       ctx->program->scratch_offset = get_arg(ctx, ctx->args->ac.scratch_offset);
 

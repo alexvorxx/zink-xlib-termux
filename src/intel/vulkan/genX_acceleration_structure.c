@@ -393,62 +393,6 @@ genX(GetAccelerationStructureBuildSizesKHR)(
    pSizeInfo->updateScratchSize = gpu_size_info.updateScratchSize;
 }
 
-VkResult
-genX(CreateAccelerationStructureKHR)(
-    VkDevice                                    _device,
-    const VkAccelerationStructureCreateInfoKHR* pCreateInfo,
-    const VkAllocationCallbacks*                pAllocator,
-    VkAccelerationStructureKHR*                 pAccelerationStructure)
-{
-   ANV_FROM_HANDLE(anv_device, device, _device);
-   ANV_FROM_HANDLE(anv_buffer, buffer, pCreateInfo->buffer);
-   struct anv_acceleration_structure *accel;
-
-   accel = vk_zalloc2(&device->vk.alloc, pAllocator, sizeof(*accel), 8,
-                      VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-   if (accel == NULL)
-      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   vk_object_base_init(&device->vk, &accel->base,
-                       VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_KHR);
-
-   accel->size = pCreateInfo->size;
-   accel->address = anv_address_add(buffer->address, pCreateInfo->offset);
-
-   *pAccelerationStructure = anv_acceleration_structure_to_handle(accel);
-
-   return VK_SUCCESS;
-}
-
-void
-genX(DestroyAccelerationStructureKHR)(
-    VkDevice                                    _device,
-    VkAccelerationStructureKHR                  accelerationStructure,
-    const VkAllocationCallbacks*                pAllocator)
-{
-   ANV_FROM_HANDLE(anv_device, device, _device);
-   ANV_FROM_HANDLE(anv_acceleration_structure, accel, accelerationStructure);
-
-   if (!accel)
-      return;
-
-   vk_object_base_finish(&accel->base);
-   vk_free2(&device->vk.alloc, pAllocator, accel);
-}
-
-VkDeviceAddress
-genX(GetAccelerationStructureDeviceAddressKHR)(
-    VkDevice                                    device,
-    const VkAccelerationStructureDeviceAddressInfoKHR* pInfo)
-{
-   ANV_FROM_HANDLE(anv_acceleration_structure, accel,
-                   pInfo->accelerationStructure);
-
-   assert(!anv_address_is_null(accel->address));
-
-   return anv_address_physical(accel->address);
-}
-
 void
 genX(GetDeviceAccelerationStructureCompatibilityKHR)(
     VkDevice                                    _device,
@@ -524,7 +468,10 @@ vk_to_grl_VertexFormat(VkFormat format)
 
 static struct Geo
 vk_to_grl_Geo(const VkAccelerationStructureGeometryKHR *pGeometry,
-              uint32_t prim_count)
+              uint32_t prim_count,
+              uint32_t transform_offset,
+              uint32_t primitive_offset,
+              uint32_t first_vertex)
 {
    struct Geo geo = {
       .Flags = vk_to_grl_GeometryFlags(pGeometry->flags),
@@ -545,18 +492,25 @@ vk_to_grl_Geo(const VkAccelerationStructureGeometryKHR *pGeometry,
          vk_tri->vertexData.deviceAddress;
       geo.Desc.Triangles.VertexBufferByteStride = vk_tri->vertexStride;
 
+      if (geo.Desc.Triangles.pTransformBuffer)
+         geo.Desc.Triangles.pTransformBuffer += transform_offset;
+
       if (vk_tri->indexType == VK_INDEX_TYPE_NONE_KHR) {
          geo.Desc.Triangles.IndexCount = 0;
          geo.Desc.Triangles.VertexCount = prim_count * 3;
          geo.Desc.Triangles.IndexFormat = INDEX_FORMAT_NONE;
+         geo.Desc.Triangles.pVertexBuffer += primitive_offset;
       } else {
          geo.Desc.Triangles.IndexCount = prim_count * 3;
          geo.Desc.Triangles.VertexCount = vk_tri->maxVertex;
          geo.Desc.Triangles.IndexFormat =
             vk_to_grl_IndexFormat(vk_tri->indexType);
+         geo.Desc.Triangles.pIndexBuffer += primitive_offset;
       }
+
       geo.Desc.Triangles.VertexFormat =
          vk_to_grl_VertexFormat(vk_tri->vertexFormat);
+      geo.Desc.Triangles.pVertexBuffer += vk_tri->vertexStride * first_vertex;
       break;
    }
 
@@ -564,7 +518,8 @@ vk_to_grl_Geo(const VkAccelerationStructureGeometryKHR *pGeometry,
       const VkAccelerationStructureGeometryAabbsDataKHR *vk_aabbs =
          &pGeometry->geometry.aabbs;
       geo.Type = GEOMETRY_TYPE_PROCEDURAL;
-      geo.Desc.Procedural.pAABBs_GPUVA = vk_aabbs->data.deviceAddress;
+      geo.Desc.Procedural.pAABBs_GPUVA =
+         vk_aabbs->data.deviceAddress + primitive_offset;
       geo.Desc.Procedural.AABBByteStride = vk_aabbs->stride;
       geo.Desc.Procedural.AABBCount = prim_count;
       break;
@@ -693,12 +648,12 @@ cmd_build_acceleration_structures(
       const uint32_t *pMaxPrimitiveCounts =
          ppMaxPrimitiveCounts ? ppMaxPrimitiveCounts[i] : NULL;
 
-      ANV_FROM_HANDLE(anv_acceleration_structure, dst_accel,
+      ANV_FROM_HANDLE(vk_acceleration_structure, dst_accel,
                       pInfo->dstAccelerationStructure);
 
       bs->build_method = device->bvh_build_method;
 
-      bs->bvh_addr = dst_accel->address;
+      bs->bvh_addr = anv_address_from_u64(vk_acceleration_structure_get_va(dst_accel));
 
       bs->estimate = get_gpu_size_estimate(pInfo, pBuildRangeInfos,
                                            pMaxPrimitiveCounts);
@@ -819,7 +774,10 @@ cmd_build_acceleration_structures(
       for (unsigned g = 0; g < bs->num_geometries; g++) {
          const VkAccelerationStructureGeometryKHR *pGeometry = get_geometry(pInfo, g);
          uint32_t prim_count = pBuildRangeInfos[g].primitiveCount;
-         geos[g] = vk_to_grl_Geo(pGeometry, prim_count);
+         geos[g] = vk_to_grl_Geo(pGeometry, prim_count,
+                                 pBuildRangeInfos[g].transformOffset,
+                                 pBuildRangeInfos[g].primitiveOffset,
+                                 pBuildRangeInfos[g].firstVertex);
 
          prefixes[g] = prefix_sum;
          prefix_sum += prim_count;
@@ -1149,24 +1107,26 @@ genX(CmdCopyAccelerationStructureKHR)(
     const VkCopyAccelerationStructureInfoKHR*   pInfo)
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
-   ANV_FROM_HANDLE(anv_acceleration_structure, src_accel, pInfo->src);
-   ANV_FROM_HANDLE(anv_acceleration_structure, dst_accel, pInfo->dst);
+   ANV_FROM_HANDLE(vk_acceleration_structure, src_accel, pInfo->src);
+   ANV_FROM_HANDLE(vk_acceleration_structure, dst_accel, pInfo->dst);
 
    assert(pInfo->mode == VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR ||
           pInfo->mode == VK_COPY_ACCELERATION_STRUCTURE_MODE_CLONE_KHR);
 
    if (pInfo->mode == VK_COPY_ACCELERATION_STRUCTURE_MODE_CLONE_KHR) {
-      struct anv_address src_size_addr = anv_address_add(
-         src_accel->address,
-         offsetof(struct BVHBase, Meta.allocationSize));
-      genX(grl_copy_clone_indirect)(cmd_buffer,
-                                    anv_address_physical(dst_accel->address),
-                                    anv_address_physical(src_accel->address),
-                                    anv_address_physical(src_size_addr));
+      uint64_t src_size_addr =
+         vk_acceleration_structure_get_va(src_accel) +
+         offsetof(struct BVHBase, Meta.allocationSize);
+      genX(grl_copy_clone_indirect)(
+         cmd_buffer,
+         vk_acceleration_structure_get_va(dst_accel),
+         vk_acceleration_structure_get_va(src_accel),
+         src_size_addr);
    } else {
-      genX(grl_copy_compact)(cmd_buffer,
-                             anv_address_physical(dst_accel->address),
-                             anv_address_physical(src_accel->address));
+      genX(grl_copy_compact)(
+         cmd_buffer,
+         vk_acceleration_structure_get_va(dst_accel),
+         vk_acceleration_structure_get_va(src_accel));
    }
 
    cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_END_OF_PIPE_SYNC_BIT;
@@ -1178,19 +1138,20 @@ genX(CmdCopyAccelerationStructureToMemoryKHR)(
     const VkCopyAccelerationStructureToMemoryInfoKHR* pInfo)
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
-   ANV_FROM_HANDLE(anv_acceleration_structure, src_accel, pInfo->src);
+   ANV_FROM_HANDLE(vk_acceleration_structure, src_accel, pInfo->src);
    struct anv_device *device = cmd_buffer->device;
-   struct anv_address src_size_addr = anv_address_add(
-      src_accel->address,
-      offsetof(struct BVHBase, Meta.allocationSize));
+   uint64_t src_size_addr =
+      vk_acceleration_structure_get_va(src_accel) +
+      offsetof(struct BVHBase, Meta.allocationSize);
 
    assert(pInfo->mode == VK_COPY_ACCELERATION_STRUCTURE_MODE_SERIALIZE_KHR);
 
-   genX(grl_copy_serialize_indirect)(cmd_buffer,
-                                     pInfo->dst.deviceAddress,
-                                     anv_address_physical(src_accel->address),
-                                     anv_address_physical(device->rt_uuid_addr),
-                                     anv_address_physical(src_size_addr));
+   genX(grl_copy_serialize_indirect)(
+      cmd_buffer,
+      pInfo->dst.deviceAddress,
+      vk_acceleration_structure_get_va(src_accel),
+      anv_address_physical(device->rt_uuid_addr),
+      src_size_addr);
 
    cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_END_OF_PIPE_SYNC_BIT;
 }
@@ -1201,16 +1162,17 @@ genX(CmdCopyMemoryToAccelerationStructureKHR)(
     const VkCopyMemoryToAccelerationStructureInfoKHR* pInfo)
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
-   ANV_FROM_HANDLE(anv_acceleration_structure, dst_accel, pInfo->dst);
+   ANV_FROM_HANDLE(vk_acceleration_structure, dst_accel, pInfo->dst);
 
    assert(pInfo->mode == VK_COPY_ACCELERATION_STRUCTURE_MODE_DESERIALIZE_KHR);
 
    uint64_t src_size_addr = pInfo->src.deviceAddress +
       offsetof(struct SerializationHeader, DeserializedSizeInBytes);
-   genX(grl_copy_deserialize_indirect)(cmd_buffer,
-                                       anv_address_physical(dst_accel->address),
-                                       pInfo->src.deviceAddress,
-                                       src_size_addr);
+   genX(grl_copy_deserialize_indirect)(
+      cmd_buffer,
+      vk_acceleration_structure_get_va(dst_accel),
+      pInfo->src.deviceAddress,
+      src_size_addr);
 
    cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_END_OF_PIPE_SYNC_BIT;
 }

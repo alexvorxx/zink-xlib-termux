@@ -101,6 +101,7 @@ struct spirv_supported_capabilities {
    bool subgroup_basic;
    bool subgroup_dispatch;
    bool subgroup_quad;
+   bool subgroup_rotate;
    bool subgroup_shuffle;
    bool subgroup_uniform_control_flow;
    bool subgroup_vote;
@@ -296,6 +297,11 @@ typedef struct shader_info {
     * nir_variables for inputs and outputs might not be present in the IR.
     */
    bool io_lowered:1;
+
+   /** Has nir_lower_var_copies called. To avoid calling any
+    * lowering/optimization that would introduce any copy_deref later.
+    */
+   bool var_copies_lowered:1;
 
    /* Whether the shader writes memory, including transform feedback. */
    bool writes_memory:1;

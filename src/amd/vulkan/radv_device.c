@@ -574,6 +574,10 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .KHR_timeline_semaphore = true,
       .KHR_uniform_buffer_standard_layout = true,
       .KHR_variable_pointers = true,
+      .KHR_video_queue = !!(device->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE),
+      .KHR_video_decode_queue = !!(device->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE),
+      .KHR_video_decode_h264 = VIDEO_CODEC_H264DEC && !!(device->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE),
+      .KHR_video_decode_h265 = VIDEO_CODEC_H265DEC && !!(device->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE),
       .KHR_vulkan_memory_model = true,
       .KHR_workgroup_memory_explicit_layout = true,
       .KHR_zero_initialize_workgroup_memory = true,
@@ -609,6 +613,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_image_2d_view_of_3d = true,
       .EXT_image_drm_format_modifier = device->rad_info.gfx_level >= GFX9,
       .EXT_image_robustness = true,
+      .EXT_image_sliced_view_of_3d = device->rad_info.gfx_level >= GFX10,
       .EXT_image_view_min_lod = true,
       .EXT_index_type_uint8 = device->rad_info.gfx_level >= GFX8,
       .EXT_inline_uniform_block = true,
@@ -626,6 +631,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
 #endif
       .EXT_pipeline_creation_cache_control = true,
       .EXT_pipeline_creation_feedback = true,
+      .EXT_pipeline_library_group_handles = true,
       .EXT_post_depth_coverage = device->rad_info.gfx_level >= GFX10,
       .EXT_primitive_topology_list_restart = true,
       .EXT_primitives_generated_query = true,
@@ -718,6 +724,18 @@ radv_physical_device_init_queue_table(struct radv_physical_device *pdevice)
       pdevice->vk_queue_to_radv[idx] = RADV_QUEUE_COMPUTE;
       idx++;
    }
+
+   if (pdevice->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE) {
+      if (pdevice->rad_info.ip[AMD_IP_VCN_DEC].num_queues > 0) {
+         pdevice->vk_queue_to_radv[idx] = RADV_QUEUE_VIDEO_DEC;
+         idx++;
+      }
+
+      if (radv_has_uvd(pdevice)) {
+         pdevice->vk_queue_to_radv[idx] = RADV_QUEUE_VIDEO_DEC;
+         idx++;
+      }
+   }
    pdevice->num_queues = idx;
 }
 
@@ -725,23 +743,19 @@ static void
 radv_get_binning_settings(const struct radv_physical_device *pdevice,
                           struct radv_binning_settings *settings)
 {
-   if (pdevice->rad_info.has_dedicated_vram) {
-      if (pdevice->rad_info.max_render_backends > 4) {
-         settings->context_states_per_bin = 1;
-         settings->persistent_states_per_bin = 1;
-      } else {
-         settings->context_states_per_bin = 3;
-         settings->persistent_states_per_bin = 8;
-      }
-      settings->fpovs_per_batch = 63;
+   if (pdevice->rad_info.has_dedicated_vram &&
+       pdevice->rad_info.max_render_backends > 4) {
+      settings->context_states_per_bin = 1;
+      settings->persistent_states_per_bin = 1;
    } else {
-      /* The context states are affected by the scissor bug. */
-      settings->context_states_per_bin = 6;
+      settings->context_states_per_bin = 3;
       /* 32 causes hangs for RAVEN. */
-      settings->persistent_states_per_bin = 16;
-      settings->fpovs_per_batch = 63;
+      settings->persistent_states_per_bin = 8;
    }
 
+   settings->fpovs_per_batch = 63;
+
+   /* The context states are affected by the scissor bug. */
    if (pdevice->rad_info.has_gfx9_scissor_bug)
       settings->context_states_per_bin = 1;
 }
@@ -989,6 +1003,8 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
    /* We don't check the error code, but later check if it is initialized. */
    ac_init_perfcounters(&device->rad_info, false, false, &device->ac_perfcounters);
 
+   radv_init_physical_device_decoder(device);
+
    /* The WSI is structured as a layer on top of the driver, so this has
     * to be the last part of initialization (at least until we get other
     * semi-layers).
@@ -1111,6 +1127,7 @@ static const struct debug_control radv_perftest_options[] = {{"localbos", RADV_P
                                                              {"rtwave64", RADV_PERFTEST_RT_WAVE_64},
                                                              {"gpl", RADV_PERFTEST_GPL},
                                                              {"ngg_streamout", RADV_PERFTEST_NGG_STREAMOUT},
+                                                             {"video_decode", RADV_PERFTEST_VIDEO_DECODE},
                                                              {NULL, 0}};
 
 const char *
@@ -1238,9 +1255,8 @@ radv_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
    struct vk_instance_dispatch_table dispatch_table;
    vk_instance_dispatch_table_from_entrypoints(&dispatch_table, &radv_instance_entrypoints, true);
    vk_instance_dispatch_table_from_entrypoints(&dispatch_table, &wsi_instance_entrypoints, false);
-   struct vk_instance_extension_table extensions_supported = radv_instance_extensions_supported;
 
-   result = vk_instance_init(&instance->vk, &extensions_supported, &dispatch_table,
+   result = vk_instance_init(&instance->vk, &radv_instance_extensions_supported, &dispatch_table,
                              pCreateInfo, pAllocator);
    if (result != VK_SUCCESS) {
       vk_free(pAllocator, instance);
@@ -1609,7 +1625,7 @@ radv_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_FEATURES_EXT: {
          VkPhysicalDeviceLineRasterizationFeaturesEXT *features =
             (VkPhysicalDeviceLineRasterizationFeaturesEXT *)ext;
-         features->rectangularLines = false;
+         features->rectangularLines = true;
          features->bresenhamLines = true;
          features->smoothLines = false;
          features->stippledRectangularLines = false;
@@ -1796,12 +1812,18 @@ radv_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
          features->rayQuery = true;
          break;
       }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_LIBRARY_GROUP_HANDLES_FEATURES_EXT: {
+         VkPhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT *features =
+            (VkPhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT *)ext;
+         features->pipelineLibraryGroupHandles = true;
+         break;
+      }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR: {
          VkPhysicalDeviceRayTracingPipelineFeaturesKHR *features =
             (VkPhysicalDeviceRayTracingPipelineFeaturesKHR *)ext;
          features->rayTracingPipeline = true;
          features->rayTracingPipelineShaderGroupHandleCaptureReplay = true;
-         features->rayTracingPipelineShaderGroupHandleCaptureReplayMixed = true;
+         features->rayTracingPipelineShaderGroupHandleCaptureReplayMixed = false;
          features->rayTracingPipelineTraceRaysIndirect = true;
          features->rayTraversalPrimitiveCulling = true;
          break;
@@ -1994,6 +2016,12 @@ radv_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
          features->shaderEarlyAndLateFragmentTests = true;
          break;
       }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_SLICED_VIEW_OF_3D_FEATURES_EXT: {
+         VkPhysicalDeviceImageSlicedViewOf3DFeaturesEXT *features =
+            (VkPhysicalDeviceImageSlicedViewOf3DFeaturesEXT *)ext;
+         features->imageSlicedViewOf3D = true;
+         break;
+      }
       default:
          break;
       }
@@ -2142,7 +2170,7 @@ radv_GetPhysicalDeviceProperties(VkPhysicalDevice physicalDevice,
       .maxCombinedClipAndCullDistances = 8,
       .discreteQueuePriorities = 2,
       .pointSizeRange = {0.0, 8191.875},
-      .lineWidthRange = {0.0, 8191.875},
+      .lineWidthRange = {0.0, 8.0},
       .pointSizeGranularity = (1.0 / 8.0),
       .lineWidthGranularity = (1.0 / 8.0),
       .strictLines = false, /* FINISHME */
@@ -2494,7 +2522,7 @@ radv_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          properties->primitiveOverestimationSize = 0;
          properties->maxExtraPrimitiveOverestimationSize = 0;
          properties->extraPrimitiveOverestimationSizeGranularity = 0;
-         properties->primitiveUnderestimation = false;
+         properties->primitiveUnderestimation = true;
          properties->conservativePointAndLineRasterization = false;
          properties->degenerateTrianglesRasterized = true;
          properties->degenerateLinesRasterized = false;
@@ -2838,6 +2866,14 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
        !(pdevice->instance->debug_flags & RADV_DEBUG_NO_COMPUTE_QUEUE))
       num_queue_families++;
 
+   if (pdevice->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE) {
+      if (pdevice->rad_info.ip[AMD_IP_VCN_DEC].num_queues > 0)
+         num_queue_families++;
+
+      if (radv_has_uvd(pdevice))
+         num_queue_families++;
+   }
+
    if (pQueueFamilyProperties == NULL) {
       *pCount = num_queue_families;
       return;
@@ -2871,6 +2907,33 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
          idx++;
       }
    }
+
+   if (pdevice->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE) {
+      if (pdevice->rad_info.ip[AMD_IP_VCN_DEC].num_queues > 0) {
+         if (*pCount > idx) {
+            *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
+               .queueFlags = VK_QUEUE_VIDEO_DECODE_BIT_KHR,
+               .queueCount = pdevice->rad_info.ip[AMD_IP_VCN_DEC].num_queues,
+               .timestampValidBits = 64,
+               .minImageTransferGranularity = (VkExtent3D){1, 1, 1},
+            };
+            idx++;
+         }
+      }
+
+      if (radv_has_uvd(pdevice)) {
+         if (*pCount > idx) {
+            *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
+               .queueFlags = VK_QUEUE_VIDEO_DECODE_BIT_KHR,
+               .queueCount = pdevice->rad_info.ip[AMD_IP_UVD].num_queues,
+               .timestampValidBits = 64,
+               .minImageTransferGranularity = (VkExtent3D){1, 1, 1},
+            };
+            idx++;
+         }
+      }
+   }
+
    *pCount = idx;
 }
 
@@ -2908,6 +2971,19 @@ radv_GetPhysicalDeviceQueueFamilyProperties2(VkPhysicalDevice physicalDevice, ui
             STATIC_ASSERT(ARRAY_SIZE(radv_global_queue_priorities) <= VK_MAX_GLOBAL_PRIORITY_SIZE_KHR);
             prop->priorityCount = ARRAY_SIZE(radv_global_queue_priorities);
             memcpy(&prop->priorities, radv_global_queue_priorities, sizeof(radv_global_queue_priorities));
+            break;
+         }
+         case VK_STRUCTURE_TYPE_QUEUE_FAMILY_QUERY_RESULT_STATUS_PROPERTIES_KHR: {
+            VkQueueFamilyQueryResultStatusPropertiesKHR *prop =
+               (VkQueueFamilyQueryResultStatusPropertiesKHR *)ext;
+            prop->queryResultStatusSupport = VK_FALSE;
+            break;
+         }
+         case VK_STRUCTURE_TYPE_QUEUE_FAMILY_VIDEO_PROPERTIES_KHR: {
+            VkQueueFamilyVideoPropertiesKHR *prop =
+               (VkQueueFamilyVideoPropertiesKHR *)ext;
+            if (pQueueFamilyProperties[i].queueFamilyProperties.queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR)
+               prop->videoCodecOperations = VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR | VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR;
             break;
          }
          default:
@@ -3852,6 +3928,9 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    device->physical_device = physical_device;
    simple_mtx_init(&device->trace_mtx, mtx_plain);
    simple_mtx_init(&device->pstate_mtx, mtx_plain);
+   simple_mtx_init(&device->rt_handles_mtx, mtx_plain);
+
+   device->rt_handles = _mesa_hash_table_create(NULL, _mesa_hash_u32, _mesa_key_u32_equal);
 
    device->ws = physical_device->ws;
    vk_device_set_drm_fd(&device->vk, device->ws->get_fd(device->ws));
@@ -3993,7 +4072,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
 
    if (radv_thread_trace_enabled()) {
       if (device->physical_device->rad_info.gfx_level < GFX8 ||
-          device->physical_device->rad_info.gfx_level > GFX10_3) {
+          device->physical_device->rad_info.gfx_level > GFX11) {
          fprintf(stderr, "GPU hardware not supported: refer to "
                          "the RGP documentation for the list of "
                          "supported GPUs!\n");
@@ -4012,7 +4091,9 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
               radv_spm_trace_enabled() ? "enabled" : "disabled");
 
       if (radv_spm_trace_enabled()) {
-         if (device->physical_device->rad_info.gfx_level >= GFX10) {
+         /* TODO: add SPM counters for GFX11. */
+         if (device->physical_device->rad_info.gfx_level == GFX10 ||
+             device->physical_device->rad_info.gfx_level == GFX10_3) {
             if (!radv_spm_init(device)) {
                result = VK_ERROR_INITIALIZATION_FAILED;
                goto fail;
@@ -4187,8 +4268,11 @@ fail:
          device->ws->ctx_destroy(device->hw_ctx[i]);
    }
 
+   _mesa_hash_table_destroy(device->rt_handles, NULL);
+
    simple_mtx_destroy(&device->pstate_mtx);
    simple_mtx_destroy(&device->trace_mtx);
+   simple_mtx_destroy(&device->rt_handles_mtx);
    mtx_destroy(&device->overallocation_mutex);
 
    vk_device_finish(&device->vk);
@@ -4228,6 +4312,8 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
       vk_free(&device->vk.alloc, device->private_sdma_queue);
    }
 
+   _mesa_hash_table_destroy(device->rt_handles, NULL);
+
    for (unsigned i = 0; i < RADV_NUM_HW_CTX; i++) {
       if (device->hw_ctx[i])
          device->ws->ctx_destroy(device->hw_ctx[i]);
@@ -4236,6 +4322,7 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    mtx_destroy(&device->overallocation_mutex);
    simple_mtx_destroy(&device->pstate_mtx);
    simple_mtx_destroy(&device->trace_mtx);
+   simple_mtx_destroy(&device->rt_handles_mtx);
 
    radv_device_finish_meta(device);
 
@@ -5496,7 +5583,8 @@ radv_update_preambles(struct radv_queue_state *queue, struct radv_device *device
                       struct vk_command_buffer *const *cmd_buffers, uint32_t cmd_buffer_count,
                       bool *use_perf_counters, bool *use_ace)
 {
-   if (queue->qf == RADV_QUEUE_TRANSFER)
+   if (queue->qf != RADV_QUEUE_GENERAL &&
+       queue->qf != RADV_QUEUE_COMPUTE)
       return VK_SUCCESS;
 
    /* Figure out the needs of the current submission.
@@ -5541,11 +5629,8 @@ radv_update_preambles(struct radv_queue_state *queue, struct radv_device *device
          : 0;
 
    if (device->physical_device->rad_info.gfx_level >= GFX11) {
-      /* TODO: tweak this */
-      unsigned attr_ring_size_per_se = align(1400000, 64 * 1024);
-      unsigned attr_ring_size = attr_ring_size_per_se * device->physical_device->rad_info.max_se;
-      assert(attr_ring_size <= 16 * 1024 * 1024); /* maximum size */
-      needs.attr_ring_size = attr_ring_size;
+      needs.attr_ring_size = device->physical_device->rad_info.attribute_ring_size_per_se *
+                             device->physical_device->rad_info.max_se;
    }
 
    /* Return early if we already match these needs.
@@ -6760,6 +6845,14 @@ radv_create_buffer(struct radv_device *device, const VkBufferCreateInfo *pCreate
 
    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO);
 
+#ifdef ANDROID
+   /* reject buffers that are larger than maxBufferSize on Android, which
+    * might not have VK_KHR_maintenance4
+    */
+   if (pCreateInfo->size > RADV_MAX_MEMORY_ALLOCATION_SIZE)
+      return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+#endif
+
    buffer = vk_alloc2(&device->vk.alloc, pAllocator, sizeof(*buffer), 8,
                       VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    if (buffer == NULL)
@@ -6969,8 +7062,6 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
       va += iview->nbc_view.base_address_offset;
       tile_swizzle = iview->nbc_view.tile_swizzle;
    }
-
-   tile_swizzle = radv_adjust_tile_swizzle(device->physical_device, tile_swizzle);
 
    cb->cb_color_base = va >> 8;
 
@@ -7628,7 +7719,8 @@ radv_init_sampler(struct radv_device *device, struct radv_sampler *sampler,
    unsigned filter_mode = V_008F30_SQ_IMG_FILTER_MODE_BLEND;
    unsigned depth_compare_func = V_008F30_SQ_TEX_DEPTH_COMPARE_NEVER;
    bool trunc_coord =
-      pCreateInfo->minFilter == VK_FILTER_NEAREST && pCreateInfo->magFilter == VK_FILTER_NEAREST;
+      (pCreateInfo->minFilter == VK_FILTER_NEAREST && pCreateInfo->magFilter == VK_FILTER_NEAREST) ||
+      device->physical_device->rad_info.conformant_trunc_coord;
    bool uses_border_color = pCreateInfo->addressModeU == VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER ||
                             pCreateInfo->addressModeV == VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER ||
                             pCreateInfo->addressModeW == VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
@@ -7680,17 +7772,18 @@ radv_init_sampler(struct radv_device *device, struct radv_sampler *sampler,
    sampler->state[1] = (S_008F34_MIN_LOD(radv_float_to_ufixed(CLAMP(pCreateInfo->minLod, 0, 15), 8)) |
                         S_008F34_MAX_LOD(radv_float_to_ufixed(CLAMP(pCreateInfo->maxLod, 0, 15), 8)) |
                         S_008F34_PERF_MIP(max_aniso_ratio ? max_aniso_ratio + 6 : 0));
-   sampler->state[2] = (S_008F38_LOD_BIAS(radv_float_to_sfixed(CLAMP(pCreateInfo->mipLodBias, -16, 16), 8)) |
-                        S_008F38_XY_MAG_FILTER(radv_tex_filter(pCreateInfo->magFilter, max_aniso)) |
+   sampler->state[2] = (S_008F38_XY_MAG_FILTER(radv_tex_filter(pCreateInfo->magFilter, max_aniso)) |
                         S_008F38_XY_MIN_FILTER(radv_tex_filter(pCreateInfo->minFilter, max_aniso)) |
                         S_008F38_MIP_FILTER(radv_tex_mipfilter(pCreateInfo->mipmapMode)));
    sampler->state[3] = S_008F3C_BORDER_COLOR_TYPE(radv_tex_bordercolor(border_color));
 
    if (device->physical_device->rad_info.gfx_level >= GFX10) {
       sampler->state[2] |=
+         S_008F38_LOD_BIAS(radv_float_to_sfixed(CLAMP(pCreateInfo->mipLodBias, -32, 31), 8)) |
          S_008F38_ANISO_OVERRIDE_GFX10(device->instance->disable_aniso_single_level);
    } else {
       sampler->state[2] |=
+         S_008F38_LOD_BIAS(radv_float_to_sfixed(CLAMP(pCreateInfo->mipLodBias, -16, 16), 8)) |
          S_008F38_DISABLE_LSB_CEIL(device->physical_device->rad_info.gfx_level <= GFX8) |
          S_008F38_FILTER_PREC_FIX(1) |
          S_008F38_ANISO_OVERRIDE_GFX8(device->instance->disable_aniso_single_level &&
@@ -7726,8 +7819,7 @@ radv_CreateSampler(VkDevice _device, const VkSamplerCreateInfo *pCreateInfo,
    radv_init_sampler(device, sampler, pCreateInfo);
 
    sampler->ycbcr_sampler =
-      ycbcr_conversion ? radv_sampler_ycbcr_conversion_from_handle(ycbcr_conversion->conversion)
-                       : NULL;
+      ycbcr_conversion ? vk_ycbcr_conversion_from_handle(ycbcr_conversion->conversion) : NULL;
    *pSampler = radv_sampler_to_handle(sampler);
 
    return VK_SUCCESS;

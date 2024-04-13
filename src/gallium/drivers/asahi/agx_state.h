@@ -39,6 +39,7 @@
 #include "gallium/include/pipe/p_screen.h"
 #include "gallium/include/pipe/p_state.h"
 #include "util/bitset.h"
+#include "util/disk_cache.h"
 #include "util/hash_table.h"
 #include "agx_meta.h"
 
@@ -73,6 +74,13 @@ struct PACKED agx_draw_uniforms {
 
    /* Uniform buffer objects */
    uint64_t ubo_base[PIPE_MAX_CONSTANT_BUFFERS];
+
+   /* Shader storage buffer objects */
+   uint64_t ssbo_base[PIPE_MAX_SHADER_BUFFERS];
+   uint32_t ssbo_size[PIPE_MAX_SHADER_BUFFERS];
+
+   /* LOD bias as float16 */
+   uint16_t lod_bias[PIPE_MAX_SAMPLERS];
 
    union {
       struct {
@@ -115,7 +123,9 @@ struct agx_compiled_shader {
 
 struct agx_uncompiled_shader {
    struct pipe_shader_state base;
-   struct nir_shader *nir;
+   enum pipe_shader_type type;
+   const struct nir_shader *nir;
+   uint8_t nir_sha1[20];
    struct hash_table *variants;
 
    /* Set on VS, passed to FS for linkage */
@@ -129,9 +139,18 @@ struct agx_stage {
    struct pipe_constant_buffer cb[PIPE_MAX_CONSTANT_BUFFERS];
    uint32_t cb_mask;
 
+   struct pipe_shader_buffer ssbo[PIPE_MAX_SHADER_BUFFERS];
+   uint32_t ssbo_mask;
+
+   struct pipe_image_view images[PIPE_MAX_SHADER_IMAGES];
+   uint32_t image_mask;
+
    /* Need full CSOs for u_blitter */
    struct agx_sampler_state *samplers[PIPE_MAX_SAMPLERS];
    struct agx_sampler_view *textures[PIPE_MAX_SHADER_SAMPLER_VIEWS];
+
+   /* Does any bound sampler require custom border colours? */
+   bool custom_borders;
 
    unsigned sampler_count, texture_count;
    uint32_t valid_samplers;
@@ -146,6 +165,7 @@ struct agx_batch {
 
    /* PIPE_CLEAR_* bitmask */
    uint32_t clear, draw, load, resolve;
+   bool any_draws;
 
    uint64_t uploaded_clear_color[PIPE_MAX_COLOR_BUFS];
    double clear_depth;
@@ -339,6 +359,15 @@ struct agx_sampler_state {
 
    /* Prepared descriptor */
    struct agx_sampler_packed desc;
+
+   /* Whether a custom border colour is required */
+   bool uses_custom_border;
+
+   /* Packed custom border colour, or zero if none is required */
+   struct agx_border_packed border;
+
+   /* LOD bias packed as fp16, the form we'll pass to the shader */
+   uint16_t lod_bias_as_fp16;
 };
 
 struct agx_sampler_view {
@@ -355,6 +384,7 @@ struct agx_screen {
    struct pipe_screen pscreen;
    struct agx_device dev;
    struct sw_winsys *winsys;
+   struct disk_cache *disk_cache;
 };
 
 static inline struct agx_screen *
@@ -532,7 +562,15 @@ void agx_batch_writes(struct agx_batch *batch, struct agx_resource *rsrc);
 bool agx_any_batch_uses_resource(struct agx_context *ctx,
                                  struct agx_resource *rsrc);
 
+/* 16384 is the maximum framebuffer dimension, so we use a larger width (the
+ * maximum uint16_t) as a sentinel to identify the compute batch. This ensures
+ * compute batches don't mix with graphics. This is a bit of a hack but it
+ * works.
+ */
+#define AGX_COMPUTE_BATCH_WIDTH 0xFFFF
+
 struct agx_batch *agx_get_batch(struct agx_context *ctx);
+struct agx_batch *agx_get_compute_batch(struct agx_context *ctx);
 void agx_batch_cleanup(struct agx_context *ctx, struct agx_batch *batch);
 
 /* Blit shaders */

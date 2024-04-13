@@ -431,6 +431,7 @@ loader_get_render_node(dev_t device)
 }
 
 bool loader_get_user_preferred_fd(int *fd_render_gpu, int *original_fd)
+{
    if (original_fd)
       *original_fd = *fd_render_gpu;
    return false;
@@ -636,6 +637,7 @@ loader_bind_extensions(void *data,
                match->name, match->version);
          if (!match->optional)
             ret = false;
+         continue;
       }
 
       /* The loaders rely on the loaded DRI drivers being from the same Mesa

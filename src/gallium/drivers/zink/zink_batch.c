@@ -12,7 +12,6 @@
 #ifdef VK_USE_PLATFORM_METAL_EXT
 #include "QuartzCore/CAMetalLayer.h"
 #endif
-#include "wsi_common.h"
 
 #define MAX_VIEW_COUNT 500
 
@@ -301,23 +300,20 @@ create_batch_state(struct zink_context *ctx)
       goto fail;
    }
 
+   VkCommandBuffer cmdbufs[2];
    VkCommandBufferAllocateInfo cbai = {0};
    cbai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
    cbai.commandPool = bs->cmdpool;
    cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-   cbai.commandBufferCount = 1;
+   cbai.commandBufferCount = 2;
 
-   result = VKSCR(AllocateCommandBuffers)(screen->dev, &cbai, &bs->cmdbuf);
+   result = VKSCR(AllocateCommandBuffers)(screen->dev, &cbai, cmdbufs);
    if (result != VK_SUCCESS) {
       mesa_loge("ZINK: vkAllocateCommandBuffers failed (%s)", vk_Result_to_str(result));
       goto fail;
    }
-
-   result = VKSCR(AllocateCommandBuffers)(screen->dev, &cbai, &bs->barrier_cmdbuf);
-   if (result != VK_SUCCESS) {
-      mesa_loge("ZINK: vkAllocateCommandBuffers failed (%s)", vk_Result_to_str(result));
-      goto fail;
-   }
+   bs->cmdbuf = cmdbufs[0];
+   bs->barrier_cmdbuf = cmdbufs[1];
 
 #define SET_CREATE_OR_FAIL(ptr) \
    if (!_mesa_set_init(ptr, bs, _mesa_hash_pointer, _mesa_key_pointer_equal)) \
@@ -435,11 +431,33 @@ zink_reset_batch(struct zink_context *ctx, struct zink_batch *batch)
    batch->has_work = false;
 }
 
+void
+zink_batch_bind_db(struct zink_context *ctx)
+{
+   struct zink_screen *screen = zink_screen(ctx->base.screen);
+   struct zink_batch *batch = &ctx->batch;
+   unsigned count = 1;
+   VkDescriptorBufferBindingInfoEXT infos[2] = {0};
+   infos[0].sType = VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT;
+   infos[0].address = batch->state->dd.db->obj->bda;
+   infos[0].usage = batch->state->dd.db->obj->vkusage;
+   assert(infos[0].usage);
+
+   if (ctx->dd.bindless_init) {
+      infos[1].sType = VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT;
+      infos[1].address = ctx->dd.db.bindless_db->obj->bda;
+      infos[1].usage = ctx->dd.db.bindless_db->obj->vkusage;
+      assert(infos[1].usage);
+      count++;
+   }
+   VKSCR(CmdBindDescriptorBuffersEXT)(batch->state->cmdbuf, count, infos);
+   batch->state->dd.db_bound = true;
+}
+
 /* called on context creation and after flushing an old batch */
 void
 zink_start_batch(struct zink_context *ctx, struct zink_batch *batch)
 {
-   struct zink_screen *screen = zink_screen(ctx->base.screen);
    zink_reset_batch(ctx, batch);
 
    batch->state->usage.unflushed = true;
@@ -463,6 +481,7 @@ zink_start_batch(struct zink_context *ctx, struct zink_batch *batch)
    }
 
 #ifdef HAVE_RENDERDOC_APP_H
+   struct zink_screen *screen = zink_screen(ctx->base.screen);
    if (VKCTX(CmdInsertDebugUtilsLabelEXT) && screen->renderdoc_api) {
       VkDebugUtilsLabelEXT capture_label;
       /* Magic fallback which lets us bridge the Wine barrier over to Linux RenderDoc. */
@@ -482,21 +501,9 @@ zink_start_batch(struct zink_context *ctx, struct zink_batch *batch)
    }
 #endif
 
-   if (!ctx->queries_disabled)
-      zink_resume_queries(ctx, batch);
-
    /* descriptor buffers must always be bound at the start of a batch */
-   if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB && !(ctx->flags & ZINK_CONTEXT_COPY_ONLY)) {
-      unsigned count = screen->compact_descriptors ? 3 : 5;
-      VkDescriptorBufferBindingInfoEXT infos[ZINK_DESCRIPTOR_NON_BINDLESS_TYPES] = {0};
-      for (unsigned i = 0; i < count; i++) {
-         infos[i].sType = VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT;
-         infos[i].address = batch->state->dd.db[i]->obj->bda;
-         infos[i].usage = batch->state->dd.db[i]->obj->vkusage;
-         assert(infos[i].usage);
-      }
-      VKSCR(CmdBindDescriptorBuffersEXT)(batch->state->cmdbuf, count, infos);
-   }
+   if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB && !(ctx->flags & ZINK_CONTEXT_COPY_ONLY))
+      zink_batch_bind_db(ctx);
 }
 
 /* common operations to run post submit; split out for clarity */

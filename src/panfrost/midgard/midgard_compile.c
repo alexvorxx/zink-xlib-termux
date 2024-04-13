@@ -836,11 +836,6 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
       ALU_CASE_CMP(b2f16, iand);
       ALU_CASE_CMP(b2i32, iand);
 
-      /* Likewise, we don't have a dedicated f2b32 instruction, but
-       * we can do a "not equal to 0.0" test. */
-
-      ALU_CASE_CMP(f2b32, fne);
-
       ALU_CASE(frcp, frcp);
       ALU_CASE(frsq, frsqrt);
       ALU_CASE(fsqrt, fsqrt);
@@ -1711,9 +1706,6 @@ mir_get_branch_cond(nir_src *src, bool *invert)
 static uint8_t
 output_load_rt_addr(compiler_context *ctx, nir_intrinsic_instr *instr)
 {
-   if (ctx->inputs->is_blend)
-      return MIDGARD_COLOR_RT0 + ctx->inputs->blend.rt;
-
    unsigned loc = nir_intrinsic_io_semantics(instr).location;
 
    if (loc >= FRAG_RESULT_DATA0)
@@ -2111,21 +2103,26 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
       emit_special(ctx, instr, 97);
       break;
 
-   /* Midgard doesn't seem to want special handling, though we do need to
-    * take care when scheduling to avoid incorrect reordering.
-    */
-   case nir_intrinsic_memory_barrier:
-   case nir_intrinsic_memory_barrier_buffer:
-   case nir_intrinsic_memory_barrier_image:
-   case nir_intrinsic_memory_barrier_shared:
-   case nir_intrinsic_group_memory_barrier:
-      schedule_barrier(ctx);
-      break;
-
    case nir_intrinsic_control_barrier:
       schedule_barrier(ctx);
       emit_control_barrier(ctx);
       schedule_barrier(ctx);
+      break;
+
+   case nir_intrinsic_scoped_barrier:
+      if (nir_intrinsic_execution_scope(instr) != NIR_SCOPE_NONE) {
+         schedule_barrier(ctx);
+         emit_control_barrier(ctx);
+         schedule_barrier(ctx);
+      } else if (nir_intrinsic_memory_scope(instr) != NIR_SCOPE_NONE) {
+         /* Midgard doesn't seem to want special handling, though we do need to
+          * take care when scheduling to avoid incorrect reordering.
+          *
+          * Note this is an "else if" since the handling for the execution scope
+          * case already covers the case when both scopes are present.
+          */
+         schedule_barrier(ctx);
+      }
       break;
 
       ATOMIC_CASE(ctx, instr, add, add);
@@ -2940,6 +2937,8 @@ emit_if(struct compiler_context *ctx, nir_if *nif)
 static void
 emit_loop(struct compiler_context *ctx, nir_loop *nloop)
 {
+   assert(!nir_loop_has_continue_construct(nloop));
+
    /* Remember where we are */
    midgard_block *start_block = ctx->current_block;
 
@@ -3159,10 +3158,6 @@ midgard_compile_shader_nir(nir_shader *nir,
    NIR_PASS_V(nir, nir_lower_var_copies);
    NIR_PASS_V(nir, nir_lower_vars_to_ssa);
 
-   NIR_PASS_V(nir, pan_lower_framebuffer, inputs->rt_formats,
-              inputs->raw_fmt_mask, inputs->is_blend,
-              ctx->quirks & MIDGARD_BROKEN_BLEND_LOADS);
-
    NIR_PASS_V(nir, nir_lower_io, nir_var_shader_in | nir_var_shader_out,
               glsl_type_size, 0);
 
@@ -3181,6 +3176,10 @@ midgard_compile_shader_nir(nir_shader *nir,
    NIR_PASS_V(nir, pan_nir_lower_64bit_intrin);
 
    NIR_PASS_V(nir, midgard_nir_lower_global_load);
+
+   NIR_PASS_V(nir, pan_lower_framebuffer, inputs->rt_formats,
+              inputs->raw_fmt_mask, inputs->is_blend,
+              ctx->quirks & MIDGARD_BROKEN_BLEND_LOADS);
 
    /* Collect varyings after lowering I/O */
    pan_nir_collect_varyings(nir, info);

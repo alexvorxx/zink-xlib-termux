@@ -274,6 +274,8 @@ enum agx_convert {
 
 enum agx_lod_mode {
    AGX_LOD_MODE_AUTO_LOD = 0,
+   AGX_LOD_MODE_AUTO_LOD_BIAS_UNIFORM = 1,
+   AGX_LOD_MODE_LOD_MIN_UNIFORM = 2,
    AGX_LOD_MODE_AUTO_LOD_BIAS = 5,
    AGX_LOD_MODE_LOD_MIN = 6,
    AGX_LOD_MODE_LOD_GRAD = 4,
@@ -319,6 +321,7 @@ typedef struct {
       enum agx_icond icond;
       enum agx_fcond fcond;
       enum agx_round round;
+      enum agx_atomic_opc atomic_opc;
       enum agx_lod_mode lod_mode;
       struct agx_block *target;
    };
@@ -333,9 +336,10 @@ typedef struct {
    bool invert_cond : 1;
 
    /* TODO: Handle tex ops more efficient */
-   enum agx_dim dim : 4;
-   bool offset      : 1;
-   bool shadow      : 1;
+   enum agx_dim dim       : 4;
+   bool offset            : 1;
+   bool shadow            : 1;
+   enum agx_gather gather : 3;
 
    /* Final st_vary op */
    bool last : 1;
@@ -354,7 +358,7 @@ typedef struct {
    bool saturate : 1;
    unsigned mask : 4;
 
-   unsigned padding : 11;
+   unsigned padding : 8;
 } agx_instr;
 
 static inline void
@@ -471,21 +475,22 @@ agx_size_for_bits(unsigned bits)
 }
 
 static inline agx_index
+agx_nir_ssa_index(nir_ssa_def *ssa)
+{
+   return agx_get_index(ssa->index, agx_size_for_bits(ssa->bit_size));
+}
+
+static inline agx_index
 agx_src_index(nir_src *src)
 {
    assert(src->is_ssa);
-
-   return agx_get_index(src->ssa->index,
-                        agx_size_for_bits(nir_src_bit_size(*src)));
+   return agx_nir_ssa_index(src->ssa);
 }
 
 static inline agx_index
 agx_dest_index(nir_dest *dst)
 {
-   assert(dst->is_ssa);
-
-   return agx_get_index(dst->ssa.index,
-                        agx_size_for_bits(nir_dest_bit_size(*dst)));
+   return agx_nir_ssa_index(&dst->ssa);
 }
 
 static inline agx_index
@@ -782,6 +787,7 @@ void agx_print_block(agx_block *block, FILE *fp);
 void agx_print_shader(agx_context *ctx, FILE *fp);
 void agx_optimizer(agx_context *ctx);
 void agx_lower_pseudo(agx_context *ctx);
+void agx_lower_uniform_sources(agx_context *ctx);
 void agx_opt_cse(agx_context *ctx);
 void agx_dce(agx_context *ctx);
 void agx_ra(agx_context *ctx);
@@ -819,13 +825,13 @@ void agx_emit_parallel_copies(agx_builder *b, struct agx_copy *copies,
 void agx_compute_liveness(agx_context *ctx);
 void agx_liveness_ins_update(BITSET_WORD *live, agx_instr *I);
 
-bool agx_lower_resinfo(nir_shader *s);
 bool agx_nir_lower_zs_emit(nir_shader *s);
-bool agx_nir_lower_array_texture(nir_shader *s);
+bool agx_nir_lower_texture(nir_shader *s, bool support_lod_bias);
 bool agx_nir_opt_preamble(nir_shader *s, unsigned *preamble_size);
 bool agx_nir_lower_load_mask(nir_shader *shader);
 bool agx_nir_lower_address(nir_shader *shader);
 bool agx_nir_lower_ubo(nir_shader *shader);
+bool agx_nir_lower_shared_bitsize(nir_shader *shader);
 
 #ifdef __cplusplus
 } /* extern C */

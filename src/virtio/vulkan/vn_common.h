@@ -101,6 +101,8 @@ enum vn_debug {
    VN_DEBUG_VTEST = 1ull << 2,
    VN_DEBUG_WSI = 1ull << 3,
    VN_DEBUG_NO_ABORT = 1ull << 4,
+   VN_DEBUG_LOG_CTX_INFO = 1ull << 5,
+   VN_DEBUG_CACHE = 1ull << 6,
 };
 
 enum vn_perf {
@@ -111,6 +113,7 @@ enum vn_perf {
    VN_PERF_NO_FENCE_FEEDBACK = 1ull << 4,
    VN_PERF_NO_MEMORY_SUBALLOC = 1ull << 5,
    VN_PERF_NO_CMD_BATCHING = 1ull << 6,
+   VN_PERF_NO_TIMELINE_SEM_FEEDBACK = 1ull << 7,
 };
 
 typedef uint64_t vn_object_id;

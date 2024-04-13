@@ -469,12 +469,6 @@ emit_alu(struct ir3_context *ctx, nir_alu_instr *alu)
       dst[0] = create_cov(ctx, create_cov(ctx, src[0], 32, nir_op_f2f16_rtne),
                           16, nir_op_f2f32);
       break;
-   case nir_op_f2b1:
-      dst[0] = ir3_CMPS_F(
-         b, src[0], 0,
-         create_immed_typed(b, 0, type_float_size(bs[0])), 0);
-      dst[0]->cat2.condition = IR3_COND_NE;
-      break;
 
    case nir_op_b2b1:
       /* b2b1 will appear when translating from
@@ -887,7 +881,7 @@ emit_intrinsic_load_ubo_ldc(struct ir3_context *ctx, nir_intrinsic_instr *intr,
    ldc->dsts[0]->wrmask = MASK(ncomp);
    ldc->cat6.iim_val = ncomp;
    ldc->cat6.d = nir_intrinsic_component(intr);
-   ldc->cat6.type = TYPE_U32;
+   ldc->cat6.type = utype_dst(intr->dest);
 
    ir3_handle_bindless_cat6(ldc, intr->src[0]);
    if (ldc->flags & IR3_INSTR_B)
@@ -3682,6 +3676,7 @@ emit_if(struct ir3_context *ctx, nir_if *nif)
 static void
 emit_loop(struct ir3_context *ctx, nir_loop *nloop)
 {
+   assert(!nir_loop_has_continue_construct(nloop));
    unsigned old_loop_id = ctx->loop_id;
    ctx->loop_id = ctx->so->loops + 1;
    ctx->loop_depth++;

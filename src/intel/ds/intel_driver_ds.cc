@@ -191,13 +191,11 @@ static void
 send_descriptors(IntelRenderpassDataSource::TraceContext &ctx,
                  struct intel_ds_device *device)
 {
-   struct intel_ds_queue *queue;
-
    PERFETTO_LOG("Sending renderstage descriptors");
 
    device->event_id = 0;
    device->current_app_event_iid = device->start_app_event_iids;
-   u_vector_foreach(queue, &device->queues) {
+   list_for_each_entry_safe(struct intel_ds_queue, queue, &device->queues, link) {
       for (uint32_t s = 0; s < ARRAY_SIZE(queue->stages); s++) {
          queue->stages[s].start_ns[0] = 0;
       }
@@ -231,7 +229,7 @@ send_descriptors(IntelRenderpassDataSource::TraceContext &ctx,
       }
 
       /* Emit all the IID picked at device/queue creation. */
-      u_vector_foreach(queue, &device->queues) {
+      list_for_each_entry_safe(struct intel_ds_queue, queue, &device->queues, link) {
          for (unsigned s = 0; s < INTEL_DS_QUEUE_STAGE_N_STAGES; s++) {
             {
                /* We put the stage number in there so that all rows are order
@@ -389,7 +387,7 @@ custom_trace_payload_as_extra_end_stall(perfetto::protos::pbzero::GpuRenderStage
       auto data = event->add_extra_data();
       data->set_name("stall_reason");
 
-      snprintf(buf, sizeof(buf), "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s : %s",
+      snprintf(buf, sizeof(buf), "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s : %s",
               (payload->flags & INTEL_DS_DEPTH_CACHE_FLUSH_BIT) ? "+depth_flush" : "",
               (payload->flags & INTEL_DS_DATA_CACHE_FLUSH_BIT) ? "+dc_flush" : "",
               (payload->flags & INTEL_DS_HDC_PIPELINE_FLUSH_BIT) ? "+hdc_flush" : "",
@@ -405,6 +403,7 @@ custom_trace_payload_as_extra_end_stall(perfetto::protos::pbzero::GpuRenderStage
               (payload->flags & INTEL_DS_HDC_PIPELINE_FLUSH_BIT) ? "+hdc_flush" : "",
               (payload->flags & INTEL_DS_CS_STALL_BIT) ? "+cs_stall" : "",
               (payload->flags & INTEL_DS_UNTYPED_DATAPORT_CACHE_FLUSH_BIT) ? "+udp_flush" : "",
+              (payload->flags & INTEL_DS_END_OF_PIPE_BIT) ? "+eop" : "",
               payload->reason ? payload->reason : "unknown");
 
       assert(strlen(buf) > 0);
@@ -607,7 +606,7 @@ intel_ds_device_init(struct intel_ds_device *device,
    device->info = *devinfo;
    device->iid = get_iid();
    device->api = api;
-   u_vector_init(&device->queues, 4, sizeof(struct intel_ds_queue));
+   list_inithead(&device->queues);
 
    /* Reserve iids for the application generated events */
    device->start_app_event_iids = 1ull << 32;
@@ -620,16 +619,14 @@ intel_ds_device_fini(struct intel_ds_device *device)
 {
    u_trace_context_fini(&device->trace_context);
    _mesa_hash_table_destroy(device->app_events, NULL);
-   u_vector_finish(&device->queues);
 }
 
 struct intel_ds_queue *
-intel_ds_device_add_queue(struct intel_ds_device *device,
-                          const char *fmt_name,
-                          ...)
+intel_ds_device_init_queue(struct intel_ds_device *device,
+                           struct intel_ds_queue *queue,
+                           const char *fmt_name,
+                           ...)
 {
-   struct intel_ds_queue *queue =
-      (struct intel_ds_queue *) u_vector_add(&device->queues);
    va_list ap;
 
    memset(queue, 0, sizeof(*queue));
@@ -644,6 +641,8 @@ intel_ds_device_add_queue(struct intel_ds_device *device,
       queue->stages[s].queue_iid = get_iid();
       queue->stages[s].stage_iid = get_iid();
    }
+
+   list_add(&queue->link, &device->queues);
 
    return queue;
 }

@@ -399,6 +399,8 @@ zink_draw(struct pipe_context *pctx,
       assert(index_size != 1 || screen->info.have_EXT_index_type_uint8);
    }
 
+   ctx->was_line_loop = dinfo->was_line_loop;
+
    bool have_streamout = !!ctx->num_so_targets;
    if (have_streamout) {
       zink_emit_xfb_counter_barrier(ctx);
@@ -434,7 +436,7 @@ zink_draw(struct pipe_context *pctx,
       res->obj->unordered_read = false;
    }
 
-   zink_query_update_gs_states(ctx, dinfo->was_line_loop);
+   zink_query_update_gs_states(ctx);
 
    if (unlikely(zink_debug & ZINK_DEBUG_SYNC)) {
       zink_batch_no_rp(ctx);
@@ -480,6 +482,14 @@ zink_draw(struct pipe_context *pctx,
          lines_changed =
             (ctx->gfx_pipeline_state.rast_prim == PIPE_PRIM_LINES) !=
             (rast_prim == PIPE_PRIM_LINES);
+         static bool rect_warned = false;
+         if (DYNAMIC_STATE >= ZINK_DYNAMIC_STATE3 && rast_prim == PIPE_PRIM_LINES && !rect_warned && 
+             (VkLineRasterizationModeEXT)rast_state->hw_state.line_mode == VK_LINE_RASTERIZATION_MODE_RECTANGULAR_EXT) {
+            if (screen->info.line_rast_feats.rectangularLines)
+               rect_warned = true;
+            else
+               warn_missing_feature(rect_warned, "rectangularLines");
+         }
 
          ctx->gfx_pipeline_state.rast_prim = rast_prim;
          rast_prim_changed = true;
@@ -632,7 +642,7 @@ zink_draw(struct pipe_context *pctx,
       VKCTX(CmdSetProvokingVertexModeEXT)(batch->state->cmdbuf, rast_state->hw_state.pv_last ?
                                                                 VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT :
                                                                 VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT);
-      VKCTX(CmdSetLineRasterizationModeEXT)(batch->state->cmdbuf, (VkLineRasterizationModeEXT)rast_state->hw_state.line_mode);
+      VKCTX(CmdSetLineRasterizationModeEXT)(batch->state->cmdbuf, rast_state->dynamic_line_mode);
       if (screen->info.dynamic_state3_feats.extendedDynamicState3LineStippleEnable)
          VKCTX(CmdSetLineStippleEnableEXT)(batch->state->cmdbuf, rast_state->hw_state.line_stipple_enable);
    }
@@ -991,6 +1001,8 @@ zink_launch_grid(struct pipe_context *pctx, const struct pipe_grid_info *info)
 
    batch->work_count++;
    zink_batch_no_rp(ctx);
+   if (!ctx->queries_disabled)
+      zink_resume_cs_query(ctx);
    if (info->indirect) {
       VKCTX(CmdDispatchIndirect)(batch->state->cmdbuf, zink_resource(info->indirect)->obj->buffer, info->indirect_offset);
       zink_batch_reference_resource_rw(batch, zink_resource(info->indirect), false);
@@ -1206,4 +1218,19 @@ zink_init_grid_functions(struct zink_context *ctx)
     * initialization of callbacks in upper layers (such as u_threaded_context).
     */
    ctx->base.launch_grid = zink_invalid_launch_grid;
+}
+
+void
+zink_init_screen_pipeline_libs(struct zink_screen *screen)
+{
+   _mesa_set_init(&screen->pipeline_libs[0], screen, hash_gfx_program<0>, equals_gfx_program<0>);
+   _mesa_set_init(&screen->pipeline_libs[1], screen, hash_gfx_program<1>, equals_gfx_program<1>);
+   _mesa_set_init(&screen->pipeline_libs[2], screen, hash_gfx_program<2>, equals_gfx_program<2>);
+   _mesa_set_init(&screen->pipeline_libs[3], screen, hash_gfx_program<3>, equals_gfx_program<3>);
+   _mesa_set_init(&screen->pipeline_libs[4], screen, hash_gfx_program<4>, equals_gfx_program<4>);
+   _mesa_set_init(&screen->pipeline_libs[5], screen, hash_gfx_program<5>, equals_gfx_program<5>);
+   _mesa_set_init(&screen->pipeline_libs[6], screen, hash_gfx_program<6>, equals_gfx_program<6>);
+   _mesa_set_init(&screen->pipeline_libs[7], screen, hash_gfx_program<7>, equals_gfx_program<7>);
+   for (unsigned i = 0; i < ARRAY_SIZE(screen->pipeline_libs_lock); i++)
+      simple_mtx_init(&screen->pipeline_libs_lock[i], mtx_plain);
 }

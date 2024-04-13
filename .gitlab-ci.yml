@@ -20,7 +20,7 @@ variables:
   FD_FARM: "online"
   COLLABORA_FARM: "online"
   MICROSOFT_FARM: "online"
-  LIMA_FARM: "offline"
+  LIMA_FARM: "online"
   IGALIA_FARM: "online"
   ANHOLT_FARM: "online"
   VALVE_FARM: "online"
@@ -182,7 +182,7 @@ test-docs-mr:
       when: on_success
     # Other cases default to never
 
-lincheck-docs:
+linkcheck-docs:
   extends: .docs-base
   # Cancel job if a newer commit is pushed to the same branch
   interruptible: true
@@ -203,7 +203,6 @@ lincheck-docs:
       - VERSION
       - bin/git_sha1_gen.py
       - bin/install_megadrivers.py
-      - bin/meson_get_version.py
       - bin/symbols-check.py
       # GitLab CI
       - .gitlab-ci.yml

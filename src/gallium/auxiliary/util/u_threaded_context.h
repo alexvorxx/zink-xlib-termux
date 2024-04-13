@@ -444,7 +444,11 @@ struct tc_renderpass_info {
          bool zsbuf_invalidate : 1;
          /* whether a draw occurs */
          bool has_draw : 1;
-         uint8_t pad : 3;
+         /* whether a framebuffer resolve occurs on cbuf[0] */
+         bool has_resolve : 1;
+         /* whether queries are ended during this renderpass */
+         bool has_query_ends : 1;
+         uint8_t pad : 1;
          /* 32 bits offset */
          /* bitmask of color buffers using fbfetch */
          uint8_t cbuf_fbfetch;
@@ -585,6 +589,8 @@ struct threaded_context {
    bool seen_fb_state;
    /* whether a renderpass is currently active */
    bool in_renderpass;
+   /* whether a query has ended more recently than a draw */
+   bool query_ended;
 
    bool seen_streamout_buffers;
    bool seen_shader_buffers[PIPE_SHADER_TYPES];
@@ -619,8 +625,9 @@ struct threaded_context {
 
    struct tc_batch batch_slots[TC_MAX_BATCHES];
    struct tc_buffer_list buffer_lists[TC_MAX_BUFFER_LISTS];
-   /* the curent framebuffer attachments; [PIPE_MAX_COLOR_BUFS] is the zsbuf */
+   /* the current framebuffer attachments; [PIPE_MAX_COLOR_BUFS] is the zsbuf */
    struct pipe_resource *fb_resources[PIPE_MAX_COLOR_BUFS + 1];
+   struct pipe_resource *fb_resolve;
    /* accessed by main thread; preserves info across batches */
    struct tc_renderpass_info *renderpass_info_recording;
    /* accessed by driver thread */

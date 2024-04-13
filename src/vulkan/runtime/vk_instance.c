@@ -135,6 +135,8 @@ vk_instance_init(struct vk_instance *instance,
        !VERSION_IS_1_0(instance->app_info.api_version))
       return VK_ERROR_INCOMPATIBLE_DRIVER;
 
+   instance->supported_extensions = supported_extensions;
+
    for (uint32_t i = 0; i < pCreateInfo->enabledExtensionCount; i++) {
       int idx;
       for (idx = 0; idx < VK_INSTANCE_EXTENSION_COUNT; idx++) {
@@ -394,8 +396,11 @@ enumerate_drm_physical_devices_locked(struct vk_instance *instance)
 static VkResult
 enumerate_physical_devices_locked(struct vk_instance *instance)
 {
-   if (instance->physical_devices.enumerate)
-      return instance->physical_devices.enumerate(instance);
+   if (instance->physical_devices.enumerate) {
+      VkResult result = instance->physical_devices.enumerate(instance);
+      if (result != VK_ERROR_INCOMPATIBLE_DRIVER)
+         return result;
+   }
 
    VkResult result = VK_SUCCESS;
 

@@ -70,6 +70,8 @@ enum fd6_state_id {
    FD6_GROUP_DS_BINDLESS,
    FD6_GROUP_GS_BINDLESS,
    FD6_GROUP_FS_BINDLESS,
+   FD6_GROUP_PRIM_MODE_SYSMEM,
+   FD6_GROUP_PRIM_MODE_GMEM,
 
    /*
     * Virtual state-groups, which don't turn into a CP_SET_DRAW_STATE group
@@ -145,6 +147,8 @@ fd6_state_take_group(struct fd6_state *state, struct fd_ringbuffer *stateobj,
          [FD6_GROUP_PROG_INTERP] = ENABLE_DRAW,
          [FD6_GROUP_FS_TEX] = ENABLE_DRAW,
          [FD6_GROUP_FS_BINDLESS] = ENABLE_DRAW,
+         [FD6_GROUP_PRIM_MODE_SYSMEM] = CP_SET_DRAW_STATE__0_SYSMEM | CP_SET_DRAW_STATE__0_BINNING,
+         [FD6_GROUP_PRIM_MODE_GMEM] = CP_SET_DRAW_STATE__0_GMEM,
    };
    assert(state->num_groups < ARRAY_SIZE(state->groups));
    struct fd6_state_group *g = &state->groups[state->num_groups++];
@@ -325,8 +329,9 @@ fd6_gl2spacing(enum gl_tess_spacing spacing)
 void fd6_emit_3d_state(struct fd_ringbuffer *ring,
                        struct fd6_emit *emit) assert_dt;
 
+struct fd6_compute_state;
 void fd6_emit_cs_state(struct fd_context *ctx, struct fd_ringbuffer *ring,
-                       struct ir3_shader_variant *cp) assert_dt;
+                       struct fd6_compute_state *cs) assert_dt;
 
 void fd6_emit_restore(struct fd_batch *batch, struct fd_ringbuffer *ring);
 

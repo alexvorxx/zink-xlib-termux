@@ -1561,13 +1561,6 @@ ntt_emit_alu(struct ntt_compile *c, nir_alu_instr *instr)
                   ntt_64bit_1f(c));
          break;
 
-      case nir_op_f2b32:
-         if (src_64)
-            ntt_DSNE(c, dst, src[0], ureg_imm1f(c->ureg, 0));
-         else
-            ntt_FSNE(c, dst, src[0], ureg_imm1f(c->ureg, 0));
-         break;
-
       case nir_op_b2i32:
          ntt_AND(c, dst, src[0], ureg_imm1u(c->ureg, 1));
          break;
@@ -2959,6 +2952,7 @@ ntt_emit_if(struct ntt_compile *c, nir_if *if_stmt)
 static void
 ntt_emit_loop(struct ntt_compile *c, nir_loop *loop)
 {
+   assert(!nir_loop_has_continue_construct(loop));
    ntt_BGNLOOP(c);
    ntt_emit_cf_list(c, &loop->body);
    ntt_ENDLOOP(c);

@@ -59,7 +59,6 @@ libradv_files = files(
   'winsys/null/radv_null_winsys.c',
   'winsys/null/radv_null_winsys_public.h',
   'radv_acceleration_structure.c',
-  'radv_acceleration_structure.h',
   'radv_android.c',
   'radv_cmd_buffer.c',
   'radv_cp_reg_shadowing.c',
@@ -93,7 +92,7 @@ libradv_files = files(
   'radv_nir_apply_pipeline_layout.c',
   'radv_nir_lower_abi.c',
   'radv_nir_lower_ray_queries.c',
-  'radv_nir_lower_ycbcr_textures.c',
+  'radv_nir_lower_vs_inputs.c',
   'radv_perfcounter.c',
   'radv_pipeline.c',
   'radv_pipeline_cache.c',
@@ -113,6 +112,7 @@ libradv_files = files(
   'radv_spm.c',
   'radv_sqtt.c',
   'radv_query.c',
+  'radv_video.c',
   'radv_wsi.c',
   'si_cmd_buffer.c',
   'vk_format.h',
@@ -170,8 +170,13 @@ libvulkan_radeon_ld_args = []
 libvulkan_radeon_link_depends = []
 
 if with_ld_version_script
-  libvulkan_radeon_ld_args += ['-Wl,--version-script', join_paths(meson.current_source_dir(), 'vulkan.sym')]
-  libvulkan_radeon_link_depends += files('vulkan.sym')
+  if with_platform_android
+    libvulkan_radeon_ld_args += ['-Wl,--version-script', join_paths(meson.current_source_dir(), 'vulkan-android.sym')]
+    libvulkan_radeon_link_depends += files('vulkan-android.sym')
+  else
+    libvulkan_radeon_ld_args += ['-Wl,--version-script', join_paths(meson.current_source_dir(), 'vulkan.sym')]
+    libvulkan_radeon_link_depends += files('vulkan.sym')
+  endif
 endif
 
 radv_build_id = get_option('radv-build-id')

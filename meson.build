@@ -54,6 +54,9 @@ pre_args = [
   '-DPACKAGE_VERSION="@0@"'.format(meson.project_version()),
   '-DPACKAGE_BUGREPORT="https://gitlab.freedesktop.org/mesa/mesa/-/issues"',
 ]
+# Arguments for c or cpp compiler, can be compiler options
+c_cpp_args = []
+
 c_args = []
 cpp_args = []
 
@@ -112,24 +115,21 @@ with_opengl = get_option('opengl')
 
 with_gles1 = get_option('gles1') \
   .require(with_shared_glapi, error_message : 'OpengGL ES 1.x requires shared-glapi') \
-  .require(with_opengl, error_message : 'building OpenGL ES 1.x without OpenGL is not supported.') \
   .allowed()
 
 with_gles2 = get_option('gles2') \
   .require(with_shared_glapi, error_message : 'OpengGL ES 2.x requires shared-glapi') \
-  .require(with_opengl, error_message : 'building OpenGL ES 2.x without OpenGL is not supported.') \
   .allowed()
+
+pre_args += '-DHAVE_OPENGL=@0@'.format(with_opengl ? '1' : '0')
+pre_args += '-DHAVE_OPENGL_ES_1=@0@'.format(with_gles1 ? '1' : '0')
+pre_args += '-DHAVE_OPENGL_ES_2=@0@'.format(with_gles2 ? '1' : '0')
 
 with_any_opengl = with_opengl or with_gles1 or with_gles2
 # Only build shared_glapi if at least one OpenGL API is enabled
 with_shared_glapi = with_shared_glapi and with_any_opengl
 
 system_has_kms_drm = ['openbsd', 'netbsd', 'freebsd', 'gnu/kfreebsd', 'dragonfly', 'linux', 'sunos', 'android'].contains(host_machine.system())
-
-with_freedreno_kgsl = get_option('freedreno-kgsl')
-if with_freedreno_kgsl
-  system_has_kms_drm = false
-endif
 
 gallium_drivers = get_option('gallium-drivers')
 if gallium_drivers.contains('auto')
@@ -148,6 +148,10 @@ if gallium_drivers.contains('auto')
     elif ['mips', 'mips64', 'riscv32', 'riscv64'].contains(host_machine.cpu_family())
       gallium_drivers = [
         'r300', 'r600', 'radeonsi', 'nouveau', 'virgl', 'swrast'
+      ]
+    elif ['loongarch64'].contains(host_machine.cpu_family())
+      gallium_drivers = [
+        'r300', 'r600', 'radeonsi', 'nouveau', 'virgl', 'etnaviv', 'swrast'
       ]
     else
       error('Unknown architecture @0@. Please pass -Dgallium-drivers to set driver options. Patches gladly accepted to fix this.'.format(
@@ -184,6 +188,13 @@ foreach gallium_driver : gallium_drivers
   pre_args += '-DHAVE_@0@'.format(gallium_driver.to_upper())
 endforeach
 
+freedreno_kmds = get_option('freedreno-kmds')
+# If building only vulkan with only kgsl kmd support, there is no libdrm
+# dependency:
+if freedreno_kmds.length() == 1 and freedreno_kmds.contains('kgsl') and not with_gallium_freedreno
+  system_has_kms_drm = false
+endif
+
 with_gallium = gallium_drivers.length() != 0
 with_gallium_kmsro = system_has_kms_drm and [
   with_gallium_asahi,
@@ -213,6 +224,8 @@ if _vulkan_drivers.contains('auto')
       _vulkan_drivers = ['swrast']
     elif ['mips', 'mips64', 'riscv32', 'riscv64'].contains(host_machine.cpu_family())
       _vulkan_drivers = ['amd', 'swrast']
+    elif ['loongarch64'].contains(host_machine.cpu_family())
+      _vulkan_drivers = ['amd', 'swrast']
     else
       error('Unknown architecture @0@. Please pass -Dvulkan-drivers to set driver options. Patches gladly accepted to fix this.'.format(
             host_machine.cpu_family()))
@@ -233,7 +246,6 @@ with_freedreno_vk = _vulkan_drivers.contains('freedreno')
 with_panfrost_vk = _vulkan_drivers.contains('panfrost')
 with_swrast_vk = _vulkan_drivers.contains('swrast')
 with_virtio_vk = _vulkan_drivers.contains('virtio-experimental')
-with_freedreno_virtio = get_option('freedreno-virtio')
 with_broadcom_vk = _vulkan_drivers.contains('broadcom')
 with_imagination_vk = _vulkan_drivers.contains('imagination-experimental')
 with_imagination_srv = get_option('imagination-srv')
@@ -317,7 +329,9 @@ with_platform_windows = _platforms.contains('windows')
 
 with_glx = get_option('glx')
 if with_glx == 'auto'
-  if with_platform_android
+  if not with_opengl
+    with_glx = 'disabled'
+  elif with_platform_android
     with_glx = 'disabled'
   elif with_dri
     with_glx = 'dri'
@@ -342,6 +356,10 @@ if with_glx == 'dri'
    endif
 endif
 
+if not with_opengl and with_glx != 'disabled'
+  error('Building GLX without OpenGL is not supported.') \
+endif
+
 if not (with_dri or with_gallium or with_glx != 'disabled')
   with_gles1 = false
   with_gles2 = false
@@ -358,40 +376,6 @@ with_gbm = get_option('gbm') \
 with_xlib_lease = get_option('xlib-lease') \
   .require(with_platform_x11 and system_has_kms_drm, error_message : 'xlib-lease requires X11 and KMS/DRM support') \
   .allowed()
-
-if with_platform_wayland
-  c_args += '-DVK_USE_PLATFORM_WAYLAND_KHR'
-  #add this once aco and other places can build with it
-  #cpp_args += '-DVK_USE_PLATFORM_WAYLAND_KHR'
-endif
-if with_platform_x11
-  c_args += ['-DVK_USE_PLATFORM_XCB_KHR', '-DVK_USE_PLATFORM_XLIB_KHR']
-  #add this once aco and other places can build with it
-  #cpp_args += ['-DVK_USE_PLATFORM_XCB_KHR', '-DVK_USE_PLATFORM_XLIB_KHR']
-endif
-if with_platform_windows
-  c_args += '-DVK_USE_PLATFORM_WIN32_KHR'
-  cpp_args += '-DVK_USE_PLATFORM_WIN32_KHR'
-endif
-if with_platform_android
-  c_args += '-DVK_USE_PLATFORM_ANDROID_KHR'
-  cpp_args += '-DVK_USE_PLATFORM_ANDROID_KHR'
-endif
-if with_xlib_lease
-  c_args += '-DVK_USE_PLATFORM_XLIB_XRANDR_EXT'
-  #add this once aco and other places can build with it
-  #cpp_args += '-DVK_USE_PLATFORM_XLIB_XRANDR_EXT'
-endif
-if system_has_kms_drm and not with_platform_android
-  c_args += '-DVK_USE_PLATFORM_DISPLAY_KHR'
-  cpp_args += '-DVK_USE_PLATFORM_DISPLAY_KHR'
-endif
-if host_machine.system() == 'darwin'
-  c_args += '-DVK_USE_PLATFORM_MACOS_MVK'
-  cpp_args += '-DVK_USE_PLATFORM_MACOS_MVK'
-  c_args += '-DVK_USE_PLATFORM_METAL_EXT'
-  cpp_args += '-DVK_USE_PLATFORM_METAL_EXT'
-endif
 
 with_egl = get_option('egl') \
   .require(host_machine.system() != 'darwin', error_message : 'EGL not supported on MacOS') \
@@ -429,8 +413,7 @@ if with_platform_android and get_option('platform-sdk-version') >= 29
   # By default the NDK compiler, at least, emits emutls references instead of
   # ELF TLS, even when building targeting newer API levels.  Make it actually do
   # ELF TLS instead.
-  c_args += '-fno-emulated-tls'
-  cpp_args += '-fno-emulated-tls'
+  c_cpp_args += '-fno-emulated-tls'
 endif
 
 # -mtls-dialect=gnu2 speeds up non-initial-exec TLS significantly but requires
@@ -462,8 +445,7 @@ if not have_mtls_dialect
                 "movq y@GOTPCREL(%rip), %rdx\n"
                 "call *x@TLSCALL(%rax)\n"); }''', name: 'split TLSDESC')
           )
-      c_args += '-mtls-dialect=gnu2'
-      cpp_args += '-mtls-dialect=gnu2'
+      c_cpp_args += '-mtls-dialect=gnu2'
     endif
   endif
 endif
@@ -545,7 +527,6 @@ endif
 _vdpau_drivers = [
   with_gallium_d3d12_video,
   with_gallium_nouveau,
-  with_gallium_r300,
   with_gallium_r600,
   with_gallium_radeonsi,
   with_gallium_virgl,
@@ -554,7 +535,7 @@ _vdpau_drivers = [
 vdpau = get_option('gallium-vdpau') \
   .require(system_has_kms_drm, error_message : 'VDPAU state tracker can only be build on unix-like OSes.') \
   .require(with_platform_x11, error_message : 'VDPAU state tracker requires X11 support.') \
-  .require(_vdpau_drivers.contains(true), error_message : 'VDPAU state tracker requires at least one of the following gallium drivers: r300, r600, radeonsi, nouveau, d3d12 (with option gallium-d3d12-video, virgl).') 
+  .require(_vdpau_drivers.contains(true), error_message : 'VDPAU state tracker requires at least one of the following gallium drivers: r600, radeonsi, nouveau, d3d12 (with option gallium-d3d12-video, virgl).') 
 
 dep_vdpau = dependency('vdpau', version : '>= 1.1', required : vdpau)
 if dep_vdpau.found()
@@ -741,7 +722,8 @@ if _power8.allowed()
         }''',
         args : '-mpower8-vector',
         name : 'POWER8 intrinsics')
-      pre_args += ['-D_ARCH_PWR8', '-mpower8-vector']
+      pre_args += ['-D_ARCH_PWR8']
+      c_cpp_args += '-mpower8-vector'
     elif _power8.enabled()
       error('POWER8 intrinsic support required but not found.')
     endif
@@ -849,6 +831,16 @@ if with_platform_android
     '-DANDROID',
     '-DANDROID_API_LEVEL=' + get_option('platform-sdk-version').to_string()
   ]
+endif
+
+# On Android, seccomp kills the process on kernels without
+# CONFIG_KCMP/CONFIG_CHECKPOINT_RESTORE if it attemps to use KCMP.
+# Since we can't detect that, err on the side of caution and disable
+# KCMP by default on Android.
+if get_option('allow-kcmp') \
+    .disable_auto_if(with_platform_android) \
+    .allowed()
+  pre_args += '-DALLOW_KCMP'
 endif
 
 prog_python = import('python').find_installation('python3')
@@ -965,6 +957,7 @@ endif
 c_msvc_compat_args = []
 no_override_init_args = []
 cpp_msvc_compat_args = []
+ld_args_gc_sections = []
 if cc.get_argument_syntax() == 'msvc'
   _trial = [
     '/wd4018',  # signed/unsigned mismatch
@@ -1044,17 +1037,19 @@ else
   # own sections and GC the sections after linking.  This lets drivers
   # drop shared code unused by that specific driver (particularly
   # relevant for Vulkan drivers).
-  if cc.has_link_argument('-Wl,--gc-sections')
+  if cc.links('static char unused() { return 5; } int main() { return 0; }',
+              args : '-Wl,--gc-sections', name : 'gc-sections')
+    ld_args_gc_sections += '-Wl,--gc-sections'
     _trial_c += ['-ffunction-sections', '-fdata-sections']
     _trial_cpp += ['-ffunction-sections', '-fdata-sections']
   endif
 
-  # Variables that are only used for assertions are considered unused in release
-  # builds. Don't treat this as an error, since we build with -Werror even for
-  # release in CI.
-  if get_option('buildtype') == 'release'
-    _trial_c += ['-Wno-unused-variable', '-Wno-unused-but-set-variable']
-    _trial_cpp += ['-Wno-unused-variable', '-Wno-unused-but-set-variable']
+  # Variables that are only used for assertions are considered unused when assertions
+  # are disabled. Don't treat this as an error, since we build with -Werror even if
+  # assertions are disabled.
+  if get_option('b_ndebug') == 'true' or (get_option('buildtype') == 'release' and get_option('b_ndebug') == 'if-release')
+    _trial_c += ['-Wno-unused-variable', '-Wno-unused-but-set-variable', '/wd4189']
+    _trial_cpp += ['-Wno-unused-variable', '-Wno-unused-but-set-variable', '/wd4189']
   endif
 
   c_args += cc.get_supported_arguments(_trial_c)
@@ -1109,6 +1104,8 @@ if host_machine.system() == 'windows'
   endif
 endif
 
+sse2_arg = []
+sse2_args = []
 sse41_args = []
 with_sse41 = false
 if host_machine.cpu_family().startswith('x86')
@@ -1119,6 +1116,9 @@ if host_machine.cpu_family().startswith('x86')
     sse41_args = ['-msse4.1']
 
     if host_machine.cpu_family() == 'x86'
+      # x86_64 have sse2 by default, so sse2 args only for x86
+      sse2_arg = ['-msse2', '-mfpmath=sse']
+      sse2_args = [sse2_arg, '-mstackrealign']
       if get_option('sse2')
         # These settings make generated GCC code match MSVC and follow
         # GCC advice on https://gcc.gnu.org/wiki/FloatingPointMath#x86note
@@ -1131,7 +1131,10 @@ if host_machine.cpu_family().startswith('x86')
         # XXX: We could have SSE without -mstackrealign if we always used
         # __attribute__((force_align_arg_pointer)), but that's not
         # always the case.
-        c_args += ['-msse2', '-mfpmath=sse', '-mstackrealign']
+        c_cpp_args += sse2_args
+        # sse2_args are adopted into c_cpp_args to avoid duplicated sse2 command line args
+        sse2_arg = []
+        sse2_args = []
       else
         # GCC on x86 (not x86_64) with -msse* assumes a 16 byte aligned stack, but
         # that's not guaranteed
@@ -1192,8 +1195,7 @@ with_asm_arch = ''
 if host_machine.cpu_family() == 'x86'
   if system_has_kms_drm or host_machine.system() == 'gnu'
     with_asm_arch = 'x86'
-    pre_args += ['-DUSE_X86_ASM', '-DUSE_MMX_ASM', '-DUSE_3DNOW_ASM',
-                 '-DUSE_SSE_ASM']
+    pre_args += ['-DUSE_X86_ASM']
 
     if with_glx_read_only_text
       pre_args += ['-DGLX_X86_READONLY_TEXT']
@@ -1228,6 +1230,11 @@ elif host_machine.cpu_family() == 'mips64' and host_machine.endian() == 'little'
   if system_has_kms_drm
     with_asm_arch = 'mips64el'
     pre_args += ['-DUSE_MIPS64EL_ASM']
+  endif
+elif host_machine.cpu_family() == 'loongarch64'
+  if system_has_kms_drm
+    with_asm_arch = 'loongarch64'
+    pre_args += ['-DUSE_LOONGARCH64_ASM']
   endif
 endif
 
@@ -1379,11 +1386,6 @@ endif
 ld_args_bsymbolic = []
 if cc.links('int main() { return 0; }', args : '-Wl,-Bsymbolic', name : 'Bsymbolic')
   ld_args_bsymbolic += '-Wl,-Bsymbolic'
-endif
-ld_args_gc_sections = []
-if cc.links('static char unused() { return 5; } int main() { return 0; }',
-            args : '-Wl,--gc-sections', name : 'gc-sections')
-  ld_args_gc_sections += '-Wl,--gc-sections'
 endif
 with_ld_version_script = false
 if cc.links('int main() { return 0; }',
@@ -1781,6 +1783,7 @@ else
 endif
 
 yacc_is_bison = true
+needs_flex_bison = with_any_opengl or with_freedreno_vk or with_intel_tools or with_gallium
 
 if build_machine.system() == 'windows'
   # Prefer the winflexbison versions, they're much easier to install and have
@@ -1792,7 +1795,7 @@ if build_machine.system() == 'windows'
     # _fileno functions)
     prog_flex = [prog_flex, '--wincompat']
   else
-    prog_flex = [find_program('flex', 'lex', required : with_any_opengl, disabler : true)]
+    prog_flex = [find_program('flex', 'lex', required : needs_flex_bison, disabler : true)]
   endif
   # Force flex to use const keyword in prototypes, as relies on __cplusplus or
   # __STDC__ macro to determine whether it's safe to use const keyword
@@ -1807,13 +1810,13 @@ if build_machine.system() == 'windows'
 
   prog_bison = find_program('win_bison', required : false)
   if not prog_bison.found()
-    prog_bison = find_program('bison', 'yacc', required : with_any_opengl, disabler : true)
+    prog_bison = find_program('bison', 'yacc', required : needs_flex_bison, disabler : true)
   endif
 else
   prog_bison = find_program('bison', required : false)
 
   if not prog_bison.found()
-    prog_bison = find_program('byacc', required : with_any_opengl, disabler : true)
+    prog_bison = find_program('byacc', required : needs_flex_bison, disabler : true)
     yacc_is_bison = false
   endif
 
@@ -1824,7 +1827,7 @@ else
     prog_bison = [prog_bison, '-Wno-deprecated']
   endif
 
-  prog_flex = find_program('flex', required : with_any_opengl, disabler : true)
+  prog_flex = find_program('flex', required : needs_flex_bison, disabler : true)
   prog_flex_cpp = prog_flex
 endif
 
@@ -2020,6 +2023,8 @@ if with_perfetto
 endif
 
 add_project_arguments(pre_args, language : ['c', 'cpp'])
+add_project_arguments(c_cpp_args, language : ['c', 'cpp'])
+
 add_project_arguments(c_args,   language : ['c'])
 add_project_arguments(cpp_args, language : ['cpp'])
 
@@ -2096,6 +2101,13 @@ summary(
     'includedir': get_option('includedir'),
   },
   section: 'Directories'
+)
+
+summary(
+  {
+    'c_cpp_args': c_cpp_args,
+  },
+  section: 'Common C and C++ arguments'
 )
 
 summary(

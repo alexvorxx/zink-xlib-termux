@@ -65,11 +65,6 @@ struct spirv_to_nir_options {
    /* Create a nir library. */
    bool create_library;
 
-   /* Whether to use nir_intrinsic_deref_buffer_array_length intrinsic instead
-    * of nir_intrinsic_get_ssbo_size to lower OpArrayLength.
-    */
-   bool use_deref_buffer_array_length;
-
    /* Initial value for shader_info::float_controls_execution_mode,
     * indicates hardware requirements rather than shader author intent
     */
@@ -100,6 +95,18 @@ struct spirv_to_nir_options {
    nir_address_format global_addr_format;
    nir_address_format temp_addr_format;
    nir_address_format constant_addr_format;
+
+   /** Minimum UBO alignment.
+    *
+    * This should match VkPhysicalDeviceLimits::minUniformBufferOffsetAlignment
+    */
+   uint32_t min_ubo_alignment;
+
+   /** Minimum SSBO alignment.
+    *
+    * This should match VkPhysicalDeviceLimits::minStorageBufferOffsetAlignment
+    */
+   uint32_t min_ssbo_alignment;
 
    const nir_shader *clc_shader;
 

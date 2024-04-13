@@ -319,25 +319,40 @@ wsi_win32_surface_get_formats2(VkIcdSurfaceBase *icd_surface,
    return vk_outarray_status(&out);
 }
 
-static const VkPresentModeKHR present_modes[] = {
-   //VK_PRESENT_MODE_MAILBOX_KHR,
+static const VkPresentModeKHR present_modes_gdi[] = {
+   VK_PRESENT_MODE_FIFO_KHR,
+};
+static const VkPresentModeKHR present_modes_dxgi[] = {
+   VK_PRESENT_MODE_IMMEDIATE_KHR,
+   VK_PRESENT_MODE_MAILBOX_KHR,
    VK_PRESENT_MODE_FIFO_KHR,
 };
 
 static VkResult
 wsi_win32_surface_get_present_modes(VkIcdSurfaceBase *surface,
-                                 uint32_t* pPresentModeCount,
-                                 VkPresentModeKHR* pPresentModes)
+                                    struct wsi_device *wsi_device,
+                                    uint32_t* pPresentModeCount,
+                                    VkPresentModeKHR* pPresentModes)
 {
+   const VkPresentModeKHR *array;
+   size_t array_size;
+   if (wsi_device->sw || !wsi_device->win32.get_d3d12_command_queue) {
+      array = present_modes_gdi;
+      array_size = ARRAY_SIZE(present_modes_gdi);
+   } else {
+      array = present_modes_dxgi;
+      array_size = ARRAY_SIZE(present_modes_dxgi);
+   }
+
    if (pPresentModes == NULL) {
-      *pPresentModeCount = ARRAY_SIZE(present_modes);
+      *pPresentModeCount = array_size;
       return VK_SUCCESS;
    }
 
-   *pPresentModeCount = MIN2(*pPresentModeCount, ARRAY_SIZE(present_modes));
-   typed_memcpy(pPresentModes, present_modes, *pPresentModeCount);
+   *pPresentModeCount = MIN2(*pPresentModeCount, array_size);
+   typed_memcpy(pPresentModes, array, *pPresentModeCount);
 
-   if (*pPresentModeCount < ARRAY_SIZE(present_modes))
+   if (*pPresentModeCount < array_size)
       return VK_INCOMPLETE;
    else
       return VK_SUCCESS;
@@ -476,12 +491,12 @@ wsi_win32_image_init(VkDevice device_h,
 
    VkIcdSurfaceWin32 *win32_surface = (VkIcdSurfaceWin32 *)create_info->surface;
    chain->wnd = win32_surface->hwnd;
-   chain->chain_dc = GetDC(chain->wnd);
    image->chain = chain;
 
-   if (chain->base.blit.type != WSI_SWAPCHAIN_BUFFER_BLIT)
+   if (chain->dxgi)
       return VK_SUCCESS;
 
+   chain->chain_dc = GetDC(chain->wnd);
    image->sw.dc = CreateCompatibleDC(chain->chain_dc);
    HBITMAP bmp = NULL;
 
@@ -608,8 +623,11 @@ wsi_win32_queue_present_dxgi(struct wsi_win32_swapchain *chain,
    };
 
    image->state = WSI_IMAGE_QUEUED;
+   UINT sync_interval = chain->base.present_mode == VK_PRESENT_MODE_FIFO_KHR ? 1 : 0;
+   UINT present_flags = chain->base.present_mode == VK_PRESENT_MODE_IMMEDIATE_KHR ?
+      DXGI_PRESENT_ALLOW_TEARING : 0;
 
-   HRESULT hres = chain->dxgi->Present1(0, 0, &params);
+   HRESULT hres = chain->dxgi->Present1(sync_interval, present_flags, &params);
    switch (hres) {
    case DXGI_ERROR_DEVICE_REMOVED: return VK_ERROR_DEVICE_LOST;
    case E_OUTOFMEMORY: return VK_ERROR_OUT_OF_DEVICE_MEMORY;
@@ -644,8 +662,6 @@ wsi_win32_queue_present(struct wsi_swapchain *drv_chain,
 
    if (chain->dxgi)
       return wsi_win32_queue_present_dxgi(chain, image, damage);
-
-   assert(chain->base.blit.type == WSI_SWAPCHAIN_BUFFER_BLIT);
 
    char *ptr = (char *)image->base.cpu_map;
    char *dptr = (char *)image->sw.ppvBits;
@@ -686,7 +702,8 @@ wsi_win32_surface_create_swapchain_dxgi(
       DXGI_SCALING_STRETCH,
       DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
       DXGI_ALPHA_MODE_UNSPECIFIED,
-      0,                                  // Flags
+      chain->base.present_mode == VK_PRESENT_MODE_IMMEDIATE_KHR ?
+         DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0
    };
 
    if (create_info->imageUsage &

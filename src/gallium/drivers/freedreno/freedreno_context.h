@@ -164,9 +164,10 @@ enum fd_dirty_3d_state {
    FD_DIRTY_TEX = BIT(17),
    FD_DIRTY_IMAGE = BIT(18),
    FD_DIRTY_SSBO = BIT(19),
+   FD_DIRTY_QUERY = BIT(20),
 
    /* only used by a2xx.. possibly can be removed.. */
-   FD_DIRTY_TEXSTATE = BIT(20),
+   FD_DIRTY_TEXSTATE = BIT(21),
 
    /* fine grained state changes, for cases where state is not orthogonal
     * from hw perspective:
@@ -174,7 +175,8 @@ enum fd_dirty_3d_state {
    FD_DIRTY_RASTERIZER_DISCARD = BIT(24),
    FD_DIRTY_RASTERIZER_CLIP_PLANE_ENABLE = BIT(25),
    FD_DIRTY_BLEND_DUAL = BIT(26),
-#define NUM_DIRTY_BITS 27
+   FD_DIRTY_BLEND_COHERENT = BIT(27),
+#define NUM_DIRTY_BITS 28
 
    /* additional flag for state requires updated resource tracking: */
    FD_DIRTY_RESOURCE = BIT(31),
@@ -255,11 +257,6 @@ struct fd_context {
    float default_inner_level[2] dt;
    uint8_t patch_vertices dt;
 
-   /* Whether we need to recheck the active_queries list next
-    * fd_batch_update_queries().
-    */
-   bool update_active_queries dt;
-
    /* Current state of pctx->set_active_query_state() (i.e. "should drawing
     * be counted against non-perfcounter queries")
     */
@@ -299,6 +296,10 @@ struct fd_context {
     */
    struct fd_batch *batch dt;
 
+   /* Current nondraw batch.  Rules are the same as for draw batch.
+    */
+   struct fd_batch *batch_nondraw dt;
+
    /* NULL if there has been rendering since last flush.  Otherwise
     * keeps a reference to the last fence so we can re-use it rather
     * than having to flush no-op batch.
@@ -319,6 +320,12 @@ struct fd_context {
     * be building up cmdstream.
     */
    int in_fence_fd dt;
+
+   /**
+    * If we *ever* see an in-fence-fd, assume that userspace is
+    * not relying on implicit fences.
+    */
+   bool no_implicit_sync;
 
    /* track last known reset status globally and per-context to
     * determine if more resets occurred since then.  If global reset
@@ -481,11 +488,12 @@ struct fd_context {
    void (*emit_sysmem_fini)(struct fd_batch *batch) dt;
 
    /* draw: */
-   bool (*draw_vbo)(struct fd_context *ctx, const struct pipe_draw_info *info,
-			unsigned drawid_offset, 
-                    const struct pipe_draw_indirect_info *indirect,
-			const struct pipe_draw_start_count_bias *draw,
-                    unsigned index_offset) dt;
+   void (*draw_vbos)(struct fd_context *ctx, const struct pipe_draw_info *info,
+                     unsigned drawid_offset,
+                     const struct pipe_draw_indirect_info *indirect,
+                     const struct pipe_draw_start_count_bias *draws,
+                     unsigned num_draws,
+                     unsigned index_offset) dt;
    bool (*clear)(struct fd_context *ctx, unsigned buffers,
                  const union pipe_color_union *color, double depth,
                  unsigned stencil) dt;
@@ -593,9 +601,9 @@ fd_stream_output_target(struct pipe_stream_output_target *target)
 static inline bool
 fd_context_dirty_resource(enum fd_dirty_3d_state dirty)
 {
-   return dirty & (FD_DIRTY_FRAMEBUFFER | FD_DIRTY_ZSA | FD_DIRTY_BLEND |
+   return dirty & (FD_DIRTY_FRAMEBUFFER | FD_DIRTY_ZSA |
                    FD_DIRTY_SSBO | FD_DIRTY_IMAGE | FD_DIRTY_VTXBUF |
-                   FD_DIRTY_TEX | FD_DIRTY_STREAMOUT);
+                   FD_DIRTY_TEX | FD_DIRTY_STREAMOUT | FD_DIRTY_QUERY);
 }
 
 /* Mark specified non-shader-stage related state as dirty: */
@@ -661,13 +669,6 @@ fd_context_all_clean(struct fd_context *ctx) assert_dt
    ctx->dirty = (enum fd_dirty_3d_state)0;
    ctx->gen_dirty = 0;
    for (unsigned i = 0; i < PIPE_SHADER_TYPES; i++) {
-      /* don't mark compute state as clean, since it is not emitted
-       * during normal draw call.  The places that call _all_dirty(),
-       * it is safe to mark compute state dirty as well, but the
-       * inverse is not true.
-       */
-      if (i == PIPE_SHADER_COMPUTE)
-         continue;
       ctx->dirty_shader[i] = (enum fd_dirty_shader_state)0;
    }
 }
@@ -711,6 +712,7 @@ void fd_context_switch_to(struct fd_context *ctx,
                           struct fd_batch *batch) assert_dt;
 struct fd_batch *fd_context_batch(struct fd_context *ctx) assert_dt;
 struct fd_batch *fd_context_batch_locked(struct fd_context *ctx) assert_dt;
+struct fd_batch *fd_context_batch_nondraw(struct fd_context *ctx) assert_dt;
 
 void fd_context_setup_common_vbos(struct fd_context *ctx);
 void fd_context_cleanup_common_vbos(struct fd_context *ctx);

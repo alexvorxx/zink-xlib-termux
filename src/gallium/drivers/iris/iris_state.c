@@ -1336,10 +1336,8 @@ struct iris_genx_state {
    bool pma_fix_enabled;
 #endif
 
-#if GFX_VER == 9
    /* Is object level preemption enabled? */
    bool object_preemption;
-#endif
 
 #if GFX_VERx10 == 120
    enum iris_depth_reg_mode depth_reg_mode;
@@ -2825,6 +2823,21 @@ iris_create_surface(struct pipe_context *ctx,
                                                &res->surf, view,
                                                &isl_surf, view, &offset_B,
                                                &tile_x_el, &tile_y_el);
+
+      /* On Broadwell, HALIGN and VALIGN are specified in pixels and are
+       * hard-coded to align to exactly the block size of the compressed
+       * texture. This means that, when reinterpreted as a non-compressed
+       * texture, the tile offsets may be anything.
+       *
+       * We need them to be multiples of 4 to be usable in RENDER_SURFACE_STATE,
+       * so force the state tracker to take fallback paths if they're not.
+       */
+#if GFX_VER == 8
+      if (tile_x_el % 4 != 0 || tile_y_el % 4 != 0) {
+         ok = false;
+      }
+#endif
+
       if (!ok) {
          free(surf);
          return NULL;
@@ -4820,7 +4833,8 @@ iris_store_fs_state(const struct intel_device_info *devinfo,
       psx.AttributeEnable = wm_prog_data->num_varying_inputs != 0;
       psx.PixelShaderUsesSourceDepth = wm_prog_data->uses_src_depth;
       psx.PixelShaderUsesSourceW = wm_prog_data->uses_src_w;
-      psx.PixelShaderIsPerSample = wm_prog_data->persample_dispatch;
+      psx.PixelShaderIsPerSample =
+         brw_wm_prog_data_is_persample(wm_prog_data, 0);
       psx.oMaskPresenttoRenderTarget = wm_prog_data->uses_omask;
 
 #if GFX_VER >= 9
@@ -5920,6 +5934,27 @@ genX(emit_depth_state_workarounds)(struct iris_context *ice,
 }
 
 static void
+iris_preemption_streamout_wa(struct iris_context *ice,
+                             struct iris_batch *batch,
+                             bool enable)
+{
+#if GFX_VERx10 >= 120
+   iris_emit_reg(batch, GENX(CS_CHICKEN1), reg) {
+      reg.DisablePreemptionandHighPriorityPausingdueto3DPRIMITIVECommand = !enable;
+      reg.DisablePreemptionandHighPriorityPausingdueto3DPRIMITIVECommandMask = true;
+   }
+
+   /* Emit CS_STALL and 250 noops. */
+   iris_emit_pipe_control_flush(batch, "workaround: Wa_16013994831",
+                                PIPE_CONTROL_CS_STALL);
+   for (unsigned i = 0; i < 250; i++)
+      iris_emit_cmd(batch, GENX(MI_NOOP), noop);
+
+   ice->state.genx->object_preemption = enable;
+#endif
+}
+
+static void
 iris_upload_dirty_render_state(struct iris_context *ice,
                                struct iris_batch *batch,
                                const struct pipe_draw_info *draw)
@@ -6159,8 +6194,15 @@ iris_upload_dirty_render_state(struct iris_context *ice,
       /* The Constant Buffer Read Length field from 3DSTATE_CONSTANT_ALL
        * contains only 5 bits, so we can only use it for buffers smaller than
        * 32.
+       *
+       * According to Wa_16011448509, Gfx12.0 misinterprets some address bits
+       * in 3DSTATE_CONSTANT_ALL.  It should still be safe to use the command
+       * for disabling stages, where all address bits are zero.  However, we
+       * can't safely use it for general buffers with arbitrary addresses.
+       * Just fall back to the individual 3DSTATE_CONSTANT_XS commands in that
+       * case.
        */
-      if (push_bos.max_length < 32) {
+      if (push_bos.max_length < 32 && GFX_VERx10 > 120) {
          emit_push_constant_packet_all(ice, batch, 1 << stage, &push_bos);
          continue;
       }
@@ -6170,6 +6212,7 @@ iris_upload_dirty_render_state(struct iris_context *ice,
 
 #if GFX_VER >= 12
    if (nobuffer_stages)
+      /* Wa_16011448509: all address bits are zero */
       emit_push_constant_packet_all(ice, batch, nobuffer_stages, NULL);
 #endif
 
@@ -6274,7 +6317,8 @@ iris_upload_dirty_render_state(struct iris_context *ice,
             uint32_t ps_state[GENX(3DSTATE_PS_length)] = {0};
             _iris_pack_command(batch, GENX(3DSTATE_PS), ps_state, ps) {
                intel_set_ps_dispatch_state(&ps, batch->screen->devinfo,
-                                           wm_prog_data, cso_fb->samples);
+                                           wm_prog_data, cso_fb->samples,
+                                           0 /* msaa_flags */);
 
                ps.DispatchGRFStartRegisterForConstantSetupData0 =
                   brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 0);
@@ -6421,6 +6465,14 @@ iris_upload_dirty_render_state(struct iris_context *ice,
       if (dirty & IRIS_DIRTY_STREAMOUT) {
          const struct iris_rasterizer_state *cso_rast = ice->state.cso_rast;
 
+#if GFX_VERx10 >= 120
+         /* Wa_16013994831 - Disable preemption. */
+         if (batch->screen->devinfo->verx10 == 120 ||
+             intel_device_info_is_dg2(batch->screen->devinfo)) {
+            iris_preemption_streamout_wa(ice, batch, false);
+         }
+#endif
+
          uint32_t dynamic_sol[GENX(3DSTATE_STREAMOUT_length)];
          iris_pack_command(GENX(3DSTATE_STREAMOUT), dynamic_sol, sol) {
             sol.SOFunctionEnable = true;
@@ -6438,6 +6490,13 @@ iris_upload_dirty_render_state(struct iris_context *ice,
       }
    } else {
       if (dirty & IRIS_DIRTY_STREAMOUT) {
+
+#if GFX_VERx10 >= 120
+         /* Wa_16013994831 - Enable preemption. */
+         if (!ice->state.genx->object_preemption)
+            iris_preemption_streamout_wa(ice, batch, true);
+#endif
+
          iris_emit_cmd(batch, GENX(3DSTATE_STREAMOUT), sol);
       }
    }
@@ -6521,7 +6580,7 @@ iris_upload_dirty_render_state(struct iris_context *ice,
          wm.StatisticsEnable = ice->state.statistics_counters_enabled;
 
          wm.BarycentricInterpolationMode =
-            wm_prog_data->barycentric_interp_modes;
+            wm_prog_data_barycentric_modes(wm_prog_data, 0);
 
          if (wm_prog_data->early_fragment_tests)
             wm.EarlyDepthStencilControl = EDSC_PREPS;
@@ -6653,7 +6712,7 @@ iris_upload_dirty_render_state(struct iris_context *ice,
       if (zres)
          genX(emit_depth_state_workarounds)(ice, batch, &zres->surf);
 
-      if (GFX_VER >= 12) {
+      if (GFX_VER >= 11) {
          /* Wa_1408224581
           *
           * Workaround: Gfx12LP Astep only An additional pipe control with
@@ -6661,7 +6720,7 @@ iris_upload_dirty_render_state(struct iris_context *ice,
           * have an additional pipe control after the stencil state whenever
           * the surface state bits of this state is changing).
           *
-          * This also seems sufficient to handle Wa_14014148106.
+          * This also seems sufficient to handle Wa_14014097488.
           */
          iris_emit_pipe_control_write(batch, "WA for stencil state",
                                       PIPE_CONTROL_WRITE_IMMEDIATE,
@@ -7065,6 +7124,13 @@ iris_upload_render_state(struct iris_context *ice,
    if (!batch->contains_draw_with_next_seqno) {
       iris_restore_render_saved_bos(ice, batch, draw);
       batch->contains_draw_with_next_seqno = true;
+   }
+
+   /* Wa_1306463417 - Send HS state for every primitive on gfx11.
+    * We implement this by setting TCS dirty on each draw.
+    */
+   if (GFX_VER == 11 && ice->shaders.prog[MESA_SHADER_TESS_CTRL]) {
+      ice->state.stage_dirty |= IRIS_STAGE_DIRTY_TCS;
    }
 
    iris_upload_dirty_render_state(ice, batch, draw);
@@ -8678,6 +8744,10 @@ genX(init_state)(struct iris_context *ice)
    ice->state.prim_mode = PIPE_PRIM_MAX;
    ice->state.genx = calloc(1, sizeof(struct iris_genx_state));
    ice->draw.derived_params.drawid = -1;
+
+#if GFX_VERx10 >= 120
+   ice->state.genx->object_preemption = true;
+#endif
 
    /* Make a 1x1x1 null surface for unbound textures */
    void *null_surf_map =

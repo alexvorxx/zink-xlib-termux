@@ -64,6 +64,7 @@
 #define AMDGPU_IDS_FLAGS_FUSION 0x1
 #define AMDGPU_IDS_FLAGS_PREEMPTION 0x2
 #define AMDGPU_IDS_FLAGS_TMZ 0x4
+#define AMDGPU_IDS_FLAGS_CONFORMANT_TRUNC_COORD 0x8
 #define AMDGPU_INFO_FW_VCE 0x1
 #define AMDGPU_INFO_FW_UVD 0x2
 #define AMDGPU_INFO_FW_GFX_ME 0x04
@@ -98,87 +99,91 @@ struct drm_amdgpu_memory_info {
    struct drm_amdgpu_heap_info gtt;
 };
 struct drm_amdgpu_info_device {
-   /** PCI Device ID */
-   uint32_t device_id;
-   /** Internal chip revision: A0, A1, etc.) */
-   uint32_t chip_rev;
-   uint32_t external_rev;
-   /** Revision id in PCI Config space */
-   uint32_t pci_rev;
-   uint32_t family;
-   uint32_t num_shader_engines;
-   uint32_t num_shader_arrays_per_engine;
-   /* in KHz */
-   uint32_t gpu_counter_freq;
-   uint64_t max_engine_clock;
-   uint64_t max_memory_clock;
-   /* cu information */
-   uint32_t cu_active_number;
-   /* NOTE: cu_ao_mask is INVALID, DON'T use it */
-   uint32_t cu_ao_mask;
-   uint32_t cu_bitmap[4][4];
-   /** Render backend pipe mask. One render backend is CB+DB. */
-   uint32_t enabled_rb_pipes_mask;
-   uint32_t num_rb_pipes;
-   uint32_t num_hw_gfx_contexts;
-   uint32_t _pad;
-   uint64_t ids_flags;
-   /** Starting virtual address for UMDs. */
-   uint64_t virtual_address_offset;
-   /** The maximum virtual address */
-   uint64_t virtual_address_max;
-   /** Required alignment of virtual addresses. */
-   uint32_t virtual_address_alignment;
-   /** Page table entry - fragment size */
-   uint32_t pte_fragment_size;
-   uint32_t gart_page_size;
-   /** constant engine ram size*/
-   uint32_t ce_ram_size;
-   /** video memory type info*/
-   uint32_t vram_type;
-   /** video memory bit width*/
-   uint32_t vram_bit_width;
-   /* vce harvesting instance */
-   uint32_t vce_harvest_config;
-   /* gfx double offchip LDS buffers */
-   uint32_t gc_double_offchip_lds_buf;
-   /* NGG Primitive Buffer */
-   uint64_t prim_buf_gpu_addr;
-   /* NGG Position Buffer */
-   uint64_t pos_buf_gpu_addr;
-   /* NGG Control Sideband */
-   uint64_t cntl_sb_buf_gpu_addr;
-   /* NGG Parameter Cache */
-   uint64_t param_buf_gpu_addr;
-   uint32_t prim_buf_size;
-   uint32_t pos_buf_size;
-   uint32_t cntl_sb_buf_size;
-   uint32_t param_buf_size;
-   /* wavefront size*/
-   uint32_t wave_front_size;
-   /* shader visible vgprs*/
-   uint32_t num_shader_visible_vgprs;
-   /* CU per shader array*/
-   uint32_t num_cu_per_sh;
-   /* number of tcc blocks*/
-   uint32_t num_tcc_blocks;
-   /* gs vgt table depth*/
-   uint32_t gs_vgt_table_depth;
-   /* gs primitive buffer depth*/
-   uint32_t gs_prim_buffer_depth;
-   /* max gs wavefront per vgt*/
-   uint32_t max_gs_waves_per_vgt;
-   uint32_t _pad1;
-   /* always on cu bitmap */
-   uint32_t cu_ao_bitmap[4][4];
-   /** Starting high virtual address for UMDs. */
-   uint64_t high_va_offset;
-   /** The maximum high virtual address */
-   uint64_t high_va_max;
-   /* gfx10 pa_sc_tile_steering_override */
-   uint32_t pa_sc_tile_steering_override;
-   /* disabled TCCs */
-   uint64_t tcc_disabled_mask;
+	/** PCI Device ID */
+	uint32_t device_id;
+	/** Internal chip revision: A0, A1, etc.) */
+	uint32_t chip_rev;
+	uint32_t external_rev;
+	/** Revision id in PCI Config space */
+	uint32_t pci_rev;
+	uint32_t family;
+	uint32_t num_shader_engines;
+	uint32_t num_shader_arrays_per_engine;
+	/* in KHz */
+	uint32_t gpu_counter_freq;
+	uint64_t max_engine_clock;
+	uint64_t max_memory_clock;
+	/* cu information */
+	uint32_t cu_active_number;
+	/* NOTE: cu_ao_mask is INVALID, DON'T use it */
+	uint32_t cu_ao_mask;
+	uint32_t cu_bitmap[4][4];
+	/** Render backend pipe mask. One render backend is CB+DB. */
+	uint32_t enabled_rb_pipes_mask;
+	uint32_t num_rb_pipes;
+	uint32_t num_hw_gfx_contexts;
+	/* PCIe version (the smaller of the GPU and the CPU/motherboard) */
+	uint32_t pcie_gen;
+	uint64_t ids_flags;
+	/** Starting virtual address for UMDs. */
+	uint64_t virtual_address_offset;
+	/** The maximum virtual address */
+	uint64_t virtual_address_max;
+	/** Required alignment of virtual addresses. */
+	uint32_t virtual_address_alignment;
+	/** Page table entry - fragment size */
+	uint32_t pte_fragment_size;
+	uint32_t gart_page_size;
+	/** constant engine ram size*/
+	uint32_t ce_ram_size;
+	/** video memory type info*/
+	uint32_t vram_type;
+	/** video memory bit width*/
+	uint32_t vram_bit_width;
+	/* vce harvesting instance */
+	uint32_t vce_harvest_config;
+	/* gfx double offchip LDS buffers */
+	uint32_t gc_double_offchip_lds_buf;
+	/* NGG Primitive Buffer */
+	uint64_t prim_buf_gpu_addr;
+	/* NGG Position Buffer */
+	uint64_t pos_buf_gpu_addr;
+	/* NGG Control Sideband */
+	uint64_t cntl_sb_buf_gpu_addr;
+	/* NGG Parameter Cache */
+	uint64_t param_buf_gpu_addr;
+	uint32_t prim_buf_size;
+	uint32_t pos_buf_size;
+	uint32_t cntl_sb_buf_size;
+	uint32_t param_buf_size;
+	/* wavefront size*/
+	uint32_t wave_front_size;
+	/* shader visible vgprs*/
+	uint32_t num_shader_visible_vgprs;
+	/* CU per shader array*/
+	uint32_t num_cu_per_sh;
+	/* number of tcc blocks*/
+	uint32_t num_tcc_blocks;
+	/* gs vgt table depth*/
+	uint32_t gs_vgt_table_depth;
+	/* gs primitive buffer depth*/
+	uint32_t gs_prim_buffer_depth;
+	/* max gs wavefront per vgt*/
+	uint32_t max_gs_waves_per_vgt;
+	/* PCIe number of lanes (the smaller of the GPU and the CPU/motherboard) */
+	uint32_t pcie_num_lanes;
+	/* always on cu bitmap */
+	uint32_t cu_ao_bitmap[4][4];
+	/** Starting high virtual address for UMDs. */
+	uint64_t high_va_offset;
+	/** The maximum high virtual address */
+	uint64_t high_va_max;
+	/* gfx10 pa_sc_tile_steering_override */
+	uint32_t pa_sc_tile_steering_override;
+	/* disabled TCCs */
+	uint64_t tcc_disabled_mask;
+	uint64_t min_engine_clock;
+	uint64_t min_memory_clock;
 };
 struct drm_amdgpu_info_hw_ip {
    uint32_t hw_ip_version_major;
@@ -842,7 +847,8 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info)
       identify_chip(GFX1102);
       break;
    case FAMILY_GFX1103:
-      identify_chip(GFX1103);
+      identify_chip(GFX1103_R1);
+      identify_chip(GFX1103_R2);
       break;
    }
 
@@ -1001,6 +1007,7 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info)
       info->l2_cache_size = info->num_tcc_blocks * 256 * 1024;
       break;
    case CHIP_REMBRANDT:
+   case CHIP_GFX1103_R1:
       info->l2_cache_size = info->num_tcc_blocks * 512 * 1024;
       break;
    }
@@ -1234,7 +1241,7 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info)
 
    if (info->gfx_level >= GFX11) {
       info->pc_lines = 1024;
-      info->pbb_max_alloc_count = 255; /* minimum is 2, maximum is 256 */
+      info->pbb_max_alloc_count = 16; /* minimum is 2, maximum is 256 */
    } else if (info->gfx_level >= GFX9 && info->has_graphics) {
       unsigned pc_lines = 0;
 
@@ -1325,12 +1332,21 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info)
       info->wave64_vgpr_alloc_granularity = 4;
    }
 
-   if (info->family == CHIP_GFX1100 || info->family == CHIP_GFX1101)
-      info->num_physical_wave64_vgprs_per_simd = 768;
-   else if (info->gfx_level >= GFX10)
+   /* Some GPU info was broken before DRM 3.45.0. */
+   if (info->drm_minor >= 45 && device_info.num_shader_visible_vgprs) {
+      /* The Gfx10 VGPR count is in Wave32, so divide it by 2 for Wave64.
+       * Gfx6-9 numbers are in Wave64.
+       */
+      if (info->gfx_level >= GFX10)
+         info->num_physical_wave64_vgprs_per_simd = device_info.num_shader_visible_vgprs / 2;
+      else
+         info->num_physical_wave64_vgprs_per_simd = device_info.num_shader_visible_vgprs;
+   } else if (info->gfx_level >= GFX10) {
       info->num_physical_wave64_vgprs_per_simd = 512;
-   else
+   } else {
       info->num_physical_wave64_vgprs_per_simd = 256;
+   }
+
    info->num_simd_per_compute_unit = info->gfx_level >= GFX10 ? 2 : 4;
 
    /* BIG_PAGE is supported since gfx10.3 and requires VRAM. VRAM is only guaranteed
@@ -1351,11 +1367,71 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info)
    info->num_rb = util_bitcount(info->enabled_rb_mask);
    info->max_gflops = (info->gfx_level >= GFX11 ? 256 : 128) * info->num_cu * info->max_gpu_freq_mhz / 1000;
    info->memory_bandwidth_gbps = DIV_ROUND_UP(info->memory_freq_mhz_effective * info->memory_bus_width / 8, 1000);
+   info->has_pcie_bandwidth_info = info->drm_minor >= 51;
+
+   if (info->has_pcie_bandwidth_info) {
+      info->pcie_gen = device_info.pcie_gen;
+      info->pcie_num_lanes = device_info.pcie_num_lanes;
+
+      /* Source: https://en.wikipedia.org/wiki/PCI_Express#History_and_revisions */
+      switch (info->pcie_gen) {
+      case 1:
+         info->pcie_bandwidth_mbps = info->pcie_num_lanes * 0.25 * 1024;
+         break;
+      case 2:
+         info->pcie_bandwidth_mbps = info->pcie_num_lanes * 0.5 * 1024;
+         break;
+      case 3:
+         info->pcie_bandwidth_mbps = info->pcie_num_lanes * 0.985 * 1024;
+         break;
+      case 4:
+         info->pcie_bandwidth_mbps = info->pcie_num_lanes * 1.969 * 1024;
+         break;
+      case 5:
+         info->pcie_bandwidth_mbps = info->pcie_num_lanes * 3.938 * 1024;
+         break;
+      case 6:
+         info->pcie_bandwidth_mbps = info->pcie_num_lanes * 7.563 * 1024;
+         break;
+      case 7:
+         info->pcie_bandwidth_mbps = info->pcie_num_lanes * 15.125 * 1024;
+         break;
+      }
+   }
 
    if (info->gfx_level >= GFX10_3 && info->has_dedicated_vram) {
       info->l3_cache_size_mb = info->num_tcc_blocks *
                                (info->family == CHIP_NAVI21 ||
                                 info->family == CHIP_NAVI22 ? 8 : 4);
+   }
+
+   if (info->gfx_level >= GFX11) {
+      switch (info->family) {
+      case CHIP_GFX1103_R1:
+         info->attribute_ring_size_per_se = 512 * 1024;
+         break;
+      case CHIP_GFX1103_R2:
+         /* TODO: Test if 192 * 1024 is faster. */
+         info->attribute_ring_size_per_se = 256 * 1024;
+         break;
+      default:
+         info->attribute_ring_size_per_se = 1400 * 1024;
+         break;
+      }
+
+      /* The size must be aligned to 64K per SE and must be at most 16M in total. */
+      info->attribute_ring_size_per_se = align(info->attribute_ring_size_per_se, 64 * 1024);
+      assert(info->attribute_ring_size_per_se * info->max_se <= 16 * 1024 * 1024);
+
+      info->has_set_reg_pairs = info->pfp_fw_version >= SET_REG_PAIRS_PFP_VERSION;
+      info->has_set_sh_reg_pairs_n = info->pfp_fw_version >= SET_REG_PAIRS_PACKED_N_COUNT14_PFP_VERSION;
+
+      info->conformant_trunc_coord =
+         info->drm_minor >= 52 &&
+         device_info.ids_flags & AMDGPU_IDS_FLAGS_CONFORMANT_TRUNC_COORD;
+   } else {
+      /* This should be non-zero for SI_FORCE_FAMILY not to crash. */
+      info->attribute_ring_size_per_se = 64 * 1024;
    }
 
    set_custom_cu_en_mask(info);
@@ -1447,6 +1523,9 @@ void ac_print_gpu_info(struct radeon_info *info, FILE *f)
    fprintf(f, "    memory_freq = %u GHz\n", DIV_ROUND_UP(info->memory_freq_mhz_effective, 1000));
    fprintf(f, "    memory_bus_width = %u bits\n", info->memory_bus_width);
    fprintf(f, "    memory_bandwidth = %u GB/s\n", info->memory_bandwidth_gbps);
+   fprintf(f, "    pcie_gen = %u\n", info->pcie_gen);
+   fprintf(f, "    pcie_num_lanes = %u\n", info->pcie_num_lanes);
+   fprintf(f, "    pcie_bandwidth = %1.1f GB/s\n", info->pcie_bandwidth_mbps / 1024.0);
    fprintf(f, "    clock_crystal_freq = %i KHz\n", info->clock_crystal_freq);
 
    const char *ip_string[] = {
@@ -1505,6 +1584,7 @@ void ac_print_gpu_info(struct radeon_info *info, FILE *f)
    fprintf(f, "    never_send_perfcounter_stop = %i\n", info->never_send_perfcounter_stop);
    fprintf(f, "    discardable_allows_big_page = %i\n", info->discardable_allows_big_page);
    fprintf(f, "    has_taskmesh_indirect0_bug = %i\n", info->has_taskmesh_indirect0_bug);
+   fprintf(f, "    conformant_trunc_coord = %i\n", info->conformant_trunc_coord);
 
    fprintf(f, "Display features:\n");
    fprintf(f, "    use_display_dcc_unaligned = %u\n", info->use_display_dcc_unaligned);
@@ -1541,6 +1621,8 @@ void ac_print_gpu_info(struct radeon_info *info, FILE *f)
    fprintf(f, "    mec_fw_feature = %i\n", info->mec_fw_feature);
    fprintf(f, "    pfp_fw_version = %i\n", info->pfp_fw_version);
    fprintf(f, "    pfp_fw_feature = %i\n", info->pfp_fw_feature);
+   fprintf(f, "    has_set_reg_pairs = %i\n", info->has_set_reg_pairs);
+   fprintf(f, "    has_set_sh_reg_pairs_n = %i\n", info->has_set_sh_reg_pairs_n);
 
    fprintf(f, "Multimedia info:\n");
    fprintf(f, "    vce_encode = %u\n", info->ip[AMD_IP_VCE].num_queues);
@@ -1598,6 +1680,7 @@ void ac_print_gpu_info(struct radeon_info *info, FILE *f)
    fprintf(f, "    max_vgpr_alloc = %i\n", info->max_vgpr_alloc);
    fprintf(f, "    wave64_vgpr_alloc_granularity = %i\n", info->wave64_vgpr_alloc_granularity);
    fprintf(f, "    max_scratch_waves = %i\n", info->max_scratch_waves);
+   fprintf(f, "    attribute_ring_size_per_se = %u\n", info->attribute_ring_size_per_se);
 
    fprintf(f, "Render backend info:\n");
    fprintf(f, "    pa_sc_tile_steering_override = 0x%x\n", info->pa_sc_tile_steering_override);

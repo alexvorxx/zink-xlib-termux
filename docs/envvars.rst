@@ -1008,11 +1008,14 @@ Shared Vulkan driver environment variables
 ------------------------------------------
 
 .. envvar:: MESA_VK_MEMORY_TRACE
+
    enable memory tracing and exporting RMV captures (requires the
    ``scripts/setup.sh`` script in the Radeon Developer Tools folder to be
    run beforehand). ``MESA_VK_MEMORY_TRACE=n`` dumps data
    after n frames. Currently, only RADV implements this.
+
 .. envvar:: MESA_VK_MEMORY_TRACE_TRIGGER
+   
    enable trigger file-based memory tracing. (e.g.
    ``export MESA_VK_MEMORY_TRACE_TRIGGER=/tmp/memory_trigger`` and then
    ``touch /tmp/memory_trigger`` to capture a memory trace).
@@ -1148,8 +1151,7 @@ RADV driver environment variables
    ``gewave32``
       enable wave32 for vertex/tess/geometry shaders (GFX10+)
    ``gpl``
-      enable experimental (and suboptimal) graphics pipeline library (still
-      under active development)
+      enable graphics pipeline library
    ``localbos``
       enable local BOs
    ``nosam``
@@ -1168,6 +1170,8 @@ RADV driver environment variables
       enable optimizations to move more driver internal objects to VRAM.
    ``rtwave64``
       enable wave64 for ray tracing shaders (GFX10+)
+   ``video_decode``
+      enable experimental video decoding support
 
 .. envvar:: RADV_TEX_ANISO
 
@@ -1593,6 +1597,32 @@ PowerVR driver environment variables
 
    A comma-separated list of debug options. Use `PVR_DEBUG=help` to
    print a list of available options.
+
+.. envvar:: ROGUE_DEBUG
+
+   a comma-separated list of named flags for the Rogue compiler,
+   which do various things:
+
+   ``nir``
+      Print the input NIR to stdout.
+   ``nir_passes``
+      Print the output of each NIR pass to stdout.
+   ``ir``
+      Print the input Rogue IR to stdout.
+   ``ir_passes``
+      Print the output of each Rogue IR pass to stdout.
+   ``ir_details``
+      Includes additional details when printing Rogue IR.
+   ``vld_skip``
+      Skips the compiler validation step.
+   ``vld_nonfatal``
+      Prints all the validation errors instead of stopping after the first.
+
+.. envvar:: ROGUE_COLOR
+
+   if set to ``auto`` Rogue IR will be colorized if stdout is not a pipe.
+   Color is forced off if set to ``off``/``0`` or on if set to ``on``/``1``.
+   Defaults to ``auto``.
 
 i915 driver environment variables
 ---------------------------------

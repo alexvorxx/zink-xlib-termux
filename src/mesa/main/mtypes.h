@@ -946,6 +946,8 @@ struct gl_texture_object
    GLboolean External;
    GLubyte RequiredTextureImageUnits;
 
+   GLboolean NullTexture; /**< this texture is incomplete and should be passed to the driver as NULL */
+
    /** GL_EXT_memory_object */
    GLenum16 TextureTiling;
 
@@ -1463,6 +1465,7 @@ struct gl_buffer_object
    bool DeletePending:1;  /**< true if buffer object is removed from the hash */
    bool Immutable:1;    /**< GL_ARB_buffer_storage */
    bool HandleAllocated:1; /**< GL_ARB_bindless_texture */
+   bool GLThreadInternal:1; /**< Created by glthread. */
    GLenum16 Usage;      /**< GL_STREAM_DRAW_ARB, GL_STREAM_READ_ARB, etc. */
    GLchar *Label;       /**< GL_KHR_debug */
    GLsizeiptrARB Size;  /**< Size of buffer storage in bytes */
@@ -2519,6 +2522,22 @@ struct gl_shared_state
       struct util_idalloc free_idx;
       unsigned size;
    } small_dlist_store;
+
+   /* Global GLThread state. */
+   struct {
+      /* The last context that locked global mutexes. */
+      struct gl_context *LastExecutingCtx;
+
+      /* The last time LastExecutingCtx started executing after a different
+       * context (the time of multiple active contexts).
+       */
+      int64_t LastContextSwitchTime;
+
+      /* The time for which no context can lock global mutexes since
+       * LastContextSwitchTime.
+       */
+      int64_t NoLockDuration;
+   } GLThread;
 };
 
 
@@ -2720,6 +2739,7 @@ struct gl_framebuffer
 
    /** Array of all renderbuffer attachments, indexed by BUFFER_* tokens. */
    struct gl_renderbuffer_attachment Attachment[BUFFER_COUNT];
+   struct pipe_resource *resolve; /**< color resolve attachment */
 
    /* In unextended OpenGL these vars are part of the GL_COLOR_BUFFER
     * attribute group and GL_PIXEL attribute group, respectively.
@@ -3294,6 +3314,9 @@ struct gl_context
     * Same as ValidPrimMask, but should be applied to glDrawElements*.
     */
    GLbitfield ValidPrimMaskIndexed;
+
+   /** DrawID for the next non-multi non-indirect draw. Only set by glthread. */
+   GLuint DrawID;
 
    /**
     * Whether DrawPixels/CopyPixels/Bitmap are valid to render.

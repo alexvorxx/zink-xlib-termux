@@ -1210,11 +1210,6 @@ ntq_emit_comparison(struct v3d_compile *c,
                 vir_set_pf(c, vir_SUB_dest(c, nop, src0, src1), V3D_QPU_PF_PUSHC);
                 break;
 
-        case nir_op_f2b32:
-                vir_set_pf(c, vir_FMOV_dest(c, nop, src0), V3D_QPU_PF_PUSHZ);
-                cond_invert = true;
-                break;
-
         default:
                 return false;
         }
@@ -1589,7 +1584,6 @@ ntq_emit_alu(struct v3d_compile *c, nir_alu_instr *instr)
                 break;
         }
 
-        case nir_op_f2b32:
         case nir_op_feq32:
         case nir_op_fneu32:
         case nir_op_fge32:
@@ -2058,7 +2052,7 @@ mem_vectorize_callback(unsigned align_mul, unsigned align_offset,
 }
 
 void
-v3d_optimize_nir(struct v3d_compile *c, struct nir_shader *s, bool allow_copies)
+v3d_optimize_nir(struct v3d_compile *c, struct nir_shader *s)
 {
         bool progress;
         unsigned lower_flrp =
@@ -2074,7 +2068,7 @@ v3d_optimize_nir(struct v3d_compile *c, struct nir_shader *s, bool allow_copies)
                 NIR_PASS(progress, s, nir_opt_deref);
 
                 NIR_PASS(progress, s, nir_lower_vars_to_ssa);
-                if (allow_copies) {
+                if (!s->info.var_copies_lowered) {
                         /* Only run this pass if nir_lower_var_copies was not called
                          * yet. That would lower away any copy_deref instructions and we
                          * don't want to introduce any more.
@@ -4252,6 +4246,8 @@ ntq_emit_uniform_loop(struct v3d_compile *c, nir_loop *loop)
 static void
 ntq_emit_loop(struct v3d_compile *c, nir_loop *loop)
 {
+        assert(!nir_loop_has_continue_construct(loop));
+
         /* Disable flags optimization for loop conditions. The problem here is
          * that we can have code like this:
          *

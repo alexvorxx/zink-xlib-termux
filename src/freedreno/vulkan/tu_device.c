@@ -24,6 +24,7 @@
 
 /* for fd_get_driver/device_uuid() */
 #include "freedreno/common/freedreno_uuid.h"
+#include "freedreno/common/freedreno_stompable_regs.h"
 
 #include "tu_clear_blit.h"
 #include "tu_cmd_buffer.h"
@@ -114,6 +115,12 @@ static const struct vk_instance_extension_table tu_instance_extensions_supported
 #endif
 };
 
+static bool
+is_kgsl(struct tu_instance *instance)
+{
+   return strcmp(instance->knl->name, "kgsl") == 0;
+}
+
 static void
 get_device_extensions(const struct tu_physical_device *device,
                       struct vk_device_extension_table *ext)
@@ -177,14 +184,16 @@ get_device_extensions(const struct tu_physical_device *device,
        * If the instance only enables surface extensions that unconditionally support present wait,
        * we can also expose the extension that way. */
       .KHR_present_id =
-         driQueryOptionb(&device->instance->dri_options, "vk_khr_present_wait") ||
-         wsi_common_vk_instance_supports_present_wait(&device->instance->vk),
+         TU_HAS_SURFACE && (driQueryOptionb(&device->instance->dri_options,
+                                            "vk_khr_present_wait") ||
+                            wsi_common_vk_instance_supports_present_wait(
+                               &device->instance->vk)),
       .KHR_present_wait =
-         driQueryOptionb(&device->instance->dri_options, "vk_khr_present_wait") ||
-         wsi_common_vk_instance_supports_present_wait(&device->instance->vk),
-#ifndef TU_USE_KGSL
-      .KHR_timeline_semaphore = true,
-#endif
+         TU_HAS_SURFACE && (driQueryOptionb(&device->instance->dri_options,
+                                            "vk_khr_present_wait") ||
+                            wsi_common_vk_instance_supports_present_wait(
+                               &device->instance->vk)),
+      .KHR_timeline_semaphore = !is_kgsl(device->instance),
 #ifdef VK_USE_PLATFORM_DISPLAY_KHR
       .EXT_display_control = true,
 #endif
@@ -233,9 +242,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_attachment_feedback_loop_layout = true,
       .EXT_rasterization_order_attachment_access = true,
       .EXT_multi_draw = true,
-#ifndef TU_USE_KGSL
-      .EXT_physical_device_drm = true,
-#endif
+      .EXT_physical_device_drm = !is_kgsl(device->instance),
       /* For Graphics Flight Recorder (GFR) */
       .AMD_buffer_marker = true,
       .ARM_rasterization_order_attachment_access = true,
@@ -461,12 +468,9 @@ tu_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
       return vk_error(NULL, result);
    }
 
-#ifndef TU_USE_KGSL
    instance->vk.physical_devices.try_create_for_drm =
       tu_physical_device_try_create;
-#else
    instance->vk.physical_devices.enumerate = tu_enumerate_devices;
-#endif
    instance->vk.physical_devices.destroy = tu_destroy_physical_device;
 
    if (TU_DEBUG(STARTUP))
@@ -1678,9 +1682,8 @@ tu_queue_init(struct tu_device *device,
       return result;
 
    queue->device = device;
-#ifndef TU_USE_KGSL
-   queue->vk.driver_submit = tu_queue_submit;
-#endif
+   if (!is_kgsl(device->instance))
+      queue->vk.driver_submit = tu_queue_submit;
 
    int ret = tu_drm_submitqueue_new(device, priority, &queue->msm_queue_id);
    if (ret)
@@ -1965,6 +1968,87 @@ tu_u_trace_submission_data_finish(
    vk_free(&device->vk.alloc, submission_data);
 }
 
+enum tu_reg_stomper_flags
+{
+   TU_DEBUG_REG_STOMP_INVERSE = 1 << 0,
+   TU_DEBUG_REG_STOMP_CMDBUF = 1 << 1,
+   TU_DEBUG_REG_STOMP_RENDERPASS = 1 << 2,
+};
+
+/* See freedreno.rst for usage tips */
+static const struct debug_named_value tu_reg_stomper_options[] = {
+   { "inverse", TU_DEBUG_REG_STOMP_INVERSE,
+     "By default the range specifies the regs to stomp, with 'inverse' it "
+     "specifies the regs NOT to stomp" },
+   { "cmdbuf", TU_DEBUG_REG_STOMP_CMDBUF,
+     "Stomp regs at the start of a cmdbuf" },
+   { "renderpass", TU_DEBUG_REG_STOMP_RENDERPASS,
+     "Stomp regs before a renderpass" },
+   { NULL, 0 }
+};
+
+static void
+tu_init_dbg_reg_stomper(struct tu_device *device)
+{
+   const char *stale_reg_range_str =
+      os_get_option("TU_DEBUG_STALE_REGS_RANGE");
+   if (!stale_reg_range_str)
+      return;
+
+   uint32_t first_reg, last_reg;
+
+   if (sscanf(stale_reg_range_str, "%x,%x", &first_reg, &last_reg) != 2) {
+      mesa_loge("Incorrect TU_DEBUG_STALE_REGS_RANGE");
+      return;
+   }
+
+   uint64_t debug_flags = debug_get_flags_option("TU_DEBUG_STALE_REGS_FLAGS",
+                                                 tu_reg_stomper_options,
+                                                 TU_DEBUG_REG_STOMP_CMDBUF);
+
+   struct tu_cs *cmdbuf_cs = calloc(1, sizeof(struct tu_cs));
+   tu_cs_init(cmdbuf_cs, device, TU_CS_MODE_GROW, 4096,
+              "cmdbuf reg stomp cs");
+   tu_cs_begin(cmdbuf_cs);
+
+   struct tu_cs *rp_cs = calloc(1, sizeof(struct tu_cs));
+   tu_cs_init(rp_cs, device, TU_CS_MODE_GROW, 4096, "rp reg stomp cs");
+   tu_cs_begin(rp_cs);
+
+   size_t reg_ranges_count = ARRAY_SIZE(a6xx_fd_cmdbuf_stompable_reg_ranges);
+   for (size_t i = 0; i < reg_ranges_count; i++) {
+      struct fd_stompable_reg_range reg_range =
+         a6xx_fd_cmdbuf_stompable_reg_ranges[i];
+      for (uint16_t reg = reg_range.start_reg; reg <= reg_range.end_reg;
+           reg++) {
+         if (debug_flags & TU_DEBUG_REG_STOMP_INVERSE) {
+            if (reg >= first_reg && reg <= last_reg)
+               continue;
+         } else {
+            if (reg < first_reg || reg > last_reg)
+               continue;
+         }
+
+         if (a6xx_fd_reg_do_not_stomp(true, reg))
+            continue;
+
+         if (debug_flags & TU_DEBUG_REG_STOMP_CMDBUF)
+            tu_cs_emit_write_reg(cmdbuf_cs, reg, 0xffffffff);
+
+         if ((debug_flags & TU_DEBUG_REG_STOMP_RENDERPASS) &&
+             a6xx_fd_reg_rp_stompable(true, reg)) {
+            tu_cs_emit_write_reg(rp_cs, reg, 0xffffffff);
+         }
+      }
+   }
+
+   tu_cs_end(cmdbuf_cs);
+   tu_cs_end(rp_cs);
+
+   device->dbg_cmdbuf_stomp_cs = cmdbuf_cs;
+   device->dbg_renderpass_stomp_cs = rp_cs;
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 tu_CreateDevice(VkPhysicalDevice physicalDevice,
                 const VkDeviceCreateInfo *pCreateInfo,
@@ -2021,6 +2105,13 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
    vk_device_dispatch_table_from_entrypoints(
       &dispatch_table, &wsi_device_entrypoints, false);
 
+   const struct vk_device_entrypoint_table *knl_device_entrypoints =
+         physical_device->instance->knl->device_entrypoints;
+   if (knl_device_entrypoints) {
+      vk_device_dispatch_table_from_entrypoints(
+         &dispatch_table, knl_device_entrypoints, false);
+   }
+
    result = vk_device_init(&device->vk, &physical_device->vk,
                            &dispatch_table, pCreateInfo, pAllocator);
    if (result != VK_SUCCESS) {
@@ -2044,9 +2135,9 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
    if (TU_DEBUG(BOS))
       device->bo_sizes = _mesa_hash_table_create(NULL, _mesa_hash_string, _mesa_key_string_equal);
 
-#ifndef TU_USE_KGSL
-   vk_device_set_drm_fd(&device->vk, device->fd);
-#endif
+   /* kgsl is not a drm device: */
+   if (!is_kgsl(physical_device->instance))
+      vk_device_set_drm_fd(&device->vk, device->fd);
 
    for (unsigned i = 0; i < pCreateInfo->queueCreateInfoCount; i++) {
       const VkDeviceQueueCreateInfo *queue_create =
@@ -2085,6 +2176,8 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
                               .disable_cache = true,
                               .bindless_fb_read_descriptor = -1,
                               .bindless_fb_read_slot = -1,
+                              .storage_16bit =
+                                    physical_device->info->a6xx.storage_16bit
                            });
    if (!device->compiler) {
       result = vk_startup_errorf(physical_device->instance,
@@ -2194,6 +2287,8 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
          device->perfcntrs_pass_cs_entries[i] = tu_cs_end_sub_stream(cs, &sub_cs);
       }
    }
+
+   tu_init_dbg_reg_stomper(device);
 
    /* Initialize a condition variable for timeline semaphore */
    pthread_condattr_t condattr;
@@ -2328,6 +2423,16 @@ tu_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
       free(device->perfcntrs_pass_cs);
    }
 
+   if (device->dbg_cmdbuf_stomp_cs) {
+      tu_cs_finish(device->dbg_cmdbuf_stomp_cs);
+      free(device->dbg_cmdbuf_stomp_cs);
+   }
+
+   if (device->dbg_renderpass_stomp_cs) {
+      tu_cs_finish(device->dbg_renderpass_stomp_cs);
+      free(device->dbg_renderpass_stomp_cs);
+   }
+
    tu_autotune_fini(&device->autotune, device);
 
    tu_bo_suballocator_finish(&device->pipeline_suballoc);
@@ -2396,34 +2501,6 @@ tu_EnumerateInstanceLayerProperties(uint32_t *pPropertyCount,
    *pPropertyCount = 0;
    return VK_SUCCESS;
 }
-
-/* Only used for kgsl since drm started using common implementation */
-#ifdef TU_USE_KGSL
-VKAPI_ATTR VkResult VKAPI_CALL
-tu_QueueWaitIdle(VkQueue _queue)
-{
-   TU_FROM_HANDLE(tu_queue, queue, _queue);
-
-   if (vk_device_is_lost(&queue->device->vk))
-      return VK_ERROR_DEVICE_LOST;
-
-   if (queue->fence < 0)
-      return VK_SUCCESS;
-
-   struct pollfd fds = { .fd = queue->fence, .events = POLLIN };
-   int ret;
-   do {
-      ret = poll(&fds, 1, -1);
-   } while (ret == -1 && (errno == EINTR || errno == EAGAIN));
-
-   /* TODO: otherwise set device lost ? */
-   assert(ret == 1 && !(fds.revents & (POLLERR | POLLNVAL)));
-
-   close(queue->fence);
-   queue->fence = -1;
-   return VK_SUCCESS;
-}
-#endif
 
 VKAPI_ATTR VkResult VKAPI_CALL
 tu_EnumerateInstanceExtensionProperties(const char *pLayerName,

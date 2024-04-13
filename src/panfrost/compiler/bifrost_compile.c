@@ -1544,17 +1544,14 @@ bi_emit_ld_tile(bi_builder *b, nir_intrinsic_instr *instr)
    bi_index dest = bi_dest_index(&instr->dest);
    nir_alu_type T = nir_intrinsic_dest_type(instr);
    enum bi_register_format regfmt = bi_reg_fmt_for_nir(T);
-   unsigned rt = b->shader->inputs->blend.rt;
    unsigned size = nir_dest_bit_size(instr->dest);
    unsigned nr = instr->num_components;
 
    /* Get the render target */
-   if (!b->shader->inputs->is_blend) {
-      nir_io_semantics sem = nir_intrinsic_io_semantics(instr);
-      unsigned loc = sem.location;
-      assert(loc >= FRAG_RESULT_DATA0);
-      rt = (loc - FRAG_RESULT_DATA0);
-   }
+   nir_io_semantics sem = nir_intrinsic_io_semantics(instr);
+   unsigned loc = sem.location;
+   assert(loc >= FRAG_RESULT_DATA0);
+   unsigned rt = (loc - FRAG_RESULT_DATA0);
 
    bi_index desc =
       b->shader->inputs->is_blend
@@ -1643,26 +1640,21 @@ bi_emit_intrinsic(bi_builder *b, nir_intrinsic_instr *instr)
       bi_emit_store(b, instr, BI_SEG_WLS);
       break;
 
-   /* Blob doesn't seem to do anything for memory barriers, note +BARRIER
-    * is illegal in fragment shaders */
-   case nir_intrinsic_memory_barrier:
-   case nir_intrinsic_memory_barrier_buffer:
-   case nir_intrinsic_memory_barrier_image:
-   case nir_intrinsic_memory_barrier_shared:
-   case nir_intrinsic_group_memory_barrier:
-      break;
-
    case nir_intrinsic_control_barrier:
       assert(b->shader->stage != MESA_SHADER_FRAGMENT);
       bi_barrier(b);
       break;
 
    case nir_intrinsic_scoped_barrier:
-      assert(b->shader->stage != MESA_SHADER_FRAGMENT);
-      assert(nir_intrinsic_memory_scope(instr) > NIR_SCOPE_SUBGROUP &&
-             "todo: subgroup barriers (different divergence rules)");
-
-      bi_barrier(b);
+      if (nir_intrinsic_execution_scope(instr) != NIR_SCOPE_NONE) {
+         assert(b->shader->stage != MESA_SHADER_FRAGMENT);
+         assert(nir_intrinsic_execution_scope(instr) > NIR_SCOPE_SUBGROUP &&
+                "todo: subgroup barriers (different divergence rules)");
+         bi_barrier(b);
+      }
+      /* Blob doesn't seem to do anything for memory barriers, so no need to
+       * check nir_intrinsic_memory_scope().
+       */
       break;
 
    case nir_intrinsic_shared_atomic_add:
@@ -2880,14 +2872,6 @@ bi_emit_alu(bi_builder *b, nir_alu_instr *instr)
                 BI_MUX_INT_ZERO);
       break;
 
-   case nir_op_f2b16:
-      bi_mux_v2i16_to(b, dst, bi_imm_u16(0), bi_imm_u16(~0), s0,
-                      BI_MUX_FP_ZERO);
-      break;
-   case nir_op_f2b32:
-      bi_mux_i32_to(b, dst, bi_imm_u32(0), bi_imm_u32(~0), s0, BI_MUX_FP_ZERO);
-      break;
-
    case nir_op_ieq8:
    case nir_op_ine8:
    case nir_op_ilt8:
@@ -4078,6 +4062,8 @@ emit_if(bi_context *ctx, nir_if *nif)
 static void
 emit_loop(bi_context *ctx, nir_loop *nloop)
 {
+   assert(!nir_loop_has_continue_construct(nloop));
+
    /* Remember where we are */
    bi_block *start_block = ctx->current_block;
 

@@ -245,23 +245,6 @@ assign_alu_dest(struct lp_build_nir_context *bld_base,
 }
 
 static LLVMValueRef
-flt_to_bool32(struct lp_build_nir_context *bld_base,
-              uint32_t src_bit_size,
-              LLVMValueRef val)
-{
-   LLVMBuilderRef builder = bld_base->base.gallivm->builder;
-   struct lp_build_context *flt_bld = get_flt_bld(bld_base, src_bit_size);
-   LLVMValueRef result =
-      lp_build_cmp(flt_bld, PIPE_FUNC_NOTEQUAL, val, flt_bld->zero);
-   if (src_bit_size == 64)
-      result = LLVMBuildTrunc(builder, result, bld_base->int_bld.vec_type, "");
-   if (src_bit_size == 16)
-      result = LLVMBuildSExt(builder, result, bld_base->int_bld.vec_type, "");
-   return result;
-}
-
-
-static LLVMValueRef
 fcmp32(struct lp_build_nir_context *bld_base,
        enum pipe_compare_func compare,
        uint32_t src_bit_size,
@@ -730,9 +713,6 @@ do_alu_action(struct lp_build_nir_context *bld_base,
       break;
    case nir_op_bitfield_reverse:
       result = lp_build_bitfield_reverse(get_int_bld(bld_base, false, src_bit_size[0]), src[0]);
-      break;
-   case nir_op_f2b32:
-      result = flt_to_bool32(bld_base, src_bit_size[0], src[0]);
       break;
    case nir_op_f2f16:
       if (src_bit_size[0] == 64)
@@ -2143,8 +2123,11 @@ visit_intrinsic(struct lp_build_nir_context *bld_base,
       visit_shared_atomic(bld_base, instr, result);
       break;
    case nir_intrinsic_control_barrier:
-   case nir_intrinsic_scoped_barrier:
       visit_barrier(bld_base);
+      break;
+   case nir_intrinsic_scoped_barrier:
+      if (nir_intrinsic_execution_scope(instr) != NIR_SCOPE_NONE)
+         visit_barrier(bld_base);
       break;
    case nir_intrinsic_group_memory_barrier:
    case nir_intrinsic_memory_barrier:
@@ -2654,6 +2637,7 @@ visit_if(struct lp_build_nir_context *bld_base, nir_if *if_stmt)
 static void
 visit_loop(struct lp_build_nir_context *bld_base, nir_loop *loop)
 {
+   assert(!nir_loop_has_continue_construct(loop));
    bld_base->bgnloop(bld_base);
    visit_cf_list(bld_base, &loop->body);
    bld_base->endloop(bld_base);
@@ -2711,10 +2695,10 @@ get_register_type(struct lp_build_nir_context *bld_base,
       get_int_bld(bld_base, true, reg->bit_size == 1 ? 32 : reg->bit_size);
 
    LLVMTypeRef type = int_bld->vec_type;
-   if (reg->num_array_elems)
-      type = LLVMArrayType(type, reg->num_array_elems);
    if (reg->num_components > 1)
       type = LLVMArrayType(type, reg->num_components);
+   if (reg->num_array_elems)
+      type = LLVMArrayType(type, reg->num_array_elems);
 
    return type;
 }
@@ -2795,7 +2779,7 @@ lp_build_opt_nir(struct nir_shader *nir)
    NIR_PASS_V(nir, nir_lower_frexp);
 
    NIR_PASS_V(nir, nir_lower_flrp, 16|32|64, true);
-   NIR_PASS_V(nir, nir_lower_fp16_casts);
+   NIR_PASS_V(nir, nir_lower_fp16_casts, nir_lower_fp16_all);
    do {
       progress = false;
       NIR_PASS(progress, nir, nir_opt_constant_folding);

@@ -1522,36 +1522,32 @@ static bool is_dcc_supported_by_CB(const struct radeon_info *info, unsigned sw_m
 ASSERTED static bool is_dcc_supported_by_L2(const struct radeon_info *info,
                                             const struct radeon_surf *surf)
 {
+   bool single_indep = surf->u.gfx9.color.dcc.independent_64B_blocks !=
+                       surf->u.gfx9.color.dcc.independent_128B_blocks;
+   bool valid_64b = surf->u.gfx9.color.dcc.independent_64B_blocks &&
+                    surf->u.gfx9.color.dcc.max_compressed_block_size == V_028C78_MAX_BLOCK_SIZE_64B;
+   bool valid_128b = surf->u.gfx9.color.dcc.independent_128B_blocks &&
+                     (surf->u.gfx9.color.dcc.max_compressed_block_size == V_028C78_MAX_BLOCK_SIZE_128B);
+
    if (info->gfx_level <= GFX9) {
       /* Only independent 64B blocks are supported. */
-      return surf->u.gfx9.color.dcc.independent_64B_blocks && !surf->u.gfx9.color.dcc.independent_128B_blocks &&
-             surf->u.gfx9.color.dcc.max_compressed_block_size == V_028C78_MAX_BLOCK_SIZE_64B;
+      return single_indep && valid_64b;
    }
 
    if (info->family == CHIP_NAVI10) {
       /* Only independent 128B blocks are supported. */
-      return !surf->u.gfx9.color.dcc.independent_64B_blocks && surf->u.gfx9.color.dcc.independent_128B_blocks &&
-             surf->u.gfx9.color.dcc.max_compressed_block_size <= V_028C78_MAX_BLOCK_SIZE_128B;
+      return single_indep && valid_128b;
    }
 
-   bool valid_64b = surf->u.gfx9.color.dcc.independent_64B_blocks &&
-                    surf->u.gfx9.color.dcc.max_compressed_block_size == V_028C78_MAX_BLOCK_SIZE_64B;
-   bool valid_128b = surf->u.gfx9.color.dcc.independent_128B_blocks &&
-                     surf->u.gfx9.color.dcc.max_compressed_block_size == V_028C78_MAX_BLOCK_SIZE_128B;
-
    if (info->family == CHIP_NAVI12 || info->family == CHIP_NAVI14) {
-      /* Either 64B or 128B can be used, but not both.
+      /* Either 64B or 128B can be used, but the INDEPENDENT_*_BLOCKS setting must match.
        * If 64B is used, DCC image stores are unsupported.
        */
-      return surf->u.gfx9.color.dcc.independent_64B_blocks != surf->u.gfx9.color.dcc.independent_128B_blocks &&
-             (valid_64b || valid_128b);
+      return single_indep && (valid_64b || valid_128b);
    }
 
    /* Valid settings are the same as NAVI14 + (64B && 128B && max_compressed_block_size == 64B) */
-   return (surf->u.gfx9.color.dcc.independent_64B_blocks != surf->u.gfx9.color.dcc.independent_128B_blocks &&
-           (valid_64b || valid_128b)) ||
-          (surf->u.gfx9.color.dcc.independent_64B_blocks &&
-           surf->u.gfx9.color.dcc.max_compressed_block_size == V_028C78_MAX_BLOCK_SIZE_64B);
+   return (single_indep && (valid_64b || valid_128b)) || valid_64b;
 }
 
 static bool gfx10_DCN_requires_independent_64B_blocks(const struct radeon_info *info,
@@ -1788,9 +1784,11 @@ static int gfx9_compute_miptree(struct ac_addrlib *addrlib, const struct radeon_
          /* Adjust pitch like we did for surf_pitch */
          surf->u.gfx9.pitch[i] = align(mip_info[i].pitch / surf->blk_w, alignment);
       }
+      surf->u.gfx9.base_mip_width = surf->u.gfx9.surf_pitch;
+   } else {
+      surf->u.gfx9.base_mip_width = mip_info[0].pitch;
    }
 
-   surf->u.gfx9.base_mip_width = mip_info[0].pitch;
    surf->u.gfx9.base_mip_height = mip_info[0].height;
 
    if (in->flags.depth) {
@@ -1878,6 +1876,12 @@ static int gfx9_compute_miptree(struct ac_addrlib *addrlib, const struct radeon_
 
          assert(xout.pipeBankXor <= u_bit_consecutive(0, sizeof(surf->tile_swizzle) * 8));
          surf->tile_swizzle = xout.pipeBankXor;
+
+         /* Gfx11 should shift it by 10 bits instead of 8, and drivers already shift it by 8 bits,
+          * so shift it by 2 bits here.
+          */
+         if (info->gfx_level >= GFX11)
+            surf->tile_swizzle <<= 2;
       }
 
       bool use_dcc = false;

@@ -555,8 +555,14 @@ tu_cs_emit_draw_state(struct tu_cs *cs, uint32_t id, struct tu_draw_state state)
       enable_mask = CP_SET_DRAW_STATE__0_GMEM;
       break;
    case TU_DRAW_STATE_INPUT_ATTACHMENTS_SYSMEM:
-   case TU_DRAW_STATE_PRIM_MODE_SYSMEM:
       enable_mask = CP_SET_DRAW_STATE__0_SYSMEM;
+      break;
+   case TU_DRAW_STATE_PRIM_MODE_SYSMEM:
+      /* By also applying the state during binning we ensure that there
+       * is no rotation applied, by previous A6XX_GRAS_SC_CNTL::rotation.
+       */
+      enable_mask =
+         CP_SET_DRAW_STATE__0_SYSMEM | CP_SET_DRAW_STATE__0_BINNING;
       break;
    default:
       enable_mask = CP_SET_DRAW_STATE__0_GMEM |
@@ -686,8 +692,7 @@ use_sysmem_rendering(struct tu_cmd_buffer *cmd,
       return true;
 
    /* can't fit attachments into gmem */
-   if (!cmd->state.pass->gmem_pixels[cmd->state.gmem_layout] ||
-       !cmd->state.tiling->possible)
+   if (!cmd->state.tiling->possible)
       return true;
 
    if (cmd->state.framebuffer->layers > 1)
@@ -735,13 +740,14 @@ use_sysmem_rendering(struct tu_cmd_buffer *cmd,
  */
 static void
 tu6_emit_cond_for_load_stores(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
-                              uint32_t pipe, uint32_t slot, bool wfm)
+                              uint32_t pipe, uint32_t slot, bool skip_wfm)
 {
-   if (cmd->state.tiling->binning_possible) {
+   if (cmd->state.tiling->binning_possible &&
+       cmd->state.pass->has_cond_load_store) {
       tu_cs_emit_pkt7(cs, CP_REG_TEST, 1);
       tu_cs_emit(cs, A6XX_CP_REG_TEST_0_REG(REG_A6XX_VSC_STATE_REG(pipe)) |
                      A6XX_CP_REG_TEST_0_BIT(slot) |
-                     COND(wfm, A6XX_CP_REG_TEST_0_WAIT_FOR_ME));
+                     COND(skip_wfm, A6XX_CP_REG_TEST_0_SKIP_WAIT_FOR_ME));
    } else {
       /* COND_REG_EXECs are not emitted in non-binning case */
    }
@@ -856,8 +862,10 @@ tu6_emit_tile_load(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
 {
    tu6_emit_blit_scissor(cmd, cs, true);
 
+   const bool cond_exec_allowed = cmd->state.tiling->binning &&
+                                  cmd->state.pass->has_cond_load_store;
    for (uint32_t i = 0; i < cmd->state.pass->attachment_count; ++i)
-      tu_load_gmem_attachment(cmd, cs, i, cmd->state.tiling->binning, false);
+      tu_load_gmem_attachment(cmd, cs, i, cond_exec_allowed, false);
 }
 
 static void
@@ -874,9 +882,11 @@ tu6_emit_tile_store(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
 
    for (uint32_t a = 0; a < pass->attachment_count; ++a) {
       if (pass->attachments[a].gmem) {
+         const bool cond_exec_allowed = cmd->state.tiling->binning_possible &&
+                                        cmd->state.pass->has_cond_load_store;
          tu_store_gmem_attachment(cmd, cs, a, a,
                                   fb->layers, subpass->multiview_mask,
-                                  cmd->state.tiling->binning_possible);
+                                  cond_exec_allowed);
       }
    }
 
@@ -928,6 +938,10 @@ tu6_init_hw(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
          .cs_bindless = 0x1f));
 
    tu_cs_emit_wfi(cs);
+
+   if (dev->dbg_cmdbuf_stomp_cs) {
+      tu_cs_emit_call(cs, dev->dbg_cmdbuf_stomp_cs);
+   }
 
    cmd->state.cache.pending_flush_bits &=
       ~(TU_CMD_FLAG_WAIT_FOR_IDLE | TU_CMD_FLAG_CACHE_INVALIDATE);
@@ -2164,7 +2178,8 @@ tu_CmdBindDescriptorSets(VkCommandBuffer commandBuffer,
       TU_FROM_HANDLE(tu_descriptor_set, set, pDescriptorSets[i]);
 
       descriptors_state->sets[idx] = set;
-      descriptors_state->set_iova[idx] = set->va | BINDLESS_DESCRIPTOR_64B;
+      descriptors_state->set_iova[idx] = set ?
+         (set->va | BINDLESS_DESCRIPTOR_64B) : 0;
 
       if (!set)
          continue;
@@ -4310,6 +4325,10 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
       return;
    }
 
+   if (cmd->device->dbg_renderpass_stomp_cs) {
+      tu_cs_emit_call(&cmd->cs, cmd->device->dbg_renderpass_stomp_cs);
+   }
+
    for (unsigned i = 0; i < pass->attachment_count; i++) {
       cmd->state.attachments[i] = pAttachmentInfo ?
          tu_image_view_from_handle(pAttachmentInfo->pAttachments[i]) :
@@ -4519,39 +4538,42 @@ tu_CmdNextSubpass2(VkCommandBuffer commandBuffer,
       cmd->state.dirty |= TU_CMD_DIRTY_LRZ;
    }
 
-   tu_cond_exec_start(cs, CP_COND_EXEC_0_RENDER_MODE_GMEM);
+   if (cmd->state.tiling->possible) {
+      tu_cond_exec_start(cs, CP_COND_EXEC_0_RENDER_MODE_GMEM);
 
-   if (subpass->resolve_attachments) {
-      tu6_emit_blit_scissor(cmd, cs, true);
+      if (subpass->resolve_attachments) {
+         tu6_emit_blit_scissor(cmd, cs, true);
 
-      for (unsigned i = 0; i < subpass->resolve_count; i++) {
-         uint32_t a = subpass->resolve_attachments[i].attachment;
-         if (a == VK_ATTACHMENT_UNUSED)
-            continue;
+         for (unsigned i = 0; i < subpass->resolve_count; i++) {
+            uint32_t a = subpass->resolve_attachments[i].attachment;
+            if (a == VK_ATTACHMENT_UNUSED)
+               continue;
 
-         uint32_t gmem_a = tu_subpass_get_attachment_to_resolve(subpass, i);
+            uint32_t gmem_a = tu_subpass_get_attachment_to_resolve(subpass, i);
 
-         tu_store_gmem_attachment(cmd, cs, a, gmem_a, fb->layers,
-                                  subpass->multiview_mask, false);
+            tu_store_gmem_attachment(cmd, cs, a, gmem_a, fb->layers,
+                                    subpass->multiview_mask, false);
 
-         if (!pass->attachments[a].gmem)
-            continue;
+            if (!pass->attachments[a].gmem)
+               continue;
 
-         /* check if the resolved attachment is needed by later subpasses,
-          * if it is, should be doing a GMEM->GMEM resolve instead of GMEM->MEM->GMEM..
-          */
-         perf_debug(cmd->device, "TODO: missing GMEM->GMEM resolve path\n");
-         tu_load_gmem_attachment(cmd, cs, a, false, true);
+            /* check if the resolved attachment is needed by later subpasses,
+            * if it is, should be doing a GMEM->GMEM resolve instead of GMEM->MEM->GMEM..
+            */
+            perf_debug(cmd->device, "TODO: missing GMEM->GMEM resolve path\n");
+            tu_load_gmem_attachment(cmd, cs, a, false, true);
+         }
       }
+
+      tu_cond_exec_end(cs);
+
+      tu_cond_exec_start(cs, CP_COND_EXEC_0_RENDER_MODE_SYSMEM);
    }
-
-   tu_cond_exec_end(cs);
-
-   tu_cond_exec_start(cs, CP_COND_EXEC_0_RENDER_MODE_SYSMEM);
 
    tu6_emit_sysmem_resolves(cmd, cs, subpass);
 
-   tu_cond_exec_end(cs);
+   if (cmd->state.tiling->possible)
+      tu_cond_exec_end(cs);
 
    /* Handle dependencies for the next subpass */
    tu_subpass_barrier(cmd, &cmd->state.subpass->start_barrier, false);
@@ -5893,6 +5915,11 @@ tu_CmdEndRendering(VkCommandBuffer commandBuffer)
       if (cmd_buffer->state.suspend_resume == SR_IN_PRE_CHAIN) {
          cmd_buffer->trace_renderpass_end = u_trace_end_iterator(&cmd_buffer->trace);
          tu_save_pre_chain(cmd_buffer);
+
+         /* Even we don't call tu_cmd_render here, renderpass is finished
+          * and draw states should be disabled.
+          */
+         tu_disable_draw_states(cmd_buffer, &cmd_buffer->cs);
       } else {
          tu_cmd_render(cmd_buffer);
       }

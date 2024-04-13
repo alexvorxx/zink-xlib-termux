@@ -207,10 +207,12 @@ tc_parse_draw(struct threaded_context *tc)
       info->cbuf_invalidate = 0;
       info->zsbuf_invalidate = false;
       info->has_draw = true;
+      info->has_query_ends |= tc->query_ended;
    }
 
    tc->in_renderpass = true;
    tc->seen_fb_state = true;
+   tc->query_ended = false;
 }
 
 static void *
@@ -596,6 +598,7 @@ _tc_sync(struct threaded_context *tc, UNUSED const char *info, UNUSED const char
          tc->renderpass_info_recording->data32[0] = 0;
       }
       tc->seen_fb_state = false;
+      tc->query_ended = false;
    }
 
    MESA_TRACE_END();
@@ -1120,6 +1123,7 @@ tc_end_query(struct pipe_context *_pipe, struct pipe_query *query)
    call->query = query;
 
    tq->flushed = false;
+   tc->query_ended = true;
 
    return true; /* we don't care about the return value for this call */
 }
@@ -1363,6 +1367,7 @@ tc_call_set_framebuffer_state(struct pipe_context *pipe, void *call, uint64_t *l
    for (unsigned i = 0; i < nr_cbufs; i++)
       tc_drop_surface_reference(p->cbufs[i]);
    tc_drop_surface_reference(p->zsbuf);
+   tc_drop_resource_reference(p->resolve);
    return call_size(tc_framebuffer);
 }
 
@@ -1400,6 +1405,7 @@ tc_set_framebuffer_state(struct pipe_context *_pipe,
              sizeof(void*) * (PIPE_MAX_COLOR_BUFS - nr_cbufs));
 
       tc->fb_resources[PIPE_MAX_COLOR_BUFS] = fb->zsbuf ? fb->zsbuf->texture : NULL;
+      tc->fb_resolve = fb->resolve;
       if (tc->seen_fb_state) {
          /* this is the end of a renderpass, so increment the renderpass info */
          tc_batch_increment_renderpass_info(tc, false);
@@ -1425,6 +1431,8 @@ tc_set_framebuffer_state(struct pipe_context *_pipe,
    tc->in_renderpass = false;
    p->state.zsbuf = NULL;
    pipe_surface_reference(&p->state.zsbuf, fb->zsbuf);
+   p->state.resolve = NULL;
+   pipe_resource_reference(&p->state.resolve, fb->resolve);
 }
 
 struct tc_tess_state {
@@ -3455,6 +3463,7 @@ out_of_memory:
    if (!(flags & PIPE_FLUSH_DEFERRED)) {
       tc_flush_queries(tc);
       tc->seen_fb_state = false;
+      tc->query_ended = false;
    }
    tc_set_driver_thread(tc);
    pipe->flush(pipe, fence, flags);
@@ -3670,7 +3679,8 @@ tc_draw_vbo(struct pipe_context *_pipe, const struct pipe_draw_info *info,
    struct threaded_context *tc = threaded_context(_pipe);
    unsigned index_size = info->index_size;
    bool has_user_indices = info->has_user_indices;
-   tc_parse_draw(tc);
+   if (tc->options.parse_renderpass_info)
+      tc_parse_draw(tc);
 
    if (unlikely(indirect)) {
       assert(!has_user_indices);
@@ -3990,7 +4000,8 @@ tc_draw_vertex_state(struct pipe_context *_pipe,
                      unsigned num_draws)
 {
    struct threaded_context *tc = threaded_context(_pipe);
-   tc_parse_draw(tc);
+   if (tc->options.parse_renderpass_info)
+      tc_parse_draw(tc);
 
    if (num_draws == 1) {
       /* Single draw. */
@@ -4171,6 +4182,11 @@ tc_blit(struct pipe_context *_pipe, const struct pipe_blit_info *info)
    tc_set_resource_reference(&blit->info.dst.resource, info->dst.resource);
    tc_set_resource_reference(&blit->info.src.resource, info->src.resource);
    memcpy(&blit->info, info, sizeof(*info));
+   if (tc->options.parse_renderpass_info) {
+      tc->renderpass_info_recording->has_resolve = info->src.resource->nr_samples > 1 &&
+                                                   info->dst.resource->nr_samples <= 1 &&
+                                                   tc->fb_resolve == info->dst.resource;
+   }
 }
 
 struct tc_generate_mipmap {

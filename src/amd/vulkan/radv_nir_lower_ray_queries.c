@@ -26,7 +26,7 @@
 
 #include "util/hash_table.h"
 
-#include "radv_acceleration_structure.h"
+#include "bvh/bvh.h"
 #include "radv_private.h"
 #include "radv_rt_common.h"
 #include "radv_shader.h"
@@ -35,7 +35,6 @@
  * needed. However, we keep a large stack size to avoid it being put into registers, which hurts
  * occupancy. */
 #define MAX_SCRATCH_STACK_ENTRY_COUNT 76
-#define MAX_SHARED_STACK_ENTRY_COUNT  8
 
 typedef struct {
    nir_variable *variable;
@@ -178,6 +177,7 @@ struct ray_query_vars {
 
    rq_variable *stack;
    uint32_t shared_base;
+   uint32_t stack_entries;
 };
 
 #define VAR_NAME(name)                                                                             \
@@ -272,16 +272,20 @@ init_ray_query_vars(nir_shader *shader, unsigned array_length, struct ray_query_
 
    uint32_t workgroup_size = shader->info.workgroup_size[0] * shader->info.workgroup_size[1] *
                              shader->info.workgroup_size[2];
-   uint32_t shared_stack_size = workgroup_size * MAX_SHARED_STACK_ENTRY_COUNT * 4;
+   uint32_t shared_stack_entries = shader->info.ray_queries == 1 ? 16 : 8;
+   uint32_t shared_stack_size = workgroup_size * shared_stack_entries * 4;
    uint32_t shared_offset = align(shader->info.shared_size, 4);
    if (shader->info.stage != MESA_SHADER_COMPUTE || array_length > 1 ||
        shared_offset + shared_stack_size > max_shared_size) {
       dst->stack = rq_variable_create(
          dst, shader, array_length,
          glsl_array_type(glsl_uint_type(), MAX_SCRATCH_STACK_ENTRY_COUNT, 0), VAR_NAME("_stack"));
+      dst->stack_entries = MAX_SCRATCH_STACK_ENTRY_COUNT;
    } else {
       dst->stack = NULL;
       dst->shared_base = shared_offset;
+      dst->stack_entries = shared_stack_entries;
+
       shader->info.shared_size = shared_offset + shared_stack_size;
    }
 }
@@ -372,7 +376,7 @@ lower_rq_initialize(nir_builder *b, nir_ssa_def *index, nir_intrinsic_instr *ins
                     struct ray_query_vars *vars)
 {
    rq_store_var(b, index, vars->flags, instr->src[2].ssa, 0x1);
-   rq_store_var(b, index, vars->cull_mask, nir_iand_imm(b, instr->src[3].ssa, 0xff), 0x1);
+   rq_store_var(b, index, vars->cull_mask, nir_ishl_imm(b, instr->src[3].ssa, 24), 0x1);
 
    rq_store_var(b, index, vars->origin, instr->src[4].ssa, 0x7);
    rq_store_var(b, index, vars->trav.origin, instr->src[4].ssa, 0x7);
@@ -647,6 +651,7 @@ lower_rq_proceed(nir_builder *b, nir_ssa_def *index, struct ray_query_vars *vars
       .tmin = rq_load_var(b, index, vars->tmin),
       .dir = rq_load_var(b, index, vars->direction),
       .vars = trav_vars,
+      .stack_entries = vars->stack_entries,
       .stack_store_cb = store_stack_entry,
       .stack_load_cb = load_stack_entry,
       .aabb_cb = handle_candidate_aabb,
@@ -656,14 +661,12 @@ lower_rq_proceed(nir_builder *b, nir_ssa_def *index, struct ray_query_vars *vars
 
    if (vars->stack) {
       args.stack_stride = 1;
-      args.stack_entries = MAX_SCRATCH_STACK_ENTRY_COUNT;
       args.stack_base = 0;
    } else {
       uint32_t workgroup_size = b->shader->info.workgroup_size[0] *
                                 b->shader->info.workgroup_size[1] *
                                 b->shader->info.workgroup_size[2];
       args.stack_stride = workgroup_size * 4;
-      args.stack_entries = MAX_SHARED_STACK_ENTRY_COUNT;
       args.stack_base = vars->shared_base;
    }
 

@@ -315,7 +315,8 @@ genX(emit_shading_rate)(struct anv_batch *batch,
                         const struct vk_fragment_shading_rate_state *fsr)
 {
    const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
-   const bool cps_enable = wm_prog_data && wm_prog_data->per_coarse_pixel_dispatch;
+   const bool cps_enable = wm_prog_data &&
+      brw_wm_prog_data_is_coarse(wm_prog_data, 0);
 
 #if GFX_VER == 11
    anv_batch_emit(batch, GENX(3DSTATE_CPS), cps) {
@@ -390,6 +391,36 @@ genX(cmd_buffer_flush_dynamic_state)(struct anv_cmd_buffer *cmd_buffer)
    struct anv_graphics_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
    const struct vk_dynamic_graphics_state *dyn =
       &cmd_buffer->vk.dynamic_graphics_state;
+
+   if ((cmd_buffer->state.gfx.dirty & ANV_CMD_DIRTY_PIPELINE) ||
+       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_VI)) {
+      const uint32_t ve_count =
+         pipeline->vs_input_elements + pipeline->svgs_count;
+      const uint32_t num_dwords = 1 + 2 * MAX2(1, ve_count);
+      uint32_t *p = anv_batch_emitn(&cmd_buffer->batch, num_dwords,
+                                    GENX(3DSTATE_VERTEX_ELEMENTS));
+
+      if (p) {
+         if (ve_count == 0) {
+            memcpy(p + 1, cmd_buffer->device->empty_vs_input,
+                   sizeof(cmd_buffer->device->empty_vs_input));
+         } else if (ve_count == pipeline->vertex_input_elems) {
+            /* MESA_VK_DYNAMIC_VI is not dynamic for this pipeline, so
+             * everything is in pipeline->vertex_input_data and we can just
+             * memcpy
+             */
+            memcpy(p + 1, pipeline->vertex_input_data, 4 * 2 * ve_count);
+         } else {
+            /* Use dyn->vi to emit the dynamic VERTEX_ELEMENT_STATE input. */
+            genX(emit_vertex_input)(&cmd_buffer->batch, p + 1,
+                                    pipeline, dyn->vi);
+            /* Then append the VERTEX_ELEMENT_STATE for the draw parameters */
+            memcpy(p + 1 + 2 * pipeline->vs_input_elements,
+                   pipeline->vertex_input_data,
+                   4 * 2 * pipeline->vertex_input_elems);
+         }
+      }
+   }
 
    if ((cmd_buffer->state.gfx.dirty & ANV_CMD_DIRTY_PIPELINE) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_TS_DOMAIN_ORIGIN)) {
@@ -683,7 +714,8 @@ genX(cmd_buffer_flush_dynamic_state)(struct anv_cmd_buffer *cmd_buffer)
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_CB_COLOR_WRITE_ENABLES) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_CB_LOGIC_OP_ENABLE) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_MS_ALPHA_TO_ONE_ENABLE) ||
-       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_CB_COLOR_WRITE_ENABLES) ||
+       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_CB_WRITE_MASKS) ||
+       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_CB_BLEND_ENABLES) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_CB_BLEND_EQUATIONS)) {
       const uint8_t color_writes = dyn->cb.color_write_enables;
       const struct anv_cmd_graphics_state *state = &cmd_buffer->state.gfx;
@@ -692,10 +724,14 @@ genX(cmd_buffer_flush_dynamic_state)(struct anv_cmd_buffer *cmd_buffer)
          anv_pipeline_has_stage(pipeline, MESA_SHADER_FRAGMENT) &&
          (color_writes & ((1u << state->color_att_count) - 1)) != 0;
 
-      uint32_t blend_dws[GENX(BLEND_STATE_length) +
-                         MAX_RTS * GENX(BLEND_STATE_ENTRY_length)];
-      uint32_t *dws = blend_dws;
-      memset(blend_dws, 0, sizeof(blend_dws));
+      uint32_t num_dwords = GENX(BLEND_STATE_length) +
+         GENX(BLEND_STATE_ENTRY_length) * MAX_RTS;
+      struct anv_state blend_states =
+         anv_cmd_buffer_alloc_dynamic_state(cmd_buffer,
+                                            num_dwords * 4,
+                                            64);
+
+      uint32_t *dws = blend_states.map;
 
       struct GENX(BLEND_STATE) blend_state = {
          .AlphaToCoverageEnable = dyn->ms.alpha_to_coverage_enable,
@@ -724,10 +760,29 @@ genX(cmd_buffer_flush_dynamic_state)(struct anv_cmd_buffer *cmd_buffer)
             .WriteDisableBlue  = write_disabled ||
                                  (dyn->cb.attachments[i].write_mask &
                                   VK_COLOR_COMPONENT_B_BIT) == 0,
+            /* Vulkan specification 1.2.168, VkLogicOp:
+             *
+             *   "Logical operations are controlled by the logicOpEnable and
+             *   logicOp members of VkPipelineColorBlendStateCreateInfo. If
+             *   logicOpEnable is VK_TRUE, then a logical operation selected
+             *   by logicOp is applied between each color attachment and the
+             *   fragment’s corresponding output value, and blending of all
+             *   attachments is treated as if it were disabled."
+             *
+             * From the Broadwell PRM Volume 2d: Command Reference:
+             * Structures: BLEND_STATE_ENTRY:
+             *
+             *   "Enabling LogicOp and Color Buffer Blending at the same time
+             *   is UNDEFINED"
+             */
             .LogicOpFunction   = genX(vk_to_intel_logic_op)[dyn->cb.logic_op],
             .LogicOpEnable     = dyn->cb.logic_op_enable,
             .ColorBufferBlendEnable =
                !dyn->cb.logic_op_enable && dyn->cb.attachments[i].blend_enable,
+
+            .ColorClampRange = COLORCLAMP_RTFORMAT,
+            .PreBlendColorClampEnable = true,
+            .PostBlendColorClampEnable = true,
          };
 
          /* Setup blend equation. */
@@ -795,7 +850,7 @@ genX(cmd_buffer_flush_dynamic_state)(struct anv_cmd_buffer *cmd_buffer)
       }
 
       /* Generate blend state after entries. */
-      GENX(BLEND_STATE_pack)(NULL, blend_dws, &blend_state);
+      GENX(BLEND_STATE_pack)(NULL, blend_states.map, &blend_state);
 
       /* 3DSTATE_PS_BLEND to be consistent with the rest of the
        * BLEND_STATE_ENTRY.
@@ -812,12 +867,6 @@ genX(cmd_buffer_flush_dynamic_state)(struct anv_cmd_buffer *cmd_buffer)
          blend.AlphaToCoverageEnable         = dyn->ms.alpha_to_coverage_enable;
       }
 
-      uint32_t num_dwords = GENX(BLEND_STATE_length) +
-         GENX(BLEND_STATE_ENTRY_length) * MAX_RTS;
-
-      struct anv_state blend_states =
-         anv_cmd_buffer_merge_dynamic(cmd_buffer, blend_dws,
-                                      pipeline->gfx8.blend_state, num_dwords, 64);
       anv_batch_emit(&cmd_buffer->batch, GENX(3DSTATE_BLEND_STATE_POINTERS), bsp) {
          bsp.BlendStatePointer      = blend_states.offset;
          bsp.BlendStatePointerValid = true;

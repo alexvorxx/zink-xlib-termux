@@ -1556,6 +1556,7 @@ Converter::visit(nir_if *nif)
 bool
 Converter::visit(nir_loop *loop)
 {
+   assert(!nir_loop_has_continue_construct(loop));
    curLoopDepth += 1;
    func->loopNestingBound = std::max(func->loopNestingBound, curLoopDepth);
 
@@ -2919,12 +2920,6 @@ Converter::visit(nir_alu_instr *insn)
       Value *tmp = getSSA(4);
       mkOp2(OP_AND, TYPE_U32, tmp, getSrc(&insn->src[0]), loadImm(NULL, 0x3ff00000));
       mkOp2(OP_MERGE, TYPE_U64, newDefs[0], loadImm(NULL, 0), tmp);
-      break;
-   }
-   case nir_op_f2b32: {
-      DEFAULT_CHECKS;
-      LValues &newDefs = convert(&insn->dest);
-      mkCmp(OP_SET, CC_NEU, TYPE_U32, newDefs[0], sTypes[0], getSrc(&insn->src[0]), zero);
       break;
    }
    case nir_op_b2i8:

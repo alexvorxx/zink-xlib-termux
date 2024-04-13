@@ -39,7 +39,7 @@
 extern "C" {
 #endif
 
-#define AMD_MAX_SE         8
+#define AMD_MAX_SE         32
 #define AMD_MAX_SA_PER_SE  2
 
 struct amdgpu_gpu_info;
@@ -68,6 +68,9 @@ struct radeon_info {
    uint32_t memory_freq_mhz_effective;
    uint32_t memory_bus_width;
    uint32_t memory_bandwidth_gbps;
+   uint32_t pcie_gen;
+   uint32_t pcie_num_lanes;
+   uint32_t pcie_bandwidth_mbps;
    uint32_t clock_crystal_freq;
    struct amd_ip_info ip[AMD_NUM_IP_TYPES];
 
@@ -123,6 +126,22 @@ struct radeon_info {
    bool has_vrs_ds_export_bug;
    bool has_taskmesh_indirect0_bug;
 
+   /* conformant_trunc_coord is equal to TA_CNTL2.TRUNCATE_COORD_MODE, which exists since gfx11.
+    *
+    * If TA_CNTL2.TRUNCATE_COORD_MODE == 0, coordinate truncation is the same as gfx10 and older.
+    * If TA_CNTL2.TRUNCATE_COORD_MODE == 1, coordinate truncation is adjusted to be conformant
+    * if you also set TRUNC_COORD.
+    *
+    * Behavior:
+    *    truncate_coord_xy = TRUNC_COORD &&
+    *                        ((xy_filter == Point && !gather) || !TA_CNTL2.TRUNCATE_COORD_MODE);
+    *    truncate_coord_z = TRUNC_COORD && (z_filter == Point || !TA_CNTL2.TRUNCATE_COORD_MODE);
+    *    truncate_coord_layer = TRUNC_COORD && !TA_CNTL2.TRUNCATE_COORD_MODE;
+    *
+    * AnisoPoint is treated as Point.
+    */
+   bool conformant_trunc_coord;
+
    /* Display features. */
    /* There are 2 display DCC codepaths, because display expects unaligned DCC. */
    /* Disable RB and pipe alignment to skip the retile blit. (1 RB chips only) */
@@ -162,6 +181,8 @@ struct radeon_info {
    uint32_t mec_fw_feature;
    uint32_t pfp_fw_version;
    uint32_t pfp_fw_feature;
+   bool has_set_reg_pairs;
+   bool has_set_sh_reg_pairs_n;
 
    /* Multimedia info. */
    struct {
@@ -172,7 +193,7 @@ struct radeon_info {
    uint32_t vce_fw_version;
    uint32_t vce_harvest_config;
    struct video_caps_info {
-      struct {
+      struct video_codec_cap {
          uint32_t valid;
          uint32_t max_width;
          uint32_t max_height;
@@ -197,6 +218,7 @@ struct radeon_info {
    bool has_sparse_vm_mappings;
    bool has_scheduled_fence_dependency;
    bool has_gang_submit;
+   bool has_pcie_bandwidth_info;
    bool has_stable_pstate;
    /* Whether SR-IOV is enabled or amdgpu.mcbp=1 was set on the kernel command line. */
    bool mid_command_buffer_preemption_enabled;
@@ -204,7 +226,7 @@ struct radeon_info {
    bool kernel_has_modifiers;
 
    /* Shader cores. */
-   uint32_t cu_mask[AMD_MAX_SE][AMD_MAX_SA_PER_SE];
+   uint16_t cu_mask[AMD_MAX_SE][AMD_MAX_SA_PER_SE];
    uint32_t r600_max_quad_pipes; /* wave size / 16 */
    uint32_t max_good_cu_per_sa;
    uint32_t min_good_cu_per_sa; /* min != max if SAs have different # of CUs */
@@ -221,6 +243,7 @@ struct radeon_info {
    uint32_t max_vgpr_alloc;
    uint32_t wave64_vgpr_alloc_granularity;
    uint32_t max_scratch_waves;
+   uint32_t attribute_ring_size_per_se;
 
    /* Render backends (color + depth blocks). */
    uint32_t r300_num_gb_pipes;

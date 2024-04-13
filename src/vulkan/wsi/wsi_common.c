@@ -65,7 +65,7 @@ wsi_device_init(struct wsi_device *wsi,
                 const VkAllocationCallbacks *alloc,
                 int display_fd,
                 const struct driOptionCache *dri_options,
-                bool sw_device)
+                const struct wsi_device_options *device_options)
 {
    const char *present_mode;
    UNUSED VkResult result;
@@ -79,8 +79,9 @@ wsi_device_init(struct wsi_device *wsi,
    wsi->instance_alloc = *alloc;
    wsi->pdevice = pdevice;
    wsi->supports_scanout = true;
-   wsi->sw = sw_device || (WSI_DEBUG & WSI_DEBUG_SW);
+   wsi->sw = device_options->sw_device || (WSI_DEBUG & WSI_DEBUG_SW);
    wsi->wants_linear = (WSI_DEBUG & WSI_DEBUG_LINEAR) != 0;
+   wsi->x11.extra_xwayland_image = device_options->extra_xwayland_image;
 #define WSI_GET_CB(func) \
    PFN_vk##func func = (PFN_vk##func)proc_addr(pdevice, "vk" #func)
    WSI_GET_CB(GetPhysicalDeviceExternalSemaphoreProperties);
@@ -461,7 +462,7 @@ wsi_swapchain_is_present_mode_supported(struct wsi_device *wsi,
       bool supported = false;
       VkResult result;
 
-      result = iface->get_present_modes(surface, &present_mode_count, NULL);
+      result = iface->get_present_modes(surface, wsi, &present_mode_count, NULL);
       if (result != VK_SUCCESS)
          return supported;
 
@@ -469,7 +470,7 @@ wsi_swapchain_is_present_mode_supported(struct wsi_device *wsi,
       if (!present_modes)
          return supported;
 
-      result = iface->get_present_modes(surface, &present_mode_count,
+      result = iface->get_present_modes(surface, wsi, &present_mode_count,
                                         present_modes);
       if (result != VK_SUCCESS)
          goto fail;
@@ -875,7 +876,7 @@ wsi_GetPhysicalDeviceSurfacePresentModesKHR(VkPhysicalDevice physicalDevice,
    struct wsi_device *wsi_device = device->wsi_device;
    struct wsi_interface *iface = wsi_device->wsi[surface->platform];
 
-   return iface->get_present_modes(surface, pPresentModeCount,
+   return iface->get_present_modes(surface, wsi_device, pPresentModeCount,
                                    pPresentModes);
 }
 

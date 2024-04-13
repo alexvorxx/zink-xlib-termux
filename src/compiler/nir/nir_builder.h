@@ -159,6 +159,9 @@ nir_if_phi(nir_builder *build, nir_ssa_def *then_def, nir_ssa_def *else_def);
 nir_loop *
 nir_push_loop(nir_builder *build);
 
+nir_loop *
+nir_push_continue(nir_builder *build, nir_loop *loop);
+
 void nir_pop_loop(nir_builder *build, nir_loop *loop);
 
 static inline nir_ssa_def *
@@ -411,13 +414,6 @@ static inline nir_ssa_def *
 nir_f2fN(nir_builder *b, nir_ssa_def *src, unsigned bit_size)
 {
    return nir_convert_to_bit_size(b, src, nir_type_float, bit_size);
-}
-
-static inline nir_ssa_def *
-nir_f2b(nir_builder *b, nir_ssa_def *src)
-{
-   return nir_type_convert(b, src, nir_type_float, nir_type_bool1,
-                           nir_rounding_mode_undef);
 }
 
 static inline nir_ssa_def *

@@ -73,10 +73,13 @@ struct radeon_info {
 
    /* Identification. */
    /* PCI info: domain:bus:dev:func */
-   uint32_t pci_domain;
-   uint32_t pci_bus;
-   uint32_t pci_dev;
-   uint32_t pci_func;
+   struct {
+      uint32_t domain;
+      uint32_t bus;
+      uint32_t dev;
+      uint32_t func;
+      bool valid;
+   } pci;
 
    uint32_t pci_id;
    uint32_t pci_rev_id;
@@ -118,6 +121,7 @@ struct radeon_info {
    bool discardable_allows_big_page;
    bool has_export_conflict_bug;
    bool has_vrs_ds_export_bug;
+   bool has_taskmesh_indirect0_bug;
 
    /* Display features. */
    /* There are 2 display DCC codepaths, because display expects unaligned DCC. */
@@ -192,6 +196,7 @@ struct radeon_info {
    bool has_eqaa_surface_allocator;
    bool has_sparse_vm_mappings;
    bool has_scheduled_fence_dependency;
+   bool has_gang_submit;
    bool has_stable_pstate;
    /* Whether SR-IOV is enabled or amdgpu.mcbp=1 was set on the kernel command line. */
    bool mid_command_buffer_preemption_enabled;
@@ -243,6 +248,7 @@ struct radeon_info {
 };
 
 bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info);
+bool ac_query_pci_bus_info(int fd, struct radeon_info *info);
 
 void ac_compute_driver_uuid(char *uuid, size_t size);
 

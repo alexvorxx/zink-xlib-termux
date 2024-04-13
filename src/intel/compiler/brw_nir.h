@@ -92,9 +92,17 @@ enum {
 
 void brw_nir_analyze_boolean_resolves(nir_shader *nir);
 
+struct brw_nir_compiler_opts {
+   /* Soft floating point implementation shader */
+   const nir_shader *softfp64;
+
+   /* Whether robust image access is enabled */
+   bool robust_image_access;
+};
+
 void brw_preprocess_nir(const struct brw_compiler *compiler,
                         nir_shader *nir,
-                        const nir_shader *softfp64);
+                        const struct brw_nir_compiler_opts *opts);
 
 void
 brw_nir_link_shaders(const struct brw_compiler *compiler,
@@ -153,7 +161,7 @@ void brw_nir_apply_key(nir_shader *nir,
                        bool is_scalar);
 
 enum brw_conditional_mod brw_cmod_for_nir_comparison(nir_op op);
-uint32_t brw_aop_for_nir_intrinsic(const nir_intrinsic_instr *atomic);
+enum lsc_opcode lsc_aop_for_nir_intrinsic(const nir_intrinsic_instr *atomic);
 enum brw_reg_type brw_type_for_nir_type(const struct intel_device_info *devinfo,
                                         nir_alu_type type);
 
@@ -163,18 +171,6 @@ bool brw_nir_should_vectorize_mem(unsigned align_mul, unsigned align_offset,
                                   nir_intrinsic_instr *low,
                                   nir_intrinsic_instr *high,
                                   void *data);
-
-void brw_nir_setup_glsl_uniforms(void *mem_ctx, nir_shader *shader,
-                                 const struct gl_program *prog,
-                                 struct brw_stage_prog_data *stage_prog_data,
-                                 bool is_scalar);
-
-void brw_nir_setup_arb_uniforms(void *mem_ctx, nir_shader *shader,
-                                struct gl_program *prog,
-                                struct brw_stage_prog_data *stage_prog_data);
-
-void brw_nir_lower_gl_images(nir_shader *shader,
-                             const struct gl_program *prog);
 
 void brw_nir_analyze_ubo_ranges(const struct brw_compiler *compiler,
                                 nir_shader *nir,
@@ -203,7 +199,6 @@ nir_shader *brw_nir_create_passthrough_tcs(void *mem_ctx,
 #define BRW_NIR_FRAG_OUTPUT_LOCATION_MASK INTEL_MASK(31, 1)
 
 bool brw_nir_move_interpolation_to_top(nir_shader *nir);
-bool brw_nir_demote_sample_qualifiers(nir_shader *nir);
 nir_ssa_def *brw_nir_load_global_const(nir_builder *b,
                                        nir_intrinsic_instr *load_uniform,
                                        nir_ssa_def *base_addr,

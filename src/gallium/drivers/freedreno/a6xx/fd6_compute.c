@@ -33,6 +33,7 @@
 #include "freedreno_resource.h"
 #include "freedreno_tracepoints.h"
 
+#include "fd6_barrier.h"
 #include "fd6_compute.h"
 #include "fd6_const.h"
 #include "fd6_context.h"
@@ -59,6 +60,10 @@ cs_program_emit(struct fd_context *ctx, struct fd_ringbuffer *ring,
 
    OUT_PKT4(ring, REG_A6XX_SP_CS_CONFIG, 2);
    OUT_RING(ring, A6XX_SP_CS_CONFIG_ENABLED |
+                     COND(v->bindless_tex, A6XX_SP_CS_CONFIG_BINDLESS_TEX) |
+                     COND(v->bindless_samp, A6XX_SP_CS_CONFIG_BINDLESS_SAMP) |
+                     COND(v->bindless_ibo, A6XX_SP_CS_CONFIG_BINDLESS_IBO) |
+                     COND(v->bindless_ubo, A6XX_SP_CS_CONFIG_BINDLESS_UBO) |
                      A6XX_SP_CS_CONFIG_NIBO(ir3_shader_nibo(v)) |
                      A6XX_SP_CS_CONFIG_NTEX(v->num_samp) |
                      A6XX_SP_CS_CONFIG_NSAMP(v->num_samp)); /* SP_VS_CONFIG */
@@ -122,6 +127,10 @@ fd6_launch_grid(struct fd_context *ctx, const struct pipe_grid_info *info) in_dt
    struct fd_ringbuffer *ring = ctx->batch->draw;
    unsigned nglobal = 0;
 
+   trace_start_compute(&ctx->batch->trace, ring, !!info->indirect, info->work_dim,
+                       info->block[0], info->block[1], info->block[2],
+                       info->grid[0],  info->grid[1],  info->grid[2]);
+
    v = ir3_shader_variant(ir3_get_shader(ctx->compute), key, false, &ctx->debug);
    if (!v)
       return;
@@ -177,8 +186,8 @@ fd6_launch_grid(struct fd_context *ctx, const struct pipe_grid_info *info) in_dt
    OUT_RING(ring, 1); /* HLSQ_CS_KERNEL_GROUP_Y */
    OUT_RING(ring, 1); /* HLSQ_CS_KERNEL_GROUP_Z */
 
-   trace_grid_info(&ctx->batch->trace, ring, info);
-   trace_start_compute(&ctx->batch->trace, ring);
+   if (ctx->batch->barrier)
+      fd6_barrier_flush(ctx->batch);
 
    if (info->indirect) {
       struct fd_resource *rsc = fd_resource(info->indirect);

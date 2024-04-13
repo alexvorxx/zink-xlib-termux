@@ -52,6 +52,20 @@ rustfmt:
   needs:
     - debian/x86_test-gl
 
+.test-android:
+  extends:
+    - .test
+    - .use-debian/x86_test-android
+  variables:
+    MINIO_ARTIFACT_NAME: mesa-x86_64-android
+  needs:
+    - job: debian-testing
+      artifacts: true  # On the host we want the Linux build
+    - job: debian-android
+      artifacts: false  # The Android build will be downloaded later
+    - job: debian/x86_test-android
+      artifacts: false
+
 .vkd3d-proton-test:
   artifacts:
     when: on_failure
@@ -109,11 +123,6 @@ rustfmt:
   variables:
     DEQP_VER: vk
 
-.skqp-test:
-  variables:
-    HWCI_START_XORG: 1
-    HWCI_TEST_SCRIPT: "/install/skqp-runner.sh"
-
 .fossilize-test:
   script:
     - ./install/fossilize-runner.sh
@@ -135,7 +144,9 @@ rustfmt:
     # improve it even more (see https://docs.mesa3d.org/ci/bare-metal.html for
     # setup).
     - echo -e "\e[0Ksection_start:$(date +%s):artifacts_download[collapsed=true]\r\e[0KDownloading artifacts from minio"
-    - wget ${FDO_HTTP_CACHE_URI:-}https://${PIPELINE_ARTIFACTS_BASE}/${MINIO_ARTIFACT_NAME}.tar.zst -S --progress=dot:giga -O- | tar --zstd -x
+    # Note: Build dir (and thus install) may be dirty due to GIT_STRATEGY
+    - rm -rf install
+    - curl -L --retry 4 -f --retry-all-errors --retry-delay 60 ${FDO_HTTP_CACHE_URI:-}https://${PIPELINE_ARTIFACTS_BASE}/${MINIO_ARTIFACT_NAME}.tar.zst | tar --zstd -x
     - echo -e "\e[0Ksection_end:$(date +%s):artifacts_download\r\e[0K"
   artifacts:
     when: always
@@ -210,8 +221,8 @@ rustfmt:
     # No need by default to pull the whole repo
     GIT_STRATEGY: none
     # boot2container initrd configuration parameters.
-    B2C_KERNEL_URL: 'https://gitlab.freedesktop.org/mupuf/valve-infra/-/package_files/144/download'  # 5.17.1
-    B2C_INITRAMFS_URL: 'https://gitlab.freedesktop.org/mupuf/boot2container/-/releases/v0.9.8/downloads/initramfs.linux_amd64.cpio.xz'
+    B2C_KERNEL_URL: 'https://gitlab.freedesktop.org/mupuf/valve-infra/-/package_files/519/download'  # Linux 6.1
+    B2C_INITRAMFS_URL: 'https://gitlab.freedesktop.org/mupuf/boot2container/-/releases/v0.9.9/downloads/initramfs.linux_amd64.cpio.xz'
     B2C_JOB_SUCCESS_REGEX: '\[.*\]: Execution is over, pipeline status: 0\r$'
     B2C_JOB_WARN_REGEX: '\*ERROR\* ring .* timeout, but soft recovered'
     B2C_LOG_LEVEL: 6
@@ -239,9 +250,11 @@ rustfmt:
     GENERATE_ENV_SCRIPT: "${CI_COMMON_SCRIPTS}/generate-env.sh"
     B2C_JOB_TEMPLATE: "${CI_B2C_ARTIFACTS}/b2c.yml.jinja2.jinja2"
     JOB_FOLDER: "job_folder"
+
   before_script:
     # We don't want the tarball unpacking of .test, but will take the JWT bits.
     - !reference [default, before_script]
+
     - |
       set -x
 
@@ -331,7 +344,7 @@ rustfmt:
     paths:
       - ${JOB_FOLDER}/results
     reports:
-      junit: ${JOB_FOLDER}/results/junit.xml
+      junit: ${JOB_FOLDER}/results/**/junit.xml
 
 .b2c-test-vk:
   extends:

@@ -194,44 +194,7 @@ static void
 visit_emit_vertex_with_counter(struct ac_shader_abi *abi, unsigned stream, LLVMValueRef vertexidx,
                                LLVMValueRef *addrs)
 {
-   unsigned offset = 0;
    struct radv_shader_context *ctx = radv_shader_context_from_abi(abi);
-
-   for (unsigned i = 0; i < AC_LLVM_MAX_OUTPUTS; ++i) {
-      unsigned output_usage_mask = ctx->shader_info->gs.output_usage_mask[i];
-      uint8_t output_stream = ctx->shader_info->gs.output_streams[i];
-      LLVMValueRef *out_ptr = &addrs[i * 4];
-      bool *is_16bit_ptr = &abi->is_16bit[i * 4];
-      int length = util_last_bit(output_usage_mask);
-
-      if (!(ctx->output_mask & (1ull << i)))
-         continue;
-
-      for (unsigned j = 0; j < length; j++) {
-         if (((output_stream >> (j * 2)) & 0x3) != stream)
-            continue;
-         if (!(output_usage_mask & (1 << j)))
-            continue;
-
-         LLVMTypeRef type = is_16bit_ptr[j] ? ctx->ac.f16 : ctx->ac.f32;
-         LLVMValueRef out_val = LLVMBuildLoad2(ctx->ac.builder, type, out_ptr[j], "");
-         LLVMValueRef voffset =
-            LLVMConstInt(ctx->ac.i32, offset * ctx->shader->info.gs.vertices_out, false);
-
-         offset++;
-
-         voffset = LLVMBuildAdd(ctx->ac.builder, voffset, vertexidx, "");
-         voffset = LLVMBuildMul(ctx->ac.builder, voffset, LLVMConstInt(ctx->ac.i32, 4, false), "");
-
-         out_val = ac_to_integer(&ctx->ac, out_val);
-         out_val = LLVMBuildZExtOrBitCast(ctx->ac.builder, out_val, ctx->ac.i32, "");
-
-         ac_build_buffer_store_dword(&ctx->ac, ctx->gsvs_ring[stream], out_val, NULL, voffset,
-                                     ac_get_arg(&ctx->ac, ctx->args->ac.gs2vs_offset),
-                                     ac_glc | ac_slc | ac_swizzled);
-      }
-   }
-
    ac_build_sendmsg(&ctx->ac, AC_SENDMSG_GS_OP_EMIT | AC_SENDMSG_GS | (stream << 8),
                     ctx->gs_wave_id);
 }
@@ -285,14 +248,10 @@ radv_load_ssbo(struct ac_shader_abi *abi, LLVMValueRef buffer_ptr, bool write, b
 }
 
 static LLVMValueRef
-radv_get_sampler_desc(struct ac_shader_abi *abi, unsigned descriptor_set, unsigned base_index,
-                      unsigned constant_index, LLVMValueRef index,
-                      enum ac_descriptor_type desc_type, bool image, bool write, bool bindless)
+radv_get_sampler_desc(struct ac_shader_abi *abi, LLVMValueRef index,
+                      enum ac_descriptor_type desc_type)
 {
    struct radv_shader_context *ctx = radv_shader_context_from_abi(abi);
-
-   if (image && desc_type == AC_DESC_FMASK)
-      return NULL;
 
    /* 3 plane formats always have same size and format for plane 1 & 2, so
     * use the tail from plane 1 so that we can store only the first 16 bytes
@@ -571,8 +530,7 @@ si_llvm_init_export_args(struct radv_shader_context *ctx, LLVMValueRef *values,
          (ctx->options->key.ps.epilog.spi_shader_col_format >> (4 * index)) & 0xf;
       bool is_int8 = (ctx->options->key.ps.epilog.color_is_int8 >> index) & 1;
       bool is_int10 = (ctx->options->key.ps.epilog.color_is_int10 >> index) & 1;
-      bool enable_mrt_output_nan_fixup =
-         (ctx->options->key.ps.epilog.enable_mrt_output_nan_fixup >> index) & 1;
+      bool enable_mrt_output_nan_fixup = (ctx->options->enable_mrt_output_nan_fixup >> index) & 1;
 
       LLVMValueRef (*packf)(struct ac_llvm_context * ctx, LLVMValueRef args[2]) = NULL;
       LLVMValueRef (*packi)(struct ac_llvm_context * ctx, LLVMValueRef args[2], unsigned bits,
@@ -1206,14 +1164,14 @@ declare_esgs_ring(struct radv_shader_context *ctx)
    LLVMSetAlignment(ctx->esgs_ring, 64 * 1024);
 }
 
-static LLVMValueRef radv_intrinsic_load(struct ac_shader_abi *abi, nir_intrinsic_op op)
+static LLVMValueRef radv_intrinsic_load(struct ac_shader_abi *abi, nir_intrinsic_instr *intrin)
 {
    struct radv_shader_context *ctx = radv_shader_context_from_abi(abi);
 
-   switch (op) {
+   switch (intrin->intrinsic) {
    case nir_intrinsic_load_base_vertex:
    case nir_intrinsic_load_first_vertex:
-      return radv_load_base_vertex(abi, op == nir_intrinsic_load_base_vertex);
+      return radv_load_base_vertex(abi, intrin->intrinsic == nir_intrinsic_load_base_vertex);
    case nir_intrinsic_load_ring_tess_factors_amd:
       return ctx->hs_ring_tess_factor;
    case nir_intrinsic_load_ring_tess_offchip_amd:
@@ -1223,7 +1181,7 @@ static LLVMValueRef radv_intrinsic_load(struct ac_shader_abi *abi, nir_intrinsic
    case nir_intrinsic_load_ring_attr_amd:
       return ctx->attr_ring;
    case nir_intrinsic_load_ring_gsvs_amd:
-      return ctx->gsvs_ring[0];
+      return ctx->gsvs_ring[nir_intrinsic_stream_id(intrin)];
    default:
       return NULL;
    }
@@ -1247,9 +1205,16 @@ ac_translate_nir_to_llvm(struct ac_llvm_compiler *ac_llvm,
       float_mode = AC_FLOAT_MODE_DENORM_FLUSH_TO_ZERO;
    }
 
+   bool exports_mrtz = false;
+   bool exports_color_null = false;
+   if (shaders[0]->info.stage == MESA_SHADER_FRAGMENT) {
+      exports_mrtz = info->ps.writes_z || info->ps.writes_stencil || info->ps.writes_sample_mask;
+      exports_color_null = !exports_mrtz || (shaders[0]->info.outputs_written & (0xffu << FRAG_RESULT_DATA0));
+   }
+
    ac_llvm_context_init(&ctx.ac, ac_llvm, options->gfx_level, options->family,
                         options->has_3d_cube_border_color_mipmap,
-                        float_mode, info->wave_size, info->ballot_bit_size);
+                        float_mode, info->wave_size, info->ballot_bit_size, exports_color_null, exports_mrtz);
    ctx.context = ctx.ac.context;
 
    ctx.max_workgroup_size = info->workgroup_size;

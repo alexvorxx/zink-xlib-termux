@@ -106,6 +106,8 @@ collect_enabled_features(struct vk_device *device,
             device->enabled_features.robustBufferAccess2 = true;
          if (features->robustImageAccess2)
             device->enabled_features.robustImageAccess2 = true;
+         if (features->nullDescriptor)
+            device->enabled_features.nullDescriptor = true;
          break;
       }
 
@@ -139,11 +141,13 @@ vk_device_init(struct vk_device *device,
 
    device->physical = physical_device;
 
-   device->dispatch_table = *dispatch_table;
+   if (dispatch_table) {
+      device->dispatch_table = *dispatch_table;
 
-   /* Add common entrypoints without overwriting driver-provided ones. */
-   vk_device_dispatch_table_from_entrypoints(
-      &device->dispatch_table, &vk_common_device_entrypoints, false);
+      /* Add common entrypoints without overwriting driver-provided ones. */
+      vk_device_dispatch_table_from_entrypoints(
+         &device->dispatch_table, &vk_common_device_entrypoints, false);
+   }
 
    for (uint32_t i = 0; i < pCreateInfo->enabledExtensionCount; i++) {
       int idx;
@@ -224,6 +228,8 @@ vk_device_finish(struct vk_device *device)
 {
    /* Drivers should tear down their own queues */
    assert(list_is_empty(&device->queues));
+
+   vk_memory_trace_finish(device);
 
 #ifdef ANDROID
    if (device->swapchain_private) {

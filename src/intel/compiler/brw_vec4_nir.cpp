@@ -545,7 +545,7 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
    case nir_intrinsic_ssbo_atomic_xor:
    case nir_intrinsic_ssbo_atomic_exchange:
    case nir_intrinsic_ssbo_atomic_comp_swap:
-      nir_emit_ssbo_atomic(brw_aop_for_nir_intrinsic(instr), instr);
+      nir_emit_ssbo_atomic(lsc_op_to_legacy_atomic(lsc_aop_for_nir_intrinsic(instr)), instr);
       break;
 
    case nir_intrinsic_load_vertex_id:
@@ -1574,10 +1574,6 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
       } else {
          emit(CMP(dst, op[0], brw_imm_f(0.0f), BRW_CONDITIONAL_NZ));
       }
-      break;
-
-   case nir_op_i2b32:
-      emit(CMP(dst, op[0], brw_imm_d(0), BRW_CONDITIONAL_NZ));
       break;
 
    case nir_op_unpack_half_2x16_split_x:

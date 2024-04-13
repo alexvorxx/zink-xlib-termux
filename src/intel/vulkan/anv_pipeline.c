@@ -36,6 +36,7 @@
 #include "compiler/brw_nir.h"
 #include "compiler/brw_nir_rt.h"
 #include "anv_nir.h"
+#include "nir/nir_vulkan.h"
 #include "nir/nir_xfb_info.h"
 #include "spirv/nir_spirv.h"
 #include "vk_pipeline.h"
@@ -45,135 +46,90 @@
 /* Needed for SWIZZLE macros */
 #include "program/prog_instruction.h"
 
-struct lower_mesh_ext_state {
+struct lower_set_vtx_and_prim_count_state {
    nir_variable *primitive_count;
-   nir_variable *primitive_indices;
 };
 
+static nir_variable *
+anv_nir_prim_count_store(nir_builder *b, nir_ssa_def *val)
+{
+   nir_variable *primitive_count =
+         nir_variable_create(b->shader,
+                             nir_var_shader_out,
+                             glsl_uint_type(),
+                             "gl_PrimitiveCountNV");
+   primitive_count->data.location = VARYING_SLOT_PRIMITIVE_COUNT;
+   primitive_count->data.interpolation = INTERP_MODE_NONE;
+
+   nir_ssa_def *local_invocation_index = nir_build_load_local_invocation_index(b);
+
+   nir_ssa_def *cmp = nir_ieq(b, local_invocation_index,
+                                  nir_imm_int(b, 0));
+   nir_if *if_stmt = nir_push_if(b, cmp);
+   {
+      nir_deref_instr *prim_count_deref = nir_build_deref_var(b, primitive_count);
+      nir_store_deref(b, prim_count_deref, val, 1);
+   }
+   nir_pop_if(b, if_stmt);
+
+   return primitive_count;
+}
+
 static bool
-anv_nir_lower_mesh_ext_instr(nir_builder *b, nir_instr *instr, void *data)
+anv_nir_lower_set_vtx_and_prim_count_instr(nir_builder *b, nir_instr *instr, void *data)
 {
    if (instr->type != nir_instr_type_intrinsic)
       return false;
 
    nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
-   struct lower_mesh_ext_state *state = data;
+   if (intrin->intrinsic != nir_intrinsic_set_vertex_and_primitive_count)
+      return false;
 
-   switch (intrin->intrinsic) {
-   case nir_intrinsic_set_vertex_and_primitive_count: {
-      /* this intrinsic should show up only once */
-      assert(state->primitive_count == NULL);
-
-      state->primitive_count =
-            nir_variable_create(b->shader,
-                                nir_var_shader_out,
-                                glsl_uint_type(),
-                                "gl_PrimitiveCountNV");
-      state->primitive_count->data.location = VARYING_SLOT_PRIMITIVE_COUNT;
-      state->primitive_count->data.interpolation = INTERP_MODE_NONE;
-
-      b->cursor = nir_before_instr(&intrin->instr);
-
-      nir_ssa_def *local_invocation_index = nir_build_load_local_invocation_index(b);
-
-      nir_ssa_def *cmp = nir_ieq(b, local_invocation_index,
-                                     nir_imm_int(b, 0));
-      nir_if *if_stmt = nir_push_if(b, cmp);
-      {
-         nir_deref_instr *prim_count_deref = nir_build_deref_var(b, state->primitive_count);
-         nir_store_deref(b, prim_count_deref, intrin->src[1].ssa, 1);
-      }
-      nir_pop_if(b, if_stmt);
-
-      nir_instr_remove(instr);
-
-      return true;
+   /* Detect some cases of invalid primitive count. They might lead to URB
+    * memory corruption, where workgroups overwrite each other output memory.
+    */
+   if (nir_src_is_const(intrin->src[1]) &&
+         nir_src_as_uint(intrin->src[1]) > b->shader->info.mesh.max_primitives_out) {
+      assert(!"number of primitives bigger than max specified");
    }
 
-   case nir_intrinsic_store_deref: {
-      /* Replace:
-       * gl_PrimitiveTriangleIndicesEXT[N] := vec3(X,Y,Z)
-       * by:
-       * gl_PrimitiveIndicesNV[N*3+0] := X
-       * gl_PrimitiveIndicesNV[N*3+1] := Y
-       * gl_PrimitiveIndicesNV[N*3+2] := Z
-       */
+   struct lower_set_vtx_and_prim_count_state *state = data;
+   /* this intrinsic should show up only once */
+   assert(state->primitive_count == NULL);
 
-      nir_deref_instr *deref = nir_src_as_deref(intrin->src[0]);
-      if (deref->deref_type != nir_deref_type_array)
-         break;
+   b->cursor = nir_before_instr(&intrin->instr);
 
-      nir_deref_instr *deref2 = nir_src_as_deref(deref->parent);
-      if (deref2->deref_type != nir_deref_type_var)
-         break;
+   state->primitive_count = anv_nir_prim_count_store(b, intrin->src[1].ssa);
 
-      const nir_variable *var = deref2->var;
-      if (var->data.location != VARYING_SLOT_PRIMITIVE_INDICES)
-         break;
+   nir_instr_remove(instr);
 
-      if (state->primitive_count == NULL)
-         assert(!"primitive count must be set before indices");
-
-      b->cursor = nir_before_instr(instr);
-
-      if (!state->primitive_indices) {
-         const struct glsl_type *type =
-               glsl_array_type(glsl_uint_type(),
-                               glsl_get_length(var->type),
-                               0);
-
-         state->primitive_indices =
-               nir_variable_create(b->shader,
-                                   nir_var_shader_out,
-                                   type,
-                                   "gl_PrimitiveIndicesNV");
-         state->primitive_indices->data.location = var->data.location;
-         state->primitive_indices->data.interpolation = var->data.interpolation;
-      }
-
-      nir_deref_instr *primitive_indices_deref =
-            nir_build_deref_var(b, state->primitive_indices);
-
-      assert(intrin->src[1].is_ssa);
-      uint8_t components = intrin->src[1].ssa->num_components;
-
-      ASSERTED unsigned vertices_per_primitive =
-            num_mesh_vertices_per_primitive(b->shader->info.mesh.primitive_type);
-      assert(vertices_per_primitive == components);
-      assert(nir_intrinsic_write_mask(intrin) == (1u << components) - 1);
-
-      nir_src ind = deref->arr.index;
-      assert(ind.is_ssa);
-      nir_ssa_def *new_base = nir_imul_imm(b, ind.ssa, components);
-
-      for (unsigned i = 0; i < components; ++i) {
-         nir_ssa_def *new_idx = nir_iadd_imm(b, new_base, i);
-
-         nir_deref_instr *reindexed_deref =
-               nir_build_deref_array(b, primitive_indices_deref, new_idx);
-
-         nir_store_deref(b, reindexed_deref, nir_channel(b, intrin->src[1].ssa, i), 1);
-      }
-
-      nir_instr_remove(instr);
-
-      return true;
-   }
-
-   default:
-      break;
-   }
-   return false;
+   return true;
 }
 
 static bool
-anv_nir_lower_mesh_ext(nir_shader *nir)
+anv_nir_lower_set_vtx_and_prim_count(nir_shader *nir)
 {
-   struct lower_mesh_ext_state state = { NULL, };
+   struct lower_set_vtx_and_prim_count_state state = { NULL, };
 
-   return nir_shader_instructions_pass(nir, anv_nir_lower_mesh_ext_instr,
-                                       nir_metadata_none,
-                                       &state);
+   nir_shader_instructions_pass(nir,
+                                anv_nir_lower_set_vtx_and_prim_count_instr,
+                                nir_metadata_none,
+                                &state);
+
+   /* If we didn't find set_vertex_and_primitive_count, then we have to
+    * insert store of value 0 to primitive_count.
+    */
+   if (state.primitive_count == NULL) {
+      nir_builder b;
+      nir_function_impl *entrypoint = nir_shader_get_entrypoint(nir);
+      nir_builder_init(&b, entrypoint);
+      b.cursor = nir_before_block(nir_start_block(entrypoint));
+      nir_ssa_def *zero = nir_imm_int(&b, 0);
+      state.primitive_count = anv_nir_prim_count_store(&b, zero);
+   }
+
+   assert(state.primitive_count != NULL);
+   return true;
 }
 
 /* Eventually, this will become part of anv_CreateShader.  Unfortunately,
@@ -298,15 +254,18 @@ anv_shader_stage_to_nir(struct anv_device *device,
    /* Vulkan uses the separate-shader linking model */
    nir->info.separate_shader = true;
 
-   brw_preprocess_nir(compiler, nir, device->fp64_nir);
+   struct brw_nir_compiler_opts opts = {
+      .softfp64 = device->fp64_nir,
+      .robust_image_access =
+         device->vk.enabled_features.robustImageAccess ||
+         device->vk.enabled_features.robustImageAccess2,
+   };
+   brw_preprocess_nir(compiler, nir, &opts);
 
    if (nir->info.stage == MESA_SHADER_MESH && !nir->info.mesh.nv) {
-      bool progress = false;
-      NIR_PASS(progress, nir, anv_nir_lower_mesh_ext);
-      if (progress) {
-         NIR_PASS(_, nir, nir_opt_dce);
-         NIR_PASS(_, nir, nir_remove_dead_variables, nir_var_shader_out, NULL);
-      }
+      NIR_PASS(_, nir, anv_nir_lower_set_vtx_and_prim_count);
+      NIR_PASS(_, nir, nir_opt_dce);
+      NIR_PASS(_, nir, nir_remove_dead_variables, nir_var_shader_out, NULL);
    }
 
    return nir;
@@ -777,38 +736,6 @@ anv_pipeline_hash_ray_tracing_combined_shader(struct anv_ray_tracing_pipeline *p
    _mesa_sha1_final(&ctx, sha1_out);
 }
 
-static void
-anv_stage_nullify_unused_push_desc_surfaces(struct anv_pipeline_stage *stage,
-                                            struct anv_pipeline_layout *layout)
-{
-   uint8_t push_set;
-   const struct anv_descriptor_set_layout *push_set_layout =
-      anv_pipeline_layout_get_push_set(layout, &push_set);
-   if (push_set_layout == NULL)
-      return;
-
-   const uint32_t to_keep_descriptors =
-      stage->push_desc_info.used_descriptors &
-      ~stage->push_desc_info.fully_promoted_ubo_descriptors;
-
-   for (unsigned s = 0; s < stage->bind_map.surface_count; s++) {
-      if (stage->bind_map.surface_to_descriptor[s].set == ANV_DESCRIPTOR_SET_DESCRIPTORS &&
-          stage->bind_map.surface_to_descriptor[s].index == push_set &&
-          !stage->push_desc_info.used_set_buffer)
-         stage->bind_map.surface_to_descriptor[s].set = ANV_DESCRIPTOR_SET_NULL;
-
-
-      if (stage->bind_map.surface_to_descriptor[s].set == push_set) {
-         const uint32_t binding =
-            stage->bind_map.surface_to_descriptor[s].binding;
-         const uint32_t desc_index =
-            push_set_layout->binding[binding].descriptor_index;
-         if (!(BITFIELD_BIT(desc_index) & to_keep_descriptors))
-            stage->bind_map.surface_to_descriptor[s].set = ANV_DESCRIPTOR_SET_NULL;
-      }
-   }
-}
-
 static nir_shader *
 anv_pipeline_stage_get_nir(struct anv_pipeline *pipeline,
                            struct vk_pipeline_cache *cache,
@@ -837,6 +764,28 @@ anv_pipeline_stage_get_nir(struct anv_pipeline *pipeline,
    }
 
    return NULL;
+}
+
+static const struct vk_ycbcr_conversion *
+lookup_ycbcr_conversion(const void *_pipeline_layout, uint32_t set,
+                        uint32_t binding, uint32_t array_index)
+{
+   const struct anv_pipeline_layout *pipeline_layout = _pipeline_layout;
+
+   assert(set < MAX_SETS);
+   assert(binding < pipeline_layout->set[set].layout->binding_count);
+   const struct anv_descriptor_set_binding_layout *bind_layout =
+      &pipeline_layout->set[set].layout->binding[binding];
+
+   if (bind_layout->immutable_samplers == NULL)
+      return NULL;
+
+   array_index = MIN2(array_index, bind_layout->array_size - 1);
+
+   const struct anv_sampler *sampler =
+      bind_layout->immutable_samplers[array_index];
+
+   return sampler ? sampler->conversion : NULL;
 }
 
 static void
@@ -889,7 +838,7 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
       NIR_PASS(_, nir, nir_lower_compute_system_values, &options);
    }
 
-   NIR_PASS(_, nir, anv_nir_lower_ycbcr_textures, layout);
+   NIR_PASS(_, nir, nir_vk_lower_ycbcr_tex, lookup_ycbcr_conversion, layout);
 
    if (pipeline->type == ANV_PIPELINE_GRAPHICS) {
       struct anv_graphics_pipeline *gfx_pipeline =
@@ -991,7 +940,6 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
       anv_nir_loads_push_desc_buffer(nir, layout, &stage->bind_map);
    stage->push_desc_info.fully_promoted_ubo_descriptors =
       anv_nir_push_desc_ubo_fully_promoted(nir, layout, &stage->bind_map);
-   anv_stage_nullify_unused_push_desc_surfaces(stage, layout);
 
    stage->nir = nir;
 }

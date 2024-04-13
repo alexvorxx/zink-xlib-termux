@@ -272,11 +272,11 @@ static void transform_TRUNC(struct radeon_compiler* c,
 	 
 	struct rc_src_register abs;
 	
-	if (c->is_r500) {
+	if (c->is_r500 || c->type == RC_FRAGMENT_PROGRAM) {
 		abs = absolute(inst->U.I.SrcReg[0]);
 	} else {
-		/* abs isn't free on r300/r400, so we want
-		 * to avoid doing it twice
+		/* abs isn't free on r300's and r400's vertex shader,
+		 *  so we want to avoid doing it twice
 		 */
 		int tmp = rc_find_free_temporary(c);
 
@@ -1031,48 +1031,6 @@ int radeonTransformTrigScale(struct radeon_compiler* c,
 		srcregswz(RC_FILE_CONSTANT, constant, constant_swizzle));
 	emit1(c, inst->Prev, RC_OPCODE_FRC, NULL, dstregtmpmask(temp, RC_MASK_W),
 		srcreg(RC_FILE_TEMPORARY, temp));
-
-	r300_transform_SIN_COS(c, inst, temp);
-	return 1;
-}
-
-/**
- * Transform the trigonometric functions COS and SIN
- * so that the input to COS and SIN is always in the range [-PI, PI].
- */
-int r300_transform_trig_scale_vertex(struct radeon_compiler *c,
-	struct rc_instruction *inst,
-	void *unused)
-{
-	static const float cons[4] = {0.15915494309189535, 0.5, 6.28318530717959, -3.14159265358979};
-	unsigned int temp;
-	unsigned int constant;
-
-	if (inst->U.I.Opcode != RC_OPCODE_COS &&
-	    inst->U.I.Opcode != RC_OPCODE_SIN)
-		return 0;
-
-	if (!c->needs_trig_input_transform)
-		return 1;
-
-	/* Repeat x in the range [-PI, PI]:
-	 *
-	 *   repeat(x) = frac(x / 2PI + 0.5) * 2PI - PI
-	 */
-
-	temp = rc_find_free_temporary(c);
-	constant = rc_constants_add_immediate_vec4(&c->Program.Constants, cons);
-
-	emit3(c, inst->Prev, RC_OPCODE_MAD, NULL, dstregtmpmask(temp, RC_MASK_W),
-		swizzle_xxxx(inst->U.I.SrcReg[0]),
-		srcregswz(RC_FILE_CONSTANT, constant, RC_SWIZZLE_XXXX),
-		srcregswz(RC_FILE_CONSTANT, constant, RC_SWIZZLE_YYYY));
-	emit1(c, inst->Prev, RC_OPCODE_FRC, NULL, dstregtmpmask(temp, RC_MASK_W),
-		srcreg(RC_FILE_TEMPORARY, temp));
-	emit3(c, inst->Prev, RC_OPCODE_MAD, NULL, dstregtmpmask(temp, RC_MASK_W),
-		srcreg(RC_FILE_TEMPORARY, temp),
-		srcregswz(RC_FILE_CONSTANT, constant, RC_SWIZZLE_ZZZZ),
-		srcregswz(RC_FILE_CONSTANT, constant, RC_SWIZZLE_WWWW));
 
 	r300_transform_SIN_COS(c, inst, temp);
 	return 1;

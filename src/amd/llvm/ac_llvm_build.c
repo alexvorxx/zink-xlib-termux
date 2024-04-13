@@ -59,7 +59,7 @@ void ac_llvm_context_init(struct ac_llvm_context *ctx, struct ac_llvm_compiler *
                           enum amd_gfx_level gfx_level, enum radeon_family family,
                           bool has_3d_cube_border_color_mipmap,
                           enum ac_float_mode float_mode, unsigned wave_size,
-                          unsigned ballot_mask_bits)
+                          unsigned ballot_mask_bits, bool exports_color_null, bool exports_mrtz)
 {
    ctx->context = LLVMContextCreate();
 
@@ -69,6 +69,8 @@ void ac_llvm_context_init(struct ac_llvm_context *ctx, struct ac_llvm_compiler *
    ctx->wave_size = wave_size;
    ctx->ballot_mask_bits = ballot_mask_bits;
    ctx->float_mode = float_mode;
+   ctx->exports_color_null = exports_color_null;
+   ctx->exports_mrtz = exports_mrtz;
    ctx->module = ac_create_module(compiler->tm, ctx->context);
    ctx->builder = ac_create_builder(ctx->context, float_mode);
 
@@ -1062,7 +1064,7 @@ LLVMValueRef ac_build_fs_interp_f16(struct ac_llvm_context *ctx, LLVMValueRef ll
    }
 }
 
-LLVMValueRef ac_build_fs_interp_mov(struct ac_llvm_context *ctx, LLVMValueRef parameter,
+LLVMValueRef ac_build_fs_interp_mov(struct ac_llvm_context *ctx, unsigned parameter,
                                     LLVMValueRef llvm_chan, LLVMValueRef attr_number,
                                     LLVMValueRef params)
 {
@@ -1077,10 +1079,10 @@ LLVMValueRef ac_build_fs_interp_mov(struct ac_llvm_context *ctx, LLVMValueRef pa
 
       p = ac_build_intrinsic(ctx, "llvm.amdgcn.lds.param.load",
                              ctx->f32, args, 3, 0);
-      p = ac_build_quad_swizzle(ctx, p, 0, 0, 0 ,0);
+      p = ac_build_quad_swizzle(ctx, p, parameter, parameter, parameter, parameter);
       return ac_build_intrinsic(ctx, "llvm.amdgcn.wqm.f32", ctx->f32, &p, 1, 0);
    } else {
-      args[0] = parameter;
+      args[0] = LLVMConstInt(ctx->i32, (parameter + 2) % 3, 0);
       args[1] = llvm_chan;
       args[2] = attr_number;
       args[3] = params;
@@ -4619,6 +4621,14 @@ struct ac_llvm_pointer ac_build_main(const struct ac_shader_args *args, struct a
    /* Disable denormals for FP32: */
    LLVMAddTargetDependentFunctionAttr(main_function, "denormal-fp-math-f32",
                                       "preserve-sign,preserve-sign");
+
+   if (LLVM_VERSION_MAJOR >= 15 && convention == AC_LLVM_AMDGPU_PS) {
+      LLVMAddTargetDependentFunctionAttr(main_function, "amdgpu-depth-export",
+                                         ctx->exports_mrtz ? "1" : "0");
+      LLVMAddTargetDependentFunctionAttr(main_function, "amdgpu-color-export",
+                                         ctx->exports_color_null ? "1" : "0");
+   }
+
    return ctx->main_function;
 }
 

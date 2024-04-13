@@ -1995,6 +1995,7 @@ nir_intrinsic_can_reorder(nir_intrinsic_instr *instr)
    if (nir_intrinsic_has_access(instr) &&
        nir_intrinsic_access(instr) & ACCESS_VOLATILE)
       return false;
+
    if (instr->intrinsic == nir_intrinsic_load_deref) {
       nir_deref_instr *deref = nir_src_as_deref(instr->src[0]);
       return nir_deref_mode_is_in_set(deref, nir_var_read_only_modes) ||
@@ -2198,6 +2199,7 @@ typedef enum {
    nir_texop_fragment_fetch_amd,      /**< Multisample fragment color texture fetch */
    nir_texop_fragment_mask_fetch_amd, /**< Multisample fragment mask texture fetch */
    nir_texop_descriptor_amd,     /**< Returns a buffer or image descriptor. */
+   nir_texop_sampler_descriptor_amd, /**< Returns a sampler descriptor. */
 } nir_texop;
 
 /** Represents a texture instruction */
@@ -3295,6 +3297,7 @@ typedef enum {
    nir_divergence_view_index_uniform = (1 << 3),
    nir_divergence_single_frag_shading_rate_per_subgroup = (1 << 4),
    nir_divergence_multiple_workgroup_per_compute_subgroup = (1 << 5),
+   nir_divergence_shader_record_ptr_uniform = (1 << 6),
 } nir_divergence_options;
 
 typedef enum {
@@ -3666,6 +3669,9 @@ typedef struct nir_shader_compiler_options {
    /** Backend supports 32bit ufind_msb_rev and ifind_msb_rev. */
    bool has_find_msb_rev;
 
+   /** Backend supports pack_half_2x16_rtz_split. */
+   bool has_pack_half_2x16_rtz;
+
    /**
     * Is this the Intel vec4 backend?
     *
@@ -3757,6 +3763,16 @@ typedef struct nir_shader_compiler_options {
     * fragment task is far more than vertex one, so better left it disabled.
     */
    bool lower_varying_from_uniform;
+
+   /** store the variable offset into the instrinsic range_base instead
+    *  of adding it to the image index.
+    */
+   bool lower_image_offset_to_range_base;
+
+   /** store the variable offset into the instrinsic range_base instead
+    *  of adding it to the atomic source
+    */
+   bool lower_atomic_offset_to_range_base;
 } nir_shader_compiler_options;
 
 typedef struct nir_shader {
@@ -4969,7 +4985,7 @@ bool nir_scale_fdiv(nir_shader *shader);
 bool nir_lower_alu_to_scalar(nir_shader *shader, nir_instr_filter_cb cb, const void *data);
 bool nir_lower_alu_width(nir_shader *shader, nir_vectorize_cb cb, const void *data);
 bool nir_lower_bool_to_bitsize(nir_shader *shader);
-bool nir_lower_bool_to_float(nir_shader *shader);
+bool nir_lower_bool_to_float(nir_shader *shader, bool has_fcsel_ne);
 bool nir_lower_bool_to_int32(nir_shader *shader);
 bool nir_opt_simplify_convert_alu_types(nir_shader *shader);
 bool nir_lower_const_arrays_to_uniforms(nir_shader *shader,
@@ -5031,6 +5047,9 @@ bool nir_lower_subgroups(nir_shader *shader,
                          const nir_lower_subgroups_options *options);
 
 bool nir_lower_system_values(nir_shader *shader);
+
+nir_ssa_def *
+nir_build_lowered_load_helper_invocation(struct nir_builder *b);
 
 typedef struct nir_lower_compute_system_values_options {
    bool has_base_global_invocation_id:1;
@@ -5304,6 +5323,11 @@ typedef struct nir_lower_image_options {
     * If true, lower cube size operations.
     */
    bool lower_cube_size;
+
+   /**
+    * Lower multi sample image load and samples_identical to use fragment_mask_load.
+    */
+   bool lower_to_fragment_mask_load_amd;
 } nir_lower_image_options;
 
 bool nir_lower_image(nir_shader *nir,
@@ -5480,7 +5504,7 @@ struct nir_fold_tex_srcs_options {
 
 struct nir_fold_16bit_tex_image_options {
    nir_rounding_mode rounding_mode;
-   bool fold_tex_dest;
+   nir_alu_type fold_tex_dest_types;
    bool fold_image_load_store_data;
    bool fold_image_srcs;
    unsigned fold_srcs_options_count;
@@ -5812,6 +5836,8 @@ nir_function_impl *nir_shader_get_preamble(nir_shader *shader);
 
 bool nir_lower_point_smooth(nir_shader *shader);
 bool nir_lower_poly_line_smooth(nir_shader *shader, unsigned num_smooth_aa_sample);
+
+bool nir_mod_analysis(nir_ssa_scalar val, nir_alu_type val_type, unsigned div, unsigned *mod);
 
 #include "nir_inline_helpers.h"
 

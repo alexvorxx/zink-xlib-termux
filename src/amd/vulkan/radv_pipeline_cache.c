@@ -130,8 +130,8 @@ entry_size(const struct cache_entry *entry)
 
 void
 radv_hash_shaders(unsigned char *hash, const struct radv_pipeline_stage *stages,
-                  const struct radv_pipeline_layout *layout, const struct radv_pipeline_key *key,
-                  uint32_t flags)
+                  uint32_t stage_count, const struct radv_pipeline_layout *layout,
+                  const struct radv_pipeline_key *key, uint32_t flags)
 {
    struct mesa_sha1 ctx;
 
@@ -141,7 +141,7 @@ radv_hash_shaders(unsigned char *hash, const struct radv_pipeline_stage *stages,
    if (layout)
       _mesa_sha1_update(&ctx, layout->sha1, sizeof(layout->sha1));
 
-   for (unsigned s = 0; s < MESA_VULKAN_SHADER_STAGES; s++) {
+   for (unsigned s = 0; s < stage_count; s++) {
       if (!stages[s].entrypoint)
          continue;
 
@@ -153,7 +153,7 @@ radv_hash_shaders(unsigned char *hash, const struct radv_pipeline_stage *stages,
 
 void
 radv_hash_rt_shaders(unsigned char *hash, const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
-                     uint32_t flags)
+                     const struct radv_pipeline_key *key, uint32_t flags)
 {
    RADV_FROM_HANDLE(radv_pipeline_layout, layout, pCreateInfo->layout);
    struct mesa_sha1 ctx;
@@ -161,6 +161,8 @@ radv_hash_rt_shaders(unsigned char *hash, const VkRayTracingPipelineCreateInfoKH
    _mesa_sha1_init(&ctx);
    if (layout)
       _mesa_sha1_update(&ctx, layout->sha1, sizeof(layout->sha1));
+
+   _mesa_sha1_update(&ctx, key, sizeof(*key));
 
    for (uint32_t i = 0; i < pCreateInfo->stageCount; ++i) {
       RADV_FROM_HANDLE(vk_shader_module, module, pCreateInfo->pStages[i].module);

@@ -81,9 +81,6 @@ public:
 
    void create_function(ir_function_signature *ir);
 
-   /* True if we have any output rvalues */
-   bool has_output_rvalue;
-
 private:
    void add_instr(nir_instr *instr, unsigned num_components, unsigned bit_size);
    nir_ssa_def *evaluate_rvalue(ir_rvalue *ir);
@@ -263,9 +260,7 @@ glsl_to_nir(const struct gl_constants *consts,
       shader->info.fs.origin_upper_left = sh->Program->info.fs.origin_upper_left;
       shader->info.fs.advanced_blend_modes = sh->Program->info.fs.advanced_blend_modes;
 
-      nir_foreach_variable_with_modes(var, shader,
-                                      nir_var_shader_in |
-                                      nir_var_system_value) {
+      nir_foreach_variable_in_shader(var, shader) {
          if (var->data.mode == nir_var_system_value &&
              (var->data.location == SYSTEM_VALUE_SAMPLE_ID ||
               var->data.location == SYSTEM_VALUE_SAMPLE_POS))
@@ -273,10 +268,10 @@ glsl_to_nir(const struct gl_constants *consts,
 
          if (var->data.mode == nir_var_shader_in && var->data.sample)
             shader->info.fs.uses_sample_shading = true;
-      }
 
-      if (v1.has_output_rvalue)
-         shader->info.fs.uses_sample_shading = true;
+         if (var->data.mode == nir_var_shader_out && var->data.fb_fetch_output)
+            shader->info.fs.uses_sample_shading = true;
+      }
    }
 
    return shader;
@@ -287,7 +282,6 @@ nir_visitor::nir_visitor(const struct gl_constants *consts, nir_shader *shader)
    this->supports_std430 = consts->UseSTD430AsDefaultPacking;
    this->shader = shader;
    this->is_global = true;
-   this->has_output_rvalue = false;
    this->var_table = _mesa_pointer_hash_table_create(NULL);
    this->overload_table = _mesa_pointer_hash_table_create(NULL);
    this->sparse_variable_set = _mesa_pointer_set_create(NULL);
@@ -1826,9 +1820,6 @@ nir_visitor::evaluate_rvalue(ir_rvalue* ir)
 
       enum gl_access_qualifier access = deref_get_qualifier(this->deref);
       this->result = nir_load_deref_with_access(&b, this->deref, access);
-
-      if (nir_deref_mode_is(this->deref, nir_var_shader_out))
-         this->has_output_rvalue = true;
    }
 
    return this->result;
@@ -2016,9 +2007,8 @@ nir_visitor::visit(ir_expression *ir)
    case ir_unop_u642i64: {
       nir_alu_type src_type = nir_get_nir_type_for_glsl_base_type(types[0]);
       nir_alu_type dst_type = nir_get_nir_type_for_glsl_base_type(out_type);
-      result = nir_build_alu(&b, nir_type_conversion_op(src_type, dst_type,
-                                 nir_rounding_mode_undef),
-                                 srcs[0], NULL, NULL, NULL);
+      result = nir_type_convert(&b, srcs[0], src_type, dst_type,
+                                nir_rounding_mode_undef);
       /* b2i and b2f don't have fixed bit-size versions so the builder will
        * just assume 32 and we have to fix it up here.
        */
@@ -2345,11 +2335,25 @@ nir_visitor::visit(ir_expression *ir)
       result = ir->type->is_int_16_32() ?
          nir_ibitfield_extract(&b, nir_i2i32(&b, srcs[0]), nir_i2i32(&b, srcs[1]), nir_i2i32(&b, srcs[2])) :
          nir_ubitfield_extract(&b, nir_u2u32(&b, srcs[0]), nir_i2i32(&b, srcs[1]), nir_i2i32(&b, srcs[2]));
+
+      if (ir->type->base_type == GLSL_TYPE_INT16) {
+         result = nir_i2i16(&b, result);
+      } else if (ir->type->base_type == GLSL_TYPE_UINT16) {
+         result = nir_u2u16(&b, result);
+      }
+
       break;
    case ir_quadop_bitfield_insert:
       result = nir_bitfield_insert(&b,
                                    nir_u2u32(&b, srcs[0]), nir_u2u32(&b, srcs[1]),
                                    nir_i2i32(&b, srcs[2]), nir_i2i32(&b, srcs[3]));
+
+      if (ir->type->base_type == GLSL_TYPE_INT16) {
+         result = nir_i2i16(&b, result);
+      } else if (ir->type->base_type == GLSL_TYPE_UINT16) {
+         result = nir_u2u16(&b, result);
+      }
+
       break;
    case ir_quadop_vector:
       result = nir_vec(&b, srcs, ir->type->vector_elements);
@@ -2358,6 +2362,11 @@ nir_visitor::visit(ir_expression *ir)
    default:
       unreachable("not reached");
    }
+
+   /* The bit-size of the NIR SSA value must match the bit-size of the
+    * original GLSL IR expression.
+    */
+   assert(result->bit_size == glsl_base_type_get_bit_size(ir->type->base_type));
 }
 
 void

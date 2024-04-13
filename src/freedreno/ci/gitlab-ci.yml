@@ -54,7 +54,7 @@ a306_gl:
   extends:
     - .piglit-test
     - .a306-test
-    - .test-manual-mr
+    - .freedreno-manual-rules
   variables:
     HWCI_START_XORG: 1
 
@@ -96,9 +96,10 @@ a530_gl:
   extends:
     - .baremetal-deqp-test
     - .a530-test
-    - .test-manual-mr # Unstable as of kernel 5.19
+    - .freedreno-manual-rules # Unstable as of kernel 5.19
   variables:
     DEQP_SUITE: freedreno-a530
+    PIGLIT_PLATFORM: gbm
   parallel: 6
 
 .a530_piglit:
@@ -113,7 +114,7 @@ a530_gl:
 a530_piglit_gl:
   extends:
     - .a530_piglit
-    - .test-manual-mr
+    - .freedreno-manual-rules
   variables:
     PIGLIT_PROFILES: quick_gl
 
@@ -134,25 +135,38 @@ a530-traces:
     # Increase the hangcheck timer for our spilling tests which bump up against
     # the .5s default.
     FREEDRENO_HANGCHECK_MS: 2000
+    GPU_VERSION: freedreno-a618
+    VK_DRIVER: freedreno
 
-a618_vk:
+.a618-test-kingoftown-r1:
   extends:
     - .a618-test
-    - .turnip-rules
-  parallel: 12
   variables:
     DEVICE_TYPE: sc7180-trogdor-kingoftown
     DTB: sc7180-trogdor-kingoftown-r1
     RUNNER_TAG: mesa-ci-x86-64-lava-sc7180-trogdor-kingoftown
-    VK_DRIVER: freedreno
+
+.a618-test-limozeen-nots-r5:
+  extends:
+    - .a618-test
+  variables:
+    DEVICE_TYPE: sc7180-trogdor-lazor-limozeen
+    DTB: sc7180-trogdor-lazor-limozeen-nots-r5
+    RUNNER_TAG: mesa-ci-x86-64-lava-sc7180-trogdor-lazor-limozeen
+
+a618_vk:
+  extends:
+    - .a618-test-kingoftown-r1
+    - .turnip-rules
+  parallel: 12
+  variables:
     DEQP_SUITE: freedreno-a618-vk
-    GPU_VERSION: freedreno-a618
     MESA_VK_IGNORE_CONFORMANCE_WARNING: 1
 
 a618_vk_full:
   extends:
     - a618_vk
-    - .test-manual-mr
+    - .turnip-manual-rules
   # We use a longer timeout to keep the parallel down so that we don't lock up
   # too many runners for a long time when a dev is trying out at full VK status.
   timeout: 2h
@@ -165,15 +179,44 @@ a618_vk_full:
 
 a618_gl:
   extends:
-    - .a618-test
+    - .a618-test-limozeen-nots-r5
     - .freedreno-rules
   parallel: 4
   variables:
-    DEVICE_TYPE: sc7180-trogdor-lazor-limozeen
-    DTB: sc7180-trogdor-lazor-limozeen-nots-r5
-    RUNNER_TAG: mesa-ci-x86-64-lava-sc7180-trogdor-lazor-limozeen
     DEQP_SUITE: freedreno-a618
-    GPU_VERSION: freedreno-a618
+
+# Run dEQP EGL window system tests separately with the window systems available.
+# X11 takes over the screen, wayland is run headless.
+a618_egl:
+  extends:
+    - .a618-test-limozeen-nots-r5
+    - .freedreno-rules
+  variables:
+    DEQP_VER: egl
+    HWCI_START_XORG: 1
+    HWCI_START_WESTON: 1
+    DEQP_SUITE: freedreno-a618-egl
+
+a618_skqp:
+  extends:
+    - .a618-test-limozeen-nots-r5
+    - .freedreno-rules
+    # SKQP tests both the GL and VK drivers.
+    - .freedreno-turnip-rules
+  variables:
+    HWCI_START_XORG: 1
+    DEQP_SUITE: freedreno-a618-skqp
+
+a618_piglit:
+  extends:
+    - .piglit-test
+    - .a618-test-limozeen-nots-r5
+    - .freedreno-rules
+    # Note that piglit has GL+VK integration testing.
+    - .freedreno-turnip-rules
+  variables:
+    HWCI_START_XORG: 1
+    PIGLIT_PROFILES: gpu
 
 .a630-test:
   extends:
@@ -222,13 +265,13 @@ a630_gles_asan:
 
 a630_skqp:
   extends:
-    - .skqp-test
+    - .baremetal-deqp-test
     - .a630-test
+    # SKQP tests both the GL and VK drivers.
     - .freedreno-turnip-rules
   variables:
-    # Possible skqp backends: gl, gles, unitTest and vk
-    SKQP_BACKENDS: gl gles vk unitTest  # space separated values
-    VK_DRIVER: freedreno
+    HWCI_START_XORG: 1
+    DEQP_SUITE: freedreno-a630-skqp
 
 a630_vk:
   extends:
@@ -245,7 +288,7 @@ a630_vk_full:
   timeout: 2h
   extends:
     - a630_vk
-    - .test-manual-mr
+    - .turnip-manual-rules
   parallel: 2
   variables:
     DEQP_SUITE: freedreno-a630-vk-full
@@ -264,13 +307,13 @@ a630_vk_asan:
 
 a630_piglit:
   extends:
-    - .piglit-test
+    - .baremetal-deqp-test
     - .a630-test
     # Note that piglit has GL+VK integration testing.
     - .freedreno-turnip-rules
   variables:
     HWCI_START_XORG: 1
-    PIGLIT_PROFILES: gpu
+    DEQP_SUITE: freedreno-a630-piglit
 
 a630-traces:
   extends:
@@ -310,4 +353,3 @@ a630-traces-performance:
     EGL_PLATFORM: surfaceless
     GIT_STRATEGY: none
     HWCI_FREQ_MAX: "true"
-  allow_failure: true

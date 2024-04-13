@@ -982,20 +982,14 @@ cast_phi(nir_builder *b, nir_phi_instr *phi, unsigned new_bit_size)
    int num_components = 0;
    int old_bit_size = phi->dest.ssa.bit_size;
 
-   nir_op upcast_op = nir_type_conversion_op(nir_type_uint | old_bit_size,
-                                             nir_type_uint | new_bit_size,
-                                             nir_rounding_mode_undef);
-   nir_op downcast_op = nir_type_conversion_op(nir_type_uint | new_bit_size,
-                                               nir_type_uint | old_bit_size,
-                                               nir_rounding_mode_undef);
-
    nir_foreach_phi_src(src, phi) {
       assert(num_components == 0 || num_components == src->src.ssa->num_components);
       num_components = src->src.ssa->num_components;
 
       b->cursor = nir_after_instr_and_phis(src->src.ssa->parent_instr);
 
-      nir_ssa_def *cast = nir_build_alu(b, upcast_op, src->src.ssa, NULL, NULL, NULL);
+      nir_ssa_def *cast = nir_u2uN(b, src->src.ssa, new_bit_size);
+
       nir_phi_instr_add_src(lowered, src->pred, nir_src_for_ssa(cast));
    }
 
@@ -1006,7 +1000,7 @@ cast_phi(nir_builder *b, nir_phi_instr *phi, unsigned new_bit_size)
    nir_builder_instr_insert(b, &lowered->instr);
 
    b->cursor = nir_after_phis(nir_cursor_current_block(b->cursor));
-   nir_ssa_def *result = nir_build_alu(b, downcast_op, &lowered->dest.ssa, NULL, NULL, NULL);
+   nir_ssa_def *result = nir_u2uN(b, &lowered->dest.ssa, old_bit_size);
 
    nir_ssa_def_rewrite_uses(&phi->dest.ssa, result);
    nir_instr_remove(&phi->instr);
@@ -1060,7 +1054,7 @@ dxil_nir_lower_upcast_phis(nir_shader *shader, unsigned min_bit_size)
 }
 
 struct dxil_nir_split_clip_cull_distance_params {
-   nir_variable *new_var;
+   nir_variable *new_var[2];
    nir_shader *shader;
 };
 
@@ -1078,7 +1072,6 @@ dxil_nir_split_clip_cull_distance_instr(nir_builder *b,
                                         void *cb_data)
 {
    struct dxil_nir_split_clip_cull_distance_params *params = cb_data;
-   nir_variable *new_var = params->new_var;
 
    if (instr->type != nir_instr_type_deref)
       return false;
@@ -1090,6 +1083,9 @@ dxil_nir_split_clip_cull_distance_instr(nir_builder *b,
        var->data.location > VARYING_SLOT_CULL_DIST1 ||
        !var->data.compact)
       return false;
+
+   unsigned new_var_idx = var->data.mode == nir_var_shader_in ? 0 : 1;
+   nir_variable *new_var = params->new_var[new_var_idx];
 
    /* The location should only be inside clip distance, because clip
     * and cull should've been merged by nir_lower_clip_cull_distance_arrays()
@@ -1135,7 +1131,7 @@ dxil_nir_split_clip_cull_distance_instr(nir_builder *b,
       }
       new_var->data.location++;
       new_var->data.location_frac = 0;
-      params->new_var = new_var;
+      params->new_var[new_var_idx] = new_var;
    }
 
    /* Update the type for derefs of the old var */
@@ -1180,7 +1176,7 @@ bool
 dxil_nir_split_clip_cull_distance(nir_shader *shader)
 {
    struct dxil_nir_split_clip_cull_distance_params params = {
-      .new_var = NULL,
+      .new_var = { NULL, NULL },
       .shader = shader,
    };
    nir_shader_instructions_pass(shader,
@@ -1189,7 +1185,7 @@ dxil_nir_split_clip_cull_distance(nir_shader *shader)
                                 nir_metadata_dominance |
                                 nir_metadata_loop_analysis,
                                 &params);
-   return params.new_var != NULL;
+   return params.new_var[0] != NULL || params.new_var[1] != NULL;
 }
 
 static bool
@@ -1564,54 +1560,6 @@ dxil_nir_split_typed_samplers(nir_shader *nir)
 
 
 static bool
-lower_bool_input_filter(const nir_instr *instr,
-                        UNUSED const void *_options)
-{
-   if (instr->type != nir_instr_type_intrinsic)
-      return false;
-
-   nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
-   if (intr->intrinsic == nir_intrinsic_load_front_face)
-      return true;
-
-   if (intr->intrinsic == nir_intrinsic_load_deref) {
-      nir_deref_instr *deref = nir_instr_as_deref(intr->src[0].ssa->parent_instr);
-      nir_variable *var = nir_deref_instr_get_variable(deref);
-      return var->data.mode == nir_var_shader_in &&
-             glsl_get_base_type(var->type) == GLSL_TYPE_BOOL;
-   }
-
-   return false;
-}
-
-static nir_ssa_def *
-lower_bool_input_impl(nir_builder *b, nir_instr *instr,
-                      UNUSED void *_options)
-{
-   nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
-
-   if (intr->intrinsic == nir_intrinsic_load_deref) {
-      nir_deref_instr *deref = nir_instr_as_deref(intr->src[0].ssa->parent_instr);
-      nir_variable *var = nir_deref_instr_get_variable(deref);
-
-      /* rewrite var->type */
-      var->type = glsl_vector_type(GLSL_TYPE_UINT,
-                                   glsl_get_vector_elements(var->type));
-      deref->type = var->type;
-   }
-
-   intr->dest.ssa.bit_size = 32;
-   return nir_i2b1(b, &intr->dest.ssa);
-}
-
-bool
-dxil_nir_lower_bool_input(struct nir_shader *s)
-{
-   return nir_shader_lower_instructions(s, lower_bool_input_filter,
-                                        lower_bool_input_impl, NULL);
-}
-
-static bool
 lower_sysval_to_load_input_impl(nir_builder *b, nir_instr *instr, void *data)
 {
    if (instr->type != nir_instr_type_intrinsic)
@@ -1637,9 +1585,22 @@ lower_sysval_to_load_input_impl(nir_builder *b, nir_instr *instr, void *data)
    nir_variable *var = sysval_vars[sysval];
    assert(var);
 
+   const nir_alu_type dest_type = (sysval == SYSTEM_VALUE_FRONT_FACE)
+      ? nir_type_uint32 : nir_get_nir_type_for_glsl_type(var->type);
+   const unsigned bit_size = (sysval == SYSTEM_VALUE_FRONT_FACE)
+      ? 32 : intr->dest.ssa.bit_size;
+
    b->cursor = nir_before_instr(instr);
-   nir_ssa_def *result = nir_build_load_input(b, intr->dest.ssa.num_components, intr->dest.ssa.bit_size, nir_imm_int(b, 0),
-      .base = var->data.driver_location, .dest_type = nir_get_nir_type_for_glsl_type(var->type));
+   nir_ssa_def *result = nir_build_load_input(b, intr->dest.ssa.num_components, bit_size, nir_imm_int(b, 0),
+      .base = var->data.driver_location, .dest_type = dest_type);
+
+   /* The nir_type_uint32 is really a nir_type_bool32, but that type is very
+    * inconvenient at this point during compilation.  Convert to
+    * nir_type_bool1 by comparing with zero.
+    */
+   if (sysval == SYSTEM_VALUE_FRONT_FACE)
+      result = nir_ine_imm(b, result, 0);
+
    nir_ssa_def_rewrite_uses(&intr->dest.ssa, result);
    return true;
 }
@@ -1719,6 +1680,37 @@ dxil_sort_ps_outputs(nir_shader* s)
    unsigned driver_loc = 0;
    nir_foreach_variable_with_modes(var, s, nir_var_shader_out) {
       var->data.driver_location = driver_loc++;
+   }
+}
+
+enum dxil_sysvalue_type {
+   DXIL_NO_SYSVALUE = 0,
+   DXIL_USED_SYSVALUE,
+   DXIL_SYSVALUE,
+   DXIL_GENERATED_SYSVALUE
+};
+
+static enum dxil_sysvalue_type
+nir_var_to_dxil_sysvalue_type(nir_variable *var, uint64_t other_stage_mask)
+{
+   switch (var->data.location) {
+   case VARYING_SLOT_FACE:
+      return DXIL_GENERATED_SYSVALUE;
+   case VARYING_SLOT_POS:
+   case VARYING_SLOT_PRIMITIVE_ID:
+   case VARYING_SLOT_CLIP_DIST0:
+   case VARYING_SLOT_CLIP_DIST1:
+   case VARYING_SLOT_PSIZ:
+   case VARYING_SLOT_TESS_LEVEL_INNER:
+   case VARYING_SLOT_TESS_LEVEL_OUTER:
+   case VARYING_SLOT_VIEWPORT:
+   case VARYING_SLOT_LAYER:
+   case VARYING_SLOT_VIEW_INDEX:
+      if (!((1ull << var->data.location) & other_stage_mask))
+         return DXIL_SYSVALUE;
+      return DXIL_USED_SYSVALUE;
+   default:
+      return DXIL_NO_SYSVALUE;
    }
 }
 
@@ -2040,6 +2032,7 @@ update_writes(struct nir_builder *b, nir_instr *instr, void *_state)
       if (!channels[i])
          channels[i] = nir_imm_intN_t(b, 0, src->bit_size);
 
+   intr->num_components = 4;
    nir_instr_rewrite_src_ssa(instr, &intr->src[0], nir_vec(b, channels, 4));
    nir_intrinsic_set_component(intr, 0);
    nir_intrinsic_set_write_mask(intr, 0xf);
@@ -2080,4 +2073,77 @@ bool
 dxil_nir_lower_sample_pos(nir_shader *s)
 {
    return nir_shader_lower_instructions(s, is_sample_pos, lower_sample_pos, NULL);
+}
+
+static bool
+lower_subgroup_id(nir_builder *b, nir_instr *instr, void *data)
+{
+   if (instr->type != nir_instr_type_intrinsic)
+      return false;
+   nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
+   if (intr->intrinsic != nir_intrinsic_load_subgroup_id)
+      return false;
+
+   nir_ssa_def **subgroup_id = (nir_ssa_def **)data;
+   if (*subgroup_id == NULL) {
+      nir_variable *subgroup_id_counter = nir_variable_create(b->shader, nir_var_mem_shared, glsl_uint_type(), "dxil_SubgroupID_counter");
+      nir_variable *subgroup_id_local = nir_local_variable_create(b->impl, glsl_uint_type(), "dxil_SubgroupID_local");
+      b->cursor = nir_before_block(nir_start_block(b->impl));
+      nir_store_var(b, subgroup_id_local, nir_imm_int(b, 0), 1);
+
+      nir_deref_instr *counter_deref = nir_build_deref_var(b, subgroup_id_counter);
+      nir_ssa_def *tid = nir_load_local_invocation_index(b);
+      nir_if *nif = nir_push_if(b, nir_ieq_imm(b, tid, 0));
+      nir_store_deref(b, counter_deref, nir_imm_int(b, 0), 1);
+      nir_pop_if(b, nif);
+
+      nir_scoped_memory_barrier(b, NIR_SCOPE_WORKGROUP, NIR_MEMORY_ACQ_REL, nir_var_mem_shared);
+
+      nif = nir_push_if(b, nir_elect(b, 1));
+      nir_ssa_def *subgroup_id_first_thread = nir_deref_atomic_add(b, 32, &counter_deref->dest.ssa, nir_imm_int(b, 1));
+      nir_store_var(b, subgroup_id_local, subgroup_id_first_thread, 1);
+      nir_pop_if(b, nif);
+
+      nir_ssa_def *subgroup_id_loaded = nir_load_var(b, subgroup_id_local);
+      *subgroup_id = nir_read_first_invocation(b, subgroup_id_loaded);
+   }
+   nir_ssa_def_rewrite_uses(&intr->dest.ssa, *subgroup_id);
+   return true;
+}
+
+bool
+dxil_nir_lower_subgroup_id(nir_shader *s)
+{
+   nir_ssa_def *subgroup_id = NULL;
+   return nir_shader_instructions_pass(s, lower_subgroup_id, nir_metadata_none, &subgroup_id);
+}
+
+static bool
+lower_num_subgroups(nir_builder *b, nir_instr *instr, void *data)
+{
+   if (instr->type != nir_instr_type_intrinsic)
+      return false;
+   nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
+   if (intr->intrinsic != nir_intrinsic_load_num_subgroups)
+      return false;
+
+   b->cursor = nir_before_instr(instr);
+   nir_ssa_def *subgroup_size = nir_load_subgroup_size(b);
+   nir_ssa_def *size_minus_one = nir_iadd_imm(b, subgroup_size, -1);
+   nir_ssa_def *workgroup_size_vec = nir_load_workgroup_size(b);
+   nir_ssa_def *workgroup_size = nir_imul(b, nir_channel(b, workgroup_size_vec, 0),
+                                             nir_imul(b, nir_channel(b, workgroup_size_vec, 1),
+                                                         nir_channel(b, workgroup_size_vec, 2)));
+   nir_ssa_def *ret = nir_idiv(b, nir_iadd(b, workgroup_size, size_minus_one), subgroup_size);
+   nir_ssa_def_rewrite_uses(&intr->dest.ssa, ret);
+   return true;
+}
+
+bool
+dxil_nir_lower_num_subgroups(nir_shader *s)
+{
+   return nir_shader_instructions_pass(s, lower_num_subgroups,
+                                       nir_metadata_block_index |
+                                       nir_metadata_dominance |
+                                       nir_metadata_loop_analysis, NULL);
 }

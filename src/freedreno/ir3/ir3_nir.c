@@ -146,7 +146,8 @@ ir3_optimize_loop(struct ir3_compiler *compiler, nir_shader *s)
       nir_load_store_vectorize_options vectorize_opts = {
          .modes = nir_var_mem_ubo | nir_var_mem_ssbo,
          .callback = ir3_nir_should_vectorize_mem,
-         .robust_modes = compiler->robust_buffer_access2 ? nir_var_mem_ubo | nir_var_mem_ssbo: 0,
+         .robust_modes = compiler->options.robust_buffer_access2 ?
+               nir_var_mem_ubo | nir_var_mem_ssbo : 0,
       };
       progress |= OPT(s, nir_opt_load_store_vectorize, &vectorize_opts);
 
@@ -769,7 +770,7 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so, nir_shader *s)
          };
          struct nir_fold_16bit_tex_image_options fold_16bit_options = {
             .rounding_mode = nir_rounding_mode_rtz,
-            .fold_tex_dest = true,
+            .fold_tex_dest_types = nir_type_float,
             /* blob dumps have no half regs on pixel 2's ldib or stib, so only enable for a6xx+. */
             .fold_image_load_store_data = so->compiler->gen >= 6,
             .fold_srcs_options_count = 1,

@@ -27,6 +27,7 @@ apt-get install -y --no-remove \
         $STABLE_EPHEMERAL \
         bison \
         ccache \
+	curl \
         dpkg-cross \
         findutils \
         flex \
@@ -67,7 +68,6 @@ apt-get install -y --no-remove \
         python3-requests \
         qemu-user \
         valgrind \
-        wget \
         x11proto-dri2-dev \
         x11proto-gl-dev \
         x11proto-randr-dev \
@@ -78,8 +78,8 @@ apt-get install -y --no-remove \
 # Needed for ci-fairy, this revision is able to upload files to MinIO
 pip3 install git+http://gitlab.freedesktop.org/freedesktop/ci-templates@ffe4d1b10aab7534489f0c4bbc4c5899df17d3f2
 
-# We need at least 0.61.4 for proper Rust; 0.62 for modern meson env2mfile
-pip3 install meson==0.63.3
+# We need at least 1.0.0 for proper Rust; 0.62 for modern meson env2mfile
+pip3 install meson==1.0.0
 
 . .gitlab-ci/container/build-rust.sh
 

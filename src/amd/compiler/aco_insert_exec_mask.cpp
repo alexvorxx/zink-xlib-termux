@@ -268,6 +268,12 @@ add_coupling_code(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instruction>>
          bld.copy(Definition(exec, bld.lm), start_exec);
       }
 
+      /* EXEC is automatically initialized by the HW for compute shaders.
+       * We know for sure exec is initially -1 when the shader always has full subgroups.
+       */
+      if (ctx.program->stage == compute_cs && ctx.program->info.cs.uses_full_subgroups)
+         start_exec = Operand::c32_or_c64(-1u, bld.lm == s2);
+
       if (ctx.handle_wqm) {
          ctx.info[0].exec.emplace_back(start_exec, mask_type_global | mask_type_exact);
          /* if this block needs WQM, initialize already */
@@ -816,7 +822,7 @@ add_branch_code(exec_ctx& ctx, Block* block)
 
       Builder::Result r = bld.branch(aco_opcode::p_cbranch_z, bld.def(s2), Operand(exec, bld.lm),
                                      block->linear_succs[1], block->linear_succs[0]);
-      r.instr->branch().selection_control = sel_ctrl;
+      r->branch().selection_control = sel_ctrl;
       return;
    }
 
@@ -832,7 +838,7 @@ add_branch_code(exec_ctx& ctx, Block* block)
 
       Builder::Result r = bld.branch(aco_opcode::p_cbranch_z, bld.def(s2), Operand(exec, bld.lm),
                                      block->linear_succs[1], block->linear_succs[0]);
-      r.instr->branch().selection_control = sel_ctrl;
+      r->branch().selection_control = sel_ctrl;
       return;
    }
 

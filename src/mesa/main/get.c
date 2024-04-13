@@ -192,6 +192,8 @@ enum value_extra {
    EXTRA_VERSION_43,
    EXTRA_API_GL,
    EXTRA_API_GL_CORE,
+   EXTRA_API_GL_COMPAT,
+   EXTRA_API_ES,
    EXTRA_API_ES2,
    EXTRA_API_ES3,
    EXTRA_API_ES31,
@@ -317,6 +319,13 @@ union value {
  * only if none of them are available.  If you need to check for "AND"
  * behavior, you would need to make a custom EXTRA_ enum.
  */
+
+static const int extra_new_buffers_compat_es[] = {
+   EXTRA_API_GL_COMPAT,
+   EXTRA_API_ES,
+   EXTRA_NEW_BUFFERS,
+   EXTRA_END
+};
 
 static const int extra_new_buffers[] = {
    EXTRA_NEW_BUFFERS,
@@ -825,12 +834,12 @@ find_custom_value(struct gl_context *ctx, const struct value_desc *d, union valu
 
    case GL_TEXTURE_COORD_ARRAY_SIZE:
       array = &ctx->Array.VAO->VertexAttrib[VERT_ATTRIB_TEX(ctx->Array.ActiveTexture)];
-      v->value_int = array->Format.Size;
+      v->value_int = array->Format.User.Size;
       break;
 
    case GL_VERTEX_ARRAY_SIZE:
       array = &ctx->Array.VAO->VertexAttrib[VERT_ATTRIB_POS];
-      v->value_int = array->Format.Size;
+      v->value_int = array->Format.User.Size;
       break;
 
    case GL_ACTIVE_TEXTURE_ARB:
@@ -1053,11 +1062,11 @@ find_custom_value(struct gl_context *ctx, const struct value_desc *d, union valu
    /* ARB_vertex_array_bgra */
    case GL_COLOR_ARRAY_SIZE:
       array = &ctx->Array.VAO->VertexAttrib[VERT_ATTRIB_COLOR0];
-      v->value_int = array->Format.Format == GL_BGRA ? GL_BGRA : array->Format.Size;
+      v->value_int = array->Format.User.Bgra ? GL_BGRA : array->Format.User.Size;
       break;
    case GL_SECONDARY_COLOR_ARRAY_SIZE:
       array = &ctx->Array.VAO->VertexAttrib[VERT_ATTRIB_COLOR1];
-      v->value_int = array->Format.Format == GL_BGRA ? GL_BGRA : array->Format.Size;
+      v->value_int = array->Format.User.Bgra ? GL_BGRA : array->Format.User.Size;
       break;
 
    /* ARB_copy_buffer */
@@ -1419,6 +1428,11 @@ check_extra(struct gl_context *ctx, const char *func, const struct value_desc *d
          if (_mesa_is_desktop_gl(ctx) && version >= 43)
             api_found = GL_TRUE;
          break;
+      case EXTRA_API_ES:
+         api_check = GL_TRUE;
+         if (_mesa_is_gles(ctx))
+            api_found = GL_TRUE;
+         break;
       case EXTRA_API_ES2:
          api_check = GL_TRUE;
          if (ctx->API == API_OPENGLES2)
@@ -1447,6 +1461,11 @@ check_extra(struct gl_context *ctx, const char *func, const struct value_desc *d
       case EXTRA_API_GL_CORE:
          api_check = GL_TRUE;
          if (ctx->API == API_OPENGL_CORE)
+            api_found = GL_TRUE;
+         break;
+      case EXTRA_API_GL_COMPAT:
+         api_check = GL_TRUE;
+         if (ctx->API == API_OPENGL_COMPAT)
             api_found = GL_TRUE;
          break;
       case EXTRA_NEW_BUFFERS:

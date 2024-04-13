@@ -42,6 +42,7 @@
 #endif
 
 #include "vk_util.h"
+#include "vk_format.h"
 
 static void
 genX(emit_slice_hashing_state)(struct anv_device *device,
@@ -274,11 +275,7 @@ init_render_queue_state(struct anv_queue *queue)
       .end = (void *) cmds + sizeof(cmds),
    };
 
-   anv_batch_emit(&batch, GENX(PIPELINE_SELECT), ps) {
-      ps.MaskBits = GFX_VER >= 12 ? 0x13 : 3;
-      ps.MediaSamplerDOPClockGateEnable = GFX_VER >= 12;
-      ps.PipelineSelection = _3D;
-   }
+   genX(emit_pipeline_select)(&batch, _3D);
 
 #if GFX_VER == 9
    anv_batch_write_reg(&batch, GENX(CACHE_MODE_1), cm1) {
@@ -490,14 +487,7 @@ init_compute_queue_state(struct anv_queue *queue)
    batch.start = batch.next = cmds;
    batch.end = (void *) cmds + sizeof(cmds);
 
-   anv_batch_emit(&batch, GENX(PIPELINE_SELECT), ps) {
-      ps.MaskBits = 3;
-#if GFX_VER >= 11
-      ps.MaskBits |= 0x10;
-      ps.MediaSamplerDOPClockGateEnable = true;
-#endif
-      ps.PipelineSelection = GPGPU;
-   }
+   genX(emit_pipeline_select)(&batch, GPGPU);
 
    init_common_queue_state(queue, &batch);
 
@@ -767,7 +757,7 @@ vk_to_intel_tex_filter(VkFilter filter, bool anisotropyEnable)
 static uint32_t
 vk_to_intel_max_anisotropy(float ratio)
 {
-   return (anv_clamp_f(ratio, 2, 16) - 2) / 2;
+   return (CLAMP(ratio, 2, 16) - 2) / 2;
 }
 
 static const uint32_t vk_to_intel_mipmap_mode[] = {
@@ -845,23 +835,28 @@ VkResult genX(CreateSampler)(
    unsigned sampler_reduction_mode = STD_FILTER;
    bool enable_sampler_reduction = false;
 
+   const struct vk_format_ycbcr_info *ycbcr_info = NULL;
    vk_foreach_struct_const(ext, pCreateInfo->pNext) {
       switch (ext->sType) {
       case VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO: {
          VkSamplerYcbcrConversionInfo *pSamplerConversion =
             (VkSamplerYcbcrConversionInfo *) ext;
-         ANV_FROM_HANDLE(anv_ycbcr_conversion, conversion,
-                         pSamplerConversion->conversion);
+         VK_FROM_HANDLE(vk_ycbcr_conversion, conversion,
+                        pSamplerConversion->conversion);
 
          /* Ignore conversion for non-YUV formats. This fulfills a requirement
           * for clients that want to utilize same code path for images with
           * external formats (VK_FORMAT_UNDEFINED) and "regular" RGBA images
           * where format is known.
           */
-         if (conversion == NULL || !conversion->format->can_ycbcr)
+         if (conversion == NULL)
             break;
 
-         sampler->n_planes = conversion->format->n_planes;
+         ycbcr_info = vk_format_get_ycbcr_info(conversion->format);
+         if (ycbcr_info == NULL)
+            break;
+
+         sampler->n_planes = ycbcr_info->n_planes;
          sampler->conversion = conversion;
          break;
       }
@@ -929,7 +924,7 @@ VkResult genX(CreateSampler)(
 
    for (unsigned p = 0; p < sampler->n_planes; p++) {
       const bool plane_has_chroma =
-         sampler->conversion && sampler->conversion->format->planes[p].has_chroma;
+         ycbcr_info && ycbcr_info->planes[p].has_chroma;
       const VkFilter min_filter =
          plane_has_chroma ? sampler->conversion->chroma_filter : pCreateInfo->minFilter;
       const VkFilter mag_filter =
@@ -939,9 +934,13 @@ VkResult genX(CreateSampler)(
       /* From Broadwell PRM, SAMPLER_STATE:
        *   "Mip Mode Filter must be set to MIPFILTER_NONE for Planar YUV surfaces."
        */
-      const bool isl_format_is_planar_yuv = sampler->conversion &&
-         isl_format_is_yuv(sampler->conversion->format->planes[0].isl_format) &&
-         isl_format_is_planar(sampler->conversion->format->planes[0].isl_format);
+      enum isl_format plane0_isl_format = sampler->conversion ?
+         anv_get_format(sampler->conversion->format)->planes[0].isl_format :
+         ISL_FORMAT_UNSUPPORTED;
+      const bool isl_format_is_planar_yuv =
+         plane0_isl_format != ISL_FORMAT_UNSUPPORTED &&
+         isl_format_is_yuv(plane0_isl_format) &&
+         isl_format_is_planar(plane0_isl_format);
 
       const uint32_t mip_filter_mode =
          isl_format_is_planar_yuv ?
@@ -960,11 +959,11 @@ VkResult genX(CreateSampler)(
          .MipModeFilter = mip_filter_mode,
          .MagModeFilter = vk_to_intel_tex_filter(mag_filter, pCreateInfo->anisotropyEnable),
          .MinModeFilter = vk_to_intel_tex_filter(min_filter, pCreateInfo->anisotropyEnable),
-         .TextureLODBias = anv_clamp_f(pCreateInfo->mipLodBias, -16, 15.996),
+         .TextureLODBias = CLAMP(pCreateInfo->mipLodBias, -16, 15.996),
          .AnisotropicAlgorithm =
             pCreateInfo->anisotropyEnable ? EWAApproximation : LEGACY,
-         .MinLOD = anv_clamp_f(pCreateInfo->minLod, 0, 14),
-         .MaxLOD = anv_clamp_f(pCreateInfo->maxLod, 0, 14),
+         .MinLOD = CLAMP(pCreateInfo->minLod, 0, 14),
+         .MaxLOD = CLAMP(pCreateInfo->maxLod, 0, 14),
          .ChromaKeyEnable = 0,
          .ChromaKeyIndex = 0,
          .ChromaKeyMode = 0,
@@ -1005,4 +1004,45 @@ VkResult genX(CreateSampler)(
    *pSampler = anv_sampler_to_handle(sampler);
 
    return VK_SUCCESS;
+}
+
+/* Wa_14015814527
+ *
+ * Check if task shader was utilized within cmd_buffer, if so
+ * commit empty URB states and null prim.
+ */
+void
+genX(apply_task_urb_workaround)(struct anv_cmd_buffer *cmd_buffer)
+{
+#if GFX_VERx10 != 125
+   return;
+#else
+   if (cmd_buffer->state.current_pipeline != _3D ||
+       !cmd_buffer->state.gfx.used_task_shader)
+      return;
+
+   cmd_buffer->state.gfx.used_task_shader = false;
+
+   /* Wa_14015821291 mentions that WA below is not required if we have
+    * a pipeline flush going on. It will get flushed during
+    * cmd_buffer_flush_state before draw.
+    */
+   if ((cmd_buffer->state.pending_pipe_bits & ANV_PIPE_CS_STALL_BIT))
+      return;
+
+   for (int i = 0; i <= MESA_SHADER_GEOMETRY; i++) {
+      anv_batch_emit(&cmd_buffer->batch, GENX(3DSTATE_URB_VS), urb) {
+         urb._3DCommandSubOpcode += i;
+      }
+   }
+
+   anv_batch_emit(&cmd_buffer->batch, GENX(3DSTATE_URB_ALLOC_MESH), zero);
+   anv_batch_emit(&cmd_buffer->batch, GENX(3DSTATE_URB_ALLOC_TASK), zero);
+
+   /* Issue 'nullprim' to commit the state. */
+   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+      pc.PostSyncOperation = WriteImmediateData;
+      pc.Address = cmd_buffer->device->workaround_address;
+   }
+#endif
 }

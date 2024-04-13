@@ -403,11 +403,14 @@ tu_cs_emit_debug_msg(struct tu_cs *cs, const char *fmt, ...);
 
 typedef struct tu_cs *tu_debug_scope;
 
-__attribute__((format(printf, 2, 3))) void
-tu_cs_trace_start(void *cs, const char *fmt, ...);
+__attribute__((format(printf, 3, 4))) void
+tu_cs_trace_start(struct u_trace_context *utctx,
+                  void *cs,
+                  const char *fmt,
+                  ...);
 
-__attribute__((format(printf, 2, 3))) void
-tu_cs_trace_end(void *cs, const char *fmt, ...);
+__attribute__((format(printf, 3, 4))) void
+tu_cs_trace_end(struct u_trace_context *utctx, void *cs, const char *fmt, ...);
 
 /* Helpers for bracketing a large sequence of commands of unknown size inside
  * a CP_COND_REG_EXEC packet.
@@ -457,6 +460,7 @@ struct tu_reg_value {
    bool bo_write;
    uint32_t bo_offset;
    uint32_t bo_shift;
+   uint32_t bo_low;
 };
 
 #define fd_reg_pair tu_reg_value
@@ -479,6 +483,7 @@ struct tu_reg_value {
          if (regs[i].bo) {                                      \
             uint64_t v = regs[i].bo->iova + regs[i].bo_offset;  \
             v >>= regs[i].bo_shift;                             \
+            v <<= regs[i].bo_low;                               \
             v |= regs[i].value;                                 \
                                                                 \
             *p++ = v;                                           \

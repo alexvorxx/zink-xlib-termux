@@ -221,6 +221,7 @@ files_libnir = files(
   'nir_lower_uniforms_to_ubo.c',
   'nir_lower_sysvals_to_varyings.c',
   'nir_metadata.c',
+  'nir_mod_analysis.c',
   'nir_move_vec_src_uses_to_dest.c',
   'nir_normalize_cubemap_coords.c',
   'nir_opt_access.c',
@@ -401,8 +402,10 @@ if with_tests
         'tests/core_tests.cpp',
         'tests/loop_analyze_tests.cpp',
         'tests/lower_returns_tests.cpp',
+        'tests/mod_analysis_tests.cpp',
         'tests/negative_equal_tests.cpp',
         'tests/opt_if_tests.cpp',
+        'tests/opt_shrink_vectors_tests.cpp',
         'tests/serialize_tests.cpp',
         'tests/ssa_def_bits_used_tests.cpp',
         'tests/vars_tests.cpp',
@@ -420,7 +423,7 @@ if with_tests
     'nir_algebraic_parser',
     prog_python,
     args : [
-      join_paths(meson.current_source_dir(), 'tests/algebraic_parser_test.py')
+      files('tests/algebraic_parser_test.py')
     ],
     suite : ['compiler', 'nir'],
   )

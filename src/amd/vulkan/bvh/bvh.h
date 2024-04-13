@@ -149,13 +149,16 @@ struct radv_global_sync_data {
    uint32_t current_phase_start_counter;
    uint32_t current_phase_end_counter;
    uint32_t phase_index;
+   /* If this flag is set, the shader should exit
+    * instead of executing another phase */
+   uint32_t next_phase_exit_flag;
 };
 
 struct radv_ir_header {
    int32_t min_bounds[3];
    int32_t max_bounds[3];
    uint32_t active_leaf_count;
-   /* Indirect dispatch dimensions for the internal node converter.
+   /* Indirect dispatch dimensions for the encoder.
     * ir_internal_node_count is the thread count in the X dimension,
     * while Y and Z are always set to 1. */
    uint32_t ir_internal_node_count;

@@ -63,6 +63,7 @@ lima_screen_destroy(struct pipe_screen *pscreen)
    lima_bo_cache_fini(screen);
    lima_bo_table_fini(screen);
    disk_cache_destroy(screen->disk_cache);
+   lima_resource_screen_destroy(screen);
    ralloc_free(screen);
 }
 
@@ -84,7 +85,7 @@ lima_screen_get_name(struct pipe_screen *pscreen)
 static const char *
 lima_screen_get_vendor(struct pipe_screen *pscreen)
 {
-   return "lima";
+   return "Mesa";
 }
 
 static const char *

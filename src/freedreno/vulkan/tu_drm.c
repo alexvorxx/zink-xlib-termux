@@ -515,6 +515,14 @@ tu_bo_map(struct tu_device *dev, struct tu_bo *bo)
 }
 
 void
+tu_bo_allow_dump(struct tu_device *dev, struct tu_bo *bo)
+{
+   mtx_lock(&dev->bo_mutex);
+   dev->bo_list[bo->bo_list_idx].flags |= MSM_SUBMIT_BO_DUMP;
+   mtx_unlock(&dev->bo_mutex);
+}
+
+void
 tu_bo_finish(struct tu_device *dev, struct tu_bo *bo)
 {
    assert(bo->gem_handle);
@@ -851,7 +859,7 @@ tu_physical_device_try_create(struct vk_instance *vk_instance,
 
    drmFreeVersion(version);
 
-   if (instance->debug_flags & TU_DEBUG_STARTUP)
+   if (TU_DEBUG(STARTUP))
       mesa_logi("Found compatible device '%s'.", path);
 
    device->instance = instance;
@@ -1295,8 +1303,7 @@ tu_queue_submit(struct vk_queue *vk_queue, struct vk_queue_submit *submit)
                               submit->perf_pass_index : ~0;
    struct tu_queue_submit submit_req;
 
-   if (unlikely(queue->device->physical_device->instance->debug_flags &
-                 TU_DEBUG_LOG_SKIP_GMEM_OPS)) {
+   if (TU_DEBUG(LOG_SKIP_GMEM_OPS)) {
       tu_dbg_log_gmem_load_store_skips(queue->device);
    }
 

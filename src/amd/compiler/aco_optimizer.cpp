@@ -597,6 +597,7 @@ pseudo_propagate_temp(opt_ctx& ctx, aco_ptr<Instruction>& instr, Temp temp, unsi
 bool
 can_apply_sgprs(opt_ctx& ctx, aco_ptr<Instruction>& instr)
 {
+   assert(instr->isVALU());
    if (instr->isSDWA() && ctx.program->gfx_level < GFX9)
       return false;
    return instr->opcode != aco_opcode::v_readfirstlane_b32 &&
@@ -605,19 +606,32 @@ can_apply_sgprs(opt_ctx& ctx, aco_ptr<Instruction>& instr)
           instr->opcode != aco_opcode::v_writelane_b32 &&
           instr->opcode != aco_opcode::v_writelane_b32_e64 &&
           instr->opcode != aco_opcode::v_permlane16_b32 &&
-          instr->opcode != aco_opcode::v_permlanex16_b32;
+          instr->opcode != aco_opcode::v_permlanex16_b32 &&
+          instr->opcode != aco_opcode::v_interp_p1_f32 &&
+          instr->opcode != aco_opcode::v_interp_p2_f32 &&
+          instr->opcode != aco_opcode::v_interp_mov_f32 &&
+          instr->opcode != aco_opcode::v_interp_p1ll_f16 &&
+          instr->opcode != aco_opcode::v_interp_p1lv_f16 &&
+          instr->opcode != aco_opcode::v_interp_p2_legacy_f16 &&
+          instr->opcode != aco_opcode::v_interp_p2_f16 &&
+          instr->opcode != aco_opcode::v_interp_p10_f32_inreg &&
+          instr->opcode != aco_opcode::v_interp_p2_f32_inreg &&
+          instr->opcode != aco_opcode::v_interp_p10_f16_f32_inreg &&
+          instr->opcode != aco_opcode::v_interp_p2_f16_f32_inreg &&
+          instr->opcode != aco_opcode::v_interp_p10_rtz_f16_f32_inreg &&
+          instr->opcode != aco_opcode::v_interp_p2_rtz_f16_f32_inreg;
 }
 
 void
-to_VOP3(opt_ctx& ctx, aco_ptr<Instruction>& instr, unsigned add_operands = 0)
+to_VOP3(opt_ctx& ctx, aco_ptr<Instruction>& instr)
 {
    if (instr->isVOP3())
       return;
 
    aco_ptr<Instruction> tmp = std::move(instr);
    Format format = asVOP3(tmp->format);
-   instr.reset(create_instruction<VOP3_instruction>(
-      tmp->opcode, format, tmp->operands.size() + add_operands, tmp->definitions.size()));
+   instr.reset(create_instruction<VOP3_instruction>(tmp->opcode, format, tmp->operands.size(),
+                                                    tmp->definitions.size()));
    std::copy(tmp->operands.cbegin(), tmp->operands.cend(), instr->operands.begin());
    for (unsigned i = 0; i < instr->definitions.size(); i++) {
       instr->definitions[i] = tmp->definitions[i];
@@ -658,7 +672,6 @@ bool
 alu_can_accept_constant(aco_opcode opcode, unsigned operand)
 {
    switch (opcode) {
-   case aco_opcode::v_interp_p2_f32:
    case aco_opcode::v_mac_f32:
    case aco_opcode::v_writelane_b32:
    case aco_opcode::v_writelane_b32_e64:
@@ -673,8 +686,23 @@ alu_can_accept_constant(aco_opcode opcode, unsigned operand)
    case aco_opcode::v_readfirstlane_b32:
    case aco_opcode::p_extract:
    case aco_opcode::p_insert: return operand != 0;
+   case aco_opcode::p_bpermute_gfx6:
+   case aco_opcode::p_bpermute_gfx10w64:
+   case aco_opcode::p_bpermute_gfx11w64:
    case aco_opcode::p_interp_gfx11:
-   case aco_opcode::p_dual_src_export_gfx11: return false;
+   case aco_opcode::p_dual_src_export_gfx11:
+   case aco_opcode::v_interp_p1_f32:
+   case aco_opcode::v_interp_p2_f32:
+   case aco_opcode::v_interp_mov_f32:
+   case aco_opcode::v_interp_p1ll_f16:
+   case aco_opcode::v_interp_p1lv_f16:
+   case aco_opcode::v_interp_p2_legacy_f16:
+   case aco_opcode::v_interp_p10_f32_inreg:
+   case aco_opcode::v_interp_p2_f32_inreg:
+   case aco_opcode::v_interp_p10_f16_f32_inreg:
+   case aco_opcode::v_interp_p2_f16_f32_inreg:
+   case aco_opcode::v_interp_p10_rtz_f16_f32_inreg:
+   case aco_opcode::v_interp_p2_rtz_f16_f32_inreg: return false;
    default: return true;
    }
 }
@@ -1073,6 +1101,16 @@ can_apply_extract(opt_ctx& ctx, aco_ptr<Instruction>& instr, unsigned idx, ssa_i
       return true;
    } else if (instr->opcode == aco_opcode::v_cvt_f32_u32 && sel.size() == 1 && !sel.sign_extend()) {
       return true;
+   } else if (instr->opcode == aco_opcode::v_lshlrev_b32 && instr->operands[0].isConstant() &&
+              sel.offset() == 0 &&
+              ((sel.size() == 2 && instr->operands[0].constantValue() >= 16u) ||
+               (sel.size() == 1 && instr->operands[0].constantValue() >= 24u))) {
+      return true;
+   } else if (instr->opcode == aco_opcode::v_mul_u32_u24 && ctx.program->gfx_level >= GFX10 &&
+              !instr->usesModifiers() && sel.size() == 2 && !sel.sign_extend() &&
+              (instr->operands[!idx].is16bit() ||
+               instr->operands[!idx].constantValue() <= UINT16_MAX)) {
+      return true;
    } else if (idx < 2 && can_use_SDWA(ctx.program->gfx_level, instr, true) &&
               (tmp.type() == RegType::vgpr || ctx.program->gfx_level >= GFX9)) {
       if (instr->isSDWA() && instr->sdwa().sel[idx] != SubdwordSel::dword)
@@ -1129,6 +1167,18 @@ apply_extract(opt_ctx& ctx, aco_ptr<Instruction>& instr, unsigned idx, ssa_info&
                (sel.size() == 1 && instr->operands[0].constantValue() >= 24u))) {
       /* The undesireable upper bits are already shifted out. */
       return;
+   } else if (instr->opcode == aco_opcode::v_mul_u32_u24 && ctx.program->gfx_level >= GFX10 &&
+              !instr->usesModifiers() && sel.size() == 2 && !sel.sign_extend() &&
+              (instr->operands[!idx].is16bit() ||
+               instr->operands[!idx].constantValue() <= UINT16_MAX)) {
+      Instruction* mad =
+         create_instruction<VOP3_instruction>(aco_opcode::v_mad_u32_u16, Format::VOP3, 3, 1);
+      mad->definitions[0] = instr->definitions[0];
+      mad->operands[0] = instr->operands[0];
+      mad->operands[1] = instr->operands[1];
+      mad->operands[2] = Operand::zero();
+      mad->vop3().opsel = (sel.offset() / 2) << idx;
+      instr.reset(mad);
    } else if (can_use_SDWA(ctx.program->gfx_level, instr, true) &&
               (tmp.type() == RegType::vgpr || ctx.program->gfx_level >= GFX9)) {
       to_SDWA(ctx, instr);
@@ -3384,22 +3434,13 @@ apply_insert(opt_ctx& ctx, aco_ptr<Instruction>& instr)
    SubdwordSel sel = parse_insert(def_info.instr);
    assert(sel);
 
-   if (instr->opcode == aco_opcode::v_cvt_u32_f32 && instr->format == Format::VOP1 &&
-       !sel.sign_extend() && sel.size() == 1) {
-      to_VOP3(ctx, instr, 2);
-      instr->format = Format::VOP3;
-      instr->opcode = aco_opcode::v_cvt_pk_u8_f32;
-      instr->operands[1] = Operand::c32(sel.offset());
-      instr->operands[2] = Operand::zero();
-   } else {
-      if (!can_use_SDWA(ctx.program->gfx_level, instr, true))
-         return false;
+   if (!can_use_SDWA(ctx.program->gfx_level, instr, true))
+      return false;
 
-      to_SDWA(ctx, instr);
-      if (instr->sdwa().dst_sel.size() != 4)
-         return false;
-      static_cast<SDWA_instruction*>(instr.get())->dst_sel = sel;
-   }
+   to_SDWA(ctx, instr);
+   if (instr->sdwa().dst_sel.size() != 4)
+      return false;
+   static_cast<SDWA_instruction*>(instr.get())->dst_sel = sel;
 
    instr->definitions[0].swapTemp(def_info.instr->definitions[0]);
    ctx.info[instr->definitions[0].tempId()].label = 0;

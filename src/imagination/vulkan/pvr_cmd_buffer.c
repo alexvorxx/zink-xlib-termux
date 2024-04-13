@@ -91,6 +91,7 @@ static void pvr_cmd_buffer_free_sub_cmd(struct pvr_cmd_buffer *cmd_buffer,
       case PVR_SUB_CMD_TYPE_GRAPHICS:
          util_dynarray_fini(&sub_cmd->gfx.sec_query_indices);
          pvr_csb_finish(&sub_cmd->gfx.control_stream);
+         pvr_bo_free(cmd_buffer->device, sub_cmd->gfx.terminate_ctrl_stream);
          pvr_bo_free(cmd_buffer->device, sub_cmd->gfx.depth_bias_bo);
          pvr_bo_free(cmd_buffer->device, sub_cmd->gfx.scissor_bo);
          break;
@@ -343,22 +344,25 @@ err_free_depth_bias_bo:
 }
 
 static VkResult
-pvr_cmd_buffer_emit_ppp_state(struct pvr_cmd_buffer *cmd_buffer,
-                              struct pvr_sub_cmd_gfx *const sub_cmd)
+pvr_cmd_buffer_emit_ppp_state(const struct pvr_cmd_buffer *const cmd_buffer,
+                              struct pvr_csb *const csb)
 {
-   struct pvr_framebuffer *framebuffer =
+   const struct pvr_framebuffer *const framebuffer =
       cmd_buffer->state.render_pass_info.framebuffer;
 
-   pvr_csb_emit (&sub_cmd->control_stream, VDMCTRL_PPP_STATE0, state0) {
+   assert(csb->stream_type == PVR_CMD_STREAM_TYPE_GRAPHICS ||
+          csb->stream_type == PVR_CMD_STREAM_TYPE_GRAPHICS_DEFERRED);
+
+   pvr_csb_emit (csb, VDMCTRL_PPP_STATE0, state0) {
       state0.addrmsb = framebuffer->ppp_state_bo->vma->dev_addr;
       state0.word_count = framebuffer->ppp_state_size;
    }
 
-   pvr_csb_emit (&sub_cmd->control_stream, VDMCTRL_PPP_STATE1, state1) {
+   pvr_csb_emit (csb, VDMCTRL_PPP_STATE1, state1) {
       state1.addrlsb = framebuffer->ppp_state_bo->vma->dev_addr;
    }
 
-   return VK_SUCCESS;
+   return csb->status;
 }
 
 VkResult pvr_cmd_buffer_upload_general(struct pvr_cmd_buffer *const cmd_buffer,
@@ -419,16 +423,15 @@ pvr_cmd_buffer_upload_usc(struct pvr_cmd_buffer *const cmd_buffer,
    return VK_SUCCESS;
 }
 
-static VkResult
-pvr_cmd_buffer_upload_pds(struct pvr_cmd_buffer *const cmd_buffer,
-                          const uint32_t *data,
-                          uint32_t data_size_dwords,
-                          uint32_t data_alignment,
-                          const uint32_t *code,
-                          uint32_t code_size_dwords,
-                          uint32_t code_alignment,
-                          uint64_t min_alignment,
-                          struct pvr_pds_upload *const pds_upload_out)
+VkResult pvr_cmd_buffer_upload_pds(struct pvr_cmd_buffer *const cmd_buffer,
+                                   const uint32_t *data,
+                                   uint32_t data_size_dwords,
+                                   uint32_t data_alignment,
+                                   const uint32_t *code,
+                                   uint32_t code_size_dwords,
+                                   uint32_t code_alignment,
+                                   uint64_t min_alignment,
+                                   struct pvr_pds_upload *const pds_upload_out)
 {
    struct pvr_device *const device = cmd_buffer->device;
    VkResult result;
@@ -556,6 +559,44 @@ err_free_pixel_event_staging_buffer:
 err_free_usc_pixel_program:
    list_del(&usc_eot_program->link);
    pvr_bo_free(device, usc_eot_program);
+
+   return result;
+}
+
+static VkResult pvr_sub_cmd_gfx_build_terminate_ctrl_stream(
+   struct pvr_device *const device,
+   const struct pvr_cmd_buffer *const cmd_buffer,
+   struct pvr_sub_cmd_gfx *const gfx_sub_cmd)
+{
+   struct list_head bo_list;
+   struct pvr_csb csb;
+   VkResult result;
+
+   pvr_csb_init(device, PVR_CMD_STREAM_TYPE_GRAPHICS, &csb);
+
+   result = pvr_cmd_buffer_emit_ppp_state(cmd_buffer, &csb);
+   if (result != VK_SUCCESS)
+      goto err_csb_finish;
+
+   result = pvr_csb_emit_terminate(&csb);
+   if (result != VK_SUCCESS)
+      goto err_csb_finish;
+
+   result = pvr_csb_bake(&csb, &bo_list);
+   if (result != VK_SUCCESS)
+      goto err_csb_finish;
+
+   /* This is a trivial control stream, there's no reason it should ever require
+    * more memory than a single bo can provide.
+    */
+   assert(list_is_singular(&bo_list));
+   gfx_sub_cmd->terminate_ctrl_stream =
+      list_first_entry(&bo_list, struct pvr_bo, link);
+
+   return VK_SUCCESS;
+
+err_csb_finish:
+   pvr_csb_finish(&csb);
 
    return result;
 }
@@ -1165,11 +1206,6 @@ static VkResult pvr_sub_cmd_gfx_job_init(const struct pvr_device_info *dev_info,
    return VK_SUCCESS;
 }
 
-/* Number of shareds used in the Issue Data Fence(IDF)/Wait Data Fence(WDF)
- * kernel.
- */
-#define PVR_IDF_WDF_IN_REGISTER_CONST_COUNT 12U
-
 static void
 pvr_sub_cmd_compute_job_init(const struct pvr_physical_device *pdevice,
                              struct pvr_cmd_buffer *cmd_buffer,
@@ -1541,7 +1577,18 @@ VkResult pvr_cmd_buffer_end_sub_cmd(struct pvr_cmd_buffer *cmd_buffer)
          return result;
       }
 
-      result = pvr_cmd_buffer_emit_ppp_state(cmd_buffer, gfx_sub_cmd);
+      if (pvr_sub_cmd_gfx_requires_split_submit(gfx_sub_cmd)) {
+         result = pvr_sub_cmd_gfx_build_terminate_ctrl_stream(device,
+                                                              cmd_buffer,
+                                                              gfx_sub_cmd);
+         if (result != VK_SUCCESS) {
+            state->status = result;
+            return result;
+         }
+      }
+
+      result = pvr_cmd_buffer_emit_ppp_state(cmd_buffer,
+                                             &gfx_sub_cmd->control_stream);
       if (result != VK_SUCCESS) {
          state->status = result;
          return result;
@@ -1637,9 +1684,8 @@ VkResult pvr_cmd_buffer_end_sub_cmd(struct pvr_cmd_buffer *cmd_buffer)
    return VK_SUCCESS;
 }
 
-static void
-pvr_reset_graphics_dirty_state(struct pvr_cmd_buffer *const cmd_buffer,
-                               bool start_geom)
+void pvr_reset_graphics_dirty_state(struct pvr_cmd_buffer *const cmd_buffer,
+                                    bool start_geom)
 {
    struct vk_dynamic_graphics_state *const dynamic_state =
       &cmd_buffer->vk.dynamic_graphics_state;
@@ -2166,7 +2212,7 @@ static VkResult pvr_init_render_targets(struct pvr_device *device,
    return VK_SUCCESS;
 }
 
-static const struct pvr_renderpass_hwsetup_subpass *
+const struct pvr_renderpass_hwsetup_subpass *
 pvr_get_hw_subpass(const struct pvr_render_pass *pass, const uint32_t subpass)
 {
    const struct pvr_renderpass_hw_map *map =
@@ -2365,6 +2411,20 @@ pvr_cmd_buffer_set_clear_values(struct pvr_cmd_buffer *cmd_buffer,
    return VK_SUCCESS;
 }
 
+/**
+ * \brief Indicates whether to use the large or normal clear state words.
+ *
+ * If the current render area can fit within a quarter of the max framebuffer
+ * that the device is capable of, we can use the normal clear state words,
+ * otherwise the large clear state words are needed.
+ *
+ * The requirement of a quarter of the max framebuffer comes from the index
+ * count used in the normal clear state words and the vertices uploaded at
+ * device creation.
+ *
+ * \param[in] cmd_buffer The command buffer for the clear.
+ * \return true if large clear state words are required.
+ */
 static bool
 pvr_is_large_clear_required(const struct pvr_cmd_buffer *const cmd_buffer)
 {
@@ -2409,7 +2469,7 @@ static VkResult pvr_cs_write_load_op(struct pvr_cmd_buffer *cmd_buffer,
 {
    const struct pvr_device *device = cmd_buffer->device;
    struct pvr_static_clear_ppp_template template =
-      device->static_clear_state.ppp_templates[PVR_STATIC_CLEAR_COLOR_BIT];
+      device->static_clear_state.ppp_templates[VK_IMAGE_ASPECT_COLOR_BIT];
    uint32_t pds_state[PVR_STATIC_CLEAR_PDS_STATE_COUNT];
    struct pvr_pds_upload shareds_update_program;
    struct pvr_bo *pvr_bo;
@@ -6022,7 +6082,7 @@ static void pvr_insert_transparent_obj(struct pvr_cmd_buffer *const cmd_buffer,
     * in parallel so writing the template in place could cause problems.
     */
    struct pvr_static_clear_ppp_template clear =
-      device->static_clear_state.ppp_templates[PVR_STATIC_CLEAR_COLOR_BIT];
+      device->static_clear_state.ppp_templates[VK_IMAGE_ASPECT_COLOR_BIT];
    uint32_t pds_state[PVR_STATIC_CLEAR_PDS_STATE_COUNT] = { 0 };
    struct pvr_csb *csb = &sub_cmd->control_stream;
    struct pvr_bo *ppp_bo;

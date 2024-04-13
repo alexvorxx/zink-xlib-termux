@@ -313,9 +313,10 @@ static int r600_get_param(struct pipe_screen* pscreen, enum pipe_cap param)
 	case PIPE_CAP_CAN_BIND_CONST_BUFFER_AS_VERTEX:
 	case PIPE_CAP_ALLOW_MAPPED_BUFFERS_DURING_EXECUTION:
 	case PIPE_CAP_ROBUST_BUFFER_ACCESS_BEHAVIOR:
-		return 1;
+      return 1;
 
-        case PIPE_CAP_NIR_ATOMICS_AS_DEREF:
+	case PIPE_CAP_NIR_ATOMICS_AS_DEREF:
+	case PIPE_CAP_GL_SPIRV:
 		return is_nir_enabled(&rscreen->b);
 
 	case PIPE_CAP_TEXTURE_TRANSFER_MODES:
@@ -521,13 +522,13 @@ static int r600_get_param(struct pipe_screen* pscreen, enum pipe_cap param)
 	case PIPE_CAP_MULTISAMPLE_Z_RESOLVE:
 		return rscreen->b.gfx_level >= R700;
 	case PIPE_CAP_PCI_GROUP:
-		return rscreen->b.info.pci_domain;
+		return rscreen->b.info.pci.domain;
 	case PIPE_CAP_PCI_BUS:
-		return rscreen->b.info.pci_bus;
+		return rscreen->b.info.pci.bus;
 	case PIPE_CAP_PCI_DEVICE:
-		return rscreen->b.info.pci_dev;
+		return rscreen->b.info.pci.dev;
 	case PIPE_CAP_PCI_FUNCTION:
-		return rscreen->b.info.pci_func;
+		return rscreen->b.info.pci.func;
 
 	case PIPE_CAP_MAX_COMBINED_HW_ATOMIC_COUNTERS:
 		if (rscreen->b.family >= CHIP_CEDAR && rscreen->has_atomics)
@@ -537,6 +538,9 @@ static int r600_get_param(struct pipe_screen* pscreen, enum pipe_cap param)
 		if (rscreen->b.family >= CHIP_CEDAR && rscreen->has_atomics)
 			return EG_MAX_ATOMIC_BUFFERS;
 		return 0;
+
+	case PIPE_CAP_VALIDATE_ALL_DIRTY_STATES:
+		return 1;
 
 	default:
 		return u_pipe_screen_get_param_defaults(pscreen, param);

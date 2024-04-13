@@ -531,7 +531,11 @@ gather_shader_info_fs(const nir_shader *nir, const struct radv_pipeline_key *pip
    info->ps.num_interp = nir->num_inputs - num_per_primitive_inputs;
    info->ps.num_prim_interp = num_per_primitive_inputs;
    info->ps.can_discard = nir->info.fs.uses_discard;
-   info->ps.early_fragment_test = nir->info.fs.early_fragment_tests;
+   info->ps.early_fragment_test = nir->info.fs.early_fragment_tests ||
+                                  (nir->info.fs.early_and_late_fragment_tests &&
+                                   nir->info.fs.depth_layout == FRAG_DEPTH_LAYOUT_NONE &&
+                                   nir->info.fs.stencil_front_layout == FRAG_STENCIL_LAYOUT_NONE &&
+                                   nir->info.fs.stencil_back_layout == FRAG_STENCIL_LAYOUT_NONE);
    info->ps.post_depth_coverage = nir->info.fs.post_depth_coverage;
    info->ps.depth_layout = nir->info.fs.depth_layout;
    info->ps.uses_sample_shading = nir->info.fs.uses_sample_shading;
@@ -679,6 +683,7 @@ void
 radv_nir_shader_info_pass(struct radv_device *device, const struct nir_shader *nir,
                           const struct radv_pipeline_layout *layout,
                           const struct radv_pipeline_key *pipeline_key,
+                          const enum radv_pipeline_type pipeline_type,
                           struct radv_shader_info *info)
 {
    struct nir_function *func = (struct nir_function *)exec_list_get_head_const(&nir->functions);
@@ -819,6 +824,16 @@ radv_nir_shader_info_pass(struct radv_device *device, const struct nir_shader *n
    case MESA_SHADER_TASK:
       info->workgroup_size =
          ac_compute_cs_workgroup_size(nir->info.workgroup_size, false, UINT32_MAX);
+
+      /* Allow the compiler to assume that the shader always has full subgroups,
+       * meaning that the initial EXEC mask is -1 in all waves (all lanes enabled).
+       * This assumption is incorrect for ray tracing and internal (meta) shaders
+       * because they can use unaligned dispatch.
+       */
+      info->cs.uses_full_subgroups =
+         pipeline_type != RADV_PIPELINE_RAY_TRACING &&
+         !nir->info.internal &&
+         (info->workgroup_size % info->wave_size) == 0;
       break;
    case MESA_SHADER_MESH:
       /* Already computed in gather_shader_info_mesh(). */

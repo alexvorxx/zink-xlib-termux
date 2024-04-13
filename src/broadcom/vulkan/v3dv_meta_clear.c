@@ -67,7 +67,13 @@ clear_image_tlb(struct v3dv_cmd_buffer *cmd_buffer,
 {
    const VkOffset3D origin = { 0, 0, 0 };
    VkFormat fb_format;
-   if (!v3dv_meta_can_use_tlb(image, &origin, &fb_format))
+
+   /* From vkCmdClearColorImage spec:
+    *  "image must not use any of the formats that require a sampler YCBCR
+    *   conversion"
+    */
+   assert(image->plane_count == 1);
+   if (!v3dv_meta_can_use_tlb(image, 0, &origin, &fb_format))
       return false;
 
    uint32_t internal_type, internal_bpp;
@@ -1026,8 +1032,6 @@ emit_subpass_color_clear_rects(struct v3dv_cmd_buffer *cmd_buffer,
                         VK_PIPELINE_BIND_POINT_GRAPHICS,
                         pipeline->pipeline);
 
-   uint32_t dynamic_states = V3DV_CMD_DIRTY_VIEWPORT | V3DV_CMD_DIRTY_SCISSOR;
-
    for (uint32_t i = 0; i < rect_count; i++) {
       const VkViewport viewport = {
          .x = rects[i].rect.offset.x,
@@ -1064,7 +1068,7 @@ emit_subpass_color_clear_rects(struct v3dv_cmd_buffer *cmd_buffer,
       cmd_buffer, (uintptr_t)pipeline,
       (v3dv_cmd_buffer_private_obj_destroy_cb) destroy_color_clear_pipeline);
 
-   v3dv_cmd_buffer_meta_state_pop(cmd_buffer, dynamic_states, false);
+   v3dv_cmd_buffer_meta_state_pop(cmd_buffer, false);
 }
 
 /* Emits a scissored quad, clearing the depth aspect by writing to gl_FragDepth
@@ -1116,7 +1120,6 @@ emit_subpass_ds_clear_rects(struct v3dv_cmd_buffer *cmd_buffer,
                         VK_PIPELINE_BIND_POINT_GRAPHICS,
                         pipeline->pipeline);
 
-   uint32_t dynamic_states = V3DV_CMD_DIRTY_VIEWPORT | V3DV_CMD_DIRTY_SCISSOR;
    if (aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
       v3dv_CmdSetStencilReference(cmd_buffer_handle,
                                   VK_STENCIL_FACE_FRONT_AND_BACK,
@@ -1125,9 +1128,6 @@ emit_subpass_ds_clear_rects(struct v3dv_cmd_buffer *cmd_buffer,
                                   VK_STENCIL_FACE_FRONT_AND_BACK, 0xff);
       v3dv_CmdSetStencilCompareMask(cmd_buffer_handle,
                                     VK_STENCIL_FACE_FRONT_AND_BACK, 0xff);
-      dynamic_states |= VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK |
-                        VK_DYNAMIC_STATE_STENCIL_WRITE_MASK |
-                        VK_DYNAMIC_STATE_STENCIL_REFERENCE;
    }
 
    for (uint32_t i = 0; i < rect_count; i++) {
@@ -1156,7 +1156,7 @@ emit_subpass_ds_clear_rects(struct v3dv_cmd_buffer *cmd_buffer,
       }
    }
 
-   v3dv_cmd_buffer_meta_state_pop(cmd_buffer, dynamic_states, false);
+   v3dv_cmd_buffer_meta_state_pop(cmd_buffer, false);
 }
 
 static void

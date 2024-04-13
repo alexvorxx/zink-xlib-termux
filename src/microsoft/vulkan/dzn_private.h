@@ -48,6 +48,7 @@
 #include "util/hash_table.h"
 #include "util/u_dynarray.h"
 #include "util/log.h"
+#include "util/xmlconfig.h"
 
 #include "shader_enums.h"
 
@@ -179,7 +180,6 @@ dzn_meta_blits_get_context(struct dzn_device *device,
 
 struct dzn_physical_device {
    struct vk_physical_device vk;
-   struct list_head link;
 
    struct vk_device_extension_table supported_extensions;
    struct vk_physical_device_dispatch_table dispatch;
@@ -204,12 +204,16 @@ struct dzn_physical_device {
    ID3D12Device10 *dev10;
    D3D_FEATURE_LEVEL feature_level;
    D3D_SHADER_MODEL shader_model;
+   D3D_ROOT_SIGNATURE_VERSION root_sig_version;
    D3D12_FEATURE_DATA_ARCHITECTURE1 architecture;
    D3D12_FEATURE_DATA_D3D12_OPTIONS options;
+   D3D12_FEATURE_DATA_D3D12_OPTIONS1 options1;
    D3D12_FEATURE_DATA_D3D12_OPTIONS2 options2;
    D3D12_FEATURE_DATA_D3D12_OPTIONS3 options3;
    D3D12_FEATURE_DATA_D3D12_OPTIONS12 options12;
+   D3D12_FEATURE_DATA_D3D12_OPTIONS13 options13;
    D3D12_FEATURE_DATA_D3D12_OPTIONS14 options14;
+   D3D12_FEATURE_DATA_D3D12_OPTIONS15 options15;
    VkPhysicalDeviceMemoryProperties memory;
    D3D12_HEAP_FLAGS heap_flags_for_mem_type[VK_MAX_MEMORY_TYPES];
    const struct vk_sync_type *sync_types[MAX_SYNC_TYPES + 1];
@@ -218,7 +222,8 @@ struct dzn_physical_device {
 
 D3D12_FEATURE_DATA_FORMAT_SUPPORT
 dzn_physical_device_get_format_support(struct dzn_physical_device *pdev,
-                                       VkFormat format);
+                                       VkFormat format,
+                                       VkImageCreateFlags create_flags);
 
 uint32_t
 dzn_physical_device_get_mem_type_mask_for_resource(const struct dzn_physical_device *pdev,
@@ -270,6 +275,12 @@ struct dzn_device {
 #define DZN_QUERY_REFS_RES_SIZE (DZN_QUERY_REFS_ALL_ZEROS_OFFSET + DZN_QUERY_REFS_SECTION_SIZE)
       ID3D12Resource *refs;
    } queries;
+
+   /* Will be the app's graphics queue if there's exactly one, otherwise this will be 
+    * a dedicated graphics queue to host swapchain blits.
+    */
+   bool need_swapchain_blits;
+   struct dzn_queue *swapchain_queue;
 };
 
 void dzn_meta_finish(struct dzn_device *device);
@@ -289,9 +300,13 @@ struct dzn_device_memory {
 
    struct list_head link;
 
+   /* Swapchain image resource, NULL if the memory is not backed by
+    * a DXGI swapchain.
+    */
+   ID3D12Resource *swapchain_res;
+
    ID3D12Heap *heap;
    VkDeviceSize size;
-   D3D12_RESOURCE_STATES initial_state; /* initial state for this memory type */
 
    /* A buffer-resource spanning the entire heap, used for mapping memory */
    ID3D12Resource *map_res;
@@ -365,6 +380,7 @@ struct dzn_buffer_desc {
 
 struct dzn_descriptor_heap {
    ID3D12Device4 *dev;
+   ID3D12Device11 *dev11;
    ID3D12DescriptorHeap *heap;
    D3D12_DESCRIPTOR_HEAP_TYPE type;
    SIZE_T cpu_base;
@@ -437,7 +453,7 @@ struct dzn_cmd_buffer_query_range {
 };
 
 struct dzn_cmd_buffer_query_pool_state {
-   struct util_dynarray reset, collect, wait, signal;
+   struct util_dynarray reset, collect, signal, zero;
 };
 
 struct dzn_internal_resource {
@@ -539,6 +555,10 @@ struct dzn_cmd_buffer_state {
       struct dxil_spirv_vertex_runtime_data gfx;
       struct dxil_spirv_compute_runtime_data compute;
    } sysvals;
+   struct {
+      uint32_t num_views;
+      uint32_t view_mask;
+   } multiview;
 };
 
 struct dzn_cmd_buffer_rtv_key {
@@ -568,7 +588,6 @@ struct dzn_cmd_buffer {
    struct {
       struct hash_table *ht;
       struct util_dynarray reset;
-      struct util_dynarray wait;
       struct util_dynarray signal;
    } queries;
 
@@ -583,6 +602,7 @@ struct dzn_cmd_buffer {
       struct dzn_descriptor_heap_pool pool;
    } rtvs, dsvs;
 
+   bool enhanced_barriers;
    struct hash_table *transition_barriers;
 
    struct dzn_descriptor_heap_pool cbv_srv_uav_pool, sampler_pool;
@@ -593,6 +613,10 @@ struct dzn_cmd_buffer {
    ID3D12CommandAllocator *cmdalloc;
    ID3D12GraphicsCommandList1 *cmdlist;
    ID3D12GraphicsCommandList8 *cmdlist8;
+
+   D3D12_COMMAND_LIST_TYPE type;
+   D3D12_BARRIER_SYNC valid_sync;
+   D3D12_BARRIER_ACCESS valid_access;
 };
 
 struct dzn_descriptor_pool {
@@ -626,13 +650,35 @@ struct dzn_descriptor_set_layout_binding {
    };
 };
 
+#if D3D12_SDK_VERSION < 609
+typedef struct D3D12_STATIC_SAMPLER_DESC1
+{
+   D3D12_FILTER Filter;
+   D3D12_TEXTURE_ADDRESS_MODE AddressU;
+   D3D12_TEXTURE_ADDRESS_MODE AddressV;
+   D3D12_TEXTURE_ADDRESS_MODE AddressW;
+   FLOAT MipLODBias;
+   UINT MaxAnisotropy;
+   D3D12_COMPARISON_FUNC ComparisonFunc;
+   D3D12_STATIC_BORDER_COLOR BorderColor;
+   FLOAT MinLOD;
+   FLOAT MaxLOD;
+   UINT ShaderRegister;
+   UINT RegisterSpace;
+   D3D12_SHADER_VISIBILITY ShaderVisibility;
+   D3D12_SAMPLER_FLAGS Flags;
+} 	D3D12_STATIC_SAMPLER_DESC1;
+
+static const D3D_ROOT_SIGNATURE_VERSION D3D_ROOT_SIGNATURE_VERSION_1_2 = 0x3;
+#endif
+
 struct dzn_descriptor_set_layout {
    struct vk_descriptor_set_layout vk;
    uint32_t range_count[MAX_SHADER_VISIBILITIES][NUM_POOL_TYPES];
    const D3D12_DESCRIPTOR_RANGE1 *ranges[MAX_SHADER_VISIBILITIES][NUM_POOL_TYPES];
    uint32_t range_desc_count[NUM_POOL_TYPES];
    uint32_t static_sampler_count;
-   const D3D12_STATIC_SAMPLER_DESC *static_samplers;
+   const D3D12_STATIC_SAMPLER_DESC1 *static_samplers;
    uint32_t immutable_sampler_count;
    const struct dzn_sampler **immutable_samplers;
    struct {
@@ -825,6 +871,13 @@ struct dzn_graphics_pipeline {
       float constants[4];
    } blend;
 
+   bool rast_disabled_from_missing_position;
+
+   struct {
+      uint32_t view_mask;
+      bool native_view_instancing;
+   } multiview;
+
    struct {
       uintptr_t stream_buf[MAX_GFX_PIPELINE_STATE_STREAM_SIZE / sizeof(uintptr_t)];
       D3D12_PIPELINE_STATE_STREAM_DESC stream_desc;
@@ -889,6 +942,8 @@ struct dzn_image {
    VkDeviceSize mem_offset;
    uint32_t castable_format_count;
    DXGI_FORMAT *castable_formats;
+
+   D3D12_BARRIER_ACCESS valid_access;
 };
 
 bool
@@ -926,6 +981,11 @@ D3D12_RESOURCE_STATES
 dzn_image_layout_to_state(const struct dzn_image *image,
                           VkImageLayout layout,
                           VkImageAspectFlagBits aspect);
+
+D3D12_BARRIER_LAYOUT
+dzn_vk_layout_to_d3d_layout(VkImageLayout layout,
+                            D3D12_COMMAND_LIST_TYPE type,
+                            VkImageAspectFlags aspect);
 
 uint32_t
 dzn_image_layers_get_subresource_index(const struct dzn_image *image,
@@ -970,6 +1030,9 @@ struct dzn_buffer {
 
    VkBufferCreateFlags create_flags;
    VkBufferUsageFlags usage;
+
+   D3D12_BARRIER_ACCESS valid_access;
+   D3D12_GPU_VIRTUAL_ADDRESS gpuva;
 };
 
 DXGI_FORMAT
@@ -1001,7 +1064,7 @@ struct dzn_buffer_view {
 
 struct dzn_sampler {
    struct vk_object_base base;
-   D3D12_SAMPLER_DESC desc;
+   D3D12_SAMPLER_DESC2 desc;
    D3D12_STATIC_BORDER_COLOR static_border_color;
 };
 
@@ -1062,12 +1125,12 @@ struct dzn_instance {
    struct {
       PFN_D3D12_SERIALIZE_VERSIONED_ROOT_SIGNATURE serialize_root_sig;
    } d3d12;
-   bool physical_devices_enumerated;
    uint32_t debug_flags;
 
    struct vk_sync_binary_type sync_binary_type;
 
-   struct list_head physical_devices;
+   struct driOptionCache dri_options;
+   struct driOptionCache available_dri_options;
 };
 
 struct dzn_event {
@@ -1114,6 +1177,10 @@ dzn_query_pool_get_availability_offset(const struct dzn_query_pool *qpool, uint3
 
 uint32_t
 dzn_query_pool_get_result_size(const struct dzn_query_pool *qpool, uint32_t count);
+
+VKAPI_ATTR void VKAPI_CALL
+dzn_CmdPipelineBarrier2_enhanced(VkCommandBuffer commandBuffer,
+                                 const VkDependencyInfo *info);
 
 VK_DEFINE_HANDLE_CASTS(dzn_cmd_buffer, vk.base, VkCommandBuffer, VK_OBJECT_TYPE_COMMAND_BUFFER)
 VK_DEFINE_HANDLE_CASTS(dzn_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)

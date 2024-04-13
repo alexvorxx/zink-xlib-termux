@@ -54,14 +54,14 @@ anv_gem_create_regions(struct anv_device *device, uint64_t anv_bo_size,
 }
 
 void*
-anv_gem_mmap(struct anv_device *device, uint32_t gem_handle,
+anv_gem_mmap(struct anv_device *device, struct anv_bo *bo,
              uint64_t offset, uint64_t size, uint32_t flags)
 {
    /* Ignore flags, as they're specific to I915_GEM_MMAP. */
    (void) flags;
 
    return mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
-               gem_handle, offset);
+               bo->gem_handle, offset);
 }
 
 /* This is just a wrapper around munmap, but it also notifies valgrind that
@@ -92,13 +92,6 @@ anv_gem_wait(struct anv_device *device, uint32_t gem_handle, int64_t *timeout_ns
 }
 
 int
-anv_gem_execbuffer(struct anv_device *device,
-                   struct drm_i915_gem_execbuffer2 *execbuf)
-{
-   return 0;
-}
-
-int
 anv_gem_set_tiling(struct anv_device *device,
                    uint32_t gem_handle, uint32_t stride, uint32_t tiling)
 {
@@ -116,25 +109,6 @@ anv_gem_set_caching(struct anv_device *device, uint32_t gem_handle,
                     uint32_t caching)
 {
    return 0;
-}
-
-int
-anv_gem_set_context_param(int fd, uint32_t context, uint32_t param, uint64_t value)
-{
-   unreachable("Unused");
-}
-
-bool
-anv_gem_has_context_priority(int fd, VkQueueGlobalPriorityKHR priority)
-{
-   unreachable("Unused");
-}
-
-int
-anv_gem_context_get_reset_stats(int fd, int context,
-                                uint32_t *active, uint32_t *pending)
-{
-   unreachable("Unused");
 }
 
 int

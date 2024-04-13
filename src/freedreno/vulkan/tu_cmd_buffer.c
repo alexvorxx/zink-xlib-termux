@@ -138,10 +138,10 @@ tu6_emit_flushes(struct tu_cmd_buffer *cmd_buffer,
    enum tu_cmd_flush_bits flushes = cache->flush_bits;
    cache->flush_bits = 0;
 
-   if (unlikely(cmd_buffer->device->physical_device->instance->debug_flags & TU_DEBUG_FLUSHALL))
+   if (TU_DEBUG(FLUSHALL))
       flushes |= TU_CMD_FLAG_ALL_FLUSH | TU_CMD_FLAG_ALL_INVALIDATE;
 
-   if (unlikely(cmd_buffer->device->physical_device->instance->debug_flags & TU_DEBUG_SYNCDRAW))
+   if (TU_DEBUG(SYNCDRAW))
       flushes |= TU_CMD_FLAG_WAIT_MEM_WRITES |
                  TU_CMD_FLAG_WAIT_FOR_IDLE |
                  TU_CMD_FLAG_WAIT_FOR_ME;
@@ -165,6 +165,12 @@ tu6_emit_flushes(struct tu_cmd_buffer *cmd_buffer,
       tu6_emit_event_write(cmd_buffer, cs, CACHE_FLUSH_TS);
    if (flushes & TU_CMD_FLAG_CACHE_INVALIDATE)
       tu6_emit_event_write(cmd_buffer, cs, CACHE_INVALIDATE);
+   if (flushes & TU_CMD_FLAG_BINDLESS_DESCRIPTOR_INVALIDATE) {
+      tu_cs_emit_regs(cs, A6XX_HLSQ_INVALIDATE_CMD(
+            .gfx_bindless = 0x1f,
+            .cs_bindless = 0x1f,
+      ));
+   }
    if (flushes & TU_CMD_FLAG_WAIT_MEM_WRITES)
       tu_cs_emit_pkt7(cs, CP_WAIT_MEM_WRITES, 0);
    if ((flushes & TU_CMD_FLAG_WAIT_FOR_IDLE) ||
@@ -187,7 +193,7 @@ void
 tu_emit_cache_flush_renderpass(struct tu_cmd_buffer *cmd_buffer)
 {
    if (!cmd_buffer->state.renderpass_cache.flush_bits &&
-       likely(!cmd_buffer->device->physical_device->instance->debug_flags))
+       likely(!tu_env.debug))
       return;
    tu6_emit_flushes(cmd_buffer, &cmd_buffer->draw_cs,
                     &cmd_buffer->state.renderpass_cache);
@@ -676,7 +682,7 @@ static bool
 use_sysmem_rendering(struct tu_cmd_buffer *cmd,
                      struct tu_renderpass_result **autotune_result)
 {
-   if (unlikely(cmd->device->physical_device->instance->debug_flags & TU_DEBUG_SYSMEM))
+   if (TU_DEBUG(SYSMEM))
       return true;
 
    /* can't fit attachments into gmem */
@@ -710,7 +716,7 @@ use_sysmem_rendering(struct tu_cmd_buffer *cmd,
        !cmd->state.tiling->binning_possible)
       return true;
 
-   if (unlikely(cmd->device->physical_device->instance->debug_flags & TU_DEBUG_GMEM))
+   if (TU_DEBUG(GMEM))
       return false;
 
    bool use_sysmem = tu_autotune_use_bypass(&cmd->device->autotune,
@@ -1841,7 +1847,7 @@ tu_BeginCommandBuffer(VkCommandBuffer commandBuffer,
             vk_find_struct_const(pBeginInfo->pInheritanceInfo->pNext,
                                  COMMAND_BUFFER_INHERITANCE_RENDERING_INFO);
 
-         if (unlikely(cmd_buffer->device->instance->debug_flags & TU_DEBUG_DYNAMIC)) {
+         if (TU_DEBUG(DYNAMIC)) {
             rendering_info =
                vk_get_command_buffer_inheritance_rendering_info(cmd_buffer->vk.level,
                                                                 pBeginInfo);
@@ -2061,6 +2067,78 @@ tu_CmdBindIndexBuffer(VkCommandBuffer commandBuffer,
    cmd->state.index_size = index_size;
 }
 
+static void
+tu6_emit_descriptor_sets(struct tu_cmd_buffer *cmd,
+                         VkPipelineBindPoint bind_point)
+{
+   struct tu_descriptor_state *descriptors_state =
+      tu_get_descriptors_state(cmd, bind_point);
+   uint32_t sp_bindless_base_reg, hlsq_bindless_base_reg, hlsq_invalidate_value;
+   struct tu_cs *cs, state_cs;
+
+   if (bind_point == VK_PIPELINE_BIND_POINT_GRAPHICS) {
+      sp_bindless_base_reg = REG_A6XX_SP_BINDLESS_BASE(0);
+      hlsq_bindless_base_reg = REG_A6XX_HLSQ_BINDLESS_BASE(0);
+      hlsq_invalidate_value = A6XX_HLSQ_INVALIDATE_CMD_GFX_BINDLESS(0x1f);
+
+      cmd->state.desc_sets =
+         tu_cs_draw_state(&cmd->sub_cs, &state_cs,
+                          4 + 4 * descriptors_state->max_sets_bound +
+                             (descriptors_state->dynamic_bound ? 6 : 0));
+      cs = &state_cs;
+   } else {
+      assert(bind_point == VK_PIPELINE_BIND_POINT_COMPUTE);
+
+      sp_bindless_base_reg = REG_A6XX_SP_CS_BINDLESS_BASE(0);
+      hlsq_bindless_base_reg = REG_A6XX_HLSQ_CS_BINDLESS_BASE(0);
+      hlsq_invalidate_value = A6XX_HLSQ_INVALIDATE_CMD_CS_BINDLESS(0x1f);
+
+      cs = &cmd->cs;
+   }
+
+   tu_cs_emit_pkt4(cs, sp_bindless_base_reg, 2 * descriptors_state->max_sets_bound);
+   tu_cs_emit_array(cs, (const uint32_t*)descriptors_state->set_iova, 2 * descriptors_state->max_sets_bound);
+   tu_cs_emit_pkt4(cs, hlsq_bindless_base_reg, 2 * descriptors_state->max_sets_bound);
+   tu_cs_emit_array(cs, (const uint32_t*)descriptors_state->set_iova, 2 * descriptors_state->max_sets_bound);
+
+   /* Dynamic descriptors get the last descriptor set. */
+   if (descriptors_state->dynamic_bound) {
+      tu_cs_emit_pkt4(cs, sp_bindless_base_reg + 4 * 2, 2);
+      tu_cs_emit_qw(cs, descriptors_state->set_iova[MAX_SETS]);
+      tu_cs_emit_pkt4(cs, hlsq_bindless_base_reg + 4 * 2, 2);
+      tu_cs_emit_qw(cs, descriptors_state->set_iova[MAX_SETS]);
+   }
+
+   tu_cs_emit_regs(cs, A6XX_HLSQ_INVALIDATE_CMD(.dword = hlsq_invalidate_value));
+
+   if (bind_point == VK_PIPELINE_BIND_POINT_GRAPHICS) {
+      assert(cs->cur == cs->end); /* validate draw state size */
+      /* note: this also avoids emitting draw states before renderpass clears,
+       * which may use the 3D clear path (for MSAA cases)
+       */
+      if (!(cmd->state.dirty & TU_CMD_DIRTY_DRAW_STATE)) {
+         tu_cs_emit_pkt7(&cmd->draw_cs, CP_SET_DRAW_STATE, 3);
+         tu_cs_emit_draw_state(&cmd->draw_cs, TU_DRAW_STATE_DESC_SETS, cmd->state.desc_sets);
+      }
+   }
+}
+
+/* We lazily emit the draw state for desciptor sets at draw time, so that we can
+ * batch together multiple tu_CmdBindDescriptorSets() calls.  ANGLE and zink
+ * will often emit multiple bind calls in a draw.
+ */
+static void
+tu_dirty_desc_sets(struct tu_cmd_buffer *cmd,
+                   VkPipelineBindPoint pipelineBindPoint)
+{
+   if (pipelineBindPoint == VK_PIPELINE_BIND_POINT_COMPUTE) {
+      cmd->state.dirty |= TU_CMD_DIRTY_COMPUTE_DESC_SETS;
+   } else {
+      assert(pipelineBindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS);
+      cmd->state.dirty |= TU_CMD_DIRTY_DESC_SETS;
+   }
+}
+
 VKAPI_ATTR void VKAPI_CALL
 tu_CmdBindDescriptorSets(VkCommandBuffer commandBuffer,
                          VkPipelineBindPoint pipelineBindPoint,
@@ -2086,6 +2164,7 @@ tu_CmdBindDescriptorSets(VkCommandBuffer commandBuffer,
       TU_FROM_HANDLE(tu_descriptor_set, set, pDescriptorSets[i]);
 
       descriptors_state->sets[idx] = set;
+      descriptors_state->set_iova[idx] = set->va | BINDLESS_DESCRIPTOR_64B;
 
       if (!set)
          continue;
@@ -2124,9 +2203,28 @@ tu_CmdBindDescriptorSets(VkCommandBuffer commandBuffer,
                        i++, dst_desc += A6XX_TEX_CONST_DWORDS) {
                      /* Note: A6XX_TEX_CONST_5_DEPTH is always 0 */
                      uint64_t va = dst_desc[4] | ((uint64_t)dst_desc[5] << 32);
+                     uint32_t desc_offset =
+                        (dst_desc[2] &
+                         A6XX_TEX_CONST_2_STARTOFFSETTEXELS__MASK) >>
+                        A6XX_TEX_CONST_2_STARTOFFSETTEXELS__SHIFT;
+
+                     /* Without the ability to cast 16-bit as 32-bit, there is
+                      * only one descriptor whose texels are 32 bits (4
+                      * bytes). With casting, there are two descriptors, the
+                      * first being 16-bit and the second being 32-bit.
+                      */
+                     unsigned offset_shift =
+                        binding->size == 4 * A6XX_TEX_CONST_DWORDS || i == 1 ? 2 : 1;
+
+                     va += desc_offset << offset_shift;
                      va += offset;
+                     unsigned new_offset = (va & 0x3f) >> offset_shift;
+                     va &= ~0x3full;
                      dst_desc[4] = va;
                      dst_desc[5] = va >> 32;
+                     dst_desc[2] =
+                        (dst_desc[2] & ~A6XX_TEX_CONST_2_STARTOFFSETTEXELS__MASK) |
+                        A6XX_TEX_CONST_2_STARTOFFSETTEXELS(new_offset);
                   }
                }
 
@@ -2137,17 +2235,6 @@ tu_CmdBindDescriptorSets(VkCommandBuffer commandBuffer,
       }
    }
    assert(dyn_idx == dynamicOffsetCount);
-
-   uint32_t sp_bindless_base_reg, hlsq_bindless_base_reg, hlsq_invalidate_value;
-   uint64_t addr[MAX_SETS] = {};
-   uint64_t dynamic_addr = 0;
-   struct tu_cs *cs, state_cs;
-
-   for (uint32_t i = 0; i < descriptors_state->max_sets_bound; i++) {
-      struct tu_descriptor_set *set = descriptors_state->sets[i];
-      if (set)
-         addr[i] = set->va | 3;
-   }
 
    if (layout->dynamic_offset_size) {
       /* allocate and fill out dynamic descriptor set */
@@ -2162,57 +2249,81 @@ tu_CmdBindDescriptorSets(VkCommandBuffer commandBuffer,
 
       memcpy(dynamic_desc_set.map, descriptors_state->dynamic_descriptors,
              layout->dynamic_offset_size);
-      dynamic_addr = dynamic_desc_set.iova | 3;
+      descriptors_state->set_iova[MAX_SETS] = dynamic_desc_set.iova | BINDLESS_DESCRIPTOR_64B;
       descriptors_state->dynamic_bound = true;
    }
 
-   if (pipelineBindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS) {
-      sp_bindless_base_reg = REG_A6XX_SP_BINDLESS_BASE(0);
-      hlsq_bindless_base_reg = REG_A6XX_HLSQ_BINDLESS_BASE(0);
-      hlsq_invalidate_value = A6XX_HLSQ_INVALIDATE_CMD_GFX_BINDLESS(0x1f);
+   tu_dirty_desc_sets(cmd, pipelineBindPoint);
+}
 
-      cmd->state.desc_sets =
-         tu_cs_draw_state(&cmd->sub_cs, &state_cs,
-                          4 + 4 * descriptors_state->max_sets_bound +
-                             (descriptors_state->dynamic_bound ? 6 : 0));
-      cmd->state.dirty |= TU_CMD_DIRTY_DESC_SETS_LOAD;
-      cs = &state_cs;
-   } else {
-      assert(pipelineBindPoint == VK_PIPELINE_BIND_POINT_COMPUTE);
+VKAPI_ATTR void VKAPI_CALL
+tu_CmdBindDescriptorBuffersEXT(
+   VkCommandBuffer commandBuffer,
+   uint32_t bufferCount,
+   const VkDescriptorBufferBindingInfoEXT *pBindingInfos)
+{
+   TU_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
 
-      sp_bindless_base_reg = REG_A6XX_SP_CS_BINDLESS_BASE(0);
-      hlsq_bindless_base_reg = REG_A6XX_HLSQ_CS_BINDLESS_BASE(0);
-      hlsq_invalidate_value = A6XX_HLSQ_INVALIDATE_CMD_CS_BINDLESS(0x1f);
+   for (unsigned i = 0; i < bufferCount; i++)
+      cmd->state.descriptor_buffer_iova[i] = pBindingInfos[i].address;
+}
 
-      cmd->state.dirty |= TU_CMD_DIRTY_COMPUTE_DESC_SETS_LOAD;
-      cs = &cmd->cs;
+VKAPI_ATTR void VKAPI_CALL
+tu_CmdSetDescriptorBufferOffsetsEXT(
+   VkCommandBuffer commandBuffer,
+   VkPipelineBindPoint pipelineBindPoint,
+   VkPipelineLayout _layout,
+   uint32_t firstSet,
+   uint32_t setCount,
+   const uint32_t *pBufferIndices,
+   const VkDeviceSize *pOffsets)
+{
+   TU_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
+   TU_FROM_HANDLE(tu_pipeline_layout, layout, _layout);
+
+   struct tu_descriptor_state *descriptors_state =
+      tu_get_descriptors_state(cmd, pipelineBindPoint);
+
+   descriptors_state->max_sets_bound =
+      MAX2(descriptors_state->max_sets_bound, firstSet + setCount);
+
+   for (unsigned i = 0; i < setCount; ++i) {
+      unsigned idx = i + firstSet;
+      struct tu_descriptor_set_layout *set_layout = layout->set[idx].layout;
+
+      descriptors_state->set_iova[idx] =
+         (cmd->state.descriptor_buffer_iova[pBufferIndices[i]] + pOffsets[i]) |
+         BINDLESS_DESCRIPTOR_64B;
+
+      if (set_layout->has_inline_uniforms)
+         cmd->state.dirty |= TU_CMD_DIRTY_SHADER_CONSTS;
    }
 
-   tu_cs_emit_pkt4(cs, sp_bindless_base_reg, 2 * descriptors_state->max_sets_bound);
-   tu_cs_emit_array(cs, (const uint32_t*) addr, 2 * descriptors_state->max_sets_bound);
-   tu_cs_emit_pkt4(cs, hlsq_bindless_base_reg, 2 * descriptors_state->max_sets_bound);
-   tu_cs_emit_array(cs, (const uint32_t*) addr, 2 * descriptors_state->max_sets_bound);
+   tu_dirty_desc_sets(cmd, pipelineBindPoint);
+}
 
-   /* Dynamic descriptors get the last descriptor set. */
-   if (descriptors_state->dynamic_bound) {
-      tu_cs_emit_pkt4(cs, sp_bindless_base_reg + 4 * 2, 2);
-      tu_cs_emit_qw(cs, dynamic_addr);
-      tu_cs_emit_pkt4(cs, hlsq_bindless_base_reg + 4 * 2, 2);
-      tu_cs_emit_qw(cs, dynamic_addr);
-   }
+VKAPI_ATTR void VKAPI_CALL
+tu_CmdBindDescriptorBufferEmbeddedSamplersEXT(
+   VkCommandBuffer commandBuffer,
+   VkPipelineBindPoint pipelineBindPoint,
+   VkPipelineLayout _layout,
+   uint32_t set)
+{
+   TU_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
+   TU_FROM_HANDLE(tu_pipeline_layout, layout, _layout);
 
-   tu_cs_emit_regs(cs, A6XX_HLSQ_INVALIDATE_CMD(.dword = hlsq_invalidate_value));
+   struct tu_descriptor_set_layout *set_layout = layout->set[set].layout;
 
-   if (pipelineBindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS) {
-      assert(cs->cur == cs->end); /* validate draw state size */
-      /* note: this also avoids emitting draw states before renderpass clears,
-       * which may use the 3D clear path (for MSAA cases)
-       */
-      if (!(cmd->state.dirty & TU_CMD_DIRTY_DRAW_STATE)) {
-         tu_cs_emit_pkt7(&cmd->draw_cs, CP_SET_DRAW_STATE, 3);
-         tu_cs_emit_draw_state(&cmd->draw_cs, TU_DRAW_STATE_DESC_SETS, cmd->state.desc_sets);
-      }
-   }
+   struct tu_descriptor_state *descriptors_state =
+      tu_get_descriptors_state(cmd, pipelineBindPoint);
+
+   descriptors_state->max_sets_bound =
+      MAX2(descriptors_state->max_sets_bound, set + 1);
+
+   descriptors_state->set_iova[set] = set_layout->embedded_samplers->iova |
+         BINDLESS_DESCRIPTOR_64B;
+
+   tu_dirty_desc_sets(cmd, pipelineBindPoint);
 }
 
 static enum VkResult
@@ -2550,7 +2661,7 @@ tu_CmdBindPipeline(VkCommandBuffer commandBuffer,
    assert(pipelineBindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS);
 
    cmd->state.pipeline = pipeline;
-   cmd->state.dirty |= TU_CMD_DIRTY_DESC_SETS_LOAD | TU_CMD_DIRTY_SHADER_CONSTS |
+   cmd->state.dirty |= TU_CMD_DIRTY_DESC_SETS | TU_CMD_DIRTY_SHADER_CONSTS |
                        TU_CMD_DIRTY_LRZ | TU_CMD_DIRTY_VS_PARAMS;
 
    if (pipeline->output.feedback_loop_may_involve_textures &&
@@ -3489,6 +3600,10 @@ tu_flush_for_access(struct tu_cache_state *cache,
    DST_INCOHERENT_FLUSH(CCU_COLOR, CCU_FLUSH_COLOR, CCU_INVALIDATE_COLOR)
    DST_INCOHERENT_FLUSH(CCU_DEPTH, CCU_FLUSH_DEPTH, CCU_INVALIDATE_DEPTH)
 
+   if (dst_mask & TU_ACCESS_BINDLESS_DESCRIPTOR_READ) {
+      flush_bits |= TU_CMD_FLAG_BINDLESS_DESCRIPTOR_INVALIDATE;
+   }
+
 #undef DST_INCOHERENT_FLUSH
 
    cache->flush_bits |= flush_bits;
@@ -3591,6 +3706,12 @@ vk2tu_access(VkAccessFlags2 flags, VkPipelineStageFlags2 stages, bool image_only
                        VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT |
                        SHADER_STAGES))
        mask |= TU_ACCESS_UCHE_READ;
+
+   if (gfx_read_access(flags, stages,
+                       VK_ACCESS_2_DESCRIPTOR_BUFFER_READ_BIT_EXT,
+                       SHADER_STAGES)) {
+      mask |= TU_ACCESS_UCHE_READ | TU_ACCESS_BINDLESS_DESCRIPTOR_READ;
+   }
 
    if (gfx_write_access(flags, stages,
                         VK_ACCESS_2_SHADER_WRITE_BIT |
@@ -4161,7 +4282,7 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
 {
    TU_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
 
-   if (unlikely(cmd->device->instance->debug_flags & TU_DEBUG_DYNAMIC)) {
+   if (TU_DEBUG(DYNAMIC)) {
       vk_common_CmdBeginRenderPass2(commandBuffer, pRenderPassBegin,
                                     pSubpassBeginInfo);
       return;
@@ -4284,7 +4405,7 @@ tu_CmdBeginRendering(VkCommandBuffer commandBuffer,
       }
    }
 
-   if (unlikely(cmd->device->instance->debug_flags & TU_DEBUG_DYNAMIC)) {
+   if (TU_DEBUG(DYNAMIC)) {
       const VkRenderingSelfDependencyInfoMESA *self_dependency =
          vk_find_struct_const(pRenderingInfo->pNext, RENDERING_SELF_DEPENDENCY_INFO_MESA);
       if (self_dependency &&
@@ -4375,7 +4496,7 @@ tu_CmdNextSubpass2(VkCommandBuffer commandBuffer,
 {
    TU_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
 
-   if (unlikely(cmd->device->instance->debug_flags & TU_DEBUG_DYNAMIC)) {
+   if (TU_DEBUG(DYNAMIC)) {
       vk_common_CmdNextSubpass2(commandBuffer, pSubpassBeginInfo,
                                 pSubpassEndInfo);
       return;
@@ -4454,7 +4575,7 @@ tu6_user_consts_size(const struct tu_pipeline *pipeline,
       dwords += 4 + num_units;
    }
 
-   dwords += 4 * link->tu_const_state.num_inline_ubos;
+   dwords += 8 * link->tu_const_state.num_inline_ubos;
 
    return dwords;
 }
@@ -4492,23 +4613,22 @@ tu6_emit_user_consts(struct tu_cs *cs,
    for (unsigned i = 0; i < link->tu_const_state.num_inline_ubos; i++) {
       const struct tu_inline_ubo *ubo = &link->tu_const_state.ubos[i];
 
-      /* With variable-count inline uniform blocks, we allocate constant space
-       * based on the maximum size specified in the descriptor set layout, but
-       * the actual size may be smaller. In that case we have to avoid
-       * fetching out-of-bounds of the buffer that contains the descriptor
-       * set to avoid faults.
-       */
-      unsigned num_units = MIN2(ubo->size_vec4,
-                                (descriptors->sets[ubo->base]->size - ubo->offset) / 16);
+      uint64_t va = descriptors->set_iova[ubo->base] & ~0x3f;
 
-      if (num_units > 0) {
-         tu_cs_emit_pkt7(cs, tu6_stage2opcode(type), 3);
-         tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(ubo->const_offset_vec4) |
-               CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
-               CP_LOAD_STATE6_0_STATE_SRC(SS6_INDIRECT) |
-               CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(type)) |
-               CP_LOAD_STATE6_0_NUM_UNIT(num_units));
-         tu_cs_emit_qw(cs, descriptors->sets[ubo->base]->va + ubo->offset);
+      tu_cs_emit_pkt7(cs, tu6_stage2opcode(type), ubo->push_address ? 7 : 3);
+      tu_cs_emit(cs, CP_LOAD_STATE6_0_DST_OFF(ubo->const_offset_vec4) |
+            CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
+            CP_LOAD_STATE6_0_STATE_SRC(ubo->push_address ? SS6_DIRECT : SS6_INDIRECT) |
+            CP_LOAD_STATE6_0_STATE_BLOCK(tu6_stage2shadersb(type)) |
+            CP_LOAD_STATE6_0_NUM_UNIT(ubo->size_vec4));
+      if (ubo->push_address) {
+         tu_cs_emit(cs, 0);
+         tu_cs_emit(cs, 0);
+         tu_cs_emit_qw(cs, va + ubo->offset);
+         tu_cs_emit(cs, 0);
+         tu_cs_emit(cs, 0);
+      } else {
+         tu_cs_emit_qw(cs, va + ubo->offset);
       }
    }
 }
@@ -4820,7 +4940,7 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
 
    /* Early exit if there is nothing to emit, saves CPU cycles */
    uint32_t dirty = cmd->state.dirty;
-   if (!(dirty & ~TU_CMD_DIRTY_COMPUTE_DESC_SETS_LOAD))
+   if (!(dirty & ~TU_CMD_DIRTY_COMPUTE_DESC_SETS))
       return VK_SUCCESS;
 
    bool dirty_lrz =
@@ -4917,6 +5037,9 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
                                     cmd->state.patch_control_points);
    }
 
+   if (dirty & TU_CMD_DIRTY_DESC_SETS)
+      tu6_emit_descriptor_sets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS);
+
    /* for the first draw in a renderpass, re-emit all the draw states
     *
     * and if a draw-state disabling path (CmdClearAttachments 3D fallback) was
@@ -4957,7 +5080,7 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
            emit_patch_control_points = false;
       uint32_t draw_state_count =
          ((dirty & TU_CMD_DIRTY_SHADER_CONSTS) ? 1 : 0) +
-         ((dirty & TU_CMD_DIRTY_DESC_SETS_LOAD) ? 1 : 0) +
+         ((dirty & TU_CMD_DIRTY_DESC_SETS) ? 1 : 0) +
          ((dirty & TU_CMD_DIRTY_VERTEX_BUFFERS) ? 1 : 0) +
          ((dirty & TU_CMD_DIRTY_VS_PARAMS) ? 1 : 0) +
          (dirty_lrz ? 1 : 0);
@@ -4986,8 +5109,10 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
 
       if (dirty & TU_CMD_DIRTY_SHADER_CONSTS)
          tu_cs_emit_draw_state(cs, TU_DRAW_STATE_CONST, cmd->state.shader_const);
-      if (dirty & TU_CMD_DIRTY_DESC_SETS_LOAD)
+      if (dirty & TU_CMD_DIRTY_DESC_SETS) {
+         /* tu6_emit_descriptor_sets emitted the cmd->state.desc_sets draw state. */
          tu_cs_emit_draw_state(cs, TU_DRAW_STATE_DESC_SETS_LOAD, pipeline->load_state);
+      }
       if (dirty & TU_CMD_DIRTY_VERTEX_BUFFERS)
          tu_cs_emit_draw_state(cs, TU_DRAW_STATE_VB, cmd->state.vertex_buffers);
       if (emit_binding_stride) {
@@ -5016,7 +5141,7 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
     * bits to preserve instead. The only things not emitted here are
     * compute-related state.
     */
-   cmd->state.dirty &= TU_CMD_DIRTY_COMPUTE_DESC_SETS_LOAD;
+   cmd->state.dirty &= TU_CMD_DIRTY_COMPUTE_DESC_SETS;
    return VK_SUCCESS;
 }
 
@@ -5626,10 +5751,12 @@ tu_dispatch(struct tu_cmd_buffer *cmd,
 
    tu_emit_compute_driver_params(cmd, cs, pipeline, info);
 
-   if (cmd->state.dirty & TU_CMD_DIRTY_COMPUTE_DESC_SETS_LOAD)
+   if (cmd->state.dirty & TU_CMD_DIRTY_COMPUTE_DESC_SETS) {
+      tu6_emit_descriptor_sets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE);
       tu_cs_emit_state_ib(cs, pipeline->load_state);
+   }
 
-   cmd->state.dirty &= ~TU_CMD_DIRTY_COMPUTE_DESC_SETS_LOAD;
+   cmd->state.dirty &= ~TU_CMD_DIRTY_COMPUTE_DESC_SETS;
 
    tu_cs_emit_pkt7(cs, CP_SET_MARKER, 1);
    tu_cs_emit(cs, A6XX_CP_SET_MARKER_0_MODE(RM6_COMPUTE));
@@ -5733,7 +5860,7 @@ tu_CmdEndRenderPass2(VkCommandBuffer commandBuffer,
 {
    TU_FROM_HANDLE(tu_cmd_buffer, cmd_buffer, commandBuffer);
 
-   if (unlikely(cmd_buffer->device->instance->debug_flags & TU_DEBUG_DYNAMIC)) {
+   if (TU_DEBUG(DYNAMIC)) {
       vk_common_CmdEndRenderPass2(commandBuffer, pSubpassEndInfo);
       return;
    }

@@ -29,8 +29,8 @@ reset_obj(struct zink_screen *screen, struct zink_batch_state *bs, struct zink_r
    /* if no batch usage exists after removing the usage from 'bs', this resource is considered fully idle */
    if (!zink_resource_object_usage_unset(obj, bs)) {
       /* the resource is idle, so reset all access/reordering info */
-      obj->unordered_read = false;
-      obj->unordered_write = false;
+      obj->unordered_read = true;
+      obj->unordered_write = true;
       obj->access = 0;
       obj->access_stage = 0;
       /* also prune dead view objects */
@@ -139,14 +139,15 @@ zink_reset_batch_state(struct zink_context *ctx, struct zink_batch_state *bs)
    util_dynarray_clear(&bs->wait_semaphore_stages);
 
    bs->present = VK_NULL_HANDLE;
-   /* semaphores are not destroyed here;
-    * destroying semaphores triggers ioctls, so defer deletion to the submit thread to avoid blocking
-    */
-   memcpy(&bs->unref_semaphores, &bs->acquires, sizeof(struct util_dynarray));
-   util_dynarray_init(&bs->acquires, NULL);
-   while (util_dynarray_contains(&bs->wait_semaphores, VkSemaphore))
-      util_dynarray_append(&bs->unref_semaphores, VkSemaphore, util_dynarray_pop(&bs->wait_semaphores, VkSemaphore));
-   util_dynarray_init(&bs->wait_semaphores, NULL);
+   /* check the arrays first to avoid locking unnecessarily */
+   if (util_dynarray_contains(&bs->acquires, VkSemaphore) || util_dynarray_contains(&bs->wait_semaphores, VkSemaphore)) {
+      simple_mtx_lock(&screen->semaphores_lock);
+      util_dynarray_append_dynarray(&screen->semaphores, &bs->acquires);
+      util_dynarray_clear(&bs->acquires);
+      util_dynarray_append_dynarray(&screen->semaphores, &bs->wait_semaphores);
+      util_dynarray_clear(&bs->wait_semaphores);
+      simple_mtx_unlock(&screen->semaphores_lock);
+   }
    bs->swapchain = NULL;
 
    /* only reset submitted here so that tc fence desync can pick up the 'completed' flag
@@ -198,8 +199,6 @@ unref_resources(struct zink_screen *screen, struct zink_batch_state *bs)
       /* this is typically where resource objects get destroyed */
       zink_resource_object_reference(screen, &obj, NULL);
    }
-   while (util_dynarray_contains(&bs->unref_semaphores, VkSemaphore))
-      VKSCR(DestroySemaphore)(screen->dev, util_dynarray_pop(&bs->unref_semaphores, VkSemaphore), NULL);
 }
 
 /* utility for resetting a batch state; called on context destruction */
@@ -276,7 +275,6 @@ zink_batch_state_destroy(struct zink_screen *screen, struct zink_batch_state *bs
    util_dynarray_fini(&bs->bindless_releases[0]);
    util_dynarray_fini(&bs->bindless_releases[1]);
    util_dynarray_fini(&bs->acquires);
-   util_dynarray_fini(&bs->unref_semaphores);
    util_dynarray_fini(&bs->acquire_flags);
    zink_batch_descriptor_deinit(screen, bs);
    ralloc_free(bs);
@@ -336,7 +334,6 @@ create_batch_state(struct zink_context *ctx)
    util_dynarray_init(&bs->persistent_resources, NULL);
    util_dynarray_init(&bs->unref_resources, NULL);
    util_dynarray_init(&bs->acquires, NULL);
-   util_dynarray_init(&bs->unref_semaphores, NULL);
    util_dynarray_init(&bs->acquire_flags, NULL);
    util_dynarray_init(&bs->bindless_releases[0], NULL);
    util_dynarray_init(&bs->bindless_releases[1], NULL);
@@ -442,6 +439,7 @@ zink_reset_batch(struct zink_context *ctx, struct zink_batch *batch)
 void
 zink_start_batch(struct zink_context *ctx, struct zink_batch *batch)
 {
+   struct zink_screen *screen = zink_screen(ctx->base.screen);
    zink_reset_batch(ctx, batch);
 
    batch->state->usage.unflushed = true;
@@ -464,8 +462,41 @@ zink_start_batch(struct zink_context *ctx, struct zink_batch *batch)
       batch->last_batch_usage = &last_state->usage;
    }
 
+#ifdef HAVE_RENDERDOC_APP_H
+   if (VKCTX(CmdInsertDebugUtilsLabelEXT) && screen->renderdoc_api) {
+      VkDebugUtilsLabelEXT capture_label;
+      /* Magic fallback which lets us bridge the Wine barrier over to Linux RenderDoc. */
+      capture_label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+      capture_label.pNext = NULL;
+      capture_label.pLabelName = "vr-marker,frame_end,type,application";
+      memset(capture_label.color, 0, sizeof(capture_label.color));
+      VKCTX(CmdInsertDebugUtilsLabelEXT)(batch->state->barrier_cmdbuf, &capture_label);
+      VKCTX(CmdInsertDebugUtilsLabelEXT)(batch->state->cmdbuf, &capture_label);
+   }
+
+   unsigned renderdoc_frame = p_atomic_read(&screen->renderdoc_frame);
+   if (!(ctx->flags & ZINK_CONTEXT_COPY_ONLY) && screen->renderdoc_api && !screen->renderdoc_capturing &&
+        ((screen->renderdoc_capture_all && screen->screen_id == 1) || (renderdoc_frame >= screen->renderdoc_capture_start && renderdoc_frame <= screen->renderdoc_capture_end))) {
+      screen->renderdoc_api->StartFrameCapture(RENDERDOC_DEVICEPOINTER_FROM_VKINSTANCE(screen->instance), NULL);
+      screen->renderdoc_capturing = true;
+   }
+#endif
+
    if (!ctx->queries_disabled)
       zink_resume_queries(ctx, batch);
+
+   /* descriptor buffers must always be bound at the start of a batch */
+   if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB && !(ctx->flags & ZINK_CONTEXT_COPY_ONLY)) {
+      unsigned count = screen->compact_descriptors ? 3 : 5;
+      VkDescriptorBufferBindingInfoEXT infos[ZINK_DESCRIPTOR_NON_BINDLESS_TYPES] = {0};
+      for (unsigned i = 0; i < count; i++) {
+         infos[i].sType = VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT;
+         infos[i].address = batch->state->dd.db[i]->obj->bda;
+         infos[i].usage = batch->state->dd.db[i]->obj->vkusage;
+         assert(infos[i].usage);
+      }
+      VKSCR(CmdBindDescriptorBuffersEXT)(batch->state->cmdbuf, count, infos);
+   }
 }
 
 /* common operations to run post submit; split out for clarity */
@@ -680,6 +711,12 @@ zink_end_batch(struct zink_context *ctx, struct zink_batch *batch)
       submit_queue(bs, NULL, 0);
       post_submit(bs, NULL, 0);
    }
+#ifdef HAVE_RENDERDOC_APP_H
+   if (!(ctx->flags & ZINK_CONTEXT_COPY_ONLY) && screen->renderdoc_capturing && p_atomic_read(&screen->renderdoc_frame) > screen->renderdoc_capture_end) {
+      screen->renderdoc_api->EndFrameCapture(RENDERDOC_DEVICEPOINTER_FROM_VKINSTANCE(screen->instance), NULL);
+      screen->renderdoc_capturing = false;
+   }
+#endif
 }
 
 static int

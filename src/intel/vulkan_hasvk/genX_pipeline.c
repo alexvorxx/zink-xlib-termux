@@ -27,6 +27,7 @@
 #include "genxml/genX_pack.h"
 #include "genxml/genX_rt_pack.h"
 
+#include "common/intel_genX_state.h"
 #include "common/intel_l3_config.h"
 #include "common/intel_sample_positions.h"
 #include "nir/nir_xfb_info.h"
@@ -1341,11 +1342,6 @@ emit_3dstate_vs(struct anv_graphics_pipeline *pipeline)
       assert(!vs_prog_data->base.base.use_alt_mode);
       vs.SingleVertexDispatch       = false;
       vs.VectorMaskEnable           = false;
-      /* Wa_1606682166:
-       * Incorrect TDL's SSP address shift in SARB for 16:6 & 18:8 modes.
-       * Disable the Sampler state prefetch functionality in the SARB by
-       * programming 0xB000[30] to '1'.
-       */
       vs.SamplerCount               = get_sampler_count(vs_bin);
       vs.BindingTableEntryCount     = vs_bin->bind_map.surface_count;
       vs.FloatingPointMode          = IEEE754;
@@ -1395,7 +1391,6 @@ emit_3dstate_hs_te_ds(struct anv_graphics_pipeline *pipeline,
       hs.Enable = true;
       hs.StatisticsEnable = true;
       hs.KernelStartPointer = tcs_bin->kernel.offset;
-      /* Wa_1606682166 */
       hs.SamplerCount = get_sampler_count(tcs_bin);
       hs.BindingTableEntryCount = tcs_bin->bind_map.surface_count;
 
@@ -1439,7 +1434,6 @@ emit_3dstate_hs_te_ds(struct anv_graphics_pipeline *pipeline,
       ds.Enable = true;
       ds.StatisticsEnable = true;
       ds.KernelStartPointer = tes_bin->kernel.offset;
-      /* Wa_1606682166 */
       ds.SamplerCount = get_sampler_count(tes_bin);
       ds.BindingTableEntryCount = tes_bin->bind_map.surface_count;
       ds.MaximumNumberofThreads = devinfo->max_tes_threads - 1;
@@ -1492,7 +1486,6 @@ emit_3dstate_gs(struct anv_graphics_pipeline *pipeline)
 
       gs.SingleProgramFlow       = false;
       gs.VectorMaskEnable        = false;
-      /* Wa_1606682166 */
       gs.SamplerCount            = get_sampler_count(gs_bin);
       gs.BindingTableEntryCount  = gs_bin->bind_map.surface_count;
       gs.IncludeVertexHandles    = gs_prog_data->base.include_vue_handles;
@@ -1677,11 +1670,8 @@ emit_3dstate_ps(struct anv_graphics_pipeline *pipeline,
 #endif
 
    anv_batch_emit(&pipeline->base.batch, GENX(3DSTATE_PS), ps) {
-      brw_fs_get_dispatch_enables(devinfo, wm_prog_data,
-                                  ms != NULL ? ms->rasterization_samples : 1,
-                                  &ps._8PixelDispatchEnable,
-                                  &ps._16PixelDispatchEnable,
-                                  &ps._32PixelDispatchEnable);
+      intel_set_ps_dispatch_state(&ps, devinfo, wm_prog_data,
+                                  ms != NULL ? ms->rasterization_samples : 1);
 
       ps.KernelStartPointer0 = fs_bin->kernel.offset +
                                brw_wm_prog_data_prog_offset(wm_prog_data, ps, 0);
@@ -1693,7 +1683,6 @@ emit_3dstate_ps(struct anv_graphics_pipeline *pipeline,
       ps.SingleProgramFlow          = false;
       ps.VectorMaskEnable           = GFX_VER >= 8 &&
                                       wm_prog_data->uses_vmask;
-      /* Wa_1606682166 */
       ps.SamplerCount               = get_sampler_count(fs_bin);
       ps.BindingTableEntryCount     = fs_bin->bind_map.surface_count;
       ps.PushConstantEnable         = wm_prog_data->base.nr_params > 0 ||
@@ -1926,8 +1915,6 @@ genX(compute_pipeline_emit)(struct anv_compute_pipeline *pipeline)
       .KernelStartPointer     =
          cs_bin->kernel.offset +
          brw_cs_prog_data_prog_offset(cs_prog_data, dispatch.simd_size),
-
-      /* Wa_1606682166 */
       .SamplerCount           = get_sampler_count(cs_bin),
       /* We add 1 because the CS indirect parameters buffer isn't accounted
        * for in bind_map.surface_count.

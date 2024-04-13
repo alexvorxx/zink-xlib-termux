@@ -476,16 +476,6 @@ emit_alu(struct ir3_context *ctx, nir_alu_instr *alu)
       dst[0]->cat2.condition = IR3_COND_NE;
       break;
 
-   case nir_op_i2b1:
-      /* i2b1 will appear when translating from nir_load_ubo or
-       * nir_intrinsic_load_ssbo, where any non-zero value is true.
-       */
-      dst[0] = ir3_CMPS_S(
-         b, src[0], 0,
-         create_immed_typed(b, 0, type_uint_size(bs[0])), 0);
-      dst[0]->cat2.condition = IR3_COND_NE;
-      break;
-
    case nir_op_b2b1:
       /* b2b1 will appear when translating from
        *
@@ -1347,7 +1337,7 @@ struct tex_src_info {
  * to handle with the image_mapping table..
  */
 static struct tex_src_info
-get_image_ssbo_samp_tex_src(struct ir3_context *ctx, nir_src *src)
+get_image_ssbo_samp_tex_src(struct ir3_context *ctx, nir_src *src, bool image)
 {
    struct ir3_block *b = ctx->block;
    struct tex_src_info info = {0};
@@ -1392,8 +1382,12 @@ get_image_ssbo_samp_tex_src(struct ir3_context *ctx, nir_src *src)
    } else {
       info.flags |= IR3_INSTR_S2EN;
       unsigned slot = nir_src_as_uint(*src);
-      unsigned tex_idx = ir3_image_to_tex(&ctx->so->image_mapping, slot);
+      unsigned tex_idx = image ?
+            ir3_image_to_tex(&ctx->so->image_mapping, slot) :
+            ir3_ssbo_to_tex(&ctx->so->image_mapping, slot);
       struct ir3_instruction *texture, *sampler;
+
+      ctx->so->num_samp = MAX2(ctx->so->num_samp, tex_idx + 1);
 
       texture = create_immed_typed(ctx->block, tex_idx, TYPE_U16);
       sampler = create_immed_typed(ctx->block, tex_idx, TYPE_U16);
@@ -1450,7 +1444,7 @@ emit_intrinsic_load_image(struct ir3_context *ctx, nir_intrinsic_instr *intr,
    }
 
    struct ir3_block *b = ctx->block;
-   struct tex_src_info info = get_image_ssbo_samp_tex_src(ctx, &intr->src[0]);
+   struct tex_src_info info = get_image_ssbo_samp_tex_src(ctx, &intr->src[0], true);
    struct ir3_instruction *sam;
    struct ir3_instruction *const *src0 = ir3_get_src(ctx, &intr->src[1]);
    struct ir3_instruction *coords[4];
@@ -1492,7 +1486,7 @@ emit_intrinsic_image_size_tex(struct ir3_context *ctx,
                               struct ir3_instruction **dst)
 {
    struct ir3_block *b = ctx->block;
-   struct tex_src_info info = get_image_ssbo_samp_tex_src(ctx, &intr->src[0]);
+   struct tex_src_info info = get_image_ssbo_samp_tex_src(ctx, &intr->src[0], true);
    struct ir3_instruction *sam, *lod;
    unsigned flags, ncoords = ir3_get_image_coords(intr, &flags);
    type_t dst_type = nir_dest_bit_size(intr->dest) == 16 ? TYPE_U16 : TYPE_U32;
@@ -1536,7 +1530,6 @@ emit_intrinsic_load_ssbo(struct ir3_context *ctx,
 {
    /* Note: isam currently can't handle vectorized loads/stores */
    if (!(nir_intrinsic_access(intr) & ACCESS_CAN_REORDER) ||
-       !ir3_bindless_resource(intr->src[0]) ||
        intr->dest.ssa.num_components > 1) {
       ctx->funcs->emit_intrinsic_load_ssbo(ctx, intr, dst);
       return;
@@ -1545,7 +1538,7 @@ emit_intrinsic_load_ssbo(struct ir3_context *ctx,
    struct ir3_block *b = ctx->block;
    struct ir3_instruction *offset = ir3_get_src(ctx, &intr->src[2])[0];
    struct ir3_instruction *coords = ir3_collect(b, offset, create_immed(b, 0));
-   struct tex_src_info info = get_image_ssbo_samp_tex_src(ctx, &intr->src[0]);
+   struct tex_src_info info = get_image_ssbo_samp_tex_src(ctx, &intr->src[0], false);
 
    unsigned num_components = intr->dest.ssa.num_components;
    struct ir3_instruction *sam =
@@ -2892,6 +2885,10 @@ get_tex_samp_tex_src(struct ir3_context *ctx, nir_tex_instr *tex)
       if (texture_idx >= 0) {
          texture = ir3_get_src(ctx, &tex->src[texture_idx].src)[0];
          texture = ir3_COV(ctx->block, texture, TYPE_U32, TYPE_U16);
+         if (tex->texture_index != 0) {
+            texture = ir3_ADD_U(b, texture, 0, create_immed_typed(b, tex->texture_index, TYPE_U16), 0);
+            texture->dsts[0]->flags |= IR3_REG_HALF;
+         }
       } else {
          /* TODO what to do for dynamic case? I guess we only need the
           * max index for astc srgb workaround so maybe not a problem
@@ -2907,6 +2904,10 @@ get_tex_samp_tex_src(struct ir3_context *ctx, nir_tex_instr *tex)
       if (sampler_idx >= 0) {
          sampler = ir3_get_src(ctx, &tex->src[sampler_idx].src)[0];
          sampler = ir3_COV(ctx->block, sampler, TYPE_U32, TYPE_U16);
+         if (tex->sampler_index != 0) {
+            sampler = ir3_ADD_U(b, sampler, 0, create_immed_typed(b, tex->sampler_index, TYPE_U16), 0);
+            sampler->dsts[0]->flags |= IR3_REG_HALF;
+         }
       } else {
          sampler = create_immed_typed(ctx->block, tex->sampler_index, TYPE_U16);
          info.samp_idx = tex->texture_index;
@@ -3168,10 +3169,21 @@ emit_tex(struct ir3_context *ctx, nir_tex_instr *tex)
       compile_assert(ctx, ctx->so->type == MESA_SHADER_FRAGMENT);
 
       ctx->so->fb_read = true;
-      info.samp_tex = ir3_collect(
-         b, create_immed_typed(ctx->block, ctx->so->num_samp, TYPE_U16),
-         create_immed_typed(ctx->block, ctx->so->num_samp, TYPE_U16));
-      info.flags = IR3_INSTR_S2EN;
+      if (ctx->compiler->options.bindless_fb_read_descriptor >= 0) {
+         ctx->so->bindless_tex = true;
+
+         info.flags = IR3_INSTR_B | IR3_INSTR_A1EN;
+         info.base = ctx->compiler->options.bindless_fb_read_descriptor;
+         info.a1_val = ctx->compiler->options.bindless_fb_read_slot << 3;
+      } else {
+         /* Otherwise append a sampler to be patched into the texture
+          * state:
+          */
+         info.samp_tex = ir3_collect(
+               b, create_immed_typed(ctx->block, ctx->so->num_samp, TYPE_U16),
+               create_immed_typed(ctx->block, ctx->so->num_samp, TYPE_U16));
+         info.flags = IR3_INSTR_S2EN;
+      }
 
       ctx->so->num_samp++;
    } else {
@@ -4108,6 +4120,8 @@ pack_inlocs(struct ir3_context *ctx)
             unsigned j = inloc % 4;
 
             instr->srcs[0]->iim_val = so->inputs[i].inloc + j;
+            if (instr->opc == OPC_FLAT_B)
+               instr->srcs[1]->iim_val = instr->srcs[0]->iim_val;
          } else if (instr->opc == OPC_META_TEX_PREFETCH) {
             unsigned i = instr->prefetch.input_offset / 4;
             unsigned j = instr->prefetch.input_offset % 4;

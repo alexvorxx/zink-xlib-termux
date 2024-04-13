@@ -50,293 +50,31 @@
 #include "fd6_texture.h"
 #include "fd6_zsa.h"
 
-static void
-fd6_emit_fb_tex(struct fd_ringbuffer *state, struct fd_context *ctx) assert_dt
-{
-   struct pipe_framebuffer_state *pfb = &ctx->batch->framebuffer;
-   struct pipe_surface *psurf = pfb->cbufs[0];
-   struct fd_resource *rsc = fd_resource(psurf->texture);
-
-   OUT_RINGP(state, 0, &ctx->batch->fb_read_patches); /* texconst0, patched in gmem emit */
-   OUT_RING(state, A6XX_TEX_CONST_1_WIDTH(pfb->width) |
-                      A6XX_TEX_CONST_1_HEIGHT(pfb->height));
-   OUT_RING(state, 0); /* texconst2, patched in gmem emit */
-   OUT_RING(state, A6XX_TEX_CONST_3_ARRAY_PITCH(rsc->layout.layer_size));
-   OUT_RING(state, 0); /* BASE_LO, patched in gmem emit */
-   OUT_RING(state, 0); /* BASE_HI, patched in gmem emit */
-   OUT_RING(state, 0); /* texconst6 */
-   OUT_RING(state, 0); /* texconst7 */
-   OUT_RING(state, 0); /* texconst8 */
-   OUT_RING(state, 0); /* texconst9 */
-   OUT_RING(state, 0); /* texconst10 */
-   OUT_RING(state, 0); /* texconst11 */
-   OUT_RING(state, 0);
-   OUT_RING(state, 0);
-   OUT_RING(state, 0);
-   OUT_RING(state, 0);
-}
-
-void
-fd6_emit_textures(struct fd_context *ctx, struct fd_ringbuffer *ring,
-                  enum pipe_shader_type type, struct fd_texture_stateobj *tex,
-                  /* can be NULL if no image/SSBO/fb state to merge in: */
-                  const struct ir3_shader_variant *v)
-{
-   unsigned opcode, tex_samp_reg, tex_const_reg, tex_count_reg;
-   enum a6xx_state_block sb;
-
-   switch (type) {
-   case PIPE_SHADER_VERTEX:
-      sb = SB6_VS_TEX;
-      opcode = CP_LOAD_STATE6_GEOM;
-      tex_samp_reg = REG_A6XX_SP_VS_TEX_SAMP;
-      tex_const_reg = REG_A6XX_SP_VS_TEX_CONST;
-      tex_count_reg = REG_A6XX_SP_VS_TEX_COUNT;
-      break;
-   case PIPE_SHADER_TESS_CTRL:
-      sb = SB6_HS_TEX;
-      opcode = CP_LOAD_STATE6_GEOM;
-      tex_samp_reg = REG_A6XX_SP_HS_TEX_SAMP;
-      tex_const_reg = REG_A6XX_SP_HS_TEX_CONST;
-      tex_count_reg = REG_A6XX_SP_HS_TEX_COUNT;
-      break;
-   case PIPE_SHADER_TESS_EVAL:
-      sb = SB6_DS_TEX;
-      opcode = CP_LOAD_STATE6_GEOM;
-      tex_samp_reg = REG_A6XX_SP_DS_TEX_SAMP;
-      tex_const_reg = REG_A6XX_SP_DS_TEX_CONST;
-      tex_count_reg = REG_A6XX_SP_DS_TEX_COUNT;
-      break;
-   case PIPE_SHADER_GEOMETRY:
-      sb = SB6_GS_TEX;
-      opcode = CP_LOAD_STATE6_GEOM;
-      tex_samp_reg = REG_A6XX_SP_GS_TEX_SAMP;
-      tex_const_reg = REG_A6XX_SP_GS_TEX_CONST;
-      tex_count_reg = REG_A6XX_SP_GS_TEX_COUNT;
-      break;
-   case PIPE_SHADER_FRAGMENT:
-      sb = SB6_FS_TEX;
-      opcode = CP_LOAD_STATE6_FRAG;
-      tex_samp_reg = REG_A6XX_SP_FS_TEX_SAMP;
-      tex_const_reg = REG_A6XX_SP_FS_TEX_CONST;
-      tex_count_reg = REG_A6XX_SP_FS_TEX_COUNT;
-      break;
-   case PIPE_SHADER_COMPUTE:
-      sb = SB6_CS_TEX;
-      opcode = CP_LOAD_STATE6_FRAG;
-      tex_samp_reg = REG_A6XX_SP_CS_TEX_SAMP;
-      tex_const_reg = REG_A6XX_SP_CS_TEX_CONST;
-      tex_count_reg = REG_A6XX_SP_CS_TEX_COUNT;
-      break;
-   default:
-      unreachable("bad state block");
-   }
-
-   if (tex->num_samplers > 0) {
-      struct fd_ringbuffer *state =
-         fd_ringbuffer_new_object(ctx->pipe, tex->num_samplers * 4 * 4);
-      for (unsigned i = 0; i < tex->num_samplers; i++) {
-         static const struct fd6_sampler_stateobj dummy_sampler = {};
-         const struct fd6_sampler_stateobj *sampler =
-            tex->samplers[i] ? fd6_sampler_stateobj(tex->samplers[i])
-                             : &dummy_sampler;
-         OUT_RING(state, sampler->texsamp0);
-         OUT_RING(state, sampler->texsamp1);
-         OUT_RING(state, sampler->texsamp2);
-         OUT_RING(state, sampler->texsamp3);
-      }
-
-      /* output sampler state: */
-      OUT_PKT7(ring, opcode, 3);
-      OUT_RING(ring, CP_LOAD_STATE6_0_DST_OFF(0) |
-                        CP_LOAD_STATE6_0_STATE_TYPE(ST6_SHADER) |
-                        CP_LOAD_STATE6_0_STATE_SRC(SS6_INDIRECT) |
-                        CP_LOAD_STATE6_0_STATE_BLOCK(sb) |
-                        CP_LOAD_STATE6_0_NUM_UNIT(tex->num_samplers));
-      OUT_RB(ring, state); /* SRC_ADDR_LO/HI */
-
-      OUT_PKT4(ring, tex_samp_reg, 2);
-      OUT_RB(ring, state); /* SRC_ADDR_LO/HI */
-
-      fd_ringbuffer_del(state);
-   }
-
-   unsigned num_merged_textures = tex->num_textures;
-   unsigned num_textures = tex->num_textures;
-   if (v) {
-      num_merged_textures += v->image_mapping.num_tex;
-
-      if (v->fb_read)
-         num_merged_textures++;
-
-      /* There could be more bound textures than what the shader uses.
-       * Which isn't known at shader compile time.  So in the case we
-       * are merging tex state, only emit the textures that the shader
-       * uses (since the image/SSBO related tex state comes immediately
-       * after)
-       */
-      num_textures = v->image_mapping.tex_base;
-   }
-
-   if (num_merged_textures > 0) {
-      struct fd_ringbuffer *state =
-         fd_ringbuffer_new_object(ctx->pipe, num_merged_textures * 16 * 4);
-      for (unsigned i = 0; i < num_textures; i++) {
-         const struct fd6_pipe_sampler_view *view;
-
-         if (tex->textures[i]) {
-            view = fd6_pipe_sampler_view(tex->textures[i]);
-            if (unlikely(view->rsc_seqno !=
-                         fd_resource(view->base.texture)->seqno)) {
-               fd6_sampler_view_update(ctx,
-                                       fd6_pipe_sampler_view(tex->textures[i]));
-            }
-         } else {
-            static const struct fd6_pipe_sampler_view dummy_view = {};
-            view = &dummy_view;
-         }
-
-         OUT_RING(state, view->descriptor[0]);
-         OUT_RING(state, view->descriptor[1]);
-         OUT_RING(state, view->descriptor[2]);
-         OUT_RING(state, view->descriptor[3]);
-
-         if (view->ptr1) {
-            OUT_RELOC(state, view->ptr1->bo, view->descriptor[4],
-                      (uint64_t)view->descriptor[5] << 32, 0);
-         } else {
-            OUT_RING(state, view->descriptor[4]);
-            OUT_RING(state, view->descriptor[5]);
-         }
-
-         OUT_RING(state, view->descriptor[6]);
-
-         if (view->ptr2) {
-            OUT_RELOC(state, view->ptr2->bo, view->descriptor[7], 0, 0);
-         } else {
-            OUT_RING(state, view->descriptor[7]);
-            OUT_RING(state, view->descriptor[8]);
-         }
-
-         OUT_RING(state, view->descriptor[9]);
-         OUT_RING(state, view->descriptor[10]);
-         OUT_RING(state, view->descriptor[11]);
-         OUT_RING(state, view->descriptor[12]);
-         OUT_RING(state, view->descriptor[13]);
-         OUT_RING(state, view->descriptor[14]);
-         OUT_RING(state, view->descriptor[15]);
-      }
-
-      if (v) {
-         const struct ir3_ibo_mapping *mapping = &v->image_mapping;
-         struct fd_shaderbuf_stateobj *buf = &ctx->shaderbuf[type];
-         struct fd_shaderimg_stateobj *img = &ctx->shaderimg[type];
-
-         for (unsigned i = 0; i < mapping->num_tex; i++) {
-            unsigned idx = mapping->tex_to_image[i];
-            if (idx & IBO_SSBO) {
-               fd6_emit_ssbo_tex(ctx, state, &buf->sb[idx & ~IBO_SSBO]);
-            } else {
-               fd6_emit_image_tex(ctx, state, &img->si[idx]);
-            }
-         }
-
-         if (v->fb_read) {
-            fd6_emit_fb_tex(state, ctx);
-         }
-      }
-
-      /* emit texture state: */
-      OUT_PKT7(ring, opcode, 3);
-      OUT_RING(ring, CP_LOAD_STATE6_0_DST_OFF(0) |
-                        CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
-                        CP_LOAD_STATE6_0_STATE_SRC(SS6_INDIRECT) |
-                        CP_LOAD_STATE6_0_STATE_BLOCK(sb) |
-                        CP_LOAD_STATE6_0_NUM_UNIT(num_merged_textures));
-      OUT_RB(ring, state); /* SRC_ADDR_LO/HI */
-
-      OUT_PKT4(ring, tex_const_reg, 2);
-      OUT_RB(ring, state); /* SRC_ADDR_LO/HI */
-
-      fd_ringbuffer_del(state);
-   }
-
-   OUT_PKT4(ring, tex_count_reg, 1);
-   OUT_RING(ring, num_merged_textures);
-}
-
-/* Emits combined texture state, which also includes any Image/SSBO
- * related texture state merged in (because we must have all texture
- * state for a given stage in a single buffer).  In the fast-path, if
- * we don't need to merge in any image/ssbo related texture state, we
- * just use cached texture stateobj.  Otherwise we generate a single-
- * use stateobj.
- *
- * TODO Is there some sane way we can still use cached texture stateobj
- * with image/ssbo in use?
+/* Helper to get tex stateobj.  Because resource rebind on other
+ * contexts can race with us and cause the texture state to be
+ * destroyed, a bit of extra care is needed to ensure we own the
+ * state reference before dropping the tex reference.  This helper
+ * handles that.
  */
-static void
-fd6_emit_combined_textures(struct fd6_emit *emit,
-                           enum pipe_shader_type type,
-                           const struct ir3_shader_variant *v) assert_dt
+static struct fd_ringbuffer *
+tex_state(struct fd_context *ctx, enum pipe_shader_type type)
+   assert_dt
 {
-   struct fd_context *ctx = emit->ctx;
+   if (ctx->tex[type].num_textures == 0)
+      return NULL;
 
-   static const struct {
-      enum fd6_state_id state_id;
-      unsigned enable_mask;
-   } s[PIPE_SHADER_TYPES] = {
-      [PIPE_SHADER_VERTEX] = {FD6_GROUP_VS_TEX, ENABLE_ALL},
-      [PIPE_SHADER_TESS_CTRL] = {FD6_GROUP_HS_TEX, ENABLE_ALL},
-      [PIPE_SHADER_TESS_EVAL] = {FD6_GROUP_DS_TEX, ENABLE_ALL},
-      [PIPE_SHADER_GEOMETRY] = {FD6_GROUP_GS_TEX, ENABLE_ALL},
-      [PIPE_SHADER_FRAGMENT] = {FD6_GROUP_FS_TEX, ENABLE_DRAW},
-   };
+   struct fd6_texture_state *tex = fd6_texture_state(ctx, type, &ctx->tex[type]);
+   struct fd_ringbuffer *state = fd_ringbuffer_ref(tex->stateobj);
 
-   assert(s[type].state_id);
+   fd6_texture_state_reference(&tex, NULL);
 
-   if (!v->image_mapping.num_tex && !v->fb_read) {
-      /* in the fast-path, when we don't have to mix in any image/SSBO
-       * related texture state, we can just lookup the stateobj and
-       * re-emit that:
-       *
-       * Also, framebuffer-read is a slow-path because an extra
-       * texture needs to be inserted.
-       */
-      if ((ctx->dirty_shader[type] & FD_DIRTY_SHADER_TEX) &&
-          ctx->tex[type].num_textures > 0) {
-         struct fd6_texture_state *tex =
-            fd6_texture_state(ctx, type, &ctx->tex[type]);
-
-         fd6_emit_add_group(emit, tex->stateobj, s[type].state_id,
-                            s[type].enable_mask);
-
-         fd6_texture_state_reference(&tex, NULL);
-      }
-   } else {
-      /* In the slow-path, create a one-shot texture state object
-       * if either TEX|PROG|SSBO|IMAGE state is dirty:
-       */
-      if ((ctx->dirty_shader[type] &
-           (FD_DIRTY_SHADER_TEX | FD_DIRTY_SHADER_PROG | FD_DIRTY_SHADER_IMAGE |
-            FD_DIRTY_SHADER_SSBO)) ||
-          v->fb_read) {
-         struct fd_texture_stateobj *tex = &ctx->tex[type];
-         struct fd_ringbuffer *stateobj = fd_submit_new_ringbuffer(
-            ctx->batch->submit, 0x1000, FD_RINGBUFFER_STREAMING);
-
-         fd6_emit_textures(ctx, stateobj, type, tex, v);
-
-         fd6_emit_take_group(emit, stateobj, s[type].state_id,
-                             s[type].enable_mask);
-      }
-   }
+   return state;
 }
 
 static struct fd_ringbuffer *
 build_vbo_state(struct fd6_emit *emit) assert_dt
 {
-   const struct fd_vertex_state *vtx = emit->vtx;
+   const struct fd_vertex_state *vtx = &emit->ctx->vtx;
 
    /* Limit PKT4 size, because at max count (32) we would overflow the
     * size of the PKT4 size field:
@@ -424,11 +162,12 @@ compute_lrz_state(struct fd6_emit *emit) assert_dt
    struct fd6_blend_stateobj *blend = fd6_blend_stateobj(ctx->blend);
    struct fd6_zsa_stateobj *zsa = fd6_zsa_stateobj(ctx->zsa);
    struct fd_resource *rsc = fd_resource(pfb->zsbuf->texture);
+   bool reads_dest = blend->reads_dest;
 
    lrz = zsa->lrz;
 
    /* normalize lrz state: */
-   if (blend->reads_dest || fs->writes_pos || fs->no_earlyz || fs->has_kill ||
+   if (reads_dest || fs->writes_pos || fs->no_earlyz || fs->has_kill ||
        blend->base.alpha_to_coverage) {
       lrz.write = false;
    }
@@ -438,8 +177,39 @@ compute_lrz_state(struct fd6_emit *emit) assert_dt
     * isn't known when blend CSO is constructed so we need to handle
     * that here.
     */
-   if (ctx->all_mrt_channel_mask & ~blend->all_mrt_write_mask)
+   if (ctx->all_mrt_channel_mask & ~blend->all_mrt_write_mask) {
       lrz.write = false;
+      reads_dest = true;
+   }
+
+   /* Writing depth with blend enabled means we need to invalidate LRZ,
+    * because the written depth value could mean that a later draw with
+    * depth enabled (where we would otherwise write LRZ) could have
+    * fragments which don't pass the depth test due to this draw.  For
+    * example, consider this sequence of draws, with depth mode GREATER:
+    *
+    *   draw A:
+    *     z=0.1, fragments pass
+    *   draw B:
+    *     z=0.4, fragments pass
+    *     blend enabled (LRZ write disabled)
+    *     depth write enabled
+    *   draw C:
+    *     z=0.2, fragments don't pass
+    *     blend disabled
+    *     depth write enabled
+    *
+    * Normally looking at the state in draw C, we'd assume we could
+    * enable LRZ write.  But this would cause early-z/lrz to discard
+    * fragments from draw A which should be visible due to draw B.
+    */
+   if (reads_dest && zsa->writes_z && ctx->screen->conservative_lrz) {
+      if (!zsa->perf_warn_blend && rsc->lrz_valid) {
+         perf_debug_ctx(ctx, "Invalidating LRZ due to blend+depthwrite");
+         zsa->perf_warn_blend = true;
+      }
+      rsc->lrz_valid = false;
+   }
 
    /* if we change depthfunc direction, bail out on using LRZ.  The
     * LRZ buffer encodes a min/max depth value per block, but if
@@ -448,6 +218,10 @@ compute_lrz_state(struct fd6_emit *emit) assert_dt
     */
    if (zsa->base.depth_enabled && (rsc->lrz_direction != FD_LRZ_UNKNOWN) &&
        (rsc->lrz_direction != lrz.direction)) {
+      if (!zsa->perf_warn_zdir && rsc->lrz_valid) {
+         perf_debug_ctx(ctx, "Invalidating LRZ due to depth test direction change");
+         zsa->perf_warn_zdir = true;
+      }
       rsc->lrz_valid = false;
    }
 
@@ -604,51 +378,6 @@ build_blend_color(struct fd6_emit *emit) assert_dt
    return ring;
 }
 
-static struct fd_ringbuffer *
-build_ibo(struct fd6_emit *emit) assert_dt
-{
-   struct fd_context *ctx = emit->ctx;
-
-   if (emit->hs) {
-      assert(ir3_shader_nibo(emit->hs) == 0);
-      assert(ir3_shader_nibo(emit->ds) == 0);
-   }
-   if (emit->gs) {
-      assert(ir3_shader_nibo(emit->gs) == 0);
-   }
-
-   unsigned nibo = ir3_shader_nibo(emit->fs);
-
-   if (nibo == 0)
-      return NULL;
-
-   struct fd_ringbuffer *ibo_state =
-      fd6_build_ibo_state(ctx, emit->fs, PIPE_SHADER_FRAGMENT);
-   struct fd_ringbuffer *ring = fd_submit_new_ringbuffer(
-      ctx->batch->submit, 0x100, FD_RINGBUFFER_STREAMING);
-
-   OUT_PKT7(ring, CP_LOAD_STATE6, 3);
-   OUT_RING(ring, CP_LOAD_STATE6_0_DST_OFF(0) |
-                     CP_LOAD_STATE6_0_STATE_TYPE(ST6_SHADER) |
-                     CP_LOAD_STATE6_0_STATE_SRC(SS6_INDIRECT) |
-                     CP_LOAD_STATE6_0_STATE_BLOCK(SB6_IBO) |
-                     CP_LOAD_STATE6_0_NUM_UNIT(nibo));
-   OUT_RB(ring, ibo_state);
-
-   OUT_PKT4(ring, REG_A6XX_SP_IBO, 2);
-   OUT_RB(ring, ibo_state);
-
-   /* TODO if we used CP_SET_DRAW_STATE for compute shaders, we could
-    * de-duplicate this from program->config_stateobj
-    */
-   OUT_PKT4(ring, REG_A6XX_SP_IBO_COUNT, 1);
-   OUT_RING(ring, nibo);
-
-   fd_ringbuffer_del(ibo_state);
-
-   return ring;
-}
-
 static void
 fd6_emit_streamout(struct fd_ringbuffer *ring, struct fd6_emit *emit) assert_dt
 {
@@ -656,8 +385,7 @@ fd6_emit_streamout(struct fd_ringbuffer *ring, struct fd6_emit *emit) assert_dt
    const struct fd6_program_state *prog = fd6_emit_get_prog(emit);
    const struct ir3_stream_output_info *info = prog->stream_output;
    struct fd_streamout_stateobj *so = &ctx->streamout;
-
-   emit->streamout_mask = 0;
+   unsigned streamout_mask = 0;
 
    if (!info)
       return;
@@ -701,18 +429,17 @@ fd6_emit_streamout(struct fd_ringbuffer *ring, struct fd6_emit *emit) assert_dt
 
       so->reset &= ~(1 << i);
 
-      emit->streamout_mask |= (1 << i);
+      streamout_mask |= (1 << i);
    }
 
-   if (emit->streamout_mask) {
-      fd6_emit_add_group(emit, prog->streamout_stateobj, FD6_GROUP_SO,
-                         ENABLE_ALL);
+   if (streamout_mask) {
+      fd6_state_add_group(&emit->state, prog->streamout_stateobj, FD6_GROUP_SO);
    } else if (ctx->last.streamout_mask != 0) {
       /* If we transition from a draw with streamout to one without, turn
        * off streamout.
        */
-      fd6_emit_add_group(emit, fd6_context(ctx)->streamout_disable_stateobj,
-                         FD6_GROUP_SO, ENABLE_ALL);
+      fd6_state_add_group(&emit->state, fd6_context(ctx)->streamout_disable_stateobj,
+                         FD6_GROUP_SO);
    }
 
    /* Make sure that any use of our TFB outputs (indirect draw source or shader
@@ -732,7 +459,8 @@ fd6_emit_streamout(struct fd_ringbuffer *ring, struct fd6_emit *emit) assert_dt
    if (ctx->dirty & FD_DIRTY_STREAMOUT)
       fd_wfi(ctx->batch, ring);
 
-   ctx->last.streamout_mask = emit->streamout_mask;
+   ctx->last.streamout_mask = streamout_mask;
+   emit->streamout_mask = streamout_mask;
 }
 
 /**
@@ -742,7 +470,7 @@ static void
 fd6_emit_non_ring(struct fd_ringbuffer *ring, struct fd6_emit *emit) assert_dt
 {
    struct fd_context *ctx = emit->ctx;
-   const enum fd_dirty_3d_state dirty = emit->dirty;
+   const enum fd_dirty_3d_state dirty = ctx->dirty;
    unsigned num_viewports = emit->prog->num_viewports;
 
    if (dirty & FD_DIRTY_STENCIL_REF) {
@@ -802,203 +530,177 @@ fd6_emit_non_ring(struct fd_ringbuffer *ring, struct fd6_emit *emit) assert_dt
 }
 
 void
-fd6_emit_state(struct fd_ringbuffer *ring, struct fd6_emit *emit)
+fd6_emit_3d_state(struct fd_ringbuffer *ring, struct fd6_emit *emit)
 {
    struct fd_context *ctx = emit->ctx;
    struct pipe_framebuffer_state *pfb = &ctx->batch->framebuffer;
    const struct fd6_program_state *prog = fd6_emit_get_prog(emit);
-   const struct ir3_shader_variant *vs = emit->vs;
-   const struct ir3_shader_variant *hs = emit->hs;
-   const struct ir3_shader_variant *ds = emit->ds;
-   const struct ir3_shader_variant *gs = emit->gs;
    const struct ir3_shader_variant *fs = emit->fs;
 
    emit_marker6(ring, 5);
 
-   /* NOTE: we track fb_read differently than _BLEND_ENABLED since we
-    * might decide to do sysmem in some cases when blend is enabled:
+   /* Special case, we need to re-emit bindless FS state w/ the
+    * fb-read state appended:
     */
-   if (fs->fb_read)
+   if ((emit->dirty_groups & BIT(FD6_GROUP_PROG)) && fs->fb_read) {
       ctx->batch->gmem_reason |= FD_GMEM_FB_READ;
+      emit->dirty_groups |= BIT(FD6_GROUP_FS_BINDLESS);
+   }
 
    u_foreach_bit (b, emit->dirty_groups) {
       enum fd6_state_id group = b;
       struct fd_ringbuffer *state = NULL;
-      uint32_t enable_mask = ENABLE_ALL;
 
       switch (group) {
       case FD6_GROUP_VTXSTATE:
          state = fd6_vertex_stateobj(ctx->vtx.vtx)->stateobj;
-         fd_ringbuffer_ref(state);
+         fd6_state_add_group(&emit->state, state, FD6_GROUP_VTXSTATE);
          break;
       case FD6_GROUP_VBO:
          state = build_vbo_state(emit);
+         fd6_state_take_group(&emit->state, state, FD6_GROUP_VBO);
          break;
       case FD6_GROUP_ZSA:
          state = fd6_zsa_state(
             ctx,
             util_format_is_pure_integer(pipe_surface_format(pfb->cbufs[0])),
             fd_depth_clamp_enabled(ctx));
-         fd_ringbuffer_ref(state);
+         fd6_state_add_group(&emit->state, state, FD6_GROUP_ZSA);
          break;
       case FD6_GROUP_LRZ:
          state = build_lrz(emit);
-         if (!state)
-            continue;
+         if (state)
+            fd6_state_take_group(&emit->state, state, FD6_GROUP_LRZ);
          break;
       case FD6_GROUP_SCISSOR:
          state = build_scissor(emit);
+         fd6_state_take_group(&emit->state, state, FD6_GROUP_SCISSOR);
          break;
       case FD6_GROUP_PROG:
-         fd6_emit_add_group(emit, prog->config_stateobj, FD6_GROUP_PROG_CONFIG,
-                            ENABLE_ALL);
-         fd6_emit_add_group(emit, prog->stateobj, FD6_GROUP_PROG, ENABLE_DRAW);
-         fd6_emit_add_group(emit, prog->binning_stateobj,
-                            FD6_GROUP_PROG_BINNING,
-                            CP_SET_DRAW_STATE__0_BINNING);
+         fd6_state_add_group(&emit->state, prog->config_stateobj,
+                             FD6_GROUP_PROG_CONFIG);
+         fd6_state_add_group(&emit->state, prog->stateobj, FD6_GROUP_PROG);
+         fd6_state_add_group(&emit->state, prog->binning_stateobj,
+                             FD6_GROUP_PROG_BINNING);
 
          /* emit remaining streaming program state, ie. what depends on
           * other emit state, so cannot be pre-baked.
           */
-         fd6_emit_take_group(emit, fd6_program_interp_state(emit),
-                             FD6_GROUP_PROG_INTERP, ENABLE_DRAW);
-         continue;
+         fd6_state_take_group(&emit->state, fd6_program_interp_state(emit),
+                              FD6_GROUP_PROG_INTERP);
+         break;
       case FD6_GROUP_RASTERIZER:
          state = fd6_rasterizer_state(ctx, emit->primitive_restart);
-         fd_ringbuffer_ref(state);
+         fd6_state_add_group(&emit->state, state, FD6_GROUP_RASTERIZER);
          break;
       case FD6_GROUP_PROG_FB_RAST:
          state = build_prog_fb_rast(emit);
+         fd6_state_take_group(&emit->state, state, FD6_GROUP_PROG_FB_RAST);
          break;
       case FD6_GROUP_BLEND:
          state = fd6_blend_variant(ctx->blend, pfb->samples, ctx->sample_mask)
                     ->stateobj;
-         fd_ringbuffer_ref(state);
+         fd6_state_add_group(&emit->state, state, FD6_GROUP_BLEND);
          break;
       case FD6_GROUP_BLEND_COLOR:
          state = build_blend_color(emit);
+         fd6_state_take_group(&emit->state, state, FD6_GROUP_BLEND_COLOR);
          break;
-      case FD6_GROUP_IBO:
-         state = build_ibo(emit);
+      case FD6_GROUP_VS_BINDLESS:
+         state = fd6_build_bindless_state(ctx, PIPE_SHADER_VERTEX, false);
+         fd6_state_take_group(&emit->state, state, FD6_GROUP_VS_BINDLESS);
+         break;
+      case FD6_GROUP_HS_BINDLESS:
+         state = fd6_build_bindless_state(ctx, PIPE_SHADER_TESS_CTRL, false);
+         fd6_state_take_group(&emit->state, state, FD6_GROUP_HS_BINDLESS);
+         break;
+      case FD6_GROUP_DS_BINDLESS:
+         state = fd6_build_bindless_state(ctx, PIPE_SHADER_TESS_EVAL, false);
+         fd6_state_take_group(&emit->state, state, FD6_GROUP_DS_BINDLESS);
+         break;
+      case FD6_GROUP_GS_BINDLESS:
+         state = fd6_build_bindless_state(ctx, PIPE_SHADER_GEOMETRY, false);
+         fd6_state_take_group(&emit->state, state, FD6_GROUP_GS_BINDLESS);
+         break;
+      case FD6_GROUP_FS_BINDLESS:
+         state = fd6_build_bindless_state(ctx, PIPE_SHADER_FRAGMENT, fs->fb_read);
+         fd6_state_take_group(&emit->state, state, FD6_GROUP_FS_BINDLESS);
          break;
       case FD6_GROUP_CONST:
          state = fd6_build_user_consts(emit);
+         fd6_state_take_group(&emit->state, state, FD6_GROUP_CONST);
          break;
       case FD6_GROUP_DRIVER_PARAMS:
          state = fd6_build_driver_params(emit);
+         fd6_state_take_group(&emit->state, state, FD6_GROUP_DRIVER_PARAMS);
          break;
       case FD6_GROUP_PRIMITIVE_PARAMS:
          state = fd6_build_tess_consts(emit);
+         fd6_state_take_group(&emit->state, state, FD6_GROUP_PRIMITIVE_PARAMS);
          break;
       case FD6_GROUP_VS_TEX:
-         fd6_emit_combined_textures(emit, PIPE_SHADER_VERTEX, vs);
-         continue;
+         state = tex_state(ctx, PIPE_SHADER_VERTEX);
+         fd6_state_take_group(&emit->state, state, FD6_GROUP_VS_TEX);
+         break;
       case FD6_GROUP_HS_TEX:
-         if (hs) {
-            fd6_emit_combined_textures(emit, PIPE_SHADER_TESS_CTRL, hs);
-         }
-         continue;
+         state = tex_state(ctx, PIPE_SHADER_TESS_CTRL);
+         fd6_state_take_group(&emit->state, state, FD6_GROUP_HS_TEX);
+         break;
       case FD6_GROUP_DS_TEX:
-         if (ds) {
-            fd6_emit_combined_textures(emit, PIPE_SHADER_TESS_EVAL, ds);
-         }
-         continue;
+         state = tex_state(ctx, PIPE_SHADER_TESS_EVAL);
+         fd6_state_take_group(&emit->state, state, FD6_GROUP_DS_TEX);
+         break;
       case FD6_GROUP_GS_TEX:
-         if (gs) {
-            fd6_emit_combined_textures(emit, PIPE_SHADER_GEOMETRY, gs);
-         }
-         continue;
+         state = tex_state(ctx, PIPE_SHADER_GEOMETRY);
+         fd6_state_take_group(&emit->state, state, FD6_GROUP_GS_TEX);
+         break;
       case FD6_GROUP_FS_TEX:
-         fd6_emit_combined_textures(emit, PIPE_SHADER_FRAGMENT, fs);
-         continue;
+         state = tex_state(ctx, PIPE_SHADER_FRAGMENT);
+         fd6_state_take_group(&emit->state, state, FD6_GROUP_FS_TEX);
+         break;
       case FD6_GROUP_SO:
          fd6_emit_streamout(ring, emit);
-         continue;
+         break;
       case FD6_GROUP_NON_GROUP:
          fd6_emit_non_ring(ring, emit);
-         continue;
+         break;
       default:
-         unreachable("bad state group");
+         break;
       }
-
-      fd6_emit_take_group(emit, state, group, enable_mask);
    }
 
-   if (emit->num_groups > 0) {
-      OUT_PKT7(ring, CP_SET_DRAW_STATE, 3 * emit->num_groups);
-      for (unsigned i = 0; i < emit->num_groups; i++) {
-         struct fd6_state_group *g = &emit->groups[i];
-         unsigned n = g->stateobj ? fd_ringbuffer_size(g->stateobj) / 4 : 0;
-
-         assert((g->enable_mask & ~ENABLE_ALL) == 0);
-
-         if (n == 0) {
-            OUT_RING(ring, CP_SET_DRAW_STATE__0_COUNT(0) |
-                              CP_SET_DRAW_STATE__0_DISABLE | g->enable_mask |
-                              CP_SET_DRAW_STATE__0_GROUP_ID(g->group_id));
-            OUT_RING(ring, 0x00000000);
-            OUT_RING(ring, 0x00000000);
-         } else {
-            OUT_RING(ring, CP_SET_DRAW_STATE__0_COUNT(n) | g->enable_mask |
-                              CP_SET_DRAW_STATE__0_GROUP_ID(g->group_id));
-            OUT_RB(ring, g->stateobj);
-         }
-
-         if (g->stateobj)
-            fd_ringbuffer_del(g->stateobj);
-      }
-      emit->num_groups = 0;
-   }
+   fd6_state_emit(&emit->state, ring);
 }
 
 void
 fd6_emit_cs_state(struct fd_context *ctx, struct fd_ringbuffer *ring,
                   struct ir3_shader_variant *cp)
 {
-   enum fd_dirty_shader_state dirty = ctx->dirty_shader[PIPE_SHADER_COMPUTE];
+   struct fd6_state state = {};
 
-   if (dirty & (FD_DIRTY_SHADER_TEX | FD_DIRTY_SHADER_PROG |
-                FD_DIRTY_SHADER_IMAGE | FD_DIRTY_SHADER_SSBO)) {
-      struct fd_texture_stateobj *tex = &ctx->tex[PIPE_SHADER_COMPUTE];
+   u_foreach_bit (b, ctx->gen_dirty) {
+      enum fd6_state_id group = b;
 
-      fd6_emit_textures(ctx, ring, PIPE_SHADER_COMPUTE, tex, cp);
-
-      OUT_PKT4(ring, REG_A6XX_SP_VS_TEX_COUNT, 1);
-      OUT_RING(ring, 0);
-
-      OUT_PKT4(ring, REG_A6XX_SP_HS_TEX_COUNT, 1);
-      OUT_RING(ring, 0);
-
-      OUT_PKT4(ring, REG_A6XX_SP_DS_TEX_COUNT, 1);
-      OUT_RING(ring, 0);
-
-      OUT_PKT4(ring, REG_A6XX_SP_GS_TEX_COUNT, 1);
-      OUT_RING(ring, 0);
-
-      OUT_PKT4(ring, REG_A6XX_SP_FS_TEX_COUNT, 1);
-      OUT_RING(ring, 0);
+      switch (group) {
+      case FD6_GROUP_CS_TEX:
+         fd6_state_take_group(
+               &state,
+               tex_state(ctx, PIPE_SHADER_COMPUTE),
+               FD6_GROUP_CS_TEX);
+         break;
+      case FD6_GROUP_CS_BINDLESS:
+         fd6_state_take_group(
+               &state,
+               fd6_build_bindless_state(ctx, PIPE_SHADER_COMPUTE, false),
+               FD6_GROUP_CS_BINDLESS);
+         break;
+      default:
+         /* State-group unused for compute shaders */
+         break;
+      }
    }
 
-   if (dirty & (FD_DIRTY_SHADER_SSBO | FD_DIRTY_SHADER_IMAGE)) {
-      struct fd_ringbuffer *state =
-         fd6_build_ibo_state(ctx, cp, PIPE_SHADER_COMPUTE);
-
-      OUT_PKT7(ring, CP_LOAD_STATE6_FRAG, 3);
-      OUT_RING(ring, CP_LOAD_STATE6_0_DST_OFF(0) |
-                        CP_LOAD_STATE6_0_STATE_TYPE(ST6_IBO) |
-                        CP_LOAD_STATE6_0_STATE_SRC(SS6_INDIRECT) |
-                        CP_LOAD_STATE6_0_STATE_BLOCK(SB6_CS_SHADER) |
-                        CP_LOAD_STATE6_0_NUM_UNIT(ir3_shader_nibo(cp)));
-      OUT_RB(ring, state);
-
-      OUT_PKT4(ring, REG_A6XX_SP_CS_IBO, 2);
-      OUT_RB(ring, state);
-
-      OUT_PKT4(ring, REG_A6XX_SP_CS_IBO_COUNT, 1);
-      OUT_RING(ring, ir3_shader_nibo(cp));
-
-      fd_ringbuffer_del(state);
-   }
+   fd6_state_emit(&state, ring);
 }
 
 /* emit setup at begin of new cmdstream buffer (don't rely on previous
@@ -1173,59 +875,10 @@ fd6_mem_to_mem(struct fd_ringbuffer *ring, struct pipe_resource *dst,
    }
 }
 
-/* this is *almost* the same as fd6_cache_flush().. which I guess
- * could be re-worked to be something a bit more generic w/ param
- * indicating what needs to be flushed..  although that would mean
- * figuring out which events trigger what state to flush..
- */
-static void
-fd6_framebuffer_barrier(struct fd_context *ctx) assert_dt
-{
-   struct fd6_context *fd6_ctx = fd6_context(ctx);
-   struct fd_batch *batch = fd_context_batch_locked(ctx);
-   struct fd_ringbuffer *ring = batch->draw;
-   unsigned seqno;
-
-   fd_batch_needs_flush(batch);
-
-   seqno = fd6_event_write(batch, ring, RB_DONE_TS, true);
-
-   OUT_PKT7(ring, CP_WAIT_REG_MEM, 6);
-   OUT_RING(ring, CP_WAIT_REG_MEM_0_FUNCTION(WRITE_EQ) |
-                     CP_WAIT_REG_MEM_0_POLL_MEMORY);
-   OUT_RELOC(ring, control_ptr(fd6_ctx, seqno));
-   OUT_RING(ring, CP_WAIT_REG_MEM_3_REF(seqno));
-   OUT_RING(ring, CP_WAIT_REG_MEM_4_MASK(~0));
-   OUT_RING(ring, CP_WAIT_REG_MEM_5_DELAY_LOOP_CYCLES(16));
-
-   fd6_event_write(batch, ring, PC_CCU_FLUSH_COLOR_TS, true);
-   fd6_event_write(batch, ring, PC_CCU_FLUSH_DEPTH_TS, true);
-
-   seqno = fd6_event_write(batch, ring, CACHE_FLUSH_TS, true);
-   fd_wfi(batch, ring);
-
-   fd6_event_write(batch, ring, CACHE_INVALIDATE, false);
-
-   OUT_PKT7(ring, CP_WAIT_MEM_GTE, 4);
-   OUT_RING(ring, CP_WAIT_MEM_GTE_0_RESERVED(0));
-   OUT_RELOC(ring, control_ptr(fd6_ctx, seqno));
-   OUT_RING(ring, CP_WAIT_MEM_GTE_3_REF(seqno));
-
-   fd_batch_unlock_submit(batch);
-   fd_batch_reference(&batch, NULL);
-}
-
 void
 fd6_emit_init_screen(struct pipe_screen *pscreen)
 {
    struct fd_screen *screen = fd_screen(pscreen);
    screen->emit_ib = fd6_emit_ib;
    screen->mem_to_mem = fd6_mem_to_mem;
-}
-
-void
-fd6_emit_init(struct pipe_context *pctx) disable_thread_safety_analysis
-{
-   struct fd_context *ctx = fd_context(pctx);
-   ctx->framebuffer_barrier = fd6_framebuffer_barrier;
 }

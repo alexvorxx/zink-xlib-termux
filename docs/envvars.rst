@@ -30,11 +30,6 @@ LibGL environment variables
    if set to ``true``, do not use DrawArrays GLX protocol (for
    debugging)
 
-.. envvar:: LIBGL_SHOW_FPS
-
-   print framerate to stdout based on the number of ``glXSwapBuffers``
-   calls per second.
-
 .. envvar:: LIBGL_DRI2_DISABLE
 
    disable DRI2 if set to ``true``.
@@ -90,6 +85,12 @@ Core Mesa environment variables
       create a debug context (see ``GLX_CONTEXT_DEBUG_BIT_ARB``) and
       print error and performance messages to stderr (or
       ``MESA_LOG_FILE``).
+
+.. envvar:: MESA_PROCESS_NAME
+
+   if set, overrides the process name string used internally for various
+   purposes (e.g. for driconf option matching, logging, artifact storage,
+   etc.).
 
 .. envvar:: MESA_LOG_FILE
 
@@ -172,6 +173,12 @@ Core Mesa environment variables
    features of the given language version if it's higher than what's
    normally reported. (for developers only)
 
+.. envvar:: MESA_DRICONF_EXECUTABLE_OVERRIDE
+
+   if set, overrides the "executable" string used specifically for driconf
+   option matching. This takes higher precedence over more general process
+   name override (e.g. MESA_PROCESS_NAME).
+
 .. envvar:: MESA_SHADER_CACHE_DISABLE
 
    if set to ``true``, disables the on-disk shader cache. If set to
@@ -205,6 +212,76 @@ Core Mesa environment variables
 
    if set to ``true``, keeps hit/miss statistics for the shader cache.
    These statistics are printed when the app terminates.
+
+.. envvar:: MESA_DISK_CACHE_SINGLE_FILE
+
+   if set to 1, enables the single file Fossilize DB on-disk shader
+   cache implementation instead of the default multi-file cache
+   implementation. This implementation reduces the overall disk usage by
+   the shader cache and also allows for loading of precompiled cache
+   DBs via :envvar:`MESA_DISK_CACHE_READ_ONLY_FOZ_DBS` or
+   :envvar:`MESA_DISK_CACHE_READ_ONLY_FOZ_DBS_DYNAMIC_LIST`. This
+   implementation does not support cache size limits via
+   :envvar:`MESA_SHADER_CACHE_MAX_SIZE`. If
+   :envvar:`MESA_SHADER_CACHE_DIR` is not set, the cache will be stored
+   in ``$XDG_CACHE_HOME/mesa_shader_cache_sf`` (if that variable is set)
+   or else within ``.cache/mesa_shader_cache_sf`` within the user's home
+   directory.
+
+.. envvar:: MESA_DISK_CACHE_READ_ONLY_FOZ_DBS
+
+   if set with envvar:`MESA_DISK_CACHE_SINGLE_FILE` enabled, references
+   a string of comma separated file paths to read only Fossilize DB
+   shader caches for loading at initialization. The file paths are
+   relative to the cache directory and do not include suffixes,
+   referencing both the cache DB and its index file. E.g.
+   MESA_DISK_CACHE_SINGLE_FILE=filename1 refers to filename1.foz and
+   filename1_idx.foz. A limit of 8 DBs can be loaded and this limit is
+   shared with :envvar:`MESA_DISK_CACHE_READ_ONLY_FOZ_DBS_DYNAMIC_LIST.`
+
+.. envvar:: MESA_DISK_CACHE_DATABASE
+
+   if set to 1, enables the Mesa-DB single file on-disk shader cache
+   implementation instead of the default multi-file cache implementation.
+   Like :envvar:`MESA_DISK_CACHE_SINGLE_FILE`, Mesa-DB reduces overall
+   disk usage but Mesa-DB supports cache size limits via
+   :envvar:`MESA_SHADER_CACHE_MAX_SIZE`. If
+   :envvar:`MESA_SHADER_CACHE_DIR` is not set, the cache will be stored
+   in ``$XDG_CACHE_HOME/mesa_shader_cache_db`` (if that variable is set)
+   or else within ``.cache/mesa_shader_cache_db`` within the user's home
+   directory.
+
+.. envvar:: MESA_DISK_CACHE_DATABASE_NUM_PARTS
+
+   specifies number of mesa-db cache parts, default is 50.
+
+.. envvar:: MESA_DISK_CACHE_DATABASE_EVICTION_SCORE_2X_PERIOD
+
+   Mesa-DB cache eviction algorithm calculates weighted score for the
+   cache items. The weight is doubled based on the last access time of
+   cache entry. By default period of weight doubling is set to one month.
+   Period value is given in seconds.
+
+.. envvar:: MESA_DISK_CACHE_READ_ONLY_FOZ_DBS_DYNAMIC_LIST
+
+   if set with :envvar:`MESA_DISK_CACHE_SINGLE_FILE` enabled, references
+   a text file that contains a new-line separated list of read only
+   Fossilize DB shader caches to load. The list file is modifiable at
+   runtime to allow for loading read only caches after initialization
+   unlike :envvar:`MESA_DISK_CACHE_READ_ONLY_FOZ_DBS`. This variable
+   takes an absolute path to the list file. The list file must exist at
+   initialization for updating to occur. Cache files in the list take
+   relative paths to the current cache directory like
+   :envvar:`MESA_DISK_CACHE_READ_ONLY_FOZ_DBS`. A limit of 8 DBs can be
+   loaded and this limit is shared with
+   :envvar:`MESA_DISK_CACHE_READ_ONLY_FOZ_DBS`.
+
+.. envvar:: MESA_DISK_CACHE_COMBINE_RW_WITH_RO_FOZ
+
+   if set to 1, enables simultaneous use of :abbr:`RW (read-write)` and
+   :abbr:`RW (read-write)` Fossilize DB caches. At first, data will be
+   retrieved from the RO Fossilize cache. If data isn't found in the RO
+   cache, then it will be retrieved from the RW cache.
 
 .. envvar:: MESA_GLSL
 
@@ -464,6 +541,25 @@ Intel driver environment variables
    ``wm``
       dump shader assembly for fragment shaders (same as ``fs``)
 
+.. envvar:: INTEL_DECODE
+
+   a comma-separated list of enable/disable flags configuring the
+   output produced by ``INTEL_DEBUG=bat`` (use with
+   ``INTEL_DECODE=+color,-floats``) :
+
+   ``color``
+      print colored output
+
+   ``floats``
+      try to decode floating point data in buffers
+
+   ``full``
+      print additional custom information for instructions (usually
+      pulling more information by inspecting memory)
+
+   ``offsets``
+      print offsets of instructions
+
 .. envvar:: INTEL_MEASURE
 
    Collects GPU timestamps over common intervals, and generates a CSV report
@@ -548,6 +644,43 @@ Intel driver environment variables
    overrode shader with sha1 <SHA-1>" in stderr replacing the original
    assembly.
 
+.. envvar:: INTEL_SIMD_DEBUG
+
+   a comma-separated list of named flags, which control simd dispatch widths:
+
+   ``fs8``
+      allow generation of SIMD8 fragment shader
+   ``fs16``
+      allow generation of SIMD16 fragment shader
+   ``fs32``
+      allow generation of SIMD32 fragment shader
+   ``cs8``
+      allow generation of SIMD8 compute shader
+   ``cs16``
+      allow generation of SIMD16 compute shader
+   ``cs32``
+      allow generation of SIMD32 compute shader
+   ``ts8``
+      allow generation of SIMD8 task shader
+   ``ts16``
+      allow generation of SIMD16 task shader
+   ``ts32``
+      allow generation of SIMD32 task shader
+   ``ms8``
+      allow generation of SIMD8 mesh shader
+   ``ms16``
+      allow generation of SIMD16 mesh shader
+   ``ms32``
+      allow generation of SIMD32 mesh shader
+   ``rt8``
+      allow generation of SIMD8 ray-tracing shader
+   ``rt16``
+      allow generation of SIMD16 ray-tracing shader
+   ``rt32``
+      allow generation of SIMD32 ray-tracing shader
+
+   If none of widths for particular shader stage was specified, then all
+   widths are allowed.
 
 DRI environment variables
 -------------------------
@@ -871,6 +1004,19 @@ VC4 driver environment variables
    a comma-separated list of named flags, which do various things. Use
    ``VC4_DEBUG=help`` to print a list of available options.
 
+Shared Vulkan driver environment variables
+------------------------------------------
+
+.. envvar:: MESA_VK_MEMORY_TRACE
+   enable memory tracing and exporting RMV captures (requires the
+   ``scripts/setup.sh`` script in the Radeon Developer Tools folder to be
+   run beforehand). ``MESA_VK_MEMORY_TRACE=n`` dumps data
+   after n frames. Currently, only RADV implements this.
+.. envvar:: MESA_VK_MEMORY_TRACE_TRIGGER
+   enable trigger file-based memory tracing. (e.g.
+   ``export MESA_VK_MEMORY_TRACE_TRIGGER=/tmp/memory_trigger`` and then
+   ``touch /tmp/memory_trigger`` to capture a memory trace).
+   Running ``scripts/setup.sh`` beforehand is required.
 
 V3D/V3DV driver environment variables
 -------------------------------------
@@ -941,8 +1087,6 @@ RADV driver environment variables
       disable NGG for GFX10 and GFX10.3
    ``nonggc``
       disable NGG culling on GPUs where it's enabled by default (GFX10.3+ only).
-   ``nooutoforder``
-      disable out-of-order rasterization
    ``notccompatcmask``
       disable TC-compat CMASK for MSAA surfaces
    ``noumr``
@@ -958,6 +1102,8 @@ RADV driver environment variables
       dump shaders
    ``shaderstats``
       dump shader statistics
+   ``shadowregs``
+      enable register shadowing
    ``spirv``
       dump SPIR-V
    ``splitfma``
@@ -1443,12 +1589,10 @@ Asahi driver environment variables
 PowerVR driver environment variables
 ------------------------------------------------
 
-:envvar:`PVR_DEBUG`
-    A comma-separated list of debug options. Use `PVR_DEBUG=help` to
-    print a list of available options.
+.. envvar:: PVR_DEBUG
 
-Other Gallium drivers have their own environment variables. These may
-change frequently so the source code should be consulted for details.
+   A comma-separated list of debug options. Use `PVR_DEBUG=help` to
+   print a list of available options.
 
 i915 driver environment variables
 ---------------------------------
@@ -1471,3 +1615,8 @@ Freedreno driver environment variables
 .. envvar:: FD_MESA_DEBUG
 
    Debug flags for the Freedreno driver.
+
+----
+
+Other Gallium drivers have their own environment variables. These may
+change frequently so the source code should be consulted for details.

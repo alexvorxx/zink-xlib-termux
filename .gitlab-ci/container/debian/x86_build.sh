@@ -63,7 +63,8 @@ export         XORGMACROS_VERSION=util-macros-1.19.0
 
 . .gitlab-ci/container/build-mold.sh
 
-wget $XORG_RELEASES/util/$XORGMACROS_VERSION.tar.bz2
+curl -L --retry 4 -f --retry-all-errors --retry-delay 60 -O \
+  $XORG_RELEASES/util/$XORGMACROS_VERSION.tar.bz2
 tar -xvf $XORGMACROS_VERSION.tar.bz2 && rm $XORGMACROS_VERSION.tar.bz2
 cd $XORGMACROS_VERSION; ./configure; make install; cd ..
 rm -rf $XORGMACROS_VERSION
@@ -92,7 +93,7 @@ ninja install
 popd
 rm -rf DirectX-Headers
 
-pip3 install git+https://git.lavasoftware.org/lava/lavacli@3db3ddc45e5358908bc6a17448059ea2340492b7
+pip3 install lavacli==1.5.2
 
 # install bindgen
 RUSTFLAGS='-L native=/usr/local/lib' cargo install \

@@ -23,6 +23,7 @@
  */
 
 #include "nir_builder.h"
+#include "nir_xfb_info.h"
 #include "si_pipe.h"
 
 
@@ -196,7 +197,7 @@ static void si_late_optimize_16bit_samplers(struct si_screen *sscreen, nir_shade
    };
    struct nir_fold_16bit_tex_image_options fold_16bit_options = {
       .rounding_mode = nir_rounding_mode_rtne,
-      .fold_tex_dest = true,
+      .fold_tex_dest_types = nir_type_float | nir_type_uint | nir_type_int,
       .fold_image_load_store_data = true,
       .fold_srcs_options_count = has_g16 ? 2 : 1,
       .fold_srcs_options = fold_srcs_options,
@@ -264,16 +265,18 @@ static void si_lower_nir(struct si_screen *sscreen, struct nir_shader *nir)
     *   and copy-propagated
     */
 
-   static const struct nir_lower_tex_options lower_tex_options = {
+   const struct nir_lower_tex_options lower_tex_options = {
       .lower_txp = ~0u,
       .lower_txs_cube_array = true,
       .lower_invalid_implicit_lod = true,
       .lower_tg4_offsets = true,
+      .lower_to_fragment_fetch_amd = sscreen->info.gfx_level < GFX11,
    };
    NIR_PASS_V(nir, nir_lower_tex, &lower_tex_options);
 
-   static const struct nir_lower_image_options lower_image_options = {
+   const struct nir_lower_image_options lower_image_options = {
       .lower_cube_size = true,
+      .lower_to_fragment_mask_load_amd = sscreen->info.gfx_level < GFX11,
    };
    NIR_PASS_V(nir, nir_lower_image, &lower_image_options);
 
@@ -369,6 +372,10 @@ char *si_finalize_nir(struct pipe_screen *screen, void *nirptr)
 
    si_lower_nir(sscreen, nir);
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
+
+   /* Update xfb info after we did medium io lowering. */
+   if (nir->xfb_info && nir->info.outputs_written_16bit)
+      nir_gather_xfb_info_from_intrinsics(nir);
 
    if (sscreen->options.inline_uniforms)
       nir_find_inlinable_uniforms(nir);

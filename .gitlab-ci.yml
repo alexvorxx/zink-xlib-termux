@@ -20,7 +20,7 @@ variables:
   FD_FARM: "online"
   COLLABORA_FARM: "online"
   MICROSOFT_FARM: "online"
-  LIMA_FARM: "online"
+  LIMA_FARM: "offline"
   IGALIA_FARM: "online"
   ANHOLT_FARM: "online"
   VALVE_FARM: "online"
@@ -49,7 +49,7 @@ default:
 
 include:
   - project: 'freedesktop/ci-templates'
-    ref: ffe4d1b10aab7534489f0c4bbc4c5899df17d3f2
+    ref: 16bc29078de5e0a067ff84a1a199a3760d3b3811
     file:
       - '/templates/ci-fairy.yml'
   - project: 'freedesktop/ci-templates'
@@ -135,6 +135,10 @@ stages:
   extends:
     - .fdo.ci-fairy
     - .build-rules
+  artifacts:
+    expose_as: 'Documentation preview'
+    paths:
+    - public/
   script:
   - apk --no-cache add graphviz doxygen
   - pip3 install sphinx===5.1.1 breathe===4.34.0 mako===1.2.3 sphinx_rtd_theme===1.0.0
@@ -144,9 +148,6 @@ stages:
 pages:
   extends: .docs-base
   stage: deploy
-  artifacts:
-    paths:
-    - public
   needs: []
   rules:
     - !reference [.no_scheduled_pipelines-rules, rules]
@@ -175,10 +176,6 @@ test-docs-mr:
     - test-docs
   needs:
     - sanity
-  artifacts:
-    expose_as: 'Documentation preview'
-    paths:
-    - public/
   rules:
     - if: *is-pre-merge
       changes: *docs-or-ci
@@ -200,7 +197,6 @@ lincheck-docs:
 # When to automatically run the CI for build jobs
 .build-rules:
   rules:
-    - !reference [.no_scheduled_pipelines-rules, rules]
     # If any files affecting the pipeline are changed, build/test jobs run
     # automatically once all dependency jobs have passed
     - changes: &all_paths
@@ -237,7 +233,6 @@ lincheck-docs:
 
 .container-rules:
   rules:
-    - !reference [.no_scheduled_pipelines-rules, rules]
     # Run pipeline by default in the main project if any CI pipeline
     # configuration files were changed, to ensure docker images are up to date
     - if: *is-post-merge
@@ -303,10 +298,14 @@ sanity:
     reports:
       junit: check-*.xml
 
-# Rules for tests that should not block merging, but should be available to
-# optionally run with the "play" button in the UI in pre-merge non-marge
-# pipelines.  This should appear in "extends:" after any includes of
+# Temporary rules for tests that should not block merging, but should be
+# available to optionally run with the "play" button in the UI in pre-merge
+# non-marge pipelines.  This should appear in "extends:" after any includes of
 # test-source-dep.yml rules, so that these rules replace those.
+#
+# If a job is going to be manual for a long period of time, then please use a
+# driver-specific manual rules set from test-source-dep (see
+# freedreno-manual-rules, for example)
 .test-manual-mr:
   rules:
     - !reference [.no_scheduled_pipelines-rules, rules]

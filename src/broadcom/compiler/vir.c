@@ -1584,7 +1584,7 @@ v3d_attempt_compile(struct v3d_compile *c)
         }
 
         NIR_PASS(_, c->s, v3d_nir_lower_io, c);
-        NIR_PASS(_, c->s, v3d_nir_lower_txf_ms, c);
+        NIR_PASS(_, c->s, v3d_nir_lower_txf_ms);
         NIR_PASS(_, c->s, v3d_nir_lower_image_load_store);
 
         NIR_PASS(_, c->s, nir_opt_idiv_const, 8);
@@ -1853,7 +1853,8 @@ uint64_t *v3d_compile(const struct v3d_compiler *compiler,
                  */
                 if (c->compilation_result == V3D_COMPILATION_SUCCEEDED) {
                         if (c->spills == 0 ||
-                            strategies[strat].min_threads == 4) {
+                            strategies[strat].min_threads == 4 ||
+                            V3D_DBG(OPT_COMPILE_TIME)) {
                                 best_c = c;
                                 break;
                         } else if (c->spills + c->fills <

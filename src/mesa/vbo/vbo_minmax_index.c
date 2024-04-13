@@ -319,7 +319,7 @@ vbo_get_minmax_index_mapped(unsigned count, unsigned index_size,
  * If primitive restart is enabled, we need to ignore restart
  * indexes when computing min/max.
  */
-static void
+void
 vbo_get_minmax_index(struct gl_context *ctx, struct gl_buffer_object *obj,
                      const void *ptr, GLintptr offset, unsigned count,
                      unsigned index_size, bool primitive_restart,
@@ -364,6 +364,9 @@ vbo_get_minmax_indices_gallium(struct gl_context *ctx,
    info->min_index = ~0;
    info->max_index = 0;
 
+   struct gl_buffer_object *buf =
+      info->has_user_indices ? NULL : ctx->Array.VAO->IndexBufferObj;
+
    for (unsigned i = 0; i < num_draws; i++) {
       struct pipe_draw_start_count_bias draw = draws[i];
 
@@ -378,8 +381,7 @@ vbo_get_minmax_indices_gallium(struct gl_context *ctx,
          continue;
 
       unsigned tmp_min, tmp_max;
-      vbo_get_minmax_index(ctx, info->has_user_indices ?
-                              NULL : info->index.gl_bo,
+      vbo_get_minmax_index(ctx, buf,
                            info->index.user,
                            (GLintptr)draw.start * info->index_size,
                            draw.count, info->index_size,

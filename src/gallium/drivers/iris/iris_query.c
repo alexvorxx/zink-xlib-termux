@@ -156,7 +156,7 @@ iris_pipelined_write(struct iris_batch *batch,
                      enum pipe_control_flags flags,
                      unsigned offset)
 {
-   const struct intel_device_info *devinfo = &batch->screen->devinfo;
+   const struct intel_device_info *devinfo = batch->screen->devinfo;
    const unsigned optional_cs_stall =
       GFX_VER == 9 && devinfo->gt == 4 ?  PIPE_CONTROL_CS_STALL : 0;
    struct iris_bo *bo = iris_resource_bo(q->query_state_ref.res);
@@ -173,10 +173,21 @@ write_value(struct iris_context *ice, struct iris_query *q, unsigned offset)
    struct iris_bo *bo = iris_resource_bo(q->query_state_ref.res);
 
    if (!iris_is_query_pipelined(q)) {
+      enum pipe_control_flags flags = PIPE_CONTROL_CS_STALL |
+                                      PIPE_CONTROL_STALL_AT_SCOREBOARD;
+      if (batch->name == IRIS_BATCH_COMPUTE) {
+         iris_emit_pipe_control_write(batch,
+                                      "query: write immediate for compute batches",
+                                      PIPE_CONTROL_WRITE_IMMEDIATE,
+                                      bo,
+                                      offset,
+                                      0ull);
+         flags = PIPE_CONTROL_FLUSH_ENABLE;
+      }
+
       iris_emit_pipe_control_flush(batch,
                                    "query: non-pipelined snapshot write",
-                                   PIPE_CONTROL_CS_STALL |
-                                   PIPE_CONTROL_STALL_AT_SCOREBOARD);
+                                   flags);
       q->stalled = true;
    }
 
@@ -590,7 +601,7 @@ static void
 iris_check_query_no_flush(struct iris_context *ice, struct iris_query *q)
 {
    struct iris_screen *screen = (void *) ice->ctx.screen;
-   const struct intel_device_info *devinfo = &screen->devinfo;
+   const struct intel_device_info *devinfo = screen->devinfo;
 
    if (!q->ready && READ_ONCE(q->map->snapshots_landed)) {
       calculate_result_on_cpu(devinfo, q);
@@ -610,9 +621,9 @@ iris_get_query_result(struct pipe_context *ctx,
       return iris_get_monitor_result(ctx, q->monitor, wait, result->batch);
 
    struct iris_screen *screen = (void *) ctx->screen;
-   const struct intel_device_info *devinfo = &screen->devinfo;
+   const struct intel_device_info *devinfo = screen->devinfo;
 
-   if (unlikely(screen->devinfo.no_hw)) {
+   if (unlikely(screen->devinfo->no_hw)) {
       result->u64 = 0;
       return true;
    }
@@ -660,7 +671,7 @@ iris_get_query_result_resource(struct pipe_context *ctx,
    struct iris_context *ice = (void *) ctx;
    struct iris_query *q = (void *) query;
    struct iris_batch *batch = &ice->batches[q->batch_idx];
-   const struct intel_device_info *devinfo = &batch->screen->devinfo;
+   const struct intel_device_info *devinfo = batch->screen->devinfo;
    struct iris_resource *res = (void *) p_res;
    struct iris_bo *query_bo = iris_resource_bo(q->query_state_ref.res);
    struct iris_bo *dst_bo = iris_resource_bo(p_res);
@@ -707,7 +718,7 @@ iris_get_query_result_resource(struct pipe_context *ctx,
    bool predicated = !(flags & PIPE_QUERY_WAIT) && !q->stalled;
 
    struct mi_builder b;
-   mi_builder_init(&b, &batch->screen->devinfo, batch);
+   mi_builder_init(&b, batch->screen->devinfo, batch);
 
    iris_batch_sync_region_start(batch);
 
@@ -778,7 +789,7 @@ set_predicate_for_result(struct iris_context *ice,
    q->stalled = true;
 
    struct mi_builder b;
-   mi_builder_init(&b, &batch->screen->devinfo, batch);
+   mi_builder_init(&b, batch->screen->devinfo, batch);
 
    struct mi_value result;
 

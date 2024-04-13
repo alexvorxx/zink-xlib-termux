@@ -87,6 +87,7 @@ radv_aco_convert_shader_info(struct aco_shader_info *aco_info,
    ASSIGN_FIELD(ps.num_interp);
    ASSIGN_FIELD(ps.spi_ps_input);
    ASSIGN_FIELD(cs.subgroup_size);
+   ASSIGN_FIELD(cs.uses_full_subgroups);
    aco_info->gfx9_gs_ring_lds_size = radv->gs_ring_info.lds_size;
 }
 
@@ -149,6 +150,7 @@ radv_aco_convert_opts(struct aco_compiler_options *aco_info,
    ASSIGN_FIELD(record_ir);
    ASSIGN_FIELD(record_stats);
    ASSIGN_FIELD(has_ls_vgpr_init_bug);
+   ASSIGN_FIELD(enable_mrt_output_nan_fixup);
    ASSIGN_FIELD(wgp_mode);
    ASSIGN_FIELD(family);
    ASSIGN_FIELD(gfx_level);

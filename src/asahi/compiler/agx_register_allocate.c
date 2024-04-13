@@ -21,8 +21,8 @@
  * SOFTWARE.
  */
 
-#include "agx_compiler.h"
 #include "agx_builder.h"
+#include "agx_compiler.h"
 
 /* SSA-based register allocator */
 
@@ -52,9 +52,12 @@ agx_write_registers(agx_instr *I, unsigned d)
       assert(1 <= I->channels && I->channels <= 4);
       return I->channels * size;
 
-   case AGX_OPCODE_DEVICE_LOAD:
    case AGX_OPCODE_TEXTURE_LOAD:
    case AGX_OPCODE_TEXTURE_SAMPLE:
+      /* Even when masked out, these clobber 4 registers */
+      return 4 * size;
+
+   case AGX_OPCODE_DEVICE_LOAD:
    case AGX_OPCODE_LD_TILE:
       return util_bitcount(I->mask) * size;
 
@@ -83,6 +86,92 @@ agx_split_width(const agx_instr *I)
 
    assert(width != ~0 && "should have been DCE'd");
    return width;
+}
+
+unsigned
+agx_read_registers(agx_instr *I, unsigned s)
+{
+   unsigned size = agx_size_align_16(I->src[s].size);
+
+   switch (I->op) {
+   case AGX_OPCODE_SPLIT:
+      return I->nr_dests * agx_size_align_16(agx_split_width(I));
+
+   case AGX_OPCODE_DEVICE_STORE:
+   case AGX_OPCODE_ST_TILE:
+      if (s == 0)
+         return util_bitcount(I->mask) * size;
+      else
+         return size;
+
+   case AGX_OPCODE_ZS_EMIT:
+      if (s == 1) {
+         /* Depth (bit 0) is fp32, stencil (bit 1) is u16 in the hw but we pad
+          * up to u32 for simplicity
+          */
+         return 2 * (!!(I->zs & 1) + !!(I->zs & 2));
+      } else {
+         return 1;
+      }
+
+   case AGX_OPCODE_TEXTURE_LOAD:
+   case AGX_OPCODE_TEXTURE_SAMPLE:
+      if (s == 0) {
+         /* Coordinates. We internally handle sample index as 32-bit */
+         switch (I->dim) {
+         case AGX_DIM_1D:
+            return 2 * 1;
+         case AGX_DIM_1D_ARRAY:
+            return 2 * 2;
+         case AGX_DIM_2D:
+            return 2 * 2;
+         case AGX_DIM_2D_ARRAY:
+            return 2 * 3;
+         case AGX_DIM_2D_MS:
+            return 2 * 3;
+         case AGX_DIM_3D:
+            return 2 * 3;
+         case AGX_DIM_CUBE:
+            return 2 * 3;
+         case AGX_DIM_CUBE_ARRAY:
+            return 2 * 4;
+         case AGX_DIM_2D_MS_ARRAY:
+            return 2 * 4;
+         }
+
+         unreachable("Invalid texture dimension");
+      } else if (s == 1) {
+         /* LOD */
+         if (I->lod_mode == AGX_LOD_MODE_LOD_GRAD) {
+            switch (I->dim) {
+            case AGX_DIM_1D:
+            case AGX_DIM_1D_ARRAY:
+               return 2 * 2 * 1;
+            case AGX_DIM_2D:
+            case AGX_DIM_2D_ARRAY:
+            case AGX_DIM_2D_MS_ARRAY:
+            case AGX_DIM_2D_MS:
+               return 2 * 2 * 2;
+            case AGX_DIM_CUBE:
+            case AGX_DIM_CUBE_ARRAY:
+            case AGX_DIM_3D:
+               return 2 * 2 * 3;
+            }
+
+            unreachable("Invalid texture dimension");
+         } else {
+            return 1;
+         }
+      } else if (s == 4) {
+         /* Compare/offset */
+         return 2 * ((!!I->shadow) + (!!I->offset));
+      } else {
+         return size;
+      }
+
+   default:
+      return size;
+   }
 }
 
 static unsigned
@@ -119,15 +208,15 @@ find_regs(BITSET_WORD *used_regs, unsigned count, unsigned align, unsigned max)
 static void
 reserve_live_in(struct ra_ctx *rctx)
 {
-      int i;
-      BITSET_FOREACH_SET(i, rctx->block->live_in, rctx->shader->alloc) {
-         /* Skip values defined in loops when processing the loop header */
-         if (!BITSET_TEST(rctx->visited, i))
-            continue;
+   int i;
+   BITSET_FOREACH_SET(i, rctx->block->live_in, rctx->shader->alloc) {
+      /* Skip values defined in loops when processing the loop header */
+      if (!BITSET_TEST(rctx->visited, i))
+         continue;
 
-         for (unsigned j = 0; j < rctx->ncomps[i]; ++j)
-            BITSET_SET(rctx->used_regs, rctx->ssa_to_reg[i] + j);
-      }
+      for (unsigned j = 0; j < rctx->ncomps[i]; ++j)
+         BITSET_SET(rctx->used_regs, rctx->ssa_to_reg[i] + j);
+   }
 }
 
 static void
@@ -251,7 +340,7 @@ pick_regs(struct ra_ctx *rctx, agx_instr *I, unsigned d)
 static void
 agx_ra_assign_local(struct ra_ctx *rctx)
 {
-   BITSET_DECLARE(used_regs, AGX_NUM_REGS) = { 0 };
+   BITSET_DECLARE(used_regs, AGX_NUM_REGS) = {0};
 
    agx_block *block = rctx->block;
    uint8_t *ssa_to_reg = rctx->ssa_to_reg;
@@ -365,7 +454,7 @@ agx_insert_parallel_copies(agx_context *ctx, agx_block *block)
          assert(src.type == AGX_INDEX_REGISTER);
          assert(dest.size == src.size);
 
-         copies[i++] = (struct agx_copy) {
+         copies[i++] = (struct agx_copy){
             .dest = dest.value,
             .src = src,
          };
@@ -407,14 +496,14 @@ agx_ra(agx_context *ctx)
     * to a NIR invariant, so we do not need special handling for this.
     */
    agx_foreach_block(ctx, block) {
-      agx_ra_assign_local(&(struct ra_ctx) {
+      agx_ra_assign_local(&(struct ra_ctx){
          .shader = ctx,
          .block = block,
          .ssa_to_reg = ssa_to_reg,
          .src_to_collect = src_to_collect,
          .ncomps = ncomps,
          .visited = visited,
-         .bound = AGX_NUM_REGS
+         .bound = AGX_NUM_REGS,
       });
    }
 
@@ -437,7 +526,8 @@ agx_ra(agx_context *ctx)
 
       agx_foreach_ssa_dest(ins, d) {
          unsigned v = ssa_to_reg[ins->dest[d].value];
-         ins->dest[d] = agx_replace_index(ins->dest[d], agx_register(v, ins->dest[d].size));
+         ins->dest[d] =
+            agx_replace_index(ins->dest[d], agx_register(v, ins->dest[d].size));
       }
    }
 
@@ -455,12 +545,13 @@ agx_ra(agx_context *ctx)
 
          /* Move the sources */
          agx_foreach_src(ins, i) {
-            if (agx_is_null(ins->src[i])) continue;
+            if (agx_is_null(ins->src[i]) || ins->src[i].type == AGX_INDEX_UNDEF)
+               continue;
             assert(ins->src[i].size == ins->src[0].size);
 
-            copies[n++] = (struct agx_copy) {
+            copies[n++] = (struct agx_copy){
                .dest = base + (i * width),
-               .src = ins->src[i]
+               .src = ins->src[i],
             };
          }
 
@@ -482,9 +573,9 @@ agx_ra(agx_context *ctx)
             if (ins->dest[i].type != AGX_INDEX_REGISTER)
                continue;
 
-            copies[n++] = (struct agx_copy) {
+            copies[n++] = (struct agx_copy){
                .dest = ins->dest[i].value,
-               .src = agx_register(base + (i * width), ins->dest[i].size)
+               .src = agx_register(base + (i * width), ins->dest[i].size),
             };
          }
 
@@ -494,8 +585,6 @@ agx_ra(agx_context *ctx)
          agx_remove_instruction(ins);
          continue;
       }
-
-
    }
 
    /* Insert parallel copies lowering phi nodes */
@@ -507,7 +596,6 @@ agx_ra(agx_context *ctx)
       switch (I->op) {
       /* Pseudoinstructions for RA must be removed now */
       case AGX_OPCODE_PHI:
-      case AGX_OPCODE_LOGICAL_END:
       case AGX_OPCODE_PRELOAD:
          agx_remove_instruction(I);
          break;

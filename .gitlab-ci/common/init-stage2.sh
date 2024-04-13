@@ -73,7 +73,8 @@ if [ "$HWCI_KVM" = "true" ]; then
         modprobe ${KVM_KERNEL_MODULE}
 
     mkdir -p /lava-files
-    wget -S --progress=dot:giga -O /lava-files/${KERNEL_IMAGE_NAME} \
+    curl -L --retry 4 -f --retry-all-errors --retry-delay 60 \
+	-o "/lava-files/${KERNEL_IMAGE_NAME}" \
         "${KERNEL_IMAGE_BASE_URL}/${KERNEL_IMAGE_NAME}"
 fi
 
@@ -128,6 +129,7 @@ BACKGROUND_PIDS="$! $BACKGROUND_PIDS"
 if [ -n "$HWCI_START_XORG" ]; then
   echo "touch /xorg-started; sleep 100000" > /xorg-script
   env \
+    VK_ICD_FILENAMES=/install/share/vulkan/icd.d/${VK_DRIVER}_icd.`uname -m`.json \
     xinit /bin/sh /xorg-script -- /usr/bin/Xorg -noreset -s 0 -dpms -logfile /Xorg.0.log &
   BACKGROUND_PIDS="$! $BACKGROUND_PIDS"
 
@@ -145,7 +147,13 @@ if [ -n "$HWCI_START_WESTON" ]; then
   export XDG_RUNTIME_DIR=/run/user
   mkdir -p $XDG_RUNTIME_DIR
 
-  weston -Bheadless-backend.so -Swayland-0 &
+  # Xwayland to be used when HWCI_START_XORG is not set
+  export DISPLAY=:0
+  mkdir -p /tmp/.X11-unix
+
+  env \
+    VK_ICD_FILENAMES=/install/share/vulkan/icd.d/${VK_DRIVER}_icd.`uname -m`.json \
+    weston -Bheadless-backend.so --use-gl -Swayland-0 --xwayland &
   export WAYLAND_DISPLAY=wayland-0
   sleep 1
 fi

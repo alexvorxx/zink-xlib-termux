@@ -205,7 +205,7 @@ do_create_surface(struct pipe_context *pctx, struct pipe_resource *pres, const s
    /* create a new surface */
    struct zink_surface *surface = create_surface(pctx, pres, templ, ivci, actually);
    /* only transient surfaces have nr_samples set */
-   surface->base.nr_samples = 0;
+   surface->base.nr_samples = zink_screen(pctx->screen)->info.have_EXT_multisampled_render_to_single_sampled ? templ->nr_samples : 0;
    surface->hash = hash;
    surface->ivci = *ivci;
    return surface;
@@ -294,8 +294,7 @@ zink_create_surface(struct pipe_context *pctx,
 
    struct zink_ctx_surface *csurf = (struct zink_ctx_surface*)wrap_surface(pctx, psurf);
 
-   /* TODO: use VK_EXT_multisampled_render_to_single_sampled and skip this entirely */
-   if (templ->nr_samples) {
+   if (templ->nr_samples && !zink_screen(pctx->screen)->info.have_EXT_multisampled_render_to_single_sampled) {
       /* transient fb attachment: not cached */
       struct pipe_resource rtempl = *pres;
       rtempl.nr_samples = templ->nr_samples;
@@ -341,7 +340,7 @@ zink_destroy_surface(struct zink_screen *screen, struct pipe_surface *psurface)
 {
    struct zink_surface *surface = zink_surface(psurface);
    struct zink_resource *res = zink_resource(psurface->texture);
-   if (!psurface->nr_samples && !surface->is_swapchain) {
+   if ((!psurface->nr_samples || screen->info.have_EXT_multisampled_render_to_single_sampled) && !surface->is_swapchain) {
       simple_mtx_lock(&res->surface_mtx);
       if (psurface->reference.count) {
          /* a different context got a cache hit during deletion: this surface is alive again */
@@ -482,7 +481,7 @@ zink_surface_swapchain_update(struct zink_context *ctx, struct zink_surface *sur
    struct kopper_displaytarget *cdt = res->obj->dt;
    if (!cdt)
       return; //dead swapchain
-   if (res->obj->dt != surface->dt) {
+   if (cdt->swapchain != surface->dt_swapchain) {
       /* new swapchain: clear out previous swapchain imageviews/array and setup a new one;
        * old views will be pruned normally in zink_batch or on object destruction
        */
@@ -496,6 +495,7 @@ zink_surface_swapchain_update(struct zink_context *ctx, struct zink_surface *sur
       surface->base.width = res->base.b.width0;
       surface->base.height = res->base.b.height0;
       init_surface_info(surface, res, &surface->ivci);
+      surface->dt_swapchain = cdt->swapchain;
    }
    if (!surface->swapchain[res->obj->dt_idx]) {
       /* no current swapchain imageview exists: create it */

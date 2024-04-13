@@ -114,6 +114,9 @@ struct fd_batch {
     */
    const struct fd_gmem_stateobj *gmem_state;
 
+   /* Driver specific barrier/flush flags: */
+   unsigned barrier;
+
    /* A calculated "draw cost" value for the batch, which tries to
     * estimate the bandwidth-per-sample of all the draws according
     * to:
@@ -359,7 +362,7 @@ static inline void
 fd_batch_needs_flush(struct fd_batch *batch)
 {
    batch->needs_flush = true;
-   fd_fence_ref(&batch->ctx->last_fence, NULL);
+   fd_pipe_fence_ref(&batch->ctx->last_fence, NULL);
 }
 
 /* Since we reorder batches and can pause/resume queries (notably for disabling

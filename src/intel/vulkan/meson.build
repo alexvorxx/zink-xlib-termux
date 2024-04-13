@@ -18,6 +18,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+subdir('shaders')
+
 inc_anv = include_directories('.')
 
 anv_flags = [
@@ -38,23 +40,10 @@ anv_entrypoints = custom_target(
     '--device-prefix', 'gfx11',
     '--device-prefix', 'gfx12',
     '--device-prefix', 'gfx125',
+    '--device-prefix', 'doom64',
     '--device-prefix', 'hitman3'
   ],
   depend_files : vk_entrypoints_gen_depend_files,
-)
-
-float64_spv_h = custom_target(
-  'float64_spv.h',
-  input : [glsl2spirv, float64_glsl_file],
-  output : 'float64_spv.h',
-  command : [
-    prog_python, '@INPUT@', '@OUTPUT@',
-    prog_glslang,
-    '--create-entry', 'main',
-    '--vn', 'float64_spv_source',
-    '--glsl-version', '450',
-    '-Olib',
-  ]
 )
 
 idep_anv_headers = declare_dependency(
@@ -88,23 +77,21 @@ intel_icd = custom_target(
   install : true,
 )
 
-if meson.version().version_compare('>= 0.58')
-  _dev_icdname = 'intel_devenv_icd.@0@.json'.format(host_machine.cpu())
-  custom_target(
-    'intel_devenv_icd',
-    input : [vk_icd_gen, vk_api_xml],
-    output : _dev_icdname,
-    command : [
-      prog_python, '@INPUT0@',
-      '--api-version', '1.3', '--xml', '@INPUT1@',
-      '--lib-path', meson.current_build_dir() / 'libvulkan_intel.so',
-      '--out', '@OUTPUT@',
-    ],
-    build_by_default : true,
-  )
+_dev_icdname = 'intel_devenv_icd.@0@.json'.format(host_machine.cpu())
+_dev_icd = custom_target(
+  'intel_devenv_icd',
+  input : [vk_icd_gen, vk_api_xml],
+  output : _dev_icdname,
+  command : [
+    prog_python, '@INPUT0@',
+    '--api-version', '1.3', '--xml', '@INPUT1@',
+    '--lib-path', meson.current_build_dir() / 'libvulkan_intel.so',
+    '--out', '@OUTPUT@',
+  ],
+  build_by_default : true,
+)
 
-  devenv.append('VK_ICD_FILENAMES', meson.current_build_dir() / _dev_icdname)
-endif
+devenv.append('VK_ICD_FILENAMES', _dev_icd.full_path())
 
 libanv_per_hw_ver_libs = []
 anv_per_hw_ver_files = files(
@@ -126,7 +113,8 @@ foreach g : [['90', ['gfx8_cmd_buffer.c']],
   _gfx_ver = g[0]
   libanv_per_hw_ver_libs += static_library(
     'anv_per_hw_ver@0@'.format(_gfx_ver),
-    [anv_per_hw_ver_files, g[1], anv_entrypoints[0]],
+    [anv_per_hw_ver_files, g[1], anv_entrypoints[0],
+     generated_draws_spv_h, generated_draws_count_spv_h],
     include_directories : [
       inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_compiler, inc_intel,
     ],
@@ -142,6 +130,11 @@ foreach g : [['90', ['gfx8_cmd_buffer.c']],
 endforeach
 
 libanv_files = files(
+  'i915/anv_batch_chain.c',
+  'i915/anv_batch_chain.h',
+  'i915/anv_device.c',
+  'i915/anv_device.h',
+  'layers/anv_doom64.c',
   'layers/anv_hitman3.c',
   'anv_allocator.c',
   'anv_android.h',
@@ -152,6 +145,7 @@ libanv_files = files(
   'anv_descriptor_set.c',
   'anv_device.c',
   'anv_formats.c',
+  'anv_generated_indirect_draws.c',
   'anv_genX.h',
   'anv_image.c',
   'anv_measure.c',
@@ -161,7 +155,6 @@ libanv_files = files(
   'anv_nir_compute_push_layout.c',
   'anv_nir_lower_multiview.c',
   'anv_nir_lower_ubo_loads.c',
-  'anv_nir_lower_ycbcr_textures.c',
   'anv_nir_push_descriptor_analysis.c',
   'anv_perf.c',
   'anv_pipeline.c',
@@ -216,7 +209,7 @@ libanv_common = static_library(
   c_args : anv_flags,
   cpp_args : anv_cpp_flags,
   gnu_symbol_visibility : 'hidden',
-  dependencies : anv_deps,
+  dependencies : anv_deps
 )
 
 libvulkan_intel = shared_library(

@@ -27,63 +27,7 @@
 #include "compiler/nir/nir.h"
 #include "util/u_dynarray.h"
 
-enum agx_push_type {
-   /* Array of 64-bit pointers to the base addresses (BASES) and array of
-    * 16-bit sizes for optional bounds checking (SIZES) */
-   AGX_PUSH_UBO_BASES,
-   AGX_PUSH_UBO_SIZES,
-   AGX_PUSH_VBO_SIZES,
-   AGX_PUSH_SSBO_BASES,
-   AGX_PUSH_SSBO_SIZES,
-
-   /* 64-bit VBO base pointer */
-   AGX_PUSH_VBO_BASE,
-
-   /* Push the attached constant memory */
-   AGX_PUSH_CONSTANTS,
-
-   /* Push the content of a UBO */
-   AGX_PUSH_UBO_DATA,
-
-   /* RGBA blend constant (FP32) */
-   AGX_PUSH_BLEND_CONST,
-
-   AGX_PUSH_TEXTURE_BASE,
-
-   /* Keep last */
-   AGX_PUSH_NUM_TYPES
-};
-
-static_assert(AGX_PUSH_NUM_TYPES < (1 << 8), "type overflow");
-
-struct agx_push {
-   /* Contents to push */
-   enum agx_push_type type : 8;
-
-   /* Base of where to push, indexed in 16-bit units. The uniform file contains
-    * 512 = 2^9 such units. */
-   unsigned base : 9;
-
-   /* Number of 16-bit units to push */
-   unsigned length : 9;
-
-   /* If set, rather than pushing the specified data, push a pointer to the
-    * specified data. This is slower to access but enables indirect access, as
-    * the uniform file does not support indirection. */
-   bool indirect : 1;
-
-   union {
-      struct {
-         uint16_t ubo;
-         uint16_t offset;
-      } ubo_data;
-
-      uint32_t vbo;
-   };
-};
-
 /* Arbitrary */
-#define AGX_MAX_PUSH_RANGES (16)
 #define AGX_MAX_VARYINGS (32)
 
 struct agx_varyings_vs {
@@ -152,10 +96,10 @@ union agx_varyings {
 };
 
 struct agx_shader_info {
-   unsigned push_count;
-   unsigned push_ranges;
-   struct agx_push push[AGX_MAX_PUSH_RANGES];
    union agx_varyings varyings;
+
+   /* Number of uniforms */
+   unsigned push_count;
 
    /* Does the shader have a preamble? If so, it is at offset preamble_offset.
     * The main shader is at offset main_offset. The preamble is executed first.
@@ -172,8 +116,14 @@ struct agx_shader_info {
    /* Does the shader control the sample mask? */
    bool writes_sample_mask;
 
+   /* Depth layout, never equal to NONE */
+   enum gl_frag_depth_layout depth_layout;
+
    /* Is colour output omitted? */
    bool no_colour_output;
+
+   /* Shader is incompatible with triangle merging */
+   bool disable_tri_merging;
 
    /* Number of 16-bit registers used by the main shader and preamble
     * respectively.
@@ -216,20 +166,20 @@ struct agx_fs_shader_key {
 };
 
 struct agx_shader_key {
+   /* Number of reserved preamble slots at the start */
+   unsigned reserved_preamble;
+
    union {
       struct agx_fs_shader_key fs;
    };
 };
 
-void
-agx_preprocess_nir(nir_shader *nir);
+void agx_preprocess_nir(nir_shader *nir);
 
-void
-agx_compile_shader_nir(nir_shader *nir,
-      struct agx_shader_key *key,
-      struct util_debug_callback *debug,
-      struct util_dynarray *binary,
-      struct agx_shader_info *out);
+void agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
+                            struct util_debug_callback *debug,
+                            struct util_dynarray *binary,
+                            struct agx_shader_info *out);
 
 static const nir_shader_compiler_options agx_nir_options = {
    .lower_fdiv = true,
@@ -268,8 +218,10 @@ static const nir_shader_compiler_options agx_nir_options = {
    .max_unroll_iterations = 32,
    .lower_uniforms_to_ubo = true,
    .force_indirect_unrolling_sampler = true,
-   .force_indirect_unrolling = (nir_var_shader_in | nir_var_shader_out | nir_var_function_temp),
-   .lower_int64_options = (nir_lower_int64_options) ~(nir_lower_iadd64 | nir_lower_imul_2x32_64),
+   .force_indirect_unrolling =
+      (nir_var_shader_in | nir_var_shader_out | nir_var_function_temp),
+   .lower_int64_options =
+      (nir_lower_int64_options) ~(nir_lower_iadd64 | nir_lower_imul_2x32_64),
    .lower_doubles_options = nir_lower_dmod,
 };
 

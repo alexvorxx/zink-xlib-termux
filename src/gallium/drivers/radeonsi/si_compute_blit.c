@@ -186,6 +186,9 @@ static void si_launch_grid_internal(struct si_context *sctx, const struct pipe_g
    if (!(flags & SI_OP_CS_RENDER_COND_ENABLE))
       sctx->render_cond_enabled = false;
 
+   /* Force-disable fbfetch because there are unsolvable recursion problems. */
+   si_force_disable_ps_colorbuf0_slot(sctx);
+
    /* Skip decompression to prevent infinite recursion. */
    sctx->blitter_running = true;
 
@@ -200,6 +203,9 @@ static void si_launch_grid_internal(struct si_context *sctx, const struct pipe_g
    sctx->flags |= SI_CONTEXT_START_PIPELINE_STATS;
    sctx->render_cond_enabled = sctx->render_cond;
    sctx->blitter_running = false;
+
+   /* We force-disabled fbfetch, so recompute the state. */
+   si_update_ps_colorbuf0_slot(sctx);
 
    if (flags & SI_OP_SYNC_AFTER) {
       sctx->flags |= SI_CONTEXT_CS_PARTIAL_FLUSH;
@@ -704,11 +710,6 @@ bool si_compute_copy_image(struct si_context *sctx, struct pipe_resource *dst, u
       dst_access |= SI_IMAGE_ACCESS_BLOCK_FORMAT_AS_UINT;
 
       dstx = util_format_get_nblocksx(src_format, dstx);
-
-      new_box = *src_box;
-      new_box.x = util_format_get_nblocksx(src_format, src_box->x);
-      new_box.width = util_format_get_nblocksx(src_format, src_box->width);
-      src_box = &new_box;
 
       src_format = dst_format = PIPE_FORMAT_R32_UINT;
 

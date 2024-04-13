@@ -132,18 +132,18 @@ BEGIN_TEST(isel.sparse.clause)
          };
          void main() {
             //>> v5: (noCSE)%zero0 = p_create_vector 0, 0, 0, 0, 0
-            //>> v5: %_ = image_sample_lz_o %_, %_, (kill)%zero0, (kill)%_, %_, %_ dmask:xyzw 2d tfe
+            //>> v5: %_ = image_sample_lz_o %_, %_, (kill)%zero0, (kill)%_, %_ dmask:xyzw 2d tfe a16
             //>> v5: (noCSE)%zero1 = p_create_vector 0, 0, 0, 0, 0
-            //>> v5: %_ = image_sample_lz_o %_, %_, (kill)%zero1, (kill)%_, %_, %_ dmask:xyzw 2d tfe
+            //>> v5: %_ = image_sample_lz_o %_, %_, (kill)%zero1, (kill)%_, %_ dmask:xyzw 2d tfe a16
             //>> v5: (noCSE)%zero2 = p_create_vector 0, 0, 0, 0, 0
-            //>> v5: %_ = image_sample_lz_o %_, %_, (kill)%zero2, (kill)%_, %_, %_ dmask:xyzw 2d tfe
+            //>> v5: %_ = image_sample_lz_o %_, %_, (kill)%zero2, (kill)%_, %_ dmask:xyzw 2d tfe a16
             //>> v5: (noCSE)%zero3 = p_create_vector 0, 0, 0, 0, 0
-            //>> v5: %_ = image_sample_lz_o (kill)%_, (kill)%_, (kill)%zero3, (kill)%_, (kill)%_, (kill)%_ dmask:xyzw 2d tfe
+            //>> v5: %_ = image_sample_lz_o (kill)%_, (kill)%_, (kill)%zero3, (kill)%_, (kill)%_ dmask:xyzw 2d tfe a16
             //>> s_clause 0x3
-            //! image_sample_lz_o v[#_:#_], [v#_, v#_, v#_], @s256(img), @s128(samp) dmask:0xf dim:SQ_RSRC_IMG_2D tfe
-            //! image_sample_lz_o v[#_:#_], [v#_, v#_, v#_], @s256(img), @s128(samp) dmask:0xf dim:SQ_RSRC_IMG_2D tfe
-            //! image_sample_lz_o v[#_:#_], [v#_, v#_, v#_], @s256(img), @s128(samp) dmask:0xf dim:SQ_RSRC_IMG_2D tfe
-            //! image_sample_lz_o v[#_:#_], [v#_, v#_, v#_], @s256(img), @s128(samp) dmask:0xf dim:SQ_RSRC_IMG_2D tfe
+            //! image_sample_lz_o v[#_:#_], v[#_:#_], @s256(img), @s128(samp) dmask:0xf dim:SQ_RSRC_IMG_2D a16 tfe
+            //! image_sample_lz_o v[#_:#_], [v#_, v#_], @s256(img), @s128(samp) dmask:0xf dim:SQ_RSRC_IMG_2D a16 tfe
+            //! image_sample_lz_o v[#_:#_], [v#_, v#_], @s256(img), @s128(samp) dmask:0xf dim:SQ_RSRC_IMG_2D a16 tfe
+            //! image_sample_lz_o v[#_:#_], [v#_, v#_], @s256(img), @s128(samp) dmask:0xf dim:SQ_RSRC_IMG_2D a16 tfe
             code[0] = sparseTextureOffsetARB(tex, vec2(0.5), ivec2(1, 0), res[0]);
             code[1] = sparseTextureOffsetARB(tex, vec2(0.5), ivec2(2, 0), res[1]);
             code[2] = sparseTextureOffsetARB(tex, vec2(0.5), ivec2(3, 0), res[2]);

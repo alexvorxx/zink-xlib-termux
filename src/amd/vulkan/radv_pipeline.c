@@ -678,7 +678,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
       if (gfx_level >= GFX8)
          NIR_PASS(_, stage->nir, nir_opt_remove_phis); /* cleanup LCSSA phis */
    }
-   if (((stage->nir->info.bit_sizes_int | stage->nir->info.bit_sizes_float) & 16) && gfx_level >= GFX9) {
+   if (gfx_level >= GFX9) {
       bool separate_g16 = gfx_level >= GFX10;
       struct nir_opt_tex_srcs_options opt_srcs_options[] = {
          {
@@ -703,7 +703,8 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
       };
       NIR_PASS(_, stage->nir, nir_opt_16bit_tex_image, &opt_16bit_options);
 
-      if (!stage->key.optimisations_disabled) {
+      if (!stage->key.optimisations_disabled &&
+          ((stage->nir->info.bit_sizes_int | stage->nir->info.bit_sizes_float) & 16)) {
          NIR_PASS(_, stage->nir, nir_opt_vectorize, opt_vectorize_callback, device);
       }
    }

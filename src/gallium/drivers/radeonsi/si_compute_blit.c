@@ -1424,6 +1424,7 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    if (is_clear) {
       assert(dst_samples <= 8);
       options.log_samples = util_logbase2(dst_samples);
+      options.a16 = sctx->gfx_level >= GFX9 && util_is_box_sint16(&info->dst.box);
       options.d16 = has_d16 &&
                     max_dst_chan_size <= (util_format_is_float(info->dst.format) ||
                                           util_format_is_pure_integer(info->dst.format) ? 16 : 11);
@@ -1455,6 +1456,8 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
       options.use_integer_one = util_format_is_pure_integer(info->dst.format) &&
                                 options.last_src_channel < options.last_dst_channel &&
                                 options.last_dst_channel == 3;
+      options.a16 = sctx->gfx_level >= GFX9 && util_is_box_sint16(&info->dst.box) &&
+                    util_is_box_sint16(&info->src.box);
       options.d16 = has_d16 &&
                     /* Blitting FP16 using D16 has precision issues. Resolving has precision
                      * issues all the way down to R11G11B10_FLOAT. */

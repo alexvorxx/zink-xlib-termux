@@ -364,11 +364,13 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
    unsigned lane_size = lane_width * lane_height * lane_depth;
    assert(lane_size <= SI_MAX_COMPUTE_BLIT_LANE_SIZE);
 
-   nir_def *zero = nir_imm_int(&b, 0);
+   nir_def *zero_lod = nir_imm_intN_t(&b, 0, options->a16 ? 16 : 32);
 
    /* Instructions. */
    /* Let's work with 0-based src and dst coordinates (thread IDs) first. */
-   nir_def *dst_xyz = nir_pad_vector_imm_int(&b, get_global_ids(&b, options->wg_dim, 32), 0, 3);
+   unsigned coord_bit_size = options->a16 ? 16 : 32;
+   nir_def *dst_xyz = get_global_ids(&b, options->wg_dim, coord_bit_size);
+   dst_xyz = nir_pad_vector_imm_int(&b, dst_xyz, 0, 3);
 
    /* If the blit area is unaligned, we launched extra threads to make it aligned.
     * Skip those threads here.
@@ -376,7 +378,8 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
    nir_if *if_positive = NULL;
    if (options->has_start_xyz) {
       nir_def *start_xyz = nir_channel(&b, nir_load_user_data_amd(&b), 3);
-      start_xyz = nir_trim_vector(&b, nir_u2u32(&b, nir_unpack_32_4x8(&b, start_xyz)), 3);
+      start_xyz = nir_u2uN(&b, nir_unpack_32_4x8(&b, start_xyz), coord_bit_size);
+      start_xyz = nir_trim_vector(&b, start_xyz, 3);
 
       dst_xyz = nir_isub(&b, dst_xyz, start_xyz);
       nir_def *is_positive_xyz = nir_ige_imm(&b, dst_xyz, 0);
@@ -386,7 +389,8 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
       if_positive = nir_push_if(&b, is_positive);
    }
 
-   dst_xyz = nir_imul(&b, dst_xyz, nir_imm_ivec3(&b, lane_width, lane_height, lane_depth));
+   dst_xyz = nir_imul(&b, dst_xyz, nir_imm_ivec3_intN(&b, lane_width, lane_height, lane_depth,
+                                                      coord_bit_size));
    nir_def *src_xyz = dst_xyz;
 
    /* Flip src coordinates. */
@@ -407,7 +411,7 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
 
    /* Add box.xyz. */
    nir_def *base_coord_src = NULL, *base_coord_dst = NULL;
-   unpack_2x16_signed(&b, 32, nir_trim_vector(&b, nir_load_user_data_amd(&b), 3),
+   unpack_2x16_signed(&b, coord_bit_size, nir_trim_vector(&b, nir_load_user_data_amd(&b), 3),
                       &base_coord_src, &base_coord_dst);
    base_coord_dst = nir_iadd(&b, base_coord_dst, dst_xyz);
    base_coord_src = nir_iadd(&b, base_coord_src, src_xyz);
@@ -467,12 +471,12 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
             tmp_y = lane_height - 1 - y;
 
          coord_src[i] = nir_iadd(&b, base_coord_src,
-                                     nir_imm_ivec4(&b, tmp_x, tmp_y, z, 0));
+                                     nir_imm_ivec4_intN(&b, tmp_x, tmp_y, z, 0, coord_bit_size));
          if (options->src_is_1d)
             coord_src[i] = nir_swizzle(&b, coord_src[i], swizzle_xz, 4);
          if (options->src_is_msaa) {
             coord_src[i] = nir_vector_insert_imm(&b, coord_src[i],
-                                                 nir_imm_int(&b, sample),
+                                                 nir_imm_intN_t(&b, sample, coord_bit_size),
                                                  num_src_coords - 1);
          }
 
@@ -482,8 +486,15 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
                assert(!options->src_is_1d || chan == 0);
 
                if (!src_resinfo) {
+                  /* Always use the 32-bit return type because the image dimensions can be
+                   * > INT16_MAX even if the blit box fits within sint16.
+                   */
                   src_resinfo = nir_image_deref_size(&b, 4, 32, deref_ssa(&b, img_src),
-                                                     zero);
+                                                     zero_lod);
+                  if (coord_bit_size == 16) {
+                     src_resinfo = nir_umin_imm(&b, src_resinfo, INT16_MAX);
+                     src_resinfo = nir_i2i16(&b, src_resinfo);
+                  }
                }
 
                nir_def *tmp = nir_channel(&b, coord_src[i], chan);
@@ -524,7 +535,7 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
             sample0[i] = nir_image_deref_load(&b, options->last_src_channel + 1, bit_size,
                                               deref_ssa(&b, img_src), coord_src[i * src_samples],
                                               nir_channel(&b, coord_src[i * src_samples],
-                                                          num_src_coords - 1), zero,
+                                                          num_src_coords - 1), zero_lod,
                                               .image_dim = img_src->type->sampler_dimensionality,
                                               .image_array = img_src->type->sampler_array);
          }
@@ -535,7 +546,7 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
       foreach_pixel_in_lane(src_samples, sample, x, y, z, i) {
          color[i] = nir_image_deref_load(&b, options->last_src_channel + 1, bit_size,
                                          deref_ssa(&b, img_src), coord_src[i],
-                                         nir_channel(&b, coord_src[i], num_src_coords - 1), zero,
+                                         nir_channel(&b, coord_src[i], num_src_coords - 1), zero_lod,
                                          .image_dim = img_src->type->sampler_dimensionality,
                                          .image_array = img_src->type->sampler_array);
       }
@@ -577,11 +588,13 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
 
    /* Initialize dst coordinates, one vector per pixel. */
    foreach_pixel_in_lane(dst_samples, sample, x, y, z, i) {
-      coord_dst[i] = nir_iadd(&b, base_coord_dst, nir_imm_ivec4(&b, x, y, z, 0));
+      coord_dst[i] = nir_iadd(&b, base_coord_dst,
+                              nir_imm_ivec4_intN(&b, x, y, z, 0, coord_bit_size));
       if (options->dst_is_1d)
          coord_dst[i] = nir_swizzle(&b, coord_dst[i], swizzle_xz, 4);
       if (options->dst_is_msaa) {
-         coord_dst[i] = nir_vector_insert_imm(&b, coord_dst[i], nir_imm_int(&b, sample),
+         coord_dst[i] = nir_vector_insert_imm(&b, coord_dst[i],
+                                              nir_imm_intN_t(&b, sample, coord_bit_size),
                                               num_dst_coords - 1);
       }
    }
@@ -600,7 +613,7 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
    foreach_pixel_in_lane(dst_samples, sample, x, y, z, i) {
       nir_bindless_image_store(&b, img_dst_desc, coord_dst[i],
                                nir_channel(&b, coord_dst[i], num_dst_coords - 1),
-                               src_samples > 1 ? color[i] : color[i / dst_samples], zero,
+                               src_samples > 1 ? color[i] : color[i / dst_samples], zero_lod,
                                .image_dim = glsl_get_sampler_dim(img_type[1]),
                                .image_array = glsl_sampler_type_is_array(img_type[1]));
    }

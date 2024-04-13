@@ -1655,6 +1655,7 @@ union si_compute_blit_shader_key {
       bool dst_is_msaa:1;
       bool src_has_z:1;
       bool dst_has_z:1;
+      bool a16:1;
       bool d16:1;
       uint8_t log_samples:2;
       bool sample0_only:1; /* src is MSAA, dst is not MSAA, log2_samples is ignored */

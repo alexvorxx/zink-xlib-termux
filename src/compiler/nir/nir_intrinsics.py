@@ -1634,7 +1634,7 @@ intrinsic("store_zs_agx", [1, 1, 1], indices=[BASE], flags=[])
 #load("constant_agx", [1, 1], [ACCESS, BASE, FORMAT, SIGN_EXTEND],
 #     [CAN_ELIMINATE, CAN_REORDER])
 # src[] = { value, address, index }.
-#store("agx", [1, 1], [ACCESS, BASE, FORMAT, SIGN_EXTEND])
+store("agx", [1, 1], [ACCESS, BASE, FORMAT, SIGN_EXTEND])
 
 # Logical complement of load_front_face, mapping to an AGX system value
 system_value("back_face_agx", 1, bit_sizes=[1, 32])

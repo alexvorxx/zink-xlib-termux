@@ -459,28 +459,21 @@ try_optimize_branching_sequence(ssa_elimination_ctx& ctx, Block& block, const in
          if (exec_val->isSDWA()) {
             /* This might work but it needs testing and more code to copy the instruction. */
             return;
-         } else if (!exec_val->isVOP3()) {
-            aco_ptr<Instruction> tmp = std::move(exec_val);
-            exec_val.reset(create_instruction<VOPC_instruction>(
-               tmp->opcode, tmp->format, tmp->operands.size(), tmp->definitions.size() + 1));
-            std::copy(tmp->operands.cbegin(), tmp->operands.cend(), exec_val->operands.begin());
-            std::copy(tmp->definitions.cbegin(), tmp->definitions.cend(),
-                      exec_val->definitions.begin());
          } else {
             aco_ptr<Instruction> tmp = std::move(exec_val);
-            exec_val.reset(create_instruction<VOP3_instruction>(
+            exec_val.reset(create_instruction<VALU_instruction>(
                tmp->opcode, tmp->format, tmp->operands.size(), tmp->definitions.size() + 1));
             std::copy(tmp->operands.cbegin(), tmp->operands.cend(), exec_val->operands.begin());
             std::copy(tmp->definitions.cbegin(), tmp->definitions.cend(),
                       exec_val->definitions.begin());
 
-            VOP3_instruction& src = tmp->vop3();
-            VOP3_instruction& dst = exec_val->vop3();
+            VALU_instruction& src = tmp->valu();
+            VALU_instruction& dst = exec_val->valu();
             dst.opsel = src.opsel;
             dst.omod = src.omod;
             dst.clamp = src.clamp;
-            std::copy(std::cbegin(src.abs), std::cend(src.abs), std::begin(dst.abs));
-            std::copy(std::cbegin(src.neg), std::cend(src.neg), std::begin(dst.neg));
+            dst.neg = src.neg;
+            dst.abs = src.abs;
          }
       }
 

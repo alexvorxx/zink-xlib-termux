@@ -407,6 +407,7 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_kernel_input:
    case nir_intrinsic_load_task_payload:
    case nir_intrinsic_load_buffer_amd:
+   case nir_intrinsic_load_typed_buffer_amd:
    case nir_intrinsic_image_samples:
    case nir_intrinsic_image_deref_samples:
    case nir_intrinsic_bindless_image_samples:
@@ -672,6 +673,7 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_topology_id_intel:
    case nir_intrinsic_load_scratch_base_ptr:
    case nir_intrinsic_ordered_xfb_counter_add_amd:
+   case nir_intrinsic_xfb_counter_sub_amd:
    case nir_intrinsic_load_stack:
    case nir_intrinsic_load_ray_launch_id:
    case nir_intrinsic_load_ray_instance_custom_index:

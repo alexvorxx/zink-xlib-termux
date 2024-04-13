@@ -412,8 +412,17 @@ bi_copy_component(bi_builder *b, nir_intrinsic_instr *instr, bi_index tmp)
 static void
 bi_emit_load_attr(bi_builder *b, nir_intrinsic_instr *instr)
 {
+   /* Disregard the signedness of an integer, since loading 32-bits into a
+    * 32-bit register should be bit exact so should not incur any clamping.
+    *
+    * If we are reading as a u32, then it must be paired with an integer (u32 or
+    * s32) source, so use .auto32 to disregard.
+    */
    nir_alu_type T = nir_intrinsic_dest_type(instr);
-   enum bi_register_format regfmt = bi_reg_fmt_for_nir(T);
+   assert(T == nir_type_uint32 || T == nir_type_int32 || T == nir_type_float32);
+   enum bi_register_format regfmt =
+      T == nir_type_float32 ? BI_REGISTER_FORMAT_F32 : BI_REGISTER_FORMAT_AUTO;
+
    nir_src *offset = nir_get_io_offset_src(instr);
    unsigned component = nir_intrinsic_component(instr);
    enum bi_vecsize vecsize = (instr->num_components + component - 1);
@@ -1638,11 +1647,6 @@ bi_emit_intrinsic(bi_builder *b, nir_intrinsic_instr *instr)
 
    case nir_intrinsic_store_shared:
       bi_emit_store(b, instr, BI_SEG_WLS);
-      break;
-
-   case nir_intrinsic_control_barrier:
-      assert(b->shader->stage != MESA_SHADER_FRAGMENT);
-      bi_barrier(b);
       break;
 
    case nir_intrinsic_scoped_barrier:
@@ -3509,19 +3513,10 @@ bi_emit_texc(bi_builder *b, nir_tex_instr *instr)
          break;
 
       case nir_tex_src_texture_offset:
-         if (instr->texture_index)
-            index =
-               bi_iadd_u32(b, index, bi_imm_u32(instr->texture_index), false);
-
          dregs[BIFROST_TEX_DREG_TEXTURE] = index;
-
          break;
 
       case nir_tex_src_sampler_offset:
-         if (instr->sampler_index)
-            index =
-               bi_iadd_u32(b, index, bi_imm_u32(instr->sampler_index), false);
-
          dregs[BIFROST_TEX_DREG_SAMPLER] = index;
          break;
 
@@ -3697,12 +3692,10 @@ bi_emit_tex_valhall(bi_builder *b, nir_tex_instr *instr)
          break;
 
       case nir_tex_src_texture_offset:
-         assert(instr->texture_index == 0);
          texture = index;
          break;
 
       case nir_tex_src_sampler_offset:
-         assert(instr->sampler_index == 0);
          sampler = index;
          break;
 
@@ -4512,6 +4505,7 @@ bi_optimize_nir(nir_shader *nir, unsigned gpu_id, bool is_blend)
       .lower_tg4_broadcom_swizzle = true,
       .lower_txd = true,
       .lower_invalid_implicit_lod = true,
+      .lower_index_to_offset = true,
    };
 
    NIR_PASS(progress, nir, pan_nir_lower_64bit_intrin);

@@ -76,7 +76,7 @@
   rules:
     - !reference [.no_scheduled_pipelines-rules, rules]
     # Run only on pre-merge pipelines from Marge
-    - if: '$GITLAB_USER_LOGIN != "marge-bot" || $CI_COMMIT_BRANCH'
+    - if: $MESA_CI_PERFORMANCE_ENABLED == null
       when: never
   # Allow the merge to complete even before the job completes (since it won't
   # even start until the separate script triggers on it).
@@ -199,6 +199,7 @@
         *llvmpipe_file_list
       when: on_success
 
+# TODO: remove together with Clover
 .llvmpipe-clover-rules:
   rules:
     - !reference [.llvmpipe-cl-rules, rules]
@@ -231,11 +232,6 @@
 .valve-farm-rules:
   rules:
     - if: '$VALVE_FARM == "offline"'
-      when: never
-    # The Valve CI Farm uses allow lists for projects/users to prevent abuse,
-    # so only enable automatic testing when running in the context of Mesa to
-    # prevent failures in forks.
-    - if: '$CI_PROJECT_NAMESPACE != "mesa"'
       when: never
 
 .austriancoder-farm-rules:
@@ -329,6 +325,13 @@
     - !reference [.performance-rules, rules]
     - !reference [.freedreno-manual-rules, rules]
   allow_failure: true # see comment in .performance-rules, which we don't inherit this line from.
+  variables:
+    LAVA_JOB_PRIORITY: 40
+    # Ensure that we are using the release build artifact
+    MINIO_ARTIFACT_NAME: mesa-arm64-release
+  needs:
+    - job: debian/arm64_test
+    - debian-arm64-release
 
 .nouveau-rules:
   stage: nouveau
@@ -548,6 +551,12 @@
         *virgl_file_list
       when: manual
   allow_failure: true # see comment in .performance-rules, which we don't inherit this line from.
+  variables:
+    LAVA_JOB_PRIORITY: 40
+    MINIO_ARTIFACT_NAME: "mesa-amd64-release"
+  needs:
+    - kernel+rootfs_amd64
+    - debian-release
 
 .venus-rules:
   stage: layered-backends
@@ -669,6 +678,12 @@
         *iris_file_list
       when: manual
   allow_failure: true # see comment in .performance-rules, which we don't inherit this line from.
+  variables:
+    LAVA_JOB_PRIORITY: 40
+    MINIO_ARTIFACT_NAME: "mesa-amd64-release"
+  needs:
+    - kernel+rootfs_amd64
+    - debian-release
 
 .anv-rules:
   stage: intel
@@ -816,7 +831,6 @@
   rules:
     - if: '$MICROSOFT_FARM == "offline"'
       when: never
-    - !reference [.no_scheduled_pipelines-rules, rules]
     - !reference [.core-rules, rules]
     - changes: &spirv2dxil_file_list
       - src/microsoft/ci/*
@@ -903,7 +917,6 @@
 # Rules for linters
 .lint-rustfmt-rules:
    rules:
-    - !reference [.no_scheduled_pipelines-rules, rules]
     - !reference [.core-rules, rules]
     - changes:
       - src/**/*.rs

@@ -81,7 +81,6 @@ spec@arb_shading_language_packing@execution@built-in-functions@fs-packhalf2x16,F
 spec@arb_shading_language_packing@execution@built-in-functions@vs-packhalf2x16,Fail
 spec@arb_sparse_buffer@buffer-data,Fail
 spec@arb_sparse_buffer@commit,Fail
-spec@arb_tessellation_shader@execution@tcs-tes-levels-out-of-bounds-write,Crash
 spec@egl 1.4@eglterminate then unbind context,Fail
 spec@egl_chromium_sync_control@conformance,Fail
 spec@egl_chromium_sync_control@conformance@eglGetSyncValuesCHROMIUM_msc_and_sbc_test,Fail
@@ -170,7 +169,6 @@ CreateContext/VAAPICreateContext.CreateContext/3075,Crash
 CreateContext/VAAPICreateContext.CreateContext/3245,Crash
 CreateContext/VAAPICreateContext.CreateContext/355,Crash
 CreateContext/VAAPICreateContext.CreateContext/3585,Crash
-CreateSurfaces/VAAPICreateSurfaces.CreateSurfacesWithConfigAttribs/1121,Timeout
 GetCreateConfig/VAAPIGetCreateConfig.CreateConfigNoAttributes/190,Fail
 GetCreateConfig/VAAPIGetCreateConfig.CreateConfigNoAttributes/210,Fail
 GetCreateConfig/VAAPIGetCreateConfig.CreateConfigWithAttributes/190,Fail

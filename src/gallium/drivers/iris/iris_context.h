@@ -730,6 +730,10 @@ struct iris_context {
 
    struct intel_perf_context *perf_ctx;
 
+   /** Frame number for u_trace */
+   uint32_t tracing_begin_frame;
+   uint32_t tracing_end_frame;
+
    /** Frame number for debug prints */
    uint32_t frame;
 
@@ -912,6 +916,8 @@ void iris_fill_cs_push_const_buffer(struct brw_cs_prog_data *cs_prog_data,
 
 
 /* iris_blit.c */
+#define IRIS_BLORP_RELOC_FLAGS_EXEC_OBJECT_WRITE      (1 << 2)
+
 void iris_blorp_surf_for_resource(struct isl_device *isl_dev,
                                   struct blorp_surf *surf,
                                   struct pipe_resource *p_res,

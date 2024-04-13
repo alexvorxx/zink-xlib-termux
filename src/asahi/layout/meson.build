@@ -39,9 +39,7 @@ if with_tests
       'asahi_layout_tests',
       files(
         'tests/test-layout.cpp',
-        'tests/test-miptree.cpp',
-        'tests/test-comp-twiddled.cpp',
-        'tests/test-uncomp-twiddled.cpp',
+        'tests/test-generated.cpp',
       ),
       c_args : [c_msvc_compat_args, no_override_init_args],
       gnu_symbol_visibility : 'hidden',
@@ -50,6 +48,6 @@ if with_tests
       link_with : [libasahi_layout],
     ),
     suite : ['asahi'],
-    protocol : gtest_test_protocol,
+    protocol : 'gtest',
   )
 endif

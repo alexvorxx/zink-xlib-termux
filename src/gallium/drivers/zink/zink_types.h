@@ -222,7 +222,6 @@ enum zink_debug {
    ZINK_DEBUG_MAP = (1<<11),
 };
 
-
 /** fence types */
 struct tc_unflushed_batch_token;
 
@@ -830,7 +829,7 @@ struct zink_gfx_pipeline_state {
    uint32_t vertex_buffers_enabled_mask;
    uint32_t vertex_strides[PIPE_MAX_ATTRIBS];
    struct zink_vertex_elements_hw_state *element_state;
-   struct zink_fs_shadow_key *shadow;
+   struct zink_zs_swizzle_key *shadow;
    bool sample_locations_enabled;
    enum pipe_prim_type shader_rast_prim, rast_prim; /* reduced type or max for unknown */
    union {
@@ -907,9 +906,10 @@ struct zink_shader_module {
    uint32_t hash;
    bool default_variant;
    bool has_nonseamless;
+   bool needs_zs_shader_swizzle;
    uint8_t num_uniforms;
    uint8_t key_size;
-   uint8_t key[0]; /* | key | uniforms | shadow swizzle | */
+   uint8_t key[0]; /* | key | uniforms | zs shader swizzle | */
 };
 
 struct zink_program {
@@ -1128,10 +1128,13 @@ struct zink_resource_object {
    struct pipe_reference reference;
 
    VkPipelineStageFlagBits access_stage;
-   VkAccessFlags access;
+   VkAccessFlagBits access;
+   VkAccessFlagBits last_write;
+
    bool unordered_read;
    bool unordered_write;
    bool copies_valid;
+   bool copies_need_reset; //for use with batch state resets
 
    unsigned persistent_maps; //if nonzero, requires vkFlushMappedMemoryRanges during batch use
    struct util_dynarray copies[16]; //regions being copied to; for barrier omission
@@ -1286,6 +1289,7 @@ struct zink_screen {
    bool threaded;
    bool is_cpu;
    bool abort_on_hang;
+   bool frame_marker_emitted;
    uint64_t curr_batch; //the current batch id
    uint32_t last_finished;
    VkSemaphore sem;
@@ -1413,6 +1417,7 @@ struct zink_screen {
       bool dual_color_blend_by_location;
       bool glsl_correct_derivatives_after_discard;
       bool inline_uniforms;
+      bool emulate_point_smooth;
    } driconf;
 
    VkFormatProperties format_props[PIPE_FORMAT_COUNT];
@@ -1423,6 +1428,10 @@ struct zink_screen {
 
    struct {
       bool broken_l4a4;
+      /* https://gitlab.khronos.org/vulkan/vulkan/-/issues/3306
+       * HI TURNIP
+       */
+      bool broken_cache_semantics;
       bool implicit_sync;
       bool always_feedback_loop;
       bool always_feedback_loop_zs;
@@ -1432,6 +1441,7 @@ struct zink_screen {
       bool no_linesmooth;
       bool no_hw_gl_point;
       bool lower_robustImageAccess2;
+      bool needs_zs_shader_swizzle;
       unsigned z16_unscaled_bias;
       unsigned z24_unscaled_bias;
       unsigned extra_swapchain_images;
@@ -1579,8 +1589,8 @@ struct zink_sampler_view {
       struct zink_buffer_view *buffer_view;
    };
    struct zink_surface *cube_array;
-   struct zink_surface *shadow;
-   struct zink_fs_shadow_swizzle swizzle;
+   struct zink_surface *zs_view;
+   struct zink_zs_swizzle swizzle;
 };
 
 struct zink_image_view {
@@ -1794,6 +1804,7 @@ struct zink_context {
    bool disable_color_writes;
    bool was_line_loop;
    bool primitives_generated_active;
+   bool primitives_generated_suspended;
    bool queries_disabled, render_condition_active;
    bool queries_in_rp;
    struct {
@@ -1844,8 +1855,8 @@ struct zink_context {
       VkDescriptorImageInfo fbfetch;
       uint8_t fbfetch_db[ZINK_FBFETCH_DESCRIPTOR_SIZE];
 
-      /* the current state of the shadow swizzle data */
-      struct zink_fs_shadow_key shadow;
+      /* the current state of the zs swizzle data */
+      struct zink_zs_swizzle_key zs_swizzle[MESA_SHADER_STAGES];
 
       struct zink_resource *descriptor_res[ZINK_DESCRIPTOR_BASE_TYPES][MESA_SHADER_STAGES][PIPE_MAX_SAMPLERS];
 

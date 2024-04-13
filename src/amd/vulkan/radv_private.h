@@ -122,6 +122,17 @@ extern "C"
 #define RADV_SUPPORT_ANDROID_HARDWARE_BUFFER 0
 #endif
 
+#if defined(VK_USE_PLATFORM_WAYLAND_KHR) || defined(VK_USE_PLATFORM_XCB_KHR) ||                    \
+   defined(VK_USE_PLATFORM_XLIB_KHR) || defined(VK_USE_PLATFORM_DISPLAY_KHR)
+#define RADV_USE_WSI_PLATFORM
+#endif
+
+#ifdef ANDROID
+#define RADV_API_VERSION VK_MAKE_VERSION(1, 1, VK_HEADER_VERSION)
+#else
+#define RADV_API_VERSION VK_MAKE_VERSION(1, 3, VK_HEADER_VERSION)
+#endif
+
 #ifdef _WIN32
 #define RADV_SUPPORT_CALIBRATED_TIMESTAMPS 0
 #else
@@ -132,6 +143,11 @@ extern "C"
 #define radv_printflike(a, b)
 #else
 #define radv_printflike(a, b) __attribute__((__format__(__printf__, a, b)))
+#endif
+
+/* The "RAW" clocks on Linux are called "FAST" on FreeBSD */
+#if !defined(CLOCK_MONOTONIC_RAW) && defined(CLOCK_MONOTONIC_FAST)
+#define CLOCK_MONOTONIC_RAW CLOCK_MONOTONIC_FAST
 #endif
 
 static inline uint32_t
@@ -360,6 +376,15 @@ struct radv_physical_device {
 
 uint32_t radv_find_memory_index(struct radv_physical_device *pdevice, VkMemoryPropertyFlags flags);
 
+VkResult create_null_physical_device(struct vk_instance *vk_instance);
+
+VkResult create_drm_physical_device(struct vk_instance *vk_instance, struct _drmDevice *device,
+                                    struct vk_physical_device **out);
+
+void radv_physical_device_destroy(struct vk_physical_device *vk_device);
+
+bool radv_thread_trace_enabled(void);
+
 struct radv_instance {
    struct vk_instance vk;
 
@@ -412,13 +437,15 @@ struct radv_pipeline_shader_stack_size;
 
 bool radv_create_shaders_from_pipeline_cache(
    struct radv_device *device, struct radv_pipeline_cache *cache, const unsigned char *sha1,
-   struct radv_pipeline *pipeline, struct radv_pipeline_shader_stack_size **stack_sizes,
-   uint32_t *num_stack_sizes, bool *found_in_application_cache);
+   struct radv_pipeline *pipeline, struct radv_ray_tracing_module *rt_groups,
+   uint32_t num_rt_groups, bool *found_in_application_cache);
 
-void radv_pipeline_cache_insert_shaders(
-   struct radv_device *device, struct radv_pipeline_cache *cache, const unsigned char *sha1,
-   struct radv_pipeline *pipeline, struct radv_shader_binary *const *binaries,
-   const struct radv_pipeline_shader_stack_size *stack_sizes, uint32_t num_stack_sizes);
+void radv_pipeline_cache_insert_shaders(struct radv_device *device,
+                                        struct radv_pipeline_cache *cache,
+                                        const unsigned char *sha1, struct radv_pipeline *pipeline,
+                                        struct radv_shader_binary *const *binaries,
+                                        const struct radv_ray_tracing_module *rt_groups,
+                                        uint32_t num_rt_groups);
 
 enum radv_blit_ds_layout {
    RADV_BLIT_DS_LAYOUT_TILE_ENABLE,
@@ -814,6 +841,15 @@ struct radv_queue {
    struct radeon_winsys_bo *gang_sem_bo;
 };
 
+int radv_queue_init(struct radv_device *device, struct radv_queue *queue, int idx,
+                    const VkDeviceQueueCreateInfo *create_info,
+                    const VkDeviceQueueGlobalPriorityCreateInfoKHR *global_priority);
+
+void radv_queue_finish(struct radv_queue *queue);
+
+enum radeon_ctx_priority
+radv_get_queue_global_priority(const VkDeviceQueueGlobalPriorityCreateInfoKHR *pObj);
+
 #define RADV_BORDER_COLOR_COUNT       4096
 #define RADV_BORDER_COLOR_BUFFER_SIZE (sizeof(VkClearColorValue) * RADV_BORDER_COLOR_COUNT)
 
@@ -989,7 +1025,7 @@ struct radv_device {
    struct radv_rra_trace_data rra_trace;
 
    /* Trap handler. */
-   struct radv_trap_handler_shader *trap_handler_shader;
+   struct radv_shader *trap_handler_shader;
    struct radeon_winsys_bo *tma_bo; /* Trap Memory Address */
    uint32_t *tma_ptr;
 
@@ -1989,7 +2025,7 @@ struct radv_event {
 #define RADV_HASH_SHADER_NO_FMASK              (1 << 19)
 #define RADV_HASH_SHADER_NGG_STREAMOUT         (1 << 20)
 
-struct radv_pipeline_group_handle;
+struct radv_ray_tracing_module;
 struct radv_pipeline_key;
 
 void radv_pipeline_stage_init(const VkPipelineShaderStageCreateInfo *sinfo,
@@ -2004,7 +2040,7 @@ void radv_hash_rt_stages(struct mesa_sha1 *ctx, const VkPipelineShaderStageCreat
 
 void radv_hash_rt_shaders(unsigned char *hash, const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
                           const struct radv_pipeline_key *key,
-                          const struct radv_pipeline_group_handle *group_handles, uint32_t flags);
+                          const struct radv_ray_tracing_module *groups, uint32_t flags);
 
 uint32_t radv_get_hash_flags(const struct radv_device *device, bool stats);
 
@@ -2192,6 +2228,7 @@ struct radv_graphics_pipeline {
    bool retain_shaders;
    struct {
       nir_shader *nir;
+      unsigned char shader_sha1[SHA1_DIGEST_LENGTH];
    } retained_shaders[MESA_VULKAN_SHADER_STAGES];
 
    /* For relocation of shaders with RGP. */
@@ -2204,6 +2241,11 @@ struct radv_compute_pipeline {
    bool cs_regalloc_hang_bug;
 };
 
+struct radv_ray_tracing_module {
+   struct radv_pipeline_group_handle handle;
+   struct radv_pipeline_shader_stack_size stack_size;
+};
+
 struct radv_library_pipeline {
    struct radv_pipeline base;
 
@@ -2213,13 +2255,13 @@ struct radv_library_pipeline {
    unsigned stage_count;
    VkPipelineShaderStageCreateInfo *stages;
    unsigned group_count;
-   VkRayTracingShaderGroupCreateInfoKHR *groups;
+   VkRayTracingShaderGroupCreateInfoKHR *group_infos;
    VkPipelineShaderStageModuleIdentifierCreateInfoEXT *identifiers;
    struct {
       uint8_t sha1[SHA1_DIGEST_LENGTH];
    } *hashes;
 
-   struct radv_pipeline_group_handle *group_handles;
+   struct radv_ray_tracing_module groups[];
 };
 
 struct radv_graphics_lib_pipeline {
@@ -2235,10 +2277,9 @@ struct radv_graphics_lib_pipeline {
 struct radv_ray_tracing_pipeline {
    struct radv_compute_pipeline base;
 
-   struct radv_pipeline_group_handle *group_handles;
-   struct radv_pipeline_shader_stack_size *stack_sizes;
    uint32_t group_count;
    uint32_t stack_size;
+   struct radv_ray_tracing_module groups[];
 };
 
 #define RADV_DECL_PIPELINE_DOWNCAST(pipe_type, pipe_enum)            \
@@ -2325,14 +2366,14 @@ void radv_pipeline_init(struct radv_device *device, struct radv_pipeline *pipeli
 VkResult radv_graphics_pipeline_create(VkDevice device, VkPipelineCache cache,
                                        const VkGraphicsPipelineCreateInfo *pCreateInfo,
                                        const struct radv_graphics_pipeline_create_info *extra,
-                                       const VkAllocationCallbacks *alloc, VkPipeline *pPipeline,
-                                       bool is_internal);
+                                       const VkAllocationCallbacks *alloc, VkPipeline *pPipeline);
 
 VkResult radv_compute_pipeline_create(VkDevice _device, VkPipelineCache _cache,
                                       const VkComputePipelineCreateInfo *pCreateInfo,
                                       const VkAllocationCallbacks *pAllocator,
-                                      VkPipeline *pPipeline, bool is_internal);
+                                      VkPipeline *pPipeline);
 
+bool radv_pipeline_capture_shaders(const struct radv_device *device, VkPipelineCreateFlags flags);
 bool radv_pipeline_capture_shader_stats(const struct radv_device *device,
                                         VkPipelineCreateFlags flags);
 

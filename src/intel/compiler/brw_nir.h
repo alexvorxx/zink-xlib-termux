@@ -128,8 +128,6 @@ void brw_nir_lower_fs_outputs(nir_shader *nir);
 
 bool brw_nir_lower_conversions(nir_shader *nir);
 
-bool brw_nir_lower_scoped_barriers(nir_shader *nir);
-
 bool brw_nir_lower_shading_rate_output(nir_shader *nir);
 
 bool brw_nir_lower_storage_image(nir_shader *nir,
@@ -161,6 +159,9 @@ void brw_nir_apply_key(nir_shader *nir,
                        const struct brw_base_prog_key *key,
                        unsigned max_subgroup_size,
                        bool is_scalar);
+
+unsigned brw_nir_api_subgroup_size(const nir_shader *nir,
+                                   unsigned hw_subgroup_size);
 
 enum brw_conditional_mod brw_cmod_for_nir_comparison(nir_op op);
 enum lsc_opcode lsc_aop_for_nir_intrinsic(const nir_intrinsic_instr *atomic);

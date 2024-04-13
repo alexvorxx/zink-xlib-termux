@@ -41,16 +41,9 @@ bool do_common_optimization(exec_list *ir, bool linked,
                             const struct gl_shader_compiler_options *options,
                             bool native_integers);
 
-bool ir_constant_fold(ir_rvalue **rvalue);
-
 bool do_rebalance_tree(exec_list *instructions);
 bool do_algebraic(exec_list *instructions, bool native_integers,
                   const struct gl_shader_compiler_options *options);
-bool do_constant_folding(exec_list *instructions);
-bool do_constant_variable(exec_list *instructions);
-bool do_constant_variable_unlinked(exec_list *instructions);
-bool do_copy_propagation_elements(exec_list *instructions);
-bool do_constant_propagation(exec_list *instructions);
 bool do_dead_code(exec_list *instructions);
 bool do_dead_code_local(exec_list *instructions);
 bool do_dead_code_unlinked(exec_list *instructions);
@@ -75,7 +68,6 @@ bool lower_packing_builtins(exec_list *instructions,
                             bool has_shading_language_packing,
                             bool has_gpu_shader5,
                             bool has_half_float_packing);
-bool lower_vector_insert(exec_list *instructions, bool lower_nonconstant_index);
 bool lower_vector_derefs(gl_linked_shader *shader);
 void lower_named_interface_blocks(void *mem_ctx, gl_linked_shader *shader);
 void optimize_dead_builtin_variables(exec_list *instructions,

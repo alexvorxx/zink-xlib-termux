@@ -714,11 +714,9 @@ vec4_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
       break;
    }
 
-   case nir_intrinsic_memory_barrier:
-      unreachable("expecting only nir_intrinsic_scoped_barrier");
-
    case nir_intrinsic_scoped_barrier: {
-      assert(nir_intrinsic_execution_scope(instr) == NIR_SCOPE_NONE);
+      if (nir_intrinsic_memory_scope(instr) == NIR_SCOPE_NONE)
+         break;
       const vec4_builder bld =
          vec4_builder(this).at_end().annotate(current_annotation, base_ir);
       const dst_reg tmp = bld.vgrf(BRW_REGISTER_TYPE_UD);
@@ -829,54 +827,6 @@ vec4_visitor::optimize_predicate(nir_alu_instr *instr,
             brw_cmod_for_nir_comparison(cmp_instr->op)));
 
    return true;
-}
-
-static void
-emit_find_msb_using_lzd(const vec4_builder &bld,
-                        const dst_reg &dst,
-                        const src_reg &src,
-                        bool is_signed)
-{
-   vec4_instruction *inst;
-   src_reg temp = src;
-
-   if (is_signed) {
-      /* LZD of an absolute value source almost always does the right
-       * thing.  There are two problem values:
-       *
-       * * 0x80000000.  Since abs(0x80000000) == 0x80000000, LZD returns
-       *   0.  However, findMSB(int(0x80000000)) == 30.
-       *
-       * * 0xffffffff.  Since abs(0xffffffff) == 1, LZD returns
-       *   31.  Section 8.8 (Integer Functions) of the GLSL 4.50 spec says:
-       *
-       *    For a value of zero or negative one, -1 will be returned.
-       *
-       * * Negative powers of two.  LZD(abs(-(1<<x))) returns x, but
-       *   findMSB(-(1<<x)) should return x-1.
-       *
-       * For all negative number cases, including 0x80000000 and
-       * 0xffffffff, the correct value is obtained from LZD if instead of
-       * negating the (already negative) value the logical-not is used.  A
-       * conditional logical-not can be achieved in two instructions.
-       */
-      temp = src_reg(bld.vgrf(BRW_REGISTER_TYPE_D));
-
-      bld.ASR(dst_reg(temp), src, brw_imm_d(31));
-      bld.XOR(dst_reg(temp), temp, src);
-   }
-
-   bld.LZD(retype(dst, BRW_REGISTER_TYPE_UD),
-           retype(temp, BRW_REGISTER_TYPE_UD));
-
-   /* LZD counts from the MSB side, while GLSL's findMSB() wants the count
-    * from the LSB side. Subtract the result from 31 to convert the MSB count
-    * into an LSB count.  If no bits are set, LZD will return 32.  31-32 = -1,
-    * which is exactly what findMSB() is supposed to return.
-    */
-   inst = bld.ADD(dst, retype(src_reg(dst), BRW_REGISTER_TYPE_D),
-                  brw_imm_d(31));
-   inst->src[0].negate = true;
 }
 
 void
@@ -1652,70 +1602,46 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
       break;
 
    case nir_op_bitfield_reverse:
-      assert(nir_dest_bit_size(instr->dest.dest) < 64);
+      assert(nir_dest_bit_size(instr->dest.dest) == 32);
+      assert(nir_src_bit_size(instr->src[0].src) == 32);
       emit(BFREV(dst, op[0]));
       break;
 
    case nir_op_bit_count:
-      assert(nir_dest_bit_size(instr->dest.dest) < 64);
+      assert(nir_dest_bit_size(instr->dest.dest) == 32);
+      assert(nir_src_bit_size(instr->src[0].src) < 64);
       emit(CBIT(dst, op[0]));
       break;
 
-   case nir_op_ufind_msb:
-      assert(nir_dest_bit_size(instr->dest.dest) < 64);
-      emit_find_msb_using_lzd(vec4_builder(this).at_end(), dst, op[0], false);
-      break;
-
    case nir_op_ifind_msb: {
-      assert(nir_dest_bit_size(instr->dest.dest) < 64);
+      assert(nir_dest_bit_size(instr->dest.dest) == 32);
+      assert(nir_src_bit_size(instr->src[0].src) == 32);
+      assert(devinfo->ver >= 7);
+
       vec4_builder bld = vec4_builder(this).at_end();
       src_reg src(dst);
 
-      if (devinfo->ver < 7) {
-         emit_find_msb_using_lzd(bld, dst, op[0], true);
-      } else {
-         emit(FBH(retype(dst, BRW_REGISTER_TYPE_UD), op[0]));
+      emit(FBH(retype(dst, BRW_REGISTER_TYPE_UD), op[0]));
 
-         /* FBH counts from the MSB side, while GLSL's findMSB() wants the
-          * count from the LSB side. If FBH didn't return an error
-          * (0xFFFFFFFF), then subtract the result from 31 to convert the MSB
-          * count into an LSB count.
-          */
-         bld.CMP(dst_null_d(), src, brw_imm_d(-1), BRW_CONDITIONAL_NZ);
+      /* FBH counts from the MSB side, while GLSL's findMSB() wants the count
+       * from the LSB side. If FBH didn't return an error (0xFFFFFFFF), then
+       * subtract the result from 31 to convert the MSB count into an LSB
+       * count.
+       */
+      bld.CMP(dst_null_d(), src, brw_imm_d(-1), BRW_CONDITIONAL_NZ);
 
-         inst = bld.ADD(dst, src, brw_imm_d(31));
-         inst->predicate = BRW_PREDICATE_NORMAL;
-         inst->src[0].negate = true;
-      }
+      inst = bld.ADD(dst, src, brw_imm_d(31));
+      inst->predicate = BRW_PREDICATE_NORMAL;
+      inst->src[0].negate = true;
       break;
    }
 
-   case nir_op_find_lsb: {
-      assert(nir_dest_bit_size(instr->dest.dest) < 64);
-      vec4_builder bld = vec4_builder(this).at_end();
-
-      if (devinfo->ver < 7) {
-         dst_reg temp = bld.vgrf(BRW_REGISTER_TYPE_D);
-
-         /* (x & -x) generates a value that consists of only the LSB of x.
-          * For all powers of 2, findMSB(y) == findLSB(y).
-          */
-         src_reg src = src_reg(retype(op[0], BRW_REGISTER_TYPE_D));
-         src_reg negated_src = src;
-
-         /* One must be negated, and the other must be non-negated.  It
-          * doesn't matter which is which.
-          */
-         negated_src.negate = true;
-         src.negate = false;
-
-         bld.AND(temp, src, negated_src);
-         emit_find_msb_using_lzd(bld, dst, src_reg(temp), false);
-      } else {
-         bld.FBL(dst, op[0]);
-      }
+   case nir_op_find_lsb:
+      assert(nir_dest_bit_size(instr->dest.dest) == 32);
+      assert(nir_src_bit_size(instr->src[0].src) == 32);
+      assert(devinfo->ver >= 7);
+      emit(FBL(dst, op[0]));
       break;
-   }
 
    case nir_op_ubitfield_extract:
    case nir_op_ibitfield_extract:
@@ -2022,20 +1948,14 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
          break;
 
       case nir_tex_src_texture_offset: {
-         /* Emit code to evaluate the actual indexing expression */
-         src_reg src = get_nir_src(instr->src[i].src, 1);
-         src_reg temp(this, glsl_type::uint_type);
-         emit(ADD(dst_reg(temp), src, brw_imm_ud(texture)));
-         texture_reg = emit_uniformize(temp);
+         assert(texture_reg.is_zero());
+         texture_reg = emit_uniformize(get_nir_src(instr->src[i].src, 1));
          break;
       }
 
       case nir_tex_src_sampler_offset: {
-         /* Emit code to evaluate the actual indexing expression */
-         src_reg src = get_nir_src(instr->src[i].src, 1);
-         src_reg temp(this, glsl_type::uint_type);
-         emit(ADD(dst_reg(temp), src, brw_imm_ud(sampler)));
-         sampler_reg = emit_uniformize(temp);
+         assert(sampler_reg.is_zero());
+         sampler_reg = emit_uniformize(get_nir_src(instr->src[i].src, 1));
          break;
       }
 

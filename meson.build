@@ -23,17 +23,9 @@ project(
   ['c', 'cpp'],
   version : files('VERSION'),
   license : 'MIT',
-  meson_version : '>= 0.59',
+  meson_version : '>= 0.60',
   default_options : ['buildtype=debugoptimized', 'b_ndebug=if-release', 'c_std=c11', 'cpp_std=c++17', 'rust_std=2021']
 )
-
-# In recent versions, meson can inject some extra arguments to get richer
-# results from gtest based tests.  Feature was added in 0.55, but requiring
-# 0.59.2 to include an important fix.  See https://github.com/mesonbuild/meson/pull/9283.
-gtest_test_protocol = 'exitcode'
-if meson.version().version_compare('>= 0.59.2')
-  gtest_test_protocol = 'gtest'
-endif
 
 cc = meson.get_compiler('c')
 cpp = meson.get_compiler('cpp')
@@ -995,6 +987,7 @@ else
     '-Wmisleading-indentation',
     '-Wno-missing-field-initializers',
     '-Wno-format-truncation',
+    '-Wno-nonnull-compare',
     '-fno-math-errno',
     '-fno-trapping-math',
     '-Qunused-arguments',
@@ -1427,6 +1420,22 @@ if with_any_intel and ['x86', 'x86_64'].contains(host_machine.cpu_family())
   pre_args += '-DSUPPORT_INTEL_INTEGRATED_GPUS'
 endif
 
+if get_option('intel-xe-kmd').enabled()
+  pre_args += '-DINTEL_XE_KMD_SUPPORTED'
+endif
+
+if with_intel_hasvk and host_machine.cpu_family().startswith('x86') == false
+  error('Intel "hasvk" Vulkan driver requires x86 or x86_64 CPU family')
+endif
+
+if with_gallium_crocus and host_machine.cpu_family().startswith('x86') == false
+  error('Intel "crocus" Gallium driver requires x86 or x86_64 CPU family')
+endif
+
+if with_gallium_i915 and host_machine.cpu_family().startswith('x86') == false
+  error('Intel "i915" Gallium driver requires x86 or x86_64 CPU family')
+endif
+
 # Determine whether or not the rt library is needed for time functions
 if host_machine.system() == 'windows' or cc.has_function('clock_gettime')
   dep_clock = null_dep
@@ -1562,11 +1571,17 @@ foreach d : _libdrm_checks
 endforeach
 
 with_gallium_drisw_kms = false
-dep_libdrm = dependency(
-  'libdrm', version : '>=' + _drm_ver,
-  # GNU/Hurd includes egl_dri2, without drm.
-  required : (with_dri2 and host_machine.system() != 'gnu') or with_dri3
-)
+if system_has_kms_drm
+  dep_libdrm = dependency(
+    'libdrm', version : '>=' + _drm_ver,
+    # GNU/Hurd includes egl_dri2, without drm.
+    required : (with_dri2 and host_machine.system() != 'gnu') or with_dri3
+  )
+else
+  # We should prevent libdrm from being available when the target doesn't have it to avoid transitive
+  # dependencies (such as vk-runtime) linking to it
+  dep_libdrm = null_dep
+endif
 if dep_libdrm.found()
   pre_args += '-DHAVE_LIBDRM'
   if with_dri_platform == 'drm' and with_dri

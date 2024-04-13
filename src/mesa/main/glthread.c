@@ -103,7 +103,7 @@ glthread_unmarshal_batch(void *job, void *gdata, int thread_index)
    simple_mtx_unlock(&shared->Mutex);
 
    /* Execute the GL calls. */
-   _glapi_set_dispatch(ctx->CurrentServerDispatch);
+   _glapi_set_dispatch(ctx->Dispatch.Current);
 
    /* Here we lock the mutexes once globally if possible. If not, we just
     * fallback to the individual API calls doing it.
@@ -210,7 +210,6 @@ _mesa_glthread_init(struct gl_context *ctx)
    /* glthread takes over all L3 pinning */
    ctx->st->pin_thread_counter = ST_L3_PINNING_DISABLED;
 
-   _mesa_glthread_update_draw_always_async(ctx);
    _mesa_glthread_enable(ctx);
 
    /* Execute the thread initialization function in the thread. */
@@ -250,16 +249,16 @@ _mesa_glthread_destroy(struct gl_context *ctx)
 void _mesa_glthread_enable(struct gl_context *ctx)
 {
    if (ctx->GLThread.enabled ||
-       ctx->CurrentServerDispatch == ctx->ContextLost ||
+       ctx->Dispatch.Current == ctx->Dispatch.ContextLost ||
        ctx->GLThread.DebugOutputSynchronous)
       return;
 
    ctx->GLThread.enabled = true;
-   ctx->CurrentClientDispatch = ctx->MarshalExec;
+   ctx->GLApi = ctx->MarshalExec;
 
    /* Update the dispatch only if the dispatch is current. */
-   if (_glapi_get_dispatch() == ctx->CurrentServerDispatch) {
-       _glapi_set_dispatch(ctx->CurrentClientDispatch);
+   if (_glapi_get_dispatch() == ctx->Dispatch.Current) {
+       _glapi_set_dispatch(ctx->GLApi);
    }
 }
 
@@ -271,11 +270,11 @@ void _mesa_glthread_disable(struct gl_context *ctx)
    _mesa_glthread_finish(ctx);
 
    ctx->GLThread.enabled = false;
-   ctx->CurrentClientDispatch = ctx->CurrentServerDispatch;
+   ctx->GLApi = ctx->Dispatch.Current;
 
    /* Update the dispatch only if the dispatch is current. */
    if (_glapi_get_dispatch() == ctx->MarshalExec) {
-       _glapi_set_dispatch(ctx->CurrentClientDispatch);
+       _glapi_set_dispatch(ctx->GLApi);
    }
 
    /* Unbind VBOs in all VAOs that glthread bound for non-VBO vertex uploads
@@ -292,7 +291,7 @@ _mesa_glthread_flush_batch(struct gl_context *ctx)
    if (!glthread->enabled)
       return;
 
-   if (ctx->CurrentServerDispatch == ctx->ContextLost) {
+   if (ctx->Dispatch.Current == ctx->Dispatch.ContextLost) {
       _mesa_glthread_disable(ctx);
       return;
    }

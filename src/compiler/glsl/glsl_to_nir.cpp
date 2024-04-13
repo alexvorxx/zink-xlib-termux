@@ -228,15 +228,19 @@ glsl_to_nir(const struct gl_constants *consts,
    sh->ir = NULL;
 
    nir_validate_shader(shader, "after glsl to nir, before function inline");
+   if (should_print_nir(shader)) {
+      printf("glsl_to_nir\n");
+      nir_print_shader(shader, stdout);
+   }
 
    /* We have to lower away local constant initializers right before we
     * inline functions.  That way they get properly initialized at the top
     * of the function and not at the top of its caller.
     */
-   nir_lower_variable_initializers(shader, nir_var_all);
-   nir_lower_returns(shader);
-   nir_inline_functions(shader);
-   nir_opt_deref(shader);
+   NIR_PASS_V(shader, nir_lower_variable_initializers, nir_var_all);
+   NIR_PASS_V(shader, nir_lower_returns);
+   NIR_PASS_V(shader, nir_inline_functions);
+   NIR_PASS_V(shader, nir_opt_deref);
 
    nir_validate_shader(shader, "after function inlining and return lowering");
 
@@ -703,7 +707,13 @@ nir_visitor::visit(ir_variable *ir)
       var->state_slots = NULL;
    }
 
-   var->constant_initializer = constant_copy(ir->constant_initializer, var);
+   /* Values declared const will have ir->constant_value instead of
+    * ir->constant_initializer.
+    */
+   if (ir->constant_initializer)
+      var->constant_initializer = constant_copy(ir->constant_initializer, var);
+   else
+      var->constant_initializer = constant_copy(ir->constant_value, var);
 
    if (var->data.mode == nir_var_function_temp)
       nir_function_impl_add_variable(impl, var);
@@ -2381,8 +2391,12 @@ nir_visitor::visit(ir_expression *ir)
    case ir_binop_dot:
       result = nir_fdot(&b, srcs[0], srcs[1]);
       break;
+
    case ir_binop_vector_extract:
       result = nir_vector_extract(&b, srcs[0], srcs[1]);
+      break;
+   case ir_triop_vector_insert:
+      result = nir_vector_insert(&b, srcs[0], srcs[1], srcs[2]);
       break;
 
    case ir_binop_atan2:
@@ -2763,20 +2777,20 @@ nir_visitor::visit(ir_barrier *)
 {
    if (shader->options->use_scoped_barrier) {
       if (shader->info.stage == MESA_SHADER_COMPUTE) {
-         nir_scoped_memory_barrier(&b, NIR_SCOPE_WORKGROUP, NIR_MEMORY_ACQ_REL,
-                                   nir_var_mem_shared);
+         nir_scoped_barrier(&b, NIR_SCOPE_WORKGROUP, NIR_SCOPE_WORKGROUP,
+                            NIR_MEMORY_ACQ_REL, nir_var_mem_shared);
       } else if (shader->info.stage == MESA_SHADER_TESS_CTRL) {
-         nir_scoped_memory_barrier(&b, NIR_SCOPE_WORKGROUP, NIR_MEMORY_ACQ_REL,
-                                   nir_var_shader_out);
+         nir_scoped_barrier(&b, NIR_SCOPE_WORKGROUP, NIR_SCOPE_WORKGROUP,
+                            NIR_MEMORY_ACQ_REL, nir_var_shader_out);
       }
    } else {
       if (shader->info.stage == MESA_SHADER_COMPUTE)
          nir_memory_barrier_shared(&b);
       else if (shader->info.stage == MESA_SHADER_TESS_CTRL)
          nir_memory_barrier_tcs_patch(&b);
-   }
 
-   nir_control_barrier(&b);
+      nir_control_barrier(&b);
+   }
 }
 
 nir_shader *

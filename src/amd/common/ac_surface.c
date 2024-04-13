@@ -1373,7 +1373,7 @@ static int gfx6_compute_surface(ADDR_HANDLE addrlib, const struct radeon_info *i
        *
        * "dcc_alignment * 4" was determined by trial and error.
        */
-      surf->meta_size = align64(surf->surf_size >> 8, (1 << surf->meta_alignment_log2) * 4);
+      surf->meta_size = align64(surf->surf_size >> 8, (1ull << surf->meta_alignment_log2) * 4);
    }
 
    /* Make sure HTILE covers the whole miptree, because the shader reads
@@ -1775,14 +1775,18 @@ static int gfx9_compute_miptree(struct ac_addrlib *addrlib, const struct radeon_
          MAX2(surf->u.gfx9.surf_slice_size,
               surf->u.gfx9.surf_pitch * out.height * surf->bpe * surf->blk_w);
       surf->surf_size = surf->u.gfx9.surf_slice_size * in->numSlices;
-   }
 
-   if (in->swizzleMode == ADDR_SW_LINEAR) {
       int alignment = 256 / surf->bpe;
       for (unsigned i = 0; i < in->numMipLevels; i++) {
          surf->u.gfx9.offset[i] = mip_info[i].offset;
          /* Adjust pitch like we did for surf_pitch */
          surf->u.gfx9.pitch[i] = align(mip_info[i].pitch / surf->blk_w, alignment);
+      }
+      surf->u.gfx9.base_mip_width = surf->u.gfx9.surf_pitch;
+   } else if (in->swizzleMode == ADDR_SW_LINEAR) {
+      for (unsigned i = 0; i < in->numMipLevels; i++) {
+         surf->u.gfx9.offset[i] = mip_info[i].offset;
+         surf->u.gfx9.pitch[i] = mip_info[i].pitch;
       }
       surf->u.gfx9.base_mip_width = surf->u.gfx9.surf_pitch;
    } else {
@@ -2197,7 +2201,9 @@ static int gfx9_compute_surface(struct ac_addrlib *addrlib, const struct radeon_
    AddrSurfInfoIn.flags.depth = (surf->flags & RADEON_SURF_ZBUFFER) != 0;
    AddrSurfInfoIn.flags.display = get_display_flag(config, surf);
    /* flags.texture currently refers to TC-compatible HTILE */
-   AddrSurfInfoIn.flags.texture = is_color_surface || surf->flags & RADEON_SURF_TC_COMPATIBLE_HTILE;
+   AddrSurfInfoIn.flags.texture = !(surf->flags & RADEON_SURF_NO_TEXTURE) &&
+                                  (is_color_surface ||
+                                   surf->flags & RADEON_SURF_TC_COMPATIBLE_HTILE);
    AddrSurfInfoIn.flags.opt4space = 1;
    AddrSurfInfoIn.flags.prt = (surf->flags & RADEON_SURF_PRT) != 0;
 
@@ -2303,6 +2309,14 @@ static int gfx9_compute_surface(struct ac_addrlib *addrlib, const struct radeon_
          if (surf->flags & RADEON_SURF_IMPORTED ||
              (info->gfx_level >= GFX10 && surf->flags & RADEON_SURF_FORCE_SWIZZLE_MODE)) {
             AddrSurfInfoIn.swizzleMode = surf->u.gfx9.swizzle_mode;
+            break;
+         }
+
+         /* On GFX11, the only allowed swizzle mode for VRS rate images is
+          * 64KB_R_X.
+          */
+         if (info->gfx_level >= GFX11 && surf->flags & RADEON_SURF_VRS_RATE) {
+            AddrSurfInfoIn.swizzleMode = ADDR_SW_64KB_R_X;
             break;
          }
 
@@ -2515,14 +2529,14 @@ int ac_compute_surface(struct ac_addrlib *addrlib, const struct radeon_info *inf
 
    if (surf->fmask_size) {
       assert(config->info.samples >= 2);
-      surf->fmask_offset = align64(surf->total_size, 1 << surf->fmask_alignment_log2);
+      surf->fmask_offset = align64(surf->total_size, 1ull << surf->fmask_alignment_log2);
       surf->total_size = surf->fmask_offset + surf->fmask_size;
       surf->alignment_log2 = MAX2(surf->alignment_log2, surf->fmask_alignment_log2);
    }
 
    /* Single-sample CMASK is in a separate buffer. */
    if (surf->cmask_size && config->info.samples >= 2) {
-      surf->cmask_offset = align64(surf->total_size, 1 << surf->cmask_alignment_log2);
+      surf->cmask_offset = align64(surf->total_size, 1ull << surf->cmask_alignment_log2);
       surf->total_size = surf->cmask_offset + surf->cmask_size;
       surf->alignment_log2 = MAX2(surf->alignment_log2, surf->cmask_alignment_log2);
    }
@@ -2540,11 +2554,11 @@ int ac_compute_surface(struct ac_addrlib *addrlib, const struct radeon_info *inf
           !(surf->flags & RADEON_SURF_Z_OR_SBUFFER) &&
           surf->u.gfx9.color.dcc.display_equation_valid) {
          /* Add space for the displayable DCC buffer. */
-         surf->display_dcc_offset = align64(surf->total_size, 1 << surf->u.gfx9.color.display_dcc_alignment_log2);
+         surf->display_dcc_offset = align64(surf->total_size, 1ull << surf->u.gfx9.color.display_dcc_alignment_log2);
          surf->total_size = surf->display_dcc_offset + surf->u.gfx9.color.display_dcc_size;
       }
 
-      surf->meta_offset = align64(surf->total_size, 1 << surf->meta_alignment_log2);
+      surf->meta_offset = align64(surf->total_size, 1ull << surf->meta_alignment_log2);
       surf->total_size = surf->meta_offset + surf->meta_size;
       surf->alignment_log2 = MAX2(surf->alignment_log2, surf->meta_alignment_log2);
    }

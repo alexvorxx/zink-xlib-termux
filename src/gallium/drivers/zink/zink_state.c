@@ -696,7 +696,8 @@ zink_bind_rasterizer_state(struct pipe_context *pctx, void *cso)
       else if (rasterizer_discard != ctx->rast_state->base.rasterizer_discard)
          zink_set_color_write_enables(ctx);
 
-      if (ctx->rast_state->base.point_quad_rasterization != point_quad_rasterization)
+      if (ctx->rast_state->base.point_quad_rasterization ||
+          ctx->rast_state->base.point_quad_rasterization != point_quad_rasterization)
          zink_set_fs_point_coord_key(ctx);
       if (ctx->rast_state->base.scissor != scissor)
          ctx->scissor_changed = true;
@@ -709,6 +710,9 @@ zink_bind_rasterizer_state(struct pipe_context *pctx, void *cso)
 
       if (ctx->rast_state->base.half_pixel_center != half_pixel_center)
          ctx->vp_state_changed = true;
+
+      if (!screen->optimal_keys)
+         zink_update_gs_key_rectangular_line(ctx);
    }
 }
 

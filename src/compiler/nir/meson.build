@@ -162,6 +162,7 @@ files_libnir = files(
   'nir_lower_global_vars_to_local.c',
   'nir_lower_goto_ifs.c',
   'nir_lower_gs_intrinsics.c',
+  'nir_lower_helper_writes.c',
   'nir_lower_load_const_to_scalar.c',
   'nir_lower_locals_to_regs.c',
   'nir_lower_idiv.c',
@@ -410,6 +411,7 @@ if with_tests
         'tests/control_flow_tests.cpp',
         'tests/core_tests.cpp',
         'tests/loop_analyze_tests.cpp',
+        'tests/lower_alu_width_tests.cpp',
         'tests/lower_returns_tests.cpp',
         'tests/mod_analysis_tests.cpp',
         'tests/negative_equal_tests.cpp',
@@ -426,7 +428,7 @@ if with_tests
       dependencies : [dep_thread, idep_gtest, idep_nir, idep_mesautil],
     ),
     suite : ['compiler', 'nir'],
-    protocol : gtest_test_protocol,
+    protocol : 'gtest',
   )
 
   test(
@@ -451,7 +453,7 @@ if with_tests
     suite : ['compiler', 'nir'],
     # TODO: Use a negative filter for gtest instead of the expect failure here.
     should_fail : meson.get_external_property('xfail', '').contains('load_store_vectorizer'),
-    protocol : gtest_test_protocol,
+    protocol : 'gtest',
   )
 
   test(

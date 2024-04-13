@@ -118,7 +118,7 @@ tc_clear_driver_thread(struct threaded_context *tc)
 
 /* ensure the batch's array of renderpass data is large enough for the current index */
 static void
-tc_batch_renderpass_infos_resize(struct tc_batch *batch)
+tc_batch_renderpass_infos_resize(struct threaded_context *tc, struct tc_batch *batch)
 {
    unsigned size = batch->renderpass_infos.capacity;
    unsigned cur_num = batch->renderpass_info_idx;
@@ -126,6 +126,10 @@ tc_batch_renderpass_infos_resize(struct tc_batch *batch)
    if (size / sizeof(struct tc_renderpass_info) > cur_num)
       return;
 
+   struct tc_renderpass_info *infos = batch->renderpass_infos.data;
+   unsigned old_idx = batch->renderpass_info_idx - 1;
+   bool redo = tc->renderpass_info_recording &&
+               tc->renderpass_info_recording == &infos[old_idx];
    if (!util_dynarray_resize(&batch->renderpass_infos, struct tc_renderpass_info, cur_num + 10))
       mesa_loge("tc: memory alloc fail!");
 
@@ -136,9 +140,12 @@ tc_batch_renderpass_infos_resize(struct tc_batch *batch)
       unsigned start = size / sizeof(struct tc_renderpass_info);
       unsigned count = (batch->renderpass_infos.capacity - size) /
                        sizeof(struct tc_renderpass_info);
-      struct tc_renderpass_info *infos = batch->renderpass_infos.data;
+      infos = batch->renderpass_infos.data;
       for (unsigned i = 0; i < count; i++)
          util_queue_fence_init(&infos[start + i].ready);
+      /* re-set current recording info on resize */
+      if (redo)
+         tc->renderpass_info_recording = &infos[old_idx];
    }
 }
 
@@ -164,7 +171,7 @@ tc_batch_increment_renderpass_info(struct threaded_context *tc, bool full_copy)
    tc_signal_renderpass_info_ready(tc);
    /* increment rp info and initialize it */
    batch->renderpass_info_idx++;
-   tc_batch_renderpass_infos_resize(batch);
+   tc_batch_renderpass_infos_resize(tc, batch);
    tc_info = batch->renderpass_infos.data;
 
    if (full_copy) {
@@ -3092,11 +3099,27 @@ tc_texture_subdata(struct pipe_context *_pipe,
    } else {
       struct pipe_context *pipe = tc->pipe;
 
-      tc_sync(tc);
-      tc_set_driver_thread(tc);
-      pipe->texture_subdata(pipe, resource, level, usage, box, data,
-                            stride, layer_stride);
-      tc_clear_driver_thread(tc);
+      if (resource->usage != PIPE_USAGE_STAGING &&
+          tc->options.parse_renderpass_info && tc->in_renderpass) {
+         enum pipe_format format = resource->format;
+         if (usage & PIPE_MAP_DEPTH_ONLY)
+            format = util_format_get_depth_only(format);
+         else if (usage & PIPE_MAP_STENCIL_ONLY)
+            format = PIPE_FORMAT_S8_UINT;
+         unsigned stride = util_format_get_stride(format, box->width);
+         unsigned layer_stride = util_format_get_2d_size(format, stride, box->height);
+         struct pipe_resource *pres = pipe_buffer_create_with_data(pipe, 0, PIPE_USAGE_STREAM, layer_stride * box->depth, data);
+         struct pipe_box src_box = *box;
+         src_box.x = src_box.y = src_box.z = 0;
+         tc->base.resource_copy_region(&tc->base, resource, level, box->x, box->y, box->z, pres, 0, &src_box);
+         pipe_resource_reference(&pres, NULL);
+      } else {
+         tc_sync(tc);
+         tc_set_driver_thread(tc);
+         pipe->texture_subdata(pipe, resource, level, usage, box, data,
+                              stride, layer_stride);
+         tc_clear_driver_thread(tc);
+      }
    }
 }
 
@@ -4874,7 +4897,7 @@ threaded_context_create(struct pipe_context *pipe,
       tc->batch_slots[i].renderpass_info_idx = -1;
       if (tc->options.parse_renderpass_info) {
          util_dynarray_init(&tc->batch_slots[i].renderpass_infos, NULL);
-         tc_batch_renderpass_infos_resize(&tc->batch_slots[i]);
+         tc_batch_renderpass_infos_resize(tc, &tc->batch_slots[i]);
       }
    }
    for (unsigned i = 0; i < TC_MAX_BUFFER_LISTS; i++)

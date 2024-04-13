@@ -266,6 +266,8 @@ enum
  * in the shader via vs_state_bits in legacy GS, the GS copy shader, and any NGG shader.
  */
 /* bit gap */
+#define GS_STATE_ESGS_VERTEX_STRIDE__SHIFT      10
+#define GS_STATE_ESGS_VERTEX_STRIDE__MASK       0xff /* max 32 * 4 + 1 */
 /* Small prim filter precision = num_samples / quant_mode, which can only be equal to 1/2^n
  * where n is between 4 and 12. Knowing that, we only need to store 4 bits of the FP32 exponent.
  * Set it like this: value = (fui(num_samples / quant_mode) >> 23) & 0xf;
@@ -322,6 +324,16 @@ enum
 #define SI_PROFILE_VS_NO_BINNING             (1 << 3)
 #define SI_PROFILE_PS_NO_BINNING             (1 << 4)
 #define SI_PROFILE_CLAMP_DIV_BY_ZERO         (1 << 5)
+
+enum si_shader_dump_type {
+   SI_DUMP_SHADER_KEY,
+   SI_DUMP_INIT_NIR,       /* initial input NIR when shaders are created (before lowering) */
+   SI_DUMP_NIR,            /* final NIR after lowering when shader variants are created */
+   SI_DUMP_INIT_LLVM_IR,   /* initial LLVM IR before optimizations */
+   SI_DUMP_LLVM_IR,        /* final LLVM IR */
+   SI_DUMP_ASM,            /* final asm shaders */
+   SI_DUMP_ALWAYS,
+};
 
 /**
  * For VS shader keys, describe any fixups required for vertex fetch.
@@ -917,7 +929,7 @@ struct si_shader {
          unsigned vgt_primitiveid_en;
          unsigned vgt_gs_onchip_cntl;
          unsigned vgt_gs_instance_cnt;
-         unsigned vgt_esgs_ring_itemsize;
+         unsigned esgs_vertex_stride;
          unsigned spi_vs_out_config;
          unsigned spi_shader_idx_format;
          unsigned spi_shader_pos_format;
@@ -980,6 +992,8 @@ unsigned si_shader_io_get_unique_index_patch(unsigned semantic);
 unsigned si_shader_io_get_unique_index(unsigned semantic, bool is_varying);
 bool si_shader_binary_upload(struct si_screen *sscreen, struct si_shader *shader,
                              uint64_t scratch_va);
+bool si_can_dump_shader(struct si_screen *sscreen, gl_shader_stage stage,
+                        enum si_shader_dump_type dump_type);
 void si_shader_dump(struct si_screen *sscreen, struct si_shader *shader,
                     struct util_debug_callback *debug, FILE *f, bool check_debug_option);
 void si_shader_dump_stats_for_shader_db(struct si_screen *screen, struct si_shader *shader,
@@ -1056,7 +1070,7 @@ static inline bool gfx10_ngg_writes_user_edgeflags(struct si_shader *shader)
           shader->selector->info.writes_edgeflag;
 }
 
-static inline bool si_shader_uses_streamout(struct si_shader *shader)
+static inline bool si_shader_uses_streamout(const struct si_shader *shader)
 {
    return shader->selector->stage <= MESA_SHADER_GEOMETRY &&
           shader->selector->info.enabled_streamout_buffer_mask &&

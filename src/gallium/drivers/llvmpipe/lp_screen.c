@@ -226,6 +226,10 @@ llvmpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
       return 64;
    case PIPE_CAP_TEXTURE_BUFFER_OBJECTS:
       return 1;
+   case PIPE_CAP_LINEAR_IMAGE_PITCH_ALIGNMENT:
+      return 1;
+   case PIPE_CAP_LINEAR_IMAGE_BASE_ADDRESS_ALIGNMENT:
+      return 1;
    /* Adressing that many 64bpp texels fits in an i32 so this is a reasonable value */
    case PIPE_CAP_MAX_TEXEL_BUFFER_ELEMENTS_UINT:
       return 134217728;
@@ -565,7 +569,7 @@ llvmpipe_get_compute_param(struct pipe_screen *_screen,
    case PIPE_COMPUTE_CAP_ADDRESS_BITS:
       if (ret) {
          uint32_t *address_bits = ret;
-         *address_bits = 64;
+         *address_bits = sizeof(void*) * 8;
       }
       return sizeof(uint32_t);
    }

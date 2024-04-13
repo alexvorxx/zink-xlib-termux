@@ -610,53 +610,6 @@ fs_visitor::optimize_frontfacing_ternary(nir_alu_instr *instr,
    return true;
 }
 
-static void
-emit_find_msb_using_lzd(const fs_builder &bld,
-                        const fs_reg &result,
-                        const fs_reg &src,
-                        bool is_signed)
-{
-   fs_inst *inst;
-   fs_reg temp = src;
-
-   if (is_signed) {
-      /* LZD of an absolute value source almost always does the right
-       * thing.  There are two problem values:
-       *
-       * * 0x80000000.  Since abs(0x80000000) == 0x80000000, LZD returns
-       *   0.  However, findMSB(int(0x80000000)) == 30.
-       *
-       * * 0xffffffff.  Since abs(0xffffffff) == 1, LZD returns
-       *   31.  Section 8.8 (Integer Functions) of the GLSL 4.50 spec says:
-       *
-       *    For a value of zero or negative one, -1 will be returned.
-       *
-       * * Negative powers of two.  LZD(abs(-(1<<x))) returns x, but
-       *   findMSB(-(1<<x)) should return x-1.
-       *
-       * For all negative number cases, including 0x80000000 and
-       * 0xffffffff, the correct value is obtained from LZD if instead of
-       * negating the (already negative) value the logical-not is used.  A
-       * conditional logical-not can be achieved in two instructions.
-       */
-      temp = bld.vgrf(BRW_REGISTER_TYPE_D);
-
-      bld.ASR(temp, src, brw_imm_d(31));
-      bld.XOR(temp, temp, src);
-   }
-
-   bld.LZD(retype(result, BRW_REGISTER_TYPE_UD),
-           retype(temp, BRW_REGISTER_TYPE_UD));
-
-   /* LZD counts from the MSB side, while GLSL's findMSB() wants the count
-    * from the LSB side. Subtract the result from 31 to convert the MSB
-    * count into an LSB count.  If no bits are set, LZD will return 32.
-    * 31-32 = -1, which is exactly what findMSB() is supposed to return.
-    */
-   inst = bld.ADD(result, retype(result, BRW_REGISTER_TYPE_D), brw_imm_d(31));
-   inst->src[0].negate = true;
-}
-
 static brw_rnd_mode
 brw_rnd_mode_from_nir_op (const nir_op op) {
    switch (op) {
@@ -1070,17 +1023,8 @@ fs_visitor::nir_emit_alu(const fs_builder &bld, nir_alu_instr *instr,
       if (BRW_RND_MODE_UNSPECIFIED != rnd)
          bld.emit(SHADER_OPCODE_RND_MODE, bld.null_reg_ud(), brw_imm_d(rnd));
 
-      /* In theory, it would be better to use BRW_OPCODE_F32TO16. Depending
-       * on the HW gen, it is a special hw opcode or just a MOV, and
-       * brw_F32TO16 (at brw_eu_emit) would do the work to chose.
-       *
-       * But if we want to use that opcode, we need to provide support on
-       * different optimizations and lowerings. As right now HF support is
-       * only for gfx8+, it will be better to use directly the MOV, and use
-       * BRW_OPCODE_F32TO16 when/if we work for HF support on gfx7.
-       */
       assert(type_sz(op[0].type) < 8); /* brw_nir_lower_conversions */
-      inst = bld.MOV(result, op[0]);
+      inst = bld.F32TO16(result, op[0]);
       break;
    }
 
@@ -1612,9 +1556,7 @@ fs_visitor::nir_emit_alu(const fs_builder &bld, nir_alu_instr *instr,
       fs_reg zero = bld.vgrf(BRW_REGISTER_TYPE_F);
 
       /* The destination stride must be at least as big as the source stride. */
-      tmp16.type = devinfo->ver > 7
-         ? BRW_REGISTER_TYPE_HF : BRW_REGISTER_TYPE_W;
-      tmp16.stride = 2;
+      tmp16 = subscript(tmp16, BRW_REGISTER_TYPE_HF, 0);
 
       /* Check for denormal */
       fs_reg abs_src0 = op[0];
@@ -1626,8 +1568,8 @@ fs_visitor::nir_emit_alu(const fs_builder &bld, nir_alu_instr *instr,
               retype(op[0], BRW_REGISTER_TYPE_UD),
               brw_imm_ud(0x80000000));
       /* Do the actual F32 -> F16 -> F32 conversion */
-      bld.emit(BRW_OPCODE_F32TO16, tmp16, op[0]);
-      bld.emit(BRW_OPCODE_F16TO32, tmp32, tmp16);
+      bld.F32TO16(tmp16, op[0]);
+      bld.F16TO32(tmp32, tmp16);
       /* Select that or zero based on normal status */
       inst = bld.SEL(result, zero, tmp32);
       inst->predicate = BRW_PREDICATE_NORMAL;
@@ -1662,16 +1604,14 @@ fs_visitor::nir_emit_alu(const fs_builder &bld, nir_alu_instr *instr,
       assert(FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP16 & execution_mode);
       FALLTHROUGH;
    case nir_op_unpack_half_2x16_split_x:
-      inst = bld.emit(BRW_OPCODE_F16TO32, result,
-                      subscript(op[0], BRW_REGISTER_TYPE_UW, 0));
+      inst = bld.F16TO32(result, subscript(op[0], BRW_REGISTER_TYPE_HF, 0));
       break;
 
    case nir_op_unpack_half_2x16_split_y_flush_to_zero:
       assert(FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP16 & execution_mode);
       FALLTHROUGH;
    case nir_op_unpack_half_2x16_split_y:
-      inst = bld.emit(BRW_OPCODE_F16TO32, result,
-                      subscript(op[0], BRW_REGISTER_TYPE_UW, 1));
+      inst = bld.F16TO32(result, subscript(op[0], BRW_REGISTER_TYPE_HF, 1));
       break;
 
    case nir_op_pack_64_2x32_split:
@@ -1706,71 +1646,48 @@ fs_visitor::nir_emit_alu(const fs_builder &bld, nir_alu_instr *instr,
       break;
 
    case nir_op_bitfield_reverse:
-      assert(nir_dest_bit_size(instr->dest.dest) < 64);
+      assert(nir_dest_bit_size(instr->dest.dest) == 32);
+      assert(nir_src_bit_size(instr->src[0].src) == 32);
       bld.BFREV(result, op[0]);
       break;
 
    case nir_op_bit_count:
-      assert(nir_dest_bit_size(instr->dest.dest) < 64);
+      assert(nir_dest_bit_size(instr->dest.dest) == 32);
+      assert(nir_src_bit_size(instr->src[0].src) < 64);
       bld.CBIT(result, op[0]);
       break;
 
-   case nir_op_ufind_msb: {
-      assert(nir_dest_bit_size(instr->dest.dest) < 64);
-      emit_find_msb_using_lzd(bld, result, op[0], false);
-      break;
-   }
-
    case nir_op_uclz:
       assert(nir_dest_bit_size(instr->dest.dest) == 32);
+      assert(nir_src_bit_size(instr->src[0].src) == 32);
       bld.LZD(retype(result, BRW_REGISTER_TYPE_UD), op[0]);
       break;
 
    case nir_op_ifind_msb: {
-      assert(nir_dest_bit_size(instr->dest.dest) < 64);
+      assert(nir_dest_bit_size(instr->dest.dest) == 32);
+      assert(nir_src_bit_size(instr->src[0].src) == 32);
+      assert(devinfo->ver >= 7);
 
-      if (devinfo->ver < 7) {
-         emit_find_msb_using_lzd(bld, result, op[0], true);
-      } else {
-         bld.FBH(retype(result, BRW_REGISTER_TYPE_UD), op[0]);
+      bld.FBH(retype(result, BRW_REGISTER_TYPE_UD), op[0]);
 
-         /* FBH counts from the MSB side, while GLSL's findMSB() wants the
-          * count from the LSB side. If FBH didn't return an error
-          * (0xFFFFFFFF), then subtract the result from 31 to convert the MSB
-          * count into an LSB count.
-          */
-         bld.CMP(bld.null_reg_d(), result, brw_imm_d(-1), BRW_CONDITIONAL_NZ);
+      /* FBH counts from the MSB side, while GLSL's findMSB() wants the count
+       * from the LSB side. If FBH didn't return an error (0xFFFFFFFF), then
+       * subtract the result from 31 to convert the MSB count into an LSB
+       * count.
+       */
+      bld.CMP(bld.null_reg_d(), result, brw_imm_d(-1), BRW_CONDITIONAL_NZ);
 
-         inst = bld.ADD(result, result, brw_imm_d(31));
-         inst->predicate = BRW_PREDICATE_NORMAL;
-         inst->src[0].negate = true;
-      }
+      inst = bld.ADD(result, result, brw_imm_d(31));
+      inst->predicate = BRW_PREDICATE_NORMAL;
+      inst->src[0].negate = true;
       break;
    }
 
    case nir_op_find_lsb:
-      assert(nir_dest_bit_size(instr->dest.dest) < 64);
-
-      if (devinfo->ver < 7) {
-         fs_reg temp = vgrf(glsl_type::int_type);
-
-         /* (x & -x) generates a value that consists of only the LSB of x.
-          * For all powers of 2, findMSB(y) == findLSB(y).
-          */
-         fs_reg src = retype(op[0], BRW_REGISTER_TYPE_D);
-         fs_reg negated_src = src;
-
-         /* One must be negated, and the other must be non-negated.  It
-          * doesn't matter which is which.
-          */
-         negated_src.negate = true;
-         src.negate = false;
-
-         bld.AND(temp, src, negated_src);
-         emit_find_msb_using_lzd(bld, result, temp, false);
-      } else {
-         bld.FBL(result, op[0]);
-      }
+      assert(nir_dest_bit_size(instr->dest.dest) == 32);
+      assert(nir_src_bit_size(instr->src[0].src) == 32);
+      assert(devinfo->ver >= 7);
+      bld.FBL(result, op[0]);
       break;
 
    case nir_op_ubitfield_extract:
@@ -2764,12 +2681,14 @@ fs_visitor::nir_emit_tcs_intrinsic(const fs_builder &bld,
               brw_imm_d(tcs_key->input_vertices));
       break;
 
-   case nir_intrinsic_control_barrier: {
-      if (tcs_prog_data->instances == 1)
-         break;
-      emit_tcs_barrier();
+   case nir_intrinsic_scoped_barrier:
+      if (nir_intrinsic_memory_scope(instr) != NIR_SCOPE_NONE)
+         nir_emit_intrinsic(bld, instr);
+      if (nir_intrinsic_execution_scope(instr) == NIR_SCOPE_WORKGROUP) {
+         if (tcs_prog_data->instances != 1)
+            emit_tcs_barrier();
+      }
       break;
-   }
 
    case nir_intrinsic_load_input:
       unreachable("nir_lower_io should never give us these.");
@@ -3690,19 +3609,23 @@ fs_visitor::nir_emit_cs_intrinsic(const fs_builder &bld,
       dest = get_nir_dest(instr->dest);
 
    switch (instr->intrinsic) {
-   case nir_intrinsic_control_barrier:
-      /* The whole workgroup fits in a single HW thread, so all the
-       * invocations are already executed lock-step.  Instead of an actual
-       * barrier just emit a scheduling fence, that will generate no code.
-       */
-      if (!nir->info.workgroup_size_variable &&
-          workgroup_size() <= dispatch_width) {
-         bld.exec_all().group(1, 0).emit(FS_OPCODE_SCHEDULING_FENCE);
-         break;
-      }
+   case nir_intrinsic_scoped_barrier:
+      if (nir_intrinsic_memory_scope(instr) != NIR_SCOPE_NONE)
+         nir_emit_intrinsic(bld, instr);
+      if (nir_intrinsic_execution_scope(instr) == NIR_SCOPE_WORKGROUP) {
+         /* The whole workgroup fits in a single HW thread, so all the
+          * invocations are already executed lock-step.  Instead of an actual
+          * barrier just emit a scheduling fence, that will generate no code.
+          */
+         if (!nir->info.workgroup_size_variable &&
+             workgroup_size() <= dispatch_width) {
+            bld.exec_all().group(1, 0).emit(FS_OPCODE_SCHEDULING_FENCE);
+            break;
+         }
 
-      emit_barrier();
-      cs_prog_data->uses_barrier = true;
+         emit_barrier();
+         cs_prog_data->uses_barrier = true;
+      }
       break;
 
    case nir_intrinsic_load_subgroup_id:
@@ -4346,19 +4269,11 @@ fs_visitor::nir_emit_intrinsic(const fs_builder &bld, nir_intrinsic_instr *instr
       break;
    }
 
-   case nir_intrinsic_group_memory_barrier:
-   case nir_intrinsic_memory_barrier_shared:
-   case nir_intrinsic_memory_barrier_buffer:
-   case nir_intrinsic_memory_barrier_image:
-   case nir_intrinsic_memory_barrier:
-   case nir_intrinsic_memory_barrier_atomic_counter:
-      unreachable("unexpected barrier, expecting only nir_intrinsic_scoped_barrier");
-
    case nir_intrinsic_scoped_barrier:
    case nir_intrinsic_begin_invocation_interlock:
    case nir_intrinsic_end_invocation_interlock: {
       bool ugm_fence, slm_fence, tgm_fence, urb_fence;
-      enum opcode opcode;
+      enum opcode opcode = BRW_OPCODE_NOP;
 
       /* Handling interlock intrinsics here will allow the logic for IVB
        * render cache (see below) to be reused.
@@ -4366,13 +4281,17 @@ fs_visitor::nir_emit_intrinsic(const fs_builder &bld, nir_intrinsic_instr *instr
 
       switch (instr->intrinsic) {
       case nir_intrinsic_scoped_barrier: {
-         assert(nir_intrinsic_execution_scope(instr) == NIR_SCOPE_NONE);
+         /* Note we only care about the memory part of the
+          * barrier.  The execution part will be taken care
+          * of by the stage specific intrinsic handler functions.
+          */
          nir_variable_mode modes = nir_intrinsic_memory_modes(instr);
          ugm_fence = modes & (nir_var_mem_ssbo | nir_var_mem_global);
          slm_fence = modes & nir_var_mem_shared;
          tgm_fence = modes & nir_var_image;
          urb_fence = modes & (nir_var_shader_out | nir_var_mem_task_payload);
-         opcode = SHADER_OPCODE_MEMORY_FENCE;
+         if (nir_intrinsic_memory_scope(instr) != NIR_SCOPE_NONE)
+            opcode = SHADER_OPCODE_MEMORY_FENCE;
          break;
       }
 
@@ -4406,6 +4325,9 @@ fs_visitor::nir_emit_intrinsic(const fs_builder &bld, nir_intrinsic_instr *instr
       default:
          unreachable("invalid intrinsic");
       }
+
+      if (opcode == BRW_OPCODE_NOP)
+         break;
 
       if (nir->info.shared_size > 0) {
          assert(gl_shader_stage_uses_workgroup(stage));
@@ -4596,9 +4518,6 @@ fs_visitor::nir_emit_intrinsic(const fs_builder &bld, nir_intrinsic_instr *instr
 
       break;
    }
-
-   case nir_intrinsic_memory_barrier_tcs_patch:
-      break;
 
    case nir_intrinsic_shader_clock: {
       /* We cannot do anything if there is an event, so ignore it for now */
@@ -5407,7 +5326,8 @@ fs_visitor::nir_emit_intrinsic(const fs_builder &bld, nir_intrinsic_instr *instr
        * FS), bound the invocation to the dispatch size.
        */
       fs_reg bound_invocation;
-      if (bld.dispatch_width() < bld.shader->nir->info.subgroup_size) {
+      if (api_subgroup_size == 0 ||
+          bld.dispatch_width() < api_subgroup_size) {
          bound_invocation = bld.vgrf(BRW_REGISTER_TYPE_UD);
          bld.AND(bound_invocation, invocation, brw_imm_ud(dispatch_width - 1));
       } else {
@@ -6181,18 +6101,14 @@ fs_visitor::nir_emit_texture(const fs_builder &bld, nir_tex_instr *instr)
          unreachable("should be lowered");
 
       case nir_tex_src_texture_offset: {
-         /* Emit code to evaluate the actual indexing expression */
-         fs_reg tmp = vgrf(glsl_type::uint_type);
-         bld.ADD(tmp, src, brw_imm_ud(texture));
-         srcs[TEX_LOGICAL_SRC_SURFACE] = bld.emit_uniformize(tmp);
+         assert(srcs[TEX_LOGICAL_SRC_SURFACE].is_zero());
+         srcs[TEX_LOGICAL_SRC_SURFACE] = bld.emit_uniformize(src);
          break;
       }
 
       case nir_tex_src_sampler_offset: {
-         /* Emit code to evaluate the actual indexing expression */
-         fs_reg tmp = vgrf(glsl_type::uint_type);
-         bld.ADD(tmp, src, brw_imm_ud(sampler));
-         srcs[TEX_LOGICAL_SRC_SAMPLER] = bld.emit_uniformize(tmp);
+         assert(srcs[TEX_LOGICAL_SRC_SAMPLER].is_zero());
+         srcs[TEX_LOGICAL_SRC_SAMPLER] = bld.emit_uniformize(src);
          break;
       }
 

@@ -2433,7 +2433,7 @@ static bool si_is_format_supported(struct pipe_screen *screen, enum pipe_format 
       /* Chips with 1 RB don't increment occlusion queries at 16x MSAA sample rate,
        * so don't expose 16 samples there.
        */
-      const unsigned max_eqaa_samples = util_bitcount(sscreen->info.enabled_rb_mask) <= 1 ? 8 : 16;
+      const unsigned max_eqaa_samples = util_bitcount64(sscreen->info.enabled_rb_mask) <= 1 ? 8 : 16;
       const unsigned max_samples = 8;
 
       /* MSAA support without framebuffer attachments. */
@@ -3192,15 +3192,17 @@ static void si_emit_framebuffer_state(struct si_context *sctx)
    unsigned i, nr_cbufs = state->nr_cbufs;
    struct si_texture *tex = NULL;
    struct si_surface *cb = NULL;
-   unsigned cb_color_info = 0;
+   bool is_msaa_resolve = state->nr_cbufs == 2 &&
+                          state->cbufs[0] && state->cbufs[0]->texture->nr_samples > 1 &&
+                          state->cbufs[1] && state->cbufs[1]->texture->nr_samples <= 1;
+
+   /* CB can't do MSAA resolve on gfx11. */
+   assert(!is_msaa_resolve || sctx->gfx_level < GFX11);
 
    radeon_begin(cs);
 
    /* Colorbuffers. */
    for (i = 0; i < nr_cbufs; i++) {
-      uint64_t cb_color_base, cb_color_fmask, cb_color_cmask, cb_dcc_base;
-      unsigned cb_color_attrib;
-
       if (!(sctx->framebuffer.dirty_cbufs & (1 << i)))
          continue;
 
@@ -3239,47 +3241,35 @@ static void si_emit_framebuffer_state(struct si_context *sctx)
       }
 
       /* Compute mutable surface parameters. */
-      cb_color_base = tex->buffer.gpu_address >> 8;
-      cb_color_fmask = 0;
-      cb_color_cmask = tex->cmask_base_address_reg;
-      cb_dcc_base = 0;
-      cb_color_info = cb->cb_color_info | tex->cb_color_info;
-      cb_color_attrib = cb->cb_color_attrib;
+      uint64_t cb_color_base = tex->buffer.gpu_address >> 8;
+      uint64_t cb_dcc_base = 0;
+      unsigned cb_color_info = cb->cb_color_info | tex->cb_color_info;
 
-      if (tex->swap_rgb_to_bgr) {
-         /* Swap R and B channels. */
-         static unsigned rgb_to_bgr[4] = {
-            [V_028C70_SWAP_STD] = V_028C70_SWAP_ALT,
-            [V_028C70_SWAP_ALT] = V_028C70_SWAP_STD,
-            [V_028C70_SWAP_STD_REV] = V_028C70_SWAP_ALT_REV,
-            [V_028C70_SWAP_ALT_REV] = V_028C70_SWAP_STD_REV,
-         };
-         unsigned swap = rgb_to_bgr[G_028C70_COMP_SWAP(cb_color_info)];
+      if (sctx->gfx_level < GFX11) {
+         if (tex->swap_rgb_to_bgr) {
+            /* Swap R and B channels. */
+            static unsigned rgb_to_bgr[4] = {
+               [V_028C70_SWAP_STD] = V_028C70_SWAP_ALT,
+               [V_028C70_SWAP_ALT] = V_028C70_SWAP_STD,
+               [V_028C70_SWAP_STD_REV] = V_028C70_SWAP_ALT_REV,
+               [V_028C70_SWAP_ALT_REV] = V_028C70_SWAP_STD_REV,
+            };
+            unsigned swap = rgb_to_bgr[G_028C70_COMP_SWAP(cb_color_info)];
 
-         cb_color_info &= C_028C70_COMP_SWAP;
-         cb_color_info |= S_028C70_COMP_SWAP(swap);
-      }
+            cb_color_info &= C_028C70_COMP_SWAP;
+            cb_color_info |= S_028C70_COMP_SWAP(swap);
+         }
 
-      if (sctx->gfx_level < GFX11 && cb->base.u.tex.level > 0)
-         cb_color_info &= C_028C70_FAST_CLEAR;
+         if (cb->base.u.tex.level > 0)
+            cb_color_info &= C_028C70_FAST_CLEAR;
 
-      if (tex->surface.fmask_offset) {
-         cb_color_fmask = (tex->buffer.gpu_address + tex->surface.fmask_offset) >> 8;
-         cb_color_fmask |= tex->surface.fmask_tile_swizzle;
+
+         if (vi_dcc_enabled(tex, cb->base.u.tex.level) && (i != 1 || !is_msaa_resolve))
+            cb_color_info |= S_028C70_DCC_ENABLE(1);
       }
 
       /* Set up DCC. */
       if (vi_dcc_enabled(tex, cb->base.u.tex.level)) {
-         bool is_msaa_resolve_dst = state->cbufs[0] && state->cbufs[0]->texture->nr_samples > 1 &&
-                                    state->cbufs[1] == &cb->base &&
-                                    state->cbufs[1]->texture->nr_samples <= 1;
-
-         /* CB can't do MSAA resolve on gfx11. */
-         assert(!is_msaa_resolve_dst || sctx->gfx_level < GFX11);
-
-         if (!is_msaa_resolve_dst && sctx->gfx_level < GFX11)
-            cb_color_info |= S_028C70_DCC_ENABLE(1);
-
          cb_dcc_base = (tex->buffer.gpu_address + tex->surface.meta_offset) >> 8;
 
          unsigned dcc_tile_swizzle = tex->surface.tile_swizzle;
@@ -3306,28 +3296,38 @@ static void si_emit_framebuffer_state(struct si_context *sctx)
                                S_028C78_MAX_COMP_FRAGS(cb->base.texture->nr_samples >= 4);
          }
 
+         radeon_set_context_reg(R_028C60_CB_COLOR0_BASE + i * 0x3C, cb_color_base);
+
          radeon_set_context_reg_seq(R_028C6C_CB_COLOR0_VIEW + i * 0x3C, 4);
          radeon_emit(cb->cb_color_view);                      /* CB_COLOR0_VIEW */
          radeon_emit(cb_color_info);                          /* CB_COLOR0_INFO */
-         radeon_emit(cb_color_attrib);                        /* CB_COLOR0_ATTRIB */
+         radeon_emit(cb->cb_color_attrib);                    /* CB_COLOR0_ATTRIB */
          radeon_emit(cb_fdcc_control);                        /* CB_COLOR0_FDCC_CONTROL */
 
-         radeon_set_context_reg(R_028C60_CB_COLOR0_BASE + i * 0x3C, cb_color_base);
-         radeon_set_context_reg(R_028E40_CB_COLOR0_BASE_EXT + i * 4, cb_color_base >> 32);
          radeon_set_context_reg(R_028C94_CB_COLOR0_DCC_BASE + i * 0x3C, cb_dcc_base);
+         radeon_set_context_reg(R_028E40_CB_COLOR0_BASE_EXT + i * 4, cb_color_base >> 32);
          radeon_set_context_reg(R_028EA0_CB_COLOR0_DCC_BASE_EXT + i * 4, cb_dcc_base >> 32);
          radeon_set_context_reg(R_028EC0_CB_COLOR0_ATTRIB2 + i * 4, cb->cb_color_attrib2);
          radeon_set_context_reg(R_028EE0_CB_COLOR0_ATTRIB3 + i * 4, cb_color_attrib3);
       } else if (sctx->gfx_level >= GFX10) {
          unsigned cb_color_attrib3;
+         uint64_t cb_color_fmask, cb_color_cmask;
 
          /* Set mutable surface parameters. */
          cb_color_base += tex->surface.u.gfx9.surf_offset >> 8;
          cb_color_base |= tex->surface.tile_swizzle;
-         if (!tex->surface.fmask_offset)
+
+         if (tex->surface.fmask_offset) {
+            cb_color_fmask = (tex->buffer.gpu_address + tex->surface.fmask_offset) >> 8;
+            cb_color_fmask |= tex->surface.fmask_tile_swizzle;
+         } else {
             cb_color_fmask = cb_color_base;
+         }
+
          if (cb->base.u.tex.level > 0)
             cb_color_cmask = cb_color_base;
+         else
+            cb_color_cmask = tex->cmask_base_address_reg;
 
          cb_color_attrib3 = cb->cb_color_attrib3 |
                             S_028EE0_COLOR_SW_MODE(tex->surface.u.gfx9.swizzle_mode) |
@@ -3341,7 +3341,7 @@ static void si_emit_framebuffer_state(struct si_context *sctx)
          radeon_emit(0);                         /* hole */
          radeon_emit(cb->cb_color_view);         /* CB_COLOR0_VIEW */
          radeon_emit(cb_color_info);             /* CB_COLOR0_INFO */
-         radeon_emit(cb_color_attrib);           /* CB_COLOR0_ATTRIB */
+         radeon_emit(cb->cb_color_attrib);       /* CB_COLOR0_ATTRIB */
          radeon_emit(cb->cb_dcc_control);        /* CB_COLOR0_DCC_CONTROL */
          radeon_emit(cb_color_cmask);            /* CB_COLOR0_CMASK */
          radeon_emit(0);                         /* hole */
@@ -3364,6 +3364,8 @@ static void si_emit_framebuffer_state(struct si_context *sctx)
             .rb_aligned = 1,
             .pipe_aligned = 1,
          };
+         unsigned cb_color_attrib = cb->cb_color_attrib;
+         uint64_t cb_color_fmask, cb_color_cmask;
 
          if (!tex->is_depth && tex->surface.meta_offset)
             meta = tex->surface.u.gfx9.color.dcc;
@@ -3371,10 +3373,19 @@ static void si_emit_framebuffer_state(struct si_context *sctx)
          /* Set mutable surface parameters. */
          cb_color_base += tex->surface.u.gfx9.surf_offset >> 8;
          cb_color_base |= tex->surface.tile_swizzle;
-         if (!tex->surface.fmask_offset)
+
+         if (tex->surface.fmask_offset) {
+            cb_color_fmask = (tex->buffer.gpu_address + tex->surface.fmask_offset) >> 8;
+            cb_color_fmask |= tex->surface.fmask_tile_swizzle;
+         } else {
             cb_color_fmask = cb_color_base;
+         }
+
          if (cb->base.u.tex.level > 0)
             cb_color_cmask = cb_color_base;
+         else
+            cb_color_cmask = tex->cmask_base_address_reg;
+
          cb_color_attrib |= S_028C74_COLOR_SW_MODE(tex->surface.u.gfx9.swizzle_mode) |
                             S_028C74_FMASK_SW_MODE(tex->surface.u.gfx9.color.fmask_swizzle_mode) |
                             S_028C74_RB_ALIGNED(meta.rb_aligned) |
@@ -3405,16 +3416,26 @@ static void si_emit_framebuffer_state(struct si_context *sctx)
             &tex->surface.u.legacy.level[cb->base.u.tex.level];
          unsigned pitch_tile_max, slice_tile_max, tile_mode_index;
          unsigned cb_color_pitch, cb_color_slice, cb_color_fmask_slice;
+         unsigned cb_color_attrib = cb->cb_color_attrib;
+         uint64_t cb_color_fmask, cb_color_cmask;
 
          cb_color_base += level_info->offset_256B;
          /* Only macrotiled modes can set tile swizzle. */
          if (level_info->mode == RADEON_SURF_MODE_2D)
             cb_color_base |= tex->surface.tile_swizzle;
 
-         if (!tex->surface.fmask_offset)
+         if (tex->surface.fmask_offset) {
+            cb_color_fmask = (tex->buffer.gpu_address + tex->surface.fmask_offset) >> 8;
+            cb_color_fmask |= tex->surface.fmask_tile_swizzle;
+         } else {
             cb_color_fmask = cb_color_base;
+         }
+
          if (cb->base.u.tex.level > 0)
             cb_color_cmask = cb_color_base;
+         else
+            cb_color_cmask = tex->cmask_base_address_reg;
+
          if (cb_dcc_base)
             cb_dcc_base += tex->surface.u.legacy.color.dcc_level[cb->base.u.tex.level].dcc_offset >> 8;
 
@@ -5540,11 +5561,11 @@ static void si_set_raster_config(struct si_context *sctx, struct si_pm4_state *p
 {
    struct si_screen *sscreen = sctx->screen;
    unsigned num_rb = MIN2(sscreen->info.max_render_backends, 16);
-   unsigned rb_mask = sscreen->info.enabled_rb_mask;
+   uint64_t rb_mask = sscreen->info.enabled_rb_mask;
    unsigned raster_config = sscreen->pa_sc_raster_config;
    unsigned raster_config_1 = sscreen->pa_sc_raster_config_1;
 
-   if (!rb_mask || util_bitcount(rb_mask) >= num_rb) {
+   if (!rb_mask || util_bitcount64(rb_mask) >= num_rb) {
       /* Always use the default config when all backends are enabled
        * (or when we failed to determine the enabled backends).
        */
@@ -5571,7 +5592,10 @@ unsigned gfx103_get_cu_mask_ps(struct si_screen *sscreen)
 void si_init_cs_preamble_state(struct si_context *sctx, bool uses_reg_shadowing)
 {
    struct si_screen *sscreen = sctx->screen;
-   uint64_t border_color_va = sctx->border_color_buffer->gpu_address;
+   uint64_t border_color_va =
+      sctx->border_color_buffer ? sctx->border_color_buffer->gpu_address : 0;
+   uint32_t compute_cu_en = S_00B858_SH0_CU_EN(sscreen->info.spi_cu_en) |
+                            S_00B858_SH1_CU_EN(sscreen->info.spi_cu_en);
    bool has_clear_state = sscreen->info.has_clear_state;
 
    struct si_cs_preamble {
@@ -5586,7 +5610,7 @@ void si_init_cs_preamble_state(struct si_context *sctx, bool uses_reg_shadowing)
    /* Add all the space that we allocated. */
    pm4->max_dw = (sizeof(struct si_cs_preamble) - offsetof(struct si_cs_preamble, pm4.pm4)) / 4;
 
-   if (!uses_reg_shadowing) {
+   if (sctx->has_graphics && !uses_reg_shadowing) {
       si_pm4_cmd_add(pm4, PKT3(PKT3_CONTEXT_CONTROL, 1, 0));
       si_pm4_cmd_add(pm4, CC0_UPDATE_LOAD_ENABLES(1));
       si_pm4_cmd_add(pm4, CC1_UPDATE_SHADOW_ENABLES(1));
@@ -5602,6 +5626,79 @@ void si_init_cs_preamble_state(struct si_context *sctx, bool uses_reg_shadowing)
       }
    }
 
+   /* Compute registers. */
+   si_pm4_set_reg(pm4, R_00B834_COMPUTE_PGM_HI, S_00B834_DATA(sctx->screen->info.address32_hi >> 8));
+   si_pm4_set_reg(pm4, R_00B858_COMPUTE_STATIC_THREAD_MGMT_SE0, compute_cu_en);
+   si_pm4_set_reg(pm4, R_00B85C_COMPUTE_STATIC_THREAD_MGMT_SE1, compute_cu_en);
+
+   if (sctx->gfx_level == GFX6) {
+      /* This register has been moved to R_00CD20_COMPUTE_MAX_WAVE_ID and is now per pipe,
+       * so it should be handled in the kernel if we want to use something other than
+       * the default value.
+       * TODO: This should be: (number of compute units) * 4 * (waves per simd) - 1
+       */
+      si_pm4_set_reg(pm4, R_00B82C_COMPUTE_MAX_WAVE_ID, 0x190 /* Default value */);
+   }
+
+   if (sctx->gfx_level >= GFX7) {
+      si_pm4_set_reg(pm4, R_00B864_COMPUTE_STATIC_THREAD_MGMT_SE2, compute_cu_en);
+      si_pm4_set_reg(pm4, R_00B868_COMPUTE_STATIC_THREAD_MGMT_SE3, compute_cu_en);
+
+      /* Disable profiling on compute chips. */
+      if (!sscreen->info.has_graphics) {
+         si_pm4_set_reg(pm4, R_00B82C_COMPUTE_PERFCOUNT_ENABLE, 0);
+         si_pm4_set_reg(pm4, R_00B878_COMPUTE_THREAD_TRACE_ENABLE, 0);
+      }
+   }
+
+   if (sctx->gfx_level >= GFX9 && sctx->gfx_level < GFX11)
+      si_pm4_set_reg(pm4, R_0301EC_CP_COHER_START_DELAY, sctx->gfx_level >= GFX10 ? 0x20 : 0);
+
+   if (!sscreen->info.has_graphics && sscreen->info.family >= CHIP_MI100) {
+      si_pm4_set_reg(pm4, R_00B894_COMPUTE_STATIC_THREAD_MGMT_SE4, compute_cu_en);
+      si_pm4_set_reg(pm4, R_00B898_COMPUTE_STATIC_THREAD_MGMT_SE5, compute_cu_en);
+      si_pm4_set_reg(pm4, R_00B89C_COMPUTE_STATIC_THREAD_MGMT_SE6, compute_cu_en);
+      si_pm4_set_reg(pm4, R_00B8A0_COMPUTE_STATIC_THREAD_MGMT_SE7, compute_cu_en);
+   }
+
+   if (sctx->gfx_level >= GFX10) {
+      si_pm4_set_reg(pm4, R_00B890_COMPUTE_USER_ACCUM_0, 0);
+      si_pm4_set_reg(pm4, R_00B894_COMPUTE_USER_ACCUM_1, 0);
+      si_pm4_set_reg(pm4, R_00B898_COMPUTE_USER_ACCUM_2, 0);
+      si_pm4_set_reg(pm4, R_00B89C_COMPUTE_USER_ACCUM_3, 0);
+
+      if (sctx->gfx_level < GFX11)
+         si_pm4_set_reg(pm4, R_00B8A0_COMPUTE_PGM_RSRC3, 0);
+
+      si_pm4_set_reg(pm4, R_00B9F4_COMPUTE_DISPATCH_TUNNEL, 0);
+   }
+
+   if (sctx->gfx_level >= GFX11) {
+      si_pm4_set_reg(pm4, R_00B8AC_COMPUTE_STATIC_THREAD_MGMT_SE4, compute_cu_en);
+      si_pm4_set_reg(pm4, R_00B8B0_COMPUTE_STATIC_THREAD_MGMT_SE5, compute_cu_en);
+      si_pm4_set_reg(pm4, R_00B8B4_COMPUTE_STATIC_THREAD_MGMT_SE6, compute_cu_en);
+      si_pm4_set_reg(pm4, R_00B8B8_COMPUTE_STATIC_THREAD_MGMT_SE7, compute_cu_en);
+
+      /* How many threads should go to 1 SE before moving onto the next. Think of GL1 cache hits.
+       * Only these values are valid: 0 (disabled), 64, 128, 256, 512
+       * Recommendation: 64 = RT, 256 = non-RT (run benchmarks to be sure)
+       */
+      si_pm4_set_reg(pm4, R_00B8BC_COMPUTE_DISPATCH_INTERLEAVE, S_00B8BC_INTERLEAVE(256));
+   }
+
+   /* Set the pointer to border colors. MI200 doesn't support border colors. */
+   if (sctx->gfx_level >= GFX7 && sctx->border_color_buffer) {
+      si_pm4_set_reg(pm4, R_030E00_TA_CS_BC_BASE_ADDR, border_color_va >> 8);
+      si_pm4_set_reg(pm4, R_030E04_TA_CS_BC_BASE_ADDR_HI,
+                     S_030E04_ADDRESS(border_color_va >> 40));
+   } else if (sctx->gfx_level == GFX6) {
+      si_pm4_set_reg(pm4, R_00950C_TA_CS_BC_BASE_ADDR, border_color_va >> 8);
+   }
+
+   if (!sctx->has_graphics)
+      goto done;
+
+   /* Graphics registers. */
    /* CLEAR_STATE doesn't restore these correctly. */
    si_pm4_set_reg(pm4, R_028240_PA_SC_GENERIC_SCISSOR_TL, S_028240_WINDOW_OFFSET_DISABLE(1));
    si_pm4_set_reg(pm4, R_028244_PA_SC_GENERIC_SCISSOR_BR,
@@ -5671,12 +5768,11 @@ void si_init_cs_preamble_state(struct si_context *sctx, bool uses_reg_shadowing)
       cu_mask_ps = gfx103_get_cu_mask_ps(sscreen);
 
    if (sctx->gfx_level >= GFX7) {
-      ac_set_reg_cu_en(pm4, R_00B01C_SPI_SHADER_PGM_RSRC3_PS,
-                       S_00B01C_CU_EN(cu_mask_ps) |
-                       S_00B01C_WAVE_LIMIT(0x3F) |
-                       S_00B01C_LDS_GROUP_SIZE(sctx->gfx_level >= GFX11),
-                       C_00B01C_CU_EN, 0, &sscreen->info,
-                       (void*)(sctx->gfx_level >= GFX10 ? si_pm4_set_reg_idx3 : si_pm4_set_reg));
+      si_pm4_set_reg_idx3(sscreen, pm4, R_00B01C_SPI_SHADER_PGM_RSRC3_PS,
+                          ac_apply_cu_en(S_00B01C_CU_EN(cu_mask_ps) |
+                                         S_00B01C_WAVE_LIMIT(0x3F) |
+                                         S_00B01C_LDS_GROUP_SIZE(sctx->gfx_level >= GFX11),
+                                         C_00B01C_CU_EN, 0, &sscreen->info));
    }
 
    if (sctx->gfx_level <= GFX8) {
@@ -5711,13 +5807,13 @@ void si_init_cs_preamble_state(struct si_context *sctx, bool uses_reg_shadowing)
    }
 
    if (sctx->gfx_level >= GFX7 && sctx->gfx_level <= GFX8) {
-      ac_set_reg_cu_en(pm4, R_00B51C_SPI_SHADER_PGM_RSRC3_LS,
-                       S_00B51C_CU_EN(0xffff) | S_00B51C_WAVE_LIMIT(0x3F),
-                       C_00B51C_CU_EN, 0, &sscreen->info, (void*)si_pm4_set_reg);
+      si_pm4_set_reg(pm4, R_00B51C_SPI_SHADER_PGM_RSRC3_LS,
+                     ac_apply_cu_en(S_00B51C_CU_EN(0xffff) | S_00B51C_WAVE_LIMIT(0x3F),
+                                    C_00B51C_CU_EN, 0, &sscreen->info));
       si_pm4_set_reg(pm4, R_00B41C_SPI_SHADER_PGM_RSRC3_HS, S_00B41C_WAVE_LIMIT(0x3F));
-      ac_set_reg_cu_en(pm4, R_00B31C_SPI_SHADER_PGM_RSRC3_ES,
-                       S_00B31C_CU_EN(0xffff) | S_00B31C_WAVE_LIMIT(0x3F),
-                       C_00B31C_CU_EN, 0, &sscreen->info, (void*)si_pm4_set_reg);
+      si_pm4_set_reg(pm4, R_00B31C_SPI_SHADER_PGM_RSRC3_ES,
+                     ac_apply_cu_en(S_00B31C_CU_EN(0xffff) | S_00B31C_WAVE_LIMIT(0x3F),
+                                    C_00B31C_CU_EN, 0, &sscreen->info));
 
       /* If this is 0, Bonaire can hang even if GS isn't being used.
        * Other chips are unaffected. These are suboptimal values,
@@ -5774,10 +5870,9 @@ void si_init_cs_preamble_state(struct si_context *sctx, bool uses_reg_shadowing)
    }
 
    if (sctx->gfx_level >= GFX9) {
-      ac_set_reg_cu_en(pm4, R_00B41C_SPI_SHADER_PGM_RSRC3_HS,
-                       S_00B41C_CU_EN(0xffff) | S_00B41C_WAVE_LIMIT(0x3F), C_00B41C_CU_EN,
-                       0, &sscreen->info,
-                       (void*)(sctx->gfx_level >= GFX10 ? si_pm4_set_reg_idx3 : si_pm4_set_reg));
+      si_pm4_set_reg_idx3(sscreen, pm4, R_00B41C_SPI_SHADER_PGM_RSRC3_HS,
+                          ac_apply_cu_en(S_00B41C_CU_EN(0xffff) | S_00B41C_WAVE_LIMIT(0x3F),
+                                         C_00B41C_CU_EN, 0, &sscreen->info));
 
       si_pm4_set_reg(pm4, R_028C48_PA_SC_BINNER_CNTL_1,
                      S_028C48_MAX_ALLOC_COUNT(sscreen->info.pbb_max_alloc_count - 1) |
@@ -5785,12 +5880,8 @@ void si_init_cs_preamble_state(struct si_context *sctx, bool uses_reg_shadowing)
       si_pm4_set_reg(pm4, R_028C4C_PA_SC_CONSERVATIVE_RASTERIZATION_CNTL,
                      S_028C4C_NULL_SQUAD_AA_MASK_ENABLE(1));
 
+      si_pm4_set_reg(pm4, R_028AAC_VGT_ESGS_RING_ITEMSIZE, 1);
       si_pm4_set_reg(pm4, R_030968_VGT_INSTANCE_BASE_ID, 0);
-
-      if (sctx->gfx_level < GFX11) {
-         si_pm4_set_reg(pm4, R_0301EC_CP_COHER_START_DELAY,
-                        sctx->gfx_level >= GFX10 ? 0x20 : 0);
-      }
    }
 
    if (sctx->gfx_level >= GFX10) {
@@ -5885,12 +5976,15 @@ void si_init_cs_preamble_state(struct si_context *sctx, bool uses_reg_shadowing)
 
    if (sctx->gfx_level >= GFX10 && sctx->gfx_level <= GFX10_3) {
       /* Logical CUs 16 - 31 */
-      ac_set_reg_cu_en(pm4, R_00B004_SPI_SHADER_PGM_RSRC4_PS, S_00B004_CU_EN(cu_mask_ps >> 16),
-                       C_00B004_CU_EN, 16, &sscreen->info, (void*)si_pm4_set_reg_idx3);
-      ac_set_reg_cu_en(pm4, R_00B104_SPI_SHADER_PGM_RSRC4_VS, S_00B104_CU_EN(0xffff),
-                       C_00B104_CU_EN, 16, &sscreen->info, (void*)si_pm4_set_reg_idx3);
-      ac_set_reg_cu_en(pm4, R_00B404_SPI_SHADER_PGM_RSRC4_HS, S_00B404_CU_EN(0xffff),
-                       C_00B404_CU_EN, 16, &sscreen->info, (void*)si_pm4_set_reg_idx3);
+      si_pm4_set_reg_idx3(sscreen, pm4, R_00B004_SPI_SHADER_PGM_RSRC4_PS,
+                          ac_apply_cu_en(S_00B004_CU_EN(cu_mask_ps >> 16),
+                                         C_00B004_CU_EN, 16, &sscreen->info));
+      si_pm4_set_reg_idx3(sscreen, pm4, R_00B104_SPI_SHADER_PGM_RSRC4_VS,
+                          ac_apply_cu_en(S_00B104_CU_EN(0xffff),
+                                         C_00B104_CU_EN, 16, &sscreen->info));
+      si_pm4_set_reg_idx3(sscreen, pm4, R_00B404_SPI_SHADER_PGM_RSRC4_HS,
+                          ac_apply_cu_en(S_00B404_CU_EN(0xffff),
+                                         C_00B404_CU_EN, 16, &sscreen->info));
 
       si_pm4_set_reg(pm4, R_00B1C0_SPI_SHADER_REQ_CTRL_VS, 0);
       si_pm4_set_reg(pm4, R_00B1C8_SPI_SHADER_USER_ACCUM_VS_0, 0);
@@ -5970,6 +6064,7 @@ void si_init_cs_preamble_state(struct si_context *sctx, bool uses_reg_shadowing)
                      S_03111C_L1_POLICY(1));
    }
 
+done:
    sctx->cs_preamble_state = pm4;
 
    /* Make a copy of the preamble for TMZ. */

@@ -390,6 +390,7 @@ struct lower_line_stipple_state {
    nir_variable *prev_pos;
    nir_variable *pos_counter;
    nir_variable *stipple_counter;
+   bool line_rectangular;
 };
 
 static nir_ssa_def *
@@ -428,7 +429,13 @@ lower_line_stipple_gs_instr(nir_builder *b, nir_instr *instr, void *data)
    curr = viewport_map(b, curr, vp_scale);
 
    // calculate length of line
-   nir_ssa_def *len = nir_fast_distance(b, prev, curr);
+   nir_ssa_def *len;
+   if (state->line_rectangular)
+      len = nir_fast_distance(b, prev, curr);
+   else {
+      nir_ssa_def *diff = nir_fabs(b, nir_fsub(b, prev, curr));
+      len = nir_fmax(b, nir_channel(b, diff, 0), nir_channel(b, diff, 1));
+   }
    // update stipple_counter
    nir_store_var(b, state->stipple_counter,
                     nir_fadd(b, nir_load_var(b, state->stipple_counter),
@@ -448,7 +455,7 @@ lower_line_stipple_gs_instr(nir_builder *b, nir_instr *instr, void *data)
 }
 
 static bool
-lower_line_stipple_gs(nir_shader *shader)
+lower_line_stipple_gs(nir_shader *shader, bool line_rectangular)
 {
    nir_builder b;
    struct lower_line_stipple_state state;
@@ -480,6 +487,7 @@ lower_line_stipple_gs(nir_shader *shader)
                                                glsl_float_type(),
                                                "__stipple_counter");
 
+   state.line_rectangular = line_rectangular;
    // initialize pos_counter and stipple_counter
    nir_function_impl *entry = nir_shader_get_entrypoint(shader);
    nir_builder_init(&b, entry);
@@ -2914,14 +2922,26 @@ rewrite_tex_dest(nir_builder *b, nir_tex_instr *tex, nir_variable *var, void *da
    return dest;
 }
 
+struct lower_zs_swizzle_state {
+   bool shadow_only;
+   unsigned base_sampler_id;
+   const struct zink_zs_swizzle_key *swizzle;
+};
+
 static bool
-lower_shadow_tex_instr(nir_builder *b, nir_instr *instr, void *data)
+lower_zs_swizzle_tex_instr(nir_builder *b, nir_instr *instr, void *data)
 {
-   struct zink_fs_shadow_key *shadow = data;
+   struct lower_zs_swizzle_state *state = data;
+   const struct zink_zs_swizzle_key *swizzle_key = state->swizzle;
+   assert(state->shadow_only || swizzle_key);
    if (instr->type != nir_instr_type_tex)
       return false;
    nir_tex_instr *tex = nir_instr_as_tex(instr);
-   if (tex->op == nir_texop_txs || tex->op == nir_texop_lod || !tex->is_shadow || tex->is_new_style_shadow)
+   if (tex->op == nir_texop_txs || tex->op == nir_texop_lod ||
+       (!tex->is_shadow && state->shadow_only) || tex->is_new_style_shadow)
+      return false;
+   if (tex->is_shadow && tex->op == nir_texop_tg4)
+      /* Will not even try to emulate the shadow comparison */
       return false;
    int handle = nir_tex_instr_src_index(tex, nir_tex_src_texture_handle);
    nir_variable *var = NULL;
@@ -2939,31 +2959,66 @@ lower_shadow_tex_instr(nir_builder *b, nir_instr *instr, void *data)
       }
    }
    assert(var);
-   uint32_t sampler_id = var->data.binding - (PIPE_MAX_SAMPLERS * MESA_SHADER_FRAGMENT);
+   uint32_t sampler_id = var->data.binding - state->base_sampler_id;
+   const struct glsl_type *type = glsl_without_array(var->type);
+   enum glsl_base_type ret_type = glsl_get_sampler_result_type(type);
+   bool is_int = glsl_base_type_is_integer(ret_type);
    unsigned num_components = nir_dest_num_components(tex->dest);
+   if (tex->is_shadow)
+      tex->is_new_style_shadow = true;
    nir_ssa_def *dest = rewrite_tex_dest(b, tex, var, NULL);
-   assert(!tex->is_new_style_shadow);
-   tex->dest.ssa.num_components = 1;
-   tex->is_new_style_shadow = true;
-   if (shadow && (shadow->mask & BITFIELD_BIT(sampler_id))) {
+   assert(dest || !state->shadow_only);
+   if (!dest && !(swizzle_key->mask & BITFIELD_BIT(sampler_id)))
+      return false;
+   else if (!dest)
+      dest = &tex->dest.ssa;
+   else
+      tex->dest.ssa.num_components = 1;
+   if (swizzle_key && (swizzle_key->mask & BITFIELD_BIT(sampler_id))) {
       /* these require manual swizzles */
+      if (tex->op == nir_texop_tg4) {
+         assert(!tex->is_shadow);
+         nir_ssa_def *swizzle;
+         switch (swizzle_key->swizzle[sampler_id].s[tex->component]) {
+         case PIPE_SWIZZLE_0:
+            swizzle = nir_imm_zero(b, 4, nir_dest_bit_size(tex->dest));
+            break;
+         case PIPE_SWIZZLE_1:
+            if (is_int)
+               swizzle = nir_imm_intN_t(b, 4, nir_dest_bit_size(tex->dest));
+            else
+               swizzle = nir_imm_floatN_t(b, 4, nir_dest_bit_size(tex->dest));
+            break;
+         default:
+            if (!tex->component)
+               return false;
+            tex->component = 0;
+            return true;
+         }
+         nir_ssa_def_rewrite_uses_after(dest, swizzle, swizzle->parent_instr);
+         return true;
+      }
       nir_ssa_def *vec[4];
       for (unsigned i = 0; i < ARRAY_SIZE(vec); i++) {
-         switch (shadow->swizzle[sampler_id].s[i]) {
+         switch (swizzle_key->swizzle[sampler_id].s[i]) {
          case PIPE_SWIZZLE_0:
             vec[i] = nir_imm_zero(b, 1, nir_dest_bit_size(tex->dest));
             break;
          case PIPE_SWIZZLE_1:
-            vec[i] = nir_imm_floatN_t(b, 1, nir_dest_bit_size(tex->dest));
+            if (is_int)
+               vec[i] = nir_imm_intN_t(b, 1, nir_dest_bit_size(tex->dest));
+            else
+               vec[i] = nir_imm_floatN_t(b, 1, nir_dest_bit_size(tex->dest));
             break;
          default:
-            vec[i] = dest;
+            vec[i] = dest->num_components == 1 ? dest : nir_channel(b, dest, i);
             break;
          }
       }
       nir_ssa_def *swizzle = nir_vec(b, vec, num_components);
       nir_ssa_def_rewrite_uses_after(dest, swizzle, swizzle->parent_instr);
    } else {
+      assert(tex->is_shadow);
       nir_ssa_def *vec[4] = {dest, dest, dest, dest};
       nir_ssa_def *splat = nir_vec(b, vec, num_components);
       nir_ssa_def_rewrite_uses_after(dest, splat, splat->parent_instr);
@@ -2972,9 +3027,11 @@ lower_shadow_tex_instr(nir_builder *b, nir_instr *instr, void *data)
 }
 
 static bool
-lower_shadow_tex(nir_shader *nir, const void *shadow)
+lower_zs_swizzle_tex(nir_shader *nir, const void *swizzle, bool shadow_only)
 {
-   return nir_shader_instructions_pass(nir, lower_shadow_tex_instr, nir_metadata_dominance | nir_metadata_block_index, (void*)shadow);
+   unsigned base_sampler_id = gl_shader_stage_is_compute(nir->info.stage) ? 0 : PIPE_MAX_SAMPLERS * nir->info.stage;
+   struct lower_zs_swizzle_state state = {shadow_only, base_sampler_id, swizzle};
+   return nir_shader_instructions_pass(nir, lower_zs_swizzle_tex_instr, nir_metadata_dominance | nir_metadata_block_index, (void*)&state);
 }
 
 static bool
@@ -3073,7 +3130,7 @@ zink_shader_compile(struct zink_screen *screen, struct zink_shader *zs,
 
          case MESA_SHADER_GEOMETRY:
             if (zink_gs_key(key)->lower_line_stipple) {
-               NIR_PASS_V(nir, lower_line_stipple_gs);
+               NIR_PASS_V(nir, lower_line_stipple_gs, zink_gs_key(key)->line_rectangular);
                NIR_PASS_V(nir, nir_lower_var_copies);
                need_optimize = true;
             }
@@ -3121,6 +3178,13 @@ zink_shader_compile(struct zink_screen *screen, struct zink_shader *zs,
          } else if (zink_fs_key(key)->lower_line_stipple)
                NIR_PASS_V(nir, lower_line_stipple_fs);
 
+         if (zink_fs_key(key)->lower_point_smooth) {
+            NIR_PASS_V(nir, nir_lower_point_smooth);
+            NIR_PASS_V(nir, nir_lower_discard_if, nir_lower_discard_if_to_cf);
+            nir->info.fs.uses_discard = true;
+            need_optimize = true;
+         }
+
          if (zink_fs_key(key)->robust_access)
             NIR_PASS(need_optimize, nir, lower_txf_lod_robustness);
 
@@ -3150,8 +3214,8 @@ zink_shader_compile(struct zink_screen *screen, struct zink_shader *zs,
             nir->info.fs.uses_sample_qualifier = true;
             nir->info.fs.uses_sample_shading = true;
          }
-         if (zs->fs.legacy_shadow_mask)
-            NIR_PASS_V(nir, lower_shadow_tex, zink_fs_key_base(key)->shadow_needs_shader_swizzle ? extra_data : NULL);
+         if (zs->fs.legacy_shadow_mask && !key->base.needs_zs_shader_swizzle)
+            NIR_PASS(need_optimize, nir, lower_zs_swizzle_tex, zink_fs_key_base(key)->shadow_needs_shader_swizzle ? extra_data : NULL, true);
          if (nir->info.fs.uses_fbfetch_output) {
             nir_variable *fbfetch = NULL;
             NIR_PASS_V(nir, lower_fbfetch, &fbfetch, zink_fs_key_base(key)->fbfetch_ms);
@@ -3176,6 +3240,10 @@ zink_shader_compile(struct zink_screen *screen, struct zink_shader *zs,
             NIR_PASS(need_optimize, nir, lower_txf_lod_robustness);
          break;
       default: break;
+      }
+      if (key->base.needs_zs_shader_swizzle) {
+         assert(extra_data);
+         NIR_PASS(need_optimize, nir, lower_zs_swizzle_tex, extra_data, false);
       }
       if (key->base.nonseamless_cube_mask) {
          NIR_PASS_V(nir, zink_lower_cubemap_to_array, key->base.nonseamless_cube_mask);

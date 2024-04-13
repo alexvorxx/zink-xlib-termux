@@ -543,6 +543,7 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
    case nir_op_vec5:
    case nir_op_vec8:
    case nir_op_vec16:
+   case nir_op_unpack_32_4x8:
    case nir_op_unpack_32_2x16:
    case nir_op_unpack_64_2x32:
    case nir_op_unpack_64_4x16:
@@ -1223,6 +1224,9 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
       break;
    }
 
+   case nir_op_unpack_32_4x8:
+      result = LLVMBuildBitCast(ctx->ac.builder, src[0], ctx->ac.v4i8, "");
+      break;
    case nir_op_unpack_32_2x16: {
       result = LLVMBuildBitCast(ctx->ac.builder, src[0],
             ctx->ac.v2i16, "");
@@ -2320,34 +2324,17 @@ static LLVMValueRef visit_load_ubo_buffer(struct ac_nir_context *ctx, nir_intrin
    LLVMValueRef offset = get_src(ctx, instr->src[1]);
    int num_components = instr->num_components;
 
+   assert(instr->dest.ssa.bit_size >= 32 && instr->dest.ssa.bit_size % 32 == 0);
+
    if (ctx->abi->load_ubo)
       rsrc = ctx->abi->load_ubo(ctx->abi, rsrc);
 
-   /* Convert to a scalar 32-bit load. */
+   /* Convert to a 32-bit load. */
    if (instr->dest.ssa.bit_size == 64)
       num_components *= 2;
-   else if (instr->dest.ssa.bit_size == 16)
-      num_components = DIV_ROUND_UP(num_components, 2);
-   else if (instr->dest.ssa.bit_size == 8)
-      num_components = DIV_ROUND_UP(num_components, 4);
 
-   ret =
-      ac_build_buffer_load(&ctx->ac, rsrc, num_components, NULL, offset, NULL,
-                           ctx->ac.f32, 0, true, true);
-
-   /* Convert to the original type. */
-   if (instr->dest.ssa.bit_size == 64) {
-      ret = LLVMBuildBitCast(ctx->ac.builder, ret,
-                             LLVMVectorType(ctx->ac.i64, num_components / 2), "");
-   } else if (instr->dest.ssa.bit_size == 16) {
-      ret = LLVMBuildBitCast(ctx->ac.builder, ret,
-                             LLVMVectorType(ctx->ac.i16, num_components * 2), "");
-   } else if (instr->dest.ssa.bit_size == 8) {
-      ret = LLVMBuildBitCast(ctx->ac.builder, ret,
-                             LLVMVectorType(ctx->ac.i8, num_components * 4), "");
-   }
-
-   ret = ac_trim_vector(&ctx->ac, ret, instr->num_components);
+   ret = ac_build_buffer_load(&ctx->ac, rsrc, num_components, NULL, offset, NULL,
+                              ctx->ac.f32, 0, true, true);
    ret = LLVMBuildBitCast(ctx->ac.builder, ret, get_def_type(ctx, &instr->dest.ssa), "");
 
    return exit_waterfall(ctx, &wctx, ret);
@@ -3979,6 +3966,7 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
    case nir_intrinsic_set_vertex_and_primitive_count:
       /* Currently ignored. */
       break;
+   case nir_intrinsic_load_typed_buffer_amd:
    case nir_intrinsic_load_buffer_amd:
    case nir_intrinsic_store_buffer_amd: {
       unsigned src_base = instr->intrinsic == nir_intrinsic_store_buffer_amd ? 1 : 0;
@@ -4017,7 +4005,8 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       } else if (instr->intrinsic == nir_intrinsic_store_buffer_amd && uses_format) {
          assert(instr->src[0].ssa->bit_size == 16 || instr->src[0].ssa->bit_size == 32);
          ac_build_buffer_store_format(&ctx->ac, descriptor, store_data, vidx, voffset, cache_policy);
-      } else if (instr->intrinsic == nir_intrinsic_load_buffer_amd) {
+      } else if (instr->intrinsic == nir_intrinsic_load_buffer_amd ||
+                 instr->intrinsic == nir_intrinsic_load_typed_buffer_amd) {
          /* LLVM is unable to select instructions for larger than 32-bit channel types.
           * Workaround by using i32 and casting to the correct type later.
           */
@@ -4026,8 +4015,21 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
          LLVMTypeRef channel_type =
             LLVMIntTypeInContext(ctx->ac.context, MIN2(32, instr->dest.ssa.bit_size));
 
-         result = ac_build_buffer_load(&ctx->ac, descriptor, fetch_num_components, vidx, voffset,
-                                       addr_soffset, channel_type, cache_policy, reorder, false);
+         if (instr->intrinsic == nir_intrinsic_load_buffer_amd) {
+            result = ac_build_buffer_load(&ctx->ac, descriptor, fetch_num_components, vidx, voffset,
+                                          addr_soffset, channel_type, cache_policy, reorder, false);
+         } else {
+            const unsigned align_offset = nir_intrinsic_align_offset(instr);
+            const unsigned align_mul = nir_intrinsic_align_mul(instr);
+            const enum pipe_format format = nir_intrinsic_format(instr);
+            const struct ac_vtx_format_info *vtx_info =
+               ac_get_vtx_format_info(ctx->ac.gfx_level, ctx->ac.family, format);
+
+            result =
+               ac_build_safe_tbuffer_load(&ctx->ac, descriptor, vidx, addr_voffset, addr_soffset,
+                                          channel_type, vtx_info, const_offset, align_offset,
+                                          align_mul, fetch_num_components, cache_policy, reorder);
+         }
 
          /* Trim to needed vector components. */
          result = ac_trim_vector(&ctx->ac, result, fetch_num_components);
@@ -4184,6 +4186,9 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
    }
    case nir_intrinsic_ordered_xfb_counter_add_amd: {
       /* must be called in a single lane of a workgroup. */
+      /* TODO: Add RADV support. */
+      bool use_gds_registers = ctx->ac.gfx_level >= GFX11 &&
+                               ctx->ac.float_mode == AC_FLOAT_MODE_DEFAULT_OPENGL;
       LLVMTypeRef gdsptr = LLVMPointerType(ctx->ac.i32, AC_ADDR_SPACE_GDS);
       LLVMValueRef gdsbase = LLVMBuildIntToPtr(ctx->ac.builder, ctx->ac.i32_0, gdsptr, "");
 
@@ -4193,13 +4198,22 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
        *
        * This is the expected code:
        *    ds_ordered_count release=0 done=0   // lock mutex
-       *    ds_add_rtn_u32 dwords_written0
-       *    ds_add_rtn_u32 dwords_written1
-       *    ds_add_rtn_u32 dwords_written2
-       *    ds_add_rtn_u32 dwords_written3
+       *    if (gfx_level >= GFX11) {
+       *       ds_add_gs_reg_rtn GDS_STRMOUT_DWORDS_WRITTEN_0
+       *       ds_add_gs_reg_rtn GDS_STRMOUT_DWORDS_WRITTEN_1
+       *       ds_add_gs_reg_rtn GDS_STRMOUT_DWORDS_WRITTEN_2
+       *       ds_add_gs_reg_rtn GDS_STRMOUT_DWORDS_WRITTEN_3
+       *    } else {
+       *       ds_add_rtn_u32 dwords_written0
+       *       ds_add_rtn_u32 dwords_written1
+       *       ds_add_rtn_u32 dwords_written2
+       *       ds_add_rtn_u32 dwords_written3
+       *    }
        *    ds_ordered_count release=1 done=1   // unlock mutex
        *
-       * TODO: Increment GDS_STRMOUT registers instead of GDS memory.
+       * GDS_STRMOUT_DWORDS_WRITTEN_n are just general-purpose global registers. We use them
+       * because MCBP (mid-command-buffer preemption) saves and restores them, and it doesn't
+       * save and restore GDS memory.
        */
       LLVMValueRef args[8] = {
          LLVMBuildIntToPtr(ctx->ac.builder, get_src(ctx, instr->src[0]), gdsptr, ""),
@@ -4218,21 +4232,29 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       ac_build_waitcnt(&ctx->ac, AC_WAIT_LGKM);
 
       LLVMValueRef global_count[4];
-      LLVMValueRef add_count = get_src(ctx, instr->src[1]);
+      LLVMValueRef count_vec = get_src(ctx, instr->src[1]);
       unsigned write_mask = nir_intrinsic_write_mask(instr);
       for (unsigned i = 0; i < instr->num_components; i++) {
+         LLVMValueRef value =
+            LLVMBuildExtractElement(ctx->ac.builder, count_vec,
+                                    LLVMConstInt(ctx->ac.i32, i, false), "");
          if (write_mask & (1 << i)) {
-            LLVMValueRef gds_ptr =
-               ac_build_gep_ptr(&ctx->ac, ctx->ac.i32, gdsbase, LLVMConstInt(ctx->ac.i32, i, 0));
-            LLVMValueRef count =
-               LLVMBuildExtractElement(ctx->ac.builder, add_count,
-                                       LLVMConstInt(ctx->ac.i32, i, false), "");
-
-            global_count[i] =
-               LLVMBuildAtomicRMW(ctx->ac.builder, LLVMAtomicRMWBinOpAdd, gds_ptr, count,
-                                  LLVMAtomicOrderingMonotonic, false);
-         } else
+            if (use_gds_registers) {
+               /* The offset is a relative offset from GDS_STRMOUT_DWORDS_WRITTEN_0. */
+               global_count[i] =
+                  ac_build_intrinsic(&ctx->ac, "llvm.amdgcn.ds.add.gs.reg.rtn.i32", ctx->ac.i32,
+                                     (LLVMValueRef[]){value, LLVMConstInt(ctx->ac.i32, i * 4, 0)},
+                                     2, 0);
+            } else {
+               LLVMValueRef gds_ptr =
+                  ac_build_gep_ptr(&ctx->ac, ctx->ac.i32, gdsbase, LLVMConstInt(ctx->ac.i32, i, 0));
+               global_count[i] =
+                  LLVMBuildAtomicRMW(ctx->ac.builder, LLVMAtomicRMWBinOpAdd, gds_ptr, value,
+                                     LLVMAtomicOrderingMonotonic, false);
+            }
+         } else {
             global_count[i] = LLVMGetUndef(ctx->ac.i32);
+         }
       }
 
       ac_build_waitcnt(&ctx->ac, AC_WAIT_LGKM);
@@ -4241,8 +4263,37 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       args[6] = args[7] = ctx->ac.i1true;
       ac_build_intrinsic(&ctx->ac, "llvm.amdgcn.ds.ordered.add", ctx->ac.i32,
                          args, ARRAY_SIZE(args), 0);
-
       result = ac_build_gather_values(&ctx->ac, global_count, instr->num_components);
+      break;
+   }
+   case nir_intrinsic_xfb_counter_sub_amd: {
+      /* must be called in a single lane of a workgroup. */
+      /* TODO: Add RADV support. */
+      bool use_gds_registers = ctx->ac.gfx_level >= GFX11 &&
+                               ctx->ac.float_mode == AC_FLOAT_MODE_DEFAULT_OPENGL;
+      LLVMTypeRef gdsptr = LLVMPointerType(ctx->ac.i32, AC_ADDR_SPACE_GDS);
+      LLVMValueRef gdsbase = LLVMBuildIntToPtr(ctx->ac.builder, ctx->ac.i32_0, gdsptr, "");
+      LLVMValueRef sub_vec = get_src(ctx, instr->src[0]);
+      unsigned write_mask = nir_intrinsic_write_mask(instr);
+
+      for (unsigned i = 0; i < instr->num_components; i++) {
+         if (write_mask & (1 << i)) {
+            LLVMValueRef value =
+               LLVMBuildExtractElement(ctx->ac.builder, sub_vec,
+                                       LLVMConstInt(ctx->ac.i32, i, false), "");
+            if (use_gds_registers) {
+               /* The offset is a relative offset from GDS_STRMOUT_DWORDS_WRITTEN_0. */
+               ac_build_intrinsic(&ctx->ac, "llvm.amdgcn.ds.sub.gs.reg.rtn.i32", ctx->ac.i32,
+                                  (LLVMValueRef[]){value, LLVMConstInt(ctx->ac.i32, i * 4, 0)},
+                                  2, 0);
+            } else {
+               LLVMValueRef gds_ptr =
+                  ac_build_gep_ptr(&ctx->ac, ctx->ac.i32, gdsbase, LLVMConstInt(ctx->ac.i32, i, 0));
+               LLVMBuildAtomicRMW(ctx->ac.builder, LLVMAtomicRMWBinOpSub, gds_ptr, value,
+                                  LLVMAtomicOrderingMonotonic, false);
+            }
+         }
+      }
       break;
    }
    case nir_intrinsic_export_amd: {
@@ -4916,30 +4967,12 @@ static bool visit_cf_list(struct ac_nir_context *ctx, struct exec_list *list)
    return true;
 }
 
-void ac_handle_shader_output_decl(struct ac_llvm_context *ctx, struct ac_shader_abi *abi,
-                                  struct nir_shader *nir, struct nir_variable *variable,
-                                  gl_shader_stage stage)
+static void ac_handle_shader_output_decl(struct ac_llvm_context *ctx, struct ac_shader_abi *abi,
+                                         struct nir_shader *nir, struct nir_variable *variable,
+                                         gl_shader_stage stage)
 {
    unsigned output_loc = variable->data.driver_location;
    unsigned attrib_count = glsl_count_attribute_slots(variable->type, false);
-
-   /* tess ctrl has it's own load/store paths for outputs */
-   if (stage == MESA_SHADER_TESS_CTRL)
-      return;
-
-   if (stage == MESA_SHADER_VERTEX || stage == MESA_SHADER_TESS_EVAL ||
-       stage == MESA_SHADER_GEOMETRY) {
-      int idx = variable->data.location + variable->data.index;
-      if (idx == VARYING_SLOT_CLIP_DIST0) {
-         int length = nir->info.clip_distance_array_size + nir->info.cull_distance_array_size;
-
-         if (length > 4)
-            attrib_count = 2;
-         else
-            attrib_count = 1;
-      }
-   }
-
    bool is_16bit = glsl_type_is_16bit(glsl_without_array(variable->type));
    LLVMTypeRef type = is_16bit ? ctx->f16 : ctx->f32;
    for (unsigned i = 0; i < attrib_count; ++i) {
@@ -5041,8 +5074,11 @@ bool ac_nir_translate(struct ac_llvm_context *ac, struct ac_shader_abi *abi,
 
    ctx.main_function = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ctx.ac.builder));
 
-   /* TODO: remove this after RADV switches to lowered IO */
-   if (!nir->info.io_lowered) {
+   /* TODO: remove this after RADV switches to lowered IO.
+    *
+    * Only fragment shader still uses store output for RADV.
+    */
+   if (!nir->info.io_lowered && ctx.stage == MESA_SHADER_FRAGMENT) {
       nir_foreach_shader_out_variable(variable, nir)
       {
          ac_handle_shader_output_decl(&ctx.ac, ctx.abi, nir, variable, ctx.stage);

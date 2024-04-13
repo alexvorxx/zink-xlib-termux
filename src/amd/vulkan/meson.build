@@ -60,17 +60,21 @@ libradv_files = files(
   'winsys/null/radv_null_winsys_public.h',
   'radv_acceleration_structure.c',
   'radv_android.c',
+  'radv_buffer.c',
   'radv_cmd_buffer.c',
   'radv_cp_reg_shadowing.c',
   'radv_cs.h',
   'radv_debug.c',
   'radv_debug.h',
   'radv_device.c',
+  'radv_device_memory.c',
   'radv_descriptor_set.c',
   'radv_descriptor_set.h',
   'radv_device_generated_commands.c',
+  'radv_event.c',
   'radv_formats.c',
   'radv_image.c',
+  'radv_instance.c',
   'radv_meta.c',
   'radv_meta.h',
   'radv_meta_blit.c',
@@ -94,15 +98,18 @@ libradv_files = files(
   'radv_nir_lower_ray_queries.c',
   'radv_nir_lower_vs_inputs.c',
   'radv_perfcounter.c',
+  'radv_physical_device.c',
   'radv_pipeline.c',
   'radv_pipeline_cache.c',
   'radv_pipeline_rt.c',
   'radv_private.h',
+  'radv_queue.c',
   'radv_radeon_winsys.h',
   'radv_rmv.c',
   'radv_rra.c',
   'radv_rt_common.c',
   'radv_rt_shader.c',
+  'radv_sampler.c',
   'radv_sdma_copy_image.c',
   'radv_shader.c',
   'radv_shader.h',
@@ -164,21 +171,6 @@ if with_platform_android
   radv_deps += dep_android
 endif
 
-# When static linking LLVM, all its symbols are public API.
-# That may cause symbol collision, so explicitly demote everything.
-libvulkan_radeon_ld_args = []
-libvulkan_radeon_link_depends = []
-
-if with_ld_version_script
-  if with_platform_android
-    libvulkan_radeon_ld_args += ['-Wl,--version-script', join_paths(meson.current_source_dir(), 'vulkan-android.sym')]
-    libvulkan_radeon_link_depends += files('vulkan-android.sym')
-  else
-    libvulkan_radeon_ld_args += ['-Wl,--version-script', join_paths(meson.current_source_dir(), 'vulkan.sym')]
-    libvulkan_radeon_link_depends += files('vulkan.sym')
-  endif
-endif
-
 radv_build_id = get_option('radv-build-id')
 if radv_build_id != ''
   radv_flags += '-DRADV_BUILD_ID_OVERRIDE="' + radv_build_id + '"'
@@ -204,9 +196,9 @@ libvulkan_radeon = shared_library(
   c_args : [no_override_init_args, radv_flags, c_msvc_compat_args],
   cpp_args : [radv_flags, cpp_msvc_compat_args],
   link_args : [
-    ld_args_build_id, ld_args_bsymbolic, ld_args_gc_sections, libvulkan_radeon_ld_args,
+    ld_args_build_id, ld_args_bsymbolic, ld_args_gc_sections, vulkan_icd_link_args,
   ],
-  link_depends : [libvulkan_radeon_link_depends,],
+  link_depends : vulkan_icd_link_depends,
   gnu_symbol_visibility : 'hidden',
   name_prefix : host_machine.system() == 'windows' ? '' : [],
   install : true,

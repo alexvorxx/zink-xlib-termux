@@ -25,20 +25,18 @@
 #ifndef ACO_IR_H
 #define ACO_IR_H
 
-#include "aco_opcodes.h"
-#include "aco_util.h"
 #include "aco_interface.h"
+#include "aco_opcodes.h"
 #include "aco_shader_info.h"
-#include "vulkan/radv_shader.h"
+#include "aco_util.h"
 
 #include "nir.h"
 
+#include "ac_binary.h"
 #include <algorithm>
 #include <bitset>
 #include <memory>
 #include <vector>
-
-struct radv_shader_args;
 
 namespace aco {
 
@@ -1013,12 +1011,8 @@ struct FLAT_instruction;
 struct Pseudo_branch_instruction;
 struct Pseudo_barrier_instruction;
 struct Pseudo_reduction_instruction;
-struct VOP3P_instruction;
+struct VALU_instruction;
 struct VINTERP_inreg_instruction;
-struct VOP1_instruction;
-struct VOP2_instruction;
-struct VOPC_instruction;
-struct VOP3_instruction;
 struct VINTRP_instruction;
 struct DPP16_instruction;
 struct DPP8_instruction;
@@ -1252,16 +1246,6 @@ struct Instruction {
       return *(Pseudo_reduction_instruction*)this;
    }
    constexpr bool isReduction() const noexcept { return format == Format::PSEUDO_REDUCTION; }
-   VOP3P_instruction& vop3p() noexcept
-   {
-      assert(isVOP3P());
-      return *(VOP3P_instruction*)this;
-   }
-   const VOP3P_instruction& vop3p() const noexcept
-   {
-      assert(isVOP3P());
-      return *(VOP3P_instruction*)this;
-   }
    constexpr bool isVOP3P() const noexcept { return format == Format::VOP3P; }
    VINTERP_inreg_instruction& vinterp_inreg() noexcept
    {
@@ -1274,49 +1258,9 @@ struct Instruction {
       return *(VINTERP_inreg_instruction*)this;
    }
    constexpr bool isVINTERP_INREG() const noexcept { return format == Format::VINTERP_INREG; }
-   VOP1_instruction& vop1() noexcept
-   {
-      assert(isVOP1());
-      return *(VOP1_instruction*)this;
-   }
-   const VOP1_instruction& vop1() const noexcept
-   {
-      assert(isVOP1());
-      return *(VOP1_instruction*)this;
-   }
    constexpr bool isVOP1() const noexcept { return (uint16_t)format & (uint16_t)Format::VOP1; }
-   VOP2_instruction& vop2() noexcept
-   {
-      assert(isVOP2());
-      return *(VOP2_instruction*)this;
-   }
-   const VOP2_instruction& vop2() const noexcept
-   {
-      assert(isVOP2());
-      return *(VOP2_instruction*)this;
-   }
    constexpr bool isVOP2() const noexcept { return (uint16_t)format & (uint16_t)Format::VOP2; }
-   VOPC_instruction& vopc() noexcept
-   {
-      assert(isVOPC());
-      return *(VOPC_instruction*)this;
-   }
-   const VOPC_instruction& vopc() const noexcept
-   {
-      assert(isVOPC());
-      return *(VOPC_instruction*)this;
-   }
    constexpr bool isVOPC() const noexcept { return (uint16_t)format & (uint16_t)Format::VOPC; }
-   VOP3_instruction& vop3() noexcept
-   {
-      assert(isVOP3());
-      return *(VOP3_instruction*)this;
-   }
-   const VOP3_instruction& vop3() const noexcept
-   {
-      assert(isVOP3());
-      return *(VOP3_instruction*)this;
-   }
    constexpr bool isVOP3() const noexcept { return (uint16_t)format & (uint16_t)Format::VOP3; }
    VINTRP_instruction& vintrp() noexcept
    {
@@ -1370,9 +1314,19 @@ struct Instruction {
 
    constexpr bool isFlatLike() const noexcept { return isFlat() || isGlobal() || isScratch(); }
 
+   VALU_instruction& valu() noexcept
+   {
+      assert(isVALU());
+      return *(VALU_instruction*)this;
+   }
+   const VALU_instruction& valu() const noexcept
+   {
+      assert(isVALU());
+      return *(VALU_instruction*)this;
+   }
    constexpr bool isVALU() const noexcept
    {
-      return isVOP1() || isVOP2() || isVOPC() || isVOP3() || isVOP3P();
+      return isVOP1() || isVOP2() || isVOPC() || isVOP3() || isVOP3P() || isVINTERP_INREG();
    }
 
    constexpr bool isSALU() const noexcept
@@ -1433,44 +1387,31 @@ struct SMEM_instruction : public Instruction {
 };
 static_assert(sizeof(SMEM_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
 
-struct VOP1_instruction : public Instruction {};
-static_assert(sizeof(VOP1_instruction) == sizeof(Instruction) + 0, "Unexpected padding");
+struct VALU_instruction : public Instruction {
+   union {
+      bitfield_array8<uint32_t, 0, 3> neg;    /* VOP3, SDWA, DPP16, v_fma_mix, VINTERP_inreg */
+      bitfield_array8<uint32_t, 0, 3> neg_lo; /* VOP3P */
 
-struct VOP2_instruction : public Instruction {};
-static_assert(sizeof(VOP2_instruction) == sizeof(Instruction) + 0, "Unexpected padding");
+      bitfield_array8<uint32_t, 3, 3> abs;    /* VOP3, SDWA, DPP16, v_fma_mix */
+      bitfield_array8<uint32_t, 3, 3> neg_hi; /* VOP3P */
 
-struct VOPC_instruction : public Instruction {};
-static_assert(sizeof(VOPC_instruction) == sizeof(Instruction) + 0, "Unexpected padding");
-
-struct VOP3_instruction : public Instruction {
-   bool abs[3];
-   bool neg[3];
-   uint8_t opsel : 4;
-   uint8_t omod : 2;
-   bool clamp : 1;
-   uint8_t padding0 : 1;
-   uint8_t padding1;
+      bitfield_array8<uint32_t, 6, 4> opsel;     /* VOP3, VOPC12(GFX11+), VINTERP_inreg */
+      bitfield_uint8<uint32_t, 10, 2> omod;      /* VOP3, SDWA(GFX9+) */
+      bitfield_array8<uint32_t, 12, 3> opsel_lo; /* VOP3P */
+      bitfield_array8<uint32_t, 15, 3> opsel_hi; /* VOP3P */
+      bitfield_bool<uint32_t, 18> clamp;         /* VOP3, VOP3P, SDWA, VINTERP_inreg */
+   };
 };
-static_assert(sizeof(VOP3_instruction) == sizeof(Instruction) + 8, "Unexpected padding");
+static_assert(sizeof(VALU_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
 
-struct VOP3P_instruction : public Instruction {
-   bool neg_lo[3];
-   bool neg_hi[3]; /* abs modifier, for v_mad_mix/v_fma_mix */
-   uint8_t opsel_lo : 3;
-   uint8_t opsel_hi : 3;
-   bool clamp : 1;
-   uint8_t padding0 : 1;
-   uint8_t padding1;
-};
-static_assert(sizeof(VOP3P_instruction) == sizeof(Instruction) + 8, "Unexpected padding");
-
-struct VINTERP_inreg_instruction : public Instruction {
+struct VINTERP_inreg_instruction : public VALU_instruction {
    uint8_t wait_exp : 3;
-   bool clamp : 1;
-   uint8_t opsel : 4;
-   bool neg[3];
+   uint8_t padding3 : 5;
+   uint8_t padding4;
+   uint8_t padding5;
+   uint8_t padding6;
 };
-static_assert(sizeof(VINTERP_inreg_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
+static_assert(sizeof(VINTERP_inreg_instruction) == sizeof(VALU_instruction) + 4, "Unexpected padding");
 
 /**
  * Data Parallel Primitives Format:
@@ -1478,21 +1419,19 @@ static_assert(sizeof(VINTERP_inreg_instruction) == sizeof(Instruction) + 4, "Une
  * The swizzle applies to the src0 operand.
  *
  */
-struct DPP16_instruction : public Instruction {
-   bool abs[2];
-   bool neg[2];
+struct DPP16_instruction : public VALU_instruction {
    uint16_t dpp_ctrl;
    uint8_t row_mask : 4;
    uint8_t bank_mask : 4;
    bool bound_ctrl : 1;
-   uint8_t padding : 7;
+   uint8_t padding3 : 7;
 };
-static_assert(sizeof(DPP16_instruction) == sizeof(Instruction) + 8, "Unexpected padding");
+static_assert(sizeof(DPP16_instruction) == sizeof(VALU_instruction) + 4, "Unexpected padding");
 
-struct DPP8_instruction : public Instruction {
+struct DPP8_instruction : public VALU_instruction {
    uint8_t lane_sel[8];
 };
-static_assert(sizeof(DPP8_instruction) == sizeof(Instruction) + 8, "Unexpected padding");
+static_assert(sizeof(DPP8_instruction) == sizeof(VALU_instruction) + 8, "Unexpected padding");
 
 struct SubdwordSel {
    enum sdwa_sel : uint8_t {
@@ -1551,18 +1490,14 @@ private:
  * the definition doesn't have to be VCC on GFX9+.
  *
  */
-struct SDWA_instruction : public Instruction {
+struct SDWA_instruction : public VALU_instruction {
    /* these destination modifiers aren't available with VOPC except for
     * clamp on GFX8 */
    SubdwordSel sel[2];
    SubdwordSel dst_sel;
-   bool neg[2];
-   bool abs[2];
-   bool clamp : 1;
-   uint8_t omod : 2; /* GFX9+ */
-   uint8_t padding : 5;
+   uint8_t padding3;
 };
-static_assert(sizeof(SDWA_instruction) == sizeof(Instruction) + 8, "Unexpected padding");
+static_assert(sizeof(SDWA_instruction) == sizeof(VALU_instruction) + 4, "Unexpected padding");
 
 struct VINTRP_instruction : public Instruction {
    uint8_t attribute;
@@ -1625,8 +1560,7 @@ struct MUBUF_instruction : public Instruction {
    uint16_t offset : 12;     /* Unsigned byte offset - 12 bit */
    uint16_t swizzled : 1;
    uint16_t padding0 : 2;
-   uint16_t vtx_binding : 6; /* 0 if this is not a vertex attribute load */
-   uint16_t padding1 : 10;
+   uint16_t padding1;
 };
 static_assert(sizeof(MUBUF_instruction) == sizeof(Instruction) + 8, "Unexpected padding");
 
@@ -1649,8 +1583,7 @@ struct MTBUF_instruction : public Instruction {
    uint16_t slc : 1;         /* system level coherent */
    uint16_t tfe : 1;         /* texture fail enable */
    uint16_t disable_wqm : 1; /* Require an exec mask without helper invocations */
-   uint16_t vtx_binding : 6; /* 0 if this is not a vertex attribute load */
-   uint16_t padding : 4;
+   uint16_t padding : 10;
    uint16_t offset; /* Unsigned byte offset - 12 bit */
 };
 static_assert(sizeof(MTBUF_instruction) == sizeof(Instruction) + 8, "Unexpected padding");
@@ -1820,23 +1753,13 @@ Instruction::usesModifiers() const noexcept
       return true;
 
    if (isVOP3P()) {
-      const VOP3P_instruction& vop3p = this->vop3p();
-      for (unsigned i = 0; i < operands.size(); i++) {
-         if (vop3p.neg_lo[i] || vop3p.neg_hi[i])
-            return true;
-
-         /* opsel_hi must be 1 to not be considered a modifier - even for constants */
-         if (!(vop3p.opsel_hi & (1 << i)))
-            return true;
-      }
-      return vop3p.opsel_lo || vop3p.clamp;
+      const VALU_instruction& vop3p = this->valu();
+      /* opsel_hi must be 1 to not be considered a modifier - even for constants */
+      return vop3p.opsel_lo || vop3p.clamp || vop3p.neg_lo || vop3p.neg_hi ||
+             (vop3p.opsel_hi & BITFIELD_MASK(operands.size())) != BITFIELD_MASK(operands.size());
    } else if (isVOP3()) {
-      const VOP3_instruction& vop3 = this->vop3();
-      for (unsigned i = 0; i < operands.size(); i++) {
-         if (vop3.abs[i] || vop3.neg[i])
-            return true;
-      }
-      return vop3.opsel || vop3.clamp || vop3.omod;
+      const VALU_instruction& vop3 = this->valu();
+      return vop3.opsel || vop3.clamp || vop3.omod || vop3.abs || vop3.neg;
    }
    return false;
 }
@@ -1859,6 +1782,7 @@ inline bool
 is_dead(const std::vector<uint16_t>& uses, const Instruction* instr)
 {
    if (instr->definitions.empty() || instr->isBranch() ||
+       instr->opcode == aco_opcode::p_startpgm ||
        instr->opcode == aco_opcode::p_init_scratch ||
        instr->opcode == aco_opcode::p_dual_src_export_gfx11)
       return false;
@@ -2183,7 +2107,7 @@ public:
    unsigned next_divergent_if_logical_depth = 0;
    unsigned next_uniform_if_depth = 0;
 
-   std::vector<Definition> vs_inputs;
+   std::vector<Definition> args_pending_vmem;
 
    struct {
       FILE* output = stderr;
@@ -2255,24 +2179,20 @@ void init_program(Program* program, Stage stage, const struct aco_shader_info* i
 void select_program(Program* program, unsigned shader_count, struct nir_shader* const* shaders,
                     ac_shader_config* config, const struct aco_compiler_options* options,
                     const struct aco_shader_info* info,
-                    const struct radv_shader_args* args);
+                    const struct ac_shader_args* args);
 void select_trap_handler_shader(Program* program, struct nir_shader* shader,
                                 ac_shader_config* config,
                                 const struct aco_compiler_options* options,
                                 const struct aco_shader_info* info,
-                                const struct radv_shader_args* args);
-void select_vs_prolog(Program* program, const struct aco_vs_prolog_key* key,
-                      ac_shader_config* config,
-                      const struct aco_compiler_options* options,
-                      const struct aco_shader_info* info,
-                      const struct radv_shader_args* args,
+                                const struct ac_shader_args* args);
+void select_vs_prolog(Program* program, const struct aco_vs_prolog_info* pinfo,
+                      ac_shader_config* config, const struct aco_compiler_options* options,
+                      const struct aco_shader_info* info, const struct ac_shader_args* args,
                       unsigned* num_preserved_sgprs);
 
-void select_ps_epilog(Program* program, const struct aco_ps_epilog_key* key,
-                      ac_shader_config* config,
-                      const struct aco_compiler_options* options,
-                      const struct aco_shader_info* info,
-                      const struct radv_shader_args* args);
+void select_ps_epilog(Program* program, const struct aco_ps_epilog_info* epilog_info,
+                      ac_shader_config* config, const struct aco_compiler_options* options,
+                      const struct aco_shader_info* info, const struct ac_shader_args* args);
 
 void lower_phis(Program* program);
 void calc_min_waves(Program* program);

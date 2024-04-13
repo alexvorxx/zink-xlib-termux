@@ -114,8 +114,7 @@ foreach g : [['90', ['gfx8_cmd_buffer.c']],
   _gfx_ver = g[0]
   libanv_per_hw_ver_libs += static_library(
     'anv_per_hw_ver@0@'.format(_gfx_ver),
-    [anv_per_hw_ver_files, g[1], anv_entrypoints[0],
-     generated_draws_spv_h, generated_draws_count_spv_h],
+    [anv_per_hw_ver_files, g[1], anv_entrypoints[0], generated_draws_spvs, ],
     include_directories : [
       inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_compiler, inc_intel,
     ],
@@ -138,6 +137,9 @@ libanv_files = files(
   'i915/anv_kmd_backend.c',
   'layers/anv_doom64.c',
   'layers/anv_hitman3.c',
+  'xe/anv_kmd_backend.c',
+  'xe/anv_device.c',
+  'xe/anv_device.h',
   'anv_allocator.c',
   'anv_android.h',
   'anv_batch_chain.c',
@@ -206,6 +208,7 @@ libanv_common = static_library(
   [
     libanv_files, anv_entrypoints, sha1_h,
     gen_xml_pack, float64_spv_h,
+    generated_draws_spvs,
   ],
   include_directories : [
     inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_intel, inc_compiler,
@@ -225,17 +228,18 @@ libvulkan_intel = shared_library(
   ],
   link_whole : [libanv_common, libanv_per_hw_ver_libs] + optional_libgrl,
   link_with : [
-    libintel_compiler, libintel_dev, libisl, libblorp, libintel_perf,
+    libintel_compiler, libisl, libblorp, libintel_perf,
   ],
   dependencies : [
     dep_thread, dep_dl, dep_m, anv_deps, idep_libintel_common,
     idep_nir, idep_genxml, idep_vulkan_util, idep_vulkan_wsi,
     idep_vulkan_runtime, idep_mesautil, idep_xmlconfig,
-    idep_intel_driver_ds,
+    idep_intel_driver_ds, idep_intel_dev,
   ],
   c_args : anv_flags,
   gnu_symbol_visibility : 'hidden',
-  link_args : [ld_args_build_id, ld_args_bsymbolic, ld_args_gc_sections],
+  link_args : [vulkan_icd_link_args, ld_args_build_id, ld_args_bsymbolic, ld_args_gc_sections],
+  link_depends : vulkan_icd_link_depends,
   install : true,
 )
 
@@ -261,13 +265,13 @@ if with_tests
     ],
     link_whole : libanv_common,
     link_with : [
-      libanv_per_hw_ver_libs, libintel_compiler, libintel_common, libintel_dev,
+      libanv_per_hw_ver_libs, libintel_compiler, libintel_common,
       libisl, libblorp, libintel_perf,
     ] + optional_libgrl,
     dependencies : [
       dep_thread, dep_dl, dep_m, anv_deps,
       idep_nir, idep_vulkan_util, idep_vulkan_wsi, idep_vulkan_runtime,
-      idep_mesautil,
+      idep_mesautil, idep_intel_dev,
     ],
     c_args : anv_flags,
     gnu_symbol_visibility : 'hidden',
@@ -286,7 +290,7 @@ if with_tests
         dependencies : [
           dep_libdrm, dep_thread, dep_m, dep_valgrind,
           idep_vulkan_util, idep_vulkan_wsi_headers,
-          idep_vulkan_runtime, idep_intel_driver_ds,
+          idep_vulkan_runtime, idep_intel_driver_ds, idep_intel_dev,
         ],
         include_directories : [
           inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_intel, inc_compiler,

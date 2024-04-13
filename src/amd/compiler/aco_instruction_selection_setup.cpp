@@ -26,7 +26,6 @@
 
 #include "common/ac_nir.h"
 #include "common/sid.h"
-#include "vulkan/radv_descriptor_set.h"
 
 #include "nir_control_flow.h"
 
@@ -250,24 +249,8 @@ get_reg_class(isel_context* ctx, RegType type, unsigned components, unsigned bit
 }
 
 void
-setup_vs_output_info(isel_context* ctx, nir_shader* nir)
-{
-   const aco_vp_output_info* outinfo = &ctx->program->info.outinfo;
-
-   ctx->export_clip_dists = outinfo->export_clip_dists;
-   ctx->num_clip_distances = util_bitcount(outinfo->clip_dist_mask);
-   ctx->num_cull_distances = util_bitcount(outinfo->cull_dist_mask);
-
-   assert(ctx->num_clip_distances + ctx->num_cull_distances <= 8);
-}
-
-void
 setup_vs_variables(isel_context* ctx, nir_shader* nir)
 {
-   if (ctx->stage == vertex_vs || ctx->stage == vertex_ngg) {
-      setup_vs_output_info(ctx, nir);
-   }
-
    if (ctx->stage == vertex_ngg) {
       ctx->program->config->lds_size =
          DIV_ROUND_UP(nir->info.shared_size, ctx->program->dev.lds_encoding_granule);
@@ -283,8 +266,6 @@ setup_gs_variables(isel_context* ctx, nir_shader* nir)
       ctx->program->config->lds_size =
          ctx->program->info.gfx9_gs_ring_lds_size; /* Already in units of the alloc granularity */
    } else if (ctx->stage == vertex_geometry_ngg || ctx->stage == tess_eval_geometry_ngg) {
-      setup_vs_output_info(ctx, nir);
-
       ctx->program->config->lds_size =
          DIV_ROUND_UP(nir->info.shared_size, ctx->program->dev.lds_encoding_granule);
    }
@@ -301,10 +282,6 @@ setup_tcs_info(isel_context* ctx, nir_shader* nir, nir_shader* vs)
 void
 setup_tes_variables(isel_context* ctx, nir_shader* nir)
 {
-   if (ctx->stage == tess_eval_vs || ctx->stage == tess_eval_ngg) {
-      setup_vs_output_info(ctx, nir);
-   }
-
    if (ctx->stage == tess_eval_ngg) {
       ctx->program->config->lds_size =
          DIV_ROUND_UP(nir->info.shared_size, ctx->program->dev.lds_encoding_granule);
@@ -316,8 +293,6 @@ setup_tes_variables(isel_context* ctx, nir_shader* nir)
 void
 setup_ms_variables(isel_context* ctx, nir_shader* nir)
 {
-   setup_vs_output_info(ctx, nir);
-
    ctx->program->config->lds_size =
       DIV_ROUND_UP(nir->info.shared_size, ctx->program->dev.lds_encoding_granule);
    assert((ctx->program->config->lds_size * ctx->program->dev.lds_encoding_granule) < (32 * 1024));
@@ -399,24 +374,6 @@ init_context(isel_context* ctx, nir_shader* shader)
    ctx->ub_config.max_workgroup_size[0] = 2048;
    ctx->ub_config.max_workgroup_size[1] = 2048;
    ctx->ub_config.max_workgroup_size[2] = 2048;
-   for (unsigned i = 0; i < MAX_VERTEX_ATTRIBS; i++) {
-      pipe_format format = (pipe_format)ctx->options->key.vs.vertex_attribute_formats[i];
-      const struct util_format_description* desc = util_format_description(format);
-
-      uint32_t max;
-      if (desc->channel[0].type != UTIL_FORMAT_TYPE_UNSIGNED) {
-         max = UINT32_MAX;
-      } else if (desc->channel[0].normalized) {
-         max = 0x3f800000u;
-      } else {
-         max = 0;
-         for (unsigned j = 0; j < desc->nr_channels; j++) {
-            uint32_t chan_max = u_uintN_max(desc->channel[0].size);
-            max = MAX2(max, desc->channel[j].pure_integer ? chan_max : fui(chan_max));
-         }
-      }
-      ctx->ub_config.vertex_attrib_max[i] = max;
-   }
 
    nir_divergence_analysis(shader);
    nir_opt_uniform_atomics(shader);
@@ -677,6 +634,7 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_intrinsic_load_scratch:
                case nir_intrinsic_load_invocation_id:
                case nir_intrinsic_load_primitive_id:
+               case nir_intrinsic_load_typed_buffer_amd:
                case nir_intrinsic_load_buffer_amd:
                case nir_intrinsic_load_initial_edgeflags_amd:
                case nir_intrinsic_gds_atomic_add_amd:
@@ -803,7 +761,7 @@ isel_context
 setup_isel_context(Program* program, unsigned shader_count, struct nir_shader* const* shaders,
                    ac_shader_config* config, const struct aco_compiler_options* options,
                    const struct aco_shader_info* info,
-                   const struct radv_shader_args* args, bool is_ps_epilog)
+                   const struct ac_shader_args* args, bool is_ps_epilog)
 {
    SWStage sw_stage = SWStage::None;
    for (unsigned i = 0; i < shader_count; i++) {

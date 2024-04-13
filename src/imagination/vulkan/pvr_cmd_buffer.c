@@ -764,11 +764,11 @@ pvr_load_op_constants_create_and_upload(struct pvr_cmd_buffer *cmd_buffer,
       const struct pvr_render_pass_attachment *attachment;
       const struct pvr_image_view *image_view;
 
-      assert(*load_op->subpass->depth_stencil_attachment !=
+      assert(load_op->subpass->depth_stencil_attachment !=
              VK_ATTACHMENT_UNUSED);
       assert(!load_op->is_hw_object);
       attachment =
-         &pass->attachments[*load_op->subpass->depth_stencil_attachment];
+         &pass->attachments[load_op->subpass->depth_stencil_attachment];
 
       image_view = render_pass_info->attachments[attachment->index];
 
@@ -783,10 +783,10 @@ pvr_load_op_constants_create_and_upload(struct pvr_cmd_buffer *cmd_buffer,
       const struct pvr_render_pass_attachment *attachment;
       VkClearValue clear_value;
 
-      assert(*load_op->subpass->depth_stencil_attachment !=
+      assert(load_op->subpass->depth_stencil_attachment !=
              VK_ATTACHMENT_UNUSED);
       attachment =
-         &pass->attachments[*load_op->subpass->depth_stencil_attachment];
+         &pass->attachments[load_op->subpass->depth_stencil_attachment];
 
       clear_value = render_pass_info->clear_values[attachment->index];
 
@@ -1163,6 +1163,9 @@ static VkResult pvr_sub_cmd_gfx_job_init(const struct pvr_device_info *dev_info,
    struct pvr_pds_upload pds_pixel_event_program;
    uint32_t pbe_cs_words[PVR_MAX_COLOR_ATTACHMENTS]
                         [ROGUE_NUM_PBESTATE_STATE_WORDS] = { 0 };
+   struct pvr_framebuffer *framebuffer = render_pass_info->framebuffer;
+   struct pvr_spm_bgobj_state *spm_bgobj_state =
+      &framebuffer->spm_bgobj_state_per_render[sub_cmd->hw_render_idx];
    struct pvr_render_target *render_target;
    VkResult result;
 
@@ -1194,7 +1197,7 @@ static VkResult pvr_sub_cmd_gfx_job_init(const struct pvr_device_info *dev_info,
       }
 
       pvr_setup_pbe_state(dev_info,
-                          render_pass_info->framebuffer,
+                          framebuffer,
                           surface->mrt_idx,
                           mrt_resource,
                           iview,
@@ -1216,8 +1219,16 @@ static VkResult pvr_sub_cmd_gfx_job_init(const struct pvr_device_info *dev_info,
 
    job->pds_pixel_event_data_offset = pds_pixel_event_program.data_offset;
 
-   /* FIXME: Don't do this if there is a barrier load. */
-   if (render_pass_info->enable_bg_tag) {
+   if (sub_cmd->barrier_load) {
+      job->enable_bg_tag = true;
+      job->process_empty_tiles = true;
+
+      STATIC_ASSERT(ARRAY_SIZE(job->pds_pr_bgnd_reg_values) ==
+                    ARRAY_SIZE(spm_bgobj_state->pds_reg_values));
+      typed_memcpy(job->pds_bgnd_reg_values,
+                   spm_bgobj_state->pds_reg_values,
+                   ARRAY_SIZE(spm_bgobj_state->pds_reg_values));
+   } else if (render_pass_info->enable_bg_tag) {
       const struct pvr_load_op *load_op = hw_render->load_op;
       struct pvr_pds_upload load_op_program;
 
@@ -1230,16 +1241,22 @@ static VkResult pvr_sub_cmd_gfx_job_init(const struct pvr_device_info *dev_info,
       if (result != VK_SUCCESS)
          return result;
 
+      job->enable_bg_tag = render_pass_info->enable_bg_tag;
+      job->process_empty_tiles = render_pass_info->process_empty_tiles;
+
       pvr_pds_bgnd_pack_state(load_op,
                               &load_op_program,
                               job->pds_bgnd_reg_values);
    }
 
-   job->enable_bg_tag = render_pass_info->enable_bg_tag;
-   job->process_empty_tiles = render_pass_info->process_empty_tiles;
+   STATIC_ASSERT(ARRAY_SIZE(job->pds_pr_bgnd_reg_values) ==
+                 ARRAY_SIZE(spm_bgobj_state->pds_reg_values));
+   typed_memcpy(job->pds_pr_bgnd_reg_values,
+                spm_bgobj_state->pds_reg_values,
+                ARRAY_SIZE(spm_bgobj_state->pds_reg_values));
 
    render_target = pvr_get_render_target(render_pass_info->pass,
-                                         render_pass_info->framebuffer,
+                                         framebuffer,
                                          sub_cmd->hw_render_idx);
    job->rt_dataset = render_target->rt_dataset;
 
@@ -4347,11 +4364,11 @@ pvr_setup_isp_faces_and_control(struct pvr_cmd_buffer *const cmd_buffer,
 
    const bool rasterizer_discard = dynamic_state->rs.rasterizer_discard_enable;
    const uint32_t subpass_idx = pass_info->subpass_idx;
-   const uint32_t *depth_stencil_attachment_idx =
+   const uint32_t depth_stencil_attachment_idx =
       pass_info->pass->subpasses[subpass_idx].depth_stencil_attachment;
    const struct pvr_image_view *const attachment =
-      depth_stencil_attachment_idx
-         ? pass_info->attachments[*depth_stencil_attachment_idx]
+      depth_stencil_attachment_idx != VK_ATTACHMENT_UNUSED
+         ? pass_info->attachments[depth_stencil_attachment_idx]
          : NULL;
 
    const enum PVRX(TA_OBJTYPE)
@@ -7015,12 +7032,15 @@ pvr_stencil_has_self_dependency(const struct pvr_cmd_buffer_state *const state)
       pvr_get_current_subpass(state);
    const uint32_t *const input_attachments = current_subpass->input_attachments;
 
+   if (current_subpass->depth_stencil_attachment == VK_ATTACHMENT_UNUSED)
+      return false;
+
    /* We only need to check the current software subpass as we don't support
     * merging to/from a subpass with self-dep stencil.
     */
 
    for (uint32_t i = 0; i < current_subpass->input_count; i++) {
-      if (input_attachments[i] == *current_subpass->depth_stencil_attachment)
+      if (input_attachments[i] == current_subpass->depth_stencil_attachment)
          return true;
    }
 

@@ -59,6 +59,7 @@
 #include "perf/intel_perf.h"
 
 #include "i915/anv_device.h"
+#include "xe/anv_device.h"
 
 #include "genxml/gen7_pack.h"
 #include "genxml/genX_bits.h"
@@ -74,6 +75,7 @@ static const driOptionDescription anv_dri_options[] = {
       DRI_CONF_ANV_SAMPLE_MASK_OUT_OPENGL_BEHAVIOUR(false)
       DRI_CONF_ANV_FP64_WORKAROUND_ENABLED(false)
       DRI_CONF_ANV_GENERATED_INDIRECT_THRESHOLD(4)
+      DRI_CONF_NO_16BIT(false)
    DRI_CONF_SECTION_END
 
    DRI_CONF_SECTION_DEBUG
@@ -193,7 +195,7 @@ get_device_extensions(const struct anv_physical_device *device,
 
    *ext = (struct vk_device_extension_table) {
       .KHR_8bit_storage                      = true,
-      .KHR_16bit_storage                     = true,
+      .KHR_16bit_storage                     = !device->instance->no_16bit,
       .KHR_acceleration_structure            = rt_enabled,
       .KHR_bind_memory2                      = true,
       .KHR_buffer_device_address             = true,
@@ -255,7 +257,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .KHR_shader_atomic_int64               = true,
       .KHR_shader_clock                      = true,
       .KHR_shader_draw_parameters            = true,
-      .KHR_shader_float16_int8               = true,
+      .KHR_shader_float16_int8               = !device->instance->no_16bit,
       .KHR_shader_float_controls             = true,
       .KHR_shader_integer_dot_product        = true,
       .KHR_shader_non_semantic_info          = true,
@@ -307,6 +309,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_image_2d_view_of_3d               = true,
       .EXT_image_robustness                  = true,
       .EXT_image_drm_format_modifier         = true,
+      .EXT_image_sliced_view_of_3d           = true,
       .EXT_image_view_min_lod                = true,
       .EXT_index_type_uint8                  = true,
       .EXT_inline_uniform_block              = true,
@@ -325,6 +328,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_physical_device_drm               = true,
       .EXT_pipeline_creation_cache_control   = true,
       .EXT_pipeline_creation_feedback        = true,
+      .EXT_pipeline_library_group_handles    = rt_enabled,
       .EXT_post_depth_coverage               = true,
       .EXT_primitives_generated_query        = true,
       .EXT_primitive_topology_list_restart   = true,
@@ -897,7 +901,6 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
 
 
    device->generated_indirect_draws =
-      device->info.ver >= 11 &&
       debug_get_bool_option("ANV_ENABLE_GENERATED_INDIRECT_DRAWS",
                             true);
 
@@ -1086,6 +1089,9 @@ anv_init_dri_options(struct anv_instance *instance)
             driQueryOptionb(&instance->dri_options, "anv_sample_mask_out_opengl_behaviour");
     instance->lower_depth_range_rate =
             driQueryOptionf(&instance->dri_options, "lower_depth_range_rate");
+    instance->no_16bit =
+            driQueryOptionb(&instance->dri_options, "no_16bit");
+
     instance->fp64_workaround_enabled =
             driQueryOptionb(&instance->dri_options, "fp64_workaround_enabled");
     instance->generated_indirect_threshold =
@@ -1234,8 +1240,8 @@ anv_get_physical_device_features_1_1(struct anv_physical_device *pdevice,
 {
    assert(f->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES);
 
-   f->storageBuffer16BitAccess            = true;
-   f->uniformAndStorageBuffer16BitAccess  = true;
+   f->storageBuffer16BitAccess            = !pdevice->instance->no_16bit;
+   f->uniformAndStorageBuffer16BitAccess  = !pdevice->instance->no_16bit;
    f->storagePushConstant16               = true;
    f->storageInputOutput16                = false;
    f->multiview                           = true;
@@ -1261,8 +1267,8 @@ anv_get_physical_device_features_1_2(struct anv_physical_device *pdevice,
    f->storagePushConstant8                = true;
    f->shaderBufferInt64Atomics            = true;
    f->shaderSharedInt64Atomics            = false;
-   f->shaderFloat16                       = true;
-   f->shaderInt8                          = true;
+   f->shaderFloat16                       = !pdevice->instance->no_16bit;
+   f->shaderInt8                          = !pdevice->instance->no_16bit;
 
    f->descriptorIndexing                                 = true;
    f->shaderInputAttachmentArrayDynamicIndexing          = false;
@@ -1408,6 +1414,13 @@ void anv_GetPhysicalDeviceFeatures2(
             (VkPhysicalDeviceImage2DViewOf3DFeaturesEXT *)ext;
          features->image2DViewOf3D = true;
          features->sampler2DViewOf3D = true;
+         break;
+      }
+
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_SLICED_VIEW_OF_3D_FEATURES_EXT: {
+         VkPhysicalDeviceImageSlicedViewOf3DFeaturesEXT *features =
+            (VkPhysicalDeviceImageSlicedViewOf3DFeaturesEXT *)ext;
+         features->imageSlicedViewOf3D = true;
          break;
       }
 
@@ -1563,6 +1576,13 @@ void anv_GetPhysicalDeviceFeatures2(
          features->primitivesGeneratedQuery = true;
          features->primitivesGeneratedQueryWithRasterizerDiscard = false;
          features->primitivesGeneratedQueryWithNonZeroStreams = false;
+         break;
+      }
+
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_LIBRARY_GROUP_HANDLES_FEATURES_EXT: {
+         VkPhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT *features =
+            (VkPhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT *)ext;
+         features->pipelineLibraryGroupHandles = true;
          break;
       }
 
@@ -3001,33 +3021,18 @@ anv_state_pool_emit_data(struct anv_state_pool *pool, size_t size, size_t align,
 static void
 anv_device_init_border_colors(struct anv_device *device)
 {
-   if (device->info->platform == INTEL_PLATFORM_HSW) {
-      static const struct hsw_border_color border_colors[] = {
-         [VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK] =  { .float32 = { 0.0, 0.0, 0.0, 0.0 } },
-         [VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK] =       { .float32 = { 0.0, 0.0, 0.0, 1.0 } },
-         [VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE] =       { .float32 = { 1.0, 1.0, 1.0, 1.0 } },
-         [VK_BORDER_COLOR_INT_TRANSPARENT_BLACK] =    { .uint32 = { 0, 0, 0, 0 } },
-         [VK_BORDER_COLOR_INT_OPAQUE_BLACK] =         { .uint32 = { 0, 0, 0, 1 } },
-         [VK_BORDER_COLOR_INT_OPAQUE_WHITE] =         { .uint32 = { 1, 1, 1, 1 } },
-      };
+   static const struct gfx8_border_color border_colors[] = {
+      [VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK] =  { .float32 = { 0.0, 0.0, 0.0, 0.0 } },
+      [VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK] =       { .float32 = { 0.0, 0.0, 0.0, 1.0 } },
+      [VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE] =       { .float32 = { 1.0, 1.0, 1.0, 1.0 } },
+      [VK_BORDER_COLOR_INT_TRANSPARENT_BLACK] =    { .uint32 = { 0, 0, 0, 0 } },
+      [VK_BORDER_COLOR_INT_OPAQUE_BLACK] =         { .uint32 = { 0, 0, 0, 1 } },
+      [VK_BORDER_COLOR_INT_OPAQUE_WHITE] =         { .uint32 = { 1, 1, 1, 1 } },
+   };
 
-      device->border_colors =
-         anv_state_pool_emit_data(&device->dynamic_state_pool,
-                                  sizeof(border_colors), 512, border_colors);
-   } else {
-      static const struct gfx8_border_color border_colors[] = {
-         [VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK] =  { .float32 = { 0.0, 0.0, 0.0, 0.0 } },
-         [VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK] =       { .float32 = { 0.0, 0.0, 0.0, 1.0 } },
-         [VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE] =       { .float32 = { 1.0, 1.0, 1.0, 1.0 } },
-         [VK_BORDER_COLOR_INT_TRANSPARENT_BLACK] =    { .uint32 = { 0, 0, 0, 0 } },
-         [VK_BORDER_COLOR_INT_OPAQUE_BLACK] =         { .uint32 = { 0, 0, 0, 1 } },
-         [VK_BORDER_COLOR_INT_OPAQUE_WHITE] =         { .uint32 = { 1, 1, 1, 1 } },
-      };
-
-      device->border_colors =
-         anv_state_pool_emit_data(&device->dynamic_state_pool,
-                                  sizeof(border_colors), 64, border_colors);
-   }
+   device->border_colors =
+      anv_state_pool_emit_data(&device->dynamic_state_pool,
+                               sizeof(border_colors), 64, border_colors);
 }
 
 static VkResult
@@ -3159,6 +3164,36 @@ static struct intel_mapped_pinned_buffer_alloc aux_map_allocator = {
    .free = intel_aux_map_buffer_free,
 };
 
+static VkResult
+anv_device_setup_context_or_vm(struct anv_device *device,
+                               const VkDeviceCreateInfo *pCreateInfo,
+                               const uint32_t num_queues)
+{
+   switch (device->info->kmd_type) {
+   case INTEL_KMD_TYPE_I915:
+      return anv_i915_device_setup_context(device, pCreateInfo, num_queues);
+   case INTEL_KMD_TYPE_XE:
+      return anv_xe_device_setup_vm(device);
+   default:
+      unreachable("Missing");
+      return VK_ERROR_UNKNOWN;
+   }
+}
+
+static bool
+anv_device_destroy_context_or_vm(struct anv_device *device)
+{
+   switch (device->info->kmd_type) {
+   case INTEL_KMD_TYPE_I915:
+      return intel_gem_destroy_context(device->fd, device->context_id);
+   case INTEL_KMD_TYPE_XE:
+      return anv_xe_device_destroy_vm(device);
+   default:
+      unreachable("Missing");
+      return false;
+   }
+}
+
 VkResult anv_CreateDevice(
     VkPhysicalDevice                            physicalDevice,
     const VkDeviceCreateInfo*                   pCreateInfo,
@@ -3255,7 +3290,7 @@ VkResult anv_CreateDevice(
    for (uint32_t i = 0; i < pCreateInfo->queueCreateInfoCount; i++)
       num_queues += pCreateInfo->pQueueCreateInfos[i].queueCount;
 
-   result = anv_i915_device_setup_context(device, pCreateInfo, num_queues);
+   result = anv_device_setup_context_or_vm(device, pCreateInfo, num_queues);
    if (result != VK_SUCCESS)
       goto fail_fd;
 
@@ -3632,7 +3667,7 @@ VkResult anv_CreateDevice(
       anv_queue_finish(&device->queues[i]);
    vk_free(&device->vk.alloc, device->queues);
  fail_context_id:
-   intel_gem_destroy_context(device->fd, device->context_id);
+   anv_device_destroy_context_or_vm(device);
  fail_fd:
    close(device->fd);
  fail_device:
@@ -3724,7 +3759,7 @@ void anv_DestroyDevice(
       anv_queue_finish(&device->queues[i]);
    vk_free(&device->vk.alloc, device->queues);
 
-   intel_gem_destroy_context(device->fd, device->context_id);
+   anv_device_destroy_context_or_vm(device);
 
    if (INTEL_DEBUG(DEBUG_BATCH)) {
       for (unsigned i = 0; i < pdevice->queue.family_count; i++)
@@ -4544,20 +4579,6 @@ anv_get_buffer_memory_requirements(struct anv_device *device,
          break;
       }
    }
-}
-
-void anv_GetBufferMemoryRequirements2(
-    VkDevice                                    _device,
-    const VkBufferMemoryRequirementsInfo2*      pInfo,
-    VkMemoryRequirements2*                      pMemoryRequirements)
-{
-   ANV_FROM_HANDLE(anv_device, device, _device);
-   ANV_FROM_HANDLE(anv_buffer, buffer, pInfo->buffer);
-
-   anv_get_buffer_memory_requirements(device,
-                                      buffer->vk.size,
-                                      buffer->vk.usage,
-                                      pMemoryRequirements);
 }
 
 void anv_GetDeviceBufferMemoryRequirementsKHR(

@@ -1324,7 +1324,6 @@ add_resource_bind(struct zink_context *ctx, struct zink_resource *res, unsigned 
 {
    struct zink_screen *screen = zink_screen(ctx->base.screen);
    assert((res->base.b.bind & bind) == 0);
-   zink_screen(ctx->base.screen)->image_barrier(ctx, res, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0, 0);
    res->base.b.bind |= bind;
    struct zink_resource_object *old_obj = res->obj;
    if (bind & ZINK_BIND_DMABUF && !res->modifiers_count && screen->info.have_EXT_image_drm_format_modifier) {
@@ -1342,8 +1341,6 @@ add_resource_bind(struct zink_context *ctx, struct zink_resource *res, unsigned 
    staging.obj = old_obj;
    staging.all_binds = 0;
    res->layout = VK_IMAGE_LAYOUT_UNDEFINED;
-   res->obj->access = 0;
-   res->obj->access_stage = 0;
    res->obj = new_obj;
    for (unsigned i = 0; i <= res->base.b.last_level; i++) {
       struct pipe_box box = {0, 0, 0,
@@ -1677,7 +1674,9 @@ invalidate_buffer(struct zink_context *ctx, struct zink_resource *res)
    if (res->base.b.flags & PIPE_RESOURCE_FLAG_SPARSE)
       return false;
 
-   if (res->valid_buffer_range.start > res->valid_buffer_range.end)
+   struct pipe_box box = {0, 0, 0, res->base.b.width0, 0, 0};
+   if (res->valid_buffer_range.start > res->valid_buffer_range.end &&
+       !zink_resource_copy_box_intersects(res, 0, &box))
       return false;
 
    if (res->so_valid)
@@ -1842,7 +1841,8 @@ zink_buffer_map(struct pipe_context *pctx,
     * in which case it can be mapped unsynchronized. */
    if (!(usage & (PIPE_MAP_UNSYNCHRONIZED | TC_TRANSFER_MAP_NO_INFER_UNSYNCHRONIZED)) &&
        usage & PIPE_MAP_WRITE && !res->base.is_shared &&
-       !util_ranges_intersect(&res->valid_buffer_range, box->x, box->x + box->width)) {
+       !util_ranges_intersect(&res->valid_buffer_range, box->x, box->x + box->width) &&
+       !zink_resource_copy_box_intersects(res, 0, box)) {
       usage |= PIPE_MAP_UNSYNCHRONIZED;
    }
 
@@ -1960,6 +1960,8 @@ overwrite:
          zink_resource_usage_wait(ctx, res, ZINK_RESOURCE_ACCESS_WRITE);
       res->obj->access = 0;
       res->obj->access_stage = 0;
+      res->obj->last_write = 0;
+      zink_resource_copies_reset(res);
    }
 
    if (!ptr) {
@@ -2225,7 +2227,162 @@ zink_resource_copy_box_intersects(struct zink_resource *res, unsigned level, con
 void
 zink_resource_copy_box_add(struct zink_resource *res, unsigned level, const struct pipe_box *box)
 {
+   if (res->obj->copies_valid) {
+      struct pipe_box *b = res->obj->copies[level].data;
+      unsigned num_boxes = util_dynarray_num_elements(&res->obj->copies[level], struct pipe_box);
+      for (unsigned i = 0; i < num_boxes; i++) {
+         switch (res->base.b.target) {
+         case PIPE_BUFFER:
+         case PIPE_TEXTURE_1D:
+            /* no-op included region */
+            if (b[i].x <= box->x && b[i].x + b[i].width >= box->x + box->width)
+               return;
+
+            /* try to merge adjacent regions */
+            if (b[i].x == box->x + box->width) {
+               b[i].x -= box->width;
+               b[i].width += box->width;
+               return;
+            }
+            if (b[i].x + b[i].width == box->x) {
+               b[i].width += box->width;
+               return;
+            }
+
+            /* try to merge into region */
+            if (box->x <= b[i].x && box->x + box->width >= b[i].x + b[i].width) {
+               *b = *box;
+               return;
+            }
+            break;
+
+         case PIPE_TEXTURE_1D_ARRAY:
+         case PIPE_TEXTURE_2D:
+            /* no-op included region */
+            if (b[i].x <= box->x && b[i].x + b[i].width >= box->x + box->width &&
+                b[i].y <= box->y && b[i].y + b[i].height >= box->y + box->height)
+               return;
+
+            /* try to merge adjacent regions */
+            if (b[i].y == box->y && b[i].height == box->height) {
+               if (b[i].x == box->x + box->width) {
+                  b[i].x -= box->width;
+                  b[i].width += box->width;
+                  return;
+               }
+               if (b[i].x + b[i].width == box->x) {
+                  b[i].width += box->width;
+                  return;
+               }
+            } else if (b[i].x == box->x && b[i].width == box->width) {
+               if (b[i].y == box->y + box->height) {
+                  b[i].y -= box->height;
+                  b[i].height += box->height;
+                  return;
+               }
+               if (b[i].y + b[i].height == box->y) {
+                  b[i].height += box->height;
+                  return;
+               }
+            }
+
+            /* try to merge into region */
+            if (box->x <= b[i].x && box->x + box->width >= b[i].x + b[i].width &&
+                box->y <= b[i].y && box->y + box->height >= b[i].y + b[i].height) {
+               *b = *box;
+               return;
+            }
+            break;
+
+         default:
+            /* no-op included region */
+            if (b[i].x <= box->x && b[i].x + b[i].width >= box->x + box->width &&
+                b[i].y <= box->y && b[i].y + b[i].height >= box->y + box->height &&
+                b[i].z <= box->z && b[i].z + b[i].depth >= box->z + box->depth)
+               return;
+
+               /* try to merge adjacent regions */
+            if (b[i].z == box->z && b[i].depth == box->depth) {
+               if (b[i].y == box->y && b[i].height == box->height) {
+                  if (b[i].x == box->x + box->width) {
+                     b[i].x -= box->width;
+                     b[i].width += box->width;
+                     return;
+                  }
+                  if (b[i].x + b[i].width == box->x) {
+                     b[i].width += box->width;
+                     return;
+                  }
+               } else if (b[i].x == box->x && b[i].width == box->width) {
+                  if (b[i].y == box->y + box->height) {
+                     b[i].y -= box->height;
+                     b[i].height += box->height;
+                     return;
+                  }
+                  if (b[i].y + b[i].height == box->y) {
+                     b[i].height += box->height;
+                     return;
+                  }
+               }
+            } else if (b[i].x == box->x && b[i].width == box->width) {
+               if (b[i].y == box->y && b[i].height == box->height) {
+                  if (b[i].z == box->z + box->depth) {
+                     b[i].z -= box->depth;
+                     b[i].depth += box->depth;
+                     return;
+                  }
+                  if (b[i].z + b[i].depth == box->z) {
+                     b[i].depth += box->depth;
+                     return;
+                  }
+               } else if (b[i].z == box->z && b[i].depth == box->depth) {
+                  if (b[i].y == box->y + box->height) {
+                     b[i].y -= box->height;
+                     b[i].height += box->height;
+                     return;
+                  }
+                  if (b[i].y + b[i].height == box->y) {
+                     b[i].height += box->height;
+                     return;
+                  }
+               }
+            } else if (b[i].y == box->y && b[i].height == box->height) {
+               if (b[i].z == box->z && b[i].depth == box->depth) {
+                  if (b[i].x == box->x + box->width) {
+                     b[i].x -= box->width;
+                     b[i].width += box->width;
+                     return;
+                  }
+                  if (b[i].x + b[i].width == box->x) {
+                     b[i].width += box->width;
+                     return;
+                  }
+               } else if (b[i].x == box->x && b[i].width == box->width) {
+                  if (b[i].z == box->z + box->depth) {
+                     b[i].z -= box->depth;
+                     b[i].depth += box->depth;
+                     return;
+                  }
+                  if (b[i].z + b[i].depth == box->z) {
+                     b[i].depth += box->depth;
+                     return;
+                  }
+               }
+            }
+
+            /* try to merge into region */
+            if (box->x <= b[i].x && box->x + box->width >= b[i].x + b[i].width &&
+                box->y <= b[i].y && box->y + box->height >= b[i].y + b[i].height &&
+                box->z <= b[i].z && box->z + box->depth >= b[i].z + b[i].depth)
+               return;
+
+            break;
+         }
+      }
+   }
    util_dynarray_append(&res->obj->copies[level], struct pipe_box, *box);
+   if (util_dynarray_num_elements(&res->obj->copies[level], struct pipe_box) > 100)
+      mesa_logw("zink: PERF WARNING! > 100 copy boxes detected for %p\n", res);
    res->obj->copies_valid = true;
 }
 
@@ -2235,9 +2392,17 @@ zink_resource_copies_reset(struct zink_resource *res)
    if (!res->obj->copies_valid)
       return;
    unsigned max_level = res->base.b.target == PIPE_BUFFER ? 1 : (res->base.b.last_level + 1);
+   if (res->base.b.target == PIPE_BUFFER) {
+      /* flush transfer regions back to valid range on reset */
+      struct pipe_box *b = res->obj->copies[0].data;
+      unsigned num_boxes = util_dynarray_num_elements(&res->obj->copies[0], struct pipe_box);
+      for (unsigned i = 0; i < num_boxes; i++)
+         util_range_add(&res->base.b, &res->valid_buffer_range, b[i].x, b[i].x + b[i].width);
+   }
    for (unsigned i = 0; i < max_level; i++)
       util_dynarray_clear(&res->obj->copies[i]);
    res->obj->copies_valid = false;
+   res->obj->copies_need_reset = false;
 }
 
 static void

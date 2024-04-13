@@ -2388,7 +2388,6 @@ do_common_optimization(exec_list *ir, bool linked,
    OPT(propagate_invariance, ir);
    OPT(do_if_simplification, ir);
    OPT(opt_flatten_nested_if_blocks, ir);
-   OPT(do_copy_propagation_elements, ir);
 
    if (options->OptimizeForAOS && !linked)
       OPT(opt_flip_matrices, ir);
@@ -2399,18 +2398,11 @@ do_common_optimization(exec_list *ir, bool linked,
       OPT(do_dead_code_unlinked, ir);
    OPT(do_dead_code_local, ir);
    OPT(do_tree_grafting, ir);
-   OPT(do_constant_propagation, ir);
-   if (linked)
-      OPT(do_constant_variable, ir);
-   else
-      OPT(do_constant_variable_unlinked, ir);
-   OPT(do_constant_folding, ir);
    OPT(do_minmax_prune, ir);
    OPT(do_rebalance_tree, ir);
    OPT(do_algebraic, ir, native_integers, options);
    OPT(do_lower_jumps, ir, true, true, options->EmitNoMainReturn,
        options->EmitNoCont);
-   OPT(lower_vector_insert, ir, false);
 
    /* If an optimization pass fails to preserve the invariant flag, calling
     * the pass only once earlier may result in incorrect code generation. Always call

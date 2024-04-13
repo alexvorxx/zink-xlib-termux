@@ -55,10 +55,12 @@ static const struct debug_named_value radeonsi_debug_options[] = {
    {"tcs", DBG(TCS), "Print tessellation control shaders"},
    {"tes", DBG(TES), "Print tessellation evaluation shaders"},
    {"cs", DBG(CS), "Print compute shaders"},
-   {"noir", DBG(NO_IR), "Don't print the LLVM IR"},
-   {"nonir", DBG(NO_NIR), "Don't print NIR when printing shaders"},
-   {"noasm", DBG(NO_ASM), "Don't print disassembled shaders"},
-   {"preoptir", DBG(PREOPT_IR), "Print the LLVM IR before initial optimizations"},
+
+   {"initnir", DBG(INIT_NIR), "Print initial input NIR when shaders are created"},
+   {"nir", DBG(NIR), "Print final NIR after lowering when shader variants are created"},
+   {"initllvm", DBG(INIT_LLVM), "Print initial LLVM IR before optimizations"},
+   {"llvm", DBG(LLVM), "Print final LLVM IR"},
+   {"asm", DBG(ASM), "Print final shaders in asm"},
 
    /* Shader compiler options the shader cache should be aware of: */
    {"w32ge", DBG(W32_GE), "Use Wave32 for vertex, tessellation, and geometry shaders."},
@@ -85,6 +87,7 @@ static const struct debug_named_value radeonsi_debug_options[] = {
 
    /* Driver options: */
    {"nowc", DBG(NO_WC), "Disable GTT write combining"},
+   {"nowcstream", DBG(NO_WC_STREAM), "Disable GTT write combining for streaming uploads"},
    {"check_vm", DBG(CHECK_VM), "Check VM faults and dump debug info."},
    {"reserve_vmid", DBG(RESERVE_VMID), "Force VMID reservation per context."},
    {"shadowregs", DBG(SHADOW_REGS), "Enable CP register shadowing."},
@@ -555,24 +558,22 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
       goto fail;
    }
 
-   /* Initialize public allocators. */
-   /* Unify uploaders as follows:
-    * - dGPUs with Smart Access Memory: there is only one uploader instance writing to VRAM.
+   /* Initialize public allocators. Unify uploaders as follows:
+    * - dGPUs: The const uploader writes to VRAM and the stream uploader writes to RAM.
     * - APUs: There is only one uploader instance writing to RAM. VRAM has the same perf on APUs.
-    * - Other chips: The const uploader writes to VRAM and the stream uploader writes to RAM.
     */
-   bool smart_access_memory = sscreen->info.smart_access_memory;
    bool is_apu = !sscreen->info.has_dedicated_vram;
    sctx->b.stream_uploader =
       u_upload_create(&sctx->b, 1024 * 1024, 0,
-                      smart_access_memory && !is_apu ? PIPE_USAGE_DEFAULT : PIPE_USAGE_STREAM,
+                      sscreen->debug_flags & DBG(NO_WC_STREAM) ? PIPE_USAGE_STAGING
+                                                               : PIPE_USAGE_STREAM,
                       SI_RESOURCE_FLAG_32BIT); /* same flags as const_uploader */
    if (!sctx->b.stream_uploader) {
       fprintf(stderr, "radeonsi: can't create stream_uploader\n");
       goto fail;
    }
 
-   if (smart_access_memory || is_apu) {
+   if (is_apu) {
       sctx->b.const_uploader = sctx->b.stream_uploader;
    } else {
       sctx->b.const_uploader =
@@ -757,9 +758,7 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
    /* The remainder of this function initializes the gfx CS and must be last. */
    assert(sctx->gfx_cs.current.cdw == 0);
 
-   if (sctx->has_graphics) {
-      si_init_cp_reg_shadowing(sctx);
-   }
+   si_init_cp_reg_shadowing(sctx);
 
    /* Set immutable fields of shader keys. */
    if (sctx->gfx_level >= GFX9) {
@@ -1136,11 +1135,7 @@ static struct pipe_screen *radeonsi_screen_create_impl(struct radeon_winsys *ws,
    }
 
    sscreen->ws = ws;
-   ws->query_info(ws, &sscreen->info,
-                  sscreen->options.enable_sam,
-                  sscreen->options.disable_sam);
-
-   sscreen->info.smart_access_memory = false; /* VRAM has slower CPU access */
+   ws->query_info(ws, &sscreen->info);
 
    if (sscreen->info.gfx_level >= GFX9) {
       sscreen->se_tile_repeat = 32 * sscreen->info.max_se;
@@ -1422,8 +1417,6 @@ static struct pipe_screen *radeonsi_screen_create_impl(struct radeon_winsys *ws,
          sscreen->eqaa_force_color_samples = f;
       }
    }
-
-   sscreen->ngg_subgroup_size = 128;
 
    if (sscreen->info.gfx_level >= GFX11) {
       unsigned attr_ring_size = sscreen->info.attribute_ring_size_per_se * sscreen->info.max_se;

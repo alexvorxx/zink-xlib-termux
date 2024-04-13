@@ -352,12 +352,21 @@ typedef enum VkCommandTypeEXT {
     VK_COMMAND_TYPE_vkResetFenceResource100000MESA_EXT = 244,
     VK_COMMAND_TYPE_vkWaitSemaphoreResource100000MESA_EXT = 245,
     VK_COMMAND_TYPE_vkImportSemaphoreResource100000MESA_EXT = 246,
+    VK_COMMAND_TYPE_vkSubmitVirtqueueSeqno100000MESA_EXT = 251,
+    VK_COMMAND_TYPE_vkWaitVirtqueueSeqno100000MESA_EXT = 252,
+    VK_COMMAND_TYPE_vkWaitRingSeqno100000MESA_EXT = 253,
     VK_COMMAND_TYPE_vkGetVenusExperimentalFeatureData100000MESA_EXT = 195,
 } VkCommandTypeEXT;
 
 typedef enum VkCommandFlagBitsEXT {
     VK_COMMAND_GENERATE_REPLY_BIT_EXT = 0x00000001,
 } VkCommandFlagBitsEXT;
+
+typedef enum VkRingStatusFlagBitsMESA {
+    VK_RING_STATUS_NONE_MESA = 0,
+    VK_RING_STATUS_IDLE_BIT_MESA = 0x00000001,
+    VK_RING_STATUS_FATAL_BIT_MESA = 0x00000002,
+} VkRingStatusFlagBitsMESA;
 
 typedef VkFlags VkCommandFlagsEXT;
 
@@ -366,6 +375,8 @@ typedef VkFlags VkCommandStreamExecutionFlagsMESA;
 typedef VkFlags VkRingCreateFlagsMESA;
 
 typedef VkFlags VkRingNotifyFlagsMESA;
+
+typedef VkFlags VkRingStatusFlagsMESA;
 
 typedef struct VkCommandStreamDescriptionMESA {
     uint32_t resourceId;
@@ -412,6 +423,7 @@ typedef struct VkVenusExperimentalFeatures100000MESA {
     VkBool32 globalFencing;
     VkBool32 largeRing;
     VkBool32 syncFdFencing;
+    VkBool32 asyncRoundtrip;
 } VkVenusExperimentalFeatures100000MESA;
 
 typedef struct VkMemoryResourceAllocationSizeProperties100000MESA {

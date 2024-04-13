@@ -56,6 +56,7 @@
 extern struct pipe_context* zink_xlib_context;
 
 static int num_screens = 0;
+bool zink_tracing = false;
 
 #if DETECT_OS_WINDOWS
 #include <io.h>
@@ -130,8 +131,14 @@ static const char *
 zink_get_name(struct pipe_screen *pscreen)
 {
    struct zink_screen *screen = zink_screen(pscreen);
+   const char *driver_name = vk_DriverId_to_str(screen->info.driver_props.driverID) + strlen("VK_DRIVER_ID_");
    static char buf[1000];
-   snprintf(buf, sizeof(buf), "zink (%s)", screen->info.props.deviceName);
+   snprintf(buf, sizeof(buf), "zink Vulkan %d.%d(%s (%s))",
+            VK_VERSION_MAJOR(screen->info.device_version),
+            VK_VERSION_MINOR(screen->info.device_version),
+            screen->info.props.deviceName,
+            strstr(vk_DriverId_to_str(screen->info.driver_props.driverID), "VK_DRIVER_ID_") ? driver_name : "Driver Unknown"
+            );
    return buf;
 }
 
@@ -2085,6 +2092,9 @@ static void
 setup_renderdoc(struct zink_screen *screen)
 {
 #ifdef HAVE_RENDERDOC_APP_H
+   const char *capture_id = debug_get_option("ZINK_RENDERDOC", NULL);
+   if (!capture_id)
+      return;
    void *renderdoc = dlopen("librenderdoc.so", RTLD_NOW | RTLD_NOLOAD);
    /* not loaded */
    if (!renderdoc)
@@ -2099,9 +2109,6 @@ setup_renderdoc(struct zink_screen *screen)
    get_api(eRENDERDOC_API_Version_1_0_0, (void*)&screen->renderdoc_api);
    screen->renderdoc_api->SetActiveWindow(RENDERDOC_DEVICEPOINTER_FROM_VKINSTANCE(screen->instance), NULL);
 
-   const char *capture_id = debug_get_option("ZINK_RENDERDOC", NULL);
-   if (!capture_id)
-      return;
    int count = sscanf(capture_id, "%u:%u", &screen->renderdoc_capture_start, &screen->renderdoc_capture_end);
    if (count != 2) {
       count = sscanf(capture_id, "%u", &screen->renderdoc_capture_start);
@@ -2670,6 +2677,18 @@ init_driver_workarounds(struct zink_screen *screen)
       screen->driver_workarounds.needs_sanitised_layer = false;
       break;
    }
+   /* these drivers will produce undefined results when using swizzle 1 with combined z/s textures
+    * TODO: use a future device property when available
+    */
+   switch (screen->info.driver_props.driverID) {
+   case VK_DRIVER_ID_IMAGINATION_PROPRIETARY:
+   case VK_DRIVER_ID_IMAGINATION_OPEN_SOURCE_MESA:
+      screen->driver_workarounds.needs_zs_shader_swizzle = true;
+      break;
+   default:
+      screen->driver_workarounds.needs_zs_shader_swizzle = false;
+      break;
+   }
 
    /* When robust contexts are advertised but robustImageAccess2 is not available */
    screen->driver_workarounds.lower_robustImageAccess2 =
@@ -2695,7 +2714,7 @@ init_driver_workarounds(struct zink_screen *screen)
    case VK_DRIVER_ID_QUALCOMM_PROPRIETARY:
    case VK_DRIVER_ID_BROADCOM_PROPRIETARY:
    case VK_DRIVER_ID_ARM_PROPRIETARY:
-      screen->driver_workarounds.track_renderpasses = true;
+      screen->driver_workarounds.track_renderpasses = screen->info.primgen_feats.primitivesGeneratedQueryWithRasterizerDiscard || screen->info.have_EXT_color_write_enable;
       break;
    default:
       break;
@@ -2704,6 +2723,16 @@ init_driver_workarounds(struct zink_screen *screen)
       screen->driver_workarounds.track_renderpasses = true;
    else if (zink_debug & ZINK_DEBUG_NORP)
       screen->driver_workarounds.track_renderpasses = false;
+
+   /* these drivers can't optimize non-overlapping copy ops */
+   switch (screen->info.driver_props.driverID) {
+   case VK_DRIVER_ID_MESA_TURNIP:
+   case VK_DRIVER_ID_QUALCOMM_PROPRIETARY:
+      screen->driver_workarounds.broken_cache_semantics = true;
+      break;
+   default:
+      break;
+   }
 }
 
 static struct disk_cache *
@@ -2836,6 +2865,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
       screen->driconf.dual_color_blend_by_location = driQueryOptionb(config->options, "dual_color_blend_by_location");
       screen->driconf.glsl_correct_derivatives_after_discard = driQueryOptionb(config->options, "glsl_correct_derivatives_after_discard");
       //screen->driconf.inline_uniforms = driQueryOptionb(config->options, "radeonsi_inline_uniforms");
+      screen->driconf.emulate_point_smooth = driQueryOptionb(config->options, "zink_emulate_point_smooth");
       screen->instance_info.disable_xcb_surface = driQueryOptionb(config->options, "disable_xcb_surface");
    }
 
@@ -3198,11 +3228,17 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
                           !screen->driver_workarounds.no_linestipple &&
                           !screen->driver_workarounds.no_linesmooth &&
                           !screen->driver_workarounds.no_hw_gl_point &&
-                          !screen->driver_workarounds.lower_robustImageAccess2;
+                          !screen->driver_workarounds.lower_robustImageAccess2 &&
+                          !screen->driconf.emulate_point_smooth &&
+                          !screen->driver_workarounds.needs_zs_shader_swizzle;
    if (!screen->optimal_keys)
       screen->info.have_EXT_graphics_pipeline_library = false;
 
    screen->screen_id = p_atomic_inc_return(&num_screens);
+   zink_tracing = screen->instance_info.have_EXT_debug_utils &&
+                  (u_trace_is_enabled(U_TRACE_TYPE_PERFETTO) || u_trace_is_enabled(U_TRACE_TYPE_MARKERS));
+
+   screen->frame_marker_emitted = zink_screen_debug_marker_begin(screen, "frame");
 
    return screen;
 
@@ -3251,4 +3287,36 @@ void zink_stub_function_not_loaded()
     */
    mesa_loge("ZINK: a Vulkan function was called without being loaded");
    abort();
+}
+
+bool
+zink_screen_debug_marker_begin(struct zink_screen *screen, const char *fmt, ...)
+{
+   if (!zink_tracing)
+      return false;
+
+   char *name;
+   va_list va;
+   va_start(va, fmt);
+   int ret = vasprintf(&name, fmt, va);
+   va_end(va);
+
+   if (ret == -1)
+      return false;
+
+   VkDebugUtilsLabelEXT info = { 0 };
+   info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+   info.pLabelName = name;
+
+   VKSCR(QueueBeginDebugUtilsLabelEXT)(screen->queue, &info);
+
+   free(name);
+   return true;
+}
+
+void
+zink_screen_debug_marker_end(struct zink_screen *screen, bool emitted)
+{
+   if (emitted)
+      VKSCR(QueueEndDebugUtilsLabelEXT)(screen->queue);
 }

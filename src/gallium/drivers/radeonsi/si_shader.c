@@ -206,7 +206,11 @@ unsigned si_get_max_workgroup_size(const struct si_shader *shader)
    switch (shader->selector->stage) {
    case MESA_SHADER_VERTEX:
    case MESA_SHADER_TESS_EVAL:
-      return shader->key.ge.as_ngg ? shader->selector->screen->ngg_subgroup_size : 0;
+      /* Use the largest workgroup size for streamout */
+      if (shader->key.ge.as_ngg)
+         return si_shader_uses_streamout(shader) ? 256 : 128;
+      else
+         return 0;
 
    case MESA_SHADER_TESS_CTRL:
       /* Return this so that LLVM doesn't remove s_barrier
@@ -214,7 +218,7 @@ unsigned si_get_max_workgroup_size(const struct si_shader *shader)
       return shader->selector->screen->info.gfx_level >= GFX7 ? 128 : 0;
 
    case MESA_SHADER_GEOMETRY:
-      /* ngg_subgroup_size is only the input size. GS can always generate up to 256 vertices. */
+      /* GS can always generate up to 256 vertices. */
       return shader->selector->screen->info.gfx_level >= GFX9 ? 256 : 0;
 
    case MESA_SHADER_COMPUTE:
@@ -1099,37 +1103,53 @@ void si_shader_dump_stats_for_shader_db(struct si_screen *screen, struct si_shad
                       stages[shader->selector->stage], shader->wave_size);
 }
 
+bool si_can_dump_shader(struct si_screen *sscreen, gl_shader_stage stage,
+                        enum si_shader_dump_type dump_type)
+{
+   static uint64_t filter[] = {
+      [SI_DUMP_SHADER_KEY] = DBG(NIR) | DBG(INIT_LLVM) | DBG(LLVM) | DBG(ASM),
+      [SI_DUMP_INIT_NIR] = DBG(INIT_NIR),
+      [SI_DUMP_NIR] = DBG(NIR),
+      [SI_DUMP_INIT_LLVM_IR] = DBG(INIT_LLVM),
+      [SI_DUMP_LLVM_IR] = DBG(LLVM),
+      [SI_DUMP_ASM] = DBG(ASM),
+      [SI_DUMP_ALWAYS] = DBG(VS) | DBG(TCS) | DBG(TES) | DBG(GS) | DBG(PS) | DBG(CS),
+   };
+   assert(dump_type < ARRAY_SIZE(filter));
+
+   return sscreen->debug_flags & (1 << stage) &&
+          sscreen->debug_flags & filter[dump_type];
+}
+
 static void si_shader_dump_stats(struct si_screen *sscreen, struct si_shader *shader, FILE *file,
                                  bool check_debug_option)
 {
    const struct ac_shader_config *conf = &shader->config;
 
-   if (!check_debug_option || si_can_dump_shader(sscreen, shader->selector->stage)) {
-      if (shader->selector->stage == MESA_SHADER_FRAGMENT) {
-         fprintf(file,
-                 "*** SHADER CONFIG ***\n"
-                 "SPI_PS_INPUT_ADDR = 0x%04x\n"
-                 "SPI_PS_INPUT_ENA  = 0x%04x\n",
-                 conf->spi_ps_input_addr, conf->spi_ps_input_ena);
-      }
-
+   if (shader->selector->stage == MESA_SHADER_FRAGMENT) {
       fprintf(file,
-              "*** SHADER STATS ***\n"
-              "SGPRS: %d\n"
-              "VGPRS: %d\n"
-              "Spilled SGPRs: %d\n"
-              "Spilled VGPRs: %d\n"
-              "Private memory VGPRs: %d\n"
-              "Code Size: %d bytes\n"
-              "LDS: %d bytes\n"
-              "Scratch: %d bytes per wave\n"
-              "Max Waves: %d\n"
-              "********************\n\n\n",
-              conf->num_sgprs, conf->num_vgprs, conf->spilled_sgprs, conf->spilled_vgprs,
-              shader->info.private_mem_vgprs, si_get_shader_binary_size(sscreen, shader),
-              conf->lds_size * get_lds_granularity(sscreen, shader->selector->stage),
-              conf->scratch_bytes_per_wave, shader->info.max_simd_waves);
+              "*** SHADER CONFIG ***\n"
+              "SPI_PS_INPUT_ADDR = 0x%04x\n"
+              "SPI_PS_INPUT_ENA  = 0x%04x\n",
+              conf->spi_ps_input_addr, conf->spi_ps_input_ena);
    }
+
+   fprintf(file,
+           "*** SHADER STATS ***\n"
+           "SGPRS: %d\n"
+           "VGPRS: %d\n"
+           "Spilled SGPRs: %d\n"
+           "Spilled VGPRs: %d\n"
+           "Private memory VGPRs: %d\n"
+           "Code Size: %d bytes\n"
+           "LDS: %d bytes\n"
+           "Scratch: %d bytes per wave\n"
+           "Max Waves: %d\n"
+           "********************\n\n\n",
+           conf->num_sgprs, conf->num_vgprs, conf->spilled_sgprs, conf->spilled_vgprs,
+           shader->info.private_mem_vgprs, si_get_shader_binary_size(sscreen, shader),
+           conf->lds_size * get_lds_granularity(sscreen, shader->selector->stage),
+           conf->scratch_bytes_per_wave, shader->info.max_simd_waves);
 }
 
 const char *si_get_shader_name(const struct si_shader *shader)
@@ -1172,10 +1192,11 @@ void si_shader_dump(struct si_screen *sscreen, struct si_shader *shader,
 {
    gl_shader_stage stage = shader->selector->stage;
 
-   if (!check_debug_option || si_can_dump_shader(sscreen, stage))
+   if (!check_debug_option || si_can_dump_shader(sscreen, stage, SI_DUMP_SHADER_KEY))
       si_dump_shader_key(shader, file);
 
    if (!check_debug_option && shader->binary.llvm_ir_string) {
+      /* This is only used with ddebug. */
       if (shader->previous_stage && shader->previous_stage->binary.llvm_ir_string) {
          fprintf(file, "\n%s - previous stage - LLVM IR:\n\n", si_get_shader_name(shader));
          fprintf(file, "%s\n", shader->previous_stage->binary.llvm_ir_string);
@@ -1185,9 +1206,7 @@ void si_shader_dump(struct si_screen *sscreen, struct si_shader *shader,
       fprintf(file, "%s\n", shader->binary.llvm_ir_string);
    }
 
-   if (!check_debug_option ||
-       (si_can_dump_shader(sscreen, stage) && !(sscreen->debug_flags & DBG(NO_ASM)))) {
-
+   if (!check_debug_option || (si_can_dump_shader(sscreen, stage, SI_DUMP_ASM))) {
       fprintf(file, "\n%s:\n", si_get_shader_name(shader));
 
       if (shader->prolog)
@@ -1203,9 +1222,9 @@ void si_shader_dump(struct si_screen *sscreen, struct si_shader *shader,
          si_shader_dump_disassembly(sscreen, &shader->epilog->binary, stage, shader->wave_size, debug,
                                     "epilog", file);
       fprintf(file, "\n");
-   }
 
-   si_shader_dump_stats(sscreen, shader, file, check_debug_option);
+      si_shader_dump_stats(sscreen, shader, file, check_debug_option);
+   }
 }
 
 static void si_dump_shader_key_vs(const union si_shader_key *key,
@@ -2076,10 +2095,9 @@ si_nir_generate_gs_copy_shader(struct si_screen *sscreen,
 
    si_nir_opts(gs_selector->screen, nir, false);
 
-   if (si_can_dump_shader(sscreen, MESA_SHADER_GEOMETRY)) {
+   if (si_can_dump_shader(sscreen, MESA_SHADER_GEOMETRY, SI_DUMP_NIR)) {
       fprintf(stderr, "GS Copy Shader:\n");
-      if (!(sscreen->debug_flags & DBG(NO_NIR)))
-         nir_print_shader(nir, stderr);
+      nir_print_shader(nir, stderr);
    }
 
    bool ok = false;
@@ -2165,8 +2183,7 @@ bool si_compile_shader(struct si_screen *sscreen, struct ac_llvm_compiler *compi
 
    /* Dump NIR before doing NIR->LLVM conversion in case the
     * conversion fails. */
-   if (si_can_dump_shader(sscreen, sel->stage) &&
-       !(sscreen->debug_flags & DBG(NO_NIR))) {
+   if (si_can_dump_shader(sscreen, sel->stage, SI_DUMP_NIR)) {
       nir_print_shader(nir, stderr);
 
       if (nir->xfb_info)

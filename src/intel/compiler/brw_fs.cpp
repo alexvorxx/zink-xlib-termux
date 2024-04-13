@@ -38,6 +38,7 @@
 #include "brw_dead_control_flow.h"
 #include "brw_private.h"
 #include "dev/intel_debug.h"
+#include "dev/intel_wa.h"
 #include "compiler/glsl_types.h"
 #include "compiler/nir/nir_builder.h"
 #include "program/prog_parameter.h"
@@ -640,10 +641,18 @@ fs_visitor::limit_dispatch_width(unsigned n, const char *msg)
 bool
 fs_inst::is_partial_write() const
 {
-   return ((this->predicate && this->opcode != BRW_OPCODE_SEL) ||
-           (this->exec_size * type_sz(this->dst.type)) < 32 ||
-           !this->dst.is_contiguous() ||
-           this->dst.offset % REG_SIZE != 0);
+   if (this->predicate && this->opcode != BRW_OPCODE_SEL)
+      return true;
+
+   if (this->dst.offset % REG_SIZE != 0)
+      return true;
+
+   /* SEND instructions always write whole registers */
+   if (this->opcode == SHADER_OPCODE_SEND)
+      return false;
+
+   return this->exec_size * type_sz(this->dst.type) < 32 ||
+          !this->dst.is_contiguous();
 }
 
 unsigned
@@ -2605,6 +2614,7 @@ fs_visitor::opt_algebraic()
          /* a * 1.0 = a */
          if (inst->src[1].is_one()) {
             inst->opcode = BRW_OPCODE_MOV;
+            inst->sources = 1;
             inst->src[1] = reg_undef;
             progress = true;
             break;
@@ -2613,6 +2623,7 @@ fs_visitor::opt_algebraic()
          /* a * -1.0 = -a */
          if (inst->src[1].is_negative_one()) {
             inst->opcode = BRW_OPCODE_MOV;
+            inst->sources = 1;
             inst->src[0].negate = !inst->src[0].negate;
             inst->src[1] = reg_undef;
             progress = true;
@@ -2627,6 +2638,7 @@ fs_visitor::opt_algebraic()
          if (brw_reg_type_is_integer(inst->src[1].type) &&
              inst->src[1].is_zero()) {
             inst->opcode = BRW_OPCODE_MOV;
+            inst->sources = 1;
             inst->src[1] = reg_undef;
             progress = true;
             break;
@@ -2635,6 +2647,7 @@ fs_visitor::opt_algebraic()
          if (inst->src[0].file == IMM) {
             assert(inst->src[0].type == BRW_REGISTER_TYPE_F);
             inst->opcode = BRW_OPCODE_MOV;
+            inst->sources = 1;
             inst->src[0].f += inst->src[1].f;
             inst->src[1] = reg_undef;
             progress = true;
@@ -2650,9 +2663,11 @@ fs_visitor::opt_algebraic()
              */
             if (inst->src[0].negate) {
                inst->opcode = BRW_OPCODE_NOT;
+               inst->sources = 1;
                inst->src[0].negate = false;
             } else {
                inst->opcode = BRW_OPCODE_MOV;
+               inst->sources = 1;
             }
             inst->src[1] = reg_undef;
             progress = true;
@@ -2699,6 +2714,7 @@ fs_visitor::opt_algebraic()
          }
          if (inst->src[0].equals(inst->src[1])) {
             inst->opcode = BRW_OPCODE_MOV;
+            inst->sources = 1;
             inst->src[1] = reg_undef;
             inst->predicate = BRW_PREDICATE_NONE;
             inst->predicate_inverse = false;
@@ -2711,6 +2727,7 @@ fs_visitor::opt_algebraic()
                case BRW_REGISTER_TYPE_F:
                   if (inst->src[1].f >= 1.0f) {
                      inst->opcode = BRW_OPCODE_MOV;
+                     inst->sources = 1;
                      inst->src[1] = reg_undef;
                      inst->conditional_mod = BRW_CONDITIONAL_NONE;
                      progress = true;
@@ -2726,6 +2743,7 @@ fs_visitor::opt_algebraic()
                case BRW_REGISTER_TYPE_F:
                   if (inst->src[1].f <= 0.0f) {
                      inst->opcode = BRW_OPCODE_MOV;
+                     inst->sources = 1;
                      inst->src[1] = reg_undef;
                      inst->conditional_mod = BRW_CONDITIONAL_NONE;
                      progress = true;
@@ -2746,11 +2764,13 @@ fs_visitor::opt_algebraic()
             break;
          if (inst->src[1].is_one()) {
             inst->opcode = BRW_OPCODE_ADD;
+            inst->sources = 2;
             inst->src[1] = inst->src[2];
             inst->src[2] = reg_undef;
             progress = true;
          } else if (inst->src[2].is_one()) {
             inst->opcode = BRW_OPCODE_ADD;
+            inst->sources = 2;
             inst->src[2] = reg_undef;
             progress = true;
          }
@@ -6233,7 +6253,7 @@ needs_dummy_fence(const intel_device_info *devinfo, fs_inst *inst)
    return false;
 }
 
-/* Wa_14017989577
+/* Wa_14015360517
  *
  * The first instruction of any kernel should have non-zero emask.
  * Make sure this happens by introducing a dummy mov instruction.
@@ -6241,7 +6261,7 @@ needs_dummy_fence(const intel_device_info *devinfo, fs_inst *inst)
 void
 fs_visitor::emit_dummy_mov_instruction()
 {
-   if (devinfo->verx10 < 120)
+   if (!intel_needs_workaround(devinfo, 14015360517))
       return;
 
    struct backend_instruction *first_inst =
@@ -6455,6 +6475,18 @@ fs_visitor::fixup_nomask_control_flow()
    return progress;
 }
 
+uint32_t
+fs_visitor::compute_max_register_pressure()
+{
+   const register_pressure &rp = regpressure_analysis.require();
+   uint32_t ip = 0, max_pressure = 0;
+   foreach_block_and_inst(block, backend_instruction, inst, cfg) {
+      max_pressure = MAX2(max_pressure, rp.regs_live_at_ip[ip]);
+      ip++;
+   }
+   return max_pressure;
+}
+
 void
 fs_visitor::allocate_registers(bool allow_spilling)
 {
@@ -6473,6 +6505,9 @@ fs_visitor::allocate_registers(bool allow_spilling)
       "none",
       "lifo"
    };
+
+   if (needs_register_pressure)
+      shader_stats.max_register_pressure = compute_max_register_pressure();
 
    bool spill_all = allow_spilling && INTEL_DEBUG(DEBUG_SPILL_FS);
 
@@ -6623,7 +6658,7 @@ fs_visitor::run_vs()
    fixup_3src_null_dest();
    emit_dummy_memory_fence_before_eot();
 
-   /* Wa_14017989577 */
+   /* Wa_14015360517 */
    emit_dummy_mov_instruction();
 
    allocate_registers(true /* allow_spilling */);
@@ -6749,7 +6784,7 @@ fs_visitor::run_tcs()
    fixup_3src_null_dest();
    emit_dummy_memory_fence_before_eot();
 
-   /* Wa_14017989577 */
+   /* Wa_14015360517 */
    emit_dummy_mov_instruction();
 
    allocate_registers(true /* allow_spilling */);
@@ -6781,7 +6816,7 @@ fs_visitor::run_tes()
    fixup_3src_null_dest();
    emit_dummy_memory_fence_before_eot();
 
-   /* Wa_14017989577 */
+   /* Wa_14015360517 */
    emit_dummy_mov_instruction();
 
    allocate_registers(true /* allow_spilling */);
@@ -6829,7 +6864,7 @@ fs_visitor::run_gs()
    fixup_3src_null_dest();
    emit_dummy_memory_fence_before_eot();
 
-   /* Wa_14017989577 */
+   /* Wa_14015360517 */
    emit_dummy_mov_instruction();
 
    allocate_registers(true /* allow_spilling */);
@@ -6932,7 +6967,7 @@ fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
       fixup_3src_null_dest();
       emit_dummy_memory_fence_before_eot();
 
-      /* Wa_14017989577 */
+      /* Wa_14015360517 */
       emit_dummy_mov_instruction();
 
       allocate_registers(allow_spilling);
@@ -6972,7 +7007,7 @@ fs_visitor::run_cs(bool allow_spilling)
    fixup_3src_null_dest();
    emit_dummy_memory_fence_before_eot();
 
-   /* Wa_14017989577 */
+   /* Wa_14015360517 */
    emit_dummy_mov_instruction();
 
    allocate_registers(allow_spilling);
@@ -7004,7 +7039,7 @@ fs_visitor::run_bs(bool allow_spilling)
    fixup_3src_null_dest();
    emit_dummy_memory_fence_before_eot();
 
-   /* Wa_14017989577 */
+   /* Wa_14015360517 */
    emit_dummy_mov_instruction();
 
    allocate_registers(allow_spilling);
@@ -7037,7 +7072,7 @@ fs_visitor::run_task(bool allow_spilling)
    fixup_3src_null_dest();
    emit_dummy_memory_fence_before_eot();
 
-   /* Wa_14017989577 */
+   /* Wa_14015360517 */
    emit_dummy_mov_instruction();
 
    allocate_registers(allow_spilling);
@@ -7070,7 +7105,7 @@ fs_visitor::run_mesh(bool allow_spilling)
    fixup_3src_null_dest();
    emit_dummy_memory_fence_before_eot();
 
-   /* Wa_14017989577 */
+   /* Wa_14015360517 */
    emit_dummy_mov_instruction();
 
    allocate_registers(allow_spilling);
@@ -7442,6 +7477,7 @@ brw_compile_fs(const struct brw_compiler *compiler,
 
    v8 = std::make_unique<fs_visitor>(compiler, params->log_data, mem_ctx, &key->base,
                                      &prog_data->base, nir, 8,
+                                     params->stats != NULL,
                                      debug_enabled);
    if (!v8->run_fs(allow_spilling, false /* do_rep_send */)) {
       params->error_str = ralloc_strdup(mem_ctx, v8->fail_msg);
@@ -7484,6 +7520,7 @@ brw_compile_fs(const struct brw_compiler *compiler,
       /* Try a SIMD16 compile */
       v16 = std::make_unique<fs_visitor>(compiler, params->log_data, mem_ctx, &key->base,
                                          &prog_data->base, nir, 16,
+                                         params->stats != NULL,
                                          debug_enabled);
       v16->import_uniforms(v8.get());
       if (!v16->run_fs(allow_spilling, params->use_rep_send)) {
@@ -7511,6 +7548,7 @@ brw_compile_fs(const struct brw_compiler *compiler,
       /* Try a SIMD32 compile */
       v32 = std::make_unique<fs_visitor>(compiler, params->log_data, mem_ctx, &key->base,
                                          &prog_data->base, nir, 32,
+                                         params->stats != NULL,
                                          debug_enabled);
       v32->import_uniforms(v8.get());
       if (!v32->run_fs(allow_spilling, false)) {
@@ -7788,7 +7826,8 @@ brw_compile_cs(const struct brw_compiler *compiler,
                           key->base.robust_buffer_access);
 
       v[simd] = std::make_unique<fs_visitor>(compiler, params->log_data, mem_ctx, &key->base,
-                                    &prog_data->base, shader, dispatch_width,
+                                             &prog_data->base, shader, dispatch_width,
+                                             params->stats != NULL,
                                              debug_enabled);
 
       const int first = brw_simd_first_compiled(simd_state);
@@ -7921,7 +7960,9 @@ compile_single_bs(const struct brw_compiler *compiler, void *log_data,
 
       v[simd] = std::make_unique<fs_visitor>(compiler, log_data, mem_ctx, &key->base,
                                              &prog_data->base, shader,
-                                             dispatch_width, debug_enabled);
+                                             dispatch_width,
+                                             stats != NULL,
+                                             debug_enabled);
 
       const bool allow_spilling = !brw_simd_any_compiled(simd_state);
       if (v[simd]->run_bs(allow_spilling)) {

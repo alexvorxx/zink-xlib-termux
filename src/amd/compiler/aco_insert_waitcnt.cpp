@@ -372,7 +372,7 @@ check_instr(wait_ctx& ctx, wait_imm& wait, alu_delay_info& delay, Instruction* i
             continue;
 
          wait.combine(it->second.imm);
-         if (instr->isVALU() || instr->isSALU() || instr->isVINTERP_INREG())
+         if (instr->isVALU() || instr->isSALU())
             delay.combine(it->second.delay);
       }
    }
@@ -788,7 +788,7 @@ void
 gen_alu(Instruction* instr, wait_ctx& ctx)
 {
    Instruction_cycle_info cycle_info = get_cycle_info(*ctx.program, *instr);
-   bool is_valu = instr->isVALU() || instr->isVINTERP_INREG();
+   bool is_valu = instr->isVALU();
    bool is_trans = instr->isTrans();
    bool clear = instr->isEXP() || instr->isDS() || instr->isMIMG() || instr->isFlatLike() ||
                 instr->isMUBUF() || instr->isMTBUF();
@@ -1032,11 +1032,9 @@ insert_wait_states(Program* program)
    std::stack<unsigned, std::vector<unsigned>> loop_header_indices;
    unsigned loop_progress = 0;
 
-   if (program->stage.has(SWStage::VS) && program->info.vs.dynamic_inputs) {
-      for (Definition def : program->vs_inputs) {
-         update_counters(in_ctx[0], event_vmem);
-         insert_wait_entry(in_ctx[0], def, event_vmem);
-      }
+   for (Definition def : program->args_pending_vmem) {
+      update_counters(in_ctx[0], event_vmem);
+      insert_wait_entry(in_ctx[0], def, event_vmem);
    }
 
    for (unsigned i = 0; i < program->blocks.size();) {

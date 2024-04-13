@@ -29,6 +29,7 @@
  */
 #include "brw_eu.h"
 #include "brw_fs.h"
+#include "brw_nir.h"
 #include "compiler/glsl_types.h"
 
 using namespace brw;
@@ -888,6 +889,12 @@ fs_visitor::emit_fb_writes()
                                 this->outputs[0].file != BAD_FILE);
    assert(!prog_data->dual_src_blend || key->nr_color_regions == 1);
 
+   /* Following condition implements Wa_14017468336:
+    *
+    * "If dual source blend is enabled do not enable SIMD32 dispatch" and
+    * "For a thread dispatched as SIMD32, must not issue SIMD8 message with Last
+    *  Render Target Select set."
+    */
    if (devinfo->ver >= 11 && devinfo->ver <= 12 &&
        prog_data->dual_src_blend) {
       /* The dual-source RT write messages fail to release the thread
@@ -1347,16 +1354,23 @@ fs_visitor::fs_visitor(const struct brw_compiler *compiler, void *log_data,
                        struct brw_stage_prog_data *prog_data,
                        const nir_shader *shader,
                        unsigned dispatch_width,
+                       bool needs_register_pressure,
                        bool debug_enabled)
    : backend_shader(compiler, log_data, mem_ctx, shader, prog_data,
                     debug_enabled),
      key(key), gs_compile(NULL), prog_data(prog_data),
      live_analysis(this), regpressure_analysis(this),
      performance_analysis(this),
+     needs_register_pressure(needs_register_pressure),
      dispatch_width(dispatch_width),
+     api_subgroup_size(brw_nir_api_subgroup_size(shader, dispatch_width)),
      bld(fs_builder(this, dispatch_width).at_end())
 {
    init();
+   assert(api_subgroup_size == 0 ||
+          api_subgroup_size == 8 ||
+          api_subgroup_size == 16 ||
+          api_subgroup_size == 32);
 }
 
 fs_visitor::fs_visitor(const struct brw_compiler *compiler, void *log_data,
@@ -1364,6 +1378,7 @@ fs_visitor::fs_visitor(const struct brw_compiler *compiler, void *log_data,
                        struct brw_gs_compile *c,
                        struct brw_gs_prog_data *prog_data,
                        const nir_shader *shader,
+                       bool needs_register_pressure,
                        bool debug_enabled)
    : backend_shader(compiler, log_data, mem_ctx, shader,
                     &prog_data->base.base, debug_enabled),
@@ -1371,10 +1386,16 @@ fs_visitor::fs_visitor(const struct brw_compiler *compiler, void *log_data,
      prog_data(&prog_data->base.base),
      live_analysis(this), regpressure_analysis(this),
      performance_analysis(this),
+     needs_register_pressure(needs_register_pressure),
      dispatch_width(8),
+     api_subgroup_size(brw_nir_api_subgroup_size(shader, dispatch_width)),
      bld(fs_builder(this, dispatch_width).at_end())
 {
    init();
+   assert(api_subgroup_size == 0 ||
+          api_subgroup_size == 8 ||
+          api_subgroup_size == 16 ||
+          api_subgroup_size == 32);
 }
 
 void
@@ -1405,10 +1426,7 @@ fs_visitor::init()
    this->last_scratch = 0;
    this->push_constant_loc = NULL;
 
-   this->shader_stats.scheduler_mode = NULL;
-   this->shader_stats.promoted_constants = 0,
-   this->shader_stats.spill_count = 0,
-   this->shader_stats.fill_count = 0,
+   memset(&this->shader_stats, 0, sizeof(this->shader_stats));
 
    this->grf_used = 0;
    this->spilled_any_registers = false;

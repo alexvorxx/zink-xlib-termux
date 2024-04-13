@@ -23,6 +23,7 @@
  */
 
 #include "agx_compiler.h"
+#include "agx_debug.h"
 
 /* Validatation doesn't make sense in release builds */
 #ifndef NDEBUG
@@ -103,9 +104,7 @@ agx_validate_sources(agx_instr *I)
          agx_validate_assert(!src.cache);
          agx_validate_assert(!src.discard);
 
-         bool ldst = (I->op == AGX_OPCODE_DEVICE_LOAD) ||
-                     (I->op == AGX_OPCODE_UNIFORM_STORE) ||
-                     (I->op == AGX_OPCODE_ATOMIC);
+         bool ldst = agx_allows_16bit_immediate(I);
 
          /* Immediates are encoded as 8-bit (16-bit for memory load/store). For
           * integers, they extend to 16-bit. For floating point, they are 8-bit
@@ -192,7 +191,7 @@ agx_validate(agx_context *ctx, const char *after)
 {
    bool fail = false;
 
-   if (agx_debug & AGX_DBG_NOVALIDATE)
+   if (agx_compiler_debug & AGX_DBG_NOVALIDATE)
       return;
 
    agx_foreach_block(ctx, block) {

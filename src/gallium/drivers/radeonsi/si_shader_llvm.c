@@ -76,14 +76,12 @@ bool si_compile_llvm(struct si_screen *sscreen, struct si_shader_binary *binary,
 {
    unsigned count = p_atomic_inc_return(&sscreen->num_compilations);
 
-   if (si_can_dump_shader(sscreen, stage)) {
+   if (si_can_dump_shader(sscreen, stage, SI_DUMP_LLVM_IR)) {
       fprintf(stderr, "radeonsi: Compiling shader %d\n", count);
 
-      if (!(sscreen->debug_flags & (DBG(NO_IR) | DBG(PREOPT_IR)))) {
-         fprintf(stderr, "%s LLVM IR:\n\n", name);
-         ac_dump_module(ac->module);
-         fprintf(stderr, "\n");
-      }
+      fprintf(stderr, "%s LLVM IR:\n\n", name);
+      ac_dump_module(ac->module);
+      fprintf(stderr, "\n");
    }
 
    if (sscreen->record_llvm_ir) {
@@ -255,8 +253,8 @@ void si_llvm_create_main_func(struct si_shader_context *ctx)
 void si_llvm_optimize_module(struct si_shader_context *ctx)
 {
    /* Dump LLVM IR before any optimization passes */
-   if (ctx->screen->debug_flags & DBG(PREOPT_IR) && si_can_dump_shader(ctx->screen, ctx->stage))
-      LLVMDumpModule(ctx->ac.module);
+   if (si_can_dump_shader(ctx->screen, ctx->stage, SI_DUMP_INIT_LLVM_IR))
+      ac_dump_module(ctx->ac.module);
 
    /* Run the pass */
    LLVMRunPassManager(ctx->compiler->passmgr, ctx->ac.module);
@@ -1000,23 +998,28 @@ static bool si_llvm_translate_nir(struct si_shader_context *ctx, struct si_shade
    ctx->abi.disable_aniso_single_level = true;
    ctx->abi.conformant_trunc_coord = ctx->screen->info.conformant_trunc_coord;
 
-   unsigned num_outputs = info->num_outputs;
-   /* need extra output to hold primitive id added by nir lower */
-   if (ctx->stage <= MESA_SHADER_GEOMETRY &&
-       ctx->shader->key.ge.mono.u.vs_export_prim_id)
-      num_outputs++;
+   bool ls_need_output =
+      ctx->stage == MESA_SHADER_VERTEX && shader->key.ge.as_ls &&
+      shader->key.ge.opt.same_patch_vertices;
 
-   for (unsigned i = 0; i < num_outputs; i++) {
-      LLVMTypeRef type = ctx->ac.f32;
+   bool tcs_need_output =
+      ctx->stage == MESA_SHADER_TESS_CTRL && info->tessfactors_are_def_in_all_invocs;
 
-      /* Only FS uses unpacked f16. Other stages pack 16-bit outputs into low and high bits of f32. */
-      if (nir->info.stage == MESA_SHADER_FRAGMENT &&
-          nir_alu_type_get_type_size(ctx->shader->selector->info.output_type[i]) == 16)
-         type = ctx->ac.f16;
+   bool ps_need_output = ctx->stage == MESA_SHADER_FRAGMENT;
 
-      for (unsigned j = 0; j < 4; j++) {
-         ctx->abi.outputs[i * 4 + j] = ac_build_alloca_undef(&ctx->ac, type, "");
-         ctx->abi.is_16bit[i * 4 + j] = type == ctx->ac.f16;
+   if (ls_need_output || tcs_need_output || ps_need_output) {
+      for (unsigned i = 0; i < info->num_outputs; i++) {
+         LLVMTypeRef type = ctx->ac.f32;
+
+         /* Only FS uses unpacked f16. Other stages pack 16-bit outputs into low and high bits of f32. */
+         if (nir->info.stage == MESA_SHADER_FRAGMENT &&
+             nir_alu_type_get_type_size(ctx->shader->selector->info.output_type[i]) == 16)
+            type = ctx->ac.f16;
+
+         for (unsigned j = 0; j < 4; j++) {
+            ctx->abi.outputs[i * 4 + j] = ac_build_alloca_undef(&ctx->ac, type, "");
+            ctx->abi.is_16bit[i * 4 + j] = type == ctx->ac.f16;
+         }
       }
    }
 

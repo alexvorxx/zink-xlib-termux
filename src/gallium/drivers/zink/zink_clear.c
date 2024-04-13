@@ -455,8 +455,10 @@ zink_clear_texture(struct pipe_context *pctx,
       util_blitter_save_framebuffer(ctx->blitter, &ctx->fb_state);
       set_clear_fb(pctx, surf, NULL);
       ctx->blitting = true;
+      ctx->queries_disabled = true;
       pctx->clear(pctx, PIPE_CLEAR_COLOR0, &scissor, &color, 0, 0);
       util_blitter_restore_fb_state(ctx->blitter);
+      ctx->queries_disabled = false;
       ctx->blitting = false;
    } else {
       float depth = 0.0;
@@ -477,8 +479,10 @@ zink_clear_texture(struct pipe_context *pctx,
       util_blitter_save_framebuffer(ctx->blitter, &ctx->fb_state);
       ctx->blitting = true;
       set_clear_fb(pctx, NULL, surf);
+      ctx->queries_disabled = true;
       pctx->clear(pctx, flags, &scissor, NULL, depth, stencil);
       util_blitter_restore_fb_state(ctx->blitter);
+      ctx->queries_disabled = false;
       ctx->blitting = false;
    }
    /* this will never destroy the surface */
@@ -507,8 +511,7 @@ zink_clear_buffer(struct pipe_context *pctx,
          - size is the number of bytes to fill, and must be either a multiple of 4,
            or VK_WHOLE_SIZE to fill the range from offset to the end of the buffer
        */
-      util_range_add(&res->base.b, &res->valid_buffer_range, offset, offset + size);
-      zink_screen(ctx->base.screen)->buffer_barrier(ctx, res, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+      zink_resource_buffer_transfer_dst_barrier(ctx, res, offset, size);
       VkCommandBuffer cmdbuf = zink_get_cmdbuf(ctx, NULL, res);
       zink_batch_reference_resource_rw(&ctx->batch, res, true);
       VKCTX(CmdFillBuffer)(cmdbuf, res->obj->buffer, offset, size, *(uint32_t*)clear_value);

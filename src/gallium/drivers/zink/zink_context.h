@@ -122,8 +122,12 @@ void
 zink_resource_image_barrier2(struct zink_context *ctx, struct zink_resource *res, VkImageLayout new_layout, VkAccessFlags flags, VkPipelineStageFlags pipeline);
 bool
 zink_resource_needs_barrier(struct zink_resource *res, VkImageLayout layout, VkAccessFlags flags, VkPipelineStageFlags pipeline);
+bool
+zink_check_unordered_transfer_access(struct zink_resource *res, unsigned level, const struct pipe_box *box);
 void
 zink_resource_image_transfer_dst_barrier(struct zink_context *ctx, struct zink_resource *res, unsigned level, const struct pipe_box *box);
+bool
+zink_resource_buffer_transfer_dst_barrier(struct zink_context *ctx, struct zink_resource *res, unsigned offset, unsigned size);
 void
 zink_update_descriptor_refs(struct zink_context *ctx, bool compute);
 void
@@ -178,6 +182,12 @@ zink_tc_context_unwrap(struct pipe_context *pctx, bool threaded);
 void
 zink_update_barriers(struct zink_context *ctx, bool is_compute,
                      struct pipe_resource *index, struct pipe_resource *indirect, struct pipe_resource *indirect_draw_count);
+
+
+bool
+zink_cmd_debug_marker_begin(struct zink_context *ctx, VkCommandBuffer cmdbuf, const char *fmt, ...);
+void
+zink_cmd_debug_marker_end(struct zink_context *ctx, VkCommandBuffer cmdbuf,bool emitted);
 
 #ifdef __cplusplus
 }
@@ -259,11 +269,6 @@ struct pipe_surface *
 zink_get_dummy_pipe_surface(struct zink_context *ctx, int samples_index);
 struct zink_surface *
 zink_get_dummy_surface(struct zink_context *ctx, int samples_index);
-
-bool
-zink_cmd_debug_marker_begin(struct zink_context *ctx, const char *fmt, ...);
-void
-zink_cmd_debug_marker_end(struct zink_context *ctx, bool emitted);
 
 void
 debug_describe_zink_buffer_view(char *buf, const struct zink_buffer_view *ptr);

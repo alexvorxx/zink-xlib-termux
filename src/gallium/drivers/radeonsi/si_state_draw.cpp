@@ -781,9 +781,6 @@ static void si_emit_derived_tess_state(struct si_context *sctx)
 
    /* Compute userdata SGPRs. */
    assert(((input_vertex_size / 4) & ~0xff) == 0);
-   assert(((output_vertex_size / 4) & ~0xff) == 0);
-   assert(((output_patch_size / 4) & ~0x1fff) == 0);
-   assert(((output_patch0_offset / 4) & ~0xffff) == 0);
    assert(((perpatch_output_offset / 4) & ~0xffff) == 0);
    assert(num_tcs_input_cp <= 32);
    assert(num_tcs_output_cp <= 32);
@@ -794,8 +791,8 @@ static void si_emit_derived_tess_state(struct si_context *sctx)
       si_resource(sctx->tess_rings_tmz) : si_resource(sctx->tess_rings))->gpu_address;
    assert((ring_va & u_bit_consecutive(0, 19)) == 0);
 
-   unsigned tcs_out_layout = (output_patch_size / 4) | (num_tcs_input_cp << 13) | ring_va;
-   unsigned tcs_out_offsets = (output_patch0_offset / 4) | ((perpatch_output_offset / 4) << 16);
+   unsigned tcs_out_layout = (num_tcs_input_cp << 13) | ring_va;
+   unsigned tcs_out_offsets = ((perpatch_output_offset / 4) << 16);
    unsigned offchip_layout =
       (num_patches - 1) | ((num_tcs_output_cp - 1) << 6) |
       ((pervertex_output_patch_size * num_patches) << 11);
@@ -1214,10 +1211,11 @@ static void si_emit_vs_state(struct si_context *sctx, unsigned index_size)
       if (HAS_GS) {
          radeon_set_sh_reg(vs_base + SI_SGPR_VS_STATE_BITS * 4, vs_state);
 
-         /* NGG always uses the state bits. Legacy GS uses the state bits only for the emulation
-          * of GS pipeline statistics on gfx10.x.
+         /* GS always uses the state bits for emulating VGT_ESGS_RING_ITEMSIZE on Gfx9
+          * (via nir_load_esgs_vertex_stride_amd) and for emulating GS pipeline statistics
+          * on gfx10.x. NGG GS also has lots of states in there.
           */
-         if (NGG || (GFX_VERSION >= GFX10 && GFX_VERSION <= GFX10_3))
+         if (GFX_VERSION >= GFX9)
             radeon_set_sh_reg(gs_base + SI_SGPR_VS_STATE_BITS * 4, gs_state);
 
          /* The GS copy shader (for legacy GS) always uses the state bits. */
@@ -1902,7 +1900,7 @@ static bool si_upload_and_prefetch_VB_descriptors(struct si_context *sctx,
    assert(count <= SI_MAX_ATTRIBS);
 
    if (sctx->vertex_buffers_dirty || IS_DRAW_VERTEX_STATE) {
-      assert(count);
+      assert(count || IS_DRAW_VERTEX_STATE);
 
       struct si_vertex_elements *velems = sctx->vertex_elements;
       unsigned alloc_size = IS_DRAW_VERTEX_STATE ?

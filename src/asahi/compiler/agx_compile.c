@@ -23,14 +23,16 @@
  * SOFTWARE.
  */
 
+#include "agx_compile.h"
 #include "compiler/nir/nir_builder.h"
 #include "compiler/nir_types.h"
 #include "util/glheader.h"
 #include "util/u_debug.h"
 #include "agx_builder.h"
-#include "agx_compile.h"
 #include "agx_compiler.h"
+#include "agx_debug.h"
 #include "agx_internal_formats.h"
+#include "agx_nir.h"
 
 /* Alignment for shader programs. I'm not sure what the optimal value is. */
 #define AGX_CODE_ALIGN 0x100
@@ -45,17 +47,19 @@ static const struct debug_named_value agx_debug_options[] = {
    {"novalidate",AGX_DBG_NOVALIDATE,"Skip IR validation in debug builds"},
    {"noopt",     AGX_DBG_NOOPT,     "Disable backend optimizations"},
    {"wait",      AGX_DBG_WAIT,      "Wait after all async instructions"},
+   {"nopreamble",AGX_DBG_NOPREAMBLE,"Do not use shader preambles"},
    DEBUG_NAMED_VALUE_END
 };
 /* clang-format on */
 
-DEBUG_GET_ONCE_FLAGS_OPTION(agx_debug, "AGX_MESA_DEBUG", agx_debug_options, 0)
+DEBUG_GET_ONCE_FLAGS_OPTION(agx_compiler_debug, "AGX_MESA_DEBUG",
+                            agx_debug_options, 0)
 
-int agx_debug = 0;
+int agx_compiler_debug = 0;
 
 #define DBG(fmt, ...)                                                          \
    do {                                                                        \
-      if (agx_debug & AGX_DBG_MSGS)                                            \
+      if (agx_compiler_debug & AGX_DBG_MSGS)                                   \
          fprintf(stderr, "%s:%d: " fmt, __func__, __LINE__, ##__VA_ARGS__);    \
    } while (0)
 
@@ -202,21 +206,17 @@ agx_emit_collect_to(agx_builder *b, agx_index dst, unsigned nr_srcs,
 }
 
 static agx_index
-agx_vec4(agx_builder *b, agx_index s0, agx_index s1, agx_index s2, agx_index s3)
+agx_emit_collect(agx_builder *b, unsigned nr_srcs, agx_index *srcs)
 {
-   agx_index dst = agx_temp(b->shader, s0.size);
-   agx_index idx[4] = {s0, s1, s2, s3};
-   agx_emit_collect_to(b, dst, 4, idx);
+   agx_index dst = agx_temp(b->shader, srcs[0].size);
+   agx_emit_collect_to(b, dst, nr_srcs, srcs);
    return dst;
 }
 
 static agx_index
 agx_vec2(agx_builder *b, agx_index s0, agx_index s1)
 {
-   agx_index dst = agx_temp(b->shader, s0.size);
-   agx_index idx[2] = {s0, s1};
-   agx_emit_collect_to(b, dst, 2, idx);
-   return dst;
+   return agx_emit_collect(b, 2, (agx_index[]){s0, s1});
 }
 
 /*
@@ -472,9 +472,7 @@ agx_emit_local_store_pixel(agx_builder *b, nir_intrinsic_instr *instr)
       compacted[compact_count++] = agx_extract_nir_src(b, instr->src[0], i);
    }
 
-   agx_index src0 = agx_src_index(&instr->src[0]);
-   agx_index collected = agx_temp(b->shader, src0.size);
-   agx_emit_collect_to(b, collected, compact_count, compacted);
+   agx_index collected = agx_emit_collect(b, compact_count, compacted);
 
    b->shader->did_writeout = true;
    return agx_st_tile(b, collected, agx_src_index(&instr->src[1]),
@@ -599,7 +597,6 @@ agx_tex_dim(enum glsl_sampler_dim dim, bool array)
 {
    switch (dim) {
    case GLSL_SAMPLER_DIM_1D:
-   case GLSL_SAMPLER_DIM_BUF:
       return array ? AGX_DIM_1D_ARRAY : AGX_DIM_1D;
 
    case GLSL_SAMPLER_DIM_2D:
@@ -616,6 +613,9 @@ agx_tex_dim(enum glsl_sampler_dim dim, bool array)
 
    case GLSL_SAMPLER_DIM_CUBE:
       return array ? AGX_DIM_CUBE_ARRAY : AGX_DIM_CUBE;
+
+   case GLSL_SAMPLER_DIM_BUF:
+      unreachable("Buffer textures should have been lowered");
 
    default:
       unreachable("Invalid sampler dim\n");
@@ -949,16 +949,34 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
       return agx_load_compute_dimension(
          b, dst, instr, AGX_SR_THREAD_POSITION_IN_THREADGROUP_X);
 
-   case nir_intrinsic_memory_barrier_buffer:
-      return agx_memory_barrier(b);
+   case nir_intrinsic_scoped_barrier: {
+      bool needs_threadgroup_barrier = false;
 
-   case nir_intrinsic_control_barrier:
-      return agx_threadgroup_barrier(b);
+      if (nir_intrinsic_execution_scope(instr) != NIR_SCOPE_NONE) {
+         assert(nir_intrinsic_execution_scope(instr) > NIR_SCOPE_SUBGROUP &&
+                "todo: subgroup barriers");
 
-   case nir_intrinsic_group_memory_barrier:
-   case nir_intrinsic_memory_barrier_shared:
-      /* Always seen with a control_barrier */
+         needs_threadgroup_barrier = true;
+      }
+
+      if (nir_intrinsic_memory_scope(instr) != NIR_SCOPE_NONE) {
+         nir_variable_mode modes = nir_intrinsic_memory_modes(instr);
+
+         if (modes & nir_var_mem_global)
+            agx_memory_barrier(b);
+
+         if (modes & nir_var_mem_shared)
+            needs_threadgroup_barrier = true;
+
+         if (nir_intrinsic_memory_scope(instr) >= NIR_SCOPE_WORKGROUP)
+            needs_threadgroup_barrier = true;
+      }
+
+      if (needs_threadgroup_barrier)
+         agx_threadgroup_barrier(b);
+
       return NULL;
+   }
 
    default:
       fprintf(stderr, "Unhandled intrinsic %s\n",
@@ -1122,7 +1140,8 @@ agx_emit_alu(agx_builder *b, nir_alu_instr *instr)
       return agx_asr_to(b, dst, s0, s1);
 
    case nir_op_extr_agx:
-      return agx_extr_to(b, dst, s0, s1, s2, nir_src_as_uint(instr->src[3].src));
+      return agx_extr_to(b, dst, s0, s1, s2,
+                         nir_src_as_uint(instr->src[3].src));
 
    case nir_op_bcsel:
       return agx_icmpsel_to(b, dst, s0, i0, s2, s1, AGX_ICOND_UEQ);
@@ -1249,15 +1268,18 @@ agx_emit_alu(agx_builder *b, nir_alu_instr *instr)
       return agx_convert_to(b, dst, agx_immediate(mode), s0, AGX_ROUND_RTE);
    }
 
+   case nir_op_pack_32_2x16_split:
    case nir_op_pack_64_2x32_split: {
       agx_index idx[] = {s0, s1};
       return agx_emit_collect_to(b, dst, 2, idx);
    }
 
    case nir_op_unpack_64_2x32_split_x:
+   case nir_op_unpack_32_2x16_split_x:
       return agx_subdivide_to(b, dst, s0, 0);
 
    case nir_op_unpack_64_2x32_split_y:
+   case nir_op_unpack_32_2x16_split_y:
       return agx_subdivide_to(b, dst, s0, 1);
 
    case nir_op_vec2:
@@ -1327,6 +1349,12 @@ agx_emit_tex(agx_builder *b, nir_tex_instr *instr)
 
    bool txf = (instr->op == nir_texop_txf || instr->op == nir_texop_txf_ms);
 
+   /* txf loads a texture without an associated sampler, but in the hardware
+    * there is an associated load of a sampler. This requires that the driver
+    * upload a dummy sampler.
+    */
+   b->shader->out->needs_dummy_sampler |= txf;
+
    for (unsigned i = 0; i < instr->num_srcs; ++i) {
       agx_index index = agx_src_index(&instr->src[i].src);
 
@@ -1347,6 +1375,13 @@ agx_emit_tex(agx_builder *b, nir_tex_instr *instr)
       case nir_tex_src_comparator:
          assert(index.size == AGX_SIZE_32);
          compare = index;
+         break;
+
+      case nir_tex_src_texture_offset:
+         texture = index;
+         break;
+      case nir_tex_src_sampler_offset:
+         sampler = index;
          break;
 
       case nir_tex_src_ddx: {
@@ -1374,10 +1409,8 @@ agx_emit_tex(agx_builder *b, nir_tex_instr *instr)
          /* handled above */
          break;
 
-      case nir_tex_src_texture_offset:
-      case nir_tex_src_sampler_offset:
       default:
-         unreachable("todo");
+         unreachable("Unexpected texture source");
       }
    }
 
@@ -1899,15 +1932,55 @@ agx_optimize_loop_nir(nir_shader *nir)
    } while (progress);
 }
 
+static bool
+combine_all_barriers(nir_intrinsic_instr *a, nir_intrinsic_instr *b, void *_)
+{
+   nir_intrinsic_set_memory_modes(
+      a, nir_intrinsic_memory_modes(a) | nir_intrinsic_memory_modes(b));
+   nir_intrinsic_set_memory_semantics(
+      a, nir_intrinsic_memory_semantics(a) | nir_intrinsic_memory_semantics(b));
+   nir_intrinsic_set_memory_scope(
+      a, MAX2(nir_intrinsic_memory_scope(a), nir_intrinsic_memory_scope(b)));
+   return true;
+}
+
 static void
 agx_optimize_nir(nir_shader *nir, unsigned *preamble_size)
 {
    agx_optimize_loop_nir(nir);
 
-   NIR_PASS_V(nir, agx_nir_lower_address);
-   NIR_PASS_V(nir, nir_lower_int64);
+   bool progress = false;
+   NIR_PASS(progress, nir, agx_nir_lower_address);
 
-   NIR_PASS_V(nir, agx_nir_opt_preamble, preamble_size);
+   /* If address lowering made progress, clean up before forming preambles.
+    * Otherwise the optimized preambles might just be constants! Do it before
+    * lowering int64 too, to avoid lowering constant int64 arithmetic.
+    */
+   if (progress) {
+      NIR_PASS_V(nir, nir_opt_constant_folding);
+      NIR_PASS_V(nir, nir_opt_dce);
+   }
+
+   /* Only lower int64 after optimizing address arithmetic, so that u2u64/i2i64
+    * conversions remain.
+    */
+   progress = false;
+   NIR_PASS(progress, nir, nir_lower_int64);
+
+   /* If we lowered actual int64 arithmetic (not folded into the address
+    * calculations), then clean up after the lowering.
+    */
+   if (progress) {
+      do {
+         progress = false;
+
+         NIR_PASS(progress, nir, nir_opt_algebraic);
+         NIR_PASS(progress, nir, nir_opt_dce);
+      } while (progress);
+   }
+
+   if (likely(!(agx_compiler_debug & AGX_DBG_NOPREAMBLE)))
+      NIR_PASS_V(nir, agx_nir_opt_preamble, preamble_size);
 
    /* Forming preambles may dramatically reduce the instruction count
     * in certain blocks, causing some if-else statements to become
@@ -1917,7 +1990,9 @@ agx_optimize_nir(nir_shader *nir, unsigned *preamble_size)
    NIR_PASS_V(nir, nir_opt_peephole_select, 64, false, true);
 
    NIR_PASS_V(nir, nir_opt_algebraic_late);
+   NIR_PASS_V(nir, agx_nir_lower_algebraic_late);
    NIR_PASS_V(nir, nir_opt_constant_folding);
+   NIR_PASS_V(nir, nir_opt_combine_barriers, combine_all_barriers, NULL);
 
    /* Must run after uses are fixed but before a last round of copyprop + DCE */
    if (nir->info.stage == MESA_SHADER_FRAGMENT)
@@ -2050,11 +2125,32 @@ agx_fp32_varying_mask(nir_shader *nir)
    return mask;
 }
 
+static nir_mem_access_size_align
+mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes, uint32_t align,
+                         uint32_t align_offset, bool offset_is_const,
+                         const void *cb_data)
+{
+   align = nir_combined_align(align, align_offset);
+
+   assert(util_is_power_of_two_nonzero(align));
+   unsigned bit_size = (bytes & 1) ? 8 : (bytes & 2) ? 16 : 32;
+   if (align == 2)
+      bit_size = MIN2(bit_size, 16);
+   else if (align == 1)
+      bit_size = 8;
+
+   return (nir_mem_access_size_align){
+      .num_components = bytes / (bit_size / 8),
+      .bit_size = bit_size,
+      .align = bit_size / 8,
+   };
+}
+
 static bool
 agx_should_dump(nir_shader *nir, unsigned agx_dbg_bit)
 {
-   return (agx_debug & agx_dbg_bit) &&
-          !(nir->info.internal && !(agx_debug & AGX_DBG_INTERNAL));
+   return (agx_compiler_debug & agx_dbg_bit) &&
+          !(nir->info.internal && !(agx_compiler_debug & AGX_DBG_INTERNAL));
 }
 
 static unsigned
@@ -2084,7 +2180,10 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
     */
    agx_block *last_block = list_last_entry(&ctx->blocks, agx_block, link);
    agx_builder _b = agx_init_builder(ctx, agx_after_block(last_block));
-   agx_write_sample_mask_1(&_b);
+
+   if (ctx->stage == MESA_SHADER_FRAGMENT && !impl->function->is_preamble)
+      agx_write_sample_mask_1(&_b);
+
    agx_logical_end(&_b);
    agx_stop(&_b);
 
@@ -2094,15 +2193,17 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
 
    agx_validate(ctx, "IR translation");
 
-   if (agx_should_dump(nir, AGX_DBG_SHADERS))
-      agx_print_shader(ctx, stdout);
+   if (likely(!(agx_compiler_debug & AGX_DBG_NOOPT))) {
+      /* Eliminate dead instructions before CSE to avoid silly scheduling */
+      agx_dce(ctx, false);
 
-   if (likely(!(agx_debug & AGX_DBG_NOOPT))) {
-      /* Dead code eliminate before instruction combining so use counts are
-       * right */
-      agx_dce(ctx);
-      agx_optimizer(ctx);
+      /* CSE before eliminating dead destinations so that subdivision is
+       * optimized properly.
+       */
       agx_opt_cse(ctx);
+
+      /* After DCE, use counts are right so we can run the optimizer. */
+      agx_optimizer(ctx);
 
       /* For correctness, lower uniform sources after copyprop (for correctness,
        * as copyprop creates uniform sources). To keep register pressure in
@@ -2111,7 +2212,7 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
       agx_lower_uniform_sources(ctx);
 
       /* Dead code eliminate after instruction combining to get the benefit */
-      agx_dce(ctx);
+      agx_dce(ctx, true);
       agx_validate(ctx, "Optimization");
 
       if (agx_should_dump(nir, AGX_DBG_SHADERS))
@@ -2213,8 +2314,9 @@ agx_preprocess_nir(nir_shader *nir, bool support_lod_bias)
    NIR_PASS_V(nir, nir_lower_vars_to_ssa);
    NIR_PASS_V(nir, nir_lower_io, nir_var_shader_in | nir_var_shader_out,
               glsl_type_size, 0);
+   NIR_PASS_V(nir, nir_lower_ssbo);
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
-      NIR_PASS_V(nir, agx_nir_lower_zs_emit);
+      NIR_PASS_V(nir, agx_nir_lower_frag_sidefx);
 
       /* Interpolate varyings at fp16 and write to the tilebuffer at fp16. As an
        * exception, interpolate flat shaded at fp32. This works around a
@@ -2240,7 +2342,6 @@ agx_preprocess_nir(nir_shader *nir, bool support_lod_bias)
    };
 
    NIR_PASS_V(nir, nir_lower_regs_to_ssa);
-   NIR_PASS_V(nir, nir_lower_int64);
    NIR_PASS_V(nir, nir_lower_idiv, &idiv_options);
    NIR_PASS_V(nir, nir_lower_alu_to_scalar, NULL, NULL);
    NIR_PASS_V(nir, nir_lower_load_const_to_scalar);
@@ -2268,7 +2369,6 @@ agx_preprocess_nir(nir_shader *nir, bool support_lod_bias)
    NIR_PASS_V(nir, nir_opt_move, move_all);
    NIR_PASS_V(nir, agx_nir_lower_ubo);
    NIR_PASS_V(nir, agx_nir_lower_shared_bitsize);
-   NIR_PASS_V(nir, nir_lower_ssbo);
 }
 
 void
@@ -2277,7 +2377,7 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
                        struct util_dynarray *binary,
                        struct agx_shader_info *out)
 {
-   agx_debug = debug_get_option_agx_debug();
+   agx_compiler_debug = debug_get_option_agx_compiler_debug();
 
    memset(out, 0, sizeof *out);
 
@@ -2291,7 +2391,8 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
    } else if (nir->info.stage == MESA_SHADER_FRAGMENT) {
       out->no_colour_output = !(nir->info.outputs_written >> FRAG_RESULT_DATA0);
       out->disable_tri_merging = nir->info.fs.needs_all_helper_invocations ||
-                                 nir->info.fs.needs_quad_helper_invocations;
+                                 nir->info.fs.needs_quad_helper_invocations ||
+                                 nir->info.writes_memory;
 
       /* Report a canonical depth layout */
       enum gl_frag_depth_layout layout = nir->info.fs.depth_layout;
@@ -2303,6 +2404,20 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
       else
          out->depth_layout = layout;
    }
+
+   /* Late clip plane lowering created discards */
+   if (nir->info.stage == MESA_SHADER_FRAGMENT) {
+      NIR_PASS_V(nir, agx_nir_lower_zs_emit);
+   }
+
+   /* Late sysval lowering creates large loads. Load lowering creates unpacks */
+   NIR_PASS_V(nir, nir_lower_mem_access_bit_sizes,
+              nir_var_mem_ssbo | nir_var_mem_constant |
+                 nir_var_mem_task_payload | nir_var_shader_temp |
+                 nir_var_function_temp | nir_var_mem_global |
+                 nir_var_mem_shared,
+              mem_access_size_align_cb, NULL);
+   NIR_PASS_V(nir, nir_lower_pack);
 
    /* Late blend lowering creates vectors */
    NIR_PASS_V(nir, nir_lower_alu_to_scalar, NULL, NULL);

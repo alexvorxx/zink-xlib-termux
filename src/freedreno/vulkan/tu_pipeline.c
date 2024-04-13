@@ -26,7 +26,7 @@
 #include "tu_cmd_buffer.h"
 #include "tu_cs.h"
 #include "tu_device.h"
-#include "tu_drm.h"
+#include "tu_knl.h"
 #include "tu_formats.h"
 #include "tu_lrz.h"
 #include "tu_pass.h"
@@ -1084,7 +1084,7 @@ tu6_vpc_varying_mode(const struct ir3_shader_variant *fs,
       }
    }
 
-   return shift;
+   return util_bitcount(compmask) * 2;
 }
 
 static void
@@ -1984,7 +1984,8 @@ tu6_emit_vertex_input(struct tu_cs *cs,
       const VkVertexInputAttributeDescription2EXT *attr = attrs[loc];
 
       if (attr) {
-         const struct tu_native_format format = tu6_format_vtx(attr->format);
+         const struct tu_native_format format = tu6_format_vtx(
+               tu_vk_format_to_pipe_format(attr->format));
          tu_cs_emit(cs, A6XX_VFD_DECODE_INSTR(0,
                           .idx = attr->binding,
                           .offset = attr->offset,
@@ -2806,8 +2807,8 @@ tu_hash_stage(struct mesa_sha1 *ctx,
 static void
 tu_hash_compiler(struct mesa_sha1 *ctx, const struct ir3_compiler *compiler)
 {
-   _mesa_sha1_update(ctx, &compiler->robust_buffer_access2,
-                     sizeof(compiler->robust_buffer_access2));
+   _mesa_sha1_update(ctx, &compiler->options.robust_buffer_access2,
+                     sizeof(compiler->options.robust_buffer_access2));
    _mesa_sha1_update(ctx, &ir3_shader_debug, sizeof(ir3_shader_debug));
 }
 
@@ -3151,7 +3152,8 @@ tu_pipeline_builder_compile_shaders(struct tu_pipeline_builder *builder,
          for (unsigned j = 0; j < ARRAY_SIZE(library->shaders); j++) {
             if (library->shaders[j].nir) {
                assert(!nir[j]);
-               nir[j] = nir_shader_clone(NULL, library->shaders[j].nir);
+               nir[j] = nir_shader_clone(builder->mem_ctx,
+                     library->shaders[j].nir);
                keys[j] = library->shaders[j].key;
                must_compile = true;
             }
@@ -3889,7 +3891,7 @@ tu_pipeline_builder_parse_libraries(struct tu_pipeline_builder *builder,
           VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT) {
          pipeline->ds = library->ds;
          pipeline->lrz.fs = library->lrz.fs;
-         pipeline->lrz.force_disable_mask |= library->lrz.force_disable_mask;
+         pipeline->lrz.lrz_status |= library->lrz.lrz_status;
          pipeline->lrz.force_late_z |= library->lrz.force_late_z;
          library_dynamic_state |=
             BIT(VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK) |
@@ -3905,7 +3907,7 @@ tu_pipeline_builder_parse_libraries(struct tu_pipeline_builder *builder,
           VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_OUTPUT_INTERFACE_BIT_EXT) {
          pipeline->blend = library->blend;
          pipeline->output = library->output;
-         pipeline->lrz.force_disable_mask |= library->lrz.force_disable_mask;
+         pipeline->lrz.lrz_status |= library->lrz.lrz_status;
          pipeline->lrz.force_late_z |= library->lrz.force_late_z;
          pipeline->prim_order = library->prim_order;
          library_dynamic_state |=
@@ -4450,10 +4452,10 @@ tu_pipeline_builder_parse_depth_stencil(struct tu_pipeline_builder *builder,
    if (builder->variants[MESA_SHADER_FRAGMENT]) {
       const struct ir3_shader_variant *fs = builder->variants[MESA_SHADER_FRAGMENT];
       if (fs->has_kill) {
-         pipeline->lrz.force_disable_mask |= TU_LRZ_FORCE_DISABLE_WRITE;
+         pipeline->lrz.lrz_status |= TU_LRZ_FORCE_DISABLE_WRITE;
       }
       if (fs->no_earlyz || fs->writes_pos) {
-         pipeline->lrz.force_disable_mask = TU_LRZ_FORCE_DISABLE_LRZ;
+         pipeline->lrz.lrz_status = TU_LRZ_FORCE_DISABLE_LRZ;
       }
    }
 }
@@ -4600,13 +4602,13 @@ tu_pipeline_builder_parse_multisample_and_color_blend(
        !(pipeline->dynamic_state_mask &
         (BIT(TU_DYNAMIC_STATE_LOGIC_OP) |
          BIT(TU_DYNAMIC_STATE_BLEND_ENABLE))))
-      pipeline->lrz.force_disable_mask |= TU_LRZ_FORCE_DISABLE_WRITE;
+      pipeline->lrz.lrz_status |= TU_LRZ_FORCE_DISABLE_WRITE | TU_LRZ_READS_DEST;
 
    if (!(pipeline->dynamic_state_mask &
          BIT(TU_DYNAMIC_STATE_COLOR_WRITE_ENABLE)) &&
        (pipeline->blend.color_write_enable & MASK(pipeline->blend.num_rts)) !=
        MASK(pipeline->blend.num_rts))
-      pipeline->lrz.force_disable_mask |= TU_LRZ_FORCE_DISABLE_WRITE;
+      pipeline->lrz.lrz_status |= TU_LRZ_FORCE_DISABLE_WRITE | TU_LRZ_READS_DEST;
 
    if (!(pipeline->dynamic_state_mask & BIT(TU_DYNAMIC_STATE_BLEND))) {
       for (int i = 0; i < blend_info->attachmentCount; i++) {
@@ -4619,7 +4621,7 @@ tu_pipeline_builder_parse_multisample_and_color_blend(
          unsigned mask = MASK(vk_format_get_nr_components(format));
          if (format != VK_FORMAT_UNDEFINED &&
              (blendAttachment.colorWriteMask & mask) != mask) {
-            pipeline->lrz.force_disable_mask |= TU_LRZ_FORCE_DISABLE_WRITE;
+            pipeline->lrz.lrz_status |= TU_LRZ_FORCE_DISABLE_WRITE | TU_LRZ_READS_DEST;
          }
       }
    }
@@ -4662,7 +4664,7 @@ tu_pipeline_builder_parse_rasterization_order(
    bool raster_order_attachment_access =
       pipeline->blend.raster_order_attachment_access ||
       pipeline->ds.raster_order_attachment_access ||
-      unlikely(builder->device->physical_device->instance->debug_flags & TU_DEBUG_RAST_ORDER);
+      TU_DEBUG(RAST_ORDER);
 
    /* VK_EXT_blend_operation_advanced would also require ordered access
     * when implemented in the future.
@@ -4957,7 +4959,7 @@ tu_pipeline_builder_init_graphics(
       const VkPipelineRenderingCreateInfo *rendering_info =
          vk_find_struct_const(create_info->pNext, PIPELINE_RENDERING_CREATE_INFO);
 
-      if (unlikely(dev->instance->debug_flags & TU_DEBUG_DYNAMIC) && !rendering_info)
+      if (TU_DEBUG(DYNAMIC) && !rendering_info)
          rendering_info = vk_get_pipeline_rendering_create_info(create_info);
 
       /* Get multiview_mask, which is only used for shaders */
@@ -5281,7 +5283,7 @@ tu_compute_pipeline_create(VkDevice device,
    for (int i = 0; i < 3; i++)
       pipeline->compute.local_size[i] = v->local_size[i];
 
-   pipeline->compute.subgroup_size = v->info.double_threadsize ? 128 : 64;
+   pipeline->compute.subgroup_size = v->info.subgroup_size;
 
    struct tu_cs prog_cs;
    uint32_t additional_reserve_size = tu_xs_get_additional_cs_size_dwords(v);

@@ -42,6 +42,8 @@
 #include "util/u_atomic.h"
 #include "util/timespec.h"
 #include "util/ptralloc.h"
+#include "nir.h"
+#include "nir_builder.h"
 
 #if defined(VK_USE_PLATFORM_WAYLAND_KHR) || \
     defined(VK_USE_PLATFORM_WIN32_KHR) || \
@@ -127,6 +129,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .KHR_shader_draw_parameters            = true,
    .KHR_shader_float16_int8               = true,
    .KHR_shader_integer_dot_product        = true,
+   .KHR_shader_non_semantic_info          = true,
    .KHR_shader_subgroup_extended_types    = true,
    .KHR_shader_terminate_invocation       = true,
    .KHR_spirv_1_4                         = true,
@@ -158,6 +161,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .EXT_graphics_pipeline_library         = true,
    .EXT_host_query_reset                  = true,
    .EXT_image_2d_view_of_3d               = true,
+   .EXT_image_sliced_view_of_3d           = true,
    .EXT_image_robustness                  = true,
    .EXT_index_type_uint8                  = true,
    .EXT_inline_uniform_block              = true,
@@ -828,7 +832,12 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceFeatures2(
          features->maintenance4 = true;
          break;
       }
-
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_SLICED_VIEW_OF_3D_FEATURES_EXT: {
+         VkPhysicalDeviceImageSlicedViewOf3DFeaturesEXT *features =
+            (VkPhysicalDeviceImageSlicedViewOf3DFeaturesEXT *)ext;
+         features->imageSlicedViewOf3D = true;
+         break;
+      }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES: {
          VkPhysicalDeviceSubgroupSizeControlFeatures *features =
             (VkPhysicalDeviceSubgroupSizeControlFeatures *)ext;
@@ -1598,6 +1607,7 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateDevice(
 
    device->queue.state = device + 1;
    device->poison_mem = debug_get_bool_option("LVP_POISON_MEMORY", false);
+   device->print_cmds = debug_get_bool_option("LVP_CMD_DEBUG", false);
 
    struct vk_device_dispatch_table dispatch_table;
    vk_device_dispatch_table_from_entrypoints(&dispatch_table,
@@ -1631,6 +1641,12 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateDevice(
       return result;
    }
 
+   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_FRAGMENT, NULL, "dummy_frag");
+   struct pipe_shader_state shstate = {0};
+   shstate.type = PIPE_SHADER_IR_NIR;
+   shstate.ir.nir = b.shader;
+   device->noop_fs = device->queue.ctx->create_fs_state(device->queue.ctx, &shstate);
+
    *pDevice = lvp_device_to_handle(device);
 
    return VK_SUCCESS;
@@ -1642,6 +1658,8 @@ VKAPI_ATTR void VKAPI_CALL lvp_DestroyDevice(
    const VkAllocationCallbacks*                pAllocator)
 {
    LVP_FROM_HANDLE(lvp_device, device, _device);
+
+   device->queue.ctx->delete_fs_state(device->queue.ctx, device->noop_fs);
 
    if (device->queue.last_fence)
       device->pscreen->fence_reference(device->pscreen, &device->queue.last_fence, NULL);

@@ -483,6 +483,25 @@ gmem_key_init(struct fd_batch *batch, bool assume_zs, bool no_scis_opt)
       key->zsbuf_cpp[0] = rsc->layout.cpp;
       if (rsc->stencil)
          key->zsbuf_cpp[1] = rsc->stencil->layout.cpp;
+
+      /* If we clear z or s but not both, and we are using z24s8 (ie.
+       * !separate_stencil) then we need to restore the other, even if
+       * batch_draw_tracking_for_dirty_bits() never saw a draw with
+       * depth or stencil enabled.
+       *
+       * This only applies to the fast-clear path, clears done with
+       * u_blitter will show up as a normal draw with depth and/or
+       * stencil enabled.
+       */
+      unsigned zsclear = batch->fast_cleared & (FD_BUFFER_DEPTH | FD_BUFFER_STENCIL);
+      if (zsclear) {
+         const struct util_format_description *desc =
+               util_format_description(pfb->zsbuf->format);
+         if (util_format_has_depth(desc) && !(zsclear & FD_BUFFER_DEPTH))
+            batch->restore |= FD_BUFFER_DEPTH;
+         if (util_format_has_stencil(desc) && !(zsclear & FD_BUFFER_STENCIL))
+            batch->restore |= FD_BUFFER_STENCIL;
+      }
    } else {
       /* we might have a zsbuf, but it isn't used */
       batch->restore &= ~(FD_BUFFER_DEPTH | FD_BUFFER_STENCIL);
@@ -668,14 +687,24 @@ render_sysmem(struct fd_batch *batch) assert_dt
 static void
 flush_ring(struct fd_batch *batch)
 {
-   if (FD_DBG(NOHW))
-      return;
-
-   fd_submit_flush(batch->submit, batch->in_fence_fd,
-                   batch->fence ? &batch->fence->submit_fence : NULL);
-
+   bool use_fence_fd = false;
    if (batch->fence)
-      fd_fence_set_batch(batch->fence, NULL);
+      use_fence_fd = batch->fence->use_fence_fd;
+
+   struct fd_fence *fence;
+
+   if (FD_DBG(NOHW)) {
+      /* construct a dummy fence: */
+      fence = fd_fence_new(batch->ctx->pipe, use_fence_fd);
+   } else {
+      fence = fd_submit_flush(batch->submit, batch->in_fence_fd, use_fence_fd);
+   }
+
+   if (batch->fence) {
+      fd_pipe_fence_set_submit_fence(batch->fence, fence);
+   } else {
+      fd_fence_del(fence);
+   }
 }
 
 void
@@ -686,6 +715,12 @@ fd_gmem_render_tiles(struct fd_batch *batch)
    bool sysmem = false;
 
    ctx->submit_count++;
+
+   /* Sometimes we need to flush a batch just to get a fence, with no
+    * clears or draws.. in this case promote to nondraw:
+    */
+   if (!(batch->fast_cleared || batch->num_draws))
+      sysmem = true;
 
    if (!batch->nondraw) {
 #if HAVE_PERFETTO

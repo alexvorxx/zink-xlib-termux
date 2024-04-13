@@ -24,6 +24,7 @@
 
 /* for fd_get_driver/device_uuid() */
 #include "freedreno/common/freedreno_uuid.h"
+#include "freedreno/common/freedreno_stompable_regs.h"
 
 #include "tu_clear_blit.h"
 #include "tu_cmd_buffer.h"
@@ -56,7 +57,7 @@ tu_device_get_cache_uuid(struct tu_physical_device *device, void *uuid)
     * shader hash instead, since the compiler is only created with the logical
     * device.
     */
-   uint64_t driver_flags = device->instance->debug_flags & TU_DEBUG_NOMULTIPOS;
+   uint64_t driver_flags = tu_env.debug & TU_DEBUG_NOMULTIPOS;
    uint16_t family = fd_dev_gpu_id(&device->dev_id);
 
    memset(uuid, 0, VK_UUID_SIZE);
@@ -114,6 +115,12 @@ static const struct vk_instance_extension_table tu_instance_extensions_supported
 #endif
 };
 
+static bool
+is_kgsl(struct tu_instance *instance)
+{
+   return strcmp(instance->knl->name, "kgsl") == 0;
+}
+
 static void
 get_device_extensions(const struct tu_physical_device *device,
                       struct vk_device_extension_table *ext)
@@ -145,7 +152,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .KHR_maintenance3 = true,
       .KHR_maintenance4 = true,
       .KHR_multiview = true,
-      .KHR_performance_query = device->instance->debug_flags & TU_DEBUG_PERFC,
+      .KHR_performance_query = TU_DEBUG(PERFC),
       .KHR_pipeline_executable_properties = true,
       .KHR_push_descriptor = true,
       .KHR_relaxed_block_layout = true,
@@ -177,14 +184,16 @@ get_device_extensions(const struct tu_physical_device *device,
        * If the instance only enables surface extensions that unconditionally support present wait,
        * we can also expose the extension that way. */
       .KHR_present_id =
-         driQueryOptionb(&device->instance->dri_options, "vk_khr_present_wait") ||
-         wsi_common_vk_instance_supports_present_wait(&device->instance->vk),
+         TU_HAS_SURFACE && (driQueryOptionb(&device->instance->dri_options,
+                                            "vk_khr_present_wait") ||
+                            wsi_common_vk_instance_supports_present_wait(
+                               &device->instance->vk)),
       .KHR_present_wait =
-         driQueryOptionb(&device->instance->dri_options, "vk_khr_present_wait") ||
-         wsi_common_vk_instance_supports_present_wait(&device->instance->vk),
-#ifndef TU_USE_KGSL
+         TU_HAS_SURFACE && (driQueryOptionb(&device->instance->dri_options,
+                                            "vk_khr_present_wait") ||
+                            wsi_common_vk_instance_supports_present_wait(
+                               &device->instance->vk)),
       .KHR_timeline_semaphore = true,
-#endif
 #ifdef VK_USE_PLATFORM_DISPLAY_KHR
       .EXT_display_control = true,
 #endif
@@ -233,9 +242,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_attachment_feedback_loop_layout = true,
       .EXT_rasterization_order_attachment_access = true,
       .EXT_multi_draw = true,
-#ifndef TU_USE_KGSL
-      .EXT_physical_device_drm = true,
-#endif
+      .EXT_physical_device_drm = !is_kgsl(device->instance),
       /* For Graphics Flight Recorder (GFR) */
       .AMD_buffer_marker = true,
       .ARM_rasterization_order_attachment_access = true,
@@ -254,6 +261,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .KHR_pipeline_library = true,
       .EXT_graphics_pipeline_library = true,
       .EXT_post_depth_coverage = true,
+      .EXT_descriptor_buffer = true,
    };
 }
 
@@ -390,38 +398,6 @@ tu_destroy_physical_device(struct vk_physical_device *device)
    vk_free(&device->instance->alloc, device);
 }
 
-static const struct debug_control tu_debug_options[] = {
-   { "startup", TU_DEBUG_STARTUP },
-   { "nir", TU_DEBUG_NIR },
-   { "nobin", TU_DEBUG_NOBIN },
-   { "sysmem", TU_DEBUG_SYSMEM },
-   { "gmem", TU_DEBUG_GMEM },
-   { "forcebin", TU_DEBUG_FORCEBIN },
-   { "layout", TU_DEBUG_LAYOUT },
-   { "noubwc", TU_DEBUG_NOUBWC },
-   { "nomultipos", TU_DEBUG_NOMULTIPOS },
-   { "nolrz", TU_DEBUG_NOLRZ },
-   { "nolrzfc", TU_DEBUG_NOLRZFC },
-   { "perf", TU_DEBUG_PERF },
-   { "perfc", TU_DEBUG_PERFC },
-   { "flushall", TU_DEBUG_FLUSHALL },
-   { "syncdraw", TU_DEBUG_SYNCDRAW },
-   { "dontcare_as_load", TU_DEBUG_DONT_CARE_AS_LOAD },
-   { "rast_order", TU_DEBUG_RAST_ORDER },
-   { "unaligned_store", TU_DEBUG_UNALIGNED_STORE },
-   { "log_skip_gmem_ops", TU_DEBUG_LOG_SKIP_GMEM_OPS },
-   { "dynamic", TU_DEBUG_DYNAMIC },
-   { "bos", TU_DEBUG_BOS },
-   { NULL, 0 }
-};
-
-const char *
-tu_get_debug_option_name(int id)
-{
-   assert(id < ARRAY_SIZE(tu_debug_options) - 1);
-   return tu_debug_options[id].string;
-}
-
 static const driOptionDescription tu_dri_options[] = {
    DRI_CONF_SECTION_PERFORMANCE
       DRI_CONF_VK_X11_OVERRIDE_MIN_IMAGE_COUNT(0)
@@ -435,6 +411,10 @@ static const driOptionDescription tu_dri_options[] = {
       DRI_CONF_VK_WSI_FORCE_BGRA8_UNORM_FIRST(false)
       DRI_CONF_VK_DONT_CARE_AS_LOAD(false)
    DRI_CONF_SECTION_END
+
+   DRI_CONF_SECTION_MISCELLANEOUS
+      DRI_CONF_DISABLE_CONSERVATIVE_LRZ(false)
+   DRI_CONF_SECTION_END
 };
 
 static void
@@ -446,8 +426,10 @@ tu_init_dri_options(struct tu_instance *instance)
                        instance->vk.app_info.app_name, instance->vk.app_info.app_version,
                        instance->vk.app_info.engine_name, instance->vk.app_info.engine_version);
 
-   if (driQueryOptionb(&instance->dri_options, "vk_dont_care_as_load"))
-      instance->debug_flags |= TU_DEBUG_DONT_CARE_AS_LOAD;
+   instance->dont_care_as_load =
+         driQueryOptionb(&instance->dri_options, "vk_dont_care_as_load");
+   instance->conservative_lrz =
+         !driQueryOptionb(&instance->dri_options, "disable_conservative_lrz");
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -457,6 +439,8 @@ tu_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
 {
    struct tu_instance *instance;
    VkResult result;
+
+   tu_env_init();
 
    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO);
 
@@ -484,26 +468,12 @@ tu_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
       return vk_error(NULL, result);
    }
 
-#ifndef TU_USE_KGSL
    instance->vk.physical_devices.try_create_for_drm =
       tu_physical_device_try_create;
-#else
    instance->vk.physical_devices.enumerate = tu_enumerate_devices;
-#endif
    instance->vk.physical_devices.destroy = tu_destroy_physical_device;
 
-   instance->debug_flags =
-      parse_debug_string(os_get_option("TU_DEBUG"), tu_debug_options);
-
-#ifdef DEBUG
-   /* Enable startup debugging by default on debug drivers.  You almost always
-    * want to see your startup failures in that case, and it's hard to set
-    * this env var on android.
-    */
-   instance->debug_flags |= TU_DEBUG_STARTUP;
-#endif
-
-   if (instance->debug_flags & TU_DEBUG_STARTUP)
+   if (TU_DEBUG(STARTUP))
       mesa_logi("Created an instance");
 
    VG(VALGRIND_CREATE_MEMPOOL(instance, 0, false));
@@ -980,6 +950,15 @@ tu_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
          features->presentWait = pdevice->vk.supported_extensions.KHR_present_wait;
          break;
       }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT: {
+         VkPhysicalDeviceDescriptorBufferFeaturesEXT *features =
+            (VkPhysicalDeviceDescriptorBufferFeaturesEXT *)ext;
+         features->descriptorBuffer = true;
+         features->descriptorBufferCaptureReplay = pdevice->has_set_iova;
+         features->descriptorBufferImageLayoutIgnored = true;
+         features->descriptorBufferPushDescriptors = true;
+         break;
+      }
 
       default:
          break;
@@ -1169,9 +1148,9 @@ tu_get_physical_device_properties_1_3(struct tu_physical_device *pdevice,
    p->integerDotProductAccumulatingSaturating64BitMixedSignednessAccelerated = false;
 
    p->storageTexelBufferOffsetAlignmentBytes = 64;
-   p->storageTexelBufferOffsetSingleTexelAlignment = false;
+   p->storageTexelBufferOffsetSingleTexelAlignment = true;
    p->uniformTexelBufferOffsetAlignmentBytes = 64;
-   p->uniformTexelBufferOffsetSingleTexelAlignment = false;
+   p->uniformTexelBufferOffsetSingleTexelAlignment = true;
 
    /* The address space is 4GB for current kernels, so there's no point
     * allowing a larger buffer. Our buffer sizes are 64-bit though, so
@@ -1257,7 +1236,7 @@ tu_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
       .minMemoryMapAlignment = 4096, /* A page */
       .minTexelBufferOffsetAlignment = 64,
       .minUniformBufferOffsetAlignment = 64,
-      .minStorageBufferOffsetAlignment = 64,
+      .minStorageBufferOffsetAlignment = 4,
       .minTexelOffset = -16,
       .maxTexelOffset = 15,
       .minTexelGatherOffset = -32,
@@ -1449,6 +1428,51 @@ tu_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          VkPhysicalDeviceExtendedDynamicState3PropertiesEXT *properties =
             (VkPhysicalDeviceExtendedDynamicState3PropertiesEXT *)ext;
          properties->dynamicPrimitiveTopologyUnrestricted = true;
+         break;
+      }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_PROPERTIES_EXT: {
+         VkPhysicalDeviceDescriptorBufferPropertiesEXT *properties =
+            (VkPhysicalDeviceDescriptorBufferPropertiesEXT *)ext;
+         properties->combinedImageSamplerDescriptorSingleArray = true;
+         properties->bufferlessPushDescriptors = true;
+         properties->allowSamplerImageViewPostSubmitCreation = true;
+         properties->descriptorBufferOffsetAlignment = A6XX_TEX_CONST_DWORDS * 4;
+         properties->maxDescriptorBufferBindings = MAX_SETS;
+         properties->maxResourceDescriptorBufferBindings = MAX_SETS;
+         properties->maxSamplerDescriptorBufferBindings = MAX_SETS;
+         properties->maxEmbeddedImmutableSamplerBindings = MAX_SETS;
+         properties->maxEmbeddedImmutableSamplers = max_descriptor_set_size;
+         properties->bufferCaptureReplayDescriptorDataSize = 0;
+         properties->imageCaptureReplayDescriptorDataSize = 0;
+         properties->imageViewCaptureReplayDescriptorDataSize = 0;
+         properties->samplerCaptureReplayDescriptorDataSize = 0;
+         properties->accelerationStructureCaptureReplayDescriptorDataSize = 0;
+
+         /* Note: these sizes must match descriptor_size() */
+         properties->samplerDescriptorSize = A6XX_TEX_CONST_DWORDS * 4;
+         properties->combinedImageSamplerDescriptorSize = 2 * A6XX_TEX_CONST_DWORDS * 4;
+         properties->sampledImageDescriptorSize = A6XX_TEX_CONST_DWORDS * 4;
+         properties->storageImageDescriptorSize = A6XX_TEX_CONST_DWORDS * 4;
+         properties->uniformTexelBufferDescriptorSize = A6XX_TEX_CONST_DWORDS * 4;
+         properties->robustUniformTexelBufferDescriptorSize = A6XX_TEX_CONST_DWORDS * 4;
+         properties->storageTexelBufferDescriptorSize = A6XX_TEX_CONST_DWORDS * 4;
+         properties->robustStorageTexelBufferDescriptorSize = A6XX_TEX_CONST_DWORDS * 4;
+         properties->uniformBufferDescriptorSize = A6XX_TEX_CONST_DWORDS * 4;
+         properties->robustUniformBufferDescriptorSize = A6XX_TEX_CONST_DWORDS * 4;
+         properties->storageBufferDescriptorSize = 
+            pdevice->info->a6xx.storage_16bit ?
+            2 * A6XX_TEX_CONST_DWORDS * 4 :
+            A6XX_TEX_CONST_DWORDS * 4;
+         properties->robustStorageBufferDescriptorSize =
+            properties->storageBufferDescriptorSize;
+         properties->inputAttachmentDescriptorSize = TU_DEBUG(DYNAMIC) ?
+            A6XX_TEX_CONST_DWORDS * 4 : 0;
+
+         properties->maxSamplerDescriptorBufferRange = ~0ull;
+         properties->maxResourceDescriptorBufferRange = ~0ull;
+         properties->samplerDescriptorBufferAddressSpaceSize = ~0ull;
+         properties->resourceDescriptorBufferAddressSpaceSize = ~0ull;
+         properties->descriptorBufferAddressSpaceSize = ~0ull;
          break;
       }
       default:
@@ -1658,16 +1682,14 @@ tu_queue_init(struct tu_device *device,
       return result;
 
    queue->device = device;
-#ifndef TU_USE_KGSL
    queue->vk.driver_submit = tu_queue_submit;
-#endif
 
    int ret = tu_drm_submitqueue_new(device, priority, &queue->msm_queue_id);
    if (ret)
       return vk_startup_errorf(device->instance, VK_ERROR_INITIALIZATION_FAILED,
                                "submitqueue create failed");
 
-   queue->fence = -1;
+   queue->last_submit_timestamp = -1;
 
    return VK_SUCCESS;
 }
@@ -1676,8 +1698,6 @@ static void
 tu_queue_finish(struct tu_queue *queue)
 {
    vk_queue_finish(&queue->vk);
-   if (queue->fence >= 0)
-      close(queue->fence);
    tu_drm_submitqueue_close(queue->device, queue->msm_queue_id);
 }
 
@@ -1945,6 +1965,87 @@ tu_u_trace_submission_data_finish(
    vk_free(&device->vk.alloc, submission_data);
 }
 
+enum tu_reg_stomper_flags
+{
+   TU_DEBUG_REG_STOMP_INVERSE = 1 << 0,
+   TU_DEBUG_REG_STOMP_CMDBUF = 1 << 1,
+   TU_DEBUG_REG_STOMP_RENDERPASS = 1 << 2,
+};
+
+/* See freedreno.rst for usage tips */
+static const struct debug_named_value tu_reg_stomper_options[] = {
+   { "inverse", TU_DEBUG_REG_STOMP_INVERSE,
+     "By default the range specifies the regs to stomp, with 'inverse' it "
+     "specifies the regs NOT to stomp" },
+   { "cmdbuf", TU_DEBUG_REG_STOMP_CMDBUF,
+     "Stomp regs at the start of a cmdbuf" },
+   { "renderpass", TU_DEBUG_REG_STOMP_RENDERPASS,
+     "Stomp regs before a renderpass" },
+   { NULL, 0 }
+};
+
+static void
+tu_init_dbg_reg_stomper(struct tu_device *device)
+{
+   const char *stale_reg_range_str =
+      os_get_option("TU_DEBUG_STALE_REGS_RANGE");
+   if (!stale_reg_range_str)
+      return;
+
+   uint32_t first_reg, last_reg;
+
+   if (sscanf(stale_reg_range_str, "%x,%x", &first_reg, &last_reg) != 2) {
+      mesa_loge("Incorrect TU_DEBUG_STALE_REGS_RANGE");
+      return;
+   }
+
+   uint64_t debug_flags = debug_get_flags_option("TU_DEBUG_STALE_REGS_FLAGS",
+                                                 tu_reg_stomper_options,
+                                                 TU_DEBUG_REG_STOMP_CMDBUF);
+
+   struct tu_cs *cmdbuf_cs = calloc(1, sizeof(struct tu_cs));
+   tu_cs_init(cmdbuf_cs, device, TU_CS_MODE_GROW, 4096,
+              "cmdbuf reg stomp cs");
+   tu_cs_begin(cmdbuf_cs);
+
+   struct tu_cs *rp_cs = calloc(1, sizeof(struct tu_cs));
+   tu_cs_init(rp_cs, device, TU_CS_MODE_GROW, 4096, "rp reg stomp cs");
+   tu_cs_begin(rp_cs);
+
+   size_t reg_ranges_count = ARRAY_SIZE(a6xx_fd_cmdbuf_stompable_reg_ranges);
+   for (size_t i = 0; i < reg_ranges_count; i++) {
+      struct fd_stompable_reg_range reg_range =
+         a6xx_fd_cmdbuf_stompable_reg_ranges[i];
+      for (uint16_t reg = reg_range.start_reg; reg <= reg_range.end_reg;
+           reg++) {
+         if (debug_flags & TU_DEBUG_REG_STOMP_INVERSE) {
+            if (reg >= first_reg && reg <= last_reg)
+               continue;
+         } else {
+            if (reg < first_reg || reg > last_reg)
+               continue;
+         }
+
+         if (a6xx_fd_reg_do_not_stomp(true, reg))
+            continue;
+
+         if (debug_flags & TU_DEBUG_REG_STOMP_CMDBUF)
+            tu_cs_emit_write_reg(cmdbuf_cs, reg, 0xffffffff);
+
+         if ((debug_flags & TU_DEBUG_REG_STOMP_RENDERPASS) &&
+             a6xx_fd_reg_rp_stompable(true, reg)) {
+            tu_cs_emit_write_reg(rp_cs, reg, 0xffffffff);
+         }
+      }
+   }
+
+   tu_cs_end(cmdbuf_cs);
+   tu_cs_end(rp_cs);
+
+   device->dbg_cmdbuf_stomp_cs = cmdbuf_cs;
+   device->dbg_renderpass_stomp_cs = rp_cs;
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 tu_CreateDevice(VkPhysicalDevice physicalDevice,
                 const VkDeviceCreateInfo *pCreateInfo,
@@ -2001,6 +2102,13 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
    vk_device_dispatch_table_from_entrypoints(
       &dispatch_table, &wsi_device_entrypoints, false);
 
+   const struct vk_device_entrypoint_table *knl_device_entrypoints =
+         physical_device->instance->knl->device_entrypoints;
+   if (knl_device_entrypoints) {
+      vk_device_dispatch_table_from_entrypoints(
+         &dispatch_table, knl_device_entrypoints, false);
+   }
+
    result = vk_device_init(&device->vk, &physical_device->vk,
                            &dispatch_table, pCreateInfo, pAllocator);
    if (result != VK_SUCCESS) {
@@ -2021,12 +2129,12 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
    u_rwlock_init(&device->dma_bo_lock);
    pthread_mutex_init(&device->submit_mutex, NULL);
 
-   if (device->instance->debug_flags & TU_DEBUG_BOS)
+   if (TU_DEBUG(BOS))
       device->bo_sizes = _mesa_hash_table_create(NULL, _mesa_hash_string, _mesa_key_string_equal);
 
-#ifndef TU_USE_KGSL
-   vk_device_set_drm_fd(&device->vk, device->fd);
-#endif
+   /* kgsl is not a drm device: */
+   if (!is_kgsl(physical_device->instance))
+      vk_device_set_drm_fd(&device->vk, device->fd);
 
    for (unsigned i = 0; i < pCreateInfo->queueCreateInfoCount; i++) {
       const VkDeviceQueueCreateInfo *queue_create =
@@ -2063,6 +2171,10 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
                               .robust_buffer_access2 = robust_buffer_access2,
                               .push_ubo_with_preamble = true,
                               .disable_cache = true,
+                              .bindless_fb_read_descriptor = -1,
+                              .bindless_fb_read_slot = -1,
+                              .storage_16bit =
+                                    physical_device->info->a6xx.storage_16bit
                            });
    if (!device->compiler) {
       result = vk_startup_errorf(physical_device->instance,
@@ -2172,6 +2284,8 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
          device->perfcntrs_pass_cs_entries[i] = tu_cs_end_sub_stream(cs, &sub_cs);
       }
    }
+
+   tu_init_dbg_reg_stomper(device);
 
    /* Initialize a condition variable for timeline semaphore */
    pthread_condattr_t condattr;
@@ -2306,6 +2420,16 @@ tu_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
       free(device->perfcntrs_pass_cs);
    }
 
+   if (device->dbg_cmdbuf_stomp_cs) {
+      tu_cs_finish(device->dbg_cmdbuf_stomp_cs);
+      free(device->dbg_cmdbuf_stomp_cs);
+   }
+
+   if (device->dbg_renderpass_stomp_cs) {
+      tu_cs_finish(device->dbg_renderpass_stomp_cs);
+      free(device->dbg_renderpass_stomp_cs);
+   }
+
    tu_autotune_fini(&device->autotune, device);
 
    tu_bo_suballocator_finish(&device->pipeline_suballoc);
@@ -2375,34 +2499,6 @@ tu_EnumerateInstanceLayerProperties(uint32_t *pPropertyCount,
    return VK_SUCCESS;
 }
 
-/* Only used for kgsl since drm started using common implementation */
-#ifdef TU_USE_KGSL
-VKAPI_ATTR VkResult VKAPI_CALL
-tu_QueueWaitIdle(VkQueue _queue)
-{
-   TU_FROM_HANDLE(tu_queue, queue, _queue);
-
-   if (vk_device_is_lost(&queue->device->vk))
-      return VK_ERROR_DEVICE_LOST;
-
-   if (queue->fence < 0)
-      return VK_SUCCESS;
-
-   struct pollfd fds = { .fd = queue->fence, .events = POLLIN };
-   int ret;
-   do {
-      ret = poll(&fds, 1, -1);
-   } while (ret == -1 && (errno == EINTR || errno == EAGAIN));
-
-   /* TODO: otherwise set device lost ? */
-   assert(ret == 1 && !(fds.revents & (POLLERR | POLLNVAL)));
-
-   close(queue->fence);
-   queue->fence = -1;
-   return VK_SUCCESS;
-}
-#endif
-
 VKAPI_ATTR VkResult VKAPI_CALL
 tu_EnumerateInstanceExtensionProperties(const char *pLayerName,
                                         uint32_t *pPropertyCount,
@@ -2419,7 +2515,7 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
 tu_GetInstanceProcAddr(VkInstance _instance, const char *pName)
 {
    TU_FROM_HANDLE(tu_instance, instance, _instance);
-   return vk_instance_get_proc_addr(&instance->vk,
+   return vk_instance_get_proc_addr(instance != NULL ? &instance->vk : NULL,
                                     &tu_instance_entrypoints,
                                     pName);
 }
@@ -2691,6 +2787,8 @@ tu_BindBufferMemory2(VkDevice device,
                      uint32_t bindInfoCount,
                      const VkBindBufferMemoryInfo *pBindInfos)
 {
+   TU_FROM_HANDLE(tu_device, dev, device);
+
    for (uint32_t i = 0; i < bindInfoCount; ++i) {
       TU_FROM_HANDLE(tu_device_memory, mem, pBindInfos[i].memory);
       TU_FROM_HANDLE(tu_buffer, buffer, pBindInfos[i].buffer);
@@ -2698,6 +2796,10 @@ tu_BindBufferMemory2(VkDevice device,
       if (mem) {
          buffer->bo = mem->bo;
          buffer->iova = mem->bo->iova + pBindInfos[i].memoryOffset;
+         if (buffer->vk.usage &
+             (VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT |
+              VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT))
+            tu_bo_allow_dump(dev, mem->bo);
       } else {
          buffer->bo = NULL;
       }
@@ -2853,7 +2955,7 @@ tu_CreateFramebuffer(VkDevice _device,
 {
    TU_FROM_HANDLE(tu_device, device, _device);
 
-   if (unlikely(device->instance->debug_flags & TU_DEBUG_DYNAMIC))
+   if (TU_DEBUG(DYNAMIC))
       return vk_common_CreateFramebuffer(_device, pCreateInfo, pAllocator,
                                          pFramebuffer);
 
@@ -2915,7 +3017,7 @@ tu_DestroyFramebuffer(VkDevice _device,
 {
    TU_FROM_HANDLE(tu_device, device, _device);
 
-   if (unlikely(device->instance->debug_flags & TU_DEBUG_DYNAMIC)) {
+   if (TU_DEBUG(DYNAMIC)) {
       vk_common_DestroyFramebuffer(_device, _fb, pAllocator);
       return;
    }

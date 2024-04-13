@@ -23,7 +23,10 @@
 
 #include "anv_private.h"
 
+#include "ds/intel_tracepoints.h"
 #include "perf/intel_perf.h"
+
+#include "vulkan/runtime/vk_common_entrypoints.h"
 
 static uint32_t
 command_buffers_count_utraces(struct anv_device *device,
@@ -111,7 +114,7 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
    if (!flush)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   intel_ds_flush_data_init(&flush->ds, queue->ds, queue->ds->submission_id);
+   intel_ds_flush_data_init(&flush->ds, &queue->ds, queue->ds.submission_id);
 
    result = vk_sync_create(&device->vk, &device->physical->sync_syncobj_type,
                            0, 0, &flush->sync);
@@ -127,7 +130,7 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
 
       result = anv_bo_pool_alloc(&device->utrace_bo_pool,
                                  /* 128 dwords of setup + 64 dwords per copy */
-                                 align_u32(512 + 64 * utrace_copies, 4096),
+                                 align(512 + 64 * utrace_copies, 4096),
                                  &flush->batch_bo);
       if (result != VK_SUCCESS)
          goto error_batch_buf;
@@ -158,6 +161,7 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
          }
       }
       anv_genX(device->info, emit_so_memcpy_fini)(&flush->memcpy_state);
+      anv_genX(device->info, emit_so_memcpy_end)(&flush->memcpy_state);
 
       u_trace_flush(&flush->ds.trace, flush, true);
 
@@ -200,7 +204,7 @@ anv_utrace_create_ts_buffer(struct u_trace_context *utctx, uint32_t size_b)
    struct anv_bo *bo = NULL;
    UNUSED VkResult result =
       anv_bo_pool_alloc(&device->utrace_bo_pool,
-                        align_u32(size_b, 4096),
+                        align(size_b, 4096),
                         &bo);
    assert(result == VK_SUCCESS);
 
@@ -227,11 +231,14 @@ anv_utrace_record_ts(struct u_trace *ut, void *cs,
    struct anv_device *device = cmd_buffer->device;
    struct anv_bo *bo = timestamps;
 
+   enum anv_timestamp_capture_type capture_type =
+      (end_of_pipe) ? ANV_TIMESTAMP_CAPTURE_END_OF_PIPE
+                    : ANV_TIMESTAMP_CAPTURE_TOP_OF_PIPE;
    device->physical->cmd_emit_timestamp(&cmd_buffer->batch, device,
                                         (struct anv_address) {
                                            .bo = bo,
                                            .offset = idx * sizeof(uint64_t) },
-                                        end_of_pipe);
+                                        capture_type);
 }
 
 static uint64_t
@@ -281,10 +288,9 @@ anv_device_utrace_init(struct anv_device *device)
    for (uint32_t q = 0; q < device->queue_count; q++) {
       struct anv_queue *queue = &device->queues[q];
 
-      queue->ds =
-         intel_ds_device_add_queue(&device->ds, "%s%u",
-                                   intel_engines_class_to_string(queue->family->engine_class),
-                                   queue->index_in_family);
+      intel_ds_device_init_queue(&device->ds, &queue->ds, "%s%u",
+                                 intel_engines_class_to_string(queue->family->engine_class),
+                                 queue->vk.index_in_family);
    }
 }
 
@@ -317,6 +323,8 @@ anv_pipe_flush_bit_to_ds_stall_flag(enum anv_pipe_bits bits)
       { .anv = ANV_PIPE_HDC_PIPELINE_FLUSH_BIT,           .ds = INTEL_DS_HDC_PIPELINE_FLUSH_BIT, },
       { .anv = ANV_PIPE_STALL_AT_SCOREBOARD_BIT,          .ds = INTEL_DS_STALL_AT_SCOREBOARD_BIT, },
       { .anv = ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT, .ds = INTEL_DS_UNTYPED_DATAPORT_CACHE_FLUSH_BIT, },
+      { .anv = ANV_PIPE_PSS_STALL_SYNC_BIT,               .ds = INTEL_DS_PSS_STALL_SYNC_BIT, },
+      { .anv = ANV_PIPE_END_OF_PIPE_SYNC_BIT,             .ds = INTEL_DS_END_OF_PIPE_BIT, },
    };
 
    enum intel_ds_stall_flag ret = 0;
@@ -327,3 +335,30 @@ anv_pipe_flush_bit_to_ds_stall_flag(enum anv_pipe_bits bits)
 
    return ret;
 }
+
+void anv_CmdBeginDebugUtilsLabelEXT(
+   VkCommandBuffer _commandBuffer,
+   const VkDebugUtilsLabelEXT *pLabelInfo)
+{
+   VK_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, _commandBuffer);
+
+   vk_common_CmdBeginDebugUtilsLabelEXT(_commandBuffer, pLabelInfo);
+
+   trace_intel_begin_cmd_buffer_annotation(&cmd_buffer->trace);
+}
+
+void anv_CmdEndDebugUtilsLabelEXT(VkCommandBuffer _commandBuffer)
+{
+   VK_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, _commandBuffer);
+
+   if (cmd_buffer->vk.labels.size > 0) {
+      const VkDebugUtilsLabelEXT *label =
+         util_dynarray_top_ptr(&cmd_buffer->vk.labels, VkDebugUtilsLabelEXT);
+
+      trace_intel_end_cmd_buffer_annotation(&cmd_buffer->trace,
+                                            strlen(label->pLabelName),
+                                            label->pLabelName);
+   }
+
+   vk_common_CmdEndDebugUtilsLabelEXT(_commandBuffer);
+ }

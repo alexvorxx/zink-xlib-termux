@@ -44,11 +44,7 @@
 static int radv_hal_open(const struct hw_module_t *mod, const char *id, struct hw_device_t **dev);
 static int radv_hal_close(struct hw_device_t *dev);
 
-static void UNUSED
-static_asserts(void)
-{
-   STATIC_ASSERT(HWVULKAN_DISPATCH_MAGIC == ICD_LOADER_MAGIC);
-}
+static_assert(HWVULKAN_DISPATCH_MAGIC == ICD_LOADER_MAGIC, "");
 
 PUBLIC struct hwvulkan_module_t HAL_MODULE_INFO_SYM = {
    .common =
@@ -188,7 +184,7 @@ radv_image_from_gralloc(VkDevice device_h, const VkImageCreateInfo *base_info,
                                  .no_metadata_planes = true,
                                  .bo_metadata = &md,
                               },
-                              alloc, &image_h);
+                              alloc, &image_h, false);
 
    if (result != VK_SUCCESS)
       goto fail_create_image;

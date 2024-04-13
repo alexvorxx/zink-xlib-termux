@@ -101,6 +101,7 @@ struct spirv_supported_capabilities {
    bool subgroup_basic;
    bool subgroup_dispatch;
    bool subgroup_quad;
+   bool subgroup_rotate;
    bool subgroup_shuffle;
    bool subgroup_uniform_control_flow;
    bool subgroup_vote;
@@ -297,6 +298,11 @@ typedef struct shader_info {
     */
    bool io_lowered:1;
 
+   /** Has nir_lower_var_copies called. To avoid calling any
+    * lowering/optimization that would introduce any copy_deref later.
+    */
+   bool var_copies_lowered:1;
+
    /* Whether the shader writes memory, including transform feedback. */
    bool writes_memory:1;
 
@@ -485,6 +491,13 @@ typedef struct shader_info {
           * shader.
           */
          unsigned advanced_blend_modes;
+
+         /**
+          * Defined by AMD_shader_early_and_late_fragment_tests.
+          */
+         bool early_and_late_fragment_tests:1;
+         enum gl_frag_stencil_layout stencil_front_layout:3;
+         enum gl_frag_stencil_layout stencil_back_layout:3;
       } fs;
 
       struct {

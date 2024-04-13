@@ -29,6 +29,7 @@
 
 #include "util/memstream.h"
 
+#include "ac_shader_util.h"
 #include <algorithm>
 #include <map>
 #include <vector>
@@ -68,7 +69,8 @@ get_mimg_nsa_dwords(const Instruction* instr)
 {
    unsigned addr_dwords = instr->operands.size() - 3;
    for (unsigned i = 1; i < addr_dwords; i++) {
-      if (instr->operands[3 + i].physReg() != instr->operands[3].physReg().advance(i * 4))
+      if (instr->operands[3 + i].physReg() !=
+          instr->operands[3 + (i - 1)].physReg().advance(instr->operands[3 + (i - 1)].bytes()))
          return DIV_ROUND_UP(addr_dwords - 1, 4);
    }
    return 0;
@@ -98,6 +100,25 @@ reg(asm_context& ctx, Definition def, unsigned width = 32)
    return reg(ctx, def.physReg()) & BITFIELD_MASK(width);
 }
 
+bool
+needs_vop3_gfx11(asm_context& ctx, Instruction* instr)
+{
+   if (ctx.gfx_level <= GFX10_3)
+      return false;
+
+   uint8_t mask = get_gfx11_true16_mask(instr->opcode);
+   if (!mask)
+      return false;
+
+   u_foreach_bit (i, mask & 0x3) {
+      if (instr->operands[i].physReg().reg() >= (256 + 128))
+         return true;
+   }
+   if ((mask & 0x8) && instr->definitions[0].physReg().reg() >= (256 + 128))
+      return true;
+   return false;
+}
+
 void
 emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* instr)
 {
@@ -115,6 +136,20 @@ emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* inst
       assert(instr->operands[1].isConstant());
       /* in case it's an inline constant, make it a literal */
       instr->operands[1] = Operand::literal32(instr->operands[1].constantValue());
+   }
+
+   /* Promote VOP12C to VOP3 if necessary. */
+   if ((instr->isVOP1() || instr->isVOP2() || instr->isVOPC()) && !instr->isVOP3() &&
+       needs_vop3_gfx11(ctx, instr)) {
+      instr->format = asVOP3(instr->format);
+      if (instr->opcode == aco_opcode::v_fmaak_f16) {
+         instr->opcode = aco_opcode::v_fma_f16;
+         instr->format = (Format)((uint32_t)instr->format & ~(uint32_t)Format::VOP2);
+      } else if (instr->opcode == aco_opcode::v_fmamk_f16) {
+         std::swap(instr->operands[1], instr->operands[2]);
+         instr->opcode = aco_opcode::v_fma_f16;
+         instr->format = (Format)((uint32_t)instr->format & ~(uint32_t)Format::VOP2);
+      }
    }
 
    uint32_t opcode = ctx.opcode[(int)instr->opcode];
@@ -706,8 +741,8 @@ emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* inst
       /* TODO: VOP3/VOP3P can use DPP8/16 on GFX11 (encoding of src0 and DPP8/16 word seems same
        * except abs/neg is ignored). src2 cannot be literal and src0/src1 must be VGPR.
        */
-      if (instr->isVOP3()) {
-         VOP3_instruction& vop3 = instr->vop3();
+      if (instr->isVOP3() && !instr->isDPP()) {
+         VALU_instruction& vop3 = instr->valu();
 
          if (instr->isVOP2()) {
             opcode = opcode + 0x100;
@@ -767,7 +802,7 @@ emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* inst
          out.push_back(encoding);
 
       } else if (instr->isVOP3P()) {
-         VOP3P_instruction& vop3 = instr->vop3p();
+         VALU_instruction& vop3 = instr->valu();
 
          uint32_t encoding;
          if (ctx.gfx_level == GFX9) {
@@ -1141,7 +1176,7 @@ emit_program(Program* program, std::vector<uint32_t>& code)
    if (program->gfx_level >= GFX10) {
       /* Pad output with s_code_end so instruction prefetching doesn't cause
        * page faults */
-      unsigned final_size = align(code.size() + 3 * 16, 16);
+      unsigned final_size = align(code.size() + 3 * 16, program->gfx_level >= GFX11 ? 32 : 16);
       while (code.size() < final_size)
          code.push_back(0xbf9f0000u);
    }
@@ -1153,6 +1188,9 @@ emit_program(Program* program, std::vector<uint32_t>& code)
    /* Copy constant data */
    code.insert(code.end(), (uint32_t*)program->constant_data.data(),
                (uint32_t*)(program->constant_data.data() + program->constant_data.size()));
+
+   program->config->scratch_bytes_per_wave = align(
+      program->config->scratch_bytes_per_wave, program->dev.scratch_alloc_granule);
 
    return exec_size;
 }

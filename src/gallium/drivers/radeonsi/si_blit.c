@@ -85,6 +85,9 @@ void si_blitter_begin(struct si_context *sctx, enum si_blitter_op op)
       si_mark_atom_dirty(sctx, &sctx->atoms.s.dpbb_state);
    }
 
+   /* Force-disable fbfetch because there are unsolvable recursion problems with u_blitter. */
+   si_force_disable_ps_colorbuf0_slot(sctx);
+
    sctx->blitter_running = true;
 }
 
@@ -112,6 +115,9 @@ void si_blitter_end(struct si_context *sctx)
 
    sctx->vertex_buffers_dirty = sctx->num_vertex_elements > 0;
    si_mark_atom_dirty(sctx, &sctx->atoms.s.shader_pointers);
+
+   /* We force-disabled fbfetch for u_blitter, so recompute the state. */
+   si_update_ps_colorbuf0_slot(sctx);
 }
 
 static unsigned u_max_sample(struct pipe_resource *r)
@@ -461,6 +467,12 @@ static void si_blit_decompress_color(struct si_context *sctx, struct si_texture 
    if (need_dcc_decompress) {
       custom_blend = sctx->custom_blend_dcc_decompress;
 
+      /* DCC_DECOMPRESS and ELIMINATE_FAST_CLEAR require MSAA_NUM_SAMPLES=0. */
+      if (sctx->gfx_level >= GFX11) {
+         sctx->gfx11_force_msaa_num_samples_zero = true;
+         si_mark_atom_dirty(sctx, &sctx->atoms.s.msaa_config);
+      }
+
       assert(vi_dcc_enabled(tex, first_level));
 
       /* disable levels without DCC */
@@ -469,8 +481,10 @@ static void si_blit_decompress_color(struct si_context *sctx, struct si_texture 
             level_mask &= ~(1 << i);
       }
    } else if (tex->surface.fmask_size) {
+      assert(sctx->gfx_level < GFX11);
       custom_blend = sctx->custom_blend_fmask_decompress;
    } else {
+      assert(sctx->gfx_level < GFX11);
       custom_blend = sctx->custom_blend_eliminate_fastclear;
    }
 
@@ -535,6 +549,12 @@ static void si_blit_decompress_color(struct si_context *sctx, struct si_texture 
    sctx->decompression_enabled = false;
    si_make_CB_shader_coherent(sctx, tex->buffer.b.b.nr_samples, vi_dcc_enabled(tex, first_level),
                               tex->surface.u.gfx9.color.dcc.pipe_aligned);
+
+   /* Restore gfx11_force_msaa_num_samples_zero. */
+   if (sctx->gfx11_force_msaa_num_samples_zero) {
+      sctx->gfx11_force_msaa_num_samples_zero = false;
+      si_mark_atom_dirty(sctx, &sctx->atoms.s.msaa_config);
+   }
 
 expand_fmask:
    if (need_fmask_expand && tex->surface.fmask_offset && !tex->fmask_is_identity) {
@@ -1038,10 +1058,6 @@ bool si_msaa_resolve_blit_via_CB(struct pipe_context *ctx, const struct pipe_bli
    struct pipe_resource *tmp, templ;
    struct pipe_blit_info blit;
 
-   /* Gfx11 doesn't have CB_RESOLVE. */
-   if (sctx->gfx_level >= GFX11)
-      return false;
-
    /* Check basic requirements for hw resolve. */
    if (!(info->src.resource->nr_samples > 1 && info->dst.resource->nr_samples <= 1 &&
          !util_format_is_pure_integer(format) && !util_format_is_depth_or_stencil(format) &&
@@ -1214,7 +1230,7 @@ static void si_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
       return;
    }
 
-   if (si_compute_blit(sctx, info))
+   if (si_compute_blit(sctx, info, false))
       return;
 
    si_gfx_blit(ctx, info);

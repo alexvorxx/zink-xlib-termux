@@ -665,8 +665,10 @@ Blitting
 These methods emulate classic blitter controls.
 
 These methods operate directly on ``pipe_resource`` objects, and stand
-apart from any 3D state in the context.  Blitting functionality may be
-moved to a separate abstraction at some point in the future.
+apart from any 3D state in the context. Each method is assumed to have an
+implicit memory barrier around itself. They do not need any explicit
+``memory_barrier``. Blitting functionality may be moved to a separate
+abstraction at some point in the future.
 
 ``resource_copy_region`` blits a region of a resource to a region of another
 resource, provided that both resources have the same format, or compatible
@@ -698,6 +700,11 @@ The returned pointer points to the start of the mapped range according to
 the box region, not the beginning of the resource. If transfer_map fails,
 the returned pointer to the buffer memory is NULL, and the pointer
 to the transfer object remains unchanged (i.e. it can be non-NULL).
+
+When mapping an MSAA surface, the samples are implicitly resolved to
+single-sampled for reads (returning the first sample for depth/stencil/integer,
+averaged for others).  See u_transfer_helper's U_TRANSFER_HELPER_MSAA_MAP for a
+way to get that behavior using a resolve blit.
 
 ``transfer_unmap`` remove the memory mapping for and destroy
 the transfer object. The pointer into the resource should be considered

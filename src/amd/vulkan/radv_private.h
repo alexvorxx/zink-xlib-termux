@@ -67,6 +67,11 @@
 #include "vk_queue.h"
 #include "vk_util.h"
 #include "vk_image.h"
+#include "vk_ycbcr_conversion.h"
+#include "vk_video.h"
+
+#include "rmv/vk_rmv_common.h"
+#include "rmv/vk_rmv_tokens.h"
 
 #include "ac_binary.h"
 #include "ac_gpu_info.h"
@@ -117,6 +122,17 @@ extern "C"
 #define RADV_SUPPORT_ANDROID_HARDWARE_BUFFER 0
 #endif
 
+#if defined(VK_USE_PLATFORM_WAYLAND_KHR) || defined(VK_USE_PLATFORM_XCB_KHR) ||                    \
+   defined(VK_USE_PLATFORM_XLIB_KHR) || defined(VK_USE_PLATFORM_DISPLAY_KHR)
+#define RADV_USE_WSI_PLATFORM
+#endif
+
+#ifdef ANDROID
+#define RADV_API_VERSION VK_MAKE_VERSION(1, 1, VK_HEADER_VERSION)
+#else
+#define RADV_API_VERSION VK_MAKE_VERSION(1, 3, VK_HEADER_VERSION)
+#endif
+
 #ifdef _WIN32
 #define RADV_SUPPORT_CALIBRATED_TIMESTAMPS 0
 #else
@@ -127,6 +143,11 @@ extern "C"
 #define radv_printflike(a, b)
 #else
 #define radv_printflike(a, b) __attribute__((__format__(__printf__, a, b)))
+#endif
+
+/* The "RAW" clocks on Linux are called "FAST" on FreeBSD */
+#if !defined(CLOCK_MONOTONIC_RAW) && defined(CLOCK_MONOTONIC_FAST)
+#define CLOCK_MONOTONIC_RAW CLOCK_MONOTONIC_FAST
 #endif
 
 static inline uint32_t
@@ -246,6 +267,8 @@ enum radv_queue_family {
    RADV_QUEUE_GENERAL,
    RADV_QUEUE_COMPUTE,
    RADV_QUEUE_TRANSFER,
+   RADV_QUEUE_VIDEO_DEC,
+   RADV_QUEUE_VIDEO_ENC,
    RADV_MAX_QUEUE_FAMILIES,
    RADV_QUEUE_FOREIGN = RADV_MAX_QUEUE_FAMILIES,
    RADV_QUEUE_IGNORED,
@@ -275,8 +298,6 @@ struct radv_physical_device {
    int local_fd;
    int master_fd;
    struct wsi_device wsi_device;
-
-   bool out_of_order_rast_allowed;
 
    /* Whether DCC should be enabled for MSAA textures. */
    bool dcc_msaa_allowed;
@@ -344,7 +365,25 @@ struct radv_physical_device {
 
    uint32_t num_perfcounters;
    struct radv_perfcounter_desc *perfcounters;
+
+   struct {
+      unsigned data0;
+      unsigned data1;
+      unsigned cmd;
+      unsigned cntl;
+   } vid_dec_reg;
 };
+
+uint32_t radv_find_memory_index(struct radv_physical_device *pdevice, VkMemoryPropertyFlags flags);
+
+VkResult create_null_physical_device(struct vk_instance *vk_instance);
+
+VkResult create_drm_physical_device(struct vk_instance *vk_instance, struct _drmDevice *device,
+                                    struct vk_physical_device **out);
+
+void radv_physical_device_destroy(struct vk_physical_device *vk_device);
+
+bool radv_thread_trace_enabled(void);
 
 struct radv_instance {
    struct vk_instance vk;
@@ -369,6 +408,8 @@ struct radv_instance {
    bool disable_sinking_load_input_fs;
    bool flush_before_query_copy;
    bool enable_unified_heap_on_apu;
+   bool tex_non_uniform;
+   char *app_layer;
 };
 
 VkResult radv_init_wsi(struct radv_physical_device *physical_device);
@@ -396,17 +437,15 @@ struct radv_pipeline_shader_stack_size;
 
 bool radv_create_shaders_from_pipeline_cache(
    struct radv_device *device, struct radv_pipeline_cache *cache, const unsigned char *sha1,
-   struct radv_pipeline *pipeline, struct radv_pipeline_shader_stack_size **stack_sizes,
-   uint32_t *num_stack_sizes, bool *found_in_application_cache);
+   struct radv_pipeline *pipeline, struct radv_ray_tracing_module *rt_groups,
+   uint32_t num_rt_groups, bool *found_in_application_cache);
 
-void radv_pipeline_cache_insert_shaders(
-   struct radv_device *device, struct radv_pipeline_cache *cache, const unsigned char *sha1,
-   struct radv_pipeline *pipeline, struct radv_shader_binary *const *binaries,
-   const struct radv_pipeline_shader_stack_size *stack_sizes, uint32_t num_stack_sizes);
-
-VkResult radv_upload_shaders(struct radv_device *device, struct radv_pipeline *pipeline,
-                             struct radv_shader_binary **binaries,
-                             struct radv_shader_binary *gs_copy_binary);
+void radv_pipeline_cache_insert_shaders(struct radv_device *device,
+                                        struct radv_pipeline_cache *cache,
+                                        const unsigned char *sha1, struct radv_pipeline *pipeline,
+                                        struct radv_shader_binary *const *binaries,
+                                        const struct radv_ray_tracing_module *rt_groups,
+                                        uint32_t num_rt_groups);
 
 enum radv_blit_ds_layout {
    RADV_BLIT_DS_LAYOUT_TILE_ENABLE,
@@ -683,15 +722,23 @@ struct radv_meta_state {
       VkPipeline lbvh_generate_ir_pipeline;
       VkPipelineLayout ploc_p_layout;
       VkPipeline ploc_pipeline;
-      VkPipelineLayout convert_leaf_p_layout;
-      VkPipeline convert_leaf_pipeline;
-      VkPipelineLayout convert_internal_p_layout;
-      VkPipeline convert_internal_pipeline;
+      VkPipeline ploc_extended_pipeline;
+      VkPipelineLayout encode_p_layout;
+      VkPipeline encode_pipeline;
+      VkPipeline encode_compact_pipeline;
+      VkPipelineLayout header_p_layout;
+      VkPipeline header_pipeline;
       VkPipelineLayout copy_p_layout;
       VkPipeline copy_pipeline;
 
       struct radix_sort_vk *radix_sort;
       struct radix_sort_vk_sort_devaddr_info radix_sort_info;
+
+      struct {
+         VkBuffer buffer;
+         VkDeviceMemory memory;
+         VkAccelerationStructureKHR accel_struct;
+      } null;
    } accel_struct_build;
 
    struct {
@@ -724,6 +771,16 @@ vk_queue_to_radv(const struct radv_physical_device *phys_dev, int queue_family_i
 
 enum amd_ip_type radv_queue_family_to_ring(struct radv_physical_device *physical_device,
                                          enum radv_queue_family f);
+
+static inline bool
+radv_has_uvd(struct radv_physical_device *phys_dev)
+{
+   enum radeon_family family = phys_dev->rad_info.family;
+   /* Only support UVD on TONGA+ */
+   if (family < CHIP_TONGA)
+      return false;
+   return phys_dev->rad_info.ip[AMD_IP_UVD].num_queues > 0;
+}
 
 struct radv_queue_ring_info {
    uint32_t scratch_size_per_wave;
@@ -760,6 +817,18 @@ struct radv_queue_state {
    struct radeon_cmdbuf *initial_preamble_cs;
    struct radeon_cmdbuf *initial_full_flush_preamble_cs;
    struct radeon_cmdbuf *continue_preamble_cs;
+   struct radeon_cmdbuf *gang_wait_preamble_cs;
+   struct radeon_cmdbuf *gang_wait_postamble_cs;
+
+   /* the uses_shadow_regs here will be set only for general queue */
+   bool uses_shadow_regs;
+   /* register state is saved in shadowed_regs buffer */
+   struct radeon_winsys_bo *shadowed_regs;
+   /* shadow regs preamble ib. This will be the first preamble ib.
+    * This ib has the packets to start register shadowing.
+    */
+   struct radeon_winsys_bo *shadow_regs_ib;
+   uint32_t shadow_regs_ib_size_dw;
 };
 
 struct radv_queue {
@@ -769,7 +838,17 @@ struct radv_queue {
    enum radeon_ctx_priority priority;
    struct radv_queue_state state;
    struct radv_queue_state *ace_internal_state;
+   struct radeon_winsys_bo *gang_sem_bo;
 };
+
+int radv_queue_init(struct radv_device *device, struct radv_queue *queue, int idx,
+                    const VkDeviceQueueCreateInfo *create_info,
+                    const VkDeviceQueueGlobalPriorityCreateInfoKHR *global_priority);
+
+void radv_queue_finish(struct radv_queue *queue);
+
+enum radeon_ctx_priority
+radv_get_queue_global_priority(const VkDeviceQueueGlobalPriorityCreateInfoKHR *pObj);
 
 #define RADV_BORDER_COLOR_COUNT       4096
 #define RADV_BORDER_COLOR_BUFFER_SIZE (sizeof(VkClearColorValue) * RADV_BORDER_COLOR_COUNT)
@@ -799,6 +878,14 @@ struct radv_notifier {
    thrd_t thread;
 };
 
+struct radv_memory_trace_data {
+   /* ID of the PTE update event in ftrace data */
+   uint16_t ftrace_update_ptes_id;
+
+   uint32_t num_cpus;
+   int *pipe_fds;
+};
+
 struct radv_rra_accel_struct_data {
    VkEvent build_event;
    uint64_t va;
@@ -819,6 +906,24 @@ struct radv_rra_trace_data {
    struct hash_table_u64 *accel_struct_vas;
    simple_mtx_t data_mtx;
    bool validate_as;
+   bool copy_after_build;
+   uint32_t copy_memory_index;
+};
+
+enum radv_dispatch_table {
+   RADV_DEVICE_DISPATCH_TABLE,
+   RADV_APP_DISPATCH_TABLE,
+   RADV_RGP_DISPATCH_TABLE,
+   RADV_RRA_DISPATCH_TABLE,
+   RADV_RMV_DISPATCH_TABLE,
+   RADV_DISPATCH_TABLE_COUNT,
+};
+
+struct radv_layer_dispatch_tables {
+   struct vk_device_dispatch_table app;
+   struct vk_device_dispatch_table rgp;
+   struct vk_device_dispatch_table rra;
+   struct vk_device_dispatch_table rmv;
 };
 
 struct radv_device {
@@ -826,6 +931,8 @@ struct radv_device {
 
    struct radv_instance *instance;
    struct radeon_winsys *ws;
+
+   struct radv_layer_dispatch_tables layer_dispatch;
 
    struct radeon_winsys_ctx *hw_ctx[RADV_NUM_HW_CTX];
    struct radv_meta_state meta_state;
@@ -908,6 +1015,9 @@ struct radv_device {
    /* Thread trace. */
    struct ac_thread_trace_data thread_trace;
 
+   /* Memory trace. */
+   struct radv_memory_trace_data memory_trace;
+
    /* SPM. */
    struct ac_spm_trace_data spm_trace;
 
@@ -915,7 +1025,7 @@ struct radv_device {
    struct radv_rra_trace_data rra_trace;
 
    /* Trap handler. */
-   struct radv_trap_handler_shader *trap_handler_shader;
+   struct radv_shader *trap_handler_shader;
    struct radeon_winsys_bo *tma_bo; /* Trap Memory Address */
    uint32_t *tma_ptr;
 
@@ -944,13 +1054,14 @@ struct radv_device {
    struct radv_shader_part *simple_vs_prologs[MAX_VERTEX_ATTRIBS];
    struct radv_shader_part *instance_rate_vs_prologs[816];
 
+   /* PS epilogs */
+   struct u_rwlock ps_epilogs_lock;
+   struct hash_table *ps_epilogs;
+
    simple_mtx_t trace_mtx;
 
    /* Whether per-vertex VRS is forced. */
    bool force_vrs_enabled;
-
-   /* Whether shaders created through application entrypoints are considered internal. */
-   bool app_shaders_internal;
 
    simple_mtx_t pstate_mtx;
    unsigned pstate_cnt;
@@ -966,6 +1077,11 @@ struct radv_device {
    struct radeon_cmdbuf **perf_counter_lock_cs;
 
    bool uses_device_generated_commands;
+
+   bool uses_shadow_regs;
+
+   struct hash_table *rt_handles;
+   simple_mtx_t rt_handles_mtx;
 };
 
 bool radv_device_set_pstate(struct radv_device *device, bool enable);
@@ -1138,7 +1254,8 @@ enum radv_dynamic_state_bits {
    RADV_DYNAMIC_COLOR_BLEND_ENABLE = 1ull << 42,
    RADV_DYNAMIC_RASTERIZATION_SAMPLES = 1ull << 43,
    RADV_DYNAMIC_LINE_RASTERIZATION_MODE = 1ull << 44,
-   RADV_DYNAMIC_ALL = (1ull << 45) - 1,
+   RADV_DYNAMIC_COLOR_BLEND_EQUATION = 1ull << 45,
+   RADV_DYNAMIC_ALL = (1ull << 46) - 1,
 };
 
 enum radv_cmd_dirty_bits {
@@ -1189,13 +1306,16 @@ enum radv_cmd_dirty_bits {
    RADV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_ENABLE = 1ull << 42,
    RADV_CMD_DIRTY_DYNAMIC_RASTERIZATION_SAMPLES = 1ull << 43,
    RADV_CMD_DIRTY_DYNAMIC_LINE_RASTERIZATION_MODE = 1ull << 44,
-   RADV_CMD_DIRTY_DYNAMIC_ALL = (1ull << 45) - 1,
-   RADV_CMD_DIRTY_PIPELINE = 1ull << 45,
-   RADV_CMD_DIRTY_INDEX_BUFFER = 1ull << 46,
-   RADV_CMD_DIRTY_FRAMEBUFFER = 1ull << 47,
-   RADV_CMD_DIRTY_VERTEX_BUFFER = 1ull << 48,
-   RADV_CMD_DIRTY_STREAMOUT_BUFFER = 1ull << 49,
-   RADV_CMD_DIRTY_GUARDBAND = 1ull << 50,
+   RADV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_EQUATION = 1ull << 45,
+   RADV_CMD_DIRTY_DYNAMIC_ALL = (1ull << 46) - 1,
+   RADV_CMD_DIRTY_PIPELINE = 1ull << 46,
+   RADV_CMD_DIRTY_INDEX_BUFFER = 1ull << 47,
+   RADV_CMD_DIRTY_FRAMEBUFFER = 1ull << 48,
+   RADV_CMD_DIRTY_VERTEX_BUFFER = 1ull << 49,
+   RADV_CMD_DIRTY_STREAMOUT_BUFFER = 1ull << 50,
+   RADV_CMD_DIRTY_GUARDBAND = 1ull << 51,
+   RADV_CMD_DIRTY_RBPLUS = 1ull << 52,
+   RADV_CMD_DIRTY_NGG_QUERY = 1ull << 53,
 };
 
 enum radv_cmd_flush_bits {
@@ -1277,25 +1397,6 @@ struct radv_streamout_state {
    bool streamout_enabled;
 };
 
-struct radv_viewport_state {
-   uint32_t count;
-   VkViewport viewports[MAX_VIEWPORTS];
-   struct {
-      float scale[3];
-      float translate[3];
-   } xform[MAX_VIEWPORTS];
-};
-
-struct radv_scissor_state {
-   uint32_t count;
-   VkRect2D scissors[MAX_SCISSORS];
-};
-
-struct radv_discard_rectangle_state {
-   uint32_t count;
-   VkRect2D rectangles[MAX_DISCARD_RECTANGLES];
-};
-
 struct radv_sample_locations_state {
    VkSampleCountFlagBits per_pixel;
    VkExtent2D grid_size;
@@ -1304,128 +1405,23 @@ struct radv_sample_locations_state {
 };
 
 struct radv_dynamic_state {
+   struct vk_dynamic_graphics_state vk;
+
    /**
     * Bitmask of (1ull << VK_DYNAMIC_STATE_*).
     * Defines the set of saved dynamic state.
     */
    uint64_t mask;
 
-   struct radv_viewport_state viewport;
-
-   struct radv_scissor_state scissor;
-
-   float line_width;
-
-   struct {
-      float bias;
-      float clamp;
-      float slope;
-   } depth_bias;
-
-   float blend_constants[4];
-
-   struct {
-      float min;
-      float max;
-   } depth_bounds;
-
-   struct {
-      uint32_t front;
-      uint32_t back;
-   } stencil_compare_mask;
-
-   struct {
-      uint32_t front;
-      uint32_t back;
-   } stencil_write_mask;
-
    struct {
       struct {
-         VkStencilOp fail_op;
-         VkStencilOp pass_op;
-         VkStencilOp depth_fail_op;
-         VkCompareOp compare_op;
-      } front;
-
-      struct {
-         VkStencilOp fail_op;
-         VkStencilOp pass_op;
-         VkStencilOp depth_fail_op;
-         VkCompareOp compare_op;
-      } back;
-   } stencil_op;
-
-   struct {
-      uint32_t front;
-      uint32_t back;
-   } stencil_reference;
-
-   struct radv_discard_rectangle_state discard_rectangle;
+         float scale[3];
+         float translate[3];
+      } xform[MAX_VIEWPORTS];
+   } hw_vp;
 
    struct radv_sample_locations_state sample_location;
-
-   struct {
-      uint32_t factor;
-      uint16_t pattern;
-   } line_stipple;
-
-   VkCullModeFlags cull_mode;
-   VkFrontFace front_face;
-   unsigned primitive_topology;
-
-   bool depth_test_enable;
-   bool depth_write_enable;
-   VkCompareOp depth_compare_op;
-   bool depth_bounds_test_enable;
-   bool stencil_test_enable;
-
-   struct {
-      VkExtent2D size;
-      VkFragmentShadingRateCombinerOpKHR combiner_ops[2];
-   } fragment_shading_rate;
-
-   bool depth_bias_enable;
-   bool primitive_restart_enable;
-   bool rasterizer_discard_enable;
-
-   unsigned logic_op;
-
-   uint32_t color_write_enable;
-
-   uint32_t patch_control_points;
-
-   uint32_t polygon_mode;
-
-   VkTessellationDomainOrigin tess_domain_origin;
-
-   bool logic_op_enable;
-
-   bool stippled_line_enable;
-
-   bool alpha_to_coverage_enable;
-
-   uint16_t sample_mask;
-
-   bool depth_clip_enable;
-
-   VkConservativeRasterizationModeEXT conservative_rast_mode;
-
-   bool depth_clip_negative_one_to_one;
-
-   VkProvokingVertexModeEXT provoking_vertex_mode;
-
-   bool depth_clamp_enable;
-
-   uint32_t color_write_mask;
-
-   uint32_t color_blend_enable;
-
-   VkSampleCountFlagBits rasterization_samples;
-
-   VkLineRasterizationModeEXT line_rasterization_mode;
 };
-
-extern const struct radv_dynamic_state default_dynamic_state;
 
 const char *radv_get_debug_option_name(int id);
 
@@ -1524,7 +1520,6 @@ struct radv_descriptor_state {
    uint32_t dirty;
    uint32_t valid;
    struct radv_push_descriptor_set push_set;
-   bool push_dirty;
    uint32_t dynamic_buffers[4 * MAX_DYNAMIC_BUFFERS];
    uint64_t descriptor_buffers[MAX_SETS];
 };
@@ -1569,14 +1564,11 @@ struct radv_cmd_state {
    struct radv_rendering_state render;
 
    /* Index buffer */
-   struct radv_buffer *index_buffer;
-   uint64_t index_offset;
    uint32_t index_type;
    uint32_t max_index_count;
    uint64_t index_va;
    int32_t last_index_type;
 
-   int32_t last_primitive_reset_en;
    uint32_t last_primitive_reset_index;
    enum radv_cmd_flush_bits flush_bits;
    unsigned active_occlusion_queries;
@@ -1624,9 +1616,7 @@ struct radv_cmd_state {
    enum rgp_flush_bits sqtt_flush_bits;
 
    /* NGG culling state. */
-   uint32_t last_nggc_settings;
-   int8_t last_nggc_settings_sgpr_idx;
-   bool last_nggc_skip;
+   bool has_nggc;
 
    /* Mesh shading state. */
    bool mesh_shading;
@@ -1645,6 +1635,8 @@ struct radv_cmd_state {
    uint32_t vbo_misaligned_mask_invalid;
    uint32_t vbo_bound_mask;
 
+   struct radv_shader_part *emitted_ps_epilog;
+
    /* Per-vertex VRS state. */
    uint32_t last_vrs_rates;
    int8_t last_vrs_rates_sgpr_idx;
@@ -1658,6 +1650,8 @@ struct radv_cmd_state {
    /* Tessellation info when patch control points is dynamic. */
    unsigned tess_num_patches;
    unsigned tess_lds_size;
+
+   unsigned col_format_non_compacted;
 
    /* Binning state */
    unsigned last_pa_sc_binner_cntl_0;
@@ -1749,9 +1743,46 @@ struct radv_cmd_buffer {
     * Bitmask of pending active query flushes.
     */
    enum radv_cmd_flush_bits active_query_flush_bits;
+
+   struct {
+      struct radv_video_session *vid;
+      struct radv_video_session_params *params;
+   } video;
 };
 
 extern const struct vk_command_buffer_ops radv_cmd_buffer_ops;
+
+struct radv_dispatch_info {
+   /**
+    * Determine the layout of the grid (in block units) to be used.
+    */
+   uint32_t blocks[3];
+
+   /**
+    * A starting offset for the grid. If unaligned is set, the offset
+    * must still be aligned.
+    */
+   uint32_t offsets[3];
+
+   /**
+    * Whether it's an unaligned compute dispatch.
+    */
+   bool unaligned;
+
+   /**
+    * Whether waves must be launched in order.
+    */
+   bool ordered;
+
+   /**
+    * Indirect compute parameters resource.
+    */
+   struct radeon_winsys_bo *indirect;
+   uint64_t va;
+};
+
+void radv_compute_dispatch(struct radv_cmd_buffer *cmd_buffer,
+                           const struct radv_dispatch_info *info);
 
 struct radv_image;
 struct radv_image_view;
@@ -1770,6 +1801,15 @@ void si_write_scissors(struct radeon_cmdbuf *cs, int count, const VkRect2D *scis
 
 void si_write_guardband(struct radeon_cmdbuf *cs, int count, const VkViewport *viewports,
                         unsigned rast_prim, unsigned polygon_mode, float line_width);
+
+VkResult radv_create_shadow_regs_preamble(const struct radv_device *device,
+                                          struct radv_queue_state *queue_state);
+void radv_destroy_shadow_regs_preamble(struct radv_queue_state *queue_state,
+                                       struct radeon_winsys *ws);
+void radv_emit_shadow_regs_preamble(struct radeon_cmdbuf *cs, const struct radv_device *device,
+                                    struct radv_queue_state *queue_state);
+VkResult radv_init_shadowed_regs_buffer_state(const struct radv_device *device,
+                                              struct radv_queue *queue);
 
 uint32_t si_get_ia_multi_vgt_param(struct radv_cmd_buffer *cmd_buffer, bool instanced_draw,
                                    bool indirect_draw, bool count_from_stream_output,
@@ -1807,7 +1847,29 @@ unsigned radv_instance_rate_prolog_index(unsigned num_attributes, uint32_t insta
 uint32_t radv_hash_vs_prolog(const void *key_);
 bool radv_cmp_vs_prolog(const void *a_, const void *b_);
 
+uint32_t radv_hash_ps_epilog(const void *key_);
+bool radv_cmp_ps_epilog(const void *a_, const void *b_);
+
+struct radv_ps_epilog_state
+{
+   uint8_t color_attachment_count;
+   VkFormat color_attachment_formats[MAX_RTS];
+
+   uint32_t color_write_mask;
+   uint32_t color_blend_enable;
+
+   bool mrt0_is_dual_src;
+   uint8_t need_src_alpha;
+};
+
+struct radv_ps_epilog_key radv_generate_ps_epilog_key(const struct radv_graphics_pipeline *pipeline,
+                                                      const struct radv_ps_epilog_state *state,
+                                                      bool disable_mrt_compaction);
+
 void radv_cmd_buffer_reset_rendering(struct radv_cmd_buffer *cmd_buffer);
+bool radv_cmd_buffer_upload_alloc_aligned(struct radv_cmd_buffer *cmd_buffer, unsigned size,
+                                          unsigned alignment,
+                                          unsigned *out_offset, void **ptr);
 bool radv_cmd_buffer_upload_alloc(struct radv_cmd_buffer *cmd_buffer, unsigned size,
                                   unsigned *out_offset, void **ptr);
 bool radv_cmd_buffer_upload_data(struct radv_cmd_buffer *cmd_buffer, unsigned size,
@@ -1822,11 +1884,20 @@ void radv_cmd_buffer_clear_attachment(struct radv_cmd_buffer *cmd_buffer,
 void radv_cmd_buffer_clear_rendering(struct radv_cmd_buffer *cmd_buffer,
                                      const VkRenderingInfo *render_info);
 void radv_cmd_buffer_resolve_rendering(struct radv_cmd_buffer *cmd_buffer);
-void radv_cmd_buffer_resolve_rendering_cs(struct radv_cmd_buffer *cmd_buffer);
+void radv_cmd_buffer_resolve_rendering_cs(struct radv_cmd_buffer *cmd_buffer,
+                                          struct radv_image_view *src_iview,
+                                          VkImageLayout src_layout,
+                                          struct radv_image_view *dst_iview,
+                                          VkImageLayout dst_layout,
+                                          const VkImageResolve2 *region);
 void radv_depth_stencil_resolve_rendering_cs(struct radv_cmd_buffer *cmd_buffer,
                                              VkImageAspectFlags aspects,
                                              VkResolveModeFlagBits resolve_mode);
-void radv_cmd_buffer_resolve_rendering_fs(struct radv_cmd_buffer *cmd_buffer);
+void  radv_cmd_buffer_resolve_rendering_fs(struct radv_cmd_buffer *cmd_buffer,
+                                           struct radv_image_view *src_iview,
+                                           VkImageLayout src_layout,
+                                           struct radv_image_view *dst_iview,
+                                           VkImageLayout dst_layout);
 void radv_depth_stencil_resolve_rendering_fs(struct radv_cmd_buffer *cmd_buffer,
                                              VkImageAspectFlags aspects,
                                              VkResolveModeFlagBits resolve_mode);
@@ -1930,8 +2001,6 @@ radv_get_viewport_xform(const VkViewport *viewport, float scale[3], float transl
  */
 void radv_unaligned_dispatch(struct radv_cmd_buffer *cmd_buffer, uint32_t x, uint32_t y,
                              uint32_t z);
-void radv_indirect_unaligned_dispatch(struct radv_cmd_buffer *cmd_buffer,
-                                      struct radeon_winsys_bo *bo, uint64_t va);
 
 void radv_indirect_dispatch(struct radv_cmd_buffer *cmd_buffer, struct radeon_winsys_bo *bo,
                             uint64_t va);
@@ -1954,22 +2023,26 @@ struct radv_event {
 #define RADV_HASH_SHADER_SPLIT_FMA             (1 << 17)
 #define RADV_HASH_SHADER_RT_WAVE64             (1 << 18)
 #define RADV_HASH_SHADER_NO_FMASK              (1 << 19)
+#define RADV_HASH_SHADER_NGG_STREAMOUT         (1 << 20)
 
+struct radv_ray_tracing_module;
 struct radv_pipeline_key;
 
 void radv_pipeline_stage_init(const VkPipelineShaderStageCreateInfo *sinfo,
                               struct radv_pipeline_stage *out_stage, gl_shader_stage stage);
 
 void radv_hash_shaders(unsigned char *hash, const struct radv_pipeline_stage *stages,
-                       const struct radv_pipeline_layout *layout,
+                       uint32_t stage_count, const struct radv_pipeline_layout *layout,
                        const struct radv_pipeline_key *key, uint32_t flags);
 
+void radv_hash_rt_stages(struct mesa_sha1 *ctx, const VkPipelineShaderStageCreateInfo *stages,
+                         unsigned stage_count);
+
 void radv_hash_rt_shaders(unsigned char *hash, const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
-                          uint32_t flags);
+                          const struct radv_pipeline_key *key,
+                          const struct radv_ray_tracing_module *groups, uint32_t flags);
 
 uint32_t radv_get_hash_flags(const struct radv_device *device, bool stats);
-
-bool radv_rt_pipeline_has_dynamic_stack_size(const VkRayTracingPipelineCreateInfoKHR *pCreateInfo);
 
 bool radv_enable_rt(const struct radv_physical_device *pdevice, bool rt_pipelines);
 
@@ -2041,14 +2114,6 @@ struct radv_pipeline_shader_stack_size {
    uint32_t non_recursive_size;
 };
 
-struct radv_pipeline_slab {
-   uint32_t ref_count;
-
-   union radv_shader_arena_block *alloc;
-};
-
-void radv_pipeline_slab_destroy(struct radv_device *device, struct radv_pipeline_slab *slab);
-
 enum radv_depth_clamp_mode {
    RADV_DEPTH_CLAMP_MODE_VIEWPORT = 0,       /* Clamp to the viewport min/max depth bounds */
    RADV_DEPTH_CLAMP_MODE_ZERO_TO_ONE = 1,    /* Clamp between 0.0f and 1.0f */
@@ -2061,9 +2126,7 @@ struct radv_pipeline {
 
    struct radv_device *device;
 
-   struct radv_pipeline_slab *slab;
-   struct radeon_winsys_bo *slab_bo;
-
+   bool is_internal;
    bool need_indirect_descriptor_sets;
    struct radv_shader *shaders[MESA_VULKAN_SHADER_STAGES];
    struct radv_shader *gs_copy_shader;
@@ -2083,67 +2146,69 @@ struct radv_pipeline {
    /* Pipeline layout info. */
    uint32_t push_constant_size;
    uint32_t dynamic_offset_count;
+};
 
-   /* For graphics pipeline library */
-   bool retain_shaders;
-   struct {
-      nir_shader *nir;
-   } retained_shaders[MESA_VULKAN_SHADER_STAGES];
+struct radv_sqtt_shaders_reloc {
+   struct radeon_winsys_bo *bo;
+   union radv_shader_arena_block *alloc;
+   uint64_t va[MESA_VULKAN_SHADER_STAGES];
 };
 
 struct radv_graphics_pipeline {
    struct radv_pipeline base;
 
-   VkShaderStageFlags active_stages;
-
-   struct radv_dynamic_state dynamic_state;
-
-   struct radv_vs_input_state vs_input_state;
-
-   uint64_t dynamic_states;
-   struct radv_multisample_state ms;
-   struct radv_vrs_state vrs;
-   unsigned esgs_ring_size;
-   unsigned gsvs_ring_size;
-   uint32_t vtx_base_sgpr;
-   struct radv_ia_multi_vgt_param_helpers ia_multi_vgt_param;
-   uint8_t vtx_emit_num;
-   uint64_t needed_dynamic_state;
-   bool disable_dual_quad;
-   unsigned cb_blend_control[MAX_RTS];
-   unsigned sx_mrt_blend_opt[MAX_RTS];
-   uint32_t binding_stride[MAX_VBS];
-   uint8_t attrib_bindings[MAX_VERTEX_ATTRIBS];
-   uint32_t attrib_ends[MAX_VERTEX_ATTRIBS];
-   uint32_t attrib_index_offset[MAX_VERTEX_ATTRIBS];
-   uint8_t last_vertex_attrib_bit;
-   uint8_t next_vertex_stage : 8;
-   uint32_t vb_desc_usage_mask;
-   uint32_t vb_desc_alloc_size;
-   uint32_t vgt_tf_param;
-   uint32_t pa_sc_mode_cntl_1;
-   uint32_t db_render_control;
-
-   /* Last pre-PS API stage */
-   gl_shader_stage last_vgt_api_stage;
-   struct radv_userdata_info *last_vgt_api_stage_locs;
-
-   /* Used for rbplus */
-   uint32_t col_format_non_compacted;
-
-   bool disable_out_of_order_rast_for_occlusion;
    bool uses_drawid;
    bool uses_baseinstance;
    bool use_per_attribute_vb_descs;
    bool can_use_simple_input;
    bool uses_user_sample_locations;
-
+   bool need_null_export_workaround;
    /* Whether the pipeline forces per-vertex VRS (GFX10.3+). */
    bool force_vrs_per_vertex;
 
    /* Whether the pipeline uses NGG (GFX10+). */
    bool is_ngg;
    bool has_ngg_culling;
+   /* shortcuts for pipeline bind */
+   bool has_pv_sgpr;
+   bool has_streamout;
+   bool has_dynamic_samples;
+   bool has_sample_positions;
+
+   uint8_t vtx_emit_num;
+
+   unsigned esgs_ring_size;
+   unsigned gsvs_ring_size;
+   uint32_t vtx_base_sgpr;
+   uint64_t dynamic_states;
+   uint64_t needed_dynamic_state;
+
+   VkShaderStageFlags active_stages;
+
+   /* Used for rbplus */
+   uint32_t col_format_non_compacted;
+
+   struct radv_dynamic_state dynamic_state;
+
+   struct radv_vs_input_state vs_input_state;
+
+   struct radv_multisample_state ms;
+   struct radv_vrs_state vrs;
+   struct radv_ia_multi_vgt_param_helpers ia_multi_vgt_param;
+   uint32_t binding_stride[MAX_VBS];
+   uint8_t attrib_bindings[MAX_VERTEX_ATTRIBS];
+   uint32_t attrib_ends[MAX_VERTEX_ATTRIBS];
+   uint32_t attrib_index_offset[MAX_VERTEX_ATTRIBS];
+   uint32_t vb_desc_usage_mask;
+   uint32_t vb_desc_alloc_size;
+   uint8_t last_vertex_attrib_bit;
+   uint8_t next_vertex_stage;
+   uint32_t pa_sc_mode_cntl_1;
+   uint32_t db_render_control;
+
+   /* Last pre-PS API stage */
+   gl_shader_stage last_vgt_api_stage;
+   struct radv_userdata_info *last_vgt_api_stage_locs;
 
    /* Not NULL if graphics pipeline uses streamout. */
    struct radv_shader *streamout_shader;
@@ -2158,12 +2223,27 @@ struct radv_graphics_pipeline {
 
    /* Custom blend mode for internal operations. */
    unsigned custom_blend_mode;
+
+   /* For graphics pipeline library */
+   bool retain_shaders;
+   struct {
+      nir_shader *nir;
+      unsigned char shader_sha1[SHA1_DIGEST_LENGTH];
+   } retained_shaders[MESA_VULKAN_SHADER_STAGES];
+
+   /* For relocation of shaders with RGP. */
+   struct radv_sqtt_shaders_reloc *sqtt_shaders_reloc;
 };
 
 struct radv_compute_pipeline {
    struct radv_pipeline base;
 
    bool cs_regalloc_hang_bug;
+};
+
+struct radv_ray_tracing_module {
+   struct radv_pipeline_group_handle handle;
+   struct radv_pipeline_shader_stack_size stack_size;
 };
 
 struct radv_library_pipeline {
@@ -2175,11 +2255,13 @@ struct radv_library_pipeline {
    unsigned stage_count;
    VkPipelineShaderStageCreateInfo *stages;
    unsigned group_count;
-   VkRayTracingShaderGroupCreateInfoKHR *groups;
+   VkRayTracingShaderGroupCreateInfoKHR *group_infos;
    VkPipelineShaderStageModuleIdentifierCreateInfoEXT *identifiers;
    struct {
       uint8_t sha1[SHA1_DIGEST_LENGTH];
    } *hashes;
+
+   struct radv_ray_tracing_module groups[];
 };
 
 struct radv_graphics_lib_pipeline {
@@ -2195,10 +2277,9 @@ struct radv_graphics_lib_pipeline {
 struct radv_ray_tracing_pipeline {
    struct radv_compute_pipeline base;
 
-   struct radv_pipeline_group_handle *group_handles;
-   struct radv_pipeline_shader_stack_size *stack_sizes;
    uint32_t group_count;
-   bool dynamic_stack_size;
+   uint32_t stack_size;
+   struct radv_ray_tracing_module groups[];
 };
 
 #define RADV_DECL_PIPELINE_DOWNCAST(pipe_type, pipe_enum)            \
@@ -2222,7 +2303,6 @@ struct radv_pipeline_stage {
       const struct vk_object_base *object;
       const char *data;
       uint32_t size;
-      unsigned char sha1[20];
    } spirv;
 
    const char *entrypoint;
@@ -2292,6 +2372,10 @@ VkResult radv_compute_pipeline_create(VkDevice _device, VkPipelineCache _cache,
                                       const VkComputePipelineCreateInfo *pCreateInfo,
                                       const VkAllocationCallbacks *pAllocator,
                                       VkPipeline *pPipeline);
+
+bool radv_pipeline_capture_shaders(const struct radv_device *device, VkPipelineCreateFlags flags);
+bool radv_pipeline_capture_shader_stats(const struct radv_device *device,
+                                        VkPipelineCreateFlags flags);
 
 void radv_pipeline_destroy(struct radv_device *device, struct radv_pipeline *pipeline,
                            const VkAllocationCallbacks *allocator);
@@ -2670,6 +2754,9 @@ struct radv_image_view {
     * This has a few differences for cube maps (e.g. type).
     */
    union radv_descriptor storage_descriptor;
+
+   /* Block-compressed image views on GFX10+. */
+   struct ac_surf_nbc_view nbc_view;
 };
 
 struct radv_image_create_info {
@@ -2686,7 +2773,7 @@ radv_image_create_layout(struct radv_device *device, struct radv_image_create_in
                          struct radv_image *image);
 
 VkResult radv_image_create(VkDevice _device, const struct radv_image_create_info *info,
-                           const VkAllocationCallbacks *alloc, VkImage *pImage);
+                           const VkAllocationCallbacks *alloc, VkImage *pImage, bool is_internal);
 
 bool radv_are_formats_dcc_compatible(const struct radv_physical_device *pdev, const void *pNext,
                                      VkFormat format, VkImageCreateFlags flags,
@@ -2724,21 +2811,6 @@ void radv_image_view_finish(struct radv_image_view *iview);
 
 VkFormat radv_get_aspect_format(struct radv_image *image, VkImageAspectFlags mask);
 
-struct radv_sampler_ycbcr_conversion_state {
-   VkFormat format;
-   VkSamplerYcbcrModelConversion ycbcr_model;
-   VkSamplerYcbcrRange ycbcr_range;
-   VkComponentMapping components;
-   VkChromaLocation chroma_offsets[2];
-   VkFilter chroma_filter;
-};
-
-struct radv_sampler_ycbcr_conversion {
-   struct vk_object_base base;
-   /* The state is hashed for the descriptor set layout. */
-   struct radv_sampler_ycbcr_conversion_state state;
-};
-
 struct radv_buffer_view {
    struct vk_object_base base;
    struct radeon_winsys_bo *bo;
@@ -2761,7 +2833,7 @@ radv_image_extent_compare(const struct radv_image *image, const VkExtent3D *exte
 struct radv_sampler {
    struct vk_object_base base;
    uint32_t state[4];
-   struct radv_sampler_ycbcr_conversion *ycbcr_sampler;
+   struct vk_ycbcr_conversion *ycbcr_sampler;
    uint32_t border_color_slot;
 };
 
@@ -2813,6 +2885,49 @@ void radv_pc_begin_query(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_quer
 void radv_pc_end_query(struct radv_cmd_buffer *cmd_buffer, struct radv_pc_query_pool *pool,
                        uint64_t va);
 void radv_pc_get_results(const struct radv_pc_query_pool *pc_pool, const uint64_t *data, void *out);
+
+#define VL_MACROBLOCK_WIDTH 16
+#define VL_MACROBLOCK_HEIGHT 16
+
+struct radv_vid_mem {
+   struct radv_device_memory *mem;
+   VkDeviceSize       offset;
+   VkDeviceSize       size;
+};
+
+struct radv_video_session {
+   struct vk_video_session vk;
+
+   uint32_t stream_handle;
+   unsigned stream_type;
+   bool interlaced;
+   enum {
+      DPB_MAX_RES = 0,
+      DPB_DYNAMIC_TIER_1,
+      DPB_DYNAMIC_TIER_2
+   } dpb_type;
+   unsigned db_alignment;
+
+   struct radv_vid_mem sessionctx;
+   struct radv_vid_mem ctx;
+
+   unsigned dbg_frame_cnt;
+};
+
+struct radv_video_session_params {
+   struct vk_video_session_parameters vk;
+};
+
+/* needed for ac_gpu_info codecs */
+#define RADV_VIDEO_FORMAT_UNKNOWN 0
+#define RADV_VIDEO_FORMAT_MPEG12 1   /**< MPEG1, MPEG2 */
+#define RADV_VIDEO_FORMAT_MPEG4 2   /**< DIVX, XVID */
+#define RADV_VIDEO_FORMAT_VC1 3      /**< WMV */
+#define RADV_VIDEO_FORMAT_MPEG4_AVC 4/**< H.264 */
+#define RADV_VIDEO_FORMAT_HEVC 5     /**< H.265 */
+#define RADV_VIDEO_FORMAT_JPEG 6     /**< JPEG */
+#define RADV_VIDEO_FORMAT_VP9 7      /**< VP9 */
+#define RADV_VIDEO_FORMAT_AV1 8      /**< AV1 */
 
 bool radv_queue_internal_submit(struct radv_queue *queue, struct radeon_cmdbuf *cs);
 
@@ -2866,6 +2981,8 @@ struct radv_shader_info;
 void radv_nir_shader_info_pass(struct radv_device *device, const struct nir_shader *nir,
                                const struct radv_pipeline_layout *layout,
                                const struct radv_pipeline_key *pipeline_key,
+                               const enum radv_pipeline_type pipeline_type,
+                               bool consider_force_vrs,
                                struct radv_shader_info *info);
 
 void radv_nir_shader_info_init(struct radv_shader_info *info);
@@ -2898,6 +3015,64 @@ void radv_rra_trace_finish(VkDevice vk_device, struct radv_rra_trace_data *data)
 
 bool radv_sdma_copy_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image,
                           struct radv_buffer *buffer, const VkBufferImageCopy2 *region);
+
+void radv_memory_trace_init(struct radv_device *device);
+void radv_rmv_log_bo_allocate(struct radv_device *device, struct radeon_winsys_bo *bo,
+                              uint32_t size, bool is_internal);
+void radv_rmv_log_bo_destroy(struct radv_device *device, struct radeon_winsys_bo *bo);
+void radv_rmv_log_heap_create(struct radv_device *device, VkDeviceMemory heap, bool is_internal,
+                              VkMemoryAllocateFlags alloc_flags);
+void radv_rmv_log_buffer_bind(struct radv_device *device, VkBuffer _buffer);
+void radv_rmv_log_image_create(struct radv_device *device, const VkImageCreateInfo *create_info,
+                               bool is_internal, VkImage _image);
+void radv_rmv_log_image_bind(struct radv_device *device, VkImage _image);
+void radv_rmv_log_query_pool_create(struct radv_device *device, VkQueryPool pool, bool is_internal);
+void radv_rmv_log_command_buffer_bo_create(struct radv_device *device, struct radeon_winsys_bo *bo,
+                                           uint32_t executable_size, uint32_t data_size,
+                                           uint32_t scratch_size);
+void radv_rmv_log_command_buffer_bo_destroy(struct radv_device *device,
+                                            struct radeon_winsys_bo *bo);
+void radv_rmv_log_border_color_palette_create(struct radv_device *device,
+                                              struct radeon_winsys_bo *bo);
+void radv_rmv_log_border_color_palette_destroy(struct radv_device *device,
+                                               struct radeon_winsys_bo *bo);
+void radv_rmv_log_sparse_add_residency(struct radv_device *device, struct radeon_winsys_bo *src_bo,
+                                       uint64_t offset);
+void radv_rmv_log_sparse_remove_residency(struct radv_device *device,
+                                          struct radeon_winsys_bo *src_bo, uint64_t offset);
+void radv_rmv_log_descriptor_pool_create(struct radv_device *device,
+                                         const VkDescriptorPoolCreateInfo *create_info,
+                                         VkDescriptorPool pool, bool is_internal);
+void radv_rmv_log_graphics_pipeline_create(struct radv_device *device, VkPipelineCreateFlags flags,
+                                           struct radv_pipeline *pipeline, bool is_internal);
+void radv_rmv_log_compute_pipeline_create(struct radv_device *device, VkPipelineCreateFlags flags,
+                                          struct radv_pipeline *pipeline, bool is_internal);
+void radv_rmv_log_event_create(struct radv_device *device, VkEvent event, VkEventCreateFlags flags,
+                               bool is_internal);
+void radv_rmv_log_resource_destroy(struct radv_device *device, uint64_t handle);
+void radv_rmv_log_submit(struct radv_device *device, enum amd_ip_type type);
+void radv_rmv_fill_device_info(struct radv_physical_device *device,
+                               struct vk_rmv_device_info *info);
+void radv_rmv_collect_trace_events(struct radv_device *device);
+void radv_memory_trace_finish(struct radv_device *device);
+
+VkResult radv_create_buffer(struct radv_device *device, const VkBufferCreateInfo *pCreateInfo,
+                            const VkAllocationCallbacks *pAllocator, VkBuffer *pBuffer,
+                            bool is_internal);
+VkResult radv_alloc_memory(struct radv_device *device, const VkMemoryAllocateInfo *pAllocateInfo,
+                           const VkAllocationCallbacks *pAllocator, VkDeviceMemory *pMem,
+                           bool is_internal);
+VkResult radv_create_query_pool(struct radv_device *device,
+                                const VkQueryPoolCreateInfo *pCreateInfo,
+                                const VkAllocationCallbacks *pAllocator, VkQueryPool *pQueryPool,
+                                bool is_internal);
+VkResult radv_create_descriptor_pool(struct radv_device *device,
+                                     const VkDescriptorPoolCreateInfo *pCreateInfo,
+                                     const VkAllocationCallbacks *pAllocator,
+                                     VkDescriptorPool *pDescriptorPool, bool is_internal);
+VkResult radv_create_event(struct radv_device *device, const VkEventCreateInfo *pCreateInfo,
+                           const VkAllocationCallbacks *pAllocator, VkEvent *pEvent,
+                           bool is_internal);
 
 /* radv_sqtt_layer_.c */
 struct radv_barrier_data {
@@ -2956,6 +3131,9 @@ void radv_describe_barrier_end(struct radv_cmd_buffer *cmd_buffer);
 void radv_describe_barrier_end_delayed(struct radv_cmd_buffer *cmd_buffer);
 void radv_describe_layout_transition(struct radv_cmd_buffer *cmd_buffer,
                                      const struct radv_barrier_data *barrier);
+
+void radv_sqtt_emit_relocated_shaders(struct radv_cmd_buffer *cmd_buffer,
+                                      struct radv_graphics_pipeline *pipeline);
 
 struct radv_indirect_command_layout {
    struct vk_object_base base;
@@ -3192,6 +3370,160 @@ si_translate_blend_logic_op(VkLogicOp op)
    }
 }
 
+static inline uint32_t
+si_translate_blend_function(VkBlendOp op)
+{
+   switch (op) {
+   case VK_BLEND_OP_ADD:
+      return V_028780_COMB_DST_PLUS_SRC;
+   case VK_BLEND_OP_SUBTRACT:
+      return V_028780_COMB_SRC_MINUS_DST;
+   case VK_BLEND_OP_REVERSE_SUBTRACT:
+      return V_028780_COMB_DST_MINUS_SRC;
+   case VK_BLEND_OP_MIN:
+      return V_028780_COMB_MIN_DST_SRC;
+   case VK_BLEND_OP_MAX:
+      return V_028780_COMB_MAX_DST_SRC;
+   default:
+      return 0;
+   }
+}
+
+static inline uint32_t
+si_translate_blend_factor(enum amd_gfx_level gfx_level, VkBlendFactor factor)
+{
+   switch (factor) {
+   case VK_BLEND_FACTOR_ZERO:
+      return V_028780_BLEND_ZERO;
+   case VK_BLEND_FACTOR_ONE:
+      return V_028780_BLEND_ONE;
+   case VK_BLEND_FACTOR_SRC_COLOR:
+      return V_028780_BLEND_SRC_COLOR;
+   case VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR:
+      return V_028780_BLEND_ONE_MINUS_SRC_COLOR;
+   case VK_BLEND_FACTOR_DST_COLOR:
+      return V_028780_BLEND_DST_COLOR;
+   case VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR:
+      return V_028780_BLEND_ONE_MINUS_DST_COLOR;
+   case VK_BLEND_FACTOR_SRC_ALPHA:
+      return V_028780_BLEND_SRC_ALPHA;
+   case VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA:
+      return V_028780_BLEND_ONE_MINUS_SRC_ALPHA;
+   case VK_BLEND_FACTOR_DST_ALPHA:
+      return V_028780_BLEND_DST_ALPHA;
+   case VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA:
+      return V_028780_BLEND_ONE_MINUS_DST_ALPHA;
+   case VK_BLEND_FACTOR_CONSTANT_COLOR:
+      return gfx_level >= GFX11 ? V_028780_BLEND_CONSTANT_COLOR_GFX11
+                                : V_028780_BLEND_CONSTANT_COLOR_GFX6;
+   case VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR:
+      return gfx_level >= GFX11 ? V_028780_BLEND_ONE_MINUS_CONSTANT_COLOR_GFX11
+                                 : V_028780_BLEND_ONE_MINUS_CONSTANT_COLOR_GFX6;
+   case VK_BLEND_FACTOR_CONSTANT_ALPHA:
+      return gfx_level >= GFX11 ? V_028780_BLEND_CONSTANT_ALPHA_GFX11
+                                 : V_028780_BLEND_CONSTANT_ALPHA_GFX6;
+   case VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA:
+      return gfx_level >= GFX11 ? V_028780_BLEND_ONE_MINUS_CONSTANT_ALPHA_GFX11
+                                 : V_028780_BLEND_ONE_MINUS_CONSTANT_ALPHA_GFX6;
+   case VK_BLEND_FACTOR_SRC_ALPHA_SATURATE:
+      return V_028780_BLEND_SRC_ALPHA_SATURATE;
+   case VK_BLEND_FACTOR_SRC1_COLOR:
+      return gfx_level >= GFX11 ? V_028780_BLEND_SRC1_COLOR_GFX11 : V_028780_BLEND_SRC1_COLOR_GFX6;
+   case VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR:
+      return gfx_level >= GFX11 ? V_028780_BLEND_INV_SRC1_COLOR_GFX11
+                                 : V_028780_BLEND_INV_SRC1_COLOR_GFX6;
+   case VK_BLEND_FACTOR_SRC1_ALPHA:
+      return gfx_level >= GFX11 ? V_028780_BLEND_SRC1_ALPHA_GFX11 : V_028780_BLEND_SRC1_ALPHA_GFX6;
+   case VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA:
+      return gfx_level >= GFX11 ? V_028780_BLEND_INV_SRC1_ALPHA_GFX11
+                                 : V_028780_BLEND_INV_SRC1_ALPHA_GFX6;
+   default:
+      return 0;
+   }
+}
+
+static inline uint32_t
+si_translate_blend_opt_factor(VkBlendFactor factor, bool is_alpha)
+{
+   switch (factor) {
+   case VK_BLEND_FACTOR_ZERO:
+      return V_028760_BLEND_OPT_PRESERVE_NONE_IGNORE_ALL;
+   case VK_BLEND_FACTOR_ONE:
+      return V_028760_BLEND_OPT_PRESERVE_ALL_IGNORE_NONE;
+   case VK_BLEND_FACTOR_SRC_COLOR:
+      return is_alpha ? V_028760_BLEND_OPT_PRESERVE_A1_IGNORE_A0
+                      : V_028760_BLEND_OPT_PRESERVE_C1_IGNORE_C0;
+   case VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR:
+      return is_alpha ? V_028760_BLEND_OPT_PRESERVE_A0_IGNORE_A1
+                      : V_028760_BLEND_OPT_PRESERVE_C0_IGNORE_C1;
+   case VK_BLEND_FACTOR_SRC_ALPHA:
+      return V_028760_BLEND_OPT_PRESERVE_A1_IGNORE_A0;
+   case VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA:
+      return V_028760_BLEND_OPT_PRESERVE_A0_IGNORE_A1;
+   case VK_BLEND_FACTOR_SRC_ALPHA_SATURATE:
+      return is_alpha ? V_028760_BLEND_OPT_PRESERVE_ALL_IGNORE_NONE
+                      : V_028760_BLEND_OPT_PRESERVE_NONE_IGNORE_A0;
+   default:
+      return V_028760_BLEND_OPT_PRESERVE_NONE_IGNORE_NONE;
+   }
+}
+
+static inline uint32_t
+si_translate_blend_opt_function(VkBlendOp op)
+{
+   switch (op) {
+   case VK_BLEND_OP_ADD:
+      return V_028760_OPT_COMB_ADD;
+   case VK_BLEND_OP_SUBTRACT:
+      return V_028760_OPT_COMB_SUBTRACT;
+   case VK_BLEND_OP_REVERSE_SUBTRACT:
+      return V_028760_OPT_COMB_REVSUBTRACT;
+   case VK_BLEND_OP_MIN:
+      return V_028760_OPT_COMB_MIN;
+   case VK_BLEND_OP_MAX:
+      return V_028760_OPT_COMB_MAX;
+   default:
+      return V_028760_OPT_COMB_BLEND_DISABLED;
+   }
+}
+
+static inline bool
+si_blend_factor_uses_dst(VkBlendFactor factor)
+{
+   return factor == VK_BLEND_FACTOR_DST_COLOR || factor == VK_BLEND_FACTOR_DST_ALPHA ||
+          factor == VK_BLEND_FACTOR_SRC_ALPHA_SATURATE ||
+          factor == VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA ||
+          factor == VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
+}
+
+static inline bool
+radv_is_dual_src(VkBlendFactor factor)
+{
+   switch (factor) {
+   case VK_BLEND_FACTOR_SRC1_COLOR:
+   case VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR:
+   case VK_BLEND_FACTOR_SRC1_ALPHA:
+   case VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA:
+      return true;
+   default:
+      return false;
+   }
+}
+
+static inline void
+radv_normalize_blend_factor(VkBlendOp op, VkBlendFactor *src_factor, VkBlendFactor *dst_factor)
+{
+   if (op == VK_BLEND_OP_MIN || op == VK_BLEND_OP_MAX) {
+      *src_factor = VK_BLEND_FACTOR_ONE;
+      *dst_factor = VK_BLEND_FACTOR_ONE;
+   }
+}
+
+void si_blend_remove_dst(VkBlendOp *func, VkBlendFactor *src_factor, VkBlendFactor *dst_factor,
+                         VkBlendFactor expected_dst, VkBlendFactor replacement_src);
+
+bool radv_can_enable_dual_src(const struct vk_color_blend_attachment_state *att);
+
 uint32_t radv_get_tess_output_topology(const struct radv_graphics_pipeline *pipeline,
                                        VkTessellationDomainOrigin domain_origin);
 
@@ -3214,6 +3546,9 @@ radv_queue_ring(struct radv_queue *queue)
 {
    return radv_queue_family_to_ring(queue->device->physical_device, queue->state.qf);
 }
+
+/* radv_video */
+void radv_init_physical_device_decoder(struct radv_physical_device *pdevice);
 
 /**
  * Helper used for debugging compiler issues by enabling/disabling LLVM for a
@@ -3286,9 +3621,9 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(radv_query_pool, base, VkQueryPool,
                                VK_OBJECT_TYPE_QUERY_POOL)
 VK_DEFINE_NONDISP_HANDLE_CASTS(radv_sampler, base, VkSampler,
                                VK_OBJECT_TYPE_SAMPLER)
-VK_DEFINE_NONDISP_HANDLE_CASTS(radv_sampler_ycbcr_conversion, base,
-                               VkSamplerYcbcrConversion,
-                               VK_OBJECT_TYPE_SAMPLER_YCBCR_CONVERSION)
+
+VK_DEFINE_NONDISP_HANDLE_CASTS(radv_video_session, vk.base, VkVideoSessionKHR, VK_OBJECT_TYPE_VIDEO_SESSION_KHR)
+VK_DEFINE_NONDISP_HANDLE_CASTS(radv_video_session_params, vk.base, VkVideoSessionParametersKHR, VK_OBJECT_TYPE_VIDEO_SESSION_PARAMETERS_KHR)
 
 #ifdef __cplusplus
 }

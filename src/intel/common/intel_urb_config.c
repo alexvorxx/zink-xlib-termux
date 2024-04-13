@@ -85,7 +85,7 @@ intel_get_urb_config(const struct intel_device_info *devinfo,
     *    only 124KB (per bank). More detailed description available in "L3
     *    Cache" section of the B-Spec."
     */
-   if (devinfo->verx10 == 120) {
+   if (devinfo->verx10 == 120 && devinfo->has_compute_engine) {
       assert(devinfo->num_slices == 1);
       urb_size_kB -= 4 * devinfo->l3_banks;
    }
@@ -315,7 +315,7 @@ intel_get_mesh_urb_config(const struct intel_device_info *devinfo,
     * of entries, so we need to discount the space for constants for all of
     * them.  See 3DSTATE_URB_ALLOC_MESH and 3DSTATE_URB_ALLOC_TASK.
     */
-   const unsigned push_constant_kb = devinfo->max_constant_urb_size_kb;
+   const unsigned push_constant_kb = devinfo->mesh_max_constant_urb_size_kb;
    total_urb_kb -= push_constant_kb;
 
    /* TODO(mesh): Take push constant size as parameter instead of considering always

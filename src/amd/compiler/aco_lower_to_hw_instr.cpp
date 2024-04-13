@@ -655,7 +655,7 @@ emit_reduction(lower_context* ctx, aco_opcode op, ReduceOp reduce_op, unsigned c
                         Operand(PhysReg{tmp + i}, v1), Operand::c32(0xffffffffu),
                         Operand::c32(0xffffffffu))
                   .instr;
-            perm->vop3().opsel = 1; /* FI (Fetch Inactive) */
+            perm->valu().opsel = 1; /* FI (Fetch Inactive) */
          }
          bld.sop1(Builder::s_mov, Definition(exec, bld.lm), Operand::c64(UINT64_MAX));
 
@@ -789,7 +789,7 @@ emit_reduction(lower_context* ctx, aco_opcode op, ReduceOp reduce_op, unsigned c
                         Operand(PhysReg{tmp + i}, v1), Operand::c32(0xffffffffu),
                         Operand::c32(0xffffffffu))
                   .instr;
-            perm->vop3().opsel = 1; /* FI (Fetch Inactive) */
+            perm->valu().opsel = 1; /* FI (Fetch Inactive) */
          }
          emit_op(ctx, tmp, tmp, vtmp, PhysReg{0}, reduce_op, src.size());
 
@@ -839,6 +839,67 @@ emit_reduction(lower_context* ctx, aco_opcode op, ReduceOp reduce_op, unsigned c
 }
 
 void
+emit_gfx11_wave64_bpermute(Program* program, aco_ptr<Instruction>& instr, Builder& bld)
+{
+   /* Emulates proper bpermute on GFX11 in wave64 mode.
+    *
+    * Similar to emit_gfx10_wave64_bpermute, but uses the new
+    * v_permlane64_b32 instruction to swap data between lo and hi halves.
+    */
+
+   assert(program->gfx_level >= GFX11);
+   assert(program->wave_size == 64);
+
+   Definition dst = instr->definitions[0];
+   Definition tmp_exec = instr->definitions[1];
+   Definition clobber_scc = instr->definitions[2];
+   Operand tmp_op = instr->operands[0];
+   Operand index_x4 = instr->operands[1];
+   Operand input_data = instr->operands[2];
+   Operand same_half = instr->operands[3];
+
+   assert(dst.regClass() == v1);
+   assert(tmp_exec.regClass() == bld.lm);
+   assert(clobber_scc.isFixed() && clobber_scc.physReg() == scc);
+   assert(same_half.regClass() == bld.lm);
+   assert(tmp_op.regClass() == v1.as_linear());
+   assert(index_x4.regClass() == v1);
+   assert(input_data.regClass().type() == RegType::vgpr);
+   assert(input_data.bytes() <= 4);
+
+   Definition tmp_def(tmp_op.physReg(), tmp_op.regClass());
+
+   /* Permute the input within the same half-wave. */
+   bld.ds(aco_opcode::ds_bpermute_b32, dst, index_x4, input_data);
+
+   /* Save EXEC and enable all lanes. */
+   bld.sop1(aco_opcode::s_or_saveexec_b64, tmp_exec, clobber_scc, Definition(exec, s2),
+            Operand::c32(-1u), Operand(exec, s2));
+
+   /* Copy input data from other half to current half's linear VGPR. */
+   bld.vop1(aco_opcode::v_permlane64_b32, tmp_def, input_data);
+
+   /* Permute the input from the other half-wave, write to linear VGPR. */
+   bld.ds(aco_opcode::ds_bpermute_b32, tmp_def, index_x4, tmp_op);
+
+   /* Restore saved EXEC. */
+   bld.sop1(aco_opcode::s_mov_b64, Definition(exec, s2), Operand(tmp_exec.physReg(), s2));
+
+   /* Select correct permute result. */
+   bld.vop2_e64(aco_opcode::v_cndmask_b32, dst, tmp_op, Operand(dst.physReg(), dst.regClass()),
+                same_half);
+
+   /* RA assumes that the result is always in the low part of the register, so we have to shift,
+    * if it's not there already.
+    */
+   if (input_data.physReg().byte()) {
+      unsigned right_shift = input_data.physReg().byte() * 8;
+      bld.vop2(aco_opcode::v_lshrrev_b32, dst, Operand::c32(right_shift),
+               Operand(dst.physReg(), dst.regClass()));
+   }
+}
+
+void
 emit_gfx10_wave64_bpermute(Program* program, aco_ptr<Instruction>& instr, Builder& bld)
 {
    /* Emulates proper bpermute on GFX10 in wave64 mode.
@@ -848,7 +909,7 @@ emit_gfx10_wave64_bpermute(Program* program, aco_ptr<Instruction>& instr, Builde
     * manually swap the data between the two halves using two shared VGPRs.
     */
 
-   assert(program->gfx_level >= GFX10);
+   assert(program->gfx_level >= GFX10 && program->gfx_level <= GFX10_3);
    assert(program->wave_size == 64);
 
    unsigned shared_vgpr_reg_0 = align(program->config->num_vgprs, 4) + 256;
@@ -907,8 +968,9 @@ emit_gfx10_wave64_bpermute(Program* program, aco_ptr<Instruction>& instr, Builde
    /* Restore saved EXEC */
    bld.sop1(aco_opcode::s_mov_b64, Definition(exec, s2), Operand(tmp_exec.physReg(), s2));
 
-   /* RA assumes that the result is always in the low part of the register, so we have to shift, if
-    * it's not there already */
+   /* RA assumes that the result is always in the low part of the register, so we have to shift,
+    * if it's not there already.
+    */
    if (input_data.physReg().byte()) {
       unsigned right_shift = input_data.physReg().byte() * 8;
       bld.vop2(aco_opcode::v_lshrrev_b32, dst, Operand::c32(right_shift),
@@ -1040,6 +1102,33 @@ create_bperm(Builder& bld, uint8_t swiz[4], Definition dst, Operand src1,
 }
 
 void
+emit_v_mov_b16(Builder& bld, Definition dst, Operand op)
+{
+   /* v_mov_b16 uses 32bit inline constants. */
+   if (op.isConstant()) {
+      if (!op.isLiteral() && op.physReg() >= 240) {
+         /* v_add_f16 is smaller because it can use 16bit fp inline constants. */
+         Instruction* instr = bld.vop2_e64(aco_opcode::v_add_f16, dst, op, Operand::zero());
+         if (dst.physReg().byte() == 2)
+            instr->valu().opsel = 0x8;
+         return;
+      }
+      op = Operand::c32((int32_t)(int16_t)op.constantValue());
+   }
+
+   if (!dst.physReg().byte() && !op.physReg().byte()) {
+      bld.vop1(aco_opcode::v_mov_b16, dst, op);
+   } else {
+      // TODO: this can use VOP1 for vgpr0-127 with assembler support
+      Instruction* instr = bld.vop1_e64(aco_opcode::v_mov_b16, dst, op);
+      if (op.physReg().byte() == 2)
+         instr->valu().opsel |= 0x1;
+      if (dst.physReg().byte() == 2)
+         instr->valu().opsel |= 0x8;
+   }
+}
+
+void
 copy_constant(lower_context* ctx, Builder& bld, Definition dst, Operand op)
 {
    assert(op.bytes() == dst.bytes());
@@ -1056,12 +1145,20 @@ copy_constant(lower_context* ctx, Builder& bld, Definition dst, Operand op)
          else
             bld.vop1(aco_opcode::v_bfrev_b32, dst, Operand::c32(rev));
          return;
-      } else if (dst.regClass() == s1 && imm != 0) {
+      } else if (dst.regClass() == s1) {
          unsigned start = (ffs(imm) - 1) & 0x1f;
          unsigned size = util_bitcount(imm) & 0x1f;
-         if ((((1u << size) - 1u) << start) == imm) {
+         if (BITFIELD_RANGE(start, size) == imm) {
             bld.sop2(aco_opcode::s_bfm_b32, dst, Operand::c32(size), Operand::c32(start));
             return;
+         }
+         if (ctx->program->gfx_level >= GFX9) {
+            Operand op_lo = Operand::c32(int32_t(int16_t(imm)));
+            Operand op_hi = Operand::c32(int32_t(int16_t(imm >> 16)));
+            if (!op_lo.isLiteral() && !op_hi.isLiteral()) {
+               bld.sop2(aco_opcode::s_pack_ll_b32_b16, dst, op_lo, op_hi);
+               return;
+            }
          }
       }
    }
@@ -1074,6 +1171,15 @@ copy_constant(lower_context* ctx, Builder& bld, Definition dst, Operand op)
    } else if (dst.regClass() == s2) {
       /* s_ashr_i64 writes SCC, so we can't use it */
       assert(Operand::is_constant_representable(op.constantValue64(), 8, true, false));
+      uint64_t imm = op.constantValue64();
+      if (op.isLiteral()) {
+         unsigned start = (ffsll(imm) - 1) & 0x3f;
+         unsigned size = util_bitcount64(imm) & 0x3f;
+         if (BITFIELD64_RANGE(start, size) == imm) {
+            bld.sop2(aco_opcode::s_bfm_b64, dst, Operand::c32(size), Operand::c32(start));
+            return;
+         }
+      }
       bld.sop1(aco_opcode::s_mov_b64, dst, op);
    } else if (dst.regClass() == v2) {
       if (Operand::is_constant_representable(op.constantValue64(), 8, true, false)) {
@@ -1104,6 +1210,8 @@ copy_constant(lower_context* ctx, Builder& bld, Definition dst, Operand op)
          } else {
             bld.vop1_sdwa(aco_opcode::v_mov_b32, dst, op32);
          }
+      } else if (dst.regClass() == v2b && ctx->program->gfx_level >= GFX11) {
+         emit_v_mov_b16(bld, dst, op);
       } else if (dst.regClass() == v2b && use_sdwa && !op.isLiteral()) {
          if (op.constantValue() >= 0xfff0 || op.constantValue() <= 64) {
             /* use v_mov_b32 to avoid possible issues with denormal flushing or
@@ -1118,12 +1226,12 @@ copy_constant(lower_context* ctx, Builder& bld, Definition dst, Operand op)
          if (dst.physReg().byte() == 2) {
             Operand def_lo(dst.physReg().advance(-2), v2b);
             Instruction* instr = bld.vop3(aco_opcode::v_pack_b32_f16, dst, def_lo, op);
-            instr->vop3().opsel = 0;
+            instr->valu().opsel = 0;
          } else {
             assert(dst.physReg().byte() == 0);
             Operand def_hi(dst.physReg().advance(2), v2b);
             Instruction* instr = bld.vop3(aco_opcode::v_pack_b32_f16, dst, op, def_hi);
-            instr->vop3().opsel = 2;
+            instr->valu().opsel = 2;
          }
       } else if (can_use_perm) {
          uint8_t swiz[] = {4, 5, 6, 7};
@@ -1199,11 +1307,11 @@ addsub_subdword_gfx11(Builder& bld, Definition dst, Operand src0, Operand src1, 
    Instruction* instr =
       bld.vop3(sub ? aco_opcode::v_sub_u16_e64 : aco_opcode::v_add_u16_e64, dst, src0, src1).instr;
    if (src0.physReg().byte() == 2)
-      instr->vop3().opsel |= 0x1;
+      instr->valu().opsel |= 0x1;
    if (src1.physReg().byte() == 2)
-      instr->vop3().opsel |= 0x2;
+      instr->valu().opsel |= 0x2;
    if (dst.physReg().byte() == 2)
-      instr->vop3().opsel |= 0x8;
+      instr->valu().opsel |= 0x8;
 }
 
 bool
@@ -1278,7 +1386,7 @@ do_copy(lower_context* ctx, Builder& bld, const copy_operation& copy, bool* pres
          swiz[def.physReg().byte()] = op.physReg().byte();
          create_bperm(bld, swiz, def, op);
       } else if (def.regClass() == v2b && ctx->program->gfx_level >= GFX11) {
-         addsub_subdword_gfx11(bld, def, op, Operand::zero(), false);
+         emit_v_mov_b16(bld, def, op);
       } else if (def.regClass().is_subdword()) {
          bld.vop1_sdwa(aco_opcode::v_mov_b32, def, op);
       } else {
@@ -1447,7 +1555,7 @@ do_pack_2x16(lower_context* ctx, Builder& bld, Definition def, Operand lo, Opera
    if (can_use_pack) {
       Instruction* instr = bld.vop3(aco_opcode::v_pack_b32_f16, def, lo, hi);
       /* opsel: 0 = select low half, 1 = select high half. [0] = src0, [1] = src1 */
-      instr->vop3().opsel = hi.physReg().byte() | (lo.physReg().byte() >> 1);
+      instr->valu().opsel = hi.physReg().byte() | (lo.physReg().byte() >> 1);
       return;
    }
 
@@ -1515,9 +1623,9 @@ do_pack_2x16(lower_context* ctx, Builder& bld, Definition def, Operand lo, Opera
    /* either hi or lo are already placed correctly */
    if (ctx->program->gfx_level >= GFX11) {
       if (lo.physReg().reg() == def.physReg().reg())
-         addsub_subdword_gfx11(bld, def_hi, hi, Operand::zero(), false);
+         emit_v_mov_b16(bld, def_hi, hi);
       else
-         addsub_subdword_gfx11(bld, def_lo, lo, Operand::zero(), false);
+         emit_v_mov_b16(bld, def_lo, lo);
       return;
    } else if (ctx->program->gfx_level >= GFX8) {
       if (lo.physReg().reg() == def.physReg().reg())
@@ -2107,7 +2215,7 @@ lower_to_hw_instr(Program* program)
                if ((block->instructions.size() - 1 - instr_idx) <= 4 &&
                    block->instructions.back()->opcode == aco_opcode::s_endpgm) {
                   unsigned null_exp_dest =
-                     (ctx.program->stage.hw == HWStage::FS) ? 9 /* NULL */ : V_008DFC_SQ_EXP_POS;
+                     program->gfx_level >= GFX11 ? V_008DFC_SQ_EXP_MRT : V_008DFC_SQ_EXP_NULL;
                   bool ignore_early_exit = true;
 
                   for (unsigned k = instr_idx + 1; k < block->instructions.size(); ++k) {
@@ -2116,7 +2224,8 @@ lower_to_hw_instr(Program* program)
                          instr2->opcode == aco_opcode::p_logical_end)
                         continue;
                      else if (instr2->opcode == aco_opcode::exp &&
-                              instr2->exp().dest == null_exp_dest)
+                              instr2->exp().dest == null_exp_dest &&
+                              instr2->exp().enabled_mask == 0)
                         continue;
                      else if (instr2->opcode == aco_opcode::p_parallelcopy &&
                               instr2->definitions[0].isFixed() &&
@@ -2136,9 +2245,13 @@ lower_to_hw_instr(Program* program)
                   block = &program->blocks[block_idx];
 
                   bld.reset(discard_block);
-                  bld.exp(aco_opcode::exp, Operand(v1), Operand(v1), Operand(v1), Operand(v1), 0,
-                          program->gfx_level >= GFX11 ? V_008DFC_SQ_EXP_MRT : V_008DFC_SQ_EXP_NULL,
-                          false, true, true);
+                  unsigned target = V_008DFC_SQ_EXP_NULL;
+                  if (program->gfx_level >= GFX11)
+                     target =
+                        program->has_color_exports ? V_008DFC_SQ_EXP_MRT : V_008DFC_SQ_EXP_MRTZ;
+                  if (program->stage == fragment_fs)
+                     bld.exp(aco_opcode::exp, Operand(v1), Operand(v1), Operand(v1), Operand(v1),
+                             0, target, false, true, true);
                   if (should_dealloc_vgprs)
                      bld.sopp(aco_opcode::s_sendmsg, -1, sendmsg_dealloc_vgprs);
                   bld.sopp(aco_opcode::s_endpgm);
@@ -2193,13 +2306,16 @@ lower_to_hw_instr(Program* program)
                }
                break;
             }
-            case aco_opcode::p_bpermute: {
-               if (ctx.program->gfx_level <= GFX7)
-                  emit_gfx6_bpermute(program, instr, bld);
-               else if (ctx.program->gfx_level >= GFX10 && ctx.program->wave_size == 64)
-                  emit_gfx10_wave64_bpermute(program, instr, bld);
-               else
-                  unreachable("Current hardware supports ds_bpermute, don't emit p_bpermute.");
+            case aco_opcode::p_bpermute_gfx6: {
+               emit_gfx6_bpermute(program, instr, bld);
+               break;
+            }
+            case aco_opcode::p_bpermute_gfx10w64: {
+               emit_gfx10_wave64_bpermute(program, instr, bld);
+               break;
+            }
+            case aco_opcode::p_bpermute_gfx11w64: {
+               emit_gfx11_wave64_bpermute(program, instr, bld);
                break;
             }
             case aco_opcode::p_constaddr: {
@@ -2285,7 +2401,7 @@ lower_to_hw_instr(Program* program)
                      }
                   } else {
                      SDWA_instruction& sdwa =
-                        bld.vop1_sdwa(aco_opcode::v_mov_b32, dst, op).instr->sdwa();
+                        bld.vop1_sdwa(aco_opcode::v_mov_b32, dst, op)->sdwa();
                      sdwa.sel[0] = SubdwordSel(bits / 8, offset / 8, signext);
                   }
                }
@@ -2323,7 +2439,7 @@ lower_to_hw_instr(Program* program)
                   } else if (offset == 0 && (dst.regClass() == v1 || program->gfx_level <= GFX7)) {
                      bld.vop3(aco_opcode::v_bfe_u32, dst, op, Operand::zero(), Operand::c32(bits));
                   } else if (has_sdwa && (op.regClass() != s1 || program->gfx_level >= GFX9)) {
-                     bld.vop1_sdwa(aco_opcode::v_mov_b32, dst, op).instr->sdwa().dst_sel =
+                     bld.vop1_sdwa(aco_opcode::v_mov_b32, dst, op)->sdwa().dst_sel =
                         SubdwordSel(bits / 8, offset / 8, false);
                   } else if (program->gfx_level >= GFX11) {
                      uint8_t swiz[] = {4, 5, 6, 7};
@@ -2340,14 +2456,13 @@ lower_to_hw_instr(Program* program)
                } else {
                   assert(dst.regClass() == v2b);
                   bld.vop2_sdwa(aco_opcode::v_lshlrev_b32, dst, Operand::c32(offset), op)
-                     .instr->sdwa()
-                     .sel[1] = SubdwordSel::ubyte;
+                     ->sdwa().sel[1] = SubdwordSel::ubyte;
                }
                break;
             }
             case aco_opcode::p_init_scratch: {
                assert(program->gfx_level >= GFX8 && program->gfx_level <= GFX10_3);
-               if (!program->config->scratch_bytes_per_wave)
+               if (!program->config->scratch_bytes_per_wave && !program->rt_stack)
                   break;
 
                Operand scratch_addr = instr->operands[0];
@@ -2393,15 +2508,11 @@ lower_to_hw_instr(Program* program)
             case aco_opcode::p_interp_gfx11: {
                assert(instr->definitions[0].regClass() == v1 ||
                       instr->definitions[0].regClass() == v2b);
-               assert(instr->definitions[1].regClass() == bld.lm);
-               assert(instr->definitions[2].isFixed() && instr->definitions[2].physReg() == scc);
                assert(instr->operands[0].regClass() == v1.as_linear());
                assert(instr->operands[1].isConstant());
                assert(instr->operands[2].isConstant());
                assert(instr->operands.back().physReg() == m0);
                Definition dst = instr->definitions[0];
-               PhysReg exec_tmp = instr->definitions[1].physReg();
-               Definition clobber_scc = instr->definitions[2];
                PhysReg lin_vgpr = instr->operands[0].physReg();
                unsigned attribute = instr->operands[1].constantValue();
                unsigned component = instr->operands[2].constantValue();
@@ -2417,12 +2528,8 @@ lower_to_hw_instr(Program* program)
                   dpp_ctrl = instr->operands[3].constantValue();
                }
 
-               bld.sop1(Builder::s_mov, Definition(exec_tmp, bld.lm), Operand(exec, bld.lm));
-               bld.sop1(Builder::s_wqm, Definition(exec, bld.lm), clobber_scc,
-                        Operand(exec, bld.lm));
                bld.ldsdir(aco_opcode::lds_param_load, Definition(lin_vgpr, v1), Operand(m0, s1),
                           attribute, component);
-               bld.sop1(Builder::s_mov, Definition(exec, bld.lm), Operand(exec_tmp, bld.lm));
 
                Operand p(lin_vgpr, v1);
                Operand dst_op(dst.physReg(), v1);
@@ -2482,7 +2589,7 @@ lower_to_hw_instr(Program* program)
                   Builder::Result ret =
                      bld.vop1_dpp8(aco_opcode::v_mov_b32, Definition(dst0, v1), src0);
                   for (unsigned j = 0; j < 8; j++) {
-                     ret.instr->dpp8().lane_sel[j] = j ^ 1;
+                     ret->dpp8().lane_sel[j] = j ^ 1;
                   }
 
                   /* Swap even lanes between mrt0 and mrt1. */
@@ -2495,7 +2602,7 @@ lower_to_hw_instr(Program* program)
                   ret = bld.vop1_dpp8(aco_opcode::v_mov_b32, Definition(dst0, v1),
                                       Operand(tmp.physReg(), v1));
                   for (unsigned j = 0; j < 8; j++) {
-                     ret.instr->dpp8().lane_sel[j] = j ^ 1;
+                     ret->dpp8().lane_sel[j] = j ^ 1;
                   }
 
                   mrt0[i] = Operand(dst0, v1);
@@ -2569,7 +2676,7 @@ lower_to_hw_instr(Program* program)
                         can_remove = false;
                   } else if (inst->isSALU()) {
                      num_scalar++;
-                  } else if (inst->isVALU() || inst->isVINTRP() || inst->isVINTERP_INREG()) {
+                  } else if (inst->isVALU() || inst->isVINTRP()) {
                      num_vector++;
                      /* VALU which writes SGPRs are always executed on GFX10+ */
                      if (ctx.program->gfx_level >= GFX10) {

@@ -27,6 +27,7 @@
 #ifndef ACO_SHADER_INFO_H
 #define ACO_SHADER_INFO_H
 
+#include "ac_shader_args.h"
 #include "shader_enums.h"
 
 #ifdef __cplusplus
@@ -52,29 +53,13 @@ struct aco_vs_input_state {
    uint8_t formats[ACO_MAX_VERTEX_ATTRIBS];
 };
 
-struct aco_vs_prolog_key {
+struct aco_vs_prolog_info {
+   struct ac_arg inputs;
    struct aco_vs_input_state state;
    unsigned num_attributes;
    uint32_t misaligned_mask;
    bool is_ngg;
    gl_shader_stage next_stage;
-};
-
-struct aco_vp_output_info {
-   uint8_t vs_output_param_offset[VARYING_SLOT_MAX];
-   uint8_t clip_dist_mask;
-   uint8_t cull_dist_mask;
-   uint8_t param_exports;
-   uint8_t prim_param_exports;
-   bool writes_pointsize;
-   bool writes_layer;
-   bool writes_layer_per_primitive;
-   bool writes_viewport_index;
-   bool writes_viewport_index_per_primitive;
-   bool writes_primitive_shading_rate;
-   bool writes_primitive_shading_rate_per_primitive;
-   bool export_prim_id;
-   bool export_clip_dists;
 };
 
 struct aco_shader_info {
@@ -83,7 +68,6 @@ struct aco_shader_info {
    bool has_ngg_culling;
    bool has_ngg_early_prim_export;
    unsigned workgroup_size;
-   struct aco_vp_output_info outinfo;
    struct {
       bool as_es;
       bool as_ls;
@@ -117,9 +101,13 @@ struct aco_shader_info {
    } ps;
    struct {
       uint8_t subgroup_size;
+      bool uses_full_subgroups;
    } cs;
 
    uint32_t gfx9_gs_ring_lds_size;
+
+   bool is_gs_copy_shader;
+   bool is_trap_handler_shader;
 };
 
 enum aco_compiler_debug_level {
@@ -127,7 +115,10 @@ enum aco_compiler_debug_level {
    ACO_COMPILER_DEBUG_LEVEL_ERROR,
 };
 
-struct aco_ps_epilog_key {
+struct aco_ps_epilog_info {
+   struct ac_arg inputs[8];
+   struct ac_arg pc;
+
    uint32_t spi_shader_col_format;
 
    /* Bitmasks, each bit represents one of the 8 MRTs. */
@@ -141,22 +132,13 @@ struct aco_ps_epilog_key {
 struct aco_stage_input {
    uint32_t optimisations_disabled : 1;
    uint32_t image_2d_view_of_3d : 1;
-   struct {
-      uint32_t instance_rate_inputs;
-      uint32_t instance_rate_divisors[ACO_MAX_VERTEX_ATTRIBS];
-      uint8_t vertex_attribute_formats[ACO_MAX_VERTEX_ATTRIBS];
-      uint32_t vertex_attribute_bindings[ACO_MAX_VERTEX_ATTRIBS];
-      uint32_t vertex_attribute_offsets[ACO_MAX_VERTEX_ATTRIBS];
-      uint32_t vertex_attribute_strides[ACO_MAX_VERTEX_ATTRIBS];
-      uint8_t vertex_binding_align[ACO_MAX_VBS];
-   } vs;
 
    struct {
       unsigned tess_input_vertices;
    } tcs;
 
    struct {
-      struct aco_ps_epilog_key epilog;
+      struct aco_ps_epilog_info epilog;
 
       /* Used to export alpha through MRTZ for alpha-to-coverage (GFX11+). */
       bool alpha_to_coverage_via_mrtz;
@@ -171,6 +153,8 @@ struct aco_compiler_options {
    bool record_ir;
    bool record_stats;
    bool has_ls_vgpr_init_bug;
+   bool load_grid_size_from_user_sgpr;
+   uint8_t enable_mrt_output_nan_fixup;
    bool wgp_mode;
    enum radeon_family family;
    enum amd_gfx_level gfx_level;

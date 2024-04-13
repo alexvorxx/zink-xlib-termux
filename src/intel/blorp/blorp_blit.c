@@ -1527,7 +1527,7 @@ brw_blorp_get_blit_kernel_fs(struct blorp_batch *batch,
 
    struct brw_wm_prog_key wm_key;
    brw_blorp_init_wm_prog_key(&wm_key);
-   wm_key.multisample_fbo = key->rt_samples > 1;
+   wm_key.multisample_fbo = key->rt_samples > 1 ? BRW_ALWAYS : BRW_NEVER;
 
    program = blorp_compile_fs(blorp, mem_ctx, nir, &wm_key, false,
                               &prog_data);
@@ -2722,6 +2722,9 @@ get_ccs_compatible_copy_format(const struct isl_format_layout *fmtl)
    case ISL_FORMAT_R32_FLOAT:
    case ISL_FORMAT_R32_UNORM:
    case ISL_FORMAT_R32_SNORM:
+      return ISL_FORMAT_R32_UINT;
+
+   case ISL_FORMAT_R11G11B10_FLOAT:
       return ISL_FORMAT_R32_UINT;
 
    case ISL_FORMAT_B10G10R10A2_UNORM:

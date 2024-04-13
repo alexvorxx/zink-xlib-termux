@@ -68,10 +68,16 @@
 #include "tgsi/tgsi_text.h"
 #include "tgsi/tgsi_dump.h"
 
+#define HUD_DEFAULT_VISIBILITY TRUE
+#define HUD_DEFAULT_SCALE 1
+#define HUD_DEFAULT_ROTATION 0
+#define HUD_DEFAULT_OPACITY 66
+
 /* Control the visibility of all HUD contexts */
-static boolean huds_visible = TRUE;
-static int hud_scale = 1;
-static int hud_rotate = 0;
+static boolean huds_visible = HUD_DEFAULT_VISIBILITY;
+static int hud_scale = HUD_DEFAULT_SCALE;
+static int hud_rotate = HUD_DEFAULT_ROTATION;
+static float hud_opacity = HUD_DEFAULT_OPACITY / 100.0f;
 
 #if DETECT_OS_UNIX
 static void
@@ -219,6 +225,24 @@ hud_draw_string(struct hud_context *hud, unsigned x, unsigned y,
    hud->text.num_vertices += num/4;
 }
 
+static const char *
+get_float_modifier(double d)
+{
+   /* Round to 3 decimal places so as not to print trailing zeros. */
+   if (d*1000 != (int)(d*1000))
+      d = round(d * 1000) / 1000;
+
+   /* Show at least 4 digits with at most 3 decimal places, but not zeros. */
+   if (d >= 1000 || d == (int)d)
+      return "%.0f";
+   else if (d >= 100 || d*10 == (int)(d*10))
+      return "%.1f";
+   else if (d >= 10 || d*100 == (int)(d*100))
+      return "%.2f";
+   else
+      return "%.3f";
+}
+
 static void
 number_to_human_readable(double num, enum pipe_driver_query_type type,
                          char *out)
@@ -295,20 +319,9 @@ number_to_human_readable(double num, enum pipe_driver_query_type type,
       d /= divisor;
       unit++;
    }
-
-   /* Round to 3 decimal places so as not to print trailing zeros. */
-   if (d*1000 != (int)(d*1000))
-      d = round(d * 1000) / 1000;
-
-   /* Show at least 4 digits with at most 3 decimal places, but not zeros. */
-   if (d >= 1000 || d == (int)d)
-      sprintf(out, "%.0f%s", d, units[unit]);
-   else if (d >= 100 || d*10 == (int)(d*10))
-      sprintf(out, "%.1f%s", d, units[unit]);
-   else if (d >= 10 || d*100 == (int)(d*100))
-      sprintf(out, "%.2f%s", d, units[unit]);
-   else
-      sprintf(out, "%.3f%s", d, units[unit]);
+   int n = sprintf(out, get_float_modifier(d), d);
+   if (n > 0)
+      sprintf(&out[n], "%s", units[unit]);
 }
 
 static void
@@ -543,6 +556,7 @@ hud_draw_results(struct hud_context *hud, struct pipe_resource *tex)
    fb.zsbuf = NULL;
    fb.width = hud->fb_width;
    fb.height = hud->fb_height;
+   fb.resolve = NULL;
 
    viewport.scale[0] = 0.5f * hud->fb_width;
    viewport.scale[1] = 0.5f * hud->fb_height;
@@ -581,7 +595,7 @@ hud_draw_results(struct hud_context *hud, struct pipe_resource *tex)
       hud->constants.color[0] = 0;
       hud->constants.color[1] = 0;
       hud->constants.color[2] = 0;
-      hud->constants.color[3] = 0.666f;
+      hud->constants.color[3] = hud_opacity;
       hud->constants.translate[0] = 0;
       hud->constants.translate[1] = 0;
       hud->constants.scale[0] = hud_scale;
@@ -984,8 +998,12 @@ hud_graph_add_value(struct hud_graph *gr, double value)
    value = value > gr->pane->ceiling ? gr->pane->ceiling : value;
 
    if (gr->fd) {
+      if (gr->fd == stdout) {
+         fprintf(gr->fd, "%s: ", gr->name);
+      }
       if (fabs(value - lround(value)) > FLT_EPSILON) {
-         fprintf(gr->fd, "%f\n", value);
+         fprintf(gr->fd, get_float_modifier(value), value);
+         fprintf(gr->fd, "\n");
       }
       else {
          fprintf(gr->fd, "%" PRIu64 "\n", (uint64_t) lround(value));
@@ -1055,11 +1073,9 @@ static void strcat_without_spaces(char *dst, const char *src)
  * is a HUD variable such as "fps", or "cpu"
  */
 static void
-hud_graph_set_dump_file(struct hud_graph *gr)
+hud_graph_set_dump_file(struct hud_graph *gr, const char *hud_dump_dir, bool to_stdout)
 {
-   const char *hud_dump_dir = getenv("GALLIUM_HUD_DUMP_DIR");
-
-   if (hud_dump_dir && access(hud_dump_dir, W_OK) == 0) {
+   if (hud_dump_dir) {
       char *dump_file = malloc(strlen(hud_dump_dir) + sizeof(PATH_SEP)
                                + sizeof(gr->name));
       if (dump_file) {
@@ -1067,12 +1083,15 @@ hud_graph_set_dump_file(struct hud_graph *gr)
          strcat(dump_file, PATH_SEP);
          strcat_without_spaces(dump_file, gr->name);
          gr->fd = fopen(dump_file, "w+");
-         if (gr->fd) {
-            /* flush output after each line is written */
-            setvbuf(gr->fd, NULL, _IOLBF, 0);
-         }
          free(dump_file);
       }
+   } else if (to_stdout) {
+      gr->fd = stdout;
+   }
+
+   if (gr->fd) {
+      /* flush output after each line is written */
+      setvbuf(gr->fd, NULL, _IOLBF, 0);
    }
 }
 
@@ -1198,7 +1217,7 @@ has_pipeline_stats_query(struct pipe_screen *screen)
 
 static void
 hud_parse_env_var(struct hud_context *hud, struct pipe_screen *screen,
-                  const char *env)
+                  const char *env, unsigned period_ms)
 {
    unsigned num, i;
    char name_a[256], s[256];
@@ -1206,12 +1225,13 @@ hud_parse_env_var(struct hud_context *hud, struct pipe_screen *screen,
    struct hud_pane *pane = NULL;
    unsigned x = 10, y = 10, y_simple = 10;
    unsigned width = 251, height = 100;
-   unsigned period = 500 * 1000;  /* default period (1/2 second) */
+   unsigned period = period_ms * 1000;
    uint64_t ceiling = UINT64_MAX;
    unsigned column_width = 251;
    boolean dyn_ceiling = false;
    boolean reset_colors = false;
    boolean sort_items = false;
+   boolean to_stdout = false;
    const char *period_env;
 
    if (strncmp(env, "simple,", 7) == 0) {
@@ -1372,6 +1392,9 @@ hud_parse_env_var(struct hud_context *hud, struct pipe_screen *screen,
                                 PIPE_DRIVER_QUERY_RESULT_TYPE_AVERAGE,
                                 0);
       }
+      else if (strcmp(name, "stdout") == 0) {
+         to_stdout = true;
+      }
       else {
          boolean processed = FALSE;
 
@@ -1522,11 +1545,14 @@ hud_parse_env_var(struct hud_context *hud, struct pipe_screen *screen,
       }
    }
 
-   LIST_FOR_EACH_ENTRY(pane, &hud->pane_list, head) {
-      struct hud_graph *gr;
+   const char *hud_dump_dir = getenv("GALLIUM_HUD_DUMP_DIR");
+   if ((hud_dump_dir && access(hud_dump_dir, W_OK) == 0) || to_stdout) {
+      LIST_FOR_EACH_ENTRY(pane, &hud->pane_list, head) {
+         struct hud_graph *gr;
 
-      LIST_FOR_EACH_ENTRY(gr, &pane->graph_list, head) {
-         hud_graph_set_dump_file(gr);
+         LIST_FOR_EACH_ENTRY(gr, &pane->graph_list, head) {
+            hud_graph_set_dump_file(gr, hud_dump_dir, to_stdout);
+         }
       }
    }
 }
@@ -1583,6 +1609,7 @@ print_help(struct pipe_screen *screen)
    puts("  Example: GALLIUM_HUD=\".w256.h64.x1600.y520.d.c1000fps+cpu,.datom-count\"");
    puts("");
    puts("  Available names:");
+   puts("    stdout (prints the counters value to stdout)");
    puts("    fps");
    puts("    frametime");
    puts("    cpu");
@@ -1673,8 +1700,8 @@ hud_unset_draw_context(struct hud_context *hud)
 
 static bool
 hud_set_draw_context(struct hud_context *hud, struct cso_context *cso,
-                     void *st,
-                     void (*st_invalidate_state)(void *st, unsigned flags))
+                     struct st_context *st,
+                     hud_st_invalidate_state_func st_invalidate_state)
 {
    struct pipe_context *pipe = cso_get_pipe_context(cso);
 
@@ -1857,7 +1884,8 @@ hud_set_record_context(struct hud_context *hud, struct pipe_context *pipe)
  */
 struct hud_context *
 hud_create(struct cso_context *cso, struct hud_context *share,
-           void *st, void (*st_invalidate_state)(void *st, unsigned flags))
+           struct st_context *st,
+           hud_st_invalidate_state_func st_invalidate_state)
 {
    const char *share_env = debug_get_option("GALLIUM_HUD_SHARE", NULL);
    unsigned record_ctx = 0, draw_ctx = 0;
@@ -1890,7 +1918,18 @@ hud_create(struct cso_context *cso, struct hud_context *share,
    struct pipe_screen *screen = cso_get_pipe_context(cso)->screen;
    struct hud_context *hud;
    unsigned i;
-   const char *env = debug_get_option("GALLIUM_HUD", NULL);
+   unsigned default_period_ms = 500;/* default period (1/2 second) */
+   const char *show_fps = getenv("LIBGL_SHOW_FPS");
+   bool emulate_libgl_show_fps = false;
+   if (show_fps) {
+      default_period_ms = atoi(show_fps) * 1000;
+      if (default_period_ms)
+         emulate_libgl_show_fps = true;
+      else
+         default_period_ms = 500;
+   }
+   const char *env = debug_get_option("GALLIUM_HUD",
+      emulate_libgl_show_fps ? "stdout,fps" : NULL);
 #if DETECT_OS_UNIX
    unsigned signo = debug_get_num_option("GALLIUM_HUD_TOGGLE_SIGNAL", 0);
    static boolean sig_handled = FALSE;
@@ -1898,9 +1937,10 @@ hud_create(struct cso_context *cso, struct hud_context *share,
 
    memset(&action, 0, sizeof(action));
 #endif
-   huds_visible = debug_get_bool_option("GALLIUM_HUD_VISIBLE", TRUE);
-   hud_scale = debug_get_num_option("GALLIUM_HUD_SCALE", 1);
-   hud_rotate = debug_get_num_option("GALLIUM_HUD_ROTATION", 0) % 360;
+   huds_visible = debug_get_bool_option("GALLIUM_HUD_VISIBLE", !emulate_libgl_show_fps);
+   hud_opacity = debug_get_num_option("GALLIUM_HUD_OPACITY", HUD_DEFAULT_OPACITY) / 100.0f;
+   hud_scale = debug_get_num_option("GALLIUM_HUD_SCALE", HUD_DEFAULT_SCALE);
+   hud_rotate = debug_get_num_option("GALLIUM_HUD_ROTATION", HUD_DEFAULT_ROTATION) % 360;
    if (hud_rotate < 0) {
       hud_rotate += 360;
    }
@@ -2006,7 +2046,7 @@ hud_create(struct cso_context *cso, struct hud_context *share,
    if (draw_ctx == 0)
       hud_set_draw_context(hud, cso, st, st_invalidate_state);
 
-   hud_parse_env_var(hud, screen, env);
+   hud_parse_env_var(hud, screen, env, default_period_ms);
    return hud;
 }
 

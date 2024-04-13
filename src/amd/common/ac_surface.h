@@ -88,6 +88,11 @@ enum radeon_micro_mode
 #define RADEON_SURF_NO_HTILE              (1ull << 30)
 #define RADEON_SURF_FORCE_MICRO_TILE_MODE (1ull << 31)
 #define RADEON_SURF_PRT                   (1ull << 32)
+#define RADEON_SURF_VRS_RATE              (1ull << 33)
+/* Block compressed + linear format is not supported in addrlib. These surface can be
+ * used as transfer resource. This flag indicates not to set flags.texture flag in
+ * gfx9_compute_surface(). */
+#define RADEON_SURF_NO_TEXTURE            (1ull << 34)
 
 struct legacy_surf_level {
    uint32_t offset_256B;   /* divided by 256, the hw can only do 40-bit addresses */
@@ -345,7 +350,7 @@ struct radeon_surf {
     * - CMASK if it's TC-compatible or if the gen is GFX9
     * - depth/stencil if HTILE is not TC-compatible and if the gen is not GFX9
     */
-   uint8_t tile_swizzle;
+   uint16_t tile_swizzle; /* it has 16 bits because gfx11 shifts it by 2 bits */
    uint8_t fmask_tile_swizzle;
 
    /* Use (1 << log2) to compute the alignment. */
@@ -421,7 +426,7 @@ struct ac_surf_nbc_view {
    uint32_t width;
    uint32_t height;
    uint32_t level;
-   uint32_t max_mip; /* Used for max_mip in the resource descriptor */
+   uint32_t num_levels; /* Used for max_mip in the resource descriptor */
    uint8_t tile_swizzle;
    uint64_t base_address_offset;
 };

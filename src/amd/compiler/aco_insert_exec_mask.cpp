@@ -249,7 +249,7 @@ add_coupling_code(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instruction>>
    std::vector<unsigned>& preds = block->linear_preds;
 
    /* start block */
-   if (idx == 0) {
+   if (preds.empty()) {
       aco_ptr<Instruction>& startpgm = block->instructions[0];
       assert(startpgm->opcode == aco_opcode::p_startpgm);
       bld.insert(std::move(startpgm));
@@ -268,11 +268,17 @@ add_coupling_code(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instruction>>
          bld.copy(Definition(exec, bld.lm), start_exec);
       }
 
+      /* EXEC is automatically initialized by the HW for compute shaders.
+       * We know for sure exec is initially -1 when the shader always has full subgroups.
+       */
+      if (ctx.program->stage == compute_cs && ctx.program->info.cs.uses_full_subgroups)
+         start_exec = Operand::c32_or_c64(-1u, bld.lm == s2);
+
       if (ctx.handle_wqm) {
-         ctx.info[0].exec.emplace_back(start_exec, mask_type_global | mask_type_exact);
+         ctx.info[idx].exec.emplace_back(start_exec, mask_type_global | mask_type_exact);
          /* if this block needs WQM, initialize already */
-         if (ctx.info[0].block_needs & WQM)
-            transition_to_WQM(ctx, bld, 0);
+         if (ctx.info[idx].block_needs & WQM)
+            transition_to_WQM(ctx, bld, idx);
       } else {
          uint8_t mask = mask_type_global;
          if (ctx.program->needs_wqm) {
@@ -282,7 +288,7 @@ add_coupling_code(exec_ctx& ctx, Block* block, std::vector<aco_ptr<Instruction>>
          } else {
             mask |= mask_type_exact;
          }
-         ctx.info[0].exec.emplace_back(start_exec, mask);
+         ctx.info[idx].exec.emplace_back(start_exec, mask);
       }
 
       return count;
@@ -702,7 +708,7 @@ add_branch_code(exec_ctx& ctx, Block* block)
    unsigned idx = block->index;
    Builder bld(ctx.program, block);
 
-   if (idx == ctx.program->blocks.size() - 1)
+   if (block->linear_succs.empty())
       return;
 
    /* try to disable wqm handling */
@@ -816,7 +822,7 @@ add_branch_code(exec_ctx& ctx, Block* block)
 
       Builder::Result r = bld.branch(aco_opcode::p_cbranch_z, bld.def(s2), Operand(exec, bld.lm),
                                      block->linear_succs[1], block->linear_succs[0]);
-      r.instr->branch().selection_control = sel_ctrl;
+      r->branch().selection_control = sel_ctrl;
       return;
    }
 
@@ -832,7 +838,7 @@ add_branch_code(exec_ctx& ctx, Block* block)
 
       Builder::Result r = bld.branch(aco_opcode::p_cbranch_z, bld.def(s2), Operand(exec, bld.lm),
                                      block->linear_succs[1], block->linear_succs[0]);
-      r.instr->branch().selection_control = sel_ctrl;
+      r->branch().selection_control = sel_ctrl;
       return;
    }
 
@@ -903,8 +909,7 @@ process_block(exec_ctx& ctx, Block* block)
 
    unsigned idx = add_coupling_code(ctx, block, instructions);
 
-   assert(block->index != ctx.program->blocks.size() - 1 ||
-          ctx.info[block->index].exec.size() <= 2);
+   assert(!block->linear_succs.empty() || ctx.info[block->index].exec.size() <= 2);
 
    process_instructions(ctx, block, instructions, idx);
 

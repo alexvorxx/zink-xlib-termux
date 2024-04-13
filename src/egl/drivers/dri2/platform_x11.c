@@ -35,7 +35,9 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
-#include <vulkan/vulkan.h>
+#include <xcb/xcb.h>
+#include <vulkan/vulkan_core.h>
+#include <vulkan/vulkan_xcb.h>
 #ifdef HAVE_LIBDRM
 #include <xf86drm.h>
 #endif
@@ -634,7 +636,7 @@ dri2_x11_local_authenticate(struct dri2_egl_display *dri2_dpy)
 #ifdef HAVE_LIBDRM
    drm_magic_t magic;
 
-   if (drmGetMagic(dri2_dpy->fd, &magic)) {
+   if (drmGetMagic(dri2_dpy->fd_render_gpu, &magic)) {
       _eglLog(_EGL_WARNING, "DRI2: failed to get drm magic");
       return EGL_FALSE;
    }
@@ -716,8 +718,8 @@ dri2_x11_connect(struct dri2_egl_display *dri2_dpy)
 
    device_name = xcb_dri2_connect_device_name (connect);
 
-   dri2_dpy->fd = loader_open_device(device_name);
-   if (dri2_dpy->fd == -1) {
+   dri2_dpy->fd_render_gpu = loader_open_device(device_name);
+   if (dri2_dpy->fd_render_gpu == -1) {
       _eglLog(_EGL_WARNING,
               "DRI2: could not open %s (%s)", device_name, strerror(errno));
       free(connect);
@@ -725,7 +727,7 @@ dri2_x11_connect(struct dri2_egl_display *dri2_dpy)
    }
 
    if (!dri2_x11_local_authenticate(dri2_dpy)) {
-      close(dri2_dpy->fd);
+      close(dri2_dpy->fd_render_gpu);
       free(connect);
       return EGL_FALSE;
    }
@@ -735,7 +737,7 @@ dri2_x11_connect(struct dri2_egl_display *dri2_dpy)
    /* If Mesa knows about the appropriate driver for this fd, then trust it.
     * Otherwise, default to the server's value.
     */
-   loader_driver_name = loader_get_driver_for_fd(dri2_dpy->fd);
+   loader_driver_name = loader_get_driver_for_fd(dri2_dpy->fd_render_gpu);
    if (loader_driver_name) {
       dri2_dpy->driver_name = loader_driver_name;
    } else {
@@ -745,7 +747,7 @@ dri2_x11_connect(struct dri2_egl_display *dri2_dpy)
    }
 
    if (dri2_dpy->driver_name == NULL) {
-      close(dri2_dpy->fd);
+      close(dri2_dpy->fd_render_gpu);
       free(connect);
       return EGL_FALSE;
    }
@@ -878,10 +880,8 @@ dri2_copy_region(_EGLDisplay *disp,
    if (draw->Type == EGL_PIXMAP_BIT || draw->Type == EGL_PBUFFER_BIT)
       return EGL_TRUE;
 
-   if (dri2_dpy->flush)
-      dri2_dpy->flush->flush(dri2_surf->dri_drawable);
-   else
-      dri2_dpy->core->swapBuffers(dri2_surf->dri_drawable);
+   assert(!dri2_dpy->kopper);
+   dri2_dpy->flush->flush(dri2_surf->dri_drawable);
 
    if (dri2_surf->have_fake_front)
       render_attachment = XCB_DRI2_ATTACHMENT_BUFFER_FAKE_FRONT_LEFT;
@@ -954,7 +954,16 @@ dri2_x11_swap_buffers(_EGLDisplay *disp, _EGLSurface *draw)
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    struct dri2_egl_surface *dri2_surf = dri2_egl_surface(draw);
 
-   if (!dri2_dpy->flush) {
+   if (dri2_dpy->kopper) {
+      /* From the EGL 1.4 spec (page 52):
+       *
+       *     "The contents of ancillary buffers are always undefined
+       *      after calling eglSwapBuffers."
+       */
+      dri2_dpy->kopper->swapBuffers(dri2_surf->dri_drawable, __DRI2_FLUSH_INVALIDATE_ANCILLARY);
+      return EGL_TRUE;
+   } else if (!dri2_dpy->flush) {
+      /* aka the swrast path, which does the swap in the gallium driver. */
       dri2_dpy->core->swapBuffers(dri2_surf->dri_drawable);
       return EGL_TRUE;
    }
@@ -1036,8 +1045,15 @@ dri2_x11_copy_buffers(_EGLDisplay *disp, _EGLSurface *surf, void *native_pixmap_
 
    if (dri2_dpy->flush)
       dri2_dpy->flush->flush(dri2_surf->dri_drawable);
-   else
+   else {
+      /* This should not be a swapBuffers, because it could present an
+       * incomplete frame, and it could invalidate the back buffer if it's not
+       * preserved.  We really do want to flush.  But it ends up working out
+       * okay-ish on swrast because those aren't invalidating the back buffer on
+       * swap.
+       */
       dri2_dpy->core->swapBuffers(dri2_surf->dri_drawable);
+   }
 
    gc = xcb_generate_id(dri2_dpy->conn);
    xcb_create_gc(dri2_dpy->conn, gc, target, 0, NULL);
@@ -1142,7 +1158,7 @@ dri2_create_image_khr_pixmap(_EGLDisplay *disp, _EGLContext *ctx,
 
    stride = buffers[0].pitch / buffers[0].cpp;
    dri2_img->dri_image =
-      dri2_dpy->image->createImageFromName(dri2_dpy->dri_screen,
+      dri2_dpy->image->createImageFromName(dri2_dpy->dri_screen_render_gpu,
 					   buffers_reply->width,
 					   buffers_reply->height,
 					   format,
@@ -1192,23 +1208,82 @@ dri2_x11_get_sync_values(_EGLDisplay *display, _EGLSurface *surface,
    return EGL_TRUE;
 }
 
+static int
+box_intersection_area(int16_t a_x, int16_t a_y,
+                      int16_t a_width, int16_t a_height,
+                      int16_t b_x, int16_t b_y,
+                      int16_t b_width, int16_t b_height)
+{
+   int w = MIN2(a_x + a_width,  b_x + b_width)  - MAX2(a_x, b_x);
+   int h = MIN2(a_y + a_height, b_y + b_height) - MAX2(a_y, b_y);
+
+   return (w < 0 || h < 0) ? 0 : w * h;
+}
+
 EGLBoolean
 dri2_x11_get_msc_rate(_EGLDisplay *display, _EGLSurface *surface,
                       EGLint *numerator, EGLint *denominator)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(display);
-   xcb_randr_get_screen_info_cookie_t cookie;
-   xcb_randr_get_screen_info_reply_t *reply;
 
-   cookie = xcb_randr_get_screen_info_unchecked(dri2_dpy->conn, dri2_dpy->screen->root);
-   reply = xcb_randr_get_screen_info_reply(dri2_dpy->conn, cookie, NULL);
+   loader_dri3_update_screen_resources(&dri2_dpy->screen_resources);
 
-   if (!reply)
-      return _eglError(EGL_BAD_ACCESS, "eglGetMscRateANGLE");
+   if (dri2_dpy->screen_resources.num_crtcs == 0) {
+      /* If there's no CRTC active, use the present fake vblank of 1Hz */
+      *numerator = 1;
+      *denominator = 1;
+      return EGL_TRUE;
+   }
 
-   *numerator = reply->rate;
-   *denominator = 1;
-   free(reply);
+   /* Default to the first CRTC in the list */
+   *numerator = dri2_dpy->screen_resources.crtcs[0].refresh_numerator;
+   *denominator = dri2_dpy->screen_resources.crtcs[0].refresh_denominator;
+
+   /* If there's only one active CRTC, we're done */
+   if (dri2_dpy->screen_resources.num_crtcs == 1)
+      return EGL_TRUE;
+
+   /* In a multi-monitor setup, look at each CRTC and perform a box
+    * intersection between the CRTC and surface.  Use the CRTC whose
+    * box intersection has the largest area.
+    */
+   if (surface->Type != EGL_WINDOW_BIT)
+      return EGL_TRUE;
+
+   xcb_window_t window = (uintptr_t) surface->NativeSurface;
+
+   xcb_translate_coordinates_cookie_t cookie =
+      xcb_translate_coordinates_unchecked(dri2_dpy->conn, window,
+                                          dri2_dpy->screen->root, 0, 0);
+   xcb_translate_coordinates_reply_t *reply =
+      xcb_translate_coordinates_reply(dri2_dpy->conn, cookie, NULL);
+
+   if (!reply) {
+      _eglError(EGL_BAD_SURFACE,
+                "eglGetMscRateANGLE failed to translate coordinates");
+      return EGL_FALSE;
+   }
+
+   int area = 0;
+
+   for (unsigned c = 0; c < dri2_dpy->screen_resources.num_crtcs; c++) {
+      struct loader_dri3_crtc_info *crtc =
+         &dri2_dpy->screen_resources.crtcs[c];
+
+      int c_area = box_intersection_area(reply->dst_x, reply->dst_y,
+                                        surface->Width, surface->Height,
+                                        crtc->x, crtc->y,
+                                        crtc->width, crtc->height);
+      if (c_area > area) {
+         *numerator = crtc->refresh_numerator;
+         *denominator = crtc->refresh_denominator;
+         area = c_area;
+      }
+   }
+
+   /* If the window is entirely off-screen, then area will still be 0.
+    * We defaulted to the first CRTC in the list's refresh rate, earlier.
+    */
 
    return EGL_TRUE;
 }
@@ -1451,11 +1526,12 @@ dri2_initialize_x11_swrast(_EGLDisplay *disp)
    if (!dri2_dpy)
       return _eglError(EGL_BAD_ALLOC, "eglInitialize");
 
-   dri2_dpy->fd = -1;
+   dri2_dpy->fd_render_gpu = -1;
+   dri2_dpy->fd_display_gpu = -1;
    if (!dri2_get_xcb_connection(disp, dri2_dpy))
       goto cleanup;
 
-   dev = _eglAddDevice(dri2_dpy->fd, true);
+   dev = _eglAddDevice(dri2_dpy->fd_render_gpu, true);
    if (!dev) {
       _eglError(EGL_NOT_INITIALIZED, "DRI2: failed to find EGLDevice");
       goto cleanup;
@@ -1488,7 +1564,7 @@ dri2_initialize_x11_swrast(_EGLDisplay *disp)
 #endif
       dri2_dpy->swap_available = EGL_TRUE;
       dri2_x11_setup_swap_interval(disp);
-      if (!dri2_dpy->is_different_gpu)
+      if (dri2_dpy->fd_render_gpu == dri2_dpy->fd_display_gpu)
          disp->Extensions.KHR_image_pixmap = EGL_TRUE;
       disp->Extensions.NOK_texture_from_pixmap = EGL_TRUE;
       disp->Extensions.CHROMIUM_sync_control = EGL_TRUE;
@@ -1540,14 +1616,15 @@ dri2_initialize_x11_dri3(_EGLDisplay *disp)
    if (!dri2_dpy)
       return _eglError(EGL_BAD_ALLOC, "eglInitialize");
 
-   dri2_dpy->fd = -1;
+   dri2_dpy->fd_render_gpu = -1;
+   dri2_dpy->fd_display_gpu = -1;
    if (!dri2_get_xcb_connection(disp, dri2_dpy))
       goto cleanup;
 
    if (!dri3_x11_connect(dri2_dpy))
       goto cleanup;
 
-   dev = _eglAddDevice(dri2_dpy->fd, false);
+   dev = _eglAddDevice(dri2_dpy->fd_render_gpu, false);
    if (!dev) {
       _eglError(EGL_NOT_INITIALIZED, "DRI2: failed to find EGLDevice");
       goto cleanup;
@@ -1573,7 +1650,7 @@ dri2_initialize_x11_dri3(_EGLDisplay *disp)
 
    dri2_x11_setup_swap_interval(disp);
 
-   if (!dri2_dpy->is_different_gpu)
+   if (dri2_dpy->fd_render_gpu == dri2_dpy->fd_display_gpu)
       disp->Extensions.KHR_image_pixmap = EGL_TRUE;
    disp->Extensions.NOK_texture_from_pixmap = EGL_TRUE;
    disp->Extensions.CHROMIUM_sync_control = EGL_TRUE;
@@ -1585,6 +1662,9 @@ dri2_initialize_x11_dri3(_EGLDisplay *disp)
 
    if (!dri2_x11_add_configs_for_visuals(dri2_dpy, disp, false))
       goto cleanup;
+
+   loader_dri3_init_screen_resources(&dri2_dpy->screen_resources,
+                                     dri2_dpy->conn, dri2_dpy->screen);
 
    dri2_dpy->loader_dri3_ext.core = dri2_dpy->core;
    dri2_dpy->loader_dri3_ext.image_driver = dri2_dpy->image_driver;
@@ -1649,14 +1729,15 @@ dri2_initialize_x11_dri2(_EGLDisplay *disp)
    if (!dri2_dpy)
       return _eglError(EGL_BAD_ALLOC, "eglInitialize");
 
-   dri2_dpy->fd = -1;
+   dri2_dpy->fd_render_gpu = -1;
+   dri2_dpy->fd_display_gpu = -1;
    if (!dri2_get_xcb_connection(disp, dri2_dpy))
       goto cleanup;
 
    if (!dri2_x11_connect(dri2_dpy))
       goto cleanup;
 
-   dev = _eglAddDevice(dri2_dpy->fd, false);
+   dev = _eglAddDevice(dri2_dpy->fd_render_gpu, false);
    if (!dev) {
       _eglError(EGL_NOT_INITIALIZED, "DRI2: failed to find EGLDevice");
       goto cleanup;
@@ -1733,6 +1814,9 @@ dri2_initialize_x11(_EGLDisplay *disp)
 void
 dri2_teardown_x11(struct dri2_egl_display *dri2_dpy)
 {
+   if (dri2_dpy->dri2_major >= 3)
+      loader_dri3_destroy_screen_resources(&dri2_dpy->screen_resources);
+
    if (dri2_dpy->own_device)
       xcb_disconnect(dri2_dpy->conn);
 }

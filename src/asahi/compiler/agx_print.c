@@ -37,8 +37,7 @@ agx_print_sized(char prefix, unsigned value, enum agx_size size, FILE *fp)
       return;
    case AGX_SIZE_64:
       assert((value & 1) == 0);
-      fprintf(fp, "%c%u:%c%u", prefix, value >> 1,
-            prefix, (value >> 1) + 1);
+      fprintf(fp, "%c%u:%c%u", prefix, value >> 1, prefix, (value >> 1) + 1);
       return;
    }
 
@@ -76,6 +75,10 @@ agx_print_index(agx_index index, bool is_float, FILE *fp)
 
       break;
 
+   case AGX_INDEX_UNDEF:
+      fprintf(fp, "undef");
+      break;
+
    case AGX_INDEX_UNIFORM:
       agx_print_sized('u', index.value, index.size, fp);
       break;
@@ -104,7 +107,7 @@ agx_print_index(agx_index index, bool is_float, FILE *fp)
 }
 
 void
-agx_print_instr(agx_instr *I, FILE *fp)
+agx_print_instr(const agx_instr *I, FILE *fp)
 {
    assert(I->op < AGX_NUM_OPCODES);
    struct agx_opcode_info info = agx_opcodes_info[I->op];
@@ -143,9 +146,9 @@ agx_print_instr(agx_instr *I, FILE *fp)
          print_comma = true;
 
       agx_print_index(I->src[s],
-            agx_opcodes_info[I->op].is_float &&
-            !(s >= 2 && I->op == AGX_OPCODE_FCMPSEL),
-            fp);
+                      agx_opcodes_info[I->op].is_float &&
+                         !(s >= 2 && I->op == AGX_OPCODE_FCMPSEL),
+                      fp);
    }
 
    if (I->mask) {
@@ -207,7 +210,7 @@ agx_print_instr(agx_instr *I, FILE *fp)
 }
 
 void
-agx_print_block(agx_block *block, FILE *fp)
+agx_print_block(const agx_block *block, FILE *fp)
 {
    fprintf(fp, "block%u {\n", block->index);
 
@@ -234,7 +237,7 @@ agx_print_block(agx_block *block, FILE *fp)
 }
 
 void
-agx_print_shader(agx_context *ctx, FILE *fp)
+agx_print_shader(const agx_context *ctx, FILE *fp)
 {
    agx_foreach_block(ctx, block)
       agx_print_block(block, fp);

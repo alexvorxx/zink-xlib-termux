@@ -200,12 +200,24 @@ choose_lru_file_matching(const char *dir_path,
    if (dir == NULL)
       return NULL;
 
+   const int dir_fd = dirfd(dir);
+
    /* First count the number of files in the directory */
    unsigned total_file_count = 0;
    while ((dir_ent = readdir(dir)) != NULL) {
+#ifdef HAVE_DIRENT_D_TYPE
       if (dir_ent->d_type == DT_REG) { /* If the entry is a regular file */
          total_file_count++;
       }
+#else
+      struct stat st;
+
+      if (fstatat(dir_fd, dir_ent->d_name, &st, AT_SYMLINK_NOFOLLOW) == 0) {
+         if (S_ISREG(st.st_mode)) {
+            total_file_count++;
+         }
+      }
+#endif
    }
 
    /* Reset to the start of the directory */
@@ -225,7 +237,7 @@ choose_lru_file_matching(const char *dir_path,
          break;
 
       struct stat sb;
-      if (fstatat(dirfd(dir), dir_ent->d_name, &sb, 0) == 0) {
+      if (fstatat(dir_fd, dir_ent->d_name, &sb, 0) == 0) {
          struct lru_file *entry = NULL;
          if (!list_is_empty(lru_file_list))
             entry = list_first_entry(lru_file_list, struct lru_file, node);
@@ -829,12 +841,13 @@ disk_cache_write_item_to_disk(struct disk_cache_put_job *dc_job,
  */
 char *
 disk_cache_generate_cache_dir(void *mem_ctx, const char *gpu_name,
-                              const char *driver_id)
+                              const char *driver_id,
+                              enum disk_cache_type cache_type)
 {
    char *cache_dir_name = CACHE_DIR_NAME;
-   if (debug_get_bool_option("MESA_DISK_CACHE_SINGLE_FILE", false))
+   if (cache_type == DISK_CACHE_SINGLE_FILE)
       cache_dir_name = CACHE_DIR_NAME_SF;
-   else if (debug_get_bool_option("MESA_DISK_CACHE_DATABASE", false))
+   else if (cache_type == DISK_CACHE_DATABASE)
       cache_dir_name = CACHE_DIR_NAME_DB;
 
    char *path = getenv("MESA_SHADER_CACHE_DIR");
@@ -904,7 +917,7 @@ disk_cache_generate_cache_dir(void *mem_ctx, const char *gpu_name,
          return NULL;
    }
 
-   if (debug_get_bool_option("MESA_DISK_CACHE_SINGLE_FILE", false)) {
+   if (cache_type == DISK_CACHE_SINGLE_FILE) {
       path = concatenate_and_mkdir(mem_ctx, path, driver_id);
       if (!path)
          return NULL;
@@ -1053,8 +1066,8 @@ disk_cache_db_load_item(struct disk_cache *cache, const cache_key key,
                         size_t *size)
 {
    size_t cache_tem_size = 0;
-   void *cache_item = mesa_cache_db_read_entry(&cache->cache_db, key,
-                                               &cache_tem_size);
+   void *cache_item = mesa_cache_db_multipart_read_entry(&cache->cache_db,
+                                                         key, &cache_tem_size);
    if (!cache_item)
       return NULL;
 
@@ -1074,8 +1087,9 @@ disk_cache_db_write_item_to_disk(struct disk_cache_put_job *dc_job)
    if (!create_cache_item_header_and_blob(dc_job, &cache_blob))
       return false;
 
-   bool r = mesa_cache_db_entry_write(&dc_job->cache->cache_db, dc_job->key,
-                                      cache_blob.data, cache_blob.size);
+   bool r = mesa_cache_db_multipart_entry_write(&dc_job->cache->cache_db,
+                                                dc_job->key, cache_blob.data,
+                                                cache_blob.size);
 
    blob_finish(&cache_blob);
    return r;
@@ -1084,7 +1098,7 @@ disk_cache_db_write_item_to_disk(struct disk_cache_put_job *dc_job)
 bool
 disk_cache_db_load_cache_index(void *mem_ctx, struct disk_cache *cache)
 {
-   return mesa_cache_db_open(&cache->cache_db, cache->path);
+   return mesa_cache_db_multipart_open(&cache->cache_db, cache->path);
 }
 #endif
 

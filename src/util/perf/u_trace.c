@@ -394,10 +394,22 @@ u_trace_state_init_once(void)
    }
 }
 
-static void
+void
 u_trace_state_init(void)
 {
    util_call_once(&u_trace_state.once, u_trace_state_init_once);
+}
+
+bool
+u_trace_is_enabled(enum u_trace_type type)
+{
+   /* Active is only tracked in a given u_trace context, so if you're asking us
+    * if U_TRACE_TYPE_PERFETTO (_ENV | _ACTIVE) is enabled, then just check
+    * _ENV ("perfetto tracing is desired, but perfetto might not be running").
+    */
+   type &= ~U_TRACE_TYPE_PERFETTO_ACTIVE;
+
+   return (u_trace_state.enabled_traces & type) == type;
 }
 
 static void
@@ -801,18 +813,20 @@ u_trace_disable_event_range(struct u_trace_iterator begin_it,
  * functions.
  */
 void *
-u_trace_append(struct u_trace *ut, void *cs, const struct u_tracepoint *tp)
+u_trace_appendv(struct u_trace *ut, void *cs,
+                const struct u_tracepoint *tp, unsigned variable_sz)
 {
-   struct u_trace_chunk *chunk = get_chunk(ut, tp->payload_sz);
-   unsigned tp_idx = chunk->num_traces++;
-
    assert(tp->payload_sz == ALIGN_NPOT(tp->payload_sz, 8));
+
+   unsigned payload_sz = ALIGN_NPOT(tp->payload_sz + variable_sz, 8);
+   struct u_trace_chunk *chunk = get_chunk(ut, payload_sz);
+   unsigned tp_idx = chunk->num_traces++;
 
    /* sub-allocate storage for trace payload: */
    void *payload = NULL;
-   if (tp->payload_sz > 0) {
+   if (payload_sz > 0) {
       payload = chunk->payload->next;
-      chunk->payload->next += tp->payload_sz;
+      chunk->payload->next += payload_sz;
    }
 
    /* record a timestamp for the trace: */

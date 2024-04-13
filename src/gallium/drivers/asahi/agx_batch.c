@@ -6,8 +6,8 @@
 
 #include "agx_state.h"
 
-#define foreach_batch(ctx, idx) \
-        BITSET_FOREACH_SET(idx, ctx->batches.active, AGX_MAX_BATCHES)
+#define foreach_batch(ctx, idx)                                                \
+   BITSET_FOREACH_SET(idx, ctx->batches.active, AGX_MAX_BATCHES)
 
 static unsigned
 agx_batch_idx(struct agx_batch *batch)
@@ -32,8 +32,8 @@ agx_batch_init(struct agx_context *ctx,
    util_copy_framebuffer_state(&batch->key, key);
    batch->seqnum = ++ctx->batches.seqnum;
 
-   agx_pool_init(&batch->pool, dev, AGX_MEMORY_TYPE_FRAMEBUFFER, true);
-   agx_pool_init(&batch->pipeline_pool, dev, AGX_MEMORY_TYPE_SHADER, true);
+   agx_pool_init(&batch->pool, dev, 0, true);
+   agx_pool_init(&batch->pipeline_pool, dev, AGX_BO_LOW_VA, true);
 
    /* These allocations can happen only once and will just be zeroed (not freed)
     * during batch clean up. The memory is owned by the context.
@@ -42,10 +42,11 @@ agx_batch_init(struct agx_context *ctx,
       batch->bo_list.set = rzalloc_array(ctx, BITSET_WORD, 128);
       batch->bo_list.word_count = 128;
    } else {
-      memset(batch->bo_list.set, 0, batch->bo_list.word_count * sizeof(BITSET_WORD));
+      memset(batch->bo_list.set, 0,
+             batch->bo_list.word_count * sizeof(BITSET_WORD));
    }
 
-   batch->encoder = agx_bo_create(dev, 0x80000, AGX_MEMORY_TYPE_FRAMEBUFFER, "Encoder");
+   batch->encoder = agx_bo_create(dev, 0x80000, 0, "Encoder");
    batch->encoder_current = batch->encoder->ptr.cpu;
    batch->encoder_end = batch->encoder_current + batch->encoder->size;
 
@@ -59,6 +60,7 @@ agx_batch_init(struct agx_context *ctx,
    batch->clear_depth = 0;
    batch->clear_stencil = 0;
    batch->varyings = 0;
+   batch->any_draws = false;
 
    /* We need to emit prim state at the start. Max collides with all. */
    batch->reduced_prim = PIPE_PRIM_MAX;
@@ -68,13 +70,15 @@ agx_batch_init(struct agx_context *ctx,
    }
 
    for (unsigned i = 0; i < key->nr_cbufs; ++i) {
-      agx_batch_writes(batch, agx_resource(key->cbufs[i]->texture));
+      if (key->cbufs[i])
+         agx_batch_writes(batch, agx_resource(key->cbufs[i]->texture));
    }
 
    unsigned batch_idx = agx_batch_idx(batch);
    BITSET_SET(ctx->batches.active, batch_idx);
 
-   agx_batch_init_state(batch);
+   if (key->width != AGX_COMPUTE_BATCH_WIDTH)
+      agx_batch_init_state(batch);
 }
 
 void
@@ -170,6 +174,16 @@ agx_get_batch(struct agx_context *ctx)
    return ctx->batch;
 }
 
+struct agx_batch *
+agx_get_compute_batch(struct agx_context *ctx)
+{
+   agx_dirty_all(ctx);
+
+   struct pipe_framebuffer_state key = {.width = AGX_COMPUTE_BATCH_WIDTH};
+   ctx->batch = agx_get_batch_for_framebuffer(ctx, &key);
+   return ctx->batch;
+}
+
 void
 agx_flush_all(struct agx_context *ctx, const char *reason)
 {
@@ -183,7 +197,8 @@ agx_flush_all(struct agx_context *ctx, const char *reason)
 }
 
 void
-agx_flush_batch_for_reason(struct agx_context *ctx, struct agx_batch *batch, const char *reason)
+agx_flush_batch_for_reason(struct agx_context *ctx, struct agx_batch *batch,
+                           const char *reason)
 {
    if (reason)
       perf_debug_ctx(ctx, "Flushing due to: %s\n", reason);
@@ -192,10 +207,8 @@ agx_flush_batch_for_reason(struct agx_context *ctx, struct agx_batch *batch, con
 }
 
 static void
-agx_flush_readers_except(struct agx_context *ctx,
-                         struct agx_resource *rsrc,
-                         struct agx_batch *except,
-                         const char *reason)
+agx_flush_readers_except(struct agx_context *ctx, struct agx_resource *rsrc,
+                         struct agx_batch *except, const char *reason)
 {
    unsigned idx;
 
@@ -213,10 +226,8 @@ agx_flush_readers_except(struct agx_context *ctx,
 }
 
 static void
-agx_flush_writer_except(struct agx_context *ctx,
-                        struct agx_resource *rsrc,
-                        struct agx_batch *except,
-                        const char *reason)
+agx_flush_writer_except(struct agx_context *ctx, struct agx_resource *rsrc,
+                        struct agx_batch *except, const char *reason)
 {
    struct hash_entry *ent = _mesa_hash_table_search(ctx->writer, rsrc);
 
@@ -241,13 +252,15 @@ agx_any_batch_uses_resource(struct agx_context *ctx, struct agx_resource *rsrc)
 }
 
 void
-agx_flush_readers(struct agx_context *ctx, struct agx_resource *rsrc, const char *reason)
+agx_flush_readers(struct agx_context *ctx, struct agx_resource *rsrc,
+                  const char *reason)
 {
    agx_flush_readers_except(ctx, rsrc, NULL, reason);
 }
 
 void
-agx_flush_writer(struct agx_context *ctx, struct agx_resource *rsrc, const char *reason)
+agx_flush_writer(struct agx_context *ctx, struct agx_resource *rsrc,
+                 const char *reason)
 {
    agx_flush_writer_except(ctx, rsrc, NULL, reason);
 }

@@ -36,6 +36,19 @@ anv_wsi_proc_addr(VkPhysicalDevice physicalDevice, const char *pName)
    return vk_instance_get_proc_addr_unchecked(&pdevice->instance->vk, pName);
 }
 
+static VkQueue
+anv_wsi_get_prime_blit_queue(VkDevice _device)
+{
+   ANV_FROM_HANDLE(anv_device, device, _device);
+
+   vk_foreach_queue(_queue, &device->vk) {
+      struct anv_queue *queue = (struct anv_queue *)_queue;
+      if (queue->family->queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT))
+         return vk_queue_to_handle(_queue);
+   }
+   return NULL;
+}
+
 VkResult
 anv_init_wsi(struct anv_physical_device *physical_device)
 {
@@ -47,13 +60,14 @@ anv_init_wsi(struct anv_physical_device *physical_device)
                             &physical_device->instance->vk.alloc,
                             physical_device->master_fd,
                             &physical_device->instance->dri_options,
-                            false);
+                            &(struct wsi_device_options){.sw_device = false});
    if (result != VK_SUCCESS)
       return result;
 
    physical_device->wsi_device.supports_modifiers = true;
    physical_device->wsi_device.signal_semaphore_with_memory = true;
    physical_device->wsi_device.signal_fence_with_memory = true;
+   physical_device->wsi_device.get_blit_queue = anv_wsi_get_prime_blit_queue;
 
    physical_device->vk.wsi_device = &physical_device->wsi_device;
 
@@ -113,8 +127,6 @@ VkResult anv_QueuePresentKHR(
                                      anv_device_to_handle(queue->device),
                                      _queue, 0,
                                      pPresentInfo);
-
-   u_trace_context_process(&device->ds.trace_context, true);
 
    return result;
 }

@@ -279,13 +279,13 @@ enum si_tracked_reg
 
    SI_TRACKED_DB_PA_SC_VRS_OVERRIDE_CNTL,
 
-   SI_TRACKED_PA_CL_GB_VERT_CLIP_ADJ, /* 4 consecutive registers */
+   SI_TRACKED_PA_SU_VTX_CNTL, /* 5 consecutive registers */
+   SI_TRACKED_PA_CL_GB_VERT_CLIP_ADJ,
    SI_TRACKED_PA_CL_GB_VERT_DISC_ADJ,
    SI_TRACKED_PA_CL_GB_HORZ_CLIP_ADJ,
    SI_TRACKED_PA_CL_GB_HORZ_DISC_ADJ,
 
    SI_TRACKED_PA_SU_HARDWARE_SCREEN_OFFSET,
-   SI_TRACKED_PA_SU_VTX_CNTL,
 
    SI_TRACKED_PA_SC_CLIPRECT_RULE,
 
@@ -490,6 +490,7 @@ void si_set_mutable_tex_desc_fields(struct si_screen *sscreen, struct si_texture
                                     /* restrict decreases overhead of si_set_sampler_view_desc ~8x. */
                                     bool is_stencil, uint16_t access, uint32_t * restrict state);
 void si_update_ps_colorbuf0_slot(struct si_context *sctx);
+void si_force_disable_ps_colorbuf0_slot(struct si_context *sctx);
 void si_invalidate_inlinable_uniforms(struct si_context *sctx, enum pipe_shader_type shader);
 void si_get_pipe_constant_buffer(struct si_context *sctx, uint shader, uint slot,
                                  struct pipe_constant_buffer *cbuf);
@@ -588,8 +589,7 @@ void si_update_vrs_flat_shading(struct si_context *sctx);
 unsigned si_get_input_prim(const struct si_shader_selector *gs, const union si_shader_key *key);
 bool si_update_ngg(struct si_context *sctx);
 void si_ps_key_update_framebuffer(struct si_context *sctx);
-void si_ps_key_update_framebuffer_blend(struct si_context *sctx);
-void si_ps_key_update_blend_rasterizer(struct si_context *sctx);
+void si_ps_key_update_framebuffer_blend_rasterizer(struct si_context *sctx);
 void si_ps_key_update_rasterizer(struct si_context *sctx);
 void si_ps_key_update_dsa(struct si_context *sctx);
 void si_ps_key_update_sample_shading(struct si_context *sctx);

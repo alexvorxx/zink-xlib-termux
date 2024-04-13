@@ -360,7 +360,22 @@ CopyPropFwdVisitor::visit(AluInstr *instr)
    auto src = instr->psrc(0);
    auto dest = instr->dest();
 
-   for (auto& i : dest->uses()) {
+   /* Don't propagate an indirect load to more than one
+    * instruction, because we may have to split the address loads
+    * creating more instructions */
+   if (dest->uses().size() > 1) {
+      auto [addr, is_for_dest, index] = instr->indirect_addr();
+      if (addr && !is_for_dest)
+         return;
+   }
+
+
+   auto ii = dest->uses().begin();
+   auto ie = dest->uses().end();
+
+   while(ii != ie) {
+      auto i = *ii;
+      ++ii;
       /* SSA can always be propagated, registers only in the same block
        * and only if they are assigned in the same block */
       bool can_propagate = dest->has_flag(Register::ssa);
@@ -392,7 +407,11 @@ CopyPropFwdVisitor::visit(AluInstr *instr)
       if (can_propagate) {
          sfn_log << SfnLog::opt << "   Try replace in " << i->block_id() << ":"
                  << i->index() << *i << "\n";
-         progress |= i->replace_source(dest, src);
+
+         if (i->as_alu() && i->as_alu()->parent_group()) {
+            progress |= i->as_alu()->parent_group()->replace_source(dest, src);
+         } else
+            progress |= i->replace_source(dest, src);
       }
    }
    if (instr->dest()) {

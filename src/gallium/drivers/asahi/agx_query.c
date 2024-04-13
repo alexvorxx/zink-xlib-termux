@@ -17,8 +17,19 @@ agx_create_query(struct pipe_context *ctx, unsigned query_type, unsigned index)
 }
 
 static void
-agx_destroy_query(struct pipe_context *ctx, struct pipe_query *query)
+agx_destroy_query(struct pipe_context *ctx, struct pipe_query *pquery)
 {
+   struct agx_query *query = (struct agx_query *)pquery;
+
+   /* It is legal for the query to be destroyed before its value is read,
+    * particularly during application teardown. In this case, don't leave a
+    * dangling reference to the query.
+    */
+   if (query->writer) {
+      *util_dynarray_element(&query->writer->occlusion_queries,
+                             struct agx_query *, query->writer_index) = NULL;
+   }
+
    free(query);
 }
 
@@ -26,7 +37,7 @@ static bool
 agx_begin_query(struct pipe_context *pctx, struct pipe_query *pquery)
 {
    struct agx_context *ctx = agx_context(pctx);
-   struct agx_query *query = (struct agx_query *) pquery;
+   struct agx_query *query = (struct agx_query *)pquery;
 
    switch (query->type) {
    case PIPE_QUERY_OCCLUSION_COUNTER:
@@ -40,7 +51,8 @@ agx_begin_query(struct pipe_context *pctx, struct pipe_query *pquery)
        * avoid the flush.
        */
       if (query->writer)
-         agx_flush_batch_for_reason(ctx, query->writer, "Occlusion overwritten");
+         agx_flush_batch_for_reason(ctx, query->writer,
+                                    "Occlusion overwritten");
 
       assert(query->writer == NULL);
 
@@ -56,7 +68,7 @@ static bool
 agx_end_query(struct pipe_context *pctx, struct pipe_query *pquery)
 {
    struct agx_context *ctx = agx_context(pctx);
-   struct agx_query *query = (struct agx_query *) pquery;
+   struct agx_query *query = (struct agx_query *)pquery;
 
    switch (query->type) {
    case PIPE_QUERY_OCCLUSION_COUNTER:
@@ -72,12 +84,10 @@ agx_end_query(struct pipe_context *pctx, struct pipe_query *pquery)
 }
 
 static bool
-agx_get_query_result(struct pipe_context *pctx,
-                     struct pipe_query *pquery,
-                     bool wait,
-                     union pipe_query_result *vresult)
+agx_get_query_result(struct pipe_context *pctx, struct pipe_query *pquery,
+                     bool wait, union pipe_query_result *vresult)
 {
-   struct agx_query *query = (struct agx_query *) pquery;
+   struct agx_query *query = (struct agx_query *)pquery;
    struct agx_context *ctx = agx_context(pctx);
 
    switch (query->type) {
@@ -134,10 +144,11 @@ agx_get_oq_index(struct agx_batch *batch, struct agx_query *query)
    /* Allocate if needed */
    if (query->writer == NULL) {
       query->writer = batch;
-      query->writer_index = util_dynarray_num_elements(&batch->occlusion_queries,
-                                                       struct agx_query *);
+      query->writer_index = util_dynarray_num_elements(
+         &batch->occlusion_queries, struct agx_query *);
 
-      util_dynarray_append(&batch->occlusion_queries, struct agx_query *, query);
+      util_dynarray_append(&batch->occlusion_queries, struct agx_query *,
+                           query);
    }
 
    assert(query->writer == batch);
@@ -150,10 +161,15 @@ agx_get_oq_index(struct agx_batch *batch, struct agx_query *query)
 void
 agx_finish_batch_occlusion_queries(struct agx_batch *batch)
 {
-   uint64_t *results = (uint64_t *) batch->occlusion_buffer.cpu;
+   uint64_t *results = (uint64_t *)batch->occlusion_buffer.cpu;
 
    util_dynarray_foreach(&batch->occlusion_queries, struct agx_query *, it) {
       struct agx_query *query = *it;
+
+      /* Skip queries that have since been destroyed */
+      if (query == NULL)
+         continue;
+
       assert(query->writer == batch);
 
       /* Get the result for this batch. If results is NULL, it means that no
@@ -176,6 +192,36 @@ agx_finish_batch_occlusion_queries(struct agx_batch *batch)
    }
 }
 
+static void
+agx_render_condition(struct pipe_context *pipe, struct pipe_query *query,
+                     bool condition, enum pipe_render_cond_flag mode)
+{
+   struct agx_context *ctx = agx_context(pipe);
+
+   ctx->cond_query = query;
+   ctx->cond_cond = condition;
+   ctx->cond_mode = mode;
+}
+
+bool
+agx_render_condition_check_inner(struct agx_context *ctx)
+{
+   assert(ctx->cond_query != NULL && "precondition");
+
+   perf_debug_ctx(ctx, "Implementing conditional rendering on the CPU");
+
+   union pipe_query_result res = {0};
+   bool wait = ctx->cond_mode != PIPE_RENDER_COND_NO_WAIT &&
+               ctx->cond_mode != PIPE_RENDER_COND_BY_REGION_NO_WAIT;
+
+   struct pipe_query *pq = (struct pipe_query *)ctx->cond_query;
+
+   if (agx_get_query_result(&ctx->base, pq, wait, &res))
+      return res.u64 != ctx->cond_cond;
+
+   return true;
+}
+
 void
 agx_init_query_functions(struct pipe_context *pctx)
 {
@@ -185,6 +231,7 @@ agx_init_query_functions(struct pipe_context *pctx)
    pctx->end_query = agx_end_query;
    pctx->get_query_result = agx_get_query_result;
    pctx->set_active_query_state = agx_set_active_query_state;
+   pctx->render_condition = agx_render_condition;
 
    /* By default queries are active */
    agx_context(pctx)->active_queries = true;

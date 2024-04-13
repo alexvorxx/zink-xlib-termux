@@ -36,6 +36,7 @@
 #include "compiler/brw_nir.h"
 #include "compiler/brw_nir_rt.h"
 #include "anv_nir.h"
+#include "nir/nir_vulkan.h"
 #include "nir/nir_xfb_info.h"
 #include "spirv/nir_spirv.h"
 #include "vk_pipeline.h"
@@ -45,135 +46,90 @@
 /* Needed for SWIZZLE macros */
 #include "program/prog_instruction.h"
 
-struct lower_mesh_ext_state {
+struct lower_set_vtx_and_prim_count_state {
    nir_variable *primitive_count;
-   nir_variable *primitive_indices;
 };
 
+static nir_variable *
+anv_nir_prim_count_store(nir_builder *b, nir_ssa_def *val)
+{
+   nir_variable *primitive_count =
+         nir_variable_create(b->shader,
+                             nir_var_shader_out,
+                             glsl_uint_type(),
+                             "gl_PrimitiveCountNV");
+   primitive_count->data.location = VARYING_SLOT_PRIMITIVE_COUNT;
+   primitive_count->data.interpolation = INTERP_MODE_NONE;
+
+   nir_ssa_def *local_invocation_index = nir_build_load_local_invocation_index(b);
+
+   nir_ssa_def *cmp = nir_ieq(b, local_invocation_index,
+                                  nir_imm_int(b, 0));
+   nir_if *if_stmt = nir_push_if(b, cmp);
+   {
+      nir_deref_instr *prim_count_deref = nir_build_deref_var(b, primitive_count);
+      nir_store_deref(b, prim_count_deref, val, 1);
+   }
+   nir_pop_if(b, if_stmt);
+
+   return primitive_count;
+}
+
 static bool
-anv_nir_lower_mesh_ext_instr(nir_builder *b, nir_instr *instr, void *data)
+anv_nir_lower_set_vtx_and_prim_count_instr(nir_builder *b, nir_instr *instr, void *data)
 {
    if (instr->type != nir_instr_type_intrinsic)
       return false;
 
    nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
-   struct lower_mesh_ext_state *state = data;
+   if (intrin->intrinsic != nir_intrinsic_set_vertex_and_primitive_count)
+      return false;
 
-   switch (intrin->intrinsic) {
-   case nir_intrinsic_set_vertex_and_primitive_count: {
-      /* this intrinsic should show up only once */
-      assert(state->primitive_count == NULL);
-
-      state->primitive_count =
-            nir_variable_create(b->shader,
-                                nir_var_shader_out,
-                                glsl_uint_type(),
-                                "gl_PrimitiveCountNV");
-      state->primitive_count->data.location = VARYING_SLOT_PRIMITIVE_COUNT;
-      state->primitive_count->data.interpolation = INTERP_MODE_NONE;
-
-      b->cursor = nir_before_instr(&intrin->instr);
-
-      nir_ssa_def *local_invocation_index = nir_build_load_local_invocation_index(b);
-
-      nir_ssa_def *cmp = nir_ieq(b, local_invocation_index,
-                                     nir_imm_int(b, 0));
-      nir_if *if_stmt = nir_push_if(b, cmp);
-      {
-         nir_deref_instr *prim_count_deref = nir_build_deref_var(b, state->primitive_count);
-         nir_store_deref(b, prim_count_deref, intrin->src[1].ssa, 1);
-      }
-      nir_pop_if(b, if_stmt);
-
-      nir_instr_remove(instr);
-
-      return true;
+   /* Detect some cases of invalid primitive count. They might lead to URB
+    * memory corruption, where workgroups overwrite each other output memory.
+    */
+   if (nir_src_is_const(intrin->src[1]) &&
+         nir_src_as_uint(intrin->src[1]) > b->shader->info.mesh.max_primitives_out) {
+      assert(!"number of primitives bigger than max specified");
    }
 
-   case nir_intrinsic_store_deref: {
-      /* Replace:
-       * gl_PrimitiveTriangleIndicesEXT[N] := vec3(X,Y,Z)
-       * by:
-       * gl_PrimitiveIndicesNV[N*3+0] := X
-       * gl_PrimitiveIndicesNV[N*3+1] := Y
-       * gl_PrimitiveIndicesNV[N*3+2] := Z
-       */
+   struct lower_set_vtx_and_prim_count_state *state = data;
+   /* this intrinsic should show up only once */
+   assert(state->primitive_count == NULL);
 
-      nir_deref_instr *deref = nir_src_as_deref(intrin->src[0]);
-      if (deref->deref_type != nir_deref_type_array)
-         break;
+   b->cursor = nir_before_instr(&intrin->instr);
 
-      nir_deref_instr *deref2 = nir_src_as_deref(deref->parent);
-      if (deref2->deref_type != nir_deref_type_var)
-         break;
+   state->primitive_count = anv_nir_prim_count_store(b, intrin->src[1].ssa);
 
-      const nir_variable *var = deref2->var;
-      if (var->data.location != VARYING_SLOT_PRIMITIVE_INDICES)
-         break;
+   nir_instr_remove(instr);
 
-      if (state->primitive_count == NULL)
-         assert(!"primitive count must be set before indices");
-
-      b->cursor = nir_before_instr(instr);
-
-      if (!state->primitive_indices) {
-         const struct glsl_type *type =
-               glsl_array_type(glsl_uint_type(),
-                               glsl_get_length(var->type),
-                               0);
-
-         state->primitive_indices =
-               nir_variable_create(b->shader,
-                                   nir_var_shader_out,
-                                   type,
-                                   "gl_PrimitiveIndicesNV");
-         state->primitive_indices->data.location = var->data.location;
-         state->primitive_indices->data.interpolation = var->data.interpolation;
-      }
-
-      nir_deref_instr *primitive_indices_deref =
-            nir_build_deref_var(b, state->primitive_indices);
-
-      assert(intrin->src[1].is_ssa);
-      uint8_t components = intrin->src[1].ssa->num_components;
-
-      ASSERTED unsigned vertices_per_primitive =
-            num_mesh_vertices_per_primitive(b->shader->info.mesh.primitive_type);
-      assert(vertices_per_primitive == components);
-      assert(nir_intrinsic_write_mask(intrin) == (1u << components) - 1);
-
-      nir_src ind = deref->arr.index;
-      assert(ind.is_ssa);
-      nir_ssa_def *new_base = nir_imul_imm(b, ind.ssa, components);
-
-      for (unsigned i = 0; i < components; ++i) {
-         nir_ssa_def *new_idx = nir_iadd_imm(b, new_base, i);
-
-         nir_deref_instr *reindexed_deref =
-               nir_build_deref_array(b, primitive_indices_deref, new_idx);
-
-         nir_store_deref(b, reindexed_deref, nir_channel(b, intrin->src[1].ssa, i), 1);
-      }
-
-      nir_instr_remove(instr);
-
-      return true;
-   }
-
-   default:
-      break;
-   }
-   return false;
+   return true;
 }
 
 static bool
-anv_nir_lower_mesh_ext(nir_shader *nir)
+anv_nir_lower_set_vtx_and_prim_count(nir_shader *nir)
 {
-   struct lower_mesh_ext_state state = { NULL, };
+   struct lower_set_vtx_and_prim_count_state state = { NULL, };
 
-   return nir_shader_instructions_pass(nir, anv_nir_lower_mesh_ext_instr,
-                                       nir_metadata_none,
-                                       &state);
+   nir_shader_instructions_pass(nir,
+                                anv_nir_lower_set_vtx_and_prim_count_instr,
+                                nir_metadata_none,
+                                &state);
+
+   /* If we didn't find set_vertex_and_primitive_count, then we have to
+    * insert store of value 0 to primitive_count.
+    */
+   if (state.primitive_count == NULL) {
+      nir_builder b;
+      nir_function_impl *entrypoint = nir_shader_get_entrypoint(nir);
+      nir_builder_init(&b, entrypoint);
+      b.cursor = nir_before_block(nir_start_block(entrypoint));
+      nir_ssa_def *zero = nir_imm_int(&b, 0);
+      state.primitive_count = anv_nir_prim_count_store(&b, zero);
+   }
+
+   assert(state.primitive_count != NULL);
+   return true;
 }
 
 /* Eventually, this will become part of anv_CreateShader.  Unfortunately,
@@ -253,9 +209,9 @@ anv_shader_stage_to_nir(struct anv_device *device,
          .fragment_shading_rate = pdevice->info.ver >= 11,
       },
       .ubo_addr_format =
-         anv_nir_ubo_addr_format(pdevice, device->robust_buffer_access),
+         anv_nir_ubo_addr_format(pdevice, device->vk.enabled_features.robustBufferAccess),
       .ssbo_addr_format =
-          anv_nir_ssbo_addr_format(pdevice, device->robust_buffer_access),
+          anv_nir_ssbo_addr_format(pdevice, device->vk.enabled_features.robustBufferAccess),
       .phys_ssbo_addr_format = nir_address_format_64bit_global,
       .push_const_addr_format = nir_address_format_logical,
 
@@ -264,6 +220,9 @@ anv_shader_stage_to_nir(struct anv_device *device,
        * with certain code / code generators.
        */
       .shared_addr_format = nir_address_format_32bit_offset,
+
+      .min_ubo_alignment = ANV_UBO_ALIGNMENT,
+      .min_ssbo_alignment = ANV_SSBO_ALIGNMENT,
    };
 
    nir_shader *nir;
@@ -298,15 +257,18 @@ anv_shader_stage_to_nir(struct anv_device *device,
    /* Vulkan uses the separate-shader linking model */
    nir->info.separate_shader = true;
 
-   brw_preprocess_nir(compiler, nir, device->fp64_nir);
+   struct brw_nir_compiler_opts opts = {
+      .softfp64 = device->fp64_nir,
+      .robust_image_access =
+         device->vk.enabled_features.robustImageAccess ||
+         device->vk.enabled_features.robustImageAccess2,
+   };
+   brw_preprocess_nir(compiler, nir, &opts);
 
    if (nir->info.stage == MESA_SHADER_MESH && !nir->info.mesh.nv) {
-      bool progress = false;
-      NIR_PASS(progress, nir, anv_nir_lower_mesh_ext);
-      if (progress) {
-         NIR_PASS(_, nir, nir_opt_dce);
-         NIR_PASS(_, nir, nir_remove_dead_variables, nir_var_shader_out, NULL);
-      }
+      NIR_PASS(_, nir, anv_nir_lower_set_vtx_and_prim_count);
+      NIR_PASS(_, nir, nir_opt_dce);
+      NIR_PASS(_, nir, nir_remove_dead_variables, nir_var_shader_out, NULL);
    }
 
    return nir;
@@ -584,7 +546,8 @@ populate_wm_prog_key(const struct anv_graphics_pipeline *pipeline,
     * code to workaround the issue that hardware disables alpha to coverage
     * when there is SampleMask output.
     */
-   key->alpha_to_coverage = ms != NULL && ms->alpha_to_coverage_enable;
+   key->alpha_to_coverage = ms != NULL && ms->alpha_to_coverage_enable ?
+      BRW_ALWAYS : BRW_NEVER;
 
    /* Vulkan doesn't support fixed-function alpha test */
    key->alpha_test_replicate_alpha = false;
@@ -594,9 +557,11 @@ populate_wm_prog_key(const struct anv_graphics_pipeline *pipeline,
        * harmless to compute it and then let dead-code take care of it.
        */
       if (ms->rasterization_samples > 1) {
-         key->persample_interp = ms->sample_shading_enable &&
-            (ms->min_sample_shading * ms->rasterization_samples) > 1;
-         key->multisample_fbo = true;
+         key->persample_interp =
+            (ms->sample_shading_enable &&
+             (ms->min_sample_shading * ms->rasterization_samples) > 1) ?
+            BRW_ALWAYS : BRW_NEVER;
+         key->multisample_fbo = BRW_ALWAYS;
       }
 
       if (device->physical->instance->sample_mask_out_opengl_behaviour)
@@ -686,7 +651,7 @@ anv_pipeline_hash_graphics(struct anv_graphics_pipeline *pipeline,
 
    const struct anv_device *device = pipeline->base.device;
 
-   const bool rba = device->robust_buffer_access;
+   const bool rba = device->vk.enabled_features.robustBufferAccess;
    _mesa_sha1_update(&ctx, &rba, sizeof(rba));
 
    for (uint32_t s = 0; s < ANV_GRAPHICS_SHADER_STAGE_COUNT; s++) {
@@ -719,7 +684,7 @@ anv_pipeline_hash_compute(struct anv_compute_pipeline *pipeline,
 
    const struct anv_device *device = pipeline->base.device;
 
-   const bool rba = device->robust_buffer_access;
+   const bool rba = device->vk.enabled_features.robustBufferAccess;
    _mesa_sha1_update(&ctx, &rba, sizeof(rba));
 
    const bool afs = device->physical->instance->assume_full_subgroups;
@@ -744,7 +709,7 @@ anv_pipeline_hash_ray_tracing_shader(struct anv_ray_tracing_pipeline *pipeline,
    if (layout != NULL)
       _mesa_sha1_update(&ctx, layout->sha1, sizeof(layout->sha1));
 
-   const bool rba = pipeline->base.device->robust_buffer_access;
+   const bool rba = pipeline->base.device->vk.enabled_features.robustBufferAccess;
    _mesa_sha1_update(&ctx, &rba, sizeof(rba));
 
    _mesa_sha1_update(&ctx, stage->shader_sha1, sizeof(stage->shader_sha1));
@@ -766,7 +731,7 @@ anv_pipeline_hash_ray_tracing_combined_shader(struct anv_ray_tracing_pipeline *p
    if (layout != NULL)
       _mesa_sha1_update(&ctx, layout->sha1, sizeof(layout->sha1));
 
-   const bool rba = pipeline->base.device->robust_buffer_access;
+   const bool rba = pipeline->base.device->vk.enabled_features.robustBufferAccess;
    _mesa_sha1_update(&ctx, &rba, sizeof(rba));
 
    _mesa_sha1_update(&ctx, intersection->shader_sha1, sizeof(intersection->shader_sha1));
@@ -775,38 +740,6 @@ anv_pipeline_hash_ray_tracing_combined_shader(struct anv_ray_tracing_pipeline *p
    _mesa_sha1_update(&ctx, &any_hit->key, sizeof(any_hit->key.bs));
 
    _mesa_sha1_final(&ctx, sha1_out);
-}
-
-static void
-anv_stage_nullify_unused_push_desc_surfaces(struct anv_pipeline_stage *stage,
-                                            struct anv_pipeline_layout *layout)
-{
-   uint8_t push_set;
-   const struct anv_descriptor_set_layout *push_set_layout =
-      anv_pipeline_layout_get_push_set(layout, &push_set);
-   if (push_set_layout == NULL)
-      return;
-
-   const uint32_t to_keep_descriptors =
-      stage->push_desc_info.used_descriptors &
-      ~stage->push_desc_info.fully_promoted_ubo_descriptors;
-
-   for (unsigned s = 0; s < stage->bind_map.surface_count; s++) {
-      if (stage->bind_map.surface_to_descriptor[s].set == ANV_DESCRIPTOR_SET_DESCRIPTORS &&
-          stage->bind_map.surface_to_descriptor[s].index == push_set &&
-          !stage->push_desc_info.used_set_buffer)
-         stage->bind_map.surface_to_descriptor[s].set = ANV_DESCRIPTOR_SET_NULL;
-
-
-      if (stage->bind_map.surface_to_descriptor[s].set == push_set) {
-         const uint32_t binding =
-            stage->bind_map.surface_to_descriptor[s].binding;
-         const uint32_t desc_index =
-            push_set_layout->binding[binding].descriptor_index;
-         if (!(BITFIELD_BIT(desc_index) & to_keep_descriptors))
-            stage->bind_map.surface_to_descriptor[s].set = ANV_DESCRIPTOR_SET_NULL;
-      }
-   }
 }
 
 static nir_shader *
@@ -837,6 +770,28 @@ anv_pipeline_stage_get_nir(struct anv_pipeline *pipeline,
    }
 
    return NULL;
+}
+
+static const struct vk_ycbcr_conversion_state *
+lookup_ycbcr_conversion(const void *_pipeline_layout, uint32_t set,
+                        uint32_t binding, uint32_t array_index)
+{
+   const struct anv_pipeline_layout *pipeline_layout = _pipeline_layout;
+
+   assert(set < MAX_SETS);
+   assert(binding < pipeline_layout->set[set].layout->binding_count);
+   const struct anv_descriptor_set_binding_layout *bind_layout =
+      &pipeline_layout->set[set].layout->binding[binding];
+
+   if (bind_layout->immutable_samplers == NULL)
+      return NULL;
+
+   array_index = MIN2(array_index, bind_layout->array_size - 1);
+
+   const struct anv_sampler *sampler =
+      bind_layout->immutable_samplers[array_index];
+
+   return sampler && sampler->conversion ? &sampler->conversion->state : NULL;
 }
 
 static void
@@ -889,7 +844,7 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
       NIR_PASS(_, nir, nir_lower_compute_system_values, &options);
    }
 
-   NIR_PASS(_, nir, anv_nir_lower_ycbcr_textures, layout);
+   NIR_PASS(_, nir, nir_vk_lower_ycbcr_tex, lookup_ycbcr_conversion, layout);
 
    if (pipeline->type == ANV_PIPELINE_GRAPHICS) {
       struct anv_graphics_pipeline *gfx_pipeline =
@@ -914,15 +869,15 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
 
    /* Apply the actual pipeline layout to UBOs, SSBOs, and textures */
    NIR_PASS_V(nir, anv_nir_apply_pipeline_layout,
-              pdevice, pipeline->device->robust_buffer_access,
+              pdevice, pipeline->device->vk.enabled_features.robustBufferAccess,
               layout, &stage->bind_map);
 
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_ubo,
             anv_nir_ubo_addr_format(pdevice,
-               pipeline->device->robust_buffer_access));
+               pipeline->device->vk.enabled_features.robustBufferAccess));
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_ssbo,
             anv_nir_ssbo_addr_format(pdevice,
-               pipeline->device->robust_buffer_access));
+               pipeline->device->vk.enabled_features.robustBufferAccess));
 
    /* First run copy-prop to get rid of all of the vec() that address
     * calculations often create and then constant-fold so that, when we
@@ -955,7 +910,7 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
    }
 
    NIR_PASS_V(nir, anv_nir_compute_push_layout,
-              pdevice, pipeline->device->robust_buffer_access,
+              pdevice, pipeline->device->vk.enabled_features.robustBufferAccess,
               prog_data, &stage->bind_map, mem_ctx);
 
    if (gl_shader_stage_uses_workgroup(nir->info.stage)) {
@@ -991,7 +946,6 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
       anv_nir_loads_push_desc_buffer(nir, layout, &stage->bind_map);
    stage->push_desc_info.fully_promoted_ubo_descriptors =
       anv_nir_push_desc_ubo_fully_promoted(nir, layout, &stage->bind_map);
-   anv_stage_nullify_unused_push_desc_surfaces(stage, layout);
 
    stage->nir = nir;
 }
@@ -1514,40 +1468,40 @@ anv_graphics_pipeline_init_keys(struct anv_graphics_pipeline *pipeline,
       switch (stages[s].stage) {
       case MESA_SHADER_VERTEX:
          populate_vs_prog_key(device,
-                              pipeline->base.device->robust_buffer_access,
+                              pipeline->base.device->vk.enabled_features.robustBufferAccess,
                               &stages[s].key.vs);
          break;
       case MESA_SHADER_TESS_CTRL:
          populate_tcs_prog_key(device,
-                               pipeline->base.device->robust_buffer_access,
+                               pipeline->base.device->vk.enabled_features.robustBufferAccess,
                                state->ts->patch_control_points,
                                &stages[s].key.tcs);
          break;
       case MESA_SHADER_TESS_EVAL:
          populate_tes_prog_key(device,
-                               pipeline->base.device->robust_buffer_access,
+                               pipeline->base.device->vk.enabled_features.robustBufferAccess,
                                &stages[s].key.tes);
          break;
       case MESA_SHADER_GEOMETRY:
          populate_gs_prog_key(device,
-                              pipeline->base.device->robust_buffer_access,
+                              pipeline->base.device->vk.enabled_features.robustBufferAccess,
                               &stages[s].key.gs);
          break;
       case MESA_SHADER_FRAGMENT: {
          populate_wm_prog_key(pipeline,
-                              pipeline->base.device->robust_buffer_access,
+                              pipeline->base.device->vk.enabled_features.robustBufferAccess,
                               state->dynamic, state->ms, state->fsr, state->rp,
                               &stages[s].key.wm);
          break;
       }
       case MESA_SHADER_TASK:
          populate_task_prog_key(device,
-                                pipeline->base.device->robust_buffer_access,
+                                pipeline->base.device->vk.enabled_features.robustBufferAccess,
                                 &stages[s].key.task);
          break;
       case MESA_SHADER_MESH:
          populate_mesh_prog_key(device,
-                                pipeline->base.device->robust_buffer_access,
+                                pipeline->base.device->vk.enabled_features.robustBufferAccess,
                                 &stages[s].key.mesh);
          break;
       default:
@@ -2043,7 +1997,7 @@ anv_pipeline_compile_cs(struct anv_compute_pipeline *pipeline,
 
    struct anv_shader_bin *bin = NULL;
 
-   populate_cs_prog_key(device, device->robust_buffer_access, &stage.key.cs);
+   populate_cs_prog_key(device, device->vk.enabled_features.robustBufferAccess, &stage.key.cs);
 
    ANV_FROM_HANDLE(anv_pipeline_layout, layout, info->layout);
 
@@ -2262,6 +2216,21 @@ anv_pipeline_setup_l3_config(struct anv_pipeline *pipeline, bool needs_slm)
    pipeline->l3_config = intel_get_l3_config(devinfo, w);
 }
 
+static uint32_t
+get_vs_input_elements(const struct brw_vs_prog_data *vs_prog_data)
+{
+   /* Pull inputs_read out of the VS prog data */
+   const uint64_t inputs_read = vs_prog_data->inputs_read;
+   const uint64_t double_inputs_read =
+      vs_prog_data->double_inputs_read & inputs_read;
+   assert((inputs_read & ((1 << VERT_ATTRIB_GENERIC0) - 1)) == 0);
+   const uint32_t elements = inputs_read >> VERT_ATTRIB_GENERIC0;
+   const uint32_t elements_double = double_inputs_read >> VERT_ATTRIB_GENERIC0;
+
+   return __builtin_popcount(elements) -
+          __builtin_popcount(elements_double) / 2;
+}
+
 static VkResult
 anv_graphics_pipeline_init(struct anv_graphics_pipeline *pipeline,
                            struct anv_device *device,
@@ -2292,6 +2261,7 @@ anv_graphics_pipeline_init(struct anv_graphics_pipeline *pipeline,
       assert(device->physical->vk.supported_extensions.NV_mesh_shader ||
              device->physical->vk.supported_extensions.EXT_mesh_shader);
 
+   pipeline->dynamic_state.vi = &pipeline->vertex_input;
    pipeline->dynamic_state.ms.sample_locations = &pipeline->sample_locations;
    vk_dynamic_graphics_state_fill(&pipeline->dynamic_state, state);
 
@@ -2306,19 +2276,22 @@ anv_graphics_pipeline_init(struct anv_graphics_pipeline *pipeline,
    anv_pipeline_setup_l3_config(&pipeline->base, false);
 
    if (anv_pipeline_is_primitive(pipeline)) {
-      const uint64_t inputs_read = get_vs_prog_data(pipeline)->inputs_read;
+      const struct brw_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
 
-      u_foreach_bit(a, state->vi->attributes_valid) {
-         if (inputs_read & BITFIELD64_BIT(VERT_ATTRIB_GENERIC0 + a))
-            pipeline->vb_used |= BITFIELD64_BIT(state->vi->attributes[a].binding);
-      }
+      /* The total number of vertex elements we need to program. We might need
+       * a couple more to implement some of the draw parameters.
+       */
+      pipeline->svgs_count =
+         (vs_prog_data->uses_vertexid ||
+          vs_prog_data->uses_instanceid ||
+          vs_prog_data->uses_firstvertex ||
+          vs_prog_data->uses_baseinstance) + vs_prog_data->uses_drawid;
 
-      u_foreach_bit(b, state->vi->bindings_valid) {
-         pipeline->vb[b].stride = state->vi->bindings[b].stride;
-         pipeline->vb[b].instanced = state->vi->bindings[b].input_rate ==
-                                      VK_VERTEX_INPUT_RATE_INSTANCE;
-         pipeline->vb[b].instance_divisor = state->vi->bindings[b].divisor;
-      }
+      pipeline->vs_input_elements = get_vs_input_elements(vs_prog_data);
+
+      pipeline->vertex_input_elems =
+         (BITSET_TEST(state->dynamic, MESA_VK_DYNAMIC_VI) ?
+          0 : pipeline->vs_input_elements) + pipeline->svgs_count;
 
       /* Our implementation of VK_KHR_multiview uses instancing to draw the
        * different views when primitive replication cannot be used.  If the
@@ -2622,7 +2595,7 @@ anv_pipeline_init_ray_tracing_stages(struct anv_ray_tracing_pipeline *pipeline,
       };
 
       populate_bs_prog_key(pipeline->base.device,
-                           pipeline->base.device->robust_buffer_access,
+                           pipeline->base.device->vk.enabled_features.robustBufferAccess,
                            ray_flags,
                            &stages[i].key.bs);
 
@@ -2668,11 +2641,11 @@ anv_pipeline_init_ray_tracing_stages(struct anv_ray_tracing_pipeline *pipeline,
 }
 
 static bool
-anv_pipeline_load_cached_shaders(struct anv_ray_tracing_pipeline *pipeline,
-                                 struct vk_pipeline_cache *cache,
-                                 const VkRayTracingPipelineCreateInfoKHR *info,
-                                 struct anv_pipeline_stage *stages,
-                                 uint32_t *stack_max)
+anv_ray_tracing_pipeline_load_cached_shaders(struct anv_ray_tracing_pipeline *pipeline,
+                                             struct vk_pipeline_cache *cache,
+                                             const VkRayTracingPipelineCreateInfoKHR *info,
+                                             struct anv_pipeline_stage *stages,
+                                             uint32_t *stack_max)
 {
    uint32_t shaders = 0, cache_hits = 0;
    for (uint32_t i = 0; i < info->stageCount; i++) {
@@ -2736,7 +2709,8 @@ anv_pipeline_compile_ray_tracing(struct anv_ray_tracing_pipeline *pipeline,
    uint32_t stack_max[MESA_VULKAN_SHADER_STAGES] = {};
 
    if (!skip_cache_lookup &&
-       anv_pipeline_load_cached_shaders(pipeline, cache, info, stages, stack_max)) {
+       anv_ray_tracing_pipeline_load_cached_shaders(pipeline, cache, info,
+                                                    stages, stack_max)) {
       pipeline_feedback.flags |=
          VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT;
       goto done;
@@ -3417,6 +3391,14 @@ VkResult anv_GetPipelineExecutableStatisticsKHR(
                 "pressure.");
       stat->format = VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR;
       stat->value.u64 = prog_data->total_scratch;
+   }
+
+   vk_outarray_append_typed(VkPipelineExecutableStatisticKHR, &out, stat) {
+      WRITE_STR(stat->name, "Max live registers");
+      WRITE_STR(stat->description,
+                "Maximum number of registers used across the entire shader.");
+      stat->format = VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR;
+      stat->value.u64 = exe->stats.max_live_registers;
    }
 
    if (gl_shader_stage_uses_workgroup(exe->stage)) {

@@ -24,6 +24,7 @@ libtu_files = files(
   'tu_dynamic_rendering.c',
   'tu_formats.c',
   'tu_image.c',
+  'tu_knl.c',
   'tu_lrz.c',
   'tu_nir_lower_multiview.c',
   'tu_pass.c',
@@ -66,15 +67,18 @@ if with_xlib_lease
   tu_deps += [dep_xlib_xrandr]
 endif
 
-if with_freedreno_kgsl
-  tu_flags += '-DTU_USE_KGSL'
-  # Even if libdrm is available we shouldn't use it in KGSL build
-  tu_flags += '-UHAVE_LIBDRM'
-  libtu_files += files('tu_kgsl.c')
-else
-  libtu_files += files('tu_drm.c')
+if freedreno_kmds.contains('kgsl')
+  tu_flags += '-DTU_HAS_KGSL'
+  libtu_files += files('tu_knl_kgsl.c')
+endif
+
+if freedreno_kmds.contains('msm')
+  tu_flags += '-DTU_HAS_MSM'
+  libtu_files += files('tu_knl_drm_msm.c')
   tu_deps += dep_libdrm
 endif
+
+tu_flags += '-Wno-array-bounds'
 
 tu_tracepoints = custom_target(
   'tu_tracepoints.[ch]',
@@ -129,7 +133,8 @@ libvulkan_freedreno = shared_library(
   ],
   c_args : [no_override_init_args, tu_flags],
   gnu_symbol_visibility : 'hidden',
-  link_args : [ld_args_bsymbolic, ld_args_gc_sections, ld_args_build_id],
+  link_args : [vulkan_icd_link_args, ld_args_bsymbolic, ld_args_gc_sections, ld_args_build_id],
+  link_depends : vulkan_icd_link_depends,
   install : true,
 )
 
@@ -162,20 +167,18 @@ freedreno_icd = custom_target(
   install : true,
 )
 
-if meson.version().version_compare('>= 0.58')
-  _dev_icdname = 'freedreno_devenv_icd.@0@.json'.format(host_machine.cpu())
-  custom_target(
-    'freedreno_devenv_icd',
-    input : [vk_icd_gen, vk_api_xml],
-    output : _dev_icdname,
-    command : [
-      prog_python, '@INPUT0@',
-      '--api-version', '1.1', '--xml', '@INPUT1@',
-      '--lib-path', meson.current_build_dir() / 'libvulkan_freedreno.so',
-      '--out', '@OUTPUT@',
-    ],
-    build_by_default : true,
-  )
+_dev_icdname = 'freedreno_devenv_icd.@0@.json'.format(host_machine.cpu())
+_dev_icd = custom_target(
+  'freedreno_devenv_icd',
+  input : [vk_icd_gen, vk_api_xml],
+  output : _dev_icdname,
+  command : [
+    prog_python, '@INPUT0@',
+    '--api-version', '1.1', '--xml', '@INPUT1@',
+    '--lib-path', meson.current_build_dir() / 'libvulkan_freedreno.so',
+    '--out', '@OUTPUT@',
+  ],
+  build_by_default : true,
+)
 
-  devenv.append('VK_ICD_FILENAMES', meson.current_build_dir() / _dev_icdname)
-endif
+devenv.append('VK_ICD_FILENAMES', _dev_icd.full_path())

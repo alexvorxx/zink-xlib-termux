@@ -56,6 +56,7 @@ blit_resolve(struct zink_context *ctx, const struct pipe_blit_info *info, bool *
    if (src->format != dst->format)
       return false;
 
+
    apply_dst_clears(ctx, info, false);
    zink_fb_clears_apply_region(ctx, info->src.resource, zink_rect_from_box(&info->src.box));
 
@@ -70,6 +71,11 @@ blit_resolve(struct zink_context *ctx, const struct pipe_blit_info *info, bool *
    zink_batch_reference_resource_rw(batch, src, false);
    zink_batch_reference_resource_rw(batch, dst, true);
 
+   bool marker = zink_cmd_debug_marker_begin(ctx, cmdbuf, "blit_resolve(%s->%s, %dx%d->%dx%d)",
+                                             util_format_short_name(info->src.format),
+                                             util_format_short_name(info->src.format),
+                                             info->src.box.width, info->src.box.height,
+                                             info->dst.box.width, info->dst.box.height);
    VkImageResolve region = {0};
 
    region.srcSubresource.aspectMask = src->aspect;
@@ -110,6 +116,7 @@ blit_resolve(struct zink_context *ctx, const struct pipe_blit_info *info, bool *
    VKCTX(CmdResolveImage)(cmdbuf, src->obj->image, src->layout,
                      dst->obj->image, dst->layout,
                      1, &region);
+   zink_cmd_debug_marker_end(ctx, cmdbuf, marker);
 
    return true;
 }
@@ -128,7 +135,7 @@ blit_native(struct zink_context *ctx, const struct pipe_blit_info *info, bool *n
       return false;
 
    if (util_format_is_depth_or_stencil(info->dst.format) &&
-       info->dst.format != info->src.format)
+       (info->dst.format != info->src.format || info->filter == PIPE_TEX_FILTER_LINEAR))
       return false;
 
    /* vkCmdBlitImage must not be used for multisampled source or destination images. */
@@ -159,6 +166,7 @@ blit_native(struct zink_context *ctx, const struct pipe_blit_info *info, bool *n
        !(src->obj->vkfeats & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
       return false;
 
+
    apply_dst_clears(ctx, info, false);
    zink_fb_clears_apply_region(ctx, info->src.resource, zink_rect_from_box(&info->src.box));
 
@@ -173,6 +181,11 @@ blit_native(struct zink_context *ctx, const struct pipe_blit_info *info, bool *n
    zink_batch_reference_resource_rw(batch, src, false);
    zink_batch_reference_resource_rw(batch, dst, true);
 
+   bool marker = zink_cmd_debug_marker_begin(ctx, cmdbuf, "blit_native(%s->%s, %dx%d->%dx%d)",
+                                             util_format_short_name(info->src.format),
+                                             util_format_short_name(info->src.format),
+                                             info->src.box.width, info->src.box.height,
+                                             info->dst.box.width, info->dst.box.height);
    VkImageBlit region = {0};
    region.srcSubresource.aspectMask = src->aspect;
    region.srcSubresource.mipLevel = info->src.level;
@@ -253,6 +266,8 @@ blit_native(struct zink_context *ctx, const struct pipe_blit_info *info, bool *n
                   dst->obj->image, dst->layout,
                   1, &region,
                   zink_filter(info->filter));
+
+   zink_cmd_debug_marker_end(ctx, cmdbuf, marker);
 
    return true;
 }
@@ -340,6 +355,7 @@ zink_blit(struct pipe_context *pctx,
     * flush all pending clears anyway
     */
    apply_dst_clears(ctx, info, true);
+   zink_fb_clears_apply_region(ctx, info->src.resource, zink_rect_from_box(&info->src.box));
 
    /* this will draw a full-resource quad, so ignore existing data */
    if (util_blit_covers_whole_resource(info))
@@ -355,7 +371,7 @@ zink_blit(struct pipe_context *pctx,
       util_blitter_clear_depth_stencil(ctx->blitter, dst_view, PIPE_CLEAR_STENCIL,
                                        0, 0, info->dst.box.x, info->dst.box.y,
                                        info->dst.box.width, info->dst.box.height);
-      zink_blit_begin(ctx, ZINK_BLIT_SAVE_FB | ZINK_BLIT_SAVE_FS | ZINK_BLIT_SAVE_TEXTURES);
+      zink_blit_begin(ctx, ZINK_BLIT_SAVE_FB | ZINK_BLIT_SAVE_FS | ZINK_BLIT_SAVE_TEXTURES | ZINK_BLIT_SAVE_FS_CONST_BUF);
       util_blitter_stencil_fallback(ctx->blitter,
                                     info->dst.resource,
                                     info->dst.level,
@@ -390,8 +406,10 @@ zink_blit_begin(struct zink_context *ctx, enum zink_blit_flags flags)
    util_blitter_save_rasterizer(ctx->blitter, ctx->rast_state);
    util_blitter_save_so_targets(ctx->blitter, ctx->num_so_targets, ctx->so_targets);
 
-   if (flags & ZINK_BLIT_SAVE_FS) {
+   if (flags & ZINK_BLIT_SAVE_FS_CONST_BUF)
       util_blitter_save_fragment_constant_buffer_slot(ctx->blitter, ctx->ubos[MESA_SHADER_FRAGMENT]);
+
+   if (flags & ZINK_BLIT_SAVE_FS) {
       util_blitter_save_blend(ctx->blitter, ctx->gfx_pipeline_state.blend_state);
       util_blitter_save_depth_stencil_alpha(ctx->blitter, ctx->dsa_state);
       util_blitter_save_stencil_ref(ctx->blitter, &ctx->stencil_ref);

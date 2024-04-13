@@ -49,7 +49,7 @@ zink_device_info = custom_target(
   input : ['zink_device_info.py'],
   output : ['zink_device_info.h', 'zink_device_info.c'],
   command : [
-    prog_python, '@INPUT@', '@OUTPUT@', join_paths(dir_source_root, 'src/vulkan/registry/vk.xml')
+    prog_python, '@INPUT@', '@OUTPUT@', vk_api_xml
   ]
 )
 
@@ -58,7 +58,7 @@ zink_instance = custom_target(
   input : ['zink_instance.py'],
   output : ['zink_instance.h', 'zink_instance.c'],
   command : [
-    prog_python, '@INPUT@', '@OUTPUT@', join_paths(dir_source_root, 'src/vulkan/registry/vk.xml')
+    prog_python, '@INPUT@', '@OUTPUT@', vk_api_xml
   ]
 )
 
@@ -98,7 +98,7 @@ libzink = static_library(
   link_args : [ld_args_build_id],
   dependencies: [
     idep_nir_headers, idep_mesautil, idep_vulkan_util_headers,
-    idep_vulkan_wsi_headers, idep_vulkan_util, dep_libdrm
+    idep_vulkan_wsi_defines, idep_vulkan_util, dep_libdrm
   ],
   c_args: zink_c_args,
 )

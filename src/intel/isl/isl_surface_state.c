@@ -329,12 +329,32 @@ isl_genX(surf_fill_state_s)(const struct isl_device *dev, void *state,
          s.RenderTargetViewExtent = s.Depth;
       break;
    case SURFTYPE_3D:
+      assert(info->view->base_array_layer + info->view->array_len <=
+             isl_minify(info->surf->logical_level0_px.depth,
+                        info->view->base_level));
+
       /* From the Broadwell PRM >> RENDER_SURFACE_STATE::Depth:
        *
        *    If the volume texture is MIP-mapped, this field specifies the
        *    depth of the base MIP level.
        */
-      s.Depth = info->surf->logical_level0_px.depth - 1;
+      if (GFX_VER >= 9 && info->view->usage & ISL_SURF_USAGE_STORAGE_BIT) {
+         /* From the Kaby Lake docs for the RESINFO message:
+          *
+          *    "Surface Type | ... | Blue
+          *    --------------+-----+----------------
+          *     SURFTYPE_3D  | ... | (Depth+1)»LOD"
+          *
+          * which isn't actually what the Vulkan or D3D specs want for storage
+          * images.  We want the requested array size.  The good news is that,
+          * thanks to Skylake and later using the same image layout for 3D
+          * images as 2D array images, we should be able to adjust the depth
+          * without affecting the layout.
+          */
+         s.Depth = (info->view->array_len << info->view->base_level) - 1;
+      } else {
+         s.Depth = info->surf->logical_level0_px.depth - 1;
+      }
 
       /* From the Broadwell PRM >> RENDER_SURFACE_STATE::RenderTargetViewExtent:
        *
@@ -362,9 +382,16 @@ isl_genX(surf_fill_state_s)(const struct isl_device *dev, void *state,
    }
 
 #if GFX_VER >= 12
-   /* Wa_1806565034: Only set SurfaceArray if arrayed surface is > 1. */
+   /* Wa_1806565034:
+    *
+    *    "Only set SurfaceArray if arrayed surface is > 1."
+    *
+    * Since this is a performance workaround, we only enable it when robust
+    * image access is disabled. Otherwise layered robust access is not
+    * specification compliant.
+    */
    s.SurfaceArray = info->surf->dim != ISL_SURF_DIM_3D &&
-      info->view->array_len > 1;
+      (info->robust_image_access || info->view->array_len > 1);
 #elif GFX_VER >= 7
    s.SurfaceArray = info->surf->dim != ISL_SURF_DIM_3D;
 #endif
@@ -636,6 +663,20 @@ isl_genX(surf_fill_state_s)(const struct isl_device *dev, void *state,
 #endif
 #if GFX_VER >= 12
       s.MemoryCompressionEnable = info->aux_usage == ISL_AUX_USAGE_MC;
+
+      /* The Tiger Lake PRM for RENDER_SURFACE_STATE::DecompressInL3 says:
+       *
+       *    When this field is set to 1h, the associated compressible surface,
+       *    when accessed by sampler and data-port, will be uncompressed in
+       *    L3. If the surface is not compressible, this bit field is ignored.
+       *
+       * The sampler's decompressor seems to lack support for some types of
+       * format re-interpretation. Use the more capable decompressor for these
+       * cases.
+       */
+      s.DecompressInL3 =
+         !isl_formats_have_same_bits_per_channel(info->surf->format,
+                                                 info->view->format);
 #endif
 #if GFX_VER >= 9
       /* Some CCS aux usages have format restrictions. The Skylake PRM doc for

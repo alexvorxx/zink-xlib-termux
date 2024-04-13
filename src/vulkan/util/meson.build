@@ -46,14 +46,22 @@ vk_cmd_queue_gen_depend_files = [
   files('vk_entrypoints.py'),
   vk_entrypoints_depend_files,
 ]
+vk_physical_device_features_gen_depend_files = [
+  files('vk_extensions.py'),
+]
 
 vk_entrypoints_gen = files('vk_entrypoints_gen.py')
 vk_extensions_gen = files('vk_extensions_gen.py')
 vk_icd_gen = files('vk_icd_gen.py')
 vk_cmd_queue_gen = files('vk_cmd_queue_gen.py')
 vk_dispatch_trampolines_gen = files('vk_dispatch_trampolines_gen.py')
+vk_physical_device_features_gen = files('vk_physical_device_features.py')
 
 files_vulkan_util = files(
+  'rmv/vk_rmv_common.c',
+  'rmv/vk_rmv_common.h',
+  'rmv/vk_rmv_exporter.c',
+  'rmv/vk_rmv_tokens.h',
   'vk_alloc.c',
   'vk_alloc.h',
   'vk_format.c',

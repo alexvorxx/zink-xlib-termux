@@ -3,12 +3,19 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "compiler/agx_internal_formats.h"
+#include "agx_nir_format_helpers.h"
 #include "agx_tilebuffer.h"
 #include "nir.h"
 #include "nir_builder.h"
-#include "agx_nir_format_helpers.h"
 
 #define ALL_SAMPLES 0xFF
+
+struct ctx {
+   struct agx_tilebuffer_layout *tib;
+   uint8_t *colormasks;
+   bool *translucent;
+};
 
 static bool
 tib_filter(const nir_instr *instr, UNUSED const void *_)
@@ -22,17 +29,16 @@ tib_filter(const nir_instr *instr, UNUSED const void *_)
       return false;
 
    nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
-   assert(sem.dual_source_blend_index == 0 && "todo: dual source blending");
+   assert(sem.dual_source_blend_index == 0 && "dual source blending lowered");
    return (sem.location >= FRAG_RESULT_DATA0);
 }
 
 static nir_ssa_def *
 tib_impl(nir_builder *b, nir_instr *instr, void *data)
 {
-   struct agx_tilebuffer_layout *tib = data;
-
+   struct ctx *ctx = data;
+   struct agx_tilebuffer_layout *tib = ctx->tib;
    nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
-   nir_ssa_def *sample_mask = nir_imm_intN_t(b, ALL_SAMPLES, 16); /* TODO */
 
    nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
    unsigned rt = sem.location - FRAG_RESULT_DATA0;
@@ -43,8 +49,36 @@ tib_impl(nir_builder *b, nir_instr *instr, void *data)
    unsigned comps = util_format_get_nr_components(logical_format);
 
    if (intr->intrinsic == nir_intrinsic_store_output) {
+      /* Only write components that actually exist */
+      uint16_t write_mask = BITFIELD_MASK(comps);
+
       /* Delete stores to nonexistant render targets */
       if (logical_format == PIPE_FORMAT_NONE)
+         return NIR_LOWER_INSTR_PROGRESS_REPLACE;
+
+      /* Only write colours masked by the blend state */
+      if (ctx->colormasks)
+         write_mask &= ctx->colormasks[rt];
+
+      /* Masked stores require a translucent pass type */
+      if (write_mask != BITFIELD_MASK(comps)) {
+         assert(ctx->translucent != NULL &&
+                "colour masking requires translucency");
+
+         assert(agx_internal_format_supports_mask(format) &&
+                "write mask but format cannot be masked");
+
+         *(ctx->translucent) = true;
+      }
+
+      /* But we ignore the NIR write mask for that, since it's basically an
+       * optimization hint.
+       */
+      if (agx_internal_format_supports_mask(format))
+         write_mask &= nir_intrinsic_write_mask(intr);
+
+      /* Delete stores that are entirely masked out */
+      if (!write_mask)
          return NIR_LOWER_INSTR_PROGRESS_REPLACE;
 
       nir_ssa_def *value = intr->src[0].ssa;
@@ -52,12 +86,19 @@ tib_impl(nir_builder *b, nir_instr *instr, void *data)
       /* Trim to format as required by hardware */
       value = nir_trim_vector(b, intr->src[0].ssa, comps);
 
-      nir_store_local_pixel_agx(b, value,
-                                sample_mask,
+      /* The hardware cannot extend for a 32-bit format. Extend ourselves. */
+      if (format == PIPE_FORMAT_R32_UINT && value->bit_size == 16) {
+         if (util_format_is_pure_sint(logical_format))
+            value = nir_i2i32(b, value);
+         else if (util_format_is_pure_uint(logical_format))
+            value = nir_u2u32(b, value);
+         else
+            value = nir_f2f32(b, value);
+      }
+
+      nir_store_local_pixel_agx(b, value, nir_imm_intN_t(b, ALL_SAMPLES, 16),
                                 .base = tib->offset_B[rt],
-                                .write_mask = nir_intrinsic_write_mask(intr) &
-                                              BITFIELD_MASK(comps),
-                                .format = format);
+                                .write_mask = write_mask, .format = format);
 
       return NIR_LOWER_INSTR_PROGRESS_REPLACE;
    } else {
@@ -75,11 +116,10 @@ tib_impl(nir_builder *b, nir_instr *instr, void *data)
       if (f16)
          format = PIPE_FORMAT_R16_UINT;
 
-      nir_ssa_def *res = nir_load_local_pixel_agx(b, MIN2(intr->num_components, comps),
-                                      f16 ? 16 : bit_size,
-                                      sample_mask,
-                                      .base = tib->offset_B[rt],
-                                      .format = format);
+      nir_ssa_def *res = nir_load_local_pixel_agx(
+         b, MIN2(intr->num_components, comps), f16 ? 16 : bit_size,
+         nir_imm_intN_t(b, ALL_SAMPLES, 16), .base = tib->offset_B[rt],
+         .format = format);
 
       /* Extend floats */
       if (f16 && nir_dest_bit_size(intr->dest) != 16) {
@@ -95,8 +135,16 @@ tib_impl(nir_builder *b, nir_instr *instr, void *data)
 }
 
 bool
-agx_nir_lower_tilebuffer(nir_shader *shader, struct agx_tilebuffer_layout *tib)
+agx_nir_lower_tilebuffer(nir_shader *shader, struct agx_tilebuffer_layout *tib,
+                         uint8_t *colormasks, bool *translucent)
 {
    assert(shader->info.stage == MESA_SHADER_FRAGMENT);
-   return nir_shader_lower_instructions(shader, tib_filter, tib_impl, tib);
+
+   struct ctx ctx = {
+      .tib = tib,
+      .colormasks = colormasks,
+      .translucent = translucent,
+   };
+
+   return nir_shader_lower_instructions(shader, tib_filter, tib_impl, &ctx);
 }

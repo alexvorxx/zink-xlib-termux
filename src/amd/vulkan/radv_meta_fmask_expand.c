@@ -26,6 +26,9 @@
 #include "radv_private.h"
 #include "vk_format.h"
 
+static VkResult radv_device_init_meta_fmask_expand_state_internal(struct radv_device *device,
+                                                                  uint32_t samples_log2);
+
 static nir_shader *
 build_fmask_expand_compute_shader(struct radv_device *device, int samples)
 {
@@ -47,30 +50,14 @@ build_fmask_expand_compute_shader(struct radv_device *device, int samples)
    output_img->data.binding = 1;
    output_img->data.access = ACCESS_NON_READABLE;
 
-   nir_ssa_def *input_img_deref = &nir_build_deref_var(&b, input_img)->dest.ssa;
+   nir_deref_instr *input_img_deref = nir_build_deref_var(&b, input_img);
    nir_ssa_def *output_img_deref = &nir_build_deref_var(&b, output_img)->dest.ssa;
 
    nir_ssa_def *tex_coord = get_global_ids(&b, 3);
 
-   nir_tex_instr *tex_instr[8];
+   nir_ssa_def *tex_vals[8];
    for (uint32_t i = 0; i < samples; i++) {
-      tex_instr[i] = nir_tex_instr_create(b.shader, 3);
-
-      nir_tex_instr *tex = tex_instr[i];
-      tex->sampler_dim = GLSL_SAMPLER_DIM_MS;
-      tex->op = nir_texop_txf_ms;
-      tex->src[0].src_type = nir_tex_src_coord;
-      tex->src[0].src = nir_src_for_ssa(tex_coord);
-      tex->src[1].src_type = nir_tex_src_ms_index;
-      tex->src[1].src = nir_src_for_ssa(nir_imm_int(&b, i));
-      tex->src[2].src_type = nir_tex_src_texture_deref;
-      tex->src[2].src = nir_src_for_ssa(input_img_deref);
-      tex->dest_type = nir_type_float32;
-      tex->is_array = true;
-      tex->coord_components = 3;
-
-      nir_ssa_dest_init(&tex->instr, &tex->dest, 4, 32, "tex");
-      nir_builder_instr_insert(&b, &tex->instr);
+      tex_vals[i] = nir_txf_ms_deref(&b, input_img_deref, tex_coord, nir_imm_int(&b, i));
    }
 
    nir_ssa_def *img_coord =
@@ -78,9 +65,7 @@ build_fmask_expand_compute_shader(struct radv_device *device, int samples)
                nir_channel(&b, tex_coord, 2), nir_ssa_undef(&b, 1, 32));
 
    for (uint32_t i = 0; i < samples; i++) {
-      nir_ssa_def *outval = &tex_instr[i]->dest.ssa;
-
-      nir_image_deref_store(&b, output_img_deref, img_coord, nir_imm_int(&b, i), outval,
+      nir_image_deref_store(&b, output_img_deref, img_coord, nir_imm_int(&b, i), tex_vals[i],
                             nir_imm_int(&b, 0), .image_dim = GLSL_SAMPLER_DIM_MS, .image_array = true);
    }
 
@@ -97,6 +82,12 @@ radv_expand_fmask_image_inplace(struct radv_cmd_buffer *cmd_buffer, struct radv_
    const uint32_t samples_log2 = ffs(samples) - 1;
    unsigned layer_count = radv_get_layerCount(image, subresourceRange);
    struct radv_image_view iview;
+
+   VkResult result = radv_device_init_meta_fmask_expand_state_internal(device, samples_log2);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd_buffer->vk, result);
+      return;
+   }
 
    radv_meta_save(&saved_state, cmd_buffer,
                   RADV_META_SAVE_COMPUTE_PIPELINE | RADV_META_SAVE_DESCRIPTORS);
@@ -205,58 +196,77 @@ create_fmask_expand_pipeline(struct radv_device *device, int samples, VkPipeline
       .layout = state->fmask_expand.p_layout,
    };
 
-   result = radv_CreateComputePipelines(radv_device_to_handle(device),
-                                        state->cache, 1,
-                                        &vk_pipeline_info, NULL, pipeline);
+   result = radv_compute_pipeline_create(radv_device_to_handle(device), state->cache,
+                                         &vk_pipeline_info, NULL, pipeline);
 
    ralloc_free(cs);
    return result;
 }
 
-VkResult
-radv_device_init_meta_fmask_expand_state(struct radv_device *device)
+static VkResult
+radv_device_init_meta_fmask_expand_state_internal(struct radv_device *device, uint32_t samples_log2)
 {
    struct radv_meta_state *state = &device->meta_state;
    VkResult result;
 
-   VkDescriptorSetLayoutCreateInfo ds_create_info = {
-      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-      .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR,
-      .bindingCount = 2,
-      .pBindings = (VkDescriptorSetLayoutBinding[]){
-         {.binding = 0,
-          .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-          .descriptorCount = 1,
-          .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-          .pImmutableSamplers = NULL},
-         {.binding = 1,
-          .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-          .descriptorCount = 1,
-          .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-          .pImmutableSamplers = NULL},
-      }};
+   if (state->fmask_expand.pipeline[samples_log2])
+      return VK_SUCCESS;
 
-   result = radv_CreateDescriptorSetLayout(radv_device_to_handle(device), &ds_create_info,
-                                           &state->alloc, &state->fmask_expand.ds_layout);
-   if (result != VK_SUCCESS)
-      return result;
+   if (!state->fmask_expand.ds_layout) {
+      VkDescriptorSetLayoutCreateInfo ds_create_info = {
+         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+         .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR,
+         .bindingCount = 2,
+         .pBindings = (VkDescriptorSetLayoutBinding[]){
+            {.binding = 0,
+             .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+             .descriptorCount = 1,
+             .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+             .pImmutableSamplers = NULL},
+            {.binding = 1,
+             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+             .descriptorCount = 1,
+             .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+             .pImmutableSamplers = NULL},
+         }};
 
-   VkPipelineLayoutCreateInfo color_create_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 1,
-      .pSetLayouts = &state->fmask_expand.ds_layout,
-      .pushConstantRangeCount = 0,
-      .pPushConstantRanges = NULL,
-   };
+      result = radv_CreateDescriptorSetLayout(radv_device_to_handle(device), &ds_create_info,
+                                              &state->alloc, &state->fmask_expand.ds_layout);
+      if (result != VK_SUCCESS)
+         return result;
+   }
 
-   result = radv_CreatePipelineLayout(radv_device_to_handle(device), &color_create_info,
-                                      &state->alloc, &state->fmask_expand.p_layout);
-   if (result != VK_SUCCESS)
-      return result;
+   if (!state->fmask_expand.p_layout) {
+      VkPipelineLayoutCreateInfo color_create_info = {
+         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+         .setLayoutCount = 1,
+         .pSetLayouts = &state->fmask_expand.ds_layout,
+         .pushConstantRangeCount = 0,
+         .pPushConstantRanges = NULL,
+      };
+
+      result = radv_CreatePipelineLayout(radv_device_to_handle(device), &color_create_info,
+                                         &state->alloc, &state->fmask_expand.p_layout);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   result = create_fmask_expand_pipeline(device, 1 << samples_log2,
+                                         &state->fmask_expand.pipeline[samples_log2]);
+
+   return result;
+}
+
+VkResult
+radv_device_init_meta_fmask_expand_state(struct radv_device *device, bool on_demand)
+{
+   VkResult result;
+
+   if (on_demand)
+      return VK_SUCCESS;
 
    for (uint32_t i = 0; i < MAX_SAMPLES_LOG2; i++) {
-      uint32_t samples = 1 << i;
-      result = create_fmask_expand_pipeline(device, samples, &state->fmask_expand.pipeline[i]);
+      result = radv_device_init_meta_fmask_expand_state_internal(device, i);
       if (result != VK_SUCCESS)
          return result;
    }

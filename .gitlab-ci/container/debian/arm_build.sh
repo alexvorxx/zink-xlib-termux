@@ -24,6 +24,7 @@ apt-get -y install \
 	bison \
 	ccache \
 	cmake \
+	curl \
 	debootstrap \
 	fastboot \
 	flex \
@@ -50,6 +51,7 @@ apt-get -y install \
 	libxrandr-dev \
 	libxshmfence-dev \
 	libxxf86vm-dev \
+	libwayland-dev \
 	llvm-11-dev \
 	ninja-build \
 	pkg-config \
@@ -59,7 +61,6 @@ apt-get -y install \
 	python3-requests \
 	python3-setuptools \
 	u-boot-tools \
-	wget \
 	xz-utils \
 	zlib1g-dev \
 	zstd
@@ -83,6 +84,8 @@ arch=armhf
 # dependencies where we want a specific version
 EXTRA_MESON_ARGS=
 . .gitlab-ci/container/build-libdrm.sh
+
+. .gitlab-ci/container/build-wayland.sh
 
 apt-get purge -y $STABLE_EPHEMERAL
 

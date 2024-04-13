@@ -36,9 +36,7 @@ struct radv_shader_args {
    struct ac_shader_args ac;
 
    struct ac_arg descriptor_sets[MAX_SETS];
-   /* User data 0/1. GFX: descriptor list, Compute: scratch BO */
-   struct ac_arg ring_offsets;
-   /* User data 2/3. same as the descriptor list above but for task shaders. */
+   /* User data 2/3. same as ring_offsets but for task shaders. */
    struct ac_arg task_ring_offsets;
 
    /* Streamout */
@@ -95,12 +93,13 @@ radv_shader_args_from_ac(struct ac_shader_args *args)
 struct radv_pipeline_key;
 struct radv_shader_info;
 
-void radv_declare_shader_args(enum amd_gfx_level gfx_level, const struct radv_pipeline_key *key,
+void radv_declare_shader_args(const struct radv_device *device, const struct radv_pipeline_key *key,
                               const struct radv_shader_info *info, gl_shader_stage stage,
                               bool has_previous_stage, gl_shader_stage previous_stage,
                               struct radv_shader_args *args);
 
-void radv_declare_ps_epilog_args(enum amd_gfx_level gfx_level, const struct radv_ps_epilog_key *key,
+void radv_declare_ps_epilog_args(const struct radv_device *device,
+                                 const struct radv_ps_epilog_key *key,
                                  struct radv_shader_args *args);
 
 #endif

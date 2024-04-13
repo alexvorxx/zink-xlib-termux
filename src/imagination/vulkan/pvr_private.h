@@ -38,6 +38,8 @@
 
 #include "compiler/shader_enums.h"
 #include "hwdef/rogue_hw_defs.h"
+#include "pvr_clear.h"
+#include "pvr_common.h"
 #include "pvr_csb.h"
 #include "pvr_device_info.h"
 #include "pvr_entrypoints.h"
@@ -45,6 +47,8 @@
 #include "pvr_job_render.h"
 #include "pvr_limits.h"
 #include "pvr_pds.h"
+#include "pvr_shader_factory.h"
+#include "pvr_spm.h"
 #include "pvr_types.h"
 #include "pvr_winsys.h"
 #include "rogue/rogue.h"
@@ -73,159 +77,6 @@
 #else
 #   define VG(x) ((void)0)
 #endif
-
-#define VK_VENDOR_ID_IMAGINATION 0x1010
-
-#define PVR_WORKGROUP_DIMENSIONS 3U
-
-#define PVR_SAMPLER_DESCRIPTOR_SIZE 4U
-#define PVR_IMAGE_DESCRIPTOR_SIZE 4U
-
-#define PVR_STATE_PBE_DWORDS 2U
-
-#define PVR_PIPELINE_LAYOUT_SUPPORTED_DESCRIPTOR_TYPE_COUNT \
-   (uint32_t)(VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT + 1U)
-
-/* TODO: move into a common surface library? */
-enum pvr_memlayout {
-   PVR_MEMLAYOUT_UNDEFINED = 0, /* explicitly treat 0 as undefined */
-   PVR_MEMLAYOUT_LINEAR,
-   PVR_MEMLAYOUT_TWIDDLED,
-   PVR_MEMLAYOUT_3DTWIDDLED,
-};
-
-enum pvr_texture_state {
-   PVR_TEXTURE_STATE_SAMPLE,
-   PVR_TEXTURE_STATE_STORAGE,
-   PVR_TEXTURE_STATE_ATTACHMENT,
-   PVR_TEXTURE_STATE_MAX_ENUM,
-};
-
-enum pvr_sub_cmd_type {
-   PVR_SUB_CMD_TYPE_INVALID = 0, /* explicitly treat 0 as invalid */
-   PVR_SUB_CMD_TYPE_GRAPHICS,
-   PVR_SUB_CMD_TYPE_COMPUTE,
-   PVR_SUB_CMD_TYPE_TRANSFER,
-   PVR_SUB_CMD_TYPE_OCCLUSION_QUERY,
-   PVR_SUB_CMD_TYPE_EVENT,
-};
-
-enum pvr_event_type {
-   PVR_EVENT_TYPE_SET,
-   PVR_EVENT_TYPE_RESET,
-   PVR_EVENT_TYPE_WAIT,
-   PVR_EVENT_TYPE_BARRIER,
-};
-
-enum pvr_depth_stencil_usage {
-   PVR_DEPTH_STENCIL_USAGE_UNDEFINED = 0, /* explicitly treat 0 as undefined */
-   PVR_DEPTH_STENCIL_USAGE_NEEDED,
-   PVR_DEPTH_STENCIL_USAGE_NEVER,
-};
-
-enum pvr_job_type {
-   PVR_JOB_TYPE_GEOM,
-   PVR_JOB_TYPE_FRAG,
-   PVR_JOB_TYPE_COMPUTE,
-   PVR_JOB_TYPE_TRANSFER,
-   PVR_JOB_TYPE_OCCLUSION_QUERY,
-   PVR_JOB_TYPE_MAX
-};
-
-enum pvr_pipeline_type {
-   PVR_PIPELINE_TYPE_INVALID = 0, /* explicitly treat 0 as undefined */
-   PVR_PIPELINE_TYPE_GRAPHICS,
-   PVR_PIPELINE_TYPE_COMPUTE,
-};
-
-enum pvr_pipeline_stage_bits {
-   PVR_PIPELINE_STAGE_GEOM_BIT = BITFIELD_BIT(PVR_JOB_TYPE_GEOM),
-   PVR_PIPELINE_STAGE_FRAG_BIT = BITFIELD_BIT(PVR_JOB_TYPE_FRAG),
-   PVR_PIPELINE_STAGE_COMPUTE_BIT = BITFIELD_BIT(PVR_JOB_TYPE_COMPUTE),
-   PVR_PIPELINE_STAGE_TRANSFER_BIT = BITFIELD_BIT(PVR_JOB_TYPE_TRANSFER),
-   /* Note that this doesn't map to VkPipelineStageFlagBits so be careful with
-    * this.
-    */
-   PVR_PIPELINE_STAGE_OCCLUSION_QUERY_BIT =
-      BITFIELD_BIT(PVR_JOB_TYPE_OCCLUSION_QUERY),
-};
-
-#define PVR_PIPELINE_STAGE_ALL_GRAPHICS_BITS \
-   (PVR_PIPELINE_STAGE_GEOM_BIT | PVR_PIPELINE_STAGE_FRAG_BIT)
-
-#define PVR_PIPELINE_STAGE_ALL_BITS                                         \
-   (PVR_PIPELINE_STAGE_ALL_GRAPHICS_BITS | PVR_PIPELINE_STAGE_COMPUTE_BIT | \
-    PVR_PIPELINE_STAGE_TRANSFER_BIT)
-
-#define PVR_NUM_SYNC_PIPELINE_STAGES 4U
-
-/* Warning: Do not define an invalid stage as 0 since other code relies on 0
- * being the first shader stage. This allows for stages to be split or added
- * in the future. Defining 0 as invalid will very likely cause problems.
- */
-enum pvr_stage_allocation {
-   PVR_STAGE_ALLOCATION_VERTEX_GEOMETRY,
-   PVR_STAGE_ALLOCATION_FRAGMENT,
-   PVR_STAGE_ALLOCATION_COMPUTE,
-   PVR_STAGE_ALLOCATION_COUNT
-};
-
-#define PVR_STATIC_CLEAR_PDS_STATE_COUNT          \
-   (pvr_cmd_length(TA_STATE_PDS_SHADERBASE) +     \
-    pvr_cmd_length(TA_STATE_PDS_TEXUNICODEBASE) + \
-    pvr_cmd_length(TA_STATE_PDS_SIZEINFO1) +      \
-    pvr_cmd_length(TA_STATE_PDS_SIZEINFO2) +      \
-    pvr_cmd_length(TA_STATE_PDS_VARYINGBASE) +    \
-    pvr_cmd_length(TA_STATE_PDS_TEXTUREDATABASE))
-
-/* These can be used as offsets within a PVR_STATIC_CLEAR_PDS_STATE_COUNT dwords
- * sized array to get the respective state word.
- *
- * The values are based on the lengths of the state words.
- */
-enum pvr_static_clear_ppp_pds_state_type {
-   /* Words enabled by pres_pds_state_ptr0. */
-   PVR_STATIC_CLEAR_PPP_PDS_TYPE_SHADERBASE = 0,
-   PVR_STATIC_CLEAR_PPP_PDS_TYPE_TEXUNICODEBASE = 1,
-   PVR_STATIC_CLEAR_PPP_PDS_TYPE_SIZEINFO1 = 2,
-   PVR_STATIC_CLEAR_PPP_PDS_TYPE_SIZEINFO2 = 3,
-
-   /* Word enabled by pres_pds_state_ptr1. */
-   PVR_STATIC_CLEAR_PPP_PDS_TYPE_VARYINGBASE = 4,
-
-   /* Word enabled by pres_pds_state_ptr2. */
-   PVR_STATIC_CLEAR_PPP_PDS_TYPE_TEXTUREDATABASE = 5,
-};
-
-static_assert(PVR_STATIC_CLEAR_PPP_PDS_TYPE_TEXTUREDATABASE + 1 ==
-                 PVR_STATIC_CLEAR_PDS_STATE_COUNT,
-              "pvr_static_clear_ppp_pds_state_type might require fixing.");
-
-enum pvr_static_clear_variant_bits {
-   PVR_STATIC_CLEAR_DEPTH_BIT = BITFIELD_BIT(0),
-   PVR_STATIC_CLEAR_STENCIL_BIT = BITFIELD_BIT(1),
-   PVR_STATIC_CLEAR_COLOR_BIT = BITFIELD_BIT(2),
-};
-
-#define PVR_STATIC_CLEAR_VARIANT_COUNT (PVR_STATIC_CLEAR_COLOR_BIT << 1U)
-
-enum pvr_event_state {
-   PVR_EVENT_STATE_SET_BY_HOST,
-   PVR_EVENT_STATE_RESET_BY_HOST,
-   PVR_EVENT_STATE_SET_BY_DEVICE,
-   PVR_EVENT_STATE_RESET_BY_DEVICE
-};
-
-enum pvr_deferred_cs_command_type {
-   PVR_DEFERRED_CS_COMMAND_TYPE_DBSC,
-   PVR_DEFERRED_CS_COMMAND_TYPE_DBSC2,
-};
-
-enum pvr_query_type {
-   PVR_QUERY_TYPE_AVAILABILITY_WRITE,
-   PVR_QUERY_TYPE_RESET_QUERY_POOL,
-   PVR_QUERY_TYPE_COPY_QUERY_RESULTS,
-};
 
 struct pvr_bo;
 struct pvr_bo_store;
@@ -280,14 +131,8 @@ struct pvr_queue {
    struct pvr_compute_ctx *query_ctx;
    struct pvr_transfer_ctx *transfer_ctx;
 
-   struct vk_sync *completion[PVR_JOB_TYPE_MAX];
-
-   /* Used to setup a job dependency from jobs previously submitted, onto
-    * the next job per job type.
-    *
-    * Used to create dependencies for pipeline barriers.
-    */
-   struct vk_sync *job_dependancy[PVR_JOB_TYPE_MAX];
+   struct vk_sync *last_job_signal_sync[PVR_JOB_TYPE_MAX];
+   struct vk_sync *next_job_wait_sync[PVR_JOB_TYPE_MAX];
 };
 
 struct pvr_vertex_binding {
@@ -306,48 +151,6 @@ struct pvr_pds_upload {
    uint32_t data_size;
    uint32_t code_size;
 };
-
-struct pvr_static_clear_ppp_base {
-   uint32_t wclamp;
-   uint32_t varying_word[3];
-   uint32_t ppp_ctrl;
-   uint32_t stream_out0;
-};
-
-struct pvr_static_clear_ppp_template {
-   /* Pre-packed control words. */
-   uint32_t header;
-   uint32_t ispb;
-
-   bool requires_pds_state;
-
-   /* Configurable control words.
-    * These are initialized and can be modified as needed before emitting them.
-    */
-   struct {
-      struct PVRX(TA_STATE_ISPCTL) ispctl;
-      struct PVRX(TA_STATE_ISPA) ispa;
-
-      /* In case the template requires_pds_state this needs to be a valid
-       * pointer to a pre-packed PDS state before emitting.
-       *
-       * Note: this is a pointer to an array of const uint32_t and not an array
-       * of pointers or a function pointer.
-       */
-      const uint32_t (*pds_state)[PVR_STATIC_CLEAR_PDS_STATE_COUNT];
-
-      struct PVRX(TA_REGION_CLIP0) region_clip0;
-      struct PVRX(TA_REGION_CLIP1) region_clip1;
-
-      struct PVRX(TA_OUTPUT_SEL) output_sel;
-   } config;
-};
-
-#define PVR_CLEAR_VDM_STATE_DWORD_COUNT                                        \
-   (pvr_cmd_length(VDMCTRL_VDM_STATE0) + pvr_cmd_length(VDMCTRL_VDM_STATE2) +  \
-    pvr_cmd_length(VDMCTRL_VDM_STATE3) + pvr_cmd_length(VDMCTRL_VDM_STATE4) +  \
-    pvr_cmd_length(VDMCTRL_VDM_STATE5) + pvr_cmd_length(VDMCTRL_INDEX_LIST0) + \
-    pvr_cmd_length(VDMCTRL_INDEX_LIST2))
 
 struct pvr_compute_query_shader {
    struct pvr_bo *usc_bo;
@@ -377,7 +180,7 @@ struct pvr_device {
    uint32_t queue_count;
 
    /* Running count of the number of job submissions across all queue. */
-   uint32_t global_queue_job_count;
+   uint32_t global_cmd_buffer_submit_count;
 
    /* Running count of the number of presentations across all queues. */
    uint32_t global_queue_present_count;
@@ -418,13 +221,44 @@ struct pvr_device {
       struct pvr_bo *vertices_bo;
       struct pvr_pds_upload pds;
 
+      struct pvr_bo *usc_multi_layer_vertex_shader_bo;
+
       struct pvr_static_clear_ppp_base ppp_base;
+      /* Indexable using VkImageAspectFlags. */
       struct pvr_static_clear_ppp_template
          ppp_templates[PVR_STATIC_CLEAR_VARIANT_COUNT];
 
       uint32_t vdm_words[PVR_CLEAR_VDM_STATE_DWORD_COUNT];
       uint32_t large_clear_vdm_words[PVR_CLEAR_VDM_STATE_DWORD_COUNT];
+
+      struct pvr_bo *usc_clear_attachment_programs;
+      struct pvr_bo *pds_clear_attachment_programs;
+      /* TODO: See if we can use PVR_CLEAR_ATTACHMENT_PROGRAM_COUNT to save some
+       * memory.
+       */
+      struct pvr_pds_clear_attachment_program_info {
+         pvr_dev_addr_t texture_program_offset;
+         pvr_dev_addr_t pixel_program_offset;
+
+         uint32_t texture_program_pds_temps_count;
+         /* Size in dwords. */
+         uint32_t texture_program_data_size;
+      } pds_clear_attachment_program_info
+         [PVR_CLEAR_ATTACHMENT_PROGRAM_COUNT_WITH_HOLES];
    } static_clear_state;
+
+   struct {
+      struct pvr_bo *usc_programs;
+      struct pvr_bo *pds_programs;
+
+      struct pvr_spm_per_load_program_state {
+         pvr_dev_addr_t pds_pixel_program_offset;
+         pvr_dev_addr_t pds_uniform_program_offset;
+
+         uint32_t pds_texture_program_data_size;
+         uint32_t pds_texture_program_temps_count;
+      } load_program[PVR_SPM_LOAD_PROGRAM_COUNT];
+   } spm_load_state;
 
    struct {
       simple_mtx_t mtx;
@@ -434,9 +268,13 @@ struct pvr_device {
       uint32_t buffer_count;
    } tile_buffer_state;
 
+   struct pvr_spm_scratch_buffer_store spm_scratch_buffer_store;
+
    VkPhysicalDeviceFeatures features;
 
    struct pvr_bo_store *bo_store;
+
+   struct vk_sync *presignaled_sync;
 };
 
 struct pvr_device_memory {
@@ -513,176 +351,6 @@ struct pvr_buffer_view {
    uint64_t texture_state[2];
 };
 
-union pvr_sampler_descriptor {
-   uint32_t words[PVR_SAMPLER_DESCRIPTOR_SIZE];
-
-   struct {
-      /* Packed PVRX(TEXSTATE_SAMPLER). */
-      uint64_t sampler_word;
-      uint32_t compare_op;
-      /* TODO: Figure out what this word is for and rename.
-       * Sampler state word 1?
-       */
-      uint32_t word3;
-   } data;
-};
-
-struct pvr_sampler {
-   struct vk_object_base base;
-
-   union pvr_sampler_descriptor descriptor;
-};
-
-struct pvr_descriptor_size_info {
-   /* Non-spillable size for storage in the common store. */
-   uint32_t primary;
-
-   /* Spillable size to accommodate limitation of the common store. */
-   uint32_t secondary;
-
-   uint32_t alignment;
-};
-
-struct pvr_descriptor_set_layout_binding {
-   VkDescriptorType type;
-
-   /* "M" in layout(set = N, binding = M)
-    * Can be used to index bindings in the descriptor_set_layout. Not the
-    * original user specified binding number as those might be non-contiguous.
-    */
-   uint32_t binding_number;
-
-   uint32_t descriptor_count;
-
-   /* Index into the flattened descriptor set */
-   uint16_t descriptor_index;
-
-   VkShaderStageFlags shader_stages;
-   /* Mask composed by shifted PVR_STAGE_ALLOCATION_...
-    * Makes it easier to check active shader stages by just shifting and
-    * ANDing instead of using VkShaderStageFlags and match the PVR_STAGE_...
-    */
-   uint32_t shader_stage_mask;
-
-   struct {
-      uint32_t primary;
-      uint32_t secondary;
-   } per_stage_offset_in_dwords[PVR_STAGE_ALLOCATION_COUNT];
-
-   bool has_immutable_samplers;
-   /* Index at which the samplers can be found in the descriptor_set_layout.
-    * 0 when the samplers are at index 0 or no samplers are present.
-    */
-   uint32_t immutable_samplers_index;
-};
-
-/* All sizes are in dwords. */
-struct pvr_descriptor_set_layout_mem_layout {
-   uint32_t primary_offset;
-   uint32_t primary_size;
-
-   uint32_t secondary_offset;
-   uint32_t secondary_size;
-
-   uint32_t primary_dynamic_size;
-   uint32_t secondary_dynamic_size;
-};
-
-struct pvr_descriptor_set_layout {
-   struct vk_object_base base;
-
-   /* Total amount of descriptors contained in this set. */
-   uint32_t descriptor_count;
-
-   /* Count of dynamic buffers. */
-   uint32_t dynamic_buffer_count;
-
-   uint32_t binding_count;
-   struct pvr_descriptor_set_layout_binding *bindings;
-
-   uint32_t immutable_sampler_count;
-   const struct pvr_sampler **immutable_samplers;
-
-   /* Shader stages requiring access to descriptors in this set. */
-   VkShaderStageFlags shader_stages;
-
-   /* Count of each VkDescriptorType per shader stage. Dynamically allocated
-    * arrays per stage as to not hard code the max descriptor type here.
-    *
-    * Note: when adding a new type, it might not numerically follow the
-    * previous type so a sparse array will be created. You might want to
-    * readjust how these arrays are created and accessed.
-    */
-   uint32_t *per_stage_descriptor_count[PVR_STAGE_ALLOCATION_COUNT];
-
-   uint32_t total_size_in_dwords;
-   struct pvr_descriptor_set_layout_mem_layout
-      memory_layout_in_dwords_per_stage[PVR_STAGE_ALLOCATION_COUNT];
-};
-
-struct pvr_descriptor_pool {
-   struct vk_object_base base;
-
-   VkAllocationCallbacks alloc;
-
-   /* Saved information from pCreateInfo. */
-   uint32_t max_sets;
-
-   uint32_t total_size_in_dwords;
-   uint32_t current_size_in_dwords;
-
-   /* Derived and other state. */
-   /* List of the descriptor sets created using this pool. */
-   struct list_head descriptor_sets;
-};
-
-struct pvr_descriptor {
-   VkDescriptorType type;
-
-   union {
-      struct {
-         struct pvr_buffer_view *bview;
-         pvr_dev_addr_t buffer_dev_addr;
-         VkDeviceSize buffer_desc_range;
-         VkDeviceSize buffer_create_info_size;
-      };
-
-      struct {
-         VkImageLayout layout;
-         const struct pvr_image_view *iview;
-         const struct pvr_sampler *sampler;
-      };
-   };
-};
-
-struct pvr_descriptor_set {
-   struct vk_object_base base;
-
-   const struct pvr_descriptor_set_layout *layout;
-   const struct pvr_descriptor_pool *pool;
-
-   struct pvr_bo *pvr_bo;
-
-   /* Links this descriptor set into pvr_descriptor_pool::descriptor_sets list.
-    */
-   struct list_head link;
-
-   /* Array of size layout::descriptor_count. */
-   struct pvr_descriptor descriptors[0];
-};
-
-struct pvr_event {
-   struct vk_object_base base;
-
-   enum pvr_event_state state;
-   struct vk_sync *sync;
-};
-
-struct pvr_descriptor_state {
-   struct pvr_descriptor_set *descriptor_sets[PVR_MAX_DESCRIPTOR_SETS];
-   uint32_t valid_mask;
-};
-
 struct pvr_transfer_cmd {
    /* Node to link this cmd into the transfer_cmds list in
     * pvr_sub_cmd::transfer structure.
@@ -719,6 +387,9 @@ struct pvr_sub_cmd_gfx {
 
    /* Control stream builder object */
    struct pvr_csb control_stream;
+
+   /* Required iff pvr_sub_cmd_gfx_requires_split_submit() returns true. */
+   struct pvr_bo *terminate_ctrl_stream;
 
    uint32_t hw_render_idx;
 
@@ -962,6 +633,12 @@ struct pvr_cmd_buffer_state {
    struct {
       uint8_t data[PVR_MAX_PUSH_CONSTANTS_SIZE];
       VkShaderStageFlags dirty_stages;
+      /* Indicates if the whole push constants buffer was uploaded. This avoids
+       * having to upload the same stuff twice when the push constant range
+       * covers both gfx and compute.
+       */
+      bool uploaded;
+      pvr_dev_addr_t dev_addr;
    } push_constants;
 
    /* Array size of barriers_needed is based on number of sync pipeline
@@ -1068,47 +745,6 @@ struct pvr_cmd_buffer {
    struct list_head bo_list;
 
    struct list_head sub_cmds;
-};
-
-struct pvr_pipeline_layout {
-   struct vk_object_base base;
-
-   uint32_t set_count;
-   /* Contains set_count amount of descriptor set layouts. */
-   struct pvr_descriptor_set_layout *set_layout[PVR_MAX_DESCRIPTOR_SETS];
-
-   VkShaderStageFlags push_constants_shader_stages;
-
-   VkShaderStageFlags shader_stages;
-
-   /* Per stage masks indicating which set in the layout contains any
-    * descriptor of the appropriate types: VK..._{SAMPLER, SAMPLED_IMAGE,
-    * UNIFORM_TEXEL_BUFFER, UNIFORM_BUFFER, STORAGE_BUFFER}.
-    * Shift by the set's number to check the mask (1U << set_num).
-    */
-   uint32_t per_stage_descriptor_masks[PVR_STAGE_ALLOCATION_COUNT];
-
-   /* Array of descriptor offsets at which the set's descriptors' start, per
-    * stage, within all the sets in the pipeline layout per descriptor type.
-    * Note that we only store into for specific descriptor types
-    * VK_DESCRIPTOR_TYPE_{SAMPLER, SAMPLED_IMAGE, UNIFORM_TEXEL_BUFFER,
-    * UNIFORM_BUFFER, STORAGE_BUFFER}, the rest will be 0.
-    */
-   uint32_t
-      descriptor_offsets[PVR_MAX_DESCRIPTOR_SETS][PVR_STAGE_ALLOCATION_COUNT]
-                        [PVR_PIPELINE_LAYOUT_SUPPORTED_DESCRIPTOR_TYPE_COUNT];
-
-   /* There is no accounting for dynamics in here. They will be garbage values.
-    */
-   struct pvr_descriptor_set_layout_mem_layout
-      register_layout_in_dwords_per_stage[PVR_STAGE_ALLOCATION_COUNT]
-                                         [PVR_MAX_DESCRIPTOR_SETS];
-
-   /* All sizes in dwords. */
-   struct pvr_pipeline_layout_reg_info {
-      uint32_t primary_dynamic_size_in_dwords;
-      uint32_t secondary_dynamic_size_in_dwords;
-   } per_stage_reg_info[PVR_STAGE_ALLOCATION_COUNT];
 };
 
 struct pvr_pipeline_cache {
@@ -1349,6 +985,12 @@ struct pvr_framebuffer {
 
    uint32_t render_targets_count;
    struct pvr_render_target *render_targets;
+
+   struct pvr_spm_scratch_buffer *scratch_buffer;
+
+   uint32_t render_count;
+   struct pvr_spm_eot_state *spm_eot_state_per_render;
+   struct pvr_spm_bgobj_state *spm_bgobj_state_per_render;
 };
 
 struct pvr_render_pass_attachment {
@@ -1389,7 +1031,7 @@ struct pvr_render_subpass {
    uint32_t input_count;
    uint32_t *input_attachments;
 
-   uint32_t *depth_stencil_attachment;
+   uint32_t depth_stencil_attachment;
 
    /*  Derived and other state. */
    uint32_t dep_count;
@@ -1429,12 +1071,13 @@ struct pvr_render_pass {
    uint32_t max_tilebuffer_count;
 };
 
+/* Max render targets for the clears loads state in load op.
+ * To account for resolve attachments, double the color attachments.
+ */
+#define PVR_LOAD_OP_CLEARS_LOADS_MAX_RTS (PVR_MAX_COLOR_ATTACHMENTS * 2)
+
 struct pvr_load_op {
    bool is_hw_object;
-
-   uint32_t clear_mask;
-
-   bool load_depth;
 
    struct pvr_bo *usc_frag_prog_bo;
    uint32_t const_shareds_count;
@@ -1450,7 +1093,41 @@ struct pvr_load_op {
       const struct pvr_renderpass_hwsetup_render *hw_render;
       const struct pvr_render_subpass *subpass;
    };
+
+   /* TODO: We might not need to keep all of this around. Some stuff might just
+    * be for the compiler to ingest which we can then discard.
+    */
+   struct {
+      uint16_t rt_clear_mask;
+      uint16_t rt_load_mask;
+
+      uint16_t unresolved_msaa_mask;
+
+      /* The format to write to the output regs. */
+      VkFormat dest_vk_format[PVR_LOAD_OP_CLEARS_LOADS_MAX_RTS];
+
+#define PVR_NO_DEPTH_CLEAR_TO_REG (-1)
+      /* If >= 0, write a depth clear value to the specified pixel output. */
+      int32_t depth_clear_to_reg;
+   } clears_loads_state;
 };
+
+#define CHECK_MASK_SIZE(_struct_type, _field_name, _nr_bits)               \
+   static_assert(sizeof(((struct _struct_type *)NULL)->_field_name) * 8 >= \
+                    _nr_bits,                                              \
+                 #_field_name " mask of struct " #_struct_type " too small")
+
+CHECK_MASK_SIZE(pvr_load_op,
+                clears_loads_state.rt_clear_mask,
+                PVR_LOAD_OP_CLEARS_LOADS_MAX_RTS);
+CHECK_MASK_SIZE(pvr_load_op,
+                clears_loads_state.rt_load_mask,
+                PVR_LOAD_OP_CLEARS_LOADS_MAX_RTS);
+CHECK_MASK_SIZE(pvr_load_op,
+                clears_loads_state.unresolved_msaa_mask,
+                PVR_LOAD_OP_CLEARS_LOADS_MAX_RTS);
+
+#undef CHECK_MASK_SIZE
 
 uint32_t pvr_calc_fscommon_size_and_tiles_in_flight(
    const struct pvr_physical_device *pdevice,
@@ -1503,17 +1180,21 @@ VkResult pvr_cmd_buffer_alloc_mem(struct pvr_cmd_buffer *cmd_buffer,
                                   uint64_t size,
                                   uint32_t flags,
                                   struct pvr_bo **const pvr_bo_out);
+VkResult pvr_cmd_buffer_upload_pds(struct pvr_cmd_buffer *const cmd_buffer,
+                                   const uint32_t *data,
+                                   uint32_t data_size_dwords,
+                                   uint32_t data_alignment,
+                                   const uint32_t *code,
+                                   uint32_t code_size_dwords,
+                                   uint32_t code_alignment,
+                                   uint64_t min_alignment,
+                                   struct pvr_pds_upload *const pds_upload_out);
 
 void pvr_calculate_vertex_cam_size(const struct pvr_device_info *dev_info,
                                    const uint32_t vs_output_size,
                                    const bool raster_enable,
                                    uint32_t *const cam_size_out,
                                    uint32_t *const vs_max_instances_out);
-
-VkResult pvr_emit_ppp_from_template(
-   struct pvr_csb *const csb,
-   const struct pvr_static_clear_ppp_template *const template,
-   struct pvr_bo **const pvr_bo_out);
 
 VkResult
 pvr_copy_or_resolve_color_image_region(struct pvr_cmd_buffer *cmd_buffer,
@@ -1605,6 +1286,12 @@ pvr_stage_mask_dst(VkPipelineStageFlags2KHR stage_mask)
    return pvr_stage_mask(stage_mask);
 }
 
+static inline bool pvr_sub_cmd_gfx_requires_split_submit(
+   const struct pvr_sub_cmd_gfx *const sub_cmd)
+{
+   return sub_cmd->job.run_frag && sub_cmd->framebuffer->layers > 1;
+}
+
 VkResult pvr_pds_fragment_program_create_and_upload(
    struct pvr_device *device,
    const VkAllocationCallbacks *allocator,
@@ -1659,6 +1346,17 @@ void pvr_device_destroy_compute_query_programs(struct pvr_device *device);
 
 VkResult pvr_add_query_program(struct pvr_cmd_buffer *cmd_buffer,
                                const struct pvr_query_info *query_info);
+
+void pvr_reset_graphics_dirty_state(struct pvr_cmd_buffer *const cmd_buffer,
+                                    bool start_geom);
+
+const struct pvr_renderpass_hwsetup_subpass *
+pvr_get_hw_subpass(const struct pvr_render_pass *pass, const uint32_t subpass);
+
+void pvr_descriptor_size_info_init(
+   const struct pvr_device *device,
+   VkDescriptorType type,
+   struct pvr_descriptor_size_info *const size_info_out);
 
 #define PVR_FROM_HANDLE(__pvr_type, __name, __handle) \
    VK_FROM_HANDLE(__pvr_type, __name, __handle)

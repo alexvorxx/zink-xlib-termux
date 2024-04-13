@@ -31,7 +31,7 @@
 #include "nir/nir_xfb_info.h"
 #include "vulkan/util/vk_util.h"
 #include "compiler/spirv/nir_spirv.h"
-#include "float64_spv.h"
+#include "shaders/float64_spv.h"
 
 static bool
 anv_shader_bin_serialize(struct vk_pipeline_cache_object *object,
@@ -123,10 +123,7 @@ anv_shader_bin_create(struct anv_device *device,
       .id = BRW_SHADER_RELOC_CONST_DATA_ADDR_LOW,
       .value = shader_data_addr,
    };
-   reloc_values[rv_count++] = (struct brw_shader_reloc_value) {
-      .id = BRW_SHADER_RELOC_CONST_DATA_ADDR_HIGH,
-      .value = shader_data_addr >> 32,
-   };
+   assert(shader_data_addr >> 32 == INSTRUCTION_STATE_POOL_MIN_ADDRESS >> 32);
    reloc_values[rv_count++] = (struct brw_shader_reloc_value) {
       .id = BRW_SHADER_RELOC_SHADER_START_OFFSET,
       .value = shader->kernel.offset,

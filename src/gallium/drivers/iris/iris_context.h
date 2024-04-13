@@ -379,6 +379,18 @@ enum pipe_control_flags
    (PIPE_CONTROL_L3_READ_ONLY_CACHE_INVALIDATE | \
     PIPE_CONTROL_CONST_CACHE_INVALIDATE)
 
+#define PIPE_CONTROL_GRAPHICS_BITS \
+   (PIPE_CONTROL_RENDER_TARGET_FLUSH |          \
+    PIPE_CONTROL_DEPTH_CACHE_FLUSH |            \
+    PIPE_CONTROL_TILE_CACHE_FLUSH |             \
+    PIPE_CONTROL_DEPTH_STALL |                  \
+    PIPE_CONTROL_STALL_AT_SCOREBOARD |          \
+    PIPE_CONTROL_PSS_STALL_SYNC |               \
+    PIPE_CONTROL_VF_CACHE_INVALIDATE |          \
+    PIPE_CONTROL_GLOBAL_SNAPSHOT_COUNT_RESET |  \
+    PIPE_CONTROL_L3_READ_ONLY_CACHE_INVALIDATE |\
+    PIPE_CONTROL_WRITE_DEPTH_COUNT)
+
 enum iris_predicate_state {
    /* The first two states are used if we can determine whether to draw
     * without having to look at the values in the query object buffer. This
@@ -579,6 +591,9 @@ struct iris_shader_state {
 
    /** Bitfield of which shader storage buffers are writable. */
    uint32_t writable_ssbos;
+
+   /** Array of aux usages used for our shader's images in the current draw */
+   enum isl_aux_usage image_aux_usage[PIPE_MAX_SHADER_IMAGES];
 };
 
 /**
@@ -715,6 +730,10 @@ struct iris_context {
 
    struct intel_perf_context *perf_ctx;
 
+   /** Frame number for u_trace */
+   uint32_t tracing_begin_frame;
+   uint32_t tracing_end_frame;
+
    /** Frame number for debug prints */
    uint32_t frame;
 
@@ -780,6 +799,9 @@ struct iris_context {
 
       /** Are stencil writes enabled?  (Stencil buffer may or may not exist.) */
       bool stencil_writes_enabled;
+
+      /** Do we have integer RT in current framebuffer state? */
+      bool has_integer_rt;
 
       /** GenX-specific current state */
       struct iris_genx_state *genx;
@@ -894,6 +916,8 @@ void iris_fill_cs_push_const_buffer(struct brw_cs_prog_data *cs_prog_data,
 
 
 /* iris_blit.c */
+#define IRIS_BLORP_RELOC_FLAGS_EXEC_OBJECT_WRITE      (1 << 2)
+
 void iris_blorp_surf_for_resource(struct isl_device *isl_dev,
                                   struct blorp_surf *surf,
                                   struct pipe_resource *p_res,
@@ -1078,11 +1102,9 @@ void iris_predraw_resolve_framebuffer(struct iris_context *ice,
 void iris_predraw_flush_buffers(struct iris_context *ice,
                                 struct iris_batch *batch,
                                 gl_shader_stage stage);
-void iris_postdraw_update_resolve_tracking(struct iris_context *ice,
-                                           struct iris_batch *batch);
-void iris_cache_flush_for_render(struct iris_batch *batch,
-                                 struct iris_bo *bo,
-                                 enum isl_aux_usage aux_usage);
+void iris_postdraw_update_resolve_tracking(struct iris_context *ice);
+void iris_postdraw_update_image_resolve_tracking(struct iris_context *ice,
+                                                 gl_shader_stage stage);
 int iris_get_driver_query_info(struct pipe_screen *pscreen, unsigned index,
                                struct pipe_driver_query_info *info);
 int iris_get_driver_query_group_info(struct pipe_screen *pscreen,

@@ -272,9 +272,6 @@ do_triangle_ccw(struct lp_setup_context *setup,
 {
    struct lp_scene *scene = setup->scene;
 
-   if (0)
-      lp_setup_print_triangle(setup, v0, v1, v2);
-
    const float (*pv)[4];
    if (setup->flatshade_first) {
       pv = v0;
@@ -397,7 +394,8 @@ do_triangle_ccw(struct lp_setup_context *setup,
        setup->pixel_offset == 0.5f &&
        key->num_inputs == 1 &&
        (key->inputs[0].interp == LP_INTERP_LINEAR ||
-        key->inputs[0].interp == LP_INTERP_PERSPECTIVE)) {
+        key->inputs[0].interp == LP_INTERP_PERSPECTIVE) &&
+        setup->fs.current_tex_num == 0) {
       float dist0 = v0[0][0] * v0[0][0] + v0[0][1] * v0[0][1];
       float dist1 = v1[0][0] * v1[0][0] + v1[0][1] * v1[0][1];
       float dist2 = v2[0][0] * v2[0][0] + v2[0][1] * v2[0][1];
@@ -1001,6 +999,15 @@ retry_triangle_ccw(struct lp_setup_context *setup,
                    const float (*v2)[4],
                    boolean front)
 {
+   if (0)
+      lp_setup_print_triangle(setup, v0, v1, v2);
+
+   if (lp_setup_zero_sample_mask(setup)) {
+      if (0) debug_printf("zero sample mask\n");
+      LP_COUNT(nr_culled_tris);
+      return;
+   }
+
    if (!do_triangle_ccw(setup, position, v0, v1, v2, front)) {
       if (!lp_setup_flush_and_restart(setup))
          return;

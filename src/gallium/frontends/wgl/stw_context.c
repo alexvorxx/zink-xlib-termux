@@ -42,6 +42,7 @@
 #include "util/u_atomic.h"
 #include "hud/hud_context.h"
 
+#include "stw_gdishim.h"
 #include "gldrv.h"
 #include "stw_device.h"
 #include "stw_winsys.h"
@@ -253,7 +254,7 @@ stw_create_context_attribs(HDC hdc, INT iLayerPlane, struct stw_context *shareCt
 
    if (ctx->st->cso_context) {
       ctx->hud = hud_create(ctx->st->cso_context, NULL, ctx->st,
-                            (void*)st_context_invalidate_state);
+                            st_context_invalidate_state);
    }
 
    return ctx;

@@ -100,27 +100,12 @@ build_nir_copy_fragment_shader(struct radv_device *dev, enum glsl_sampler_dim te
    sampler->data.descriptor_set = 0;
    sampler->data.binding = 0;
 
-   nir_ssa_def *tex_deref = &nir_build_deref_var(&b, sampler)->dest.ssa;
-
-   nir_tex_instr *tex = nir_tex_instr_create(b.shader, 3);
-   tex->sampler_dim = tex_dim;
-   tex->op = nir_texop_tex;
-   tex->src[0].src_type = nir_tex_src_coord;
-   tex->src[0].src = nir_src_for_ssa(tex_pos);
-   tex->src[1].src_type = nir_tex_src_texture_deref;
-   tex->src[1].src = nir_src_for_ssa(tex_deref);
-   tex->src[2].src_type = nir_tex_src_sampler_deref;
-   tex->src[2].src = nir_src_for_ssa(tex_deref);
-   tex->dest_type = nir_type_float32; /* TODO */
-   tex->is_array = glsl_sampler_type_is_array(sampler_type);
-   tex->coord_components = tex_pos->num_components;
-
-   nir_ssa_dest_init(&tex->instr, &tex->dest, 4, 32, "tex");
-   nir_builder_instr_insert(&b, &tex->instr);
+   nir_deref_instr *tex_deref = nir_build_deref_var(&b, sampler);
+   nir_ssa_def *color = nir_tex_deref(&b, tex_deref, tex_deref, tex_pos);
 
    nir_variable *color_out = nir_variable_create(b.shader, nir_var_shader_out, vec4, "f_color");
    color_out->data.location = FRAG_RESULT_DATA0;
-   nir_store_var(&b, color_out, &tex->dest.ssa, 0xf);
+   nir_store_var(&b, color_out, color, 0xf);
 
    return b.shader;
 }
@@ -148,27 +133,12 @@ build_nir_copy_fragment_shader_depth(struct radv_device *dev, enum glsl_sampler_
    sampler->data.descriptor_set = 0;
    sampler->data.binding = 0;
 
-   nir_ssa_def *tex_deref = &nir_build_deref_var(&b, sampler)->dest.ssa;
-
-   nir_tex_instr *tex = nir_tex_instr_create(b.shader, 3);
-   tex->sampler_dim = tex_dim;
-   tex->op = nir_texop_tex;
-   tex->src[0].src_type = nir_tex_src_coord;
-   tex->src[0].src = nir_src_for_ssa(tex_pos);
-   tex->src[1].src_type = nir_tex_src_texture_deref;
-   tex->src[1].src = nir_src_for_ssa(tex_deref);
-   tex->src[2].src_type = nir_tex_src_sampler_deref;
-   tex->src[2].src = nir_src_for_ssa(tex_deref);
-   tex->dest_type = nir_type_float32; /* TODO */
-   tex->is_array = glsl_sampler_type_is_array(sampler_type);
-   tex->coord_components = tex_pos->num_components;
-
-   nir_ssa_dest_init(&tex->instr, &tex->dest, 4, 32, "tex");
-   nir_builder_instr_insert(&b, &tex->instr);
+   nir_deref_instr *tex_deref = nir_build_deref_var(&b, sampler);
+   nir_ssa_def *color = nir_tex_deref(&b, tex_deref, tex_deref, tex_pos);
 
    nir_variable *color_out = nir_variable_create(b.shader, nir_var_shader_out, vec4, "f_color");
    color_out->data.location = FRAG_RESULT_DEPTH;
-   nir_store_var(&b, color_out, &tex->dest.ssa, 0x1);
+   nir_store_var(&b, color_out, color, 0x1);
 
    return b.shader;
 }
@@ -196,27 +166,12 @@ build_nir_copy_fragment_shader_stencil(struct radv_device *dev, enum glsl_sample
    sampler->data.descriptor_set = 0;
    sampler->data.binding = 0;
 
-   nir_ssa_def *tex_deref = &nir_build_deref_var(&b, sampler)->dest.ssa;
-
-   nir_tex_instr *tex = nir_tex_instr_create(b.shader, 3);
-   tex->sampler_dim = tex_dim;
-   tex->op = nir_texop_tex;
-   tex->src[0].src_type = nir_tex_src_coord;
-   tex->src[0].src = nir_src_for_ssa(tex_pos);
-   tex->src[1].src_type = nir_tex_src_texture_deref;
-   tex->src[1].src = nir_src_for_ssa(tex_deref);
-   tex->src[2].src_type = nir_tex_src_sampler_deref;
-   tex->src[2].src = nir_src_for_ssa(tex_deref);
-   tex->dest_type = nir_type_float32; /* TODO */
-   tex->is_array = glsl_sampler_type_is_array(sampler_type);
-   tex->coord_components = tex_pos->num_components;
-
-   nir_ssa_dest_init(&tex->instr, &tex->dest, 4, 32, "tex");
-   nir_builder_instr_insert(&b, &tex->instr);
+   nir_deref_instr *tex_deref = nir_build_deref_var(&b, sampler);
+   nir_ssa_def *color = nir_tex_deref(&b, tex_deref, tex_deref, tex_pos);
 
    nir_variable *color_out = nir_variable_create(b.shader, nir_var_shader_out, vec4, "f_color");
    color_out->data.location = FRAG_RESULT_STENCIL;
-   nir_store_var(&b, color_out, &tex->dest.ssa, 0x1);
+   nir_store_var(&b, color_out, color, 0x1);
 
    return b.shader;
 }
@@ -815,9 +770,9 @@ build_pipeline(struct radv_device *device, VkImageAspectFlagBits aspect,
 
    const struct radv_graphics_pipeline_create_info radv_pipeline_info = {.use_rectlist = true};
 
-   result = radv_graphics_pipeline_create(
-      radv_device_to_handle(device), device->meta_state.cache,
-      &vk_pipeline_info, &radv_pipeline_info, &device->meta_state.alloc, pipeline);
+   result = radv_graphics_pipeline_create(radv_device_to_handle(device), device->meta_state.cache,
+                                          &vk_pipeline_info, &radv_pipeline_info,
+                                          &device->meta_state.alloc, pipeline);
    ralloc_free(vs);
    ralloc_free(fs);
    mtx_unlock(&device->meta_state.mtx);

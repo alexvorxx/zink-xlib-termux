@@ -29,10 +29,11 @@
 #include "compiler/shader_info.h"
 
 struct zink_vs_key_base {
+   bool last_vertex_stage : 1;
    bool clip_halfz : 1;
    bool push_drawid : 1;
-   bool last_vertex_stage : 1;
-   uint8_t pad : 5;
+   bool robust_access : 1;
+   uint8_t pad : 4;
 };
 
 struct zink_vs_key {
@@ -60,27 +61,57 @@ struct zink_gs_key {
    struct zink_vs_key_base base;
    uint8_t pad;
    bool lower_line_stipple : 1;
+   bool lower_line_smooth : 1;
    bool lower_gl_point : 1;
+   bool line_rectangular : 1;
    // not hashed
    unsigned size;
 };
 
-struct zink_fs_key {
-   bool coord_replace_yinvert : 1;
+struct zink_zs_swizzle {
+   uint8_t s[4];
+};
+
+struct zink_zs_swizzle_key {
+   uint32_t mask;
+   struct zink_zs_swizzle swizzle[32];
+};
+
+struct zink_fs_key_base {
+   bool point_coord_yinvert : 1;
    bool samples : 1;
    bool force_dual_color_blend : 1;
    bool force_persample_interp : 1;
    bool fbfetch_ms : 1;
-   bool lower_line_stipple : 1;
+   bool shadow_needs_shader_swizzle : 1; //append zink_zs_swizzle_key after the key data
    uint8_t pad : 2;
    uint8_t coord_replace_bits;
+};
+
+struct zink_fs_key {
+   struct zink_fs_key_base base;
+   /* non-optimal bits after this point */
+   bool lower_line_stipple : 1;
+   bool lower_line_smooth : 1;
+   bool lower_point_smooth : 1;
+   bool robust_access : 1;
+   uint16_t pad2 : 12;
 };
 
 struct zink_tcs_key {
    uint8_t patch_vertices;
 };
 
+/* when adding a new field, make sure
+ * ctx->compute_pipeline_state.key.size is set in zink_context_create.
+ */
+struct zink_cs_key {
+   bool robust_access : 1;
+   uint32_t pad : 31;
+};
+
 struct zink_shader_key_base {
+   bool needs_zs_shader_swizzle;
    uint32_t nonseamless_cube_mask;
    uint32_t inlined_uniform_values[MAX_INLINABLE_UNIFORMS];
 };
@@ -98,6 +129,8 @@ struct zink_shader_key {
       struct zink_tcs_key tcs;
       struct zink_gs_key gs;
       struct zink_fs_key fs;
+      struct zink_fs_key_base fs_base;
+      struct zink_cs_key cs;
    } key;
    struct zink_shader_key_base base;
    unsigned inline_uniforms:1;
@@ -108,7 +141,7 @@ union zink_shader_key_optimal {
    struct {
       struct zink_vs_key_base vs_base;
       struct zink_tcs_key tcs;
-      struct zink_fs_key fs;
+      struct zink_fs_key_base fs;
    };
    struct {
       uint8_t vs_bits;
@@ -117,6 +150,26 @@ union zink_shader_key_optimal {
    };
    uint32_t val;
 };
+
+/* the default key has only last_vertex_stage set*/
+#define ZINK_SHADER_KEY_OPTIMAL_DEFAULT (1<<0)
+/* Ignore patch_vertices bits that would only be used if we had to generate the missing TCS */
+static inline uint32_t
+zink_shader_key_optimal_no_tcs(uint32_t key)
+{
+   union zink_shader_key_optimal k;
+   k.val = key;
+   k.tcs_bits = 0;
+   return k.val;
+}
+#define ZINK_SHADER_KEY_OPTIMAL_IS_DEFAULT(key) (zink_shader_key_optimal_no_tcs(key) == ZINK_SHADER_KEY_OPTIMAL_DEFAULT)
+
+static inline const struct zink_fs_key_base *
+zink_fs_key_base(const struct zink_shader_key *key)
+{
+   assert(key);
+   return &key->key.fs.base;
+}
 
 static inline const struct zink_fs_key *
 zink_fs_key(const struct zink_shader_key *key)
@@ -152,6 +205,11 @@ zink_tcs_key(const struct zink_shader_key *key)
    return &key->key.tcs;
 }
 
-
+static inline const struct zink_cs_key *
+zink_cs_key(const struct zink_shader_key *key)
+{
+   assert(key);
+   return &key->key.cs;
+}
 
 #endif

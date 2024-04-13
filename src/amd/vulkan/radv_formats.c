@@ -697,13 +697,21 @@ radv_physical_device_get_format_properties(struct radv_physical_device *physical
    if (multiplanar || desc->layout == UTIL_FORMAT_LAYOUT_SUBSAMPLED) {
       uint64_t tiling = VK_FORMAT_FEATURE_2_TRANSFER_SRC_BIT |
                         VK_FORMAT_FEATURE_2_TRANSFER_DST_BIT |
-                        VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT |
-                        VK_FORMAT_FEATURE_2_COSITED_CHROMA_SAMPLES_BIT |
-                        VK_FORMAT_FEATURE_2_MIDPOINT_CHROMA_SAMPLES_BIT;
+                        VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT;
 
-      /* The subsampled formats have no support for linear filters. */
-      if (desc->layout != UTIL_FORMAT_LAYOUT_SUBSAMPLED) {
-         tiling |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT;
+      if (vk_format_get_ycbcr_info(format)) {
+         tiling |= VK_FORMAT_FEATURE_2_COSITED_CHROMA_SAMPLES_BIT |
+                   VK_FORMAT_FEATURE_2_MIDPOINT_CHROMA_SAMPLES_BIT;
+
+         /* The subsampled formats have no support for linear filters. */
+         if (desc->layout != UTIL_FORMAT_LAYOUT_SUBSAMPLED)
+            tiling |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT;
+      }
+
+      if (physical_device->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE) {
+          if (format == VK_FORMAT_G8_B8R8_2PLANE_420_UNORM ||
+              format == VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16)
+              tiling |= VK_FORMAT_FEATURE_2_VIDEO_DECODE_OUTPUT_BIT_KHR | VK_FORMAT_FEATURE_2_VIDEO_DECODE_DPB_BIT_KHR;
       }
 
       if (multiplanar)
@@ -955,7 +963,7 @@ radv_translate_colorformat(VkFormat format)
 uint32_t
 radv_colorformat_endian_swap(uint32_t colorformat)
 {
-   if (0 /*SI_BIG_ENDIAN*/) {
+   if (0 /*UTIL_ARCH_BIG_ENDIAN*/) {
       switch (colorformat) {
          /* 8-bit buffers. */
       case V_028C70_COLOR_8:
@@ -1999,7 +2007,8 @@ radv_GetDeviceImageSparseMemoryRequirements(VkDevice device,
     * creating an image.
     * TODO: Avoid creating an image.
     */
-   result = radv_CreateImage(device, pInfo->pCreateInfo, NULL, &image);
+   result = radv_image_create(
+      device, &(struct radv_image_create_info){.vk_info = pInfo->pCreateInfo}, NULL, &image, true);
    assert(result == VK_SUCCESS);
 
    VkImageSparseMemoryRequirementsInfo2 info2 = {
@@ -2091,10 +2100,6 @@ radv_dcc_formats_compatible(enum amd_gfx_level gfx_level, VkFormat format1, VkFo
    unsigned size1, size2;
    int i;
 
-   /* All formats are compatible on GFX11. */
-   if (gfx_level >= GFX11)
-      return true;
-
    if (format1 == format2)
       return true;
 
@@ -2117,8 +2122,16 @@ radv_dcc_formats_compatible(enum amd_gfx_level gfx_level, VkFormat format1, VkFo
        (type1 == dcc_channel_float) != (type2 == dcc_channel_float) || size1 != size2)
       return false;
 
-   if (type1 != type2)
+   if (type1 != type2) {
+      /* FIXME: All formats should be compatible on GFX11 but for some reasons DCC with signedness
+       * reinterpretation doesn't work as expected, like R8_UINT<->R8_SINT. Note that disabling
+       * fast-clears doesn't help.
+       */
+      if (gfx_level >= GFX11)
+         return false;
+
       *sign_reinterpret = true;
+   }
 
    return true;
 }

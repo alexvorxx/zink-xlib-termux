@@ -160,62 +160,29 @@ build_depth_stencil_resolve_compute_shader(struct radv_device *dev, int samples,
                                          nir_channel(&b, resolve_coord, 1),
                                          nir_channel(&b, global_id, 2));
 
-   nir_ssa_def *input_img_deref = &nir_build_deref_var(&b, input_img)->dest.ssa;
-
-   nir_alu_type type = index == DEPTH_RESOLVE ? nir_type_float32 : nir_type_uint32;
-
-   nir_tex_instr *tex = nir_tex_instr_create(b.shader, 3);
-   tex->sampler_dim = GLSL_SAMPLER_DIM_MS;
-   tex->op = nir_texop_txf_ms;
-   tex->src[0].src_type = nir_tex_src_coord;
-   tex->src[0].src = nir_src_for_ssa(img_coord);
-   tex->src[1].src_type = nir_tex_src_ms_index;
-   tex->src[1].src = nir_src_for_ssa(nir_imm_int(&b, 0));
-   tex->src[2].src_type = nir_tex_src_texture_deref;
-   tex->src[2].src = nir_src_for_ssa(input_img_deref);
-   tex->dest_type = type;
-   tex->is_array = true;
-   tex->coord_components = 3;
-
-   nir_ssa_dest_init(&tex->instr, &tex->dest, 4, 32, "tex");
-   nir_builder_instr_insert(&b, &tex->instr);
-
-   nir_ssa_def *outval = &tex->dest.ssa;
+   nir_deref_instr *input_img_deref = nir_build_deref_var(&b, input_img);
+   nir_ssa_def *outval = nir_txf_ms_deref(&b, input_img_deref, img_coord, nir_imm_int(&b, 0));
 
    if (resolve_mode != VK_RESOLVE_MODE_SAMPLE_ZERO_BIT) {
       for (int i = 1; i < samples; i++) {
-         nir_tex_instr *tex_add = nir_tex_instr_create(b.shader, 3);
-         tex_add->sampler_dim = GLSL_SAMPLER_DIM_MS;
-         tex_add->op = nir_texop_txf_ms;
-         tex_add->src[0].src_type = nir_tex_src_coord;
-         tex_add->src[0].src = nir_src_for_ssa(img_coord);
-         tex_add->src[1].src_type = nir_tex_src_ms_index;
-         tex_add->src[1].src = nir_src_for_ssa(nir_imm_int(&b, i));
-         tex_add->src[2].src_type = nir_tex_src_texture_deref;
-         tex_add->src[2].src = nir_src_for_ssa(input_img_deref);
-         tex_add->dest_type = type;
-         tex_add->is_array = true;
-         tex_add->coord_components = 3;
-
-         nir_ssa_dest_init(&tex_add->instr, &tex_add->dest, 4, 32, "tex");
-         nir_builder_instr_insert(&b, &tex_add->instr);
+         nir_ssa_def *si = nir_txf_ms_deref(&b, input_img_deref, img_coord, nir_imm_int(&b, i));
 
          switch (resolve_mode) {
          case VK_RESOLVE_MODE_AVERAGE_BIT:
             assert(index == DEPTH_RESOLVE);
-            outval = nir_fadd(&b, outval, &tex_add->dest.ssa);
+            outval = nir_fadd(&b, outval, si);
             break;
          case VK_RESOLVE_MODE_MIN_BIT:
             if (index == DEPTH_RESOLVE)
-               outval = nir_fmin(&b, outval, &tex_add->dest.ssa);
+               outval = nir_fmin(&b, outval, si);
             else
-               outval = nir_umin(&b, outval, &tex_add->dest.ssa);
+               outval = nir_umin(&b, outval, si);
             break;
          case VK_RESOLVE_MODE_MAX_BIT:
             if (index == DEPTH_RESOLVE)
-               outval = nir_fmax(&b, outval, &tex_add->dest.ssa);
+               outval = nir_fmax(&b, outval, si);
             else
-               outval = nir_umax(&b, outval, &tex_add->dest.ssa);
+               outval = nir_umax(&b, outval, si);
             break;
          default:
             unreachable("invalid resolve mode");
@@ -314,9 +281,8 @@ create_resolve_pipeline(struct radv_device *device, int samples, bool is_integer
       .layout = device->meta_state.resolve_compute.p_layout,
    };
 
-   result = radv_CreateComputePipelines(radv_device_to_handle(device),
-                                        device->meta_state.cache, 1,
-                                        &vk_pipeline_info, NULL, pipeline);
+   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache,
+                                         &vk_pipeline_info, NULL, pipeline);
    if (result != VK_SUCCESS)
       goto fail;
 
@@ -360,9 +326,8 @@ create_depth_stencil_resolve_pipeline(struct radv_device *device, int samples, i
       .layout = device->meta_state.resolve_compute.p_layout,
    };
 
-   result = radv_CreateComputePipelines(radv_device_to_handle(device),
-                                        device->meta_state.cache, 1,
-                                        &vk_pipeline_info, NULL, pipeline);
+   result = radv_compute_pipeline_create(radv_device_to_handle(device), device->meta_state.cache,
+                                         &vk_pipeline_info, NULL, pipeline);
    if (result != VK_SUCCESS)
       goto fail;
 
@@ -671,8 +636,6 @@ radv_meta_resolve_compute_image(struct radv_cmd_buffer *cmd_buffer, struct radv_
 {
    struct radv_meta_saved_state saved_state;
 
-   radv_decompress_resolve_src(cmd_buffer, src_image, src_image_layout, region);
-
    /* For partial resolves, DCC should be decompressed before resolving
     * because the metadata is re-initialized to the uncompressed after.
     */
@@ -780,67 +743,16 @@ radv_meta_resolve_compute_image(struct radv_cmd_buffer *cmd_buffer, struct radv_
    }
 }
 
-/**
- * Emit any needed resolves for the current subpass.
- */
 void
-radv_cmd_buffer_resolve_rendering_cs(struct radv_cmd_buffer *cmd_buffer)
+radv_cmd_buffer_resolve_rendering_cs(struct radv_cmd_buffer *cmd_buffer,
+                                     struct radv_image_view *src_iview, VkImageLayout src_layout,
+                                     struct radv_image_view *dst_iview, VkImageLayout dst_layout,
+                                     const VkImageResolve2 *region)
 {
-   const struct radv_rendering_state *render = &cmd_buffer->state.render;
-   VkRect2D resolve_area = render->area;
-   struct radv_resolve_barrier barrier;
-
-   uint32_t layer_count = render->layer_count;
-   if (render->view_mask)
-      layer_count = util_last_bit(render->view_mask);
-
-   /* Resolves happen before the end-of-subpass barriers get executed, so
-    * we have to make the attachment shader-readable.
-    */
-   barrier.src_stage_mask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-   barrier.src_access_mask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-   barrier.dst_access_mask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
-   radv_emit_resolve_barrier(cmd_buffer, &barrier);
-
-   for (uint32_t i = 0; i < render->color_att_count; ++i) {
-      if (render->color_att[i].resolve_iview == NULL)
-         continue;
-
-      struct radv_image_view *src_iview = render->color_att[i].iview;
-      struct radv_image_view *dst_iview = render->color_att[i].resolve_iview;
-      VkImageLayout src_layout = render->color_att[i].layout;
-      VkImageLayout dst_layout = render->color_att[i].resolve_layout;
-
-      VkImageResolve2 region = {
-         .sType = VK_STRUCTURE_TYPE_IMAGE_RESOLVE_2,
-         .extent = {
-            .width = resolve_area.extent.width,
-            .height = resolve_area.extent.height,
-            .depth = 1,
-         },
-         .srcSubresource =
-            (VkImageSubresourceLayers){
-               .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-               .mipLevel = src_iview->vk.base_mip_level,
-               .baseArrayLayer = src_iview->vk.base_array_layer,
-               .layerCount = layer_count,
-            },
-         .dstSubresource =
-            (VkImageSubresourceLayers){
-               .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-               .mipLevel = dst_iview->vk.base_mip_level,
-               .baseArrayLayer = dst_iview->vk.base_array_layer,
-               .layerCount = layer_count,
-            },
-         .srcOffset = { resolve_area.offset.x, resolve_area.offset.y, 0 },
-         .dstOffset = { resolve_area.offset.x, resolve_area.offset.y, 0 },
-      };
-
-      radv_meta_resolve_compute_image(cmd_buffer,
-                                      src_iview->image, src_iview->vk.format, src_layout,
-                                      dst_iview->image, dst_iview->vk.format, dst_layout,
-                                      &region);
-   }
+   radv_meta_resolve_compute_image(cmd_buffer,
+                                   src_iview->image, src_iview->vk.format, src_layout,
+                                   dst_iview->image, dst_iview->vk.format, dst_layout,
+                                   region);
 
    cmd_buffer->state.flush_bits |=
       RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_INV_VCACHE |

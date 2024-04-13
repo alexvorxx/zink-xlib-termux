@@ -2246,11 +2246,11 @@ dri2_init_screen_extensions(struct dri_screen *screen,
          screen->buffer_damage_extension.set_damage_region =
             dri2_set_damage_region;
       *nExt++ = &screen->buffer_damage_extension.base;
+   }
 
-      if (pscreen->get_param(pscreen, PIPE_CAP_DEVICE_RESET_STATUS_QUERY)) {
-         *nExt++ = &dri2Robustness.base;
-         screen->has_reset_status_query = true;
-      }
+   if (pscreen->get_param(pscreen, PIPE_CAP_DEVICE_RESET_STATUS_QUERY)) {
+      *nExt++ = &dri2Robustness.base;
+      screen->has_reset_status_query = true;
    }
 
    /* Ensure the extension list didn't overrun its buffer and is still
@@ -2378,6 +2378,10 @@ dri_swrast_kms_init_screen(struct dri_screen *screen)
       screen->validate_egl_image = dri2_validate_egl_image;
       screen->lookup_egl_image_validated = dri2_lookup_egl_image_validated;
    }
+
+   screen->create_drawable = dri2_create_drawable;
+   screen->allocate_buffer = dri2_allocate_buffer;
+   screen->release_buffer = dri2_release_buffer;
 
    return configs;
 

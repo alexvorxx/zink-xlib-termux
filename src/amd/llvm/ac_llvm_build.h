@@ -96,6 +96,7 @@ struct ac_llvm_context {
    LLVMTypeRef f16;
    LLVMTypeRef f32;
    LLVMTypeRef f64;
+   LLVMTypeRef v4i8;
    LLVMTypeRef v2i16;
    LLVMTypeRef v4i16;
    LLVMTypeRef v2f16;
@@ -156,14 +157,20 @@ struct ac_llvm_context {
 
    unsigned float_mode;
 
+   bool exports_color_null;
+   bool exports_mrtz;
+
    struct ac_llvm_pointer lds;
+
+   LLVMValueRef ring_offsets;
+   int ring_offsets_index;
 };
 
 void ac_llvm_context_init(struct ac_llvm_context *ctx, struct ac_llvm_compiler *compiler,
                           enum amd_gfx_level gfx_level, enum radeon_family family,
                           bool has_3d_cube_border_color_mipmap,
                           enum ac_float_mode float_mode, unsigned wave_size,
-                          unsigned ballot_mask_bits);
+                          unsigned ballot_mask_bits, bool exports_color_null, bool exports_mrtz);
 
 void ac_llvm_context_dispose(struct ac_llvm_context *ctx);
 
@@ -247,7 +254,7 @@ LLVMValueRef ac_build_fs_interp_f16(struct ac_llvm_context *ctx, LLVMValueRef ll
                                     LLVMValueRef attr_number, LLVMValueRef params, LLVMValueRef i,
                                     LLVMValueRef j, bool high_16bits);
 
-LLVMValueRef ac_build_fs_interp_mov(struct ac_llvm_context *ctx, LLVMValueRef parameter,
+LLVMValueRef ac_build_fs_interp_mov(struct ac_llvm_context *ctx, unsigned parameter,
                                     LLVMValueRef llvm_chan, LLVMValueRef attr_number,
                                     LLVMValueRef params);
 
@@ -297,11 +304,16 @@ LLVMValueRef ac_build_buffer_load_byte(struct ac_llvm_context *ctx, LLVMValueRef
                                        LLVMValueRef voffset, LLVMValueRef soffset,
                                        unsigned cache_policy);
 
-LLVMValueRef ac_build_struct_tbuffer_load(struct ac_llvm_context *ctx, LLVMValueRef rsrc,
-                                          LLVMValueRef vindex, LLVMValueRef voffset,
-                                          LLVMValueRef soffset, unsigned num_channels,
-                                          unsigned dfmt, unsigned nfmt, unsigned cache_policy,
-                                          bool can_speculate);
+LLVMValueRef ac_build_safe_tbuffer_load(struct ac_llvm_context *ctx, LLVMValueRef rsrc,
+                                        LLVMValueRef vindex, LLVMValueRef voffset,
+                                        LLVMValueRef soffset, LLVMTypeRef channel_type,
+                                        const struct ac_vtx_format_info *vtx_info,
+                                        unsigned const_offset,
+                                        unsigned align_offset,
+                                        unsigned align_mul,
+                                        unsigned num_channels,
+                                        unsigned cache_policy,
+                                        bool can_speculate);
 
 LLVMValueRef ac_build_opencoded_load_format(struct ac_llvm_context *ctx, unsigned log_size,
                                             unsigned num_channels, unsigned format, bool reverse,
@@ -496,9 +508,6 @@ LLVMValueRef ac_trim_vector(struct ac_llvm_context *ctx, LLVMValueRef value, uns
 LLVMValueRef ac_unpack_param(struct ac_llvm_context *ctx, LLVMValueRef param, unsigned rshift,
                              unsigned bitwidth);
 
-void ac_apply_fmask_to_sample(struct ac_llvm_context *ac, LLVMValueRef fmask, LLVMValueRef *addr,
-                              bool is_array_tex);
-
 LLVMValueRef ac_build_ds_swizzle(struct ac_llvm_context *ctx, LLVMValueRef src, unsigned mask);
 
 LLVMValueRef ac_build_readlane_no_opt_barrier(struct ac_llvm_context *ctx, LLVMValueRef src,
@@ -577,6 +586,8 @@ LLVMValueRef ac_build_atomic_rmw(struct ac_llvm_context *ctx, LLVMAtomicRMWBinOp
 LLVMValueRef ac_build_atomic_cmp_xchg(struct ac_llvm_context *ctx, LLVMValueRef ptr,
                                       LLVMValueRef cmp, LLVMValueRef val, const char *sync_scope);
 
+void ac_add_sinking_pass(LLVMPassManagerRef PM);
+
 void ac_export_mrt_z(struct ac_llvm_context *ctx, LLVMValueRef depth, LLVMValueRef stencil,
                      LLVMValueRef samplemask, LLVMValueRef mrt0_alpha, bool is_last,
                      struct ac_export_args *args);
@@ -602,7 +613,10 @@ LLVMTypeRef ac_arg_type_to_pointee_type(struct ac_llvm_context *ctx, enum ac_arg
 static inline LLVMValueRef ac_get_arg(struct ac_llvm_context *ctx, struct ac_arg arg)
 {
    assert(arg.used);
-   return LLVMGetParam(ctx->main_function.value, arg.arg_index);
+   if (arg.arg_index == ctx->ring_offsets_index)
+      return ctx->ring_offsets;
+   int offset = arg.arg_index > ctx->ring_offsets_index ? -1 : 0;
+   return LLVMGetParam(ctx->main_function.value, arg.arg_index + offset);
 }
 
 static inline struct ac_llvm_pointer
@@ -610,7 +624,7 @@ ac_get_ptr_arg(struct ac_llvm_context *ctx, const struct ac_shader_args *args, s
 {
    struct ac_llvm_pointer ptr;
    ptr.pointee_type = ac_arg_type_to_pointee_type(ctx, args->args[arg.arg_index].type);
-   ptr.value = LLVMGetParam(ctx->main_function.value, arg.arg_index);
+   ptr.value = ac_get_arg(ctx, arg);
    return ptr;
 }
 

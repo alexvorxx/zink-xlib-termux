@@ -135,9 +135,8 @@ create_dcc_compress_compute(struct radv_device *device)
       .layout = device->meta_state.fast_clear_flush.dcc_decompress_compute_p_layout,
    };
 
-   result = radv_CreateComputePipelines(
-      radv_device_to_handle(device), device->meta_state.cache, 1,
-      &vk_pipeline_info, NULL,
+   result = radv_compute_pipeline_create(
+      radv_device_to_handle(device), device->meta_state.cache, &vk_pipeline_info, NULL,
       &device->meta_state.fast_clear_flush.dcc_decompress_compute_pipeline);
    if (result != VK_SUCCESS)
       goto cleanup;

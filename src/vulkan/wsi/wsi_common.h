@@ -60,8 +60,8 @@ struct wsi_image_create_info {
     const void *pNext;
     bool scanout;
 
-    /* if true, the image is a buffer blit source */
-    bool buffer_blit_src;
+    /* if true, the image is a blit source */
+    bool blit_src;
 };
 
 struct wsi_memory_allocate_info {
@@ -91,7 +91,7 @@ struct vk_instance;
 
 struct driOptionCache;
 
-#define VK_ICD_WSI_PLATFORM_MAX (VK_ICD_WSI_PLATFORM_DISPLAY + 1)
+#define VK_ICD_WSI_PLATFORM_MAX (VK_ICD_WSI_PLATFORM_HEADLESS + 1)
 
 struct wsi_device {
    /* Allocator for the instance */
@@ -126,6 +126,9 @@ struct wsi_device {
    /* List of fences to signal when hotplug event happens. */
    struct list_head hotplug_fences;
 
+   /* Create headless swapchains. */
+   bool force_headless_swapchain;
+
    struct {
       /* Override the minimum number of images on the swapchain.
        * 0 = no override */
@@ -145,7 +148,19 @@ struct wsi_device {
        * true.
        */
       bool xwaylandWaitReady;
+
+      /* adds an extra minImageCount when running under xwayland */
+      bool extra_xwayland_image;
    } x11;
+
+   struct {
+      void *(*get_d3d12_command_queue)(VkDevice device);
+      /* Needs to be per VkDevice, not VkPhysicalDevice, depends on queue config */
+      bool (*requires_blits)(VkDevice device);
+      VkResult (*create_image_memory)(VkDevice device, void *resource,
+                                      const VkAllocationCallbacks *alloc,
+                                      VkDeviceMemory *out);
+   } win32;
 
    bool sw;
 
@@ -199,7 +214,7 @@ struct wsi_device {
     * A driver can implement this callback to return a special queue to execute
     * buffer blits.
     */
-   VkQueue (*get_buffer_blit_queue)(VkDevice device);
+   VkQueue (*get_blit_queue)(VkDevice device);
 
 #define WSI_CB(cb) PFN_vk##cb cb
    WSI_CB(AllocateMemory);
@@ -208,6 +223,7 @@ struct wsi_device {
    WSI_CB(BindImageMemory);
    WSI_CB(BeginCommandBuffer);
    WSI_CB(CmdPipelineBarrier);
+   WSI_CB(CmdCopyImage);
    WSI_CB(CmdCopyImageToBuffer);
    WSI_CB(CreateBuffer);
    WSI_CB(CreateCommandPool);
@@ -223,6 +239,7 @@ struct wsi_device {
    WSI_CB(FreeMemory);
    WSI_CB(FreeCommandBuffers);
    WSI_CB(GetBufferMemoryRequirements);
+   WSI_CB(GetFenceStatus);
    WSI_CB(GetImageDrmFormatModifierPropertiesEXT);
    WSI_CB(GetImageMemoryRequirements);
    WSI_CB(GetImageSubresourceLayout);
@@ -244,6 +261,11 @@ struct wsi_device {
 
 typedef PFN_vkVoidFunction (VKAPI_PTR *WSI_FN_GetPhysicalDeviceProcAddr)(VkPhysicalDevice physicalDevice, const char* pName);
 
+struct wsi_device_options {
+   bool sw_device;
+   bool extra_xwayland_image;
+};
+
 VkResult
 wsi_device_init(struct wsi_device *wsi,
                 VkPhysicalDevice pdevice,
@@ -251,7 +273,7 @@ wsi_device_init(struct wsi_device *wsi,
                 const VkAllocationCallbacks *alloc,
                 int display_fd,
                 const struct driOptionCache *dri_options,
-                bool sw_device);
+                const struct wsi_device_options *device_options);
 
 void
 wsi_device_finish(struct wsi_device *wsi,

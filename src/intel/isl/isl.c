@@ -1962,17 +1962,18 @@ isl_surf_init_s(const struct isl_device *dev,
       if (tiling == ISL_TILING_GFX12_CCS)
          base_alignment_B = MAX(base_alignment_B, 4096);
 
-      /* Platforms using an aux map require that images be 64K-aligned if
-       * they're going to used with CCS. This is because the Aux translation
-       * table maps main surface addresses to aux addresses at a 64K (in the
-       * main surface) granularity. Because we don't know for sure in ISL if
-       * a surface will use CCS, we have to guess based on the DISABLE_AUX
-       * usage bit. The one thing we do know is that we haven't enable CCS on
-       * linear images yet so we can avoid the extra alignment there.
+      /* Platforms using an aux map require that images be granularity-aligned
+       * if they're going to used with CCS. This is because the Aux translation
+       * table maps main surface addresses to aux addresses at a granularity in
+       * the main surface. Because we don't know for sure in ISL if a surface
+       * will use CCS, we have to guess based on the DISABLE_AUX usage bit. The
+       * one thing we do know is that we haven't enable CCS on linear images
+       * yet so we can avoid the extra alignment there.
        */
       if (dev->info->has_aux_map &&
           !(info->usage & ISL_SURF_USAGE_DISABLE_AUX_BIT)) {
-         base_alignment_B = MAX(base_alignment_B, 64 * 1024);
+         base_alignment_B = MAX(base_alignment_B, dev->info->verx10 >= 125 ?
+               1024 * 1024 : 64 * 1024);
       }
    }
 
@@ -2233,14 +2234,11 @@ isl_surf_supports_ccs(const struct isl_device *dev,
       if (surf->row_pitch_B % 512 != 0)
          return false;
 
-      /* According to Wa_1406738321, 3D textures need a blit to a new
+      /* TODO: According to Wa_1406738321, 3D textures need a blit to a new
        * surface in order to perform a resolve. For now, just disable CCS.
        */
-      if (surf->dim == ISL_SURF_DIM_3D) {
-         isl_finishme("%s:%s: CCS for 3D textures is disabled, but a workaround"
-                      " is available.", __FILE__, __func__);
+      if (surf->dim == ISL_SURF_DIM_3D)
          return false;
-      }
 
       /* Wa_1207137018
        *

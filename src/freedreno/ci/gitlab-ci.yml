@@ -54,11 +54,13 @@ a306_gl:
   extends:
     - .piglit-test
     - .a306-test
-    - .test-manual-mr
+    - .freedreno-manual-rules
   variables:
     HWCI_START_XORG: 1
 
-a306_piglit_gl:
+# Something happened and now this hangchecks and doesn't recover.  Unkown when
+# it started.
+.a306_piglit_gl:
   extends:
     - .a306_piglit
   variables:
@@ -96,9 +98,10 @@ a530_gl:
   extends:
     - .baremetal-deqp-test
     - .a530-test
-    - .test-manual-mr # Unstable as of kernel 5.19
+    - .freedreno-manual-rules # Unstable as of kernel 5.19
   variables:
     DEQP_SUITE: freedreno-a530
+    PIGLIT_PLATFORM: gbm
   parallel: 6
 
 .a530_piglit:
@@ -110,10 +113,13 @@ a530_gl:
 
 # piglit_gl since it takes a bit under 20 minutes and has a lot of flakes, so
 # leave it as manual.  The shader_tests are in the main a530_gl suite.
-a530_piglit_gl:
+#
+# Disabled for now because something reliably takes out the board 19-20 minutes in,
+# and then it reboots and tries again until the job timeout.
+.a530_piglit_gl:
   extends:
     - .a530_piglit
-    - .test-manual-mr
+    - .freedreno-manual-rules
   variables:
     PIGLIT_PROFILES: quick_gl
 
@@ -126,33 +132,46 @@ a530-traces:
     PIGLIT_RESULTS: "freedreno-a530-replay"
 
 .a618-test:
-  extends:
-    - .lava-test:arm64
   variables:
+    FLAKES_CHANNEL: "#freedreno-ci"
     BOOT_METHOD: depthcharge
     KERNEL_IMAGE_TYPE: ""
     # Increase the hangcheck timer for our spilling tests which bump up against
     # the .5s default.
     FREEDRENO_HANGCHECK_MS: 2000
+    GPU_VERSION: freedreno-a618
+    VK_DRIVER: freedreno
 
-a618_vk:
+.a618-test-kingoftown-r1:
   extends:
     - .a618-test
-    - .turnip-rules
-  parallel: 12
   variables:
     DEVICE_TYPE: sc7180-trogdor-kingoftown
     DTB: sc7180-trogdor-kingoftown-r1
     RUNNER_TAG: mesa-ci-x86-64-lava-sc7180-trogdor-kingoftown
-    VK_DRIVER: freedreno
+
+.a618-test-limozeen-nots-r5:
+  extends:
+    - .a618-test
+  variables:
+    DEVICE_TYPE: sc7180-trogdor-lazor-limozeen
+    DTB: sc7180-trogdor-lazor-limozeen-nots-r5
+    RUNNER_TAG: mesa-ci-x86-64-lava-sc7180-trogdor-lazor-limozeen
+
+a618_vk:
+  extends:
+    - .lava-test:arm64
+    - .a618-test-kingoftown-r1
+    - .turnip-rules
+  parallel: 12
+  variables:
     DEQP_SUITE: freedreno-a618-vk
-    GPU_VERSION: freedreno-a618
     MESA_VK_IGNORE_CONFORMANCE_WARNING: 1
 
 a618_vk_full:
   extends:
     - a618_vk
-    - .test-manual-mr
+    - .turnip-manual-rules
   # We use a longer timeout to keep the parallel down so that we don't lock up
   # too many runners for a long time when a dev is trying out at full VK status.
   timeout: 2h
@@ -165,15 +184,50 @@ a618_vk_full:
 
 a618_gl:
   extends:
-    - .a618-test
+    - .lava-test:arm64
+    - .a618-test-limozeen-nots-r5
     - .freedreno-rules
   parallel: 4
   variables:
-    DEVICE_TYPE: sc7180-trogdor-lazor-limozeen
-    DTB: sc7180-trogdor-lazor-limozeen-nots-r5
-    RUNNER_TAG: mesa-ci-x86-64-lava-sc7180-trogdor-lazor-limozeen
     DEQP_SUITE: freedreno-a618
-    GPU_VERSION: freedreno-a618
+
+# Run dEQP EGL window system tests separately with the window systems available.
+# X11 takes over the screen, wayland is run headless.
+a618_egl:
+  extends:
+    - .lava-test:arm64
+    - .a618-test-limozeen-nots-r5
+    - .freedreno-rules
+  variables:
+    DEQP_VER: egl
+    HWCI_START_XORG: 1
+    HWCI_START_WESTON: 1
+    DEQP_SUITE: freedreno-a618-egl
+
+a618_skqp:
+  extends:
+    - .lava-test:arm64
+    - .a618-test-limozeen-nots-r5
+    - .freedreno-rules
+    # SKQP tests both the GL and VK drivers.
+    - .freedreno-turnip-rules
+  variables:
+    HWCI_START_XORG: 1
+    DEQP_SUITE: freedreno-a618-skqp
+
+# FIXME: this job runs gles2 deqp, rename or fix!
+a618_piglit:
+  extends:
+    - .piglit-test
+    - .lava-piglit:arm64
+    - .a618-test-limozeen-nots-r5
+    - .freedreno-rules
+    # Note that piglit has GL+VK integration testing.
+    - .freedreno-turnip-rules
+  variables:
+    HWCI_START_XORG: 1
+    DEQP_VER: gles2
+    PIGLIT_PROFILES: gpu
 
 .a630-test:
   extends:
@@ -187,6 +241,10 @@ a618_gl:
     - google-freedreno-cheza
   script:
     - ./install/bare-metal/cros-servo.sh
+
+.a630-full:
+  tags:
+    - google-freedreno-cheza-long
 
 a630_gl:
   extends:
@@ -222,13 +280,13 @@ a630_gles_asan:
 
 a630_skqp:
   extends:
-    - .skqp-test
+    - .baremetal-deqp-test
     - .a630-test
+    # SKQP tests both the GL and VK drivers.
     - .freedreno-turnip-rules
   variables:
-    # Possible skqp backends: gl, gles, unitTest and vk
-    SKQP_BACKENDS: gl gles vk unitTest  # space separated values
-    VK_DRIVER: freedreno
+    HWCI_START_XORG: 1
+    DEQP_SUITE: freedreno-a630-skqp
 
 a630_vk:
   extends:
@@ -239,17 +297,19 @@ a630_vk:
     DEQP_SUITE: freedreno-a630-vk
 
 a630_vk_full:
-  # We use a longer timeout (2 hour job, 110 minute deqp) to keep the parallel
-  # down so that we don't lock up too many runners for a long time when a dev is
-  # testing full VK status.
-  timeout: 2h
+  # We use a longer timeout (3 hour job) to keep the parallel down so that we
+  # don't lock up too many runners for a long time when a dev is testing full VK
+  # status.  The full runs are restricted to just 2 runners to keep from
+  # blocking up normal merges, so going more parallel doesn't make any sense.
+  timeout: 3h
   extends:
     - a630_vk
-    - .test-manual-mr
+    - .a630-full
+    - .turnip-manual-rules
   parallel: 2
   variables:
     DEQP_SUITE: freedreno-a630-vk-full
-    TEST_PHASE_TIMEOUT: 110
+    TEST_PHASE_TIMEOUT: 180
 
 a630_vk_asan:
   extends:
@@ -264,13 +324,13 @@ a630_vk_asan:
 
 a630_piglit:
   extends:
-    - .piglit-test
+    - .baremetal-deqp-test
     - .a630-test
     # Note that piglit has GL+VK integration testing.
     - .freedreno-turnip-rules
   variables:
     HWCI_START_XORG: 1
-    PIGLIT_PROFILES: gpu
+    DEQP_SUITE: freedreno-a630-piglit
 
 a630-traces:
   extends:
@@ -310,4 +370,3 @@ a630-traces-performance:
     EGL_PLATFORM: surfaceless
     GIT_STRATEGY: none
     HWCI_FREQ_MAX: "true"
-  allow_failure: true

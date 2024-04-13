@@ -519,7 +519,8 @@ select_best_modifier(const struct etna_screen * screen,
 
    best_modifier = base_modifier = priority_to_modifier[prio];
 
-   if (!VIV_FEATURE(screen, chipFeatures, FAST_CLEAR))
+   if (!DBG_ENABLED(ETNA_DBG_SHARED_TS) ||
+       !VIV_FEATURE(screen, chipFeatures, FAST_CLEAR))
       return best_modifier;
 
    /* Make a second pass to try and find the best TS modifier if any. */
@@ -695,15 +696,9 @@ etna_resource_from_handle(struct pipe_screen *pscreen,
                                                                   level->padded_height);
    level->size = level->layer_stride;
 
-   if (screen->ro) {
-      struct pipe_resource *imp_prsc = prsc;
-      do {
-         etna_resource(imp_prsc)->scanout =
-               renderonly_create_gpu_import_for_resource(imp_prsc, screen->ro,
-                                                         NULL);
-         /* failure is expected for scanout incompatible buffers */
-      } while ((imp_prsc = imp_prsc->next));
-   }
+   if (screen->ro)
+      rsc->scanout = renderonly_create_gpu_import_for_resource(prsc, screen->ro,
+                                                               NULL);
 
    /* If the buffer is for a TS plane, skip the RS compatible checks */
    if (handle->plane >= util_format_get_num_planes(prsc->format))

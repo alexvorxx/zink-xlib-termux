@@ -40,7 +40,7 @@
 #include "d3d12_video_proc.h"
 #include "d3d12_video_buffer.h"
 #endif
-#include "util/indices/u_primconvert.h"
+#include "indices/u_primconvert.h"
 #include "util/u_atomic.h"
 #include "util/u_blitter.h"
 #include "util/u_dual_blend.h"
@@ -69,6 +69,8 @@ d3d12_context_destroy(struct pipe_context *pctx)
    struct d3d12_screen *screen = d3d12_screen(pctx->screen);
    mtx_lock(&screen->submit_mutex);
    list_del(&ctx->context_list_entry);
+   if (ctx->id != D3D12_CONTEXT_NO_ID)
+      screen->context_id_list[screen->context_id_count++] = ctx->id;
    mtx_unlock(&screen->submit_mutex);
 
 #ifdef _WIN32
@@ -76,8 +78,10 @@ d3d12_context_destroy(struct pipe_context *pctx)
       dxil_destroy_validator(ctx->dxil_validator);
 #endif
 
+#ifndef _GAMING_XBOX
    if (ctx->dev_config)
       ctx->dev_config->Release();
+#endif
 
    if (ctx->timestamp_query)
       pctx->destroy_query(pctx, ctx->timestamp_query);
@@ -102,6 +106,7 @@ d3d12_context_destroy(struct pipe_context *pctx)
    pipe_resource_reference(&ctx->pstipple.texture, nullptr);
    pipe_sampler_view_reference(&ctx->pstipple.sampler_view, nullptr);
    util_dynarray_fini(&ctx->recently_destroyed_bos);
+   util_dynarray_fini(&ctx->ended_queries);
    FREE(ctx->pstipple.sampler_cso);
 
    u_suballocator_destroy(&ctx->query_allocator);
@@ -391,6 +396,11 @@ d3d12_bind_blend_state(struct pipe_context *pctx, void *blend_state)
    if (new_state == NULL || old_state == NULL ||
        new_state->blend_factor_flags != old_state->blend_factor_flags)
       ctx->state_dirty |= D3D12_DIRTY_BLEND_COLOR;
+
+   if (new_state == NULL)
+      ctx->missing_dual_src_outputs = false;
+   else if (new_state != NULL && (old_state == NULL || old_state->is_dual_src != new_state->is_dual_src))
+      ctx->missing_dual_src_outputs = missing_dual_src_outputs(ctx);
 }
 
 static void
@@ -1119,8 +1129,11 @@ static void
 d3d12_bind_fs_state(struct pipe_context *pctx,
                     void *fss)
 {
-   bind_stage(d3d12_context(pctx), PIPE_SHADER_FRAGMENT,
+   struct d3d12_context* ctx = d3d12_context(pctx);
+   bind_stage(ctx, PIPE_SHADER_FRAGMENT,
               (struct d3d12_shader_selector *) fss);
+   ctx->has_flat_varyings = has_flat_varyings(ctx);
+   ctx->missing_dual_src_outputs = missing_dual_src_outputs(ctx);
 }
 
 static void
@@ -2500,6 +2513,9 @@ d3d12_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
 
    ctx->gfx_pipeline_state.sample_mask = ~0;
 
+   ctx->has_flat_varyings = false;
+   ctx->missing_dual_src_outputs = false;
+
    d3d12_context_surface_init(&ctx->base);
    d3d12_context_resource_init(&ctx->base);
    d3d12_context_query_init(&ctx->base);
@@ -2545,7 +2561,9 @@ d3d12_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
 
    ctx->D3D12SerializeVersionedRootSignature =
       (PFN_D3D12_SERIALIZE_VERSIONED_ROOT_SIGNATURE)util_dl_get_proc_address(screen->d3d12_mod, "D3D12SerializeVersionedRootSignature");
+#ifndef _GAMING_XBOX
    (void)screen->dev->QueryInterface(&ctx->dev_config);
+#endif
 
    ctx->submit_id = (uint64_t)p_atomic_add_return(&screen->ctx_count, 1) << 32ull;
 
@@ -2584,6 +2602,10 @@ d3d12_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
 
    mtx_lock(&screen->submit_mutex);
    list_addtail(&ctx->context_list_entry, &screen->context_list);
+   if (screen->context_id_count > 0)
+      ctx->id = screen->context_id_list[--screen->context_id_count];
+   else
+      ctx->id = D3D12_CONTEXT_NO_ID;
    mtx_unlock(&screen->submit_mutex);
 
    if (flags & PIPE_CONTEXT_PREFER_THREADED)

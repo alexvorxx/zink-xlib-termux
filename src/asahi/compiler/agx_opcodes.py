@@ -108,6 +108,14 @@ DIM = enum("dim", {
     8: '2d_ms_array',
 })
 
+GATHER = enum("gather", {
+	0b000: "none",
+	0b001: "r",
+	0b011: "g",
+	0b101: "b",
+	0b111: "a",
+})
+
 OFFSET = immediate("offset", "bool")
 SHADOW = immediate("shadow", "bool")
 SCOREBOARD = immediate("scoreboard")
@@ -117,6 +125,7 @@ NEST = immediate("nest")
 INVERT_COND = immediate("invert_cond")
 NEST = immediate("nest")
 TARGET = immediate("target", "agx_block *")
+ZS = immediate("zs")
 PERSPECTIVE = immediate("perspective", "bool")
 SR = enum("sr", {
    0:  'threadgroup_position_in_grid.x',
@@ -137,9 +146,24 @@ SR = enum("sr", {
    56: 'active_thread_index_in_quad',
    58: 'active_thread_index_in_subgroup',
    62: 'backfacing',
+   63: 'is_active_thread',
    80: 'thread_position_in_grid.x',
    81: 'thread_position_in_grid.y',
    82: 'thread_position_in_grid.z',
+})
+
+ATOMIC_OPC = enum("atomic_opc", {
+	0: 'add',
+	1: 'sub',
+	2: 'xchg',
+	3: 'cmpxchg',
+	4: 'umin',
+	5: 'imin',
+	6: 'umax',
+	7: 'imax',
+	8: 'and',
+	9: 'or',
+	10: 'xor',
 })
 
 FUNOP = lambda x: (x << 28)
@@ -212,6 +236,10 @@ op("bfeil",
       encoding_32 = (0x2E | L, 0x7F | L | (0x3 << 26), 8, _),
       srcs = 3, imms = [BFI_MASK])
 
+op("extr",
+      encoding_32 = (0x2E | (0x1 << 26), 0x7F | L | (0x3 << 26), 8, _),
+      srcs = 3, imms = [BFI_MASK])
+
 op("asr",
       encoding_32 = (0x2E | L | (0x1 << 26), 0x7F | L | (0x3 << 26), 8, _),
       srcs = 2)
@@ -228,7 +256,8 @@ op("fcmpsel",
 # TODO: anything else?
 op("texture_sample",
       encoding_32 = (0x31, 0x7F, 8, 10), # XXX WRONG SIZE
-      srcs = 5, imms = [DIM, LOD_MODE, MASK, SCOREBOARD, OFFSET, SHADOW])
+      srcs = 5, imms = [DIM, LOD_MODE, MASK, SCOREBOARD, OFFSET, SHADOW,
+								GATHER])
 op("texture_load",
       encoding_32 = (0x71, 0x7F, 8, 10), # XXX WRONG SIZE
       srcs = 5, imms = [DIM, LOD_MODE, MASK, SCOREBOARD, OFFSET])
@@ -238,11 +267,38 @@ op("device_load",
       encoding_32 = (0x05, 0x7F, 6, 8),
       srcs = 2, imms = [FORMAT, MASK, SHIFT, SCOREBOARD], can_reorder = False)
 
+# sources are base (relative to workgroup memory), index
+op("local_load",
+      encoding_32 = (0b1101001, 0, 6, 8),
+      srcs = 2, imms = [FORMAT, MASK])
+
+# sources are value, base, index
+# TODO: Consider permitting the short form
+op("device_store",
+      encoding_32 = (0x45 | (1 << 47), 0, 8, _),
+      dests = 0, srcs = 3, imms = [FORMAT, MASK, SHIFT, SCOREBOARD], can_eliminate = False)
+
+# sources are value, base, index
+op("local_store",
+      encoding_32 = (0b0101001, 0, 6, 8),
+      dests = 0, srcs = 3, imms = [FORMAT, MASK],
+      can_eliminate=False)
+
 # sources are value, index
 # TODO: Consider permitting the short form
 op("uniform_store",
       encoding_32 = ((0b111 << 27) | 0b1000101 | (1 << 47), 0, 8, _),
       dests = 0, srcs = 2, can_eliminate = False)
+
+# sources are value, base, index
+op("atomic",
+      encoding_32 = (0x15 | (1 << 26) | (1 << 31) | (5 << 44), 0x3F | (1 << 26) | (1 << 31) | (5 << 44), 8, _),
+      dests = 1, srcs = 3, imms = [ATOMIC_OPC, SCOREBOARD], can_eliminate = False)
+
+# XXX: stop hardcoding the long form
+op("local_atomic",
+      encoding_32 = (0x19 | (1 << 15) | (1 << 36) | (1 << 47), 0x3F | (1 << 36) | (1 << 47), 10, _),
+      dests = 1, srcs = 3, imms = [ATOMIC_OPC], can_eliminate = False)
 
 op("wait", (0x38, 0xFF, 2, _), dests = 0,
       can_eliminate = False, imms = [SCOREBOARD])
@@ -250,6 +306,10 @@ op("wait", (0x38, 0xFF, 2, _), dests = 0,
 op("get_sr", (0x72, 0x7F | L, 4, _), dests = 1, imms = [SR])
 
 op("sample_mask", (0x7fc1, 0xffff, 6, _), dests = 0, srcs = 1, can_eliminate = False)
+
+# Sources: sample mask, combined depth/stencil
+op("zs_emit", (0x41, 0xFF | L, 4, _), dests = 0, srcs = 2,
+              can_eliminate = False, imms = [ZS])
 
 # Essentially same encoding. Last source is the sample mask
 op("ld_tile", (0x49, 0x7F, 8, _), dests = 1, srcs = 1,
@@ -283,6 +343,7 @@ op("convert", (0x3E | L, 0x7F | L | (0x3 << 38), 6, _), srcs = 2, imms = [ROUND]
 op("iter", (0x21, 0xBF, 8, _), srcs = 2, imms = [CHANNELS, PERSPECTIVE])
 op("ldcf", (0xA1, 0xBF, 8, _), srcs = 1, imms = [CHANNELS])
 op("st_vary", None, dests = 0, srcs = 2, can_eliminate = False)
+op("no_varyings", (0x80000051, 0xFFFFFFFF, 4, _), dests = 0, can_eliminate = False)
 op("stop", (0x88, 0xFFFF, 2, _), dests = 0, can_eliminate = False)
 op("trap", (0x08, 0xFFFF, 2, _), dests = 0, can_eliminate = False)
 op("writeout", (0x48, 0xFF, 4, _), dests = 0, imms = [WRITEOUT], can_eliminate = False)
@@ -291,6 +352,12 @@ op("writeout", (0x48, 0xFF, 4, _), dests = 0, imms = [WRITEOUT], can_eliminate =
 # TODO: Do we need the short encoding?
 op("block_image_store", (0xB1, 0xFF, 10, _), dests = 0, srcs = 2,
    imms = [FORMAT, DIM], can_eliminate = False)
+
+# Barriers
+op("threadgroup_barrier", (0x0068, 0xFFFF, 2, _), dests = 0, srcs = 0,
+   can_eliminate = False)
+op("memory_barrier", (0x96F5, 0xFFFF, 2, _), dests = 0, srcs = 0,
+   can_eliminate = False)
 
 # Convenient aliases.
 op("mov", _, srcs = 1)

@@ -404,7 +404,8 @@ osmesa_st_framebuffer_validate(struct st_context *st,
                                struct pipe_frontend_drawable *drawable,
                                const enum st_attachment_type *statts,
                                unsigned count,
-                               struct pipe_resource **out)
+                               struct pipe_resource **out,
+                               struct pipe_resource **resolve)
 {
    struct pipe_screen *screen = get_st_manager()->screen;
    enum st_attachment_type i;
@@ -796,7 +797,7 @@ OSMesaMakeCurrent(OSMesaContext osmesa, void *buffer, GLenum type,
                               osmesa->pp_enabled,
                               osmesa->st->cso_context,
                               osmesa->st,
-                              (void*)st_context_invalidate_state);
+                              st_context_invalidate_state);
 
          pp_init_fbos(osmesa->pp, width, height);
       }

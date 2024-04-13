@@ -134,8 +134,10 @@ push_node(uint32_t children[2])
    }
 
    DEREF(dst_node).base.aabb = total_bounds;
+#if EXTENDED_SAH
    DEREF(dst_node).base.cost = cost * 0.5 + BVH_LEVEL_COST;
-   DEREF(dst_node).in_final_tree = FINAL_TREE_UNKNOWN;
+#endif
+   DEREF(dst_node).bvh_offset = RADV_UNKNOWN_BVH_OFFSET;
    return dst_id;
 }
 
@@ -160,7 +162,9 @@ decode_neighbour_offset(uint32_t encoded_offset)
 #define NUM_PLOC_LDS_ITEMS PLOC_WORKGROUP_SIZE + 4 * PLOC_NEIGHBOURHOOD
 
 shared radv_aabb shared_bounds[NUM_PLOC_LDS_ITEMS];
+#if EXTENDED_SAH
 shared float shared_costs[NUM_PLOC_LDS_ITEMS];
+#endif
 shared uint32_t nearest_neighbour_indices[NUM_PLOC_LDS_ITEMS];
 
 uint32_t
@@ -186,7 +190,9 @@ load_bounds(VOID_REF ids, uint32_t iter, uint32_t task_index, uint32_t lds_base,
       REF(radv_ir_node) node = REF(radv_ir_node)(addr);
 
       shared_bounds[i - lds_base] = DEREF(node).aabb;
+#if EXTENDED_SAH
       shared_costs[i - lds_base] = DEREF(node).cost;
+#endif
    }
 }
 
@@ -197,6 +203,10 @@ combined_node_cost(uint32_t lds_base, uint32_t i, uint32_t j)
    combined_bounds.min = min(shared_bounds[i - lds_base].min, shared_bounds[j - lds_base].min);
    combined_bounds.max = max(shared_bounds[i - lds_base].max, shared_bounds[j - lds_base].max);
    float area = aabb_surface_area(combined_bounds);
+
+#if EXTENDED_SAH
+   if (area == 0.0)
+      return 0.0;
 
    /* p_a and p_b are the probabilities that i or j are hit by a ray:
     *    Assuming that the current node is hit (p = 1) and the probability of hitting a node
@@ -217,6 +227,9 @@ combined_node_cost(uint32_t lds_base, uint32_t i, uint32_t j)
       (1.0 + shared_costs[i - lds_base] * p_i) * (1.0 + shared_costs[j - lds_base] * p_j);
 
    return area / combined_cost;
+#else
+   return area;
+#endif
 }
 
 shared uint32_t shared_aggregate_sum;
@@ -224,19 +237,33 @@ shared uint32_t shared_aggregate_sum;
 void
 main(void)
 {
+   VOID_REF src_ids = args.ids_0;
+   VOID_REF dst_ids = args.ids_1;
+
+   /* We try to use LBVH for BVHs where we know there will be less than 5 leaves,
+    * but sometimes all leaves might be inactive */
+   if (DEREF(args.header).active_leaf_count <= 2) {
+      if (gl_GlobalInvocationID.x == 0) {
+         uint32_t children[2] = {RADV_BVH_INVALID_NODE, RADV_BVH_INVALID_NODE};
+         for (uint32_t i = 0; i < DEREF(args.header).active_leaf_count; ++i)
+            children[i] = DEREF(REF(key_id_pair)(INDEX(key_id_pair, src_ids, i))).id;
+         push_node(children);
+      }
+      return;
+   }
+
    atomicCompSwap(DEREF(args.header).sync_data.task_counts[0], 0xFFFFFFFF,
                   DEREF(args.header).active_leaf_count);
+   atomicCompSwap(DEREF(args.header).sync_data.current_phase_end_counter, 0xFFFFFFFF,
+                  DIV_ROUND_UP(DEREF(args.header).active_leaf_count, gl_WorkGroupSize.x));
    REF(ploc_prefix_scan_partition)
    partitions = REF(ploc_prefix_scan_partition)(args.prefix_scan_partitions);
 
    uint32_t task_index = fetch_task(args.header, false);
 
-   VOID_REF src_ids = args.ids_0;
-   VOID_REF dst_ids = args.ids_1;
-
    for (uint iter = 0;; ++iter) {
       uint32_t current_task_count = task_count(args.header);
-      if (current_task_count <= 1)
+      if (task_index == TASK_INDEX_INVALID)
          break;
 
       /* Find preferred partners and merge them */
@@ -395,6 +422,8 @@ main(void)
 
          if (task_index == current_task_count - 1) {
             set_next_task_count(args.header, new_offset);
+            if (new_offset == 1)
+               DEREF(args.header).sync_data.next_phase_exit_flag = 1;
          }
       }
    }

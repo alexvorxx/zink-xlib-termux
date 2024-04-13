@@ -164,6 +164,7 @@ struct st_context
    boolean has_occlusion_query;
    boolean has_single_pipe_stat;
    boolean has_pipeline_stat;
+   boolean has_indep_blend_enable;
    boolean has_indep_blend_func;
    boolean needs_rgb_dst_alpha_override;
    boolean can_dither;
@@ -205,6 +206,8 @@ struct st_context
    boolean draw_needs_minmax_index;
    boolean has_hw_atomics;
 
+   boolean validate_all_dirty_states;
+   boolean can_null_texture;
 
    /* driver supports scissored clears */
    boolean can_scissor_clear;
@@ -249,13 +252,8 @@ struct st_context
          PIPE_MAX_SAMPLE_LOCATION_GRID_SIZE * 32];
    } state;
 
-   uint64_t dirty; /**< dirty states */
-
    /** This masks out unused shader resources. Only valid in draw calls. */
    uint64_t active_states;
-
-   GLboolean vertdata_edgeflags;
-   GLboolean edgeflag_culls_prims;
 
    /**
     * The number of currently active queries (excluding timer queries).
@@ -343,6 +341,13 @@ struct st_context
       bool layers;
       bool use_gs;
    } pbo;
+
+   struct {
+      struct gl_program **progs;
+      struct pipe_resource *bc1_endpoint_buf;
+      struct pipe_sampler_view *astc_luts[5];
+      struct hash_table *astc_partition_tables;
+   } texcompress_compute;
 
    /** for drawing with st_util_vertex */
    struct cso_velems_state util_velems;
@@ -512,6 +517,10 @@ st_api_destroy_drawable(struct pipe_frontend_drawable *drawable);
 
 void
 st_screen_destroy(struct pipe_frontend_screen *fscreen);
+
+typedef void (*st_update_func_t)(struct st_context *st);
+
+extern st_update_func_t st_update_functions[ST_NUM_ATOMS];
 
 #ifdef __cplusplus
 }

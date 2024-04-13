@@ -44,6 +44,7 @@ extern "C" {
 #define PIPE_DEFAULT_FRAME_RATE_DEN   1
 #define PIPE_DEFAULT_FRAME_RATE_NUM   30
 #define PIPE_H2645_EXTENDED_SAR       255
+#define PIPE_DEFAULT_DECODER_FEEDBACK_TIMEOUT_NS 100000000
 
 /*
  * see table 6-12 in the spec
@@ -166,6 +167,8 @@ struct pipe_picture_desc
    uint32_t key_size;
    enum pipe_format input_format;
    enum pipe_format output_format;
+   /* A fence used on PIPE_VIDEO_ENTRYPOINT_DECODE to signal job completion */
+   struct pipe_fence_handle **fence;
 };
 
 struct pipe_quant_matrix
@@ -864,12 +867,15 @@ struct pipe_vp9_picture_desc
    struct {
       uint16_t frame_width;
       uint16_t frame_height;
+      uint16_t prev_frame_width;
+      uint16_t prev_frame_height;
 
       struct {
          uint32_t  subsampling_x:1;
          uint32_t  subsampling_y:1;
          uint32_t  frame_type:1;
          uint32_t  show_frame:1;
+         uint32_t  prev_show_frame:1;
          uint32_t  error_resilient_mode:1;
          uint32_t  intra_only:1;
          uint32_t  allow_high_precision_mv:1;

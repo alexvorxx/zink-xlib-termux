@@ -59,7 +59,9 @@ struct zink_vertex_elements_state;
 static inline struct zink_resource *
 zink_descriptor_surface_resource(struct zink_descriptor_surface *ds)
 {
-   return ds->is_buffer ? (struct zink_resource*)ds->bufferview->pres : (struct zink_resource*)ds->surface->base.texture;
+   return ds->is_buffer ?
+          zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB ? (struct zink_resource*)ds->bufferview->pres : zink_resource(ds->db.pres) :
+          (struct zink_resource*)ds->surface->base.texture;
 }
 
 static inline bool
@@ -120,6 +122,12 @@ void
 zink_resource_image_barrier2(struct zink_context *ctx, struct zink_resource *res, VkImageLayout new_layout, VkAccessFlags flags, VkPipelineStageFlags pipeline);
 bool
 zink_resource_needs_barrier(struct zink_resource *res, VkImageLayout layout, VkAccessFlags flags, VkPipelineStageFlags pipeline);
+bool
+zink_check_unordered_transfer_access(struct zink_resource *res, unsigned level, const struct pipe_box *box);
+void
+zink_resource_image_transfer_dst_barrier(struct zink_context *ctx, struct zink_resource *res, unsigned level, const struct pipe_box *box);
+bool
+zink_resource_buffer_transfer_dst_barrier(struct zink_context *ctx, struct zink_resource *res, unsigned offset, unsigned size);
 void
 zink_update_descriptor_refs(struct zink_context *ctx, bool compute);
 void
@@ -170,6 +178,17 @@ void
 zink_init_grid_functions(struct zink_context *ctx);
 struct zink_context *
 zink_tc_context_unwrap(struct pipe_context *pctx, bool threaded);
+
+void
+zink_update_barriers(struct zink_context *ctx, bool is_compute,
+                     struct pipe_resource *index, struct pipe_resource *indirect, struct pipe_resource *indirect_draw_count);
+
+
+bool
+zink_cmd_debug_marker_begin(struct zink_context *ctx, VkCommandBuffer cmdbuf, const char *fmt, ...);
+void
+zink_cmd_debug_marker_end(struct zink_context *ctx, VkCommandBuffer cmdbuf,bool emitted);
+
 #ifdef __cplusplus
 }
 #endif
@@ -218,6 +237,9 @@ zink_component_mapping(enum pipe_swizzle swizzle)
       unreachable("unexpected swizzle");
    }
 }
+
+void
+zink_update_shadow_samplerviews(struct zink_context *ctx, unsigned mask);
 
 enum pipe_swizzle
 zink_clamp_void_swizzle(const struct util_format_description *desc, enum pipe_swizzle swizzle);

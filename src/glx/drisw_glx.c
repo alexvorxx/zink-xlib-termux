@@ -23,6 +23,7 @@
 
 #if defined(GLX_DIRECT_RENDERING) && !defined(GLX_USE_APPLEGL)
 
+#include <xcb/xcb.h>
 #include <xcb/xproto.h>
 #include <xcb/shm.h>
 #include <X11/Xlib.h>
@@ -33,7 +34,8 @@
 #include "drisw_priv.h"
 #include <X11/extensions/shmproto.h>
 #include <assert.h>
-#include <vulkan/vulkan.h>
+#include <vulkan/vulkan_core.h>
+#include <vulkan/vulkan_xcb.h>
 #include "util/u_debug.h"
 #include "kopper_interface.h"
 #include "loader_dri_helper.h"
@@ -431,8 +433,7 @@ drisw_destroy_context(struct glx_context *context)
 }
 
 static int
-drisw_bind_context(struct glx_context *context, struct glx_context *old,
-                   GLXDrawable draw, GLXDrawable read)
+drisw_bind_context(struct glx_context *context, GLXDrawable draw, GLXDrawable read)
 {
    struct drisw_screen *psc = (struct drisw_screen *) context->psc;
    struct drisw_drawable *pdraw, *pread;
@@ -457,7 +458,7 @@ drisw_bind_context(struct glx_context *context, struct glx_context *old,
 }
 
 static void
-drisw_unbind_context(struct glx_context *context, struct glx_context *new)
+drisw_unbind_context(struct glx_context *context)
 {
    struct drisw_screen *psc = (struct drisw_screen *) context->psc;
 
@@ -753,7 +754,7 @@ driswSwapBuffers(__GLXDRIdrawable * pdraw,
    }
 
    if (psc->kopper)
-       return psc->kopper->swapBuffers (pdp->driDrawable);
+       return psc->kopper->swapBuffers (pdp->driDrawable, 0);
 
    psc->core->swapBuffers(pdp->driDrawable);
 

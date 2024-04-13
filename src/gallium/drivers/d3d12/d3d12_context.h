@@ -158,8 +158,12 @@ struct dxil_validator;
 class ResourceStateManager;
 #endif
 
+#define D3D12_CONTEXT_NO_ID 0xffffffff
+
 struct d3d12_context {
    struct pipe_context base;
+
+   unsigned id;
    struct slab_child_pool transfer_pool;
    struct slab_child_pool transfer_pool_unsync;
    struct list_head context_list_entry;
@@ -177,7 +181,7 @@ struct d3d12_context {
    struct hash_table *compute_transform_cache;
    struct hash_table_u64 *bo_state_table;
 
-   struct d3d12_batch batches[4];
+   struct d3d12_batch batches[8];
    unsigned current_batch_idx;
 
    struct util_dynarray recently_destroyed_bos;
@@ -234,6 +238,9 @@ struct d3d12_context {
    struct d3d12_shader_selector *gfx_stages[D3D12_GFX_SHADER_STAGES];
    struct d3d12_shader_selector *compute_state;
 
+   bool has_flat_varyings;
+   bool missing_dual_src_outputs;
+
    struct d3d12_gfx_pipeline_state gfx_pipeline_state;
    struct d3d12_compute_pipeline_state compute_pipeline_state;
    unsigned shader_dirty[PIPE_SHADER_TYPES];
@@ -248,13 +255,16 @@ struct d3d12_context {
    ID3D12GraphicsCommandList *state_fixup_cmdlist;
 
    struct list_head active_queries;
+   struct util_dynarray ended_queries;
    bool queries_disabled;
 
    struct d3d12_descriptor_pool *sampler_pool;
    struct d3d12_descriptor_handle null_sampler;
 
    PFN_D3D12_SERIALIZE_VERSIONED_ROOT_SIGNATURE D3D12SerializeVersionedRootSignature;
+#ifndef _GAMING_XBOX
    ID3D12DeviceConfiguration *dev_config;
+#endif
 #ifdef _WIN32
    struct dxil_validator *dxil_validator;
 #endif

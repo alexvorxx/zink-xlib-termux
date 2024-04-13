@@ -77,6 +77,9 @@ typedef struct {
    /* the current loop being visited */
    nir_loop *loop;
 
+   /* weather the loop continue construct is being visited */
+   bool in_loop_continue_construct;
+
    /* the parent of the current cf node being visited */
    nir_cf_node *parent_node;
 
@@ -383,6 +386,21 @@ validate_alu_instr(nir_alu_instr *instr, validate_state *state)
                                 src_bit_size == 64);
       }
 
+      /* In nir_opcodes.py, these are defined to take general uint or int
+       * sources.  However, they're really only defined for 32-bit or 64-bit
+       * sources.  This seems to be the only place to enforce this
+       * restriction.
+       */
+      switch (instr->op) {
+      case nir_op_ufind_msb:
+      case nir_op_ufind_msb_rev:
+         validate_assert(state, src_bit_size == 32 || src_bit_size == 64);
+         break;
+
+      default:
+         break;
+      }
+
       validate_alu_src(instr, i, state);
    }
 
@@ -643,6 +661,12 @@ validate_intrinsic_instr(nir_intrinsic_instr *instr, validate_state *state)
       validate_assert(state, glsl_get_bare_type(dst->type) ==
                              glsl_get_bare_type(src->type));
       validate_assert(state, !nir_deref_mode_may_be(dst, nir_var_read_only_modes));
+      /* FIXME: now that we track if the var copies were lowered, it would be
+       * good to validate here that no new copy derefs were added. Right now
+       * we can't as there are some specific cases where copies are added even
+       * after the lowering. One example is the Intel compiler, that calls
+       * nir_lower_io_to_temporaries when linking some shader stages.
+       */
       break;
    }
 
@@ -787,6 +811,17 @@ validate_intrinsic_instr(nir_intrinsic_instr *instr, validate_state *state)
       break;
    }
 
+   case nir_intrinsic_store_buffer_amd:
+      if (nir_intrinsic_access(instr) & ACCESS_USES_FORMAT_AMD) {
+         unsigned writemask = nir_intrinsic_write_mask(instr);
+
+         /* Make sure the writemask is derived from the component count. */
+         validate_assert(state,
+                         writemask ==
+                         BITFIELD_MASK(nir_src_num_components(instr->src[0])));
+      }
+      break;
+
    default:
       break;
    }
@@ -900,8 +935,10 @@ validate_tex_instr(nir_tex_instr *instr, validate_state *state)
                                 glsl_type_is_sampler(deref->type));
          switch (instr->op) {
          case nir_texop_descriptor_amd:
+         case nir_texop_sampler_descriptor_amd:
             break;
          case nir_texop_lod:
+         case nir_texop_lod_bias_agx:
             validate_assert(state, nir_alu_type_get_base_type(instr->dest_type) == nir_type_float);
             break;
          case nir_texop_samples_identical:
@@ -1055,6 +1092,7 @@ validate_jump_instr(nir_jump_instr *instr, validate_state *state)
       validate_assert(state, block->successors[1] == NULL);
       validate_assert(state, instr->target == NULL);
       validate_assert(state, instr->else_target == NULL);
+      validate_assert(state, !state->in_loop_continue_construct);
       break;
 
    case nir_jump_break:
@@ -1074,12 +1112,13 @@ validate_jump_instr(nir_jump_instr *instr, validate_state *state)
       validate_assert(state, state->impl->structured);
       validate_assert(state, state->loop != NULL);
       if (state->loop) {
-         nir_block *first = nir_loop_first_block(state->loop);
-         validate_assert(state, block->successors[0] == first);
+         nir_block *cont_block = nir_loop_continue_target(state->loop);
+         validate_assert(state, block->successors[0] == cont_block);
       }
       validate_assert(state, block->successors[1] == NULL);
       validate_assert(state, instr->target == NULL);
       validate_assert(state, instr->else_target == NULL);
+      validate_assert(state, !state->in_loop_continue_construct);
       break;
 
    case nir_jump_goto:
@@ -1224,6 +1263,7 @@ collect_blocks(struct exec_list *cf_list, validate_state *state)
 
       case nir_cf_node_loop:
          collect_blocks(&nir_cf_node_as_loop(node)->body, state);
+         collect_blocks(&nir_cf_node_as_loop(node)->continue_list, state);
          break;
 
       default:
@@ -1292,8 +1332,15 @@ validate_block(nir_block *block, validate_state *state)
       if (next == NULL) {
          switch (state->parent_node->type) {
          case nir_cf_node_loop: {
-            nir_block *first = nir_loop_first_block(state->loop);
-            validate_assert(state, block->successors[0] == first);
+            if (block == nir_loop_last_block(state->loop)) {
+               nir_block *cont = nir_loop_continue_target(state->loop);
+               validate_assert(state, block->successors[0] == cont);
+            } else {
+               validate_assert(state, nir_loop_has_continue_construct(state->loop) &&
+                                      block == nir_loop_last_continue_block(state->loop));
+               nir_block *head = nir_loop_first_block(state->loop);
+               validate_assert(state, block->successors[0] == head);
+            }
             /* due to the hack for infinite loops, block->successors[1] may
              * point to the block after the loop.
              */
@@ -1403,14 +1450,21 @@ validate_loop(nir_loop *loop, validate_state *state)
    nir_cf_node *old_parent = state->parent_node;
    state->parent_node = &loop->cf_node;
    nir_loop *old_loop = state->loop;
+   bool old_continue_construct = state->in_loop_continue_construct;
    state->loop = loop;
+   state->in_loop_continue_construct = false;
 
    foreach_list_typed(nir_cf_node, cf_node, node, &loop->body) {
       validate_cf_node(cf_node, state);
    }
-
+   state->in_loop_continue_construct = true;
+   foreach_list_typed(nir_cf_node, cf_node, node, &loop->continue_list) {
+      validate_cf_node(cf_node, state);
+   }
+   state->in_loop_continue_construct = false;
    state->parent_node = old_parent;
    state->loop = old_loop;
+   state->in_loop_continue_construct = old_continue_construct;
 }
 
 static void
@@ -1724,6 +1778,7 @@ init_validate_state(validate_state *state)
    state->errors = _mesa_pointer_hash_table_create(state->mem_ctx);
 
    state->loop = NULL;
+   state->in_loop_continue_construct = false;
    state->instr = NULL;
    state->var = NULL;
 }

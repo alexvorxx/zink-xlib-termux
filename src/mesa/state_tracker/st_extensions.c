@@ -79,7 +79,8 @@ static int _clamp(int a, int min, int max)
  * Note that we have to limit/clamp against Mesa's internal limits too.
  */
 void st_init_limits(struct pipe_screen *screen,
-                    struct gl_constants *c, struct gl_extensions *extensions)
+                    struct gl_constants *c, struct gl_extensions *extensions,
+                    gl_api api)
 {
    int supported_irs;
    unsigned sh;
@@ -491,6 +492,10 @@ void st_init_limits(struct pipe_screen *screen,
    /* GL_ARB_get_program_binary */
    if (screen->get_disk_shader_cache && screen->get_disk_shader_cache(screen))
       c->NumProgramBinaryFormats = 1;
+   /* GL_ARB_gl_spirv */
+   if (screen->get_param(screen, PIPE_CAP_GL_SPIRV) &&
+       (api == API_OPENGL_CORE || api == API_OPENGL_COMPAT))
+      c->NumShaderBinaryFormats = 1;
 
    c->MaxAtomicBufferBindings =
       MAX2(c->Program[MESA_SHADER_FRAGMENT].MaxAtomicBuffers,
@@ -587,9 +592,6 @@ void st_init_limits(struct pipe_screen *screen,
    c->AllowMappedBuffersDuringExecution =
       screen->get_param(screen, PIPE_CAP_ALLOW_MAPPED_BUFFERS_DURING_EXECUTION);
 
-   c->BufferCreateMapUnsynchronizedThreadSafe =
-      screen->get_param(screen, PIPE_CAP_MAP_UNSYNCHRONIZED_THREAD_SAFE);
-
    c->UseSTD430AsDefaultPacking =
       screen->get_param(screen, PIPE_CAP_LOAD_CONSTBUF);
 
@@ -628,6 +630,9 @@ void st_init_limits(struct pipe_screen *screen,
 
    c->HardwareAcceleratedSelect =
       screen->get_param(screen, PIPE_CAP_HARDWARE_GL_SELECT);
+
+   c->AllowGLThreadBufferSubDataOpt =
+      screen->get_param(screen, PIPE_CAP_ALLOW_GLTHREAD_BUFFER_SUBDATA_OPT);
 }
 
 
@@ -1467,6 +1472,9 @@ void st_init_extensions(struct pipe_screen *screen,
 
    if (options->disable_glsl_line_continuations)
       consts->DisableGLSLLineContinuations = 1;
+
+   if (options->disable_uniform_array_resize)
+      consts->DisableUniformArrayResize = 1;
 
    if (options->allow_glsl_extension_directive_midshader)
       consts->AllowGLSLExtensionDirectiveMidShader = GL_TRUE;

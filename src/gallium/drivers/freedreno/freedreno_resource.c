@@ -182,7 +182,7 @@ fd_resource_set_bo(struct fd_resource *rsc, struct fd_bo *bo)
    struct fd_screen *screen = fd_screen(rsc->b.b.screen);
 
    rsc->bo = bo;
-   rsc->seqno = p_atomic_inc_return(&screen->rsc_seqno);
+   rsc->seqno = seqno_next_u16(&screen->rsc_seqno);
 }
 
 int
@@ -209,7 +209,9 @@ realloc_bo(struct fd_resource *rsc, uint32_t size)
    struct fd_screen *screen = fd_screen(rsc->b.b.screen);
    uint32_t flags =
       COND(rsc->layout.tile_mode, FD_BO_NOMAP) |
-      COND(prsc->usage & PIPE_USAGE_STAGING, FD_BO_CACHED_COHERENT) |
+      COND((prsc->usage & PIPE_USAGE_STAGING) &&
+           (prsc->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT),
+           FD_BO_CACHED_COHERENT) |
       COND(prsc->bind & PIPE_BIND_SHARED, FD_BO_SHARED) |
       COND(prsc->bind & PIPE_BIND_SCANOUT, FD_BO_SCANOUT);
    /* TODO other flags? */
@@ -308,7 +310,7 @@ fd_replace_buffer_storage(struct pipe_context *pctx, struct pipe_resource *pdst,
    fd_resource_tracking_reference(&dst->track, src->track);
    src->is_replacement = true;
 
-   dst->seqno = p_atomic_inc_return(&ctx->screen->rsc_seqno);
+   dst->seqno = seqno_next_u16(&ctx->screen->rsc_seqno);
 
    fd_screen_unlock(ctx->screen);
 }
@@ -459,7 +461,7 @@ fd_try_shadow_resource(struct fd_context *ctx, struct fd_resource *rsc,
    rsc->needs_ubwc_clear = temp;
 
    swap(rsc->layout, shadow->layout);
-   rsc->seqno = p_atomic_inc_return(&ctx->screen->rsc_seqno);
+   rsc->seqno = seqno_next_u16(&ctx->screen->rsc_seqno);
 
    /* at this point, the newly created shadow buffer is not referenced
     * by any batches, but the existing rsc (probably) is.  We need to
@@ -567,7 +569,7 @@ fd_resource_uncompress(struct fd_context *ctx, struct fd_resource *rsc, bool lin
 
    uint64_t modifier = linear ? DRM_FORMAT_MOD_LINEAR : FD_FORMAT_MOD_QCOM_TILED;
 
-   bool success = fd_try_shadow_resource(ctx, rsc, 0, NULL, modifier);
+   ASSERTED bool success = fd_try_shadow_resource(ctx, rsc, 0, NULL, modifier);
 
    /* shadow should not fail in any cases where we need to uncompress: */
    assert(success);
@@ -586,7 +588,7 @@ fd_resource_dump(struct fd_resource *rsc, const char *name)
 
 static struct fd_resource *
 fd_alloc_staging(struct fd_context *ctx, struct fd_resource *rsc,
-                 unsigned level, const struct pipe_box *box)
+                 unsigned level, const struct pipe_box *box, unsigned usage)
    assert_dt
 {
    struct pipe_context *pctx = &ctx->base;
@@ -616,6 +618,7 @@ fd_alloc_staging(struct fd_context *ctx, struct fd_resource *rsc,
    tmpl.last_level = 0;
    tmpl.bind |= PIPE_BIND_LINEAR;
    tmpl.usage = PIPE_USAGE_STAGING;
+   tmpl.flags = (usage & PIPE_MAP_READ) ? PIPE_RESOURCE_FLAG_MAP_COHERENT : 0;
 
    struct pipe_resource *pstaging =
       pctx->screen->resource_create(pctx->screen, &tmpl);
@@ -699,6 +702,14 @@ fd_flush_resource(struct pipe_context *pctx, struct pipe_resource *prsc)
    struct fd_context *ctx = fd_context(pctx);
    struct fd_resource *rsc = fd_resource(prsc);
 
+   /* Flushing the resource is only required if we are relying on
+    * implicit-sync, in which case the rendering must be flushed
+    * to the kernel for the fence to be added to the backing GEM
+    * object.
+    */
+   if (ctx->no_implicit_sync)
+      return;
+
    flush_resource(ctx, rsc, PIPE_MAP_READ);
 
    /* If we had to flush a batch, make sure it makes it's way all the
@@ -725,8 +736,6 @@ fd_resource_transfer_unmap(struct pipe_context *pctx,
    if (trans->upload_ptr) {
       fd_bo_upload(rsc->bo, trans->upload_ptr, ptrans->box.x, ptrans->box.width);
       free(trans->upload_ptr);
-   } else if (!(ptrans->usage & PIPE_MAP_UNSYNCHRONIZED)) {
-      fd_bo_cpu_fini(rsc->bo);
    }
 
    util_range_add(&rsc->b.b, &rsc->valid_buffer_range, ptrans->box.x,
@@ -776,7 +785,7 @@ resource_transfer_map_staging(struct pipe_context *pctx,
 
    assert(prsc->target != PIPE_BUFFER);
 
-   staging_rsc = fd_alloc_staging(ctx, rsc, level, box);
+   staging_rsc = fd_alloc_staging(ctx, rsc, level, box, usage);
    if (!staging_rsc)
       return NULL;
 
@@ -920,7 +929,7 @@ resource_transfer_map(struct pipe_context *pctx, struct pipe_resource *prsc,
              * use a staging buffer to do the upload.
              */
             if (is_renderable(prsc))
-               staging_rsc = fd_alloc_staging(ctx, rsc, level, box);
+               staging_rsc = fd_alloc_staging(ctx, rsc, level, box, usage);
             if (staging_rsc) {
                trans->staging_prsc = &staging_rsc->b.b;
                trans->b.b.stride = fd_resource_pitch(staging_rsc, 0);
@@ -1180,20 +1189,36 @@ enum fd_layout_type {
    UBWC,
 };
 
+static bool
+has_implicit_modifier(const uint64_t *modifiers, int count)
+{
+    return count == 0 ||
+           drm_find_modifier(DRM_FORMAT_MOD_INVALID, modifiers, count);
+}
+
+static bool
+has_explicit_modifier(const uint64_t *modifiers, int count)
+{
+    for (int i = 0; i < count; i++) {
+        if (modifiers[i] != DRM_FORMAT_MOD_INVALID)
+            return true;
+    }
+    return false;
+}
+
 static enum fd_layout_type
-get_best_layout(struct fd_screen *screen, struct pipe_resource *prsc,
+get_best_layout(struct fd_screen *screen,
                 const struct pipe_resource *tmpl, const uint64_t *modifiers,
                 int count)
 {
-   bool implicit_modifiers =
-      (count == 0 ||
-       drm_find_modifier(DRM_FORMAT_MOD_INVALID, modifiers, count));
+   const bool can_implicit = has_implicit_modifier(modifiers, count);
+   const bool can_explicit = has_explicit_modifier(modifiers, count);
 
    /* First, find all the conditions which would force us to linear */
    if (!screen->tile_mode)
       return LINEAR;
 
-   if (!screen->tile_mode(prsc))
+   if (!screen->tile_mode(tmpl))
       return LINEAR;
 
    if (tmpl->target == PIPE_BUFFER)
@@ -1202,18 +1227,18 @@ get_best_layout(struct fd_screen *screen, struct pipe_resource *prsc,
    if (tmpl->bind & PIPE_BIND_LINEAR) {
       if (tmpl->usage != PIPE_USAGE_STAGING)
          perf_debug("%" PRSC_FMT ": forcing linear: bind flags",
-                    PRSC_ARGS(prsc));
+                    PRSC_ARGS(tmpl));
       return LINEAR;
    }
 
    if (FD_DBG(NOTILE))
        return LINEAR;
 
-   /* Shared resources with implicit modifiers must always be linear */
-   if (implicit_modifiers && (tmpl->bind & PIPE_BIND_SHARED)) {
+   /* Shared resources without explicit modifiers must always be linear */
+   if (!can_explicit && (tmpl->bind & PIPE_BIND_SHARED)) {
       perf_debug("%" PRSC_FMT
                  ": forcing linear: shared resource + implicit modifiers",
-                 PRSC_ARGS(prsc));
+                 PRSC_ARGS(tmpl));
       return LINEAR;
    }
 
@@ -1228,11 +1253,11 @@ get_best_layout(struct fd_screen *screen, struct pipe_resource *prsc,
    if (tmpl->bind & PIPE_BIND_USE_FRONT_RENDERING)
       ubwc_ok = false;
 
-   if (ubwc_ok && !implicit_modifiers &&
+   if (ubwc_ok && !can_implicit &&
        !drm_find_modifier(DRM_FORMAT_MOD_QCOM_COMPRESSED, modifiers, count)) {
       perf_debug("%" PRSC_FMT
                  ": not using UBWC: not in acceptable modifier set",
-                 PRSC_ARGS(prsc));
+                 PRSC_ARGS(tmpl));
       ubwc_ok = false;
    }
 
@@ -1246,18 +1271,18 @@ get_best_layout(struct fd_screen *screen, struct pipe_resource *prsc,
     * TODO we should probably also limit TILED in a similar way to UBWC above,
     * once we have a public modifier token defined.
     */
-   if (implicit_modifiers ||
+   if (can_implicit ||
        drm_find_modifier(FD_FORMAT_MOD_QCOM_TILED, modifiers, count))
       return TILED;
 
    if (!drm_find_modifier(DRM_FORMAT_MOD_LINEAR, modifiers, count)) {
       perf_debug("%" PRSC_FMT ": need linear but not in modifier set",
-                 PRSC_ARGS(prsc));
+                 PRSC_ARGS(tmpl));
       return ERROR;
    }
 
    perf_debug("%" PRSC_FMT ": not using tiling: explicit modifiers and no UBWC",
-              PRSC_ARGS(prsc));
+              PRSC_ARGS(tmpl));
    return LINEAR;
 }
 
@@ -1298,7 +1323,7 @@ fd_resource_allocate_and_resolve(struct pipe_screen *pscreen,
    fd_resource_layout_init(prsc);
 
    enum fd_layout_type layout =
-      get_best_layout(screen, prsc, tmpl, modifiers, count);
+      get_best_layout(screen, tmpl, modifiers, count);
    if (layout == ERROR) {
       free(prsc);
       return NULL;
@@ -1364,7 +1389,7 @@ fd_resource_create_with_modifiers(struct pipe_screen *pscreen,
     */
    if (screen->ro &&
        ((tmpl->bind & PIPE_BIND_SCANOUT) ||
-        !(count == 1 && modifiers[0] == DRM_FORMAT_MOD_INVALID))) {
+        has_explicit_modifier(modifiers, count))) {
       struct pipe_resource scanout_templat = *tmpl;
       struct renderonly_scanout *scanout;
       struct winsys_handle handle;

@@ -418,7 +418,6 @@ struct v3d_fs_key {
         bool line_smoothing;
         bool point_coord_upper_left;
         bool msaa;
-        bool sample_coverage;
         bool sample_alpha_to_coverage;
         bool sample_alpha_to_one;
         /* Mask of which color render targets are present. */
@@ -1080,7 +1079,7 @@ vir_has_uniform(struct qinst *inst)
 const struct v3d_compiler *v3d_compiler_init(const struct v3d_device_info *devinfo,
                                              uint32_t max_inline_uniform_buffers);
 void v3d_compiler_free(const struct v3d_compiler *compiler);
-void v3d_optimize_nir(struct v3d_compile *c, struct nir_shader *s, bool allow_copies);
+void v3d_optimize_nir(struct v3d_compile *c, struct nir_shader *s);
 
 uint64_t *v3d_compile(const struct v3d_compiler *compiler,
                       struct v3d_key *key,
@@ -1174,7 +1173,7 @@ bool v3d_nir_lower_logic_ops(nir_shader *s, struct v3d_compile *c);
 bool v3d_nir_lower_robust_buffer_access(nir_shader *s, struct v3d_compile *c);
 bool v3d_nir_lower_robust_image_access(nir_shader *s, struct v3d_compile *c);
 bool v3d_nir_lower_scratch(nir_shader *s);
-bool v3d_nir_lower_txf_ms(nir_shader *s, struct v3d_compile *c);
+bool v3d_nir_lower_txf_ms(nir_shader *s);
 bool v3d_nir_lower_image_load_store(nir_shader *s);
 bool v3d_nir_lower_load_store_bitsize(nir_shader *s);
 

@@ -41,7 +41,6 @@
 #include "virgl_resource.h"
 #include "virgl_public.h"
 #include "virgl_context.h"
-#include "virtio-gpu/virgl_protocol.h"
 #include "virgl_encode.h"
 
 int virgl_debug = 0;
@@ -63,7 +62,7 @@ DEBUG_GET_ONCE_FLAGS_OPTION(virgl_debug, "VIRGL_DEBUG", virgl_debug_options, 0)
 static const char *
 virgl_get_vendor(struct pipe_screen *screen)
 {
-   return "Mesa/X.org";
+   return "Mesa";
 }
 
 
@@ -200,9 +199,10 @@ virgl_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_NIR_IMAGES_AS_DEREF:
       return 0;
    case PIPE_CAP_QUERY_TIMESTAMP:
-      return 1;
    case PIPE_CAP_QUERY_TIME_ELAPSED:
-      return 1;
+      if (vscreen->caps.caps.v2.host_feature_check_version >= 15)
+         return vscreen->caps.caps.v1.bset.timer_query;
+      return 1; /* older versions had this always enabled */
    case PIPE_CAP_TGSI_TEXCOORD:
       return vscreen->caps.caps.v2.host_feature_check_version >= 10;
    case PIPE_CAP_MIN_MAP_BUFFER_ALIGNMENT:
@@ -365,6 +365,9 @@ virgl_get_param(struct pipe_screen *screen, enum pipe_cap param)
    }
 }
 
+#define VIRGL_SHADER_STAGE_CAP_V2(CAP, STAGE) \
+   vscreen->caps.caps.v2. CAP[virgl_shader_stage_convert(STAGE)]
+
 static int
 virgl_get_shader_param(struct pipe_screen *screen,
                        enum pipe_shader_type shader,
@@ -430,7 +433,7 @@ virgl_get_shader_param(struct pipe_screen *screen,
       case PIPE_SHADER_CAP_MAX_CONST_BUFFER0_SIZE:
          if (vscreen->caps.caps.v2.host_feature_check_version < 12)
             return 4096 * sizeof(float[4]);
-         return vscreen->caps.caps.v2.max_const_buffer_size[shader];
+         return VIRGL_SHADER_STAGE_CAP_V2(max_const_buffer_size, shader);
       case PIPE_SHADER_CAP_MAX_SHADER_BUFFERS:
          if (shader == PIPE_SHADER_FRAGMENT || shader == PIPE_SHADER_COMPUTE)
             return vscreen->caps.caps.v2.max_shader_buffer_frag_compute;
@@ -446,9 +449,9 @@ virgl_get_shader_param(struct pipe_screen *screen,
       case PIPE_SHADER_CAP_SUPPORTED_IRS:
          return (1 << PIPE_SHADER_IR_TGSI) | ((virgl_debug & VIRGL_DEBUG_USE_TGSI) ? 0 : (1 << PIPE_SHADER_IR_NIR));
       case PIPE_SHADER_CAP_MAX_HW_ATOMIC_COUNTERS:
-         return vscreen->caps.caps.v2.max_atomic_counters[shader];
+         return VIRGL_SHADER_STAGE_CAP_V2(max_atomic_counters, shader);
       case PIPE_SHADER_CAP_MAX_HW_ATOMIC_COUNTER_BUFFERS:
-         return vscreen->caps.caps.v2.max_atomic_counter_buffers[shader];
+         return VIRGL_SHADER_STAGE_CAP_V2(max_atomic_counter_buffers, shader);
       case PIPE_SHADER_CAP_INT64_ATOMICS:
       case PIPE_SHADER_CAP_FP16:
       case PIPE_SHADER_CAP_FP16_DERIVATIVES:
@@ -1179,6 +1182,8 @@ virgl_create_screen(struct virgl_winsys *vws, const struct pipe_screen_config *c
    }
    screen->compiler_options.lower_ffma32 = true;
    screen->compiler_options.fuse_ffma32 = false;
+   screen->compiler_options.lower_image_offset_to_range_base = true;
+   screen->compiler_options.lower_atomic_offset_to_range_base = true;
 
    slab_create_parent(&screen->transfer_pool, sizeof(struct virgl_transfer), 16);
 

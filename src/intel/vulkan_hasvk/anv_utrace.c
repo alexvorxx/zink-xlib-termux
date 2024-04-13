@@ -111,7 +111,7 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
    if (!flush)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   intel_ds_flush_data_init(&flush->ds, queue->ds, queue->ds->submission_id);
+   intel_ds_flush_data_init(&flush->ds, &queue->ds, queue->ds.submission_id);
 
    result = vk_sync_create(&device->vk, &device->physical->sync_syncobj_type,
                            0, 0, &flush->sync);
@@ -127,7 +127,7 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
 
       result = anv_bo_pool_alloc(&device->utrace_bo_pool,
                                  /* 128 dwords of setup + 64 dwords per copy */
-                                 align_u32(512 + 64 * utrace_copies, 4096),
+                                 align(512 + 64 * utrace_copies, 4096),
                                  &flush->batch_bo);
       if (result != VK_SUCCESS)
          goto error_batch_buf;
@@ -200,7 +200,7 @@ anv_utrace_create_ts_buffer(struct u_trace_context *utctx, uint32_t size_b)
    struct anv_bo *bo = NULL;
    UNUSED VkResult result =
       anv_bo_pool_alloc(&device->utrace_bo_pool,
-                        align_u32(size_b, 4096),
+                        align(size_b, 4096),
                         &bo);
    assert(result == VK_SUCCESS);
 
@@ -227,11 +227,14 @@ anv_utrace_record_ts(struct u_trace *ut, void *cs,
    struct anv_device *device = cmd_buffer->device;
    struct anv_bo *bo = timestamps;
 
+   enum anv_timestamp_capture_type capture_type =
+      (end_of_pipe) ? ANV_TIMESTAMP_CAPTURE_END_OF_PIPE
+                    : ANV_TIMESTAMP_CAPTURE_TOP_OF_PIPE;
    device->physical->cmd_emit_timestamp(&cmd_buffer->batch, device,
                                         (struct anv_address) {
                                            .bo = bo,
                                            .offset = idx * sizeof(uint64_t) },
-                                        end_of_pipe);
+                                        capture_type);
 }
 
 static uint64_t
@@ -281,10 +284,9 @@ anv_device_utrace_init(struct anv_device *device)
    for (uint32_t q = 0; q < device->queue_count; q++) {
       struct anv_queue *queue = &device->queues[q];
 
-      queue->ds =
-         intel_ds_device_add_queue(&device->ds, "%s%u",
-                                   intel_engines_class_to_string(queue->family->engine_class),
-                                   queue->index_in_family);
+      intel_ds_device_init_queue(&device->ds, &queue->ds, "%s%u",
+                                 intel_engines_class_to_string(queue->family->engine_class),
+                                 queue->vk.index_in_family);
    }
 }
 

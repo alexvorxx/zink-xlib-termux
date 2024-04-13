@@ -34,7 +34,6 @@
 #ifdef VK_USE_PLATFORM_METAL_EXT
 #include "QuartzCore/CAMetalLayer.h"
 #endif
-#include "vulkan/wsi/wsi_common.h"
 
 #include "vk_format.h"
 #include "util/u_blitter.h"
@@ -107,6 +106,9 @@ zink_destroy_resource_object(struct zink_screen *screen, struct zink_resource_ob
       while (util_dynarray_contains(&obj->views, VkImageView))
          VKSCR(DestroyImageView)(screen->dev, util_dynarray_pop(&obj->views, VkImageView), NULL);
    }
+   util_dynarray_fini(&obj->views);
+   for (unsigned i = 0; i < ARRAY_SIZE(obj->copies); i++)
+      util_dynarray_fini(&obj->copies[i]);
    if (obj->is_buffer) {
       VKSCR(DestroyBuffer)(screen->dev, obj->buffer, NULL);
       VKSCR(DestroyBuffer)(screen->dev, obj->storage_buffer, NULL);
@@ -180,17 +182,28 @@ create_bci(struct zink_screen *screen, const struct pipe_resource *templ, unsign
    bci.flags = 0;
    assert(bci.size > 0);
 
-   bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-               VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+   if (bind & ZINK_BIND_DESCRIPTOR) {
+      /* gallium sizes are all uint32_t, while the total size of this buffer may exceed that limit */
+      bci.usage = 0;
+      if (bind & ZINK_BIND_SAMPLER_DESCRIPTOR)
+         bci.usage |= VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
+      if (bind & ZINK_BIND_RESOURCE_DESCRIPTOR)
+         bci.usage |= VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT;
+   } else {
+      bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                  VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                  VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 
-   bci.usage |= VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT |
-                VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
-                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-                VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
-                VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_BUFFER_BIT_EXT |
-                VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT;
+      bci.usage |= VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT |
+                  VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+                  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+                  VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+                  VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
+                  VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_BUFFER_BIT_EXT |
+                  VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT;
+   }
+   if (screen->info.have_KHR_buffer_device_address)
+      bci.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
    if (bind & PIPE_BIND_SHADER_IMAGE)
       bci.usage |= VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
@@ -459,6 +472,10 @@ create_ici(struct zink_screen *screen, VkImageCreateInfo *ici, const struct pipe
    ici->usage = 0;
    ici->queueFamilyIndexCount = 0;
 
+   /* assume we're going to be doing some CompressedTexSubImage */
+   if (util_format_is_compressed(templ->format) && (ici->flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT))
+      ici->flags |= VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT;
+
    if (templ->flags & PIPE_RESOURCE_FLAG_SPARSE)
       ici->flags |= VK_IMAGE_CREATE_SPARSE_BINDING_BIT | VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT;
 
@@ -510,6 +527,11 @@ create_ici(struct zink_screen *screen, VkImageCreateInfo *ici, const struct pipe
    ici->tiling = screen->info.have_EXT_image_drm_format_modifier && modifiers_count ?
                  VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT :
                  bind & (PIPE_BIND_LINEAR | ZINK_BIND_DMABUF) ? VK_IMAGE_TILING_LINEAR : VK_IMAGE_TILING_OPTIMAL;
+   /* XXX: does this have perf implications anywhere? hopefully not */
+   if (ici->samples == VK_SAMPLE_COUNT_1_BIT &&
+      screen->info.have_EXT_multisampled_render_to_single_sampled &&
+      ici->tiling != VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT)
+      ici->flags |= VK_IMAGE_CREATE_MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_BIT_EXT;
    ici->sharingMode = VK_SHARING_MODE_EXCLUSIVE;
    ici->initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
@@ -585,10 +607,13 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
                        uint64_t *modifiers, int modifiers_count, const void *loader_private)
 {
    struct zink_resource_object *obj = CALLOC_STRUCT(zink_resource_object);
+   unsigned max_level = 0;
    if (!obj)
       return NULL;
    simple_mtx_init(&obj->view_lock, mtx_plain);
    util_dynarray_init(&obj->views, NULL);
+   obj->unordered_read = true;
+   obj->unordered_write = true;
    obj->last_dt_idx = obj->dt_idx = UINT32_MAX; //TODO: unionize
 
    VkMemoryRequirements reqs = {0};
@@ -632,9 +657,12 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
 #else
          external = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
 #endif
-      } else {
+      } else if (screen->info.have_EXT_external_memory_dma_buf) {
          external = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
          export_types |= VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+      } else {
+         /* can't export anything, fail early */
+         return NULL;
       }
    }
 
@@ -655,7 +683,7 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
          goto fail1;
       }
 
-      if (!(templ->bind & PIPE_BIND_SHADER_IMAGE)) {
+      if (!(templ->bind & (PIPE_BIND_SHADER_IMAGE | ZINK_BIND_DESCRIPTOR))) {
          bci.usage |= VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
          if (VKSCR(CreateBuffer)(screen->dev, &bci, NULL, &obj->storage_buffer) != VK_SUCCESS) {
             mesa_loge("ZINK: vkCreateBuffer failed");
@@ -674,7 +702,11 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
          flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
       obj->is_buffer = true;
       obj->transfer_dst = true;
+      obj->vkflags = bci.flags;
+      obj->vkusage = bci.usage;
+      max_level = 1;
    } else {
+      max_level = templ->last_level + 1;
       bool winsys_modifier = (export_types & VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT) && whandle && whandle->modifier != DRM_FORMAT_MOD_INVALID;
       uint64_t mods[10];
       bool try_modifiers = false;
@@ -955,7 +987,7 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
    mai.pNext = NULL;
    mai.allocationSize = reqs.size;
    enum zink_heap heap = zink_heap_from_domain_flags(flags, aflags);
-   mai.memoryTypeIndex = zink_heap_idx_from_bits(screen, heap, reqs.memoryTypeBits);
+   mai.memoryTypeIndex = zink_mem_type_idx_from_bits(screen, heap, reqs.memoryTypeBits);
    if (mai.memoryTypeIndex == UINT32_MAX) {
       /* not valid based on reqs; demote to more compatible type */
       switch (heap) {
@@ -968,7 +1000,7 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
       default:
          break;
       }
-      mai.memoryTypeIndex = zink_heap_idx_from_bits(screen, heap, reqs.memoryTypeBits);
+      mai.memoryTypeIndex = zink_mem_type_idx_from_bits(screen, heap, reqs.memoryTypeBits);
       assert(mai.memoryTypeIndex != UINT32_MAX);
    }
    assert(reqs.memoryTypeBits & BITFIELD_BIT(mai.memoryTypeIndex));
@@ -1110,6 +1142,8 @@ retry:
             }
       }
    }
+   for (unsigned i = 0; i < max_level; i++)
+      util_dynarray_init(&obj->copies[i], NULL);
    return obj;
 
 fail3:
@@ -1186,6 +1220,8 @@ resource_create(struct pipe_screen *pscreen,
           */
          res->base.b.flags |= PIPE_RESOURCE_FLAG_DONT_MAP_DIRECTLY;
       }
+      if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB)
+         zink_resource_get_address(screen, res);
    } else {
       if (templ->flags & PIPE_RESOURCE_FLAG_SPARSE)
          res->base.b.bind |= PIPE_BIND_SHADER_IMAGE;
@@ -1288,7 +1324,6 @@ add_resource_bind(struct zink_context *ctx, struct zink_resource *res, unsigned 
 {
    struct zink_screen *screen = zink_screen(ctx->base.screen);
    assert((res->base.b.bind & bind) == 0);
-   zink_screen(ctx->base.screen)->image_barrier(ctx, res, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0, 0);
    res->base.b.bind |= bind;
    struct zink_resource_object *old_obj = res->obj;
    if (bind & ZINK_BIND_DMABUF && !res->modifiers_count && screen->info.have_EXT_image_drm_format_modifier) {
@@ -1298,7 +1333,7 @@ add_resource_bind(struct zink_context *ctx, struct zink_resource *res, unsigned 
    }
    struct zink_resource_object *new_obj = resource_object_create(screen, &res->base.b, NULL, &res->linear, res->modifiers, res->modifiers_count, NULL);
    if (!new_obj) {
-      debug_printf("new backing resource alloc failed!");
+      debug_printf("new backing resource alloc failed!\n");
       res->base.b.bind &= ~bind;
       return false;
    }
@@ -1306,13 +1341,6 @@ add_resource_bind(struct zink_context *ctx, struct zink_resource *res, unsigned 
    staging.obj = old_obj;
    staging.all_binds = 0;
    res->layout = VK_IMAGE_LAYOUT_UNDEFINED;
-   res->obj->access = 0;
-   res->obj->access_stage = 0;
-   bool needs_unref = true;
-   if (zink_resource_has_usage(res)) {
-      zink_batch_reference_resource_move(&ctx->batch, res);
-      needs_unref = false;
-   }
    res->obj = new_obj;
    for (unsigned i = 0; i <= res->base.b.last_level; i++) {
       struct pipe_box box = {0, 0, 0,
@@ -1321,8 +1349,7 @@ add_resource_bind(struct zink_context *ctx, struct zink_resource *res, unsigned 
       box.depth = util_num_layers(&res->base.b, i);
       ctx->base.resource_copy_region(&ctx->base, &res->base.b, i, 0, 0, 0, &staging.base.b, i, &box);
    }
-   if (needs_unref)
-      zink_resource_object_reference(screen, &old_obj, NULL);
+   zink_resource_object_reference(screen, &old_obj, NULL);
    return true;
 }
 
@@ -1366,7 +1393,7 @@ zink_resource_get_param(struct pipe_screen *pscreen, struct pipe_context *pctx,
    switch (param) {
    case PIPE_RESOURCE_PARAM_NPLANES:
       if (screen->info.have_EXT_image_drm_format_modifier)
-         *value = util_format_get_num_planes(res->drm_format);
+         *value = screen->base.get_dmabuf_modifier_planes(&screen->base, obj->modifier, res->internal_format);
       else
          *value = 1;
       break;
@@ -1471,10 +1498,14 @@ zink_resource_get_handle(struct pipe_screen *pscreen,
             unsigned bind = ZINK_BIND_DMABUF;
             if (!(res->base.b.bind & PIPE_BIND_SHARED))
                bind |= PIPE_BIND_SHARED;
-            if (!add_resource_bind(screen->copy_context, res, bind))
+            zink_screen_lock_context(screen);
+            if (!add_resource_bind(screen->copy_context, res, bind)) {
+               zink_screen_unlock_context(screen);
                return false;
+            }
             p_atomic_inc(&screen->image_rebind_counter);
             screen->copy_context->base.flush(&screen->copy_context->base, NULL, 0);
+            zink_screen_unlock_context(screen);
             obj = res->obj;
          }
 
@@ -1552,11 +1583,12 @@ zink_resource_from_handle(struct pipe_screen *pscreen,
    struct pipe_resource *pres = resource_create(pscreen, &templ2, whandle, usage, &modifier, modifier_count, NULL);
    if (pres) {
       struct zink_resource *res = zink_resource(pres);
-      res->drm_format = whandle->format;
       if (pres->target != PIPE_BUFFER)
          res->valid = true;
       /*else
          tc_buffer_disable_cpu_storage(pres);*/
+
+      res->internal_format = whandle->format;
    }
    return pres;
 #else
@@ -1642,7 +1674,9 @@ invalidate_buffer(struct zink_context *ctx, struct zink_resource *res)
    if (res->base.b.flags & PIPE_RESOURCE_FLAG_SPARSE)
       return false;
 
-   if (res->valid_buffer_range.start > res->valid_buffer_range.end)
+   struct pipe_box box = {0, 0, 0, res->base.b.width0, 0, 0};
+   if (res->valid_buffer_range.start > res->valid_buffer_range.end &&
+       !zink_resource_copy_box_intersects(res, 0, &box))
       return false;
 
    if (res->so_valid)
@@ -1656,7 +1690,7 @@ invalidate_buffer(struct zink_context *ctx, struct zink_resource *res)
 
    struct zink_resource_object *new_obj = resource_object_create(screen, &res->base.b, NULL, NULL, NULL, 0, NULL);
    if (!new_obj) {
-      debug_printf("new backing resource alloc failed!");
+      debug_printf("new backing resource alloc failed!\n");
       return false;
    }
    /* this ref must be transferred before rebind or else BOOM */
@@ -1807,7 +1841,8 @@ zink_buffer_map(struct pipe_context *pctx,
     * in which case it can be mapped unsynchronized. */
    if (!(usage & (PIPE_MAP_UNSYNCHRONIZED | TC_TRANSFER_MAP_NO_INFER_UNSYNCHRONIZED)) &&
        usage & PIPE_MAP_WRITE && !res->base.is_shared &&
-       !util_ranges_intersect(&res->valid_buffer_range, box->x, box->x + box->width)) {
+       !util_ranges_intersect(&res->valid_buffer_range, box->x, box->x + box->width) &&
+       !zink_resource_copy_box_intersects(res, 0, box)) {
       usage |= PIPE_MAP_UNSYNCHRONIZED;
    }
 
@@ -1883,16 +1918,21 @@ zink_buffer_map(struct pipe_context *pctx,
       usage |= PIPE_MAP_UNSYNCHRONIZED;
    } else if (!(usage & PIPE_MAP_UNSYNCHRONIZED) &&
               (((usage & PIPE_MAP_READ) && !(usage & PIPE_MAP_PERSISTENT) &&
-               ((screen->info.mem_props.memoryTypes[res->obj->bo->base.placement].propertyFlags & VK_STAGING_RAM) != VK_STAGING_RAM)) ||
+               ((res->obj->bo->base.placement & VK_STAGING_RAM) != VK_STAGING_RAM)) ||
               !res->obj->host_visible)) {
-      assert(!(usage & (TC_TRANSFER_MAP_THREADED_UNSYNC | PIPE_MAP_THREAD_SAFE)));
-      if (!res->obj->host_visible || !(usage & PIPE_MAP_ONCE)) {
+      assert(!(usage & (TC_TRANSFER_MAP_THREADED_UNSYNC)));
+      if (!res->obj->host_visible || res->base.b.flags & PIPE_RESOURCE_FLAG_DONT_MAP_DIRECTLY) {
 overwrite:
          trans->offset = box->x % screen->info.props.limits.minMemoryMapAlignment;
          trans->staging_res = pipe_buffer_create(&screen->base, PIPE_BIND_LINEAR, PIPE_USAGE_STAGING, box->width + trans->offset);
          if (!trans->staging_res)
             goto fail;
          struct zink_resource *staging_res = zink_resource(trans->staging_res);
+         if (usage & PIPE_MAP_THREAD_SAFE) {
+            /* this map can't access the passed context: use the copy context */
+            zink_screen_lock_context(screen);
+            ctx = screen->copy_context;
+         }
          zink_copy_buffer(ctx, staging_res, res, trans->offset, box->x, box->width);
          res = staging_res;
          usage &= ~PIPE_MAP_UNSYNCHRONIZED;
@@ -1920,6 +1960,8 @@ overwrite:
          zink_resource_usage_wait(ctx, res, ZINK_RESOURCE_ACCESS_WRITE);
       res->obj->access = 0;
       res->obj->access_stage = 0;
+      res->obj->last_write = 0;
+      zink_resource_copies_reset(res);
    }
 
    if (!ptr) {
@@ -1961,10 +2003,15 @@ overwrite:
       res->obj->persistent_maps++;
 
 success:
+   /* ensure the copy context gets unlocked */
+   if (ctx == screen->copy_context)
+      zink_screen_unlock_context(screen);
    *transfer = &trans->base.b;
    return ptr;
 
 fail:
+   if (ctx == screen->copy_context)
+      zink_screen_unlock_context(screen);
    destroy_transfer(ctx, trans);
    return NULL;
 }
@@ -2136,6 +2183,226 @@ zink_transfer_flush_region(struct pipe_context *pctx,
             zink_transfer_copy_bufimage(ctx, res, staging_res, trans);
       }
    }
+}
+
+/* used to determine whether to emit a TRANSFER_DST barrier on copies */
+bool
+zink_resource_copy_box_intersects(struct zink_resource *res, unsigned level, const struct pipe_box *box)
+{
+   /* if there are no valid copy rects tracked, this needs a barrier */
+   if (!res->obj->copies_valid)
+      return true;
+   /* untracked huge miplevel */
+   if (level >= ARRAY_SIZE(res->obj->copies))
+      return true;
+   struct pipe_box *b = res->obj->copies[level].data;
+   unsigned num_boxes = util_dynarray_num_elements(&res->obj->copies[level], struct pipe_box);
+   boolean (*intersect)(const struct pipe_box *, const struct pipe_box *);
+   /* determine intersection function based on dimensionality */
+   switch (res->base.b.target) {
+   case PIPE_BUFFER:
+   case PIPE_TEXTURE_1D:
+      intersect = u_box_test_intersection_1d;
+      break;
+
+   case PIPE_TEXTURE_1D_ARRAY:
+   case PIPE_TEXTURE_2D:
+      intersect = u_box_test_intersection_2d;
+      break;
+
+   default:
+      intersect = u_box_test_intersection_3d;
+      break;
+   }
+   /* if any of the tracked boxes intersect with this one, a barrier is needed */
+   for (unsigned i = 0; i < num_boxes; i++) {
+      if (intersect(box, b + i))
+         return true;
+   }
+   /* no intersection = no barrier */
+   return false;
+}
+
+/* track a new region for TRANSFER_DST barrier emission */
+void
+zink_resource_copy_box_add(struct zink_resource *res, unsigned level, const struct pipe_box *box)
+{
+   if (res->obj->copies_valid) {
+      struct pipe_box *b = res->obj->copies[level].data;
+      unsigned num_boxes = util_dynarray_num_elements(&res->obj->copies[level], struct pipe_box);
+      for (unsigned i = 0; i < num_boxes; i++) {
+         switch (res->base.b.target) {
+         case PIPE_BUFFER:
+         case PIPE_TEXTURE_1D:
+            /* no-op included region */
+            if (b[i].x <= box->x && b[i].x + b[i].width >= box->x + box->width)
+               return;
+
+            /* try to merge adjacent regions */
+            if (b[i].x == box->x + box->width) {
+               b[i].x -= box->width;
+               b[i].width += box->width;
+               return;
+            }
+            if (b[i].x + b[i].width == box->x) {
+               b[i].width += box->width;
+               return;
+            }
+
+            /* try to merge into region */
+            if (box->x <= b[i].x && box->x + box->width >= b[i].x + b[i].width) {
+               *b = *box;
+               return;
+            }
+            break;
+
+         case PIPE_TEXTURE_1D_ARRAY:
+         case PIPE_TEXTURE_2D:
+            /* no-op included region */
+            if (b[i].x <= box->x && b[i].x + b[i].width >= box->x + box->width &&
+                b[i].y <= box->y && b[i].y + b[i].height >= box->y + box->height)
+               return;
+
+            /* try to merge adjacent regions */
+            if (b[i].y == box->y && b[i].height == box->height) {
+               if (b[i].x == box->x + box->width) {
+                  b[i].x -= box->width;
+                  b[i].width += box->width;
+                  return;
+               }
+               if (b[i].x + b[i].width == box->x) {
+                  b[i].width += box->width;
+                  return;
+               }
+            } else if (b[i].x == box->x && b[i].width == box->width) {
+               if (b[i].y == box->y + box->height) {
+                  b[i].y -= box->height;
+                  b[i].height += box->height;
+                  return;
+               }
+               if (b[i].y + b[i].height == box->y) {
+                  b[i].height += box->height;
+                  return;
+               }
+            }
+
+            /* try to merge into region */
+            if (box->x <= b[i].x && box->x + box->width >= b[i].x + b[i].width &&
+                box->y <= b[i].y && box->y + box->height >= b[i].y + b[i].height) {
+               *b = *box;
+               return;
+            }
+            break;
+
+         default:
+            /* no-op included region */
+            if (b[i].x <= box->x && b[i].x + b[i].width >= box->x + box->width &&
+                b[i].y <= box->y && b[i].y + b[i].height >= box->y + box->height &&
+                b[i].z <= box->z && b[i].z + b[i].depth >= box->z + box->depth)
+               return;
+
+               /* try to merge adjacent regions */
+            if (b[i].z == box->z && b[i].depth == box->depth) {
+               if (b[i].y == box->y && b[i].height == box->height) {
+                  if (b[i].x == box->x + box->width) {
+                     b[i].x -= box->width;
+                     b[i].width += box->width;
+                     return;
+                  }
+                  if (b[i].x + b[i].width == box->x) {
+                     b[i].width += box->width;
+                     return;
+                  }
+               } else if (b[i].x == box->x && b[i].width == box->width) {
+                  if (b[i].y == box->y + box->height) {
+                     b[i].y -= box->height;
+                     b[i].height += box->height;
+                     return;
+                  }
+                  if (b[i].y + b[i].height == box->y) {
+                     b[i].height += box->height;
+                     return;
+                  }
+               }
+            } else if (b[i].x == box->x && b[i].width == box->width) {
+               if (b[i].y == box->y && b[i].height == box->height) {
+                  if (b[i].z == box->z + box->depth) {
+                     b[i].z -= box->depth;
+                     b[i].depth += box->depth;
+                     return;
+                  }
+                  if (b[i].z + b[i].depth == box->z) {
+                     b[i].depth += box->depth;
+                     return;
+                  }
+               } else if (b[i].z == box->z && b[i].depth == box->depth) {
+                  if (b[i].y == box->y + box->height) {
+                     b[i].y -= box->height;
+                     b[i].height += box->height;
+                     return;
+                  }
+                  if (b[i].y + b[i].height == box->y) {
+                     b[i].height += box->height;
+                     return;
+                  }
+               }
+            } else if (b[i].y == box->y && b[i].height == box->height) {
+               if (b[i].z == box->z && b[i].depth == box->depth) {
+                  if (b[i].x == box->x + box->width) {
+                     b[i].x -= box->width;
+                     b[i].width += box->width;
+                     return;
+                  }
+                  if (b[i].x + b[i].width == box->x) {
+                     b[i].width += box->width;
+                     return;
+                  }
+               } else if (b[i].x == box->x && b[i].width == box->width) {
+                  if (b[i].z == box->z + box->depth) {
+                     b[i].z -= box->depth;
+                     b[i].depth += box->depth;
+                     return;
+                  }
+                  if (b[i].z + b[i].depth == box->z) {
+                     b[i].depth += box->depth;
+                     return;
+                  }
+               }
+            }
+
+            /* try to merge into region */
+            if (box->x <= b[i].x && box->x + box->width >= b[i].x + b[i].width &&
+                box->y <= b[i].y && box->y + box->height >= b[i].y + b[i].height &&
+                box->z <= b[i].z && box->z + box->depth >= b[i].z + b[i].depth)
+               return;
+
+            break;
+         }
+      }
+   }
+   util_dynarray_append(&res->obj->copies[level], struct pipe_box, *box);
+   if (util_dynarray_num_elements(&res->obj->copies[level], struct pipe_box) > 100)
+      mesa_logw("zink: PERF WARNING! > 100 copy boxes detected for %p\n", res);
+   res->obj->copies_valid = true;
+}
+
+void
+zink_resource_copies_reset(struct zink_resource *res)
+{
+   if (!res->obj->copies_valid)
+      return;
+   unsigned max_level = res->base.b.target == PIPE_BUFFER ? 1 : (res->base.b.last_level + 1);
+   if (res->base.b.target == PIPE_BUFFER) {
+      /* flush transfer regions back to valid range on reset */
+      struct pipe_box *b = res->obj->copies[0].data;
+      unsigned num_boxes = util_dynarray_num_elements(&res->obj->copies[0], struct pipe_box);
+      for (unsigned i = 0; i < num_boxes; i++)
+         util_range_add(&res->base.b, &res->valid_buffer_range, b[i].x, b[i].x + b[i].width);
+   }
+   for (unsigned i = 0; i < max_level; i++)
+      util_dynarray_clear(&res->obj->copies[i]);
+   res->obj->copies_valid = false;
+   res->obj->copies_need_reset = false;
 }
 
 static void
@@ -2366,6 +2633,7 @@ zink_screen_resource_init(struct pipe_screen *pscreen)
    pscreen->transfer_helper = u_transfer_helper_create(&transfer_vtbl,
       U_TRANSFER_HELPER_SEPARATE_Z32S8 | U_TRANSFER_HELPER_SEPARATE_STENCIL |
       U_TRANSFER_HELPER_INTERLEAVE_IN_PLACE |
+      U_TRANSFER_HELPER_MSAA_MAP |
       (!screen->have_D24_UNORM_S8_UINT ? U_TRANSFER_HELPER_Z24_IN_Z32F : 0));
 
    if (screen->info.have_KHR_external_memory_fd || screen->info.have_KHR_external_memory_win32) {

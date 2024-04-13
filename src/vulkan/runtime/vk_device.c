@@ -106,6 +106,8 @@ collect_enabled_features(struct vk_device *device,
             device->enabled_features.robustBufferAccess2 = true;
          if (features->robustImageAccess2)
             device->enabled_features.robustImageAccess2 = true;
+         if (features->nullDescriptor)
+            device->enabled_features.nullDescriptor = true;
          break;
       }
 
@@ -139,11 +141,13 @@ vk_device_init(struct vk_device *device,
 
    device->physical = physical_device;
 
-   device->dispatch_table = *dispatch_table;
+   if (dispatch_table) {
+      device->dispatch_table = *dispatch_table;
 
-   /* Add common entrypoints without overwriting driver-provided ones. */
-   vk_device_dispatch_table_from_entrypoints(
-      &device->dispatch_table, &vk_common_device_entrypoints, false);
+      /* Add common entrypoints without overwriting driver-provided ones. */
+      vk_device_dispatch_table_from_entrypoints(
+         &device->dispatch_table, &vk_common_device_entrypoints, false);
+   }
 
    for (uint32_t i = 0; i < pCreateInfo->enabledExtensionCount; i++) {
       int idx;
@@ -224,6 +228,8 @@ vk_device_finish(struct vk_device *device)
 {
    /* Drivers should tear down their own queues */
    assert(list_is_empty(&device->queues));
+
+   vk_memory_trace_finish(device);
 
 #ifdef ANDROID
    if (device->swapchain_private) {
@@ -435,43 +441,6 @@ vk_common_GetDeviceGroupPeerMemoryFeatures(
                           VK_PEER_MEMORY_FEATURE_COPY_DST_BIT |
                           VK_PEER_MEMORY_FEATURE_GENERIC_SRC_BIT |
                           VK_PEER_MEMORY_FEATURE_GENERIC_DST_BIT;
-}
-
-VKAPI_ATTR void VKAPI_CALL
-vk_common_GetBufferMemoryRequirements(VkDevice _device,
-                                      VkBuffer buffer,
-                                      VkMemoryRequirements *pMemoryRequirements)
-{
-   VK_FROM_HANDLE(vk_device, device, _device);
-
-   VkBufferMemoryRequirementsInfo2 info = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2,
-      .buffer = buffer,
-   };
-   VkMemoryRequirements2 reqs = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2,
-   };
-   device->dispatch_table.GetBufferMemoryRequirements2(_device, &info, &reqs);
-
-   *pMemoryRequirements = reqs.memoryRequirements;
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
-vk_common_BindBufferMemory(VkDevice _device,
-                           VkBuffer buffer,
-                           VkDeviceMemory memory,
-                           VkDeviceSize memoryOffset)
-{
-   VK_FROM_HANDLE(vk_device, device, _device);
-
-   VkBindBufferMemoryInfo bind = {
-      .sType         = VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO,
-      .buffer        = buffer,
-      .memory        = memory,
-      .memoryOffset  = memoryOffset,
-   };
-
-   return device->dispatch_table.BindBufferMemory2(_device, 1, &bind);
 }
 
 VKAPI_ATTR void VKAPI_CALL

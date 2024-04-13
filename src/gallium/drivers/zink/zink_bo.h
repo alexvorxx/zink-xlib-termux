@@ -94,7 +94,7 @@ zink_heap_from_domain_flags(VkMemoryPropertyFlags domains, enum zink_alloc_flag 
 }
 
 static inline unsigned
-zink_heap_idx_from_bits(struct zink_screen *screen, enum zink_heap heap, uint32_t bits)
+zink_mem_type_idx_from_bits(struct zink_screen *screen, enum zink_heap heap, uint32_t bits)
 {
    for (unsigned i = 0; i < screen->heap_count[heap]; i++) {
       if (bits & BITFIELD_BIT(screen->heap_map[heap][i])) {
@@ -111,7 +111,7 @@ void
 zink_bo_deinit(struct zink_screen *screen);
 
 struct pb_buffer *
-zink_bo_create(struct zink_screen *screen, uint64_t size, unsigned alignment, enum zink_heap heap, enum zink_alloc_flag flags, unsigned heap_idx, const void *pNext);
+zink_bo_create(struct zink_screen *screen, uint64_t size, unsigned alignment, enum zink_heap heap, enum zink_alloc_flag flags, unsigned mem_type_idx, const void *pNext);
 
 bool
 zink_bo_get_kms_handle(struct zink_screen *screen, struct zink_bo *bo, int fd, uint32_t *handle);
@@ -169,6 +169,16 @@ zink_bo_usage_check_completion(struct zink_screen *screen, struct zink_bo *bo, e
    if (access & ZINK_RESOURCE_ACCESS_READ && !zink_screen_usage_check_completion(screen, bo->reads))
       return false;
    if (access & ZINK_RESOURCE_ACCESS_WRITE && !zink_screen_usage_check_completion(screen, bo->writes))
+      return false;
+   return true;
+}
+
+static inline bool
+zink_bo_usage_check_completion_fast(struct zink_screen *screen, struct zink_bo *bo, enum zink_resource_access access)
+{
+   if (access & ZINK_RESOURCE_ACCESS_READ && !zink_screen_usage_check_completion_fast(screen, bo->reads))
+      return false;
+   if (access & ZINK_RESOURCE_ACCESS_WRITE && !zink_screen_usage_check_completion_fast(screen, bo->writes))
       return false;
    return true;
 }

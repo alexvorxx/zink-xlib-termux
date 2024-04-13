@@ -22,6 +22,8 @@
 dep_iokit = dependency('IOKit', required : false)
 
 libasahi_lib_files = files(
+  'agx_bo.c',
+  'agx_border.c',
   'agx_device.c',
   'agx_formats.c',
   'agx_meta.c',
@@ -67,7 +69,7 @@ libasahi_lib = static_library(
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   link_with: [libasahi_decode],
-  dependencies: [dep_libdrm, dep_valgrind, idep_nir, dep_iokit],
+  dependencies: [dep_libdrm, dep_valgrind, idep_nir],
   build_by_default : false,
 )
 
@@ -87,7 +89,7 @@ if with_tests
       link_with : [libasahi_lib],
     ),
     suite : ['asahi'],
-    protocol : gtest_test_protocol,
+    protocol : 'gtest',
   )
 endif
 

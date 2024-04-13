@@ -795,6 +795,11 @@ struct gl_constants
    GLboolean DisableTransformFeedbackPacking;
 
    /**
+    * Disable the glsl optimisation that resizes uniform arrays.
+    */
+   bool DisableUniformArrayResize;
+
+   /**
     * Align varyings to POT in a slot
     *
     * Drivers that prefer varyings to be aligned to POT must set this value to GL_TRUE
@@ -918,17 +923,14 @@ struct gl_constants
    /** When drivers are OK with mapped buffers during draw and other calls. */
    bool AllowMappedBuffersDuringExecution;
 
-   /**
-    * Whether buffer creation, unsynchronized mapping, unmapping, and
-    * deletion is thread-safe.
-    */
-   bool BufferCreateMapUnsynchronizedThreadSafe;
-
    /** Override GL_MAP_UNSYNCHRONIZED_BIT */
    bool ForceMapBufferSynchronized;
 
    /** GL_ARB_get_program_binary */
    GLuint NumProgramBinaryFormats;
+
+   /** GL_ARB_gl_spirv */
+   GLuint NumShaderBinaryFormats;
 
    /** GL_NV_conservative_raster */
    GLuint MaxSubpixelPrecisionBiasBits;
@@ -992,5 +994,8 @@ struct gl_constants
 
    /** Use hardware accelerated GL_SELECT */
    bool HardwareAcceleratedSelect;
+
+   /** Allow GLThread to convert glBuffer */
+   bool AllowGLThreadBufferSubDataOpt;
 };
 #endif

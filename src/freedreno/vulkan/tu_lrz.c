@@ -10,16 +10,7 @@
 #include "tu_cs.h"
 #include "tu_image.h"
 
-/* Low-resolution Z buffer is very similar to a depth prepass that helps
- * the HW avoid executing the fragment shader on those fragments that will
- * be subsequently discarded by the depth test afterwards.
- *
- * The interesting part of this feature is that it allows applications
- * to submit the vertices in any order.
- *
- * In the binning pass it is possible to store the depth value of each
- * vertex into internal low resolution depth buffer and quickly test
- * the primitives against it during the render pass.
+/* See lrz.rst for how HW works. Here are only the implementation notes.
  *
  * There are a number of limitations when LRZ cannot be used:
  * - Fragment shader side-effects (writing to SSBOs, atomic operations, etc);
@@ -32,38 +23,12 @@
  * - (pre-a650) Using secondary command buffers;
  * - Sysmem rendering (with small caveat).
  *
- * Pre-a650 (before gen3)
- * ======================
- *
- * The direction is fully tracked on CPU. In renderpass LRZ starts with
- * unknown direction, the direction is set first time when depth write occurs
- * and if it does change afterwards - direction becomes invalid and LRZ is
- * disabled for the rest of the renderpass.
- *
- * Since direction is not tracked by GPU - it's impossible to know whether
- * LRZ is enabled during construction of secondary command buffers.
- *
- * For the same reason it's impossible to reuse LRZ between renderpasses.
- *
  * A650+ (gen3+)
  * =============
  *
- * Now LRZ direction could be tracked on GPU. There are to parts:
- * - Direction byte which stores current LRZ direction;
- * - Parameters of the last used depth view.
- *
- * The idea is the same as when LRZ tracked on CPU: when GRAS_LRZ_CNTL
- * is used - its direction is compared to previously known direction
- * and direction byte is set to disabled when directions are incompatible.
- *
- * Additionally, to reuse LRZ between renderpasses, GRAS_LRZ_CNTL checks
- * if current value of GRAS_LRZ_DEPTH_VIEW is equal to the value
- * stored in the buffer, if not - LRZ is disabled. (This is necessary
- * because depth buffer may have several layers and mip levels, on the
- * other hand LRZ buffer represents only a single layer + mip level).
- *
- * LRZ direction between renderpasses is disabled when underlying depth
- * buffer is changed, the following commands could change depth image:
+ * While LRZ could be reused between renderpasses LRZ, it is disabled when
+ * underlying depth buffer is changed.
+ * The following commands could change a depth image:
  * - vkCmdBlitImage*
  * - vkCmdCopyBufferToImage*
  * - vkCmdCopyImage*
@@ -71,44 +36,10 @@
  * LRZ Fast-Clear
  * ==============
  *
- * The LRZ fast-clear buffer is initialized to zeroes and read/written
- * when GRAS_LRZ_CNTL.FC_ENABLE (b3) is set. It appears to store 1b/block.
- * '0' means block has original depth clear value, and '1' means that the
- * corresponding block in LRZ has been modified.
- *
- * LRZ fast-clear conservatively clears LRZ buffer, at the point where LRZ is
- * written the LRZ block which corresponds to a single fast-clear bit is cleared:
- * - To 0.0 if depth comparison is GREATER;
- * - To 1.0 if depth comparison is LESS;
- *
- * This way it's always valid to fast-clear. On the other hand we disable
+ * It's always valid to fast-clear. On the other hand we disable
  * fast-clear if depth clear value is not 0.0 or 1.0 because it may be worse
  * for perf if some primitives are expected to fail depth test against the
  * actual depth clear value.
- *
- * LRZ Precision
- * =============
- *
- * LRZ always uses Z16_UNORM. The epsilon for it is 1.f / (1 << 16) which is
- * not enough to represent all values of Z32_UNORM or Z32_FLOAT.
- * This especially rises questions in context of fast-clear, if fast-clear
- * uses a value which cannot be precisely represented by LRZ - we wouldn't
- * be able to round it in the correct direction since direction is tracked
- * on GPU.
- *
- * However, it seems that depth comparisons with LRZ values have some "slack"
- * and nothing special should be done for such depth clear values.
- *
- * How it was tested:
- * - Clear Z32_FLOAT attachment to 1.f / (1 << 17)
- *   - LRZ buffer contains all zeroes
- * - Do draws and check whether all samples are passing:
- *   - OP_GREATER with (1.f / (1 << 17) + float32_epsilon) - passing;
- *   - OP_GREATER with (1.f / (1 << 17) - float32_epsilon) - not passing;
- *   - OP_LESS with (1.f / (1 << 17) - float32_epsilon) - samples;
- *   - OP_LESS with() 1.f / (1 << 17) + float32_epsilon) - not passing;
- *   - OP_LESS_OR_EQ with (1.f / (1 << 17) + float32_epsilon) - not passing;
- * In all cases resulting LRZ buffer is all zeroes and LRZ direction is updated.
  *
  * LRZ Caches
  * ==========
@@ -116,14 +47,6 @@
  * ! The policy here is to flush LRZ cache right after it is changed,
  * so if LRZ data is needed afterwards - there is no need to flush it
  * before using LRZ.
- *
- * LRZ_FLUSH flushes and invalidates LRZ caches, there are two caches:
- * - Cache for fast-clear buffer;
- * - Cache for direction byte + depth view params.
- * They could be cleared by LRZ_CLEAR. To become visible in GPU memory
- * the caches should be flushed with LRZ_FLUSH afterwards.
- *
- * GRAS_LRZ_CNTL reads from these caches.
  */
 
 static void
@@ -188,8 +111,7 @@ tu_lrz_init_state(struct tu_cmd_buffer *cmd,
                   const struct tu_image_view *view)
 {
    if (!view->image->lrz_height) {
-      assert((cmd->device->instance->debug_flags & TU_DEBUG_NOLRZ) ||
-             !vk_format_has_depth(att->format));
+      assert(TU_DEBUG(NOLRZ) || !vk_format_has_depth(att->format));
       return;
    }
 
@@ -238,7 +160,7 @@ tu_lrz_init_secondary(struct tu_cmd_buffer *cmd,
    if (!has_gpu_tracking)
       return;
 
-   if (cmd->device->instance->debug_flags & TU_DEBUG_NOLRZ)
+   if (TU_DEBUG(NOLRZ))
       return;
 
    if (!vk_format_has_depth(att->format))
@@ -652,8 +574,7 @@ tu6_calculate_lrz_state(struct tu_cmd_buffer *cmd,
    /* If depth test is disabled we shouldn't touch LRZ.
     * Same if there is no depth attachment.
     */
-   if (a == VK_ATTACHMENT_UNUSED || !z_test_enable ||
-       (cmd->device->instance->debug_flags & TU_DEBUG_NOLRZ))
+   if (a == VK_ATTACHMENT_UNUSED || !z_test_enable || TU_DEBUG(NOLRZ))
       return gras_lrz_cntl;
 
    if (!cmd->state.lrz.gpu_dir_tracking && !cmd->state.attachments) {
@@ -666,7 +587,7 @@ tu6_calculate_lrz_state(struct tu_cmd_buffer *cmd,
    gras_lrz_cntl.enable = true;
    gras_lrz_cntl.lrz_write =
       z_write_enable &&
-      !(pipeline->lrz.force_disable_mask & TU_LRZ_FORCE_DISABLE_WRITE);
+      !(pipeline->lrz.lrz_status & TU_LRZ_FORCE_DISABLE_WRITE);
    gras_lrz_cntl.z_test_enable = z_write_enable;
    gras_lrz_cntl.z_bounds_enable = z_bounds_enable;
    gras_lrz_cntl.fc_enable = cmd->state.lrz.fast_clear;
@@ -675,17 +596,20 @@ tu6_calculate_lrz_state(struct tu_cmd_buffer *cmd,
 
 
    /* See comment in tu_pipeline about disabling LRZ write for blending. */
+   bool reads_dest = !!(pipeline->lrz.lrz_status & TU_LRZ_READS_DEST);
    if (gras_lrz_cntl.lrz_write && cmd->state.pipeline->dynamic_state_mask &
          (BIT(TU_DYNAMIC_STATE_LOGIC_OP) |
           BIT(TU_DYNAMIC_STATE_BLEND_ENABLE))) {
        if (cmd->state.logic_op_enabled && cmd->state.rop_reads_dst) {
           perf_debug(cmd->device, "disabling lrz write due to dynamic logic op");
           gras_lrz_cntl.lrz_write = false;
+          reads_dest = true;
        }
 
        if (cmd->state.blend_enable) {
           perf_debug(cmd->device, "disabling lrz write due to dynamic blend");
           gras_lrz_cntl.lrz_write = false;
+          reads_dest = true;
        }
    }
 
@@ -708,6 +632,7 @@ tu6_calculate_lrz_state(struct tu_cmd_buffer *cmd,
                           enabled_mask, mask);
             }
             gras_lrz_cntl.lrz_write = false;
+            reads_dest = true;
             break;
          }
       }
@@ -726,6 +651,7 @@ tu6_calculate_lrz_state(struct tu_cmd_buffer *cmd,
             MASK(cmd->state.pipeline->blend.num_rts));
       }
       gras_lrz_cntl.lrz_write = false;
+      reads_dest = true;
    }
 
    /* LRZ is disabled until it is cleared, which means that one "wrong"
@@ -738,7 +664,7 @@ tu6_calculate_lrz_state(struct tu_cmd_buffer *cmd,
     * fragment tests.  We have to skip LRZ testing and updating, but as long as
     * the depth direction stayed the same we can continue with LRZ testing later.
     */
-   if (pipeline->lrz.force_disable_mask & TU_LRZ_FORCE_DISABLE_LRZ) {
+   if (pipeline->lrz.lrz_status & TU_LRZ_FORCE_DISABLE_LRZ) {
       if (cmd->state.lrz.prev_direction != TU_LRZ_UNKNOWN || !cmd->state.lrz.gpu_dir_tracking) {
          perf_debug(cmd->device, "Skipping LRZ due to FS");
          temporary_disable_lrz = true;
@@ -861,6 +787,32 @@ tu6_calculate_lrz_state(struct tu_cmd_buffer *cmd,
             temporary_disable_lrz = true;
          }
       }
+   }
+
+   /* Writing depth with blend enabled means we need to invalidate LRZ,
+    * because the written depth value could mean that a later draw with
+    * depth enabled (where we would otherwise write LRZ) could have
+    * fragments which don't pass the depth test due to this draw.  For
+    * example, consider this sequence of draws, with depth mode GREATER:
+    *
+    *   draw A:
+    *     z=0.1, fragments pass
+    *   draw B:
+    *     z=0.4, fragments pass
+    *     blend enabled (LRZ write disabled)
+    *     depth write enabled
+    *   draw C:
+    *     z=0.2, fragments don't pass
+    *     blend disabled
+    *     depth write enabled
+    *
+    * Normally looking at the state in draw C, we'd assume we could
+    * enable LRZ write.  But this would cause early-z/lrz to discard
+    * fragments from draw A which should be visible due to draw B.
+    */
+   if (reads_dest && z_write_enable && cmd->device->instance->conservative_lrz) {
+      perf_debug(cmd->device, "Invalidating LRZ due to blend+depthwrite");
+      disable_lrz = true;
    }
 
    if (disable_lrz)

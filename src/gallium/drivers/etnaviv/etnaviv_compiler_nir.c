@@ -680,6 +680,7 @@ emit_cf_list(struct etna_compile *c, struct exec_list *list)
          emit_if(c, nir_cf_node_as_if(node));
          break;
       case nir_cf_node_loop:
+         assert(!nir_loop_has_continue_construct(nir_cf_node_as_loop(node)));
          emit_cf_list(c, &nir_cf_node_as_loop(node)->body);
          break;
       default:
@@ -1158,7 +1159,7 @@ etna_compile_shader(struct etna_shader_variant *v)
        */
       NIR_PASS_V(s, nir_lower_int_to_float);
       NIR_PASS_V(s, nir_opt_algebraic);
-      NIR_PASS_V(s, nir_lower_bool_to_float);
+      NIR_PASS_V(s, nir_lower_bool_to_float, true);
    } else {
       NIR_PASS_V(s, nir_lower_bool_to_int32);
    }

@@ -203,7 +203,8 @@ _vtn_fail(struct vtn_builder *b, const char *file, unsigned line,
       vtn_dump_shader(b, dump_path, "fail");
 
 #ifndef NDEBUG
-   os_break();
+   if (!b->options->skip_os_break_in_debug_build)
+      os_break();
 #endif
 
    vtn_longjmp(b->fail_jump, 1);
@@ -2462,12 +2463,8 @@ vtn_mem_semantics_to_nir_var_modes(struct vtn_builder *b,
    }
 
    nir_variable_mode modes = 0;
-   if (semantics & SpvMemorySemanticsUniformMemoryMask) {
-      modes |= nir_var_uniform |
-               nir_var_mem_ubo |
-               nir_var_mem_ssbo |
-               nir_var_mem_global;
-   }
+   if (semantics & SpvMemorySemanticsUniformMemoryMask)
+      modes |= nir_var_mem_ssbo | nir_var_mem_global;
    if (semantics & SpvMemorySemanticsImageMemoryMask)
       modes |= nir_var_image;
    if (semantics & SpvMemorySemanticsWorkgroupMemoryMask)
@@ -2484,7 +2481,7 @@ vtn_mem_semantics_to_nir_var_modes(struct vtn_builder *b,
    return modes;
 }
 
-static nir_scope
+nir_scope
 vtn_scope_to_nir_scope(struct vtn_builder *b, SpvScope scope)
 {
    nir_scope nir_scope;
@@ -2844,7 +2841,11 @@ vtn_handle_texture(struct vtn_builder *b, SpvOp opcode,
       vtn_fail("unexpected nir_texop_tex_prefetch");
       break;
    case nir_texop_descriptor_amd:
-      vtn_fail("unexpected nir_texop_descriptor_amd");
+   case nir_texop_sampler_descriptor_amd:
+      vtn_fail("unexpected nir_texop_*descriptor_amd");
+      break;
+   case nir_texop_lod_bias_agx:
+      vtn_fail("unexpected nir_texop_lod_bias_agx");
       break;
    }
 
@@ -3103,6 +3104,9 @@ vtn_handle_texture(struct vtn_builder *b, SpvOp opcode,
 
    if (operands & SpvImageOperandsNontemporalMask)
       access |= ACCESS_STREAM_CACHE_POLICY;
+
+   if (sampler && b->options->force_tex_non_uniform)
+      access |= ACCESS_NON_UNIFORM;
 
    if (sampled_val->propagated_non_uniform)
       access |= ACCESS_NON_UNIFORM;
@@ -3860,7 +3864,7 @@ vtn_handle_atomics(struct vtn_builder *b, SpvOp opcode,
    nir_builder_instr_insert(&b->nb, &atomic->instr);
 
    if (opcode == SpvOpAtomicFlagTestAndSet) {
-      vtn_push_nir_ssa(b, w[2], nir_i2b1(&b->nb, &atomic->dest.ssa));
+      vtn_push_nir_ssa(b, w[2], nir_i2b(&b->nb, &atomic->dest.ssa));
    }
    if (after_semantics)
       vtn_emit_memory_barrier(b, scope, after_semantics);
@@ -4881,6 +4885,10 @@ vtn_handle_preamble_instruction(struct vtn_builder *b, SpvOp opcode,
          spv_check_supported(shader_viewport_mask_nv, cap);
          break;
 
+      case SpvCapabilityGroupNonUniformRotateKHR:
+         spv_check_supported(subgroup_rotate, cap);
+         break;
+
       default:
          vtn_fail("Unhandled capability: %s (%u)",
                   spirv_capability_to_string(cap), cap);
@@ -5301,6 +5309,41 @@ vtn_handle_execution_mode(struct vtn_builder *b, struct vtn_value *entry_point,
       /* There's no corresponding SPIR-V capability, so check here. */
       vtn_fail_if(!b->options->caps.subgroup_uniform_control_flow,
                   "SpvExecutionModeSubgroupUniformControlFlowKHR not supported.");
+      break;
+
+   case SpvExecutionModeEarlyAndLateFragmentTestsAMD:
+      vtn_assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
+      b->shader->info.fs.early_and_late_fragment_tests = true;
+      break;
+
+   case SpvExecutionModeStencilRefGreaterFrontAMD:
+      vtn_assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
+      b->shader->info.fs.stencil_front_layout = FRAG_STENCIL_LAYOUT_GREATER;
+      break;
+
+   case SpvExecutionModeStencilRefLessFrontAMD:
+      vtn_assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
+      b->shader->info.fs.stencil_front_layout = FRAG_STENCIL_LAYOUT_LESS;
+      break;
+
+   case SpvExecutionModeStencilRefUnchangedFrontAMD:
+      vtn_assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
+      b->shader->info.fs.stencil_front_layout = FRAG_STENCIL_LAYOUT_UNCHANGED;
+      break;
+
+   case SpvExecutionModeStencilRefGreaterBackAMD:
+      vtn_assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
+      b->shader->info.fs.stencil_back_layout = FRAG_STENCIL_LAYOUT_GREATER;
+      break;
+
+   case SpvExecutionModeStencilRefLessBackAMD:
+      vtn_assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
+      b->shader->info.fs.stencil_back_layout = FRAG_STENCIL_LAYOUT_LESS;
+      break;
+
+   case SpvExecutionModeStencilRefUnchangedBackAMD:
+      vtn_assert(b->shader->info.stage == MESA_SHADER_FRAGMENT);
+      b->shader->info.fs.stencil_back_layout = FRAG_STENCIL_LAYOUT_UNCHANGED;
       break;
 
    default:
@@ -5819,7 +5862,7 @@ vtn_handle_ray_query_intrinsic(struct vtn_builder *b, SpvOp opcode,
    case SpvOpRayQueryGetIntersectionWorldToObjectKHR:
       ray_query_load_intrinsic_create(b, opcode, w,
                                       vtn_ssa_value(b, w[3])->def,
-                                      nir_i2b1(&b->nb, vtn_ssa_value(b, w[4])->def));
+                                      nir_i2b(&b->nb, vtn_ssa_value(b, w[4])->def));
       break;
 
    case SpvOpRayQueryGetRayTMinKHR:
@@ -6195,6 +6238,7 @@ vtn_handle_body_instruction(struct vtn_builder *b, SpvOp opcode,
    case SpvOpSubgroupShuffleDownINTEL:
    case SpvOpSubgroupShuffleUpINTEL:
    case SpvOpSubgroupShuffleXorINTEL:
+   case SpvOpGroupNonUniformRotateKHR:
       vtn_handle_subgroup(b, opcode, w, count);
       break;
 
@@ -6546,12 +6590,13 @@ spirv_to_nir(const uint32_t *words, size_t word_count,
       return NULL;
    }
 
-   /* Skip the SPIR-V header, handled at vtn_create_builder */
-   words+= 5;
-
    b->shader = nir_shader_create(b, stage, nir_options, NULL);
    b->shader->info.subgroup_size = options->subgroup_size;
    b->shader->info.float_controls_execution_mode = options->float_controls_execution_mode;
+   _mesa_sha1_compute(words, word_count * sizeof(uint32_t), b->shader->info.source_sha1);
+
+   /* Skip the SPIR-V header, handled at vtn_create_builder */
+   words+= 5;
 
    /* Handle all the preamble instructions */
    words = vtn_foreach_instruction(b, words, word_end,
@@ -6654,6 +6699,7 @@ spirv_to_nir(const uint32_t *words, size_t word_count,
 
    /* structurize the CFG */
    nir_lower_goto_ifs(b->shader);
+   nir_lower_continue_constructs(b->shader);
 
    /* A SPIR-V module can have multiple shaders stages and also multiple
     * shaders of the same stage.  Global variables are declared per-module.
@@ -6756,6 +6802,15 @@ spirv_to_nir(const uint32_t *words, size_t word_count,
          }
       }
    }
+
+   /* Work around applications that declare shader_call_data variables inside
+    * ray generation shaders.
+    *
+    * https://gitlab.freedesktop.org/mesa/mesa/-/issues/5326
+    */
+   if (stage == MESA_SHADER_RAYGEN)
+      NIR_PASS(_, b->shader, nir_remove_dead_variables, nir_var_shader_call_data,
+               NULL);
 
    /* Unparent the shader from the vtn_builder before we delete the builder */
    ralloc_steal(NULL, b->shader);

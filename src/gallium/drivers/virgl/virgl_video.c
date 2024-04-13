@@ -730,6 +730,16 @@ static void virgl_video_end_frame(struct pipe_video_codec *codec,
     switch_buffer(vcdc);
 }
 
+static int virgl_video_get_decoder_fence(struct pipe_video_codec *decoder,
+                                         struct pipe_fence_handle *fence,
+                                         uint64_t timeout) {
+    struct virgl_video_codec *vcdc = virgl_video_codec(decoder);
+    struct virgl_context *vctx = vcdc->vctx;
+    struct virgl_screen *vs = virgl_screen(vctx->base.screen);
+
+    return vs->vws->fence_wait(vs->vws, fence, timeout);
+}
+
 static void virgl_video_flush(struct pipe_video_codec *codec)
 {
     struct pipe_context *ctx = codec->context;

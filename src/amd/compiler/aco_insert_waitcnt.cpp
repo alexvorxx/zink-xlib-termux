@@ -372,7 +372,7 @@ check_instr(wait_ctx& ctx, wait_imm& wait, alu_delay_info& delay, Instruction* i
             continue;
 
          wait.combine(it->second.imm);
-         if (instr->isVALU() || instr->isSALU() || instr->isVINTERP_INREG())
+         if (instr->isVALU() || instr->isSALU())
             delay.combine(it->second.delay);
       }
    }
@@ -432,6 +432,18 @@ parse_delay_alu(wait_ctx& ctx, alu_delay_info& delay, Instruction* instr)
       else if (wait >= alu_delay_wait::SALU_CYCLE_1)
          delay.salu_cycles = imm[i] - (uint32_t)alu_delay_wait::SALU_CYCLE_1 + 1;
    }
+
+   for (std::pair<const PhysReg, wait_entry>& e : ctx.gpr_map) {
+      wait_entry& entry = e.second;
+
+      if (delay.valu_instrs <= entry.delay.valu_instrs)
+         delay.valu_cycles = std::max(delay.valu_cycles, entry.delay.valu_cycles);
+      if (delay.trans_instrs <= entry.delay.trans_instrs)
+         delay.trans_cycles = std::max(delay.trans_cycles, entry.delay.trans_cycles);
+      if (delay.salu_cycles <= entry.delay.salu_cycles)
+         delay.salu_cycles = std::max(delay.salu_cycles, entry.delay.salu_cycles);
+   }
+
    return true;
 }
 
@@ -537,21 +549,6 @@ kill(wait_imm& imm, alu_delay_info& delay, Instruction* instr, wait_ctx& ctx,
    if (instr->opcode == aco_opcode::ds_ordered_count &&
        ((instr->ds().offset1 | (instr->ds().offset0 >> 8)) & 0x1)) {
       imm.combine(ctx.barrier_imm[ffs(storage_gds) - 1]);
-   }
-
-   if (ctx.program->early_rast && instr->opcode == aco_opcode::exp) {
-      if (instr->exp().dest >= V_008DFC_SQ_EXP_POS && instr->exp().dest < V_008DFC_SQ_EXP_PRIM) {
-
-         /* With early_rast, the HW will start clipping and rasterization after the 1st DONE pos
-          * export. Wait for all stores (and atomics) to complete, so PS can read them.
-          * TODO: This only really applies to DONE pos exports.
-          *       Consider setting the DONE bit earlier.
-          */
-         if (ctx.vs_cnt > 0)
-            imm.vs = 0;
-         if (ctx.vm_cnt > 0)
-            imm.vm = 0;
-      }
    }
 
    if (instr->opcode == aco_opcode::p_barrier)
@@ -791,7 +788,7 @@ void
 gen_alu(Instruction* instr, wait_ctx& ctx)
 {
    Instruction_cycle_info cycle_info = get_cycle_info(*ctx.program, *instr);
-   bool is_valu = instr->isVALU() || instr->isVINTERP_INREG();
+   bool is_valu = instr->isVALU();
    bool is_trans = instr->isTrans();
    bool clear = instr->isEXP() || instr->isDS() || instr->isMIMG() || instr->isFlatLike() ||
                 instr->isMUBUF() || instr->isMTBUF();
@@ -1035,11 +1032,9 @@ insert_wait_states(Program* program)
    std::stack<unsigned, std::vector<unsigned>> loop_header_indices;
    unsigned loop_progress = 0;
 
-   if (program->stage.has(SWStage::VS) && program->info.vs.dynamic_inputs) {
-      for (Definition def : program->vs_inputs) {
-         update_counters(in_ctx[0], event_vmem);
-         insert_wait_entry(in_ctx[0], def, event_vmem);
-      }
+   for (Definition def : program->args_pending_vmem) {
+      update_counters(in_ctx[0], event_vmem);
+      insert_wait_entry(in_ctx[0], def, event_vmem);
    }
 
    for (unsigned i = 0; i < program->blocks.size();) {
@@ -1084,6 +1079,33 @@ insert_wait_states(Program* program)
       handle_block(program, current, ctx);
 
       out_ctx[current.index] = std::move(ctx);
+   }
+
+   /* Combine s_delay_alu using the skip field. */
+   if (program->gfx_level >= GFX11) {
+      for (Block& block : program->blocks) {
+         int i = 0;
+         int prev_delay_alu = -1;
+         for (aco_ptr<Instruction>& instr : block.instructions) {
+            if (instr->opcode != aco_opcode::s_delay_alu) {
+               block.instructions[i++] = std::move(instr);
+               continue;
+            }
+
+            uint16_t imm = instr->sopp().imm;
+            int skip = i - prev_delay_alu - 1;
+            if (imm >> 7 || prev_delay_alu < 0 || skip >= 6) {
+               if (imm >> 7 == 0)
+                  prev_delay_alu = i;
+               block.instructions[i++] = std::move(instr);
+               continue;
+            }
+
+            block.instructions[prev_delay_alu]->sopp().imm |= (skip << 4) | (imm << 7);
+            prev_delay_alu = -1;
+         }
+         block.instructions.resize(i);
+      }
    }
 }
 

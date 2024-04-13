@@ -169,6 +169,9 @@ enum pipe_format si_simplify_cb_format(enum pipe_format format)
 
 bool vi_alpha_is_on_msb(struct si_screen *sscreen, enum pipe_format format)
 {
+   if (sscreen->info.gfx_level >= GFX11)
+      return false;
+
    format = si_simplify_cb_format(format);
    const struct util_format_description *desc = util_format_description(format);
    unsigned comp_swap = si_translate_colorswap(sscreen->info.gfx_level, format, false);
@@ -382,35 +385,33 @@ static bool gfx11_get_dcc_clear_parameters(struct si_screen *sscreen, enum pipe_
    }
 
    /* Check 0001 and 1110 cases. */
-   if (vi_alpha_is_on_msb(sscreen, surface_format)) {
-      if (desc->nr_channels == 2 && desc->channel[0].size == 8) {
-         if (value.ub[0] == 0x00 && value.ub[1] == 0xff) {
-            *clear_value = GFX11_DCC_CLEAR_0001_UNORM;
-            return true;
-         } else if (value.ub[0] == 0xff && value.ub[1] == 0x00) {
-            *clear_value = GFX11_DCC_CLEAR_1110_UNORM;
-            return true;
-         }
-      } else if (desc->nr_channels == 4 && desc->channel[0].size == 8) {
-         if (value.ub[0] == 0x00 && value.ub[1] == 0x00 &&
-             value.ub[2] == 0x00 && value.ub[3] == 0xff) {
-            *clear_value = GFX11_DCC_CLEAR_0001_UNORM;
-            return true;
-         } else if (value.ub[0] == 0xff && value.ub[1] == 0xff &&
-                    value.ub[2] == 0xff && value.ub[3] == 0x00) {
-            *clear_value = GFX11_DCC_CLEAR_1110_UNORM;
-            return true;
-         }
-      } else if (desc->nr_channels == 4 && desc->channel[0].size == 16) {
-         if (value.us[0] == 0x0000 && value.us[1] == 0x0000 &&
-             value.us[2] == 0x0000 && value.us[3] == 0xffff) {
-            *clear_value = GFX11_DCC_CLEAR_0001_UNORM;
-            return true;
-         } else if (value.us[0] == 0xffff && value.us[1] == 0xffff &&
-                    value.us[2] == 0xffff && value.us[3] == 0x0000) {
-            *clear_value = GFX11_DCC_CLEAR_1110_UNORM;
-            return true;
-         }
+   if (desc->nr_channels == 2 && desc->channel[0].size == 8) {
+      if (value.ub[0] == 0x00 && value.ub[1] == 0xff) {
+         *clear_value = GFX11_DCC_CLEAR_0001_UNORM;
+         return true;
+      } else if (value.ub[0] == 0xff && value.ub[1] == 0x00) {
+         *clear_value = GFX11_DCC_CLEAR_1110_UNORM;
+         return true;
+      }
+   } else if (desc->nr_channels == 4 && desc->channel[0].size == 8) {
+      if (value.ub[0] == 0x00 && value.ub[1] == 0x00 &&
+          value.ub[2] == 0x00 && value.ub[3] == 0xff) {
+         *clear_value = GFX11_DCC_CLEAR_0001_UNORM;
+         return true;
+      } else if (value.ub[0] == 0xff && value.ub[1] == 0xff &&
+                 value.ub[2] == 0xff && value.ub[3] == 0x00) {
+         *clear_value = GFX11_DCC_CLEAR_1110_UNORM;
+         return true;
+      }
+   } else if (desc->nr_channels == 4 && desc->channel[0].size == 16) {
+      if (value.us[0] == 0x0000 && value.us[1] == 0x0000 &&
+          value.us[2] == 0x0000 && value.us[3] == 0xffff) {
+         *clear_value = GFX11_DCC_CLEAR_0001_UNORM;
+         return true;
+      } else if (value.us[0] == 0xffff && value.us[1] == 0xffff &&
+                 value.us[2] == 0xffff && value.us[3] == 0x0000) {
+         *clear_value = GFX11_DCC_CLEAR_1110_UNORM;
+         return true;
       }
    }
 
@@ -1077,22 +1078,22 @@ static void si_fast_clear(struct si_context *sctx, unsigned *buffers,
          }
 
          zstex->need_flush_after_depth_decompression = update_db_depth_clear && sctx->gfx_level == GFX10_3;
+      }
 
-         /* Update DB_DEPTH_CLEAR. */
-         if (update_db_depth_clear &&
-             zstex->depth_clear_value[level] != (float)depth) {
-            zstex->depth_clear_value[level] = depth;
-            sctx->framebuffer.dirty_zsbuf = true;
-            si_mark_atom_dirty(sctx, &sctx->atoms.s.framebuffer);
-         }
+      /* Update DB_DEPTH_CLEAR. */
+      if (update_db_depth_clear &&
+          zstex->depth_clear_value[level] != (float)depth) {
+         zstex->depth_clear_value[level] = depth;
+         sctx->framebuffer.dirty_zsbuf = true;
+         si_mark_atom_dirty(sctx, &sctx->atoms.s.framebuffer);
+      }
 
-         /* Update DB_STENCIL_CLEAR. */
-         if (update_db_stencil_clear &&
-             zstex->stencil_clear_value[level] != stencil) {
-            zstex->stencil_clear_value[level] = stencil;
-            sctx->framebuffer.dirty_zsbuf = true;
-            si_mark_atom_dirty(sctx, &sctx->atoms.s.framebuffer);
-         }
+      /* Update DB_STENCIL_CLEAR. */
+      if (update_db_stencil_clear &&
+          zstex->stencil_clear_value[level] != stencil) {
+         zstex->stencil_clear_value[level] = stencil;
+         sctx->framebuffer.dirty_zsbuf = true;
+         si_mark_atom_dirty(sctx, &sctx->atoms.s.framebuffer);
       }
    }
 

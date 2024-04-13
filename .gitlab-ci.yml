@@ -1,3 +1,16 @@
+workflow:
+  rules:
+    - if: $GITLAB_USER_LOGIN == "marge-bot" && $CI_COMMIT_BRANCH == null
+      variables:
+        MESA_CI_PERFORMANCE_ENABLED: 1
+    - if: $GITLAB_USER_LOGIN == "marge-bot" && $CI_COMMIT_BRANCH
+      variables:
+        LAVA_JOB_PRIORITY: 40
+    - if: $GITLAB_USER_LOGIN != "marge-bot"
+      variables:
+        LAVA_JOB_PRIORITY: 50
+    - when: always
+
 variables:
   FDO_UPSTREAM_REPO: mesa/mesa
   MESA_TEMPLATES_COMMIT: &ci-templates-commit d5aa3941aa03c2f716595116354fb81eb8012acb
@@ -19,7 +32,7 @@ variables:
   # running on a particular CI farm (ie. for outages, etc):
   FD_FARM: "online"
   COLLABORA_FARM: "online"
-  MICROSOFT_FARM: "online"
+  MICROSOFT_FARM: "offline"
   LIMA_FARM: "online"
   IGALIA_FARM: "online"
   ANHOLT_FARM: "online"
@@ -28,10 +41,13 @@ variables:
 
 default:
   before_script:
-    - echo -e "\e[0Ksection_start:$(date +%s):unset_env_vars_section[collapsed=true]\r\e[0KUnsetting vulnerable environment variables"
-    - echo -n "${CI_JOB_JWT}" > "${CI_JOB_JWT_FILE}"
-    - unset CI_JOB_JWT
-    - echo -e "\e[0Ksection_end:$(date +%s):unset_env_vars_section\r\e[0K"
+    - >
+      export SCRIPTS_DIR=$(mktemp -d) &&
+      curl -L -s --retry 4 -f --retry-all-errors --retry-delay 60 -O --output-dir "${SCRIPTS_DIR}" "${CI_PROJECT_URL}/-/raw/${CI_COMMIT_SHA}/.gitlab-ci/setup-test-env.sh" &&
+      chmod +x ${SCRIPTS_DIR}/setup-test-env.sh &&
+      . ${SCRIPTS_DIR}/setup-test-env.sh &&
+      echo -n "${CI_JOB_JWT}" > "${CI_JOB_JWT_FILE}" &&
+      unset CI_JOB_JWT  # Unsetting vulnerable env variables
 
   after_script:
     - >
@@ -41,15 +57,14 @@ default:
       export CI_JOB_JWT="$(<${CI_JOB_JWT_FILE})" &&
       rm "${CI_JOB_JWT_FILE}"
 
-  # Retry build or test jobs up to twice when the gitlab-runner itself fails somehow.
+  # Retry when job fails. Failed jobs can be found in the Mesa CI Daily Reports:
+  # https://gitlab.freedesktop.org/mesa/mesa/-/issues/?sort=created_date&state=opened&label_name%5B%5D=CI%20daily
   retry:
-    max: 2
-    when:
-      - runner_system_failure
+    max: 1
 
 include:
   - project: 'freedesktop/ci-templates'
-    ref: ffe4d1b10aab7534489f0c4bbc4c5899df17d3f2
+    ref: 16bc29078de5e0a067ff84a1a199a3760d3b3811
     file:
       - '/templates/ci-fairy.yml'
   - project: 'freedesktop/ci-templates'
@@ -135,6 +150,10 @@ stages:
   extends:
     - .fdo.ci-fairy
     - .build-rules
+  artifacts:
+    expose_as: 'Documentation preview'
+    paths:
+    - public/
   script:
   - apk --no-cache add graphviz doxygen
   - pip3 install sphinx===5.1.1 breathe===4.34.0 mako===1.2.3 sphinx_rtd_theme===1.0.0
@@ -144,9 +163,6 @@ stages:
 pages:
   extends: .docs-base
   stage: deploy
-  artifacts:
-    paths:
-    - public
   needs: []
   rules:
     - !reference [.no_scheduled_pipelines-rules, rules]
@@ -175,17 +191,13 @@ test-docs-mr:
     - test-docs
   needs:
     - sanity
-  artifacts:
-    expose_as: 'Documentation preview'
-    paths:
-    - public/
   rules:
     - if: *is-pre-merge
       changes: *docs-or-ci
       when: on_success
     # Other cases default to never
 
-lincheck-docs:
+linkcheck-docs:
   extends: .docs-base
   # Cancel job if a newer commit is pushed to the same branch
   interruptible: true
@@ -200,14 +212,12 @@ lincheck-docs:
 # When to automatically run the CI for build jobs
 .build-rules:
   rules:
-    - !reference [.no_scheduled_pipelines-rules, rules]
     # If any files affecting the pipeline are changed, build/test jobs run
     # automatically once all dependency jobs have passed
     - changes: &all_paths
       - VERSION
       - bin/git_sha1_gen.py
       - bin/install_megadrivers.py
-      - bin/meson_get_version.py
       - bin/symbols-check.py
       # GitLab CI
       - .gitlab-ci.yml
@@ -237,7 +247,6 @@ lincheck-docs:
 
 .container-rules:
   rules:
-    - !reference [.no_scheduled_pipelines-rules, rules]
     # Run pipeline by default in the main project if any CI pipeline
     # configuration files were changed, to ensure docker images are up to date
     - if: *is-post-merge
@@ -303,10 +312,14 @@ sanity:
     reports:
       junit: check-*.xml
 
-# Rules for tests that should not block merging, but should be available to
-# optionally run with the "play" button in the UI in pre-merge non-marge
-# pipelines.  This should appear in "extends:" after any includes of
+# Temporary rules for tests that should not block merging, but should be
+# available to optionally run with the "play" button in the UI in pre-merge
+# non-marge pipelines.  This should appear in "extends:" after any includes of
 # test-source-dep.yml rules, so that these rules replace those.
+#
+# If a job is going to be manual for a long period of time, then please use a
+# driver-specific manual rules set from test-source-dep (see
+# freedreno-manual-rules, for example)
 .test-manual-mr:
   rules:
     - !reference [.no_scheduled_pipelines-rules, rules]

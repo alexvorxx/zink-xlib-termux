@@ -152,6 +152,9 @@ static bool do_winsys_init(struct radeon_drm_winsys *ws)
 
    /* Get DRM version. */
    version = drmGetVersion(ws->fd);
+   if (!version)
+      return false;
+
    if (version->version_major != 2 ||
        version->version_minor < 50) {
       fprintf(stderr, "%s: DRM version is %d.%d.%d but this driver is "
@@ -440,9 +443,12 @@ static bool do_winsys_init(struct radeon_drm_winsys *ws)
        * This fails (silently) on non-GCN or older kernels, overwriting the
        * default enabled_rb_mask with the result of the last query.
        */
-      if (ws->gen >= DRV_SI)
-         radeon_get_drm_value(ws->fd, RADEON_INFO_SI_BACKEND_ENABLED_MASK, NULL,
-                              &ws->info.enabled_rb_mask);
+      if (ws->gen >= DRV_SI) {
+         uint32_t mask;
+
+         radeon_get_drm_value(ws->fd, RADEON_INFO_SI_BACKEND_ENABLED_MASK, NULL, &mask);
+         ws->info.enabled_rb_mask = mask;
+      }
 
       ws->info.r600_has_virtual_memory = false;
 
@@ -618,10 +624,7 @@ static void radeon_winsys_destroy(struct radeon_winsys *rws)
    FREE(rws);
 }
 
-static void radeon_query_info(struct radeon_winsys *rws,
-                              struct radeon_info *info,
-                              bool enable_smart_access_memory,
-                              bool disable_smart_access_memory)
+static void radeon_query_info(struct radeon_winsys *rws, struct radeon_info *info)
 {
    *info = ((struct radeon_drm_winsys *)rws)->info;
 }

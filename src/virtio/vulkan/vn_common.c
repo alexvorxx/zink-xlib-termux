@@ -12,11 +12,13 @@
 
 #include <stdarg.h>
 
-#include "util/u_debug.h"
 #include "util/log.h"
 #include "util/os_misc.h"
+#include "util/u_debug.h"
 #include "venus-protocol/vn_protocol_driver_info.h"
 #include "vk_enum_to_str.h"
+
+#include "vn_ring.h"
 
 #define VN_RELAX_MIN_BASE_SLEEP_US (160)
 
@@ -27,6 +29,8 @@ static const struct debug_control vn_debug_options[] = {
    { "vtest", VN_DEBUG_VTEST },
    { "wsi", VN_DEBUG_WSI },
    { "no_abort", VN_DEBUG_NO_ABORT },
+   { "log_ctx_info", VN_DEBUG_LOG_CTX_INFO },
+   { "cache", VN_DEBUG_CACHE },
    { NULL, 0 },
    /* clang-format on */
 };
@@ -40,6 +44,7 @@ static const struct debug_control vn_perf_options[] = {
    { "no_fence_feedback", VN_PERF_NO_FENCE_FEEDBACK },
    { "no_memory_suballoc", VN_PERF_NO_MEMORY_SUBALLOC },
    { "no_cmd_batching", VN_PERF_NO_CMD_BATCHING },
+   { "no_timeline_sem_feedback", VN_PERF_NO_TIMELINE_SEM_FEEDBACK },
    { NULL, 0 },
    /* clang-format on */
 };
@@ -85,6 +90,8 @@ vn_trace_init(void)
 {
 #ifdef ANDROID
    atrace_init();
+#else
+   util_perfetto_init();
 #endif
 }
 
@@ -117,15 +124,15 @@ vn_extension_get_spec_version(const char *name)
 }
 
 void
-vn_relax(uint32_t *iter, const char *reason)
+vn_relax(const struct vn_ring *ring, uint32_t *iter, const char *reason)
 {
    /* Yield for the first 2^busy_wait_order times and then sleep for
     * base_sleep_us microseconds for the same number of times.  After that,
     * keep doubling both sleep length and count.
     */
-   const uint32_t busy_wait_order = 10;
+   const uint32_t busy_wait_order = 8;
    const uint32_t base_sleep_us = vn_env.relax_base_sleep_us;
-   const uint32_t warn_order = 14;
+   const uint32_t warn_order = 12;
    const uint32_t abort_order = 16;
 
    (*iter)++;
@@ -134,11 +141,16 @@ vn_relax(uint32_t *iter, const char *reason)
       return;
    }
 
-   /* warn occasionally if we have slept at least 1.28ms for 8192 times (plus
-    * another 8191 shorter sleeps)
+   /* warn occasionally if we have slept at least 1.28ms for 2048 times (plus
+    * another 2047 shorter sleeps)
     */
    if (unlikely(*iter % (1 << warn_order) == 0)) {
       vn_log(NULL, "stuck in %s wait with iter at %d", reason, *iter);
+
+      if (vn_ring_fatal(ring)) {
+         vn_log(NULL, "aborting on ring fatal error");
+         abort();
+      }
 
       if (*iter >= (1 << abort_order) && !VN_DEBUG(NO_ABORT)) {
          vn_log(NULL, "aborting");

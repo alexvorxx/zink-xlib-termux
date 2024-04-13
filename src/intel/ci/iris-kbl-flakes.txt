@@ -3,9 +3,6 @@ spec@amd_performance_monitor@measure
 spec@amd_performance_monitor@measure@change counters while active
 spec@amd_performance_monitor@measure@counters in range
 
-glx@glx-copy-sub-buffer samples=2
-glx@glx-copy-sub-buffer samples=16
-
 #X Error of failed request:  BadValue (integer parameter out of range for operation)
 #  Major opcode of failed request:  148 ()
 #  Minor opcode of failed request:  4
@@ -18,3 +15,6 @@ glx@glx-multi-context-ib-1
 spec@egl_chromium_sync_control@conformance
 # piglit: error: SBC did not change after second SwapBuffers: 0
 spec@egl_chromium_sync_control@conformance@eglGetSyncValuesCHROMIUM_msc_and_sbc_test
+
+# See the https://gitlab.freedesktop.org/mesa/mesa/-/issues/7547
+spec@egl 1.4@largest possible eglcreatepbuffersurface and then glclear

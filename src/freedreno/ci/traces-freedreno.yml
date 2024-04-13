@@ -29,7 +29,7 @@ traces:
     freedreno-a630:
       checksum: 6aef509acd1257cc56612141e24dc11c
     zink-a630:
-      checksum: 45bdbb33bf87ed114bd548248be13408
+      checksum: f5c2e5bef8136c383ae1ac363626eb24
 
   valve/portal-2-v2.trace:
     freedreno-a306:
@@ -52,7 +52,7 @@ traces:
     freedreno-a630:
       checksum: 339dce29ae08569652438116829510c7
     zink-a630:
-      checksum: 2eb996b7d308087c73c57872231f7baa
+      checksum: ade41e6fe932552914c678155149babb
 
   xonotic/xonotic-keybench-high-v2.trace:
     freedreno-a306:
@@ -74,7 +74,7 @@ traces:
     freedreno-a630:
       checksum: 50d4bd01756ffe70aee5f8401f7a6ce4
     zink-a630:
-      checksum: 59e37d2dca80caedd9494114d64c676c
+      checksum: be297e672aaaf2351de71686d47f59eb
 
   godot/godot-thrive.trace:
     freedreno-a306:
@@ -100,7 +100,7 @@ traces:
     freedreno-a630:
       checksum: 47016a34553e5a28e2e1e0b92d11c92f
     zink-a630:
-      checksum: 7ad069adec81baa8f249c45c0f4eec7a
+      checksum: 5cd30bb46cbabc0d77cc4aacbcd7c0c2
 
   0ad/0ad-v2.trace:
     freedreno-a306:
@@ -161,6 +161,7 @@ traces:
     freedreno-a630:
       checksum: 2aebe86d6c0488b953bfaacd8000c01a
     zink-a630:
+      label: [skip, flakes]
       checksum: c167b29121b4bbba7675070b2ab1f51a
 
   minetest/minetest-v2.trace:
@@ -171,7 +172,7 @@ traces:
     freedreno-a630:
       checksum: 5c0c5da476775dfac94b79e7edb556ce
     zink-a630:
-      checksum: e9c21d9a253cbae19f09ddfa01d9622a
+      checksum: a8dea3dcb341c0f6c786a264dee51766
 
   filament/filament-default.trace:
     freedreno-a306:
@@ -253,14 +254,14 @@ traces:
       text: missing 3/4 of rendered image
       checksum: e7f01e62180b60aef8c67fc4977c90d1
     freedreno-a530:
-      checksum: 70c57b3aea1f18baacb234ecc35bf425
+      checksum: 71f46ff29ab058f89c745ddede5cc907
     freedreno-a630:
       label: [skip]
       text: |-
         One of the material textures appears brighter on freedreno than
         i965 in a way that is probably wrong.
     zink-a630:
-      checksum: 474fe595707f0e4f3e3474a5a6300ca9
+      checksum: 227516d3818969c68a1864aa942119c2
 
   gputest/pixmark-volplosion-v2.trace:
     freedreno-a306:
@@ -387,18 +388,6 @@ traces:
     zink-a630:
       checksum: e5d2b54f49ba1c24279d5ff84e0f002b
 
-  itoral-gl-terrain-demo/demo-v2.trace:
-    freedreno-a306:
-      label: [unsupported]
-    freedreno-a530:
-      label: [unsupported]
-    freedreno-a630:
-      checksum: 9571117bf4eab6fe29b12f6c3d42d865
-      label: [skip, flakes]
-      text: unstable results
-    zink-a630:
-      checksum: ef3c16d0f962ccfd55ad27899c4d602b
-
   paraview/pv-manyspheres-v2.trace:
     freedreno-a306:
       label: [skip]
@@ -524,7 +513,7 @@ traces:
       label: [unsupported]
       text: needs GL 4.6
     freedreno-a630:
-      checksum: 2b96947d3eb3f623c4a387b2b7f80300
+      checksum: a2dbcd27c404a1bb0f7d60476d93d22c
     zink-a630:
       label: [crash]
       text: |-

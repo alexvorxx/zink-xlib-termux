@@ -41,6 +41,7 @@
 #include "util/disk_cache.h"
 #include "util/os_misc.h"
 #include "util/os_time.h"
+#include "util/u_helpers.h"
 #include "lp_texture.h"
 #include "lp_fence.h"
 #include "lp_jit.h"
@@ -58,7 +59,6 @@
 #include "nir.h"
 
 
-#ifdef DEBUG
 int LP_DEBUG = 0;
 
 static const struct debug_named_value lp_debug_flags[] = {
@@ -82,7 +82,6 @@ static const struct debug_named_value lp_debug_flags[] = {
    { "accurate_a0", DEBUG_ACCURATE_A0 },
    DEBUG_NAMED_VALUE_END
 };
-#endif
 
 int LP_PERF = 0;
 static const struct debug_named_value lp_perf_flags[] = {
@@ -103,7 +102,7 @@ static const struct debug_named_value lp_perf_flags[] = {
 static const char *
 llvmpipe_get_vendor(struct pipe_screen *screen)
 {
-   return "Mesa/X.org";
+   return "Mesa";
 }
 
 
@@ -227,6 +226,10 @@ llvmpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
       return 64;
    case PIPE_CAP_TEXTURE_BUFFER_OBJECTS:
       return 1;
+   case PIPE_CAP_LINEAR_IMAGE_PITCH_ALIGNMENT:
+      return 1;
+   case PIPE_CAP_LINEAR_IMAGE_BASE_ADDRESS_ALIGNMENT:
+      return 1;
    /* Adressing that many 64bpp texels fits in an i32 so this is a reasonable value */
    case PIPE_CAP_MAX_TEXEL_BUFFER_ELEMENTS_UINT:
       return 134217728;
@@ -285,6 +288,8 @@ llvmpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
       return (int)(system_memory >> 20);
    }
    case PIPE_CAP_UMA:
+      return 1;
+   case PIPE_CAP_QUERY_MEMORY_INFO:
       return 1;
    case PIPE_CAP_CLIP_HALFZ:
       return 1;
@@ -564,7 +569,7 @@ llvmpipe_get_compute_param(struct pipe_screen *_screen,
    case PIPE_COMPUTE_CAP_ADDRESS_BITS:
       if (ret) {
          uint32_t *address_bits = ret;
-         *address_bits = 64;
+         *address_bits = sizeof(void*) * 8;
       }
       return sizeof(uint32_t);
    }
@@ -1041,9 +1046,7 @@ llvmpipe_create_screen(struct sw_winsys *winsys)
 
    glsl_type_singleton_init_or_ref();
 
-#ifdef DEBUG
    LP_DEBUG = debug_get_flags_option("LP_DEBUG", lp_debug_flags, 0 );
-#endif
 
    LP_PERF = debug_get_flags_option("LP_PERF", lp_perf_flags, 0 );
 
@@ -1076,6 +1079,8 @@ llvmpipe_create_screen(struct sw_winsys *winsys)
    screen->base.fence_finish = llvmpipe_fence_finish;
 
    screen->base.get_timestamp = u_default_get_timestamp;
+
+   screen->base.query_memory_info = util_sw_query_memory_info;
 
    screen->base.get_driver_uuid = llvmpipe_get_driver_uuid;
    screen->base.get_device_uuid = llvmpipe_get_device_uuid;

@@ -537,10 +537,19 @@ tu_render_pass_cond_config(struct tu_render_pass *pass)
    for (uint32_t i = 0; i < pass->attachment_count; i++) {
       struct tu_render_pass_attachment *att = &pass->attachments[i];
 
+      /* When there is no geometry in a tile, and there is no other operations to
+       * read/write the tile, we can skip load/store.
+       *
+       * The only other operations are clear and resolve, which disable
+       * conditional load/store.
+       */
       att->cond_load_allowed =
          (att->load || att->load_stencil) && !att->clear_mask && !att->will_be_resolved;
       att->cond_store_allowed =
          (att->store || att->store_stencil) && !att->clear_mask;
+
+      pass->has_cond_load_store |=
+         att->cond_load_allowed | att->cond_store_allowed;
    }
 }
 
@@ -684,7 +693,7 @@ attachment_set_ops(struct tu_device *device,
                    VkAttachmentStoreOp store_op,
                    VkAttachmentStoreOp stencil_store_op)
 {
-   if (device->instance->debug_flags & TU_DEBUG_DONT_CARE_AS_LOAD) {
+   if (unlikely(device->instance->dont_care_as_load)) {
       if (load_op == VK_ATTACHMENT_LOAD_OP_DONT_CARE)
          load_op = VK_ATTACHMENT_LOAD_OP_LOAD;
       if (stencil_load_op == VK_ATTACHMENT_LOAD_OP_DONT_CARE)
@@ -761,7 +770,7 @@ tu_CreateRenderPass2(VkDevice _device,
 {
    TU_FROM_HANDLE(tu_device, device, _device);
 
-   if (unlikely(device->instance->debug_flags & TU_DEBUG_DYNAMIC))
+   if (TU_DEBUG(DYNAMIC))
       return vk_common_CreateRenderPass2(_device, pCreateInfo, pAllocator,
                                          pRenderPass);
 
@@ -957,7 +966,7 @@ tu_DestroyRenderPass(VkDevice _device,
 {
    TU_FROM_HANDLE(tu_device, device, _device);
 
-   if (unlikely(device->instance->debug_flags & TU_DEBUG_DYNAMIC)) {
+   if (TU_DEBUG(DYNAMIC)) {
       vk_common_DestroyRenderPass(_device, _pass, pAllocator);
       return;
    }

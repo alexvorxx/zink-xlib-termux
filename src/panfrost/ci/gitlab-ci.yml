@@ -45,10 +45,9 @@ panfrost-t720-gles2:arm64:
 panfrost-t760-gles2:armhf:
   extends:
     - .lava-test:armhf
-    - .panfrost-midgard-rules
+    - .panfrost-midgard-manual-rules
     - .panfrost-test
     - .lava-rk3288-veyron-jaq
-    - .test-manual-mr
 
 .panfrost-t760-traces:armhf:
   extends:
@@ -79,6 +78,14 @@ panfrost-t860-gl:arm64:
   variables:
     FDO_CI_CONCURRENT: 6
     DEQP_SUITE: panfrost-t860
+
+panfrost-t860-egl:arm64:
+  extends:
+    - .lava-test:arm64
+    - .lava-rk3399-gru-kevin
+  variables:
+    HWCI_START_WESTON: 1
+    DEQP_SUITE: panfrost-t860-egl
 
 .panfrost-t860-traces:arm64:
   extends:
@@ -116,13 +123,14 @@ panfrost-g52-gl:arm64:
     PAN_I_WANT_A_BROKEN_VULKAN_DRIVER: 1
     DEQP_SUITE: panfrost-g52-vk
 
-panfrost-g52-piglit-gl:arm64:
+panfrost-g52-piglit-gles2:arm64:
   extends:
     - .piglit-test
-    - .lava-test:arm64
+    - .lava-piglit:arm64
     - .lava-meson-g12b-a311d-khadas-vim3
   variables:
     HWCI_START_XORG: 1
+    DEQP_VER: gles2
     PIGLIT_PROFILES: quick_gl
 
 .lava-mt8183-kukui-jacuzzi-juniper-sku16:

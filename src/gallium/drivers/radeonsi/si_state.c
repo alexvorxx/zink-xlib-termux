@@ -2515,14 +2515,14 @@ static bool si_is_format_supported(struct pipe_screen *screen, enum pipe_format 
 
       /* Chips with 1 RB don't increment occlusion queries at 16x MSAA sample rate,
        * so don't expose 16 samples there.
+       *
+       * EQAA also uses max 8 samples because our FMASK fetches only load 32 bits and
+       * would need to be changed to 64 bits for 16 samples.
        */
-      const unsigned max_eqaa_samples =
-         (sscreen->info.gfx_level >= GFX11 ||
-          util_bitcount64(sscreen->info.enabled_rb_mask) <= 1) ? 8 : 16;
       const unsigned max_samples = 8;
 
       /* MSAA support without framebuffer attachments. */
-      if (format == PIPE_FORMAT_NONE && sample_count <= max_eqaa_samples)
+      if (format == PIPE_FORMAT_NONE && sample_count <= max_samples)
          return true;
 
       if (!sscreen->info.has_eqaa_surface_allocator || util_format_is_depth_or_stencil(format)) {
@@ -2531,7 +2531,7 @@ static bool si_is_format_supported(struct pipe_screen *screen, enum pipe_format 
             return false;
       } else {
          /* Color with EQAA. */
-         if (sample_count > max_eqaa_samples || storage_sample_count > max_samples)
+         if (sample_count > max_samples || storage_sample_count > max_samples)
             return false;
       }
    }

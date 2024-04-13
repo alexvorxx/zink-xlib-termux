@@ -324,6 +324,37 @@ static void optimization_barrier_vgpr_array(struct si_context *sctx, nir_builder
  */
 void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_shader_key *options)
 {
+   if (si_can_dump_shader(sctx->screen, MESA_SHADER_COMPUTE, SI_DUMP_SHADER_KEY)) {
+      fprintf(stderr, "Internal shader: compute_blit\n");
+      fprintf(stderr, "   options.wg_dim = %u\n", options->wg_dim);
+      fprintf(stderr, "   options.has_start_xyz = %u\n", options->has_start_xyz);
+      fprintf(stderr, "   options.log_lane_width = %u\n", options->log_lane_width);
+      fprintf(stderr, "   options.log_lane_height = %u\n", options->log_lane_height);
+      fprintf(stderr, "   options.log_lane_depth = %u\n", options->log_lane_depth);
+      fprintf(stderr, "   options.is_clear = %u\n", options->is_clear);
+      fprintf(stderr, "   options.src_is_1d = %u\n", options->src_is_1d);
+      fprintf(stderr, "   options.dst_is_1d = %u\n", options->dst_is_1d);
+      fprintf(stderr, "   options.src_is_msaa = %u\n", options->src_is_msaa);
+      fprintf(stderr, "   options.dst_is_msaa = %u\n", options->dst_is_msaa);
+      fprintf(stderr, "   options.src_has_z = %u\n", options->src_has_z);
+      fprintf(stderr, "   options.dst_has_z = %u\n", options->dst_has_z);
+      fprintf(stderr, "   options.a16 = %u\n", options->a16);
+      fprintf(stderr, "   options.d16 = %u\n", options->d16);
+      fprintf(stderr, "   options.log_samples = %u\n", options->log_samples);
+      fprintf(stderr, "   options.sample0_only = %u\n", options->sample0_only);
+      fprintf(stderr, "   options.x_clamp_to_edge = %u\n", options->x_clamp_to_edge);
+      fprintf(stderr, "   options.y_clamp_to_edge = %u\n", options->y_clamp_to_edge);
+      fprintf(stderr, "   options.flip_x = %u\n", options->flip_x);
+      fprintf(stderr, "   options.flip_y = %u\n", options->flip_y);
+      fprintf(stderr, "   options.sint_to_uint = %u\n", options->sint_to_uint);
+      fprintf(stderr, "   options.uint_to_sint = %u\n", options->uint_to_sint);
+      fprintf(stderr, "   options.dst_is_srgb = %u\n", options->dst_is_srgb);
+      fprintf(stderr, "   options.use_integer_one = %u\n", options->use_integer_one);
+      fprintf(stderr, "   options.last_src_channel = %u\n", options->last_src_channel);
+      fprintf(stderr, "   options.last_dst_channel = %u\n", options->last_dst_channel);
+      fprintf(stderr, "\n");
+   }
+
    const nir_shader_compiler_options *nir_options =
       sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_COMPUTE);
 

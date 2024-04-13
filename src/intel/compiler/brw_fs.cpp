@@ -218,8 +218,7 @@ fs_visitor::VARYING_PULL_CONSTANT_LOAD(const fs_builder &bld,
     * be any component of a vector, and then we load 4 contiguous
     * components starting from that.  TODO: Support loading fewer than 4.
     */
-   fs_reg total_offset = bld.vgrf(BRW_TYPE_UD);
-   bld.ADD(total_offset, varying_offset, brw_imm_ud(const_offset));
+   fs_reg total_offset = bld.ADD(varying_offset, brw_imm_ud(const_offset));
 
    /* The pull load message will load a vec4 (16 bytes). If we are loading
     * a double this means we are only loading 2 elements worth of data.
@@ -1250,10 +1249,9 @@ fs_visitor::assign_curb_setup()
       /* The base offset for our push data is passed in as R0.0[31:6]. We have
        * to mask off the bottom 6 bits.
        */
-      fs_reg base_addr = ubld.vgrf(BRW_TYPE_UD);
-      ubld.AND(base_addr,
-               retype(brw_vec1_grf(0, 0), BRW_TYPE_UD),
-               brw_imm_ud(INTEL_MASK(31, 6)));
+      fs_reg base_addr =
+         ubld.AND(retype(brw_vec1_grf(0, 0), BRW_TYPE_UD),
+                  brw_imm_ud(INTEL_MASK(31, 6)));
 
       /* On Gfx12-HP we load constants at the start of the program using A32
        * stateless messages.
@@ -1264,17 +1262,11 @@ fs_visitor::assign_curb_setup()
          assert(num_regs > 0);
          num_regs = 1 << util_logbase2(num_regs);
 
-         fs_reg addr;
-
          /* This pass occurs after all of the optimization passes, so don't
           * emit an 'ADD addr, base_addr, 0' instruction.
           */
-         if (i != 0) {
-            addr = ubld.vgrf(BRW_TYPE_UD);
-            ubld.ADD(addr, base_addr, brw_imm_ud(i * REG_SIZE));
-         } else {
-            addr = base_addr;
-         }
+         fs_reg addr = i == 0 ? base_addr :
+            ubld.ADD(base_addr, brw_imm_ud(i * REG_SIZE));
 
          fs_reg srcs[4] = {
             brw_imm_ud(0), /* desc */
@@ -3033,15 +3025,13 @@ fs_visitor::set_tcs_invocation_id()
     *  * 22:16 on gfx11+
     *  * 23:17 otherwise
     */
-   fs_reg t = bld.vgrf(BRW_TYPE_UD);
-   bld.AND(t, fs_reg(retype(brw_vec1_grf(0, 2), BRW_TYPE_UD)),
-           brw_imm_ud(instance_id_mask));
-
-   invocation_id = bld.vgrf(BRW_TYPE_UD);
+   fs_reg t =
+      bld.AND(fs_reg(retype(brw_vec1_grf(0, 2), BRW_TYPE_UD)),
+              brw_imm_ud(instance_id_mask));
 
    if (vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_MULTI_PATCH) {
       /* gl_InvocationID is just the thread number */
-      bld.SHR(invocation_id, t, brw_imm_ud(instance_id_shift));
+      invocation_id = bld.SHR(t, brw_imm_ud(instance_id_shift));
       return;
    }
 
@@ -3055,9 +3045,9 @@ fs_visitor::set_tcs_invocation_id()
    if (tcs_prog_data->instances == 1) {
       invocation_id = channels_ud;
    } else {
-      fs_reg instance_times_8 = bld.vgrf(BRW_TYPE_UD);
-      bld.SHR(instance_times_8, t, brw_imm_ud(instance_id_shift - 3));
-      bld.ADD(invocation_id, instance_times_8, channels_ud);
+      /* instance_id = 8 * t + <76543210> */
+      invocation_id =
+         bld.ADD(bld.SHR(t, brw_imm_ud(instance_id_shift - 3)), channels_ud);
    }
 }
 

@@ -180,22 +180,16 @@ brw_fs_lower_sub_sat(fs_visitor &s)
             /* tmp = src1 >> 1;
              * dst = add.sat(add.sat(src0, -tmp), -(src1 - tmp));
              */
-            fs_reg tmp1 = ibld.vgrf(inst->src[0].type);
-            fs_reg tmp2 = ibld.vgrf(inst->src[0].type);
-            fs_reg tmp3 = ibld.vgrf(inst->src[0].type);
             fs_inst *add;
 
-            ibld.SHR(tmp1, inst->src[1], brw_imm_d(1));
+            fs_reg tmp = ibld.vgrf(inst->src[0].type);
+            ibld.SHR(tmp, inst->src[1], brw_imm_d(1));
 
-            add = ibld.ADD(tmp2, inst->src[1], tmp1);
-            add->src[1].negate = true;
-
-            add = ibld.ADD(tmp3, inst->src[0], tmp1);
-            add->src[1].negate = true;
+            fs_reg s1_sub_t = ibld.ADD(inst->src[1], negate(tmp));
+            fs_reg sat_s0_sub_t = ibld.ADD(inst->src[0], negate(tmp), &add);
             add->saturate = true;
 
-            add = ibld.ADD(inst->dst, tmp3, tmp2);
-            add->src[1].negate = true;
+            add = ibld.ADD(inst->dst, sat_s0_sub_t, negate(s1_sub_t));
             add->saturate = true;
          } else {
             /* a > b ? a - b : 0 */

@@ -573,8 +573,9 @@ namespace brw {
       fs_reg                                                                 \
       op(const fs_reg &src0, const fs_reg &src1, fs_inst **out = NULL) const \
       {                                                                      \
-         assert(src0.type == src1.type);                                     \
-         fs_inst *inst = op(vgrf(src0.type), src0, src1);                    \
+         enum brw_reg_type inferred_dst_type =                               \
+            brw_type_larger_of(src0.type, src1.type);                        \
+         fs_inst *inst = op(vgrf(inferred_dst_type), src0, src1);            \
          if (out) *out = inst;                                               \
          return inst->dst;                                                   \
       }

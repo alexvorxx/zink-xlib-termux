@@ -345,9 +345,7 @@ emit_system_values_block(nir_to_brw_state &ntb, nir_block *block)
             fs_reg anded = abld.vgrf(BRW_TYPE_UD);
             abld.AND(anded, inverted, brw_imm_uw(1));
 
-            fs_reg dst = abld.vgrf(BRW_TYPE_D);
-            abld.MOV(dst, negate(retype(anded, BRW_TYPE_D)));
-            *reg = dst;
+            *reg = abld.MOV(negate(retype(anded, BRW_TYPE_D)));
          }
          break;
 
@@ -740,13 +738,7 @@ prepare_alu_destination_and_sources(nir_to_brw_state &ntb,
 static fs_reg
 resolve_source_modifiers(const fs_builder &bld, const fs_reg &src)
 {
-   if (!src.abs && !src.negate)
-      return src;
-
-   fs_reg temp = bld.vgrf(src.type);
-   bld.MOV(temp, src);
-
-   return temp;
+   return (src.abs || src.negate) ? bld.MOV(src) : src;
 }
 
 static void
@@ -906,8 +898,7 @@ emit_fsign(nir_to_brw_state &ntb, const fs_builder &bld, const nir_alu_instr *in
        * - We need to produce a DF result.
        */
 
-      fs_reg zero = bld.vgrf(BRW_TYPE_DF);
-      bld.MOV(zero, brw_imm_df(0.0));
+      fs_reg zero = bld.MOV(brw_imm_df(0.0));
       bld.CMP(bld.null_reg_df(), op[0], zero, BRW_CONDITIONAL_NZ);
 
       bld.MOV(result, zero);
@@ -1303,17 +1294,14 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
    case nir_op_ihadd:
    case nir_op_uhadd: {
       assert(instr->def.bit_size < 64);
-      fs_reg tmp = bld.vgrf(result.type);
 
       op[0] = resolve_source_modifiers(bld, op[0]);
       op[1] = resolve_source_modifiers(bld, op[1]);
 
       /* AVG(x, y) - ((x ^ y) & 1) */
-      bld.XOR(tmp, op[0], op[1]);
-      bld.AND(tmp, tmp, retype(brw_imm_ud(1), result.type));
-      bld.AVG(result, op[0], op[1]);
-      inst = bld.ADD(result, result, tmp);
-      inst->src[1].negate = true;
+      fs_reg one = retype(brw_imm_ud(1), result.type);
+      bld.ADD(result, bld.AVG(op[0], op[1]),
+              negate(bld.AND(bld.XOR(op[0], op[1]), one)));
       break;
    }
 
@@ -1418,8 +1406,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
        * XOR instruction.  However, empirical experiments and Curro's reading
        * of the simulator source both indicate that it's safe.
        */
-      fs_reg tmp = bld.vgrf(BRW_TYPE_D);
-      inst = bld.XOR(tmp, op[0], op[1]);
+      bld.XOR(op[0], op[1], &inst);
       inst->predicate = BRW_PREDICATE_NORMAL;
       inst->conditional_mod = BRW_CONDITIONAL_L;
 
@@ -1596,14 +1583,9 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       bld.RNDZ(result, op[0]);
       break;
 
-   case nir_op_fceil: {
-      op[0].negate = !op[0].negate;
-      fs_reg temp = bld.vgrf(BRW_TYPE_F);
-      bld.RNDD(temp, op[0]);
-      temp.negate = true;
-      bld.MOV(result, temp);
+   case nir_op_fceil:
+      bld.MOV(result, negate(bld.RNDD(negate(op[0]))));
       break;
-   }
    case nir_op_ffloor:
       bld.RNDD(result, op[0]);
       break;
@@ -1617,7 +1599,6 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
    case nir_op_fquantize2f16: {
       fs_reg tmp16 = bld.vgrf(BRW_TYPE_D);
       fs_reg tmp32 = bld.vgrf(BRW_TYPE_F);
-      fs_reg zero = bld.vgrf(BRW_TYPE_F);
 
       /* The destination stride must be at least as big as the source stride. */
       tmp16 = subscript(tmp16, BRW_TYPE_HF, 0);
@@ -1628,9 +1609,8 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       bld.CMP(bld.null_reg_f(), abs_src0, brw_imm_f(ldexpf(1.0, -14)),
               BRW_CONDITIONAL_L);
       /* Get the appropriately signed zero */
-      bld.AND(retype(zero, BRW_TYPE_UD),
-              retype(op[0], BRW_TYPE_UD),
-              brw_imm_ud(0x80000000));
+      fs_reg zero = retype(bld.AND(retype(op[0], BRW_TYPE_UD),
+                                   brw_imm_ud(0x80000000)), BRW_TYPE_F);
       /* Do the actual F32 -> F16 -> F32 conversion */
       bld.MOV(tmp16, op[0]);
       bld.MOV(tmp32, tmp16);
@@ -2138,12 +2118,7 @@ intexp2(const fs_builder &bld, const fs_reg &x)
 {
    assert(x.type == BRW_TYPE_UD || x.type == BRW_TYPE_D);
 
-   fs_reg result = bld.vgrf(x.type);
-   fs_reg one = bld.vgrf(x.type);
-
-   bld.MOV(one, retype(brw_imm_d(1), one.type));
-   bld.SHL(result, one, x);
-   return result;
+   return bld.SHL(bld.MOV(retype(brw_imm_d(1), x.type)), x);
 }
 
 static void
@@ -2196,8 +2171,7 @@ emit_gs_end_primitive(nir_to_brw_state &ntb, const nir_src &vertex_count_nir_src
    const fs_builder abld = ntb.bld.annotate("end primitive");
 
    /* control_data_bits |= 1 << ((vertex_count - 1) % 32) */
-   fs_reg prev_count = ntb.bld.vgrf(BRW_TYPE_UD);
-   abld.ADD(prev_count, vertex_count, brw_imm_ud(0xffffffffu));
+   fs_reg prev_count = abld.ADD(vertex_count, brw_imm_ud(0xffffffffu));
    fs_reg mask = intexp2(abld, prev_count);
    /* Note: we're relying on the fact that the GEN SHL instruction only pays
     * attention to the lower 5 bits of its second source argument, so on this
@@ -2248,14 +2222,10 @@ fs_visitor::gs_urb_per_slot_dword_index(const fs_reg &vertex_count)
     *
     *    dword_index = (vertex_count - 1) >> (6 - log2(bits_per_vertex))
     */
-   fs_reg dword_index = bld.vgrf(BRW_TYPE_UD);
-   fs_reg prev_count = bld.vgrf(BRW_TYPE_UD);
-   abld.ADD(prev_count, vertex_count, brw_imm_ud(0xffffffffu));
+   fs_reg prev_count = abld.ADD(vertex_count, brw_imm_ud(0xffffffffu));
    unsigned log2_bits_per_vertex =
       util_last_bit(gs_compile->control_data_bits_per_vertex);
-   abld.SHR(dword_index, prev_count, brw_imm_ud(6u - log2_bits_per_vertex));
-
-   return dword_index;
+   return abld.SHR(prev_count, brw_imm_ud(6u - log2_bits_per_vertex));
 }
 
 fs_reg
@@ -2286,19 +2256,14 @@ fs_visitor::gs_urb_channel_mask(const fs_reg &dword_index)
       return channel_mask;
 
    const fs_builder bld = fs_builder(this).at_end();
-   const fs_builder fwa_bld = bld.exec_all();
+   const fs_builder ubld = bld.exec_all();
 
-   channel_mask = bld.vgrf(BRW_TYPE_UD);
    /* Set the channel masks to 1 << (dword_index % 4), so that we'll
     * write to the appropriate DWORD within the OWORD.
     */
-   fs_reg channel = bld.vgrf(BRW_TYPE_UD);
-   fwa_bld.AND(channel, dword_index, brw_imm_ud(3u));
-   channel_mask = intexp2(fwa_bld, channel);
+   fs_reg channel = ubld.AND(dword_index, brw_imm_ud(3u));
    /* Then the channel masks need to be in bits 23:16. */
-   fwa_bld.SHL(channel_mask, channel_mask, brw_imm_ud(16u));
-
-   return channel_mask;
+   return ubld.SHL(intexp2(ubld, channel), brw_imm_ud(16u));
 }
 
 void
@@ -2320,18 +2285,16 @@ fs_visitor::emit_gs_control_data_bits(const fs_reg &vertex_count)
       devinfo->ver >= 20 ? 32 : 128;
 
    if (gs_compile->control_data_header_size_bits > max_control_data_header_size_bits) {
-      per_slot_offset = bld.vgrf(BRW_TYPE_UD);
-
       /* Convert dword_index to bytes on Xe2+ since LSC can do operate on byte
        * offset granularity.
        */
       if (devinfo->ver >= 20) {
-         abld.SHL(per_slot_offset, dword_index, brw_imm_ud(2u));
+         per_slot_offset = abld.SHL(dword_index, brw_imm_ud(2u));
       } else {
          /* Set the per-slot offset to dword_index / 4, so that we'll write to
           * the appropriate OWord within the control data header.
           */
-         abld.SHR(per_slot_offset, dword_index, brw_imm_ud(2u));
+         per_slot_offset = abld.SHR(dword_index, brw_imm_ud(2u));
       }
    }
 
@@ -2389,20 +2352,17 @@ set_gs_stream_control_data_bits(nir_to_brw_state &ntb, const fs_reg &vertex_coun
    const fs_builder abld = ntb.bld.annotate("set stream control data bits", NULL);
 
    /* reg::sid = stream_id */
-   fs_reg sid = ntb.bld.vgrf(BRW_TYPE_UD);
-   abld.MOV(sid, brw_imm_ud(stream_id));
+   fs_reg sid = abld.MOV(brw_imm_ud(stream_id));
 
    /* reg:shift_count = 2 * (vertex_count - 1) */
-   fs_reg shift_count = ntb.bld.vgrf(BRW_TYPE_UD);
-   abld.SHL(shift_count, vertex_count, brw_imm_ud(1u));
+   fs_reg shift_count = abld.SHL(vertex_count, brw_imm_ud(1u));
 
    /* Note: we're relying on the fact that the GEN SHL instruction only pays
     * attention to the lower 5 bits of its second source argument, so on this
     * architecture, stream_id << 2 * (vertex_count - 1) is equivalent to
     * stream_id << ((2 * (vertex_count - 1)) % 32).
     */
-   fs_reg mask = ntb.bld.vgrf(BRW_TYPE_UD);
-   abld.SHL(mask, sid, shift_count);
+   fs_reg mask = abld.SHL(sid, shift_count);
    abld.OR(s.control_data_bits, s.control_data_bits, mask);
 }
 
@@ -2486,8 +2446,7 @@ emit_gs_vertex(nir_to_brw_state &ntb, const nir_src &vertex_count_nir_src,
        * effect of any call to EndPrimitive() that the shader may have
        * made before outputting its first vertex.
        */
-      inst = abld.MOV(s.control_data_bits, brw_imm_ud(0u));
-      inst->force_writemask_all = true;
+      abld.exec_all().MOV(s.control_data_bits, brw_imm_ud(0u));
       abld.emit(BRW_OPCODE_ENDIF);
    }
 
@@ -2559,17 +2518,15 @@ emit_gs_input_load(nir_to_brw_state &ntb, const fs_reg &dst,
           */
          fs_reg sequence =
             ntb.system_values[SYSTEM_VALUE_SUBGROUP_INVOCATION];
-         fs_reg channel_offsets = bld.vgrf(BRW_TYPE_UD);
-         fs_reg vertex_offset_bytes = bld.vgrf(BRW_TYPE_UD);
-         fs_reg icp_offset_bytes = bld.vgrf(BRW_TYPE_UD);
 
          /* channel_offsets = 4 * sequence = <28, 24, 20, 16, 12, 8, 4, 0> */
-         bld.SHL(channel_offsets, sequence, brw_imm_ud(2u));
+         fs_reg channel_offsets = bld.SHL(sequence, brw_imm_ud(2u));
          /* Convert vertex_index to bytes (multiply by 32) */
-         bld.SHL(vertex_offset_bytes,
-                 retype(get_nir_src(ntb, vertex_src), BRW_TYPE_UD),
-                 brw_imm_ud(5u));
-         bld.ADD(icp_offset_bytes, vertex_offset_bytes, channel_offsets);
+         fs_reg vertex_offset_bytes =
+            bld.SHL(retype(get_nir_src(ntb, vertex_src), BRW_TYPE_UD),
+                    brw_imm_ud(5u));
+         fs_reg icp_offset_bytes =
+            bld.ADD(vertex_offset_bytes, channel_offsets);
 
          /* Use first_icp_handle as the base offset.  There is one register
           * of URB handles per vertex, so inform the register allocator that
@@ -2589,13 +2546,11 @@ emit_gs_input_load(nir_to_brw_state &ntb, const fs_reg &dst,
          /* The vertex index is non-constant.  We need to use indirect
           * addressing to fetch the proper URB handle.
           *
+          * Convert vertex_index to bytes (multiply by 4)
           */
-         fs_reg icp_offset_bytes = bld.vgrf(BRW_TYPE_UD);
-
-         /* Convert vertex_index to bytes (multiply by 4) */
-         bld.SHL(icp_offset_bytes,
-                 retype(get_nir_src(ntb, vertex_src), BRW_TYPE_UD),
-                 brw_imm_ud(2u));
+         fs_reg icp_offset_bytes =
+            bld.SHL(retype(get_nir_src(ntb, vertex_src), BRW_TYPE_UD),
+                    brw_imm_ud(2u));
 
          /* Use first_icp_handle as the base offset.  There is one DWord
           * of URB handles per vertex, so inform the register allocator that
@@ -2610,10 +2565,6 @@ emit_gs_input_load(nir_to_brw_state &ntb, const fs_reg &dst,
 
    fs_inst *inst;
    fs_reg indirect_offset = get_nir_src(ntb, offset_src);
-
-   /* Convert oword offset to bytes on Xe2+ */
-   if (devinfo->ver >= 20)
-      bld.SHL(indirect_offset, indirect_offset, brw_imm_ud(4u));
 
    if (nir_src_is_const(offset_src)) {
       fs_reg srcs[URB_LOGICAL_NUM_SRCS];
@@ -2642,6 +2593,10 @@ emit_gs_input_load(nir_to_brw_state &ntb, const fs_reg &dst,
       /* Indirect indexing - use per-slot offsets as well. */
       unsigned read_components = num_components + first_component;
       fs_reg tmp = bld.vgrf(dst.type, read_components);
+
+      /* Convert oword offset to bytes on Xe2+ */
+      if (devinfo->ver >= 20)
+         indirect_offset = bld.SHL(indirect_offset, brw_imm_ud(4u));
 
       fs_reg srcs[URB_LOGICAL_NUM_SRCS];
       srcs[URB_LOGICAL_SRC_HANDLE] = icp_handle;
@@ -2681,18 +2636,13 @@ get_indirect_offset(nir_to_brw_state &ntb, nir_intrinsic_instr *instr)
       return fs_reg();
    }
 
-   fs_reg temp_offset = get_nir_src(ntb, *offset_src);
+   fs_reg offset = get_nir_src(ntb, *offset_src);
 
    if (devinfo->ver < 20)
-      return temp_offset;
-
-   const fs_builder &bld = ntb.bld;
-   fs_reg indirect_offset = bld.vgrf(temp_offset.type);
+      return offset;
 
    /* Convert Owords (16-bytes) to bytes */
-   bld.SHL(indirect_offset, temp_offset, brw_imm_ud(4u));
-
-   return indirect_offset;
+   return ntb.bld.SHL(offset, brw_imm_ud(4u));
 }
 
 static void
@@ -2754,9 +2704,8 @@ get_tcs_single_patch_icp_handle(nir_to_brw_state &ntb, const fs_builder &bld,
 
    if (nir_src_is_const(vertex_src)) {
       /* Emit a MOV to resolve <0,1,0> regioning. */
-      icp_handle = bld.vgrf(BRW_TYPE_UD);
       unsigned vertex = nir_src_as_uint(vertex_src);
-      bld.MOV(icp_handle, component(start, vertex));
+      icp_handle = bld.MOV(component(start, vertex));
    } else if (tcs_prog_data->instances == 1 && vertex_intrin &&
               vertex_intrin->intrinsic == nir_intrinsic_load_invocation_id) {
       /* For the common case of only 1 instance, an array index of
@@ -2771,10 +2720,9 @@ get_tcs_single_patch_icp_handle(nir_to_brw_state &ntb, const fs_builder &bld,
       icp_handle = bld.vgrf(BRW_TYPE_UD);
 
       /* Each ICP handle is a single DWord (4 bytes) */
-      fs_reg vertex_offset_bytes = bld.vgrf(BRW_TYPE_UD);
-      bld.SHL(vertex_offset_bytes,
-              retype(get_nir_src(ntb, vertex_src), BRW_TYPE_UD),
-              brw_imm_ud(2u));
+      fs_reg vertex_offset_bytes =
+         bld.SHL(retype(get_nir_src(ntb, vertex_src), BRW_TYPE_UD),
+                 brw_imm_ud(2u));
 
       /* We might read up to 4 registers. */
       bld.emit(SHADER_OPCODE_MOV_INDIRECT, icp_handle,
@@ -2812,25 +2760,23 @@ get_tcs_multi_patch_icp_handle(nir_to_brw_state &ntb, const fs_builder &bld,
     * by the GRF size (by shifting), and add the two together.  This is
     * the final indirect byte offset.
     */
-   fs_reg icp_handle = bld.vgrf(BRW_TYPE_UD);
    fs_reg sequence = ntb.system_values[SYSTEM_VALUE_SUBGROUP_INVOCATION];
-   fs_reg channel_offsets = bld.vgrf(BRW_TYPE_UD);
-   fs_reg vertex_offset_bytes = bld.vgrf(BRW_TYPE_UD);
-   fs_reg icp_offset_bytes = bld.vgrf(BRW_TYPE_UD);
 
    /* Offsets will be 0, 4, 8, ... */
-   bld.SHL(channel_offsets, sequence, brw_imm_ud(2u));
+   fs_reg channel_offsets = bld.SHL(sequence, brw_imm_ud(2u));
    /* Convert vertex_index to bytes (multiply by 32) */
    assert(util_is_power_of_two_nonzero(grf_size_bytes)); /* for ffs() */
-   bld.SHL(vertex_offset_bytes,
-           retype(get_nir_src(ntb, vertex_src), BRW_TYPE_UD),
-           brw_imm_ud(ffs(grf_size_bytes) - 1));
-   bld.ADD(icp_offset_bytes, vertex_offset_bytes, channel_offsets);
+   fs_reg vertex_offset_bytes =
+      bld.SHL(retype(get_nir_src(ntb, vertex_src), BRW_TYPE_UD),
+              brw_imm_ud(ffs(grf_size_bytes) - 1));
+   fs_reg icp_offset_bytes =
+      bld.ADD(vertex_offset_bytes, channel_offsets);
 
    /* Use start of ICP handles as the base offset.  There is one register
     * of URB handles per vertex, so inform the register allocator that
     * we might read up to nir->info.gs.vertices_in registers.
     */
+   fs_reg icp_handle = bld.vgrf(BRW_TYPE_UD);
    bld.emit(SHADER_OPCODE_MOV_INDIRECT, icp_handle, start,
             icp_offset_bytes,
             brw_imm_ud(brw_tcs_prog_key_input_vertices(tcs_key) *
@@ -3065,8 +3011,7 @@ fs_nir_emit_tcs_intrinsic(nir_to_brw_state &ntb,
          /* This MOV replicates the output handle to all enabled channels
           * is SINGLE_PATCH mode.
           */
-         fs_reg patch_handle = bld.vgrf(BRW_TYPE_UD);
-         bld.MOV(patch_handle, s.tcs_payload().patch_urb_output);
+         fs_reg patch_handle = bld.MOV(s.tcs_payload().patch_urb_output);
 
          {
             fs_reg srcs[URB_LOGICAL_NUM_SRCS];
@@ -3689,9 +3634,8 @@ emit_frontfacing_interpolation(nir_to_brw_state &ntb)
        * An ASR 15 fills the low word of the destination.
        */
       fs_reg g0 = fs_reg(retype(brw_vec1_grf(0, 0), BRW_TYPE_W));
-      g0.negate = true;
 
-      bld.ASR(ff, g0, brw_imm_d(15));
+      bld.ASR(ff, negate(g0), brw_imm_d(15));
    }
 
    return ff;
@@ -3841,7 +3785,7 @@ emit_samplemaskin_setup(nir_to_brw_state &ntb)
    assert(wm_prog_data->coarse_pixel_dispatch != BRW_ALWAYS);
 
    fs_reg coverage_mask =
-      fetch_payload_reg(bld, s.fs_payload().sample_mask_in_reg, BRW_TYPE_D);
+      fetch_payload_reg(bld, s.fs_payload().sample_mask_in_reg, BRW_TYPE_UD);
 
    if (wm_prog_data->persample_dispatch == BRW_NEVER)
       return coverage_mask;
@@ -3861,12 +3805,9 @@ emit_samplemaskin_setup(nir_to_brw_state &ntb)
    if (ntb.system_values[SYSTEM_VALUE_SAMPLE_ID].file == BAD_FILE)
       ntb.system_values[SYSTEM_VALUE_SAMPLE_ID] = emit_sampleid_setup(ntb);
 
-   fs_reg one = bld.vgrf(BRW_TYPE_D);
-   fs_reg enabled_mask = bld.vgrf(BRW_TYPE_D);
-   abld.MOV(one, brw_imm_d(1));
-   abld.SHL(enabled_mask, one, ntb.system_values[SYSTEM_VALUE_SAMPLE_ID]);
-   fs_reg mask = bld.vgrf(BRW_TYPE_D);
-   abld.AND(mask, enabled_mask, coverage_mask);
+   fs_reg one = abld.MOV(brw_imm_ud(1));
+   fs_reg enabled_mask = abld.SHL(one, ntb.system_values[SYSTEM_VALUE_SAMPLE_ID]);
+   fs_reg mask = abld.AND(enabled_mask, coverage_mask);
 
    if (wm_prog_data->persample_dispatch == BRW_ALWAYS)
       return mask;
@@ -3908,15 +3849,10 @@ emit_shading_rate_setup(nir_to_brw_state &ntb)
    /* r1.0 - 15:8 ActualCoarsePixelShadingSize.Y */
    fs_reg actual_y = byte_offset(actual_x, 1);
 
-   fs_reg int_rate_x = bld.vgrf(BRW_TYPE_UD);
-   fs_reg int_rate_y = bld.vgrf(BRW_TYPE_UD);
+   fs_reg int_rate_y = abld.SHR(actual_y, brw_imm_ud(1));
+   fs_reg int_rate_x = abld.SHR(actual_x, brw_imm_ud(1));
 
-   abld.SHR(int_rate_y, actual_y, brw_imm_ud(1));
-   abld.SHR(int_rate_x, actual_x, brw_imm_ud(1));
-   abld.SHL(int_rate_x, int_rate_x, brw_imm_ud(2));
-
-   fs_reg rate = abld.vgrf(BRW_TYPE_UD);
-   abld.OR(rate, int_rate_x, int_rate_y);
+   fs_reg rate = abld.OR(abld.SHL(int_rate_x, brw_imm_ud(2)), int_rate_y);
 
    if (wm_prog_data->coarse_pixel_dispatch == BRW_ALWAYS)
       return rate;
@@ -4132,10 +4068,9 @@ fs_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
                mask = 0xf << shift_count;
             }
 
-            fs_reg vp_or_layer = bld.vgrf(BRW_TYPE_UD);
-            bld.AND(vp_or_layer, g1, brw_imm_ud(mask));
-            fs_reg shifted_value = bld.vgrf(BRW_TYPE_UD);
-            bld.SHR(shifted_value, vp_or_layer, brw_imm_ud(shift_count));
+            fs_reg vp_or_layer = bld.AND(g1, brw_imm_ud(mask));
+            fs_reg shifted_value =
+               bld.SHR(vp_or_layer, brw_imm_ud(shift_count));
             bld.MOV(offset(dest, bld, 0), retype(shifted_value, dest.type));
             break;
          }
@@ -4401,15 +4336,10 @@ fs_nir_emit_cs_intrinsic(nir_to_brw_state &ntb,
       fs_reg srcs[SURFACE_LOGICAL_NUM_SRCS];
       srcs[SURFACE_LOGICAL_SRC_SURFACE] = brw_imm_ud(GFX7_BTI_SLM);
 
-      fs_reg addr = get_nir_src(ntb, instr->src[0]);
-      int base = nir_intrinsic_base(instr);
-      if (base) {
-         fs_reg addr_off = bld.vgrf(BRW_TYPE_UD);
-         bld.ADD(addr_off, addr, brw_imm_d(base));
-         srcs[SURFACE_LOGICAL_SRC_ADDRESS] = addr_off;
-      } else {
-         srcs[SURFACE_LOGICAL_SRC_ADDRESS] = addr;
-      }
+      fs_reg addr = retype(get_nir_src(ntb, instr->src[0]), BRW_TYPE_UD);
+      unsigned base = nir_intrinsic_base(instr);
+      srcs[SURFACE_LOGICAL_SRC_ADDRESS] =
+         base ? bld.ADD(addr, brw_imm_ud(base)) : addr;
 
       srcs[SURFACE_LOGICAL_SRC_IMM_DIMS] = brw_imm_ud(1);
       srcs[SURFACE_LOGICAL_SRC_ALLOW_SAMPLE_MASK] = brw_imm_ud(0);
@@ -4445,15 +4375,10 @@ fs_nir_emit_cs_intrinsic(nir_to_brw_state &ntb,
       fs_reg srcs[SURFACE_LOGICAL_NUM_SRCS];
       srcs[SURFACE_LOGICAL_SRC_SURFACE] = brw_imm_ud(GFX7_BTI_SLM);
 
-      fs_reg addr = get_nir_src(ntb, instr->src[1]);
-      int base = nir_intrinsic_base(instr);
-      if (base) {
-         fs_reg addr_off = bld.vgrf(BRW_TYPE_UD);
-         bld.ADD(addr_off, addr, brw_imm_d(base));
-         srcs[SURFACE_LOGICAL_SRC_ADDRESS] = addr_off;
-      } else {
-         srcs[SURFACE_LOGICAL_SRC_ADDRESS] = addr;
-      }
+      fs_reg addr = retype(get_nir_src(ntb, instr->src[1]), BRW_TYPE_UD);
+      unsigned base = nir_intrinsic_base(instr);
+      srcs[SURFACE_LOGICAL_SRC_ADDRESS] =
+         base ? bld.ADD(addr, brw_imm_ud(base)) : addr;
 
       srcs[SURFACE_LOGICAL_SRC_IMM_DIMS] = brw_imm_ud(1);
       /* No point in masking with sample mask, here we're handling compute
@@ -4767,9 +4692,8 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
       case nir_instr_type_load_const: {
          nir_load_const_instr *load_const =
             nir_instr_as_load_const(instr);
-         fs_reg dst = ubld8.vgrf(BRW_TYPE_UD);
-         ntb.resource_insts[def->index] =
-            ubld8.MOV(dst, brw_imm_ud(load_const->value[0].i32));
+         ubld8.MOV(brw_imm_ud(load_const->value[0].i32),
+                   &ntb.resource_insts[def->index]);
          break;
       }
 
@@ -4792,15 +4716,14 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
 
          switch (alu->op) {
          case nir_op_iadd: {
-            fs_reg dst = ubld8.vgrf(BRW_TYPE_UD);
             fs_reg src0 = ntb.resource_insts[alu->src[0].src.ssa->index]->dst;
             fs_reg src1 = ntb.resource_insts[alu->src[1].src.ssa->index]->dst;
             assert(src0.file != BAD_FILE && src1.file != BAD_FILE);
             assert(src0.type == BRW_TYPE_UD);
-            ntb.resource_insts[def->index] =
-               ubld8.ADD(dst,
-                         src0.file != IMM ? src0 : src1,
-                         src0.file != IMM ? src1 : src0);
+            assert(src1.type == BRW_TYPE_UD);
+            ubld8.ADD(src0.file != IMM ? src0 : src1,
+                      src0.file != IMM ? src1 : src0,
+                      &ntb.resource_insts[def->index]);
             break;
          }
          case nir_op_iadd3: {
@@ -4818,21 +4741,21 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
             break;
          }
          case nir_op_ushr: {
-            fs_reg dst = ubld8.vgrf(BRW_TYPE_UD);
             fs_reg src0 = ntb.resource_insts[alu->src[0].src.ssa->index]->dst;
             fs_reg src1 = ntb.resource_insts[alu->src[1].src.ssa->index]->dst;
             assert(src0.file != BAD_FILE && src1.file != BAD_FILE);
             assert(src0.type == BRW_TYPE_UD);
-            ntb.resource_insts[def->index] = ubld8.SHR(dst, src0, src1);
+            assert(src1.type == BRW_TYPE_UD);
+            ubld8.SHR(src0, src1, &ntb.resource_insts[def->index]);
             break;
          }
          case nir_op_ishl: {
-            fs_reg dst = ubld8.vgrf(BRW_TYPE_UD);
             fs_reg src0 = ntb.resource_insts[alu->src[0].src.ssa->index]->dst;
             fs_reg src1 = ntb.resource_insts[alu->src[1].src.ssa->index]->dst;
             assert(src0.file != BAD_FILE && src1.file != BAD_FILE);
             assert(src0.type == BRW_TYPE_UD);
-            ntb.resource_insts[def->index] = ubld8.SHL(dst, src0, src1);
+            assert(src1.type == BRW_TYPE_UD);
+            ubld8.SHL(src0, src1, &ntb.resource_insts[def->index]);
             break;
          }
          case nir_op_mov: {
@@ -4858,10 +4781,9 @@ try_rebuild_resource(nir_to_brw_state &ntb, const brw::fs_builder &bld, nir_def 
 
             unsigned base_offset = nir_intrinsic_base(intrin);
             unsigned load_offset = nir_src_as_uint(intrin->src[0]);
-            fs_reg dst = ubld8.vgrf(BRW_TYPE_UD);
             fs_reg src(UNIFORM, base_offset / 4, BRW_TYPE_UD);
             src.offset = load_offset + base_offset % 4;
-            ntb.resource_insts[def->index] = ubld8.MOV(dst, src);
+            ubld8.MOV(src, &ntb.resource_insts[def->index]);
             break;
          }
 
@@ -4958,31 +4880,29 @@ swizzle_nir_scratch_addr(nir_to_brw_state &ntb,
 {
    fs_visitor &s = ntb.s;
 
+   fs_reg nir_addr_ud = retype(nir_addr, BRW_TYPE_UD);
+
    const fs_reg &chan_index =
       ntb.system_values[SYSTEM_VALUE_SUBGROUP_INVOCATION];
    const unsigned chan_index_bits = ffs(s.dispatch_width) - 1;
 
-   fs_reg addr = bld.vgrf(BRW_TYPE_UD);
    if (in_dwords) {
       /* In this case, we know the address is aligned to a DWORD and we want
        * the final address in DWORDs.
        */
-      bld.SHL(addr, nir_addr, brw_imm_ud(chan_index_bits - 2));
-      bld.OR(addr, addr, chan_index);
+      return bld.OR(bld.SHL(nir_addr_ud, brw_imm_ud(chan_index_bits - 2)),
+                    chan_index);
    } else {
       /* This case substantially more annoying because we have to pay
        * attention to those pesky two bottom bits.
        */
-      fs_reg addr_hi = bld.vgrf(BRW_TYPE_UD);
-      bld.AND(addr_hi, nir_addr, brw_imm_ud(~0x3u));
-      bld.SHL(addr_hi, addr_hi, brw_imm_ud(chan_index_bits));
-      fs_reg chan_addr = bld.vgrf(BRW_TYPE_UD);
-      bld.SHL(chan_addr, chan_index, brw_imm_ud(2));
-      bld.AND(addr, nir_addr, brw_imm_ud(0x3u));
-      bld.OR(addr, addr, addr_hi);
-      bld.OR(addr, addr, chan_addr);
+      fs_reg chan_addr = bld.SHL(chan_index, brw_imm_ud(2));
+      fs_reg addr_bits =
+         bld.OR(bld.AND(nir_addr_ud, brw_imm_ud(0x3u)),
+                bld.SHL(bld.AND(nir_addr_ud, brw_imm_ud(~0x3u)),
+                        brw_imm_ud(chan_index_bits)));
+      return bld.OR(addr_bits, chan_addr);
    }
-   return addr;
 }
 
 static unsigned
@@ -5112,9 +5032,7 @@ adjust_handle_and_offset(const fs_builder &bld,
    if (adjustment) {
       fs_builder ubld8 = bld.group(8, 0).exec_all();
       /* Allocate new register to not overwrite the shared URB handle. */
-      fs_reg new_handle = ubld8.vgrf(BRW_TYPE_UD);
-      ubld8.ADD(new_handle, urb_handle, brw_imm_ud(adjustment));
-      urb_handle = new_handle;
+      urb_handle = ubld8.ADD(urb_handle, brw_imm_ud(adjustment));
       urb_global_offset -= adjustment;
    }
 }
@@ -5198,9 +5116,7 @@ emit_urb_direct_vec4_write_xe2(const fs_builder &bld,
 
    if (offset_in_bytes > 0) {
       fs_builder bldall = bld.group(write_size, 0).exec_all();
-      fs_reg new_handle = bldall.vgrf(BRW_TYPE_UD);
-      bldall.ADD(new_handle, urb_handle, brw_imm_ud(offset_in_bytes));
-      urb_handle = new_handle;
+      urb_handle = bldall.ADD(urb_handle, brw_imm_ud(offset_in_bytes));
    }
 
    for (unsigned q = 0; q < bld.dispatch_width() / write_size; q++) {
@@ -5261,10 +5177,8 @@ emit_urb_indirect_vec4_write(const fs_builder &bld,
 
       /* offset is always positive, so signedness doesn't matter */
       assert(offset_src.type == BRW_TYPE_D || offset_src.type == BRW_TYPE_UD);
-      fs_reg off = bld8.vgrf(offset_src.type, 1);
-      bld8.MOV(off, quarter(offset_src, q));
-      bld8.ADD(off, off, brw_imm_ud(base));
-      bld8.SHR(off, off, brw_imm_ud(2));
+      fs_reg qtr = bld8.MOV(quarter(retype(offset_src, BRW_TYPE_UD), q));
+      fs_reg off = bld8.SHR(bld8.ADD(qtr, brw_imm_ud(base)), brw_imm_ud(2));
 
       fs_reg payload_srcs[8];
       unsigned length = 0;
@@ -5329,9 +5243,7 @@ emit_urb_indirect_writes_xe2(const fs_builder &bld, nir_intrinsic_instr *instr,
 
    if (base_in_dwords > 0) {
       fs_builder bldall = bld.group(write_size, 0).exec_all();
-      fs_reg new_handle = bldall.vgrf(BRW_TYPE_UD);
-      bldall.ADD(new_handle, urb_handle, brw_imm_ud(base_in_dwords * 4));
-      urb_handle = new_handle;
+      urb_handle = bldall.ADD(urb_handle, brw_imm_ud(base_in_dwords * 4));
    }
 
    const unsigned mask = nir_intrinsic_write_mask(instr);
@@ -5344,9 +5256,9 @@ emit_urb_indirect_writes_xe2(const fs_builder &bld, nir_intrinsic_instr *instr,
       for (unsigned c = 0; c < comps; c++)
          payload_srcs[c] = horiz_offset(offset(src, bld, c), write_size * q);
 
-      fs_reg addr = wbld.vgrf(BRW_TYPE_UD);
-      wbld.SHL(addr, horiz_offset(offset_src, write_size * q), brw_imm_ud(2));
-      wbld.ADD(addr, addr, urb_handle);
+      fs_reg addr =
+         wbld.ADD(wbld.SHL(horiz_offset(offset_src, write_size * q),
+                           brw_imm_ud(2)), urb_handle);
 
       fs_reg srcs[URB_LOGICAL_NUM_SRCS];
       srcs[URB_LOGICAL_SRC_HANDLE] = addr;
@@ -5392,19 +5304,14 @@ emit_urb_indirect_writes(const fs_builder &bld, nir_intrinsic_instr *instr,
          /* offset is always positive, so signedness doesn't matter */
          assert(offset_src.type == BRW_TYPE_D ||
                 offset_src.type == BRW_TYPE_UD);
-         fs_reg off = bld8.vgrf(offset_src.type, 1);
-         bld8.MOV(off, quarter(offset_src, q));
-         bld8.ADD(off, off, brw_imm_ud(c + base_in_dwords));
 
-         fs_reg mask = bld8.vgrf(BRW_TYPE_UD, 1);
-         bld8.AND(mask, off, brw_imm_ud(0x3));
-
-         fs_reg one = bld8.vgrf(BRW_TYPE_UD, 1);
-         bld8.MOV(one, brw_imm_ud(1));
-         bld8.SHL(mask, one, mask);
-         bld8.SHL(mask, mask, brw_imm_ud(16));
-
-         bld8.SHR(off, off, brw_imm_ud(2));
+         fs_reg off =
+            bld8.ADD(quarter(retype(offset_src, BRW_TYPE_UD), q),
+                     brw_imm_ud(c + base_in_dwords));
+         fs_reg m = bld8.AND(off, brw_imm_ud(0x3));
+         fs_reg t = bld8.SHL(bld8.MOV(brw_imm_ud(1)), m);
+         fs_reg mask = bld8.SHL(t, brw_imm_ud(16));
+         fs_reg final_offset = bld8.SHR(off, brw_imm_ud(2));
 
          fs_reg payload_srcs[4];
          unsigned length = 0;
@@ -5414,7 +5321,7 @@ emit_urb_indirect_writes(const fs_builder &bld, nir_intrinsic_instr *instr,
 
          fs_reg srcs[URB_LOGICAL_NUM_SRCS];
          srcs[URB_LOGICAL_SRC_HANDLE] = urb_handle;
-         srcs[URB_LOGICAL_SRC_PER_SLOT_OFFSETS] = off;
+         srcs[URB_LOGICAL_SRC_PER_SLOT_OFFSETS] = final_offset;
          srcs[URB_LOGICAL_SRC_CHANNEL_MASK] = mask;
          srcs[URB_LOGICAL_SRC_DATA] = fs_reg(VGRF, bld.shader->alloc.allocate(length),
                                              BRW_TYPE_F);
@@ -5488,11 +5395,8 @@ emit_urb_direct_reads_xe2(const fs_builder &bld, nir_intrinsic_instr *instr,
                                      nir_src_as_uint(*offset_nir_src) +
                                      component_from_intrinsic(instr);
 
-   if (offset_in_dwords > 0) {
-      fs_reg new_handle = ubld16.vgrf(BRW_TYPE_UD);
-      ubld16.ADD(new_handle, urb_handle, brw_imm_ud(offset_in_dwords * 4));
-      urb_handle = new_handle;
-   }
+   if (offset_in_dwords > 0)
+      urb_handle = ubld16.ADD(urb_handle, brw_imm_ud(offset_in_dwords * 4));
 
    fs_reg data = ubld16.vgrf(BRW_TYPE_UD, comps);
    fs_reg srcs[URB_LOGICAL_NUM_SRCS];
@@ -5526,7 +5430,7 @@ emit_urb_indirect_reads(const fs_builder &bld, nir_intrinsic_instr *instr,
       fs_reg seq_uw = ubld8.vgrf(BRW_TYPE_UW, 1);
       ubld8.MOV(seq_uw, fs_reg(brw_imm_v(0x76543210)));
       ubld8.MOV(seq_ud, seq_uw);
-      ubld8.SHL(seq_ud, seq_ud, brw_imm_ud(2));
+      seq_ud = ubld8.SHL(seq_ud, brw_imm_ud(2));
    }
 
    const unsigned base_in_dwords = nir_intrinsic_base(instr) +
@@ -5539,18 +5443,18 @@ emit_urb_indirect_reads(const fs_builder &bld, nir_intrinsic_instr *instr,
          /* offset is always positive, so signedness doesn't matter */
          assert(offset_src.type == BRW_TYPE_D ||
                 offset_src.type == BRW_TYPE_UD);
-         fs_reg off = bld8.vgrf(offset_src.type, 1);
-         bld8.MOV(off, quarter(offset_src, q));
-         bld8.ADD(off, off, brw_imm_ud(base_in_dwords + c));
+         fs_reg off =
+            bld8.ADD(bld8.MOV(quarter(retype(offset_src, BRW_TYPE_UD), q)),
+                     brw_imm_ud(base_in_dwords + c));
 
          STATIC_ASSERT(IS_POT(REG_SIZE) && REG_SIZE > 1);
 
-         fs_reg comp = bld8.vgrf(BRW_TYPE_UD, 1);
-         bld8.AND(comp, off, brw_imm_ud(0x3));
-         bld8.SHL(comp, comp, brw_imm_ud(ffs(REG_SIZE) - 1));
-         bld8.ADD(comp, comp, seq_ud);
+         fs_reg comp;
+         comp = bld8.AND(off, brw_imm_ud(0x3));
+         comp = bld8.SHL(comp, brw_imm_ud(ffs(REG_SIZE) - 1));
+         comp = bld8.ADD(comp, seq_ud);
 
-         bld8.SHR(off, off, brw_imm_ud(2));
+         off = bld8.SHR(off, brw_imm_ud(2));
 
          fs_reg srcs[URB_LOGICAL_NUM_SRCS];
          srcs[URB_LOGICAL_SRC_HANDLE] = urb_handle;
@@ -5589,24 +5493,18 @@ emit_urb_indirect_reads_xe2(const fs_builder &bld, nir_intrinsic_instr *instr,
    const unsigned offset_in_dwords = nir_intrinsic_base(instr) +
                                      component_from_intrinsic(instr);
 
-   if (offset_in_dwords > 0) {
-      fs_reg new_handle = ubld16.vgrf(BRW_TYPE_UD);
-      ubld16.ADD(new_handle, urb_handle, brw_imm_ud(offset_in_dwords * 4));
-      urb_handle = new_handle;
-   }
+   if (offset_in_dwords > 0)
+      urb_handle = ubld16.ADD(urb_handle, brw_imm_ud(offset_in_dwords * 4));
 
    fs_reg data = ubld16.vgrf(BRW_TYPE_UD, comps);
-
 
    for (unsigned q = 0; q < bld.dispatch_width() / 16; q++) {
       fs_builder wbld = bld.group(16, q);
 
-      fs_reg addr = wbld.vgrf(BRW_TYPE_UD);
-      wbld.SHL(addr, horiz_offset(offset_src, 16 * q), brw_imm_ud(2));
-      wbld.ADD(addr, addr, urb_handle);
+      fs_reg addr = wbld.SHL(horiz_offset(offset_src, 16 * q), brw_imm_ud(2));
 
       fs_reg srcs[URB_LOGICAL_NUM_SRCS];
-      srcs[URB_LOGICAL_SRC_HANDLE] = addr;
+      srcs[URB_LOGICAL_SRC_HANDLE] = wbld.ADD(addr, urb_handle);
 
       fs_inst *inst = wbld.emit(SHADER_OPCODE_URB_READ_LOGICAL,
                                  data, srcs, ARRAY_SIZE(srcs));
@@ -6374,8 +6272,8 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
 
             const nir_src load_offset = instr->src[1];
             if (nir_src_is_const(load_offset)) {
-               fs_reg addr = ubld8.vgrf(BRW_TYPE_UD);
-               ubld8.MOV(addr, brw_imm_ud(nir_src_as_uint(load_offset)));
+               fs_reg addr =
+                  ubld8.MOV(brw_imm_ud(nir_src_as_uint(load_offset)));
                srcs[SURFACE_LOGICAL_SRC_ADDRESS] = component(addr, 0);
             } else {
                srcs[SURFACE_LOGICAL_SRC_ADDRESS] =
@@ -6774,8 +6672,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
 
       const nir_src load_offset = is_ssbo ? instr->src[1] : instr->src[0];
       if (nir_src_is_const(load_offset)) {
-         fs_reg addr = ubld8.vgrf(BRW_TYPE_UD);
-         ubld8.MOV(addr, brw_imm_ud(nir_src_as_uint(load_offset)));
+         fs_reg addr = ubld8.MOV(brw_imm_ud(nir_src_as_uint(load_offset)));
          srcs[SURFACE_LOGICAL_SRC_ADDRESS] = component(addr, 0);
       } else {
          srcs[SURFACE_LOGICAL_SRC_ADDRESS] =
@@ -6846,11 +6743,10 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
        * the dispatch width.
        */
       const fs_builder ubld = bld.exec_all().group(8 * reg_unit(devinfo), 0);
-      fs_reg src_payload = ubld.vgrf(BRW_TYPE_UD);
       fs_reg ret_payload = ubld.vgrf(BRW_TYPE_UD, 4);
 
       /* Set LOD = 0 */
-      ubld.MOV(src_payload, brw_imm_d(0));
+      fs_reg src_payload = ubld.MOV(brw_imm_ud(0));
 
       fs_reg srcs[GET_BUFFER_SIZE_SRCS];
       srcs[get_nir_src_bindless(ntb, instr->src[0]) ?
@@ -6883,14 +6779,9 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
        *
        * buffer_size = surface_size & ~3 - surface_size & 3
        */
-
-      fs_reg size_aligned4 = ubld.vgrf(BRW_TYPE_UD);
-      fs_reg size_padding = ubld.vgrf(BRW_TYPE_UD);
-      fs_reg buffer_size = ubld.vgrf(BRW_TYPE_UD);
-
-      ubld.AND(size_padding, ret_payload, brw_imm_ud(3));
-      ubld.AND(size_aligned4, ret_payload, brw_imm_ud(~3));
-      ubld.ADD(buffer_size, size_aligned4, negate(size_padding));
+      fs_reg size_padding  = ubld.AND(ret_payload, brw_imm_ud(3));
+      fs_reg size_aligned4 = ubld.AND(ret_payload, brw_imm_ud(~3));
+      fs_reg buffer_size   = ubld.ADD(size_aligned4, negate(size_padding));
 
       bld.MOV(retype(dest, ret_payload.type), component(buffer_size, 0));
       break;
@@ -7096,16 +6987,15 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
        * all the bits set for their quad, i.e. invocations 0-3 will have
        * 0b...1111, invocations 4-7 will have 0b...11110000 and so on.
        */
-      fs_reg quad_mask = bld.vgrf(BRW_TYPE_UD);
-      bld.MOV(quad_mask, ntb.system_values[SYSTEM_VALUE_SUBGROUP_INVOCATION]);
-      bld.AND(quad_mask, quad_mask, brw_imm_ud(0xFFFFFFFC));
-      bld.SHL(quad_mask, brw_imm_ud(0xF), quad_mask);
+      fs_reg invoc_ud = bld.vgrf(BRW_TYPE_UD);
+      bld.MOV(invoc_ud, ntb.system_values[SYSTEM_VALUE_SUBGROUP_INVOCATION]);
+      fs_reg quad_mask =
+         bld.SHL(brw_imm_ud(0xF), bld.AND(invoc_ud, brw_imm_ud(0xFFFFFFFC)));
 
       /* An invocation will have bits set for each quad that passes the
        * condition.  This is uniform among each quad.
        */
-      fs_reg tmp = bld.vgrf(BRW_TYPE_UD);
-      bld.AND(tmp, cond_mask, quad_mask);
+      fs_reg tmp = bld.AND(cond_mask, quad_mask);
 
       if (instr->intrinsic == nir_intrinsic_quad_vote_any) {
          bld.CMP(retype(dest, BRW_TYPE_UD), tmp, brw_imm_ud(0), BRW_CONDITIONAL_NZ);
@@ -7147,8 +7037,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
        * of 1-wide MOVs and scattering the result.
        */
       const fs_builder ubld = devinfo->ver >= 20 ? bld.exec_all() : ubld1;
-      fs_reg res1 = ubld.vgrf(BRW_TYPE_D);
-      ubld.MOV(res1, brw_imm_d(0));
+      fs_reg res1 = ubld.MOV(brw_imm_d(0));
       set_predicate(devinfo->ver >= 20 ? XE2_PREDICATE_ANY :
                     s.dispatch_width == 8  ? BRW_PREDICATE_ALIGN1_ANY8H :
                     s.dispatch_width == 16 ? BRW_PREDICATE_ALIGN1_ANY16H :
@@ -7181,8 +7070,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
        * of 1-wide MOVs and scattering the result.
        */
       const fs_builder ubld = devinfo->ver >= 20 ? bld.exec_all() : ubld1;
-      fs_reg res1 = ubld.vgrf(BRW_TYPE_D);
-      ubld.MOV(res1, brw_imm_d(0));
+      fs_reg res1 = ubld.MOV(brw_imm_d(0));
       set_predicate(devinfo->ver >= 20 ? XE2_PREDICATE_ALL :
                     s.dispatch_width == 8  ? BRW_PREDICATE_ALIGN1_ALL8H :
                     s.dispatch_width == 16 ? BRW_PREDICATE_ALIGN1_ALL16H :
@@ -7224,8 +7112,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
        * of 1-wide MOVs and scattering the result.
        */
       const fs_builder ubld = devinfo->ver >= 20 ? bld.exec_all() : ubld1;
-      fs_reg res1 = ubld.vgrf(BRW_TYPE_D);
-      ubld.MOV(res1, brw_imm_d(0));
+      fs_reg res1 = ubld.MOV(brw_imm_d(0));
       set_predicate(devinfo->ver >= 20 ? XE2_PREDICATE_ALL :
                     s.dispatch_width == 8  ? BRW_PREDICATE_ALIGN1_ALL8H :
                     s.dispatch_width == 16 ? BRW_PREDICATE_ALIGN1_ALL16H :
@@ -7281,13 +7168,11 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
        * the dispatch size picked by the backend (this could happen in RT,
        * FS), bound the invocation to the dispatch size.
        */
-      fs_reg bound_invocation;
+      fs_reg bound_invocation = retype(invocation, BRW_TYPE_UD);
       if (s.api_subgroup_size == 0 ||
           bld.dispatch_width() < s.api_subgroup_size) {
-         bound_invocation = bld.vgrf(BRW_TYPE_UD);
-         bld.AND(bound_invocation, invocation, brw_imm_ud(s.dispatch_width - 1));
-      } else {
-         bound_invocation = invocation;
+         bound_invocation =
+            bld.AND(bound_invocation, brw_imm_ud(s.dispatch_width - 1));
       }
       bld.exec_all().emit(SHADER_OPCODE_BROADCAST, tmp, value,
                           bld.emit_uniformize(bound_invocation));
@@ -7634,7 +7519,9 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
                    fs_reg(), srcs, SURFACE_LOGICAL_NUM_SRCS);
 
          const unsigned block_bytes = block * 4;
-         ubld1.ADD(address, address, brw_imm_ud(block_bytes));
+         srcs[SURFACE_LOGICAL_SRC_ADDRESS] =
+            ubld1.ADD(srcs[SURFACE_LOGICAL_SRC_ADDRESS],
+                      brw_imm_ud(block_bytes));
          written += block;
       }
 
@@ -7689,31 +7576,31 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
              *
              * We are using the state register to calculate the DSSID.
              */
-            fs_reg slice_id = bld.vgrf(BRW_TYPE_UD);
-            fs_reg subslice_id = bld.vgrf(BRW_TYPE_UD);
-            bld.AND(slice_id, raw_id, brw_imm_ud(INTEL_MASK(15, 11)));
-            bld.SHR(slice_id, slice_id, brw_imm_ud(11));
+            fs_reg slice_id =
+               bld.SHR(bld.AND(raw_id, brw_imm_ud(INTEL_MASK(15, 11))),
+                       brw_imm_ud(11));
 
             /* Assert that max subslices covers at least 2 bits that we use for
              * subslices.
              */
-            assert(devinfo->max_subslices_per_slice >= (1 << 2));
-            bld.MUL(slice_id, slice_id,
-                    brw_imm_ud(devinfo->max_subslices_per_slice));
-            bld.AND(subslice_id, raw_id, brw_imm_ud(INTEL_MASK(9, 8)));
-            bld.SHR(subslice_id, subslice_id, brw_imm_ud(8));
-            bld.ADD(retype(dest, BRW_TYPE_UD), slice_id,
-                    subslice_id);
+            unsigned slice_stride = devinfo->max_subslices_per_slice;
+            assert(slice_stride >= (1 << 2));
+            fs_reg subslice_id =
+               bld.SHR(bld.AND(raw_id, brw_imm_ud(INTEL_MASK(9, 8))),
+                       brw_imm_ud(8));
+            bld.ADD(retype(dest, BRW_TYPE_UD),
+                    bld.MUL(slice_id, brw_imm_ud(slice_stride)), subslice_id);
          } else {
-            bld.AND(raw_id, raw_id, brw_imm_ud(0x3fff));
             /* Get rid of anything below dualsubslice */
-            bld.SHR(retype(dest, BRW_TYPE_UD), raw_id, brw_imm_ud(9));
+            bld.SHR(retype(dest, BRW_TYPE_UD),
+                    bld.AND(raw_id, brw_imm_ud(0x3fff)), brw_imm_ud(9));
          }
          break;
       case BRW_TOPOLOGY_ID_EU_THREAD_SIMD: {
          s.limit_dispatch_width(16, "Topology helper for Ray queries, "
                               "not supported in SIMD32 mode.");
          fs_reg dst = retype(dest, BRW_TYPE_UD);
+         fs_reg eu;
 
          if (devinfo->ver >= 20) {
             /* Xe2+: Graphics Engine, 3D and GPGPU Programs, Shared Functions
@@ -7730,8 +7617,8 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
              *
              *   EU[2:0] = raw_id[6:4] (identified as EUID[2:0])
              */
-            bld.AND(dst, raw_id, brw_imm_ud(INTEL_MASK(6, 4)));
-            bld.SHL(dst, dst, brw_imm_ud(4));
+            eu = bld.SHL(bld.AND(raw_id, brw_imm_ud(INTEL_MASK(6, 4))),
+                         brw_imm_ud(4));
          } else {
             /* EU[3:0] << 7
              *
@@ -7742,27 +7629,22 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
              *   EU[2]   = raw_id[8]   (identified as SubSlice ID)
              *   EU[3]   = raw_id[7]   (identified as EUID[2] or Row ID)
              */
-            fs_reg tmp = bld.vgrf(BRW_TYPE_UD);
-            bld.AND(tmp, raw_id, brw_imm_ud(INTEL_MASK(7, 7)));
-            bld.SHL(dst, tmp, brw_imm_ud(3));
-            bld.AND(tmp, raw_id, brw_imm_ud(INTEL_MASK(8, 8)));
-            bld.SHL(tmp, tmp, brw_imm_ud(1));
-            bld.OR(dst, dst, tmp);
-            bld.AND(tmp, raw_id, brw_imm_ud(INTEL_MASK(5, 4)));
-            bld.SHL(tmp, tmp, brw_imm_ud(3));
-            bld.OR(dst, dst, tmp);
+            fs_reg raw5_4 = bld.AND(raw_id, brw_imm_ud(INTEL_MASK(5, 4)));
+            fs_reg raw7   = bld.AND(raw_id, brw_imm_ud(INTEL_MASK(7, 7)));
+            fs_reg raw8   = bld.AND(raw_id, brw_imm_ud(INTEL_MASK(8, 8)));
+            eu = bld.OR(bld.SHL(raw5_4, brw_imm_ud(3)),
+                        bld.OR(bld.SHL(raw7, brw_imm_ud(3)),
+                               bld.SHL(raw8, brw_imm_ud(1))));
          }
 
          /* ThreadID[2:0] << 4 (ThreadID comes from raw_id[2:0]) */
-         {
-            bld.AND(raw_id, raw_id, brw_imm_ud(INTEL_MASK(2, 0)));
-            bld.SHL(raw_id, raw_id, brw_imm_ud(4));
-            bld.OR(dst, dst, raw_id);
-         }
+         fs_reg tid =
+            bld.SHL(bld.AND(raw_id, brw_imm_ud(INTEL_MASK(2, 0))),
+                    brw_imm_ud(4));
 
          /* LaneID[0:3] << 0 (Use nir SYSTEM_VALUE_SUBGROUP_INVOCATION) */
          assert(bld.dispatch_width() <= 16); /* Limit to 4 bits */
-         bld.ADD(dst, dst,
+         bld.ADD(dst, bld.OR(eu, tid),
                  ntb.system_values[SYSTEM_VALUE_SUBGROUP_INVOCATION]);
          break;
       }
@@ -7910,10 +7792,9 @@ fs_nir_emit_surface_atomic(nir_to_brw_state &ntb, const fs_builder &bld,
             brw_imm_ud(nir_intrinsic_base(instr) +
                        nir_src_as_uint(instr->src[0]));
       } else {
-         srcs[SURFACE_LOGICAL_SRC_ADDRESS] = bld.vgrf(BRW_TYPE_UD);
-         bld.ADD(srcs[SURFACE_LOGICAL_SRC_ADDRESS],
-                 retype(get_nir_src(ntb, instr->src[0]), BRW_TYPE_UD),
-                 brw_imm_ud(nir_intrinsic_base(instr)));
+         srcs[SURFACE_LOGICAL_SRC_ADDRESS] =
+            bld.ADD(retype(get_nir_src(ntb, instr->src[0]), BRW_TYPE_UD),
+                    brw_imm_ud(nir_intrinsic_base(instr)));
       }
    } else {
       /* SSBOs */
@@ -8127,9 +8008,9 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
          if (instr->texture_index == 0 && is_resource_src(nir_src))
             srcs[TEX_LOGICAL_SRC_SURFACE] = get_resource_nir_src(ntb, nir_src);
          if (srcs[TEX_LOGICAL_SRC_SURFACE].file == BAD_FILE) {
-            fs_reg tmp = bld.vgrf(BRW_TYPE_UD);
-            bld.ADD(tmp, src, brw_imm_ud(instr->texture_index));
-            srcs[TEX_LOGICAL_SRC_SURFACE] = bld.emit_uniformize(tmp);
+            srcs[TEX_LOGICAL_SRC_SURFACE] =
+               bld.emit_uniformize(bld.ADD(retype(src, BRW_TYPE_UD),
+                                           brw_imm_ud(instr->texture_index)));
          }
          assert(srcs[TEX_LOGICAL_SRC_SURFACE].file != BAD_FILE);
          break;
@@ -8140,9 +8021,9 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
          if (instr->sampler_index == 0 && is_resource_src(nir_src))
             srcs[TEX_LOGICAL_SRC_SAMPLER] = get_resource_nir_src(ntb, nir_src);
          if (srcs[TEX_LOGICAL_SRC_SAMPLER].file == BAD_FILE) {
-            fs_reg tmp = bld.vgrf(BRW_TYPE_UD);
-            bld.ADD(tmp, src, brw_imm_ud(instr->sampler_index));
-            srcs[TEX_LOGICAL_SRC_SAMPLER] = bld.emit_uniformize(tmp);
+            srcs[TEX_LOGICAL_SRC_SAMPLER] =
+               bld.emit_uniformize(bld.ADD(retype(src, BRW_TYPE_UD),
+                                           brw_imm_ud(instr->sampler_index)));
          }
          break;
       }
@@ -8302,9 +8183,9 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
       if (srcs[TEX_LOGICAL_SRC_MCS].file == BRW_IMMEDIATE_VALUE) {
          bld.MOV(dst, brw_imm_ud(0u));
       } else {
-         fs_reg tmp = bld.vgrf(BRW_TYPE_UD);
-         bld.OR(tmp, srcs[TEX_LOGICAL_SRC_MCS],
-                offset(srcs[TEX_LOGICAL_SRC_MCS], bld, 1));
+         fs_reg tmp =
+            bld.OR(srcs[TEX_LOGICAL_SRC_MCS],
+                   offset(srcs[TEX_LOGICAL_SRC_MCS], bld, 1));
          bld.CMP(dst, tmp, brw_imm_ud(0u), BRW_CONDITIONAL_EQ);
       }
       return;

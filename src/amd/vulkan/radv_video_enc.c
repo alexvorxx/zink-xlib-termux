@@ -1622,7 +1622,10 @@ radv_vcn_encode_video(struct radv_cmd_buffer *cmd_buffer, const VkVideoEncodeInf
       return;
    }
 
-   begin(cmd_buffer, enc_info);
+   if (vid->enc_need_begin) {
+      begin(cmd_buffer, enc_info);
+      vid->enc_need_begin = false;
+   }
    // before encode
    // session info
    radv_enc_session_info(cmd_buffer);
@@ -1630,6 +1633,18 @@ radv_vcn_encode_video(struct radv_cmd_buffer *cmd_buffer, const VkVideoEncodeInf
    cmd_buffer->video.enc.total_task_size = 0;
    // task info
    radv_enc_task_info(cmd_buffer, true);
+
+   // temporal layers init
+   unsigned i = 0;
+   do {
+      if (vid->enc_need_rate_control) {
+         radv_enc_layer_select(cmd_buffer, i);
+         radv_enc_rc_layer_init(cmd_buffer, &vid->rc_layer_init[i]);
+         vid->enc_need_rate_control = false;
+      }
+      radv_enc_layer_select(cmd_buffer, i);
+      radv_enc_rc_per_pic(cmd_buffer, enc_info, &vid->rc_per_pic[i]);
+   } while (++i < vid->rc_layer_control.num_temporal_layers);
 
    // encode headers
    // ctx
@@ -1712,6 +1727,7 @@ radv_video_enc_control_video_coding(struct radv_cmd_buffer *cmd_buffer, const Vk
 
    if (control_info->flags & VK_VIDEO_CODING_CONTROL_RESET_BIT_KHR) {
       set_rate_control_defaults(vid);
+      vid->enc_need_begin = true;
    }
 
    if (control_info->flags & VK_VIDEO_CODING_CONTROL_ENCODE_RATE_CONTROL_BIT_KHR) {
@@ -1726,18 +1742,26 @@ radv_video_enc_control_video_coding(struct radv_cmd_buffer *cmd_buffer, const Vk
          (VkVideoEncodeH265RateControlInfoKHR *)vk_find_struct_const(rate_control->pNext,
                                                                      VIDEO_ENCODE_H265_RATE_CONTROL_INFO_KHR);
 
-      vid->enc_rate_control_method = RENCODE_RATE_CONTROL_METHOD_NONE;
+      uint32_t rate_control_method = RENCODE_RATE_CONTROL_METHOD_NONE;
+
       vid->enc_rate_control_default = false;
 
       if (rate_control->rateControlMode == VK_VIDEO_ENCODE_RATE_CONTROL_MODE_DEFAULT_KHR) {
          vid->enc_rate_control_default = true;
          set_rate_control_defaults(vid);
-         return;
-      }
-      if (rate_control->rateControlMode == VK_VIDEO_ENCODE_RATE_CONTROL_MODE_CBR_BIT_KHR)
-         vid->enc_rate_control_method = RENCODE_RATE_CONTROL_METHOD_CBR;
+      } else if (rate_control->rateControlMode == VK_VIDEO_ENCODE_RATE_CONTROL_MODE_CBR_BIT_KHR)
+         rate_control_method = RENCODE_RATE_CONTROL_METHOD_CBR;
       else if (rate_control->rateControlMode == VK_VIDEO_ENCODE_RATE_CONTROL_MODE_VBR_BIT_KHR)
-         vid->enc_rate_control_method = RENCODE_RATE_CONTROL_METHOD_PEAK_CONSTRAINED_VBR;
+         rate_control_method = RENCODE_RATE_CONTROL_METHOD_PEAK_CONSTRAINED_VBR;
+
+      vid->enc_need_rate_control = true;
+      if (vid->enc_rate_control_method != rate_control_method)
+         vid->enc_need_begin = true;
+
+      vid->enc_rate_control_method = rate_control_method;
+
+      if (rate_control->rateControlMode == VK_VIDEO_ENCODE_RATE_CONTROL_MODE_DEFAULT_KHR)
+         return;
 
       if (h264_rate_control) {
          vid->rc_layer_control.max_num_temporal_layers = h264_rate_control->temporalLayerCount;

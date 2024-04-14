@@ -218,6 +218,9 @@ struct dzn_physical_device {
    D3D12_FEATURE_DATA_D3D12_OPTIONS13 options13;
    D3D12_FEATURE_DATA_D3D12_OPTIONS14 options14;
    D3D12_FEATURE_DATA_D3D12_OPTIONS15 options15;
+#if D3D12_SDK_VERSION >= 609
+   D3D12_FEATURE_DATA_D3D12_OPTIONS17 options17;
+#endif
 #if D3D12_SDK_VERSION >= 610
    D3D12_FEATURE_DATA_D3D12_OPTIONS19 options19;
 #endif
@@ -359,9 +362,7 @@ enum dzn_cmd_bindpoint_dirty {
    DZN_CMD_BINDPOINT_DIRTY_DESC_SET5 = 1 << 8,
    DZN_CMD_BINDPOINT_DIRTY_DESC_SET6 = 1 << 9,
    DZN_CMD_BINDPOINT_DIRTY_DESC_SET7 = 1 << 10,
-   DZN_CMD_BINDPOINT_DIRTY_HEAPS =
-      DZN_CMD_BINDPOINT_DIRTY_DYNAMIC_BUFFERS |
-      DZN_CMD_BINDPOINT_DIRTY_SYSVALS |
+   DZN_CMD_BINDPOINT_DIRTY_DESC_SETS =
       DZN_CMD_BINDPOINT_DIRTY_DESC_SET0 |
       DZN_CMD_BINDPOINT_DIRTY_DESC_SET1 |
       DZN_CMD_BINDPOINT_DIRTY_DESC_SET2 |
@@ -370,6 +371,10 @@ enum dzn_cmd_bindpoint_dirty {
       DZN_CMD_BINDPOINT_DIRTY_DESC_SET5 |
       DZN_CMD_BINDPOINT_DIRTY_DESC_SET6 |
       DZN_CMD_BINDPOINT_DIRTY_DESC_SET7,
+   DZN_CMD_BINDPOINT_DIRTY_HEAPS =
+      DZN_CMD_BINDPOINT_DIRTY_DYNAMIC_BUFFERS |
+      DZN_CMD_BINDPOINT_DIRTY_SYSVALS |
+      DZN_CMD_BINDPOINT_DIRTY_DESC_SETS,
 };
 
 enum dzn_cmd_dirty {
@@ -537,6 +542,7 @@ struct dzn_cmd_buffer_query_pool_state {
 struct dzn_internal_resource {
    struct list_head link;
    ID3D12Resource *res;
+   uint64_t size;
 };
 
 enum dzn_event_state {
@@ -660,6 +666,12 @@ struct dzn_cmd_buffer_dsv_entry {
    D3D12_CPU_DESCRIPTOR_HANDLE handle;
 };
 
+enum dzn_internal_buf_bucket {
+   DZN_INTERNAL_BUF_UPLOAD,
+   DZN_INTERNAL_BUF_DEFAULT,
+   DZN_INTERNAL_BUF_BUCKET_COUNT,
+};
+
 struct dzn_cmd_buffer {
    struct vk_command_buffer vk;
    struct dzn_cmd_buffer_state state;
@@ -687,7 +699,9 @@ struct dzn_cmd_buffer {
    struct dzn_descriptor_heap_pool cbv_srv_uav_pool, sampler_pool;
    D3D12_CPU_DESCRIPTOR_HANDLE null_rtv;
 
-   struct list_head internal_bufs;
+   struct list_head internal_bufs[DZN_INTERNAL_BUF_BUCKET_COUNT];
+   struct dzn_internal_resource *cur_upload_buf;
+   uint64_t cur_upload_buf_offset;
 
    ID3D12CommandAllocator *cmdalloc;
    ID3D12GraphicsCommandList1 *cmdlist;
@@ -920,6 +934,7 @@ struct dzn_pipeline {
       ID3D12RootSignature *sig;
    } root;
    struct dzn_pipeline_layout_set sets[MAX_SETS];
+   uint32_t set_count;
    uint32_t desc_count[NUM_POOL_TYPES];
    uint32_t dynamic_buffer_count;
    ID3D12PipelineState *state;

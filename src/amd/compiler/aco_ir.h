@@ -25,18 +25,20 @@
 #ifndef ACO_IR_H
 #define ACO_IR_H
 
-#include "aco_interface.h"
 #include "aco_opcodes.h"
 #include "aco_shader_info.h"
 #include "aco_util.h"
 
-#include "nir.h"
+#include "util/compiler.h"
 
 #include "ac_binary.h"
+#include "amd_family.h"
 #include <algorithm>
 #include <bitset>
 #include <memory>
 #include <vector>
+
+typedef struct nir_shader nir_shader;
 
 namespace aco {
 
@@ -1664,7 +1666,11 @@ struct Pseudo_branch_instruction : public Instruction {
     * A value of 0 means the target has not been initialized (BB0 cannot be a branch target).
     */
    uint32_t target[2];
-   nir_selection_control selection_control;
+
+   /* Indicates that selection control prefers to remove this instruction if possible.
+    * This is set when the branch is divergent and always taken, or flattened.
+    */
+   bool selection_control_remove;
 };
 static_assert(sizeof(Pseudo_branch_instruction) == sizeof(Instruction) + 12, "Unexpected padding");
 

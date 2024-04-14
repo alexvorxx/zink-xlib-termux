@@ -2363,7 +2363,7 @@ radv_declare_pipeline_args(struct radv_device *device, struct radv_pipeline_stag
 
    if (gfx_level >= GFX9 && stages[MESA_SHADER_TESS_CTRL].nir) {
       radv_declare_shader_args(device, pipeline_key, &stages[MESA_SHADER_TESS_CTRL].info,
-                               MESA_SHADER_TESS_CTRL, true, MESA_SHADER_VERTEX,
+                               MESA_SHADER_TESS_CTRL, MESA_SHADER_VERTEX, RADV_SHADER_TYPE_DEFAULT,
                                &stages[MESA_SHADER_TESS_CTRL].args);
       stages[MESA_SHADER_TESS_CTRL].info.user_sgprs_locs = stages[MESA_SHADER_TESS_CTRL].args.user_sgprs_locs;
       stages[MESA_SHADER_TESS_CTRL].info.inline_push_constant_mask =
@@ -2381,7 +2381,7 @@ radv_declare_pipeline_args(struct radv_device *device, struct radv_pipeline_stag
       gl_shader_stage pre_stage =
          stages[MESA_SHADER_TESS_EVAL].nir ? MESA_SHADER_TESS_EVAL : MESA_SHADER_VERTEX;
       radv_declare_shader_args(device, pipeline_key, &stages[MESA_SHADER_GEOMETRY].info,
-                               MESA_SHADER_GEOMETRY, true, pre_stage,
+                               MESA_SHADER_GEOMETRY, pre_stage, RADV_SHADER_TYPE_DEFAULT,
                                &stages[MESA_SHADER_GEOMETRY].args);
       stages[MESA_SHADER_GEOMETRY].info.user_sgprs_locs = stages[MESA_SHADER_GEOMETRY].args.user_sgprs_locs;
       stages[MESA_SHADER_GEOMETRY].info.inline_push_constant_mask =
@@ -2395,8 +2395,8 @@ radv_declare_pipeline_args(struct radv_device *device, struct radv_pipeline_stag
    }
 
    u_foreach_bit(i, active_nir_stages) {
-      radv_declare_shader_args(device, pipeline_key, &stages[i].info, i, false, MESA_SHADER_VERTEX,
-                               &stages[i].args);
+      radv_declare_shader_args(device, pipeline_key, &stages[i].info, i, MESA_SHADER_NONE,
+                               RADV_SHADER_TYPE_DEFAULT, &stages[i].args);
       stages[i].info.user_sgprs_locs = stages[i].args.user_sgprs_locs;
       stages[i].info.inline_push_constant_mask = stages[i].args.ac.inline_push_const_mask;
    }
@@ -2631,6 +2631,7 @@ radv_pipeline_stage_init(const VkPipelineShaderStageCreateInfo *sinfo,
 
 static struct radv_shader *
 radv_pipeline_create_gs_copy_shader(struct radv_device *device, struct radv_pipeline *pipeline,
+                                    struct vk_pipeline_cache *cache,
                                     struct radv_pipeline_stage *stages,
                                     const struct radv_pipeline_key *pipeline_key,
                                     const struct radv_pipeline_layout *pipeline_layout,
@@ -2667,9 +2668,8 @@ radv_pipeline_create_gs_copy_shader(struct radv_device *device, struct radv_pipe
    gs_copy_stage.info.outinfo = gs_info->outinfo;
    gs_copy_stage.info.force_vrs_per_vertex = gs_info->force_vrs_per_vertex;
 
-   gs_copy_stage.args.is_gs_copy_shader = true;
-   radv_declare_shader_args(device, pipeline_key, &gs_copy_stage.info, MESA_SHADER_VERTEX, false,
-                            MESA_SHADER_VERTEX, &gs_copy_stage.args);
+   radv_declare_shader_args(device, pipeline_key, &gs_copy_stage.info, MESA_SHADER_VERTEX,
+                            MESA_SHADER_NONE, RADV_SHADER_TYPE_GS_COPY, &gs_copy_stage.args);
    gs_copy_stage.info.user_sgprs_locs = gs_copy_stage.args.user_sgprs_locs;
    gs_copy_stage.info.inline_push_constant_mask = gs_copy_stage.args.ac.inline_push_const_mask;
 
@@ -2681,13 +2681,13 @@ radv_pipeline_create_gs_copy_shader(struct radv_device *device, struct radv_pipe
       .optimisations_disabled = pipeline_key->optimisations_disabled,
    };
 
-   return radv_shader_nir_to_asm(device, &gs_copy_stage, &nir, 1, &key, keep_executable_info,
+   return radv_shader_nir_to_asm(device, cache, &gs_copy_stage, &nir, 1, &key, keep_executable_info,
                                  keep_statistic_info, gs_copy_binary);
 }
 
 static void
 radv_pipeline_nir_to_asm(struct radv_device *device, struct radv_graphics_pipeline *pipeline,
-                         struct radv_pipeline_stage *stages,
+                         struct vk_pipeline_cache *cache, struct radv_pipeline_stage *stages,
                          const struct radv_pipeline_key *pipeline_key,
                          const struct radv_pipeline_layout *pipeline_layout,
                          bool keep_executable_info, bool keep_statistic_info,
@@ -2721,13 +2721,13 @@ radv_pipeline_nir_to_asm(struct radv_device *device, struct radv_graphics_pipeli
       int64_t stage_start = os_time_get_nano();
 
       pipeline->base.shaders[s] =
-         radv_shader_nir_to_asm(device, &stages[s], shaders, shader_count, pipeline_key,
+         radv_shader_nir_to_asm(device, cache, &stages[s], shaders, shader_count, pipeline_key,
                                 keep_executable_info, keep_statistic_info, &binaries[s]);
 
       if (s == MESA_SHADER_GEOMETRY && !stages[s].info.is_ngg) {
-         pipeline->base.gs_copy_shader = radv_pipeline_create_gs_copy_shader(device,
-            &pipeline->base, stages, pipeline_key, pipeline_layout, keep_executable_info,
-            keep_statistic_info, gs_copy_binary);
+         pipeline->base.gs_copy_shader = radv_pipeline_create_gs_copy_shader(
+            device, &pipeline->base, cache, stages, pipeline_key, pipeline_layout,
+            keep_executable_info, keep_statistic_info, gs_copy_binary);
       }
 
       stages[s].feedback.duration += os_time_get_nano() - stage_start;
@@ -3236,7 +3236,7 @@ static VkResult
 radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline,
                                const VkGraphicsPipelineCreateInfo *pCreateInfo,
                                struct radv_pipeline_layout *pipeline_layout,
-                               struct radv_device *device, struct radv_pipeline_cache *cache,
+                               struct radv_device *device, struct vk_pipeline_cache *cache,
                                const struct radv_pipeline_key *pipeline_key,
                                VkGraphicsPipelineLibraryFlagBitsEXT lib_flags,
                                bool fast_linking_enabled)
@@ -3307,9 +3307,8 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline,
    }
 
    bool found_in_application_cache = true;
-   if (!skip_shaders_cache &&
-       radv_create_shaders_from_pipeline_cache(device, cache, hash, &pipeline->base, NULL, 0,
-                                               &found_in_application_cache)) {
+   if (!skip_shaders_cache && radv_pipeline_cache_search(device, cache, &pipeline->base, hash,
+                                                         &found_in_application_cache)) {
       if (found_in_application_cache)
          pipeline_feedback.flags |= VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT;
 
@@ -3417,8 +3416,9 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline,
    }
 
    /* Compile NIR shaders to AMD assembly. */
-   radv_pipeline_nir_to_asm(device, pipeline, stages, pipeline_key, pipeline_layout, keep_executable_info,
-                            keep_statistic_info, active_nir_stages, binaries, &gs_copy_binary);
+   radv_pipeline_nir_to_asm(device, pipeline, cache, stages, pipeline_key, pipeline_layout,
+                            keep_executable_info, keep_statistic_info, active_nir_stages, binaries,
+                            &gs_copy_binary);
 
    if (!radv_pipeline_create_ps_epilog(device, pipeline, pipeline_key, lib_flags, noop_fs,
                                        &ps_epilog_binary))
@@ -3450,20 +3450,7 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline,
    }
 
    if (!skip_shaders_cache) {
-      if (pipeline->base.gs_copy_shader) {
-         assert(!binaries[MESA_SHADER_COMPUTE] && !pipeline->base.shaders[MESA_SHADER_COMPUTE]);
-         binaries[MESA_SHADER_COMPUTE] = gs_copy_binary;
-         pipeline->base.shaders[MESA_SHADER_COMPUTE] = pipeline->base.gs_copy_shader;
-      }
-
-      radv_pipeline_cache_insert_shaders(device, cache, hash, &pipeline->base, binaries,
-                                         ps_epilog_binary, NULL, 0);
-
-      if (pipeline->base.gs_copy_shader) {
-         pipeline->base.gs_copy_shader = pipeline->base.shaders[MESA_SHADER_COMPUTE];
-         pipeline->base.shaders[MESA_SHADER_COMPUTE] = NULL;
-         binaries[MESA_SHADER_COMPUTE] = NULL;
-      }
+      radv_pipeline_cache_insert(device, cache, &pipeline->base, ps_epilog_binary, hash);
    }
 
    free(gs_copy_binary);
@@ -4632,7 +4619,7 @@ radv_is_fast_linking_enabled(const VkGraphicsPipelineCreateInfo *pCreateInfo)
 
 static VkResult
 radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv_device *device,
-                            struct radv_pipeline_cache *cache,
+                            struct vk_pipeline_cache *cache,
                             const VkGraphicsPipelineCreateInfo *pCreateInfo,
                             const struct radv_graphics_pipeline_create_info *extra)
 {
@@ -4808,7 +4795,7 @@ radv_graphics_pipeline_create(VkDevice _device, VkPipelineCache _cache,
                               const VkAllocationCallbacks *pAllocator, VkPipeline *pPipeline)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_pipeline_cache, cache, _cache);
+   VK_FROM_HANDLE(vk_pipeline_cache, cache, _cache);
    struct radv_graphics_pipeline *pipeline;
    VkResult result;
 
@@ -4850,7 +4837,7 @@ radv_destroy_graphics_pipeline(struct radv_device *device, struct radv_graphics_
 
 static VkResult
 radv_graphics_lib_pipeline_init(struct radv_graphics_lib_pipeline *pipeline,
-                                struct radv_device *device, struct radv_pipeline_cache *cache,
+                                struct radv_device *device, struct vk_pipeline_cache *cache,
                                 const VkGraphicsPipelineCreateInfo *pCreateInfo)
 {
    VkResult result;
@@ -4922,7 +4909,7 @@ radv_graphics_lib_pipeline_create(VkDevice _device, VkPipelineCache _cache,
                                   const VkGraphicsPipelineCreateInfo *pCreateInfo,
                                   const VkAllocationCallbacks *pAllocator, VkPipeline *pPipeline)
 {
-   RADV_FROM_HANDLE(radv_pipeline_cache, cache, _cache);
+   VK_FROM_HANDLE(vk_pipeline_cache, cache, _cache);
    RADV_FROM_HANDLE(radv_device, device, _device);
    struct radv_graphics_lib_pipeline *pipeline;
    VkResult result;
@@ -5097,7 +5084,7 @@ radv_compute_pipeline_init(const struct radv_device *device,
 static VkResult
 radv_compute_pipeline_compile(struct radv_compute_pipeline *pipeline,
                               struct radv_pipeline_layout *pipeline_layout,
-                              struct radv_device *device, struct radv_pipeline_cache *cache,
+                              struct radv_device *device, struct vk_pipeline_cache *cache,
                               const struct radv_pipeline_key *pipeline_key,
                               const VkPipelineShaderStageCreateInfo *pStage,
                               const VkPipelineCreateFlags flags,
@@ -5123,9 +5110,8 @@ radv_compute_pipeline_compile(struct radv_compute_pipeline *pipeline,
    pipeline->base.pipeline_hash = *(uint64_t *)hash;
 
    bool found_in_application_cache = true;
-   if (!keep_executable_info &&
-       radv_create_shaders_from_pipeline_cache(device, cache, hash, &pipeline->base, NULL, 0,
-                                               &found_in_application_cache)) {
+   if (!keep_executable_info && radv_pipeline_cache_search(device, cache, &pipeline->base, hash,
+                                                           &found_in_application_cache)) {
       if (found_in_application_cache)
          pipeline_feedback.flags |=
             VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT;
@@ -5154,12 +5140,8 @@ radv_compute_pipeline_compile(struct radv_compute_pipeline *pipeline,
    radv_nir_shader_info_pass(device, cs_stage.nir, MESA_SHADER_NONE, pipeline_layout, pipeline_key,
                              pipeline->base.type, false, &cs_stage.info);
 
-   /* Declare shader arguments. */
-   cs_stage.args.explicit_scratch_args = !radv_use_llvm_for_stage(device, MESA_SHADER_COMPUTE);
-   cs_stage.args.load_grid_size_from_user_sgpr = device->load_grid_size_from_user_sgpr;
-
-   radv_declare_shader_args(device, pipeline_key, &cs_stage.info, MESA_SHADER_COMPUTE, false,
-                            MESA_SHADER_VERTEX, &cs_stage.args);
+   radv_declare_shader_args(device, pipeline_key, &cs_stage.info, MESA_SHADER_COMPUTE,
+                            MESA_SHADER_NONE, RADV_SHADER_TYPE_DEFAULT, &cs_stage.args);
 
    cs_stage.info.user_sgprs_locs = cs_stage.args.user_sgprs_locs;
    cs_stage.info.inline_push_constant_mask = cs_stage.args.ac.inline_push_const_mask;
@@ -5174,8 +5156,8 @@ radv_compute_pipeline_compile(struct radv_compute_pipeline *pipeline,
 
    /* Compile NIR shader to AMD assembly. */
    pipeline->base.shaders[MESA_SHADER_COMPUTE] = radv_shader_nir_to_asm(
-      device, &cs_stage, &cs_stage.nir, 1, pipeline_key,
-      keep_executable_info, keep_statistic_info, &binaries[MESA_SHADER_COMPUTE]);
+      device, cache, &cs_stage, &cs_stage.nir, 1, pipeline_key, keep_executable_info,
+      keep_statistic_info, &binaries[MESA_SHADER_COMPUTE]);
 
    cs_stage.feedback.duration += os_time_get_nano() - stage_start;
 
@@ -5190,7 +5172,7 @@ radv_compute_pipeline_compile(struct radv_compute_pipeline *pipeline,
    }
 
    if (!keep_executable_info) {
-      radv_pipeline_cache_insert_shaders(device, cache, hash, &pipeline->base, binaries, NULL, NULL, 0);
+      radv_pipeline_cache_insert(device, cache, &pipeline->base, NULL, hash);
    }
 
    free(binaries[MESA_SHADER_COMPUTE]);
@@ -5221,7 +5203,7 @@ radv_compute_pipeline_create(VkDevice _device, VkPipelineCache _cache,
                              const VkAllocationCallbacks *pAllocator, VkPipeline *pPipeline)
 {
    RADV_FROM_HANDLE(radv_device, device, _device);
-   RADV_FROM_HANDLE(radv_pipeline_cache, cache, _cache);
+   VK_FROM_HANDLE(vk_pipeline_cache, cache, _cache);
    RADV_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->layout);
    struct radv_compute_pipeline *pipeline;
    VkResult result;

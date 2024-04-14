@@ -3496,11 +3496,11 @@ radv_emit_framebuffer_state(struct radv_cmd_buffer *cmd_buffer)
    } else {
       unsigned num_samples = 0;
 
-      /* On GFX11, DB_Z_INFO.NUM_SAMPLES should always match the framebuffer samples. It affects
-       * VRS and occlusion queries if depth and stencil are not bound.
+      /* On GFX11, DB_Z_INFO.NUM_SAMPLES should always match MSAA_EXPOSED_SAMPLES. It affects VRS,
+       * occlusion queries and Primitive Ordered Pixel Shading if depth and stencil are not bound.
        */
       if (cmd_buffer->device->physical_device->rad_info.gfx_level == GFX11)
-         num_samples = util_logbase2(render->max_samples);
+         num_samples = util_logbase2(radv_get_rasterization_samples(cmd_buffer));
 
       if (cmd_buffer->device->physical_device->rad_info.gfx_level == GFX9)
          radeon_set_context_reg_seq(cmd_buffer->cs, R_028038_DB_Z_INFO, 2);
@@ -4356,6 +4356,20 @@ radv_emit_msaa_state(struct radv_cmd_buffer *cmd_buffer)
 
    pa_sc_aa_config |= S_028BE0_COVERAGE_TO_SHADER_SELECT(ps->info.ps.reads_fully_covered);
 
+   /* On GFX11, DB_Z_INFO.NUM_SAMPLES should always match MSAA_EXPOSED_SAMPLES. It affects VRS,
+    * occlusion queries and Primitive Ordered Pixel Shading if depth and stencil are not bound.
+    * This is normally emitted as framebuffer state, but if no attachments are bound the sample
+    * count is independent of the framebuffer state and hence may need to be updated with MSAA
+    * state.
+    * Checking the format, not the image view, because the latter may not exist in a secondary
+    * command buffer.
+    */
+   if (pdevice->rad_info.gfx_level == GFX11 && render->ds_att.format == VK_FORMAT_UNDEFINED) {
+      assert(!render->ds_att.iview);
+      radeon_set_context_reg(cmd_buffer->cs, R_028040_DB_Z_INFO,
+                             S_028040_FORMAT(V_028040_Z_INVALID) |
+                                S_028040_NUM_SAMPLES(log_samples));
+   }
    radeon_set_context_reg(cmd_buffer->cs, R_028804_DB_EQAA, db_eqaa);
    radeon_set_context_reg(cmd_buffer->cs, R_028BE0_PA_SC_AA_CONFIG, pa_sc_aa_config);
    radeon_set_context_reg(cmd_buffer->cs, R_028A48_PA_SC_MODE_CNTL_0,
@@ -6397,6 +6411,11 @@ radv_bind_pre_rast_shader(struct radv_cmd_buffer *cmd_buffer, const struct radv_
       cmd_buffer->state.vtx_emit_num = loc->num_sgprs;
       cmd_buffer->state.uses_drawid = shader->info.vs.needs_draw_id;
       cmd_buffer->state.uses_baseinstance = shader->info.vs.needs_base_instance;
+
+      /* Re-emit some vertex states because the SGPR idx can be different. */
+      cmd_buffer->state.last_first_instance = -1;
+      cmd_buffer->state.last_vertex_offset = -1;
+      cmd_buffer->state.last_drawid = -1;
    }
 
    if (mesh_shading != cmd_buffer->state.mesh_shading) {
@@ -6610,22 +6629,11 @@ radv_CmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipeline
       cmd_buffer->state.last_vgt_shader =
          graphics_pipeline->base.shaders[graphics_pipeline->last_vgt_api_stage];
 
-      bool vtx_emit_count_changed =
-         !cmd_buffer->state.graphics_pipeline ||
-         cmd_buffer->state.graphics_pipeline->vtx_emit_num != graphics_pipeline->vtx_emit_num ||
-         cmd_buffer->state.graphics_pipeline->vtx_base_sgpr != graphics_pipeline->vtx_base_sgpr;
       cmd_buffer->state.graphics_pipeline = graphics_pipeline;
 
       cmd_buffer->state.has_nggc = graphics_pipeline->has_ngg_culling;
       cmd_buffer->state.dirty |= RADV_CMD_DIRTY_PIPELINE | RADV_CMD_DIRTY_DYNAMIC_VERTEX_INPUT;
       cmd_buffer->push_constant_stages |= graphics_pipeline->active_stages;
-
-      /* the new vertex shader might not have the same user regs */
-      if (vtx_emit_count_changed) {
-         cmd_buffer->state.last_first_instance = -1;
-         cmd_buffer->state.last_vertex_offset = -1;
-         cmd_buffer->state.last_drawid = -1;
-      }
 
       /* Prefetch all pipeline shaders at first draw time. */
       cmd_buffer->state.prefetch_L2_mask |= RADV_PREFETCH_SHADERS;
@@ -7578,11 +7586,8 @@ radv_CmdExecuteCommands(VkCommandBuffer commandBuffer, uint32_t commandBufferCou
          primary->state.last_ge_cntl = secondary->state.last_ge_cntl;
       }
 
-      primary->state.last_first_instance = secondary->state.last_first_instance;
       primary->state.last_num_instances = secondary->state.last_num_instances;
-      primary->state.last_drawid = secondary->state.last_drawid;
       primary->state.last_subpass_color_count = secondary->state.last_subpass_color_count;
-      primary->state.last_vertex_offset = secondary->state.last_vertex_offset;
       primary->state.last_sx_ps_downconvert = secondary->state.last_sx_ps_downconvert;
       primary->state.last_sx_blend_opt_epsilon = secondary->state.last_sx_blend_opt_epsilon;
       primary->state.last_sx_blend_opt_control = secondary->state.last_sx_blend_opt_control;
@@ -7607,6 +7612,10 @@ radv_CmdExecuteCommands(VkCommandBuffer commandBuffer, uint32_t commandBufferCou
                            RADV_CMD_DIRTY_NGG_QUERY;
    radv_mark_descriptor_sets_dirty(primary, VK_PIPELINE_BIND_POINT_GRAPHICS);
    radv_mark_descriptor_sets_dirty(primary, VK_PIPELINE_BIND_POINT_COMPUTE);
+
+   primary->state.last_first_instance = -1;
+   primary->state.last_drawid = -1;
+   primary->state.last_vertex_offset = -1;
 }
 
 static void

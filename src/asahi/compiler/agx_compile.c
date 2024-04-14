@@ -1590,11 +1590,11 @@ agx_emit_alu(agx_builder *b, nir_alu_instr *instr)
    ASSERTED unsigned comps = instr->def.num_components;
 
    assert(comps == 1 || nir_op_is_vec_or_mov(instr->op));
-   assert(
-      sz == 1 ||
-      ((nir_op_is_vec_or_mov(instr->op) || is_conversion_to_8bit(instr->op)) &&
-       sz == 8) ||
-      sz == 16 || sz == 32 || sz == 64);
+   assert(sz == 1 ||
+          ((nir_op_is_vec_or_mov(instr->op) ||
+            is_conversion_to_8bit(instr->op) || instr->op == nir_op_bcsel) &&
+           sz == 8) ||
+          sz == 16 || sz == 32 || sz == 64);
 
    agx_index dst = agx_def_index(&instr->def);
    agx_index s0 = srcs > 0 ? agx_alu_src_index(b, instr->src[0]) : agx_null();

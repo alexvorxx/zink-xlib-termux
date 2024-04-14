@@ -1402,6 +1402,8 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    union si_compute_blit_shader_key options;
    options.key = 0;
 
+   /* Only ACO can form VMEM clauses for image stores, which is a requirement for performance. */
+   options.use_aco = true;
    options.is_clear = is_clear;
    options.wg_dim = wg_dim;
    options.has_start_xyz = start_x || start_y || start_z;
@@ -1419,7 +1421,7 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    options.last_dst_channel = util_format_get_last_component(info->dst.format);
 
    /* ACO doesn't support D16 on GFX8 */
-   bool has_d16 = sctx->gfx_level >= (sctx->screen->use_aco ? GFX9 : GFX8);
+   bool has_d16 = sctx->gfx_level >= (options.use_aco || sctx->screen->use_aco ? GFX9 : GFX8);
 
    if (is_clear) {
       assert(dst_samples <= 8);

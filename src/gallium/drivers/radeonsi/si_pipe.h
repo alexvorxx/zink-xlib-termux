@@ -1640,6 +1640,7 @@ void *si_clear_image_dcc_single_shader(struct si_context *sctx, bool is_msaa, un
 
 union si_compute_blit_shader_key {
    struct {
+      bool use_aco:1;
       /* Workgroup settings. */
       uint8_t wg_dim:2; /* 1, 2, or 3 */
       bool has_start_xyz:1;

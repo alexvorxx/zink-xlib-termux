@@ -9,7 +9,7 @@
 #include "ac_surface.h"
 #include "si_pipe.h"
 #include "si_query.h"
-
+#include "aco_interface.h"
 #include "nir_format_convert.h"
 
 static void *create_shader_state(struct si_context *sctx, nir_shader *nir)
@@ -326,6 +326,7 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
 {
    if (si_can_dump_shader(sctx->screen, MESA_SHADER_COMPUTE, SI_DUMP_SHADER_KEY)) {
       fprintf(stderr, "Internal shader: compute_blit\n");
+      fprintf(stderr, "   options.use_aco = %u\n", options->use_aco);
       fprintf(stderr, "   options.wg_dim = %u\n", options->wg_dim);
       fprintf(stderr, "   options.has_start_xyz = %u\n", options->has_start_xyz);
       fprintf(stderr, "   options.log_lane_width = %u\n", options->log_lane_width);
@@ -360,7 +361,8 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
 
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, nir_options,
                                                   "blit_non_scaled_cs");
-   b.shader->info.use_aco_amd = sctx->screen->use_aco;
+   b.shader->info.use_aco_amd = sctx->screen->use_aco ||
+                                (options->use_aco && aco_is_gpu_supported(&sctx->screen->info));
    b.shader->info.num_images = options->is_clear ? 1 : 2;
    unsigned image_dst_index = b.shader->info.num_images - 1;
    if (!options->is_clear && options->src_is_msaa)

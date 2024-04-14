@@ -2211,11 +2211,29 @@ ngg_nogs_gather_outputs(nir_builder *b, struct exec_list *cf_list, lower_ngg_nog
          unsigned component = nir_intrinsic_component(intrin);
          unsigned write_mask = nir_intrinsic_write_mask(intrin);
          nir_alu_type src_type = nir_intrinsic_src_type(intrin);
+         b->cursor = nir_after_instr(instr);
+
+         nir_def *store_val = intrin->src[0].ssa;
+
+         /* 16-bit output stored in a normal varying slot that isn't a dedicated 16-bit slot. */
+         const bool non_dedicated_16bit = slot < VARYING_SLOT_VAR0_16BIT && store_val->bit_size == 16;
 
          u_foreach_bit (i, write_mask) {
             unsigned c = component + i;
-            output[c] = nir_channel(b, intrin->src[0].ssa, i);
-            type[c] = src_type;
+            nir_def *store_component = nir_channel(b, intrin->src[0].ssa, i);
+            if (non_dedicated_16bit) {
+               if (sem.high_16bits) {
+                  nir_def *lo = output[c] ? nir_unpack_32_2x16_split_x(b, output[c]) : nir_imm_intN_t(b, 0, 16);
+                  output[c] = nir_pack_32_2x16_split(b, lo, store_component);
+               } else {
+                  nir_def *hi = output[c] ? nir_unpack_32_2x16_split_y(b, output[c]) : nir_imm_intN_t(b, 0, 16);
+                  output[c] = nir_pack_32_2x16_split(b, store_component, hi);
+               }
+               type[c] = nir_type_uint32;
+            } else {
+               output[c] = store_component;
+               type[c] = src_type;
+            }
          }
 
          /* remove all store output instructions */
@@ -2595,8 +2613,8 @@ ac_nir_lower_ngg_nogs(nir_shader *shader, const ac_nir_lower_ngg_options *option
    }
 
    /* Gather outputs data and types */
-   b->cursor = nir_after_cf_list(&if_es_thread->then_list);
    ngg_nogs_gather_outputs(b, &if_es_thread->then_list, &state);
+   b->cursor = nir_after_cf_list(&if_es_thread->then_list);
 
    if (state.has_user_edgeflags)
       ngg_nogs_store_edgeflag_to_lds(b, &state);

@@ -175,7 +175,7 @@ parse_perfcntrs(const struct fd_dev_id *dev_id, const char *perfcntrstr,
    unsigned cnt = 0;
 
    groups = fd_perfcntrs(dev_id, &num_groups);
-   enabled_counters = calloc(num_groups, sizeof(enabled_counters[0]));
+   enabled_counters = (uint32_t *) calloc(num_groups, sizeof(enabled_counters[0]));
 
    cnames = strdup(perfcntrstr);
    while ((s = strstr(cnames, ","))) {
@@ -183,12 +183,13 @@ parse_perfcntrs(const struct fd_dev_id *dev_id, const char *perfcntrstr,
       s[0] = '\0';
       cnames = &s[1];
 
-      counters = realloc(counters, ++cnt * sizeof(counters[0]));
+      counters =
+         (struct perfcntr *)realloc(counters, ++cnt * sizeof(counters[0]));
       setup_counter(name, &counters[cnt - 1]);
    }
 
    char *name = cnames;
-   counters = realloc(counters, ++cnt * sizeof(counters[0]));
+   counters = (struct perfcntr *)realloc(counters, ++cnt * sizeof(counters[0]));
    setup_counter(name, &counters[cnt - 1]);
 
    *num_perfcntrs = cnt;
@@ -222,17 +223,21 @@ main(int argc, char **argv)
          break;
       case 'g':
          ret = sscanf(optarg, "%u,%u,%u", &grid[0], &grid[1], &grid[2]);
-         if (ret != 3)
-            goto usage;
+         if (ret != 3) {
+            usage(argv[0]);
+            return -1;
+         }
          break;
       case 'h':
-         goto usage;
+         usage(argv[0]);
+         return -1;
       case 'p':
          perfcntrstr = optarg;
          break;
       default:
          printf("unrecognized arg: %c\n", opt);
-         goto usage;
+         usage(argv[0]);
+         return -1;
       }
    }
 
@@ -249,7 +254,10 @@ main(int argc, char **argv)
       backend = a4xx_init(dev, dev_id);
       break;
    case 6:
-      backend = a6xx_init(dev, dev_id);
+      backend = a6xx_init<A6XX>(dev, dev_id);
+      break;
+   case 7:
+      backend = a6xx_init<A7XX>(dev, dev_id);
       break;
    default:
       err(1, "unsupported gpu generation: a%uxx", fd_dev_gen(dev_id));
@@ -305,8 +313,4 @@ main(int argc, char **argv)
    }
 
    return 0;
-
-usage:
-   usage(argv[0]);
-   return -1;
 }

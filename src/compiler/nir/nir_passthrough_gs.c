@@ -122,6 +122,25 @@ array_size_for_prim(enum shader_prim prim)
    }
 }
 
+static void
+copy_vars(nir_builder *b, nir_deref_instr *dst, nir_deref_instr *src)
+{
+   assert(glsl_get_bare_type(dst->type) == glsl_get_bare_type(src->type));
+   if (glsl_type_is_struct(dst->type)) {
+      for (unsigned i = 0; i < glsl_get_length(dst->type); ++i) {
+         copy_vars(b, nir_build_deref_struct(b, dst, i), nir_build_deref_struct(b, src, i));
+      }
+   } else if (glsl_type_is_array_or_matrix(dst->type)) {
+      unsigned count = glsl_type_is_array(dst->type) ? glsl_array_size(dst->type) : glsl_get_matrix_columns(dst->type);
+      for (unsigned i = 0; i < count; i++) {
+         copy_vars(b, nir_build_deref_array_imm(b, dst, i), nir_build_deref_array_imm(b, src, i));
+      }
+   } else {
+      nir_ssa_def *load = nir_load_deref(b, src);
+      nir_store_deref(b, dst, load, BITFIELD_MASK(load->num_components));
+   }
+}
+
 /*
  * A helper to create a passthrough GS shader for drivers that needs to lower
  * some rendering tasks to the GS.
@@ -131,8 +150,6 @@ nir_shader *
 nir_create_passthrough_gs(const nir_shader_compiler_options *options,
                           const nir_shader *prev_stage,
                           enum shader_prim primitive_type,
-                          int flat_interp_mask_offset,
-                          int last_pv_vert_offset,
                           bool emulate_edgeflags,
                           bool force_line_strip_out)
 {
@@ -236,12 +253,8 @@ nir_create_passthrough_gs(const nir_shader_compiler_options *options,
    }
 
    nir_variable *edge_var = nir_find_variable_with_location(nir, nir_var_shader_in, VARYING_SLOT_EDGE);
-   nir_ssa_def *flat_interp_mask_def = nir_load_ubo(&b, 1, 32,
-                                                    nir_imm_int(&b, 0), nir_imm_int(&b, flat_interp_mask_offset),
-                                                    .align_mul = 4, .align_offset = 0, .range_base = 0, .range = ~0);
-   nir_ssa_def *last_pv_vert_def = nir_load_ubo(&b, 1, 32,
-                                                nir_imm_int(&b, 0), nir_imm_int(&b, last_pv_vert_offset),
-                                                .align_mul = 4, .align_offset = 0, .range_base = 0, .range = ~0);
+   nir_ssa_def *flat_interp_mask_def = nir_load_flat_mask(&b);
+   nir_ssa_def *last_pv_vert_def = nir_load_provoking_last(&b);
    last_pv_vert_def = nir_ine_imm(&b, last_pv_vert_def, 0);
    nir_ssa_def *start_vert_index = nir_imm_int(&b, start_vert);
    nir_ssa_def *end_vert_index = nir_imm_int(&b, end_vert - 1);
@@ -261,9 +274,8 @@ nir_create_passthrough_gs(const nir_shader_compiler_options *options,
             unsigned mask = 1u << (of++);
             index = nir_bcsel(&b, nir_ieq_imm(&b, nir_iand_imm(&b, flat_interp_mask_def, mask), 0), nir_imm_int(&b, idx), pv_vert_index);
          }
-         nir_ssa_def *value = nir_load_array_var(&b, in_vars[j], index);
-         nir_store_var(&b, out_vars[oj], value,
-                       (1u << value->num_components) - 1);
+         nir_deref_instr *value = nir_build_deref_array(&b, nir_build_deref_var(&b, in_vars[j]), index);
+         copy_vars(&b, nir_build_deref_var(&b, out_vars[oj]), value);
          ++oj;
       }
       nir_emit_vertex(&b, 0);

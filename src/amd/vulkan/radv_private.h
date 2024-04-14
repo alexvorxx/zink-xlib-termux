@@ -79,6 +79,7 @@
 #include "ac_spm.h"
 #include "ac_sqtt.h"
 #include "ac_surface.h"
+#include "ac_vcn.h"
 #include "radv_constants.h"
 #include "radv_descriptor_set.h"
 #include "radv_radeon_winsys.h"
@@ -248,6 +249,7 @@ radv_float_to_ufixed(float value, unsigned frac_bits)
 
 struct radv_image_view;
 struct radv_instance;
+struct rvcn_decode_buffer_s;
 
 /* A non-fatal assert.  Useful for debugging. */
 #ifdef NDEBUG
@@ -372,6 +374,8 @@ struct radv_physical_device {
       unsigned cmd;
       unsigned cntl;
    } vid_dec_reg;
+   enum amd_ip_type vid_decode_ip;
+   uint32_t vid_addr_gfx_mode;
 };
 
 uint32_t radv_find_memory_index(struct radv_physical_device *pdevice, VkMemoryPropertyFlags flags);
@@ -383,7 +387,7 @@ VkResult create_drm_physical_device(struct vk_instance *vk_instance, struct _drm
 
 void radv_physical_device_destroy(struct vk_physical_device *vk_device);
 
-bool radv_thread_trace_enabled(void);
+bool radv_sqtt_enabled(void);
 
 struct radv_instance {
    struct vk_instance vk;
@@ -1017,13 +1021,13 @@ struct radv_device {
    struct radv_device_border_color_data border_color_data;
 
    /* Thread trace. */
-   struct ac_thread_trace_data thread_trace;
+   struct ac_sqtt sqtt;
 
    /* Memory trace. */
    struct radv_memory_trace_data memory_trace;
 
    /* SPM. */
-   struct ac_spm_trace_data spm_trace;
+   struct ac_spm spm;
 
    /* Radeon Raytracing Analyzer trace. */
    struct radv_rra_trace_data rra_trace;
@@ -1324,6 +1328,7 @@ enum radv_cmd_dirty_bits {
    RADV_CMD_DIRTY_GUARDBAND = 1ull << 53,
    RADV_CMD_DIRTY_RBPLUS = 1ull << 54,
    RADV_CMD_DIRTY_NGG_QUERY = 1ull << 55,
+   RADV_CMD_DIRTY_OCCLUSION_QUERY = 1ull << 56,
 };
 
 enum radv_cmd_flush_bits {
@@ -1626,6 +1631,8 @@ struct radv_cmd_state {
    uint32_t last_sx_blend_opt_epsilon;
    uint32_t last_sx_blend_opt_control;
 
+   uint32_t last_db_count_control;
+
    /* Whether CP DMA is busy/idle. */
    bool dma_is_busy;
 
@@ -1639,6 +1646,8 @@ struct radv_cmd_state {
 
    /* Inheritance info. */
    VkQueryPipelineStatisticFlags inherited_pipeline_statistics;
+   bool inherited_occlusion_queries;
+   VkQueryControlFlags inherited_query_control_flags;
 
    bool context_roll_without_scissor_emitted;
 
@@ -1657,8 +1666,8 @@ struct radv_cmd_state {
 
    uint8_t cb_mip[MAX_RTS];
 
-   /* Whether DRAW_{INDEX}_INDIRECT_MULTI is emitted. */
-   bool uses_draw_indirect_multi;
+   /* Whether DRAW_{INDEX}_INDIRECT_{MULTI} is emitted. */
+   bool uses_draw_indirect;
 
    uint32_t rt_stack_size;
 
@@ -1801,9 +1810,13 @@ struct radv_cmd_buffer {
    struct {
       struct radv_video_session *vid;
       struct radv_video_session_params *params;
+      struct rvcn_sq_var sq;
+      struct rvcn_decode_buffer_s *decode_buffer;
    } video;
 
    uint64_t shader_upload_seq;
+
+   uint32_t sqtt_cb_id;
 };
 
 static inline bool
@@ -1901,7 +1914,6 @@ void si_cp_dma_clear_buffer(struct radv_cmd_buffer *cmd_buffer, uint64_t va, uin
                             unsigned value);
 void si_cp_dma_wait_for_idle(struct radv_cmd_buffer *cmd_buffer);
 
-void radv_set_db_count_control(struct radv_cmd_buffer *cmd_buffer, bool enable_occlusion_queries);
 uint32_t radv_get_pa_su_sc_mode_cntl(const struct radv_cmd_buffer *cmd_buffer);
 uint32_t radv_get_vgt_index_size(uint32_t type);
 
@@ -2093,7 +2105,6 @@ struct radv_event {
 #define RADV_HASH_SHADER_NO_FMASK              (1 << 19)
 #define RADV_HASH_SHADER_NGG_STREAMOUT         (1 << 20)
 
-struct radv_ray_tracing_module;
 struct radv_pipeline_key;
 
 void radv_pipeline_stage_init(const VkPipelineShaderStageCreateInfo *sinfo,
@@ -2108,7 +2119,7 @@ void radv_hash_rt_stages(struct mesa_sha1 *ctx, const VkPipelineShaderStageCreat
 
 void radv_hash_rt_shaders(unsigned char *hash, const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
                           const struct radv_pipeline_key *key,
-                          const struct radv_ray_tracing_module *groups, uint32_t flags);
+                          const struct radv_ray_tracing_group *groups, uint32_t flags);
 
 uint32_t radv_get_hash_flags(const struct radv_device *device, bool stats);
 
@@ -2281,7 +2292,11 @@ struct radv_compute_pipeline {
    struct radv_pipeline base;
 };
 
-struct radv_ray_tracing_module {
+struct radv_ray_tracing_group {
+   VkRayTracingShaderGroupTypeKHR type;
+   uint32_t recursive_shader; /* generalShader or closestHitShader */
+   uint32_t any_hit_shader;
+   uint32_t intersection_shader;
    struct radv_pipeline_group_handle handle;
    struct radv_pipeline_shader_stack_size stack_size;
 };
@@ -2295,8 +2310,8 @@ struct radv_ray_tracing_lib_pipeline {
    unsigned stage_count;
    VkPipelineShaderStageCreateInfo *stages;
    unsigned group_count;
-   VkRayTracingShaderGroupCreateInfoKHR *group_infos;
-   struct radv_ray_tracing_module groups[];
+   uint8_t sha1[SHA1_DIGEST_LENGTH];
+   struct radv_ray_tracing_group groups[];
 };
 
 struct radv_graphics_lib_pipeline {
@@ -2325,7 +2340,7 @@ struct radv_ray_tracing_pipeline {
 
    uint32_t group_count;
    uint32_t stack_size;
-   struct radv_ray_tracing_module groups[];
+   struct radv_ray_tracing_group groups[];
 };
 
 #define RADV_DECL_PIPELINE_DOWNCAST(pipe_type, pipe_enum)            \
@@ -3056,14 +3071,16 @@ void radv_nir_shader_info_link(struct radv_device *device,
                                const struct radv_pipeline_key *pipeline_key,
                                struct radv_pipeline_stage *stages);
 
-bool radv_thread_trace_init(struct radv_device *device);
-void radv_thread_trace_finish(struct radv_device *device);
-bool radv_begin_thread_trace(struct radv_queue *queue);
-bool radv_end_thread_trace(struct radv_queue *queue);
-bool radv_get_thread_trace(struct radv_queue *queue, struct ac_thread_trace *thread_trace);
-void radv_emit_thread_trace_userdata(struct radv_cmd_buffer *cmd_buffer, const void *data,
-                                     uint32_t num_dwords);
+bool radv_sqtt_init(struct radv_device *device);
+void radv_sqtt_finish(struct radv_device *device);
+bool radv_begin_sqtt(struct radv_queue *queue);
+bool radv_end_sqtt(struct radv_queue *queue);
+bool radv_get_sqtt_trace(struct radv_queue *queue, struct ac_sqtt_trace *sqtt_trace);
+void radv_reset_sqtt_trace(struct radv_device *device);
+void radv_emit_sqtt_userdata(struct radv_cmd_buffer *cmd_buffer, const void *data,
+                             uint32_t num_dwords);
 bool radv_is_instruction_timing_enabled(void);
+bool radv_sqtt_sample_clocks(struct radv_device *device);
 
 void radv_emit_inhibit_clockgating(struct radv_device *device, struct radeon_cmdbuf *cs,
                                    bool inhibit);

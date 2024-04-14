@@ -133,7 +133,7 @@ amd-raven-skqp:amd64:
     PIGLIT_REPLAY_DESCRIPTION_FILE: "/install/traces-amd.yml"
     PIGLIT_REPLAY_EXTRA_ARGS: --keep-image
 
-.radv-raven-traces:amd64:  # FIXME: when TPad-C13 gets back, restore
+radv-raven-traces:amd64:
   extends:
     - .radv-traces
     - .radv-raven-test:amd64
@@ -152,7 +152,7 @@ radeonsi-raven-piglit-quick_gl:amd64:
     PIGLIT_PROFILES: quick_gl
     HWCI_START_XORG: 1
 
-radeonsi-raven-piglit-quick_shader:amd64:  # FIXME: when TPad-C13 gets back, restore
+radeonsi-raven-piglit-quick_shader:amd64:
   extends:
     - radeonsi-raven-piglit-quick_gl:amd64
   variables:
@@ -355,6 +355,10 @@ vkcts-navi10-valve:
     # Use Linux 5.17 to work around hitting __vm_enough_memory then hanging on Linux 6.1
     # See https://gitlab.freedesktop.org/mesa/mesa/-/issues/7888 for details
     B2C_KERNEL_URL: 'https://gitlab.freedesktop.org/mupuf/valve-infra/-/package_files/144/download'  # 5.17.1
+    # NAVI10 hangs quite often while running vkcts. This is being investigated,
+    # but in the mean time, retry up to 2 times.
+    B2C_SESSION_REBOOT_REGEX: '(GPU hang detected!|\*ERROR\* ring [^\s]+ timeout(?!, but soft recovered)|The CS has been cancelled because the context is lost)'
+    B2C_TIMEOUT_BOOT_RETRIES: 2
 
 vkcts-navi21-valve:
   parallel: 3
@@ -364,7 +368,8 @@ vkcts-navi21-valve:
   variables:
     GPU_VERSION: radv-navi21-aco
 
-vkcts-navi21-llvm-valve:
+# Disabled due to its extremelly-broken nature
+.vkcts-navi21-llvm-valve:
   extends:
     - .vkcts-test-valve
     - .navi21-test-valve

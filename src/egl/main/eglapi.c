@@ -94,6 +94,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "c11/threads.h"
+#include "mapi/glapi/glapi.h"
 #include "util/u_debug.h"
 #include "util/macros.h"
 #include "util/perf/cpu_trace.h"
@@ -187,7 +188,7 @@ _egl_relax_end(_EGLDisplay *disp, _EGLResource **rs, unsigned rs_count)
 
 /**
  * Helper to relax (drop) the EGL BDL over it's body, optionally holding
- * a reference to a list of _EGLResource's until the lock is re-aquired,
+ * a reference to a list of _EGLResource's until the lock is re-acquired,
  * protecting the resources from destruction while the BDL is dropped.
  */
 #define egl_relax(disp, ...) \
@@ -2885,8 +2886,8 @@ eglGetProcAddress(const char *procname)
          ret = entrypoint->function;
    }
 
-   if (!ret && _eglDriver.GetProcAddress)
-      ret = _eglDriver.GetProcAddress(procname);
+   if (!ret)
+      ret = _glapi_get_proc_address(procname);
 
    RETURN_EGL_SUCCESS(NULL, ret);
 }

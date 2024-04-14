@@ -523,6 +523,10 @@
    DRI_CONF_OPT_B(format_l8_srgb_enable_readback, def, \
                   "Force-enable reading back L8_SRGB textures")
 
+#define DRI_CONF_VIRGL_SHADER_SYNC(def) \
+   DRI_CONF_OPT_B(virgl_shader_sync, def, \
+                  "Make shader compilation synchronous")
+
 /**
  * \brief freedreno specific configuration options
  */
@@ -667,8 +671,5 @@
 
 #define DRI_CONF_DZN_ENABLE_8BIT_LOADS_STORES(def) \
    DRI_CONF_OPT_B(dzn_enable_8bit_loads_stores, def, "Enable VK_KHR_8bit_loads_stores")
-
-#define DRI_CONF_DZN_ENABLE_SUBGROUP_OPS_IN_VTX_PIPELINE(def) \
-   DRI_CONF_OPT_B(dzn_enable_subgroup_ops_in_vtx_pipeline, def, "Enable subgroup ops in pre-rasterizer stages (VS/GS)")
 
 #endif

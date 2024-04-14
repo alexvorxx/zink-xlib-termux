@@ -3275,7 +3275,7 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
          mantissa = bld.vop2(aco_opcode::v_or_b32, bld.def(v1), Operand::c32(0x800000u), mantissa);
          Temp exponent_small = bld.vsub32(bld.def(v1), Operand::c32(24u), exponent);
          Temp small = bld.vop2(aco_opcode::v_lshrrev_b32, bld.def(v1), exponent_small, mantissa);
-         mantissa = bld.pseudo(aco_opcode::p_create_vector, bld.def(v2), Operand::zero(), mantissa);
+         mantissa = bld.pseudo(aco_opcode::p_create_vector, bld.def(v2), mantissa, Operand::zero());
          Temp new_exponent = bld.tmp(v1);
          Temp cond_small =
             bld.vsub32(Definition(new_exponent), exponent, Operand::c32(24u), true).def(1).getTemp();
@@ -3311,7 +3311,7 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
                                         Operand::c32(24u), exponent);
          Temp small = bld.sop2(aco_opcode::s_lshr_b32, bld.def(s1), bld.def(s1, scc), mantissa,
                                exponent_small);
-         mantissa = bld.pseudo(aco_opcode::p_create_vector, bld.def(s2), Operand::zero(), mantissa);
+         mantissa = bld.pseudo(aco_opcode::p_create_vector, bld.def(s2), mantissa, Operand::zero());
          Temp exponent_large = bld.sop2(aco_opcode::s_sub_u32, bld.def(s1), bld.def(s1, scc),
                                         exponent, Operand::c32(24u));
          mantissa = bld.sop2(aco_opcode::s_lshl_b64, bld.def(s2), bld.def(s1, scc), mantissa,
@@ -3319,7 +3319,7 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
          Temp cond =
             bld.sopc(aco_opcode::s_cmp_ge_i32, bld.def(s1, scc), Operand::c32(64u), exponent);
          mantissa = bld.sop2(aco_opcode::s_cselect_b64, bld.def(s2), mantissa,
-                             Operand::c32(0xffffffffu), cond);
+                             Operand::c64(~0llu), cond);
          Temp lower = bld.tmp(s1), upper = bld.tmp(s1);
          bld.pseudo(aco_opcode::p_split_vector, Definition(lower), Definition(upper), mantissa);
          Temp cond_small =
@@ -5812,7 +5812,7 @@ visit_load_push_constant(isel_context* ctx, nir_intrinsic_instr* instr)
    default: unreachable("unimplemented or forbidden load_push_constant.");
    }
 
-   bld.smem(op, Definition(vec), ptr, index)->smem().prevent_overflow = true;
+   bld.smem(op, Definition(vec), ptr, index);
 
    if (!aligned) {
       Operand byte_offset = index_cv ? Operand::c32((offset + index_cv->u32) % 4) : Operand(index);
@@ -6456,6 +6456,16 @@ visit_image_atomic(isel_context* ctx, nir_intrinsic_instr* instr)
       buf_op = aco_opcode::buffer_atomic_cmpswap;
       buf_op64 = aco_opcode::buffer_atomic_cmpswap_x2;
       image_op = aco_opcode::image_atomic_cmpswap;
+      break;
+   case nir_intrinsic_bindless_image_atomic_inc_wrap:
+      buf_op = aco_opcode::buffer_atomic_inc;
+      buf_op64 = aco_opcode::buffer_atomic_inc_x2;
+      image_op = aco_opcode::image_atomic_inc;
+      break;
+   case nir_intrinsic_bindless_image_atomic_dec_wrap:
+      buf_op = aco_opcode::buffer_atomic_dec;
+      buf_op64 = aco_opcode::buffer_atomic_dec_x2;
+      image_op = aco_opcode::image_atomic_dec;
       break;
    case nir_intrinsic_bindless_image_atomic_fadd:
       buf_op = aco_opcode::buffer_atomic_add_f32;
@@ -7179,6 +7189,12 @@ visit_load_smem(isel_context* ctx, nir_intrinsic_instr* instr)
    Temp base = bld.as_uniform(get_ssa_temp(ctx, instr->src[0].ssa));
    Temp offset = bld.as_uniform(get_ssa_temp(ctx, instr->src[1].ssa));
 
+   /* If base address is 32bit, convert to 64bit with the high 32bit part. */
+   if (base.bytes() == 4) {
+      base = bld.pseudo(aco_opcode::p_create_vector, bld.def(s2),
+                        base, Operand::c32(ctx->options->address32_hi));
+   }
+
    aco_opcode opcode = aco_opcode::s_load_dword;
    unsigned size = 1;
 
@@ -7503,9 +7519,16 @@ get_scratch_resource(isel_context* ctx)
 {
    Builder bld(ctx->program, ctx->block);
    Temp scratch_addr = ctx->program->private_segment_buffer;
-   if (ctx->stage.hw != HWStage::CS)
+   if (!scratch_addr.bytes()) {
+      Temp addr_lo = bld.sop1(aco_opcode::p_load_symbol, bld.def(s1),
+                              Operand::c32(aco_symbol_scratch_addr_lo));
+      Temp addr_hi = bld.sop1(aco_opcode::p_load_symbol, bld.def(s1),
+                              Operand::c32(aco_symbol_scratch_addr_hi));
+      scratch_addr = bld.pseudo(aco_opcode::p_create_vector, bld.def(s2), addr_lo, addr_hi);
+   } else if (ctx->stage.hw != HWStage::CS) {
       scratch_addr =
          bld.smem(aco_opcode::s_load_dwordx2, bld.def(s2), scratch_addr, Operand::zero());
+   }
 
    uint32_t rsrc_conf =
       S_008F0C_ADD_TID_ENABLE(1) | S_008F0C_INDEX_STRIDE(ctx->program->wave_size == 64 ? 3 : 2);
@@ -8064,7 +8087,7 @@ get_interp_param(isel_context* ctx, nir_intrinsic_op intrin,
        intrin == nir_intrinsic_load_barycentric_at_offset) {
       return get_arg(ctx, linear ? ctx->args->linear_center : ctx->args->persp_center);
    } else if (intrin == nir_intrinsic_load_barycentric_centroid) {
-      return linear ? ctx->linear_centroid : ctx->persp_centroid;
+      return get_arg(ctx, linear ? ctx->args->linear_centroid : ctx->args->persp_centroid);
    } else {
       assert(intrin == nir_intrinsic_load_barycentric_sample);
       return get_arg(ctx, linear ? ctx->args->linear_sample : ctx->args->persp_sample);
@@ -8087,6 +8110,40 @@ ds_ordered_count_offsets(isel_context *ctx, unsigned index_operand,
 
    if (ctx->options->gfx_level < GFX11)
       *offset1 |= 3 /* GS shader type */ << 2;
+}
+
+struct aco_export_mrt {
+   Operand out[4];
+   unsigned enabled_channels;
+   unsigned target;
+   bool compr;
+};
+
+static void
+create_fs_dual_src_export_gfx11(isel_context* ctx, const struct aco_export_mrt* mrt0,
+                                const struct aco_export_mrt* mrt1)
+{
+   Builder bld(ctx->program, ctx->block);
+
+   aco_ptr<Pseudo_instruction> exp{create_instruction<Pseudo_instruction>(
+      aco_opcode::p_dual_src_export_gfx11, Format::PSEUDO, 8, 6)};
+   for (unsigned i = 0; i < 4; i++) {
+      exp->operands[i] = mrt0 ? mrt0->out[i] : Operand(v1);
+      exp->operands[i].setLateKill(true);
+      exp->operands[i + 4] = mrt1 ? mrt1->out[i] : Operand(v1);
+      exp->operands[i + 4].setLateKill(true);
+   }
+
+   RegClass type = RegClass(RegType::vgpr, util_bitcount(mrt0->enabled_channels));
+   exp->definitions[0] = bld.def(type); /* mrt0 */
+   exp->definitions[1] = bld.def(type); /* mrt1 */
+   exp->definitions[2] = bld.def(v1);
+   exp->definitions[3] = bld.def(bld.lm);
+   exp->definitions[4] = bld.def(bld.lm, vcc);
+   exp->definitions[5] = bld.def(s1, scc);
+   ctx->block->instructions.emplace_back(std::move(exp));
+
+   ctx->program->has_color_exports = true;
 }
 
 void
@@ -8192,6 +8249,8 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
    case nir_intrinsic_bindless_image_atomic_xor:
    case nir_intrinsic_bindless_image_atomic_exchange:
    case nir_intrinsic_bindless_image_atomic_comp_swap:
+   case nir_intrinsic_bindless_image_atomic_inc_wrap:
+   case nir_intrinsic_bindless_image_atomic_dec_wrap:
    case nir_intrinsic_bindless_image_atomic_fadd:
    case nir_intrinsic_bindless_image_atomic_fmin:
    case nir_intrinsic_bindless_image_atomic_fmax: visit_image_atomic(ctx, instr); break;
@@ -9088,8 +9147,11 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       unsigned write_mask = nir_intrinsic_write_mask(instr);
 
       /* Mark vertex export block. */
-      if (target == V_008DFC_SQ_EXP_POS)
+      if (target == V_008DFC_SQ_EXP_POS || target <= V_008DFC_SQ_EXP_NULL)
          ctx->block->kind |= block_kind_export_end;
+
+      if (target <= V_008DFC_SQ_EXP_NULL)
+         ctx->program->has_color_exports = true;
 
       aco_ptr<Export_instruction> exp{
          create_instruction<Export_instruction>(aco_opcode::exp, Format::EXP, 4, 0)};
@@ -9097,10 +9159,9 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       exp->dest = target;
       exp->enabled_mask = write_mask;
       exp->compressed = flags & AC_EXP_FLAG_COMPRESSED;
-      exp->valid_mask = flags & AC_EXP_FLAG_VALID_MASK;
 
-      /* ACO may reorder position export instructions, then mark done for last
-       * export instruction. So don't respect the nir AC_EXP_FLAG_DONE for position
+      /* ACO may reorder position/mrt export instructions, then mark done for last
+       * export instruction. So don't respect the nir AC_EXP_FLAG_DONE for position/mrt
        * exports here and leave it to ACO.
        */
       if (target == V_008DFC_SQ_EXP_PRIM)
@@ -9108,14 +9169,50 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       else
          exp->done = false;
 
+      /* ACO may reorder mrt export instructions, then mark valid mask for last
+       * export instruction. So don't respect the nir AC_EXP_FLAG_VALID_MASK for mrt
+       * exports here and leave it to ACO.
+       */
+      if (target > V_008DFC_SQ_EXP_NULL)
+         exp->valid_mask = flags & AC_EXP_FLAG_VALID_MASK;
+      else
+         exp->valid_mask = false;
+
+      /* Compressed export uses two bits for a channel. */
+      uint32_t channel_mask = exp->compressed ?
+         (write_mask & 0x3 ? 1 : 0) | (write_mask & 0xc ? 2 : 0) :
+         write_mask;
+
       Temp value = get_ssa_temp(ctx, instr->src[0].ssa);
       for (unsigned i = 0; i < 4; i++) {
-         exp->operands[i] = write_mask & BITFIELD_BIT(i) ?
+         exp->operands[i] = channel_mask & BITFIELD_BIT(i) ?
             Operand(emit_extract_vector(ctx, value, i, v1)) :
             Operand(v1);
       }
 
       ctx->block->instructions.emplace_back(std::move(exp));
+      break;
+   }
+   case nir_intrinsic_export_dual_src_blend_amd: {
+      Temp val0 = get_ssa_temp(ctx, instr->src[0].ssa);
+      Temp val1 = get_ssa_temp(ctx, instr->src[1].ssa);
+      unsigned write_mask = nir_intrinsic_write_mask(instr);
+
+      struct aco_export_mrt mrt0, mrt1;
+      for (unsigned i = 0; i < 4; i++) {
+         mrt0.out[i] = write_mask & BITFIELD_BIT(i) ?
+            Operand(emit_extract_vector(ctx, val0, i, v1)) :
+            Operand(v1);
+
+         mrt1.out[i] = write_mask & BITFIELD_BIT(i) ?
+            Operand(emit_extract_vector(ctx, val1, i, v1)) :
+            Operand(v1);
+      }
+      mrt0.enabled_channels = mrt1.enabled_channels = write_mask;
+
+      create_fs_dual_src_export_gfx11(ctx, &mrt0, &mrt1);
+
+      ctx->block->kind |= block_kind_export_end;
       break;
    }
    default:
@@ -9358,6 +9455,9 @@ visit_tex(isel_context* ctx, nir_tex_instr* instr)
       default: break;
       }
    }
+
+   if (instr->op == nir_texop_tg4 && !has_lod && !instr->is_gather_implicit_lod)
+      level_zero = true;
 
    if (has_offset) {
       assert(instr->op != nir_texop_txf);
@@ -9809,15 +9909,22 @@ visit_tex(isel_context* ctx, nir_tex_instr* instr)
    }
 
    if (instr->op == nir_texop_tg4) {
+      /* GFX11 supports implicit LOD, but the extension is unsupported. */
+      assert(level_zero || ctx->options->gfx_level < GFX11);
+
       if (has_offset) { /* image_gather4_*_o */
          if (has_compare) {
-            opcode = aco_opcode::image_gather4_c_lz_o;
+            opcode = aco_opcode::image_gather4_c_o;
+            if (level_zero)
+               opcode = aco_opcode::image_gather4_c_lz_o;
             if (has_lod)
                opcode = aco_opcode::image_gather4_c_l_o;
             if (has_bias)
                opcode = aco_opcode::image_gather4_c_b_o;
          } else {
-            opcode = aco_opcode::image_gather4_lz_o;
+            opcode = aco_opcode::image_gather4_o;
+            if (level_zero)
+               opcode = aco_opcode::image_gather4_lz_o;
             if (has_lod)
                opcode = aco_opcode::image_gather4_l_o;
             if (has_bias)
@@ -9825,13 +9932,17 @@ visit_tex(isel_context* ctx, nir_tex_instr* instr)
          }
       } else {
          if (has_compare) {
-            opcode = aco_opcode::image_gather4_c_lz;
+            opcode = aco_opcode::image_gather4_c;
+            if (level_zero)
+               opcode = aco_opcode::image_gather4_c_lz;
             if (has_lod)
                opcode = aco_opcode::image_gather4_c_l;
             if (has_bias)
                opcode = aco_opcode::image_gather4_c_b;
          } else {
-            opcode = aco_opcode::image_gather4_lz;
+            opcode = aco_opcode::image_gather4;
+            if (level_zero)
+               opcode = aco_opcode::image_gather4_lz;
             if (has_lod)
                opcode = aco_opcode::image_gather4_l;
             if (has_bias)
@@ -10717,75 +10828,6 @@ visit_cf_list(isel_context* ctx, struct exec_list* list)
    return false;
 }
 
-static bool
-export_fs_mrt_z(isel_context* ctx)
-{
-   Builder bld(ctx->program, ctx->block);
-   unsigned enabled_channels = 0;
-   bool compr = false;
-   Operand values[4];
-
-   for (unsigned i = 0; i < 4; ++i) {
-      values[i] = Operand(v1);
-   }
-
-   bool writes_mrt0_alpha = ctx->program->info.ps.alpha_to_coverage_via_mrtz &&
-                            (ctx->outputs.mask[FRAG_RESULT_DATA0] & 0x8);
-
-   /* Both stencil and sample mask only need 16-bits. */
-   if (!ctx->program->info.ps.writes_z && !writes_mrt0_alpha &&
-       (ctx->program->info.ps.writes_stencil || ctx->program->info.ps.writes_sample_mask)) {
-      compr = ctx->program->gfx_level < GFX11; /* COMPR flag */
-
-      if (ctx->program->info.ps.writes_stencil) {
-         /* Stencil should be in X[23:16]. */
-         values[0] = Operand(ctx->outputs.temps[FRAG_RESULT_STENCIL * 4u]);
-         values[0] = bld.vop2(aco_opcode::v_lshlrev_b32, bld.def(v1), Operand::c32(16u), values[0]);
-         enabled_channels |= ctx->program->gfx_level >= GFX11 ? 0x1 : 0x3;
-      }
-
-      if (ctx->program->info.ps.writes_sample_mask) {
-         /* SampleMask should be in Y[15:0]. */
-         values[1] = Operand(ctx->outputs.temps[FRAG_RESULT_SAMPLE_MASK * 4u]);
-         enabled_channels |= ctx->program->gfx_level >= GFX11 ? 0x2 : 0xc;
-      }
-   } else {
-      if (ctx->program->info.ps.writes_z) {
-         values[0] = Operand(ctx->outputs.temps[FRAG_RESULT_DEPTH * 4u]);
-         enabled_channels |= 0x1;
-      }
-
-      if (ctx->program->info.ps.writes_stencil) {
-         values[1] = Operand(ctx->outputs.temps[FRAG_RESULT_STENCIL * 4u]);
-         enabled_channels |= 0x2;
-      }
-
-      if (ctx->program->info.ps.writes_sample_mask) {
-         values[2] = Operand(ctx->outputs.temps[FRAG_RESULT_SAMPLE_MASK * 4u]);
-         enabled_channels |= 0x4;
-      }
-
-      if (writes_mrt0_alpha) {
-         assert(ctx->program->gfx_level >= GFX11);
-         values[3] = Operand(ctx->outputs.temps[FRAG_RESULT_DATA0 * 4u + 3u]);
-         enabled_channels |= 0x8;
-      }
-   }
-
-   /* GFX6 (except OLAND and HAINAN) has a bug that it only looks at the X
-    * writemask component.
-    */
-   if (ctx->options->gfx_level == GFX6 && ctx->options->family != CHIP_OLAND &&
-       ctx->options->family != CHIP_HAINAN) {
-      enabled_channels |= 0x1;
-   }
-
-   bld.exp(aco_opcode::exp, values[0], values[1], values[2], values[3], enabled_channels,
-           V_008DFC_SQ_EXP_MRTZ, compr);
-
-   return true;
-}
-
 struct mrt_color_export {
    int slot;
    unsigned write_mask;
@@ -10796,13 +10838,6 @@ struct mrt_color_export {
    bool is_int8;
    bool is_int10;
    bool enable_mrt_output_nan_fixup;
-};
-
-struct aco_export_mrt {
-   Operand out[4];
-   unsigned enabled_channels;
-   unsigned target;
-   bool compr;
 };
 
 static void
@@ -11051,7 +11086,8 @@ create_fs_jump_to_epilog(isel_context* ctx)
       }
    }
 
-   Temp continue_pc = convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->program->info.ps.epilog.pc));
+   Temp continue_pc =
+      convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->program->info.ps.epilog_pc));
 
    aco_ptr<Pseudo_instruction> jump{create_instruction<Pseudo_instruction>(
       aco_opcode::p_jump_to_epilog, Format::PSEUDO, 1 + color_exports.size(), 0)};
@@ -11060,117 +11096,6 @@ create_fs_jump_to_epilog(isel_context* ctx)
       jump->operands[i + 1] = color_exports[i];
    }
    ctx->block->instructions.emplace_back(std::move(jump));
-}
-
-static void
-create_fs_dual_src_export_gfx11(isel_context* ctx, const struct aco_export_mrt* mrt0,
-                                const struct aco_export_mrt* mrt1)
-{
-   Builder bld(ctx->program, ctx->block);
-
-   aco_ptr<Pseudo_instruction> exp{create_instruction<Pseudo_instruction>(
-      aco_opcode::p_dual_src_export_gfx11, Format::PSEUDO, 8, 6)};
-   for (unsigned i = 0; i < 4; i++) {
-      exp->operands[i] = mrt0 ? mrt0->out[i] : Operand(v1);
-      exp->operands[i].setLateKill(true);
-      exp->operands[i + 4] = mrt1 ? mrt1->out[i] : Operand(v1);
-      exp->operands[i + 4].setLateKill(true);
-   }
-
-   RegClass type = RegClass(RegType::vgpr, util_bitcount(mrt0->enabled_channels));
-   exp->definitions[0] = bld.def(type); /* mrt0 */
-   exp->definitions[1] = bld.def(type); /* mrt1 */
-   exp->definitions[2] = bld.def(v1);
-   exp->definitions[3] = bld.def(bld.lm);
-   exp->definitions[4] = bld.def(bld.lm, vcc);
-   exp->definitions[5] = bld.def(s1, scc);
-   ctx->block->instructions.emplace_back(std::move(exp));
-
-   ctx->program->has_color_exports = true;
-}
-
-static void
-create_fs_exports(isel_context* ctx)
-{
-   Builder bld(ctx->program, ctx->block);
-   bool exported = false;
-
-   /* Export depth, stencil and sample mask. */
-   if (ctx->outputs.mask[FRAG_RESULT_DEPTH] || ctx->outputs.mask[FRAG_RESULT_STENCIL] ||
-       ctx->outputs.mask[FRAG_RESULT_SAMPLE_MASK])
-      exported |= export_fs_mrt_z(ctx);
-
-   if (ctx->program->info.ps.has_epilog) {
-      create_fs_jump_to_epilog(ctx);
-
-      /* FS epilogs always have at least one color/null export. */
-      ctx->program->has_color_exports = true;
-   } else {
-      struct aco_export_mrt mrts[8];
-      unsigned compacted_mrt_index = 0;
-
-      /* MRT compaction doesn't work with dual-source blending. Dual-source blending seems to
-       * require MRT0 to be written. Just copy MRT1 into MRT0. Skipping MRT1 exports seems to be
-       * fine.
-       */
-      if (ctx->program->info.ps.epilog.mrt0_is_dual_src && !ctx->outputs.mask[FRAG_RESULT_DATA0] &&
-          ctx->outputs.mask[FRAG_RESULT_DATA1]) {
-         u_foreach_bit (j, ctx->outputs.mask[FRAG_RESULT_DATA1]) {
-            ctx->outputs.temps[FRAG_RESULT_DATA0 * 4u + j] =
-               ctx->outputs.temps[FRAG_RESULT_DATA1 * 4u + j];
-         }
-         ctx->outputs.mask[FRAG_RESULT_DATA0] = ctx->outputs.mask[FRAG_RESULT_DATA1];
-      }
-
-      /* Export all color render targets. */
-      for (unsigned i = FRAG_RESULT_DATA0; i < FRAG_RESULT_DATA7 + 1; ++i) {
-         unsigned idx = i - FRAG_RESULT_DATA0;
-
-         mrts[idx].enabled_channels = 0;
-
-         if (!ctx->outputs.mask[i])
-            continue;
-
-         struct mrt_color_export out = {0};
-
-         out.slot = compacted_mrt_index;
-         out.write_mask = ctx->outputs.mask[i];
-         out.col_format = (ctx->program->info.ps.epilog.spi_shader_col_format >> (4 * idx)) & 0xf;
-         out.is_int8 = (ctx->program->info.ps.epilog.color_is_int8 >> idx) & 1;
-         out.is_int10 = (ctx->program->info.ps.epilog.color_is_int10 >> idx) & 1;
-         out.enable_mrt_output_nan_fixup =
-            (ctx->options->enable_mrt_output_nan_fixup >> idx) & 1;
-
-         for (unsigned c = 0; c < 4; ++c) {
-            if (out.write_mask & (1 << c)) {
-               out.values[c] = Operand(ctx->outputs.temps[i * 4u + c]);
-            } else {
-               out.values[c] = Operand(v1);
-            }
-         }
-
-         if (export_fs_mrt_color(ctx, &out, &mrts[compacted_mrt_index])) {
-            compacted_mrt_index++;
-            exported = true;
-         }
-      }
-
-      if (exported) {
-         if (ctx->options->gfx_level >= GFX11 && ctx->program->info.ps.epilog.mrt0_is_dual_src) {
-            struct aco_export_mrt* mrt0 = mrts[0].enabled_channels ? &mrts[0] : NULL;
-            struct aco_export_mrt* mrt1 = mrts[1].enabled_channels ? &mrts[1] : NULL;
-            create_fs_dual_src_export_gfx11(ctx, mrt0, mrt1);
-         } else {
-            for (unsigned i = 0; i < compacted_mrt_index; i++) {
-               export_mrt(ctx, &mrts[i]);
-            }
-         }
-      } else {
-         create_fs_null_export(ctx);
-      }
-   }
-
-   ctx->block->kind |= block_kind_export_end;
 }
 
 Pseudo_instruction*
@@ -11224,16 +11149,21 @@ add_startpgm(struct isel_context* ctx)
       /* Stash these in the program so that they can be accessed later when
        * handling spilling.
        */
-      ctx->program->private_segment_buffer = get_arg(ctx, ctx->args->ring_offsets);
-      ctx->program->scratch_offset = get_arg(ctx, ctx->args->scratch_offset);
+      if (ctx->args->ring_offsets.used)
+         ctx->program->private_segment_buffer = get_arg(ctx, ctx->args->ring_offsets);
 
+      ctx->program->scratch_offset = get_arg(ctx, ctx->args->scratch_offset);
    } else if (ctx->program->gfx_level <= GFX10_3 && ctx->program->stage != raytracing_cs) {
       /* Manually initialize scratch. For RT stages scratch initialization is done in the prolog. */
       Operand scratch_offset = Operand(get_arg(ctx, ctx->args->scratch_offset));
       scratch_offset.setLateKill(true);
+
+      Operand scratch_addr = ctx->args->ring_offsets.used ?
+         Operand(get_arg(ctx, ctx->args->ring_offsets)) : Operand(s2);
+
       Builder bld(ctx->program, ctx->block);
       bld.pseudo(aco_opcode::p_init_scratch, bld.def(s2), bld.def(s1, scc),
-                 get_arg(ctx, ctx->args->ring_offsets), scratch_offset);
+                 scratch_addr, scratch_offset);
    }
 
    return startpgm;
@@ -11277,60 +11207,6 @@ split_arguments(isel_context* ctx, Pseudo_instruction* startpgm)
       if (startpgm->definitions[i].regClass().size() > 1) {
          emit_split_vector(ctx, startpgm->definitions[i].getTemp(),
                            startpgm->definitions[i].regClass().size());
-      }
-   }
-}
-
-void
-handle_bc_optimize(isel_context* ctx)
-{
-   /* needed when SPI_PS_IN_CONTROL.BC_OPTIMIZE_DISABLE is set to 0 */
-   Builder bld(ctx->program, ctx->block);
-   uint32_t spi_ps_input_ena = ctx->program->config->spi_ps_input_ena;
-   bool uses_center =
-      G_0286CC_PERSP_CENTER_ENA(spi_ps_input_ena) || G_0286CC_LINEAR_CENTER_ENA(spi_ps_input_ena);
-   bool uses_persp_centroid = G_0286CC_PERSP_CENTROID_ENA(spi_ps_input_ena);
-   bool uses_linear_centroid = G_0286CC_LINEAR_CENTROID_ENA(spi_ps_input_ena);
-
-   if (uses_persp_centroid)
-      ctx->persp_centroid = get_arg(ctx, ctx->args->persp_centroid);
-   if (uses_linear_centroid)
-      ctx->linear_centroid = get_arg(ctx, ctx->args->linear_centroid);
-
-   if (uses_center && (uses_persp_centroid || uses_linear_centroid)) {
-      Temp sel = bld.vopc_e64(aco_opcode::v_cmp_lt_i32, bld.def(bld.lm),
-                              get_arg(ctx, ctx->args->prim_mask), Operand::zero());
-
-      if (uses_persp_centroid) {
-         Temp new_coord[2];
-         for (unsigned i = 0; i < 2; i++) {
-            Temp persp_centroid =
-               emit_extract_vector(ctx, get_arg(ctx, ctx->args->persp_centroid), i, v1);
-            Temp persp_center =
-               emit_extract_vector(ctx, get_arg(ctx, ctx->args->persp_center), i, v1);
-            new_coord[i] =
-               bld.vop2(aco_opcode::v_cndmask_b32, bld.def(v1), persp_centroid, persp_center, sel);
-         }
-         ctx->persp_centroid = bld.tmp(v2);
-         bld.pseudo(aco_opcode::p_create_vector, Definition(ctx->persp_centroid),
-                    Operand(new_coord[0]), Operand(new_coord[1]));
-         emit_split_vector(ctx, ctx->persp_centroid, 2);
-      }
-
-      if (uses_linear_centroid) {
-         Temp new_coord[2];
-         for (unsigned i = 0; i < 2; i++) {
-            Temp linear_centroid =
-               emit_extract_vector(ctx, get_arg(ctx, ctx->args->linear_centroid), i, v1);
-            Temp linear_center =
-               emit_extract_vector(ctx, get_arg(ctx, ctx->args->linear_center), i, v1);
-            new_coord[i] = bld.vop2(aco_opcode::v_cndmask_b32, bld.def(v1), linear_centroid,
-                                    linear_center, sel);
-         }
-         ctx->linear_centroid = bld.tmp(v2);
-         bld.pseudo(aco_opcode::p_create_vector, Definition(ctx->linear_centroid),
-                    Operand(new_coord[0]), Operand(new_coord[1]));
-         emit_split_vector(ctx, ctx->linear_centroid, 2);
       }
    }
 }
@@ -11525,9 +11401,6 @@ select_program(Program* program, unsigned shader_count, struct nir_shader* const
       } else if (ctx.stage == geometry_gs)
          ctx.gs_wave_id = get_arg(&ctx, args->gs_wave_id);
 
-      if (ctx.stage == fragment_fs)
-         handle_bc_optimize(&ctx);
-
       visit_cf_list(&ctx, &func->body);
 
       if (nir->info.stage == MESA_SHADER_GEOMETRY && !ngg_gs) {
@@ -11538,8 +11411,13 @@ select_program(Program* program, unsigned shader_count, struct nir_shader* const
                   sendmsg_gs_done(false, false, 0));
       }
 
-      if (ctx.stage == fragment_fs) {
-         create_fs_exports(&ctx);
+      if (ctx.stage == fragment_fs && ctx.program->info.ps.has_epilog) {
+         create_fs_jump_to_epilog(&ctx);
+
+         /* FS epilogs always have at least one color/null export. */
+         ctx.program->has_color_exports = true;
+
+         ctx.block->kind |= block_kind_export_end;
       }
 
       if (endif_merged_wave_info) {

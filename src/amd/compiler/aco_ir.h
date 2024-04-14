@@ -1384,8 +1384,7 @@ struct SMEM_instruction : public Instruction {
    bool dlc : 1; /* NAVI: device level coherent */
    bool nv : 1;  /* VEGA only: Non-volatile */
    bool disable_wqm : 1;
-   bool prevent_overflow : 1; /* avoid overflow when combining additions */
-   uint8_t padding : 3;
+   uint8_t padding : 4;
 };
 static_assert(sizeof(SMEM_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
 
@@ -2227,7 +2226,8 @@ void insert_wait_states(Program* program);
 bool dealloc_vgprs(Program* program);
 void insert_NOPs(Program* program);
 void form_hard_clauses(Program* program);
-unsigned emit_program(Program* program, std::vector<uint32_t>& code);
+unsigned emit_program(Program* program, std::vector<uint32_t>& code,
+                      std::vector<struct aco_symbol> *symbols);
 /**
  * Returns true if print_asm can disassemble the given program for the current build/runtime
  * configuration

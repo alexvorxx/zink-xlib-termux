@@ -297,12 +297,21 @@ typedef struct {
    enum radeon_family family;
    enum amd_gfx_level gfx_level;
 
+   bool use_aco;
    bool uses_discard;
    bool alpha_to_coverage_via_mrtz;
    bool dual_src_blend_swizzle;
    unsigned spi_shader_col_format;
    unsigned color_is_int8;
    unsigned color_is_int10;
+
+   bool bc_optimize_for_persp;
+   bool bc_optimize_for_linear;
+   bool force_persp_sample_interp;
+   bool force_linear_sample_interp;
+   bool force_persp_center_interp;
+   bool force_linear_center_interp;
+   unsigned samplemask_log_ps_iter;
 
    /* OpenGL only */
    bool clamp_color;
@@ -312,6 +321,7 @@ typedef struct {
 
    /* Vulkan only */
    unsigned enable_mrt_output_nan_fixup;
+   bool no_color_export;
 } ac_nir_lower_ps_options;
 
 void

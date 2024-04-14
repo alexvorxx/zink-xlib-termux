@@ -43,6 +43,8 @@
 uint32_t mesa_spirv_debug = 0;
 
 static const struct debug_named_value mesa_spirv_debug_control[] = {
+   { "structured", MESA_SPIRV_DEBUG_STRUCTURED,
+     "Print information of the SPIR-V structured control flow parsing" },
    DEBUG_NAMED_VALUE_END,
 };
 
@@ -3086,6 +3088,14 @@ vtn_handle_texture(struct vtn_builder *b, SpvOp opcode,
       is_shadow && glsl_get_components(ret_type->type) == 1;
    instr->component = gather_component;
 
+   /* If SpvCapabilityImageGatherBiasLodAMD is enabled, texture gather without an explicit LOD
+    * has an implicit one (instead of using level 0).
+    */
+   if (texop == nir_texop_tg4 && b->image_gather_bias_lod &&
+       !(operands & SpvImageOperandsLodMask)) {
+      instr->is_gather_implicit_lod = true;
+   }
+
    /* The Vulkan spec says:
     *
     *    "If an instruction loads from or stores to a resource (including
@@ -4797,6 +4807,7 @@ vtn_handle_preamble_instruction(struct vtn_builder *b, SpvOp opcode,
 
       case SpvCapabilityImageGatherBiasLodAMD:
          spv_check_supported(amd_image_gather_bias_lod, cap);
+         b->image_gather_bias_lod = true;
          break;
 
       case SpvCapabilityAtomicFloat16AddEXT:
@@ -6685,8 +6696,7 @@ spirv_to_nir(const uint32_t *words, size_t word_count,
    bool progress;
    do {
       progress = false;
-      vtn_foreach_cf_node(node, &b->functions) {
-         struct vtn_function *func = vtn_cf_node_as_function(node);
+      vtn_foreach_function(func, &b->functions) {
          if ((options->create_library || func->referenced) && !func->emitted) {
             b->const_table = _mesa_pointer_hash_table_create(b);
 
@@ -6710,6 +6720,9 @@ spirv_to_nir(const uint32_t *words, size_t word_count,
 
    /* structurize the CFG */
    nir_lower_goto_ifs(b->shader);
+
+   nir_validate_shader(b->shader, "after spirv cfg");
+
    nir_lower_continue_constructs(b->shader);
 
    /* A SPIR-V module can have multiple shaders stages and also multiple

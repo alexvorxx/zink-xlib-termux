@@ -212,11 +212,11 @@ class LowerSplit64op : public NirLowerInstruction {
              * rounds, we have to remove the fractional part in the hi bits
              * For values > UINT_MAX the result is undefined */
             auto src = nir_ssa_for_alu_src(b, alu, 0);
-            src = nir_fsub(b, src, nir_ffract(b, src));
+            src = nir_fadd(b, src, nir_fneg(b, nir_ffract(b, src)));
             auto gt0 = nir_flt(b, nir_imm_double(b, 0.0), src);
             auto highval = nir_fmul_imm(b, src, 1.0 / 65536.0);
             auto fract = nir_ffract(b, highval);
-            auto high = nir_f2u32(b, nir_f2f32(b, nir_fsub(b, highval, fract)));
+            auto high = nir_f2u32(b, nir_f2f32(b, nir_fadd(b, highval, nir_fneg(b, fract))));
             auto lowval = nir_fmul_imm(b, fract, 65536.0);
             auto low = nir_f2u32(b, nir_f2f32(b, lowval));
             return nir_bcsel(b,
@@ -383,7 +383,7 @@ LowerSplit64BitVar::split_double_load_deref(nir_intrinsic_instr *intr)
    else if (deref->deref_type == nir_deref_type_array)
       return split_load_deref_array(intr, deref->arr.index);
    else {
-      unreachable(0 && "only splitting of loads from vars and arrays is supported");
+      unreachable("only splitting of loads from vars and arrays is supported");
    }
    m_old_stores.push_back(&intr->instr);
 }

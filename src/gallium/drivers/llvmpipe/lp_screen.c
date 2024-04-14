@@ -39,6 +39,7 @@
 #include "gallivm/lp_bld_type.h"
 #include "gallivm/lp_bld_nir.h"
 #include "util/disk_cache.h"
+#include "util/hex.h"
 #include "util/os_misc.h"
 #include "util/os_time.h"
 #include "util/u_helpers.h"
@@ -859,7 +860,6 @@ static void
 llvmpipe_destroy_screen(struct pipe_screen *_screen)
 {
    struct llvmpipe_screen *screen = llvmpipe_screen(_screen);
-   struct sw_winsys *winsys = screen->winsys;
 
    if (screen->cs_tpool)
       lp_cs_tpool_destroy(screen->cs_tpool);
@@ -870,8 +870,6 @@ llvmpipe_destroy_screen(struct pipe_screen *_screen)
    lp_jit_screen_cleanup(screen);
 
    disk_cache_destroy(screen->disk_shader_cache);
-   if (winsys->destroy)
-      winsys->destroy(winsys);
 
    glsl_type_singleton_decref();
 
@@ -950,7 +948,7 @@ lp_disk_cache_create(struct llvmpipe_screen *screen)
    _mesa_sha1_update(&ctx, &gallivm_perf, sizeof(gallivm_perf));
    update_cache_sha1_cpu(&ctx);
    _mesa_sha1_final(&ctx, sha1);
-   disk_cache_format_hex_id(cache_id, sha1, 20 * 2);
+   mesa_bytes_to_hex(cache_id, sha1, 20);
 
    screen->disk_shader_cache = disk_cache_create("llvmpipe", cache_id, 0);
 }
@@ -1039,6 +1037,13 @@ llvmpipe_screen_late_init(struct llvmpipe_screen *screen)
       goto out;
    }
 
+   if (!lp_jit_screen_init(screen)) {
+      ret = false;
+      goto out;
+   }
+
+   lp_build_init(); /* get lp_native_vector_width initialised */
+
    lp_disk_cache_create(screen);
    screen->late_init_done = true;
 out:
@@ -1065,11 +1070,6 @@ llvmpipe_create_screen(struct sw_winsys *winsys)
    screen = CALLOC_STRUCT(llvmpipe_screen);
    if (!screen)
       return NULL;
-
-   if (!lp_jit_screen_init(screen)) {
-      FREE(screen);
-      return NULL;
-   }
 
    screen->winsys = winsys;
 
@@ -1111,11 +1111,10 @@ llvmpipe_create_screen(struct sw_winsys *winsys)
                                               screen->num_threads);
    screen->num_threads = MIN2(screen->num_threads, LP_MAX_THREADS);
 
-   lp_build_init(); /* get lp_native_vector_width initialised */
 
    snprintf(screen->renderer_string, sizeof(screen->renderer_string),
             "llvmpipe (LLVM " MESA_LLVM_VERSION_STRING ", %u bits)",
-            lp_native_vector_width );
+            lp_build_init_native_width() );
 
    list_inithead(&screen->ctx_list);
    (void) mtx_init(&screen->ctx_mutex, mtx_plain);

@@ -82,6 +82,7 @@ struct si_shader_args {
    /* PS */
    struct ac_arg pos_fixed_pt;
    struct ac_arg alpha_reference;
+   struct ac_arg color_start;
    /* CS */
    struct ac_arg block_size;
    struct ac_arg cs_user_data;
@@ -152,8 +153,7 @@ struct nir_shader *si_get_nir_shader(struct si_shader *shader, struct si_shader_
                                      ac_nir_gs_output_info *output_info);
 void si_get_tcs_epilog_key(struct si_shader *shader, union si_shader_part_key *key);
 bool si_need_ps_prolog(const union si_shader_part_key *key);
-void si_get_ps_prolog_key(struct si_shader *shader, union si_shader_part_key *key,
-                          bool separate_prolog);
+void si_get_ps_prolog_key(struct si_shader *shader, union si_shader_part_key *key);
 void si_get_ps_epilog_key(struct si_shader *shader, union si_shader_part_key *key);
 
 /* gfx10_shader_ngg.c */
@@ -234,7 +234,6 @@ void si_llvm_build_ps_prolog(struct si_shader_context *ctx, union si_shader_part
                              bool separate_prolog);
 void si_llvm_build_ps_epilog(struct si_shader_context *ctx, union si_shader_part_key *key,
                              bool separate_epilog);
-void si_llvm_build_monolithic_ps(struct si_shader_context *ctx, struct si_shader *shader);
 void si_llvm_ps_build_end(struct si_shader_context *ctx);
 
 /* si_shader_llvm_vs.c */

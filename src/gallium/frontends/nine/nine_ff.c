@@ -1521,14 +1521,8 @@ nine_ff_build_ps(struct NineDevice9 *device, struct nine_ff_ps_key *key)
         }
 
         /* Source is either W or Z.
-         * When we use vs ff,
          * Z is when an orthogonal projection matrix is detected,
          * W (WFOG) else.
-         * Z is used for programmable vs.
-         * Note: Tests indicate that the projection matrix coefficients do
-         * actually affect pixel fog (and not vertex fog) when vs ff is used,
-         * which justifies taking the position's w instead of taking the z coordinate
-         * before the projection in the vs shader.
          */
         if (!key->fog_source)
             ureg_MOV(ureg, rFog, _ZZZZ(vPos));
@@ -1723,7 +1717,6 @@ static struct NinePixelShader9 *
 nine_ff_get_ps(struct NineDevice9 *device)
 {
     struct nine_context *context = &device->context;
-    D3DMATRIX *projection_matrix = GET_D3DTS(PROJECTION);
     struct NinePixelShader9 *ps;
     struct nine_ff_ps_key key;
     unsigned s;
@@ -1832,15 +1825,8 @@ nine_ff_get_ps(struct NineDevice9 *device)
     if (context->rs[D3DRS_FOGENABLE])
         key.fog_mode = context->rs[D3DRS_FOGTABLEMODE];
     key.fog = !!context->rs[D3DRS_FOGENABLE];
-    /* Pixel fog (with WFOG advertised): source is either Z or W.
-     * W is the source if vs ff is used, and the
-     * projection matrix is not orthogonal.
-     * Tests on Win 10 seem to indicate _34
-     * and _33 are checked against 0, 1. */
     if (key.fog_mode && key.fog)
-        key.fog_source = !context->programmable_vs &&
-            !(projection_matrix->_34 == 0.0f &&
-              projection_matrix->_44 == 1.0f);
+        key.fog_source = !context->zfog;
 
     DBG("PS ff key hash: %x\n", nine_ff_ps_key_hash(&key));
     ps = util_hash_table_get(device->ff.ht_ps, &key);
@@ -1956,7 +1942,9 @@ nine_ff_load_point_and_fog_params(struct NineDevice9 *device)
         return;
     dst[26].x = asfloat(context->rs[D3DRS_POINTSIZE_MIN]);
     dst[26].y = asfloat(context->rs[D3DRS_POINTSIZE_MAX]);
-    dst[26].z = asfloat(context->rs[D3DRS_POINTSIZE]);
+    dst[26].z = CLAMP(asfloat(context->rs[D3DRS_POINTSIZE]),
+                asfloat(context->rs[D3DRS_POINTSIZE_MIN]),
+                asfloat(context->rs[D3DRS_POINTSIZE_MAX]));
     dst[26].w = asfloat(context->rs[D3DRS_POINTSCALE_A]);
     dst[27].x = asfloat(context->rs[D3DRS_POINTSCALE_B]);
     dst[27].y = asfloat(context->rs[D3DRS_POINTSCALE_C]);

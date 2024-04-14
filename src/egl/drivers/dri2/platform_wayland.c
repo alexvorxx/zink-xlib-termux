@@ -421,7 +421,7 @@ get_wl_surface_proxy(struct wl_egl_window *window)
      * location where a pointer to wl_surface was stored. Thus, if
      * window->version is dereferenceable, we've been given an older version of
      * wl_egl_window, and window->version points to wl_surface */
-   if (_eglPointerIsDereferencable((void *)(window->version))) {
+   if (_eglPointerIsDereferenceable((void *)(window->version))) {
       return wl_proxy_create_wrapper((void *)(window->version));
    }
    return wl_proxy_create_wrapper(window->surface);
@@ -1121,10 +1121,10 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
                                                    &strides[0],
                                                    &offsets[0],
                                                    dri2_surf->back);
-            do {
+            for (i = 0; i < num_planes; ++i) {
                if (buffer_fds[i] != -1)
                   close(buffer_fds[i]);
-            } while (--i >= 0);
+            }
             dri2_dpy->image->destroyImage(linear_copy_display_gpu_image);
          }
       }
@@ -2295,7 +2295,7 @@ dri2_initialize_wayland_drm(_EGLDisplay *disp)
       /* To use Prime, we must have _DRI_IMAGE v7 at least. createImageFromFds
        * support indicates that Prime export/import is supported by the driver.
        * We deprecated the support to GEM names API, so we bail out if the
-       * driver does not suport Prime. */
+       * driver does not support Prime. */
       if (!(dri2_dpy->capabilities & WL_DRM_CAPABILITY_PRIME) ||
           (dri2_dpy->image->base.version < 7) ||
           (dri2_dpy->image->createImageFromFds == NULL)) {

@@ -32,6 +32,7 @@
 #endif
 
 #include "util/disk_cache.h"
+#include "util/hex.h"
 #include "util/u_debug.h"
 #include "radv_debug.h"
 #include "radv_private.h"
@@ -53,7 +54,7 @@ typedef void *drmDevicePtr;
 #endif
 
 bool
-radv_thread_trace_enabled(void)
+radv_sqtt_enabled(void)
 {
    return radv_get_int_debug_option("RADV_THREAD_TRACE", -1) >= 0 ||
           getenv("RADV_THREAD_TRACE_TRIGGER");
@@ -64,7 +65,7 @@ radv_perf_query_supported(const struct radv_physical_device *pdev)
 {
    /* SQTT / SPM interfere with the register states for perf counters, and
     * the code has only been tested on GFX10.3 */
-   return pdev->rad_info.gfx_level == GFX10_3 && !radv_thread_trace_enabled();
+   return pdev->rad_info.gfx_level == GFX10_3 && !radv_sqtt_enabled();
 }
 
 static bool
@@ -175,12 +176,7 @@ radv_physical_device_init_queue_table(struct radv_physical_device *pdevice)
    }
 
    if (pdevice->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE) {
-      if (pdevice->rad_info.ip[AMD_IP_VCN_DEC].num_queues > 0) {
-         pdevice->vk_queue_to_radv[idx] = RADV_QUEUE_VIDEO_DEC;
-         idx++;
-      }
-
-      if (radv_has_uvd(pdevice)) {
+      if (pdevice->rad_info.ip[pdevice->vid_decode_ip].num_queues > 0) {
          pdevice->vk_queue_to_radv[idx] = RADV_QUEUE_VIDEO_DEC;
          idx++;
       }
@@ -389,20 +385,9 @@ static void
 radv_get_binning_settings(const struct radv_physical_device *pdevice,
                           struct radv_binning_settings *settings)
 {
-   if (pdevice->rad_info.has_dedicated_vram && pdevice->rad_info.max_render_backends > 4) {
-      settings->context_states_per_bin = 1;
-      settings->persistent_states_per_bin = 1;
-   } else {
-      settings->context_states_per_bin = 3;
-      /* 32 causes hangs for RAVEN. */
-      settings->persistent_states_per_bin = 8;
-   }
-
+   settings->context_states_per_bin = 1;
+   settings->persistent_states_per_bin = 1;
    settings->fpovs_per_batch = 63;
-
-   /* The context states are affected by the scissor bug. */
-   if (pdevice->rad_info.has_gfx9_scissor_bug)
-      settings->context_states_per_bin = 1;
 }
 
 static void
@@ -504,7 +489,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_conditional_rendering = true,
       .EXT_conservative_rasterization = device->rad_info.gfx_level >= GFX9,
       .EXT_custom_border_color = true,
-      .EXT_debug_marker = radv_thread_trace_enabled(),
+      .EXT_debug_marker = radv_sqtt_enabled(),
       .EXT_depth_clip_control = true,
       .EXT_depth_clip_enable = true,
       .EXT_depth_range_unrestricted = true,
@@ -1251,7 +1236,7 @@ radv_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
          features->extendedDynamicState3LineStippleEnable = true;
          features->extendedDynamicState3ColorBlendEnable = true;
          features->extendedDynamicState3DepthClipEnable = true;
-         features->extendedDynamicState3ConservativeRasterizationMode = true;
+         features->extendedDynamicState3ConservativeRasterizationMode = pdevice->rad_info.gfx_level >= GFX9;
          features->extendedDynamicState3DepthClipNegativeOneToOne = true;
          features->extendedDynamicState3ProvokingVertexMode = true;
          features->extendedDynamicState3DepthClampEnable = true;
@@ -2199,7 +2184,7 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
    device->ws = radv_null_winsys_create();
 #else
    if (drm_device) {
-      bool reserve_vmid = radv_thread_trace_enabled();
+      bool reserve_vmid = radv_sqtt_enabled();
 
       device->ws = radv_amdgpu_winsys_create(fd, instance->debug_flags, instance->perftest_flags,
                                              reserve_vmid);
@@ -2272,7 +2257,7 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
     * when creating the cache.
     */
    char buf[VK_UUID_SIZE * 2 + 1];
-   disk_cache_format_hex_id(buf, device->cache_uuid, VK_UUID_SIZE * 2);
+   mesa_bytes_to_hex(buf, device->cache_uuid, VK_UUID_SIZE);
    device->vk.disk_cache = disk_cache_create(device->name, buf, 0);
 #endif
 
@@ -2476,10 +2461,7 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
       num_queue_families++;
 
    if (pdevice->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE) {
-      if (pdevice->rad_info.ip[AMD_IP_VCN_DEC].num_queues > 0)
-         num_queue_families++;
-
-      if (radv_has_uvd(pdevice))
+      if (pdevice->rad_info.ip[pdevice->vid_decode_ip].num_queues > 0)
          num_queue_families++;
    }
 
@@ -2518,23 +2500,11 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
    }
 
    if (pdevice->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE) {
-      if (pdevice->rad_info.ip[AMD_IP_VCN_DEC].num_queues > 0) {
+      if (pdevice->rad_info.ip[pdevice->vid_decode_ip].num_queues > 0) {
          if (*pCount > idx) {
             *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
                .queueFlags = VK_QUEUE_VIDEO_DECODE_BIT_KHR,
-               .queueCount = pdevice->rad_info.ip[AMD_IP_VCN_DEC].num_queues,
-               .timestampValidBits = 64,
-               .minImageTransferGranularity = (VkExtent3D){1, 1, 1},
-            };
-            idx++;
-         }
-      }
-
-      if (radv_has_uvd(pdevice)) {
-         if (*pCount > idx) {
-            *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
-               .queueFlags = VK_QUEUE_VIDEO_DECODE_BIT_KHR,
-               .queueCount = pdevice->rad_info.ip[AMD_IP_UVD].num_queues,
+               .queueCount = pdevice->rad_info.ip[pdevice->vid_decode_ip].num_queues,
                .timestampValidBits = 64,
                .minImageTransferGranularity = (VkExtent3D){1, 1, 1},
             };

@@ -135,7 +135,7 @@ if gallium_drivers.contains('auto')
     elif ['arm', 'aarch64'].contains(host_machine.cpu_family())
       gallium_drivers = [
         'v3d', 'vc4', 'freedreno', 'etnaviv', 'nouveau', 'svga',
-        'tegra', 'virgl', 'lima', 'panfrost', 'swrast'
+        'tegra', 'virgl', 'lima', 'panfrost', 'swrast', 'iris'
       ]
     elif ['mips', 'mips64', 'riscv32', 'riscv64'].contains(host_machine.cpu_family())
       gallium_drivers = [
@@ -213,7 +213,7 @@ if _vulkan_drivers.contains('auto')
     if host_machine.cpu_family().startswith('x86')
       _vulkan_drivers = ['amd', 'intel', 'intel_hasvk', 'swrast']
     elif ['arm', 'aarch64'].contains(host_machine.cpu_family())
-      _vulkan_drivers = ['swrast']
+      _vulkan_drivers = ['swrast', 'intel']
     elif ['mips', 'mips64', 'riscv32', 'riscv64'].contains(host_machine.cpu_family())
       _vulkan_drivers = ['amd', 'swrast']
     elif ['loongarch64'].contains(host_machine.cpu_family())
@@ -848,7 +848,7 @@ has_mako = run_command(
   '''
 from distutils.version import StrictVersion
 import mako
-assert StrictVersion(mako.__version__) > StrictVersion("0.8.0")
+assert StrictVersion(mako.__version__) >= StrictVersion("0.8.0")
   ''', check: false)
 if has_mako.returncode() != 0
   error('Python (3.x) mako module >= 0.8.0 required to build mesa.')
@@ -1624,9 +1624,10 @@ if with_gallium_opencl
 endif
 if with_clc
   llvm_modules += ['coverage', 'target', 'linker', 'irreader', 'option', 'libdriver', 'lto']
-  # all-targets is needed to support static linking LLVM build with multiple targets
-  # windowsdriver is needded with LLVM>=15, but we don't know what LLVM verrsion we are using yet
-  llvm_optional_modules += ['all-targets', 'windowsdriver']
+  # all-targets is needed to support static linking LLVM build with multiple targets.
+  # windowsdriver is needded with LLVM>=15 and frontendhlsl is needed with LLVM>=16,
+  # but we don't know what LLVM version we are using yet
+  llvm_optional_modules += ['all-targets', 'windowsdriver', 'frontendhlsl']
 endif
 draw_with_llvm = get_option('draw-use-llvm')
 if draw_with_llvm
@@ -1764,6 +1765,9 @@ if with_clc
     ]
     if dep_llvm.version().version_compare('>= 15.0')
       clang_modules += 'clangSupport'
+    endif
+    if dep_llvm.version().version_compare('>= 16.0')
+      clang_modules += 'clangASTMatchers'
     endif
 
     dep_clang = []

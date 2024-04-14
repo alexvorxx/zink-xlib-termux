@@ -280,7 +280,9 @@ static rvcn_dec_message_avc_t get_h264_msg(struct radeon_decoder *dec,
 
    /* if reference picture exists, however no reference picture found at the end
       curr_pic_ref_frame_num == 0, which is not reasonable, should be corrected. */
-   if (result.used_for_reference_flags && (result.curr_pic_ref_frame_num == 0)) {
+   /* one exeption for I frames which is valid situation and should be skipped. */
+   if ((result.curr_field_order_cnt_list[0] == result.curr_field_order_cnt_list[1])
+      && result.used_for_reference_flags && (result.curr_pic_ref_frame_num == 0)) {
       for (i = 0; i < ARRAY_SIZE(result.ref_frame_list); i++) {
          result.ref_frame_list[i] = pic->ref[i] ?
                 (uintptr_t)vl_video_buffer_get_associated_data(pic->ref[i], &dec->base) : 0xff;
@@ -2863,6 +2865,9 @@ static void radeon_dec_decode_bitstream(struct pipe_video_codec *decoder,
    if (!dec->bs_ptr)
       return;
 
+   if (dec->bs_size && dec->stream_type == RDECODE_CODEC_AV1)
+      return;
+
    unsigned long total_bs_size = dec->bs_size;
    for (i = 0; i < num_buffers; ++i)
       total_bs_size += sizes[i];
@@ -3090,6 +3095,8 @@ struct pipe_video_codec *radeon_create_decoder(struct pipe_context *context,
 
       if (sctx->family == CHIP_MI100 || sctx->family == CHIP_MI200)
          dec->njctx = 2;
+      else if (sctx->family == CHIP_GFX940)
+         dec->njctx = 24;
       else
          dec->njctx = 1;
 

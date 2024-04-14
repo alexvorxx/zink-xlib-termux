@@ -297,7 +297,7 @@ haiku_add_configs_for_visuals(_EGLDisplay *disp)
 		_eglLog(_EGL_WARNING, "Haiku: failed to create any config");
 		goto cleanup;
 	}
-	TRACE("Config successfull\n");
+	TRACE("Config successful\n");
 
 	return EGL_TRUE;
 
@@ -517,5 +517,4 @@ const _EGLDriver _eglDriver = {
 	.CreatePbufferSurface = haiku_create_pbuffer_surface,
 	.DestroySurface = haiku_destroy_surface,
 	.SwapBuffers = haiku_swap_buffers,
-	.GetProcAddress = _glapi_get_proc_address,
 };

@@ -287,16 +287,29 @@ zink_set_context_param(struct pipe_context *pctx, enum pipe_context_param param,
                        unsigned value)
 {
    struct zink_context *ctx = zink_context(pctx);
+   struct zink_screen *screen = zink_screen(ctx->base.screen);
 
    switch (param) {
    case PIPE_CONTEXT_PARAM_PIN_THREADS_TO_L3_CACHE:
-      util_set_thread_affinity(zink_screen(ctx->base.screen)->flush_queue.threads[0],
-                               util_get_cpu_caps()->L3_affinity_mask[value],
-                               NULL, util_get_cpu_caps()->num_cpu_mask_bits);
+      if (screen->threaded_submit)
+         util_set_thread_affinity(screen->flush_queue.threads[0],
+                                 util_get_cpu_caps()->L3_affinity_mask[value],
+                                 NULL, util_get_cpu_caps()->num_cpu_mask_bits);
       break;
    default:
       break;
    }
+}
+
+static void
+zink_set_debug_callback(struct pipe_context *pctx, const struct util_debug_callback *cb)
+{
+   struct zink_context *ctx = zink_context(pctx);
+
+   if (cb)
+      ctx->dbg = *cb;
+   else
+      memset(&ctx->dbg, 0, sizeof(ctx->dbg));
 }
 
 static VkSamplerMipmapMode

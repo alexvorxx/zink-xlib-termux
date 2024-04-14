@@ -1,5 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # shellcheck disable=SC2154 # arch is assigned in previous scripts
+# When changing this file, you need to bump the following
+# .gitlab-ci/image-tags.yml tags:
+# DEBIAN_BASE_TAG
+# KERNEL_ROOTFS_TAG
 
 set -e
 set -o xtrace
@@ -28,13 +32,6 @@ curl -L --retry 4 -f --retry-all-errors --retry-delay 60 \
     -o /usr/share/snmp/mibs/SNMPv2-SMI.txt
 
 . .gitlab-ci/container/baremetal_build.sh
-
-if [[ "$arch" == "arm64" ]]; then
-    # This firmware file from Debian bullseye causes hangs
-    curl -L --retry 4 -f --retry-all-errors --retry-delay 60 \
-      "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/qcom/a530_pfp.fw?id=d5f9eea5a251d43412b07f5295d03e97b89ac4a5" \
-      -o /rootfs-arm64/lib/firmware/qcom/a530_pfp.fw
-fi
 
 mkdir -p /baremetal-files/jetson-nano/boot/
 ln -s \

@@ -308,6 +308,7 @@ get_device_extensions(const struct anv_physical_device *device,
                                                VK_QUEUE_GLOBAL_PRIORITY_MEDIUM_KHR,
       .EXT_global_priority_query             = device->max_context_priority >=
                                                VK_QUEUE_GLOBAL_PRIORITY_MEDIUM_KHR,
+      .EXT_graphics_pipeline_library         = device->gpl_enabled,
       .EXT_host_query_reset                  = true,
       .EXT_image_2d_view_of_3d               = true,
       .EXT_image_robustness                  = true,
@@ -915,6 +916,18 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       debug_get_bool_option("ANV_ENABLE_GENERATED_INDIRECT_DRAWS",
                             true);
 
+   /* The GPL implementation is new, and may have issues in conjunction with
+    * mesh shading. Enable it by default for zink for performance reasons (where
+    * mesh shading is unused anyway), and have an env var for testing in CI or
+    * by end users.
+    * */
+   if (debug_get_bool_option("ANV_GPL",
+                             instance->vk.app_info.engine_name != NULL &&
+                             (strcmp(instance->vk.app_info.engine_name, "mesa zink") == 0 ||
+                              strcmp(instance->vk.app_info.engine_name, "DXVK") == 0))) {
+      device->gpl_enabled = true;
+   }
+
    unsigned st_idx = 0;
 
    device->sync_syncobj_type = vk_drm_syncobj_get_type(fd);
@@ -1236,7 +1249,10 @@ void anv_GetPhysicalDeviceFeatures2(
       .shaderImageGatherExtended                = true,
       .shaderStorageImageExtendedFormats        = true,
       .shaderStorageImageMultisample            = false,
-      .shaderStorageImageReadWithoutFormat      = false,
+      /* Gfx12.5 has all the required format supported in HW for typed
+       * read/writes
+       */
+      .shaderStorageImageReadWithoutFormat      = pdevice->info.verx10 >= 125,
       .shaderStorageImageWriteWithoutFormat     = true,
       .shaderUniformBufferArrayDynamicIndexing  = true,
       .shaderSampledImageArrayDynamicIndexing   = true,
@@ -1280,7 +1296,7 @@ void anv_GetPhysicalDeviceFeatures2(
       .shaderInputAttachmentArrayDynamicIndexing          = false,
       .shaderUniformTexelBufferArrayDynamicIndexing       = true,
       .shaderStorageTexelBufferArrayDynamicIndexing       = true,
-      .shaderUniformBufferArrayNonUniformIndexing         = false,
+      .shaderUniformBufferArrayNonUniformIndexing         = true,
       .shaderSampledImageArrayNonUniformIndexing          = true,
       .shaderStorageBufferArrayNonUniformIndexing         = true,
       .shaderStorageImageArrayNonUniformIndexing          = true,
@@ -1383,6 +1399,7 @@ void anv_GetPhysicalDeviceFeatures2(
 
       /* VK_EXT_global_priority_query */
       .globalPriorityQuery = true,
+      .graphicsPipelineLibrary = pdevice->gpl_enabled,
 
       /* VK_KHR_fragment_shading_rate */
       .pipelineFragmentShadingRate = true,
@@ -1615,6 +1632,19 @@ void anv_GetPhysicalDeviceFeatures2(
 
 #define MAX_CUSTOM_BORDER_COLORS                   4096
 
+static VkDeviceSize
+anx_get_physical_device_max_heap_size(struct anv_physical_device *pdevice)
+{
+   VkDeviceSize ret = 0;
+
+   for (uint32_t i = 0; i < pdevice->memory.heap_count; i++) {
+      if (pdevice->memory.heaps[i].size > ret)
+         ret = pdevice->memory.heaps[i].size;
+   }
+
+   return ret;
+}
+
 void anv_GetPhysicalDeviceProperties(
     VkPhysicalDevice                            physicalDevice,
     VkPhysicalDeviceProperties*                 pProperties)
@@ -1626,6 +1656,7 @@ void anv_GetPhysicalDeviceProperties(
    const uint32_t max_textures = UINT16_MAX;
    const uint32_t max_samplers = UINT16_MAX;
    const uint32_t max_images = UINT16_MAX;
+   const VkDeviceSize max_heap_size = anx_get_physical_device_max_heap_size(pdevice);
 
    /* Claim a high per-stage limit since we have bindless. */
    const uint32_t max_per_stage = UINT32_MAX;
@@ -1645,7 +1676,7 @@ void anv_GetPhysicalDeviceProperties(
       .maxImageArrayLayers                      = (1 << 11),
       .maxTexelBufferElements                   = 128 * 1024 * 1024,
       .maxUniformBufferRange                    = pdevice->compiler->indirect_ubos_use_sampler ? (1u << 27) : (1u << 30),
-      .maxStorageBufferRange                    = MIN2(pdevice->isl_dev.max_buffer_size, UINT32_MAX),
+      .maxStorageBufferRange                    = MIN3(pdevice->isl_dev.max_buffer_size, max_heap_size, UINT32_MAX),
       .maxPushConstantsSize                     = MAX_PUSH_CONSTANTS_SIZE,
       .maxMemoryAllocationCount                 = UINT32_MAX,
       .maxSamplerAllocationCount                = 64 * 1024,
@@ -2190,6 +2221,14 @@ void anv_GetPhysicalDeviceProperties2(
             (VkPhysicalDeviceExternalMemoryHostPropertiesEXT *) ext;
          /* Userptr needs page aligned memory. */
          props->minImportedHostPointerAlignment = 4096;
+         break;
+      }
+
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GRAPHICS_PIPELINE_LIBRARY_PROPERTIES_EXT: {
+         VkPhysicalDeviceGraphicsPipelineLibraryPropertiesEXT *props =
+            (VkPhysicalDeviceGraphicsPipelineLibraryPropertiesEXT *)ext;
+         props->graphicsPipelineLibraryFastLinking = true;
+         props->graphicsPipelineLibraryIndependentInterpolationDecoration = true;
          break;
       }
 

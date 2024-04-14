@@ -712,6 +712,8 @@ st_link_nir(struct gl_context *ctx,
    struct gl_linked_shader *linked_shader[MESA_SHADER_STAGES];
    unsigned num_shaders = 0;
 
+   MESA_TRACE_FUNC();
+
    for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
       if (shader_program->_LinkedShaders[i])
          linked_shader[num_shaders++] = shader_program->_LinkedShaders[i];
@@ -1056,6 +1058,8 @@ st_finalize_nir(struct st_context *st, struct gl_program *prog,
 {
    struct pipe_screen *screen = st->screen;
 
+   MESA_TRACE_FUNC();
+
    NIR_PASS_V(nir, nir_split_var_copies);
    NIR_PASS_V(nir, nir_lower_var_copies);
 
@@ -1076,8 +1080,11 @@ st_finalize_nir(struct st_context *st, struct gl_program *prog,
    /* Lower load_deref/store_deref of inputs and outputs.
     * This depends on st_nir_assign_varying_locations.
     */
-   if (nir->options->lower_io_variables)
+   if (nir->options->lower_io_variables) {
       nir_lower_io_passes(nir);
+      NIR_PASS_V(nir, nir_remove_dead_variables,
+                 nir_var_shader_in | nir_var_shader_out, NULL);
+   }
 
    /* Set num_uniforms in number of attribute slots (vec4s) */
    nir->num_uniforms = DIV_ROUND_UP(prog->Parameters->NumParameterValues, 4);

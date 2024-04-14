@@ -232,7 +232,8 @@ apply_nuw_to_offsets(isel_context* ctx, nir_function_impl* impl)
                apply_nuw_to_ssa(ctx, intrin->src[2].ssa);
             break;
          case nir_intrinsic_load_scratch: apply_nuw_to_ssa(ctx, intrin->src[0].ssa); break;
-         case nir_intrinsic_store_scratch: apply_nuw_to_ssa(ctx, intrin->src[1].ssa); break;
+         case nir_intrinsic_store_scratch:
+         case nir_intrinsic_load_smem_amd: apply_nuw_to_ssa(ctx, intrin->src[1].ssa); break;
          default: break;
          }
       }
@@ -547,6 +548,8 @@ init_context(isel_context* ctx, nir_shader* shader)
                case nir_intrinsic_bindless_image_atomic_xor:
                case nir_intrinsic_bindless_image_atomic_exchange:
                case nir_intrinsic_bindless_image_atomic_comp_swap:
+               case nir_intrinsic_bindless_image_atomic_inc_wrap:
+               case nir_intrinsic_bindless_image_atomic_dec_wrap:
                case nir_intrinsic_bindless_image_atomic_fadd:
                case nir_intrinsic_bindless_image_atomic_fmin:
                case nir_intrinsic_bindless_image_atomic_fmax:

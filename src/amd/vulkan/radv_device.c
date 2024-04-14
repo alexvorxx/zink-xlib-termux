@@ -106,8 +106,7 @@ radv_get_int_debug_option(const char *name, int default_value)
 static bool
 radv_spm_trace_enabled()
 {
-   return radv_thread_trace_enabled() &&
-          debug_get_bool_option("RADV_THREAD_TRACE_CACHE_COUNTERS", false);
+   return radv_sqtt_enabled() && debug_get_bool_option("RADV_THREAD_TRACE_CACHE_COUNTERS", true);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -587,7 +586,7 @@ init_dispatch_tables(struct radv_device *device, struct radv_physical_device *ph
       add_entrypoints(&b, &rage2_device_entrypoints, RADV_APP_DISPATCH_TABLE);
    }
 
-   if (radv_thread_trace_enabled())
+   if (radv_sqtt_enabled())
       add_entrypoints(&b, &sqtt_device_entrypoints, RADV_RGP_DISPATCH_TABLE);
 
    if (radv_rra_trace_enabled() && radv_enable_rt(physical_device, false))
@@ -608,20 +607,24 @@ radv_check_status(struct vk_device *vk_device)
 {
    struct radv_device *device = container_of(vk_device, struct radv_device, vk);
    enum radv_reset_status status;
+   bool context_reset = false;
 
+   /* If an INNOCENT_CONTEXT_RESET is found in one of the contexts, we need to
+    * keep querying in case there's a guilty one, so we can correctly log if the
+    * hung happened in this app or not */
    for (int i = 0; i < RADV_NUM_HW_CTX; i++) {
       if (device->hw_ctx[i]) {
          status = device->ws->ctx_query_reset_status(device->hw_ctx[i]);
 
          if (status == RADV_GUILTY_CONTEXT_RESET)
             return vk_device_set_lost(&device->vk, "GPU hung detected in this process");
-	 if (status == RADV_INNOCENT_CONTEXT_RESET)
-            return vk_device_set_lost(&device->vk, "GPU hung triggered by other process");
-	 if (status == RADV_UNKNOWN_CONTEXT_RESET)
-            return vk_device_set_lost(&device->vk, "GPU hung triggered by unknown source");
+         else if (status == RADV_INNOCENT_CONTEXT_RESET)
+            context_reset = true;
       }
    }
 
+   if (context_reset)
+      return vk_device_set_lost(&device->vk, "GPU hung triggered by other process");
    return VK_SUCCESS;
 }
 
@@ -929,7 +932,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
       radv_dump_enabled_options(device, stderr);
    }
 
-   if (radv_thread_trace_enabled()) {
+   if (radv_sqtt_enabled()) {
       if (device->physical_device->rad_info.gfx_level < GFX8 ||
           device->physical_device->rad_info.gfx_level > GFX11) {
          fprintf(stderr, "GPU hardware not supported: refer to "
@@ -938,14 +941,15 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
          abort();
       }
 
-      if (!radv_thread_trace_init(device)) {
+      if (!radv_sqtt_init(device)) {
          result = VK_ERROR_INITIALIZATION_FAILED;
          goto fail;
       }
 
-      fprintf(stderr, "radv: Thread trace support is enabled (initial buffer size: %u MiB, "
-                      "instruction timing: %s, cache counters: %s).\n",
-              device->thread_trace.buffer_size / (1024 * 1024),
+      fprintf(stderr,
+              "radv: Thread trace support is enabled (initial buffer size: %u MiB, "
+              "instruction timing: %s, cache counters: %s).\n",
+              device->sqtt.buffer_size / (1024 * 1024),
               radv_is_instruction_timing_enabled() ? "enabled" : "disabled",
               radv_spm_trace_enabled() ? "enabled" : "disabled");
 
@@ -1089,7 +1093,7 @@ fail_cache:
 fail_meta:
    radv_device_finish_meta(device);
 fail:
-   radv_thread_trace_finish(device);
+   radv_sqtt_finish(device);
 
    radv_spm_finish(device);
 
@@ -1191,7 +1195,7 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    radv_destroy_shader_arenas(device);
 
-   radv_thread_trace_finish(device);
+   radv_sqtt_finish(device);
 
    radv_rra_trace_finish(_device, &device->rra_trace);
 

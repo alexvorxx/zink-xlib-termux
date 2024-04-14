@@ -660,6 +660,16 @@ emit_pipeline_select(struct iris_batch *batch, uint32_t pipeline)
    } else {
       flags |= PIPE_CONTROL_UNTYPED_DATAPORT_CACHE_FLUSH;
    }
+   /* Wa_16013063087 -  State Cache Invalidate must be issued prior to
+    * PIPELINE_SELECT when switching from 3D to Compute.
+    *
+    * SW must do this by programming of PIPECONTROL with “CS Stall” followed
+    * by a PIPECONTROL with State Cache Invalidate bit set.
+    */
+   if (pipeline == GPGPU &&
+       intel_needs_workaround(batch->screen->devinfo, 16013063087))
+      flags |= PIPE_CONTROL_STATE_CACHE_INVALIDATE;
+
    iris_emit_pipe_control_flush(batch, "PIPELINE_SELECT flush", flags);
 #else
    /* From "BXML » GT » MI » vol1a GPU Overview » [Instruction]
@@ -6503,7 +6513,7 @@ iris_upload_dirty_render_state(struct iris_context *ice,
             uint32_t ps_state[GENX(3DSTATE_PS_length)] = {0};
             _iris_pack_command(batch, GENX(3DSTATE_PS), ps_state, ps) {
                intel_set_ps_dispatch_state(&ps, batch->screen->devinfo,
-                                           wm_prog_data, cso_fb->samples,
+                                           wm_prog_data, util_framebuffer_get_num_samples(cso_fb),
                                            0 /* msaa_flags */);
 
                ps.DispatchGRFStartRegisterForConstantSetupData0 =

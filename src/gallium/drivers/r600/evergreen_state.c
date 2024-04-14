@@ -254,6 +254,9 @@ bool evergreen_is_format_supported(struct pipe_screen *screen,
 		return false;
 	}
 
+	if (util_format_get_num_planes(format) > 1)
+		return false;
+
 	if (MAX2(1, sample_count) != MAX2(1, storage_sample_count))
 		return false;
 
@@ -3508,13 +3511,13 @@ void evergreen_update_ps_state(struct pipe_context *ctx, struct r600_pipe_shader
 
 	switch (rshader->ps_conservative_z) {
 	default: /* fall through */
-	case TGSI_FS_DEPTH_LAYOUT_ANY:
+	case FRAG_DEPTH_LAYOUT_ANY:
 		db_shader_control |= S_02880C_CONSERVATIVE_Z_EXPORT(V_02880C_EXPORT_ANY_Z);
 		break;
-	case TGSI_FS_DEPTH_LAYOUT_GREATER:
+	case FRAG_DEPTH_LAYOUT_GREATER:
 		db_shader_control |= S_02880C_CONSERVATIVE_Z_EXPORT(V_02880C_EXPORT_GREATER_THAN_Z);
 		break;
-	case TGSI_FS_DEPTH_LAYOUT_LESS:
+	case FRAG_DEPTH_LAYOUT_LESS:
 		db_shader_control |= S_02880C_CONSERVATIVE_Z_EXPORT(V_02880C_EXPORT_LESS_THAN_Z);
 		break;
 	}
@@ -4280,8 +4283,9 @@ static void evergreen_set_shader_images(struct pipe_context *ctx,
 
 		r600_context_add_resource_size(ctx, image);
 
+		struct pipe_resource *const pipe_saved = rview->base.resource;
 		rview->base = *iview;
-		rview->base.resource = NULL;
+		rview->base.resource = pipe_saved;
 		pipe_resource_reference((struct pipe_resource **)&rview->base.resource, image);
 
 		evergreen_setup_immed_buffer(rctx, rview, iview->format);

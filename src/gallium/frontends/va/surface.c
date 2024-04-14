@@ -596,6 +596,13 @@ vlVaQuerySurfaceAttributes(VADriverContextP ctx, VAConfigID config_id,
          attribs[i].value.value.i = VA_FOURCC_444P;
          i++;
       }
+      if (config->rt_format & VA_RT_FORMAT_RGBP) {
+         attribs[i].type = VASurfaceAttribPixelFormat;
+         attribs[i].value.type = VAGenericValueTypeInteger;
+         attribs[i].flags = VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE;
+         attribs[i].value.value.i = VA_FOURCC_RGBP;
+         i++;
+      }
    }
 
    attribs[i].type = VASurfaceAttribMemoryType;
@@ -1117,6 +1124,7 @@ vlVaCreateSurfaces2(VADriverContextP ctx, unsigned int format,
        VA_RT_FORMAT_YUV444 != format &&
        VA_RT_FORMAT_YUV400 != format &&
        VA_RT_FORMAT_YUV420_10BPP != format &&
+       VA_RT_FORMAT_RGBP != format &&
        VA_RT_FORMAT_RGB32  != format) {
       return VA_STATUS_ERROR_UNSUPPORTED_RT_FORMAT;
    }
@@ -1465,6 +1473,9 @@ static uint32_t pipe_format_to_drm_format(enum pipe_format format)
       return DRM_FORMAT_NV12;
    case PIPE_FORMAT_P010:
       return DRM_FORMAT_P010;
+   case PIPE_FORMAT_YUYV:
+   case PIPE_FORMAT_R8G8_R8B8_UNORM:
+      return DRM_FORMAT_YUYV;
    default:
       return DRM_FORMAT_INVALID;
    }

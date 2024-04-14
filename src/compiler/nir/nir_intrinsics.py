@@ -1142,6 +1142,14 @@ load("mesh_view_indices", [1], [BASE, RANGE], [CAN_ELIMINATE, CAN_REORDER])
 load("preamble", [], indices=[BASE], flags=[CAN_ELIMINATE, CAN_REORDER])
 store("preamble", [], indices=[BASE])
 
+# A 32 bits bitfield storing 1 in bits corresponding to varyings
+# that have the flat interpolation specifier in the fragment shader
+# and 0 otherwise
+system_value("flat_mask", 1)
+
+# Whether provoking vertex mode is last
+system_value("provoking_last", 1)
+
 # IR3-specific version of most SSBO intrinsics. The only different
 # compare to the originals is that they add an extra source to hold
 # the dword-offset, which is needed by the backend code apart from
@@ -1533,11 +1541,6 @@ intrinsic("load_smem_amd", src_comp=[1, 1], dest_comp=0, bit_sizes=[32],
                            indices=[ALIGN_MUL, ALIGN_OFFSET],
                            flags=[CAN_ELIMINATE, CAN_REORDER])
 
-# src[] = { descriptor, offset }
-#intrinsic("load_smem_buffer_amd", src_comp=[4, 1], dest_comp=0, bit_sizes=[32],
-#                                  indices=[ALIGN_MUL, ALIGN_OFFSET],
-#                                  flags=[CAN_ELIMINATE, CAN_REORDER])
-
 # src[] = { offset }.
 intrinsic("load_shared2_amd", [1], dest_comp=2, indices=[OFFSET0, OFFSET1, ST64], flags=[CAN_ELIMINATE])
 
@@ -1604,8 +1607,15 @@ system_value("lds_ngg_gs_out_vertex_base_amd", 1)
 # FLAGS = AC_EXP_FLAG_*
 intrinsic("export_amd", [0], indices=[BASE, WRITE_MASK, FLAGS])
 
+# Export dual source blend outputs with swizzle operation
+# src[] = { mrt0, mrt1 }
+intrinsic("export_dual_src_blend_amd", [0, 0], indices=[WRITE_MASK])
+
 # Alpha test reference value
 system_value("alpha_reference_amd", 1)
+
+# Whether to enable barycentric optimization
+system_value("barycentric_optimize_amd", dest_comp=1, bit_sizes=[1])
 
 # V3D-specific instrinc for tile buffer color reads.
 #
@@ -1737,6 +1747,11 @@ intrinsic("load_reloc_const_intel", dest_comp=1, bit_sizes=[32],
 # 64-bit global address for a Vulkan descriptor set
 # src[0] = { set }
 intrinsic("load_desc_set_address_intel", dest_comp=1, bit_sizes=[64],
+          src_comp=[1], flags=[CAN_ELIMINATE, CAN_REORDER])
+
+# Base offset for a given set in the flatten array of dynamic offsets
+# src[0] = { set }
+intrinsic("load_desc_set_dynamic_index_intel", dest_comp=1, bit_sizes=[32],
           src_comp=[1], flags=[CAN_ELIMINATE, CAN_REORDER])
 
 # OpSubgroupBlockReadINTEL and OpSubgroupBlockWriteINTEL from SPV_INTEL_subgroups.

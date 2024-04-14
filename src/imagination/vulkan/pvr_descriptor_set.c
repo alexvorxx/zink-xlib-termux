@@ -995,7 +995,8 @@ VkResult pvr_CreatePipelineLayout(VkDevice _device,
    for (uint32_t i = 0; i < pCreateInfo->pushConstantRangeCount; i++) {
       const VkPushConstantRange *range = &pCreateInfo->pPushConstantRanges[i];
 
-      layout->push_constants_shader_stages |= range->stageFlags;
+      layout->push_constants_shader_stages |=
+         vk_to_pvr_shader_stage_flags(range->stageFlags);
 
       /* From the Vulkan spec. 1.3.237
        * VUID-VkPipelineLayoutCreateInfo-pPushConstantRanges-00292 :
@@ -1257,7 +1258,7 @@ pvr_descriptor_set_create(struct pvr_device *device,
             if (binding->type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
                offset_in_dwords += 4;
 
-            memcpy((uint8_t *)map + offset_in_dwords * sizeof(uint32_t),
+            memcpy((uint8_t *)map + PVR_DW_TO_BYTES(offset_in_dwords),
                    sampler->descriptor.words,
                    sizeof(sampler->descriptor.words));
          }
@@ -1400,8 +1401,12 @@ static void pvr_descriptor_update_buffer_info(
                                                 j,
                                                 write_set->dstArrayElement + i);
 
-         memcpy(mem_ptr + primary_offset, &addr, size_info.primary << 2);
-         memcpy(mem_ptr + secondary_offset, &range, size_info.secondary << 2);
+         memcpy(mem_ptr + primary_offset,
+                &addr,
+                PVR_DW_TO_BYTES(size_info.primary));
+         memcpy(mem_ptr + secondary_offset,
+                &range,
+                PVR_DW_TO_BYTES(size_info.secondary));
       }
    }
 }
@@ -2014,11 +2019,11 @@ static void pvr_copy_descriptor_set(struct pvr_device *device,
 
       memcpy(dst_mem_ptr + dst_primary_offset,
              src_mem_ptr + src_primary_offset,
-             size_info.primary * 4U * copy_set->descriptorCount);
+             PVR_DW_TO_BYTES(size_info.primary) * copy_set->descriptorCount);
 
       memcpy(dst_mem_ptr + dst_secondary_offset,
              src_mem_ptr + src_secondary_offset,
-             size_info.secondary * 4U * copy_set->descriptorCount);
+             PVR_DW_TO_BYTES(size_info.secondary) * copy_set->descriptorCount);
    }
 }
 

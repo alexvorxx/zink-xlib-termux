@@ -171,7 +171,6 @@ struct nir_xfb_info;
  */
 typedef struct {
    gl_state_index16 tokens[STATE_LENGTH];
-   uint16_t swizzle;
 } nir_state_slot;
 
 typedef enum {
@@ -2321,6 +2320,9 @@ typedef struct {
    /** Validation needs to know this for gradient component count */
    unsigned array_is_lowered_cube : 1;
 
+   /** True if this tg4 instruction has an implicit LOD or LOD bias, instead of using level 0 */
+   unsigned is_gather_implicit_lod : 1;
+
    /** Gather offsets */
    int8_t tg4_offsets[4][2];
 
@@ -3824,13 +3826,6 @@ typedef struct nir_shader_compiler_options {
    bool lower_io_variables;
 
    /**
-    * Lower color inputs to load_colorN that are kind of like system values
-    * if lower_io_variables is also set. shader_info will contain
-    * the interpolation settings. This is used by nir_lower_io_passes.
-    */
-   bool lower_fs_color_inputs;
-
-   /**
     * The masks of shader stages that support indirect indexing with
     * load_input and store_output intrinsics. It's used when
     * lower_io_variables is true. This is used by nir_lower_io_passes.
@@ -4783,10 +4778,12 @@ void nir_link_xfb_varyings(nir_shader *producer, nir_shader *consumer);
 bool nir_link_opt_varyings(nir_shader *producer, nir_shader *consumer);
 void nir_link_varying_precision(nir_shader *producer, nir_shader *consumer);
 
-bool nir_slot_is_sysval_output(gl_varying_slot slot);
+bool nir_slot_is_sysval_output(gl_varying_slot slot,
+                               gl_shader_stage next_shader);
 bool nir_slot_is_varying(gl_varying_slot slot);
-bool nir_slot_is_sysval_output_and_varying(gl_varying_slot slot);
-void nir_remove_varying(nir_intrinsic_instr *intr);
+bool nir_slot_is_sysval_output_and_varying(gl_varying_slot slot,
+                                           gl_shader_stage next_shader);
+bool nir_remove_varying(nir_intrinsic_instr *intr, gl_shader_stage next_shader);
 void nir_remove_sysval_output(nir_intrinsic_instr *intr);
 
 bool nir_lower_amul(nir_shader *shader,
@@ -4821,10 +4818,8 @@ bool nir_lower_io(nir_shader *shader,
                   nir_lower_io_options);
 
 bool nir_io_add_const_offset_to_base(nir_shader *nir, nir_variable_mode modes);
-
-void
-nir_lower_io_passes(nir_shader *nir);
-
+bool nir_lower_color_inputs(nir_shader *nir);
+void nir_lower_io_passes(nir_shader *nir);
 bool nir_io_add_intrinsic_xfb_info(nir_shader *nir);
 
 bool
@@ -5112,14 +5107,12 @@ nir_shader * nir_create_passthrough_tcs(const nir_shader_compiler_options *optio
 nir_shader * nir_create_passthrough_gs(const nir_shader_compiler_options *options,
                                        const nir_shader *prev_stage,
                                        enum shader_prim primitive_type,
-                                       int flat_interp_mask_offset,
-                                       int last_pv_vert_offset,
                                        bool emulate_edgeflags,
                                        bool force_line_strip_out);
 
 bool nir_lower_fragcolor(nir_shader *shader, unsigned max_cbufs);
 bool nir_lower_fragcoord_wtrans(nir_shader *shader);
-void nir_lower_viewport_transform(nir_shader *shader);
+bool nir_lower_viewport_transform(nir_shader *shader);
 bool nir_lower_uniforms_to_ubo(nir_shader *shader, bool dword_packed, bool load_vec4);
 
 bool nir_lower_is_helper_invocation(nir_shader *shader);
@@ -5506,7 +5499,7 @@ void nir_lower_point_size_mov(nir_shader *shader,
 
 bool nir_lower_frexp(nir_shader *nir);
 
-void nir_lower_two_sided_color(nir_shader *shader, bool face_sysval);
+bool nir_lower_two_sided_color(nir_shader *shader, bool face_sysval);
 
 bool nir_lower_clamp_color_outputs(nir_shader *shader);
 

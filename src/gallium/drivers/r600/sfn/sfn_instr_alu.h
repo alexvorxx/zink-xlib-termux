@@ -115,6 +115,7 @@ public:
 
    int dest_chan() const { return m_dest ? m_dest->chan() : m_fallback_chan; }
 
+   const VirtualValue *psrc(unsigned i) const { return i < m_src.size() ? m_src[i] : nullptr; }
    PVirtualValue psrc(unsigned i) { return i < m_src.size() ? m_src[i] : nullptr; }
    VirtualValue& src(unsigned i)
    {
@@ -167,7 +168,8 @@ public:
    static const std::set<AluModifiers> last;
    static const std::set<AluModifiers> last_write;
 
-   std::tuple<PRegister, bool, bool> indirect_addr() const;
+   std::tuple<PRegister, bool, PRegister> indirect_addr() const;
+   void update_indirect_addr(PRegister reg) override;
 
    void add_extra_dependency(PVirtualValue reg);
 
@@ -185,6 +187,9 @@ public:
 
    uint8_t allowed_src_chan_mask() const override;
    uint8_t allowed_dest_chan_mask() const {return m_allowed_desk_mask;}
+
+   void inc_ar_uses() { ++m_num_ar_uses;}
+   auto num_ar_uses() const {return m_num_ar_uses;}
 
 private:
    friend class AluGroup;
@@ -221,6 +226,7 @@ private:
    std::set<PRegister, std::less<PRegister>, Allocator<PRegister>> m_extra_dependencies;
    AluGroup *m_parent_group{nullptr};
    unsigned m_allowed_desk_mask{0xf};
+   unsigned m_num_ar_uses{0};
 };
 
 class AluInstrVisitor : public InstrVisitor {

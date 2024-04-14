@@ -273,7 +273,7 @@ radv_queue_family_to_ring(struct radv_physical_device *physical_device,
    case RADV_QUEUE_TRANSFER:
       return AMD_IP_SDMA;
    case RADV_QUEUE_VIDEO_DEC:
-      return radv_has_uvd(physical_device) ? AMD_IP_UVD : AMD_IP_VCN_DEC;
+      return physical_device->vid_decode_ip;
    case RADV_QUEUE_VIDEO_ENC:
       return AMD_IP_VCN_ENC;
    default:
@@ -737,7 +737,7 @@ static void
 radv_cmd_buffer_after_draw(struct radv_cmd_buffer *cmd_buffer, enum radv_cmd_flush_bits flags)
 {
    const struct radv_device *device = cmd_buffer->device;
-   if (unlikely(device->thread_trace.bo)) {
+   if (unlikely(device->sqtt.bo)) {
       radeon_check_space(device->ws, cmd_buffer->cs, 2);
 
       radeon_emit(cmd_buffer->cs, PKT3(PKT3_EVENT_WRITE, 0, 0));
@@ -3631,21 +3631,24 @@ radv_emit_index_buffer(struct radv_cmd_buffer *cmd_buffer, bool indirect)
    cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_INDEX_BUFFER;
 }
 
-void
-radv_set_db_count_control(struct radv_cmd_buffer *cmd_buffer, bool enable_occlusion_queries)
+static void
+radv_flush_occlusion_query_state(struct radv_cmd_buffer *cmd_buffer)
 {
+   const enum amd_gfx_level gfx_level = cmd_buffer->device->physical_device->rad_info.gfx_level;
+   const bool enable_occlusion_queries = cmd_buffer->state.active_occlusion_queries ||
+                                         cmd_buffer->state.inherited_occlusion_queries;
    uint32_t db_count_control;
 
    if (!enable_occlusion_queries) {
-      db_count_control =
-         S_028004_ZPASS_INCREMENT_DISABLE(cmd_buffer->device->physical_device->rad_info.gfx_level < GFX11);
+      db_count_control = S_028004_ZPASS_INCREMENT_DISABLE(gfx_level < GFX11);
    } else {
       uint32_t sample_rate = util_logbase2(cmd_buffer->state.render.max_samples);
       bool gfx10_perfect =
-         cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX10 &&
-         cmd_buffer->state.perfect_occlusion_queries_enabled;
+         gfx_level >= GFX10 &&
+         (cmd_buffer->state.perfect_occlusion_queries_enabled ||
+          cmd_buffer->state.inherited_query_control_flags & VK_QUERY_CONTROL_PRECISE_BIT);
 
-      if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX7) {
+      if (gfx_level >= GFX7) {
          /* Always enable PERFECT_ZPASS_COUNTS due to issues with partially
           * covered tiles, discards, and early depth testing. For more details,
           * see https://gitlab.freedesktop.org/mesa/mesa/-/issues/3218 */
@@ -3658,9 +3661,13 @@ radv_set_db_count_control(struct radv_cmd_buffer *cmd_buffer, bool enable_occlus
       }
    }
 
-   radeon_set_context_reg(cmd_buffer->cs, R_028004_DB_COUNT_CONTROL, db_count_control);
+   if (db_count_control != cmd_buffer->state.last_db_count_control) {
+      radeon_set_context_reg(cmd_buffer->cs, R_028004_DB_COUNT_CONTROL, db_count_control);
 
-   cmd_buffer->state.context_roll_without_scissor_emitted = true;
+      cmd_buffer->state.context_roll_without_scissor_emitted = true;
+
+      cmd_buffer->state.last_db_count_control = db_count_control;
+   }
 }
 
 unsigned
@@ -4600,6 +4607,9 @@ radv_flush_indirect_descriptor_sets(struct radv_cmd_buffer *cmd_buffer,
    uint64_t va = radv_buffer_get_va(cmd_buffer->upload.upload_bo);
    va += offset;
 
+   ASSERTED unsigned cdw_max =
+      radeon_check_space(device->ws, cs, MESA_VULKAN_SHADER_STAGES * 3);
+
    if (bind_point == VK_PIPELINE_BIND_POINT_GRAPHICS) {
       for (unsigned s = MESA_SHADER_VERTEX; s <= MESA_SHADER_FRAGMENT; s++)
          if (radv_cmdbuf_has_stage(cmd_buffer, s))
@@ -4612,11 +4622,13 @@ radv_flush_indirect_descriptor_sets(struct radv_cmd_buffer *cmd_buffer,
                                     cmd_buffer->state.shaders[MESA_SHADER_MESH]->info.user_data_0,
                                     AC_UD_INDIRECT_DESCRIPTOR_SETS, va);
 
-      if (radv_cmdbuf_has_stage(cmd_buffer, MESA_SHADER_TASK))
+      if (radv_cmdbuf_has_stage(cmd_buffer, MESA_SHADER_TASK)) {
+         radeon_check_space(device->ws, cmd_buffer->ace_internal.cs, 3);
          radv_emit_userdata_address(device, cmd_buffer->ace_internal.cs,
                                     cmd_buffer->state.shaders[MESA_SHADER_TASK],
                                     cmd_buffer->state.shaders[MESA_SHADER_TASK]->info.user_data_0,
                                     AC_UD_INDIRECT_DESCRIPTOR_SETS, va);
+      }
    } else {
       struct radv_shader *compute_shader = bind_point == VK_PIPELINE_BIND_POINT_COMPUTE
                                               ? cmd_buffer->state.shaders[MESA_SHADER_COMPUTE]
@@ -4625,6 +4637,8 @@ radv_flush_indirect_descriptor_sets(struct radv_cmd_buffer *cmd_buffer,
       radv_emit_userdata_address(device, cs, compute_shader, compute_shader->info.user_data_0,
                                  AC_UD_INDIRECT_DESCRIPTOR_SETS, va);
    }
+
+   assert(cmd_buffer->cs->cdw <= cdw_max);
 }
 
 ALWAYS_INLINE static void
@@ -5839,9 +5853,11 @@ radv_BeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBegi
    cmd_buffer->state.last_vrs_rates = -1;
    cmd_buffer->state.last_vrs_rates_sgpr_idx = -1;
    cmd_buffer->state.last_pa_sc_binner_cntl_0 = -1;
+   cmd_buffer->state.last_db_count_control = -1;
    cmd_buffer->usage_flags = pBeginInfo->flags;
 
-   cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_ALL | RADV_CMD_DIRTY_GUARDBAND;
+   cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_ALL | RADV_CMD_DIRTY_GUARDBAND |
+                              RADV_CMD_DIRTY_OCCLUSION_QUERY;
 
    if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX7) {
       uint32_t pred_value = 0;
@@ -5919,6 +5935,12 @@ radv_BeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBegi
       if (cmd_buffer->state.inherited_pipeline_statistics &
           VK_QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_PRIMITIVES_BIT)
          cmd_buffer->state.dirty |= RADV_CMD_DIRTY_NGG_QUERY;
+
+      cmd_buffer->state.inherited_occlusion_queries =
+         pBeginInfo->pInheritanceInfo->occlusionQueryEnable;
+      cmd_buffer->state.inherited_query_control_flags = pBeginInfo->pInheritanceInfo->queryFlags;
+      if (cmd_buffer->state.inherited_occlusion_queries)
+         cmd_buffer->state.dirty |= RADV_CMD_DIRTY_OCCLUSION_QUERY;
    }
 
    if (unlikely(cmd_buffer->device->trace_bo))
@@ -7503,20 +7525,13 @@ radv_CmdExecuteCommands(VkCommandBuffer commandBuffer, uint32_t commandBufferCou
 
    for (uint32_t i = 0; i < commandBufferCount; i++) {
       RADV_FROM_HANDLE(radv_cmd_buffer, secondary, pCmdBuffers[i]);
-      bool allow_ib2 = true;
 
-      if (secondary->device->physical_device->rad_info.gfx_level <= GFX7 &&
-          secondary->state.uses_draw_indirect_multi) {
-         /* Do not launch an IB2 for secondary command buffers that contain
-          * DRAW_{INDEX}_INDIRECT_MULTI on GFX7 because it's illegal and hang the GPU.
-          */
-         allow_ib2 = false;
-      }
-
-      if (secondary->qf == RADV_QUEUE_COMPUTE) {
-         /* IB2 packets are not supported on compute queues according to PAL. */
-         allow_ib2 = false;
-      }
+      /* Do not launch an IB2 for secondary command buffers that contain
+       * DRAW_{INDEX}_INDIRECT_{MULTI} on GFX6-7 because it's illegal and hangs the GPU.
+       */
+      const bool allow_ib2 =
+         !secondary->state.uses_draw_indirect ||
+         secondary->device->physical_device->rad_info.gfx_level >= GFX8;
 
       primary->scratch_size_per_wave_needed =
          MAX2(primary->scratch_size_per_wave_needed, secondary->scratch_size_per_wave_needed);
@@ -7641,13 +7656,14 @@ radv_CmdExecuteCommands(VkCommandBuffer commandBuffer, uint32_t commandBufferCou
     */
    primary->state.dirty |= RADV_CMD_DIRTY_PIPELINE | RADV_CMD_DIRTY_INDEX_BUFFER |
                            RADV_CMD_DIRTY_GUARDBAND | RADV_CMD_DIRTY_DYNAMIC_ALL |
-                           RADV_CMD_DIRTY_NGG_QUERY;
+                           RADV_CMD_DIRTY_NGG_QUERY | RADV_CMD_DIRTY_OCCLUSION_QUERY;
    radv_mark_descriptor_sets_dirty(primary, VK_PIPELINE_BIND_POINT_GRAPHICS);
    radv_mark_descriptor_sets_dirty(primary, VK_PIPELINE_BIND_POINT_COMPUTE);
 
    primary->state.last_first_instance = -1;
    primary->state.last_drawid = -1;
    primary->state.last_vertex_offset = -1;
+   primary->state.last_db_count_control = -1;
 }
 
 static void
@@ -8080,9 +8096,9 @@ radv_cs_emit_indirect_draw_packet(struct radv_cmd_buffer *cmd_buffer, bool index
       radeon_emit(cs, count_va >> 32);
       radeon_emit(cs, stride); /* stride */
       radeon_emit(cs, di_src_sel);
-
-      cmd_buffer->state.uses_draw_indirect_multi = true;
    }
+
+   cmd_buffer->state.uses_draw_indirect = true;
 }
 
 ALWAYS_INLINE static void
@@ -8122,8 +8138,6 @@ radv_cs_emit_indirect_mesh_draw_packet(struct radv_cmd_buffer *cmd_buffer, uint3
    radeon_emit(cs, count_va >> 32);
    radeon_emit(cs, stride);
    radeon_emit(cs, V_0287F0_DI_SRC_SEL_AUTO_INDEX);
-
-   cmd_buffer->state.uses_draw_indirect_multi = true;
 }
 
 ALWAYS_INLINE static void
@@ -8943,6 +8957,11 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
    if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_NGG_QUERY) {
       cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_NGG_QUERY;
       radv_flush_ngg_query_state(cmd_buffer);
+   }
+
+   if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_OCCLUSION_QUERY) {
+      radv_flush_occlusion_query_state(cmd_buffer);
+      cmd_buffer->state.dirty &= ~RADV_CMD_DIRTY_OCCLUSION_QUERY;
    }
 
    if ((cmd_buffer->state.dirty &

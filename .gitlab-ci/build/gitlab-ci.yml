@@ -282,11 +282,12 @@ fedora-release:
   variables:
     BUILDTYPE: "release"
     C_LINK_ARGS: >
-      -Wno-error=array-bounds
       -Wno-error=stringop-overflow
       -Wno-error=stringop-overread
+    CPP_ARGS: >
+      -Wno-error=dangling-reference
+      -Wno-error=overloaded-virtual
     CPP_LINK_ARGS: >
-      -Wno-error=array-bounds
       -Wno-error=stringop-overflow
       -Wno-error=stringop-overread
     DRI_LOADERS: >
@@ -313,7 +314,7 @@ fedora-release:
       -D gallium-xa=enabled
       -D gallium-nine=false
       -D gallium-opencl=icd
-      -D gallium-rusticl=false
+      -D gallium-rusticl=true
       -D gles1=disabled
       -D gles2=enabled
       -D llvm=enabled

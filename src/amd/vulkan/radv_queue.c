@@ -1064,6 +1064,7 @@ radv_update_preamble_cs(struct radv_queue_state *queue, struct radv_device *devi
          goto fail;
       }
 
+      radeon_check_space(ws, cs, 512);
       dest_cs[i] = cs;
 
       if (scratch_bo)
@@ -1334,6 +1335,11 @@ radv_create_gang_wait_preambles_postambles(struct radv_queue *queue)
    if (!leader_pre_cs || !leader_post_cs || !ace_pre_cs || !ace_post_cs)
       goto fail;
 
+   radeon_check_space(ws, leader_pre_cs, 256);
+   radeon_check_space(ws, leader_post_cs, 256);
+   radeon_check_space(ws, ace_pre_cs, 256);
+   radeon_check_space(ws, ace_post_cs, 256);
+
    radv_cs_add_buffer(ws, leader_pre_cs, gang_sem_bo);
    radv_cs_add_buffer(ws, leader_post_cs, gang_sem_bo);
    radv_cs_add_buffer(ws, ace_pre_cs, gang_sem_bo);
@@ -1482,6 +1488,8 @@ radv_create_perf_counter_lock_cs(struct radv_device *device, unsigned pass, bool
 
    ASSERTED unsigned cdw = radeon_check_space(device->ws, cs, 21);
 
+   radv_cs_add_buffer(device->ws, cs, device->perf_counter_bo);
+
    if (!unlock) {
       uint64_t mutex_va = radv_buffer_get_va(device->perf_counter_bo) + PERF_CTR_BO_LOCK_OFFSET;
       radeon_emit(cs, PKT3(PKT3_ATOMIC_MEM, 7, 0));
@@ -1580,12 +1588,9 @@ radv_queue_submit_normal(struct radv_queue *queue, struct vk_queue_submit *submi
          return result;
    }
 
-   const unsigned num_perfctr_cs = use_perf_counters ? 2 : 0;
-   const unsigned num_gang_wait_cs = use_ace ? 4 : 0;
    const unsigned cmd_buffer_count = submission->command_buffer_count;
    const unsigned max_cs_submission = queue->device->trace_bo ? 1 : cmd_buffer_count;
-   const unsigned cs_array_size = (use_ace ? 2 : 1) * MIN2(max_cs_submission, cmd_buffer_count) +
-                                  num_perfctr_cs + num_gang_wait_cs;
+   const unsigned cs_array_size = (use_ace ? 2 : 1) * MIN2(max_cs_submission, cmd_buffer_count);
 
    struct radeon_cmdbuf **cs_array = malloc(sizeof(struct radeon_cmdbuf *) * cs_array_size);
    if (!cs_array)

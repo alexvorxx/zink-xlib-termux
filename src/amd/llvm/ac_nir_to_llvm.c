@@ -528,6 +528,26 @@ static LLVMValueRef exit_waterfall(struct ac_nir_context *ctx, struct waterfall_
    return ret;
 }
 
+static LLVMValueRef
+ac_build_const_int_vec(struct ac_llvm_context *ctx, LLVMTypeRef type, long long val, bool sign_extend)
+{
+   unsigned num_components = LLVMGetTypeKind(type) == LLVMVectorTypeKind ? LLVMGetVectorSize(type) : 1;
+
+   if (num_components == 1)
+      return LLVMConstInt(type, val, sign_extend);
+
+   assert(num_components == 2);
+   assert(ac_get_elem_bits(ctx, type) == 16);
+
+   LLVMTypeRef elem_type = LLVMGetElementType(type);
+
+   LLVMValueRef elems[2];
+   for (unsigned i = 0; i < 2; ++i)
+      elems[i] = LLVMConstInt(elem_type, val, sign_extend);
+
+   return LLVMConstVector(elems, 2);
+}
+
 static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
 {
    LLVMValueRef src[16], result = NULL;
@@ -710,9 +730,9 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
       else if (ac_get_elem_bits(&ctx->ac, LLVMTypeOf(src[1])) >
                ac_get_elem_bits(&ctx->ac, LLVMTypeOf(src[0])))
          src[1] = LLVMBuildTrunc(ctx->ac.builder, src[1], LLVMTypeOf(src[0]), "");
-      LLVMTypeRef type = LLVMTypeOf(src[0]);
+      LLVMTypeRef type = LLVMTypeOf(src[1]);
       src[1] = LLVMBuildAnd(ctx->ac.builder, src[1],
-                            LLVMConstInt(type, LLVMGetIntTypeWidth(type) - 1, false), "");
+                            ac_build_const_int_vec(&ctx->ac, type, ac_get_elem_bits(&ctx->ac, type) - 1, false), "");
       switch (instr->op) {
       case nir_op_ishl:
          result = LLVMBuildShl(ctx->ac.builder, src[0], src[1], "");
@@ -1601,8 +1621,10 @@ static LLVMValueRef build_tex_intrinsic(struct ac_nir_context *ctx, const nir_te
       break;
    case nir_texop_tg4:
       args->opcode = ac_image_gather4;
-      if (!args->lod && !args->bias)
+      if (!args->lod && !instr->is_gather_implicit_lod)
          args->level_zero = true;
+      /* GFX11 supports implicit LOD, but the extension is unsupported. */
+      assert(args->level_zero || ctx->ac.gfx_level < GFX11);
       break;
    case nir_texop_lod:
       args->opcode = ac_image_get_lod;
@@ -3173,7 +3195,7 @@ static LLVMValueRef lookup_interp_param(struct ac_nir_context *ctx, enum glsl_in
       if (location == INTERP_CENTER)
          return ac_get_arg(&ctx->ac, ctx->args->persp_center);
       else if (location == INTERP_CENTROID)
-         return ctx->abi->persp_centroid;
+         return ac_get_arg(&ctx->ac, ctx->args->persp_centroid);
       else if (location == INTERP_SAMPLE)
          return ac_get_arg(&ctx->ac, ctx->args->persp_sample);
       break;
@@ -3181,7 +3203,7 @@ static LLVMValueRef lookup_interp_param(struct ac_nir_context *ctx, enum glsl_in
       if (location == INTERP_CENTER)
          return ac_get_arg(&ctx->ac, ctx->args->linear_center);
       else if (location == INTERP_CENTROID)
-         return ctx->abi->linear_centroid;
+         return ac_get_arg(&ctx->ac, ctx->args->linear_centroid);
       else if (location == INTERP_SAMPLE)
          return ac_get_arg(&ctx->ac, ctx->args->linear_sample);
       break;
@@ -3544,12 +3566,6 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
    case nir_intrinsic_is_helper_invocation:
       result = ac_build_is_helper_invocation(&ctx->ac);
       break;
-   case nir_intrinsic_load_color0:
-      result = ctx->abi->color0;
-      break;
-   case nir_intrinsic_load_color1:
-      result = ctx->abi->color1;
-      break;
    case nir_intrinsic_load_user_data_amd:
       assert(LLVMTypeOf(ctx->abi->user_data) == ctx->ac.v4i32);
       result = ctx->abi->user_data;
@@ -3814,14 +3830,6 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       result = load_interpolated_input(ctx, interp_param, index, component,
                                        instr->dest.ssa.num_components, instr->dest.ssa.bit_size,
                                        nir_intrinsic_io_semantics(instr).high_16bits);
-      break;
-   }
-   case nir_intrinsic_load_point_coord_maybe_flipped: {
-      LLVMValueRef interp_param = lookup_interp_param(ctx, INTERP_MODE_NONE, INTERP_CENTER);
-      /* Load point coordinates (x, y) which are written by the hw after the interpolated inputs */
-      result = load_interpolated_input(ctx, interp_param, ctx->abi->num_interp, 2,
-                                       instr->dest.ssa.num_components, instr->dest.ssa.bit_size,
-                                       false);
       break;
    }
    case nir_intrinsic_emit_vertex_with_counter: {
@@ -4198,15 +4206,6 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       LLVMSetMetadata(result, ctx->ac.invariant_load_md_kind, ctx->ac.empty_md);
       break;
    }
-   case nir_intrinsic_load_smem_buffer_amd: {
-      LLVMValueRef descriptor = get_src(ctx, instr->src[0]);
-      LLVMValueRef offset = get_src(ctx, instr->src[1]);
-      unsigned num_components = instr->dest.ssa.num_components;
-
-      result = ac_build_buffer_load(&ctx->ac, descriptor, num_components, NULL, offset, NULL,
-                                    ctx->ac.i32, 0, true, true);
-      break;
-   }
    case nir_intrinsic_ordered_xfb_counter_add_amd: {
       /* must be called in a single lane of a workgroup. */
       /* TODO: Add RADV support. */
@@ -4403,8 +4402,6 @@ static void tex_fetch_ptrs(struct ac_nir_context *ctx, nir_tex_instr *instr,
                            struct waterfall_context *wctx, LLVMValueRef *res_ptr,
                            LLVMValueRef *samp_ptr)
 {
-   bool texture_handle_divergent = false;
-   bool sampler_handle_divergent = false;
    LLVMValueRef texture_dynamic_handle = NULL;
    LLVMValueRef sampler_dynamic_handle = NULL;
    int plane = -1;
@@ -4422,14 +4419,10 @@ static void tex_fetch_ptrs(struct ac_nir_context *ctx, nir_tex_instr *instr,
             else
                *samp_ptr = val;
          } else {
-            bool divergent = instr->src[i].src.ssa->divergent;
-            if (instr->src[i].src_type == nir_tex_src_texture_handle) {
+            if (instr->src[i].src_type == nir_tex_src_texture_handle)
                texture_dynamic_handle = val;
-               texture_handle_divergent = divergent;
-            } else {
+            else
                sampler_dynamic_handle = val;
-               sampler_handle_divergent = divergent;
-            }
          }
          break;
       }
@@ -4459,23 +4452,11 @@ static void tex_fetch_ptrs(struct ac_nir_context *ctx, nir_tex_instr *instr,
       main_descriptor = AC_DESC_FMASK;
    }
 
-   /* instr->sampler_non_uniform and texture_non_uniform are always false in GLSL,
-    * but this can lead to unexpected behavior if texture/sampler index come from
-    * a vertex attribute.
-    * For instance, 2 consecutive draws using 2 different index values,
-    * could be squashed together by the hw - producing a single draw with
-    * non-dynamically uniform index.
-    * To avoid this, detect divergent indexing, and use enter_waterfall.
-    * See https://gitlab.freedesktop.org/mesa/mesa/-/issues/2253.
-    */
-
    /* descriptor handles given through nir_tex_src_{texture,sampler}_handle */
-   if (instr->texture_non_uniform ||
-       (ctx->abi->use_waterfall_for_divergent_tex_samplers && texture_handle_divergent))
+   if (instr->texture_non_uniform)
       texture_dynamic_handle = enter_waterfall(ctx, &wctx[0], texture_dynamic_handle, true);
 
-   if (instr->sampler_non_uniform ||
-       (ctx->abi->use_waterfall_for_divergent_tex_samplers && sampler_handle_divergent))
+   if (instr->sampler_non_uniform)
       sampler_dynamic_handle = enter_waterfall(ctx, &wctx[1], sampler_dynamic_handle, true);
 
    if (texture_dynamic_handle)
@@ -4990,23 +4971,6 @@ static bool visit_cf_list(struct ac_nir_context *ctx, struct exec_list *list)
    return true;
 }
 
-static void ac_handle_shader_output_decl(struct ac_llvm_context *ctx, struct ac_shader_abi *abi,
-                                         struct nir_shader *nir, struct nir_variable *variable,
-                                         gl_shader_stage stage)
-{
-   unsigned output_loc = variable->data.driver_location;
-   unsigned attrib_count = glsl_count_attribute_slots(variable->type, false);
-   bool is_16bit = glsl_type_is_16bit(glsl_without_array(variable->type));
-   LLVMTypeRef type = is_16bit ? ctx->f16 : ctx->f32;
-   for (unsigned i = 0; i < attrib_count; ++i) {
-      for (unsigned chan = 0; chan < 4; chan++) {
-         int idx = ac_llvm_reg_index_soa(output_loc + i, chan);
-         abi->outputs[idx] = ac_build_alloca_undef(ctx, type, "");
-         abi->is_16bit[idx] = is_16bit;
-      }
-   }
-}
-
 static void setup_scratch(struct ac_nir_context *ctx, struct nir_shader *shader)
 {
    if (shader->scratch_size == 0)
@@ -5096,17 +5060,6 @@ bool ac_nir_translate(struct ac_llvm_context *ac, struct ac_shader_abi *abi,
    ctx.info = &nir->info;
 
    ctx.main_function = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ctx.ac.builder));
-
-   /* TODO: remove this after RADV switches to lowered IO.
-    *
-    * Only fragment shader still uses store output for RADV.
-    */
-   if (!nir->info.io_lowered && ctx.stage == MESA_SHADER_FRAGMENT) {
-      nir_foreach_shader_out_variable(variable, nir)
-      {
-         ac_handle_shader_output_decl(&ctx.ac, ctx.abi, nir, variable, ctx.stage);
-      }
-   }
 
    ctx.defs = _mesa_hash_table_create(NULL, _mesa_hash_pointer, _mesa_key_pointer_equal);
    ctx.phis = _mesa_hash_table_create(NULL, _mesa_hash_pointer, _mesa_key_pointer_equal);

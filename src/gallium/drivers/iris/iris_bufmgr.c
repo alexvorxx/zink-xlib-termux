@@ -776,15 +776,40 @@ fail:
 static enum iris_heap
 flags_to_heap(struct iris_bufmgr *bufmgr, unsigned flags)
 {
-   if (bufmgr->vram.size > 0 &&
-       !(flags & BO_ALLOC_SMEM) &&
-       !(flags & BO_ALLOC_COHERENT)) {
-      return flags & BO_ALLOC_LMEM ? IRIS_HEAP_DEVICE_LOCAL :
-                                     IRIS_HEAP_DEVICE_LOCAL_PREFERRED;
+   if (bufmgr->vram.size > 0) {
+      if ((flags & BO_ALLOC_SMEM) || (flags & BO_ALLOC_COHERENT))
+         return IRIS_HEAP_SYSTEM_MEMORY;
+      if ((flags & BO_ALLOC_LMEM) ||
+          ((flags & BO_ALLOC_SCANOUT) && !(flags & BO_ALLOC_SHARED)))
+         return IRIS_HEAP_DEVICE_LOCAL;
+      return IRIS_HEAP_DEVICE_LOCAL_PREFERRED;
    } else {
       assert(!(flags & BO_ALLOC_LMEM));
       return IRIS_HEAP_SYSTEM_MEMORY;
    }
+}
+
+static bool
+zero_bo(struct iris_bufmgr *bufmgr,
+        unsigned flags,
+        struct iris_bo *bo)
+{
+   assert(flags & BO_ALLOC_ZEROED);
+
+   if (bufmgr->devinfo.has_flat_ccs && (flags & BO_ALLOC_LMEM)) {
+      /* With flat CCS, all allocations in LMEM have memory ranges with
+       * corresponding CCS elements. These elements are only accessible
+       * through GPU commands, but we don't issue GPU commands here.
+       */
+      return false;
+   }
+
+   void *map = iris_bo_map(NULL, bo, MAP_WRITE | MAP_RAW);
+   if (!map)
+      return false;
+
+   memset(map, 0, bo->size);
+   return true;
 }
 
 static struct iris_bo *
@@ -863,14 +888,9 @@ alloc_bo_from_slabs(struct iris_bufmgr *bufmgr,
    /* Zero the contents if necessary.  If this fails, fall back to
     * allocating a fresh BO, which will always be zeroed by the kernel.
     */
-   if (flags & BO_ALLOC_ZEROED) {
-      void *map = iris_bo_map(NULL, bo, MAP_WRITE | MAP_RAW);
-      if (map) {
-         memset(map, 0, bo->size);
-      } else {
-         pb_slab_free(slabs, &bo->slab.entry);
-         return NULL;
-      }
+   if ((flags & BO_ALLOC_ZEROED) && !zero_bo(bufmgr, flags, bo)) {
+      pb_slab_free(slabs, &bo->slab.entry);
+      return NULL;
    }
 
    return bo;
@@ -960,14 +980,9 @@ alloc_bo_from_cache(struct iris_bufmgr *bufmgr,
    /* Zero the contents if necessary.  If this fails, fall back to
     * allocating a fresh BO, which will always be zeroed by the kernel.
     */
-   if (flags & BO_ALLOC_ZEROED) {
-      void *map = iris_bo_map(NULL, bo, MAP_WRITE | MAP_RAW);
-      if (map) {
-         memset(map, 0, bo->size);
-      } else {
-         bo_free(bo);
-         return NULL;
-      }
+   if ((flags & BO_ALLOC_ZEROED) && !zero_bo(bufmgr, flags, bo)) {
+      bo_free(bo);
+      return NULL;
    }
 
    return bo;
@@ -1003,8 +1018,7 @@ alloc_fresh_bo(struct iris_bufmgr *bufmgr, uint64_t bo_size, unsigned flags)
       case IRIS_HEAP_DEVICE_LOCAL_PREFERRED:
          /* For vram allocations, still use system memory as a fallback. */
          regions[num_regions++] = bufmgr->vram.region;
-         if (!(flags & BO_ALLOC_SCANOUT))
-            regions[num_regions++] = bufmgr->sys.region;
+         regions[num_regions++] = bufmgr->sys.region;
          break;
       case IRIS_HEAP_DEVICE_LOCAL:
          regions[num_regions++] = bufmgr->vram.region;
@@ -1165,12 +1179,18 @@ err_free:
 }
 
 static int
-iris_bo_close(struct iris_bufmgr *bufmgr, uint32_t gem_handle)
+iris_bo_close(int fd, uint32_t gem_handle)
 {
    struct drm_gem_close close = {
       .handle = gem_handle,
    };
-   return intel_ioctl(bufmgr->fd, DRM_IOCTL_GEM_CLOSE, &close);
+   return intel_ioctl(fd, DRM_IOCTL_GEM_CLOSE, &close);
+}
+
+static int
+iris_bufmgr_bo_close(struct iris_bufmgr *bufmgr, uint32_t gem_handle)
+{
+   return iris_bo_close(bufmgr->fd, gem_handle);
 }
 
 struct iris_bo *
@@ -1225,7 +1245,7 @@ iris_bo_create_userptr(struct iris_bufmgr *bufmgr, const char *name,
    return bo;
 
 err_close:
-   iris_bo_close(bufmgr, bo->gem_handle);
+   iris_bufmgr_bo_close(bufmgr, bo->gem_handle);
 err_free:
    free(bo);
    return NULL;
@@ -1272,7 +1292,7 @@ iris_bo_gem_create_from_name(struct iris_bufmgr *bufmgr,
 
    bo = bo_calloc();
    if (!bo) {
-      iris_bo_close(bufmgr, open_arg.handle);
+      iris_bufmgr_bo_close(bufmgr, open_arg.handle);
       goto out;
    }
 
@@ -1334,7 +1354,7 @@ bo_close(struct iris_bo *bo)
       _mesa_hash_table_remove(bufmgr->handle_table, entry);
 
       list_for_each_entry_safe(struct bo_export, export, &bo->real.exports, link) {
-         iris_bo_close(bufmgr, export->gem_handle);
+         iris_bo_close(export->drm_fd, export->gem_handle);
 
          list_del(&export->link);
          free(export);
@@ -1350,7 +1370,7 @@ bo_close(struct iris_bo *bo)
       DBG("Unable to unbind vm of buf %u\n", bo->gem_handle);
 
    /* Close this object */
-   if (iris_bo_close(bufmgr, bo->gem_handle) != 0) {
+   if (iris_bufmgr_bo_close(bufmgr, bo->gem_handle) != 0) {
       DBG("DRM_IOCTL_GEM_CLOSE %d failed (%s): %s\n",
           bo->gem_handle, bo->name, strerror(errno));
    }

@@ -1,26 +1,8 @@
 /*
- * Copyright (C) 2021 Alyssa Rosenzweig <alyssa@rosenzweig.io>
- * Copyright (C) 2020 Collabora Ltd.
- * Copyright © 2016 Broadcom
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+ * Copyright 2021 Alyssa Rosenzweig
+ * Copyright 2020 Collabora Ltd.
+ * Copyright 2016 Broadcom
+ * SPDX-License-Identifier: MIT
  */
 
 #include "agx_compile.h"
@@ -436,7 +418,7 @@ agx_write_sample_mask_1(agx_builder *b)
 {
    if (b->shader->nir->info.fs.uses_discard && !b->shader->did_sample_mask) {
       /* If the shader uses discard, the sample mask must be written by the
-       * shader on all exeuction paths. If we've reached the end of the shader,
+       * shader on all execution paths. If we've reached the end of the shader,
        * we are therefore still active and need to write a full sample mask.
        * TODO: interactions with MSAA and gl_SampleMask writes
        */
@@ -2020,7 +2002,7 @@ agx_remap_varyings_vs(nir_shader *nir, struct agx_varyings_vs *varyings)
 {
    unsigned base = 0;
 
-   /* Initalize to "nothing is written" */
+   /* Initialize to "nothing is written" */
    for (unsigned i = 0; i < ARRAY_SIZE(varyings->slots); ++i)
       varyings->slots[i] = ~0;
 

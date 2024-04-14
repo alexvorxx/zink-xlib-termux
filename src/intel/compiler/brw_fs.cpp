@@ -2849,9 +2849,9 @@ fs_visitor::opt_zero_samples()
    /* Gfx4 infers the texturing opcode based on the message length so we can't
     * change it.  Gfx12.5 has restrictions on the number of coordinate
     * parameters that have to be provided for some texture types
-    * (Wa_14013363432).
+    * (Wa_14012688258).
     */
-   if (devinfo->ver < 5 || devinfo->verx10 == 125)
+   if (devinfo->ver < 5 || intel_needs_workaround(devinfo, 14012688258))
       return false;
 
    bool progress = false;
@@ -7159,6 +7159,8 @@ brw_compute_barycentric_interp_modes(const struct intel_device_info *devinfo,
             case nir_intrinsic_load_barycentric_pixel:
             case nir_intrinsic_load_barycentric_centroid:
             case nir_intrinsic_load_barycentric_sample:
+            case nir_intrinsic_load_barycentric_at_sample:
+            case nir_intrinsic_load_barycentric_at_offset:
                break;
             default:
                continue;
@@ -7375,6 +7377,20 @@ brw_nir_populate_wm_prog_data(const nir_shader *shader,
 
    prog_data->barycentric_interp_modes =
       brw_compute_barycentric_interp_modes(devinfo, shader);
+
+   /* From the BDW PRM documentation for 3DSTATE_WM:
+    *
+    *    "MSDISPMODE_PERSAMPLE is required in order to select Perspective
+    *     Sample or Non- perspective Sample barycentric coordinates."
+    *
+    * So cleanup any potentially set sample barycentric mode when not in per
+    * sample dispatch.
+    */
+   if (prog_data->persample_dispatch == BRW_NEVER) {
+      prog_data->barycentric_interp_modes &=
+         ~BITFIELD_BIT(BRW_BARYCENTRIC_PERSPECTIVE_SAMPLE);
+   }
+
    prog_data->uses_nonperspective_interp_modes |=
       (prog_data->barycentric_interp_modes &
       BRW_BARYCENTRIC_NONPERSPECTIVE_BITS) != 0;
@@ -7615,12 +7631,14 @@ brw_compile_fs(const struct brw_compiler *compiler,
    }
 
    struct brw_compile_stats *stats = params->stats;
+   uint32_t max_dispatch_width = 0;
 
    if (simd8_cfg) {
       prog_data->dispatch_8 = true;
       g.generate_code(simd8_cfg, 8, v8->shader_stats,
                       v8->performance_analysis.require(), stats);
       stats = stats ? stats + 1 : NULL;
+      max_dispatch_width = 8;
    }
 
    if (simd16_cfg) {
@@ -7629,6 +7647,7 @@ brw_compile_fs(const struct brw_compiler *compiler,
          simd16_cfg, 16, v16->shader_stats,
          v16->performance_analysis.require(), stats);
       stats = stats ? stats + 1 : NULL;
+      max_dispatch_width = 16;
    }
 
    if (simd32_cfg) {
@@ -7637,7 +7656,11 @@ brw_compile_fs(const struct brw_compiler *compiler,
          simd32_cfg, 32, v32->shader_stats,
          v32->performance_analysis.require(), stats);
       stats = stats ? stats + 1 : NULL;
+      max_dispatch_width = 32;
    }
+
+   for (struct brw_compile_stats *s = params->stats; s != NULL && s != stats; s++)
+      s->max_dispatch_width = max_dispatch_width;
 
    g.add_const_data(nir->constant_data, nir->constant_data_size);
    return g.get_assembly();
@@ -7874,6 +7897,8 @@ brw_compile_cs(const struct brw_compiler *compiler,
       g.enable_debug(name);
    }
 
+   uint32_t max_dispatch_width = 8u << (util_last_bit(prog_data->prog_mask) - 1);
+
    struct brw_compile_stats *stats = params->stats;
    for (unsigned simd = 0; simd < 3; simd++) {
       if (prog_data->prog_mask & (1u << simd)) {
@@ -7881,7 +7906,10 @@ brw_compile_cs(const struct brw_compiler *compiler,
          prog_data->prog_offset[simd] =
             g.generate_code(v[simd]->cfg, 8u << simd, v[simd]->shader_stats,
                             v[simd]->performance_analysis.require(), stats);
+         if (stats)
+            stats->max_dispatch_width = max_dispatch_width;
          stats = stats ? stats + 1 : NULL;
+         max_dispatch_width = 8u << simd;
       }
    }
 

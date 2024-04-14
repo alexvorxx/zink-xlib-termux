@@ -230,14 +230,14 @@ Core Mesa environment variables
 
 .. envvar:: MESA_DISK_CACHE_READ_ONLY_FOZ_DBS
 
-   if set with envvar:`MESA_DISK_CACHE_SINGLE_FILE` enabled, references
+   if set with :envvar:`MESA_DISK_CACHE_SINGLE_FILE` enabled, references
    a string of comma separated file paths to read only Fossilize DB
    shader caches for loading at initialization. The file paths are
    relative to the cache directory and do not include suffixes,
    referencing both the cache DB and its index file. E.g.
-   MESA_DISK_CACHE_SINGLE_FILE=filename1 refers to filename1.foz and
-   filename1_idx.foz. A limit of 8 DBs can be loaded and this limit is
-   shared with :envvar:`MESA_DISK_CACHE_READ_ONLY_FOZ_DBS_DYNAMIC_LIST.`
+   ``MESA_DISK_CACHE_SINGLE_FILE=filename1`` refers to ``filename1.foz``
+   and ``filename1_idx.foz``. A limit of 8 DBs can be loaded and this limit
+   is shared with :envvar:`MESA_DISK_CACHE_READ_ONLY_FOZ_DBS_DYNAMIC_LIST.`
 
 .. envvar:: MESA_DISK_CACHE_DATABASE
 
@@ -1063,6 +1063,8 @@ RADV driver environment variables
       validate the LLVM IR before LLVM compiles the shader
    ``epilogs``
       dump fragment shader epilogs
+   ``extra_md``
+      add extra information in bo metadatas to help tools (umr)
    ``forcecompress``
       Enables DCC,FMASK,CMASK,HTILE in situations where the driver supports it
       but normally does not deem it beneficial.
@@ -1161,6 +1163,8 @@ RADV driver environment variables
       enable wave32 for compute shaders (GFX10+)
    ``dccmsaa``
       enable DCC for MSAA images
+   ``dmashaders``
+      upload shaders to invisible VRAM (might be useful for non-resizable BAR systems)
    ``emulate_rt``
       forces ray-tracing to be emulated in software on GFX10_3+ and enables
       rt extensions with older hardware.
@@ -1172,8 +1176,6 @@ RADV driver environment variables
       enable local BOs
    ``nosam``
       disable optimizations that get enabled when all VRAM is CPU visible.
-   ``nv_ms``
-      enable unofficial experimental support for :ext:`VK_NV_mesh_shader`.
    ``pswave32``
       enable wave32 for pixel shaders (GFX10+)
    ``ngg_streamout``
@@ -1366,6 +1368,8 @@ RadeonSI driver environment variables
       Enable DPBB.
    ``dfsm``
       Enable DFSM.
+   ``extra_md``
+      add extra information in bo metadatas to help tools (umr)
 
 r600 driver environment variables
 ---------------------------------

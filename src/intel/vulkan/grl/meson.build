@@ -169,7 +169,7 @@ foreach t : [['125', 'gfx125', 'dg2']]
       '-DGFX_VERx10=@0@'.format(verX10),
     ],
     cpp_args : [
-      no_override_init_args, sse2_args,
+      sse2_args,
       '-DGFX_VERx10=@0@'.format(verX10),
     ],
     dependencies : [
@@ -196,7 +196,6 @@ libgrl = static_library(
   ],
   link_whole : [grl_genX_libs],
   dependencies : [libgrl_deps, idep_anv_headers],
-  install : true,
 )
 idep_grl = declare_dependency(
   link_with : libgrl,

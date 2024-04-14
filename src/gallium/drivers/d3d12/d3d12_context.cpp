@@ -920,7 +920,8 @@ d3d12_init_sampler_view_descriptor(struct d3d12_sampler_view *sampler_view)
    case D3D12_SRV_DIMENSION_BUFFER:
       desc.Buffer.StructureByteStride = 0;
       desc.Buffer.FirstElement = offset / util_format_get_blocksize(state->format);
-      desc.Buffer.NumElements = texture->width0 / util_format_get_blocksize(state->format);
+      desc.Buffer.NumElements = MIN2(texture->width0 / util_format_get_blocksize(state->format),
+                                     1 << D3D12_REQ_BUFFER_RESOURCE_TEXEL_COUNT_2_TO_EXP);
       break;
    default:
       unreachable("Invalid SRV dimension");
@@ -1134,6 +1135,7 @@ d3d12_bind_fs_state(struct pipe_context *pctx,
               (struct d3d12_shader_selector *) fss);
    ctx->has_flat_varyings = has_flat_varyings(ctx);
    ctx->missing_dual_src_outputs = missing_dual_src_outputs(ctx);
+   ctx->manual_depth_range = manual_depth_range(ctx);
 }
 
 static void
@@ -2515,6 +2517,7 @@ d3d12_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
 
    ctx->has_flat_varyings = false;
    ctx->missing_dual_src_outputs = false;
+   ctx->manual_depth_range = false;
 
    d3d12_context_surface_init(&ctx->base);
    d3d12_context_resource_init(&ctx->base);
@@ -2608,6 +2611,11 @@ d3d12_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
       ctx->id = D3D12_CONTEXT_NO_ID;
    mtx_unlock(&screen->submit_mutex);
 
+   for (unsigned i = 0; i < ARRAY_SIZE(ctx->batches); ++i) {
+      ctx->batches[i].ctx_id = ctx->id;
+      ctx->batches[i].ctx_index = i;
+   }
+
    if (flags & PIPE_CONTEXT_PREFER_THREADED)
       return threaded_context_create(&ctx->base,
          &screen->transfer_pool,
@@ -2657,5 +2665,5 @@ d3d12_need_zero_one_depth_range(struct d3d12_context *ctx)
     * end up generating needless code, but the result will be correct.
     */
 
-   return fs->initial->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_DEPTH);
+   return fs && fs->initial->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_DEPTH);
 }

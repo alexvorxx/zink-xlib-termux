@@ -4424,6 +4424,16 @@ fs_visitor::nir_emit_intrinsic(const fs_builder &bld, nir_intrinsic_instr *instr
 
          if (slm_fence) {
             assert(opcode == SHADER_OPCODE_MEMORY_FENCE);
+            if (intel_needs_workaround(devinfo, 14014063774)) {
+               /* Wa_14014063774
+                *
+                * Before SLM fence compiler needs to insert SYNC.ALLWR in order
+                * to avoid the SLM data race.
+                */
+               ubld.exec_all().group(1, 0).emit(
+                  BRW_OPCODE_SYNC, ubld.null_reg_ud(),
+                  brw_imm_ud(TGL_SYNC_ALLWR));
+            }
             fence_regs[fence_regs_count++] =
                emit_fence(ubld, opcode, GFX12_SFID_SLM, desc,
                           true /* commit_enable */,
@@ -6043,11 +6053,12 @@ fs_visitor::nir_emit_texture(const fs_builder &bld, nir_tex_instr *instr)
             break;
          }
 
-         /* Wa_14013363432:
+         /* Wa_14012688258:
           *
           * Compiler should send U,V,R parameters even if V,R are 0.
           */
-         if (instr->sampler_dim == GLSL_SAMPLER_DIM_CUBE && devinfo->verx10 == 125)
+         if (instr->sampler_dim == GLSL_SAMPLER_DIM_CUBE &&
+             intel_needs_workaround(devinfo, 14012688258))
             assert(instr->coord_components >= 3u);
          break;
       case nir_tex_src_ddx:

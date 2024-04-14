@@ -91,6 +91,7 @@
 #include "main/shaderobj.h"
 #include "main/enums.h"
 #include "main/mtypes.h"
+#include "main/context.h"
 
 
 namespace {
@@ -3863,10 +3864,6 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
          lower_clip_cull_distance(prog, prog->_LinkedShaders[i]);
       }
 
-      if (consts->LowerTessLevel) {
-         lower_tess_level(prog->_LinkedShaders[i]);
-      }
-
       /* Section 13.46 (Vertex Attribute Aliasing) of the OpenGL ES 3.2
        * specification says:
        *
@@ -3928,7 +3925,7 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
     *   always require a Vertex shader and hence a Fragment shader.
     * - Finally a Compute shader linked with any other stage is a link error.
     */
-   if (!prog->SeparateShader && ctx->API == API_OPENGLES2 &&
+   if (!prog->SeparateShader && _mesa_is_gles2(ctx) &&
        num_shaders[MESA_SHADER_COMPUTE] == 0) {
       if (prog->_LinkedShaders[MESA_SHADER_VERTEX] == NULL) {
          linker_error(prog, "program lacks a vertex shader\n");

@@ -1,25 +1,7 @@
 /*
- * Copyright (C) 2021 Alyssa Rosenzweig <alyssa@rosenzweig.io>
+ * Copyright 2021 Alyssa Rosenzweig
  * Copyright 2019 Collabora, Ltd.
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #include "agx_device.h"
@@ -239,11 +221,28 @@ agx_bo_export(struct agx_bo *bo)
    if (drmPrimeHandleToFD(bo->dev->fd, bo->handle, DRM_CLOEXEC, &fd))
       return -1;
 
-   bo->flags |= AGX_BO_SHARED;
-   if (bo->prime_fd == -1)
+   if (!(bo->flags & AGX_BO_SHARED)) {
+      bo->flags |= AGX_BO_SHARED;
+      assert(bo->prime_fd == -1);
       bo->prime_fd = dup(fd);
-   assert(bo->prime_fd >= 0);
 
+      /* If there is a pending writer to this BO, import it into the buffer
+       * for implicit sync.
+       */
+      if (bo->writer_syncobj) {
+         int out_sync_fd = -1;
+         int ret = drmSyncobjExportSyncFile(bo->dev->fd, bo->writer_syncobj,
+                                            &out_sync_fd);
+         assert(ret >= 0);
+         assert(out_sync_fd >= 0);
+
+         ret = agx_import_sync_file(bo->dev, bo, out_sync_fd);
+         assert(ret >= 0);
+         close(out_sync_fd);
+      }
+   }
+
+   assert(bo->prime_fd >= 0);
    return fd;
 }
 

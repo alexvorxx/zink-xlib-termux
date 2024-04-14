@@ -35,7 +35,6 @@
 #include "pvr_csb.h"
 #include "pvr_csb_enum_helpers.h"
 #include "pvr_device_info.h"
-#include "pvr_end_of_tile.h"
 #include "pvr_formats.h"
 #include "pvr_hardcode.h"
 #include "pvr_hw_pass.h"
@@ -46,6 +45,7 @@
 #include "pvr_private.h"
 #include "pvr_tex_state.h"
 #include "pvr_types.h"
+#include "pvr_uscgen.h"
 #include "pvr_winsys.h"
 #include "util/bitscan.h"
 #include "util/bitset.h"
@@ -476,9 +476,13 @@ pvr_cmd_buffer_upload_pds_data(struct pvr_cmd_buffer *const cmd_buffer,
                                     pds_upload_out);
 }
 
+/* pbe_cs_words must be an array of length emit_count with
+ * ROGUE_NUM_PBESTATE_STATE_WORDS entries
+ */
 static VkResult pvr_sub_cmd_gfx_per_job_fragment_programs_create_and_upload(
    struct pvr_cmd_buffer *const cmd_buffer,
-   const uint32_t pbe_cs_words[static const ROGUE_NUM_PBESTATE_STATE_WORDS],
+   const uint32_t emit_count,
+   const uint32_t *pbe_cs_words,
    struct pvr_pds_upload *const pds_upload_out)
 {
    struct pvr_pds_event_program pixel_event_program = {
@@ -489,33 +493,29 @@ static VkResult pvr_sub_cmd_gfx_per_job_fragment_programs_create_and_upload(
       cmd_buffer->device->pixel_event_data_size_in_dwords * sizeof(uint32_t);
    const VkAllocationCallbacks *const allocator = &cmd_buffer->vk.pool->alloc;
    struct pvr_device *const device = cmd_buffer->device;
-   /* FIXME: This should come from the compiler for the USC pixel program. */
-   const uint32_t usc_temp_count = 0;
-   struct pvr_bo *usc_eot_program;
-   uint8_t *usc_eot_program_ptr;
+   struct util_dynarray eot_program_bin;
+   struct pvr_bo *usc_eot_program = NULL;
    uint32_t *staging_buffer;
+   uint32_t usc_temp_count;
    VkResult result;
 
+   assert(emit_count > 0);
+
+   pvr_uscgen_per_job_eot(emit_count,
+                          pbe_cs_words,
+                          &usc_temp_count,
+                          &eot_program_bin);
+
    result = pvr_cmd_buffer_upload_usc(cmd_buffer,
-                                      pvr_end_of_tile_program,
-                                      sizeof(pvr_end_of_tile_program),
+                                      eot_program_bin.data,
+                                      eot_program_bin.size,
                                       4,
                                       &usc_eot_program);
+
+   util_dynarray_fini(&eot_program_bin);
+
    if (result != VK_SUCCESS)
       return result;
-
-   assert((pbe_cs_words[1] & 0x3F) == 0x20);
-
-   /* FIXME: Stop patching the framebuffer address (this will require the
-    * end-of-tile program to be generated at run-time).
-    */
-   pvr_bo_cpu_map(device, usc_eot_program);
-   usc_eot_program_ptr = usc_eot_program->bo->map;
-   usc_eot_program_ptr[6] = (pbe_cs_words[0] >> 0) & 0xFF;
-   usc_eot_program_ptr[7] = (pbe_cs_words[0] >> 8) & 0xFF;
-   usc_eot_program_ptr[8] = (pbe_cs_words[0] >> 16) & 0xFF;
-   usc_eot_program_ptr[9] = (pbe_cs_words[0] >> 24) & 0xFF;
-   pvr_bo_cpu_unmap(device, usc_eot_program);
 
    pvr_pds_setup_doutu(&pixel_event_program.task_control,
                        usc_eot_program->vma->dev_addr.addr,
@@ -936,7 +936,7 @@ static inline uint32_t pvr_stride_from_pitch(uint32_t pitch, VkFormat vk_format)
 
 static void pvr_setup_pbe_state(
    const struct pvr_device_info *dev_info,
-   struct pvr_framebuffer *framebuffer,
+   const struct pvr_framebuffer *framebuffer,
    uint32_t mrt_index,
    const struct usc_mrt_resource *mrt_resource,
    const struct pvr_image_view *const iview,
@@ -963,16 +963,8 @@ static void pvr_setup_pbe_state(
    /* Setup surface parameters. */
 
    if (PVR_HAS_FEATURE(dev_info, usc_f16sop_u8)) {
-      switch (iview->vk.format) {
-      case VK_FORMAT_B8G8R8A8_UNORM:
-         with_packed_usc_channel = true;
-         break;
-      case VK_FORMAT_D32_SFLOAT:
-         with_packed_usc_channel = false;
-         break;
-      default:
-         unreachable("Unsupported Vulkan image format");
-      }
+      with_packed_usc_channel = vk_format_is_unorm(iview->vk.format) ||
+                                vk_format_is_snorm(iview->vk.format);
    } else {
       with_packed_usc_channel = false;
    }
@@ -1144,34 +1136,38 @@ pvr_sub_cmd_gfx_align_zls_subtiles(const struct pvr_device_info *dev_info,
              zls_tile_size_y);
 }
 
-static VkResult pvr_sub_cmd_gfx_job_init(const struct pvr_device_info *dev_info,
-                                         struct pvr_cmd_buffer *cmd_buffer,
-                                         struct pvr_sub_cmd_gfx *sub_cmd)
-{
-   static const VkClearDepthStencilValue default_ds_clear_value = {
-      .depth = 1.0f,
-      .stencil = 0xFFFFFFFF,
-   };
-
-   const struct vk_dynamic_graphics_state *dynamic_state =
-      &cmd_buffer->vk.dynamic_graphics_state;
-   struct pvr_render_pass_info *render_pass_info =
-      &cmd_buffer->state.render_pass_info;
-   const struct pvr_renderpass_hwsetup_render *hw_render =
-      &render_pass_info->pass->hw_setup->renders[sub_cmd->hw_render_idx];
-   struct pvr_render_job *job = &sub_cmd->job;
-   struct pvr_pds_upload pds_pixel_event_program;
+struct pvr_emit_state {
    uint32_t pbe_cs_words[PVR_MAX_COLOR_ATTACHMENTS]
-                        [ROGUE_NUM_PBESTATE_STATE_WORDS] = { 0 };
-   struct pvr_framebuffer *framebuffer = render_pass_info->framebuffer;
-   struct pvr_spm_bgobj_state *spm_bgobj_state =
-      &framebuffer->spm_bgobj_state_per_render[sub_cmd->hw_render_idx];
-   struct pvr_render_target *render_target;
-   VkResult result;
+                        [ROGUE_NUM_PBESTATE_STATE_WORDS];
 
-   assert(hw_render->eot_surface_count < ARRAY_SIZE(pbe_cs_words));
+   uint64_t pbe_reg_words[PVR_MAX_COLOR_ATTACHMENTS]
+                         [ROGUE_NUM_PBESTATE_REG_WORDS];
+
+   uint32_t emit_count;
+};
+
+static void
+pvr_setup_emit_state(const struct pvr_device_info *dev_info,
+                     const struct pvr_renderpass_hwsetup_render *hw_render,
+                     struct pvr_render_pass_info *render_pass_info,
+                     struct pvr_emit_state *emit_state)
+{
+   assert(hw_render->eot_surface_count < PVR_MAX_COLOR_ATTACHMENTS);
+
+   if (hw_render->eot_surface_count == 0) {
+      emit_state->emit_count = 1;
+      pvr_csb_pack (&emit_state->pbe_cs_words[0][1],
+                    PBESTATE_STATE_WORD1,
+                    state) {
+         state.emptytile = true;
+      }
+      return;
+   }
+
+   emit_state->emit_count = hw_render->eot_surface_count;
 
    for (uint32_t i = 0; i < hw_render->eot_surface_count; i++) {
+      const struct pvr_framebuffer *framebuffer = render_pass_info->framebuffer;
       const struct pvr_renderpass_hwsetup_eot_surface *surface =
          &hw_render->eot_surfaces[i];
       const struct pvr_image_view *iview =
@@ -1184,8 +1180,8 @@ static VkResult pvr_sub_cmd_gfx_job_init(const struct pvr_device_info *dev_info,
          const struct pvr_image_view *resolve_src =
             render_pass_info->attachments[surface->src_attachment_idx];
 
-         /* Attachments that are the destination of resolve operations must be
-          * loaded before their next use.
+         /* Attachments that are the destination of resolve operations must
+          * be loaded before their next use.
           */
          render_pass_info->enable_bg_tag = true;
          render_pass_info->process_empty_tiles = true;
@@ -1204,15 +1200,45 @@ static VkResult pvr_sub_cmd_gfx_job_init(const struct pvr_device_info *dev_info,
                           &render_pass_info->render_area,
                           surface->need_resolve,
                           samples,
-                          pbe_cs_words[i],
-                          job->pbe_reg_words[i]);
+                          emit_state->pbe_cs_words[i],
+                          emit_state->pbe_reg_words[i]);
    }
+}
 
-   /* FIXME: The fragment program only supports a single surface at present. */
-   assert(hw_render->eot_surface_count == 1);
+static VkResult pvr_sub_cmd_gfx_job_init(const struct pvr_device_info *dev_info,
+                                         struct pvr_cmd_buffer *cmd_buffer,
+                                         struct pvr_sub_cmd_gfx *sub_cmd)
+{
+   static const VkClearDepthStencilValue default_ds_clear_value = {
+      .depth = 1.0f,
+      .stencil = 0xFFFFFFFF,
+   };
+
+   const struct vk_dynamic_graphics_state *dynamic_state =
+      &cmd_buffer->vk.dynamic_graphics_state;
+   struct pvr_render_pass_info *render_pass_info =
+      &cmd_buffer->state.render_pass_info;
+   const struct pvr_renderpass_hwsetup_render *hw_render =
+      &render_pass_info->pass->hw_setup->renders[sub_cmd->hw_render_idx];
+   struct pvr_render_job *job = &sub_cmd->job;
+   struct pvr_pds_upload pds_pixel_event_program;
+   struct pvr_framebuffer *framebuffer = render_pass_info->framebuffer;
+   struct pvr_spm_bgobj_state *spm_bgobj_state =
+      &framebuffer->spm_bgobj_state_per_render[sub_cmd->hw_render_idx];
+   struct pvr_emit_state emit_state = { 0 };
+   struct pvr_render_target *render_target;
+   VkResult result;
+
+   pvr_setup_emit_state(dev_info, hw_render, render_pass_info, &emit_state);
+
+   memcpy(job->pbe_reg_words,
+          emit_state.pbe_reg_words,
+          sizeof(emit_state.pbe_reg_words));
+
    result = pvr_sub_cmd_gfx_per_job_fragment_programs_create_and_upload(
       cmd_buffer,
-      pbe_cs_words[0],
+      emit_state.emit_count,
+      emit_state.pbe_cs_words[0],
       &pds_pixel_event_program);
    if (result != VK_SUCCESS)
       return result;
@@ -2986,6 +3012,36 @@ pvr_setup_vertex_buffers(struct pvr_cmd_buffer *cmd_buffer,
          const pvr_dev_addr_t addr =
             PVR_DEV_ADDR_OFFSET(binding->buffer->dev_addr,
                                 binding->offset + attribute->offset);
+
+         PVR_WRITE(qword_buffer,
+                   addr.addr,
+                   attribute->const_offset,
+                   pds_info->data_size_in_dwords);
+
+         entries += sizeof(*attribute);
+         break;
+      }
+
+      case PVR_PDS_CONST_MAP_ENTRY_TYPE_ROBUST_VERTEX_ATTRIBUTE_ADDRESS: {
+         const struct pvr_const_map_entry_robust_vertex_attribute_address
+            *const attribute =
+               (struct pvr_const_map_entry_robust_vertex_attribute_address *)
+                  entries;
+         const struct pvr_vertex_binding *const binding =
+            &state->vertex_bindings[attribute->binding_index];
+         pvr_dev_addr_t addr;
+
+         if (binding->buffer->vk.size <
+             (attribute->offset + attribute->component_size_in_bytes)) {
+            /* Replace with load from robustness buffer when no attribute is in range
+             */
+            addr = PVR_DEV_ADDR_OFFSET(
+               cmd_buffer->device->robustness_buffer->vma->dev_addr,
+               attribute->robustness_buffer_offset);
+         } else {
+            addr = PVR_DEV_ADDR_OFFSET(binding->buffer->dev_addr,
+                                       binding->offset + attribute->offset);
+         }
 
          PVR_WRITE(qword_buffer,
                    addr.addr,

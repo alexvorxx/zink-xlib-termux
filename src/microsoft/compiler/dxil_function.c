@@ -93,6 +93,7 @@ static struct  predefined_func_descr predefined_funcs[] = {
 {"dx.op.loadPatchConstant", "O", "iiic", DXIL_ATTR_KIND_READ_NONE},
 {"dx.op.loadOutputControlPoint", "O", "iiici", DXIL_ATTR_KIND_READ_NONE},
 {"dx.op.createHandleFromBinding", "@", "i#ib", DXIL_ATTR_KIND_READ_NONE},
+{"dx.op.createHandleFromHeap", "@", "iibb", DXIL_ATTR_KIND_READ_NONE},
 {"dx.op.annotateHandle", "@", "i@P", DXIL_ATTR_KIND_READ_NONE},
 {"dx.op.isHelperLane", "b", "i", DXIL_ATTR_KIND_READ_ONLY},
 {"dx.op.waveIsFirstLane", "b", "i", DXIL_ATTR_KIND_NO_UNWIND},
@@ -104,6 +105,9 @@ static struct  predefined_func_descr predefined_funcs[] = {
 {"dx.op.waveAllTrue", "b", "ib", DXIL_ATTR_KIND_NO_UNWIND},
 {"dx.op.waveActiveAllEqual", "b", "iO", DXIL_ATTR_KIND_NO_UNWIND},
 {"dx.op.waveActiveBallot", "F", "ib", DXIL_ATTR_KIND_NO_UNWIND},
+{"dx.op.waveActiveOp", "O", "iOcc", DXIL_ATTR_KIND_NO_UNWIND},
+{"dx.op.waveActiveBit", "O", "iOc", DXIL_ATTR_KIND_NO_UNWIND},
+{"dx.op.wavePrefixOp", "O", "iOcc", DXIL_ATTR_KIND_NO_UNWIND},
 {"dx.op.quadReadLaneAt", "O", "iOi", DXIL_ATTR_KIND_NO_UNWIND},
 {"dx.op.quadOp", "O", "iOc", DXIL_ATTR_KIND_NO_UNWIND},
 };

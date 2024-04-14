@@ -109,6 +109,7 @@ struct ntt_compile {
    uint64_t centroid_inputs;
 
    uint32_t first_ubo;
+   uint32_t first_ssbo;
 
    struct ureg_src images[PIPE_MAX_SHADER_IMAGES];
 };
@@ -721,13 +722,22 @@ ntt_output_decl(struct ntt_compile *c, nir_intrinsic_instr *instr, uint32_t *fra
        */
       bool invariant = semantics.invariant;
 
+      unsigned num_slots = semantics.num_slots;
+      if (semantics.location == VARYING_SLOT_TESS_LEVEL_INNER ||
+          semantics.location == VARYING_SLOT_TESS_LEVEL_OUTER) {
+         /* Compact vars get a num_slots in NIR as number of components, but we
+          * want the number of vec4 slots here.
+          */
+         num_slots = 1;
+      }
+
       out = ureg_DECL_output_layout(c->ureg,
                                     semantic_name, semantic_index,
                                     gs_streams,
                                     base,
                                     usage_mask,
                                     array_id,
-                                    semantics.num_slots,
+                                    num_slots,
                                     invariant);
    }
 
@@ -1049,13 +1059,22 @@ ntt_setup_uniforms(struct ntt_compile *c)
          ureg_DECL_constant2D(c->ureg, 0, DIV_ROUND_UP(ubo_sizes[i], 16) - 1, i);
    }
 
-   for (int i = 0; i < c->s->info.num_ssbos; i++) {
-      /* XXX: nv50 uses the atomic flag to set caching for (lowered) atomic
-       * counters
-       */
-      bool atomic = false;
-      ureg_DECL_buffer(c->ureg, i, atomic);
-   }
+   if (c->options->lower_ssbo_bindings) {
+      c->first_ssbo = 255;
+      nir_foreach_variable_with_modes(var, c->s, nir_var_mem_ssbo) {
+         if (c->first_ssbo > var->data.binding)
+            c->first_ssbo = var->data.binding;
+      }
+   } else
+      c->first_ssbo = 0;
+
+   /* XXX: nv50 uses the atomic flag to set caching for (lowered) atomic
+    * counters
+    */
+   bool atomic = false;
+   for (int i = 0; i < c->s->info.num_ssbos; ++i)
+      ureg_DECL_buffer(c->ureg, c->first_ssbo + i, atomic);
+
 }
 
 static void
@@ -1886,7 +1905,8 @@ ntt_emit_mem(struct ntt_compile *c, nir_intrinsic_instr *instr,
    struct ureg_src memory;
    switch (mode) {
    case nir_var_mem_ssbo:
-      memory = ntt_ureg_src_indirect(c, ureg_src_register(TGSI_FILE_BUFFER, 0),
+      memory = ntt_ureg_src_indirect(c, ureg_src_register(TGSI_FILE_BUFFER,
+                                                          c->first_ssbo),
                                      instr->src[is_store ? 1 : 0], 2);
       next_src = 1;
       break;

@@ -904,6 +904,9 @@ endif
 if cc.has_function('reallocarray')
    pre_args += '-DHAVE_REALLOCARRAY'
 endif
+if cc.has_function('fmemopen')
+   pre_args += '-DHAVE_FMEMOPEN'
+endif
 
 # TODO: this is very incomplete
 if ['linux', 'cygwin', 'gnu', 'freebsd', 'gnu/kfreebsd', 'haiku', 'android'].contains(host_machine.system())
@@ -956,7 +959,7 @@ if cc.get_argument_syntax() == 'msvc'
     '/wd4056',  # overflow in floating-point constant arithmetic
     '/wd4244',  # conversion from 'type1' to 'type2', possible loss of data
     '/wd4267',  # 'var' : conversion from 'size_t' to 'type', possible loss of data
-    '/wd4305',  # trancation from 'type1' to 'type2'
+    '/wd4305',  # truncation from 'type1' to 'type2'
     '/wd4351',  # new behavior: elements of array 'array' will be default initialized
     '/wd4756',  # overflow in constant arithmetic
     '/wd4800',  # forcing value to bool 'true' or 'false' (performance warning)

@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  *
  * Authors:
- *    Jason Ekstrand (jason@jlekstrand.net)
+ *    Faith Ekstrand (faith@gfxstrand.net)
  *
  */
 
@@ -4887,6 +4887,10 @@ vtn_handle_preamble_instruction(struct vtn_builder *b, SpvOp opcode,
 
       case SpvCapabilityGroupNonUniformRotateKHR:
          spv_check_supported(subgroup_rotate, cap);
+         break;
+
+      case SpvCapabilityFragmentFullyCoveredEXT:
+         spv_check_supported(fragment_fully_covered, cap);
          break;
 
       default:

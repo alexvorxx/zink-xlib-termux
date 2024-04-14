@@ -367,7 +367,7 @@ The integer capabilities:
 * ``PIPE_CAP_FRAMEBUFFER_NO_ATTACHMENT``:
   If non-zero, rendering to framebuffers with no surface attachments
   is supported. The context->is_format_supported function will be expected
-  to be implemented with PIPE_FORMAT_NONE yeilding the MSAA modes the hardware
+  to be implemented with PIPE_FORMAT_NONE yielding the MSAA modes the hardware
   supports. N.B., The maximum number of layers supported for rasterizing a
   primitive on a layer is obtained from ``PIPE_CAP_MAX_TEXTURE_ARRAY_LAYERS``
   even though it can be larger than the number of layers supported by either
@@ -647,6 +647,7 @@ The integer capabilities:
 * ``PIPE_CAP_ALLOW_GLTHREAD_BUFFER_SUBDATA_OPT``: Whether to allow glthread to convert glBufferSubData to glCopyBufferSubData. This may improve or worsen performance depending on your driver.
 * ``PIPE_CAP_VALIDATE_ALL_DIRTY_STATES`` : Whether state validation must also validate the state changes for resources types used in the previous shader but not in the current shader.
 * ``PIPE_CAP_NULL_TEXTURES`` : Whether the driver supports sampling from NULL textures.
+* ``PIPE_CAP_ASTC_VOID_EXTENTS_NEED_DENORM_FLUSH`` : True if the driver/hardware needs denormalized values in ASTC void extent blocks flushed to zero.
 
 .. _pipe_capf:
 

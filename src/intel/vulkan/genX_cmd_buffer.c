@@ -1597,9 +1597,27 @@ genX(emit_apply_pipe_flushes)(struct anv_batch *batch,
     *    "Driver must ensure that the engine is IDLE but ensure it doesn't
     *    add extra flushes in the case it knows that the engine is already
     *    IDLE."
+    *
+    * HSD 22012751911: SW Programming sequence when issuing aux invalidation:
+    *
+    *    "Render target Cache Flush + L3 Fabric Flush + State Invalidation + CS Stall"
+    *
+    * Notice we don't set the L3 Fabric Flush here, because we have
+    * ANV_PIPE_END_OF_PIPE_SYNC_BIT which inserts a CS stall. The
+    * PIPE_CONTROL::L3 Fabric Flush documentation says :
+    *
+    *    "L3 Fabric Flush will ensure all the pending transactions in the L3
+    *     Fabric are flushed to global observation point. HW does implicit L3
+    *     Fabric Flush on all stalling flushes (both explicit and implicit)
+    *     and on PIPECONTROL having Post Sync Operation enabled."
+    *
+    * Therefore setting L3 Fabric Flush here would be redundant.
     */
-   if (GFX_VER == 12 && (bits & ANV_PIPE_AUX_TABLE_INVALIDATE_BIT))
-      bits |= ANV_PIPE_NEEDS_END_OF_PIPE_SYNC_BIT;
+   if (GFX_VER == 12 && (bits & ANV_PIPE_AUX_TABLE_INVALIDATE_BIT)) {
+      bits |= (ANV_PIPE_NEEDS_END_OF_PIPE_SYNC_BIT |
+               ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT |
+               ANV_PIPE_STATE_CACHE_INVALIDATE_BIT);
+   }
 
    /* If we're going to do an invalidate and we have a pending end-of-pipe
     * sync that has yet to be resolved, we do the end-of-pipe sync now.
@@ -1817,6 +1835,19 @@ genX(emit_apply_pipe_flushes)(struct anv_batch *batch,
          anv_batch_emit(batch, GENX(MI_LOAD_REGISTER_IMM), lri) {
             lri.RegisterOffset = GENX(GFX_CCS_AUX_INV_num);
             lri.DataDWord = 1;
+         }
+         /* HSD 22012751911: SW Programming sequence when issuing aux invalidation:
+          *
+          *    "Poll Aux Invalidation bit once the invalidation is set
+          *     (Register 4208 bit 0)"
+          */
+         anv_batch_emit(batch, GENX(MI_SEMAPHORE_WAIT), sem) {
+            sem.CompareOperation = COMPARE_SAD_EQUAL_SDD;
+            sem.WaitMode = PollingMode;
+            sem.RegisterPollMode = true;
+            sem.SemaphoreDataDword = 0x0;
+            sem.SemaphoreAddress =
+               anv_address_from_u64(GENX(GFX_CCS_AUX_INV_num));
          }
       }
 #endif
@@ -3396,9 +3427,9 @@ genX(cmd_buffer_flush_gfx_state)(struct anv_cmd_buffer *cmd_buffer)
       cmd_buffer->state.push_descriptors_dirty &= ~push_descriptor_dirty;
    }
 
-   /* Wa_1306463417, Wa_16011107343 - Send HS state for every primitive. */
+   /* Wa_1409433168, Wa_16011107343 - Send HS state for every primitive. */
    if (cmd_buffer->state.gfx.dirty & ANV_CMD_DIRTY_PIPELINE ||
-       (GFX_VER == 11 || GFX_VERx10 == 120)) {
+       (INTEL_NEEDS_WA_1409433168 || INTEL_NEEDS_WA_16011107343)) {
       genX(emit_hs)(cmd_buffer);
    }
 
@@ -3557,15 +3588,14 @@ anv_use_generated_draws(const struct anv_cmd_buffer *cmd_buffer, uint32_t count)
 {
    const struct anv_device *device = cmd_buffer->device;
 
-#if GFX_VER == 11 || GFX_VERx10 == 120
    /* Limit generated draws to pipelines without HS stage. This makes things
-    * simpler for implementing Wa_1306463417, Wa_16011107343.
+    * simpler for implementing Wa_1409433168, Wa_16011107343.
     */
-   if (anv_pipeline_has_stage(cmd_buffer->state.gfx.pipeline,
-                             MESA_SHADER_TESS_CTRL)) {
+   if ((INTEL_NEEDS_WA_1409433168 || INTEL_NEEDS_WA_16011107343) &&
+       anv_pipeline_has_stage(cmd_buffer->state.gfx.pipeline,
+                              MESA_SHADER_TESS_CTRL)) {
       return false;
    }
-#endif
 
    return device->physical->generated_indirect_draws &&
           count >= device->physical->instance->generated_indirect_threshold;
@@ -4196,10 +4226,10 @@ void genX(CmdDrawMultiEXT)(
 #else
    vk_foreach_multi_draw(draw, i, pVertexInfo, drawCount, stride) {
 
-      /* Wa_1306463417, Wa_16011107343 - Send HS state for every primitive,
+      /* Wa_1409433168, Wa_16011107343 - Send HS state for every primitive,
        * first one was handled by cmd_buffer_flush_gfx_state.
        */
-      if (i && (GFX_VER == 11 || GFX_VERx10 == 120))
+      if (i && (INTEL_NEEDS_WA_1409433168 || INTEL_NEEDS_WA_16011107343))
          genX(emit_hs)(cmd_buffer);
 
       anv_batch_emit(&cmd_buffer->batch, GENX(3DPRIMITIVE_EXTENDED), prim) {
@@ -4406,10 +4436,10 @@ void genX(CmdDrawMultiIndexedEXT)(
 #else
    vk_foreach_multi_draw_indexed(draw, i, pIndexInfo, drawCount, stride) {
 
-      /* Wa_1306463417, Wa_16011107343 - Send HS state for every primitive,
+      /* Wa_1409433168, Wa_16011107343 - Send HS state for every primitive,
        * first one was handled by cmd_buffer_flush_gfx_state.
        */
-      if (i && (GFX_VER == 11 || GFX_VERx10 == 120))
+      if (i && (INTEL_NEEDS_WA_1409433168 || INTEL_NEEDS_WA_16011107343))
          genX(emit_hs)(cmd_buffer);
 
       anv_batch_emit(&cmd_buffer->batch, GENX(3DPRIMITIVE_EXTENDED), prim) {
@@ -4659,10 +4689,10 @@ emit_indirect_draws(struct anv_cmd_buffer *cmd_buffer,
 
       load_indirect_parameters(cmd_buffer, draw, indexed, i);
 
-      /* Wa_1306463417, Wa_16011107343 - Send HS state for every primitive,
+      /* Wa_1409433168, Wa_16011107343 - Send HS state for every primitive,
        * first one was handled by cmd_buffer_flush_gfx_state.
        */
-      if (i && (GFX_VER == 11 || GFX_VERx10 == 120))
+      if (i && (INTEL_NEEDS_WA_1409433168 || INTEL_NEEDS_WA_16011107343))
          genX(emit_hs)(cmd_buffer);
 
       anv_batch_emit(&cmd_buffer->batch,
@@ -4884,10 +4914,10 @@ emit_indirect_count_draws(struct anv_cmd_buffer *cmd_buffer,
 
       load_indirect_parameters(cmd_buffer, draw, indexed, i);
 
-      /* Wa_1306463417, Wa_16011107343 - Send HS state for every primitive,
+      /* Wa_1409433168, Wa_16011107343 - Send HS state for every primitive,
        * first one was handled by cmd_buffer_flush_gfx_state.
        */
-      if (i && (GFX_VER == 11 || GFX_VERx10 == 120))
+      if (i && (INTEL_NEEDS_WA_1409433168 || INTEL_NEEDS_WA_16011107343))
          genX(emit_hs)(cmd_buffer);
 
       anv_batch_emit(&cmd_buffer->batch,

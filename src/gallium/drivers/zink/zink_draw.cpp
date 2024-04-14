@@ -42,7 +42,8 @@ zink_emit_xfb_counter_barrier(struct zink_context *ctx)
          stage |= VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
       }
       zink_screen(ctx->base.screen)->buffer_barrier(ctx, res, access, stage);
-      res->obj->unordered_read = false;
+      if (!ctx->unordered_blitting)
+         res->obj->unordered_read = false;
    }
 }
 
@@ -88,7 +89,8 @@ check_buffer_barrier(struct zink_context *ctx, struct pipe_resource *pres, VkAcc
 {
    struct zink_resource *res = zink_resource(pres);
    zink_screen(ctx->base.screen)->buffer_barrier(ctx, res, flags, pipeline);
-   res->obj->unordered_read = false;
+   if (!ctx->unordered_blitting)
+      res->obj->unordered_read = false;
 }
 
 ALWAYS_INLINE static void
@@ -286,7 +288,7 @@ update_gfx_pipeline(struct zink_context *ctx, struct zink_batch_state *bs, enum 
 {
    VkPipeline prev_pipeline = ctx->gfx_pipeline_state.pipeline;
    const struct zink_screen *screen = zink_screen(ctx->base.screen);
-   if (screen->optimal_keys)
+   if (screen->optimal_keys && !ctx->is_generated_gs_bound)
       zink_gfx_program_update_optimal(ctx);
    else
       zink_gfx_program_update(ctx);
@@ -364,15 +366,15 @@ zink_draw(struct pipe_context *pctx,
    unsigned work_count = ctx->batch.work_count;
    enum pipe_prim_type mode = (enum pipe_prim_type)dinfo->mode;
 
-   if (ctx->memory_barrier)
+   if (ctx->memory_barrier && !ctx->blitting)
       zink_flush_memory_barrier(ctx, false);
 
-   if (unlikely(ctx->buffer_rebind_counter < screen->buffer_rebind_counter)) {
+   if (unlikely(ctx->buffer_rebind_counter < screen->buffer_rebind_counter && !ctx->blitting)) {
       ctx->buffer_rebind_counter = screen->buffer_rebind_counter;
       zink_rebind_all_buffers(ctx);
    }
 
-   if (unlikely(ctx->image_rebind_counter < screen->image_rebind_counter)) {
+   if (unlikely(ctx->image_rebind_counter < screen->image_rebind_counter && !ctx->blitting)) {
       ctx->image_rebind_counter = screen->image_rebind_counter;
       zink_rebind_all_images(ctx);
    }
@@ -415,7 +417,8 @@ zink_draw(struct pipe_context *pctx,
                struct zink_resource *res = zink_resource(t->base.buffer);
                zink_screen(ctx->base.screen)->buffer_barrier(ctx, res,
                                             VK_ACCESS_TRANSFORM_FEEDBACK_WRITE_BIT_EXT, VK_PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT);
-               res->obj->unordered_read = res->obj->unordered_write = false;
+               if (!ctx->unordered_blitting)
+                  res->obj->unordered_read = res->obj->unordered_write = false;
             }
          }
       }
@@ -423,7 +426,8 @@ zink_draw(struct pipe_context *pctx,
 
    barrier_draw_buffers(ctx, dinfo, dindirect, index_buffer);
    /* this may re-emit draw buffer barriers, but such synchronization is harmless */
-   zink_update_barriers(ctx, false, index_buffer, dindirect ? dindirect->buffer : NULL, dindirect ? dindirect->indirect_draw_count : NULL);
+   if (!ctx->blitting)
+      zink_update_barriers(ctx, false, index_buffer, dindirect ? dindirect->buffer : NULL, dindirect ? dindirect->indirect_draw_count : NULL);
 
    /* ensure synchronization between doing streamout with counter buffer
     * and using counter buffer for indirect draw
@@ -433,7 +437,8 @@ zink_draw(struct pipe_context *pctx,
       zink_screen(ctx->base.screen)->buffer_barrier(ctx, res,
                                    VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_READ_BIT_EXT,
                                    VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT);
-      res->obj->unordered_read = false;
+      if (!ctx->unordered_blitting)
+         res->obj->unordered_read = false;
    }
 
    zink_query_update_gs_states(ctx);
@@ -469,18 +474,18 @@ zink_draw(struct pipe_context *pctx,
       zink_set_last_vertex_key(ctx)->push_drawid = drawid_broken;
 
    bool rast_prim_changed = false;
-   bool lines_changed = false;
-   bool points_changed = false;
+   bool prim_changed = false;
    bool rast_state_changed = ctx->rast_state_changed;
    if (mode_changed || ctx->gfx_pipeline_state.modules_changed ||
        rast_state_changed) {
       enum pipe_prim_type rast_prim = zink_rast_prim(ctx, dinfo);
       if (rast_prim != ctx->gfx_pipeline_state.rast_prim) {
-         points_changed =
+         bool points_changed =
             (ctx->gfx_pipeline_state.rast_prim == PIPE_PRIM_POINTS) !=
             (rast_prim == PIPE_PRIM_POINTS);
+         prim_changed = points_changed;
 
-         lines_changed =
+         prim_changed |=
             (ctx->gfx_pipeline_state.rast_prim == PIPE_PRIM_LINES) !=
             (rast_prim == PIPE_PRIM_LINES);
          static bool rect_warned = false;
@@ -492,6 +497,10 @@ zink_draw(struct pipe_context *pctx,
                warn_missing_feature(rect_warned, "rectangularLines");
          }
 
+         prim_changed |=
+            (ctx->gfx_pipeline_state.rast_prim == PIPE_PRIM_TRIANGLES) !=
+            (rast_prim == PIPE_PRIM_TRIANGLES);
+
          ctx->gfx_pipeline_state.rast_prim = rast_prim;
          rast_prim_changed = true;
 
@@ -501,9 +510,9 @@ zink_draw(struct pipe_context *pctx,
    }
    ctx->gfx_pipeline_state.gfx_prim_mode = mode;
 
-   if (!screen->optimal_keys &&
-       (lines_changed || points_changed || rast_state_changed || ctx->gfx_pipeline_state.modules_changed))
+   if ((mode_changed || prim_changed || rast_state_changed || ctx->gfx_pipeline_state.modules_changed)) {
       zink_set_primitive_emulation_keys(ctx);
+   }
 
    if (index_size) {
       const VkIndexType index_type[3] = {
@@ -805,7 +814,8 @@ zink_draw(struct pipe_context *pctx,
             struct zink_resource *res = zink_resource(t->counter_buffer);
             t->stride = ctx->last_vertex_stage->sinfo.so_info.stride[i] * sizeof(uint32_t);
             zink_batch_reference_resource_rw(batch, res, true);
-            res->obj->unordered_read = res->obj->unordered_write = false;
+            if (!ctx->unordered_blitting)
+               res->obj->unordered_read = res->obj->unordered_write = false;
             if (t->counter_buffer_valid) {
                counter_buffers[i] = res->obj->buffer;
                counter_buffer_offsets[i] = t->counter_buffer_offset;
@@ -816,7 +826,7 @@ zink_draw(struct pipe_context *pctx,
    }
 
    bool marker = false;
-   if (unlikely(zink_tracing && ctx->blitting)) {
+   if (unlikely(zink_tracing)) {
       VkViewport viewport = {
          ctx->vp_state.viewport_states[0].translate[0] - ctx->vp_state.viewport_states[0].scale[0],
          ctx->vp_state.viewport_states[0].translate[1] - ctx->vp_state.viewport_states[0].scale[1],
@@ -829,10 +839,18 @@ zink_draw(struct pipe_context *pctx,
          CLAMP(ctx->vp_state.viewport_states[0].translate[2] + ctx->vp_state.viewport_states[0].scale[2],
                0, 1)
       };
-      marker = zink_cmd_debug_marker_begin(ctx, VK_NULL_HANDLE, "u_blitter(%s->%s, %dx%d)",
-                                           util_format_short_name(ctx->sampler_views[MESA_SHADER_FRAGMENT][0]->format),
-                                           util_format_short_name(ctx->fb_state.cbufs[0]->format),
-                                           viewport.width, viewport.height);
+      if (ctx->blitting) {
+         bool is_zs = util_format_is_depth_or_stencil(ctx->sampler_views[MESA_SHADER_FRAGMENT][0]->format);
+         marker = zink_cmd_debug_marker_begin(ctx, VK_NULL_HANDLE, "u_blitter(%s->%s, %dx%d)",
+                                              util_format_short_name(ctx->sampler_views[MESA_SHADER_FRAGMENT][0]->format),
+                                              util_format_short_name((is_zs ? ctx->fb_state.zsbuf : ctx->fb_state.cbufs[0])->format),
+                                              lround(viewport.width), lround(viewport.height));
+      } else {
+         marker = zink_cmd_debug_marker_begin(ctx, VK_NULL_HANDLE, "draw(%u cbufs|%s, %dx%d)",
+                                              ctx->fb_state.nr_cbufs,
+                                              ctx->fb_state.zsbuf ? "zsbuf" : "",
+                                              lround(viewport.width), lround(viewport.height));
+      }
    }
 
    bool needs_drawid = reads_drawid && zink_get_last_vertex_key(ctx)->push_drawid;
@@ -892,7 +910,7 @@ zink_draw(struct pipe_context *pctx,
       }
    }
 
-   if (unlikely(zink_tracing && ctx->blitting))
+   if (unlikely(zink_tracing))
       zink_cmd_debug_marker_end(ctx, batch->state->cmdbuf, marker);
 
    if (have_streamout) {
@@ -945,7 +963,8 @@ zink_draw_vertex_state(struct pipe_context *pctx,
    struct zink_resource *res = zink_resource(vstate->input.vbuffer.buffer.resource);
    zink_screen(ctx->base.screen)->buffer_barrier(ctx, res, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
                                 VK_PIPELINE_STAGE_VERTEX_INPUT_BIT);
-   res->obj->unordered_read = false;
+   if (!ctx->unordered_blitting)
+      res->obj->unordered_read = false;
    struct zink_vertex_elements_hw_state *hw_state = ctx->gfx_pipeline_state.element_state;
    ctx->gfx_pipeline_state.element_state = &((struct zink_vertex_state*)vstate)->velems.hw_state;
 

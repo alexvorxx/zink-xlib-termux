@@ -252,18 +252,47 @@ aco_compile_shader(const struct aco_compiler_options* options,
    if (program->collect_statistics)
       stats_size = aco_num_statistics * sizeof(uint32_t);
 
-   (*build_binary)(binary,
-                   shaders[shader_count - 1]->info.stage,
-                   &config,
-                   llvm_ir.c_str(),
-                   llvm_ir.size(),
-                   disasm.c_str(),
-                   disasm.size(),
-                   program->statistics,
-                   stats_size,
-                   exec_size,
-                   code.data(),
-                   code.size());
+   (*build_binary)(binary, &config, llvm_ir.c_str(), llvm_ir.size(), disasm.c_str(), disasm.size(),
+                   program->statistics, stats_size, exec_size, code.data(), code.size());
+}
+
+void
+aco_compile_rt_prolog(const struct aco_compiler_options* options,
+                      const struct aco_shader_info* info, const struct ac_shader_args* in_args,
+                      const struct ac_shader_args* out_args, aco_callback* build_prolog,
+                      void** binary)
+{
+   aco::init();
+
+   /* create program */
+   ac_shader_config config = {0};
+   std::unique_ptr<aco::Program> program{new aco::Program};
+   program->collect_statistics = false;
+   program->debug.func = NULL;
+   program->debug.private_data = NULL;
+
+   aco::select_rt_prolog(program.get(), &config, options, info, in_args, out_args);
+   aco::insert_wait_states(program.get());
+   aco::insert_NOPs(program.get());
+   if (program->gfx_level >= GFX10)
+      aco::form_hard_clauses(program.get());
+
+   if (options->dump_shader)
+      aco_print_program(program.get(), stderr);
+
+   /* assembly */
+   std::vector<uint32_t> code;
+   code.reserve(align(program->blocks[0].instructions.size() * 2, 16));
+   unsigned exec_size = aco::emit_program(program.get(), code);
+
+   bool get_disasm = options->dump_shader || options->record_ir;
+
+   std::string disasm;
+   if (get_disasm)
+      disasm = get_disasm_string(program.get(), code, exec_size);
+
+   (*build_prolog)(binary, &config, NULL, 0, disasm.c_str(), disasm.size(), program->statistics, 0,
+                   exec_size, code.data(), code.size());
 }
 
 void
@@ -282,8 +311,7 @@ aco_compile_vs_prolog(const struct aco_compiler_options* options,
    program->debug.private_data = NULL;
 
    /* create IR */
-   unsigned num_preserved_sgprs;
-   aco::select_vs_prolog(program.get(), pinfo, &config, options, info, args, &num_preserved_sgprs);
+   aco::select_vs_prolog(program.get(), pinfo, &config, options, info, args);
    aco::insert_NOPs(program.get());
 
    if (options->dump_shader)
@@ -303,7 +331,6 @@ aco_compile_vs_prolog(const struct aco_compiler_options* options,
    (*build_prolog)(binary,
                    config.num_sgprs,
                    config.num_vgprs,
-                   num_preserved_sgprs,
                    code.data(),
                    code.size(),
                    disasm.data(),
@@ -346,7 +373,6 @@ aco_compile_ps_epilog(const struct aco_compiler_options* options,
    (*build_epilog)(binary,
                    config.num_sgprs,
                    config.num_vgprs,
-                   0,
                    code.data(),
                    code.size(),
                    disasm.data(),

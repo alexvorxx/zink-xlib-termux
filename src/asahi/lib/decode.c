@@ -1,26 +1,8 @@
 /*
- * Copyright (C) 2017-2019 Alyssa Rosenzweig
- * Copyright (C) 2017-2019 Connor Abbott
- * Copyright (C) 2019 Collabora, Ltd.
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+ * Copyright 2017-2019 Alyssa Rosenzweig
+ * Copyright 2017-2019 Connor Abbott
+ * Copyright 2019 Collabora, Ltd.
+ * SPDX-License-Identifier: MIT
  */
 
 #include <ctype.h>
@@ -292,7 +274,7 @@ agxdecode_stateful(uint64_t va, const char *label, decode_cmd decoder,
                    bool verbose, void *data)
 {
    struct agx_bo *alloc = agxdecode_find_mapped_gpu_mem_containing(va);
-   assert(alloc != NULL && "nonexistant object");
+   assert(alloc != NULL && "nonexistent object");
    fprintf(agxdecode_dump_stream, "%s (%" PRIx64 ", handle %u)\n", label, va,
            alloc->handle);
    fflush(agxdecode_dump_stream);
@@ -593,7 +575,7 @@ agxdecode_vdm(const uint8_t *map, uint64_t *link, bool verbose,
       if (mem)
          agxdecode_record(address, cmd.size_words * 4, verbose);
       else
-         DUMP_UNPACKED(PPP_STATE, cmd, "Non-existant record (XXX)\n");
+         DUMP_UNPACKED(PPP_STATE, cmd, "Non-existent record (XXX)\n");
 
       return AGX_PPP_STATE_LENGTH;
    }
@@ -741,8 +723,8 @@ agxdecode_cmdstream(unsigned cmdbuf_handle, unsigned map_handle, bool verbose)
    struct agx_bo *cmdbuf =
       agxdecode_find_handle(cmdbuf_handle, AGX_ALLOC_CMDBUF);
    struct agx_bo *map = agxdecode_find_handle(map_handle, AGX_ALLOC_MEMMAP);
-   assert(cmdbuf != NULL && "nonexistant command buffer");
-   assert(map != NULL && "nonexistant mapping");
+   assert(cmdbuf != NULL && "nonexistent command buffer");
+   assert(map != NULL && "nonexistent mapping");
 
    /* Before decoding anything, validate the map. Set bo->mapped fields */
    agxdecode_decode_segment_list(map->ptr.cpu);
@@ -777,7 +759,7 @@ agxdecode_dump_mappings(unsigned map_handle)
    agxdecode_dump_file_open();
 
    struct agx_bo *map = agxdecode_find_handle(map_handle, AGX_ALLOC_MEMMAP);
-   assert(map != NULL && "nonexistant mapping");
+   assert(map != NULL && "nonexistent mapping");
    agxdecode_decode_segment_list(map->ptr.cpu);
 
    for (unsigned i = 0; i < mmap_count; ++i) {

@@ -261,9 +261,7 @@ kopper_CreateSwapchain(struct zink_screen *screen, struct kopper_displaytarget *
       cswap->scci.clipped = VK_TRUE;
    }
    cswap->scci.presentMode = cdt->present_mode;
-   cswap->scci.minImageCount = cdt->caps.minImageCount + screen->driver_workarounds.extra_swapchain_images;
-   if (cdt->caps.maxImageCount != 0)
-      cswap->scci.minImageCount = MIN2(cswap->scci.minImageCount, cdt->caps.maxImageCount);
+   cswap->scci.minImageCount = cdt->caps.minImageCount;
    cswap->scci.preTransform = cdt->caps.currentTransform;
    if (cdt->formats[1])
       cswap->scci.pNext = &cdt->format_list;
@@ -841,7 +839,7 @@ zink_kopper_present_readback(struct zink_context *ctx, struct zink_resource *res
    si.pWaitDstStageMask = &mask;
    VkSemaphore acquire = zink_kopper_acquire_submit(screen, res);
    VkSemaphore present = res->obj->present ? res->obj->present : zink_kopper_present(screen, res);
-   if (screen->threaded)
+   if (screen->threaded_submit)
       util_queue_finish(&screen->flush_queue);
    si.waitSemaphoreCount = !!acquire;
    si.pWaitSemaphores = &acquire;

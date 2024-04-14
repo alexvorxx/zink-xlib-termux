@@ -1945,14 +1945,15 @@ struct Block {
  */
 enum class SWStage : uint16_t {
    None = 0,
-   VS = 1 << 0,     /* Vertex Shader */
-   GS = 1 << 1,     /* Geometry Shader */
-   TCS = 1 << 2,    /* Tessellation Control aka Hull Shader */
-   TES = 1 << 3,    /* Tessellation Evaluation aka Domain Shader */
-   FS = 1 << 4,     /* Fragment aka Pixel Shader */
-   CS = 1 << 5,     /* Compute Shader */
-   TS = 1 << 6,     /* Task Shader */
-   MS = 1 << 7,     /* Mesh Shader */
+   VS = 1 << 0,  /* Vertex Shader */
+   GS = 1 << 1,  /* Geometry Shader */
+   TCS = 1 << 2, /* Tessellation Control aka Hull Shader */
+   TES = 1 << 3, /* Tessellation Evaluation aka Domain Shader */
+   FS = 1 << 4,  /* Fragment aka Pixel Shader */
+   CS = 1 << 5,  /* Compute Shader */
+   TS = 1 << 6,  /* Task Shader */
+   MS = 1 << 7,  /* Mesh Shader */
+   RT = 1 << 8,  /* Raytracing Shader */
 
    /* Stage combinations merged to run on a single HWStage */
    VS_GS = VS | GS,
@@ -2036,6 +2037,8 @@ static constexpr Stage tess_control_hs(HWStage::HS, SWStage::TCS);
 static constexpr Stage tess_eval_es(HWStage::ES,
                                     SWStage::TES); /* tesselation evaluation before geometry */
 static constexpr Stage geometry_gs(HWStage::GS, SWStage::GS);
+/* Raytracing */
+static constexpr Stage raytracing_cs(HWStage::CS, SWStage::RT);
 
 struct DeviceInfo {
    uint16_t lds_encoding_granule;
@@ -2093,7 +2096,6 @@ public:
    uint16_t min_waves = 0;
    unsigned workgroup_size; /* if known; otherwise UINT_MAX */
    bool wgp_mode;
-   bool rt_stack = false;
 
    bool needs_vcc = false;
 
@@ -2185,10 +2187,13 @@ void select_trap_handler_shader(Program* program, struct nir_shader* shader,
                                 const struct aco_compiler_options* options,
                                 const struct aco_shader_info* info,
                                 const struct ac_shader_args* args);
+void select_rt_prolog(Program* program, ac_shader_config* config,
+                      const struct aco_compiler_options* options,
+                      const struct aco_shader_info* info, const struct ac_shader_args* in_args,
+                      const struct ac_shader_args* out_args);
 void select_vs_prolog(Program* program, const struct aco_vs_prolog_info* pinfo,
                       ac_shader_config* config, const struct aco_compiler_options* options,
-                      const struct aco_shader_info* info, const struct ac_shader_args* args,
-                      unsigned* num_preserved_sgprs);
+                      const struct aco_shader_info* info, const struct ac_shader_args* args);
 
 void select_ps_epilog(Program* program, const struct aco_ps_epilog_info* epilog_info,
                       ac_shader_config* config, const struct aco_compiler_options* options,

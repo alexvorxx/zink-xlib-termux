@@ -91,6 +91,7 @@ zink_debug_options[] = {
    { "rp", ZINK_DEBUG_RP, "Enable renderpass tracking/optimizations" },
    { "norp", ZINK_DEBUG_NORP, "Disable renderpass tracking/optimizations" },
    { "map", ZINK_DEBUG_MAP, "Track amount of mapped VRAM" },
+   { "flushsync", ZINK_DEBUG_FLUSHSYNC, "Force synchronous flushes/presents" },
    DEBUG_NAMED_VALUE_END
 };
 
@@ -538,7 +539,6 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    }
    case PIPE_CAP_SUPPORTED_PRIM_MODES: {
       uint32_t modes = BITFIELD_MASK(PIPE_PRIM_MAX);
-      modes &= ~BITFIELD_BIT(PIPE_PRIM_QUADS);
       modes &= ~BITFIELD_BIT(PIPE_PRIM_QUAD_STRIP);
       modes &= ~BITFIELD_BIT(PIPE_PRIM_POLYGON);
       modes &= ~BITFIELD_BIT(PIPE_PRIM_LINE_LOOP);
@@ -1492,7 +1492,7 @@ zink_destroy_screen(struct pipe_screen *pscreen)
    if (screen->fence)
       VKSCR(DestroyFence)(screen->dev, screen->fence, NULL);
 
-   if (screen->threaded)
+   if (screen->threaded_submit)
       util_queue_destroy(&screen->flush_queue);
 
    simple_mtx_destroy(&screen->semaphores_lock);
@@ -2105,7 +2105,7 @@ setup_renderdoc(struct zink_screen *screen)
       return;
 
    /* need synchronous dispatch for renderdoc coherency */
-   screen->threaded = false;
+   screen->threaded_submit = false;
    get_api(eRENDERDOC_API_Version_1_0_0, (void*)&screen->renderdoc_api);
    screen->renderdoc_api->SetActiveWindow(RENDERDOC_DEVICEPOINTER_FROM_VKINSTANCE(screen->instance), NULL);
 
@@ -2611,11 +2611,6 @@ init_driver_workarounds(struct zink_screen *screen)
       screen->driver_workarounds.no_linesmooth = true;
    }
 
-   screen->driver_workarounds.extra_swapchain_images = 0;
-   if (screen->info.driver_props.driverID == VK_DRIVER_ID_MESA_VENUS) {
-      screen->driver_workarounds.extra_swapchain_images = 1;
-   }
-
    /* This is a workarround for the lack of
     * gl_PointSize + glPolygonMode(..., GL_LINE), in the imagination
     * proprietary driver.
@@ -2840,11 +2835,16 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
    if (!screen)
       return NULL;
 
-   screen->threaded = util_get_cpu_caps()->nr_cpus > 1 && debug_get_bool_option("GALLIUM_THREAD", util_get_cpu_caps()->nr_cpus > 1);
-   screen->abort_on_hang = debug_get_bool_option("ZINK_HANG_ABORT", false);
-
    zink_debug = debug_get_option_zink_debug();
    zink_descriptor_mode = debug_get_option_zink_descriptor_mode();
+
+   screen->threaded = util_get_cpu_caps()->nr_cpus > 1 && debug_get_bool_option("GALLIUM_THREAD", util_get_cpu_caps()->nr_cpus > 1);
+   if (zink_debug & ZINK_DEBUG_FLUSHSYNC)
+      screen->threaded_submit = false;
+   else
+      screen->threaded_submit = screen->threaded;
+   screen->abort_on_hang = debug_get_bool_option("ZINK_HANG_ABORT", false);
+
 
    u_trace_state_init();
 
@@ -2912,7 +2912,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
    }
 
    setup_renderdoc(screen);
-   if (screen->threaded && !util_queue_init(&screen->flush_queue, "zfq", 8, 1, UTIL_QUEUE_INIT_RESIZE_IF_FULL, screen)) {
+   if (screen->threaded_submit && !util_queue_init(&screen->flush_queue, "zfq", 8, 1, UTIL_QUEUE_INIT_RESIZE_IF_FULL, screen)) {
       mesa_loge("zink: Failed to create flush queue.\n");
       goto fail;
    }
@@ -3204,13 +3204,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
    screen->base.vertex_state_destroy = zink_cache_vertex_state_destroy;
    glsl_type_singleton_init_or_ref();
 
-   if (screen->info.have_vulkan13 || screen->info.have_KHR_synchronization2) {
-      screen->image_barrier = zink_resource_image_barrier2;
-      screen->buffer_barrier = zink_resource_buffer_barrier2;
-   } else {
-      screen->image_barrier = zink_resource_image_barrier;
-      screen->buffer_barrier = zink_resource_buffer_barrier;
-   }
+   zink_synchronization_init(screen);
 
    zink_init_screen_pipeline_libs(screen);
 
@@ -3245,7 +3239,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
 fail:
    if (screen->loader_lib)
       util_dl_close(screen->loader_lib);
-   if (screen->threaded)
+   if (screen->threaded_submit)
       util_queue_destroy(&screen->flush_queue);
 
    ralloc_free(screen);

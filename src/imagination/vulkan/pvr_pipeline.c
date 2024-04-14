@@ -39,6 +39,7 @@
 #include "pvr_hardcode.h"
 #include "pvr_pds.h"
 #include "pvr_private.h"
+#include "pvr_robustness.h"
 #include "pvr_shader.h"
 #include "pvr_types.h"
 #include "rogue/rogue.h"
@@ -77,6 +78,14 @@ static VkResult pvr_pds_coeff_program_create_and_upload(
 
    /* Get the size of the program and then allocate that much memory. */
    pvr_pds_coefficient_loading(&program, NULL, PDS_GENERATE_SIZES);
+
+   if (!program.code_size) {
+      pds_upload_out->pvr_bo = NULL;
+      pds_upload_out->code_size = 0;
+      pds_upload_out->data_size = 0;
+
+      return VK_SUCCESS;
+   }
 
    staging_buffer_size =
       (program.code_size + program.data_size) * sizeof(*staging_buffer);
@@ -325,7 +334,9 @@ static void pvr_pds_vertex_attrib_init_dma_descriptions(
       dma_desc->destination = vs_data->inputs.base[location];
       dma_desc->binding_index = attrib_desc->binding;
       dma_desc->divisor = 1;
-      dma_desc->robustness_buffer_offset = 0;
+
+      dma_desc->robustness_buffer_offset =
+         pvr_get_robustness_buffer_format_offset(attrib_desc->format);
 
       ++dma_count;
    }

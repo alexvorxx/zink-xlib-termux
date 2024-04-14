@@ -100,11 +100,11 @@ static void si_create_compute_state_async(void *job, void *gdata, int thread_ind
    assert(thread_index < ARRAY_SIZE(sscreen->compiler));
    compiler = &sscreen->compiler[thread_index];
 
-   if (!sscreen->use_aco && !*compiler)
-      *compiler = si_create_llvm_compiler(sscreen);
-
    assert(program->ir_type == PIPE_SHADER_IR_NIR);
    si_nir_scan_shader(sscreen, sel->nir, &sel->info);
+
+   if (!sel->info.base.use_aco_amd && !*compiler)
+      *compiler = si_create_llvm_compiler(sscreen);
 
    si_get_active_slot_masks(sscreen, &sel->info, &sel->active_const_and_shader_buffers,
                             &sel->active_samplers_and_images);

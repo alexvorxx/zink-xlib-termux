@@ -2823,7 +2823,7 @@ static void si_build_shader_variant(struct si_shader *shader, int thread_index, 
       compiler = &shader->compiler_ctx_state.compiler;
    }
 
-   if (!sscreen->use_aco && !*compiler)
+   if (!sel->info.base.use_aco_amd && !*compiler)
       *compiler = si_create_llvm_compiler(sscreen);
 
    if (unlikely(!si_create_shader_variant(sscreen, *compiler, shader, debug))) {
@@ -3039,7 +3039,7 @@ current_not_ready:
 
    util_queue_fence_init(&shader->ready);
 
-   if (!sscreen->use_aco && !sctx->compiler)
+   if (!sel->info.base.use_aco_amd && !sctx->compiler)
       sctx->compiler = si_create_llvm_compiler(sctx->screen);
 
    shader->selector = sel;
@@ -3249,7 +3249,7 @@ static void si_init_shader_selector_async(void *job, void *gdata, int thread_ind
    assert(thread_index < (int)ARRAY_SIZE(sscreen->compiler));
    compiler = &sscreen->compiler[thread_index];
 
-   if (!sscreen->use_aco && !*compiler)
+   if (!sel->info.base.use_aco_amd && !*compiler)
       *compiler = si_create_llvm_compiler(sscreen);
 
    /* Serialize NIR to save memory. Monolithic shader variants

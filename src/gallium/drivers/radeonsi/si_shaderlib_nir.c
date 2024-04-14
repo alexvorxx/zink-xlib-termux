@@ -301,7 +301,7 @@ static void optimization_barrier_vgpr_array(struct si_context *sctx, nir_builder
     * barrier in the compute blit for GFX6-8 because the lack of A16 combined with optimization
     * barriers would unnecessarily increase VGPR usage for MSAA resources.
     */
-   if (!sctx->screen->use_aco && sctx->gfx_level >= GFX10) {
+   if (!b->shader->info.use_aco_amd && sctx->gfx_level >= GFX10) {
       for (unsigned i = 0; i < num_elements; i++) {
          unsigned prev_num = array[i]->num_components;
          array[i] = nir_trim_vector(b, array[i], num_components);
@@ -360,6 +360,7 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
 
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, nir_options,
                                                   "blit_non_scaled_cs");
+   b.shader->info.use_aco_amd = sctx->screen->use_aco;
    b.shader->info.num_images = options->is_clear ? 1 : 2;
    unsigned image_dst_index = b.shader->info.num_images - 1;
    if (!options->is_clear && options->src_is_msaa)
@@ -609,7 +610,7 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
     * barriers waiting for image loads, i.e. after s_waitcnt vmcnt(0).
     */
    nir_def *img_dst_desc = nir_image_deref_descriptor_amd(&b, 8, 32, deref_ssa(&b, img_dst));
-   if (lane_size > 1 && !sctx->screen->use_aco)
+   if (lane_size > 1 && !b.shader->info.use_aco_amd)
       img_dst_desc = nir_optimization_barrier_sgpr_amd(&b, 32, img_dst_desc);
 
    /* Apply the blit output modifiers, once per sample.  */

@@ -345,13 +345,21 @@ enum dzn_cmd_bindpoint_dirty {
    DZN_CMD_BINDPOINT_DIRTY_DESC_SET1 = 1 << 4,
    DZN_CMD_BINDPOINT_DIRTY_DESC_SET2 = 1 << 5,
    DZN_CMD_BINDPOINT_DIRTY_DESC_SET3 = 1 << 6,
+   DZN_CMD_BINDPOINT_DIRTY_DESC_SET4 = 1 << 7,
+   DZN_CMD_BINDPOINT_DIRTY_DESC_SET5 = 1 << 8,
+   DZN_CMD_BINDPOINT_DIRTY_DESC_SET6 = 1 << 9,
+   DZN_CMD_BINDPOINT_DIRTY_DESC_SET7 = 1 << 10,
    DZN_CMD_BINDPOINT_DIRTY_HEAPS =
       DZN_CMD_BINDPOINT_DIRTY_DYNAMIC_BUFFERS |
       DZN_CMD_BINDPOINT_DIRTY_SYSVALS |
       DZN_CMD_BINDPOINT_DIRTY_DESC_SET0 |
       DZN_CMD_BINDPOINT_DIRTY_DESC_SET1 |
       DZN_CMD_BINDPOINT_DIRTY_DESC_SET2 |
-      DZN_CMD_BINDPOINT_DIRTY_DESC_SET3,
+      DZN_CMD_BINDPOINT_DIRTY_DESC_SET3 |
+      DZN_CMD_BINDPOINT_DIRTY_DESC_SET4 |
+      DZN_CMD_BINDPOINT_DIRTY_DESC_SET5 |
+      DZN_CMD_BINDPOINT_DIRTY_DESC_SET6 |
+      DZN_CMD_BINDPOINT_DIRTY_DESC_SET7,
 };
 
 enum dzn_cmd_dirty {
@@ -368,7 +376,7 @@ enum dzn_cmd_dirty {
 #define MAX_VBS D3D12_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT
 #define MAX_VP D3D12_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE
 #define MAX_SCISSOR D3D12_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE
-#define MAX_SETS 4
+#define MAX_SETS 8
 #define MAX_DYNAMIC_UNIFORM_BUFFERS 8
 #define MAX_DYNAMIC_STORAGE_BUFFERS 4
 #define MAX_DYNAMIC_BUFFERS                                                  \
@@ -1075,7 +1083,8 @@ dzn_image_get_rtv_desc(const struct dzn_image *image,
 D3D12_RESOURCE_STATES
 dzn_image_layout_to_state(const struct dzn_image *image,
                           VkImageLayout layout,
-                          VkImageAspectFlagBits aspect);
+                          VkImageAspectFlagBits aspect,
+                          D3D12_COMMAND_LIST_TYPE type);
 
 D3D12_BARRIER_LAYOUT
 dzn_vk_layout_to_d3d_layout(VkImageLayout layout,

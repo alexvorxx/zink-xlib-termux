@@ -50,6 +50,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <c99_alloca.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -387,6 +388,9 @@ dzn_physical_device_create(struct vk_instance *instance,
    }
 
    dzn_physical_device_get_extensions(pdev);
+   if (driQueryOptionb(&dzn_instance->dri_options, "dzn_enable_8bit_loads_stores") &&
+       pdev->options4.Native16BitShaderOpsSupported)
+      pdev->vk.supported_extensions.KHR_8bit_storage = true;
 
    return VK_SUCCESS;
 }
@@ -1132,6 +1136,10 @@ dzn_enumerate_physical_devices(struct vk_instance *instance)
 static const driOptionDescription dzn_dri_options[] = {
    DRI_CONF_SECTION_DEBUG
       DRI_CONF_DZN_CLAIM_WIDE_LINES(false)
+      DRI_CONF_DZN_ENABLE_8BIT_LOADS_STORES(false)
+      /* Default-disabled because the CTS doesn't check subgroupQuadOperationsInAllStages
+       * and tries to do quad ops in VS/GS which is unsupported. */
+      DRI_CONF_DZN_ENABLE_SUBGROUP_OPS_IN_VTX_PIPELINE(false)
    DRI_CONF_SECTION_END
 };
 
@@ -1338,10 +1346,10 @@ dzn_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
       .fragmentStoresAndAtomics = true,
       .shaderTessellationAndGeometryPointSize = false,
       .shaderImageGatherExtended = true,
-      .shaderStorageImageExtendedFormats = false,
+      .shaderStorageImageExtendedFormats = pdev->options.TypedUAVLoadAdditionalFormats,
       .shaderStorageImageMultisample = false,
-      .shaderStorageImageReadWithoutFormat = false,
-      .shaderStorageImageWriteWithoutFormat = false,
+      .shaderStorageImageReadWithoutFormat = true,
+      .shaderStorageImageWriteWithoutFormat = true,
       .shaderUniformBufferArrayDynamicIndexing = true,
       .shaderSampledImageArrayDynamicIndexing = true,
       .shaderStorageBufferArrayDynamicIndexing = true,
@@ -1350,7 +1358,7 @@ dzn_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
       .shaderCullDistance = true,
       .shaderFloat64 = false,
       .shaderInt64 = false,
-      .shaderInt16 = false,
+      .shaderInt16 = pdev->options4.Native16BitShaderOpsSupported,
       .shaderResourceResidency = false,
       .shaderResourceMinLod = false,
       .sparseBinding = false,
@@ -1383,17 +1391,19 @@ dzn_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
    };
 
    bool support_descriptor_indexing = pdev->shader_model >= D3D_SHADER_MODEL_6_6;
+   bool support_8bit = driQueryOptionb(&instance->dri_options, "dzn_enable_8bit_loads_stores") &&
+      pdev->options4.Native16BitShaderOpsSupported;
    const VkPhysicalDeviceVulkan12Features core_1_2 = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
       .samplerMirrorClampToEdge           = false,
       .drawIndirectCount                  = true,
-      .storageBuffer8BitAccess            = false,
-      .uniformAndStorageBuffer8BitAccess  = false,
-      .storagePushConstant8               = false,
+      .storageBuffer8BitAccess            = support_8bit,
+      .uniformAndStorageBuffer8BitAccess  = support_8bit,
+      .storagePushConstant8               = support_8bit,
       .shaderBufferInt64Atomics           = false,
       .shaderSharedInt64Atomics           = false,
       .shaderFloat16                      = pdev->options4.Native16BitShaderOpsSupported,
-      .shaderInt8                         = false,
+      .shaderInt8                         = support_8bit,
 
       .descriptorIndexing                                   = support_descriptor_indexing,
       .shaderInputAttachmentArrayDynamicIndexing            = true,
@@ -1580,6 +1590,7 @@ dzn_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
                                  VkPhysicalDeviceProperties2 *pProperties)
 {
    VK_FROM_HANDLE(dzn_physical_device, pdevice, physicalDevice);
+   struct dzn_instance *instance = container_of(pdevice->vk.instance, struct dzn_instance, vk);
 
    (void)dzn_physical_device_get_d3d12_dev(pdevice);
 
@@ -1771,9 +1782,9 @@ dzn_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
                                      VK_SUBGROUP_FEATURE_SHUFFLE_RELATIVE_BIT |
                                      VK_SUBGROUP_FEATURE_QUAD_BIT |
                                      VK_SUBGROUP_FEATURE_ARITHMETIC_BIT,
-      /* Note: The CTS doesn't seem to respect the subgroupQuadOperationsInAllStages bit, and it
-       * seems more useful to support quad ops in FS/CS than subgroup ops at all in VS/GS. */
-      .subgroupSupportedStages = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+      .subgroupSupportedStages = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT |
+                                 (driQueryOptionb(&instance->dri_options, "dzn_enable_subgroup_ops_in_vtx_pipeline") ?
+                                    (VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_VERTEX_BIT) : 0),
       .subgroupQuadOperationsInAllStages = false,
       .subgroupSize = pdevice->options1.WaveOps ? pdevice->options1.WaveLaneCountMin : 1,
    };
@@ -1991,11 +2002,13 @@ dzn_queue_submit(struct vk_queue *q,
          return result;
    }
 
+   ID3D12CommandList **cmdlists = alloca(info->command_buffer_count * sizeof(ID3D12CommandList*));
+
    for (uint32_t i = 0; i < info->command_buffer_count; i++) {
       struct dzn_cmd_buffer *cmd_buffer =
          container_of(info->command_buffers[i], struct dzn_cmd_buffer, vk);
 
-      ID3D12CommandList *cmdlists[] = { (ID3D12CommandList *)cmd_buffer->cmdlist };
+      cmdlists[i] = (ID3D12CommandList *)cmd_buffer->cmdlist;
 
       util_dynarray_foreach(&cmd_buffer->events.wait, struct dzn_event *, evt) {
          if (FAILED(ID3D12CommandQueue_Wait(queue->cmdqueue, (*evt)->fence, 1)))
@@ -2014,8 +2027,13 @@ dzn_queue_submit(struct vk_queue *q,
          }
          mtx_unlock(&range->qpool->queries_lock);
       }
+   }
 
-      ID3D12CommandQueue_ExecuteCommandLists(queue->cmdqueue, 1, cmdlists);
+   ID3D12CommandQueue_ExecuteCommandLists(queue->cmdqueue, info->command_buffer_count, cmdlists);
+   
+   for (uint32_t i = 0; i < info->command_buffer_count; i++) {
+      struct dzn_cmd_buffer* cmd_buffer =
+         container_of(info->command_buffers[i], struct dzn_cmd_buffer, vk);
 
       util_dynarray_foreach(&cmd_buffer->events.signal, struct dzn_cmd_event_signal, evt) {
          if (FAILED(ID3D12CommandQueue_Signal(queue->cmdqueue, evt->event->fence, evt->value ? 1 : 0)))
@@ -2586,7 +2604,8 @@ dzn_device_memory_create(struct dzn_device *device,
       ((mem_type->propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) &&
        !pdevice->architecture.UMA) ?
       D3D12_MEMORY_POOL_L1 : D3D12_MEMORY_POOL_L0;
-   if (mem_type->propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) {
+   if ((mem_type->propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) ||
+       ((mem_type->propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) && pdevice->architecture.CacheCoherentUMA)) {
       heap_desc.Properties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
    } else if (mem_type->propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
       heap_desc.Properties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_WRITE_COMBINE;

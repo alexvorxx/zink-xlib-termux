@@ -1076,9 +1076,24 @@ lower_legacy_gs_store_output(nir_builder *b, nir_intrinsic_instr *intrin,
    /* 64bit output has been lowered to 32bit */
    assert(store_val->bit_size <= 32);
 
+   /* 16-bit output stored in a normal varying slot that isn't a dedicated 16-bit slot. */
+   const bool non_dedicated_16bit = sem.location < VARYING_SLOT_VAR0_16BIT && store_val->bit_size == 16;
+
    u_foreach_bit (i, write_mask) {
       unsigned comp = component + i;
-      outputs[comp] = nir_channel(b, store_val, i);
+      nir_def *store_component = nir_channel(b, store_val, i);
+
+      if (non_dedicated_16bit) {
+         if (sem.high_16bits) {
+            nir_def *lo = outputs[comp] ? nir_unpack_32_2x16_split_x(b, outputs[comp]) : nir_imm_intN_t(b, 0, 16);
+            outputs[comp] = nir_pack_32_2x16_split(b, lo, store_component);
+         } else {
+            nir_def *hi = outputs[comp] ? nir_unpack_32_2x16_split_y(b, outputs[comp]) : nir_imm_intN_t(b, 0, 16);
+            outputs[comp] = nir_pack_32_2x16_split(b, store_component, hi);
+         }
+      } else {
+         outputs[comp] = store_component;
+      }
    }
 
    nir_instr_remove(&intrin->instr);

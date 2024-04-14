@@ -1902,23 +1902,9 @@ two-component vectors with doubled precision in each component.
 
   dst.zw = (src.zw > 0) ? 1.0 : (src.zw < 0) ? -1.0 : 0.0
 
-.. opcode:: DFRACEXP - Convert Number to Fractional and Integral Components
-
-Like the ``frexp()`` routine in many math libraries, this opcode stores the
-exponent of its source to ``dst0``, and the significand to ``dst1``, such that
-:math:`dst1 \times 2^{dst0} = src` . The results are replicated across
-channels.
-
-.. math::
-
-  dst0.xy = dst.zw = frac(src.xy)
-
-  dst1 = frac(src.xy)
-
-
 .. opcode:: DLDEXP - Multiply Number by Integral Power of 2
 
-This opcode is the inverse of :opcode:`DFRACEXP`. The second
+This opcode is the inverse of frexp. The second
 source is an integer.
 
 .. math::
@@ -2419,7 +2405,7 @@ after lookup.
   additional float32 operand, reference value, which must be a register with
   single-component, or a scalar literal.  SAMPLE_C makes the hardware use the
   current samplers compare_func (in pipe_sampler_state) to compare reference
-  value against the red component value for the surce resource at each texel
+  value against the red component value for the source resource at each texel
   that the currently configured texture filter covers based on the provided
   coordinates.
 

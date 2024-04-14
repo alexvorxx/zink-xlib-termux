@@ -4073,7 +4073,7 @@ void ac_check_shadowed_regs(enum amd_gfx_level gfx_level, enum radeon_family fam
          unsigned end_reg_offset = reg_offset + count * 4;
          unsigned end_range_offset = ranges[i].offset + ranges[i].size;
 
-         /* Test if the ranges interect. */
+         /* Test if the ranges intersect. */
          if (MAX2(ranges[i].offset, reg_offset) < MIN2(end_range_offset, end_reg_offset)) {
             /* Assertion: A register can be listed only once. */
             assert(!found);
@@ -4288,6 +4288,8 @@ void ac_create_shadowing_ib_preamble(const struct radeon_info *info,
                CC1_SHADOW_GFX_SH_REGS(1) |
                CC1_SHADOW_GLOBAL_UCONFIG(1));
 
-   for (unsigned i = 0; i < SI_NUM_SHADOWED_REG_RANGES; i++)
-      ac_build_load_reg(info, pm4_cmd_add, pm4_cmdbuf, i, gpu_address);
+   if (!info->has_fw_based_shadowing) {
+      for (unsigned i = 0; i < SI_NUM_SHADOWED_REG_RANGES; i++)
+         ac_build_load_reg(info, pm4_cmd_add, pm4_cmdbuf, i, gpu_address);
+   }
 }

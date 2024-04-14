@@ -370,7 +370,7 @@ fd_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_FBFETCH:
       if (fd_device_version(screen->dev) >= FD_VERSION_GMEM_BASE &&
           is_a6xx(screen))
-         return 1;
+         return screen->max_rts;
       return 0;
    case PIPE_CAP_SAMPLE_SHADING:
       if (is_a6xx(screen))
@@ -573,6 +573,8 @@ fd_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return is_a6xx(screen);
    case PIPE_CAP_TWO_SIDED_COLOR:
       return 0;
+   case PIPE_CAP_THROTTLE:
+      return screen->driconf.enable_throttling;
    default:
       return u_pipe_screen_get_param_defaults(pscreen, param);
    }
@@ -683,8 +685,6 @@ fd_screen_get_shader_param(struct pipe_screen *pscreen,
       return is_ir3(screen) ? 1 : 0;
    case PIPE_SHADER_CAP_SUBROUTINES:
    case PIPE_SHADER_CAP_DROUND_SUPPORTED:
-   case PIPE_SHADER_CAP_DFRACEXP_DLDEXP_SUPPORTED:
-   case PIPE_SHADER_CAP_LDEXP_SUPPORTED:
    case PIPE_SHADER_CAP_TGSI_ANY_INOUT_DECL_RANGE:
    case PIPE_SHADER_CAP_MAX_HW_ATOMIC_COUNTERS:
    case PIPE_SHADER_CAP_MAX_HW_ATOMIC_COUNTER_BUFFERS:
@@ -1108,8 +1108,10 @@ fd_screen_create(int fd,
    driParseConfigFiles(config->options, config->options_info, 0, "msm",
                        NULL, fd_dev_name(screen->dev_id), NULL, 0, NULL, 0);
 
-   screen->conservative_lrz =
+   screen->driconf.conservative_lrz =
          !driQueryOptionb(config->options, "disable_conservative_lrz");
+   screen->driconf.enable_throttling =
+         !driQueryOptionb(config->options, "disable_throttling");
 
    struct sysinfo si;
    sysinfo(&si);

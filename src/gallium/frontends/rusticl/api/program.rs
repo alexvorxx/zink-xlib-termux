@@ -2,6 +2,7 @@ use crate::api::icd::*;
 use crate::api::types::*;
 use crate::api::util::*;
 use crate::core::device::*;
+use crate::core::platform::*;
 use crate::core::program::*;
 
 use mesa_rust::compiler::clc::*;
@@ -40,14 +41,20 @@ impl CLInfo<cl_program_info> for cl_program {
                         .collect(),
                 )
             }
-            CL_PROGRAM_IL => prog.il.clone(),
+            CL_PROGRAM_IL => match &prog.src {
+                ProgramSourceType::Il(il) => il.to_bin().to_vec(),
+                _ => Vec::new(),
+            },
             CL_PROGRAM_KERNEL_NAMES => cl_prop::<String>(prog.kernels().join(";")),
             CL_PROGRAM_NUM_DEVICES => cl_prop::<cl_uint>(prog.devs.len() as cl_uint),
             CL_PROGRAM_NUM_KERNELS => cl_prop::<usize>(prog.kernels().len()),
             CL_PROGRAM_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
             CL_PROGRAM_SCOPE_GLOBAL_CTORS_PRESENT => cl_prop::<cl_bool>(CL_FALSE),
             CL_PROGRAM_SCOPE_GLOBAL_DTORS_PRESENT => cl_prop::<cl_bool>(CL_FALSE),
-            CL_PROGRAM_SOURCE => cl_prop::<&CStr>(prog.src.as_c_str()),
+            CL_PROGRAM_SOURCE => match &prog.src {
+                ProgramSourceType::Src(src) => cl_prop::<&CStr>(src.as_c_str()),
+                _ => Vec::new(),
+            },
             // CL_INVALID_VALUE if param_name is not one of the supported values
             _ => return Err(CL_INVALID_VALUE),
         })
@@ -228,7 +235,9 @@ pub fn create_program_with_binary(
         return Err(err);
     }
 
-    Ok(cl_program::from_arc(Program::from_bins(c, devs, &bins)))
+    let prog = Program::from_bins(c, devs, &bins);
+
+    Ok(cl_program::from_arc(prog))
     //• CL_INVALID_BINARY if an invalid program binary was encountered for any device. binary_status will return specific status for each device.
 }
 
@@ -270,8 +279,8 @@ pub fn build_program(
 
     // CL_BUILD_PROGRAM_FAILURE if there is a failure to build the program executable. This error
     // will be returned if clBuildProgram does not return until the build has completed.
-    for dev in devs {
-        res &= p.build(&dev, c_string_to_string(options));
+    for dev in &devs {
+        res &= p.build(dev, c_string_to_string(options));
     }
 
     call_cb(pfn_notify, program, user_data);
@@ -284,6 +293,11 @@ pub fn build_program(
     if res {
         Ok(())
     } else {
+        if Platform::dbg().program {
+            for dev in &devs {
+                eprintln!("{}", p.log(dev));
+            }
+        }
         Err(CL_BUILD_PROGRAM_FAILURE)
     }
 }
@@ -315,18 +329,27 @@ pub fn compile_program(
     }
 
     let mut headers = Vec::new();
-    for h in 0..num_input_headers as usize {
-        unsafe {
-            headers.push(spirv::CLCHeader {
-                name: CStr::from_ptr(*header_include_names.add(h)).to_owned(),
-                source: &(*input_headers.add(h)).get_ref()?.src,
-            });
+
+    // If program was created using clCreateProgramWithIL, then num_input_headers, input_headers,
+    // and header_include_names are ignored.
+    if !p.is_il() {
+        for h in 0..num_input_headers as usize {
+            // SAFETY: have to trust the application here
+            let header = unsafe { (*input_headers.add(h)).get_ref()? };
+            match &header.src {
+                ProgramSourceType::Src(src) => headers.push(spirv::CLCHeader {
+                    // SAFETY: have to trust the application here
+                    name: unsafe { CStr::from_ptr(*header_include_names.add(h)).to_owned() },
+                    source: src,
+                }),
+                _ => return Err(CL_INVALID_OPERATION),
+            }
         }
     }
 
     // CL_INVALID_OPERATION if program has no source or IL available, i.e. it has not been created
     // with clCreateProgramWithSource or clCreateProgramWithIL.
-    if p.is_binary() {
+    if !(p.is_src() || p.is_il()) {
         return Err(CL_INVALID_OPERATION);
     }
 
@@ -337,8 +360,8 @@ pub fn compile_program(
 
     // CL_COMPILE_PROGRAM_FAILURE if there is a failure to compile the program source. This error
     // will be returned if clCompileProgram does not return until the compile has completed.
-    for dev in devs {
-        res &= p.compile(&dev, c_string_to_string(options), &headers);
+    for dev in &devs {
+        res &= p.compile(dev, c_string_to_string(options), &headers);
     }
 
     call_cb(pfn_notify, program, user_data);
@@ -349,6 +372,11 @@ pub fn compile_program(
     if res {
         Ok(())
     } else {
+        if Platform::dbg().program {
+            for dev in &devs {
+                eprintln!("{}", p.log(dev));
+            }
+        }
         Err(CL_COMPILE_PROGRAM_FAILURE)
     }
 }
@@ -425,7 +453,7 @@ pub fn set_program_specialization_constant(
     // CL_INVALID_PROGRAM if program is not a valid program object created from an intermediate
     // language (e.g. SPIR-V)
     // TODO: or if the intermediate language does not support specialization constants.
-    if program.il.is_empty() {
+    if !program.is_il() {
         return Err(CL_INVALID_PROGRAM);
     }
 

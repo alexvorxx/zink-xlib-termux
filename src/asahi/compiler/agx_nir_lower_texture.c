@@ -1,26 +1,8 @@
 /*
- * Copyright (C) 2021 Alyssa Rosenzweig <alyssa@rosenzweig.io>
- * Copyright (C) 2020 Collabora Ltd.
- * Copyright © 2016 Broadcom
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+ * Copyright 2021 Alyssa Rosenzweig
+ * Copyright 2020 Collabora Ltd.
+ * Copyright 2016 Broadcom
+ * SPDX-License-Identifier: MIT
  */
 
 #include "compiler/nir/nir.h"
@@ -113,14 +95,19 @@ agx_txs(nir_builder *b, nir_tex_instr *tex)
 
    /* Add LOD offset to first level to get the interesting LOD */
    int lod_idx = nir_tex_instr_src_index(tex, nir_tex_src_lod);
-   if (lod_idx >= 0)
+   if (lod_idx >= 0) {
       lod = nir_iadd(
          b, lod, nir_u2u32(b, nir_ssa_for_src(b, tex->src[lod_idx].src, 1)));
+   }
 
    /* Add 1 to width-1, height-1 to get base dimensions */
    nir_ssa_def *width = nir_iadd_imm(b, width_m1, 1);
    nir_ssa_def *height = nir_iadd_imm(b, height_m1, 1);
    nir_ssa_def *depth = nir_iadd_imm(b, depth_m1, 1);
+
+   /* 1D Arrays have their second component as the layer count */
+   if (tex->sampler_dim == GLSL_SAMPLER_DIM_1D && tex->is_array)
+      height = depth;
 
    /* How we finish depends on the size of the result */
    unsigned nr_comps = nir_dest_num_components(tex->dest);
@@ -281,6 +268,43 @@ lower_regular_texture(nir_builder *b, nir_instr *instr, UNUSED void *data)
    /* Get the coordinates */
    nir_ssa_def *coord = steal_tex_src(tex, nir_tex_src_coord);
    nir_ssa_def *ms_idx = steal_tex_src(tex, nir_tex_src_ms_index);
+
+   /* It's unclear if mipmapped 1D textures work in the hardware. For now, we
+    * always lower to 2D.
+    */
+   if (tex->sampler_dim == GLSL_SAMPLER_DIM_1D) {
+      /* Add a zero Y component to the coordinate */
+      if (tex->is_array) {
+         assert(coord->num_components == 2);
+         coord = nir_vec3(b, nir_channel(b, coord, 0),
+                          nir_imm_intN_t(b, 0, coord->bit_size),
+                          nir_channel(b, coord, 1));
+      } else {
+         assert(coord->num_components == 1);
+         coord = nir_vec2(b, coord, nir_imm_intN_t(b, 0, coord->bit_size));
+      }
+
+      /* Add a zero Y component to other sources */
+      nir_tex_src_type other_srcs[] = {
+         nir_tex_src_ddx,
+         nir_tex_src_ddy,
+         nir_tex_src_offset,
+      };
+
+      for (unsigned i = 0; i < ARRAY_SIZE(other_srcs); ++i) {
+         nir_ssa_def *src = steal_tex_src(tex, other_srcs[i]);
+
+         if (!src)
+            continue;
+
+         assert(src->num_components == 1);
+         src = nir_vec2(b, src, nir_imm_intN_t(b, 0, src->bit_size));
+         nir_tex_instr_add_src(tex, other_srcs[i], nir_src_for_ssa(src));
+      }
+
+      tex->sampler_dim = GLSL_SAMPLER_DIM_2D;
+      tex->coord_components++;
+   }
 
    /* The layer is always the last component of the NIR coordinate, split it off
     * because we'll need to swizzle.

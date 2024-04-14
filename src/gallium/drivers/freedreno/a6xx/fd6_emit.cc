@@ -194,7 +194,7 @@ compute_lrz_state(struct fd6_emit *emit) assert_dt
     * enable LRZ write.  But this would cause early-z/lrz to discard
     * fragments from draw A which should be visible due to draw B.
     */
-   if (reads_dest && zsa->writes_z && ctx->screen->conservative_lrz) {
+   if (reads_dest && zsa->writes_z && ctx->screen->driconf.conservative_lrz) {
       if (!zsa->perf_warn_blend && rsc->lrz_valid) {
          perf_debug_ctx(ctx, "Invalidating LRZ due to blend+depthwrite");
          zsa->perf_warn_blend = true;
@@ -522,7 +522,8 @@ build_prim_mode(struct fd6_emit *emit, struct fd_context *ctx, bool gmem)
    uint32_t prim_mode = NO_FLUSH;
    if (emit->fs->fs.uses_fbfetch_output) {
       if (gmem) {
-         prim_mode = ctx->blend->blend_coherent ? FLUSH_PER_OVERLAP : NO_FLUSH;
+         prim_mode = (ctx->blend->blend_coherent || emit->fs->fs.fbfetch_coherent)
+            ? FLUSH_PER_OVERLAP : NO_FLUSH;
       } else {
          prim_mode = FLUSH_PER_OVERLAP_AND_OVERWRITE;
       }
@@ -733,6 +734,21 @@ fd6_emit_cs_state(struct fd_context *ctx, struct fd_ringbuffer *ring,
    fd6_state_emit(&state, ring);
 }
 
+void
+fd6_emit_ccu_cntl(struct fd_ringbuffer *ring, struct fd_screen *screen, bool gmem)
+{
+   uint32_t offset = gmem ? screen->ccu_offset_gmem : screen->ccu_offset_bypass;
+   uint32_t offset_hi = offset >> 21;
+   offset &= 0x1fffff;
+
+   OUT_REG(ring, A6XX_RB_CCU_CNTL(
+         .concurrent_resolve = gmem && screen->info->a6xx.concurrent_resolve,
+         .color_offset_hi = offset_hi,
+         .gmem = gmem,
+         .color_offset = offset,
+   ));
+}
+
 /* emit setup at begin of new cmdstream buffer (don't rely on previous
  * state, there could have been a context switch between ioctls):
  */
@@ -744,6 +760,9 @@ fd6_emit_restore(struct fd_batch *batch, struct fd_ringbuffer *ring)
    if (!batch->nondraw) {
       trace_start_state_restore(&batch->trace, ring);
    }
+
+   OUT_PKT7(ring, CP_SET_MODE, 1);
+   OUT_RING(ring, 0);
 
    fd6_cache_inv(batch, ring);
 

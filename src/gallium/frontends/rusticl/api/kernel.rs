@@ -1,16 +1,14 @@
 use crate::api::event::create_and_queue;
 use crate::api::icd::*;
 use crate::api::util::*;
-use crate::core::device::*;
 use crate::core::event::*;
 use crate::core::kernel::*;
-use crate::core::program::*;
 
 use mesa_rust_util::ptr::*;
 use mesa_rust_util::string::*;
 use rusticl_opencl_gen::*;
 
-use std::collections::HashSet;
+use std::mem;
 use std::os::raw::c_void;
 use std::ptr;
 use std::slice;
@@ -89,11 +87,10 @@ impl CLInfoObj<cl_kernel_work_group_info, cl_device_id> for cl_kernel {
             CL_KERNEL_COMPILE_WORK_GROUP_SIZE => cl_prop::<[usize; 3]>(kernel.work_group_size),
             CL_KERNEL_LOCAL_MEM_SIZE => cl_prop::<cl_ulong>(kernel.local_mem_size(&dev)),
             CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE => {
-                cl_prop::<usize>(dev.subgroups() as usize)
+                cl_prop::<usize>(kernel.preferred_simd_size(&dev))
             }
             CL_KERNEL_PRIVATE_MEM_SIZE => cl_prop::<cl_ulong>(kernel.priv_mem_size(&dev)),
-            // TODO
-            CL_KERNEL_WORK_GROUP_SIZE => cl_prop::<usize>(dev.subgroups() as usize),
+            CL_KERNEL_WORK_GROUP_SIZE => cl_prop::<usize>(kernel.max_threads_per_block(&dev)),
             // CL_INVALID_VALUE if param_name is not one of the supported values
             _ => return Err(CL_INVALID_VALUE),
         })
@@ -126,19 +123,6 @@ unsafe fn kernel_work_arr_or_default<'a>(arr: *const usize, work_dim: cl_uint) -
     }
 }
 
-fn get_devices_with_valid_build(p: &Arc<Program>) -> CLResult<Vec<&Arc<Device>>> {
-    // CL_INVALID_PROGRAM_EXECUTABLE if there is no successfully built executable for program.
-    let devs: Vec<_> = p
-        .devs
-        .iter()
-        .filter(|d| p.status(d) == CL_BUILD_SUCCESS as cl_build_status)
-        .collect();
-    if devs.is_empty() {
-        return Err(CL_INVALID_PROGRAM_EXECUTABLE);
-    }
-    Ok(devs)
-}
-
 pub fn create_kernel(
     program: cl_program,
     kernel_name: *const ::std::os::raw::c_char,
@@ -164,17 +148,11 @@ pub fn create_kernel(
     // CL_INVALID_KERNEL_DEFINITION if the function definition for __kernel function given by
     // kernel_name such as the number of arguments, the argument types are not the same for all
     // devices for which the program executable has been built.
-    let devs = get_devices_with_valid_build(&p)?;
-    let kernel_args: HashSet<_> = devs.iter().map(|d| p.args(d, &name)).collect();
-    if kernel_args.len() != 1 {
+    if p.kernel_signatures(&name).len() != 1 {
         return Err(CL_INVALID_KERNEL_DEFINITION);
     }
 
-    Ok(cl_kernel::from_arc(Kernel::new(
-        name,
-        p,
-        kernel_args.into_iter().next().unwrap(),
-    )))
+    Ok(cl_kernel::from_arc(Kernel::new(name, p)))
 }
 
 pub fn create_kernels_in_program(
@@ -184,7 +162,12 @@ pub fn create_kernels_in_program(
     num_kernels_ret: *mut cl_uint,
 ) -> CLResult<()> {
     let p = program.get_arc()?;
-    let devs = get_devices_with_valid_build(&p)?;
+
+    // CL_INVALID_PROGRAM_EXECUTABLE if there is no successfully built executable for any device in
+    // program.
+    if p.kernels().is_empty() {
+        return Err(CL_INVALID_PROGRAM_EXECUTABLE);
+    }
 
     // CL_INVALID_VALUE if kernels is not NULL and num_kernels is less than the number of kernels
     // in program.
@@ -194,11 +177,10 @@ pub fn create_kernels_in_program(
 
     let mut num_kernels = 0;
     for name in p.kernels() {
-        let kernel_args: HashSet<_> = devs.iter().map(|d| p.args(d, &name)).collect();
         // Kernel objects are not created for any __kernel functions in program that do not have the
         // same function definition across all devices for which a program executable has been
         // successfully built.
-        if kernel_args.len() != 1 {
+        if p.kernel_signatures(&name).len() != 1 {
             continue;
         }
 
@@ -207,11 +189,7 @@ pub fn create_kernels_in_program(
             unsafe {
                 kernels
                     .add(num_kernels as usize)
-                    .write(cl_kernel::from_arc(Kernel::new(
-                        name,
-                        p.clone(),
-                        kernel_args.into_iter().next().unwrap(),
-                    )));
+                    .write(cl_kernel::from_arc(Kernel::new(name, p.clone())));
             }
         }
         num_kernels += 1;
@@ -313,6 +291,78 @@ pub fn set_kernel_arg(
     //• CL_INVALID_DEVICE_QUEUE for an argument declared to be of type queue_t when the specified arg_value is not a valid device queue object. This error code is missing before version 2.0.
     //• CL_INVALID_ARG_VALUE if the argument is an image declared with the read_only qualifier and arg_value refers to an image object created with cl_mem_flags of CL_MEM_WRITE_ONLY or if the image argument is declared with the write_only qualifier and arg_value refers to an image object created with cl_mem_flags of CL_MEM_READ_ONLY.
     //• CL_MAX_SIZE_RESTRICTION_EXCEEDED if the size in bytes of the memory object (if the argument is a memory object) or arg_size (if the argument is declared with local qualifier) exceeds a language- specified maximum size restriction for this argument, such as the MaxByteOffset SPIR-V decoration. This error code is missing before version 2.2.
+}
+
+pub fn set_kernel_arg_svm_pointer(
+    kernel: cl_kernel,
+    arg_index: cl_uint,
+    arg_value: *const ::std::os::raw::c_void,
+) -> CLResult<()> {
+    let kernel = kernel.get_ref()?;
+    let arg_index = arg_index as usize;
+    let arg_value = arg_value as usize;
+
+    if !kernel.has_svm_devs() {
+        return Err(CL_INVALID_OPERATION);
+    }
+
+    if let Some(arg) = kernel.args.get(arg_index) {
+        if !matches!(
+            arg.kind,
+            KernelArgType::MemConstant | KernelArgType::MemGlobal
+        ) {
+            return Err(CL_INVALID_ARG_INDEX);
+        }
+
+        let arg_value = KernelArgValue::Constant(arg_value.to_ne_bytes().to_vec());
+        kernel.values[arg_index].replace(Some(arg_value));
+        Ok(())
+    } else {
+        Err(CL_INVALID_ARG_INDEX)
+    }
+
+    // CL_INVALID_ARG_VALUE if arg_value specified is not a valid value.
+}
+
+pub fn set_kernel_exec_info(
+    kernel: cl_kernel,
+    param_name: cl_kernel_exec_info,
+    param_value_size: usize,
+    param_value: *const ::std::os::raw::c_void,
+) -> CLResult<()> {
+    let k = kernel.get_ref()?;
+
+    // CL_INVALID_OPERATION if no devices in the context associated with kernel support SVM.
+    if !k.prog.devs.iter().any(|dev| dev.svm_supported()) {
+        return Err(CL_INVALID_OPERATION);
+    }
+
+    // CL_INVALID_VALUE ... if param_value is NULL
+    if param_value.is_null() {
+        return Err(CL_INVALID_VALUE);
+    }
+
+    // CL_INVALID_VALUE ... if the size specified by param_value_size is not valid.
+    match param_name {
+        CL_KERNEL_EXEC_INFO_SVM_PTRS | CL_KERNEL_EXEC_INFO_SVM_PTRS_ARM => {
+            // it's a list of pointers
+            if param_value_size % mem::size_of::<*const c_void>() != 0 {
+                return Err(CL_INVALID_VALUE);
+            }
+        }
+        CL_KERNEL_EXEC_INFO_SVM_FINE_GRAIN_SYSTEM
+        | CL_KERNEL_EXEC_INFO_SVM_FINE_GRAIN_SYSTEM_ARM => {
+            if param_value_size != mem::size_of::<cl_bool>() {
+                return Err(CL_INVALID_VALUE);
+            }
+        }
+        // CL_INVALID_VALUE if param_name is not valid
+        _ => return Err(CL_INVALID_VALUE),
+    }
+
+    Ok(())
+
+    // CL_INVALID_OPERATION if param_name is CL_KERNEL_EXEC_INFO_SVM_FINE_GRAIN_SYSTEM and param_value is CL_TRUE but no devices in context associated with kernel support fine-grain system SVM allocations.
 }
 
 pub fn enqueue_ndrange_kernel(

@@ -369,19 +369,35 @@ bool AluGroup::replace_source(PRegister old_src, PVirtualValue new_src)
 bool
 AluGroup::update_indirect_access(AluInstr *instr)
 {
-   auto [indirect_addr, for_src, is_index] = instr->indirect_addr();
+   auto [indirect_addr, for_dest, index_reg] = instr->indirect_addr();
 
    if (indirect_addr) {
+      assert(!index_reg);
       if (!m_addr_used) {
          m_addr_used = indirect_addr;
-         m_addr_for_src = for_src;
-         m_addr_is_index = is_index;
-      } else if (!indirect_addr->equal_to(*m_addr_used)) {
+         m_addr_for_src = !for_dest;
+         m_addr_is_index = false;
+      } else if (!indirect_addr->equal_to(*m_addr_used) || m_addr_is_index) {
          return false;
       }
+   } else if (index_reg) {
+       if (!m_addr_used) {
+           m_addr_used = index_reg;
+           m_addr_is_index = true;
+       } else if (!index_reg->equal_to(*m_addr_used) || !m_addr_is_index) {
+           return false;
+       }
    }
-
    return true;
+}
+
+bool AluGroup::index_mode_load()
+{
+   if (!m_slots[0] || !m_slots[0]->dest())
+      return false;
+
+   Register *dst = m_slots[0]->dest();
+   return dst->has_flag(Register::addr_or_idx) && dst->sel() > 0;
 }
 
 void

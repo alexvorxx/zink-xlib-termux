@@ -30,6 +30,7 @@
 #include "main/shaderobj.h"
 #include "ir_uniform.h" /* for gl_uniform_storage */
 #include "util/glheader.h"
+#include "util/perf/cpu_trace.h"
 
 /**
  * This file included general link methods, using NIR, instead of IR as
@@ -40,6 +41,8 @@ void
 gl_nir_opts(nir_shader *nir)
 {
    bool progress;
+
+   MESA_TRACE_FUNC();
 
    do {
       progress = false;
@@ -122,6 +125,8 @@ gl_nir_opts(nir_shader *nir)
 static void
 gl_nir_link_opts(nir_shader *producer, nir_shader *consumer)
 {
+   MESA_TRACE_FUNC();
+
    if (producer->options->lower_to_scalar) {
       NIR_PASS_V(producer, nir_lower_io_to_scalar_early, nir_var_shader_out);
       NIR_PASS_V(consumer, nir_lower_io_to_scalar_early, nir_var_shader_in);
@@ -761,6 +766,8 @@ gl_nir_link_spirv(const struct gl_constants *consts,
    struct gl_linked_shader *linked_shader[MESA_SHADER_STAGES];
    unsigned num_shaders = 0;
 
+   MESA_TRACE_FUNC();
+
    for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
       if (prog->_LinkedShaders[i])
          linked_shader[num_shaders++] = prog->_LinkedShaders[i];
@@ -925,6 +932,8 @@ gl_nir_link_glsl(const struct gl_constants *consts,
    if (prog->NumShaders == 0)
       return true;
 
+   MESA_TRACE_FUNC();
+
    if (!gl_nir_link_varyings(consts, exts, api, prog))
       return false;
 
@@ -992,6 +1001,41 @@ gl_nir_link_glsl(const struct gl_constants *consts,
    check_image_resources(consts, exts, prog);
    gl_nir_link_assign_atomic_counter_resources(consts, prog);
    gl_nir_link_check_atomic_counter_resources(consts, prog);
+
+   /* OpenGL ES < 3.1 requires that a vertex shader and a fragment shader both
+    * be present in a linked program. GL_ARB_ES2_compatibility doesn't say
+    * anything about shader linking when one of the shaders (vertex or
+    * fragment shader) is absent. So, the extension shouldn't change the
+    * behavior specified in GLSL specification.
+    *
+    * From OpenGL ES 3.1 specification (7.3 Program Objects):
+    *     "Linking can fail for a variety of reasons as specified in the
+    *     OpenGL ES Shading Language Specification, as well as any of the
+    *     following reasons:
+    *
+    *     ...
+    *
+    *     * program contains objects to form either a vertex shader or
+    *       fragment shader, and program is not separable, and does not
+    *       contain objects to form both a vertex shader and fragment
+    *       shader."
+    *
+    * However, the only scenario in 3.1+ where we don't require them both is
+    * when we have a compute shader. For example:
+    *
+    * - No shaders is a link error.
+    * - Geom or Tess without a Vertex shader is a link error which means we
+    *   always require a Vertex shader and hence a Fragment shader.
+    * - Finally a Compute shader linked with any other stage is a link error.
+    */
+   if (!prog->SeparateShader && _mesa_is_api_gles2(api) &&
+       !prog->_LinkedShaders[MESA_SHADER_COMPUTE]) {
+      if (prog->_LinkedShaders[MESA_SHADER_VERTEX] == NULL) {
+         linker_error(prog, "program lacks a vertex shader\n");
+      } else if (prog->_LinkedShaders[MESA_SHADER_FRAGMENT] == NULL) {
+         linker_error(prog, "program lacks a fragment shader\n");
+      }
+   }
 
    if (prog->data->LinkStatus == LINKING_FAILURE)
       return false;

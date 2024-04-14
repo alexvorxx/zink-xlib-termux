@@ -130,8 +130,17 @@ bool brw_nir_lower_conversions(nir_shader *nir);
 
 bool brw_nir_lower_shading_rate_output(nir_shader *nir);
 
+struct brw_nir_lower_storage_image_opts {
+   const struct intel_device_info *devinfo;
+
+   bool lower_loads;
+   bool lower_stores;
+   bool lower_atomics;
+   bool lower_get_size;
+};
+
 bool brw_nir_lower_storage_image(nir_shader *nir,
-                                 const struct intel_device_info *devinfo);
+                                 const struct brw_nir_lower_storage_image_opts *opts);
 
 bool brw_nir_lower_mem_access_bit_sizes(nir_shader *shader,
                                         const struct
@@ -186,6 +195,9 @@ bool brw_nir_opt_peephole_imul32x16(nir_shader *shader);
 
 bool brw_nir_clamp_per_vertex_loads(nir_shader *shader,
                                     unsigned input_vertices);
+
+bool brw_nir_blockify_uniform_loads(nir_shader *shader,
+                                    const struct intel_device_info *devinfo);
 
 void brw_nir_optimize(nir_shader *nir,
                       const struct brw_compiler *compiler,

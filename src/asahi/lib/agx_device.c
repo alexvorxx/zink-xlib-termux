@@ -1,25 +1,7 @@
 /*
- * Copyright (C) 2021 Alyssa Rosenzweig <alyssa@rosenzweig.io>
+ * Copyright 2021 Alyssa Rosenzweig
  * Copyright 2019 Collabora, Ltd.
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #include "agx_device.h"
@@ -166,7 +148,11 @@ agx_bo_import(struct agx_device *dev, int fd)
    pthread_mutex_lock(&dev->bo_map_lock);
 
    ret = drmPrimeFDToHandle(dev->fd, fd, &gem_handle);
-   assert(!ret);
+   if (ret) {
+      fprintf(stderr, "import failed: Could not map fd %d to handle\n", fd);
+      pthread_mutex_unlock(&dev->bo_map_lock);
+      return NULL;
+   }
 
    bo = agx_lookup_bo(dev, gem_handle);
    dev->max_handle = MAX2(dev->max_handle, gem_handle);
@@ -188,9 +174,9 @@ agx_bo_import(struct agx_device *dev, int fd)
             stderr,
             "import failed: BO is not a multiple of the page size (0x%llx bytes)\n",
             (long long)bo->size);
-         pthread_mutex_unlock(&dev->bo_map_lock);
-         return NULL;
+         goto error;
       }
+
       bo->flags = AGX_BO_SHARED | AGX_BO_SHAREABLE;
       bo->handle = gem_handle;
       bo->prime_fd = dup(fd);
@@ -204,10 +190,21 @@ agx_bo_import(struct agx_device *dev, int fd)
          &dev->main_heap, bo->size + dev->guard_size, dev->params.vm_page_size);
       simple_mtx_unlock(&dev->vma_lock);
 
+      if (!bo->ptr.gpu) {
+         fprintf(
+            stderr,
+            "import failed: Could not allocate from VMA heap (0x%llx bytes)\n",
+            (long long)bo->size);
+         abort();
+      }
+
       ret =
          agx_bo_bind(dev, bo, bo->ptr.gpu, ASAHI_BIND_READ | ASAHI_BIND_WRITE);
-      assert(!ret);
-
+      if (ret) {
+         fprintf(stderr, "import failed: Could not bind BO at 0x%llx\n",
+                 (long long)bo->ptr.gpu);
+         abort();
+      }
    } else {
       /* bo->refcnt == 0 can happen if the BO
        * was being released but agx_bo_import() acquired the
@@ -227,6 +224,11 @@ agx_bo_import(struct agx_device *dev, int fd)
    pthread_mutex_unlock(&dev->bo_map_lock);
 
    return bo;
+
+error:
+   memset(bo, 0, sizeof(*bo));
+   pthread_mutex_unlock(&dev->bo_map_lock);
+   return NULL;
 }
 
 int
@@ -239,11 +241,28 @@ agx_bo_export(struct agx_bo *bo)
    if (drmPrimeHandleToFD(bo->dev->fd, bo->handle, DRM_CLOEXEC, &fd))
       return -1;
 
-   bo->flags |= AGX_BO_SHARED;
-   if (bo->prime_fd == -1)
+   if (!(bo->flags & AGX_BO_SHARED)) {
+      bo->flags |= AGX_BO_SHARED;
+      assert(bo->prime_fd == -1);
       bo->prime_fd = dup(fd);
-   assert(bo->prime_fd >= 0);
 
+      /* If there is a pending writer to this BO, import it into the buffer
+       * for implicit sync.
+       */
+      if (bo->writer_syncobj) {
+         int out_sync_fd = -1;
+         int ret = drmSyncobjExportSyncFile(bo->dev->fd, bo->writer_syncobj,
+                                            &out_sync_fd);
+         assert(ret >= 0);
+         assert(out_sync_fd >= 0);
+
+         ret = agx_import_sync_file(bo->dev, bo, out_sync_fd);
+         assert(ret >= 0);
+         close(out_sync_fd);
+      }
+   }
+
+   assert(bo->prime_fd >= 0);
    return fd;
 }
 
@@ -386,10 +405,14 @@ agx_debug_fault(struct agx_device *dev, uint64_t addr)
 
    for (uint32_t handle = 0; handle < dev->max_handle; handle++) {
       struct agx_bo *bo = agx_lookup_bo(dev, handle);
-      if (!bo->dev || bo->ptr.gpu > addr)
+      uint64_t bo_addr = bo->ptr.gpu;
+      if (bo->flags & AGX_BO_LOW_VA)
+         bo_addr += dev->shader_base;
+
+      if (!bo->dev || bo_addr > addr)
          continue;
 
-      if (!best || bo->ptr.gpu > best->ptr.gpu)
+      if (!best || bo_addr > best->ptr.gpu)
          best = bo;
    }
 

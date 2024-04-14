@@ -28,6 +28,7 @@
 #include <vulkan/vulkan.h>
 
 #include "hwdef/rogue_hw_utils.h"
+#include "pvr_common.h"
 #include "pvr_formats.h"
 #include "pvr_private.h"
 #include "util/bitpack_helpers.h"
@@ -47,6 +48,8 @@
    [VK_FORMAT_##vk] = {                                        \
       .vk_format = VK_FORMAT_##vk,                             \
       .tex_format = ROGUE_TEXSTATE_FORMAT_##tex_fmt,           \
+      .depth_tex_format = ROGUE_TEXSTATE_FORMAT_INVALID,       \
+      .stencil_tex_format = ROGUE_TEXSTATE_FORMAT_INVALID,     \
       .pbe_packmode = ROGUE_PBESTATE_PACKMODE_##pack_mode,     \
       .pbe_accum_format = PVR_PBE_ACCUM_FORMAT_##accum_format, \
       .supported = true,                                       \
@@ -56,14 +59,29 @@
    [VK_FORMAT_##vk] = {                                         \
       .vk_format = VK_FORMAT_##vk,                              \
       .tex_format = ROGUE_TEXSTATE_FORMAT_COMPRESSED_##tex_fmt, \
+      .depth_tex_format = ROGUE_TEXSTATE_FORMAT_INVALID,        \
+      .stencil_tex_format = ROGUE_TEXSTATE_FORMAT_INVALID,      \
       .pbe_packmode = ROGUE_PBESTATE_PACKMODE_INVALID,          \
       .pbe_accum_format = PVR_PBE_ACCUM_FORMAT_INVALID,         \
       .supported = true,                                        \
    }
 
+#define FORMAT_DEPTH_STENCIL(vk, combined_fmt, d_fmt, s_fmt) \
+   [VK_FORMAT_##vk] = {                                      \
+      .vk_format = VK_FORMAT_##vk,                           \
+      .tex_format = ROGUE_TEXSTATE_FORMAT_##combined_fmt,    \
+      .depth_tex_format = ROGUE_TEXSTATE_FORMAT_##d_fmt,     \
+      .stencil_tex_format = ROGUE_TEXSTATE_FORMAT_##s_fmt,   \
+      .pbe_packmode = ROGUE_PBESTATE_PACKMODE_INVALID,       \
+      .pbe_accum_format = PVR_PBE_ACCUM_FORMAT_INVALID,      \
+      .supported = true,                                     \
+   }
+
 struct pvr_format {
    VkFormat vk_format;
    uint32_t tex_format;
+   uint32_t depth_tex_format;
+   uint32_t stencil_tex_format;
    uint32_t pbe_packmode;
    enum pvr_pbe_accum_format pbe_accum_format;
    bool supported;
@@ -179,11 +197,13 @@ static const struct pvr_format pvr_format_table[] = {
    /* VK_FORMAT_E5B9G9R9_UFLOAT_PACK32 = 123. */
    FORMAT(E5B9G9R9_UFLOAT_PACK32, SE9995, SE9995, INVALID),
    /* VK_FORMAT_D16_UNORM = 124. */
-   FORMAT(D16_UNORM, U16, U16, F16),
+   FORMAT_DEPTH_STENCIL(D16_UNORM, U16, U16, INVALID),
    /* VK_FORMAT_D32_SFLOAT = 126. */
-   FORMAT(D32_SFLOAT, F32, F32, F16),
+   FORMAT_DEPTH_STENCIL(D32_SFLOAT, F32, F32, INVALID),
+   /* VK_FORMAT_S8_UINT = 127. */
+   FORMAT_DEPTH_STENCIL(S8_UINT, U8, INVALID, U8),
    /* VK_FORMAT_D24_UNORM_S8_UINT = 129. */
-   FORMAT(D24_UNORM_S8_UINT, ST8U24, ST8U24, F16),
+   FORMAT_DEPTH_STENCIL(D24_UNORM_S8_UINT, ST8U24, X8U24, U8X24),
    /* VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK = 147. */
    FORMAT_COMPRESSED(ETC2_R8G8B8_UNORM_BLOCK, ETC2_RGB),
    /* VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK = 148. */
@@ -230,6 +250,22 @@ uint32_t pvr_get_tex_format(VkFormat vk_format)
    }
 
    return ROGUE_TEXSTATE_FORMAT_INVALID;
+}
+
+uint32_t pvr_get_tex_format_aspect(VkFormat vk_format,
+                                   VkImageAspectFlags aspect_mask)
+{
+   const struct pvr_format *pvr_format = pvr_get_format(vk_format);
+   if (pvr_format) {
+      if (aspect_mask == VK_IMAGE_ASPECT_DEPTH_BIT)
+         return pvr_format->depth_tex_format;
+      else if (aspect_mask == VK_IMAGE_ASPECT_STENCIL_BIT)
+         return pvr_format->stencil_tex_format;
+
+      return pvr_format->tex_format;
+   }
+
+   return PVRX(TEXSTATE_FORMAT_INVALID);
 }
 
 uint32_t pvr_get_pbe_packmode(VkFormat vk_format)
@@ -455,7 +491,8 @@ pvr_get_image_format_features2(const struct pvr_format *pvr_format,
 
          if (!vk_format_is_int(vk_format) &&
              !vk_format_is_depth_or_stencil(vk_format) &&
-             first_component_size < 32) {
+             (first_component_size < 32 ||
+              vk_format_is_block_compressed(vk_format))) {
             flags |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
          }
       } else if (!vk_format_is_block_compressed(vk_format)) {
@@ -481,7 +518,7 @@ pvr_get_image_format_features2(const struct pvr_format *pvr_format,
    if (vk_tiling == VK_IMAGE_TILING_OPTIMAL) {
       if (vk_format_is_color(vk_format) &&
           vk_format_get_nr_components(vk_format) == 1 &&
-          vk_format_get_blocksize(vk_format) == 32 &&
+          vk_format_get_blocksizebits(vk_format) == 32 &&
           vk_format_is_int(vk_format)) {
          flags |= VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT |
                   VK_FORMAT_FEATURE_2_STORAGE_IMAGE_ATOMIC_BIT;
@@ -580,7 +617,7 @@ pvr_get_buffer_format_features2(const struct pvr_format *pvr_format)
 
    if (vk_format_is_color(vk_format) &&
        vk_format_get_nr_components(vk_format) == 1 &&
-       vk_format_get_blocksize(vk_format) == 32 &&
+       vk_format_get_blocksizebits(vk_format) == 32 &&
        vk_format_is_int(vk_format)) {
       flags |= VK_FORMAT_FEATURE_2_STORAGE_TEXEL_BUFFER_BIT |
                VK_FORMAT_FEATURE_2_STORAGE_TEXEL_BUFFER_ATOMIC_BIT;
@@ -607,17 +644,16 @@ pvr_get_buffer_format_features2(const struct pvr_format *pvr_format)
    case VK_FORMAT_R32G32B32A32_SFLOAT:
       flags |= VK_FORMAT_FEATURE_2_STORAGE_TEXEL_BUFFER_BIT;
       break;
+
+   case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
+      flags |= VK_FORMAT_FEATURE_2_UNIFORM_TEXEL_BUFFER_BIT;
+      break;
+
    default:
       break;
    }
 
    return flags;
-}
-
-static VkFormatFeatureFlags
-pvr_features2_to_features(VkFormatFeatureFlags2 features2)
-{
-   return features2 & VK_ALL_FORMAT_FEATURE_FLAG_BITS;
 }
 
 void pvr_GetPhysicalDeviceFormatProperties2(
@@ -634,9 +670,9 @@ void pvr_GetPhysicalDeviceFormatProperties2(
    buffer2 = pvr_get_buffer_format_features2(pvr_format);
 
    pFormatProperties->formatProperties = (VkFormatProperties){
-      .linearTilingFeatures = pvr_features2_to_features(linear2),
-      .optimalTilingFeatures = pvr_features2_to_features(optimal2),
-      .bufferFeatures = pvr_features2_to_features(buffer2),
+      .linearTilingFeatures = vk_format_features2_to_features(linear2),
+      .optimalTilingFeatures = vk_format_features2_to_features(optimal2),
+      .bufferFeatures = vk_format_features2_to_features(buffer2),
    };
 
    vk_foreach_struct (ext, pFormatProperties->pNext) {
@@ -888,7 +924,7 @@ void pvr_GetPhysicalDeviceSparseImageFormatProperties(
    VkPhysicalDevice physicalDevice,
    VkFormat format,
    VkImageType type,
-   uint32_t samples,
+   VkSampleCountFlagBits samples,
    VkImageUsageFlags usage,
    VkImageTiling tiling,
    uint32_t *pNumProperties,
@@ -1000,5 +1036,78 @@ bool pvr_format_is_pbe_downscalable(VkFormat vk_format)
    case ROGUE_PBESTATE_PACKMODE_PWORD:
    case ROGUE_PBESTATE_PACKMODE_INVALID:
       return false;
+   }
+}
+
+uint32_t pvr_pbe_pixel_num_loads(enum pvr_transfer_pbe_pixel_src pbe_format,
+                                 uint32_t alpha_type)
+{
+   switch (alpha_type) {
+   default:
+   case PVR_ALPHA_NONE:
+      break;
+   case PVR_ALPHA_SOURCE:
+   case PVR_ALPHA_PREMUL_SOURCE:
+   case PVR_ALPHA_PREMUL_SOURCE_WITH_GLOBAL:
+   case PVR_ALPHA_GLOBAL:
+      return 2U;
+   }
+
+   switch (pbe_format) {
+   case PVR_TRANSFER_PBE_PIXEL_SRC_UU8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_US8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_UU16U16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_US16S16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SS8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU16U16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SS16S16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_UU1010102:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU1010102:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RBSWAP_UU1010102:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RBSWAP_SU1010102:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU32U32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_S4XU32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_US32S32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_U4XS32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_F16F16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_U16NORM:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_S16NORM:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_F32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_F32X2:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_F32X4:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RAW32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RAW64:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RAW128:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_F16_U8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SWAP_LMSB:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_MOV_BY45:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_S8D24:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_D32S8:
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_CONV_D24_D32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_CONV_D32U_D32F:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_CONV_D32_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_CONV_S8D24_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_S8_D32S8:
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_D24S8_D32S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_D32S8_D32S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D32S8_D32S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_S8_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_D24S8_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D24S8_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D32_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D32U_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_Y_UV_INTERLEAVED:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_Y_U_V:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_YUV_PACKED:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_YVU_PACKED:
+      return 1U;
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_NUM:
+   default:
+      return 0U;
    }
 }

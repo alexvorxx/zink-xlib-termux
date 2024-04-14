@@ -46,6 +46,7 @@ struct pipe_blend_state;
 struct pipe_blit_info;
 struct pipe_box;
 struct pipe_clip_state;
+struct pipe_compute_state_object_info;
 struct pipe_constant_buffer;
 struct pipe_depth_stencil_alpha_state;
 struct pipe_device_reset_callback;
@@ -933,6 +934,9 @@ struct pipe_context {
    void (*bind_compute_state)(struct pipe_context *, void *);
    void (*delete_compute_state)(struct pipe_context *, void *);
 
+   void (*get_compute_state_info)(struct pipe_context *, void *,
+                                  struct pipe_compute_state_object_info *);
+
    /**
     * Bind an array of shader resources that will be used by the
     * compute program.  Any resources that were previously bound to
@@ -1002,11 +1006,12 @@ struct pipe_context {
     *
     * \param to_device - true if the virtual memory is migrated to the device
     *                    false if the virtual memory is migrated to the host
-    * \param migrate_content - whether the content should be migrated as well
+    * \param content_undefined - whether the content of the migrated memory
+    *                            is undefined after migration
     */
    void (*svm_migrate)(struct pipe_context *context, unsigned num_ptrs,
                        const void* const* ptrs, const size_t *sizes,
-                       bool to_device, bool migrate_content);
+                       bool to_device, bool content_undefined);
    /*@}*/
 
    /**

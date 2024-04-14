@@ -1434,7 +1434,7 @@ cmd_buffer_emit_subpass_clears(struct v3dv_cmd_buffer *cmd_buffer)
                  "VK_ATTACHMENT_LOAD_OP_CLEAR.\n");
    } else if (subpass->do_depth_clear_with_draw ||
               subpass->do_stencil_clear_with_draw) {
-      perf_debug("Subpass clears DEPTH but loads STENCIL (or viceversa), "
+      perf_debug("Subpass clears DEPTH but loads STENCIL (or vice versa), "
                  "falling back to vkCmdClearAttachments for "
                  "VK_ATTACHMENT_LOAD_OP_CLEAR.\n");
    }
@@ -3615,6 +3615,32 @@ v3dv_cmd_buffer_begin_query(struct v3dv_cmd_buffer *cmd_buffer,
    }
    default:
       unreachable("Unsupported query type");
+   }
+}
+
+void
+v3dv_cmd_buffer_pause_occlusion_query(struct v3dv_cmd_buffer *cmd_buffer)
+{
+   struct v3dv_cmd_buffer_state *state = &cmd_buffer->state;
+   struct v3dv_bo *occlusion_query_bo = state->query.active_query.bo;
+   if (occlusion_query_bo) {
+      assert(!state->query.active_query.paused_bo);
+      state->query.active_query.paused_bo = occlusion_query_bo;
+      state->query.active_query.bo = NULL;
+      state->dirty |= V3DV_CMD_DIRTY_OCCLUSION_QUERY;
+   }
+}
+
+void
+v3dv_cmd_buffer_resume_occlusion_query(struct v3dv_cmd_buffer *cmd_buffer)
+{
+   struct v3dv_cmd_buffer_state *state = &cmd_buffer->state;
+   struct v3dv_bo *occlusion_query_bo = state->query.active_query.paused_bo;
+   if (occlusion_query_bo) {
+      assert(!state->query.active_query.bo);
+      state->query.active_query.bo = occlusion_query_bo;
+      state->query.active_query.paused_bo = NULL;
+      state->dirty |= V3DV_CMD_DIRTY_OCCLUSION_QUERY;
    }
 }
 

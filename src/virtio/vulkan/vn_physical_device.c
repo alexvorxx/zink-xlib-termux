@@ -200,6 +200,7 @@ vn_physical_device_init_features(struct vn_physical_device *physical_dev)
    VN_ADD_PNEXT_EXT(feats2, PRIMITIVE_TOPOLOGY_LIST_RESTART_FEATURES_EXT, feats->primitive_topology_list_restart, exts->EXT_primitive_topology_list_restart);
    VN_ADD_PNEXT_EXT(feats2, PRIMITIVES_GENERATED_QUERY_FEATURES_EXT, feats->primitives_generated_query, exts->EXT_primitives_generated_query);
    VN_ADD_PNEXT_EXT(feats2, PROVOKING_VERTEX_FEATURES_EXT, feats->provoking_vertex, exts->EXT_provoking_vertex);
+   VN_ADD_PNEXT_EXT(feats2, RASTERIZATION_ORDER_ATTACHMENT_ACCESS_FEATURES_EXT, feats->rasterization_order_attachment_access, exts->EXT_rasterization_order_attachment_access);
    VN_ADD_PNEXT_EXT(feats2, ROBUSTNESS_2_FEATURES_EXT, feats->robustness_2, exts->EXT_robustness2);
    VN_ADD_PNEXT_EXT(feats2, TRANSFORM_FEEDBACK_FEATURES_EXT, feats->transform_feedback, exts->EXT_transform_feedback);
    VN_ADD_PNEXT_EXT(feats2, VERTEX_ATTRIBUTE_DIVISOR_FEATURES_EXT, feats->vertex_attribute_divisor, exts->EXT_vertex_attribute_divisor);
@@ -709,7 +710,13 @@ vn_physical_device_init_properties(struct vn_physical_device *physical_dev)
       vk10_props->apiVersion = ver;
    }
 
-   vk10_props->driverVersion = vk_get_driver_version();
+   /* ANGLE relies on ARM proprietary driver version for workarounds */
+   const char *engine_name = instance->base.base.app_info.engine_name;
+   const bool forward_driver_version =
+      vk12_props->driverID == VK_DRIVER_ID_ARM_PROPRIETARY && engine_name &&
+      strcmp(engine_name, "ANGLE") == 0;
+   if (!forward_driver_version)
+      vk10_props->driverVersion = vk_get_driver_version();
 
    char device_name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
    int device_name_len =
@@ -770,26 +777,25 @@ vn_physical_device_init_memory_properties(
    struct vn_physical_device *physical_dev)
 {
    struct vn_instance *instance = physical_dev->instance;
+   VkPhysicalDeviceMemoryProperties2 *props2 =
+      &physical_dev->memory_properties;
+   VkPhysicalDeviceMemoryProperties *props1 = &props2->memoryProperties;
 
-   physical_dev->memory_properties.sType =
-      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
+   props2->sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
 
    vn_call_vkGetPhysicalDeviceMemoryProperties2(
-      instance, vn_physical_device_to_handle(physical_dev),
-      &physical_dev->memory_properties);
+      instance, vn_physical_device_to_handle(physical_dev), props2);
 
-   if (!instance->renderer->info.has_cache_management) {
-      VkPhysicalDeviceMemoryProperties *props =
-         &physical_dev->memory_properties.memoryProperties;
-      const uint32_t host_flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-                                  VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+   for (uint32_t i = 0; i < props1->memoryTypeCount; i++) {
+      VkMemoryType *type = &props1->memoryTypes[i];
 
-      for (uint32_t i = 0; i < props->memoryTypeCount; i++) {
-         const bool coherent = props->memoryTypes[i].propertyFlags &
-                               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-         if (!coherent)
-            props->memoryTypes[i].propertyFlags &= ~host_flags;
+      /* Kernel makes every mapping coherent.  If a memory type is truly
+       * incoherent, it's better to remove the host-visible flag than silently
+       * making it coherent.
+       */
+      if (!(type->propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
+         type->propertyFlags &= ~(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                  VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
       }
    }
 }
@@ -1124,6 +1130,8 @@ vn_physical_device_get_passthrough_extensions(
       .EXT_image_view_min_lod = true,
       .EXT_index_type_uint8 = true,
       .EXT_line_rasterization = true,
+      .EXT_load_store_op_none = true,
+      .EXT_memory_budget = true,
       .EXT_multi_draw = true,
       .EXT_mutable_descriptor_type = true,
       .EXT_primitive_topology_list_restart = true,
@@ -1148,6 +1156,7 @@ vn_physical_device_get_passthrough_extensions(
       .EXT_private_data = true,
       .EXT_provoking_vertex = true,
       .EXT_queue_family_foreign = true,
+      .EXT_rasterization_order_attachment_access = true,
       .EXT_robustness2 = true,
       .EXT_shader_stencil_export = true,
       .EXT_transform_feedback = true,
@@ -1766,6 +1775,7 @@ vn_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
       CASE(PRIMITIVE_TOPOLOGY_LIST_RESTART_FEATURES_EXT, primitive_topology_list_restart);
       CASE(PRIMITIVES_GENERATED_QUERY_FEATURES_EXT, primitives_generated_query);
       CASE(PROVOKING_VERTEX_FEATURES_EXT, provoking_vertex);
+      CASE(RASTERIZATION_ORDER_ATTACHMENT_ACCESS_FEATURES_EXT, rasterization_order_attachment_access);
       CASE(ROBUSTNESS_2_FEATURES_EXT, robustness_2);
       CASE(TRANSFORM_FEEDBACK_FEATURES_EXT, transform_feedback);
       CASE(VERTEX_ATTRIBUTE_DIVISOR_FEATURES_EXT, vertex_attribute_divisor);
@@ -1901,7 +1911,29 @@ vn_GetPhysicalDeviceMemoryProperties2(
 {
    struct vn_physical_device *physical_dev =
       vn_physical_device_from_handle(physicalDevice);
+   struct vn_instance *instance = physical_dev->instance;
+   VkPhysicalDeviceMemoryBudgetPropertiesEXT *memory_budget = NULL;
 
+   /* Don't waste time searching for unsupported structs. */
+   if (physical_dev->base.base.supported_extensions.EXT_memory_budget) {
+      memory_budget =
+         vk_find_struct(pMemoryProperties->pNext,
+                        PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT);
+   }
+
+   /* When the app queries invariant memory properties, we return a cached
+    * copy. For dynamic properties, we must query the server.
+    */
+   if (memory_budget) {
+      vn_call_vkGetPhysicalDeviceMemoryProperties2(instance, physicalDevice,
+                                                   pMemoryProperties);
+   }
+
+   /* Even when we query the server for memory properties, we must still
+    * overwrite the invariant memory properties returned from the server with
+    * our cached version.  Our cached version may differ from the server's
+    * version due to workarounds.
+    */
    pMemoryProperties->memoryProperties =
       physical_dev->memory_properties.memoryProperties;
 }

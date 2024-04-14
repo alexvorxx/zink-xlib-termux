@@ -1,5 +1,4 @@
 dEQP-EGL.functional.robustness.reset_context.shaders.infinite_loop.query_status.compute,Fail
-dEQP-EGL.functional.robustness.reset_context.shaders.infinite_loop.query_status.fragment,Timeout
 dEQP-EGL.functional.robustness.reset_context.shaders.infinite_loop.query_status.vertex,Fail
 dEQP-EGL.functional.robustness.reset_context.shaders.infinite_loop.query_status.vertex_and_fragment,Fail
 dEQP-EGL.functional.robustness.reset_context.shaders.infinite_loop.reset_status.compute,Fail
@@ -26,10 +25,7 @@ dEQP-GLES3.functional.fbo.blit.rect.nearest_consistency_min_reverse_src_x,Fail
 spec@glsl-1.20@compiler@invalid-vec4-array-to-vec3-array-conversion.vert,Fail
 spec@oes_shader_io_blocks@compiler@layout-location-aliasing.vert,Fail
 
-# X Error of failed request:  BadMatch (invalid parameter attributes)
-#   Major opcode of failed request:  150 (GLX)
-#   Minor opcode of failed request:  11 (X_GLXSwapBuffers)
-glx@glx-make-current,Crash
+glx@glx-make-current,Fail
 
 glx@glx-multi-window-single-context,Fail
 glx@glx-swap-pixmap-bad,Fail
@@ -212,9 +208,6 @@ spec@arb_texture_buffer_object@texture-buffer-size-clamp@rg8ui_texture_buffer_si
 spec@arb_texture_buffer_object@texture-buffer-size-clamp@rg8ui_texture_buffer_size_via_sampler,Fail
 spec@arb_texture_buffer_object@texture-buffer-size-clamp@rgba8ui_texture_buffer_size_via_image,Fail
 spec@arb_texture_buffer_object@texture-buffer-size-clamp@rgba8ui_texture_buffer_size_via_sampler,Fail
-
-# https://gitlab.freedesktop.org/mesa/mesa/-/issues/7152
-spec@ext_transform_feedback@builtin-varyings gl_culldistance,Fail
 
 # [...]
 # Image comparison failed: reference = -0.000488281, expected = 0:0:0:0, result = 0:0:0:3

@@ -63,6 +63,26 @@ static uint8_t si_vectorize_callback(const nir_instr *instr, const void *data)
    return 1;
 }
 
+static unsigned si_lower_bit_size_callback(const nir_instr *instr, void *data)
+{
+   if (instr->type != nir_instr_type_alu)
+      return 0;
+
+   nir_alu_instr *alu = nir_instr_as_alu(instr);
+
+   switch (alu->op) {
+   case nir_op_imul_high:
+   case nir_op_umul_high:
+      if (nir_dest_bit_size(alu->dest.dest) < 32)
+         return 32;
+      break;
+   default:
+      break;
+   }
+
+   return 0;
+}
+
 void si_nir_opts(struct si_screen *sscreen, struct nir_shader *nir, bool first)
 {
    bool progress;
@@ -105,6 +125,7 @@ void si_nir_opts(struct si_screen *sscreen, struct nir_shader *nir, bool first)
       NIR_PASS(progress, nir, nir_opt_peephole_select, 8, true, true);
 
       /* Needed for algebraic lowering */
+      NIR_PASS(progress, nir, nir_lower_bit_size, si_lower_bit_size_callback, NULL);
       NIR_PASS(progress, nir, nir_opt_algebraic);
       NIR_PASS(progress, nir, nir_opt_constant_folding);
 
@@ -352,12 +373,71 @@ static void si_lower_nir(struct si_screen *sscreen, struct nir_shader *nir)
    NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp, NULL);
 }
 
+static bool si_mark_divergent_texture_non_uniform(struct nir_shader *nir)
+{
+   assert(nir->info.divergence_analysis_run);
+
+   /* sampler_non_uniform and texture_non_uniform are always false in GLSL,
+    * but this can lead to unexpected behavior if texture/sampler index come from
+    * a vertex attribute.
+    *
+    * For instance, 2 consecutive draws using 2 different index values,
+    * could be squashed together by the hw - producing a single draw with
+    * non-dynamically uniform index.
+    *
+    * To avoid this, detect divergent indexing, mark them as non-uniform,
+    * so that we can apply waterfall loop on these index later (either llvm
+    * backend or nir_lower_non_uniform_access).
+    *
+    * See https://gitlab.freedesktop.org/mesa/mesa/-/issues/2253
+    */
+
+   bool divergence_changed = false;
+
+   nir_function_impl *impl = nir_shader_get_entrypoint(nir);
+   nir_foreach_block_safe(block, impl) {
+      nir_foreach_instr_safe(instr, block) {
+         if (instr->type != nir_instr_type_tex)
+            continue;
+
+         nir_tex_instr *tex = nir_instr_as_tex(instr);
+         for (int i = 0; i < tex->num_srcs; i++) {
+            bool divergent = tex->src[i].src.ssa->divergent;
+
+            switch (tex->src[i].src_type) {
+            case nir_tex_src_texture_deref:
+            case nir_tex_src_texture_handle:
+               tex->texture_non_uniform |= divergent;
+               break;
+            case nir_tex_src_sampler_deref:
+            case nir_tex_src_sampler_handle:
+               tex->sampler_non_uniform |= divergent;
+               break;
+            default:
+               break;
+            }
+         }
+
+         /* If dest is already divergent, divergence won't change. */
+         divergence_changed |= !tex->dest.ssa.divergent &&
+            (tex->texture_non_uniform || tex->sampler_non_uniform);
+      }
+   }
+
+   nir_metadata_preserve(impl, nir_metadata_all);
+   return divergence_changed;
+}
+
 char *si_finalize_nir(struct pipe_screen *screen, void *nirptr)
 {
    struct si_screen *sscreen = (struct si_screen *)screen;
    struct nir_shader *nir = (struct nir_shader *)nirptr;
 
    nir_lower_io_passes(nir);
+   NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_shader_in | nir_var_shader_out, NULL);
+
+   if (nir->info.stage == MESA_SHADER_FRAGMENT)
+      NIR_PASS_V(nir, nir_lower_color_inputs);
 
    NIR_PASS_V(nir, ac_nir_lower_subdword_loads,
               (ac_nir_lower_subdword_options) {
@@ -404,6 +484,13 @@ char *si_finalize_nir(struct pipe_screen *screen, void *nirptr)
 
    NIR_PASS_V(nir, nir_convert_to_lcssa, true, true); /* required by divergence analysis */
    NIR_PASS_V(nir, nir_divergence_analysis); /* to find divergent loops */
+
+   /* Must be after divergence analysis. */
+   bool divergence_changed = false;
+   NIR_PASS(divergence_changed, nir, si_mark_divergent_texture_non_uniform);
+   /* Re-analysis whole shader if texture instruction divergence changed. */
+   if (divergence_changed)
+      NIR_PASS_V(nir, nir_divergence_analysis);
 
    return NULL;
 }

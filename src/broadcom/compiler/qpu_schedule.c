@@ -136,12 +136,14 @@ qpu_inst_is_tlb(const struct v3d_qpu_instr *inst)
         if (inst->type != V3D_QPU_INSTR_TYPE_ALU)
                 return false;
 
-        if (inst->alu.add.magic_write &&
+        if (inst->alu.add.op != V3D_QPU_A_NOP &&
+            inst->alu.add.magic_write &&
             (inst->alu.add.waddr == V3D_QPU_WADDR_TLB ||
              inst->alu.add.waddr == V3D_QPU_WADDR_TLBU))
                 return true;
 
-        if (inst->alu.mul.magic_write &&
+        if (inst->alu.mul.op != V3D_QPU_M_NOP &&
+            inst->alu.mul.magic_write &&
             (inst->alu.mul.waddr == V3D_QPU_WADDR_TLB ||
              inst->alu.mul.waddr == V3D_QPU_WADDR_TLBU))
                 return true;
@@ -496,6 +498,8 @@ struct choose_scoreboard {
         bool last_thrsw_emitted;
         bool fixup_ldvary;
         int ldvary_count;
+        int pending_ldtmu_count;
+        bool first_ldtmu_after_thrsw;
 };
 
 static bool
@@ -627,7 +631,7 @@ mux_read_stalls(struct choose_scoreboard *scoreboard,
 }
 
 /* We define a max schedule priority to allow negative priorities as result of
- * substracting this max when an instruction stalls. So instructions that
+ * subtracting this max when an instruction stalls. So instructions that
  * stall have lower priority than regular instructions. */
 #define MAX_SCHEDULE_PRIORITY 16
 
@@ -1194,16 +1198,39 @@ retry:
                         if (pixel_scoreboard_too_soon(c, scoreboard, inst))
                                 continue;
 
-                        /* When we succesfully pair up an ldvary we then try
+                        /* When we successfully pair up an ldvary we then try
                          * to merge it into the previous instruction if
                          * possible to improve pipelining. Don't pick up the
                          * ldvary now if the follow-up fixup would place
                          * it in the delay slots of a thrsw, which is not
                          * allowed and would prevent the fixup from being
-                         * successul.
+                         * successful.
                          */
                         if (inst->sig.ldvary &&
                             scoreboard->last_thrsw_tick + 2 >= scoreboard->tick - 1) {
+                                continue;
+                        }
+
+                        /* We can emit a new tmu lookup with a previous ldtmu
+                         * if doing this would free just enough space in the
+                         * TMU output fifo so we don't overflow, however, this
+                         * is only safe if the ldtmu cannot stall.
+                         *
+                         * A ldtmu can stall if it is not the first following a
+                         * thread switch and corresponds to the first word of a
+                         * read request.
+                         *
+                         * FIXME: For now we forbid pairing up a new lookup
+                         * with a previous ldtmu that is not the first after a
+                         * thrsw if that could overflow the TMU output fifo
+                         * regardless of whether the ldtmu is reading the first
+                         * word of a TMU result or not, since we don't track
+                         * this aspect in the compiler yet.
+                         */
+                        if (prev_inst->inst->qpu.sig.ldtmu &&
+                            !scoreboard->first_ldtmu_after_thrsw &&
+                            (scoreboard->pending_ldtmu_count +
+                             n->inst->ldtmu_count > 16 / c->threads)) {
                                 continue;
                         }
 
@@ -1295,10 +1322,31 @@ update_scoreboard_for_sfu_stall_waddr(struct choose_scoreboard *scoreboard,
 }
 
 static void
+update_scoreboard_tmu_tracking(struct choose_scoreboard *scoreboard,
+                               const struct qinst *inst)
+{
+        /* Track if the have seen any ldtmu after the last thread switch */
+        if (scoreboard->tick == scoreboard->last_thrsw_tick + 2)
+                scoreboard->first_ldtmu_after_thrsw = true;
+
+        /* Track the number of pending ldtmu instructions for outstanding
+         * TMU lookups.
+         */
+        scoreboard->pending_ldtmu_count += inst->ldtmu_count;
+        if (inst->qpu.sig.ldtmu) {
+                assert(scoreboard->pending_ldtmu_count > 0);
+                scoreboard->pending_ldtmu_count--;
+                scoreboard->first_ldtmu_after_thrsw = false;
+        }
+}
+
+static void
 update_scoreboard_for_chosen(struct choose_scoreboard *scoreboard,
-                             const struct v3d_qpu_instr *inst,
+                             const struct qinst *qinst,
                              const struct v3d_device_info *devinfo)
 {
+        const struct v3d_qpu_instr *inst = &qinst->qpu;
+
         if (inst->type == V3D_QPU_INSTR_TYPE_BRANCH)
                 return;
 
@@ -1334,6 +1382,8 @@ update_scoreboard_for_chosen(struct choose_scoreboard *scoreboard,
 
         if (inst->sig.ldvary)
                 scoreboard->last_ldvary_tick = scoreboard->tick;
+
+        update_scoreboard_tmu_tracking(scoreboard, qinst);
 }
 
 static void
@@ -1410,22 +1460,24 @@ instruction_latency(const struct v3d_device_info *devinfo,
             after_inst->type != V3D_QPU_INSTR_TYPE_ALU)
                 return latency;
 
-        if (before_inst->alu.add.magic_write) {
+        if (v3d_qpu_instr_is_sfu(before_inst))
+                return 2;
+
+        if (before_inst->alu.add.op != V3D_QPU_A_NOP &&
+            before_inst->alu.add.magic_write) {
                 latency = MAX2(latency,
                                magic_waddr_latency(devinfo,
                                                    before_inst->alu.add.waddr,
                                                    after_inst));
         }
 
-        if (before_inst->alu.mul.magic_write) {
+        if (before_inst->alu.mul.op != V3D_QPU_M_NOP &&
+            before_inst->alu.mul.magic_write) {
                 latency = MAX2(latency,
                                magic_waddr_latency(devinfo,
                                                    before_inst->alu.mul.waddr,
                                                    after_inst));
         }
-
-        if (v3d_qpu_instr_is_sfu(before_inst))
-                return 2;
 
         return latency;
 }
@@ -1495,7 +1547,7 @@ insert_scheduled_instruction(struct v3d_compile *c,
 {
         list_addtail(&inst->link, &block->instructions);
 
-        update_scoreboard_for_chosen(scoreboard, &inst->qpu, c->devinfo);
+        update_scoreboard_for_chosen(scoreboard, inst, c->devinfo);
         c->qpu_inst_count++;
         scoreboard->tick++;
 }
@@ -1540,8 +1592,10 @@ qpu_inst_valid_in_thrend_slot(struct v3d_compile *c,
                         return false;
 
                 /* No writing physical registers at the end. */
-                if (!inst->alu.add.magic_write ||
-                    !inst->alu.mul.magic_write) {
+                bool add_is_nop = inst->alu.add.op == V3D_QPU_A_NOP;
+                bool mul_is_nop = inst->alu.mul.op == V3D_QPU_M_NOP;
+                if ((!add_is_nop && !inst->alu.add.magic_write) ||
+                    (!mul_is_nop && !inst->alu.mul.magic_write)) {
                         return false;
                 }
 
@@ -1556,20 +1610,12 @@ qpu_inst_valid_in_thrend_slot(struct v3d_compile *c,
                 /* RF0-2 might be overwritten during the delay slots by
                  * fragment shader setup.
                  */
-                if (inst->raddr_a < 3 &&
-                    (inst->alu.add.a == V3D_QPU_MUX_A ||
-                     inst->alu.add.b == V3D_QPU_MUX_A ||
-                     inst->alu.mul.a == V3D_QPU_MUX_A ||
-                     inst->alu.mul.b == V3D_QPU_MUX_A)) {
+                if (inst->raddr_a < 3 && v3d_qpu_uses_mux(inst, V3D_QPU_MUX_A))
                         return false;
-                }
 
                 if (inst->raddr_b < 3 &&
                     !inst->sig.small_imm &&
-                    (inst->alu.add.a == V3D_QPU_MUX_B ||
-                     inst->alu.add.b == V3D_QPU_MUX_B ||
-                     inst->alu.mul.a == V3D_QPU_MUX_B ||
-                     inst->alu.mul.b == V3D_QPU_MUX_B)) {
+                    v3d_qpu_uses_mux(inst, V3D_QPU_MUX_B)) {
                         return false;
                 }
         }
@@ -1593,12 +1639,8 @@ qpu_inst_before_thrsw_valid_in_delay_slot(struct v3d_compile *c,
          * thread.  The simulator complains for safety, though it
          * would only occur for dead code in our case.
          */
-        if (slot > 0 &&
-            qinst->qpu.type == V3D_QPU_INSTR_TYPE_ALU &&
-            (v3d_qpu_magic_waddr_is_sfu(qinst->qpu.alu.add.waddr) ||
-             v3d_qpu_magic_waddr_is_sfu(qinst->qpu.alu.mul.waddr))) {
+        if (slot > 0 && v3d_qpu_instr_is_legacy_sfu(&qinst->qpu))
                 return false;
-        }
 
         if (slot > 0 && qinst->qpu.sig.ldvary)
                 return false;
@@ -1639,7 +1681,7 @@ qpu_inst_after_thrsw_valid_in_delay_slot(struct v3d_compile *c,
         assert(slot <= 2);
 
         /* We merge thrsw instructions back into the instruction stream
-         * manually, so any instructions scheduled after a thrsw shold be
+         * manually, so any instructions scheduled after a thrsw should be
          * in the actual delay slots and not in the same slot as the thrsw.
          */
         assert(slot >= 1);
@@ -1724,12 +1766,6 @@ valid_thrsw_sequence(struct v3d_compile *c, struct choose_scoreboard *scoreboard
                      struct qinst *qinst, int instructions_in_sequence,
                      bool is_thrend)
 {
-        /* No emitting our thrsw while the previous thrsw hasn't happened yet. */
-        if (scoreboard->last_thrsw_tick + 3 >
-            scoreboard->tick - instructions_in_sequence) {
-                return false;
-        }
-
         for (int slot = 0; slot < instructions_in_sequence; slot++) {
                 if (!qpu_inst_before_thrsw_valid_in_delay_slot(c, qinst, slot))
                         return false;
@@ -1783,13 +1819,28 @@ emit_thrsw(struct v3d_compile *c,
         /* Find how far back into previous instructions we can put the THRSW. */
         int slots_filled = 0;
         int invalid_sig_count = 0;
+        int invalid_seq_count = 0;
         bool last_thrsw_after_invalid_ok = false;
         struct qinst *merge_inst = NULL;
         vir_for_each_inst_rev(prev_inst, block) {
+                /* No emitting our thrsw while the previous thrsw hasn't
+                 * happened yet.
+                 */
+                if (scoreboard->last_thrsw_tick + 3 >
+                    scoreboard->tick - (slots_filled + 1)) {
+                        break;
+                }
+
+
                 if (!valid_thrsw_sequence(c, scoreboard,
                                           prev_inst, slots_filled + 1,
                                           is_thrend)) {
-                        break;
+                        /* Even if the current sequence isn't valid, we may
+                         * be able to get a valid sequence by trying to move the
+                         * thrsw earlier, so keep going.
+                         */
+                        invalid_seq_count++;
+                        goto cont_block;
                 }
 
                 struct v3d_qpu_sig sig = prev_inst->qpu.sig;
@@ -1816,8 +1867,10 @@ emit_thrsw(struct v3d_compile *c,
                         goto cont_block;
                 }
 
+                /* We can merge the thrsw in this instruction */
                 last_thrsw_after_invalid_ok = false;
                 invalid_sig_count = 0;
+                invalid_seq_count = 0;
                 merge_inst = prev_inst;
 
 cont_block:
@@ -1829,9 +1882,12 @@ cont_block:
          * merge the thrsw in the end, we need to adjust slots filled to match
          * the last valid merge point.
          */
-        assert(invalid_sig_count == 0 || slots_filled >= invalid_sig_count);
+        assert((invalid_sig_count == 0 && invalid_seq_count == 0) ||
+                slots_filled >= invalid_sig_count + invalid_seq_count);
         if (invalid_sig_count > 0)
                 slots_filled -= invalid_sig_count;
+        if (invalid_seq_count > 0)
+                slots_filled -= invalid_seq_count;
 
         bool needs_free = false;
         if (merge_inst) {
@@ -2074,7 +2130,7 @@ fixup_pipelined_ldvary(struct v3d_compile *c,
                        struct qblock *block,
                        struct v3d_qpu_instr *inst)
 {
-        /* We only call this if we have successfuly merged an ldvary into a
+        /* We only call this if we have successfully merged an ldvary into a
          * previous instruction.
          */
         assert(inst->type == V3D_QPU_INSTR_TYPE_ALU);
@@ -2161,7 +2217,7 @@ fixup_pipelined_ldvary(struct v3d_compile *c,
 
         /* By moving ldvary to the previous instruction we make it update
          * r5 in the current one, so nothing else in it should write r5.
-         * This should've been prevented by our depedency tracking, which
+         * This should've been prevented by our dependency tracking, which
          * would not allow ldvary to be paired up with an instruction that
          * writes r5 (since our dependency tracking doesn't know that the
          * ldvary write r5 happens in the next instruction).
@@ -2228,6 +2284,9 @@ schedule_instructions(struct v3d_compile *c,
                                         chosen->inst->uniform =
                                                 merge->inst->uniform;
                                 }
+
+                                chosen->inst->ldtmu_count +=
+                                        merge->inst->ldtmu_count;
 
                                 if (debug) {
                                         fprintf(stderr, "t=%4d: merging: ",
@@ -2478,6 +2537,7 @@ v3d_qpu_schedule_instructions(struct v3d_compile *c)
         scoreboard.last_branch_tick = -10;
         scoreboard.last_setmsf_tick = -10;
         scoreboard.last_stallable_sfu_tick = -10;
+        scoreboard.first_ldtmu_after_thrsw = true;
 
         if (debug) {
                 fprintf(stderr, "Pre-schedule instructions\n");

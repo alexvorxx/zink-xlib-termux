@@ -1,7 +1,7 @@
 use crate::api::icd::*;
-use crate::api::platform::*;
 use crate::api::util::*;
 use crate::core::device::*;
+use crate::core::platform::*;
 use crate::core::version::*;
 
 use mesa_rust_gen::*;
@@ -13,7 +13,6 @@ use std::ffi::CStr;
 use std::mem::size_of;
 use std::ptr;
 use std::sync::Arc;
-use std::sync::Once;
 
 const SPIRV_SUPPORT_STRING: &str = "SPIR-V_1.0 SPIR-V_1.1 SPIR-V_1.2 SPIR-V_1.3 SPIR-V_1.4";
 const SPIRV_SUPPORT: [cl_name_version; 5] = [
@@ -46,18 +45,23 @@ impl CLInfo<cl_device_info> for cl_device_id {
             CL_DEVICE_DEVICE_ENQUEUE_CAPABILITIES => {
                 cl_prop::<cl_device_device_enqueue_capabilities>(0)
             }
-            CL_DEVICE_DOUBLE_FP_CONFIG => {
-                cl_prop::<cl_device_fp_config>(if dev.doubles_supported() {
-                    (CL_FP_FMA
+            CL_DEVICE_DOUBLE_FP_CONFIG => cl_prop::<cl_device_fp_config>(
+                if dev.doubles_supported() {
+                    let mut fp64_config = CL_FP_FMA
                         | CL_FP_ROUND_TO_NEAREST
                         | CL_FP_ROUND_TO_ZERO
                         | CL_FP_ROUND_TO_INF
                         | CL_FP_INF_NAN
-                        | CL_FP_DENORM) as cl_device_fp_config
+                        | CL_FP_DENORM;
+                    if dev.doubles_is_softfp() {
+                        fp64_config |= CL_FP_SOFT_FLOAT;
+                    }
+                    fp64_config
                 } else {
                     0
-                })
-            }
+                }
+                .into(),
+            ),
             CL_DEVICE_ENDIAN_LITTLE => cl_prop::<bool>(dev.little_endian()),
             CL_DEVICE_ERROR_CORRECTION_SUPPORT => cl_prop::<bool>(false),
             CL_DEVICE_EXECUTION_CAPABILITIES => {
@@ -126,7 +130,9 @@ impl CLInfo<cl_device_info> for cl_device_id {
             }
             CL_DEVICE_NAME => cl_prop(dev.screen().name()),
             CL_DEVICE_NATIVE_VECTOR_WIDTH_CHAR => cl_prop::<cl_uint>(1),
-            CL_DEVICE_NATIVE_VECTOR_WIDTH_DOUBLE => cl_prop::<cl_uint>(0),
+            CL_DEVICE_NATIVE_VECTOR_WIDTH_DOUBLE => {
+                cl_prop::<cl_uint>(if dev.doubles_supported() { 1 } else { 0 })
+            }
             CL_DEVICE_NATIVE_VECTOR_WIDTH_FLOAT => cl_prop::<cl_uint>(1),
             CL_DEVICE_NATIVE_VECTOR_WIDTH_HALF => cl_prop::<cl_uint>(0),
             CL_DEVICE_NATIVE_VECTOR_WIDTH_INT => cl_prop::<cl_uint>(1),
@@ -143,7 +149,7 @@ impl CLInfo<cl_device_info> for cl_device_id {
             CL_DEVICE_PIPE_MAX_ACTIVE_RESERVATIONS => cl_prop::<cl_uint>(0),
             CL_DEVICE_PIPE_MAX_PACKET_SIZE => cl_prop::<cl_uint>(0),
             CL_DEVICE_PIPE_SUPPORT => cl_prop::<bool>(false),
-            CL_DEVICE_PLATFORM => cl_prop::<cl_platform_id>(get_platform()),
+            CL_DEVICE_PLATFORM => cl_prop::<cl_platform_id>(Platform::get().as_ptr()),
             CL_DEVICE_PREFERRED_GLOBAL_ATOMIC_ALIGNMENT => cl_prop::<cl_uint>(0),
             CL_DEVICE_PREFERRED_INTEROP_USER_SYNC => cl_prop::<bool>(true),
             CL_DEVICE_PREFERRED_LOCAL_ATOMIC_ALIGNMENT => cl_prop::<cl_uint>(0),
@@ -182,7 +188,18 @@ impl CLInfo<cl_device_info> for cl_device_id {
                 (CL_FP_ROUND_TO_NEAREST | CL_FP_INF_NAN) as cl_device_fp_config,
             ),
             CL_DEVICE_SUB_GROUP_INDEPENDENT_FORWARD_PROGRESS => cl_prop::<bool>(false),
-            CL_DEVICE_SVM_CAPABILITIES => cl_prop::<cl_device_svm_capabilities>(0),
+            CL_DEVICE_SVM_CAPABILITIES | CL_DEVICE_SVM_CAPABILITIES_ARM => {
+                cl_prop::<cl_device_svm_capabilities>(
+                    if dev.svm_supported() {
+                        CL_DEVICE_SVM_COARSE_GRAIN_BUFFER
+                            | CL_DEVICE_SVM_FINE_GRAIN_BUFFER
+                            | CL_DEVICE_SVM_FINE_GRAIN_SYSTEM
+                    } else {
+                        0
+                    }
+                    .into(),
+                )
+            }
             CL_DEVICE_TYPE => cl_prop::<cl_device_type>(dev.device_type(false)),
             CL_DEVICE_VENDOR => cl_prop(dev.screen().device_vendor()),
             CL_DEVICE_VENDOR_ID => cl_prop::<cl_uint>(dev.vendor_id()),
@@ -196,22 +213,8 @@ impl CLInfo<cl_device_info> for cl_device_id {
     }
 }
 
-// TODO replace with const new container
-static mut DEVICES: Vec<Arc<Device>> = Vec::new();
-static INIT: Once = Once::new();
-
-fn load_devices() {
-    unsafe {
-        glsl_type_singleton_init_or_ref();
-    }
-    Device::all()
-        .into_iter()
-        .for_each(|d| unsafe { DEVICES.push(d) });
-}
-
 fn devs() -> &'static Vec<Arc<Device>> {
-    INIT.call_once(load_devices);
-    unsafe { &DEVICES }
+    &Platform::get().devs
 }
 
 pub fn get_devs_for_type(device_type: cl_device_type) -> Vec<&'static Arc<Device>> {

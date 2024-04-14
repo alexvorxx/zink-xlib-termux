@@ -39,9 +39,7 @@
 #include "tgsi/tgsi_ureg.h"
 
 #include "nir.h"
-#include "nir/nir_to_tgsi.h"
 #include "nir/nir_to_tgsi_info.h"
-#include "tgsi/tgsi_from_mesa.h"
 
 void r600_init_command_buffer(struct r600_command_buffer *cb, unsigned num_dw)
 {
@@ -586,10 +584,10 @@ static void r600_set_vertex_buffers(struct pipe_context *ctx,
 	/* Set vertex buffers. */
 	if (input) {
 		for (i = 0; i < count; i++) {
-			if ((input[i].buffer.resource != vb[i].buffer.resource) ||
-			    (vb[i].stride != input[i].stride) ||
-			    (vb[i].buffer_offset != input[i].buffer_offset) ||
-			    (vb[i].is_user_buffer != input[i].is_user_buffer)) {
+			if (likely((input[i].buffer.resource != vb[i].buffer.resource) ||
+				   (vb[i].stride != input[i].stride) ||
+				   (vb[i].buffer_offset != input[i].buffer_offset) ||
+				   (vb[i].is_user_buffer != input[i].is_user_buffer))) {
 				if (input[i].buffer.resource) {
 					vb[i].stride = input[i].stride;
 					vb[i].buffer_offset = input[i].buffer_offset;
@@ -605,6 +603,14 @@ static void r600_set_vertex_buffers(struct pipe_context *ctx,
 				} else {
 					pipe_resource_reference(&vb[i].buffer.resource, NULL);
 					disable_mask |= 1 << i;
+				}
+			} else if (input[i].buffer.resource) {
+				if (take_ownership) {
+					pipe_resource_reference(&vb[i].buffer.resource, NULL);
+					vb[i].buffer.resource = input[i].buffer.resource;
+				} else {
+					pipe_resource_reference(&vb[i].buffer.resource,
+								input[i].buffer.resource);
 				}
 			}
 		}
@@ -983,23 +989,14 @@ struct r600_pipe_shader_selector *r600_create_shader_state_tokens(struct pipe_co
 								  unsigned pipe_shader_type)
 {
 	struct r600_pipe_shader_selector *sel = CALLOC_STRUCT(r600_pipe_shader_selector);
-	struct r600_screen *rscreen = (struct r600_screen *)ctx->screen;
 
 	sel->type = pipe_shader_type;
 	if (ir == PIPE_SHADER_IR_TGSI) {
 		sel->tokens = tgsi_dup_tokens((const struct tgsi_token *)prog);
 		tgsi_scan_shader(sel->tokens, &sel->info);
 	} else if (ir == PIPE_SHADER_IR_NIR){
-		nir_shader *s = (nir_shader *)prog;
-
-		if (rscreen->b.debug_flags & DBG_USE_TGSI) {
-			sel->tokens = (void *)nir_to_tgsi(s, ctx->screen);
-			ir = PIPE_SHADER_IR_TGSI;
-			tgsi_scan_shader(sel->tokens, &sel->info);
-		} else {
-			sel->nir = s;
-			nir_tgsi_scan_shader(sel->nir, &sel->info, true);
-		}
+		sel->nir = (nir_shader *)prog;
+		nir_tgsi_scan_shader(sel->nir, &sel->info, true);
 	}
 	sel->ir_type = ir;
 	return sel;
@@ -1178,6 +1175,10 @@ void r600_delete_shader_selector(struct pipe_context *ctx,
 	struct r600_pipe_shader *p = sel->current, *c;
 	while (p) {
 		c = p->next_variant;
+		if (p->gs_copy_shader) {
+			r600_pipe_shader_destroy(ctx, p->gs_copy_shader);
+			free(p->gs_copy_shader);
+		}
 		r600_pipe_shader_destroy(ctx, p);
 		free(p);
 		p = c;
@@ -1966,7 +1967,7 @@ static bool r600_update_derived_state(struct r600_context *rctx)
 	 * it will therefore overwrite the VS slots. If it now gets disabled,
 	 * the VS needs to rebind all buffer/resource/sampler slots - not only
 	 * has TES overwritten the corresponding slots, but when the VS was
-	 * operating as LS the things with correpsonding dirty bits got bound
+	 * operating as LS the things with corresponding dirty bits got bound
 	 * to LS slots and won't reflect what is dirty as VS stage even if the
 	 * TES didn't overwrite it. The story for re-enabled TES is similar.
 	 * In any case, we're not allowed to submit any TES state when
@@ -2791,7 +2792,7 @@ uint32_t r600_translate_texformat(struct pipe_screen *screen,
 	 * not divisible by 8.
 	 * Mesa conversion functions don't swap bits for those formats, and because
 	 * we transmit this over a serial bus to the GPU (PCIe), the
-	 * bit-endianess is important!!!
+	 * bit-endianness is important!!!
 	 * In case we have an "opposite" format, just use that for the swizzling
 	 * information. If we don't have such an "opposite" format, we need
 	 * to use a fixed swizzle info instead (see below)
@@ -3268,7 +3269,7 @@ uint32_t r600_colorformat_endian_swap(uint32_t colorformat, bool do_endian_swap)
 			/*
 			 * No need to do endian swaps on array formats,
 			 * as mesa<-->pipe formats conversion take into account
-			 * the endianess
+			 * the endianness
 			 */
 			return ENDIAN_NONE;
 
@@ -3283,7 +3284,7 @@ uint32_t r600_colorformat_endian_swap(uint32_t colorformat, bool do_endian_swap)
 			/*
 			 * No need to do endian swaps on array formats,
 			 * as mesa<-->pipe formats conversion take into account
-			 * the endianess
+			 * the endianness
 			 */
 			return ENDIAN_NONE;
 

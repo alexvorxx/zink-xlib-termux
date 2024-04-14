@@ -27,6 +27,8 @@
 
 #include "aco_ir.h"
 
+#include "nir.h"
+
 #include <array>
 #include <unordered_map>
 #include <vector>
@@ -88,9 +90,6 @@ struct isel_context {
    nir_unsigned_upper_bound_config ub_config;
 
    Temp arg_temps[AC_MAX_ARGS];
-
-   /* FS inputs */
-   Temp persp_centroid, linear_centroid;
 
    /* GS inputs */
    Temp gs_wave_id;

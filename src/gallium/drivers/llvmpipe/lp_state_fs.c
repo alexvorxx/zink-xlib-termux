@@ -1347,7 +1347,7 @@ generate_fs_loop(struct gallivm_state *gallivm,
    }
 
    if (key->occlusion_count) {
-      LLVMValueRef counter = lp_jit_thread_data_counter(gallivm, thread_data_type, thread_data_ptr);
+      LLVMValueRef counter = lp_jit_thread_data_vis_counter(gallivm, thread_data_type, thread_data_ptr);
       lp_build_name(counter, "counter");
 
       lp_build_occlusion_count(gallivm, type,
@@ -3268,7 +3268,7 @@ generate_fragment(struct llvmpipe_context *lp,
    if (shader->info.base.num_instructions > 1) {
       LLVMValueRef invocs, val;
       LLVMTypeRef invocs_type = LLVMInt64TypeInContext(gallivm->context);
-      invocs = lp_jit_thread_data_invocations(gallivm, variant->jit_thread_data_type, thread_data_ptr);
+      invocs = lp_jit_thread_data_ps_invocations(gallivm, variant->jit_thread_data_type, thread_data_ptr);
       val = LLVMBuildLoad2(builder, invocs_type, invocs, "");
       val = LLVMBuildAdd(builder, val,
                          LLVMConstInt(LLVMInt64TypeInContext(gallivm->context),
@@ -3466,7 +3466,9 @@ generate_fragment(struct llvmpipe_context *lp,
 
    /* Loop over color outputs / color buffers to do blending */
    for (unsigned cbuf = 0; cbuf < key->nr_cbufs; cbuf++) {
-      if (key->cbuf_format[cbuf] != PIPE_FORMAT_NONE) {
+      if (key->cbuf_format[cbuf] != PIPE_FORMAT_NONE &&
+          (key->blend.rt[cbuf].blend_enable || key->blend.logicop_enable ||
+           find_output_by_semantic(&shader->info.base, TGSI_SEMANTIC_COLOR, cbuf) != -1)) {
          LLVMValueRef color_ptr;
          LLVMValueRef stride;
          LLVMValueRef sample_stride = NULL;
@@ -3971,7 +3973,12 @@ llvmpipe_create_fs_state(struct pipe_context *pipe,
       shader->base.tokens = tgsi_dup_tokens(templ->tokens);
    } else {
       shader->base.ir.nir = templ->ir.nir;
-      nir_tgsi_scan_shader(templ->ir.nir, &shader->info.base, true);
+
+      /* lower FRAG_RESULT_COLOR -> DATA[0-7] to correctly handle unused attachments */
+      nir_shader *nir = shader->base.ir.nir;
+      NIR_PASS_V(nir, nir_lower_fragcolor, nir->info.fs.color_is_dual_source ? 1 : 8);
+
+      nir_tgsi_scan_shader(nir, &shader->info.base, true);
    }
 
    shader->draw_data = draw_create_fragment_shader(llvmpipe->draw, templ);

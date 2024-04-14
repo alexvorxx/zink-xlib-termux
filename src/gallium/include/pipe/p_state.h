@@ -318,6 +318,16 @@ pipe_shader_state_from_tgsi(struct pipe_shader_state *state,
    memset(&state->stream_output, 0, sizeof(state->stream_output));
 }
 
+static inline void
+pipe_shader_state_from_nir(struct pipe_shader_state *state,
+                           void *nir)
+{
+   state->type = PIPE_SHADER_IR_NIR;
+   state->ir.nir = nir;
+   state->tokens = NULL;
+   memset(&state->stream_output, 0, sizeof(state->stream_output));
+}
+
 
 struct pipe_stencil_state
 {
@@ -1032,6 +1042,27 @@ struct pipe_compute_state
    const void *prog; /**< Compute program to be executed. */
    unsigned static_shared_mem; /**< equal to info.shared_size, used for shaders passed as TGSI */
    unsigned req_input_mem; /**< Required size of the INPUT resource. */
+};
+
+struct pipe_compute_state_object_info
+{
+   /**
+    * Max number of threads per block supported for the given cso.
+    */
+   unsigned max_threads;
+
+   /**
+    * Which multiple should the block size be of for best performance.
+    *
+    * E.g. for 8 a block with n * 8 threads would result in optimal utilization
+    * of the hardware.
+    */
+   unsigned preferred_simd_size;
+
+   /**
+    * How much private memory does this CSO require per thread (a.k.a. NIR scratch memory).
+    */
+   unsigned private_memory;
 };
 
 /**

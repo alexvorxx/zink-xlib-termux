@@ -1,26 +1,8 @@
 /*
- * Copyright (C) 2017-2019 Alyssa Rosenzweig
- * Copyright (C) 2017-2019 Connor Abbott
- * Copyright (C) 2019 Collabora, Ltd.
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+ * Copyright 2017-2019 Alyssa Rosenzweig
+ * Copyright 2017-2019 Connor Abbott
+ * Copyright 2019 Collabora, Ltd.
+ * SPDX-License-Identifier: MIT
  */
 
 #include <ctype.h>
@@ -272,14 +254,6 @@ agxdecode_map_read_write(void)
 
 unsigned agxdecode_indent = 0;
 
-static void
-agxdecode_dump_bo(struct agx_bo *bo, const char *name)
-{
-   fprintf(agxdecode_dump_stream, "%s %s (%u)\n", name, bo->name ?: "",
-           bo->handle);
-   hexdump(agxdecode_dump_stream, bo->ptr.cpu, bo->size, false);
-}
-
 /* Abstraction for command stream parsing */
 typedef unsigned (*decode_cmd)(const uint8_t *map, uint64_t *link, bool verbose,
                                void *data);
@@ -292,7 +266,7 @@ agxdecode_stateful(uint64_t va, const char *label, decode_cmd decoder,
                    bool verbose, void *data)
 {
    struct agx_bo *alloc = agxdecode_find_mapped_gpu_mem_containing(va);
-   assert(alloc != NULL && "nonexistant object");
+   assert(alloc != NULL && "nonexistent object");
    fprintf(agxdecode_dump_stream, "%s (%" PRIx64 ", handle %u)\n", label, va,
            alloc->handle);
    fflush(agxdecode_dump_stream);
@@ -301,8 +275,6 @@ agxdecode_stateful(uint64_t va, const char *label, decode_cmd decoder,
    uint8_t *end = (uint8_t *)alloc->ptr.cpu + alloc->size;
    uint64_t link = 0;
 
-   if (verbose)
-      agxdecode_dump_bo(alloc, label);
    fflush(agxdecode_dump_stream);
 
    while (map < end) {
@@ -580,7 +552,7 @@ agxdecode_vdm(const uint8_t *map, uint64_t *link, bool verbose,
 
    switch (block_type) {
    case AGX_VDM_BLOCK_TYPE_BARRIER: {
-      agx_unpack(agxdecode_dump_stream, map, VDM_BARRIER, cmd);
+      DUMP_CL(VDM_BARRIER, map, "Barrier");
       return AGX_VDM_BARRIER_LENGTH;
    }
 
@@ -593,7 +565,7 @@ agxdecode_vdm(const uint8_t *map, uint64_t *link, bool verbose,
       if (mem)
          agxdecode_record(address, cmd.size_words * 4, verbose);
       else
-         DUMP_UNPACKED(PPP_STATE, cmd, "Non-existant record (XXX)\n");
+         DUMP_UNPACKED(PPP_STATE, cmd, "Non-existent record (XXX)\n");
 
       return AGX_PPP_STATE_LENGTH;
    }
@@ -741,8 +713,8 @@ agxdecode_cmdstream(unsigned cmdbuf_handle, unsigned map_handle, bool verbose)
    struct agx_bo *cmdbuf =
       agxdecode_find_handle(cmdbuf_handle, AGX_ALLOC_CMDBUF);
    struct agx_bo *map = agxdecode_find_handle(map_handle, AGX_ALLOC_MEMMAP);
-   assert(cmdbuf != NULL && "nonexistant command buffer");
-   assert(map != NULL && "nonexistant mapping");
+   assert(cmdbuf != NULL && "nonexistent command buffer");
+   assert(map != NULL && "nonexistent mapping");
 
    /* Before decoding anything, validate the map. Set bo->mapped fields */
    agxdecode_decode_segment_list(map->ptr.cpu);
@@ -777,7 +749,7 @@ agxdecode_dump_mappings(unsigned map_handle)
    agxdecode_dump_file_open();
 
    struct agx_bo *map = agxdecode_find_handle(map_handle, AGX_ALLOC_MEMMAP);
-   assert(map != NULL && "nonexistant mapping");
+   assert(map != NULL && "nonexistent mapping");
    agxdecode_decode_segment_list(map->ptr.cpu);
 
    for (unsigned i = 0; i < mmap_count; ++i) {
@@ -853,10 +825,11 @@ agxdecode_dump_file_open(void)
                agxdecode_dump_frame_count);
       printf("agxdecode: dump command stream to file %s\n", buffer);
       agxdecode_dump_stream = fopen(buffer, "w");
-      if (!agxdecode_dump_stream)
+      if (!agxdecode_dump_stream) {
          fprintf(stderr,
                  "agxdecode: failed to open command stream log file %s\n",
                  buffer);
+      }
    }
 }
 

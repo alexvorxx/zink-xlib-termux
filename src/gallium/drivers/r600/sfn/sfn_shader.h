@@ -27,6 +27,7 @@
 #ifndef SFN_SHADER_H
 #define SFN_SHADER_H
 
+#include "amd_family.h"
 #include "gallium/drivers/r600/r600_shader.h"
 #include "sfn_instr.h"
 #include "sfn_instr_controlflow.h"
@@ -144,7 +145,8 @@ public:
                                      const pipe_stream_output_info *so_info,
                                      r600_shader *gs_shader,
                                      r600_shader_key& key,
-                                     r600_chip_class chip_class);
+                                     r600_chip_class chip_class,
+                                     radeon_family family);
 
    bool process(nir_shader *nir);
 
@@ -191,6 +193,9 @@ public:
 
    r600_chip_class chip_class() const { return m_chip_class; }
    void set_chip_class(r600_chip_class cls) { m_chip_class = cls; }
+
+   radeon_family chip_family() const { return m_chip_family; }
+   void set_chip_family(radeon_family family) { m_chip_family = family; }
 
    void start_new_block(int nesting_depth);
 
@@ -286,6 +291,7 @@ private:
    bool allocate_arrays_from_string(std::istream& is);
 
    bool read_chipclass(std::istream& is);
+   bool read_family(std::istream& is);
 
    bool scan_shader(const nir_function *impl);
    bool scan_uniforms(nir_variable *uniform);
@@ -330,6 +336,7 @@ private:
    IOMap<ShaderOutput> m_outputs;
    IOMap<ShaderInput> m_inputs;
    r600_chip_class m_chip_class;
+   radeon_family m_chip_family{CHIP_CEDAR};
 
    int m_scratch_size;
    int m_next_block;
@@ -340,12 +347,14 @@ private:
    uint32_t m_indirect_files{0};
    std::bitset<sh_flags_count> m_flags;
    uint32_t nhwatomic_ranges{0};
-   std::vector<r600_shader_atomic> m_atomics;
+   std::vector<r600_shader_atomic, Allocator<r600_shader_atomic>> m_atomics;
 
    uint32_t m_nhwatomic{0};
    uint32_t m_atomic_base{0};
    uint32_t m_next_hwatomic_loc{0};
-   std::unordered_map<int, int> m_atomic_base_map;
+   std::unordered_map<int, int,
+                      std::hash<int>,  std::equal_to<int>,
+                      Allocator<std::pair<const int, int>>> m_atomic_base_map;
    uint32_t m_atomic_file_count{0};
    PRegister m_atomic_update{nullptr};
    PRegister m_rat_return_address{nullptr};

@@ -32,6 +32,7 @@
 #endif
 
 #include "util/disk_cache.h"
+#include "util/hex.h"
 #include "util/u_debug.h"
 #include "radv_debug.h"
 #include "radv_private.h"
@@ -53,7 +54,7 @@ typedef void *drmDevicePtr;
 #endif
 
 bool
-radv_thread_trace_enabled(void)
+radv_sqtt_enabled(void)
 {
    return radv_get_int_debug_option("RADV_THREAD_TRACE", -1) >= 0 ||
           getenv("RADV_THREAD_TRACE_TRIGGER");
@@ -64,15 +65,14 @@ radv_perf_query_supported(const struct radv_physical_device *pdev)
 {
    /* SQTT / SPM interfere with the register states for perf counters, and
     * the code has only been tested on GFX10.3 */
-   return pdev->rad_info.gfx_level == GFX10_3 && !radv_thread_trace_enabled();
+   return pdev->rad_info.gfx_level == GFX10_3 && !radv_sqtt_enabled();
 }
 
 static bool
 radv_taskmesh_enabled(const struct radv_physical_device *pdevice)
 {
-   /* TODO: implement task/mesh on GFX11 */
-   return pdevice->use_ngg && !pdevice->use_llvm && pdevice->rad_info.gfx_level == GFX10_3 &&
-          !(pdevice->instance->debug_flags & (RADV_DEBUG_NO_COMPUTE_QUEUE | RADV_DEBUG_NO_IBS)) &&
+   return pdevice->use_ngg && !pdevice->use_llvm && pdevice->rad_info.gfx_level >= GFX10_3 &&
+          !(pdevice->instance->debug_flags & RADV_DEBUG_NO_COMPUTE_QUEUE) &&
           pdevice->rad_info.has_gang_submit;
 }
 
@@ -176,12 +176,7 @@ radv_physical_device_init_queue_table(struct radv_physical_device *pdevice)
    }
 
    if (pdevice->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE) {
-      if (pdevice->rad_info.ip[AMD_IP_VCN_DEC].num_queues > 0) {
-         pdevice->vk_queue_to_radv[idx] = RADV_QUEUE_VIDEO_DEC;
-         idx++;
-      }
-
-      if (radv_has_uvd(pdevice)) {
+      if (pdevice->rad_info.ip[pdevice->vid_decode_ip].num_queues > 0) {
          pdevice->vk_queue_to_radv[idx] = RADV_QUEUE_VIDEO_DEC;
          idx++;
       }
@@ -390,20 +385,9 @@ static void
 radv_get_binning_settings(const struct radv_physical_device *pdevice,
                           struct radv_binning_settings *settings)
 {
-   if (pdevice->rad_info.has_dedicated_vram && pdevice->rad_info.max_render_backends > 4) {
-      settings->context_states_per_bin = 1;
-      settings->persistent_states_per_bin = 1;
-   } else {
-      settings->context_states_per_bin = 3;
-      /* 32 causes hangs for RAVEN. */
-      settings->persistent_states_per_bin = 8;
-   }
-
+   settings->context_states_per_bin = 1;
+   settings->persistent_states_per_bin = 1;
    settings->fpovs_per_batch = 63;
-
-   /* The context states are affected by the scissor bug. */
-   if (pdevice->rad_info.has_gfx9_scissor_bug)
-      settings->context_states_per_bin = 1;
 }
 
 static void
@@ -445,6 +429,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .KHR_maintenance2 = true,
       .KHR_maintenance3 = true,
       .KHR_maintenance4 = true,
+      .KHR_map_memory2 = true,
       .KHR_multiview = true,
       .KHR_performance_query = radv_perf_query_supported(device),
       .KHR_pipeline_executable_properties = true,
@@ -504,7 +489,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_conditional_rendering = true,
       .EXT_conservative_rasterization = device->rad_info.gfx_level >= GFX9,
       .EXT_custom_border_color = true,
-      .EXT_debug_marker = radv_thread_trace_enabled(),
+      .EXT_debug_marker = radv_sqtt_enabled(),
       .EXT_depth_clip_control = true,
       .EXT_depth_clip_enable = true,
       .EXT_depth_range_unrestricted = true,
@@ -522,7 +507,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_global_priority = true,
       .EXT_global_priority_query = true,
       .EXT_graphics_pipeline_library =
-         !device->use_llvm && !!(device->instance->perftest_flags & RADV_PERFTEST_GPL),
+         !device->use_llvm && !(device->instance->debug_flags & RADV_DEBUG_NO_GPL),
       .EXT_host_query_reset = true,
       .EXT_image_2d_view_of_3d = true,
       .EXT_image_drm_format_modifier = device->rad_info.gfx_level >= GFX9,
@@ -608,8 +593,6 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .INTEL_shader_integer_functions2 = true,
       .NV_compute_shader_derivatives = true,
       .NV_device_generated_commands = radv_NV_device_generated_commands_enabled(device),
-      .NV_mesh_shader =
-         radv_taskmesh_enabled(device) && device->instance->perftest_flags & RADV_PERFTEST_NV_MS,
       /* Undocumented extension purely for vkd3d-proton. This check is to prevent anyone else from
        * using it.
        */
@@ -1148,12 +1131,6 @@ radv_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
          features->dynamicRendering = true;
          break;
       }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV: {
-         VkPhysicalDeviceMeshShaderFeaturesNV *features =
-            (VkPhysicalDeviceMeshShaderFeaturesNV *)ext;
-         features->taskShader = features->meshShader = radv_taskmesh_enabled(pdevice);
-         break;
-      }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT: {
          VkPhysicalDeviceMeshShaderFeaturesEXT *features =
             (VkPhysicalDeviceMeshShaderFeaturesEXT *)ext;
@@ -1259,7 +1236,7 @@ radv_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
          features->extendedDynamicState3LineStippleEnable = true;
          features->extendedDynamicState3ColorBlendEnable = true;
          features->extendedDynamicState3DepthClipEnable = true;
-         features->extendedDynamicState3ConservativeRasterizationMode = true;
+         features->extendedDynamicState3ConservativeRasterizationMode = pdevice->rad_info.gfx_level >= GFX9;
          features->extendedDynamicState3DepthClipNegativeOneToOne = true;
          features->extendedDynamicState3ProvokingVertexMode = true;
          features->extendedDynamicState3DepthClampEnable = true;
@@ -1840,7 +1817,7 @@ radv_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          properties->conservativePointAndLineRasterization = false;
          properties->degenerateTrianglesRasterized = true;
          properties->degenerateLinesRasterized = false;
-         properties->fullyCoveredFragmentShaderInputVariable = false;
+         properties->fullyCoveredFragmentShaderInputVariable = true;
          properties->conservativeRasterizationPostDepthCoverage = false;
          break;
       }
@@ -1998,37 +1975,6 @@ radv_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          VkPhysicalDeviceMaintenance4Properties *properties =
             (VkPhysicalDeviceMaintenance4Properties *)ext;
          properties->maxBufferSize = RADV_MAX_MEMORY_ALLOCATION_SIZE;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_NV: {
-         VkPhysicalDeviceMeshShaderPropertiesNV *properties =
-            (VkPhysicalDeviceMeshShaderPropertiesNV *)ext;
-
-         /* Task shader limitations:
-          * Same as compute, because TS are compiled to CS.
-          */
-         properties->maxDrawMeshTasksCount = 65535;
-         properties->maxTaskTotalMemorySize = 65536;
-         properties->maxTaskWorkGroupInvocations = 1024;
-         properties->maxTaskWorkGroupSize[0] = 1024;
-         properties->maxTaskWorkGroupSize[1] = 1024;
-         properties->maxTaskWorkGroupSize[2] = 1024;
-         properties->maxTaskOutputCount = 65535;
-
-         /* Mesh shader limitations:
-          * Same as NGG, because MS are compiled to NGG.
-          */
-         properties->maxMeshMultiviewViewCount = MAX_VIEWS;
-         properties->maxMeshOutputPrimitives = 256;
-         properties->maxMeshOutputVertices = 256;
-         properties->maxMeshTotalMemorySize = 31 * 1024; /* Reserve 1K for prim indices, etc. */
-         properties->maxMeshWorkGroupInvocations = 256;
-         properties->maxMeshWorkGroupSize[0] = 256;
-         properties->maxMeshWorkGroupSize[1] = 256;
-         properties->maxMeshWorkGroupSize[2] = 256;
-         properties->meshOutputPerPrimitiveGranularity = 1;
-         properties->meshOutputPerVertexGranularity = 1;
-
          break;
       }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_MODULE_IDENTIFIER_PROPERTIES_EXT: {
@@ -2238,7 +2184,7 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
    device->ws = radv_null_winsys_create();
 #else
    if (drm_device) {
-      bool reserve_vmid = radv_thread_trace_enabled();
+      bool reserve_vmid = radv_sqtt_enabled();
 
       device->ws = radv_amdgpu_winsys_create(fd, instance->debug_flags, instance->perftest_flags,
                                              reserve_vmid);
@@ -2311,7 +2257,7 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
     * when creating the cache.
     */
    char buf[VK_UUID_SIZE * 2 + 1];
-   disk_cache_format_hex_id(buf, device->cache_uuid, VK_UUID_SIZE * 2);
+   mesa_bytes_to_hex(buf, device->cache_uuid, VK_UUID_SIZE);
    device->vk.disk_cache = disk_cache_create(device->name, buf, 0);
 #endif
 
@@ -2354,7 +2300,7 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
       if (device->instance->perftest_flags & RADV_PERFTEST_CS_WAVE_32)
          device->cs_wave_size = 32;
 
-      /* For pixel shaders, wave64 is recommanded. */
+      /* For pixel shaders, wave64 is recommended. */
       if (device->instance->perftest_flags & RADV_PERFTEST_PS_WAVE_32)
          device->ps_wave_size = 32;
 
@@ -2515,10 +2461,7 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
       num_queue_families++;
 
    if (pdevice->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE) {
-      if (pdevice->rad_info.ip[AMD_IP_VCN_DEC].num_queues > 0)
-         num_queue_families++;
-
-      if (radv_has_uvd(pdevice))
+      if (pdevice->rad_info.ip[pdevice->vid_decode_ip].num_queues > 0)
          num_queue_families++;
    }
 
@@ -2557,23 +2500,11 @@ radv_get_physical_device_queue_family_properties(struct radv_physical_device *pd
    }
 
    if (pdevice->instance->perftest_flags & RADV_PERFTEST_VIDEO_DECODE) {
-      if (pdevice->rad_info.ip[AMD_IP_VCN_DEC].num_queues > 0) {
+      if (pdevice->rad_info.ip[pdevice->vid_decode_ip].num_queues > 0) {
          if (*pCount > idx) {
             *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
                .queueFlags = VK_QUEUE_VIDEO_DECODE_BIT_KHR,
-               .queueCount = pdevice->rad_info.ip[AMD_IP_VCN_DEC].num_queues,
-               .timestampValidBits = 64,
-               .minImageTransferGranularity = (VkExtent3D){1, 1, 1},
-            };
-            idx++;
-         }
-      }
-
-      if (radv_has_uvd(pdevice)) {
-         if (*pCount > idx) {
-            *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
-               .queueFlags = VK_QUEUE_VIDEO_DECODE_BIT_KHR,
-               .queueCount = pdevice->rad_info.ip[AMD_IP_UVD].num_queues,
+               .queueCount = pdevice->rad_info.ip[pdevice->vid_decode_ip].num_queues,
                .timestampValidBits = 64,
                .minImageTransferGranularity = (VkExtent3D){1, 1, 1},
             };
@@ -2680,7 +2611,7 @@ radv_get_memory_budget_properties(VkPhysicalDevice physicalDevice,
                                        device->ws->query_value(device->ws, RADEON_GTT_USAGE);
          uint64_t total_usage = MAX2(total_internal_usage, total_system_usage);
 
-         /* Compute the total free space that can be allocated for this process accross all heaps. */
+         /* Compute the total free space that can be allocated for this process across all heaps. */
          uint64_t total_free_space = total_heap_size - MIN2(total_heap_size, total_usage);
 
          memoryBudget->heapBudget[vram_vis_heap_idx] = total_free_space + total_internal_usage;
@@ -2712,7 +2643,7 @@ radv_get_memory_budget_properties(VkPhysicalDevice physicalDevice,
 
          uint64_t total_usage = MAX2(total_internal_usage, total_system_usage);
 
-         /* Compute the total free space that can be allocated for this process accross all heaps. */
+         /* Compute the total free space that can be allocated for this process across all heaps. */
          uint64_t total_free_space = total_heap_size - MIN2(total_heap_size, total_usage);
 
          /* Compute the remaining visible VRAM size for this process. */

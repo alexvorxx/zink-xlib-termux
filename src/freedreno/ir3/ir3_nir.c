@@ -87,6 +87,8 @@ ir3_nir_should_vectorize_mem(unsigned align_mul, unsigned align_offset,
 void
 ir3_optimize_loop(struct ir3_compiler *compiler, nir_shader *s)
 {
+   MESA_TRACE_FUNC();
+
    bool progress;
    unsigned lower_flrp = (s->options->lower_flrp16 ? 16 : 0) |
                          (s->options->lower_flrp32 ? 32 : 0) |
@@ -325,6 +327,8 @@ ir3_nir_lower_array_sampler(nir_shader *shader)
 void
 ir3_finalize_nir(struct ir3_compiler *compiler, nir_shader *s)
 {
+   MESA_TRACE_FUNC();
+
    struct nir_lower_tex_options tex_options = {
       .lower_rect = 0,
       .lower_tg4_offsets = true,
@@ -349,6 +353,7 @@ ir3_finalize_nir(struct ir3_compiler *compiler, nir_shader *s)
    if (s->info.stage == MESA_SHADER_GEOMETRY)
       NIR_PASS_V(s, ir3_nir_lower_gs);
 
+   NIR_PASS_V(s, nir_lower_frexp);
    NIR_PASS_V(s, nir_lower_amul, ir3_glsl_type_size);
 
    OPT_V(s, nir_lower_regs_to_ssa);
@@ -461,6 +466,8 @@ ir3_nir_post_finalize(struct ir3_shader *shader)
    struct nir_shader *s = shader->nir;
    struct ir3_compiler *compiler = shader->compiler;
 
+   MESA_TRACE_FUNC();
+
    NIR_PASS_V(s, nir_lower_io, nir_var_shader_in | nir_var_shader_out,
               ir3_glsl_type_size, nir_lower_io_lower_64bit_to_32);
 
@@ -472,6 +479,7 @@ ir3_nir_post_finalize(struct ir3_shader *shader)
       NIR_PASS_V(s, ir3_nir_lower_load_barycentric_at_offset);
       NIR_PASS_V(s, ir3_nir_move_varying_inputs);
       NIR_PASS_V(s, nir_lower_fb_read);
+      NIR_PASS_V(s, ir3_nir_lower_layer_id);
    }
 
    if (compiler->gen >= 6 && s->info.stage == MESA_SHADER_FRAGMENT &&
@@ -630,6 +638,8 @@ lower_ucp_vs(struct ir3_shader_variant *so)
 void
 ir3_nir_lower_variant(struct ir3_shader_variant *so, nir_shader *s)
 {
+   MESA_TRACE_FUNC();
+
    if (ir3_shader_debug & IR3_DBG_DISASM) {
       mesa_logi("----------------------");
       nir_log_shaderi(s);

@@ -197,8 +197,7 @@ struct v3dv_physical_device {
    } caps;
 };
 
-VkResult v3dv_physical_device_acquire_display(struct v3dv_instance *instance,
-                                              struct v3dv_physical_device *pdevice,
+VkResult v3dv_physical_device_acquire_display(struct v3dv_physical_device *pdevice,
                                               VkIcdSurfaceBase *surface);
 
 static inline struct v3dv_bo *
@@ -917,7 +916,7 @@ struct v3dv_framebuffer {
    uint32_t layers;
 
    /* Typically, edge tiles in the framebuffer have padding depending on the
-    * underlying tiling layout. One consequnce of this is that when the
+    * underlying tiling layout. One consequence of this is that when the
     * framebuffer dimensions are not aligned to tile boundaries, tile stores
     * would still write full tiles on the edges and write to the padded area.
     * If the framebuffer is aliasing a smaller region of a larger image, then
@@ -1483,7 +1482,7 @@ struct v3dv_cmd_buffer_state {
    /* FIXME: we have just one client-side BO for the push constants,
     * independently of the stageFlags in vkCmdPushConstants, and the
     * pipelineBindPoint in vkCmdBindPipeline. We could probably do more stage
-    * tunning in the future if it makes sense.
+    * tuning in the future if it makes sense.
     */
    uint32_t push_constants_size;
    uint32_t push_constants_data[MAX_PUSH_CONSTANTS_SIZE / 4];
@@ -1566,6 +1565,14 @@ struct v3dv_cmd_buffer_state {
           */
          struct v3dv_bo *bo;
          uint32_t offset;
+         /* When the driver emits draw calls to implement other operations in
+          * the middle of a render pass (such as an attachment clear), we need
+          * to pause occlusion query recording and resume it later so that
+          * these draw calls don't register in occlussion counters. We use
+          * this to store the BO reference in which we should resume occlusion
+          * query counters after the driver is done emitting its draw calls.
+           */
+         struct v3dv_bo *paused_bo;
 
          /* This pointer is not NULL if we have an active performance query */
          struct v3dv_perf_query *perf;
@@ -1772,6 +1779,9 @@ void v3dv_cmd_buffer_begin_query(struct v3dv_cmd_buffer *cmd_buffer,
                                  struct v3dv_query_pool *pool,
                                  uint32_t query,
                                  VkQueryControlFlags flags);
+
+void v3dv_cmd_buffer_pause_occlusion_query(struct v3dv_cmd_buffer *cmd_buffer);
+void v3dv_cmd_buffer_resume_occlusion_query(struct v3dv_cmd_buffer *cmd_buffer);
 
 void v3dv_cmd_buffer_end_query(struct v3dv_cmd_buffer *cmd_buffer,
                                struct v3dv_query_pool *pool,

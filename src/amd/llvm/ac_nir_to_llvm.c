@@ -450,7 +450,7 @@ struct waterfall_context {
  * to implement the body.
  *
  * params:
- *  - ctx is the usal nir context
+ *  - ctx is the usual nir context
  *  - wctx is a temporary struct containing some loop info. Can be left uninitialized.
  *  - value is the possibly divergent value for which we built the loop
  *  - divergent is whether value is actually divergent. If false we just pass
@@ -526,6 +526,26 @@ static LLVMValueRef exit_waterfall(struct ac_nir_context *ctx, struct waterfall_
 
    ac_build_endloop(&ctx->ac, 6000);
    return ret;
+}
+
+static LLVMValueRef
+ac_build_const_int_vec(struct ac_llvm_context *ctx, LLVMTypeRef type, long long val, bool sign_extend)
+{
+   unsigned num_components = LLVMGetTypeKind(type) == LLVMVectorTypeKind ? LLVMGetVectorSize(type) : 1;
+
+   if (num_components == 1)
+      return LLVMConstInt(type, val, sign_extend);
+
+   assert(num_components == 2);
+   assert(ac_get_elem_bits(ctx, type) == 16);
+
+   LLVMTypeRef elem_type = LLVMGetElementType(type);
+
+   LLVMValueRef elems[2];
+   for (unsigned i = 0; i < 2; ++i)
+      elems[i] = LLVMConstInt(elem_type, val, sign_extend);
+
+   return LLVMConstVector(elems, 2);
 }
 
 static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
@@ -710,9 +730,9 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
       else if (ac_get_elem_bits(&ctx->ac, LLVMTypeOf(src[1])) >
                ac_get_elem_bits(&ctx->ac, LLVMTypeOf(src[0])))
          src[1] = LLVMBuildTrunc(ctx->ac.builder, src[1], LLVMTypeOf(src[0]), "");
-      LLVMTypeRef type = LLVMTypeOf(src[0]);
+      LLVMTypeRef type = LLVMTypeOf(src[1]);
       src[1] = LLVMBuildAnd(ctx->ac.builder, src[1],
-                            LLVMConstInt(type, LLVMGetIntTypeWidth(type) - 1, false), "");
+                            ac_build_const_int_vec(&ctx->ac, type, ac_get_elem_bits(&ctx->ac, type) - 1, false), "");
       switch (instr->op) {
       case nir_op_ishl:
          result = LLVMBuildShl(ctx->ac.builder, src[0], src[1], "");
@@ -1127,11 +1147,29 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
                                 ctx->ac.i32, "");
       break;
    case nir_op_pack_snorm_2x16:
-      result = emit_pack_2x16(&ctx->ac, src[0], ac_build_cvt_pknorm_i16);
+   case nir_op_pack_unorm_2x16: {
+      unsigned bit_size = instr->src[0].src.ssa->bit_size;
+      /* Only support 16 and 32bit. */
+      assert(bit_size == 16 || bit_size == 32);
+
+      LLVMValueRef data = src[0];
+      /* Work around for pre-GFX9 GPU which don't have fp16 pknorm instruction. */
+      if (bit_size == 16 && ctx->ac.gfx_level < GFX9) {
+         data = LLVMBuildFPExt(ctx->ac.builder, data, ctx->ac.v2f32, "");
+         bit_size = 32;
+      }
+
+      LLVMValueRef (*pack)(struct ac_llvm_context *ctx, LLVMValueRef args[2]);
+      if (bit_size == 32) {
+         pack = instr->op == nir_op_pack_snorm_2x16 ?
+            ac_build_cvt_pknorm_i16 : ac_build_cvt_pknorm_u16;
+      } else {
+         pack = instr->op == nir_op_pack_snorm_2x16 ?
+            ac_build_cvt_pknorm_i16_f16 : ac_build_cvt_pknorm_u16_f16;
+      }
+      result = emit_pack_2x16(&ctx->ac, data, pack);
       break;
-   case nir_op_pack_unorm_2x16:
-      result = emit_pack_2x16(&ctx->ac, src[0], ac_build_cvt_pknorm_u16);
-      break;
+   }
    case nir_op_pack_uint_2x16: {
       LLVMValueRef comp[2];
 
@@ -1583,8 +1621,10 @@ static LLVMValueRef build_tex_intrinsic(struct ac_nir_context *ctx, const nir_te
       break;
    case nir_texop_tg4:
       args->opcode = ac_image_gather4;
-      if (!args->lod && !args->bias)
+      if (!args->lod && !instr->is_gather_implicit_lod)
          args->level_zero = true;
+      /* GFX11 supports implicit LOD, but the extension is unsupported. */
+      assert(args->level_zero || ctx->ac.gfx_level < GFX11);
       break;
    case nir_texop_lod:
       args->opcode = ac_image_get_lod;
@@ -2889,8 +2929,8 @@ static LLVMValueRef visit_load_local_invocation_index(struct ac_nir_context *ctx
                            ac_unpack_param(&ctx->ac, ac_get_arg(&ctx->ac, ctx->args->tcs_wave_id), 0, 3),
                            LLVMConstInt(ctx->ac.i32, ctx->ac.wave_size, 0),
                            ac_get_thread_id(&ctx->ac));
-   } else if (ctx->args->vs_rel_patch_id.used) {
-      return ac_get_arg(&ctx->ac, ctx->args->vs_rel_patch_id);
+   } else if (ctx->abi->vs_rel_patch_id) {
+      return ctx->abi->vs_rel_patch_id;
    } else if (ctx->args->merged_wave_info.used) {
       /* Thread ID in threadgroup in merged ESGS. */
       LLVMValueRef wave_id = ac_unpack_param(&ctx->ac, ac_get_arg(&ctx->ac, ctx->args->merged_wave_info), 24, 4);
@@ -3155,7 +3195,7 @@ static LLVMValueRef lookup_interp_param(struct ac_nir_context *ctx, enum glsl_in
       if (location == INTERP_CENTER)
          return ac_get_arg(&ctx->ac, ctx->args->persp_center);
       else if (location == INTERP_CENTROID)
-         return ctx->abi->persp_centroid;
+         return ac_get_arg(&ctx->ac, ctx->args->persp_centroid);
       else if (location == INTERP_SAMPLE)
          return ac_get_arg(&ctx->ac, ctx->args->persp_sample);
       break;
@@ -3163,7 +3203,7 @@ static LLVMValueRef lookup_interp_param(struct ac_nir_context *ctx, enum glsl_in
       if (location == INTERP_CENTER)
          return ac_get_arg(&ctx->ac, ctx->args->linear_center);
       else if (location == INTERP_CENTROID)
-         return ctx->abi->linear_centroid;
+         return ac_get_arg(&ctx->ac, ctx->args->linear_centroid);
       else if (location == INTERP_SAMPLE)
          return ac_get_arg(&ctx->ac, ctx->args->linear_sample);
       break;
@@ -3324,9 +3364,6 @@ static LLVMValueRef visit_load(struct ac_nir_context *ctx, nir_intrinsic_instr *
    /* No indirect indexing is allowed after this point. */
    assert(!indir_index);
 
-   if (ctx->stage == MESA_SHADER_VERTEX && !is_output)
-      return ctx->abi->load_inputs(ctx->abi, base, component, count, 0, component_type);
-
    /* Other non-fragment cases have outputs in temporaries. */
    if (is_output && (ctx->stage == MESA_SHADER_VERTEX || ctx->stage == MESA_SHADER_TESS_EVAL)) {
       assert(is_output);
@@ -3437,7 +3474,6 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
    case nir_intrinsic_load_base_vertex:
    case nir_intrinsic_load_first_vertex:
    case nir_intrinsic_load_tess_rel_patch_id_amd:
-   case nir_intrinsic_load_ring_tess_factors_amd:
    case nir_intrinsic_load_ring_tess_offchip_amd:
    case nir_intrinsic_load_ring_esgs_amd:
    case nir_intrinsic_load_ring_attr_amd:
@@ -3529,12 +3565,6 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       break;
    case nir_intrinsic_is_helper_invocation:
       result = ac_build_is_helper_invocation(&ctx->ac);
-      break;
-   case nir_intrinsic_load_color0:
-      result = ctx->abi->color0;
-      break;
-   case nir_intrinsic_load_color1:
-      result = ctx->abi->color1;
       break;
    case nir_intrinsic_load_user_data_amd:
       assert(LLVMTypeOf(ctx->abi->user_data) == ctx->ac.v4i32);
@@ -3802,14 +3832,6 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
                                        nir_intrinsic_io_semantics(instr).high_16bits);
       break;
    }
-   case nir_intrinsic_load_point_coord_maybe_flipped: {
-      LLVMValueRef interp_param = lookup_interp_param(ctx, INTERP_MODE_NONE, INTERP_CENTER);
-      /* Load point coordinates (x, y) which are written by the hw after the interpolated inputs */
-      result = load_interpolated_input(ctx, interp_param, ctx->abi->num_interp, 2,
-                                       instr->dest.ssa.num_components, instr->dest.ssa.bit_size,
-                                       false);
-      break;
-   }
    case nir_intrinsic_emit_vertex_with_counter: {
       unsigned stream = nir_intrinsic_stream_id(instr);
       LLVMValueRef next_vertex = get_src(ctx, instr->src[0]);
@@ -4002,6 +4024,7 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
          result = ac_build_buffer_load_format(&ctx->ac, descriptor, vidx, voffset, num_components,
                                               cache_policy, reorder,
                                               instr->dest.ssa.bit_size == 16, false);
+         result = ac_to_integer(&ctx->ac, result);
       } else if (instr->intrinsic == nir_intrinsic_store_buffer_amd && uses_format) {
          assert(instr->src[0].ssa->bit_size == 16 || instr->src[0].ssa->bit_size == 32);
          ac_build_buffer_store_format(&ctx->ac, descriptor, store_data, vidx, voffset, cache_policy);
@@ -4084,14 +4107,22 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
    case nir_intrinsic_load_workgroup_num_input_primitives_amd:
       result = ac_unpack_param(&ctx->ac, ac_get_arg(&ctx->ac, ctx->args->gs_tg_info), 22, 9);
       break;
-   case nir_intrinsic_alloc_vertices_and_primitives_amd:
-      /* The caller should only call this conditionally for wave 0, so pass NULL to disable
-       * the wave 0 check inside this function.
+   case nir_intrinsic_alloc_vertices_and_primitives_amd: {
+      /* The caller should only call this conditionally for wave 0.
+       *
+       * Send GS Alloc Req message from the first wave of the group to SPI.
+       * Message payload is:
+       * - bits 0..10: vertices in group
+       * - bits 12..22: primitives in group
        */
-      ac_build_sendmsg_gs_alloc_req(&ctx->ac, NULL,
-                                    get_src(ctx, instr->src[0]),
-                                    get_src(ctx, instr->src[1]));
+      LLVMValueRef vtx_cnt = get_src(ctx, instr->src[0]);
+      LLVMValueRef prim_cnt = get_src(ctx, instr->src[1]);
+      LLVMValueRef msg = LLVMBuildShl(ctx->ac.builder, prim_cnt,
+                                      LLVMConstInt(ctx->ac.i32, 12, false), "");
+      msg = LLVMBuildOr(ctx->ac.builder, msg, vtx_cnt, "");
+      ac_build_sendmsg(&ctx->ac, AC_SENDMSG_GS_ALLOC_REQ, msg);
       break;
+   }
    case nir_intrinsic_overwrite_vs_arguments_amd:
       ctx->abi->vertex_id_replaced = get_src(ctx, instr->src[0]);
       ctx->abi->instance_id_replaced = get_src(ctx, instr->src[1]);
@@ -4173,15 +4204,6 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       LLVMSetMetadata(addr, ctx->ac.uniform_md_kind, ctx->ac.empty_md);
       result = LLVMBuildLoad2(ctx->ac.builder, result_type, addr, "");
       LLVMSetMetadata(result, ctx->ac.invariant_load_md_kind, ctx->ac.empty_md);
-      break;
-   }
-   case nir_intrinsic_load_smem_buffer_amd: {
-      LLVMValueRef descriptor = get_src(ctx, instr->src[0]);
-      LLVMValueRef offset = get_src(ctx, instr->src[1]);
-      unsigned num_components = instr->dest.ssa.num_components;
-
-      result = ac_build_buffer_load(&ctx->ac, descriptor, num_components, NULL, offset, NULL,
-                                    ctx->ac.i32, 0, true, true);
       break;
    }
    case nir_intrinsic_ordered_xfb_counter_add_amd: {
@@ -4380,8 +4402,6 @@ static void tex_fetch_ptrs(struct ac_nir_context *ctx, nir_tex_instr *instr,
                            struct waterfall_context *wctx, LLVMValueRef *res_ptr,
                            LLVMValueRef *samp_ptr)
 {
-   bool texture_handle_divergent = false;
-   bool sampler_handle_divergent = false;
    LLVMValueRef texture_dynamic_handle = NULL;
    LLVMValueRef sampler_dynamic_handle = NULL;
    int plane = -1;
@@ -4399,14 +4419,10 @@ static void tex_fetch_ptrs(struct ac_nir_context *ctx, nir_tex_instr *instr,
             else
                *samp_ptr = val;
          } else {
-            bool divergent = instr->src[i].src.ssa->divergent;
-            if (instr->src[i].src_type == nir_tex_src_texture_handle) {
+            if (instr->src[i].src_type == nir_tex_src_texture_handle)
                texture_dynamic_handle = val;
-               texture_handle_divergent = divergent;
-            } else {
+            else
                sampler_dynamic_handle = val;
-               sampler_handle_divergent = divergent;
-            }
          }
          break;
       }
@@ -4436,23 +4452,11 @@ static void tex_fetch_ptrs(struct ac_nir_context *ctx, nir_tex_instr *instr,
       main_descriptor = AC_DESC_FMASK;
    }
 
-   /* instr->sampler_non_uniform and texture_non_uniform are always false in GLSL,
-    * but this can lead to unexpected behavior if texture/sampler index come from
-    * a vertex attribute.
-    * For instance, 2 consecutive draws using 2 different index values,
-    * could be squashed together by the hw - producing a single draw with
-    * non-dynamically uniform index.
-    * To avoid this, detect divergent indexing, and use enter_waterfall.
-    * See https://gitlab.freedesktop.org/mesa/mesa/-/issues/2253.
-    */
-
    /* descriptor handles given through nir_tex_src_{texture,sampler}_handle */
-   if (instr->texture_non_uniform ||
-       (ctx->abi->use_waterfall_for_divergent_tex_samplers && texture_handle_divergent))
+   if (instr->texture_non_uniform)
       texture_dynamic_handle = enter_waterfall(ctx, &wctx[0], texture_dynamic_handle, true);
 
-   if (instr->sampler_non_uniform ||
-       (ctx->abi->use_waterfall_for_divergent_tex_samplers && sampler_handle_divergent))
+   if (instr->sampler_non_uniform)
       sampler_dynamic_handle = enter_waterfall(ctx, &wctx[1], sampler_dynamic_handle, true);
 
    if (texture_dynamic_handle)
@@ -4967,23 +4971,6 @@ static bool visit_cf_list(struct ac_nir_context *ctx, struct exec_list *list)
    return true;
 }
 
-static void ac_handle_shader_output_decl(struct ac_llvm_context *ctx, struct ac_shader_abi *abi,
-                                         struct nir_shader *nir, struct nir_variable *variable,
-                                         gl_shader_stage stage)
-{
-   unsigned output_loc = variable->data.driver_location;
-   unsigned attrib_count = glsl_count_attribute_slots(variable->type, false);
-   bool is_16bit = glsl_type_is_16bit(glsl_without_array(variable->type));
-   LLVMTypeRef type = is_16bit ? ctx->f16 : ctx->f32;
-   for (unsigned i = 0; i < attrib_count; ++i) {
-      for (unsigned chan = 0; chan < 4; chan++) {
-         int idx = ac_llvm_reg_index_soa(output_loc + i, chan);
-         abi->outputs[idx] = ac_build_alloca_undef(ctx, type, "");
-         abi->is_16bit[idx] = is_16bit;
-      }
-   }
-}
-
 static void setup_scratch(struct ac_nir_context *ctx, struct nir_shader *shader)
 {
    if (shader->scratch_size == 0)
@@ -5074,17 +5061,6 @@ bool ac_nir_translate(struct ac_llvm_context *ac, struct ac_shader_abi *abi,
 
    ctx.main_function = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ctx.ac.builder));
 
-   /* TODO: remove this after RADV switches to lowered IO.
-    *
-    * Only fragment shader still uses store output for RADV.
-    */
-   if (!nir->info.io_lowered && ctx.stage == MESA_SHADER_FRAGMENT) {
-      nir_foreach_shader_out_variable(variable, nir)
-      {
-         ac_handle_shader_output_decl(&ctx.ac, ctx.abi, nir, variable, ctx.stage);
-      }
-   }
-
    ctx.defs = _mesa_hash_table_create(NULL, _mesa_hash_pointer, _mesa_key_pointer_equal);
    ctx.phis = _mesa_hash_table_create(NULL, _mesa_hash_pointer, _mesa_key_pointer_equal);
 
@@ -5125,4 +5101,24 @@ bool ac_nir_translate(struct ac_llvm_context *ac, struct ac_shader_abi *abi,
       ralloc_free(ctx.verified_interp);
 
    return true;
+}
+
+/* Fixup the HW not emitting the TCS regs if there are no HS threads. */
+void ac_fixup_ls_hs_input_vgprs(struct ac_llvm_context *ac, struct ac_shader_abi *abi,
+                                const struct ac_shader_args *args)
+{
+   LLVMValueRef count = ac_unpack_param(ac, ac_get_arg(ac, args->merged_wave_info), 8, 8);
+   LLVMValueRef hs_empty = LLVMBuildICmp(ac->builder, LLVMIntEQ, count, ac->i32_0, "");
+
+   abi->instance_id =
+      LLVMBuildSelect(ac->builder, hs_empty, ac_get_arg(ac, args->vertex_id),
+                      abi->instance_id, "");
+
+   abi->vs_rel_patch_id =
+      LLVMBuildSelect(ac->builder, hs_empty, ac_get_arg(ac, args->tcs_rel_ids),
+                      abi->vs_rel_patch_id, "");
+
+   abi->vertex_id =
+      LLVMBuildSelect(ac->builder, hs_empty, ac_get_arg(ac, args->tcs_patch_id),
+                      abi->vertex_id, "");
 }

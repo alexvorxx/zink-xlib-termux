@@ -201,7 +201,7 @@ Overrides
 In many cases, a bitset is not convenient for describing the expected
 disasm syntax, and/or interpretation of some range of bits differs based
 on some other field or combination of fields.  These *could* be modeled
-as different derived bitsets, at the expense of a combinatorical explosion
+as different derived bitsets, at the expense of a combinatorial explosion
 of the size of the bitset inheritance tree.  For example, *every* cat2
 (and cat3) instruction has both a ``(nopN)`` interpretation in addition to
 the ``(rptN`)`` interpretation.
@@ -209,7 +209,7 @@ the ``(rptN`)`` interpretation.
 An ``<override>`` in a bitset allows to redefine the display string, and/or
 field definitions from the default case.  If the override's expr(ession)
 evaluates to non-zero, ``<display>``, ``<field>``, and ``<derived>``
-elements take precedence over what is defined in the toplevel of the
+elements take precedence over what is defined in the top-level of the
 bitset (i.e. the default case).
 
 Expressions

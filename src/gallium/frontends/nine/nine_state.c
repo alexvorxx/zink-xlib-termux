@@ -999,7 +999,7 @@ update_textures_and_samplers(struct NineDevice9 *device)
     commit_samplers = FALSE;
     const uint16_t ps_mask = sampler_mask | context->enabled_samplers_mask_ps;
     context->bound_samplers_mask_ps = ps_mask;
-    num_textures = util_last_bit(ps_mask) + 1;
+    num_textures = util_last_bit(ps_mask);
     /* iterate over the enabled samplers */
     u_foreach_bit(i, context->enabled_samplers_mask_ps) {
         const unsigned s = NINE_SAMPLER_PS(i);
@@ -1046,7 +1046,7 @@ update_textures_and_samplers(struct NineDevice9 *device)
     sampler_mask = context->programmable_vs ? context->vs->sampler_mask : 0;
     const uint16_t vs_mask = sampler_mask | context->enabled_samplers_mask_vs;
     context->bound_samplers_mask_vs = vs_mask;
-    num_textures = util_last_bit(vs_mask) + 1;
+    num_textures = util_last_bit(vs_mask);
     u_foreach_bit(i, context->enabled_samplers_mask_vs) {
         const unsigned s = NINE_SAMPLER_VS(i);
         int sRGB = context->samp[s][D3DSAMP_SRGBTEXTURE] ? 1 : 0;
@@ -1905,6 +1905,17 @@ CSMT_ITEM_NO_WAIT(nine_context_set_transform,
     D3DMATRIX *M = nine_state_access_transform(&context->ff, State, TRUE);
 
     *M = *pMatrix;
+    if (State == D3DTS_PROJECTION) {
+        BOOL prev_zfog = context->zfog;
+        /* Pixel fog (with WFOG advertised): source is either Z or W.
+         * W is the source if the projection matrix is not orthogonal.
+         * Tests on Win 10 seem to indicate _34
+         * and _33 are checked against 0, 1. */
+        context->zfog = (M->_34 == 0.0f &&
+                         M->_44 == 1.0f);
+        if (context->zfog != prev_zfog)
+            context->changed.group |= NINE_STATE_PS_PARAMS_MISC;
+    }
     context->ff.changed.transform[State / 32] |= 1 << (State % 32);
     context->changed.group |= NINE_STATE_FF;
 }
@@ -2896,6 +2907,7 @@ nine_state_set_defaults(struct NineDevice9 *device, const D3DCAPS9 *caps,
     memset(context->ps_const_i, 0, sizeof(context->ps_const_i));
     memset(state->ps_const_b, 0, sizeof(state->ps_const_b));
     memset(context->ps_const_b, 0, sizeof(context->ps_const_b));
+    context->zfog = false; /* Guess from wine tests: both true or false are ok */
 
     /* Cap dependent initial state:
      */

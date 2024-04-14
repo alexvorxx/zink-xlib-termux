@@ -800,6 +800,14 @@ format_get_component_bits(VkFormat format, int comp)
 }
 
 static bool
+rgb_component_bits_are_equal(VkFormat format, const xcb_visualtype_t* type)
+{
+   return format_get_component_bits(format, 0) == util_bitcount(type->red_mask) &&
+          format_get_component_bits(format, 1) == util_bitcount(type->green_mask) &&
+          format_get_component_bits(format, 2) == util_bitcount(type->blue_mask);
+}
+
+static bool
 get_sorted_vk_formats(VkIcdSurfaceBase *surface, struct wsi_device *wsi_device,
                       VkFormat *sorted_formats, unsigned *count)
 {
@@ -814,19 +822,17 @@ get_sorted_vk_formats(VkIcdSurfaceBase *surface, struct wsi_device *wsi_device,
    /* use the root window's visual to set the default */
    *count = 0;
    for (unsigned i = 0; i < ARRAY_SIZE(formats); i++) {
-      if (format_get_component_bits(formats[i], 0) == util_bitcount(rootvis->red_mask) &&
-          format_get_component_bits(formats[i], 1) == util_bitcount(rootvis->green_mask) &&
-          format_get_component_bits(formats[i], 2) == util_bitcount(rootvis->blue_mask))
+      if (rgb_component_bits_are_equal(formats[i], rootvis))
          sorted_formats[(*count)++] = formats[i];
    }
 
    for (unsigned i = 0; i < ARRAY_SIZE(formats); i++) {
-      if (formats[i] == sorted_formats[0])
-         continue;
-      if (format_get_component_bits(formats[i], 0) == util_bitcount(visual->red_mask) &&
-          format_get_component_bits(formats[i], 1) == util_bitcount(visual->green_mask) &&
-          format_get_component_bits(formats[i], 2) == util_bitcount(visual->blue_mask))
+      for (unsigned j = 0; j < *count; j++)
+         if (formats[i] == sorted_formats[j])
+            goto next_format;
+      if (rgb_component_bits_are_equal(formats[i], visual))
          sorted_formats[(*count)++] = formats[i];
+next_format:;
    }
 
    if (wsi_device->force_bgra8_unorm_first) {
@@ -1002,6 +1008,7 @@ struct x11_image {
    int                                       shmid;
    uint8_t *                                 shmaddr;
    uint64_t                                  present_id;
+   uint64_t                                  signal_present_id;
 };
 
 struct x11_swapchain {
@@ -1073,8 +1080,8 @@ static void x11_present_complete(struct x11_swapchain *swapchain,
 {
    if (image->present_id) {
       pthread_mutex_lock(&swapchain->present_progress_mutex);
-      if (image->present_id > swapchain->present_id) {
-         swapchain->present_id = image->present_id;
+      if (image->signal_present_id > swapchain->present_id) {
+         swapchain->present_id = image->signal_present_id;
          pthread_cond_broadcast(&swapchain->present_progress_cond);
       }
       pthread_mutex_unlock(&swapchain->present_progress_mutex);
@@ -1098,6 +1105,11 @@ static void x11_notify_pending_present(struct x11_swapchain *swapchain,
       pthread_cond_broadcast(&swapchain->present_progress_cond);
       pthread_mutex_unlock(&swapchain->present_progress_mutex);
    }
+
+   /* It is possible that an IDLE is observed before PRESENT_COMPLETE when
+    * not flipping. In this case, reading image->present_id might be a race
+    * in the FIFO management thread. */
+   image->signal_present_id = image->present_id;
 }
 
 static void x11_swapchain_notify_error(struct x11_swapchain *swapchain, VkResult result)

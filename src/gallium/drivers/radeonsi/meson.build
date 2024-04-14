@@ -47,6 +47,7 @@ files_libradeonsi = files(
   'si_query.h',
   'si_nir_lower_abi.c',
   'si_nir_lower_resource.c',
+  'si_nir_lower_vs_inputs.c',
   'si_nir_optim.c',
   'si_sdma_copy_image.c',
   'si_shader.c',
@@ -97,6 +98,7 @@ files_libradeonsi = files(
   'radeon_vcn_enc_2_0.c',
   'radeon_vcn_enc_3_0.c',
   'radeon_vcn_enc_4_0.c',
+  'radeon_vcn_enc_av1_default_cdf.h',
   'radeon_video.c',
   'radeon_video.h',
 )

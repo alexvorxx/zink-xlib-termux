@@ -255,101 +255,107 @@ use_hw_binning(struct fd_batch *batch)
 static void
 patch_fb_read_gmem(struct fd_batch *batch)
 {
+   struct fd_screen *screen = batch->ctx->screen;
+   const struct fd_gmem_stateobj *gmem = batch->gmem_state;
+   struct pipe_framebuffer_state *pfb = &batch->framebuffer;
+
    unsigned num_patches = fd_patch_num_elements(&batch->fb_read_patches);
    if (!num_patches)
       return;
 
-   struct fd_screen *screen = batch->ctx->screen;
-   const struct fd_gmem_stateobj *gmem = batch->gmem_state;
-   struct pipe_framebuffer_state *pfb = &batch->framebuffer;
-   struct pipe_surface *psurf = pfb->cbufs[0];
-   struct pipe_resource *prsc = psurf->texture;
-   struct fd_resource *rsc = fd_resource(prsc);
-   enum pipe_format format = psurf->format;
+   for (unsigned i = 0; i < num_patches; i++) {
+     struct fd_cs_patch *patch =
+        fd_patch_element(&batch->fb_read_patches, i);
+      int buf = patch->val;
+      struct pipe_surface *psurf = pfb->cbufs[buf];
+      struct pipe_resource *prsc = psurf->texture;
+      struct fd_resource *rsc = fd_resource(prsc);
+      enum pipe_format format = psurf->format;
 
-   uint8_t swiz[4];
-   fdl6_format_swiz(psurf->format, false, swiz);
+      uint8_t swiz[4];
+      fdl6_format_swiz(psurf->format, false, swiz);
 
-   /* always TILE6_2 mode in GMEM, which also means no swap: */
-   uint32_t descriptor[FDL6_TEX_CONST_DWORDS] = {
-         A6XX_TEX_CONST_0_FMT(fd6_texture_format(
-               format, (enum a6xx_tile_mode)rsc->layout.tile_mode)) |
-         A6XX_TEX_CONST_0_SAMPLES(fd_msaa_samples(prsc->nr_samples)) |
-         A6XX_TEX_CONST_0_SWAP(WZYX) |
-         A6XX_TEX_CONST_0_TILE_MODE(TILE6_2) |
-         COND(util_format_is_srgb(format), A6XX_TEX_CONST_0_SRGB) |
-         A6XX_TEX_CONST_0_SWIZ_X(fdl6_swiz(swiz[0])) |
-         A6XX_TEX_CONST_0_SWIZ_Y(fdl6_swiz(swiz[1])) |
-         A6XX_TEX_CONST_0_SWIZ_Z(fdl6_swiz(swiz[2])) |
-         A6XX_TEX_CONST_0_SWIZ_W(fdl6_swiz(swiz[3])),
+      uint64_t base = screen->gmem_base + gmem->cbuf_base[buf];
+      /* always TILE6_2 mode in GMEM, which also means no swap: */
+      uint32_t descriptor[FDL6_TEX_CONST_DWORDS] = {
+            A6XX_TEX_CONST_0_FMT(fd6_texture_format(
+                  format, (enum a6xx_tile_mode)rsc->layout.tile_mode)) |
+            A6XX_TEX_CONST_0_SAMPLES(fd_msaa_samples(prsc->nr_samples)) |
+            A6XX_TEX_CONST_0_SWAP(WZYX) |
+            A6XX_TEX_CONST_0_TILE_MODE(TILE6_2) |
+            COND(util_format_is_srgb(format), A6XX_TEX_CONST_0_SRGB) |
+            A6XX_TEX_CONST_0_SWIZ_X(fdl6_swiz(swiz[0])) |
+            A6XX_TEX_CONST_0_SWIZ_Y(fdl6_swiz(swiz[1])) |
+            A6XX_TEX_CONST_0_SWIZ_Z(fdl6_swiz(swiz[2])) |
+            A6XX_TEX_CONST_0_SWIZ_W(fdl6_swiz(swiz[3])),
 
          A6XX_TEX_CONST_1_WIDTH(pfb->width) |
-         A6XX_TEX_CONST_1_HEIGHT(pfb->height),
+            A6XX_TEX_CONST_1_HEIGHT(pfb->height),
 
-         A6XX_TEX_CONST_2_PITCH(gmem->bin_w * gmem->cbuf_cpp[0]) |
-         A6XX_TEX_CONST_2_TYPE(A6XX_TEX_2D),
+         A6XX_TEX_CONST_2_PITCH(gmem->bin_w * gmem->cbuf_cpp[buf]) |
+            A6XX_TEX_CONST_2_TYPE(A6XX_TEX_2D),
 
          A6XX_TEX_CONST_3_ARRAY_PITCH(rsc->layout.layer_size),
-         A6XX_TEX_CONST_4_BASE_LO(screen->gmem_base),
+         A6XX_TEX_CONST_4_BASE_LO(base),
 
-         A6XX_TEX_CONST_5_BASE_HI(screen->gmem_base >> 32) |
-         A6XX_TEX_CONST_5_DEPTH(1)
-   };
+         A6XX_TEX_CONST_5_BASE_HI(base >> 32) |
+            A6XX_TEX_CONST_5_DEPTH(prsc->array_size)
+      };
 
-   for (unsigned i = 0; i < num_patches; i++) {
-      struct fd_cs_patch *patch = fd_patch_element(&batch->fb_read_patches, i);
       memcpy(patch->cs, descriptor, FDL6_TEX_CONST_DWORDS * 4);
    }
+
    util_dynarray_clear(&batch->fb_read_patches);
 }
 
 static void
 patch_fb_read_sysmem(struct fd_batch *batch)
 {
-   unsigned num_patches = fd_patch_num_elements(&batch->fb_read_patches);
+   struct pipe_framebuffer_state *pfb = &batch->framebuffer;
+
+   unsigned num_patches =
+      fd_patch_num_elements(&batch->fb_read_patches);
    if (!num_patches)
       return;
-
-   struct pipe_framebuffer_state *pfb = &batch->framebuffer;
-   struct pipe_surface *psurf = pfb->cbufs[0];
-   if (!psurf)
-      return;
-
-   struct fd_resource *rsc = fd_resource(psurf->texture);
-
-   uint32_t block_width, block_height;
-   fdl6_get_ubwc_blockwidth(&rsc->layout, &block_width, &block_height);
-
-   struct fdl_view_args args = {
-      .iova = fd_bo_get_iova(rsc->bo),
-
-      .base_miplevel = psurf->u.tex.level,
-      .level_count = 1,
-
-      .base_array_layer = psurf->u.tex.first_layer,
-      .layer_count = 1,
-
-      .swiz = {PIPE_SWIZZLE_X, PIPE_SWIZZLE_Y, PIPE_SWIZZLE_Z, PIPE_SWIZZLE_W},
-      .format = psurf->format,
-
-      .type = FDL_VIEW_TYPE_2D,
-      .chroma_offsets = {FDL_CHROMA_LOCATION_COSITED_EVEN,
-                         FDL_CHROMA_LOCATION_COSITED_EVEN},
-   };
-   const struct fdl_layout *layouts[3] = {&rsc->layout, NULL, NULL};
-   struct fdl6_view view;
-   fdl6_view_init(&view, layouts, &args,
-                  batch->ctx->screen->info->a6xx.has_z24uint_s8uint);
-
    for (unsigned i = 0; i < num_patches; i++) {
-      struct fd_cs_patch *patch = fd_patch_element(&batch->fb_read_patches, i);
+     struct fd_cs_patch *patch =
+        fd_patch_element(&batch->fb_read_patches, i);
+      int buf = patch->val;
 
-      /* This is cheating a bit, since we can't use OUT_RELOC() here.. but
-       * the render target will already have a reloc emitted for RB_MRT state,
-       * so we can get away with manually patching in the address here:
-       */
+      struct pipe_surface *psurf = pfb->cbufs[buf];
+      if (!psurf)
+         return;
+
+      struct pipe_resource *prsc = psurf->texture;
+      struct fd_resource *rsc = fd_resource(prsc);
+
+      uint32_t block_width, block_height;
+      fdl6_get_ubwc_blockwidth(&rsc->layout, &block_width, &block_height);
+
+      struct fdl_view_args args = {
+         .iova = fd_bo_get_iova(rsc->bo),
+
+         .base_miplevel = psurf->u.tex.level,
+         .level_count = 1,
+
+         .base_array_layer = psurf->u.tex.first_layer,
+         .layer_count = psurf->u.tex.last_layer - psurf->u.tex.first_layer + 1,
+
+         .swiz = {PIPE_SWIZZLE_X, PIPE_SWIZZLE_Y, PIPE_SWIZZLE_Z,
+                  PIPE_SWIZZLE_W},
+         .format = psurf->format,
+
+         .type = FDL_VIEW_TYPE_2D,
+         .chroma_offsets = {FDL_CHROMA_LOCATION_COSITED_EVEN,
+                            FDL_CHROMA_LOCATION_COSITED_EVEN},
+      };
+      const struct fdl_layout *layouts[3] = {&rsc->layout, NULL, NULL};
+      struct fdl6_view view;
+      fdl6_view_init(&view, layouts, &args,
+                     batch->ctx->screen->info->a6xx.has_z24uint_s8uint);
       memcpy(patch->cs, view.descriptor, FDL6_TEX_CONST_DWORDS * 4);
    }
+
    util_dynarray_clear(&batch->fb_read_patches);
 }
 
@@ -768,10 +774,7 @@ emit_binning_pass(struct fd_batch *batch) assert_dt
 
    OUT_WFI5(ring);
 
-   OUT_REG(ring,
-           A6XX_RB_CCU_CNTL(.color_offset = screen->ccu_offset_gmem,
-                            .gmem = true,
-                            .concurrent_resolve = screen->info->a6xx.concurrent_resolve));
+   fd6_emit_ccu_cntl(ring, screen, true);
 }
 
 static void
@@ -836,10 +839,7 @@ fd6_emit_tile_init(struct fd_batch *batch) assert_dt
    OUT_RING(ring, 0x1);
 
    fd_wfi(batch, ring);
-   OUT_REG(ring,
-           A6XX_RB_CCU_CNTL(.color_offset = screen->ccu_offset_gmem,
-                            .gmem = true,
-                            .concurrent_resolve = screen->info->a6xx.concurrent_resolve));
+   fd6_emit_ccu_cntl(ring, screen, true);
 
    emit_zs(ring, pfb->zsbuf, batch->gmem_state);
    emit_mrt(ring, pfb, batch->gmem_state);
@@ -1285,7 +1285,7 @@ fd6_emit_tile_renderprep(struct fd_batch *batch, const struct fd_tile *tile)
    if (!batch->tile_setup)
       return;
 
-   trace_start_clear_restore(&batch->trace, batch->gmem, batch->fast_cleared);
+   trace_start_clear_restore(&batch->trace, batch->gmem, batch->fast_cleared, batch->restore);
    if (batch->fast_cleared || !use_hw_binning(batch)) {
       fd6_emit_ib(batch->gmem, batch->tile_setup);
    } else {
@@ -1483,7 +1483,7 @@ fd6_emit_tile_gmem2mem(struct fd_batch *batch, const struct fd_tile *tile)
    OUT_RING(ring, A6XX_CP_SET_MARKER_0_MODE(RM6_RESOLVE));
    emit_marker6(ring, 7);
 
-   trace_start_resolve(&batch->trace, batch->gmem);
+   trace_start_resolve(&batch->trace, batch->gmem, batch->resolve);
    if (batch->fast_cleared || !use_hw_binning(batch)) {
       fd6_emit_ib(batch->gmem, batch->tile_fini);
    } else {
@@ -1525,7 +1525,7 @@ emit_sysmem_clears(struct fd_batch *batch, struct fd_ringbuffer *ring) assert_dt
    struct pipe_box box2d;
    u_box_2d(0, 0, pfb->width, pfb->height, &box2d);
 
-   trace_start_clear_restore(&batch->trace, ring, buffers);
+   trace_start_clear_restore(&batch->trace, ring, buffers, 0);
 
    if (buffers & PIPE_CLEAR_COLOR) {
       for (int i = 0; i < pfb->nr_cbufs; i++) {
@@ -1625,7 +1625,7 @@ fd6_emit_sysmem_prep(struct fd_batch *batch) assert_dt
    fd6_cache_inv(batch, ring);
 
    fd_wfi(batch, ring);
-   OUT_REG(ring, A6XX_RB_CCU_CNTL(.color_offset = screen->ccu_offset_bypass));
+   fd6_emit_ccu_cntl(ring, screen, false);
 
    /* enable stream-out, with sysmem there is only one pass: */
    OUT_REG(ring, A6XX_VPC_SO_DISABLE(false));

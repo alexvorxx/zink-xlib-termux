@@ -57,15 +57,18 @@ pvr_files = files(
   'pvr_pass.c',
   'pvr_pipeline.c',
   'pvr_pipeline_cache.c',
+  'pvr_transfer_frag_store.c',
   'pvr_query.c',
   'pvr_query_compute.c',
   'pvr_queue.c',
+  'pvr_robustness.c',
   'pvr_shader.c',
   'pvr_spm.c',
   'pvr_tex_state.c',
   'pvr_wsi.c',
 
   'usc/pvr_uscgen.c',
+  'usc/pvr_uscgen_tq.c',
 )
 
 pvr_includes = [

@@ -30,10 +30,13 @@
 #include "compiler/nir/nir.h"
 #include "util/disk_cache.h"
 #include "util/log.h"
+#include "util/perf/cpu_trace.h"
 
 #include "freedreno_dev_info.h"
 
 #include "ir3.h"
+
+BEGINC;
 
 struct ir3_ra_reg_set;
 struct ir3_shader;
@@ -327,5 +330,7 @@ ir3_debug_print(struct ir3 *ir, const char *when)
       ir3_print(ir);
    }
 }
+
+ENDC;
 
 #endif /* IR3_COMPILER_H_ */

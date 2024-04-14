@@ -7,6 +7,7 @@
 #include "util/format/u_format.h"
 #include "util/format/u_format_s3tc.h"
 #include "util/u_string.h"
+#include "util/hex.h"
 
 #include "util/os_mman.h"
 #include "util/os_time.h"
@@ -167,7 +168,7 @@ nouveau_disk_cache_create(struct nouveau_screen *screen)
       return;
 
    _mesa_sha1_final(&ctx, sha1);
-   disk_cache_format_hex_id(cache_id, sha1, 20 * 2);
+   mesa_bytes_to_hex(cache_id, sha1, 20);
 
    if (screen->prefer_nir)
       driver_flags |= NOUVEAU_SHADER_CACHE_FLAGS_IR_NIR;
@@ -259,6 +260,14 @@ nouveau_check_for_uma(int chipset, struct nouveau_object *obj)
    return (info.platform == NV_DEVICE_INFO_V0_IGP) || (info.platform == NV_DEVICE_INFO_V0_SOC);
 }
 
+static int
+nouveau_screen_get_fd(struct pipe_screen *pscreen)
+{
+   const struct nouveau_screen *screen = nouveau_screen(pscreen);
+
+   return screen->drm->fd;
+}
+
 int
 nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
 {
@@ -305,7 +314,7 @@ nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
    bool enable_svm = debug_get_bool_option("NOUVEAU_SVM", false);
    screen->has_svm = false;
    /* we only care about HMM with OpenCL enabled */
-   if (dev->chipset > 0x130 && screen->force_enable_cl && enable_svm) {
+   if (dev->chipset > 0x130 && enable_svm) {
       /* Before being able to enable SVM we need to carve out some memory for
        * driver bo allocations. Let's just base the size on the available VRAM.
        *
@@ -388,6 +397,7 @@ nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
 
    snprintf(screen->chipset_name, sizeof(screen->chipset_name), "NV%02X", dev->chipset);
    pscreen->get_name = nouveau_screen_get_name;
+   pscreen->get_screen_fd = nouveau_screen_get_fd;
    pscreen->get_vendor = nouveau_screen_get_vendor;
    pscreen->get_device_vendor = nouveau_screen_get_device_vendor;
    pscreen->get_disk_shader_cache = nouveau_screen_get_disk_shader_cache;

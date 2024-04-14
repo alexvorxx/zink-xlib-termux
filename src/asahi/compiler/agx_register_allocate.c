@@ -1,24 +1,6 @@
 /*
- * Copyright (C) 2021 Alyssa Rosenzweig <alyssa@rosenzweig.io>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+ * Copyright 2021 Alyssa Rosenzweig
+ * SPDX-License-Identifier: MIT
  */
 
 #include "agx_builder.h"
@@ -43,7 +25,7 @@ struct ra_ctx {
 
 /** Returns number of registers written by an instruction */
 unsigned
-agx_write_registers(agx_instr *I, unsigned d)
+agx_write_registers(const agx_instr *I, unsigned d)
 {
    unsigned size = agx_size_align_16(I->dest[d].size);
 
@@ -90,7 +72,7 @@ agx_split_width(const agx_instr *I)
 }
 
 unsigned
-agx_read_registers(agx_instr *I, unsigned s)
+agx_read_registers(const agx_instr *I, unsigned s)
 {
    unsigned size = agx_size_align_16(I->src[s].size);
 
@@ -190,7 +172,7 @@ find_regs(BITSET_WORD *used_regs, unsigned count, unsigned align, unsigned max)
 {
    assert(count >= 1);
 
-   for (unsigned reg = 0; reg < max; reg += align) {
+   for (unsigned reg = 0; reg + count <= max; reg += align) {
       if (!BITSET_TEST_RANGE(used_regs, reg, reg + count - 1))
          return reg;
    }
@@ -233,6 +215,7 @@ reserve_live_in(struct ra_ctx *rctx)
 static void
 assign_regs(struct ra_ctx *rctx, agx_index v, unsigned reg)
 {
+   assert(reg < rctx->bound && "must not overflow register file");
    assert(v.type == AGX_INDEX_NORMAL && "only SSA gets registers allocated");
    rctx->ssa_to_reg[v.value] = reg;
 
@@ -327,15 +310,26 @@ pick_regs(struct ra_ctx *rctx, agx_instr *I, unsigned d)
             return our_reg;
       }
 
+      unsigned collect_align = agx_size_align_16(collect->dest[0].size);
+      unsigned offset = our_source * align;
+
+      /* Prefer ranges of the register file that leave room for all sources of
+       * the collect contiguously.
+       */
+      for (unsigned base = 0; base + (collect->nr_srcs * align) <= rctx->bound;
+           base += collect_align) {
+         if (!BITSET_TEST_RANGE(rctx->used_regs, base,
+                                base + (collect->nr_srcs * align) - 1))
+            return base + offset;
+      }
+
       /* Try to respect the alignment requirement of the collect destination,
        * which may be greater than the sources (e.g. pack_64_2x32_split). Look
        * for a register for the source such that the collect base is aligned.
        */
-      unsigned collect_align = agx_size_align_16(collect->dest[0].size);
       if (collect_align > align) {
-         unsigned offset = our_source * align;
-
-         for (unsigned reg = offset; reg < rctx->bound; reg += collect_align) {
+         for (unsigned reg = offset; reg + collect_align <= rctx->bound;
+              reg += collect_align) {
             if (!BITSET_TEST_RANGE(rctx->used_regs, reg, reg + count - 1))
                return reg;
          }

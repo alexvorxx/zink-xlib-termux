@@ -1642,7 +1642,7 @@ _mesa_validated_drawrangeelements(struct gl_context *ctx,
          _mesa_warning(ctx, "Invalid indices offset 0x%" PRIxPTR
                             " (indices buffer size is %ld bytes)"
                             " or unallocated buffer (%u). Draw skipped.",
-                            start, index_bo->Size, !!index_bo->buffer);
+                            start, (long)index_bo->Size, !!index_bo->buffer);
          return;
       }
 
@@ -2316,7 +2316,7 @@ _mesa_DrawArraysIndirect(GLenum mode, const GLvoid *indirect)
     *    DrawElementsIndirect are to source their arguments directly from the
     *    pointer passed as their <indirect> parameters."
     */
-   if (ctx->API == API_OPENGL_COMPAT &&
+   if (_mesa_is_desktop_gl_compat(ctx) &&
        !ctx->DrawIndirectBuffer) {
       DrawArraysIndirectCommand *cmd = (DrawArraysIndirectCommand *) indirect;
 
@@ -2351,7 +2351,7 @@ _mesa_DrawElementsIndirect(GLenum mode, GLenum type, const GLvoid *indirect)
     *    DrawElementsIndirect are to source their arguments directly from the
     *    pointer passed as their <indirect> parameters."
     */
-   if (ctx->API == API_OPENGL_COMPAT &&
+   if (_mesa_is_desktop_gl_compat(ctx) &&
        !ctx->DrawIndirectBuffer) {
       /*
        * Unlike regular DrawElementsInstancedBaseVertex commands, the indices
@@ -2416,7 +2416,7 @@ _mesa_MultiDrawArraysIndirect(GLenum mode, const GLvoid *indirect,
     *    DrawElementsIndirect are to source their arguments directly from the
     *    pointer passed as their <indirect> parameters."
     */
-   if (ctx->API == API_OPENGL_COMPAT &&
+   if (_mesa_is_desktop_gl_compat(ctx) &&
        !ctx->DrawIndirectBuffer) {
 
       if (!_mesa_is_no_error_enabled(ctx) &&
@@ -2489,7 +2489,7 @@ _mesa_MultiDrawElementsIndirect(GLenum mode, GLenum type,
     *    DrawElementsIndirect are to source their arguments directly from the
     *    pointer passed as their <indirect> parameters."
     */
-   if (ctx->API == API_OPENGL_COMPAT &&
+   if (_mesa_is_desktop_gl_compat(ctx) &&
        !ctx->DrawIndirectBuffer) {
       /*
        * Unlike regular DrawElementsInstancedBaseVertex commands, the indices
@@ -2534,6 +2534,11 @@ _mesa_MultiDrawElementsIndirect(GLenum mode, GLenum type,
          /* Fast path for u_threaded_context to eliminate atomics. */
          info.index.resource = _mesa_get_bufferobj_reference(ctx, index_bo);
          info.take_index_buffer_ownership = true;
+         /* Increase refcount so be able to use take_index_buffer_ownership with
+          * multiple draws.
+          */
+         if (primcount > 1 && info.index.resource)
+            p_atomic_add(&info.index.resource->reference.count, primcount - 1);
       } else {
          info.index.resource = index_bo->buffer;
       }

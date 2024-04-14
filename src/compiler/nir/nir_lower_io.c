@@ -19,11 +19,6 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
- *
- * Authors:
- *    Connor Abbott (cwabbott0@gmail.com)
- *    Jason Ekstrand (jason@jlekstrand.net)
- *
  */
 
 /*
@@ -2129,8 +2124,7 @@ lower_explicit_io_deref(nir_builder *b, nir_deref_instr *deref,
     * one deref which could break our list walking since we walk the list
     * backwards.
     */
-   assert(list_is_empty(&deref->dest.ssa.if_uses));
-   if (list_is_empty(&deref->dest.ssa.uses)) {
+   if (nir_ssa_def_is_unused(&deref->dest.ssa)) {
       nir_instr_remove(&deref->instr);
       return;
    }
@@ -2990,7 +2984,7 @@ nir_io_add_const_offset_to_base(nir_shader *nir, nir_variable_mode modes)
    return progress;
 }
 
-static bool
+bool
 nir_lower_color_inputs(nir_shader *nir)
 {
    nir_function_impl *impl = nir_shader_get_entrypoint(nir);
@@ -3006,32 +3000,58 @@ nir_lower_color_inputs(nir_shader *nir)
 
          nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
 
-         if (intrin->intrinsic != nir_intrinsic_load_deref)
+         if (intrin->intrinsic != nir_intrinsic_load_input &&
+             intrin->intrinsic != nir_intrinsic_load_interpolated_input)
             continue;
 
-         nir_deref_instr *deref = nir_src_as_deref(intrin->src[0]);
-         if (!nir_deref_mode_is(deref, nir_var_shader_in))
+         nir_io_semantics sem = nir_intrinsic_io_semantics(intrin);
+
+         if (sem.location != VARYING_SLOT_COL0 &&
+             sem.location != VARYING_SLOT_COL1)
             continue;
 
-         b.cursor = nir_before_instr(instr);
-         nir_variable *var = nir_deref_instr_get_variable(deref);
-         nir_ssa_def *def;
+         /* Default to FLAT (for load_input) */
+         enum glsl_interp_mode interp = INTERP_MODE_FLAT;
+         bool sample = false;
+         bool centroid = false;
 
-         if (var->data.location == VARYING_SLOT_COL0) {
-            def = nir_load_color0(&b);
-            nir->info.fs.color0_interp = var->data.interpolation;
-            nir->info.fs.color0_sample = var->data.sample;
-            nir->info.fs.color0_centroid = var->data.centroid;
-         } else if (var->data.location == VARYING_SLOT_COL1) {
-            def = nir_load_color1(&b);
-            nir->info.fs.color1_interp = var->data.interpolation;
-            nir->info.fs.color1_sample = var->data.sample;
-            nir->info.fs.color1_centroid = var->data.centroid;
-         } else {
-            continue;
+         if (intrin->intrinsic == nir_intrinsic_load_interpolated_input) {
+            nir_intrinsic_instr *baryc =
+               nir_instr_as_intrinsic(intrin->src[0].ssa->parent_instr);
+
+            centroid =
+               baryc->intrinsic == nir_intrinsic_load_barycentric_centroid;
+            sample =
+               baryc->intrinsic == nir_intrinsic_load_barycentric_sample;
+            assert(centroid || sample ||
+                   baryc->intrinsic == nir_intrinsic_load_barycentric_pixel);
+
+            interp = nir_intrinsic_interp_mode(baryc);
          }
 
-         nir_ssa_def_rewrite_uses(&intrin->dest.ssa, def);
+         b.cursor = nir_before_instr(instr);
+         nir_ssa_def *load = NULL;
+
+         if (sem.location == VARYING_SLOT_COL0) {
+            load = nir_load_color0(&b);
+            nir->info.fs.color0_interp = interp;
+            nir->info.fs.color0_sample = sample;
+            nir->info.fs.color0_centroid = centroid;
+         } else {
+            assert(sem.location == VARYING_SLOT_COL1);
+            load = nir_load_color1(&b);
+            nir->info.fs.color1_interp = interp;
+            nir->info.fs.color1_sample = sample;
+            nir->info.fs.color1_centroid = centroid;
+         }
+
+         if (intrin->num_components != 4) {
+            unsigned start = nir_intrinsic_component(intrin);
+            unsigned count = intrin->num_components;
+            load = nir_channels(&b, load, BITFIELD_RANGE(start, count));
+         }
+
+         nir_ssa_def_rewrite_uses(&intrin->dest.ssa, load);
          nir_instr_remove(instr);
          progress = true;
       }
@@ -3128,10 +3148,15 @@ type_size_vec4(const struct glsl_type *type, bool bindless)
    return glsl_count_attribute_slots(type, false);
 }
 
+/**
+ * This runs all compiler passes needed to lower IO, lower indirect IO access,
+ * set transform feedback info in IO intrinsics, and clean up the IR.
+ */
 void
 nir_lower_io_passes(nir_shader *nir)
 {
-   if (!nir->options->lower_io_variables)
+   if (!nir->options->lower_io_variables ||
+       nir->info.stage == MESA_SHADER_COMPUTE)
       return;
 
    bool has_indirect_inputs =
@@ -3155,12 +3180,22 @@ nir_lower_io_passes(nir_shader *nir)
       NIR_PASS_V(nir, nir_lower_global_vars_to_local);
    }
 
-   if (nir->info.stage == MESA_SHADER_FRAGMENT &&
-       nir->options->lower_fs_color_inputs)
-      NIR_PASS_V(nir, nir_lower_color_inputs);
-
    NIR_PASS_V(nir, nir_lower_io, nir_var_shader_out | nir_var_shader_in,
               type_size_vec4, nir_lower_io_lower_64bit_to_32);
+
+   /* If IO is lowered before var->data.driver_location is assigned, driver
+    * locations are all 0, which means IO bases are all 0. It's not necessary
+    * to set driver_location before lowering IO because the only thing that
+    * identifies outputs is their semantic, and IO bases can always be
+    * computed from the semantics.
+    *
+    * This assigns IO bases from scratch, using IO semantics to tell which
+    * intrinsics refer to the same IO. If the bases already exist, they
+    * will be reassigned, sorted by the semantic, and all holes removed.
+    * This kind of canonicalizes all bases.
+    */
+   NIR_PASS_V(nir, nir_recompute_io_bases,
+              nir_var_shader_in | nir_var_shader_out);
 
    /* nir_io_add_const_offset_to_base needs actual constants. */
    NIR_PASS_V(nir, nir_opt_constant_folding);
@@ -3170,8 +3205,7 @@ nir_lower_io_passes(nir_shader *nir)
    /* Lower and remove dead derefs and variables to clean up the IR. */
    NIR_PASS_V(nir, nir_lower_vars_to_ssa);
    NIR_PASS_V(nir, nir_opt_dce);
-   NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp |
-              nir_var_shader_in | nir_var_shader_out, NULL);
+   NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp, NULL);
 
    if (nir->xfb_info)
       NIR_PASS_V(nir, nir_io_add_intrinsic_xfb_info);

@@ -180,7 +180,7 @@ dri_is_thread_safe(UNUSED void *loaderPrivate)
     * platform
     *
     * 'lock_fns' is the XLockDisplay function pointer of the X11 display 'dpy'.
-    * It wll be NULL if XInitThreads wasn't called.
+    * It will be NULL if XInitThreads wasn't called.
     */
    if (display->Platform == _EGL_PLATFORM_X11 && xdpy && !xdpy->lock_fns)
       return false;
@@ -564,6 +564,9 @@ dri2_add_config(_EGLDisplay *disp, const __DRIconfig *dri_config, int id,
 
    if (double_buffer) {
       surface_type &= ~EGL_PIXMAP_BIT;
+   }
+   else {
+      surface_type &= ~EGL_WINDOW_BIT;
    }
 
    if (!surface_type)
@@ -1758,15 +1761,6 @@ dri2_surface_get_dri_drawable(_EGLSurface *surf)
    return dri2_surf->dri_drawable;
 }
 
-/*
- * Called from eglGetProcAddress() via drv->GetProcAddress().
- */
-static _EGLProc
-dri2_get_proc_address(const char *procname)
-{
-   return _glapi_get_proc_address(procname);
-}
-
 static _EGLSurface*
 dri2_create_window_surface(_EGLDisplay *disp, _EGLConfig *conf,
                            void *native_window, const EGLint *attrib_list)
@@ -1829,7 +1823,8 @@ dri2_swap_interval(_EGLDisplay *disp, _EGLSurface *surf, EGLint interval)
  * do our swapbuffers.
  */
 void
-dri2_flush_drawable_for_swapbuffers(_EGLDisplay *disp, _EGLSurface *draw)
+dri2_flush_drawable_for_swapbuffers_flags(_EGLDisplay *disp, _EGLSurface *draw,
+                                          enum __DRI2throttleReason throttle_reason)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    __DRIdrawable *dri_drawable = dri2_dpy->vtbl->get_dri_drawable(draw);
@@ -1853,11 +1848,17 @@ dri2_flush_drawable_for_swapbuffers(_EGLDisplay *disp, _EGLSurface *draw)
                                            dri_drawable,
                                            __DRI2_FLUSH_DRAWABLE |
                                            __DRI2_FLUSH_INVALIDATE_ANCILLARY,
-                                           __DRI2_THROTTLE_SWAPBUFFER);
+                                           throttle_reason);
       } else {
          dri2_dpy->flush->flush(dri_drawable);
       }
    }
+}
+
+void
+dri2_flush_drawable_for_swapbuffers(_EGLDisplay *disp, _EGLSurface *draw)
+{
+   dri2_flush_drawable_for_swapbuffers_flags(disp, draw, __DRI2_THROTTLE_SWAPBUFFER);
 }
 
 static EGLBoolean
@@ -3363,7 +3364,7 @@ dri2_create_sync(_EGLDisplay *disp, EGLenum type, const EGLAttrib *attrib_list)
       break;
 
    case EGL_SYNC_REUSABLE_KHR:
-      /* intialize attr */
+      /* initialize attr */
       ret = pthread_condattr_init(&attr);
 
       if (ret) {
@@ -3666,7 +3667,6 @@ const _EGLDriver _eglDriver = {
    .CreatePixmapSurface = dri2_create_pixmap_surface,
    .CreatePbufferSurface = dri2_create_pbuffer_surface,
    .DestroySurface = dri2_destroy_surface,
-   .GetProcAddress = dri2_get_proc_address,
    .WaitClient = dri2_wait_client,
    .WaitNative = dri2_wait_native,
    .BindTexImage = dri2_bind_tex_image,

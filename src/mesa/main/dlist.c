@@ -495,7 +495,7 @@ typedef enum
    OPCODE_TEXPARAMETER_I,
    OPCODE_TEXPARAMETER_UI,
 
-   /* GL_ARB_instanced_arrays */
+   /* GL_EXT/ARB_instanced_arrays */
    OPCODE_VERTEX_ATTRIB_DIVISOR,
 
    /* GL_NV_texture_barrier */
@@ -8654,7 +8654,7 @@ save_TexParameterIuiv(GLenum target, GLenum pname, const GLuint *params)
    }
 }
 
-/* GL_ARB_instanced_arrays */
+/* GL_EXT/ARB_instanced_arrays */
 void GLAPIENTRY
 save_VertexAttribDivisor(GLuint index, GLuint divisor)
 {
@@ -12462,7 +12462,7 @@ execute_list(struct gl_context *ctx, GLuint list)
             break;
 
          case OPCODE_VERTEX_ATTRIB_DIVISOR:
-            /* GL_ARB_instanced_arrays */
+            /* GL_EXT/ARB_instanced_arrays */
             CALL_VertexAttribDivisor(ctx->Dispatch.Exec, (n[1].ui, n[2].ui));
             break;
 
@@ -14094,7 +14094,7 @@ void
 _mesa_init_dispatch_save_begin_end(struct gl_context *ctx)
 {
    struct _glapi_table *tab = ctx->Dispatch.Save;
-   assert(ctx->API == API_OPENGL_COMPAT);
+   assert(_mesa_is_desktop_gl_compat(ctx));
 
 #define NAME_AE(x) _mesa_##x
 #define NAME_CALLLIST(x) save_##x

@@ -82,6 +82,45 @@
   # even start until the separate script triggers on it).
   allow_failure: true
 
+.piglit-performance-base:
+  extends:
+    - .performance-rules
+  variables:
+    LAVA_JOB_PRIORITY: 40
+    PIGLIT_REPLAY_SUBCOMMAND: "profile"
+    PIGLIT_REPLAY_EXTRA_ARGS: "--db-path ${CI_PROJECT_DIR}/replayer-db/"
+    # More than this can hit OOM due to BOs leaked during the replay of the last frame
+    PIGLIT_REPLAY_LOOP_TIMES: 150
+    # We don't want for more than one workload to be submitted to the GPU at a time
+    FDO_CI_CONCURRENT: 1
+    # Piglit is very sparse in its status output and downloads of big traces can take a while
+    LAVA_DEVICE_HANGING_TIMEOUT_SEC: 600
+    GIT_STRATEGY: none
+    HWCI_FREQ_MAX: "true"
+    # Always use the same device
+    LAVA_TAGS: "cbg-0"
+    # Ensure that we are using the release build artifact
+    MINIO_ARTIFACT_NAME: mesa-${ARCH}-release
+  # Reset dependencies in performance jobs to enforce the release build artifact
+  dependencies: null
+  # Don't run in parallel. It is okay to performance jobs to take a little
+  # longer to finish, as they don't block marge from merging an MR.
+  parallel: null
+
+.piglit-performance:arm64:
+  extends:
+    - .piglit-performance-base
+  needs:
+    - debian/arm64_test
+    - debian-arm64-release
+
+.piglit-performance:amd64:
+  extends:
+    - .piglit-performance-base
+  needs:
+    - kernel+rootfs_amd64
+    - debian-release
+
 # Mesa source file dependencies that may impact any GL driver test job.
 .gl-rules:
   rules:
@@ -330,8 +369,9 @@
     # Ensure that we are using the release build artifact
     MINIO_ARTIFACT_NAME: mesa-arm64-release
   needs:
-    - job: debian/arm64_test
+    - debian/arm64_test
     - debian-arm64-release
+  dependencies: null
 
 .nouveau-rules:
   stage: nouveau
@@ -526,38 +566,6 @@
         *radv_file_list
       when: manual
 
-.virgl-rules:
-  stage: layered-backends
-  rules:
-    - !reference [.gl-rules, rules]
-    - changes:
-        *llvmpipe_file_list
-      when: on_success
-    - changes: &virgl_file_list
-      - src/gallium/drivers/virgl/**/*
-      - src/gallium/winsys/virgl/**/*
-      when: on_success
-
-.virgl-iris-rules-performance:
-  stage: layered-backends
-  rules:
-    - !reference [.collabora-farm-rules, rules]
-    - !reference [.performance-rules, rules]
-    - !reference [.gl-manual-rules, rules]
-    - changes:
-        *llvmpipe_file_list
-      when: manual
-    - changes:
-        *virgl_file_list
-      when: manual
-  allow_failure: true # see comment in .performance-rules, which we don't inherit this line from.
-  variables:
-    LAVA_JOB_PRIORITY: 40
-    MINIO_ARTIFACT_NAME: "mesa-amd64-release"
-  needs:
-    - kernel+rootfs_amd64
-    - debian-release
-
 .venus-rules:
   stage: layered-backends
   rules:
@@ -735,6 +743,50 @@
       - src/intel/**/*
       when: on_success
 
+.virgl-rules:
+  stage: layered-backends
+  rules:
+    - !reference [.gl-rules, rules]
+    - changes:
+        *llvmpipe_file_list
+      when: on_success
+    - changes: &virgl_file_list
+      - src/gallium/drivers/virgl/**/*
+      - src/gallium/winsys/virgl/**/*
+      when: on_success
+
+.virgl-iris-manual-rules:
+  stage: layered-backends
+  rules:
+    - !reference [.collabora-farm-rules, rules]
+    - !reference [.gl-manual-rules, rules]
+    - changes:
+        *virgl_file_list
+      when: manual
+    - changes:
+        *iris_file_list
+      when: manual
+
+.virgl-iris-rules-performance:
+  stage: layered-backends
+  rules:
+    - !reference [.collabora-farm-rules, rules]
+    - !reference [.performance-rules, rules]
+    - !reference [.gl-manual-rules, rules]
+    - changes:
+        *llvmpipe_file_list
+      when: manual
+    - changes:
+        *virgl_file_list
+      when: manual
+  allow_failure: true # see comment in .performance-rules, which we don't inherit this line from.
+  variables:
+    LAVA_JOB_PRIORITY: 40
+    MINIO_ARTIFACT_NAME: "mesa-amd64-release"
+  needs:
+    - kernel+rootfs_amd64
+    - debian-release
+
 .zink-common-rules:
   rules:
     - !reference [.gl-rules, rules]
@@ -779,6 +831,12 @@
   rules:
     - !reference [.turnip-rules, rules]
     - !reference [.zink-common-rules, rules]
+
+.zink-turnip-manual-rules:
+  stage: layered-backends
+  rules:
+    - !reference [.turnip-manual-rules, rules]
+    - !reference [.zink-common-manual-rules, rules]
 
 .zink-radv-manual-rules:
   stage: layered-backends
@@ -920,4 +978,12 @@
     - !reference [.core-rules, rules]
     - changes:
       - src/**/*.rs
+      when: on_success
+
+.lint-clang-format-rules:
+   rules:
+    - !reference [.core-rules, rules]
+    - changes:
+      - src/**/asahi/**/*
+      - src/**/panfrost/**/*
       when: on_success

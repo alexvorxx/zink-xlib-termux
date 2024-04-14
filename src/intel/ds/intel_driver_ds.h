@@ -64,6 +64,7 @@ enum intel_ds_stall_flag {
 typedef enum intel_ds_stall_flag (*intel_ds_stall_cb_t)(uint32_t flags);
 
 enum intel_ds_queue_stage {
+   INTEL_DS_QUEUE_STAGE_QUEUE,
    INTEL_DS_QUEUE_STAGE_FRAME,
    INTEL_DS_QUEUE_STAGE_CMD_BUFFER,
    INTEL_DS_QUEUE_STAGE_GENERATE_DRAWS,
@@ -109,19 +110,6 @@ struct intel_ds_device {
     * IntelRenderpassDataSource::Trace)
     */
    uint64_t event_id;
-
-   /* Start of unique IID for device generated events */
-   uint64_t start_app_event_iids;
-
-   /* Last app event iid (manipulate only inside
-    * IntelRenderpassDataSource::Trace)
-    */
-   uint64_t current_app_event_iid;
-
-   /* Hash table of application generated events (string -> iid) (manipulate
-    * only inside IntelRenderpassDataSource::Trace)
-    */
-   struct hash_table *app_events;
 
    struct u_trace_context trace_context;
 

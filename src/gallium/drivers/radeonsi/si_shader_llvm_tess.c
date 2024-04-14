@@ -430,7 +430,7 @@ void si_llvm_tcs_build_end(struct si_shader_context *ctx)
    invocation_id = si_unpack_param(ctx, ctx->args->ac.tcs_rel_ids, 8, 5);
    tf_lds_offset = get_tcs_out_current_patch_data_offset(ctx);
 
-   if (ctx->screen->info.gfx_level >= GFX9 && !ctx->shader->is_monolithic) {
+   if (ctx->screen->info.gfx_level >= GFX9) {
       LLVMBasicBlockRef blocks[2] = {LLVMGetInsertBlock(builder), ctx->merged_wrap_if_entry_block};
       LLVMValueRef values[2];
 
@@ -577,8 +577,8 @@ void si_llvm_ls_build_end(struct si_shader_context *ctx)
 }
 
 /**
- * Compile the TCS epilog function. This writes tesselation factors to memory
- * based on the output primitive type of the tesselator (determined by TES).
+ * Compile the TCS epilog function. This writes tessellation factors to memory
+ * based on the output primitive type of the tessellator (determined by TES).
  */
 void si_llvm_build_tcs_epilog(struct si_shader_context *ctx, union si_shader_part_key *key,
                               UNUSED bool separate_epilog)

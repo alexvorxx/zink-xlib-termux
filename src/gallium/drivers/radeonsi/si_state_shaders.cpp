@@ -190,9 +190,8 @@ void si_get_ir_cache_key(struct si_shader_selector *sel, bool ngg, bool es,
       shader_variant_flags |= 1 << 4;
    if (sel->screen->record_llvm_ir)
       shader_variant_flags |= 1 << 5;
-
-   /* bit gap */
-
+   if (sel->screen->info.has_image_opcodes)
+      shader_variant_flags |= 1 << 6;
    if (sel->screen->options.no_infinite_interp)
       shader_variant_flags |= 1 << 7;
    if (sel->screen->options.clamp_div_by_zero)
@@ -1869,7 +1868,7 @@ static void si_shader_ps(struct si_screen *sscreen, struct si_shader *shader)
       shader->ps.db_shader_control |= S_02880C_DUAL_QUAD_DISABLE(1);
 
    /* SPI_BARYC_CNTL.POS_FLOAT_LOCATION
-    * Possible vaules:
+    * Possible values:
     * 0 -> Position = pixel center
     * 1 -> Position = pixel centroid
     * 2 -> Position = at sample position
@@ -3168,7 +3167,7 @@ static void *si_create_shader_selector(struct pipe_context *ctx,
       if (util_rast_prim_is_triangles(sel->rast_prim))
          sel->rast_prim = PIPE_PRIM_TRIANGLES;
 
-      /* EN_MAX_VERT_OUT_PER_GS_INSTANCE does not work with tesselation so
+      /* EN_MAX_VERT_OUT_PER_GS_INSTANCE does not work with tessellation so
        * we can't split workgroups. Disable ngg if any of the following conditions is true:
        * - num_invocations * gs.vertices_out > 256
        * - LDS usage is too high
@@ -3694,7 +3693,7 @@ static void si_cs_preamble_add_vgt_flush(struct si_context *sctx, bool tmz)
                                &sctx->cs_preamble_has_vgt_flush;
 
    /* We shouldn't get here if registers are shadowed. */
-   assert(!sctx->shadowed_regs);
+   assert(!sctx->shadowing.registers);
 
    if (*has_vgt_flush)
       return;
@@ -3811,7 +3810,7 @@ bool si_update_gs_ring_buffers(struct si_context *sctx)
                          false, 0, 0, 0);
    }
 
-   if (sctx->shadowed_regs) {
+   if (sctx->shadowing.registers) {
       /* These registers will be shadowed, so set them only once. */
       struct radeon_cmdbuf *cs = &sctx->gfx_cs;
 
@@ -4081,7 +4080,7 @@ void si_init_tess_factor_ring(struct si_context *sctx)
 
    assert((tf_ring_size_field & C_030938_SIZE) == 0);
 
-   if (sctx->shadowed_regs) {
+   if (sctx->shadowing.registers) {
       /* These registers will be shadowed, so set them only once. */
       /* TODO: tmz + shadowed_regs support */
       struct radeon_cmdbuf *cs = &sctx->gfx_cs;

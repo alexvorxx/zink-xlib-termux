@@ -146,10 +146,14 @@ v3d_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
         case PIPE_CAP_ANISOTROPIC_FILTER:
         case PIPE_CAP_COPY_BETWEEN_COMPRESSED_AND_PLAIN_FORMATS:
         case PIPE_CAP_INDEP_BLEND_FUNC:
+        case PIPE_CAP_CONDITIONAL_RENDER:
+        case PIPE_CAP_CONDITIONAL_RENDER_INVERTED:
+        case PIPE_CAP_CUBE_MAP_ARRAY:
                 return 1;
 
         case PIPE_CAP_POLYGON_OFFSET_CLAMP:
                 return screen->devinfo.ver >= 41;
+
 
         case PIPE_CAP_TEXTURE_QUERY_LOD:
                 return screen->devinfo.ver >= 42;
@@ -429,8 +433,6 @@ v3d_screen_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_type s
         case PIPE_SHADER_CAP_INT16:
         case PIPE_SHADER_CAP_GLSL_16BIT_CONSTS:
         case PIPE_SHADER_CAP_DROUND_SUPPORTED:
-        case PIPE_SHADER_CAP_DFRACEXP_DLDEXP_SUPPORTED:
-        case PIPE_SHADER_CAP_LDEXP_SUPPORTED:
         case PIPE_SHADER_CAP_TGSI_ANY_INOUT_DECL_RANGE:
         case PIPE_SHADER_CAP_TGSI_SQRT_SUPPORTED:
         case PIPE_SHADER_CAP_MAX_HW_ATOMIC_COUNTERS:

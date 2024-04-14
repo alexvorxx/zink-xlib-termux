@@ -660,6 +660,16 @@ emit_pipeline_select(struct iris_batch *batch, uint32_t pipeline)
    } else {
       flags |= PIPE_CONTROL_UNTYPED_DATAPORT_CACHE_FLUSH;
    }
+   /* Wa_16013063087 -  State Cache Invalidate must be issued prior to
+    * PIPELINE_SELECT when switching from 3D to Compute.
+    *
+    * SW must do this by programming of PIPECONTROL with “CS Stall” followed
+    * by a PIPECONTROL with State Cache Invalidate bit set.
+    */
+   if (pipeline == GPGPU &&
+       intel_needs_workaround(batch->screen->devinfo, 16013063087))
+      flags |= PIPE_CONTROL_STATE_CACHE_INVALIDATE;
+
    iris_emit_pipe_control_flush(batch, "PIPELINE_SELECT flush", flags);
 #else
    /* From "BXML » GT » MI » vol1a GPU Overview » [Instruction]
@@ -4266,6 +4276,17 @@ iris_create_so_decl_list(const struct pipe_stream_output_info *info,
       sol.Buffer1SurfacePitch = 4 * info->stride[1];
       sol.Buffer2SurfacePitch = 4 * info->stride[2];
       sol.Buffer3SurfacePitch = 4 * info->stride[3];
+
+#if INTEL_NEEDS_WA_14017076903
+      /* Wa_14017076903 : SOL should be programmed to force the
+       * rendering to be enabled.
+       *
+       * This fixes a rare case where SOL must render to get correct
+       * occlusion query results even when no PS and depth buffers are
+       * bound.
+       */
+      sol.ForceRendering = Force_on;
+#endif
    }
 
    iris_pack_command(GENX(3DSTATE_SO_DECL_LIST), so_decl_map, list) {
@@ -4811,7 +4832,15 @@ iris_store_tes_state(const struct intel_device_info *devinfo,
       te.MaximumTessellationFactorOdd = 63.0;
       te.MaximumTessellationFactorNotOdd = 64.0;
 #if GFX_VERx10 >= 125
-      te.TessellationDistributionMode = TEDMODE_RR_FREE;
+      STATIC_ASSERT(TEDMODE_OFF == 0);
+      if (intel_needs_workaround(devinfo, 14015297576)) {
+         te.TessellationDistributionMode = TEDMODE_OFF;
+      } else if (intel_needs_workaround(devinfo, 22012785325)) {
+         te.TessellationDistributionMode = TEDMODE_RR_STRICT;
+      } else {
+         te.TessellationDistributionMode = TEDMODE_RR_FREE;
+      }
+
       te.TessellationDistributionLevel = TEDLEVEL_PATCH;
       /* 64_TRIANGLES */
       te.SmallPatchThreshold = 3;
@@ -5798,9 +5827,27 @@ genX(invalidate_aux_map_state)(struct iris_batch *batch)
        *
        * An end of pipe sync is needed here, otherwise we see GPU hangs in
        * dEQP-GLES31.functional.copy_image.* tests.
+       *
+       * HSD 22012751911: SW Programming sequence when issuing aux invalidation:
+       *
+       *    "Render target Cache Flush + L3 Fabric Flush + State Invalidation + CS Stall"
+       *
+       * Notice we don't set the L3 Fabric Flush here, because we have
+       * PIPE_CONTROL_CS_STALL. The PIPE_CONTROL::L3 Fabric Flush
+       * documentation says :
+       *
+       *    "L3 Fabric Flush will ensure all the pending transactions in the
+       *     L3 Fabric are flushed to global observation point. HW does
+       *     implicit L3 Fabric Flush on all stalling flushes (both explicit
+       *     and implicit) and on PIPECONTROL having Post Sync Operation
+       *     enabled."
+       *
+       * Therefore setting L3 Fabric Flush here would be redundant.
        */
       iris_emit_end_of_pipe_sync(batch, "Invalidate aux map table",
-                                 PIPE_CONTROL_CS_STALL);
+                                 PIPE_CONTROL_CS_STALL |
+                                 PIPE_CONTROL_RENDER_TARGET_FLUSH |
+                                 PIPE_CONTROL_STATE_CACHE_INVALIDATE);
 
       /* If the aux-map state number increased, then we need to rewrite the
        * register. Rewriting the register is used to both set the aux-map
@@ -5808,6 +5855,20 @@ genX(invalidate_aux_map_state)(struct iris_batch *batch)
        * cached translations.
        */
       iris_load_register_imm32(batch, GENX(GFX_CCS_AUX_INV_num), 1);
+
+      /* HSD 22012751911: SW Programming sequence when issuing aux invalidation:
+       *
+       *    "Poll Aux Invalidation bit once the invalidation is set (Register
+       *     4208 bit 0)"
+       */
+      iris_emit_cmd(batch, GENX(MI_SEMAPHORE_WAIT), sem) {
+         sem.CompareOperation = COMPARE_SAD_EQUAL_SDD;
+         sem.WaitMode = PollingMode;
+         sem.RegisterPollMode = true;
+         sem.SemaphoreDataDword = 0x0;
+         sem.SemaphoreAddress = ro_bo(NULL, GENX(GFX_CCS_AUX_INV_num));
+      }
+
       batch->last_aux_map_state = aux_map_state_num;
    }
 }
@@ -6040,6 +6101,40 @@ iris_preemption_streamout_wa(struct iris_context *ice,
 
    ice->state.genx->object_preemption = enable;
 #endif
+}
+
+static void
+shader_program_needs_wa_14015297576(struct iris_context *ice,
+                                    struct iris_batch *batch,
+                                    const struct brw_stage_prog_data *prog_data,
+                                    gl_shader_stage stage,
+                                    bool *program_needs_wa_14015297576)
+{
+   if (!intel_needs_workaround(batch->screen->devinfo, 14015297576))
+      return;
+
+   switch (stage) {
+   case MESA_SHADER_TESS_CTRL: {
+      struct brw_tcs_prog_data *tcs_prog_data = (void *) prog_data;
+      *program_needs_wa_14015297576 |= tcs_prog_data->include_primitive_id;
+      break;
+   }
+   case MESA_SHADER_TESS_EVAL: {
+      struct brw_tes_prog_data *tes_prog_data = (void *) prog_data;
+      *program_needs_wa_14015297576 |= tes_prog_data->include_primitive_id;
+      break;
+   }
+   default:
+      break;
+   }
+
+   struct iris_compiled_shader *gs_shader =
+      ice->shaders.prog[MESA_SHADER_GEOMETRY];
+   const struct brw_gs_prog_data *gs_prog_data =
+      gs_shader ? (void *) gs_shader->prog_data : NULL;
+
+   *program_needs_wa_14015297576 |=
+      gs_prog_data && gs_prog_data->include_primitive_id;
 }
 
 static void
@@ -6384,6 +6479,16 @@ iris_upload_dirty_render_state(struct iris_context *ice,
       }
    }
 
+   bool program_needs_wa_14015297576 = false;
+
+   /* Check if FS stage will use primitive ID overrides for Wa_14015297576. */
+   const struct brw_vue_map *last_vue_map =
+      &brw_vue_prog_data(ice->shaders.last_vue_shader->prog_data)->vue_map;
+   if ((wm_prog_data->inputs & VARYING_BIT_PRIMITIVE_ID) &&
+       last_vue_map->varying_to_slot[VARYING_SLOT_PRIMITIVE_ID] == -1) {
+      program_needs_wa_14015297576 = true;
+   }
+
    for (int stage = 0; stage <= MESA_SHADER_FRAGMENT; stage++) {
       if (!(stage_dirty & (IRIS_STAGE_DIRTY_VS << stage)))
          continue;
@@ -6398,6 +6503,9 @@ iris_upload_dirty_render_state(struct iris_context *ice,
          uint32_t scratch_addr =
             pin_scratch_space(ice, batch, prog_data, stage);
 
+         shader_program_needs_wa_14015297576(ice, batch, prog_data, stage,
+                                             &program_needs_wa_14015297576);
+
          if (stage == MESA_SHADER_FRAGMENT) {
             UNUSED struct iris_rasterizer_state *cso = ice->state.cso_rast;
             struct pipe_framebuffer_state *cso_fb = &ice->state.framebuffer;
@@ -6405,7 +6513,7 @@ iris_upload_dirty_render_state(struct iris_context *ice,
             uint32_t ps_state[GENX(3DSTATE_PS_length)] = {0};
             _iris_pack_command(batch, GENX(3DSTATE_PS), ps_state, ps) {
                intel_set_ps_dispatch_state(&ps, batch->screen->devinfo,
-                                           wm_prog_data, cso_fb->samples,
+                                           wm_prog_data, util_framebuffer_get_num_samples(cso_fb),
                                            0 /* msaa_flags */);
 
                ps.DispatchGRFStartRegisterForConstantSetupData0 =
@@ -6454,6 +6562,35 @@ iris_upload_dirty_render_state(struct iris_context *ice,
                             GENX(3DSTATE_PS_length));
             iris_emit_merge(batch, shader_psx, psx_state,
                             GENX(3DSTATE_PS_EXTRA_length));
+         } else if (stage == MESA_SHADER_TESS_EVAL &&
+                    intel_needs_workaround(batch->screen->devinfo, 14015297576) &&
+                    !program_needs_wa_14015297576) {
+            /* This program doesn't require Wa_14015297576, so we can enable
+             * a Tessellation Distribution Mode.
+             */
+#if GFX_VERx10 >= 125
+            uint32_t te_state[GENX(3DSTATE_TE_length)] = { 0 };
+            iris_pack_command(GENX(3DSTATE_TE), te_state, te) {
+               if (intel_needs_workaround(batch->screen->devinfo, 22012785325))
+                  te.TessellationDistributionMode = TEDMODE_RR_STRICT;
+               else
+                  te.TessellationDistributionMode = TEDMODE_RR_FREE;
+            }
+
+            uint32_t ds_state[GENX(3DSTATE_DS_length)] = { 0 };
+            iris_pack_command(GENX(3DSTATE_DS), ds_state, ds) {
+               if (scratch_addr)
+                  ds.ScratchSpaceBuffer = scratch_addr >> 4;
+            }
+
+            uint32_t *shader_ds = (uint32_t *) shader->derived_data;
+            uint32_t *shader_te = shader_ds + GENX(3DSTATE_DS_length);
+
+            iris_emit_merge(batch, shader_ds, ds_state,
+                            GENX(3DSTATE_DS_length));
+            iris_emit_merge(batch, shader_te, te_state,
+                            GENX(3DSTATE_TE_length));
+#endif
          } else if (scratch_addr) {
             uint32_t *pkt = (uint32_t *) shader->derived_data;
             switch (stage) {
@@ -7214,11 +7351,11 @@ iris_upload_render_state(struct iris_context *ice,
       batch->contains_draw_with_next_seqno = true;
    }
 
-   /* Wa_1306463417 - Send HS state for every primitive on gfx11.
+   /* Wa_1409433168 - Send HS state for every primitive on gfx11.
     * Wa_16011107343 (same for gfx12)
     * We implement this by setting TCS dirty on each draw.
     */
-   if ((GFX_VER == 11 || GFX_VERx10 == 120) &&
+   if ((INTEL_NEEDS_WA_1409433168 || INTEL_NEEDS_WA_16011107343) &&
        ice->shaders.prog[MESA_SHADER_TESS_CTRL]) {
       ice->state.stage_dirty |= IRIS_STAGE_DIRTY_TCS;
    }
@@ -7412,7 +7549,9 @@ iris_upload_render_state(struct iris_context *ice,
 
    iris_batch_sync_region_end(batch);
 
-   trace_intel_end_draw(&batch->trace, 0);
+   uint32_t count = (sc) ? sc->count : 0;
+   count *= (draw && draw->instance_count) ? draw->instance_count : 1;
+   trace_intel_end_draw(&batch->trace, count);
 }
 
 static void
@@ -7491,6 +7630,7 @@ iris_upload_compute_walker(struct iris_context *ice,
          .NumberofThreadsinGPGPUThreadGroup = dispatch.threads,
          .SharedLocalMemorySize =
             encode_slm_size(GFX_VER, prog_data->total_shared),
+         .PreferredSLMAllocationSize = preferred_slm_allocation_size(devinfo),
          .NumberOfBarriers = cs_prog_data->uses_barrier,
          .SamplerStatePointer = shs->sampler_table.offset,
          .SamplerCount = encode_sampler_count(shader),

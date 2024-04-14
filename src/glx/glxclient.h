@@ -239,7 +239,7 @@ struct glx_context
      * in the buffer to be filled.  \c limit is described above in the buffer
      * slop discussion.
      *
-     * Commands that require large amounts of data to be transfered will
+     * Commands that require large amounts of data to be transferred will
      * also use this buffer to hold a header that describes the large
      * command.
      *
@@ -438,7 +438,7 @@ glx_context_init(struct glx_context *gc,
 
 /**
  * This implementation uses a smaller threshold for switching
- * to the RenderLarge protocol than the protcol requires so that
+ * to the RenderLarge protocol than the protocol requires so that
  * large copies don't occur.
  */
 #define __GLX_RENDER_CMD_SIZE_LIMIT 4096
@@ -453,6 +453,11 @@ struct glx_screen_vtable {
 					 struct glx_context *shareList,
 					 int renderType);
 
+   /* The error outparameter abuses the fact that the only possible errors are
+    * GLXBadContext (0), GLXBadFBConfig (9), GLXBadProfileARB (13), BadValue
+    * (2), BadMatch (8), and BadAlloc (11). Since those don't collide we just
+    * use them directly rather than try to offset or use a sign convention. 
+    */
    struct glx_context *(*create_context_attribs)(struct glx_screen *psc,
 						 struct glx_config *config,
 						 struct glx_context *shareList,

@@ -72,7 +72,12 @@ get_texture_size(struct v3d_texture_stateobj *texstate,
                                 texture->u.tex.first_level);
         case QUNIFORM_TEXTURE_ARRAY_SIZE:
                 assert(texture->target != PIPE_BUFFER);
-                return texture->texture->array_size;
+                if (texture->target != PIPE_TEXTURE_CUBE_ARRAY) {
+                        return texture->texture->array_size;
+                } else {
+                        assert(texture->texture->array_size % 6 == 0);
+                        return texture->texture->array_size / 6;
+                }
         case QUNIFORM_TEXTURE_LEVELS:
                 assert(texture->target != PIPE_BUFFER);
                 return (texture->u.tex.last_level -
@@ -108,7 +113,12 @@ get_image_size(struct v3d_shaderimg_stateobj *shaderimg,
                                 image->base.u.tex.level);
         case QUNIFORM_IMAGE_ARRAY_SIZE:
                 assert(image->base.resource->target != PIPE_BUFFER);
-                return image->base.resource->array_size;
+                if (image->base.resource->target != PIPE_TEXTURE_CUBE_ARRAY) {
+                        return image->base.resource->array_size;
+                } else {
+                        assert(image->base.resource->array_size % 6 == 0);
+                        return image->base.resource->array_size / 6;
+                }
         default:
                 unreachable("Bad texture size field");
         }
@@ -450,7 +460,7 @@ v3d_write_uniforms(struct v3d_context *v3d, struct v3d_job *job,
 void
 v3d_set_shader_uniform_dirty_flags(struct v3d_compiled_shader *shader)
 {
-        uint32_t dirty = 0;
+        uint64_t dirty = 0;
 
         for (int i = 0; i < shader->prog_data.base->uniforms.count; i++) {
                 switch (shader->prog_data.base->uniforms.contents[i]) {

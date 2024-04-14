@@ -158,8 +158,6 @@ anv_shader_stage_to_nir(struct anv_device *device,
    };
    NIR_PASS(_, nir, nir_opt_access, &opt_access_options);
 
-   NIR_PASS(_, nir, nir_lower_frexp);
-
    /* Vulkan uses the separate-shader linking model */
    nir->info.separate_shader = true;
 
@@ -568,7 +566,14 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
 
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
 
-   NIR_PASS(_, nir, brw_nir_lower_storage_image, compiler->devinfo);
+   NIR_PASS(_, nir, brw_nir_lower_storage_image,
+            &(struct brw_nir_lower_storage_image_opts) {
+               .devinfo = compiler->devinfo,
+               .lower_loads = true,
+               .lower_stores = true,
+               .lower_atomics = true,
+               .lower_get_size = true,
+            });
 
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_global,
             nir_address_format_64bit_global);

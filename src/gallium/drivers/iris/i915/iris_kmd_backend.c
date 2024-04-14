@@ -30,7 +30,8 @@
 #include "drm-uapi/i915_drm.h"
 
 #include "iris/iris_bufmgr.h"
-#include "iris_batch.h"
+#include "iris/iris_batch.h"
+#include "iris/iris_context.h"
 
 #define FILE_DEBUG_FLAG DEBUG_BUFMGR
 
@@ -219,7 +220,7 @@ i915_batch_check_for_reset(struct iris_batch *batch)
 {
    struct iris_screen *screen = batch->screen;
    enum pipe_reset_status status = PIPE_NO_RESET;
-   struct drm_i915_reset_stats stats = { .ctx_id = batch->ctx_id };
+   struct drm_i915_reset_stats stats = { .ctx_id = batch->i915.ctx_id };
 
    if (intel_ioctl(screen->fd, DRM_IOCTL_I915_GET_RESET_STATS, &stats))
       DBG("DRM_IOCTL_I915_GET_RESET_STATS failed: %s\n", strerror(errno));
@@ -286,14 +287,17 @@ i915_batch_submit(struct iris_batch *batch)
     * in theory try to grab bo_deps_lock. Let's keep it safe and decode
     * outside the lock.
     */
-   if (INTEL_DEBUG(DEBUG_BATCH))
+   if (INTEL_DEBUG(DEBUG_BATCH) &&
+       intel_debug_batch_in_range(batch->ice->frame))
       iris_batch_decode_batch(batch);
 
    simple_mtx_lock(bo_deps_lock);
 
    iris_batch_update_syncobjs(batch);
 
-   if (INTEL_DEBUG(DEBUG_BATCH | DEBUG_SUBMIT)) {
+   if ((INTEL_DEBUG(DEBUG_BATCH) &&
+        intel_debug_batch_in_range(batch->ice->frame)) ||
+       INTEL_DEBUG(DEBUG_SUBMIT)) {
       iris_dump_fence_list(batch);
       iris_dump_bo_list(batch);
    }
@@ -316,11 +320,11 @@ i915_batch_submit(struct iris_batch *batch)
       .batch_start_offset = 0,
       /* This must be QWord aligned. */
       .batch_len = ALIGN(batch->primary_batch_size, 8),
-      .flags = batch->exec_flags |
+      .flags = batch->i915.exec_flags |
                I915_EXEC_NO_RELOC |
                I915_EXEC_BATCH_FIRST |
                I915_EXEC_HANDLE_LUT,
-      .rsvd1 = batch->ctx_id, /* rsvd1 is actually the context ID */
+      .rsvd1 = batch->i915.ctx_id, /* rsvd1 is actually the context ID */
    };
 
    if (iris_batch_num_fences(batch)) {
@@ -358,6 +362,22 @@ i915_batch_submit(struct iris_batch *batch)
    return ret;
 }
 
+static bool
+i915_gem_vm_bind(struct iris_bo *bo)
+{
+   /*
+    * i915 does not support VM_BIND yet. The binding operation happens at
+    * submission when we supply BO handle & offset in the execbuffer list.
+    */
+   return true;
+}
+
+static bool
+i915_gem_vm_unbind(struct iris_bo *bo)
+{
+   return true;
+}
+
 const struct iris_kmd_backend *i915_get_backend(void)
 {
    static const struct iris_kmd_backend i915_backend = {
@@ -367,6 +387,8 @@ const struct iris_kmd_backend *i915_get_backend(void)
       .gem_mmap = i915_gem_mmap,
       .batch_check_for_reset = i915_batch_check_for_reset,
       .batch_submit = i915_batch_submit,
+      .gem_vm_bind = i915_gem_vm_bind,
+      .gem_vm_unbind = i915_gem_vm_unbind,
    };
    return &i915_backend;
 }

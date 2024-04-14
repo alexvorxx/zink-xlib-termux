@@ -87,6 +87,11 @@ ln -sf $CI_PROJECT_DIR/install /install
 export LD_LIBRARY_PATH=/install/lib
 export LIBGL_DRIVERS_PATH=/install/lib/dri
 
+# https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/22495#note_1876691
+# The navi21 boards seem to have trouble with ld.so.cache, so try explicitly
+# telling it to look in /usr/local/lib.
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
+
 # Store Mesa's disk cache under /tmp, rather than sending it out over NFS.
 export XDG_CACHE_HOME=/tmp
 
@@ -124,9 +129,6 @@ fi
 # expire after 5 minutes, so we poll for them).
 /capture-devcoredump.sh &
 BACKGROUND_PIDS="$! $BACKGROUND_PIDS"
-
-export XDG_RUNTIME_DIR=/run/user
-mkdir -p $XDG_RUNTIME_DIR
 
 # If we want Xorg to be running for the test, then we start it up before the
 # HWCI_TEST_SCRIPT because we need to use xinit to start X (otherwise

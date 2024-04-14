@@ -29,6 +29,7 @@
 
 #include "tgsi/tgsi_parse.h"
 #include "compiler/nir/nir.h"
+#include "nir/tgsi_to_nir.h"
 
 #include "nv50/nv50_stateobj.h"
 #include "nv50/nv50_context.h"
@@ -740,6 +741,7 @@ nv50_sp_state_create(struct pipe_context *pipe,
                      enum pipe_shader_type type)
 {
    struct nv50_program *prog;
+   const struct nouveau_screen *screen = nouveau_screen(pipe->screen);
 
    prog = CALLOC_STRUCT(nv50_program);
    if (!prog)
@@ -750,7 +752,12 @@ nv50_sp_state_create(struct pipe_context *pipe,
 
    switch (cso->type) {
    case PIPE_SHADER_IR_TGSI:
-      prog->pipe.tokens = tgsi_dup_tokens(cso->tokens);
+      if (screen->prefer_nir) {
+         prog->pipe.type = PIPE_SHADER_IR_NIR;
+         prog->pipe.ir.nir = tgsi_to_nir(cso->tokens, pipe->screen, false);
+      } else {
+         prog->pipe.tokens = tgsi_dup_tokens(cso->tokens);
+      }
       break;
    case PIPE_SHADER_IR_NIR:
       prog->pipe.ir.nir = cso->ir.nir;
@@ -841,6 +848,7 @@ nv50_cp_state_create(struct pipe_context *pipe,
                      const struct pipe_compute_state *cso)
 {
    struct nv50_program *prog;
+   const struct nouveau_screen *screen = nouveau_screen(pipe->screen);
 
    prog = CALLOC_STRUCT(nv50_program);
    if (!prog)
@@ -849,9 +857,16 @@ nv50_cp_state_create(struct pipe_context *pipe,
    prog->pipe.type = cso->ir_type;
 
    switch(cso->ir_type) {
-   case PIPE_SHADER_IR_TGSI:
-      prog->pipe.tokens = tgsi_dup_tokens((const struct tgsi_token *)cso->prog);
+   case PIPE_SHADER_IR_TGSI: {
+      const struct tgsi_token *tokens = cso->prog;
+      if (screen->prefer_nir) {
+         prog->pipe.type = PIPE_SHADER_IR_NIR;
+         prog->pipe.ir.nir = tgsi_to_nir(tokens, pipe->screen, false);
+      } else {
+         prog->pipe.tokens = tgsi_dup_tokens(tokens);
+      }
       break;
+   }
    case PIPE_SHADER_IR_NIR:
       prog->pipe.ir.nir = (nir_shader *)cso->prog;
       break;
@@ -874,6 +889,21 @@ nv50_cp_state_bind(struct pipe_context *pipe, void *hwcso)
 
    nv50->compprog = hwcso;
    nv50->dirty_cp |= NV50_NEW_CP_PROGRAM;
+}
+
+static void
+nv50_get_compute_state_info(struct pipe_context *pipe, void *hwcso,
+                            struct pipe_compute_state_object_info *info)
+{
+   struct nv50_context *nv50 = nv50_context(pipe);
+   struct nv50_program *prog = (struct nv50_program *)hwcso;
+   uint16_t obj_class = nv50->screen->compute->oclass;
+   uint32_t smregs = obj_class >= NVA3_COMPUTE_CLASS ? 16384 : 8192;
+   uint32_t threads = smregs / align(prog->max_gpr, 4);
+
+   info->max_threads = MIN2(ROUND_DOWN_TO(threads, 32), 512);
+   info->private_memory = prog->tls_space;
+   info->preferred_simd_size = 32;
 }
 
 static void
@@ -1495,6 +1525,8 @@ nv50_init_state_functions(struct nv50_context *nv50)
    pipe->delete_fs_state = nv50_sp_state_delete;
    pipe->delete_gs_state = nv50_sp_state_delete;
    pipe->delete_compute_state = nv50_sp_state_delete;
+
+   pipe->get_compute_state_info = nv50_get_compute_state_info;
 
    pipe->set_blend_color = nv50_set_blend_color;
    pipe->set_stencil_ref = nv50_set_stencil_ref;

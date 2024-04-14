@@ -881,7 +881,7 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
             Temp var = phi->operands[i].getTemp();
 
             std::map<Temp, Temp>::iterator rename_it = ctx.renames[pred_idx].find(var);
-            /* prevent the definining instruction from being DCE'd if it could be rematerialized */
+            /* prevent the defining instruction from being DCE'd if it could be rematerialized */
             if (rename_it == ctx.renames[preds[i]].end() && ctx.remat.count(var))
                ctx.unused_remats.erase(ctx.remat[var].instr);
 
@@ -1001,7 +1001,7 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
                ctx.renames[pred_idx].find(phi->operands[i].getTemp());
             if (it != ctx.renames[pred_idx].end()) {
                phi->operands[i].setTemp(it->second);
-            /* prevent the definining instruction from being DCE'd if it could be rematerialized */
+            /* prevent the defining instruction from being DCE'd if it could be rematerialized */
             } else {
                auto remat_it = ctx.remat.find(phi->operands[i].getTemp());
                if (remat_it != ctx.remat.end()) {
@@ -1117,7 +1117,7 @@ add_coupling_code(spill_ctx& ctx, Block* block, unsigned block_idx)
                tmp = rename;
             } else {
                tmp = pair.first;
-               /* prevent the definining instruction from being DCE'd if it could be rematerialized */
+               /* prevent the defining instruction from being DCE'd if it could be rematerialized */
                if (ctx.remat.count(tmp))
                   ctx.unused_remats.erase(ctx.remat[tmp].instr);
             }
@@ -1162,7 +1162,7 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
    std::vector<aco_ptr<Instruction>> instructions;
    unsigned idx = 0;
 
-   /* phis are handled separetely */
+   /* phis are handled separately */
    while (block->instructions[idx]->opcode == aco_opcode::p_phi ||
           block->instructions[idx]->opcode == aco_opcode::p_linear_phi) {
       instructions.emplace_back(std::move(block->instructions[idx++]));
@@ -1191,7 +1191,7 @@ process_block(spill_ctx& ctx, unsigned block_idx, Block* block, RegisterDemand s
             if (rename_it != ctx.renames[block_idx].end()) {
                op.setTemp(rename_it->second);
             } else {
-               /* prevent its definining instruction from being DCE'd if it could be rematerialized */
+               /* prevent its defining instruction from being DCE'd if it could be rematerialized */
                auto remat_it = ctx.remat.find(op.getTemp());
                if (remat_it != ctx.remat.end()) {
                   ctx.unused_remats.erase(remat_it->second.instr);
@@ -1416,9 +1416,17 @@ load_scratch_resource(spill_ctx& ctx, Temp& scratch_offset, Block& block,
       return bld.copy(bld.def(s1), Operand::c32(offset));
 
    Temp private_segment_buffer = ctx.program->private_segment_buffer;
-   if (ctx.program->stage.hw != HWStage::CS)
+   if (!private_segment_buffer.bytes()) {
+      Temp addr_lo = bld.sop1(aco_opcode::p_load_symbol, bld.def(s1),
+                              Operand::c32(aco_symbol_scratch_addr_lo));
+      Temp addr_hi = bld.sop1(aco_opcode::p_load_symbol, bld.def(s1),
+                              Operand::c32(aco_symbol_scratch_addr_hi));
+      private_segment_buffer =
+         bld.pseudo(aco_opcode::p_create_vector, bld.def(s2), addr_lo, addr_hi);
+   } else if (ctx.program->stage.hw != HWStage::CS) {
       private_segment_buffer =
          bld.smem(aco_opcode::s_load_dwordx2, bld.def(s2), private_segment_buffer, Operand::zero());
+   }
 
    if (offset)
       scratch_offset = bld.sop2(aco_opcode::s_add_u32, bld.def(s1), bld.def(s1, scc),

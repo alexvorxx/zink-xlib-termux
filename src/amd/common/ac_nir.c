@@ -26,15 +26,18 @@
 #include "nir_builder.h"
 #include "nir_xfb_info.h"
 
+/* Load argument with index start from arg plus relative_index. */
 nir_ssa_def *
-ac_nir_load_arg(nir_builder *b, const struct ac_shader_args *ac_args, struct ac_arg arg)
+ac_nir_load_arg_at_offset(nir_builder *b, const struct ac_shader_args *ac_args,
+                          struct ac_arg arg, unsigned relative_index)
 {
-   unsigned num_components = ac_args->args[arg.arg_index].size;
+   unsigned arg_index = arg.arg_index + relative_index;
+   unsigned num_components = ac_args->args[arg_index].size;
 
-   if (ac_args->args[arg.arg_index].file == AC_ARG_SGPR)
-      return nir_load_scalar_arg_amd(b, num_components, .base = arg.arg_index);
+   if (ac_args->args[arg_index].file == AC_ARG_SGPR)
+      return nir_load_scalar_arg_amd(b, num_components, .base = arg_index);
    else
-      return nir_load_vector_arg_amd(b, num_components, .base = arg.arg_index);
+      return nir_load_vector_arg_amd(b, num_components, .base = arg_index);
 }
 
 nir_ssa_def *
@@ -43,6 +46,52 @@ ac_nir_unpack_arg(nir_builder *b, const struct ac_shader_args *ac_args, struct a
 {
    nir_ssa_def *value = ac_nir_load_arg(b, ac_args, arg);
    return nir_ubfe_imm(b, value, rshift, bitwidth);
+}
+
+static bool
+is_sin_cos(const nir_instr *instr, UNUSED const void *_)
+{
+   return instr->type == nir_instr_type_alu && (nir_instr_as_alu(instr)->op == nir_op_fsin ||
+                                                nir_instr_as_alu(instr)->op == nir_op_fcos);
+}
+
+static nir_ssa_def *
+lower_sin_cos(struct nir_builder *b, nir_instr *instr, UNUSED void *_)
+{
+   nir_alu_instr *sincos = nir_instr_as_alu(instr);
+   nir_ssa_def *src = nir_fmul_imm(b, nir_ssa_for_alu_src(b, sincos, 0), 0.15915493667125702);
+   return sincos->op == nir_op_fsin ? nir_fsin_amd(b, src) : nir_fcos_amd(b, src);
+}
+
+bool
+ac_nir_lower_sin_cos(nir_shader *shader)
+{
+   return nir_shader_lower_instructions(shader, is_sin_cos, lower_sin_cos, NULL);
+}
+
+void
+ac_nir_store_var_components(nir_builder *b, nir_variable *var, nir_ssa_def *value,
+                            unsigned component, unsigned writemask)
+{
+   /* component store */
+   if (value->num_components != 4) {
+      nir_ssa_def *undef = nir_ssa_undef(b, 1, value->bit_size);
+
+      /* add undef component before and after value to form a vec4 */
+      nir_ssa_def *comp[4];
+      for (int i = 0; i < 4; i++) {
+         comp[i] = (i >= component && i < component + value->num_components) ?
+            nir_channel(b, value, i - component) : undef;
+      }
+
+      value = nir_vec(b, comp, 4);
+      writemask <<= component;
+   } else {
+      /* if num_component==4, there should be no component offset */
+      assert(component == 0);
+   }
+
+   nir_store_var(b, var, value, writemask);
 }
 
 void
@@ -226,14 +275,16 @@ ac_nir_export_position(nir_builder *b,
 }
 
 void
-ac_nir_export_parameter(nir_builder *b,
-                        const uint8_t *param_offsets,
-                        uint64_t outputs_written,
-                        uint16_t outputs_written_16bit,
-                        nir_ssa_def *(*outputs)[4],
-                        nir_ssa_def *(*outputs_16bit_lo)[4],
-                        nir_ssa_def *(*outputs_16bit_hi)[4])
+ac_nir_export_parameters(nir_builder *b,
+                         const uint8_t *param_offsets,
+                         uint64_t outputs_written,
+                         uint16_t outputs_written_16bit,
+                         nir_ssa_def *(*outputs)[4],
+                         nir_ssa_def *(*outputs_16bit_lo)[4],
+                         nir_ssa_def *(*outputs_16bit_hi)[4])
 {
+   uint32_t exported_params = 0;
+
    u_foreach_bit64 (slot, outputs_written) {
       unsigned offset = param_offsets[slot];
       if (offset > AC_EXP_PARAM_OFFSET_31)
@@ -249,10 +300,18 @@ ac_nir_export_parameter(nir_builder *b,
       if (!write_mask)
          continue;
 
+      /* Since param_offsets[] can map multiple varying slots to the same
+       * param export index (that's radeonsi-specific behavior), we need to
+       * do this so as not to emit duplicated exports.
+       */
+      if (exported_params & BITFIELD_BIT(offset))
+         continue;
+
       nir_export_amd(
          b, get_export_output(b, outputs[slot]),
          .base = V_008DFC_SQ_EXP_PARAM + offset,
          .write_mask = write_mask);
+      exported_params |= BITFIELD_BIT(offset);
    }
 
    u_foreach_bit (slot, outputs_written_16bit) {
@@ -270,6 +329,13 @@ ac_nir_export_parameter(nir_builder *b,
       if (!write_mask)
          continue;
 
+      /* Since param_offsets[] can map multiple varying slots to the same
+       * param export index (that's radeonsi-specific behavior), we need to
+       * do this so as not to emit duplicated exports.
+       */
+      if (exported_params & BITFIELD_BIT(offset))
+         continue;
+
       nir_ssa_def *vec[4];
       nir_ssa_def *undef = nir_ssa_undef(b, 1, 16);
       for (int i = 0; i < 4; i++) {
@@ -282,6 +348,7 @@ ac_nir_export_parameter(nir_builder *b,
          b, nir_vec(b, vec, 4),
          .base = V_008DFC_SQ_EXP_PARAM + offset,
          .write_mask = write_mask);
+      exported_params |= BITFIELD_BIT(offset);
    }
 }
 
@@ -564,12 +631,12 @@ ac_nir_create_gs_copy_shader(const nir_shader *gs_nir,
                                 force_vrs, export_outputs, outputs.data);
 
          if (has_param_exports) {
-            ac_nir_export_parameter(&b, param_offsets,
-                                    b.shader->info.outputs_written,
-                                    b.shader->info.outputs_written_16bit,
-                                    outputs.data,
-                                    outputs.data_16bit_lo,
-                                    outputs.data_16bit_hi);
+            ac_nir_export_parameters(&b, param_offsets,
+                                     b.shader->info.outputs_written,
+                                     b.shader->info.outputs_written_16bit,
+                                     outputs.data,
+                                     outputs.data_16bit_lo,
+                                     outputs.data_16bit_hi);
          }
       }
 
@@ -673,12 +740,12 @@ ac_nir_lower_legacy_vs(nir_shader *nir,
                           force_vrs, export_outputs, outputs.data);
 
    if (has_param_exports) {
-      ac_nir_export_parameter(&b, param_offsets,
-                              nir->info.outputs_written,
-                              nir->info.outputs_written_16bit,
-                              outputs.data,
-                              outputs.data_16bit_lo,
-                              outputs.data_16bit_hi);
+      ac_nir_export_parameters(&b, param_offsets,
+                               nir->info.outputs_written,
+                               nir->info.outputs_written_16bit,
+                               outputs.data,
+                               outputs.data_16bit_lo,
+                               outputs.data_16bit_hi);
    }
 
    nir_metadata_preserve(impl, preserved);

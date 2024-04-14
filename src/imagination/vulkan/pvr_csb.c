@@ -39,6 +39,7 @@
 #include "pvr_debug.h"
 #include "pvr_device_info.h"
 #include "pvr_private.h"
+#include "pvr_types.h"
 #include "util/list.h"
 #include "util/u_dynarray.h"
 #include "vk_log.h"
@@ -135,7 +136,7 @@ VkResult pvr_csb_bake(struct pvr_csb *const csb,
    if (csb->status != VK_SUCCESS)
       return csb->status;
 
-   *bo_list_out = csb->pvr_bo_list;
+   list_replace(&csb->pvr_bo_list, bo_list_out);
 
    /* Same as pvr_csb_finish(). */
    pvr_csb_init(NULL, PVR_CMD_STREAM_TYPE_INVALID, csb);
@@ -224,7 +225,7 @@ static bool pvr_csb_buffer_extend(struct pvr_csb *csb)
  */
 void *pvr_csb_alloc_dwords(struct pvr_csb *csb, uint32_t num_dwords)
 {
-   const uint32_t required_space = num_dwords * 4;
+   const uint32_t required_space = PVR_DW_TO_BYTES(num_dwords);
    void *p;
 
    if (csb->status != VK_SUCCESS)

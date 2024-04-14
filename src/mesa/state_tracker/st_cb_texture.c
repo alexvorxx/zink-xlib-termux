@@ -429,6 +429,9 @@ st_astc_format_fallback(const struct st_context *st, mesa_format format)
    if (!_mesa_is_format_astc_2d(format))
       return false;
 
+   if (st->astc_void_extents_need_denorm_flush && !util_format_is_srgb(format))
+      return true;
+
    if (format == MESA_FORMAT_RGBA_ASTC_5x5 ||
        format == MESA_FORMAT_SRGB8_ALPHA8_ASTC_5x5)
       return !st->has_astc_5x5_ldr;
@@ -556,6 +559,64 @@ log_unmap_time_delta(const struct pipe_box *box,
              pathname, os_time_get() - start_us);
 }
 
+/**
+ * Upload ASTC data but flush denorms in any void extent blocks.
+ */
+static void
+upload_astc_slice_with_flushed_void_extents(uint8_t *dst,
+                                            unsigned dst_stride,
+                                            const uint8_t *src,
+                                            unsigned src_stride,
+                                            unsigned src_width,
+                                           unsigned src_height,
+                                           mesa_format format)
+{
+   unsigned blk_w, blk_h;
+   _mesa_get_format_block_size(format, &blk_w, &blk_h);
+
+   unsigned x_blocks = (src_width + blk_w - 1) / blk_w;
+   unsigned y_blocks = (src_height + blk_h - 1) / blk_h;
+
+   for (int y = 0; y < y_blocks; y++) {
+      /* An ASTC block is stored in little endian mode. The byte that
+       * contains bits 0..7 is stored at the lower address in memory.
+       */
+      struct astc_block {
+         uint16_t header;
+         uint16_t dontcare0;
+         uint16_t dontcare1;
+         uint16_t dontcare2;
+         uint16_t R;
+         uint16_t G;
+         uint16_t B;
+         uint16_t A;
+      } *blocks = (struct astc_block *) src;
+
+      /* Iterate over every copied block in the row */
+      for (int x = 0; x < x_blocks; x++) {
+         /* Check if the header matches that of an LDR void-extent block */
+         if ((blocks[x].header & 0xfff) == 0xDFC) {
+            struct astc_block flushed_block = {
+               .header = blocks[x].header,
+               .dontcare0 = blocks[x].dontcare0,
+               .dontcare1 = blocks[x].dontcare1,
+               .dontcare2 = blocks[x].dontcare2,
+               .R = blocks[x].R < 4 ? 0 : blocks[x].R,
+               .G = blocks[x].G < 4 ? 0 : blocks[x].G,
+               .B = blocks[x].B < 4 ? 0 : blocks[x].B,
+               .A = blocks[x].A < 4 ? 0 : blocks[x].A,
+            };
+            memcpy(&dst[x * 16], &flushed_block, 16);
+         } else {
+            memcpy(&dst[x * 16], &blocks[x], 16);
+         }
+      }
+
+      dst += dst_stride;
+      src += src_stride;
+   }
+}
+
 void
 st_UnmapTextureImage(struct gl_context *ctx,
                      struct gl_texture_image *texImage,
@@ -577,6 +638,7 @@ st_UnmapTextureImage(struct gl_context *ctx,
          const int64_t unmap_start_us = log_unmap_time ? os_time_get() : 0;
 
          if (_mesa_is_format_astc_2d(texImage->TexFormat) &&
+             !_mesa_is_format_astc_2d(texImage->pt->format) &&
              util_format_is_compressed(texImage->pt->format)) {
 
             /* DXT5 is the only supported transcode target from ASTC. */
@@ -627,7 +689,15 @@ st_UnmapTextureImage(struct gl_context *ctx,
 
          assert(z == transfer->box.z);
 
-         if (util_format_is_compressed(texImage->pt->format)) {
+         if (_mesa_is_format_astc_2d(texImage->pt->format)) {
+            assert(st->astc_void_extents_need_denorm_flush);
+            upload_astc_slice_with_flushed_void_extents(map, transfer->stride,
+                                                        itransfer->temp_data,
+                                                        itransfer->temp_stride,
+                                                        transfer->box.width,
+                                                        transfer->box.height,
+                                                        texImage->pt->format);
+         } else if (util_format_is_compressed(texImage->pt->format)) {
             /* Transcode into a different compressed format. */
             unsigned size =
                _mesa_format_image_size(PIPE_FORMAT_R8G8B8A8_UNORM,
@@ -1001,14 +1071,22 @@ guess_and_alloc_texture(struct st_context *st,
                                    width, height, depth,
                                    &ptWidth, &ptHeight, &ptDepth, &ptLayers);
 
+   enum pipe_texture_target target = gl_target_to_pipe(stObj->Target);
+   unsigned nr_samples = 0;
+   if (stObj->TargetIndex == TEXTURE_2D_MULTISAMPLE_INDEX ||
+       stObj->TargetIndex == TEXTURE_2D_MULTISAMPLE_ARRAY_INDEX) {
+      int samples[16];
+      st_QueryInternalFormat(st->ctx, 0, stImage->InternalFormat, GL_SAMPLES, samples);
+      nr_samples = samples[0];
+   }
    stObj->pt = st_texture_create(st,
-                                 gl_target_to_pipe(stObj->Target),
+                                 target,
                                  fmt,
                                  lastLevel,
                                  ptWidth,
                                  ptHeight,
                                  ptDepth,
-                                 ptLayers, 0,
+                                 ptLayers, nr_samples,
                                  bindings,
                                  false);
 
@@ -2004,6 +2082,7 @@ st_TexSubImage(struct gl_context *ctx, GLuint dims,
    GLubyte *map;
    unsigned dstz = texImage->Face + texImage->TexObject->Attrib.MinLayer;
    unsigned dst_level = 0;
+   bool is_ms = dst->nr_samples > 1;
    bool throttled = false;
 
    st_flush_bitmap_cache(st);
@@ -2022,6 +2101,7 @@ st_TexSubImage(struct gl_context *ctx, GLuint dims,
    /* Try texture_subdata, which should be the fastest memcpy path. */
    if (pixels &&
        !unpack->BufferObj &&
+       !is_ms &&
        _mesa_texstore_can_use_memcpy(ctx, texImage->_BaseFormat,
                                      texImage->TexFormat, format, type,
                                      unpack)) {
@@ -2101,7 +2181,7 @@ st_TexSubImage(struct gl_context *ctx, GLuint dims,
     * in which case the memcpy-based fast path will likely be used and
     * we don't have to blit. */
    if (_mesa_format_matches_format_and_type(texImage->TexFormat, format,
-                                            type, unpack->SwapBytes, NULL)) {
+                                            type, unpack->SwapBytes, NULL) && !is_ms) {
       goto fallback;
    }
 
@@ -2119,7 +2199,7 @@ st_TexSubImage(struct gl_context *ctx, GLuint dims,
     * etc. */
    if (!_mesa_texstore_can_use_memcpy(ctx,
                              _mesa_get_format_base_format(mesa_src_format),
-                             mesa_src_format, format, type, unpack)) {
+                             mesa_src_format, format, type, unpack) && !is_ms) {
       goto fallback;
    }
 

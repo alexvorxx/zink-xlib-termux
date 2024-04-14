@@ -25,18 +25,20 @@
 #ifndef ACO_IR_H
 #define ACO_IR_H
 
-#include "aco_interface.h"
 #include "aco_opcodes.h"
 #include "aco_shader_info.h"
 #include "aco_util.h"
 
-#include "nir.h"
+#include "util/compiler.h"
 
 #include "ac_binary.h"
+#include "amd_family.h"
 #include <algorithm>
 #include <bitset>
 #include <memory>
 #include <vector>
+
+typedef struct nir_shader nir_shader;
 
 namespace aco {
 
@@ -1382,8 +1384,7 @@ struct SMEM_instruction : public Instruction {
    bool dlc : 1; /* NAVI: device level coherent */
    bool nv : 1;  /* VEGA only: Non-volatile */
    bool disable_wqm : 1;
-   bool prevent_overflow : 1; /* avoid overflow when combining additions */
-   uint8_t padding : 3;
+   uint8_t padding : 4;
 };
 static_assert(sizeof(SMEM_instruction) == sizeof(Instruction) + 4, "Unexpected padding");
 
@@ -1664,7 +1665,11 @@ struct Pseudo_branch_instruction : public Instruction {
     * A value of 0 means the target has not been initialized (BB0 cannot be a branch target).
     */
    uint32_t target[2];
-   nir_selection_control selection_control;
+
+   /* Indicates that selection control prefers to remove this instruction if possible.
+    * This is set when the branch is divergent and always taken, or flattened.
+    */
+   bool selection_control_remove;
 };
 static_assert(sizeof(Pseudo_branch_instruction) == sizeof(Instruction) + 12, "Unexpected padding");
 
@@ -1757,7 +1762,7 @@ Instruction::usesModifiers() const noexcept
       /* opsel_hi must be 1 to not be considered a modifier - even for constants */
       return vop3p.opsel_lo || vop3p.clamp || vop3p.neg_lo || vop3p.neg_hi ||
              (vop3p.opsel_hi & BITFIELD_MASK(operands.size())) != BITFIELD_MASK(operands.size());
-   } else if (isVOP3()) {
+   } else if (isVALU()) {
       const VALU_instruction& vop3 = this->valu();
       return vop3.opsel || vop3.clamp || vop3.omod || vop3.abs || vop3.neg;
    }
@@ -1945,14 +1950,15 @@ struct Block {
  */
 enum class SWStage : uint16_t {
    None = 0,
-   VS = 1 << 0,     /* Vertex Shader */
-   GS = 1 << 1,     /* Geometry Shader */
-   TCS = 1 << 2,    /* Tessellation Control aka Hull Shader */
-   TES = 1 << 3,    /* Tessellation Evaluation aka Domain Shader */
-   FS = 1 << 4,     /* Fragment aka Pixel Shader */
-   CS = 1 << 5,     /* Compute Shader */
-   TS = 1 << 6,     /* Task Shader */
-   MS = 1 << 7,     /* Mesh Shader */
+   VS = 1 << 0,  /* Vertex Shader */
+   GS = 1 << 1,  /* Geometry Shader */
+   TCS = 1 << 2, /* Tessellation Control aka Hull Shader */
+   TES = 1 << 3, /* Tessellation Evaluation aka Domain Shader */
+   FS = 1 << 4,  /* Fragment aka Pixel Shader */
+   CS = 1 << 5,  /* Compute Shader */
+   TS = 1 << 6,  /* Task Shader */
+   MS = 1 << 7,  /* Mesh Shader */
+   RT = 1 << 8,  /* Raytracing Shader */
 
    /* Stage combinations merged to run on a single HWStage */
    VS_GS = VS | GS,
@@ -2030,12 +2036,14 @@ static constexpr Stage vertex_geometry_gs(HWStage::GS, SWStage::VS_GS);
 static constexpr Stage vertex_tess_control_hs(HWStage::HS, SWStage::VS_TCS);
 static constexpr Stage tess_eval_geometry_gs(HWStage::GS, SWStage::TES_GS);
 /* pre-GFX9 */
-static constexpr Stage vertex_ls(HWStage::LS, SWStage::VS); /* vertex before tesselation control */
+static constexpr Stage vertex_ls(HWStage::LS, SWStage::VS); /* vertex before tessellation control */
 static constexpr Stage vertex_es(HWStage::ES, SWStage::VS); /* vertex before geometry */
 static constexpr Stage tess_control_hs(HWStage::HS, SWStage::TCS);
 static constexpr Stage tess_eval_es(HWStage::ES,
-                                    SWStage::TES); /* tesselation evaluation before geometry */
+                                    SWStage::TES); /* tessellation evaluation before geometry */
 static constexpr Stage geometry_gs(HWStage::GS, SWStage::GS);
+/* Raytracing */
+static constexpr Stage raytracing_cs(HWStage::CS, SWStage::RT);
 
 struct DeviceInfo {
    uint16_t lds_encoding_granule;
@@ -2093,7 +2101,6 @@ public:
    uint16_t min_waves = 0;
    unsigned workgroup_size; /* if known; otherwise UINT_MAX */
    bool wgp_mode;
-   bool rt_stack = false;
 
    bool needs_vcc = false;
 
@@ -2185,10 +2192,13 @@ void select_trap_handler_shader(Program* program, struct nir_shader* shader,
                                 const struct aco_compiler_options* options,
                                 const struct aco_shader_info* info,
                                 const struct ac_shader_args* args);
+void select_rt_prolog(Program* program, ac_shader_config* config,
+                      const struct aco_compiler_options* options,
+                      const struct aco_shader_info* info, const struct ac_shader_args* in_args,
+                      const struct ac_shader_args* out_args);
 void select_vs_prolog(Program* program, const struct aco_vs_prolog_info* pinfo,
                       ac_shader_config* config, const struct aco_compiler_options* options,
-                      const struct aco_shader_info* info, const struct ac_shader_args* args,
-                      unsigned* num_preserved_sgprs);
+                      const struct aco_shader_info* info, const struct ac_shader_args* args);
 
 void select_ps_epilog(Program* program, const struct aco_ps_epilog_info* epilog_info,
                       ac_shader_config* config, const struct aco_compiler_options* options,
@@ -2216,7 +2226,8 @@ void insert_wait_states(Program* program);
 bool dealloc_vgprs(Program* program);
 void insert_NOPs(Program* program);
 void form_hard_clauses(Program* program);
-unsigned emit_program(Program* program, std::vector<uint32_t>& code);
+unsigned emit_program(Program* program, std::vector<uint32_t>& code,
+                      std::vector<struct aco_symbol> *symbols);
 /**
  * Returns true if print_asm can disassemble the given program for the current build/runtime
  * configuration

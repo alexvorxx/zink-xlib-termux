@@ -502,6 +502,7 @@ compute_version_es2(const struct gl_extensions *extensions,
                          extensions->EXT_texture_sRGB &&
                          extensions->EXT_transform_feedback &&
                          extensions->ARB_draw_instanced &&
+                         extensions->ARB_instanced_arrays &&
                          extensions->ARB_uniform_buffer_object &&
                          extensions->EXT_texture_snorm &&
                          (extensions->NV_primitive_restart ||
@@ -678,6 +679,16 @@ done:
 
    if (_mesa_has_tessellation(ctx))
       ctx->SupportedPrimMask |= 1 << GL_PATCHES;
+
+   /* Appendix F.2 of the OpenGL ES 3.0 spec says:
+    *
+    *     "OpenGL ES 3.0 requires that all cube map filtering be
+    *     seamless. OpenGL ES 2.0 specified that a single cube map face be
+    *     selected and used for filtering."
+    *
+    * Now that we know our version, enable seamless filtering for GLES3 only.
+    */
+   ctx->Texture.CubeMapSeamless = _mesa_is_gles3(ctx);
 
    /* First time initialization. */
    _mesa_update_valid_to_render_state(ctx);

@@ -162,8 +162,6 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_streamout_write_index_amd:
    case nir_intrinsic_load_streamout_offset_amd:
    case nir_intrinsic_load_task_ring_entry_amd:
-   case nir_intrinsic_load_task_ib_addr:
-   case nir_intrinsic_load_task_ib_stride:
    case nir_intrinsic_load_ring_attr_amd:
    case nir_intrinsic_load_ring_attr_offset_amd:
    case nir_intrinsic_load_sample_positions_pan:
@@ -186,7 +184,6 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_tess_level_outer_default:
    case nir_intrinsic_load_scalar_arg_amd:
    case nir_intrinsic_load_smem_amd:
-   //case nir_intrinsic_load_smem_buffer_amd:
    case nir_intrinsic_load_rt_dynamic_callable_stack_base_amd:
    case nir_intrinsic_load_global_const_block_intel:
    case nir_intrinsic_load_reloc_const_intel:
@@ -207,6 +204,10 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_lds_ngg_gs_out_vertex_base_amd:
    case nir_intrinsic_load_btd_shader_type_intel:
    case nir_intrinsic_load_base_workgroup_id:
+   case nir_intrinsic_load_alpha_reference_amd:
+   case nir_intrinsic_load_ssbo_uniform_block_intel:
+   case nir_intrinsic_load_shared_uniform_block_intel:
+   case nir_intrinsic_load_barycentric_optimize_amd:
       is_divergent = false;
       break;
 
@@ -432,7 +433,10 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_image_load_raw_intel:
    case nir_intrinsic_get_ubo_size:
    case nir_intrinsic_load_ssbo_address:
-   case nir_intrinsic_load_desc_set_address_intel: {
+   case nir_intrinsic_load_desc_set_address_intel:
+   case nir_intrinsic_load_desc_set_dynamic_index_intel:
+   case nir_intrinsic_load_global_constant_bounded:
+   case nir_intrinsic_load_global_constant_offset: {
       unsigned num_srcs = nir_intrinsic_infos[instr->intrinsic].num_srcs;
       for (unsigned i = 0; i < num_srcs; i++) {
          if (instr->src[i].ssa->divergent) {
@@ -471,6 +475,7 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_point_coord:
    case nir_intrinsic_load_line_coord:
    case nir_intrinsic_load_frag_coord:
+   case nir_intrinsic_load_fully_covered:
    case nir_intrinsic_load_sample_pos:
    case nir_intrinsic_load_sample_pos_or_center:
    case nir_intrinsic_load_vertex_id_zero_base:

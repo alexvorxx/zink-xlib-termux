@@ -171,7 +171,6 @@ struct nir_xfb_info;
  */
 typedef struct {
    gl_state_index16 tokens[STATE_LENGTH];
-   uint16_t swizzle;
 } nir_state_slot;
 
 typedef enum {
@@ -876,9 +875,6 @@ typedef struct nir_register {
 
    /** set of nir_dests where this register is defined (written to) */
    struct list_head defs;
-
-   /** set of nir_ifs where this register is used as a condition */
-   struct list_head if_uses;
 } nir_register;
 
 #define nir_foreach_register(reg, reg_list) \
@@ -952,9 +948,6 @@ typedef struct nir_ssa_def {
    /** set of nir_instrs where this register is used (read from) */
    struct list_head uses;
 
-   /** set of nir_ifs where this register is used as a condition */
-   struct list_head if_uses;
-
    /** generic SSA definition index. */
    unsigned index;
 
@@ -1008,7 +1001,22 @@ typedef struct nir_src {
    };
 
    bool is_ssa;
+   bool is_if;
 } nir_src;
+
+static inline void
+nir_src_set_parent_instr(nir_src *src, nir_instr *parent_instr)
+{
+   src->is_if = false;
+   src->parent_instr = parent_instr;
+}
+
+static inline void
+nir_src_set_parent_if(nir_src *src, struct nir_if *parent_if)
+{
+   src->is_if = true;
+   src->parent_if = parent_if;
+}
 
 static inline nir_src
 nir_src_init(void)
@@ -1019,17 +1027,36 @@ nir_src_init(void)
 
 #define NIR_SRC_INIT nir_src_init()
 
-#define nir_foreach_use(src, reg_or_ssa_def) \
+#define nir_foreach_use_including_if(src, reg_or_ssa_def) \
    list_for_each_entry(nir_src, src, &(reg_or_ssa_def)->uses, use_link)
 
-#define nir_foreach_use_safe(src, reg_or_ssa_def) \
+#define nir_foreach_use_including_if_safe(src, reg_or_ssa_def) \
    list_for_each_entry_safe(nir_src, src, &(reg_or_ssa_def)->uses, use_link)
 
+#define nir_foreach_use(src, reg_or_ssa_def) \
+   nir_foreach_use_including_if(src, reg_or_ssa_def) \
+      if (!src->is_if)
+
+#define nir_foreach_use_safe(src, reg_or_ssa_def) \
+   nir_foreach_use_including_if_safe(src, reg_or_ssa_def) \
+      if (!src->is_if)
+
 #define nir_foreach_if_use(src, reg_or_ssa_def) \
-   list_for_each_entry(nir_src, src, &(reg_or_ssa_def)->if_uses, use_link)
+   nir_foreach_use_including_if(src, reg_or_ssa_def) \
+      if (src->is_if)
 
 #define nir_foreach_if_use_safe(src, reg_or_ssa_def) \
-   list_for_each_entry_safe(nir_src, src, &(reg_or_ssa_def)->if_uses, use_link)
+   nir_foreach_use_including_if_safe(src, reg_or_ssa_def) \
+      if (src->is_if)
+
+static inline bool
+nir_ssa_def_used_by_if(const nir_ssa_def *def)
+{
+   nir_foreach_if_use(_, def)
+      return true;
+
+   return false;
+}
 
 typedef struct {
    union {
@@ -2292,6 +2319,9 @@ typedef struct {
 
    /** Validation needs to know this for gradient component count */
    unsigned array_is_lowered_cube : 1;
+
+   /** True if this tg4 instruction has an implicit LOD or LOD bias, instead of using level 0 */
+   unsigned is_gather_implicit_lod : 1;
 
    /** Gather offsets */
    int8_t tg4_offsets[4][2];
@@ -3796,13 +3826,6 @@ typedef struct nir_shader_compiler_options {
    bool lower_io_variables;
 
    /**
-    * Lower color inputs to load_colorN that are kind of like system values
-    * if lower_io_variables is also set. shader_info will contain
-    * the interpolation settings. This is used by nir_lower_io_passes.
-    */
-   bool lower_fs_color_inputs;
-
-   /**
     * The masks of shader stages that support indirect indexing with
     * load_input and store_output intrinsics. It's used when
     * lower_io_variables is true. This is used by nir_lower_io_passes.
@@ -4108,9 +4131,9 @@ nir_after_block_before_jump(nir_block *block)
 }
 
 static inline nir_cursor
-nir_before_src(nir_src *src, bool is_if_condition)
+nir_before_src(nir_src *src)
 {
-   if (is_if_condition) {
+   if (src->is_if) {
       nir_block *prev_block =
          nir_cf_node_as_block(nir_cf_node_prev(&src->parent_if->cf_node));
       assert(!nir_block_ends_in_jump(prev_block));
@@ -4314,29 +4337,26 @@ bool nir_srcs_equal(nir_src src1, nir_src src2);
 bool nir_instrs_equal(const nir_instr *instr1, const nir_instr *instr2);
 
 static inline void
-nir_instr_rewrite_src_ssa(ASSERTED nir_instr *instr,
-                          nir_src *src, nir_ssa_def *new_ssa)
+nir_src_rewrite_ssa(nir_src *src, nir_ssa_def *new_ssa)
 {
-   assert(src->parent_instr == instr);
    assert(src->is_ssa && src->ssa);
+   assert(src->is_if ? (src->parent_if != NULL) : (src->parent_instr != NULL));
    list_del(&src->use_link);
    src->ssa = new_ssa;
    list_addtail(&src->use_link, &new_ssa->uses);
 }
 
+static inline void
+nir_instr_rewrite_src_ssa(ASSERTED nir_instr *instr,
+                          nir_src *src, nir_ssa_def *new_ssa)
+{
+   assert(!src->is_if);
+   assert(src->parent_instr == instr);
+   nir_src_rewrite_ssa(src, new_ssa);
+}
+
 void nir_instr_rewrite_src(nir_instr *instr, nir_src *src, nir_src new_src);
 void nir_instr_move_src(nir_instr *dest_instr, nir_src *dest, nir_src *src);
-
-static inline void
-nir_if_rewrite_condition_ssa(ASSERTED nir_if *if_stmt,
-                             nir_src *src, nir_ssa_def *new_ssa)
-{
-   assert(src->parent_if == if_stmt);
-   assert(src->is_ssa && src->ssa);
-   list_del(&src->use_link);
-   src->ssa = new_ssa;
-   list_addtail(&src->use_link, &new_ssa->if_uses);
-}
 
 void nir_if_rewrite_condition(nir_if *if_stmt, nir_src new_src);
 void nir_instr_rewrite_dest(nir_instr *instr, nir_dest *dest,
@@ -4367,7 +4387,7 @@ nir_component_mask_t nir_ssa_def_components_read(const nir_ssa_def *def);
 static inline bool
 nir_ssa_def_is_unused(nir_ssa_def *ssa)
 {
-   return list_is_empty(&ssa->uses) && list_is_empty(&ssa->if_uses);
+   return list_is_empty(&ssa->uses);
 }
 
 
@@ -4758,10 +4778,12 @@ void nir_link_xfb_varyings(nir_shader *producer, nir_shader *consumer);
 bool nir_link_opt_varyings(nir_shader *producer, nir_shader *consumer);
 void nir_link_varying_precision(nir_shader *producer, nir_shader *consumer);
 
-bool nir_slot_is_sysval_output(gl_varying_slot slot);
+bool nir_slot_is_sysval_output(gl_varying_slot slot,
+                               gl_shader_stage next_shader);
 bool nir_slot_is_varying(gl_varying_slot slot);
-bool nir_slot_is_sysval_output_and_varying(gl_varying_slot slot);
-void nir_remove_varying(nir_intrinsic_instr *intr);
+bool nir_slot_is_sysval_output_and_varying(gl_varying_slot slot,
+                                           gl_shader_stage next_shader);
+bool nir_remove_varying(nir_intrinsic_instr *intr, gl_shader_stage next_shader);
 void nir_remove_sysval_output(nir_intrinsic_instr *intr);
 
 bool nir_lower_amul(nir_shader *shader,
@@ -4796,10 +4818,8 @@ bool nir_lower_io(nir_shader *shader,
                   nir_lower_io_options);
 
 bool nir_io_add_const_offset_to_base(nir_shader *nir, nir_variable_mode modes);
-
-void
-nir_lower_io_passes(nir_shader *nir);
-
+bool nir_lower_color_inputs(nir_shader *nir);
+void nir_lower_io_passes(nir_shader *nir);
 bool nir_io_add_intrinsic_xfb_info(nir_shader *nir);
 
 bool
@@ -5087,11 +5107,12 @@ nir_shader * nir_create_passthrough_tcs(const nir_shader_compiler_options *optio
 nir_shader * nir_create_passthrough_gs(const nir_shader_compiler_options *options,
                                        const nir_shader *prev_stage,
                                        enum shader_prim primitive_type,
-                                       unsigned vertices);
+                                       bool emulate_edgeflags,
+                                       bool force_line_strip_out);
 
 bool nir_lower_fragcolor(nir_shader *shader, unsigned max_cbufs);
 bool nir_lower_fragcoord_wtrans(nir_shader *shader);
-void nir_lower_viewport_transform(nir_shader *shader);
+bool nir_lower_viewport_transform(nir_shader *shader);
 bool nir_lower_uniforms_to_ubo(nir_shader *shader, bool dword_packed, bool load_vec4);
 
 bool nir_lower_is_helper_invocation(nir_shader *shader);
@@ -5478,7 +5499,7 @@ void nir_lower_point_size_mov(nir_shader *shader,
 
 bool nir_lower_frexp(nir_shader *nir);
 
-void nir_lower_two_sided_color(nir_shader *shader, bool face_sysval);
+bool nir_lower_two_sided_color(nir_shader *shader, bool face_sysval);
 
 bool nir_lower_clamp_color_outputs(nir_shader *shader);
 

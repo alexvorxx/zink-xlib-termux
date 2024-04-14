@@ -406,9 +406,13 @@ svga_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_MIN_MAP_BUFFER_ALIGNMENT:
       return 64;
    case PIPE_CAP_VERTEX_BUFFER_STRIDE_4BYTE_ALIGNED_ONLY:
+      return sws->have_vgpu10 ? 0 : 1;
+   case PIPE_CAP_VERTEX_ATTRIB_ELEMENT_ALIGNED_ONLY:
+      /* This CAP cannot be used with any other alignment-requiring CAPs */
+      return sws->have_vgpu10 ? 1 : 0;
    case PIPE_CAP_VERTEX_BUFFER_OFFSET_4BYTE_ALIGNED_ONLY:
    case PIPE_CAP_VERTEX_ELEMENT_SRC_OFFSET_4BYTE_ALIGNED_ONLY:
-      return 1;  /* need 4-byte alignment for all offsets and strides */
+      return sws->have_vgpu10 ? 0 : 1;
    case PIPE_CAP_MAX_VERTEX_ATTRIB_STRIDE:
       return 2048;
    case PIPE_CAP_MAX_VIEWPORTS:
@@ -536,8 +540,6 @@ vgpu9_get_shader_param(struct pipe_screen *screen,
       case PIPE_SHADER_CAP_SUPPORTED_IRS:
          return (1 << PIPE_SHADER_IR_TGSI) | (svgascreen->debug.nir ? (1 << PIPE_SHADER_IR_NIR) : 0);
       case PIPE_SHADER_CAP_DROUND_SUPPORTED:
-      case PIPE_SHADER_CAP_DFRACEXP_DLDEXP_SUPPORTED:
-      case PIPE_SHADER_CAP_LDEXP_SUPPORTED:
       case PIPE_SHADER_CAP_TGSI_ANY_INOUT_DECL_RANGE:
       case PIPE_SHADER_CAP_MAX_SHADER_BUFFERS:
       case PIPE_SHADER_CAP_MAX_SHADER_IMAGES:
@@ -602,8 +604,6 @@ vgpu9_get_shader_param(struct pipe_screen *screen,
       case PIPE_SHADER_CAP_SUPPORTED_IRS:
          return (1 << PIPE_SHADER_IR_TGSI) | (svgascreen->debug.nir ? (1 << PIPE_SHADER_IR_NIR) : 0);
       case PIPE_SHADER_CAP_DROUND_SUPPORTED:
-      case PIPE_SHADER_CAP_DFRACEXP_DLDEXP_SUPPORTED:
-      case PIPE_SHADER_CAP_LDEXP_SUPPORTED:
       case PIPE_SHADER_CAP_TGSI_ANY_INOUT_DECL_RANGE:
       case PIPE_SHADER_CAP_MAX_SHADER_BUFFERS:
       case PIPE_SHADER_CAP_MAX_SHADER_IMAGES:
@@ -713,8 +713,6 @@ vgpu10_get_shader_param(struct pipe_screen *screen,
       else
          return 0;
    case PIPE_SHADER_CAP_DROUND_SUPPORTED:
-   case PIPE_SHADER_CAP_DFRACEXP_DLDEXP_SUPPORTED:
-   case PIPE_SHADER_CAP_LDEXP_SUPPORTED:
       /* For the above cases, we rely on the GLSL compiler to translate/lower
        * the TGIS instruction into other instructions we do support.
        */
@@ -748,6 +746,7 @@ vgpu10_get_shader_param(struct pipe_screen *screen,
    .lower_int64_options = nir_lower_imul_2x32_64,                             \
    .lower_fdph = true,                                                        \
    .lower_flrp64 = true,                                                      \
+   .lower_ldexp = true,                                                       \
    .lower_rotate = true,                                                      \
    .lower_uniforms_to_ubo = true,                                             \
    .lower_vector_cmp = true,                                                  \
@@ -1046,6 +1045,15 @@ svga_destroy_screen( struct pipe_screen *screen )
 }
 
 
+static int
+svga_screen_get_fd( struct pipe_screen *screen )
+{
+   struct svga_winsys_screen *sws = svga_screen(screen)->sws;
+
+   return sws->get_fd(sws);
+}
+
+
 /**
  * Create a new svga_screen object
  */
@@ -1084,6 +1092,7 @@ svga_screen_create(struct svga_winsys_screen *sws)
    screen->get_name = svga_get_name;
    screen->get_vendor = svga_get_vendor;
    screen->get_device_vendor = svga_get_vendor; // TODO actual device vendor
+   screen->get_screen_fd = svga_screen_get_fd;
    screen->get_param = svga_get_param;
    screen->get_shader_param = svga_get_shader_param;
    screen->get_compiler_options = svga_get_compiler_options;

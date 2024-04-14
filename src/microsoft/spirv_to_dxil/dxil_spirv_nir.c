@@ -43,11 +43,18 @@ spirv_to_nir_options = {
       .subgroup_vote = true,
       .subgroup_shuffle = true,
       .subgroup_quad = true,
+      .subgroup_arithmetic = true,
       .descriptor_array_dynamic_indexing = true,
       .float_controls = true,
       .float16 = true,
       .int16 = true,
       .storage_16bit = true,
+      .storage_8bit = true,
+      .descriptor_indexing = true,
+      .runtime_descriptor_array = true,
+      .descriptor_array_non_uniform_indexing = true,
+      .image_read_without_format = true,
+      .image_write_without_format = true,
    },
    .ubo_addr_format = nir_address_format_32bit_index_offset,
    .ssbo_addr_format = nir_address_format_32bit_index_offset,
@@ -434,7 +441,7 @@ lower_yz_flip(struct nir_builder *builder, nir_instr *instr,
    return true;
 }
 
-static bool
+bool
 dxil_spirv_nir_lower_yz_flip(nir_shader *shader,
                              const struct dxil_spirv_runtime_conf *rt_conf,
                              bool *reads_sysval_ubo)
@@ -894,6 +901,9 @@ lower_bit_size_callback(const nir_instr *instr, void *data)
    case nir_intrinsic_quad_swap_horizontal:
    case nir_intrinsic_quad_swap_vertical:
    case nir_intrinsic_quad_swap_diagonal:
+   case nir_intrinsic_reduce:
+   case nir_intrinsic_inclusive_scan:
+   case nir_intrinsic_exclusive_scan:
       return intr->dest.ssa.bit_size == 1 ? 32 : 0;
    default:
       return 0;
@@ -936,8 +946,15 @@ dxil_spirv_nir_passes(nir_shader *nir,
       .lower_to_scalar = true,
       .lower_relative_shuffle = true,
    };
+   if (nir->info.stage != MESA_SHADER_FRAGMENT &&
+       nir->info.stage != MESA_SHADER_COMPUTE)
+      subgroup_options.lower_quad = true;
    NIR_PASS_V(nir, nir_lower_subgroups, &subgroup_options);
    NIR_PASS_V(nir, nir_lower_bit_size, lower_bit_size_callback, NULL);
+
+   // Ensure subgroup scans on bools are gone
+   NIR_PASS_V(nir, nir_opt_dce);
+   NIR_PASS_V(nir, dxil_nir_lower_unsupported_subgroup_scan);
 
    // Force sample-rate shading if we're asked to.
    if (conf->force_sample_rate_shading) {
@@ -989,7 +1006,7 @@ dxil_spirv_nir_passes(nir_shader *nir,
               nir_var_mem_ubo | nir_var_mem_push_const |
               nir_var_mem_ssbo);
 
-   if (conf->read_only_images_as_srvs) {
+   if (conf->inferred_read_only_images_as_srvs) {
       const nir_opt_access_options opt_access_options = {
          .is_vulkan = true,
       };
@@ -1077,7 +1094,8 @@ dxil_spirv_nir_passes(nir_shader *nir,
       } while (progress);
    }
 
-   NIR_PASS_V(nir, nir_lower_readonly_images_to_tex, true);
+   if (conf->declared_read_only_images_as_srvs)
+      NIR_PASS_V(nir, nir_lower_readonly_images_to_tex, true);
    nir_lower_tex_options lower_tex_options = {
       .lower_txp = UINT32_MAX,
       .lower_invalid_implicit_lod = true,

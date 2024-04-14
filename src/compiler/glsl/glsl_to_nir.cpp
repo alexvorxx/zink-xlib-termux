@@ -40,6 +40,7 @@
 #include "main/mtypes.h"
 #include "main/shaderobj.h"
 #include "util/u_math.h"
+#include "util/perf/cpu_trace.h"
 
 /*
  * pass to lower GLSL IR to NIR
@@ -122,6 +123,8 @@ private:
 
    void adjust_sparse_variable(nir_deref_instr *var_deref, const glsl_type *type,
                                nir_ssa_def *dest);
+
+   const struct gl_constants *consts;
 };
 
 /*
@@ -205,6 +208,8 @@ glsl_to_nir(const struct gl_constants *consts,
    const struct gl_shader_compiler_options *gl_options =
       &consts->ShaderCompilerOptions[stage];
 
+   MESA_TRACE_FUNC();
+
    /* glsl_to_nir can only handle converting certain function paramaters
     * to NIR. If we find something we can't handle then we get the GLSL IR
     * opts to remove it before we continue on.
@@ -283,6 +288,7 @@ glsl_to_nir(const struct gl_constants *consts,
 
 nir_visitor::nir_visitor(const struct gl_constants *consts, nir_shader *shader)
 {
+   this->consts = consts;
    this->supports_std430 = consts->UseSTD430AsDefaultPacking;
    this->shader = shader;
    this->is_global = true;
@@ -701,7 +707,6 @@ nir_visitor::visit(ir_variable *ir)
       for (unsigned i = 0; i < var->num_state_slots; i++) {
          for (unsigned j = 0; j < 4; j++)
             var->state_slots[i].tokens[j] = state_slots[i].tokens[j];
-         var->state_slots[i].swizzle = state_slots[i].swizzle;
       }
    } else {
       var->state_slots = NULL;
@@ -2034,8 +2039,19 @@ nir_visitor::visit(ir_expression *ir)
                                        : nir_isign(&b, srcs[0]);
       break;
    case ir_unop_rcp:  result = nir_frcp(&b, srcs[0]);  break;
-   case ir_unop_rsq:  result = nir_frsq(&b, srcs[0]);  break;
-   case ir_unop_sqrt: result = nir_fsqrt(&b, srcs[0]); break;
+
+   case ir_unop_rsq:
+      if (consts->ForceGLSLAbsSqrt)
+         srcs[0] = nir_fabs(&b, srcs[0]);
+      result = nir_frsq(&b, srcs[0]);
+      break;
+
+   case ir_unop_sqrt:
+      if (consts->ForceGLSLAbsSqrt)
+         srcs[0] = nir_fabs(&b, srcs[0]);
+      result = nir_fsqrt(&b, srcs[0]);
+      break;
+
    case ir_unop_exp:  result = nir_fexp2(&b, nir_fmul_imm(&b, srcs[0], M_LOG2E)); break;
    case ir_unop_log:  result = nir_fmul_imm(&b, nir_flog2(&b, srcs[0]), 1.0 / M_LOG2E); break;
    case ir_unop_exp2: result = nir_fexp2(&b, srcs[0]); break;
@@ -2838,6 +2854,7 @@ glsl_float64_funcs_to_nir(struct gl_context *ctx,
     * with compile times.
     */
    NIR_PASS_V(nir, nir_lower_vars_to_ssa);
+   NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp, NULL);
    NIR_PASS_V(nir, nir_copy_prop);
    NIR_PASS_V(nir, nir_opt_dce);
    NIR_PASS_V(nir, nir_opt_cse);

@@ -319,6 +319,14 @@ impl PipeContext {
         unsafe { self.pipe.as_ref().delete_compute_state.unwrap()(self.pipe.as_ptr(), state) }
     }
 
+    pub fn compute_state_info(&self, state: *mut c_void) -> pipe_compute_state_object_info {
+        let mut info = pipe_compute_state_object_info::default();
+        unsafe {
+            self.pipe.as_ref().get_compute_state_info.unwrap()(self.pipe.as_ptr(), state, &mut info)
+        }
+        info
+    }
+
     pub fn create_sampler_state(&self, state: &pipe_sampler_state) -> *mut c_void {
         unsafe { self.pipe.as_ref().create_sampler_state.unwrap()(self.pipe.as_ptr(), state) }
     }
@@ -505,6 +513,30 @@ impl PipeContext {
             PipeFence::new(fence, &self.screen)
         }
     }
+
+    pub fn svm_migrate(
+        &self,
+        ptrs: &[*const c_void],
+        sizes: &[usize],
+        to_device: bool,
+        content_undefined: bool,
+    ) {
+        assert_eq!(ptrs.len(), sizes.len());
+        unsafe {
+            if let Some(cb) = self.pipe.as_ref().svm_migrate {
+                cb(
+                    self.pipe.as_ptr(),
+                    ptrs.len() as u32,
+                    ptrs.as_ptr(),
+                    sizes.as_ptr(),
+                    to_device,
+                    content_undefined,
+                );
+            } else {
+                panic!("svm_migrate not implemented but called!");
+            }
+        }
+    }
 }
 
 impl Drop for PipeContext {
@@ -530,6 +562,7 @@ fn has_required_cbs(context: &pipe_context) -> bool {
         & has_required_feature!(context, delete_compute_state)
         & has_required_feature!(context, delete_sampler_state)
         & has_required_feature!(context, flush)
+        & has_required_feature!(context, get_compute_state_info)
         & has_required_feature!(context, launch_grid)
         & has_required_feature!(context, memory_barrier)
         & has_required_feature!(context, resource_copy_region)

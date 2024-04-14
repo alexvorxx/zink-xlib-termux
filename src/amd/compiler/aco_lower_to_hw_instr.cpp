@@ -71,7 +71,7 @@ aco_opcode
 get_reduce_opcode(amd_gfx_level gfx_level, ReduceOp op)
 {
    /* Because some 16-bit instructions are already VOP3 on GFX10, we use the
-    * 32-bit opcodes (VOP2) which allows to remove the tempory VGPR and to use
+    * 32-bit opcodes (VOP2) which allows to remove the temporary VGPR and to use
     * DPP with the arithmetic instructions. This requires to sign-extend.
     */
    switch (op) {
@@ -718,7 +718,7 @@ emit_reduction(lower_context* ctx, aco_opcode op, ReduceOp reduce_op, unsigned c
 
       for (unsigned i = 0; i < src.size(); i++) {
          if (!identity[i].isConstant() ||
-             identity[i].constantValue()) { /* bound_ctrl should take care of this overwise */
+             identity[i].constantValue()) { /* bound_ctrl should take care of this otherwise */
             if (ctx->program->gfx_level < GFX10)
                assert((identity[i].isConstant() && !identity[i].isLiteral()) ||
                       identity[i].physReg() == PhysReg{sitmp + i});
@@ -1109,23 +1109,15 @@ emit_v_mov_b16(Builder& bld, Definition dst, Operand op)
       if (!op.isLiteral() && op.physReg() >= 240) {
          /* v_add_f16 is smaller because it can use 16bit fp inline constants. */
          Instruction* instr = bld.vop2_e64(aco_opcode::v_add_f16, dst, op, Operand::zero());
-         if (dst.physReg().byte() == 2)
-            instr->valu().opsel = 0x8;
+         instr->valu().opsel[3] = dst.physReg().byte() == 2;
          return;
       }
       op = Operand::c32((int32_t)(int16_t)op.constantValue());
    }
 
-   if (!dst.physReg().byte() && !op.physReg().byte()) {
-      bld.vop1(aco_opcode::v_mov_b16, dst, op);
-   } else {
-      // TODO: this can use VOP1 for vgpr0-127 with assembler support
-      Instruction* instr = bld.vop1_e64(aco_opcode::v_mov_b16, dst, op);
-      if (op.physReg().byte() == 2)
-         instr->valu().opsel |= 0x1;
-      if (dst.physReg().byte() == 2)
-         instr->valu().opsel |= 0x8;
-   }
+   Instruction* instr = bld.vop1(aco_opcode::v_mov_b16, dst, op);
+   instr->valu().opsel[0] = op.physReg().byte() == 2;
+   instr->valu().opsel[3] = dst.physReg().byte() == 2;
 }
 
 void
@@ -2116,6 +2108,37 @@ emit_set_mode_from_block(Builder& bld, Program& program, Block* block, bool alwa
 }
 
 void
+hw_init_scratch(Builder& bld, Definition def, Operand scratch_addr, Operand scratch_offset)
+{
+   /* Since we know what the high 16 bits of scratch_hi is, we can set all the high 16
+    * bits in the same instruction that we add the carry.
+    */
+   Operand hi_add = Operand::c32(0xffff0000 - S_008F04_SWIZZLE_ENABLE_GFX6(1));
+   Operand scratch_addr_lo(scratch_addr.physReg(), s1);
+   Operand scratch_addr_hi(scratch_addr_lo.physReg().advance(4), s1);
+
+   if (bld.program->gfx_level >= GFX10) {
+      PhysReg scratch_lo = def.physReg();
+      PhysReg scratch_hi = def.physReg().advance(4);
+
+      bld.sop2(aco_opcode::s_add_u32, Definition(scratch_lo, s1), Definition(scc, s1),
+               scratch_addr_lo, scratch_offset);
+      bld.sop2(aco_opcode::s_addc_u32, Definition(scratch_hi, s1), Definition(scc, s1),
+               scratch_addr_hi, hi_add, Operand(scc, s1));
+
+      /* "((size - 1) << 11) | register" (FLAT_SCRATCH_LO/HI is encoded as register
+       * 20/21) */
+      bld.sopk(aco_opcode::s_setreg_b32, Operand(scratch_lo, s1), (31 << 11) | 20);
+      bld.sopk(aco_opcode::s_setreg_b32, Operand(scratch_hi, s1), (31 << 11) | 21);
+   } else {
+      bld.sop2(aco_opcode::s_add_u32, Definition(flat_scr_lo, s1), Definition(scc, s1),
+               scratch_addr_lo, scratch_offset);
+      bld.sop2(aco_opcode::s_addc_u32, Definition(flat_scr_hi, s1), Definition(scc, s1),
+               scratch_addr_hi, hi_add, Operand(scc, s1));
+   }
+}
+
+void
 lower_to_hw_instr(Program* program)
 {
    Block* discard_block = NULL;
@@ -2462,43 +2485,24 @@ lower_to_hw_instr(Program* program)
             }
             case aco_opcode::p_init_scratch: {
                assert(program->gfx_level >= GFX8 && program->gfx_level <= GFX10_3);
-               if (!program->config->scratch_bytes_per_wave && !program->rt_stack)
+               if (!program->config->scratch_bytes_per_wave)
                   break;
 
                Operand scratch_addr = instr->operands[0];
-               Operand scratch_addr_lo(scratch_addr.physReg(), s1);
-               if (program->stage.hw != HWStage::CS) {
+               if (scratch_addr.isUndefined()) {
+                  PhysReg reg = instr->definitions[0].physReg();
+                  bld.sop1(aco_opcode::p_load_symbol, Definition(reg, s1),
+                           Operand::c32(aco_symbol_scratch_addr_lo));
+                  bld.sop1(aco_opcode::p_load_symbol, Definition(reg.advance(4), s1),
+                           Operand::c32(aco_symbol_scratch_addr_hi));
+                  scratch_addr.setFixed(reg);
+               } else if (program->stage.hw != HWStage::CS) {
                   bld.smem(aco_opcode::s_load_dwordx2, instr->definitions[0], scratch_addr,
                            Operand::zero());
-                  scratch_addr_lo.setFixed(instr->definitions[0].physReg());
+                  scratch_addr.setFixed(instr->definitions[0].physReg());
                }
-               Operand scratch_addr_hi(scratch_addr_lo.physReg().advance(4), s1);
 
-               /* Since we know what the high 16 bits of scratch_hi is, we can set all the high 16
-                * bits in the same instruction that we add the carry.
-                */
-               uint32_t hi_add = 0xffff0000 - S_008F04_SWIZZLE_ENABLE_GFX6(1);
-
-               if (program->gfx_level >= GFX10) {
-                  Operand scratch_lo(instr->definitions[0].physReg(), s1);
-                  Operand scratch_hi(instr->definitions[0].physReg().advance(4), s1);
-
-                  bld.sop2(aco_opcode::s_add_u32, Definition(scratch_lo.physReg(), s1),
-                           Definition(scc, s1), scratch_addr_lo, instr->operands[1]);
-                  bld.sop2(aco_opcode::s_addc_u32, Definition(scratch_hi.physReg(), s1),
-                           Definition(scc, s1), scratch_addr_hi, Operand::c32(hi_add),
-                           Operand(scc, s1));
-
-                  /* "((size - 1) << 11) | register" (FLAT_SCRATCH_LO/HI is encoded as register
-                   * 20/21) */
-                  bld.sopk(aco_opcode::s_setreg_b32, scratch_lo, (31 << 11) | 20);
-                  bld.sopk(aco_opcode::s_setreg_b32, scratch_hi, (31 << 11) | 21);
-               } else {
-                  bld.sop2(aco_opcode::s_add_u32, Definition(flat_scr_lo, s1), Definition(scc, s1),
-                           scratch_addr_lo, instr->operands[1]);
-                  bld.sop2(aco_opcode::s_addc_u32, Definition(flat_scr_hi, s1), Definition(scc, s1),
-                           scratch_addr_hi, Operand::c32(hi_add), Operand(scc, s1));
-               }
+               hw_init_scratch(bld, instr->definitions[0], scratch_addr, instr->operands[1]);
                break;
             }
             case aco_opcode::p_jump_to_epilog: {
@@ -2632,7 +2636,8 @@ lower_to_hw_instr(Program* program)
          } else if (instr->isBranch()) {
             Pseudo_branch_instruction* branch = &instr->branch();
             const uint32_t target = branch->target[0];
-            const bool uniform_branch = !(branch->opcode == aco_opcode::p_cbranch_z &&
+            const bool uniform_branch = !((branch->opcode == aco_opcode::p_cbranch_z ||
+                                           branch->opcode == aco_opcode::p_cbranch_nz) &&
                                           branch->operands[0].physReg() == exec);
 
             /* Check if the branch instruction can be removed.
@@ -2644,9 +2649,7 @@ lower_to_hw_instr(Program* program)
              * - The compiler stack knows that it's a divergent branch always taken
              */
             const bool prefer_remove =
-               (branch->selection_control == nir_selection_control_flatten ||
-                branch->selection_control == nir_selection_control_divergent_always_taken) &&
-               ctx.program->gfx_level >= GFX10;
+               branch->selection_control_remove && ctx.program->gfx_level >= GFX10;
             bool can_remove = block->index < target;
             unsigned num_scalar = 0;
             unsigned num_vector = 0;

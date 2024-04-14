@@ -50,96 +50,17 @@ struct lp_compute_shader_variant;
 struct lp_rast_state;
 struct llvmpipe_screen;
 
-
-struct lp_jit_texture
-{
-   uint32_t width;        /* same as number of elements */
-   uint32_t height;
-   uint32_t depth;        /* doubles as array size */
-   const void *base;
-   uint32_t row_stride[LP_MAX_TEXTURE_LEVELS];
-   uint32_t img_stride[LP_MAX_TEXTURE_LEVELS];
-   uint32_t first_level;
-   uint32_t last_level;
-   uint32_t mip_offsets[LP_MAX_TEXTURE_LEVELS];
-   uint32_t num_samples;
-   uint32_t sample_stride;
-};
-
-
-struct lp_jit_sampler
-{
-   float min_lod;
-   float max_lod;
-   float lod_bias;
-   float border_color[4];
-   float max_aniso;
-};
-
-
 struct lp_jit_viewport
 {
    float min_depth;
    float max_depth;
 };
 
-
-struct lp_jit_image
-{
-   uint32_t width;        /* same as number of elements */
-   uint32_t height;
-   uint32_t depth;
-   const void *base;
-   uint32_t row_stride;
-   uint32_t img_stride;
-   uint32_t num_samples;
-   uint32_t sample_stride;
-};
-
-enum {
-   LP_JIT_TEXTURE_WIDTH = 0,
-   LP_JIT_TEXTURE_HEIGHT,
-   LP_JIT_TEXTURE_DEPTH,
-   LP_JIT_TEXTURE_BASE,
-   LP_JIT_TEXTURE_ROW_STRIDE,
-   LP_JIT_TEXTURE_IMG_STRIDE,
-   LP_JIT_TEXTURE_FIRST_LEVEL,
-   LP_JIT_TEXTURE_LAST_LEVEL,
-   LP_JIT_TEXTURE_MIP_OFFSETS,
-   LP_JIT_TEXTURE_NUM_SAMPLES,
-   LP_JIT_TEXTURE_SAMPLE_STRIDE,
-   LP_JIT_TEXTURE_NUM_FIELDS  /* number of fields above */
-};
-
-
-enum {
-   LP_JIT_SAMPLER_MIN_LOD,
-   LP_JIT_SAMPLER_MAX_LOD,
-   LP_JIT_SAMPLER_LOD_BIAS,
-   LP_JIT_SAMPLER_BORDER_COLOR,
-   LP_JIT_SAMPLER_MAX_ANISO,
-   LP_JIT_SAMPLER_NUM_FIELDS  /* number of fields above */
-};
-
-
 enum {
    LP_JIT_VIEWPORT_MIN_DEPTH,
    LP_JIT_VIEWPORT_MAX_DEPTH,
    LP_JIT_VIEWPORT_NUM_FIELDS /* number of fields above */
 };
-
-enum {
-   LP_JIT_IMAGE_WIDTH = 0,
-   LP_JIT_IMAGE_HEIGHT,
-   LP_JIT_IMAGE_DEPTH,
-   LP_JIT_IMAGE_BASE,
-   LP_JIT_IMAGE_ROW_STRIDE,
-   LP_JIT_IMAGE_IMG_STRIDE,
-   LP_JIT_IMAGE_NUM_SAMPLES,
-   LP_JIT_IMAGE_SAMPLE_STRIDE,
-   LP_JIT_IMAGE_NUM_FIELDS  /* number of fields above */
-};
-
 
 /**
  * This structure is passed directly to the generated fragment shader.
@@ -242,8 +163,8 @@ enum {
 struct lp_jit_thread_data
 {
    struct lp_build_format_cache *cache;
-   uint64_t vis_counter;
-   uint64_t ps_invocations;
+   uint64_t vis_counter;    // for occlusion query
+   uint64_t ps_invocations; // pixel shader invocations
 
    /*
     * Non-interpolated rasterizer state passed through to the fragment shader.
@@ -257,32 +178,32 @@ struct lp_jit_thread_data
 
 enum {
    LP_JIT_THREAD_DATA_CACHE = 0,
-   LP_JIT_THREAD_DATA_COUNTER,
-   LP_JIT_THREAD_DATA_INVOCATIONS,
+   LP_JIT_THREAD_DATA_VIS_COUNTER,
+   LP_JIT_THREAD_DATA_PS_INVOCATIONS,
    LP_JIT_THREAD_DATA_RASTER_STATE_VIEWPORT_INDEX,
    LP_JIT_THREAD_DATA_RASTER_STATE_VIEW_INDEX,
    LP_JIT_THREAD_DATA_COUNT
 };
 
 
-#define lp_jit_thread_data_cache(_gallivm, _type, _ptr)			\
+#define lp_jit_thread_data_cache(_gallivm, _type, _ptr) \
    lp_build_struct_get2(_gallivm, _type, _ptr, LP_JIT_THREAD_DATA_CACHE, "cache")
 
-#define lp_jit_thread_data_counter(_gallivm, _type, _ptr) \
-   lp_build_struct_get_ptr2(_gallivm, _type, _ptr, LP_JIT_THREAD_DATA_COUNTER, "counter")
+#define lp_jit_thread_data_vis_counter(_gallivm, _type, _ptr) \
+   lp_build_struct_get_ptr2(_gallivm, _type, _ptr, LP_JIT_THREAD_DATA_VIS_COUNTER, "viscounter")
 
-#define lp_jit_thread_data_invocations(_gallivm, _type, _ptr) \
-   lp_build_struct_get_ptr2(_gallivm, _type, _ptr, LP_JIT_THREAD_DATA_INVOCATIONS, "invocs")
+#define lp_jit_thread_data_ps_invocations(_gallivm, _type, _ptr) \
+   lp_build_struct_get_ptr2(_gallivm, _type, _ptr, LP_JIT_THREAD_DATA_PS_INVOCATIONS, "psinvocs")
 
 #define lp_jit_thread_data_raster_state_viewport_index(_gallivm, _type, _ptr) \
    lp_build_struct_get2(_gallivm, _type, _ptr, \
-			LP_JIT_THREAD_DATA_RASTER_STATE_VIEWPORT_INDEX, \
-			"raster_state.viewport_index")
+                        LP_JIT_THREAD_DATA_RASTER_STATE_VIEWPORT_INDEX, \
+                        "raster_state.viewport_index")
 
 #define lp_jit_thread_data_raster_state_view_index(_gallivm, _type, _ptr) \
    lp_build_struct_get2(_gallivm, _type, _ptr, \
-			LP_JIT_THREAD_DATA_RASTER_STATE_VIEW_INDEX,	\
-			"raster_state.view_index")
+                        LP_JIT_THREAD_DATA_RASTER_STATE_VIEW_INDEX, \
+                        "raster_state.view_index")
 
 /**
  * typedef for fragment shader function

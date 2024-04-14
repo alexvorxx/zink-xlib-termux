@@ -230,14 +230,14 @@ Core Mesa environment variables
 
 .. envvar:: MESA_DISK_CACHE_READ_ONLY_FOZ_DBS
 
-   if set with envvar:`MESA_DISK_CACHE_SINGLE_FILE` enabled, references
+   if set with :envvar:`MESA_DISK_CACHE_SINGLE_FILE` enabled, references
    a string of comma separated file paths to read only Fossilize DB
    shader caches for loading at initialization. The file paths are
    relative to the cache directory and do not include suffixes,
    referencing both the cache DB and its index file. E.g.
-   MESA_DISK_CACHE_SINGLE_FILE=filename1 refers to filename1.foz and
-   filename1_idx.foz. A limit of 8 DBs can be loaded and this limit is
-   shared with :envvar:`MESA_DISK_CACHE_READ_ONLY_FOZ_DBS_DYNAMIC_LIST.`
+   ``MESA_DISK_CACHE_SINGLE_FILE=filename1`` refers to ``filename1.foz``
+   and ``filename1_idx.foz``. A limit of 8 DBs can be loaded and this limit
+   is shared with :envvar:`MESA_DISK_CACHE_READ_ONLY_FOZ_DBS_DYNAMIC_LIST.`
 
 .. envvar:: MESA_DISK_CACHE_DATABASE
 
@@ -319,6 +319,11 @@ Core Mesa environment variables
    overrides the WSI present mode clients specify in
    ``VkSwapchainCreateInfoKHR::presentMode``. Values can be ``fifo``,
    ``relaxed``, ``mailbox`` or ``immediate``.
+
+.. envvar:: MESA_VK_WSI_HEADLESS_SWAPCHAIN
+
+   Forces all swapchains to be headless (no rendering will be display
+   in the swapchain's window).
 
 .. envvar:: MESA_VK_ABORT_ON_DEVICE_LOSS
 
@@ -417,6 +422,11 @@ on Windows.
 Intel driver environment variables
 ----------------------------------------------------
 
+.. envvar:: ANV_GPL
+
+   If set to 1, true, or yes, then VK_EXT_graphics_pipeline_library
+   will be exposed, which may be incompatible with mesh shaders.
+
 .. envvar:: INTEL_BLACKHOLE_DEFAULT
 
    if set to 1, true or yes, then the OpenGL implementation will
@@ -438,7 +448,9 @@ Intel driver environment variables
    ``ann``
       annotate IR in assembly dumps
    ``bat``
-      emit batch information
+      emit batch information. Can control in which frames batches
+      get dumped using ``INTEL_DEBUG_BATCH_FRAME_*``, where
+      ``INTEL_DEBUG_BATCH_FRAME_START`` <= frame < ``INTEL_DEBUG_BATCH_FRAME_STOP``
    ``blit``
       emit messages about blit operations
    ``blorp``
@@ -629,6 +641,13 @@ Intel driver environment variables
    start and end event will be submitted to the GPU to minimize
    stalling.  Combined events will not span batches, except in
    the case of ``INTEL_MEASURE=frame``.
+
+   Collect CPU timestamps instead of GPU timestamps.  Prints results
+   immediately instead of waiting for GPU execution.  Useful when used
+   with interactive debug to know which frame, or where in frame, you
+   are currently in.
+
+   ``INTEL_MEASURE=cpu {workload}``
 
 .. envvar:: INTEL_NO_HW
 
@@ -893,6 +912,19 @@ Rusticl environment variables
    -  ``RUSTICL_ENABLE=iris:1,radeonsi:0,2`` (enables second iris and first
       and third radeonsi device)
 
+.. envvar:: RUSTICL_FEATURES
+
+   a comma-separated list of features to enable. Those are disabled by default
+   as they might not be stable enough or break OpenCL conformance.
+
+   - ``fp64`` enables OpenCL double support
+
+.. envvar:: RUSTICL_DEBUG
+
+   a comma-separated list of debug channels to enable.
+
+   - ``program`` dumps compilation logs to stderr
+
 Nine frontend environment variables
 -----------------------------------
 
@@ -1063,6 +1095,8 @@ RADV driver environment variables
       validate the LLVM IR before LLVM compiles the shader
    ``epilogs``
       dump fragment shader epilogs
+   ``extra_md``
+      add extra information in bo metadatas to help tools (umr)
    ``forcecompress``
       Enables DCC,FMASK,CMASK,HTILE in situations where the driver supports it
       but normally does not deem it beneficial.
@@ -1096,6 +1130,8 @@ RADV driver environment variables
       disable fast color/depthstencil clears
    ``nofmask``
       disable FMASK compression on MSAA images (GFX6-GFX10.3)
+   ``nogpl``
+      disable VK_EXT_graphics_pipeline_library
    ``nohiz``
       disable HIZ for depthstencil images
    ``noibs``
@@ -1161,19 +1197,17 @@ RADV driver environment variables
       enable wave32 for compute shaders (GFX10+)
    ``dccmsaa``
       enable DCC for MSAA images
+   ``dmashaders``
+      upload shaders to invisible VRAM (might be useful for non-resizable BAR systems)
    ``emulate_rt``
       forces ray-tracing to be emulated in software on GFX10_3+ and enables
       rt extensions with older hardware.
    ``gewave32``
       enable wave32 for vertex/tess/geometry shaders (GFX10+)
-   ``gpl``
-      enable graphics pipeline library
    ``localbos``
       enable local BOs
    ``nosam``
       disable optimizations that get enabled when all VRAM is CPU visible.
-   ``nv_ms``
-      enable unofficial experimental support for :ext:`VK_NV_mesh_shader`.
    ``pswave32``
       enable wave32 for pixel shaders (GFX10+)
    ``ngg_streamout``
@@ -1248,11 +1282,13 @@ RADV driver environment variables
       abort on some suboptimal code generation
    ``force-waitcnt``
       force emitting waitcnt states if there is something to wait for
+   ``force-waitdeps``
+     force emitting waitcnt dependencies for debugging hazards on GFX10+
    ``novn``
       disable value numbering
    ``noopt``
       disable various optimizations
-   ``noscheduling``
+   ``nosched``
       disable instructions scheduling
    ``perfinfo``
       print information used to calculate some pipeline statistics
@@ -1366,6 +1402,8 @@ RadeonSI driver environment variables
       Enable DPBB.
    ``dfsm``
       Enable DFSM.
+   ``extra_md``
+      add extra information in bo metadatas to help tools (umr)
 
 r600 driver environment variables
 ---------------------------------

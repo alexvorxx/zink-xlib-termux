@@ -435,7 +435,7 @@ gmem_stateobj_init(struct fd_screen *screen, struct gmem_key *key)
       for (i = 0; i < gmem->nbins_y; i+=2) {
          unsigned col0 = gmem->nbins_x * i;
          for (j = 0; j < gmem->nbins_x/2; j++) {
-            swap(gmem->tile[col0 + j], gmem->tile[col0 + gmem->nbins_x - j - 1]);
+            SWAP(gmem->tile[col0 + j], gmem->tile[col0 + gmem->nbins_x - j - 1]);
          }
       }
    }
@@ -549,7 +549,7 @@ gmem_key_init(struct fd_batch *batch, bool assume_zs, bool no_scis_opt)
        */
       key->gmem_page_align = 8;
    } else if (is_a6xx(screen)) {
-      key->gmem_page_align = (screen->info->tile_align_w == 96) ? 3 : 1;
+      key->gmem_page_align = screen->info->num_ccu;
    } else {
       // TODO re-check this across gens.. maybe it should only
       // be a single page in some cases:

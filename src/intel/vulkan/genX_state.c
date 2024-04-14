@@ -527,6 +527,7 @@ genX(init_physical_device_state)(ASSERTED struct anv_physical_device *pdevice)
    assert(pdevice->info.verx10 == GFX_VERx10);
 #if GFX_VERx10 >= 125 && ANV_SUPPORT_RT
    genX(grl_load_rt_uuid)(pdevice->rt_uuid);
+   pdevice->max_grl_scratch_size = genX(grl_max_scratch_size)();
 #endif
 }
 
@@ -545,7 +546,7 @@ genX(init_device_state)(struct anv_device *device)
       case INTEL_ENGINE_CLASS_COMPUTE:
          res = init_compute_queue_state(queue);
          break;
-      case I915_ENGINE_CLASS_VIDEO:
+      case INTEL_ENGINE_CLASS_VIDEO:
          res = VK_SUCCESS;
          break;
       default:

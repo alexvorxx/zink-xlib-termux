@@ -26,6 +26,7 @@
 #include "util/format/u_format_s3tc.h"
 #include "util/u_screen.h"
 #include "util/u_memory.h"
+#include "util/hex.h"
 #include "util/os_time.h"
 #include "vl/vl_decoder.h"
 #include "vl/vl_video_buffer.h"
@@ -105,7 +106,7 @@ static void r300_disk_cache_create(struct r300_screen* r300screen)
         return;
 
     _mesa_sha1_final(&ctx, sha1);
-    disk_cache_format_hex_id(cache_id, sha1, 20 * 2);
+    mesa_bytes_to_hex(cache_id, sha1, 20);
 
     r300screen->disk_shader_cache =
                     disk_cache_create(r300_get_family_name(r300screen),
@@ -311,8 +312,6 @@ static int r300_get_shader_param(struct pipe_screen *pscreen,
         case PIPE_SHADER_CAP_INT16:
         case PIPE_SHADER_CAP_GLSL_16BIT_CONSTS:
         case PIPE_SHADER_CAP_DROUND_SUPPORTED:
-        case PIPE_SHADER_CAP_DFRACEXP_DLDEXP_SUPPORTED:
-        case PIPE_SHADER_CAP_LDEXP_SUPPORTED:
         case PIPE_SHADER_CAP_MAX_SHADER_BUFFERS:
         case PIPE_SHADER_CAP_MAX_SHADER_IMAGES:
         case PIPE_SHADER_CAP_MAX_HW_ATOMIC_COUNTERS:
@@ -402,8 +401,6 @@ static int r300_get_shader_param(struct pipe_screen *pscreen,
         case PIPE_SHADER_CAP_MAX_TEXTURE_SAMPLERS:
         case PIPE_SHADER_CAP_MAX_SAMPLER_VIEWS:
         case PIPE_SHADER_CAP_DROUND_SUPPORTED:
-        case PIPE_SHADER_CAP_DFRACEXP_DLDEXP_SUPPORTED:
-        case PIPE_SHADER_CAP_LDEXP_SUPPORTED:
         case PIPE_SHADER_CAP_MAX_SHADER_BUFFERS:
         case PIPE_SHADER_CAP_MAX_SHADER_IMAGES:
         case PIPE_SHADER_CAP_MAX_HW_ATOMIC_COUNTERS:
@@ -812,6 +809,13 @@ static bool r300_fence_finish(struct pipe_screen *screen,
     return rws->fence_wait(rws, fence, timeout);
 }
 
+static int r300_screen_get_fd(struct pipe_screen *screen)
+{
+    struct radeon_winsys *rws = r300_screen(screen)->rws;
+
+    return rws->get_fd(rws);
+}
+
 struct pipe_screen* r300_screen_create(struct radeon_winsys *rws,
                                        const struct pipe_screen_config *config)
 {
@@ -841,6 +845,7 @@ struct pipe_screen* r300_screen_create(struct radeon_winsys *rws,
     r300screen->screen.get_compiler_options = r300_get_compiler_options;
     r300screen->screen.get_device_vendor = r300_get_device_vendor;
     r300screen->screen.get_disk_shader_cache = r300_get_disk_shader_cache;
+    r300screen->screen.get_screen_fd = r300_screen_get_fd;
     r300screen->screen.get_param = r300_get_param;
     r300screen->screen.get_shader_param = r300_get_shader_param;
     r300screen->screen.get_paramf = r300_get_paramf;

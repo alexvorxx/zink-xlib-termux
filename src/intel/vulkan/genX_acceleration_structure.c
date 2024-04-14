@@ -817,6 +817,17 @@ cmd_build_acceleration_structures(
                    &data, sizeof(data));
    }
 
+   if (anv_cmd_buffer_is_render_queue(cmd_buffer))
+      genX(flush_pipeline_select_gpgpu)(cmd_buffer);
+
+   /* Due to the nature of GRL and its heavy use of jumps/predication, we
+    * cannot tell exactly in what order the CFE_STATE we insert are going to
+    * be executed. So always use the largest possible size.
+    */
+   genX(cmd_buffer_ensure_cfe_state)(
+      cmd_buffer,
+      cmd_buffer->device->physical->max_grl_scratch_size);
+
    /* Round 1 : init_globals kernel */
    genX(grl_misc_batched_init_globals)(
       cmd_buffer,
@@ -824,7 +835,9 @@ cmd_build_acceleration_structures(
                               transient_mem_init_globals_offset),
       infoCount);
 
-   cmd_buffer->state.pending_pipe_bits |= ANV_GRL_FLUSH_FLAGS;
+   anv_add_pending_pipe_bits(cmd_buffer,
+                             ANV_GRL_FLUSH_FLAGS,
+                             "building accel struct");
 
    /* Round 2 : Copy instance/geometry data from the application provided
     *           buffers into the acceleration structures.
@@ -938,7 +951,9 @@ cmd_build_acceleration_structures(
       }
    }
 
-   cmd_buffer->state.pending_pipe_bits |= ANV_GRL_FLUSH_FLAGS;
+   anv_add_pending_pipe_bits(cmd_buffer,
+                             ANV_GRL_FLUSH_FLAGS,
+                             "building accel struct");
 
    /* Dispatch trivial builds */
    if (num_trivial_builds) {
@@ -1012,7 +1027,9 @@ cmd_build_acceleration_structures(
    }
 
    if (num_new_sah_builds == 0)
-      cmd_buffer->state.pending_pipe_bits |= ANV_GRL_FLUSH_FLAGS;
+      anv_add_pending_pipe_bits(cmd_buffer,
+                              ANV_GRL_FLUSH_FLAGS,
+                             "building accel struct");
 
    /* Finally write the leaves. */
    for (uint32_t i = 0; i < infoCount; i++) {
@@ -1067,7 +1084,9 @@ cmd_build_acceleration_structures(
       }
    }
 
-   cmd_buffer->state.pending_pipe_bits |= ANV_GRL_FLUSH_FLAGS;
+   anv_add_pending_pipe_bits(cmd_buffer,
+                             ANV_GRL_FLUSH_FLAGS,
+                             "building accel struct");
 
  error:
    vk_free(&cmd_buffer->device->vk.alloc, builds);
@@ -1129,7 +1148,9 @@ genX(CmdCopyAccelerationStructureKHR)(
          vk_acceleration_structure_get_va(src_accel));
    }
 
-   cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_END_OF_PIPE_SYNC_BIT;
+   anv_add_pending_pipe_bits(cmd_buffer,
+                             ANV_PIPE_END_OF_PIPE_SYNC_BIT,
+                             "after copy acceleration struct");
 }
 
 void
@@ -1153,7 +1174,9 @@ genX(CmdCopyAccelerationStructureToMemoryKHR)(
       anv_address_physical(device->rt_uuid_addr),
       src_size_addr);
 
-   cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_END_OF_PIPE_SYNC_BIT;
+   anv_add_pending_pipe_bits(cmd_buffer,
+                             ANV_PIPE_END_OF_PIPE_SYNC_BIT,
+                             "after copy acceleration struct");
 }
 
 void
@@ -1174,7 +1197,9 @@ genX(CmdCopyMemoryToAccelerationStructureKHR)(
       pInfo->src.deviceAddress,
       src_size_addr);
 
-   cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_END_OF_PIPE_SYNC_BIT;
+   anv_add_pending_pipe_bits(cmd_buffer,
+                             ANV_PIPE_END_OF_PIPE_SYNC_BIT,
+                             "after copy acceleration struct");
 }
 
 /* TODO: Host commands */

@@ -1167,8 +1167,13 @@ anv_cmd_buffer_exec_batch_debug(struct anv_queue *queue,
    struct anv_device *device = queue->device;
    const bool has_perf_query = perf_query_pool && perf_query_pass >= 0 &&
                                cmd_buffer_count;
+   uint64_t frame_id = device->debug_frame_desc->frame_id;
 
-   fprintf(stderr, "Batch on queue %d\n", (int)(queue - device->queues));
+   if (!intel_debug_batch_in_range(device->debug_frame_desc->frame_id))
+      return;
+   fprintf(stderr, "Batch for frame %"PRIu64" on queue %d\n",
+      frame_id, (int)(queue - device->queues));
+
    if (cmd_buffer_count) {
       if (has_perf_query) {
          struct anv_bo *pass_batch_bo = perf_query_pool->bo;
@@ -1342,16 +1347,16 @@ anv_queue_submit(struct vk_queue *vk_queue,
       return VK_SUCCESS;
    }
 
-   uint64_t start_ts = intel_ds_begin_submit(&queue->ds);
-
    pthread_mutex_lock(&device->mutex);
+
+   uint64_t start_ts = intel_ds_begin_submit(&queue->ds);
    result = anv_queue_submit_locked(queue, submit);
    /* Take submission ID under lock */
-   pthread_mutex_unlock(&device->mutex);
-
    intel_ds_end_submit(&queue->ds, start_ts);
 
    u_trace_context_process(&device->ds.trace_context, true);
+
+   pthread_mutex_unlock(&device->mutex);
 
    return result;
 }
@@ -1384,7 +1389,8 @@ anv_queue_submit_simple_batch(struct anv_queue *queue,
       intel_flush_range(batch_bo->map, batch_size);
 #endif
 
-   if (INTEL_DEBUG(DEBUG_BATCH)) {
+   if (INTEL_DEBUG(DEBUG_BATCH) &&
+       intel_debug_batch_in_range(device->debug_frame_desc->frame_id)) {
       intel_print_batch(queue->decoder,
                         batch_bo->map,
                         batch_bo->size,
@@ -1397,4 +1403,22 @@ anv_queue_submit_simple_batch(struct anv_queue *queue,
    anv_bo_pool_free(&device->batch_bo_pool, batch_bo);
 
    return result;
+}
+
+void
+anv_cmd_buffer_clflush(struct anv_cmd_buffer **cmd_buffers,
+                       uint32_t num_cmd_buffers)
+{
+#ifdef SUPPORT_INTEL_INTEGRATED_GPUS
+   struct anv_batch_bo **bbo;
+
+   __builtin_ia32_mfence();
+
+   for (uint32_t i = 0; i < num_cmd_buffers; i++) {
+      u_vector_foreach(bbo, &cmd_buffers[i]->seen_bbos) {
+         for (uint32_t l = 0; l < (*bbo)->length; l += CACHELINE_SIZE)
+            __builtin_ia32_clflush((*bbo)->bo->map + l);
+      }
+   }
+#endif
 }

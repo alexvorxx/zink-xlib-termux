@@ -459,7 +459,7 @@ public:
       free(buffer);
    }
 
-   /* Delete copy-constructor and -assigment to avoid double free() */
+   /* Delete copy-constructor and -assignment to avoid double free() */
    monotonic_buffer_resource(const monotonic_buffer_resource&) = delete;
    monotonic_buffer_resource& operator=(const monotonic_buffer_resource&) = delete;
 
@@ -629,6 +629,11 @@ public:
       storage &= ~(mask << offset);
       storage |= data_type(value & mask) << offset;
       return *this;
+   }
+
+   constexpr bitfield_uint& operator=(const bitfield_uint& value)
+   {
+      return *this = access_type(value);
    }
 
    constexpr bitfield_uint& operator|=(const access_type& value)
@@ -938,6 +943,11 @@ public:
       storage &= ~(mask << offset);
       storage |= data_type(value & mask) << offset;
       return *this;
+   }
+
+   constexpr bitfield_array& operator=(const bitfield_array& value)
+   {
+      return *this = access_type(value);
    }
 
    constexpr reference operator[](unsigned index)

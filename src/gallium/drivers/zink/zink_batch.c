@@ -31,8 +31,10 @@ reset_obj(struct zink_screen *screen, struct zink_batch_state *bs, struct zink_r
       obj->unordered_read = true;
       obj->unordered_write = true;
       obj->access = 0;
+      obj->unordered_access = 0;
       obj->last_write = 0;
       obj->access_stage = 0;
+      obj->unordered_access_stage = 0;
       obj->copies_need_reset = true;
       /* also prune dead view objects */
       simple_mtx_lock(&obj->view_lock);
@@ -107,8 +109,11 @@ zink_reset_batch_state(struct zink_context *ctx, struct zink_batch_state *bs)
    /* queries must only be destroyed once they are inactive */
    set_foreach_remove(&bs->active_queries, entry) {
       struct zink_query *query = (void*)entry->key;
-      zink_prune_query(screen, bs, query);
+      zink_prune_query(bs, query);
    }
+   util_dynarray_foreach(&bs->dead_querypools, VkQueryPool, pool)
+      VKSCR(DestroyQueryPool)(screen->dev, *pool, NULL);
+   util_dynarray_clear(&bs->dead_querypools);
 
    /* framebuffers are appended to the batch state in which they are destroyed
     * to ensure deferred deletion without destroying in-use objects
@@ -150,6 +155,9 @@ zink_reset_batch_state(struct zink_context *ctx, struct zink_batch_state *bs)
       simple_mtx_unlock(&screen->semaphores_lock);
    }
    bs->swapchain = NULL;
+
+   bs->unordered_write_access = 0;
+   bs->unordered_write_stages = 0;
 
    /* only reset submitted here so that tc fence desync can pick up the 'completed' flag
     * before the state is reused
@@ -269,6 +277,7 @@ zink_batch_state_destroy(struct zink_screen *screen, struct zink_batch_state *bs
    free(bs->real_objs.objs);
    free(bs->slab_objs.objs);
    free(bs->sparse_objs.objs);
+   util_dynarray_fini(&bs->dead_querypools);
    util_dynarray_fini(&bs->swapchain_obj);
    util_dynarray_fini(&bs->zombie_samplers);
    util_dynarray_fini(&bs->dead_framebuffers);
@@ -277,6 +286,12 @@ zink_batch_state_destroy(struct zink_screen *screen, struct zink_batch_state *bs
    util_dynarray_fini(&bs->bindless_releases[1]);
    util_dynarray_fini(&bs->acquires);
    util_dynarray_fini(&bs->acquire_flags);
+   unsigned num_mfences = util_dynarray_num_elements(&bs->fence.mfences, void *);
+   struct zink_tc_fence **mfence = bs->fence.mfences.data;
+   for (unsigned i = 0; i < num_mfences; i++) {
+      mfence[i]->fence = NULL;
+   }
+   util_dynarray_fini(&bs->fence.mfences);
    zink_batch_descriptor_deinit(screen, bs);
    ralloc_free(bs);
 }
@@ -326,6 +341,7 @@ create_batch_state(struct zink_context *ctx)
    SET_CREATE_OR_FAIL(&bs->programs);
    SET_CREATE_OR_FAIL(&bs->active_queries);
    util_dynarray_init(&bs->wait_semaphores, NULL);
+   util_dynarray_init(&bs->dead_querypools, NULL);
    util_dynarray_init(&bs->wait_semaphore_stages, NULL);
    util_dynarray_init(&bs->zombie_samplers, NULL);
    util_dynarray_init(&bs->dead_framebuffers, NULL);
@@ -336,6 +352,7 @@ create_batch_state(struct zink_context *ctx)
    util_dynarray_init(&bs->bindless_releases[0], NULL);
    util_dynarray_init(&bs->bindless_releases[1], NULL);
    util_dynarray_init(&bs->swapchain_obj, NULL);
+   util_dynarray_init(&bs->fence.mfences, NULL);
 
    cnd_init(&bs->usage.flush);
    mtx_init(&bs->usage.mtx, mtx_plain);
@@ -611,6 +628,16 @@ submit_queue(void *data, void *gdata, int thread_index)
       goto end;
    }
    if (bs->has_barriers) {
+      if (bs->unordered_write_access) {
+         VkMemoryBarrier mb;
+         mb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+         mb.pNext = NULL;
+         mb.srcAccessMask = bs->unordered_write_access;
+         mb.dstAccessMask = 0;
+         VKSCR(CmdPipelineBarrier)(bs->barrier_cmdbuf,
+                                   bs->unordered_write_stages, 0,
+                                   0, 1, &mb, 0, NULL, 0, NULL);
+      }
       result = VKSCR(EndCommandBuffer)(bs->barrier_cmdbuf);
       if (result != VK_SUCCESS) {
          mesa_loge("ZINK: vkEndCommandBuffer failed (%s)", vk_Result_to_str(result));
@@ -653,9 +680,10 @@ zink_end_batch(struct zink_context *ctx, struct zink_batch *batch)
    if (!ctx->queries_disabled)
       zink_suspend_queries(ctx, batch);
 
-   tc_driver_internal_flush_notify(ctx->tc);
 
    struct zink_screen *screen = zink_screen(ctx->base.screen);
+   if (ctx->tc && !ctx->track_renderpasses)
+      tc_driver_internal_flush_notify(ctx->tc);
    struct zink_batch_state *bs;
 
    simple_mtx_lock(&ctx->batch_mtx);
@@ -714,7 +742,7 @@ zink_end_batch(struct zink_context *ctx, struct zink_batch *batch)
    if (screen->device_lost)
       return;
 
-   if (screen->threaded) {
+   if (screen->threaded_submit) {
       util_queue_add_job(&screen->flush_queue, bs, &bs->flush_completed,
                          submit_queue, post_submit, 0);
    } else {

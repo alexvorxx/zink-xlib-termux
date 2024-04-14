@@ -25,6 +25,7 @@
 #include "aco_ir.h"
 
 #include "util/memstream.h"
+#include "util/ralloc.h"
 
 #include <array>
 #include <map>
@@ -223,19 +224,22 @@ validate_ir(Program* program)
          }
 
          /* check opsel */
-         if (instr->isVOP3()) {
-            VALU_instruction& vop3 = instr->valu();
-            check(vop3.opsel == 0 || program->gfx_level >= GFX9, "Opsel is only supported on GFX9+",
+         if (instr->isVOP3() || instr->isVOP1() || instr->isVOP2() || instr->isVOPC()) {
+            VALU_instruction& valu = instr->valu();
+            check(valu.opsel == 0 || program->gfx_level >= GFX9, "Opsel is only supported on GFX9+",
                   instr.get());
+            check(valu.opsel == 0 || instr->format == Format::VOP3 || program->gfx_level >= GFX11,
+                  "Opsel is only supported for VOP3 before GFX11", instr.get());
 
             for (unsigned i = 0; i < 3; i++) {
                if (i >= instr->operands.size() ||
+                   (!instr->isVOP3() && !instr->operands[i].isOfType(RegType::vgpr)) ||
                    (instr->operands[i].hasRegClass() &&
                     instr->operands[i].regClass().is_subdword() && !instr->operands[i].isFixed()))
-                  check(!vop3.opsel[i], "Unexpected opsel for operand", instr.get());
+                  check(!valu.opsel[i], "Unexpected opsel for operand", instr.get());
             }
             if (instr->definitions[0].regClass().is_subdword() && !instr->definitions[0].isFixed())
-               check(!vop3.opsel[3], "Unexpected opsel for sub-dword definition", instr.get());
+               check(!valu.opsel[3], "Unexpected opsel for sub-dword definition", instr.get());
          } else if (instr->opcode == aco_opcode::v_fma_mixlo_f16 ||
                     instr->opcode == aco_opcode::v_fma_mixhi_f16 ||
                     instr->opcode == aco_opcode::v_fma_mix_f32) {
@@ -266,7 +270,8 @@ validate_ir(Program* program)
                                    (instr->opcode == aco_opcode::p_bpermute_gfx11w64 && i == 0) ||
                                    (flat && i == 1) || (instr->isMIMG() && (i == 1 || i == 2)) ||
                                    ((instr->isMUBUF() || instr->isMTBUF()) && i == 1) ||
-                                   (instr->isScratch() && i == 0);
+                                   (instr->isScratch() && i == 0) ||
+                                   (instr->opcode == aco_opcode::p_init_scratch && i == 0);
                check(can_be_undef, "Undefs can only be used in certain operands", instr.get());
             } else {
                check(instr->operands[i].isFixed() || instr->operands[i].isTemp() ||
@@ -383,7 +388,8 @@ validate_ir(Program* program)
                      "Too many SGPRs/literals", instr.get());
 
                /* Validate modifiers. */
-               check(!instr->valu().opsel || instr->isVOP3() || instr->isVINTERP_INREG(),
+               check(!instr->valu().opsel || instr->isVOP3() || instr->isVOP1() ||
+                        instr->isVOP2() || instr->isVOPC() || instr->isVINTERP_INREG(),
                      "OPSEL set for unsupported instruction format", instr.get());
                check(!instr->valu().opsel_lo || instr->isVOP3P(),
                      "OPSEL_LO set for unsupported instruction format", instr.get());
@@ -557,9 +563,8 @@ validate_ir(Program* program)
                check(instr->definitions[2].getTemp().type() == RegType::vgpr &&
                         instr->definitions[2].getTemp().size() == 1,
                      "Third definition of p_dual_src_export_gfx11 must be a v1", instr.get());
-               check(instr->definitions[3].getTemp().type() == RegType::sgpr &&
-                        instr->definitions[3].getTemp().size() == 2,
-                     "Fourth definition of p_dual_src_export_gfx11 must be a s2", instr.get());
+               check(instr->definitions[3].regClass() == program->lane_mask,
+                     "Fourth definition of p_dual_src_export_gfx11 must be a lane mask", instr.get());
                check(instr->definitions[4].physReg() == vcc,
                      "Fifth definition of p_dual_src_export_gfx11 must be vcc", instr.get());
                check(instr->definitions[5].physReg() == scc,

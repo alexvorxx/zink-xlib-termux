@@ -1,24 +1,6 @@
 """
-Copyright (C) 2021 Alyssa Rosenzweig <alyssa@rosenzweig.io>
-
-Permission is hereby granted, free of charge, to any person obtaining a
-copy of this software and associated documentation files (the "Software"),
-to deal in the Software without restriction, including without limitation
-the rights to use, copy, modify, merge, publish, distribute, sublicense,
-and/or sell copies of the Software, and to permit persons to whom the
-Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice (including the next
-paragraph) shall be included in all copies or substantial portions of the
-Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
-THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Copyright 2021 Alyssa Rosenzweig
+# SPDX-License-Identifier: MIT
 """
 
 opcodes = {}
@@ -346,7 +328,8 @@ op("st_vary", None, dests = 0, srcs = 2, can_eliminate = False)
 op("no_varyings", (0x80000051, 0xFFFFFFFF, 4, _), dests = 0, can_eliminate = False)
 op("stop", (0x88, 0xFFFF, 2, _), dests = 0, can_eliminate = False)
 op("trap", (0x08, 0xFFFF, 2, _), dests = 0, can_eliminate = False)
-op("writeout", (0x48, 0xFF, 4, _), dests = 0, imms = [WRITEOUT], can_eliminate = False)
+op("wait_pix", (0x48, 0xFF, 4, _), dests = 0, imms = [WRITEOUT], can_eliminate = False)
+op("signal_pix", (0x58, 0xFF, 4, _), dests = 0, imms = [WRITEOUT], can_eliminate = False)
 
 # Sources are the image and the offset within shared memory
 # TODO: Do we need the short encoding?
@@ -375,7 +358,7 @@ op("phi", _, srcs = VARIABLE)
 
 op("unit_test", _, dests = 0, srcs = 1, can_eliminate = False)
 
-# Like mov, but takes a register and can only appear at the start. Gauranteed
+# Like mov, but takes a register and can only appear at the start. Guaranteed
 # to be coalesced during RA, rather than lowered to a real move. 
 op("preload", _, srcs = 1)
 

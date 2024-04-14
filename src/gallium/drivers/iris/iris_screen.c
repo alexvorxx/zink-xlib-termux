@@ -434,6 +434,9 @@ iris_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_DEVICE_PROTECTED_CONTEXT:
       return screen->kernel_features & KERNEL_HAS_PROTECTED_CONTEXT;
 
+   case PIPE_CAP_ASTC_VOID_EXTENTS_NEED_DENORM_FLUSH:
+      return devinfo->ver == 9 && !intel_device_info_is_9lp(devinfo);
+
    default:
       return u_pipe_screen_get_param_defaults(pscreen, param);
    }
@@ -546,9 +549,7 @@ iris_get_shader_param(struct pipe_screen *pscreen,
       return irs;
    }
    case PIPE_SHADER_CAP_DROUND_SUPPORTED:
-   case PIPE_SHADER_CAP_LDEXP_SUPPORTED:
       return 1;
-   case PIPE_SHADER_CAP_DFRACEXP_DLDEXP_SUPPORTED:
    case PIPE_SHADER_CAP_TGSI_ANY_INOUT_DECL_RANGE:
    case PIPE_SHADER_CAP_TGSI_SQRT_SUPPORTED:
       return 0;
@@ -780,6 +781,14 @@ iris_init_identifier_bo(struct iris_screen *screen)
    return true;
 }
 
+static int
+iris_screen_get_fd(struct pipe_screen *pscreen)
+{
+   struct iris_screen *screen = (struct iris_screen *) pscreen;
+
+   return screen->winsys_fd;
+}
+
 struct pipe_screen *
 iris_screen_create(int fd, const struct pipe_screen_config *config)
 {
@@ -882,6 +891,7 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
    pscreen->get_vendor = iris_get_vendor;
    pscreen->get_device_vendor = iris_get_device_vendor;
    pscreen->get_cl_cts_version = iris_get_cl_cts_version;
+   pscreen->get_screen_fd = iris_screen_get_fd;
    pscreen->get_param = iris_get_param;
    pscreen->get_shader_param = iris_get_shader_param;
    pscreen->get_compute_param = iris_get_compute_param;

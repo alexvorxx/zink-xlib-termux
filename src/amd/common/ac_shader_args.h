@@ -156,14 +156,21 @@ struct ac_shader_args {
    struct ac_arg inline_push_consts[AC_MAX_INLINE_PUSH_CONSTS];
    uint64_t inline_push_const_mask;
    struct ac_arg view_index;
-   struct ac_arg sbt_descriptors;
-   struct ac_arg ray_launch_size_addr;
    struct ac_arg force_vrs_rates;
+
+   /* RT */
+   struct ac_arg rt_shader_pc;
+   struct ac_arg sbt_descriptors;
+   struct ac_arg ray_launch_size;
+   struct ac_arg ray_launch_size_addr;
+   struct ac_arg ray_launch_id;
    struct ac_arg rt_dynamic_callable_stack_base;
+   struct ac_arg rt_traversal_shader_addr;
 };
 
 void ac_add_arg(struct ac_shader_args *info, enum ac_arg_regfile regfile, unsigned registers,
                 enum ac_arg_type type, struct ac_arg *arg);
 void ac_add_return(struct ac_shader_args *info, enum ac_arg_regfile regfile);
+void ac_compact_ps_vgpr_args(struct ac_shader_args *info, uint32_t spi_ps_input);
 
 #endif

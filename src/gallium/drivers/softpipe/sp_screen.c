@@ -490,12 +490,6 @@ softpipe_is_format_supported( struct pipe_screen *screen,
 static void
 softpipe_destroy_screen( struct pipe_screen *screen )
 {
-   struct softpipe_screen *sp_screen = softpipe_screen(screen);
-   struct sw_winsys *winsys = sp_screen->winsys;
-
-   if(winsys->destroy)
-      winsys->destroy(winsys);
-
    FREE(screen);
 }
 
@@ -572,6 +566,17 @@ softpipe_get_compute_param(struct pipe_screen *_screen,
    return 0;
 }
 
+static int
+softpipe_screen_get_fd(struct pipe_screen *screen)
+{
+   struct sw_winsys *winsys = softpipe_screen(screen)->winsys;
+
+   if (winsys->get_fd)
+      return winsys->get_fd(winsys);
+   else
+      return -1;
+}
+
 /**
  * Create a new pipe_screen object
  * Note: we're not presently subclassing pipe_screen (no softpipe_screen).
@@ -593,6 +598,7 @@ softpipe_create_screen(struct sw_winsys *winsys)
    screen->base.get_name = softpipe_get_name;
    screen->base.get_vendor = softpipe_get_vendor;
    screen->base.get_device_vendor = softpipe_get_vendor; // TODO should be the CPU vendor
+   screen->base.get_screen_fd = softpipe_screen_get_fd;
    screen->base.get_param = softpipe_get_param;
    screen->base.get_shader_param = softpipe_get_shader_param;
    screen->base.get_paramf = softpipe_get_paramf;

@@ -25,7 +25,7 @@
 
 #include "nir_builder.h"
 #include "radv_cs.h"
-#include "radv_meta.h"
+#include "meta/radv_meta.h"
 
 #include "radix_sort/radv_radix_sort.h"
 
@@ -454,7 +454,7 @@ radv_device_init_null_accel_struct(struct radv_device *device)
    VkMemoryRequirements2 mem_req = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2,
    };
-   radv_GetBufferMemoryRequirements2(_device, &info, &mem_req);
+   vk_common_GetBufferMemoryRequirements2(_device, &info, &mem_req);
 
    VkMemoryAllocateInfo alloc_info = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -480,7 +480,7 @@ radv_device_init_null_accel_struct(struct radv_device *device)
       return result;
 
    void *data;
-   result = radv_MapMemory(_device, memory, 0, size, 0, &data);
+   result = vk_common_MapMemory(_device, memory, 0, size, 0, &data);
    if (result != VK_SUCCESS)
       return result;
 
@@ -512,7 +512,7 @@ radv_device_init_null_accel_struct(struct radv_device *device)
 
    memcpy((uint8_t *)data + bvh_offset, &root, sizeof(struct radv_bvh_box32_node));
 
-   radv_UnmapMemory(_device, memory);
+   vk_common_UnmapMemory(_device, memory);
 
    VkAccelerationStructureCreateInfoKHR create_info = {
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
@@ -647,6 +647,16 @@ struct bvh_state {
    struct build_config config;
 };
 
+static uint32_t
+pack_geometry_id_and_flags(uint32_t geometry_id, uint32_t flags)
+{
+   uint32_t geometry_id_and_flags = geometry_id;
+   if (flags & VK_GEOMETRY_OPAQUE_BIT_KHR)
+      geometry_id_and_flags |= RADV_GEOMETRY_OPAQUE;
+
+   return geometry_id_and_flags;
+}
+
 static void
 build_leaves(VkCommandBuffer commandBuffer, uint32_t infoCount,
              const VkAccelerationStructureBuildGeometryInfoKHR *pInfos,
@@ -673,7 +683,7 @@ build_leaves(VkCommandBuffer commandBuffer, uint32_t infoCount,
          leaf_consts.first_id = bvh_states[i].node_count;
 
          leaf_consts.geometry_type = geom->geometryType;
-         leaf_consts.geometry_id = j | (geom->flags << 28);
+         leaf_consts.geometry_id = pack_geometry_id_and_flags(j, geom->flags);
          unsigned prim_size;
          switch (geom->geometryType) {
          case VK_GEOMETRY_TYPE_TRIANGLES_KHR:

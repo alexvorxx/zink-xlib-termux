@@ -46,10 +46,12 @@ struct asm_context {
    enum amd_gfx_level gfx_level;
    std::vector<std::pair<int, SOPP_instruction*>> branches;
    std::map<unsigned, constaddr_info> constaddrs;
+   std::vector<struct aco_symbol>* symbols;
    const int16_t* opcode;
    // TODO: keep track of branch instructions referring blocks
    // and, when emitting the block, correct the offset in instr
-   asm_context(Program* program_) : program(program_), gfx_level(program->gfx_level)
+   asm_context(Program* program_, std::vector<struct aco_symbol>* symbols_)
+      : program(program_), gfx_level(program->gfx_level), symbols(symbols_)
    {
       if (gfx_level <= GFX7)
          opcode = &instr_info.opcode_gfx7[0];
@@ -136,6 +138,18 @@ emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* inst
       assert(instr->operands[1].isConstant());
       /* in case it's an inline constant, make it a literal */
       instr->operands[1] = Operand::literal32(instr->operands[1].constantValue());
+   } else if (instr->opcode == aco_opcode::p_load_symbol) {
+      assert(instr->operands[0].isConstant());
+      assert(ctx.symbols);
+
+      struct aco_symbol info;
+      info.id = (enum aco_symbol_id)instr->operands[0].constantValue();
+      info.offset = out.size() + 1;
+      ctx.symbols->push_back(info);
+
+      instr->opcode = aco_opcode::s_mov_b32;
+      /* in case it's an inline constant, make it a literal */
+      instr->operands[0] = Operand::literal32(0);
    }
 
    /* Promote VOP12C to VOP3 if necessary. */
@@ -147,6 +161,7 @@ emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* inst
          instr->format = (Format)((uint32_t)instr->format & ~(uint32_t)Format::VOP2);
       } else if (instr->opcode == aco_opcode::v_fmamk_f16) {
          std::swap(instr->operands[1], instr->operands[2]);
+         instr->valu().opsel[1].swap(instr->valu().opsel[2]);
          instr->opcode = aco_opcode::v_fma_f16;
          instr->format = (Format)((uint32_t)instr->format & ~(uint32_t)Format::VOP2);
       }
@@ -333,29 +348,41 @@ emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* inst
       return;
    }
    case Format::VOP2: {
+      VALU_instruction& valu = instr->valu();
       uint32_t encoding = 0;
       encoding |= opcode << 25;
       encoding |= reg(ctx, instr->definitions[0], 8) << 17;
+      encoding |= (valu.opsel[3] ? 128 : 0) << 17;
       encoding |= reg(ctx, instr->operands[1], 8) << 9;
+      encoding |= (valu.opsel[1] ? 128 : 0) << 9;
       encoding |= reg(ctx, instr->operands[0]);
+      encoding |= valu.opsel[0] ? 128 : 0;
       out.push_back(encoding);
       break;
    }
    case Format::VOP1: {
+      VALU_instruction& valu = instr->valu();
       uint32_t encoding = (0b0111111 << 25);
-      if (!instr->definitions.empty())
+      if (!instr->definitions.empty()) {
          encoding |= reg(ctx, instr->definitions[0], 8) << 17;
+         encoding |= (valu.opsel[3] ? 128 : 0) << 17;
+      }
       encoding |= opcode << 9;
-      if (!instr->operands.empty())
+      if (!instr->operands.empty()) {
          encoding |= reg(ctx, instr->operands[0]);
+         encoding |= valu.opsel[0] ? 128 : 0;
+      }
       out.push_back(encoding);
       break;
    }
    case Format::VOPC: {
+      VALU_instruction& valu = instr->valu();
       uint32_t encoding = (0b0111110 << 25);
       encoding |= opcode << 17;
       encoding |= reg(ctx, instr->operands[1], 8) << 9;
+      encoding |= (valu.opsel[1] ? 128 : 0) << 9;
       encoding |= reg(ctx, instr->operands[0]);
+      encoding |= valu.opsel[0] ? 128 : 0;
       out.push_back(encoding);
       break;
    }
@@ -849,6 +876,7 @@ emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* inst
          encoding |= dpp.bound_ctrl << 19;
          encoding |= dpp.dpp_ctrl << 8;
          encoding |= reg(ctx, dpp_op, 8);
+         encoding |= dpp.opsel[0] && !instr->isVOP3() ? 128 : 0;
          out.push_back(encoding);
          return;
       } else if (instr->isDPP8()) {
@@ -861,6 +889,7 @@ emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* inst
          instr->format = (Format)((uint16_t)instr->format & ~(uint16_t)Format::DPP8);
          emit_instruction(ctx, out, instr);
          uint32_t encoding = reg(ctx, dpp_op, 8);
+         encoding |= dpp.opsel[0] && !instr->isVOP3() ? 128 : 0;
          for (unsigned i = 0; i < 8; ++i)
             encoding |= dpp.lane_sel[i] << (8 + i * 3);
          out.push_back(encoding);
@@ -981,7 +1010,10 @@ fix_exports(asm_context& ctx, std::vector<uint32_t>& out, Program* program)
       }
    }
 
-   if (!exported) {
+   /* GFX10+ FS may not export anything if no discard is used. */
+   bool may_skip_export = program->stage.hw == HWStage::FS && program->gfx_level >= GFX10;
+
+   if (!exported && !may_skip_export) {
       /* Abort in order to avoid a GPU hang. */
       bool is_vertex_or_ngg =
          (program->stage.hw == HWStage::VS || program->stage.hw == HWStage::NGG);
@@ -1020,6 +1052,13 @@ insert_code(asm_context& ctx, std::vector<uint32_t>& out, unsigned insert_before
          info.getpc_end += insert_count;
       if (info.add_literal >= insert_before)
          info.add_literal += insert_count;
+   }
+
+   if (ctx.symbols) {
+      for (auto& symbol : *ctx.symbols) {
+         if (symbol.offset >= insert_before)
+            symbol.offset += insert_count;
+      }
    }
 }
 
@@ -1156,9 +1195,10 @@ fix_constaddrs(asm_context& ctx, std::vector<uint32_t>& out)
 }
 
 unsigned
-emit_program(Program* program, std::vector<uint32_t>& code)
+emit_program(Program* program, std::vector<uint32_t>& code,
+             std::vector<struct aco_symbol>* symbols)
 {
-   asm_context ctx(program);
+   asm_context ctx(program, symbols);
 
    if (program->stage.hw == HWStage::VS || program->stage.hw == HWStage::FS ||
        program->stage.hw == HWStage::NGG)

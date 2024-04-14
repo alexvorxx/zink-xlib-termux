@@ -261,9 +261,7 @@ kopper_CreateSwapchain(struct zink_screen *screen, struct kopper_displaytarget *
       cswap->scci.clipped = VK_TRUE;
    }
    cswap->scci.presentMode = cdt->present_mode;
-   cswap->scci.minImageCount = cdt->caps.minImageCount + screen->driver_workarounds.extra_swapchain_images;
-   if (cdt->caps.maxImageCount != 0)
-      cswap->scci.minImageCount = MIN2(cswap->scci.minImageCount, cdt->caps.maxImageCount);
+   cswap->scci.minImageCount = cdt->caps.minImageCount;
    cswap->scci.preTransform = cdt->caps.currentTransform;
    if (cdt->formats[1])
       cswap->scci.pNext = &cdt->format_list;
@@ -325,6 +323,10 @@ kopper_GetSwapchainImages(struct zink_screen *screen, struct kopper_swapchain *c
    if (error != VK_SUCCESS)
       return error;
    cswap->images = calloc(cswap->num_images, sizeof(struct kopper_swapchain_image));
+   if (!cswap->images) {
+      mesa_loge("ZINK: failed to allocate cswap->images!");
+      return VK_ERROR_OUT_OF_HOST_MEMORY;
+   }
    cswap->presents = _mesa_hash_table_create_u32_keys(NULL);
    VkImage images[32];
    error = VKSCR(GetSwapchainImagesKHR)(screen->dev, cswap->swapchain, &cswap->num_images, images);
@@ -722,6 +724,11 @@ kopper_present(void *data, void *gdata, int thread_idx)
       arr = he->data;
    else {
       arr = malloc(sizeof(struct util_dynarray));
+      if (!arr) {
+         mesa_loge("ZINK: failed to allocate arr!");
+         return;
+      }
+
       util_dynarray_init(arr, NULL);
       _mesa_hash_table_insert(swapchain->presents, (void*)(uintptr_t)next, arr);
    }
@@ -748,6 +755,11 @@ zink_kopper_present_queue(struct zink_screen *screen, struct zink_resource *res)
       prune_old_swapchains(screen, cdt, false);
 
    struct kopper_present_info *cpi = malloc(sizeof(struct kopper_present_info));
+   if (!cpi) {
+      mesa_loge("ZINK: failed to allocate cpi!");
+      return;
+   }
+      
    cpi->sem = res->obj->present;
    cpi->res = res;
    cpi->swapchain = cdt->swapchain;
@@ -841,7 +853,7 @@ zink_kopper_present_readback(struct zink_context *ctx, struct zink_resource *res
    si.pWaitDstStageMask = &mask;
    VkSemaphore acquire = zink_kopper_acquire_submit(screen, res);
    VkSemaphore present = res->obj->present ? res->obj->present : zink_kopper_present(screen, res);
-   if (screen->threaded)
+   if (screen->threaded_submit)
       util_queue_finish(&screen->flush_queue);
    si.waitSemaphoreCount = !!acquire;
    si.pWaitSemaphores = &acquire;

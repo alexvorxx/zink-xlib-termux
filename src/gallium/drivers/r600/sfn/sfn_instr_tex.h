@@ -152,6 +152,7 @@ public:
    auto prepare_instr() const { return m_prepare_instr; }
 
    bool replace_source(PRegister old_src, PVirtualValue new_src) override;
+   void update_indirect_addr(PRegister addr) override;
 
    uint8_t allowed_src_chan_mask() const override;
 
@@ -198,7 +199,7 @@ private:
    unsigned m_resource_id;
 
    static const std::map<Opcode, std::string> s_opcode_map;
-   std::list<TexInstr *> m_prepare_instr;
+   std::list<TexInstr *, Allocator<TexInstr *>> m_prepare_instr;
 };
 
 bool

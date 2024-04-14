@@ -35,13 +35,11 @@ Linux, FreeBSD, and other operating systems.
 
    self
    history
-   developers
    amber
    systems
    license
    faq
    relnotes
-   thanks
 
 .. toctree::
    :maxdepth: 2
@@ -139,10 +137,3 @@ Linux, FreeBSD, and other operating systems.
    OpenGL Website <https://www.opengl.org>
    DRI Website <https://dri.freedesktop.org>
    Developer Blogs <https://planet.freedesktop.org>
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Hosted by:
-   :hidden:
-
-   freedesktop.org <https://www.freedesktop.org>

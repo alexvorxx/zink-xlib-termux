@@ -1029,9 +1029,15 @@ bool Converter::assignSlots() {
 
    uint8_t i;
    BITSET_FOREACH_SET(i, nir->info.system_values_read, SYSTEM_VALUE_MAX) {
-      info_out->sv[info_out->numSysVals].sn = tgsi_get_sysval_semantic(i);
-      info_out->sv[info_out->numSysVals].si = 0;
-      info_out->sv[info_out->numSysVals].input = 0;
+      switch (i) {
+      case SYSTEM_VALUE_BASE_GLOBAL_INVOCATION_ID:
+         continue;
+      default:
+         info_out->sv[info_out->numSysVals].sn = tgsi_get_sysval_semantic(i);
+         info_out->sv[info_out->numSysVals].si = 0;
+         info_out->sv[info_out->numSysVals].input = 0;
+         break;
+      }
 
       switch (i) {
       case SYSTEM_VALUE_VERTEX_ID:
@@ -2533,7 +2539,7 @@ Converter::visit(nir_load_const_instr *insn)
 }
 
 #define DEFAULT_CHECKS \
-      if (insn->dest.dest.ssa.num_components > 1) { \
+      if (nir_dest_num_components(insn->dest.dest) > 1) { \
          ERROR("nir_alu_instr only supported with 1 component!\n"); \
          return false; \
       } \
@@ -3347,6 +3353,8 @@ Converter::run()
    NIR_PASS_V(nir, nir_lower_alu_to_scalar, NULL, NULL);
    NIR_PASS_V(nir, nir_lower_phis_to_scalar, false);
 
+   NIR_PASS_V(nir, nir_lower_frexp);
+
    /*TODO: improve this lowering/optimisation loop so that we can use
     *      nir_opt_idiv_const effectively before this.
     */
@@ -3379,6 +3387,8 @@ Converter::run()
 
    if (nir->info.stage == MESA_SHADER_FRAGMENT)
       NIR_PASS_V(nir, nv_nir_move_stores_to_end);
+
+   NIR_PASS(progress, nir, nir_opt_algebraic_late);
 
    NIR_PASS_V(nir, nir_lower_bool_to_int32);
    NIR_PASS_V(nir, nir_lower_bit_size, Converter::lowerBitSizeCB, this);

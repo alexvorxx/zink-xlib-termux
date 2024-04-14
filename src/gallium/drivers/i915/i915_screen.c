@@ -365,8 +365,6 @@ i915_get_shader_param(struct pipe_screen *screen, enum pipe_shader_type shader,
       case PIPE_SHADER_CAP_MAX_SAMPLER_VIEWS:
          return I915_TEX_UNITS;
       case PIPE_SHADER_CAP_DROUND_SUPPORTED:
-      case PIPE_SHADER_CAP_DFRACEXP_DLDEXP_SUPPORTED:
-      case PIPE_SHADER_CAP_LDEXP_SUPPORTED:
       case PIPE_SHADER_CAP_TGSI_ANY_INOUT_DECL_RANGE:
       case PIPE_SHADER_CAP_MAX_SHADER_BUFFERS:
       case PIPE_SHADER_CAP_MAX_SHADER_IMAGES:
@@ -639,6 +637,14 @@ i915_destroy_screen(struct pipe_screen *screen)
    FREE(is);
 }
 
+static int
+i915_screen_get_fd(struct pipe_screen *screen)
+{
+   struct i915_screen *is = i915_screen(screen);
+
+   return is->iws->get_fd(is->iws);
+}
+
 /**
  * Create a new i915_screen object
  */
@@ -681,6 +687,7 @@ i915_screen_create(struct i915_winsys *iws)
    is->base.get_name = i915_get_name;
    is->base.get_vendor = i915_get_vendor;
    is->base.get_device_vendor = i915_get_device_vendor;
+   is->base.get_screen_fd = i915_screen_get_fd;
    is->base.get_param = i915_get_param;
    is->base.get_shader_param = i915_get_shader_param;
    is->base.get_paramf = i915_get_paramf;

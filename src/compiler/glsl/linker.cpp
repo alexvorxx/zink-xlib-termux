@@ -91,6 +91,7 @@
 #include "main/shaderobj.h"
 #include "main/enums.h"
 #include "main/mtypes.h"
+#include "main/context.h"
 
 
 namespace {
@@ -3863,10 +3864,6 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
          lower_clip_cull_distance(prog, prog->_LinkedShaders[i]);
       }
 
-      if (consts->LowerTessLevel) {
-         lower_tess_level(prog->_LinkedShaders[i]);
-      }
-
       /* Section 13.46 (Vertex Attribute Aliasing) of the OpenGL ES 3.2
        * specification says:
        *
@@ -3901,41 +3898,6 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
 
    if(!link_varyings(consts, prog, mem_ctx))
       goto done;
-
-   /* OpenGL ES < 3.1 requires that a vertex shader and a fragment shader both
-    * be present in a linked program. GL_ARB_ES2_compatibility doesn't say
-    * anything about shader linking when one of the shaders (vertex or
-    * fragment shader) is absent. So, the extension shouldn't change the
-    * behavior specified in GLSL specification.
-    *
-    * From OpenGL ES 3.1 specification (7.3 Program Objects):
-    *     "Linking can fail for a variety of reasons as specified in the
-    *     OpenGL ES Shading Language Specification, as well as any of the
-    *     following reasons:
-    *
-    *     ...
-    *
-    *     * program contains objects to form either a vertex shader or
-    *       fragment shader, and program is not separable, and does not
-    *       contain objects to form both a vertex shader and fragment
-    *       shader."
-    *
-    * However, the only scenario in 3.1+ where we don't require them both is
-    * when we have a compute shader. For example:
-    *
-    * - No shaders is a link error.
-    * - Geom or Tess without a Vertex shader is a link error which means we
-    *   always require a Vertex shader and hence a Fragment shader.
-    * - Finally a Compute shader linked with any other stage is a link error.
-    */
-   if (!prog->SeparateShader && ctx->API == API_OPENGLES2 &&
-       num_shaders[MESA_SHADER_COMPUTE] == 0) {
-      if (prog->_LinkedShaders[MESA_SHADER_VERTEX] == NULL) {
-         linker_error(prog, "program lacks a vertex shader\n");
-      } else if (prog->_LinkedShaders[MESA_SHADER_FRAGMENT] == NULL) {
-         linker_error(prog, "program lacks a fragment shader\n");
-      }
-   }
 
 done:
    for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {

@@ -28,7 +28,20 @@ rustfmt:
     GIT_STRATEGY: fetch
   script:
     - shopt -s globstar
-    - rustfmt --check --verbose src/**/*.rs
+    - rustfmt --check --verbose src/**/lib.rs
+
+clang-format:
+  # Cancel job if a newer commit is pushed to the same branch
+  interruptible: true
+  stage: lint
+  extends:
+    - .use-debian/x86_build
+    - .lint-clang-format-rules
+  variables:
+    GIT_STRATEGY: fetch
+  script:
+    - shopt -s globstar
+    - clang-format-13 --Werror --dry-run src/**/{asahi,panfrost}/**/*.{h,c,cpp}
 
 .test-gl:
   extends:
@@ -235,12 +248,12 @@ rustfmt:
     B2C_LOG_LEVEL: 6
     B2C_POWEROFF_DELAY: 15
     B2C_SESSION_END_REGEX: '^.*It''s now safe to turn off your computer\r$'
-    B2C_SESSION_REBOOT_REGEX: '(GPU hang detected!|\*ERROR\* ring [^\s]+ timeout(?!, but soft recovered)|The CS has been cancelled because the context is lost)'
+    B2C_SESSION_REBOOT_REGEX: ''
     B2C_TIMEOUT_BOOT_MINUTES: 45
-    B2C_TIMEOUT_BOOT_RETRIES: 1
+    B2C_TIMEOUT_BOOT_RETRIES: 0
     B2C_TIMEOUT_FIRST_MINUTES: 5
     B2C_TIMEOUT_FIRST_RETRIES: 3
-    B2C_TIMEOUT_MINUTES: 2
+    B2C_TIMEOUT_MINUTES: 4
     B2C_TIMEOUT_OVERALL_MINUTES: 90
     B2C_TIMEOUT_RETRIES: 0
 

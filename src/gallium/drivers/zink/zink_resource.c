@@ -673,6 +673,11 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
    pipe_reference_init(&obj->reference, 1);
    if (loader_private) {
       obj->bo = CALLOC_STRUCT(zink_bo);
+      if (!obj->bo) {
+         mesa_loge("ZINK: failed to allocate obj->bo!");
+         return NULL;
+      }
+         
       obj->transfer_dst = true;
       return obj;
    } else if (templ->target == PIPE_BUFFER) {
@@ -987,23 +992,6 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
    mai.pNext = NULL;
    mai.allocationSize = reqs.size;
    enum zink_heap heap = zink_heap_from_domain_flags(flags, aflags);
-   mai.memoryTypeIndex = zink_mem_type_idx_from_bits(screen, heap, reqs.memoryTypeBits);
-   if (mai.memoryTypeIndex == UINT32_MAX) {
-      /* not valid based on reqs; demote to more compatible type */
-      switch (heap) {
-      case ZINK_HEAP_DEVICE_LOCAL_VISIBLE:
-         heap = ZINK_HEAP_DEVICE_LOCAL;
-         break;
-      case ZINK_HEAP_HOST_VISIBLE_CACHED:
-         heap = ZINK_HEAP_HOST_VISIBLE_COHERENT;
-         break;
-      default:
-         break;
-      }
-      mai.memoryTypeIndex = zink_mem_type_idx_from_bits(screen, heap, reqs.memoryTypeBits);
-      assert(mai.memoryTypeIndex != UINT32_MAX);
-   }
-   assert(reqs.memoryTypeBits & BITFIELD_BIT(mai.memoryTypeIndex));
 
    VkMemoryDedicatedAllocateInfo ded_alloc_info = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
@@ -1079,18 +1067,43 @@ resource_object_create(struct zink_screen *screen, const struct pipe_resource *t
    if (templ->usage == PIPE_USAGE_STAGING && obj->is_buffer)
       alignment = MAX2(alignment, screen->info.props.limits.minMemoryMapAlignment);
    obj->alignment = alignment;
-retry:
-   obj->bo = zink_bo(zink_bo_create(screen, reqs.size, alignment, heap, mai.pNext ? ZINK_ALLOC_NO_SUBALLOC : 0, mai.memoryTypeIndex, mai.pNext));
-   if (!obj->bo) {
-      if (heap == ZINK_HEAP_DEVICE_LOCAL_VISIBLE) {
-         if (templ->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT || templ->usage == PIPE_USAGE_DYNAMIC)
-            heap = ZINK_HEAP_HOST_VISIBLE_COHERENT;
-         else
-            heap = ZINK_HEAP_DEVICE_LOCAL;
-         goto retry;
+
+   if (zink_mem_type_idx_from_bits(screen, heap, reqs.memoryTypeBits) == UINT32_MAX) {
+      /* not valid based on reqs; demote to more compatible type */
+      switch (heap) {
+      case ZINK_HEAP_DEVICE_LOCAL_VISIBLE:
+         heap = ZINK_HEAP_DEVICE_LOCAL;
+         break;
+      case ZINK_HEAP_HOST_VISIBLE_CACHED:
+         heap = ZINK_HEAP_HOST_VISIBLE_COHERENT;
+         break;
+      default:
+         break;
       }
-      goto fail2;
+      assert(zink_mem_type_idx_from_bits(screen, heap, reqs.memoryTypeBits) != UINT32_MAX);
    }
+
+retry:
+   /* iterate over all available memory types to reduce chance of oom */
+   for (unsigned i = 0; !obj->bo && i < screen->heap_count[heap]; i++) {
+      if (!(reqs.memoryTypeBits & BITFIELD_BIT(screen->heap_map[heap][i])))
+         continue;
+
+      mai.memoryTypeIndex = screen->heap_map[heap][i];
+      obj->bo = zink_bo(zink_bo_create(screen, reqs.size, alignment, heap, mai.pNext ? ZINK_ALLOC_NO_SUBALLOC : 0, mai.memoryTypeIndex, mai.pNext));
+      if (!obj->bo) {
+         if (heap == ZINK_HEAP_DEVICE_LOCAL_VISIBLE) {
+            /* demote BAR allocations to a different heap on failure to avoid oom */
+            if (templ->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT || templ->usage == PIPE_USAGE_DYNAMIC)
+               heap = ZINK_HEAP_HOST_VISIBLE_COHERENT;
+            else
+               heap = ZINK_HEAP_DEVICE_LOCAL;
+            goto retry;
+         }
+      }
+   }
+   if (!obj->bo)
+      goto fail2;
    if (aflags == ZINK_ALLOC_SPARSE) {
       obj->size = templ->width0;
    } else {
@@ -1171,6 +1184,11 @@ resource_create(struct pipe_screen *pscreen,
    struct zink_screen *screen = zink_screen(pscreen);
    struct zink_resource *res = CALLOC_STRUCT_CL(zink_resource);
 
+   if (!res) {
+      mesa_loge("ZINK: failed to allocate res!");
+      return NULL;
+   }
+
    if (modifiers_count > 0 && screen->info.have_EXT_image_drm_format_modifier) {
       /* for rebinds */
       res->modifiers_count = modifiers_count;
@@ -1206,6 +1224,7 @@ resource_create(struct pipe_screen *pscreen,
       return NULL;
    }
 
+   res->queue = VK_QUEUE_FAMILY_IGNORED;
    res->internal_format = templ->format;
    if (templ->target == PIPE_BUFFER) {
       util_range_init(&res->valid_buffer_range);
@@ -1235,9 +1254,10 @@ resource_create(struct pipe_screen *pscreen,
          res->need_2D = (screen->need_2D_zs && util_format_is_depth_or_stencil(templ->format)) ||
                         (screen->need_2D_sparse && (templ->flags & PIPE_RESOURCE_FLAG_SPARSE));
       }
-      res->dmabuf_acquire = whandle && whandle->type == WINSYS_HANDLE_TYPE_FD;
-      res->dmabuf = res->dmabuf_acquire = whandle && whandle->type == WINSYS_HANDLE_TYPE_FD;
-      res->layout = res->dmabuf_acquire ? VK_IMAGE_LAYOUT_PREINITIALIZED : VK_IMAGE_LAYOUT_UNDEFINED;
+      res->dmabuf = whandle && whandle->type == WINSYS_HANDLE_TYPE_FD;
+      if (res->dmabuf)
+         res->queue = VK_QUEUE_FAMILY_FOREIGN_EXT;
+      res->layout = res->dmabuf ? VK_IMAGE_LAYOUT_PREINITIALIZED : VK_IMAGE_LAYOUT_UNDEFINED;
       res->linear = linear;
       res->aspect = aspect_from_format(templ->format);
    }
@@ -1263,7 +1283,24 @@ resource_create(struct pipe_screen *pscreen,
                                                          templ->height0,
                                                          64, loader_private,
                                                          &res->dt_stride);
-         assert(res->obj->dt);
+         if (!res->obj->dt) {
+            mesa_loge("zink: could not create swapchain");
+            FREE(res->obj);
+            free(res->modifiers);
+            FREE_CL(res);
+            return NULL;
+         }
+         struct kopper_displaytarget *cdt = res->obj->dt;
+         if (cdt->swapchain->num_acquires) {
+            /* this should be a reused swapchain after a MakeCurrent dance that deleted the original resource */
+            for (unsigned i = 0; i < cdt->swapchain->num_images; i++) {
+               if (!cdt->swapchain->images[i].acquired)
+                  continue;
+               res->obj->dt_idx = i;
+               res->obj->image = cdt->swapchain->images[i].image;
+               res->layout = cdt->swapchain->images[i].layout;
+            }
+         }
       } else {
          /* frontbuffer */
          struct zink_resource *back = (void*)loader_private;
@@ -1282,6 +1319,7 @@ resource_create(struct pipe_screen *pscreen,
       res->linear = false;
       res->swapchain = true;
    }
+
    if (!res->obj->host_visible)
       res->base.b.flags |= PIPE_RESOURCE_FLAG_DONT_MAP_DIRECTLY;
    if (res->obj->is_buffer) {
@@ -1329,6 +1367,11 @@ add_resource_bind(struct zink_context *ctx, struct zink_resource *res, unsigned 
    if (bind & ZINK_BIND_DMABUF && !res->modifiers_count && screen->info.have_EXT_image_drm_format_modifier) {
       res->modifiers_count = 1;
       res->modifiers = malloc(res->modifiers_count * sizeof(uint64_t));
+      if (!res->modifiers) {
+         mesa_loge("ZINK: failed to allocate res->modifiers!");
+         return false;
+      }
+
       res->modifiers[0] = DRM_FORMAT_MOD_LINEAR;
    }
    struct zink_resource_object *new_obj = resource_object_create(screen, &res->base.b, NULL, &res->linear, res->modifiers, res->modifiers_count, NULL);
@@ -1342,6 +1385,7 @@ add_resource_bind(struct zink_context *ctx, struct zink_resource *res, unsigned 
    staging.all_binds = 0;
    res->layout = VK_IMAGE_LAYOUT_UNDEFINED;
    res->obj = new_obj;
+   res->queue = VK_QUEUE_FAMILY_IGNORED;
    for (unsigned i = 0; i <= res->base.b.last_level; i++) {
       struct pipe_box box = {0, 0, 0,
                              u_minify(res->base.b.width0, i),
@@ -1696,6 +1740,7 @@ invalidate_buffer(struct zink_context *ctx, struct zink_resource *res)
    /* this ref must be transferred before rebind or else BOOM */
    zink_batch_reference_resource_move(&ctx->batch, res);
    res->obj = new_obj;
+   res->queue = VK_QUEUE_FAMILY_IGNORED;
    zink_resource_rebind(ctx, res);
    return true;
 }
@@ -2225,7 +2270,7 @@ zink_resource_copy_box_intersects(struct zink_resource *res, unsigned level, con
 
 /* track a new region for TRANSFER_DST barrier emission */
 void
-zink_resource_copy_box_add(struct zink_resource *res, unsigned level, const struct pipe_box *box)
+zink_resource_copy_box_add(struct zink_context *ctx, struct zink_resource *res, unsigned level, const struct pipe_box *box)
 {
    if (res->obj->copies_valid) {
       struct pipe_box *b = res->obj->copies[level].data;
@@ -2381,8 +2426,10 @@ zink_resource_copy_box_add(struct zink_resource *res, unsigned level, const stru
       }
    }
    util_dynarray_append(&res->obj->copies[level], struct pipe_box, *box);
-   if (util_dynarray_num_elements(&res->obj->copies[level], struct pipe_box) > 100)
-      mesa_logw("zink: PERF WARNING! > 100 copy boxes detected for %p\n", res);
+   if (!res->copies_warned && util_dynarray_num_elements(&res->obj->copies[level], struct pipe_box) > 100) {
+      perf_debug(ctx, "zink: PERF WARNING! > 100 copy boxes detected for %p\n", res);
+      res->copies_warned = true;
+   }
    res->obj->copies_valid = true;
 }
 

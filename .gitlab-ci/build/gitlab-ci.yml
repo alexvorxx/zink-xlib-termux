@@ -25,11 +25,13 @@
     - |
       export PATH="/usr/lib/ccache:$PATH"
       export CCACHE_BASEDIR="$PWD"
-      section_start ccache_before "ccache stats before build"
-      ccache --show-stats
-      section_end ccache_before
+      if test -x /usr/bin/ccache; then
+        section_start ccache_before "ccache stats before build"
+        ccache --show-stats
+        section_end ccache_before
+      fi
   after_script:
-    - ccache --show-stats | grep "cache hit rate"
+    - if test -x /usr/bin/ccache; then ccache --show-stats | grep "cache hit rate"; fi
     - !reference [default, after_script]
 
 .build-windows:
@@ -279,8 +281,14 @@ fedora-release:
     - .use-fedora/x86_build
   variables:
     BUILDTYPE: "release"
-    C_ARGS: >
-      -Wno-error=array-bounds
+    C_LINK_ARGS: >
+      -Wno-error=stringop-overflow
+      -Wno-error=stringop-overread
+    CPP_ARGS: >
+      -Wno-error=dangling-reference
+      -Wno-error=overloaded-virtual
+    CPP_LINK_ARGS: >
+      -Wno-error=stringop-overflow
       -Wno-error=stringop-overread
     DRI_LOADERS: >
       -D glx=dri
@@ -289,6 +297,7 @@ fedora-release:
       -D glvnd=true
       -D platforms=x11,wayland
     EXTRA_OPTION: >
+      -D b_lto=true
       -D osmesa=true
       -D selinux=true
       -D tools=drm-shim,etnaviv,freedreno,glsl,intel,nir,nouveau,lima,panfrost,imagination
@@ -305,7 +314,7 @@ fedora-release:
       -D gallium-xa=enabled
       -D gallium-nine=false
       -D gallium-opencl=icd
-      -D gallium-rusticl=false
+      -D gallium-rusticl=true
       -D gles1=disabled
       -D gles2=enabled
       -D llvm=enabled
@@ -329,19 +338,13 @@ debian-android:
       -Wno-error=constant-conversion
       -Wno-error=enum-conversion
       -Wno-error=initializer-overrides
-      -Wno-error=missing-braces
       -Wno-error=sometimes-uninitialized
-      -Wno-error=unused-function
       -Wno-error=implicit-const-int-float-conversion
-      -Wno-error=bitwise-instead-of-logical
     CPP_ARGS: >
-      -Wno-error=deprecated-declarations
-      -Wno-error=non-virtual-dtor
       -Wno-error=c99-designator
       -Wno-error=unused-variable
       -Wno-error=unused-but-set-variable
       -Wno-error=self-assign
-      -Wno-error=bitwise-instead-of-logical
     DRI_LOADERS: >
       -D glx=disabled
       -D gbm=disabled
@@ -667,12 +670,13 @@ debian-ppc64el:
     UNWIND: "disabled"
     C_ARGS: >
       -Wno-error=format
+      -Wno-error=unused-but-set-variable
+    CPP_ARGS: >
+      -Wno-error=format
       -Wno-error=unused-function
       -Wno-error=unused-variable
-      -Wno-error=unused-but-set-variable
       -Wno-error=sign-compare
       -Wno-error=narrowing
-    CPP_ARGS: $C_ARGS
     GALLIUM_DRIVERS: "swrast,d3d12,zink"
     VULKAN_DRIVERS: "swrast,amd,microsoft-experimental"
     GALLIUM_ST: >

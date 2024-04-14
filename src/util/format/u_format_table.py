@@ -113,6 +113,7 @@ def has_access(format):
         'r8_g8b8_420_unorm',
         'g8_b8r8_420_unorm',
         'g8_b8_r8_420_unorm',
+        'r8_g8_b8_unorm',
         'y8_unorm',
     ]
     if format.short_name() in noaccess_formats:
@@ -143,7 +144,16 @@ def write_format_table(formats):
 
     write_format_table_header(sys.stdout2)
 
+    print('#ifdef __cplusplus', file=sys.stdout2)
+    print('extern "C" {', file=sys.stdout2)
+    print('#endif', file=sys.stdout2)
+    print(file=sys.stdout2)
+
     u_format_pack.generate(formats)
+
+    print('#ifdef __cplusplus', file=sys.stdout2)
+    print('} /* extern "C" */', file=sys.stdout2)
+    print('#endif', file=sys.stdout2)
 
     def do_channel_array(channels, swizzles):
         print("   {")

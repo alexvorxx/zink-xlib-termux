@@ -283,6 +283,7 @@ alloc_variant(struct ir3_shader *shader, const struct ir3_shader_key *key,
       v->fs.early_fragment_tests = info->fs.early_fragment_tests;
       v->fs.color_is_dual_source = info->fs.color_is_dual_source;
       v->fs.uses_fbfetch_output  = info->fs.uses_fbfetch_output;
+      v->fs.fbfetch_coherent     = info->fs.fbfetch_coherent;
       break;
 
    case MESA_SHADER_COMPUTE:
@@ -393,6 +394,8 @@ ir3_shader_get_variant(struct ir3_shader *shader,
                        const struct ir3_shader_key *key, bool binning_pass,
                        bool write_disasm, bool *created)
 {
+   MESA_TRACE_FUNC();
+
    mtx_lock(&shader->variants_lock);
    struct ir3_shader_variant *v = shader_variant(shader, key);
 

@@ -27,6 +27,8 @@
 
 #include "util/macros.h"
 
+#include "genxml/gen_macros.h"
+
 #include "pan_cs.h"
 #include "pan_encoder.h"
 #include "pan_texture.h"
@@ -622,8 +624,8 @@ pan_emit_midgard_tiler(const struct panfrost_device *dev,
          cfg.heap_start = tiler_ctx->midgard.polygon_list->ptr.gpu;
          cfg.heap_end = tiler_ctx->midgard.polygon_list->ptr.gpu;
       } else {
-         cfg.hierarchy_mask =
-            panfrost_choose_hierarchy_mask(fb->width, fb->height, 1, hierarchy);
+         cfg.hierarchy_mask = panfrost_choose_hierarchy_mask(
+            fb->width, fb->height, tiler_ctx->vertex_count, hierarchy);
          header_size = panfrost_tiler_header_size(
             fb->width, fb->height, cfg.hierarchy_mask, hierarchy);
          cfg.polygon_list_size = panfrost_tiler_full_size(
@@ -831,12 +833,12 @@ GENX(pan_emit_fbd)(const struct panfrost_device *dev,
          *(fb->rts[i].crc_valid) = false;
    }
 
-   uint64_t tag = 0;
-   pan_pack(&tag, FRAMEBUFFER_POINTER, cfg) {
+   struct mali_framebuffer_pointer_packed tag;
+   pan_pack(tag.opaque, FRAMEBUFFER_POINTER, cfg) {
       cfg.zs_crc_extension_present = has_zs_crc_ext;
       cfg.render_target_count = MAX2(fb->rt_count, 1);
    }
-   return tag;
+   return tag.opaque[0];
 }
 #else /* PAN_ARCH == 4 */
 unsigned

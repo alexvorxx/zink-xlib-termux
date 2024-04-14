@@ -135,7 +135,7 @@ if gallium_drivers.contains('auto')
     elif ['arm', 'aarch64'].contains(host_machine.cpu_family())
       gallium_drivers = [
         'v3d', 'vc4', 'freedreno', 'etnaviv', 'nouveau', 'svga',
-        'tegra', 'virgl', 'lima', 'panfrost', 'swrast'
+        'tegra', 'virgl', 'lima', 'panfrost', 'swrast', 'iris'
       ]
     elif ['mips', 'mips64', 'riscv32', 'riscv64'].contains(host_machine.cpu_family())
       gallium_drivers = [
@@ -213,7 +213,7 @@ if _vulkan_drivers.contains('auto')
     if host_machine.cpu_family().startswith('x86')
       _vulkan_drivers = ['amd', 'intel', 'intel_hasvk', 'swrast']
     elif ['arm', 'aarch64'].contains(host_machine.cpu_family())
-      _vulkan_drivers = ['swrast']
+      _vulkan_drivers = ['swrast', 'intel']
     elif ['mips', 'mips64', 'riscv32', 'riscv64'].contains(host_machine.cpu_family())
       _vulkan_drivers = ['amd', 'swrast']
     elif ['loongarch64'].contains(host_machine.cpu_family())
@@ -245,7 +245,14 @@ with_microsoft_vk = _vulkan_drivers.contains('microsoft-experimental')
 with_any_vk = _vulkan_drivers.length() != 0
 
 with_any_broadcom = with_gallium_vc4 or with_gallium_v3d or with_broadcom_vk
-with_any_intel = with_intel_vk or with_intel_hasvk or with_gallium_iris or with_gallium_crocus or with_intel_tools
+with_any_intel = [
+  with_gallium_crocus,
+  with_gallium_i915,
+  with_gallium_iris,
+  with_intel_hasvk,
+  with_intel_tools,
+  with_intel_vk,
+].contains(true)
 
 if with_swrast_vk and not with_gallium_softpipe
   error('swrast vulkan requires gallium swrast')
@@ -502,7 +509,7 @@ if with_gallium_d3d12 or with_microsoft_clc or with_microsoft_vk
   dep_dxheaders = dependency('directx-headers', required : false)
   if not dep_dxheaders.found()
     dep_dxheaders = dependency('DirectX-Headers',
-      version : '>= 1.606.4',
+      version : '>= 1.610.0',
       fallback : ['DirectX-Headers', 'dep_dxheaders'],
       required : with_gallium_d3d12 or with_microsoft_vk
     )
@@ -841,7 +848,7 @@ has_mako = run_command(
   '''
 from distutils.version import StrictVersion
 import mako
-assert StrictVersion(mako.__version__) > StrictVersion("0.8.0")
+assert StrictVersion(mako.__version__) >= StrictVersion("0.8.0")
   ''', check: false)
 if has_mako.returncode() != 0
   error('Python (3.x) mako module >= 0.8.0 required to build mesa.')
@@ -904,6 +911,9 @@ endif
 if cc.has_function('reallocarray')
    pre_args += '-DHAVE_REALLOCARRAY'
 endif
+if cc.has_function('fmemopen')
+   pre_args += '-DHAVE_FMEMOPEN'
+endif
 
 # TODO: this is very incomplete
 if ['linux', 'cygwin', 'gnu', 'freebsd', 'gnu/kfreebsd', 'haiku', 'android'].contains(host_machine.system())
@@ -956,7 +966,7 @@ if cc.get_argument_syntax() == 'msvc'
     '/wd4056',  # overflow in floating-point constant arithmetic
     '/wd4244',  # conversion from 'type1' to 'type2', possible loss of data
     '/wd4267',  # 'var' : conversion from 'size_t' to 'type', possible loss of data
-    '/wd4305',  # trancation from 'type1' to 'type2'
+    '/wd4305',  # truncation from 'type1' to 'type2'
     '/wd4351',  # new behavior: elements of array 'array' will be default initialized
     '/wd4756',  # overflow in constant arithmetic
     '/wd4800',  # forcing value to bool 'true' or 'false' (performance warning)
@@ -1274,6 +1284,7 @@ functions_to_detect = {
   'strtok_r': '',
   'getrandom': '',
   'qsort_s': '',
+  'posix_fallocate': '',
 }
 
 foreach f, prefix: functions_to_detect
@@ -1613,9 +1624,10 @@ if with_gallium_opencl
 endif
 if with_clc
   llvm_modules += ['coverage', 'target', 'linker', 'irreader', 'option', 'libdriver', 'lto']
-  # all-targets is needed to support static linking LLVM build with multiple targets
-  # windowsdriver is needded with LLVM>=15, but we don't know what LLVM verrsion we are using yet
-  llvm_optional_modules += ['all-targets', 'windowsdriver']
+  # all-targets is needed to support static linking LLVM build with multiple targets.
+  # windowsdriver is needded with LLVM>=15 and frontendhlsl is needed with LLVM>=16,
+  # but we don't know what LLVM version we are using yet
+  llvm_optional_modules += ['all-targets', 'windowsdriver', 'frontendhlsl']
 endif
 draw_with_llvm = get_option('draw-use-llvm')
 if draw_with_llvm
@@ -1753,6 +1765,9 @@ if with_clc
     ]
     if dep_llvm.version().version_compare('>= 15.0')
       clang_modules += 'clangSupport'
+    endif
+    if dep_llvm.version().version_compare('>= 16.0')
+      clang_modules += 'clangASTMatchers'
     endif
 
     dep_clang = []

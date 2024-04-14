@@ -310,12 +310,12 @@ fill_image_descriptors(struct d3d12_context *ctx,
             uav_desc.Texture3D.WSize = array_size;
             break;
          case D3D12_UAV_DIMENSION_BUFFER: {
-            uav_desc.Format = d3d12_get_format(shader->uav_bindings[i].format);
-            uint format_size = util_format_get_blocksize(shader->uav_bindings[i].format);
+            uint format_size = util_format_get_blocksize(view_format);
             offset += view->u.buf.offset;
             uav_desc.Buffer.CounterOffsetInBytes = 0;
             uav_desc.Buffer.FirstElement = offset / format_size;
-            uav_desc.Buffer.NumElements = view->u.buf.size / format_size;
+            uav_desc.Buffer.NumElements = MIN2(view->u.buf.size / format_size,
+                                               1 << D3D12_REQ_BUFFER_RESOURCE_TEXEL_COUNT_2_TO_EXP);
             uav_desc.Buffer.StructureByteStride = 0;
             uav_desc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_NONE;
             break;
@@ -1101,8 +1101,14 @@ d3d12_draw_vbo(struct pipe_context *pctx,
       }
    }
 
-   if (ctx->cmdlist_dirty & D3D12_DIRTY_STENCIL_REF)
-      ctx->cmdlist->OMSetStencilRef(ctx->stencil_ref.ref_value[0]);
+   if (ctx->cmdlist_dirty & D3D12_DIRTY_STENCIL_REF) {
+      if (ctx->gfx_pipeline_state.zsa->backface_enabled &&
+          screen->opts14.IndependentFrontAndBackStencilRefMaskSupported &&
+          ctx->cmdlist8 != nullptr)
+         ctx->cmdlist8->OMSetFrontAndBackStencilRef(ctx->stencil_ref.ref_value[0], ctx->stencil_ref.ref_value[1]);
+      else
+         ctx->cmdlist->OMSetStencilRef(ctx->stencil_ref.ref_value[0]);
+   }
 
    if (ctx->cmdlist_dirty & D3D12_DIRTY_PRIM_MODE)
       ctx->cmdlist->IASetPrimitiveTopology(topology((enum pipe_prim_type)dinfo->mode, ctx->patch_vertices));

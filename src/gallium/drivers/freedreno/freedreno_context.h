@@ -177,10 +177,70 @@ enum fd_dirty_3d_state {
    FD_DIRTY_BLEND_DUAL = BIT(26),
    FD_DIRTY_BLEND_COHERENT = BIT(27),
 #define NUM_DIRTY_BITS 28
-
-   /* additional flag for state requires updated resource tracking: */
-   FD_DIRTY_RESOURCE = BIT(31),
 };
+
+static inline void
+fd_print_dirty_state(BITMASK_ENUM(fd_dirty_3d_state) dirty)
+{
+#ifdef DEBUG
+   if (!FD_DBG(MSGS))
+      return;
+
+   struct {
+      enum fd_dirty_3d_state state;
+      const char *name;
+   } tbl[] = {
+#define STATE(n) { FD_DIRTY_ ## n, #n }
+         STATE(BLEND),
+         STATE(RASTERIZER),
+         STATE(ZSA),
+         STATE(BLEND_COLOR),
+         STATE(STENCIL_REF),
+         STATE(SAMPLE_MASK),
+         STATE(FRAMEBUFFER),
+         STATE(STIPPLE),
+         STATE(VIEWPORT),
+         STATE(VTXSTATE),
+         STATE(VTXBUF),
+         STATE(MIN_SAMPLES),
+         STATE(SCISSOR),
+         STATE(STREAMOUT),
+         STATE(UCP),
+         STATE(PROG),
+         STATE(CONST),
+         STATE(TEX),
+         STATE(IMAGE),
+         STATE(SSBO),
+         STATE(QUERY),
+         STATE(TEXSTATE),
+         STATE(RASTERIZER_DISCARD),
+         STATE(RASTERIZER_CLIP_PLANE_ENABLE),
+         STATE(BLEND_DUAL),
+         STATE(BLEND_COHERENT),
+#undef STATE
+   };
+
+   struct log_stream *s = mesa_log_streami();
+
+   mesa_log_stream_printf(s, "dirty:");
+
+   if ((uint32_t)dirty == ~0) {
+      mesa_log_stream_printf(s, " ALL");
+      dirty = 0;
+   }
+
+   for (unsigned i = 0; i < ARRAY_SIZE(tbl); i++) {
+      if (dirty & tbl[i].state) {
+         mesa_log_stream_printf(s, " %s", tbl[i].name);
+         dirty &= ~tbl[i].state;
+      }
+   }
+
+   assert(!dirty);
+
+   mesa_log_stream_destroy(s);
+#endif
+}
 
 /* per shader-stage dirty state: */
 enum fd_dirty_shader_state {
@@ -395,8 +455,14 @@ struct fd_context {
    /* which state objects need to be re-emit'd: */
    BITMASK_ENUM(fd_dirty_3d_state) dirty dt;
 
+   /* As above, but also needs draw time resource tracking: */
+   BITMASK_ENUM(fd_dirty_3d_state) dirty_resource dt;
+
    /* per shader-stage dirty status: */
    BITMASK_ENUM(fd_dirty_shader_state) dirty_shader[PIPE_SHADER_TYPES] dt;
+
+   /* As above, but also needs draw time resource tracking: */
+   BITMASK_ENUM(fd_dirty_shader_state) dirty_shader_resource[PIPE_SHADER_TYPES] dt;
 
    void *compute dt;
    struct pipe_blend_state *blend dt;
@@ -589,31 +655,6 @@ fd_stream_output_target(struct pipe_stream_output_target *target)
    return (struct fd_stream_output_target *)target;
 }
 
-/**
- * Does the dirty state require resource tracking, ie. in general
- * does it reference some resource.  There are some special cases:
- *
- * - FD_DIRTY_CONST can reference a resource, but cb0 is handled
- *   specially as if it is not a user-buffer, we expect it to be
- *   coming from const_uploader, so we can make some assumptions
- *   that future transfer_map will be UNSYNCRONIZED
- * - FD_DIRTY_ZSA controls how the framebuffer is accessed
- * - FD_DIRTY_BLEND needs to update GMEM reason
- *
- * TODO if we can make assumptions that framebuffer state is bound
- * first, before blend/zsa/etc state we can move some of the ZSA/
- * BLEND state handling from draw time to bind time.  I think this
- * is true of mesa/st, perhaps we can just document it to be a
- * frontend requirement?
- */
-static inline bool
-fd_context_dirty_resource(enum fd_dirty_3d_state dirty)
-{
-   return dirty & (FD_DIRTY_FRAMEBUFFER | FD_DIRTY_ZSA |
-                   FD_DIRTY_SSBO | FD_DIRTY_IMAGE | FD_DIRTY_VTXBUF |
-                   FD_DIRTY_TEX | FD_DIRTY_STREAMOUT | FD_DIRTY_QUERY);
-}
-
 /* Mark specified non-shader-stage related state as dirty: */
 static inline void
 fd_context_dirty(struct fd_context *ctx, BITMASK_ENUM(fd_dirty_3d_state) dirty)
@@ -623,17 +664,15 @@ fd_context_dirty(struct fd_context *ctx, BITMASK_ENUM(fd_dirty_3d_state) dirty)
    assert(ffs(dirty) <= ARRAY_SIZE(ctx->gen_dirty_map));
 
    ctx->gen_dirty |= ctx->gen_dirty_map[ffs(dirty) - 1];
-
-   if (fd_context_dirty_resource(dirty))
-      dirty |= FD_DIRTY_RESOURCE;
-
    ctx->dirty |= dirty;
+
+   /* These are still not handled at bind time: */
+   if (dirty & (FD_DIRTY_FRAMEBUFFER | FD_DIRTY_QUERY | FD_DIRTY_ZSA))
+      ctx->dirty_resource |= dirty;
 }
 
-static inline void
-fd_context_dirty_shader(struct fd_context *ctx, enum pipe_shader_type shader,
-                        BITMASK_ENUM(fd_dirty_shader_state) dirty)
-   assert_dt
+static inline enum fd_dirty_3d_state
+dirty_shader_to_dirty_state(BITMASK_ENUM(fd_dirty_shader_state) dirty)
 {
    const enum fd_dirty_3d_state map[] = {
       FD_DIRTY_PROG, FD_DIRTY_CONST, FD_DIRTY_TEX,
@@ -647,13 +686,20 @@ fd_context_dirty_shader(struct fd_context *ctx, enum pipe_shader_type shader,
    STATIC_ASSERT(FD_DIRTY_SHADER_SSBO == BIT(3));
    STATIC_ASSERT(FD_DIRTY_SHADER_IMAGE == BIT(4));
 
-   assert(util_is_power_of_two_nonzero(dirty));
    assert(ffs(dirty) <= ARRAY_SIZE(map));
 
-   ctx->gen_dirty |= ctx->gen_dirty_shader_map[shader][ffs(dirty) - 1];
+   return map[ffs(dirty) - 1];
+}
 
+static inline void
+fd_context_dirty_shader(struct fd_context *ctx, enum pipe_shader_type shader,
+                        BITMASK_ENUM(fd_dirty_shader_state) dirty)
+   assert_dt
+{
+   assert(util_is_power_of_two_nonzero(dirty));
+   ctx->gen_dirty |= ctx->gen_dirty_shader_map[shader][ffs(dirty) - 1];
    ctx->dirty_shader[shader] |= dirty;
-   fd_context_dirty(ctx, map[ffs(dirty) - 1]);
+   fd_context_dirty(ctx, dirty_shader_to_dirty_state(dirty));
 }
 
 /* mark all state dirty: */
@@ -662,14 +708,17 @@ fd_context_all_dirty(struct fd_context *ctx) assert_dt
 {
    ctx->last.dirty = true;
    ctx->dirty = (enum fd_dirty_3d_state) ~0;
+   ctx->dirty_resource = (enum fd_dirty_3d_state) ~0;
 
    /* NOTE: don't use ~0 for gen_dirty, because the gen specific
     * emit code will loop over all the bits:
     */
    ctx->gen_dirty = ctx->gen_all_dirty;
 
-   for (unsigned i = 0; i < PIPE_SHADER_TYPES; i++)
+   for (unsigned i = 0; i < PIPE_SHADER_TYPES; i++) {
       ctx->dirty_shader[i] = (enum fd_dirty_shader_state) ~0;
+      ctx->dirty_shader_resource[i] = (enum fd_dirty_shader_state) ~0;
+   }
 }
 
 static inline void
@@ -677,9 +726,11 @@ fd_context_all_clean(struct fd_context *ctx) assert_dt
 {
    ctx->last.dirty = false;
    ctx->dirty = (enum fd_dirty_3d_state)0;
+   ctx->dirty_resource = (enum fd_dirty_3d_state)0;
    ctx->gen_dirty = 0;
    for (unsigned i = 0; i < PIPE_SHADER_TYPES; i++) {
       ctx->dirty_shader[i] = (enum fd_dirty_shader_state)0;
+      ctx->dirty_shader_resource[i] = (enum fd_dirty_shader_state)0;
    }
 }
 

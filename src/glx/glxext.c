@@ -262,6 +262,9 @@ glx_display_free(struct glx_display *priv)
 
    gc = __glXGetCurrentContext();
    if (priv->dpy == gc->currentDpy) {
+      if (gc != &dummyContext)
+         gc->vtable->unbind(gc);
+
       gc->vtable->destroy(gc);
       __glXSetCurrentContextNull();
    }
@@ -935,7 +938,7 @@ __glXInitialize(Display * dpy)
 
    glxSendClientInfo(dpyPriv, -1);
 
-   /* Grab the lock again and add the dispay private, unless somebody
+   /* Grab the lock again and add the display private, unless somebody
     * beat us to initializing on this display in the meantime. */
    _XLockMutex(_Xglobal_lock);
 

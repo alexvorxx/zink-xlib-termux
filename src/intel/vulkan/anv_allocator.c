@@ -1405,17 +1405,11 @@ anv_bo_vma_alloc_or_close(struct anv_device *device,
 {
    assert(explicit_address == intel_48b_address(explicit_address));
 
-   uint32_t align = 4096;
+   uint32_t align = device->physical->info.mem_alignment;
 
    /* Gen12 CCS surface addresses need to be 64K aligned. */
    if (device->info->ver >= 12 && (alloc_flags & ANV_BO_ALLOC_IMPLICIT_CCS))
-      align = 64 * 1024;
-
-   /* For XeHP, lmem and smem cannot share a single PDE, which means they
-    * can't live in the same 2MiB aligned region.
-    */
-   if (device->info->verx10 >= 125)
-       align = 2 * 1024 * 1024;
+      align = MAX2(64 * 1024, align);
 
    if (alloc_flags & ANV_BO_ALLOC_FIXED_ADDRESS) {
       bo->has_fixed_address = true;
@@ -1491,10 +1485,12 @@ anv_device_alloc_bo(struct anv_device *device,
       regions[nregions++] = device->physical->sys.region;
    }
 
+   uint64_t actual_size;
    uint32_t gem_handle = device->kmd_backend->gem_create(device, regions,
                                                          nregions,
                                                          size + ccs_size,
-                                                         alloc_flags);
+                                                         alloc_flags,
+                                                         &actual_size);
    if (gem_handle == 0)
       return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
 
@@ -1505,6 +1501,7 @@ anv_device_alloc_bo(struct anv_device *device,
       .offset = -1,
       .size = size,
       ._ccs_size = ccs_size,
+      .actual_size = actual_size,
       .flags = bo_flags,
       .is_external = (alloc_flags & ANV_BO_ALLOC_EXTERNAL),
       .has_client_visible_address =
@@ -1672,6 +1669,7 @@ anv_device_import_bo_from_host_ptr(struct anv_device *device,
          .refcount = 1,
          .offset = -1,
          .size = size,
+         .actual_size = size,
          .map = host_ptr,
          .flags = bo_flags,
          .is_external = true,
@@ -1797,6 +1795,7 @@ anv_device_import_bo(struct anv_device *device,
          .refcount = 1,
          .offset = -1,
          .size = size,
+         .actual_size = size,
          .flags = bo_flags,
          .is_external = true,
          .has_client_visible_address =

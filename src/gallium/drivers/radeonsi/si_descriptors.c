@@ -309,6 +309,13 @@ void si_set_mutable_tex_desc_fields(struct si_screen *sscreen, struct si_texture
       va += (uint64_t)base_level_info->offset_256B * 256;
    }
 
+   if (!sscreen->info.has_image_opcodes) {
+      /* Set it as a buffer descriptor. */
+      state[0] = va;
+      state[1] |= S_008F04_BASE_ADDRESS_HI(va >> 32);
+      return;
+   }
+
    state[0] = va >> 8;
    state[1] |= S_008F14_BASE_ADDRESS_HI(va >> 40);
 
@@ -822,7 +829,8 @@ static void si_set_shader_image_desc(struct si_context *ctx, const struct pipe_i
 
       screen->make_texture_descriptor(
          screen, tex, false, res->b.b.target, view->format, swizzle, hw_level, hw_level,
-         view->u.tex.first_layer, view->u.tex.last_layer, width, height, depth, desc, fmask_desc);
+         view->u.tex.first_layer, view->u.tex.last_layer, width, height, depth, false,
+         desc, fmask_desc);
       si_set_mutable_tex_desc_fields(screen, tex, &tex->surface.u.legacy.level[level], level, level,
                                      util_format_get_blockwidth(view->format),
                                      false, access, desc);
@@ -2176,7 +2184,7 @@ static void si_emit_global_shader_pointers(struct si_context *sctx, struct si_de
       radeon_emit_one_32bit_pointer(sctx, descs, R_00B130_SPI_SHADER_USER_DATA_VS_0);
       radeon_emit_one_32bit_pointer(sctx, descs, R_00B230_SPI_SHADER_USER_DATA_GS_0);
       radeon_emit_one_32bit_pointer(sctx, descs, R_00B430_SPI_SHADER_USER_DATA_HS_0);
-   } else if (sctx->gfx_level == GFX9 && sctx->shadowed_regs) {
+   } else if (sctx->gfx_level == GFX9 && sctx->shadowing.registers) {
       /* We can't use the COMMON registers with register shadowing. */
       radeon_emit_one_32bit_pointer(sctx, descs, R_00B030_SPI_SHADER_USER_DATA_PS_0);
       radeon_emit_one_32bit_pointer(sctx, descs, R_00B130_SPI_SHADER_USER_DATA_VS_0);

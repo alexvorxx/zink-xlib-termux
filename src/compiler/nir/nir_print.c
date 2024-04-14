@@ -850,12 +850,12 @@ print_deref_instr(nir_deref_instr *instr, print_state *state)
       fprintf(fp, "%s%s", get_variable_mode_str(1 << m, true),
                           modes ? "|" : "");
    }
-   fprintf(fp, " %s) ", glsl_get_type_name(instr->type));
+   fprintf(fp, " %s)", glsl_get_type_name(instr->type));
 
    if (instr->deref_type != nir_deref_type_var &&
        instr->deref_type != nir_deref_type_cast) {
       /* Print the entire chain as a comment */
-      fprintf(fp, "/* &");
+      fprintf(fp, " /* &");
       print_deref_link(instr, true, state);
       fprintf(fp, " */");
    }
@@ -1401,6 +1401,9 @@ print_tex_instr(nir_tex_instr *instr, print_state *state)
       }
    }
 
+   if (instr->is_gather_implicit_lod)
+      fprintf(fp, ", implicit lod");
+
    if (instr->op == nir_texop_tg4) {
       fprintf(fp, ", %u (gather_component)", instr->component);
    }
@@ -1413,14 +1416,12 @@ print_tex_instr(nir_tex_instr *instr, print_state *state)
       fprintf(fp, " } (offsets)");
    }
 
-   if (instr->op != nir_texop_txf_ms_fb) {
-      if (!has_texture_deref) {
-         fprintf(fp, ", %u (texture)", instr->texture_index);
-      }
+   if (instr->op != nir_texop_txf_ms_fb && !has_texture_deref) {
+      fprintf(fp, ", %u (texture)", instr->texture_index);
+   }
 
-      if (!has_sampler_deref) {
-         fprintf(fp, ", %u (sampler)", instr->sampler_index);
-      }
+   if (nir_tex_instr_need_sampler(instr) && !has_sampler_deref) {
+      fprintf(fp, ", %u (sampler)", instr->sampler_index);
    }
 
    if (instr->texture_non_uniform) {

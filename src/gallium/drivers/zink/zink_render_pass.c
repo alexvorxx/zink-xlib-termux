@@ -496,7 +496,7 @@ zink_init_zs_attachment(struct zink_context *ctx, struct zink_rt_attrib *rt)
                                            !zink_fb_clear_first_needs_explicit(fb_clear) &&
                                            (zink_fb_clear_element(fb_clear, 0)->zs.bits & PIPE_CLEAR_STENCIL);
    const uint64_t outputs_written = ctx->gfx_stages[MESA_SHADER_FRAGMENT] ?
-                                    ctx->gfx_stages[MESA_SHADER_FRAGMENT]->nir->info.outputs_written : 0;
+                                    ctx->gfx_stages[MESA_SHADER_FRAGMENT]->info.outputs_written : 0;
    bool needs_write_z = (ctx->dsa_state && ctx->dsa_state->hw_state.depth_write) ||
                        outputs_written & BITFIELD64_BIT(FRAG_RESULT_DEPTH);
    needs_write_z |= transient || rt->clear_color ||
@@ -580,10 +580,11 @@ get_render_pass(struct zink_context *ctx)
    struct zink_render_pass_state state = {0};
    uint32_t clears = 0;
    bool have_zsbuf = fb->zsbuf && zink_is_zsbuf_used(ctx);
+   bool use_tc_info = !ctx->blitting && ctx->track_renderpasses;
    state.samples = fb->samples > 0;
 
    for (int i = 0; i < fb->nr_cbufs; i++) {
-      if (ctx->tc && screen->driver_workarounds.track_renderpasses)
+      if (use_tc_info)
          zink_tc_init_color_attachment(ctx, &ctx->dynamic_fb.tc_info, i, &state.rts[i]);
       else
          zink_init_color_attachment(ctx, i, &state.rts[i]);
@@ -608,7 +609,7 @@ get_render_pass(struct zink_context *ctx)
    assert(!state.num_cresolves || state.num_cbufs == state.num_cresolves);
 
    if (have_zsbuf) {
-      if (ctx->tc && screen->driver_workarounds.track_renderpasses)
+      if (use_tc_info)
          zink_tc_init_zs_attachment(ctx, &ctx->dynamic_fb.tc_info, &state.rts[fb->nr_cbufs]);
       else
          zink_init_zs_attachment(ctx, &state.rts[fb->nr_cbufs]);
@@ -696,7 +697,7 @@ setup_framebuffer(struct zink_context *ctx)
 
    zink_update_vk_sample_locations(ctx);
 
-   if (ctx->rp_changed || ctx->rp_layout_changed || ctx->rp_loadop_changed) {
+   if (ctx->rp_changed || ctx->rp_layout_changed || (!ctx->batch.in_rp && ctx->rp_loadop_changed)) {
       /* 0. ensure no stale pointers are set */
       ctx->gfx_pipeline_state.next_render_pass = NULL;
       /* 1. calc new rp */
@@ -845,6 +846,7 @@ begin_render_pass(struct zink_context *ctx)
    if (!prep_fb_attachments(ctx, att))
       return 0;
 
+   ctx->zsbuf_unused = !zink_is_zsbuf_used(ctx);
    /* this can be set if fbfetch is activated */
    ctx->rp_changed = false;
 
@@ -900,9 +902,16 @@ zink_begin_render_pass(struct zink_context *ctx)
    if (ctx->framebuffer->rp->state.msaa_expand_mask) {
       uint32_t rp_state = ctx->gfx_pipeline_state.rp_state;
       struct zink_render_pass *rp = ctx->gfx_pipeline_state.render_pass;
+      struct zink_framebuffer *fb = ctx->framebuffer;
+      bool blitting = ctx->blitting;
 
       u_foreach_bit(i, ctx->framebuffer->rp->state.msaa_expand_mask) {
          struct zink_ctx_surface *csurf = (struct zink_ctx_surface*)ctx->fb_state.cbufs[i];
+         /* skip replicate blit if the image will be full-cleared */
+         if ((i == PIPE_MAX_COLOR_BUFS && (ctx->rp_clears_enabled & PIPE_CLEAR_DEPTHSTENCIL)) ||
+             (ctx->rp_clears_enabled >> 2) & BITFIELD_BIT(i)) {
+            csurf->transient_init |= zink_fb_clear_full_exists(ctx, i);
+         }
          if (csurf->transient_init)
             continue;
          struct pipe_surface *dst_view = (struct pipe_surface*)csurf->transient;
@@ -918,12 +927,28 @@ zink_begin_render_pass(struct zink_context *ctx)
          src_view = ctx->base.create_sampler_view(&ctx->base, src, &src_templ);
 
          zink_blit_begin(ctx, ZINK_BLIT_SAVE_FB | ZINK_BLIT_SAVE_FS | ZINK_BLIT_SAVE_TEXTURES);
+         ctx->blitting = false;
+         zink_blit_barriers(ctx, zink_resource(src), zink_resource(dst_view->texture), true);
          ctx->blitting = true;
+         unsigned clear_mask = i == PIPE_MAX_COLOR_BUFS ?
+                               (BITFIELD_MASK(PIPE_MAX_COLOR_BUFS) << 2) :
+                               (PIPE_CLEAR_DEPTHSTENCIL | ((BITFIELD_MASK(PIPE_MAX_COLOR_BUFS) & ~BITFIELD_BIT(i)) << 2));
+         unsigned clears_enabled = ctx->clears_enabled & clear_mask;
+         unsigned rp_clears_enabled = ctx->rp_clears_enabled & clear_mask;
+         ctx->clears_enabled &= ~clear_mask;
+         ctx->rp_clears_enabled &= ~clear_mask;
          util_blitter_blit_generic(ctx->blitter, dst_view, &dstbox,
                                    src_view, &dstbox, ctx->fb_state.width, ctx->fb_state.height,
                                    PIPE_MASK_RGBAZS, PIPE_TEX_FILTER_NEAREST, NULL,
                                    false, false, 0);
+         ctx->clears_enabled = clears_enabled;
+         ctx->rp_clears_enabled = rp_clears_enabled;
          ctx->blitting = false;
+         if (blitting) {
+            zink_blit_barriers(ctx, NULL, zink_resource(dst_view->texture), true);
+            zink_blit_barriers(ctx, NULL, zink_resource(src), true);
+         }
+         ctx->blitting = blitting;
          pipe_sampler_view_reference(&src_view, NULL);
          csurf->transient_init = true;
       }
@@ -931,6 +956,9 @@ zink_begin_render_pass(struct zink_context *ctx)
       ctx->fb_changed = ctx->rp_changed = false;
       ctx->gfx_pipeline_state.rp_state = rp_state;
       ctx->gfx_pipeline_state.render_pass = rp;
+      /* manually re-set fb: depth buffer may have been eliminated */
+      ctx->framebuffer = fb;
+      ctx->framebuffer->rp = rp;
    }
    assert(ctx->gfx_pipeline_state.render_pass);
    return begin_render_pass(ctx);

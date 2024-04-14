@@ -864,8 +864,17 @@ system_value("scratch_base_ptr", 0, bit_sizes=[32,64], indices=[BASE])
 system_value("constant_base_ptr", 0, bit_sizes=[32,64])
 system_value("shared_base_ptr", 0, bit_sizes=[32,64])
 system_value("global_base_ptr", 0, bit_sizes=[32,64])
-# Address of a transform feedback buffer, indexed by BASE
+# Address and size of a transform feedback buffer, indexed by BASE
 system_value("xfb_address", 1, bit_sizes=[32,64], indices=[BASE])
+system_value("xfb_size", 1, bit_sizes=[32], indices=[BASE])
+
+# Address of the associated index buffer in a transform feedback program for an
+# indexed draw. This will be used so transform feedback can pull the gl_VertexID
+# from the index buffer.
+system_value("xfb_index_buffer", 1, bit_sizes=[32,64])
+
+system_value("frag_size", 2)
+system_value("frag_invocation_count", 1)
 
 # System values for ray tracing.
 system_value("ray_launch_id", 3)
@@ -1109,6 +1118,9 @@ intrinsic("store_stack", [0],
 intrinsic("load_frag_shading_rate", dest_comp=1, bit_sizes=[32],
           flags=[CAN_ELIMINATE, CAN_REORDER])
 
+# Whether the rasterized fragment is fully covered by the generating primitive.
+system_value("fully_covered", dest_comp=1, bit_sizes=[1])
+
 # OpenCL printf instruction
 # First source is a deref to the format string
 # Second source is a deref to a struct containing the args
@@ -1129,6 +1141,14 @@ load("mesh_view_indices", [1], [BASE, RANGE], [CAN_ELIMINATE, CAN_REORDER])
 # For now we only support accesses with a constant offset.
 load("preamble", [], indices=[BASE], flags=[CAN_ELIMINATE, CAN_REORDER])
 store("preamble", [], indices=[BASE])
+
+# A 32 bits bitfield storing 1 in bits corresponding to varyings
+# that have the flat interpolation specifier in the fragment shader
+# and 0 otherwise
+system_value("flat_mask", 1)
+
+# Whether provoking vertex mode is last
+system_value("provoking_last", 1)
 
 # IR3-specific version of most SSBO intrinsics. The only different
 # compare to the originals is that they add an extra source to hold
@@ -1295,8 +1315,23 @@ load("raw_output_pan", [1], [IO_SEMANTICS], [CAN_ELIMINATE, CAN_REORDER])
 # src[] = { sampler_index }
 load("sampler_lod_parameters_pan", [1], flags=[CAN_ELIMINATE, CAN_REORDER])
 
+# Like load_output but using a specified render target conversion descriptor
+load("converted_output_pan", [1], indices=[DEST_TYPE, IO_SEMANTICS], flags=[CAN_ELIMINATE])
+
+# Load the render target conversion descriptor for a given render target given
+# in the BASE index. Converts to a type with size given by the source type.
+# Valid in fragment and blend stages.
+system_value("rt_conversion_pan", 1, indices=[BASE, SRC_TYPE], bit_sizes=[32])
+
 # Loads the sample position array on Bifrost, in a packed Arm-specific format
 system_value("sample_positions_pan", 1, bit_sizes=[64])
+
+# In a fragment shader, is the framebuffer single-sampled? 0/~0 bool
+system_value("multisampled_pan", 1, bit_sizes=[32])
+
+# In a fragment shader, the current coverage mask. Affected by writes.
+intrinsic("load_coverage_mask_pan", [], 1, [], flags=[CAN_ELIMINATE],
+          sysval=True, bit_sizes=[32])
 
 # R600 specific instrincs
 #
@@ -1376,9 +1411,6 @@ system_value("ring_mesh_scratch_amd", 4)
 system_value("ring_mesh_scratch_offset_amd", 1)
 # Pointer into the draw and payload rings
 system_value("task_ring_entry_amd", 1)
-# Pointer into the draw and payload rings
-system_value("task_ib_addr", 2)
-system_value("task_ib_stride", 1)
 # Descriptor where NGG attributes are stored on GFX11.
 system_value("ring_attr_amd", 4)
 system_value("ring_attr_offset_amd", 1)
@@ -1509,11 +1541,6 @@ intrinsic("load_smem_amd", src_comp=[1, 1], dest_comp=0, bit_sizes=[32],
                            indices=[ALIGN_MUL, ALIGN_OFFSET],
                            flags=[CAN_ELIMINATE, CAN_REORDER])
 
-# src[] = { descriptor, offset }
-#intrinsic("load_smem_buffer_amd", src_comp=[4, 1], dest_comp=0, bit_sizes=[32],
-#                                  indices=[ALIGN_MUL, ALIGN_OFFSET],
-#                                  flags=[CAN_ELIMINATE, CAN_REORDER])
-
 # src[] = { offset }.
 intrinsic("load_shared2_amd", [1], dest_comp=2, indices=[OFFSET0, OFFSET1, ST64], flags=[CAN_ELIMINATE])
 
@@ -1579,6 +1606,16 @@ system_value("lds_ngg_gs_out_vertex_base_amd", 1)
 # BASE = export target
 # FLAGS = AC_EXP_FLAG_*
 intrinsic("export_amd", [0], indices=[BASE, WRITE_MASK, FLAGS])
+
+# Export dual source blend outputs with swizzle operation
+# src[] = { mrt0, mrt1 }
+intrinsic("export_dual_src_blend_amd", [0, 0], indices=[WRITE_MASK])
+
+# Alpha test reference value
+system_value("alpha_reference_amd", 1)
+
+# Whether to enable barycentric optimization
+system_value("barycentric_optimize_amd", dest_comp=1, bit_sizes=[1])
 
 # V3D-specific instrinc for tile buffer color reads.
 #
@@ -1712,6 +1749,11 @@ intrinsic("load_reloc_const_intel", dest_comp=1, bit_sizes=[32],
 intrinsic("load_desc_set_address_intel", dest_comp=1, bit_sizes=[64],
           src_comp=[1], flags=[CAN_ELIMINATE, CAN_REORDER])
 
+# Base offset for a given set in the flatten array of dynamic offsets
+# src[0] = { set }
+intrinsic("load_desc_set_dynamic_index_intel", dest_comp=1, bit_sizes=[32],
+          src_comp=[1], flags=[CAN_ELIMINATE, CAN_REORDER])
+
 # OpSubgroupBlockReadINTEL and OpSubgroupBlockWriteINTEL from SPV_INTEL_subgroups.
 intrinsic("load_deref_block_intel", dest_comp=0, src_comp=[-1],
           indices=[ACCESS], flags=[CAN_ELIMINATE])
@@ -1734,6 +1776,15 @@ store("ssbo_block_intel", [-1, 1], [WRITE_MASK, ACCESS, ALIGN_MUL, ALIGN_OFFSET]
 
 # src[] = { value, offset }.
 store("shared_block_intel", [1], [BASE, WRITE_MASK, ALIGN_MUL, ALIGN_OFFSET])
+
+# Similar to load_global_const_block_intel but for SSBOs
+# offset should be uniform
+# src[] = { buffer_index, offset }.
+load("ssbo_uniform_block_intel", [-1, 1], [ACCESS, ALIGN_MUL, ALIGN_OFFSET], [CAN_ELIMINATE])
+
+# Similar to load_global_const_block_intel but for shared memory
+# src[] = { offset }.
+load("shared_uniform_block_intel", [1], [BASE, ALIGN_MUL, ALIGN_OFFSET], [CAN_ELIMINATE])
 
 # Intrinsics for Intel mesh shading
 system_value("mesh_inline_data_intel", 1, [ALIGN_OFFSET], bit_sizes=[32, 64])

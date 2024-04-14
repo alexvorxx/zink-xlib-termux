@@ -658,7 +658,7 @@ lower_tex_src(nir_builder *b,
    uint32_t set = deref->var->data.descriptor_set;
    uint32_t binding = deref->var->data.binding;
    /* FIXME: this is a really simplified check for the precision to be used
-    * for the sampling. Right now we are ony checking for the variables used
+    * for the sampling. Right now we are only checking for the variables used
     * on the operation itself, but there are other cases that we could use to
     * infer the precision requirement.
     */
@@ -681,7 +681,7 @@ lower_tex_src(nir_builder *b,
    else  if (V3D_DBG(TMU_32BIT))
       return_size = 32;
    else
-      return_size = relaxed_precision || instr->is_shadow ? 16 : 32;
+      return_size = relaxed_precision ? 16 : 32;
 
    struct v3dv_descriptor_map *map =
       pipeline_get_descriptor_map(state->pipeline, binding_layout->type,
@@ -1790,7 +1790,7 @@ pipeline_stage_get_nir(struct v3dv_pipeline_stage *p_stage,
    if (nir) {
       assert(nir->info.stage == broadcom_shader_stage_to_gl(p_stage->stage));
 
-      /* A NIR cach hit doesn't avoid the large majority of pipeline stage
+      /* A NIR cache hit doesn't avoid the large majority of pipeline stage
        * creation so the cache hit is not recorded in the pipeline feedback
        * flags
        */
@@ -2966,11 +2966,12 @@ pipeline_init(struct v3dv_pipeline *pipeline,
     */
    assert(!ds_info || !ds_info->depthBoundsTestEnable);
 
+   enable_depth_bias(pipeline, rs_info);
+
    v3dv_X(device, pipeline_pack_state)(pipeline, cb_info, ds_info,
                                        rs_info, pv_info, ls_info,
                                        ms_info);
 
-   enable_depth_bias(pipeline, rs_info);
    pipeline_set_sample_mask(pipeline, ms_info);
    pipeline_set_sample_rate_shading(pipeline, ms_info);
 

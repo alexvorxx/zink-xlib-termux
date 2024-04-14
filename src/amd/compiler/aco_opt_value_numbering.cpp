@@ -84,9 +84,6 @@ struct InstrHash {
     */
    std::size_t operator()(Instruction* instr) const
    {
-      if (instr->isVOP3())
-         return hash_murmur_32<VALU_instruction>(instr);
-
       if (instr->isDPP16())
          return hash_murmur_32<DPP16_instruction>(instr);
 
@@ -96,10 +93,15 @@ struct InstrHash {
       if (instr->isSDWA())
          return hash_murmur_32<SDWA_instruction>(instr);
 
+      if (instr->isVINTERP_INREG())
+         return hash_murmur_32<VINTERP_inreg_instruction>(instr);
+
+      if (instr->isVALU())
+         return hash_murmur_32<VALU_instruction>(instr);
+
       switch (instr->format) {
       case Format::SMEM: return hash_murmur_32<SMEM_instruction>(instr);
       case Format::VINTRP: return hash_murmur_32<VINTRP_instruction>(instr);
-      case Format::VINTERP_INREG: return hash_murmur_32<VINTERP_inreg_instruction>(instr);
       case Format::DS: return hash_murmur_32<DS_instruction>(instr);
       case Format::SOPP: return hash_murmur_32<SOPP_instruction>(instr);
       case Format::SOPK: return hash_murmur_32<SOPK_instruction>(instr);
@@ -218,10 +220,8 @@ struct InstrPred {
       case Format::SMEM: {
          SMEM_instruction& aS = a->smem();
          SMEM_instruction& bS = b->smem();
-         /* isel shouldn't be creating situations where this assertion fails */
-         assert(aS.prevent_overflow == bS.prevent_overflow);
          return aS.sync == bS.sync && aS.glc == bS.glc && aS.dlc == bS.dlc && aS.nv == bS.nv &&
-                aS.disable_wqm == bS.disable_wqm && aS.prevent_overflow == bS.prevent_overflow;
+                aS.disable_wqm == bS.disable_wqm;
       }
       case Format::VINTRP: {
          VINTRP_instruction& aI = a->vintrp();

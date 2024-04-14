@@ -25,7 +25,7 @@
 #include "nir/nir_builder.h"
 
 #include "bvh/bvh.h"
-#include "radv_meta.h"
+#include "meta/radv_meta.h"
 #include "radv_private.h"
 #include "radv_rt_common.h"
 #include "radv_shader.h"
@@ -97,9 +97,6 @@ struct rt_variables {
    /* global address of the SBT entry used for the shader */
    nir_variable *shader_record_ptr;
 
-   nir_variable *launch_size;
-   nir_variable *launch_id;
-
    /* trace_ray arguments */
    nir_variable *accel_struct;
    nir_variable *cull_mask_and_flags;
@@ -136,10 +133,6 @@ create_rt_variables(nir_shader *shader, const VkRayTracingPipelineCreateInfoKHR 
    vars.stack_ptr = nir_variable_create(shader, nir_var_shader_temp, glsl_uint_type(), "stack_ptr");
    vars.shader_record_ptr =
       nir_variable_create(shader, nir_var_shader_temp, glsl_uint64_t_type(), "shader_record_ptr");
-
-   const struct glsl_type *uvec3_type = glsl_vector_type(GLSL_TYPE_UINT, 3);
-   vars.launch_size = nir_variable_create(shader, nir_var_shader_temp, uvec3_type, "launch_size");
-   vars.launch_id = nir_variable_create(shader, nir_var_shader_temp, uvec3_type, "launch_id");
 
    const struct glsl_type *vec3_type = glsl_vector_type(GLSL_TYPE_FLOAT, 3);
    vars.accel_struct =
@@ -187,8 +180,6 @@ map_rt_variables(struct hash_table *var_remap, struct rt_variables *src,
    _mesa_hash_table_insert(var_remap, src->arg, dst->arg);
    _mesa_hash_table_insert(var_remap, src->stack_ptr, dst->stack_ptr);
    _mesa_hash_table_insert(var_remap, src->shader_record_ptr, dst->shader_record_ptr);
-   _mesa_hash_table_insert(var_remap, src->launch_size, dst->launch_size);
-   _mesa_hash_table_insert(var_remap, src->launch_id, dst->launch_id);
 
    _mesa_hash_table_insert(var_remap, src->accel_struct, dst->accel_struct);
    _mesa_hash_table_insert(var_remap, src->cull_mask_and_flags, dst->cull_mask_and_flags);
@@ -401,14 +392,6 @@ lower_rt_instructions(nir_shader *shader, struct rt_variables *vars, unsigned ca
             }
             case nir_intrinsic_load_shader_record_ptr: {
                ret = nir_load_var(&b_shader, vars->shader_record_ptr);
-               break;
-            }
-            case nir_intrinsic_load_ray_launch_id: {
-               ret = nir_load_var(&b_shader, vars->launch_id);
-               break;
-            }
-            case nir_intrinsic_load_ray_launch_size: {
-               ret = nir_load_var(&b_shader, vars->launch_size);
                break;
             }
             case nir_intrinsic_load_ray_t_min: {
@@ -791,9 +774,51 @@ lower_hit_attribs(nir_shader *shader, nir_variable **hit_attribs, uint32_t workg
 }
 
 static void
+inline_constants(nir_shader *dst, nir_shader *src)
+{
+   if (!src->constant_data_size)
+      return;
+
+   uint32_t align_mul = 1;
+   if (dst->constant_data_size) {
+      nir_foreach_block (block, nir_shader_get_entrypoint(src)) {
+         nir_foreach_instr (instr, block) {
+            if (instr->type != nir_instr_type_intrinsic)
+               continue;
+
+            nir_intrinsic_instr *intrinsic = nir_instr_as_intrinsic(instr);
+            if (intrinsic->intrinsic == nir_intrinsic_load_constant)
+               align_mul = MAX2(align_mul, nir_intrinsic_align_mul(intrinsic));
+         }
+      }
+   }
+
+   uint32_t old_constant_data_size = dst->constant_data_size;
+   uint32_t base_offset = align(dst->constant_data_size, align_mul);
+   dst->constant_data_size = base_offset + src->constant_data_size;
+   dst->constant_data =
+      rerzalloc_size(dst, dst->constant_data, old_constant_data_size, dst->constant_data_size);
+   memcpy((char *)dst->constant_data + base_offset, src->constant_data, src->constant_data_size);
+
+   if (!base_offset)
+      return;
+
+   nir_foreach_block (block, nir_shader_get_entrypoint(src)) {
+      nir_foreach_instr (instr, block) {
+         if (instr->type != nir_instr_type_intrinsic)
+            continue;
+
+         nir_intrinsic_instr *intrinsic = nir_instr_as_intrinsic(instr);
+         if (intrinsic->intrinsic == nir_intrinsic_load_constant)
+            nir_intrinsic_set_base(intrinsic, base_offset + nir_intrinsic_base(intrinsic));
+      }
+   }
+}
+
+static void
 insert_rt_case(nir_builder *b, nir_shader *shader, struct rt_variables *vars, nir_ssa_def *idx,
                uint32_t call_idx_base, uint32_t call_idx, unsigned stage_idx,
-               struct radv_ray_tracing_module *groups)
+               struct radv_ray_tracing_group *groups)
 {
    uint32_t workgroup_size = b->shader->info.workgroup_size[0] * b->shader->info.workgroup_size[1] *
                              b->shader->info.workgroup_size[2];
@@ -817,26 +842,25 @@ insert_rt_case(nir_builder *b, nir_shader *shader, struct rt_variables *vars, ni
 
    src_vars.stack_size = MAX2(src_vars.stack_size, shader->scratch_size);
 
+   inline_constants(b->shader, shader);
+
    nir_push_if(b, nir_ieq_imm(b, idx, call_idx));
    nir_inline_function_impl(b, nir_shader_get_entrypoint(shader), NULL, var_remap);
    nir_pop_if(b, NULL);
-
-   /* Adopt the instructions from the source shader, since they are merely moved, not cloned. */
-   ralloc_adopt(ralloc_context(b->shader), ralloc_context(shader));
 
    ralloc_free(var_remap);
 
    /* reserve stack sizes */
    for (uint32_t group_idx = 0; group_idx < vars->create_info->groupCount; group_idx++) {
-      const VkRayTracingShaderGroupCreateInfoKHR *group = vars->create_info->pGroups + group_idx;
+      struct radv_ray_tracing_group *group = groups + group_idx;
 
-      if (stage_idx == group->generalShader || stage_idx == group->closestHitShader)
-         groups[group_idx].stack_size.recursive_size =
-            MAX2(groups[group_idx].stack_size.recursive_size, src_vars.stack_size);
+      if (stage_idx == group->recursive_shader)
+         group->stack_size.recursive_size =
+            MAX2(group->stack_size.recursive_size, src_vars.stack_size);
 
-      if (stage_idx == group->anyHitShader || stage_idx == group->intersectionShader)
-         groups[group_idx].stack_size.non_recursive_size =
-            MAX2(groups[group_idx].stack_size.non_recursive_size, src_vars.stack_size);
+      if (stage_idx == group->any_hit_shader || stage_idx == group->intersection_shader)
+         group->stack_size.non_recursive_size =
+            MAX2(group->stack_size.non_recursive_size, src_vars.stack_size);
    }
 }
 
@@ -1022,6 +1046,9 @@ nir_lower_intersection_shader(nir_shader *intersection, nir_shader *any_hit)
    if (any_hit) {
       any_hit = nir_shader_clone(dead_ctx, any_hit);
       NIR_PASS(_, any_hit, nir_opt_dce);
+
+      inline_constants(intersection, any_hit);
+
       any_hit_impl = lower_any_hit_for_intersection(any_hit);
       any_hit_var_remap = _mesa_pointer_hash_table_create(dead_ctx);
    }
@@ -1162,7 +1189,7 @@ struct traversal_data {
    struct rt_traversal_vars *trav_vars;
    nir_variable *barycentrics;
 
-   struct radv_ray_tracing_module *groups;
+   struct radv_ray_tracing_group *groups;
    const struct radv_pipeline_key *key;
 };
 
@@ -1177,12 +1204,12 @@ visit_any_hit_shaders(struct radv_device *device,
       nir_push_if(b, nir_ine_imm(b, sbt_idx, 0));
 
    for (unsigned i = 0; i < pCreateInfo->groupCount; ++i) {
-      const VkRayTracingShaderGroupCreateInfoKHR *group_info = &pCreateInfo->pGroups[i];
+      struct radv_ray_tracing_group *group = &data->groups[i];
       uint32_t shader_id = VK_SHADER_UNUSED_KHR;
 
-      switch (group_info->type) {
+      switch (group->type) {
       case VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR:
-         shader_id = group_info->anyHitShader;
+         shader_id = group->any_hit_shader;
          break;
       default:
          break;
@@ -1204,6 +1231,7 @@ visit_any_hit_shaders(struct radv_device *device,
 
       insert_rt_case(b, nir_stage, vars, sbt_idx, 0, data->groups[i].handle.any_hit_index,
                      shader_id, data->groups);
+      ralloc_free(nir_stage);
    }
 
    if (!(vars->create_info->flags & VK_PIPELINE_CREATE_RAY_TRACING_NO_NULL_ANY_HIT_SHADERS_BIT_KHR))
@@ -1311,14 +1339,14 @@ handle_candidate_aabb(nir_builder *b, struct radv_leaf_intersection *intersectio
       nir_push_if(b, nir_ine_imm(b, nir_load_var(b, inner_vars.idx), 0));
 
    for (unsigned i = 0; i < data->createInfo->groupCount; ++i) {
-      const VkRayTracingShaderGroupCreateInfoKHR *group_info = &data->createInfo->pGroups[i];
+      struct radv_ray_tracing_group *group = &data->groups[i];
       uint32_t shader_id = VK_SHADER_UNUSED_KHR;
       uint32_t any_hit_shader_id = VK_SHADER_UNUSED_KHR;
 
-      switch (group_info->type) {
+      switch (group->type) {
       case VK_RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR:
-         shader_id = group_info->intersectionShader;
-         any_hit_shader_id = group_info->anyHitShader;
+         shader_id = group->intersection_shader;
+         any_hit_shader_id = group->any_hit_shader;
          break;
       default:
          break;
@@ -1349,6 +1377,7 @@ handle_candidate_aabb(nir_builder *b, struct radv_leaf_intersection *intersectio
 
       insert_rt_case(b, nir_stage, &inner_vars, nir_load_var(b, inner_vars.idx), 0,
                      data->groups[i].handle.intersection_index, shader_id, data->groups);
+      ralloc_free(nir_stage);
    }
 
    if (!(data->vars->create_info->flags &
@@ -1394,7 +1423,7 @@ load_stack_entry(nir_builder *b, nir_ssa_def *index, const struct radv_ray_trave
 static nir_shader *
 build_traversal_shader(struct radv_device *device,
                        const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
-                       struct radv_ray_tracing_module *groups, const struct radv_pipeline_key *key)
+                       struct radv_ray_tracing_group *groups, const struct radv_pipeline_key *key)
 {
    /* Create the traversal shader as an intersection shader to prevent validation failures due to
     * invalid variable modes.*/
@@ -1429,8 +1458,6 @@ build_traversal_shader(struct radv_device *device,
    nir_store_var(&b, vars.tmax, nir_load_ray_t_max(&b), 0x1);
    nir_store_var(&b, vars.arg, nir_load_rt_arg_scratch_offset_amd(&b), 0x1);
    nir_store_var(&b, vars.stack_ptr, nir_imm_int(&b, 0), 0x1);
-   nir_store_var(&b, vars.launch_size, nir_load_ray_launch_size(&b), 0x7);
-   nir_store_var(&b, vars.launch_id, nir_load_ray_launch_id(&b), 0x7);
 
    struct rt_traversal_vars trav_vars = init_traversal_vars(&b);
 
@@ -1592,9 +1619,9 @@ move_rt_instructions(nir_shader *shader)
 
 nir_shader *
 create_rt_shader(struct radv_device *device, const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
-                 struct radv_ray_tracing_module *groups, const struct radv_pipeline_key *key)
+                 struct radv_ray_tracing_group *groups, const struct radv_pipeline_key *key)
 {
-   nir_builder b = radv_meta_init_shader(device, MESA_SHADER_COMPUTE, "rt_combined");
+   nir_builder b = radv_meta_init_shader(device, MESA_SHADER_RAYGEN, "rt_combined");
    b.shader->info.internal = false;
    b.shader->info.workgroup_size[0] = 8;
    b.shader->info.workgroup_size[1] = device->physical_device->rt_wave_size == 64 ? 8 : 4;
@@ -1604,17 +1631,6 @@ create_rt_shader(struct radv_device *device, const VkRayTracingPipelineCreateInf
    load_sbt_entry(&b, &vars, nir_imm_int(&b, 0), SBT_RAYGEN, SBT_GENERAL_IDX);
    nir_store_var(&b, vars.stack_ptr, nir_load_rt_dynamic_callable_stack_base_amd(&b), 0x1);
 
-   nir_store_var(&b, vars.launch_id, nir_load_global_invocation_id(&b, 32), 0x7);
-   nir_ssa_def *launch_size_addr = nir_load_ray_launch_size_addr_amd(&b);
-   nir_ssa_def *xy = nir_build_load_smem_amd(&b, 2, launch_size_addr, nir_imm_int(&b, 0));
-   nir_ssa_def *z = nir_build_load_smem_amd(&b, 1, launch_size_addr, nir_imm_int(&b, 8));
-   nir_ssa_def *xyz[3] = {
-      nir_channel(&b, xy, 0),
-      nir_channel(&b, xy, 1),
-      z,
-   };
-   nir_store_var(&b, vars.launch_size, nir_vec(&b, xyz, 3), 0x7);
-
    nir_loop *loop = nir_push_loop(&b);
    nir_ssa_def *idx = nir_load_var(&b, vars.idx);
 
@@ -1623,14 +1639,11 @@ create_rt_shader(struct radv_device *device, const VkRayTracingPipelineCreateInf
    b.shader->info.shared_size = MAX2(b.shader->info.shared_size, traversal->info.shared_size);
    assert(b.shader->info.shared_size <= 32768);
    insert_rt_case(&b, traversal, &vars, idx, 0, 1, -1u, groups);
+   ralloc_free(traversal);
 
    unsigned call_idx_base = 1;
    for (unsigned i = 0; i < pCreateInfo->groupCount; ++i) {
-      unsigned stage_idx = VK_SHADER_UNUSED_KHR;
-      if (pCreateInfo->pGroups[i].type == VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR)
-         stage_idx = pCreateInfo->pGroups[i].generalShader;
-      else
-         stage_idx = pCreateInfo->pGroups[i].closestHitShader;
+      unsigned stage_idx = groups[i].recursive_shader;
 
       if (stage_idx == VK_SHADER_UNUSED_KHR)
          continue;
@@ -1672,6 +1685,8 @@ create_rt_shader(struct radv_device *device, const VkRayTracingPipelineCreateInf
          insert_rt_case(&b, resume_shaders[j], &vars, idx, call_idx_base, call_idx_base + 1 + j,
                         stage_idx, groups);
       }
+
+      ralloc_free(nir_stage);
       call_idx_base += num_resume_shaders;
    }
 

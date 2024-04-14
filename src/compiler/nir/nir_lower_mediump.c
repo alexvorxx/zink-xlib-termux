@@ -130,6 +130,11 @@ nir_recompute_io_bases(nir_shader *nir, nir_variable_mode modes)
       nir_metadata_preserve(impl, nir_metadata_all);
    }
 
+   if (modes & nir_var_shader_in)
+      nir->num_inputs = BITSET_COUNT(inputs);
+   if (modes & nir_var_shader_out)
+      nir->num_outputs = BITSET_COUNT(outputs);
+
    return changed;
 }
 
@@ -515,7 +520,7 @@ nir_lower_mediump_vars_impl(nir_function_impl *impl, nir_variable_mode modes,
 
             case nir_intrinsic_copy_deref: {
                nir_deref_instr *dst = nir_src_as_deref(intrin->src[0]);
-               nir_deref_instr *src = nir_src_as_deref(intrin->src[0]);
+               nir_deref_instr *src = nir_src_as_deref(intrin->src[1]);
                /* If we convert once side of a copy and not the other, that
                 * would be very bad.
                 */

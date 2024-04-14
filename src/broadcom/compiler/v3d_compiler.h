@@ -87,7 +87,7 @@ enum qfile {
 
         /** A physical register, such as the W coordinate payload. */
         QFILE_REG,
-        /** One of the regsiters for fixed function interactions. */
+        /** One of the registers for fixed function interactions. */
         QFILE_MAGIC,
 
         /**
@@ -172,6 +172,11 @@ struct qinst {
 
         /* If this is a a TLB Z write */
         bool is_tlb_z_write;
+
+        /* If this is a retiring TMU instruction (the last in a lookup sequence),
+         * how many ldtmu instructions are required to read the results.
+         */
+        uint32_t ldtmu_count;
 
         /* Position of this instruction in the program. Filled in during
          * register allocation.
@@ -485,7 +490,7 @@ struct v3d_vs_key {
         bool clamp_color;
 };
 
-/** A basic block of VIR intructions. */
+/** A basic block of VIR instructions. */
 struct qblock {
         struct list_head link;
 

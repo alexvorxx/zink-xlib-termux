@@ -520,7 +520,7 @@ static void si_blit_decompress_color(struct si_context *sctx, struct si_texture 
              custom_blend == sctx->custom_blend_dcc_decompress)
             sctx->flags |= SI_CONTEXT_FLUSH_AND_INV_CB;
 
-         /* When running FMASK decompresion with DCC, we need to run the "eliminate fast clear" pass
+         /* When running FMASK decompression with DCC, we need to run the "eliminate fast clear" pass
           * separately because FMASK decompression doesn't eliminate DCC fast clear. This makes
           * render->texture transitions more expensive. It can be disabled by
           * allow_dcc_msaa_clear_to_reg_for_bpp.
@@ -1211,13 +1211,13 @@ static void si_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
       simple_mtx_unlock(&sscreen->async_compute_context_lock);
    }
 
-   if (unlikely(sctx->thread_trace_enabled))
+   if (unlikely(sctx->sqtt_enabled))
       sctx->sqtt_next_event = EventCmdResolveImage;
 
    if (si_msaa_resolve_blit_via_CB(ctx, info))
       return;
 
-   if (unlikely(sctx->thread_trace_enabled))
+   if (unlikely(sctx->sqtt_enabled))
       sctx->sqtt_next_event = EventCmdCopyImage;
 
    /* Using compute for copying to a linear texture in GTT is much faster than
@@ -1252,7 +1252,7 @@ void si_gfx_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
                              info->src.box.z, info->src.box.z + info->src.box.depth - 1,
                              false);
 
-   if (unlikely(sctx->thread_trace_enabled))
+   if (unlikely(sctx->sqtt_enabled))
       sctx->sqtt_next_event = EventCmdBlitImage;
 
    si_blitter_begin(sctx, SI_BLIT | (info->render_condition_enable ? 0 : SI_DISABLE_RENDER_COND));
@@ -1325,8 +1325,10 @@ void si_decompress_dcc(struct si_context *sctx, struct si_texture *tex)
 
    /* If graphics is disabled, we can't decompress DCC, but it shouldn't
     * be compressed either. The caller should simply discard it.
+    * If blitter is running, we can't decompress DCC either because it
+    * will cause a blitter recursion.
     */
-   if (!tex->surface.meta_offset || !sctx->has_graphics)
+   if (!tex->surface.meta_offset || !sctx->has_graphics || sctx->blitter_running)
       return;
 
    si_blit_decompress_color(sctx, tex, 0, tex->buffer.b.b.last_level, 0,

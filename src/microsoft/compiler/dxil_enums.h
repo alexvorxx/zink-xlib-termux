@@ -24,6 +24,8 @@
 #ifndef DIXL_ENUMS_H
 #define DIXL_ENUMS_H
 
+#include <stdbool.h>
+
 enum dxil_signature_kind {
    DXIL_SIG_INVALID = 0,
    DXIL_SIG_INPUT,
@@ -354,16 +356,31 @@ enum dxil_quad_op_kind {
    QUAD_READ_ACROSS_DIAGONAL = 2,
 };
 
+enum dxil_wave_op_kind {
+   DXIL_WAVE_OP_SUM = 0,
+   DXIL_WAVE_OP_PRODUCT = 1,
+   DXIL_WAVE_OP_MIN = 2,
+   DXIL_WAVE_OP_MAX = 3,
+};
+
+enum dxil_wave_bit_op_kind {
+   DXIL_WAVE_BIT_OP_AND = 0,
+   DXIL_WAVE_BIT_OP_OR = 1,
+   DXIL_WAVE_BIT_OP_XOR = 2,
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 struct glsl_type;
+enum glsl_sampler_dim;
 
 enum dxil_component_type dxil_get_comp_type(const struct glsl_type *type);
 
 enum dxil_prog_sig_comp_type dxil_get_prog_sig_comp_type(const struct glsl_type *type);
 
+enum dxil_resource_kind dxil_sampler_dim_to_resource_kind(enum glsl_sampler_dim dim, bool is_array);
 enum dxil_resource_kind dxil_get_resource_kind(const struct glsl_type *type);
 
 enum dxil_primitive_topology dxil_get_primitive_topology(unsigned topology);

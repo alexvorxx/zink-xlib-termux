@@ -1636,6 +1636,12 @@ vec4_visitor::nir_emit_alu(nir_alu_instr *instr)
       break;
    }
 
+   case nir_op_uclz:
+      assert(nir_dest_bit_size(instr->dest.dest) == 32);
+      assert(nir_src_bit_size(instr->src[0].src) == 32);
+      emit(LZD(dst, op[0]));
+      break;
+
    case nir_op_find_lsb:
       assert(nir_dest_bit_size(instr->dest.dest) == 32);
       assert(nir_src_bit_size(instr->src[0].src) == 32);
@@ -1949,13 +1955,15 @@ vec4_visitor::nir_emit_texture(nir_tex_instr *instr)
 
       case nir_tex_src_texture_offset: {
          assert(texture_reg.is_zero());
-         texture_reg = emit_uniformize(get_nir_src(instr->src[i].src, 1));
+         texture_reg = emit_uniformize(get_nir_src(instr->src[i].src,
+                                                   BRW_REGISTER_TYPE_UD, 1));
          break;
       }
 
       case nir_tex_src_sampler_offset: {
          assert(sampler_reg.is_zero());
-         sampler_reg = emit_uniformize(get_nir_src(instr->src[i].src, 1));
+         sampler_reg = emit_uniformize(get_nir_src(instr->src[i].src,
+                                                   BRW_REGISTER_TYPE_UD, 1));
          break;
       }
 

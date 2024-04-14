@@ -1,24 +1,6 @@
 /*
- * Copyright (C) 2021 Alyssa Rosenzweig <alyssa@rosenzweig.io>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+ * Copyright 2021 Alyssa Rosenzweig
+ * SPDX-License-Identifier: MIT
  */
 
 #include "agx_compiler.h"
@@ -518,10 +500,13 @@ agx_pack_instr(struct util_dynarray *emission, struct util_dynarray *fixups,
 
    case AGX_OPCODE_SAMPLE_MASK: {
       unsigned S = agx_pack_sample_mask_src(I->src[0]);
-      uint64_t raw = 0x7fc1 | ((S & 0xff) << 16) | (0x3 << 24) |
-                     ((S >> 8) << 26) | (0x158ull << 32);
+      unsigned T = 0xFF;
+      bool Tt = true /* immediate */;
+      uint32_t raw = 0xc1 | (Tt ? BITFIELD_BIT(8) : 0) |
+                     ((T & BITFIELD_MASK(6)) << 9) | ((S & 0xff) << 16) |
+                     ((T >> 6) << 24) | ((S >> 8) << 26);
 
-      unsigned size = 8;
+      unsigned size = 4;
       memcpy(util_dynarray_grow_bytes(emission, 1, size), &raw, size);
       break;
    }

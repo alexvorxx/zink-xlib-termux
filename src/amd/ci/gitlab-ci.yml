@@ -38,7 +38,7 @@
 # Run five jobs in parallel each running 1/55th of the test suite
 radv-stoney-vkcts:amd64:
   extends:
-    - .lava-test:amd64
+    - .lava-test-deqp:amd64
     - .radv-stoney-test:amd64
   parallel: 5
   variables:
@@ -46,7 +46,7 @@ radv-stoney-vkcts:amd64:
 
 radeonsi-stoney-gl:amd64:
   extends:
-    - .lava-test:amd64
+    - .lava-test-deqp:amd64
     - .radeonsi-stoney-test:amd64
   parallel: 11
   variables:
@@ -73,7 +73,7 @@ radeonsi-stoney-traces:amd64:
     KERNEL_IMAGE_TYPE: ""
     RUNNER_TAG: mesa-ci-x86-64-lava-asus-CM1400CXA-dalboz
 
-# 5 devices (2022-10-19)
+# 5 devices (2023-04-10) # FIXME currently only 2 available
 .lava-lenovo-TPad-C13-Yoga-zork:amd64:
   variables:
     BOOT_METHOD: depthcharge
@@ -108,7 +108,7 @@ radeonsi-stoney-traces:amd64:
 
 radv-raven-vkcts:amd64:
   extends:
-    - .lava-test:amd64
+    - .lava-test-deqp:amd64
     - .radv-raven-test:amd64
     - .lava-asus-CM1400CXA-dalboz:amd64
   parallel: 9
@@ -118,7 +118,7 @@ radv-raven-vkcts:amd64:
 
 amd-raven-skqp:amd64:
   extends:
-    - .lava-test:amd64
+    - .lava-test-deqp:amd64
     - .amd-raven-test:amd64
     - .lava-lenovo-TPad-C13-Yoga-zork:amd64
   variables:
@@ -159,9 +159,9 @@ radeonsi-raven-piglit-quick_shader:amd64:
     PIGLIT_PROFILES: quick_shader
     PIGLIT_FRACTION: 2
 
-radeonsi-raven-va:amd64:
+.radeonsi-raven-va:amd64:  # FIXME: when TPad-C13 gets back, restore
   extends:
-    - .lava-test:amd64
+    - .lava-test-deqp:amd64
     - .radeonsi-raven-test:amd64
     - .radeonsi-vaapi-rules
     - .lava-asus-CM1400CXA-dalboz:amd64
@@ -280,7 +280,6 @@ radeonsi-raven-va:amd64:
     - .deqp-test-valve
   variables:
     DEQP_VER: vk
-    RADV_PERFTEST: nv_ms,gpl
 
 # VKCTS never finishes on gfx7 due to all the GPU resets and hangs.
 # Hence, disable it for now.
@@ -356,6 +355,10 @@ vkcts-navi10-valve:
     # Use Linux 5.17 to work around hitting __vm_enough_memory then hanging on Linux 6.1
     # See https://gitlab.freedesktop.org/mesa/mesa/-/issues/7888 for details
     B2C_KERNEL_URL: 'https://gitlab.freedesktop.org/mupuf/valve-infra/-/package_files/144/download'  # 5.17.1
+    # NAVI10 hangs quite often while running vkcts. This is being investigated,
+    # but in the mean time, retry up to 2 times.
+    B2C_SESSION_REBOOT_REGEX: '(GPU hang detected!|\*ERROR\* ring [^\s]+ timeout(?!, but soft recovered)|The CS has been cancelled because the context is lost)'
+    B2C_TIMEOUT_BOOT_RETRIES: 2
 
 vkcts-navi21-valve:
   parallel: 3
@@ -365,7 +368,8 @@ vkcts-navi21-valve:
   variables:
     GPU_VERSION: radv-navi21-aco
 
-vkcts-navi21-llvm-valve:
+# Disabled due to its extremelly-broken nature
+.vkcts-navi21-llvm-valve:
   extends:
     - .vkcts-test-valve
     - .navi21-test-valve
@@ -375,7 +379,7 @@ vkcts-navi21-llvm-valve:
     RADV_DEBUG: llvm,checkir
 
 vkcts-vangogh-valve:
-  parallel: 4
+  parallel: 2
   extends:
     - .vkcts-test-valve
     - .vangogh-test-valve

@@ -20,9 +20,6 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
-#
-# Authors:
-#    Jason Ekstrand (jason@jlekstrand.net)
 
 from collections import OrderedDict
 import nir_algebraic
@@ -836,6 +833,7 @@ optimizations.extend([
    (('umin', ('umax', ('umin', ('umax', a, b), c), b), c), ('umin', ('umax', a, b), c)),
    # Both the left and right patterns are "b" when isnan(a), so this is exact.
    (('fmax', ('fsat', a), '#b(is_zero_to_one)'), ('fsat', ('fmax', a, b))),
+   (('fmax', ('fsat(is_used_once)', a), ('fsat(is_used_once)', b)), ('fsat', ('fmax', a, b))),
    # The left pattern is 0.0 when isnan(a) (because fmin(fsat(NaN), b) ->
    # fmin(0.0, b)) while the right one is "b", so this optimization is inexact.
    (('~fmin', ('fsat', a), '#b(is_zero_to_one)'), ('fsat', ('fmin', a, b))),
@@ -987,6 +985,9 @@ for s in [16, 32, 64]:
        # float? -> float? -> intS ==> float? -> intS
        (('~f2u{}'.format(s), ('f2f', a)), ('f2u{}'.format(s), a)),
        (('~f2i{}'.format(s), ('f2f', a)), ('f2i{}'.format(s), a)),
+
+       # HLSL's sign function returns an integer
+       (('i2f{}'.format(s), ('f2i', ('fsign', 'a@{}'.format(s)))), ('fsign', a)),
     ])
 
     for B in [32, 64]:

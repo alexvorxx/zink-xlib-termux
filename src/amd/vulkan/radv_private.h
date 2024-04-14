@@ -2296,12 +2296,6 @@ struct radv_graphics_pipeline {
 
    /* For graphics pipeline library */
    bool retain_shaders;
-   struct {
-      nir_shader *nir;
-      void *serialized_nir;
-      size_t serialized_nir_size;
-      unsigned char shader_sha1[SHA1_DIGEST_LENGTH];
-   } retained_shaders[MESA_VULKAN_SHADER_STAGES];
 
    /* For relocation of shaders with RGP. */
    struct radv_sqtt_shaders_reloc *sqtt_shaders_reloc;
@@ -2342,6 +2336,12 @@ struct radv_graphics_lib_pipeline {
    struct vk_graphics_pipeline_state graphics_state;
 
    VkGraphicsPipelineLibraryFlagsEXT lib_flags;
+
+   struct {
+      void *serialized_nir;
+      size_t serialized_nir_size;
+      unsigned char shader_sha1[SHA1_DIGEST_LENGTH];
+   } retained_shaders[MESA_VULKAN_SHADER_STAGES];
 };
 
 struct radv_ray_tracing_pipeline {

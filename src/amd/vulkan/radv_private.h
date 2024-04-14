@@ -1577,9 +1577,17 @@ struct radv_multisample_state {
    float min_sample_shading;
 };
 
+struct radv_ia_multi_vgt_param_helpers {
+   uint32_t base;
+   bool partial_es_wave;
+   bool ia_switch_on_eoi;
+   bool partial_vs_wave;
+};
+
 struct radv_cmd_state {
    /* Vertex descriptors */
    uint64_t vb_va;
+   unsigned vb_size;
 
    bool predicating;
    uint64_t dirty;
@@ -1686,6 +1694,8 @@ struct radv_cmd_state {
    /* Whether this commandbuffer uses performance counters. */
    bool uses_perf_counters;
 
+   struct radv_ia_multi_vgt_param_helpers ia_multi_vgt_param;
+
    /* Tessellation info when patch control points is dynamic. */
    unsigned tess_num_patches;
    unsigned tess_lds_size;
@@ -1696,6 +1706,16 @@ struct radv_cmd_state {
    unsigned last_pa_sc_binner_cntl_0;
 
    struct radv_multisample_state ms;
+
+   /* Custom blend mode for internal operations. */
+   unsigned custom_blend_mode;
+
+   unsigned rast_prim;
+
+   uint32_t vtx_base_sgpr;
+   uint8_t vtx_emit_num;
+   bool uses_drawid;
+   bool uses_baseinstance;
 };
 
 struct radv_cmd_buffer_upload {
@@ -2122,13 +2142,6 @@ struct radv_prim_vertex_count {
    uint8_t incr;
 };
 
-struct radv_ia_multi_vgt_param_helpers {
-   uint32_t base;
-   bool partial_es_wave;
-   bool ia_switch_on_eoi;
-   bool partial_vs_wave;
-};
-
 #define SI_GS_PER_ES 128
 
 enum radv_pipeline_type {
@@ -2203,13 +2216,6 @@ struct radv_graphics_pipeline {
 
    bool uses_drawid;
    bool uses_baseinstance;
-   bool use_per_attribute_vb_descs;
-   bool can_use_simple_input;
-
-   /* Whether the pipeline uses inner coverage which means that a fragment has all of its pixel
-    * squares fully covered by the generating primitive.
-    */
-   bool uses_inner_coverage;
 
    bool need_null_export_workaround;
    /* Whether the pipeline forces per-vertex VRS (GFX10.3+). */
@@ -2241,10 +2247,6 @@ struct radv_graphics_pipeline {
    uint8_t attrib_bindings[MAX_VERTEX_ATTRIBS];
    uint32_t attrib_ends[MAX_VERTEX_ATTRIBS];
    uint32_t attrib_index_offset[MAX_VERTEX_ATTRIBS];
-   uint32_t vb_desc_usage_mask;
-   uint32_t vb_desc_alloc_size;
-   uint8_t last_vertex_attrib_bit;
-   uint8_t next_vertex_stage;
    uint32_t pa_sc_mode_cntl_1;
    uint32_t db_render_control;
 
@@ -2269,6 +2271,8 @@ struct radv_graphics_pipeline {
    bool retain_shaders;
    struct {
       nir_shader *nir;
+      void *serialized_nir;
+      size_t serialized_nir_size;
       unsigned char shader_sha1[SHA1_DIGEST_LENGTH];
    } retained_shaders[MESA_VULKAN_SHADER_STAGES];
 

@@ -422,6 +422,9 @@ gather_shader_info_vs(struct radv_device *device, const nir_shader *nir,
       gather_info_input_decl_vs(nir, var->data.location - VERT_ATTRIB_GENERIC0, var->type,
                                 pipeline_key, info);
 
+   if (info->vs.dynamic_inputs)
+      info->vs.vb_desc_usage_mask = BITFIELD_MASK(util_last_bit(info->vs.vb_desc_usage_mask));
+
    /* When the topology is unknown (with GPL), the number of vertices per primitive needs be passed
     * through a user SGPR for NGG streamout with VS. Otherwise, the XFB offset is incorrectly
     * computed because using the maximum number of vertices can't work.
@@ -766,6 +769,7 @@ radv_get_user_data_0(const struct radv_device *device, struct radv_shader_info *
       return R_00B030_SPI_SHADER_USER_DATA_PS_0;
    case MESA_SHADER_COMPUTE:
    case MESA_SHADER_TASK:
+   case MESA_SHADER_RAYGEN:
       return R_00B900_COMPUTE_USER_DATA_0;
    default:
       unreachable("invalid shader stage");

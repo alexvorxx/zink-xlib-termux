@@ -25,9 +25,12 @@
  * IN THE SOFTWARE.
  */
 
+#include "meta/radv_meta.h"
 #include "nir/nir.h"
 #include "nir/nir_builder.h"
+#include "nir/nir_serialize.h"
 #include "nir/nir_vulkan.h"
+#include "nir/radv_nir.h"
 #include "spirv/nir_spirv.h"
 #include "util/disk_cache.h"
 #include "util/mesa-sha1.h"
@@ -35,7 +38,6 @@
 #include "util/u_atomic.h"
 #include "radv_cs.h"
 #include "radv_debug.h"
-#include "meta/radv_meta.h"
 #include "radv_private.h"
 #include "radv_shader.h"
 #include "radv_shader_args.h"
@@ -958,7 +960,8 @@ radv_pipeline_import_graphics_info(struct radv_device *device,
 }
 
 static void
-radv_graphics_pipeline_import_lib(struct radv_graphics_pipeline *pipeline,
+radv_graphics_pipeline_import_lib(const struct radv_device *device,
+                                  struct radv_graphics_pipeline *pipeline,
                                   struct vk_graphics_pipeline_state *state,
                                   struct radv_pipeline_layout *layout,
                                   struct radv_graphics_lib_pipeline *lib,
@@ -986,10 +989,19 @@ radv_graphics_pipeline_import_lib(struct radv_graphics_pipeline *pipeline,
    if (import_nir) {
       /* Import the NIR shaders (after SPIRV->NIR). */
       for (uint32_t s = 0; s < ARRAY_SIZE(lib->base.base.shaders); s++) {
-         if (!lib->base.retained_shaders[s].nir)
+         if (!lib->base.retained_shaders[s].serialized_nir_size)
             continue;
 
-         pipeline->retained_shaders[s] = lib->base.retained_shaders[s];
+         /* Deserialize the NIR shader. */
+         const struct nir_shader_compiler_options *options =
+            &device->physical_device->nir_options[s];
+         struct blob_reader blob_reader;
+         blob_reader_init(&blob_reader, lib->base.retained_shaders[s].serialized_nir,
+                          lib->base.retained_shaders[s].serialized_nir_size);
+         pipeline->retained_shaders[s].nir = nir_deserialize(NULL, options, &blob_reader);
+
+         memcpy(pipeline->retained_shaders[s].shader_sha1, lib->base.retained_shaders[s].shader_sha1,
+                sizeof(pipeline->retained_shaders[s].shader_sha1));
       }
    } else {
       /* Import the compiled shaders. */
@@ -1455,62 +1467,6 @@ get_vs_output_info(const struct radv_graphics_pipeline *pipeline)
 }
 
 static bool
-radv_lower_viewport_to_zero(nir_shader *nir)
-{
-   nir_function_impl *impl = nir_shader_get_entrypoint(nir);
-   bool progress = false;
-
-   nir_builder b;
-   nir_builder_init(&b, impl);
-
-   /* There should be only one deref load for VIEWPORT after lower_io_to_temporaries. */
-   nir_foreach_block(block, impl) {
-      nir_foreach_instr(instr, block) {
-         if (instr->type != nir_instr_type_intrinsic)
-            continue;
-
-         nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
-         if (intr->intrinsic != nir_intrinsic_load_deref)
-            continue;
-
-         nir_variable *var = nir_intrinsic_get_var(intr, 0);
-         if (var->data.mode != nir_var_shader_in ||
-             var->data.location != VARYING_SLOT_VIEWPORT)
-            continue;
-
-         b.cursor = nir_before_instr(instr);
-
-         nir_ssa_def_rewrite_uses(&intr->dest.ssa, nir_imm_zero(&b, 1, 32));
-         progress = true;
-         break;
-      }
-      if (progress)
-         break;
-   }
-
-   if (progress)
-      nir_metadata_preserve(impl, nir_metadata_block_index | nir_metadata_dominance);
-   else
-      nir_metadata_preserve(impl, nir_metadata_all);
-
-   return progress;
-}
-
-static nir_variable *
-find_layer_out_var(nir_shader *nir)
-{
-   nir_variable *var = nir_find_variable_with_location(nir, nir_var_shader_out, VARYING_SLOT_LAYER);
-   if (var != NULL)
-      return var;
-
-   var = nir_variable_create(nir, nir_var_shader_out, glsl_int_type(), "layer id");
-   var->data.location = VARYING_SLOT_LAYER;
-   var->data.interpolation = INTERP_MODE_NONE;
-
-   return var;
-}
-
-static bool
 radv_should_export_multiview(const struct radv_pipeline_stage *producer,
                              const struct radv_pipeline_stage *consumer,
                              const struct radv_pipeline_key *pipeline_key)
@@ -1521,74 +1477,6 @@ radv_should_export_multiview(const struct radv_pipeline_stage *producer,
    return pipeline_key->has_multiview_view_index &&
           (!consumer || consumer->stage == MESA_SHADER_FRAGMENT) &&
           !(producer->nir->info.outputs_written & VARYING_BIT_LAYER);
-}
-
-static bool
-radv_export_multiview(nir_shader *nir)
-{
-   nir_function_impl *impl = nir_shader_get_entrypoint(nir);
-   bool progress = false;
-
-   nir_builder b;
-   nir_builder_init(&b, impl);
-
-   /* This pass is not suitable for mesh shaders, because it can't know the mapping between API mesh
-    * shader invocations and output primitives. Needs to be handled in ac_nir_lower_ngg.
-    */
-   assert(nir->info.stage == MESA_SHADER_VERTEX ||
-          nir->info.stage == MESA_SHADER_TESS_EVAL ||
-          nir->info.stage == MESA_SHADER_GEOMETRY);
-
-   /* Iterate in reverse order since there should be only one deref store to POS after
-    * lower_io_to_temporaries for vertex shaders and inject the layer there. For geometry shaders,
-    * the layer is injected right before every emit_vertex_with_counter.
-    */
-   nir_variable *layer = NULL;
-   nir_foreach_block_reverse(block, impl) {
-      nir_foreach_instr_reverse(instr, block) {
-         if (instr->type != nir_instr_type_intrinsic)
-            continue;
-
-         if (nir->info.stage == MESA_SHADER_GEOMETRY) {
-            nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
-            if (intr->intrinsic != nir_intrinsic_emit_vertex_with_counter)
-               continue;
-
-            b.cursor = nir_before_instr(instr);
-         } else {
-            nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
-            if (intr->intrinsic != nir_intrinsic_store_deref)
-               continue;
-
-            nir_variable *var = nir_intrinsic_get_var(intr, 0);
-            if (var->data.mode != nir_var_shader_out || var->data.location != VARYING_SLOT_POS)
-               continue;
-
-            b.cursor = nir_after_instr(instr);
-         }
-
-         if (!layer)
-            layer = find_layer_out_var(nir);
-
-         nir_store_var(&b, layer, nir_load_view_index(&b), 1);
-
-         /* Update outputs_written to reflect that the pass added a new output. */
-         nir->info.outputs_written |= BITFIELD64_BIT(VARYING_SLOT_LAYER);
-
-         progress = true;
-         if (nir->info.stage == MESA_SHADER_VERTEX)
-            break;
-      }
-      if (nir->info.stage == MESA_SHADER_VERTEX && progress)
-         break;
-   }
-
-   if (progress)
-      nir_metadata_preserve(impl, nir_metadata_block_index | nir_metadata_dominance);
-   else
-      nir_metadata_preserve(impl, nir_metadata_all);
-
-   return progress;
 }
 
 static void
@@ -1709,44 +1597,6 @@ merge_tess_info(struct shader_info *tes_info, struct shader_info *tcs_info)
 }
 
 static void
-radv_lower_io_to_scalar_early(nir_shader *nir, nir_variable_mode mask)
-{
-   bool progress = false;
-
-   NIR_PASS(progress, nir, nir_lower_array_deref_of_vec, mask,
-            nir_lower_direct_array_deref_of_vec_load | nir_lower_indirect_array_deref_of_vec_load |
-               nir_lower_direct_array_deref_of_vec_store |
-               nir_lower_indirect_array_deref_of_vec_store);
-   NIR_PASS(progress, nir, nir_lower_io_to_scalar_early, mask);
-   if (progress) {
-      /* Optimize the new vector code and then remove dead vars */
-      NIR_PASS(_, nir, nir_copy_prop);
-      NIR_PASS(_, nir, nir_opt_shrink_vectors);
-
-      if (mask & nir_var_shader_out) {
-         /* Optimize swizzled movs of load_const for nir_link_opt_varyings's constant propagation. */
-         NIR_PASS(_, nir, nir_opt_constant_folding);
-
-         /* For nir_link_opt_varyings's duplicate input opt */
-         NIR_PASS(_, nir, nir_opt_cse);
-      }
-
-      /* Run copy-propagation to help remove dead output variables (some shaders have useless copies
-       * to/from an output), so compaction later will be more effective.
-       *
-       * This will have been done earlier but it might not have worked because the outputs were
-       * vector.
-       */
-      if (nir->info.stage == MESA_SHADER_TESS_CTRL)
-         NIR_PASS(_, nir, nir_opt_copy_prop_vars);
-
-      NIR_PASS(_, nir, nir_opt_dce);
-      NIR_PASS(_, nir, nir_remove_dead_variables,
-               nir_var_function_temp | nir_var_shader_in | nir_var_shader_out, NULL);
-   }
-}
-
-static void
 radv_pipeline_link_shaders(const struct radv_device *device,
                            nir_shader *producer, nir_shader *consumer,
                            const struct radv_pipeline_key *pipeline_key)
@@ -1758,11 +1608,11 @@ radv_pipeline_link_shaders(const struct radv_device *device,
       /* Lower the viewport index to zero when the last vertex stage doesn't export it. */
       if ((consumer->info.inputs_read & VARYING_BIT_VIEWPORT) &&
           !(producer->info.outputs_written & VARYING_BIT_VIEWPORT)) {
-         NIR_PASS(_, consumer, radv_lower_viewport_to_zero);
+         NIR_PASS(_, consumer, radv_nir_lower_viewport_to_zero);
       }
 
       /* Lower the view index to map on the layer. */
-      NIR_PASS(_, consumer, radv_lower_view_index, producer->info.stage == MESA_SHADER_MESH);
+      NIR_PASS(_, consumer, radv_nir_lower_view_index, producer->info.stage == MESA_SHADER_MESH);
    }
 
    if (pipeline_key->optimisations_disabled)
@@ -1777,8 +1627,8 @@ radv_pipeline_link_shaders(const struct radv_device *device,
    nir_validate_shader(producer, "after nir_lower_io_arrays_to_elements");
    nir_validate_shader(consumer, "after nir_lower_io_arrays_to_elements");
 
-   radv_lower_io_to_scalar_early(producer, nir_var_shader_out);
-   radv_lower_io_to_scalar_early(consumer, nir_var_shader_in);
+   radv_nir_lower_io_to_scalar_early(producer, nir_var_shader_out);
+   radv_nir_lower_io_to_scalar_early(consumer, nir_var_shader_in);
 
    /* Remove PSIZ from shaders when it's not needed.
     * This is typically produced by translation layers like Zink or D9VK.
@@ -1877,7 +1727,7 @@ radv_pipeline_link_vs(const struct radv_device *device, struct radv_pipeline_sta
    assert(vs_stage->nir->info.stage == MESA_SHADER_VERTEX);
 
    if (radv_should_export_multiview(vs_stage, next_stage, pipeline_key)) {
-      NIR_PASS(_, vs_stage->nir, radv_export_multiview);
+      NIR_PASS(_, vs_stage->nir, radv_nir_export_multiview);
    }
 
    if (next_stage) {
@@ -1943,7 +1793,7 @@ radv_pipeline_link_tes(const struct radv_device *device, struct radv_pipeline_st
    assert(tes_stage->nir->info.stage == MESA_SHADER_TESS_EVAL);
 
    if (radv_should_export_multiview(tes_stage, next_stage, pipeline_key)) {
-      NIR_PASS(_, tes_stage->nir, radv_export_multiview);
+      NIR_PASS(_, tes_stage->nir, radv_nir_export_multiview);
    }
 
    if (next_stage) {
@@ -1974,7 +1824,7 @@ radv_pipeline_link_gs(const struct radv_device *device, struct radv_pipeline_sta
    assert(gs_stage->nir->info.stage == MESA_SHADER_GEOMETRY);
 
    if (radv_should_export_multiview(gs_stage, fs_stage, pipeline_key)) {
-      NIR_PASS(_, gs_stage->nir, radv_export_multiview);
+      NIR_PASS(_, gs_stage->nir, radv_nir_export_multiview);
    }
 
    if (fs_stage) {
@@ -2941,16 +2791,22 @@ radv_pipeline_get_nir(struct radv_device *device, struct radv_graphics_pipeline 
       assert(retain_shaders || pipeline->base.shaders[s] == NULL);
 
       if (pipeline->retained_shaders[s].nir) {
-         /* Clone the NIR shader because it's imported from a library. */
-         stages[s].nir = nir_shader_clone(NULL, pipeline->retained_shaders[s].nir);
+         /* Get the deserialized NIR shader directly because it has been imported from a library. */
+         stages[s].nir = pipeline->retained_shaders[s].nir;
       } else {
          stages[s].nir =
             radv_shader_spirv_to_nir(device, &stages[s], pipeline_key, pipeline->base.is_internal);
       }
 
       if (retain_shaders) {
-         /* Clone the NIR shader because NIR passes after this step will change it. */
-         pipeline->retained_shaders[s].nir = nir_shader_clone(NULL, stages[s].nir);
+         /* Serialize the NIR shader to reduce memory pressure. */
+         struct blob blob;
+
+         blob_init(&blob);
+         nir_serialize(&blob, stages[s].nir, true);
+         blob_finish_get_buffer(&blob, &pipeline->retained_shaders[s].serialized_nir,
+                                &pipeline->retained_shaders[s].serialized_nir_size);
+
          memcpy(pipeline->retained_shaders[s].shader_sha1, stages[s].shader_sha1,
                 sizeof(stages[s].shader_sha1));
       }
@@ -3012,7 +2868,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_pipeline_layo
       if (!pipeline_key->optimisations_disabled) {
          NIR_PASS(_, stage->nir, nir_opt_cse);
       }
-      NIR_PASS(_, stage->nir, radv_lower_fs_intrinsics, stage, pipeline_key);
+      NIR_PASS(_, stage->nir, radv_nir_lower_fs_intrinsics, stage, pipeline_key);
    }
 
    enum nir_lower_non_uniform_access_type lower_non_uniform_access_types =
@@ -3116,7 +2972,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_pipeline_layo
    }
 
    /* Lower I/O intrinsics to memory instructions. */
-   bool io_to_mem = radv_lower_io_to_mem(device, stage);
+   bool io_to_mem = radv_nir_lower_io_to_mem(device, stage);
    bool lowered_ngg = stage->info.is_ngg && stage->stage == last_vgt_api_stage;
    if (lowered_ngg)
       radv_lower_ngg(device, stage, pipeline_key);
@@ -3478,7 +3334,7 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline,
 
       /* Gather info again, information such as outputs_read can be out-of-date. */
       nir_shader_gather_info(stages[i].nir, nir_shader_get_entrypoint(stages[i].nir));
-      radv_lower_io(device, stages[i].nir);
+      radv_nir_lower_io(device, stages[i].nir);
 
       stages[i].feedback.duration += os_time_get_nano() - stage_start;
    }
@@ -4553,27 +4409,6 @@ radv_pipeline_init_vertex_input_state(const struct radv_device *device,
       }
    }
 
-   pipeline->use_per_attribute_vb_descs = vs_info->vs.use_per_attribute_vb_descs;
-   pipeline->last_vertex_attrib_bit = util_last_bit(vs_info->vs.vb_desc_usage_mask);
-   if (pipeline->base.shaders[MESA_SHADER_VERTEX])
-      pipeline->next_vertex_stage = MESA_SHADER_VERTEX;
-   else if (pipeline->base.shaders[MESA_SHADER_TESS_CTRL])
-      pipeline->next_vertex_stage = MESA_SHADER_TESS_CTRL;
-   else
-      pipeline->next_vertex_stage = MESA_SHADER_GEOMETRY;
-   if (pipeline->next_vertex_stage == MESA_SHADER_VERTEX) {
-      const struct radv_shader *vs_shader = pipeline->base.shaders[MESA_SHADER_VERTEX];
-      pipeline->can_use_simple_input = vs_shader->info.is_ngg == pdevice->use_ngg &&
-                                       vs_shader->info.wave_size == pdevice->ge_wave_size;
-   } else {
-      pipeline->can_use_simple_input = false;
-   }
-   if (vs_info->vs.dynamic_inputs)
-      pipeline->vb_desc_usage_mask = BITFIELD_MASK(pipeline->last_vertex_attrib_bit);
-   else
-      pipeline->vb_desc_usage_mask = vs_info->vs.vb_desc_usage_mask;
-   pipeline->vb_desc_alloc_size = util_bitcount(pipeline->vb_desc_usage_mask) * 16;
-
    /* Prepare the VS input state for prologs created inside a library. */
    if (vs_info->vs.has_prolog && !(pipeline->dynamic_states & RADV_DYNAMIC_VERTEX_INPUT)) {
       const enum amd_gfx_level gfx_level = pdevice->rad_info.gfx_level;
@@ -4800,7 +4635,7 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
           */
          assert(!link_optimize || gfx_pipeline_lib->base.retain_shaders);
 
-         radv_graphics_pipeline_import_lib(pipeline, &state, &pipeline_layout, gfx_pipeline_lib,
+         radv_graphics_pipeline_import_lib(device, pipeline, &state, &pipeline_layout, gfx_pipeline_lib,
                                            link_optimize);
 
          needed_lib_flags &= ~gfx_pipeline_lib->lib_flags;
@@ -4905,8 +4740,6 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
       pipeline->base.shaders[pipeline->last_vgt_api_stage]->info.has_ngg_culling;
    pipeline->force_vrs_per_vertex =
       pipeline->base.shaders[pipeline->last_vgt_api_stage]->info.force_vrs_per_vertex;
-   pipeline->uses_inner_coverage =
-      pipeline->base.shaders[MESA_SHADER_FRAGMENT]->info.ps.reads_fully_covered;
    pipeline->rast_prim = vgt_gs_out_prim_type;
 
    pipeline->base.push_constant_size = pipeline_layout.push_constant_size;
@@ -5015,7 +4848,7 @@ radv_graphics_lib_pipeline_init(struct radv_graphics_lib_pipeline *pipeline,
          struct radv_graphics_lib_pipeline *gfx_pipeline_lib =
             radv_pipeline_to_graphics_lib(pipeline_lib);
 
-         radv_graphics_pipeline_import_lib(&pipeline->base, state, pipeline_layout,
+         radv_graphics_pipeline_import_lib(device, &pipeline->base, state, pipeline_layout,
                                            gfx_pipeline_lib, link_optimize);
 
          pipeline->lib_flags |= gfx_pipeline_lib->lib_flags;
@@ -5085,7 +4918,7 @@ radv_destroy_graphics_lib_pipeline(struct radv_device *device,
    radv_pipeline_layout_finish(device, &pipeline->layout);
 
    for (unsigned i = 0; i < MESA_VULKAN_SHADER_STAGES; ++i) {
-      ralloc_free(pipeline->base.retained_shaders[i].nir);
+      free(pipeline->base.retained_shaders[i].serialized_nir);
    }
 
    radv_destroy_graphics_pipeline(device, &pipeline->base);

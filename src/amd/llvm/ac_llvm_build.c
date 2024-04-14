@@ -1713,7 +1713,7 @@ LLVMValueRef ac_build_image_opcode(struct ac_llvm_context *ctx, struct ac_image_
    assert(!a->offset ||
           ac_get_elem_bits(ctx, LLVMTypeOf(a->offset)) == 32);
    assert(!a->bias ||
-          ac_get_elem_bits(ctx, LLVMTypeOf(a->bias)) == 32);
+          ac_get_elem_bits(ctx, LLVMTypeOf(a->coords[0])) == (a->a16 ? 16 : 32));
    assert(!a->compare ||
           ac_get_elem_bits(ctx, LLVMTypeOf(a->compare)) == 32);
    assert(!a->derivs[0] ||

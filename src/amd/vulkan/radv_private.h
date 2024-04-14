@@ -1550,6 +1550,12 @@ struct radv_descriptor_state {
    struct radv_push_descriptor_set push_set;
    uint32_t dynamic_buffers[4 * MAX_DYNAMIC_BUFFERS];
    uint64_t descriptor_buffers[MAX_SETS];
+   bool need_indirect_descriptor_sets;
+};
+
+struct radv_push_constant_state {
+   uint32_t size;
+   uint32_t dynamic_offset_count;
 };
 
 enum rgp_flush_bits {
@@ -1746,6 +1752,8 @@ struct radv_cmd_buffer {
    struct radv_descriptor_set_header meta_push_descriptors;
 
    struct radv_descriptor_state descriptors[MAX_BIND_POINTS];
+
+   struct radv_push_constant_state push_constant_state[MAX_BIND_POINTS];
 
    uint64_t descriptor_buffers[MAX_SETS];
 
@@ -2046,18 +2054,23 @@ radv_emit_shader_pointer(struct radv_device *device, struct radeon_cmdbuf *cs, u
    radv_emit_shader_pointer_body(device, cs, va, use_32bit_pointers);
 }
 
+static inline unsigned
+vk_to_bind_point(VkPipelineBindPoint bind_point)
+{
+   return bind_point == VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR ? 2 : bind_point;
+}
+
 static inline struct radv_descriptor_state *
 radv_get_descriptors_state(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoint bind_point)
 {
-   switch (bind_point) {
-   case VK_PIPELINE_BIND_POINT_GRAPHICS:
-   case VK_PIPELINE_BIND_POINT_COMPUTE:
-      return &cmd_buffer->descriptors[bind_point];
-   case VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR:
-      return &cmd_buffer->descriptors[2];
-   default:
-      unreachable("Unhandled bind point");
-   }
+   return &cmd_buffer->descriptors[vk_to_bind_point(bind_point)];
+}
+
+static inline const struct radv_push_constant_state *
+radv_get_push_constants_state(const struct radv_cmd_buffer *cmd_buffer,
+                              VkPipelineBindPoint bind_point)
+{
+   return &cmd_buffer->push_constant_state[vk_to_bind_point(bind_point)];
 }
 
 void

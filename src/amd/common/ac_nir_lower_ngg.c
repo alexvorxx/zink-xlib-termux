@@ -2262,9 +2262,7 @@ gather_vs_outputs(nir_builder *b, vs_output *outputs,
 
       outputs[num_outputs].slot = slot;
       for (int i = 0; i < 4; i++) {
-         nir_def *chan = output[i];
-         /* RADV implements 16-bit outputs as 32-bit with VARYING_SLOT_VAR0-31. */
-         outputs[num_outputs].chan[i] = chan && chan->bit_size == 16 ? nir_u2u32(b, chan) : chan;
+         outputs[num_outputs].chan[i] = output[i];
       }
       num_outputs++;
    }

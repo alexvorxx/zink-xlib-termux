@@ -19,7 +19,7 @@
 #include "tgsi/tgsi_ureg.h"
 #include "tgsi/tgsi_dump.h"
 #include "util/bitscan.h"
-#include "util/u_box.h"
+#include "util/box.h"
 #include "util/u_hash_table.h"
 #include "util/u_upload_mgr.h"
 

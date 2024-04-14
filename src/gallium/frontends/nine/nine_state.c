@@ -25,7 +25,7 @@
 #include "util/u_atomic.h"
 #include "util/u_upload_mgr.h"
 #include "util/u_math.h"
-#include "util/u_box.h"
+#include "util/box.h"
 #include "util/u_simple_shaders.h"
 #include "util/u_gen_mipmap.h"
 

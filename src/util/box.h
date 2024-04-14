@@ -1,9 +1,24 @@
-#ifndef UTIL_BOX_INLINES_H
-#define UTIL_BOX_INLINES_H
+#ifndef UTIL_BOX_H
+#define UTIL_BOX_H
 
-#include "pipe/p_state.h"
 #include "util/u_math.h"
 #include "util/format/u_format.h"
+
+/**
+ * Subregion of 1D/2D/3D image resource.
+ */
+struct pipe_box
+{
+   /* Only "x" and "width" are used to represent buffer ranges.
+    * The maximum representable texture size is ANY x ANY x 16K.
+    */
+   int32_t x;
+   int32_t width;
+   int32_t y;
+   int32_t height;
+   int16_t z;
+   int16_t depth;
+};
 
 static inline void
 u_box_1d(unsigned x, unsigned w, struct pipe_box *box)
@@ -296,6 +311,49 @@ u_box_pixels_to_blocks(struct pipe_box *blocks,
          DIV_ROUND_UP(pixels->height, util_format_get_blockheight(format)),
          pixels->depth,
          blocks);
+}
+
+static inline bool
+util_is_box_sint16(const struct pipe_box *box)
+{
+   return util_is_sint16(box->x) && util_is_sint16(box->y) &&
+          util_is_sint16(box->z) && util_is_sint16(box->width) &&
+          util_is_sint16(box->height) && util_is_sint16(box->depth) &&
+          util_is_sint16(box->x + box->width) &&
+          util_is_sint16(box->y + box->height) &&
+          util_is_sint16(box->z + box->depth);
+}
+
+static inline bool
+util_is_box_out_of_bounds(const struct pipe_box *src_box, unsigned coord_mask,
+                          unsigned width, unsigned height, unsigned mip_level)
+{
+   int src_width = u_minify(width, mip_level);
+   int src_height = u_minify(height, mip_level);
+   struct pipe_box box = *src_box;
+
+   /* Eliminate negative width/height/depth. */
+   if (box.width < 0) {
+      box.x += box.width;
+      box.width *= -1;
+   }
+   if (box.height < 0) {
+      box.y += box.height;
+      box.height *= -1;
+   }
+
+   bool x_in_bounds = box.x >= 0 && box.x < src_width &&
+                      box.x + box.width > 0 && box.x + box.width <= src_width;
+   bool y_in_bounds = box.y >= 0 && box.y < src_height &&
+                      box.y + box.height > 0 && box.y + box.height <= src_height;
+
+   /* Return if the box is not in bounds. */
+   if (coord_mask & BITFIELD_BIT(0) && !x_in_bounds)
+      return true;
+   if (coord_mask & BITFIELD_BIT(1) && !y_in_bounds)
+      return true;
+
+   return false;
 }
 
 #endif

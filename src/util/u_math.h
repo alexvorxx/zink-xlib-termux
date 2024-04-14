@@ -819,6 +819,12 @@ util_is_aligned(uintmax_t n, uintmax_t a)
    return (n & (a - 1)) == 0;
 }
 
+static inline bool
+util_is_sint16(int x)
+{
+   return x >= INT16_MIN && x <= INT16_MAX;
+}
+
 #ifdef __cplusplus
 }
 #endif

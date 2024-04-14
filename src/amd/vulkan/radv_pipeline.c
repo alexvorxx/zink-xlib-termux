@@ -2082,6 +2082,7 @@ radv_generate_graphics_pipeline_key(const struct radv_device *device,
    const struct radv_physical_device *pdevice = device->physical_device;
    struct radv_pipeline_key key = radv_generate_pipeline_key(device, &pipeline->base, pCreateInfo->flags);
 
+   key.lib_flags = lib_flags;
    key.has_multiview_view_index = state->rp ? !!state->rp->view_mask : 0;
 
    if (pipeline->dynamic_states & RADV_DYNAMIC_VERTEX_INPUT) {
@@ -2765,10 +2766,6 @@ radv_pipeline_get_nir(struct radv_device *device, struct radv_graphics_pipeline 
       if (!stages[s].entrypoint)
          continue;
 
-      /* Do not try to get the NIR when we already have the assembly. */
-      if (pipeline->base.shaders[s])
-         continue;
-
       int64_t stage_start = os_time_get_nano();
 
       assert(retain_shaders || pipeline->base.shaders[s] == NULL);
@@ -3214,16 +3211,6 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline,
 
    int64_t pipeline_start = os_time_get_nano();
 
-   /* Skip the shaders cache when any of the below are true:
-    * - fast-linking is enabled because it's useless to cache unoptimized pipelines
-    * - shaders are captured because it's for debugging purposes
-    * - libraries are created with GPL
-    */
-   if (fast_linking_enabled || keep_executable_info ||
-       (pCreateInfo->flags & VK_PIPELINE_CREATE_LIBRARY_BIT_KHR)) {
-      skip_shaders_cache = true;
-   }
-
    for (unsigned i = 0; i < MESA_VULKAN_SHADER_STAGES; i++) {
       stages[i].entrypoint = NULL;
       stages[i].nir = NULL;
@@ -3250,12 +3237,50 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline,
       pipeline->base.pipeline_hash = *(uint64_t *)hash;
    }
 
+   /* Skip the shaders cache when any of the below are true:
+    * - fast-linking is enabled because it's useless to cache unoptimized pipelines
+    * - shaders are captured because it's for debugging purposes
+    * - graphics pipeline libraries are created with the RETAIN_LINK_TIME_OPTIMIZATION flag and
+    *   module identifiers are used (ie. no SPIR-V provided).
+    */
+   if (fast_linking_enabled || keep_executable_info) {
+      skip_shaders_cache = true;
+   } else if ((pCreateInfo->flags & VK_PIPELINE_CREATE_LIBRARY_BIT_KHR) && retain_shaders) {
+      for (uint32_t i = 0; i < MESA_VULKAN_SHADER_STAGES; i++) {
+         if (stages[i].entrypoint && !stages[i].spirv.size) {
+            skip_shaders_cache = true;
+            break;
+         }
+      }
+   }
+
    bool found_in_application_cache = true;
    if (!skip_shaders_cache &&
        radv_create_shaders_from_pipeline_cache(device, cache, hash, &pipeline->base, NULL, 0,
                                                &found_in_application_cache)) {
       if (found_in_application_cache)
          pipeline_feedback.flags |= VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT;
+
+      if (pipeline->base.type == RADV_PIPELINE_GRAPHICS_LIB && retain_shaders) {
+         /* For graphics pipeline libraries created with the RETAIN_LINK_TIME_OPTIMIZATION flag, we
+          * still need to compile the SPIR-V to NIR because we can't know if the LTO pipelines will
+          * be find in the shaders cache.
+          */
+         if (noop_fs) {
+            nir_builder fs_b = radv_meta_init_shader(device, MESA_SHADER_FRAGMENT, "noop_fs");
+
+            stages[MESA_SHADER_FRAGMENT] = (struct radv_pipeline_stage) {
+               .stage = MESA_SHADER_FRAGMENT,
+               .internal_nir = fs_b.shader,
+               .entrypoint = noop_fs_entrypoint,
+               .feedback = {
+                  .flags = VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT,
+               },
+            };
+         }
+
+         radv_pipeline_get_nir(device, pipeline, stages, pipeline_key, retain_shaders);
+      }
 
       result = VK_SUCCESS;
       goto done;

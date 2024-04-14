@@ -2835,14 +2835,32 @@ lower_ngg_gs_store_output(nir_builder *b, nir_intrinsic_instr *intrin, lower_ngg
       info->stream |= stream << (component * 2);
       info->components_mask |= BITFIELD_BIT(component);
 
-      /* If type is set multiple times, the value must be same. */
-      assert(type[component] == nir_type_invalid || type[component] == src_type);
-      type[component] = src_type;
-
       /* Assume we have called nir_lower_io_to_temporaries which store output in the
        * same block as EmitVertex, so we don't need to use nir_variable for outputs.
        */
-      output[component] = nir_channel(b, store_val, comp);
+      nir_def *store_component = nir_channel(b, store_val, comp);
+
+      /* 16-bit output stored in a normal varying slot that isn't a dedicated 16-bit slot. */
+      const bool non_dedicated_16bit = location < VARYING_SLOT_VAR0_16BIT && store_val->bit_size == 16;
+
+      if (non_dedicated_16bit) {
+         if (io_sem.high_16bits) {
+            nir_def *lo = output[component] ? nir_unpack_32_2x16_split_x(b, output[component]) : nir_imm_intN_t(b, 0, 16);
+            output[component] = nir_pack_32_2x16_split(b, lo, store_component);
+         } else {
+            nir_def *hi = output[component] ? nir_unpack_32_2x16_split_y(b, output[component]) : nir_imm_intN_t(b, 0, 16);
+            output[component] = nir_pack_32_2x16_split(b, store_component, hi);
+         }
+
+         /* Don't care about what type was set first, we mark this as a 32-bit unsigned. */
+         type[component] = nir_type_uint32;
+      } else {
+         output[component] = store_component;
+
+         /* If type is set multiple times, the value must be same. */
+         assert(type[component] == nir_type_invalid || type[component] == src_type);
+         type[component] = src_type;
+      }
    }
 
    nir_instr_remove(&intrin->instr);

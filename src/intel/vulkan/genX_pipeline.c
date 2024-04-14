@@ -1428,6 +1428,13 @@ emit_3dstate_gs(struct anv_graphics_pipeline *pipeline)
    }
 }
 
+static bool
+rp_has_ds_self_dep(const struct vk_render_pass_state *rp)
+{
+   return rp->pipeline_flags &
+      VK_PIPELINE_CREATE_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT;
+}
+
 static void
 emit_3dstate_wm(struct anv_graphics_pipeline *pipeline,
                 const struct vk_input_assembly_state *ia,
@@ -1570,8 +1577,7 @@ emit_3dstate_ps_extra(struct anv_graphics_pipeline *pipeline,
        * around to fetching from the input attachment and we may get the depth
        * or stencil value from the current draw rather than the previous one.
        */
-      ps.PixelShaderKillsPixel         = rp->depth_self_dependency ||
-                                         rp->stencil_self_dependency ||
+      ps.PixelShaderKillsPixel         = rp_has_ds_self_dep(rp) ||
                                          wm_prog_data->uses_kill;
 
       ps.PixelShaderComputesStencil = wm_prog_data->computed_stencil;
@@ -1639,8 +1645,7 @@ compute_kill_pixel(struct anv_graphics_pipeline *pipeline,
     * of an alpha test.
     */
    pipeline->kill_pixel =
-      rp->depth_self_dependency ||
-      rp->stencil_self_dependency ||
+      rp_has_ds_self_dep(rp) ||
       wm_prog_data->uses_kill ||
       wm_prog_data->uses_omask ||
       (ms && ms->alpha_to_coverage_enable);
@@ -1879,19 +1884,8 @@ genX(graphics_pipeline_emit)(struct anv_graphics_pipeline *pipeline,
 void
 genX(compute_pipeline_emit)(struct anv_compute_pipeline *pipeline)
 {
-   struct anv_device *device = pipeline->base.device;
    const struct brw_cs_prog_data *cs_prog_data = get_cs_prog_data(pipeline);
    anv_pipeline_setup_l3_config(&pipeline->base, cs_prog_data->base.total_shared > 0);
-
-   const UNUSED struct anv_shader_bin *cs_bin = pipeline->cs;
-   const struct intel_device_info *devinfo = device->info;
-
-   anv_batch_emit(&pipeline->base.batch, GENX(CFE_STATE), cfe) {
-      cfe.MaximumNumberofThreads =
-         devinfo->max_cs_threads * devinfo->subslice_total;
-      cfe.ScratchSpaceBuffer =
-         get_scratch_surf(&pipeline->base, MESA_SHADER_COMPUTE, cs_bin);
-   }
 }
 
 #else /* #if GFX_VERx10 >= 125 */

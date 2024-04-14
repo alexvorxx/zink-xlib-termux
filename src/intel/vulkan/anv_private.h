@@ -75,6 +75,7 @@
 #include "vk_debug_report.h"
 #include "vk_descriptor_update_template.h"
 #include "vk_device.h"
+#include "vk_device_memory.h"
 #include "vk_drm_syncobj.h"
 #include "vk_enum_defines.h"
 #include "vk_format.h"
@@ -254,22 +255,6 @@ struct intel_perf_query_result;
  * such as stateless, stateless with incoherent cache, SLM, and bindless.
  */
 #define MAX_BINDING_TABLE_SIZE 240
-
-/* The kernel relocation API has a limitation of a 32-bit delta value
- * applied to the address before it is written which, in spite of it being
- * unsigned, is treated as signed .  Because of the way that this maps to
- * the Vulkan API, we cannot handle an offset into a buffer that does not
- * fit into a signed 32 bits.  The only mechanism we have for dealing with
- * this at the moment is to limit all VkDeviceMemory objects to a maximum
- * of 2GB each.  The Vulkan spec allows us to do this:
- *
- *    "Some platforms may have a limit on the maximum size of a single
- *    allocation. For example, certain systems may fail to create
- *    allocations with a size greater than or equal to 4GB. Such a limit is
- *    implementation-dependent, and if such a failure occurs then the error
- *    VK_ERROR_OUT_OF_DEVICE_MEMORY should be returned."
- */
-#define MAX_MEMORY_ALLOCATION_SIZE (1ull << 31)
 
 #define ANV_SVGS_VB_INDEX    MAX_VBS
 #define ANV_DRAWID_VB_INDEX (MAX_VBS + 1)
@@ -1000,6 +985,9 @@ struct anv_physical_device {
     uint8_t                                     device_uuid[VK_UUID_SIZE];
     uint8_t                                     rt_uuid[VK_UUID_SIZE];
 
+    /* Maximum amount of scratch space used by all the GRL kernels */
+    uint32_t                                    max_grl_scratch_size;
+
     struct vk_sync_type                         sync_syncobj_type;
     struct vk_sync_timeline_type                sync_timeline_type;
     const struct vk_sync_type *                 sync_types[4];
@@ -1571,10 +1559,7 @@ _anv_combine_address(struct anv_batch *batch, void *location,
 /* #define __gen_address_offset anv_address_add */
 
 struct anv_device_memory {
-   struct vk_object_base                        base;
-
-   /** Client-requested allocaiton size */
-   uint64_t                                     size;
+   struct vk_device_memory                      vk;
 
    struct list_head                             link;
 
@@ -1586,14 +1571,6 @@ struct anv_device_memory {
 
    /* The map, from the user PoV is map + map_delta */
    uint64_t                                     map_delta;
-
-   /* If set, we are holding reference to AHardwareBuffer
-    * which we must release when memory is freed.
-    */
-   struct AHardwareBuffer *                     ahw;
-
-   /* If set, this memory comes from a host pointer. */
-   void *                                       host_ptr;
 };
 
 /**
@@ -2590,6 +2567,9 @@ struct anv_cmd_compute_state {
    struct anv_state push_data;
 
    struct anv_address num_workgroups;
+
+   uint32_t scratch_size;
+   bool cfe_state_valid;
 };
 
 struct anv_cmd_ray_tracing_state {
@@ -2829,6 +2809,20 @@ anv_cmd_buffer_is_chainable(struct anv_cmd_buffer *cmd_buffer)
 {
    return !(cmd_buffer->usage_flags &
             VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT);
+}
+
+static inline bool
+anv_cmd_buffer_is_render_queue(const struct anv_cmd_buffer *cmd_buffer)
+{
+   struct anv_queue_family *queue_family = cmd_buffer->queue_family;
+   return (queue_family->queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
+}
+
+static inline bool
+anv_cmd_buffer_is_video_queue(const struct anv_cmd_buffer *cmd_buffer)
+{
+   struct anv_queue_family *queue_family = cmd_buffer->queue_family;
+   return (queue_family->queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR) != 0;
 }
 
 VkResult anv_cmd_buffer_init_batch_bo_chain(struct anv_cmd_buffer *cmd_buffer);
@@ -4299,7 +4293,7 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(anv_descriptor_set, base, VkDescriptorSet,
 VK_DEFINE_NONDISP_HANDLE_CASTS(anv_descriptor_set_layout, base,
                                VkDescriptorSetLayout,
                                VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT)
-VK_DEFINE_NONDISP_HANDLE_CASTS(anv_device_memory, base, VkDeviceMemory,
+VK_DEFINE_NONDISP_HANDLE_CASTS(anv_device_memory, vk.base, VkDeviceMemory,
                                VK_OBJECT_TYPE_DEVICE_MEMORY)
 VK_DEFINE_NONDISP_HANDLE_CASTS(anv_event, base, VkEvent, VK_OBJECT_TYPE_EVENT)
 VK_DEFINE_NONDISP_HANDLE_CASTS(anv_image, vk.base, VkImage, VK_OBJECT_TYPE_IMAGE)

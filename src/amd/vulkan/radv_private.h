@@ -1606,6 +1606,7 @@ struct radv_cmd_state {
    struct radv_shader *shaders[MESA_VULKAN_SHADER_STAGES];
    struct radv_shader *gs_copy_shader;
    struct radv_shader *last_vgt_shader;
+   struct radv_shader *rt_prolog;
 
    uint32_t prefetch_L2_mask;
 
@@ -1719,6 +1720,7 @@ struct radv_cmd_state {
 
    /* Custom blend mode for internal operations. */
    unsigned custom_blend_mode;
+   unsigned db_render_control;
 
    unsigned rast_prim;
 
@@ -1726,6 +1728,9 @@ struct radv_cmd_state {
    uint8_t vtx_emit_num;
    bool uses_drawid;
    bool uses_baseinstance;
+
+   bool uses_out_of_order_rast;
+   bool uses_vrs_attachment;
 };
 
 struct radv_cmd_buffer_upload {
@@ -2264,7 +2269,6 @@ struct radv_graphics_pipeline {
    uint8_t attrib_bindings[MAX_VERTEX_ATTRIBS];
    uint32_t attrib_ends[MAX_VERTEX_ATTRIBS];
    uint32_t attrib_index_offset[MAX_VERTEX_ATTRIBS];
-   uint32_t pa_sc_mode_cntl_1;
    uint32_t db_render_control;
 
    /* Last pre-PS API stage */
@@ -2283,6 +2287,12 @@ struct radv_graphics_pipeline {
 
    /* Custom blend mode for internal operations. */
    unsigned custom_blend_mode;
+
+   /* Whether the pipeline uses out-of-order rasterization. */
+   bool uses_out_of_order_rast;
+
+   /* Whether the pipeline uses a VRS attachment. */
+   bool uses_vrs_attachment;
 
    /* For graphics pipeline library */
    bool retain_shaders;
@@ -2845,13 +2855,13 @@ bool vi_alpha_is_on_msb(struct radv_device *device, VkFormat format);
 VkResult radv_image_from_gralloc(VkDevice device_h, const VkImageCreateInfo *base_info,
                                  const VkNativeBufferANDROID *gralloc_info,
                                  const VkAllocationCallbacks *alloc, VkImage *out_image_h);
-uint64_t radv_ahb_usage_from_vk_usage(const VkImageCreateFlags vk_create,
-                                      const VkImageUsageFlags vk_usage);
 VkResult radv_import_ahb_memory(struct radv_device *device, struct radv_device_memory *mem,
                                 unsigned priority,
                                 const VkImportAndroidHardwareBufferInfoANDROID *info);
 VkResult radv_create_ahb_memory(struct radv_device *device, struct radv_device_memory *mem,
                                 unsigned priority, const VkMemoryAllocateInfo *pAllocateInfo);
+
+unsigned radv_ahb_format_for_vk_format(VkFormat vk_format);
 
 VkFormat radv_select_android_external_format(const void *next, VkFormat default_format);
 

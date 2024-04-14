@@ -513,6 +513,11 @@ typedef struct shader_info {
           */
          enum gl_derivative_group derivative_group:2;
 
+         /*
+          * If the shader might run with shared mem on top of `shared_size`.
+          */
+         bool has_variable_shared_mem:1;
+
          /**
           * pointer size is:
           *   AddressingModelLogical:    0    (default)
@@ -545,12 +550,18 @@ typedef struct shader_info {
          uint64_t tcs_cross_invocation_outputs_read;
       } tess;
 
-      /* Applies to MESH. */
+      /* Applies to MESH and TASK. */
       struct {
          /* Bit mask of MS outputs that are used
           * with an index that is NOT the local invocation index.
           */
          uint64_t ms_cross_invocation_output_access;
+
+         /* Dimensions of task->mesh dispatch (EmitMeshTasksEXT)
+          * when they are known compile-time constants.
+          * 0 means they are not known.
+          */
+         uint32_t ts_mesh_dispatch_dimensions[3];
 
          uint16_t max_vertices_out;
          uint16_t max_primitives_out;

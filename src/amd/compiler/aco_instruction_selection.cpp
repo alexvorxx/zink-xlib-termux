@@ -7242,7 +7242,8 @@ emit_scoped_barrier(isel_context* ctx, nir_intrinsic_instr* instr)
       storage_allowed |= storage_task_payload;
 
    /* Allow VMEM output for all stages that can have outputs. */
-   if (ctx->stage.hw != HWStage::CS && ctx->stage.hw != HWStage::FS)
+   if ((ctx->stage.hw != HWStage::CS && ctx->stage.hw != HWStage::FS) ||
+       ctx->stage.has(SWStage::TS))
       storage_allowed |= storage_vmem_output;
 
    /* Workgroup barriers can hang merged shaders that can potentially have 0 threads in either half.
@@ -9873,12 +9874,8 @@ get_phi_operand(isel_context* ctx, nir_ssa_def* ssa, RegClass rc, bool logical)
       return Operand(rc);
    } else if (logical && ssa->bit_size == 1 &&
               ssa->parent_instr->type == nir_instr_type_load_const) {
-      if (ctx->program->wave_size == 64)
-         return Operand::c64(nir_instr_as_load_const(ssa->parent_instr)->value[0].b ? UINT64_MAX
-                                                                                    : 0u);
-      else
-         return Operand::c32(nir_instr_as_load_const(ssa->parent_instr)->value[0].b ? UINT32_MAX
-                                                                                    : 0u);
+      bool val = nir_instr_as_load_const(ssa->parent_instr)->value[0].b;
+      return Operand::c32_or_c64(val ? -1 : 0, ctx->program->lane_mask == s2);
    } else {
       return Operand(tmp);
    }

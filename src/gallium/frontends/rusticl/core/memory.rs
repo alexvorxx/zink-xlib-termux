@@ -293,15 +293,15 @@ fn create_box(
     })
 }
 
-fn buffer_offset_size(
-    origin: &CLVec<usize>,
-    region: &CLVec<usize>,
-    row_pitch: usize,
-    slice_pitch: usize,
-    pixel_size: usize,
-) -> (usize, usize) {
-    let pitch = [pixel_size, row_pitch, slice_pitch];
-    (*origin * pitch, *region * pitch)
+/// helper function to determine if we can just map the resource in question or if we have to go
+/// through a shdow buffer to let the CPU access the resources memory
+fn can_map_directly(dev: &Device, res: &PipeResource) -> bool {
+    // there are two aprts to this check:
+    //   1. is the resource located in system RAM
+    //   2. has the resource a linear memory layout
+    // we do not want to map memory over the PCIe bus as this generally leads to bad performance.
+    (dev.unified_memory() || res.is_staging() || res.is_user)
+        && (res.is_buffer() || res.is_linear())
 }
 
 impl Mem {
@@ -494,8 +494,7 @@ impl Mem {
 
         assert!(self.is_buffer());
 
-        // don't bother mapping directly if it's not UMA or a staging buffer
-        let tx = if q.device.unified_memory() || bit_check(b.flags, CL_MEM_ALLOC_HOST_PTR) {
+        let tx = if can_map_directly(&q.device, r) {
             ctx.buffer_map_directly(
                 r,
                 offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
@@ -554,8 +553,7 @@ impl Mem {
         let r = self.get_res()?.get(&q.device).unwrap();
         let ctx = q.device.helper_ctx();
 
-        // don't bother mapping directly if it's not staging
-        let tx = if bit_check(self.flags, CL_MEM_ALLOC_HOST_PTR) {
+        let tx = if can_map_directly(&q.device, r) {
             ctx.texture_map_directly(r, bx, rw)
         } else {
             None
@@ -593,9 +591,7 @@ impl Mem {
     }
 
     pub fn has_same_parent(&self, other: &Self) -> bool {
-        let a = self.parent.as_ref().map_or(self, |p| p);
-        let b = other.parent.as_ref().map_or(other, |p| p);
-        ptr::eq(a, b)
+        ptr::eq(self.get_parent(), other.get_parent())
     }
 
     pub fn is_parent_buffer(&self) -> bool {
@@ -606,17 +602,28 @@ impl Mem {
         self.is_parent_buffer() && self.mem_type == CL_MEM_OBJECT_IMAGE2D
     }
 
+    // this is kinda bogus, because that won't work with system SVM, but the spec wants us to
+    // implement this.
+    pub fn is_svm(&self) -> bool {
+        let mem = self.get_parent();
+        self.context.find_svm_alloc(mem.host_ptr.cast()).is_some()
+            && bit_check(mem.flags, CL_MEM_USE_HOST_PTR)
+    }
+
     fn get_res(&self) -> CLResult<&HashMap<Arc<Device>, Arc<PipeResource>>> {
-        self.parent
-            .as_ref()
-            .map_or(self, |p| p.as_ref())
-            .res
-            .as_ref()
-            .ok_or(CL_OUT_OF_HOST_MEMORY)
+        self.get_parent().res.as_ref().ok_or(CL_OUT_OF_HOST_MEMORY)
     }
 
     pub fn get_res_of_dev(&self, dev: &Arc<Device>) -> CLResult<&Arc<PipeResource>> {
         Ok(self.get_res()?.get(dev).unwrap())
+    }
+
+    fn get_parent(&self) -> &Self {
+        if let Some(parent) = &self.parent {
+            parent
+        } else {
+            self
+        }
     }
 
     fn to_parent<'a>(&'a self, offset: &mut usize) -> &'a Self {
@@ -699,8 +706,6 @@ impl Mem {
             let tx_dst;
             let mut src_pitch = [0, 0, 0];
             let mut dst_pitch = [0, 0, 0];
-            let mut new_src_origin = &CLVec::default();
-            let mut new_dst_origin = &CLVec::default();
 
             let bpp = if !self.is_buffer() {
                 self.pixel_size().unwrap() as usize
@@ -719,9 +724,8 @@ impl Mem {
                     src_pitch[2] = region[0] * region[1] * bpp;
                 }
 
-                // We should use original origin vector if it's not an image
-                new_src_origin = &src_origin;
-                tx_src = src.tx(q, ctx, 0, *region * src_pitch, RWFlags::RD)?;
+                let (offset, size) = CLVec::calc_offset_size(src_origin, region, src_pitch);
+                tx_src = src.tx(q, ctx, offset, size, RWFlags::RD)?;
             } else {
                 tx_src = src.tx_image(
                     q,
@@ -748,9 +752,8 @@ impl Mem {
                     dst_pitch[2] = region[0] * region[1] * bpp;
                 }
 
-                // We should use original origin vector if it's not an image
-                new_dst_origin = &dst_origin;
-                tx_dst = dst.tx(q, ctx, 0, *region * dst_pitch, RWFlags::WR)?;
+                let (offset, size) = CLVec::calc_offset_size(dst_origin, region, dst_pitch);
+                tx_dst = dst.tx(q, ctx, offset, size, RWFlags::WR)?;
             } else {
                 tx_dst = dst.tx_image(
                     q,
@@ -774,10 +777,10 @@ impl Mem {
                 tx_src.ptr(),
                 tx_dst.ptr(),
                 region,
-                new_src_origin,
+                &CLVec::default(),
                 src_pitch[1],
                 src_pitch[2],
-                new_dst_origin,
+                &CLVec::default(),
                 dst_pitch[1],
                 dst_pitch[2],
                 bpp as u8,
@@ -882,12 +885,14 @@ impl Mem {
     ) -> CLResult<()> {
         if self.is_buffer() || self.is_image_from_buffer() {
             let pixel_size = self.pixel_size().unwrap();
-            let (offset, size) = buffer_offset_size(
+            let (offset, size) = CLVec::calc_offset_size(
                 dst_origin,
                 region,
-                dst_row_pitch,
-                dst_slice_pitch,
-                pixel_size.try_into().unwrap(),
+                [
+                    pixel_size.try_into().unwrap(),
+                    dst_row_pitch,
+                    dst_slice_pitch,
+                ],
             );
             let tx = self.tx(q, ctx, offset, size, RWFlags::WR)?;
 
@@ -948,12 +953,14 @@ impl Mem {
 
         if self.is_buffer() || self.is_image_from_buffer() {
             pixel_size = self.pixel_size().unwrap();
-            let (offset, size) = buffer_offset_size(
+            let (offset, size) = CLVec::calc_offset_size(
                 src_origin,
                 region,
-                src_row_pitch,
-                src_slice_pitch,
-                pixel_size.try_into().unwrap(),
+                [
+                    pixel_size.try_into().unwrap(),
+                    src_row_pitch,
+                    src_slice_pitch,
+                ],
             );
             tx = self.tx(q, ctx, offset, size, RWFlags::RD)?;
         } else {
@@ -1000,11 +1007,11 @@ impl Mem {
         assert!(dst.is_buffer());
 
         let (offset, size) =
-            buffer_offset_size(src_origin, region, src_row_pitch, src_slice_pitch, 1);
+            CLVec::calc_offset_size(src_origin, region, [1, src_row_pitch, src_slice_pitch]);
         let tx_src = self.tx(q, ctx, offset, size, RWFlags::RD)?;
 
         let (offset, size) =
-            buffer_offset_size(dst_origin, region, dst_row_pitch, dst_slice_pitch, 1);
+            CLVec::calc_offset_size(dst_origin, region, [1, dst_row_pitch, dst_slice_pitch]);
         let tx_dst = dst.tx(q, ctx, offset, size, RWFlags::WR)?;
 
         // TODO check to use hw accelerated paths (e.g. resource_copy_region or blits)

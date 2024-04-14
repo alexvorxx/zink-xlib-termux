@@ -320,6 +320,11 @@ Core Mesa environment variables
    ``VkSwapchainCreateInfoKHR::presentMode``. Values can be ``fifo``,
    ``relaxed``, ``mailbox`` or ``immediate``.
 
+.. envvar:: MESA_VK_WSI_HEADLESS_SWAPCHAIN
+
+   Forces all swapchains to be headless (no rendering will be display
+   in the swapchain's window).
+
 .. envvar:: MESA_VK_ABORT_ON_DEVICE_LOSS
 
    causes the Vulkan driver to call abort() immediately after detecting a
@@ -892,6 +897,12 @@ Rusticl environment variables
    -  ``RUSTICL_ENABLE=iris`` (enables all iris devices)
    -  ``RUSTICL_ENABLE=iris:1,radeonsi:0,2`` (enables second iris and first
       and third radeonsi device)
+
+.. envvar:: RUSTICL_DEBUG
+
+   a comma-separated list of debug channels to enable.
+
+   - ``program`` dumps compilation logs to stderr
 
 Nine frontend environment variables
 -----------------------------------

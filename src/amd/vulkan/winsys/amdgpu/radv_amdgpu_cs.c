@@ -372,7 +372,7 @@ radv_amdgpu_cs_grow(struct radeon_cmdbuf *_cs, size_t min_size)
    cs->ws->base.cs_add_buffer(&cs->base, cs->ib_buffer);
 
    if (cs->use_ib) {
-      radeon_emit(&cs->base, PKT3(PKT3_INDIRECT_BUFFER_CIK, 2, 0));
+      radeon_emit(&cs->base, PKT3(PKT3_INDIRECT_BUFFER, 2, 0));
       radeon_emit(&cs->base, radv_amdgpu_winsys_bo(cs->ib_buffer)->base.va);
       radeon_emit(&cs->base, radv_amdgpu_winsys_bo(cs->ib_buffer)->base.va >> 32);
       radeon_emit(&cs->base, S_3F2_CHAIN(1) | S_3F2_VALID(1));
@@ -482,7 +482,6 @@ radv_amdgpu_cs_unchain(struct radeon_cmdbuf *cs)
       return;
 
    assert(cs->cdw <= cs->max_dw + 4);
-   assert(get_nop_packet(acs) == PKT3_NOP_PAD); /* Other shouldn't chain. */
 
    acs->chained_to = NULL;
    cs->buf[cs->cdw - 4] = PKT3_NOP_PAD;
@@ -511,11 +510,10 @@ radv_amdgpu_cs_chain(struct radeon_cmdbuf *cs, struct radeon_cmdbuf *next_cs, bo
       return false;
 
    assert(cs->cdw <= cs->max_dw + 4);
-   assert(get_nop_packet(acs) == PKT3_NOP_PAD); /* Other shouldn't chain. */
 
    acs->chained_to = next_acs;
 
-   cs->buf[cs->cdw - 4] = PKT3(PKT3_INDIRECT_BUFFER_CIK, 2, 0);
+   cs->buf[cs->cdw - 4] = PKT3(PKT3_INDIRECT_BUFFER, 2, 0);
    cs->buf[cs->cdw - 3] = next_acs->ib.ib_mc_address;
    cs->buf[cs->cdw - 2] = next_acs->ib.ib_mc_address >> 32;
    cs->buf[cs->cdw - 1] =
@@ -669,7 +667,7 @@ radv_amdgpu_cs_execute_secondary(struct radeon_cmdbuf *_parent, struct radeon_cm
          radv_amdgpu_cs_grow(&parent->base, 4);
 
       /* Not setting the CHAIN bit will launch an IB2. */
-      radeon_emit(&parent->base, PKT3(PKT3_INDIRECT_BUFFER_CIK, 2, 0));
+      radeon_emit(&parent->base, PKT3(PKT3_INDIRECT_BUFFER, 2, 0));
       radeon_emit(&parent->base, child->ib.ib_mc_address);
       radeon_emit(&parent->base, child->ib.ib_mc_address >> 32);
       radeon_emit(&parent->base, child->ib.size);

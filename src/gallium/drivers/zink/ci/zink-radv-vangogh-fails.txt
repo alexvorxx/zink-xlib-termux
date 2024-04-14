@@ -22,7 +22,6 @@ glx@glx_ext_import_context@imported context has same context id,Fail
 glx@glx_ext_import_context@make current- multi process,Fail
 glx@glx_ext_import_context@make current- single process,Fail
 glx@glx_ext_import_context@query context info,Fail
-glx@glx-make-current,Fail
 glx@glx-swap-pixmap-bad,Fail
 
 # #6322
@@ -247,6 +246,7 @@ spec@glsl-1.10@execution@loops@glsl-vs-unroll-explosion,Crash
 spec@glsl-1.10@execution@samplers@glsl-fs-shadow2d-clamp-z,Fail
 
 spec@glsl-1.20@compiler@invalid-vec4-array-to-vec3-array-conversion.vert,Fail
+
 spec@glsl-1.50@execution@primitive-id-no-gs-quad-strip,Fail
 spec@glsl-4.00@execution@conversion@frag-conversion-explicit-dmat2-mat2,Fail
 spec@glsl-4.00@execution@conversion@frag-conversion-explicit-dmat2x3-mat2x3,Fail

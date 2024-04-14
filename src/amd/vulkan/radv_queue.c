@@ -828,7 +828,7 @@ radv_init_graphics_state(struct radeon_cmdbuf *cs, struct radv_device *device)
    if (device->gfx_init) {
       uint64_t va = radv_buffer_get_va(device->gfx_init);
 
-      radeon_emit(cs, PKT3(PKT3_INDIRECT_BUFFER_CIK, 2, 0));
+      radeon_emit(cs, PKT3(PKT3_INDIRECT_BUFFER, 2, 0));
       radeon_emit(cs, va);
       radeon_emit(cs, va >> 32);
       radeon_emit(cs, device->gfx_init_size_dw & 0xffff);
@@ -1127,7 +1127,8 @@ radv_update_preamble_cs(struct radv_queue_state *queue, struct radv_device *devi
                flush_bits |= RADV_CMD_FLAG_PS_PARTIAL_FLUSH;
          }
 
-         si_cs_emit_cache_flush(cs, gfx_level, NULL, 0, is_mec, flush_bits, &sqtt_flush_bits, 0);
+         si_cs_emit_cache_flush(ws, cs, gfx_level, NULL, 0, is_mec, flush_bits, &sqtt_flush_bits,
+                                0);
       }
 
       result = ws->cs_finalize(cs);
@@ -1692,9 +1693,6 @@ radv_queue_submit_normal(struct radv_queue *queue, struct vk_queue_submit *submi
       .uses_shadow_regs = queue->state.uses_shadow_regs,
    };
 
-   const bool chaining_en = !(queue->device->instance->debug_flags & RADV_DEBUG_NO_IBS) &&
-                            queue->device->physical_device->rad_info.gfx_level >= GFX7;
-
    for (uint32_t j = 0, advance; j < cmd_buffer_count; j += advance) {
       advance = MIN2(max_cs_submission, cmd_buffer_count - j);
       const bool last_submit = j + advance == cmd_buffer_count;
@@ -1713,8 +1711,8 @@ radv_queue_submit_normal(struct radv_queue *queue, struct vk_queue_submit *submi
          struct radv_cmd_buffer *cmd_buffer =
             (struct radv_cmd_buffer *)submission->command_buffers[j + c];
          assert(cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY);
-         const bool can_chain_next = chaining_en && !(cmd_buffer->usage_flags &
-                                                      VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT);
+         const bool can_chain_next =
+            !(cmd_buffer->usage_flags & VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT);
 
          /* ACE needs to be first because the last CS must match the queue's IP type. */
          if (radv_cmd_buffer_needs_ace(cmd_buffer)) {

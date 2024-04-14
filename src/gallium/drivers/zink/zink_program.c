@@ -1196,6 +1196,10 @@ create_gfx_program_separable(struct zink_context *ctx, struct zink_shader **stag
    prog->last_variant_hash = ctx->gfx_pipeline_state.optimal_key;
 
    struct zink_gfx_library_key *gkey = CALLOC_STRUCT(zink_gfx_library_key);
+   if (!gkey) {
+      mesa_loge("ZINK: failed to allocate gkey!");
+      goto fail;
+   }
    gkey->optimal_key = prog->last_variant_hash;
    assert(gkey->optimal_key);
    gkey->pipeline = zink_create_gfx_pipeline_combined(screen, prog, VK_NULL_HANDLE, libs, 2, VK_NULL_HANDLE, false);
@@ -1927,6 +1931,11 @@ struct zink_gfx_library_key *
 zink_create_pipeline_lib(struct zink_screen *screen, struct zink_gfx_program *prog, struct zink_gfx_pipeline_state *state)
 {
    struct zink_gfx_library_key *gkey = CALLOC_STRUCT(zink_gfx_library_key);
+   if (!gkey) {
+      mesa_loge("ZINK: failed to allocate gkey!");
+      return NULL;
+   }
+      
    gkey->optimal_key = state->optimal_key;
    assert(gkey->optimal_key);
    memcpy(gkey->modules, prog->modules, sizeof(gkey->modules));
@@ -1988,6 +1997,11 @@ print_pipeline_stats(struct zink_screen *screen, VkPipeline pipeline)
       VkPipelineExecutableStatisticKHR *stats = NULL;
       VKSCR(GetPipelineExecutableStatisticsKHR)(screen->dev, &info, &count, NULL);
       stats = calloc(count, sizeof(VkPipelineExecutableStatisticKHR));
+      if (!stats) {
+         mesa_loge("ZINK: failed to allocate stats!");
+         return;
+      }
+         
       for (unsigned i = 0; i < count; i++)
          stats[i].sType = VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_STATISTIC_KHR;
       VKSCR(GetPipelineExecutableStatisticsKHR)(screen->dev, &info, &count, stats);
@@ -2194,12 +2208,12 @@ has_edge_flags(struct zink_context *ctx)
    case PIPE_PRIM_TRIANGLE_FAN:
    case PIPE_PRIM_TRIANGLE_STRIP_ADJACENCY:
    case PIPE_PRIM_QUAD_STRIP:
+   case PIPE_PRIM_PATCHES:
       return false;
    case PIPE_PRIM_TRIANGLES:
    case PIPE_PRIM_TRIANGLES_ADJACENCY:
    case PIPE_PRIM_QUADS:
    case PIPE_PRIM_POLYGON:
-   case PIPE_PRIM_PATCHES:
    case PIPE_PRIM_MAX:
    default:
       break;
@@ -2219,6 +2233,24 @@ zink_rast_prim_for_pipe(enum pipe_prim_type prim)
    case PIPE_PRIM_TRIANGLES:
    default:
       return ZINK_PRIM_TRIANGLES;
+   }
+}
+
+static enum pipe_prim_type
+zink_tess_prim_type(struct zink_shader *tess)
+{
+   if (tess->info.tess.point_mode)
+      return PIPE_PRIM_POINTS;
+   else {
+      switch (tess->info.tess._primitive_mode) {
+      case TESS_PRIMITIVE_ISOLINES:
+         return PIPE_PRIM_LINES;
+      case TESS_PRIMITIVE_TRIANGLES:
+      case TESS_PRIMITIVE_QUADS:
+         return PIPE_PRIM_TRIANGLES;
+      default:
+         return PIPE_PRIM_MAX;
+      }
    }
 }
 
@@ -2321,10 +2353,13 @@ zink_set_primitive_emulation_keys(struct zink_context *ctx)
                   prev_stage,
                   ZINK_INLINE_VAL_PV_LAST_VERT * 4);
             } else {
+               enum pipe_prim_type prim = ctx->gfx_pipeline_state.gfx_prim_mode;
+               if (prev_vertex_stage == MESA_SHADER_TESS_EVAL)
+                  prim = zink_tess_prim_type(ctx->gfx_stages[MESA_SHADER_TESS_EVAL]);
                nir = nir_create_passthrough_gs(
                   &screen->nir_options,
                   prev_stage,
-                  ctx->gfx_pipeline_state.gfx_prim_mode,
+                  prim,
                   ZINK_INLINE_VAL_FLAT_MASK * sizeof(uint32_t),
                   ZINK_INLINE_VAL_PV_LAST_VERT * sizeof(uint32_t),
                   lower_edge_flags,

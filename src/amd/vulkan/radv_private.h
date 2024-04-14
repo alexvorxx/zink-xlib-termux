@@ -1789,7 +1789,7 @@ struct radv_cmd_buffer {
    } ace_internal;
 
    /**
-    * Whether a query pool has been resetted and we have to flush caches.
+    * Whether a query pool has been reset and we have to flush caches.
     */
    bool pending_reset_query;
 
@@ -1885,9 +1885,9 @@ void si_cs_emit_write_event_eop(struct radeon_cmdbuf *cs, enum amd_gfx_level gfx
 
 void radv_cp_wait_mem(struct radeon_cmdbuf *cs, uint32_t op, uint64_t va, uint32_t ref,
                       uint32_t mask);
-void si_cs_emit_cache_flush(struct radeon_cmdbuf *cs, enum amd_gfx_level gfx_level,
-                            uint32_t *fence_ptr, uint64_t va, bool is_mec,
-                            enum radv_cmd_flush_bits flush_bits,
+void si_cs_emit_cache_flush(struct radeon_winsys *ws, struct radeon_cmdbuf *cs,
+                            enum amd_gfx_level gfx_level, uint32_t *flush_cnt, uint64_t flush_va,
+                            bool is_mec, enum radv_cmd_flush_bits flush_bits,
                             enum rgp_flush_bits *sqtt_flush_bits, uint64_t gfx9_eop_bug_va);
 void si_emit_cache_flush(struct radv_cmd_buffer *cmd_buffer);
 void si_emit_set_predication_state(struct radv_cmd_buffer *cmd_buffer, bool draw_visible,
@@ -2427,6 +2427,12 @@ bool radv_pipeline_capture_shader_stats(const struct radv_device *device,
 VkPipelineShaderStageCreateInfo *
 radv_copy_shader_stage_create_info(struct radv_device *device, uint32_t stageCount,
                                    const VkPipelineShaderStageCreateInfo *pStages, void *mem_ctx);
+
+bool radv_shader_need_indirect_descriptor_sets(const struct radv_shader *shader);
+
+void radv_pipeline_init_scratch(const struct radv_device *device, struct radv_pipeline *pipeline);
+
+bool radv_pipeline_has_ngg(const struct radv_graphics_pipeline *pipeline);
 
 void radv_pipeline_destroy(struct radv_device *device, struct radv_pipeline *pipeline,
                            const VkAllocationCallbacks *allocator);

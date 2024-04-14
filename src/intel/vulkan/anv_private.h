@@ -506,6 +506,11 @@ struct anv_bo {
     */
    uint32_t _ccs_size;
 
+   /* The actual size of bo allocated by kmd, basically:
+    * align(size + _ccs_size, mem_alignment)
+    */
+   uint64_t actual_size;
+
    /** Flags to pass to the kernel through drm_i915_exec_object2::flags */
    uint32_t flags;
 
@@ -1344,6 +1349,9 @@ VkResult anv_queue_submit(struct vk_queue *queue,
                           struct vk_queue_submit *submit);
 VkResult anv_queue_submit_simple_batch(struct anv_queue *queue,
                                        struct anv_batch *batch);
+
+void anv_queue_trace(struct anv_queue *queue, const char *label,
+                     bool frame, bool begin);
 
 void *
 anv_gem_mmap(struct anv_device *device, struct anv_bo *bo, uint64_t offset,

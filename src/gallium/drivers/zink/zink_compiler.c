@@ -3479,10 +3479,10 @@ zink_shader_compile(struct zink_screen *screen, struct zink_shader *zs,
                need_optimize = true;
             }
 
-            if (zink_gs_key(key)->lower_pv_mode) {
+            /*if (zink_gs_key(key)->lower_pv_mode) {
                NIR_PASS_V(nir, lower_pv_mode_gs, zink_gs_key(key)->lower_pv_mode);
                need_optimize = true; //TODO verify that this is required
-            }
+            }*/
             break;
 
          default:

@@ -54,8 +54,12 @@ fd_reg_stomp_allowed(chip CHIP, uint16_t reg)
    case A7XX: {
       switch (reg) {
       case REG_A6XX_RB_DEPTH_PLANE_CNTL:
-      case REG_A7XX_HLSQ_VS_CNTL ... REG_A7XX_HLSQ_GS_CNTL:
+      case REG_A7XX_HLSQ_VS_CNTL:
+      case REG_A7XX_HLSQ_HS_CNTL:
+      case REG_A7XX_HLSQ_DS_CNTL:
+      case REG_A7XX_HLSQ_GS_CNTL:
       case REG_A7XX_HLSQ_FS_CNTL:
+      case REG_A6XX_SP_VS_OBJ_START ... REG_A6XX_SP_VS_OBJ_START + 1:
       case REG_A6XX_SP_FS_OBJ_START ... REG_A6XX_SP_FS_OBJ_START + 1:
       /* There is a guess that GPU may not be able to handle different values of
        * certain debug register between BR/BV. This one causes GPU to hang.

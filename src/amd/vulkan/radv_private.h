@@ -2320,11 +2320,6 @@ struct radv_ray_tracing_lib_pipeline {
    VkPipelineShaderStageCreateInfo *stages;
    unsigned group_count;
    VkRayTracingShaderGroupCreateInfoKHR *group_infos;
-   VkPipelineShaderStageModuleIdentifierCreateInfoEXT *identifiers;
-   struct {
-      uint8_t sha1[SHA1_DIGEST_LENGTH];
-   } *hashes;
-
    struct radv_ray_tracing_module groups[];
 };
 
@@ -2342,6 +2337,11 @@ struct radv_graphics_lib_pipeline {
       size_t serialized_nir_size;
       unsigned char shader_sha1[SHA1_DIGEST_LENGTH];
    } retained_shaders[MESA_VULKAN_SHADER_STAGES];
+
+   void *mem_ctx;
+
+   unsigned stage_count;
+   VkPipelineShaderStageCreateInfo *stages;
 };
 
 struct radv_ray_tracing_pipeline {
@@ -2447,6 +2447,10 @@ VkResult radv_compute_pipeline_create(VkDevice _device, VkPipelineCache _cache,
 bool radv_pipeline_capture_shaders(const struct radv_device *device, VkPipelineCreateFlags flags);
 bool radv_pipeline_capture_shader_stats(const struct radv_device *device,
                                         VkPipelineCreateFlags flags);
+
+VkPipelineShaderStageCreateInfo *
+radv_copy_shader_stage_create_info(struct radv_device *device, uint32_t stageCount,
+                                   const VkPipelineShaderStageCreateInfo *pStages, void *mem_ctx);
 
 void radv_pipeline_destroy(struct radv_device *device, struct radv_pipeline *pipeline,
                            const VkAllocationCallbacks *allocator);

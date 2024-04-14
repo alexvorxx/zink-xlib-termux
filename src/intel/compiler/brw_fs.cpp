@@ -641,7 +641,8 @@ fs_visitor::limit_dispatch_width(unsigned n, const char *msg)
 bool
 fs_inst::is_partial_write() const
 {
-   if (this->predicate && this->opcode != BRW_OPCODE_SEL)
+   if (this->predicate && !this->predicate_trivial &&
+       this->opcode != BRW_OPCODE_SEL)
       return true;
 
    if (this->dst.offset % REG_SIZE != 0)
@@ -6444,15 +6445,18 @@ fs_visitor::fixup_nomask_control_flow()
                 */
                const bool save_flag = flag_liveout &
                                       flag_mask(flag, dispatch_width / 8);
-               const fs_reg tmp = ubld.group(1, 0).vgrf(flag.type);
+               const fs_reg tmp = ubld.group(8, 0).vgrf(flag.type);
 
-               if (save_flag)
+               if (save_flag) {
+                  ubld.group(8, 0).UNDEF(tmp);
                   ubld.group(1, 0).MOV(tmp, flag);
+               }
 
                ubld.emit(FS_OPCODE_LOAD_LIVE_CHANNELS);
 
                set_predicate(pred, inst);
                inst->flag_subreg = 0;
+               inst->predicate_trivial = true;
 
                if (save_flag)
                   ubld.group(1, 0).at(block, inst->next).MOV(flag, tmp);
@@ -6505,6 +6509,8 @@ fs_visitor::allocate_registers(bool allow_spilling)
       "none",
       "lifo"
    };
+
+   compact_virtual_grfs();
 
    if (needs_register_pressure)
       shader_stats.max_register_pressure = compute_max_register_pressure();

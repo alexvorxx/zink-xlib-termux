@@ -3710,6 +3710,7 @@ lookup_vs_prolog(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *v
    STATIC_ASSERT(sizeof(union vs_prolog_key_header) == 4);
    assert(vs_shader->info.vs.dynamic_inputs);
 
+   const struct radv_graphics_pipeline *pipeline = cmd_buffer->state.graphics_pipeline;
    const struct radv_vs_input_state *state = &cmd_buffer->state.dynamic_vs_input;
    struct radv_device *device = cmd_buffer->device;
 
@@ -3728,10 +3729,20 @@ lookup_vs_prolog(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *v
          uint8_t binding = state->bindings[index];
          if (!(cmd_buffer->state.vbo_bound_mask & BITFIELD_BIT(binding)))
             continue;
+
          uint8_t req = state->format_align_req_minus_1[index];
-         struct radv_vertex_binding *vb = &cmd_buffer->vertex_bindings[binding];
-         VkDeviceSize offset = vb->offset + state->offsets[index];
-         if ((offset & req) || (vb->stride & req))
+         uint64_t vb_offset = cmd_buffer->vertex_bindings[binding].offset;
+         uint64_t vb_stride;
+
+         if (pipeline->dynamic_states & (RADV_DYNAMIC_VERTEX_INPUT_BINDING_STRIDE |
+                                         RADV_DYNAMIC_VERTEX_INPUT)) {
+            vb_stride = cmd_buffer->vertex_bindings[binding].stride;
+         } else {
+            vb_stride = pipeline->binding_stride[binding];
+         }
+
+         VkDeviceSize offset = vb_offset + state->offsets[index];
+         if ((offset & req) || (vb_stride & req))
             misaligned_mask |= BITFIELD_BIT(index);
       }
       cmd_buffer->state.vbo_misaligned_mask = misaligned_mask;
@@ -8859,11 +8870,10 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
                               bool pipeline_is_dirty)
 {
    const struct radv_device *device = cmd_buffer->device;
+   struct radv_shader_part *ps_epilog = NULL;
    bool late_scissor_emission;
 
    if (cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT]->info.ps.has_epilog) {
-      struct radv_shader_part *ps_epilog = NULL;
-
       if (cmd_buffer->state.graphics_pipeline->ps_epilog) {
          ps_epilog = cmd_buffer->state.graphics_pipeline->ps_epilog;
       } else if ((cmd_buffer->state.emitted_graphics_pipeline != cmd_buffer->state.graphics_pipeline ||
@@ -8884,9 +8894,6 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
          if (device->physical_device->rad_info.rbplus_allowed)
             cmd_buffer->state.dirty |= RADV_CMD_DIRTY_RBPLUS;
       }
-
-      if (ps_epilog)
-         radv_emit_ps_epilog_state(cmd_buffer, ps_epilog, pipeline_is_dirty);
    }
 
    if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_RBPLUS)
@@ -8913,6 +8920,9 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
 
    if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_PIPELINE)
       radv_emit_graphics_pipeline(cmd_buffer);
+
+   if (ps_epilog)
+      radv_emit_ps_epilog_state(cmd_buffer, ps_epilog, pipeline_is_dirty);
 
    /* This should be before the cmd_buffer->state.dirty is cleared
     * (excluding RADV_CMD_DIRTY_PIPELINE) and after

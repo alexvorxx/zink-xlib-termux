@@ -927,7 +927,7 @@ void si_test_blit(struct si_screen *sscreen, unsigned test_flags)
 
       bool success;
       if (only_cb_resolve)
-         success = si_msaa_resolve_blit_via_CB(ctx, &info);
+         success = si_msaa_resolve_blit_via_CB(ctx, &info, false);
       else
          success = si_compute_blit(sctx, &info, NULL, 0, 0, SI_OP_SYNC_BEFORE_AFTER);
 

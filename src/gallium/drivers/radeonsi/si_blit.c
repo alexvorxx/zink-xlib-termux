@@ -1102,7 +1102,8 @@ static bool resolve_formats_compatible(enum pipe_format src, enum pipe_format ds
    return *need_rgb_to_bgr;
 }
 
-bool si_msaa_resolve_blit_via_CB(struct pipe_context *ctx, const struct pipe_blit_info *info)
+bool si_msaa_resolve_blit_via_CB(struct pipe_context *ctx, const struct pipe_blit_info *info,
+                                 bool fail_if_slow)
 {
    struct si_context *sctx = (struct si_context *)ctx;
 
@@ -1226,7 +1227,7 @@ static void si_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
    if (unlikely(sctx->sqtt_enabled))
       sctx->sqtt_next_event = EventCmdResolveImage;
 
-   if (si_msaa_resolve_blit_via_CB(ctx, info))
+   if (si_msaa_resolve_blit_via_CB(ctx, info, true))
       return;
 
    if (unlikely(sctx->sqtt_enabled))

@@ -264,7 +264,7 @@ vkcts-vangogh-valve:
 glcts-vangogh-valve:
   extends:
     - .b2c-x86_64-test-gl
-    - .deqp-test-valve
+    - .b2c-deqp-test
     - .vangogh-test-valve
     - .radeonsi-valve-manual-rules
   timeout: 40m

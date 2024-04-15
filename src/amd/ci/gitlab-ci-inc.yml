@@ -246,7 +246,7 @@
   variables:
     B2C_KERNEL_URL: https://fs.mupuf.org/linux-6.6-b2c-radv-ci # 6.6
 
-.deqp-test-valve:
+.b2c-deqp-test:
   variables:
     B2C_JOB_SUCCESS_REGEX: '^\+ DEQP_EXITCODE=0\r$'
     HWCI_TEST_SCRIPT: ./install/deqp-runner.sh
@@ -373,7 +373,7 @@
 .vkcts-test-valve:
   extends:
     - .b2c-test-radv-vk
-    - .deqp-test-valve
+    - .b2c-deqp-test
   variables:
     DEQP_VER: vk
 

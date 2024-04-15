@@ -672,14 +672,19 @@ calculate_tess_lds_size(enum amd_gfx_level gfx_level, unsigned tcs_num_input_ver
 
 static inline unsigned
 get_tcs_num_patches(unsigned tcs_num_input_vertices, unsigned tcs_num_output_vertices, unsigned tcs_num_inputs,
-                    unsigned tcs_num_lds_outputs, unsigned tcs_num_lds_patch_outputs,
-                    unsigned tess_offchip_block_dw_size, enum amd_gfx_level gfx_level, enum radeon_family family)
+                    unsigned tcs_num_lds_outputs, unsigned tcs_num_lds_patch_outputs, unsigned tcs_num_vram_outputs,
+                    unsigned tcs_num_vram_patch_outputs, unsigned tess_offchip_block_dw_size,
+                    enum amd_gfx_level gfx_level, enum radeon_family family)
 {
    uint32_t input_vertex_size = get_tcs_input_vertex_stride(tcs_num_inputs);
    uint32_t input_patch_size = tcs_num_input_vertices * input_vertex_size;
    uint32_t lds_output_vertex_size = tcs_num_lds_outputs * 16;
    uint32_t lds_pervertex_output_patch_size = tcs_num_output_vertices * lds_output_vertex_size;
    uint32_t lds_output_patch_size = lds_pervertex_output_patch_size + tcs_num_lds_patch_outputs * 16;
+
+   uint32_t vram_output_vertex_size = tcs_num_vram_outputs * 16;
+   uint32_t vram_pervertex_output_patch_size = tcs_num_output_vertices * vram_output_vertex_size;
+   uint32_t vram_output_patch_size = vram_pervertex_output_patch_size + tcs_num_vram_patch_outputs * 16;
 
    /* Ensure that we only need one wave per SIMD so we don't need to check
     * resource usage. Also ensures that the number of tcs in and out
@@ -702,8 +707,8 @@ get_tcs_num_patches(unsigned tcs_num_input_vertices, unsigned tcs_num_output_ver
    if (input_patch_size + lds_output_patch_size)
       num_patches = MIN2(num_patches, hardware_lds_size / (input_patch_size + lds_output_patch_size));
    /* Make sure the output data fits in the offchip buffer */
-   if (lds_output_patch_size)
-      num_patches = MIN2(num_patches, (tess_offchip_block_dw_size * 4) / lds_output_patch_size);
+   if (vram_output_patch_size)
+      num_patches = MIN2(num_patches, (tess_offchip_block_dw_size * 4) / vram_output_patch_size);
    /* Not necessary for correctness, but improves performance. The
     * specific value is taken from the proprietary driver.
     */

@@ -2649,7 +2649,8 @@ radv_emit_patch_control_points(struct radv_cmd_buffer *cmd_buffer)
       cmd_buffer->state.tess_num_patches = get_tcs_num_patches(
          d->vk.ts.patch_control_points, tcs->info.tcs.tcs_vertices_out, vs->info.vs.num_linked_outputs,
          tcs->info.tcs.num_lds_per_vertex_outputs, tcs->info.tcs.num_lds_per_patch_outputs,
-         pdev->hs.tess_offchip_block_dw_size, pdev->info.gfx_level, pdev->info.family);
+         tcs->info.tcs.num_linked_outputs, tcs->info.tcs.num_linked_patch_outputs, pdev->hs.tess_offchip_block_dw_size,
+         pdev->info.gfx_level, pdev->info.family);
 
       /* Compute the LDS size. */
       cmd_buffer->state.tess_lds_size =

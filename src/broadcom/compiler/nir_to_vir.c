@@ -656,6 +656,8 @@ ntq_emit_tmu_general(struct v3d_compile *c, nir_intrinsic_instr *instr,
                          */
                         uint32_t perquad =
                                 is_load && !vir_in_nonuniform_control_flow(c) &&
+                                c->s->info.stage == MESA_SHADER_FRAGMENT &&
+                                c->s->info.fs.needs_quad_helper_invocations &&
                                 !c->emitted_discard ?
                                 GENERAL_TMU_LOOKUP_PER_QUAD :
                                 GENERAL_TMU_LOOKUP_PER_PIXEL;

@@ -662,6 +662,18 @@ radv_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice, cons
    case VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR: {
       struct VkVideoEncodeH264CapabilitiesKHR *ext = (struct VkVideoEncodeH264CapabilitiesKHR *)vk_find_struct(
          pCapabilities->pNext, VIDEO_ENCODE_H264_CAPABILITIES_KHR);
+
+      const struct VkVideoEncodeH264ProfileInfoKHR *h264_profile =
+         vk_find_struct_const(pVideoProfile->pNext, VIDEO_ENCODE_H264_PROFILE_INFO_KHR);
+
+      if (h264_profile->stdProfileIdc != STD_VIDEO_H264_PROFILE_IDC_BASELINE &&
+          h264_profile->stdProfileIdc != STD_VIDEO_H264_PROFILE_IDC_MAIN &&
+          h264_profile->stdProfileIdc != STD_VIDEO_H264_PROFILE_IDC_HIGH)
+         return VK_ERROR_VIDEO_PROFILE_OPERATION_NOT_SUPPORTED_KHR;
+
+      if (pVideoProfile->lumaBitDepth != VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR)
+         return VK_ERROR_VIDEO_PROFILE_FORMAT_NOT_SUPPORTED_KHR;
+
       pCapabilities->maxDpbSlots = NUM_H2645_REFS;
       pCapabilities->maxActiveReferencePictures = NUM_H2645_REFS;
       ext->flags = VK_VIDEO_ENCODE_H264_CAPABILITY_HRD_COMPLIANCE_BIT_KHR |
@@ -690,9 +702,23 @@ radv_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice, cons
    case VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR: {
       struct VkVideoEncodeH265CapabilitiesKHR *ext = (struct VkVideoEncodeH265CapabilitiesKHR *)vk_find_struct(
          pCapabilities->pNext, VIDEO_ENCODE_H265_CAPABILITIES_KHR);
-      ext->flags = VK_VIDEO_ENCODE_H265_CAPABILITY_PER_PICTURE_TYPE_MIN_MAX_QP_BIT_KHR;
+
+      const struct VkVideoEncodeH265ProfileInfoKHR *h265_profile =
+         vk_find_struct_const(pVideoProfile->pNext, VIDEO_ENCODE_H265_PROFILE_INFO_KHR);
+
+      if (h265_profile->stdProfileIdc != STD_VIDEO_H265_PROFILE_IDC_MAIN &&
+          (pdev->enc_hw_ver < RADV_VIDEO_ENC_HW_2 ||
+           h265_profile->stdProfileIdc != STD_VIDEO_H265_PROFILE_IDC_MAIN_10))
+         return VK_ERROR_VIDEO_PROFILE_OPERATION_NOT_SUPPORTED_KHR;
+
+      if (pVideoProfile->lumaBitDepth != VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR &&
+          (pdev->enc_hw_ver < RADV_VIDEO_ENC_HW_2 ||
+           pVideoProfile->lumaBitDepth != VK_VIDEO_COMPONENT_BIT_DEPTH_10_BIT_KHR))
+         return VK_ERROR_VIDEO_PROFILE_FORMAT_NOT_SUPPORTED_KHR;
+
       pCapabilities->maxDpbSlots = NUM_H2645_REFS;
       pCapabilities->maxActiveReferencePictures = NUM_H2645_REFS;
+      ext->flags = VK_VIDEO_ENCODE_H265_CAPABILITY_PER_PICTURE_TYPE_MIN_MAX_QP_BIT_KHR;
       ext->maxLevelIdc = cap ? cap->max_level : 0;
       ext->maxSliceSegmentCount = 128;
       ext->maxTiles.width = 1;

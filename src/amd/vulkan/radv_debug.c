@@ -293,7 +293,7 @@ radv_dump_annotated_shader(const struct radv_shader *shader, gl_shader_stage sta
    if (!shader)
       return;
 
-   start_addr = radv_shader_get_va(shader);
+   start_addr = radv_shader_get_va(shader) & ((1ull << 48) - 1);
    end_addr = start_addr + shader->code_size;
 
    /* See if any wave executes the shader. */

@@ -2546,6 +2546,8 @@ panfrost_initialize_surface(struct panfrost_batch *batch,
    if (surf) {
       struct panfrost_resource *rsrc = pan_resource(surf->texture);
       BITSET_SET(rsrc->valid.data, surf->u.tex.level);
+      if (rsrc->separate_stencil)
+         BITSET_SET(rsrc->separate_stencil->valid.data, surf->u.tex.level);
    }
 }
 

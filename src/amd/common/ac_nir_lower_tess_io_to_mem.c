@@ -655,13 +655,13 @@ hs_load_tess_levels(nir_builder *b,
 
       /* Load all tessellation factors (aka. tess levels) from LDS. */
       if (st->tcs_tess_level_outer_mask) {
-         outer = nir_load_shared(b, outer_comps, 32, lds_base,
-                                 .base = map_tess_level(VARYING_SLOT_TESS_LEVEL_OUTER, st) * 16);
+         const unsigned mapped = hs_output_lds_map_io_location(b->shader, false, VARYING_SLOT_TESS_LEVEL_OUTER, st);
+         outer = nir_load_shared(b, outer_comps, 32, lds_base, .base = mapped * 16);
       }
 
       if (inner_comps && st->tcs_tess_level_inner_mask) {
-         inner = nir_load_shared(b, inner_comps, 32, lds_base,
-                                 .base = map_tess_level(VARYING_SLOT_TESS_LEVEL_INNER, st) * 16);
+         const unsigned mapped = hs_output_lds_map_io_location(b->shader, false, VARYING_SLOT_TESS_LEVEL_INNER, st);
+         inner = nir_load_shared(b, inner_comps, 32, lds_base, .base = mapped * 16);
       }
    }
 

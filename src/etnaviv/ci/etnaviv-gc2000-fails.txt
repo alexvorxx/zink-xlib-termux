@@ -143,8 +143,6 @@ shaders@glsl-uniform-interstage-limits@subdivide 5- statechanges,Timeout
 shaders@glsl-uniform-interstage-limits@subdivide 5,Timeout
 shaders@glsl-vs-point-size,Fail
 
-# Expects DEPTH_COMPONENT_32F, which is given by ARB_depth_buffer_float.
-spec@arb_clear_texture@arb_clear_texture-depth,Fail
 # Expects that some format/internal_format combinations should be supported when they currently aren't.
 spec@arb_clear_texture@arb_clear_texture-sized-formats,Fail
 spec@arb_clear_texture@arb_clear_texture-supported-formats,Fail
@@ -184,8 +182,6 @@ spec@arb_framebuffer_object@same-attachment-glframebuffertexture2d-gl_depth_sten
 spec@arb_framebuffer_object@same-attachment-tex2d-depth_stencil,Fail
 
 spec@arb_internalformat_query2@all internalformat_<x>_type pname checks,Timeout
-spec@arb_internalformat_query2@max dimensions related pname checks,Fail
-spec@arb_internalformat_query2@max dimensions related pname checks@GL_MAX_LAYERS,Fail
 
 spec@arb_occlusion_query2@render,Fail
 spec@arb_occlusion_query@occlusion_query_conform,Fail

@@ -542,6 +542,14 @@ radv_dump_queue_state(struct radv_queue *queue, const char *dump_dir, FILE *f)
                fprintf(f, COLOR_CYAN "Waves not executing currently-bound shaders:" COLOR_RESET "\n");
                found = true;
             }
+
+            struct radv_shader *shader = radv_find_shader(device, waves[0].pc);
+            if (shader) {
+               radv_dump_annotated_shader(shader, shader->info.stage, waves, num_waves, f);
+               if (waves[i].matched)
+                  continue;
+            }
+
             fprintf(f, "    SE%u SH%u CU%u SIMD%u WAVE%u  EXEC=%016" PRIx64 "  INST=%08X %08X  PC=%" PRIx64 "\n",
                     waves[i].se, waves[i].sh, waves[i].cu, waves[i].simd, waves[i].wave, waves[i].exec,
                     waves[i].inst_dw0, waves[i].inst_dw1, waves[i].pc);

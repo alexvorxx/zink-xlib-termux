@@ -1120,12 +1120,6 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
       goto fail_ws_dev;
    }
 
-   if (!(drm_device->available_nodes & (1 << DRM_NODE_RENDER))) {
-      result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
-                         "NVK requires a render node");
-      goto fail_ws_dev;
-   }
-
    struct stat st;
    if (stat(drm_device->nodes[DRM_NODE_RENDER], &st)) {
       result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,

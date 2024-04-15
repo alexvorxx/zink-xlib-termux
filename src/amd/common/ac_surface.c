@@ -2018,6 +2018,7 @@ static int gfx9_compute_miptree(struct ac_addrlib *addrlib, const struct radeon_
          use_dcc = ac_modifier_has_dcc(surf->modifier);
       } else {
          use_dcc = info->has_graphics && !(surf->flags & RADEON_SURF_DISABLE_DCC) && !compressed &&
+                   !config->is_3d &&
                    is_dcc_supported_by_CB(info, in->swizzleMode) &&
                    (!in->flags.display ||
                     gfx9_is_dcc_supported_by_DCN(info, config, surf, !in->flags.metaRbUnaligned,

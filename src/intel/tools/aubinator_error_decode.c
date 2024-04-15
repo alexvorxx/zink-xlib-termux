@@ -942,7 +942,8 @@ main(int argc, char *argv[])
    getline(&line, &line_size, file);
    rewind(file);
    if (strncmp(line, XE_KMD_ERROR_DUMP_IDENTIFIER, strlen(XE_KMD_ERROR_DUMP_IDENTIFIER)) == 0)
-      read_xe_data_file(file, batch_flags, xml_path, option_dump_kernels, option_print_all_bb);
+      read_xe_data_file(file, batch_flags, xml_path, option_dump_kernels,
+                        option_print_all_bb, option_color);
    else
       read_i915_data_file(file, batch_flags);
    free(line);

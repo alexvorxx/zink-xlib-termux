@@ -788,6 +788,23 @@ iris_resource_configure_main(const struct iris_screen *screen,
                ISL_SURF_USAGE_STENCIL_BIT : ISL_SURF_USAGE_DEPTH_BIT;
    }
 
+   if ((usage & ISL_SURF_USAGE_TEXTURE_BIT) ||
+       !isl_surf_usage_is_depth_or_stencil(usage)) {
+      /* Notify ISL that iris may access this image from different engines.
+       * The reads and writes performed by the engines are guaranteed to be
+       * sequential with respect to each other. This is due to the
+       * implementation of flush_for_cross_batch_dependencies().
+       */
+      usage |= ISL_SURF_USAGE_MULTI_ENGINE_SEQ_BIT;
+   } else {
+      /* Depth/stencil render buffers are the only surfaces which are not
+       * accessed by compute shaders. Also, iris does not use the blitter on
+       * such surfaces.
+       */
+     assert(!(templ->bind & PIPE_BIND_SHADER_IMAGE));
+     assert(!(templ->bind & PIPE_BIND_PRIME_BLIT_DST));
+   }
+
    const enum isl_format format =
       iris_format_for_usage(screen->devinfo, templ->format, usage).fmt;
 

@@ -228,11 +228,8 @@ lower_aaline_instr(nir_builder *b, nir_instr *instr, void *data)
                   nir_fmin(b, nir_channel(b, tmp, 1), max));
    tmp = nir_fmul(b, nir_channel(b, out_input, out_input->num_components - 1), tmp);
 
-   nir_def *components[4];
-   for (unsigned i = 0; i < out_input->num_components - 1; i++)
-      components[i] = nir_channel(b, out_input, i);
-   components[out_input->num_components - 1] = tmp;
-   nir_def *out = nir_vec(b, components, out_input->num_components);
+   nir_def *out = nir_vector_insert_imm(b, out_input, tmp,
+                                        out_input->num_components - 1);
    nir_src_rewrite(&intrin->src[1], out);
    return true;
 }

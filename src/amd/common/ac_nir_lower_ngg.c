@@ -3824,9 +3824,12 @@ ms_store_arrayed_output(nir_builder *b,
    const ms_out_part *out = ms_get_out_layout_part(io_sem.location, &b->shader->info, &out_mode, s);
    update_ms_output_info(io_sem, base_off_src, write_mask, component_offset, store_val->bit_size, out, s);
 
+   bool hi_16b = io_sem.high_16bits;
+   bool lo_16b = !hi_16b && store_val->bit_size == 16;
+
    unsigned mapped_location = util_bitcount64(out->mask & u_bit_consecutive64(0, io_sem.location));
    unsigned num_outputs = util_bitcount64(out->mask);
-   unsigned const_off = out->addr + component_offset * 4;
+   unsigned const_off = out->addr + component_offset * 4 + (hi_16b ? 2 : 0);
 
    nir_def *base_addr = ms_arrayed_output_base_addr(b, arr_index, mapped_location, num_outputs);
    nir_def *base_offset = base_off_src->ssa;
@@ -3873,6 +3876,17 @@ ms_store_arrayed_output(nir_builder *b,
       u_foreach_bit(comp, write_mask_32) {
          nir_def *val = nir_channel(b, store_val, comp);
          unsigned idx = io_sem.location * 4 + comp + component_offset;
+
+         if (lo_16b) {
+            nir_def *v = nir_channel(b, nir_load_var(b, s->out_variables[idx]), comp + component_offset);
+            nir_def *var_hi = nir_unpack_32_2x16_split_y(b, v);
+            val = nir_pack_32_2x16_split(b, val, var_hi);
+         } else if (hi_16b) {
+            nir_def *v = nir_channel(b, nir_load_var(b, s->out_variables[idx]), comp + component_offset);
+            nir_def *var_lo = nir_unpack_32_2x16_split_x(b, v);
+            val = nir_pack_32_2x16_split(b, var_lo, val);
+         }
+
          nir_store_var(b, s->out_variables[idx], val, 0x1);
       }
    } else {

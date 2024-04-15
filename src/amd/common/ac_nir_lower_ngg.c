@@ -3843,24 +3843,24 @@ ms_store_arrayed_output_intrin(nir_builder *b,
                                nir_intrinsic_instr *intrin,
                                lower_ngg_ms_state *s)
 {
-   unsigned location = nir_intrinsic_io_semantics(intrin).location;
+   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
 
-   if (location == VARYING_SLOT_PRIMITIVE_INDICES) {
+   if (io_sem.location == VARYING_SLOT_PRIMITIVE_INDICES) {
       ms_store_prim_indices(b, intrin, s);
       return;
-   } else if (location == VARYING_SLOT_CULL_PRIMITIVE) {
+   } else if (io_sem.location == VARYING_SLOT_CULL_PRIMITIVE) {
       ms_store_cull_flag(b, intrin, s);
       return;
    }
 
    ms_out_mode out_mode;
-   const ms_out_part *out = ms_get_out_layout_part(location, &b->shader->info, &out_mode, s);
+   const ms_out_part *out = ms_get_out_layout_part(io_sem.location, &b->shader->info, &out_mode, s);
    update_ms_output_info(intrin, out, s);
 
    /* We compact the LDS size (we don't reserve LDS space for outputs which can
     * be stored in variables), so we compute the first free location based on the output mask.
     */
-   unsigned mapped_location = util_bitcount64(out->mask & u_bit_consecutive64(0, location));
+   unsigned mapped_location = util_bitcount64(out->mask & u_bit_consecutive64(0, io_sem.location));
    unsigned component_offset = nir_intrinsic_component(intrin);
    unsigned write_mask = nir_intrinsic_write_mask(intrin);
    unsigned num_outputs = util_bitcount64(out->mask);
@@ -3893,7 +3893,6 @@ ms_store_arrayed_output_intrin(nir_builder *b,
        * this is still much better than reserving LDS and losing waves.
        * (Also much better than storing and reloading from the scratch ring.)
        */
-      const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
       unsigned param_offset = s->vs_output_param_offset[io_sem.location];
       nir_def *ring = nir_load_ring_attr_amd(b);
       nir_def *soffset = nir_load_ring_attr_offset_amd(b);
@@ -3912,7 +3911,7 @@ ms_store_arrayed_output_intrin(nir_builder *b,
 
       u_foreach_bit(comp, write_mask) {
          nir_def *val = nir_channel(b, store_val, comp);
-         unsigned idx = location * 4 + comp + component_offset;
+         unsigned idx = io_sem.location * 4 + comp + component_offset;
          nir_store_var(b, s->out_variables[idx], val, 0x1);
       }
    } else {

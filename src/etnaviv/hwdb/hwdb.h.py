@@ -115,7 +115,7 @@ class HeaderFile(c_ast.NodeVisitor):
             self.date_time = datetime.strptime(match.group(1), '%Y-%m-%d %H:%M')
 
     def _parse(self):
-        ast = parse_file(self.filename, use_cpp=True, cpp_args=['-E', r'-I./utils/fake_libc_include', '-include', 'stdint.h', '-DgctUINT32=uint32_t', '-DgctINT=int'])
+        ast = parse_file(self.filename, use_cpp=True, cpp_args=['-E', r'-I./utils/fake_libc_include', '-DgctUINT32=unsigned int', '-DgctINT=int'])
         self.visit(ast)
 
         self.database_struct = self.structs['gcsFEATURE_DATABASE']
@@ -152,7 +152,7 @@ class HeaderFile(c_ast.NodeVisitor):
         """Function returning a ctype type based node type."""
         type_mappings = {
             'bool': ctypes.c_bool,
-            'uint32_t': ctypes.c_uint,
+            'unsigned int': ctypes.c_uint,
             'int': ctypes.c_int,
         }
 

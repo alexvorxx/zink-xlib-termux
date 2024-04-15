@@ -20,6 +20,7 @@
 #define VMEM_MAX_MOVES      (256 - ctx.num_waves * 16)
 /* creating clauses decreases def-use distances, so make it less aggressive the lower num_waves is */
 #define VMEM_CLAUSE_MAX_GRAB_DIST (ctx.num_waves * 2)
+#define VMEM_STORE_CLAUSE_MAX_GRAB_DIST (ctx.num_waves * 4)
 #define POS_EXP_MAX_MOVES         512
 
 namespace aco {
@@ -1035,7 +1036,7 @@ schedule_VMEM_store(sched_ctx& ctx, Block* block, std::vector<RegisterDemand>& r
    DownwardsCursor cursor = ctx.mv.downwards_init(idx, true, true);
    int skip = 0;
 
-   for (int i = 0; (i - skip) < VMEM_CLAUSE_MAX_GRAB_DIST; i++) {
+   for (int i = 0; (i - skip) < VMEM_STORE_CLAUSE_MAX_GRAB_DIST; i++) {
       aco_ptr<Instruction>& candidate = block->instructions[cursor.source_idx];
       if (candidate->opcode == aco_opcode::p_logical_start)
          break;

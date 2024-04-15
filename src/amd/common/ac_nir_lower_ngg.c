@@ -3769,32 +3769,6 @@ update_ms_output_info(const nir_io_semantics io_sem,
    }
 }
 
-static nir_def *
-regroup_store_val(nir_builder *b, nir_def *store_val)
-{
-   /* Vulkan spec 15.1.4-15.1.5:
-    *
-    * The shader interface consists of output slots with 4x 32-bit components.
-    * Small bitsize components consume the same space as 32-bit components,
-    * but 64-bit ones consume twice as much.
-    *
-    * The same output slot may consist of components of different bit sizes.
-    * Therefore for simplicity we don't store small bitsize components
-    * contiguously, but pad them instead. In practice, they are converted to
-    * 32-bit and then stored contiguously.
-    */
-
-   if (store_val->bit_size < 32) {
-      assert(store_val->num_components <= 4);
-      nir_def *comps[4] = {0};
-      for (unsigned c = 0; c < store_val->num_components; ++c)
-         comps[c] = nir_u2u32(b, nir_channel(b, store_val, c));
-      return nir_vec(b, comps, store_val->num_components);
-   }
-
-   return store_val;
-}
-
 static const ms_out_part *
 ms_get_out_layout_part(unsigned location,
                        shader_info *info,
@@ -3924,11 +3898,21 @@ ms_store_arrayed_output_intrin(nir_builder *b,
    unsigned component_offset = nir_intrinsic_component(intrin);
    unsigned write_mask = nir_intrinsic_write_mask(intrin);
 
-   nir_def *store_val = regroup_store_val(b, intrin->src[0].ssa);
+   nir_def *store_val = intrin->src[0].ssa;
    nir_def *arr_index = nir_get_io_arrayed_index_src(intrin)->ssa;
    nir_src *base_off_src = nir_get_io_offset_src(intrin);
 
-   ms_store_arrayed_output(b, base_off_src, store_val, arr_index, io_sem, component_offset, write_mask, s);
+   if (store_val->bit_size < 32) {
+      /* Split 16-bit output stores to ensure each 16-bit component is stored
+       * in the correct location, without overwriting the other 16 bits there.
+       */
+      u_foreach_bit(c, write_mask) {
+         nir_def *store_component = nir_channel(b, store_val, c);
+         ms_store_arrayed_output(b, base_off_src, store_component, arr_index, io_sem, c + component_offset, 1, s);
+      }
+   } else {
+      ms_store_arrayed_output(b, base_off_src, store_val, arr_index, io_sem, component_offset, write_mask, s);
+   }
 }
 
 static nir_def *

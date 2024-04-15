@@ -3747,18 +3747,16 @@ update_ms_output_info_slot(lower_ngg_ms_state *s,
 }
 
 static void
-update_ms_output_info(nir_intrinsic_instr *intrin,
+update_ms_output_info(const nir_io_semantics io_sem,
+                      const nir_src *base_offset_src,
+                      const uint32_t write_mask,
+                      const unsigned component_offset,
+                      const unsigned bit_size,
                       const ms_out_part *out,
                       lower_ngg_ms_state *s)
 {
-   nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
-   nir_src *base_offset_src = nir_get_io_offset_src(intrin);
-   uint32_t write_mask = nir_intrinsic_write_mask(intrin);
-   unsigned component_offset = nir_intrinsic_component(intrin);
-
-   nir_def *store_val = intrin->src[0].ssa;
-   write_mask = util_widen_mask(write_mask, DIV_ROUND_UP(store_val->bit_size, 32));
-   uint32_t components_mask = write_mask << component_offset;
+   uint32_t write_mask_32 = util_widen_mask(write_mask, DIV_ROUND_UP(bit_size, 32));
+   uint32_t components_mask = write_mask_32 << component_offset;
 
    if (nir_src_is_const(*base_offset_src)) {
       /* Simply mark the components of the current slot as used. */
@@ -3853,23 +3851,26 @@ ms_store_arrayed_output_intrin(nir_builder *b,
       return;
    }
 
-   ms_out_mode out_mode;
-   const ms_out_part *out = ms_get_out_layout_part(io_sem.location, &b->shader->info, &out_mode, s);
-   update_ms_output_info(intrin, out, s);
-
    /* We compact the LDS size (we don't reserve LDS space for outputs which can
     * be stored in variables), so we compute the first free location based on the output mask.
     */
-   unsigned mapped_location = util_bitcount64(out->mask & u_bit_consecutive64(0, io_sem.location));
    unsigned component_offset = nir_intrinsic_component(intrin);
    unsigned write_mask = nir_intrinsic_write_mask(intrin);
-   unsigned num_outputs = util_bitcount64(out->mask);
-   unsigned const_off = out->addr + component_offset * 4;
 
    nir_def *store_val = regroup_store_val(b, intrin->src[0].ssa);
    nir_def *arr_index = nir_get_io_arrayed_index_src(intrin)->ssa;
+   nir_src *base_off_src = nir_get_io_offset_src(intrin);
+
+   ms_out_mode out_mode;
+   const ms_out_part *out = ms_get_out_layout_part(io_sem.location, &b->shader->info, &out_mode, s);
+   update_ms_output_info(io_sem, base_off_src, write_mask, component_offset, store_val->bit_size, out, s);
+
+   unsigned mapped_location = util_bitcount64(out->mask & u_bit_consecutive64(0, io_sem.location));
+   unsigned num_outputs = util_bitcount64(out->mask);
+   unsigned const_off = out->addr + component_offset * 4;
+
    nir_def *base_addr = ms_arrayed_output_base_addr(b, arr_index, mapped_location, num_outputs);
-   nir_def *base_offset = nir_get_io_offset_src(intrin)->ssa;
+   nir_def *base_offset = base_off_src->ssa;
    nir_def *base_addr_off = nir_imul_imm(b, base_offset, 16u);
    nir_def *addr = nir_iadd_nuw(b, base_addr, base_addr_off);
 

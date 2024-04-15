@@ -141,7 +141,7 @@ radv_dump_debug_registers(const struct radv_device *device, FILE *f)
 static void
 radv_dump_buffer_descriptor(enum amd_gfx_level gfx_level, enum radeon_family family, const uint32_t *desc, FILE *f)
 {
-   fprintf(f, COLOR_CYAN "    Buffer:" COLOR_RESET "\n");
+   fprintf(f, COLOR_CYAN "Buffer:" COLOR_RESET "\n");
    for (unsigned j = 0; j < 4; j++)
       ac_dump_reg(f, gfx_level, family, R_008F00_SQ_BUF_RSRC_WORD0 + j * 4, desc[j], 0xffffffff);
 }
@@ -151,7 +151,7 @@ radv_dump_image_descriptor(enum amd_gfx_level gfx_level, enum radeon_family fami
 {
    unsigned sq_img_rsrc_word0 = gfx_level >= GFX10 ? R_00A000_SQ_IMG_RSRC_WORD0 : R_008F10_SQ_IMG_RSRC_WORD0;
 
-   fprintf(f, COLOR_CYAN "    Image:" COLOR_RESET "\n");
+   fprintf(f, COLOR_CYAN "Image:" COLOR_RESET "\n");
    for (unsigned j = 0; j < 8; j++)
       ac_dump_reg(f, gfx_level, family, sq_img_rsrc_word0 + j * 4, desc[j], 0xffffffff);
 
@@ -163,7 +163,7 @@ radv_dump_image_descriptor(enum amd_gfx_level gfx_level, enum radeon_family fami
 static void
 radv_dump_sampler_descriptor(enum amd_gfx_level gfx_level, enum radeon_family family, const uint32_t *desc, FILE *f)
 {
-   fprintf(f, COLOR_CYAN "    Sampler state:" COLOR_RESET "\n");
+   fprintf(f, COLOR_CYAN "Sampler state:" COLOR_RESET "\n");
    for (unsigned j = 0; j < 4; j++) {
       ac_dump_reg(f, gfx_level, family, R_008F30_SQ_IMG_SAMP_WORD0 + j * 4, desc[j], 0xffffffff);
    }
@@ -192,6 +192,8 @@ radv_dump_descriptor_set(const struct radv_device *device, const struct radv_des
 
    for (i = 0; i < set->header.layout->binding_count; i++) {
       uint32_t *desc = set->header.mapped_ptr + layout->binding[i].offset / 4;
+
+      fprintf(f, "(set=%u binding=%u offset=0x%x) ", id, i, layout->binding[i].offset);
 
       switch (layout->binding[i].type) {
       case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:

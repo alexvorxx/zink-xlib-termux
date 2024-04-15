@@ -3837,30 +3837,15 @@ ms_get_out_layout_part(unsigned location,
 }
 
 static void
-ms_store_arrayed_output_intrin(nir_builder *b,
-                               nir_intrinsic_instr *intrin,
-                               lower_ngg_ms_state *s)
+ms_store_arrayed_output(nir_builder *b,
+                        nir_src *base_off_src,
+                        nir_def *store_val,
+                        nir_def *arr_index,
+                        const nir_io_semantics io_sem,
+                        const unsigned component_offset,
+                        const unsigned write_mask,
+                        lower_ngg_ms_state *s)
 {
-   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
-
-   if (io_sem.location == VARYING_SLOT_PRIMITIVE_INDICES) {
-      ms_store_prim_indices(b, intrin, s);
-      return;
-   } else if (io_sem.location == VARYING_SLOT_CULL_PRIMITIVE) {
-      ms_store_cull_flag(b, intrin, s);
-      return;
-   }
-
-   /* We compact the LDS size (we don't reserve LDS space for outputs which can
-    * be stored in variables), so we compute the first free location based on the output mask.
-    */
-   unsigned component_offset = nir_intrinsic_component(intrin);
-   unsigned write_mask = nir_intrinsic_write_mask(intrin);
-
-   nir_def *store_val = regroup_store_val(b, intrin->src[0].ssa);
-   nir_def *arr_index = nir_get_io_arrayed_index_src(intrin)->ssa;
-   nir_src *base_off_src = nir_get_io_offset_src(intrin);
-
    ms_out_mode out_mode;
    const ms_out_part *out = ms_get_out_layout_part(io_sem.location, &b->shader->info, &out_mode, s);
    update_ms_output_info(io_sem, base_off_src, write_mask, component_offset, store_val->bit_size, out, s);
@@ -3903,14 +3888,15 @@ ms_store_arrayed_output_intrin(nir_builder *b,
                            .memory_modes = nir_var_shader_out,
                            .access = ACCESS_COHERENT | ACCESS_IS_SWIZZLED_AMD);
    } else if (out_mode == ms_out_mode_var) {
+      unsigned write_mask_32 = write_mask;
       if (store_val->bit_size > 32) {
          /* Split 64-bit store values to 32-bit components. */
          store_val = nir_bitcast_vector(b, store_val, 32);
          /* Widen the write mask so it is in 32-bit components. */
-         write_mask = util_widen_mask(write_mask, store_val->bit_size / 32);
+         write_mask_32 = util_widen_mask(write_mask, store_val->bit_size / 32);
       }
 
-      u_foreach_bit(comp, write_mask) {
+      u_foreach_bit(comp, write_mask_32) {
          nir_def *val = nir_channel(b, store_val, comp);
          unsigned idx = io_sem.location * 4 + comp + component_offset;
          nir_store_var(b, s->out_variables[idx], val, 0x1);
@@ -3918,6 +3904,31 @@ ms_store_arrayed_output_intrin(nir_builder *b,
    } else {
       unreachable("Invalid MS output mode for store");
    }
+}
+
+static void
+ms_store_arrayed_output_intrin(nir_builder *b,
+                               nir_intrinsic_instr *intrin,
+                               lower_ngg_ms_state *s)
+{
+   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
+
+   if (io_sem.location == VARYING_SLOT_PRIMITIVE_INDICES) {
+      ms_store_prim_indices(b, intrin, s);
+      return;
+   } else if (io_sem.location == VARYING_SLOT_CULL_PRIMITIVE) {
+      ms_store_cull_flag(b, intrin, s);
+      return;
+   }
+
+   unsigned component_offset = nir_intrinsic_component(intrin);
+   unsigned write_mask = nir_intrinsic_write_mask(intrin);
+
+   nir_def *store_val = regroup_store_val(b, intrin->src[0].ssa);
+   nir_def *arr_index = nir_get_io_arrayed_index_src(intrin)->ssa;
+   nir_src *base_off_src = nir_get_io_offset_src(intrin);
+
+   ms_store_arrayed_output(b, base_off_src, store_val, arr_index, io_sem, component_offset, write_mask, s);
 }
 
 static nir_def *

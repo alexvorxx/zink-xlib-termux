@@ -1,6 +1,6 @@
 [[deqp]]
 deqp = "/deqp/external/vulkancts/modules/vulkan/deqp-vk"
-caselists = ["/deqp/mustpass/vk-master.txt"]
+caselists = ["/deqp/mustpass/vk-main.txt"]
 renderer_check = "Mali-G52"
 include = [
     "dEQP-VK.pipeline.blend.*",

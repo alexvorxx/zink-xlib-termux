@@ -1,0 +1,1227 @@
+From d7e91e611e6fd4e0772f542e359bb98749d6f2ee Mon Sep 17 00:00:00 2001
+From: Ricardo Garcia <rgarcia@igalia.com>
+Date: Tue, 16 Apr 2024 17:15:53 +0200
+Subject: [PATCH] Fix more ASAN errors due to missing virtual destructors
+
+No test results should be affected by this change.
+
+VK-GL-CTS issue: 5083
+Components: Vulkan
+
+Change-Id: I7deb1fa8109ffecd495156ee5da583dae82162b2
+---
+ .../vulkancts/framework/vulkan/vkPlatform.hpp |   2 +-
+ .../vktApiBufferAndImageAllocationUtil.hpp    |   4 +
+ .../api/vktApiBufferViewCreateTests.cpp       |   2 +
+ .../modules/vulkan/api/vktApiSmokeTests.cpp   |   4 +
+ .../vulkan/clipping/vktClippingTests.cpp      |   4 +
+ .../modules/vulkan/draw/vktBasicDrawTests.cpp |   6 +
+ .../modules/vulkan/draw/vktDrawAhbTests.cpp   |   4 +
+ .../vulkan/draw/vktDrawIndexedTest.cpp        |   4 +
+ .../vulkan/draw/vktDrawInstancedTests.cpp     |   4 +
+ .../draw/vktDrawVertexAttribDivisorTests.cpp  |   4 +
+ .../image/vktImageExtendedUsageBitTests.cpp   |   2 +
+ .../memory/vktMemoryRequirementsTests.cpp     |   4 +
+ .../vktPipelineExtendedDynamicStateTests.cpp  | 121 +++++++++---------
+ .../pipeline/vktPipelineTimestampTests.cpp    |   2 +-
+ ...vktRayQueryAccelerationStructuresTests.cpp |   2 +
+ ...tRayTracingAccelerationStructuresTests.cpp |   3 +
+ .../vktRayTracingCallableShadersTests.cpp     |   2 +
+ .../vktRayTracingCaptureReplayTests.cpp       |   2 +
+ .../vktRayTracingPipelineFlagsTests.cpp       |   2 +
+ .../vktRayTracingShaderBindingTableTests.cpp  |   2 +
+ .../vktRayTracingTraversalControlTests.cpp    |   2 +
+ .../vktRenderPassSubpassDependencyTests.cpp   |   8 ++
+ .../vktShaderBuiltinPrecisionTests.cpp        |   2 +
+ .../vktShaderRenderBuiltinVarTests.cpp        |   4 +
+ .../vktShaderRenderTextureGatherTests.cpp     |   2 +
+ .../vktSpvAsm64bitCompareTests.cpp            |   5 +
+ .../vktSpvAsmInstructionTests.cpp             |   2 +
+ .../vulkan/spirv_assembly/vktSpvAsmUtils.hpp  |   2 +
+ ...vktSynchronizationWin32KeyedMutexTests.cpp |   2 +-
+ .../modules/vulkan/vktBuildPrograms.cpp       |   2 +
+ .../vulkan/ycbcr/vktYCbCrViewTests.cpp        |   1 +
+ framework/common/tcuCommandLine.hpp           |   2 +-
+ framework/egl/wrapper/eglwFunctions.hpp       |   1 +
+ framework/egl/wrapper/eglwLibrary.hpp         |   2 +
+ framework/opengl/gluShaderLibrary.hpp         |   1 +
+ .../opengl/wrapper/glwFunctionLoader.hpp      |   2 +
+ framework/referencerenderer/rrRenderer.cpp    |   1 +
+ framework/referencerenderer/rrShaders.hpp     |   6 +-
+ 38 files changed, 162 insertions(+), 65 deletions(-)
+
+diff --git a/external/vulkancts/framework/vulkan/vkPlatform.hpp b/external/vulkancts/framework/vulkan/vkPlatform.hpp
+index 1ddba903b..0c680a062 100644
+--- a/external/vulkancts/framework/vulkan/vkPlatform.hpp
++++ b/external/vulkancts/framework/vulkan/vkPlatform.hpp
+@@ -401,7 +401,7 @@ public:
+ 	};
+ 
+ 							Platform			(void) {}
+-							~Platform			(void) {}
++	virtual					~Platform			(void) {}
+ #ifdef DE_PLATFORM_USE_LIBRARY_TYPE
+ 	virtual Library*		createLibrary		(LibraryType libraryType = LIBRARY_TYPE_VULKAN, const char* libraryPath = DE_NULL) const = 0;
+ #else
+diff --git a/external/vulkancts/modules/vulkan/api/vktApiBufferAndImageAllocationUtil.hpp b/external/vulkancts/modules/vulkan/api/vktApiBufferAndImageAllocationUtil.hpp
+index db7e27448..6f8845963 100644
+--- a/external/vulkancts/modules/vulkan/api/vktApiBufferAndImageAllocationUtil.hpp
++++ b/external/vulkancts/modules/vulkan/api/vktApiBufferAndImageAllocationUtil.hpp
+@@ -47,6 +47,8 @@ using namespace vk;
+ class IBufferAllocator
+ {
+ public:
++	virtual ~IBufferAllocator () {}
++
+ 	virtual void						createTestBuffer				(const DeviceInterface&		vk,
+ 																		 VkDevice					vkDevice,
+ 																		 deUint32					queueFamilyIndex,
+@@ -92,6 +94,8 @@ public:
+ class IImageAllocator
+ {
+ public:
++	virtual ~IImageAllocator () {}
++
+ 	virtual void						createTestImage					(tcu::IVec2					size,
+ 																		 VkFormat					format,
+ 																		 Context&					context,
+diff --git a/external/vulkancts/modules/vulkan/api/vktApiBufferViewCreateTests.cpp b/external/vulkancts/modules/vulkan/api/vktApiBufferViewCreateTests.cpp
+index 5f2ed37fe..9ff2b4de6 100644
+--- a/external/vulkancts/modules/vulkan/api/vktApiBufferViewCreateTests.cpp
++++ b/external/vulkancts/modules/vulkan/api/vktApiBufferViewCreateTests.cpp
+@@ -80,6 +80,8 @@ protected:
+ class IBufferAllocator
+ {
+ public:
++	virtual ~IBufferAllocator () {}
++
+ 	virtual tcu::TestStatus				createTestBuffer				(VkDeviceSize				size,
+ 																		 VkBufferUsageFlags			usage,
+ 																		 Context&					context,
+diff --git a/external/vulkancts/modules/vulkan/api/vktApiSmokeTests.cpp b/external/vulkancts/modules/vulkan/api/vktApiSmokeTests.cpp
+index 9f2697a8b..c4276a71b 100644
+--- a/external/vulkancts/modules/vulkan/api/vktApiSmokeTests.cpp
++++ b/external/vulkancts/modules/vulkan/api/vktApiSmokeTests.cpp
+@@ -275,6 +275,8 @@ public:
+ 		m_inputs[0].type = rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~RefVertexShader () {}
++
+ 	void shadeVertices (const rr::VertexAttrib* inputs, rr::VertexPacket* const* packets, const int numPackets) const
+ 	{
+ 		for (int packetNdx = 0; packetNdx < numPackets; ++packetNdx)
+@@ -295,6 +297,8 @@ public:
+ 		m_outputs[0].type = rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~RefFragmentShader () {}
++
+ 	void shadeFragments (rr::FragmentPacket*, const int numPackets, const rr::FragmentShadingContext& context) const
+ 	{
+ 		for (int packetNdx = 0; packetNdx < numPackets; ++packetNdx)
+diff --git a/external/vulkancts/modules/vulkan/clipping/vktClippingTests.cpp b/external/vulkancts/modules/vulkan/clipping/vktClippingTests.cpp
+index 076bd42e0..a00df02cb 100644
+--- a/external/vulkancts/modules/vulkan/clipping/vktClippingTests.cpp
++++ b/external/vulkancts/modules/vulkan/clipping/vktClippingTests.cpp
+@@ -863,6 +863,8 @@ public:
+ 		m_outputs[0].type = rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~WideLineVertexShader () {}
++
+ 	void shadeVertices (const rr::VertexAttrib* inputs, rr::VertexPacket* const* packets, const int numPackets) const
+ 	{
+ 		for (int packetNdx = 0; packetNdx < numPackets; ++packetNdx)
+@@ -885,6 +887,8 @@ public:
+ 		m_outputs[0].type = rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~WideLineFragmentShader () {}
++
+ 	void shadeFragments (rr::FragmentPacket* packets, const int numPackets, const rr::FragmentShadingContext& context) const
+ 	{
+ 		for (int packetNdx = 0; packetNdx < numPackets; ++packetNdx)
+diff --git a/external/vulkancts/modules/vulkan/draw/vktBasicDrawTests.cpp b/external/vulkancts/modules/vulkan/draw/vktBasicDrawTests.cpp
+index 55e18ad3c..fd1627ee7 100644
+--- a/external/vulkancts/modules/vulkan/draw/vktBasicDrawTests.cpp
++++ b/external/vulkancts/modules/vulkan/draw/vktBasicDrawTests.cpp
+@@ -111,6 +111,8 @@ struct DrawParamsBase
+ 	DrawParamsBase ()
+ 	{}
+ 
++	virtual ~DrawParamsBase () {}
++
+ 	DrawParamsBase (const vk::VkPrimitiveTopology top, const SharedGroupParams gParams)
+ 		: topology			(top)
+ 		, useMaintenance5	(false)
+@@ -221,6 +223,8 @@ public:
+ 		m_outputs[0].type	= rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~PassthruVertShader () {}
++
+ 	void shadeVertices (const rr::VertexAttrib* inputs, rr::VertexPacket* const* packets, const int numPackets) const
+ 	{
+ 		for (int packetNdx = 0; packetNdx < numPackets; ++packetNdx)
+@@ -248,6 +252,8 @@ public:
+ 		m_outputs[0].type	= rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~PassthruFragShader () {}
++
+ 	void shadeFragments (rr::FragmentPacket* packets, const int numPackets, const rr::FragmentShadingContext& context) const
+ 	{
+ 		for (int packetNdx = 0; packetNdx < numPackets; ++packetNdx)
+diff --git a/external/vulkancts/modules/vulkan/draw/vktDrawAhbTests.cpp b/external/vulkancts/modules/vulkan/draw/vktDrawAhbTests.cpp
+index b5af6f40b..14c4ffb36 100644
+--- a/external/vulkancts/modules/vulkan/draw/vktDrawAhbTests.cpp
++++ b/external/vulkancts/modules/vulkan/draw/vktDrawAhbTests.cpp
+@@ -81,6 +81,8 @@ public:
+ 		m_outputs[0].type	= rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~PassthruVertShader () {}
++
+ 	void shadeVertices (const rr::VertexAttrib* inputs, rr::VertexPacket* const* packets, const int numPackets) const
+ 	{
+ 		for (int packetNdx = 0; packetNdx < numPackets; ++packetNdx)
+@@ -108,6 +110,8 @@ public:
+ 		m_outputs[0].type	= rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~PassthruFragShader () {}
++
+ 	void shadeFragments (rr::FragmentPacket* packets, const int numPackets, const rr::FragmentShadingContext& context) const
+ 	{
+ 		for (int packetNdx = 0; packetNdx < numPackets; ++packetNdx)
+diff --git a/external/vulkancts/modules/vulkan/draw/vktDrawIndexedTest.cpp b/external/vulkancts/modules/vulkan/draw/vktDrawIndexedTest.cpp
+index bc481b432..39f2fda49 100644
+--- a/external/vulkancts/modules/vulkan/draw/vktDrawIndexedTest.cpp
++++ b/external/vulkancts/modules/vulkan/draw/vktDrawIndexedTest.cpp
+@@ -532,6 +532,8 @@ public:
+ 		m_outputs[0].type = rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~PassthruVertShader () {}
++
+ 	void shadeVertices(const rr::VertexAttrib* inputs, rr::VertexPacket* const* packets, const int numPackets) const
+ 	{
+ 		for (int packetNdx = 0; packetNdx < numPackets; ++packetNdx)
+@@ -559,6 +561,8 @@ public:
+ 		m_outputs[0].type = rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~PassthruFragShader () {}
++
+ 	void shadeFragments(rr::FragmentPacket* packets, const int numPackets, const rr::FragmentShadingContext& context) const
+ 	{
+ 		for (int packetNdx = 0; packetNdx < numPackets; ++packetNdx)
+diff --git a/external/vulkancts/modules/vulkan/draw/vktDrawInstancedTests.cpp b/external/vulkancts/modules/vulkan/draw/vktDrawInstancedTests.cpp
+index 2e5b34a64..8a9b6edf5 100644
+--- a/external/vulkancts/modules/vulkan/draw/vktDrawInstancedTests.cpp
++++ b/external/vulkancts/modules/vulkan/draw/vktDrawInstancedTests.cpp
+@@ -190,6 +190,8 @@ public:
+ 		m_outputs[0].type	= rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~TestVertShader () {}
++
+ 	void shadeVertices (const rr::VertexAttrib* inputs,
+ 						rr::VertexPacket* const* packets,
+ 						const int numPackets) const
+@@ -220,6 +222,8 @@ public:
+ 		m_outputs[0].type	= rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~TestFragShader () {}
++
+ 	void shadeFragments (rr::FragmentPacket* packets,
+ 						 const int numPackets,
+ 						 const rr::FragmentShadingContext& context) const
+diff --git a/external/vulkancts/modules/vulkan/draw/vktDrawVertexAttribDivisorTests.cpp b/external/vulkancts/modules/vulkan/draw/vktDrawVertexAttribDivisorTests.cpp
+index 849e50630..37cbc1d14 100644
+--- a/external/vulkancts/modules/vulkan/draw/vktDrawVertexAttribDivisorTests.cpp
++++ b/external/vulkancts/modules/vulkan/draw/vktDrawVertexAttribDivisorTests.cpp
+@@ -162,6 +162,8 @@ public:
+ 		m_outputs[0].type	= rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~TestVertShader () {}
++
+ 	void shadeVertices (const rr::VertexAttrib* inputs,
+ 						rr::VertexPacket* const* packets,
+ 						const int numPackets) const
+@@ -192,6 +194,8 @@ public:
+ 		m_outputs[0].type	= rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~TestFragShader () {}
++
+ 	void shadeFragments (rr::FragmentPacket* packets,
+ 						 const int numPackets,
+ 						 const rr::FragmentShadingContext& context) const
+diff --git a/external/vulkancts/modules/vulkan/image/vktImageExtendedUsageBitTests.cpp b/external/vulkancts/modules/vulkan/image/vktImageExtendedUsageBitTests.cpp
+index 343dc6c19..14b89c382 100644
+--- a/external/vulkancts/modules/vulkan/image/vktImageExtendedUsageBitTests.cpp
++++ b/external/vulkancts/modules/vulkan/image/vktImageExtendedUsageBitTests.cpp
+@@ -138,6 +138,8 @@ struct TestParams
+ class PhysicalDeviceImageFormatProperties
+ {
+ public:
++	virtual ~PhysicalDeviceImageFormatProperties () {}
++
+ 	virtual VkResult getPhysicalDeviceImageFormatProperties(const InstanceInterface &vki, VkPhysicalDevice device, VkFormat viewFormat, VkImageTiling tiling, VkImageUsageFlags usage, VkImageCreateFlags flags)
+ 	{
+ 		VkImageFormatProperties formatProperties;
+diff --git a/external/vulkancts/modules/vulkan/memory/vktMemoryRequirementsTests.cpp b/external/vulkancts/modules/vulkan/memory/vktMemoryRequirementsTests.cpp
+index 97071d449..9b6f674d8 100644
+--- a/external/vulkancts/modules/vulkan/memory/vktMemoryRequirementsTests.cpp
++++ b/external/vulkancts/modules/vulkan/memory/vktMemoryRequirementsTests.cpp
+@@ -256,6 +256,8 @@ bool validValueVkBool32 (const VkBool32 value)
+ class IBufferMemoryRequirements
+ {
+ public:
++	virtual ~IBufferMemoryRequirements () {}
++
+ 	virtual void populateTestGroup			(tcu::TestCaseGroup*						group) = 0;
+ 
+ protected:
+@@ -798,6 +800,8 @@ struct ImageTestParams
+ class IImageMemoryRequirements
+ {
+ public:
++	virtual ~IImageMemoryRequirements () {}
++
+ 	virtual void populateTestGroup			(tcu::TestCaseGroup*						group) = 0;
+ 
+ protected:
+diff --git a/external/vulkancts/modules/vulkan/pipeline/vktPipelineExtendedDynamicStateTests.cpp b/external/vulkancts/modules/vulkan/pipeline/vktPipelineExtendedDynamicStateTests.cpp
+index 4fd9ee007..581a1ab7f 100644
+--- a/external/vulkancts/modules/vulkan/pipeline/vktPipelineExtendedDynamicStateTests.cpp
++++ b/external/vulkancts/modules/vulkan/pipeline/vktPipelineExtendedDynamicStateTests.cpp
+@@ -182,6 +182,8 @@ std::string topologyClassName (TopologyClass tclass)
+ class VertexGenerator
+ {
+ public:
++	virtual ~VertexGenerator () {}
++
+ 	// Some generators may need specific features.
+ 	virtual void													checkSupport (Context&) const {}
+ 
+@@ -311,21 +313,21 @@ protected:
+ 	};
+ 
+ public:
+-	virtual std::vector<std::string> getAttributeDeclarations() const override
++	std::vector<std::string> getAttributeDeclarations() const override
+ 	{
+ 		std::vector<std::string> declarations;
+ 		declarations.push_back("layout(location=0) in vec2 position;");
+ 		return declarations;
+ 	}
+ 
+-	virtual std::vector<std::string> getVertexCoordCalc() const override
++	std::vector<std::string> getVertexCoordCalc() const override
+ 	{
+ 		std::vector<std::string> statements;
+ 		statements.push_back("vec2 vertexCoords = position;");
+ 		return statements;
+ 	}
+ 
+-	virtual std::vector<std::string> getDescriptorDeclarations() const override
++	std::vector<std::string> getDescriptorDeclarations() const override
+ 	{
+ 		std::vector<std::string> declarations;
+ 		declarations.reserve(7u);
+@@ -339,7 +341,7 @@ public:
+ 		return declarations;
+ 	}
+ 
+-	virtual std::vector<std::string> getDescriptorCoordCalc(TopologyClass topology) const override
++	std::vector<std::string> getDescriptorCoordCalc(TopologyClass topology) const override
+ 	{
+ 		std::vector<std::string> statements;
+ 
+@@ -370,7 +372,7 @@ public:
+ 		return statements;
+ 	}
+ 
+-	virtual std::vector<vk::VkVertexInputAttributeDescription> getAttributeDescriptions() const override
++	std::vector<vk::VkVertexInputAttributeDescription> getAttributeDescriptions() const override
+ 	{
+ 		std::vector<vk::VkVertexInputAttributeDescription> descriptions;
+ 		descriptions.push_back(vk::makeVertexInputAttributeDescription(0u, 0u, vk::VK_FORMAT_R32G32_SFLOAT, 0u));
+@@ -378,7 +380,7 @@ public:
+ 	}
+ 
+ 	// Vertex attributes for VK_EXT_vertex_input_dynamic_state.
+-	virtual std::vector<vk::VkVertexInputAttributeDescription2EXT> getAttributeDescriptions2() const override
++	std::vector<vk::VkVertexInputAttributeDescription2EXT> getAttributeDescriptions2() const override
+ 	{
+ 		std::vector<vk::VkVertexInputAttributeDescription2EXT> descriptions;
+ 		descriptions.push_back(makeVertexInputAttributeDescription2EXT(0u, 0u, vk::VK_FORMAT_R32G32_SFLOAT, 0u));
+@@ -386,7 +388,7 @@ public:
+ 	}
+ 
+ 	// Vertex bindings for VkPipelineVertexInputStateCreateInfo.
+-	virtual std::vector<vk::VkVertexInputBindingDescription> getBindingDescriptions(const StrideVec& strides) const override
++	std::vector<vk::VkVertexInputBindingDescription> getBindingDescriptions(const StrideVec& strides) const override
+ 	{
+ 		std::vector<vk::VkVertexInputBindingDescription> descriptions;
+ 		descriptions.push_back(vk::makeVertexInputBindingDescription(0u, static_cast<deUint32>(strides.at(0)), vk::VK_VERTEX_INPUT_RATE_VERTEX));
+@@ -394,19 +396,19 @@ public:
+ 	}
+ 
+ 	// Vertex bindings for VK_EXT_vertex_input_dynamic_state.
+-	virtual std::vector<vk::VkVertexInputBindingDescription2EXT> getBindingDescriptions2(const StrideVec& strides) const override
++	std::vector<vk::VkVertexInputBindingDescription2EXT> getBindingDescriptions2(const StrideVec& strides) const override
+ 	{
+ 		std::vector<vk::VkVertexInputBindingDescription2EXT> descriptions;
+ 		descriptions.push_back(makeVertexInputBindingDescription2EXT(0u, static_cast<deUint32>(strides.at(0)), vk::VK_VERTEX_INPUT_RATE_VERTEX));
+ 		return descriptions;
+ 	}
+ 
+-	virtual std::vector<std::vector<deUint8>> createVertexData (const std::vector<tcu::Vec2>& coords, vk::VkDeviceSize dataOffset, vk::VkDeviceSize trailingPadding, const void* paddingPattern, size_t patternSize) const override
++	std::vector<std::vector<deUint8>> createVertexData (const std::vector<tcu::Vec2>& coords, vk::VkDeviceSize dataOffset, vk::VkDeviceSize trailingPadding, const void* paddingPattern, size_t patternSize) const override
+ 	{
+ 		return std::vector<std::vector<deUint8>>(1u, createSingleBindingVertexData<VertexData>(coords, dataOffset, trailingPadding, paddingPattern, patternSize));
+ 	}
+ 
+-	virtual std::vector<vk::VkDeviceSize> getVertexDataStrides() const override
++	std::vector<vk::VkDeviceSize> getVertexDataStrides() const override
+ 	{
+ 		return std::vector<vk::VkDeviceSize>(1u, static_cast<vk::VkDeviceSize>(sizeof(VertexData)));
+ 	}
+@@ -428,7 +430,7 @@ protected:
+ 	};
+ 
+ public:
+-	virtual void checkSupport (Context& context) const override
++	void checkSupport (Context& context) const override
+ 	{
+ 		// We need shaderFloat16 and storageInputOutput16.
+ 		const auto& sf16i8Features = context.getShaderFloat16Int8Features();
+@@ -440,28 +442,28 @@ public:
+ 			TCU_THROW(NotSupportedError, "storageInputOutput16 not supported");
+ 	}
+ 
+-	virtual std::vector<std::string> getGLSLExtensions() const override
++	std::vector<std::string> getGLSLExtensions() const override
+ 	{
+ 		std::vector<std::string> extensions;
+ 		extensions.push_back("#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require");
+ 		return extensions;
+ 	}
+ 
+-	virtual std::vector<std::string> getAttributeDeclarations() const override
++	std::vector<std::string> getAttributeDeclarations() const override
+ 	{
+ 		std::vector<std::string> declarations;
+ 		declarations.push_back("layout(location=0) in f16vec2 position;");
+ 		return declarations;
+ 	}
+ 
+-	virtual std::vector<std::string> getVertexCoordCalc() const override
++	std::vector<std::string> getVertexCoordCalc() const override
+ 	{
+ 		std::vector<std::string> statements;
+ 		statements.push_back("f16vec2 vertexCoords = position;");
+ 		return statements;
+ 	}
+ 
+-	virtual std::vector<std::string> getDescriptorDeclarations() const override
++	std::vector<std::string> getDescriptorDeclarations() const override
+ 	{
+ 		std::vector<std::string> declarations;
+ 		declarations.reserve(7u);
+@@ -475,7 +477,7 @@ public:
+ 		return declarations;
+ 	}
+ 
+-	virtual std::vector<std::string> getDescriptorCoordCalc(TopologyClass topology) const override
++	std::vector<std::string> getDescriptorCoordCalc(TopologyClass topology) const override
+ 	{
+ 		std::vector<std::string> statements;
+ 
+@@ -506,7 +508,7 @@ public:
+ 		return statements;
+ 	}
+ 
+-	virtual std::vector<vk::VkVertexInputAttributeDescription> getAttributeDescriptions() const override
++	std::vector<vk::VkVertexInputAttributeDescription> getAttributeDescriptions() const override
+ 	{
+ 		std::vector<vk::VkVertexInputAttributeDescription> descriptions;
+ 		descriptions.push_back(vk::makeVertexInputAttributeDescription(0u, 0u, vk::VK_FORMAT_R16G16_SFLOAT, 0u));
+@@ -514,7 +516,7 @@ public:
+ 	}
+ 
+ 	// Vertex attributes for VK_EXT_vertex_input_dynamic_state.
+-	virtual std::vector<vk::VkVertexInputAttributeDescription2EXT> getAttributeDescriptions2() const override
++	std::vector<vk::VkVertexInputAttributeDescription2EXT> getAttributeDescriptions2() const override
+ 	{
+ 		std::vector<vk::VkVertexInputAttributeDescription2EXT> descriptions;
+ 		descriptions.push_back(makeVertexInputAttributeDescription2EXT(0u, 0u, vk::VK_FORMAT_R16G16_SFLOAT, 0u));
+@@ -522,7 +524,7 @@ public:
+ 	}
+ 
+ 	// Vertex bindings for VkPipelineVertexInputStateCreateInfo.
+-	virtual std::vector<vk::VkVertexInputBindingDescription> getBindingDescriptions(const StrideVec& strides) const override
++	std::vector<vk::VkVertexInputBindingDescription> getBindingDescriptions(const StrideVec& strides) const override
+ 	{
+ 		std::vector<vk::VkVertexInputBindingDescription> descriptions;
+ 		descriptions.push_back(vk::makeVertexInputBindingDescription(0u, static_cast<deUint32>(strides.at(0)), vk::VK_VERTEX_INPUT_RATE_VERTEX));
+@@ -530,19 +532,19 @@ public:
+ 	}
+ 
+ 	// Vertex bindings for VK_EXT_vertex_input_dynamic_state.
+-	virtual std::vector<vk::VkVertexInputBindingDescription2EXT> getBindingDescriptions2(const StrideVec& strides) const override
++	std::vector<vk::VkVertexInputBindingDescription2EXT> getBindingDescriptions2(const StrideVec& strides) const override
+ 	{
+ 		std::vector<vk::VkVertexInputBindingDescription2EXT> descriptions;
+ 		descriptions.push_back(makeVertexInputBindingDescription2EXT(0u, static_cast<deUint32>(strides.at(0)), vk::VK_VERTEX_INPUT_RATE_VERTEX));
+ 		return descriptions;
+ 	}
+ 
+-	virtual std::vector<std::vector<deUint8>> createVertexData (const std::vector<tcu::Vec2>& coords, vk::VkDeviceSize dataOffset, vk::VkDeviceSize trailingPadding, const void* paddingPattern, size_t patternSize) const override
++	std::vector<std::vector<deUint8>> createVertexData (const std::vector<tcu::Vec2>& coords, vk::VkDeviceSize dataOffset, vk::VkDeviceSize trailingPadding, const void* paddingPattern, size_t patternSize) const override
+ 	{
+ 		return std::vector<std::vector<deUint8>>(1u, createSingleBindingVertexData<VertexData>(coords, dataOffset, trailingPadding, paddingPattern, patternSize));
+ 	}
+ 
+-	virtual std::vector<vk::VkDeviceSize> getVertexDataStrides() const override
++	std::vector<vk::VkDeviceSize> getVertexDataStrides() const override
+ 	{
+ 		return std::vector<vk::VkDeviceSize>(1u, static_cast<vk::VkDeviceSize>(sizeof(VertexData)));
+ 	}
+@@ -567,7 +569,7 @@ protected:
+ 	};
+ 
+ public:
+-	virtual std::vector<std::string> getAttributeDeclarations() const override
++	std::vector<std::string> getAttributeDeclarations() const override
+ 	{
+ 		std::vector<std::string> declarations;
+ 		declarations.push_back("layout(location=0) in vec2 position;");
+@@ -575,26 +577,26 @@ public:
+ 		return declarations;
+ 	}
+ 
+-	virtual std::vector<std::string> getVertexCoordCalc() const override
++	std::vector<std::string> getVertexCoordCalc() const override
+ 	{
+ 		std::vector<std::string> statements;
+ 		statements.push_back("vec2 vertexCoords = vec2(position.x, position.y * scaleAndOffsetY.x + scaleAndOffsetY.y);");
+ 		return statements;
+ 	}
+ 
+-	virtual std::vector<std::string> getDescriptorDeclarations() const override
++	std::vector<std::string> getDescriptorDeclarations() const override
+ 	{
+ 		DE_ASSERT(false); // This vertex generator should not be used with mesh shaders.
+ 		return std::vector<std::string>();
+ 	}
+ 
+-	virtual std::vector<std::string> getDescriptorCoordCalc(TopologyClass) const override
++	std::vector<std::string> getDescriptorCoordCalc(TopologyClass) const override
+ 	{
+ 		DE_ASSERT(false); // This vertex generator should not be used with mesh shaders.
+ 		return std::vector<std::string>();
+ 	}
+ 
+-	virtual std::vector<vk::VkVertexInputAttributeDescription> getAttributeDescriptions() const override
++	std::vector<vk::VkVertexInputAttributeDescription> getAttributeDescriptions() const override
+ 	{
+ 		std::vector<vk::VkVertexInputAttributeDescription> descriptions;
+ 		descriptions.push_back(vk::makeVertexInputAttributeDescription(0u, 0u, vk::VK_FORMAT_R32G32_SFLOAT, 0u));
+@@ -603,7 +605,7 @@ public:
+ 	}
+ 
+ 	// Vertex attributes for VK_EXT_vertex_input_dynamic_state.
+-	virtual std::vector<vk::VkVertexInputAttributeDescription2EXT> getAttributeDescriptions2() const override
++	std::vector<vk::VkVertexInputAttributeDescription2EXT> getAttributeDescriptions2() const override
+ 	{
+ 		std::vector<vk::VkVertexInputAttributeDescription2EXT> descriptions;
+ 		descriptions.push_back(makeVertexInputAttributeDescription2EXT(0u, 0u, vk::VK_FORMAT_R32G32_SFLOAT, 0u));
+@@ -612,7 +614,7 @@ public:
+ 	}
+ 
+ 	// Vertex bindings for VkPipelineVertexInputStateCreateInfo.
+-	virtual std::vector<vk::VkVertexInputBindingDescription> getBindingDescriptions(const StrideVec& strides) const override
++	std::vector<vk::VkVertexInputBindingDescription> getBindingDescriptions(const StrideVec& strides) const override
+ 	{
+ 		std::vector<vk::VkVertexInputBindingDescription> descriptions;
+ 		descriptions.push_back(vk::makeVertexInputBindingDescription(0u, static_cast<deUint32>(strides.at(0)), vk::VK_VERTEX_INPUT_RATE_VERTEX));
+@@ -621,7 +623,7 @@ public:
+ 	}
+ 
+ 	// Vertex bindings for VK_EXT_vertex_input_dynamic_state.
+-	virtual std::vector<vk::VkVertexInputBindingDescription2EXT> getBindingDescriptions2(const StrideVec& strides) const override
++	std::vector<vk::VkVertexInputBindingDescription2EXT> getBindingDescriptions2(const StrideVec& strides) const override
+ 	{
+ 		std::vector<vk::VkVertexInputBindingDescription2EXT> descriptions;
+ 		descriptions.push_back(makeVertexInputBindingDescription2EXT(0u, static_cast<deUint32>(strides.at(0)), vk::VK_VERTEX_INPUT_RATE_VERTEX));
+@@ -629,7 +631,7 @@ public:
+ 		return descriptions;
+ 	}
+ 
+-	virtual std::vector<std::vector<deUint8>> createVertexData (const std::vector<tcu::Vec2>& coords, vk::VkDeviceSize dataOffset, vk::VkDeviceSize trailingPadding, const void* paddingPattern, size_t patternSize) const override
++	std::vector<std::vector<deUint8>> createVertexData (const std::vector<tcu::Vec2>& coords, vk::VkDeviceSize dataOffset, vk::VkDeviceSize trailingPadding, const void* paddingPattern, size_t patternSize) const override
+ 	{
+ 		// Instance data for 2 instances. Scale and offset like we do with push constants.
+ 		const std::vector<tcu::Vec2> instanceIds
+@@ -646,7 +648,7 @@ public:
+ 		return buffers;
+ 	}
+ 
+-	virtual std::vector<vk::VkDeviceSize> getVertexDataStrides() const override
++	std::vector<vk::VkDeviceSize> getVertexDataStrides() const override
+ 	{
+ 		std::vector<vk::VkDeviceSize> strides;
+ 		strides.reserve(2u);
+@@ -668,21 +670,21 @@ public:
+ 		: m_lastVertex (lastVertex)
+ 	{}
+ 
+-	virtual std::vector<std::string> getAttributeDeclarations() const override
++	std::vector<std::string> getAttributeDeclarations() const override
+ 	{
+ 		auto declarations = VertexWithPadding::getAttributeDeclarations();
+ 		declarations.push_back("layout(location=0) flat out uint colorMultiplier;");
+ 		return declarations;
+ 	}
+ 
+-	virtual std::vector<std::string> getDescriptorDeclarations() const override
++	std::vector<std::string> getDescriptorDeclarations() const override
+ 	{
+ 		auto declarations = VertexWithPadding::getDescriptorDeclarations();
+ 		declarations.push_back("layout(location=0) flat out uint colorMultiplier[];");
+ 		return declarations;
+ 	}
+ 
+-	virtual std::vector<std::string> getVertexCoordCalc() const override
++	std::vector<std::string> getVertexCoordCalc() const override
+ 	{
+ 		auto statements = VertexWithPadding::getVertexCoordCalc();
+ 		statements.push_back("const bool provokingLast = " + std::string(m_lastVertex ? "true" : "false") + ";");
+@@ -690,7 +692,7 @@ public:
+ 		return statements;
+ 	}
+ 
+-	virtual std::vector<std::string> getDescriptorCoordCalc(TopologyClass topology) const override
++	std::vector<std::string> getDescriptorCoordCalc(TopologyClass topology) const override
+ 	{
+ 		auto statements = VertexWithPadding::getDescriptorCoordCalc(topology);
+ 		statements.push_back("const bool provokingLast = " + std::string(m_lastVertex ? "true" : "false") + ";");
+@@ -698,7 +700,7 @@ public:
+ 		return statements;
+ 	}
+ 
+-	virtual std::vector<std::vector<deUint8>> createVertexData (const std::vector<tcu::Vec2>& coords, vk::VkDeviceSize dataOffset, vk::VkDeviceSize trailingPadding, const void* paddingPattern, size_t patternSize) const override
++	std::vector<std::vector<deUint8>> createVertexData (const std::vector<tcu::Vec2>& coords, vk::VkDeviceSize dataOffset, vk::VkDeviceSize trailingPadding, const void* paddingPattern, size_t patternSize) const override
+ 	{
+ 		static constexpr uint32_t kExpectecdCoordCount = 3u;
+ 		DE_UNREF(kExpectecdCoordCount); // For release builds.
+@@ -706,14 +708,14 @@ public:
+ 		return VertexWithPadding::createVertexData(coords, dataOffset, trailingPadding, paddingPattern, patternSize);
+ 	}
+ 
+-	virtual std::vector<std::string> getFragInputAttributes() const override
++	std::vector<std::string> getFragInputAttributes() const override
+ 	{
+ 		std::vector<std::string> declarations;
+ 		declarations.push_back("layout(location=0) flat in uint colorMultiplier;");
+ 		return declarations;
+ 	}
+ 
+-	virtual std::vector<std::string> getFragOutputCalc() const override
++	std::vector<std::string> getFragOutputCalc() const override
+ 	{
+ 		std::vector<std::string> statements;
+ 		statements.push_back("color = color * float(colorMultiplier);");
+@@ -740,7 +742,7 @@ protected:
+ 	};
+ 
+ public:
+-	virtual std::vector<std::string> getAttributeDeclarations() const override
++	std::vector<std::string> getAttributeDeclarations() const override
+ 	{
+ 		std::vector<std::string> declarations;
+ 		declarations.reserve(2u);
+@@ -749,7 +751,7 @@ public:
+ 		return declarations;
+ 	}
+ 
+-	virtual std::vector<std::string> getVertexCoordCalc() const override
++	std::vector<std::string> getVertexCoordCalc() const override
+ 	{
+ 		std::vector<std::string> statements;
+ 		statements.reserve(2u);
+@@ -758,7 +760,7 @@ public:
+ 		return statements;
+ 	}
+ 
+-	virtual std::vector<std::string> getDescriptorDeclarations() const override
++	std::vector<std::string> getDescriptorDeclarations() const override
+ 	{
+ 		std::vector<std::string> declarations;
+ 		declarations.reserve(8u);
+@@ -773,7 +775,7 @@ public:
+ 		return declarations;
+ 	}
+ 
+-	virtual std::vector<std::string> getDescriptorCoordCalc(TopologyClass topology) const override
++	std::vector<std::string> getDescriptorCoordCalc(TopologyClass topology) const override
+ 	{
+ 		std::vector<std::string> statements;
+ 
+@@ -808,7 +810,7 @@ public:
+ 		return statements;
+ 	}
+ 
+-	virtual std::vector<vk::VkVertexInputAttributeDescription> getAttributeDescriptions() const override
++	std::vector<vk::VkVertexInputAttributeDescription> getAttributeDescriptions() const override
+ 	{
+ 		std::vector<vk::VkVertexInputAttributeDescription> descriptions;
+ 		descriptions.push_back(vk::makeVertexInputAttributeDescription(0u, 0u, vk::VK_FORMAT_R32G32_SFLOAT, 0u));
+@@ -816,7 +818,7 @@ public:
+ 		return descriptions;
+ 	}
+ 
+-	virtual std::vector<vk::VkVertexInputAttributeDescription2EXT> getAttributeDescriptions2() const override
++	std::vector<vk::VkVertexInputAttributeDescription2EXT> getAttributeDescriptions2() const override
+ 	{
+ 		std::vector<vk::VkVertexInputAttributeDescription2EXT> descriptions;
+ 		descriptions.push_back(makeVertexInputAttributeDescription2EXT(0u, 0u, vk::VK_FORMAT_R32G32_SFLOAT, 0u));
+@@ -824,26 +826,26 @@ public:
+ 		return descriptions;
+ 	}
+ 
+-	virtual std::vector<vk::VkVertexInputBindingDescription> getBindingDescriptions(const StrideVec& strides) const override
++	std::vector<vk::VkVertexInputBindingDescription> getBindingDescriptions(const StrideVec& strides) const override
+ 	{
+ 		std::vector<vk::VkVertexInputBindingDescription> descriptions;
+ 		descriptions.push_back(vk::makeVertexInputBindingDescription(0u, static_cast<deUint32>(strides.at(0)), vk::VK_VERTEX_INPUT_RATE_VERTEX));
+ 		return descriptions;
+ 	}
+ 
+-	virtual std::vector<vk::VkVertexInputBindingDescription2EXT> getBindingDescriptions2(const StrideVec& strides) const override
++	std::vector<vk::VkVertexInputBindingDescription2EXT> getBindingDescriptions2(const StrideVec& strides) const override
+ 	{
+ 		std::vector<vk::VkVertexInputBindingDescription2EXT> descriptions;
+ 		descriptions.push_back(makeVertexInputBindingDescription2EXT(0u, static_cast<deUint32>(strides.at(0)), vk::VK_VERTEX_INPUT_RATE_VERTEX));
+ 		return descriptions;
+ 	}
+ 
+-	virtual std::vector<std::vector<deUint8>> createVertexData (const std::vector<tcu::Vec2>& coords, vk::VkDeviceSize dataOffset, vk::VkDeviceSize trailingPadding, const void* paddingPattern, size_t patternSize) const override
++	std::vector<std::vector<deUint8>> createVertexData (const std::vector<tcu::Vec2>& coords, vk::VkDeviceSize dataOffset, vk::VkDeviceSize trailingPadding, const void* paddingPattern, size_t patternSize) const override
+ 	{
+ 		return std::vector<std::vector<deUint8>>(1u, createSingleBindingVertexData<VertexData>(coords, dataOffset, trailingPadding, paddingPattern, patternSize));
+ 	}
+ 
+-	virtual std::vector<vk::VkDeviceSize> getVertexDataStrides() const override
++	std::vector<vk::VkDeviceSize> getVertexDataStrides() const override
+ 	{
+ 		return std::vector<vk::VkDeviceSize>(1u, static_cast<vk::VkDeviceSize>(sizeof(VertexData)));
+ 	}
+@@ -907,7 +909,7 @@ protected:
+ 	};
+ 
+ public:
+-	virtual std::vector<std::string> getAttributeDeclarations() const override
++	std::vector<std::string> getAttributeDeclarations() const override
+ 	{
+ 		std::vector<std::string> declarations;
+ 		declarations.reserve(3u);
+@@ -919,7 +921,7 @@ public:
+ 		return declarations;
+ 	}
+ 
+-	virtual std::vector<std::string> getVertexCoordCalc() const override
++	std::vector<std::string> getVertexCoordCalc() const override
+ 	{
+ 		std::vector<std::string> statements;
+ 		statements.reserve(2u);
+@@ -930,7 +932,7 @@ public:
+ 		return statements;
+ 	}
+ 
+-	virtual std::vector<std::string> getDescriptorDeclarations() const override
++	std::vector<std::string> getDescriptorDeclarations() const override
+ 	{
+ 		std::vector<std::string> declarations;
+ 		declarations.reserve(23u);
+@@ -962,7 +964,7 @@ public:
+ 		return declarations;
+ 	}
+ 
+-	virtual std::vector<std::string> getDescriptorCoordCalc(TopologyClass topology) const override
++	std::vector<std::string> getDescriptorCoordCalc(TopologyClass topology) const override
+ 	{
+ 		std::vector<std::string> statements;
+ 
+@@ -1001,7 +1003,7 @@ public:
+ 		return statements;
+ 	}
+ 
+-	virtual std::vector<vk::VkVertexInputAttributeDescription> getAttributeDescriptions() const override
++	std::vector<vk::VkVertexInputAttributeDescription> getAttributeDescriptions() const override
+ 	{
+ 		// We create the descriptions vector out of order to make it more interesting. See the attribute declarations.
+ 		std::vector<vk::VkVertexInputAttributeDescription> descriptions;
+@@ -1014,7 +1016,7 @@ public:
+ 		return descriptions;
+ 	}
+ 
+-	virtual std::vector<vk::VkVertexInputAttributeDescription2EXT> getAttributeDescriptions2() const override
++	std::vector<vk::VkVertexInputAttributeDescription2EXT> getAttributeDescriptions2() const override
+ 	{
+ 		// We create the descriptions vector out of order to make it more interesting. See the attribute declarations.
+ 		std::vector<vk::VkVertexInputAttributeDescription2EXT> descriptions;
+@@ -1027,7 +1029,7 @@ public:
+ 		return descriptions;
+ 	}
+ 
+-	virtual std::vector<vk::VkVertexInputBindingDescription> getBindingDescriptions(const StrideVec& strides) const override
++	std::vector<vk::VkVertexInputBindingDescription> getBindingDescriptions(const StrideVec& strides) const override
+ 	{
+ 		// Provide descriptions out of order to make it more interesting.
+ 		std::vector<vk::VkVertexInputBindingDescription> descriptions;
+@@ -1043,7 +1045,7 @@ public:
+ 		return descriptions;
+ 	}
+ 
+-	virtual std::vector<vk::VkVertexInputBindingDescription2EXT> getBindingDescriptions2(const StrideVec& strides) const override
++	std::vector<vk::VkVertexInputBindingDescription2EXT> getBindingDescriptions2(const StrideVec& strides) const override
+ 	{
+ 		// Provide descriptions out of order to make it more interesting.
+ 		std::vector<vk::VkVertexInputBindingDescription2EXT> descriptions;
+@@ -1059,7 +1061,7 @@ public:
+ 		return descriptions;
+ 	}
+ 
+-	virtual std::vector<std::vector<deUint8>> createVertexData (const std::vector<tcu::Vec2>& coords, vk::VkDeviceSize dataOffset, vk::VkDeviceSize trailingPadding, const void* paddingPattern, size_t patternSize) const override
++	std::vector<std::vector<deUint8>> createVertexData (const std::vector<tcu::Vec2>& coords, vk::VkDeviceSize dataOffset, vk::VkDeviceSize trailingPadding, const void* paddingPattern, size_t patternSize) const override
+ 	{
+ 		std::vector<std::vector<deUint8>> result;
+ 		result.reserve(6u);
+@@ -1074,7 +1076,7 @@ public:
+ 		return result;
+ 	}
+ 
+-	virtual std::vector<vk::VkDeviceSize> getVertexDataStrides() const override
++	std::vector<vk::VkDeviceSize> getVertexDataStrides() const override
+ 	{
+ 		std::vector<vk::VkDeviceSize> strides;
+ 		strides.reserve(6u);
+@@ -1411,6 +1413,7 @@ class ReferenceColorGenerator
+ {
+ public:
+ 	typedef std::unique_ptr<ReferenceColorGenerator> P;
++	virtual ~ReferenceColorGenerator () {}
+ 
+ 	virtual void	operator()	(tcu::PixelBufferAccess&)	const = 0;
+ 	virtual P		clone		()							const = 0;
+diff --git a/external/vulkancts/modules/vulkan/pipeline/vktPipelineTimestampTests.cpp b/external/vulkancts/modules/vulkan/pipeline/vktPipelineTimestampTests.cpp
+index d3e8d5ca3..8ed6bb91c 100644
+--- a/external/vulkancts/modules/vulkan/pipeline/vktPipelineTimestampTests.cpp
++++ b/external/vulkancts/modules/vulkan/pipeline/vktPipelineTimestampTests.cpp
+@@ -254,7 +254,7 @@ public:
+ 														 const bool						hostQueryReset,
+ 														 const bool						transferOnlyQueue,
+ 														 const VkQueryResultFlags		queryResultFlags);
+-								~TimestampTestParam			(void);
++	virtual						~TimestampTestParam			(void);
+ 	virtual const std::string	generateTestName			(void) const;
+ 	PipelineConstructionType	getPipelineConstructionType	(void) const	{ return m_pipelineConstructionType; }
+ 	StageFlagVector				getStageVector				(void) const	{ return m_stageVec; }
+diff --git a/external/vulkancts/modules/vulkan/ray_query/vktRayQueryAccelerationStructuresTests.cpp b/external/vulkancts/modules/vulkan/ray_query/vktRayQueryAccelerationStructuresTests.cpp
+index 752715f43..2aeba474f 100644
+--- a/external/vulkancts/modules/vulkan/ray_query/vktRayQueryAccelerationStructuresTests.cpp
++++ b/external/vulkancts/modules/vulkan/ray_query/vktRayQueryAccelerationStructuresTests.cpp
+@@ -172,6 +172,8 @@ TestConfiguration::~TestConfiguration()
+ class SceneBuilder
+ {
+ public:
++	virtual ~SceneBuilder () {}
++
+ 	virtual std::vector<de::SharedPtr<BottomLevelAccelerationStructure>>	initBottomAccelerationStructures	(Context&							context,
+ 																												 TestParams&						testParams) = 0;
+ 	virtual de::MovePtr<TopLevelAccelerationStructure>						initTopAccelerationStructure		(Context&							context,
+diff --git a/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingAccelerationStructuresTests.cpp b/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingAccelerationStructuresTests.cpp
+index 9b440e66e..b3c8efaab 100644
+--- a/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingAccelerationStructuresTests.cpp
++++ b/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingAccelerationStructuresTests.cpp
+@@ -145,6 +145,8 @@ struct TestParams;
+ class TestConfiguration
+ {
+ public:
++	virtual ~TestConfiguration () {}
++
+ 	virtual std::vector<de::SharedPtr<BottomLevelAccelerationStructure>>	initBottomAccelerationStructures	(Context&							context,
+ 																												 TestParams&						testParams) = 0;
+ 	virtual de::MovePtr<TopLevelAccelerationStructure>						initTopAccelerationStructure		(Context&							context,
+@@ -3271,6 +3273,7 @@ protected:
+ 
+ struct ASInterface
+ {
++	virtual ~ASInterface () {}
+ 	virtual VkAccelerationStructureKHR getPtr() const = 0;
+ 	virtual VkAccelerationStructureBuildSizesInfoKHR getStructureBuildSizes() const = 0;
+ 	virtual ASInterfacePtr clone (Context& ctx, VkAccelerationStructureBuildTypeKHR buildType, const VkCommandBuffer cmd, VkDeviceSize size) = 0;
+diff --git a/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingCallableShadersTests.cpp b/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingCallableShadersTests.cpp
+index 90744b000..22eea0fca 100644
+--- a/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingCallableShadersTests.cpp
++++ b/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingCallableShadersTests.cpp
+@@ -77,6 +77,8 @@ struct TestParams;
+ class TestConfiguration
+ {
+ public:
++	virtual ~TestConfiguration () {}
++
+ 	virtual std::vector<de::SharedPtr<BottomLevelAccelerationStructure>>	initBottomAccelerationStructures	(Context&							context,
+ 																												 TestParams&						testParams) = 0;
+ 	virtual de::MovePtr<TopLevelAccelerationStructure>						initTopAccelerationStructure		(Context&							context,
+diff --git a/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingCaptureReplayTests.cpp b/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingCaptureReplayTests.cpp
+index 5e9891c6a..bbbc876ea 100644
+--- a/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingCaptureReplayTests.cpp
++++ b/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingCaptureReplayTests.cpp
+@@ -127,6 +127,8 @@ struct PipelineData
+ class TestConfiguration
+ {
+ public:
++	virtual ~TestConfiguration () {}
++
+ 	virtual std::vector<de::SharedPtr<BottomLevelAccelerationStructure>>	initBottomAccelerationStructures	(Context&							context,
+ 																												 TestParams&						testParams) = 0;
+ 	virtual de::MovePtr<TopLevelAccelerationStructure>						initTopAccelerationStructure		(Context&							context,
+diff --git a/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingPipelineFlagsTests.cpp b/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingPipelineFlagsTests.cpp
+index 605f57245..a05959d1e 100644
+--- a/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingPipelineFlagsTests.cpp
++++ b/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingPipelineFlagsTests.cpp
+@@ -219,6 +219,8 @@ private:
+ 	template<class rayPayloadEXT, class shaderRecordEXT>
+ 	struct Shader
+ 	{
++		virtual ~Shader () {}
++
+ 		virtual bool			ignoreIntersection	(const rayPayloadEXT&, const shaderRecordEXT&) const { return false; }
+ 		virtual	rayPayloadEXT	invoke				(const rayPayloadEXT&, const shaderRecordEXT&) const = 0;
+ 	};
+diff --git a/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingShaderBindingTableTests.cpp b/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingShaderBindingTableTests.cpp
+index 3cb01a919..f471c7f91 100644
+--- a/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingShaderBindingTableTests.cpp
++++ b/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingShaderBindingTableTests.cpp
+@@ -81,6 +81,8 @@ struct TestParams;
+ class TestConfiguration
+ {
+ public:
++	virtual ~TestConfiguration () {}
++
+ 	virtual std::vector<de::SharedPtr<BottomLevelAccelerationStructure>>	initBottomAccelerationStructures	(Context&							context,
+ 																												 TestParams&						testParams) = 0;
+ 	virtual de::MovePtr<TopLevelAccelerationStructure>						initTopAccelerationStructure		(Context&							context,
+diff --git a/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingTraversalControlTests.cpp b/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingTraversalControlTests.cpp
+index e3da91ba6..5a1a3256d 100644
+--- a/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingTraversalControlTests.cpp
++++ b/external/vulkancts/modules/vulkan/ray_tracing/vktRayTracingTraversalControlTests.cpp
+@@ -83,6 +83,8 @@ struct TestParams;
+ class TestConfiguration
+ {
+ public:
++	virtual ~TestConfiguration () {}
++
+ 	virtual std::vector<de::SharedPtr<BottomLevelAccelerationStructure>>	initBottomAccelerationStructures	(Context&							context,
+ 																												 TestParams&						testParams) = 0;
+ 	virtual de::MovePtr<TopLevelAccelerationStructure>						initTopAccelerationStructure		(Context&							context,
+diff --git a/external/vulkancts/modules/vulkan/renderpass/vktRenderPassSubpassDependencyTests.cpp b/external/vulkancts/modules/vulkan/renderpass/vktRenderPassSubpassDependencyTests.cpp
+index 5da7aa233..08b250f97 100644
+--- a/external/vulkancts/modules/vulkan/renderpass/vktRenderPassSubpassDependencyTests.cpp
++++ b/external/vulkancts/modules/vulkan/renderpass/vktRenderPassSubpassDependencyTests.cpp
+@@ -153,6 +153,8 @@ public:
+ 		m_outputs[0].type	= rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~DepthVertShader () {}
++
+ 	void shadeVertices (const rr::VertexAttrib* inputs, rr::VertexPacket* const* packets, const int numPackets) const
+ 	{
+ 		for (int packetNdx = 0; packetNdx < numPackets; ++packetNdx)
+@@ -178,6 +180,8 @@ public:
+ 		m_outputs[0].type	= rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~DepthFragShader () {}
++
+ 	void shadeFragments (rr::FragmentPacket* packets, const int numPackets, const rr::FragmentShadingContext& context) const
+ 	{
+ 		for (int packetNdx = 0; packetNdx < numPackets; ++packetNdx)
+@@ -202,6 +206,8 @@ public:
+ 		m_inputs[0].type	= rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~SelfDependencyBackwardsVertShader () {}
++
+ 	void shadeVertices (const rr::VertexAttrib* inputs, rr::VertexPacket* const* packets, const int numPackets) const
+ 	{
+ 		for (int packetNdx = 0; packetNdx < numPackets; ++packetNdx)
+@@ -222,6 +228,8 @@ public:
+ 		m_outputs[0].type	= rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~SelfDependencyBackwardsFragShader () {}
++
+ 	void shadeFragments (rr::FragmentPacket* packets, const int numPackets, const rr::FragmentShadingContext& context) const
+ 	{
+ 		DE_UNREF(packets);
+diff --git a/external/vulkancts/modules/vulkan/shaderexecutor/vktShaderBuiltinPrecisionTests.cpp b/external/vulkancts/modules/vulkan/shaderexecutor/vktShaderBuiltinPrecisionTests.cpp
+index 396ccf764..77ffb83a8 100644
+--- a/external/vulkancts/modules/vulkan/shaderexecutor/vktShaderBuiltinPrecisionTests.cpp
++++ b/external/vulkancts/modules/vulkan/shaderexecutor/vktShaderBuiltinPrecisionTests.cpp
+@@ -5650,6 +5650,8 @@ template <typename T>
+ class Sampling
+ {
+ public:
++	virtual ~Sampling () {}
++
+ 	virtual void	genFixeds			(const FloatFormat&, const Precision, vector<T>&, const Interval&)	const {}
+ 	virtual T		genRandom			(const FloatFormat&,const Precision, Random&, const Interval&)		const { return T(); }
+ 	virtual void	removeNotInRange	(vector<T>&, const Interval&, const Precision)						const {}
+diff --git a/external/vulkancts/modules/vulkan/shaderrender/vktShaderRenderBuiltinVarTests.cpp b/external/vulkancts/modules/vulkan/shaderrender/vktShaderRenderBuiltinVarTests.cpp
+index f4d8db2c2..a03fea26f 100644
+--- a/external/vulkancts/modules/vulkan/shaderrender/vktShaderRenderBuiltinVarTests.cpp
++++ b/external/vulkancts/modules/vulkan/shaderrender/vktShaderRenderBuiltinVarTests.cpp
+@@ -75,6 +75,8 @@ public:
+ 		m_inputs[0].type = rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~FrontFacingVertexShader () {}
++
+ 	void shadeVertices (const rr::VertexAttrib* inputs, rr::VertexPacket* const* packets, const int numPackets) const
+ 	{
+ 		for (int packetNdx = 0; packetNdx < numPackets; ++packetNdx)
+@@ -95,6 +97,8 @@ public:
+ 		m_outputs[0].type = rr::GENERICVECTYPE_FLOAT;
+ 	}
+ 
++	virtual ~FrontFacingFragmentShader () {}
++
+ 	void shadeFragments (rr::FragmentPacket* , const int numPackets, const rr::FragmentShadingContext& context) const
+ 	{
+ 		tcu::Vec4 color;
+diff --git a/external/vulkancts/modules/vulkan/shaderrender/vktShaderRenderTextureGatherTests.cpp b/external/vulkancts/modules/vulkan/shaderrender/vktShaderRenderTextureGatherTests.cpp
+index 018f19f5d..c98de21e5 100644
+--- a/external/vulkancts/modules/vulkan/shaderrender/vktShaderRenderTextureGatherTests.cpp
++++ b/external/vulkancts/modules/vulkan/shaderrender/vktShaderRenderTextureGatherTests.cpp
+@@ -683,6 +683,8 @@ static bool verifyGatherOffsets (TestLog&						log,
+ class PixelCompareRefZ
+ {
+ public:
++	virtual ~PixelCompareRefZ () {}
++
+ 	virtual float operator() (const IVec2& pixCoord) const = 0;
+ };
+ 
+diff --git a/external/vulkancts/modules/vulkan/spirv_assembly/vktSpvAsm64bitCompareTests.cpp b/external/vulkancts/modules/vulkan/spirv_assembly/vktSpvAsm64bitCompareTests.cpp
+index 60b72a7dc..f9355055f 100644
+--- a/external/vulkancts/modules/vulkan/spirv_assembly/vktSpvAsm64bitCompareTests.cpp
++++ b/external/vulkancts/modules/vulkan/spirv_assembly/vktSpvAsm64bitCompareTests.cpp
+@@ -55,6 +55,8 @@ template <typename T>
+ class CompareOperation
+ {
+ public:
++	virtual ~CompareOperation () {}
++
+ 	virtual std::string		spirvName	()					const = 0;
+ 	virtual bool			run			(T left, T right)	const = 0;
+ };
+@@ -65,6 +67,7 @@ class DoubleCompareOperation: public CompareOperation<double>
+ public:
+ 	struct BasicImplementation
+ 	{
++		virtual ~BasicImplementation () {}
+ 		virtual std::string	nameSuffix	()							const = 0;
+ 		virtual bool		run			(double left, double right)	const = 0; // No NaNs here.
+ 	};
+@@ -127,6 +130,8 @@ class IntCompareOperation: public CompareOperation<IntClass>
+ public:
+ 	struct Implementation
+ 	{
++		virtual ~Implementation () {}
++
+ 		virtual std::string	typeChar	()								const = 0;
+ 		virtual std::string	opName		()								const = 0;
+ 		virtual bool		run			(IntClass left, IntClass right)	const = 0;
+diff --git a/external/vulkancts/modules/vulkan/spirv_assembly/vktSpvAsmInstructionTests.cpp b/external/vulkancts/modules/vulkan/spirv_assembly/vktSpvAsmInstructionTests.cpp
+index 68d2d0a43..c6c78d38c 100644
+--- a/external/vulkancts/modules/vulkan/spirv_assembly/vktSpvAsmInstructionTests.cpp
++++ b/external/vulkancts/modules/vulkan/spirv_assembly/vktSpvAsmInstructionTests.cpp
+@@ -14397,6 +14397,8 @@ do { \
+ 			{
+ 			}
+ 
++			virtual ~fp16PerComponent () {}
++
+ 			bool			callOncePerComponent	()									{ return true; }
+ 			deUint32		getComponentValidity	()									{ return static_cast<deUint32>(-1); }
+ 
+diff --git a/external/vulkancts/modules/vulkan/spirv_assembly/vktSpvAsmUtils.hpp b/external/vulkancts/modules/vulkan/spirv_assembly/vktSpvAsmUtils.hpp
+index 00e73427c..779cd4b35 100644
+--- a/external/vulkancts/modules/vulkan/spirv_assembly/vktSpvAsmUtils.hpp
++++ b/external/vulkancts/modules/vulkan/spirv_assembly/vktSpvAsmUtils.hpp
+@@ -153,6 +153,8 @@ public:
+ 	{
+ 	}
+ 
++	virtual ~Resource () {}
++
+ 	virtual const BufferSp&			getBuffer			() const							{ return buffer; }
+ 	virtual void					getBytes			(std::vector<deUint8>& bytes) const	{ buffer->getBytes(bytes); }
+ 	virtual size_t					getByteSize			(void) const						{ return buffer->getByteSize(); }
+diff --git a/external/vulkancts/modules/vulkan/synchronization/vktSynchronizationWin32KeyedMutexTests.cpp b/external/vulkancts/modules/vulkan/synchronization/vktSynchronizationWin32KeyedMutexTests.cpp
+index 842360da8..fe4d30034 100644
+--- a/external/vulkancts/modules/vulkan/synchronization/vktSynchronizationWin32KeyedMutexTests.cpp
++++ b/external/vulkancts/modules/vulkan/synchronization/vktSynchronizationWin32KeyedMutexTests.cpp
+@@ -1338,7 +1338,7 @@ public:
+ #endif
+ 	}
+ 
+-	~DX11OperationSupport ()
++	virtual ~DX11OperationSupport ()
+ 	{
+ #if (DE_OS == DE_OS_WIN32)
+ 		cleanup ();
+diff --git a/external/vulkancts/modules/vulkan/vktBuildPrograms.cpp b/external/vulkancts/modules/vulkan/vktBuildPrograms.cpp
+index 41ab4056f..c9937792b 100644
+--- a/external/vulkancts/modules/vulkan/vktBuildPrograms.cpp
++++ b/external/vulkancts/modules/vulkan/vktBuildPrograms.cpp
+@@ -60,6 +60,8 @@ typedef de::SharedPtr<vk::ProgramBinary>	ProgramBinarySp;
+ class Task
+ {
+ public:
++	virtual ~Task () {}
++
+ 	virtual void	execute		(void) = 0;
+ };
+ 
+diff --git a/external/vulkancts/modules/vulkan/ycbcr/vktYCbCrViewTests.cpp b/external/vulkancts/modules/vulkan/ycbcr/vktYCbCrViewTests.cpp
+index a1c207121..54cc9c7e9 100644
+--- a/external/vulkancts/modules/vulkan/ycbcr/vktYCbCrViewTests.cpp
++++ b/external/vulkancts/modules/vulkan/ycbcr/vktYCbCrViewTests.cpp
+@@ -427,6 +427,7 @@ void checkSupport(Context& context, TestParameters params)
+ 
+ struct PixelSetter
+ {
++	virtual ~PixelSetter () {}
+ 	PixelSetter (const tcu::PixelBufferAccess& access) : m_access(access) {}
+ 	virtual void setPixel(const tcu::Vec4& rawValues, int x, int y, int z) const = 0;
+ protected:
+diff --git a/framework/common/tcuCommandLine.hpp b/framework/common/tcuCommandLine.hpp
+index f2c74c768..a2a309582 100644
+--- a/framework/common/tcuCommandLine.hpp
++++ b/framework/common/tcuCommandLine.hpp
+@@ -142,7 +142,7 @@ public:
+ 									CommandLine						(void);
+ 									CommandLine						(int argc, const char* const* argv);
+ 	explicit						CommandLine						(const std::string& cmdLine);
+-									~CommandLine					(void);
++	virtual							~CommandLine					(void);
+ 
+ 	bool							parse							(int argc, const char* const* argv);
+ 	bool							parse							(const std::string& cmdLine);
+diff --git a/framework/egl/wrapper/eglwFunctions.hpp b/framework/egl/wrapper/eglwFunctions.hpp
+index 341b31713..123213553 100644
+--- a/framework/egl/wrapper/eglwFunctions.hpp
++++ b/framework/egl/wrapper/eglwFunctions.hpp
+@@ -49,6 +49,7 @@ typedef EGLW_APICALL void (EGLW_APIENTRY* GenericFuncType) (void);
+ class FunctionLoader
+ {
+ public:
++	virtual ~FunctionLoader () {}
+ 	virtual GenericFuncType		get		(const char* name) const = 0;
+ };
+ 
+diff --git a/framework/egl/wrapper/eglwLibrary.hpp b/framework/egl/wrapper/eglwLibrary.hpp
+index d3d8fefc1..ca7d4e673 100644
+--- a/framework/egl/wrapper/eglwLibrary.hpp
++++ b/framework/egl/wrapper/eglwLibrary.hpp
+@@ -37,6 +37,8 @@ namespace eglw
+ class Library
+ {
+ public:
++	virtual ~Library () {}
++
+ 	// Entry points:
+ 	// virtual EGLBoolean		initialize	(EGLDisplay ...) const = 0;
+ #include "eglwLibrary.inl"
+diff --git a/framework/opengl/gluShaderLibrary.hpp b/framework/opengl/gluShaderLibrary.hpp
+index 5e8b1d184..438d5c04b 100644
+--- a/framework/opengl/gluShaderLibrary.hpp
++++ b/framework/opengl/gluShaderLibrary.hpp
+@@ -196,6 +196,7 @@ bool	isCapabilityRequired(CapabilityFlag capabilityFlag, const ShaderCaseSpecifi
+ class ShaderCaseFactory
+ {
+ public:
++	virtual ~ShaderCaseFactory () {}
+ 	virtual tcu::TestCaseGroup*	createGroup	(const std::string& name, const std::string& description, const std::vector<tcu::TestNode*>& children) = 0;
+ 	virtual tcu::TestCase*		createCase	(const std::string& name, const std::string& description, const ShaderCaseSpecification& spec) = 0;
+ };
+diff --git a/framework/opengl/wrapper/glwFunctionLoader.hpp b/framework/opengl/wrapper/glwFunctionLoader.hpp
+index 3f869e035..943717ace 100644
+--- a/framework/opengl/wrapper/glwFunctionLoader.hpp
++++ b/framework/opengl/wrapper/glwFunctionLoader.hpp
+@@ -33,6 +33,8 @@ typedef GLW_APICALL void (GLW_APIENTRY* GenericFuncType) (void);
+ class FunctionLoader
+ {
+ public:
++	virtual ~FunctionLoader () {}
++
+ 	virtual GenericFuncType		get			(const char* name) const = 0;
+ };
+ 
+diff --git a/framework/referencerenderer/rrRenderer.cpp b/framework/referencerenderer/rrRenderer.cpp
+index b07479ed1..94233c5ba 100644
+--- a/framework/referencerenderer/rrRenderer.cpp
++++ b/framework/referencerenderer/rrRenderer.cpp
+@@ -209,6 +209,7 @@ tcu::Vec4 clipVec4ToVec4 (const ClipVec4& v)
+ class ClipVolumePlane
+ {
+ public:
++	virtual ~ClipVolumePlane () {}
+ 	virtual bool		pointInClipVolume			(const ClipVec4& p) const						= 0;
+ 	virtual ClipFloat	clipLineSegmentEnd			(const ClipVec4& v0, const ClipVec4& v1) const	= 0;
+ 	virtual ClipVec4	getLineIntersectionPoint	(const ClipVec4& v0, const ClipVec4& v1) const	= 0;
+diff --git a/framework/referencerenderer/rrShaders.hpp b/framework/referencerenderer/rrShaders.hpp
+index 748980b01..ccb2ba778 100644
+--- a/framework/referencerenderer/rrShaders.hpp
++++ b/framework/referencerenderer/rrShaders.hpp
+@@ -107,7 +107,7 @@ public:
+ 	const std::vector<VertexOutputInfo>&	getOutputs			(void) const	{ return m_outputs;	}
+ 
+ protected:
+-											~VertexShader		(void) {} // \note Renderer will not delete any objects passed in.
++	virtual									~VertexShader		(void) {} // \note Renderer will not delete any objects passed in.
+ 
+ 	std::vector<VertexInputInfo>			m_inputs;
+ 	std::vector<VertexOutputInfo>			m_outputs;
+@@ -130,7 +130,7 @@ public:
+ 	virtual void							shadeFragments		(FragmentPacket* packets, const int numPackets, const FragmentShadingContext& context) const = 0; // \note numPackets must be greater than zero.
+ 
+ protected:
+-											~FragmentShader		(void) {} // \note Renderer will not delete any objects passed in.
++	virtual									~FragmentShader		(void) {} // \note Renderer will not delete any objects passed in.
+ 
+ 	std::vector<FragmentInputInfo>			m_inputs;
+ 	std::vector<FragmentOutputInfo>			m_outputs;
+@@ -188,6 +188,8 @@ public:
+ 	inline size_t							getNumInvocations	(void) const { return m_numInvocations; }
+ 
+ protected:
++	virtual									~GeometryShader		(void) {}
++
+ 	const GeometryShaderInputType			m_inputType;
+ 	const GeometryShaderOutputType			m_outputType;
+ 	const size_t							m_numVerticesOut;
+-- 
+2.44.0
+

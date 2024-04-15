@@ -22,7 +22,7 @@ struct TestDef {
    void (*func)();
 };
 
-extern std::map<std::string, TestDef> tests;
+extern std::map<std::string, TestDef> *tests;
 extern FILE* output;
 
 bool set_variant(const char* name);
@@ -46,7 +46,9 @@ void skip_test(const char* fmt, ...);
    static void struct_name();                                                                      \
    static __attribute__((constructor)) void CONCAT2(add_test_, __COUNTER__)()                      \
    {                                                                                               \
-      tests[#name] = (TestDef){#name, ACO_TEST_BUILD_ROOT "/" __FILE__, &struct_name};             \
+      if (!tests)                                                                                  \
+         tests = new std::map<std::string, TestDef>;                                               \
+      (*tests)[#name] = (TestDef){#name, ACO_TEST_BUILD_ROOT "/" __FILE__, &struct_name};          \
    }                                                                                               \
    static void struct_name()                                                                       \
    {

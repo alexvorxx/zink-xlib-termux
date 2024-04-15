@@ -33,7 +33,7 @@ static const char* help_message =
    "  -l --list   List unit tests.\n"
    "  --no-check  Print test output instead of checking it.\n";
 
-std::map<std::string, TestDef> tests;
+std::map<std::string, TestDef> *tests = NULL;
 FILE* output = NULL;
 
 static TestDef current_test;
@@ -225,8 +225,11 @@ main(int argc, char** argv)
       return 99;
    }
 
+   if (!tests)
+      tests = new std::map<std::string, TestDef>;
+
    if (do_list) {
-      for (auto test : tests)
+      for (auto test : *tests)
          printf("%s\n", test.first.c_str());
       return 99;
    }
@@ -253,7 +256,7 @@ main(int argc, char** argv)
 
    aco::init();
 
-   for (auto pair : tests) {
+   for (auto pair : *tests) {
       bool found = names.empty();
       bool all_variants = names.empty();
       std::set<std::string> variants;

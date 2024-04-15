@@ -816,7 +816,11 @@ a7xx_750 = A7XXProps(
         sysmem_vpc_attr_buf_size = 0x20000,
         gmem_vpc_attr_buf_size = 0xc000,
         ubwc_unorm_snorm_int_compatible = True,
-        supports_ibo_ubwc = True,
+        # a750 has a bug where writing and then reading a UBWC-compressed IBO
+        # requires flushing UCHE. This is reproducible in many CTS tests, for
+        # example dEQP-VK.image.load_store.with_format.2d.*. Disable this for
+        # now.
+        #supports_ibo_ubwc = True,
     )
 
 a730_magic_regs = dict(

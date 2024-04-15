@@ -242,6 +242,7 @@ enum zink_debug {
    ZINK_DEBUG_MEM = (1<<18),
    ZINK_DEBUG_QUIET = (1<<19),
    ZINK_DEBUG_IOOPT = (1<<20),
+   ZINK_DEBUG_NOPC = (1<<21),
 };
 
 enum zink_pv_emulation_primitive {

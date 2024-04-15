@@ -2217,16 +2217,18 @@ zink_create_gfx_shader_state(struct pipe_context *pctx, const struct pipe_shader
 
    void *ret = zink_shader_create(zink_screen(pctx->screen), nir);
 
-   if (nir->info.separate_shader && zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB &&
-       (screen->info.have_EXT_shader_object ||
-       (screen->info.have_EXT_graphics_pipeline_library && (nir->info.stage == MESA_SHADER_FRAGMENT || nir->info.stage == MESA_SHADER_VERTEX)))) {
-      struct zink_shader *zs = ret;
-      /* sample shading can't precompile */
-      if (nir->info.stage != MESA_SHADER_FRAGMENT || !nir->info.fs.uses_sample_shading) {
-         if (zink_debug & ZINK_DEBUG_NOBGC)
-            precompile_separate_shader_job(zs, screen, 0);
-         else
-            util_queue_add_job(&screen->cache_get_thread, zs, &zs->precompile.fence, precompile_separate_shader_job, NULL, 0);
+   if (!(zink_debug & ZINK_DEBUG_NOPC)) {
+      if (nir->info.separate_shader && zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB &&
+         (screen->info.have_EXT_shader_object ||
+         (screen->info.have_EXT_graphics_pipeline_library && (nir->info.stage == MESA_SHADER_FRAGMENT || nir->info.stage == MESA_SHADER_VERTEX)))) {
+         struct zink_shader *zs = ret;
+         /* sample shading can't precompile */
+         if (nir->info.stage != MESA_SHADER_FRAGMENT || !nir->info.fs.uses_sample_shading) {
+            if (zink_debug & ZINK_DEBUG_NOBGC)
+               precompile_separate_shader_job(zs, screen, 0);
+            else
+               util_queue_add_job(&screen->cache_get_thread, zs, &zs->precompile.fence, precompile_separate_shader_job, NULL, 0);
+         }
       }
    }
    ralloc_free(nir);
@@ -2296,6 +2298,10 @@ zink_program_init(struct zink_context *ctx)
                  offsetof(struct zink_gfx_input_key, element_state) - offsetof(struct zink_gfx_input_key, input));
 
    STATIC_ASSERT(sizeof(union zink_shader_key_optimal) == sizeof(uint32_t));
+
+   /* no precompile at all */
+   if (zink_debug & ZINK_DEBUG_NOPC)
+      return;
 
    struct zink_screen *screen = zink_screen(ctx->base.screen);
    if (screen->info.have_EXT_graphics_pipeline_library || screen->info.have_EXT_shader_object || zink_debug & ZINK_DEBUG_SHADERDB)

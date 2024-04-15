@@ -118,6 +118,7 @@ zink_debug_options[] = {
    { "mem", ZINK_DEBUG_MEM, "Debug memory allocations" },
    { "quiet", ZINK_DEBUG_QUIET, "Suppress warnings" },
    { "ioopt", ZINK_DEBUG_IOOPT, "Optimize IO" },
+   { "nopc", ZINK_DEBUG_NOPC, "No precompilation" },
    DEBUG_NAMED_VALUE_END
 };
 

@@ -1092,9 +1092,9 @@ etna_screen_create(struct etna_device *dev, struct etna_gpu *gpu,
    if (DBG_ENABLED(ETNA_DBG_NO_AUTODISABLE))
       etna_core_disable_feature(screen->info, ETNA_FEATURE_AUTO_DISABLE);
    if (DBG_ENABLED(ETNA_DBG_NO_SUPERTILE))
-      screen->specs.can_supertile = 0;
+      etna_core_disable_feature(screen->info, ETNA_FEATURE_SUPER_TILED);
    if (DBG_ENABLED(ETNA_DBG_NO_SINGLEBUF))
-      screen->specs.single_buffer = 0;
+      etna_core_disable_feature(screen->info, ETNA_FEATURE_SINGLE_BUFFER);
    if (!DBG_ENABLED(ETNA_DBG_LINEAR_PE))
       etna_core_disable_feature(screen->info, ETNA_FEATURE_LINEAR_PE);
 

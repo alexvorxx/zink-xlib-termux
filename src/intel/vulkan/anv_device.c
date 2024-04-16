@@ -1959,6 +1959,7 @@ anv_physical_device_init_heaps(struct anv_physical_device *device, int fd)
       if (device->memory.types[i].propertyFlags &
           VK_MEMORY_PROPERTY_PROTECTED_BIT) {
          device->memory.protected_mem_types |= BITFIELD_BIT(i);
+         device->memory.default_buffer_mem_types &= (~BITFIELD_BIT(i));
          continue;
       }
 

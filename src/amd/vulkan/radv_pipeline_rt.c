@@ -73,15 +73,16 @@ handle_from_stages(struct radv_device *device, const struct radv_ray_tracing_sta
 }
 
 static void
-radv_generate_rt_shaders_key(const struct radv_device *device, const struct radv_ray_tracing_pipeline *pipeline,
-                             const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
+radv_generate_rt_shaders_key(const struct radv_device *device, const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
                              struct radv_shader_stage_key *stage_keys)
 {
+   VkPipelineCreateFlags2KHR create_flags = vk_rt_pipeline_create_flags(pCreateInfo);
+
    for (uint32_t i = 0; i < pCreateInfo->stageCount; i++) {
       const VkPipelineShaderStageCreateInfo *stage = &pCreateInfo->pStages[i];
       gl_shader_stage s = vk_to_mesa_shader_stage(stage->stage);
 
-      stage_keys[s] = radv_pipeline_get_shader_key(device, stage, pipeline->base.base.create_flags, pCreateInfo->pNext);
+      stage_keys[s] = radv_pipeline_get_shader_key(device, stage, create_flags, pCreateInfo->pNext);
    }
 
    if (pCreateInfo->pLibraryInfo) {
@@ -861,7 +862,7 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
 
    struct radv_shader_stage_key stage_keys[MESA_VULKAN_SHADER_STAGES] = {0};
 
-   radv_generate_rt_shaders_key(device, pipeline, pCreateInfo, stage_keys);
+   radv_generate_rt_shaders_key(device, pCreateInfo, stage_keys);
 
    /* cache robustness state for making merged shaders */
    if (stage_keys[MESA_SHADER_INTERSECTION].storage_robustness2)

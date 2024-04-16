@@ -96,7 +96,10 @@ gather_load_fs_input_info(const nir_shader *nir, const nir_intrinsic_instr *intr
          else
             info->ps.explicit_shaded_mask |= mapped_mask;
       } else if (intrin->intrinsic == nir_intrinsic_load_interpolated_input && intrin->def.bit_size == 16) {
-         info->ps.float16_shaded_mask |= mapped_mask;
+         if (io_sem.high_16bits)
+            info->ps.float16_hi_shaded_mask |= mapped_mask;
+         else
+            info->ps.float16_shaded_mask |= mapped_mask;
       }
    }
 

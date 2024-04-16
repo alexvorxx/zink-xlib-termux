@@ -3346,6 +3346,7 @@ enum radv_ps_in_type {
    radv_ps_in_explicit,
    radv_ps_in_explicit_strict,
    radv_ps_in_interpolated_fp16,
+   radv_ps_in_interpolated_fp16_hi,
    radv_ps_in_per_prim_gfx103,
    radv_ps_in_per_prim_gfx11,
 };
@@ -3375,7 +3376,11 @@ offset_to_ps_input(const uint32_t offset, const enum radv_ps_in_type type)
    case radv_ps_in_flat:
       ps_input_cntl |= S_028644_FLAT_SHADE(1);
       break;
+   case radv_ps_in_interpolated_fp16_hi:
+      ps_input_cntl |= S_028644_ATTR1_VALID(1);
+      FALLTHROUGH;
    case radv_ps_in_interpolated_fp16:
+      /* These must be set even if only the high 16 bits are used. */
       ps_input_cntl |= S_028644_FP16_INTERP_MODE(1) | S_028644_ATTR0_VALID(1);
       break;
    case radv_ps_in_per_prim_gfx11:
@@ -3426,6 +3431,8 @@ input_mask_to_ps_inputs(const struct radv_vs_output_info *outinfo, const struct 
          type = radv_ps_in_explicit;
       else if (ps->info.ps.per_vertex_shaded_mask & BITFIELD_BIT(*ps_offset))
          type = radv_ps_in_explicit_strict;
+      else if (ps->info.ps.float16_hi_shaded_mask & BITFIELD_BIT(*ps_offset))
+         type = radv_ps_in_interpolated_fp16_hi;
       else if (ps->info.ps.float16_shaded_mask & BITFIELD_BIT(*ps_offset))
          type = radv_ps_in_interpolated_fp16;
 

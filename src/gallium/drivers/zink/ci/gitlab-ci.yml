@@ -76,6 +76,13 @@ zink-tu-a618:
     HWCI_START_WESTON: 1
     GPU_VERSION: zink-freedreno-a618
 
+zink-tu-a618-full:
+  extends:
+    - zink-tu-a618
+    - .collabora-turnip-manual-rules
+  variables:
+    DEQP_FRACTION: 1
+
 zink-tu-a618-traces:
   extends:
     - a618-traces

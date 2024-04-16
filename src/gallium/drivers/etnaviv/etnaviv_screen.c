@@ -1077,13 +1077,6 @@ etna_screen_create(struct etna_device *dev, struct etna_gpu *gpu,
       goto fail;
    }
 
-   etna_get_specs(screen);
-
-   if (screen->specs.halti >= 5 && !etnaviv_device_softpin_capable(dev)) {
-      DBG("halti5 requires softpin");
-      goto fail;
-   }
-
    /* apply debug options that disable individual features */
    if (DBG_ENABLED(ETNA_DBG_NO_EARLY_Z))
       etna_core_disable_feature(screen->info, ETNA_FEATURE_NO_EARLY_Z);
@@ -1097,6 +1090,13 @@ etna_screen_create(struct etna_device *dev, struct etna_gpu *gpu,
       etna_core_disable_feature(screen->info, ETNA_FEATURE_SINGLE_BUFFER);
    if (!DBG_ENABLED(ETNA_DBG_LINEAR_PE))
       etna_core_disable_feature(screen->info, ETNA_FEATURE_LINEAR_PE);
+
+   etna_get_specs(screen);
+
+   if (screen->specs.halti >= 5 && !etnaviv_device_softpin_capable(dev)) {
+      DBG("halti5 requires softpin");
+      goto fail;
+   }
 
    pscreen->destroy = etna_screen_destroy;
    pscreen->get_screen_fd = etna_screen_get_fd;

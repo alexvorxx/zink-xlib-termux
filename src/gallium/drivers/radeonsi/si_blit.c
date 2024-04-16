@@ -1116,12 +1116,45 @@ bool si_msaa_resolve_blit_via_CB(struct pipe_context *ctx, const struct pipe_bli
    unsigned dst_width = u_minify(info->dst.resource->width0, info->dst.level);
    unsigned dst_height = u_minify(info->dst.resource->height0, info->dst.level);
    enum pipe_format format = info->src.format;
+   unsigned num_channels = util_format_description(format)->nr_channels;
 
    /* Check basic requirements for hw resolve. */
    if (!(info->src.resource->nr_samples > 1 && info->dst.resource->nr_samples <= 1 &&
          !util_format_is_pure_integer(format) && !util_format_is_depth_or_stencil(format) &&
          util_max_layer(info->src.resource, 0) == 0))
       return false;
+
+   /* Return if this is slower than alternatives. */
+   if (fail_if_slow) {
+      /* CB_RESOLVE is much slower without FMASK. */
+      if (sctx->screen->debug_flags & DBG(NO_FMASK))
+         return false;
+
+      /* Verified on: Tahiti, Hawaii, Tonga, Vega10, Navi10, Navi21 */
+      switch (sctx->gfx_level) {
+      case GFX6:
+         return false;
+
+      case GFX7:
+         if (src->surface.bpe != 16)
+            return false;
+         break;
+
+      case GFX8:
+      case GFX9:
+      case GFX10:
+         return false;
+
+      case GFX10_3:
+         if (!(src->surface.bpe == 8 && src->buffer.b.b.nr_samples == 8 && num_channels == 4) &&
+             !(src->surface.bpe == 16 && src->buffer.b.b.nr_samples == 4))
+            return false;
+         break;
+
+      default:
+         unreachable("unexpected gfx version");
+      }
+   }
 
    /* Hardware MSAA resolve doesn't work if SPI format = NORM16_ABGR and
     * the format is R16G16. Use R16A16, which does work.

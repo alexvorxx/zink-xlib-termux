@@ -3908,15 +3908,14 @@ ms_store_arrayed_output(nir_builder *b,
       }
 
       u_foreach_bit(comp, write_mask_32) {
-         nir_def *val = nir_channel(b, store_val, comp);
          unsigned idx = io_sem.location * 4 + comp + component_offset;
+         nir_def *val = nir_channel(b, store_val, comp);
+         nir_def *v = nir_load_var(b, s->out_variables[idx]);
 
          if (lo_16b) {
-            nir_def *v = nir_channel(b, nir_load_var(b, s->out_variables[idx]), comp + component_offset);
             nir_def *var_hi = nir_unpack_32_2x16_split_y(b, v);
             val = nir_pack_32_2x16_split(b, val, var_hi);
          } else if (hi_16b) {
-            nir_def *v = nir_channel(b, nir_load_var(b, s->out_variables[idx]), comp + component_offset);
             nir_def *var_lo = nir_unpack_32_2x16_split_x(b, v);
             val = nir_pack_32_2x16_split(b, var_lo, val);
          }

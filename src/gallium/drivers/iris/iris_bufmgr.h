@@ -181,6 +181,10 @@ enum iris_heap {
 
    /** Device-local memory (VRAM).  Cannot be placed in system memory! */
    IRIS_HEAP_DEVICE_LOCAL,
+   IRIS_HEAP_MAX_NO_VRAM = IRIS_HEAP_DEVICE_LOCAL,
+
+   /** Device-local memory that may be evicted to system memory if needed. */
+   IRIS_HEAP_DEVICE_LOCAL_PREFERRED,
 
    /**
     * Device-local memory (VRAM) + guarantee that is CPU visible.
@@ -189,9 +193,7 @@ enum iris_heap {
     * This will only be used when running in small PCIe bar systems.
     */
    IRIS_HEAP_DEVICE_LOCAL_CPU_VISIBLE_SMALL_BAR,
-
-   /** Device-local memory that may be evicted to system memory if needed. */
-   IRIS_HEAP_DEVICE_LOCAL_PREFERRED,
+   IRIS_HEAP_MAX_LARGE_BAR = IRIS_HEAP_DEVICE_LOCAL_CPU_VISIBLE_SMALL_BAR,
 
    IRIS_HEAP_MAX,
 };

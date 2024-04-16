@@ -24,20 +24,11 @@ struct rt_handle_hash_entry {
 };
 
 static uint32_t
-handle_from_stages(struct radv_device *device, const struct radv_ray_tracing_stage *stages, unsigned stage_count,
-                   bool replay_namespace)
+handle_from_stages(struct radv_device *device, const unsigned char *shader_sha1, bool replay_namespace)
 {
-   struct mesa_sha1 ctx;
-   _mesa_sha1_init(&ctx);
-
-   for (uint32_t i = 0; i < stage_count; i++)
-      _mesa_sha1_update(&ctx, stages[i].sha1, SHA1_DIGEST_LENGTH);
-
-   unsigned char hash[20];
-   _mesa_sha1_final(&ctx, hash);
-
    uint32_t ret;
-   memcpy(&ret, hash, sizeof(ret));
+
+   memcpy(&ret, shader_sha1, sizeof(ret));
 
    /* Leave the low half for resume shaders etc. */
    ret |= 1u << 31;
@@ -54,7 +45,7 @@ handle_from_stages(struct radv_device *device, const struct radv_ray_tracing_sta
       if (!he)
          break;
 
-      if (memcmp(he->data, hash, sizeof(hash)) == 0)
+      if (memcmp(he->data, shader_sha1, SHA1_DIGEST_LENGTH) == 0)
          break;
 
       ++ret;
@@ -63,7 +54,7 @@ handle_from_stages(struct radv_device *device, const struct radv_ray_tracing_sta
    if (!he) {
       struct rt_handle_hash_entry *e = ralloc(device->rt_handles, struct rt_handle_hash_entry);
       e->key = ret;
-      memcpy(e->hash, hash, sizeof(e->hash));
+      memcpy(e->hash, shader_sha1, SHA1_DIGEST_LENGTH);
       _mesa_hash_table_insert(device->rt_handles, &e->key, &e->hash);
    }
 
@@ -109,37 +100,40 @@ radv_create_group_handles(struct radv_device *device, const VkRayTracingPipeline
       const VkRayTracingShaderGroupCreateInfoKHR *group_info = &pCreateInfo->pGroups[i];
       switch (group_info->type) {
       case VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR:
-         if (group_info->generalShader != VK_SHADER_UNUSED_KHR)
-            groups[i].handle.general_index =
-               handle_from_stages(device, &stages[group_info->generalShader], 1, capture_replay);
-
+         if (group_info->generalShader != VK_SHADER_UNUSED_KHR) {
+            const struct radv_ray_tracing_stage *stage = &stages[group_info->generalShader];
+            groups[i].handle.general_index = handle_from_stages(device, stage->sha1, capture_replay);
+         }
          break;
       case VK_RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR:
-         if (group_info->closestHitShader != VK_SHADER_UNUSED_KHR)
-            groups[i].handle.closest_hit_index =
-               handle_from_stages(device, &stages[group_info->closestHitShader], 1, capture_replay);
+         if (group_info->closestHitShader != VK_SHADER_UNUSED_KHR) {
+            const struct radv_ray_tracing_stage *stage = &stages[group_info->closestHitShader];
+            groups[i].handle.closest_hit_index = handle_from_stages(device, stage->sha1, capture_replay);
+         }
 
          if (group_info->intersectionShader != VK_SHADER_UNUSED_KHR) {
-            struct radv_ray_tracing_stage temp_stages[2];
-            unsigned cnt = 0;
+            unsigned char sha1[SHA1_DIGEST_LENGTH];
+            struct mesa_sha1 ctx;
 
-            temp_stages[cnt++] = stages[group_info->intersectionShader];
-
+            _mesa_sha1_init(&ctx);
+            _mesa_sha1_update(&ctx, stages[group_info->intersectionShader].sha1, SHA1_DIGEST_LENGTH);
             if (group_info->anyHitShader != VK_SHADER_UNUSED_KHR)
-               temp_stages[cnt++] = stages[group_info->anyHitShader];
+               _mesa_sha1_update(&ctx, stages[group_info->anyHitShader].sha1, SHA1_DIGEST_LENGTH);
+            _mesa_sha1_final(&ctx, sha1);
 
-            groups[i].handle.intersection_index = handle_from_stages(device, temp_stages, cnt, capture_replay);
+            groups[i].handle.intersection_index = handle_from_stages(device, sha1, capture_replay);
          }
          break;
       case VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR:
-         if (group_info->closestHitShader != VK_SHADER_UNUSED_KHR)
-            groups[i].handle.closest_hit_index =
-               handle_from_stages(device, &stages[group_info->closestHitShader], 1, capture_replay);
+         if (group_info->closestHitShader != VK_SHADER_UNUSED_KHR) {
+            const struct radv_ray_tracing_stage *stage = &stages[group_info->closestHitShader];
+            groups[i].handle.closest_hit_index = handle_from_stages(device, stage->sha1, capture_replay);
+         }
 
-         if (group_info->anyHitShader != VK_SHADER_UNUSED_KHR)
-            groups[i].handle.any_hit_index =
-               handle_from_stages(device, &stages[group_info->anyHitShader], 1, capture_replay);
-
+         if (group_info->anyHitShader != VK_SHADER_UNUSED_KHR) {
+            const struct radv_ray_tracing_stage *stage = &stages[group_info->anyHitShader];
+            groups[i].handle.any_hit_index = handle_from_stages(device, stage->sha1, capture_replay);
+         }
          break;
       case VK_SHADER_GROUP_SHADER_MAX_ENUM_KHR:
          unreachable("VK_SHADER_GROUP_SHADER_MAX_ENUM_KHR");

@@ -350,7 +350,7 @@ nvk_flush_compute_state(struct nvk_cmd_buffer *cmd,
    desc->root.root_desc_addr = root_desc_addr;
    memcpy(root_desc_map, &desc->root, sizeof(desc->root));
 
-   uint32_t qmd[128];
+   uint32_t qmd[64];
    memset(qmd, 0, sizeof(qmd));
    nvk_qmd_init(pdev, qmd, shader);
 
@@ -404,7 +404,7 @@ nvk_flush_compute_state(struct nvk_cmd_buffer *cmd,
    }
 
    uint64_t qmd_addr;
-   result = nvk_cmd_buffer_upload_data(cmd, qmd, sizeof(qmd), 256, &qmd_addr);
+   result = nvk_cmd_buffer_upload_data(cmd, qmd, sizeof(qmd), 0x100, &qmd_addr);
    if (unlikely(result != VK_SUCCESS)) {
       vk_command_buffer_set_error(&cmd->vk, result);
       return 0;

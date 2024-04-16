@@ -915,12 +915,14 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
 {
    struct si_texture *sdst = (struct si_texture *)info->dst.resource;
    struct si_texture *ssrc = (struct si_texture *)info->src.resource;
+   bool is_2d_tiling = !sdst->surface.is_linear && !sdst->surface.thick_tiling;
    bool is_3d_tiling = sdst->surface.thick_tiling;
    bool is_clear = !info->src.resource;
    unsigned dst_samples = MAX2(1, sdst->buffer.b.b.nr_samples);
    unsigned src_samples = is_clear ? 1 : MAX2(1, ssrc->buffer.b.b.nr_samples);
    bool is_resolve = !is_clear && dst_samples == 1 && src_samples >= 2 &&
                      !util_format_is_pure_integer(info->dst.format);
+   bool is_upsampling = !is_clear && src_samples == 1 && dst_samples >= 2;
    bool sample0_only = src_samples >= 2 && dst_samples == 1 &&
                        (info->sample0_only || util_format_is_pure_integer(info->dst.format));
    /* Get the channel sizes. */
@@ -967,14 +969,100 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
          src_samples > SI_MAX_COMPUTE_BLIT_SAMPLES)))
       return false;
 
-   /* Testing on Navi21 showed that the compute blit is slightly slower than the gfx blit.
-    * The compute blit is even slower with DCC stores. VP13 CATIA_plane_pencil is a good test
-    * for that because it's mostly just blits.
-    *
-    * TODO: benchmark the performance on gfx11
-    */
-   if (sctx->gfx_level < GFX11 && sctx->has_graphics && flags & SI_OP_FAIL_IF_SLOW)
-      return false;
+   /* Return a failure if a compute blit is slower than a gfx blit. */
+   if (sctx->has_graphics && flags & SI_OP_FAIL_IF_SLOW) {
+      if (is_clear) {
+         /* Verified on: Tahiti, Hawaii, Tonga, Vega10, Navi10, Navi21, Navi31 */
+         if (is_3d_tiling) {
+            if (sctx->gfx_level == GFX6 && sdst->surface.bpe == 8)
+               return false;
+         } else if (is_2d_tiling) {
+            if (!(sctx->gfx_level == GFX6 && sdst->surface.bpe <= 4 && dst_samples == 1) &&
+                !(sctx->gfx_level == GFX7 && sdst->surface.bpe == 1 && dst_samples == 1))
+               return false;
+         }
+      } else {
+         /* For upsampling, image stores don't compress MSAA as good as draws. */
+         if (is_upsampling)
+            return false;
+
+         switch (sctx->gfx_level) {
+         case GFX6:
+         case GFX7:
+         case GFX8:
+         case GFX9:
+         case GFX10:
+         case GFX10_3:
+            /* Verified on: Tahiti, Hawaii, Tonga, Vega10, Navi10, Navi21 */
+            if (is_resolve) {
+               if (!(sctx->gfx_level == GFX7 && sdst->surface.bpe == 16))
+                  return false;
+            } else {
+               assert(dst_samples == src_samples || sample0_only);
+
+               if (is_2d_tiling) {
+                  if (dst_samples == 1) {
+                     if (sdst->surface.bpe <= 8 &&
+                         !(sctx->gfx_level <= GFX7 && sdst->surface.bpe == 1) &&
+                         !(sctx->gfx_level == GFX6 && sdst->surface.bpe == 2 &&
+                           ssrc->surface.is_linear) &&
+                         !(sctx->gfx_level == GFX7 && sdst->surface.bpe >= 2 &&
+                           ssrc->surface.is_linear) &&
+                         !((sctx->gfx_level == GFX8 || sctx->gfx_level == GFX9) &&
+                           sdst->surface.bpe >= 2 && ssrc->surface.is_linear) &&
+                         !(sctx->gfx_level == GFX10 && sdst->surface.bpe <= 2 &&
+                           ssrc->surface.is_linear) &&
+                         !(sctx->gfx_level == GFX10_3 && sdst->surface.bpe == 8 &&
+                           ssrc->surface.is_linear))
+                        return false;
+
+                     if (sctx->gfx_level == GFX6 && sdst->surface.bpe == 16 &&
+                         ssrc->surface.is_linear && sdst->buffer.b.b.target != PIPE_TEXTURE_3D)
+                        return false;
+
+                     if (sdst->surface.bpe == 16 && !ssrc->surface.is_linear &&
+                         /* Only GFX6 selects 2D tiling for 128bpp 3D textures. */
+                         !(sctx->gfx_level == GFX6 && sdst->buffer.b.b.target == PIPE_TEXTURE_3D) &&
+                         sctx->gfx_level != GFX7)
+                        return false;
+                  } else {
+                     /* MSAA copies - tested only without FMASK on Navi21. */
+                     if (sdst->surface.bpe >= 4)
+                        return false;
+                  }
+               }
+            }
+            break;
+
+         case GFX11:
+         case GFX11_5:
+         default:
+            /* Verified on Navi31. */
+            if (is_resolve) {
+               if (!((sdst->surface.bpe <= 2 && src_samples == 2) ||
+                     (sdst->surface.bpe == 16 && src_samples == 4)))
+                  return false;
+            } else {
+               assert(dst_samples == src_samples || sample0_only);
+
+               if (is_2d_tiling) {
+                  if (sdst->surface.bpe == 2 && ssrc->surface.is_linear && dst_samples == 1)
+                     return false;
+
+                  if ((sdst->surface.bpe == 4 || sdst->surface.bpe == 8) && dst_samples == 1)
+                     return false;
+
+                  if (sdst->surface.bpe == 16 && dst_samples == 1 && !ssrc->surface.is_linear)
+                     return false;
+
+                  if (sdst->surface.bpe == 16 && dst_samples == 8)
+                     return false;
+               }
+            }
+            break;
+         }
+      }
+   }
 
    if (sctx->gfx_level < GFX10 && !sctx->has_graphics && vi_dcc_enabled(sdst, info->dst.level))
       si_texture_disable_dcc(sctx, sdst);

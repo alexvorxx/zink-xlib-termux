@@ -99,12 +99,11 @@ radv_generate_rt_shaders_key(const struct radv_device *device, const struct radv
 }
 
 static VkResult
-radv_create_group_handles(struct radv_device *device, const struct radv_ray_tracing_pipeline *pipeline,
-                          const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
+radv_create_group_handles(struct radv_device *device, const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
                           const struct radv_ray_tracing_stage *stages, struct radv_ray_tracing_group *groups)
 {
-   bool capture_replay =
-      pipeline->base.base.create_flags & VK_PIPELINE_CREATE_2_RAY_TRACING_SHADER_GROUP_HANDLE_CAPTURE_REPLAY_BIT_KHR;
+   VkPipelineCreateFlags2KHR create_flags = vk_rt_pipeline_create_flags(pCreateInfo);
+   bool capture_replay = create_flags & VK_PIPELINE_CREATE_2_RAY_TRACING_SHADER_GROUP_HANDLE_CAPTURE_REPLAY_BIT_KHR;
    for (unsigned i = 0; i < pCreateInfo->groupCount; ++i) {
       const VkRayTracingShaderGroupCreateInfoKHR *group_info = &pCreateInfo->pGroups[i];
       switch (group_info->type) {
@@ -157,13 +156,12 @@ radv_create_group_handles(struct radv_device *device, const struct radv_ray_trac
 }
 
 static VkResult
-radv_rt_fill_group_info(struct radv_device *device, const struct radv_ray_tracing_pipeline *pipeline,
-                        const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
+radv_rt_fill_group_info(struct radv_device *device, const VkRayTracingPipelineCreateInfoKHR *pCreateInfo,
                         const struct radv_ray_tracing_stage *stages,
                         struct radv_serialized_shader_arena_block *capture_replay_blocks,
                         struct radv_ray_tracing_group *groups)
 {
-   VkResult result = radv_create_group_handles(device, pipeline, pCreateInfo, stages, groups);
+   VkResult result = radv_create_group_handles(device, pCreateInfo, stages, groups);
 
    uint32_t idx;
    for (idx = 0; idx < pCreateInfo->groupCount; idx++) {
@@ -873,7 +871,7 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
       pipeline->traversal_uniform_robustness2 = true;
 
    radv_init_rt_stage_hashes(device, pCreateInfo, stages, stage_keys);
-   result = radv_rt_fill_group_info(device, pipeline, pCreateInfo, stages, capture_replay_blocks, pipeline->groups);
+   result = radv_rt_fill_group_info(device, pCreateInfo, stages, capture_replay_blocks, pipeline->groups);
    if (result != VK_SUCCESS)
       goto fail;
 

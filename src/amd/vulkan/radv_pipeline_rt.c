@@ -915,6 +915,9 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
 
       if (result != VK_SUCCESS)
          goto fail;
+
+      if (!skip_shaders_cache)
+         radv_ray_tracing_pipeline_cache_insert(device, cache, pipeline, pCreateInfo->stageCount, pipeline->sha1);
    }
 
    if (!(pipeline->base.base.create_flags & VK_PIPELINE_CREATE_2_LIBRARY_BIT_KHR)) {
@@ -925,9 +928,6 @@ radv_rt_pipeline_create(VkDevice _device, VkPipelineCache _cache, const VkRayTra
    }
 
    radv_rmv_log_rt_pipeline_create(device, pipeline);
-
-   if (!cache_hit && !skip_shaders_cache)
-      radv_ray_tracing_pipeline_cache_insert(device, cache, pipeline, pCreateInfo->stageCount, pipeline->sha1);
 
    /* write shader VAs into group handles */
    for (unsigned i = 0; i < pipeline->group_count; i++) {

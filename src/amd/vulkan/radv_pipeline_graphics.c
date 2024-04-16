@@ -3340,35 +3340,58 @@ radv_emit_mesh_shader(const struct radv_device *device, struct radeon_cmdbuf *ct
    radv_emit_vgt_gs_out(device, ctx_cs, gs_out);
 }
 
+enum radv_ps_in_type {
+   radv_ps_in_interpolated,
+   radv_ps_in_flat,
+   radv_ps_in_explicit,
+   radv_ps_in_explicit_strict,
+   radv_ps_in_interpolated_fp16,
+   radv_ps_in_per_prim_gfx103,
+   radv_ps_in_per_prim_gfx11,
+};
+
 static uint32_t
-offset_to_ps_input(uint32_t offset, bool flat_shade, bool explicit, bool per_vertex, bool float16, bool per_prim_gfx11)
+offset_to_ps_input(const uint32_t offset, const enum radv_ps_in_type type)
 {
-   uint32_t ps_input_cntl;
-   if (offset <= AC_EXP_PARAM_OFFSET_31) {
-      ps_input_cntl = S_028644_OFFSET(offset) | S_028644_PRIM_ATTR(per_prim_gfx11);
-      if (flat_shade || explicit || per_vertex)
-         ps_input_cntl |= S_028644_FLAT_SHADE(1);
-      if (explicit || per_vertex) {
-         /* Force parameter cache to be read in passthrough
-          * mode.
-          */
-         ps_input_cntl |= S_028644_OFFSET(1 << 5) | S_028644_ROTATE_PC_PTR(per_vertex);
-      }
-      if (float16) {
-         ps_input_cntl |= S_028644_FP16_INTERP_MODE(1) | S_028644_ATTR0_VALID(1);
-      }
-   } else {
+   assert(offset != AC_EXP_PARAM_UNDEFINED);
+
+   if (offset >= AC_EXP_PARAM_DEFAULT_VAL_0000 && offset <= AC_EXP_PARAM_DEFAULT_VAL_1111) {
       /* The input is a DEFAULT_VAL constant. */
-      assert(offset >= AC_EXP_PARAM_DEFAULT_VAL_0000 && offset <= AC_EXP_PARAM_DEFAULT_VAL_1111);
-      offset -= AC_EXP_PARAM_DEFAULT_VAL_0000;
-      ps_input_cntl = S_028644_OFFSET(0x20) | S_028644_DEFAULT_VAL(offset);
+      return S_028644_OFFSET(0x20) | S_028644_DEFAULT_VAL(offset - AC_EXP_PARAM_DEFAULT_VAL_0000);
    }
+
+   assert(offset <= AC_EXP_PARAM_OFFSET_31);
+   uint32_t ps_input_cntl = S_028644_OFFSET(offset);
+
+   switch (type) {
+   case radv_ps_in_explicit_strict:
+      /* Rotate parameter cache contents to strict vertex order. */
+      ps_input_cntl |= S_028644_ROTATE_PC_PTR(1);
+      FALLTHROUGH;
+   case radv_ps_in_explicit:
+      /* Force parameter cache to be read in passthrough mode. */
+      ps_input_cntl |= S_028644_OFFSET(1 << 5);
+      FALLTHROUGH;
+   case radv_ps_in_flat:
+      ps_input_cntl |= S_028644_FLAT_SHADE(1);
+      break;
+   case radv_ps_in_interpolated_fp16:
+      ps_input_cntl |= S_028644_FP16_INTERP_MODE(1) | S_028644_ATTR0_VALID(1);
+      break;
+   case radv_ps_in_per_prim_gfx11:
+      ps_input_cntl |= S_028644_PRIM_ATTR(1);
+      break;
+   case radv_ps_in_interpolated:
+   case radv_ps_in_per_prim_gfx103:
+      break;
+   }
+
    return ps_input_cntl;
 }
 
 static void
-single_slot_to_ps_input(const struct radv_vs_output_info *outinfo, unsigned slot, uint32_t *ps_input_cntl,
-                        unsigned *ps_offset, bool skip_undef, bool use_default_0, bool flat_shade, bool per_prim_gfx11)
+slot_to_ps_input(const struct radv_vs_output_info *outinfo, unsigned slot, uint32_t *ps_input_cntl, unsigned *ps_offset,
+                 bool skip_undef, bool use_default_0, const enum radv_ps_in_type type)
 {
    unsigned vs_offset = outinfo->vs_output_param_offset[slot];
 
@@ -3381,13 +3404,13 @@ single_slot_to_ps_input(const struct radv_vs_output_info *outinfo, unsigned slot
          unreachable("vs_offset should not be AC_EXP_PARAM_UNDEFINED.");
    }
 
-   ps_input_cntl[*ps_offset] = offset_to_ps_input(vs_offset, flat_shade, false, false, false, per_prim_gfx11);
+   ps_input_cntl[*ps_offset] = offset_to_ps_input(vs_offset, type);
    ++(*ps_offset);
 }
 
 static void
 input_mask_to_ps_inputs(const struct radv_vs_output_info *outinfo, const struct radv_shader *ps, uint32_t input_mask,
-                        uint32_t *ps_input_cntl, unsigned *ps_offset, bool per_prim_gfx11)
+                        uint32_t *ps_input_cntl, unsigned *ps_offset, const enum radv_ps_in_type default_type)
 {
    u_foreach_bit (i, input_mask) {
       unsigned vs_offset = outinfo->vs_output_param_offset[VARYING_SLOT_VAR0 + i];
@@ -3397,13 +3420,18 @@ input_mask_to_ps_inputs(const struct radv_vs_output_info *outinfo, const struct 
          continue;
       }
 
-      bool flat_shade = !!(ps->info.ps.flat_shaded_mask & (1u << *ps_offset));
-      bool explicit = !!(ps->info.ps.explicit_shaded_mask & (1u << *ps_offset));
-      bool per_vertex = !!(ps->info.ps.per_vertex_shaded_mask & (1u << *ps_offset));
-      bool float16 = !!(ps->info.ps.float16_shaded_mask & (1u << *ps_offset));
+      enum radv_ps_in_type type = default_type;
 
-      ps_input_cntl[*ps_offset] =
-         offset_to_ps_input(vs_offset, flat_shade, explicit, per_vertex, float16, per_prim_gfx11);
+      if (ps->info.ps.flat_shaded_mask & BITFIELD_BIT(*ps_offset))
+         type = radv_ps_in_flat;
+      else if (ps->info.ps.explicit_shaded_mask & BITFIELD_BIT(*ps_offset))
+         type = radv_ps_in_explicit;
+      else if (ps->info.ps.per_vertex_shaded_mask & BITFIELD_BIT(*ps_offset))
+         type = radv_ps_in_explicit_strict;
+      else if (ps->info.ps.float16_shaded_mask & BITFIELD_BIT(*ps_offset))
+         type = radv_ps_in_interpolated_fp16;
+
+      ps_input_cntl[*ps_offset] = offset_to_ps_input(vs_offset, type);
       ++(*ps_offset);
    }
 }
@@ -3414,45 +3442,48 @@ radv_emit_ps_inputs(const struct radv_device *device, struct radeon_cmdbuf *ctx_
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_vs_output_info *outinfo = &last_vgt_shader->info.outinfo;
-   bool mesh = last_vgt_shader->info.stage == MESA_SHADER_MESH;
-   bool gfx11plus = pdev->info.gfx_level >= GFX11;
-   uint32_t ps_input_cntl[32];
+   const bool mesh = last_vgt_shader->info.stage == MESA_SHADER_MESH;
+   const bool gfx11plus = pdev->info.gfx_level >= GFX11;
+   const enum radv_ps_in_type per_prim = gfx11plus ? radv_ps_in_per_prim_gfx11 : radv_ps_in_per_prim_gfx103;
 
+   uint32_t ps_input_cntl[32];
    unsigned ps_offset = 0;
 
    if (ps->info.ps.prim_id_input && !mesh)
-      single_slot_to_ps_input(outinfo, VARYING_SLOT_PRIMITIVE_ID, ps_input_cntl, &ps_offset, true, false, true, false);
+      slot_to_ps_input(outinfo, VARYING_SLOT_PRIMITIVE_ID, ps_input_cntl, &ps_offset, true, false, radv_ps_in_flat);
 
    if (ps->info.ps.layer_input && !mesh)
-      single_slot_to_ps_input(outinfo, VARYING_SLOT_LAYER, ps_input_cntl, &ps_offset, false, true, true, false);
+      slot_to_ps_input(outinfo, VARYING_SLOT_LAYER, ps_input_cntl, &ps_offset, false, true, radv_ps_in_flat);
 
    if (ps->info.ps.viewport_index_input && !mesh)
-      single_slot_to_ps_input(outinfo, VARYING_SLOT_VIEWPORT, ps_input_cntl, &ps_offset, false, true, true, false);
+      slot_to_ps_input(outinfo, VARYING_SLOT_VIEWPORT, ps_input_cntl, &ps_offset, false, true, radv_ps_in_flat);
 
    if (ps->info.ps.has_pcoord)
       ps_input_cntl[ps_offset++] = S_028644_PT_SPRITE_TEX(1) | S_028644_OFFSET(0x20);
 
    if (ps->info.ps.input_clips_culls_mask & 0x0f)
-      single_slot_to_ps_input(outinfo, VARYING_SLOT_CLIP_DIST0, ps_input_cntl, &ps_offset, true, false, false, false);
+      slot_to_ps_input(outinfo, VARYING_SLOT_CLIP_DIST0, ps_input_cntl, &ps_offset, true, false,
+                       radv_ps_in_interpolated);
 
    if (ps->info.ps.input_clips_culls_mask & 0xf0)
-      single_slot_to_ps_input(outinfo, VARYING_SLOT_CLIP_DIST1, ps_input_cntl, &ps_offset, true, false, false, false);
+      slot_to_ps_input(outinfo, VARYING_SLOT_CLIP_DIST1, ps_input_cntl, &ps_offset, true, false,
+                       radv_ps_in_interpolated);
 
-   input_mask_to_ps_inputs(outinfo, ps, ps->info.ps.input_mask, ps_input_cntl, &ps_offset, false);
+   input_mask_to_ps_inputs(outinfo, ps, ps->info.ps.input_mask, ps_input_cntl, &ps_offset, radv_ps_in_interpolated);
 
    /* Per-primitive PS inputs: the HW needs these to be last. */
 
    if (ps->info.ps.prim_id_input && mesh)
-      single_slot_to_ps_input(outinfo, VARYING_SLOT_PRIMITIVE_ID, ps_input_cntl, &ps_offset, true, false, false,
-                              gfx11plus);
+      slot_to_ps_input(outinfo, VARYING_SLOT_PRIMITIVE_ID, ps_input_cntl, &ps_offset, true, false, per_prim);
 
    if (ps->info.ps.layer_input && mesh)
-      single_slot_to_ps_input(outinfo, VARYING_SLOT_LAYER, ps_input_cntl, &ps_offset, false, true, false, gfx11plus);
+      slot_to_ps_input(outinfo, VARYING_SLOT_LAYER, ps_input_cntl, &ps_offset, false, true, per_prim);
 
    if (ps->info.ps.viewport_index_input && mesh)
-      single_slot_to_ps_input(outinfo, VARYING_SLOT_VIEWPORT, ps_input_cntl, &ps_offset, false, true, false, gfx11plus);
+      slot_to_ps_input(outinfo, VARYING_SLOT_VIEWPORT, ps_input_cntl, &ps_offset, false, true, per_prim);
 
-   input_mask_to_ps_inputs(outinfo, ps, ps->info.ps.input_per_primitive_mask, ps_input_cntl, &ps_offset, gfx11plus);
+   input_mask_to_ps_inputs(outinfo, ps, ps->info.ps.input_per_primitive_mask, ps_input_cntl, &ps_offset, per_prim);
+
    if (ps_offset) {
       radeon_set_context_reg_seq(ctx_cs, R_028644_SPI_PS_INPUT_CNTL_0, ps_offset);
       for (unsigned i = 0; i < ps_offset; i++) {

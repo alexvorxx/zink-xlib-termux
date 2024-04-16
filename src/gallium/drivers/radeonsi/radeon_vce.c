@@ -310,7 +310,7 @@ static void rvce_end_frame(struct pipe_video_codec *encoder, struct pipe_video_b
    struct rvce_cpb_slot *slot = list_entry(enc->cpb_slots.prev, struct rvce_cpb_slot, list);
 
    if (!enc->dual_inst || enc->bs_idx > 1)
-      flush(enc, PIPE_FLUSH_ASYNC);
+      flush(enc, picture->flush_flags);
 
    /* update the CPB backtrack with the just encoded frame */
    slot->picture_type = enc->pic.picture_type;

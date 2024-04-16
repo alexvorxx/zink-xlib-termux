@@ -230,7 +230,7 @@ static void radeon_uvd_enc_end_frame(struct pipe_video_codec *encoder,
                                      struct pipe_picture_desc *picture)
 {
    struct radeon_uvd_encoder *enc = (struct radeon_uvd_encoder *)encoder;
-   flush(enc, PIPE_FLUSH_ASYNC);
+   flush(enc, picture->flush_flags);
 }
 
 static void radeon_uvd_enc_destroy(struct pipe_video_codec *encoder)

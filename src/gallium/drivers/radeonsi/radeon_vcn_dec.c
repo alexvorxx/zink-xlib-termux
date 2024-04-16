@@ -2971,7 +2971,7 @@ static void radeon_dec_end_frame(struct pipe_video_codec *decoder, struct pipe_v
       return;
 
    dec->send_cmd(dec, target, picture);
-   flush(dec, PIPE_FLUSH_ASYNC, picture->fence);
+   flush(dec, picture->flush_flags, picture->fence);
    if (picture->fence)
       dec->ws->fence_reference(dec->ws, &dec->prev_fence, *picture->fence);
    next_buffer(dec);
@@ -3000,7 +3000,7 @@ static void radeon_dec_jpeg_end_frame(struct pipe_video_codec *decoder, struct p
    if (dec->jpg.crop_y + dec->jpg.crop_height > pic->picture_parameter.picture_height)
       dec->jpg.crop_height = 0;
    dec->send_cmd(dec, target, picture);
-   dec->ws->cs_flush(&dec->jcs[dec->cb_idx], PIPE_FLUSH_ASYNC, NULL);
+   dec->ws->cs_flush(&dec->jcs[dec->cb_idx], picture->flush_flags, NULL);
    next_buffer(dec);
    dec->cb_idx = (dec->cb_idx+1) % dec->njctx;
 }

@@ -79,11 +79,10 @@ struct etna_inst {
    enum isa_opc opcode;
    enum isa_type type;
    enum isa_rounding rounding;
-   enum isa_cond cond : 5;
-   unsigned sat       : 1;                 /* saturate result between 0..1 */
-   unsigned sel_bit0  : 1;                 /* select low half mediump */
-   unsigned sel_bit1  : 1;                 /* select high half mediump */
-   unsigned dst_full  : 1;                 /* write to highp register */
+   enum isa_cond cond     : 5;
+   unsigned sat           : 1;             /* saturate result between 0..1 */
+   enum isa_thread thread : 2;             /* select low/high half mediump */
+   unsigned dst_full      : 1;             /* write to highp register */
    struct etna_inst_dst dst;               /* destination operand */
    struct etna_inst_tex tex;               /* texture operand */
    struct etna_inst_src src[ETNA_NUM_SRC]; /* source operand */

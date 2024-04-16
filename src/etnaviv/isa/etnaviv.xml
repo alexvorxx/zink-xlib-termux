@@ -148,8 +148,8 @@ SPDX-License-Identifier: MIT
 	<encode type="struct etna_inst *" case-prefix="ISA_OPC_">
 		<map name="TYPE_BIT01">src->type &amp; 0x3</map>
 		<map name="TYPE_BIT2">(src->type &amp; 0x4) &gt; 2</map>
-		<map name="LOW_HALF">src->sel_bit0</map>
-		<map name="HIGH_HALF">src->sel_bit1</map>
+		<map name="LOW_HALF">(src->thread &amp; 0x1)</map>
+		<map name="HIGH_HALF">(src->thread &amp; 0x2) &gt; 1</map>
 		<map name="COND">src->cond</map>
 		<map name="RMODE">src->rounding</map>
 		<map name="SAT">src->sat</map>

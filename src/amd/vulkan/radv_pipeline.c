@@ -485,6 +485,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_graphics_stat
    nir_move_options sink_opts = nir_move_const_undef | nir_move_copies;
 
    if (!stage->key.optimisations_disabled) {
+      NIR_PASS(_, stage->nir, nir_opt_licm);
       if (stage->stage != MESA_SHADER_FRAGMENT || !pdev->cache_key.disable_sinking_load_input_fs)
          sink_opts |= nir_move_load_input;
 

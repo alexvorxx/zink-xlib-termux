@@ -372,7 +372,12 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_graphics_pipeline_library         = !debug_get_bool_option("ANV_NO_GPL", false),
       .EXT_host_query_reset                  = true,
       .EXT_image_2d_view_of_3d               = true,
-      .EXT_image_compression_control         = device->instance->compression_control_enabled,
+      /* Because of Xe2 PAT selected compression and the Vulkan spec
+       * requirement to always return the same memory types for Images with
+       * same properties we can't support EXT_image_compression_control on Xe2+
+       */
+      .EXT_image_compression_control         = device->instance->compression_control_enabled &&
+                                               device->info.ver < 20,
       .EXT_image_robustness                  = true,
       .EXT_image_drm_format_modifier         = true,
       .EXT_image_sliced_view_of_3d           = true,
@@ -2001,6 +2006,8 @@ anv_physical_device_init_heaps(struct anv_physical_device *device, int fd)
       break;
    }
 
+   assert(device->memory.type_count < ARRAY_SIZE(device->memory.types));
+
    if (result != VK_SUCCESS)
       return result;
 
@@ -2012,17 +2019,27 @@ anv_physical_device_init_heaps(struct anv_physical_device *device, int fd)
       BITFIELD_RANGE(0, device->memory.type_count);
    device->memory.protected_mem_types = 0;
    device->memory.desc_buffer_mem_types = 0;
+   device->memory.compressed_mem_types = 0;
 
-   uint32_t base_types_count = device->memory.type_count;
+   const uint32_t base_types_count = device->memory.type_count;
    for (int i = 0; i < base_types_count; i++) {
+      bool skip = false;
+
       if (device->memory.types[i].propertyFlags &
           VK_MEMORY_PROPERTY_PROTECTED_BIT) {
          device->memory.protected_mem_types |= BITFIELD_BIT(i);
          device->memory.default_buffer_mem_types &= (~BITFIELD_BIT(i));
-         continue;
+         skip = true;
       }
 
-      assert(device->memory.type_count < ARRAY_SIZE(device->memory.types));
+      if (device->memory.types[i].compressed) {
+         device->memory.compressed_mem_types |= BITFIELD_BIT(i);
+         device->memory.default_buffer_mem_types &= (~BITFIELD_BIT(i));
+         skip = true;
+      }
+
+      if (skip)
+         continue;
 
       device->memory.desc_buffer_mem_types |=
          BITFIELD_BIT(device->memory.type_count);
@@ -4453,6 +4470,9 @@ VkResult anv_AllocateMemory(
    if (mem_type->propertyFlags & VK_MEMORY_PROPERTY_PROTECTED_BIT)
       alloc_flags |= ANV_BO_ALLOC_PROTECTED;
 
+   if (mem_type->compressed)
+      alloc_flags |= ANV_BO_ALLOC_COMPRESSED;
+
    /* For now, always allocated AUX-TT aligned memory, regardless of dedicated
     * allocations. An application can for example, suballocate a large
     * VkDeviceMemory and try to bind an image created with a CCS modifier. In
@@ -5657,7 +5677,9 @@ anv_device_get_pat_entry(struct anv_device *device,
       return &device->info->pat.writecombining;
    }
 
-   if ((alloc_flags & (ANV_BO_ALLOC_HOST_CACHED_COHERENT)) == ANV_BO_ALLOC_HOST_CACHED_COHERENT)
+   if (alloc_flags & ANV_BO_ALLOC_COMPRESSED)
+      return &device->info->pat.compressed;
+   else if ((alloc_flags & (ANV_BO_ALLOC_HOST_CACHED_COHERENT)) == ANV_BO_ALLOC_HOST_CACHED_COHERENT)
       return &device->info->pat.cached_coherent;
    else if (alloc_flags & (ANV_BO_ALLOC_EXTERNAL | ANV_BO_ALLOC_SCANOUT))
       return &device->info->pat.scanout;

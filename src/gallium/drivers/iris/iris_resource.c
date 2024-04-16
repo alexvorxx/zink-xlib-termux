@@ -1007,6 +1007,30 @@ iris_resource_create_for_buffer(struct pipe_screen *pscreen,
    return &res->base.b;
 }
 
+static bool
+iris_resource_image_is_pat_compressible(const struct iris_screen *screen,
+                                        const struct pipe_resource *templ,
+                                        struct iris_resource *res,
+                                        unsigned flags)
+{
+   struct iris_bufmgr *bufmgr = screen->bufmgr;
+
+   if (INTEL_DEBUG(DEBUG_NO_CCS))
+      return false;
+
+   if (screen->devinfo->ver < 20)
+      return false;
+
+   if ((flags & BO_ALLOC_PROTECTED) || (flags & BO_ALLOC_COHERENT))
+      return false;
+
+   if ((iris_bufmgr_vram_size(bufmgr) > 0) && (flags & BO_ALLOC_SMEM))
+      return false;
+
+   /* TODO: check for other compression requirements and return true */
+   return false;
+}
+
 static struct pipe_resource *
 iris_resource_create_for_image(struct pipe_screen *pscreen,
                                const struct pipe_resource *templ,
@@ -1053,6 +1077,9 @@ iris_resource_create_for_image(struct pipe_screen *pscreen,
    enum iris_memory_zone memzone = IRIS_MEMZONE_OTHER;
 
    unsigned flags = iris_resource_alloc_flags(screen, templ, res);
+
+   if (iris_resource_image_is_pat_compressible(screen, templ, res, flags))
+      flags |= BO_ALLOC_COMPRESSED;
 
    /* These are for u_upload_mgr buffers only */
    assert(!(templ->flags & (IRIS_RESOURCE_FLAG_SHADER_MEMZONE |

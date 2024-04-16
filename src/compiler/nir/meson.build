@@ -111,6 +111,7 @@ files_libnir = files(
   'nir_deref.h',
   'nir_divergence_analysis.c',
   'nir_dominance.c',
+  'nir_format_convert.c',
   'nir_format_convert.h',
   'nir_from_ssa.c',
   'nir_functions.c',

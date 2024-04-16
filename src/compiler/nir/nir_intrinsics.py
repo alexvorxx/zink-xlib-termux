@@ -324,6 +324,11 @@ index("unsigned", "repeat_count")
 
 intrinsic("nop", flags=[CAN_ELIMINATE])
 
+# Uses a value and cannot be eliminated.
+#
+# This is helpful when writing unit tests
+intrinsic("use", src_comp=[0], flags=[])
+
 intrinsic("convert_alu_types", dest_comp=0, src_comp=[0],
           indices=[SRC_TYPE, DEST_TYPE, ROUNDING_MODE, SATURATE],
           flags=[CAN_ELIMINATE, CAN_REORDER])

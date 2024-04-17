@@ -1064,6 +1064,7 @@ static bool si_vid_is_format_supported(struct pipe_screen *screen, enum pipe_for
       case PIPE_FORMAT_Y8_400_UNORM:
          return true;
       case PIPE_FORMAT_Y8_U8_V8_444_UNORM:
+      case PIPE_FORMAT_Y8_U8_V8_440_UNORM:
          if (sscreen->info.vcn_ip_version >= VCN_2_0_0)
             return true;
          else

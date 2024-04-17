@@ -32,8 +32,8 @@ nir_format_mask_uvec(nir_builder *b, nir_def *src, const unsigned *bits)
    nir_const_value mask[NIR_MAX_VEC_COMPONENTS];
    memset(mask, 0, sizeof(mask));
    for (unsigned i = 0; i < src->num_components; i++) {
-      assert(bits[i] < 32);
-      mask[i].u32 = (1u << bits[i]) - 1;
+      assert(bits[i] <= 32);
+      mask[i].u32 = BITFIELD_MASK(bits[i]);
    }
    return nir_iand(b, src, nir_build_imm(b, src->num_components, 32, mask));
 }
@@ -72,6 +72,11 @@ nir_format_unpack_int(nir_builder *b, nir_def *packed,
    for (unsigned i = 0; i < num_components; i++) {
       assert(bits[i] < bit_size);
       assert(offset + bits[i] <= bit_size);
+      if (bits[i] == 0) {
+         comps[i] = nir_imm_int(b, 0);
+         continue;
+      }
+
       nir_def *chan = nir_channel(b, packed, next_chan);
       unsigned lshift = bit_size - (offset + bits[i]);
       unsigned rshift = bit_size - bits[i];
@@ -97,6 +102,9 @@ nir_format_pack_uint_unmasked(nir_builder *b, nir_def *color,
    nir_def *packed = nir_imm_int(b, 0);
    unsigned offset = 0;
    for (unsigned i = 0; i < num_components; i++) {
+      if (bits[i] == 0)
+         continue;
+
       packed = nir_ior(b, packed, nir_shift_imm(b, nir_channel(b, color, i), offset));
       offset += bits[i];
    }

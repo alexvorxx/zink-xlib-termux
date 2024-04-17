@@ -259,6 +259,65 @@ TEST_P(rgba, pack)
    }
 }
 
+TEST_P(rgba, unpack)
+{
+   pipe_format format = GetParam();
+   auto desc = util_format_description(format);
+   const unsigned dwords = DIV_ROUND_UP(desc->block.bits, 32);
+
+   struct {
+      uint32_t u32[4];
+   } colors[NUM_COLORS];
+   memset(colors, 0, sizeof(colors));
+
+   for (unsigned i = 0; i < NUM_COLORS; i++) {
+      for (unsigned dw = 0; dw < dwords; dw++) {
+         unsigned bits = MIN2(32, desc->block.bits - dw * 32);
+         colors[i].u32[dw] = rand_uint(bits);
+      }
+   }
+
+   nir_intrinsic_instr *uses[NUM_COLORS];
+   for (unsigned i = 0; i < NUM_COLORS; i++) {
+      nir_def *packed_comps[4];
+      for (unsigned dw = 0; dw < dwords; dw++)
+         packed_comps[dw] = nir_imm_int(b, colors[i].u32[dw]);
+      nir_def *packed = nir_vec(b, packed_comps, dwords);
+      nir_def *rgba = nir_format_unpack_rgba(b, packed, format);
+      uses[i] = nir_use(b, rgba);
+   }
+
+   nir_lower_undef_to_zero(b->shader);
+   ASSERT_TRUE(nir_opt_constant_folding(b->shader));
+   ASSERT_TRUE(nir_opt_dce(b->shader));
+
+   for (unsigned i = 0; i < NUM_COLORS; i++) {
+      char expected[16] = { 0, };
+      util_format_unpack_rgba(format, expected, colors[i].u32, 1);
+
+      nir_def *rgba_ssa = uses[i]->src[0].ssa;
+      assert(rgba_ssa->bit_size == 32);
+      assert(rgba_ssa->num_components == 4);
+
+      const nir_const_value *rgba =
+         nir_instr_as_load_const(rgba_ssa->parent_instr)->value;
+
+      if (util_format_is_pure_integer(format)) {
+         uint32_t *exp_u32 = (uint32_t *)expected;
+         for (uint32_t c = 0; c < 4; c++)
+            EXPECT_EQ(exp_u32[c], rgba[c].u32);
+      } else {
+         float *exp_f32 = (float *)expected;
+         for (uint32_t c = 0; c < 4; c++) {
+            EXPECT_EQ(isnan(exp_f32[c]), isnan(uif(rgba[c].u32)));
+            if (!isnan(exp_f32[c]) && !isnan(uif(rgba[c].u32))) {
+               EXPECT_FLOAT_EQ(exp_f32[c], uif(rgba[c].u32));
+            }
+         }
+      }
+   }
+}
+
 INSTANTIATE_TEST_SUITE_P(nir_format_convert_test, rgba, testing::Values(
 // There's no way to get bit-for-bit identical with the CPU for these
 //

@@ -121,8 +121,11 @@ nir_def *nir_format_clamp_sint(nir_builder *b, nir_def *f,
 
 nir_def *nir_format_unpack_11f11f10f(nir_builder *b, nir_def *packed);
 nir_def *nir_format_pack_11f11f10f(nir_builder *b, nir_def *color);
+nir_def *nir_format_unpack_r9g9b9e5(nir_builder *b, nir_def *packed);
 nir_def *nir_format_pack_r9g9b9e5(nir_builder *b, nir_def *color);
 
+nir_def *nir_format_unpack_rgba(nir_builder *b, nir_def *packed,
+                                enum pipe_format format);
 nir_def *nir_format_pack_rgba(nir_builder *b, enum pipe_format format,
                               nir_def *rgba);
 

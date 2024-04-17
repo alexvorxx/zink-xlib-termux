@@ -399,6 +399,23 @@ nir_format_pack_11f11f10f(nir_builder *b, nir_def *color)
 }
 
 nir_def *
+nir_format_unpack_r9g9b9e5(nir_builder *b, nir_def *packed)
+{
+   nir_def *rgb = nir_vec3(b, nir_ubitfield_extract_imm(b, packed, 0, 9),
+                              nir_ubitfield_extract_imm(b, packed, 9, 9),
+                              nir_ubitfield_extract_imm(b, packed, 18, 9));
+
+   /* exponent = (rgb >> 27) - RGB9E5_EXP_BIAS - RGB9E5_MANTISSA_BITS;
+    * scale.u = (exponent + 127) << 23;
+    */
+   nir_def *exp = nir_ubitfield_extract_imm(b, packed, 27, 5);
+   exp = nir_iadd_imm(b, exp, 127 - RGB9E5_EXP_BIAS - RGB9E5_MANTISSA_BITS);
+   nir_def *scale = nir_ishl_imm(b, exp, 23);
+
+   return nir_fmul(b, rgb, scale);
+}
+
+nir_def *
 nir_format_pack_r9g9b9e5(nir_builder *b, nir_def *color)
 {
    /* See also float3_to_rgb9e5 */
@@ -460,6 +477,155 @@ nir_format_pack_r9g9b9e5(nir_builder *b, nir_def *color)
    packed = nir_mask_shift_or(b, packed, exp_shared, ~0, 27);
 
    return packed;
+}
+
+nir_def *
+nir_format_unpack_rgba(nir_builder *b, nir_def *packed,
+                       enum pipe_format format)
+{
+   switch (format) {
+   case PIPE_FORMAT_R9G9B9E5_FLOAT: {
+      nir_def *rgb = nir_format_unpack_r9g9b9e5(b, packed);
+      return nir_vec4(b, nir_channel(b, rgb, 0),
+                         nir_channel(b, rgb, 1),
+                         nir_channel(b, rgb, 2),
+                         nir_imm_float(b, 1.0));
+   }
+
+   case PIPE_FORMAT_R11G11B10_FLOAT: {
+      nir_def *rgb = nir_format_unpack_11f11f10f(b, packed);
+      return nir_vec4(b, nir_channel(b, rgb, 0),
+                         nir_channel(b, rgb, 1),
+                         nir_channel(b, rgb, 2),
+                         nir_imm_float(b, 1.0));
+   }
+
+   default:
+      /* Handled below */
+      break;
+   }
+
+   const struct util_format_description *desc = util_format_description(format);
+   assert(desc->layout == UTIL_FORMAT_LAYOUT_PLAIN);
+
+   nir_def *unpacked;
+   if (desc->block.bits <= 32) {
+      unsigned bits[4] = { 0, };
+      for (uint32_t c = 0; c < desc->nr_channels; c++) {
+         if (c != 0) {
+            assert(desc->channel[c].shift ==
+                   desc->channel[c - 1].shift + desc->channel[c - 1].size);
+         }
+         bits[c] = desc->channel[c].size;
+      }
+      unpacked = nir_format_unpack_uint(b, packed, bits, desc->nr_channels);
+   } else {
+      unsigned bits = desc->channel[0].size;
+      for (uint32_t c = 1; c < desc->nr_channels; c++)
+         assert(desc->channel[c].size == bits);
+      unpacked = nir_format_bitcast_uvec_unmasked(b, packed, 32, bits);
+
+      /* 3-channel formats can unpack extra components */
+      unpacked = nir_trim_vector(b, unpacked, desc->nr_channels);
+   }
+
+   nir_def *comps[4] = { NULL, };
+   for (uint32_t c = 0; c < desc->nr_channels; c++) {
+      const struct util_format_channel_description *chan = &desc->channel[c];
+
+      nir_def *raw = nir_channel(b, unpacked, c);
+
+      /* Most of the helpers work on an array of bits */
+      unsigned bits[1] = { chan->size };
+
+      switch (chan->type) {
+      case UTIL_FORMAT_TYPE_VOID:
+         comps[c] = nir_imm_int(b, 0);
+         break;
+
+      case UTIL_FORMAT_TYPE_UNSIGNED:
+         if (chan->normalized) {
+            comps[c] = nir_format_unorm_to_float(b, raw, bits);
+         } else if (chan->pure_integer) {
+            comps[c] = nir_u2u32(b, raw);
+         } else {
+            comps[c] = nir_u2f32(b, raw);
+         }
+         break;
+
+      case UTIL_FORMAT_TYPE_SIGNED:
+         raw = nir_format_sign_extend_ivec(b, raw, bits);
+         if (chan->normalized) {
+            comps[c] = nir_format_snorm_to_float(b, raw, bits);
+         } else if (chan->pure_integer) {
+            comps[c] = nir_i2i32(b, raw);
+         } else {
+            comps[c] = nir_i2f32(b, raw);
+         }
+         break;
+
+      case UTIL_FORMAT_TYPE_FIXED:
+         unreachable("Fixed formats not supported");
+
+      case UTIL_FORMAT_TYPE_FLOAT:
+         switch (chan->size) {
+         case 16:
+            comps[c] = nir_unpack_half_2x16_split_x(b, raw);
+            break;
+
+         case 32:
+            comps[c] = raw;
+            break;
+
+         default:
+            unreachable("Unknown number of float bits");
+         }
+         break;
+
+      default:
+         unreachable("Unknown format channel type");
+      }
+   }
+
+   nir_def *swiz_comps[4] = { NULL, };
+   for (uint32_t i = 0; i < 4; i++) {
+      enum pipe_swizzle s = desc->swizzle[i];
+      switch (s) {
+      case PIPE_SWIZZLE_X:
+      case PIPE_SWIZZLE_Y:
+      case PIPE_SWIZZLE_Z:
+      case PIPE_SWIZZLE_W:
+         swiz_comps[i] = comps[s - PIPE_SWIZZLE_X];
+         break;
+
+      case PIPE_SWIZZLE_0:
+      case PIPE_SWIZZLE_NONE:
+         swiz_comps[i] = nir_imm_int(b, 0);
+         break;
+
+      case PIPE_SWIZZLE_1:
+         if (util_format_is_pure_integer(format))
+            swiz_comps[i] = nir_imm_int(b, 1);
+         else
+            swiz_comps[i] = nir_imm_float(b, 1.0);
+         break;
+
+      default:
+         unreachable("Unknown swizzle");
+      }
+   }
+   nir_def *rgba = nir_vec(b, swiz_comps, 4);
+
+   assert(desc->colorspace == UTIL_FORMAT_COLORSPACE_RGB ||
+          desc->colorspace == UTIL_FORMAT_COLORSPACE_SRGB);
+   if (desc->colorspace == UTIL_FORMAT_COLORSPACE_SRGB) {
+      nir_def *linear = nir_format_srgb_to_linear(b, rgba);
+      if (rgba->num_components == 4)
+         linear = nir_vector_insert_imm(b, linear, nir_channel(b, rgba, 3), 3);
+      rgba = linear;
+   }
+
+   return rgba;
 }
 
 nir_def *

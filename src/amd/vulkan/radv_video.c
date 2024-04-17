@@ -559,7 +559,7 @@ radv_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice, cons
                                       VK_VIDEO_ENCODE_RATE_CONTROL_MODE_CBR_BIT_KHR |
                                       VK_VIDEO_ENCODE_RATE_CONTROL_MODE_VBR_BIT_KHR;
          enc_caps->maxRateControlLayers = RADV_ENC_MAX_RATE_LAYER;
-         enc_caps->maxBitrate = 0;
+         enc_caps->maxBitrate = 1000000000;
          enc_caps->maxQualityLevels = 2;
          enc_caps->encodeInputPictureGranularity.width = 1;
          enc_caps->encodeInputPictureGranularity.height = 1;

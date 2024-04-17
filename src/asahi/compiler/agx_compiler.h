@@ -309,15 +309,8 @@ typedef struct {
    /* Must be first */
    struct list_head link;
 
-   /* The sources list.
-    *
-    * As a special case to workaround ordering issues when translating phis, if
-    * nr_srcs == 0 and the opcode is PHI, holds a pointer to the NIR phi node.
-    */
-   union {
-      agx_index *src;
-      nir_phi_instr *phi;
-   };
+   /* The sources list. */
+   agx_index *src;
 
    /* Data flow */
    agx_index *dest;
@@ -348,6 +341,11 @@ typedef struct {
       enum agx_atomic_opc atomic_opc;
       enum agx_lod_mode lod_mode;
       struct agx_block *target;
+
+      /* As a special case to workaround ordering issues when translating phis,
+       * if nr_srcs == 0 and the opcode is PHI, points to the NIR phi.
+       */
+      nir_phi_instr *phi;
    };
 
    /* For local access */

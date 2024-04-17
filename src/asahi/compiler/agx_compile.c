@@ -2146,6 +2146,7 @@ static void
 agx_emit_phi_deferred(agx_context *ctx, agx_block *block, agx_instr *I)
 {
    nir_phi_instr *phi = I->phi;
+   I->phi = NULL;
 
    /* Guaranteed by lower_phis_to_scalar */
    assert(phi->def.num_components == 1);

@@ -248,19 +248,26 @@ pipe_msm_create_screen(int fd, const struct pipe_screen_config *config)
    return screen ? debug_screen_wrap(screen) : NULL;
 }
 
+static bool
+pipe_msm_probe_nctx(int fd, const struct virgl_renderer_capset_drm *caps)
+{
+   return fd_drm_probe_nctx(fd, caps);
+}
+
 const driOptionDescription msm_driconf[] = {
 #ifdef GALLIUM_FREEDRENO
       #include "freedreno/driinfo_freedreno.h"
 #endif
 };
-DRM_DRIVER_DESCRIPTOR(msm, msm_driconf, ARRAY_SIZE(msm_driconf))
+DRM_DRIVER_DESCRIPTOR(msm, msm_driconf, ARRAY_SIZE(msm_driconf),
+                      .probe_nctx = pipe_msm_probe_nctx)
 DRM_DRIVER_DESCRIPTOR_ALIAS(msm, kgsl, msm_driconf, ARRAY_SIZE(msm_driconf))
 #else
 DRM_DRIVER_DESCRIPTOR_STUB(msm)
 DRM_DRIVER_DESCRIPTOR_STUB(kgsl)
 #endif
 
-#if defined(GALLIUM_VIRGL) || (defined(GALLIUM_FREEDRENO) && !defined(PIPE_LOADER_DYNAMIC))
+#if defined(GALLIUM_VIRGL)
 #include "virgl/drm/virgl_drm_public.h"
 #include "virgl/virgl_public.h"
 
@@ -269,15 +276,9 @@ pipe_virtio_gpu_create_screen(int fd, const struct pipe_screen_config *config)
 {
    struct pipe_screen *screen = NULL;
 
-   /* Try native guest driver(s) first, and then fallback to virgl: */
-#ifdef GALLIUM_FREEDRENO
-   if (!screen)
-      screen = fd_drm_screen_create_renderonly(fd, NULL, config);
-#endif
-#ifdef GALLIUM_VIRGL
    if (!screen)
       screen = virgl_drm_screen_create(fd, config);
-#endif
+
    return screen ? debug_screen_wrap(screen) : NULL;
 }
 

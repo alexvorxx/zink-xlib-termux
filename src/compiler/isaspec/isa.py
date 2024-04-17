@@ -420,6 +420,9 @@ class BitSetEnumValue(object):
     def get_name(self):
         return self.name or self.displayname
 
+    def get_displayname(self):
+        return self.displayname or self.name
+
     def get_value(self):
         return self.value
 

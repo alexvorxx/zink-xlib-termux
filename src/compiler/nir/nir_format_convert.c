@@ -24,6 +24,7 @@
 #include "nir_format_convert.h"
 
 #include "util/format_rgb9e5.h"
+#include "util/format/u_format.h"
 #include "util/macros.h"
 
 nir_def *
@@ -247,6 +248,39 @@ nir_format_float_to_snorm(nir_builder *b, nir_def *f, const unsigned *bits)
    return nir_f2i32(b, nir_fround_even(b, nir_fmul(b, f, factor)));
 }
 
+static nir_def *
+nir_format_float_to_uscaled(nir_builder *b, nir_def *f, const unsigned *bits)
+{
+   nir_const_value max[NIR_MAX_VEC_COMPONENTS];
+   memset(max, 0, sizeof(max));
+   for (unsigned i = 0; i < f->num_components; i++) {
+      assert(bits[i] <= 32);
+      max[i].f32 = u_uintN_max(bits[i]);
+   }
+
+   f = nir_fclamp(b, f, nir_imm_float(b, 0),
+                        nir_build_imm(b, f->num_components, 32, max));
+
+   return nir_f2u32(b, nir_fround_even(b, f));
+}
+
+static nir_def *
+nir_format_float_to_sscaled(nir_builder *b, nir_def *f, const unsigned *bits)
+{
+   nir_const_value min[NIR_MAX_VEC_COMPONENTS], max[NIR_MAX_VEC_COMPONENTS];
+   memset(min, 0, sizeof(min));
+   memset(max, 0, sizeof(max));
+   for (unsigned i = 0; i < f->num_components; i++) {
+      assert(bits[i] <= 32);
+      max[i].f32 = u_intN_max(bits[i]);
+      min[i].f32 = u_intN_min(bits[i]);
+   }
+
+   f = nir_fclamp(b, f, nir_build_imm(b, f->num_components, 32, min),
+                        nir_build_imm(b, f->num_components, 32, max));
+
+   return nir_f2i32(b, nir_fround_even(b, f));
+}
 
 /* Converts a vector of floats to a vector of half-floats packed in the low 16
  * bits.
@@ -426,4 +460,125 @@ nir_format_pack_r9g9b9e5(nir_builder *b, nir_def *color)
    packed = nir_mask_shift_or(b, packed, exp_shared, ~0, 27);
 
    return packed;
+}
+
+nir_def *
+nir_format_pack_rgba(nir_builder *b, enum pipe_format format, nir_def *rgba)
+{
+   assert(rgba->num_components <= 4);
+
+   switch (format) {
+   case PIPE_FORMAT_R9G9B9E5_FLOAT:
+      return nir_format_pack_r9g9b9e5(b, rgba);
+
+   case PIPE_FORMAT_R11G11B10_FLOAT:
+      return nir_format_pack_11f11f10f(b, rgba);
+
+   default:
+      /* Handled below */
+      break;
+   }
+
+   const struct util_format_description *desc = util_format_description(format);
+   assert(desc->layout == UTIL_FORMAT_LAYOUT_PLAIN);
+
+   assert(desc->colorspace == UTIL_FORMAT_COLORSPACE_RGB ||
+          desc->colorspace == UTIL_FORMAT_COLORSPACE_SRGB);
+   if (desc->colorspace == UTIL_FORMAT_COLORSPACE_SRGB) {
+      nir_def *srgb = nir_format_linear_to_srgb(b, rgba);
+      if (rgba->num_components == 4)
+         srgb = nir_vector_insert_imm(b, srgb, nir_channel(b, rgba, 3), 3);
+      rgba = srgb;
+   }
+
+   nir_def *comps[4] = { NULL, };
+   for (uint32_t i = 0; i < 4; i++) {
+      enum pipe_swizzle s = desc->swizzle[i];
+      if (s < PIPE_SWIZZLE_X || s > PIPE_SWIZZLE_W)
+         continue;
+
+      /* This is backwards from what you might think because we're packing and
+       * the swizzles are in terms of unpacking.
+       */
+      comps[s - PIPE_SWIZZLE_X] = nir_channel(b, rgba, i);
+   }
+
+   for (uint32_t c = 0; c < desc->nr_channels; c++) {
+      const struct util_format_channel_description *chan = &desc->channel[c];
+      if (comps[c] == NULL) {
+         comps[c] = nir_imm_int(b, 0);
+         continue;
+      }
+
+      /* Most of the helpers work on an array of bits */
+      assert(comps[c]->num_components == 1);
+      unsigned bits[1] = { chan->size };
+
+      switch (chan->type) {
+      case UTIL_FORMAT_TYPE_VOID:
+         comps[c] = nir_imm_int(b, 0);
+         break;
+
+      case UTIL_FORMAT_TYPE_UNSIGNED:
+         if (chan->normalized) {
+            comps[c] = nir_format_float_to_unorm(b, comps[c], bits);
+         } else if (chan->pure_integer) {
+            comps[c] = nir_format_clamp_uint(b, comps[c], bits);
+         } else {
+            comps[c] = nir_format_float_to_uscaled(b, comps[c], bits);
+         }
+         break;
+
+      case UTIL_FORMAT_TYPE_SIGNED:
+         if (chan->normalized) {
+            comps[c] = nir_format_float_to_snorm(b, comps[c], bits);
+         } else if (chan->pure_integer) {
+            comps[c] = nir_format_clamp_sint(b, comps[c], bits);
+         } else {
+            comps[c] = nir_format_float_to_sscaled(b, comps[c], bits);
+         }
+         /* We don't want sign bits ending up in other channels */
+         comps[c] = nir_format_mask_uvec(b, comps[c], bits);
+         break;
+
+      case UTIL_FORMAT_TYPE_FIXED:
+         unreachable("Fixed formats not supported");
+
+      case UTIL_FORMAT_TYPE_FLOAT:
+         switch (chan->size) {
+         case 16:
+            comps[c] = nir_format_float_to_half(b, comps[c]);
+            break;
+
+         case 32:
+            /* Nothing to do */
+            break;
+
+         default:
+            unreachable("Unknown number of float bits");
+         }
+         break;
+
+      default:
+         unreachable("Unknown format channel type");
+      }
+   }
+   nir_def *encoded = nir_vec(b, comps, desc->nr_channels);
+
+   if (desc->block.bits <= 32) {
+      unsigned bits[4] = { 0, };
+      for (uint32_t c = 0; c < desc->nr_channels; c++) {
+         if (c != 0) {
+            assert(desc->channel[c].shift ==
+                   desc->channel[c - 1].shift + desc->channel[c - 1].size);
+         }
+         bits[c] = desc->channel[c].size;
+      }
+      return nir_format_pack_uint_unmasked(b, encoded, bits, desc->nr_channels);
+   } else {
+      unsigned bits = desc->channel[0].size;
+      for (uint32_t c = 1; c < desc->nr_channels; c++)
+         assert(desc->channel[c].size == bits);
+      return nir_format_bitcast_uvec_unmasked(b, encoded, bits, 32);
+   }
 }

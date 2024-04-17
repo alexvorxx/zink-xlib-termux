@@ -3391,17 +3391,15 @@ offset_to_ps_input(const uint32_t offset, const enum radv_ps_in_type type)
 
 static void
 slot_to_ps_input(const struct radv_vs_output_info *outinfo, unsigned slot, uint32_t *ps_input_cntl, unsigned *ps_offset,
-                 bool skip_undef, bool use_default_0, const enum radv_ps_in_type type)
+                 const bool use_default_0, const enum radv_ps_in_type type)
 {
    unsigned vs_offset = outinfo->vs_output_param_offset[slot];
 
    if (vs_offset == AC_EXP_PARAM_UNDEFINED) {
-      if (skip_undef)
-         return;
-      else if (use_default_0)
+      if (use_default_0)
          vs_offset = AC_EXP_PARAM_DEFAULT_VAL_0000;
       else
-         unreachable("vs_offset should not be AC_EXP_PARAM_UNDEFINED.");
+         return;
    }
 
    ps_input_cntl[*ps_offset] = offset_to_ps_input(vs_offset, type);
@@ -3450,37 +3448,35 @@ radv_emit_ps_inputs(const struct radv_device *device, struct radeon_cmdbuf *ctx_
    unsigned ps_offset = 0;
 
    if (ps->info.ps.prim_id_input && !mesh)
-      slot_to_ps_input(outinfo, VARYING_SLOT_PRIMITIVE_ID, ps_input_cntl, &ps_offset, true, false, radv_ps_in_flat);
+      slot_to_ps_input(outinfo, VARYING_SLOT_PRIMITIVE_ID, ps_input_cntl, &ps_offset, false, radv_ps_in_flat);
 
    if (ps->info.ps.layer_input && !mesh)
-      slot_to_ps_input(outinfo, VARYING_SLOT_LAYER, ps_input_cntl, &ps_offset, false, true, radv_ps_in_flat);
+      slot_to_ps_input(outinfo, VARYING_SLOT_LAYER, ps_input_cntl, &ps_offset, true, radv_ps_in_flat);
 
    if (ps->info.ps.viewport_index_input && !mesh)
-      slot_to_ps_input(outinfo, VARYING_SLOT_VIEWPORT, ps_input_cntl, &ps_offset, false, true, radv_ps_in_flat);
+      slot_to_ps_input(outinfo, VARYING_SLOT_VIEWPORT, ps_input_cntl, &ps_offset, true, radv_ps_in_flat);
 
    if (ps->info.ps.has_pcoord)
       ps_input_cntl[ps_offset++] = S_028644_PT_SPRITE_TEX(1) | S_028644_OFFSET(0x20);
 
    if (ps->info.ps.input_clips_culls_mask & 0x0f)
-      slot_to_ps_input(outinfo, VARYING_SLOT_CLIP_DIST0, ps_input_cntl, &ps_offset, true, false,
-                       radv_ps_in_interpolated);
+      slot_to_ps_input(outinfo, VARYING_SLOT_CLIP_DIST0, ps_input_cntl, &ps_offset, false, radv_ps_in_interpolated);
 
    if (ps->info.ps.input_clips_culls_mask & 0xf0)
-      slot_to_ps_input(outinfo, VARYING_SLOT_CLIP_DIST1, ps_input_cntl, &ps_offset, true, false,
-                       radv_ps_in_interpolated);
+      slot_to_ps_input(outinfo, VARYING_SLOT_CLIP_DIST1, ps_input_cntl, &ps_offset, false, radv_ps_in_interpolated);
 
    input_mask_to_ps_inputs(outinfo, ps, ps->info.ps.input_mask, ps_input_cntl, &ps_offset, radv_ps_in_interpolated);
 
    /* Per-primitive PS inputs: the HW needs these to be last. */
 
    if (ps->info.ps.prim_id_input && mesh)
-      slot_to_ps_input(outinfo, VARYING_SLOT_PRIMITIVE_ID, ps_input_cntl, &ps_offset, true, false, per_prim);
+      slot_to_ps_input(outinfo, VARYING_SLOT_PRIMITIVE_ID, ps_input_cntl, &ps_offset, false, per_prim);
 
    if (ps->info.ps.layer_input && mesh)
-      slot_to_ps_input(outinfo, VARYING_SLOT_LAYER, ps_input_cntl, &ps_offset, false, true, per_prim);
+      slot_to_ps_input(outinfo, VARYING_SLOT_LAYER, ps_input_cntl, &ps_offset, true, per_prim);
 
    if (ps->info.ps.viewport_index_input && mesh)
-      slot_to_ps_input(outinfo, VARYING_SLOT_VIEWPORT, ps_input_cntl, &ps_offset, false, true, per_prim);
+      slot_to_ps_input(outinfo, VARYING_SLOT_VIEWPORT, ps_input_cntl, &ps_offset, true, per_prim);
 
    input_mask_to_ps_inputs(outinfo, ps, ps->info.ps.input_per_primitive_mask, ps_input_cntl, &ps_offset, per_prim);
 

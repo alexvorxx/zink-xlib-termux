@@ -90,4 +90,33 @@ disasm = executable(
   install: false,
 )
 
+if with_tools.contains('etnaviv')
+  add_languages('rust', required: true)
+  rust = import('rust')
+
+  isa_bindings_rs = rust.bindgen(
+    input : 'bindings.h',
+    output : 'isa_bindings.rs',
+    include_directories : [inc_src],
+    args : [
+      '--disable-header-comment',
+      '--ignore-functions',
+      '--allowlist-type', 'etna_inst',
+      '--allowlist-type', 'isa_swiz',
+      '--default-enum-style', 'rust',
+      '--with-derive-default',
+    ],
+  )
+
+  _libetnaviv_isa_bindings_gen = static_library(
+    'isa_bindings',
+    isa_bindings_rs,
+    gnu_symbol_visibility : 'hidden',
+    rust_abi : 'rust',
+    rust_args: [
+      '-Anon_camel_case_types',
+    ],
+  )
+endif
+
 subdir('tests')

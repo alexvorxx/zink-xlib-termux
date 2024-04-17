@@ -205,6 +205,8 @@ SPDX-License-Identifier: MIT
 </enum>
 
 <bitset name="#instruction-alu" extends="#instruction">
+	<meta type="alu"/>
+
 	<field name="DST_USE" pos="12" type="bool"/>
 	<field name="DST" low="13" high="26" type="#instruction-dst">
 		<param name="DST_USE"/>
@@ -417,6 +419,8 @@ SPDX-License-Identifier: MIT
 </bitset>
 
 <bitset name="#instruction-alu-src0" extends="#instruction-alu">
+	<meta has_dest="true" valid_srcs="0"/>
+
 	<display>
 		{INSTR_ALU} {DST:align=18}, {SRC0}, void, void
 	</display>
@@ -452,6 +456,8 @@ SPDX-License-Identifier: MIT
 </bitset>
 
 <bitset name="#instruction-alu-src2" extends="#instruction-alu">
+	<meta has_dest="true" valid_srcs="2"/>
+
 	<display>
 		{INSTR_ALU} {DST:align=18}, void, void, {SRC2}
 	</display>
@@ -495,6 +501,8 @@ SPDX-License-Identifier: MIT
 </bitset>
 
 <bitset name="#instruction-alu-src0-src1" extends="#instruction-alu">
+	<meta has_dest="true" valid_srcs="0|1"/>
+
 	<display>
 		{INSTR_ALU} {DST:align=18}, {SRC0}, {SRC1}, void
 	</display>
@@ -532,6 +540,8 @@ SPDX-License-Identifier: MIT
 </bitset>
 
 <bitset name="#instruction-alu-src0-src2" extends="#instruction-alu">
+	<meta has_dest="true" valid_srcs="0|2"/>
+
 	<display>
 		{INSTR_ALU} {DST:align=18}, {SRC0}, void, {SRC2}
 	</display>
@@ -577,6 +587,8 @@ SPDX-License-Identifier: MIT
 </bitset>
 
 <bitset name="#instruction-alu-src1-src2" extends="#instruction-alu">
+	<meta has_dest="true" valid_srcs="1|2"/>
+
 	<display>
 		{INSTR_ALU} {DST:align=18}, void, {SRC1}, {SRC2}
 	</display>
@@ -627,6 +639,7 @@ SPDX-License-Identifier: MIT
 </bitset>
 
 <bitset name="#instruction-alu-src0-src1-src2" extends="#instruction-alu">
+	<meta has_dest="true" valid_srcs="0|1|2"/>
 	<display>
 		{INSTR_ALU} {DST:align=18}, {SRC0}, {SRC1}, {SRC2}
 	</display>
@@ -666,6 +679,8 @@ SPDX-License-Identifier: MIT
 </bitset>
 
 <bitset name="#instruction-tex" extends="#instruction">
+	<meta type="tex"/>
+
 	<field name="DST_USE" pos="12" type="bool"/>
 	<field name="DST" low="13" high="26" type="#instruction-dst">
 		<param name="DST_USE"/>
@@ -681,6 +696,8 @@ SPDX-License-Identifier: MIT
 </bitset>
 
 <bitset name="#instruction-tex-src0" extends="#instruction-tex">
+	<meta has_dest="true" valid_srcs="0"/>
+
 	<display>
 		{INSTR_TEX} {DST:align=18}, tex{TEX_ID}{TEX_SWIZ}, {SRC0}, void, void
 	</display>
@@ -716,6 +733,8 @@ SPDX-License-Identifier: MIT
 </bitset>
 
 <bitset name="#instruction-tex-src0-src1-src2" extends="#instruction-tex">
+	<meta has_dest="true" valid_srcs="0|1|2"/>
+
 	<display>
 		{INSTR_TEX} {DST:align=18}, tex{TEX_ID}{TEX_SWIZ}, {SRC0}, {SRC1}, {SRC2}
 	</display>
@@ -755,6 +774,8 @@ SPDX-License-Identifier: MIT
 </bitset>
 
 <bitset name="#instruction-tex-maybe-src0-src1" extends="#instruction-tex">
+	<meta has_dest="true" valid_srcs="0|1"/>
+
 	<display>
 		{INSTR_TEX} {DST:align=18}, tex{TEX_ID}{TEX_SWIZ}, {SRC0}, {SRC1}, void
 	</display>
@@ -798,6 +819,8 @@ SPDX-License-Identifier: MIT
 </bitset>
 
 <bitset name="#instruction-cf" extends="#instruction">
+	<meta type="cf"/>
+
 	<pattern low="12" high="31">00000000000000000000</pattern>
 
 	<pattern low="32" high="33">00</pattern> <!-- RMODE -->
@@ -887,6 +910,9 @@ SPDX-License-Identifier: MIT
 </bitset>
 
 <bitset name="#instruction-load" extends="#instruction">
+	<meta type="load_store"/>
+	<meta has_dest="true" valid_srcs="0|1"/>
+
 	<field name="DST_USE" pos="12" type="bool"/>
 	<field name="DST" low="13" high="26" type="#instruction-dst">
 		<param name="DST_USE"/>
@@ -949,6 +975,9 @@ SPDX-License-Identifier: MIT
 </bitset>
 
 <bitset name="#instruction-store" extends="#instruction">
+	<meta type="load_store"/>
+	<meta has_dest="true" valid_srcs="0|1|2"/>
+
 	<pattern low="12" high="16">xxxxx</pattern>
 	<pattern pos="17">x</pattern>
 	<pattern low="18" high="22">xxxxx</pattern>
@@ -1275,6 +1304,8 @@ SPDX-License-Identifier: MIT
 </bitset>
 
 <bitset name="movai" extends="#instruction-alu-src2">
+	<meta has_dest="false"/>
+
 	<pattern low="0" high="5">010110</pattern> <!-- OPC -->
 	<pattern pos="80">1</pattern> <!-- OPCODE_BIT6 -->
 </bitset>

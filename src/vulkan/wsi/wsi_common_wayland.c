@@ -1067,28 +1067,6 @@ wsi_wl_surface_get_min_image_count(const VkSurfacePresentModeEXT *present_mode)
    }
 }
 
-static uint32_t
-wsi_wl_surface_get_min_image_count_for_mode_group(const VkSwapchainPresentModesCreateInfoEXT *modes)
-{
-   /* If we don't provide the PresentModeCreateInfo struct, we must be backwards compatible,
-    * and assume that minImageCount is the default one, i.e. 4, which supports both FIFO and MAILBOX. */
-   if (!modes) {
-      return wsi_wl_surface_get_min_image_count(NULL);
-   }
-
-   uint32_t max_required = 0;
-   for (uint32_t i = 0; i < modes->presentModeCount; i++) {
-      const VkSurfacePresentModeEXT mode = {
-         VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_EXT,
-         NULL,
-         modes->pPresentModes[i]
-      };
-      max_required = MAX2(max_required, wsi_wl_surface_get_min_image_count(&mode));
-   }
-
-   return max_required;
-}
-
 static VkResult
 wsi_wl_surface_get_capabilities(VkIcdSurfaceBase *surface,
                                 struct wsi_device *wsi_device,

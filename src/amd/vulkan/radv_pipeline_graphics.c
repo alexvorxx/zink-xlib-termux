@@ -3429,7 +3429,7 @@ input_mask_to_ps_inputs(const struct radv_vs_output_info *outinfo, const struct 
          type = radv_ps_in_flat;
       else if (ps->info.ps.explicit_shaded_mask & BITFIELD_BIT(*ps_offset))
          type = radv_ps_in_explicit;
-      else if (ps->info.ps.per_vertex_shaded_mask & BITFIELD_BIT(*ps_offset))
+      else if (ps->info.ps.explicit_strict_shaded_mask & BITFIELD_BIT(*ps_offset))
          type = radv_ps_in_explicit_strict;
       else if (ps->info.ps.float16_hi_shaded_mask & BITFIELD_BIT(*ps_offset))
          type = radv_ps_in_interpolated_fp16_hi;

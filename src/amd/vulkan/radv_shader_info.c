@@ -92,7 +92,7 @@ gather_load_fs_input_info(const nir_shader *nir, const nir_intrinsic_instr *intr
          info->ps.flat_shaded_mask |= mapped_mask;
       } else if (intrin->intrinsic == nir_intrinsic_load_input_vertex) {
          if (io_sem.interp_explicit_strict)
-            info->ps.per_vertex_shaded_mask |= mapped_mask;
+            info->ps.explicit_strict_shaded_mask |= mapped_mask;
          else
             info->ps.explicit_shaded_mask |= mapped_mask;
       } else if (intrin->intrinsic == nir_intrinsic_load_interpolated_input && intrin->def.bit_size == 16) {

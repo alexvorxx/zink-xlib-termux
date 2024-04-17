@@ -758,11 +758,11 @@ llvmpipe_resource_get_handle(struct pipe_screen *_screen,
       }
       whandle->handle = lpr->dmabuf_alloc->dmabuf_fd;
       return true;
-   } else if (whandle->type == WINSYS_HANDLE_TYPE_KMS) {
+   } else if (!lpr->dt && whandle->type == WINSYS_HANDLE_TYPE_KMS) {
       /* dri winsys code will use this to query the drm modifiers
        * We can just return an null handle and return DRM_FORMAT_MOD_LINEAR */
       whandle->handle = 0;
-       return true;
+      return true;
     }
 #endif
    assert(lpr->dt);

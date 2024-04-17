@@ -32,6 +32,8 @@
 
 #include <stdint.h>
 
+#include "rounding.h"
+
 #define UF11(e, m)           ((e << 6) | (m))
 #define UF11_EXPONENT_BIAS   15
 #define UF11_EXPONENT_BITS   0x1F
@@ -90,9 +92,23 @@ static inline uint32_t f32_to_uf11(float val)
        */
       uf11 = UF11(30, 63);
    } else if (exponent > -15) { /* Representable value */
+      /* Dividing by 2^exponent gives us a number in the range [1, 2).
+       * Multiplying by 2^6=64 gives us our mantissa, plus an extra 1 which
+       * we'll mask off.
+       */
+      mantissa = _mesa_lroundevenf(ldexp(val, 6 - exponent));
+      if (mantissa >= 2 << UF11_EXPONENT_SHIFT) {
+         /* The float32 was rounded upwards into the range of the next
+          * exponent, so bump the exponent.
+          */
+         assert(mantissa == 2 << UF11_EXPONENT_SHIFT);
+         mantissa >>= 1;
+         exponent++;
+      }
+      assert((mantissa >> UF11_EXPONENT_SHIFT) == 1);
+      mantissa &= UF11_MANTISSA_BITS;
       exponent += UF11_EXPONENT_BIAS;
-      mantissa >>= UF11_MANTISSA_SHIFT;
-      uf11 = exponent << UF11_EXPONENT_SHIFT | mantissa;
+      uf11 = UF11(exponent, mantissa);
    }
 
    return uf11;
@@ -172,9 +188,23 @@ static inline uint32_t f32_to_uf10(float val)
        */
       uf10 = UF10(30, 31);
    } else if (exponent > -15) { /* Representable value */
+      /* Dividing by 2^exponent gives us a number in the range [1, 2).
+       * Multiplying by 2^5=32 gives us our mantissa, plus an extra 1 which
+       * we'll mask off.
+       */
+      mantissa = _mesa_lroundevenf(ldexp(val, 5 - exponent));
+      if (mantissa >= 2 << UF10_EXPONENT_SHIFT) {
+         /* The float32 was rounded upwards into the range of the next
+          * exponent, so bump the exponent.
+          */
+         assert(mantissa == 2 << UF10_EXPONENT_SHIFT);
+         mantissa >>= 1;
+         exponent++;
+      }
+      assert((mantissa >> UF10_EXPONENT_SHIFT) == 1);
+      mantissa &= UF10_MANTISSA_BITS;
       exponent += UF10_EXPONENT_BIAS;
-      mantissa >>= UF10_MANTISSA_SHIFT;
-      uf10 = exponent << UF10_EXPONENT_SHIFT | mantissa;
+      uf10 = UF10(exponent, mantissa);
    }
 
    return uf10;

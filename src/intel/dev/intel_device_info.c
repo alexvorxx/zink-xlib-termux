@@ -1227,6 +1227,7 @@ static const struct intel_device_info intel_device_info_arl_h = {
       .scanout = PAT_ENTRY(6, WC, NONE),                        \
       .writeback_incoherent = PAT_ENTRY(0, WB, NONE),           \
       .writecombining = PAT_ENTRY(6, WC, NONE),                 \
+      .compressed = PAT_ENTRY(11, WC, NONE)                     \
    },                                                           \
    .cooperative_matrix_configurations = {                       \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 16, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT32, INTEL_CMAT_FLOAT32 }, \

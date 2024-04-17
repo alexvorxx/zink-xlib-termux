@@ -217,11 +217,11 @@ struct etna_gpu *etna_gpu_new(struct etna_device *dev, unsigned int core)
 	gpu->dev = dev;
 	gpu->core = core;
 
-	gpu->info.model    	= get_param(dev, core, ETNAVIV_PARAM_GPU_MODEL);
-	gpu->info.revision 	= get_param(dev, core, ETNAVIV_PARAM_GPU_REVISION);
-
+	gpu->info.model = get_param(dev, core, ETNAVIV_PARAM_GPU_MODEL);
 	if (!gpu->info.model)
 		goto fail;
+
+	gpu->info.revision = get_param(dev, core, ETNAVIV_PARAM_GPU_REVISION);
 
 	DEBUG_MSG(" GPU model:          0x%x (rev %x)", gpu->info.model, gpu->info.revision);
 

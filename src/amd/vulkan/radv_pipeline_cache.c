@@ -388,6 +388,7 @@ radv_pipeline_cache_insert(struct radv_device *device, struct vk_pipeline_cache 
 struct radv_ray_tracing_stage_cache_data {
    uint32_t stack_size : 31;
    uint32_t has_shader : 1;
+   struct radv_ray_tracing_stage_info info;
 };
 
 struct radv_ray_tracing_pipeline_cache_data {
@@ -429,6 +430,7 @@ radv_ray_tracing_pipeline_cache_search(struct radv_device *device, struct vk_pip
 
    for (unsigned i = 0; i < pipeline->non_imported_stage_count; i++) {
       pipeline->stages[i].stack_size = data->stages[i].stack_size;
+      pipeline->stages[i].info = data->stages[i].info;
 
       if (data->stages[i].has_shader)
          pipeline->stages[i].shader = radv_shader_ref(pipeline_obj->shaders[idx++]);
@@ -483,6 +485,7 @@ radv_ray_tracing_pipeline_cache_insert(struct radv_device *device, struct vk_pip
 
    for (unsigned i = 0; i < num_stages; ++i) {
       data->stages[i].stack_size = pipeline->stages[i].stack_size;
+      data->stages[i].info = pipeline->stages[i].info;
       data->stages[i].has_shader = !!pipeline->stages[i].shader;
 
       if (pipeline->stages[i].shader)

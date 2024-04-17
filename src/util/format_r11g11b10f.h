@@ -91,7 +91,7 @@ static inline uint32_t f32_to_uf11(float val)
        *      converted to 65024."
        */
       uf11 = UF11(30, 63);
-   } else if (exponent > -15) { /* Representable value */
+   } else if (exponent > -15) { /* Normal value */
       /* Dividing by 2^exponent gives us a number in the range [1, 2).
        * Multiplying by 2^6=64 gives us our mantissa, plus an extra 1 which
        * we'll mask off.
@@ -109,6 +109,19 @@ static inline uint32_t f32_to_uf11(float val)
       mantissa &= UF11_MANTISSA_BITS;
       exponent += UF11_EXPONENT_BIAS;
       uf11 = UF11(exponent, mantissa);
+   } else { /* Zero or denormal */
+      /* Since exponent <= -15, Multiplying by 2^14 gives us a number in the
+       * range [0, 1). Multiplying by 2^6=64 gives us our mantissa.
+       */
+      mantissa = _mesa_lroundevenf(ldexp(val, 6 + 14));
+
+      /* It's possible that we get a normal after rounding */
+      if ((mantissa >> UF11_EXPONENT_SHIFT) != 0) {
+         assert(mantissa == (1 << UF11_EXPONENT_SHIFT));
+         uf11 = UF11(1, 0);
+      } else {
+         uf11 = UF11(0, mantissa);
+      }
    }
 
    return uf11;
@@ -187,7 +200,7 @@ static inline uint32_t f32_to_uf10(float val)
        *      converted to 64512."
        */
       uf10 = UF10(30, 31);
-   } else if (exponent > -15) { /* Representable value */
+   } else if (exponent > -15) { /* Normal value */
       /* Dividing by 2^exponent gives us a number in the range [1, 2).
        * Multiplying by 2^5=32 gives us our mantissa, plus an extra 1 which
        * we'll mask off.
@@ -205,6 +218,19 @@ static inline uint32_t f32_to_uf10(float val)
       mantissa &= UF10_MANTISSA_BITS;
       exponent += UF10_EXPONENT_BIAS;
       uf10 = UF10(exponent, mantissa);
+   } else { /* Zero or denormal */
+      /* Since exponent <= -15, Multiplying by 2^14 gives us a number in the
+       * range [0, 1). Multiplying by 2^5=32 gives us our mantissa.
+       */
+      mantissa = _mesa_lroundevenf(ldexp(val, 5 + 14));
+
+      /* It's possible that we get a normal after rounding */
+      if ((mantissa >> UF10_EXPONENT_SHIFT) != 0) {
+         assert(mantissa == (1 << UF10_EXPONENT_SHIFT));
+         uf10 = UF10(1, 0);
+      } else {
+         uf10 = UF10(0, mantissa);
+      }
    }
 
    return uf10;

@@ -2925,6 +2925,11 @@ anv_graphics_pipeline_emit(struct anv_graphics_pipeline *pipeline,
    if (pipeline->base.shaders[MESA_SHADER_FRAGMENT]) {
       const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
 
+      if (state->ms) {
+         pipeline->sample_shading_enable = state->ms->sample_shading_enable;
+         pipeline->min_sample_shading = state->ms->min_sample_shading;
+      }
+
       if (wm_prog_data_dynamic(wm_prog_data)) {
          pipeline->fs_msaa_flags = INTEL_MSAA_FLAG_ENABLE_DYNAMIC;
 

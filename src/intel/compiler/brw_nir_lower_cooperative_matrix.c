@@ -685,7 +685,6 @@ lower_cmat_instr(nir_builder *b, nir_instr *instr, void *_state)
                         .dest_type = dest_type,
                         .src_type = src_type,
                         .saturate = nir_intrinsic_saturate(intrin),
-                        .cmat_signed_mask = nir_intrinsic_cmat_signed_mask(intrin),
                         .systolic_depth = 8,
                         .repeat_count = 8);
 

@@ -2272,6 +2272,14 @@ v3dv_CmdSetViewport(VkCommandBuffer commandBuffer,
    }
 }
 
+VKAPI_ATTR void VKAPI_CALL
+v3dv_CmdSetViewportWithCount(VkCommandBuffer commandBuffer,
+                             uint32_t viewportCount,
+                             const VkViewport *pViewports)
+{
+   v3dv_CmdSetViewport(commandBuffer, 0, viewportCount, pViewports);
+}
+
 /* We keep a custom CmdSetScissor because we need to set the scissor
  * count. This is specially relevant to our case because we are
  * pushing/popping the dynamic state as part of the meta operations.

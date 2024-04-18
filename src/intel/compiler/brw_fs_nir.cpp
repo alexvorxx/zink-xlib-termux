@@ -4197,7 +4197,8 @@ fs_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
    case nir_intrinsic_load_barycentric_centroid:
    case nir_intrinsic_load_barycentric_sample: {
       /* Use the delta_xy values computed from the payload */
-      enum brw_barycentric_mode bary = brw_barycentric_mode(instr);
+      enum brw_barycentric_mode bary = brw_barycentric_mode(
+         reinterpret_cast<const brw_wm_prog_key *>(s.key), instr);
       const fs_reg srcs[] = { offset(s.delta_xy[bary], bld, 0),
                               offset(s.delta_xy[bary], bld, 1) };
       bld.LOAD_PAYLOAD(dest, srcs, ARRAY_SIZE(srcs), 0);
@@ -4290,7 +4291,8 @@ fs_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
          dst_xy = retype(get_nir_src(ntb, instr->src[0]), BRW_TYPE_F);
       } else {
          /* Use the delta_xy values computed from the payload */
-         enum brw_barycentric_mode bary = brw_barycentric_mode(bary_intrinsic);
+         enum brw_barycentric_mode bary = brw_barycentric_mode(
+            reinterpret_cast<const brw_wm_prog_key *>(s.key), bary_intrinsic);
          dst_xy = s.delta_xy[bary];
       }
 

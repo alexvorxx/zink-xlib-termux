@@ -12,7 +12,12 @@ if rc.version().version_compare('< 1.73.0')
   error('nil_rs requires Rust 1.73.0')
 endif
 
-prog_cbindgen = find_program('cbindgen', required : false, native : true, version : '>= 0.25')
+prog_cbindgen = find_program(
+  'cbindgen',
+  required : true,
+  native : true,
+  version : '>= 0.25'
+)
 
 dep_paste = dependency('paste',
   version : '>= 1.0.14',

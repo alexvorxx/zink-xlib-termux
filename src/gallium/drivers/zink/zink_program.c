@@ -2184,6 +2184,7 @@ zink_link_gfx_shader(struct pipe_context *pctx, void **shaders)
                                                      ctx->gfx_pipeline_state.element_state->binding_map,
                                                      shaders[MESA_SHADER_TESS_EVAL] ? VK_PRIMITIVE_TOPOLOGY_PATCH_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, true, NULL);
       print_pipeline_stats(screen, pipeline, &ctx->dbg);
+      VKSCR(DestroyPipeline)(screen->dev, pipeline, NULL);
    } else {
       if (zink_screen(pctx->screen)->info.have_EXT_shader_object)
          prog->base.uses_shobj = !BITSET_TEST(zshaders[MESA_SHADER_FRAGMENT]->info.system_values_read, SYSTEM_VALUE_SAMPLE_MASK_IN);

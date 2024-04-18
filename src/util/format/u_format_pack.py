@@ -397,6 +397,10 @@ def conversion_expr(src_channel,
                 # bigger than single precision mantissa, use double
                 value = '(%s * (1.0/0x%x))' % (value, one)
                 src_size = 64
+
+            if src_norm and src_type == SIGNED:
+                value = 'MAX2(-1.0f, %s)' % (value)
+
             src_norm = False
         else:
             if src_size <= 23 or dst_channel.size <= 32:

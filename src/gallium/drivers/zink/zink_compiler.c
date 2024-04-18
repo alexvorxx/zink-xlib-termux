@@ -5234,6 +5234,7 @@ struct rework_io_state {
    nir_variable_mode mode;
    gl_shader_stage stage;
    nir_shader *nir;
+   const char *name;
 
    /* these are found by scanning */
    bool arrayed_io;
@@ -5246,6 +5247,8 @@ struct rework_io_state {
    unsigned bit_size;
    unsigned base;
    nir_alu_type type;
+   /* must be last */
+   char *newname;
 };
 
 /* match an existing variable against the rework state */
@@ -5270,6 +5273,26 @@ find_rework_var(nir_shader *nir, struct rework_io_state *ris)
          return var;
    }
    return NULL;
+}
+
+static void
+update_io_var_name(struct rework_io_state *ris, const char *name)
+{
+   if (!(zink_debug & (ZINK_DEBUG_NIR | ZINK_DEBUG_SPIRV)))
+      return;
+   if (!name)
+      return;
+   if (ris->name && !strcmp(ris->name, name))
+      return;
+   if (ris->newname && !strcmp(ris->newname, name))
+      return;
+   if (ris->newname) {
+      ris->newname = ralloc_asprintf(ris->nir, "%s_%s", ris->newname, name);
+   } else if (ris->name) {
+      ris->newname = ralloc_asprintf(ris->nir, "%s_%s", ris->name, name);
+   } else {
+      ris->newname = ralloc_strdup(ris->nir, name);
+   }
 }
 
 /* check/update tracking state for variable info */
@@ -5340,6 +5363,8 @@ update_io_var_state(nir_intrinsic_instr *intr, struct rework_io_state *ris)
       ris->type = type;
    }
 
+   update_io_var_name(ris, intr->name);
+
    ris->medium_precision |= sem.medium_precision;
    ris->fb_fetch_output |= sem.fb_fetch_output;
    ris->dual_source_blend_index |= sem.dual_source_blend_index;
@@ -5400,6 +5425,7 @@ scan_io_var_slot(nir_shader *nir, nir_variable_mode mode, unsigned location, boo
 
    struct rework_io_state test;
    do {
+      update_io_var_name(&test, ris.newname ? ris.newname : ris.name);
       test = ris;
       /* always run indirect scan first to detect potential overlaps */
       if (scan_indirects) {
@@ -5409,7 +5435,7 @@ scan_io_var_slot(nir_shader *nir, nir_variable_mode mode, unsigned location, boo
       ris.indirect_only = false;
       nir_shader_intrinsics_pass(nir, scan_io_var_usage, nir_metadata_all, &ris);
       /* keep scanning until no changes found */
-   } while (memcmp(&ris, &test, sizeof(ris)));
+   } while (memcmp(&ris, &test, offsetof(struct rework_io_state, newname)));
    return ris;
 }
 
@@ -5419,8 +5445,10 @@ create_io_var(nir_shader *nir, struct rework_io_state *ris)
 {
    char name[1024];
    assert(ris->component_mask);
+   if (ris->newname || ris->name) {
+      snprintf(name, sizeof(name), "%s", ris->newname ? ris->newname : ris->name);
    /* always use builtin name where possible */
-   if (nir->info.stage == MESA_SHADER_VERTEX && ris->mode == nir_var_shader_in) {
+   } else if (nir->info.stage == MESA_SHADER_VERTEX && ris->mode == nir_var_shader_in) {
       snprintf(name, sizeof(name), "%s", gl_vert_attrib_name(ris->location));
    } else if (nir->info.stage == MESA_SHADER_FRAGMENT && ris->mode == nir_var_shader_out) {
       snprintf(name, sizeof(name), "%s", gl_frag_result_name(ris->location));
@@ -5562,7 +5590,8 @@ rework_io_vars(nir_shader *nir, nir_variable_mode mode, struct zink_shader *zs)
             .stage = nir->info.stage,
             .bit_size = 32,
             .component_mask = component_mask,
-            .type = nir_type_float32
+            .type = nir_type_float32,
+            .newname = scan_io_var_slot(nir, nir_var_shader_in, slot, false).newname,
          };
          create_io_var(nir, &ris);
          inputs_read &= ~BITFIELD64_BIT(slot);

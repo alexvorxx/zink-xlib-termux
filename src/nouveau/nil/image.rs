@@ -532,6 +532,13 @@ impl Image {
                 }
             }
             PIPE_FORMAT_Z32_FLOAT => NV_MMU_PTE_KIND_GENERIC_MEMORY,
+            PIPE_FORMAT_S8_UINT => {
+                if compressed {
+                    NV_MMU_PTE_KIND_S8_COMPRESSIBLE_DISABLE_PLC
+                } else {
+                    NV_MMU_PTE_KIND_S8
+                }
+            }
             _ => NV_MMU_PTE_KIND_PITCH,
         }
         .try_into()
@@ -578,6 +585,7 @@ impl Image {
                     NV_MMU_PTE_KIND_ZF32_X24S8
                 }
             }
+            PIPE_FORMAT_S8_UINT => NV_MMU_PTE_KIND_S8,
             _ => {
                 let blocksize_bits = format.el_size_B() * 8;
                 match blocksize_bits {

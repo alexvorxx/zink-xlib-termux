@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-import os
 import socket
 import sys
 import select
 from select import EPOLLIN, EPOLLPRI, EPOLLERR
 import time
-from collections import namedtuple
 import argparse
 
 TIMEOUT = 1.0 # seconds

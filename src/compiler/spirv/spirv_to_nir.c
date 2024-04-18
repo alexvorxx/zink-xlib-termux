@@ -63,7 +63,7 @@ vtn_default_log_level(void)
    const char *str = getenv("MESA_SPIRV_LOG_LEVEL");
 
    if (str == NULL)
-      return NIR_SPIRV_DEBUG_LEVEL_WARNING;
+      return level;
 
    for (int i = 0; i < ARRAY_SIZE(vtn_log_level_strings); i++) {
       if (strcasecmp(str, vtn_log_level_strings[i]) == 0) {

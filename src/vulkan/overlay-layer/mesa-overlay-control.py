@@ -175,12 +175,10 @@ def control(args):
         print('ERROR: invalid protocol')
         sys.exit(1)
 
-
     if args.info:
-        info = "Protocol Version: {}\n"
-        info += "Device Name: {}\n"
-        info += "Mesa Version: {}"
-        print(info.format(version, name, mesa_version))
+        print(f"Protocol Version: {version}")
+        print(f"Device Name: {name}")
+        print(f"Mesa Version: {mesa_version}")
 
     if args.cmd == 'start-capture':
         conn.send(bytearray(':capture=1;', 'utf-8'))

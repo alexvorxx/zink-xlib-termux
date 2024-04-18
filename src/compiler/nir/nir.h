@@ -1909,6 +1909,9 @@ typedef struct {
 
    int const_index[NIR_INTRINSIC_MAX_CONST_INDEX];
 
+   /* a variable name associated with this instr; cannot be modified or freed */
+   const char *name;
+
    nir_src src[];
 } nir_intrinsic_instr;
 

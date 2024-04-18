@@ -231,7 +231,7 @@ vkcts-navi10-valve:
 
 vkcts-navi21-valve:
   timeout: 35m
-  parallel: 4
+  parallel: 3
   extends:
     - .vkcts-test-valve
     - .navi21-test-valve

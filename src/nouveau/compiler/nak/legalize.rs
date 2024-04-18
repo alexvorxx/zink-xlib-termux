@@ -691,7 +691,12 @@ fn legalize_sm70_instr(
         Op::PopC(_) => (),
         Op::Shf(op) => {
             copy_alu_src_if_not_reg(b, &mut op.low, SrcType::ALU);
-            copy_alu_src_if_not_reg(b, &mut op.high, SrcType::ALU);
+            copy_alu_src_if_both_not_reg(
+                b,
+                &op.shift,
+                &mut op.high,
+                SrcType::ALU,
+            );
         }
         Op::F2F(_) | Op::F2I(_) | Op::I2F(_) | Op::Mov(_) | Op::FRnd(_) => (),
         Op::Prmt(op) => {

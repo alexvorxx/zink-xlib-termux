@@ -3314,7 +3314,7 @@ pub struct OpShf {
     #[src_type(ALU)]
     pub high: Src,
 
-    #[src_type(GPR)]
+    #[src_type(ALU)]
     pub shift: Src,
 
     pub right: bool,

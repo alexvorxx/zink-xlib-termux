@@ -211,6 +211,9 @@ void intel_device_info_update_after_hwconfig(struct intel_device_info *devinfo);
 
 enum intel_wa_steppings intel_device_info_wa_stepping(struct intel_device_info *devinfo);
 
+uint32_t intel_device_info_get_max_slm_size(const struct intel_device_info *devinfo);
+uint32_t intel_device_info_get_max_preferred_slm_size(const struct intel_device_info *devinfo);
+
 #ifdef __cplusplus
 }
 #endif

@@ -33,9 +33,9 @@ Then, create your Meson cross file to use it, something like this
     pkgconfig = ['env', 'PKG_CONFIG_LIBDIR=NDKDIR/pkgconfig', '/usr/bin/pkg-config']
 
     [host_machine]
-    system = 'linux'
+    system = 'android'
     cpu_family = 'arm'
-    cpu = 'armv8'
+    cpu = 'aarch64'
     endian = 'little'
 
 Now, use that cross file for your Android build directory (as in this

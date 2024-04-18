@@ -204,21 +204,8 @@ static const struct hw_3src_type {
    [BRW_REGISTER_TYPE_UD] = { GFX7_3SRC_TYPE_UD },
    [BRW_REGISTER_TYPE_DF] = { GFX7_3SRC_TYPE_DF },
    [BRW_REGISTER_TYPE_HF] = { GFX8_3SRC_TYPE_HF },
-}, gfx10_hw_3src_align1_type[] = {
-#define E(x) BRW_ALIGN1_3SRC_EXEC_TYPE_##x
-   [0 ... BRW_REGISTER_TYPE_LAST] = { INVALID },
-
-   [BRW_REGISTER_TYPE_DF] = { GFX10_ALIGN1_3SRC_REG_TYPE_DF, E(FLOAT) },
-   [BRW_REGISTER_TYPE_F]  = { GFX10_ALIGN1_3SRC_REG_TYPE_F,  E(FLOAT) },
-   [BRW_REGISTER_TYPE_HF] = { GFX10_ALIGN1_3SRC_REG_TYPE_HF, E(FLOAT) },
-
-   [BRW_REGISTER_TYPE_D]  = { GFX10_ALIGN1_3SRC_REG_TYPE_D,  E(INT)   },
-   [BRW_REGISTER_TYPE_UD] = { GFX10_ALIGN1_3SRC_REG_TYPE_UD, E(INT)   },
-   [BRW_REGISTER_TYPE_W]  = { GFX10_ALIGN1_3SRC_REG_TYPE_W,  E(INT)   },
-   [BRW_REGISTER_TYPE_UW] = { GFX10_ALIGN1_3SRC_REG_TYPE_UW, E(INT)   },
-   [BRW_REGISTER_TYPE_B]  = { GFX10_ALIGN1_3SRC_REG_TYPE_B,  E(INT)   },
-   [BRW_REGISTER_TYPE_UB] = { GFX10_ALIGN1_3SRC_REG_TYPE_UB, E(INT)   },
 }, gfx11_hw_3src_type[] = {
+#define E(x) BRW_ALIGN1_3SRC_EXEC_TYPE_##x
    [0 ... BRW_REGISTER_TYPE_LAST] = { INVALID },
 
    [BRW_REGISTER_TYPE_NF] = { GFX11_ALIGN1_3SRC_REG_TYPE_NF, E(FLOAT) },
@@ -362,12 +349,9 @@ brw_reg_type_to_a1_hw_3src_type(const struct intel_device_info *devinfo,
    } else if (devinfo->ver >= 12) {
       assert(type < ARRAY_SIZE(gfx12_hw_3src_type));
       return gfx12_hw_3src_type[type].reg_type;
-   } else if (devinfo->ver >= 11) {
+   } else {
       assert(type < ARRAY_SIZE(gfx11_hw_3src_type));
       return gfx11_hw_3src_type[type].reg_type;
-   } else {
-      assert(type < ARRAY_SIZE(gfx10_hw_3src_align1_type));
-      return gfx10_hw_3src_align1_type[type].reg_type;
    }
 }
 
@@ -400,8 +384,7 @@ brw_a1_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
    const struct hw_3src_type *table =
       (devinfo->verx10 >= 125 ? gfx125_hw_3src_type :
        devinfo->ver >= 12 ? gfx12_hw_3src_type :
-       devinfo->ver >= 11 ? gfx11_hw_3src_type :
-       gfx10_hw_3src_align1_type);
+       gfx11_hw_3src_type);
 
    for (enum brw_reg_type i = 0; i <= BRW_REGISTER_TYPE_LAST; i++) {
       if (table[i].reg_type == hw_type &&

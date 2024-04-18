@@ -16,7 +16,7 @@ set -ex -o pipefail
 # - the GL release produces `glcts`, and
 # - the GLES release produces `deqp-gles*` and `deqp-egl`
 
-DEQP_VK_VERSION=1.3.8.0
+DEQP_VK_VERSION=1.3.8.2
 DEQP_GL_VERSION=4.6.4.0
 DEQP_GLES_VERSION=3.2.10.0
 
@@ -28,26 +28,15 @@ DEQP_GLES_VERSION=3.2.10.0
 
 # shellcheck disable=SC2034
 vk_cts_commits_to_backport=(
-    # Add missing subgroup support checks for linear derivate tests
-    4bbc98181f01b60286f11f2cea5940332f883154
+    # Fix more ASAN errors due to missing virtual destructors
+    dd40bcfef1b4035ea55480b6fd4d884447120768
 
-    # Use subgroups helper in derivate tests
-    0a4ddb79f3d65fb51e8efd42cbfc8d0c051af8b8
-
-    # Add missing subgroup size in shader object compute tests
-    30176295a204697d3e94192ba19693efbc74a5bf
-
-    # Add missing virtual destructor to TriangleGenerator
-    dc448441dbacea3fc8ff4764de5b4a7b0e9d9be4
-
-    # Add check for import & export bits for vk drm format modifier tests
-    a9482fd38763636ea09d02356924aeab53edebd0
+    # Remove "unused shader stages" tests
+    7dac86c6bbd15dec91d7d9a98cd6dd57c11092a7
 )
 
 # shellcheck disable=SC2034
 vk_cts_patch_files=(
-    # Fix ASAN errors
-    build-deqp-vk_Fix-more-ASAN-errors-due-to-missing-virtual-destruct.patch
 )
 
 if [ "${DEQP_TARGET}" = 'android' ]; then

@@ -147,7 +147,7 @@ S8_UINT_Z24_UNORM       , Z24S8                 , Z24S8             , UN   , G00
 Z32_FLOAT_S8X24_UINT    , ZF32_X24S8            , ZF32_X24S8        , FU   , R001 , TZ
 
 # Stencil-only formats
-S8_UINT                 , NONE                  , R8                , U    , R001 , T
+S8_UINT                 , S8                    , R8                , U    , R001 , TZ        , MaxwellB
 X24S8_UINT              , NONE                  , G8R24             , UU   , G001 , T
 S8X24_UINT              , NONE                  , G24R8             , UU   , R001 , T
 X32_S8X24_UINT          , NONE                  , R32_B24G8         , UU   , G001 , T

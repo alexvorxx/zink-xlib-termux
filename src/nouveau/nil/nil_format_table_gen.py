@@ -65,6 +65,8 @@ TEMPLATE_C = template.Template(text="""\
 #include "cl9097tex.h"
 #include "clb097.h"
 #include "clb097tex.h"
+#include "clb197.h"
+#include "clb197tex.h"
 
 const struct nil_format_info nil_format_table[PIPE_FORMAT_COUNT] = {
 % for f in formats:
@@ -96,12 +98,14 @@ CT_FORMAT_PREFIX = {
 ZT_FORMAT_PREFIX = {
     None        : 'NV9097_SET_ZT_FORMAT_V_',
     'maxwella'  : 'NVB097_SET_ZT_FORMAT_V_',
+    'maxwellb'  : 'NVB197_SET_ZT_FORMAT_V_',
     'tk1'       : 'NVB097_SET_ZT_FORMAT_V_',
 }
 
 TCS_PREFIX = {
     None        : 'NV9097_TEXHEADV2_0_COMPONENT_SIZES_',
     'maxwella'  : 'NVB097_TEXHEAD_BL_COMPONENTS_SIZES_',
+    'maxwellb'  : 'NVB197_TEXHEAD_BL_COMPONENTS_SIZES_',
     'tk1'       : 'NVB097_TEXHEAD_BL_COMPONENTS_SIZES_',
 }
 

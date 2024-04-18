@@ -1631,6 +1631,11 @@ print_intrinsic_instr(nir_intrinsic_instr *instr, print_state *state)
       return;
    }
 
+   if (instr->name) {
+      fprintf(fp, "  // %s", instr->name);
+      return;
+   }
+
    nir_foreach_variable_with_modes(var, state->shader, var_mode) {
       if (!var->name)
          continue;

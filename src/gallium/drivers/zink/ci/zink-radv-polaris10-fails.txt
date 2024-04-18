@@ -743,3 +743,10 @@ spec@ext_texture_srgb@texwrap formats-s3tc bordercolor-swizzled@GL_COMPRESSED_SR
 spec@glsl-1.50@execution@geometry@primitive-types gl_triangle_strip_adjacency,Fail
 spec@glsl-1.50@execution@geometry@tri-strip-ordering-with-prim-restart gl_triangle_strip_adjacency ffs,Fail
 spec@glsl-1.50@execution@geometry@tri-strip-ordering-with-prim-restart gl_triangle_strip_adjacency other,Fail
+
+# Regressions from 1f4662cc4ed0c5b87479eb71e53a1320ab1b414b
+spec@ext_texture_array@copyteximage 1d_array,Fail
+spec@ext_texture_array@copyteximage 1d_array samples=2,Fail
+spec@ext_texture_array@copyteximage 1d_array samples=4,Fail
+spec@ext_texture_array@copyteximage 1d_array samples=6,Fail
+spec@ext_texture_array@copyteximage 1d_array samples=8,Fail

@@ -10,6 +10,7 @@
 #include "nvk_format.h"
 #include "nvk_physical_device.h"
 
+#include "vk_enum_to_str.h"
 #include "vk_format.h"
 
 #include "clb097.h"
@@ -371,8 +372,8 @@ nvk_GetPhysicalDeviceImageFormatProperties2(
           *    VK_ERROR_FORMAT_NOT_SUPPORTED."
           */
          return vk_errorf(pdev, VK_ERROR_FORMAT_NOT_SUPPORTED,
-                          "unsupported VkExternalMemoryTypeFlagBits 0x%x",
-                          external_info->handleType);
+                          "unsupported VkExternalMemoryHandleTypeFlagBits: %s ",
+                           vk_ExternalMemoryHandleTypeFlagBits_to_str(external_info->handleType));
       }
    }
 

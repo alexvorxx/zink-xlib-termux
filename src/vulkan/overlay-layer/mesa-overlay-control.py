@@ -94,12 +94,12 @@ class MsgParser:
         while remaining > 0 and ncmds > 0:
             now = time.monotonic()
 
-            if self.buffer == None:
+            if self.buffer is None:
                 self.buffer = self.conn.recv(remaining)
                 self.bufferpos = 0
 
             # disconnected or error
-            if self.buffer == None:
+            if self.buffer is None:
                 return None
 
             for i in range(self.bufferpos, len(self.buffer)):
@@ -171,7 +171,7 @@ def control(args):
         elif cmd == MESA_VERSION_HEADER:
             mesa_version = param.decode('utf-8')
 
-    if version != 1 or name == None or mesa_version == None:
+    if version != 1 or name is None or mesa_version is None:
         print('ERROR: invalid protocol')
         sys.exit(1)
 

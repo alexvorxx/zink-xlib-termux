@@ -66,7 +66,7 @@ int futex_wait(uint32_t *addr, int32_t value, const struct timespec *timeout)
 
 int futex_wake(uint32_t *addr, int32_t count)
 {
-   assert(count == (int32_t)(uint32_t)count); /* Check that bits weren't discarded */
+   assert(count >= 0);
    return _umtx_op(addr, UMTX_OP_WAKE, (uint32_t)count, NULL, NULL) == -1 ? errno : 0;
 }
 

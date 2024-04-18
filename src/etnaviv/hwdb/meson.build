@@ -3,7 +3,6 @@
 # SPDX-License-Identifier: MIT
 #
 
-prog_python = import('python').find_installation('python3')
 has_pycparser = run_command(
   prog_python, '-c',
   '''

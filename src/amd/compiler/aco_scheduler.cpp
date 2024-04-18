@@ -20,6 +20,7 @@
 #define SMEM_MAX_MOVES      (64 - ctx.num_waves * 4)
 #define VMEM_MAX_MOVES      (256 - ctx.num_waves * 16)
 #define LDSDIR_MAX_MOVES    10
+#define LDS_MAX_MOVES       32
 /* creating clauses decreases def-use distances, so make it less aggressive the lower num_waves is */
 #define VMEM_CLAUSE_MAX_GRAB_DIST (ctx.num_waves * 2)
 #define VMEM_STORE_CLAUSE_MAX_GRAB_DIST (ctx.num_waves * 4)
@@ -987,7 +988,7 @@ schedule_LDS(sched_ctx& ctx, Block* block, std::vector<RegisterDemand>& register
 {
    assert(idx != 0);
    int window_size = LDS_WINDOW_SIZE;
-   int max_moves = LDSDIR_MAX_MOVES;
+   int max_moves = current->isLDSDIR() ? LDSDIR_MAX_MOVES : LDS_MAX_MOVES;
    int16_t k = 0;
 
    /* first, check if we have instructions before current to move down */
@@ -1178,7 +1179,7 @@ schedule_block(sched_ctx& ctx, Program* program, Block* block, live& live_vars)
          schedule_SMEM(ctx, block, live_vars.register_demand[block->index], current, idx);
       }
 
-      if (current->isLDSDIR()) {
+      if (current->isLDSDIR() || (current->isDS() && !current->ds().gds)) {
          ctx.mv.current = current;
          schedule_LDS(ctx, block, live_vars.register_demand[block->index], current, idx);
       }

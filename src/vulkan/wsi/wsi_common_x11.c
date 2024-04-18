@@ -1459,8 +1459,7 @@ x11_present_to_x11_dri3(struct x11_swapchain *chain, uint32_t image_index,
  * Send image to X server unaccelerated (software drivers).
  */
 static VkResult
-x11_present_to_x11_sw(struct x11_swapchain *chain, uint32_t image_index,
-                      uint64_t target_msc)
+x11_present_to_x11_sw(struct x11_swapchain *chain, uint32_t image_index)
 {
    assert(!chain->base.image_info.explicit_sync);
    struct x11_image *image = &chain->images[image_index];
@@ -1662,7 +1661,7 @@ x11_present_to_x11(struct x11_swapchain *chain, uint32_t image_index,
 
    VkResult result;
    if (chain->base.wsi->sw && !chain->has_mit_shm)
-      result = x11_present_to_x11_sw(chain, image_index, target_msc);
+      result = x11_present_to_x11_sw(chain, image_index);
    else
       result = x11_present_to_x11_dri3(chain, image_index, target_msc, present_mode);
 

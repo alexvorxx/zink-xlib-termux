@@ -1338,6 +1338,37 @@ intel_device_info_update_l3_banks(struct intel_device_info *devinfo)
    }
 }
 
+/* Returns the number of EUs of the first subslice enabled */
+uint32_t
+intel_device_info_get_eu_count_first_subslice(const struct intel_device_info *devinfo)
+{
+   uint32_t first_subslice, first_slice, offset, i;
+   uint32_t eu_count = 0;
+
+   first_slice = ffs(devinfo->slice_masks);
+   first_slice--;
+   offset = first_slice * devinfo->subslice_slice_stride;
+
+   for (i = 0; i < DIV_ROUND_UP(devinfo->max_subslices_per_slice, 8); i++) {
+      first_subslice = ffs(devinfo->subslice_masks[offset + i]);
+
+      if (first_subslice == 0)
+         continue;
+
+      break;
+   }
+
+   assert(first_subslice > 0);
+   first_subslice--;
+   offset = first_slice * devinfo->eu_slice_stride +
+            first_subslice * devinfo->eu_subslice_stride;
+   for (i = 0; i < DIV_ROUND_UP(devinfo->max_eus_per_subslice, 8); i++)
+      eu_count += __builtin_popcount(devinfo->eu_masks[offset + i]);
+
+   assert(eu_count > 0);
+   return eu_count;
+}
+
 /* Generate mask from the device data. */
 static void
 fill_masks(struct intel_device_info *devinfo)

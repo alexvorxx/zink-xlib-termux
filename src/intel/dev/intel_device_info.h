@@ -195,6 +195,7 @@ void intel_device_info_topology_reset_masks(struct intel_device_info *devinfo);
 void intel_device_info_topology_update_counts(struct intel_device_info *devinfo);
 void intel_device_info_update_pixel_pipes(struct intel_device_info *devinfo, uint8_t *subslice_masks);
 void intel_device_info_update_l3_banks(struct intel_device_info *devinfo);
+uint32_t intel_device_info_get_eu_count_first_subslice(const struct intel_device_info *devinfo);
 void intel_device_info_update_cs_workgroup_threads(struct intel_device_info *devinfo);
 bool intel_device_info_compute_system_memory(struct intel_device_info *devinfo, bool update);
 void intel_device_info_update_after_hwconfig(struct intel_device_info *devinfo);

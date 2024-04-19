@@ -312,7 +312,7 @@ const struct vk_pipeline_cache_object_ops radv_pipeline_ops = {
 
 bool
 radv_pipeline_cache_search(struct radv_device *device, struct vk_pipeline_cache *cache, struct radv_pipeline *pipeline,
-                           const unsigned char *sha1, bool *found_in_application_cache)
+                           bool *found_in_application_cache)
 {
    *found_in_application_cache = false;
 
@@ -326,7 +326,7 @@ radv_pipeline_cache_search(struct radv_device *device, struct vk_pipeline_cache 
    }
 
    struct vk_pipeline_cache_object *object =
-      vk_pipeline_cache_lookup_object(cache, sha1, SHA1_DIGEST_LENGTH, &radv_pipeline_ops, found);
+      vk_pipeline_cache_lookup_object(cache, pipeline->sha1, SHA1_DIGEST_LENGTH, &radv_pipeline_ops, found);
 
    if (!object)
       return false;
@@ -349,8 +349,7 @@ radv_pipeline_cache_search(struct radv_device *device, struct vk_pipeline_cache 
 }
 
 void
-radv_pipeline_cache_insert(struct radv_device *device, struct vk_pipeline_cache *cache, struct radv_pipeline *pipeline,
-                           const unsigned char *sha1)
+radv_pipeline_cache_insert(struct radv_device *device, struct vk_pipeline_cache *cache, struct radv_pipeline *pipeline)
 {
    if (device->cache_disabled)
       return;
@@ -365,7 +364,7 @@ radv_pipeline_cache_insert(struct radv_device *device, struct vk_pipeline_cache 
    num_shaders += pipeline->gs_copy_shader ? 1 : 0;
 
    struct radv_pipeline_cache_object *pipeline_obj;
-   pipeline_obj = radv_pipeline_cache_object_create(&device->vk, num_shaders, sha1, 0);
+   pipeline_obj = radv_pipeline_cache_object_create(&device->vk, num_shaders, pipeline->sha1, 0);
 
    if (!pipeline_obj)
       return;

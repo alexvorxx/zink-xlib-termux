@@ -44,11 +44,10 @@ struct radv_shader *radv_shader_create(struct radv_device *device, struct vk_pip
                                        const struct radv_shader_binary *binary, bool skip_cache);
 
 bool radv_pipeline_cache_search(struct radv_device *device, struct vk_pipeline_cache *cache,
-                                struct radv_pipeline *pipeline, const unsigned char *sha1,
-                                bool *found_in_application_cache);
+                                struct radv_pipeline *pipeline, bool *found_in_application_cache);
 
 void radv_pipeline_cache_insert(struct radv_device *device, struct vk_pipeline_cache *cache,
-                                struct radv_pipeline *pipeline, const unsigned char *sha1);
+                                struct radv_pipeline *pipeline);
 
 bool radv_ray_tracing_pipeline_cache_search(struct radv_device *device, struct vk_pipeline_cache *cache,
                                             struct radv_ray_tracing_pipeline *pipeline,

@@ -1,15 +1,3 @@
-# https://gitlab.freedesktop.org/mesa/mesa/-/issues/10999
-dEQP-GLES3.functional.shaders.builtin_functions.pack_unpack.packunorm2x16_lowp_fragment,Fail
-dEQP-GLES3.functional.shaders.builtin_functions.pack_unpack.packunorm2x16_mediump_fragment,Fail
-dEQP-GLES3.functional.shaders.builtin_functions.pack_unpack.packunorm2x16_highp_fragment,Fail
-dEQP-GLES31.functional.shaders.builtin_functions.pack_unpack.packunorm2x16_lowp_fragment,Fail
-dEQP-GLES31.functional.shaders.builtin_functions.pack_unpack.packunorm2x16_mediump_fragment,Fail
-dEQP-GLES31.functional.shaders.builtin_functions.pack_unpack.packunorm2x16_highp_fragment,Fail
-dEQP-GLES31.functional.shaders.builtin_functions.pack_unpack.packunorm4x8_lowp_fragment,Fail
-dEQP-GLES31.functional.shaders.builtin_functions.pack_unpack.packunorm4x8_mediump_fragment,Fail
-dEQP-GLES31.functional.shaders.builtin_functions.pack_unpack.packunorm4x8_highp_fragment,Fail
-
-
 GTF-GL46.gtf40.GL3Tests.transform_feedback2.transform_feedback2_two_buffers,Fail
 dEQP-GLES3.functional.fbo.depth.depth_test_clamp.depth32f_stencil8,Fail
 dEQP-GLES3.functional.fbo.depth.depth_test_clamp.depth_component32f,Fail

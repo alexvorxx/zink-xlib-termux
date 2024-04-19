@@ -245,9 +245,9 @@ traces:
       checksum: c45e17d98a5d598bef50494f1150f5b9
       text: helmet texture sometimes missing
     zink-a618:
-      checksum: e3b2319eb85f76d4ff5fc78fcb3d7411
+      checksum: 59e18960d8b73a93401b793b28e99f42
     zink-a630:
-      checksum: e3b2319eb85f76d4ff5fc78fcb3d7411
+      checksum: 59e18960d8b73a93401b793b28e99f42
 
   glxgears/glxgears-2-v2.trace:
     freedreno-a306:

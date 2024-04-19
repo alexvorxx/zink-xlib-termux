@@ -89,19 +89,19 @@ const struct nil_format_info nil_format_table[PIPE_FORMAT_COUNT] = {
 
 CT_FORMAT_PREFIX = {
     None        : 'NV9097_SET_COLOR_TARGET_FORMAT_V_',
-    'maxwell'   : 'NVB097_SET_COLOR_TARGET_FORMAT_V_',
+    'maxwella'  : 'NVB097_SET_COLOR_TARGET_FORMAT_V_',
     'tk1'       : 'NVB097_SET_COLOR_TARGET_FORMAT_V_',
 }
 
 ZT_FORMAT_PREFIX = {
     None        : 'NV9097_SET_ZT_FORMAT_V_',
-    'maxwell'   : 'NVB097_SET_ZT_FORMAT_V_',
+    'maxwella'  : 'NVB097_SET_ZT_FORMAT_V_',
     'tk1'       : 'NVB097_SET_ZT_FORMAT_V_',
 }
 
 TCS_PREFIX = {
     None        : 'NV9097_TEXHEADV2_0_COMPONENT_SIZES_',
-    'maxwell'   : 'NVB097_TEXHEAD_BL_COMPONENTS_SIZES_',
+    'maxwella'  : 'NVB097_TEXHEAD_BL_COMPONENTS_SIZES_',
     'tk1'       : 'NVB097_TEXHEAD_BL_COMPONENTS_SIZES_',
 }
 

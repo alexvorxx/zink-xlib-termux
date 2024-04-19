@@ -243,7 +243,8 @@ radv_compute_pipeline_compile(const VkComputePipelineCreateInfo *pCreateInfo, st
    }
 
    bool found_in_application_cache = true;
-   if (!skip_shaders_cache && radv_pipeline_cache_search(device, cache, &pipeline->base, &found_in_application_cache)) {
+   if (!skip_shaders_cache &&
+       radv_compute_pipeline_cache_search(device, cache, pipeline, &found_in_application_cache)) {
       if (found_in_application_cache)
          pipeline_feedback.flags |= VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT;
       result = VK_SUCCESS;

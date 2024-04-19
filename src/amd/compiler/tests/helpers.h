@@ -70,6 +70,7 @@ void finish_program(aco::Program* program, bool endpgm = true);
 void finish_validator_test();
 void finish_opt_test();
 void finish_setup_reduce_temp_test();
+void finish_lower_subdword_test();
 void finish_ra_test(aco::ra_test_policy, bool lower = false);
 void finish_optimizer_postRA_test();
 void finish_to_hw_instr_test();

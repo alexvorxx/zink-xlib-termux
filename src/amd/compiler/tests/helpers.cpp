@@ -222,6 +222,22 @@ finish_setup_reduce_temp_test()
 }
 
 void
+finish_lower_subdword_test()
+{
+   finish_program(program.get());
+   if (!aco::validate_ir(program.get())) {
+      fail_test("Validation before lower_subdword failed");
+      return;
+   }
+   aco::lower_subdword(program.get());
+   if (!aco::validate_ir(program.get())) {
+      fail_test("Validation after lower_subdword failed");
+      return;
+   }
+   aco_print_program(program.get(), output);
+}
+
+void
 finish_ra_test(ra_test_policy policy, bool lower)
 {
    finish_program(program.get());

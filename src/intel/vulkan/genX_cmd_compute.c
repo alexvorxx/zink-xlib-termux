@@ -286,7 +286,10 @@ get_interface_descriptor_data(struct anv_cmd_buffer *cmd_buffer,
       .NumberofThreadsinGPGPUThreadGroup = dispatch->threads,
       .SharedLocalMemorySize = intel_compute_slm_encode_size(GFX_VER, prog_data->base.total_shared),
       .PreferredSLMAllocationSize =
-         intel_compute_preferred_slm_calc_encode_size(devinfo, prog_data->base.total_shared),
+         intel_compute_preferred_slm_calc_encode_size(devinfo,
+                                                      prog_data->base.total_shared,
+                                                      dispatch->group_size,
+                                                      dispatch->simd_size),
       .NumberOfBarriers = prog_data->uses_barrier,
    };
 }

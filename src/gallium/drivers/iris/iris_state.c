@@ -8863,7 +8863,10 @@ iris_upload_compute_walker(struct iris_context *ice,
    idd.SharedLocalMemorySize =
       intel_compute_slm_encode_size(GFX_VER, shader->total_shared);
    idd.PreferredSLMAllocationSize =
-      intel_compute_preferred_slm_calc_encode_size(devinfo, shader->total_shared);
+      intel_compute_preferred_slm_calc_encode_size(devinfo,
+                                                   shader->total_shared,
+                                                   dispatch.group_size,
+                                                   dispatch.simd_size);
    idd.SamplerStatePointer = shs->sampler_table.offset;
    idd.SamplerCount = encode_sampler_count(shader),
    idd.BindingTablePointer = binder->bt_offset[MESA_SHADER_COMPUTE];

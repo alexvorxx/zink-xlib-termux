@@ -846,8 +846,8 @@ radv_rt_pipeline_compile(struct radv_device *device, const VkRayTracingPipelineC
 
    int64_t pipeline_start = os_time_get_nano();
 
-   radv_hash_rt_shaders(device, pipeline->sha1, pipeline->stages, pCreateInfo, pipeline->groups);
-   pipeline->base.base.pipeline_hash = *(uint64_t *)pipeline->sha1;
+   radv_hash_rt_shaders(device, pipeline->base.base.sha1, pipeline->stages, pCreateInfo, pipeline->groups);
+   pipeline->base.base.pipeline_hash = *(uint64_t *)pipeline->base.base.sha1;
 
    /* Skip the shaders cache when any of the below are true:
     * - shaders are captured because it's for debugging purposes

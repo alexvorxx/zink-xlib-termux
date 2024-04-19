@@ -85,7 +85,7 @@ radv_hash_rt_shaders(const struct radv_device *device, unsigned char *hash, cons
       for (uint32_t i = 0; i < pCreateInfo->pLibraryInfo->libraryCount; ++i) {
          VK_FROM_HANDLE(radv_pipeline, lib_pipeline, pCreateInfo->pLibraryInfo->pLibraries[i]);
          struct radv_ray_tracing_pipeline *lib = radv_pipeline_to_ray_tracing(lib_pipeline);
-         _mesa_sha1_update(&ctx, lib->sha1, SHA1_DIGEST_LENGTH);
+         _mesa_sha1_update(&ctx, lib->base.base.sha1, SHA1_DIGEST_LENGTH);
       }
    }
 
@@ -413,7 +413,7 @@ radv_ray_tracing_pipeline_cache_search(struct radv_device *device, struct vk_pip
    }
 
    struct vk_pipeline_cache_object *object =
-      vk_pipeline_cache_lookup_object(cache, pipeline->sha1, SHA1_DIGEST_LENGTH, &radv_pipeline_ops, found);
+      vk_pipeline_cache_lookup_object(cache, pipeline->base.base.sha1, SHA1_DIGEST_LENGTH, &radv_pipeline_ops, found);
 
    if (!object)
       return false;
@@ -473,7 +473,7 @@ radv_ray_tracing_pipeline_cache_insert(struct radv_device *device, struct vk_pip
                         num_stages * sizeof(struct radv_ray_tracing_stage_cache_data);
 
    struct radv_pipeline_cache_object *pipeline_obj =
-      radv_pipeline_cache_object_create(&device->vk, num_shaders, pipeline->sha1, data_size);
+      radv_pipeline_cache_object_create(&device->vk, num_shaders, pipeline->base.base.sha1, data_size);
    struct radv_ray_tracing_pipeline_cache_data *data = pipeline_obj->data;
 
    data->has_traversal_shader = !!pipeline->base.base.shaders[MESA_SHADER_INTERSECTION];

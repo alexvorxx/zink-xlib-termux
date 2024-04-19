@@ -25,7 +25,6 @@ struct radv_ray_tracing_pipeline {
    unsigned non_imported_stage_count;
    unsigned group_count;
 
-   uint8_t sha1[SHA1_DIGEST_LENGTH];
    uint32_t stack_size;
 
    /* set if any shaders from this pipeline require robustness2 in the merged traversal shader */

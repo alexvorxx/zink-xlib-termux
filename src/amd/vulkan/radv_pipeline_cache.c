@@ -312,9 +312,45 @@ const struct vk_pipeline_cache_object_ops radv_pipeline_ops = {
    .destroy = radv_pipeline_cache_object_destroy,
 };
 
+static void
+radv_report_pso_cache_stats(struct radv_device *device, const struct radv_pipeline *pipeline, bool cache_hit)
+{
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+   const struct radv_instance *instance = radv_physical_device_instance(pdev);
+
+   if (!(instance->debug_flags & RADV_DEBUG_PSO_CACHE_STATS))
+      return;
+
+   /* Only gather PSO cache stats for application pipelines. */
+   if (pipeline->is_internal)
+      return;
+
+   assert(pipeline->type < ARRAY_SIZE(device->pso_cache_stats));
+
+   simple_mtx_lock(&device->pso_cache_stats_mtx);
+
+   if (cache_hit) {
+      device->pso_cache_stats[pipeline->type].hits++;
+   } else {
+      device->pso_cache_stats[pipeline->type].misses++;
+   }
+
+   fprintf(
+      stderr,
+      "radv: PSO cache stats: gfx (hits=%d, misses=%d), gfx_lib (hits=%d, misses=%d), compute (hits=%d, misses=%d), rt "
+      "(hits=%d, misses=%d)\nt",
+      device->pso_cache_stats[RADV_PIPELINE_GRAPHICS].hits, device->pso_cache_stats[RADV_PIPELINE_GRAPHICS].misses,
+      device->pso_cache_stats[RADV_PIPELINE_GRAPHICS_LIB].hits,
+      device->pso_cache_stats[RADV_PIPELINE_GRAPHICS_LIB].misses, device->pso_cache_stats[RADV_PIPELINE_COMPUTE].hits,
+      device->pso_cache_stats[RADV_PIPELINE_COMPUTE].misses, device->pso_cache_stats[RADV_PIPELINE_RAY_TRACING].hits,
+      device->pso_cache_stats[RADV_PIPELINE_RAY_TRACING].misses);
+
+   simple_mtx_unlock(&device->pso_cache_stats_mtx);
+}
+
 static struct radv_pipeline_cache_object *
 radv_pipeline_cache_object_search(struct radv_device *device, struct vk_pipeline_cache *cache,
-                                  const unsigned char *sha1, bool *found_in_application_cache)
+                                  const struct radv_pipeline *pipeline, bool *found_in_application_cache)
 {
    *found_in_application_cache = false;
 
@@ -328,7 +364,9 @@ radv_pipeline_cache_object_search(struct radv_device *device, struct vk_pipeline
    }
 
    struct vk_pipeline_cache_object *object =
-      vk_pipeline_cache_lookup_object(cache, sha1, SHA1_DIGEST_LENGTH, &radv_pipeline_ops, found);
+      vk_pipeline_cache_lookup_object(cache, pipeline->sha1, SHA1_DIGEST_LENGTH, &radv_pipeline_ops, found);
+
+   radv_report_pso_cache_stats(device, pipeline, !!object);
 
    if (!object)
       return false;
@@ -342,7 +380,7 @@ radv_graphics_pipeline_cache_search(struct radv_device *device, struct vk_pipeli
 {
    struct radv_pipeline_cache_object *pipeline_obj;
 
-   pipeline_obj = radv_pipeline_cache_object_search(device, cache, pipeline->base.sha1, found_in_application_cache);
+   pipeline_obj = radv_pipeline_cache_object_search(device, cache, &pipeline->base, found_in_application_cache);
    if (!pipeline_obj)
       return false;
 
@@ -367,7 +405,7 @@ radv_compute_pipeline_cache_search(struct radv_device *device, struct vk_pipelin
 {
    struct radv_pipeline_cache_object *pipeline_obj;
 
-   pipeline_obj = radv_pipeline_cache_object_search(device, cache, pipeline->base.sha1, found_in_application_cache);
+   pipeline_obj = radv_pipeline_cache_object_search(device, cache, &pipeline->base, found_in_application_cache);
    if (!pipeline_obj)
       return false;
 
@@ -432,8 +470,7 @@ radv_ray_tracing_pipeline_cache_search(struct radv_device *device, struct vk_pip
 {
    struct radv_pipeline_cache_object *pipeline_obj;
 
-   pipeline_obj =
-      radv_pipeline_cache_object_search(device, cache, pipeline->base.base.sha1, found_in_application_cache);
+   pipeline_obj = radv_pipeline_cache_object_search(device, cache, &pipeline->base.base, found_in_application_cache);
    if (!pipeline_obj)
       return false;
 

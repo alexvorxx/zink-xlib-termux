@@ -120,6 +120,8 @@ struct pvr_instance {
 
    int physical_devices_count;
    struct pvr_physical_device physical_device;
+
+   uint32_t active_device_count;
 };
 
 struct pvr_queue {
@@ -270,8 +272,6 @@ struct pvr_device {
    } tile_buffer_state;
 
    struct pvr_spm_scratch_buffer_store spm_scratch_buffer_store;
-
-   VkPhysicalDeviceFeatures features;
 
    struct pvr_bo_store *bo_store;
 

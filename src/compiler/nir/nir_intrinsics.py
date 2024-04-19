@@ -1460,6 +1460,8 @@ system_value("prim_xfb_query_enabled_amd", dest_comp=1, bit_sizes=[1])
 # Merged wave info. Bits 0-7 are the ES thread count, 8-15 are the GS thread count, 16-24 is the
 # GS Wave ID, 24-27 is the wave index in the workgroup, and 28-31 is the workgroup size in waves.
 system_value("merged_wave_info_amd", dest_comp=1)
+# Global ID for GS waves on GCN/RDNA legacy GS.
+system_value("gs_wave_id_amd", dest_comp=1)
 # Whether the shader should clamp vertex color outputs to [0, 1].
 #system_value("clamp_vertex_color_amd", dest_comp=1, bit_sizes=[1])
 # Whether the shader should cull front facing triangles.
@@ -1476,8 +1478,8 @@ intrinsic("load_cull_any_enabled_amd", dest_comp=1, bit_sizes=[1], flags=[CAN_EL
 intrinsic("load_cull_small_prim_precision_amd", dest_comp=1, bit_sizes=[32], flags=[CAN_ELIMINATE, CAN_REORDER])
 # Initial edge flags in a Vertex Shader, packed into the format the HW needs for primitive export.
 intrinsic("load_initial_edgeflags_amd", src_comp=[], dest_comp=1, bit_sizes=[32], indices=[])
-# Allocates export space for vertices and primitives. src[] = {num_vertices, num_primitives}.
-intrinsic("alloc_vertices_and_primitives_amd", src_comp=[1, 1], indices=[])
+# Corresponds to s_sendmsg in the GCN/RDNA ISA, src[] = { m0_content }, BASE = imm
+intrinsic("sendmsg_amd", src_comp=[1], indices=[BASE])
 # Overwrites VS input registers, for use with vertex compaction after culling. src = {vertex_id, instance_id}.
 intrinsic("overwrite_vs_arguments_amd", src_comp=[1, 1], indices=[])
 # Overwrites TES input registers, for use with vertex compaction after culling. src = {tes_u, tes_v, rel_patch_id, patch_id}.

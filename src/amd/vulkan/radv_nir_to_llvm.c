@@ -168,23 +168,6 @@ create_function(struct radv_shader_context *ctx, gl_shader_stage stage, bool has
    }
 }
 
-static void
-visit_emit_vertex_with_counter(struct ac_shader_abi *abi, unsigned stream, LLVMValueRef vertexidx,
-                               LLVMValueRef *addrs)
-{
-   struct radv_shader_context *ctx = radv_shader_context_from_abi(abi);
-   ac_build_sendmsg(&ctx->ac, AC_SENDMSG_GS_OP_EMIT | AC_SENDMSG_GS | (stream << 8),
-                    ctx->gs_wave_id);
-}
-
-static void
-visit_end_primitive(struct ac_shader_abi *abi, unsigned stream)
-{
-   struct radv_shader_context *ctx = radv_shader_context_from_abi(abi);
-   ac_build_sendmsg(&ctx->ac, AC_SENDMSG_GS_OP_CUT | AC_SENDMSG_GS | (stream << 8),
-                    ctx->gs_wave_id);
-}
-
 static LLVMValueRef
 radv_load_base_vertex(struct ac_shader_abi *abi, bool non_indexed_is_zero)
 {
@@ -278,37 +261,6 @@ radv_load_output(struct radv_shader_context *ctx, unsigned index, unsigned chan)
    LLVMValueRef output = ctx->abi.outputs[idx];
    LLVMTypeRef type = ctx->abi.is_16bit[idx] ? ctx->ac.f16 : ctx->ac.f32;
    return LLVMBuildLoad2(ctx->ac.builder, type, output, "");
-}
-
-static void
-emit_gs_epilogue(struct radv_shader_context *ctx)
-{
-   if (ctx->ac.gfx_level >= GFX10)
-      ac_build_waitcnt(&ctx->ac, AC_WAIT_VSTORE);
-
-   ac_build_sendmsg(&ctx->ac, AC_SENDMSG_GS_OP_NOP | AC_SENDMSG_GS_DONE, ctx->gs_wave_id);
-}
-
-static void
-handle_shader_outputs_post(struct ac_shader_abi *abi)
-{
-   struct radv_shader_context *ctx = radv_shader_context_from_abi(abi);
-
-   switch (ctx->stage) {
-   case MESA_SHADER_VERTEX:
-   case MESA_SHADER_TESS_CTRL:
-   case MESA_SHADER_TESS_EVAL:
-   case MESA_SHADER_FRAGMENT:
-      break; /* Lowered in NIR */
-   case MESA_SHADER_GEOMETRY:
-      if (ctx->shader_info->is_ngg)
-         break; /* Lowered in NIR */
-      else
-         emit_gs_epilogue(ctx);
-      break;
-   default:
-      break;
-   }
 }
 
 static void
@@ -469,11 +421,6 @@ ac_translate_nir_to_llvm(struct ac_llvm_compiler *ac_llvm,
       ctx.shader = shaders[shader_idx];
       ctx.output_mask = 0;
 
-      if (shaders[shader_idx]->info.stage == MESA_SHADER_GEOMETRY && !ctx.shader_info->is_ngg) {
-         ctx.abi.emit_vertex_with_counter = visit_emit_vertex_with_counter;
-         ctx.abi.emit_primitive = visit_end_primitive;
-      }
-
       if (shader_idx && !(shaders[shader_idx]->info.stage == MESA_SHADER_GEOMETRY && info->is_ngg)) {
          /* Execute a barrier before the second shader in
           * a merged shader.
@@ -522,9 +469,6 @@ ac_translate_nir_to_llvm(struct ac_llvm_compiler *ac_llvm,
       if (!ac_nir_translate(&ctx.ac, &ctx.abi, &args->ac, shaders[shader_idx])) {
          abort();
       }
-
-      if (!gl_shader_stage_is_compute(shaders[shader_idx]->info.stage))
-         handle_shader_outputs_post(&ctx.abi);
 
       if (check_merged_wave_info) {
          LLVMBuildBr(ctx.ac.builder, merge_block);

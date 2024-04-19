@@ -828,18 +828,6 @@ anv_compute_sys_heap_size(struct anv_physical_device *device,
     */
    available_ram = MIN2(available_ram, device->gtt_size * 3 / 4);
 
-   if (available_ram > (2ull << 30) && !device->supports_48bit_addresses) {
-      /* When running with an overridden PCI ID, we may get a GTT size from
-       * the kernel that is greater than 2 GiB but the execbuf check for 48bit
-       * address support can still fail.  Just clamp the address space size to
-       * 2 GiB if we don't have 48-bit support.
-       */
-      mesa_logw("%s:%d: The kernel reported a GTT size larger than 2 GiB but "
-                "not support for 48-bit addresses",
-                __FILE__, __LINE__);
-      available_ram = 2ull << 30;
-   }
-
    return available_ram;
 }
 
@@ -1324,11 +1312,11 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    device->gtt_size = device->info.gtt_size ? device->info.gtt_size :
                                               device->info.aperture_bytes;
 
-   /* We only allow 48-bit addresses with softpin because knowing the actual
-    * address is required for the vertex cache flush workaround.
-    */
-   device->supports_48bit_addresses =
-      device->gtt_size > (4ULL << 30 /* GiB */);
+   if (device->gtt_size < (4ULL << 30 /* GiB */)) {
+      vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
+                "GTT size too small: 0x%016"PRIu64, device->gtt_size);
+      goto fail_base;
+   }
 
    /* We currently only have the right bits for instructions in Gen12+. If the
     * kernel ever starts supporting that feature on previous generations,
@@ -1425,6 +1413,8 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    result = anv_physical_device_init_uuids(device);
    if (result != VK_SUCCESS)
       goto fail_compiler;
+
+   anv_physical_device_init_va_ranges(device);
 
    anv_physical_device_init_disk_cache(device);
 
@@ -2949,7 +2939,6 @@ intel_aux_map_buffer_alloc(void *driver_ctx, uint32_t size)
       return NULL;
 
    struct anv_device *device = (struct anv_device*)driver_ctx;
-   assert(device->physical->supports_48bit_addresses);
 
    struct anv_state_pool *pool = &device->dynamic_state_pool;
    buf->state = anv_state_pool_alloc(pool, size, size);
@@ -3077,9 +3066,9 @@ VkResult anv_CreateDevice(
                                      decode_get_bo, NULL, device);
 
          decoder->engine = physical_device->queue.families[i].engine_class;
-         decoder->dynamic_base = DYNAMIC_STATE_POOL_MIN_ADDRESS;
-         decoder->surface_base = INTERNAL_SURFACE_STATE_POOL_MIN_ADDRESS;
-         decoder->instruction_base = INSTRUCTION_STATE_POOL_MIN_ADDRESS;
+         decoder->dynamic_base = physical_device->va.dynamic_state_pool.addr;
+         decoder->surface_base = physical_device->va.internal_surface_state_pool.addr;
+         decoder->instruction_base = physical_device->va.instruction_state_pool.addr;
       }
    }
 
@@ -3155,18 +3144,16 @@ VkResult anv_CreateDevice(
 
    /* keep the page with address zero out of the allocator */
    util_vma_heap_init(&device->vma_lo,
-                      LOW_HEAP_MIN_ADDRESS, LOW_HEAP_SIZE);
+                      device->physical->va.low_heap.addr,
+                      device->physical->va.low_heap.size);
 
-   util_vma_heap_init(&device->vma_cva, CLIENT_VISIBLE_HEAP_MIN_ADDRESS,
-                      CLIENT_VISIBLE_HEAP_SIZE);
+   util_vma_heap_init(&device->vma_cva,
+                      device->physical->va.client_visible_heap.addr,
+                      device->physical->va.client_visible_heap.size);
 
-   /* Leave the last 4GiB out of the high vma range, so that no state
-    * base address + size can overflow 48 bits. For more information see
-    * the comment about Wa32bitGeneralStateOffset in anv_allocator.c
-    */
-   util_vma_heap_init(&device->vma_hi, HIGH_HEAP_MIN_ADDRESS,
-                      physical_device->gtt_size - (1ull << 32) -
-                      HIGH_HEAP_MIN_ADDRESS);
+   util_vma_heap_init(&device->vma_hi,
+                      device->physical->va.high_heap.addr,
+                      device->physical->va.high_heap.size);
 
    list_inithead(&device->memory_objects);
 
@@ -3204,13 +3191,13 @@ VkResult anv_CreateDevice(
     */
    result = anv_state_pool_init(&device->general_state_pool, device,
                                 "general pool",
-                                0, GENERAL_STATE_POOL_MIN_ADDRESS, 16384);
+                                0, device->physical->va.general_state_pool.addr, 16384);
    if (result != VK_SUCCESS)
       goto fail_batch_bo_pool;
 
    result = anv_state_pool_init(&device->dynamic_state_pool, device,
                                 "dynamic pool",
-                                DYNAMIC_STATE_POOL_MIN_ADDRESS, 0, 16384);
+                                device->physical->va.dynamic_state_pool.addr, 0, 16384);
    if (result != VK_SUCCESS)
       goto fail_general_state_pool;
 
@@ -3227,7 +3214,8 @@ VkResult anv_CreateDevice(
 
    result = anv_state_pool_init(&device->instruction_state_pool, device,
                                 "instruction pool",
-                                INSTRUCTION_STATE_POOL_MIN_ADDRESS, 0, 16384);
+                                device->physical->va.instruction_state_pool.addr,
+                                0, 16384);
    if (result != VK_SUCCESS)
       goto fail_dynamic_state_pool;
 
@@ -3237,25 +3225,29 @@ VkResult anv_CreateDevice(
        */
       result = anv_state_pool_init(&device->scratch_surface_state_pool, device,
                                    "scratch surface state pool",
-                                   SCRATCH_SURFACE_STATE_POOL_MIN_ADDRESS, 0, 4096);
+                                   device->physical->va.scratch_surface_state_pool.addr,
+                                   0, 4096);
       if (result != VK_SUCCESS)
          goto fail_instruction_state_pool;
 
       result = anv_state_pool_init(&device->internal_surface_state_pool, device,
                                    "internal surface state pool",
-                                   INTERNAL_SURFACE_STATE_POOL_MIN_ADDRESS,
-                                   SCRATCH_SURFACE_STATE_POOL_SIZE, 4096);
+                                   device->physical->va.internal_surface_state_pool.addr,
+                                   device->physical->va.scratch_surface_state_pool.size,
+                                   4096);
    } else {
       result = anv_state_pool_init(&device->internal_surface_state_pool, device,
                                    "internal surface state pool",
-                                   INTERNAL_SURFACE_STATE_POOL_MIN_ADDRESS, 0, 4096);
+                                   device->physical->va.internal_surface_state_pool.addr,
+                                   0, 4096);
    }
    if (result != VK_SUCCESS)
       goto fail_scratch_surface_state_pool;
 
    result = anv_state_pool_init(&device->bindless_surface_state_pool, device,
                                 "bindless surface state pool",
-                                BINDLESS_SURFACE_STATE_POOL_MIN_ADDRESS, 0, 4096);
+                                device->physical->va.bindless_surface_state_pool.addr,
+                                0, 4096);
    if (result != VK_SUCCESS)
       goto fail_internal_surface_state_pool;
 
@@ -3265,15 +3257,21 @@ VkResult anv_CreateDevice(
        */
       result = anv_state_pool_init(&device->binding_table_pool, device,
                                    "binding table pool",
-                                   BINDING_TABLE_POOL_MIN_ADDRESS, 0,
+                                   device->physical->va.binding_table_pool.addr, 0,
                                    BINDING_TABLE_POOL_BLOCK_SIZE);
    } else {
-      int64_t bt_pool_offset = (int64_t)BINDING_TABLE_POOL_MIN_ADDRESS -
-                               (int64_t)INTERNAL_SURFACE_STATE_POOL_MIN_ADDRESS;
+      /* The binding table should be in front of the surface states in virtual
+       * address space so that all surface states can be express as relative
+       * offsets from the binding table location.
+       */
+      assert(device->physical->va.binding_table_pool.addr <
+             device->physical->va.internal_surface_state_pool.addr);
+      int64_t bt_pool_offset = (int64_t)device->physical->va.binding_table_pool.addr -
+                               (int64_t)device->physical->va.internal_surface_state_pool.addr;
       assert(INT32_MIN < bt_pool_offset && bt_pool_offset < 0);
       result = anv_state_pool_init(&device->binding_table_pool, device,
                                    "binding table pool",
-                                   INTERNAL_SURFACE_STATE_POOL_MIN_ADDRESS,
+                                   device->physical->va.internal_surface_state_pool.addr,
                                    bt_pool_offset,
                                    BINDING_TABLE_POOL_BLOCK_SIZE);
    }
@@ -3624,24 +3622,39 @@ anv_device_wait(struct anv_device *device, struct anv_bo *bo,
    }
 }
 
+static struct util_vma_heap *
+anv_vma_heap_for_flags(struct anv_device *device,
+                       enum anv_bo_alloc_flags alloc_flags)
+{
+   if (alloc_flags & ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS)
+      return &device->vma_cva;
+
+   if (alloc_flags & ANV_BO_ALLOC_32BIT_ADDRESS)
+      return &device->vma_lo;
+
+   return &device->vma_hi;
+}
+
 uint64_t
 anv_vma_alloc(struct anv_device *device,
               uint64_t size, uint64_t align,
               enum anv_bo_alloc_flags alloc_flags,
-              uint64_t client_address)
+              uint64_t client_address,
+              struct util_vma_heap **out_vma_heap)
 {
    pthread_mutex_lock(&device->vma_mutex);
 
    uint64_t addr = 0;
+   *out_vma_heap = anv_vma_heap_for_flags(device, alloc_flags);
 
    if (alloc_flags & ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS) {
       if (client_address) {
-         if (util_vma_heap_alloc_addr(&device->vma_cva,
+         if (util_vma_heap_alloc_addr(*out_vma_heap,
                                       client_address, size)) {
             addr = client_address;
          }
       } else {
-         addr = util_vma_heap_alloc(&device->vma_cva, size, align);
+         addr = util_vma_heap_alloc(*out_vma_heap, size, align);
       }
       /* We don't want to fall back to other heaps */
       goto done;
@@ -3649,11 +3662,7 @@ anv_vma_alloc(struct anv_device *device,
 
    assert(client_address == 0);
 
-   if (!(alloc_flags & ANV_BO_ALLOC_32BIT_ADDRESS))
-      addr = util_vma_heap_alloc(&device->vma_hi, size, align);
-
-   if (addr == 0)
-      addr = util_vma_heap_alloc(&device->vma_lo, size, align);
+   addr = util_vma_heap_alloc(*out_vma_heap, size, align);
 
 done:
    pthread_mutex_unlock(&device->vma_mutex);
@@ -3664,22 +3673,18 @@ done:
 
 void
 anv_vma_free(struct anv_device *device,
+             struct util_vma_heap *vma_heap,
              uint64_t address, uint64_t size)
 {
+   assert(vma_heap == &device->vma_lo ||
+          vma_heap == &device->vma_cva ||
+          vma_heap == &device->vma_hi);
+
    const uint64_t addr_48b = intel_48b_address(address);
 
    pthread_mutex_lock(&device->vma_mutex);
 
-   if (addr_48b >= LOW_HEAP_MIN_ADDRESS &&
-       addr_48b <= LOW_HEAP_MAX_ADDRESS) {
-      util_vma_heap_free(&device->vma_lo, addr_48b, size);
-   } else if (addr_48b >= CLIENT_VISIBLE_HEAP_MIN_ADDRESS &&
-              addr_48b <= CLIENT_VISIBLE_HEAP_MAX_ADDRESS) {
-      util_vma_heap_free(&device->vma_cva, addr_48b, size);
-   } else {
-      assert(addr_48b >= HIGH_HEAP_MIN_ADDRESS);
-      util_vma_heap_free(&device->vma_hi, addr_48b, size);
-   }
+   util_vma_heap_free(vma_heap, addr_48b, size);
 
    pthread_mutex_unlock(&device->vma_mutex);
 }

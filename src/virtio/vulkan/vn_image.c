@@ -37,6 +37,47 @@ vn_image_get_plane_count(const VkImageCreateInfo *create_info)
    return vk_format_get_plane_count(create_info->format);
 }
 
+static inline uint32_t
+vn_image_get_plane(const VkImageAspectFlagBits plane_aspect)
+{
+   switch (plane_aspect) {
+   case VK_IMAGE_ASPECT_PLANE_1_BIT:
+      return 1;
+   case VK_IMAGE_ASPECT_PLANE_2_BIT:
+      return 2;
+   default:
+      return 0;
+   }
+}
+
+static void
+vn_image_fill_reqs(const struct vn_image_memory_requirements *req,
+                   VkMemoryRequirements2 *out_reqs)
+{
+   union {
+      VkBaseOutStructure *pnext;
+      VkMemoryRequirements2 *two;
+      VkMemoryDedicatedRequirements *dedicated;
+   } u = { .two = out_reqs };
+
+   while (u.pnext) {
+      switch (u.pnext->sType) {
+      case VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2:
+         u.two->memoryRequirements = req->memory.memoryRequirements;
+         break;
+      case VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS:
+         u.dedicated->prefersDedicatedAllocation =
+            req->dedicated.prefersDedicatedAllocation;
+         u.dedicated->requiresDedicatedAllocation =
+            req->dedicated.requiresDedicatedAllocation;
+         break;
+      default:
+         break;
+      }
+      u.pnext = u.pnext->pNext;
+   }
+}
+
 static void
 vn_image_cache_debug_dump(struct vn_image_reqs_cache *cache)
 {
@@ -667,47 +708,15 @@ vn_GetImageMemoryRequirements2(VkDevice device,
                                VkMemoryRequirements2 *pMemoryRequirements)
 {
    const struct vn_image *img = vn_image_from_handle(pInfo->image);
-   union {
-      VkBaseOutStructure *pnext;
-      VkMemoryRequirements2 *two;
-      VkMemoryDedicatedRequirements *dedicated;
-   } u = { .two = pMemoryRequirements };
 
    uint32_t plane = 0;
    const VkImagePlaneMemoryRequirementsInfo *plane_info =
       vk_find_struct_const(pInfo->pNext,
                            IMAGE_PLANE_MEMORY_REQUIREMENTS_INFO);
-   if (plane_info) {
-      switch (plane_info->planeAspect) {
-      case VK_IMAGE_ASPECT_PLANE_1_BIT:
-         plane = 1;
-         break;
-      case VK_IMAGE_ASPECT_PLANE_2_BIT:
-         plane = 2;
-         break;
-      default:
-         plane = 0;
-         break;
-      }
-   }
+   if (plane_info)
+      plane = vn_image_get_plane(plane_info->planeAspect);
 
-   while (u.pnext) {
-      switch (u.pnext->sType) {
-      case VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2:
-         u.two->memoryRequirements =
-            img->requirements[plane].memory.memoryRequirements;
-         break;
-      case VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS:
-         u.dedicated->prefersDedicatedAllocation =
-            img->requirements[plane].dedicated.prefersDedicatedAllocation;
-         u.dedicated->requiresDedicatedAllocation =
-            img->requirements[plane].dedicated.requiresDedicatedAllocation;
-         break;
-      default:
-         break;
-      }
-      u.pnext = u.pnext->pNext;
-   }
+   vn_image_fill_reqs(&img->requirements[plane], pMemoryRequirements);
 }
 
 void

@@ -25,6 +25,13 @@ nvk_classes = [
   'clc7c0',
 ]
 
+hwref_gens = [
+  'maxwell/gm107',
+  'pascal/gp100',
+  'hopper/gh100',
+  'turing/tu102',
+]
+
 nvk_cl_header_depend_files = [
   files('class_parser.py')
 ]
@@ -99,6 +106,17 @@ if with_nouveau_vk
                    '--out-rs', '@OUTPUT0@']
       )
     endif
+  endforeach
+
+  fs = import('fs')
+  foreach family_gen : hwref_gens
+    family = fs.parent(family_gen)
+    gen = fs.name(family_gen)
+    cl_rs_generated += rust.bindgen(
+      input : ['nvidia/hwref/'+family+'/'+gen+'/dev_mmu.h'],
+      output : 'nvh_hwref_'+gen+'_mmu.rs',
+      args : ['--allowlist-var', 'NV_MMU_.*'],
+    )
   endforeach
 
   _nvidia_headers_lib_rs = custom_target(

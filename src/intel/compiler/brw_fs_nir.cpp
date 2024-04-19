@@ -282,6 +282,7 @@ fs_visitor::nir_emit_system_values()
       const fs_builder abld = bld.annotate("gl_SubgroupInvocation", NULL);
       fs_reg &reg = nir_system_values[SYSTEM_VALUE_SUBGROUP_INVOCATION];
       reg = abld.vgrf(BRW_REGISTER_TYPE_UW);
+      abld.UNDEF(reg);
 
       const fs_builder allbld8 = abld.group(8, 0).exec_all();
       allbld8.MOV(reg, brw_imm_v(0x76543210));
@@ -1370,8 +1371,10 @@ fs_visitor::nir_emit_alu(const fs_builder &bld, nir_alu_instr *instr,
       fs_reg dest = result;
 
       const uint32_t bit_size =  nir_src_bit_size(instr->src[0].src);
-      if (bit_size != 32)
+      if (bit_size != 32) {
          dest = bld.vgrf(op[0].type, 1);
+         bld.UNDEF(dest);
+      }
 
       bld.CMP(dest, op[0], op[1], brw_cmod_for_nir_comparison(instr->op));
 
@@ -1398,8 +1401,10 @@ fs_visitor::nir_emit_alu(const fs_builder &bld, nir_alu_instr *instr,
       fs_reg dest = result;
 
       const uint32_t bit_size = type_sz(op[0].type) * 8;
-      if (bit_size != 32)
+      if (bit_size != 32) {
          dest = bld.vgrf(op[0].type, 1);
+         bld.UNDEF(dest);
+      }
 
       bld.CMP(dest, op[0], op[1],
               brw_cmod_for_nir_comparison(instr->op));
@@ -4549,8 +4554,16 @@ fs_visitor::nir_emit_intrinsic(const fs_builder &bld, nir_intrinsic_instr *instr
 
    case nir_intrinsic_load_reloc_const_intel: {
       uint32_t id = nir_intrinsic_param_idx(instr);
-      bld.emit(SHADER_OPCODE_MOV_RELOC_IMM,
-               dest, brw_imm_ud(id));
+
+      /* Emit the reloc in the smallest SIMD size to limit register usage. */
+      const fs_builder ubld = bld.exec_all().group(1, 0);
+      fs_reg small_dest = ubld.vgrf(dest.type);
+      ubld.UNDEF(small_dest);
+      ubld.exec_all().group(1, 0).emit(SHADER_OPCODE_MOV_RELOC_IMM,
+                                       small_dest, brw_imm_ud(id));
+
+      /* Copy propagation will get rid of this MOV. */
+      bld.MOV(dest, component(small_dest, 0));
       break;
    }
 

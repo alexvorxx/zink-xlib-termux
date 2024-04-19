@@ -199,13 +199,13 @@ meta_emit_blit(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
                VkRect2D dst_box, VkSampler sampler)
 {
    struct radv_device *device = cmd_buffer->device;
-   uint32_t src_width = radv_minify(src_iview->image->info.width, src_iview->vk.base_mip_level);
-   uint32_t src_height = radv_minify(src_iview->image->info.height, src_iview->vk.base_mip_level);
-   uint32_t src_depth = radv_minify(src_iview->image->info.depth, src_iview->vk.base_mip_level);
-   uint32_t dst_width = radv_minify(dst_iview->image->info.width, dst_iview->vk.base_mip_level);
-   uint32_t dst_height = radv_minify(dst_iview->image->info.height, dst_iview->vk.base_mip_level);
+   uint32_t src_width = radv_minify(src_iview->image->vk.extent.width, src_iview->vk.base_mip_level);
+   uint32_t src_height = radv_minify(src_iview->image->vk.extent.height, src_iview->vk.base_mip_level);
+   uint32_t src_depth = radv_minify(src_iview->image->vk.extent.depth, src_iview->vk.base_mip_level);
+   uint32_t dst_width = radv_minify(dst_iview->image->vk.extent.width, dst_iview->vk.base_mip_level);
+   uint32_t dst_height = radv_minify(dst_iview->image->vk.extent.height, dst_iview->vk.base_mip_level);
 
-   assert(src_image->info.samples == dst_image->info.samples);
+   assert(src_image->vk.samples == dst_image->vk.samples);
 
    float vertex_push_constants[5] = {
       src_offset_0[0] / (float)src_width, src_offset_0[1] / (float)src_height,
@@ -409,8 +409,8 @@ blit_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image,
     *    vkCmdBlitImage must not be used for multisampled source or
     *    destination images. Use vkCmdResolveImage for this purpose.
     */
-   assert(src_image->info.samples == 1);
-   assert(dst_image->info.samples == 1);
+   assert(src_image->vk.samples == 1);
+   assert(dst_image->vk.samples == 1);
 
    radv_CreateSampler(radv_device_to_handle(device),
                       &(VkSamplerCreateInfo){

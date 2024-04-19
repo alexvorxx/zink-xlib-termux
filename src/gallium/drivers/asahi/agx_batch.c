@@ -14,6 +14,13 @@
 #define foreach_submitted(ctx, idx)                                            \
    BITSET_FOREACH_SET(idx, ctx->batches.submitted, AGX_MAX_BATCHES)
 
+#define batch_debug(batch, fmt, ...)                                           \
+   do {                                                                        \
+      if (unlikely(agx_device(batch->ctx->base.screen)->debug &                \
+                   AGX_DBG_BATCH))                                             \
+         agx_msg("[Batch %u] " fmt "\n", agx_batch_idx(batch), ##__VA_ARGS__); \
+   } while (0)
+
 static unsigned
 agx_batch_idx(struct agx_batch *batch)
 {
@@ -37,6 +44,8 @@ agx_batch_mark_active(struct agx_batch *batch)
 {
    unsigned batch_idx = agx_batch_idx(batch);
 
+   batch_debug(batch, "ACTIVE");
+
    assert(!BITSET_TEST(batch->ctx->batches.submitted, batch_idx));
    assert(!BITSET_TEST(batch->ctx->batches.active, batch_idx));
    BITSET_SET(batch->ctx->batches.active, batch_idx);
@@ -46,6 +55,8 @@ static void
 agx_batch_mark_submitted(struct agx_batch *batch)
 {
    unsigned batch_idx = agx_batch_idx(batch);
+
+   batch_debug(batch, "SUBMIT");
 
    assert(BITSET_TEST(batch->ctx->batches.active, batch_idx));
    assert(!BITSET_TEST(batch->ctx->batches.submitted, batch_idx));
@@ -57,6 +68,8 @@ static void
 agx_batch_mark_complete(struct agx_batch *batch)
 {
    unsigned batch_idx = agx_batch_idx(batch);
+
+   batch_debug(batch, "COMPLETE");
 
    assert(!BITSET_TEST(batch->ctx->batches.active, batch_idx));
    assert(BITSET_TEST(batch->ctx->batches.submitted, batch_idx));
@@ -99,6 +112,7 @@ agx_batch_init(struct agx_context *ctx,
    batch->clear = 0;
    batch->draw = 0;
    batch->load = 0;
+   batch->resolve = 0;
    batch->clear_depth = 0;
    batch->clear_stencil = 0;
    batch->varyings = 0;
@@ -108,7 +122,11 @@ agx_batch_init(struct agx_context *ctx,
    batch->reduced_prim = PIPE_PRIM_MAX;
 
    if (batch->key.zsbuf) {
-      agx_batch_writes(batch, agx_resource(key->zsbuf->texture));
+      struct agx_resource *rsrc = agx_resource(key->zsbuf->texture);
+      agx_batch_writes(batch, rsrc);
+
+      if (rsrc->separate_stencil)
+         agx_batch_writes(batch, rsrc->separate_stencil);
    }
 
    for (unsigned i = 0; i < key->nr_cbufs; ++i) {
@@ -133,8 +151,8 @@ agx_batch_print_stats(struct agx_device *dev, struct agx_batch *batch)
    unreachable("Linux UAPI not yet upstream");
 }
 
-void
-agx_batch_cleanup(struct agx_context *ctx, struct agx_batch *batch)
+static void
+agx_batch_cleanup(struct agx_context *ctx, struct agx_batch *batch, bool reset)
 {
    struct agx_device *dev = agx_device(ctx->base.screen);
    assert(batch->ctx == ctx);
@@ -146,19 +164,60 @@ agx_batch_cleanup(struct agx_context *ctx, struct agx_batch *batch)
    batch->occlusion_buffer.cpu = NULL;
    batch->occlusion_buffer.gpu = 0;
 
-   int handle;
-   AGX_BATCH_FOREACH_BO_HANDLE(batch, handle) {
-      struct agx_bo *bo = agx_lookup_bo(dev, handle);
+   if (reset) {
+      int handle;
+      AGX_BATCH_FOREACH_BO_HANDLE(batch, handle) {
+         struct agx_bo *bo = agx_lookup_bo(dev, handle);
 
-      /* There is no more writer on this context for anything we wrote */
-      struct agx_batch *writer = agx_writer_get(ctx, handle);
+         /* Revert the writer to the last submitted batch that writes this BO,
+          * if any.
+          */
+         struct agx_batch *writer = agx_writer_get(ctx, handle);
 
-      if (writer == batch) {
-         bo->writer_syncobj = 0;
-         agx_writer_remove(ctx, handle);
+         if (writer == batch) {
+            int i;
+            assert(bo->writer_syncobj != batch->syncobj);
+            agx_writer_remove(ctx, handle);
+
+            if (bo->writer_syncobj) {
+               struct agx_batch *old_batch = NULL;
+               foreach_submitted(ctx, i) {
+                  old_batch = &ctx->batches.slots[i];
+                  if (old_batch->syncobj == bo->writer_syncobj)
+                     break;
+                  else
+                     old_batch = NULL;
+               }
+               assume(old_batch);
+               batch_debug(batch,
+                           "Resetting writer for BO @ 0x%" PRIx64
+                           " to batch %d (syncobj was %d)",
+                           bo->ptr.gpu, agx_batch_idx(old_batch),
+                           bo->writer_syncobj);
+               agx_writer_add(ctx, agx_batch_idx(old_batch), bo->handle);
+            }
+         }
+
+         agx_bo_unreference(agx_lookup_bo(dev, handle));
       }
+   } else {
+      int handle;
+      AGX_BATCH_FOREACH_BO_HANDLE(batch, handle) {
+         struct agx_bo *bo = agx_lookup_bo(dev, handle);
 
-      agx_bo_unreference(agx_lookup_bo(dev, handle));
+         /* There is no more writer on this context for anything we wrote */
+         struct agx_batch *writer = agx_writer_get(ctx, handle);
+
+         if (writer == batch) {
+            assert(bo->writer_syncobj == batch->syncobj);
+            agx_writer_remove(ctx, handle);
+         }
+
+         if (bo->writer_syncobj == batch->syncobj)
+            bo->writer_syncobj = 0;
+
+         agx_bo_unreference(agx_lookup_bo(dev, handle));
+      }
    }
 
    agx_bo_unreference(batch->encoder);
@@ -202,7 +261,7 @@ agx_cleanup_batches(struct agx_context *ctx)
       return -1;
 
    assert(first < AGX_MAX_BATCHES);
-   agx_batch_cleanup(ctx, batches[first]);
+   agx_batch_cleanup(ctx, batches[first], false);
    return agx_batch_idx(batches[first]);
 }
 
@@ -563,6 +622,8 @@ agx_batch_submit(struct agx_context *ctx, struct agx_batch *batch,
       struct agx_bo *bo = agx_lookup_bo(dev, handle);
 
       if (bo->flags & AGX_BO_SHARED) {
+         batch_debug(batch, "Waits on shared BO @ 0x%" PRIx64, bo->ptr.gpu);
+
          /* Get a sync file fd from the buffer */
          int in_sync_fd = agx_export_sync_file(dev, bo);
          assert(in_sync_fd >= 0);
@@ -604,6 +665,9 @@ agx_batch_submit(struct agx_context *ctx, struct agx_batch *batch,
       assert(out_sync_fd >= 0);
 
       for (unsigned i = 0; i < shared_bo_count; i++) {
+         batch_debug(batch, "Signals shared BO @ 0x%" PRIx64,
+                     shared_bos[i]->ptr.gpu);
+
          /* Free the in_sync handle we just acquired */
          ret = drmSyncobjDestroy(dev->fd, in_syncs[i].handle);
          assert(ret >= 0);
@@ -682,7 +746,7 @@ agx_sync_batch(struct agx_context *ctx, struct agx_batch *batch)
    assert(batch->syncobj);
    int ret = drmSyncobjWait(dev->fd, &batch->syncobj, 1, INT64_MAX, 0, NULL);
    assert(!ret);
-   agx_batch_cleanup(ctx, batch);
+   agx_batch_cleanup(ctx, batch, false);
 }
 
 void
@@ -714,11 +778,13 @@ agx_sync_all(struct agx_context *ctx, const char *reason)
 void
 agx_batch_reset(struct agx_context *ctx, struct agx_batch *batch)
 {
+   batch_debug(batch, "RESET");
+
    /* Reset an empty batch. Like submit, but does nothing. */
    agx_batch_mark_submitted(batch);
 
    if (ctx->batch == batch)
       ctx->batch = NULL;
 
-   agx_batch_cleanup(ctx, batch);
+   agx_batch_cleanup(ctx, batch, true);
 }

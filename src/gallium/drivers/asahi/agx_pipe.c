@@ -18,6 +18,7 @@
 #include "gallium/auxiliary/renderonly/renderonly.h"
 #include "gallium/auxiliary/util/u_debug_cb.h"
 #include "gallium/auxiliary/util/u_framebuffer.h"
+#include "gallium/auxiliary/util/u_sample_positions.h"
 #include "gallium/auxiliary/util/u_surface.h"
 #include "gallium/auxiliary/util/u_transfer.h"
 #include "gallium/auxiliary/util/u_transfer_helper.h"
@@ -68,6 +69,7 @@ static const struct debug_named_value agx_debug_options[] = {
    {"sync",      AGX_DBG_SYNC,     "Synchronously wait for all submissions"},
    {"stats",     AGX_DBG_STATS,    "Show command execution statistics"},
    {"resource",  AGX_DBG_RESOURCE, "Log resource operations"},
+   {"batch",     AGX_DBG_BATCH,    "Log batches"},
    DEBUG_NAMED_VALUE_END
 };
 /* clang-format on */
@@ -346,6 +348,14 @@ agx_linear_allowed(const struct agx_resource *pres)
    if (pres->base.bind & PIPE_BIND_DEPTH_STENCIL)
       return false;
 
+   /* Multisampling not allowed with linear */
+   if (pres->base.nr_samples > 1)
+      return false;
+
+   /* Block compression not allowed with linear */
+   if (util_format_is_compressed(pres->base.format))
+      return false;
+
    switch (pres->base.target) {
    /* 1D is always linear */
    case PIPE_BUFFER:
@@ -413,16 +423,6 @@ agx_compression_allowed(const struct agx_resource *pres)
    /* Lossy-compressed texture formats cannot be compressed */
    assert(!util_format_is_compressed(pres->base.format) &&
           "block-compressed formats are not renderable");
-
-   /* TODO: Compression of arrays/cubes currently fails because it would require
-    * arrayed linear staging resources, which the hardware doesn't support. This
-    * could be worked around with more sophisticated blit code.
-    */
-   if (pres->base.target != PIPE_TEXTURE_2D &&
-       pres->base.target != PIPE_TEXTURE_RECT) {
-      rsrc_debug(pres, "No compression: array/cube\n");
-      return false;
-   }
 
    /* Small textures cannot (should not?) be compressed */
    if (pres->base.width0 < 16 || pres->base.height0 < 16) {
@@ -642,15 +642,39 @@ agx_transfer_flush_region(struct pipe_context *pipe,
 
 /* Reallocate the backing buffer of a resource, returns true if successful */
 static bool
-agx_shadow(struct agx_context *ctx, struct agx_resource *rsrc)
+agx_shadow(struct agx_context *ctx, struct agx_resource *rsrc, bool needs_copy)
 {
    struct agx_device *dev = agx_device(ctx->base.screen);
    struct agx_bo *old = rsrc->bo;
-   struct agx_bo *new_ = agx_bo_create(dev, old->size, old->flags, old->label);
+   unsigned flags = old->flags;
+
+   /* If a resource is (or could be) shared, shadowing would desync across
+    * processes. (It's also not what this path is for.)
+    */
+   if (flags & (AGX_BO_SHARED | AGX_BO_SHAREABLE))
+      return false;
+
+   /* If we need to copy, we reallocate the resource with cached-coherent
+    * memory. This is a heuristic: it assumes that if the app needs a shadows
+    * (with a copy) now, it will again need to shadow-and-copy the same resource
+    * in the future. This accelerates the later copies, since otherwise the copy
+    * involves reading uncached memory.
+    */
+   if (needs_copy)
+      flags |= AGX_BO_WRITEBACK;
+
+   struct agx_bo *new_ = agx_bo_create(dev, old->size, flags, old->label);
 
    /* If allocation failed, we can fallback on a flush gracefully*/
    if (new_ == NULL)
       return false;
+
+   if (needs_copy) {
+      perf_debug_ctx(ctx, "Shadowing %zu bytes on the CPU (%s)", old->size,
+                     (old->flags & AGX_BO_WRITEBACK) ? "cached" : "uncached");
+
+      memcpy(new_->ptr.cpu, old->ptr.cpu, old->size);
+   }
 
    /* Swap the pointers, dropping a reference */
    agx_bo_unreference(rsrc->bo);
@@ -717,11 +741,40 @@ agx_prepare_for_map(struct agx_context *ctx, struct agx_resource *rsrc,
       return;
 
    /* There are readers. Try to shadow the resource to avoid a sync */
-   if ((usage & PIPE_MAP_DISCARD_WHOLE_RESOURCE) && agx_shadow(ctx, rsrc))
+   if (!(rsrc->base.flags & PIPE_RESOURCE_FLAG_MAP_PERSISTENT) &&
+       agx_shadow(ctx, rsrc, !(usage & PIPE_MAP_DISCARD_WHOLE_RESOURCE)))
       return;
 
    /* Otherwise, we need to sync */
    agx_sync_readers(ctx, rsrc, "Unsynchronized write");
+}
+
+/*
+ * Return a colour-renderable format compatible with a depth/stencil format, to
+ * be used as an interchange format for depth/stencil blits. For
+ * non-depth/stencil formats, returns the format itself.
+ */
+static enum pipe_format
+agx_staging_color_format_for_zs(enum pipe_format format)
+{
+   switch (format) {
+   case PIPE_FORMAT_Z16_UNORM:
+      return PIPE_FORMAT_R16_UNORM;
+   case PIPE_FORMAT_Z32_FLOAT:
+      return PIPE_FORMAT_R32_FLOAT;
+   case PIPE_FORMAT_S8_UINT:
+      return PIPE_FORMAT_R8_UINT;
+   default:
+      /* Z24 and combined Z/S are lowered to one of the above formats by
+       * u_transfer_helper. The caller needs to pass in the rsrc->layout.format
+       * and not the rsrc->base.format to get the lowered physical format
+       * (rather than the API logical format).
+       */
+      assert(!util_format_is_depth_or_stencil(format) &&
+             "no other depth/stencil formats allowed for staging");
+
+      return format;
+   }
 }
 
 /* Most of the time we can do CPU-side transfers, but sometimes we need to use
@@ -736,21 +789,31 @@ agx_alloc_staging(struct pipe_screen *screen, struct agx_resource *rsc,
 
    tmpl.width0 = box->width;
    tmpl.height0 = box->height;
+   tmpl.depth0 = 1;
 
-   /* for array textures, box->depth is the array_size, otherwise for 3d
-    * textures, it is the depth.
+   /* We need a linear staging resource. We have linear 2D arrays, but not
+    * linear 3D or cube textures. So switch to 2D arrays if needed.
     */
-   if (tmpl.array_size > 1) {
-      if (tmpl.target == PIPE_TEXTURE_CUBE)
-         tmpl.target = PIPE_TEXTURE_2D_ARRAY;
+   switch (tmpl.target) {
+   case PIPE_TEXTURE_2D_ARRAY:
+   case PIPE_TEXTURE_CUBE:
+   case PIPE_TEXTURE_CUBE_ARRAY:
+   case PIPE_TEXTURE_3D:
+      tmpl.target = PIPE_TEXTURE_2D_ARRAY;
       tmpl.array_size = box->depth;
-      tmpl.depth0 = 1;
-   } else {
-      tmpl.array_size = 1;
-      tmpl.depth0 = box->depth;
+      break;
+   default:
+      assert(tmpl.array_size == 1);
+      assert(box->depth == 1);
+      break;
    }
+
    tmpl.last_level = 0;
-   tmpl.bind |= PIPE_BIND_LINEAR;
+
+   /* Linear is incompatible with depth/stencil, so we convert */
+   tmpl.format = agx_staging_color_format_for_zs(rsc->layout.format);
+   tmpl.bind &= ~PIPE_BIND_DEPTH_STENCIL;
+   tmpl.bind |= PIPE_BIND_LINEAR | PIPE_BIND_RENDER_TARGET;
 
    struct pipe_resource *pstaging = screen->resource_create(screen, &tmpl);
    if (!pstaging)
@@ -766,7 +829,8 @@ agx_blit_from_staging(struct pipe_context *pctx, struct agx_transfer *trans)
    struct pipe_blit_info blit = {0};
 
    blit.dst.resource = dst;
-   blit.dst.format = dst->format;
+   blit.dst.format =
+      agx_staging_color_format_for_zs(agx_resource(dst)->layout.format);
    blit.dst.level = trans->base.level;
    blit.dst.box = trans->base.box;
    blit.src.resource = trans->staging.rsrc;
@@ -786,7 +850,8 @@ agx_blit_to_staging(struct pipe_context *pctx, struct agx_transfer *trans)
    struct pipe_blit_info blit = {0};
 
    blit.src.resource = src;
-   blit.src.format = src->format;
+   blit.src.format =
+      agx_staging_color_format_for_zs(agx_resource(src)->layout.format);
    blit.src.level = trans->base.level;
    blit.src.box = trans->base.box;
    blit.dst.resource = trans->staging.rsrc;
@@ -1327,10 +1392,12 @@ agx_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
    pctx->buffer_subdata = u_default_buffer_subdata;
    pctx->texture_subdata = u_default_texture_subdata;
    pctx->set_debug_callback = u_default_set_debug_callback;
+   pctx->get_sample_position = u_default_get_sample_position;
    pctx->invalidate_resource = agx_invalidate_resource;
 
    agx_init_state_functions(pctx);
    agx_init_query_functions(pctx);
+   agx_init_streamout_functions(pctx);
 
    agx_meta_init(&ctx->meta, agx_device(screen));
 
@@ -1490,15 +1557,15 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return 0;
 
    case PIPE_CAP_MAX_STREAM_OUTPUT_BUFFERS:
-      return is_deqp ? PIPE_MAX_SO_BUFFERS : 0;
+      return PIPE_MAX_SO_BUFFERS;
 
    case PIPE_CAP_MAX_STREAM_OUTPUT_SEPARATE_COMPONENTS:
    case PIPE_CAP_MAX_STREAM_OUTPUT_INTERLEAVED_COMPONENTS:
-      return is_deqp ? PIPE_MAX_SO_OUTPUTS : 0;
+      return PIPE_MAX_SO_OUTPUTS;
 
    case PIPE_CAP_STREAM_OUTPUT_PAUSE_RESUME:
    case PIPE_CAP_STREAM_OUTPUT_INTERLEAVE_BUFFERS:
-      return is_deqp ? 1 : 0;
+      return 1;
 
    case PIPE_CAP_MAX_TEXTURE_ARRAY_LAYERS:
       return 2048;
@@ -1519,6 +1586,13 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return 64;
 
    case PIPE_CAP_VERTEX_ATTRIB_ELEMENT_ALIGNED_ONLY:
+      return 1;
+
+   /* We run nir_lower_point_size so we need the GLSL linker to copy
+    * the original gl_PointSize when captured by transform feedback. We could
+    * also copy it ourselves but it's easier to set the CAP.
+    */
+   case PIPE_CAP_PSIZ_CLAMPED:
       return 1;
 
    case PIPE_CAP_MAX_TEXTURE_2D_SIZE:
@@ -1817,7 +1891,8 @@ agx_is_format_supported(struct pipe_screen *pscreen, enum pipe_format format,
 
    bool is_deqp = agx_device(pscreen)->debug & AGX_DBG_DEQP;
 
-   if (sample_count > 1 && !(sample_count == 4 && is_deqp))
+   if (sample_count > 1 &&
+       (!is_deqp || (sample_count != 4 && sample_count != 2)))
       return false;
 
    if (MAX2(sample_count, 1) != MAX2(storage_sample_count, 1))

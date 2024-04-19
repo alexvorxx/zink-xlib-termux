@@ -385,7 +385,7 @@ agx_pack_alu(struct util_dynarray *emission, agx_instr *I)
       if (is_16 && !is_cmpsel)
          assert((src_short & (1 << 9)) == 0);
 
-      if (info.is_float) {
+      if (info.is_float || (I->op == AGX_OPCODE_FCMPSEL && !is_cmpsel)) {
          unsigned fmod = agx_pack_float_mod(I->src[s]);
          unsigned fmod_offset = is_16 ? 9 : 10;
          src_short |= (fmod << fmod_offset);
@@ -415,8 +415,9 @@ agx_pack_alu(struct util_dynarray *emission, agx_instr *I)
       raw |= (I->truth_table & 0x3) << 26;
       raw |= (uint64_t)(I->truth_table >> 2) << 38;
    } else if (info.immediates & AGX_IMMEDIATE_SHIFT) {
+      assert(I->shift <= 4);
       raw |= (uint64_t)(I->shift & 1) << 39;
-      raw |= (uint64_t)(I->shift >> 2) << 52;
+      raw |= (uint64_t)(I->shift >> 1) << 52;
    } else if (info.immediates & AGX_IMMEDIATE_BFI_MASK) {
       raw |= (uint64_t)(I->bfi_mask & 0x3) << 38;
       raw |= (uint64_t)((I->bfi_mask >> 2) & 0x3) << 50;
@@ -525,7 +526,6 @@ agx_pack_instr(struct util_dynarray *emission, struct util_dynarray *fixups,
       bool flat = (I->op == AGX_OPCODE_LDCF);
       unsigned D = agx_pack_alu_dst(I->dest[0]);
       unsigned channels = (I->channels & 0x3);
-      assert(I->mask < 0xF); /* 0 indicates full mask */
 
       agx_index src_I = I->src[0];
       assert(src_I.type == AGX_INDEX_IMMEDIATE);

@@ -301,10 +301,10 @@ radv_pick_resolve_method_images(struct radv_device *device, struct radv_image *s
          *method = RESOLVE_COMPUTE;
       else if (vk_format_is_int(src_format))
          *method = RESOLVE_COMPUTE;
-      else if (src_image->info.array_size > 1 || dst_image->info.array_size > 1)
+      else if (src_image->vk.array_layers > 1 || dst_image->vk.array_layers > 1)
          *method = RESOLVE_COMPUTE;
    } else {
-      if (src_image->info.array_size > 1 || dst_image->info.array_size > 1 ||
+      if (src_image->vk.array_layers > 1 || dst_image->vk.array_layers > 1 ||
           (dst_image->planes[0].surface.flags & RADEON_SURF_NO_RENDER_TARGET))
          *method = RESOLVE_COMPUTE;
       else
@@ -347,8 +347,8 @@ radv_meta_resolve_hardware_image(struct radv_cmd_buffer *cmd_buffer, struct radv
 
    radv_meta_save(&saved_state, cmd_buffer, RADV_META_SAVE_GRAPHICS_PIPELINE);
 
-   assert(src_image->info.samples > 1);
-   assert(dst_image->info.samples == 1);
+   assert(src_image->vk.samples > 1);
+   assert(dst_image->vk.samples == 1);
 
    unsigned fs_key = radv_format_meta_fs_key(device, dst_image->vk.format);
 
@@ -549,9 +549,9 @@ radv_CmdResolveImage2(VkCommandBuffer commandBuffer,
           pResolveImageInfo->pRegions[0].dstOffset.y || pResolveImageInfo->pRegions[0].dstOffset.z)
          resolve_method = RESOLVE_COMPUTE;
 
-      if (pResolveImageInfo->pRegions[0].extent.width != src_image->info.width ||
-          pResolveImageInfo->pRegions[0].extent.height != src_image->info.height ||
-          pResolveImageInfo->pRegions[0].extent.depth != src_image->info.depth)
+      if (pResolveImageInfo->pRegions[0].extent.width != src_image->vk.extent.width ||
+          pResolveImageInfo->pRegions[0].extent.height != src_image->vk.extent.height ||
+          pResolveImageInfo->pRegions[0].extent.depth != src_image->vk.extent.depth)
          resolve_method = RESOLVE_COMPUTE;
    } else
       resolve_method = RESOLVE_COMPUTE;

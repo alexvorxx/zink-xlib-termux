@@ -2515,8 +2515,6 @@ struct radv_image_binding {
 struct radv_image {
    struct vk_image vk;
 
-   struct ac_surf_info info;
-
    VkDeviceSize size;
    uint32_t alignment;
 
@@ -2549,6 +2547,9 @@ struct radv_image {
    bool disjoint;
    struct radv_image_plane planes[0];
 };
+
+struct ac_surf_info radv_get_ac_surf_info(struct radv_device *device,
+                                          const struct radv_image *image);
 
 /* Whether the image has a htile  that is known consistent with the contents of
  * the image and is allowed to be in compressed form.
@@ -2792,7 +2793,7 @@ radv_image_get_iterate256(struct radv_device *device, struct radv_image *image)
    return device->physical_device->rad_info.gfx_level >= GFX10 &&
           (image->vk.usage &
            (VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)) &&
-          radv_image_is_tc_compat_htile(image) && image->info.samples > 1;
+          radv_image_is_tc_compat_htile(image) && image->vk.samples > 1;
 }
 
 unsigned radv_image_queue_family_mask(const struct radv_image *image,
@@ -2906,8 +2907,8 @@ void radv_buffer_view_finish(struct radv_buffer_view *view);
 static inline bool
 radv_image_extent_compare(const struct radv_image *image, const VkExtent3D *extent)
 {
-   if (extent->width != image->info.width || extent->height != image->info.height ||
-       extent->depth != image->info.depth)
+   if (extent->width != image->vk.extent.width || extent->height != image->vk.extent.height ||
+       extent->depth != image->vk.extent.depth)
       return false;
    return true;
 }

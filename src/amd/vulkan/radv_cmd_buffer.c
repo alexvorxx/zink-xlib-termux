@@ -3565,8 +3565,8 @@ radv_emit_framebuffer_state(struct radv_cmd_buffer *cmd_buffer)
          va = radv_buffer_get_va(vrs_image->bindings[0].bo) + vrs_image->bindings[0].offset;
          va |= vrs_image->planes[0].surface.tile_swizzle << 8;
 
-         xmax = vrs_image->info.width - 1;
-         ymax = vrs_image->info.height - 1;
+         xmax = vrs_image->vk.extent.width - 1;
+         ymax = vrs_image->vk.extent.height - 1;
       }
 
       radeon_set_context_reg_seq(cmd_buffer->cs, R_0283F0_PA_SC_VRS_RATE_BASE, 3);
@@ -4242,6 +4242,12 @@ radv_emit_color_blend(struct radv_cmd_buffer *cmd_buffer)
                                   S_028760_ALPHA_COMB_FCN(V_028760_OPT_COMB_NONE);
          }
       }
+
+      /* Disable RB+ blend optimizations on GFX11 when alpha-to-coverage is enabled. */
+      if (gfx_level >= GFX11 && d->vk.ms.alpha_to_coverage_enable) {
+         sx_mrt_blend_opt[0] = S_028760_COLOR_COMB_FCN(V_028760_OPT_COMB_NONE) |
+                               S_028760_ALPHA_COMB_FCN(V_028760_OPT_COMB_NONE);
+      }
    }
 
    radeon_set_context_reg_seq(cmd_buffer->cs, R_028780_CB_BLEND0_CONTROL, MAX_RTS);
@@ -4558,7 +4564,8 @@ radv_cmd_buffer_flush_dynamic_state(struct radv_cmd_buffer *cmd_buffer, bool pip
 
    if (states & (RADV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_ENABLE |
                  RADV_CMD_DIRTY_DYNAMIC_COLOR_WRITE_MASK |
-                 RADV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_EQUATION))
+                 RADV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_EQUATION |
+                 RADV_CMD_DIRTY_DYNAMIC_ALPHA_TO_COVERAGE_ENABLE))
       radv_emit_color_blend(cmd_buffer);
 
    if (states & RADV_CMD_DIRTY_DYNAMIC_LINE_RASTERIZATION_MODE)
@@ -7882,8 +7889,8 @@ radv_CmdBeginRendering(VkCommandBuffer commandBuffer, const VkRenderingInfo *pRe
 
          radv_buffer_init(&htile_buffer, cmd_buffer->device, ds_image->bindings[0].bo, htile_size, htile_offset);
 
-         assert(render->area.offset.x + render->area.extent.width <= ds_image->info.width &&
-                render->area.offset.x + render->area.extent.height <= ds_image->info.height);
+         assert(render->area.offset.x + render->area.extent.width <= ds_image->vk.extent.width &&
+                render->area.offset.x + render->area.extent.height <= ds_image->vk.extent.height);
 
          /* Copy the VRS rates to the HTILE buffer. */
          radv_copy_vrs_htile(cmd_buffer, render->vrs_att.iview->image, &render->area, ds_image,
@@ -7896,14 +7903,14 @@ radv_CmdBeginRendering(VkCommandBuffer commandBuffer, const VkRenderingInfo *pRe
           */
          struct radv_image *ds_image = radv_cmd_buffer_get_vrs_image(cmd_buffer);
 
-         if (ds_image && render->area.offset.x < ds_image->info.width &&
-                         render->area.offset.y < ds_image->info.height) {
+         if (ds_image && render->area.offset.x < ds_image->vk.extent.width &&
+                         render->area.offset.y < ds_image->vk.extent.height) {
             /* HTILE buffer */
             struct radv_buffer *htile_buffer = cmd_buffer->device->vrs.buffer;
 
             VkRect2D area = render->area;
-            area.extent.width = MIN2(area.extent.width, ds_image->info.width - area.offset.x);
-            area.extent.height = MIN2(area.extent.height, ds_image->info.height - area.offset.y);
+            area.extent.width = MIN2(area.extent.width, ds_image->vk.extent.width - area.offset.x);
+            area.extent.height = MIN2(area.extent.height, ds_image->vk.extent.height - area.offset.y);
 
             /* Copy the VRS rates to the HTILE buffer. */
             radv_copy_vrs_htile(cmd_buffer, render->vrs_att.iview->image, &area, ds_image,
@@ -10178,7 +10185,7 @@ radv_init_fmask(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image,
                 const VkImageSubresourceRange *range)
 {
    static const uint32_t fmask_clear_values[4] = {0x00000000, 0x02020202, 0xE4E4E4E4, 0x76543210};
-   uint32_t log2_samples = util_logbase2(image->info.samples);
+   uint32_t log2_samples = util_logbase2(image->vk.samples);
    uint32_t value = fmask_clear_values[log2_samples];
    struct radv_barrier_data barrier = {0};
 
@@ -10210,7 +10217,7 @@ radv_init_dcc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image,
       for (unsigned i = 0; i < image->planes[0].surface.num_meta_levels; i++) {
          struct legacy_surf_dcc_level *dcc_level = &image->planes[0].surface.u.legacy.color.dcc_level[i];
          unsigned dcc_fast_clear_size =
-            dcc_level->dcc_slice_fast_clear_size * image->info.array_size;
+            dcc_level->dcc_slice_fast_clear_size * image->vk.array_layers;
 
          if (!dcc_fast_clear_size)
             break;
@@ -10263,7 +10270,7 @@ radv_init_color_image_metadata(struct radv_cmd_buffer *cmd_buffer, struct radv_i
          }
       } else {
          static const uint32_t cmask_clear_values[4] = {0xffffffff, 0xdddddddd, 0xeeeeeeee, 0xffffffff};
-         uint32_t log2_samples = util_logbase2(image->info.samples);
+         uint32_t log2_samples = util_logbase2(image->vk.samples);
 
          value = cmask_clear_values[log2_samples];
       }

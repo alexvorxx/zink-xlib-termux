@@ -39,6 +39,12 @@ DEBUG_GET_ONCE_FLAGS_OPTION(agx_compiler_debug, "AGX_MESA_DEBUG",
 
 int agx_compiler_debug = 0;
 
+uint64_t
+agx_get_compiler_debug(void)
+{
+   return debug_get_option_agx_compiler_debug();
+}
+
 #define DBG(fmt, ...)                                                          \
    do {                                                                        \
       if (agx_compiler_debug & AGX_DBG_MSGS)                                   \
@@ -478,6 +484,15 @@ agx_emit_store_zs(agx_builder *b, nir_intrinsic_instr *instr)
    agx_index z = agx_src_index(&instr->src[1]);
    agx_index s = agx_src_index(&instr->src[2]);
 
+   assert(!write_z || z.size == AGX_SIZE_32);
+   assert(!write_s || s.size == AGX_SIZE_16);
+
+   if (write_z && write_s) {
+      agx_index u2u32 = agx_temp(b->shader, AGX_SIZE_32);
+      agx_mov_to(b, u2u32, s);
+      s = u2u32;
+   }
+
    agx_index zs = (write_z && write_s) ? agx_vec2(b, z, s) : write_z ? z : s;
 
    /* Not necessarily a sample mask but overlapping hw mechanism... Should
@@ -630,7 +645,11 @@ static void
 agx_emit_load_frag_coord(agx_builder *b, agx_index dst,
                          nir_intrinsic_instr *instr)
 {
-   agx_index dests[4] = {agx_null()};
+   agx_index dests[4];
+
+   for (unsigned i = 0; i < ARRAY_SIZE(dests); ++i) {
+      dests[i] = agx_undef(AGX_SIZE_32);
+   }
 
    u_foreach_bit(i, nir_ssa_def_components_read(&instr->dest.ssa)) {
       agx_index fp32 = agx_temp(b->shader, AGX_SIZE_32);
@@ -1081,8 +1100,6 @@ agx_emit_alu(agx_builder *b, nir_alu_instr *instr)
 
    case nir_op_fsqrt:
       return agx_fmul_to(b, dst, s0, agx_srsqrt(b, s0));
-   case nir_op_fsub:
-      return agx_fadd_to(b, dst, s0, agx_neg(s1));
    case nir_op_fabs:
       return agx_fmov_to(b, dst, agx_abs(s0));
    case nir_op_fneg:
@@ -2310,11 +2327,6 @@ agx_preprocess_nir(nir_shader *nir, bool support_lod_bias)
                  ~agx_fp32_varying_mask(nir), false);
    }
 
-   /* Varying output is scalar, other I/O is vector */
-   if (nir->info.stage == MESA_SHADER_VERTEX) {
-      NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_shader_out);
-   }
-
    /* Clean up deref gunk after lowering I/O */
    NIR_PASS_V(nir, nir_opt_dce);
    NIR_PASS_V(nir, agx_nir_lower_texture, support_lod_bias);
@@ -2360,7 +2372,7 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
                        struct util_dynarray *binary,
                        struct agx_shader_info *out)
 {
-   agx_compiler_debug = debug_get_option_agx_compiler_debug();
+   agx_compiler_debug = agx_get_compiler_debug();
 
    memset(out, 0, sizeof *out);
 
@@ -2372,7 +2384,8 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
       out->writes_psiz =
          nir->info.outputs_written & BITFIELD_BIT(VARYING_SLOT_PSIZ);
    } else if (nir->info.stage == MESA_SHADER_FRAGMENT) {
-      out->no_colour_output = !(nir->info.outputs_written >> FRAG_RESULT_DATA0);
+      out->tag_write_disable =
+         !(nir->info.outputs_written >> FRAG_RESULT_DATA0);
       out->disable_tri_merging = nir->info.fs.needs_all_helper_invocations ||
                                  nir->info.fs.needs_quad_helper_invocations ||
                                  nir->info.writes_memory;
@@ -2410,6 +2423,12 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
 
    /* Late VBO lowering creates constant udiv instructions */
    NIR_PASS_V(nir, nir_opt_idiv_const, 16);
+
+   /* Varying output is scalar, other I/O is vector. Lowered late because
+    * transform feedback programs will use vector output.
+    */
+   if (nir->info.stage == MESA_SHADER_VERTEX)
+      NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_shader_out);
 
    out->push_count = key->reserved_preamble;
    agx_optimize_nir(nir, &out->push_count);

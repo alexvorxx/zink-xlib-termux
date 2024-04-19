@@ -326,7 +326,10 @@ nvk_get_device_features(const struct nv_device_info *info,
       .shaderBufferInt64Atomics = info->cls_eng3d >= MAXWELL_A &&
                                   nvk_use_nak(info),
       .shaderSharedInt64Atomics = false, /* TODO */
-      .shaderFloat16 = info->sm >= 70 && nvk_use_nak(info),
+      /* TODO: Fp16 is currently busted on Turing and Volta due to instruction
+       * scheduling issues.  Re-enable it once those are sorted.
+       */
+      .shaderFloat16 = info->sm >= 80 && nvk_use_nak(info),
       .shaderInt8 = true,
       .descriptorIndexing = true,
       .shaderInputAttachmentArrayDynamicIndexing = true,

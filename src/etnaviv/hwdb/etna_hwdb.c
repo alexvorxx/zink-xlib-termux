@@ -91,6 +91,9 @@ etna_query_feature_db(struct etna_core_info *info)
 
    ETNA_FEATURE(DEC400, DEC400);
 
+   ETNA_FEATURE(VIP_V7, VIP_V7);
+   ETNA_FEATURE(NN_XYDP0, NN_XYDP0);
+
    /* Limits: */
    if (info->type == ETNA_CORE_GPU) {
       info->gpu.max_instructions = db->InstructionCount;

@@ -16,4 +16,4 @@ VK_EXT_device_address_binding_report on RADV
 VK_EXT_external_memory_dma_buf for lavapipe
 VK_EXT_queue_family_foreign for lavapipe
 VK_EXT_shader_object on RADV
-VK_EXT_nested_command_buffer on NVK
+VK_EXT_nested_command_buffer on NVK and RADV

@@ -221,8 +221,10 @@ class Format(IntEnum):
       return res
 
 
-Opcode = namedtuple('Opcode', ['gfx6', 'gfx7', 'gfx8', 'gfx9', 'gfx10', 'gfx11'],
-                    defaults=[-1, -1, -1, -1, -1, -1])
+Opcode = namedtuple('Opcode', ['gfx6', 'gfx7', 'gfx8', 'gfx9', 'gfx10', 'gfx11'])
+# namedtuple 'defaults' keyword requires python 3.7+. Use an equivalent construct
+# to support older versions.
+Opcode.__new__.__defaults__=(-1, -1, -1, -1, -1, -1)
 
 class Instruction(object):
    """Class that represents all the information we have about the opcode

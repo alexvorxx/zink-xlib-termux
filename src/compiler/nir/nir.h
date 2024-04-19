@@ -252,6 +252,7 @@ typedef enum {
    nir_ray_query_value_flags,
    nir_ray_query_value_world_ray_direction,
    nir_ray_query_value_world_ray_origin,
+   //nir_ray_query_value_intersection_triangle_vertex_positions
 } nir_ray_query_value;
 
 typedef union {
@@ -5137,6 +5138,7 @@ typedef struct nir_lower_subgroups_options {
    bool lower_elect:1;
    bool lower_read_invocation_to_cond:1;
    bool lower_rotate_to_shuffle:1;
+   bool lower_ballot_bit_count_to_mbcnt_amd:1;
 } nir_lower_subgroups_options;
 
 bool nir_lower_subgroups(nir_shader *shader,
@@ -5448,6 +5450,7 @@ enum nir_lower_non_uniform_access_type {
    nir_lower_non_uniform_ssbo_access    = (1 << 1),
    nir_lower_non_uniform_texture_access = (1 << 2),
    nir_lower_non_uniform_image_access   = (1 << 3),
+   nir_lower_non_uniform_get_ssbo_size  = (1 << 4),
 };
 
 /* Given the nir_src used for the resource, return the channels which might be non-uniform. */
@@ -5958,6 +5961,9 @@ bool nir_lower_point_smooth(nir_shader *shader);
 bool nir_lower_poly_line_smooth(nir_shader *shader, unsigned num_smooth_aa_sample);
 
 bool nir_mod_analysis(nir_ssa_scalar val, nir_alu_type val_type, unsigned div, unsigned *mod);
+
+bool
+nir_remove_tex_shadow(nir_shader *shader, unsigned textures_bitmask);
 
 #include "nir_inline_helpers.h"
 

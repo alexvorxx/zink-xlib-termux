@@ -1,8 +1,5 @@
 /*
- * Copyright © 2015 Collabora Ltd.
- *
- * Derived from tu_util.c which is:
- * Copyright © 2015 Intel Corporation
+ * Copyright © 2023 Intel Corporation
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -24,33 +21,39 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "panvk_private.h"
+#include "nir.h"
+#include "nir_builder.h"
 
-#include <assert.h>
-#include <errno.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include "util/u_math.h"
-#include "vk_enum_to_str.h"
-
-/** Log an error message.  */
-void panvk_printflike(1, 2) panvk_logi(const char *format, ...)
+static bool
+remove_tex_shadow(struct nir_builder *b, nir_instr *instr, void *data)
 {
-   va_list va;
+   if (instr->type != nir_instr_type_tex)
+      return false;
 
-   va_start(va, format);
-   panvk_logi_v(format, va);
-   va_end(va);
+   nir_tex_instr *tex = nir_instr_as_tex(instr);
+
+   if (!tex->is_shadow)
+      return false;
+
+   unsigned *textures_bitmask = data;
+
+   if (BITFIELD_BIT(tex->texture_index) & ~*textures_bitmask)
+      return false;
+
+   int index = nir_tex_instr_src_index(tex, nir_tex_src_comparator);
+
+   if (index != -1) {
+      tex->is_shadow = false;
+      nir_tex_instr_remove_src(tex, index);
+      return true;
+   }
+
+   return false;
 }
 
-/** \see panvk_logi() */
-void
-panvk_logi_v(const char *format, va_list va)
+bool
+nir_remove_tex_shadow(nir_shader *shader, unsigned textures_bitmask)
 {
-   fprintf(stderr, "tu: info: ");
-   vfprintf(stderr, format, va);
-   fprintf(stderr, "\n");
+   return nir_shader_instructions_pass(shader, remove_tex_shadow,
+                                       nir_metadata_none, &textures_bitmask);
 }

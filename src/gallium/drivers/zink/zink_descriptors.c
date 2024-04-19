@@ -752,8 +752,7 @@ zink_descriptor_shader_init(struct zink_screen *screen, struct zink_shader *shad
       if (shader->bindless)
          dsl[screen->desc_set_id[ZINK_DESCRIPTOR_BINDLESS]] = screen->bindless_layout;
    }
-   if (num_bindings)
-      shader->precompile.layout = zink_pipeline_layout_create(screen, dsl, num_dsl, false, VK_PIPELINE_LAYOUT_CREATE_INDEPENDENT_SETS_BIT_EXT);
+   shader->precompile.layout = zink_pipeline_layout_create(screen, dsl, num_dsl, false, VK_PIPELINE_LAYOUT_CREATE_INDEPENDENT_SETS_BIT_EXT);
 }
 
 void
@@ -1470,8 +1469,10 @@ zink_batch_descriptor_deinit(struct zink_screen *screen, struct zink_batch_state
 
    if (bs->dd.db_xfer)
       pipe_buffer_unmap(&bs->ctx->base, bs->dd.db_xfer);
+   bs->dd.db_xfer = NULL;
    if (bs->dd.db)
       screen->base.resource_destroy(&screen->base, &bs->dd.db->base.b);
+   bs->dd.db = NULL;
    bs->dd.db_bound = false;
    bs->dd.db_offset = 0;
    memset(bs->dd.cur_db_offset, 0, sizeof(bs->dd.cur_db_offset));

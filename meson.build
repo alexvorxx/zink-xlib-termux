@@ -237,7 +237,7 @@ with_amd_vk = _vulkan_drivers.contains('amd')
 with_freedreno_vk = _vulkan_drivers.contains('freedreno')
 with_panfrost_vk = _vulkan_drivers.contains('panfrost')
 with_swrast_vk = _vulkan_drivers.contains('swrast')
-with_virtio_vk = _vulkan_drivers.contains('virtio-experimental')
+with_virtio_vk = _vulkan_drivers.contains('virtio')
 with_broadcom_vk = _vulkan_drivers.contains('broadcom')
 with_imagination_vk = _vulkan_drivers.contains('imagination-experimental')
 with_imagination_srv = get_option('imagination-srv')
@@ -1913,10 +1913,6 @@ if with_platform_wayland
     dep_wayland_egl = dependency('wayland-egl-backend', version : '>= 3')
     dep_wayland_egl_headers = dep_wayland_egl.partial_dependency(compile_args : true)
   endif
-  wayland_dmabuf_xml = join_paths(
-    dep_wl_protocols.get_variable(pkgconfig : 'pkgdatadir'), 'unstable',
-    'linux-dmabuf', 'linux-dmabuf-unstable-v1.xml'
-  )
   pre_args += '-DWL_HIDE_DEPRECATED'
 endif
 

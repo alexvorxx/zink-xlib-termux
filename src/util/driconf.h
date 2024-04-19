@@ -442,6 +442,13 @@
    DRI_CONF_OPT_B(force_integer_tex_nearest, def, \
                   "Force integer textures to use nearest filtering")
 
+/* The GL spec does not allow this but wine has translation bug:
+   https://bugs.winehq.org/show_bug.cgi?id=54787
+*/
+#define DRI_CONF_ALLOW_MULTISAMPLED_COPYTEXIMAGE(def) \
+   DRI_CONF_OPT_B(allow_multisampled_copyteximage, def, \
+                  "Allow CopyTexSubImage and other to copy sampled framebuffer")
+
 /**
  * \brief Initialization configuration options
  */
@@ -626,6 +633,10 @@
 #define DRI_CONF_RADV_RT(def) \
    DRI_CONF_OPT_B(radv_rt, def, \
                   "Expose support for VK_KHR_ray_tracing_pipeline")
+
+#define DRI_CONF_RADV_FLUSH_BEFORE_TIMESTAMP_WRITE(def) \
+   DRI_CONF_OPT_B(radv_flush_before_timestamp_write, def, \
+                  "Wait for previous commands to finish before writing timestamps")
 
 #define DRI_CONF_RADV_APP_LAYER() DRI_CONF_OPT_S_NODEF(radv_app_layer, "Select an application layer.")
 

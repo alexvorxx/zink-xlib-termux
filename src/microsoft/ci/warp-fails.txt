@@ -145,12 +145,6 @@ dEQP-VK.image.texel_view_compatible.compute.extended.3d_image.texture.bc1_rgba_u
 dEQP-VK.image.texel_view_compatible.compute.extended.3d_image.texture.bc3_unorm_block.r32g32b32a32_uint,Fail
 dEQP-VK.image.texel_view_compatible.compute.extended.3d_image.texture.bc6h_ufloat_block.r32g32b32a32_sint,Fail
 
-# This is due to pretending to resolve stencil sample 0 using min
-# This needs to be a blit shader instead, but that runs into problems since shader stencil export is optional
-dEQP-VK.imageless_framebuffer.depth_stencil_resolve,Fail
-# And this is because we don't claim to support the sample 0 resolve mode
-dEQP-VK.renderpass2.depth_stencil_resolve.misc.properties,Fail
-
 # WARP does not support "dynamically uniform" control flow for barriers (yet, anyway)
 dEQP-VK.compute.basic.branch_past_barrier,Fail
 
@@ -239,12 +233,6 @@ dEQP-VK.glsl.loops.generic.do_while_uniform_iterations.basic_highp_float_fragmen
 dEQP-VK.glsl.loops.generic.do_while_uniform_iterations.basic_highp_float_vertex,Fail
 dEQP-VK.glsl.loops.generic.do_while_uniform_iterations.basic_mediump_float_fragment,Fail
 dEQP-VK.glsl.loops.generic.do_while_uniform_iterations.basic_mediump_float_vertex,Fail
-dEQP-VK.glsl.loops.special.do_while_constant_iterations.dowhile_trap_fragment,Fail
-dEQP-VK.glsl.loops.special.do_while_constant_iterations.dowhile_trap_vertex,Fail
-dEQP-VK.glsl.loops.special.do_while_constant_iterations.nested_sequence_fragment,Fail
-dEQP-VK.glsl.loops.special.do_while_constant_iterations.nested_sequence_vertex,Fail
-dEQP-VK.glsl.loops.special.do_while_constant_iterations.sequence_fragment,Fail
-dEQP-VK.glsl.loops.special.do_while_constant_iterations.sequence_vertex,Fail
 dEQP-VK.glsl.loops.special.do_while_dynamic_iterations.dowhile_trap_fragment,Fail
 dEQP-VK.glsl.loops.special.do_while_dynamic_iterations.dowhile_trap_vertex,Fail
 dEQP-VK.glsl.loops.special.do_while_dynamic_iterations.nested_sequence_fragment,Fail

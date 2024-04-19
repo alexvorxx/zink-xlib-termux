@@ -73,6 +73,14 @@
 #define PVR_GLOBAL_FREE_LIST_MAX_SIZE (256U * 1024U * 1024U)
 #define PVR_GLOBAL_FREE_LIST_GROW_SIZE (1U * 1024U * 1024U)
 
+/* After PVR_SECONDARY_DEVICE_THRESHOLD devices per instance are created,
+ * devices will have a smaller global free list size, as usually this use-case
+ * implies smaller amounts of work spread out. The free list can still grow as
+ * required.
+ */
+#define PVR_SECONDARY_DEVICE_THRESHOLD (4U)
+#define PVR_SECONDARY_DEVICE_FREE_LIST_INITAL_SIZE (512U * 1024U)
+
 /* The grow threshold is a percentage. This is intended to be 12.5%, but has
  * been rounded up since the percentage is treated as an integer.
  */
@@ -204,6 +212,7 @@ VkResult pvr_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
    pvr_process_debug_variable();
 
    instance->physical_devices_count = -1;
+   instance->active_device_count = 0;
 
    VG(VALGRIND_CREATE_MEMPOOL(instance, 0, false));
 
@@ -348,6 +357,7 @@ static VkResult pvr_physical_device_init(struct pvr_physical_device *pdevice,
    result = vk_physical_device_init(&pdevice->vk,
                                     &instance->vk,
                                     &supported_extensions,
+                                    NULL,
                                     &dispatch_table);
    if (result != VK_SUCCESS)
       return result;
@@ -1714,6 +1724,7 @@ VkResult pvr_CreateDevice(VkPhysicalDevice physicalDevice,
                           VkDevice *pDevice)
 {
    PVR_FROM_HANDLE(pvr_physical_device, pdevice, physicalDevice);
+   uint32_t initial_free_list_size = PVR_GLOBAL_FREE_LIST_INITIAL_SIZE;
    struct pvr_instance *instance = pdevice->instance;
    struct vk_device_dispatch_table dispatch_table;
    struct pvr_device *device;
@@ -1785,15 +1796,20 @@ VkResult pvr_CreateDevice(VkPhysicalDevice physicalDevice,
    if (result != VK_SUCCESS)
       goto err_pvr_winsys_destroy;
 
+   if (p_atomic_inc_return(&instance->active_device_count) >
+       PVR_SECONDARY_DEVICE_THRESHOLD) {
+      initial_free_list_size = PVR_SECONDARY_DEVICE_FREE_LIST_INITAL_SIZE;
+   }
+
    result = pvr_free_list_create(device,
-                                 PVR_GLOBAL_FREE_LIST_INITIAL_SIZE,
+                                 initial_free_list_size,
                                  PVR_GLOBAL_FREE_LIST_MAX_SIZE,
                                  PVR_GLOBAL_FREE_LIST_GROW_SIZE,
                                  PVR_GLOBAL_FREE_LIST_GROW_THRESHOLD,
                                  NULL /* parent_free_list */,
                                  &device->global_free_list);
    if (result != VK_SUCCESS)
-      goto err_pvr_bo_store_destroy;
+      goto err_dec_device_count;
 
    result = pvr_device_init_nop_program(device);
    if (result != VK_SUCCESS)
@@ -1836,11 +1852,6 @@ VkResult pvr_CreateDevice(VkPhysicalDevice physicalDevice,
    result = pvr_init_robustness_buffer(device);
    if (result != VK_SUCCESS)
       goto err_pvr_spm_finish_scratch_buffer_store;
-
-   if (pCreateInfo->pEnabledFeatures)
-      memcpy(&device->features,
-             pCreateInfo->pEnabledFeatures,
-             sizeof(device->features));
 
    /* FIXME: Move this to a later stage and possibly somewhere other than
     * pvr_device. The purpose of this is so that we don't have to get the size
@@ -1888,7 +1899,9 @@ err_pvr_free_nop_program:
 err_pvr_free_list_destroy:
    pvr_free_list_destroy(device->global_free_list);
 
-err_pvr_bo_store_destroy:
+err_dec_device_count:
+   p_atomic_dec(&device->instance->active_device_count);
+
    pvr_bo_store_destroy(device);
 
 err_pvr_winsys_destroy:
@@ -1932,6 +1945,8 @@ void pvr_DestroyDevice(VkDevice _device,
 
    if (device->master_fd >= 0)
       close(device->master_fd);
+
+   p_atomic_dec(&device->instance->active_device_count);
 
    close(device->render_fd);
    vk_device_finish(&device->vk);
@@ -2111,6 +2126,13 @@ void pvr_FreeMemory(VkDevice _device,
 
    if (!mem)
       return;
+
+   /* From the Vulkan spec (§11.2.13. Freeing Device Memory):
+    *   If a memory object is mapped at the time it is freed, it is implicitly
+    *   unmapped.
+    */
+   if (mem->bo->map)
+      device->ws->ops->buffer_unmap(mem->bo);
 
    device->ws->ops->buffer_destroy(mem->bo);
 

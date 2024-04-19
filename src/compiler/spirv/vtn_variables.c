@@ -1182,6 +1182,10 @@ vtn_get_builtin_location(struct vtn_builder *b,
       *location = SYSTEM_VALUE_FRAG_INVOCATION_COUNT;
       set_mode_system_value(b, mode);
       break;
+   /*case SpvBuiltInHitTriangleVertexPositionsKHR:
+      *location = SYSTEM_VALUE_RAY_TRIANGLE_VERTEX_POSITIONS;
+      set_mode_system_value(b, mode);
+      break;*/
 
    default:
       vtn_fail("Unsupported builtin: %s (%u)",
@@ -2345,7 +2349,7 @@ spv_access_to_gl_access(SpvMemoryAccessMask access)
    if (access & SpvMemoryAccessVolatileMask)
       result |= ACCESS_VOLATILE;
    if (access & SpvMemoryAccessNontemporalMask)
-      result |= ACCESS_STREAM_CACHE_POLICY;
+      result |= ACCESS_NON_TEMPORAL;
 
    return result;
 }

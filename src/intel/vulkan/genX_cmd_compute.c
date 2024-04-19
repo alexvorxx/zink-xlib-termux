@@ -30,6 +30,7 @@
 #include "vk_util.h"
 
 #include "common/intel_aux_map.h"
+#include "common/intel_compute_slm.h"
 #include "genxml/gen_macros.h"
 #include "genxml/genX_pack.h"
 #include "genxml/genX_rt_pack.h"
@@ -283,7 +284,7 @@ get_interface_descriptor_data(struct anv_cmd_buffer *cmd_buffer,
       .BindingTableEntryCount = devinfo->verx10 == 125 ?
          0 : 1 + MIN2(shader->bind_map.surface_count, 30),
       .NumberofThreadsinGPGPUThreadGroup = dispatch->threads,
-      .SharedLocalMemorySize = encode_slm_size(GFX_VER, prog_data->base.total_shared),
+      .SharedLocalMemorySize = intel_compute_slm_encode_size(GFX_VER, prog_data->base.total_shared),
       .PreferredSLMAllocationSize = preferred_slm_allocation_size(devinfo),
       .NumberOfBarriers = prog_data->uses_barrier,
    };

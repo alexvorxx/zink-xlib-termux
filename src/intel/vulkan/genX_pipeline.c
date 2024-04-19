@@ -27,6 +27,7 @@
 #include "genxml/genX_pack.h"
 #include "genxml/genX_rt_pack.h"
 
+#include "common/intel_compute_slm.h"
 #include "common/intel_genX_state_brw.h"
 #include "common/intel_l3_config.h"
 #include "common/intel_sample_positions.h"
@@ -1792,7 +1793,7 @@ emit_task_state(struct anv_graphics_pipeline *pipeline)
 
       task.NumberofBarriers                  = task_prog_data->base.uses_barrier;
       task.SharedLocalMemorySize             =
-         encode_slm_size(GFX_VER, task_prog_data->base.base.total_shared);
+         intel_compute_slm_encode_size(GFX_VER, task_prog_data->base.base.total_shared);
       task.PreferredSLMAllocationSize        =
          preferred_slm_allocation_size(devinfo);
 
@@ -1873,7 +1874,7 @@ emit_mesh_state(struct anv_graphics_pipeline *pipeline)
 
       mesh.NumberofBarriers                  = mesh_prog_data->base.uses_barrier;
       mesh.SharedLocalMemorySize             =
-         encode_slm_size(GFX_VER, mesh_prog_data->base.base.total_shared);
+         intel_compute_slm_encode_size(GFX_VER, mesh_prog_data->base.base.total_shared);
       mesh.PreferredSLMAllocationSize        =
          preferred_slm_allocation_size(devinfo);
 
@@ -2080,7 +2081,7 @@ genX(compute_pipeline_emit)(struct anv_compute_pipeline *pipeline)
          0 : 1 + MIN2(pipeline->cs->bind_map.surface_count, 30),
       .BarrierEnable          = cs_prog_data->uses_barrier,
       .SharedLocalMemorySize  =
-         encode_slm_size(GFX_VER, cs_prog_data->base.total_shared),
+         intel_compute_slm_encode_size(GFX_VER, cs_prog_data->base.total_shared),
 
       .ConstantURBEntryReadOffset = 0,
       .ConstantURBEntryReadLength = cs_prog_data->push.per_thread.regs,

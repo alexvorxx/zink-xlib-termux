@@ -737,6 +737,7 @@ dzn_graphics_pipeline_compile_shaders(struct dzn_device *device,
       const VkPipelineShaderStageCreateInfo *info;
       uint8_t spirv_hash[SHA1_DIGEST_LENGTH];
       uint8_t dxil_hash[SHA1_DIGEST_LENGTH];
+      uint8_t nir_hash[SHA1_DIGEST_LENGTH];
       uint8_t link_hashes[SHA1_DIGEST_LENGTH][2];
    } stages[MESA_VULKAN_SHADER_STAGES] = { 0 };
    const uint8_t *dxil_hashes[MESA_VULKAN_SHADER_STAGES] = { 0 };
@@ -819,6 +820,7 @@ dzn_graphics_pipeline_compile_shaders(struct dzn_device *device,
       struct mesa_sha1 pipeline_hash_ctx;
 
       _mesa_sha1_init(&pipeline_hash_ctx);
+      _mesa_sha1_update(&pipeline_hash_ctx, &device->bindless, sizeof(device->bindless));
       _mesa_sha1_update(&pipeline_hash_ctx, attribs_hash, sizeof(attribs_hash));
       _mesa_sha1_update(&pipeline_hash_ctx, &yz_flip_mode, sizeof(yz_flip_mode));
       _mesa_sha1_update(&pipeline_hash_ctx, &y_flip_mask, sizeof(y_flip_mask));
@@ -828,7 +830,14 @@ dzn_graphics_pipeline_compile_shaders(struct dzn_device *device,
       _mesa_sha1_update(&pipeline_hash_ctx, &pipeline->use_gs_for_polygon_mode_point, sizeof(pipeline->use_gs_for_polygon_mode_point));
 
       u_foreach_bit(stage, active_stage_mask) {
+         const VkPipelineShaderStageRequiredSubgroupSizeCreateInfo *subgroup_size =
+            (const VkPipelineShaderStageRequiredSubgroupSizeCreateInfo *)
+            vk_find_struct_const(stages[stage].info->pNext, PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO);
+         enum gl_subgroup_size subgroup_enum = subgroup_size && subgroup_size->requiredSubgroupSize >= 8 ?
+            subgroup_size->requiredSubgroupSize : SUBGROUP_SIZE_FULL_SUBGROUPS;
+
          vk_pipeline_hash_shader_stage(stages[stage].info, NULL, stages[stage].spirv_hash);
+         _mesa_sha1_update(&pipeline_hash_ctx, &subgroup_enum, sizeof(subgroup_enum));
          _mesa_sha1_update(&pipeline_hash_ctx, stages[stage].spirv_hash, sizeof(stages[stage].spirv_hash));
          _mesa_sha1_update(&pipeline_hash_ctx, layout->stages[stage].hash, sizeof(layout->stages[stage].hash));
       }
@@ -849,7 +858,6 @@ dzn_graphics_pipeline_compile_shaders(struct dzn_device *device,
    nir_opts.lower_base_vertex = true;
    u_foreach_bit(stage, active_stage_mask) {
       struct mesa_sha1 nir_hash_ctx;
-      uint8_t nir_hash[SHA1_DIGEST_LENGTH];
 
       const VkPipelineShaderStageRequiredSubgroupSizeCreateInfo *subgroup_size =
          (const VkPipelineShaderStageRequiredSubgroupSizeCreateInfo *)
@@ -859,8 +867,11 @@ dzn_graphics_pipeline_compile_shaders(struct dzn_device *device,
 
       if (cache) {
          _mesa_sha1_init(&nir_hash_ctx);
-         if (stage != MESA_SHADER_FRAGMENT)
+         _mesa_sha1_update(&nir_hash_ctx, &device->bindless, sizeof(device->bindless));
+         if (stage != MESA_SHADER_FRAGMENT) {
             _mesa_sha1_update(&nir_hash_ctx, &lower_view_index, sizeof(lower_view_index));
+            _mesa_sha1_update(&nir_hash_ctx, &force_sample_rate_shading, sizeof(force_sample_rate_shading));
+         }
          if (stage == MESA_SHADER_VERTEX)
             _mesa_sha1_update(&nir_hash_ctx, attribs_hash, sizeof(attribs_hash));
          if (stage == last_raster_stage) {
@@ -871,7 +882,7 @@ dzn_graphics_pipeline_compile_shaders(struct dzn_device *device,
          }
          _mesa_sha1_update(&nir_hash_ctx, &subgroup_enum, sizeof(subgroup_enum));
          _mesa_sha1_update(&nir_hash_ctx, stages[stage].spirv_hash, sizeof(stages[stage].spirv_hash));
-         _mesa_sha1_final(&nir_hash_ctx, nir_hash);
+         _mesa_sha1_final(&nir_hash_ctx, stages[stage].nir_hash);
       }
 
       struct dzn_nir_options options = {
@@ -887,7 +898,7 @@ dzn_graphics_pipeline_compile_shaders(struct dzn_device *device,
       };
 
       ret = dzn_pipeline_get_nir_shader(device, layout,
-                                        cache, nir_hash,
+                                        cache, stages[stage].nir_hash,
                                         stages[stage].info, stage,
                                         &options,
                                         &pipeline->templates.shaders[stage].nir);
@@ -977,21 +988,7 @@ dzn_graphics_pipeline_compile_shaders(struct dzn_device *device,
          struct mesa_sha1 dxil_hash_ctx;
 
          _mesa_sha1_init(&dxil_hash_ctx);
-
-         if (stage == MESA_SHADER_VERTEX)
-            _mesa_sha1_update(&dxil_hash_ctx, attribs_hash, sizeof(attribs_hash));
-
-         if (stage == last_raster_stage) {
-            _mesa_sha1_update(&dxil_hash_ctx, &yz_flip_mode, sizeof(yz_flip_mode));
-            _mesa_sha1_update(&dxil_hash_ctx, &y_flip_mask, sizeof(y_flip_mask));
-            _mesa_sha1_update(&dxil_hash_ctx, &z_flip_mask, sizeof(z_flip_mask));
-         }
-
-         if (stage == MESA_SHADER_FRAGMENT) {
-            _mesa_sha1_update(&dxil_hash_ctx, &force_sample_rate_shading, sizeof(force_sample_rate_shading));
-            _mesa_sha1_update(&dxil_hash_ctx, &pipeline->use_gs_for_polygon_mode_point, sizeof(pipeline->use_gs_for_polygon_mode_point));
-         }
-
+         _mesa_sha1_update(&dxil_hash_ctx, stages[stage].nir_hash, sizeof(stages[stage].nir_hash));
          _mesa_sha1_update(&dxil_hash_ctx, stages[stage].spirv_hash, sizeof(stages[stage].spirv_hash));
          _mesa_sha1_update(&dxil_hash_ctx, stages[stage].link_hashes[0], sizeof(stages[stage].link_hashes[0]));
          _mesa_sha1_update(&dxil_hash_ctx, stages[stage].link_hashes[1], sizeof(stages[stage].link_hashes[1]));
@@ -2417,15 +2414,23 @@ dzn_compute_pipeline_compile_shader(struct dzn_device *device,
                                     D3D12_SHADER_BYTECODE *shader,
                                     const VkComputePipelineCreateInfo *info)
 {
-   uint8_t spirv_hash[SHA1_DIGEST_LENGTH], pipeline_hash[SHA1_DIGEST_LENGTH];
+   uint8_t spirv_hash[SHA1_DIGEST_LENGTH], pipeline_hash[SHA1_DIGEST_LENGTH], nir_hash[SHA1_DIGEST_LENGTH];
    VkResult ret = VK_SUCCESS;
    nir_shader *nir = NULL;
+
+   const VkPipelineShaderStageRequiredSubgroupSizeCreateInfo *subgroup_size =
+      (const VkPipelineShaderStageRequiredSubgroupSizeCreateInfo *)
+      vk_find_struct_const(info->stage.pNext, PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO);
+   enum gl_subgroup_size subgroup_enum = subgroup_size && subgroup_size->requiredSubgroupSize >= 8 ?
+      subgroup_size->requiredSubgroupSize : SUBGROUP_SIZE_FULL_SUBGROUPS;
 
    if (cache) {
       struct mesa_sha1 pipeline_hash_ctx;
 
       _mesa_sha1_init(&pipeline_hash_ctx);
       vk_pipeline_hash_shader_stage(&info->stage, NULL, spirv_hash);
+      _mesa_sha1_update(&pipeline_hash_ctx, &device->bindless, sizeof(device->bindless));
+      _mesa_sha1_update(&pipeline_hash_ctx, &subgroup_enum, sizeof(subgroup_enum));
       _mesa_sha1_update(&pipeline_hash_ctx, spirv_hash, sizeof(spirv_hash));
       _mesa_sha1_update(&pipeline_hash_ctx, layout->stages[MESA_SHADER_COMPUTE].hash,
                         sizeof(layout->stages[MESA_SHADER_COMPUTE].hash));
@@ -2439,8 +2444,19 @@ dzn_compute_pipeline_compile_shader(struct dzn_device *device,
          goto out;
    }
 
-   struct dzn_nir_options options = { .nir_opts = dxil_get_nir_compiler_options() };
-   ret = dzn_pipeline_get_nir_shader(device, layout, cache, spirv_hash,
+   if (cache) {
+      struct mesa_sha1 nir_hash_ctx;
+      _mesa_sha1_init(&nir_hash_ctx);
+      _mesa_sha1_update(&nir_hash_ctx, &device->bindless, sizeof(device->bindless));
+      _mesa_sha1_update(&nir_hash_ctx, &subgroup_enum, sizeof(subgroup_enum));
+      _mesa_sha1_update(&nir_hash_ctx, spirv_hash, sizeof(spirv_hash));
+      _mesa_sha1_final(&nir_hash_ctx, nir_hash);
+   }
+   struct dzn_nir_options options = {
+      .nir_opts = dxil_get_nir_compiler_options(),
+      .subgroup_size = subgroup_enum,
+   };
+   ret = dzn_pipeline_get_nir_shader(device, layout, cache, nir_hash,
                                      &info->stage, MESA_SHADER_COMPUTE,
                                      &options, &nir);
    if (ret != VK_SUCCESS)
@@ -2454,6 +2470,7 @@ dzn_compute_pipeline_compile_shader(struct dzn_device *device,
       struct mesa_sha1 dxil_hash_ctx;
 
       _mesa_sha1_init(&dxil_hash_ctx);
+      _mesa_sha1_update(&dxil_hash_ctx, nir_hash, sizeof(nir_hash));
       _mesa_sha1_update(&dxil_hash_ctx, spirv_hash, sizeof(spirv_hash));
       _mesa_sha1_update(&dxil_hash_ctx, bindings_hash, sizeof(bindings_hash));
       _mesa_sha1_final(&dxil_hash_ctx, dxil_hash);

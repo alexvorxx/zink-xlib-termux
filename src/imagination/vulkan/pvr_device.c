@@ -348,6 +348,7 @@ static VkResult pvr_physical_device_init(struct pvr_physical_device *pdevice,
    result = vk_physical_device_init(&pdevice->vk,
                                     &instance->vk,
                                     &supported_extensions,
+                                    NULL,
                                     &dispatch_table);
    if (result != VK_SUCCESS)
       return result;
@@ -2111,6 +2112,13 @@ void pvr_FreeMemory(VkDevice _device,
 
    if (!mem)
       return;
+
+   /* From the Vulkan spec (§11.2.13. Freeing Device Memory):
+    *   If a memory object is mapped at the time it is freed, it is implicitly
+    *   unmapped.
+    */
+   if (mem->bo->map)
+      device->ws->ops->buffer_unmap(mem->bo);
 
    device->ws->ops->buffer_destroy(mem->bo);
 

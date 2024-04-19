@@ -413,6 +413,7 @@ struct radv_instance {
    bool flush_before_query_copy;
    bool enable_unified_heap_on_apu;
    bool tex_non_uniform;
+   bool flush_before_timestamp_write;
    char *app_layer;
 };
 
@@ -429,6 +430,18 @@ void radv_pipeline_cache_insert(struct radv_device *device, struct vk_pipeline_c
                                 struct radv_pipeline *pipeline,
                                 struct radv_shader_part_binary *ps_epilog_binary,
                                 const unsigned char *sha1);
+
+struct vk_pipeline_cache_object *radv_pipeline_cache_search_nir(struct radv_device *device,
+                                                                struct vk_pipeline_cache *cache,
+                                                                const unsigned char *sha1,
+                                                                bool *found_in_application_cache);
+
+struct vk_pipeline_cache_object *
+radv_pipeline_cache_nir_to_handle(struct radv_device *device, struct vk_pipeline_cache *cache,
+                                  struct nir_shader *nir, const unsigned char *sha1, bool cached);
+
+struct nir_shader *radv_pipeline_cache_handle_to_nir(struct radv_device *device,
+                                                     struct vk_pipeline_cache_object *object);
 
 enum radv_blit_ds_layout {
    RADV_BLIT_DS_LAYOUT_TILE_ENABLE,
@@ -2301,6 +2314,11 @@ struct radv_ray_tracing_group {
    struct radv_pipeline_shader_stack_size stack_size;
 };
 
+struct radv_ray_tracing_stage {
+   struct vk_pipeline_cache_object *shader;
+   gl_shader_stage stage;
+};
+
 struct radv_ray_tracing_lib_pipeline {
    struct radv_pipeline base;
 
@@ -2308,8 +2326,8 @@ struct radv_ray_tracing_lib_pipeline {
    void *ctx;
 
    unsigned stage_count;
-   VkPipelineShaderStageCreateInfo *stages;
    unsigned group_count;
+   struct radv_ray_tracing_stage *stages;
    uint8_t sha1[SHA1_DIGEST_LENGTH];
    struct radv_ray_tracing_group groups[];
 };
@@ -2780,21 +2798,6 @@ radv_image_get_iterate256(struct radv_device *device, struct radv_image *image)
 unsigned radv_image_queue_family_mask(const struct radv_image *image,
                                       enum radv_queue_family family,
                                       enum radv_queue_family queue_family);
-
-static inline uint32_t
-radv_get_layerCount(const struct radv_image *image, const VkImageSubresourceRange *range)
-{
-   return range->layerCount == VK_REMAINING_ARRAY_LAYERS
-             ? image->info.array_size - range->baseArrayLayer
-             : range->layerCount;
-}
-
-static inline uint32_t
-radv_get_levelCount(const struct radv_image *image, const VkImageSubresourceRange *range)
-{
-   return range->levelCount == VK_REMAINING_MIP_LEVELS ? image->info.levels - range->baseMipLevel
-                                                       : range->levelCount;
-}
 
 bool radv_image_is_renderable(struct radv_device *device, struct radv_image *image);
 

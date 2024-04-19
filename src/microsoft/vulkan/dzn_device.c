@@ -371,7 +371,7 @@ dzn_physical_device_create(struct vk_instance *instance,
 
    VkResult result =
       vk_physical_device_init(&pdev->vk, instance,
-                              NULL, /* We set up extensions later */
+                              NULL, NULL, /* We set up extensions later */
                               &dispatch_table);
    if (result != VK_SUCCESS) {
       vk_free(&instance->alloc, pdev);
@@ -1156,7 +1156,7 @@ dzn_enumerate_physical_devices(struct vk_instance *instance)
    if (result != VK_SUCCESS)
       result = dzn_enumerate_physical_devices_dxgi(instance);
 #endif
-   
+
    return result;
 }
 
@@ -1598,9 +1598,9 @@ vk_icdNegotiateLoaderICDInterfaceVersion(uint32_t *pSupportedVersion)
     *
     *    - Loader interface v4 differs from v3 in:
     *        - The ICD must implement vk_icdGetPhysicalDeviceProcAddr().
-    * 
+    *
     *    - Loader interface v5 differs from v4 in:
-    *        - The ICD must support Vulkan API version 1.1 and must not return 
+    *        - The ICD must support Vulkan API version 1.1 and must not return
     *          VK_ERROR_INCOMPATIBLE_DRIVER from vkCreateInstance() unless a
     *          Vulkan Loader with interface v4 or smaller is being used and the
     *          application provides an API version that is greater than 1.0.
@@ -1866,14 +1866,11 @@ dzn_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
       .maxDescriptorSetUpdateAfterBindStorageImages = MAX_DESCS_PER_CBV_SRV_UAV_HEAP,
       .maxDescriptorSetUpdateAfterBindInputAttachments = MAX_DESCS_PER_CBV_SRV_UAV_HEAP,
 
-      /* FIXME: add support for VK_RESOLVE_MODE_SAMPLE_ZERO_BIT,
-       * which is required by the VK 1.2 spec.
-       */
-      .supportedDepthResolveModes = VK_RESOLVE_MODE_AVERAGE_BIT,
-
-      .supportedStencilResolveModes = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT,
-      .independentResolveNone = false,
-      .independentResolve = false,
+      .supportedDepthResolveModes = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT | VK_RESOLVE_MODE_AVERAGE_BIT |
+         VK_RESOLVE_MODE_MIN_BIT | VK_RESOLVE_MODE_MAX_BIT,
+      .supportedStencilResolveModes = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT | VK_RESOLVE_MODE_MIN_BIT | VK_RESOLVE_MODE_MAX_BIT,
+      .independentResolveNone = true,
+      .independentResolve = true,
       .filterMinmaxSingleComponentFormats = false,
       .filterMinmaxImageComponentMapping = false,
       .maxTimelineSemaphoreValueDifference = UINT64_MAX,
@@ -2032,11 +2029,6 @@ dzn_queue_submit(struct vk_queue *q,
 
       cmdlists[i] = (ID3D12CommandList *)cmd_buffer->cmdlist;
 
-      util_dynarray_foreach(&cmd_buffer->events.wait, struct dzn_event *, evt) {
-         if (FAILED(ID3D12CommandQueue_Wait(queue->cmdqueue, (*evt)->fence, 1)))
-            return vk_error(device, VK_ERROR_UNKNOWN);
-      }
-
       util_dynarray_foreach(&cmd_buffer->queries.reset, struct dzn_cmd_buffer_query_range, range) {
          mtx_lock(&range->qpool->queries_lock);
          for (uint32_t q = range->start; q < range->start + range->count; q++) {
@@ -2052,7 +2044,7 @@ dzn_queue_submit(struct vk_queue *q,
    }
 
    ID3D12CommandQueue_ExecuteCommandLists(queue->cmdqueue, info->command_buffer_count, cmdlists);
-   
+
    for (uint32_t i = 0; i < info->command_buffer_count; i++) {
       struct dzn_cmd_buffer* cmd_buffer =
          container_of(info->command_buffers[i], struct dzn_cmd_buffer, vk);

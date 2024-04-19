@@ -1804,6 +1804,16 @@ get_reg(ra_ctx& ctx, const RegisterFile& reg_file, Temp temp,
          return *res;
    }
 
+   if (temp.size() == 1 && operand_index == -1) {
+      for (const Operand& op : instr->operands) {
+         if (op.isTemp() && op.isFirstKillBeforeDef() && op.regClass() == temp.regClass()) {
+            assert(op.isFixed());
+            if (get_reg_specified(ctx, reg_file, temp.regClass(), instr, op.physReg()))
+               return op.physReg();
+         }
+      }
+   }
+
    DefInfo info(ctx, instr, temp.regClass(), operand_index);
 
    if (!ctx.policy.skip_optimistic_path) {

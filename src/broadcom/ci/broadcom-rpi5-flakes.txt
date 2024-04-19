@@ -43,7 +43,9 @@ dEQP-VK.wsi.xcb.swapchain.simulate_oom.image_extent
 dEQP-VK.wsi.xlib.maintenance1.present_modes.heterogenous.continuous_immediate_demand
 dEQP-VK.wsi.xlib.maintenance1.present_modes.heterogenous.demand_continuous_continuous
 dEQP-VK.wsi.xlib.maintenance1.present_modes.heterogenous.fifo_mailbox_mailbox
+dEQP-VK.wsi.xlib.maintenance1.present_modes.heterogenous.mailbox_immediate_immediate
 dEQP-VK.wsi.xlib.surface.query_support
+dEQP-VK.wsi.xlib.swapchain.get_images.count
 dEQP-VK.wsi.xlib.swapchain.simulate_oom.clipped
 
 dEQP-VK.wsi.(xcb|xlib).maintenance1.present_modes.fifo_relaxed.change_modes_with_deferred_alloc

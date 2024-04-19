@@ -71,9 +71,9 @@ if with_nouveau_vk
   cl_rs_generated = []
   foreach cl : nvk_classes
     cl_rs_generated += custom_target(
-      'nvh_' + cl + '.rs',
+      'nvh_classes_' + cl + '.rs',
       input : ['class_parser.py', 'nvidia/classes/'+cl+'.h'],
-      output : ['nvh_'+cl+'.rs'],
+      output : ['nvh_classes_'+cl+'.rs'],
       command : [prog_python, '@INPUT0@', '--in-h', '@INPUT1@',
                  '--out-rs', '@OUTPUT0@'],
       depend_files: nvk_cl_header_depend_files,
@@ -81,9 +81,9 @@ if with_nouveau_vk
 
     if cl.endswith('97')
       cl_rs_generated += custom_target(
-        'nvh_' + cl + 'tex.rs',
+        'nvh_classes_' + cl + '_tex.rs',
         input : ['struct_parser.py', 'nvidia/classes/'+cl+'tex.h'],
-        output : ['nvh_'+cl+'_tex.rs'],
+        output : ['nvh_classes_'+cl+'_tex.rs'],
         command : [prog_python, '@INPUT0@', '--in-h', '@INPUT1@',
                    '--out-rs', '@OUTPUT0@']
       )

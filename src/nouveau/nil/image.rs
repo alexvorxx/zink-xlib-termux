@@ -7,7 +7,7 @@ use crate::tiling::Tiling;
 use crate::Minify;
 
 use nil_rs_bindings::*;
-use nvidia_headers::{cl9097, clc597};
+use nvidia_headers::classes::{cl9097, clc597};
 
 pub const MAX_LEVELS: usize = 16;
 

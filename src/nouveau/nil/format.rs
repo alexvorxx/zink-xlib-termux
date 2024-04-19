@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use nil_rs_bindings::*;
-use nvidia_headers::{cla297, clb097};
+use nvidia_headers::classes::{cla297, clb097};
 
 use crate::extent::{units, Extent4D};
 

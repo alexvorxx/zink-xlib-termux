@@ -8,12 +8,12 @@ extern crate nvidia_headers;
 
 use bitview::*;
 use nil_rs_bindings::*;
-use nvidia_headers::cl9097::tex as cl9097;
-use nvidia_headers::cl9097::FERMI_A;
-use nvidia_headers::clb097::tex as clb097;
-use nvidia_headers::clb097::MAXWELL_A;
-use nvidia_headers::clc097::tex as clc097;
-use nvidia_headers::clc097::PASCAL_A;
+use nvidia_headers::classes::cl9097::tex as cl9097;
+use nvidia_headers::classes::cl9097::FERMI_A;
+use nvidia_headers::classes::clb097::tex as clb097;
+use nvidia_headers::classes::clb097::MAXWELL_A;
+use nvidia_headers::classes::clc097::tex as clc097;
+use nvidia_headers::classes::clc097::PASCAL_A;
 use paste::paste;
 use std::ops::Range;
 

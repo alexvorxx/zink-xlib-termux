@@ -508,7 +508,7 @@ cf_for_intrinsic(agx_builder *b, nir_intrinsic_instr *intr)
    /* Determine the base location, taking into account a constant offset */
    unsigned location = nir_intrinsic_io_semantics(intr).location;
    bool compact = location == VARYING_SLOT_CLIP_DIST0 ||
-                  location == VARYING_SLOT_CULL_DIST0;
+                  location == VARYING_SLOT_CLIP_DIST1;
 
    nir_src *offset = nir_get_io_offset_src(intr);
    if (nir_src_is_const(*offset)) {
@@ -3250,11 +3250,6 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx)
 
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
       NIR_PASS(_, nir, agx_nir_lower_frag_sidefx);
-   } else if (nir->info.stage == MESA_SHADER_VERTEX ||
-              nir->info.stage == MESA_SHADER_TESS_EVAL) {
-
-      if (nir->info.cull_distance_array_size)
-         NIR_PASS(_, nir, agx_nir_lower_cull_distance_vs);
    }
 
    /* Clean up deref gunk after lowering I/O */

@@ -565,8 +565,9 @@ agx_nir_create_gs_rast_shader(const nir_shader *gs, const nir_shader *libagx)
       /* We set NIR_COMPACT_ARRAYS so clip/cull distance needs to come all in
        * DIST0. Undo the offset if we need to.
        */
+      assert(slot != VARYING_SLOT_CULL_DIST1);
       unsigned offset = 0;
-      if (slot == VARYING_SLOT_CULL_DIST1 || slot == VARYING_SLOT_CLIP_DIST1)
+      if (slot == VARYING_SLOT_CLIP_DIST1)
          offset = 1;
 
       nir_store_output(b, value, nir_imm_int(b, offset),

@@ -80,13 +80,23 @@ lower(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       assert(ctx->viewport == NULL && "only written once");
       ctx->viewport = value;
       ctx->after_layer_viewport = nir_after_instr(index->parent_instr);
-   } else if (sem.location == VARYING_SLOT_CLIP_DIST0) {
-      unsigned clip_base = ctx->layout->group_offs[UVS_CLIP_DIST];
-      nir_def *index = nir_iadd_imm(b, nir_imul_imm(b, nir_u2u16(b, offset), 4),
-                                    clip_base + component);
+   } else if (sem.location == VARYING_SLOT_CLIP_DIST0 ||
+              sem.location == VARYING_SLOT_CLIP_DIST1) {
 
-      nir_store_uvs_agx(b, value, index);
+      unsigned clip_base = ctx->layout->group_offs[UVS_CLIP_DIST];
+      unsigned c = 4 * (sem.location - VARYING_SLOT_CLIP_DIST0) + component;
+
+      if (c < b->shader->info.clip_distance_array_size) {
+         nir_def *index = nir_iadd_imm(
+            b, nir_imul_imm(b, nir_u2u16(b, offset), 4), clip_base + c);
+
+         nir_store_uvs_agx(b, value, index);
+      }
    }
+
+   /* Combined clip/cull used */
+   assert(sem.location != VARYING_SLOT_CULL_DIST0);
+   assert(sem.location != VARYING_SLOT_CULL_DIST1);
 
    return true;
 }

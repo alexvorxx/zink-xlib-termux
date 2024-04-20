@@ -58,6 +58,7 @@
 #include "agx_device.h"
 #include "agx_disk_cache.h"
 #include "agx_linker.h"
+#include "agx_nir.h"
 #include "agx_nir_lower_gs.h"
 #include "agx_nir_lower_vbo.h"
 #include "agx_tilebuffer.h"
@@ -1643,9 +1644,12 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
 
       if (key->hw) {
          NIR_PASS(_, nir, agx_nir_lower_point_size, true);
-
          NIR_PASS(_, nir, nir_shader_intrinsics_pass, agx_nir_lower_clip_m1_1,
                   nir_metadata_block_index | nir_metadata_dominance, NULL);
+
+         NIR_PASS(_, nir, nir_lower_io_to_scalar, nir_var_shader_out, NULL,
+                  NULL);
+         NIR_PASS(_, nir, agx_nir_lower_cull_distance_vs);
          NIR_PASS(_, nir, agx_nir_lower_uvs, &uvs);
       } else {
          NIR_PASS(_, nir, agx_nir_lower_vs_before_gs, dev->libagx, &outputs);
@@ -1731,6 +1735,10 @@ agx_compile_variant(struct agx_device *dev, struct pipe_context *pctx,
 
       NIR_PASS(_, gs_copy, nir_shader_intrinsics_pass, agx_nir_lower_clip_m1_1,
                nir_metadata_block_index | nir_metadata_dominance, NULL);
+
+      NIR_PASS(_, gs_copy, nir_lower_io_to_scalar, nir_var_shader_out, NULL,
+               NULL);
+      NIR_PASS(_, gs_copy, agx_nir_lower_cull_distance_vs);
 
       struct agx_unlinked_uvs_layout uvs = {0};
       NIR_PASS(_, gs_copy, agx_nir_lower_uvs, &uvs);

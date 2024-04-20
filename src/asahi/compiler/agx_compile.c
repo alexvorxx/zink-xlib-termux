@@ -9,8 +9,10 @@
 #include "compiler/nir/nir_builder.h"
 #include "util/bitset.h"
 #include "util/glheader.h"
+#include "util/list.h"
 #include "util/macros.h"
 #include "util/u_debug.h"
+#include "util/u_dynarray.h"
 #include "agx_builder.h"
 #include "agx_compiler.h"
 #include "agx_debug.h"
@@ -2834,6 +2836,91 @@ lower_load_from_texture_handle(nir_builder *b, nir_intrinsic_instr *intr,
    return true;
 }
 
+static void
+agx_remove_unreachable_block(agx_block *block)
+{
+   /* Delete the edges */
+   agx_foreach_successor(block, succ) {
+      unsigned block_idx = agx_predecessor_index(succ, block);
+
+      /* Remove the corresponding predecessor from the successor */
+      struct util_dynarray *blocks = &succ->predecessors;
+      int remaining = agx_num_predecessors(succ) - (block_idx + 1);
+      assert(remaining >= 0);
+
+      memcpy(util_dynarray_element(blocks, agx_block *, block_idx),
+             util_dynarray_element(blocks, agx_block *, block_idx + 1),
+             remaining * sizeof(agx_block *));
+      blocks->size -= sizeof(agx_block *);
+
+      /* Remove the corresponding source from the phis */
+      agx_foreach_phi_in_block(succ, phi) {
+         assert(block_idx + 1 <= phi->nr_srcs);
+
+         memcpy(phi->src + block_idx, phi->src + block_idx + 1,
+                (phi->nr_srcs - (block_idx + 1)) * sizeof(phi->src[0]));
+
+         phi->nr_srcs--;
+
+         /* This might cause phis to become trivial. Lower 1-source phis to
+          * moves and let copyprop take it from here.
+          */
+         if (phi->nr_srcs == 1) {
+            phi->op = AGX_OPCODE_MOV;
+         }
+      }
+   }
+
+   /* Remove the successor from the predecessor. */
+   block->successors[0] = NULL;
+   block->successors[1] = NULL;
+
+   /* Note: we do not remove the block itself, although it is now fully orphaned
+    * in the control flow graph. We still need it in source order if it has any
+    * pop_exec instructions, for a loop continue block.
+    *
+    * TODO: Is there a better way to handle this?
+    *
+    * Affects: dEQP-VK.graphicsfuzz.cov-matching-if-always-true-inside-loop
+    */
+}
+
+/*
+ * NIR sometimes contains unreachable blocks (e.g. due to infinite loops). These
+ * blocks have no predecessors, but do have successors and can contribute to
+ * phis. They are dead and do not need to be here. Further, they violate the IR
+ * invariant:
+ *
+ *    Live-in sources are live-out in all predecessors.
+ *
+ * ...which RA depends on when handling live range splits. The simplest solution
+ * is to simply delete these dead blocks. Fortunately, because they are
+ * unreachable, this does not have any ill effects. Notably, this cannot
+ * introduce critical edges.
+ *
+ * Deleting a block may cause a successor to become unreachable, so we use a
+ * fixed-point algorithm to converge.
+ */
+static void
+agx_remove_unreachable_blocks(agx_context *ctx)
+{
+   agx_block *start = agx_start_block(ctx);
+   bool progress;
+
+   do {
+      progress = false;
+
+      agx_foreach_block_safe(ctx, pred) {
+         if (pred != start && agx_num_predecessors(pred) == 0 &&
+             agx_num_successors(pred) > 0) {
+
+            agx_remove_unreachable_block(pred);
+            progress = true;
+         }
+      }
+   } while (progress);
+}
+
 static bool
 agx_should_dump(nir_shader *nir, unsigned agx_dbg_bit)
 {
@@ -2869,6 +2956,16 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
    emit_cf_list(ctx, &impl->body);
    agx_emit_phis_deferred(ctx);
 
+   /* Index blocks now that we're done emitting so the order is consistent. Do
+    * this before agx_remove_unreachable_blocks so we match NIR indexing. This
+    * makes for easier debugging.
+    */
+   agx_foreach_block(ctx, block) {
+      block->index = ctx->num_blocks++;
+   }
+
+   agx_remove_unreachable_blocks(ctx);
+
    /* Only allocate scratch if it's statically used, regardless of if the NIR
     * info claims otherwise.
     */
@@ -2885,10 +2982,6 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
       agx_builder _b = agx_init_builder(ctx, agx_after_block(last_block));
       agx_stop(&_b);
    }
-
-   /* Index blocks now that we're done emitting so the order is consistent */
-   agx_foreach_block(ctx, block)
-      block->index = ctx->num_blocks++;
 
    agx_validate(ctx, "IR translation");
 

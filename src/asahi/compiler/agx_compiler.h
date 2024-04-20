@@ -599,6 +599,9 @@ void agx_block_add_successor(agx_block *block, agx_block *successor);
 #define agx_foreach_block(ctx, v)                                              \
    list_for_each_entry(agx_block, v, &ctx->blocks, link)
 
+#define agx_foreach_block_safe(ctx, v)                                         \
+   list_for_each_entry_safe(agx_block, v, &ctx->blocks, link)
+
 #define agx_foreach_block_rev(ctx, v)                                          \
    list_for_each_entry_rev(agx_block, v, &ctx->blocks, link)
 

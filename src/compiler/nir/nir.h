@@ -1305,59 +1305,6 @@ nir_get_glsl_base_type_for_nir_type(nir_alu_type base_type);
 nir_op nir_type_conversion_op(nir_alu_type src, nir_alu_type dst,
                               nir_rounding_mode rnd);
 
-/**
- * Atomic intrinsics perform different operations depending on the value of
- * their atomic_op constant index. nir_atomic_op defines the operations.
- */
-typedef enum {
-   nir_atomic_op_iadd,
-   nir_atomic_op_imin,
-   nir_atomic_op_umin,
-   nir_atomic_op_imax,
-   nir_atomic_op_umax,
-   nir_atomic_op_iand,
-   nir_atomic_op_ior,
-   nir_atomic_op_ixor,
-   nir_atomic_op_xchg,
-   nir_atomic_op_fadd,
-   nir_atomic_op_fmin,
-   nir_atomic_op_fmax,
-   nir_atomic_op_cmpxchg,
-   nir_atomic_op_fcmpxchg,
-   nir_atomic_op_inc_wrap,
-   nir_atomic_op_dec_wrap,
-} nir_atomic_op;
-
-static inline nir_alu_type
-nir_atomic_op_type(nir_atomic_op op)
-{
-   switch (op) {
-   case nir_atomic_op_imin:
-   case nir_atomic_op_imax:
-      return nir_type_int;
-
-   case nir_atomic_op_fadd:
-   case nir_atomic_op_fmin:
-   case nir_atomic_op_fmax:
-   case nir_atomic_op_fcmpxchg:
-      return nir_type_float;
-
-   case nir_atomic_op_iadd:
-   case nir_atomic_op_iand:
-   case nir_atomic_op_ior:
-   case nir_atomic_op_ixor:
-   case nir_atomic_op_xchg:
-   case nir_atomic_op_cmpxchg:
-   case nir_atomic_op_umin:
-   case nir_atomic_op_umax:
-   case nir_atomic_op_inc_wrap:
-   case nir_atomic_op_dec_wrap:
-      return nir_type_uint;
-   }
-
-   unreachable("Invalid nir_atomic_op");
-}
-
 nir_op
 nir_op_vec(unsigned components);
 
@@ -5626,7 +5573,6 @@ typedef struct nir_lower_bitmap_options {
 void nir_lower_bitmap(nir_shader *shader, const nir_lower_bitmap_options *options);
 
 bool nir_lower_atomics_to_ssbo(nir_shader *shader, unsigned offset_align_state);
-bool nir_lower_legacy_atomics(nir_shader *shader);
 
 typedef enum  {
    nir_lower_int_source_mods = 1 << 0,

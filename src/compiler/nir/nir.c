@@ -2714,10 +2714,6 @@ nir_rewrite_image_intrinsic(nir_intrinsic_instr *intrin, nir_ssa_def *src,
    if (nir_intrinsic_has_dest_type(intrin))
       data_type = nir_intrinsic_dest_type(intrin);
 
-   nir_atomic_op atomic_op = 0;
-   if (nir_intrinsic_has_atomic_op(intrin))
-      atomic_op = nir_intrinsic_atomic_op(intrin);
-
    switch (intrin->intrinsic) {
 #define CASE(op) \
    case nir_intrinsic_image_deref_##op: \
@@ -2727,8 +2723,6 @@ nir_rewrite_image_intrinsic(nir_intrinsic_instr *intrin, nir_ssa_def *src,
    CASE(load)
    CASE(sparse_load)
    CASE(store)
-   CASE(atomic)
-   CASE(atomic_swap)
    CASE(atomic_add)
    CASE(atomic_imin)
    CASE(atomic_umin)
@@ -2766,9 +2760,6 @@ nir_rewrite_image_intrinsic(nir_intrinsic_instr *intrin, nir_ssa_def *src,
       nir_intrinsic_set_src_type(intrin, data_type);
    if (nir_intrinsic_has_dest_type(intrin))
       nir_intrinsic_set_dest_type(intrin, data_type);
-
-   if (nir_intrinsic_has_atomic_op(intrin))
-      nir_intrinsic_set_atomic_op(intrin, atomic_op);
 
    nir_instr_rewrite_src(&intrin->instr, &intrin->src[0],
                          nir_src_for_ssa(src));

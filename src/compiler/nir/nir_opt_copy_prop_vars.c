@@ -239,8 +239,6 @@ gather_vars_written(struct copy_prop_var_state *state,
                               nir_var_shader_call_data;
             break;
 
-         case nir_intrinsic_deref_atomic:
-         case nir_intrinsic_deref_atomic_swap:
          case nir_intrinsic_deref_atomic_add:
          case nir_intrinsic_deref_atomic_fadd:
          case nir_intrinsic_deref_atomic_imin:
@@ -1314,8 +1312,6 @@ copy_prop_vars_block(struct copy_prop_var_state *state,
       }
 
       case nir_intrinsic_memcpy_deref:
-      case nir_intrinsic_deref_atomic:
-      case nir_intrinsic_deref_atomic_swap:
       case nir_intrinsic_deref_atomic_add:
       case nir_intrinsic_deref_atomic_fadd:
       case nir_intrinsic_deref_atomic_imin:

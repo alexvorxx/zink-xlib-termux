@@ -131,7 +131,9 @@ agx_ppp_fragment_face_2(struct agx_ppp_update *ppp,
 {
    agx_ppp_push(ppp, FRAGMENT_FACE_2, cfg) {
       cfg.object_type = object_type;
-      cfg.conservative_depth = agx_translate_depth_layout(info->depth_layout);
+      cfg.conservative_depth =
+         info ? agx_translate_depth_layout(info->depth_layout)
+              : AGX_CONSERVATIVE_DEPTH_UNCHANGED;
    }
 }
 

@@ -47,7 +47,7 @@ agx_nir_lower_poly_stipple(nir_shader *s)
                                         nir_imm_int(b, 1));
 
    /* Discard fragments where the pattern is 0 */
-   nir_discard_if(b, nir_ieq_imm(b, bit, 0));
+   nir_demote_if(b, nir_ieq_imm(b, bit, 0));
    s->info.fs.uses_discard = true;
 
    nir_metadata_preserve(b->impl,

@@ -215,13 +215,13 @@ load_memory(nir_builder *b, unsigned bindless_base, unsigned nr_samples,
    nir_begin_invocation_interlock(b);
 
    if (bindless) {
-      return nir_bindless_image_load(b, comps, bit_size, image, coords, sample,
-                                     lod, .image_dim = dim, .image_array = true,
-                                     .format = format);
+      return nir_bindless_image_load(
+         b, comps, bit_size, image, coords, sample, lod, .image_dim = dim,
+         .image_array = true, .format = format, .access = ACCESS_IN_BOUNDS_AGX);
    } else {
       return nir_image_load(b, comps, bit_size, image, coords, sample, lod,
                             .image_dim = dim, .image_array = true,
-                            .format = format);
+                            .format = format, .access = ACCESS_IN_BOUNDS_AGX);
    }
 }
 

@@ -400,6 +400,7 @@ agx_nir_fs_epilog(nir_builder *b, const void *key_)
    unsigned rt_spill = key->link.rt_spill_base;
    NIR_PASS(_, b->shader, agx_nir_lower_tilebuffer, &tib, colormasks, &rt_spill,
             &force_translucent);
+   NIR_PASS(_, b->shader, agx_nir_lower_texture);
    NIR_PASS(_, b->shader, agx_nir_lower_multisampled_image_store);
 
    /* If the API shader runs once per sample, then the epilog runs once per

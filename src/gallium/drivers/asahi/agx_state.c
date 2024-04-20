@@ -715,7 +715,7 @@ agx_pack_texture(void *out, struct agx_resource *rsrc,
             agx_texture_buffer_size_el(format, state->u.buf.size);
 
          /* Use a 2D texture to increase the maximum size */
-         cfg.width = 1024;
+         cfg.width = AGX_TEXTURE_BUFFER_WIDTH;
          cfg.height = DIV_ROUND_UP(size_el, cfg.width);
          cfg.first_level = cfg.last_level = 0;
 
@@ -1253,7 +1253,7 @@ agx_batch_upload_pbe(struct agx_batch *batch, struct agx_pbe_packed *out,
          cfg.buffer += view->u.buf.offset;
 
          /* Use a 2D texture to increase the maximum size */
-         cfg.width = 1024;
+         cfg.width = AGX_TEXTURE_BUFFER_WIDTH;
          cfg.height = DIV_ROUND_UP(size_el, cfg.width);
          cfg.level = 0;
          cfg.stride = (cfg.width * util_format_get_blocksize(view->format)) - 4;
@@ -1273,7 +1273,7 @@ agx_batch_upload_pbe(struct agx_batch *batch, struct agx_pbe_packed *out,
 
          cfg.dimension = AGX_TEXTURE_DIMENSION_2D;
          cfg.layout = AGX_LAYOUT_LINEAR;
-         cfg.width = 1024;
+         cfg.width = AGX_TEXTURE_BUFFER_WIDTH;
          cfg.height = DIV_ROUND_UP(size_px, cfg.width);
          cfg.stride = (cfg.width * blocksize_B) - 4;
          cfg.layers = 1;

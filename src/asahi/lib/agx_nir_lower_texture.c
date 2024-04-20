@@ -113,8 +113,8 @@ lower_tex_crawl(nir_builder *b, nir_instr *instr, UNUSED void *data)
 static nir_def *
 coords_for_buffer_texture(nir_builder *b, nir_def *coord)
 {
-   return nir_vec2(b, nir_iand_imm(b, coord, BITFIELD_MASK(10)),
-                   nir_ushr_imm(b, coord, 10));
+   return nir_vec2(b, nir_umod_imm(b, coord, AGX_TEXTURE_BUFFER_WIDTH),
+                   nir_udiv_imm(b, coord, AGX_TEXTURE_BUFFER_WIDTH));
 }
 
 /*

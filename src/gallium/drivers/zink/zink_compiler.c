@@ -3352,7 +3352,7 @@ flag_shadow_tex(nir_variable *var, struct zink_shader *zs)
 }
 
 static nir_ssa_def *
-rewrite_tex_dest(nir_builder *b, nir_tex_instr *tex, nir_variable *var, void *data)
+rewrite_tex_dest(nir_builder *b, nir_tex_instr *tex, nir_variable *var, struct zink_shader *zs)
 {
    assert(var);
    const struct glsl_type *type = glsl_without_array(var->type);
@@ -3366,11 +3366,18 @@ rewrite_tex_dest(nir_builder *b, nir_tex_instr *tex, nir_variable *var, void *da
    if (bit_size == dest_size && !rewrite_depth)
       return NULL;
    nir_ssa_def *dest = &tex->dest.ssa;
-   if (rewrite_depth && data) {
-      if (b->shader->info.stage == MESA_SHADER_FRAGMENT)
-         flag_shadow_tex(var, data);
-      else
-         mesa_loge("unhandled old-style shadow sampler in non-fragment stage!");
+   if (rewrite_depth && zs) {
+      /* If only .x is used in the NIR, then it's effectively not a legacy depth
+       * sample anyway and we don't want to ask for shader recompiles.  This is
+       * the typical path, since GL_DEPTH_TEXTURE_MODE defaults to either RED or
+       * LUMINANCE, so apps just use the first channel.
+       */
+      if (nir_ssa_def_components_read(dest) & ~1) {
+         if (b->shader->info.stage == MESA_SHADER_FRAGMENT)
+            flag_shadow_tex(var, zs);
+         else
+            mesa_loge("unhandled old-style shadow sampler in non-fragment stage!");
+      }
       return NULL;
    }
    if (bit_size != dest_size) {
@@ -3498,9 +3505,21 @@ lower_zs_swizzle_tex_instr(nir_builder *b, nir_instr *instr, void *data)
    return true;
 }
 
+/* Applies in-shader swizzles when necessary for depth/shadow sampling.
+ *
+ * SPIRV only has new-style (scalar result) shadow sampling, so to emulate
+ * !is_new_style_shadow (vec4 result) shadow sampling we lower to a
+ * new-style-shadow sample, and apply GL_DEPTH_TEXTURE_MODE swizzles in the NIR
+ * shader to expand out to vec4.  Since this depends on sampler state, it's a
+ * draw-time shader recompile to do so.
+ *
+ * We may also need to apply shader swizzles for
+ * driver_workarounds.needs_zs_shader_swizzle.
+ */
 static bool
 lower_zs_swizzle_tex(nir_shader *nir, const void *swizzle, bool shadow_only)
 {
+   /* We don't use nir_lower_tex to do our swizzling, because of this base_sampler_id. */
    unsigned base_sampler_id = gl_shader_stage_is_compute(nir->info.stage) ? 0 : PIPE_MAX_SAMPLERS * nir->info.stage;
    struct lower_zs_swizzle_state state = {shadow_only, base_sampler_id, swizzle};
    return nir_shader_instructions_pass(nir, lower_zs_swizzle_tex_instr, nir_metadata_dominance | nir_metadata_block_index, (void*)&state);
@@ -3760,7 +3779,7 @@ zink_shader_compile_separate(struct zink_screen *screen, struct zink_shader *zs)
    unsigned offsets[4];
    zink_descriptor_shader_get_binding_offsets(zs, offsets);
    nir_foreach_variable_with_modes(var, nir, nir_var_mem_ubo | nir_var_mem_ssbo | nir_var_uniform | nir_var_image) {
-      if (var->data.bindless)
+      if (var->data.descriptor_set == screen->desc_set_id[ZINK_DESCRIPTOR_BINDLESS])
          continue;
       var->data.descriptor_set = set;
       switch (var->data.mode) {

@@ -686,6 +686,7 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info)
       if (info->drm_minor >= 48 && ip_info.ip_discovery_version) {
          info->ip[ip_type].ver_major = (ip_info.ip_discovery_version >> 16) & 0xff;
          info->ip[ip_type].ver_minor = (ip_info.ip_discovery_version >> 8) & 0xff;
+         info->ip[ip_type].ver_rev = ip_info.ip_discovery_version & 0xff;
       } else {
          info->ip[ip_type].ver_major = ip_info.hw_ip_version_major;
          info->ip[ip_type].ver_minor = ip_info.hw_ip_version_minor;
@@ -903,6 +904,78 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info)
       return false;
    }
 
+#define VCN_IP_VERSION(mj, mn, rv) (((mj) << 16) | ((mn) << 8) | (rv))
+
+   for (unsigned i = AMD_IP_VCN_DEC; i <= AMD_IP_VCN_JPEG; ++i) {
+      if (!info->ip[i].num_queues)
+         continue;
+
+      switch(VCN_IP_VERSION(info->ip[i].ver_major,
+                            info->ip[i].ver_minor,
+                            info->ip[i].ver_rev)) {
+      case VCN_IP_VERSION(1, 0, 0):
+         info->vcn_ip_version = VCN_1_0_0;
+         break;
+      case VCN_IP_VERSION(1, 0, 1):
+         info->vcn_ip_version = VCN_1_0_1;
+         break;
+      case VCN_IP_VERSION(2, 0, 0):
+         info->vcn_ip_version = VCN_2_0_0;
+         break;
+      case VCN_IP_VERSION(2, 0, 2):
+         info->vcn_ip_version = VCN_2_0_2;
+         break;
+      case VCN_IP_VERSION(2, 0, 3):
+         info->vcn_ip_version = VCN_2_0_3;
+         break;
+      case VCN_IP_VERSION(2, 2, 0):
+         info->vcn_ip_version = VCN_2_2_0;
+         break;
+      case VCN_IP_VERSION(2, 5, 0):
+         info->vcn_ip_version = VCN_2_5_0;
+         break;
+      case VCN_IP_VERSION(2, 6, 0):
+         info->vcn_ip_version = VCN_2_6_0;
+         break;
+      case VCN_IP_VERSION(3, 0, 0):
+         /* Navi24 version need to be revised if it fallbacks to the older way
+	  * with default version as 3.0.0, since Navi24 has different feature
+	  * sets from other VCN3 family */
+         info->vcn_ip_version = (info->family != CHIP_NAVI24) ? VCN_3_0_0 : VCN_3_0_33;
+         break;
+      case VCN_IP_VERSION(3, 0, 2):
+         info->vcn_ip_version = VCN_3_0_2;
+         break;
+      case VCN_IP_VERSION(3, 0, 16):
+         info->vcn_ip_version = VCN_3_0_16;
+         break;
+      case VCN_IP_VERSION(3, 0, 33):
+         info->vcn_ip_version = VCN_3_0_33;
+         break;
+      case VCN_IP_VERSION(3, 1, 1):
+         info->vcn_ip_version = VCN_3_1_1;
+         break;
+      case VCN_IP_VERSION(3, 1, 2):
+         info->vcn_ip_version = VCN_3_1_2;
+         break;
+      case VCN_IP_VERSION(4, 0, 0):
+         info->vcn_ip_version = VCN_4_0_0;
+         break;
+      case VCN_IP_VERSION(4, 0, 2):
+         info->vcn_ip_version = VCN_4_0_2;
+         break;
+      case VCN_IP_VERSION(4, 0, 3):
+         info->vcn_ip_version = VCN_4_0_3;
+         break;
+      case VCN_IP_VERSION(4, 0, 4):
+         info->vcn_ip_version = VCN_4_0_4;
+         break;
+      default:
+         info->vcn_ip_version = VCN_UNKNOWN;
+      }
+      break;
+   }
+
    info->family_id = device_info.family;
    info->chip_external_rev = device_info.external_rev;
    info->chip_rev = device_info.chip_rev;
@@ -940,11 +1013,6 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info)
 
    info->memory_freq_mhz_effective *= ac_memory_ops_per_clock(info->vram_type);
 
-   /* unified ring */
-   info->has_video_hw.vcn_decode
-                  = (info->family >= CHIP_GFX1100 || info->family == CHIP_GFX940)
-                    ? info->ip[AMD_IP_VCN_UNIFIED].num_queues != 0
-                    : info->ip[AMD_IP_VCN_DEC].num_queues != 0;
    info->has_userptr = true;
    info->has_syncobj = has_syncobj(fd);
    info->has_timeline_syncobj = has_timeline_syncobj(fd);
@@ -1616,8 +1684,7 @@ void ac_print_gpu_info(struct radeon_info *info, FILE *f)
       [AMD_IP_VCE] = "VCE",
       [AMD_IP_UVD_ENC] = "UVD_ENC",
       [AMD_IP_VCN_DEC] = "VCN_DEC",
-      [AMD_IP_VCN_ENC] = (info->family >= CHIP_GFX1100 ||
-			  info->family == CHIP_GFX940) ? "VCN" : "VCN_ENC",
+      [AMD_IP_VCN_ENC] = (info->vcn_ip_version >= VCN_4_0_0) ? "VCN" : "VCN_ENC",
       [AMD_IP_VCN_JPEG] = "VCN_JPG",
    };
 
@@ -1709,9 +1776,9 @@ void ac_print_gpu_info(struct radeon_info *info, FILE *f)
    fprintf(f, "    vce_encode = %u\n", info->ip[AMD_IP_VCE].num_queues);
 
    if (info->family >= CHIP_GFX1100 || info->family == CHIP_GFX940)
-      fprintf(f, "    vcn_unified = %u\n", info->has_video_hw.vcn_decode);
+      fprintf(f, "    vcn_unified = %u\n", info->ip[AMD_IP_VCN_UNIFIED].num_queues);
    else {
-      fprintf(f, "    vcn_decode = %u\n", info->has_video_hw.vcn_decode);
+      fprintf(f, "    vcn_decode = %u\n", info->ip[AMD_IP_VCN_DEC].num_queues);
       fprintf(f, "    vcn_encode = %u\n", info->ip[AMD_IP_VCN_ENC].num_queues);
    }
 

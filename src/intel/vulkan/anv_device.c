@@ -192,6 +192,12 @@ get_device_extensions(const struct anv_physical_device *device,
       (device->sync_syncobj_type.features & VK_SYNC_FEATURE_CPU_WAIT) != 0;
 
    const bool rt_enabled = ANV_SUPPORT_RT && device->info.has_ray_tracing;
+
+   /* We are seeing hangs on other workloads when something using mesh
+    * shaders runs at the same time, so it's disabled by default.
+    */
+   const bool mesh_shader_enabled = device->info.has_mesh_shading &&
+      debug_get_bool_option("ANV_MESH_SHADER", false);
    const bool nv_mesh_shading_enabled =
       debug_get_bool_option("ANV_EXPERIMENTAL_NV_MESH_SHADER", false);
 
@@ -309,7 +315,7 @@ get_device_extensions(const struct anv_physical_device *device,
                                                VK_QUEUE_GLOBAL_PRIORITY_MEDIUM_KHR,
       .EXT_global_priority_query             = device->max_context_priority >=
                                                VK_QUEUE_GLOBAL_PRIORITY_MEDIUM_KHR,
-      .EXT_graphics_pipeline_library         = device->gpl_enabled,
+      .EXT_graphics_pipeline_library         = !debug_get_bool_option("ANV_NO_GPL", false),
       .EXT_host_query_reset                  = true,
       .EXT_image_2d_view_of_3d               = true,
       .EXT_image_robustness                  = true,
@@ -326,7 +332,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_memory_budget                     = (!device->info.has_local_mem ||
                                                 device->vram_mappable.available > 0) &&
                                                device->sys.available,
-      .EXT_mesh_shader                       = device->info.has_mesh_shading,
+      .EXT_mesh_shader                       = mesh_shader_enabled,
       .EXT_mutable_descriptor_type           = true,
       .EXT_non_seamless_cube_map             = true,
       .EXT_pci_bus_info                      = true,
@@ -372,7 +378,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .INTEL_shader_integer_functions2       = true,
       .EXT_multi_draw                        = true,
       .NV_compute_shader_derivatives         = true,
-      .NV_mesh_shader                        = device->info.has_mesh_shading &&
+      .NV_mesh_shader                        = mesh_shader_enabled &&
                                                nv_mesh_shading_enabled,
       .VALVE_mutable_descriptor_type         = true,
    };
@@ -583,7 +589,8 @@ get_features(const struct anv_physical_device *pdevice,
       .globalPriorityQuery = true,
 
       /* VK_EXT_graphics_pipeline_library */
-      .graphicsPipelineLibrary = pdevice->gpl_enabled,
+      .graphicsPipelineLibrary =
+         pdevice->vk.supported_features.graphicsPipelineLibrary,
 
       /* VK_KHR_fragment_shading_rate */
       .pipelineFragmentShadingRate = true,
@@ -864,7 +871,6 @@ anv_update_meminfo(struct anv_physical_device *device, int fd)
    device->vram_non_mappable.available = devinfo->mem.vram.unmappable.free;
 }
 
-
 static VkResult
 anv_physical_device_init_heaps(struct anv_physical_device *device, int fd)
 {
@@ -906,65 +912,6 @@ anv_physical_device_init_heaps(struct anv_physical_device *device, int fd)
             .is_local_mem = true,
          };
       }
-
-      device->memory.type_count = 3;
-      device->memory.types[0] = (struct anv_memory_type) {
-         .propertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-         .heapIndex = 0,
-      };
-      device->memory.types[1] = (struct anv_memory_type) {
-         .propertyFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-                          VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-         .heapIndex = 1,
-      };
-      device->memory.types[2] = (struct anv_memory_type) {
-         .propertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
-                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-         /* This memory type either comes from heaps[0] if there is only
-          * mappable vram region, or from heaps[2] if there is both mappable &
-          * non-mappable vram regions.
-          */
-         .heapIndex = device->vram_non_mappable.size > 0 ? 2 : 0,
-      };
-   } else if (device->info.has_llc) {
-      device->memory.heap_count = 1;
-      device->memory.heaps[0] = (struct anv_memory_heap) {
-         .size = device->sys.size,
-         .flags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT,
-         .is_local_mem = false,
-      };
-
-      /* Big core GPUs share LLC with the CPU and thus one memory type can be
-       * both cached and coherent at the same time.
-       *
-       * But some game engines can't handle single type well
-       * https://gitlab.freedesktop.org/mesa/mesa/-/issues/7360#note_1719438
-       *
-       * The second memory type w/out HOST_CACHED_BIT will get write-combining.
-       * See anv_AllocateMemory()).
-       *
-       * The Intel Vulkan driver for Windows also advertises these memory types.
-       */
-      device->memory.type_count = 3;
-      device->memory.types[0] = (struct anv_memory_type) {
-         .propertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-         .heapIndex = 0,
-      };
-      device->memory.types[1] = (struct anv_memory_type) {
-         .propertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
-                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-         .heapIndex = 0,
-      };
-      device->memory.types[2] = (struct anv_memory_type) {
-         .propertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
-                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-                          VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-         .heapIndex = 0,
-      };
    } else {
       device->memory.heap_count = 1;
       device->memory.heaps[0] = (struct anv_memory_heap) {
@@ -972,26 +919,20 @@ anv_physical_device_init_heaps(struct anv_physical_device *device, int fd)
          .flags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT,
          .is_local_mem = false,
       };
-
-      /* The spec requires that we expose a host-visible, coherent memory
-       * type, but Atom GPUs don't share LLC. Thus we offer two memory types
-       * to give the application a choice between cached, but not coherent and
-       * coherent but uncached (WC though).
-       */
-      device->memory.type_count = 2;
-      device->memory.types[0] = (struct anv_memory_type) {
-         .propertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
-                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                          VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-         .heapIndex = 0,
-      };
-      device->memory.types[1] = (struct anv_memory_type) {
-         .propertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
-                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-         .heapIndex = 0,
-      };
    }
+
+   switch (device->info.kmd_type) {
+   case INTEL_KMD_TYPE_XE:
+      result = anv_xe_physical_device_init_memory_types(device);
+      break;
+   case INTEL_KMD_TYPE_I915:
+   default:
+      result = anv_i915_physical_device_init_memory_types(device);
+      break;
+   }
+
+   if (result != VK_SUCCESS)
+      return result;
 
    for (unsigned i = 0; i < device->memory.type_count; i++) {
       VkMemoryPropertyFlags props = device->memory.types[i].propertyFlags;
@@ -1336,18 +1277,6 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    device->generated_indirect_draws =
       debug_get_bool_option("ANV_ENABLE_GENERATED_INDIRECT_DRAWS",
                             true);
-
-   /* The GPL implementation is new, and may have issues in conjunction with
-    * mesh shading. Enable it by default for zink for performance reasons (where
-    * mesh shading is unused anyway), and have an env var for testing in CI or
-    * by end users.
-    * */
-   if (debug_get_bool_option("ANV_GPL",
-                             instance->vk.app_info.engine_name != NULL &&
-                             (strcmp(instance->vk.app_info.engine_name, "mesa zink") == 0 ||
-                              strcmp(instance->vk.app_info.engine_name, "DXVK") == 0))) {
-      device->gpl_enabled = true;
-   }
 
    unsigned st_idx = 0;
 
@@ -3036,6 +2965,10 @@ VkResult anv_CreateDevice(
       vk_device_dispatch_table_from_entrypoints(&dispatch_table, &doom64_device_entrypoints, true);
       override_initial_entrypoints = false;
    }
+#ifdef ANDROID
+   vk_device_dispatch_table_from_entrypoints(&dispatch_table, &android_device_entrypoints, true);
+   override_initial_entrypoints = false;
+#endif
    vk_device_dispatch_table_from_entrypoints(&dispatch_table,
       anv_genX(&physical_device->info, device_entrypoints),
       override_initial_entrypoints);
@@ -3390,7 +3323,9 @@ VkResult anv_CreateDevice(
    if (result != VK_SUCCESS)
       goto fail_btd_fifo_bo;
 
-   struct vk_pipeline_cache_create_info pcc_info = { };
+   struct vk_pipeline_cache_create_info pcc_info = {
+      .internal = true,
+   };
    device->default_pipeline_cache =
       vk_pipeline_cache_create(&device->vk, &pcc_info, NULL);
    if (!device->default_pipeline_cache) {
@@ -3810,9 +3745,12 @@ VkResult anv_AllocateMemory(
    if (mem->vk.alloc_flags & VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT)
       alloc_flags |= ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS;
 
-   /* Anything imported or exported is EXTERNAL */
+   /* Anything imported or exported is EXTERNAL. Apply implicit sync to be
+    * compatible with clients relying on implicit fencing. This matches the
+    * behavior in iris i915_batch_submit. An example client is VA-API.
+    */
    if (mem->vk.export_handle_types || mem->vk.import_handle_type)
-      alloc_flags |= ANV_BO_ALLOC_EXTERNAL;
+      alloc_flags |= (ANV_BO_ALLOC_EXTERNAL | ANV_BO_ALLOC_IMPLICIT_SYNC);
 
    if (mem->vk.ahardware_buffer) {
       result = anv_import_ahw_memory(_device, mem);

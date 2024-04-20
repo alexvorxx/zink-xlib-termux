@@ -865,7 +865,6 @@ struct anv_physical_device {
     struct intel_device_info                      info;
 
     bool                                        video_decode_enabled;
-    bool                                        gpl_enabled;
 
     struct brw_compiler *                       compiler;
     struct isl_device                           isl_dev;
@@ -3936,7 +3935,7 @@ anv_can_sample_mcs_with_clear(const struct intel_device_info * const devinfo,
     * See HSD 1707282275, wa_14013111325. Due to the use of
     * format-reinterpretation, a simplified workaround is implemented.
     */
-   if (devinfo->ver >= 12 &&
+   if (intel_needs_workaround(devinfo, 14013111325) &&
        isl_format_get_layout(anv_surf->isl.format)->bpb <= 16) {
       return false;
    }

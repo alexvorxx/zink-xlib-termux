@@ -1090,14 +1090,15 @@ transition_color_buffer(struct anv_cmd_buffer *cmd_buffer,
        *
        * For MCS, (2) is never an issue because we don't support multisampled
        * storage images.  In theory, issue (1) is a problem with MCS but we've
-       * never seen it in the wild.  For 4x and 16x, all bit patters could, in
-       * theory, be interpreted as something but we don't know that all bit
+       * never seen it in the wild.  For 4x and 16x, all bit patterns could,
+       * in theory, be interpreted as something but we don't know that all bit
        * patterns are actually valid.  For 2x and 8x, you could easily end up
        * with the MCS referring to an invalid plane because not all bits of
        * the MCS value are actually used.  Even though we've never seen issues
        * in the wild, it's best to play it safe and initialize the MCS.  We
-       * can use a fast-clear for MCS because we only ever touch from render
-       * and texture (no image load store).
+       * could use a fast-clear for MCS because we only ever touch from render
+       * and texture (no image load store). However, due to WA 14013111325,
+       * we choose to ambiguate MCS as well.
        */
       if (image->vk.samples == 1) {
          for (uint32_t l = 0; l < level_count; l++) {
@@ -1133,12 +1134,6 @@ transition_color_buffer(struct anv_cmd_buffer *cmd_buffer,
             }
          }
       } else {
-         if (image->vk.samples == 4 || image->vk.samples == 16) {
-            anv_perf_warn(VK_LOG_OBJS(&image->vk.base),
-                          "Doing a potentially unnecessary fast-clear to "
-                          "define an MCS buffer.");
-         }
-
          /* If will_full_fast_clear is set, the caller promises to fast-clear
           * the largest portion of the specified range as it can.
           */
@@ -1150,7 +1145,7 @@ transition_color_buffer(struct anv_cmd_buffer *cmd_buffer,
                           image->planes[plane].primary_surface.isl.format,
                           ISL_SWIZZLE_IDENTITY,
                           aspect, base_layer, layer_count,
-                          ISL_AUX_OP_FAST_CLEAR, NULL, false);
+                          ISL_AUX_OP_AMBIGUATE, NULL, false);
       }
       return;
    }
@@ -3344,7 +3339,7 @@ genX(cmd_buffer_flush_gfx_state)(struct anv_cmd_buffer *cmd_buffer)
        * 3dstate_so_buffer_index_0/1/2/3 states to ensure so_buffer_index_*
        * state is not combined with other state changes.
        */
-      if (intel_device_info_is_dg2(cmd_buffer->device->info)) {
+      if (intel_needs_workaround(cmd_buffer->device->info, 16011411144)) {
          anv_add_pending_pipe_bits(cmd_buffer,
                                    ANV_PIPE_CS_STALL_BIT,
                                    "before SO_BUFFER change WA");
@@ -3378,7 +3373,7 @@ genX(cmd_buffer_flush_gfx_state)(struct anv_cmd_buffer *cmd_buffer)
          }
       }
 
-      if (intel_device_info_is_dg2(cmd_buffer->device->info)) {
+      if (intel_needs_workaround(cmd_buffer->device->info, 16011411144)) {
          /* Wa_16011411144: also CS_STALL after touching SO_BUFFER change */
          anv_add_pending_pipe_bits(cmd_buffer,
                                    ANV_PIPE_CS_STALL_BIT,

@@ -186,25 +186,12 @@ lower_phis_to_scalar_block(nir_block *block,
                            struct lower_phis_to_scalar_state *state)
 {
    bool progress = false;
-
-   /* Find the last phi node in the block */
-   nir_phi_instr *last_phi = NULL;
-   nir_foreach_instr(instr, block) {
-      if (instr->type != nir_instr_type_phi)
-         break;
-
-      last_phi = nir_instr_as_phi(instr);
-   }
+   nir_phi_instr *last_phi = nir_block_last_phi_instr(block);
 
    /* We have to handle the phi nodes in their own pass due to the way
     * we're modifying the linked list of instructions.
     */
-   nir_foreach_instr_safe(instr, block) {
-      if (instr->type != nir_instr_type_phi)
-         break;
-
-      nir_phi_instr *phi = nir_instr_as_phi(instr);
-
+   nir_foreach_phi_safe(phi, block) {
       if (!should_lower_phi(phi, state))
          continue;
 
@@ -267,7 +254,7 @@ lower_phis_to_scalar_block(nir_block *block,
        * the last phi node so once we get here, we can't trust even the
        * safe iterator to stop properly.  We have to break manually.
        */
-      if (instr == &last_phi->instr)
+      if (phi == last_phi)
          break;
    }
 

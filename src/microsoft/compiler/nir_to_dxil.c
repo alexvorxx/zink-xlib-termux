@@ -154,12 +154,35 @@ nir_options = {
    .max_unroll_iterations = 32, /* arbitrary */
    .force_indirect_unrolling = (nir_var_shader_in | nir_var_shader_out | nir_var_function_temp),
    .lower_device_index_to_zero = true,
+   .linker_ignore_precision = true,
 };
 
 const nir_shader_compiler_options*
-dxil_get_nir_compiler_options(void)
+dxil_get_base_nir_compiler_options(void)
 {
    return &nir_options;
+}
+
+void
+dxil_get_nir_compiler_options(nir_shader_compiler_options *options,
+                              enum dxil_shader_model shader_model_max,
+                              unsigned supported_int_sizes,
+                              unsigned supported_float_sizes)
+{
+   *options = nir_options;
+   if (!(supported_int_sizes & 64)) {
+      options->lower_pack_64_2x32_split = false;
+      options->lower_unpack_64_2x32_split = false;
+      options->lower_int64_options = ~0;
+   }
+   if (!(supported_float_sizes & 64))
+      options->lower_doubles_options = ~0;
+   if ((supported_int_sizes & 16) && (supported_float_sizes & 16))
+      options->support_16bit_alu = true;
+   if (shader_model_max >= SHADER_MODEL_6_4) {
+      options->has_sdot_4x8 = true;
+      options->has_udot_4x8 = true;
+   }
 }
 
 static bool
@@ -353,6 +376,9 @@ enum dxil_intr {
 
    DXIL_INTR_RAW_BUFFER_LOAD = 139,
    DXIL_INTR_RAW_BUFFER_STORE = 140,
+
+   DXIL_INTR_DOT4_ADD_I8_PACKED = 163,
+   DXIL_INTR_DOT4_ADD_U8_PACKED = 164,
 
    DXIL_INTR_ANNOTATE_HANDLE = 216,
    DXIL_INTR_CREATE_HANDLE_FROM_BINDING = 217,
@@ -1960,6 +1986,34 @@ emit_metadata(struct ntd_context *ctx)
                                        &dx_resources, 1);
    }
 
+   if (ctx->mod.minor_version >= 2 &&
+       dxil_nir_analyze_io_dependencies(&ctx->mod, ctx->shader)) {
+      const struct dxil_type *i32_type = dxil_module_get_int_type(&ctx->mod, 32);
+      if (!i32_type)
+         return false;
+
+      const struct dxil_type *array_type = dxil_module_get_array_type(&ctx->mod, i32_type, ctx->mod.serialized_dependency_table_size);
+      if (!array_type)
+         return false;
+
+      const struct dxil_value **array_entries = malloc(sizeof(const struct value *) * ctx->mod.serialized_dependency_table_size);
+      if (!array_entries)
+         return false;
+
+      for (uint32_t i = 0; i < ctx->mod.serialized_dependency_table_size; ++i)
+         array_entries[i] = dxil_module_get_int32_const(&ctx->mod, ctx->mod.serialized_dependency_table[i]);
+      const struct dxil_value *array_val = dxil_module_get_array_const(&ctx->mod, array_type, array_entries);
+      free((void *)array_entries);
+
+      const struct dxil_mdnode *view_id_state_val = dxil_get_metadata_value(&ctx->mod, array_type, array_val);
+      if (!view_id_state_val)
+         return false;
+
+      const struct dxil_mdnode *view_id_state_node = dxil_get_metadata_node(&ctx->mod, &view_id_state_val, 1);
+
+      dxil_add_metadata_named_node(&ctx->mod, "dx.viewIdState", &view_id_state_node, 1);
+   }
+
    const struct dxil_mdnode *dx_type_annotations[] = { main_type_annotation };
    return dxil_add_metadata_named_node(&ctx->mod, "dx.typeAnnotations",
                                        dx_type_annotations,
@@ -2452,6 +2506,25 @@ emit_bitfield_insert(struct ntd_context *ctx, nir_alu_instr *alu,
    return true;
 }
 
+static bool
+emit_dot4add_packed(struct ntd_context *ctx, nir_alu_instr *alu,
+                    enum dxil_intr intr,
+                    const struct dxil_value *src0,
+                    const struct dxil_value *src1,
+                    const struct dxil_value *accum)
+{
+   const struct dxil_func *f = dxil_get_function(&ctx->mod, "dx.op.dot4AddPacked", DXIL_I32);
+   if (!f)
+      return false;
+   const struct dxil_value *srcs[] = { dxil_module_get_int32_const(&ctx->mod, intr), accum, src0, src1 };
+   const struct dxil_value *v = dxil_emit_call(&ctx->mod, f, srcs, ARRAY_SIZE(srcs));
+   if (!v)
+      return false;
+
+   store_alu_dest(ctx, alu, 0, v);
+   return true;
+}
+
 static bool emit_select(struct ntd_context *ctx, nir_alu_instr *alu,
                         const struct dxil_value *sel,
                         const struct dxil_value *val_true,
@@ -2718,11 +2791,20 @@ emit_alu(struct ntd_context *ctx, nir_alu_instr *alu)
    case nir_op_fdiv:
       if (alu->dest.dest.ssa.bit_size == 64)
          ctx->mod.feats.dx11_1_double_extensions = 1;
-      FALLTHROUGH;
-   case nir_op_idiv:
       return emit_binop(ctx, alu, DXIL_BINOP_SDIV, src[0], src[1]);
 
-   case nir_op_udiv: return emit_binop(ctx, alu, DXIL_BINOP_UDIV, src[0], src[1]);
+   case nir_op_idiv:
+   case nir_op_udiv:
+      if (nir_src_is_const(alu->src[1].src)) {
+         /* It's illegal to emit a literal divide by 0 in DXIL */
+         nir_ssa_scalar divisor = nir_ssa_scalar_chase_alu_src(nir_get_ssa_scalar(&alu->dest.dest.ssa, 0), 1);
+         if (nir_ssa_scalar_as_int(divisor) == 0) {
+            store_alu_dest(ctx, alu, 0, dxil_module_get_int_const(&ctx->mod, 0, nir_dest_bit_size(alu->dest.dest)));
+            return true;
+         }
+      }
+      return emit_binop(ctx, alu, alu->op == nir_op_idiv ? DXIL_BINOP_SDIV : DXIL_BINOP_UDIV, src[0], src[1]);
+
    case nir_op_irem: return emit_binop(ctx, alu, DXIL_BINOP_SREM, src[0], src[1]);
    case nir_op_imod: return emit_binop(ctx, alu, DXIL_BINOP_UREM, src[0], src[1]);
    case nir_op_umod: return emit_binop(ctx, alu, DXIL_BINOP_UREM, src[0], src[1]);
@@ -2811,6 +2893,9 @@ emit_alu(struct ntd_context *ctx, nir_alu_instr *alu)
    case nir_op_unpack_half_2x16_split_x: return emit_f16tof32(ctx, alu, src[0], false);
    case nir_op_unpack_half_2x16_split_y: return emit_f16tof32(ctx, alu, src[0], true);
    case nir_op_pack_half_2x16_split: return emit_f32tof16(ctx, alu, src[0], src[1]);
+
+   case nir_op_sdot_4x8_iadd: return emit_dot4add_packed(ctx, alu, DXIL_INTR_DOT4_ADD_I8_PACKED, src[0], src[1], src[2]);
+   case nir_op_udot_4x8_uadd: return emit_dot4add_packed(ctx, alu, DXIL_INTR_DOT4_ADD_U8_PACKED, src[0], src[1], src[2]);
 
    case nir_op_i2i1:
    case nir_op_u2u1:
@@ -6398,7 +6483,7 @@ optimize_nir(struct nir_shader *s, const struct nir_to_dxil_options *opts)
       NIR_PASS(progress, s, nir_opt_cse);
       NIR_PASS(progress, s, nir_opt_peephole_select, 8, true, true);
       NIR_PASS(progress, s, nir_opt_algebraic);
-      NIR_PASS(progress, s, dxil_nir_lower_x2b);
+      NIR_PASS(progress, s, dxil_nir_algebraic);
       if (s->options->lower_int64_options)
          NIR_PASS(progress, s, nir_lower_int64);
       NIR_PASS(progress, s, nir_lower_alu);

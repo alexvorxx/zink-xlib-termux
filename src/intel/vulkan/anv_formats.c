@@ -23,14 +23,11 @@
 
 #include "anv_private.h"
 #include "drm-uapi/drm_fourcc.h"
+#include "vk_android.h"
 #include "vk_enum_defines.h"
 #include "vk_enum_to_str.h"
 #include "vk_format.h"
 #include "vk_util.h"
-
-#if defined(ANDROID) && ANDROID_API_LEVEL >= 26
-#include "vk_android.h"
-#endif
 
 /*
  * gcc-4 and earlier don't allow compound literals where a constant
@@ -1514,8 +1511,8 @@ static const VkExternalMemoryProperties android_buffer_props = {
 
 
 static const VkExternalMemoryProperties android_image_props = {
-   .externalMemoryFeatures = VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT |
-                             VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT |
+   /* VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT will be set dynamically */
+   .externalMemoryFeatures = VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT |
                              VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT,
    .exportFromImportedHandleTypes =
       VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
@@ -1587,7 +1584,6 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
    bool ahw_supported =
       physical_device->vk.supported_extensions.ANDROID_external_memory_android_hardware_buffer;
 
-#if defined(ANDROID) && ANDROID_API_LEVEL >= 26
    if (ahw_supported && android_usage) {
       android_usage->androidHardwareBufferUsage =
          vk_image_usage_to_ahb_usage(base_info->flags, base_info->usage);
@@ -1595,7 +1591,6 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
       /* Limit maxArrayLayers to 1 for AHardwareBuffer based images for now. */
       base_props->imageFormatProperties.maxArrayLayers = 1;
    }
-#endif
 
    /* From the Vulkan 1.0.42 spec:
     *
@@ -1710,6 +1705,10 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
           */
          if (ahw_supported && external_props) {
             external_props->externalMemoryProperties = android_image_props;
+            if (anv_ahb_format_for_vk_format(base_info->format)) {
+               external_props->externalMemoryProperties.externalMemoryFeatures |=
+                  VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT;
+            }
             break;
          }
          FALLTHROUGH; /* If ahw not supported */

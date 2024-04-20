@@ -121,6 +121,7 @@ dzn_physical_device_get_extensions(struct dzn_physical_device *pdev)
       .KHR_shader_draw_parameters            = true,
       .KHR_shader_float16_int8               = pdev->options4.Native16BitShaderOpsSupported,
       .KHR_shader_float_controls             = true,
+      .KHR_shader_integer_dot_product        = true,
       .KHR_spirv_1_4                         = true,
       .KHR_storage_buffer_storage_class      = true,
 #ifdef DZN_USE_WSI_PLATFORM
@@ -401,7 +402,7 @@ dzn_physical_device_create(struct vk_instance *instance,
    /* TODO: something something queue families */
 
    result = dzn_wsi_init(pdev);
-   if (result != VK_SUCCESS) {
+   if (result != VK_SUCCESS || !pdev->dev) {
       list_del(&pdev->vk.link);
       dzn_physical_device_destroy(&pdev->vk);
       return result;
@@ -474,6 +475,13 @@ dzn_physical_device_cache_caps(struct dzn_physical_device *pdev)
       pdev->options19.MaxSamplerDescriptorHeapSize = D3D12_MAX_SHADER_VISIBLE_SAMPLER_HEAP_SIZE;
       pdev->options19.MaxSamplerDescriptorHeapSizeWithStaticSamplers = pdev->options19.MaxSamplerDescriptorHeapSize;
       pdev->options19.MaxViewDescriptorHeapSize = D3D12_MAX_SHADER_VISIBLE_DESCRIPTOR_HEAP_SIZE_TIER_1;
+   }
+   {
+      D3D12_FEATURE_DATA_FORMAT_SUPPORT a4b4g4r4_support = {
+         .Format = DXGI_FORMAT_A4B4G4R4_UNORM
+      };
+      pdev->support_a4b4g4r4 =
+         SUCCEEDED(ID3D12Device1_CheckFeatureSupport(pdev->dev, D3D12_FEATURE_FORMAT_SUPPORT, &a4b4g4r4_support, sizeof(a4b4g4r4_support)));
    }
 
    pdev->queue_families[pdev->queue_family_count++] = (struct dzn_queue_family) {
@@ -664,16 +672,17 @@ dzn_physical_device_get_d3d12_dev(struct dzn_physical_device *pdev)
                                       pdev->adapter,
                                       instance->factory,
                                       !instance->dxil_validator);
-
-      if (FAILED(ID3D12Device1_QueryInterface(pdev->dev, &IID_ID3D12Device10, (void **)&pdev->dev10)))
-         pdev->dev10 = NULL;
-      if (FAILED(ID3D12Device1_QueryInterface(pdev->dev, &IID_ID3D12Device11, (void **)&pdev->dev11)))
-         pdev->dev11 = NULL;
-      if (FAILED(ID3D12Device1_QueryInterface(pdev->dev, &IID_ID3D12Device12, (void **)&pdev->dev12)))
-         pdev->dev12 = NULL;
-      dzn_physical_device_cache_caps(pdev);
-      dzn_physical_device_init_memory(pdev);
-      dzn_physical_device_init_uuids(pdev);
+      if (pdev->dev) {
+         if (FAILED(ID3D12Device1_QueryInterface(pdev->dev, &IID_ID3D12Device10, (void **)&pdev->dev10)))
+            pdev->dev10 = NULL;
+         if (FAILED(ID3D12Device1_QueryInterface(pdev->dev, &IID_ID3D12Device11, (void **)&pdev->dev11)))
+            pdev->dev11 = NULL;
+         if (FAILED(ID3D12Device1_QueryInterface(pdev->dev, &IID_ID3D12Device12, (void **)&pdev->dev12)))
+            pdev->dev12 = NULL;
+         dzn_physical_device_cache_caps(pdev);
+         dzn_physical_device_init_memory(pdev);
+         dzn_physical_device_init_uuids(pdev);
+      }   
    }
    mtx_unlock(&pdev->dev_lock);
 
@@ -856,10 +865,16 @@ dzn_physical_device_get_format_properties(struct dzn_physical_device *pdev,
       }
    }
 
-   /* B4G4R4A4 support is required, but d3d12 doesn't support it. We map this
-    * format to R4G4B4A4 and adjust the SRV component-mapping to fake
+   /* B4G4R4A4 support is required, but d3d12 doesn't support it. The needed
+    * d3d12 format would be A4R4G4B4. We map this format to d3d12's B4G4R4A4,
+    * which is Vulkan's A4R4G4B4, and adjust the SRV component-mapping to fake
     * B4G4R4A4, but that forces us to limit the usage to sampling, which,
     * luckily, is exactly what we need to support the required features.
+    *
+    * However, since this involves swizzling the alpha channel, it can cause
+    * problems for border colors. Fortunately, d3d12 added an A4B4G4R4 format,
+    * which still isn't quite right (it'd be Vulkan R4G4B4A4), but can be
+    * swizzled by just swapping R and B, so no border color issues arise.
     */
    if (format == VK_FORMAT_B4G4R4A4_UNORM_PACK16) {
       VkFormatFeatureFlags bgra4_req_features =
@@ -1380,8 +1395,8 @@ dzn_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
       .shaderStorageImageArrayDynamicIndexing = true,
       .shaderClipDistance = true,
       .shaderCullDistance = true,
-      .shaderFloat64 = false,
-      .shaderInt64 = false,
+      .shaderFloat64 = pdev->options.DoublePrecisionFloatShaderOps,
+      .shaderInt64 = pdev->options1.Int64ShaderOps,
       .shaderInt16 = pdev->options4.Native16BitShaderOpsSupported,
       .shaderResourceResidency = false,
       .shaderResourceMinLod = false,
@@ -1485,7 +1500,7 @@ dzn_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
       .textureCompressionASTC_HDR         = false,
       .shaderZeroInitializeWorkgroupMemory = false,
       .dynamicRendering                   = true,
-      .shaderIntegerDotProduct            = false,
+      .shaderIntegerDotProduct            = true,
       .maintenance4                       = false,
    };
 
@@ -1887,6 +1902,10 @@ dzn_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
       .maxComputeWorkgroupSubgroups = D3D12_CS_THREAD_GROUP_MAX_THREADS_PER_GROUP /
          (pdevice->options1.WaveOps ? pdevice->options1.WaveLaneCountMin : 1),
       .requiredSubgroupSizeStages = VK_SHADER_STAGE_COMPUTE_BIT,
+      .integerDotProduct4x8BitPackedSignedAccelerated = pdevice->shader_model >= D3D_SHADER_MODEL_6_4,
+      .integerDotProduct4x8BitPackedUnsignedAccelerated = pdevice->shader_model >= D3D_SHADER_MODEL_6_4,
+      .integerDotProductAccumulatingSaturating4x8BitPackedSignedAccelerated = pdevice->shader_model >= D3D_SHADER_MODEL_6_4,
+      .integerDotProductAccumulatingSaturating4x8BitPackedUnsignedAccelerated = pdevice->shader_model >= D3D_SHADER_MODEL_6_4,
    };
 
    vk_foreach_struct(ext, pProperties->pNext) {

@@ -267,7 +267,6 @@ clang-format:
     INSTALL_TARBALL: "./artifacts/${INSTALL_TARBALL_NAME}"
     CI_B2C_ARTIFACTS: "./artifacts/b2c"
     CI_COMMON_SCRIPTS: "./artifacts/ci-common"
-    GENERATE_ENV_SCRIPT: "${CI_COMMON_SCRIPTS}/generate-env.sh"
     B2C_JOB_TEMPLATE: "${CI_B2C_ARTIFACTS}/b2c.yml.jinja2.jinja2"
     JOB_FOLDER: "job_folder"
 
@@ -336,7 +335,6 @@ clang-format:
       set +x
       "$CI_COMMON_SCRIPTS"/generate-env.sh > ${JOB_FOLDER}/set-job-env-vars.sh
       echo "export SCRIPTS_DIR=./install" >> ${JOB_FOLDER}/set-job-env-vars.sh
-      chmod +x ${JOB_FOLDER}/set-job-env-vars.sh
       echo "Variables passed through:"
       cat ${JOB_FOLDER}/set-job-env-vars.sh
       echo "export CI_JOB_JWT=${CI_JOB_JWT}" >> ${JOB_FOLDER}/set-job-env-vars.sh

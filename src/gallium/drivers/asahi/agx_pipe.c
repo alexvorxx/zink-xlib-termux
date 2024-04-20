@@ -424,8 +424,8 @@ agx_compression_allowed(const struct agx_resource *pres)
    assert(!util_format_is_compressed(pres->base.format) &&
           "block-compressed formats are not renderable");
 
-   /* Small textures cannot (should not?) be compressed */
-   if (pres->base.width0 < 16 || pres->base.height0 < 16) {
+   if (!ail_can_compress(pres->base.width0, pres->base.height0,
+                         MAX2(pres->base.nr_samples, 1))) {
       rsrc_debug(pres, "No compression: too small\n");
       return false;
    }
@@ -1092,6 +1092,9 @@ agx_clear(struct pipe_context *pctx, unsigned buffers,
          util_framebuffer_get_num_samples(&ctx->framebuffer) > 1);
    }
 
+   if (fastclear)
+      agx_batch_init_state(batch);
+
    batch->clear |= fastclear;
    batch->resolve |= buffers;
    assert((batch->draw & slowclear) == slowclear);
@@ -1199,6 +1202,8 @@ agx_flush_batch(struct agx_context *ctx, struct agx_batch *batch)
       agx_batch_reset(ctx, batch);
       return;
    }
+
+   assert(batch->initialized);
 
    /* Finalize the encoder */
    uint8_t stop[5 + 64] = {0x00, 0x00, 0x00, 0xc0, 0x00};
@@ -1353,6 +1358,13 @@ agx_invalidate_resource(struct pipe_context *pctx,
    }
 }
 
+static void
+agx_memory_barrier(struct pipe_context *pctx, unsigned flags)
+{
+   /* Be conservative for now, we can try to optimize this more later */
+   agx_flush_all(agx_context(pctx), "Memory barrier");
+}
+
 static struct pipe_context *
 agx_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
 {
@@ -1394,6 +1406,10 @@ agx_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
    pctx->set_debug_callback = u_default_set_debug_callback;
    pctx->get_sample_position = u_default_get_sample_position;
    pctx->invalidate_resource = agx_invalidate_resource;
+   pctx->memory_barrier = agx_memory_barrier;
+
+   pctx->create_fence_fd = agx_create_fence_fd;
+   pctx->fence_server_sync = agx_fence_server_sync;
 
    agx_init_state_functions(pctx);
    agx_init_query_functions(pctx);

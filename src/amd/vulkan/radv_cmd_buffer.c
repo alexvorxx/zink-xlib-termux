@@ -238,6 +238,8 @@ radv_bind_dynamic_state(struct radv_cmd_buffer *cmd_buffer, const struct radv_dy
    RADV_CMP_COPY(vk.dr.enable, RADV_DYNAMIC_DISCARD_RECTANGLE_ENABLE);
    RADV_CMP_COPY(vk.dr.mode, RADV_DYNAMIC_DISCARD_RECTANGLE_MODE);
 
+   RADV_CMP_COPY(feedback_loop_aspects, RADV_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE);
+
 #undef RADV_CMP_COPY
 
    cmd_buffer->state.dirty |= dest_mask;
@@ -1894,14 +1896,23 @@ radv_emit_graphics_pipeline(struct radv_cmd_buffer *cmd_buffer)
          cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_LOGIC_OP |
                                     RADV_CMD_DIRTY_DYNAMIC_LOGIC_OP_ENABLE;
 
-      if (cmd_buffer->state.emitted_graphics_pipeline->ms.sample_shading_enable != pipeline->ms.sample_shading_enable ||
-          cmd_buffer->state.emitted_graphics_pipeline->ms.min_sample_shading != pipeline->ms.min_sample_shading ||
+      if (cmd_buffer->state.emitted_graphics_pipeline->ms.min_sample_shading != pipeline->ms.min_sample_shading ||
           cmd_buffer->state.emitted_graphics_pipeline->uses_out_of_order_rast != pipeline->uses_out_of_order_rast ||
           cmd_buffer->state.emitted_graphics_pipeline->uses_vrs_attachment != pipeline->uses_vrs_attachment ||
           cmd_buffer->state.emitted_graphics_pipeline->db_render_control != pipeline->db_render_control ||
           cmd_buffer->state.emitted_graphics_pipeline->rast_prim != pipeline->rast_prim)
 
          cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_RASTERIZATION_SAMPLES;
+
+      if (cmd_buffer->state.emitted_graphics_pipeline->ms.sample_shading_enable != pipeline->ms.sample_shading_enable) {
+         cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_RASTERIZATION_SAMPLES;
+         if (device->physical_device->rad_info.gfx_level >= GFX10_3)
+            cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_FRAGMENT_SHADING_RATE;
+      }
+
+      if (cmd_buffer->state.emitted_graphics_pipeline->db_shader_control !=
+          pipeline->db_shader_control)
+         cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE;
    }
 
    radeon_emit_array(cmd_buffer->cs, pipeline->base.cs.buf, pipeline->base.cs.cdw);
@@ -2293,13 +2304,13 @@ radv_emit_stencil_control(struct radv_cmd_buffer *cmd_buffer)
 static void
 radv_emit_fragment_shading_rate(struct radv_cmd_buffer *cmd_buffer)
 {
-   const struct radv_graphics_pipeline *pipeline = cmd_buffer->state.graphics_pipeline;
+   const struct radv_shader *ps = cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT];
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
    uint32_t rate_x = MIN2(2, d->vk.fsr.fragment_size.width) - 1;
    uint32_t rate_y = MIN2(2, d->vk.fsr.fragment_size.height) - 1;
-   uint32_t pa_cl_vrs_cntl = pipeline->vrs.pa_cl_vrs_cntl;
    uint32_t pipeline_comb_mode = d->vk.fsr.combiner_ops[0];
    uint32_t htile_comb_mode = d->vk.fsr.combiner_ops[1];
+   uint32_t pa_cl_vrs_cntl = 0;
 
    assert(cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX10_3);
 
@@ -2334,6 +2345,16 @@ radv_emit_fragment_shading_rate(struct radv_cmd_buffer *cmd_buffer)
    /* Emit per-draw VRS rate which is the first combiner. */
    radeon_set_uconfig_reg(cmd_buffer->cs, R_03098C_GE_VRS_RATE,
                           S_03098C_RATE_X(rate_x) | S_03098C_RATE_Y(rate_y));
+
+   /* Disable VRS and use the rates from PS_ITER_SAMPLES if:
+    *
+    * 1) sample shading is enabled or per-sample interpolation is used by the fragment shader
+    * 2) the fragment shader reads gl_SampleMaskIn because the 16-bit sample coverage mask isn't
+    *    enough for MSAA8x and 2x2 coarse shading isn't enough.
+    */
+   if (cmd_buffer->state.ms.sample_shading_enable || ps->info.ps.reads_sample_mask_in) {
+      pa_cl_vrs_cntl |= S_028848_SAMPLE_ITER_COMBINER_MODE(V_028848_SC_VRS_COMB_MODE_OVERRIDE);
+   }
 
    /* VERTEX_RATE_COMBINER_MODE controls the combiner mode between the
     * draw rate and the vertex rate.
@@ -3926,10 +3947,10 @@ lookup_vs_prolog(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *v
 
 static void
 emit_prolog_regs(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *vs_shader,
-                 const struct radv_shader_part *prolog, bool pipeline_is_dirty)
+                 const struct radv_shader_part *prolog)
 {
    /* no need to re-emit anything in this case */
-   if (cmd_buffer->state.emitted_vs_prolog == prolog && !pipeline_is_dirty)
+   if (cmd_buffer->state.emitted_vs_prolog == prolog)
       return;
 
    enum amd_gfx_level chip = cmd_buffer->device->physical_device->rad_info.gfx_level;
@@ -3973,10 +3994,10 @@ emit_prolog_regs(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *v
 
 static void
 emit_prolog_inputs(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *vs_shader,
-                   uint32_t nontrivial_divisors, bool pipeline_is_dirty)
+                   uint32_t nontrivial_divisors)
 {
    /* no need to re-emit anything in this case */
-   if (!nontrivial_divisors && !pipeline_is_dirty && cmd_buffer->state.emitted_vs_prolog &&
+   if (!nontrivial_divisors && cmd_buffer->state.emitted_vs_prolog &&
        !cmd_buffer->state.emitted_vs_prolog->nontrivial_divisors)
       return;
 
@@ -4022,7 +4043,7 @@ emit_prolog_inputs(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader 
 }
 
 static void
-radv_emit_vertex_input(struct radv_cmd_buffer *cmd_buffer, bool pipeline_is_dirty)
+radv_emit_vertex_input(struct radv_cmd_buffer *cmd_buffer)
 {
    const struct radv_shader *vs_shader =
       radv_get_shader(cmd_buffer->state.shaders, MESA_SHADER_VERTEX);
@@ -4039,8 +4060,8 @@ radv_emit_vertex_input(struct radv_cmd_buffer *cmd_buffer, bool pipeline_is_dirt
       vk_command_buffer_set_error(&cmd_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
       return;
    }
-   emit_prolog_regs(cmd_buffer, vs_shader, prolog, pipeline_is_dirty);
-   emit_prolog_inputs(cmd_buffer, vs_shader, nontrivial_divisors, pipeline_is_dirty);
+   emit_prolog_regs(cmd_buffer, vs_shader, prolog);
+   emit_prolog_inputs(cmd_buffer, vs_shader, nontrivial_divisors);
 
    cmd_buffer->shader_upload_seq = MAX2(cmd_buffer->shader_upload_seq, prolog->upload_seq);
 
@@ -4450,7 +4471,32 @@ radv_emit_line_rasterization_mode(struct radv_cmd_buffer *cmd_buffer)
 }
 
 static void
-radv_cmd_buffer_flush_dynamic_state(struct radv_cmd_buffer *cmd_buffer, bool pipeline_is_dirty)
+radv_emit_attachment_feedback_loop_enable(struct radv_cmd_buffer *cmd_buffer)
+{
+   const struct radv_graphics_pipeline *pipeline = cmd_buffer->state.graphics_pipeline;
+   const struct radv_shader *ps = cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT];
+   const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
+   unsigned db_shader_control = pipeline->db_shader_control;
+   const bool uses_ds_feedback_loop =
+      !!(d->feedback_loop_aspects & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT));
+   unsigned z_order;
+
+   /* When a depth/stencil attachment is used inside feedback loops, use LATE_Z to make sure shader
+    * invocations read the correct value.
+    */
+   if (!uses_ds_feedback_loop && (ps->info.ps.early_fragment_test || !ps->info.ps.writes_memory)) {
+      z_order = V_02880C_EARLY_Z_THEN_LATE_Z;
+   } else {
+      z_order = V_02880C_LATE_Z;
+   }
+
+   db_shader_control |= S_02880C_Z_ORDER(z_order);
+
+   radeon_set_context_reg(cmd_buffer->cs, R_02880C_DB_SHADER_CONTROL, db_shader_control);
+}
+
+static void
+radv_cmd_buffer_flush_dynamic_state(struct radv_cmd_buffer *cmd_buffer)
 {
    const uint64_t states =
       cmd_buffer->state.dirty & cmd_buffer->state.emitted_graphics_pipeline->needed_dynamic_state;
@@ -4544,7 +4590,7 @@ radv_cmd_buffer_flush_dynamic_state(struct radv_cmd_buffer *cmd_buffer, bool pip
       radv_emit_color_write(cmd_buffer);
 
    if (states & RADV_CMD_DIRTY_DYNAMIC_VERTEX_INPUT)
-      radv_emit_vertex_input(cmd_buffer, pipeline_is_dirty);
+      radv_emit_vertex_input(cmd_buffer);
 
    if (states & RADV_CMD_DIRTY_DYNAMIC_PATCH_CONTROL_POINTS)
       radv_emit_patch_control_points(cmd_buffer);
@@ -4581,6 +4627,9 @@ radv_cmd_buffer_flush_dynamic_state(struct radv_cmd_buffer *cmd_buffer, bool pip
                  RADV_CMD_DIRTY_DYNAMIC_RASTERIZATION_SAMPLES |
                  RADV_CMD_DIRTY_DYNAMIC_LINE_RASTERIZATION_MODE))
       radv_emit_msaa_state(cmd_buffer);
+
+   if (states & RADV_CMD_DIRTY_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE)
+      radv_emit_attachment_feedback_loop_enable(cmd_buffer);
 
    cmd_buffer->state.dirty &= ~states;
 }
@@ -6574,11 +6623,18 @@ radv_bind_fragment_shader(struct radv_cmd_buffer *cmd_buffer, const struct radv_
 
    if (gfx_level >= GFX10_3 &&
        previous_ps && previous_ps->info.ps.reads_sample_mask_in != ps->info.ps.reads_sample_mask_in)
+      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_RASTERIZATION_SAMPLES |
+                                 RADV_CMD_DIRTY_DYNAMIC_FRAGMENT_SHADING_RATE;
+
+   if (cmd_buffer->state.ms.sample_shading_enable != ps->info.ps.uses_sample_shading) {
+      cmd_buffer->state.ms.sample_shading_enable = ps->info.ps.uses_sample_shading;
       cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_RASTERIZATION_SAMPLES;
 
-   if (cmd_buffer->state.ms.sample_shading_enable != ps->info.ps.uses_sample_shading ||
-       cmd_buffer->state.ms.min_sample_shading != min_sample_shading) {
-      cmd_buffer->state.ms.sample_shading_enable = ps->info.ps.uses_sample_shading;
+      if (gfx_level >= GFX10_3)
+         cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_FRAGMENT_SHADING_RATE;
+   }
+
+   if (cmd_buffer->state.ms.min_sample_shading != min_sample_shading) {
       cmd_buffer->state.ms.min_sample_shading = min_sample_shading;
       cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_RASTERIZATION_SAMPLES;
    }
@@ -6703,7 +6759,7 @@ radv_CmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipeline
       cmd_buffer->state.graphics_pipeline = graphics_pipeline;
 
       cmd_buffer->state.has_nggc = graphics_pipeline->has_ngg_culling;
-      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_PIPELINE | RADV_CMD_DIRTY_DYNAMIC_VERTEX_INPUT;
+      cmd_buffer->state.dirty |= RADV_CMD_DIRTY_PIPELINE;
       cmd_buffer->push_constant_stages |= graphics_pipeline->active_stages;
 
       /* Prefetch all pipeline shaders at first draw time. */
@@ -6731,11 +6787,19 @@ radv_CmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipeline
          }
       }
 
-      /* Re-emit the vertex buffer descriptors because they are really tied to the pipeline. */
       const struct radv_shader *vs =
          radv_get_shader(graphics_pipeline->base.shaders, MESA_SHADER_VERTEX);
-      if (vs && vs->info.vs.vb_desc_usage_mask) {
-         cmd_buffer->state.dirty |= RADV_CMD_DIRTY_VERTEX_BUFFER;
+      if (vs) {
+         /* Re-emit the VS prolog when a new vertex shader is bound. */
+         if (vs->info.vs.has_prolog) {
+            cmd_buffer->state.emitted_vs_prolog = NULL;
+            cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_VERTEX_INPUT;
+         }
+
+         /* Re-emit the vertex buffer descriptors because they are really tied to the pipeline. */
+         if (vs->info.vs.vb_desc_usage_mask) {
+            cmd_buffer->state.dirty |= RADV_CMD_DIRTY_VERTEX_BUFFER;
+         }
       }
 
       if (cmd_buffer->device->physical_device->rad_info.rbplus_allowed &&
@@ -7522,6 +7586,18 @@ radv_CmdSetDiscardRectangleModeEXT(VkCommandBuffer commandBuffer,
    state->dynamic.vk.dr.mode = discardRectangleMode;
 
    state->dirty |= RADV_CMD_DIRTY_DYNAMIC_DISCARD_RECTANGLE_MODE;
+}
+
+VKAPI_ATTR void VKAPI_CALL
+radv_CmdSetAttachmentFeedbackLoopEnableEXT(VkCommandBuffer commandBuffer,
+                                           VkImageAspectFlags aspectMask)
+{
+   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   struct radv_cmd_state *state = &cmd_buffer->state;
+
+   state->dynamic.feedback_loop_aspects = aspectMask;
+
+   state->dirty |= RADV_CMD_DIRTY_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE;
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -9069,7 +9145,7 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
       }
    }
 
-   radv_cmd_buffer_flush_dynamic_state(cmd_buffer, pipeline_is_dirty);
+   radv_cmd_buffer_flush_dynamic_state(cmd_buffer);
 
    radv_emit_draw_registers(cmd_buffer, info);
 

@@ -238,7 +238,7 @@ finish_lower_subdword_test()
 }
 
 void
-finish_ra_test(ra_test_policy policy, bool lower)
+finish_ra_test(ra_test_policy policy)
 {
    finish_program(program.get());
    if (!aco::validate_ir(program.get())) {
@@ -253,11 +253,6 @@ finish_ra_test(ra_test_policy policy, bool lower)
    if (aco::validate_ra(program.get())) {
       fail_test("Validation after register allocation failed");
       return;
-   }
-
-   if (lower) {
-      aco::ssa_elimination(program.get());
-      aco::lower_to_hw_instr(program.get());
    }
 
    aco_print_program(program.get(), output);

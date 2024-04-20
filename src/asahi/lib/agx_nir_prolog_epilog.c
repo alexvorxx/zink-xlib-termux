@@ -474,6 +474,7 @@ lower_output_to_epilog(nir_builder *b, nir_intrinsic_instr *intr, void *data)
     * render target, so get that out of the way now.
     */
    unsigned rt = sem.location - FRAG_RESULT_DATA0;
+   rt += nir_src_as_uint(intr->src[1]);
 
    if (sem.dual_source_blend_index) {
       assert(rt == 0);
@@ -491,6 +492,7 @@ lower_output_to_epilog(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       assert(vec->bit_size == 16);
 
    uint32_t one_f = (vec->bit_size == 32 ? fui(1.0) : _mesa_float_to_half(1.0));
+   unsigned comp = nir_intrinsic_component(intr);
 
    u_foreach_bit(c, nir_intrinsic_write_mask(intr)) {
       nir_scalar s = nir_scalar_resolved(vec, c);
@@ -502,7 +504,7 @@ lower_output_to_epilog(nir_builder *b, nir_intrinsic_instr *intr, void *data)
          unsigned stride = vec->bit_size / 16;
 
          nir_export_agx(b, nir_channel(b, vec, c),
-                        .base = (2 * (4 + (4 * rt))) + c * stride);
+                        .base = (2 * (4 + (4 * rt))) + (comp + c) * stride);
       }
    }
 

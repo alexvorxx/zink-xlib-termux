@@ -1488,6 +1488,9 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
    }
 
    case nir_intrinsic_read_invocation: {
+      /* TODO: Check if we're actually inside divergent control flow */
+      b->shader->any_quad_divergent_shuffle |= b->shader->any_cf;
+
       /* Lane ID guaranteed to be uniform */
       return agx_shuffle_to(b, dst, agx_src_index(&instr->src[0]),
                             agx_src_index(&instr->src[1]));
@@ -3096,6 +3099,10 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
    agx_opt_empty_else(ctx);
    agx_opt_break_if(ctx);
    agx_opt_jmp_none(ctx);
+
+   if (ctx->any_quad_divergent_shuffle)
+      agx_lower_divergent_shuffle(ctx);
+
    agx_lower_pseudo(ctx);
 
    if (agx_should_dump(nir, AGX_DBG_SHADERS))

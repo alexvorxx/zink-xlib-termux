@@ -455,6 +455,11 @@ typedef struct {
    /* Has r0l been zeroed yet due to control flow? */
    bool any_cf;
 
+   /* Do we need r0h zero throughout the program to handle quad-divergent
+    * shuffle?
+    */
+   bool any_quad_divergent_shuffle;
+
    /* Number of nested control flow structures within the innermost loop. Since
     * NIR is just loop and if-else, this is the number of nested if-else
     * statements in the loop */
@@ -946,6 +951,7 @@ void agx_print_instr(const agx_instr *I, FILE *fp);
 void agx_print_block(const agx_block *block, FILE *fp);
 void agx_print_shader(const agx_context *ctx, FILE *fp);
 void agx_optimizer(agx_context *ctx);
+void agx_lower_divergent_shuffle(agx_context *ctx);
 void agx_lower_pseudo(agx_context *ctx);
 void agx_lower_spill(agx_context *ctx);
 void agx_lower_uniform_sources(agx_context *ctx);

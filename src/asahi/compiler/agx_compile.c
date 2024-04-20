@@ -1496,6 +1496,15 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
                             agx_src_index(&instr->src[1]));
    }
 
+   case nir_intrinsic_quad_broadcast: {
+      /* TODO: Check if we're actually inside divergent control flow */
+      b->shader->any_quad_divergent_shuffle |= b->shader->any_cf;
+
+      /* Lane ID guaranteed to be uniform */
+      return agx_quad_shuffle_to(b, dst, agx_src_index(&instr->src[0]),
+                                 agx_src_index(&instr->src[1]));
+   }
+
    case nir_intrinsic_ballot: {
       return agx_ballot_to(b, dst, agx_src_index(&instr->src[0]));
    }

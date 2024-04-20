@@ -1512,6 +1512,7 @@ compact_immediate(const struct intel_device_info *devinfo,
       case BRW_REGISTER_TYPE_UQ:
       case BRW_REGISTER_TYPE_B:
       case BRW_REGISTER_TYPE_UB:
+      default:
          return -1;
       }
    } else {
@@ -1555,6 +1556,8 @@ uncompact_immediate(const struct intel_device_info *devinfo,
       case BRW_REGISTER_TYPE_B:
       case BRW_REGISTER_TYPE_UB:
          unreachable("not reached");
+      default:
+         unreachable("invalid type");
       }
    } else {
       /* Replicate the 13th bit into the high 19 bits */
@@ -1570,10 +1573,10 @@ has_immediate(const struct intel_device_info *devinfo, const brw_inst *inst,
 {
    if (brw_inst_src0_reg_file(devinfo, inst) == BRW_IMMEDIATE_VALUE) {
       *type = brw_inst_src0_type(devinfo, inst);
-      return *type != INVALID_REG_TYPE;
+      return *type != BRW_TYPE_INVALID;
    } else if (brw_inst_src1_reg_file(devinfo, inst) == BRW_IMMEDIATE_VALUE) {
       *type = brw_inst_src1_type(devinfo, inst);
-      return *type != INVALID_REG_TYPE;
+      return *type != BRW_TYPE_INVALID;
    }
 
    return false;

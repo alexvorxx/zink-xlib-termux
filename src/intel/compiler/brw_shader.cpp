@@ -74,6 +74,8 @@ fs_reg_saturate_immediate(fs_reg *reg)
       unreachable("unimplemented: saturate vector immediate");
    case BRW_REGISTER_TYPE_HF:
       unreachable("unimplemented: saturate HF immediate");
+   default:
+      unreachable("invalid type");
    }
 
    if (size < 8) {
@@ -126,6 +128,8 @@ fs_reg_negate_immediate(fs_reg *reg)
    case BRW_REGISTER_TYPE_HF:
       reg->ud ^= 0x80008000;
       return true;
+   default:
+      unreachable("invalid type");
    }
 
    return false;
@@ -171,6 +175,8 @@ fs_reg_abs_immediate(fs_reg *reg)
    case BRW_REGISTER_TYPE_HF:
       reg->ud &= ~0x80008000;
       return true;
+   default:
+      unreachable("invalid type");
    }
 
    return false;

@@ -157,12 +157,12 @@ uint32_t brw_swizzle_immediate(enum brw_reg_type type, uint32_t x, unsigned swz)
 struct brw_reg {
    union {
       struct {
-         enum brw_reg_type type:4;
+         enum brw_reg_type type:5;
          enum brw_reg_file file:3;      /* :2 hardware format */
          unsigned negate:1;             /* source only */
          unsigned abs:1;                /* source only */
          unsigned address_mode:1;       /* relative addressing, hopefully! */
-         unsigned pad0:17;
+         unsigned pad0:16;
          unsigned subnr:5;              /* :1 in align16 */
       };
       uint32_t bits;
@@ -287,29 +287,7 @@ struct brw_indirect {
 static inline unsigned
 type_sz(unsigned type)
 {
-   switch(type) {
-   case BRW_REGISTER_TYPE_UQ:
-   case BRW_REGISTER_TYPE_Q:
-   case BRW_REGISTER_TYPE_DF:
-      return 8;
-   case BRW_REGISTER_TYPE_UD:
-   case BRW_REGISTER_TYPE_D:
-   case BRW_REGISTER_TYPE_F:
-   case BRW_REGISTER_TYPE_VF:
-      return 4;
-   case BRW_REGISTER_TYPE_UW:
-   case BRW_REGISTER_TYPE_W:
-   case BRW_REGISTER_TYPE_HF:
-   /* [U]V components are 4-bit, but HW unpacks them to 16-bit (2 bytes) */
-   case BRW_REGISTER_TYPE_UV:
-   case BRW_REGISTER_TYPE_V:
-      return 2;
-   case BRW_REGISTER_TYPE_UB:
-   case BRW_REGISTER_TYPE_B:
-      return 1;
-   default:
-      unreachable("not reached");
-   }
+   return brw_type_size_bytes((enum brw_reg_type) type);
 }
 
 static inline enum brw_reg_type

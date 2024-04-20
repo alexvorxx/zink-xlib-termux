@@ -125,13 +125,7 @@ inst_is_split_send(const struct brw_isa_info *isa, const brw_inst *inst)
 static unsigned
 signed_type(unsigned type)
 {
-   switch (type) {
-   case BRW_REGISTER_TYPE_UD: return BRW_REGISTER_TYPE_D;
-   case BRW_REGISTER_TYPE_UW: return BRW_REGISTER_TYPE_W;
-   case BRW_REGISTER_TYPE_UB: return BRW_REGISTER_TYPE_B;
-   case BRW_REGISTER_TYPE_UQ: return BRW_REGISTER_TYPE_Q;
-   default:                   return type;
-   }
+   return brw_type_is_uint(type) ? (type | BRW_TYPE_BASE_SINT) : type;
 }
 
 static enum brw_reg_type
@@ -266,25 +260,25 @@ invalid_values(const struct brw_isa_info *isa, const brw_inst *inst)
    if (num_sources == 3) {
       if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1) {
          if (devinfo->ver >= 10) {
-            ERROR_IF(brw_inst_3src_a1_dst_type (devinfo, inst) == INVALID_REG_TYPE ||
-                     brw_inst_3src_a1_src0_type(devinfo, inst) == INVALID_REG_TYPE ||
-                     brw_inst_3src_a1_src1_type(devinfo, inst) == INVALID_REG_TYPE ||
-                     brw_inst_3src_a1_src2_type(devinfo, inst) == INVALID_REG_TYPE,
+            ERROR_IF(brw_inst_3src_a1_dst_type (devinfo, inst) == BRW_TYPE_INVALID ||
+                     brw_inst_3src_a1_src0_type(devinfo, inst) == BRW_TYPE_INVALID ||
+                     brw_inst_3src_a1_src1_type(devinfo, inst) == BRW_TYPE_INVALID ||
+                     brw_inst_3src_a1_src2_type(devinfo, inst) == BRW_TYPE_INVALID,
                      "invalid register type encoding");
          } else {
             ERROR("Align1 mode not allowed on Gen < 10");
          }
       } else {
-         ERROR_IF(brw_inst_3src_a16_dst_type(devinfo, inst) == INVALID_REG_TYPE ||
-                  brw_inst_3src_a16_src_type(devinfo, inst) == INVALID_REG_TYPE,
+         ERROR_IF(brw_inst_3src_a16_dst_type(devinfo, inst) == BRW_TYPE_INVALID ||
+                  brw_inst_3src_a16_src_type(devinfo, inst) == BRW_TYPE_INVALID,
                   "invalid register type encoding");
       }
    } else {
-      ERROR_IF(brw_inst_dst_type (devinfo, inst) == INVALID_REG_TYPE ||
+      ERROR_IF(brw_inst_dst_type (devinfo, inst) == BRW_TYPE_INVALID ||
                (num_sources > 0 &&
-                brw_inst_src0_type(devinfo, inst) == INVALID_REG_TYPE) ||
+                brw_inst_src0_type(devinfo, inst) == BRW_TYPE_INVALID) ||
                (num_sources > 1 &&
-                brw_inst_src1_type(devinfo, inst) == INVALID_REG_TYPE),
+                brw_inst_src1_type(devinfo, inst) == BRW_TYPE_INVALID),
                "invalid register type encoding");
    }
 
@@ -468,8 +462,9 @@ execution_type_for_type(enum brw_reg_type type)
    case BRW_REGISTER_TYPE_V:
    case BRW_REGISTER_TYPE_UV:
       return BRW_REGISTER_TYPE_W;
+   default:
+      unreachable("invalid type");
    }
-   unreachable("not reached");
 }
 
 /**

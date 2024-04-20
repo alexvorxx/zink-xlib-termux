@@ -1586,6 +1586,7 @@ imm(FILE *file, const struct brw_isa_info *isa, enum brw_reg_type type,
       break;
    case BRW_REGISTER_TYPE_UB:
    case BRW_REGISTER_TYPE_B:
+   default:
       format(file, "*** invalid immediate type %d ", type);
    }
    return 0;

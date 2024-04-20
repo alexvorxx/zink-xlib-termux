@@ -1505,6 +1505,21 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
                                  agx_src_index(&instr->src[1]));
    }
 
+   case nir_intrinsic_quad_swap_horizontal: {
+      return agx_quad_shuffle_xor_to(b, dst, agx_src_index(&instr->src[0]),
+                                     agx_immediate(1));
+   }
+
+   case nir_intrinsic_quad_swap_vertical: {
+      return agx_quad_shuffle_xor_to(b, dst, agx_src_index(&instr->src[0]),
+                                     agx_immediate(2));
+   }
+
+   case nir_intrinsic_quad_swap_diagonal: {
+      return agx_quad_shuffle_xor_to(b, dst, agx_src_index(&instr->src[0]),
+                                     agx_immediate(3));
+   }
+
    case nir_intrinsic_ballot: {
       return agx_ballot_to(b, dst, agx_src_index(&instr->src[0]));
    }

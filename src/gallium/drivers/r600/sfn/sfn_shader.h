@@ -241,7 +241,7 @@ public:
       return m_rat_return_address;
    }
 
-   PRegister emit_load_to_register(PVirtualValue src);
+   PRegister emit_load_to_register(PVirtualValue src, int chan = -1);
 
    virtual unsigned image_size_const_offset() { return 0;}
 

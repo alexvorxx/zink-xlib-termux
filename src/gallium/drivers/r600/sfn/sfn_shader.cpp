@@ -918,13 +918,14 @@ lds_op_from_intrinsic(nir_atomic_op op, bool ret)
 }
 
 PRegister
-Shader::emit_load_to_register(PVirtualValue src)
+Shader::emit_load_to_register(PVirtualValue src, int chan)
 {
    assert(src);
    PRegister dest = src->as_register();
 
-   if (!dest) {
-      dest = value_factory().temp_register();
+   if (!dest || chan >= 0) {
+      dest = value_factory().temp_register(chan);
+      dest->set_pin(pin_free);
       emit_instruction(new AluInstr(op1_mov, dest, src, AluInstr::last_write));
    }
    return dest;

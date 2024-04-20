@@ -91,6 +91,24 @@ store_tilebuffer(nir_builder *b, struct agx_tilebuffer_layout *tib,
 }
 
 static nir_def *
+nir_fsat_signed(nir_builder *b, nir_def *x)
+{
+   return nir_fclamp(b, x, nir_imm_floatN_t(b, -1.0, x->bit_size),
+                     nir_imm_floatN_t(b, +1.0, x->bit_size));
+}
+
+static nir_def *
+nir_fsat_to_format(nir_builder *b, nir_def *x, enum pipe_format format)
+{
+   if (util_format_is_unorm(format))
+      return nir_fsat(b, x);
+   else if (util_format_is_snorm(format))
+      return nir_fsat_signed(b, x);
+   else
+      return x;
+}
+
+static nir_def *
 load_tilebuffer(nir_builder *b, struct agx_tilebuffer_layout *tib,
                 uint8_t load_comps, uint8_t bit_size, unsigned rt,
                 enum pipe_format format, enum pipe_format logical_format)
@@ -112,6 +130,15 @@ load_tilebuffer(nir_builder *b, struct agx_tilebuffer_layout *tib,
       assert(bit_size == 32);
       res = nir_f2f32(b, res);
    }
+
+   /* Some formats like RGB565 are float in the tilebuffer but logically
+    * normalized. We need to clamp on load to get proper blending semantics, as
+    * the APIs require clamping here and nir_lower_blend (correctly) assumes
+    * load_output is clamped. The spilled path is unaffected as the clamping
+    * implicitly happens when roundtripping to memory.
+    */
+   if (f16)
+      res = nir_fsat_to_format(b, res, logical_format);
 
    res = nir_sign_extend_if_sint(b, res, logical_format);
    return nir_pad_vector(b, res, load_comps);

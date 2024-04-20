@@ -1965,8 +1965,10 @@ zink_buffer_map(struct pipe_context *pctx,
               (((usage & PIPE_MAP_READ) && !(usage & PIPE_MAP_PERSISTENT) &&
                ((res->obj->bo->base.placement & VK_STAGING_RAM) != VK_STAGING_RAM)) ||
               !res->obj->host_visible)) {
+      /* the above conditional catches uncached reads and non-HV writes */
       assert(!(usage & (TC_TRANSFER_MAP_THREADED_UNSYNC)));
-      if (!res->obj->host_visible || res->base.b.flags & PIPE_RESOURCE_FLAG_DONT_MAP_DIRECTLY) {
+      /* any read, non-HV write, or unmappable that reaches this point needs staging */
+      if ((usage & PIPE_MAP_READ) || !res->obj->host_visible || res->base.b.flags & PIPE_RESOURCE_FLAG_DONT_MAP_DIRECTLY) {
 overwrite:
          trans->offset = box->x % screen->info.props.limits.minMemoryMapAlignment;
          trans->staging_res = pipe_buffer_create(&screen->base, PIPE_BIND_LINEAR, PIPE_USAGE_STAGING, box->width + trans->offset);
@@ -2044,8 +2046,6 @@ overwrite:
    trans->base.b.usage = usage;
    if (usage & PIPE_MAP_WRITE)
       util_range_add(&res->base.b, &res->valid_buffer_range, box->x, box->x + box->width);
-   if ((usage & PIPE_MAP_PERSISTENT) && !(usage & PIPE_MAP_COHERENT))
-      res->obj->persistent_maps++;
 
 success:
    /* ensure the copy context gets unlocked */
@@ -2176,8 +2176,6 @@ zink_image_map(struct pipe_context *pctx,
 
    if (sizeof(void*) == 4)
       trans->base.b.usage |= ZINK_MAP_TEMPORARY;
-   if ((usage & PIPE_MAP_PERSISTENT) && !(usage & PIPE_MAP_COHERENT))
-      res->obj->persistent_maps++;
 
    *transfer = &trans->base.b;
    return ptr;
@@ -2428,6 +2426,7 @@ zink_resource_copy_box_add(struct zink_context *ctx, struct zink_resource *res, 
    util_dynarray_append(&res->obj->copies[level], struct pipe_box, *box);
    if (!res->copies_warned && util_dynarray_num_elements(&res->obj->copies[level], struct pipe_box) > 100) {
       perf_debug(ctx, "zink: PERF WARNING! > 100 copy boxes detected for %p\n", res);
+      mesa_logw("zink: PERF WARNING! > 100 copy boxes detected for %p\n", res);
       res->copies_warned = true;
    }
    res->obj->copies_valid = true;
@@ -2456,7 +2455,6 @@ static void
 transfer_unmap(struct pipe_context *pctx, struct pipe_transfer *ptrans)
 {
    struct zink_context *ctx = zink_context(pctx);
-   struct zink_resource *res = zink_resource(ptrans->resource);
    struct zink_transfer *trans = (struct zink_transfer *)ptrans;
 
    if (!(trans->base.b.usage & (PIPE_MAP_FLUSH_EXPLICIT | PIPE_MAP_COHERENT))) {
@@ -2465,9 +2463,6 @@ transfer_unmap(struct pipe_context *pctx, struct pipe_transfer *ptrans)
       box.x = box.y = box.z = 0;
       zink_transfer_flush_region(pctx, ptrans, &box);
    }
-
-   if ((trans->base.b.usage & PIPE_MAP_PERSISTENT) && !(trans->base.b.usage & PIPE_MAP_COHERENT))
-      res->obj->persistent_maps--;
 
    if (trans->staging_res)
       pipe_resource_reference(&trans->staging_res, NULL);

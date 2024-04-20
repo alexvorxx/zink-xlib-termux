@@ -492,6 +492,8 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_helper_invocation:
    case nir_intrinsic_is_helper_invocation:
    case nir_intrinsic_load_scratch:
+   case nir_intrinsic_deref_atomic:
+   case nir_intrinsic_deref_atomic_swap:
    case nir_intrinsic_deref_atomic_add:
    case nir_intrinsic_deref_atomic_imin:
    case nir_intrinsic_deref_atomic_umin:
@@ -506,6 +508,8 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_deref_atomic_fmin:
    case nir_intrinsic_deref_atomic_fmax:
    case nir_intrinsic_deref_atomic_fcomp_swap:
+   case nir_intrinsic_ssbo_atomic:
+   case nir_intrinsic_ssbo_atomic_swap:
    case nir_intrinsic_ssbo_atomic_add:
    case nir_intrinsic_ssbo_atomic_imin:
    case nir_intrinsic_ssbo_atomic_umin:
@@ -520,6 +524,8 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_ssbo_atomic_fmax:
    case nir_intrinsic_ssbo_atomic_fmin:
    case nir_intrinsic_ssbo_atomic_fcomp_swap:
+   case nir_intrinsic_image_deref_atomic:
+   case nir_intrinsic_image_deref_atomic_swap:
    case nir_intrinsic_image_deref_atomic_add:
    case nir_intrinsic_image_deref_atomic_imin:
    case nir_intrinsic_image_deref_atomic_umin:
@@ -535,6 +541,8 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_image_deref_atomic_fmax:
    case nir_intrinsic_image_deref_atomic_inc_wrap:
    case nir_intrinsic_image_deref_atomic_dec_wrap:
+   case nir_intrinsic_image_atomic:
+   case nir_intrinsic_image_atomic_swap:
    case nir_intrinsic_image_atomic_add:
    case nir_intrinsic_image_atomic_imin:
    case nir_intrinsic_image_atomic_umin:
@@ -550,6 +558,8 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_image_atomic_fmax:
    case nir_intrinsic_image_atomic_inc_wrap:
    case nir_intrinsic_image_atomic_dec_wrap:
+   case nir_intrinsic_bindless_image_atomic:
+   case nir_intrinsic_bindless_image_atomic_swap:
    case nir_intrinsic_bindless_image_atomic_add:
    case nir_intrinsic_bindless_image_atomic_imin:
    case nir_intrinsic_bindless_image_atomic_umin:
@@ -565,6 +575,8 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_bindless_image_atomic_fmax:
    case nir_intrinsic_bindless_image_atomic_inc_wrap:
    case nir_intrinsic_bindless_image_atomic_dec_wrap:
+   case nir_intrinsic_shared_atomic:
+   case nir_intrinsic_shared_atomic_swap:
    case nir_intrinsic_shared_atomic_add:
    case nir_intrinsic_shared_atomic_imin:
    case nir_intrinsic_shared_atomic_umin:
@@ -579,6 +591,8 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_shared_atomic_fmin:
    case nir_intrinsic_shared_atomic_fmax:
    case nir_intrinsic_shared_atomic_fcomp_swap:
+   case nir_intrinsic_task_payload_atomic:
+   case nir_intrinsic_task_payload_atomic_swap:
    case nir_intrinsic_task_payload_atomic_add:
    case nir_intrinsic_task_payload_atomic_imin:
    case nir_intrinsic_task_payload_atomic_umin:
@@ -593,6 +607,8 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_task_payload_atomic_fmin:
    case nir_intrinsic_task_payload_atomic_fmax:
    case nir_intrinsic_task_payload_atomic_fcomp_swap:
+   case nir_intrinsic_global_atomic:
+   case nir_intrinsic_global_atomic_swap:
    case nir_intrinsic_global_atomic_add:
    case nir_intrinsic_global_atomic_imin:
    case nir_intrinsic_global_atomic_umin:
@@ -607,6 +623,8 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_global_atomic_fmin:
    case nir_intrinsic_global_atomic_fmax:
    case nir_intrinsic_global_atomic_fcomp_swap:
+   case nir_intrinsic_global_atomic_amd:
+   case nir_intrinsic_global_atomic_swap_amd:
    case nir_intrinsic_global_atomic_add_amd:
    case nir_intrinsic_global_atomic_imin_amd:
    case nir_intrinsic_global_atomic_umin_amd:
@@ -621,6 +639,8 @@ visit_intrinsic(nir_shader *shader, nir_intrinsic_instr *instr)
    case nir_intrinsic_global_atomic_fmin_amd:
    case nir_intrinsic_global_atomic_fmax_amd:
    case nir_intrinsic_global_atomic_fcomp_swap_amd:
+   case nir_intrinsic_global_atomic_2x32:
+   case nir_intrinsic_global_atomic_swap_2x32:
    case nir_intrinsic_global_atomic_add_2x32:
    case nir_intrinsic_global_atomic_imin_2x32:
    case nir_intrinsic_global_atomic_umin_2x32:
@@ -1032,14 +1052,10 @@ visit_if(nir_if *if_stmt, struct divergence_state *state)
    progress |= visit_cf_list(&if_stmt->else_list, &else_state);
 
    /* handle phis after the IF */
-   nir_foreach_instr(instr, nir_cf_node_cf_tree_next(&if_stmt->cf_node)) {
-      if (instr->type != nir_instr_type_phi)
-         break;
-
+   nir_foreach_phi(phi, nir_cf_node_cf_tree_next(&if_stmt->cf_node)) {
       if (state->first_visit)
-         nir_instr_as_phi(instr)->dest.ssa.divergent = false;
-      progress |= visit_if_merge_phi(nir_instr_as_phi(instr),
-                                     if_stmt->condition.ssa->divergent);
+         phi->dest.ssa.divergent = false;
+      progress |= visit_if_merge_phi(phi, if_stmt->condition.ssa->divergent);
    }
 
    /* join loop divergence information from both branch legs */
@@ -1066,11 +1082,7 @@ visit_loop(nir_loop *loop, struct divergence_state *state)
 
    /* handle loop header phis first: we have no knowledge yet about
     * the loop's control flow or any loop-carried sources. */
-   nir_foreach_instr(instr, loop_header) {
-      if (instr->type != nir_instr_type_phi)
-         break;
-
-      nir_phi_instr *phi = nir_instr_as_phi(instr);
+   nir_foreach_phi(phi, loop_header) {
       if (!state->first_visit && phi->dest.ssa.divergent)
          continue;
 
@@ -1096,12 +1108,8 @@ visit_loop(nir_loop *loop, struct divergence_state *state)
       repeat = false;
 
       /* revisit loop header phis to see if something has changed */
-      nir_foreach_instr(instr, loop_header) {
-         if (instr->type != nir_instr_type_phi)
-            break;
-
-         repeat |= visit_loop_header_phi(nir_instr_as_phi(instr),
-                                         loop_preheader,
+      nir_foreach_phi(phi, loop_header) {
+         repeat |= visit_loop_header_phi(phi, loop_preheader,
                                          loop_state.divergent_loop_continue);
       }
 
@@ -1110,14 +1118,10 @@ visit_loop(nir_loop *loop, struct divergence_state *state)
    } while (repeat);
 
    /* handle phis after the loop */
-   nir_foreach_instr(instr, nir_cf_node_cf_tree_next(&loop->cf_node)) {
-      if (instr->type != nir_instr_type_phi)
-         break;
-
+   nir_foreach_phi(phi, nir_cf_node_cf_tree_next(&loop->cf_node)) {
       if (state->first_visit)
-         nir_instr_as_phi(instr)->dest.ssa.divergent = false;
-      progress |= visit_loop_exit_phi(nir_instr_as_phi(instr),
-                                      loop_state.divergent_loop_break);
+         phi->dest.ssa.divergent = false;
+      progress |= visit_loop_exit_phi(phi, loop_state.divergent_loop_break);
    }
 
    loop->divergent = (loop_state.divergent_loop_break || loop_state.divergent_loop_continue);

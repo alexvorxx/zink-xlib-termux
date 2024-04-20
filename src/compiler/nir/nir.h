@@ -1305,6 +1305,59 @@ nir_get_glsl_base_type_for_nir_type(nir_alu_type base_type);
 nir_op nir_type_conversion_op(nir_alu_type src, nir_alu_type dst,
                               nir_rounding_mode rnd);
 
+/**
+ * Atomic intrinsics perform different operations depending on the value of
+ * their atomic_op constant index. nir_atomic_op defines the operations.
+ */
+typedef enum {
+   nir_atomic_op_iadd,
+   nir_atomic_op_imin,
+   nir_atomic_op_umin,
+   nir_atomic_op_imax,
+   nir_atomic_op_umax,
+   nir_atomic_op_iand,
+   nir_atomic_op_ior,
+   nir_atomic_op_ixor,
+   nir_atomic_op_xchg,
+   nir_atomic_op_fadd,
+   nir_atomic_op_fmin,
+   nir_atomic_op_fmax,
+   nir_atomic_op_cmpxchg,
+   nir_atomic_op_fcmpxchg,
+   nir_atomic_op_inc_wrap,
+   nir_atomic_op_dec_wrap,
+} nir_atomic_op;
+
+static inline nir_alu_type
+nir_atomic_op_type(nir_atomic_op op)
+{
+   switch (op) {
+   case nir_atomic_op_imin:
+   case nir_atomic_op_imax:
+      return nir_type_int;
+
+   case nir_atomic_op_fadd:
+   case nir_atomic_op_fmin:
+   case nir_atomic_op_fmax:
+   case nir_atomic_op_fcmpxchg:
+      return nir_type_float;
+
+   case nir_atomic_op_iadd:
+   case nir_atomic_op_iand:
+   case nir_atomic_op_ior:
+   case nir_atomic_op_ixor:
+   case nir_atomic_op_xchg:
+   case nir_atomic_op_cmpxchg:
+   case nir_atomic_op_umin:
+   case nir_atomic_op_umax:
+   case nir_atomic_op_inc_wrap:
+   case nir_atomic_op_dec_wrap:
+      return nir_type_uint;
+   }
+
+   unreachable("Invalid nir_atomic_op");
+}
+
 nir_op
 nir_op_vec(unsigned components);
 
@@ -2725,6 +2778,13 @@ nir_ssa_scalar_resolved(nir_ssa_def *def, unsigned channel)
    return nir_ssa_scalar_chase_movs(nir_get_ssa_scalar(def, channel));
 }
 
+static inline uint64_t
+nir_alu_src_as_uint(nir_alu_src src)
+{
+   assert(src.src.is_ssa && "precondition");
+   nir_ssa_scalar scalar = nir_get_ssa_scalar(src.src.ssa, src.swizzle[0]);
+   return nir_ssa_scalar_as_uint(scalar);
+}
 
 typedef struct {
    bool success;
@@ -2889,16 +2949,29 @@ nir_block_ends_in_break(nir_block *block)
 #define nir_foreach_instr_reverse_safe(instr, block) \
    foreach_list_typed_reverse_safe(nir_instr, instr, node, &(block)->instr_list)
 
+/* Phis come first in the block */
+#define nir_foreach_phi_internal(instr, phi) \
+   if (instr->type != nir_instr_type_phi) \
+      break; \
+   else \
+      for (nir_phi_instr *phi = nir_instr_as_phi(instr); phi != NULL; \
+           phi = NULL)
+
+#define nir_foreach_phi(instr, block) \
+   nir_foreach_instr(nir_foreach_phi_##instr, block) \
+      nir_foreach_phi_internal(nir_foreach_phi_##instr, instr)
+
+#define nir_foreach_phi_safe(instr, block) \
+   nir_foreach_instr_safe(nir_foreach_phi_safe_##instr, block) \
+      nir_foreach_phi_internal(nir_foreach_phi_safe_##instr, instr)
+
 static inline nir_phi_instr *
 nir_block_last_phi_instr(nir_block *block)
 {
    nir_phi_instr *last_phi = NULL;
-   nir_foreach_instr(instr, block) {
-      if (instr->type == nir_instr_type_phi)
-         last_phi = nir_instr_as_phi(instr);
-      else
-         return last_phi;
-   }
+   nir_foreach_phi(instr, block)
+      last_phi = instr;
+
    return last_phi;
 }
 
@@ -5480,6 +5553,7 @@ typedef struct nir_input_attachment_options {
    bool use_fragcoord_sysval;
    bool use_layer_id_sysval;
    bool use_view_id_for_layer;
+   uint32_t unscaled_input_attachment_ir3;
 } nir_input_attachment_options;
 
 bool nir_lower_input_attachments(nir_shader *shader,
@@ -5552,6 +5626,7 @@ typedef struct nir_lower_bitmap_options {
 void nir_lower_bitmap(nir_shader *shader, const nir_lower_bitmap_options *options);
 
 bool nir_lower_atomics_to_ssbo(nir_shader *shader, unsigned offset_align_state);
+bool nir_lower_legacy_atomics(nir_shader *shader);
 
 typedef enum  {
    nir_lower_int_source_mods = 1 << 0,

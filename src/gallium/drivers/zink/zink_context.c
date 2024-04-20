@@ -1077,21 +1077,28 @@ zink_create_sampler_view(struct pipe_context *pctx, struct pipe_resource *pres,
       ivci = create_ivci(screen, res, &templ, state->target);
       ivci.subresourceRange.levelCount = state->u.tex.last_level - state->u.tex.first_level + 1;
       ivci.subresourceRange.aspectMask = sampler_aspect_from_format(state->format);
-      bool shadow_needs_shader_swizzle = false;
+      bool red_depth_sampler_view = false;
       /* samplers for stencil aspects of packed formats need to always use stencil swizzle */
       if (ivci.subresourceRange.aspectMask & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)) {
          ivci.components.r = zink_component_mapping(clamp_zs_swizzle(sampler_view->base.swizzle_r));
          ivci.components.g = zink_component_mapping(clamp_zs_swizzle(sampler_view->base.swizzle_g));
          ivci.components.b = zink_component_mapping(clamp_zs_swizzle(sampler_view->base.swizzle_b));
          ivci.components.a = zink_component_mapping(clamp_zs_swizzle(sampler_view->base.swizzle_a));
+
+         /* If we're sampling depth and we might need to do shader rewrites for
+          * legacy shadow sampling, then set up an extra image view that just
+          * returns the red (depth) component, so you can always have the shadow
+          * result available in the red component for the in-shader swizzling.
+          * (Or if we have PVR's needs_zs_shader_swizzle and are sampling ONE
+          * value for stencil, which also uses that view).
+          */
          if (ivci.subresourceRange.aspectMask == VK_IMAGE_ASPECT_DEPTH_BIT ||
              zink_screen(ctx->base.screen)->driver_workarounds.needs_zs_shader_swizzle) {
             VkComponentSwizzle *swizzle = (VkComponentSwizzle*)&ivci.components;
             for (unsigned i = 0; i < 4; i++) {
-               /* these require shader rewrites to correctly emulate */
                if (swizzle[i] == VK_COMPONENT_SWIZZLE_ONE ||
                    (swizzle[i] == VK_COMPONENT_SWIZZLE_ZERO && ivci.subresourceRange.aspectMask == VK_IMAGE_ASPECT_DEPTH_BIT))
-                  shadow_needs_shader_swizzle = true;
+                  red_depth_sampler_view = true;
             }
             /* this is the data that will be used in shader rewrites */
             sampler_view->swizzle.s[0] = clamp_zs_swizzle(sampler_view->base.swizzle_r);
@@ -1154,7 +1161,7 @@ zink_create_sampler_view(struct pipe_context *pctx, struct pipe_resource *pres,
       if (!screen->info.have_EXT_non_seamless_cube_map && viewtype_is_cube(&sampler_view->image_view->ivci)) {
          ivci.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
          sampler_view->cube_array = (struct zink_surface*)zink_get_surface(ctx, pres, &templ, &ivci);
-      } else if (shadow_needs_shader_swizzle) {
+      } else if (red_depth_sampler_view) {
          /* there is only one component, and real swizzling can't be done here,
           * so ensure the shader gets the sampled data
           */
@@ -1557,20 +1564,21 @@ zink_set_shader_buffers(struct pipe_context *pctx,
    ctx->writable_ssbos[p_stage] |= writable_bitmask << start_slot;
 
    for (unsigned i = 0; i < count; i++) {
-      struct pipe_shader_buffer *ssbo = &ctx->ssbos[p_stage][start_slot + i];
+      unsigned slot = start_slot + i;
+      struct pipe_shader_buffer *ssbo = &ctx->ssbos[p_stage][slot];
       struct zink_resource *res = ssbo->buffer ? zink_resource(ssbo->buffer) : NULL;
-      bool was_writable = old_writable_mask & BITFIELD64_BIT(start_slot + i);
+      bool was_writable = old_writable_mask & BITFIELD64_BIT(slot);
       if (buffers && buffers[i].buffer) {
          struct zink_resource *new_res = zink_resource(buffers[i].buffer);
          if (new_res != res) {
-            unbind_ssbo(ctx, res, p_stage, i, was_writable);
-            new_res->ssbo_bind_mask[p_stage] |= BITFIELD_BIT(i);
+            unbind_ssbo(ctx, res, p_stage, slot, was_writable);
+            new_res->ssbo_bind_mask[p_stage] |= BITFIELD_BIT(slot);
             new_res->ssbo_bind_count[p_stage == MESA_SHADER_COMPUTE]++;
             new_res->gfx_barrier |= zink_pipeline_flags_from_pipe_stage(p_stage);
             update_res_bind_count(ctx, new_res, p_stage == MESA_SHADER_COMPUTE, false);
          }
          VkAccessFlags access = VK_ACCESS_SHADER_READ_BIT;
-         if (ctx->writable_ssbos[p_stage] & BITFIELD64_BIT(start_slot + i)) {
+         if (ctx->writable_ssbos[p_stage] & BITFIELD64_BIT(slot)) {
             new_res->write_bind_count[p_stage == MESA_SHADER_COMPUTE]++;
             access |= VK_ACCESS_SHADER_WRITE_BIT;
          }
@@ -1584,8 +1592,8 @@ zink_set_shader_buffers(struct pipe_context *pctx,
                                       new_res->gfx_barrier);
          zink_batch_resource_usage_set(&ctx->batch, new_res, access & VK_ACCESS_SHADER_WRITE_BIT, true);
          update = true;
-         max_slot = MAX2(max_slot, start_slot + i);
-         update_descriptor_state_ssbo(ctx, p_stage, start_slot + i, new_res);
+         max_slot = MAX2(max_slot, slot);
+         update_descriptor_state_ssbo(ctx, p_stage, slot, new_res);
          if (zink_resource_access_is_write(access))
             new_res->obj->unordered_write = false;
          new_res->obj->unordered_read = false;
@@ -1595,8 +1603,8 @@ zink_set_shader_buffers(struct pipe_context *pctx,
          ssbo->buffer_offset = 0;
          ssbo->buffer_size = 0;
          if (res) {
-            unbind_ssbo(ctx, res, p_stage, i, was_writable);
-            update_descriptor_state_ssbo(ctx, p_stage, start_slot + i, NULL);
+            unbind_ssbo(ctx, res, p_stage, slot, was_writable);
+            update_descriptor_state_ssbo(ctx, p_stage, slot, NULL);
          }
          pipe_resource_reference(&ssbo->buffer, NULL);
       }
@@ -2013,7 +2021,7 @@ zink_set_sampler_views(struct pipe_context *pctx,
             if (!ctx->unordered_blitting)
                res->obj->unordered_read = false;
          } else if (!res->obj->is_buffer) {
-            if (res->base.b.format != b->image_view->base.format)
+            if (!res->obj->dt && res->base.b.format != b->image_view->base.format)
                /* mutable not set by default */
                zink_resource_object_init_mutable(ctx, res);
             if (res->obj != b->image_view->obj) {
@@ -3909,11 +3917,11 @@ zink_flush_memory_barrier(struct zink_context *ctx, bool is_compute)
                   VK_ACCESS_SHADER_WRITE_BIT,
                   VK_ACCESS_UNIFORM_READ_BIT);
 
+   if (ctx->memory_barrier & PIPE_BARRIER_INDIRECT_BUFFER)
+      mem_barrier(ctx, src, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+                  VK_ACCESS_SHADER_WRITE_BIT,
+                  VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
    if (!is_compute) {
-      if (ctx->memory_barrier & PIPE_BARRIER_INDIRECT_BUFFER)
-         mem_barrier(ctx, src, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
-                     VK_ACCESS_SHADER_WRITE_BIT,
-                     VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
       if (ctx->memory_barrier & PIPE_BARRIER_VERTEX_BUFFER)
          mem_barrier(ctx, gfx_flags, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
                      VK_ACCESS_SHADER_WRITE_BIT,
@@ -4482,7 +4490,7 @@ zink_copy_image_buffer(struct zink_context *ctx, struct zink_resource *dst, stru
    if (needs_present_readback)
       zink_kopper_present_readback(ctx, img);
 
-   if (ctx->oom_flush && !ctx->batch.in_rp)
+   if (ctx->oom_flush && !ctx->batch.in_rp && !ctx->unordered_blitting)
       flush_batch(ctx, false);
 }
 
@@ -4612,7 +4620,7 @@ zink_resource_copy_region(struct pipe_context *pctx,
       zink_copy_buffer(ctx, dst, src, dstx, src_box->x, src_box->width);
    } else
       zink_copy_image_buffer(ctx, dst, src, dst_level, dstx, dsty, dstz, src_level, src_box, 0);
-   if (ctx->oom_flush && !ctx->batch.in_rp)
+   if (ctx->oom_flush && !ctx->batch.in_rp && !ctx->unordered_blitting)
       flush_batch(ctx, false);
 }
 
@@ -4912,6 +4920,7 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
    }
 
    ctx->base.destroy = zink_context_destroy;
+   ctx->base.set_debug_callback = zink_set_debug_callback;
    ctx->base.get_device_reset_status = zink_get_device_reset_status;
    ctx->base.set_device_reset_callback = zink_set_device_reset_callback;
 
@@ -5221,6 +5230,14 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
       struct pipe_depth_stencil_alpha_state dsa = {0};
       void *state = ctx->base.create_depth_stencil_alpha_state(&ctx->base, &dsa);
       ctx->base.bind_depth_stencil_alpha_state(&ctx->base, state);
+
+      struct pipe_blend_state blend = {
+         .rt[0].colormask = 0xF
+      };
+
+      void *blend_state = ctx->base.create_blend_state(&ctx->base, &blend);
+      ctx->base.bind_blend_state(&ctx->base, blend_state);
+
       zink_batch_rp(ctx);
    }
 

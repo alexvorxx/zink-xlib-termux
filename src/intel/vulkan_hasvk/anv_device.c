@@ -2625,7 +2625,7 @@ anv_device_setup_context(struct anv_device *device,
          for (uint32_t j = 0; j < queueCreateInfo->queueCount; j++)
             engine_classes[engine_count++] = queue_family->engine_class;
       }
-      if (!intel_gem_create_context_engines(device->fd,
+      if (!intel_gem_create_context_engines(device->fd, 0 /* flags */,
                                             physical_device->engine_info,
                                             engine_count, engine_classes,
                                             (uint32_t *)&device->context_id))
@@ -2956,7 +2956,9 @@ VkResult anv_CreateDevice(
    if (result != VK_SUCCESS)
       goto fail_trivial_batch_bo_and_scratch_pool;
 
-   struct vk_pipeline_cache_create_info pcc_info = { };
+   struct vk_pipeline_cache_create_info pcc_info = {
+      .internal = true,
+   };
    device->default_pipeline_cache =
       vk_pipeline_cache_create(&device->vk, &pcc_info, NULL);
    if (!device->default_pipeline_cache) {

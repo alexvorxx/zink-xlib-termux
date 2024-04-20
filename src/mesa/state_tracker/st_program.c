@@ -1126,7 +1126,7 @@ st_get_fp_variant(struct st_context *st,
                           key->fog ? "fog," : "",
                           key->lower_two_sided_color ? "twoside," : "",
                           key->lower_flatshade ? "flatshade," : "",
-                          key->lower_alpha_func ? "alpha_compare," : "",
+                          key->lower_alpha_func != COMPARE_FUNC_ALWAYS ? "alpha_compare," : "",
                           /* skipped ATI_fs targets */
                           fp->ExternalSamplersUsed ? "external?," : "",
                           key->gl_clamp[0] || key->gl_clamp[1] || key->gl_clamp[2] ? "GL_CLAMP," : "",
@@ -1321,8 +1321,11 @@ st_precompile_shader_variant(struct st_context *st,
             key.texture_index[i] = TEXTURE_2D_INDEX;
       }
 
-      /* Shadow samplers require texture in depth format */
-      key.depth_textures = prog->ShadowSamplers;
+      /* Shadow samplers require texture in depth format, which we lower to
+       * non-shadow if necessary for ARB programs
+       */
+      if (!prog->shader_program)
+         key.depth_textures = prog->ShadowSamplers;
 
       st_get_fp_variant(st, prog, &key);
       break;

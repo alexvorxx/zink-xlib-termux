@@ -223,6 +223,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_extended_dynamic_state3 = true,
       .EXT_external_memory_dma_buf = true,
       .EXT_filter_cubic = device->info->a6xx.has_tex_filter_cubic,
+      .EXT_fragment_density_map = true,
       .EXT_global_priority = true,
       .EXT_global_priority_query = true,
       .EXT_graphics_pipeline_library = true,
@@ -350,12 +351,6 @@ tu_physical_device_init(struct tu_physical_device *device,
       device->memory.type_count++;
    }
 
-   if (device->has_set_iova) {
-      mtx_init(&device->vma_mutex, mtx_plain);
-      util_vma_heap_init(&device->vma, device->va_start,
-                         ROUND_DOWN_TO(device->va_size, 4096));
-   }
-
    fd_get_driver_uuid(device->driver_uuid);
    fd_get_device_uuid(device->device_uuid, &device->dev_id);
 
@@ -373,7 +368,7 @@ tu_physical_device_init(struct tu_physical_device *device,
                                     NULL,
                                     &dispatch_table);
    if (result != VK_SUCCESS)
-      goto fail_free_vma;
+      goto fail_free_name;
 
    device->vk.supported_sync_types = device->sync_types;
 
@@ -382,7 +377,7 @@ tu_physical_device_init(struct tu_physical_device *device,
    if (result != VK_SUCCESS) {
       vk_startup_errorf(instance, result, "WSI init failure");
       vk_physical_device_finish(&device->vk);
-      goto fail_free_vma;
+      goto fail_free_name;
    }
 #endif
 
@@ -397,9 +392,6 @@ tu_physical_device_init(struct tu_physical_device *device,
 
    return VK_SUCCESS;
 
-fail_free_vma:
-   if (device->has_set_iova)
-      util_vma_heap_finish(&device->vma);
 fail_free_name:
    vk_free(&instance->vk.alloc, (void *)device->name);
    return result;
@@ -416,11 +408,7 @@ tu_physical_device_finish(struct tu_physical_device *device)
    if (device->master_fd != -1)
       close(device->master_fd);
 
-   if (device->has_set_iova)
-      util_vma_heap_finish(&device->vma);
-
    disk_cache_destroy(device->vk.disk_cache);
-
    vk_free(&device->instance->vk.alloc, (void *)device->name);
 
    vk_physical_device_finish(&device->vk);
@@ -1000,6 +988,14 @@ tu_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
          features->descriptorBufferPushDescriptors = true;
          break;
       }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT: {
+         VkPhysicalDeviceFragmentDensityMapFeaturesEXT *features =
+            (VkPhysicalDeviceFragmentDensityMapFeaturesEXT *)ext;
+         features->fragmentDensityMap = true;
+         features->fragmentDensityMapDynamic = false;
+         features->fragmentDensityMapNonSubsampledImages = true;
+         break;
+      }
 
       default:
          break;
@@ -1518,6 +1514,20 @@ tu_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          properties->descriptorBufferAddressSpaceSize = ~0ull;
          break;
       }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_DENSITY_MAP_PROPERTIES_EXT: {
+         VkPhysicalDeviceDescriptorBufferDensityMapPropertiesEXT *properties =
+            (VkPhysicalDeviceDescriptorBufferDensityMapPropertiesEXT *)ext;
+         properties->combinedImageSamplerDensityMapDescriptorSize = 2 * A6XX_TEX_CONST_DWORDS * 4;
+         break;
+      }
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_PROPERTIES_EXT: {
+         VkPhysicalDeviceFragmentDensityMapPropertiesEXT *properties =
+            (VkPhysicalDeviceFragmentDensityMapPropertiesEXT *)ext;
+         properties->minFragmentDensityTexelSize = (VkExtent2D) { MIN_FDM_TEXEL_SIZE, MIN_FDM_TEXEL_SIZE };
+         properties->maxFragmentDensityTexelSize = (VkExtent2D) { MAX_FDM_TEXEL_SIZE, MAX_FDM_TEXEL_SIZE };
+         properties->fragmentDensityInvocations = false;
+         break;
+      }
       default:
          break;
       }
@@ -1734,7 +1744,7 @@ tu_queue_init(struct tu_device *device,
       return vk_startup_errorf(device->instance, VK_ERROR_INITIALIZATION_FAILED,
                                "submitqueue create failed");
 
-   queue->last_submit_timestamp = -1;
+   queue->fence = -1;
 
    return VK_SUCCESS;
 }
@@ -2184,7 +2194,13 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
 
    device->instance = physical_device->instance;
    device->physical_device = physical_device;
-   device->fd = physical_device->local_fd;
+
+   result = tu_drm_device_init(device);
+   if (result != VK_SUCCESS) {
+      vk_free(&device->vk.alloc, device);
+      return result;
+   }
+
    device->vk.command_buffer_ops = &tu_cmd_buffer_ops;
    device->vk.check_status = tu_device_check_status;
 
@@ -2193,6 +2209,12 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
    mtx_init(&device->autotune_mutex, mtx_plain);
    u_rwlock_init(&device->dma_bo_lock);
    pthread_mutex_init(&device->submit_mutex, NULL);
+
+   if (physical_device->has_set_iova) {
+      mtx_init(&device->vma_mutex, mtx_plain);
+      util_vma_heap_init(&device->vma, physical_device->va_start,
+                         ROUND_DOWN_TO(physical_device->va_size, 4096));
+   }
 
    if (TU_DEBUG(BOS))
       device->bo_sizes = _mesa_hash_table_create(NULL, _mesa_hash_string, _mesa_key_string_equal);
@@ -2203,7 +2225,9 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
 
    struct tu6_global *global = NULL;
    uint32_t global_size = sizeof(struct tu6_global);
-   struct vk_pipeline_cache_create_info pcc_info = { };
+   struct vk_pipeline_cache_create_info pcc_info = {
+      .internal = true,
+   };
 
    for (unsigned i = 0; i < pCreateInfo->queueCreateInfoCount; i++) {
       const VkDeviceQueueCreateInfo *queue_create =
@@ -2390,6 +2414,17 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
       goto fail_timeline_cond;
    }
 
+   if (physical_device->has_set_iova) {
+      STATIC_ASSERT(TU_MAX_QUEUE_FAMILIES == 1);
+      if (!u_vector_init(&device->zombie_vmas, 64,
+                         sizeof(struct tu_zombie_vma))) {
+         result = vk_startup_errorf(physical_device->instance,
+                                    VK_ERROR_INITIALIZATION_FAILED,
+                                    "zombie_vmas create failed");
+         goto fail_free_zombie_vma;
+      }
+   }
+
    for (unsigned i = 0; i < ARRAY_SIZE(device->scratch_bos); i++)
       mtx_init(&device->scratch_bos[i].construct_mtx, mtx_plain);
 
@@ -2417,6 +2452,8 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
    *pDevice = tu_device_to_handle(device);
    return VK_SUCCESS;
 
+fail_free_zombie_vma:
+   u_vector_finish(&device->zombie_vmas);
 fail_timeline_cond:
 fail_prepare_perfcntrs_pass_cs:
    free(device->perfcntrs_pass_cs_entries);
@@ -2435,6 +2472,8 @@ fail_global_bo_map:
 fail_global_bo:
    ir3_compiler_destroy(device->compiler);
    util_sparse_array_finish(&device->bo_map);
+   if (physical_device->has_set_iova)
+      util_vma_heap_finish(&device->vma);
 
 fail_queues:
    for (unsigned i = 0; i < TU_MAX_QUEUE_FAMILIES; i++) {
@@ -2461,13 +2500,6 @@ tu_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    tu_breadcrumbs_finish(device);
 
    u_trace_context_fini(&device->trace_context);
-
-   for (unsigned i = 0; i < TU_MAX_QUEUE_FAMILIES; i++) {
-      for (unsigned q = 0; q < device->queue_count[i]; q++)
-         tu_queue_finish(&device->queues[i][q]);
-      if (device->queue_count[i])
-         vk_free(&device->vk.alloc, device->queues[i]);
-   }
 
    for (unsigned i = 0; i < ARRAY_SIZE(device->scratch_bos); i++) {
       if (device->scratch_bos[i].initialized)
@@ -2509,8 +2541,22 @@ tu_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    tu_bo_suballocator_finish(&device->pipeline_suballoc);
    tu_bo_suballocator_finish(&device->autotune_suballoc);
 
+   tu_drm_device_finish(device);
+
+   if (device->physical_device->has_set_iova)
+      util_vma_heap_finish(&device->vma);
+
    util_sparse_array_finish(&device->bo_map);
    u_rwlock_destroy(&device->dma_bo_lock);
+
+   u_vector_finish(&device->zombie_vmas);
+
+   for (unsigned i = 0; i < TU_MAX_QUEUE_FAMILIES; i++) {
+      for (unsigned q = 0; q < device->queue_count[i]; q++)
+         tu_queue_finish(&device->queues[i][q]);
+      if (device->queue_count[i])
+         vk_free(&device->vk.alloc, device->queues[i]);
+   }
 
    pthread_cond_destroy(&device->timeline_cond);
    _mesa_hash_table_destroy(device->bo_sizes, NULL);
@@ -2870,10 +2916,12 @@ tu_BindBufferMemory2(VkDevice device,
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
-tu_BindImageMemory2(VkDevice device,
+tu_BindImageMemory2(VkDevice _device,
                     uint32_t bindInfoCount,
                     const VkBindImageMemoryInfo *pBindInfos)
 {
+   TU_FROM_HANDLE(tu_device, device, _device);
+
    for (uint32_t i = 0; i < bindInfoCount; ++i) {
       TU_FROM_HANDLE(tu_image, image, pBindInfos[i].image);
       TU_FROM_HANDLE(tu_device_memory, mem, pBindInfos[i].memory);
@@ -2881,8 +2929,21 @@ tu_BindImageMemory2(VkDevice device,
       if (mem) {
          image->bo = mem->bo;
          image->iova = mem->bo->iova + pBindInfos[i].memoryOffset;
+
+         if (image->vk.usage & VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT) {
+            if (!mem->bo->map) {
+               VkResult result = tu_bo_map(device, mem->bo);
+               if (result != VK_SUCCESS)
+                  return result;
+            }
+
+            image->map = (char *)mem->bo->map + pBindInfos[i].memoryOffset;
+         } else {
+            image->map = NULL;
+         }
       } else {
          image->bo = NULL;
+         image->map = NULL;
          image->iova = 0;
       }
    }

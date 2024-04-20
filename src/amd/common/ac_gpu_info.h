@@ -47,6 +47,7 @@ struct amdgpu_gpu_info;
 struct amd_ip_info {
    uint8_t ver_major;
    uint8_t ver_minor;
+   uint8_t ver_rev;
    uint8_t num_queues;
 };
 
@@ -189,10 +190,6 @@ struct radeon_info {
    bool has_set_sh_reg_pairs_n;
 
    /* Multimedia info. */
-   struct {
-      bool vcn_decode; /* TODO: remove */
-   } has_video_hw;
-
    uint32_t uvd_fw_version;
    uint32_t vce_fw_version;
    uint32_t vce_harvest_config;
@@ -206,6 +203,8 @@ struct radeon_info {
          uint32_t pad;
       } codec_info[8]; /* the number of available codecs */
    } dec_caps, enc_caps;
+
+   enum vcn_version vcn_ip_version;
 
    /* Kernel & winsys capabilities. */
    uint32_t drm_major; /* version */

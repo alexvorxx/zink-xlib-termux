@@ -1278,7 +1278,8 @@ enum radv_dynamic_state_bits {
    RADV_DYNAMIC_COLOR_BLEND_EQUATION = 1ull << 45,
    RADV_DYNAMIC_DISCARD_RECTANGLE_ENABLE = 1ull << 46,
    RADV_DYNAMIC_DISCARD_RECTANGLE_MODE = 1ull << 47,
-   RADV_DYNAMIC_ALL = (1ull << 48) - 1,
+   RADV_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE = 1ull << 48,
+   RADV_DYNAMIC_ALL = (1ull << 49) - 1,
 };
 
 enum radv_cmd_dirty_bits {
@@ -1332,16 +1333,17 @@ enum radv_cmd_dirty_bits {
    RADV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_EQUATION = 1ull << 45,
    RADV_CMD_DIRTY_DYNAMIC_DISCARD_RECTANGLE_ENABLE = 1ull << 46,
    RADV_CMD_DIRTY_DYNAMIC_DISCARD_RECTANGLE_MODE = 1ull << 47,
-   RADV_CMD_DIRTY_DYNAMIC_ALL = (1ull << 48) - 1,
-   RADV_CMD_DIRTY_PIPELINE = 1ull << 48,
-   RADV_CMD_DIRTY_INDEX_BUFFER = 1ull << 49,
-   RADV_CMD_DIRTY_FRAMEBUFFER = 1ull << 50,
-   RADV_CMD_DIRTY_VERTEX_BUFFER = 1ull << 51,
-   RADV_CMD_DIRTY_STREAMOUT_BUFFER = 1ull << 52,
-   RADV_CMD_DIRTY_GUARDBAND = 1ull << 53,
-   RADV_CMD_DIRTY_RBPLUS = 1ull << 54,
-   RADV_CMD_DIRTY_NGG_QUERY = 1ull << 55,
-   RADV_CMD_DIRTY_OCCLUSION_QUERY = 1ull << 56,
+   RADV_CMD_DIRTY_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE = 1ull << 48,
+   RADV_CMD_DIRTY_DYNAMIC_ALL = (1ull << 49) - 1,
+   RADV_CMD_DIRTY_PIPELINE = 1ull << 49,
+   RADV_CMD_DIRTY_INDEX_BUFFER = 1ull << 50,
+   RADV_CMD_DIRTY_FRAMEBUFFER = 1ull << 51,
+   RADV_CMD_DIRTY_VERTEX_BUFFER = 1ull << 52,
+   RADV_CMD_DIRTY_STREAMOUT_BUFFER = 1ull << 53,
+   RADV_CMD_DIRTY_GUARDBAND = 1ull << 54,
+   RADV_CMD_DIRTY_RBPLUS = 1ull << 55,
+   RADV_CMD_DIRTY_NGG_QUERY = 1ull << 56,
+   RADV_CMD_DIRTY_OCCLUSION_QUERY = 1ull << 57,
 };
 
 enum radv_cmd_flush_bits {
@@ -1447,6 +1449,8 @@ struct radv_dynamic_state {
    } hw_vp;
 
    struct radv_sample_locations_state sample_location;
+
+   VkImageAspectFlags feedback_loop_aspects;
 };
 
 const char *radv_get_debug_option_name(int id);
@@ -2155,10 +2159,6 @@ enum {
 extern const VkFormat radv_fs_key_format_exemplars[NUM_META_FS_KEYS];
 unsigned radv_format_meta_fs_key(struct radv_device *device, VkFormat format);
 
-struct radv_vrs_state {
-   uint32_t pa_cl_vrs_cntl;
-};
-
 struct radv_prim_vertex_count {
    uint8_t min;
    uint8_t incr;
@@ -2171,7 +2171,6 @@ enum radv_pipeline_type {
    RADV_PIPELINE_GRAPHICS_LIB,
    /* Compute pipeline */
    RADV_PIPELINE_COMPUTE,
-   RADV_PIPELINE_RAY_TRACING_LIB,
    /* Raytracing pipeline */
    RADV_PIPELINE_RAY_TRACING,
 };
@@ -2185,12 +2184,6 @@ struct radv_pipeline_group_handle {
       uint32_t intersection_index;
       uint32_t any_hit_index;
    };
-};
-
-struct radv_pipeline_shader_stack_size {
-   uint32_t recursive_size;
-   /* anyhit + intersection */
-   uint32_t non_recursive_size;
 };
 
 enum radv_depth_clamp_mode {
@@ -2263,13 +2256,13 @@ struct radv_graphics_pipeline {
    struct radv_vs_input_state vs_input_state;
 
    struct radv_multisample_state ms;
-   struct radv_vrs_state vrs;
    struct radv_ia_multi_vgt_param_helpers ia_multi_vgt_param;
    uint32_t binding_stride[MAX_VBS];
    uint8_t attrib_bindings[MAX_VERTEX_ATTRIBS];
    uint32_t attrib_ends[MAX_VERTEX_ATTRIBS];
    uint32_t attrib_index_offset[MAX_VERTEX_ATTRIBS];
    uint32_t db_render_control;
+   uint32_t db_shader_control;
 
    /* Last pre-PS API stage */
    gl_shader_stage last_vgt_api_stage;
@@ -2311,25 +2304,24 @@ struct radv_ray_tracing_group {
    uint32_t any_hit_shader;
    uint32_t intersection_shader;
    struct radv_pipeline_group_handle handle;
-   struct radv_pipeline_shader_stack_size stack_size;
 };
 
 struct radv_ray_tracing_stage {
    struct vk_pipeline_cache_object *shader;
    gl_shader_stage stage;
+   uint32_t stack_size;
 };
 
-struct radv_ray_tracing_lib_pipeline {
-   struct radv_pipeline base;
+struct radv_ray_tracing_pipeline {
+   struct radv_compute_pipeline base;
 
-   /* ralloc context used for allocating pipeline library resources. */
-   void *ctx;
-
+   struct radv_ray_tracing_stage *stages;
+   struct radv_ray_tracing_group *groups;
    unsigned stage_count;
    unsigned group_count;
-   struct radv_ray_tracing_stage *stages;
+
    uint8_t sha1[SHA1_DIGEST_LENGTH];
-   struct radv_ray_tracing_group groups[];
+   uint32_t stack_size;
 };
 
 struct radv_graphics_lib_pipeline {
@@ -2353,14 +2345,6 @@ struct radv_graphics_lib_pipeline {
    VkPipelineShaderStageCreateInfo *stages;
 };
 
-struct radv_ray_tracing_pipeline {
-   struct radv_compute_pipeline base;
-
-   uint32_t group_count;
-   uint32_t stack_size;
-   struct radv_ray_tracing_group groups[];
-};
-
 #define RADV_DECL_PIPELINE_DOWNCAST(pipe_type, pipe_enum)            \
    static inline struct radv_##pipe_type##_pipeline *                \
    radv_pipeline_to_##pipe_type(struct radv_pipeline *pipeline)      \
@@ -2372,7 +2356,6 @@ struct radv_ray_tracing_pipeline {
 RADV_DECL_PIPELINE_DOWNCAST(graphics, RADV_PIPELINE_GRAPHICS)
 RADV_DECL_PIPELINE_DOWNCAST(graphics_lib, RADV_PIPELINE_GRAPHICS_LIB)
 RADV_DECL_PIPELINE_DOWNCAST(compute, RADV_PIPELINE_COMPUTE)
-RADV_DECL_PIPELINE_DOWNCAST(ray_tracing_lib, RADV_PIPELINE_RAY_TRACING_LIB)
 RADV_DECL_PIPELINE_DOWNCAST(ray_tracing, RADV_PIPELINE_RAY_TRACING)
 
 struct radv_pipeline_stage {
@@ -3678,8 +3661,6 @@ void radv_destroy_graphics_lib_pipeline(struct radv_device *device,
                                         struct radv_graphics_lib_pipeline *pipeline);
 void radv_destroy_compute_pipeline(struct radv_device *device,
                                    struct radv_compute_pipeline *pipeline);
-void radv_destroy_ray_tracing_lib_pipeline(struct radv_device *device,
-                                           struct radv_ray_tracing_lib_pipeline *pipeline);
 void radv_destroy_ray_tracing_pipeline(struct radv_device *device,
                                        struct radv_ray_tracing_pipeline *pipeline);
 

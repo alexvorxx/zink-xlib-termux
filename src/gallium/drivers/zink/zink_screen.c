@@ -99,6 +99,8 @@ zink_debug_options[] = {
    { "flushsync", ZINK_DEBUG_FLUSHSYNC, "Force synchronous flushes/presents" },
    { "noshobj", ZINK_DEBUG_NOSHOBJ, "Disable EXT_shader_object" },
    { "optimal_keys", ZINK_DEBUG_OPTIMAL_KEYS, "Debug/use optimal_keys" },
+   { "noopt", ZINK_DEBUG_NOOPT, "Disable async optimized pipeline compiles" },
+   { "nobgc", ZINK_DEBUG_NOBGC, "Disable all async pipeline compiles" },
    DEBUG_NAMED_VALUE_END
 };
 
@@ -2568,6 +2570,15 @@ init_driver_workarounds(struct zink_screen *screen)
    if (screen->info.props.limits.maxBoundDescriptorSets < ZINK_DESCRIPTOR_ALL_TYPES ||
        zink_debug & (ZINK_DEBUG_COMPACT | ZINK_DEBUG_NOSHOBJ))
       screen->info.have_EXT_shader_object = false;
+   /* EDS2 is only used with EDS1 */
+   if (!screen->info.have_EXT_extended_dynamic_state)
+      screen->info.have_EXT_extended_dynamic_state2 = false;
+   /* EDS3 is only used with EDS2 */
+   if (!screen->info.have_EXT_extended_dynamic_state2)
+      screen->info.have_EXT_extended_dynamic_state3 = false;
+   /* EXT_vertex_input_dynamic_state is only used with EDS2 and above */
+   if (!screen->info.have_EXT_extended_dynamic_state2)
+      screen->info.have_EXT_vertex_input_dynamic_state = false;
    if (screen->info.line_rast_feats.stippledRectangularLines &&
        screen->info.line_rast_feats.stippledBresenhamLines &&
        screen->info.line_rast_feats.stippledSmoothLines &&
@@ -2667,7 +2678,6 @@ init_driver_workarounds(struct zink_screen *screen)
    }
    /* these drivers don't use VK_PIPELINE_CREATE_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT, so it can always be set */
    switch (screen->info.driver_props.driverID) {
-   case VK_DRIVER_ID_MESA_RADV:
    case VK_DRIVER_ID_MESA_LLVMPIPE:
    case VK_DRIVER_ID_MESA_VENUS:
    case VK_DRIVER_ID_NVIDIA_PROPRIETARY:
@@ -2751,6 +2761,8 @@ init_driver_workarounds(struct zink_screen *screen)
       screen->driver_workarounds.disable_optimized_compile = true;
       break;
    default:
+      if (zink_debug & ZINK_DEBUG_NOOPT)
+         screen->driver_workarounds.disable_optimized_compile = true;
       break;
    }
 }
@@ -3010,7 +3022,8 @@ zink_internal_create_screen(const struct pipe_screen_config *config)
    }
 
    zink_internal_setup_moltenvk(screen);
-   /*if (!screen->info.have_KHR_timeline_semaphore) {
+
+   /*if (!screen->info.have_KHR_timeline_semaphore && !screen->info.feats12.timelineSemaphore) {
       mesa_loge("zink: KHR_timeline_semaphore is required");
       goto fail;
    }*/

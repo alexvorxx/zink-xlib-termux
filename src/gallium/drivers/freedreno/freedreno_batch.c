@@ -57,6 +57,37 @@ alloc_ring(struct fd_batch *batch, unsigned sz, enum fd_ringbuffer_flags flags)
    return fd_submit_new_ringbuffer(batch->submit, sz, flags);
 }
 
+static struct fd_batch_subpass *
+subpass_create(struct fd_batch *batch)
+{
+   struct fd_batch_subpass *subpass = CALLOC_STRUCT(fd_batch_subpass);
+
+   subpass->draw = alloc_ring(batch, 0x100000, 0);
+
+   /* Replace batch->draw with reference to current subpass, for
+    * backwards compat with code that is not subpass aware.
+    */
+   if (batch->draw)
+      fd_ringbuffer_del(batch->draw);
+   batch->draw = fd_ringbuffer_ref(subpass->draw);
+
+   list_addtail(&subpass->node, &batch->subpasses);
+
+   return subpass;
+}
+
+static void
+subpass_destroy(struct fd_batch_subpass *subpass)
+{
+   fd_ringbuffer_del(subpass->draw);
+   if (subpass->subpass_clears)
+      fd_ringbuffer_del(subpass->subpass_clears);
+   list_del(&subpass->node);
+   if (subpass->lrz)
+      fd_bo_del(subpass->lrz);
+   free(subpass);
+}
+
 struct fd_batch *
 fd_batch_create(struct fd_context *ctx, bool nondraw)
 {
@@ -74,19 +105,21 @@ fd_batch_create(struct fd_context *ctx, bool nondraw)
    batch->resources =
       _mesa_set_create(NULL, _mesa_hash_pointer, _mesa_key_pointer_equal);
 
+   list_inithead(&batch->subpasses);
+
    batch->submit = fd_submit_new(ctx->pipe);
    if (batch->nondraw) {
       batch->gmem = alloc_ring(batch, 0x1000, FD_RINGBUFFER_PRIMARY);
-      batch->draw = alloc_ring(batch, 0x100000, 0);
    } else {
       batch->gmem = alloc_ring(batch, 0x100000, FD_RINGBUFFER_PRIMARY);
-      batch->draw = alloc_ring(batch, 0x100000, 0);
 
       /* a6xx+ re-uses draw rb for both draw and binning pass: */
       if (ctx->screen->gen < 6) {
          batch->binning = alloc_ring(batch, 0x100000, 0);
       }
    }
+
+   batch->subpass = subpass_create(batch);
 
    batch->in_fence_fd = -1;
    batch->fence = NULL;
@@ -119,6 +152,24 @@ fd_batch_create(struct fd_context *ctx, bool nondraw)
    return batch;
 }
 
+struct fd_batch_subpass *
+fd_batch_create_subpass(struct fd_batch *batch)
+{
+   assert(!batch->nondraw);
+
+   struct fd_batch_subpass *subpass = subpass_create(batch);
+
+   /* This new subpass inherits the current subpass.. this is replaced
+    * if there is a depth clear
+    */
+   if (batch->subpass->lrz)
+      subpass->lrz = fd_bo_ref(batch->subpass->lrz);
+
+   batch->subpass = subpass;
+
+   return subpass;
+}
+
 /**
  * Cleanup that we normally do when the submit is flushed, like dropping
  * rb references.  But also called when batch is destroyed just in case
@@ -129,6 +180,10 @@ cleanup_submit(struct fd_batch *batch)
 {
    if (!batch->submit)
       return;
+
+   foreach_subpass_safe (subpass, batch) {
+      subpass_destroy(subpass);
+   }
 
    fd_ringbuffer_del(batch->draw);
    fd_ringbuffer_del(batch->gmem);
@@ -153,14 +208,14 @@ cleanup_submit(struct fd_batch *batch)
       batch->epilogue = NULL;
    }
 
-   if (batch->tile_setup) {
-      fd_ringbuffer_del(batch->tile_setup);
-      batch->tile_setup = NULL;
+   if (batch->tile_loads) {
+      fd_ringbuffer_del(batch->tile_loads);
+      batch->tile_loads = NULL;
    }
 
-   if (batch->tile_fini) {
-      fd_ringbuffer_del(batch->tile_fini);
-      batch->tile_fini = NULL;
+   if (batch->tile_store) {
+      fd_ringbuffer_del(batch->tile_store);
+      batch->tile_store = NULL;
    }
 
    fd_submit_del(batch->submit);
@@ -338,6 +393,30 @@ batch_flush(struct fd_batch *batch) assert_dt
 
    cleanup_submit(batch);
 }
+
+void
+fd_batch_set_fb(struct fd_batch *batch, const struct pipe_framebuffer_state *pfb)
+{
+   assert(!batch->nondraw);
+
+   util_copy_framebuffer_state(&batch->framebuffer, pfb);
+
+   if (!pfb->zsbuf)
+      return;
+
+   struct fd_resource *zsbuf = fd_resource(pfb->zsbuf->texture);
+
+   /* Switching back to a batch we'd previously started constructing shouldn't
+    * result in a different lrz.  The dependency tracking should avoid another
+    * batch writing/clearing our depth buffer.
+    */
+   if (batch->subpass->lrz) {
+      assert(batch->subpass->lrz == zsbuf->lrz);
+   } else if (zsbuf->lrz) {
+      batch->subpass->lrz = fd_bo_ref(zsbuf->lrz);
+   }
+}
+
 
 /* NOTE: could drop the last ref to batch
  */

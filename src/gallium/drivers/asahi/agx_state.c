@@ -1047,13 +1047,16 @@ agx_upload_viewport_scissor(struct agx_pool *pool, struct agx_batch *batch,
    }
 
    /* Upload state */
-   struct agx_ppp_update ppp =
-      agx_new_ppp_update(pool, (struct AGX_PPP_HEADER){
-                                  .depth_bias_scissor = true,
-                                  .region_clip = true,
-                                  .viewport = true,
-                                  .viewport_count = count,
-                               });
+   struct AGX_PPP_HEADER present = {
+      .depth_bias_scissor = true,
+      .region_clip = true,
+      .viewport = true,
+      .viewport_count = count,
+   };
+
+   size_t size = agx_ppp_update_size(&present);
+   struct agx_ptr T = agx_pool_alloc_aligned(&batch->pool, size, 64);
+   struct agx_ppp_update ppp = agx_new_ppp_update(T, size, &present);
 
    agx_ppp_push(&ppp, DEPTH_BIAS_SCISSOR, cfg) {
       cfg.scissor = index;
@@ -3258,14 +3261,17 @@ agx_batch_init_state(struct agx_batch *batch)
       cfg.usc_cache_inval = true;
    }
 
-   struct agx_ppp_update ppp =
-      agx_new_ppp_update(&batch->pool, (struct AGX_PPP_HEADER){
-                                          .w_clamp = true,
-                                          .occlusion_query_2 = true,
-                                          .output_unknown = true,
-                                          .varying_word_2 = true,
-                                          .viewport_count = 1, /* irrelevant */
-                                       });
+   struct AGX_PPP_HEADER present = {
+      .w_clamp = true,
+      .occlusion_query_2 = true,
+      .output_unknown = true,
+      .varying_word_2 = true,
+      .viewport_count = 1, /* irrelevant */
+   };
+
+   size_t size = agx_ppp_update_size(&present);
+   struct agx_ptr T = agx_pool_alloc_aligned(&batch->pool, size, 64);
+   struct agx_ppp_update ppp = agx_new_ppp_update(T, size, &present);
 
    /* clang-format off */
    agx_ppp_push(&ppp, W_CLAMP, cfg) cfg.w_clamp = 1e-10;
@@ -3493,7 +3499,9 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out)
       .viewport_count = 1, /* irrelevant */
    };
 
-   struct agx_ppp_update ppp = agx_new_ppp_update(pool, dirty);
+   size_t size = agx_ppp_update_size(&dirty);
+   struct agx_ptr T = agx_pool_alloc_aligned(&batch->pool, size, 64);
+   struct agx_ppp_update ppp = agx_new_ppp_update(T, size, &dirty);
 
    if (dirty.fragment_control) {
       agx_ppp_push(&ppp, FRAGMENT_CONTROL, cfg) {

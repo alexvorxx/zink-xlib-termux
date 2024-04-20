@@ -6,7 +6,7 @@
 #pragma once
 
 #include "asahi/genxml/agx_pack.h"
-#include "pool.h"
+#include "agx_bo.h"
 
 /* Opaque structure representing a PPP update */
 struct agx_ppp_update {
@@ -96,22 +96,20 @@ agx_ppp_validate(struct agx_ppp_update *ppp, size_t size)
       agx_pack(_tmp, T, name)
 
 ALWAYS_INLINE static struct agx_ppp_update
-agx_new_ppp_update(struct agx_pool *pool, struct AGX_PPP_HEADER present)
+agx_new_ppp_update(struct agx_ptr out, size_t size,
+                   struct AGX_PPP_HEADER *present)
 {
-   size_t size = agx_ppp_update_size(&present);
-   struct agx_ptr T = agx_pool_alloc_aligned(pool, size, 64);
-
    struct agx_ppp_update ppp = {
-      .gpu_base = T.gpu,
-      .head = T.cpu,
+      .head = out.cpu,
+      .gpu_base = out.gpu,
       .total_size = size,
 #ifndef NDEBUG
-      .cpu_base = T.cpu,
+      .cpu_base = out.cpu,
 #endif
    };
 
    agx_ppp_push(&ppp, PPP_HEADER, cfg) {
-      cfg = present;
+      cfg = *present;
    }
 
    return ppp;

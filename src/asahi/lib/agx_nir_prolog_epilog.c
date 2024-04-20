@@ -311,9 +311,10 @@ agx_nir_fs_epilog(nir_builder *b, const void *key_)
          .io_semantics.dual_source_blend_index = dual_src);
    }
 
+   /* Grab the sample ID early, this has to happen in the first block. */
+   nir_def *sample_id = NULL;
    if (key->link.sample_shading) {
-      /* Ensure the sample ID is preserved in register */
-      nir_export_agx(b, nir_load_exported_agx(b, 1, 16, .base = 1), .base = 1);
+      sample_id = nir_load_exported_agx(b, 1, 16, .base = 1);
    }
 
    /* Now lower the resulting program using the key */
@@ -412,6 +413,13 @@ agx_nir_fs_epilog(nir_builder *b, const void *key_)
    if (key->link.sample_shading) {
       NIR_PASS(_, b->shader, agx_nir_lower_to_per_sample);
       NIR_PASS(_, b->shader, agx_nir_lower_fs_active_samples_to_register);
+
+      /* Ensure the sample ID is preserved in register. We do this late since it
+       * has to go in the last block, and the above passes might add control
+       * flow when lowering.
+       */
+      b->cursor = nir_after_impl(b->impl);
+      nir_export_agx(b, sample_id, .base = 1);
    } else {
       NIR_PASS(_, b->shader, agx_nir_lower_monolithic_msaa, key->nr_samples);
    }

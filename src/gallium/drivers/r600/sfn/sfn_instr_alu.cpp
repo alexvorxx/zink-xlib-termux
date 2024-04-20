@@ -2210,27 +2210,22 @@ static bool
 emit_alu_b2f64(const nir_alu_instr& alu, Shader& shader)
 {
    auto& value_factory = shader.value_factory();
-   auto group = new AluGroup();
-   AluInstr *ir = nullptr;
 
    for (unsigned i = 0; i < alu.def.num_components; ++i) {
-      ir = new AluInstr(op2_and_int,
+      auto ir = new AluInstr(op2_and_int,
                         value_factory.dest(alu.def, 2 * i, pin_group),
                         value_factory.src(alu.src[0], i),
                         value_factory.zero(),
                         {alu_write});
-      group->add_instruction(ir);
+      shader.emit_instruction(ir);
 
       ir = new AluInstr(op2_and_int,
                         value_factory.dest(alu.def, 2 * i + 1, pin_group),
                         value_factory.src(alu.src[0], i),
                         value_factory.literal(0x3ff00000),
                         {alu_write});
-      group->add_instruction(ir);
+      shader.emit_instruction(ir);
    }
-   if (ir)
-      ir->set_alu_flag(alu_last_instr);
-   shader.emit_instruction(group);
    return true;
 }
 

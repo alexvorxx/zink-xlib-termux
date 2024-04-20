@@ -457,11 +457,10 @@ radv_get_saved_pipeline(struct radv_device *device, enum amd_ip_type ring)
 }
 
 static void
-radv_dump_queue_state(struct radv_queue *queue, const char *dump_dir, FILE *f)
+radv_dump_queue_state(struct radv_queue *queue, const char *dump_dir, const char *wave_dump, FILE *f)
 {
    struct radv_device *device = radv_queue_device(queue);
    const struct radv_physical_device *pdev = radv_device_physical(device);
-   const struct radv_instance *instance = radv_physical_device_instance(pdev);
    enum amd_ip_type ring = radv_queue_ring(queue);
    struct radv_pipeline *pipeline;
 
@@ -500,10 +499,10 @@ radv_dump_queue_state(struct radv_queue *queue, const char *dump_dir, FILE *f)
                           MESA_SHADER_COMPUTE, dump_dir, f);
       }
 
-      if (!(instance->debug_flags & RADV_DEBUG_NO_UMR)) {
+      if (wave_dump) {
          struct ac_wave_info waves[AC_MAX_WAVES_PER_CHIP];
          enum amd_gfx_level gfx_level = pdev->info.gfx_level;
-         unsigned num_waves = ac_get_wave_info(gfx_level, &pdev->info, waves);
+         unsigned num_waves = ac_get_wave_info(gfx_level, &pdev->info, wave_dump, waves);
 
          fprintf(f, COLOR_CYAN "The number of active waves = %u" COLOR_RESET "\n\n", num_waves);
 
@@ -681,24 +680,9 @@ radv_dump_umr_ring(const struct radv_queue *queue, FILE *f)
 }
 
 static void
-radv_dump_umr_waves(struct radv_queue *queue, FILE *f)
+radv_dump_umr_waves(struct radv_queue *queue, const char *wave_dump, FILE *f)
 {
-#ifndef _WIN32
-   const struct radv_device *device = radv_queue_device(queue);
-   const struct radv_physical_device *pdev = radv_device_physical(device);
-   enum amd_ip_type ring = radv_queue_ring(queue);
-   char cmd[256];
-
-   /* TODO: Dump compute ring. */
-   if (ring != AMD_IP_GFX)
-      return;
-
-   sprintf(cmd, "umr --by-pci %04x:%02x:%02x.%01x -O bits,halt_waves -go 0 -wa %s -go 1 2>&1", pdev->bus_info.domain,
-           pdev->bus_info.bus, pdev->bus_info.dev, pdev->bus_info.func,
-           pdev->info.gfx_level >= GFX10 ? "gfx_0.0.0" : "gfx");
-   fprintf(f, "\nUMR GFX waves:\n\n");
-   radv_dump_cmd(cmd, f);
-#endif
+   fprintf(f, "\nUMR GFX waves:\n\n%s", wave_dump ? wave_dump : "");
 }
 
 static bool
@@ -794,6 +778,10 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
       {"bo_history"}, {"vm_fault"}, {"app_info"},  {"gpu_info"}, {"dmesg"},
    };
 
+   char *wave_dump = NULL;
+   if (!(instance->debug_flags & RADV_DEBUG_NO_UMR))
+      wave_dump = ac_get_umr_waves(&pdev->info, radv_queue_ring(queue));
+
    for (uint32_t i = 0; i < RADV_DEVICE_FAULT_CHUNK_COUNT; i++) {
 
       if (save_hang_report) {
@@ -812,11 +800,11 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
          radv_dump_trace(device, submit_info->cs_array[0], f);
          break;
       case RADV_DEVICE_FAULT_CHUNK_QUEUE_STATE:
-         radv_dump_queue_state(queue, dump_dir, f);
+         radv_dump_queue_state(queue, dump_dir, wave_dump, f);
          break;
       case RADV_DEVICE_FAULT_CHUNK_UMR_WAVES:
          if (!(instance->debug_flags & RADV_DEBUG_NO_UMR))
-            radv_dump_umr_waves(queue, f);
+            radv_dump_umr_waves(queue, wave_dump, f);
          break;
       case RADV_DEVICE_FAULT_CHUNK_UMR_RING:
          if (!(instance->debug_flags & RADV_DEBUG_NO_UMR))
@@ -854,6 +842,8 @@ radv_check_gpu_hangs(struct radv_queue *queue, const struct radv_winsys_submit_i
 
       fclose(f);
    }
+
+   free(wave_dump);
 
    if (save_hang_report) {
       fprintf(stderr, "radv: GPU hang report saved successfully!\n");

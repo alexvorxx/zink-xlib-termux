@@ -9,6 +9,13 @@
 #include "nir_builder_opcodes.h"
 #include "nir_intrinsics.h"
 
+/* XXX: cribbed from nak, move to common */
+static nir_def *
+nir_udiv_round_up(nir_builder *b, nir_def *n, nir_def *d)
+{
+   return nir_udiv(b, nir_iadd(b, n, nir_iadd_imm(b, d, -1)), d);
+}
+
 static bool
 lower(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 {
@@ -64,6 +71,19 @@ lower(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 
       nir_def *ballot = nir_ballot(b, 1, 32, is_ne);
       nir_def_rewrite_uses(&intr->def, nir_ieq_imm(b, ballot, 0));
+      return true;
+   }
+
+   case nir_intrinsic_load_num_subgroups: {
+      nir_def *workgroup_size = nir_load_workgroup_size(b);
+      workgroup_size = nir_imul(b,
+                                nir_imul(b, nir_channel(b, workgroup_size, 0),
+                                         nir_channel(b, workgroup_size, 1)),
+                                nir_channel(b, workgroup_size, 2));
+      nir_def *subgroup_size = nir_imm_int(b, 32);
+      nir_def *num_subgroups =
+         nir_udiv_round_up(b, workgroup_size, subgroup_size);
+      nir_def_rewrite_uses(&intr->def, num_subgroups);
       return true;
    }
 

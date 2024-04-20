@@ -1980,6 +1980,10 @@ system_value("sample_positions_agx", 1, bit_sizes=[32])
 # responsible for Z/S testing after its final discard. ~0/0 boolean.
 system_value("shader_part_tests_zs_agx", 1, bit_sizes=[16])
 
+# Returns whether the API depth test is NEVER. We emulate this in shader when
+# fragment side effects are used to ensure the fragment shader executes.
+system_value("depth_never_agx", 1, bit_sizes=[16])
+
 # In a fragment shader, returns the log2 of the number of samples in the
 # tilebuffer. This is the unprocessed value written in the corresponding USC
 # word. Used to determine whether sample mask writes have any effect when sample

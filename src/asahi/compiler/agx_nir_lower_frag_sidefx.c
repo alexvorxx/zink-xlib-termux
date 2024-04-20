@@ -22,7 +22,15 @@
 static void
 insert_z_write(nir_builder *b)
 {
-   nir_def *z = nir_load_frag_coord_zw(b, .component = 2);
+   /* When forcing depth test to NEVER, force Z to NaN.  This works around the
+    * hardware discarding depth=NEVER.
+    *
+    * TODO: Check if Apple has a better way of handling this.
+    */
+   nir_def *bias = nir_bcsel(b, nir_ine_imm(b, nir_load_depth_never_agx(b), 0),
+                             nir_imm_float(b, NAN), nir_imm_float(b, -0.0));
+
+   nir_def *z = nir_fadd(b, bias, nir_load_frag_coord_zw(b, .component = 2));
 
    nir_store_output(b, z, nir_imm_int(b, 0),
                     .io_semantics.location = FRAG_RESULT_DEPTH,

@@ -192,6 +192,9 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *intr,
       return load_sysval_root(b, 1, 16, &u->no_epilog_discard);
    case nir_intrinsic_load_clip_z_coeff_agx:
       return nir_f2f32(b, load_sysval_root(b, 1, 16, &u->clip_z_coeff));
+   case nir_intrinsic_load_depth_never_agx:
+      /* TODO: Do we need this workaround for anything in GL? */
+      return nir_imm_intN_t(b, 0, 16);
    case nir_intrinsic_load_uvs_index_agx:
       return load_sysval_root(
          b, 1, 16, &u->uvs_index[nir_intrinsic_io_semantics(intr).location]);

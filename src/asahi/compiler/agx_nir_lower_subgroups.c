@@ -87,6 +87,32 @@ lower(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       return true;
    }
 
+   case nir_intrinsic_shuffle: {
+      nir_def *data = intr->src[0].ssa;
+      nir_def *target = intr->src[1].ssa;
+
+      /* The hardware shuffle instruction chooses a single index within the
+       * target quad to shuffle each source quad with. Consequently, the low
+       * 2-bits of shuffle indices should not be quad divergent.  To implement
+       * arbitrary shuffle, pull each low 2-bits index in the quad separately.
+       */
+      nir_def *quad_start = nir_iand_imm(b, target, 0x1c);
+      nir_def *result = NULL;
+
+      for (unsigned i = 0; i < 4; ++i) {
+         nir_def *target_i = nir_iadd_imm(b, quad_start, i);
+         nir_def *shuf = nir_read_invocation(b, data, target_i);
+
+         if (result)
+            result = nir_bcsel(b, nir_ieq(b, target, target_i), shuf, result);
+         else
+            result = shuf;
+      }
+
+      nir_def_rewrite_uses(&intr->def, result);
+      return true;
+   }
+
    default:
       return false;
    }

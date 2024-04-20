@@ -1165,6 +1165,32 @@ agx_emit_image_store(agx_builder *b, nir_intrinsic_instr *instr)
    return agx_image_write(b, data, coords, lod, base, index, dim);
 }
 
+static enum agx_simd_op
+translate_simd_op(nir_op op)
+{
+#define CASE(agx_, nir_)                                                       \
+   case nir_op_##nir_:                                                         \
+      return AGX_SIMD_OP_##agx_;
+
+   switch (op) {
+      CASE(AND, iand)
+      CASE(FADD, fadd)
+      CASE(OR, ior)
+      CASE(FMUL, fmul)
+      CASE(XOR, ixor)
+      CASE(FMIN, fmin)
+      CASE(FMAX, fmax)
+      CASE(IADD, iadd)
+      CASE(SMIN, imin)
+      CASE(SMAX, imax)
+      CASE(UMIN, umin)
+      CASE(UMAX, umax)
+   default:
+      unreachable("unknown simd op");
+   }
+#undef CASE
+}
+
 static agx_instr *
 agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
 {
@@ -1442,23 +1468,29 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
                                     AGX_SR_ACTIVE_THREAD_INDEX_IN_SUBGROUP);
 
    case nir_intrinsic_reduce: {
-      assert(nir_intrinsic_reduction_op(instr) == nir_op_iadd &&
-             "other reductions todo");
+      assert((instr->def.bit_size == 1 || instr->def.bit_size == 16 ||
+              instr->def.bit_size == 32) &&
+             "should've been lowered");
 
-      return agx_simd_iadd_to(b, dst, agx_src_index(&instr->src[0]));
+      return agx_simd_reduce_to(
+         b, dst, agx_src_index(&instr->src[0]),
+         translate_simd_op(nir_intrinsic_reduction_op(instr)));
    }
 
    case nir_intrinsic_exclusive_scan: {
-      assert(nir_intrinsic_reduction_op(instr) == nir_op_iadd &&
-             "other reductions todo");
+      assert((instr->def.bit_size == 1 || instr->def.bit_size == 16 ||
+              instr->def.bit_size == 32) &&
+             "should've been lowered");
 
-      return agx_simd_prefix_iadd_to(b, dst, agx_src_index(&instr->src[0]));
+      return agx_simd_prefix_to(
+         b, dst, agx_src_index(&instr->src[0]),
+         translate_simd_op(nir_intrinsic_reduction_op(instr)));
    }
 
    case nir_intrinsic_read_invocation: {
       /* Lane ID guaranteed to be uniform */
-      return agx_simd_shuffle_to(b, dst, agx_src_index(&instr->src[0]),
-                                 agx_src_index(&instr->src[1]));
+      return agx_shuffle_to(b, dst, agx_src_index(&instr->src[0]),
+                            agx_src_index(&instr->src[1]));
    }
 
    case nir_intrinsic_ballot: {

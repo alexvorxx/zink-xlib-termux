@@ -29,7 +29,7 @@ lower(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    }
 
    case nir_intrinsic_first_invocation: {
-      nir_def *active_id = nir_load_active_subgroup_invocation_agx(b);
+      nir_def *active_id = nir_load_active_subgroup_invocation_agx(b, 16);
       nir_def *is_first = nir_ieq_imm(b, active_id, 0);
       nir_def *first_bit = nir_ballot(b, 1, 32, is_first);
       nir_def_rewrite_uses(&intr->def, nir_ufind_msb(b, first_bit));

@@ -1801,7 +1801,7 @@ intrinsic("load_fep_w_v3d", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER])
 
 # Active invocation index within the subgroup.
 # Equivalent to popcount(ballot(true) & ((1 << subgroup_invocation) - 1))
-system_value("active_subgroup_invocation_agx", 1)
+intrinsic("load_active_subgroup_invocation_agx", dest_comp=1, flags=[CAN_ELIMINATE])
 
 # Like ballot() but only within a quad.
 intrinsic("quad_ballot_agx", src_comp=[1], dest_comp=1, flags=[CAN_ELIMINATE])

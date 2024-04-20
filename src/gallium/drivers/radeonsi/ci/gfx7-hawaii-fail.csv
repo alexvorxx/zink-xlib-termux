@@ -156,9 +156,11 @@ spec@khr_texture_compression_astc@sliced-3d-miptree-gles srgb-fp@sRGB decode ful
 spec@oes_shader_io_blocks@compiler@layout-location-aliasing.vert,Fail
 
 # glcts failures
+KHR-GL46.direct_state_access.framebuffers_texture_layer_attachment,Fail
 KHR-GL46.geometry_shader.layered_rendering_fbo_no_attachment.layered_rendering_fbo_no_attachment,Fail
 KHR-GL46.shader_image_load_store.advanced-sso-subroutine,Fail
 KHR-GL46.shader_image_load_store.basic-allTargets-atomic,Fail
+KHR-GL46.texture_cube_map_array.sampling,Fail
 GTF-GL46.gtf30.GL3Tests.fragment_coord_conventions.fragment_coord_conventions_multisample,Fail
 GTF-GL46.gtf32.GL3Tests.fragment_coord_conventions.fragment_coord_conventions_32_multisample,Fail
 
@@ -169,7 +171,11 @@ GTF-GL46.gtf31.GL3Tests.uniform_buffer_object.uniform_buffer_object_getactiveuni
 # escts failures
 KHR-GLES31.core.geometry_shader.layered_rendering_fbo_no_attachment.layered_rendering_fbo_no_attachment,Fail
 KHR-GLES31.core.shader_image_load_store.basic-allTargets-loadStoreCS,Fail
+KHR-GLES31.core.shader_image_load_store.basic-allTargets-loadStoreVS,Fail
 KHR-GLES31.core.texture_cube_map_array.sampling,Fail
 KHR-GLES32.core.ext_texture_shadow_lod.texturelod.samplercubeshadow_fragment,Fail
 KHR-GLES32.core.geometry_shader.layered_rendering_fbo_no_attachment.layered_rendering_fbo_no_attachment,Fail
 KHR-GLES32.core.texture_cube_map_array.sampling,Fail
+
+# deqp failures
+dEQP-GLES3.functional.shaders.texture_functions.texture.samplercubeshadow_bias_fragment

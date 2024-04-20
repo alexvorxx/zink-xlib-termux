@@ -81,10 +81,11 @@ void agx_assign_uvs(struct agx_varyings_vs *varyings,
                     struct agx_unlinked_uvs_layout *layout, uint64_t flat_mask,
                     uint64_t linear_mask);
 
-struct agx_pool;
 struct agx_varyings_fs;
 
-uint32_t agx_link_varyings_vs_fs(
-   struct agx_pool *pool, struct agx_varyings_vs *vs, unsigned nr_user_indices,
-   struct agx_varyings_fs *fs, bool first_provoking_vertex,
-   uint8_t sprite_coord_enable, bool *generate_primitive_id);
+void agx_link_varyings_vs_fs(void *out, struct agx_varyings_vs *vs,
+                             unsigned nr_user_indices,
+                             struct agx_varyings_fs *fs,
+                             bool first_provoking_vertex,
+                             uint8_t sprite_coord_enable,
+                             bool *generate_primitive_id);

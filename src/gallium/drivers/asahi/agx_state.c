@@ -3379,13 +3379,26 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out)
    if (IS_DIRTY(VS_PROG) || IS_DIRTY(FS_PROG) || IS_DIRTY(RS) ||
        IS_DIRTY(PRIM)) {
 
-      batch->varyings = agx_link_varyings_vs_fs(
-         &batch->pipeline_pool, &batch->linked_varyings, vs->uvs.user_size,
-         &ctx->linked.fs->cf, ctx->rast->base.flatshade_first,
-         (batch->reduced_prim == MESA_PRIM_POINTS)
-            ? ctx->rast->base.sprite_coord_enable
-            : 0,
-         &batch->generate_primitive_id);
+      unsigned bindings = ctx->linked.fs->cf.nr_bindings;
+      if (bindings) {
+         size_t linkage_size =
+            AGX_CF_BINDING_HEADER_LENGTH + (bindings * AGX_CF_BINDING_LENGTH);
+
+         struct agx_ptr t =
+            agx_pool_alloc_aligned(&batch->pipeline_pool, linkage_size, 16);
+
+         agx_link_varyings_vs_fs(t.cpu, &batch->linked_varyings,
+                                 vs->uvs.user_size, &ctx->linked.fs->cf,
+                                 ctx->rast->base.flatshade_first,
+                                 (batch->reduced_prim == MESA_PRIM_POINTS)
+                                    ? ctx->rast->base.sprite_coord_enable
+                                    : 0,
+                                 &batch->generate_primitive_id);
+
+         batch->varyings = t.gpu;
+      } else {
+         batch->varyings = 0;
+      }
 
       varyings_dirty = true;
       ppp_updates++;

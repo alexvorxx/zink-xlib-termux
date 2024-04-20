@@ -14,7 +14,6 @@
 #include "nir_builder_opcodes.h"
 #include "nir_intrinsics.h"
 #include "nir_intrinsics_indices.h"
-#include "pool.h"
 #include "shader_enums.h"
 
 struct ctx {
@@ -253,26 +252,18 @@ agx_assign_uvs(struct agx_varyings_vs *varyings,
    }
 }
 
-uint32_t
-agx_link_varyings_vs_fs(struct agx_pool *pool, struct agx_varyings_vs *vs,
+void
+agx_link_varyings_vs_fs(void *out, struct agx_varyings_vs *vs,
                         unsigned nr_user_indices, struct agx_varyings_fs *fs,
                         bool first_provoking_vertex,
                         uint8_t sprite_coord_enable,
                         bool *generate_primitive_id)
 {
+   assert(fs->nr_bindings > 0);
+
    *generate_primitive_id = false;
 
-   /* If there are no bindings, there's nothing to emit */
-   if (fs->nr_bindings == 0)
-      return 0;
-
-   size_t linkage_size =
-      AGX_CF_BINDING_HEADER_LENGTH + (fs->nr_bindings * AGX_CF_BINDING_LENGTH);
-
-   struct agx_ptr t = agx_pool_alloc_aligned(pool, linkage_size, 256);
-   assert(t.gpu < (1ull << 32) && "varyings must be in low memory");
-
-   struct agx_cf_binding_header_packed *header = t.cpu;
+   struct agx_cf_binding_header_packed *header = out;
    struct agx_cf_binding_packed *bindings = (void *)(header + 1);
 
    unsigned user_base = 1 + (fs->reads_z ? 1 : 0);
@@ -331,6 +322,4 @@ agx_link_varyings_vs_fs(struct agx_pool *pool, struct agx_varyings_vs *vs,
                 "overflowed coefficient registers");
       }
    }
-
-   return t.gpu;
 }

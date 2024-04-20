@@ -584,6 +584,14 @@ agx_start_block(agx_context *ctx)
    return first;
 }
 
+static inline agx_block *
+agx_end_block(agx_context *ctx)
+{
+   agx_block *last = list_last_entry(&ctx->blocks, agx_block, link);
+   assert(agx_num_successors(last) == 0);
+   return last;
+}
+
 void agx_block_add_successor(agx_block *block, agx_block *successor);
 
 /* Iterators for AGX IR */

@@ -2947,6 +2947,16 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
       agx_builder _b = agx_init_builder(ctx, agx_before_block(start_block));
       agx_stack_adjust(&_b, stack_size);
 
+      /* If we're going to execute multiple times, make sure we clean up after
+       * ourselves, else the hardware faults.
+       */
+      if (ctx->stage == MESA_SHADER_FRAGMENT && !ctx->is_preamble &&
+          ctx->key->fs.inside_sample_loop) {
+
+         _b = agx_init_builder(ctx, agx_after_block(agx_end_block(ctx)));
+         agx_stack_adjust(&_b, -stack_size);
+      }
+
       if (ctx->is_preamble)
          out->preamble_scratch_size = stack_size;
       else

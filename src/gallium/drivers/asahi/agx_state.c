@@ -2903,8 +2903,14 @@ agx_build_pipeline(struct agx_batch *batch, struct agx_compiled_shader *cs,
    struct agx_context *ctx = batch->ctx;
    unsigned constant_push_ranges =
       DIV_ROUND_UP(cs->b.info.immediate_size_16, 64);
-   struct agx_usc_builder b = agx_alloc_usc_control(
-      &batch->pipeline_pool, constant_push_ranges + cs->push_range_count + 2);
+
+   size_t usc_size =
+      agx_usc_size(constant_push_ranges + cs->push_range_count + 2);
+
+   struct agx_ptr t =
+      agx_pool_alloc_aligned(&batch->pipeline_pool, usc_size, 64);
+
+   struct agx_usc_builder b = agx_usc_builder(t.cpu, usc_size);
 
    enum pipe_shader_type stage = cs->stage;
 
@@ -3028,7 +3034,7 @@ agx_build_pipeline(struct agx_batch *batch, struct agx_compiled_shader *cs,
          ;
    }
 
-   return agx_usc_fini(&b);
+   return t.gpu;
 }
 
 struct asahi_bg_eot
@@ -3078,8 +3084,10 @@ agx_build_bg_eot(struct agx_batch *batch, bool store, bool partial_render)
    }
 
    /* Begin building the pipeline */
-   struct agx_usc_builder b =
-      agx_alloc_usc_control(&batch->pipeline_pool, 3 + PIPE_MAX_COLOR_BUFS);
+   size_t usc_size = agx_usc_size(3 + PIPE_MAX_COLOR_BUFS);
+   struct agx_ptr t =
+      agx_pool_alloc_aligned(&batch->pipeline_pool, usc_size, 64);
+   struct agx_usc_builder b = agx_usc_builder(t.cpu, usc_size);
 
    bool needs_sampler = false;
    unsigned uniforms = 0;
@@ -3206,7 +3214,7 @@ agx_build_bg_eot(struct agx_batch *batch, bool store, bool partial_render)
          ;
    }
 
-   struct asahi_bg_eot ret = {.usc = agx_usc_fini(&b)};
+   struct asahi_bg_eot ret = {.usc = t.gpu};
 
    agx_pack(&ret.counts, COUNTS, cfg) {
       cfg.uniforms = shader->info.push_count;

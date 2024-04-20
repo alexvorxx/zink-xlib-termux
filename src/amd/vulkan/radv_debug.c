@@ -536,6 +536,11 @@ radv_dump_queue_state(struct radv_queue *queue, const char *dump_dir, const char
             fprintf(f, "\n\n");
       }
 
+      VkDispatchIndirectCommand dispatch_indirect = device->trace_data->indirect_dispatch;
+      if (dispatch_indirect.x || dispatch_indirect.y || dispatch_indirect.z)
+         fprintf(f, "VkDispatchIndirectCommand: x=%u y=%u z=%u\n\n\n", dispatch_indirect.x, dispatch_indirect.y,
+                 dispatch_indirect.z);
+
       if (pipeline->type == RADV_PIPELINE_GRAPHICS) {
          struct radv_graphics_pipeline *graphics_pipeline = radv_pipeline_to_graphics(pipeline);
          radv_dump_vertex_descriptors(device, graphics_pipeline, f);

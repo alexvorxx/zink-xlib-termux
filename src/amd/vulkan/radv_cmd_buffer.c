@@ -10408,6 +10408,30 @@ radv_CmdExecuteGeneratedCommandsNV(VkCommandBuffer commandBuffer, VkBool32 isPre
 }
 
 static void
+radv_save_dispatch_size(struct radv_cmd_buffer *cmd_buffer, uint64_t indirect_va)
+{
+   struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
+
+   struct radeon_cmdbuf *cs = cmd_buffer->cs;
+   radeon_check_space(device->ws, cs, 18);
+
+   uint64_t va = radv_buffer_get_va(device->trace_bo) + offsetof(struct radv_trace_data, indirect_dispatch);
+
+   for (uint32_t i = 0; i < 3; i++) {
+      radeon_emit(cs, PKT3(PKT3_COPY_DATA, 4, 0));
+      radeon_emit(cs,
+                  COPY_DATA_SRC_SEL(COPY_DATA_SRC_MEM) | COPY_DATA_DST_SEL(COPY_DATA_DST_MEM) | COPY_DATA_WR_CONFIRM);
+      radeon_emit(cs, indirect_va);
+      radeon_emit(cs, indirect_va >> 32);
+      radeon_emit(cs, va);
+      radeon_emit(cs, va >> 32);
+
+      indirect_va += 4;
+      va += 4;
+   }
+}
+
+static void
 radv_emit_dispatch_packets(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *compute_shader,
                            const struct radv_dispatch_info *info)
 {
@@ -10432,6 +10456,9 @@ radv_emit_dispatch_packets(struct radv_cmd_buffer *cmd_buffer, const struct radv
       dispatch_initiator &= ~S_00B800_ORDER_MODE(1);
 
    if (info->va) {
+      if (radv_device_fault_detection_enabled(device))
+         radv_save_dispatch_size(cmd_buffer, info->va);
+
       if (info->indirect)
          radv_cs_add_buffer(ws, cs, info->indirect);
 

@@ -20,7 +20,7 @@ select_if_msaa_else_0(nir_builder *b, nir_def *x)
 }
 
 static bool
-lower(nir_builder *b, nir_intrinsic_instr *intr, void *_)
+lower(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 {
    b->cursor = nir_before_instr(&intr->instr);
 
@@ -145,8 +145,11 @@ lower(nir_builder *b, nir_intrinsic_instr *intr, void *_)
 
    case nir_intrinsic_store_output: {
       /*
-       * Sample mask writes are ignored unless multisampling is used. If it is
-       * used, the Vulkan spec says:
+       * In OpenGL, sample mask writes are ignored unless multisampling is used.
+       * This is not the case in Vulkan, disambiguated by the
+       * ignore_sample_mask_without_msaa flag.
+       *
+       * If it is used, the Vulkan spec says:
        *
        *    If sample shading is enabled, bits written to SampleMask
        *    corresponding to samples that are not being shaded by the fragment
@@ -160,8 +163,12 @@ lower(nir_builder *b, nir_intrinsic_instr *intr, void *_)
          return false;
 
       nir_def *mask = nir_inot(b, nir_u2u16(b, intr->src[0].ssa));
+      bool *ignore_sample_mask_without_msaa = data;
 
-      nir_discard_agx(b, select_if_msaa_else_0(b, mask));
+      if (*ignore_sample_mask_without_msaa)
+         mask = select_if_msaa_else_0(b, mask);
+
+      nir_discard_agx(b, mask);
       nir_instr_remove(&intr->instr);
 
       b->shader->info.fs.uses_discard = true;
@@ -187,8 +194,10 @@ lower(nir_builder *b, nir_intrinsic_instr *intr, void *_)
  * epilogs even though there's no dependency on sample count.
  */
 bool
-agx_nir_lower_sample_intrinsics(nir_shader *shader)
+agx_nir_lower_sample_intrinsics(nir_shader *shader,
+                                bool ignore_sample_mask_without_msaa)
 {
    return nir_shader_intrinsics_pass(
-      shader, lower, nir_metadata_block_index | nir_metadata_dominance, NULL);
+      shader, lower, nir_metadata_block_index | nir_metadata_dominance,
+      &ignore_sample_mask_without_msaa);
 }

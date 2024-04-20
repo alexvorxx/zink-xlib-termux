@@ -100,7 +100,8 @@ bool agx_nir_lower_to_per_sample(struct nir_shader *shader);
 bool agx_nir_lower_monolithic_msaa(struct nir_shader *shader,
                                    uint8_t nr_samples);
 
-bool agx_nir_lower_sample_intrinsics(struct nir_shader *shader);
+bool agx_nir_lower_sample_intrinsics(struct nir_shader *shader,
+                                     bool ignore_sample_mask_without_msaa);
 
 bool agx_nir_lower_alpha_to_coverage(struct nir_shader *shader,
                                      uint8_t nr_samples);

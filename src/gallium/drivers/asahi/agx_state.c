@@ -1888,7 +1888,7 @@ agx_shader_initialize(struct agx_device *dev, struct agx_uncompiled_shader *so,
    }
 
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
-      NIR_PASS(_, nir, agx_nir_lower_sample_intrinsics);
+      NIR_PASS(_, nir, agx_nir_lower_sample_intrinsics, true);
    }
 
    so->type = pipe_shader_type_from_mesa(nir->info.stage);

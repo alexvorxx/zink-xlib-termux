@@ -572,8 +572,10 @@ radv_cmd_buffer_trace_emit(struct radv_cmd_buffer *cmd_buffer)
       return;
 
    va = radv_buffer_get_va(device->trace_bo);
-   if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_SECONDARY)
-      va += 4;
+   if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY)
+      va += offsetof(struct radv_trace_data, primary_id);
+   else
+      va += offsetof(struct radv_trace_data, secondary_id);
 
    ++cmd_buffer->state.trace_id;
    radv_write_data(cmd_buffer, V_370_ME, va, 1, &cmd_buffer->state.trace_id, false);
@@ -830,10 +832,10 @@ radv_save_pipeline(struct radv_cmd_buffer *cmd_buffer, struct radv_pipeline *pip
 
    switch (ring) {
    case AMD_IP_GFX:
-      va += 8;
+      va += offsetof(struct radv_trace_data, gfx_ring_pipeline);
       break;
    case AMD_IP_COMPUTE:
-      va += 16;
+      va += offsetof(struct radv_trace_data, comp_ring_pipeline);
       break;
    default:
       assert(!"invalid IP type");
@@ -853,8 +855,7 @@ radv_save_vertex_descriptors(struct radv_cmd_buffer *cmd_buffer, uint64_t vb_ptr
    uint32_t data[2];
    uint64_t va;
 
-   va = radv_buffer_get_va(device->trace_bo);
-   va += 24;
+   va = radv_buffer_get_va(device->trace_bo) + offsetof(struct radv_trace_data, vertex_descriptors);
 
    data[0] = vb_ptr;
    data[1] = vb_ptr >> 32;
@@ -869,8 +870,7 @@ radv_save_vs_prolog(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader
    uint32_t data[2];
    uint64_t va;
 
-   va = radv_buffer_get_va(device->trace_bo);
-   va += 32;
+   va = radv_buffer_get_va(device->trace_bo) + offsetof(struct radv_trace_data, vertex_prolog);
 
    uint64_t prolog_address = (uintptr_t)prolog;
    data[0] = prolog_address;
@@ -898,7 +898,7 @@ radv_save_descriptors(struct radv_cmd_buffer *cmd_buffer, VkPipelineBindPoint bi
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    uint32_t data[MAX_SETS * 2] = {0};
    uint64_t va;
-   va = radv_buffer_get_va(device->trace_bo) + 40;
+   va = radv_buffer_get_va(device->trace_bo) + offsetof(struct radv_trace_data, descriptor_sets);
 
    u_foreach_bit (i, descriptors_state->valid) {
       struct radv_descriptor_set *set = descriptors_state->sets[i];

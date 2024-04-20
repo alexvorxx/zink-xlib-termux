@@ -27,8 +27,7 @@
 #include "radv_shader.h"
 #include "sid.h"
 
-#define TRACE_BO_SIZE 4096
-#define TMA_BO_SIZE   4096
+#define TMA_BO_SIZE 4096
 
 #define COLOR_RESET  "\033[0m"
 #define COLOR_RED    "\033[31m"
@@ -38,19 +37,6 @@
 
 #define RADV_DUMP_DIR "radv_dumps"
 
-/* Trace BO layout (offsets are 4 bytes):
- *
- * [0]: primary trace ID
- * [1]: secondary trace ID
- * [2-3]: 64-bit GFX ring pipeline pointer
- * [4-5]: 64-bit COMPUTE ring pipeline pointer
- * [6-7]: Vertex descriptors pointer
- * [8-9]: 64-bit Vertex prolog pointer
- * [10-11]: 64-bit descriptor set #0 pointer
- * ...
- * [72-73]: 64-bit descriptor set #31 pointer
- */
-
 bool
 radv_init_trace(struct radv_device *device)
 {
@@ -58,7 +44,7 @@ radv_init_trace(struct radv_device *device)
    VkResult result;
 
    result = radv_bo_create(
-      device, NULL, TRACE_BO_SIZE, 8, RADEON_DOMAIN_VRAM,
+      device, NULL, sizeof(struct radv_trace_data), 8, RADEON_DOMAIN_VRAM,
       RADEON_FLAG_CPU_ACCESS | RADEON_FLAG_NO_INTERPROCESS_SHARING | RADEON_FLAG_ZERO_VRAM | RADEON_FLAG_VA_UNCACHED,
       RADV_BO_PRIORITY_UPLOAD_BUFFER, 0, true, &device->trace_bo);
    if (result != VK_SUCCESS)
@@ -68,8 +54,8 @@ radv_init_trace(struct radv_device *device)
    if (result != VK_SUCCESS)
       return false;
 
-   device->trace_id_ptr = radv_buffer_map(ws, device->trace_bo);
-   if (!device->trace_id_ptr)
+   device->trace_data = radv_buffer_map(ws, device->trace_bo);
+   if (!device->trace_data)
       return false;
 
    return true;
@@ -89,8 +75,8 @@ radv_finish_trace(struct radv_device *device)
 static void
 radv_dump_trace(const struct radv_device *device, struct radeon_cmdbuf *cs, FILE *f)
 {
-   fprintf(f, "Trace ID: %x\n", *device->trace_id_ptr);
-   device->ws->cs_dump(cs, f, (const int *)device->trace_id_ptr, 2, RADV_CS_DUMP_TYPE_IBS);
+   fprintf(f, "Trace ID: %x\n", device->trace_data->primary_id);
+   device->ws->cs_dump(cs, f, (const int *)&device->trace_data->primary_id, 2, RADV_CS_DUMP_TYPE_IBS);
 }
 
 static void
@@ -231,12 +217,11 @@ radv_dump_descriptor_set(const struct radv_device *device, const struct radv_des
 static void
 radv_dump_descriptors(struct radv_device *device, FILE *f)
 {
-   uint64_t *ptr = (uint64_t *)device->trace_id_ptr;
    int i;
 
    fprintf(f, "Descriptors:\n");
    for (i = 0; i < MAX_SETS; i++) {
-      struct radv_descriptor_set *set = *(struct radv_descriptor_set **)(ptr + i + 5);
+      struct radv_descriptor_set *set = (struct radv_descriptor_set *)(uintptr_t)device->trace_data->descriptor_sets[i];
 
       radv_dump_descriptor_set(device, set, i, f);
    }
@@ -405,9 +390,8 @@ static void
 radv_dump_vertex_descriptors(const struct radv_device *device, const struct radv_graphics_pipeline *pipeline, FILE *f)
 {
    struct radv_shader *vs = radv_get_shader(pipeline->base.shaders, MESA_SHADER_VERTEX);
-   uint64_t *ptr = (uint64_t *)device->trace_id_ptr;
    uint32_t count = util_bitcount(vs->info.vs.vb_desc_usage_mask);
-   uint32_t *vb_ptr = *(uint32_t **)(ptr + 3);
+   uint32_t *vb_ptr = (uint32_t *)(uintptr_t)device->trace_data->vertex_descriptors;
 
    if (!count)
       return;
@@ -427,17 +411,10 @@ radv_dump_vertex_descriptors(const struct radv_device *device, const struct radv
    }
 }
 
-static struct radv_shader_part *
-radv_get_saved_vs_prolog(const struct radv_device *device)
-{
-   uint64_t *ptr = (uint64_t *)device->trace_id_ptr;
-   return *(struct radv_shader_part **)(ptr + 4);
-}
-
 static void
 radv_dump_vs_prolog(const struct radv_device *device, const struct radv_graphics_pipeline *pipeline, FILE *f)
 {
-   struct radv_shader_part *vs_prolog = radv_get_saved_vs_prolog(device);
+   struct radv_shader_part *vs_prolog = (struct radv_shader_part *)(uintptr_t)device->trace_data->vertex_prolog;
    struct radv_shader *vs_shader = radv_get_shader(pipeline->base.shaders, MESA_SHADER_VERTEX);
 
    if (!vs_prolog || !vs_shader || !vs_shader->info.vs.has_prolog)
@@ -450,10 +427,10 @@ radv_dump_vs_prolog(const struct radv_device *device, const struct radv_graphics
 static struct radv_pipeline *
 radv_get_saved_pipeline(struct radv_device *device, enum amd_ip_type ring)
 {
-   uint64_t *ptr = (uint64_t *)device->trace_id_ptr;
-   int offset = ring == AMD_IP_GFX ? 1 : 2;
-
-   return *(struct radv_pipeline **)(ptr + offset);
+   if (ring == AMD_IP_GFX)
+      return (struct radv_pipeline *)(uintptr_t)device->trace_data->gfx_ring_pipeline;
+   else
+      return (struct radv_pipeline *)(uintptr_t)device->trace_data->comp_ring_pipeline;
 }
 
 static void

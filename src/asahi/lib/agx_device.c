@@ -151,8 +151,6 @@ agx_bo_alloc(struct agx_device *dev, size_t size, size_t align,
       return NULL;
    }
 
-   bo->guid = bo->handle; /* TODO: We don't care about guids */
-
    uint32_t bind = ASAHI_BIND_READ;
    if (!(flags & AGX_BO_READONLY)) {
       bind |= ASAHI_BIND_WRITE;

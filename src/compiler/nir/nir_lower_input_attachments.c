@@ -25,10 +25,13 @@
 #include "nir_builder.h"
 
 static nir_ssa_def *
-load_frag_coord(nir_builder *b, nir_deref_instr *deref,
-                const nir_input_attachment_options *options)
+load_frag_coord(nir_builder *b, const nir_input_attachment_options *options)
+/*load_frag_coord(nir_builder *b, nir_deref_instr *deref,
+                const nir_input_attachment_options *options)*/
 {
-   if (options->use_fragcoord_sysval) {
+   if (options->use_fragcoord_sysval)
+      return nir_load_frag_coord(b);
+   /*if (options->use_fragcoord_sysval) {
       nir_ssa_def *frag_coord = nir_load_frag_coord(b);
       if (options->unscaled_input_attachment_ir3) {
          nir_variable *var = nir_deref_instr_get_variable(deref);
@@ -48,7 +51,7 @@ load_frag_coord(nir_builder *b, nir_deref_instr *deref,
          }
       }
       return frag_coord;
-   }
+   }*/
 
    nir_variable *pos =
       nir_find_variable_with_location(b->shader, nir_var_shader_in,
@@ -112,7 +115,8 @@ try_lower_input_load(nir_builder *b, nir_intrinsic_instr *load,
 
    b->cursor = nir_instr_remove(&load->instr);
 
-   nir_ssa_def *frag_coord = load_frag_coord(b, deref, options);
+   nir_ssa_def *frag_coord = load_frag_coord(b, options);
+   //nir_ssa_def *frag_coord = load_frag_coord(b, deref, options);
    frag_coord = nir_f2i32(b, frag_coord);
    nir_ssa_def *offset = nir_ssa_for_src(b, load->src[1], 2);
    nir_ssa_def *pos = nir_iadd(b, frag_coord, offset);
@@ -182,7 +186,8 @@ try_lower_input_texop(nir_builder *b, nir_tex_instr *tex,
 
    b->cursor = nir_before_instr(&tex->instr);
 
-   nir_ssa_def *frag_coord = load_frag_coord(b, deref, options);
+   nir_ssa_def *frag_coord = load_frag_coord(b, options);
+   //nir_ssa_def *frag_coord = load_frag_coord(b, deref, options);
    frag_coord = nir_f2i32(b, frag_coord);
 
    nir_ssa_def *layer = load_layer_id(b, options);

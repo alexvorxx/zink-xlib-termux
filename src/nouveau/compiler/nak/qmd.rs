@@ -68,7 +68,7 @@ macro_rules! qmd_impl_common {
         const GLOBAL_SIZE_OFFSET: usize = {
             let w = paste! {$c::[<$s _CTA_RASTER_WIDTH>]};
             assert!(w.end == w.start + 32);
-            w.start / 32
+            w.start / 8
         };
 
         fn set_global_size(&mut self, width: u32, height: u32, depth: u32) {

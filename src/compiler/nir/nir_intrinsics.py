@@ -261,6 +261,9 @@ index("struct nir_io_xfb", "io_xfb2")
 # Ray query values accessible from the RayQueryKHR object
 index("nir_ray_query_value", "ray_query_value")
 
+# Select between committed and candidate ray queriy intersections
+index("bool", "committed")
+
 # Rounding mode for conversions
 index("nir_rounding_mode", "rounding_mode")
 
@@ -556,8 +559,8 @@ intrinsic("rq_proceed", src_comp=[-1], dest_comp=1)
 intrinsic("rq_generate_intersection", src_comp=[-1, 1])
 # src[] = { query }
 intrinsic("rq_confirm_intersection", src_comp=[-1])
-# src[] = { query, committed }
-intrinsic("rq_load", src_comp=[-1, 1], dest_comp=0, indices=[RAY_QUERY_VALUE,COLUMN])
+# src[] = { query }
+intrinsic("rq_load", src_comp=[-1], dest_comp=0, indices=[RAY_QUERY_VALUE,COMMITTED,COLUMN])
 
 # Driver independent raytracing helpers
 
@@ -1281,25 +1284,9 @@ load("ubo_dxil", [1, 1], [], [CAN_ELIMINATE, CAN_REORDER])
 
 # DXIL Shared atomic intrinsics
 #
-# All of the shared variable atomic memory operations read a value from
-# memory, compute a new value using one of the operations below, write the
-# new value to memory, and return the original value read.
-#
-# All operations take 2 sources:
-#
-# 0: The index in the i32 array for by the shared memory region
-# 1: The data parameter to the atomic function (i.e. the value to add
-#    in shared_atomic_add, etc).
-intrinsic("shared_atomic_add_dxil",  src_comp=[1, 1], dest_comp=1)
-intrinsic("shared_atomic_imin_dxil", src_comp=[1, 1], dest_comp=1)
-intrinsic("shared_atomic_umin_dxil", src_comp=[1, 1], dest_comp=1)
-intrinsic("shared_atomic_imax_dxil", src_comp=[1, 1], dest_comp=1)
-intrinsic("shared_atomic_umax_dxil", src_comp=[1, 1], dest_comp=1)
-intrinsic("shared_atomic_and_dxil",  src_comp=[1, 1], dest_comp=1)
-intrinsic("shared_atomic_or_dxil",   src_comp=[1, 1], dest_comp=1)
-intrinsic("shared_atomic_xor_dxil",  src_comp=[1, 1], dest_comp=1)
-intrinsic("shared_atomic_exchange_dxil", src_comp=[1, 1], dest_comp=1)
-intrinsic("shared_atomic_comp_swap_dxil", src_comp=[1, 1, 1], dest_comp=1)
+# src0 is the index in the i32 array for by the shared memory region
+intrinsic("shared_atomic_dxil",  src_comp=[1, 1], dest_comp=1, indices=[ATOMIC_OP])
+intrinsic("shared_atomic_swap_dxil", src_comp=[1, 1, 1], dest_comp=1, indices=[ATOMIC_OP])
 
 # Intrinsics used by the Midgard/Bifrost blend pipeline. These are defined
 # within a blend shader to read/write the raw value from the tile buffer,

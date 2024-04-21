@@ -1196,7 +1196,7 @@ void pvr_CmdUpdateBuffer(VkCommandBuffer commandBuffer,
 {
    PVR_FROM_HANDLE(pvr_cmd_buffer, cmd_buffer, commandBuffer);
    PVR_FROM_HANDLE(pvr_buffer, dst, dstBuffer);
-   struct pvr_bo *pvr_bo;
+   struct pvr_suballoc_bo *pvr_bo;
    VkResult result;
 
    PVR_CHECK_COMMAND_BUFFER_BUILDING_STATE(cmd_buffer);
@@ -1206,7 +1206,7 @@ void pvr_CmdUpdateBuffer(VkCommandBuffer commandBuffer,
       return;
 
    pvr_cmd_copy_buffer_region(cmd_buffer,
-                              pvr_bo->vma->dev_addr,
+                              pvr_bo->dev_addr,
                               0,
                               dst->dev_addr,
                               dstOffset,
@@ -1362,10 +1362,10 @@ static VkResult pvr_clear_color_attachment_static_create_consts_buffer(
    const uint32_t clear_color[static const PVR_CLEAR_COLOR_ARRAY_SIZE],
    ASSERTED bool uses_tile_buffer,
    uint32_t tile_buffer_idx,
-   struct pvr_bo **const const_shareds_buffer_out)
+   struct pvr_suballoc_bo **const const_shareds_buffer_out)
 {
    struct pvr_device *device = cmd_buffer->device;
-   struct pvr_bo *const_shareds_buffer;
+   struct pvr_suballoc_bo *const_shareds_buffer;
    struct pvr_bo *tile_buffer;
    uint64_t tile_dev_addr;
    uint32_t *buffer;
@@ -1382,7 +1382,7 @@ static VkResult pvr_clear_color_attachment_static_create_consts_buffer(
    if (result != VK_SUCCESS)
       return result;
 
-   buffer = const_shareds_buffer->bo->map;
+   buffer = pvr_bo_suballoc_get_map_addr(const_shareds_buffer);
 
    for (uint32_t i = 0; i < PVR_CLEAR_ATTACHMENT_CONST_COUNT; i++) {
       uint32_t dest_idx = shader_info->driver_const_location_map[i];
@@ -1428,8 +1428,6 @@ static VkResult pvr_clear_color_attachment_static_create_consts_buffer(
       buffer[static_buff->dst_idx] = static_buff->value;
    }
 
-   pvr_bo_cpu_unmap(device, const_shareds_buffer);
-
    *const_shareds_buffer_out = const_shareds_buffer;
 
    return VK_SUCCESS;
@@ -1456,14 +1454,14 @@ static VkResult pvr_clear_color_attachment_static(
    struct pvr_pds_pixel_shader_sa_program texture_program;
    uint32_t pds_state[PVR_STATIC_CLEAR_PDS_STATE_COUNT];
    const struct pvr_shader_factory_info *shader_info;
+   struct pvr_suballoc_bo *pds_texture_program_bo;
    struct pvr_static_clear_ppp_template template;
-   struct pvr_bo *pds_texture_program_bo;
-   struct pvr_bo *const_shareds_buffer;
+   struct pvr_suballoc_bo *const_shareds_buffer;
    uint64_t pds_texture_program_addr;
+   struct pvr_suballoc_bo *pvr_bo;
    uint32_t tile_buffer_idx = 0;
    uint32_t out_reg_count;
    uint32_t output_offset;
-   struct pvr_bo *pvr_bo;
    uint32_t program_idx;
    uint32_t *buffer;
    VkResult result;
@@ -1500,7 +1498,7 @@ static VkResult pvr_clear_color_attachment_static(
    texture_program = (struct pvr_pds_pixel_shader_sa_program){
       .num_texture_dma_kicks = 1,
       .texture_dma_address = {
-         [0] = const_shareds_buffer->vma->dev_addr.addr,
+         [0] = const_shareds_buffer->dev_addr.addr,
       }
    };
    /* clang-format on */
@@ -1526,21 +1524,19 @@ static VkResult pvr_clear_color_attachment_static(
       &pds_texture_program_bo);
    if (result != VK_SUCCESS) {
       list_del(&const_shareds_buffer->link);
-      pvr_bo_free(device, const_shareds_buffer);
+      pvr_bo_suballoc_free(const_shareds_buffer);
 
       return result;
    }
 
-   buffer = pds_texture_program_bo->bo->map;
-   pds_texture_program_addr = pds_texture_program_bo->vma->dev_addr.addr -
+   buffer = pvr_bo_suballoc_get_map_addr(pds_texture_program_bo);
+   pds_texture_program_addr = pds_texture_program_bo->dev_addr.addr -
                               device->heaps.pds_heap->base_addr.addr;
 
    pvr_pds_generate_pixel_shader_sa_texture_state_data(
       &texture_program,
       buffer,
       &device->pdevice->dev_info);
-
-   pvr_bo_cpu_unmap(device, pds_texture_program_bo);
 
    pvr_csb_pack (&pds_state[PVR_STATIC_CLEAR_PPP_PDS_TYPE_SHADERBASE],
                  TA_STATE_PDS_SHADERBASE,
@@ -1607,10 +1603,10 @@ static VkResult pvr_clear_color_attachment_static(
       &pvr_bo);
    if (result != VK_SUCCESS) {
       list_del(&pds_texture_program_bo->link);
-      pvr_bo_free(device, pds_texture_program_bo);
+      pvr_bo_suballoc_free(pds_texture_program_bo);
 
       list_del(&const_shareds_buffer->link);
-      pvr_bo_free(device, const_shareds_buffer);
+      pvr_bo_suballoc_free(const_shareds_buffer);
 
       cmd_buffer->state.status = result;
       return result;
@@ -1875,7 +1871,7 @@ static void pvr_clear_attachments(struct pvr_cmd_buffer *cmd_buffer,
       } else {
          const uint32_t template_idx = attachment->aspectMask;
          struct pvr_static_clear_ppp_template template;
-         struct pvr_bo *pvr_bo;
+         struct pvr_suballoc_bo *pvr_bo;
 
          assert(template_idx < PVR_STATIC_CLEAR_VARIANT_COUNT);
          template =
@@ -1911,7 +1907,7 @@ static void pvr_clear_attachments(struct pvr_cmd_buffer *cmd_buffer,
       if (vs_has_rt_id_output) {
          const struct pvr_device_static_clear_state *dev_clear_state =
             &cmd_buffer->device->static_clear_state;
-         const struct pvr_bo *multi_layer_vert_bo =
+         const struct pvr_suballoc_bo *multi_layer_vert_bo =
             dev_clear_state->usc_multi_layer_vertex_shader_bo;
 
          /* We can't use the device's passthrough pds program since it doesn't
@@ -1950,7 +1946,7 @@ static void pvr_clear_attachments(struct pvr_cmd_buffer *cmd_buffer,
       for (uint32_t j = 0; j < rect_count; j++) {
          struct pvr_pds_upload pds_program_data_upload;
          const VkClearRect *clear_rect = &rects[j];
-         struct pvr_bo *vertices_bo;
+         struct pvr_suballoc_bo *vertices_bo;
          uint32_t *vdm_cs_buffer;
          VkResult result;
 

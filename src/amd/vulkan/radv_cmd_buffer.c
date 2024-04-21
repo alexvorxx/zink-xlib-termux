@@ -203,6 +203,7 @@ radv_bind_dynamic_state(struct radv_cmd_buffer *cmd_buffer, const struct radv_dy
    RADV_CMP_COPY(vk.ms.alpha_to_coverage_enable, RADV_DYNAMIC_ALPHA_TO_COVERAGE_ENABLE);
    RADV_CMP_COPY(vk.ms.sample_mask, RADV_DYNAMIC_SAMPLE_MASK);
    RADV_CMP_COPY(vk.ms.rasterization_samples, RADV_DYNAMIC_RASTERIZATION_SAMPLES);
+   RADV_CMP_COPY(vk.ms.sample_locations_enable, RADV_DYNAMIC_SAMPLE_LOCATIONS_ENABLE);
 
    RADV_CMP_COPY(vk.ds.depth.bounds_test.min, RADV_DYNAMIC_DEPTH_BOUNDS);
    RADV_CMP_COPY(vk.ds.depth.bounds_test.max, RADV_DYNAMIC_DEPTH_BOUNDS);
@@ -1088,7 +1089,7 @@ radv_emit_sample_locations(struct radv_cmd_buffer *cmd_buffer)
    VkOffset2D sample_locs[4][8]; /* 8 is the max. sample count supported */
    uint64_t centroid_priority;
 
-   if (!d->sample_location.count)
+   if (!d->sample_location.count || !d->vk.ms.sample_locations_enable)
       return;
 
    /* Convert the user sample locations to hardware sample locations. */
@@ -1839,17 +1840,18 @@ radv_emit_rbplus_state(struct radv_cmd_buffer *cmd_buffer)
 }
 
 static void
-radv_emit_ps_epilog_state(struct radv_cmd_buffer *cmd_buffer, struct radv_shader_part *ps_epilog,
-                          bool pipeline_is_dirty)
+radv_emit_ps_epilog_state(struct radv_cmd_buffer *cmd_buffer, struct radv_shader_part *ps_epilog)
 {
-   struct radv_graphics_pipeline *pipeline = cmd_buffer->state.graphics_pipeline;
    struct radv_shader *ps_shader = cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT];
+   const struct radv_device *device = cmd_buffer->device;
 
-   if (cmd_buffer->state.emitted_ps_epilog == ps_epilog && !pipeline_is_dirty)
+   if (cmd_buffer->state.emitted_ps_epilog == ps_epilog)
       return;
 
    uint32_t col_format = ps_epilog->spi_shader_col_format;
-   if (pipeline->need_null_export_workaround && !col_format)
+   bool need_null_export_workaround =
+      radv_needs_null_export_workaround(device, ps_shader, cmd_buffer->state.custom_blend_mode);
+   if (need_null_export_workaround && !col_format)
       col_format = V_028714_SPI_SHADER_32_R;
    radeon_set_context_reg(cmd_buffer->cs, R_028714_SPI_SHADER_COL_FORMAT, col_format);
    radeon_set_context_reg(cmd_buffer->cs, R_02823C_CB_SHADER_MASK,
@@ -2562,13 +2564,14 @@ radv_emit_conservative_rast_mode(struct radv_cmd_buffer *cmd_buffer)
 
       if (d->vk.rs.conservative_mode != VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT) {
          const struct radv_shader *ps = cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT];
+         const bool uses_inner_coverage = ps && ps->info.ps.reads_fully_covered;
 
          pa_sc_conservative_rast = S_028C4C_PREZ_AA_MASK_ENABLE(1) | S_028C4C_POSTZ_AA_MASK_ENABLE(1) |
                                    S_028C4C_CENTROID_SAMPLE_OVERRIDE(1);
 
          /* Inner coverage requires underestimate conservative rasterization. */
          if (d->vk.rs.conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_OVERESTIMATE_EXT &&
-             !ps->info.ps.reads_fully_covered) {
+             !uses_inner_coverage) {
             pa_sc_conservative_rast |= S_028C4C_OVER_RAST_ENABLE(1) |
                                        S_028C4C_UNDER_RAST_SAMPLE_SELECT(1) |
                                        S_028C4C_PBB_UNCERTAINTY_REGION_ENABLE(1);
@@ -2636,7 +2639,7 @@ radv_emit_rasterization_samples(struct radv_cmd_buffer *cmd_buffer)
    }
 
    if (pdevice->rad_info.gfx_level >= GFX10_3 &&
-       (cmd_buffer->state.ms.sample_shading_enable || ps->info.ps.reads_sample_mask_in)) {
+       (cmd_buffer->state.ms.sample_shading_enable || (ps && ps->info.ps.reads_sample_mask_in))) {
       /* Make sure sample shading is enabled even if only MSAA1x is used because the SAMPLE_ITER
        * combiner is in passthrough mode if PS_ITER_SAMPLE is 0, and it uses the per-draw rate. The
        * default VRS rate when sample shading is enabled is 1x1.
@@ -2676,11 +2679,13 @@ radv_emit_rasterization_samples(struct radv_cmd_buffer *cmd_buffer)
    radeon_set_context_reg(cmd_buffer->cs, R_028A4C_PA_SC_MODE_CNTL_1, pa_sc_mode_cntl_1);
 
    /* Pass the number of samples to the fragment shader because it might be needed. */
-   const struct radv_userdata_info *loc =
-      radv_get_user_sgpr(cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT], AC_UD_PS_NUM_SAMPLES);
-   if (loc->sgpr_idx != -1) {
-      uint32_t base_reg = cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT]->info.user_data_0;
-      radeon_set_sh_reg(cmd_buffer->cs, base_reg + loc->sgpr_idx * 4, rasterization_samples);
+   if (cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT]) {
+      const struct radv_userdata_info *loc =
+         radv_get_user_sgpr(cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT], AC_UD_PS_NUM_SAMPLES);
+      if (loc->sgpr_idx != -1) {
+         uint32_t base_reg = cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT]->info.user_data_0;
+         radeon_set_sh_reg(cmd_buffer->cs, base_reg + loc->sgpr_idx * 4, rasterization_samples);
+      }
    }
 }
 
@@ -4298,7 +4303,6 @@ radv_cmp_ps_epilog(const void *a_, const void *b_)
 static struct radv_shader_part *
 lookup_ps_epilog(struct radv_cmd_buffer *cmd_buffer)
 {
-   const struct radv_graphics_pipeline *pipeline = cmd_buffer->state.graphics_pipeline;
    const struct radv_rendering_state *render = &cmd_buffer->state.render;
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
    struct radv_device *device = cmd_buffer->device;
@@ -4335,7 +4339,7 @@ lookup_ps_epilog(struct radv_cmd_buffer *cmd_buffer)
       state.need_src_alpha |= 0x1;
    }
 
-   struct radv_ps_epilog_key key = radv_generate_ps_epilog_key(device, pipeline, &state, true);
+   struct radv_ps_epilog_key key = radv_generate_ps_epilog_key(device, &state, true);
    uint32_t hash = radv_hash_ps_epilog(&key);
 
    u_rwlock_rdlock(&device->ps_epilogs_lock);
@@ -4432,7 +4436,7 @@ radv_emit_msaa_state(struct radv_cmd_buffer *cmd_buffer)
                          S_028BE0_COVERED_CENTROID_IS_CENTER(pdevice->rad_info.gfx_level >= GFX10_3);
    }
 
-   pa_sc_aa_config |= S_028BE0_COVERAGE_TO_SHADER_SELECT(ps->info.ps.reads_fully_covered);
+   pa_sc_aa_config |= S_028BE0_COVERAGE_TO_SHADER_SELECT(ps && ps->info.ps.reads_fully_covered);
 
    /* On GFX11, DB_Z_INFO.NUM_SAMPLES should always match MSAA_EXPOSED_SAMPLES. It affects VRS,
     * occlusion queries and Primitive Ordered Pixel Shading if depth and stencil are not bound.
@@ -4484,7 +4488,7 @@ radv_emit_attachment_feedback_loop_enable(struct radv_cmd_buffer *cmd_buffer)
    /* When a depth/stencil attachment is used inside feedback loops, use LATE_Z to make sure shader
     * invocations read the correct value.
     */
-   if (!uses_ds_feedback_loop && (ps->info.ps.early_fragment_test || !ps->info.ps.writes_memory)) {
+   if (!uses_ds_feedback_loop && ps && (ps->info.ps.early_fragment_test || !ps->info.ps.writes_memory)) {
       z_order = V_02880C_EARLY_Z_THEN_LATE_Z;
    } else {
       z_order = V_02880C_LATE_Z;
@@ -6485,8 +6489,6 @@ radv_bind_multisample_state(struct radv_cmd_buffer *cmd_buffer,
       cmd_buffer->state.ms.sample_shading_enable = true;
       cmd_buffer->state.ms.min_sample_shading = ms->min_sample_shading;
    }
-
-   cmd_buffer->state.ms.uses_user_sample_locations = ms->uses_user_sample_locations;
 }
 
 static void
@@ -6638,6 +6640,10 @@ radv_bind_fragment_shader(struct radv_cmd_buffer *cmd_buffer, const struct radv_
       cmd_buffer->state.ms.min_sample_shading = min_sample_shading;
       cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_RASTERIZATION_SAMPLES;
    }
+
+   /* Re-emit the PS epilog when a new fragment shader is bound. */
+   if (ps->info.ps.has_epilog)
+      cmd_buffer->state.emitted_ps_epilog = NULL;
 }
 
 static void
@@ -7562,6 +7568,17 @@ radv_CmdSetColorBlendEquationEXT(VkCommandBuffer commandBuffer, uint32_t firstAt
    }
 
    state->dirty |= RADV_CMD_DIRTY_DYNAMIC_COLOR_BLEND_EQUATION;
+}
+
+VKAPI_ATTR void VKAPI_CALL
+radv_CmdSetSampleLocationsEnableEXT(VkCommandBuffer commandBuffer, VkBool32 sampleLocationsEnable)
+{
+   RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   struct radv_cmd_state *state = &cmd_buffer->state;
+
+   state->dynamic.vk.ms.sample_locations_enable = sampleLocationsEnable;
+
+   state->dirty |= RADV_CMD_DIRTY_DYNAMIC_SAMPLE_LOCATIONS_ENABLE;
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -8953,7 +8970,7 @@ radv_get_ngg_culling_settings(struct radv_cmd_buffer *cmd_buffer, bool vp_y_inve
    /* Small primitive culling assumes a sample position at (0.5, 0.5)
     * so don't enable it with user sample locations.
     */
-   if (!cmd_buffer->state.ms.uses_user_sample_locations) {
+   if (!d->vk.ms.sample_locations_enable) {
       nggc_settings |= radv_nggc_small_primitives;
 
       /* small_prim_precision = num_samples / 2^subpixel_bits
@@ -9014,14 +9031,14 @@ radv_emit_ngg_culling_state(struct radv_cmd_buffer *cmd_buffer)
 }
 
 static void
-radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct radv_draw_info *info,
-                              bool pipeline_is_dirty)
+radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct radv_draw_info *info)
 {
    const struct radv_device *device = cmd_buffer->device;
    struct radv_shader_part *ps_epilog = NULL;
    bool late_scissor_emission;
 
-   if (cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT]->info.ps.has_epilog) {
+   if (cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT] &&
+       cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT]->info.ps.has_epilog) {
       if (cmd_buffer->state.graphics_pipeline->ps_epilog) {
          ps_epilog = cmd_buffer->state.graphics_pipeline->ps_epilog;
       } else if ((cmd_buffer->state.emitted_graphics_pipeline != cmd_buffer->state.graphics_pipeline ||
@@ -9036,8 +9053,12 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
          }
 
          cmd_buffer->state.col_format_non_compacted = ps_epilog->spi_shader_col_format;
-         if (cmd_buffer->state.graphics_pipeline->need_null_export_workaround &&
-             !cmd_buffer->state.col_format_non_compacted)
+
+         bool need_null_export_workaround = radv_needs_null_export_workaround(
+            device, cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT],
+            cmd_buffer->state.custom_blend_mode);
+
+         if (need_null_export_workaround && !cmd_buffer->state.col_format_non_compacted)
             cmd_buffer->state.col_format_non_compacted = V_028714_SPI_SHADER_32_R;
          if (device->physical_device->rad_info.rbplus_allowed)
             cmd_buffer->state.dirty |= RADV_CMD_DIRTY_RBPLUS;
@@ -9061,7 +9082,8 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
         (RADV_CMD_DIRTY_PIPELINE | RADV_CMD_DIRTY_DYNAMIC_CULL_MODE |
          RADV_CMD_DIRTY_DYNAMIC_FRONT_FACE | RADV_CMD_DIRTY_DYNAMIC_RASTERIZER_DISCARD_ENABLE |
          RADV_CMD_DIRTY_DYNAMIC_VIEWPORT | RADV_CMD_DIRTY_DYNAMIC_CONSERVATIVE_RAST_MODE |
-         RADV_CMD_DIRTY_DYNAMIC_RASTERIZATION_SAMPLES | RADV_CMD_DIRTY_DYNAMIC_PRIMITIVE_TOPOLOGY)) &&
+         RADV_CMD_DIRTY_DYNAMIC_RASTERIZATION_SAMPLES | RADV_CMD_DIRTY_DYNAMIC_PRIMITIVE_TOPOLOGY |
+         RADV_CMD_DIRTY_DYNAMIC_SAMPLE_LOCATIONS_ENABLE)) &&
        cmd_buffer->state.has_nggc)
       radv_emit_ngg_culling_state(cmd_buffer);
 
@@ -9075,7 +9097,7 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
       radv_emit_graphics_pipeline(cmd_buffer);
 
    if (ps_epilog)
-      radv_emit_ps_epilog_state(cmd_buffer, ps_epilog, pipeline_is_dirty);
+      radv_emit_ps_epilog_state(cmd_buffer, ps_epilog);
 
    /* This should be before the cmd_buffer->state.dirty is cleared
     * (excluding RADV_CMD_DIRTY_PIPELINE) and after
@@ -9158,8 +9180,6 @@ ALWAYS_INLINE static bool
 radv_before_draw(struct radv_cmd_buffer *cmd_buffer, const struct radv_draw_info *info, uint32_t drawCount)
 {
    const bool has_prefetch = cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX7;
-   const bool pipeline_is_dirty = (cmd_buffer->state.dirty & RADV_CMD_DIRTY_PIPELINE) &&
-                                  cmd_buffer->state.graphics_pipeline != cmd_buffer->state.emitted_graphics_pipeline;
 
    ASSERTED const unsigned cdw_max =
       radeon_check_space(cmd_buffer->device->ws, cmd_buffer->cs, 4096 + 128 * (drawCount - 1));
@@ -9194,7 +9214,7 @@ radv_before_draw(struct radv_cmd_buffer *cmd_buffer, const struct radv_draw_info
        * the CUs are idle is very short. (there are only SET_SH
        * packets between the wait and the draw)
        */
-      radv_emit_all_graphics_states(cmd_buffer, info, pipeline_is_dirty);
+      radv_emit_all_graphics_states(cmd_buffer, info);
       si_emit_cache_flush(cmd_buffer);
       /* <-- CUs are idle here --> */
 
@@ -9216,7 +9236,7 @@ radv_before_draw(struct radv_cmd_buffer *cmd_buffer, const struct radv_draw_info
 
       radv_upload_graphics_shader_descriptors(cmd_buffer);
 
-      radv_emit_all_graphics_states(cmd_buffer, info, pipeline_is_dirty);
+      radv_emit_all_graphics_states(cmd_buffer, info);
    }
 
    radv_describe_draw(cmd_buffer);
@@ -9266,7 +9286,7 @@ radv_before_taskmesh_draw(struct radv_cmd_buffer *cmd_buffer, const struct radv_
    if (cmd_buffer->state.dirty & RADV_CMD_DIRTY_FRAMEBUFFER)
       radv_emit_fb_mip_change_flush(cmd_buffer);
 
-   radv_emit_all_graphics_states(cmd_buffer, info, pipeline_is_dirty);
+   radv_emit_all_graphics_states(cmd_buffer, info);
    if (task_shader && pipeline_is_dirty) {
       radv_pipeline_emit_hw_cs(pdevice, ace_cs, task_shader);
       radv_pipeline_emit_compute_state(pdevice, ace_cs, task_shader);

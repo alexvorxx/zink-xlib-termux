@@ -290,10 +290,12 @@ static void si_lower_nir(struct si_screen *sscreen, struct nir_shader *nir)
 
    const struct nir_lower_tex_options lower_tex_options = {
       .lower_txp = ~0u,
+      .lower_txf_offset = true,
       .lower_txs_cube_array = true,
       .lower_invalid_implicit_lod = true,
       .lower_tg4_offsets = true,
       .lower_to_fragment_fetch_amd = sscreen->info.gfx_level < GFX11,
+      .lower_array_layer_round_even = !sscreen->info.conformant_trunc_coord,
    };
    NIR_PASS_V(nir, nir_lower_tex, &lower_tex_options);
 
@@ -304,6 +306,8 @@ static void si_lower_nir(struct si_screen *sscreen, struct nir_shader *nir)
    NIR_PASS_V(nir, nir_lower_image, &lower_image_options);
 
    NIR_PASS_V(nir, si_lower_intrinsics);
+
+   NIR_PASS_V(nir, ac_nir_lower_sin_cos);
 
    NIR_PASS_V(nir, nir_lower_subgroups, &si_nir_subgroups_options);
 
@@ -371,6 +375,9 @@ static void si_lower_nir(struct si_screen *sscreen, struct nir_shader *nir)
       si_late_optimize_16bit_samplers(sscreen, nir);
 
    NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp, NULL);
+
+   /* Temporary stopgap until legacy atomics are removed in the core */
+   NIR_PASS_V(nir, nir_lower_legacy_atomics);
 }
 
 static bool si_mark_divergent_texture_non_uniform(struct nir_shader *nir)

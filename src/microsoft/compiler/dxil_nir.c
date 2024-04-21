@@ -758,8 +758,7 @@ dxil_nir_lower_loads_stores_to_dxil(nir_shader *nir,
 }
 
 static bool
-lower_shared_atomic(nir_builder *b, nir_intrinsic_instr *intr,
-                    nir_intrinsic_op dxil_op)
+lower_shared_atomic(nir_builder *b, nir_intrinsic_instr *intr)
 {
    b->cursor = nir_before_instr(&intr->instr);
 
@@ -768,16 +767,19 @@ lower_shared_atomic(nir_builder *b, nir_intrinsic_instr *intr,
       nir_iadd(b, intr->src[0].ssa, nir_imm_int(b, nir_intrinsic_base(intr)));
    nir_ssa_def *index = nir_ushr(b, offset, nir_imm_int(b, 2));
 
+   nir_intrinsic_op dxil_op = intr->intrinsic == nir_intrinsic_shared_atomic_swap ?
+      nir_intrinsic_shared_atomic_swap_dxil : nir_intrinsic_shared_atomic_dxil;
    nir_intrinsic_instr *atomic = nir_intrinsic_instr_create(b->shader, dxil_op);
    atomic->src[0] = nir_src_for_ssa(index);
    assert(intr->src[1].is_ssa);
    atomic->src[1] = nir_src_for_ssa(intr->src[1].ssa);
-   if (dxil_op == nir_intrinsic_shared_atomic_comp_swap_dxil) {
+   if (dxil_op == nir_intrinsic_shared_atomic_swap_dxil) {
       assert(intr->src[2].is_ssa);
       atomic->src[2] = nir_src_for_ssa(intr->src[2].ssa);
    }
    atomic->num_components = 0;
    nir_ssa_dest_init(&atomic->instr, &atomic->dest, 1, 32, NULL);
+   nir_intrinsic_set_atomic_op(atomic, nir_intrinsic_atomic_op(intr));
 
    nir_builder_instr_insert(b, &atomic->instr);
    nir_ssa_def_rewrite_uses(&intr->dest.ssa, &atomic->dest.ssa);
@@ -788,7 +790,7 @@ lower_shared_atomic(nir_builder *b, nir_intrinsic_instr *intr,
 bool
 dxil_nir_lower_atomics_to_dxil(nir_shader *nir)
 {
-   bool progress = false;
+   bool progress = nir_lower_legacy_atomics(nir);
 
    foreach_list_typed(nir_function, func, node, &nir->functions) {
       if (!func->is_entrypoint)
@@ -805,25 +807,10 @@ dxil_nir_lower_atomics_to_dxil(nir_shader *nir)
             nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
 
             switch (intr->intrinsic) {
-
-#define ATOMIC(op)                                                            \
-  case nir_intrinsic_shared_atomic_##op:                                     \
-     progress |= lower_shared_atomic(&b, intr,                                \
-                                     nir_intrinsic_shared_atomic_##op##_dxil); \
-     break
-
-            ATOMIC(add);
-            ATOMIC(imin);
-            ATOMIC(umin);
-            ATOMIC(imax);
-            ATOMIC(umax);
-            ATOMIC(and);
-            ATOMIC(or);
-            ATOMIC(xor);
-            ATOMIC(exchange);
-            ATOMIC(comp_swap);
-
-#undef ATOMIC
+            case nir_intrinsic_shared_atomic:
+            case nir_intrinsic_shared_atomic_swap:
+               progress |= lower_shared_atomic(&b, intr);
+               break;
             default:
                break;
             }
@@ -2088,7 +2075,8 @@ lower_subgroup_id(nir_builder *b, nir_instr *instr, void *data)
                          .memory_modes = nir_var_mem_shared);
 
       nif = nir_push_if(b, nir_elect(b, 1));
-      nir_ssa_def *subgroup_id_first_thread = nir_deref_atomic_add(b, 32, &counter_deref->dest.ssa, nir_imm_int(b, 1));
+      nir_ssa_def *subgroup_id_first_thread = nir_deref_atomic(b, 32, &counter_deref->dest.ssa, nir_imm_int(b, 1),
+                                                               .atomic_op = nir_atomic_op_iadd);
       nir_store_var(b, subgroup_id_local, subgroup_id_first_thread, 1);
       nir_pop_if(b, nif);
 
@@ -2408,6 +2396,64 @@ dxil_nir_forward_front_face(nir_shader *nir)
    return nir_shader_instructions_pass(nir, lower_load_face,
                                        nir_metadata_block_index | nir_metadata_dominance,
                                        var);
+}
+
+static bool
+split_phi_and_const_srcs(nir_builder *b, nir_instr *instr, void *data)
+{
+   bool progress = false;
+   switch (instr->type) {
+   case nir_instr_type_phi: {
+      /* Ensure each phi src is used only as a phi src and is not also a phi dest */
+      nir_phi_instr *phi = nir_instr_as_phi(instr);
+      nir_foreach_phi_src(src, phi) {
+         assert(src->src.is_ssa);
+         if (!list_is_singular(&src->src.use_link) ||
+             (src->src.is_ssa && src->src.parent_instr->type == nir_instr_type_phi)) {
+            b->cursor = nir_after_instr_and_phis(src->src.ssa->parent_instr);
+            nir_ssa_def *new_phi_src = nir_mov(b, src->src.ssa);
+            nir_src_rewrite_ssa(&src->src, new_phi_src);
+            progress = true;
+         }
+      }
+      return progress;
+   }
+   case nir_instr_type_load_const: {
+      /* Sink load_const to their uses if there's multiple */
+      nir_load_const_instr *load_const = nir_instr_as_load_const(instr);
+      if (!list_is_singular(&load_const->def.uses)) {
+         nir_foreach_use_safe(src, &load_const->def) {
+            b->cursor = nir_before_src(src);
+            nir_load_const_instr *new_load = nir_load_const_instr_create(b->shader,
+                                                                         load_const->def.num_components,
+                                                                         load_const->def.bit_size);
+            memcpy(new_load->value, load_const->value, sizeof(load_const->value[0]) * load_const->def.num_components);
+            nir_builder_instr_insert(b, &new_load->instr);
+            nir_src_rewrite_ssa(src, &new_load->def);
+            progress = true;
+         }
+      }
+      return progress;
+   }
+   default:
+      return false;
+   }
+}
+
+/* If a value is used by a phi and another instruction (e.g. another phi),
+ * copy the value with a mov and use that as the phi source. If the types
+ * of the uses are compatible, then the two phi sources will use the same
+ * DXIL SSA value, but if the types are not, then the mov provides an opportunity
+ * to insert a bitcast. Similarly, sink all consts so that they have only have
+ * a single use. The DXIL backend will already de-dupe the constants to the
+ * same dxil_value if they have the same type, but this allows a single constant
+ * to have different types without bitcasts. */
+bool
+dxil_nir_split_phis_and_const_srcs(nir_shader *s)
+{
+   return nir_shader_instructions_pass(s, split_phi_and_const_srcs,
+                                       nir_metadata_block_index | nir_metadata_dominance,
+                                       NULL);
 }
 
 static void

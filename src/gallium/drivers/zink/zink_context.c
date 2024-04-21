@@ -154,10 +154,6 @@ zink_context_destroy(struct pipe_context *pctx)
 
    simple_mtx_destroy(&ctx->batch_mtx);
 
-   if (ctx->batch.state) {
-      zink_clear_batch_state(ctx, ctx->batch.state);
-      zink_batch_state_destroy(screen, ctx->batch.state);
-   }
    struct zink_batch_state *bs = ctx->batch_states;
    while (bs) {
       struct zink_batch_state *bs_next = bs->next;
@@ -171,6 +167,10 @@ zink_context_destroy(struct pipe_context *pctx)
       zink_clear_batch_state(ctx, bs);
       zink_batch_state_destroy(screen, bs);
       bs = bs_next;
+   }
+   if (ctx->batch.state) {
+      zink_clear_batch_state(ctx, ctx->batch.state);
+      zink_batch_state_destroy(screen, ctx->batch.state);
    }
 
    for (unsigned i = 0; i < 2; i++) {
@@ -4505,7 +4505,9 @@ zink_resource_copy_region(struct pipe_context *pctx,
    struct zink_resource *src = zink_resource(psrc);
    struct zink_context *ctx = zink_context(pctx);
    if (dst->base.b.target != PIPE_BUFFER && src->base.b.target != PIPE_BUFFER) {
-      VkImageCopy region = {0};
+      VkImageCopy region;
+      /* fill struct holes */
+      memset(&region, 0, sizeof(region));
       if (util_format_get_num_planes(src->base.b.format) == 1 &&
           util_format_get_num_planes(dst->base.b.format) == 1) {
       /* If neither the calling command’s srcImage nor the calling command’s dstImage
@@ -4518,8 +4520,6 @@ zink_resource_copy_region(struct pipe_context *pctx,
       } else
          unreachable("planar formats not yet handled");
 
-      zink_fb_clears_apply_or_discard(ctx, pdst, (struct u_rect){dstx, dstx + src_box->width, dsty, dsty + src_box->height}, false);
-      zink_fb_clears_apply_region(ctx, psrc, zink_rect_from_box(src_box));
 
       region.srcSubresource.aspectMask = src->aspect;
       region.srcSubresource.mipLevel = src_level;
@@ -4587,6 +4587,15 @@ zink_resource_copy_region(struct pipe_context *pctx,
       region.dstOffset.y = dsty;
       region.extent.width = src_box->width;
       region.extent.height = src_box->height;
+
+      /* ignore no-op copies */
+      if (src == dst &&
+          !memcmp(&region.dstOffset, &region.srcOffset, sizeof(region.srcOffset)) &&
+          !memcmp(&region.dstSubresource, &region.srcSubresource, sizeof(region.srcSubresource)))
+         return;
+
+      zink_fb_clears_apply_or_discard(ctx, pdst, (struct u_rect){dstx, dstx + src_box->width, dsty, dsty + src_box->height}, false);
+      zink_fb_clears_apply_region(ctx, psrc, zink_rect_from_box(src_box));
 
       struct zink_batch *batch = &ctx->batch;
       zink_resource_setup_transfer_layouts(ctx, src, dst);

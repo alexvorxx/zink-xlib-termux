@@ -2977,7 +2977,7 @@ agx_build_pipeline(struct agx_batch *batch, struct agx_compiled_shader *cs,
    }
 
    if (stage == PIPE_SHADER_FRAGMENT) {
-      agx_usc_tilebuffer(&b, &batch->tilebuffer_layout);
+      agx_usc_push_packed(&b, SHARED, &batch->tilebuffer_layout.usc);
    } else if (stage == PIPE_SHADER_COMPUTE || stage == PIPE_SHADER_TESS_CTRL) {
       unsigned size = cs->b.info.local_size + variable_shared_mem;
 
@@ -3167,7 +3167,7 @@ agx_build_meta(struct agx_batch *batch, bool store, bool partial_render)
       }
    }
 
-   agx_usc_tilebuffer(&b, &batch->tilebuffer_layout);
+   agx_usc_push_packed(&b, SHARED, &batch->tilebuffer_layout.usc);
 
    /* Get the shader */
    key.reserved_preamble = uniforms;

@@ -224,30 +224,11 @@ brw_type_encode_for_3src(const struct intel_device_info *devinfo,
 }
 
 /**
- * Convert the hardware representation for a 3-src align16 instruction into a
- * brw_reg_type enumeration value.
+ * Convert the hardware encoding for a 3-src instruction into a brw_reg_type.
  */
 enum brw_reg_type
-brw_a16_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
-                                 unsigned hw_type)
-{
-   static const enum brw_reg_type tbl[] = {
-      [0] = BRW_TYPE_F,
-      [1] = BRW_TYPE_D,
-      [2] = BRW_TYPE_UD,
-      [3] = BRW_TYPE_DF,
-      [4] = BRW_TYPE_HF,
-   };
-   return hw_type < ARRAY_SIZE(tbl) ? tbl[hw_type] : BRW_TYPE_INVALID;
-}
-
-/**
- * Convert the hardware representation for a 3-src align1 instruction into a
- * brw_reg_type enumeration value.
- */
-enum brw_reg_type
-brw_a1_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
-                                unsigned hw_type, unsigned exec_type)
+brw_type_decode_for_3src(const struct intel_device_info *devinfo,
+                         unsigned hw_type, unsigned exec_type)
 {
    STATIC_ASSERT(BRW_ALIGN1_3SRC_EXEC_TYPE_INT == 0);
    STATIC_ASSERT(BRW_ALIGN1_3SRC_EXEC_TYPE_FLOAT == 1);
@@ -262,7 +243,7 @@ brw_a1_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
             return BRW_TYPE_INVALID;
       }
       return (enum brw_reg_type) (base_field | size_field);
-   } else {
+   } else if (devinfo->ver >= 11) {
       if (exec_type == BRW_ALIGN1_3SRC_EXEC_TYPE_FLOAT) {
          return hw_type > 1 ? BRW_TYPE_INVALID :
                 hw_type ? BRW_TYPE_F : BRW_TYPE_HF;
@@ -271,6 +252,16 @@ brw_a1_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
       unsigned size_field = 2 >> (hw_type >> 1);
       unsigned base_field = (hw_type & 1) << 2;
       return (enum brw_reg_type) (base_field | size_field);
+   } else {
+      /* align16 encodings */
+      static const enum brw_reg_type tbl[] = {
+         [0] = BRW_TYPE_F,
+         [1] = BRW_TYPE_D,
+         [2] = BRW_TYPE_UD,
+         [3] = BRW_TYPE_DF,
+         [4] = BRW_TYPE_HF,
+      };
+      return hw_type < ARRAY_SIZE(tbl) ? tbl[hw_type] : BRW_TYPE_INVALID;
    }
 }
 

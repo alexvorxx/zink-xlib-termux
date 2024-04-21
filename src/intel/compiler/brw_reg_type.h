@@ -166,12 +166,8 @@ brw_type_encode_for_3src(const struct intel_device_info *devinfo,
                          enum brw_reg_type type);
 
 enum brw_reg_type
-brw_a16_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
-                                 unsigned hw_type);
-
-enum brw_reg_type
-brw_a1_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
-                                unsigned hw_type, unsigned exec_type);
+brw_type_decode_for_3src(const struct intel_device_info *devinfo,
+                         unsigned hw_type, unsigned exec_type);
 
 const char *
 brw_reg_type_to_letters(enum brw_reg_type type);

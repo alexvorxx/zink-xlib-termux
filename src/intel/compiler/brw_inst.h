@@ -394,7 +394,7 @@ brw_inst_3src_a16_##reg##_type(const struct intel_device_info *devinfo,       \
                                const brw_inst *inst)                          \
 {                                                                             \
    unsigned hw_type = brw_inst_3src_a16_##reg##_hw_type(devinfo, inst);       \
-   return brw_a16_hw_3src_type_to_reg_type(devinfo, hw_type);                 \
+   return brw_type_decode_for_3src(devinfo, hw_type, 0);                      \
 }
 
 REG_TYPE(dst)
@@ -467,7 +467,7 @@ brw_inst_3src_a1_##reg##_type(const struct intel_device_info *devinfo,        \
       (enum gfx10_align1_3src_exec_type) brw_inst_3src_a1_exec_type(devinfo,  \
                                                                     inst);    \
    unsigned hw_type = brw_inst_3src_a1_##reg##_hw_type(devinfo, inst);        \
-   return brw_a1_hw_3src_type_to_reg_type(devinfo, hw_type, exec_type);       \
+   return brw_type_decode_for_3src(devinfo, hw_type, exec_type);              \
 }
 
 REG_TYPE(dst)
@@ -577,7 +577,7 @@ brw_inst_dpas_3src_##reg##_type(const struct intel_device_info *devinfo,      \
       (enum gfx10_align1_3src_exec_type) brw_inst_dpas_3src_exec_type(devinfo,\
                                                                       inst);  \
    unsigned hw_type = brw_inst_dpas_3src_##reg##_hw_type(devinfo, inst);      \
-   return brw_a1_hw_3src_type_to_reg_type(devinfo, hw_type, exec_type);       \
+   return brw_type_decode_for_3src(devinfo, hw_type, exec_type);              \
 }
 
 REG_TYPE(dst)

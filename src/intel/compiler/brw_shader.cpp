@@ -301,7 +301,7 @@ fs_inst::is_commutative() const
       /* Integer multiplication of dword and word sources is not actually
        * commutative. The DW source must be first.
        */
-      return !brw_reg_type_is_integer(src[0].type) ||
+      return !brw_type_is_int(src[0].type) ||
              type_sz(src[0].type) == type_sz(src[1].type);
 
    case BRW_OPCODE_SEL:

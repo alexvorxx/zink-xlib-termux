@@ -220,7 +220,7 @@ namespace {
    required_exec_type(const intel_device_info *devinfo, const fs_inst *inst)
    {
       const brw_reg_type t = get_exec_type(inst);
-      const bool has_64bit = brw_reg_type_is_floating_point(t) ?
+      const bool has_64bit = brw_type_is_float(t) ?
          devinfo->has_64bit_float : devinfo->has_64bit_int;
 
       switch (inst->opcode) {
@@ -454,7 +454,7 @@ namespace brw {
       assert(inst->components_read(i) == 1);
       assert(v->devinfo->has_integer_dword_mul ||
              inst->opcode != BRW_OPCODE_MUL ||
-             brw_reg_type_is_floating_point(get_exec_type(inst)) ||
+             brw_type_is_float(get_exec_type(inst)) ||
              MIN2(type_sz(inst->src[0].type), type_sz(inst->src[1].type)) >= 4 ||
              type_sz(inst->src[i].type) == get_exec_type_size(inst));
 
@@ -595,7 +595,7 @@ namespace {
        * accumulator.
        */
       assert(inst->opcode != BRW_OPCODE_MUL || !inst->dst.is_accumulator() ||
-             brw_reg_type_is_floating_point(inst->dst.type));
+             brw_type_is_float(inst->dst.type));
 
       const fs_builder ibld(v, block, inst);
       const unsigned stride = required_dst_byte_stride(inst) /

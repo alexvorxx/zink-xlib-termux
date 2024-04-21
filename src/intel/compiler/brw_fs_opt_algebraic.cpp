@@ -110,7 +110,7 @@ brw_fs_opt_algebraic(fs_visitor &s)
          if (inst->src[0].file != IMM && inst->src[1].file != IMM)
             continue;
 
-         if (brw_reg_type_is_floating_point(inst->src[1].type))
+         if (brw_type_is_float(inst->src[1].type))
             break;
 
          /* From the BDW PRM, Vol 2a, "mul - Multiply":
@@ -179,7 +179,7 @@ brw_fs_opt_algebraic(fs_visitor &s)
          if (inst->src[1].file != IMM)
             continue;
 
-         if (brw_reg_type_is_integer(inst->src[1].type) &&
+         if (brw_type_is_int(inst->src[1].type) &&
              inst->src[1].is_zero()) {
             inst->opcode = BRW_OPCODE_MOV;
             inst->sources = 1;

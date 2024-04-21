@@ -440,7 +440,7 @@ fs_inst::can_do_source_mods(const struct intel_device_info *devinfo) const
          MIN2(type_sz(src[1].type), type_sz(src[2].type)) :
          MIN2(type_sz(src[0].type), type_sz(src[1].type));
 
-      if (brw_reg_type_is_integer(exec_type) &&
+      if (brw_type_is_int(exec_type) &&
           type_sz(exec_type) >= 4 &&
           type_sz(exec_type) != min_type_sz)
          return false;
@@ -521,7 +521,7 @@ fs_inst::can_do_cmod() const
     * equality with a 32-bit value.  See piglit fs-op-neg-uvec4.
     */
    for (unsigned i = 0; i < sources; i++) {
-      if (brw_reg_type_is_unsigned_integer(src[i].type) && src[i].negate)
+      if (brw_type_is_uint(src[i].type) && src[i].negate)
          return false;
    }
 

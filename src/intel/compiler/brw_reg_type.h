@@ -153,24 +153,6 @@ brw_type_with_size(enum brw_reg_type ref_type, unsigned bit_size)
 
 /* -------------------------------------------------------------- */
 
-static inline bool
-brw_reg_type_is_floating_point(enum brw_reg_type type)
-{
-   return brw_type_is_float(type);
-}
-
-static inline bool
-brw_reg_type_is_integer(enum brw_reg_type type)
-{
-   return brw_type_is_int(type);
-}
-
-static inline bool
-brw_reg_type_is_unsigned_integer(enum brw_reg_type tp)
-{
-   return brw_type_is_uint(tp);
-}
-
 /*
  * Returns a type based on a reference_type (word, float, half-float) and a
  * given bit_size.

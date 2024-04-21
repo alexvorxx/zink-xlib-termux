@@ -85,7 +85,7 @@ namespace {
             if (inst->src[i].file != BAD_FILE &&
                 !inst->is_control_source(i)) {
                const brw_reg_type t = inst->src[i].type;
-               has_int_src |= !brw_reg_type_is_floating_point(t);
+               has_int_src |= !brw_type_is_float(t);
                has_long_src |= type_sz(t) >= 8;
             }
          }
@@ -118,7 +118,7 @@ namespace {
    inferred_exec_pipe(const struct intel_device_info *devinfo, const fs_inst *inst)
    {
       const brw_reg_type t = get_exec_type(inst);
-      const bool is_dword_multiply = !brw_reg_type_is_floating_point(t) &&
+      const bool is_dword_multiply = !brw_type_is_float(t) &&
          ((inst->opcode == BRW_OPCODE_MUL &&
            MIN2(type_sz(inst->src[0].type), type_sz(inst->src[1].type)) >= 4) ||
           (inst->opcode == BRW_OPCODE_MAD &&
@@ -137,7 +137,7 @@ namespace {
       else if (inst->opcode == FS_OPCODE_PACK_HALF_2x16_SPLIT)
          return TGL_PIPE_FLOAT;
       else if (devinfo->ver >= 20 && type_sz(inst->dst.type) >= 8 &&
-               brw_reg_type_is_floating_point(inst->dst.type)) {
+               brw_type_is_float(inst->dst.type)) {
          assert(devinfo->has_64bit_float);
          return TGL_PIPE_LONG;
       } else if (devinfo->ver < 20 &&
@@ -146,7 +146,7 @@ namespace {
          assert(devinfo->has_64bit_float || devinfo->has_64bit_int ||
                 devinfo->has_integer_dword_mul);
          return TGL_PIPE_LONG;
-      } else if (brw_reg_type_is_floating_point(inst->dst.type))
+      } else if (brw_type_is_float(inst->dst.type))
          return TGL_PIPE_FLOAT;
       else
          return TGL_PIPE_INT;

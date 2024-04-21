@@ -450,7 +450,7 @@ brw_inst_set_3src_a1_##reg##_type(const struct intel_device_info *devinfo,    \
    UNUSED enum gfx10_align1_3src_exec_type exec_type =                        \
       (enum gfx10_align1_3src_exec_type) brw_inst_3src_a1_exec_type(devinfo,  \
                                                                     inst);    \
-   if (brw_reg_type_is_floating_point(type)) {                                \
+   if (brw_type_is_float(type)) {                                \
       assert(exec_type == BRW_ALIGN1_3SRC_EXEC_TYPE_FLOAT);                   \
    } else {                                                                   \
       assert(exec_type == BRW_ALIGN1_3SRC_EXEC_TYPE_INT);                     \
@@ -560,7 +560,7 @@ brw_inst_set_dpas_3src_##reg##_type(const struct intel_device_info *devinfo,  \
    UNUSED enum gfx10_align1_3src_exec_type exec_type =                        \
       (enum gfx10_align1_3src_exec_type) brw_inst_dpas_3src_exec_type(devinfo,\
                                                                       inst);  \
-   if (brw_reg_type_is_floating_point(type)) {                                \
+   if (brw_type_is_float(type)) {                                \
       assert(exec_type == BRW_ALIGN1_3SRC_EXEC_TYPE_FLOAT);                   \
    } else {                                                                   \
       assert(exec_type == BRW_ALIGN1_3SRC_EXEC_TYPE_INT);                     \

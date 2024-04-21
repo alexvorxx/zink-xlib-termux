@@ -374,7 +374,7 @@ TEST_P(validation_test, invalid_type_encoding_3src_a16)
          }
 
          struct brw_reg g = retype(g0, test_case[i].type);
-         if (!brw_reg_type_is_integer(test_case[i].type)) {
+         if (!brw_type_is_int(test_case[i].type)) {
             brw_MAD(p, g, g, g, g);
          } else {
             brw_BFE(p, g, g, g, g);
@@ -465,7 +465,7 @@ TEST_P(validation_test, invalid_type_encoding_3src_a1)
          }
 
          struct brw_reg g = retype(g0, test_case[i].type);
-         if (!brw_reg_type_is_integer(test_case[i].type)) {
+         if (!brw_type_is_int(test_case[i].type)) {
             brw_MAD(p, g, g, g, g);
          } else {
             brw_BFE(p, g, g, g, g);

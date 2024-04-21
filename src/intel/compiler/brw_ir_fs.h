@@ -660,7 +660,7 @@ get_exec_type(const fs_inst *inst)
          if (type_sz(t) > type_sz(exec_type))
             exec_type = t;
          else if (type_sz(t) == type_sz(exec_type) &&
-                  brw_reg_type_is_floating_point(t))
+                  brw_type_is_float(t))
             exec_type = t;
       }
    }
@@ -781,7 +781,7 @@ has_dst_aligned_region_restriction(const intel_device_info *devinfo,
     * simulator suggest that only 32x32-bit integer multiplication is
     * restricted.
     */
-   const bool is_dword_multiply = !brw_reg_type_is_floating_point(exec_type) &&
+   const bool is_dword_multiply = !brw_type_is_float(exec_type) &&
       ((inst->opcode == BRW_OPCODE_MUL &&
         MIN2(type_sz(inst->src[0].type), type_sz(inst->src[1].type)) >= 4) ||
        (inst->opcode == BRW_OPCODE_MAD &&
@@ -791,7 +791,7 @@ has_dst_aligned_region_restriction(const intel_device_info *devinfo,
        (type_sz(exec_type) == 4 && is_dword_multiply))
       return intel_device_info_is_9lp(devinfo) || devinfo->verx10 >= 125;
 
-   else if (brw_reg_type_is_floating_point(dst_type))
+   else if (brw_type_is_float(dst_type))
       return devinfo->verx10 >= 125;
 
    else
@@ -817,10 +817,10 @@ has_subdword_integer_region_restriction(const intel_device_info *devinfo,
                                         const fs_reg *srcs, unsigned num_srcs)
 {
    if (devinfo->ver >= 20 &&
-       brw_reg_type_is_integer(inst->dst.type) &&
+       brw_type_is_int(inst->dst.type) &&
        MAX2(byte_stride(inst->dst), type_sz(inst->dst.type)) < 4) {
       for (unsigned i = 0; i < num_srcs; i++) {
-         if (brw_reg_type_is_integer(srcs[i].type) &&
+         if (brw_type_is_int(srcs[i].type) &&
              type_sz(srcs[i].type) < 4 && byte_stride(srcs[i]) >= 4)
             return true;
       }

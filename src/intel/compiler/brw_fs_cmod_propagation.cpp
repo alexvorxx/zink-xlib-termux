@@ -124,8 +124,8 @@ cmod_propagate_cmp_to_add(const intel_device_info *devinfo, bblock_t *block,
             : inst->conditional_mod;
 
          if (scan_inst->saturate &&
-             (brw_reg_type_is_floating_point(scan_inst->dst.type) ||
-              brw_reg_type_is_unsigned_integer(scan_inst->dst.type)) &&
+             (brw_type_is_float(scan_inst->dst.type) ||
+              brw_type_is_uint(scan_inst->dst.type)) &&
              (cond != BRW_CONDITIONAL_G &&
               cond != BRW_CONDITIONAL_LE))
             goto not_match;
@@ -270,7 +270,7 @@ opt_cmod_propagation_local(const intel_device_info *devinfo, bblock_t *block)
        * less than zero, so the flags get set differently than for (a < b).
        */
       if (inst->opcode == BRW_OPCODE_CMP && !inst->src[1].is_zero()) {
-         if (brw_reg_type_is_floating_point(inst->src[0].type) &&
+         if (brw_type_is_float(inst->src[0].type) &&
              cmod_propagate_cmp_to_add(devinfo, block, inst))
             progress = true;
 
@@ -310,7 +310,7 @@ opt_cmod_propagation_local(const intel_device_info *devinfo, bblock_t *block)
             /* CMP's result is the same regardless of dest type. */
             if (inst->conditional_mod == BRW_CONDITIONAL_NZ &&
                 scan_inst->opcode == BRW_OPCODE_CMP &&
-                brw_reg_type_is_integer(inst->dst.type)) {
+                brw_type_is_int(inst->dst.type)) {
                inst->remove(block, true);
                progress = true;
                break;
@@ -323,7 +323,7 @@ opt_cmod_propagation_local(const intel_device_info *devinfo, bblock_t *block)
                break;
 
             if (inst->opcode == BRW_OPCODE_MOV) {
-               if (brw_reg_type_is_floating_point(scan_inst->dst.type)) {
+               if (brw_type_is_float(scan_inst->dst.type)) {
                   /* If the destination type of scan_inst is floating-point,
                    * then:
                    *
@@ -338,7 +338,7 @@ opt_cmod_propagation_local(const intel_device_info *devinfo, bblock_t *block)
                   if (scan_inst->dst.type != inst->src[0].type)
                      break;
 
-                  if (!brw_reg_type_is_floating_point(inst->dst.type))
+                  if (!brw_type_is_float(inst->dst.type))
                      break;
 
                   if (type_sz(scan_inst->dst.type) > type_sz(inst->dst.type))
@@ -359,18 +359,18 @@ opt_cmod_propagation_local(const intel_device_info *devinfo, bblock_t *block)
                    *   (of any size) or integer with a size at least as large
                    *   as the destination of inst and the same signedness.
                    */
-                  if (!brw_reg_type_is_integer(inst->src[0].type) ||
+                  if (!brw_type_is_int(inst->src[0].type) ||
                       type_sz(scan_inst->dst.type) != type_sz(inst->src[0].type))
                      break;
 
-                  if (brw_reg_type_is_integer(inst->dst.type)) {
+                  if (brw_type_is_int(inst->dst.type)) {
                      if (type_sz(inst->dst.type) < type_sz(scan_inst->dst.type))
                         break;
 
                      if (inst->conditional_mod != BRW_CONDITIONAL_Z &&
                          inst->conditional_mod != BRW_CONDITIONAL_NZ &&
-                         brw_reg_type_is_unsigned_integer(inst->dst.type) !=
-                         brw_reg_type_is_unsigned_integer(scan_inst->dst.type))
+                         brw_type_is_uint(inst->dst.type) !=
+                         brw_type_is_uint(scan_inst->dst.type))
                         break;
                   }
                }
@@ -391,8 +391,8 @@ opt_cmod_propagation_local(const intel_device_info *devinfo, bblock_t *block)
                   if (type_sz(scan_inst->dst.type) != type_sz(inst->dst.type))
                      break;
 
-                  if (brw_reg_type_is_floating_point(scan_inst->dst.type) !=
-                      brw_reg_type_is_floating_point(inst->dst.type))
+                  if (brw_type_is_float(scan_inst->dst.type) !=
+                      brw_type_is_float(inst->dst.type))
                      break;
                }
             }
@@ -490,7 +490,7 @@ opt_cmod_propagation_local(const intel_device_info *devinfo, bblock_t *block)
              *
              * We just disallow cmod propagation on all integer multiplies.
              */
-            if (!brw_reg_type_is_floating_point(scan_inst->dst.type) &&
+            if (!brw_type_is_float(scan_inst->dst.type) &&
                 scan_inst->opcode == BRW_OPCODE_MUL)
                break;
 

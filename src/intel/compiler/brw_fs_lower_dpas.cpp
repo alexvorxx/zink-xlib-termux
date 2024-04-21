@@ -281,7 +281,7 @@ brw_fs_lower_dpas(fs_visitor &v)
 
       const fs_builder bld = fs_builder(&v, block, inst).group(8, 0).exec_all();
 
-      if (brw_reg_type_is_floating_point(inst->dst.type)) {
+      if (brw_type_is_float(inst->dst.type)) {
          f16_using_mac(bld, inst);
       } else {
          if (v.devinfo->ver >= 12) {

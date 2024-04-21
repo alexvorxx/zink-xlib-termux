@@ -142,7 +142,7 @@ namespace {
           * Treat it as double-precision.
           */
          if ((inst->opcode == BRW_OPCODE_MUL || inst->opcode == BRW_OPCODE_MAD) &&
-             !brw_reg_type_is_floating_point(tx) && type_sz(tx) == 4 &&
+             !brw_type_is_float(tx) && type_sz(tx) == 4 &&
              type_sz(inst->src[0].type) == type_sz(inst->src[1].type))
             tx = brw_int_type(8, tx == BRW_TYPE_D);
 
@@ -855,7 +855,7 @@ namespace {
       assert(inst->reads_accumulator_implicitly() ||
              inst->writes_accumulator_implicitly(devinfo));
       const unsigned offset = (inst->group + i) * type_sz(tx) *
-         (brw_reg_type_is_floating_point(tx) ? 1 : 2);
+         (brw_type_is_float(tx) ? 1 : 2);
       return offset / (reg_unit(devinfo) * REG_SIZE) % 2;
    }
 

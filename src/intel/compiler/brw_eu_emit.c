@@ -586,7 +586,7 @@ brw_alu3(struct brw_codegen *p, unsigned opcode, struct brw_reg dest,
       brw_inst_set_3src_a1_dst_subreg_nr(devinfo, inst, phys_subnr(devinfo, dest) / 8);
       brw_inst_set_3src_a1_dst_hstride(devinfo, inst, BRW_ALIGN1_3SRC_DST_HORIZONTAL_STRIDE_1);
 
-      if (brw_reg_type_is_floating_point(dest.type)) {
+      if (brw_type_is_float(dest.type)) {
          brw_inst_set_3src_a1_exec_type(devinfo, inst,
                                         BRW_ALIGN1_3SRC_EXEC_TYPE_FLOAT);
       } else {
@@ -755,7 +755,7 @@ brw_dpas_three_src(struct brw_codegen *p, enum gfx12_systolic_depth opcode,
    brw_inst_set_dpas_3src_dst_reg_nr(devinfo, inst, phys_nr(devinfo, dest));
    brw_inst_set_dpas_3src_dst_subreg_nr(devinfo, inst, phys_subnr(devinfo, dest));
 
-   if (brw_reg_type_is_floating_point(dest.type)) {
+   if (brw_type_is_float(dest.type)) {
       brw_inst_set_dpas_3src_exec_type(devinfo, inst,
                                        BRW_ALIGN1_3SRC_EXEC_TYPE_FLOAT);
    } else {

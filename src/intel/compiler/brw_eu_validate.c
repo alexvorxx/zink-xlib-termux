@@ -896,9 +896,9 @@ general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
        */
       if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1) {
          if ((dst_type == BRW_TYPE_HF &&
-              (brw_reg_type_is_integer(src0_type) ||
-               (num_sources > 1 && brw_reg_type_is_integer(src1_type)))) ||
-             (brw_reg_type_is_integer(dst_type) &&
+              (brw_type_is_int(src0_type) ||
+               (num_sources > 1 && brw_type_is_int(src1_type)))) ||
+             (brw_type_is_int(dst_type) &&
               (src0_type == BRW_TYPE_HF ||
                (num_sources > 1 && src1_type == BRW_TYPE_HF)))) {
             ERROR_IF(dst_stride * dst_type_size != 4,
@@ -1732,7 +1732,7 @@ special_requirements_for_handling_double_precision_data_types(
        *      used."
        */
       if (devinfo->verx10 >= 125 &&
-          (brw_reg_type_is_floating_point(dst_type) ||
+          (brw_type_is_float(dst_type) ||
            is_double_precision)) {
          ERROR_IF(!is_scalar_region &&
                   BRW_ADDRESS_REGISTER_INDIRECT_REGISTER != address_mode &&
@@ -1758,7 +1758,7 @@ special_requirements_for_handling_double_precision_data_types(
        *  Quad-Word data must not be used."
        */
       if (devinfo->verx10 >= 125 &&
-          (brw_reg_type_is_floating_point(type) || type_sz(type) == 8)) {
+          (brw_type_is_float(type) || type_sz(type) == 8)) {
          ERROR_IF(address_mode == BRW_ADDRESS_REGISTER_INDIRECT_REGISTER &&
                   vstride == BRW_VERTICAL_STRIDE_ONE_DIMENSIONAL,
                   "Vx1 and VxH indirect addressing for Float, Half-Float, "
@@ -1829,7 +1829,7 @@ instruction_restrictions(const struct brw_isa_info *isa,
          !(brw_inst_src1_negate(devinfo, inst) ||
            brw_inst_src1_abs(devinfo, inst));
 
-      ERROR_IF(!brw_reg_type_is_floating_point(exec_type) &&
+      ERROR_IF(!brw_type_is_float(exec_type) &&
                type_sz(exec_type) == 4 && !(src0_valid && src1_valid),
                "When multiplying a DW and any lower precision integer, source "
                "modifier is not supported.");
@@ -1860,7 +1860,7 @@ instruction_restrictions(const struct brw_isa_info *isa,
        * Ivy Bridge, Haswell, Skylake, and Ice Lake PRMs contain the same
        * text.
        */
-      ERROR_IF(brw_reg_type_is_integer(src1_type) &&
+      ERROR_IF(brw_type_is_int(src1_type) &&
                type_sz(src0_type) < 4 && type_sz(src1_type) == 4,
                "When multiplying a DW and any lower precision integer, the "
                "DW operand must be src0.");
@@ -1873,9 +1873,9 @@ instruction_restrictions(const struct brw_isa_info *isa,
        * The Skylake and Ice Lake PRMs contain the same text.
        */
       ERROR_IF((src0_is_acc(devinfo, inst) &&
-                brw_reg_type_is_integer(src0_type)) ||
+                brw_type_is_int(src0_type)) ||
                (src1_is_acc(devinfo, inst) &&
-                brw_reg_type_is_integer(src1_type)),
+                brw_type_is_int(src1_type)),
                "Integer source operands cannot be accumulators.");
 
       /* Page 935 (page 951 of the PDF) of the Ice Lake PRM volume 2a says:
@@ -2253,10 +2253,10 @@ instruction_restrictions(const struct brw_isa_info *isa,
                   src2_type != BRW_TYPE_UB,
                   "DPAS src2 base type must be B or UB.");
 
-         if (brw_reg_type_is_unsigned_integer(dst_type)) {
-            ERROR_IF(!brw_reg_type_is_unsigned_integer(src0_type) ||
-                     !brw_reg_type_is_unsigned_integer(src1_type) ||
-                     !brw_reg_type_is_unsigned_integer(src2_type),
+         if (brw_type_is_uint(dst_type)) {
+            ERROR_IF(!brw_type_is_uint(src0_type) ||
+                     !brw_type_is_uint(src1_type) ||
+                     !brw_type_is_uint(src2_type),
                      "If any source datatype is signed, destination datatype "
                      "must be signed.");
          }

@@ -1093,7 +1093,7 @@ add_candidate_immediate(struct table *table, fs_inst *inst, unsigned ip,
    v->no_negations = !inst->can_do_source_mods(devinfo) ||
                      ((inst->opcode == BRW_OPCODE_SHR ||
                        inst->opcode == BRW_OPCODE_ASR) &&
-                      brw_reg_type_is_unsigned_integer(inst->src[i].type));
+                      brw_type_is_uint(inst->src[i].type));
 
    switch (inst->src[i].type) {
    case BRW_TYPE_DF:

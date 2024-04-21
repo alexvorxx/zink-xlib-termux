@@ -162,12 +162,8 @@ brw_hw_type_to_reg_type(const struct intel_device_info *devinfo,
                         enum brw_reg_file file, unsigned hw_type);
 
 unsigned
-brw_reg_type_to_a16_hw_3src_type(const struct intel_device_info *devinfo,
-                                 enum brw_reg_type type);
-
-unsigned
-brw_reg_type_to_a1_hw_3src_type(const struct intel_device_info *devinfo,
-                                enum brw_reg_type type);
+brw_type_encode_for_3src(const struct intel_device_info *devinfo,
+                         enum brw_reg_type type);
 
 enum brw_reg_type
 brw_a16_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,

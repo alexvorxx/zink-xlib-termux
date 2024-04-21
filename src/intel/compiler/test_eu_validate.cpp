@@ -366,7 +366,8 @@ TEST_P(validation_test, invalid_type_encoding_3src_a16)
 
    for (unsigned i = 0; i < ARRAY_SIZE(test_case); i++) {
       if (test_case[i].expected_result) {
-         unsigned hw_type = brw_reg_type_to_a16_hw_3src_type(&devinfo, test_case[i].type);
+         unsigned hw_type =
+            brw_type_encode_for_3src(&devinfo, test_case[i].type);
          if (hw_type != INVALID_HW_REG_TYPE) {
             /* ... and remove valid encodings from the set */
             assert(BITSET_TEST(invalid_encodings, hw_type));
@@ -456,7 +457,8 @@ TEST_P(validation_test, invalid_type_encoding_3src_a1)
 
    for (unsigned i = 0; i < ARRAY_SIZE(test_case); i++) {
       if (test_case[i].expected_result) {
-         unsigned hw_type = brw_reg_type_to_a1_hw_3src_type(&devinfo, test_case[i].type);
+         unsigned hw_type =
+            brw_type_encode_for_3src(&devinfo, test_case[i].type);
          unsigned hw_exec_type = hw_type | (test_case[i].exec_type << 3);
          if (hw_type != INVALID_HW_REG_TYPE) {
             /* ... and remove valid encodings from the set */

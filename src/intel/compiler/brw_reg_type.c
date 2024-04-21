@@ -186,50 +186,41 @@ brw_hw_type_to_reg_type(const struct intel_device_info *devinfo,
 }
 
 /**
- * Convert a brw_reg_type enumeration value into the hardware representation
- * for a 3-src align16 instruction
+ * Convert a brw_reg_type into the hardware encoding for a 3-src instruction.
  */
 unsigned
-brw_reg_type_to_a16_hw_3src_type(const struct intel_device_info *devinfo,
-                                 enum brw_reg_type type)
-{
-   static const unsigned tbl[] = {
-      [0 ... BRW_TYPE_LAST] = BRW_TYPE_INVALID,
-      [BRW_TYPE_F] = 0,
-      [BRW_TYPE_D] = 1,
-      [BRW_TYPE_UD] = 2,
-      [BRW_TYPE_DF] = 3,
-      [BRW_TYPE_HF] = 4,
-   };
-   assert(type < ARRAY_SIZE(tbl));
-   return tbl[type];
-}
-
-/**
- * Convert a brw_reg_type enumeration value into the hardware representation
- * for a 3-src align1 instruction
- */
-unsigned
-brw_reg_type_to_a1_hw_3src_type(const struct intel_device_info *devinfo,
-                                enum brw_reg_type type)
+brw_type_encode_for_3src(const struct intel_device_info *devinfo,
+                         enum brw_reg_type type)
 {
    if (devinfo->ver >= 12) {
       /* size mask and SINT type bit match exactly */
       return type & 0b111;
-   }
+   } else if (devinfo->ver >= 11) {
+      if (brw_type_is_float(type)) {
+         /* HF: 0b000 | F: 0b001 | DF: 0b010; subtract 1 from our size mask */
+         return (type & BRW_TYPE_SIZE_MASK) - 1;
+      }
 
-   if (brw_type_is_float(type)) {
-      /* HF: 0b000 | F: 0b001 | DF: 0b010; subtract 1 from our size mask */
-      return (type & BRW_TYPE_SIZE_MASK) - 1;
+      /* Bit 0 is the sign bit, bits 1-2 are our size mask reversed.
+       * UD: 0b000 | D: 0b001
+       * UW: 0b010 | W: 0b011
+       * UB: 0b100 | B: 0b101
+       */
+      return ((2 - (type & BRW_TYPE_SIZE_MASK)) << 1) |
+             (brw_type_is_sint(type) ? 1 : 0);
+   } else {
+      /* align16 encodings */
+      static const unsigned tbl[] = {
+         [0 ... BRW_TYPE_LAST] = BRW_TYPE_INVALID,
+         [BRW_TYPE_F] = 0,
+         [BRW_TYPE_D] = 1,
+         [BRW_TYPE_UD] = 2,
+         [BRW_TYPE_DF] = 3,
+         [BRW_TYPE_HF] = 4,
+      };
+      assert(type < ARRAY_SIZE(tbl));
+      return tbl[type];
    }
-
-   /* Bit 0 is the sign bit, bits 1-2 are our size mask reversed.
-    * UD: 0b000 | D: 0b001
-    * UW: 0b010 | W: 0b011
-    * UB: 0b100 | B: 0b101
-    */
-   return ((2 - (type & BRW_TYPE_SIZE_MASK)) << 1) |
-          (brw_type_is_sint(type) ? 1 : 0);
 }
 
 /**

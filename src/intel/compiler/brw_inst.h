@@ -385,7 +385,7 @@ static inline void                                                            \
 brw_inst_set_3src_a16_##reg##_type(const struct intel_device_info *devinfo,   \
                                    brw_inst *inst, enum brw_reg_type type)    \
 {                                                                             \
-   unsigned hw_type = brw_reg_type_to_a16_hw_3src_type(devinfo, type);        \
+   unsigned hw_type = brw_type_encode_for_3src(devinfo, type);                \
    brw_inst_set_3src_a16_##reg##_hw_type(devinfo, inst, hw_type);             \
 }                                                                             \
                                                                               \
@@ -455,7 +455,7 @@ brw_inst_set_3src_a1_##reg##_type(const struct intel_device_info *devinfo,    \
    } else {                                                                   \
       assert(exec_type == BRW_ALIGN1_3SRC_EXEC_TYPE_INT);                     \
    }                                                                          \
-   unsigned hw_type = brw_reg_type_to_a1_hw_3src_type(devinfo, type);         \
+   unsigned hw_type = brw_type_encode_for_3src(devinfo, type);                \
    brw_inst_set_3src_a1_##reg##_hw_type(devinfo, inst, hw_type);              \
 }                                                                             \
                                                                               \
@@ -565,7 +565,7 @@ brw_inst_set_dpas_3src_##reg##_type(const struct intel_device_info *devinfo,  \
    } else {                                                                   \
       assert(exec_type == BRW_ALIGN1_3SRC_EXEC_TYPE_INT);                     \
    }                                                                          \
-   unsigned hw_type = brw_reg_type_to_a1_hw_3src_type(devinfo, type);         \
+   unsigned hw_type = brw_type_encode_for_3src(devinfo, type);                \
    brw_inst_set_dpas_3src_##reg##_hw_type(devinfo, inst, hw_type);            \
 }                                                                             \
                                                                               \

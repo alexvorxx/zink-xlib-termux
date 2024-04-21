@@ -169,16 +169,6 @@ enum pvr_resolve_op {
    PVR_RESOLVE_SAMPLE7,
 };
 
-enum pvr_alpha_type {
-   PVR_ALPHA_NONE,
-   PVR_ALPHA_SOURCE,
-   PVR_ALPHA_PREMUL_SOURCE,
-   PVR_ALPHA_GLOBAL,
-   PVR_ALPHA_PREMUL_SOURCE_WITH_GLOBAL,
-   PVR_ALPHA_CUSTOM,
-   PVR_ALPHA_AATEXT,
-};
-
 enum pvr_event_state {
    PVR_EVENT_STATE_SET_BY_HOST,
    PVR_EVENT_STATE_RESET_BY_HOST,
@@ -267,8 +257,7 @@ struct pvr_descriptor_set_layout_binding {
    VkDescriptorType type;
 
    /* "M" in layout(set = N, binding = M)
-    * Can be used to index bindings in the descriptor_set_layout. Not the
-    * original user specified binding number as those might be non-contiguous.
+    * Can be used to index bindings in the descriptor_set_layout.
     */
    uint32_t binding_number;
 

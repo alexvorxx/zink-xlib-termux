@@ -13,7 +13,6 @@ use std::sync::Once;
 #[repr(C)]
 pub struct Platform {
     dispatch: &'static cl_icd_dispatch,
-    pub extensions: [cl_name_version; 2],
     pub devs: Vec<Arc<Device>>,
 }
 
@@ -28,12 +27,28 @@ pub struct PlatformFeatures {
 static PLATFORM_ENV_ONCE: Once = Once::new();
 static PLATFORM_ONCE: Once = Once::new();
 
+macro_rules! gen_cl_exts {
+    (@COUNT $e:expr) => { 1 };
+    (@COUNT $e:expr, $($es:expr),+) => { 1 + gen_cl_exts!(@COUNT $($es),*) };
+
+    (@CONCAT $e:tt) => { $e };
+    (@CONCAT $e:tt, $($es:tt),+) => { concat!($e, ' ', gen_cl_exts!(@CONCAT $($es),*)) };
+
+    ([$(($major:expr, $minor:expr, $patch:expr, $ext:tt)$(,)?)+]) => {
+        pub static PLATFORM_EXTENSION_STR: &str = concat!(gen_cl_exts!(@CONCAT $($ext),*));
+        pub static PLATFORM_EXTENSIONS: [cl_name_version; gen_cl_exts!(@COUNT $($ext),*)] = [
+            $(mk_cl_version_ext($major, $minor, $patch, $ext)),+
+        ];
+    }
+}
+gen_cl_exts!([
+    (1, 0, 0, "cl_khr_byte_addressable_store"),
+    (1, 0, 0, "cl_khr_icd"),
+    (1, 0, 0, "cl_khr_il_program"),
+]);
+
 static mut PLATFORM: Platform = Platform {
     dispatch: &DISPATCH,
-    extensions: [
-        mk_cl_version_ext(1, 0, 0, "cl_khr_icd"),
-        mk_cl_version_ext(1, 0, 0, "cl_khr_il_program"),
-    ],
     devs: Vec::new(),
 };
 static mut PLATFORM_DBG: PlatformDebug = PlatformDebug { program: false };

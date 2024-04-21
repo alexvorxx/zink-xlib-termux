@@ -66,15 +66,15 @@
       .supported = true,                                        \
    }
 
-#define FORMAT_DEPTH_STENCIL(vk, combined_fmt, d_fmt, s_fmt) \
-   [VK_FORMAT_##vk] = {                                      \
-      .vk_format = VK_FORMAT_##vk,                           \
-      .tex_format = ROGUE_TEXSTATE_FORMAT_##combined_fmt,    \
-      .depth_tex_format = ROGUE_TEXSTATE_FORMAT_##d_fmt,     \
-      .stencil_tex_format = ROGUE_TEXSTATE_FORMAT_##s_fmt,   \
-      .pbe_packmode = ROGUE_PBESTATE_PACKMODE_INVALID,       \
-      .pbe_accum_format = PVR_PBE_ACCUM_FORMAT_INVALID,      \
-      .supported = true,                                     \
+#define FORMAT_DEPTH_STENCIL(vk, combined_fmt, d_fmt, s_fmt)  \
+   [VK_FORMAT_##vk] = {                                       \
+      .vk_format = VK_FORMAT_##vk,                            \
+      .tex_format = ROGUE_TEXSTATE_FORMAT_##combined_fmt,     \
+      .depth_tex_format = ROGUE_TEXSTATE_FORMAT_##d_fmt,      \
+      .stencil_tex_format = ROGUE_TEXSTATE_FORMAT_##s_fmt,    \
+      .pbe_packmode = ROGUE_PBESTATE_PACKMODE_##combined_fmt, \
+      .pbe_accum_format = PVR_PBE_ACCUM_FORMAT_INVALID,       \
+      .supported = true,                                      \
    }
 
 struct pvr_format {
@@ -200,6 +200,8 @@ static const struct pvr_format pvr_format_table[] = {
    FORMAT_DEPTH_STENCIL(D16_UNORM, U16, U16, INVALID),
    /* VK_FORMAT_D32_SFLOAT = 126. */
    FORMAT_DEPTH_STENCIL(D32_SFLOAT, F32, F32, INVALID),
+   /* VK_FORMAT_S8_UINT = 127. */
+   FORMAT_DEPTH_STENCIL(S8_UINT, U8, INVALID, U8),
    /* VK_FORMAT_D24_UNORM_S8_UINT = 129. */
    FORMAT_DEPTH_STENCIL(D24_UNORM_S8_UINT, ST8U24, X8U24, U8X24),
    /* VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK = 147. */
@@ -728,6 +730,12 @@ pvr_get_image_format_properties(struct pvr_physical_device *pdevice,
          result = vk_error(pdevice, VK_ERROR_FORMAT_NOT_SUPPORTED);
          goto err_unsupported_format;
       }
+
+      /* Block compressed with 3D layout not supported */
+      if (vk_format_is_block_compressed(info->format)) {
+         result = vk_error(pdevice, VK_ERROR_FORMAT_NOT_SUPPORTED);
+         goto err_unsupported_format;
+      }
    }
 
    if (info->usage & render_usage) {
@@ -1030,20 +1038,8 @@ bool pvr_format_is_pbe_downscalable(VkFormat vk_format)
    }
 }
 
-uint32_t pvr_pbe_pixel_num_loads(enum pvr_transfer_pbe_pixel_src pbe_format,
-                                 uint32_t alpha_type)
+uint32_t pvr_pbe_pixel_num_loads(enum pvr_transfer_pbe_pixel_src pbe_format)
 {
-   switch (alpha_type) {
-   default:
-   case PVR_ALPHA_NONE:
-      break;
-   case PVR_ALPHA_SOURCE:
-   case PVR_ALPHA_PREMUL_SOURCE:
-   case PVR_ALPHA_PREMUL_SOURCE_WITH_GLOBAL:
-   case PVR_ALPHA_GLOBAL:
-      return 2U;
-   }
-
    switch (pbe_format) {
    case PVR_TRANSFER_PBE_PIXEL_SRC_UU8888:
    case PVR_TRANSFER_PBE_PIXEL_SRC_US8888:

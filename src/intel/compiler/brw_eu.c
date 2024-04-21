@@ -96,10 +96,10 @@ brw_swap_cmod(enum brw_conditional_mod cmod)
 static unsigned
 imm_shift(enum brw_reg_type type, unsigned i)
 {
-   assert(type != BRW_REGISTER_TYPE_UV && type != BRW_REGISTER_TYPE_V &&
+   assert(type != BRW_TYPE_UV && type != BRW_TYPE_V &&
           "Not implemented.");
 
-   if (type == BRW_REGISTER_TYPE_VF)
+   if (type == BRW_TYPE_VF)
       return 8 * (i & 3);
    else
       return 0;

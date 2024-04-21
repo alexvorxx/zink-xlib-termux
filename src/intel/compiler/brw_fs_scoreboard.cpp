@@ -1019,8 +1019,8 @@ namespace {
       const bool is_unordered_math =
          (inst->is_math() && devinfo->ver < 20) ||
          (devinfo->has_64bit_float_via_math_pipe &&
-          (get_exec_type(inst) == BRW_REGISTER_TYPE_DF ||
-           inst->dst.type == BRW_REGISTER_TYPE_DF));
+          (get_exec_type(inst) == BRW_TYPE_DF ||
+           inst->dst.type == BRW_TYPE_DF));
 
       /* Track any source registers that may be fetched asynchronously by this
        * instruction, otherwise clear the dependency in order to avoid

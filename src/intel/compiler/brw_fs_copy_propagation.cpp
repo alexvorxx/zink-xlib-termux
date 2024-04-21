@@ -623,7 +623,7 @@ can_take_stride(fs_inst *inst, brw_reg_type dst_type,
        * Prevent copy propagating a scalar value into a math instruction.
        */
       if (intel_needs_workaround(devinfo, 22016140776) &&
-          stride == 0 && inst->src[arg].type == BRW_REGISTER_TYPE_HF) {
+          stride == 0 && inst->src[arg].type == BRW_TYPE_HF) {
          return false;
       }
 
@@ -729,7 +729,7 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
     * instead. See also resolve_ud_negate() and comment in
     * fs_generator::generate_code.
     */
-   if (entry->src.type == BRW_REGISTER_TYPE_UD &&
+   if (entry->src.type == BRW_TYPE_UD &&
        entry->src.negate)
       return false;
 
@@ -1060,10 +1060,10 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
           */
          if (inst->opcode == BRW_OPCODE_MUL &&
              type_sz(inst->src[1].type) < 4 &&
-             (inst->src[0].type == BRW_REGISTER_TYPE_D ||
-              inst->src[0].type == BRW_REGISTER_TYPE_UD)) {
+             (inst->src[0].type == BRW_TYPE_D ||
+              inst->src[0].type == BRW_TYPE_UD)) {
             inst->src[0] = val;
-            inst->src[0].type = BRW_REGISTER_TYPE_D;
+            inst->src[0].type = BRW_TYPE_D;
             progress = true;
             break;
          }
@@ -1082,8 +1082,8 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
          if (((inst->opcode == BRW_OPCODE_MUL &&
                inst->dst.is_accumulator()) ||
               inst->opcode == BRW_OPCODE_MACH) &&
-             (inst->src[1].type == BRW_REGISTER_TYPE_D ||
-              inst->src[1].type == BRW_REGISTER_TYPE_UD))
+             (inst->src[1].type == BRW_TYPE_D ||
+              inst->src[1].type == BRW_TYPE_UD))
             break;
          inst->src[0] = inst->src[1];
          inst->src[1] = val;
@@ -1095,7 +1095,7 @@ try_constant_propagate(const brw_compiler *compiler, fs_inst *inst,
       /* add3 can have a single imm16 source. Proceed if the source type is
        * already W or UW or the value can be coerced to one of those types.
        */
-      if (val.type == BRW_REGISTER_TYPE_W || val.type == BRW_REGISTER_TYPE_UW)
+      if (val.type == BRW_TYPE_W || val.type == BRW_TYPE_UW)
          ; /* Nothing to do. */
       else if (val.ud <= 0xffff)
          val = brw_imm_uw(val.ud);
@@ -1358,7 +1358,7 @@ opt_copy_propagation_local(const brw_compiler *compiler, linear_ctx *lin_ctx,
                 (inst->src[i].file == FIXED_GRF &&
                  inst->src[i].is_contiguous())) {
                const brw_reg_type t = i < inst->header_size ?
-                  BRW_REGISTER_TYPE_UD : inst->src[i].type;
+                  BRW_TYPE_UD : inst->src[i].type;
                fs_reg dst = byte_offset(retype(inst->dst, t), offset);
                if (!dst.equals(inst->src[i])) {
                   acp_entry *entry = linear_zalloc(lin_ctx, acp_entry);

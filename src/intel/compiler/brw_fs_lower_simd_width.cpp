@@ -11,11 +11,11 @@ using namespace brw;
 static bool
 is_mixed_float_with_fp32_dst(const fs_inst *inst)
 {
-   if (inst->dst.type != BRW_REGISTER_TYPE_F)
+   if (inst->dst.type != BRW_TYPE_F)
       return false;
 
    for (int i = 0; i < inst->sources; i++) {
-      if (inst->src[i].type == BRW_REGISTER_TYPE_HF)
+      if (inst->src[i].type == BRW_TYPE_HF)
          return true;
    }
 
@@ -25,12 +25,12 @@ is_mixed_float_with_fp32_dst(const fs_inst *inst)
 static bool
 is_mixed_float_with_packed_fp16_dst(const fs_inst *inst)
 {
-   if (inst->dst.type != BRW_REGISTER_TYPE_HF ||
+   if (inst->dst.type != BRW_TYPE_HF ||
        inst->dst.stride != 1)
       return false;
 
    for (int i = 0; i < inst->sources; i++) {
-      if (inst->src[i].type == BRW_REGISTER_TYPE_F)
+      if (inst->src[i].type == BRW_TYPE_F)
          return true;
    }
 
@@ -203,11 +203,11 @@ get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
 static bool
 is_half_float_src_dst(const fs_inst *inst)
 {
-   if (inst->dst.type == BRW_REGISTER_TYPE_HF)
+   if (inst->dst.type == BRW_TYPE_HF)
       return true;
 
    for (int i = 0; i < inst->sources; i++) {
-      if (inst->src[i].type == BRW_REGISTER_TYPE_HF)
+      if (inst->src[i].type == BRW_TYPE_HF)
          return true;
    }
 
@@ -609,12 +609,12 @@ emit_zip(const fs_builder &lbld_before, const fs_builder &lbld_after,
       const fs_builder rbld = lbld_after.exec_all().group(1, 0);
       fs_reg local_res_reg = component(
          retype(offset(tmp, lbld_before, dst_size),
-                BRW_REGISTER_TYPE_UW), 0);
+                BRW_TYPE_UW), 0);
       fs_reg final_res_reg =
          retype(byte_offset(inst->dst,
                             inst->size_written - residency_size +
                             lbld_after.group() / 8),
-                BRW_REGISTER_TYPE_UW);
+                BRW_TYPE_UW);
       rbld.MOV(final_res_reg, local_res_reg);
    }
 

@@ -211,7 +211,7 @@ brw_fs_validate(const fs_visitor &s)
           */
          for (unsigned i = 0; i < inst->sources; i++) {
             fsv_assert(!is_uniform(inst->src[i]) ||
-                       inst->src[i].type != BRW_REGISTER_TYPE_HF);
+                       inst->src[i].type != BRW_TYPE_HF);
          }
       }
    }

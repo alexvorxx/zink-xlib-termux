@@ -1004,7 +1004,7 @@ supports_src_as_imm(const struct intel_device_info *devinfo, const fs_inst *inst
        * sizes on Gfx12. On Gfx12.5, floating point sources must all be HF or
        * all be F.
        */
-      return devinfo->verx10 < 125 || inst->src[0].type != BRW_REGISTER_TYPE_F;
+      return devinfo->verx10 < 125 || inst->src[0].type != BRW_TYPE_F;
 
    default:
       return false;
@@ -1032,15 +1032,15 @@ can_promote_src_as_imm(const struct intel_device_info *devinfo, fs_inst *inst,
     *        since HF/F mixed mode has been removed from the hardware.
     */
    switch (inst->src[src_idx].type) {
-   case BRW_REGISTER_TYPE_F: {
+   case BRW_TYPE_F: {
       uint16_t hf;
       if (representable_as_hf(inst->src[src_idx].f, &hf)) {
-         inst->src[src_idx] = retype(brw_imm_uw(hf), BRW_REGISTER_TYPE_HF);
+         inst->src[src_idx] = retype(brw_imm_uw(hf), BRW_TYPE_HF);
          can_promote = true;
       }
       break;
    }
-   case BRW_REGISTER_TYPE_D: {
+   case BRW_TYPE_D: {
       int16_t w;
       if (representable_as_w(inst->src[src_idx].d, &w)) {
          inst->src[src_idx] = brw_imm_w(w);
@@ -1048,7 +1048,7 @@ can_promote_src_as_imm(const struct intel_device_info *devinfo, fs_inst *inst,
       }
       break;
    }
-   case BRW_REGISTER_TYPE_UD: {
+   case BRW_TYPE_UD: {
       uint16_t uw;
       if (representable_as_uw(inst->src[src_idx].ud, &uw)) {
          inst->src[src_idx] = brw_imm_uw(uw);
@@ -1056,9 +1056,9 @@ can_promote_src_as_imm(const struct intel_device_info *devinfo, fs_inst *inst,
       }
       break;
    }
-   case BRW_REGISTER_TYPE_W:
-   case BRW_REGISTER_TYPE_UW:
-   case BRW_REGISTER_TYPE_HF:
+   case BRW_TYPE_W:
+   case BRW_TYPE_UW:
+   case BRW_TYPE_HF:
       can_promote = true;
       break;
    default:
@@ -1096,26 +1096,26 @@ add_candidate_immediate(struct table *table, fs_inst *inst, unsigned ip,
                       brw_reg_type_is_unsigned_integer(inst->src[i].type));
 
    switch (inst->src[i].type) {
-   case BRW_REGISTER_TYPE_DF:
-   case BRW_REGISTER_TYPE_F:
-   case BRW_REGISTER_TYPE_HF:
+   case BRW_TYPE_DF:
+   case BRW_TYPE_F:
+   case BRW_TYPE_HF:
       v->type = float_only;
       break;
 
-   case BRW_REGISTER_TYPE_UQ:
-   case BRW_REGISTER_TYPE_Q:
-   case BRW_REGISTER_TYPE_UD:
-   case BRW_REGISTER_TYPE_D:
-   case BRW_REGISTER_TYPE_UW:
-   case BRW_REGISTER_TYPE_W:
+   case BRW_TYPE_UQ:
+   case BRW_TYPE_Q:
+   case BRW_TYPE_UD:
+   case BRW_TYPE_D:
+   case BRW_TYPE_UW:
+   case BRW_TYPE_W:
       v->type = integer_only;
       break;
 
-   case BRW_REGISTER_TYPE_VF:
-   case BRW_REGISTER_TYPE_UV:
-   case BRW_REGISTER_TYPE_V:
-   case BRW_REGISTER_TYPE_UB:
-   case BRW_REGISTER_TYPE_B:
+   case BRW_TYPE_VF:
+   case BRW_TYPE_UV:
+   case BRW_TYPE_V:
+   case BRW_TYPE_UB:
+   case BRW_TYPE_B:
    default:
       unreachable("not reached");
    }
@@ -1455,7 +1455,7 @@ brw_fs_opt_combine_constants(fs_visitor &s)
             imm->block = intersection;
          }
 
-         if (ib->inst->src[src].type == BRW_REGISTER_TYPE_HF)
+         if (ib->inst->src[src].type == BRW_TYPE_HF)
             imm->is_half_float = true;
       }
 
@@ -1591,13 +1591,13 @@ brw_fs_opt_combine_constants(fs_visitor &s)
 
                switch (type_sz(reg->type)) {
                case 2:
-                  reg->type = BRW_REGISTER_TYPE_HF;
+                  reg->type = BRW_TYPE_HF;
                   break;
                case 4:
-                  reg->type = BRW_REGISTER_TYPE_F;
+                  reg->type = BRW_TYPE_F;
                   break;
                case 8:
-                  reg->type = BRW_REGISTER_TYPE_DF;
+                  reg->type = BRW_TYPE_DF;
                   break;
                default:
                   unreachable("Bad type size");
@@ -1611,38 +1611,38 @@ brw_fs_opt_combine_constants(fs_visitor &s)
 
 #if MESA_DEBUG
          switch (reg->type) {
-         case BRW_REGISTER_TYPE_DF:
+         case BRW_TYPE_DF:
             assert((isnan(reg->df) && isnan(table.imm[i].df)) ||
                    (fabs(reg->df) == fabs(table.imm[i].df)));
             break;
-         case BRW_REGISTER_TYPE_F:
+         case BRW_TYPE_F:
             assert((isnan(reg->f) && isnan(table.imm[i].f)) ||
                    (fabsf(reg->f) == fabsf(table.imm[i].f)));
             break;
-         case BRW_REGISTER_TYPE_HF:
+         case BRW_TYPE_HF:
             assert((isnan(_mesa_half_to_float(reg->d & 0xffffu)) &&
                     isnan(_mesa_half_to_float(table.imm[i].w))) ||
                    (fabsf(_mesa_half_to_float(reg->d & 0xffffu)) ==
                     fabsf(_mesa_half_to_float(table.imm[i].w))));
             break;
-         case BRW_REGISTER_TYPE_Q:
+         case BRW_TYPE_Q:
             assert(abs(reg->d64) == abs(table.imm[i].d64));
             break;
-         case BRW_REGISTER_TYPE_UQ:
+         case BRW_TYPE_UQ:
             assert(!link->negate);
             assert(reg->d64 == table.imm[i].d64);
             break;
-         case BRW_REGISTER_TYPE_D:
+         case BRW_TYPE_D:
             assert(abs(reg->d) == abs(table.imm[i].d));
             break;
-         case BRW_REGISTER_TYPE_UD:
+         case BRW_TYPE_UD:
             assert(!link->negate);
             assert(reg->d == table.imm[i].d);
             break;
-         case BRW_REGISTER_TYPE_W:
+         case BRW_TYPE_W:
             assert(abs((int16_t) (reg->d & 0xffff)) == table.imm[i].w);
             break;
-         case BRW_REGISTER_TYPE_UW:
+         case BRW_TYPE_UW:
             assert(!link->negate);
             assert((reg->ud & 0xffffu) == (uint16_t) table.imm[i].w);
             break;

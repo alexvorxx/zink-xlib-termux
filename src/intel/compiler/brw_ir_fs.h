@@ -293,9 +293,9 @@ is_periodic(const fs_reg &reg, unsigned n)
       return true;
 
    } else if (reg.file == IMM) {
-      const unsigned period = (reg.type == BRW_REGISTER_TYPE_UV ||
-                               reg.type == BRW_REGISTER_TYPE_V ? 8 :
-                               reg.type == BRW_REGISTER_TYPE_VF ? 4 :
+      const unsigned period = (reg.type == BRW_TYPE_UV ||
+                               reg.type == BRW_TYPE_V ? 8 :
+                               reg.type == BRW_TYPE_VF ? 4 :
                                1);
       return n % period == 0;
 
@@ -651,7 +651,7 @@ regs_read(const fs_inst *inst, unsigned i)
 static inline enum brw_reg_type
 get_exec_type(const fs_inst *inst)
 {
-   brw_reg_type exec_type = BRW_REGISTER_TYPE_B;
+   brw_reg_type exec_type = BRW_TYPE_B;
 
    for (int i = 0; i < inst->sources; i++) {
       if (inst->src[i].file != BAD_FILE &&
@@ -665,10 +665,10 @@ get_exec_type(const fs_inst *inst)
       }
    }
 
-   if (exec_type == BRW_REGISTER_TYPE_B)
+   if (exec_type == BRW_TYPE_B)
       exec_type = inst->dst.type;
 
-   assert(exec_type != BRW_REGISTER_TYPE_B);
+   assert(exec_type != BRW_TYPE_B);
 
    /* Promotion of the execution type to 32-bit for conversions from or to
     * half-float seems to be consistent with the following text from the
@@ -685,10 +685,10 @@ get_exec_type(const fs_inst *inst)
     */
    if (type_sz(exec_type) == 2 &&
        inst->dst.type != exec_type) {
-      if (exec_type == BRW_REGISTER_TYPE_HF)
-         exec_type = BRW_REGISTER_TYPE_F;
-      else if (inst->dst.type == BRW_REGISTER_TYPE_HF)
-         exec_type = BRW_REGISTER_TYPE_D;
+      if (exec_type == BRW_TYPE_HF)
+         exec_type = BRW_TYPE_F;
+      else if (inst->dst.type == BRW_TYPE_HF)
+         exec_type = BRW_TYPE_D;
    }
 
    return exec_type;
@@ -716,8 +716,8 @@ is_unordered(const intel_device_info *devinfo, const fs_inst *inst)
    return is_send(inst) || (devinfo->ver < 20 && inst->is_math()) ||
           inst->opcode == BRW_OPCODE_DPAS ||
           (devinfo->has_64bit_float_via_math_pipe &&
-           (get_exec_type(inst) == BRW_REGISTER_TYPE_DF ||
-            inst->dst.type == BRW_REGISTER_TYPE_DF));
+           (get_exec_type(inst) == BRW_TYPE_DF ||
+            inst->dst.type == BRW_TYPE_DF));
 }
 
 /*

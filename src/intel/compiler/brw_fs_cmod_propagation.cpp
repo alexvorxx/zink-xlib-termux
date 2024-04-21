@@ -443,9 +443,9 @@ opt_cmod_propagation_local(const intel_device_info *devinfo, bblock_t *block)
                if (scan_inst->opcode == BRW_OPCODE_CMP) {
                   if ((inst->conditional_mod == BRW_CONDITIONAL_NZ) ||
                       (inst->conditional_mod == BRW_CONDITIONAL_G &&
-                       inst->src[0].type == BRW_REGISTER_TYPE_UD) ||
+                       inst->src[0].type == BRW_TYPE_UD) ||
                       (inst->conditional_mod == BRW_CONDITIONAL_L &&
-                       inst->src[0].type == BRW_REGISTER_TYPE_D)) {
+                       inst->src[0].type == BRW_TYPE_D)) {
                      inst->remove(block, true);
                      progress = true;
                      break;

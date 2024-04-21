@@ -538,7 +538,7 @@ private:
 namespace brw {
    fs_reg
    fetch_payload_reg(const brw::fs_builder &bld, uint8_t regs[2],
-                     brw_reg_type type = BRW_REGISTER_TYPE_F,
+                     brw_reg_type type = BRW_TYPE_F,
                      unsigned n = 1);
 
    fs_reg
@@ -548,7 +548,7 @@ namespace brw {
    dynamic_msaa_flags(const struct brw_wm_prog_data *wm_prog_data)
    {
       return fs_reg(UNIFORM, wm_prog_data->msaa_flags_param,
-                    BRW_REGISTER_TYPE_UD);
+                    BRW_TYPE_UD);
    }
 
    void

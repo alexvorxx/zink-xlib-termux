@@ -293,7 +293,7 @@ brw_reg_type_to_size(enum brw_reg_type type)
 }
 
 /**
- * Converts a BRW_REGISTER_TYPE_* enum to a short string (F, UD, and so on).
+ * Converts a BRW_TYPE_* enum to a short string (F, UD, and so on).
  *
  * This is different than reg_encoding from brw_disasm.c in that it operates
  * on the abstract enum values, rather than the generation-specific encoding.

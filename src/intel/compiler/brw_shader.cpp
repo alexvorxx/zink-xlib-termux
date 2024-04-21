@@ -51,28 +51,28 @@ fs_reg_saturate_immediate(fs_reg *reg)
       imm.df = reg->df;
 
    switch (reg->type) {
-   case BRW_REGISTER_TYPE_UD:
-   case BRW_REGISTER_TYPE_D:
-   case BRW_REGISTER_TYPE_UW:
-   case BRW_REGISTER_TYPE_W:
-   case BRW_REGISTER_TYPE_UQ:
-   case BRW_REGISTER_TYPE_Q:
+   case BRW_TYPE_UD:
+   case BRW_TYPE_D:
+   case BRW_TYPE_UW:
+   case BRW_TYPE_W:
+   case BRW_TYPE_UQ:
+   case BRW_TYPE_Q:
       /* Nothing to do. */
       return false;
-   case BRW_REGISTER_TYPE_F:
+   case BRW_TYPE_F:
       sat_imm.f = SATURATE(imm.f);
       break;
-   case BRW_REGISTER_TYPE_DF:
+   case BRW_TYPE_DF:
       sat_imm.df = SATURATE(imm.df);
       break;
-   case BRW_REGISTER_TYPE_UB:
-   case BRW_REGISTER_TYPE_B:
+   case BRW_TYPE_UB:
+   case BRW_TYPE_B:
       unreachable("no UB/B immediates");
-   case BRW_REGISTER_TYPE_V:
-   case BRW_REGISTER_TYPE_UV:
-   case BRW_REGISTER_TYPE_VF:
+   case BRW_TYPE_V:
+   case BRW_TYPE_UV:
+   case BRW_TYPE_VF:
       unreachable("unimplemented: saturate vector immediate");
-   case BRW_REGISTER_TYPE_HF:
+   case BRW_TYPE_HF:
       unreachable("unimplemented: saturate HF immediate");
    default:
       unreachable("invalid type");
@@ -96,36 +96,36 @@ bool
 fs_reg_negate_immediate(fs_reg *reg)
 {
    switch (reg->type) {
-   case BRW_REGISTER_TYPE_D:
-   case BRW_REGISTER_TYPE_UD:
+   case BRW_TYPE_D:
+   case BRW_TYPE_UD:
       reg->d = -reg->d;
       return true;
-   case BRW_REGISTER_TYPE_W:
-   case BRW_REGISTER_TYPE_UW: {
+   case BRW_TYPE_W:
+   case BRW_TYPE_UW: {
       uint16_t value = -(int16_t)reg->ud;
       reg->ud = value | (uint32_t)value << 16;
       return true;
    }
-   case BRW_REGISTER_TYPE_F:
+   case BRW_TYPE_F:
       reg->f = -reg->f;
       return true;
-   case BRW_REGISTER_TYPE_VF:
+   case BRW_TYPE_VF:
       reg->ud ^= 0x80808080;
       return true;
-   case BRW_REGISTER_TYPE_DF:
+   case BRW_TYPE_DF:
       reg->df = -reg->df;
       return true;
-   case BRW_REGISTER_TYPE_UQ:
-   case BRW_REGISTER_TYPE_Q:
+   case BRW_TYPE_UQ:
+   case BRW_TYPE_Q:
       reg->d64 = -reg->d64;
       return true;
-   case BRW_REGISTER_TYPE_UB:
-   case BRW_REGISTER_TYPE_B:
+   case BRW_TYPE_UB:
+   case BRW_TYPE_B:
       unreachable("no UB/B immediates");
-   case BRW_REGISTER_TYPE_UV:
-   case BRW_REGISTER_TYPE_V:
+   case BRW_TYPE_UV:
+   case BRW_TYPE_V:
       assert(!"unimplemented: negate UV/V immediate");
-   case BRW_REGISTER_TYPE_HF:
+   case BRW_TYPE_HF:
       reg->ud ^= 0x80008000;
       return true;
    default:
@@ -139,40 +139,40 @@ bool
 fs_reg_abs_immediate(fs_reg *reg)
 {
    switch (reg->type) {
-   case BRW_REGISTER_TYPE_D:
+   case BRW_TYPE_D:
       reg->d = abs(reg->d);
       return true;
-   case BRW_REGISTER_TYPE_W: {
+   case BRW_TYPE_W: {
       uint16_t value = abs((int16_t)reg->ud);
       reg->ud = value | (uint32_t)value << 16;
       return true;
    }
-   case BRW_REGISTER_TYPE_F:
+   case BRW_TYPE_F:
       reg->f = fabsf(reg->f);
       return true;
-   case BRW_REGISTER_TYPE_DF:
+   case BRW_TYPE_DF:
       reg->df = fabs(reg->df);
       return true;
-   case BRW_REGISTER_TYPE_VF:
+   case BRW_TYPE_VF:
       reg->ud &= ~0x80808080;
       return true;
-   case BRW_REGISTER_TYPE_Q:
+   case BRW_TYPE_Q:
       reg->d64 = imaxabs(reg->d64);
       return true;
-   case BRW_REGISTER_TYPE_UB:
-   case BRW_REGISTER_TYPE_B:
+   case BRW_TYPE_UB:
+   case BRW_TYPE_B:
       unreachable("no UB/B immediates");
-   case BRW_REGISTER_TYPE_UQ:
-   case BRW_REGISTER_TYPE_UD:
-   case BRW_REGISTER_TYPE_UW:
-   case BRW_REGISTER_TYPE_UV:
+   case BRW_TYPE_UQ:
+   case BRW_TYPE_UD:
+   case BRW_TYPE_UW:
+   case BRW_TYPE_UV:
       /* Presumably the absolute value modifier on an unsigned source is a
        * nop, but it would be nice to confirm.
        */
       assert(!"unimplemented: abs unsigned immediate");
-   case BRW_REGISTER_TYPE_V:
+   case BRW_TYPE_V:
       assert(!"unimplemented: abs V immediate");
-   case BRW_REGISTER_TYPE_HF:
+   case BRW_TYPE_HF:
       reg->ud &= ~0x80008000;
       return true;
    default:
@@ -191,22 +191,22 @@ fs_reg::is_zero() const
    assert(type_sz(type) > 1);
 
    switch (type) {
-   case BRW_REGISTER_TYPE_HF:
+   case BRW_TYPE_HF:
       assert((d & 0xffff) == ((d >> 16) & 0xffff));
       return (d & 0xffff) == 0 || (d & 0xffff) == 0x8000;
-   case BRW_REGISTER_TYPE_F:
+   case BRW_TYPE_F:
       return f == 0;
-   case BRW_REGISTER_TYPE_DF:
+   case BRW_TYPE_DF:
       return df == 0;
-   case BRW_REGISTER_TYPE_W:
-   case BRW_REGISTER_TYPE_UW:
+   case BRW_TYPE_W:
+   case BRW_TYPE_UW:
       assert((d & 0xffff) == ((d >> 16) & 0xffff));
       return (d & 0xffff) == 0;
-   case BRW_REGISTER_TYPE_D:
-   case BRW_REGISTER_TYPE_UD:
+   case BRW_TYPE_D:
+   case BRW_TYPE_UD:
       return d == 0;
-   case BRW_REGISTER_TYPE_UQ:
-   case BRW_REGISTER_TYPE_Q:
+   case BRW_TYPE_UQ:
+   case BRW_TYPE_Q:
       return u64 == 0;
    default:
       return false;
@@ -222,22 +222,22 @@ fs_reg::is_one() const
    assert(type_sz(type) > 1);
 
    switch (type) {
-   case BRW_REGISTER_TYPE_HF:
+   case BRW_TYPE_HF:
       assert((d & 0xffff) == ((d >> 16) & 0xffff));
       return (d & 0xffff) == 0x3c00;
-   case BRW_REGISTER_TYPE_F:
+   case BRW_TYPE_F:
       return f == 1.0f;
-   case BRW_REGISTER_TYPE_DF:
+   case BRW_TYPE_DF:
       return df == 1.0;
-   case BRW_REGISTER_TYPE_W:
-   case BRW_REGISTER_TYPE_UW:
+   case BRW_TYPE_W:
+   case BRW_TYPE_UW:
       assert((d & 0xffff) == ((d >> 16) & 0xffff));
       return (d & 0xffff) == 1;
-   case BRW_REGISTER_TYPE_D:
-   case BRW_REGISTER_TYPE_UD:
+   case BRW_TYPE_D:
+   case BRW_TYPE_UD:
       return d == 1;
-   case BRW_REGISTER_TYPE_UQ:
-   case BRW_REGISTER_TYPE_Q:
+   case BRW_TYPE_UQ:
+   case BRW_TYPE_Q:
       return u64 == 1;
    default:
       return false;
@@ -253,19 +253,19 @@ fs_reg::is_negative_one() const
    assert(type_sz(type) > 1);
 
    switch (type) {
-   case BRW_REGISTER_TYPE_HF:
+   case BRW_TYPE_HF:
       assert((d & 0xffff) == ((d >> 16) & 0xffff));
       return (d & 0xffff) == 0xbc00;
-   case BRW_REGISTER_TYPE_F:
+   case BRW_TYPE_F:
       return f == -1.0;
-   case BRW_REGISTER_TYPE_DF:
+   case BRW_TYPE_DF:
       return df == -1.0;
-   case BRW_REGISTER_TYPE_W:
+   case BRW_TYPE_W:
       assert((d & 0xffff) == ((d >> 16) & 0xffff));
       return (d & 0xffff) == 0xffff;
-   case BRW_REGISTER_TYPE_D:
+   case BRW_TYPE_D:
       return d == -1;
-   case BRW_REGISTER_TYPE_Q:
+   case BRW_TYPE_Q:
       return d64 == -1;
    default:
       return false;

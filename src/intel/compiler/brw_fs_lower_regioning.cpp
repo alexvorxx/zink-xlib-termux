@@ -240,7 +240,7 @@ namespace {
           */
          if ((!devinfo->has_64bit_int ||
               intel_device_info_is_9lp(devinfo)) && type_sz(t) > 4)
-            return BRW_REGISTER_TYPE_UD;
+            return BRW_TYPE_UD;
          else if (has_dst_aligned_region_restriction(devinfo, inst))
             return brw_int_type(type_sz(t), false);
          else
@@ -249,7 +249,7 @@ namespace {
       case SHADER_OPCODE_SEL_EXEC:
          if ((!has_64bit || devinfo->has_64bit_float_via_math_pipe) &&
              type_sz(t) > 4)
-            return BRW_REGISTER_TYPE_UD;
+            return BRW_TYPE_UD;
          else
             return t;
 
@@ -277,7 +277,7 @@ namespace {
           */
          if ((!has_64bit || devinfo->verx10 >= 125 ||
               intel_device_info_is_9lp(devinfo)) && type_sz(t) > 4)
-            return BRW_REGISTER_TYPE_UD;
+            return BRW_TYPE_UD;
          else
             return brw_int_type(type_sz(t), false);
 
@@ -301,7 +301,7 @@ namespace {
        *    a vector before using in a HF (packed or unpacked) math operation.
        */
       if (inst->is_math() && intel_needs_workaround(devinfo, 22016140776) &&
-          is_uniform(inst->src[i]) && inst->src[i].type == BRW_REGISTER_TYPE_HF) {
+          is_uniform(inst->src[i]) && inst->src[i].type == BRW_TYPE_HF) {
          return true;
       }
 

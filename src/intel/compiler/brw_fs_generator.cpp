@@ -201,7 +201,7 @@ fs_generator::generate_mov_indirect(fs_inst *inst,
                                     struct brw_reg reg,
                                     struct brw_reg indirect_byte_offset)
 {
-   assert(indirect_byte_offset.type == BRW_REGISTER_TYPE_UD);
+   assert(indirect_byte_offset.type == BRW_TYPE_UD);
    assert(indirect_byte_offset.file == BRW_GENERAL_REGISTER_FILE);
    assert(!reg.abs && !reg.negate);
 
@@ -215,7 +215,7 @@ fs_generator::generate_mov_indirect(fs_inst *inst,
     */
    assert(reg.type == dst.type);
    reg.type = dst.type = brw_reg_type_from_bit_size(type_sz(reg.type) * 8,
-                                                    BRW_REGISTER_TYPE_UD);
+                                                    BRW_TYPE_UD);
 
    unsigned imm_byte_offset = reg.nr * REG_SIZE + reg.subnr;
 
@@ -225,11 +225,11 @@ fs_generator::generate_mov_indirect(fs_inst *inst,
       reg.nr = imm_byte_offset / REG_SIZE;
       reg.subnr = imm_byte_offset % REG_SIZE;
       if (type_sz(reg.type) > 4 && !devinfo->has_64bit_int) {
-         brw_MOV(p, subscript(dst, BRW_REGISTER_TYPE_D, 0),
-                    subscript(reg, BRW_REGISTER_TYPE_D, 0));
+         brw_MOV(p, subscript(dst, BRW_TYPE_D, 0),
+                    subscript(reg, BRW_TYPE_D, 0));
          brw_set_default_swsb(p, tgl_swsb_null());
-         brw_MOV(p, subscript(dst, BRW_REGISTER_TYPE_D, 1),
-                    subscript(reg, BRW_REGISTER_TYPE_D, 1));
+         brw_MOV(p, subscript(dst, BRW_TYPE_D, 1),
+                    subscript(reg, BRW_TYPE_D, 1));
       } else {
          brw_MOV(p, dst, reg);
       }
@@ -250,7 +250,7 @@ fs_generator::generate_mov_indirect(fs_inst *inst,
        * In order to get around this, re retype to UW and use a stride.
        */
       indirect_byte_offset =
-         retype(spread(indirect_byte_offset, 2), BRW_REGISTER_TYPE_UW);
+         retype(spread(indirect_byte_offset, 2), BRW_TYPE_UW);
 
       /* There are a number of reasons why we don't use the base offset here.
        * One reason is that the field is only 9 bits which means we can only
@@ -313,11 +313,11 @@ fs_generator::generate_mov_indirect(fs_inst *inst,
           * the indirect here to handle adding 4 bytes to the offset and
           * avoid the extra ADD to the register file.
           */
-         brw_MOV(p, subscript(dst, BRW_REGISTER_TYPE_D, 0),
-                    retype(brw_VxH_indirect(0, 0), BRW_REGISTER_TYPE_D));
+         brw_MOV(p, subscript(dst, BRW_TYPE_D, 0),
+                    retype(brw_VxH_indirect(0, 0), BRW_TYPE_D));
          brw_set_default_swsb(p, tgl_swsb_null());
-         brw_MOV(p, subscript(dst, BRW_REGISTER_TYPE_D, 1),
-                    retype(brw_VxH_indirect(0, 4), BRW_REGISTER_TYPE_D));
+         brw_MOV(p, subscript(dst, BRW_TYPE_D, 1),
+                    retype(brw_VxH_indirect(0, 4), BRW_TYPE_D));
       } else {
          struct brw_reg ind_src = brw_VxH_indirect(0, 0);
 
@@ -350,7 +350,7 @@ fs_generator::generate_shuffle(fs_inst *inst,
     */
    assert(src.type == dst.type);
    src.type = dst.type = brw_reg_type_from_bit_size(type_sz(src.type) * 8,
-                                                    BRW_REGISTER_TYPE_UD);
+                                                    BRW_TYPE_UD);
 
    /* Because we're using the address register, we're limited to 16-wide
     * by the address register file and 8-wide for 64-bit types.  We could try
@@ -396,7 +396,7 @@ fs_generator::generate_shuffle(fs_inst *inst,
              * can't use a D-type instruction.  In order to get around this,
              * re retype to UW and use a stride.
              */
-            group_idx = retype(spread(group_idx, 2), BRW_REGISTER_TYPE_W);
+            group_idx = retype(spread(group_idx, 2), BRW_TYPE_W);
          }
 
          uint32_t src_start_offset = src.nr * REG_SIZE + src.subnr;
@@ -706,7 +706,7 @@ fs_generator::generate_scratch_header(fs_inst *inst, struct brw_reg dst)
    assert(inst->exec_size == 8 && inst->force_writemask_all);
    assert(dst.file == BRW_GENERAL_REGISTER_FILE);
 
-   dst.type = BRW_REGISTER_TYPE_UD;
+   dst.type = BRW_TYPE_UD;
 
    brw_inst *insn = brw_MOV(p, dst, brw_imm_ud(0));
    if (devinfo->ver >= 12)
@@ -717,7 +717,7 @@ fs_generator::generate_scratch_header(fs_inst *inst, struct brw_reg dst)
    /* Copy the per-thread scratch space size from g0.3[3:0] */
    brw_set_default_exec_size(p, BRW_EXECUTE_1);
    insn = brw_AND(p, suboffset(dst, 3),
-                     retype(brw_vec1_grf(0, 3), BRW_REGISTER_TYPE_UD),
+                     retype(brw_vec1_grf(0, 3), BRW_TYPE_UD),
                      brw_imm_ud(INTEL_MASK(3, 0)));
    if (devinfo->ver < 12) {
       brw_inst_set_no_dd_clear(p->devinfo, insn, true);
@@ -726,7 +726,7 @@ fs_generator::generate_scratch_header(fs_inst *inst, struct brw_reg dst)
 
    /* Copy the scratch base address from g0.5[31:10] */
    insn = brw_AND(p, suboffset(dst, 5),
-                     retype(brw_vec1_grf(0, 5), BRW_REGISTER_TYPE_UD),
+                     retype(brw_vec1_grf(0, 5), BRW_TYPE_UD),
                      brw_imm_ud(INTEL_MASK(31, 10)));
    if (devinfo->ver < 12)
       brw_inst_set_no_dd_check(p->devinfo, insn, true);
@@ -867,7 +867,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
 	  * equality with a 32-bit value.  See piglit fs-op-neg-uvec4.
 	  */
 	 assert(!inst->conditional_mod ||
-		inst->src[i].type != BRW_REGISTER_TYPE_UD ||
+		inst->src[i].type != BRW_TYPE_UD ||
 		!inst->src[i].negate);
       }
       dst = brw_reg_from_fs_reg(devinfo, inst, &inst->dst);
@@ -1017,22 +1017,22 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          brw_CSEL(p, dst, src[0], src[1], src[2]);
          break;
       case BRW_OPCODE_BFREV:
-         brw_BFREV(p, retype(dst, BRW_REGISTER_TYPE_UD),
-                   retype(src[0], BRW_REGISTER_TYPE_UD));
+         brw_BFREV(p, retype(dst, BRW_TYPE_UD),
+                   retype(src[0], BRW_TYPE_UD));
          break;
       case BRW_OPCODE_FBH:
          brw_FBH(p, retype(dst, src[0].type), src[0]);
          break;
       case BRW_OPCODE_FBL:
-         brw_FBL(p, retype(dst, BRW_REGISTER_TYPE_UD),
-                 retype(src[0], BRW_REGISTER_TYPE_UD));
+         brw_FBL(p, retype(dst, BRW_TYPE_UD),
+                 retype(src[0], BRW_TYPE_UD));
          break;
       case BRW_OPCODE_LZD:
          brw_LZD(p, dst, src[0]);
          break;
       case BRW_OPCODE_CBIT:
-         brw_CBIT(p, retype(dst, BRW_REGISTER_TYPE_UD),
-                  retype(src[0], BRW_REGISTER_TYPE_UD));
+         brw_CBIT(p, retype(dst, BRW_TYPE_UD),
+                  retype(src[0], BRW_TYPE_UD));
          break;
       case BRW_OPCODE_ADDC:
          brw_ADDC(p, dst, src[0], src[1]);
@@ -1119,8 +1119,8 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          brw_PLN(p, dst, src[0], src[1]);
 	 break;
       case FS_OPCODE_PIXEL_X:
-         assert(src[0].type == BRW_REGISTER_TYPE_UW);
-         assert(src[1].type == BRW_REGISTER_TYPE_UW);
+         assert(src[0].type == BRW_TYPE_UW);
+         assert(src[1].type == BRW_TYPE_UW);
          src[0].subnr = 0 * type_sz(src[0].type);
          if (src[1].file == BRW_IMMEDIATE_VALUE) {
             assert(src[1].ud == 0);
@@ -1131,8 +1131,8 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          }
          break;
       case FS_OPCODE_PIXEL_Y:
-         assert(src[0].type == BRW_REGISTER_TYPE_UW);
-         assert(src[1].type == BRW_REGISTER_TYPE_UW);
+         assert(src[0].type == BRW_TYPE_UW);
+         assert(src[1].type == BRW_TYPE_UW);
          src[0].subnr = 4 * type_sz(src[0].type);
          if (src[1].file == BRW_IMMEDIATE_VALUE) {
             assert(src[1].ud == 0);
@@ -1212,8 +1212,8 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
                /* Emit a MOV to force a stall until the instruction producing the
                 * registers finishes.
                 */
-               brw_MOV(p, retype(brw_null_reg(), BRW_REGISTER_TYPE_UW),
-                       retype(src[i], BRW_REGISTER_TYPE_UW));
+               brw_MOV(p, retype(brw_null_reg(), BRW_TYPE_UW),
+                       retype(src[i], BRW_TYPE_UW));
             }
 
             if (inst->sources > 1)
@@ -1233,8 +1233,8 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          assert(inst->dst.file == BAD_FILE);
          brw_set_default_exec_size(p, BRW_EXECUTE_1);
          brw_MOV(p, retype(brw_flag_subreg(inst->flag_subreg),
-                           BRW_REGISTER_TYPE_UD),
-                 retype(brw_mask_reg(0), BRW_REGISTER_TYPE_UD));
+                           BRW_TYPE_UD),
+                 retype(brw_mask_reg(0), BRW_TYPE_UD));
          break;
       }
       case SHADER_OPCODE_BROADCAST:
@@ -1258,7 +1258,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
 
       case SHADER_OPCODE_QUAD_SWIZZLE:
          assert(src[1].file == BRW_IMMEDIATE_VALUE);
-         assert(src[1].type == BRW_REGISTER_TYPE_UD);
+         assert(src[1].type == BRW_TYPE_UD);
          generate_quad_swizzle(inst, dst, src[0], src[1].ud);
          break;
 
@@ -1267,9 +1267,9 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
                  devinfo->has_64bit_float) || type_sz(src[0].type) <= 4);
          assert(!src[0].negate && !src[0].abs);
          assert(src[1].file == BRW_IMMEDIATE_VALUE);
-         assert(src[1].type == BRW_REGISTER_TYPE_UD);
+         assert(src[1].type == BRW_TYPE_UD);
          assert(src[2].file == BRW_IMMEDIATE_VALUE);
-         assert(src[2].type == BRW_REGISTER_TYPE_UD);
+         assert(src[2].type == BRW_TYPE_UD);
          const unsigned component = src[1].ud;
          const unsigned cluster_size = src[2].ud;
          assert(inst->src[0].file != ARF);

@@ -144,7 +144,7 @@ namespace {
          if ((inst->opcode == BRW_OPCODE_MUL || inst->opcode == BRW_OPCODE_MAD) &&
              !brw_reg_type_is_floating_point(tx) && type_sz(tx) == 4 &&
              type_sz(inst->src[0].type) == type_sz(inst->src[1].type))
-            tx = brw_int_type(8, tx == BRW_REGISTER_TYPE_D);
+            tx = brw_int_type(8, tx == BRW_TYPE_D);
 
          rcount = inst->opcode == BRW_OPCODE_DPAS ? inst->rcount : 0;
       }

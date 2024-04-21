@@ -205,13 +205,13 @@ namespace brw {
       fs_reg
       null_reg_f() const
       {
-         return fs_reg(retype(brw_null_reg(), BRW_REGISTER_TYPE_F));
+         return fs_reg(retype(brw_null_reg(), BRW_TYPE_F));
       }
 
       fs_reg
       null_reg_df() const
       {
-         return fs_reg(retype(brw_null_reg(), BRW_REGISTER_TYPE_DF));
+         return fs_reg(retype(brw_null_reg(), BRW_TYPE_DF));
       }
 
       /**
@@ -220,7 +220,7 @@ namespace brw {
       fs_reg
       null_reg_d() const
       {
-         return fs_reg(retype(brw_null_reg(), BRW_REGISTER_TYPE_D));
+         return fs_reg(retype(brw_null_reg(), BRW_TYPE_D));
       }
 
       /**
@@ -229,7 +229,7 @@ namespace brw {
       fs_reg
       null_reg_ud() const
       {
-         return fs_reg(retype(brw_null_reg(), BRW_REGISTER_TYPE_UD));
+         return fs_reg(retype(brw_null_reg(), BRW_TYPE_UD));
       }
 
       /**
@@ -378,7 +378,7 @@ namespace brw {
           * should go back to scalar destinations here.
           */
          const fs_builder ubld = exec_all();
-         const fs_reg chan_index = vgrf(BRW_REGISTER_TYPE_UD);
+         const fs_reg chan_index = vgrf(BRW_TYPE_UD);
          const fs_reg dst = vgrf(src.type);
 
          ubld.emit(SHADER_OPCODE_FIND_LIVE_CHANNEL, chan_index);
@@ -411,8 +411,8 @@ namespace brw {
          fs_reg left, right;
          left = horiz_stride(horiz_offset(tmp, left_offset), left_stride);
          right = horiz_stride(horiz_offset(tmp, right_offset), right_stride);
-         if ((tmp.type == BRW_REGISTER_TYPE_Q ||
-              tmp.type == BRW_REGISTER_TYPE_UQ) &&
+         if ((tmp.type == BRW_TYPE_Q ||
+              tmp.type == BRW_TYPE_UQ) &&
              !shader->devinfo->has_64bit_int) {
             switch (opcode) {
             case BRW_OPCODE_MUL:
@@ -431,8 +431,8 @@ namespace brw {
                /* We treat the bottom 32 bits as unsigned regardless of
                 * whether or not the integer as a whole is signed.
                 */
-               fs_reg right_low = subscript(right, BRW_REGISTER_TYPE_UD, 0);
-               fs_reg left_low = subscript(left, BRW_REGISTER_TYPE_UD, 0);
+               fs_reg right_low = subscript(right, BRW_TYPE_UD, 0);
+               fs_reg left_low = subscript(left, BRW_TYPE_UD, 0);
 
                /* The upper bits get the same sign as the 64-bit type */
                brw_reg_type type32 = brw_reg_type_from_bit_size(32, tmp.type);
@@ -443,8 +443,8 @@ namespace brw {
                 *
                 *   l_hi < r_hi || (l_hi == r_hi && l_low < r_low)
                 */
-               CMP(null_reg_ud(), retype(left_low, BRW_REGISTER_TYPE_UD),
-                                  retype(right_low, BRW_REGISTER_TYPE_UD), mod);
+               CMP(null_reg_ud(), retype(left_low, BRW_TYPE_UD),
+                                  retype(right_low, BRW_TYPE_UD), mod);
                set_predicate(BRW_PREDICATE_NORMAL,
                              CMP(null_reg_ud(), left_high, right_high,
                                  BRW_CONDITIONAL_EQ));
@@ -536,7 +536,7 @@ namespace brw {
       {
          assert(old_inst->dst.file == VGRF);
          fs_inst *inst = emit(SHADER_OPCODE_UNDEF,
-                                  retype(old_inst->dst, BRW_REGISTER_TYPE_UD));
+                                  retype(old_inst->dst, BRW_TYPE_UD));
          inst->size_written = old_inst->size_written;
 
          return inst;
@@ -701,13 +701,13 @@ namespace brw {
           * comparisons.  Zero/non-zero (== and !=) comparisons almost work.
           * 0x80000000 fails because it is -0.0, and -0.0 == 0.0.
           */
-         assert(src2.type == BRW_REGISTER_TYPE_F);
+         assert(src2.type == BRW_TYPE_F);
 
          return set_condmod(condition,
                             emit(BRW_OPCODE_CSEL,
-                                 retype(dst, BRW_REGISTER_TYPE_F),
-                                 retype(src0, BRW_REGISTER_TYPE_F),
-                                 retype(src1, BRW_REGISTER_TYPE_F),
+                                 retype(dst, BRW_TYPE_F),
+                                 retype(src0, BRW_TYPE_F),
+                                 retype(src1, BRW_TYPE_F),
                                  src2));
       }
 
@@ -767,7 +767,7 @@ namespace brw {
          assert(dst.file == VGRF);
          assert(dst.offset % REG_SIZE == 0);
          fs_inst *inst = emit(SHADER_OPCODE_UNDEF,
-                                  retype(dst, BRW_REGISTER_TYPE_UD));
+                                  retype(dst, BRW_TYPE_UD));
          inst->size_written = shader->alloc.sizes[dst.nr] * REG_SIZE - dst.offset;
 
          return inst;
@@ -785,7 +785,7 @@ namespace brw {
          inst->sdepth = sdepth;
          inst->rcount = rcount;
 
-         if (dst.type == BRW_REGISTER_TYPE_HF) {
+         if (dst.type == BRW_TYPE_HF) {
             inst->size_written = rcount * REG_SIZE / 2;
          } else {
             inst->size_written = rcount * REG_SIZE;
@@ -811,9 +811,9 @@ namespace brw {
       fs_reg
       fix_unsigned_negate(const fs_reg &src) const
       {
-         if (src.type == BRW_REGISTER_TYPE_UD &&
+         if (src.type == BRW_TYPE_UD &&
              src.negate) {
-            fs_reg temp = vgrf(BRW_REGISTER_TYPE_UD);
+            fs_reg temp = vgrf(BRW_TYPE_UD);
             MOV(temp, src);
             return fs_reg(temp);
          } else {

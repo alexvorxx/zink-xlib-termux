@@ -1036,6 +1036,12 @@ iris_resource_image_is_pat_compressible(const struct iris_screen *screen,
       return false;
    }
 
+   /* TODO: Enable compression on depth surfaces.
+    * https://gitlab.freedesktop.org/mesa/mesa/-/issues/11361
+    */
+   if (isl_surf_usage_is_depth(res->surf.usage))
+      return false;
+
    /* Bspec 58797 (r58646):
     *
     *    Enabling compression is not legal for TileX surfaces.

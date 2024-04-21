@@ -486,7 +486,7 @@ impl Image {
         image_2d_out
     }
 
-    fn choose_pte_kind(
+    pub fn choose_pte_kind(
         dev: &nil_rs_bindings::nv_device_info,
         format: Format,
         samples: u32,

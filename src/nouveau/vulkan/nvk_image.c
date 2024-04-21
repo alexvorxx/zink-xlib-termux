@@ -600,6 +600,7 @@ nvk_image_init(struct nvk_device *dev,
       struct nil_image_init_info nil_info = {
          .dim = vk_image_type_to_nil_dim(pCreateInfo->imageType),
          .format = nil_format(vk_format_to_pipe_format(format)),
+         .modifier = DRM_FORMAT_MOD_INVALID,
          .extent_px = {
             .width = pCreateInfo->extent.width / width_scale,
             .height = pCreateInfo->extent.height / height_scale,
@@ -618,6 +619,7 @@ nvk_image_init(struct nvk_device *dev,
       struct nil_image_init_info stencil_nil_info = {
          .dim = vk_image_type_to_nil_dim(pCreateInfo->imageType),
          .format = nil_format(PIPE_FORMAT_R32_UINT),
+         .modifier = DRM_FORMAT_MOD_INVALID,
          .extent_px = {
             .width = pCreateInfo->extent.width,
             .height = pCreateInfo->extent.height,

@@ -3,6 +3,7 @@
 
 use crate::extent::{units, Extent4D};
 use crate::format::Format;
+use crate::modifiers::*;
 use crate::tiling::Tiling;
 use crate::Minify;
 
@@ -80,6 +81,7 @@ pub struct ImageInitInfo {
     pub levels: u32,
     pub samples: u32,
     pub usage: ImageUsageFlags,
+    pub modifier: u64,
 }
 
 /// Represents the data layout of a single slice (level + lod) of an image.
@@ -139,7 +141,24 @@ impl Image {
 
         let sample_layout = SampleLayout::choose_sample_layout(info.samples);
 
-        let tiling = if (info.usage & IMAGE_USAGE_SPARSE_RESIDENCY_BIT) != 0 {
+        let tiling = if info.modifier != DRM_FORMAT_MOD_INVALID {
+            assert!((info.usage & IMAGE_USAGE_SPARSE_RESIDENCY_BIT) == 0);
+            assert!(info.dim == ImageDim::_2D);
+            assert!(sample_layout == SampleLayout::_1x1);
+            if info.modifier == DRM_FORMAT_MOD_LINEAR {
+                Tiling::default()
+            } else {
+                let bl_mod =
+                    BlockLinearModifier::try_from(info.modifier).unwrap();
+
+                // We don't support compression yet
+                assert!(bl_mod.compression_type() == CompressionType::None);
+
+                bl_mod
+                    .tiling()
+                    .clamp(info.extent_px.to_B(info.format, sample_layout))
+            }
+        } else if (info.usage & IMAGE_USAGE_SPARSE_RESIDENCY_BIT) != 0 {
             Tiling::sparse(info.format, info.dim)
         } else {
             Tiling::choose(
@@ -234,15 +253,23 @@ impl Image {
         }
 
         if image.levels[0].tiling.is_tiled {
-            image.tile_mode = u16::from(image.levels[0].tiling.y_log2) << 4
-                | u16::from(image.levels[0].tiling.z_log2) << 8;
-
             image.pte_kind = Self::choose_pte_kind(
                 dev,
                 info.format,
                 info.samples,
                 image.compressed,
             );
+
+            if info.modifier != DRM_FORMAT_MOD_INVALID {
+                let bl_mod =
+                    BlockLinearModifier::try_from(info.modifier).unwrap();
+                assert!(bl_mod.pte_kind() == image.pte_kind);
+            }
+        }
+
+        if image.levels[0].tiling.is_tiled {
+            image.tile_mode = u16::from(image.levels[0].tiling.y_log2) << 4
+                | u16::from(image.levels[0].tiling.z_log2) << 8;
 
             image.align_B = std::cmp::max(image.align_B, 4096);
             if image.pte_kind >= 0xb && image.pte_kind <= 0xe {

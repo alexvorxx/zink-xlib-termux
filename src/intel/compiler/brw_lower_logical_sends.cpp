@@ -200,11 +200,11 @@ lower_urb_write_logical_send_xe2(const fs_builder &bld, fs_inst *inst)
    const fs_reg handle = inst->src[URB_LOGICAL_SRC_HANDLE];
    const fs_reg src = inst->components_read(URB_LOGICAL_SRC_DATA) ?
       inst->src[URB_LOGICAL_SRC_DATA] : fs_reg(brw_imm_ud(0));
-   assert(type_sz(src.type) == 4);
+   assert(brw_type_size_bytes(src.type) == 4);
 
    /* Calculate the total number of components of the payload. */
    const unsigned src_comps = MAX2(1, inst->components_read(URB_LOGICAL_SRC_DATA));
-   const unsigned src_sz = type_sz(src.type);
+   const unsigned src_sz = brw_type_size_bytes(src.type);
 
    fs_reg payload = bld.vgrf(BRW_TYPE_UD);
 
@@ -404,7 +404,8 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
        * hardware when doing a SIMD8 write depending on whether we have
        * selected the subspans for the first or second half respectively.
        */
-      assert(sample_mask.file != BAD_FILE && type_sz(sample_mask.type) == 4);
+      assert(sample_mask.file != BAD_FILE &&
+             brw_type_size_bytes(sample_mask.type) == 4);
       sample_mask.type = BRW_TYPE_UW;
       sample_mask.stride *= 2;
 
@@ -1211,7 +1212,7 @@ get_sampler_msg_payload_type_bit_size(const intel_device_info *devinfo,
     */
    for (unsigned i = 0; i < TEX_LOGICAL_NUM_SRCS; i++) {
       if (src[i].file != BAD_FILE) {
-         src_type_size = brw_reg_type_to_size(src[i].type);
+         src_type_size = brw_type_size_bytes(src[i].type);
          break;
       }
    }
@@ -1227,7 +1228,7 @@ get_sampler_msg_payload_type_bit_size(const intel_device_info *devinfo,
    if (inst->opcode != SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL) {
       for (unsigned i = 0; i < TEX_LOGICAL_NUM_SRCS; i++) {
          assert(src[i].file == BAD_FILE ||
-                brw_reg_type_to_size(src[i].type) == src_type_size);
+                brw_type_size_bytes(src[i].type) == src_type_size);
       }
    }
 #endif
@@ -1664,8 +1665,8 @@ lower_lsc_surface_logical_send(const fs_builder &bld, fs_inst *inst)
    /* Calculate the total number of components of the payload. */
    const unsigned addr_sz = inst->components_read(SURFACE_LOGICAL_SRC_ADDRESS);
    const unsigned src_comps = inst->components_read(SURFACE_LOGICAL_SRC_DATA);
-   const unsigned src_sz = type_sz(src.type);
-   const unsigned dst_sz = type_sz(inst->dst.type);
+   const unsigned src_sz = brw_type_size_bytes(src.type);
+   const unsigned dst_sz = brw_type_size_bytes(inst->dst.type);
 
    const bool has_side_effects = inst->has_side_effects();
 
@@ -1954,7 +1955,7 @@ lower_surface_block_logical_send(const fs_builder &bld, fs_inst *inst)
    if (write) {
       const unsigned src_sz = inst->components_read(SURFACE_LOGICAL_SRC_DATA);
       data = retype(bld.move_to_vgrf(src, src_sz), BRW_TYPE_UD);
-      ex_mlen = src_sz * type_sz(src.type) * inst->exec_size / REG_SIZE;
+      ex_mlen = src_sz * brw_type_size_bytes(src.type) * inst->exec_size / REG_SIZE;
    }
 
    inst->opcode = SHADER_OPCODE_SEND;
@@ -1981,7 +1982,7 @@ emit_a64_oword_block_header(const fs_builder &bld, const fs_reg &addr)
 {
    const fs_builder ubld = bld.exec_all().group(8, 0);
 
-   assert(type_sz(addr.type) == 8 && addr.stride == 0);
+   assert(brw_type_size_bytes(addr.type) == 8 && addr.stride == 0);
 
    fs_reg expanded_addr = addr;
    if (addr.file == UNIFORM) {
@@ -2031,8 +2032,8 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
    /* Get the logical send arguments. */
    const fs_reg addr = inst->src[A64_LOGICAL_ADDRESS];
    const fs_reg src = inst->src[A64_LOGICAL_SRC];
-   const unsigned src_sz = type_sz(src.type);
-   const unsigned dst_sz = type_sz(inst->dst.type);
+   const unsigned src_sz = brw_type_size_bytes(src.type);
+   const unsigned dst_sz = brw_type_size_bytes(inst->dst.type);
 
    const unsigned src_comps = inst->components_read(1);
    assert(inst->src[A64_LOGICAL_ARG].file == IMM);
@@ -2181,13 +2182,13 @@ lower_a64_logical_send(const fs_builder &bld, fs_inst *inst)
       payload = emit_a64_oword_block_header(bld, addr);
 
       if (inst->opcode == SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL) {
-         ex_mlen = src_comps * type_sz(src.type) * inst->exec_size / REG_SIZE;
+         ex_mlen = src_comps * brw_type_size_bytes(src.type) * inst->exec_size / REG_SIZE;
          payload2 = retype(bld.move_to_vgrf(src, src_comps), BRW_TYPE_UD);
       }
    } else {
       /* On Skylake and above, we have SENDS */
       mlen = 2 * (inst->exec_size / 8);
-      ex_mlen = src_comps * type_sz(src.type) * inst->exec_size / REG_SIZE;
+      ex_mlen = src_comps * brw_type_size_bytes(src.type) * inst->exec_size / REG_SIZE;
       payload = retype(bld.move_to_vgrf(addr, 1), BRW_TYPE_UD);
       payload2 = retype(bld.move_to_vgrf(src, src_comps), BRW_TYPE_UD);
    }
@@ -2243,12 +2244,12 @@ lower_a64_logical_send(const fs_builder &bld, fs_inst *inst)
       if (lsc_opcode_is_atomic_float((enum lsc_opcode) arg)) {
          desc =
             brw_dp_a64_untyped_atomic_float_desc(devinfo, inst->exec_size,
-                                                 type_sz(inst->dst.type) * 8,
+                                                 brw_type_size_bits(inst->dst.type),
                                                  lsc_op_to_legacy_atomic(arg),
                                                  !inst->dst.is_null());
       } else {
          desc = brw_dp_a64_untyped_atomic_desc(devinfo, inst->exec_size,
-                                               type_sz(inst->dst.type) * 8,
+                                               brw_type_size_bits(inst->dst.type),
                                                lsc_op_to_legacy_atomic(arg),
                                                !inst->dst.is_null());
       }
@@ -2583,7 +2584,8 @@ lower_btd_logical_send(const fs_builder &bld, fs_inst *inst)
    ubld.MOV(header, brw_imm_ud(0));
    switch (inst->opcode) {
    case SHADER_OPCODE_BTD_SPAWN_LOGICAL:
-      assert(type_sz(global_addr.type) == 8 && global_addr.stride == 0);
+      assert(brw_type_size_bytes(global_addr.type) == 8 &&
+             global_addr.stride == 0);
       global_addr.type = BRW_TYPE_UD;
       global_addr.stride = 1;
       ubld.group(2, 0).MOV(header, global_addr);

@@ -168,7 +168,7 @@ brw_fs_validate(const fs_visitor &s)
                 */
                fsv_assert_lte(inst->src[i].vstride, 1);
 
-               if (type_sz(inst->src[i].type) > 4)
+               if (brw_type_size_bytes(inst->src[i].type) > 4)
                   fsv_assert_eq(inst->src[i].vstride, 1);
             }
          }

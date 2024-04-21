@@ -284,15 +284,6 @@ brw_a1_hw_3src_type_to_reg_type(const struct intel_device_info *devinfo,
 }
 
 /**
- * Return the element size given a register type.
- */
-unsigned
-brw_reg_type_to_size(enum brw_reg_type type)
-{
-   return brw_type_size_bytes(type);
-}
-
-/**
  * Converts a BRW_TYPE_* enum to a short string (F, UD, and so on).
  *
  * This is different than reg_encoding from brw_disasm.c in that it operates

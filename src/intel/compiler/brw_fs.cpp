@@ -436,13 +436,13 @@ fs_inst::can_do_source_mods(const struct intel_device_info *devinfo) const
    if (devinfo->ver >= 12 && (opcode == BRW_OPCODE_MUL ||
                               opcode == BRW_OPCODE_MAD)) {
       const brw_reg_type exec_type = get_exec_type(this);
-      const unsigned min_type_sz = opcode == BRW_OPCODE_MAD ?
-         MIN2(type_sz(src[1].type), type_sz(src[2].type)) :
-         MIN2(type_sz(src[0].type), type_sz(src[1].type));
+      const unsigned min_brw_type_size_bytes = opcode == BRW_OPCODE_MAD ?
+         MIN2(brw_type_size_bytes(src[1].type), brw_type_size_bytes(src[2].type)) :
+         MIN2(brw_type_size_bytes(src[0].type), brw_type_size_bytes(src[1].type));
 
       if (brw_type_is_int(exec_type) &&
-          type_sz(exec_type) >= 4 &&
-          type_sz(exec_type) != min_type_sz)
+          brw_type_size_bytes(exec_type) >= 4 &&
+          brw_type_size_bytes(exec_type) != min_brw_type_size_bytes)
          return false;
    }
 
@@ -614,9 +614,9 @@ fs_reg::component_size(unsigned width) const
       const unsigned vs = vstride ? 1 << (vstride - 1) : 0;
       const unsigned hs = hstride ? 1 << (hstride - 1) : 0;
       assert(w > 0);
-      return ((MAX2(1, h) - 1) * vs + (w - 1) * hs + 1) * type_sz(type);
+      return ((MAX2(1, h) - 1) * vs + (w - 1) * hs + 1) * brw_type_size_bytes(type);
    } else {
-      return MAX2(width * stride, 1) * type_sz(type);
+      return MAX2(width * stride, 1) * brw_type_size_bytes(type);
    }
 }
 
@@ -708,7 +708,7 @@ fs_inst::is_partial_write() const
       return this->size_written < 32;
    }
 
-   return this->exec_size * type_sz(this->dst.type) < 32 ||
+   return this->exec_size * brw_type_size_bytes(this->dst.type) < 32 ||
           !this->dst.is_contiguous();
 }
 
@@ -963,7 +963,7 @@ fs_inst::size_read(int arg) const
    switch (src[arg].file) {
    case UNIFORM:
    case IMM:
-      return components_read(arg) * type_sz(src[arg].type);
+      return components_read(arg) * brw_type_size_bytes(src[arg].type);
    case BAD_FILE:
    case ARF:
    case FIXED_GRF:
@@ -1768,7 +1768,7 @@ fs_visitor::assign_urb_setup()
                 * cross-channel access in the representation above are
                 * disallowed.
                 */
-               assert(inst->src[i].stride * type_sz(inst->src[i].type) == chan_sz);
+               assert(inst->src[i].stride * brw_type_size_bytes(inst->src[i].type) == chan_sz);
 
                /* Number of channels processing the same polygon. */
                const unsigned poly_width = dispatch_width / max_polygons;
@@ -1791,7 +1791,7 @@ fs_visitor::assign_urb_setup()
                    * are stored a GRF apart on the thread payload, so
                    * use that as vertical stride.
                    */
-                  const unsigned vstride = reg_size / type_sz(inst->src[i].type);
+                  const unsigned vstride = reg_size / brw_type_size_bytes(inst->src[i].type);
                   assert(vstride <= 32);
                   assert(chan % poly_width == 0);
                   reg = stride(reg, vstride, poly_width, 0);
@@ -1851,7 +1851,7 @@ fs_visitor::convert_attr_sources_to_hw_regs(fs_inst *inst)
           */
          unsigned total_size = inst->exec_size *
                                inst->src[i].stride *
-                               type_sz(inst->src[i].type);
+                               brw_type_size_bytes(inst->src[i].type);
 
          assert(total_size <= 2 * REG_SIZE);
          const unsigned exec_size =
@@ -2517,7 +2517,7 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
    case FIXED_GRF:
       fprintf(file, "g%d", inst->dst.nr);
       if (inst->dst.subnr != 0)
-         fprintf(file, ".%d", inst->dst.subnr / type_sz(inst->dst.type));
+         fprintf(file, ".%d", inst->dst.subnr / brw_type_size_bytes(inst->dst.type));
       break;
    case BAD_FILE:
       fprintf(file, "(null)");
@@ -2658,7 +2658,7 @@ fs_visitor::dump_instruction_to_file(const fs_inst *inst, FILE *file) const
       if (inst->src[i].file == FIXED_GRF && inst->src[i].subnr != 0) {
          assert(inst->src[i].offset == 0);
 
-         fprintf(file, ".%d", inst->src[i].subnr / type_sz(inst->src[i].type));
+         fprintf(file, ".%d", inst->src[i].subnr / brw_type_size_bytes(inst->src[i].type));
       } else if (inst->src[i].offset ||
           (inst->src[i].file == VGRF &&
            alloc.sizes[inst->src[i].nr] * REG_SIZE != inst->size_read(i))) {

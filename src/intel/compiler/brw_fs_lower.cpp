@@ -624,7 +624,7 @@ brw_fs_lower_vgrf_to_fixed_grf(const struct intel_device_info *devinfo, fs_inst 
       new_reg = brw_vec1_grf(reg->nr, 0);
    } else if (reg->stride > 4) {
       assert(reg != &inst->dst);
-      assert(reg->stride * type_sz(reg->type) <= REG_SIZE);
+      assert(reg->stride * brw_type_size_bytes(reg->type) <= REG_SIZE);
       new_reg = brw_vecn_grf(1, reg->nr, 0);
       new_reg = stride(new_reg, reg->stride, 1, 0);
    } else {
@@ -636,7 +636,8 @@ brw_fs_lower_vgrf_to_fixed_grf(const struct intel_device_info *devinfo, fs_inst 
        *
        * The maximum width value that could satisfy this restriction is:
        */
-      const unsigned reg_width = REG_SIZE / (reg->stride * type_sz(reg->type));
+      const unsigned reg_width =
+         REG_SIZE / (reg->stride * brw_type_size_bytes(reg->type));
 
       /* Because the hardware can only split source regions at a whole
        * multiple of width during decompression (i.e. vertically), clamp

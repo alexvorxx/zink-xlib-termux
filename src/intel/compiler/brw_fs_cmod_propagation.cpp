@@ -341,7 +341,8 @@ opt_cmod_propagation_local(const intel_device_info *devinfo, bblock_t *block)
                   if (!brw_type_is_float(inst->dst.type))
                      break;
 
-                  if (type_sz(scan_inst->dst.type) > type_sz(inst->dst.type))
+                  if (brw_type_size_bits(scan_inst->dst.type) >
+                      brw_type_size_bits(inst->dst.type))
                      break;
                } else {
                   /* If the destination type of scan_inst is integer, then:
@@ -360,11 +361,12 @@ opt_cmod_propagation_local(const intel_device_info *devinfo, bblock_t *block)
                    *   as the destination of inst and the same signedness.
                    */
                   if (!brw_type_is_int(inst->src[0].type) ||
-                      type_sz(scan_inst->dst.type) != type_sz(inst->src[0].type))
+                      brw_type_size_bits(scan_inst->dst.type) != brw_type_size_bits(inst->src[0].type))
                      break;
 
                   if (brw_type_is_int(inst->dst.type)) {
-                     if (type_sz(inst->dst.type) < type_sz(scan_inst->dst.type))
+                     if (brw_type_size_bits(inst->dst.type) <
+                         brw_type_size_bits(scan_inst->dst.type))
                         break;
 
                      if (inst->conditional_mod != BRW_CONDITIONAL_Z &&
@@ -388,7 +390,8 @@ opt_cmod_propagation_local(const intel_device_info *devinfo, bblock_t *block)
                   /* Comparison result may be altered if the bit-size changes
                    * since that affects range, denorms, etc
                    */
-                  if (type_sz(scan_inst->dst.type) != type_sz(inst->dst.type))
+                  if (brw_type_size_bits(scan_inst->dst.type) !=
+                      brw_type_size_bits(inst->dst.type))
                      break;
 
                   if (brw_type_is_float(scan_inst->dst.type) !=

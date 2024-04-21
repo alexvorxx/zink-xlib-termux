@@ -192,7 +192,7 @@ namespace brw {
 
          if (n > 0)
             return fs_reg(VGRF, shader->alloc.allocate(
-                              DIV_ROUND_UP(n * type_sz(type) * dispatch_width(),
+                              DIV_ROUND_UP(n * brw_type_size_bytes(type) * dispatch_width(),
                                            unit * REG_SIZE) * unit),
                            type);
          else
@@ -476,7 +476,7 @@ namespace brw {
          /* The instruction splitting code isn't advanced enough to split
           * these so we need to handle that ourselves.
           */
-         if (dispatch_width() * type_sz(tmp.type) > 2 * REG_SIZE) {
+         if (dispatch_width() * brw_type_size_bytes(tmp.type) > 2 * REG_SIZE) {
             const unsigned half_width = dispatch_width() / 2;
             const fs_builder ubld = exec_all().group(half_width, 0);
             fs_reg left = tmp;
@@ -496,7 +496,7 @@ namespace brw {
          }
 
          if (cluster_size > 2) {
-            if (type_sz(tmp.type) <= 4) {
+            if (brw_type_size_bytes(tmp.type) <= 4) {
                const fs_builder ubld =
                   exec_all().group(dispatch_width() / 4, 0);
                ubld.emit_scan_step(opcode, mod, tmp, 1, 4, 2, 4);
@@ -747,7 +747,7 @@ namespace brw {
          inst->header_size = header_size;
          inst->size_written = header_size * REG_SIZE;
          for (unsigned i = header_size; i < sources; i++) {
-            inst->size_written += dispatch_width() * type_sz(src[i].type) *
+            inst->size_written += dispatch_width() * brw_type_size_bytes(src[i].type) *
                                   dst.stride;
          }
 

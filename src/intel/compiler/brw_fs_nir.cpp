@@ -858,7 +858,7 @@ emit_fsign(nir_to_brw_state &ntb, const fs_builder &bld, const nir_alu_instr *in
       op[0] = offset(op[0], bld, fsign_instr->src[0].swizzle[channel]);
    }
 
-   if (type_sz(op[0].type) == 2) {
+   if (brw_type_size_bytes(op[0].type) == 2) {
       /* AND(val, 0x8000) gives the sign bit.
        *
        * Predicated OR ORs 1.0 (0x3c00) with the sign bit if val is not zero.
@@ -878,7 +878,7 @@ emit_fsign(nir_to_brw_state &ntb, const fs_builder &bld, const nir_alu_instr *in
       }
 
       inst->predicate = BRW_PREDICATE_NORMAL;
-   } else if (type_sz(op[0].type) == 4) {
+   } else if (brw_type_size_bytes(op[0].type) == 4) {
       /* AND(val, 0x80000000) gives the sign bit.
        *
        * Predicated OR ORs 1.0 (0x3f800000) with the sign bit if val is not
@@ -1024,7 +1024,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
 
    default:
       for (unsigned i = 0; i < nir_op_infos[instr->op].num_inputs; i++) {
-         assert(type_sz(op[i].type) > 1);
+         assert(brw_type_size_bytes(op[i].type) > 1);
       }
    }
 #endif
@@ -1108,7 +1108,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       if (BRW_RND_MODE_UNSPECIFIED != rnd)
          bld.exec_all().emit(SHADER_OPCODE_RND_MODE, bld.null_reg_ud(), brw_imm_d(rnd));
 
-      assert(type_sz(op[0].type) < 8); /* brw_nir_lower_conversions */
+      assert(brw_type_size_bytes(op[0].type) < 8); /* brw_nir_lower_conversions */
       inst = bld.MOV(result, op[0]);
       break;
    }
@@ -1145,19 +1145,19 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       if (result.type == BRW_TYPE_B ||
           result.type == BRW_TYPE_UB ||
           result.type == BRW_TYPE_HF)
-         assert(type_sz(op[0].type) < 8); /* brw_nir_lower_conversions */
+         assert(brw_type_size_bytes(op[0].type) < 8); /* brw_nir_lower_conversions */
 
       if (op[0].type == BRW_TYPE_B ||
           op[0].type == BRW_TYPE_UB ||
           op[0].type == BRW_TYPE_HF)
-         assert(type_sz(result.type) < 8); /* brw_nir_lower_conversions */
+         assert(brw_type_size_bytes(result.type) < 8); /* brw_nir_lower_conversions */
 
       inst = bld.MOV(result, op[0]);
       break;
 
    case nir_op_i2i8:
    case nir_op_u2u8:
-      assert(type_sz(op[0].type) < 8); /* brw_nir_lower_conversions */
+      assert(brw_type_size_bytes(op[0].type) < 8); /* brw_nir_lower_conversions */
       FALLTHROUGH;
    case nir_op_i2i16:
    case nir_op_u2u16: {
@@ -1220,7 +1220,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       }
 
       if (op[0].type == BRW_TYPE_HF)
-         assert(type_sz(result.type) < 8); /* brw_nir_lower_conversions */
+         assert(brw_type_size_bytes(result.type) < 8); /* brw_nir_lower_conversions */
 
       inst = bld.MOV(result, op[0]);
       break;
@@ -1468,7 +1468,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
    case nir_op_ine32: {
       fs_reg dest = result;
 
-      const uint32_t bit_size = type_sz(op[0].type) * 8;
+      const uint32_t bit_size = brw_type_size_bits(op[0].type);
       if (bit_size != 32) {
          dest = bld.vgrf(op[0].type);
          bld.UNDEF(dest);
@@ -2517,7 +2517,7 @@ emit_gs_input_load(nir_to_brw_state &ntb, const fs_reg &dst,
 
    fs_visitor &s = ntb.s;
 
-   assert(type_sz(dst.type) == 4);
+   assert(brw_type_size_bytes(dst.type) == 4);
    struct brw_gs_prog_data *gs_prog_data = brw_gs_prog_data(s.prog_data);
    const unsigned push_reg_count = gs_prog_data->base.urb_read_length * 8;
 
@@ -3045,7 +3045,7 @@ fs_nir_emit_tcs_intrinsic(nir_to_brw_state &ntb,
        * Also attempt to deal with gl_PointSize being in the .w component.
        */
       if (inst->offset == 0 && indirect_offset.file == BAD_FILE) {
-         assert(type_sz(dst.type) == 4);
+         assert(brw_type_size_bytes(dst.type) == 4);
          inst->dst = bld.vgrf(dst.type, 4);
          inst->size_written = 4 * REG_SIZE * reg_unit(devinfo);
          bld.MOV(dst, offset(inst->dst, bld, 3));
@@ -4622,8 +4622,10 @@ static fs_reg
 brw_nir_reduction_op_identity(const fs_builder &bld,
                               nir_op op, brw_reg_type type)
 {
-   nir_const_value value = nir_alu_binop_identity(op, type_sz(type) * 8);
-   switch (type_sz(type)) {
+   nir_const_value value =
+      nir_alu_binop_identity(op, brw_type_size_bits(type));
+
+   switch (brw_type_size_bytes(type)) {
    case 1:
       if (type == BRW_TYPE_UB) {
          return brw_imm_uw(value.u8);
@@ -6270,13 +6272,13 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
        * the type size
        */
       unsigned base_offset = nir_intrinsic_base(instr);
-      assert(base_offset % 4 == 0 || base_offset % type_sz(dest.type) == 0);
+      assert(base_offset % 4 == 0 || base_offset % brw_type_size_bytes(dest.type) == 0);
 
       fs_reg src(UNIFORM, base_offset / 4, dest.type);
 
       if (nir_src_is_const(instr->src[0])) {
          unsigned load_offset = nir_src_as_uint(instr->src[0]);
-         assert(load_offset % type_sz(dest.type) == 0);
+         assert(load_offset % brw_type_size_bytes(dest.type) == 0);
          /* The base offset can only handle 32-bit units, so for 16-bit
           * data take the modulo of the offset with 4 bytes and add it to
           * the offset to read from within the source register.
@@ -6296,13 +6298,13 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
           * one component of the vector.
           */
          assert(nir_intrinsic_range(instr) >=
-                instr->num_components * type_sz(dest.type));
+                instr->num_components * brw_type_size_bytes(dest.type));
          unsigned read_size = nir_intrinsic_range(instr) -
-            (instr->num_components - 1) * type_sz(dest.type);
+            (instr->num_components - 1) * brw_type_size_bytes(dest.type);
 
          bool supports_64bit_indirects = !intel_device_info_is_9lp(devinfo);
 
-         if (type_sz(dest.type) != 8 || supports_64bit_indirects) {
+         if (brw_type_size_bytes(dest.type) != 8 || supports_64bit_indirects) {
             for (unsigned j = 0; j < instr->num_components; j++) {
                bld.emit(SHADER_OPCODE_MOV_INDIRECT,
                         offset(dest, bld, j), offset(src, bld, j),
@@ -6310,12 +6312,12 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
             }
          } else {
             const unsigned num_mov_indirects =
-               type_sz(dest.type) / type_sz(BRW_TYPE_UD);
+               brw_type_size_bytes(dest.type) / brw_type_size_bytes(BRW_TYPE_UD);
             /* We read a little bit less per MOV INDIRECT, as they are now
              * 32-bits ones instead of 64-bit. Fix read_size then.
              */
             const unsigned read_size_32bit = read_size -
-                (num_mov_indirects - 1) * type_sz(BRW_TYPE_UD);
+                (num_mov_indirects - 1) * brw_type_size_bytes(BRW_TYPE_UD);
             for (unsigned j = 0; j < instr->num_components; j++) {
                for (unsigned i = 0; i < num_mov_indirects; i++) {
                   bld.emit(SHADER_OPCODE_MOV_INDIRECT,
@@ -6344,14 +6346,14 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
             fs_reg base_offset = retype(get_nir_src(ntb, instr->src[1]),
                                         BRW_TYPE_UD);
 
-            const unsigned comps_per_load = type_sz(dest.type) == 8 ? 2 : 4;
+            const unsigned comps_per_load = brw_type_size_bytes(dest.type) == 8 ? 2 : 4;
 
             for (int i = 0; i < instr->num_components; i += comps_per_load) {
                const unsigned remaining = instr->num_components - i;
                s.VARYING_PULL_CONSTANT_LOAD(bld, offset(dest, bld, i),
                                             surface, surface_handle,
                                             base_offset,
-                                            i * type_sz(dest.type),
+                                            i * brw_type_size_bytes(dest.type),
                                             instr->def.bit_size / 8,
                                             MIN2(remaining, comps_per_load));
             }
@@ -6422,7 +6424,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
           * we let CSE deal with duplicate loads. Here we see a vector access
           * and we have to split it if necessary.
           */
-         const unsigned type_size = type_sz(dest.type);
+         const unsigned type_size = brw_type_size_bytes(dest.type);
          const unsigned load_offset = nir_src_as_uint(instr->src[1]);
          const unsigned ubo_block =
             brw_nir_ubo_surface_index_get_push_block(instr->src[0]);
@@ -7416,15 +7418,15 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
       bld.emit_scan(brw_op, scan, cluster_size, cond_mod);
 
       dest.type = src.type;
-      if (cluster_size * type_sz(src.type) >= REG_SIZE * 2) {
+      if (cluster_size * brw_type_size_bytes(src.type) >= REG_SIZE * 2) {
          /* In this case, CLUSTER_BROADCAST instruction isn't needed because
           * the distance between clusters is at least 2 GRFs.  In this case,
           * we don't need the weird striding of the CLUSTER_BROADCAST
           * instruction and can just do regular MOVs.
           */
-         assert((cluster_size * type_sz(src.type)) % (REG_SIZE * 2) == 0);
+         assert((cluster_size * brw_type_size_bytes(src.type)) % (REG_SIZE * 2) == 0);
          const unsigned groups =
-            (s.dispatch_width * type_sz(src.type)) / (REG_SIZE * 2);
+            (s.dispatch_width * brw_type_size_bytes(src.type)) / (REG_SIZE * 2);
          const unsigned group_size = s.dispatch_width / groups;
          for (unsigned i = 0; i < groups; i++) {
             const unsigned cluster = (i * group_size) / cluster_size;
@@ -7855,7 +7857,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
 static fs_reg
 expand_to_32bit(const fs_builder &bld, const fs_reg &src)
 {
-   if (type_sz(src.type) == 2) {
+   if (brw_type_size_bytes(src.type) == 2) {
       fs_reg src32 = bld.vgrf(BRW_TYPE_UD);
       bld.MOV(src32, retype(src, BRW_TYPE_UW));
       return src32;
@@ -8454,23 +8456,23 @@ shuffle_src_to_dst(const fs_builder &bld,
                    uint32_t first_component,
                    uint32_t components)
 {
-   if (type_sz(src.type) == type_sz(dst.type)) {
+   if (brw_type_size_bytes(src.type) == brw_type_size_bytes(dst.type)) {
       assert(!regions_overlap(dst,
-         type_sz(dst.type) * bld.dispatch_width() * components,
+         brw_type_size_bytes(dst.type) * bld.dispatch_width() * components,
          offset(src, bld, first_component),
-         type_sz(src.type) * bld.dispatch_width() * components));
+         brw_type_size_bytes(src.type) * bld.dispatch_width() * components));
       for (unsigned i = 0; i < components; i++) {
          bld.MOV(retype(offset(dst, bld, i), src.type),
                  offset(src, bld, i + first_component));
       }
-   } else if (type_sz(src.type) < type_sz(dst.type)) {
+   } else if (brw_type_size_bytes(src.type) < brw_type_size_bytes(dst.type)) {
       /* Source is shuffled into destination */
-      unsigned size_ratio = type_sz(dst.type) / type_sz(src.type);
+      unsigned size_ratio = brw_type_size_bytes(dst.type) / brw_type_size_bytes(src.type);
       assert(!regions_overlap(dst,
-         type_sz(dst.type) * bld.dispatch_width() *
+         brw_type_size_bytes(dst.type) * bld.dispatch_width() *
          DIV_ROUND_UP(components, size_ratio),
          offset(src, bld, first_component),
-         type_sz(src.type) * bld.dispatch_width() * components));
+         brw_type_size_bytes(src.type) * bld.dispatch_width() * components));
 
       brw_reg_type shuffle_type =
          brw_type_with_size(BRW_TYPE_D, brw_type_size_bits(src.type));
@@ -8483,16 +8485,16 @@ shuffle_src_to_dst(const fs_builder &bld,
       }
    } else {
       /* Source is unshuffled into destination */
-      unsigned size_ratio = type_sz(src.type) / type_sz(dst.type);
+      unsigned size_ratio = brw_type_size_bytes(src.type) / brw_type_size_bytes(dst.type);
       assert(!regions_overlap(dst,
-         type_sz(dst.type) * bld.dispatch_width() * components,
+         brw_type_size_bytes(dst.type) * bld.dispatch_width() * components,
          offset(src, bld, first_component / size_ratio),
-         type_sz(src.type) * bld.dispatch_width() *
+         brw_type_size_bytes(src.type) * bld.dispatch_width() *
          DIV_ROUND_UP(components + (first_component % size_ratio),
                       size_ratio)));
 
       brw_reg_type shuffle_type =
-         brw_type_with_size(BRW_TYPE_D, brw_Type_size_bits(dst.type));
+         brw_type_with_size(BRW_TYPE_D, brw_type_size_bits(dst.type));
       for (unsigned i = 0; i < components; i++) {
          fs_reg shuffle_component_i =
             subscript(offset(src, bld, (first_component + i) / size_ratio),
@@ -8510,13 +8512,13 @@ shuffle_from_32bit_read(const fs_builder &bld,
                         uint32_t first_component,
                         uint32_t components)
 {
-   assert(type_sz(src.type) == 4);
+   assert(brw_type_size_bytes(src.type) == 4);
 
    /* This function takes components in units of the destination type while
     * shuffle_src_to_dst takes components in units of the smallest type
     */
-   if (type_sz(dst.type) > 4) {
-      assert(type_sz(dst.type) == 8);
+   if (brw_type_size_bytes(dst.type) > 4) {
+      assert(brw_type_size_bytes(dst.type) == 8);
       first_component *= 2;
       components *= 2;
    }

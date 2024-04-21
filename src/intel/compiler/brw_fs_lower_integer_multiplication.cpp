@@ -424,7 +424,7 @@ brw_fs_lower_integer_multiplication(fs_visitor &s)
          /* If the instruction is already in a form that does not need lowering,
           * return early.
           */
-         if (type_sz(inst->src[1].type) < 4 && type_sz(inst->src[0].type) <= 4)
+         if (brw_type_size_bytes(inst->src[1].type) < 4 && brw_type_size_bytes(inst->src[0].type) <= 4)
             continue;
 
          if ((inst->dst.type == BRW_TYPE_Q ||

@@ -50,7 +50,7 @@ brw_set_dest(struct brw_codegen *p, brw_inst *inst, struct brw_reg dest)
     */
    if (dest.file == BRW_ARCHITECTURE_REGISTER_FILE &&
        dest.nr == BRW_ARF_NULL &&
-       type_sz(dest.type) == 1 &&
+       brw_type_size_bytes(dest.type) == 1 &&
        dest.hstride == BRW_HORIZONTAL_STRIDE_1) {
       dest.hstride = BRW_HORIZONTAL_STRIDE_2;
    }
@@ -187,7 +187,7 @@ brw_set_src0(struct brw_codegen *p, brw_inst *inst, struct brw_reg reg)
          else
             brw_inst_set_imm_ud(devinfo, inst, reg.ud);
 
-         if (devinfo->ver < 12 && type_sz(reg.type) < 8) {
+         if (devinfo->ver < 12 && brw_type_size_bytes(reg.type) < 8) {
             brw_inst_set_src1_reg_file(devinfo, inst,
                                        BRW_ARCHITECTURE_REGISTER_FILE);
             brw_inst_set_src1_reg_hw_type(devinfo, inst,
@@ -288,7 +288,7 @@ brw_set_src1(struct brw_codegen *p, brw_inst *inst, struct brw_reg reg)
 
       if (reg.file == BRW_IMMEDIATE_VALUE) {
          /* two-argument instructions can only use 32-bit immediates */
-         assert(type_sz(reg.type) < 8);
+         assert(brw_type_size_bytes(reg.type) < 8);
          brw_inst_set_imm_ud(devinfo, inst, reg.ud);
       } else {
          /* This is a hardware restriction, which may or may not be lifted
@@ -486,8 +486,10 @@ brw_alu2(struct brw_codegen *p, unsigned opcode,
          struct brw_reg dest, struct brw_reg src0, struct brw_reg src1)
 {
    /* 64-bit immediates are only supported on 1-src instructions */
-   assert(src0.file != BRW_IMMEDIATE_VALUE || type_sz(src0.type) <= 4);
-   assert(src1.file != BRW_IMMEDIATE_VALUE || type_sz(src1.type) <= 4);
+   assert(src0.file != BRW_IMMEDIATE_VALUE ||
+          brw_type_size_bytes(src0.type) <= 4);
+   assert(src1.file != BRW_IMMEDIATE_VALUE ||
+          brw_type_size_bytes(src1.type) <= 4);
 
    brw_inst *insn = next_insn(p, opcode);
    brw_set_dest(p, insn, dest);
@@ -1918,7 +1920,7 @@ brw_broadcast(struct brw_codegen *p,
       const unsigned i = idx.file == BRW_IMMEDIATE_VALUE ? idx.ud : 0;
       src = stride(suboffset(src, i), 0, 1, 0);
 
-      if (type_sz(src.type) > 4 && !devinfo->has_64bit_int) {
+      if (brw_type_size_bytes(src.type) > 4 && !devinfo->has_64bit_int) {
          brw_MOV(p, subscript(dst, BRW_TYPE_D, 0),
                     subscript(src, BRW_TYPE_D, 0));
          brw_set_default_swsb(p, tgl_swsb_null());
@@ -1956,7 +1958,7 @@ brw_broadcast(struct brw_codegen *p,
       /* Take into account the component size and horizontal stride. */
       assert(src.vstride == src.hstride + src.width);
       brw_SHL(p, addr, vec1(idx),
-              brw_imm_ud(util_logbase2(type_sz(src.type)) +
+              brw_imm_ud(util_logbase2(brw_type_size_bytes(src.type)) +
                          src.hstride - 1));
 
       /* We can only address up to limit bytes using the indirect
@@ -1974,7 +1976,7 @@ brw_broadcast(struct brw_codegen *p,
       brw_set_default_swsb(p, tgl_swsb_regdist(1));
 
       /* Use indirect addressing to fetch the specified component. */
-      if (type_sz(src.type) > 4 &&
+      if (brw_type_size_bytes(src.type) > 4 &&
           (intel_device_info_is_9lp(devinfo) || !devinfo->has_64bit_int)) {
          /* From the Cherryview PRM Vol 7. "Register Region Restrictions":
           *
@@ -2117,8 +2119,8 @@ brw_MOV_reloc_imm(struct brw_codegen *p,
                   enum brw_reg_type src_type,
                   uint32_t id)
 {
-   assert(type_sz(src_type) == 4);
-   assert(type_sz(dst.type) == 4);
+   assert(brw_type_size_bytes(src_type) == 4);
+   assert(brw_type_size_bytes(dst.type) == 4);
 
    brw_add_reloc(p, id, BRW_SHADER_RELOC_TYPE_MOV_IMM,
                  p->next_insn_offset, 0);

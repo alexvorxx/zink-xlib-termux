@@ -1081,7 +1081,7 @@ add_candidate_immediate(struct table *table, fs_inst *inst, unsigned ip,
    unsigned box_idx = box_instruction(table, const_ctx, inst, ip, block);
 
    v->value.u64 = inst->src[i].d64;
-   v->bit_size = 8 * type_sz(inst->src[i].type);
+   v->bit_size = brw_type_size_bits(inst->src[i].type);
    v->instr_index = box_idx;
    v->src = i;
    v->allow_one_constant = allow_one_constant;
@@ -1570,7 +1570,7 @@ brw_fs_opt_combine_constants(fs_visitor &s)
       struct brw_reg imm_reg = build_imm_reg_for_copy(imm);
 
       /* Ensure we have enough space in the register to copy the immediate */
-      assert(reg.offset + type_sz(imm_reg.type) * width <= REG_SIZE);
+      assert(reg.offset + brw_type_size_bytes(imm_reg.type) * width <= REG_SIZE);
 
       ibld.MOV(retype(reg, imm_reg.type), imm_reg);
    }
@@ -1585,11 +1585,11 @@ brw_fs_opt_combine_constants(fs_visitor &s)
             if (link->type == either_type) {
                /* Do not change the register type. */
             } else if (link->type == integer_only) {
-               reg->type = brw_int_type(type_sz(reg->type), true);
+               reg->type = brw_int_type(brw_type_size_bytes(reg->type), true);
             } else {
                assert(link->type == float_only);
 
-               switch (type_sz(reg->type)) {
+               switch (brw_type_size_bytes(reg->type)) {
                case 2:
                   reg->type = BRW_TYPE_HF;
                   break;
@@ -1606,7 +1606,7 @@ brw_fs_opt_combine_constants(fs_visitor &s)
          } else if ((link->inst->opcode == BRW_OPCODE_SHL ||
                      link->inst->opcode == BRW_OPCODE_ASR) &&
                     link->negate) {
-            reg->type = brw_int_type(type_sz(reg->type), true);
+            reg->type = brw_int_type(brw_type_size_bytes(reg->type), true);
          }
 
 #if MESA_DEBUG

@@ -152,7 +152,7 @@ horiz_offset(const fs_reg &reg, unsigned delta)
       return reg;
    case VGRF:
    case ATTR:
-      return byte_offset(reg, delta * reg.stride * type_sz(reg.type));
+      return byte_offset(reg, delta * reg.stride * brw_type_size_bytes(reg.type));
    case ARF:
    case FIXED_GRF:
       if (reg.is_null()) {
@@ -163,10 +163,10 @@ horiz_offset(const fs_reg &reg, unsigned delta)
          const unsigned width = 1 << reg.width;
 
          if (delta % width == 0) {
-            return byte_offset(reg, delta / width * vstride * type_sz(reg.type));
+            return byte_offset(reg, delta / width * vstride * brw_type_size_bytes(reg.type));
          } else {
             assert(vstride == hstride * width);
-            return byte_offset(reg, delta * hstride * type_sz(reg.type));
+            return byte_offset(reg, delta * hstride * brw_type_size_bytes(reg.type));
          }
       }
    }
@@ -245,7 +245,7 @@ reg_padding(const fs_reg &r)
    const unsigned stride = ((r.file != ARF && r.file != FIXED_GRF) ? r.stride :
                             r.hstride == 0 ? 0 :
                             1 << (r.hstride - 1));
-   return (MAX2(1, stride) - 1) * type_sz(r.type);
+   return (MAX2(1, stride) - 1) * brw_type_size_bytes(r.type);
 }
 
 /**
@@ -333,29 +333,29 @@ quarter(const fs_reg &reg, unsigned idx)
 static inline fs_reg
 subscript(fs_reg reg, brw_reg_type type, unsigned i)
 {
-   assert((i + 1) * type_sz(type) <= type_sz(reg.type));
+   assert((i + 1) * brw_type_size_bytes(type) <= brw_type_size_bytes(reg.type));
 
    if (reg.file == ARF || reg.file == FIXED_GRF) {
       /* The stride is encoded inconsistently for fixed GRF and ARF registers
        * as the log2 of the actual vertical and horizontal strides.
        */
-      const int delta = util_logbase2(type_sz(reg.type)) -
-                        util_logbase2(type_sz(type));
+      const int delta = util_logbase2(brw_type_size_bytes(reg.type)) -
+                        util_logbase2(brw_type_size_bytes(type));
       reg.hstride += (reg.hstride ? delta : 0);
       reg.vstride += (reg.vstride ? delta : 0);
 
    } else if (reg.file == IMM) {
-      unsigned bit_size = type_sz(type) * 8;
+      unsigned bit_size = brw_type_size_bits(type);
       reg.u64 >>= i * bit_size;
       reg.u64 &= BITFIELD64_MASK(bit_size);
       if (bit_size <= 16)
          reg.u64 |= reg.u64 << 16;
       return retype(reg, type);
    } else {
-      reg.stride *= type_sz(reg.type) / type_sz(type);
+      reg.stride *= brw_type_size_bytes(reg.type) / brw_type_size_bytes(type);
    }
 
-   return byte_offset(retype(reg, type), i * type_sz(type));
+   return byte_offset(retype(reg, type), i * brw_type_size_bytes(type));
 }
 
 static inline fs_reg
@@ -657,9 +657,9 @@ get_exec_type(const fs_inst *inst)
       if (inst->src[i].file != BAD_FILE &&
           !inst->is_control_source(i)) {
          const brw_reg_type t = get_exec_type(inst->src[i].type);
-         if (type_sz(t) > type_sz(exec_type))
+         if (brw_type_size_bytes(t) > brw_type_size_bytes(exec_type))
             exec_type = t;
-         else if (type_sz(t) == type_sz(exec_type) &&
+         else if (brw_type_size_bytes(t) == brw_type_size_bytes(exec_type) &&
                   brw_type_is_float(t))
             exec_type = t;
       }
@@ -683,7 +683,7 @@ get_exec_type(const fs_inst *inst)
     * "Conversion between Integer and HF (Half Float) must be DWord aligned
     *  and strided by a DWord on the destination."
     */
-   if (type_sz(exec_type) == 2 &&
+   if (brw_type_size_bytes(exec_type) == 2 &&
        inst->dst.type != exec_type) {
       if (exec_type == BRW_TYPE_HF)
          exec_type = BRW_TYPE_F;
@@ -697,7 +697,7 @@ get_exec_type(const fs_inst *inst)
 static inline unsigned
 get_exec_type_size(const fs_inst *inst)
 {
-   return type_sz(get_exec_type(inst));
+   return brw_type_size_bytes(get_exec_type(inst));
 }
 
 static inline bool
@@ -734,7 +734,7 @@ byte_stride(const fs_reg &reg)
    case IMM:
    case VGRF:
    case ATTR:
-      return reg.stride * type_sz(reg.type);
+      return reg.stride * brw_type_size_bytes(reg.type);
    case ARF:
    case FIXED_GRF:
       if (reg.is_null()) {
@@ -745,9 +745,9 @@ byte_stride(const fs_reg &reg)
          const unsigned width = 1 << reg.width;
 
          if (width == 1) {
-            return vstride * type_sz(reg.type);
+            return vstride * brw_type_size_bytes(reg.type);
          } else if (hstride * width == vstride) {
-            return hstride * type_sz(reg.type);
+            return hstride * brw_type_size_bytes(reg.type);
          } else {
             return ~0u;
          }
@@ -783,12 +783,12 @@ has_dst_aligned_region_restriction(const intel_device_info *devinfo,
     */
    const bool is_dword_multiply = !brw_type_is_float(exec_type) &&
       ((inst->opcode == BRW_OPCODE_MUL &&
-        MIN2(type_sz(inst->src[0].type), type_sz(inst->src[1].type)) >= 4) ||
+        MIN2(brw_type_size_bytes(inst->src[0].type), brw_type_size_bytes(inst->src[1].type)) >= 4) ||
        (inst->opcode == BRW_OPCODE_MAD &&
-        MIN2(type_sz(inst->src[1].type), type_sz(inst->src[2].type)) >= 4));
+        MIN2(brw_type_size_bytes(inst->src[1].type), brw_type_size_bytes(inst->src[2].type)) >= 4));
 
-   if (type_sz(dst_type) > 4 || type_sz(exec_type) > 4 ||
-       (type_sz(exec_type) == 4 && is_dword_multiply))
+   if (brw_type_size_bytes(dst_type) > 4 || brw_type_size_bytes(exec_type) > 4 ||
+       (brw_type_size_bytes(exec_type) == 4 && is_dword_multiply))
       return intel_device_info_is_9lp(devinfo) || devinfo->verx10 >= 125;
 
    else if (brw_type_is_float(dst_type))
@@ -818,10 +818,12 @@ has_subdword_integer_region_restriction(const intel_device_info *devinfo,
 {
    if (devinfo->ver >= 20 &&
        brw_type_is_int(inst->dst.type) &&
-       MAX2(byte_stride(inst->dst), type_sz(inst->dst.type)) < 4) {
+       MAX2(byte_stride(inst->dst),
+            brw_type_size_bytes(inst->dst.type)) < 4) {
       for (unsigned i = 0; i < num_srcs; i++) {
          if (brw_type_is_int(srcs[i].type) &&
-             type_sz(srcs[i].type) < 4 && byte_stride(srcs[i]) >= 4)
+             brw_type_size_bytes(srcs[i].type) < 4 &&
+             byte_stride(srcs[i]) >= 4)
             return true;
       }
    }

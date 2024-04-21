@@ -629,12 +629,14 @@ is_byte_conversion(const struct brw_isa_info *isa,
    enum brw_reg_type src0_type = brw_inst_src0_type(devinfo, inst);
 
    if (dst_type != src0_type &&
-       (type_sz(dst_type) == 1 || type_sz(src0_type) == 1)) {
+       (brw_type_size_bytes(dst_type) == 1 ||
+        brw_type_size_bytes(src0_type) == 1)) {
       return true;
    } else if (num_sources > 1) {
       enum brw_reg_type src1_type = brw_inst_src1_type(devinfo, inst);
       return dst_type != src1_type &&
-            (type_sz(dst_type) == 1 || type_sz(src1_type) == 1);
+            (brw_type_size_bytes(dst_type) == 1 ||
+             brw_type_size_bytes(src1_type) == 1);
    }
 
    return false;
@@ -664,13 +666,13 @@ general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
        * a D or UD, so it is allowed.
        */
       if (num_sources == 3 && brw_inst_opcode(isa, inst) != BRW_OPCODE_DPAS) {
-         ERROR_IF(brw_reg_type_to_size(brw_inst_3src_a1_src1_type(devinfo, inst)) == 1 ||
-                  brw_reg_type_to_size(brw_inst_3src_a1_src2_type(devinfo, inst)) == 1,
+         ERROR_IF(brw_type_size_bytes(brw_inst_3src_a1_src1_type(devinfo, inst)) == 1 ||
+                  brw_type_size_bytes(brw_inst_3src_a1_src2_type(devinfo, inst)) == 1,
                   "Byte data type is not supported for src1/2 register regioning. This includes "
                   "byte broadcast as well.");
       }
       if (num_sources == 2) {
-         ERROR_IF(brw_reg_type_to_size(brw_inst_src1_type(devinfo, inst)) == 1,
+         ERROR_IF(brw_type_size_bytes(brw_inst_src1_type(devinfo, inst)) == 1,
                   "Byte data type is not supported for src1 register regioning. This includes "
                   "byte broadcast as well.");
       }
@@ -726,7 +728,7 @@ general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
                !devinfo->has_64bit_int,
                "64-bit int source, but platform does not support it");
       if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_16 &&
-          num_sources == 3 && type_sz(src_type) > 4) {
+          num_sources == 3 && brw_type_size_bytes(src_type) > 4) {
          /* From the Broadwell PRM, Volume 7 "3D Media GPGPU", page 944:
           *
           *    "This is applicable to 32b datatypes and 16b datatype. 64b
@@ -810,8 +812,8 @@ general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
    }
 
    unsigned exec_type = execution_type(isa, inst);
-   unsigned exec_type_size = brw_reg_type_to_size(exec_type);
-   unsigned dst_type_size = brw_reg_type_to_size(dst_type);
+   unsigned exec_type_size = brw_type_size_bytes(exec_type);
+   unsigned dst_type_size = brw_type_size_bytes(dst_type);
 
    if (is_byte_conversion(isa, inst)) {
       /* From the BDW+ PRM, Volume 2a, Command Reference, Instructions - MOV:
@@ -827,14 +829,14 @@ general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
       enum brw_reg_type src1_type = num_sources > 1 ?
                                     brw_inst_src1_type(devinfo, inst) : 0;
 
-      ERROR_IF(type_sz(dst_type) == 1 &&
-               (type_sz(src0_type) == 8 ||
-                (num_sources > 1 && type_sz(src1_type) == 8)),
+      ERROR_IF(brw_type_size_bytes(dst_type) == 1 &&
+               (brw_type_size_bytes(src0_type) == 8 ||
+                (num_sources > 1 && brw_type_size_bytes(src1_type) == 8)),
                "There are no direct conversions between 64-bit types and B/UB");
 
-      ERROR_IF(type_sz(dst_type) == 8 &&
-               (type_sz(src0_type) == 1 ||
-                (num_sources > 1 && type_sz(src1_type) == 1)),
+      ERROR_IF(brw_type_size_bytes(dst_type) == 8 &&
+               (brw_type_size_bytes(src0_type) == 1 ||
+                (num_sources > 1 && brw_type_size_bytes(src1_type) == 1)),
                "There are no direct conversions between 64-bit types and B/UB");
    }
 
@@ -855,11 +857,11 @@ general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
       enum brw_reg_type src1_type = num_sources > 1 ?
                                     brw_inst_src1_type(devinfo, inst) : 0;
       ERROR_IF(dst_type == BRW_TYPE_HF &&
-               (type_sz(src0_type) == 8 ||
-                (num_sources > 1 && type_sz(src1_type) == 8)),
+               (brw_type_size_bytes(src0_type) == 8 ||
+                (num_sources > 1 && brw_type_size_bytes(src1_type) == 8)),
                "There are no direct conversions between 64-bit types and HF");
 
-      ERROR_IF(type_sz(dst_type) == 8 &&
+      ERROR_IF(brw_type_size_bytes(dst_type) == 8 &&
                (src0_type == BRW_TYPE_HF ||
                 (num_sources > 1 && src1_type == BRW_TYPE_HF)),
                "There are no direct conversions between 64-bit types and HF");
@@ -1023,7 +1025,7 @@ general_restrictions_on_region_parameters(const struct brw_isa_info *isa,
       width = WIDTH(brw_inst_src ## n ## _width(devinfo, inst));               \
       hstride = STRIDE(brw_inst_src ## n ## _hstride(devinfo, inst));          \
       type = brw_inst_src ## n ## _type(devinfo, inst);                        \
-      element_size = brw_reg_type_to_size(type);                               \
+      element_size = brw_type_size_bytes(type);                                \
       subreg = brw_inst_src ## n ## _da1_subreg_nr(devinfo, inst)
 
       if (i == 0) {
@@ -1436,7 +1438,7 @@ region_alignment_rules(const struct brw_isa_info *isa,
       width = WIDTH(brw_inst_src ## n ## _width(devinfo, inst));               \
       hstride = STRIDE(brw_inst_src ## n ## _hstride(devinfo, inst));          \
       type = brw_inst_src ## n ## _type(devinfo, inst);                        \
-      element_size = brw_reg_type_to_size(type);                               \
+      element_size = brw_type_size_bytes(type);                                \
       subreg = brw_inst_src ## n ## _da1_subreg_nr(devinfo, inst);             \
       align1_access_mask(src ## n ## _access_mask,                             \
                          exec_size, element_size, subreg,                      \
@@ -1464,7 +1466,7 @@ region_alignment_rules(const struct brw_isa_info *isa,
 
    unsigned stride = STRIDE(brw_inst_dst_hstride(devinfo, inst));
    enum brw_reg_type dst_type = inst_dst_type(isa, inst);
-   unsigned element_size = brw_reg_type_to_size(dst_type);
+   unsigned element_size = brw_type_size_bytes(dst_type);
    unsigned subreg = brw_inst_dst_da1_subreg_nr(devinfo, inst);
    unsigned offset = ((exec_size - 1) * stride * element_size) + subreg;
    ERROR_IF(offset >= 64 * reg_unit(devinfo),
@@ -1530,7 +1532,7 @@ vector_immediate_restrictions(const struct brw_isa_info *isa,
       return (struct string){};
 
    enum brw_reg_type dst_type = inst_dst_type(isa, inst);
-   unsigned dst_type_size = brw_reg_type_to_size(dst_type);
+   unsigned dst_type_size = brw_type_size_bytes(dst_type);
    unsigned dst_subreg = brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1 ?
                          brw_inst_dst_da1_subreg_nr(devinfo, inst) : 0;
    unsigned dst_stride = STRIDE(brw_inst_dst_hstride(devinfo, inst));
@@ -1592,11 +1594,11 @@ special_requirements_for_handling_double_precision_data_types(
       return (struct string){};
 
    enum brw_reg_type exec_type = execution_type(isa, inst);
-   unsigned exec_type_size = brw_reg_type_to_size(exec_type);
+   unsigned exec_type_size = brw_type_size_bytes(exec_type);
 
    enum brw_reg_file dst_file = brw_inst_dst_reg_file(devinfo, inst);
    enum brw_reg_type dst_type = inst_dst_type(isa, inst);
-   unsigned dst_type_size = brw_reg_type_to_size(dst_type);
+   unsigned dst_type_size = brw_type_size_bytes(dst_type);
    unsigned dst_hstride = STRIDE(brw_inst_dst_hstride(devinfo, inst));
    unsigned dst_reg = brw_inst_dst_da_reg_nr(devinfo, inst);
    unsigned dst_subreg = brw_inst_dst_da1_subreg_nr(devinfo, inst);
@@ -1629,7 +1631,7 @@ special_requirements_for_handling_double_precision_data_types(
       hstride = STRIDE(brw_inst_src ## n ## _hstride(devinfo, inst));          \
       file = brw_inst_src ## n ## _reg_file(devinfo, inst);                    \
       type = brw_inst_src ## n ## _type(devinfo, inst);                        \
-      type_size = brw_reg_type_to_size(type);                                  \
+      type_size = brw_type_size_bytes(type);                                   \
       reg = brw_inst_src ## n ## _da_reg_nr(devinfo, inst);                    \
       subreg = brw_inst_src ## n ## _da1_subreg_nr(devinfo, inst);             \
       address_mode = brw_inst_src ## n ## _address_mode(devinfo, inst)
@@ -1758,7 +1760,7 @@ special_requirements_for_handling_double_precision_data_types(
        *  Quad-Word data must not be used."
        */
       if (devinfo->verx10 >= 125 &&
-          (brw_type_is_float(type) || type_sz(type) == 8)) {
+          (brw_type_is_float(type) || brw_type_size_bytes(type) == 8)) {
          ERROR_IF(address_mode == BRW_ADDRESS_REGISTER_INDIRECT_REGISTER &&
                   vstride == BRW_VERTICAL_STRIDE_ONE_DIMENSIONAL,
                   "Vx1 and VxH indirect addressing for Float, Half-Float, "
@@ -1777,8 +1779,8 @@ special_requirements_for_handling_double_precision_data_types(
       enum brw_reg_type src0_type = brw_inst_src0_type(devinfo, inst);
       enum brw_reg_type src1_type =
          num_sources > 1 ? brw_inst_src1_type(devinfo, inst) : src0_type;
-      unsigned src0_type_size = brw_reg_type_to_size(src0_type);
-      unsigned src1_type_size = brw_reg_type_to_size(src1_type);
+      unsigned src0_type_size = brw_type_size_bytes(src0_type);
+      unsigned src1_type_size = brw_type_size_bytes(src1_type);
 
       ERROR_IF(brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_16 &&
                dst_type_size == 8 &&
@@ -1820,17 +1822,20 @@ instruction_restrictions(const struct brw_isa_info *isa,
    if (devinfo->ver >= 12 &&
        brw_inst_opcode(isa, inst) == BRW_OPCODE_MUL) {
       enum brw_reg_type exec_type = execution_type(isa, inst);
-      const bool src0_valid = type_sz(brw_inst_src0_type(devinfo, inst)) == 4 ||
+      const bool src0_valid =
+         brw_type_size_bytes(brw_inst_src0_type(devinfo, inst)) == 4 ||
          brw_inst_src0_reg_file(devinfo, inst) == BRW_IMMEDIATE_VALUE ||
          !(brw_inst_src0_negate(devinfo, inst) ||
            brw_inst_src0_abs(devinfo, inst));
-      const bool src1_valid = type_sz(brw_inst_src1_type(devinfo, inst)) == 4 ||
+      const bool src1_valid =
+         brw_type_size_bytes(brw_inst_src1_type(devinfo, inst)) == 4 ||
          brw_inst_src1_reg_file(devinfo, inst) == BRW_IMMEDIATE_VALUE ||
          !(brw_inst_src1_negate(devinfo, inst) ||
            brw_inst_src1_abs(devinfo, inst));
 
       ERROR_IF(!brw_type_is_float(exec_type) &&
-               type_sz(exec_type) == 4 && !(src0_valid && src1_valid),
+               brw_type_size_bytes(exec_type) == 4 &&
+               !(src0_valid && src1_valid),
                "When multiplying a DW and any lower precision integer, source "
                "modifier is not supported.");
    }
@@ -1861,7 +1866,8 @@ instruction_restrictions(const struct brw_isa_info *isa,
        * text.
        */
       ERROR_IF(brw_type_is_int(src1_type) &&
-               type_sz(src0_type) < 4 && type_sz(src1_type) == 4,
+               brw_type_size_bytes(src0_type) < 4 &&
+               brw_type_size_bytes(src1_type) == 4,
                "When multiplying a DW and any lower precision integer, the "
                "DW operand must be src0.");
 
@@ -2163,11 +2169,11 @@ instruction_restrictions(const struct brw_isa_info *isa,
       }
 
       const unsigned src1_bits_per_element =
-         (8 * brw_reg_type_to_size(src1_type)) >>
+         brw_type_size_bits(src1_type) >>
          brw_inst_dpas_3src_src1_subbyte(devinfo, inst);
 
       const unsigned src2_bits_per_element =
-         (8 * brw_reg_type_to_size(src2_type)) >>
+         brw_type_size_bits(src2_type) >>
          brw_inst_dpas_3src_src2_subbyte(devinfo, inst);
 
       /* The MAX2(1, ...) is just to prevent possible division by 0 later. */
@@ -2208,16 +2214,16 @@ instruction_restrictions(const struct brw_isa_info *isa,
                "Src2 subregister offset must be a multiple of SystolicDepth "
                "times OPS_PER_CHAN.");
 
-      ERROR_IF(dst_subnr * type_sz(dst_type) >= REG_SIZE,
+      ERROR_IF(dst_subnr * brw_type_size_bytes(dst_type) >= REG_SIZE,
                "Destination subregister specifies next register.");
 
-      ERROR_IF(src0_subnr * type_sz(src0_type) >= REG_SIZE,
+      ERROR_IF(src0_subnr * brw_type_size_bytes(src0_type) >= REG_SIZE,
                "Src0 subregister specifies next register.");
 
-      ERROR_IF((src1_subnr * type_sz(src1_type) * src1_bits_per_element) / 8 >= REG_SIZE,
+      ERROR_IF((src1_subnr * brw_type_size_bytes(src1_type) * src1_bits_per_element) / 8 >= REG_SIZE,
                "Src1 subregister specifies next register.");
 
-      ERROR_IF((src2_subnr * type_sz(src2_type) * src2_bits_per_element) / 8 >= REG_SIZE,
+      ERROR_IF((src2_subnr * brw_type_size_bytes(src2_type) * src2_bits_per_element) / 8 >= REG_SIZE,
                "Src2 subregister specifies next register.");
 
       if (brw_inst_3src_atomic_control(devinfo, inst)) {

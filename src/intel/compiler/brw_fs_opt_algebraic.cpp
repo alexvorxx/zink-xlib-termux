@@ -130,8 +130,8 @@ brw_fs_opt_algebraic(fs_visitor &s)
           * we might use the full accumulator in the MUL/MACH macro, we
           * shouldn't replace such MULs with MOVs.
           */
-         if ((brw_reg_type_to_size(inst->src[0].type) == 4 ||
-              brw_reg_type_to_size(inst->src[1].type) == 4) &&
+         if ((brw_type_size_bytes(inst->src[0].type) == 4 ||
+              brw_type_size_bytes(inst->src[1].type) == 4) &&
              (inst->dst.is_accumulator() ||
               inst->writes_accumulator_implicitly(devinfo)))
             break;
@@ -330,7 +330,7 @@ brw_fs_opt_algebraic(fs_visitor &s)
 
             fs_reg result;
 
-            switch (type_sz(inst->src[0].type)) {
+            switch (brw_type_size_bytes(inst->src[0].type)) {
             case 2:
                result = brw_imm_uw(0x0ffff & (inst->src[0].ud << (inst->src[1].ud & 0x1f)));
                break;

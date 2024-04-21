@@ -408,7 +408,7 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
       const unsigned swiz = inst->src[1].ud;
       return (is_uniform(inst->src[0]) ?
                  get_fpu_lowered_simd_width(shader, inst) :
-              devinfo->ver < 11 && type_sz(inst->src[0].type) == 4 ? 8 :
+              devinfo->ver < 11 && brw_type_size_bytes(inst->src[0].type) == 4 ? 8 :
               swiz == BRW_SWIZZLE_XYXY || swiz == BRW_SWIZZLE_ZWZW ? 4 :
               get_fpu_lowered_simd_width(shader, inst));
    }
@@ -425,7 +425,7 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
       const unsigned max_size = 2 * REG_SIZE;
       /* Prior to Broadwell, we only have 8 address subregisters. */
       return MIN3(16,
-                  max_size / (inst->dst.stride * type_sz(inst->dst.type)),
+                  max_size / (inst->dst.stride * brw_type_size_bytes(inst->dst.type)),
                   inst->exec_size);
    }
 
@@ -440,7 +440,7 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
           */
          assert(!inst->header_size);
          for (unsigned i = 0; i < inst->sources; i++)
-            assert(type_sz(inst->dst.type) == type_sz(inst->src[i].type) ||
+            assert(brw_type_size_bits(inst->dst.type) == brw_type_size_bits(inst->src[i].type) ||
                    inst->src[i].file == BAD_FILE);
 
          return inst->exec_size / DIV_ROUND_UP(reg_count, 2);
@@ -465,7 +465,7 @@ needs_src_copy(const fs_builder &lbld, const fs_inst *inst, unsigned i)
             (inst->components_read(i) == 1 &&
              lbld.dispatch_width() <= inst->exec_size)) ||
           (inst->flags_written(lbld.shader->devinfo) &
-           brw_fs_flag_mask(inst->src[i], type_sz(inst->src[i].type)));
+           brw_fs_flag_mask(inst->src[i], brw_type_size_bytes(inst->src[i].type)));
 }
 
 /**

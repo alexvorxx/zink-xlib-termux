@@ -1318,7 +1318,7 @@ dstoperand:
 		$$.type = $4;
 		$$.writemask = $3;
 		$$.swizzle = BRW_SWIZZLE_NOOP;
-		$$.subnr = $$.subnr * brw_reg_type_to_size($4);
+		$$.subnr = $$.subnr * brw_type_size_bytes($4);
 	}
 	;
 
@@ -1329,7 +1329,7 @@ dstoperandex:
 		$$.hstride = $2;
 		$$.type = $4;
 		$$.writemask = $3;
-		$$.subnr = $$.subnr * brw_reg_type_to_size($4);
+		$$.subnr = $$.subnr * brw_type_size_bytes($4);
 	}
 	/* BSpec says "When the conditional modifier is present, updates
 	 * to the selected flag register also occur. In this case, the

@@ -224,7 +224,7 @@ fs_generator::generate_mov_indirect(fs_inst *inst,
 
       reg.nr = imm_byte_offset / REG_SIZE;
       reg.subnr = imm_byte_offset % REG_SIZE;
-      if (type_sz(reg.type) > 4 && !devinfo->has_64bit_int) {
+      if (brw_type_size_bytes(reg.type) > 4 && !devinfo->has_64bit_int) {
          brw_MOV(p, subscript(dst, BRW_TYPE_D, 0),
                     subscript(reg, BRW_TYPE_D, 0));
          brw_set_default_swsb(p, tgl_swsb_null());
@@ -298,7 +298,7 @@ fs_generator::generate_mov_indirect(fs_inst *inst,
       else
          brw_inst_set_no_dd_check(devinfo, insn, use_dep_ctrl);
 
-      if (type_sz(reg.type) > 4 &&
+      if (brw_type_size_bytes(reg.type) > 4 &&
           (intel_device_info_is_9lp(devinfo) || !devinfo->has_64bit_int)) {
          /* From the Cherryview PRM Vol 7. "Register Region Restrictions":
           *
@@ -338,7 +338,7 @@ fs_generator::generate_shuffle(fs_inst *inst,
    /* Ivy bridge has some strange behavior that makes this a real pain to
     * implement for 64-bit values so we just don't bother.
     */
-   assert(devinfo->has_64bit_float || type_sz(src.type) <= 4);
+   assert(devinfo->has_64bit_float || brw_type_size_bytes(src.type) <= 4);
 
    /* Gen12.5 adds the following region restriction:
     *
@@ -388,8 +388,8 @@ fs_generator::generate_shuffle(fs_inst *inst,
             group_idx.vstride--;
          }
 
-         assert(type_sz(group_idx.type) <= 4);
-         if (type_sz(group_idx.type) == 4) {
+         assert(brw_type_size_bytes(group_idx.type) <= 4);
+         if (brw_type_size_bytes(group_idx.type) == 4) {
             /* The destination stride of an instruction (in bytes) must be
              * greater than or equal to the size of the rest of the
              * instruction.  Since the address register is of type UW, we
@@ -438,7 +438,7 @@ fs_generator::generate_shuffle(fs_inst *inst,
          /* Take into account the component size and horizontal stride. */
          assert(src.vstride == src.hstride + src.width);
          insn = brw_SHL(p, addr, group_idx,
-                        brw_imm_uw(util_logbase2(type_sz(src.type)) +
+                        brw_imm_uw(util_logbase2(brw_type_size_bytes(src.type)) +
                                    src.hstride - 1));
          if (devinfo->ver >= 12)
             brw_set_default_swsb(p, tgl_swsb_regdist(1));
@@ -468,7 +468,7 @@ fs_generator::generate_quad_swizzle(const fs_inst *inst,
       /* The value is uniform across all channels */
       brw_MOV(p, dst, src);
 
-   } else if (devinfo->ver < 11 && type_sz(src.type) == 4) {
+   } else if (devinfo->ver < 11 && brw_type_size_bytes(src.type) == 4) {
       /* This only works on 8-wide 32-bit values */
       assert(inst->exec_size == 8);
       assert(src.hstride == BRW_HORIZONTAL_STRIDE_1);
@@ -581,7 +581,7 @@ fs_generator::generate_ddx(const fs_inst *inst,
       width = BRW_WIDTH_4;
    }
 
-   struct brw_reg src0 = byte_offset(src, type_sz(src.type));;
+   struct brw_reg src0 = byte_offset(src, brw_type_size_bytes(src.type));;
    struct brw_reg src1 = src;
 
    src0.vstride = vstride;
@@ -602,7 +602,7 @@ void
 fs_generator::generate_ddy(const fs_inst *inst,
                            struct brw_reg dst, struct brw_reg src)
 {
-   const uint32_t type_size = type_sz(src.type);
+   const uint32_t type_size = brw_type_size_bytes(src.type);
 
    if (inst->opcode == FS_OPCODE_DDY_FINE) {
       /* produce accurate derivatives.
@@ -1118,7 +1118,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
       case FS_OPCODE_PIXEL_X:
          assert(src[0].type == BRW_TYPE_UW);
          assert(src[1].type == BRW_TYPE_UW);
-         src[0].subnr = 0 * type_sz(src[0].type);
+         src[0].subnr = 0 * brw_type_size_bytes(src[0].type);
          if (src[1].file == BRW_IMMEDIATE_VALUE) {
             assert(src[1].ud == 0);
             brw_MOV(p, dst, stride(src[0], 8, 4, 1));
@@ -1130,7 +1130,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
       case FS_OPCODE_PIXEL_Y:
          assert(src[0].type == BRW_TYPE_UW);
          assert(src[1].type == BRW_TYPE_UW);
-         src[0].subnr = 4 * type_sz(src[0].type);
+         src[0].subnr = 4 * brw_type_size_bytes(src[0].type);
          if (src[1].file == BRW_IMMEDIATE_VALUE) {
             assert(src[1].ud == 0);
             brw_MOV(p, dst, stride(src[0], 8, 4, 1));
@@ -1244,7 +1244,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
 
       case SHADER_OPCODE_SEL_EXEC:
          assert(inst->force_writemask_all);
-         assert(devinfo->has_64bit_float || type_sz(dst.type) <= 4);
+         assert(devinfo->has_64bit_float || brw_type_size_bytes(dst.type) <= 4);
          brw_set_default_mask_control(p, BRW_MASK_DISABLE);
          brw_MOV(p, dst, src[1]);
          brw_set_default_mask_control(p, BRW_MASK_ENABLE);
@@ -1260,7 +1260,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
 
       case SHADER_OPCODE_CLUSTER_BROADCAST: {
          assert((!intel_device_info_is_9lp(devinfo) &&
-                 devinfo->has_64bit_float) || type_sz(src[0].type) <= 4);
+                 devinfo->has_64bit_float) || brw_type_size_bytes(src[0].type) <= 4);
          assert(!src[0].negate && !src[0].abs);
          assert(src[1].file == BRW_IMMEDIATE_VALUE);
          assert(src[1].type == BRW_TYPE_UD);

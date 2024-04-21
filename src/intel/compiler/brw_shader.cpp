@@ -39,7 +39,7 @@ fs_reg_saturate_immediate(fs_reg *reg)
       double df;
    } imm, sat_imm = { 0 };
 
-   const unsigned size = type_sz(reg->type);
+   const unsigned size = brw_type_size_bytes(reg->type);
 
    /* We want to either do a 32-bit or 64-bit data copy, the type is otherwise
     * irrelevant, so just check the size of the type and copy from/to an
@@ -188,7 +188,7 @@ fs_reg::is_zero() const
    if (file != IMM)
       return false;
 
-   assert(type_sz(type) > 1);
+   assert(brw_type_size_bytes(type) > 1);
 
    switch (type) {
    case BRW_TYPE_HF:
@@ -219,7 +219,7 @@ fs_reg::is_one() const
    if (file != IMM)
       return false;
 
-   assert(type_sz(type) > 1);
+   assert(brw_type_size_bytes(type) > 1);
 
    switch (type) {
    case BRW_TYPE_HF:
@@ -250,7 +250,7 @@ fs_reg::is_negative_one() const
    if (file != IMM)
       return false;
 
-   assert(type_sz(type) > 1);
+   assert(brw_type_size_bytes(type) > 1);
 
    switch (type) {
    case BRW_TYPE_HF:
@@ -302,7 +302,7 @@ fs_inst::is_commutative() const
        * commutative. The DW source must be first.
        */
       return !brw_type_is_int(src[0].type) ||
-             type_sz(src[0].type) == type_sz(src[1].type);
+             brw_type_size_bits(src[0].type) == brw_type_size_bits(src[1].type);
 
    case BRW_OPCODE_SEL:
       /* MIN and MAX are commutative. */

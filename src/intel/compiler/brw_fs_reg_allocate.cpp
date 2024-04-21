@@ -1061,7 +1061,8 @@ fs_reg_alloc::spill_reg(unsigned spill_reg)
           * instruction and set force_writemask_all on the spill.
           */
          const bool per_channel =
-            inst->dst.is_contiguous() && type_sz(inst->dst.type) == 4 &&
+            inst->dst.is_contiguous() &&
+            brw_type_size_bytes(inst->dst.type) == 4 &&
             inst->exec_size == width;
 
          /* Builder used to emit the scratch messages. */

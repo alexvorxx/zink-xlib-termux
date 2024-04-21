@@ -166,7 +166,7 @@ load_payload_sources_read_for_size(fs_inst *lp, unsigned size_read)
    unsigned i;
    unsigned size = lp->header_size * REG_SIZE;
    for (i = lp->header_size; size < size_read && i < lp->sources; i++)
-      size += lp->exec_size * type_sz(lp->src[i].type);
+      size += lp->exec_size * brw_type_size_bytes(lp->src[i].type);
 
    /* Size read must cover exactly a subset of sources. */
    assert(size == size_read);
@@ -225,7 +225,7 @@ brw_fs_opt_zero_samples(fs_visitor &s)
       for (unsigned i = params - 1; i > first_param_idx; i--) {
          if (lp->src[i].file != BAD_FILE && !lp->src[i].is_zero())
             break;
-         zero_size += lp->exec_size * type_sz(lp->src[i].type) * lp->dst.stride;
+         zero_size += lp->exec_size * brw_type_size_bytes(lp->src[i].type) * lp->dst.stride;
       }
 
       /* Round down to ensure to only consider full registers. */

@@ -283,13 +283,6 @@ struct brw_indirect {
    unsigned pad:18;
 };
 
-
-static inline unsigned
-type_sz(unsigned type)
-{
-   return brw_type_size_bytes((enum brw_reg_type) type);
-}
-
 static inline enum brw_reg_type
 get_exec_type(const enum brw_reg_type type)
 {
@@ -366,7 +359,7 @@ brw_reg(enum brw_reg_file file,
    reg.abs = abs;
    reg.address_mode = BRW_ADDRESS_DIRECT;
    reg.pad0 = 0;
-   reg.subnr = subnr * type_sz(type);
+   reg.subnr = subnr * brw_type_size_bytes(type);
    reg.nr = nr;
 
    /* Could do better: If the reg is r5.3<0;1,0>, we probably want to
@@ -531,7 +524,7 @@ byte_offset(struct brw_reg reg, unsigned bytes)
 static inline struct brw_reg
 suboffset(struct brw_reg reg, unsigned delta)
 {
-   return byte_offset(reg, delta * type_sz(reg.type));
+   return byte_offset(reg, delta * brw_type_size_bytes(reg.type));
 }
 
 /** Construct unsigned word[16] register */
@@ -1006,11 +999,11 @@ spread(struct brw_reg reg, unsigned s)
 static inline struct brw_reg
 subscript(struct brw_reg reg, enum brw_reg_type type, unsigned i)
 {
-   unsigned scale = type_sz(reg.type) / type_sz(type);
+   unsigned scale = brw_type_size_bytes(reg.type) / brw_type_size_bytes(type);
    assert(scale >= 1 && i < scale);
 
    if (reg.file == IMM) {
-      unsigned bit_size = type_sz(type) * 8;
+      unsigned bit_size = brw_type_size_bits(type);
       reg.u64 >>= i * bit_size;
       reg.u64 &= BITFIELD64_MASK(bit_size);
       if (bit_size <= 16)
@@ -1238,17 +1231,17 @@ static inline unsigned
 element_sz(struct brw_reg reg)
 {
    if (reg.file == BRW_IMMEDIATE_VALUE || has_scalar_region(reg)) {
-      return type_sz(reg.type);
+      return brw_type_size_bytes(reg.type);
 
    } else if (reg.width == BRW_WIDTH_1 &&
               reg.hstride == BRW_HORIZONTAL_STRIDE_0) {
       assert(reg.vstride != BRW_VERTICAL_STRIDE_0);
-      return type_sz(reg.type) << (reg.vstride - 1);
+      return brw_type_size_bytes(reg.type) << (reg.vstride - 1);
 
    } else {
       assert(reg.hstride != BRW_HORIZONTAL_STRIDE_0);
       assert(reg.vstride == reg.hstride + reg.width);
-      return type_sz(reg.type) << (reg.hstride - 1);
+      return brw_type_size_bytes(reg.type) << (reg.hstride - 1);
    }
 }
 

@@ -838,7 +838,7 @@ dest(FILE *file, const struct brw_isa_info *isa, const brw_inst *inst)
 {
    const struct intel_device_info *devinfo = isa->devinfo;
    enum brw_reg_type type = brw_inst_dst_type(devinfo, inst);
-   unsigned elem_size = brw_reg_type_to_size(type);
+   unsigned elem_size = brw_type_size_bytes(type);
    int err = 0;
 
    if (is_split_send(devinfo, brw_inst_opcode(isa, inst))) {
@@ -945,7 +945,7 @@ dest_3src(FILE *file, const struct intel_device_info *devinfo,
       type = brw_inst_3src_a16_dst_type(devinfo, inst);
       subreg_nr = brw_inst_3src_a16_dst_subreg_nr(devinfo, inst) * 4;
    }
-   subreg_nr /= brw_reg_type_to_size(type);
+   subreg_nr /= brw_type_size_bytes(type);
 
    if (subreg_nr)
       format(file, ".%u", subreg_nr);
@@ -1019,7 +1019,7 @@ src_da1(FILE *file,
    if (err == -1)
       return 0;
    if (sub_reg_num) {
-      unsigned elem_size = brw_reg_type_to_size(type);
+      unsigned elem_size = brw_type_size_bytes(type);
       format(file, ".%d", sub_reg_num / elem_size);   /* use formal style like spec */
    }
    src_align1_region(file, _vert_stride, _width, _horiz_stride);
@@ -1106,7 +1106,7 @@ src_da16(FILE *file,
    if (err == -1)
       return 0;
    if (_subreg_nr) {
-      unsigned elem_size = brw_reg_type_to_size(type);
+      unsigned elem_size = brw_type_size_bytes(type);
 
       /* bit4 for subreg number byte addressing. Make this same meaning as
          in da1 case, so output looks consistent. */
@@ -1272,7 +1272,7 @@ src0_3src(FILE *file, const struct intel_device_info *devinfo,
                       _width == BRW_WIDTH_1 &&
                       _horiz_stride == BRW_HORIZONTAL_STRIDE_0;
 
-   subreg_nr /= brw_reg_type_to_size(type);
+   subreg_nr /= brw_type_size_bytes(type);
 
    err |= control(file, "negate", m_negate,
                   brw_inst_3src_src0_negate(devinfo, inst), NULL);
@@ -1346,7 +1346,7 @@ src1_3src(FILE *file, const struct intel_device_info *devinfo,
                       _width == BRW_WIDTH_1 &&
                       _horiz_stride == BRW_HORIZONTAL_STRIDE_0;
 
-   subreg_nr /= brw_reg_type_to_size(type);
+   subreg_nr /= brw_type_size_bytes(type);
 
    err |= control(file, "negate", m_negate,
                   brw_inst_3src_src1_negate(devinfo, inst), NULL);
@@ -1434,7 +1434,7 @@ src2_3src(FILE *file, const struct intel_device_info *devinfo,
                       _width == BRW_WIDTH_1 &&
                       _horiz_stride == BRW_HORIZONTAL_STRIDE_0;
 
-   subreg_nr /= brw_reg_type_to_size(type);
+   subreg_nr /= brw_type_size_bytes(type);
 
    err |= control(file, "negate", m_negate,
                   brw_inst_3src_src2_negate(devinfo, inst), NULL);
@@ -2009,7 +2009,7 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
    } else if (!is_send(opcode) &&
               (devinfo->ver < 12 ||
                brw_inst_src0_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE ||
-               type_sz(brw_inst_src0_type(devinfo, inst)) < 8)) {
+               brw_type_size_bytes(brw_inst_src0_type(devinfo, inst)) < 8)) {
       err |= control(file, "conditional modifier", conditional_modifier,
                      brw_inst_cond_modifier(devinfo, inst), NULL);
 

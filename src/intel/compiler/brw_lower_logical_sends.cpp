@@ -692,7 +692,7 @@ emit_load_payload_with_padding(const fs_builder &bld, const fs_reg &dst,
       unsigned src_sz =
          retype(dst, src[i].type).component_size(bld.dispatch_width());
       const enum brw_reg_type padding_payload_type =
-         brw_reg_type_from_bit_size(type_sz(src[i].type) * 8, BRW_TYPE_UD);
+         brw_type_with_size(BRW_TYPE_UD, brw_type_size_bits(src[i].type));
 
       src_comps[length++] = src[i];
 
@@ -753,11 +753,11 @@ lower_sampler_logical_send(const fs_builder &bld, fs_inst *inst,
    const brw_compiler *compiler = bld.shader->compiler;
    const intel_device_info *devinfo = bld.shader->devinfo;
    const enum brw_reg_type payload_type =
-      brw_reg_type_from_bit_size(payload_type_bit_size, BRW_TYPE_F);
+      brw_type_with_size(BRW_TYPE_F, payload_type_bit_size);
    const enum brw_reg_type payload_unsigned_type =
-      brw_reg_type_from_bit_size(payload_type_bit_size, BRW_TYPE_UD);
+      brw_type_with_size(BRW_TYPE_UD, payload_type_bit_size);
    const enum brw_reg_type payload_signed_type =
-      brw_reg_type_from_bit_size(payload_type_bit_size, BRW_TYPE_D);
+      brw_type_with_size(BRW_TYPE_D, payload_type_bit_size);
    unsigned reg_width = bld.dispatch_width() / 8;
    unsigned header_size = 0, length = 0;
    opcode op = inst->opcode;

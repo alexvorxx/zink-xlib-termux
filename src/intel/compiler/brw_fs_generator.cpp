@@ -214,8 +214,8 @@ fs_generator::generate_mov_indirect(fs_inst *inst,
     * unsigned integer type.
     */
    assert(reg.type == dst.type);
-   reg.type = dst.type = brw_reg_type_from_bit_size(type_sz(reg.type) * 8,
-                                                    BRW_TYPE_UD);
+   reg.type = dst.type =
+      brw_type_with_size(BRW_TYPE_UD, brw_type_size_bits(reg.type));
 
    unsigned imm_byte_offset = reg.nr * REG_SIZE + reg.subnr;
 
@@ -349,8 +349,8 @@ fs_generator::generate_shuffle(fs_inst *inst,
     * unsigned integer type.
     */
    assert(src.type == dst.type);
-   src.type = dst.type = brw_reg_type_from_bit_size(type_sz(src.type) * 8,
-                                                    BRW_TYPE_UD);
+   src.type = dst.type =
+      brw_type_with_size(BRW_TYPE_UD, brw_type_size_bits(src.type));
 
    /* Because we're using the address register, we're limited to 16-wide
     * by the address register file and 8-wide for 64-bit types.  We could try

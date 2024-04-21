@@ -555,8 +555,7 @@ brw_fs_lower_alu_restrictions(fs_visitor &s)
             assert(!inst->src[0].negate);
             const brw::fs_builder ibld(&s, block, inst);
 
-            enum brw_reg_type type =
-               brw_reg_type_from_bit_size(32, inst->dst.type);
+            enum brw_reg_type type = brw_type_with_size(inst->dst.type, 32);
 
             if (!inst->is_partial_write())
                ibld.emit_undef_for_dst(inst);
@@ -580,8 +579,7 @@ brw_fs_lower_alu_restrictions(fs_visitor &s)
             assert(inst->conditional_mod == BRW_CONDITIONAL_NONE);
             const brw::fs_builder ibld(&s, block, inst);
 
-            enum brw_reg_type type =
-               brw_reg_type_from_bit_size(32, inst->dst.type);
+            enum brw_reg_type type = brw_type_with_size(inst->dst.type, 32);
 
             if (!inst->is_partial_write())
                ibld.emit_undef_for_dst(inst);

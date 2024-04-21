@@ -153,17 +153,6 @@ brw_type_with_size(enum brw_reg_type ref_type, unsigned bit_size)
 
 /* -------------------------------------------------------------- */
 
-/*
- * Returns a type based on a reference_type (word, float, half-float) and a
- * given bit_size.
- */
-static inline enum brw_reg_type
-brw_reg_type_from_bit_size(unsigned bit_size,
-                           enum brw_reg_type reference_type)
-{
-   return brw_type_with_size(reference_type, bit_size);
-}
-
 unsigned
 brw_reg_type_to_hw_type(const struct intel_device_info *devinfo,
                         enum brw_reg_file file, enum brw_reg_type type);

@@ -434,7 +434,7 @@ namespace brw {
                fs_reg left_low = subscript(left, BRW_TYPE_UD, 0);
 
                /* The upper bits get the same sign as the 64-bit type */
-               brw_reg_type type32 = brw_reg_type_from_bit_size(32, tmp.type);
+               brw_reg_type type32 = brw_type_with_size(tmp.type, 32);
                fs_reg right_high = subscript(right, type32, 1);
                fs_reg left_high = subscript(left, type32, 1);
 

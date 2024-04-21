@@ -1906,8 +1906,8 @@ brw_broadcast(struct brw_codegen *p,
     * unsigned integer type.
     */
    assert(src.type == dst.type);
-   src.type = dst.type = brw_reg_type_from_bit_size(type_sz(src.type) * 8,
-                                                    BRW_TYPE_UD);
+   src.type = dst.type =
+      brw_type_with_size(BRW_TYPE_UD, brw_type_size_bits(src.type));
 
    if ((src.vstride == 0 && src.hstride == 0) ||
        idx.file == BRW_IMMEDIATE_VALUE) {

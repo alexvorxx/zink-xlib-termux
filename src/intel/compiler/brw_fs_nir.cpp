@@ -1373,7 +1373,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       if (instr->def.bit_size == 32) {
          bld.emit(SHADER_OPCODE_MULH, result, op[0], op[1]);
       } else {
-         fs_reg tmp = bld.vgrf(brw_reg_type_from_bit_size(32, op[0].type));
+         fs_reg tmp = bld.vgrf(brw_type_with_size(op[0].type, 32));
          bld.MUL(tmp, op[0], op[1]);
          bld.MOV(result, subscript(tmp, result.type, 1));
       }
@@ -1453,7 +1453,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
           * it as a signed conversion to get sign extension (for 32-bit true)
           */
          const brw_reg_type src_type =
-            brw_reg_type_from_bit_size(bit_size, BRW_TYPE_D);
+            brw_type_with_size(BRW_TYPE_D, bit_size);
 
          bld.MOV(retype(result, BRW_TYPE_D), retype(dest, src_type));
       }
@@ -1484,7 +1484,7 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
           * it as a signed conversion to get sign extension (for 32-bit true)
           */
          const brw_reg_type src_type =
-            brw_reg_type_from_bit_size(bit_size, BRW_TYPE_D);
+            brw_type_with_size(BRW_TYPE_D, bit_size);
 
          bld.MOV(retype(result, BRW_TYPE_D), retype(dest, src_type));
       }
@@ -1951,7 +1951,7 @@ fs_nir_emit_load_const(nir_to_brw_state &ntb,
    const fs_builder &bld = ntb.bld;
 
    const brw_reg_type reg_type =
-      brw_reg_type_from_bit_size(instr->def.bit_size, BRW_TYPE_D);
+      brw_type_with_size(BRW_TYPE_D, instr->def.bit_size);
    fs_reg reg = bld.vgrf(reg_type, instr->def.num_components);
 
    switch (instr->def.bit_size) {
@@ -2019,7 +2019,7 @@ get_nir_src(nir_to_brw_state &ntb, const nir_src &src)
    if (!load_reg) {
       if (nir_src_is_undef(src)) {
          const brw_reg_type reg_type =
-            brw_reg_type_from_bit_size(src.ssa->bit_size, BRW_TYPE_D);
+            brw_type_with_size(BRW_TYPE_D, src.ssa->bit_size);
          reg = ntb.bld.vgrf(reg_type, src.ssa->num_components);
       } else {
          reg = ntb.ssa_values[src.ssa->index];
@@ -2036,7 +2036,7 @@ get_nir_src(nir_to_brw_state &ntb, const nir_src &src)
     * default to an integer type - instructions that need floating point
     * semantics will set this to F if they need to
     */
-   reg.type = brw_reg_type_from_bit_size(nir_src_bit_size(src), BRW_TYPE_D);
+   reg.type = brw_type_with_size(BRW_TYPE_D, nir_src_bit_size(src));
 
    return reg;
 }
@@ -2066,10 +2066,8 @@ get_nir_def(nir_to_brw_state &ntb, const nir_def &def)
    nir_intrinsic_instr *store_reg = nir_store_reg_for_def(&def);
    if (!store_reg) {
       const brw_reg_type reg_type =
-         brw_reg_type_from_bit_size(def.bit_size,
-                                    def.bit_size == 8 ?
-                                    BRW_TYPE_D :
-                                    BRW_TYPE_F);
+         brw_type_with_size(def.bit_size == 8 ? BRW_TYPE_D : BRW_TYPE_F,
+                            def.bit_size);
       ntb.ssa_values[def.index] =
          bld.vgrf(reg_type, def.num_components);
 
@@ -4415,7 +4413,7 @@ fs_nir_emit_cs_intrinsic(nir_to_brw_state &ntb,
       srcs[SURFACE_LOGICAL_SRC_ALLOW_SAMPLE_MASK] = brw_imm_ud(0);
 
       /* Make dest unsigned because that's what the temporary will be */
-      dest.type = brw_reg_type_from_bit_size(bit_size, BRW_TYPE_UD);
+      dest.type = brw_type_with_size(BRW_TYPE_UD, bit_size);
 
       /* Read the vector */
       assert(bit_size <= 32);
@@ -4462,7 +4460,7 @@ fs_nir_emit_cs_intrinsic(nir_to_brw_state &ntb,
       srcs[SURFACE_LOGICAL_SRC_ALLOW_SAMPLE_MASK] = brw_imm_ud(0);
 
       fs_reg data = get_nir_src(ntb, instr->src[0]);
-      data.type = brw_reg_type_from_bit_size(bit_size, BRW_TYPE_UD);
+      data.type = brw_type_with_size(BRW_TYPE_UD, bit_size);
 
       assert(bit_size <= 32);
       assert(nir_intrinsic_write_mask(instr) ==
@@ -5807,9 +5805,8 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
       unsigned bit_size = nir_intrinsic_bit_size(instr);
       unsigned num_components = nir_intrinsic_num_components(instr);
       const brw_reg_type reg_type =
-         brw_reg_type_from_bit_size(bit_size, bit_size == 8 ?
-                                              BRW_TYPE_D :
-                                              BRW_TYPE_F);
+         brw_type_with_size(bit_size == 8 ? BRW_TYPE_D : BRW_TYPE_F,
+                            bit_size);
 
       /* Re-use the destination's slot in the table for the register */
       ntb.ssa_values[instr->def.index] =
@@ -6547,8 +6544,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
       } else {
          assert(nir_src_num_components(instr->src[0]) == 1);
          const unsigned bit_size = nir_src_bit_size(instr->src[0]);
-         brw_reg_type data_type =
-            brw_reg_type_from_bit_size(bit_size, BRW_TYPE_UD);
+         brw_reg_type data_type = brw_type_with_size(BRW_TYPE_UD, bit_size);
          fs_reg tmp = bld.vgrf(BRW_TYPE_UD);
          bld.MOV(tmp, retype(get_nir_src(ntb, instr->src[0]), data_type));
 
@@ -6683,7 +6679,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
       srcs[SURFACE_LOGICAL_SRC_ALLOW_SAMPLE_MASK] = brw_imm_ud(0);
 
       /* Make dest unsigned because that's what the temporary will be */
-      dest.type = brw_reg_type_from_bit_size(bit_size, BRW_TYPE_UD);
+      dest.type = brw_type_with_size(BRW_TYPE_UD, bit_size);
 
       /* Read the vector */
       assert(bit_size <= 32);
@@ -6720,7 +6716,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
       srcs[SURFACE_LOGICAL_SRC_ALLOW_SAMPLE_MASK] = brw_imm_ud(1);
 
       fs_reg data = get_nir_src(ntb, instr->src[0]);
-      data.type = brw_reg_type_from_bit_size(bit_size, BRW_TYPE_UD);
+      data.type = brw_type_with_size(BRW_TYPE_UD, bit_size);
 
       assert(bit_size <= 32);
       assert(nir_intrinsic_write_mask(instr) ==
@@ -6919,7 +6915,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
       const fs_reg nir_addr = get_nir_src(ntb, instr->src[0]);
 
       /* Make dest unsigned because that's what the temporary will be */
-      dest.type = brw_reg_type_from_bit_size(bit_size, BRW_TYPE_UD);
+      dest.type = brw_type_with_size(BRW_TYPE_UD, bit_size);
 
       /* Read the vector */
       assert(instr->def.num_components == 1);
@@ -6989,7 +6985,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
       const fs_reg nir_addr = get_nir_src(ntb, instr->src[1]);
 
       fs_reg data = get_nir_src(ntb, instr->src[0]);
-      data.type = brw_reg_type_from_bit_size(bit_size, BRW_TYPE_UD);
+      data.type = brw_type_with_size(BRW_TYPE_UD, bit_size);
 
       assert(nir_src_num_components(instr->src[0]) == 1);
       assert(bit_size <= 32);
@@ -7198,7 +7194,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
       if (instr->intrinsic == nir_intrinsic_vote_feq) {
          const unsigned bit_size = nir_src_bit_size(instr->src[0]);
          value.type = bit_size == 8 ? BRW_TYPE_B :
-            brw_reg_type_from_bit_size(bit_size, BRW_TYPE_F);
+            brw_type_with_size(BRW_TYPE_F, bit_size);
       }
 
       fs_reg uniformized = bld.emit_uniformize(value);
@@ -8477,7 +8473,7 @@ shuffle_src_to_dst(const fs_builder &bld,
          type_sz(src.type) * bld.dispatch_width() * components));
 
       brw_reg_type shuffle_type =
-         brw_reg_type_from_bit_size(8 * type_sz(src.type), BRW_TYPE_D);
+         brw_type_with_size(BRW_TYPE_D, brw_type_size_bits(src.type));
       for (unsigned i = 0; i < components; i++) {
          fs_reg shuffle_component_i =
             subscript(offset(dst, bld, i / size_ratio),
@@ -8496,7 +8492,7 @@ shuffle_src_to_dst(const fs_builder &bld,
                       size_ratio)));
 
       brw_reg_type shuffle_type =
-         brw_reg_type_from_bit_size(8 * type_sz(dst.type), BRW_TYPE_D);
+         brw_type_with_size(BRW_TYPE_D, brw_Type_size_bits(dst.type));
       for (unsigned i = 0; i < components; i++) {
          fs_reg shuffle_component_i =
             subscript(offset(src, bld, (first_component + i) / size_ratio),

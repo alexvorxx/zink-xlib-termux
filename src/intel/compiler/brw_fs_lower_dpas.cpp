@@ -222,8 +222,7 @@ int8_using_mul_add(const fs_builder &bld, fs_inst *inst)
                  subscript(retype(byte_offset(src1, s * REG_SIZE),
                                   BRW_TYPE_UD),
                            inst->src[1].type, 0),
-                 subscript(component(retype(temp3,
-                                            BRW_TYPE_UD),
+                 subscript(component(retype(temp3, BRW_TYPE_UD),
                                      s * 2),
                            temp_type, 0));
 
@@ -231,8 +230,7 @@ int8_using_mul_add(const fs_builder &bld, fs_inst *inst)
                  subscript(retype(byte_offset(src1, s * REG_SIZE),
                                   BRW_TYPE_UD),
                            inst->src[1].type, 1),
-                 subscript(component(retype(temp3,
-                                            BRW_TYPE_UD),
+                 subscript(component(retype(temp3, BRW_TYPE_UD),
                                      s * 2),
                            temp_type, 1));
 
@@ -240,8 +238,7 @@ int8_using_mul_add(const fs_builder &bld, fs_inst *inst)
                  subscript(retype(byte_offset(src1, s * REG_SIZE),
                                   BRW_TYPE_UD),
                            inst->src[1].type, 2),
-                 subscript(component(retype(temp3,
-                                            BRW_TYPE_UD),
+                 subscript(component(retype(temp3, BRW_TYPE_UD),
                                      s * 2 + 1),
                            temp_type, 0));
 
@@ -249,8 +246,7 @@ int8_using_mul_add(const fs_builder &bld, fs_inst *inst)
                  subscript(retype(byte_offset(src1, s * REG_SIZE),
                                   BRW_TYPE_UD),
                            inst->src[1].type, 3),
-                 subscript(component(retype(temp3,
-                                            BRW_TYPE_UD),
+                 subscript(component(retype(temp3, BRW_TYPE_UD),
                                      s * 2 + 1),
                            temp_type, 1));
 

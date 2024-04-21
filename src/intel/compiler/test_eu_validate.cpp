@@ -1238,8 +1238,8 @@ TEST_P(validation_test, byte_64bit_conversion)
    } inst[] = {
 #define INST(dst_type, src_type, dst_stride, expected_result)             \
       {                                                                   \
-         BRW_TYPE_##dst_type,                                    \
-         BRW_TYPE_##src_type,                                    \
+         BRW_TYPE_##dst_type,                                             \
+         BRW_TYPE_##src_type,                                             \
          BRW_HORIZONTAL_STRIDE_##dst_stride,                              \
          expected_result,                                                 \
       }
@@ -1303,8 +1303,8 @@ TEST_P(validation_test, half_float_conversion)
              expected_result_gfx9,                                          \
              expected_result_gfx125)                                        \
       {                                                                     \
-         BRW_TYPE_##dst_type,                                      \
-         BRW_TYPE_##src_type,                                      \
+         BRW_TYPE_##dst_type,                                               \
+         BRW_TYPE_##src_type,                                               \
          BRW_HORIZONTAL_STRIDE_##dst_stride,                                \
          dst_subnr,                                                         \
          expected_result_gfx9,                                              \
@@ -1419,9 +1419,9 @@ TEST_P(validation_test, mixed_float_source_indirect_addressing)
              dst_stride, dst_indirect, src0_indirect, expected_result,    \
              gfx125_expected_result)                                      \
       {                                                                   \
-         BRW_TYPE_##dst_type,                                    \
-         BRW_TYPE_##src0_type,                                   \
-         BRW_TYPE_##src1_type,                                   \
+         BRW_TYPE_##dst_type,                                             \
+         BRW_TYPE_##src0_type,                                            \
+         BRW_TYPE_##src1_type,                                            \
          BRW_HORIZONTAL_STRIDE_##dst_stride,                              \
          dst_indirect,                                                    \
          src0_indirect,                                                   \
@@ -1488,9 +1488,9 @@ TEST_P(validation_test, mixed_float_align1_simd16)
              dst_stride, expected_result, gfx125_expected_result)         \
       {                                                                   \
          BRW_EXECUTE_##exec_size,                                         \
-         BRW_TYPE_##dst_type,                                    \
-         BRW_TYPE_##src0_type,                                   \
-         BRW_TYPE_##src1_type,                                   \
+         BRW_TYPE_##dst_type,                                             \
+         BRW_TYPE_##src0_type,                                            \
+         BRW_TYPE_##src1_type,                                            \
          BRW_HORIZONTAL_STRIDE_##dst_stride,                              \
          expected_result,                                                 \
          gfx125_expected_result,                                          \
@@ -1550,9 +1550,9 @@ TEST_P(validation_test, mixed_float_align1_packed_fp16_dst_acc_read_offset_0)
              expected_result_bdw, expected_result_chv_skl,                  \
              expected_result_gfx125)                                        \
       {                                                                     \
-         BRW_TYPE_##dst_type,                                      \
-         BRW_TYPE_##src0_type,                                     \
-         BRW_TYPE_##src1_type,                                     \
+         BRW_TYPE_##dst_type,                                               \
+         BRW_TYPE_##src0_type,                                              \
+         BRW_TYPE_##src1_type,                                              \
          BRW_HORIZONTAL_STRIDE_##dst_stride,                                \
          read_acc,                                                          \
          subnr,                                                             \
@@ -1628,9 +1628,9 @@ TEST_P(validation_test, mixed_float_fp16_dest_with_acc)
       {                                                                   \
          BRW_EXECUTE_##exec_size,                                         \
          BRW_OPCODE_##opcode,                                             \
-         BRW_TYPE_##dst_type,                                    \
-         BRW_TYPE_##src0_type,                                   \
-         BRW_TYPE_##src1_type,                                   \
+         BRW_TYPE_##dst_type,                                             \
+         BRW_TYPE_##src0_type,                                            \
+         BRW_TYPE_##src1_type,                                            \
          BRW_HORIZONTAL_STRIDE_##dst_stride,                              \
          read_acc,                                                        \
          expected_result_bdw,                                             \
@@ -1711,9 +1711,9 @@ TEST_P(validation_test, mixed_float_align1_math_strided_fp16_inputs)
              dst_stride, src0_stride, src1_stride, expected_result,       \
              expected_result_125)                                         \
       {                                                                   \
-         BRW_TYPE_##dst_type,                                    \
-         BRW_TYPE_##src0_type,                                   \
-         BRW_TYPE_##src1_type,                                   \
+         BRW_TYPE_##dst_type,                                             \
+         BRW_TYPE_##src0_type,                                            \
+         BRW_TYPE_##src1_type,                                            \
          BRW_HORIZONTAL_STRIDE_##dst_stride,                              \
          BRW_HORIZONTAL_STRIDE_##src0_stride,                             \
          BRW_HORIZONTAL_STRIDE_##src1_stride,                             \
@@ -1783,9 +1783,9 @@ TEST_P(validation_test, mixed_float_align1_packed_fp16_dst)
              expected_result_gfx125)                                           \
       {                                                                        \
          BRW_EXECUTE_##exec_size,                                              \
-         BRW_TYPE_##dst_type,                                         \
-         BRW_TYPE_##src0_type,                                        \
-         BRW_TYPE_##src1_type,                                        \
+         BRW_TYPE_##dst_type,                                                  \
+         BRW_TYPE_##src0_type,                                                 \
+         BRW_TYPE_##src1_type,                                                 \
          BRW_HORIZONTAL_STRIDE_##dst_stride,                                   \
          dst_subnr,                                                            \
          expected_result_bdw,                                                  \
@@ -1863,9 +1863,9 @@ TEST_P(validation_test, mixed_float_align16_packed_data)
 #define INST(dst_type, src0_type, src1_type,                              \
              src0_vstride, src1_vstride, expected_result)                 \
       {                                                                   \
-         BRW_TYPE_##dst_type,                                    \
-         BRW_TYPE_##src0_type,                                   \
-         BRW_TYPE_##src1_type,                                   \
+         BRW_TYPE_##dst_type,                                             \
+         BRW_TYPE_##src0_type,                                            \
+         BRW_TYPE_##src1_type,                                            \
          BRW_VERTICAL_STRIDE_##src0_vstride,                              \
          BRW_VERTICAL_STRIDE_##src1_vstride,                              \
          expected_result,                                                 \
@@ -1920,9 +1920,9 @@ TEST_P(validation_test, mixed_float_align16_no_simd16)
 #define INST(exec_size, dst_type, src0_type, src1_type, expected_result)  \
       {                                                                   \
          BRW_EXECUTE_##exec_size,                                         \
-         BRW_TYPE_##dst_type,                                    \
-         BRW_TYPE_##src0_type,                                   \
-         BRW_TYPE_##src1_type,                                   \
+         BRW_TYPE_##dst_type,                                             \
+         BRW_TYPE_##src0_type,                                            \
+         BRW_TYPE_##src1_type,                                            \
          expected_result,                                                 \
       }
 
@@ -1972,9 +1972,9 @@ TEST_P(validation_test, mixed_float_align16_no_acc_read)
    } inst[] = {
 #define INST(dst_type, src0_type, src1_type, read_acc, expected_result)   \
       {                                                                   \
-         BRW_TYPE_##dst_type,                                    \
-         BRW_TYPE_##src0_type,                                   \
-         BRW_TYPE_##src1_type,                                   \
+         BRW_TYPE_##dst_type,                                             \
+         BRW_TYPE_##src0_type,                                            \
+         BRW_TYPE_##src1_type,                                            \
          read_acc,                                                        \
          expected_result,                                                 \
       }
@@ -2023,9 +2023,9 @@ TEST_P(validation_test, mixed_float_align16_math_packed_format)
 #define INST(dst_type, src0_type, src1_type,                              \
              src0_vstride, src1_vstride, expected_result)                 \
       {                                                                   \
-         BRW_TYPE_##dst_type,                                    \
-         BRW_TYPE_##src0_type,                                   \
-         BRW_TYPE_##src1_type,                                   \
+         BRW_TYPE_##dst_type,                                             \
+         BRW_TYPE_##src0_type,                                            \
+         BRW_TYPE_##src1_type,                                            \
          BRW_VERTICAL_STRIDE_##src0_vstride,                              \
          BRW_VERTICAL_STRIDE_##src1_vstride,                              \
          expected_result,                                                 \
@@ -2168,10 +2168,10 @@ TEST_P(validation_test, qword_low_power_align1_regioning_restrictions)
       {                                                                        \
          BRW_OPCODE_##opcode,                                                  \
          BRW_EXECUTE_##exec_size,                                              \
-         BRW_TYPE_##dst_type,                                         \
+         BRW_TYPE_##dst_type,                                                  \
          dst_subreg,                                                           \
          BRW_HORIZONTAL_STRIDE_##dst_stride,                                   \
-         BRW_TYPE_##src_type,                                         \
+         BRW_TYPE_##src_type,                                                  \
          src_subreg,                                                           \
          BRW_VERTICAL_STRIDE_##src_vstride,                                    \
          BRW_WIDTH_##src_width,                                                \
@@ -2352,21 +2352,21 @@ TEST_P(validation_test, qword_low_power_no_indirect_addressing)
 
       bool expected_result;
    } inst[] = {
-#define INST(opcode, exec_size, dst_type, dst_is_indirect, dst_stride,         \
-             src_type, src_is_indirect, src_vstride, src_width, src_hstride,   \
-             expected_result)                                                  \
-      {                                                                        \
-         BRW_OPCODE_##opcode,                                                  \
-         BRW_EXECUTE_##exec_size,                                              \
-         BRW_TYPE_##dst_type,                                         \
-         dst_is_indirect,                                                      \
-         BRW_HORIZONTAL_STRIDE_##dst_stride,                                   \
-         BRW_TYPE_##src_type,                                         \
-         src_is_indirect,                                                      \
-         BRW_VERTICAL_STRIDE_##src_vstride,                                    \
-         BRW_WIDTH_##src_width,                                                \
-         BRW_HORIZONTAL_STRIDE_##src_hstride,                                  \
-         expected_result,                                                      \
+#define INST(opcode, exec_size, dst_type, dst_is_indirect, dst_stride,       \
+             src_type, src_is_indirect, src_vstride, src_width, src_hstride, \
+             expected_result)                                                \
+      {                                                                      \
+         BRW_OPCODE_##opcode,                                                \
+         BRW_EXECUTE_##exec_size,                                            \
+         BRW_TYPE_##dst_type,                                                \
+         dst_is_indirect,                                                    \
+         BRW_HORIZONTAL_STRIDE_##dst_stride,                                 \
+         BRW_TYPE_##src_type,                                                \
+         src_is_indirect,                                                    \
+         BRW_VERTICAL_STRIDE_##src_vstride,                                  \
+         BRW_WIDTH_##src_width,                                              \
+         BRW_HORIZONTAL_STRIDE_##src_hstride,                                \
+         expected_result,                                                    \
       }
 
       /* Some instruction that violate no restrictions, as a control */
@@ -2486,22 +2486,22 @@ TEST_P(validation_test, qword_low_power_no_64bit_arf)
       bool acc_wr;
       bool expected_result;
    } inst[] = {
-#define INST(opcode, exec_size, dst, dst_type, dst_stride,                     \
-             src, src_type, src_vstride, src_width, src_hstride,               \
-             acc_wr, expected_result)                                          \
-      {                                                                        \
-         BRW_OPCODE_##opcode,                                                  \
-         BRW_EXECUTE_##exec_size,                                              \
-         dst,                                                                  \
-         BRW_TYPE_##dst_type,                                         \
-         BRW_HORIZONTAL_STRIDE_##dst_stride,                                   \
-         src,                                                                  \
-         BRW_TYPE_##src_type,                                         \
-         BRW_VERTICAL_STRIDE_##src_vstride,                                    \
-         BRW_WIDTH_##src_width,                                                \
-         BRW_HORIZONTAL_STRIDE_##src_hstride,                                  \
-         acc_wr,                                                               \
-         expected_result,                                                      \
+#define INST(opcode, exec_size, dst, dst_type, dst_stride,        \
+             src, src_type, src_vstride, src_width, src_hstride,  \
+             acc_wr, expected_result)                             \
+      {                                                           \
+         BRW_OPCODE_##opcode,                                     \
+         BRW_EXECUTE_##exec_size,                                 \
+         dst,                                                     \
+         BRW_TYPE_##dst_type,                                     \
+         BRW_HORIZONTAL_STRIDE_##dst_stride,                      \
+         src,                                                     \
+         BRW_TYPE_##src_type,                                     \
+         BRW_VERTICAL_STRIDE_##src_vstride,                       \
+         BRW_WIDTH_##src_width,                                   \
+         BRW_HORIZONTAL_STRIDE_##src_hstride,                     \
+         acc_wr,                                                  \
+         expected_result,                                         \
       }
 
       /* Some instruction that violate no restrictions, as a control */
@@ -2647,13 +2647,13 @@ TEST_P(validation_test, align16_64_bit_integer)
 
       bool expected_result;
    } inst[] = {
-#define INST(opcode, exec_size, dst_type, src_type, expected_result)           \
-      {                                                                        \
-         BRW_OPCODE_##opcode,                                                  \
-         BRW_EXECUTE_##exec_size,                                              \
+#define INST(opcode, exec_size, dst_type, src_type, expected_result)  \
+      {                                                               \
+         BRW_OPCODE_##opcode,                                         \
+         BRW_EXECUTE_##exec_size,                                     \
          BRW_TYPE_##dst_type,                                         \
          BRW_TYPE_##src_type,                                         \
-         expected_result,                                                      \
+         expected_result,                                             \
       }
 
       /* Some instruction that violate no restrictions, as a control */
@@ -2729,21 +2729,21 @@ TEST_P(validation_test, qword_low_power_no_depctrl)
 
       bool expected_result;
    } inst[] = {
-#define INST(opcode, exec_size, dst_type, dst_stride,                          \
-             src_type, src_vstride, src_width, src_hstride,                    \
-             no_dd_check, no_dd_clear, expected_result)                        \
-      {                                                                        \
-         BRW_OPCODE_##opcode,                                                  \
-         BRW_EXECUTE_##exec_size,                                              \
-         BRW_TYPE_##dst_type,                                         \
-         BRW_HORIZONTAL_STRIDE_##dst_stride,                                   \
-         BRW_TYPE_##src_type,                                         \
-         BRW_VERTICAL_STRIDE_##src_vstride,                                    \
-         BRW_WIDTH_##src_width,                                                \
-         BRW_HORIZONTAL_STRIDE_##src_hstride,                                  \
-         no_dd_check,                                                          \
-         no_dd_clear,                                                          \
-         expected_result,                                                      \
+#define INST(opcode, exec_size, dst_type, dst_stride,        \
+             src_type, src_vstride, src_width, src_hstride,  \
+             no_dd_check, no_dd_clear, expected_result)      \
+      {                                                      \
+         BRW_OPCODE_##opcode,                                \
+         BRW_EXECUTE_##exec_size,                            \
+         BRW_TYPE_##dst_type,                                \
+         BRW_HORIZONTAL_STRIDE_##dst_stride,                 \
+         BRW_TYPE_##src_type,                                \
+         BRW_VERTICAL_STRIDE_##src_vstride,                  \
+         BRW_WIDTH_##src_width,                              \
+         BRW_HORIZONTAL_STRIDE_##src_hstride,                \
+         no_dd_check,                                        \
+         no_dd_clear,                                        \
+         expected_result,                                    \
       }
 
       /* Some instruction that violate no restrictions, as a control */
@@ -2867,22 +2867,22 @@ TEST_P(validation_test, gfx11_no_byte_src_1_2)
       {                                                                 \
          BRW_OPCODE_##opcode,                                           \
          BRW_ALIGN_##access_mode,                                       \
-         BRW_TYPE_##dst_type,                                  \
+         BRW_TYPE_##dst_type,                                           \
          {                                                              \
             {                                                           \
-               BRW_TYPE_##src0_type,                           \
+               BRW_TYPE_##src0_type,                                    \
                BRW_VERTICAL_STRIDE_##src0_vstride,                      \
                BRW_WIDTH_##src0_width,                                  \
                BRW_HORIZONTAL_STRIDE_##src0_hstride,                    \
             },                                                          \
             {                                                           \
-               BRW_TYPE_##src1_type,                           \
+               BRW_TYPE_##src1_type,                                    \
                BRW_VERTICAL_STRIDE_##src1_vstride,                      \
                BRW_WIDTH_##src1_width,                                  \
                BRW_HORIZONTAL_STRIDE_##src1_hstride,                    \
             },                                                          \
             {                                                           \
-               BRW_TYPE_##src2_type,                           \
+               BRW_TYPE_##src2_type,                                    \
             },                                                          \
          },                                                             \
          gfx_ver,                                                       \
@@ -2974,10 +2974,10 @@ TEST_P(validation_test, add3_source_types)
    } inst[] = {
 #define INST(dst_type, src0_type, src1_type, src2_type, expected_result)  \
       {                                                                   \
-         BRW_TYPE_##dst_type,                                    \
-         BRW_TYPE_##src0_type,                                   \
-         BRW_TYPE_##src1_type,                                   \
-         BRW_TYPE_##src2_type,                                   \
+         BRW_TYPE_##dst_type,                                             \
+         BRW_TYPE_##src0_type,                                            \
+         BRW_TYPE_##src1_type,                                            \
+         BRW_TYPE_##src2_type,                                            \
          expected_result,                                                 \
       }
 
@@ -3023,12 +3023,12 @@ TEST_P(validation_test, add3_immediate_types)
       unsigned imm_src;
       bool expected_result;
    } inst[] = {
-#define INST(reg_type, imm_type, imm_src, expected_result)                \
-      {                                                                   \
-         BRW_TYPE_##reg_type,                                    \
-         BRW_TYPE_##imm_type,                                    \
-         imm_src,                                                         \
-         expected_result,                                                 \
+#define INST(reg_type, imm_type, imm_src, expected_result)  \
+      {                                                     \
+         BRW_TYPE_##reg_type,                               \
+         BRW_TYPE_##imm_type,                               \
+         imm_src,                                           \
+         expected_result,                                   \
       }
 
       INST( W,  W,  0, true),
@@ -3264,10 +3264,8 @@ TEST_P(validation_test, dpas_types)
    if (devinfo.verx10 < 125)
       return;
 
-#define TV(a, b, c, d, r)                              \
-   { BRW_TYPE_ ## a, BRW_TYPE_ ## b, \
-     BRW_TYPE_ ## c, BRW_TYPE_ ## d, \
-     r }
+#define TV(a, b, c, d, r) \
+   { BRW_TYPE_ ## a, BRW_TYPE_ ## b, BRW_TYPE_ ## c, BRW_TYPE_ ## d, r }
 
    static const struct {
       brw_reg_type dst_type;
@@ -3352,11 +3350,8 @@ TEST_P(validation_test, dpas_src_subreg_nr)
    if (devinfo.verx10 < 125)
       return;
 
-#define TV(dt, od, t0, o0, t1, o1, o2, r) {  \
-      BRW_TYPE_ ## dt, od,          \
-      BRW_TYPE_ ## t0, o0,          \
-      BRW_TYPE_ ## t1, o1, o2,      \
-      r }
+#define TV(dt, od, t0, o0, t1, o1, o2, r) \
+   { BRW_TYPE_ ## dt, od, BRW_TYPE_ ## t0, o0, BRW_TYPE_ ## t1, o1, o2, r }
 
    static const struct {
       brw_reg_type dst_type;

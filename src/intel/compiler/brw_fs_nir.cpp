@@ -1347,10 +1347,8 @@ fs_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
    case nir_op_imul_32x16:
    case nir_op_umul_32x16: {
       const bool ud = instr->op == nir_op_umul_32x16;
-      const enum brw_reg_type word_type =
-         ud ? BRW_TYPE_UW : BRW_TYPE_W;
-      const enum brw_reg_type dword_type =
-         ud ? BRW_TYPE_UD : BRW_TYPE_D;
+      const enum brw_reg_type word_type = ud ? BRW_TYPE_UW : BRW_TYPE_W;
+      const enum brw_reg_type dword_type = ud ? BRW_TYPE_UD : BRW_TYPE_D;
 
       assert(instr->def.bit_size == 32);
 
@@ -2021,8 +2019,7 @@ get_nir_src(nir_to_brw_state &ntb, const nir_src &src)
    if (!load_reg) {
       if (nir_src_is_undef(src)) {
          const brw_reg_type reg_type =
-            brw_reg_type_from_bit_size(src.ssa->bit_size,
-                                       BRW_TYPE_D);
+            brw_reg_type_from_bit_size(src.ssa->bit_size, BRW_TYPE_D);
          reg = ntb.bld.vgrf(reg_type, src.ssa->num_components);
       } else {
          reg = ntb.ssa_values[src.ssa->index];
@@ -2039,8 +2036,7 @@ get_nir_src(nir_to_brw_state &ntb, const nir_src &src)
     * default to an integer type - instructions that need floating point
     * semantics will set this to F if they need to
     */
-   reg.type = brw_reg_type_from_bit_size(nir_src_bit_size(src),
-                                         BRW_TYPE_D);
+   reg.type = brw_reg_type_from_bit_size(nir_src_bit_size(src), BRW_TYPE_D);
 
    return reg;
 }
@@ -3950,8 +3946,7 @@ fs_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
 
    switch (instr->intrinsic) {
    case nir_intrinsic_load_front_face:
-      bld.MOV(retype(dest, BRW_TYPE_D),
-              emit_frontfacing_interpolation(ntb));
+      bld.MOV(retype(dest, BRW_TYPE_D), emit_frontfacing_interpolation(ntb));
       break;
 
    case nir_intrinsic_load_sample_pos:
@@ -4076,8 +4071,7 @@ fs_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
                           brw_imm_d(0), BRW_CONDITIONAL_Z);
          }
       } else {
-         fs_reg some_reg = fs_reg(retype(brw_vec8_grf(0, 0),
-                                       BRW_TYPE_UW));
+         fs_reg some_reg = fs_reg(retype(brw_vec8_grf(0, 0), BRW_TYPE_UW));
          cmp = bld.CMP(bld.null_reg_f(), some_reg, some_reg, BRW_CONDITIONAL_NZ);
       }
 
@@ -5082,9 +5076,7 @@ get_timestamp(const fs_builder &bld)
    fs_visitor &s = *bld.shader;
 
    fs_reg ts = fs_reg(retype(brw_vec4_reg(BRW_ARCHITECTURE_REGISTER_FILE,
-                                          BRW_ARF_TIMESTAMP,
-                                          0),
-                             BRW_TYPE_UD));
+                                          BRW_ARF_TIMESTAMP, 0), BRW_TYPE_UD));
 
    fs_reg dst = fs_reg(VGRF, s.alloc.allocate(1), BRW_TYPE_UD);
 
@@ -5266,8 +5258,7 @@ emit_urb_indirect_vec4_write(const fs_builder &bld,
       fs_builder bld8 = bld.group(8, q);
 
       /* offset is always positive, so signedness doesn't matter */
-      assert(offset_src.type == BRW_TYPE_D ||
-             offset_src.type == BRW_TYPE_UD);
+      assert(offset_src.type == BRW_TYPE_D || offset_src.type == BRW_TYPE_UD);
       fs_reg off = bld8.vgrf(offset_src.type, 1);
       bld8.MOV(off, quarter(offset_src, q));
       bld8.ADD(off, off, brw_imm_ud(base));
@@ -5946,8 +5937,7 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
        * Incidentally, this means that we can handle bindless with exactly the
        * same code.
        */
-      fs_reg image = retype(get_nir_src_imm(ntb, instr->src[0]),
-                            BRW_TYPE_UD);
+      fs_reg image = retype(get_nir_src_imm(ntb, instr->src[0]), BRW_TYPE_UD);
       image = bld.emit_uniformize(image);
 
       assert(nir_src_as_uint(instr->src[1]) == 0);
@@ -8487,8 +8477,7 @@ shuffle_src_to_dst(const fs_builder &bld,
          type_sz(src.type) * bld.dispatch_width() * components));
 
       brw_reg_type shuffle_type =
-         brw_reg_type_from_bit_size(8 * type_sz(src.type),
-                                    BRW_TYPE_D);
+         brw_reg_type_from_bit_size(8 * type_sz(src.type), BRW_TYPE_D);
       for (unsigned i = 0; i < components; i++) {
          fs_reg shuffle_component_i =
             subscript(offset(dst, bld, i / size_ratio),
@@ -8507,8 +8496,7 @@ shuffle_src_to_dst(const fs_builder &bld,
                       size_ratio)));
 
       brw_reg_type shuffle_type =
-         brw_reg_type_from_bit_size(8 * type_sz(dst.type),
-                                    BRW_TYPE_D);
+         brw_reg_type_from_bit_size(8 * type_sz(dst.type), BRW_TYPE_D);
       for (unsigned i = 0; i < components; i++) {
          fs_reg shuffle_component_i =
             subscript(offset(src, bld, (first_component + i) / size_ratio),

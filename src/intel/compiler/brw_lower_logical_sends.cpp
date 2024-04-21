@@ -352,8 +352,7 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
       if (g00_bits) {
          /* OR extra bits into g0.0 */
          ubld.group(1, 0).OR(component(header, 0),
-                             retype(brw_vec1_grf(0, 0),
-                                    BRW_TYPE_UD),
+                             retype(brw_vec1_grf(0, 0), BRW_TYPE_UD),
                              brw_imm_ud(g00_bits));
       }
 
@@ -363,8 +362,7 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
       }
 
       if (prog_data->uses_kill) {
-         ubld.group(1, 0).MOV(retype(component(header, 15),
-                                     BRW_TYPE_UW),
+         ubld.group(1, 0).MOV(retype(component(header, 15), BRW_TYPE_UW),
                               brw_sample_mask_reg(bld));
       }
 
@@ -694,8 +692,7 @@ emit_load_payload_with_padding(const fs_builder &bld, const fs_reg &dst,
       unsigned src_sz =
          retype(dst, src[i].type).component_size(bld.dispatch_width());
       const enum brw_reg_type padding_payload_type =
-         brw_reg_type_from_bit_size(type_sz(src[i].type) * 8,
-                                    BRW_TYPE_UD);
+         brw_reg_type_from_bit_size(type_sz(src[i].type) * 8, BRW_TYPE_UD);
 
       src_comps[length++] = src[i];
 
@@ -2043,8 +2040,7 @@ lower_lsc_a64_logical_send(const fs_builder &bld, fs_inst *inst)
    const bool has_side_effects = inst->has_side_effects();
 
    fs_reg payload = retype(bld.move_to_vgrf(addr, 1), BRW_TYPE_UD);
-   fs_reg payload2 = retype(bld.move_to_vgrf(src, src_comps),
-                            BRW_TYPE_UD);
+   fs_reg payload2 = retype(bld.move_to_vgrf(src, src_comps), BRW_TYPE_UD);
    unsigned ex_mlen = src_comps * src_sz * inst->exec_size / REG_SIZE;
    unsigned num_components = 0;
    bool has_dest = false;
@@ -2186,16 +2182,14 @@ lower_a64_logical_send(const fs_builder &bld, fs_inst *inst)
 
       if (inst->opcode == SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL) {
          ex_mlen = src_comps * type_sz(src.type) * inst->exec_size / REG_SIZE;
-         payload2 = retype(bld.move_to_vgrf(src, src_comps),
-                           BRW_TYPE_UD);
+         payload2 = retype(bld.move_to_vgrf(src, src_comps), BRW_TYPE_UD);
       }
    } else {
       /* On Skylake and above, we have SENDS */
       mlen = 2 * (inst->exec_size / 8);
       ex_mlen = src_comps * type_sz(src.type) * inst->exec_size / REG_SIZE;
       payload = retype(bld.move_to_vgrf(addr, 1), BRW_TYPE_UD);
-      payload2 = retype(bld.move_to_vgrf(src, src_comps),
-                        BRW_TYPE_UD);
+      payload2 = retype(bld.move_to_vgrf(src, src_comps), BRW_TYPE_UD);
    }
 
    uint32_t desc;

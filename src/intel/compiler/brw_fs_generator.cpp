@@ -1017,22 +1017,19 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          brw_CSEL(p, dst, src[0], src[1], src[2]);
          break;
       case BRW_OPCODE_BFREV:
-         brw_BFREV(p, retype(dst, BRW_TYPE_UD),
-                   retype(src[0], BRW_TYPE_UD));
+         brw_BFREV(p, retype(dst, BRW_TYPE_UD), retype(src[0], BRW_TYPE_UD));
          break;
       case BRW_OPCODE_FBH:
          brw_FBH(p, retype(dst, src[0].type), src[0]);
          break;
       case BRW_OPCODE_FBL:
-         brw_FBL(p, retype(dst, BRW_TYPE_UD),
-                 retype(src[0], BRW_TYPE_UD));
+         brw_FBL(p, retype(dst, BRW_TYPE_UD), retype(src[0], BRW_TYPE_UD));
          break;
       case BRW_OPCODE_LZD:
          brw_LZD(p, dst, src[0]);
          break;
       case BRW_OPCODE_CBIT:
-         brw_CBIT(p, retype(dst, BRW_TYPE_UD),
-                  retype(src[0], BRW_TYPE_UD));
+         brw_CBIT(p, retype(dst, BRW_TYPE_UD), retype(src[0], BRW_TYPE_UD));
          break;
       case BRW_OPCODE_ADDC:
          brw_ADDC(p, dst, src[0], src[1]);
@@ -1232,8 +1229,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
          assert(inst->force_writemask_all && inst->group == 0);
          assert(inst->dst.file == BAD_FILE);
          brw_set_default_exec_size(p, BRW_EXECUTE_1);
-         brw_MOV(p, retype(brw_flag_subreg(inst->flag_subreg),
-                           BRW_TYPE_UD),
+         brw_MOV(p, retype(brw_flag_subreg(inst->flag_subreg), BRW_TYPE_UD),
                  retype(brw_mask_reg(0), BRW_TYPE_UD));
          break;
       }

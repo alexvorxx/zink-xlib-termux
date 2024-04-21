@@ -3673,15 +3673,8 @@ nir_lower_primid_sysval_to_input_filter(const nir_instr *instr, const void *_dat
 static nir_ssa_def *
 nir_lower_primid_sysval_to_input_lower(nir_builder *b, nir_instr *instr, void *data)
 {
-   nir_variable *var = *(nir_variable **)data;
-   if (!var) {
-      var = nir_variable_create(b->shader, nir_var_shader_in, glsl_uint_type(), "gl_PrimitiveID");
-      var->data.location = VARYING_SLOT_PRIMITIVE_ID;
-      b->shader->info.inputs_read |= VARYING_BIT_PRIMITIVE_ID;
-      var->data.driver_location = b->shader->num_inputs++;
-
-      *(nir_variable **)data = var;
-   }
+   nir_variable *var = nir_get_variable_with_location(b->shader, nir_var_shader_in,
+                                                      VARYING_SLOT_PRIMITIVE_ID, glsl_uint_type());
 
    nir_io_semantics semantics = {
       .location = var->data.location,
@@ -3695,11 +3688,9 @@ nir_lower_primid_sysval_to_input_lower(nir_builder *b, nir_instr *instr, void *d
 static bool
 nir_lower_primid_sysval_to_input(nir_shader *s)
 {
-   nir_variable *input = NULL;
-
    return nir_shader_lower_instructions(s,
                                         nir_lower_primid_sysval_to_input_filter,
-                                        nir_lower_primid_sysval_to_input_lower, &input);
+                                        nir_lower_primid_sysval_to_input_lower, NULL);
 }
 
 const void *
@@ -3864,8 +3855,6 @@ const void *nir_to_tgsi_options(struct nir_shader *s,
    if (!options->lower_fabs)
       source_mods |= nir_lower_fabs_source_mods;
    NIR_PASS_V(s, nir_lower_to_source_mods, source_mods);
-
-   NIR_PASS_V(s, nir_lower_legacy_atomics);
 
    NIR_PASS_V(s, nir_convert_from_ssa, true);
    NIR_PASS_V(s, nir_lower_vec_to_movs, ntt_vec_to_mov_writemask_cb, NULL);

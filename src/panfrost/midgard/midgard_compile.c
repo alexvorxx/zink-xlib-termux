@@ -463,7 +463,6 @@ optimise_nir(nir_shader *nir, unsigned quirks, bool is_blend)
 
    NIR_PASS(progress, nir, nir_copy_prop);
    NIR_PASS(progress, nir, nir_opt_dce);
-   NIR_PASS(progress, nir, nir_lower_legacy_atomics);
 
    /* Backend scheduler is purely local, so do some global optimizations
     * to reduce register pressure. */

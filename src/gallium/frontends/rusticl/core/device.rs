@@ -22,6 +22,7 @@ use std::cmp::min;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::env;
+use std::ffi::CString;
 use std::os::raw::*;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -37,6 +38,7 @@ pub struct Device {
     pub embedded: bool,
     pub extension_string: String,
     pub extensions: Vec<cl_name_version>,
+    pub spirv_extensions: Vec<CString>,
     pub clc_features: Vec<cl_name_version>,
     pub formats: HashMap<cl_image_format, HashMap<cl_mem_object_type, cl_mem_flags>>,
     pub lib_clc: NirShader,
@@ -194,6 +196,7 @@ impl Device {
             embedded: false,
             extension_string: String::from(""),
             extensions: Vec::new(),
+            spirv_extensions: Vec::new(),
             clc_features: Vec::new(),
             formats: HashMap::new(),
             lib_clc: lib_clc?,
@@ -472,70 +475,69 @@ impl Device {
 
     fn fill_extensions(&mut self) {
         let mut exts_str: Vec<String> = Vec::new();
-        let mut exts = Vec::new();
+        let mut exts = PLATFORM_EXTENSIONS.to_vec();
         let mut feats = Vec::new();
-        let mut add_ext = |major, minor, patch, ext: &str, feat: &str| {
-            if !ext.is_empty() {
-                exts.push(mk_cl_version_ext(major, minor, patch, ext));
-                exts_str.push(ext.to_owned());
-            }
-
-            if !feat.is_empty() {
-                feats.push(mk_cl_version_ext(major, minor, patch, feat));
-            }
+        let mut spirv_exts = Vec::new();
+        let mut add_ext = |major, minor, patch, ext: &str| {
+            exts.push(mk_cl_version_ext(major, minor, patch, ext));
+            exts_str.push(ext.to_owned());
+        };
+        let mut add_feat = |major, minor, patch, feat: &str| {
+            feats.push(mk_cl_version_ext(major, minor, patch, feat));
+        };
+        let mut add_spirv = |ext: &str| {
+            spirv_exts.push(CString::new(ext).unwrap());
         };
 
-        // add extensions all drivers support
-        add_ext(1, 0, 0, "cl_khr_byte_addressable_store", "");
-        add_ext(1, 0, 0, "cl_khr_global_int32_base_atomics", "");
-        add_ext(1, 0, 0, "cl_khr_global_int32_extended_atomics", "");
-        add_ext(1, 0, 0, "cl_khr_il_program", "");
-        add_ext(1, 0, 0, "cl_khr_local_int32_base_atomics", "");
-        add_ext(1, 0, 0, "cl_khr_local_int32_extended_atomics", "");
+        // add extensions all drivers support for now
+        add_ext(1, 0, 0, "cl_khr_global_int32_base_atomics");
+        add_ext(1, 0, 0, "cl_khr_global_int32_extended_atomics");
+        add_ext(1, 0, 0, "cl_khr_local_int32_base_atomics");
+        add_ext(1, 0, 0, "cl_khr_local_int32_extended_atomics");
+        add_spirv("SPV_KHR_float_controls");
 
         if self.doubles_supported() {
-            add_ext(1, 0, 0, "cl_khr_fp64", "__opencl_c_fp64");
+            add_ext(1, 0, 0, "cl_khr_fp64");
+            add_feat(1, 0, 0, "__opencl_c_fp64");
         }
 
         if self.long_supported() {
-            let ext = if self.embedded { "cles_khr_int64" } else { "" };
+            if self.embedded {
+                add_ext(1, 0, 0, "cles_khr_int64");
+            };
 
-            add_ext(1, 0, 0, ext, "__opencl_c_int64");
+            add_feat(1, 0, 0, "__opencl_c_int64");
         }
 
         if self.image_supported() {
-            add_ext(1, 0, 0, "", "__opencl_c_images");
+            add_feat(1, 0, 0, "__opencl_c_images");
 
             if self.image2d_from_buffer_supported() {
-                add_ext(1, 0, 0, "cl_khr_image2d_from_buffer", "");
+                add_ext(1, 0, 0, "cl_khr_image2d_from_buffer");
             }
 
             if self.image_read_write_supported() {
-                add_ext(1, 0, 0, "", "__opencl_c_read_write_images");
+                add_feat(1, 0, 0, "__opencl_c_read_write_images");
             }
 
             if self.image_3d_write_supported() {
-                add_ext(
-                    1,
-                    0,
-                    0,
-                    "cl_khr_3d_image_writes",
-                    "__opencl_c_3d_image_writes",
-                );
+                add_ext(1, 0, 0, "cl_khr_3d_image_writes");
+                add_feat(1, 0, 0, "__opencl_c_3d_image_writes");
             }
         }
 
         if self.pci_info().is_some() {
-            add_ext(1, 0, 0, "cl_khr_pci_bus_info", "");
+            add_ext(1, 0, 0, "cl_khr_pci_bus_info");
         }
 
         if self.svm_supported() {
-            add_ext(1, 0, 0, "cl_arm_shared_virtual_memory", "");
+            add_ext(1, 0, 0, "cl_arm_shared_virtual_memory");
         }
 
         self.extensions = exts;
         self.clc_features = feats;
-        self.extension_string = exts_str.join(" ");
+        self.extension_string = format!("{} {}", PLATFORM_EXTENSION_STR, exts_str.join(" "));
+        self.spirv_extensions = spirv_exts;
     }
 
     fn shader_param(&self, cap: pipe_shader_cap) -> i32 {

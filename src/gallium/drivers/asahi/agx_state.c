@@ -57,6 +57,7 @@
 #include "agx_bo.h"
 #include "agx_device.h"
 #include "agx_disk_cache.h"
+#include "agx_linker.h"
 #include "agx_nir_lower_gs.h"
 #include "agx_nir_lower_vbo.h"
 #include "agx_tilebuffer.h"
@@ -234,22 +235,23 @@ agx_create_blend_state(struct pipe_context *ctx,
 
       if (state->logicop_enable || !rt.blend_enable) {
          /* No blending, but we get the colour mask below */
-         static const nir_lower_blend_channel replace = {
-            .func = PIPE_BLEND_ADD,
-            .src_factor = PIPE_BLENDFACTOR_ONE,
-            .dst_factor = PIPE_BLENDFACTOR_ZERO,
+         key->rt[i] = (struct agx_blend_rt_key){
+            .rgb_func = PIPE_BLEND_ADD,
+            .rgb_src_factor = PIPE_BLENDFACTOR_ONE,
+            .rgb_dst_factor = PIPE_BLENDFACTOR_ZERO,
+
+            .alpha_func = PIPE_BLEND_ADD,
+            .alpha_src_factor = PIPE_BLENDFACTOR_ONE,
+            .alpha_dst_factor = PIPE_BLENDFACTOR_ZERO,
          };
-
-         key->rt[i].rgb = replace;
-         key->rt[i].alpha = replace;
       } else {
-         key->rt[i].rgb.func = rt.rgb_func;
-         key->rt[i].rgb.src_factor = rt.rgb_src_factor;
-         key->rt[i].rgb.dst_factor = rt.rgb_dst_factor;
+         key->rt[i].rgb_func = rt.rgb_func;
+         key->rt[i].rgb_src_factor = rt.rgb_src_factor;
+         key->rt[i].rgb_dst_factor = rt.rgb_dst_factor;
 
-         key->rt[i].alpha.func = rt.alpha_func;
-         key->rt[i].alpha.src_factor = rt.alpha_src_factor;
-         key->rt[i].alpha.dst_factor = rt.alpha_dst_factor;
+         key->rt[i].alpha_func = rt.alpha_func;
+         key->rt[i].alpha_src_factor = rt.alpha_src_factor;
+         key->rt[i].alpha_dst_factor = rt.alpha_dst_factor;
       }
 
       key->rt[i].colormask = rt.colormask;
@@ -2266,6 +2268,17 @@ agx_update_gs(struct agx_context *ctx, const struct pipe_draw_info *info,
                             (union asahi_shader_key *)&key);
 }
 
+static enum pipe_blendfactor
+optimize_blend_factor_w_1(enum pipe_blendfactor f)
+{
+   if (f == PIPE_BLENDFACTOR_SRC_ALPHA)
+      return PIPE_BLENDFACTOR_ONE;
+   else if (f == PIPE_BLENDFACTOR_INV_SRC_ALPHA)
+      return PIPE_BLENDFACTOR_ZERO;
+   else
+      return f;
+}
+
 static bool
 agx_update_fs(struct agx_batch *batch)
 {
@@ -2347,19 +2360,13 @@ agx_update_fs(struct agx_batch *batch)
 
    /* Try to disable blending to get rid of some fsats */
    if (link_key.epilog.fs.link.rt0_w_1) {
-      enum pipe_blendfactor *factors[] = {
-         &link_key.epilog.fs.blend.rt[0].rgb.src_factor,
-         &link_key.epilog.fs.blend.rt[0].rgb.dst_factor,
-         &link_key.epilog.fs.blend.rt[0].alpha.src_factor,
-         &link_key.epilog.fs.blend.rt[0].alpha.dst_factor,
-      };
+      struct agx_blend_rt_key *k = &link_key.epilog.fs.blend.rt[0];
 
-      for (unsigned f = 0; f < ARRAY_SIZE(factors); ++f) {
-         if (*factors[f] == PIPE_BLENDFACTOR_SRC_ALPHA)
-            *factors[f] = PIPE_BLENDFACTOR_ONE;
-         else if (*factors[f] == PIPE_BLENDFACTOR_INV_SRC_ALPHA)
-            *factors[f] = PIPE_BLENDFACTOR_ZERO;
-      }
+      k->rgb_src_factor = optimize_blend_factor_w_1(k->rgb_src_factor);
+      k->rgb_dst_factor = optimize_blend_factor_w_1(k->rgb_dst_factor);
+
+      k->alpha_src_factor = optimize_blend_factor_w_1(k->alpha_src_factor);
+      k->alpha_dst_factor = optimize_blend_factor_w_1(k->alpha_dst_factor);
    }
 
    link_key.epilog.fs.blend.alpha_to_coverage &= msaa;

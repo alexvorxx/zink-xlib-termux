@@ -258,13 +258,13 @@ lower_tests_zs(nir_shader *s, bool value)
 }
 
 static inline bool
-blend_uses_2src(nir_lower_blend_rt rt)
+blend_uses_2src(struct agx_blend_rt_key rt)
 {
    enum pipe_blendfactor factors[] = {
-      rt.rgb.src_factor,
-      rt.rgb.dst_factor,
-      rt.alpha.src_factor,
-      rt.alpha.dst_factor,
+      rt.rgb_src_factor,
+      rt.rgb_dst_factor,
+      rt.alpha_src_factor,
+      rt.alpha_dst_factor,
    };
 
    for (unsigned i = 0; i < ARRAY_SIZE(factors); ++i) {
@@ -337,10 +337,20 @@ agx_nir_fs_epilog(nir_builder *b, const void *key_)
    };
 
    static_assert(ARRAY_SIZE(opts.format) == 8, "max RTs out of sync");
-   memcpy(opts.rt, key->blend.rt, sizeof(opts.rt));
 
    for (unsigned i = 0; i < 8; ++i) {
       opts.format[i] = key->rt_formats[i];
+      opts.rt[i] = (nir_lower_blend_rt){
+         .rgb.src_factor = key->blend.rt[i].rgb_src_factor,
+         .rgb.dst_factor = key->blend.rt[i].rgb_dst_factor,
+         .rgb.func = key->blend.rt[i].rgb_func,
+
+         .alpha.src_factor = key->blend.rt[i].alpha_src_factor,
+         .alpha.dst_factor = key->blend.rt[i].alpha_dst_factor,
+         .alpha.func = key->blend.rt[i].alpha_func,
+
+         .colormask = key->blend.rt[i].colormask,
+      };
    }
 
    /* It's more efficient to use masked stores (with

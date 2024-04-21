@@ -85,13 +85,25 @@ struct agx_fs_prolog_key {
    unsigned cf_base;
 };
 
-struct agx_blend_key {
-   nir_lower_blend_rt rt[8];
-   unsigned logicop_func;
-   bool alpha_to_coverage, alpha_to_one;
-   bool padding[2];
+struct agx_blend_rt_key {
+   enum pipe_blend_func rgb_func          : 3;
+   enum pipe_blendfactor rgb_src_factor   : 5;
+   enum pipe_blendfactor rgb_dst_factor   : 5;
+   enum pipe_blend_func alpha_func        : 3;
+   enum pipe_blendfactor alpha_src_factor : 5;
+   enum pipe_blendfactor alpha_dst_factor : 5;
+   unsigned colormask                     : 4;
+   unsigned pad                           : 2;
 };
-static_assert(sizeof(struct agx_blend_key) == 232, "packed");
+static_assert(sizeof(struct agx_blend_rt_key) == 4, "packed");
+
+struct agx_blend_key {
+   struct agx_blend_rt_key rt[8];
+   uint8_t logicop_func;
+   bool alpha_to_coverage, alpha_to_one;
+   bool padding;
+};
+static_assert(sizeof(struct agx_blend_key) == 36, "packed");
 
 struct agx_fs_epilog_link_info {
    /* Base index of spilled render targets in the binding table */

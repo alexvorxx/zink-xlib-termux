@@ -31,9 +31,8 @@
  * The hardware encoding may depend on whether the value is an immediate.
  */
 unsigned
-brw_reg_type_to_hw_type(const struct intel_device_info *devinfo,
-                        enum brw_reg_file file,
-                        enum brw_reg_type type)
+brw_type_encode(const struct intel_device_info *devinfo,
+                enum brw_reg_file file, enum brw_reg_type type)
 {
    assert(file != IMM ||
           brw_type_is_vector_imm(type) ||
@@ -108,8 +107,8 @@ brw_reg_type_to_hw_type(const struct intel_device_info *devinfo,
  * The hardware encoding may depend on whether the value is an immediate.
  */
 enum brw_reg_type
-brw_hw_type_to_reg_type(const struct intel_device_info *devinfo,
-                        enum brw_reg_file file, unsigned hw_type)
+brw_type_decode(const struct intel_device_info *devinfo,
+                enum brw_reg_file file, unsigned hw_type)
 {
    if (hw_type >= (1 << 4))
       return BRW_TYPE_INVALID;

@@ -267,7 +267,7 @@ TEST_P(validation_test, invalid_type_encoding)
 
       for (unsigned i = 0; i < ARRAY_SIZE(test_case); i++) {
          if (test_case[i].expected_result) {
-            unsigned hw_type = brw_reg_type_to_hw_type(&devinfo, file, test_case[i].type);
+            unsigned hw_type = brw_type_encode(&devinfo, file, test_case[i].type);
             if (hw_type != INVALID_HW_REG_TYPE) {
                /* ... and remove valid encodings from the set */
                assert(BITSET_TEST(invalid_encodings, hw_type));

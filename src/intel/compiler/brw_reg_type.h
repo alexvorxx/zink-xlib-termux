@@ -154,12 +154,12 @@ brw_type_with_size(enum brw_reg_type ref_type, unsigned bit_size)
 /* -------------------------------------------------------------- */
 
 unsigned
-brw_reg_type_to_hw_type(const struct intel_device_info *devinfo,
-                        enum brw_reg_file file, enum brw_reg_type type);
+brw_type_encode(const struct intel_device_info *devinfo,
+                enum brw_reg_file file, enum brw_reg_type type);
 
 enum brw_reg_type ATTRIBUTE_PURE
-brw_hw_type_to_reg_type(const struct intel_device_info *devinfo,
-                        enum brw_reg_file file, unsigned hw_type);
+brw_type_decode(const struct intel_device_info *devinfo,
+                enum brw_reg_file file, unsigned hw_type);
 
 unsigned
 brw_type_encode_for_3src(const struct intel_device_info *devinfo,

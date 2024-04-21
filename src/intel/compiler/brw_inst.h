@@ -994,7 +994,7 @@ brw_inst_set_##reg##_file_type(const struct intel_device_info *devinfo,       \
                                enum brw_reg_type type)                        \
 {                                                                             \
    assert(file <= BRW_IMMEDIATE_VALUE);                                       \
-   unsigned hw_type = brw_reg_type_to_hw_type(devinfo, file, type);           \
+   unsigned hw_type = brw_type_encode(devinfo, file, type);                   \
    brw_inst_set_##reg##_reg_file(devinfo, inst, file);                        \
    brw_inst_set_##reg##_reg_hw_type(devinfo, inst, hw_type);                  \
 }                                                                             \
@@ -1007,7 +1007,7 @@ brw_inst_##reg##_type(const struct intel_device_info *devinfo,                \
                    (unsigned) BRW_GENERAL_REGISTER_FILE :                     \
                    brw_inst_##reg##_reg_file(devinfo, inst);                  \
    unsigned hw_type = brw_inst_##reg##_reg_hw_type(devinfo, inst);            \
-   return brw_hw_type_to_reg_type(devinfo, (enum brw_reg_file)file, hw_type); \
+   return brw_type_decode(devinfo, (enum brw_reg_file)file, hw_type);         \
 }
 
 REG_TYPE(dst)

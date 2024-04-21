@@ -741,6 +741,7 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_pipeline_
       radv_optimize_nir(nir, false);
    }
 
+
    return nir;
 }
 

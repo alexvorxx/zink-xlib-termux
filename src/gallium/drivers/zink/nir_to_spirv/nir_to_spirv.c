@@ -227,9 +227,14 @@ emit_access_decorations(struct ntv_context *ctx, nir_variable *var, SpvId var_id
 }
 
 static SpvOp
-get_atomic_op(struct ntv_context *ctx, unsigned bit_size, nir_atomic_op op)
+get_atomic_op(struct ntv_context *ctx, unsigned bit_size, nir_intrinsic_op op)
 {
    switch (op) {
+#define CASE_ATOMIC_OP(type) \
+   case nir_intrinsic_deref_atomic_##type: \
+   case nir_intrinsic_image_deref_atomic_##type: \
+   case nir_intrinsic_shared_atomic_##type
+
 #define ATOMIC_FCAP(NAME) \
    do {\
       if (bit_size == 16) \
@@ -240,41 +245,41 @@ get_atomic_op(struct ntv_context *ctx, unsigned bit_size, nir_atomic_op op)
          spirv_builder_emit_cap(&ctx->builder, SpvCapabilityAtomicFloat64##NAME##EXT); \
    } while (0)
 
-   case nir_atomic_op_fadd:
+   CASE_ATOMIC_OP(fadd):
       ATOMIC_FCAP(Add);
       if (bit_size == 16)
          spirv_builder_emit_extension(&ctx->builder, "SPV_EXT_shader_atomic_float16_add");
       else
          spirv_builder_emit_extension(&ctx->builder, "SPV_EXT_shader_atomic_float_add");
       return SpvOpAtomicFAddEXT;
-   case nir_atomic_op_fmax:
+   CASE_ATOMIC_OP(fmax):
       ATOMIC_FCAP(MinMax);
       spirv_builder_emit_extension(&ctx->builder, "SPV_EXT_shader_atomic_float_min_max");
       return SpvOpAtomicFMaxEXT;
-   case nir_atomic_op_fmin:
+   CASE_ATOMIC_OP(fmin):
       ATOMIC_FCAP(MinMax);
       spirv_builder_emit_extension(&ctx->builder, "SPV_EXT_shader_atomic_float_min_max");
       return SpvOpAtomicFMinEXT;
 
-   case nir_atomic_op_iadd:
+   CASE_ATOMIC_OP(add):
       return SpvOpAtomicIAdd;
-   case nir_atomic_op_umin:
+   CASE_ATOMIC_OP(umin):
       return SpvOpAtomicUMin;
-   case nir_atomic_op_imin:
+   CASE_ATOMIC_OP(imin):
       return SpvOpAtomicSMin;
-   case nir_atomic_op_umax:
+   CASE_ATOMIC_OP(umax):
       return SpvOpAtomicUMax;
-   case nir_atomic_op_imax:
+   CASE_ATOMIC_OP(imax):
       return SpvOpAtomicSMax;
-   case nir_atomic_op_iand:
+   CASE_ATOMIC_OP(and):
       return SpvOpAtomicAnd;
-   case nir_atomic_op_ior:
+   CASE_ATOMIC_OP(or):
       return SpvOpAtomicOr;
-   case nir_atomic_op_ixor:
+   CASE_ATOMIC_OP(xor):
       return SpvOpAtomicXor;
-   case nir_atomic_op_xchg:
+   CASE_ATOMIC_OP(exchange):
       return SpvOpAtomicExchange;
-   case nir_atomic_op_cmpxchg:
+   CASE_ATOMIC_OP(comp_swap):
       return SpvOpAtomicCompareExchange;
    default:
       debug_printf("%s - ", nir_intrinsic_infos[op].name);
@@ -282,6 +287,21 @@ get_atomic_op(struct ntv_context *ctx, unsigned bit_size, nir_atomic_op op)
    }
    return 0;
 }
+
+static bool
+atomic_op_is_float(nir_intrinsic_op op)
+{
+   switch (op) {
+   CASE_ATOMIC_OP(fadd):
+   CASE_ATOMIC_OP(fmax):
+   CASE_ATOMIC_OP(fmin):
+      return true;
+   default:
+      break;
+   }
+   return false;
+}
+#undef CASE_ATOMIC_OP
 
 static SpvId
 emit_float_const(struct ntv_context *ctx, int bit_size, double value)
@@ -2862,7 +2882,7 @@ static void
 handle_atomic_op(struct ntv_context *ctx, nir_intrinsic_instr *intr, SpvId ptr, SpvId param, SpvId param2, nir_alu_type type)
 {
    SpvId dest_type = get_dest_type(ctx, &intr->dest, type);
-   SpvId result = emit_atomic(ctx, get_atomic_op(ctx, nir_dest_bit_size(intr->dest), nir_intrinsic_atomic_op(intr)), dest_type, ptr, param, param2);
+   SpvId result = emit_atomic(ctx, get_atomic_op(ctx, nir_dest_bit_size(intr->dest), intr->intrinsic), dest_type, ptr, param, param2);
    assert(result);
    store_dest(ctx, &intr->dest, result, type);
 }
@@ -2878,11 +2898,10 @@ emit_deref_atomic_intrinsic(struct ntv_context *ctx, nir_intrinsic_instr *intr)
    if (nir_src_bit_size(intr->src[1]) == 64)
       spirv_builder_emit_cap(&ctx->builder, SpvCapabilityInt64Atomics);
 
-   if (intr->intrinsic == nir_intrinsic_deref_atomic_swap)
+   if (intr->intrinsic == nir_intrinsic_deref_atomic_comp_swap)
       param2 = get_src(ctx, &intr->src[2]);
 
-   nir_alu_type op_type = nir_atomic_op_type(nir_intrinsic_atomic_op(intr));
-   handle_atomic_op(ctx, intr, ptr, param, param2, op_type == nir_type_float ? nir_type_float : nir_type_uint32);
+   handle_atomic_op(ctx, intr, ptr, param, param2, atomic_op_is_float(intr->intrinsic) ? nir_type_float : nir_type_uint32);
 }
 
 static void
@@ -2903,11 +2922,10 @@ emit_shared_atomic_intrinsic(struct ntv_context *ctx, nir_intrinsic_instr *intr)
       spirv_builder_emit_cap(&ctx->builder, SpvCapabilityInt64Atomics);
    SpvId param2 = 0;
 
-   if (intr->intrinsic == nir_intrinsic_shared_atomic_swap)
+   if (intr->intrinsic == nir_intrinsic_shared_atomic_comp_swap)
       param2 = get_src(ctx, &intr->src[2]);
 
-   nir_alu_type op_type = nir_atomic_op_type(nir_intrinsic_atomic_op(intr));
-   handle_atomic_op(ctx, intr, ptr, param, param2, op_type == nir_type_float ? nir_type_float : nir_type_uint32);
+   handle_atomic_op(ctx, intr, ptr, param, param2, atomic_op_is_float(intr->intrinsic) ? nir_type_float : nir_type_uint32);
 }
 
 static void
@@ -3109,7 +3127,7 @@ emit_image_intrinsic(struct ntv_context *ctx, nir_intrinsic_instr *intr)
    SpvId cast_type = get_dest_type(ctx, &intr->dest, ntype);
    param = emit_bitcast(ctx, cast_type, param);
 
-   if (intr->intrinsic == nir_intrinsic_image_deref_atomic_swap) {
+   if (intr->intrinsic == nir_intrinsic_image_deref_atomic_comp_swap) {
       param2 = get_src(ctx, &intr->src[4]);
       param2 = emit_bitcast(ctx, cast_type, param2);
    }
@@ -3388,13 +3406,36 @@ emit_intrinsic(struct ntv_context *ctx, nir_intrinsic_instr *intr)
                                         SpvMemorySemanticsAcquireReleaseMask);
       break;
 
-   case nir_intrinsic_deref_atomic:
-   case nir_intrinsic_deref_atomic_swap:
+   case nir_intrinsic_deref_atomic_fadd:
+   case nir_intrinsic_deref_atomic_fmin:
+   case nir_intrinsic_deref_atomic_fmax:
+   case nir_intrinsic_deref_atomic_fcomp_swap:
+   case nir_intrinsic_deref_atomic_add:
+   case nir_intrinsic_deref_atomic_umin:
+   case nir_intrinsic_deref_atomic_imin:
+   case nir_intrinsic_deref_atomic_umax:
+   case nir_intrinsic_deref_atomic_imax:
+   case nir_intrinsic_deref_atomic_and:
+   case nir_intrinsic_deref_atomic_or:
+   case nir_intrinsic_deref_atomic_xor:
+   case nir_intrinsic_deref_atomic_exchange:
+   case nir_intrinsic_deref_atomic_comp_swap:
       emit_deref_atomic_intrinsic(ctx, intr);
       break;
 
-   case nir_intrinsic_shared_atomic:
-   case nir_intrinsic_shared_atomic_swap:
+   case nir_intrinsic_shared_atomic_fadd:
+   case nir_intrinsic_shared_atomic_fmin:
+   case nir_intrinsic_shared_atomic_fmax:
+   case nir_intrinsic_shared_atomic_add:
+   case nir_intrinsic_shared_atomic_umin:
+   case nir_intrinsic_shared_atomic_imin:
+   case nir_intrinsic_shared_atomic_umax:
+   case nir_intrinsic_shared_atomic_imax:
+   case nir_intrinsic_shared_atomic_and:
+   case nir_intrinsic_shared_atomic_or:
+   case nir_intrinsic_shared_atomic_xor:
+   case nir_intrinsic_shared_atomic_exchange:
+   case nir_intrinsic_shared_atomic_comp_swap:
       emit_shared_atomic_intrinsic(ctx, intr);
       break;
 
@@ -3424,8 +3465,16 @@ emit_intrinsic(struct ntv_context *ctx, nir_intrinsic_instr *intr)
       emit_image_deref_samples(ctx, intr);
       break;
 
-   case nir_intrinsic_image_deref_atomic:
-   case nir_intrinsic_image_deref_atomic_swap:
+   case nir_intrinsic_image_deref_atomic_add:
+   case nir_intrinsic_image_deref_atomic_umin:
+   case nir_intrinsic_image_deref_atomic_imin:
+   case nir_intrinsic_image_deref_atomic_umax:
+   case nir_intrinsic_image_deref_atomic_imax:
+   case nir_intrinsic_image_deref_atomic_and:
+   case nir_intrinsic_image_deref_atomic_or:
+   case nir_intrinsic_image_deref_atomic_xor:
+   case nir_intrinsic_image_deref_atomic_exchange:
+   case nir_intrinsic_image_deref_atomic_comp_swap:
       emit_image_intrinsic(ctx, intr);
       break;
 

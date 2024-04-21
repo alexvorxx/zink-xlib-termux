@@ -75,7 +75,6 @@ struct pvr_transfer_wa_source {
    uint32_t mapping_count;
    struct pvr_rect_mapping mappings[PVR_TRANSFER_MAX_CUSTOM_MAPPINGS];
    bool extend_height;
-   bool byte_unwind;
 };
 
 struct pvr_transfer_pass {
@@ -99,7 +98,6 @@ struct pvr_transfer_custom_mapping {
    struct pvr_transfer_pass passes[PVR_TRANSFER_MAX_PASSES];
    uint32_t max_clip_rects;
    int32_t max_clip_size;
-   uint32_t byte_unwind_src;
 };
 
 struct pvr_transfer_3d_iteration {
@@ -701,9 +699,7 @@ pvr_mem_layout_spec(const struct pvr_transfer_cmd_surface *surface,
 
    case PVR_MEMLAYOUT_TWIDDLED:
    case PVR_MEMLAYOUT_3DTWIDDLED:
-      if (surface->stride != 0U)
-         mesa_logi("Ignoring stride value for twiddled/tiled surface!");
-
+      /* Ignoring stride value for twiddled/tiled surface. */
       *stride_out = *width_out;
       break;
 
@@ -1445,7 +1441,9 @@ static void pvr_uv_space(const struct pvr_device_info *dev_info,
                     (src_rect->offset.y * dst_y1 !=
                      src_y1 * dst_rect->offset.y) ||
                     (src_rect->extent.width != dst_rect->extent.width) ||
-                    (src_rect->extent.height != dst_rect->extent.height)) {
+                    (src_rect->extent.height != dst_rect->extent.height) ||
+                    transfer_cmd->sources[0U].mappings[0U].flip_x ||
+                    transfer_cmd->sources[0U].mappings[0U].flip_y) {
             layer->layer_floats = PVR_INT_COORD_SET_FLOATS_4;
          } else {
             layer->layer_floats = PVR_INT_COORD_SET_FLOATS_0;
@@ -1461,15 +1459,14 @@ static void pvr_uv_space(const struct pvr_device_info *dev_info,
 }
 
 static uint32_t pvr_int_pbe_pixel_num_sampler_and_image_states(
-   enum pvr_transfer_pbe_pixel_src pbe_format,
-   uint32_t alpha_type)
+   enum pvr_transfer_pbe_pixel_src pbe_format)
 {
    switch (pbe_format) {
    case PVR_TRANSFER_PBE_PIXEL_SRC_Y_UV_INTERLEAVED:
    case PVR_TRANSFER_PBE_PIXEL_SRC_Y_U_V:
       return 1U;
    default:
-      return pvr_pbe_pixel_num_loads(pbe_format, alpha_type);
+      return pvr_pbe_pixel_num_loads(pbe_format);
    }
 }
 
@@ -1665,9 +1662,7 @@ pvr_sampler_image_state(struct pvr_transfer_ctx *ctx,
       for (uint32_t source = 0; source < transfer_cmd->source_count; source++) {
          struct pvr_tq_layer_properties *layer =
             &state->shader_props.layer_props;
-         uint32_t max_load =
-            pvr_pbe_pixel_num_loads(layer->pbe_format,
-                                    state->shader_props.alpha_type);
+         uint32_t max_load = pvr_pbe_pixel_num_loads(layer->pbe_format);
 
          for (uint32_t load = 0U; load < max_load; load++) {
             const struct pvr_transfer_cmd_surface *surface;
@@ -1687,11 +1682,7 @@ pvr_sampler_image_state(struct pvr_transfer_ctx *ctx,
             case PVR_TRANSFER_PBE_PIXEL_SRC_F16_U8:
                if (load > 0U) {
                   surface = &transfer_cmd->dst;
-
-                  if (state->shader_props.alpha_type != PVR_ALPHA_NONE)
-                     filter = PVR_FILTER_POINT;
-                  else
-                     filter = transfer_cmd->sources[source].filter;
+                  filter = transfer_cmd->sources[source].filter;
                } else {
                   surface = &transfer_cmd->sources[source].surface;
                   filter = state->filter[source];
@@ -1711,8 +1702,7 @@ pvr_sampler_image_state(struct pvr_transfer_ctx *ctx,
             }
 
             if (load < pvr_int_pbe_pixel_num_sampler_and_image_states(
-                          layer->pbe_format,
-                          state->shader_props.alpha_type)) {
+                          layer->pbe_format)) {
                const struct pvr_device_info *dev_info =
                   &transfer_cmd->cmd_buffer->device->pdevice->dev_info;
 
@@ -1760,17 +1750,6 @@ static inline uint32_t pvr_dynamic_const_reg_advance(
    return offset + state->dynamic_const_reg_ptr++;
 }
 
-static inline void
-pvr_dma_global_alpha(const struct pvr_transfer_alpha *alpha,
-                     struct pvr_transfer_3d_state *state,
-                     const struct pvr_tq_frag_sh_reg_layout *sh_reg_layout,
-                     uint32_t *mem_ptr)
-{
-   float global = (float)alpha->global / 255.0f;
-
-   mem_ptr[pvr_dynamic_const_reg_advance(sh_reg_layout, state)] = fui(global);
-}
-
 /** Scales coefficients for sampling. (non normalized). */
 static inline void
 pvr_dma_texture_floats(const struct pvr_transfer_cmd *transfer_cmd,
@@ -1800,17 +1779,27 @@ pvr_dma_texture_floats(const struct pvr_transfer_cmd *transfer_cmd,
          float offset = 0.0f;
          float tmp;
 
-         dst_x = dst_rect.extent.width;
-         dst_y = dst_rect.extent.height;
+         dst_x = mapping->flip_x ? -(int32_t)dst_rect.extent.width
+                                 : dst_rect.extent.width;
+         dst_y = mapping->flip_y ? -(int32_t)dst_rect.extent.height
+                                 : dst_rect.extent.height;
          src_x = src_rect.extent.width;
          src_y = src_rect.extent.height;
 
          nums[0U] = src_x;
          denom[0U] = dst_x;
-         consts[0U] = src_rect.offset.x * dst_x - src_x * dst_rect.offset.x;
+         consts[0U] =
+            mapping->flip_x
+               ? src_rect.offset.x * dst_x -
+                    src_x * (dst_rect.offset.x + dst_rect.extent.width)
+               : src_rect.offset.x * dst_x - src_x * dst_rect.offset.x;
          nums[1U] = src_y;
          denom[1U] = dst_y;
-         consts[1U] = src_rect.offset.y * dst_y - src_y * dst_rect.offset.y;
+         consts[1U] =
+            mapping->flip_y
+               ? src_rect.offset.y * dst_y -
+                    src_y * (dst_rect.offset.y + dst_rect.extent.height)
+               : src_rect.offset.y * dst_y - src_y * dst_rect.offset.y;
 
          for (uint32_t i = 0U; i < 2U; i++) {
             tmp = (float)(nums[i]) / (float)(denom[i]);
@@ -2761,7 +2750,6 @@ static VkResult pvr_3d_copy_blit_core(struct pvr_transfer_ctx *ctx,
 
       state->shader_props.iterated = false;
 
-      state->shader_props.layer_props.byte_unwind = 0U;
       state->shader_props.layer_props.sample =
          transfer_cmd->sources[0].surface.mem_layout ==
          PVR_MEMLAYOUT_3DTWIDDLED;
@@ -2772,15 +2760,6 @@ static VkResult pvr_3d_copy_blit_core(struct pvr_transfer_ctx *ctx,
 
       state->shader_props.pick_component =
          pvr_pick_component_needed(&state->custom_mapping);
-      state->shader_props.alpha_type = transfer_cmd->blit.alpha.type;
-
-      if (state->shader_props.alpha_type != PVR_ALPHA_NONE &&
-          (state->shader_props.layer_props.pbe_format !=
-              PVR_TRANSFER_PBE_PIXEL_SRC_F16F16 &&
-           state->shader_props.layer_props.pbe_format !=
-              PVR_TRANSFER_PBE_PIXEL_SRC_F16_U8)) {
-         return vk_error(device, VK_ERROR_FORMAT_NOT_SUPPORTED);
-      }
 
       if (state->filter[0] == PVR_FILTER_LINEAR &&
           pvr_requires_usc_linear_filter(
@@ -2841,15 +2820,6 @@ static VkResult pvr_3d_copy_blit_core(struct pvr_transfer_ctx *ctx,
                                        dma_space);
       if (result != VK_SUCCESS)
          return result;
-
-      if (state->shader_props.alpha_type == PVR_ALPHA_GLOBAL ||
-          state->shader_props.alpha_type ==
-             PVR_ALPHA_PREMUL_SOURCE_WITH_GLOBAL) {
-         pvr_dma_global_alpha(&transfer_cmd->blit.alpha,
-                              state,
-                              sh_reg_layout,
-                              dma_space);
-      }
 
       pvr_dma_texture_floats(transfer_cmd, state, sh_reg_layout, dma_space);
 
@@ -4134,36 +4104,6 @@ static VkResult pvr_isp_ctrl_stream(const struct pvr_device_info *dev_info,
 
             memset(shader_props, 0U, sizeof(*shader_props));
 
-            if (state->custom_mapping.byte_unwind_src > 0U &&
-                state->custom_mapping.passes[0U].sources[source].byte_unwind) {
-               switch (vk_format_get_blocksize(transfer_cmd->dst.vk_format)) {
-               case 16:
-                  pbe_src_format = PVR_TRANSFER_PBE_PIXEL_SRC_MASK16;
-                  break;
-               case 32:
-                  pbe_src_format = PVR_TRANSFER_PBE_PIXEL_SRC_MASK32;
-                  break;
-               case 48:
-                  pbe_src_format = PVR_TRANSFER_PBE_PIXEL_SRC_MASK48;
-                  break;
-               case 64:
-                  pbe_src_format = PVR_TRANSFER_PBE_PIXEL_SRC_MASK64;
-                  break;
-               case 96:
-                  pbe_src_format = PVR_TRANSFER_PBE_PIXEL_SRC_MASK96;
-                  break;
-               case 128:
-                  pbe_src_format = PVR_TRANSFER_PBE_PIXEL_SRC_MASK128;
-                  break;
-               default:
-                  unreachable("pixel width not valid");
-                  break;
-               }
-
-               layer->byte_unwind = state->custom_mapping.byte_unwind_src;
-               read_bgnd = true;
-            }
-
             layer->pbe_format = pbe_src_format;
             layer->sample =
                (src->surface.mem_layout == PVR_MEMLAYOUT_3DTWIDDLED);
@@ -4538,8 +4478,6 @@ static VkResult pvr_3d_clip_blit(struct pvr_transfer_ctx *ctx,
       ~(PVR_TRANSFER_CMD_FLAGS_FAST2D | PVR_TRANSFER_CMD_FLAGS_FILL |
         PVR_TRANSFER_CMD_FLAGS_DSMERGE | PVR_TRANSFER_CMD_FLAGS_PICKD);
 
-   memset(&bg_cmd.blit, 0U, sizeof(bg_cmd.blit));
-
    bg_cmd.source_count = state->custom_mapping.pass_count > 0U ? 0 : 1;
    if (bg_cmd.source_count > 0) {
       struct pvr_transfer_cmd_source *src = &bg_cmd.sources[0];
@@ -4626,31 +4564,6 @@ static bool pvr_texel_unwind(uint32_t bpp,
    return true;
 }
 
-static bool pvr_byte_unwind(uint32_t bpp,
-                            pvr_dev_addr_t dev_addr,
-                            bool is_input,
-                            uint32_t *byte_unwind_out)
-{
-   uint32_t byte_unwind = 0U;
-
-   for (uint32_t i = 0U; i < 16U; i++) {
-      if (pvr_is_surface_aligned(dev_addr, is_input, bpp)) {
-         break;
-      } else {
-         if (i == 15U) {
-            return false;
-         } else {
-            dev_addr.addr -= 1U;
-            byte_unwind++;
-         }
-      }
-   }
-
-   *byte_unwind_out = byte_unwind;
-
-   return true;
-}
-
 static bool pvr_is_identity_mapping(const struct pvr_rect_mapping *mapping)
 {
    return (mapping->src_rect.offset.x == mapping->dst_rect.offset.x &&
@@ -4711,7 +4624,6 @@ pvr_create_source(struct pvr_transfer_pass *pass,
    src = &pass->sources[pass->source_count];
    src->mapping_count = 0U;
    src->extend_height = extend_height;
-   src->byte_unwind = false;
 
    pass->source_count++;
 
@@ -4936,20 +4848,22 @@ static void pvr_unwind_rects(uint32_t width,
 
          mappings[new_mapping] = mappings[i];
 
-         new_rect->extent.width =
-            (new_rect->extent.width + new_rect->offset.x) - split_point;
+         rect->extent.width = split_point - rect->offset.x;
          new_rect->offset.x = split_point;
 
          if (input) {
-            mappings[i].dst_rect.extent.width -= new_rect->extent.width;
+            mappings[i].dst_rect.extent.width -=
+               new_rect->extent.width - split_point;
             mappings[new_mapping].dst_rect.offset.x =
                mappings[i].dst_rect.offset.x +
                mappings[i].dst_rect.extent.width;
          } else {
-            mappings[i].src_rect.extent.width -= new_rect->extent.width;
+            mappings[i].src_rect.extent.width -=
+               new_rect->extent.width - split_point;
             mappings[new_mapping].src_rect.offset.x =
                mappings[i].src_rect.offset.x +
                mappings[i].src_rect.extent.width;
+            mappings[new_mapping].src_rect.extent.width = texel_unwind;
          }
 
          rect->offset.x += texel_unwind;
@@ -4958,6 +4872,7 @@ static void pvr_unwind_rects(uint32_t width,
          new_rect->offset.x =
             (int32_t)texel_unwind - (int32_t)width + new_rect->offset.x;
          new_rect->offset.y++;
+         new_rect->extent.width = texel_unwind - width + new_rect->extent.width;
 
          new_mappings++;
       }
@@ -5182,7 +5097,6 @@ pvr_get_custom_mapping(const struct pvr_device_info *dev_info,
    custom_mapping->texel_unwind_dst = 0U;
    custom_mapping->texel_extend_src = 1U;
    custom_mapping->texel_extend_dst = 1U;
-   custom_mapping->byte_unwind_src = 0U;
    custom_mapping->pass_count = 0U;
 
    if (transfer_cmd->source_count > 1)
@@ -5233,13 +5147,6 @@ pvr_get_custom_mapping(const struct pvr_device_info *dev_info,
                                 &custom_mapping->texel_unwind_src);
       }
 
-      if (!ret && dst_bpp != 24U) {
-         ret = pvr_byte_unwind(src_bpp,
-                               src->surface.dev_addr,
-                               true,
-                               &custom_mapping->byte_unwind_src);
-      }
-
       if (!ret) {
          custom_mapping->texel_extend_src = dst_bpp / 8U;
          custom_mapping->texel_extend_dst = custom_mapping->texel_extend_src;
@@ -5287,8 +5194,7 @@ pvr_get_custom_mapping(const struct pvr_device_info *dev_info,
          transfer_cmd->dst.stride * custom_mapping->texel_extend_dst);
    }
 
-   if (custom_mapping->byte_unwind_src > 0U ||
-       custom_mapping->texel_unwind_src > 0U ||
+   if (custom_mapping->texel_unwind_src > 0U ||
        custom_mapping->texel_unwind_dst > 0U || custom_mapping->double_stride) {
       struct pvr_transfer_wa_source *wa_src;
       struct pvr_rect_mapping *mapping;
@@ -5529,11 +5435,7 @@ static VkResult pvr_reroute_to_clip(struct pvr_transfer_ctx *ctx,
                                     uint32_t pass_idx,
                                     bool *finished_out)
 {
-   const struct pvr_transfer_blit *blit = &transfer_cmd->blit;
    struct pvr_transfer_cmd clip_transfer_cmd;
-
-   if (blit->alpha.type != PVR_ALPHA_NONE)
-      return vk_error(ctx->device, VK_ERROR_FORMAT_NOT_SUPPORTED);
 
    clip_transfer_cmd = *transfer_cmd;
    clip_transfer_cmd.flags |= PVR_TRANSFER_CMD_FLAGS_FAST2D;
@@ -5561,7 +5463,6 @@ static VkResult pvr_3d_copy_blit(struct pvr_transfer_ctx *ctx,
    const struct pvr_device_info *const dev_info =
       &ctx->device->pdevice->dev_info;
 
-   const struct pvr_transfer_blit *blit = &transfer_cmd->blit;
    struct pvr_transfer_3d_state *state = &prep_data->state;
    struct pvr_transfer_cmd *active_cmd = transfer_cmd;
    struct pvr_transfer_cmd int_cmd;
@@ -5583,8 +5484,7 @@ static VkResult pvr_3d_copy_blit(struct pvr_transfer_ctx *ctx,
       if (src->surface.vk_format == transfer_cmd->dst.vk_format &&
           state->filter[0] == PVR_FILTER_POINT &&
           src->surface.sample_count <= transfer_cmd->dst.sample_count &&
-          (transfer_cmd->flags & PVR_TRANSFER_CMD_FLAGS_DSMERGE) == 0U &&
-          transfer_cmd->blit.alpha.type == PVR_ALPHA_NONE) {
+          (transfer_cmd->flags & PVR_TRANSFER_CMD_FLAGS_DSMERGE) == 0U) {
          uint32_t bpp;
 
          int_cmd = *transfer_cmd;
@@ -5637,9 +5537,6 @@ static VkResult pvr_3d_copy_blit(struct pvr_transfer_ctx *ctx,
 
    if (state->custom_mapping.pass_count > 0U) {
       struct pvr_transfer_pass *pass = &state->custom_mapping.passes[pass_idx];
-
-      if (blit->alpha.type != PVR_ALPHA_NONE)
-         return vk_error(ctx->device, VK_ERROR_FORMAT_NOT_SUPPORTED);
 
       if (active_cmd != &int_cmd) {
          int_cmd = *active_cmd;
@@ -5716,7 +5613,7 @@ static bool pvr_validate_source_addr(pvr_dev_addr_t addr)
       return false;
    }
 
-   if (addr.addr & TEXSTATE_STRIDE_IMAGE_WORD1_TEXADDR_MASK)
+   if (addr.addr & ~TEXSTATE_STRIDE_IMAGE_WORD1_TEXADDR_MASK)
       return false;
 
    return true;

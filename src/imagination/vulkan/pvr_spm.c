@@ -260,8 +260,8 @@ VkResult pvr_device_init_spm_load_state(struct pvr_device *device)
    uint32_t usc_aligned_offsets[PVR_SPM_LOAD_PROGRAM_COUNT];
    uint32_t pds_allocation_size = 0;
    uint32_t usc_allocation_size = 0;
-   struct pvr_bo *pds_bo;
-   struct pvr_bo *usc_bo;
+   struct pvr_suballoc_bo *pds_bo;
+   struct pvr_suballoc_bo *usc_bo;
    uint8_t *mem_ptr;
    VkResult result;
 
@@ -282,24 +282,21 @@ VkResult pvr_device_init_spm_load_state(struct pvr_device *device)
       usc_allocation_size += ALIGN_POT(spm_load_collection[i].size, 4);
    }
 
-   result = pvr_bo_alloc(device,
-                         device->heaps.usc_heap,
-                         usc_allocation_size,
-                         4,
-                         PVR_BO_ALLOC_FLAG_CPU_MAPPED,
-                         &usc_bo);
+   result = pvr_bo_suballoc(&device->suballoc_usc,
+                            usc_allocation_size,
+                            4,
+                            false,
+                            &usc_bo);
    if (result != VK_SUCCESS)
       return result;
 
-   mem_ptr = (uint8_t *)usc_bo->bo->map;
+   mem_ptr = (uint8_t *)pvr_bo_suballoc_get_map_addr(usc_bo);
 
    for (uint32_t i = 0; i < ARRAY_SIZE(spm_load_collection); i++) {
       memcpy(mem_ptr + usc_aligned_offsets[i],
              spm_load_collection[i].code,
              spm_load_collection[i].size);
    }
-
-   pvr_bo_cpu_unmap(device, usc_bo);
 
    /* Upload PDS programs. */
 
@@ -340,18 +337,17 @@ VkResult pvr_device_init_spm_load_state(struct pvr_device *device)
    }
 
    /* FIXME: Figure out the define for alignment of 16. */
-   result = pvr_bo_alloc(device,
-                         device->heaps.pds_heap,
-                         pds_allocation_size,
-                         16,
-                         PVR_BO_ALLOC_FLAG_CPU_MAPPED,
-                         &pds_bo);
+   result = pvr_bo_suballoc(&device->suballoc_pds,
+                            pds_allocation_size,
+                            16,
+                            false,
+                            &pds_bo);
    if (result != VK_SUCCESS) {
-      pvr_bo_free(device, usc_bo);
+      pvr_bo_suballoc_free(usc_bo);
       return result;
    }
 
-   mem_ptr = (uint8_t *)pds_bo->bo->map;
+   mem_ptr = (uint8_t *)pvr_bo_suballoc_get_map_addr(pds_bo);
 
    for (uint32_t i = 0; i < ARRAY_SIZE(spm_load_collection); i++) {
       struct pvr_pds_pixel_shader_sa_program pds_texture_program = {
@@ -359,7 +355,7 @@ VkResult pvr_device_init_spm_load_state(struct pvr_device *device)
          .num_texture_dma_kicks = 1,
       };
       const pvr_dev_addr_t usc_program_dev_addr =
-         PVR_DEV_ADDR_OFFSET(usc_bo->vma->dev_addr, usc_aligned_offsets[i]);
+         PVR_DEV_ADDR_OFFSET(usc_bo->dev_addr, usc_aligned_offsets[i]);
       struct pvr_pds_kickusc_program pds_kick_program = { 0 };
 
       pvr_pds_generate_pixel_shader_sa_code_segment(
@@ -378,11 +374,9 @@ VkResult pvr_device_init_spm_load_state(struct pvr_device *device)
          (uint32_t *)(mem_ptr + pds_kick_aligned_offsets[i]));
 
       device->spm_load_state.load_program[i].pds_pixel_program_offset =
-         PVR_DEV_ADDR_OFFSET(pds_bo->vma->dev_addr,
-                             pds_kick_aligned_offsets[i]);
+         PVR_DEV_ADDR_OFFSET(pds_bo->dev_addr, pds_kick_aligned_offsets[i]);
       device->spm_load_state.load_program[i].pds_uniform_program_offset =
-         PVR_DEV_ADDR_OFFSET(pds_bo->vma->dev_addr,
-                             pds_texture_aligned_offsets[i]);
+         PVR_DEV_ADDR_OFFSET(pds_bo->dev_addr, pds_texture_aligned_offsets[i]);
 
       /* TODO: From looking at the pvr_pds_generate_...() functions, it seems
        * like temps_used is always 1. Should we remove this and hard code it
@@ -392,8 +386,6 @@ VkResult pvr_device_init_spm_load_state(struct pvr_device *device)
          pds_texture_program.temps_used;
    }
 
-   pvr_bo_cpu_unmap(device, pds_bo);
-
    device->spm_load_state.usc_programs = usc_bo;
    device->spm_load_state.pds_programs = pds_bo;
 
@@ -402,8 +394,8 @@ VkResult pvr_device_init_spm_load_state(struct pvr_device *device)
 
 void pvr_device_finish_spm_load_state(struct pvr_device *device)
 {
-   pvr_bo_free(device, device->spm_load_state.pds_programs);
-   pvr_bo_free(device, device->spm_load_state.usc_programs);
+   pvr_bo_suballoc_free(device->spm_load_state.pds_programs);
+   pvr_bo_suballoc_free(device->spm_load_state.usc_programs);
 }
 
 static inline enum PVRX(PBESTATE_PACKMODE)
@@ -597,7 +589,7 @@ static uint64_t pvr_spm_setup_pbe_eight_dword_write(
  */
 static VkResult pvr_pds_pixel_event_program_create_and_upload(
    struct pvr_device *device,
-   const struct pvr_bo *usc_eot_program,
+   const struct pvr_suballoc_bo *usc_eot_program,
    uint32_t usc_temp_count,
    struct pvr_pds_upload *const pds_upload_out)
 {
@@ -607,7 +599,7 @@ static VkResult pvr_pds_pixel_event_program_create_and_upload(
    VkResult result;
 
    pvr_pds_setup_doutu(&program.task_control,
-                       usc_eot_program->vma->dev_addr.addr,
+                       usc_eot_program->dev_addr.addr,
                        usc_temp_count,
                        PVRX(PDSINST_DOUTU_SAMPLE_RATE_INSTANCE),
                        false);
@@ -809,7 +801,7 @@ pvr_spm_init_eot_state(struct pvr_device *device,
       usc_temp_count,
       &pds_eot_program);
    if (result != VK_SUCCESS) {
-      pvr_bo_free(device, spm_eot_state->usc_eot_program);
+      pvr_bo_suballoc_free(spm_eot_state->usc_eot_program);
       return result;
    }
 
@@ -824,8 +816,8 @@ pvr_spm_init_eot_state(struct pvr_device *device,
 void pvr_spm_finish_eot_state(struct pvr_device *device,
                               struct pvr_spm_eot_state *spm_eot_state)
 {
-   pvr_bo_free(device, spm_eot_state->pixel_event_program_data_upload);
-   pvr_bo_free(device, spm_eot_state->usc_eot_program);
+   pvr_bo_suballoc_free(spm_eot_state->pixel_event_program_data_upload);
+   pvr_bo_suballoc_free(spm_eot_state->usc_eot_program);
 }
 
 static VkFormat pvr_get_format_from_dword_count(uint32_t dword_count)
@@ -1133,7 +1125,7 @@ err_free_consts_buffer:
 void pvr_spm_finish_bgobj_state(struct pvr_device *device,
                                 struct pvr_spm_bgobj_state *spm_bgobj_state)
 {
-   pvr_bo_free(device, spm_bgobj_state->pds_texture_data_upload);
+   pvr_bo_suballoc_free(spm_bgobj_state->pds_texture_data_upload);
    pvr_bo_free(device, spm_bgobj_state->consts_buffer);
 }
 

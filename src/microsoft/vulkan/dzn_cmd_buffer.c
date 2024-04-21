@@ -1134,23 +1134,6 @@ dzn_CmdPipelineBarrier2(VkCommandBuffer commandBuffer,
       const VkImageSubresourceRange *range = &ibarrier->subresourceRange;
       VK_FROM_HANDLE(dzn_image, image, ibarrier->image);
 
-      if (image->mem->swapchain_res != image->res) {
-         /* We use placed resource's simple model, in which only one resource
-          * pointing to a given heap is active at a given time. To make the
-          * resource active we need to add an aliasing barrier.
-          */
-         D3D12_RESOURCE_BARRIER aliasing_barrier = {
-            .Type = D3D12_RESOURCE_BARRIER_TYPE_ALIASING,
-            .Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE,
-            .Aliasing = {
-               .pResourceBefore = NULL,
-               .pResourceAfter = image->res,
-            },
-         };
-
-         ID3D12GraphicsCommandList1_ResourceBarrier(cmdbuf->cmdlist, 1, &aliasing_barrier);
-      }
-
       VkImageLayout old_layout = ibarrier->oldLayout;
       VkImageLayout new_layout = ibarrier->newLayout;
       if ((image->vk.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) &&
@@ -5376,9 +5359,9 @@ dzn_CmdBindIndexBuffer(VkCommandBuffer commandBuffer,
 }
 
 VKAPI_ATTR void VKAPI_CALL
-dzn_CmdResetEvent(VkCommandBuffer commandBuffer,
-                  VkEvent event,
-                  VkPipelineStageFlags stageMask)
+dzn_CmdResetEvent2(VkCommandBuffer commandBuffer,
+                   VkEvent event,
+                   VkPipelineStageFlags2 stageMask)
 {
    VK_FROM_HANDLE(dzn_cmd_buffer, cmdbuf, commandBuffer);
    VK_FROM_HANDLE(dzn_event, evt, event);
@@ -5388,9 +5371,9 @@ dzn_CmdResetEvent(VkCommandBuffer commandBuffer,
 }
 
 VKAPI_ATTR void VKAPI_CALL
-dzn_CmdSetEvent(VkCommandBuffer commandBuffer,
-                VkEvent event,
-                VkPipelineStageFlags stageMask)
+dzn_CmdSetEvent2(VkCommandBuffer commandBuffer,
+                 VkEvent event,
+                 const VkDependencyInfo *pDependencyInfo)
 {
    VK_FROM_HANDLE(dzn_cmd_buffer, cmdbuf, commandBuffer);
    VK_FROM_HANDLE(dzn_event, evt, event);
@@ -5400,17 +5383,10 @@ dzn_CmdSetEvent(VkCommandBuffer commandBuffer,
 }
 
 VKAPI_ATTR void VKAPI_CALL
-dzn_CmdWaitEvents(VkCommandBuffer commandBuffer,
-                  uint32_t eventCount,
-                  const VkEvent *pEvents,
-                  VkPipelineStageFlags srcStageMask,
-                  VkPipelineStageFlags dstStageMask,
-                  uint32_t memoryBarrierCount,
-                  const VkMemoryBarrier *pMemoryBarriers,
-                  uint32_t bufferMemoryBarrierCount,
-                  const VkBufferMemoryBarrier *pBufferMemoryBarriers,
-                  uint32_t imageMemoryBarrierCount,
-                  const VkImageMemoryBarrier *pImageMemoryBarriers)
+dzn_CmdWaitEvents2(VkCommandBuffer commandBuffer,
+                   uint32_t eventCount,
+                   const VkEvent *pEvents,
+                   const VkDependencyInfo *pDependencyInfo)
 {
    VK_FROM_HANDLE(dzn_cmd_buffer, cmdbuf, commandBuffer);
 
@@ -5462,12 +5438,9 @@ dzn_CmdWaitEvents(VkCommandBuffer commandBuffer,
          ID3D12GraphicsCommandList1_ResourceBarrier(cmdbuf->cmdlist, 1, &barrier);
       }
    }
-   cmdbuf->vk.base.device->dispatch_table.CmdPipelineBarrier(
+   cmdbuf->vk.base.device->dispatch_table.CmdPipelineBarrier2(
       vk_command_buffer_to_handle(&cmdbuf->vk),
-      srcStageMask, dstStageMask, 0,
-      memoryBarrierCount, pMemoryBarriers,
-      bufferMemoryBarrierCount, pBufferMemoryBarriers,
-      imageMemoryBarrierCount, pImageMemoryBarriers);
+      pDependencyInfo);
 }
 
 VKAPI_ATTR void VKAPI_CALL

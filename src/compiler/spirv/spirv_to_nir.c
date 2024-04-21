@@ -5827,7 +5827,7 @@ spirv_to_nir_type_ray_query_intrinsic(struct vtn_builder *b,
 static void
 ray_query_load_intrinsic_create(struct vtn_builder *b, SpvOp opcode,
                                 const uint32_t *w, nir_ssa_def *src0,
-                                nir_ssa_def *src1)
+                                bool committed)
 {
    struct ray_query_value value =
       spirv_to_nir_type_ray_query_intrinsic(b, opcode);
@@ -5843,8 +5843,9 @@ ray_query_load_intrinsic_create(struct vtn_builder *b, SpvOp opcode,
             nir_build_rq_load(&b->nb,
                               glsl_get_vector_elements(elem_type),
                               glsl_get_bit_size(elem_type),
-                              src0, src1,
+                              src0,
                               .ray_query_value = value.nir_value,
+                              .committed = committed,
                               .column = i);
       }
 
@@ -5856,8 +5857,9 @@ ray_query_load_intrinsic_create(struct vtn_builder *b, SpvOp opcode,
                        nir_rq_load(&b->nb,
                                    glsl_get_vector_elements(value.glsl_type),
                                    glsl_get_bit_size(value.glsl_type),
-                                   src0, src1,
-                                   .ray_query_value = value.nir_value));
+                                   src0,
+                                   .ray_query_value = value.nir_value,
+                                   .committed = committed));
    }
 }
 
@@ -5912,7 +5914,7 @@ vtn_handle_ray_query_intrinsic(struct vtn_builder *b, SpvOp opcode,
    //case SpvOpRayQueryGetIntersectionTriangleVertexPositionsKHR:
       ray_query_load_intrinsic_create(b, opcode, w,
                                       vtn_ssa_value(b, w[3])->def,
-                                      nir_i2b(&b->nb, vtn_ssa_value(b, w[4])->def));
+                                      vtn_constant_uint(b, w[4]));
       break;
 
    case SpvOpRayQueryGetRayTMinKHR:
@@ -5923,7 +5925,7 @@ vtn_handle_ray_query_intrinsic(struct vtn_builder *b, SpvOp opcode,
       ray_query_load_intrinsic_create(b, opcode, w,
                                       vtn_ssa_value(b, w[3])->def,
                                       /* Committed value is ignored for these */
-                                      nir_imm_bool(&b->nb, false));
+                                      false);
       break;
 
    default:

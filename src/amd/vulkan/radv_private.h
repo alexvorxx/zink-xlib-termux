@@ -1279,7 +1279,8 @@ enum radv_dynamic_state_bits {
    RADV_DYNAMIC_DISCARD_RECTANGLE_ENABLE = 1ull << 46,
    RADV_DYNAMIC_DISCARD_RECTANGLE_MODE = 1ull << 47,
    RADV_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE = 1ull << 48,
-   RADV_DYNAMIC_ALL = (1ull << 49) - 1,
+   RADV_DYNAMIC_SAMPLE_LOCATIONS_ENABLE = 1ull << 49,
+   RADV_DYNAMIC_ALL = (1ull << 50) - 1,
 };
 
 enum radv_cmd_dirty_bits {
@@ -1334,16 +1335,17 @@ enum radv_cmd_dirty_bits {
    RADV_CMD_DIRTY_DYNAMIC_DISCARD_RECTANGLE_ENABLE = 1ull << 46,
    RADV_CMD_DIRTY_DYNAMIC_DISCARD_RECTANGLE_MODE = 1ull << 47,
    RADV_CMD_DIRTY_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE = 1ull << 48,
-   RADV_CMD_DIRTY_DYNAMIC_ALL = (1ull << 49) - 1,
-   RADV_CMD_DIRTY_PIPELINE = 1ull << 49,
-   RADV_CMD_DIRTY_INDEX_BUFFER = 1ull << 50,
-   RADV_CMD_DIRTY_FRAMEBUFFER = 1ull << 51,
-   RADV_CMD_DIRTY_VERTEX_BUFFER = 1ull << 52,
-   RADV_CMD_DIRTY_STREAMOUT_BUFFER = 1ull << 53,
-   RADV_CMD_DIRTY_GUARDBAND = 1ull << 54,
-   RADV_CMD_DIRTY_RBPLUS = 1ull << 55,
-   RADV_CMD_DIRTY_NGG_QUERY = 1ull << 56,
-   RADV_CMD_DIRTY_OCCLUSION_QUERY = 1ull << 57,
+   RADV_CMD_DIRTY_DYNAMIC_SAMPLE_LOCATIONS_ENABLE = 1ull << 49,
+   RADV_CMD_DIRTY_DYNAMIC_ALL = (1ull << 50) - 1,
+   RADV_CMD_DIRTY_PIPELINE = 1ull << 50,
+   RADV_CMD_DIRTY_INDEX_BUFFER = 1ull << 51,
+   RADV_CMD_DIRTY_FRAMEBUFFER = 1ull << 52,
+   RADV_CMD_DIRTY_VERTEX_BUFFER = 1ull << 53,
+   RADV_CMD_DIRTY_STREAMOUT_BUFFER = 1ull << 54,
+   RADV_CMD_DIRTY_GUARDBAND = 1ull << 55,
+   RADV_CMD_DIRTY_RBPLUS = 1ull << 56,
+   RADV_CMD_DIRTY_NGG_QUERY = 1ull << 57,
+   RADV_CMD_DIRTY_OCCLUSION_QUERY = 1ull << 58,
 };
 
 enum radv_cmd_flush_bits {
@@ -1581,7 +1583,6 @@ enum rgp_flush_bits {
 
 struct radv_multisample_state {
    bool sample_shading_enable;
-   bool uses_user_sample_locations;
    float min_sample_shading;
 };
 
@@ -1954,9 +1955,11 @@ struct radv_ps_epilog_state
 };
 
 struct radv_ps_epilog_key radv_generate_ps_epilog_key(const struct radv_device *device,
-                                                      const struct radv_graphics_pipeline *pipeline,
                                                       const struct radv_ps_epilog_state *state,
                                                       bool disable_mrt_compaction);
+
+bool radv_needs_null_export_workaround(const struct radv_device *device,
+                                       const struct radv_shader *ps, unsigned custom_blend_mode);
 
 void radv_cmd_buffer_reset_rendering(struct radv_cmd_buffer *cmd_buffer);
 bool radv_cmd_buffer_upload_alloc_aligned(struct radv_cmd_buffer *cmd_buffer, unsigned size,
@@ -2232,7 +2235,6 @@ struct radv_graphics_pipeline {
    bool uses_drawid;
    bool uses_baseinstance;
 
-   bool need_null_export_workaround;
    /* Whether the pipeline forces per-vertex VRS (GFX10.3+). */
    bool force_vrs_per_vertex;
 
@@ -2478,7 +2480,7 @@ bool radv_is_colorbuffer_format_supported(const struct radv_physical_device *pde
 bool radv_dcc_formats_compatible(enum amd_gfx_level gfx_level, VkFormat format1, VkFormat format2,
                                  bool *sign_reinterpret);
 bool radv_is_atomic_format_supported(VkFormat format);
-bool radv_device_supports_etc(struct radv_physical_device *physical_device);
+bool radv_device_supports_etc(const struct radv_physical_device *physical_device);
 
 static const VkImageUsageFlags RADV_IMAGE_USAGE_WRITE_BITS =
    VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |

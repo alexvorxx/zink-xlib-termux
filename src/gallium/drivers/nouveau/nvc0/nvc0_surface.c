@@ -1767,10 +1767,16 @@ nvc0_blitter_destroy(struct nvc0_screen *screen)
          struct nvc0_program *prog = blitter->fp[i][m];
          if (prog) {
             nvc0_program_destroy(NULL, prog);
-            FREE((void *)prog->pipe.tokens);
+            ralloc_free((void *)prog->pipe.ir.nir);
             FREE(prog);
          }
       }
+   }
+   if (blitter->vp) {
+      struct nvc0_program *prog = blitter->vp;
+      nvc0_program_destroy(NULL, prog);
+      ralloc_free((void *)prog->pipe.ir.nir);
+      FREE(prog);
    }
 
    mtx_destroy(&blitter->mutex);

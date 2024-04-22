@@ -3217,10 +3217,10 @@ agx_build_bg_eot(struct agx_batch *batch, bool store, bool partial_render)
    struct asahi_bg_eot ret = {.usc = t.gpu};
 
    agx_pack(&ret.counts, COUNTS, cfg) {
-      cfg.uniforms = shader->info.push_count;
-      cfg.preshader_gprs = shader->info.nr_preamble_gprs;
-      cfg.texture_states = nr_tex;
-      cfg.sampler_states =
+      cfg.uniform_register_count = shader->info.push_count;
+      cfg.preshader_register_count = shader->info.nr_preamble_gprs;
+      cfg.texture_state_register_count = nr_tex;
+      cfg.sampler_state_register_count =
          agx_translate_sampler_state_count(needs_sampler ? 1 : 0, false);
 
       if (!store)

@@ -646,7 +646,7 @@ get_nir_shader(struct st_context *st, struct gl_program *prog, bool is_draw)
    const struct nir_shader_compiler_options *options =
       is_draw ? &draw_nir_options : st_get_nir_compiler_options(st, prog->info.stage);
 
-   if (is_draw) {
+   if (is_draw && (!prog->shader_program || prog->shader_program->data->LinkStatus != LINKING_SKIPPED)) {
       assert(prog->base_serialized_nir);
       blob_reader_init(&blob_reader, prog->base_serialized_nir, prog->base_serialized_nir_size);
    } else {

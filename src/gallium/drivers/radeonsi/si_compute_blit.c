@@ -721,7 +721,7 @@ void si_init_compute_blit_functions(struct si_context *sctx)
    sctx->b.clear_buffer = si_pipe_clear_buffer;
 }
 
-static bool si_should_blit_clamp_to_edge(const struct pipe_blit_info *info, unsigned coord_mask)
+bool si_should_blit_clamp_to_edge(const struct pipe_blit_info *info, unsigned coord_mask)
 {
    return util_is_box_out_of_bounds(&info->src.box, coord_mask, info->src.resource->width0,
                                     info->src.resource->height0, info->src.level);

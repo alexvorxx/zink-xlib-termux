@@ -372,6 +372,13 @@ static void si_destroy_context(struct pipe_context *context)
       _mesa_hash_table_u64_destroy(sctx->cs_blit_shaders);
    }
 
+   if (sctx->ps_resolve_shaders) {
+      hash_table_u64_foreach(sctx->ps_resolve_shaders, entry) {
+         context->delete_fs_state(context, entry.data);
+      }
+      _mesa_hash_table_u64_destroy(sctx->ps_resolve_shaders);
+   }
+
    FREE(sctx);
 }
 
@@ -866,6 +873,10 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
 
    sctx->cs_blit_shaders = _mesa_hash_table_u64_create(NULL);
    if (!sctx->cs_blit_shaders)
+      goto fail;
+
+   sctx->ps_resolve_shaders = _mesa_hash_table_u64_create(NULL);
+   if (!sctx->ps_resolve_shaders)
       goto fail;
 
    return &sctx->b;

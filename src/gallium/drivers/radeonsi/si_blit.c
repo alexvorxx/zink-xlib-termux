@@ -1257,8 +1257,66 @@ void si_gfx_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
    if (unlikely(sctx->sqtt_enabled))
       sctx->sqtt_next_event = EventCmdBlitImage;
 
+   /* Use a custom MSAA resolving pixel shader. */
+   void *fs = NULL;
+   if (!util_format_is_depth_or_stencil(info->dst.resource->format) &&
+       !util_format_is_depth_or_stencil(info->src.resource->format) &&
+       !util_format_is_pure_integer(info->dst.format) &&
+       info->dst.resource->nr_samples <= 1 &&
+       info->src.resource->nr_samples >= 2 &&
+       !info->sample0_only &&
+       (info->filter == PIPE_TEX_FILTER_NEAREST ||
+        /* No scaling */
+        (info->dst.box.width == abs(info->src.box.width) &&
+         info->dst.box.height == abs(info->src.box.height)))) {
+      union si_resolve_ps_key options;
+      options.key = 0;
+
+      /* LLVM is slower on GFX10.3 and older because it doesn't form VMEM clauses and it's more
+       * difficult to force them with optimization barriers when FMASK is used.
+       */
+      options.use_aco = true;
+      options.src_is_array = info->src.resource->target == PIPE_TEXTURE_1D_ARRAY ||
+                             info->src.resource->target == PIPE_TEXTURE_2D_ARRAY ||
+                             info->src.resource->target == PIPE_TEXTURE_CUBE ||
+                             info->src.resource->target == PIPE_TEXTURE_CUBE_ARRAY;
+      options.log_samples = util_logbase2(info->src.resource->nr_samples);
+      options.last_dst_channel = util_format_get_last_component(info->dst.format);
+      options.last_src_channel = util_format_get_last_component(info->src.format);
+      options.last_src_channel = MIN2(options.last_src_channel, options.last_dst_channel);
+      options.x_clamp_to_edge = si_should_blit_clamp_to_edge(info, BITFIELD_BIT(0));
+      options.y_clamp_to_edge = si_should_blit_clamp_to_edge(info, BITFIELD_BIT(1));
+      options.a16 = sctx->gfx_level >= GFX9 && util_is_box_sint16(&info->dst.box) &&
+                    util_is_box_sint16(&info->src.box);
+      unsigned max_dst_chan_size = util_format_get_max_channel_size(info->dst.format);
+      unsigned max_src_chan_size = util_format_get_max_channel_size(info->src.format);
+
+      if (options.use_aco && util_format_is_float(info->dst.format) && max_dst_chan_size == 32) {
+         /* TODO: ACO doesn't meet precision expectations of this test when the destination format
+          * is R32G32B32A32_FLOAT, the source format is R8G8B8A8_UNORM, and the resolving math uses
+          * FP16. It's theoretically arguable whether FP16 is legal in this case. LLVM passes
+          * the test.
+          *
+          * piglit/bin/copyteximage CUBE -samples=2 -auto
+          */
+         options.d16 = 0;
+      } else {
+         /* Resolving has precision issues all the way down to R11G11B10_FLOAT. */
+         options.d16 = ((!options.use_aco && !sctx->screen->use_aco && sctx->gfx_level >= GFX8) ||
+                        /* ACO doesn't support D16 on GFX8 */
+                        ((options.use_aco || sctx->screen->use_aco) && sctx->gfx_level >= GFX9)) &&
+                       MIN2(max_dst_chan_size, max_src_chan_size) <= 10;
+      }
+
+      fs = _mesa_hash_table_u64_search(sctx->ps_resolve_shaders, options.key);
+      if (!fs) {
+         fs = si_create_resolve_ps(sctx, &options);
+         _mesa_hash_table_u64_insert(sctx->ps_resolve_shaders, options.key, fs);
+      }
+   }
+
    si_blitter_begin(sctx, SI_BLIT | (info->render_condition_enable ? 0 : SI_DISABLE_RENDER_COND));
-   util_blitter_blit(sctx->blitter, info, NULL);
+   util_blitter_blit(sctx->blitter, info, fs);
    si_blitter_end(sctx);
 }
 

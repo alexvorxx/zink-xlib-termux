@@ -994,6 +994,7 @@ struct si_context {
    void *cs_dcc_retile[32];
    void *cs_fmask_expand[3][2]; /* [log2(samples)-1][is_array] */
    struct hash_table_u64 *cs_blit_shaders;
+   struct hash_table_u64 *ps_resolve_shaders;
    struct si_screen *screen;
    struct util_debug_callback debug;
    struct ac_llvm_compiler *compiler; /* only non-threaded compilation */
@@ -1483,6 +1484,7 @@ void si_destroy_compute(struct si_compute *program);
 
 unsigned si_get_flush_flags(struct si_context *sctx, enum si_coherency coher,
                             enum si_cache_policy cache_policy);
+bool si_should_blit_clamp_to_edge(const struct pipe_blit_info *info, unsigned coord_mask);
 void si_launch_grid_internal_ssbos(struct si_context *sctx, struct pipe_grid_info *info,
                                    void *shader, unsigned flags, enum si_coherency coher,
                                    unsigned num_buffers, const struct pipe_shader_buffer *buffers,
@@ -1676,9 +1678,23 @@ union si_compute_blit_shader_key {
    uint64_t key;
 };
 
-void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_shader_key *options);
+union si_resolve_ps_key {
+   struct {
+      bool use_aco:1;
+      bool src_is_array:1;
+      uint8_t log_samples:2;
+      uint8_t last_src_channel:2; /* this shouldn't be greater than last_dst_channel */
+      uint8_t last_dst_channel:2;
+      bool x_clamp_to_edge:1;
+      bool y_clamp_to_edge:1;
+      bool a16:1;
+      bool d16:1;
+   };
+   uint64_t key;
+};
 
-/* si_shaderlib_nir.c */
+void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_shader_key *options);
+void *si_create_resolve_ps(struct si_context *sctx, const union si_resolve_ps_key *options);
 void *si_get_blitter_vs(struct si_context *sctx, enum blitter_attrib_type type,
                         unsigned num_layers);
 void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_per_thread,

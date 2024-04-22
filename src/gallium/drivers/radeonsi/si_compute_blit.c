@@ -1043,6 +1043,9 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    struct si_texture *ssrc = (struct si_texture *)info->src.resource;
    bool is_3d_tiling = sdst->surface.thick_tiling;
    unsigned dst_samples = MAX2(1, sdst->buffer.b.b.nr_samples);
+   unsigned src_samples = MAX2(1, ssrc->buffer.b.b.nr_samples);
+   bool sample0_only = src_samples >= 2 && dst_samples == 1 &&
+                       (info->sample0_only || util_format_is_pure_integer(info->dst.format));
    /* Get the channel sizes. */
    unsigned max_dst_chan_size = util_format_get_max_channel_size(info->dst.format);
    unsigned max_src_chan_size = util_format_get_max_channel_size(info->src.format);
@@ -1271,10 +1274,9 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
                        info->dst.resource->target == PIPE_TEXTURE_2D_ARRAY ||
                        info->dst.resource->target == PIPE_TEXTURE_CUBE_ARRAY;
    /* Resolving integer formats only copies sample 0. log2_samples is then unused. */
-   options.sample0_only = options.src_is_msaa && !options.dst_is_msaa &&
-                          util_format_is_pure_integer(info->src.format);
-   unsigned num_samples = MAX2(info->src.resource->nr_samples, info->dst.resource->nr_samples);
-   options.log2_samples = options.sample0_only ? 0 : util_logbase2(num_samples);
+   options.sample0_only = sample0_only;
+   unsigned num_samples = MAX2(src_samples, dst_samples);
+   options.log2_samples = sample0_only ? 0 : util_logbase2(num_samples);
    options.xy_clamp_to_edge = si_should_blit_clamp_xy(info);
    options.flip_x = info->src.box.width < 0;
    options.flip_y = info->src.box.height < 0;

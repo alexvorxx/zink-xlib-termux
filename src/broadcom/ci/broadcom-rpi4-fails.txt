@@ -236,7 +236,6 @@ spec@arb_texture_rg@texwrap formats-float,Fail
 spec@arb_texture_rg@texwrap formats-float@GL_R32F- NPOT,Fail
 spec@arb_texture_rg@texwrap formats-float@GL_RG32F- NPOT,Fail
 spec@arb_texture_storage@texture-storage@cube array texture,Fail
-spec@arb_texture_view@rendering-formats,Crash
 spec@egl 1.4@eglterminate then unbind context,Fail
 spec@egl_khr_gl_image@egl_khr_gl_renderbuffer_image-clear-shared-image gl_depth_component24,Fail
 spec@egl_khr_gl_image@egl_khr_gl_renderbuffer_image-clear-shared-image gl_rgba,Fail
@@ -441,6 +440,7 @@ spec@!opengl 1.1@polygon-mode-offset@config 6: Expected white pixel on top edge,
 # rendering
 spec@!opengl 3.0@required-texture-attachment-formats,Fail
 spec@!opengl 3.1@required-texture-attachment-formats,Fail
+spec@arb_texture_view@rendering-formats,Crash
 
 # OpenGL 3.x requires 8 RT (MAX_DRAW_BUFFERS)/ color attachments (MAX_COLOR_ATTACHMENTS)
 spec@!opengl 3.0@bindfragdata-link-error,Fail

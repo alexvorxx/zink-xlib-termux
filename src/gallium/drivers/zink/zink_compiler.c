@@ -2660,25 +2660,26 @@ assign_producer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reser
       return;
 
    default:
-      if (var->data.patch) {
-         assert(slot >= VARYING_SLOT_PATCH0);
-         slot -= VARYING_SLOT_PATCH0;
-      }
-      if (slot_map[slot] == 0xff) {
-         assert(*reserved < MAX_VARYING);
-         unsigned num_slots;
-         if (nir_is_arrayed_io(var, stage))
-            num_slots = glsl_count_vec4_slots(glsl_get_array_element(var->type), false, false);
-         else
-            num_slots = glsl_count_vec4_slots(var->type, false, false);
-         assert(*reserved + num_slots <= MAX_VARYING);
-         for (unsigned i = 0; i < num_slots; i++)
-            slot_map[slot + i] = (*reserved)++;
-      }
-      slot = slot_map[slot];
-      assert(slot < MAX_VARYING);
-      var->data.driver_location = slot;
+      break;
    }
+   if (var->data.patch) {
+      assert(slot >= VARYING_SLOT_PATCH0);
+      slot -= VARYING_SLOT_PATCH0;
+   }
+   unsigned num_slots;
+   if (nir_is_arrayed_io(var, stage))
+      num_slots = glsl_count_vec4_slots(glsl_get_array_element(var->type), false, false);
+   else
+      num_slots = glsl_count_vec4_slots(var->type, false, false);
+   if (slot_map[slot] == 0xff) {
+      assert(*reserved + num_slots <= MAX_VARYING);
+      assert(*reserved < MAX_VARYING);
+      for (unsigned i = 0; i < num_slots; i++)
+         slot_map[slot + i] = (*reserved)++;
+   }
+   slot = slot_map[slot];
+   assert(slot < MAX_VARYING);
+   var->data.driver_location = slot;
 }
 
 ALWAYS_INLINE static bool

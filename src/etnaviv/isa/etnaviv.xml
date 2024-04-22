@@ -153,6 +153,11 @@ SPDX-License-Identifier: MIT
 		<map name="COND">src->cond</map>
 		<map name="RMODE">src->rounding</map>
 		<map name="SAT">src->sat</map>
+		<map name="PMODE">!src->pmode</map>
+		<map name="SKPHP">src->skphp</map>
+		<map name="DENORM">src->denorm</map>
+		<map name="LOCAL">src->local</map>
+		<map name="LEFT_SHIFT">src->left_shift</map>
 		<map name="DST_USE">src->dst.use</map>
 		<map name="DST">&amp;src->dst</map>
 		<map name="DST_FULL">src->dst_full</map>
@@ -176,13 +181,6 @@ SPDX-License-Identifier: MIT
 		<map name="TEX_ID">src->tex.id</map>
 		<map name="TEX_SWIZ">src->tex.swiz</map>
 		<map name="TARGET">src->imm</map>
-
-		<!-- sane defaults -->
-		<map name="PMODE">1</map>
-		<map name="SKPHP">0</map>
-		<map name="LOCAL">0</map>
-		<map name="DENORM">0</map>
-		<map name="LEFT_SHIFT">0</map>
 	</encode>
 </bitset>
 

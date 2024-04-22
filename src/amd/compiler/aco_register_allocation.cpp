@@ -54,45 +54,6 @@ struct assignment {
    }
 };
 
-struct ra_ctx {
-
-   Program* program;
-   Block* block = NULL;
-   std::vector<assignment> assignments;
-   std::vector<std::unordered_map<unsigned, Temp>> renames;
-   std::vector<uint32_t> loop_header;
-   std::unordered_map<unsigned, Temp> orig_names;
-   std::unordered_map<unsigned, Instruction*> vectors;
-   std::unordered_map<unsigned, Instruction*> split_vectors;
-   aco_ptr<Instruction> pseudo_dummy;
-   aco_ptr<Instruction> phi_dummy;
-   uint16_t max_used_sgpr = 0;
-   uint16_t max_used_vgpr = 0;
-   uint16_t sgpr_limit;
-   uint16_t vgpr_limit;
-   std::bitset<512> war_hint;
-
-   uint16_t sgpr_bounds;
-   uint16_t vgpr_bounds;
-   uint16_t num_linear_vgprs;
-
-   ra_test_policy policy;
-
-   ra_ctx(Program* program_, ra_test_policy policy_)
-       : program(program_), assignments(program->peekAllocationId()),
-         renames(program->blocks.size()), policy(policy_)
-   {
-      pseudo_dummy.reset(create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO, 0, 0));
-      phi_dummy.reset(create_instruction(aco_opcode::p_linear_phi, Format::PSEUDO, 0, 0));
-      sgpr_limit = get_addr_sgpr_from_waves(program, program->min_waves);
-      vgpr_limit = get_addr_vgpr_from_waves(program, program->min_waves);
-
-      sgpr_bounds = program->max_reg_demand.sgpr;
-      vgpr_bounds = program->max_reg_demand.vgpr;
-      num_linear_vgprs = 0;
-   }
-};
-
 /* Iterator type for making PhysRegInterval compatible with range-based for */
 struct PhysRegIterator {
    using difference_type = int;
@@ -122,6 +83,47 @@ struct PhysRegIterator {
    bool operator!=(PhysRegIterator oth) const { return reg != oth.reg; }
 
    bool operator<(PhysRegIterator oth) const { return reg < oth.reg; }
+};
+
+struct ra_ctx {
+
+   Program* program;
+   Block* block = NULL;
+   std::vector<assignment> assignments;
+   std::vector<std::unordered_map<unsigned, Temp>> renames;
+   std::vector<uint32_t> loop_header;
+   std::unordered_map<unsigned, Temp> orig_names;
+   std::unordered_map<unsigned, Instruction*> vectors;
+   std::unordered_map<unsigned, Instruction*> split_vectors;
+   aco_ptr<Instruction> pseudo_dummy;
+   aco_ptr<Instruction> phi_dummy;
+   uint16_t max_used_sgpr = 0;
+   uint16_t max_used_vgpr = 0;
+   uint16_t sgpr_limit;
+   uint16_t vgpr_limit;
+   std::bitset<512> war_hint;
+   PhysRegIterator rr_sgpr_it;
+   PhysRegIterator rr_vgpr_it;
+
+   uint16_t sgpr_bounds;
+   uint16_t vgpr_bounds;
+   uint16_t num_linear_vgprs;
+
+   ra_test_policy policy;
+
+   ra_ctx(Program* program_, ra_test_policy policy_)
+       : program(program_), assignments(program->peekAllocationId()),
+         renames(program->blocks.size()), policy(policy_)
+   {
+      pseudo_dummy.reset(create_instruction(aco_opcode::p_parallelcopy, Format::PSEUDO, 0, 0));
+      phi_dummy.reset(create_instruction(aco_opcode::p_linear_phi, Format::PSEUDO, 0, 0));
+      sgpr_limit = get_addr_sgpr_from_waves(program, program->min_waves);
+      vgpr_limit = get_addr_vgpr_from_waves(program, program->min_waves);
+
+      sgpr_bounds = program->max_reg_demand.sgpr;
+      vgpr_bounds = program->max_reg_demand.vgpr;
+      num_linear_vgprs = 0;
+   }
 };
 
 /* Half-open register interval used in "sliding window"-style for-loops */
@@ -895,7 +897,7 @@ update_renames(ra_ctx& ctx, RegisterFile& reg_file,
 std::optional<PhysReg>
 get_reg_simple(ra_ctx& ctx, const RegisterFile& reg_file, DefInfo info)
 {
-   const PhysRegInterval& bounds = info.bounds;
+   PhysRegInterval bounds = info.bounds;
    uint32_t size = info.size;
    uint32_t stride = info.rc.is_subdword() ? DIV_ROUND_UP(info.stride, 4) : info.stride;
    RegClass rc = info.rc;
@@ -910,12 +912,30 @@ get_reg_simple(ra_ctx& ctx, const RegisterFile& reg_file, DefInfo info)
       }
    }
 
+   PhysRegIterator& rr_it = rc.type() == RegType::vgpr ? ctx.rr_vgpr_it : ctx.rr_sgpr_it;
+   if (stride == 1) {
+      if (rr_it != bounds.begin() && bounds.contains(rr_it.reg)) {
+         assert(bounds.begin() < rr_it);
+         assert(rr_it < bounds.end());
+         info.bounds = PhysRegInterval::from_until(rr_it.reg, bounds.hi());
+         std::optional<PhysReg> res = get_reg_simple(ctx, reg_file, info);
+         if (res)
+            return res;
+         bounds = PhysRegInterval::from_until(bounds.lo(), rr_it.reg);
+      }
+   }
+
    auto is_free = [&](PhysReg reg_index)
    { return reg_file[reg_index] == 0 && !ctx.war_hint[reg_index]; };
 
    for (PhysRegInterval reg_win = {bounds.lo(), size}; reg_win.hi() <= bounds.hi();
         reg_win += stride) {
       if (std::all_of(reg_win.begin(), reg_win.end(), is_free)) {
+         if (stride == 1) {
+            PhysRegIterator new_rr_it{PhysReg{reg_win.lo() + size}};
+            if (new_rr_it < bounds.end())
+               rr_it = new_rr_it;
+         }
          adjust_max_used_regs(ctx, rc, reg_win.lo());
          return reg_win.lo();
       }
@@ -2963,6 +2983,8 @@ register_allocation(Program* program, live& live_vars, ra_test_policy policy)
       /* initialize register file */
       RegisterFile register_file = init_reg_file(ctx, live_out_per_block, block);
       ctx.war_hint.reset();
+      ctx.rr_vgpr_it = {PhysReg{256}};
+      ctx.rr_sgpr_it = {PhysReg{0}};
 
       std::vector<aco_ptr<Instruction>> instructions;
       instructions.reserve(block.instructions.size());

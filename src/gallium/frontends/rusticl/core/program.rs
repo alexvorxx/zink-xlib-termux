@@ -549,15 +549,10 @@ impl Program {
         ptrs.to_vec()
     }
 
-    pub fn kernel_signatures(&self, kernel_name: &str) -> HashSet<Vec<spirv::SPIRVKernelArg>> {
-        let build = self.build_info();
-        let devs = build.devs_with_build();
-
-        if devs.is_empty() {
-            return HashSet::new();
-        }
-
-        devs.iter().map(|d| build.args(d, kernel_name)).collect()
+    // TODO: at the moment we do not support compiling programs with different signatures across
+    // devices. If we do in the future, this needs to be properly implemented.
+    pub fn has_unique_kernel_signatures(&self, _kernel_name: &str) -> bool {
+        true
     }
 
     pub fn kernels(&self) -> Vec<String> {

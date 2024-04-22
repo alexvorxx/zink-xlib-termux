@@ -273,7 +273,7 @@ fn create_kernel(
     // CL_INVALID_KERNEL_DEFINITION if the function definition for __kernel function given by
     // kernel_name such as the number of arguments, the argument types are not the same for all
     // devices for which the program executable has been built.
-    if p.kernel_signatures(&name).len() != 1 {
+    if !p.has_unique_kernel_signatures(&name) {
         return Err(CL_INVALID_KERNEL_DEFINITION);
     }
 
@@ -316,7 +316,7 @@ fn create_kernels_in_program(
         // Kernel objects are not created for any __kernel functions in program that do not have the
         // same function definition across all devices for which a program executable has been
         // successfully built.
-        if p.kernel_signatures(&name).len() != 1 {
+        if !p.has_unique_kernel_signatures(&name) {
             continue;
         }
 

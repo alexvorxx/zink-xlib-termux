@@ -88,6 +88,13 @@ agx_ppp_validate(struct agx_ppp_update *ppp, size_t size)
       (ppp)->head += AGX_##T##_LENGTH;                                         \
    } while (0)
 
+#define agx_ppp_push_merged(ppp, T, name, merge)                               \
+   for (uint8_t _tmp[AGX_##T##_LENGTH], it = 1; it;                            \
+        it = 0, agx_ppp_push_merged_blobs(ppp, AGX_##T##_LENGTH,               \
+                                          (uint32_t *)_tmp,                    \
+                                          (uint32_t *)&merge))                 \
+      agx_pack(_tmp, T, name)
+
 ALWAYS_INLINE static struct agx_ppp_update
 agx_new_ppp_update(struct agx_pool *pool, struct AGX_PPP_HEADER present)
 {
@@ -131,4 +138,23 @@ agx_ppp_fini(uint8_t **out, struct agx_ppp_update *ppp)
    };
 
    *out += AGX_PPP_STATE_LENGTH;
+}
+
+static void
+agx_ppp_push_merged_blobs(struct agx_ppp_update *ppp, size_t length,
+                          void *src1_, void *src2_)
+{
+   assert((length & 3) == 0);
+   assert(((uintptr_t)src1_ & 3) == 0);
+   assert(((uintptr_t)src2_ & 3) == 0);
+
+   uint32_t *dst = (uint32_t *)ppp->head;
+   uint32_t *src1 = (uint32_t *)src1_;
+   uint32_t *src2 = (uint32_t *)src2_;
+
+   for (unsigned i = 0; i < (length / 4); ++i) {
+      dst[i] = src1[i] | src2[i];
+   }
+
+   ppp->head += length;
 }

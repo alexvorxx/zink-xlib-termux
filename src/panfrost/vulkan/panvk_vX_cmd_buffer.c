@@ -1896,9 +1896,9 @@ panvk_cmd_begin_rendering_init_fbinfo(struct panvk_cmd_buffer *cmdbuf,
 
       cmdbuf->state.fb.bos[cmdbuf->state.fb.bo_count++] = img->bo;
       fbinfo->zs.view.s =
-         iview && &iview->pview != fbinfo->zs.view.zs ? &iview->pview : NULL;
+         &iview->pview != fbinfo->zs.view.zs ? &iview->pview : NULL;
 
-      if (iview && att->loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR) {
+      if (att->loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR) {
          fbinfo->zs.clear.s = true;
          fbinfo->zs.clear_value.stencil = att->clearValue.depthStencil.stencil;
       } else if (att->loadOp == VK_ATTACHMENT_LOAD_OP_LOAD) {

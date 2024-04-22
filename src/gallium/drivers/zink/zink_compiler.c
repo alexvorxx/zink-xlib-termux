@@ -2656,6 +2656,23 @@ assign_track_slot_mask(struct io_slot_map *io, nir_variable *var, unsigned slot,
 }
 
 static void
+assign_slot_io(gl_shader_stage stage, struct io_slot_map *io, nir_variable *var, unsigned slot, unsigned *reserved)
+{
+   unsigned num_slots;
+   if (nir_is_arrayed_io(var, stage))
+      num_slots = glsl_count_vec4_slots(glsl_get_array_element(var->type), false, false);
+   else
+      num_slots = glsl_count_vec4_slots(var->type, false, false);
+   assign_track_slot_mask(io, var, slot, num_slots);
+   if (io->slot_map[slot] != 0xff)
+      return;
+   assert(*reserved + num_slots <= MAX_VARYING);
+   assert(*reserved < MAX_VARYING);
+   for (unsigned i = 0; i < num_slots; i++)
+      io->slot_map[slot + i] = (*reserved)++;
+}
+
+static void
 assign_producer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reserved, struct io_slot_map *io)
 {
    unsigned slot = var->data.location;
@@ -2684,18 +2701,7 @@ assign_producer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reser
       assert(slot >= VARYING_SLOT_PATCH0);
       slot -= VARYING_SLOT_PATCH0;
    }
-   unsigned num_slots;
-   if (nir_is_arrayed_io(var, stage))
-      num_slots = glsl_count_vec4_slots(glsl_get_array_element(var->type), false, false);
-   else
-      num_slots = glsl_count_vec4_slots(var->type, false, false);
-   assign_track_slot_mask(io, var, slot, num_slots);
-   if (io->slot_map[slot] == 0xff) {
-      assert(*reserved + num_slots <= MAX_VARYING);
-      assert(*reserved < MAX_VARYING);
-      for (unsigned i = 0; i < num_slots; i++)
-         io->slot_map[slot + i] = (*reserved)++;
-   }
+   assign_slot_io(stage, io, var, slot, reserved);
    slot = io->slot_map[slot];
    assert(slot < MAX_VARYING);
    var->data.driver_location = slot;
@@ -2747,15 +2753,7 @@ assign_consumer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reser
       if (stage != MESA_SHADER_TESS_CTRL)
          /* dead io */
          return false;
-      unsigned num_slots;
-      if (nir_is_arrayed_io(var, stage))
-         num_slots = glsl_count_vec4_slots(glsl_get_array_element(var->type), false, false);
-      else
-         num_slots = glsl_count_vec4_slots(var->type, false, false);
-      assert(*reserved + num_slots <= MAX_VARYING);
-      assign_track_slot_mask(io, var, slot, num_slots);
-      for (unsigned i = 0; i < num_slots; i++)
-         io->slot_map[slot + i] = (*reserved)++;
+      assign_slot_io(stage, io, var, slot, reserved);
    }
    var->data.driver_location = io->slot_map[slot];
    return true;

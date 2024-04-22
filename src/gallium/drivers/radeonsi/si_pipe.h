@@ -1639,49 +1639,6 @@ void *si_create_dcc_retile_cs(struct si_context *sctx, struct radeon_surf *surf)
 void *gfx9_create_clear_dcc_msaa_cs(struct si_context *sctx, struct si_texture *tex);
 void *si_create_passthrough_tcs(struct si_context *sctx);
 void *si_clear_image_dcc_single_shader(struct si_context *sctx, bool is_msaa, unsigned wg_dim);
-
-#define SI_MAX_COMPUTE_BLIT_LANE_SIZE  16
-#define SI_MAX_COMPUTE_BLIT_SAMPLES    8
-
-union si_compute_blit_shader_key {
-   struct {
-      bool use_aco:1;
-      /* Workgroup settings. */
-      uint8_t wg_dim:2; /* 1, 2, or 3 */
-      bool has_start_xyz:1;
-      /* The size of a block of pixels that a single thread will process. */
-      uint8_t log_lane_width:3;
-      uint8_t log_lane_height:2;
-      uint8_t log_lane_depth:2;
-      /* Declaration modifiers. */
-      bool is_clear:1;
-      bool src_is_1d:1;
-      bool dst_is_1d:1;
-      bool src_is_msaa:1;
-      bool dst_is_msaa:1;
-      bool src_has_z:1;
-      bool dst_has_z:1;
-      bool a16:1;
-      bool d16:1;
-      uint8_t log_samples:2;
-      bool sample0_only:1; /* src is MSAA, dst is not MSAA, log2_samples is ignored */
-      /* Source coordinate modifiers. */
-      bool x_clamp_to_edge:1;
-      bool y_clamp_to_edge:1;
-      bool flip_x:1;
-      bool flip_y:1;
-      /* Output modifiers. */
-      bool sint_to_uint:1;
-      bool uint_to_sint:1;
-      bool dst_is_srgb:1;
-      bool use_integer_one:1;
-      uint8_t last_src_channel:2; /* this shouldn't be greater than last_dst_channel */
-      uint8_t last_dst_channel:2;
-   };
-   uint64_t key;
-};
-
-void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_shader_key *options);
 void *si_get_blitter_vs(struct si_context *sctx, enum blitter_attrib_type type,
                         unsigned num_layers);
 void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_per_thread,

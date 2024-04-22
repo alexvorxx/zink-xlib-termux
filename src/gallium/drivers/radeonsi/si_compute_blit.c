@@ -10,6 +10,7 @@
 #include "util/u_helpers.h"
 #include "util/hash_table.h"
 #include "util/u_pack_color.h"
+#include "ac_nir_meta.h"
 
 /* Determine the cache policy. */
 static enum si_cache_policy get_cache_policy(struct si_context *sctx, enum si_coherency coher,
@@ -1165,7 +1166,7 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    }
 
    /* Check that the lane size fits into the shader key. */
-   static const union si_compute_blit_shader_key max_lane_size = {
+   static const union ac_cs_blit_key max_lane_size = {
       .log_lane_width = ~0,
       .log_lane_height = ~0,
       .log_lane_depth = ~0,
@@ -1487,80 +1488,88 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
    unsigned wg_dim = set_work_size(&grid, block_x, block_y, block_z, width, height, depth);
 
    /* Get the shader key. */
-   union si_compute_blit_shader_key options;
-   options.key = 0;
+   union ac_cs_blit_key key;
+   key.key = 0;
 
    /* Only ACO can form VMEM clauses for image stores, which is a requirement for performance. */
-   options.use_aco = true;
-   options.is_clear = is_clear;
-   options.wg_dim = wg_dim;
-   options.has_start_xyz = start_x || start_y || start_z;
-   options.log_lane_width = util_logbase2(lane_size.x);
-   options.log_lane_height = util_logbase2(lane_size.y);
-   options.log_lane_depth = util_logbase2(lane_size.z);
-   options.dst_is_1d = info->dst.resource->target == PIPE_TEXTURE_1D ||
+   key.use_aco = true;
+   key.is_clear = is_clear;
+   key.wg_dim = wg_dim;
+   key.has_start_xyz = start_x || start_y || start_z;
+   key.log_lane_width = util_logbase2(lane_size.x);
+   key.log_lane_height = util_logbase2(lane_size.y);
+   key.log_lane_depth = util_logbase2(lane_size.z);
+   key.dst_is_1d = info->dst.resource->target == PIPE_TEXTURE_1D ||
                        info->dst.resource->target == PIPE_TEXTURE_1D_ARRAY;
-   options.dst_is_msaa = dst_samples > 1;
-   options.dst_has_z = info->dst.resource->target == PIPE_TEXTURE_3D ||
+   key.dst_is_msaa = dst_samples > 1;
+   key.dst_has_z = info->dst.resource->target == PIPE_TEXTURE_3D ||
                        info->dst.resource->target == PIPE_TEXTURE_CUBE ||
                        info->dst.resource->target == PIPE_TEXTURE_1D_ARRAY ||
                        info->dst.resource->target == PIPE_TEXTURE_2D_ARRAY ||
                        info->dst.resource->target == PIPE_TEXTURE_CUBE_ARRAY;
-   options.last_dst_channel = util_format_get_last_component(info->dst.format);
+   key.last_dst_channel = util_format_get_last_component(info->dst.format);
 
    /* ACO doesn't support D16 on GFX8 */
-   bool has_d16 = sctx->gfx_level >= (options.use_aco || sctx->screen->use_aco ? GFX9 : GFX8);
+   bool has_d16 = sctx->gfx_level >= (key.use_aco || sctx->screen->use_aco ? GFX9 : GFX8);
 
    if (is_clear) {
       assert(dst_samples <= 8);
-      options.log_samples = util_logbase2(dst_samples);
-      options.a16 = sctx->gfx_level >= GFX9 && util_is_box_sint16(&info->dst.box);
-      options.d16 = has_d16 &&
+      key.log_samples = util_logbase2(dst_samples);
+      key.a16 = sctx->gfx_level >= GFX9 && util_is_box_sint16(&info->dst.box);
+      key.d16 = has_d16 &&
                     max_dst_chan_size <= (util_format_is_float(info->dst.format) ||
                                           util_format_is_pure_integer(info->dst.format) ? 16 : 11);
    } else {
-      options.src_is_1d = info->src.resource->target == PIPE_TEXTURE_1D ||
+      key.src_is_1d = info->src.resource->target == PIPE_TEXTURE_1D ||
                           info->src.resource->target == PIPE_TEXTURE_1D_ARRAY;
-      options.src_is_msaa = src_samples > 1;
-      options.src_has_z = info->src.resource->target == PIPE_TEXTURE_3D ||
+      key.src_is_msaa = src_samples > 1;
+      key.src_has_z = info->src.resource->target == PIPE_TEXTURE_3D ||
                           info->src.resource->target == PIPE_TEXTURE_CUBE ||
                           info->src.resource->target == PIPE_TEXTURE_1D_ARRAY ||
                           info->src.resource->target == PIPE_TEXTURE_2D_ARRAY ||
                           info->src.resource->target == PIPE_TEXTURE_CUBE_ARRAY;
       /* Resolving integer formats only copies sample 0. log_samples is then unused. */
-      options.sample0_only = sample0_only;
+      key.sample0_only = sample0_only;
       unsigned num_samples = MAX2(src_samples, dst_samples);
       assert(num_samples <= 8);
-      options.log_samples = sample0_only ? 0 : util_logbase2(num_samples);
-      options.x_clamp_to_edge = si_should_blit_clamp_to_edge(info, BITFIELD_BIT(0));
-      options.y_clamp_to_edge = si_should_blit_clamp_to_edge(info, BITFIELD_BIT(1));
-      options.flip_x = info->src.box.width < 0;
-      options.flip_y = info->src.box.height < 0;
-      options.sint_to_uint = util_format_is_pure_sint(info->src.format) &&
+      key.log_samples = sample0_only ? 0 : util_logbase2(num_samples);
+      key.x_clamp_to_edge = si_should_blit_clamp_to_edge(info, BITFIELD_BIT(0));
+      key.y_clamp_to_edge = si_should_blit_clamp_to_edge(info, BITFIELD_BIT(1));
+      key.flip_x = info->src.box.width < 0;
+      key.flip_y = info->src.box.height < 0;
+      key.sint_to_uint = util_format_is_pure_sint(info->src.format) &&
                              util_format_is_pure_uint(info->dst.format);
-      options.uint_to_sint = util_format_is_pure_uint(info->src.format) &&
+      key.uint_to_sint = util_format_is_pure_uint(info->src.format) &&
                              util_format_is_pure_sint(info->dst.format);
-      options.dst_is_srgb = util_format_is_srgb(info->dst.format);
-      options.last_src_channel = MIN2(util_format_get_last_component(info->src.format),
-                                      options.last_dst_channel);
-      options.use_integer_one = util_format_is_pure_integer(info->dst.format) &&
-                                options.last_src_channel < options.last_dst_channel &&
-                                options.last_dst_channel == 3;
-      options.a16 = sctx->gfx_level >= GFX9 && util_is_box_sint16(&info->dst.box) &&
+      key.dst_is_srgb = util_format_is_srgb(info->dst.format);
+      key.last_src_channel = MIN2(util_format_get_last_component(info->src.format),
+                                      key.last_dst_channel);
+      key.use_integer_one = util_format_is_pure_integer(info->dst.format) &&
+                                key.last_src_channel < key.last_dst_channel &&
+                                key.last_dst_channel == 3;
+      key.a16 = sctx->gfx_level >= GFX9 && util_is_box_sint16(&info->dst.box) &&
                     util_is_box_sint16(&info->src.box);
-      options.d16 = has_d16 &&
+      key.d16 = has_d16 &&
                     /* Blitting FP16 using D16 has precision issues. Resolving has precision
                      * issues all the way down to R11G11B10_FLOAT. */
                     MIN2(max_dst_chan_size, max_src_chan_size) <=
                     (util_format_is_pure_integer(info->dst.format) ?
-                        (options.sint_to_uint || options.uint_to_sint ? 10 : 16) :
+                        (key.sint_to_uint || key.uint_to_sint ? 10 : 16) :
                         (is_resolve ? 10 : 11));
    }
 
-   void *shader = _mesa_hash_table_u64_search(sctx->cs_blit_shaders, options.key);
+   void *shader = _mesa_hash_table_u64_search(sctx->cs_blit_shaders, key.key);
    if (!shader) {
-      shader = si_create_blit_cs(sctx, &options);
-      _mesa_hash_table_u64_insert(sctx->cs_blit_shaders, options.key, shader);
+      struct ac_cs_blit_options options = {
+         .nir_options = sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR,
+                                                             PIPE_SHADER_COMPUTE),
+         .info = &sctx->screen->info,
+         .use_aco = sctx->screen->use_aco,
+         .no_fmask = sctx->screen->debug_flags & DBG(NO_FMASK),
+         .print_key = si_can_dump_shader(sctx->screen, MESA_SHADER_COMPUTE, SI_DUMP_SHADER_KEY),
+      };
+      shader = si_create_shader_state(sctx, ac_create_blit_cs(&options, &key));
+      _mesa_hash_table_u64_insert(sctx->cs_blit_shaders, key.key, shader);
    }
 
    sctx->cs_user_data[0] = (info->src.box.x & 0xffff) | ((info->dst.box.x & 0xffff) << 16);
@@ -1578,7 +1587,7 @@ bool si_compute_blit(struct si_context *sctx, const struct pipe_blit_info *info,
             final_value.f[i] = util_format_linear_to_srgb_float(final_value.f[i]);
       }
 
-      if (options.d16) {
+      if (key.d16) {
          enum pipe_format data_format;
 
          if (util_format_is_pure_uint(info->dst.format))

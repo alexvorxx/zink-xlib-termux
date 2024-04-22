@@ -144,6 +144,9 @@ ac_optimization_barrier_vgpr_array(const struct radeon_info *info, nir_builder *
                                    nir_def **array, unsigned num_elements,
                                    unsigned num_components);
 
+nir_def *
+ac_get_global_ids(nir_builder *b, unsigned num_components, unsigned bit_size);
+
 #ifdef __cplusplus
 }
 #endif

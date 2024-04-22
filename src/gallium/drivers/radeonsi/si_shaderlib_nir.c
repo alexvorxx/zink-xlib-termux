@@ -19,49 +19,11 @@ void *si_create_shader_state(struct si_context *sctx, nir_shader *nir)
    return pipe_shader_from_nir(&sctx->b, nir);
 }
 
-static nir_def *get_global_ids(nir_builder *b, unsigned num_components, unsigned bit_size)
-{
-   unsigned mask = BITFIELD_MASK(num_components);
-
-   nir_def *local_ids = nir_channels(b, nir_load_local_invocation_id(b), mask);
-   nir_def *block_ids = nir_channels(b, nir_load_workgroup_id(b), mask);
-   nir_def *block_size = nir_channels(b, nir_load_workgroup_size(b), mask);
-
-   assert(bit_size == 32 || bit_size == 16);
-   if (bit_size == 16) {
-      local_ids = nir_i2iN(b, local_ids, bit_size);
-      block_ids = nir_i2iN(b, block_ids, bit_size);
-      block_size = nir_i2iN(b, block_size, bit_size);
-   }
-
-   return nir_iadd(b, nir_imul(b, block_ids, block_size), local_ids);
-}
-
 /* unpack_2x16(src, x, y): x = src & 0xffff; y = src >> 16; */
 static void unpack_2x16(nir_builder *b, nir_def *src, nir_def **x, nir_def **y)
 {
    *x = nir_iand_imm(b, src, 0xffff);
    *y = nir_ushr_imm(b, src, 16);
-}
-
-/* unpack_2x16_signed(src, x, y): x = (int32_t)((uint16_t)src); y = src >> 16; */
-static void unpack_2x16_signed(nir_builder *b, unsigned bit_size, nir_def *src, nir_def **x,
-                               nir_def **y)
-{
-   assert(bit_size == 32 || bit_size == 16);
-   *x = nir_unpack_32_2x16_split_x(b, src);
-   *y = nir_unpack_32_2x16_split_y(b, src);
-
-   if (bit_size == 32) {
-      *x = nir_i2i32(b, *x);
-      *y = nir_i2i32(b, *y);
-   }
-}
-
-static nir_def *
-deref_ssa(nir_builder *b, nir_variable *var)
-{
-   return &nir_build_deref_var(b, var)->def;
 }
 
 void *si_create_dcc_retile_cs(struct si_context *sctx, struct radeon_surf *surf)
@@ -85,7 +47,7 @@ void *si_create_dcc_retile_cs(struct si_context *sctx, struct radeon_surf *surf)
    unpack_2x16(&b, nir_channel(&b, user_sgprs, 2), &dst_dcc_pitch, &dst_dcc_height);
 
    /* Get the 2D coordinates. */
-   nir_def *coord = get_global_ids(&b, 2, 32);
+   nir_def *coord = ac_get_global_ids(&b, 2, 32);
    nir_def *zero = nir_imm_int(&b, 0);
 
    /* Multiply the coordinates by the DCC block size (they are DCC block coordinates). */
@@ -128,7 +90,7 @@ void *gfx9_create_clear_dcc_msaa_cs(struct si_context *sctx, struct si_texture *
    clear_value = nir_u2u16(&b, clear_value);
 
    /* Get the 2D coordinates. */
-   nir_def *coord = get_global_ids(&b, 3, 32);
+   nir_def *coord = ac_get_global_ids(&b, 3, 32);
    nir_def *zero = nir_imm_int(&b, 0);
 
    /* Multiply the coordinates by the DCC block size (they are DCC block coordinates). */
@@ -166,7 +128,7 @@ void *si_create_clear_buffer_rmw_cs(struct si_context *sctx)
    b.shader->info.num_ssbos = 1;
 
    /* address = blockID * 64 + threadID; */
-   nir_def *address = get_global_ids(&b, 1, 32);
+   nir_def *address = ac_get_global_ids(&b, 1, 32);
 
    /* address = address * 16; (byte offset, loading one vec4 per thread) */
    address = nir_ishl_imm(&b, address, 4);
@@ -206,416 +168,6 @@ void *si_create_passthrough_tcs(struct si_context *sctx)
    return si_create_shader_state(sctx, tcs);
 }
 
-static nir_def *convert_linear_to_srgb(nir_builder *b, nir_def *input)
-{
-   /* There are small precision differences compared to CB, so the gfx blit will return slightly
-    * different results.
-    */
-   for (unsigned i = 0; i < MIN2(3, input->num_components); i++) {
-      input = nir_vector_insert_imm(b, input,
-                                    nir_format_linear_to_srgb(b, nir_channel(b, input, i)), i);
-   }
-
-   return input;
-}
-
-static nir_def *apply_blit_output_modifiers(nir_builder *b, nir_def *color,
-                                                const union si_compute_blit_shader_key *options)
-{
-   unsigned bit_size = color->bit_size;
-   nir_def *zero = nir_imm_intN_t(b, 0, bit_size);
-
-   if (options->sint_to_uint)
-      color = nir_imax(b, color, zero);
-
-   if (options->uint_to_sint) {
-      color = nir_umin(b, color,
-                       nir_imm_intN_t(b, bit_size == 16 ? INT16_MAX : INT32_MAX,
-                                      bit_size));
-   }
-
-   if (options->dst_is_srgb)
-      color = convert_linear_to_srgb(b, color);
-
-   nir_def *one = options->use_integer_one ? nir_imm_intN_t(b, 1, bit_size) :
-                                             nir_imm_floatN_t(b, 1, bit_size);
-
-   if (options->is_clear) {
-      if (options->last_dst_channel < 3)
-         color = nir_trim_vector(b, color, options->last_dst_channel + 1);
-   } else {
-      assert(options->last_src_channel <= options->last_dst_channel);
-      assert(color->num_components == options->last_src_channel + 1);
-
-      /* Set channels not present in src to 0 or 1. */
-      if (options->last_src_channel < options->last_dst_channel) {
-         color = nir_pad_vector(b, color, options->last_dst_channel + 1);
-
-         for (unsigned chan = options->last_src_channel + 1; chan <= options->last_dst_channel; chan++)
-            color = nir_vector_insert_imm(b, color, chan == 3 ? one : zero, chan);
-      }
-
-      /* Discard channels not present in dst. The hardware fills unstored channels with 0. */
-      if (options->last_dst_channel < options->last_src_channel)
-         color = nir_trim_vector(b, color, options->last_dst_channel + 1);
-   }
-
-   /* Discard channels not present in dst. The hardware fills unstored channels with 0. */
-   if (options->last_dst_channel < 3)
-      color = nir_trim_vector(b, color, options->last_dst_channel + 1);
-
-   return color;
-}
-
-/* The compute blit shader.
- *
- * Implementation details:
- * - Out-of-bounds dst coordinates are not clamped at all. The hw drops
- *   out-of-bounds stores for us.
- * - Out-of-bounds src coordinates are clamped by emulating CLAMP_TO_EDGE using
- *   the image_size NIR intrinsic.
- * - X/Y flipping just does this in the shader: -threadIDs - 1, assuming the starting coordinates
- *   are 1 pixel after the bottom-right corner, e.g. x + width, matching the gallium behavior.
- * - This list doesn't do it justice.
- */
-void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_shader_key *options)
-{
-   if (si_can_dump_shader(sctx->screen, MESA_SHADER_COMPUTE, SI_DUMP_SHADER_KEY)) {
-      fprintf(stderr, "Internal shader: compute_blit\n");
-      fprintf(stderr, "   options.use_aco = %u\n", options->use_aco);
-      fprintf(stderr, "   options.wg_dim = %u\n", options->wg_dim);
-      fprintf(stderr, "   options.has_start_xyz = %u\n", options->has_start_xyz);
-      fprintf(stderr, "   options.log_lane_width = %u\n", options->log_lane_width);
-      fprintf(stderr, "   options.log_lane_height = %u\n", options->log_lane_height);
-      fprintf(stderr, "   options.log_lane_depth = %u\n", options->log_lane_depth);
-      fprintf(stderr, "   options.is_clear = %u\n", options->is_clear);
-      fprintf(stderr, "   options.src_is_1d = %u\n", options->src_is_1d);
-      fprintf(stderr, "   options.dst_is_1d = %u\n", options->dst_is_1d);
-      fprintf(stderr, "   options.src_is_msaa = %u\n", options->src_is_msaa);
-      fprintf(stderr, "   options.dst_is_msaa = %u\n", options->dst_is_msaa);
-      fprintf(stderr, "   options.src_has_z = %u\n", options->src_has_z);
-      fprintf(stderr, "   options.dst_has_z = %u\n", options->dst_has_z);
-      fprintf(stderr, "   options.a16 = %u\n", options->a16);
-      fprintf(stderr, "   options.d16 = %u\n", options->d16);
-      fprintf(stderr, "   options.log_samples = %u\n", options->log_samples);
-      fprintf(stderr, "   options.sample0_only = %u\n", options->sample0_only);
-      fprintf(stderr, "   options.x_clamp_to_edge = %u\n", options->x_clamp_to_edge);
-      fprintf(stderr, "   options.y_clamp_to_edge = %u\n", options->y_clamp_to_edge);
-      fprintf(stderr, "   options.flip_x = %u\n", options->flip_x);
-      fprintf(stderr, "   options.flip_y = %u\n", options->flip_y);
-      fprintf(stderr, "   options.sint_to_uint = %u\n", options->sint_to_uint);
-      fprintf(stderr, "   options.uint_to_sint = %u\n", options->uint_to_sint);
-      fprintf(stderr, "   options.dst_is_srgb = %u\n", options->dst_is_srgb);
-      fprintf(stderr, "   options.use_integer_one = %u\n", options->use_integer_one);
-      fprintf(stderr, "   options.last_src_channel = %u\n", options->last_src_channel);
-      fprintf(stderr, "   options.last_dst_channel = %u\n", options->last_dst_channel);
-      fprintf(stderr, "\n");
-   }
-
-   const nir_shader_compiler_options *nir_options =
-      sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_COMPUTE);
-
-   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, nir_options,
-                                                  "blit_non_scaled_cs");
-   b.shader->info.use_aco_amd = sctx->screen->use_aco ||
-                                (options->use_aco && aco_is_gpu_supported(&sctx->screen->info));
-   b.shader->info.num_images = options->is_clear ? 1 : 2;
-   unsigned image_dst_index = b.shader->info.num_images - 1;
-   if (!options->is_clear && options->src_is_msaa)
-      BITSET_SET(b.shader->info.msaa_images, 0);
-   if (options->dst_is_msaa)
-      BITSET_SET(b.shader->info.msaa_images, image_dst_index);
-   /* The workgroup size varies depending on the tiling layout and blit dimensions. */
-   b.shader->info.workgroup_size_variable = true;
-   b.shader->info.cs.user_data_components_amd =
-      options->is_clear ? (options->d16 ? 6 : 8) : options->has_start_xyz ? 4 : 3;
-
-   const struct glsl_type *img_type[2] = {
-      glsl_image_type(options->src_is_1d ? GLSL_SAMPLER_DIM_1D :
-                      options->src_is_msaa ? GLSL_SAMPLER_DIM_MS : GLSL_SAMPLER_DIM_2D,
-                      options->src_has_z, GLSL_TYPE_FLOAT),
-      glsl_image_type(options->dst_is_1d ? GLSL_SAMPLER_DIM_1D :
-                      options->dst_is_msaa ? GLSL_SAMPLER_DIM_MS : GLSL_SAMPLER_DIM_2D,
-                      options->dst_has_z, GLSL_TYPE_FLOAT),
-   };
-
-   nir_variable *img_src = NULL;
-   if (!options->is_clear) {
-      img_src = nir_variable_create(b.shader, nir_var_uniform, img_type[0], "img0");
-      img_src->data.binding = 0;
-   }
-
-   nir_variable *img_dst = nir_variable_create(b.shader, nir_var_uniform, img_type[1], "img1");
-   img_dst->data.binding = image_dst_index;
-
-   unsigned lane_width = 1 << options->log_lane_width;
-   unsigned lane_height = 1 << options->log_lane_height;
-   unsigned lane_depth = 1 << options->log_lane_depth;
-   unsigned lane_size = lane_width * lane_height * lane_depth;
-   assert(lane_size <= SI_MAX_COMPUTE_BLIT_LANE_SIZE);
-
-   nir_def *zero_lod = nir_imm_intN_t(&b, 0, options->a16 ? 16 : 32);
-
-   /* Instructions. */
-   /* Let's work with 0-based src and dst coordinates (thread IDs) first. */
-   unsigned coord_bit_size = options->a16 ? 16 : 32;
-   nir_def *dst_xyz = get_global_ids(&b, options->wg_dim, coord_bit_size);
-   dst_xyz = nir_pad_vector_imm_int(&b, dst_xyz, 0, 3);
-
-   /* If the blit area is unaligned, we launched extra threads to make it aligned.
-    * Skip those threads here.
-    */
-   nir_if *if_positive = NULL;
-   if (options->has_start_xyz) {
-      nir_def *start_xyz = nir_channel(&b, nir_load_user_data_amd(&b), 3);
-      start_xyz = nir_u2uN(&b, nir_unpack_32_4x8(&b, start_xyz), coord_bit_size);
-      start_xyz = nir_trim_vector(&b, start_xyz, 3);
-
-      dst_xyz = nir_isub(&b, dst_xyz, start_xyz);
-      nir_def *is_positive_xyz = nir_ige_imm(&b, dst_xyz, 0);
-      nir_def *is_positive = nir_iand(&b, nir_channel(&b, is_positive_xyz, 0),
-                                      nir_iand(&b, nir_channel(&b, is_positive_xyz, 1),
-                                               nir_channel(&b, is_positive_xyz, 2)));
-      if_positive = nir_push_if(&b, is_positive);
-   }
-
-   dst_xyz = nir_imul(&b, dst_xyz, nir_imm_ivec3_intN(&b, lane_width, lane_height, lane_depth,
-                                                      coord_bit_size));
-   nir_def *src_xyz = dst_xyz;
-
-   /* Flip src coordinates. */
-   for (unsigned i = 0; i < 2; i++) {
-      if (i ? options->flip_y : options->flip_x) {
-         /* A normal blit loads from (box.x + tid.x) where tid.x = 0..(width - 1).
-          *
-          * A flipped blit sets box.x = width, so we should make tid.x negative to load from
-          * (width - 1)..0.
-          *
-          * Therefore do: x = -x - 1, which becomes (width - 1) to 0 after we add box.x = width.
-          */
-         nir_def *comp = nir_channel(&b, src_xyz, i);
-         comp = nir_iadd_imm(&b, nir_ineg(&b, comp), -(int)(i ? lane_height : lane_width));
-         src_xyz = nir_vector_insert_imm(&b, src_xyz, comp, i);
-      }
-   }
-
-   /* Add box.xyz. */
-   nir_def *base_coord_src = NULL, *base_coord_dst = NULL;
-   unpack_2x16_signed(&b, coord_bit_size, nir_trim_vector(&b, nir_load_user_data_amd(&b), 3),
-                      &base_coord_src, &base_coord_dst);
-   base_coord_dst = nir_iadd(&b, base_coord_dst, dst_xyz);
-   base_coord_src = nir_iadd(&b, base_coord_src, src_xyz);
-
-   /* Coordinates must have 4 channels in NIR. */
-   base_coord_src = nir_pad_vector(&b, base_coord_src, 4);
-   base_coord_dst = nir_pad_vector(&b, base_coord_dst, 4);
-
-/* Iterate over all pixels in the lane. num_samples is the only input.
- * (sample, x, y, z) are generated coordinates, while "i" is the coordinates converted to
- * an absolute index.
- */
-#define foreach_pixel_in_lane(num_samples, sample, x, y, z, i) \
-   for (unsigned z = 0; z < lane_depth; z++) \
-      for (unsigned y = 0; y < lane_height; y++) \
-         for (unsigned x = 0; x < lane_width; x++) \
-            for (unsigned i = ((z * lane_height + y) * lane_width + x) * (num_samples), sample = 0; \
-                 sample < (num_samples); sample++, i++) \
-
-   /* Swizzle coordinates for 1D_ARRAY. */
-   static const unsigned swizzle_xz[] = {0, 2, 0, 0};
-
-   /* Execute image loads and stores. */
-   unsigned num_src_coords = (options->src_is_1d ? 1 : 2) + options->src_has_z + options->src_is_msaa;
-   unsigned num_dst_coords = (options->dst_is_1d ? 1 : 2) + options->dst_has_z + options->dst_is_msaa;
-   unsigned bit_size = options->d16 ? 16 : 32;
-   unsigned num_samples = 1 << options->log_samples;
-   unsigned src_samples = options->src_is_msaa && !options->sample0_only &&
-                          !options->is_clear ? num_samples : 1;
-   unsigned dst_samples = options->dst_is_msaa ? num_samples : 1;
-   nir_def *color[SI_MAX_COMPUTE_BLIT_LANE_SIZE * SI_MAX_COMPUTE_BLIT_SAMPLES] = {0};
-   nir_def *coord_dst[SI_MAX_COMPUTE_BLIT_LANE_SIZE * SI_MAX_COMPUTE_BLIT_SAMPLES] = {0};
-   nir_def *src_resinfo = NULL;
-
-   if (options->is_clear) {
-      /* The clear color starts at component 4 of user data. */
-      color[0] = nir_channels(&b, nir_load_user_data_amd(&b),
-                              BITFIELD_RANGE(4, options->d16 ? 2 : 4));
-      if (options->d16)
-         color[0] = nir_unpack_64_4x16(&b, nir_pack_64_2x32(&b, color[0]));
-
-      foreach_pixel_in_lane(1, sample, x, y, z, i) {
-         color[i] = color[0];
-      }
-   } else {
-      nir_def *coord_src[SI_MAX_COMPUTE_BLIT_LANE_SIZE * SI_MAX_COMPUTE_BLIT_SAMPLES] = {0};
-
-      /* Initialize src coordinates, one vector per pixel. */
-      foreach_pixel_in_lane(src_samples, sample, x, y, z, i) {
-         unsigned tmp_x = x;
-         unsigned tmp_y = y;
-
-         /* Change the order from 0..N to N..0 for flipped blits. */
-         if (options->flip_x)
-            tmp_x = lane_width - 1 - x;
-         if (options->flip_y)
-            tmp_y = lane_height - 1 - y;
-
-         coord_src[i] = nir_iadd(&b, base_coord_src,
-                                     nir_imm_ivec4_intN(&b, tmp_x, tmp_y, z, 0, coord_bit_size));
-         if (options->src_is_1d)
-            coord_src[i] = nir_swizzle(&b, coord_src[i], swizzle_xz, 4);
-         if (options->src_is_msaa) {
-            coord_src[i] = nir_vector_insert_imm(&b, coord_src[i],
-                                                 nir_imm_intN_t(&b, sample, coord_bit_size),
-                                                 num_src_coords - 1);
-         }
-
-         /* Clamp to edge for src, only X and Y because Z can't be out of bounds. */
-         for (unsigned chan = 0; chan < 2; chan++) {
-            if (chan ? options->y_clamp_to_edge : options->x_clamp_to_edge) {
-               assert(!options->src_is_1d || chan == 0);
-
-               if (!src_resinfo) {
-                  /* Always use the 32-bit return type because the image dimensions can be
-                   * > INT16_MAX even if the blit box fits within sint16.
-                   */
-                  src_resinfo = nir_image_deref_size(&b, 4, 32, deref_ssa(&b, img_src),
-                                                     zero_lod);
-                  if (coord_bit_size == 16) {
-                     src_resinfo = nir_umin_imm(&b, src_resinfo, INT16_MAX);
-                     src_resinfo = nir_i2i16(&b, src_resinfo);
-                  }
-               }
-
-               nir_def *tmp = nir_channel(&b, coord_src[i], chan);
-               tmp = nir_imax_imm(&b, tmp, 0);
-               tmp = nir_imin(&b, tmp, nir_iadd_imm(&b, nir_channel(&b, src_resinfo, chan), -1));
-               coord_src[i] = nir_vector_insert_imm(&b, coord_src[i], tmp, chan);
-            }
-         }
-      }
-
-      /* We don't want the computation of src coordinates to be interleaved with loads. */
-      if (lane_size > 1 || src_samples > 1) {
-         ac_optimization_barrier_vgpr_array(&sctx->screen->info, &b, coord_src,
-                                            lane_size * src_samples, num_src_coords);
-      }
-
-      /* Use "samples_identical" for MSAA resolving if it's supported. */
-      bool is_resolve = src_samples > 1 && dst_samples == 1;
-      bool uses_samples_identical = sctx->gfx_level < GFX11 &&
-                                    !(sctx->screen->debug_flags & DBG(NO_FMASK)) && is_resolve;
-      nir_def *samples_identical = NULL, *sample0[SI_MAX_COMPUTE_BLIT_LANE_SIZE] = {0};
-      nir_if *if_identical = NULL;
-
-      if (uses_samples_identical) {
-         samples_identical = nir_imm_true(&b);
-
-         /* If we are resolving multiple pixels per lane, AND all results of "samples_identical". */
-         foreach_pixel_in_lane(1, sample, x, y, z, i) {
-            nir_def *iden = nir_image_deref_samples_identical(&b, 1, deref_ssa(&b, img_src),
-                                                              coord_src[i * src_samples],
-                                                              .image_dim = GLSL_SAMPLER_DIM_MS);
-            samples_identical = nir_iand(&b, samples_identical, iden);
-         }
-
-         /* If all samples are identical, load only sample 0. */
-         if_identical = nir_push_if(&b, samples_identical);
-         foreach_pixel_in_lane(1, sample, x, y, z, i) {
-            sample0[i] = nir_image_deref_load(&b, options->last_src_channel + 1, bit_size,
-                                              deref_ssa(&b, img_src), coord_src[i * src_samples],
-                                              nir_channel(&b, coord_src[i * src_samples],
-                                                          num_src_coords - 1), zero_lod,
-                                              .image_dim = img_src->type->sampler_dimensionality,
-                                              .image_array = img_src->type->sampler_array);
-         }
-         nir_push_else(&b, if_identical);
-      }
-
-      /* Load src pixels, one per sample. */
-      foreach_pixel_in_lane(src_samples, sample, x, y, z, i) {
-         color[i] = nir_image_deref_load(&b, options->last_src_channel + 1, bit_size,
-                                         deref_ssa(&b, img_src), coord_src[i],
-                                         nir_channel(&b, coord_src[i], num_src_coords - 1), zero_lod,
-                                         .image_dim = img_src->type->sampler_dimensionality,
-                                         .image_array = img_src->type->sampler_array);
-      }
-
-      /* Resolve MSAA if necessary. */
-      if (is_resolve) {
-         /* We don't want the averaging of samples to be interleaved with image loads. */
-         ac_optimization_barrier_vgpr_array(&sctx->screen->info, &b, color, lane_size * src_samples,
-                                            options->last_src_channel + 1);
-
-         /* This reduces the "color" array from "src_samples * lane_size" elements to only
-          * "lane_size" elements.
-          */
-         foreach_pixel_in_lane(1, sample, x, y, z, i) {
-            color[i] = ac_average_samples(&b, &color[i * src_samples], src_samples);
-         }
-         src_samples = 1;
-      }
-
-      if (uses_samples_identical) {
-         nir_pop_if(&b, if_identical);
-         foreach_pixel_in_lane(1, sample, x, y, z, i) {
-            color[i] = nir_if_phi(&b, sample0[i], color[i]);
-         }
-      }
-   }
-
-   /* We need to load the descriptor here, otherwise the load would be after optimization
-    * barriers waiting for image loads, i.e. after s_waitcnt vmcnt(0).
-    */
-   nir_def *img_dst_desc = nir_image_deref_descriptor_amd(&b, 8, 32, deref_ssa(&b, img_dst));
-   if (lane_size > 1 && !b.shader->info.use_aco_amd)
-      img_dst_desc = nir_optimization_barrier_sgpr_amd(&b, 32, img_dst_desc);
-
-   /* Apply the blit output modifiers, once per sample.  */
-   foreach_pixel_in_lane(src_samples, sample, x, y, z, i) {
-      color[i] = apply_blit_output_modifiers(&b, color[i], options);
-   }
-
-   /* Initialize dst coordinates, one vector per pixel. */
-   foreach_pixel_in_lane(dst_samples, sample, x, y, z, i) {
-      coord_dst[i] = nir_iadd(&b, base_coord_dst,
-                              nir_imm_ivec4_intN(&b, x, y, z, 0, coord_bit_size));
-      if (options->dst_is_1d)
-         coord_dst[i] = nir_swizzle(&b, coord_dst[i], swizzle_xz, 4);
-      if (options->dst_is_msaa) {
-         coord_dst[i] = nir_vector_insert_imm(&b, coord_dst[i],
-                                              nir_imm_intN_t(&b, sample, coord_bit_size),
-                                              num_dst_coords - 1);
-      }
-   }
-
-   /* We don't want the computation of dst coordinates to be interleaved with stores. */
-   if (lane_size > 1 || dst_samples > 1) {
-      ac_optimization_barrier_vgpr_array(&sctx->screen->info, &b, coord_dst, lane_size * dst_samples,
-                                         num_dst_coords);
-   }
-
-   /* We don't want the application of blit output modifiers to be interleaved with stores. */
-   if (!options->is_clear && (lane_size > 1 || MIN2(src_samples, dst_samples) > 1)) {
-      ac_optimization_barrier_vgpr_array(&sctx->screen->info, &b, color, lane_size * src_samples,
-                                         options->last_dst_channel + 1);
-   }
-
-   /* Store the pixels, one per sample. */
-   foreach_pixel_in_lane(dst_samples, sample, x, y, z, i) {
-      nir_bindless_image_store(&b, img_dst_desc, coord_dst[i],
-                               nir_channel(&b, coord_dst[i], num_dst_coords - 1),
-                               src_samples > 1 ? color[i] : color[i / dst_samples], zero_lod,
-                               .image_dim = glsl_get_sampler_dim(img_type[1]),
-                               .image_array = glsl_sampler_type_is_array(img_type[1]));
-   }
-
-   if (options->has_start_xyz)
-      nir_pop_if(&b, if_positive);
-
-   return si_create_shader_state(sctx, b.shader);
-}
-
 /* Store the clear color at the beginning of every 256B block. This is required when we clear DCC
  * to GFX11_DCC_CLEAR_SINGLE.
  */
@@ -635,7 +187,7 @@ void *si_clear_image_dcc_single_shader(struct si_context *sctx, bool is_msaa, un
    nir_variable *output_img = nir_variable_create(b.shader, nir_var_image, img_type, "out_img");
    output_img->data.binding = 0;
 
-   nir_def *global_id = nir_pad_vector_imm_int(&b, get_global_ids(&b, wg_dim, 32), 0, 3);
+   nir_def *global_id = nir_pad_vector_imm_int(&b, ac_get_global_ids(&b, wg_dim, 32), 0, 3);
    nir_def *clear_color = nir_trim_vector(&b, nir_load_user_data_amd(&b), 4);
 
    nir_def *dcc_block_width, *dcc_block_height;
@@ -664,7 +216,7 @@ void *si_create_ubyte_to_ushort_compute_shader(struct si_context *sctx)
    b.shader->info.workgroup_size[2] = 1;
    b.shader->info.num_ssbos = 2;
 
-   nir_def *load_address = get_global_ids(&b, 1, 32);
+   nir_def *load_address = ac_get_global_ids(&b, 1, 32);
    nir_def *store_address = nir_imul_imm(&b, load_address, 2);
 
    nir_def *ubyte_value = nir_load_ssbo(&b, 1, 8, nir_imm_int(&b, 1),
@@ -689,7 +241,7 @@ void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_
    b.shader->info.num_ssbos = is_clear ? 1 : 2;
    b.shader->info.cs.user_data_components_amd = is_clear ? num_dwords_per_thread : 0;
 
-   nir_def *thread_id = get_global_ids(&b, 1, 32);
+   nir_def *thread_id = ac_get_global_ids(&b, 1, 32);
    /* Convert the global thread ID into bytes. */
    nir_def *offset = nir_imul_imm(&b, thread_id, 4 * num_dwords_per_thread);
    nir_def *value;
@@ -736,7 +288,7 @@ void *si_create_fmask_expand_cs(struct si_context *sctx, unsigned num_samples, b
    }
 
    nir_def *zero = nir_imm_int(&b, 0);
-   nir_def *address = get_global_ids(&b, 2, 32);
+   nir_def *address = ac_get_global_ids(&b, 2, 32);
 
    nir_def *sample[8], *addresses[8];
    assert(num_samples <= ARRAY_SIZE(sample));

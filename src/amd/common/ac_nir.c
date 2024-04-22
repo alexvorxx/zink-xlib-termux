@@ -1557,3 +1557,22 @@ ac_optimization_barrier_vgpr_array(const struct radeon_info *info, nir_builder *
       }
    }
 }
+
+nir_def *
+ac_get_global_ids(nir_builder *b, unsigned num_components, unsigned bit_size)
+{
+   unsigned mask = BITFIELD_MASK(num_components);
+
+   nir_def *local_ids = nir_channels(b, nir_load_local_invocation_id(b), mask);
+   nir_def *block_ids = nir_channels(b, nir_load_workgroup_id(b), mask);
+   nir_def *block_size = nir_channels(b, nir_load_workgroup_size(b), mask);
+
+   assert(bit_size == 32 || bit_size == 16);
+   if (bit_size == 16) {
+      local_ids = nir_i2iN(b, local_ids, bit_size);
+      block_ids = nir_i2iN(b, block_ids, bit_size);
+      block_size = nir_i2iN(b, block_size, bit_size);
+   }
+
+   return nir_iadd(b, nir_imul(b, block_ids, block_size), local_ids);
+}

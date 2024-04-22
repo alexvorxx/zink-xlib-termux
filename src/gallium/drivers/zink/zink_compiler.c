@@ -2641,6 +2641,7 @@ struct io_slot_map {
    uint64_t *patch_slot_track;
    uint64_t *slot_track;
    unsigned char *slot_map;
+   unsigned reserved;
 };
 
 static void
@@ -2656,7 +2657,7 @@ assign_track_slot_mask(struct io_slot_map *io, nir_variable *var, unsigned slot,
 }
 
 static void
-assign_slot_io(gl_shader_stage stage, struct io_slot_map *io, nir_variable *var, unsigned slot, unsigned *reserved)
+assign_slot_io(gl_shader_stage stage, struct io_slot_map *io, nir_variable *var, unsigned slot)
 {
    unsigned num_slots;
    if (nir_is_arrayed_io(var, stage))
@@ -2666,14 +2667,14 @@ assign_slot_io(gl_shader_stage stage, struct io_slot_map *io, nir_variable *var,
    assign_track_slot_mask(io, var, slot, num_slots);
    if (io->slot_map[slot] != 0xff)
       return;
-   assert(*reserved + num_slots <= MAX_VARYING);
-   assert(*reserved < MAX_VARYING);
+   assert(io->reserved + num_slots <= MAX_VARYING);
+   assert(io->reserved < MAX_VARYING);
    for (unsigned i = 0; i < num_slots; i++)
-      io->slot_map[slot + i] = (*reserved)++;
+      io->slot_map[slot + i] = io->reserved++;
 }
 
 static void
-assign_producer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reserved, struct io_slot_map *io)
+assign_producer_var_io(gl_shader_stage stage, nir_variable *var, struct io_slot_map *io)
 {
    unsigned slot = var->data.location;
    switch (slot) {
@@ -2701,7 +2702,7 @@ assign_producer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reser
       assert(slot >= VARYING_SLOT_PATCH0);
       slot -= VARYING_SLOT_PATCH0;
    }
-   assign_slot_io(stage, io, var, slot, reserved);
+   assign_slot_io(stage, io, var, slot);
    slot = io->slot_map[slot];
    assert(slot < MAX_VARYING);
    var->data.driver_location = slot;
@@ -2717,7 +2718,7 @@ is_texcoord(gl_shader_stage stage, const nir_variable *var)
 }
 
 static bool
-assign_consumer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reserved, struct io_slot_map *io)
+assign_consumer_var_io(gl_shader_stage stage, nir_variable *var, struct io_slot_map *io)
 {
    unsigned slot = var->data.location;
    switch (slot) {
@@ -2753,7 +2754,7 @@ assign_consumer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reser
       if (stage != MESA_SHADER_TESS_CTRL)
          /* dead io */
          return false;
-      assign_slot_io(stage, io, var, slot, reserved);
+      assign_slot_io(stage, io, var, slot);
    }
    var->data.driver_location = io->slot_map[slot];
    return true;
@@ -2932,7 +2933,6 @@ find_max_write_components(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 void
 zink_compiler_assign_io(struct zink_screen *screen, nir_shader *producer, nir_shader *consumer)
 {
-   unsigned reserved = 0;
    uint64_t slot_track[4] = {0};
    uint64_t patch_slot_track[4] = {0};
    unsigned char slot_map[VARYING_SLOT_MAX];
@@ -2941,6 +2941,7 @@ zink_compiler_assign_io(struct zink_screen *screen, nir_shader *producer, nir_sh
       .patch_slot_track = patch_slot_track,
       .slot_track = slot_track,
       .slot_map = slot_map,
+      .reserved = 0,
    };
    bool do_fixup = false;
    nir_shader *nir = producer->info.stage == MESA_SHADER_TESS_CTRL ? producer : consumer;
@@ -2971,24 +2972,24 @@ zink_compiler_assign_io(struct zink_screen *screen, nir_shader *producer, nir_sh
    if (producer->info.stage == MESA_SHADER_TESS_CTRL) {
       /* never assign from tcs -> tes, always invert */
       nir_foreach_variable_with_modes(var_in, consumer, nir_var_shader_in)
-         assign_producer_var_io(consumer->info.stage, var_in, &reserved, &io);
+         assign_producer_var_io(consumer->info.stage, var_in, &io);
       nir_foreach_variable_with_modes_safe(var_out, producer, nir_var_shader_out) {
-         if (!assign_consumer_var_io(producer->info.stage, var_out, &reserved, &io))
+         if (!assign_consumer_var_io(producer->info.stage, var_out, &io))
             /* this is an output, nothing more needs to be done for it to be dropped */
             do_fixup = true;
       }
    } else {
       nir_foreach_variable_with_modes(var_out, producer, nir_var_shader_out)
-         assign_producer_var_io(producer->info.stage, var_out, &reserved, &io);
+         assign_producer_var_io(producer->info.stage, var_out, &io);
       nir_foreach_variable_with_modes_safe(var_in, consumer, nir_var_shader_in) {
-         if (!assign_consumer_var_io(consumer->info.stage, var_in, &reserved, &io)) {
+         if (!assign_consumer_var_io(consumer->info.stage, var_in, &io)) {
             do_fixup = true;
             /* input needs to be rewritten */
             nir_shader_instructions_pass(consumer, rewrite_read_as_0, nir_metadata_dominance, var_in);
          }
       }
       if (consumer->info.stage == MESA_SHADER_FRAGMENT && screen->driver_workarounds.needs_sanitised_layer)
-         do_fixup |= clamp_layer_output(producer, consumer, &reserved);
+         do_fixup |= clamp_layer_output(producer, consumer, &io.reserved);
    }
    nir_shader_gather_info(producer, nir_shader_get_entrypoint(producer));
    if (producer->info.io_lowered && consumer->info.io_lowered) {

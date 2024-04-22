@@ -753,7 +753,7 @@ nvk_get_device_properties(const struct nvk_instance *instance,
 
       /* Vulkan 1.0 sparse properties */
       .sparseResidencyNonResidentStrict = true,
-      .sparseResidencyAlignedMipSize = true,
+      .sparseResidencyAlignedMipSize = info->cls_eng3d < MAXWELL_B, /* DXVK/vkd3d-proton requires this to be advertised as VK_FALSE for FL12 */
       .sparseResidencyStandard2DBlockShape = true,
       .sparseResidencyStandard2DMultisampleBlockShape = true,
       .sparseResidencyStandard3DBlockShape = true,

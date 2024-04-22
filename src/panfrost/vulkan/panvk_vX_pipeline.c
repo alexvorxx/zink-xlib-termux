@@ -67,12 +67,12 @@ release_shaders(struct panvk_pipeline *pipeline, struct panvk_shader **shaders,
 }
 
 static bool
-is_static_state(const struct panvk_graphics_pipeline *pipeline, uint32_t id)
+dyn_state_is_set(const struct panvk_graphics_pipeline *pipeline, uint32_t id)
 {
    if (!pipeline)
       return false;
 
-   return !(pipeline->state.dynamic_mask & (1 << id));
+   return BITSET_TEST(pipeline->state.dynamic.set, id);
 }
 
 static VkResult
@@ -105,7 +105,7 @@ compile_shaders(struct panvk_pipeline *pipeline,
       shader = panvk_per_arch(shader_create)(
          dev, stage, stage_info, pipeline->layout,
          gfx_pipeline ? &gfx_pipeline->state.blend.pstate : NULL,
-         is_static_state(gfx_pipeline, VK_DYNAMIC_STATE_BLEND_CONSTANTS),
+         dyn_state_is_set(gfx_pipeline, MESA_VK_DYNAMIC_CB_BLEND_CONSTANTS),
          alloc);
       if (!shader)
          return VK_ERROR_OUT_OF_HOST_MEMORY;
@@ -204,26 +204,26 @@ emit_base_fs_rsd(const struct panvk_graphics_pipeline *pipeline, void *rsd)
       cfg.stencil_mask_misc.single_sampled_lines =
          pipeline->state.ms.rast_samples <= 1;
 
-      if (is_static_state(pipeline, VK_DYNAMIC_STATE_DEPTH_BIAS)) {
+      if (dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_RS_DEPTH_BIAS_FACTORS)) {
          cfg.depth_units =
             pipeline->state.rast.depth_bias.constant_factor * 2.0f;
          cfg.depth_factor = pipeline->state.rast.depth_bias.slope_factor;
          cfg.depth_bias_clamp = pipeline->state.rast.depth_bias.clamp;
       }
 
-      if (is_static_state(pipeline, VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK)) {
+      if (dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_DS_STENCIL_COMPARE_MASK)) {
          cfg.stencil_front.mask = pipeline->state.zs.s_front.compare_mask;
          cfg.stencil_back.mask = pipeline->state.zs.s_back.compare_mask;
       }
 
-      if (is_static_state(pipeline, VK_DYNAMIC_STATE_STENCIL_WRITE_MASK)) {
+      if (dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_DS_STENCIL_WRITE_MASK)) {
          cfg.stencil_mask_misc.stencil_mask_front =
             pipeline->state.zs.s_front.write_mask;
          cfg.stencil_mask_misc.stencil_mask_back =
             pipeline->state.zs.s_back.write_mask;
       }
 
-      if (is_static_state(pipeline, VK_DYNAMIC_STATE_STENCIL_REFERENCE)) {
+      if (dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_DS_STENCIL_REFERENCE)) {
          cfg.stencil_front.reference_value = pipeline->state.zs.s_front.ref;
          cfg.stencil_back.reference_value = pipeline->state.zs.s_back.ref;
       }
@@ -400,55 +400,59 @@ init_shaders(struct panvk_pipeline *pipeline,
 
 static void
 parse_viewport(struct panvk_graphics_pipeline *pipeline,
-               const VkGraphicsPipelineCreateInfo *create_info)
+               const struct vk_graphics_pipeline_state *state)
 {
+   const struct vk_rasterization_state *rs = state->rs;
+   const struct vk_viewport_state *vp = state->vp;
+
    /* The spec says:
     *
     *    pViewportState is a pointer to an instance of the
     *    VkPipelineViewportStateCreateInfo structure, and is ignored if the
     *    pipeline has rasterization disabled.
     */
-   if (!create_info->pRasterizationState->rasterizerDiscardEnable &&
-       is_static_state(pipeline, VK_DYNAMIC_STATE_VIEWPORT) &&
-       is_static_state(pipeline, VK_DYNAMIC_STATE_SCISSOR)) {
+   if (!rs->rasterizer_discard_enable &&
+       dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_VP_VIEWPORTS) &&
+       dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_VP_SCISSORS)) {
       struct panfrost_ptr vpd =
          pan_pool_alloc_desc(&pipeline->base.desc_pool.base, VIEWPORT);
 
-      panvk_per_arch(emit_viewport)(create_info->pViewportState->pViewports,
-                                    create_info->pViewportState->pScissors,
-                                    vpd.cpu);
+      panvk_per_arch(emit_viewport)(vp->viewports, vp->scissors, vpd.cpu);
       pipeline->state.vp.vpd = vpd.gpu;
    }
 
-   if (is_static_state(pipeline, VK_DYNAMIC_STATE_VIEWPORT) &&
-       create_info->pViewportState)
-      pipeline->state.vp.viewport = create_info->pViewportState->pViewports[0];
+   if (dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_VP_VIEWPORTS))
+      pipeline->state.vp.viewport = vp->viewports[0];
 
-   if (is_static_state(pipeline, VK_DYNAMIC_STATE_SCISSOR) &&
-       create_info->pViewportState)
-      pipeline->state.vp.scissor = create_info->pViewportState->pScissors[0];
+   if (dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_VP_SCISSORS))
+      pipeline->state.vp.scissor = vp->scissors[0];
 }
+
+#define is_dyn(__state, __name)                                                \
+   BITSET_TEST((__state)->dynamic, MESA_VK_DYNAMIC_##__name)
 
 static void
 parse_dynamic_state(struct panvk_graphics_pipeline *pipeline,
-                    const VkGraphicsPipelineCreateInfo *create_info)
+                    const struct vk_graphics_pipeline_state *state)
 {
-   const VkPipelineDynamicStateCreateInfo *dynamic_info =
-      create_info->pDynamicState;
-
-   if (!dynamic_info)
-      return;
-
-   for (uint32_t i = 0; i < dynamic_info->dynamicStateCount; i++) {
-      VkDynamicState state = dynamic_info->pDynamicStates[i];
-      switch (state) {
-      case VK_DYNAMIC_STATE_VIEWPORT ... VK_DYNAMIC_STATE_STENCIL_REFERENCE:
-         pipeline->state.dynamic_mask |= 1 << state;
-         break;
-      default:
-         unreachable("unsupported dynamic state");
-      }
-   }
+   if (is_dyn(state, VP_VIEWPORTS))
+      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_VIEWPORT;
+   if (is_dyn(state, VP_SCISSORS))
+      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_SCISSOR;
+   if (is_dyn(state, RS_LINE_WIDTH))
+      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_LINE_WIDTH;
+   if (is_dyn(state, RS_DEPTH_BIAS_FACTORS))
+      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_DEPTH_BIAS;
+   if (is_dyn(state, CB_BLEND_CONSTANTS))
+      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_BLEND_CONSTANTS;
+   if (is_dyn(state, DS_DEPTH_BOUNDS_TEST_BOUNDS))
+      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_DEPTH_BOUNDS;
+   if (is_dyn(state, DS_STENCIL_COMPARE_MASK))
+      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_STENCIL_COMPARE_MASK;
+   if (is_dyn(state, DS_STENCIL_WRITE_MASK))
+      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_STENCIL_WRITE_MASK;
+   if (is_dyn(state, DS_STENCIL_REFERENCE))
+      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_STENCIL_REFERENCE;
 }
 
 static enum mali_draw_mode
@@ -479,84 +483,69 @@ translate_prim_topology(VkPrimitiveTopology in)
 
 static void
 parse_input_assembly(struct panvk_graphics_pipeline *pipeline,
-                     const VkGraphicsPipelineCreateInfo *create_info)
+                     const struct vk_graphics_pipeline_state *state)
 {
-   pipeline->state.ia.primitive_restart =
-      create_info->pInputAssemblyState->primitiveRestartEnable;
+   const struct vk_input_assembly_state *ia = state->ia;
+
+   pipeline->state.ia.primitive_restart = ia->primitive_restart_enable;
    pipeline->state.ia.topology =
-      translate_prim_topology(create_info->pInputAssemblyState->topology);
+      translate_prim_topology(ia->primitive_topology);
 }
 
 static uint32_t
-get_active_color_attachments(const VkGraphicsPipelineCreateInfo *create_info,
-                             enum pipe_format *attachment_formats)
+get_active_color_attachments(const struct vk_graphics_pipeline_state *state)
 {
-   if (create_info->pRasterizationState->rasterizerDiscardEnable)
+   const struct vk_color_blend_state *cb = state->cb;
+
+   if (state->rs->rasterizer_discard_enable || !cb)
       return 0;
 
-   VK_FROM_HANDLE(vk_render_pass, pass, create_info->renderPass);
-   const struct vk_subpass *subpass = &pass->subpasses[create_info->subpass];
-   uint32_t active_color_attachments = 0;
-
-   for (uint32_t i = 0; i < subpass->color_count; i++) {
-      uint32_t idx = subpass->color_attachments[i].attachment;
-      if (idx == VK_ATTACHMENT_UNUSED)
-         continue;
-
-      active_color_attachments |= 1 << i;
-
-      if (attachment_formats)
-         attachment_formats[i] =
-            vk_format_to_pipe_format(pass->attachments[idx].format);
-   }
-
-   return active_color_attachments;
+   return cb->color_write_enables & BITFIELD_MASK(cb->attachment_count);
 }
 
 static void
 parse_color_blend(struct panvk_graphics_pipeline *pipeline,
-                  const VkGraphicsPipelineCreateInfo *create_info)
+                  const struct vk_graphics_pipeline_state *state)
 {
-   if (!create_info->pColorBlendState)
-      return;
-
-   enum pipe_format attachment_formats[MAX_RTS] = {0};
-   unsigned active_color_attachments =
-      get_active_color_attachments(create_info, attachment_formats);
+   const struct vk_color_blend_state *cb = state->cb;
+   const struct vk_render_pass_state *rp = state->rp;
+   const struct vk_multisample_state *ms = state->ms;
    struct panvk_device *dev = to_panvk_device(pipeline->base.base.device);
 
-   pipeline->state.blend.pstate.logicop_enable =
-      create_info->pColorBlendState->logicOpEnable;
+   if (!cb)
+      return;
+
+   uint32_t active_color_attachments = get_active_color_attachments(state);
+
+   pipeline->state.blend.pstate.logicop_enable = cb->logic_op_enable;
    pipeline->state.blend.pstate.logicop_func =
-      vk_logic_op_to_pipe(create_info->pColorBlendState->logicOp);
+      vk_logic_op_to_pipe(cb->logic_op);
    pipeline->state.blend.pstate.rt_count =
       util_last_bit(active_color_attachments);
-   memcpy(pipeline->state.blend.pstate.constants,
-          create_info->pColorBlendState->blendConstants,
+   memcpy(pipeline->state.blend.pstate.constants, cb->blend_constants,
           sizeof(pipeline->state.blend.pstate.constants));
 
    for (unsigned i = 0; i < pipeline->state.blend.pstate.rt_count; i++) {
-      const VkPipelineColorBlendAttachmentState *in =
-         &create_info->pColorBlendState->pAttachments[i];
+      const struct vk_color_blend_attachment_state *in = &cb->attachments[i];
       struct pan_blend_rt_state *out = &pipeline->state.blend.pstate.rts[i];
 
-      out->format = attachment_formats[i];
+      out->format = vk_format_to_pipe_format(rp->color_attachment_formats[i]);
 
       bool dest_has_alpha = util_format_has_alpha(out->format);
 
-      out->nr_samples = create_info->pMultisampleState->rasterizationSamples;
-      out->equation.blend_enable = in->blendEnable;
-      out->equation.color_mask = in->colorWriteMask;
-      out->equation.rgb_func = vk_blend_op_to_pipe(in->colorBlendOp);
+      out->nr_samples = ms->rasterization_samples;
+      out->equation.blend_enable = in->blend_enable;
+      out->equation.color_mask = in->write_mask;
+      out->equation.rgb_func = vk_blend_op_to_pipe(in->color_blend_op);
       out->equation.rgb_src_factor =
-         vk_blend_factor_to_pipe(in->srcColorBlendFactor);
+         vk_blend_factor_to_pipe(in->src_color_blend_factor);
       out->equation.rgb_dst_factor =
-         vk_blend_factor_to_pipe(in->dstColorBlendFactor);
-      out->equation.alpha_func = vk_blend_op_to_pipe(in->alphaBlendOp);
+         vk_blend_factor_to_pipe(in->dst_color_blend_factor);
+      out->equation.alpha_func = vk_blend_op_to_pipe(in->alpha_blend_op);
       out->equation.alpha_src_factor =
-         vk_blend_factor_to_pipe(in->srcAlphaBlendFactor);
+         vk_blend_factor_to_pipe(in->src_alpha_blend_factor);
       out->equation.alpha_dst_factor =
-         vk_blend_factor_to_pipe(in->dstAlphaBlendFactor);
+         vk_blend_factor_to_pipe(in->dst_alpha_blend_factor);
 
       if (!dest_has_alpha) {
          out->equation.rgb_src_factor =
@@ -598,19 +587,19 @@ parse_color_blend(struct panvk_graphics_pipeline *pipeline,
 
 static void
 parse_multisample(struct panvk_graphics_pipeline *pipeline,
-                  const VkGraphicsPipelineCreateInfo *create_info)
+                  const struct vk_graphics_pipeline_state *state)
 {
-   unsigned nr_samples =
-      MAX2(create_info->pMultisampleState->rasterizationSamples, 1);
+   const struct vk_multisample_state *ms = state->ms;
 
-   pipeline->state.ms.rast_samples =
-      create_info->pMultisampleState->rasterizationSamples;
-   pipeline->state.ms.sample_mask =
-      create_info->pMultisampleState->pSampleMask
-         ? create_info->pMultisampleState->pSampleMask[0]
-         : UINT16_MAX;
+   if (!ms)
+      return;
+
+   unsigned nr_samples = MAX2(ms->rasterization_samples, 1);
+
+   pipeline->state.ms.rast_samples = ms->rasterization_samples;
+   pipeline->state.ms.sample_mask = ms->sample_mask;
    pipeline->state.ms.min_samples =
-      MAX2(create_info->pMultisampleState->minSampleShading * nr_samples, 1);
+      MAX2(ms->min_sample_shading * nr_samples, 1);
 }
 
 static enum mali_stencil_op
@@ -656,18 +645,14 @@ translate_compare_func(VkCompareOp comp)
 
 static void
 parse_zs(struct panvk_graphics_pipeline *pipeline,
-         const VkGraphicsPipelineCreateInfo *create_info)
+         const struct vk_graphics_pipeline_state *state)
 {
-   VK_FROM_HANDLE(vk_render_pass, pass, create_info->renderPass);
-   const struct vk_subpass *subpass = &pass->subpasses[create_info->subpass];
-   bool use_depth_stencil_attachment =
-      subpass->depth_stencil_attachment &&
-      subpass->depth_stencil_attachment->attachment != VK_ATTACHMENT_UNUSED;
+   const struct vk_depth_stencil_state *ds = state->ds;
 
-   if (!use_depth_stencil_attachment)
+   if (!ds)
       return;
 
-   pipeline->state.zs.z_test = create_info->pDepthStencilState->depthTestEnable;
+   pipeline->state.zs.z_test = ds->depth.test_enable;
 
    /* The Vulkan spec says:
     *
@@ -679,68 +664,53 @@ parse_zs(struct panvk_graphics_pipeline *pipeline,
     * condition ourselves.
     */
    pipeline->state.zs.z_write =
-      pipeline->state.zs.z_test &&
-      create_info->pDepthStencilState->depthWriteEnable;
+      pipeline->state.zs.z_test && ds->depth.write_enable;
 
    pipeline->state.zs.z_compare_func =
-      translate_compare_func(create_info->pDepthStencilState->depthCompareOp);
-   pipeline->state.zs.s_test =
-      create_info->pDepthStencilState->stencilTestEnable;
+      translate_compare_func(ds->depth.compare_op);
+   pipeline->state.zs.s_test = ds->stencil.test_enable;
    pipeline->state.zs.s_front.fail_op =
-      translate_stencil_op(create_info->pDepthStencilState->front.failOp);
+      translate_stencil_op(ds->stencil.front.op.fail);
    pipeline->state.zs.s_front.pass_op =
-      translate_stencil_op(create_info->pDepthStencilState->front.passOp);
+      translate_stencil_op(ds->stencil.front.op.pass);
    pipeline->state.zs.s_front.z_fail_op =
-      translate_stencil_op(create_info->pDepthStencilState->front.depthFailOp);
+      translate_stencil_op(ds->stencil.front.op.depth_fail);
    pipeline->state.zs.s_front.compare_func =
-      translate_compare_func(create_info->pDepthStencilState->front.compareOp);
-   pipeline->state.zs.s_front.compare_mask =
-      create_info->pDepthStencilState->front.compareMask;
-   pipeline->state.zs.s_front.write_mask =
-      create_info->pDepthStencilState->front.writeMask;
-   pipeline->state.zs.s_front.ref =
-      create_info->pDepthStencilState->front.reference;
+      translate_compare_func(ds->stencil.front.op.compare);
+   pipeline->state.zs.s_front.compare_mask = ds->stencil.front.compare_mask;
+   pipeline->state.zs.s_front.write_mask = ds->stencil.front.write_mask;
+   pipeline->state.zs.s_front.ref = ds->stencil.front.reference;
    pipeline->state.zs.s_back.fail_op =
-      translate_stencil_op(create_info->pDepthStencilState->back.failOp);
+      translate_stencil_op(ds->stencil.back.op.fail);
    pipeline->state.zs.s_back.pass_op =
-      translate_stencil_op(create_info->pDepthStencilState->back.passOp);
+      translate_stencil_op(ds->stencil.back.op.pass);
    pipeline->state.zs.s_back.z_fail_op =
-      translate_stencil_op(create_info->pDepthStencilState->back.depthFailOp);
+      translate_stencil_op(ds->stencil.back.op.depth_fail);
    pipeline->state.zs.s_back.compare_func =
-      translate_compare_func(create_info->pDepthStencilState->back.compareOp);
-   pipeline->state.zs.s_back.compare_mask =
-      create_info->pDepthStencilState->back.compareMask;
-   pipeline->state.zs.s_back.write_mask =
-      create_info->pDepthStencilState->back.writeMask;
-   pipeline->state.zs.s_back.ref =
-      create_info->pDepthStencilState->back.reference;
+      translate_compare_func(ds->stencil.back.op.compare);
+   pipeline->state.zs.s_back.compare_mask = ds->stencil.back.compare_mask;
+   pipeline->state.zs.s_back.write_mask = ds->stencil.back.write_mask;
+   pipeline->state.zs.s_back.ref = ds->stencil.back.reference;
 }
 
 static void
 parse_rast(struct panvk_graphics_pipeline *pipeline,
-           const VkGraphicsPipelineCreateInfo *create_info)
+           const struct vk_graphics_pipeline_state *state)
 {
-   pipeline->state.rast.clamp_depth =
-      create_info->pRasterizationState->depthClampEnable;
-   pipeline->state.rast.depth_bias.enable =
-      create_info->pRasterizationState->depthBiasEnable;
-   pipeline->state.rast.depth_bias.constant_factor =
-      create_info->pRasterizationState->depthBiasConstantFactor;
-   pipeline->state.rast.depth_bias.clamp =
-      create_info->pRasterizationState->depthBiasClamp;
-   pipeline->state.rast.depth_bias.slope_factor =
-      create_info->pRasterizationState->depthBiasSlopeFactor;
+   const struct vk_rasterization_state *rs = state->rs;
+
+   pipeline->state.rast.clamp_depth = rs->depth_clamp_enable;
+   pipeline->state.rast.depth_bias.enable = rs->depth_bias.enable;
+   pipeline->state.rast.depth_bias.constant_factor = rs->depth_bias.constant;
+   pipeline->state.rast.depth_bias.clamp = rs->depth_bias.clamp;
+   pipeline->state.rast.depth_bias.slope_factor = rs->depth_bias.slope;
    pipeline->state.rast.front_ccw =
-      create_info->pRasterizationState->frontFace ==
-      VK_FRONT_FACE_COUNTER_CLOCKWISE;
+      rs->front_face == VK_FRONT_FACE_COUNTER_CLOCKWISE;
    pipeline->state.rast.cull_front_face =
-      create_info->pRasterizationState->cullMode & VK_CULL_MODE_FRONT_BIT;
-   pipeline->state.rast.cull_back_face =
-      create_info->pRasterizationState->cullMode & VK_CULL_MODE_BACK_BIT;
-   pipeline->state.rast.line_width =
-      create_info->pRasterizationState->lineWidth;
-   pipeline->state.rast.enable =
-      !create_info->pRasterizationState->rasterizerDiscardEnable;
+      rs->cull_mode & VK_CULL_MODE_FRONT_BIT;
+   pipeline->state.rast.cull_back_face = rs->cull_mode & VK_CULL_MODE_BACK_BIT;
+   pipeline->state.rast.line_width = rs->line.width;
+   pipeline->state.rast.enable = !rs->rasterizer_discard_enable;
 }
 
 static bool
@@ -764,26 +734,22 @@ fs_required(struct panvk_graphics_pipeline *pipeline)
    return (info->fs.writes_depth || info->fs.writes_stencil);
 }
 
-#define PANVK_DYNAMIC_FS_RSD_MASK                                              \
-   ((1 << VK_DYNAMIC_STATE_DEPTH_BIAS) |                                       \
-    (1 << VK_DYNAMIC_STATE_BLEND_CONSTANTS) |                                  \
-    (1 << VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK) |                             \
-    (1 << VK_DYNAMIC_STATE_STENCIL_WRITE_MASK) |                               \
-    (1 << VK_DYNAMIC_STATE_STENCIL_REFERENCE))
-
 static void
 init_fs_state(struct panvk_graphics_pipeline *pipeline,
-              const VkGraphicsPipelineCreateInfo *create_info,
+              const struct vk_graphics_pipeline_state *state,
               struct panvk_shader *shader)
 {
    if (!shader)
       return;
 
-   pipeline->state.fs.dynamic_rsd =
-      pipeline->state.dynamic_mask & PANVK_DYNAMIC_FS_RSD_MASK;
+   pipeline->state.fs.dynamic_rsd = is_dyn(state, RS_DEPTH_BIAS_FACTORS) ||
+                                    is_dyn(state, CB_BLEND_CONSTANTS) ||
+                                    is_dyn(state, DS_STENCIL_COMPARE_MASK) ||
+                                    is_dyn(state, DS_STENCIL_WRITE_MASK) ||
+                                    is_dyn(state, DS_STENCIL_REFERENCE);
    pipeline->state.fs.address = upload_shader(&pipeline->base, shader);
    pipeline->state.fs.info = shader->info;
-   pipeline->state.fs.rt_mask = get_active_color_attachments(create_info, NULL);
+   pipeline->state.fs.rt_mask = get_active_color_attachments(state);
    pipeline->state.fs.required = fs_required(pipeline);
 }
 
@@ -867,43 +833,32 @@ collect_varyings(struct panvk_graphics_pipeline *pipeline,
 
 static void
 parse_vertex_input(struct panvk_graphics_pipeline *pipeline,
-                   const VkGraphicsPipelineCreateInfo *create_info,
+                   const struct vk_graphics_pipeline_state *state,
                    struct panvk_shader **shaders)
 {
    struct panvk_attribs_info *attribs = &pipeline->state.vs.attribs;
-   const VkPipelineVertexInputStateCreateInfo *info =
-      create_info->pVertexInputState;
+   const struct vk_vertex_input_state *vi = state->vi;
 
-   const VkPipelineVertexInputDivisorStateCreateInfoEXT *div_info =
-      vk_find_struct_const(info->pNext,
-                           PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO_EXT);
+   attribs->buf_count = util_last_bit(vi->bindings_valid);
+   for (unsigned i = 0; i < attribs->buf_count; i++) {
+      if (!(vi->bindings_valid & BITFIELD_BIT(i)))
+         continue;
 
-   for (unsigned i = 0; i < info->vertexBindingDescriptionCount; i++) {
-      const VkVertexInputBindingDescription *desc =
-         &info->pVertexBindingDescriptions[i];
-      attribs->buf_count = MAX2(desc->binding + 1, attribs->buf_count);
-      attribs->buf[desc->binding].stride = desc->stride;
-      attribs->buf[desc->binding].per_instance =
-         desc->inputRate == VK_VERTEX_INPUT_RATE_INSTANCE;
-      attribs->buf[desc->binding].instance_divisor = 1;
-   }
+      const struct vk_vertex_binding_state *desc = &vi->bindings[i];
 
-   if (div_info) {
-      for (unsigned i = 0; i < div_info->vertexBindingDivisorCount; i++) {
-         const VkVertexInputBindingDivisorDescriptionEXT *div =
-            &div_info->pVertexBindingDivisors[i];
-         attribs->buf[div->binding].instance_divisor = div->divisor;
-      }
+      attribs->buf[i].stride = desc->stride;
+      attribs->buf[i].per_instance =
+         desc->input_rate == VK_VERTEX_INPUT_RATE_INSTANCE;
+      attribs->buf[i].instance_divisor = desc->divisor;
    }
 
    const struct pan_shader_info *vs = &shaders[MESA_SHADER_VERTEX]->info;
+   uint32_t vi_attrib_count = util_last_bit(vi->attributes_valid);
 
    attribs->attrib_count = 0;
-   for (unsigned i = 0; i < info->vertexAttributeDescriptionCount; i++) {
-      const VkVertexInputAttributeDescription *desc =
-         &info->pVertexAttributeDescriptions[i];
-
-      unsigned attrib = desc->location + VERT_ATTRIB_GENERIC0;
+   for (unsigned i = 0; i < vi_attrib_count; i++) {
+      const struct vk_vertex_attribute_state *desc = &vi->attributes[i];
+      unsigned attrib = i + VERT_ATTRIB_GENERIC0;
       unsigned slot =
          util_bitcount64(vs->attributes_read & BITFIELD64_MASK(attrib));
 
@@ -922,6 +877,15 @@ panvk_graphics_pipeline_create(struct panvk_device *dev,
                                struct panvk_pipeline **out)
 {
    VK_FROM_HANDLE(panvk_pipeline_layout, layout, create_info->layout);
+   struct vk_graphics_pipeline_all_state all;
+   struct vk_graphics_pipeline_state state = {};
+   VkResult result;
+
+   result = vk_graphics_pipeline_state_fill(&dev->vk, &state, create_info, NULL,
+                                            0, &all, NULL, 0, NULL);
+   if (result)
+      return result;
+
    struct panvk_graphics_pipeline *gfx_pipeline = vk_object_zalloc(
       &dev->vk, alloc, sizeof(*gfx_pipeline), VK_OBJECT_TYPE_PIPELINE);
 
@@ -931,6 +895,10 @@ panvk_graphics_pipeline_create(struct panvk_device *dev,
    *out = &gfx_pipeline->base;
    gfx_pipeline->base.layout = layout;
    gfx_pipeline->base.type = PANVK_PIPELINE_GRAPHICS;
+   gfx_pipeline->state.dynamic.vi = &gfx_pipeline->state.vi;
+   gfx_pipeline->state.dynamic.ms.sample_locations = &gfx_pipeline->state.sl;
+   vk_dynamic_graphics_state_fill(&gfx_pipeline->state.dynamic, &state);
+   gfx_pipeline->state.rp = *state.rp;
 
    panvk_pool_init(&gfx_pipeline->base.bin_pool, dev, NULL,
                    PAN_KMOD_BO_FLAG_EXECUTABLE, 4096,
@@ -940,19 +908,19 @@ panvk_graphics_pipeline_create(struct panvk_device *dev,
 
    struct panvk_shader *shaders[MESA_SHADER_STAGES] = {NULL};
 
-   parse_dynamic_state(gfx_pipeline, create_info);
-   parse_color_blend(gfx_pipeline, create_info);
+   parse_dynamic_state(gfx_pipeline, &state);
+   parse_color_blend(gfx_pipeline, &state);
    compile_shaders(&gfx_pipeline->base, create_info->pStages,
                    create_info->stageCount, alloc, shaders);
    collect_varyings(gfx_pipeline, shaders);
-   parse_input_assembly(gfx_pipeline, create_info);
-   parse_multisample(gfx_pipeline, create_info);
-   parse_zs(gfx_pipeline, create_info);
-   parse_rast(gfx_pipeline, create_info);
-   parse_vertex_input(gfx_pipeline, create_info, shaders);
-   init_fs_state(gfx_pipeline, create_info, shaders[MESA_SHADER_FRAGMENT]);
+   parse_input_assembly(gfx_pipeline, &state);
+   parse_multisample(gfx_pipeline, &state);
+   parse_zs(gfx_pipeline, &state);
+   parse_rast(gfx_pipeline, &state);
+   parse_vertex_input(gfx_pipeline, &state, shaders);
+   init_fs_state(gfx_pipeline, &state, shaders[MESA_SHADER_FRAGMENT]);
    init_shaders(&gfx_pipeline->base, create_info, shaders);
-   parse_viewport(gfx_pipeline, create_info);
+   parse_viewport(gfx_pipeline, &state);
 
    release_shaders(&gfx_pipeline->base, shaders, alloc);
    return VK_SUCCESS;

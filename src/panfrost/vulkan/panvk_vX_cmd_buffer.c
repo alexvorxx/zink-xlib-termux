@@ -1637,6 +1637,10 @@ panvk_create_cmdbuf(struct vk_command_pool *vk_pool, VkCommandBufferLevel level,
       return result;
    }
 
+   cmdbuf->vk.dynamic_graphics_state.vi = &cmdbuf->state.gfx.dynamic.vi;
+   cmdbuf->vk.dynamic_graphics_state.ms.sample_locations =
+      &cmdbuf->state.gfx.dynamic.sl;
+
    panvk_pool_init(&cmdbuf->desc_pool, device, &pool->desc_bo_pool, 0,
                    64 * 1024, "Command buffer descriptor pool", true);
    panvk_pool_init(
@@ -2121,6 +2125,9 @@ panvk_per_arch(CmdBindPipeline)(VkCommandBuffer commandBuffer,
    case VK_PIPELINE_BIND_POINT_GRAPHICS: {
       struct panvk_graphics_pipeline *gfx_pipeline =
          panvk_pipeline_to_graphics_pipeline(pipeline);
+
+      vk_cmd_set_dynamic_graphics_state(&cmdbuf->vk,
+                                        &gfx_pipeline->state.dynamic);
 
       cmdbuf->state.gfx.fs_rsd = 0;
       cmdbuf->state.gfx.varyings = gfx_pipeline->varyings;

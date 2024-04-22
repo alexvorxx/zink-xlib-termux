@@ -113,6 +113,11 @@ struct panvk_cmd_graphics_state {
    struct panvk_descriptor_state desc_state;
    const struct panvk_graphics_pipeline *pipeline;
 
+   struct {
+      struct vk_vertex_input_state vi;
+      struct vk_sample_locations_state sl;
+   } dynamic;
+
    uint32_t dirty;
 
    struct panvk_graphics_sysvals sysvals;

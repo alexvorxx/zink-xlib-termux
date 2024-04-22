@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "vk_graphics_state.h"
 #include "vk_object.h"
 
 #include "util/pan_ir.h"
@@ -151,6 +152,11 @@ struct panvk_graphics_pipeline {
          VkViewport viewport;
          VkRect2D scissor;
       } vp;
+
+      struct vk_dynamic_graphics_state dynamic;
+      struct vk_vertex_input_state vi;
+      struct vk_sample_locations_state sl;
+      struct vk_render_pass_state rp;
    } state;
 };
 

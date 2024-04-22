@@ -1362,6 +1362,9 @@ struct anv_pipeline_sets_layout;
 struct anv_push_descriptor_info;
 enum anv_dynamic_push_bits;
 
+void anv_device_init_embedded_samplers(struct anv_device *device);
+void anv_device_finish_embedded_samplers(struct anv_device *device);
+
 extern const struct vk_pipeline_cache_object_ops *const anv_cache_import_ops[2];
 
 struct anv_shader_bin *
@@ -2009,6 +2012,11 @@ struct anv_device {
     struct anv_device_astc_emu                   astc_emu;
 
     struct intel_bind_timeline bind_timeline; /* Xe only */
+
+    struct {
+       simple_mtx_t                              mutex;
+       struct hash_table                        *map;
+    }                                            embedded_samplers;
 };
 
 static inline uint32_t
@@ -2961,6 +2969,22 @@ struct anv_pipeline_binding {
    };
 };
 
+struct anv_embedded_sampler_key {
+   /** No need to track binding elements for embedded samplers as :
+    *
+    *    VUID-VkDescriptorSetLayoutBinding-flags-08006:
+    *
+    *       "If VkDescriptorSetLayoutCreateInfo:flags contains
+    *        VK_DESCRIPTOR_SET_LAYOUT_CREATE_EMBEDDED_IMMUTABLE_SAMPLERS_BIT_EXT,
+    *        descriptorCount must: less than or equal to 1"
+    *
+    * The following struct can be safely hash as it doesn't include in
+    * address/offset.
+    */
+   uint32_t sampler[4];
+   uint32_t color[4];
+};
+
 struct anv_pipeline_embedded_sampler_binding {
    /** The descriptor set this sampler belongs to */
    uint8_t set;
@@ -2968,18 +2992,8 @@ struct anv_pipeline_embedded_sampler_binding {
    /** The binding in the set this sampler belongs to */
    uint32_t binding;
 
-   /* No need to track binding elements for embedded samplers as :
-    *
-    *    VUID-VkDescriptorSetLayoutBinding-flags-08006:
-    *
-    *       "If VkDescriptorSetLayoutCreateInfo:flags contains
-    *        VK_DESCRIPTOR_SET_LAYOUT_CREATE_EMBEDDED_IMMUTABLE_SAMPLERS_BIT_EXT,
-    *        descriptorCount must: less than or equal to 1"
-    */
-
-   uint32_t sampler_state[4];
-
-   uint32_t border_color[4];
+   /** The data configuring the sampler */
+   struct anv_embedded_sampler_key key;
 };
 
 struct anv_push_range {
@@ -4354,6 +4368,10 @@ struct anv_shader_upload_params {
 };
 
 struct anv_embedded_sampler {
+   uint32_t ref_cnt;
+
+   struct anv_embedded_sampler_key key;
+
    struct anv_state sampler_state;
    struct anv_state border_color_state;
 };
@@ -4382,9 +4400,9 @@ struct anv_shader_bin {
 
    /* Not saved in the pipeline cache.
     *
-    * Array of length bind_map.embedded_sampler_count
+    * Array of pointers of length bind_map.embedded_sampler_count
     */
-   struct anv_embedded_sampler *embedded_samplers;
+   struct anv_embedded_sampler **embedded_samplers;
 };
 
 static inline struct anv_shader_bin *

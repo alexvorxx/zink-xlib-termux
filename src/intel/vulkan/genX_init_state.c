@@ -1313,12 +1313,15 @@ genX(emit_embedded_sampler)(struct anv_device *device,
                             struct anv_embedded_sampler *sampler,
                             struct anv_pipeline_embedded_sampler_binding *binding)
 {
+   sampler->ref_cnt = 1;
+   memcpy(&sampler->key, &binding->key, sizeof(binding->key));
+
    sampler->border_color_state =
       anv_state_pool_alloc(&device->dynamic_state_db_pool,
                            sizeof(struct gfx8_border_color), 64);
    memcpy(sampler->border_color_state.map,
-          binding->border_color,
-          sizeof(binding->border_color));
+          binding->key.color,
+          sizeof(binding->key.color));
 
    sampler->sampler_state =
       anv_state_pool_alloc(&device->dynamic_state_db_pool,
@@ -1332,7 +1335,7 @@ genX(emit_embedded_sampler)(struct anv_device *device,
 
    for (uint32_t i = 0; i < GENX(SAMPLER_STATE_length); i++) {
       ((uint32_t *)sampler->sampler_state.map)[i] =
-         dwords[i] | binding->sampler_state[i];
+         dwords[i] | binding->key.sampler[i];
    }
 }
 

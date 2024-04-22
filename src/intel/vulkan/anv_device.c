@@ -3871,6 +3871,8 @@ VkResult anv_CreateDevice(
 
    anv_device_utrace_init(device);
 
+   anv_device_init_embedded_samplers(device);
+
    BITSET_ONES(device->gfx_dirty_state);
    BITSET_CLEAR(device->gfx_dirty_state, ANV_GFX_STATE_INDEX_BUFFER);
    BITSET_CLEAR(device->gfx_dirty_state, ANV_GFX_STATE_SO_DECL_LIST);
@@ -4025,6 +4027,8 @@ void anv_DestroyDevice(
 
    vk_pipeline_cache_destroy(device->internal_cache, NULL);
    vk_pipeline_cache_destroy(device->default_pipeline_cache, NULL);
+
+   anv_device_finish_embedded_samplers(device);
 
    anv_device_finish_trtt(device);
 

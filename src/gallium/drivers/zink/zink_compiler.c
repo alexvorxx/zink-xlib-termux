@@ -2638,8 +2638,22 @@ clamp_layer_output(nir_shader *vs, nir_shader *fs, unsigned *next_location)
 }
 
 struct io_slot_map {
+   uint64_t *patch_slot_track;
+   uint64_t *slot_track;
    unsigned char *slot_map;
 };
+
+static void
+assign_track_slot_mask(struct io_slot_map *io, nir_variable *var, unsigned slot, unsigned num_slots)
+{
+   uint64_t *track = var->data.patch ? io->patch_slot_track : io->slot_track;
+   uint32_t mask = BITFIELD_MASK(glsl_get_vector_elements(glsl_without_array(var->type))) << var->data.location_frac;
+   uint64_t slot_mask = BITFIELD64_RANGE(slot, num_slots);
+   u_foreach_bit(c, mask) {
+      assert((track[c] & slot_mask) == 0);
+      track[c] |= slot_mask;
+   }
+}
 
 static void
 assign_producer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reserved, struct io_slot_map *io)
@@ -2675,6 +2689,7 @@ assign_producer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reser
       num_slots = glsl_count_vec4_slots(glsl_get_array_element(var->type), false, false);
    else
       num_slots = glsl_count_vec4_slots(var->type, false, false);
+   assign_track_slot_mask(io, var, slot, num_slots);
    if (io->slot_map[slot] == 0xff) {
       assert(*reserved + num_slots <= MAX_VARYING);
       assert(*reserved < MAX_VARYING);
@@ -2738,6 +2753,7 @@ assign_consumer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reser
       else
          num_slots = glsl_count_vec4_slots(var->type, false, false);
       assert(*reserved + num_slots <= MAX_VARYING);
+      assign_track_slot_mask(io, var, slot, num_slots);
       for (unsigned i = 0; i < num_slots; i++)
          io->slot_map[slot + i] = (*reserved)++;
    }
@@ -2919,9 +2935,13 @@ void
 zink_compiler_assign_io(struct zink_screen *screen, nir_shader *producer, nir_shader *consumer)
 {
    unsigned reserved = 0;
+   uint64_t slot_track[4] = {0};
+   uint64_t patch_slot_track[4] = {0};
    unsigned char slot_map[VARYING_SLOT_MAX];
    memset(slot_map, -1, sizeof(slot_map));
    struct io_slot_map io = {
+      .patch_slot_track = patch_slot_track,
+      .slot_track = slot_track,
       .slot_map = slot_map,
    };
    bool do_fixup = false;

@@ -2642,6 +2642,8 @@ struct io_slot_map {
    uint64_t *slot_track;
    unsigned char *slot_map;
    unsigned reserved;
+   unsigned char *patch_slot_map;
+   unsigned patch_reserved;
 };
 
 static void
@@ -2664,13 +2666,15 @@ assign_slot_io(gl_shader_stage stage, struct io_slot_map *io, nir_variable *var,
       num_slots = glsl_count_vec4_slots(glsl_get_array_element(var->type), false, false);
    else
       num_slots = glsl_count_vec4_slots(var->type, false, false);
+   uint8_t *slot_map = var->data.patch ? io->patch_slot_map : io->slot_map;
    assign_track_slot_mask(io, var, slot, num_slots);
-   if (io->slot_map[slot] != 0xff)
+   if (slot_map[slot] != 0xff)
       return;
-   assert(io->reserved + num_slots <= MAX_VARYING);
-   assert(io->reserved < MAX_VARYING);
+   unsigned *reserved = var->data.patch ? &io->patch_reserved : &io->reserved;
+   assert(*reserved + num_slots <= MAX_VARYING);
+   assert(*reserved < MAX_VARYING);
    for (unsigned i = 0; i < num_slots; i++)
-      io->slot_map[slot + i] = io->reserved++;
+      slot_map[slot + i] = (*reserved)++;
 }
 
 static void
@@ -2703,7 +2707,7 @@ assign_producer_var_io(gl_shader_stage stage, nir_variable *var, struct io_slot_
       slot -= VARYING_SLOT_PATCH0;
    }
    assign_slot_io(stage, io, var, slot);
-   slot = io->slot_map[slot];
+   slot = var->data.patch ? io->patch_slot_map[slot] : io->slot_map[slot];
    assert(slot < MAX_VARYING);
    var->data.driver_location = slot;
 }
@@ -2742,7 +2746,8 @@ assign_consumer_var_io(gl_shader_stage stage, nir_variable *var, struct io_slot_
       assert(slot >= VARYING_SLOT_PATCH0);
       slot -= VARYING_SLOT_PATCH0;
    }
-   if (io->slot_map[slot] == (unsigned char)-1) {
+   uint8_t *slot_map = var->data.patch ? io->patch_slot_map : io->slot_map;
+   if (slot_map[slot] == (unsigned char)-1) {
       /* texcoords can't be eliminated in fs due to GL_COORD_REPLACE,
          * so keep for now and eliminate later
          */
@@ -2756,7 +2761,7 @@ assign_consumer_var_io(gl_shader_stage stage, nir_variable *var, struct io_slot_
          return false;
       assign_slot_io(stage, io, var, slot);
    }
-   var->data.driver_location = io->slot_map[slot];
+   var->data.driver_location = slot_map[slot];
    return true;
 }
 
@@ -2937,11 +2942,15 @@ zink_compiler_assign_io(struct zink_screen *screen, nir_shader *producer, nir_sh
    uint64_t patch_slot_track[4] = {0};
    unsigned char slot_map[VARYING_SLOT_MAX];
    memset(slot_map, -1, sizeof(slot_map));
+   unsigned char patch_slot_map[VARYING_SLOT_MAX];
+   memset(patch_slot_map, -1, sizeof(patch_slot_map));
    struct io_slot_map io = {
       .patch_slot_track = patch_slot_track,
       .slot_track = slot_track,
       .slot_map = slot_map,
+      .patch_slot_map = patch_slot_map,
       .reserved = 0,
+      .patch_reserved = 0,
    };
    bool do_fixup = false;
    nir_shader *nir = producer->info.stage == MESA_SHADER_TESS_CTRL ? producer : consumer;

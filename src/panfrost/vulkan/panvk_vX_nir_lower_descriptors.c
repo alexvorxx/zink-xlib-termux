@@ -283,7 +283,7 @@ get_resource_deref_binding(nir_deref_instr *deref, uint32_t *set,
    *index_ssa = NULL;
 
    if (deref->deref_type == nir_deref_type_array) {
-      if (index_imm != NULL && nir_src_is_const(deref->arr.index))
+      if (nir_src_is_const(deref->arr.index))
          *index_imm = nir_src_as_uint(deref->arr.index);
       else
          *index_ssa = deref->arr.index.ssa;

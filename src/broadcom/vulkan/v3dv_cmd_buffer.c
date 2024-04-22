@@ -91,7 +91,7 @@ cmd_buffer_init(struct v3dv_cmd_buffer *cmd_buffer,
 }
 
 static VkResult
-cmd_buffer_create(struct vk_command_pool *pool,
+cmd_buffer_create(struct vk_command_pool *pool, VkCommandBufferLevel level,
                   struct vk_command_buffer **cmd_buffer_out)
 {
    struct v3dv_device *device =
@@ -111,7 +111,7 @@ cmd_buffer_create(struct vk_command_pool *pool,
     */
    VkResult result;
    result = vk_command_buffer_init(pool, &cmd_buffer->vk,
-                                   &v3dv_cmd_buffer_ops, 0 /* level */);
+                                   &v3dv_cmd_buffer_ops, level);
    if (result != VK_SUCCESS) {
       vk_free(&pool->alloc, cmd_buffer);
       return result;

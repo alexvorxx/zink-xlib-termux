@@ -2106,6 +2106,7 @@ static void tu_reset_render_pass(struct tu_cmd_buffer *cmd_buffer)
 
 static VkResult
 tu_create_cmd_buffer(struct vk_command_pool *pool,
+                     VkCommandBufferLevel level,
                      struct vk_command_buffer **cmd_buffer_out)
 {
    struct tu_device *device =
@@ -2119,9 +2120,8 @@ tu_create_cmd_buffer(struct vk_command_pool *pool,
    if (cmd_buffer == NULL)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   VkResult result =
-      vk_command_buffer_init(pool, &cmd_buffer->vk, &tu_cmd_buffer_ops,
-                             VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+   VkResult result = vk_command_buffer_init(pool, &cmd_buffer->vk,
+                                            &tu_cmd_buffer_ops, level);
    if (result != VK_SUCCESS) {
       vk_free2(&device->vk.alloc, NULL, cmd_buffer);
       return result;

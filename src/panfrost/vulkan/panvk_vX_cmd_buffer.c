@@ -1660,7 +1660,7 @@ panvk_destroy_cmdbuf(struct vk_command_buffer *vk_cmdbuf)
 }
 
 static VkResult
-panvk_create_cmdbuf(struct vk_command_pool *vk_pool,
+panvk_create_cmdbuf(struct vk_command_pool *vk_pool, VkCommandBufferLevel level,
                     struct vk_command_buffer **cmdbuf_out)
 {
    struct panvk_device *device =
@@ -1674,8 +1674,8 @@ panvk_create_cmdbuf(struct vk_command_pool *vk_pool,
    if (!cmdbuf)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   VkResult result = vk_command_buffer_init(&pool->vk, &cmdbuf->vk,
-                                            &panvk_per_arch(cmd_buffer_ops), 0);
+   VkResult result = vk_command_buffer_init(
+      &pool->vk, &cmdbuf->vk, &panvk_per_arch(cmd_buffer_ops), level);
    if (result != VK_SUCCESS) {
       vk_free(&device->vk.alloc, cmdbuf);
       return result;

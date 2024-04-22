@@ -339,7 +339,8 @@ radv_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
 }
 
 static VkResult
-radv_create_cmd_buffer(struct vk_command_pool *pool, struct vk_command_buffer **cmd_buffer_out)
+radv_create_cmd_buffer(struct vk_command_pool *pool, VkCommandBufferLevel level,
+                       struct vk_command_buffer **cmd_buffer_out)
 {
    struct radv_device *device = container_of(pool->base.device, struct radv_device, vk);
    const struct radv_physical_device *pdev = radv_device_physical(device);
@@ -349,7 +350,7 @@ radv_create_cmd_buffer(struct vk_command_pool *pool, struct vk_command_buffer **
    if (cmd_buffer == NULL)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   VkResult result = vk_command_buffer_init(pool, &cmd_buffer->vk, &radv_cmd_buffer_ops, 0);
+   VkResult result = vk_command_buffer_init(pool, &cmd_buffer->vk, &radv_cmd_buffer_ops, level);
    if (result != VK_SUCCESS) {
       vk_free(&cmd_buffer->vk.pool->alloc, cmd_buffer);
       return result;

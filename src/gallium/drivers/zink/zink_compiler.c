@@ -2643,6 +2643,8 @@ assign_producer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reser
    unsigned slot = var->data.location;
    switch (slot) {
    case -1:
+      unreachable("there should be no UINT32_MAX location variables!");
+      break;
    case VARYING_SLOT_POS:
    case VARYING_SLOT_PSIZ:
    case VARYING_SLOT_LAYER:

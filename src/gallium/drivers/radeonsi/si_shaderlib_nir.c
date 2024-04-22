@@ -11,8 +11,9 @@
 #include "si_query.h"
 #include "aco_interface.h"
 #include "nir_format_convert.h"
+#include "ac_nir_helpers.h"
 
-static void *create_shader_state(struct si_context *sctx, nir_shader *nir)
+void *si_create_shader_state(struct si_context *sctx, nir_shader *nir)
 {
    sctx->b.screen->finalize_nir(sctx->b.screen, (void*)nir);
    return pipe_shader_from_nir(&sctx->b, nir);
@@ -106,7 +107,7 @@ void *si_create_dcc_retile_cs(struct si_context *sctx, struct radeon_surf *surf)
                                  zero, zero, zero); /* z, sample, pipe_xor */
    nir_store_ssbo(&b, value, zero, dst_offset, .write_mask=0x1, .align_mul=1);
 
-   return create_shader_state(sctx, b.shader);
+   return si_create_shader_state(sctx, b.shader);
 }
 
 void *gfx9_create_clear_dcc_msaa_cs(struct si_context *sctx, struct si_texture *tex)
@@ -150,7 +151,7 @@ void *gfx9_create_clear_dcc_msaa_cs(struct si_context *sctx, struct si_texture *
     */
    nir_store_ssbo(&b, clear_value, zero, offset, .write_mask=0x1, .align_mul=2);
 
-   return create_shader_state(sctx, b.shader);
+   return si_create_shader_state(sctx, b.shader);
 }
 
 /* Create a compute shader implementing clear_buffer or copy_buffer. */
@@ -183,7 +184,7 @@ void *si_create_clear_buffer_rmw_cs(struct si_context *sctx)
 
    nir_store_ssbo(&b, data, zero, address, .align_mul = 4);
 
-   return create_shader_state(sctx, b.shader);
+   return si_create_shader_state(sctx, b.shader);
 }
 
 /* This is used when TCS is NULL in the VS->TCS->TES chain. In this case,
@@ -202,7 +203,7 @@ void *si_create_passthrough_tcs(struct si_context *sctx)
    nir_shader *tcs = nir_create_passthrough_tcs_impl(sctx->screen->nir_options, locations,
                                                      info->num_outputs, sctx->patch_vertices);
 
-   return create_shader_state(sctx, tcs);
+   return si_create_shader_state(sctx, tcs);
 }
 
 static nir_def *convert_linear_to_srgb(nir_builder *b, nir_def *input)
@@ -216,30 +217,6 @@ static nir_def *convert_linear_to_srgb(nir_builder *b, nir_def *input)
    }
 
    return input;
-}
-
-static nir_def *average_samples(nir_builder *b, nir_def **samples, unsigned num_samples)
-{
-   /* This works like add-reduce by computing the sum of each pair independently, and then
-    * computing the sum of each pair of sums, and so on, to get better instruction-level
-    * parallelism.
-    */
-   if (num_samples == 16) {
-      for (unsigned i = 0; i < 8; i++)
-         samples[i] = nir_fadd(b, samples[i * 2], samples[i * 2 + 1]);
-   }
-   if (num_samples >= 8) {
-      for (unsigned i = 0; i < 4; i++)
-         samples[i] = nir_fadd(b, samples[i * 2], samples[i * 2 + 1]);
-   }
-   if (num_samples >= 4) {
-      for (unsigned i = 0; i < 2; i++)
-         samples[i] = nir_fadd(b, samples[i * 2], samples[i * 2 + 1]);
-   }
-   if (num_samples >= 2)
-      samples[0] = nir_fadd(b, samples[0], samples[1]);
-
-   return nir_fmul_imm(b, samples[0], 1.0 / num_samples); /* average the sum */
 }
 
 static nir_def *apply_blit_output_modifiers(nir_builder *b, nir_def *color,
@@ -288,27 +265,6 @@ static nir_def *apply_blit_output_modifiers(nir_builder *b, nir_def *color,
       color = nir_trim_vector(b, color, options->last_dst_channel + 1);
 
    return color;
-}
-
-static void optimization_barrier_vgpr_array(struct si_context *sctx, nir_builder *b,
-                                            nir_def **array, unsigned num_elements,
-                                            unsigned num_components)
-{
-   /* We use the optimization barrier to force LLVM to form VMEM clauses by constraining its
-    * instruction scheduling options.
-    *
-    * VMEM clauses are supported since GFX10. It's not recommended to use the optimization
-    * barrier in the compute blit for GFX6-8 because the lack of A16 combined with optimization
-    * barriers would unnecessarily increase VGPR usage for MSAA resources.
-    */
-   if (!b->shader->info.use_aco_amd && sctx->gfx_level >= GFX10) {
-      for (unsigned i = 0; i < num_elements; i++) {
-         unsigned prev_num = array[i]->num_components;
-         array[i] = nir_trim_vector(b, array[i], num_components);
-         array[i] = nir_optimization_barrier_vgpr_amd(b, array[i]->bit_size, array[i]);
-         array[i] = nir_pad_vector(b, array[i], prev_num);
-      }
-   }
 }
 
 /* The compute blit shader.
@@ -541,8 +497,8 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
 
       /* We don't want the computation of src coordinates to be interleaved with loads. */
       if (lane_size > 1 || src_samples > 1) {
-         optimization_barrier_vgpr_array(sctx, &b, coord_src, lane_size * src_samples,
-                                         num_src_coords);
+         ac_optimization_barrier_vgpr_array(&sctx->screen->info, &b, coord_src,
+                                            lane_size * src_samples, num_src_coords);
       }
 
       /* Use "samples_identical" for MSAA resolving if it's supported. */
@@ -588,14 +544,14 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
       /* Resolve MSAA if necessary. */
       if (is_resolve) {
          /* We don't want the averaging of samples to be interleaved with image loads. */
-         optimization_barrier_vgpr_array(sctx, &b, color, lane_size * src_samples,
-                                         options->last_src_channel + 1);
+         ac_optimization_barrier_vgpr_array(&sctx->screen->info, &b, color, lane_size * src_samples,
+                                            options->last_src_channel + 1);
 
          /* This reduces the "color" array from "src_samples * lane_size" elements to only
           * "lane_size" elements.
           */
          foreach_pixel_in_lane(1, sample, x, y, z, i) {
-            color[i] = average_samples(&b, &color[i * src_samples], src_samples);
+            color[i] = ac_average_samples(&b, &color[i * src_samples], src_samples);
          }
          src_samples = 1;
       }
@@ -634,13 +590,15 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
    }
 
    /* We don't want the computation of dst coordinates to be interleaved with stores. */
-   if (lane_size > 1 || dst_samples > 1)
-      optimization_barrier_vgpr_array(sctx, &b, coord_dst, lane_size * dst_samples, num_dst_coords);
+   if (lane_size > 1 || dst_samples > 1) {
+      ac_optimization_barrier_vgpr_array(&sctx->screen->info, &b, coord_dst, lane_size * dst_samples,
+                                         num_dst_coords);
+   }
 
    /* We don't want the application of blit output modifiers to be interleaved with stores. */
    if (!options->is_clear && (lane_size > 1 || MIN2(src_samples, dst_samples) > 1)) {
-      optimization_barrier_vgpr_array(sctx, &b, color, lane_size * src_samples,
-                                      options->last_dst_channel + 1);
+      ac_optimization_barrier_vgpr_array(&sctx->screen->info, &b, color, lane_size * src_samples,
+                                         options->last_dst_channel + 1);
    }
 
    /* Store the pixels, one per sample. */
@@ -655,7 +613,7 @@ void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_sha
    if (options->has_start_xyz)
       nir_pop_if(&b, if_positive);
 
-   return create_shader_state(sctx, b.shader);
+   return si_create_shader_state(sctx, b.shader);
 }
 
 /* Store the clear color at the beginning of every 256B block. This is required when we clear DCC
@@ -694,7 +652,7 @@ void *si_clear_image_dcc_single_shader(struct si_context *sctx, bool is_msaa, un
    nir_image_deref_store(&b, &nir_build_deref_var(&b, output_img)->def, coord, nir_imm_int(&b, 0),
                          clear_color, nir_imm_int(&b, 0));
 
-   return create_shader_state(sctx, b.shader);
+   return si_create_shader_state(sctx, b.shader);
 }
 
 void *si_create_ubyte_to_ushort_compute_shader(struct si_context *sctx)
@@ -714,7 +672,7 @@ void *si_create_ubyte_to_ushort_compute_shader(struct si_context *sctx)
    nir_store_ssbo(&b, nir_u2u16(&b, ubyte_value), nir_imm_int(&b, 0),
                   store_address, .access = ACCESS_RESTRICT);
 
-   return create_shader_state(sctx, b.shader);
+   return si_create_shader_state(sctx, b.shader);
 }
 
 /* Create a compute shader implementing clear_buffer or copy_buffer. */
@@ -745,7 +703,7 @@ void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_
 
    nir_store_ssbo(&b, value, nir_imm_int(&b, !is_clear), offset, .access = ACCESS_RESTRICT);
 
-   return create_shader_state(sctx, b.shader);
+   return si_create_shader_state(sctx, b.shader);
 }
 
 /* Load samples from the image, and copy them to the same image. This looks like
@@ -764,7 +722,7 @@ void *si_create_fmask_expand_cs(struct si_context *sctx, unsigned num_samples, b
 
    /* Return an empty compute shader */
    if (num_samples == 0)
-      return create_shader_state(sctx, b.shader);
+      return si_create_shader_state(sctx, b.shader);
 
    b.shader->info.num_images = 1;
 
@@ -803,7 +761,7 @@ void *si_create_fmask_expand_cs(struct si_context *sctx, unsigned num_samples, b
                             .image_array = is_array);
    }
 
-   return create_shader_state(sctx, b.shader);
+   return si_create_shader_state(sctx, b.shader);
 }
 
 /* This is just a pass-through shader with 1-3 MOV instructions. */
@@ -873,7 +831,7 @@ void *si_get_blitter_vs(struct si_context *sctx, enum blitter_attrib_type type, 
                                                      SYSTEM_VALUE_INSTANCE_ID, glsl_int_type()));
    }
 
-   *vs = create_shader_state(sctx, b.shader);
+   *vs = si_create_shader_state(sctx, b.shader);
    return *vs;
 }
 
@@ -1251,7 +1209,7 @@ void *si_create_query_result_cs(struct si_context *sctx)
    }
    nir_pop_if(&b, if_acc_chaining);
 
-   return create_shader_state(sctx, b.shader);
+   return si_create_shader_state(sctx, b.shader);
 }
 
 /* Create the compute shader that is used to collect the results of gfx10+
@@ -1499,162 +1457,5 @@ void *gfx11_create_sh_query_result_cs(struct si_context *sctx)
    }
    nir_pop_if(&b, if_write_summary_buffer);
 
-   return create_shader_state(sctx, b.shader);
-}
-
-static nir_def *build_tex_load_ms(nir_builder *b, unsigned num_components, unsigned bit_size,
-                                  nir_deref_instr *tex_deref, nir_def *coord, nir_def *sample_index)
-{
-   nir_tex_src srcs[] = {
-      nir_tex_src_for_ssa(nir_tex_src_coord, coord),
-      nir_tex_src_for_ssa(nir_tex_src_ms_index, sample_index),
-   };
-   nir_def *result = nir_build_tex_deref_instr(b, nir_texop_txf_ms, tex_deref, tex_deref,
-                                               ARRAY_SIZE(srcs), srcs);
-
-   nir_tex_instr *tex = nir_instr_as_tex(result->parent_instr);
-
-   assert(bit_size == 32 || bit_size == 16);
-   if (bit_size == 16) {
-      tex->dest_type = nir_type_float16;
-      tex->def.bit_size = 16;
-   }
-   return nir_trim_vector(b, result, num_components);
-}
-
-void *si_create_resolve_ps(struct si_context *sctx, const union si_resolve_ps_key *options)
-{
-   if (si_can_dump_shader(sctx->screen, MESA_SHADER_FRAGMENT, SI_DUMP_SHADER_KEY)) {
-      fprintf(stderr, "Internal shader: resolve_ps\n");
-      fprintf(stderr, "   options.use_aco = %u\n", options->use_aco);
-      fprintf(stderr, "   options.src_is_array = %u\n", options->src_is_array);
-      fprintf(stderr, "   options.log_samples = %u\n", options->log_samples);
-      fprintf(stderr, "   options.last_src_channel = %u\n", options->last_src_channel);
-      fprintf(stderr, "   options.x_clamp_to_edge = %u\n", options->x_clamp_to_edge);
-      fprintf(stderr, "   options.y_clamp_to_edge = %u\n", options->y_clamp_to_edge);
-      fprintf(stderr, "   options.d16 = %u\n", options->d16);
-      fprintf(stderr, "   options.a16 = %u\n", options->a16);
-      fprintf(stderr, "\n");
-   }
-
-   const nir_shader_compiler_options *nir_options =
-      sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_FRAGMENT);
-   nir_builder b =
-      nir_builder_init_simple_shader(MESA_SHADER_FRAGMENT, nir_options, "si_resolve_ps");
-
-   b.shader->info.use_aco_amd = sctx->screen->use_aco ||
-                                (options->use_aco && aco_is_gpu_supported(&sctx->screen->info));
-   BITSET_SET(b.shader->info.textures_used, 1);
-
-   const struct glsl_type *sampler_type =
-      glsl_sampler_type(GLSL_SAMPLER_DIM_MS, /*shadow*/ false, /*is_array*/ options->src_is_array,
-                        GLSL_TYPE_FLOAT);
-   nir_variable *sampler = nir_variable_create(b.shader, nir_var_uniform, sampler_type, "samp0");
-   sampler->data.binding = 0;
-
-   nir_deref_instr *deref = nir_build_deref_var(&b, sampler);
-   nir_def *zero = nir_imm_int(&b, 0);
-   nir_def *baryc = nir_load_barycentric_pixel(&b, 32, .interp_mode = INTERP_MODE_SMOOTH);
-   nir_def *coord = nir_load_interpolated_input(&b, 2 + options->src_is_array, 32, baryc, zero,
-                                                .dest_type = nir_type_float32,
-                                                .io_semantics = (nir_io_semantics){
-                                                                .location = VARYING_SLOT_VAR0,
-                                                                .num_slots = 1});
-
-   /* Nearest filtering floors and then converts to integer, and then
-    * applies clamp to edge as clamp(coord, 0, dim - 1).
-    */
-   coord = nir_vector_insert_imm(&b, coord, nir_ffloor(&b, nir_channel(&b, coord, 0)), 0);
-   coord = nir_vector_insert_imm(&b, coord, nir_ffloor(&b, nir_channel(&b, coord, 1)), 1);
-   coord = nir_f2iN(&b, coord, options->a16 ? 16 : 32);
-
-   /* Clamp to edge only for X and Y because Z can't be out of bounds. */
-   nir_def *resinfo = NULL;
-   for (unsigned chan = 0; chan < 2; chan++) {
-      if (chan ? options->y_clamp_to_edge : options->x_clamp_to_edge) {
-         if (!resinfo) {
-            resinfo = nir_build_tex_deref_instr(&b, nir_texop_txs, deref, deref, 0, NULL);
-
-            if (options->a16) {
-               resinfo = nir_umin_imm(&b, resinfo, INT16_MAX);
-               resinfo = nir_i2i16(&b, resinfo);
-            }
-         }
-
-         nir_def *tmp = nir_channel(&b, coord, chan);
-         tmp = nir_imax_imm(&b, tmp, 0);
-         tmp = nir_imin(&b, tmp, nir_iadd_imm(&b, nir_channel(&b, resinfo, chan), -1));
-         coord = nir_vector_insert_imm(&b, coord, tmp, chan);
-      }
-   }
-
-   /* Use samples_identical if it's supported. */
-   bool uses_samples_identical = sctx->gfx_level < GFX11 &&
-                                 !(sctx->screen->debug_flags & DBG(NO_FMASK));
-   nir_def *sample0 = NULL;
-   nir_if *if_identical = NULL;
-
-   assert(options->last_src_channel <= options->last_dst_channel);
-
-   if (uses_samples_identical) {
-      nir_tex_src iden_srcs[] = {
-         nir_tex_src_for_ssa(nir_tex_src_coord, coord),
-      };
-      nir_def *samples_identical =
-         nir_build_tex_deref_instr(&b, nir_texop_samples_identical, deref, deref,
-                                   ARRAY_SIZE(iden_srcs), iden_srcs);
-
-      /* If all samples are identical, load only sample 0. */
-      if_identical = nir_push_if(&b, samples_identical);
-      {
-         sample0 = build_tex_load_ms(&b, options->last_src_channel + 1, options->d16 ? 16 : 32,
-                                     deref, coord, nir_imm_intN_t(&b, 0, coord->bit_size));
-      }
-      nir_push_else(&b, if_identical);
-   }
-
-   /* Insert the sample index into the coordinates. */
-   unsigned num_src_coords = 2 + options->src_is_array + 1;
-   unsigned num_samples = 1 << options->log_samples;
-   nir_def *coord_src[16] = {0};
-
-   for (unsigned i = 0; i < num_samples; i++) {
-      coord_src[i] = nir_pad_vector(&b, coord, num_src_coords);
-      coord_src[i] = nir_vector_insert_imm(&b, coord_src[i],
-                                           nir_imm_intN_t(&b, i, coord->bit_size),
-                                           num_src_coords - 1);
-   }
-
-   /* We need this because LLVM interleaves coordinate computations with image loads, which breaks
-    * VMEM clauses.
-    */
-   optimization_barrier_vgpr_array(sctx, &b, coord_src, num_samples, num_src_coords);
-
-   nir_def *samples[16] = {0};
-   for (unsigned i = 0; i < num_samples; i++) {
-      samples[i] = build_tex_load_ms(&b, options->last_src_channel + 1, options->d16 ? 16 : 32,
-                                     deref, nir_trim_vector(&b, coord_src[i], num_src_coords - 1),
-                                     nir_channel(&b, coord_src[i], num_src_coords - 1));
-   }
-   nir_def *result = average_samples(&b, samples, num_samples);
-
-   if (uses_samples_identical) {
-      nir_pop_if(&b, if_identical);
-      result = nir_if_phi(&b, sample0, result);
-   }
-
-   result = nir_pad_vector(&b, result, options->last_dst_channel + 1);
-   for (unsigned i = options->last_src_channel + 1; i <= options->last_dst_channel; i++) {
-      result = nir_vector_insert_imm(&b, result,
-                                     nir_imm_floatN_t(&b, i == 3 ? 1 : 0, result->bit_size), i);
-   }
-
-   nir_store_output(&b, result, zero,
-                    .write_mask = BITFIELD_MASK(options->last_dst_channel + 1),
-                    .src_type = options->d16 ? nir_type_float16 : nir_type_float32,
-                    .io_semantics = (nir_io_semantics){
-                                    .location = FRAG_RESULT_DATA0,
-                                    .num_slots = 1});
-
-   return create_shader_state(sctx, b.shader);
+   return si_create_shader_state(sctx, b.shader);
 }

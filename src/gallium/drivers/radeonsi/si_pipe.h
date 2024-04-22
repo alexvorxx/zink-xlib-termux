@@ -1634,6 +1634,7 @@ void si_suspend_queries(struct si_context *sctx);
 void si_resume_queries(struct si_context *sctx);
 
 /* si_shaderlib_nir.c */
+void *si_create_shader_state(struct si_context *sctx, struct nir_shader *nir);
 void *si_create_dcc_retile_cs(struct si_context *sctx, struct radeon_surf *surf);
 void *gfx9_create_clear_dcc_msaa_cs(struct si_context *sctx, struct si_texture *tex);
 void *si_create_passthrough_tcs(struct si_context *sctx);
@@ -1680,23 +1681,7 @@ union si_compute_blit_shader_key {
    uint64_t key;
 };
 
-union si_resolve_ps_key {
-   struct {
-      bool use_aco:1;
-      bool src_is_array:1;
-      uint8_t log_samples:2;
-      uint8_t last_src_channel:2; /* this shouldn't be greater than last_dst_channel */
-      uint8_t last_dst_channel:2;
-      bool x_clamp_to_edge:1;
-      bool y_clamp_to_edge:1;
-      bool a16:1;
-      bool d16:1;
-   };
-   uint64_t key;
-};
-
 void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_shader_key *options);
-void *si_create_resolve_ps(struct si_context *sctx, const union si_resolve_ps_key *options);
 void *si_get_blitter_vs(struct si_context *sctx, enum blitter_attrib_type type,
                         unsigned num_layers);
 void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_per_thread,

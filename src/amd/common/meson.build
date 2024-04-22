@@ -113,6 +113,8 @@ amd_common_files = files(
   'ac_nir_lower_tex.c',
   'ac_nir_lower_ngg.c',
   'ac_nir_lower_ps.c',
+  'ac_nir_meta.h',
+  'ac_nir_meta_ps_resolve.c',
   'amd_family.c',
   'ac_parse_ib.c',
   'ac_perfcounter.c',

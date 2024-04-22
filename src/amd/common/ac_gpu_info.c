@@ -760,20 +760,24 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
          info->vcn_enc_major_version = (vidip_fw_version & 0x00F00000) >> 20;
          info->vcn_enc_minor_version = (vidip_fw_version & 0x000FF000) >> 12;
       }
-   } else if (info->ip[AMD_IP_VCE].num_queues) {
-      r = amdgpu_query_firmware_version(dev, AMDGPU_INFO_FW_VCE, 0, 0, &vidip_fw_version, &vidip_fw_feature);
-      if (r) {
-         fprintf(stderr, "amdgpu: amdgpu_query_firmware_version(vce) failed.\n");
-         return false;
-      } else
-         info->vce_fw_version = vidip_fw_version;
-   } else if (info->ip[AMD_IP_UVD].num_queues) {
-      r = amdgpu_query_firmware_version(dev, AMDGPU_INFO_FW_UVD, 0, 0, &vidip_fw_version, &vidip_fw_feature);
-      if (r) {
-         fprintf(stderr, "amdgpu: amdgpu_query_firmware_version(uvd) failed.\n");
-         return false;
-      } else
-         info->uvd_fw_version = vidip_fw_version;
+   } else {
+      if (info->ip[AMD_IP_VCE].num_queues) {
+         r = amdgpu_query_firmware_version(dev, AMDGPU_INFO_FW_VCE, 0, 0, &vidip_fw_version, &vidip_fw_feature);
+         if (r) {
+            fprintf(stderr, "amdgpu: amdgpu_query_firmware_version(vce) failed.\n");
+            return false;
+         } else
+            info->vce_fw_version = vidip_fw_version;
+      }
+
+      if (info->ip[AMD_IP_UVD].num_queues) {
+         r = amdgpu_query_firmware_version(dev, AMDGPU_INFO_FW_UVD, 0, 0, &vidip_fw_version, &vidip_fw_feature);
+         if (r) {
+            fprintf(stderr, "amdgpu: amdgpu_query_firmware_version(uvd) failed.\n");
+            return false;
+         } else
+            info->uvd_fw_version = vidip_fw_version;
+      }
    }
 
    r = amdgpu_query_sw_info(dev, amdgpu_sw_info_address32_hi, &info->address32_hi);

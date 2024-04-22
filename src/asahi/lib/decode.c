@@ -613,28 +613,36 @@ agxdecode_record(struct agxdecode_ctx *ctx, uint64_t va, size_t size,
    PPP_PRINT(map, cull_2, CULL_2, "Cull 2");
 
    if (hdr.fragment_shader) {
-      agx_unpack(agxdecode_dump_stream, map, FRAGMENT_SHADER, frag);
-      agxdecode_stateful(ctx, frag.pipeline, "Fragment pipeline", agxdecode_usc,
-                         verbose, params, &frag.sampler_state_register_count);
+      agx_unpack(agxdecode_dump_stream, map, FRAGMENT_SHADER_WORD_0, frag_0);
+      agx_unpack(agxdecode_dump_stream, map + 4, FRAGMENT_SHADER_WORD_1,
+                 frag_1);
+      agx_unpack(agxdecode_dump_stream, map + 8, FRAGMENT_SHADER_WORD_2,
+                 frag_2);
+      agxdecode_stateful(ctx, frag_1.pipeline, "Fragment pipeline",
+                         agxdecode_usc, verbose, params,
+                         &frag_0.sampler_state_register_count);
 
-      if (frag.cf_bindings) {
+      if (frag_2.cf_bindings) {
          uint8_t buf[128];
          uint8_t *cf = buf;
 
-         agxdecode_fetch_gpu_array(ctx, frag.cf_bindings, buf);
+         agxdecode_fetch_gpu_array(ctx, frag_2.cf_bindings, buf);
          u_hexdump(agxdecode_dump_stream, cf, 128, false);
 
          DUMP_CL(CF_BINDING_HEADER, cf, "Coefficient binding header:");
          cf += AGX_CF_BINDING_HEADER_LENGTH;
 
-         for (unsigned i = 0; i < frag.cf_binding_count; ++i) {
+         for (unsigned i = 0; i < frag_0.cf_binding_count; ++i) {
             DUMP_CL(CF_BINDING, cf, "Coefficient binding:");
             cf += AGX_CF_BINDING_LENGTH;
          }
       }
 
-      DUMP_UNPACKED(FRAGMENT_SHADER, frag, "Fragment shader\n");
-      map += AGX_FRAGMENT_SHADER_LENGTH;
+      DUMP_CL(FRAGMENT_SHADER_WORD_0, map, "Fragment shader word 0");
+      DUMP_CL(FRAGMENT_SHADER_WORD_1, map + 4, "Fragment shader word 1");
+      DUMP_CL(FRAGMENT_SHADER_WORD_2, map + 8, "Fragment shader word 2");
+      DUMP_CL(FRAGMENT_SHADER_WORD_3, map + 12, "Fragment shader word 3");
+      map += 16;
    }
 
    PPP_PRINT(map, occlusion_query, FRAGMENT_OCCLUSION_QUERY, "Occlusion query");

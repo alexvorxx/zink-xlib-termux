@@ -3629,9 +3629,7 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out)
    if (dirty.fragment_shader) {
       unsigned frag_tex_count = ctx->stage[PIPE_SHADER_FRAGMENT].texture_count;
 
-      agx_ppp_push(&ppp, FRAGMENT_SHADER, cfg) {
-         cfg.pipeline = agx_build_pipeline(batch, ctx->fs, ctx->linked.fs,
-                                           PIPE_SHADER_FRAGMENT, 0, 0),
+      agx_ppp_push(&ppp, FRAGMENT_SHADER_WORD_0, cfg) {
          cfg.uniform_register_count = ctx->fs->b.info.push_count;
          cfg.preshader_register_count = ctx->fs->b.info.nr_preamble_gprs;
          cfg.texture_state_register_count =
@@ -3639,10 +3637,20 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out)
          cfg.sampler_state_register_count =
             translate_sampler_state_count(ctx, ctx->fs, PIPE_SHADER_FRAGMENT);
          cfg.cf_binding_count = ctx->linked.fs->cf.nr_bindings;
-         cfg.cf_bindings = batch->varyings;
+      }
 
-         /* XXX: This is probably wrong */
-         cfg.unknown_30 = frag_tex_count >= 4;
+      agx_ppp_push(&ppp, FRAGMENT_SHADER_WORD_1, cfg) {
+         cfg.pipeline = agx_build_pipeline(batch, ctx->fs, ctx->linked.fs,
+                                           PIPE_SHADER_FRAGMENT, 0, 0);
+      }
+
+      agx_ppp_push(&ppp, FRAGMENT_SHADER_WORD_2, cfg) {
+         cfg.cf_bindings = batch->varyings;
+      }
+
+      agx_ppp_push(&ppp, FRAGMENT_SHADER_WORD_3, cfg) {
+         /* XXX: This is wrong */
+         cfg.unknown = frag_tex_count >= 4;
       }
    }
 

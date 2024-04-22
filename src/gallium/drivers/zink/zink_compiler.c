@@ -2656,8 +2656,8 @@ assign_producer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reser
    case VARYING_SLOT_TESS_LEVEL_OUTER:
    case VARYING_SLOT_TESS_LEVEL_INNER:
       /* use a sentinel value to avoid counting later */
-      var->data.driver_location = UINT_MAX;
-      break;
+      var->data.driver_location = UINT32_MAX;
+      return;
 
    default:
       if (var->data.patch) {
@@ -2707,7 +2707,7 @@ assign_consumer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reser
    case VARYING_SLOT_TESS_LEVEL_INNER:
       /* use a sentinel value to avoid counting later */
       var->data.driver_location = UINT_MAX;
-      break;
+      return true;
    default:
       if (var->data.patch) {
          assert(slot >= VARYING_SLOT_PATCH0);

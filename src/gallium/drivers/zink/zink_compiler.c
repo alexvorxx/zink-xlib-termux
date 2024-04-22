@@ -2710,33 +2710,34 @@ assign_consumer_var_io(gl_shader_stage stage, nir_variable *var, unsigned *reser
       var->data.driver_location = UINT_MAX;
       return true;
    default:
-      if (var->data.patch) {
-         assert(slot >= VARYING_SLOT_PATCH0);
-         slot -= VARYING_SLOT_PATCH0;
-      }
-      if (slot_map[slot] == (unsigned char)-1) {
-         /* texcoords can't be eliminated in fs due to GL_COORD_REPLACE,
-          * so keep for now and eliminate later
-          */
-         if (is_texcoord(stage, var)) {
-            var->data.driver_location = -1;
-            return true;
-         }
-         /* patch variables may be read in the workgroup */
-         if (stage != MESA_SHADER_TESS_CTRL)
-            /* dead io */
-            return false;
-         unsigned num_slots;
-         if (nir_is_arrayed_io(var, stage))
-            num_slots = glsl_count_vec4_slots(glsl_get_array_element(var->type), false, false);
-         else
-            num_slots = glsl_count_vec4_slots(var->type, false, false);
-         assert(*reserved + num_slots <= MAX_VARYING);
-         for (unsigned i = 0; i < num_slots; i++)
-            slot_map[slot + i] = (*reserved)++;
-      }
-      var->data.driver_location = slot_map[slot];
+      break;
    }
+   if (var->data.patch) {
+      assert(slot >= VARYING_SLOT_PATCH0);
+      slot -= VARYING_SLOT_PATCH0;
+   }
+   if (slot_map[slot] == (unsigned char)-1) {
+      /* texcoords can't be eliminated in fs due to GL_COORD_REPLACE,
+         * so keep for now and eliminate later
+         */
+      if (is_texcoord(stage, var)) {
+         var->data.driver_location = UINT32_MAX;
+         return true;
+      }
+      /* patch variables may be read in the workgroup */
+      if (stage != MESA_SHADER_TESS_CTRL)
+         /* dead io */
+         return false;
+      unsigned num_slots;
+      if (nir_is_arrayed_io(var, stage))
+         num_slots = glsl_count_vec4_slots(glsl_get_array_element(var->type), false, false);
+      else
+         num_slots = glsl_count_vec4_slots(var->type, false, false);
+      assert(*reserved + num_slots <= MAX_VARYING);
+      for (unsigned i = 0; i < num_slots; i++)
+         slot_map[slot + i] = (*reserved)++;
+   }
+   var->data.driver_location = slot_map[slot];
    return true;
 }
 

@@ -63,14 +63,7 @@ struct panvk_pipeline_builder {
    const struct panvk_pipeline_layout *layout;
 
    struct panvk_shader *shaders[MESA_SHADER_STAGES];
-   struct {
-      uint32_t shader_offset;
-      uint32_t rsd_offset;
-   } stages[MESA_SHADER_STAGES];
-   uint32_t blend_shader_offsets[MAX_RTS];
-   uint32_t shader_total_size;
-   uint32_t static_state_size;
-   uint32_t vpd_offset;
+   mali_ptr shader_binaries[MESA_SHADER_STAGES];
 
    bool rasterizer_discard;
    /* these states are affectd by rasterizer_discard */
@@ -140,83 +133,23 @@ panvk_pipeline_builder_compile_shaders(struct panvk_pipeline_builder *builder,
          return VK_ERROR_OUT_OF_HOST_MEMORY;
 
       builder->shaders[stage] = shader;
-      builder->shader_total_size = ALIGN_POT(builder->shader_total_size, 128);
-      builder->stages[stage].shader_offset = builder->shader_total_size;
-      builder->shader_total_size +=
-         util_dynarray_num_elements(&shader->binary, uint8_t);
    }
 
    return VK_SUCCESS;
 }
 
-static VkResult
-panvk_pipeline_builder_upload_shaders(struct panvk_pipeline_builder *builder,
-                                      struct panvk_pipeline *pipeline)
+static mali_ptr
+upload_shader(struct panvk_pipeline *pipeline,
+              const struct panvk_shader *shader)
 {
-   /* In some cases, the optimized shader is empty. Don't bother allocating
-    * anything in this case.
-    */
-   if (builder->shader_total_size == 0)
-      return VK_SUCCESS;
+   void *shader_data = util_dynarray_element(&shader->binary, uint8_t, 0);
+   unsigned shader_sz = util_dynarray_num_elements(&shader->binary, uint8_t);
 
-   struct panvk_priv_bo *bin_bo = panvk_priv_bo_create(
-      builder->device, builder->shader_total_size, PAN_KMOD_BO_FLAG_EXECUTABLE,
-      NULL, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   if (!shader_sz)
+      return 0;
 
-   pipeline->binary_bo = bin_bo;
-
-   for (uint32_t i = 0; i < MESA_SHADER_STAGES; i++) {
-      const struct panvk_shader *shader = builder->shaders[i];
-      if (!shader)
-         continue;
-
-      memcpy(pipeline->binary_bo->addr.host + builder->stages[i].shader_offset,
-             util_dynarray_element(&shader->binary, uint8_t, 0),
-             util_dynarray_num_elements(&shader->binary, uint8_t));
-   }
-
-   return VK_SUCCESS;
-}
-
-static void
-panvk_pipeline_builder_alloc_static_state_bo(
-   struct panvk_pipeline_builder *builder, struct panvk_pipeline *pipeline)
-{
-   struct panvk_graphics_pipeline *gfx_pipeline =
-      panvk_pipeline_to_graphics_pipeline(pipeline);
-   unsigned bo_size = 0;
-
-   for (uint32_t i = 0; i < MESA_SHADER_STAGES; i++) {
-      const struct panvk_shader *shader = builder->shaders[i];
-      if (!shader && i != MESA_SHADER_FRAGMENT)
-         continue;
-
-      assert(gfx_pipeline);
-      if (gfx_pipeline->state.fs.dynamic_rsd && i == MESA_SHADER_FRAGMENT)
-         continue;
-
-      bo_size = ALIGN_POT(bo_size, pan_alignment(RENDERER_STATE));
-      builder->stages[i].rsd_offset = bo_size;
-      bo_size += pan_size(RENDERER_STATE);
-      if (i == MESA_SHADER_FRAGMENT)
-         bo_size += pan_size(BLEND) *
-                    MAX2(gfx_pipeline->state.blend.pstate.rt_count, 1);
-   }
-
-   if (builder->create_info.gfx &&
-       panvk_graphics_pipeline_static_state(gfx_pipeline,
-                                            VK_DYNAMIC_STATE_VIEWPORT) &&
-       panvk_graphics_pipeline_static_state(gfx_pipeline,
-                                            VK_DYNAMIC_STATE_SCISSOR)) {
-      bo_size = ALIGN_POT(bo_size, pan_alignment(VIEWPORT));
-      builder->vpd_offset = bo_size;
-      bo_size += pan_size(VIEWPORT);
-   }
-
-   if (bo_size) {
-      pipeline->state_bo = panvk_priv_bo_create(
-         builder->device, bo_size, 0, NULL, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-   }
+   return pan_pool_upload_aligned(&pipeline->bin_pool.base, shader_data,
+                                  shader_sz, 128);
 }
 
 static void
@@ -447,22 +380,17 @@ panvk_pipeline_builder_init_shaders(struct panvk_pipeline_builder *builder,
          gfx_pipeline->state.ia.writes_point_size = points;
       }
 
-      mali_ptr shader_ptr = 0;
-
-      /* Handle empty shaders gracefully */
-      if (util_dynarray_num_elements(&builder->shaders[i]->binary, uint8_t)) {
-         shader_ptr =
-            pipeline->binary_bo->addr.dev + builder->stages[i].shader_offset;
-      }
+      mali_ptr shader_ptr = i == MESA_SHADER_FRAGMENT
+                               ? gfx_pipeline->state.fs.address
+                               : upload_shader(pipeline, builder->shaders[i]);
 
       if (i != MESA_SHADER_FRAGMENT) {
-         void *rsd =
-            pipeline->state_bo->addr.host + builder->stages[i].rsd_offset;
-         mali_ptr gpu_rsd =
-            pipeline->state_bo->addr.dev + builder->stages[i].rsd_offset;
+         struct panfrost_ptr rsd =
+            pan_pool_alloc_desc(&pipeline->desc_pool.base, RENDERER_STATE);
 
-         panvk_pipeline_builder_emit_non_fs_rsd(&shader->info, shader_ptr, rsd);
-         pipeline->rsds[i] = gpu_rsd;
+         panvk_pipeline_builder_emit_non_fs_rsd(&shader->info, shader_ptr,
+                                                rsd.cpu);
+         pipeline->rsds[i] = rsd.gpu;
       }
 
       if (i == MESA_SHADER_COMPUTE) {
@@ -472,20 +400,20 @@ panvk_pipeline_builder_init_shaders(struct panvk_pipeline_builder *builder,
    }
 
    if (builder->create_info.gfx && !gfx_pipeline->state.fs.dynamic_rsd) {
-      void *rsd = pipeline->state_bo->addr.host +
-                  builder->stages[MESA_SHADER_FRAGMENT].rsd_offset;
-      mali_ptr gpu_rsd = pipeline->state_bo->addr.dev +
-                         builder->stages[MESA_SHADER_FRAGMENT].rsd_offset;
-      void *bd = rsd + pan_size(RENDERER_STATE);
+      unsigned bd_count = MAX2(gfx_pipeline->state.blend.pstate.rt_count, 1);
+      struct panfrost_ptr rsd = pan_pool_alloc_desc_aggregate(
+         &pipeline->desc_pool.base, PAN_DESC(RENDERER_STATE),
+         PAN_DESC_ARRAY(bd_count, BLEND));
+      void *bd = rsd.cpu + pan_size(RENDERER_STATE);
 
-      panvk_pipeline_builder_emit_base_fs_rsd(gfx_pipeline, rsd);
+      panvk_pipeline_builder_emit_base_fs_rsd(gfx_pipeline, rsd.cpu);
       for (unsigned rt = 0; rt < gfx_pipeline->state.blend.pstate.rt_count;
            rt++) {
          panvk_pipeline_builder_emit_blend(gfx_pipeline, rt, bd);
          bd += pan_size(BLEND);
       }
 
-      pipeline->rsds[MESA_SHADER_FRAGMENT] = gpu_rsd;
+      pipeline->rsds[MESA_SHADER_FRAGMENT] = rsd.gpu;
    } else if (builder->create_info.gfx) {
       panvk_pipeline_builder_emit_base_fs_rsd(
          gfx_pipeline, gfx_pipeline->state.fs.rsd_template.opaque);
@@ -513,12 +441,13 @@ panvk_pipeline_builder_parse_viewport(struct panvk_pipeline_builder *builder,
                                             VK_DYNAMIC_STATE_VIEWPORT) &&
        panvk_graphics_pipeline_static_state(pipeline,
                                             VK_DYNAMIC_STATE_SCISSOR)) {
-      void *vpd = pipeline->base.state_bo->addr.host + builder->vpd_offset;
+      struct panfrost_ptr vpd =
+         pan_pool_alloc_desc(&pipeline->base.desc_pool.base, VIEWPORT);
+
       panvk_per_arch(emit_viewport)(
          builder->create_info.gfx->pViewportState->pViewports,
-         builder->create_info.gfx->pViewportState->pScissors, vpd);
-      pipeline->state.vp.vpd =
-         pipeline->base.state_bo->addr.dev + builder->vpd_offset;
+         builder->create_info.gfx->pViewportState->pScissors, vpd.cpu);
+      pipeline->state.vp.vpd = vpd.gpu;
    }
 
    if (panvk_graphics_pipeline_static_state(pipeline,
@@ -859,8 +788,7 @@ panvk_pipeline_builder_init_fs_state(struct panvk_pipeline_builder *builder,
    pipeline->state.fs.dynamic_rsd =
       pipeline->state.dynamic_mask & PANVK_DYNAMIC_FS_RSD_MASK;
    pipeline->state.fs.address =
-      pipeline->base.binary_bo->addr.dev +
-      builder->stages[MESA_SHADER_FRAGMENT].shader_offset;
+      upload_shader(&pipeline->base, builder->shaders[MESA_SHADER_FRAGMENT]);
    pipeline->state.fs.info = builder->shaders[MESA_SHADER_FRAGMENT]->info;
    pipeline->state.fs.rt_mask = builder->active_color_attachments;
    pipeline->state.fs.required = panvk_fs_required(pipeline);
@@ -1014,6 +942,12 @@ panvk_pipeline_builder_build(struct panvk_pipeline_builder *builder,
       gfx_pipeline->base.layout = builder->layout;
       gfx_pipeline->base.type = PANVK_PIPELINE_GRAPHICS;
 
+      panvk_pool_init(&gfx_pipeline->base.bin_pool, dev, NULL,
+                      PAN_KMOD_BO_FLAG_EXECUTABLE, 4096,
+                      "Pipeline shader binaries", false);
+      panvk_pool_init(&gfx_pipeline->base.desc_pool, dev, NULL, 0, 4096,
+                      "Pipeline static state", false);
+
       panvk_pipeline_builder_parse_dynamic(builder, gfx_pipeline);
       panvk_pipeline_builder_parse_color_blend(builder, gfx_pipeline);
       panvk_pipeline_builder_compile_shaders(builder, *pipeline);
@@ -1023,9 +957,7 @@ panvk_pipeline_builder_build(struct panvk_pipeline_builder *builder,
       panvk_pipeline_builder_parse_zs(builder, gfx_pipeline);
       panvk_pipeline_builder_parse_rast(builder, gfx_pipeline);
       panvk_pipeline_builder_parse_vertex_input(builder, gfx_pipeline);
-      panvk_pipeline_builder_upload_shaders(builder, *pipeline);
       panvk_pipeline_builder_init_fs_state(builder, gfx_pipeline);
-      panvk_pipeline_builder_alloc_static_state_bo(builder, *pipeline);
       panvk_pipeline_builder_init_shaders(builder, *pipeline);
       panvk_pipeline_builder_parse_viewport(builder, gfx_pipeline);
    } else {
@@ -1039,9 +971,13 @@ panvk_pipeline_builder_build(struct panvk_pipeline_builder *builder,
       compute_pipeline->base.layout = builder->layout;
       compute_pipeline->base.type = PANVK_PIPELINE_COMPUTE;
 
+      panvk_pool_init(&compute_pipeline->base.bin_pool, dev, NULL,
+                      PAN_KMOD_BO_FLAG_EXECUTABLE, 4096,
+                      "Pipeline shader binaries", false);
+      panvk_pool_init(&compute_pipeline->base.desc_pool, dev, NULL, 0, 4096,
+                      "Pipeline static state", false);
+
       panvk_pipeline_builder_compile_shaders(builder, *pipeline);
-      panvk_pipeline_builder_upload_shaders(builder, *pipeline);
-      panvk_pipeline_builder_alloc_static_state_bo(builder, *pipeline);
       panvk_pipeline_builder_init_shaders(builder, *pipeline);
    }
 
@@ -1187,7 +1123,7 @@ panvk_per_arch(DestroyPipeline)(VkDevice _device, VkPipeline _pipeline,
    VK_FROM_HANDLE(panvk_device, device, _device);
    VK_FROM_HANDLE(panvk_pipeline, pipeline, _pipeline);
 
-   panvk_priv_bo_destroy(pipeline->binary_bo, NULL);
-   panvk_priv_bo_destroy(pipeline->state_bo, NULL);
+   panvk_pool_cleanup(&pipeline->bin_pool);
+   panvk_pool_cleanup(&pipeline->desc_pool);
    vk_object_free(&device->vk, pAllocator, pipeline);
 }

@@ -54,8 +54,8 @@ struct panvk_pipeline {
 
    const struct panvk_pipeline_layout *layout;
 
-   struct panvk_priv_bo *binary_bo;
-   struct panvk_priv_bo *state_bo;
+   struct panvk_pool bin_pool;
+   struct panvk_pool desc_pool;
 
    unsigned active_stages;
 

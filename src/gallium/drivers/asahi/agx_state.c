@@ -4037,9 +4037,10 @@ agx_launch_gs_prerast(struct agx_batch *batch,
 
    agx_ensure_cmdbuf_has_space(
       batch, &batch->cdm,
-      8 * (AGX_CDM_LAUNCH_LENGTH + AGX_CDM_UNK_G14X_LENGTH +
-           AGX_CDM_INDIRECT_LENGTH + AGX_CDM_GLOBAL_SIZE_LENGTH +
-           AGX_CDM_LOCAL_SIZE_LENGTH + AGX_CDM_BARRIER_LENGTH));
+      8 * (AGX_CDM_LAUNCH_WORD_0_LENGTH + AGX_CDM_LAUNCH_WORD_1_LENGTH +
+           AGX_CDM_UNK_G14X_LENGTH + AGX_CDM_INDIRECT_LENGTH +
+           AGX_CDM_GLOBAL_SIZE_LENGTH + AGX_CDM_LOCAL_SIZE_LENGTH +
+           AGX_CDM_BARRIER_LENGTH));
 
    assert(!info->primitive_restart && "should have been lowered");
 
@@ -5216,7 +5217,7 @@ agx_launch(struct agx_batch *batch, const struct pipe_grid_info *info,
    /* TODO: Ensure space if we allow multiple kernels in a batch */
    uint8_t *out = batch->cdm.current;
 
-   agx_push(out, CDM_LAUNCH, cfg) {
+   agx_push(out, CDM_LAUNCH_WORD_0, cfg) {
       if (info->indirect)
          cfg.mode = AGX_CDM_MODE_INDIRECT_GLOBAL;
       else
@@ -5227,6 +5228,9 @@ agx_launch(struct agx_batch *batch, const struct pipe_grid_info *info,
       cfg.texture_state_register_count = agx_nr_tex_descriptors(batch, cs);
       cfg.sampler_state_register_count =
          translate_sampler_state_count(ctx, cs, stage);
+   }
+
+   agx_push(out, CDM_LAUNCH_WORD_1, cfg) {
       cfg.pipeline =
          agx_build_pipeline(batch, cs, linked, PIPE_SHADER_COMPUTE,
                             info->variable_shared_mem, subgroups_per_core);
@@ -5367,9 +5371,10 @@ agx_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
     * in practice, we can use CDM stream links.
     */
    size_t dispatch_upper_bound =
-      AGX_CDM_LAUNCH_LENGTH + AGX_CDM_UNK_G14X_LENGTH +
-      AGX_CDM_INDIRECT_LENGTH + AGX_CDM_GLOBAL_SIZE_LENGTH +
-      AGX_CDM_LOCAL_SIZE_LENGTH + AGX_CDM_BARRIER_LENGTH;
+      AGX_CDM_LAUNCH_WORD_0_LENGTH + AGX_CDM_LAUNCH_WORD_1_LENGTH +
+      AGX_CDM_UNK_G14X_LENGTH + AGX_CDM_INDIRECT_LENGTH +
+      AGX_CDM_GLOBAL_SIZE_LENGTH + AGX_CDM_LOCAL_SIZE_LENGTH +
+      AGX_CDM_BARRIER_LENGTH;
 
    if (batch->cdm.current + dispatch_upper_bound >= batch->cdm.end)
       agx_flush_batch_for_reason(ctx, batch, "CDM overfull");

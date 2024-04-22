@@ -1010,14 +1010,17 @@
     <value name="Indirect local" value="2"/>
   </enum>
 
-  <struct name="CDM Launch" size="8">
+  <struct name="CDM Launch Word 0" size="4">
     <field name="Uniform register count" size="3" start="1" type="uint" modifier="groups(64)"/>
     <field name="Texture state register count" size="5" start="4" type="uint" modifier="groups(8)"/>
     <field name="Sampler state register count" size="3" start="9" type="Sampler states"/>
     <field name="Preshader register count" size="4" start="12" type="uint" modifier="groups(16)"/>
     <field name="Mode" size="2" start="27" type="CDM Mode"/>
     <field name="Block Type" size="3" start="29" type="CDM Block Type" default="Launch"/>
-    <field name="Pipeline" size="26" start="1:6" type="address" modifier="shr(6)"/>
+  </struct>
+
+  <struct name="CDM Launch Word 1" size="4">
+    <field name="Pipeline" size="26" start="6" type="address" modifier="shr(6)"/>
   </struct>
 
   <struct name="CDM Unk G14X" size="8">

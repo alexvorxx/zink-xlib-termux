@@ -665,7 +665,8 @@ agxdecode_cdm(struct agxdecode_ctx *ctx, const uint8_t *map, uint64_t *link,
 
    switch (block_type) {
    case AGX_CDM_BLOCK_TYPE_LAUNCH: {
-      size_t length = AGX_CDM_LAUNCH_LENGTH;
+      size_t length =
+         AGX_CDM_LAUNCH_WORD_0_LENGTH + AGX_CDM_LAUNCH_WORD_1_LENGTH;
 
 #define CDM_PRINT(STRUCT_NAME, human)                                          \
    do {                                                                        \
@@ -674,17 +675,20 @@ agxdecode_cdm(struct agxdecode_ctx *ctx, const uint8_t *map, uint64_t *link,
       length += AGX_CDM_##STRUCT_NAME##_LENGTH;                                \
    } while (0);
 
-      agx_unpack(agxdecode_dump_stream, map, CDM_LAUNCH, hdr);
-      agxdecode_stateful(ctx, hdr.pipeline, "Pipeline", agxdecode_usc, verbose,
-                         params, &hdr.sampler_state_register_count);
-      DUMP_UNPACKED(CDM_LAUNCH, hdr, "Compute\n");
-      map += AGX_CDM_LAUNCH_LENGTH;
+      agx_unpack(agxdecode_dump_stream, map + 0, CDM_LAUNCH_WORD_0, hdr0);
+      agx_unpack(agxdecode_dump_stream, map + 4, CDM_LAUNCH_WORD_1, hdr1);
+
+      agxdecode_stateful(ctx, hdr1.pipeline, "Pipeline", agxdecode_usc, verbose,
+                         params, &hdr0.sampler_state_register_count);
+      DUMP_UNPACKED(CDM_LAUNCH_WORD_0, hdr0, "Compute\n");
+      DUMP_UNPACKED(CDM_LAUNCH_WORD_1, hdr1, "Compute\n");
+      map += 8;
 
       /* Added in G14X */
       if (params->gpu_generation >= 14 && params->num_clusters_total > 1)
          CDM_PRINT(UNK_G14X, "Unknown G14X");
 
-      switch (hdr.mode) {
+      switch (hdr0.mode) {
       case AGX_CDM_MODE_DIRECT:
          CDM_PRINT(GLOBAL_SIZE, "Global size");
          CDM_PRINT(LOCAL_SIZE, "Local size");
@@ -697,7 +701,7 @@ agxdecode_cdm(struct agxdecode_ctx *ctx, const uint8_t *map, uint64_t *link,
          CDM_PRINT(INDIRECT, "Indirect buffer");
          break;
       default:
-         fprintf(agxdecode_dump_stream, "Unknown CDM mode: %u\n", hdr.mode);
+         fprintf(agxdecode_dump_stream, "Unknown CDM mode: %u\n", hdr0.mode);
          break;
       }
 

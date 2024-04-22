@@ -326,9 +326,11 @@ fn prepare_options(options: &str, dev: &Device) -> Vec<CString> {
     res.push(&options[old..]);
 
     res.iter()
-        .map(|&a| match a {
-            "-cl-denorms-are-zero" => "-fdenormal-fp-math=positive-zero",
-            _ => a,
+        .filter_map(|&a| match a {
+            "-cl-denorms-are-zero" => Some("-fdenormal-fp-math=positive-zero"),
+            // We can ignore it as long as we don't support ifp
+            "-cl-no-subgroup-ifp" => None,
+            _ => Some(a),
         })
         .map(CString::new)
         .map(Result::unwrap)

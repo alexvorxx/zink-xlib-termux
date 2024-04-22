@@ -77,6 +77,7 @@ panvk_per_arch(GetDescriptorSetLayoutSupport)(
          unreachable("Invalid descriptor type");
       }
    }
+   free(bindings);
 
    /* The maximum values apply to all sets attached to a pipeline since all
     * sets descriptors have to be merged in a single array.

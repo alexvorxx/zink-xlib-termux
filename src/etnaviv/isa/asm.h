@@ -21,6 +21,7 @@
 #define SWIZ_Z(z) (((z) & 0x03) << 4)
 #define SWIZ_W(w) (((w) & 0x03) << 6)
 
+/* clang-format off */
 /* Broadcast swizzle to all four components */
 #define INST_SWIZ_BROADCAST(x) \
         (SWIZ_X(x) | SWIZ_Y(x) | SWIZ_Z(x) | SWIZ_W(x))
@@ -35,6 +36,7 @@
                   ISA_SWIZ_##c1, \
                   ISA_SWIZ_##c2, \
                   ISA_SWIZ_##c3)
+/* clang-format on */
 
 /*** operands ***/
 

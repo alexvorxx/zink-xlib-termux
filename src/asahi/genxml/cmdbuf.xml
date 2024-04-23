@@ -557,7 +557,7 @@
   </struct>
 
   <struct name="Cull 2" size="4">
-    <field name="Unknown 2" size="8" start="0" type="hex" default="0xa0"/>
+    <field name="Unknown 5" size="1" start="5" type="bool" default="true"/>
     <field name="Draw clipped edges" size="1" start="9" type="bool"/>
     <field name="Needs Primitive ID" size="1" start="12" type="bool"/>
     <field name="Primitive MSAA" size="1" start="15" type="bool"/>

@@ -79,6 +79,7 @@ void ac_set_nir_options(struct radeon_info *info, bool use_llvm,
    options->has_udot_4x8_sat = info->has_accelerated_dot_product;
    options->has_dot_2x16 = info->has_accelerated_dot_product && info->gfx_level < GFX11;
    options->has_find_msb_rev = true;
+   options->has_pack_32_4x8 = true;
    options->has_pack_half_2x16_rtz = true;
    options->has_bit_test = !use_llvm;
    options->has_fmulz = true;

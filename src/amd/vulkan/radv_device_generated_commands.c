@@ -142,10 +142,10 @@ radv_get_sequence_size(const struct radv_indirect_command_layout *layout, struct
 static uint32_t
 radv_align_cmdbuf_size(const struct radv_device *device, uint32_t size)
 {
-   const uint32_t ib_size_alignment = MAX2(device->physical_device->rad_info.ip[AMD_IP_GFX].ib_size_alignment,
-                                           device->physical_device->rad_info.ip[AMD_IP_COMPUTE].ib_size_alignment);
+   const uint32_t ib_pad_dw_mask = MAX2(device->physical_device->rad_info.ib_pad_dw_mask[AMD_IP_GFX],
+                                        device->physical_device->rad_info.ib_pad_dw_mask[AMD_IP_COMPUTE]);
 
-   return align(size, ib_size_alignment);
+   return align(size, ib_pad_dw_mask + 1);
 }
 
 static unsigned
@@ -1371,14 +1371,11 @@ radv_GetGeneratedCommandsMemoryRequirementsNV(VkDevice _device,
    VkDeviceSize cmd_buf_size =
       radv_align_cmdbuf_size(device, cmd_stride * pInfo->maxSequencesCount) + radv_dgc_preamble_cmdbuf_size(device);
    VkDeviceSize upload_buf_size = upload_stride * pInfo->maxSequencesCount;
-   unsigned ib_base_alignment = MAX2(device->physical_device->rad_info.ip[AMD_IP_GFX].ib_base_alignment,
-                                     device->physical_device->rad_info.ip[AMD_IP_COMPUTE].ib_base_alignment);
-   unsigned ib_size_alignment = MAX2(device->physical_device->rad_info.ip[AMD_IP_GFX].ib_size_alignment,
-                                     device->physical_device->rad_info.ip[AMD_IP_COMPUTE].ib_size_alignment);
 
    pMemoryRequirements->memoryRequirements.memoryTypeBits = device->physical_device->memory_types_32bit;
-   pMemoryRequirements->memoryRequirements.alignment = ib_base_alignment;
-   pMemoryRequirements->memoryRequirements.size = align(cmd_buf_size + upload_buf_size, ib_size_alignment);
+   pMemoryRequirements->memoryRequirements.alignment = device->physical_device->rad_info.ib_alignment;
+   pMemoryRequirements->memoryRequirements.size =
+      align(cmd_buf_size + upload_buf_size, pMemoryRequirements->memoryRequirements.alignment);
 }
 
 VKAPI_ATTR void VKAPI_CALL

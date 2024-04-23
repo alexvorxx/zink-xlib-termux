@@ -953,11 +953,9 @@ static void amdgpu_set_ib_size(struct radeon_cmdbuf *rcs, struct amdgpu_ib *ib)
 static void amdgpu_ib_finalize(struct amdgpu_winsys *ws, struct radeon_cmdbuf *rcs,
                                struct amdgpu_ib *ib)
 {
-   struct amdgpu_cs *cs = (struct amdgpu_cs*)ib;
-
    amdgpu_set_ib_size(rcs, ib);
    ib->used_ib_space += rcs->current.cdw * 4;
-   ib->used_ib_space = align(ib->used_ib_space, ws->info.ip[cs->ip_type].ib_base_alignment);
+   ib->used_ib_space = align(ib->used_ib_space, ws->info.ib_alignment);
    ib->max_ib_size = MAX2(ib->max_ib_size, rcs->prev_dw + rcs->current.cdw);
 }
 
@@ -1147,12 +1145,12 @@ amdgpu_cs_setup_preemption(struct radeon_cmdbuf *rcs, const uint32_t *preamble_i
    struct amdgpu_cs *cs = amdgpu_cs(rcs);
    struct amdgpu_winsys *ws = cs->ws;
    struct amdgpu_cs_context *csc[2] = {&cs->csc1, &cs->csc2};
-   unsigned size = align(preamble_num_dw * 4, ws->info.ip[cs->ip_type].ib_size_alignment);
+   unsigned size = align(preamble_num_dw * 4, ws->info.ib_alignment);
    struct pb_buffer *preamble_bo;
    uint32_t *map;
 
    /* Create the preamble IB buffer. */
-   preamble_bo = amdgpu_bo_create(ws, size, ws->info.ip[cs->ip_type].ib_base_alignment,
+   preamble_bo = amdgpu_bo_create(ws, size, ws->info.ib_alignment,
                                   RADEON_DOMAIN_VRAM,
                                   RADEON_FLAG_NO_INTERPROCESS_SHARING |
                                   RADEON_FLAG_GTT_WC |
@@ -1710,7 +1708,7 @@ static void amdgpu_cs_submit_ib(void *job, void *gdata, int thread_index)
 
    if (noop && acs->ip_type == AMD_IP_GFX) {
       /* Reduce the IB size and fill it with NOP to make it like an empty IB. */
-      unsigned noop_size = MIN2(cs->ib[IB_MAIN].ib_bytes, ws->info.ip[AMD_IP_GFX].ib_size_alignment);
+      unsigned noop_size = MIN2(cs->ib[IB_MAIN].ib_bytes, ws->info.ib_alignment);
 
       cs->ib_main_addr[0] = PKT3(PKT3_NOP, noop_size / 4 - 2, 0);
       cs->ib[IB_MAIN].ib_bytes = noop_size;
@@ -1806,7 +1804,6 @@ static int amdgpu_cs_flush(struct radeon_cmdbuf *rcs,
    struct amdgpu_winsys *ws = cs->ws;
    int error_code = 0;
    uint32_t ib_pad_dw_mask = ws->info.ib_pad_dw_mask[cs->ip_type];
-   unsigned alignment = ws->info.ip[cs->ip_type].ib_size_alignment / 4;
 
    rcs->current.max_dw += amdgpu_cs_epilog_dws(cs);
 
@@ -1823,23 +1820,13 @@ static int amdgpu_cs_flush(struct radeon_cmdbuf *rcs,
       break;
    case AMD_IP_GFX:
    case AMD_IP_COMPUTE:
-      if (rcs->current.cdw % alignment) {
-         int remaining = alignment - rcs->current.cdw % alignment;
-
-         /* Only pad by 1 dword with the type-2 NOP if necessary. */
-         if (remaining == 1 && ws->info.gfx_ib_pad_with_type2) {
+      if (ws->info.gfx_ib_pad_with_type2) {
+         while (rcs->current.cdw & ib_pad_dw_mask)
             radeon_emit(rcs, PKT2_NOP_PAD);
-         } else {
-            /* Pad with a single NOP packet to minimize CP overhead because NOP is a variable-sized
-             * packet. The size of the packet body after the header is always count + 1.
-             * If count == -1, there is no packet body. NOP is the only packet that can have
-             * count == -1, which is the definition of PKT3_NOP_PAD (count == 0x3fff means -1).
-             */
-            radeon_emit(rcs, PKT3(PKT3_NOP, remaining - 2, 0));
-            rcs->current.cdw += remaining - 1;
-         }
+      } else {
+         while (rcs->current.cdw & ib_pad_dw_mask)
+            radeon_emit(rcs, PKT3_NOP_PAD);
       }
-      assert(rcs->current.cdw % alignment == 0);
       if (cs->ip_type == AMD_IP_GFX)
          ws->gfx_ib_size_counter += (rcs->prev_dw + rcs->current.cdw) * 4;
       break;

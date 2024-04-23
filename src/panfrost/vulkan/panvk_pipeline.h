@@ -99,21 +99,6 @@ struct panvk_graphics_pipeline {
       } ia;
 
       struct {
-         bool clamp_depth;
-         float line_width;
-         struct {
-            bool enable;
-            float constant_factor;
-            float clamp;
-            float slope_factor;
-         } depth_bias;
-         bool front_ccw;
-         bool cull_front_face;
-         bool cull_back_face;
-         bool enable;
-      } rast;
-
-      struct {
          bool z_test;
          bool z_write;
          unsigned z_compare_func;

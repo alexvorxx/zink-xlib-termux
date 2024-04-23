@@ -142,9 +142,11 @@ emit_non_fs_rsd(const struct pan_shader_info *shader_info, mali_ptr shader_ptr,
 }
 
 static void
-emit_base_fs_rsd(const struct panvk_graphics_pipeline *pipeline, void *rsd)
+emit_base_fs_rsd(const struct panvk_graphics_pipeline *pipeline,
+                 const struct vk_graphics_pipeline_state *state, void *rsd)
 {
    const struct pan_shader_info *info = &pipeline->state.fs.info;
+   const struct vk_rasterization_state *rs = state->rs;
 
    pan_pack(rsd, RENDERER_STATE, cfg) {
       if (pipeline->state.fs.required) {
@@ -188,27 +190,23 @@ emit_base_fs_rsd(const struct panvk_graphics_pipeline *pipeline, void *rsd)
 
       cfg.multisample_misc.depth_write_mask = pipeline->state.zs.z_write;
       cfg.multisample_misc.fixed_function_near_discard =
-         !pipeline->state.rast.clamp_depth;
-      cfg.multisample_misc.fixed_function_far_discard =
-         !pipeline->state.rast.clamp_depth;
+         !rs->depth_clamp_enable;
+      cfg.multisample_misc.fixed_function_far_discard = !rs->depth_clamp_enable;
       cfg.multisample_misc.shader_depth_range_fixed = true;
 
       cfg.stencil_mask_misc.stencil_enable = pipeline->state.zs.s_test;
       cfg.stencil_mask_misc.alpha_to_coverage =
          pipeline->state.ms.alpha_to_coverage;
       cfg.stencil_mask_misc.alpha_test_compare_function = MALI_FUNC_ALWAYS;
-      cfg.stencil_mask_misc.front_facing_depth_bias =
-         pipeline->state.rast.depth_bias.enable;
-      cfg.stencil_mask_misc.back_facing_depth_bias =
-         pipeline->state.rast.depth_bias.enable;
+      cfg.stencil_mask_misc.front_facing_depth_bias = rs->depth_bias.enable;
+      cfg.stencil_mask_misc.back_facing_depth_bias = rs->depth_bias.enable;
       cfg.stencil_mask_misc.single_sampled_lines =
          pipeline->state.ms.rast_samples <= 1;
 
       if (dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_RS_DEPTH_BIAS_FACTORS)) {
-         cfg.depth_units =
-            pipeline->state.rast.depth_bias.constant_factor * 2.0f;
-         cfg.depth_factor = pipeline->state.rast.depth_bias.slope_factor;
-         cfg.depth_bias_clamp = pipeline->state.rast.depth_bias.clamp;
+         cfg.depth_units = rs->depth_bias.constant * 2.0f;
+         cfg.depth_factor = rs->depth_bias.slope;
+         cfg.depth_bias_clamp = rs->depth_bias.clamp;
       }
 
       if (dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_DS_STENCIL_COMPARE_MASK)) {
@@ -325,6 +323,7 @@ emit_blend(const struct panvk_graphics_pipeline *pipeline, unsigned rt,
 static void
 init_shaders(struct panvk_pipeline *pipeline,
              const VkGraphicsPipelineCreateInfo *gfx_create_info,
+             const struct vk_graphics_pipeline_state *gfx_state,
              struct panvk_shader **shaders)
 {
    struct panvk_graphics_pipeline *gfx_pipeline =
@@ -379,7 +378,7 @@ init_shaders(struct panvk_pipeline *pipeline,
          PAN_DESC_ARRAY(bd_count, BLEND));
       void *bd = rsd.cpu + pan_size(RENDERER_STATE);
 
-      emit_base_fs_rsd(gfx_pipeline, rsd.cpu);
+      emit_base_fs_rsd(gfx_pipeline, gfx_state, rsd.cpu);
       for (unsigned rt = 0; rt < gfx_pipeline->state.blend.pstate.rt_count;
            rt++) {
          emit_blend(gfx_pipeline, rt, bd);
@@ -388,7 +387,7 @@ init_shaders(struct panvk_pipeline *pipeline,
 
       pipeline->rsds[MESA_SHADER_FRAGMENT] = rsd.gpu;
    } else if (gfx_create_info) {
-      emit_base_fs_rsd(gfx_pipeline,
+      emit_base_fs_rsd(gfx_pipeline, gfx_state,
                        gfx_pipeline->state.fs.rsd_template.opaque);
       for (unsigned rt = 0;
            rt < MAX2(gfx_pipeline->state.blend.pstate.rt_count, 1); rt++) {
@@ -405,10 +404,6 @@ static void
 parse_dynamic_state(struct panvk_graphics_pipeline *pipeline,
                     const struct vk_graphics_pipeline_state *state)
 {
-   if (is_dyn(state, RS_LINE_WIDTH))
-      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_LINE_WIDTH;
-   if (is_dyn(state, RS_DEPTH_BIAS_FACTORS))
-      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_DEPTH_BIAS;
    if (is_dyn(state, CB_BLEND_CONSTANTS))
       pipeline->state.dynamic_mask |= PANVK_DYNAMIC_BLEND_CONSTANTS;
    if (is_dyn(state, DS_DEPTH_BOUNDS_TEST_BOUNDS))
@@ -659,26 +654,6 @@ parse_zs(struct panvk_graphics_pipeline *pipeline,
    pipeline->state.zs.s_back.ref = ds->stencil.back.reference;
 }
 
-static void
-parse_rast(struct panvk_graphics_pipeline *pipeline,
-           const struct vk_graphics_pipeline_state *state)
-{
-   const struct vk_rasterization_state *rs = state->rs;
-
-   pipeline->state.rast.clamp_depth = rs->depth_clamp_enable;
-   pipeline->state.rast.depth_bias.enable = rs->depth_bias.enable;
-   pipeline->state.rast.depth_bias.constant_factor = rs->depth_bias.constant;
-   pipeline->state.rast.depth_bias.clamp = rs->depth_bias.clamp;
-   pipeline->state.rast.depth_bias.slope_factor = rs->depth_bias.slope;
-   pipeline->state.rast.front_ccw =
-      rs->front_face == VK_FRONT_FACE_COUNTER_CLOCKWISE;
-   pipeline->state.rast.cull_front_face =
-      rs->cull_mode & VK_CULL_MODE_FRONT_BIT;
-   pipeline->state.rast.cull_back_face = rs->cull_mode & VK_CULL_MODE_BACK_BIT;
-   pipeline->state.rast.line_width = rs->line.width;
-   pipeline->state.rast.enable = !rs->rasterizer_discard_enable;
-}
-
 static bool
 fs_required(struct panvk_graphics_pipeline *pipeline)
 {
@@ -882,10 +857,9 @@ panvk_graphics_pipeline_create(struct panvk_device *dev,
    parse_input_assembly(gfx_pipeline, &state);
    parse_multisample(gfx_pipeline, &state);
    parse_zs(gfx_pipeline, &state);
-   parse_rast(gfx_pipeline, &state);
    parse_vertex_input(gfx_pipeline, &state, shaders);
    init_fs_state(gfx_pipeline, &state, shaders[MESA_SHADER_FRAGMENT]);
-   init_shaders(&gfx_pipeline->base, create_info, shaders);
+   init_shaders(&gfx_pipeline->base, create_info, &state, shaders);
 
    release_shaders(&gfx_pipeline->base, shaders, alloc);
    return VK_SUCCESS;
@@ -948,7 +922,7 @@ panvk_compute_pipeline_create(struct panvk_device *dev,
 
    compile_shaders(&compute_pipeline->base, &create_info->stage, 1, alloc,
                    shaders);
-   init_shaders(&compute_pipeline->base, NULL, shaders);
+   init_shaders(&compute_pipeline->base, NULL, NULL, shaders);
 
    release_shaders(&compute_pipeline->base, shaders, alloc);
    return VK_SUCCESS;

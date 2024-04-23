@@ -537,8 +537,13 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
       return;
    }
 
-   if (!cmdbuf->state.gfx.fs_rsd) {
+   bool dirty =
+      is_dirty(cmdbuf, RS_DEPTH_BIAS_FACTORS) || !cmdbuf->state.gfx.fs_rsd;
+
+   if (dirty) {
       const struct panvk_cmd_graphics_state *state = &cmdbuf->state.gfx;
+      const struct vk_rasterization_state *rs =
+         &cmdbuf->vk.dynamic_graphics_state.rs;
       struct panfrost_ptr rsd = pan_pool_alloc_desc_aggregate(
          &cmdbuf->desc_pool.base, PAN_DESC(RENDERER_STATE),
          PAN_DESC_ARRAY(pipeline->state.blend.pstate.rt_count, BLEND));
@@ -548,12 +553,9 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
          &pipeline->state.fs.rsd_template;
 
       pan_pack(&rsd_dyn, RENDERER_STATE, cfg) {
-         if (pipeline->state.dynamic_mask &
-             (1 << VK_DYNAMIC_STATE_DEPTH_BIAS)) {
-            cfg.depth_units = state->rast.depth_bias.constant_factor * 2.0f;
-            cfg.depth_factor = state->rast.depth_bias.slope_factor;
-            cfg.depth_bias_clamp = state->rast.depth_bias.clamp;
-         }
+         cfg.depth_units = rs->depth_bias.constant * 2.0f;
+         cfg.depth_factor = rs->depth_bias.slope;
+         cfg.depth_bias_clamp = rs->depth_bias.clamp;
 
          if (pipeline->state.dynamic_mask &
              (1 << VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK)) {
@@ -738,9 +740,7 @@ panvk_draw_prepare_varyings(struct panvk_cmd_buffer *cmdbuf,
    } else if (pipeline->state.ia.topology == MALI_DRAW_MODE_LINES ||
               pipeline->state.ia.topology == MALI_DRAW_MODE_LINE_STRIP ||
               pipeline->state.ia.topology == MALI_DRAW_MODE_LINE_LOOP) {
-      draw->line_width = pipeline->state.dynamic_mask & PANVK_DYNAMIC_LINE_WIDTH
-                            ? cmdbuf->state.gfx.rast.line_width
-                            : pipeline->state.rast.line_width;
+      draw->line_width = cmdbuf->vk.dynamic_graphics_state.rs.line.width;
    } else {
       draw->line_width = 1.0f;
    }
@@ -1137,13 +1137,17 @@ panvk_emit_tiler_primitive_size(const struct panvk_graphics_pipeline *pipeline,
 }
 
 static void
-panvk_emit_tiler_dcd(const struct panvk_graphics_pipeline *pipeline,
+panvk_emit_tiler_dcd(struct panvk_cmd_buffer *cmdbuf,
                      const struct panvk_draw_info *draw, void *dcd)
 {
+   const struct panvk_graphics_pipeline *pipeline = cmdbuf->state.gfx.pipeline;
+   const struct vk_rasterization_state *rs =
+      &cmdbuf->vk.dynamic_graphics_state.rs;
+
    pan_pack(dcd, DRAW, cfg) {
-      cfg.front_face_ccw = pipeline->state.rast.front_ccw;
-      cfg.cull_front_face = pipeline->state.rast.cull_front_face;
-      cfg.cull_back_face = pipeline->state.rast.cull_back_face;
+      cfg.front_face_ccw = rs->front_face == VK_FRONT_FACE_COUNTER_CLOCKWISE;
+      cfg.cull_front_face = (rs->cull_mode & VK_CULL_MODE_FRONT_BIT) != 0;
+      cfg.cull_back_face = (rs->cull_mode & VK_CULL_MODE_BACK_BIT) != 0;
       cfg.position = draw->position;
       cfg.state = draw->fs_rsd;
       cfg.attributes = draw->stages[MESA_SHADER_FRAGMENT].attributes;
@@ -1200,7 +1204,7 @@ panvk_draw_prepare_tiler_job(struct panvk_cmd_buffer *cmdbuf,
    panvk_emit_tiler_primitive_size(
       pipeline, draw, pan_section_ptr(ptr.cpu, TILER_JOB, PRIMITIVE_SIZE));
 
-   panvk_emit_tiler_dcd(pipeline, draw,
+   panvk_emit_tiler_dcd(cmdbuf, draw,
                         pan_section_ptr(ptr.cpu, TILER_JOB, DRAW));
 
    pan_section_pack(ptr.cpu, TILER_JOB, TILER, cfg) {
@@ -1254,6 +1258,8 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
    struct panvk_batch *batch = cmdbuf->cur_batch;
    struct panvk_descriptor_state *desc_state = &cmdbuf->state.gfx.desc_state;
    const struct panvk_graphics_pipeline *pipeline = cmdbuf->state.gfx.pipeline;
+   const struct vk_rasterization_state *rs =
+      &cmdbuf->vk.dynamic_graphics_state.rs;
 
    /* There are only 16 bits in the descriptor for the job ID, make sure all
     * the 3 (2 in Bifrost) jobs in this draw are in the same batch.
@@ -1264,7 +1270,7 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
       batch = panvk_per_arch(cmd_open_batch)(cmdbuf);
    }
 
-   if (pipeline->state.rast.enable)
+   if (!rs->rasterizer_discard_enable)
       panvk_per_arch(cmd_alloc_fb_desc)(cmdbuf);
 
    panvk_per_arch(cmd_alloc_tls_desc)(cmdbuf, true);
@@ -1304,7 +1310,7 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
       pan_jc_add_job(&cmdbuf->desc_pool.base, &batch->jc, MALI_JOB_TYPE_VERTEX,
                      false, false, 0, 0, &draw->jobs.vertex, false);
 
-   if (pipeline->state.rast.enable && draw->position) {
+   if (!rs->rasterizer_discard_enable && draw->position) {
       pan_jc_add_job(&cmdbuf->desc_pool.base, &batch->jc, MALI_JOB_TYPE_TILER,
                      false, false, vjob_id, 0, &draw->jobs.tiler, false);
    }
@@ -2143,30 +2149,6 @@ panvk_per_arch(CmdBindPipeline)(VkCommandBuffer commandBuffer,
       assert(!"Unsupported bind point");
       break;
    }
-}
-
-VKAPI_ATTR void VKAPI_CALL
-panvk_per_arch(CmdSetLineWidth)(VkCommandBuffer commandBuffer, float lineWidth)
-{
-   VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
-
-   cmdbuf->state.gfx.rast.line_width = lineWidth;
-   cmdbuf->state.gfx.dirty |= PANVK_DYNAMIC_LINE_WIDTH;
-}
-
-VKAPI_ATTR void VKAPI_CALL
-panvk_per_arch(CmdSetDepthBias)(VkCommandBuffer commandBuffer,
-                                float depthBiasConstantFactor,
-                                float depthBiasClamp,
-                                float depthBiasSlopeFactor)
-{
-   VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
-
-   cmdbuf->state.gfx.rast.depth_bias.constant_factor = depthBiasConstantFactor;
-   cmdbuf->state.gfx.rast.depth_bias.clamp = depthBiasClamp;
-   cmdbuf->state.gfx.rast.depth_bias.slope_factor = depthBiasSlopeFactor;
-   cmdbuf->state.gfx.dirty |= PANVK_DYNAMIC_DEPTH_BIAS;
-   cmdbuf->state.gfx.fs_rsd = 0;
 }
 
 VKAPI_ATTR void VKAPI_CALL

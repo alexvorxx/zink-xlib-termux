@@ -65,8 +65,7 @@ bool panvk_per_arch(blend_needs_lowering)(const struct panvk_device *dev,
                                           unsigned rt);
 
 struct panvk_shader *panvk_per_arch(shader_create)(
-   struct panvk_device *dev, gl_shader_stage stage,
-   const VkPipelineShaderStageCreateInfo *stage_info,
+   struct panvk_device *dev, const VkPipelineShaderStageCreateInfo *stage_info,
    const struct panvk_pipeline_layout *layout,
    struct pan_blend_state *blend_state, bool static_blend_constants,
    const VkAllocationCallbacks *alloc);

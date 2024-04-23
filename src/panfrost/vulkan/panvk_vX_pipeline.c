@@ -103,7 +103,7 @@ compile_shaders(struct panvk_pipeline *pipeline,
       struct panvk_shader *shader;
 
       shader = panvk_per_arch(shader_create)(
-         dev, stage, stage_info, pipeline->layout,
+         dev, stage_info, pipeline->layout,
          gfx_pipeline ? &gfx_pipeline->state.blend.pstate : NULL,
          dyn_state_is_set(gfx_pipeline, MESA_VK_DYNAMIC_CB_BLEND_CONSTANTS),
          alloc);

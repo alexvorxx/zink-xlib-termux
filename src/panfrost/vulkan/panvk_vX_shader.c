@@ -212,7 +212,7 @@ shared_type_info(const struct glsl_type *type, unsigned *size, unsigned *align)
 }
 
 struct panvk_shader *
-panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
+panvk_per_arch(shader_create)(struct panvk_device *dev,
                               const VkPipelineShaderStageCreateInfo *stage_info,
                               const struct panvk_pipeline_layout *layout,
                               struct pan_blend_state *blend_state,
@@ -224,6 +224,7 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
       to_panvk_physical_device(dev->vk.physical);
    struct panvk_instance *instance =
       to_panvk_instance(dev->vk.physical->instance);
+   gl_shader_stage stage = vk_to_mesa_shader_stage(stage_info->stage);
    struct panvk_shader *shader;
 
    shader = vk_zalloc2(&dev->vk.alloc, alloc, sizeof(*shader), 8,

@@ -252,11 +252,24 @@ agx_assign_uvs(struct agx_varyings_vs *varyings,
    }
 }
 
+static inline enum agx_shade_model
+translate_flat_shade_model(unsigned provoking_vertex)
+{
+   static_assert(AGX_SHADE_MODEL_FLAT_VERTEX_0 == 0, "hw");
+   static_assert(AGX_SHADE_MODEL_FLAT_VERTEX_2 == 2, "hw");
+
+   assert(provoking_vertex <= 2);
+
+   if (provoking_vertex == 1)
+      return AGX_SHADE_MODEL_FLAT_VERTEX_1;
+   else
+      return (enum agx_shade_model)provoking_vertex;
+}
+
 void
 agx_link_varyings_vs_fs(void *out, struct agx_varyings_vs *vs,
                         unsigned nr_user_indices, struct agx_varyings_fs *fs,
-                        bool first_provoking_vertex,
-                        uint8_t sprite_coord_enable,
+                        unsigned provoking_vertex, uint8_t sprite_coord_enable,
                         bool *generate_primitive_id)
 {
    assert(fs->nr_bindings > 0);
@@ -280,8 +293,13 @@ agx_link_varyings_vs_fs(void *out, struct agx_varyings_vs *vs,
       agx_pack(bindings + i, CF_BINDING, cfg) {
          cfg.base_coefficient_register = b.cf_base;
          cfg.components = b.count;
-         cfg.shade_model =
-            agx_translate_shade_model(fs, i, first_provoking_vertex);
+
+         if (b.smooth) {
+            cfg.shade_model = b.perspective ? AGX_SHADE_MODEL_PERSPECTIVE
+                                            : AGX_SHADE_MODEL_LINEAR;
+         } else {
+            cfg.shade_model = translate_flat_shade_model(provoking_vertex);
+         }
 
          if (b.slot == VARYING_SLOT_PNTC ||
              (b.slot >= VARYING_SLOT_TEX0 && b.slot <= VARYING_SLOT_TEX7 &&

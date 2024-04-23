@@ -86,6 +86,6 @@ struct agx_varyings_fs;
 void agx_link_varyings_vs_fs(void *out, struct agx_varyings_vs *vs,
                              unsigned nr_user_indices,
                              struct agx_varyings_fs *fs,
-                             bool first_provoking_vertex,
+                             unsigned provoking_vertex,
                              uint8_t sprite_coord_enable,
                              bool *generate_primitive_id);

@@ -3395,7 +3395,7 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out)
 
          agx_link_varyings_vs_fs(t.cpu, &batch->linked_varyings,
                                  vs->uvs.user_size, &ctx->linked.fs->cf,
-                                 ctx->rast->base.flatshade_first,
+                                 ctx->rast->base.flatshade_first ? 0 : 2,
                                  (batch->reduced_prim == MESA_PRIM_POINTS)
                                     ? ctx->rast->base.sprite_coord_enable
                                     : 0,

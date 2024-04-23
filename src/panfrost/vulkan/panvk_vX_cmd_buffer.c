@@ -969,6 +969,8 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
                              bufs.cpu + bufs_offset,
                              attribs.cpu + attribs_offset,
                              pipeline->state.vs.attribs.buf_count * 2);
+      desc_state->img.attrib_bufs = bufs.gpu + bufs_offset;
+      desc_state->img.attribs = attribs.gpu + attribs_offset;
    }
 
    /* A NULL entry is needed to stop prefecting on Bifrost */

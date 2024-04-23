@@ -2683,9 +2683,22 @@ lower_to_hw_instr(Program* program)
                   }
                } else {
                   assert(dst.regClass() == v2b);
-                  bld.vop2_sdwa(aco_opcode::v_lshlrev_b32, dst, Operand::c32(offset), op)
-                     ->sdwa()
-                     .sel[1] = SubdwordSel::ubyte;
+                  if (!offset) {
+                     bld.vop1_sdwa(aco_opcode::v_mov_b32, dst, op)->sdwa().sel[0] =
+                        SubdwordSel::ubyte;
+                  } else if (program->gfx_level >= GFX9) {
+                     bld.vop2_sdwa(aco_opcode::v_lshlrev_b32, dst, Operand::c32(offset), op)
+                        ->sdwa()
+                        .sel[1] = SubdwordSel::ubyte;
+                  } else {
+                     assert(offset == 8);
+                     Definition dst_hi = Definition(dst.physReg().advance(1), v1b);
+                     bld.vop1_sdwa(aco_opcode::v_mov_b32, dst_hi, op)->sdwa().sel[0] =
+                        SubdwordSel::ubyte;
+                     uint32_t c = ~(BITFIELD_MASK(offset) << (dst.physReg().byte() * 8));
+                     bld.vop2(aco_opcode::v_and_b32, dst, Operand::c32(c),
+                              Operand(PhysReg(op.physReg().reg()), v1));
+                  }
                }
                break;
             }

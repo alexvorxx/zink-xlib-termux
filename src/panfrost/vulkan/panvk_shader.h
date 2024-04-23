@@ -20,6 +20,8 @@
 #include "panvk_macros.h"
 #include "panvk_pipeline_layout.h"
 
+#define MAX_VS_ATTRIBS 16
+
 struct nir_shader;
 struct pan_blend_state;
 struct panvk_device;

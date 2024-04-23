@@ -361,8 +361,7 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
    }
 
    if (stage == MESA_SHADER_VERTEX)
-      NIR_PASS_V(nir, pan_lower_image_index,
-                 util_bitcount64(nir->info.inputs_read));
+      NIR_PASS_V(nir, pan_lower_image_index, MAX_VS_ATTRIBS);
 
    struct sysval_options sysval_options = {
       .static_blend_constants =
@@ -389,8 +388,13 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
       panvk_per_arch(pipeline_layout_total_ubo_count)(layout);
    shader->info.sampler_count = layout->num_samplers;
    shader->info.texture_count = layout->num_textures;
+
+   /* Image attributes start at MAX_VS_ATTRIBS in the VS attribute table,
+    * and zero in other stages.
+    */
    if (shader->has_img_access)
-      shader->info.attribute_count += layout->num_imgs;
+      shader->info.attribute_count =
+         layout->num_imgs + (stage == MESA_SHADER_VERTEX ? MAX_VS_ATTRIBS : 0);
 
    shader->local_size.x = nir->info.workgroup_size[0];
    shader->local_size.y = nir->info.workgroup_size[1];

@@ -924,17 +924,12 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
       pipeline->base.img_access_mask & BITFIELD_BIT(MESA_SHADER_VERTEX)
          ? pipeline->base.layout->num_imgs
          : 0;
-   unsigned attrib_count = pipeline->state.vs.attribs.attrib_count + num_imgs;
+   unsigned num_vs_attribs = pipeline->state.vs.attribs.attrib_count;
+   unsigned attrib_count =
+      num_imgs ? MAX_VS_ATTRIBS + num_imgs : num_vs_attribs;
 
    if (cmdbuf->state.gfx.vs.attribs || !attrib_count)
       return;
-
-   if (!pipeline->state.vs.attribs.buf_count) {
-      panvk_prepare_img_attribs(cmdbuf, desc_state, &pipeline->base);
-      cmdbuf->state.gfx.vs.attrib_bufs = desc_state->img.attrib_bufs;
-      cmdbuf->state.gfx.vs.attribs = desc_state->img.attribs;
-      return;
-   }
 
    unsigned attrib_buf_count = pipeline->state.vs.attribs.buf_count * 2;
    struct panfrost_ptr bufs = pan_pool_alloc_desc_array(
@@ -950,7 +945,7 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
                                  &attrib_buf_descs[i * 2]);
    }
 
-   for (unsigned i = 0; i < pipeline->state.vs.attribs.attrib_count; i++) {
+   for (unsigned i = 0; i < num_vs_attribs; i++) {
       unsigned buf_idx = pipeline->state.vs.attribs.attrib[i].buf;
 
       panvk_draw_emit_attrib(draw, &pipeline->state.vs.attribs.attrib[i],
@@ -960,11 +955,17 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
    }
 
    if (num_imgs) {
+      /* Image load/store are passed a fixed offset, so we can make vertex input
+       * dynamic. Images are always placed after all potential vertex
+       * attributes. Buffers are tightly packed since they don't interfere with
+       * the vertex shader.
+       */
       unsigned bufs_offset =
          pipeline->state.vs.attribs.buf_count * pan_size(ATTRIBUTE_BUFFER) * 2;
-      unsigned attribs_offset =
-         pipeline->state.vs.attribs.buf_count * pan_size(ATTRIBUTE);
+      unsigned attribs_offset = MAX_VS_ATTRIBS * pan_size(ATTRIBUTE);
 
+      memset(attribs.cpu + num_vs_attribs * pan_size(ATTRIBUTE), 0,
+             (MAX_VS_ATTRIBS - num_vs_attribs) * pan_size(ATTRIBUTE));
       panvk_fill_img_attribs(cmdbuf, desc_state, &pipeline->base,
                              bufs.cpu + bufs_offset,
                              attribs.cpu + attribs_offset,

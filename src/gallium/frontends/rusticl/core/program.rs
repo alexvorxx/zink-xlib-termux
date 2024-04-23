@@ -99,7 +99,7 @@ unsafe impl Sync for NirKernelBuild {}
 
 pub struct ProgramBuild {
     pub builds: HashMap<&'static Device, ProgramDevBuild>,
-    pub kernel_info: HashMap<String, KernelInfo>,
+    pub kernel_info: HashMap<String, Arc<KernelInfo>>,
     spec_constants: HashMap<u32, nir_const_value>,
     kernels: Vec<String>,
 }
@@ -204,7 +204,8 @@ impl ProgramBuild {
                 kernel_info.attributes_string = String::new();
             }
 
-            self.kernel_info.insert(kernel_name.clone(), kernel_info);
+            self.kernel_info
+                .insert(kernel_name.clone(), Arc::new(kernel_info));
         }
     }
 

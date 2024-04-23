@@ -302,7 +302,7 @@ pub struct Kernel {
     pub name: String,
     values: Mutex<Vec<Option<KernelArgValue>>>,
     builds: HashMap<&'static Device, Arc<NirKernelBuild>>,
-    pub kernel_info: KernelInfo,
+    pub kernel_info: Arc<KernelInfo>,
 }
 
 impl_cl_type_trait!(cl_kernel, Kernel, CL_INVALID_KERNEL);
@@ -813,7 +813,7 @@ fn extract<'a, const S: usize>(buf: &'a mut &[u8]) -> &'a [u8; S] {
 impl Kernel {
     pub fn new(name: String, prog: Arc<Program>) -> Arc<Kernel> {
         let prog_build = prog.build_info();
-        let kernel_info = prog_build.kernel_info.get(&name).unwrap().clone();
+        let kernel_info = Arc::clone(prog_build.kernel_info.get(&name).unwrap());
         let builds = prog_build
             .builds
             .iter()

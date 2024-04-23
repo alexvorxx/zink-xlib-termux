@@ -127,23 +127,6 @@ panfrost_compression_tag(const struct util_format_description *desc,
    return 0;
 }
 
-/* Cubemaps have 6 faces as "layers" in between each actual layer. We
- * need to fix this up. TODO: logic wrong in the asserted out cases ...
- * can they happen, perhaps from cubemap arrays? */
-
-static void
-panfrost_adjust_cube_dimensions(unsigned *first_face, unsigned *last_face,
-                                unsigned *first_layer, unsigned *last_layer)
-{
-   *first_face = *first_layer % 6;
-   *last_face = *last_layer % 6;
-   *first_layer /= 6;
-   *last_layer /= 6;
-
-   assert((*first_layer == *last_layer) ||
-          (*first_face == 0 && *last_face == 5));
-}
-
 /* Following the texture descriptor is a number of descriptors. How many? */
 
 static unsigned
@@ -208,17 +191,16 @@ panfrost_get_surface_strides(const struct pan_image_layout *layout, unsigned l,
 static mali_ptr
 panfrost_get_surface_pointer(const struct pan_image_layout *layout,
                              enum mali_texture_dimension dim, mali_ptr base,
-                             unsigned l, unsigned w, unsigned f, unsigned s)
+                             unsigned l, unsigned i, unsigned s)
 {
-   unsigned face_mult = dim == MALI_TEXTURE_DIMENSION_CUBE ? 6 : 1;
    unsigned offset;
 
    if (layout->dim == MALI_TEXTURE_DIMENSION_3D) {
-      assert(!f && !s);
+      assert(!s);
       offset =
-         layout->slices[l].offset + (w * panfrost_get_layer_stride(layout, l));
+         layout->slices[l].offset + i * panfrost_get_layer_stride(layout, l);
    } else {
-      offset = panfrost_texture_offset(layout, l, (w * face_mult) + f, s);
+      offset = panfrost_texture_offset(layout, l, i, s);
    }
 
    return base + offset;
@@ -457,7 +439,7 @@ panfrost_emit_plane(const struct pan_image_layout *layout,
 
 static void
 panfrost_emit_surface(const struct pan_image_view *iview, unsigned level,
-                      unsigned layer, unsigned face, unsigned sample,
+                      unsigned index, unsigned sample,
                       enum pipe_format format, void **payload)
 {
    ASSERTED const struct util_format_description *desc =
@@ -497,7 +479,7 @@ panfrost_emit_surface(const struct pan_image_view *iview, unsigned level,
          panfrost_compression_tag(desc, layouts[i]->dim, layouts[i]->modifier);
 
       plane_ptrs[i] = panfrost_get_surface_pointer(
-         layouts[i], iview->dim, base | tag, level, layer, face, sample);
+         layouts[i], iview->dim, base | tag, level, index, sample);
       panfrost_get_surface_strides(layouts[i], level, &row_strides[i],
                                    &surface_strides[i]);
    }
@@ -552,37 +534,37 @@ panfrost_emit_texture_payload(const struct pan_image_view *iview,
     * into a single plane descriptor.
     */
 
-   unsigned first_layer = iview->first_layer, last_layer = iview->last_layer;
-   unsigned first_face = 0, last_face = 0;
-
-   if (iview->dim == MALI_TEXTURE_DIMENSION_CUBE) {
-      panfrost_adjust_cube_dimensions(&first_face, &last_face, &first_layer,
-                                      &last_layer);
-   }
-
 #if PAN_ARCH >= 7
    /* V7 and later treats faces as extra layers */
-   for (int layer = first_layer; layer <= last_layer; ++layer) {
-      for (int face = first_face; face <= last_face; ++face) {
-         for (int sample = 0; sample < nr_samples; ++sample) {
-            for (int level = iview->first_level; level <= iview->last_level; ++level) {
-               panfrost_emit_surface(iview, level, layer, face, sample,
-                                       format, &payload);
-            }
+   for (int layer = iview->first_layer; layer <= iview->last_layer; ++layer) {
+      for (int sample = 0; sample < nr_samples; ++sample) {
+         for (int level = iview->first_level; level <= iview->last_level; ++level) {
+            panfrost_emit_surface(iview, level, layer, sample,
+                                  format, &payload);
          }
       }
    }
 #else
+   unsigned first_layer = iview->first_layer, last_layer = iview->last_layer;
+   unsigned face_count = 1;
+
+   if (iview->dim == MALI_TEXTURE_DIMENSION_CUBE) {
+      first_layer /= 6;
+      last_layer /= 6;
+      face_count = 6;
+   }
+
    /* V6 and earlier has a different memory-layout */
    for (int layer = first_layer; layer <= last_layer; ++layer) {
       for (int level = iview->first_level; level <= iview->last_level; ++level) {
          /* order of face and sample doesn't matter; we can only have multiple
           * of one or the other (no support for multisampled cubemaps)
           */
-         for (int face = first_face; face <= last_face; ++face) {
-            for (int sample = 0; sample < nr_samples; ++sample)
-               panfrost_emit_surface(iview, level, layer, face, sample,
-                                     format, &payload);
+         for (int face = 0; face < face_count; ++face) {
+            for (int sample = 0; sample < nr_samples; ++sample) {
+               panfrost_emit_surface(iview, level, (face_count * layer) + face,
+                                     sample, format, &payload);
+            }
          }
       }
    }
@@ -662,9 +644,11 @@ GENX(panfrost_new_texture)(const struct pan_image_view *iview, void *out,
 
    unsigned array_size = iview->last_layer - iview->first_layer + 1;
 
+   /* If this is a cubemap, we expect the number of layers to be a multiple
+    * of 6.
+    */
    if (iview->dim == MALI_TEXTURE_DIMENSION_CUBE) {
-      assert(iview->first_layer % 6 == 0);
-      assert(iview->last_layer % 6 == 5);
+      assert(array_size % 6 == 0);
       array_size /= 6;
    }
 

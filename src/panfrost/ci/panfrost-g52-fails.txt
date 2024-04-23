@@ -86,8 +86,6 @@ spec@arb_texture_rg@fbo-blending-formats,Fail
 spec@arb_texture_rg@fbo-blending-formats@GL_R8,Fail
 spec@arb_texture_rg@fbo-blending-formats@GL_RG8,Fail
 spec@arb_texture_rg@fbo-blending-formats@GL_RG,Fail
-spec@arb_texture_view@sampling-2d-array-as-cubemap-array,Crash
-spec@arb_texture_view@sampling-2d-array-as-cubemap,Crash
 spec@arb_transform_feedback_instanced@draw-auto instanced,Fail
 spec@arb_uniform_buffer_object@rendering-dsa-offset,Fail
 spec@arb_uniform_buffer_object@rendering-offset,Fail
@@ -306,7 +304,6 @@ spec@khr_texture_compression_astc@sliced-3d-miptree-gl hdr,Fail
 spec@khr_texture_compression_astc@sliced-3d-miptree-gl hdr@HDR Profile,Fail
 spec@khr_texture_compression_astc@sliced-3d-miptree-gl srgb-fp,Fail
 spec@khr_texture_compression_astc@sliced-3d-miptree-gl srgb-fp@sRGB decode full precision,Fail
-spec@oes_texture_view@sampling-2d-array-as-cubemap,Crash
 spec@!opengl 1.0@gl-1.0-edgeflag-const,Fail
 spec@!opengl 1.0@gl-1.0-edgeflag,Fail
 spec@!opengl 1.0@gl-1.0-edgeflag-quads,Fail

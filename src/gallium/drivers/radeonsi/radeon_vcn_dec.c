@@ -2002,7 +2002,7 @@ static struct pb_buffer_lean *rvcn_dec_message_decode(struct radeon_decoder *dec
    header->num_buffers = 1;
 
    index_codec->offset = offset_codec;
-   index_codec->size = sizeof(rvcn_dec_message_avc_t);
+   index_codec->size = 0;
    index_codec->filled = 0;
    ++header->num_buffers;
 
@@ -2252,6 +2252,7 @@ static struct pb_buffer_lean *rvcn_dec_message_decode(struct radeon_decoder *dec
       rvcn_dec_message_avc_t avc = get_h264_msg(dec, target, (struct pipe_h264_picture_desc *)picture);
       memcpy(codec, (void *)&avc, sizeof(rvcn_dec_message_avc_t));
       index_codec->message_id = RDECODE_MESSAGE_AVC;
+      index_codec->size = sizeof(rvcn_dec_message_avc_t);
       break;
    }
    case PIPE_VIDEO_FORMAT_HEVC: {
@@ -2260,6 +2261,7 @@ static struct pb_buffer_lean *rvcn_dec_message_decode(struct radeon_decoder *dec
 
       memcpy(codec, (void *)&hevc, sizeof(rvcn_dec_message_hevc_t));
       index_codec->message_id = RDECODE_MESSAGE_HEVC;
+      index_codec->size = sizeof(rvcn_dec_message_hevc_t);
       break;
    }
    case PIPE_VIDEO_FORMAT_VC1: {
@@ -2272,6 +2274,7 @@ static struct pb_buffer_lean *rvcn_dec_message_decode(struct radeon_decoder *dec
          decode->height_in_samples = align(decode->height_in_samples, 16) / 16;
       }
       index_codec->message_id = RDECODE_MESSAGE_VC1;
+      index_codec->size = sizeof(rvcn_dec_message_vc1_t);
       break;
    }
    case PIPE_VIDEO_FORMAT_MPEG12: {
@@ -2280,6 +2283,7 @@ static struct pb_buffer_lean *rvcn_dec_message_decode(struct radeon_decoder *dec
 
       memcpy(codec, (void *)&mpeg2, sizeof(rvcn_dec_message_mpeg2_vld_t));
       index_codec->message_id = RDECODE_MESSAGE_MPEG2_VLD;
+      index_codec->size = sizeof(rvcn_dec_message_mpeg2_vld_t);
       break;
    }
    case PIPE_VIDEO_FORMAT_MPEG4: {
@@ -2288,6 +2292,7 @@ static struct pb_buffer_lean *rvcn_dec_message_decode(struct radeon_decoder *dec
 
       memcpy(codec, (void *)&mpeg4, sizeof(rvcn_dec_message_mpeg4_asp_vld_t));
       index_codec->message_id = RDECODE_MESSAGE_MPEG4_ASP_VLD;
+      index_codec->size = sizeof(rvcn_dec_message_mpeg4_asp_vld_t);
       break;
    }
    case PIPE_VIDEO_FORMAT_VP9: {
@@ -2296,6 +2301,7 @@ static struct pb_buffer_lean *rvcn_dec_message_decode(struct radeon_decoder *dec
 
       memcpy(codec, (void *)&vp9, sizeof(rvcn_dec_message_vp9_t));
       index_codec->message_id = RDECODE_MESSAGE_VP9;
+      index_codec->size = sizeof(rvcn_dec_message_vp9_t);
       break;
    }
    case PIPE_VIDEO_FORMAT_AV1: {
@@ -2304,6 +2310,7 @@ static struct pb_buffer_lean *rvcn_dec_message_decode(struct radeon_decoder *dec
 
       memcpy(codec, (void *)&av1, sizeof(rvcn_dec_message_av1_t));
       index_codec->message_id = RDECODE_MESSAGE_AV1;
+      index_codec->size = sizeof(rvcn_dec_message_av1_t);
 
       if (dec->ctx.res == NULL) {
          unsigned frame_ctxt_size = dec->av1_version == RDECODE_AV1_VER_0
@@ -2362,6 +2369,8 @@ static struct pb_buffer_lean *rvcn_dec_message_decode(struct radeon_decoder *dec
       assert(0);
       return NULL;
    }
+
+   header->total_size += index_codec->size;
 
    if (dec->ctx.res)
       decode->hw_ctxt_size = dec->ctx.res->buf->size;

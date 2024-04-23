@@ -228,12 +228,15 @@ emit_base_fs_rsd(const struct panvk_graphics_pipeline *pipeline,
    const struct pan_shader_info *info = &pipeline->state.fs.info;
    const struct vk_rasterization_state *rs = state->rs;
    const struct vk_depth_stencil_state *ds = state->ds;
+   const struct vk_multisample_state *ms = state->ms;
    bool test_s = ds && ds->stencil.test_enable;
    bool test_z = ds && ds->depth.test_enable;
    bool writes_z = writes_depth(ds);
    bool writes_s = writes_stencil(ds);
 
    pan_pack(rsd, RENDERER_STATE, cfg) {
+      bool alpha_to_coverage = ms && ms->alpha_to_coverage_enable;
+
       if (pipeline->state.fs.required) {
          pan_shader_prepare_rsd(info, pipeline->state.fs.address, &cfg);
 
@@ -242,16 +245,15 @@ emit_base_fs_rsd(const struct panvk_graphics_pipeline *pipeline,
          uint8_t rt_mask = pipeline->state.fs.rt_mask;
          cfg.properties.allow_forward_pixel_to_kill =
             pipeline->state.fs.info.fs.can_fpk && !(rt_mask & ~rt_written) &&
-            !pipeline->state.ms.alpha_to_coverage &&
-            !pipeline->state.blend.reads_dest;
+            !alpha_to_coverage && !pipeline->state.blend.reads_dest;
 
          bool writes_zs = writes_z || writes_s;
          bool zs_always_passes = ds_test_always_passes(ds);
          bool oq = false; /* TODO: Occlusion queries */
 
-         struct pan_earlyzs_state earlyzs = pan_earlyzs_get(
-            pan_earlyzs_analyze(info), writes_zs || oq,
-            pipeline->state.ms.alpha_to_coverage, zs_always_passes);
+         struct pan_earlyzs_state earlyzs =
+            pan_earlyzs_get(pan_earlyzs_analyze(info), writes_zs || oq,
+                            alpha_to_coverage, zs_always_passes);
 
          cfg.properties.pixel_kill_operation = earlyzs.kill;
          cfg.properties.zs_update_operation = earlyzs.update;
@@ -262,10 +264,9 @@ emit_base_fs_rsd(const struct panvk_graphics_pipeline *pipeline,
          cfg.properties.zs_update_operation = MALI_PIXEL_KILL_STRONG_EARLY;
       }
 
-      bool msaa = pipeline->state.ms.rast_samples > 1;
+      bool msaa = ms && ms->rasterization_samples > 1;
       cfg.multisample_misc.multisample_enable = msaa;
-      cfg.multisample_misc.sample_mask =
-         msaa ? pipeline->state.ms.sample_mask : UINT16_MAX;
+      cfg.multisample_misc.sample_mask = msaa ? ms->sample_mask : UINT16_MAX;
 
       cfg.multisample_misc.depth_function =
          test_z ? translate_compare_func(ds->depth.compare_op)
@@ -278,13 +279,12 @@ emit_base_fs_rsd(const struct panvk_graphics_pipeline *pipeline,
       cfg.multisample_misc.shader_depth_range_fixed = true;
 
       cfg.stencil_mask_misc.stencil_enable = test_s;
-      cfg.stencil_mask_misc.alpha_to_coverage =
-         pipeline->state.ms.alpha_to_coverage;
+      cfg.stencil_mask_misc.alpha_to_coverage = alpha_to_coverage;
       cfg.stencil_mask_misc.alpha_test_compare_function = MALI_FUNC_ALWAYS;
       cfg.stencil_mask_misc.front_facing_depth_bias = rs->depth_bias.enable;
       cfg.stencil_mask_misc.back_facing_depth_bias = rs->depth_bias.enable;
       cfg.stencil_mask_misc.single_sampled_lines =
-         pipeline->state.ms.rast_samples <= 1;
+         !ms || ms->rasterization_samples <= 1;
 
       if (dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_RS_DEPTH_BIAS_FACTORS)) {
          cfg.depth_units = rs->depth_bias.constant * 2.0f;
@@ -575,23 +575,6 @@ parse_color_blend(struct panvk_graphics_pipeline *pipeline,
    }
 }
 
-static void
-parse_multisample(struct panvk_graphics_pipeline *pipeline,
-                  const struct vk_graphics_pipeline_state *state)
-{
-   const struct vk_multisample_state *ms = state->ms;
-
-   if (!ms)
-      return;
-
-   unsigned nr_samples = MAX2(ms->rasterization_samples, 1);
-
-   pipeline->state.ms.rast_samples = ms->rasterization_samples;
-   pipeline->state.ms.sample_mask = ms->sample_mask;
-   pipeline->state.ms.min_samples =
-      MAX2(ms->min_sample_shading * nr_samples, 1);
-}
-
 static bool
 fs_required(struct panvk_graphics_pipeline *pipeline)
 {
@@ -791,7 +774,6 @@ panvk_graphics_pipeline_create(struct panvk_device *dev,
    compile_shaders(&gfx_pipeline->base, create_info->pStages,
                    create_info->stageCount, alloc, shaders);
    collect_varyings(gfx_pipeline, shaders);
-   parse_multisample(gfx_pipeline, &state);
    parse_vertex_input(gfx_pipeline, &state, shaders);
    init_fs_state(gfx_pipeline, &state, shaders[MESA_SHADER_FRAGMENT]);
    init_shaders(&gfx_pipeline->base, create_info, &state, shaders);

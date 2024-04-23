@@ -92,14 +92,6 @@ struct panvk_graphics_pipeline {
       } fs;
 
       struct {
-         uint8_t rast_samples;
-         uint8_t min_samples;
-         uint16_t sample_mask;
-         bool alpha_to_coverage;
-         bool alpha_to_one;
-      } ms;
-
-      struct {
          struct pan_blend_state pstate;
          struct {
             uint8_t index;

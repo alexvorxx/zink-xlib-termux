@@ -319,6 +319,8 @@ static void
 vn_fix_device_group_cmd_count(struct vn_queue_submission *submit,
                               uint32_t batch_index)
 {
+   struct vk_queue *queue_vk = vk_queue_from_handle(submit->queue_handle);
+   struct vn_device *dev = (void *)queue_vk->base.device;
    const VkSubmitInfo *src_batch = &submit->submit_batches[batch_index];
    struct vn_submit_info_pnext_fix *pnext_fix = submit->temp.pnexts;
    VkBaseOutStructure *dst =
@@ -343,9 +345,9 @@ vn_fix_device_group_cmd_count(struct vn_queue_submission *submit,
                    sizeof(uint32_t) * orig_cmd_count);
          }
 
-         /* Set feedback cmd device masks to 0 */
+         /* Set the group device mask. Unlike sync2, zero means skip. */
          for (uint32_t i = orig_cmd_count; i < new_cmd_count; i++) {
-            submit->temp.dev_masks[i] = 0;
+            submit->temp.dev_masks[i] = dev->device_mask;
          }
 
          pnext_fix->group.commandBufferCount = new_cmd_count;

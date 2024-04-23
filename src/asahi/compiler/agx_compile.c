@@ -2858,20 +2858,39 @@ mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
 static unsigned
 lower_bit_size_callback(const nir_instr *instr, UNUSED void *_)
 {
-   if (instr->type != nir_instr_type_alu)
-      return 0;
+   if (instr->type == nir_instr_type_intrinsic) {
+      /* Handle small subgroup ops */
+      nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
 
-   /* Lower 8-bit ALU to 16-bit. We check the destination, as we do not want to
-    * lower conversions from 8-bit to larger types. Those conversions get
-    * implemented natively.
-    */
-   nir_alu_instr *alu = nir_instr_as_alu(instr);
-   if (alu->def.bit_size == 8 && !is_conversion_to_8bit(alu->op))
-      return 16;
-   else if (alu->def.bit_size == 1 && alu->src[0].src.ssa->bit_size == 8)
-      return 16 /* comparisons */;
-   else
-      return 0;
+      switch (intr->intrinsic) {
+      case nir_intrinsic_reduce:
+      case nir_intrinsic_exclusive_scan:
+      case nir_intrinsic_inclusive_scan:
+         /* The identity for iand doesn't work for lowered 1-bit booleans, so
+          * lower that explicitly.
+          */
+         if (nir_intrinsic_reduction_op(intr) == nir_op_iand &&
+             intr->def.bit_size == 1)
+            return 16;
+
+         /* In general, we have 16-bit ops instead of 8-bit, so lower those. */
+         return intr->def.bit_size == 8 ? 16 : 0;
+      default:
+         return 0;
+      }
+   } else if (instr->type == nir_instr_type_alu) {
+      /* Lower 8-bit ALU to 16-bit. We check the destination, as we do not want
+       * to lower conversions from 8-bit to larger types. Those conversions get
+       * implemented natively.
+       */
+      nir_alu_instr *alu = nir_instr_as_alu(instr);
+      if (alu->def.bit_size == 8 && !is_conversion_to_8bit(alu->op))
+         return 16;
+      else if (alu->def.bit_size == 1 && alu->src[0].src.ssa->bit_size == 8)
+         return 16 /* comparisons */;
+   }
+
+   return 0;
 }
 
 static bool

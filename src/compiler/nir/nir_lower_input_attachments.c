@@ -31,7 +31,7 @@ load_frag_coord(nir_builder *b, nir_deref_instr *deref,
    if (options->use_fragcoord_sysval) {
       nir_def *frag_coord = nir_load_frag_coord(b);
 
-      if (options->unscaled_input_attachment_ir3) {
+      /*if (options->unscaled_input_attachment_ir3) {
          nir_variable *var = nir_deref_instr_get_variable(deref);
          unsigned base = var->data.index;
          nir_def *unscaled_frag_coord = nir_load_frag_coord_unscaled_ir3(b);
@@ -46,8 +46,8 @@ load_frag_coord(nir_builder *b, nir_deref_instr *deref,
             frag_coord = unscaled ? unscaled_frag_coord : frag_coord;
          }
       }
-      return frag_coord;
-   }*/
+      return frag_coord;*/
+   }
 
    nir_variable *pos = nir_get_variable_with_location(b->shader, nir_var_shader_in,
                                                       VARYING_SLOT_POS, glsl_vec4_type());
@@ -98,8 +98,7 @@ try_lower_input_load(nir_builder *b, nir_intrinsic_instr *load,
 
    b->cursor = nir_instr_remove(&load->instr);
 
-   nir_ssa_def *frag_coord = load_frag_coord(b, options);
-   //nir_def *frag_coord = load_frag_coord(b, deref, options);
+   nir_def *frag_coord = load_frag_coord(b, deref, options);
    frag_coord = nir_f2i32(b, frag_coord);
    nir_def *offset = nir_trim_vector(b, load->src[1].ssa, 2);
    nir_def *pos = nir_iadd(b, frag_coord, offset);
@@ -166,8 +165,7 @@ try_lower_input_texop(nir_builder *b, nir_tex_instr *tex,
 
    b->cursor = nir_before_instr(&tex->instr);
 
-   nir_ssa_def *frag_coord = load_frag_coord(b, options);
-   //nir_def *frag_coord = load_frag_coord(b, deref, options);
+   nir_def *frag_coord = load_frag_coord(b, deref, options);
    frag_coord = nir_f2i32(b, frag_coord);
 
    nir_def *layer = load_layer_id(b, options);

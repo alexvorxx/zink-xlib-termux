@@ -264,8 +264,8 @@ lower_ls_output_store(nir_builder *b,
     *
     * So writes to those outputs in VS-as-LS are simply ignored.
     */
-   unsigned semantic = nir_intrinsic_io_semantics(intrin).location;
-   if (semantic == VARYING_SLOT_LAYER || semantic == VARYING_SLOT_VIEWPORT) {
+   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
+   if (io_sem.location == VARYING_SLOT_LAYER || io_sem.location == VARYING_SLOT_VIEWPORT) {
       nir_instr_remove(&intrin->instr);
       return true;
    }
@@ -273,7 +273,7 @@ lower_ls_output_store(nir_builder *b,
    lower_tess_io_state *st = (lower_tess_io_state *) state;
 
    /* If this is a temp-only TCS input, we don't need to use shared memory at all. */
-   if (st->tcs_temp_only_inputs & BITFIELD64_BIT(semantic))
+   if (st->tcs_temp_only_inputs & BITFIELD64_BIT(io_sem.location))
       return false;
 
    b->cursor = nir_before_instr(&intrin->instr);

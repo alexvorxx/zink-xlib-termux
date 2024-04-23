@@ -1260,6 +1260,28 @@ anv_sparse_image_check_support(struct anv_physical_device *pdevice,
           isl_layout->bpb != 32 && isl_layout->bpb != 64 &&
           isl_layout->bpb != 128)
          return VK_ERROR_FORMAT_NOT_SUPPORTED;
+
+      /* ISL_TILING_64_XE2_BIT's block shapes are not always Vulkan's standard
+       * block shapes, so exclude what's non-standard.
+       */
+      if (pdevice->info.ver == 20) {
+         switch (samples) {
+         case VK_SAMPLE_COUNT_2_BIT:
+            if (isl_layout->bpb == 128)
+               return VK_ERROR_FORMAT_NOT_SUPPORTED;
+            break;
+         case VK_SAMPLE_COUNT_8_BIT:
+             if (isl_layout->bpb == 8 || isl_layout->bpb == 32)
+               return VK_ERROR_FORMAT_NOT_SUPPORTED;
+            break;
+         case VK_SAMPLE_COUNT_16_BIT:
+            if (isl_layout->bpb == 64)
+               return VK_ERROR_FORMAT_NOT_SUPPORTED;
+            break;
+         default:
+            break;
+         }
+      }
    }
 
    /* These YUV formats are considered by Vulkan to be compressed 2x1 blocks.

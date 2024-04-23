@@ -1253,16 +1253,6 @@ calculate_zrl_bits(struct etna_ml_subgraph *subgraph, const struct etna_operatio
    unsigned best_compressed_size;
    unsigned best_zrl_bits;
 
-   /* On HW that doesn't natively support depthwise and strided convolutions,
-    * we have to lower them and pad with lots of zeroes. We can be pretty certain
-    * that max bits of compression will help these jobs.
-    */
-   if (operation->depthwise ||
-       operation->stride > 1) {
-
-      return max_zrl_bits;
-   }
-
    /* These are very unlikely to have enough zeroes for compression to be useful. */
    if (operation->addition ||
        operation->pointwise) {

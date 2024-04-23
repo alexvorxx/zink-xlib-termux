@@ -8078,6 +8078,8 @@ radv_CmdExecuteCommands(VkCommandBuffer commandBuffer, uint32_t commandBufferCou
       primary->state.last_db_shader_control = secondary->state.last_db_shader_control;
 
       primary->state.rb_noncoherent_dirty |= secondary->state.rb_noncoherent_dirty;
+
+      primary->state.uses_draw_indirect |= secondary->state.uses_draw_indirect;
    }
 
    /* After executing commands from secondary buffers we have to dirty

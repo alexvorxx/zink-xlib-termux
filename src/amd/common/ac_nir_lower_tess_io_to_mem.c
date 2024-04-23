@@ -523,14 +523,16 @@ lower_hs_output_store(nir_builder *b,
       nir_def *hs_ring_tess_offchip = nir_load_ring_tess_offchip_amd(b);
       nir_def *offchip_offset = nir_load_ring_tess_offchip_offset_amd(b);
       nir_def *zero = nir_imm_int(b, 0);
-      nir_store_buffer_amd(b, store_val, hs_ring_tess_offchip, vmem_off, offchip_offset, zero,
-                           .write_mask = write_mask, .memory_modes = nir_var_shader_out,
-                           .access = ACCESS_COHERENT);
+      AC_NIR_STORE_IO(b, store_val, 0, write_mask, semantics.high_16bits,
+                      nir_store_buffer_amd, hs_ring_tess_offchip, vmem_off, offchip_offset, zero,
+                      .write_mask = store_write_mask, .base = store_const_offset,
+                      .memory_modes = nir_var_shader_out, .access = ACCESS_COHERENT);
    }
 
    if (write_to_lds) {
       nir_def *lds_off = hs_output_lds_offset(b, st, intrin);
-      nir_store_shared(b, store_val, lds_off, .write_mask = write_mask);
+      AC_NIR_STORE_IO(b, store_val, 0, write_mask, semantics.high_16bits,
+                      nir_store_shared, lds_off, .write_mask = store_write_mask, .base = store_const_offset);
    }
 
    /* Save tess factor to be used by tess factor writer or reconstruct
@@ -588,7 +590,12 @@ lower_hs_output_load(nir_builder *b,
       return nir_undef(b, intrin->def.num_components, intrin->def.bit_size);
 
    nir_def *off = hs_output_lds_offset(b, st, intrin);
-   return nir_load_shared(b, intrin->def.num_components, intrin->def.bit_size, off);
+   nir_def *load = NULL;
+
+   AC_NIR_LOAD_IO(load, b, intrin->def.num_components, intrin->def.bit_size, io_sem.high_16bits,
+                  nir_load_shared, off);
+
+   return load;
 }
 
 static void
@@ -869,6 +876,7 @@ lower_tes_input_load(nir_builder *b,
    lower_tess_io_state *st = (lower_tess_io_state *) state;
    nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
 
+   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
    nir_def *offchip_ring = nir_load_ring_tess_offchip_amd(b);
    nir_def *offchip_offset = nir_load_ring_tess_offchip_offset_amd(b);
    nir_def *off = intrin->intrinsic == nir_intrinsic_load_per_vertex_input
@@ -876,11 +884,12 @@ lower_tes_input_load(nir_builder *b,
                     : hs_per_patch_output_vmem_offset(b, st, intrin, 0);
 
    nir_def *zero = nir_imm_int(b, 0);
+   nir_def *load = NULL;
 
-   return nir_load_buffer_amd(b, intrin->def.num_components,
-                              intrin->def.bit_size, offchip_ring,
-                              off, offchip_offset, zero,
-                              .access = ACCESS_COHERENT);
+   AC_NIR_LOAD_IO(load, b, intrin->def.num_components, intrin->def.bit_size, io_sem.high_16bits,
+                  nir_load_buffer_amd, offchip_ring, off, offchip_offset, zero, .access = ACCESS_COHERENT);
+
+   return load;
 }
 
 static bool

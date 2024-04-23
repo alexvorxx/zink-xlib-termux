@@ -308,6 +308,27 @@ tu_blend_state_is_dual_src(const struct vk_color_blend_state *cb)
    return false;
 }
 
+enum ir3_push_consts_type
+tu_push_consts_type(const struct tu_pipeline_layout *layout,
+                    const struct ir3_compiler *compiler)
+{
+   if (!layout->push_constant_size)
+      return IR3_PUSH_CONSTS_NONE;
+
+   if (TU_DEBUG(PUSH_CONSTS_PER_STAGE))
+      return IR3_PUSH_CONSTS_PER_STAGE;
+
+   if (tu6_shared_constants_enable(layout, compiler)) {
+      return IR3_PUSH_CONSTS_SHARED;
+   } else {
+      if (compiler->gen >= 7) {
+         return IR3_PUSH_CONSTS_SHARED_PREAMBLE;
+      } else {
+         return IR3_PUSH_CONSTS_PER_STAGE;
+      }
+   }
+}
+
 template <chip CHIP>
 struct xs_config {
    uint16_t reg_sp_xs_config;
@@ -371,7 +392,9 @@ tu6_emit_xs_config(struct tu_cs *cs,
 
    tu_cs_emit_pkt4(cs, cfg->reg_hlsq_xs_ctrl, 1);
    tu_cs_emit(cs, A6XX_HLSQ_VS_CNTL_CONSTLEN(xs->constlen) |
-                  A6XX_HLSQ_VS_CNTL_ENABLED);
+                     A6XX_HLSQ_VS_CNTL_ENABLED |
+                     COND(xs->shader_options.push_consts_type == IR3_PUSH_CONSTS_SHARED_PREAMBLE,
+                          A7XX_HLSQ_VS_CNTL_READ_IMM_SHARED_CONSTS));
 }
 TU_GENX(tu6_emit_xs_config);
 
@@ -2321,9 +2344,11 @@ tu_pipeline_builder_parse_shader_stages(struct tu_pipeline_builder *builder,
                               &pipeline->shaders[i]->const_state,
                               variants[i]);
 
-      if (pipeline->shaders[i]->shared_consts.dwords != 0) {
-         pipeline->program.shared_consts =
-            pipeline->shaders[i]->shared_consts;
+      struct tu_push_constant_range *push_consts =
+         &pipeline->shaders[i]->const_state.push_consts;
+      if (push_consts->type == IR3_PUSH_CONSTS_SHARED ||
+          push_consts->type == IR3_PUSH_CONSTS_SHARED_PREAMBLE) {
+         pipeline->program.shared_consts = *push_consts;
       }
    }
 

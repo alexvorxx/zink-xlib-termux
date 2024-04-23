@@ -1818,6 +1818,7 @@ struct zink_context {
    bool oom_flush;
    bool oom_stall;
    bool track_renderpasses;
+   bool no_reorder;
    struct zink_batch batch;
 
    unsigned shader_has_inlinable_uniforms_mask;

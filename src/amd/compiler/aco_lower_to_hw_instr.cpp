@@ -1385,7 +1385,7 @@ do_copy(lower_context* ctx, Builder& bld, const copy_operation& copy, bool* pres
                if (def.physReg().byte() == 1) {
                   bld.vop2(aco_opcode::v_mul_u32_u24, dst, Operand::c32((1 << bits) + 1u), op);
                } else if (def.physReg().byte() == 2) {
-                  bld.vop2(aco_opcode::v_cvt_pk_u16_u32, dst, Operand(lo_reg, v2b), op);
+                  bld.vop3(aco_opcode::v_cvt_pk_u16_u32, dst, Operand(lo_reg, v2b), op);
                } else if (def.physReg().byte() == 3) {
                   bld.sop1(aco_opcode::s_mov_b32, Definition(scratch_sgpr, s1),
                            Operand::c32((1 << bits) + 1u));

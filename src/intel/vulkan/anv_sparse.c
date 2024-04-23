@@ -817,6 +817,7 @@ anv_sparse_calc_image_format_properties(struct anv_physical_device *pdevice,
        * since non-opaque binds are not supported. Still, dEQP seems to care.
        */
       assert(is_standard || is_known_nonstandard_format);
+      assert(!(is_standard && is_known_nonstandard_format));
    }
 
    uint32_t block_size = granularity.width * granularity.height *

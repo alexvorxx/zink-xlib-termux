@@ -943,7 +943,6 @@ panvk_pipeline_builder_parse_vertex_input(
       attribs->buf[desc->binding].per_instance =
          desc->inputRate == VK_VERTEX_INPUT_RATE_INSTANCE;
       attribs->buf[desc->binding].instance_divisor = 1;
-      attribs->buf[desc->binding].special = false;
    }
 
    if (div_info) {
@@ -957,6 +956,7 @@ panvk_pipeline_builder_parse_vertex_input(
    const struct pan_shader_info *vs =
       &builder->shaders[MESA_SHADER_VERTEX]->info;
 
+   attribs->attrib_count = 0;
    for (unsigned i = 0; i < info->vertexAttributeDescriptionCount; i++) {
       const VkVertexInputAttributeDescription *desc =
          &info->pVertexAttributeDescriptions[i];
@@ -968,23 +968,8 @@ panvk_pipeline_builder_parse_vertex_input(
       attribs->attrib[slot].buf = desc->binding;
       attribs->attrib[slot].format = vk_format_to_pipe_format(desc->format);
       attribs->attrib[slot].offset = desc->offset;
+      attribs->attrib_count = MAX2(attribs->attrib_count, slot + 1);
    }
-
-   if (vs->attribute_count >= PAN_VERTEX_ID) {
-      attribs->buf[attribs->buf_count].special = true;
-      attribs->buf[attribs->buf_count].special_id = PAN_VERTEX_ID;
-      attribs->attrib[PAN_VERTEX_ID].buf = attribs->buf_count++;
-      attribs->attrib[PAN_VERTEX_ID].format = PIPE_FORMAT_R32_UINT;
-   }
-
-   if (vs->attribute_count >= PAN_INSTANCE_ID) {
-      attribs->buf[attribs->buf_count].special = true;
-      attribs->buf[attribs->buf_count].special_id = PAN_INSTANCE_ID;
-      attribs->attrib[PAN_INSTANCE_ID].buf = attribs->buf_count++;
-      attribs->attrib[PAN_INSTANCE_ID].format = PIPE_FORMAT_R32_UINT;
-   }
-
-   attribs->attrib_count = MAX2(attribs->attrib_count, vs->attribute_count);
 }
 
 static VkResult

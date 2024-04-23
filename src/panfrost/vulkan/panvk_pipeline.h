@@ -31,15 +31,9 @@ struct panvk_attrib_info {
 };
 
 struct panvk_attrib_buf_info {
-   bool special;
-   union {
-      struct {
-         unsigned stride;
-         bool per_instance;
-         uint32_t instance_divisor;
-      };
-      unsigned special_id;
-   };
+   unsigned stride;
+   bool per_instance;
+   uint32_t instance_divisor;
 };
 
 struct panvk_attribs_info {

@@ -73,7 +73,6 @@ struct panvk_cmd_event_op {
 };
 
 enum panvk_dynamic_state_bits {
-   PANVK_DYNAMIC_BLEND_CONSTANTS = 1 << 4,
    PANVK_DYNAMIC_DEPTH_BOUNDS = 1 << 5,
    PANVK_DYNAMIC_STENCIL_COMPARE_MASK = 1 << 6,
    PANVK_DYNAMIC_STENCIL_WRITE_MASK = 1 << 7,
@@ -120,10 +119,6 @@ struct panvk_cmd_graphics_state {
 
    struct panvk_varyings_info varyings;
    mali_ptr fs_rsd;
-
-   struct {
-      float constants[4];
-   } blend;
 
    struct {
       struct panvk_attrib_buf bufs[MAX_VBS];

@@ -396,8 +396,6 @@ static void
 parse_dynamic_state(struct panvk_graphics_pipeline *pipeline,
                     const struct vk_graphics_pipeline_state *state)
 {
-   if (is_dyn(state, CB_BLEND_CONSTANTS))
-      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_BLEND_CONSTANTS;
    if (is_dyn(state, DS_DEPTH_BOUNDS_TEST_BOUNDS))
       pipeline->state.dynamic_mask |= PANVK_DYNAMIC_DEPTH_BOUNDS;
    if (is_dyn(state, DS_STENCIL_COMPARE_MASK))

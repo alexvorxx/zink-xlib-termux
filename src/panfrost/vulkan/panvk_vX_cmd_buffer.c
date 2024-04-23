@@ -270,6 +270,7 @@ panvk_cmd_prepare_draw_sysvals(struct panvk_cmd_buffer *cmdbuf,
 {
    struct panvk_descriptor_state *desc_state = &cmdbuf->state.gfx.desc_state;
    struct panvk_graphics_sysvals *sysvals = &cmdbuf->state.gfx.sysvals;
+   struct vk_color_blend_state *cb = &cmdbuf->vk.dynamic_graphics_state.cb;
 
    unsigned base_vertex = draw->index_size ? draw->vertex_offset : 0;
    if (sysvals->vs.first_vertex != draw->offset_start ||
@@ -281,9 +282,10 @@ panvk_cmd_prepare_draw_sysvals(struct panvk_cmd_buffer *cmdbuf,
       desc_state->push_uniforms = 0;
    }
 
-   if (cmdbuf->state.gfx.dirty & PANVK_DYNAMIC_BLEND_CONSTANTS) {
-      memcpy(&sysvals->blend.constants, cmdbuf->state.gfx.blend.constants,
-             sizeof(cmdbuf->state.gfx.blend.constants));
+   if (is_dirty(cmdbuf, CB_BLEND_CONSTANTS)) {
+      for (unsigned i = 0; i < ARRAY_SIZE(cb->blend_constants); i++)
+         sysvals->blend.constants[i] =
+            CLAMP(cb->blend_constants[i], 0.0f, 1.0f);
       desc_state->push_uniforms = 0;
    }
 
@@ -537,13 +539,16 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
       return;
    }
 
-   bool dirty =
-      is_dirty(cmdbuf, RS_DEPTH_BIAS_FACTORS) || !cmdbuf->state.gfx.fs_rsd;
+   bool dirty = is_dirty(cmdbuf, RS_DEPTH_BIAS_FACTORS) ||
+                is_dirty(cmdbuf, CB_BLEND_CONSTANTS) ||
+                !cmdbuf->state.gfx.fs_rsd;
 
    if (dirty) {
       const struct panvk_cmd_graphics_state *state = &cmdbuf->state.gfx;
       const struct vk_rasterization_state *rs =
          &cmdbuf->vk.dynamic_graphics_state.rs;
+      const struct vk_color_blend_state *cb =
+         &cmdbuf->vk.dynamic_graphics_state.cb;
       struct panfrost_ptr rsd = pan_pool_alloc_desc_aggregate(
          &cmdbuf->desc_pool.base, PAN_DESC(RENDERER_STATE),
          PAN_DESC_ARRAY(pipeline->state.blend.pstate.rt_count, BLEND));
@@ -588,7 +593,7 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
             const struct mali_blend_packed *bd_templ =
                &pipeline->state.blend.bd_template[i];
             unsigned constant_idx = pipeline->state.blend.constant[i].index;
-            float constant = cmdbuf->state.gfx.blend.constants[constant_idx] *
+            float constant = cb->blend_constants[constant_idx] *
                              pipeline->state.blend.constant[i].bifrost_factor;
 
             pan_pack(&bd_dyn, BLEND, cfg) {
@@ -2192,20 +2197,6 @@ panvk_per_arch(CmdBindPipeline)(VkCommandBuffer commandBuffer,
       assert(!"Unsupported bind point");
       break;
    }
-}
-
-VKAPI_ATTR void VKAPI_CALL
-panvk_per_arch(CmdSetBlendConstants)(VkCommandBuffer commandBuffer,
-                                     const float blendConstants[4])
-{
-   VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
-
-   for (unsigned i = 0; i < 4; i++)
-      cmdbuf->state.gfx.blend.constants[i] =
-         CLAMP(blendConstants[i], 0.0f, 1.0f);
-
-   cmdbuf->state.gfx.dirty |= PANVK_DYNAMIC_BLEND_CONSTANTS;
-   cmdbuf->state.gfx.fs_rsd = 0;
 }
 
 VKAPI_ATTR void VKAPI_CALL

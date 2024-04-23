@@ -251,7 +251,19 @@ void
 finish_optimizer_postRA_test()
 {
    finish_program(program.get());
+
+   if (!aco::validate_ir(program.get())) {
+      fail_test("Validation before optimize_postRA failed");
+      return;
+   }
+
    aco::optimize_postRA(program.get());
+
+   if (!aco::validate_ir(program.get())) {
+      fail_test("Validation after optimize_postRA failed");
+      return;
+   }
+
    aco_print_program(program.get(), output);
 }
 
@@ -259,7 +271,19 @@ void
 finish_to_hw_instr_test()
 {
    finish_program(program.get());
+
+   if (!aco::validate_ir(program.get())) {
+      fail_test("Validation before lower_to_hw_instr failed");
+      return;
+   }
+
    aco::lower_to_hw_instr(program.get());
+
+   if (!aco::validate_ir(program.get())) {
+      fail_test("Validation after lower_to_hw_instr failed");
+      return;
+   }
+
    aco_print_program(program.get(), output);
 }
 

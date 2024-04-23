@@ -77,8 +77,6 @@ struct panvk_graphics_pipeline {
    struct panvk_varyings_info varyings;
 
    struct {
-      uint32_t dynamic_mask;
-
       struct {
          struct panvk_attribs_info attribs;
          bool writes_point_size;
@@ -92,22 +90,6 @@ struct panvk_graphics_pipeline {
          uint8_t rt_mask;
          struct mali_renderer_state_packed rsd_template;
       } fs;
-
-      struct {
-         bool z_test;
-         bool z_write;
-         unsigned z_compare_func;
-         bool s_test;
-         struct {
-            unsigned fail_op;
-            unsigned pass_op;
-            unsigned z_fail_op;
-            unsigned compare_func;
-            uint8_t compare_mask;
-            uint8_t write_mask;
-            uint8_t ref;
-         } s_front, s_back;
-      } zs;
 
       struct {
          uint8_t rast_samples;

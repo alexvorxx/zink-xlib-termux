@@ -72,14 +72,6 @@ struct panvk_cmd_event_op {
    struct panvk_event *event;
 };
 
-enum panvk_dynamic_state_bits {
-   PANVK_DYNAMIC_DEPTH_BOUNDS = 1 << 5,
-   PANVK_DYNAMIC_STENCIL_COMPARE_MASK = 1 << 6,
-   PANVK_DYNAMIC_STENCIL_WRITE_MASK = 1 << 7,
-   PANVK_DYNAMIC_STENCIL_REFERENCE = 1 << 8,
-   PANVK_DYNAMIC_ALL = (1 << 9) - 1,
-};
-
 struct panvk_descriptor_state {
    const struct panvk_descriptor_set *sets[MAX_SETS];
    struct panvk_push_descriptor_set *push_sets[MAX_SETS];
@@ -132,14 +124,6 @@ struct panvk_cmd_graphics_state {
       uint8_t index_size;
       uint32_t first_vertex, base_vertex, base_instance;
    } ib;
-
-   struct {
-      struct {
-         uint8_t compare_mask;
-         uint8_t write_mask;
-         uint8_t ref;
-      } s_front, s_back;
-   } zs;
 
    struct {
       struct pan_fb_info info;

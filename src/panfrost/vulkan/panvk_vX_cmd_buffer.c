@@ -541,14 +541,18 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
 
    bool dirty = is_dirty(cmdbuf, RS_DEPTH_BIAS_FACTORS) ||
                 is_dirty(cmdbuf, CB_BLEND_CONSTANTS) ||
+                is_dirty(cmdbuf, DS_STENCIL_COMPARE_MASK) ||
+                is_dirty(cmdbuf, DS_STENCIL_WRITE_MASK) ||
+                is_dirty(cmdbuf, DS_STENCIL_REFERENCE) ||
                 !cmdbuf->state.gfx.fs_rsd;
 
    if (dirty) {
-      const struct panvk_cmd_graphics_state *state = &cmdbuf->state.gfx;
       const struct vk_rasterization_state *rs =
          &cmdbuf->vk.dynamic_graphics_state.rs;
       const struct vk_color_blend_state *cb =
          &cmdbuf->vk.dynamic_graphics_state.cb;
+      const struct vk_depth_stencil_state *ds =
+         &cmdbuf->vk.dynamic_graphics_state.ds;
       struct panfrost_ptr rsd = pan_pool_alloc_desc_aggregate(
          &cmdbuf->desc_pool.base, PAN_DESC(RENDERER_STATE),
          PAN_DESC_ARRAY(pipeline->state.blend.pstate.rt_count, BLEND));
@@ -562,25 +566,13 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
          cfg.depth_factor = rs->depth_bias.slope;
          cfg.depth_bias_clamp = rs->depth_bias.clamp;
 
-         if (pipeline->state.dynamic_mask &
-             (1 << VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK)) {
-            cfg.stencil_front.mask = state->zs.s_front.compare_mask;
-            cfg.stencil_back.mask = state->zs.s_back.compare_mask;
-         }
-
-         if (pipeline->state.dynamic_mask &
-             (1 << VK_DYNAMIC_STATE_STENCIL_WRITE_MASK)) {
-            cfg.stencil_mask_misc.stencil_mask_front =
-               state->zs.s_front.write_mask;
-            cfg.stencil_mask_misc.stencil_mask_back =
-               state->zs.s_back.write_mask;
-         }
-
-         if (pipeline->state.dynamic_mask &
-             (1 << VK_DYNAMIC_STATE_STENCIL_REFERENCE)) {
-            cfg.stencil_front.reference_value = state->zs.s_front.ref;
-            cfg.stencil_back.reference_value = state->zs.s_back.ref;
-         }
+         cfg.stencil_front.mask = ds->stencil.front.compare_mask;
+         cfg.stencil_back.mask = ds->stencil.back.compare_mask;
+         cfg.stencil_mask_misc.stencil_mask_front =
+            ds->stencil.front.write_mask;
+         cfg.stencil_mask_misc.stencil_mask_back = ds->stencil.back.write_mask;
+         cfg.stencil_front.reference_value = ds->stencil.front.reference;
+         cfg.stencil_back.reference_value = ds->stencil.back.reference;
       }
 
       pan_merge(rsd_dyn, (*rsd_templ), RENDERER_STATE);
@@ -2197,64 +2189,6 @@ panvk_per_arch(CmdBindPipeline)(VkCommandBuffer commandBuffer,
       assert(!"Unsupported bind point");
       break;
    }
-}
-
-VKAPI_ATTR void VKAPI_CALL
-panvk_per_arch(CmdSetDepthBounds)(VkCommandBuffer commandBuffer,
-                                  float minDepthBounds, float maxDepthBounds)
-{
-   panvk_stub();
-}
-
-VKAPI_ATTR void VKAPI_CALL
-panvk_per_arch(CmdSetStencilCompareMask)(VkCommandBuffer commandBuffer,
-                                         VkStencilFaceFlags faceMask,
-                                         uint32_t compareMask)
-{
-   VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
-
-   if (faceMask & VK_STENCIL_FACE_FRONT_BIT)
-      cmdbuf->state.gfx.zs.s_front.compare_mask = compareMask;
-
-   if (faceMask & VK_STENCIL_FACE_BACK_BIT)
-      cmdbuf->state.gfx.zs.s_back.compare_mask = compareMask;
-
-   cmdbuf->state.gfx.dirty |= PANVK_DYNAMIC_STENCIL_COMPARE_MASK;
-   cmdbuf->state.gfx.fs_rsd = 0;
-}
-
-VKAPI_ATTR void VKAPI_CALL
-panvk_per_arch(CmdSetStencilWriteMask)(VkCommandBuffer commandBuffer,
-                                       VkStencilFaceFlags faceMask,
-                                       uint32_t writeMask)
-{
-   VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
-
-   if (faceMask & VK_STENCIL_FACE_FRONT_BIT)
-      cmdbuf->state.gfx.zs.s_front.write_mask = writeMask;
-
-   if (faceMask & VK_STENCIL_FACE_BACK_BIT)
-      cmdbuf->state.gfx.zs.s_back.write_mask = writeMask;
-
-   cmdbuf->state.gfx.dirty |= PANVK_DYNAMIC_STENCIL_WRITE_MASK;
-   cmdbuf->state.gfx.fs_rsd = 0;
-}
-
-VKAPI_ATTR void VKAPI_CALL
-panvk_per_arch(CmdSetStencilReference)(VkCommandBuffer commandBuffer,
-                                       VkStencilFaceFlags faceMask,
-                                       uint32_t reference)
-{
-   VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
-
-   if (faceMask & VK_STENCIL_FACE_FRONT_BIT)
-      cmdbuf->state.gfx.zs.s_front.ref = reference;
-
-   if (faceMask & VK_STENCIL_FACE_BACK_BIT)
-      cmdbuf->state.gfx.zs.s_back.ref = reference;
-
-   cmdbuf->state.gfx.dirty |= PANVK_DYNAMIC_STENCIL_REFERENCE;
-   cmdbuf->state.gfx.fs_rsd = 0;
 }
 
 VKAPI_ATTR void VKAPI_CALL

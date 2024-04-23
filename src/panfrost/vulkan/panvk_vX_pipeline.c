@@ -141,12 +141,97 @@ emit_non_fs_rsd(const struct pan_shader_info *shader_info, mali_ptr shader_ptr,
    }
 }
 
+static bool
+writes_depth(const struct vk_depth_stencil_state *ds)
+{
+
+   return ds && ds->depth.test_enable && ds->depth.write_enable &&
+          ds->depth.compare_op != VK_COMPARE_OP_NEVER;
+}
+
+static bool
+writes_stencil(const struct vk_depth_stencil_state *ds)
+{
+   return ds && ds->stencil.test_enable &&
+          ((ds->stencil.front.write_mask &&
+            (ds->stencil.front.op.fail != VK_STENCIL_OP_KEEP ||
+             ds->stencil.front.op.pass != VK_STENCIL_OP_KEEP ||
+             ds->stencil.front.op.depth_fail != VK_STENCIL_OP_KEEP)) ||
+           (ds->stencil.back.write_mask &&
+            (ds->stencil.back.op.fail != VK_STENCIL_OP_KEEP ||
+             ds->stencil.back.op.pass != VK_STENCIL_OP_KEEP ||
+             ds->stencil.back.op.depth_fail != VK_STENCIL_OP_KEEP)));
+}
+
+static bool
+ds_test_always_passes(const struct vk_depth_stencil_state *ds)
+{
+   if (!ds)
+      return true;
+
+   if (ds->depth.test_enable && ds->depth.compare_op != VK_COMPARE_OP_ALWAYS)
+      return false;
+
+   if (ds->stencil.test_enable &&
+       (ds->stencil.front.op.compare != VK_COMPARE_OP_ALWAYS ||
+        ds->stencil.back.op.compare != VK_COMPARE_OP_ALWAYS))
+      return false;
+
+   return true;
+}
+
+static inline enum mali_func
+translate_compare_func(VkCompareOp comp)
+{
+   STATIC_ASSERT(VK_COMPARE_OP_NEVER == (VkCompareOp)MALI_FUNC_NEVER);
+   STATIC_ASSERT(VK_COMPARE_OP_LESS == (VkCompareOp)MALI_FUNC_LESS);
+   STATIC_ASSERT(VK_COMPARE_OP_EQUAL == (VkCompareOp)MALI_FUNC_EQUAL);
+   STATIC_ASSERT(VK_COMPARE_OP_LESS_OR_EQUAL == (VkCompareOp)MALI_FUNC_LEQUAL);
+   STATIC_ASSERT(VK_COMPARE_OP_GREATER == (VkCompareOp)MALI_FUNC_GREATER);
+   STATIC_ASSERT(VK_COMPARE_OP_NOT_EQUAL == (VkCompareOp)MALI_FUNC_NOT_EQUAL);
+   STATIC_ASSERT(VK_COMPARE_OP_GREATER_OR_EQUAL ==
+                 (VkCompareOp)MALI_FUNC_GEQUAL);
+   STATIC_ASSERT(VK_COMPARE_OP_ALWAYS == (VkCompareOp)MALI_FUNC_ALWAYS);
+
+   return (enum mali_func)comp;
+}
+
+static enum mali_stencil_op
+translate_stencil_op(VkStencilOp in)
+{
+   switch (in) {
+   case VK_STENCIL_OP_KEEP:
+      return MALI_STENCIL_OP_KEEP;
+   case VK_STENCIL_OP_ZERO:
+      return MALI_STENCIL_OP_ZERO;
+   case VK_STENCIL_OP_REPLACE:
+      return MALI_STENCIL_OP_REPLACE;
+   case VK_STENCIL_OP_INCREMENT_AND_CLAMP:
+      return MALI_STENCIL_OP_INCR_SAT;
+   case VK_STENCIL_OP_DECREMENT_AND_CLAMP:
+      return MALI_STENCIL_OP_DECR_SAT;
+   case VK_STENCIL_OP_INCREMENT_AND_WRAP:
+      return MALI_STENCIL_OP_INCR_WRAP;
+   case VK_STENCIL_OP_DECREMENT_AND_WRAP:
+      return MALI_STENCIL_OP_DECR_WRAP;
+   case VK_STENCIL_OP_INVERT:
+      return MALI_STENCIL_OP_INVERT;
+   default:
+      unreachable("Invalid stencil op");
+   }
+}
+
 static void
 emit_base_fs_rsd(const struct panvk_graphics_pipeline *pipeline,
                  const struct vk_graphics_pipeline_state *state, void *rsd)
 {
    const struct pan_shader_info *info = &pipeline->state.fs.info;
    const struct vk_rasterization_state *rs = state->rs;
+   const struct vk_depth_stencil_state *ds = state->ds;
+   bool test_s = ds && ds->stencil.test_enable;
+   bool test_z = ds && ds->depth.test_enable;
+   bool writes_z = writes_depth(ds);
+   bool writes_s = writes_stencil(ds);
 
    pan_pack(rsd, RENDERER_STATE, cfg) {
       if (pipeline->state.fs.required) {
@@ -160,10 +245,8 @@ emit_base_fs_rsd(const struct panvk_graphics_pipeline *pipeline,
             !pipeline->state.ms.alpha_to_coverage &&
             !pipeline->state.blend.reads_dest;
 
-         bool writes_zs =
-            pipeline->state.zs.z_write || pipeline->state.zs.s_test;
-         bool zs_always_passes =
-            !pipeline->state.zs.z_test && !pipeline->state.zs.s_test;
+         bool writes_zs = writes_z || writes_s;
+         bool zs_always_passes = ds_test_always_passes(ds);
          bool oq = false; /* TODO: Occlusion queries */
 
          struct pan_earlyzs_state earlyzs = pan_earlyzs_get(
@@ -185,16 +268,16 @@ emit_base_fs_rsd(const struct panvk_graphics_pipeline *pipeline,
          msaa ? pipeline->state.ms.sample_mask : UINT16_MAX;
 
       cfg.multisample_misc.depth_function =
-         pipeline->state.zs.z_test ? pipeline->state.zs.z_compare_func
-                                   : MALI_FUNC_ALWAYS;
+         test_z ? translate_compare_func(ds->depth.compare_op)
+                : MALI_FUNC_ALWAYS;
 
-      cfg.multisample_misc.depth_write_mask = pipeline->state.zs.z_write;
+      cfg.multisample_misc.depth_write_mask = writes_z;
       cfg.multisample_misc.fixed_function_near_discard =
          !rs->depth_clamp_enable;
       cfg.multisample_misc.fixed_function_far_discard = !rs->depth_clamp_enable;
       cfg.multisample_misc.shader_depth_range_fixed = true;
 
-      cfg.stencil_mask_misc.stencil_enable = pipeline->state.zs.s_test;
+      cfg.stencil_mask_misc.stencil_enable = test_s;
       cfg.stencil_mask_misc.alpha_to_coverage =
          pipeline->state.ms.alpha_to_coverage;
       cfg.stencil_mask_misc.alpha_test_compare_function = MALI_FUNC_ALWAYS;
@@ -210,32 +293,39 @@ emit_base_fs_rsd(const struct panvk_graphics_pipeline *pipeline,
       }
 
       if (dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_DS_STENCIL_COMPARE_MASK)) {
-         cfg.stencil_front.mask = pipeline->state.zs.s_front.compare_mask;
-         cfg.stencil_back.mask = pipeline->state.zs.s_back.compare_mask;
+         cfg.stencil_front.mask = ds->stencil.front.compare_mask;
+         cfg.stencil_back.mask = ds->stencil.back.compare_mask;
       }
 
       if (dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_DS_STENCIL_WRITE_MASK)) {
          cfg.stencil_mask_misc.stencil_mask_front =
-            pipeline->state.zs.s_front.write_mask;
-         cfg.stencil_mask_misc.stencil_mask_back =
-            pipeline->state.zs.s_back.write_mask;
+            ds->stencil.front.write_mask;
+         cfg.stencil_mask_misc.stencil_mask_back = ds->stencil.back.write_mask;
       }
 
       if (dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_DS_STENCIL_REFERENCE)) {
-         cfg.stencil_front.reference_value = pipeline->state.zs.s_front.ref;
-         cfg.stencil_back.reference_value = pipeline->state.zs.s_back.ref;
+         cfg.stencil_front.reference_value = ds->stencil.front.reference;
+         cfg.stencil_back.reference_value = ds->stencil.back.reference;
       }
 
-      cfg.stencil_front.compare_function =
-         pipeline->state.zs.s_front.compare_func;
-      cfg.stencil_front.stencil_fail = pipeline->state.zs.s_front.fail_op;
-      cfg.stencil_front.depth_fail = pipeline->state.zs.s_front.z_fail_op;
-      cfg.stencil_front.depth_pass = pipeline->state.zs.s_front.pass_op;
-      cfg.stencil_back.compare_function =
-         pipeline->state.zs.s_back.compare_func;
-      cfg.stencil_back.stencil_fail = pipeline->state.zs.s_back.fail_op;
-      cfg.stencil_back.depth_fail = pipeline->state.zs.s_back.z_fail_op;
-      cfg.stencil_back.depth_pass = pipeline->state.zs.s_back.pass_op;
+      if (test_s) {
+         cfg.stencil_front.compare_function =
+            translate_compare_func(ds->stencil.front.op.compare);
+         cfg.stencil_front.stencil_fail =
+            translate_stencil_op(ds->stencil.front.op.fail);
+         cfg.stencil_front.depth_fail =
+            translate_stencil_op(ds->stencil.front.op.depth_fail);
+         cfg.stencil_front.depth_pass =
+            translate_stencil_op(ds->stencil.front.op.pass);
+         cfg.stencil_back.compare_function =
+            translate_compare_func(ds->stencil.back.op.compare);
+         cfg.stencil_back.stencil_fail =
+            translate_stencil_op(ds->stencil.back.op.fail);
+         cfg.stencil_back.depth_fail =
+            translate_stencil_op(ds->stencil.back.op.depth_fail);
+         cfg.stencil_back.depth_pass =
+            translate_stencil_op(ds->stencil.back.op.pass);
+      }
    }
 }
 
@@ -392,20 +482,6 @@ init_shaders(struct panvk_pipeline *pipeline,
 #define is_dyn(__state, __name)                                                \
    BITSET_TEST((__state)->dynamic, MESA_VK_DYNAMIC_##__name)
 
-static void
-parse_dynamic_state(struct panvk_graphics_pipeline *pipeline,
-                    const struct vk_graphics_pipeline_state *state)
-{
-   if (is_dyn(state, DS_DEPTH_BOUNDS_TEST_BOUNDS))
-      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_DEPTH_BOUNDS;
-   if (is_dyn(state, DS_STENCIL_COMPARE_MASK))
-      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_STENCIL_COMPARE_MASK;
-   if (is_dyn(state, DS_STENCIL_WRITE_MASK))
-      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_STENCIL_WRITE_MASK;
-   if (is_dyn(state, DS_STENCIL_REFERENCE))
-      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_STENCIL_REFERENCE;
-}
-
 static uint32_t
 get_active_color_attachments(const struct vk_graphics_pipeline_state *state)
 {
@@ -514,97 +590,6 @@ parse_multisample(struct panvk_graphics_pipeline *pipeline,
    pipeline->state.ms.sample_mask = ms->sample_mask;
    pipeline->state.ms.min_samples =
       MAX2(ms->min_sample_shading * nr_samples, 1);
-}
-
-static enum mali_stencil_op
-translate_stencil_op(VkStencilOp in)
-{
-   switch (in) {
-   case VK_STENCIL_OP_KEEP:
-      return MALI_STENCIL_OP_KEEP;
-   case VK_STENCIL_OP_ZERO:
-      return MALI_STENCIL_OP_ZERO;
-   case VK_STENCIL_OP_REPLACE:
-      return MALI_STENCIL_OP_REPLACE;
-   case VK_STENCIL_OP_INCREMENT_AND_CLAMP:
-      return MALI_STENCIL_OP_INCR_SAT;
-   case VK_STENCIL_OP_DECREMENT_AND_CLAMP:
-      return MALI_STENCIL_OP_DECR_SAT;
-   case VK_STENCIL_OP_INCREMENT_AND_WRAP:
-      return MALI_STENCIL_OP_INCR_WRAP;
-   case VK_STENCIL_OP_DECREMENT_AND_WRAP:
-      return MALI_STENCIL_OP_DECR_WRAP;
-   case VK_STENCIL_OP_INVERT:
-      return MALI_STENCIL_OP_INVERT;
-   default:
-      unreachable("Invalid stencil op");
-   }
-}
-
-static inline enum mali_func
-translate_compare_func(VkCompareOp comp)
-{
-   STATIC_ASSERT(VK_COMPARE_OP_NEVER == (VkCompareOp)MALI_FUNC_NEVER);
-   STATIC_ASSERT(VK_COMPARE_OP_LESS == (VkCompareOp)MALI_FUNC_LESS);
-   STATIC_ASSERT(VK_COMPARE_OP_EQUAL == (VkCompareOp)MALI_FUNC_EQUAL);
-   STATIC_ASSERT(VK_COMPARE_OP_LESS_OR_EQUAL == (VkCompareOp)MALI_FUNC_LEQUAL);
-   STATIC_ASSERT(VK_COMPARE_OP_GREATER == (VkCompareOp)MALI_FUNC_GREATER);
-   STATIC_ASSERT(VK_COMPARE_OP_NOT_EQUAL == (VkCompareOp)MALI_FUNC_NOT_EQUAL);
-   STATIC_ASSERT(VK_COMPARE_OP_GREATER_OR_EQUAL ==
-                 (VkCompareOp)MALI_FUNC_GEQUAL);
-   STATIC_ASSERT(VK_COMPARE_OP_ALWAYS == (VkCompareOp)MALI_FUNC_ALWAYS);
-
-   return (enum mali_func)comp;
-}
-
-static void
-parse_zs(struct panvk_graphics_pipeline *pipeline,
-         const struct vk_graphics_pipeline_state *state)
-{
-   const struct vk_depth_stencil_state *ds = state->ds;
-
-   if (!ds)
-      return;
-
-   pipeline->state.zs.z_test = ds->depth.test_enable;
-
-   /* The Vulkan spec says:
-    *
-    *    depthWriteEnable controls whether depth writes are enabled when
-    *    depthTestEnable is VK_TRUE. Depth writes are always disabled when
-    *    depthTestEnable is VK_FALSE.
-    *
-    * The hardware does not make this distinction, though, so we AND in the
-    * condition ourselves.
-    */
-   pipeline->state.zs.z_write =
-      pipeline->state.zs.z_test && ds->depth.write_enable;
-
-   pipeline->state.zs.z_compare_func =
-      translate_compare_func(ds->depth.compare_op);
-   pipeline->state.zs.s_test = ds->stencil.test_enable;
-   pipeline->state.zs.s_front.fail_op =
-      translate_stencil_op(ds->stencil.front.op.fail);
-   pipeline->state.zs.s_front.pass_op =
-      translate_stencil_op(ds->stencil.front.op.pass);
-   pipeline->state.zs.s_front.z_fail_op =
-      translate_stencil_op(ds->stencil.front.op.depth_fail);
-   pipeline->state.zs.s_front.compare_func =
-      translate_compare_func(ds->stencil.front.op.compare);
-   pipeline->state.zs.s_front.compare_mask = ds->stencil.front.compare_mask;
-   pipeline->state.zs.s_front.write_mask = ds->stencil.front.write_mask;
-   pipeline->state.zs.s_front.ref = ds->stencil.front.reference;
-   pipeline->state.zs.s_back.fail_op =
-      translate_stencil_op(ds->stencil.back.op.fail);
-   pipeline->state.zs.s_back.pass_op =
-      translate_stencil_op(ds->stencil.back.op.pass);
-   pipeline->state.zs.s_back.z_fail_op =
-      translate_stencil_op(ds->stencil.back.op.depth_fail);
-   pipeline->state.zs.s_back.compare_func =
-      translate_compare_func(ds->stencil.back.op.compare);
-   pipeline->state.zs.s_back.compare_mask = ds->stencil.back.compare_mask;
-   pipeline->state.zs.s_back.write_mask = ds->stencil.back.write_mask;
-   pipeline->state.zs.s_back.ref = ds->stencil.back.reference;
 }
 
 static bool
@@ -802,13 +787,11 @@ panvk_graphics_pipeline_create(struct panvk_device *dev,
 
    struct panvk_shader *shaders[MESA_SHADER_STAGES] = {NULL};
 
-   parse_dynamic_state(gfx_pipeline, &state);
    parse_color_blend(gfx_pipeline, &state);
    compile_shaders(&gfx_pipeline->base, create_info->pStages,
                    create_info->stageCount, alloc, shaders);
    collect_varyings(gfx_pipeline, shaders);
    parse_multisample(gfx_pipeline, &state);
-   parse_zs(gfx_pipeline, &state);
    parse_vertex_input(gfx_pipeline, &state, shaders);
    init_fs_state(gfx_pipeline, &state, shaders[MESA_SHADER_FRAGMENT]);
    init_shaders(&gfx_pipeline->base, create_info, &state, shaders);

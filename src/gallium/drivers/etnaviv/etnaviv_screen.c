@@ -859,6 +859,13 @@ etna_get_specs(struct etna_screen *screen)
       screen->specs.on_chip_sram_size = info->npu.on_chip_sram_size;
       screen->specs.axi_sram_size = info->npu.axi_sram_size;
       screen->specs.nn_zrl_bits = info->npu.nn_zrl_bits;
+
+      if (etna_core_has_feature(info, ETNA_FEATURE_NN_XYDP0))
+         screen->specs.nn_core_version = 8;
+      else if (etna_core_has_feature(info, ETNA_FEATURE_VIP_V7))
+         screen->specs.nn_core_version = 7;
+      else
+         screen->specs.nn_core_version = 6;
    }
 
    /* Figure out gross GPU architecture. See rnndb/common.xml for a specific

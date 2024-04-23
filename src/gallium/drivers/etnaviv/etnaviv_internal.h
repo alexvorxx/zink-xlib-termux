@@ -145,6 +145,8 @@ struct etna_specs {
    unsigned num_constants;
    /* number of NN cores */
    unsigned nn_core_count;
+   /* architecture version of NN cores */
+   unsigned nn_core_version;
    /* number of MAD units per NN core */
    unsigned nn_mad_per_core;
    /* number of TP cores */

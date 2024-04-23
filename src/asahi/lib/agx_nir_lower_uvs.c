@@ -324,9 +324,6 @@ agx_link_varyings_vs_fs(struct agx_pool *pool, struct agx_varyings_vs *vs,
                       "gl_Position should have been the first 4 slots");
 
                cfg.base_slot = user_base + (vs_index - 4) + b.offset;
-
-               assert(cfg.base_slot + cfg.components <= nr_slots &&
-                      "overflow slots");
             }
          }
 

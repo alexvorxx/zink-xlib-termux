@@ -2378,6 +2378,8 @@ swrast_update_buffers(struct dri2_egl_surface *dri2_surf)
    }
 
    /* find back buffer */
+   if (zink)
+      return 0;
 
    /* There might be a buffer release already queued that wasn't processed */
    wl_display_dispatch_queue_pending(dri2_dpy->wl_dpy, dri2_surf->wl_queue);
@@ -2399,8 +2401,6 @@ swrast_update_buffers(struct dri2_egl_surface *dri2_surf)
       for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
          if (!dri2_surf->color_buffers[i].locked) {
             dri2_surf->back = &dri2_surf->color_buffers[i];
-            if (zink)
-               continue;
             if (!dri2_wl_swrast_allocate_buffer(
                    dri2_surf, dri2_surf->format, dri2_surf->base.Width,
                    dri2_surf->base.Height, &dri2_surf->back->data,
@@ -2435,11 +2435,9 @@ swrast_update_buffers(struct dri2_egl_surface *dri2_surf)
       if (!dri2_surf->color_buffers[i].locked &&
           dri2_surf->color_buffers[i].wl_buffer &&
           dri2_surf->color_buffers[i].age > BUFFER_TRIM_AGE_HYSTERESIS) {
-         if (!zink) {
-            wl_buffer_destroy(dri2_surf->color_buffers[i].wl_buffer);
-            munmap(dri2_surf->color_buffers[i].data,
-                   dri2_surf->color_buffers[i].data_size);
-         }
+         wl_buffer_destroy(dri2_surf->color_buffers[i].wl_buffer);
+         munmap(dri2_surf->color_buffers[i].data,
+                dri2_surf->color_buffers[i].data_size);
          dri2_surf->color_buffers[i].wl_buffer = NULL;
          dri2_surf->color_buffers[i].data = NULL;
          dri2_surf->color_buffers[i].age = 0;
@@ -2722,7 +2720,6 @@ static const __DRIkopperLoaderExtension kopper_loader_extension = {
 static const __DRIextension *swrast_loader_extensions[] = {
    &swrast_loader_extension.base,
    &image_lookup_extension.base,
-   &image_loader_extension.base,
    &kopper_loader_extension.base,
    NULL,
 };

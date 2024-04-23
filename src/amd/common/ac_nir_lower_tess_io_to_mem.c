@@ -285,7 +285,8 @@ lower_ls_output_store(nir_builder *b,
    unsigned write_mask = nir_intrinsic_write_mask(intrin);
 
    nir_def *off = nir_iadd_nuw(b, base_off_var, io_off);
-   nir_store_shared(b, intrin->src[0].ssa, off, .write_mask = write_mask);
+   AC_NIR_STORE_IO(b, intrin->src[0].ssa, 0, write_mask, io_sem.high_16bits,
+                   nir_store_shared, off, .write_mask = store_write_mask, .base = store_const_offset);
 
    /* NOTE: don't remove the store_output intrinsic on GFX9+ when tcs_in_out_eq,
     * it will be used by same-invocation TCS input loads.
@@ -490,8 +491,14 @@ lower_hs_per_vertex_input_load(nir_builder *b,
    lower_tess_io_state *st = (lower_tess_io_state *) state;
    nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
 
+   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
    nir_def *off = hs_per_vertex_input_lds_offset(b, st, intrin);
-   return nir_load_shared(b, intrin->def.num_components, intrin->def.bit_size, off);
+   nir_def *load = NULL;
+
+   AC_NIR_LOAD_IO(load, b, intrin->def.num_components, intrin->def.bit_size, io_sem.high_16bits,
+                  nir_load_shared, off);
+
+   return load;
 }
 
 static nir_def *

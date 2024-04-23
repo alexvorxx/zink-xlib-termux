@@ -831,6 +831,7 @@ panvk_draw_emit_attrib_buf(const struct panvk_draw_info *draw,
    mali_ptr addr = buf->address & ~63ULL;
    unsigned size = buf->size + (buf->address & 63);
    unsigned divisor = draw->padded_vertex_count * buf_info->instance_divisor;
+   void *buf_ext = desc + pan_size(ATTRIBUTE_BUFFER);
 
    /* TODO: support instanced arrays */
    if (draw->instance_count <= 1) {
@@ -879,12 +880,17 @@ panvk_draw_emit_attrib_buf(const struct panvk_draw_info *draw,
          cfg.divisor_e = divisor_e;
       }
 
-      desc += pan_size(ATTRIBUTE_BUFFER);
-      pan_pack(desc, ATTRIBUTE_BUFFER_CONTINUATION_NPOT, cfg) {
+      pan_pack(buf_ext, ATTRIBUTE_BUFFER_CONTINUATION_NPOT, cfg) {
          cfg.divisor_numerator = divisor_num;
          cfg.divisor = buf_info->instance_divisor;
       }
+
+      buf_ext = NULL;
    }
+
+   /* If the buffer extension wasn't used, memset(0) */
+   if (buf_ext)
+      memset(buf_ext, 0, pan_size(ATTRIBUTE_BUFFER));
 }
 
 static void

@@ -825,23 +825,24 @@ panvk_prepare_img_attribs(struct panvk_cmd_buffer *cmdbuf,
 
 static void
 panvk_draw_emit_attrib_buf(const struct panvk_draw_info *draw,
-                           const struct panvk_attrib_buf_info *buf_info,
+                           const struct vk_vertex_binding_state *buf_info,
                            const struct panvk_attrib_buf *buf, void *desc)
 {
    mali_ptr addr = buf->address & ~63ULL;
    unsigned size = buf->size + (buf->address & 63);
-   unsigned divisor = draw->padded_vertex_count * buf_info->instance_divisor;
+   unsigned divisor = draw->padded_vertex_count * buf_info->divisor;
+   bool per_instance = buf_info->input_rate == VK_VERTEX_INPUT_RATE_INSTANCE;
    void *buf_ext = desc + pan_size(ATTRIBUTE_BUFFER);
 
    /* TODO: support instanced arrays */
    if (draw->instance_count <= 1) {
       pan_pack(desc, ATTRIBUTE_BUFFER, cfg) {
          cfg.type = MALI_ATTRIBUTE_TYPE_1D;
-         cfg.stride = buf_info->per_instance ? 0 : buf_info->stride;
+         cfg.stride = per_instance ? 0 : buf_info->stride;
          cfg.pointer = addr;
          cfg.size = size;
       }
-   } else if (!buf_info->per_instance) {
+   } else if (!per_instance) {
       pan_pack(desc, ATTRIBUTE_BUFFER, cfg) {
          cfg.type = MALI_ATTRIBUTE_TYPE_1D_MODULUS;
          cfg.divisor = draw->padded_vertex_count;
@@ -882,7 +883,7 @@ panvk_draw_emit_attrib_buf(const struct panvk_draw_info *draw,
 
       pan_pack(buf_ext, ATTRIBUTE_BUFFER_CONTINUATION_NPOT, cfg) {
          cfg.divisor_numerator = divisor_num;
-         cfg.divisor = buf_info->instance_divisor;
+         cfg.divisor = buf_info->divisor;
       }
 
       buf_ext = NULL;
@@ -895,19 +896,20 @@ panvk_draw_emit_attrib_buf(const struct panvk_draw_info *draw,
 
 static void
 panvk_draw_emit_attrib(const struct panvk_draw_info *draw,
-                       const struct panvk_attrib_info *attrib_info,
-                       const struct panvk_attrib_buf_info *buf_info,
+                       const struct vk_vertex_attribute_state *attrib_info,
+                       const struct vk_vertex_binding_state *buf_info,
                        const struct panvk_attrib_buf *buf, void *desc)
 {
-   enum pipe_format f = attrib_info->format;
-   unsigned buf_idx = attrib_info->buf;
+   bool per_instance = buf_info->input_rate == VK_VERTEX_INPUT_RATE_INSTANCE;
+   enum pipe_format f = vk_format_to_pipe_format(attrib_info->format);
+   unsigned buf_idx = attrib_info->binding;
 
    pan_pack(desc, ATTRIBUTE, cfg) {
       cfg.buffer_index = buf_idx * 2;
       cfg.offset = attrib_info->offset + (buf->address & 63);
       cfg.offset_enable = true;
 
-      if (buf_info->per_instance)
+      if (per_instance)
          cfg.offset += draw->first_instance * buf_info->stride;
 
       cfg.format = GENX(panfrost_format_from_pipe_format)(f)->hw;
@@ -920,18 +922,27 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
 {
    struct panvk_descriptor_state *desc_state = &cmdbuf->state.gfx.desc_state;
    const struct panvk_graphics_pipeline *pipeline = cmdbuf->state.gfx.pipeline;
+   const struct vk_vertex_input_state *vi =
+      cmdbuf->vk.dynamic_graphics_state.vi;
    unsigned num_imgs =
       pipeline->base.img_access_mask & BITFIELD_BIT(MESA_SHADER_VERTEX)
          ? pipeline->base.layout->num_imgs
          : 0;
-   unsigned num_vs_attribs = pipeline->state.vs.attribs.attrib_count;
+   unsigned num_vs_attribs = util_last_bit(vi->attributes_valid);
+   unsigned num_vbs = util_last_bit(vi->bindings_valid);
    unsigned attrib_count =
       num_imgs ? MAX_VS_ATTRIBS + num_imgs : num_vs_attribs;
+   bool dirty =
+      is_dirty(cmdbuf, VI) || is_dirty(cmdbuf, VI_BINDINGS_VALID) ||
+      is_dirty(cmdbuf, VI_BINDING_STRIDES) ||
+      (num_imgs && !desc_state->img.attribs) ||
+      (cmdbuf->state.gfx.vb.count && !cmdbuf->state.gfx.vs.attrib_bufs) ||
+      (attrib_count && !cmdbuf->state.gfx.vs.attribs);
 
-   if (cmdbuf->state.gfx.vs.attribs || !attrib_count)
+   if (!dirty)
       return;
 
-   unsigned attrib_buf_count = pipeline->state.vs.attribs.buf_count * 2;
+   unsigned attrib_buf_count = (num_vbs + num_imgs) * 2;
    struct panfrost_ptr bufs = pan_pool_alloc_desc_array(
       &cmdbuf->desc_pool.base, attrib_buf_count + 1, ATTRIBUTE_BUFFER);
    struct mali_attribute_buffer_packed *attrib_buf_descs = bufs.cpu;
@@ -939,19 +950,25 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
       &cmdbuf->desc_pool.base, attrib_count, ATTRIBUTE);
    struct mali_attribute_packed *attrib_descs = attribs.cpu;
 
-   for (unsigned i = 0; i < pipeline->state.vs.attribs.buf_count; i++) {
-      panvk_draw_emit_attrib_buf(draw, &pipeline->state.vs.attribs.buf[i],
-                                 &cmdbuf->state.gfx.vb.bufs[i],
-                                 &attrib_buf_descs[i * 2]);
+   for (unsigned i = 0; i < num_vbs; i++) {
+      if (vi->bindings_valid & BITFIELD_BIT(i)) {
+         panvk_draw_emit_attrib_buf(draw, &vi->bindings[i],
+                                    &cmdbuf->state.gfx.vb.bufs[i],
+                                    &attrib_buf_descs[i * 2]);
+      } else {
+         memset(&attrib_buf_descs[i * 2], 0, sizeof(*attrib_buf_descs) * 2);
+      }
    }
 
    for (unsigned i = 0; i < num_vs_attribs; i++) {
-      unsigned buf_idx = pipeline->state.vs.attribs.attrib[i].buf;
-
-      panvk_draw_emit_attrib(draw, &pipeline->state.vs.attribs.attrib[i],
-                             &pipeline->state.vs.attribs.buf[buf_idx],
-                             &cmdbuf->state.gfx.vb.bufs[buf_idx],
-                             &attrib_descs[i]);
+      if (vi->attributes_valid & BITFIELD_BIT(i)) {
+         unsigned buf_idx = vi->attributes[i].binding;
+         panvk_draw_emit_attrib(
+            draw, &vi->attributes[i], &vi->bindings[buf_idx],
+            &cmdbuf->state.gfx.vb.bufs[buf_idx], &attrib_descs[i]);
+      } else {
+         memset(&attrib_descs[i], 0, sizeof(attrib_descs[0]));
+      }
    }
 
    if (num_imgs) {
@@ -960,16 +977,14 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
        * attributes. Buffers are tightly packed since they don't interfere with
        * the vertex shader.
        */
-      unsigned bufs_offset =
-         pipeline->state.vs.attribs.buf_count * pan_size(ATTRIBUTE_BUFFER) * 2;
       unsigned attribs_offset = MAX_VS_ATTRIBS * pan_size(ATTRIBUTE);
+      unsigned bufs_offset = num_vbs * pan_size(ATTRIBUTE_BUFFER) * 2;
 
       memset(attribs.cpu + num_vs_attribs * pan_size(ATTRIBUTE), 0,
              (MAX_VS_ATTRIBS - num_vs_attribs) * pan_size(ATTRIBUTE));
       panvk_fill_img_attribs(cmdbuf, desc_state, &pipeline->base,
                              bufs.cpu + bufs_offset,
-                             attribs.cpu + attribs_offset,
-                             pipeline->state.vs.attribs.buf_count * 2);
+                             attribs.cpu + attribs_offset, num_vbs * 2);
       desc_state->img.attrib_bufs = bufs.gpu + bufs_offset;
       desc_state->img.attribs = attribs.gpu + attribs_offset;
    }
@@ -1997,7 +2012,7 @@ panvk_per_arch(CmdBindVertexBuffers)(VkCommandBuffer commandBuffer,
 
    cmdbuf->state.gfx.vb.count =
       MAX2(cmdbuf->state.gfx.vb.count, firstBinding + bindingCount);
-   cmdbuf->state.gfx.vs.attrib_bufs = cmdbuf->state.gfx.vs.attribs = 0;
+   cmdbuf->state.gfx.vs.attrib_bufs = 0;
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -2136,8 +2151,6 @@ panvk_per_arch(CmdBindDescriptorSets)(
    descriptors_state->dyn_desc_ubo = 0;
    descriptors_state->img.attrib_bufs = 0;
    descriptors_state->img.attribs = 0;
-   cmdbuf->state.gfx.vs.attribs = 0;
-   cmdbuf->state.gfx.vs.attrib_bufs = 0;
 
    assert(dynoffset_idx == dynamicOffsetCount);
 }
@@ -2259,8 +2272,6 @@ panvk_cmd_push_descriptors(struct panvk_cmd_buffer *cmdbuf,
    desc_state->samplers = 0;
    desc_state->img.attrib_bufs = 0;
    desc_state->img.attribs = 0;
-   cmdbuf->state.gfx.vs.attrib_bufs = 0;
-   cmdbuf->state.gfx.vs.attribs = 0;
    return desc_state->push_sets[set];
 }
 

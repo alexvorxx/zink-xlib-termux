@@ -25,25 +25,6 @@
 
 #define MAX_RTS 8
 
-struct panvk_attrib_info {
-   unsigned buf;
-   unsigned offset;
-   enum pipe_format format;
-};
-
-struct panvk_attrib_buf_info {
-   unsigned stride;
-   bool per_instance;
-   uint32_t instance_divisor;
-};
-
-struct panvk_attribs_info {
-   struct panvk_attrib_info attrib[PAN_MAX_ATTRIBUTE];
-   unsigned attrib_count;
-   struct panvk_attrib_buf_info buf[PAN_MAX_ATTRIBUTE];
-   unsigned buf_count;
-};
-
 enum panvk_pipeline_type {
    PANVK_PIPELINE_GRAPHICS,
    PANVK_PIPELINE_COMPUTE,
@@ -78,7 +59,6 @@ struct panvk_graphics_pipeline {
 
    struct {
       struct {
-         struct panvk_attribs_info attribs;
          bool writes_point_size;
       } vs;
 

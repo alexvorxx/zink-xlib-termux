@@ -693,40 +693,6 @@ collect_varyings(struct panvk_graphics_pipeline *pipeline,
    }
 }
 
-static void
-parse_vertex_input(struct panvk_graphics_pipeline *pipeline,
-                   const struct vk_graphics_pipeline_state *state,
-                   struct panvk_shader **shaders)
-{
-   struct panvk_attribs_info *attribs = &pipeline->state.vs.attribs;
-   const struct vk_vertex_input_state *vi = state->vi;
-
-   attribs->buf_count = util_last_bit(vi->bindings_valid);
-   for (unsigned i = 0; i < attribs->buf_count; i++) {
-      if (!(vi->bindings_valid & BITFIELD_BIT(i)))
-         continue;
-
-      const struct vk_vertex_binding_state *desc = &vi->bindings[i];
-
-      attribs->buf[i].stride = desc->stride;
-      attribs->buf[i].per_instance =
-         desc->input_rate == VK_VERTEX_INPUT_RATE_INSTANCE;
-      attribs->buf[i].instance_divisor = desc->divisor;
-   }
-
-   attribs->attrib_count = util_last_bit(vi->attributes_valid);
-   for (unsigned i = 0; i < attribs->attrib_count; i++) {
-      if (!(vi->attributes_valid & BITFIELD_BIT(i)))
-         continue;
-
-      const struct vk_vertex_attribute_state *desc = &vi->attributes[i];
-
-      attribs->attrib[i].buf = desc->binding;
-      attribs->attrib[i].format = vk_format_to_pipe_format(desc->format);
-      attribs->attrib[i].offset = desc->offset;
-   }
-}
-
 static VkResult
 panvk_graphics_pipeline_create(struct panvk_device *dev,
                                struct vk_pipeline_cache *cache,
@@ -770,7 +736,6 @@ panvk_graphics_pipeline_create(struct panvk_device *dev,
    compile_shaders(&gfx_pipeline->base, create_info->pStages,
                    create_info->stageCount, alloc, shaders);
    collect_varyings(gfx_pipeline, shaders);
-   parse_vertex_input(gfx_pipeline, &state, shaders);
    init_fs_state(gfx_pipeline, &state, shaders[MESA_SHADER_FRAGMENT]);
    init_shaders(&gfx_pipeline->base, create_info, &state, shaders);
 

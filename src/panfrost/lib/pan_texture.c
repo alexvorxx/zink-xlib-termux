@@ -188,61 +188,6 @@ GENX(panfrost_estimate_texture_payload_size)(const struct pan_image_view *iview)
    return element_size * elements;
 }
 
-struct panfrost_surface_iter {
-   unsigned layer, last_layer;
-   unsigned level, first_level, last_level;
-   unsigned face, first_face, last_face;
-   unsigned sample, first_sample, last_sample;
-};
-
-static void
-panfrost_surface_iter_begin(struct panfrost_surface_iter *iter,
-                            unsigned first_layer, unsigned last_layer,
-                            unsigned first_level, unsigned last_level,
-                            unsigned first_face, unsigned last_face,
-                            unsigned nr_samples)
-{
-   iter->layer = first_layer;
-   iter->last_layer = last_layer;
-   iter->level = iter->first_level = first_level;
-   iter->last_level = last_level;
-   iter->face = iter->first_face = first_face;
-   iter->last_face = last_face;
-   iter->sample = iter->first_sample = 0;
-   iter->last_sample = nr_samples - 1;
-}
-
-static bool
-panfrost_surface_iter_end(const struct panfrost_surface_iter *iter)
-{
-   return iter->layer > iter->last_layer;
-}
-
-static void
-panfrost_surface_iter_next(struct panfrost_surface_iter *iter)
-{
-#define INC_TEST(field)                                                        \
-   do {                                                                        \
-      if (iter->field++ < iter->last_##field)                                  \
-         return;                                                               \
-      iter->field = iter->first_##field;                                       \
-   } while (0)
-
-   /* Ordering is different on v7: inner loop is iterating on levels */
-   if (PAN_ARCH >= 7)
-      INC_TEST(level);
-
-   INC_TEST(sample);
-   INC_TEST(face);
-
-   if (PAN_ARCH < 7)
-      INC_TEST(level);
-
-   iter->layer++;
-
-#undef INC_TEST
-}
-
 static void
 panfrost_get_surface_strides(const struct pan_image_layout *layout, unsigned l,
                              int32_t *row_stride, int32_t *surf_stride)
@@ -615,15 +560,33 @@ panfrost_emit_texture_payload(const struct pan_image_view *iview,
                                       &last_layer);
    }
 
-   struct panfrost_surface_iter iter;
-
-   for (panfrost_surface_iter_begin(&iter, first_layer, last_layer,
-                                    iview->first_level, iview->last_level,
-                                    first_face, last_face, nr_samples);
-        !panfrost_surface_iter_end(&iter); panfrost_surface_iter_next(&iter)) {
-      panfrost_emit_surface(iview, iter.level, iter.layer, iter.face,
-                            iter.sample, format, &payload);
+#if PAN_ARCH >= 7
+   /* V7 and later treats faces as extra layers */
+   for (int layer = first_layer; layer <= last_layer; ++layer) {
+      for (int face = first_face; face <= last_face; ++face) {
+         for (int sample = 0; sample < nr_samples; ++sample) {
+            for (int level = iview->first_level; level <= iview->last_level; ++level) {
+               panfrost_emit_surface(iview, level, layer, face, sample,
+                                       format, &payload);
+            }
+         }
+      }
    }
+#else
+   /* V6 and earlier has a different memory-layout */
+   for (int layer = first_layer; layer <= last_layer; ++layer) {
+      for (int level = iview->first_level; level <= iview->last_level; ++level) {
+         /* order of face and sample doesn't matter; we can only have multiple
+          * of one or the other (no support for multisampled cubemaps)
+          */
+         for (int face = first_face; face <= last_face; ++face) {
+            for (int sample = 0; sample < nr_samples; ++sample)
+               panfrost_emit_surface(iview, level, layer, face, sample,
+                                     format, &payload);
+         }
+      }
+   }
+#endif
 }
 
 #if PAN_ARCH <= 7

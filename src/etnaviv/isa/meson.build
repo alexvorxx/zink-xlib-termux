@@ -180,6 +180,14 @@ if with_tools.contains('etnaviv')
     dependencies: [ idep_libetnaviv_decode ],
     link_with: [libetnaviv_encode, libetnaviv_isa_rs],
   )
+else
+  pre_args += '-DHAVE_ETNAVIV_NO_PEST'
+
+  # dummy library
+  libetnaviv_isa_rs = static_library(
+    'etnaviv_isa_rs',
+    sources: [],
+  )
 endif
 
 subdir('tests')

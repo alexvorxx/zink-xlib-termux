@@ -300,6 +300,7 @@ clone_intrinsic(clone_state *state, const nir_intrinsic_instr *itr)
 
    nitr->num_components = itr->num_components;
    memcpy(nitr->const_index, itr->const_index, sizeof(nitr->const_index));
+   nitr->name = ralloc_strdup(state->ns, itr->name);
 
    for (unsigned i = 0; i < num_srcs; i++)
       __clone_src(state, &nitr->instr, &nitr->src[i], &itr->src[i]);

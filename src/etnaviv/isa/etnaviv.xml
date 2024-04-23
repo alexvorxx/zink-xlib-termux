@@ -101,7 +101,7 @@ SPDX-License-Identifier: MIT
 	<value val="12" display=".__zw"/>
 	<value val="13" display=".x_zw"/>
 	<value val="14" display="._yzw"/>
-	<value val="15" display=""/> <!-- xyzw -->
+	<value val="15" name="xyzw" display=""/> <!-- xyzw -->
 </enum>
 
 <bitset name="#instruction-dst" size="14">

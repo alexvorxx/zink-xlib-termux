@@ -3077,12 +3077,6 @@ isl_surf_supports_ccs(const struct isl_device *dev,
       return false;
 
    if (ISL_GFX_VER(dev) >= 12) {
-      /* Wa_1406738321: 3D textures need a blit to a new surface in order to
-       * perform a resolve. For now, just disable CCS on TGL.
-       */
-      if (dev->info->verx10 == 120 && surf->dim == ISL_SURF_DIM_3D)
-         return false;
-
       if (isl_surf_usage_is_stencil(surf->usage)) {
          /* HiZ and MCS aren't allowed with stencil */
          assert(hiz_or_mcs_surf == NULL || hiz_or_mcs_surf->size_B == 0);
@@ -3140,6 +3134,12 @@ isl_surf_supports_ccs(const struct isl_device *dev,
       } else {
          /* Single-sampled color can't have MCS or HiZ */
          assert(hiz_or_mcs_surf == NULL || hiz_or_mcs_surf->size_B == 0);
+
+         /* Wa_1406738321: 3D textures need a blit to a new surface
+          * in order to perform a resolve. For now, just disable CCS on TGL.
+          */
+         if (dev->info->verx10 == 120 && surf->dim == ISL_SURF_DIM_3D)
+            return false;
       }
 
       /* On Gfx12, all CCS-compressed surface pitches must be multiples of

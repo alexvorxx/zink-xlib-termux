@@ -87,8 +87,11 @@ struct panvk_descriptor_state {
    mali_ptr push_uniforms;
    mali_ptr vs_attribs;
    mali_ptr vs_attrib_bufs;
-   mali_ptr non_vs_attribs;
-   mali_ptr non_vs_attrib_bufs;
+
+   struct {
+      mali_ptr attribs;
+      mali_ptr attrib_bufs;
+   } img;
 };
 
 struct panvk_attrib_buf {

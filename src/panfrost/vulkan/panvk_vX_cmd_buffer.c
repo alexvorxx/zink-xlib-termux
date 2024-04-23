@@ -771,10 +771,10 @@ panvk_draw_prepare_varyings(struct panvk_cmd_buffer *cmdbuf,
 }
 
 static void
-panvk_fill_non_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
-                          struct panvk_descriptor_state *desc_state,
-                          const struct panvk_pipeline *pipeline,
-                          void *attrib_bufs, void *attribs, unsigned first_buf)
+panvk_fill_img_attribs(struct panvk_cmd_buffer *cmdbuf,
+                       struct panvk_descriptor_state *desc_state,
+                       const struct panvk_pipeline *pipeline, void *attrib_bufs,
+                       void *attribs, unsigned first_buf)
 {
    for (unsigned s = 0; s < pipeline->layout->vk.set_count; s++) {
       const struct panvk_descriptor_set *set = desc_state->sets[s];
@@ -802,11 +802,11 @@ panvk_fill_non_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
 }
 
 static void
-panvk_prepare_non_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
-                             struct panvk_descriptor_state *desc_state,
-                             const struct panvk_pipeline *pipeline)
+panvk_prepare_img_attribs(struct panvk_cmd_buffer *cmdbuf,
+                          struct panvk_descriptor_state *desc_state,
+                          const struct panvk_pipeline *pipeline)
 {
-   if (desc_state->non_vs_attribs || !pipeline->img_access_mask)
+   if (desc_state->img.attribs || !pipeline->img_access_mask)
       return;
 
    unsigned attrib_count = pipeline->layout->num_imgs;
@@ -816,11 +816,11 @@ panvk_prepare_non_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
    struct panfrost_ptr attribs = pan_pool_alloc_desc_array(
       &cmdbuf->desc_pool.base, attrib_count, ATTRIBUTE);
 
-   panvk_fill_non_vs_attribs(cmdbuf, desc_state, pipeline, bufs.cpu,
-                             attribs.cpu, 0);
+   panvk_fill_img_attribs(cmdbuf, desc_state, pipeline, bufs.cpu, attribs.cpu,
+                          0);
 
-   desc_state->non_vs_attrib_bufs = bufs.gpu;
-   desc_state->non_vs_attribs = attribs.gpu;
+   desc_state->img.attrib_bufs = bufs.gpu;
+   desc_state->img.attribs = attribs.gpu;
 }
 
 static void
@@ -930,9 +930,9 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
       return;
 
    if (!pipeline->state.vs.attribs.buf_count) {
-      panvk_prepare_non_vs_attribs(cmdbuf, desc_state, &pipeline->base);
-      desc_state->vs_attrib_bufs = desc_state->non_vs_attrib_bufs;
-      desc_state->vs_attribs = desc_state->non_vs_attribs;
+      panvk_prepare_img_attribs(cmdbuf, desc_state, &pipeline->base);
+      desc_state->vs_attrib_bufs = desc_state->img.attrib_bufs;
+      desc_state->vs_attribs = desc_state->img.attribs;
       return;
    }
 
@@ -965,10 +965,10 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
       unsigned attribs_offset =
          pipeline->state.vs.attribs.buf_count * pan_size(ATTRIBUTE);
 
-      panvk_fill_non_vs_attribs(cmdbuf, desc_state, &pipeline->base,
-                                bufs.cpu + bufs_offset,
-                                attribs.cpu + attribs_offset,
-                                pipeline->state.vs.attribs.buf_count * 2);
+      panvk_fill_img_attribs(cmdbuf, desc_state, &pipeline->base,
+                             bufs.cpu + bufs_offset,
+                             attribs.cpu + attribs_offset,
+                             pipeline->state.vs.attribs.buf_count * 2);
    }
 
    /* A NULL entry is needed to stop prefecting on Bifrost */
@@ -992,9 +992,9 @@ panvk_draw_prepare_attributes(struct panvk_cmd_buffer *cmdbuf,
          draw->stages[i].attributes = desc_state->vs_attribs;
          draw->stages[i].attribute_bufs = desc_state->vs_attrib_bufs;
       } else if (pipeline->base.img_access_mask & BITFIELD_BIT(i)) {
-         panvk_prepare_non_vs_attribs(cmdbuf, desc_state, &pipeline->base);
-         draw->stages[i].attributes = desc_state->non_vs_attribs;
-         draw->stages[i].attribute_bufs = desc_state->non_vs_attrib_bufs;
+         panvk_prepare_img_attribs(cmdbuf, desc_state, &pipeline->base);
+         draw->stages[i].attributes = desc_state->img.attribs;
+         draw->stages[i].attribute_bufs = desc_state->img.attrib_bufs;
       }
    }
 }
@@ -1761,9 +1761,9 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    dispatch.tsd = batch->tls.gpu;
 
    panvk_cmd_prepare_push_sets(cmdbuf, desc_state, &pipeline->base);
-   panvk_prepare_non_vs_attribs(cmdbuf, desc_state, &pipeline->base);
-   dispatch.attributes = desc_state->non_vs_attribs;
-   dispatch.attribute_bufs = desc_state->non_vs_attrib_bufs;
+   panvk_prepare_img_attribs(cmdbuf, desc_state, &pipeline->base);
+   dispatch.attributes = desc_state->img.attribs;
+   dispatch.attribute_bufs = desc_state->img.attrib_bufs;
 
    panvk_cmd_prepare_ubos(cmdbuf, desc_state, &pipeline->base);
    dispatch.ubos = desc_state->ubos;
@@ -2133,9 +2133,9 @@ panvk_per_arch(CmdBindDescriptorSets)(
    descriptors_state->samplers = 0;
    descriptors_state->dyn_desc_ubo = 0;
    descriptors_state->vs_attrib_bufs = 0;
-   descriptors_state->non_vs_attrib_bufs = 0;
+   descriptors_state->img.attrib_bufs = 0;
    descriptors_state->vs_attribs = 0;
-   descriptors_state->non_vs_attribs = 0;
+   descriptors_state->img.attribs = 0;
 
    assert(dynoffset_idx == dynamicOffsetCount);
 }
@@ -2255,8 +2255,8 @@ panvk_cmd_push_descriptors(struct panvk_cmd_buffer *cmdbuf,
    desc_state->ubos = 0;
    desc_state->textures = 0;
    desc_state->samplers = 0;
-   desc_state->vs_attrib_bufs = desc_state->non_vs_attrib_bufs = 0;
-   desc_state->vs_attribs = desc_state->non_vs_attribs = 0;
+   desc_state->vs_attrib_bufs = desc_state->img.attrib_bufs = 0;
+   desc_state->vs_attribs = desc_state->img.attribs = 0;
    return desc_state->push_sets[set];
 }
 

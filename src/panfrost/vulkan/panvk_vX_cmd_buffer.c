@@ -926,13 +926,13 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
          : 0;
    unsigned attrib_count = pipeline->state.vs.attribs.attrib_count + num_imgs;
 
-   if (desc_state->vs_attribs || !attrib_count)
+   if (cmdbuf->state.gfx.vs.attribs || !attrib_count)
       return;
 
    if (!pipeline->state.vs.attribs.buf_count) {
       panvk_prepare_img_attribs(cmdbuf, desc_state, &pipeline->base);
-      desc_state->vs_attrib_bufs = desc_state->img.attrib_bufs;
-      desc_state->vs_attribs = desc_state->img.attribs;
+      cmdbuf->state.gfx.vs.attrib_bufs = desc_state->img.attrib_bufs;
+      cmdbuf->state.gfx.vs.attribs = desc_state->img.attribs;
       return;
    }
 
@@ -977,8 +977,8 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
    memset(bufs.cpu + (pan_size(ATTRIBUTE_BUFFER) * attrib_buf_count), 0,
           pan_size(ATTRIBUTE_BUFFER));
 
-   desc_state->vs_attrib_bufs = bufs.gpu;
-   desc_state->vs_attribs = attribs.gpu;
+   cmdbuf->state.gfx.vs.attrib_bufs = bufs.gpu;
+   cmdbuf->state.gfx.vs.attribs = attribs.gpu;
 }
 
 static void
@@ -991,8 +991,8 @@ panvk_draw_prepare_attributes(struct panvk_cmd_buffer *cmdbuf,
    for (unsigned i = 0; i < ARRAY_SIZE(draw->stages); i++) {
       if (i == MESA_SHADER_VERTEX) {
          panvk_draw_prepare_vs_attribs(cmdbuf, draw);
-         draw->stages[i].attributes = desc_state->vs_attribs;
-         draw->stages[i].attribute_bufs = desc_state->vs_attrib_bufs;
+         draw->stages[i].attributes = cmdbuf->state.gfx.vs.attribs;
+         draw->stages[i].attribute_bufs = cmdbuf->state.gfx.vs.attrib_bufs;
       } else if (pipeline->base.img_access_mask & BITFIELD_BIT(i)) {
          panvk_prepare_img_attribs(cmdbuf, desc_state, &pipeline->base);
          draw->stages[i].attributes = desc_state->img.attribs;
@@ -1982,7 +1982,6 @@ panvk_per_arch(CmdBindVertexBuffers)(VkCommandBuffer commandBuffer,
                                      const VkDeviceSize *pOffsets)
 {
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
-   struct panvk_descriptor_state *desc_state = &cmdbuf->state.gfx.desc_state;
 
    assert(firstBinding + bindingCount <= MAX_VBS);
 
@@ -1997,7 +1996,7 @@ panvk_per_arch(CmdBindVertexBuffers)(VkCommandBuffer commandBuffer,
 
    cmdbuf->state.gfx.vb.count =
       MAX2(cmdbuf->state.gfx.vb.count, firstBinding + bindingCount);
-   desc_state->vs_attrib_bufs = desc_state->vs_attribs = 0;
+   cmdbuf->state.gfx.vs.attrib_bufs = cmdbuf->state.gfx.vs.attribs = 0;
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -2134,10 +2133,10 @@ panvk_per_arch(CmdBindDescriptorSets)(
    descriptors_state->textures = 0;
    descriptors_state->samplers = 0;
    descriptors_state->dyn_desc_ubo = 0;
-   descriptors_state->vs_attrib_bufs = 0;
    descriptors_state->img.attrib_bufs = 0;
-   descriptors_state->vs_attribs = 0;
    descriptors_state->img.attribs = 0;
+   cmdbuf->state.gfx.vs.attribs = 0;
+   cmdbuf->state.gfx.vs.attrib_bufs = 0;
 
    assert(dynoffset_idx == dynamicOffsetCount);
 }
@@ -2257,8 +2256,10 @@ panvk_cmd_push_descriptors(struct panvk_cmd_buffer *cmdbuf,
    desc_state->ubos = 0;
    desc_state->textures = 0;
    desc_state->samplers = 0;
-   desc_state->vs_attrib_bufs = desc_state->img.attrib_bufs = 0;
-   desc_state->vs_attribs = desc_state->img.attribs = 0;
+   desc_state->img.attrib_bufs = 0;
+   desc_state->img.attribs = 0;
+   cmdbuf->state.gfx.vs.attrib_bufs = 0;
+   cmdbuf->state.gfx.vs.attribs = 0;
    return desc_state->push_sets[set];
 }
 

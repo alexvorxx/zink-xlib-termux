@@ -85,8 +85,6 @@ struct panvk_descriptor_state {
    mali_ptr samplers;
    mali_ptr dyn_desc_ubo;
    mali_ptr push_uniforms;
-   mali_ptr vs_attribs;
-   mali_ptr vs_attrib_bufs;
 
    struct {
       mali_ptr attribs;
@@ -114,6 +112,11 @@ struct panvk_cmd_graphics_state {
 
    struct panvk_varyings_info varyings;
    mali_ptr fs_rsd;
+
+   struct {
+      mali_ptr attribs;
+      mali_ptr attrib_bufs;
+   } vs;
 
    struct {
       struct panvk_attrib_buf bufs[MAX_VBS];

@@ -598,6 +598,10 @@ transition_stencil_buffer(struct anv_cmd_buffer *cmd_buffer,
 
          uint32_t aux_layers =
             anv_image_aux_layers(image, VK_IMAGE_ASPECT_STENCIL_BIT, level);
+
+         if (base_layer >= aux_layers)
+            break; /* We will only get fewer layers as level increases */
+
          uint32_t level_layer_count =
             MIN2(layer_count, aux_layers - base_layer);
 

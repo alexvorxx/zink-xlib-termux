@@ -107,7 +107,7 @@ non-redistributable traces can request permission to Daniel Stone <daniels@colla
 
 gitlab.freedesktop.org accounts that are to be granted access to these traces will be
 added to the OPA policy for the MinIO repository as per
-https://gitlab.freedesktop.org/freedesktop/helm-gitlab-config/-/commit/a3cd632743019f68ac8a829267deb262d9670958 .
+https://gitlab.freedesktop.org/freedesktop/helm-gitlab-infra/-/commit/a3cd632743019f68ac8a829267deb262d9670958 .
 
 So the jobs are created in personal repositories, the name of the user's account needs
 to be added to the rules attribute of the GitLab CI job that accesses the restricted
@@ -199,8 +199,8 @@ faster personal machine as a runner.  You can find the gitlab-runner
 package in Debian, or use GitLab's own builds.
 
 To do so, follow `GitLab's instructions
-<https://docs.gitlab.com/ee/ci/runners/runners_scope.html#create-a-specific-runner>`__ to
-register your personal GitLab runner in your Mesa fork.  Then, tell
+<https://docs.gitlab.com/ee/ci/runners/runners_scope.html#create-a-project-runner-with-a-runner-authentication-token>`__
+to register your personal GitLab runner in your Mesa fork.  Then, tell
 Mesa how many jobs it should serve (``concurrent=``) and how many
 cores those jobs should use (``FDO_CI_CONCURRENT=``) by editing these
 lines in ``/etc/gitlab-runner/config.toml``, for example:

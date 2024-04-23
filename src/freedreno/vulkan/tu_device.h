@@ -89,6 +89,11 @@ struct tu_physical_device
    uint32_t ccu_offset_gmem;
    uint32_t ccu_offset_bypass;
 
+   /* Amount of usable descriptor sets, this excludes any reserved set */
+   uint32_t usable_sets;
+   /* Index of the reserved descriptor set, may be -1 if unset */
+   int32_t reserved_set_idx;
+
    bool has_set_iova;
    uint64_t va_start;
    uint64_t va_size;
@@ -142,6 +147,13 @@ struct tu_instance
     * suffer a performance loss with conservative LRZ.
     */
    bool conservative_lrz;
+
+   /* If to internally reserve a descriptor set for descriptor set
+    * dynamic offsets, a descriptor set can be freed at the cost of
+    * being unable to use the feature. As it is a part of the Vulkan
+    * core, this is enabled by default.
+    */
+   bool reserve_descriptor_set;
 };
 VK_DEFINE_HANDLE_CASTS(tu_instance, vk.base, VkInstance,
                        VK_OBJECT_TYPE_INSTANCE)

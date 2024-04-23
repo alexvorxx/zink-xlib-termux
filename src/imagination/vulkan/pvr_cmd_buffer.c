@@ -973,6 +973,9 @@ static void pvr_setup_pbe_state(
    surface_params.addr =
       PVR_DEV_ADDR_OFFSET(image->vma->dev_addr,
                           image->mip_levels[iview->vk.base_mip_level].offset);
+   surface_params.addr =
+      PVR_DEV_ADDR_OFFSET(surface_params.addr,
+                          iview->vk.base_array_layer * image->layer_size);
 
    surface_params.mem_layout = image->memlayout;
    surface_params.stride = pvr_stride_from_pitch(level_pitch, iview->vk.format);
@@ -4853,9 +4856,9 @@ pvr_setup_isp_faces_and_control(struct pvr_cmd_buffer *const cmd_buffer,
    const uint32_t subpass_idx = pass_info->subpass_idx;
    const uint32_t depth_stencil_attachment_idx =
       pass_info->pass->subpasses[subpass_idx].depth_stencil_attachment;
-   const struct pvr_image_view *const attachment =
+   const struct pvr_render_pass_attachment *const attachment =
       depth_stencil_attachment_idx != VK_ATTACHMENT_UNUSED
-         ? pass_info->attachments[depth_stencil_attachment_idx]
+         ? &pass_info->pass->attachments[depth_stencil_attachment_idx]
          : NULL;
 
    const enum PVRX(TA_OBJTYPE)
@@ -4863,7 +4866,7 @@ pvr_setup_isp_faces_and_control(struct pvr_cmd_buffer *const cmd_buffer,
 
    const VkImageAspectFlags ds_aspects =
       (!rasterizer_discard && attachment)
-         ? vk_format_aspects(attachment->vk.format) &
+         ? vk_format_aspects(attachment->vk_format) &
               (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
          : VK_IMAGE_ASPECT_NONE;
 

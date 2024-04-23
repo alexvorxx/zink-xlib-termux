@@ -1847,6 +1847,7 @@ typedef struct nir_io_semantics {
    unsigned per_view : 1;
    unsigned high_16bits : 1; /* whether accessing low or high half of the slot */
    unsigned invariant : 1;   /* The variable has the invariant flag set */
+   unsigned high_dvec2 : 1; /* whether accessing the high half of dvec3/dvec4 */
    /* CLIP_DISTn, LAYER, VIEWPORT, and TESS_LEVEL_* have up to 3 uses:
     * - an output consumed by the next stage
     * - a system value output affecting fixed-func hardware, e.g. the clipper
@@ -1857,7 +1858,7 @@ typedef struct nir_io_semantics {
    unsigned no_varying : 1;       /* whether this output isn't consumed by the next stage */
    unsigned no_sysval_output : 1; /* whether this system value output has no
                                      effect due to current pipeline states */
-   unsigned _pad : 3;
+   unsigned _pad : 2;
 } nir_io_semantics;
 
 /* Transform feedback info for 2 outputs. nir_intrinsic_store_output contains
@@ -4964,6 +4965,11 @@ void nir_compact_varyings(nir_shader *producer, nir_shader *consumer,
 void nir_link_xfb_varyings(nir_shader *producer, nir_shader *consumer);
 bool nir_link_opt_varyings(nir_shader *producer, nir_shader *consumer);
 void nir_link_varying_precision(nir_shader *producer, nir_shader *consumer);
+nir_variable *nir_clone_uniform_variable(nir_shader *nir,
+                                         nir_variable *uniform, bool spirv);
+nir_deref_instr *nir_clone_deref_instr(struct nir_builder *b,
+                                       nir_variable *var,
+                                       nir_deref_instr *deref);
 
 bool nir_slot_is_sysval_output(gl_varying_slot slot,
                                gl_shader_stage next_shader);
@@ -4978,6 +4984,7 @@ bool nir_lower_amul(nir_shader *shader,
 
 bool nir_lower_ubo_vec4(nir_shader *shader);
 
+void nir_sort_variables_by_location(nir_shader *shader, nir_variable_mode mode);
 void nir_assign_io_var_locations(nir_shader *shader,
                                  nir_variable_mode mode,
                                  unsigned *size,
@@ -4996,13 +5003,31 @@ typedef enum {
    /* If set, this causes all 64-bit IO operations to be lowered on-the-fly
     * to 32-bit operations.  This is only valid for nir_var_shader_in/out
     * modes.
+    *
+    * Note that this destroys dual-slot information i.e. whether an input
+    * occupies the low or high half of dvec4. Instead, it adds an offset of 1
+    * to the load (which is ambiguous) and expects driver locations of inputs
+    * to be final, which prevents any further optimizations.
+    *
+    * TODO: remove this in favor of nir_lower_io_lower_64bit_to_32_new.
     */
    nir_lower_io_lower_64bit_to_32 = (1 << 0),
+
    /* If set, this causes the subset of 64-bit IO operations involving floats to be lowered on-the-fly
     * to 32-bit operations.  This is only valid for nir_var_shader_in/out
     * modes.
     */
    nir_lower_io_lower_64bit_float_to_32 = (1 << 1),
+
+   /* This causes all 64-bit IO operations to be lowered to 32-bit operations.
+    * This is only valid for nir_var_shader_in/out modes.
+    *
+    * Only VS inputs: Dual slot information is preserved as nir_io_semantics::
+    * high_dvec2 and gathered into shader_info::dual_slot_inputs, so that
+    * the shader can be arbitrarily optimized and the low or high half of
+    * dvec4 can be DCE'd independently without affecting the other half.
+    */
+   nir_lower_io_lower_64bit_to_32_new = (1 << 2),
 } nir_lower_io_options;
 bool nir_lower_io(nir_shader *shader,
                   nir_variable_mode modes,

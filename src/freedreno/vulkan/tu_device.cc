@@ -628,6 +628,13 @@ tu_physical_device_init(struct tu_physical_device *device,
 
       device->ccu_offset_bypass = depth_cache_size;
       device->ccu_offset_gmem = device->gmem_size - color_cache_size;
+
+      if (instance->reserve_descriptor_set) {
+         device->usable_sets = device->reserved_set_idx = device->info->a6xx.max_sets - 1;
+      } else {
+         device->usable_sets = device->info->a6xx.max_sets;
+         device->reserved_set_idx = -1;
+      }
       break;
    }
    default:
@@ -755,6 +762,7 @@ static const driOptionDescription tu_dri_options[] = {
 
    DRI_CONF_SECTION_MISCELLANEOUS
       DRI_CONF_DISABLE_CONSERVATIVE_LRZ(false)
+      DRI_CONF_TU_DONT_RESERVE_DESCRIPTOR_SET(false)
    DRI_CONF_SECTION_END
 };
 
@@ -771,6 +779,8 @@ tu_init_dri_options(struct tu_instance *instance)
          driQueryOptionb(&instance->dri_options, "vk_dont_care_as_load");
    instance->conservative_lrz =
          !driQueryOptionb(&instance->dri_options, "disable_conservative_lrz");
+   instance->reserve_descriptor_set =
+         !driQueryOptionb(&instance->dri_options, "tu_dont_reserve_descriptor_set");
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -1065,7 +1075,7 @@ tu_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
       .maxSamplerAllocationCount = 64 * 1024,
       .bufferImageGranularity = 64,          /* A cache line */
       .sparseAddressSpaceSize = 0,
-      .maxBoundDescriptorSets = MAX_SETS,
+      .maxBoundDescriptorSets = pdevice->usable_sets,
       .maxPerStageDescriptorSamplers = max_descriptor_set_size,
       .maxPerStageDescriptorUniformBuffers = max_descriptor_set_size,
       .maxPerStageDescriptorStorageBuffers = max_descriptor_set_size,
@@ -1327,10 +1337,10 @@ tu_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
          properties->bufferlessPushDescriptors = true;
          properties->allowSamplerImageViewPostSubmitCreation = true;
          properties->descriptorBufferOffsetAlignment = A6XX_TEX_CONST_DWORDS * 4;
-         properties->maxDescriptorBufferBindings = MAX_SETS;
-         properties->maxResourceDescriptorBufferBindings = MAX_SETS;
-         properties->maxSamplerDescriptorBufferBindings = MAX_SETS;
-         properties->maxEmbeddedImmutableSamplerBindings = MAX_SETS;
+         properties->maxDescriptorBufferBindings = pdevice->usable_sets;
+         properties->maxResourceDescriptorBufferBindings = pdevice->usable_sets;
+         properties->maxSamplerDescriptorBufferBindings = pdevice->usable_sets;
+         properties->maxEmbeddedImmutableSamplerBindings = pdevice->usable_sets;
          properties->maxEmbeddedImmutableSamplers = max_descriptor_set_size;
          properties->bufferCaptureReplayDescriptorDataSize = 0;
          properties->imageCaptureReplayDescriptorDataSize = 0;

@@ -1378,6 +1378,9 @@ print_intrinsic_instr(nir_intrinsic_instr *instr, print_state *state)
          if (io.high_16bits)
             fprintf(fp, " high_16bits");
 
+         if (io.high_dvec2)
+            fprintf(fp, " high_dvec2");
+
          if (io.no_varying)
             fprintf(fp, " no_varying");
 
@@ -2394,6 +2397,7 @@ print_shader_info(const struct shader_info *info, FILE *fp)
    print_nz_unsigned(fp, "num_images", info->num_images);
 
    print_nz_x64(fp, "inputs_read", info->inputs_read);
+   print_nz_x64(fp, "dual_slot_inputs", info->dual_slot_inputs);
    print_nz_x64(fp, "outputs_written", info->outputs_written);
    print_nz_x64(fp, "outputs_read", info->outputs_read);
 

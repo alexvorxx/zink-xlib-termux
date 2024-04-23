@@ -501,6 +501,7 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
       SET(CLIP, clip.APIMode, dyn->vp.depth_clip_negative_one_to_one ? APIMODE_OGL : APIMODE_D3D);
 
    if ((cmd_buffer->state.gfx.dirty & ANV_CMD_DIRTY_PIPELINE) ||
+       (cmd_buffer->state.gfx.dirty & ANV_CMD_DIRTY_RENDER_TARGETS) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_IA_PRIMITIVE_TOPOLOGY) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_CULL_MODE) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_FRONT_FACE) ||
@@ -508,6 +509,7 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_DEPTH_BIAS_FACTORS) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_POLYGON_MODE) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_LINE_MODE) ||
+       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_LINE_WIDTH) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_DEPTH_CLIP_ENABLE) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_DEPTH_CLAMP_ENABLE) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_RS_CONSERVATIVE_MODE)) {
@@ -1143,6 +1145,12 @@ genX(cmd_buffer_flush_gfx_hw_state)(struct anv_cmd_buffer *cmd_buffer)
       &cmd_buffer->vk.dynamic_graphics_state;
    struct anv_gfx_dynamic_state *hw_state = &gfx->dyn_state;
 
+   if (INTEL_DEBUG(DEBUG_REEMIT)) {
+      BITSET_OR(cmd_buffer->state.gfx.dyn_state.dirty,
+                cmd_buffer->state.gfx.dyn_state.dirty,
+                device->gfx_dirty_state);
+   }
+
    /* Since Wa_16011773973 will disable 3DSTATE_STREAMOUT, we need to reemit
     * it after.
     */
@@ -1585,8 +1593,7 @@ genX(cmd_buffer_flush_gfx_hw_state)(struct anv_cmd_buffer *cmd_buffer)
          ib.L3BypassDisable       = true;
 #endif
          ib.BufferStartingAddress = anv_address_add(buffer->address, offset);
-         ib.BufferSize            = vk_buffer_range(&buffer->vk, offset,
-                                                    VK_WHOLE_SIZE);
+         ib.BufferSize            = cmd_buffer->state.gfx.index_size;
       }
    }
 

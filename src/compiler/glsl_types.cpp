@@ -543,8 +543,8 @@ glsl_cmat_use_to_string(enum glsl_cmat_use use)
    }
 };
 
-const struct glsl_type *
-glsl_type::vec(unsigned components, const struct glsl_type *const ts[])
+static const struct glsl_type *
+vec(unsigned components, const struct glsl_type *const ts[])
 {
    unsigned n = components;
 
@@ -554,22 +554,25 @@ glsl_type::vec(unsigned components, const struct glsl_type *const ts[])
       n = 7;
 
    if (n == 0 || n > 7)
-      return error_type;
+      return &glsl_type_builtin_error;
 
    return ts[n - 1];
 }
 
 #define VECN(components, sname, vname)           \
-const struct glsl_type *                                \
-glsl_type:: vname (unsigned components)          \
+extern "C" const struct glsl_type *              \
+glsl_ ## vname ## _type (unsigned components)    \
 {                                                \
    static const struct glsl_type *const ts[] = { \
-      sname ## _type, vname ## 2_type,           \
-      vname ## 3_type, vname ## 4_type,          \
-      vname ## 5_type,                           \
-      vname ## 8_type, vname ## 16_type,         \
+      &glsl_type_builtin_ ## sname,              \
+      &glsl_type_builtin_ ## vname ## 2,         \
+      &glsl_type_builtin_ ## vname ## 3,         \
+      &glsl_type_builtin_ ## vname ## 4,         \
+      &glsl_type_builtin_ ## vname ## 5,         \
+      &glsl_type_builtin_ ## vname ## 8,         \
+      &glsl_type_builtin_ ## vname ## 16,        \
    };                                            \
-   return glsl_type::vec(components, ts);        \
+   return vec(components, ts);                   \
 }
 
 VECN(components, float, vec)
@@ -3361,6 +3364,73 @@ glsl_get_sampler_dim_coordinate_components(enum glsl_sampler_dim dim)
       return 3;
    default:
       unreachable("Unknown sampler dim");
+   }
+}
+
+bool
+glsl_type_is_vector(const struct glsl_type *t)
+{
+   return t->vector_elements > 1 &&
+          t->matrix_columns == 1 &&
+          t->base_type >= GLSL_TYPE_UINT &&
+          t->base_type <= GLSL_TYPE_BOOL;
+}
+
+bool
+glsl_type_is_scalar(const struct glsl_type *t)
+{
+   return t->vector_elements == 1 &&
+          t->base_type >= GLSL_TYPE_UINT &&
+          t->base_type <= GLSL_TYPE_IMAGE;
+}
+
+bool
+glsl_type_is_vector_or_scalar(const struct glsl_type *t)
+{
+   return glsl_type_is_vector(t) || glsl_type_is_scalar(t);
+}
+
+bool
+glsl_type_is_matrix(const struct glsl_type *t)
+{
+   /* GLSL only has float matrices. */
+   return t->matrix_columns > 1 && (t->base_type == GLSL_TYPE_FLOAT ||
+                                    t->base_type == GLSL_TYPE_DOUBLE ||
+                                    t->base_type == GLSL_TYPE_FLOAT16);
+}
+
+bool
+glsl_type_is_array_or_matrix(const struct glsl_type *t)
+{
+   return glsl_type_is_array(t) || glsl_type_is_matrix(t);
+}
+
+bool
+glsl_type_is_dual_slot(const struct glsl_type *t)
+{
+   return glsl_type_is_64bit(t) && t->vector_elements > 2;
+}
+
+const struct glsl_type *
+glsl_get_array_element(const struct glsl_type *t)
+{
+   if (glsl_type_is_matrix(t))
+      return t->column_type();
+   else if (glsl_type_is_vector(t))
+      return t->get_scalar_type();
+   return t->fields.array;
+}
+
+bool
+glsl_type_is_leaf(const struct glsl_type *t)
+{
+   if (glsl_type_is_struct_or_ifc(t) ||
+       (glsl_type_is_array(t) &&
+        (glsl_type_is_array(glsl_get_array_element(t)) ||
+         glsl_type_is_struct_or_ifc(glsl_get_array_element(t))))) {
+      return false;
+   } else {
+      return true;
    }
 }
 

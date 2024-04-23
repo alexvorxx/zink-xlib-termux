@@ -1265,7 +1265,7 @@ calculate_zrl_bits(struct etna_ml_subgraph *subgraph, const struct etna_operatio
     */
    best_compressed_size = UINT_MAX;
    best_zrl_bits = 0;
-   for (unsigned zrl_bits = max_zrl_bits; zrl_bits >= 0; zrl_bits--) {
+   for (int zrl_bits = max_zrl_bits; zrl_bits >= 0; zrl_bits--) {
 
       unsigned compressed_size = header_size;
       for (unsigned core = 0; core < cores_used; core++) {

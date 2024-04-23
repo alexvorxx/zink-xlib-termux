@@ -65,3 +65,15 @@ Under **Properties** -> **Installed Files**, click **Browse**, open
 at the top of the file. Hang debugging can be enabled by selecting the faulting
 game and adding ``RADV_DEBUG=hang %command%`` under **Properties** -> **General**
 -> **LAUNCH OPTIONS**.
+
+Debugging hangs without RADV_DEBUG=hang
+---------------------------------------
+
+In some situations, ``RADV_DEBUG=hang`` wouldn't be able to generate a GPU hang
+report, like for synchronization issues (because it enables
+``RADV_DEBUG=syncshaders`` behind the scene). An alternative solution is to
+disable GPU recovery by adding ``amdgpu.gpu_recovery=0`` to your kernel command
+line options. And then invoke UMR manually with
+``umr --by-pci <pci_id> -O bits,halt_waves -go 0 -wa <ring> -go 1 2>&1`` for
+dumping the waves and ``umr --by-pci <pci_id> -RS <ring> 2>&1`` for dumping the
+rings once the GPU hang occured.

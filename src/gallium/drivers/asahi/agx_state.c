@@ -3512,27 +3512,18 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out)
        * main fragment control word and has to be combined into the secondary
        * word for reliable behaviour.
        */
-      struct agx_fragment_control_packed fc;
-      agx_pack(&fc, FRAGMENT_CONTROL, cfg) {
+      agx_ppp_push_merged(&ppp, FRAGMENT_CONTROL, cfg,
+                          ctx->linked.fs->fragment_control) {
          cfg.tag_write_disable = rast->base.rasterizer_discard;
       }
-
-      agx_merge(fc, ctx->linked.fs->fragment_control, FRAGMENT_CONTROL);
-
-      agx_ppp_push_packed(&ppp, &fc, FRAGMENT_CONTROL);
    }
 
    if (dirty.fragment_front_face) {
-      struct agx_fragment_face_packed front_face;
-      agx_pack(&front_face, FRAGMENT_FACE, cfg) {
+      agx_ppp_push_merged(&ppp, FRAGMENT_FACE, cfg, ctx->zs->depth) {
          cfg.stencil_reference = ctx->stencil_ref.ref_value[0];
          cfg.line_width = rast->line_width;
          cfg.polygon_mode = rast->polygon_mode;
-      };
-
-      front_face.opaque[0] |= ctx->zs->depth.opaque[0];
-
-      agx_ppp_push_packed(&ppp, &front_face, FRAGMENT_FACE);
+      }
    }
 
    if (dirty.fragment_front_face_2)
@@ -3544,17 +3535,12 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out)
    }
 
    if (dirty.fragment_back_face) {
-      struct agx_fragment_face_packed back_face;
-
-      agx_pack(&back_face, FRAGMENT_FACE, cfg) {
+      agx_ppp_push_merged(&ppp, FRAGMENT_FACE, cfg, ctx->zs->depth) {
          bool twosided = ctx->zs->base.stencil[1].enabled;
          cfg.stencil_reference = ctx->stencil_ref.ref_value[twosided ? 1 : 0];
          cfg.line_width = rast->line_width;
          cfg.polygon_mode = rast->polygon_mode;
-      };
-
-      back_face.opaque[0] |= ctx->zs->depth.opaque[0];
-      agx_ppp_push_packed(&ppp, &back_face, FRAGMENT_FACE);
+      }
    }
 
    if (dirty.fragment_back_face_2)
@@ -3567,9 +3553,8 @@ agx_encode_state(struct agx_batch *batch, uint8_t *out)
    assert(dirty.varying_counts_32 == dirty.output_select);
 
    if (dirty.output_select) {
-      struct agx_output_select_packed osel = vs->uvs.osel;
-      agx_merge(osel, ctx->linked.fs->osel, OUTPUT_SELECT);
-      agx_ppp_push_packed(&ppp, &osel, OUTPUT_SELECT);
+      agx_ppp_push_merged_blobs(&ppp, AGX_OUTPUT_SELECT_LENGTH, &vs->uvs.osel,
+                                &ctx->linked.fs->osel);
 
       agx_ppp_push_packed(&ppp, &batch->linked_varyings.counts_32,
                           VARYING_COUNTS);

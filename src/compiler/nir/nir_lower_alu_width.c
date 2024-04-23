@@ -265,6 +265,9 @@ lower_alu_instr_width(nir_builder *b, nir_instr *instr, void *_data)
       assert(b->shader->options->lower_pack_snorm_4x8 ||
              b->shader->options->lower_pack_unorm_4x8);
 
+      if (b->shader->options->has_pack_32_4x8)
+         return nir_pack_32_4x8(b, nir_u2u8(b, nir_ssa_for_alu_src(b, alu, 0)));
+
       nir_def *byte = nir_extract_u8(b, nir_ssa_for_alu_src(b, alu, 0),
                                      nir_imm_int(b, 0));
       return nir_ior(b, nir_ior(b, nir_ishl(b, nir_channel(b, byte, 3), nir_imm_int(b, 24)), nir_ishl(b, nir_channel(b, byte, 2), nir_imm_int(b, 16))),

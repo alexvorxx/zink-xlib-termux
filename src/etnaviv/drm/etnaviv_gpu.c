@@ -86,6 +86,7 @@ query_features_from_kernel(struct etna_gpu *gpu)
 	gpu->info.type = ETNA_CORE_GPU;
 
 	ETNA_FEATURE(chipFeatures, FAST_CLEAR);
+	ETNA_FEATURE(chipFeatures, PIPE_3D);
 	ETNA_FEATURE(chipFeatures, 32_BIT_INDICES);
 	ETNA_FEATURE(chipFeatures, MSAA);
 	ETNA_FEATURE(chipFeatures, DXT_TEXTURE_COMPRESSION);

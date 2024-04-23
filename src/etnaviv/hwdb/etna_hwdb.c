@@ -30,6 +30,7 @@ etna_query_feature_db(struct etna_core_info *info)
 
    /* Features: */
    ETNA_FEATURE(REG_FastClear, FAST_CLEAR);
+   ETNA_FEATURE(REG_Pipe3D, PIPE_3D);
    ETNA_FEATURE(REG_FE20BitIndex, 32_BIT_INDICES);
    ETNA_FEATURE(REG_MSAA, MSAA);
    ETNA_FEATURE(REG_DXTTextureCompression, DXT_TEXTURE_COMPRESSION);

@@ -708,6 +708,11 @@ panvk_draw_prepare_varyings(struct panvk_cmd_buffer *cmdbuf,
    struct panfrost_ptr bufs = pan_pool_alloc_desc_array(
       &cmdbuf->desc_pool.base, buf_count + 1, ATTRIBUTE_BUFFER);
    struct mali_attribute_buffer_packed *buf_descs = bufs.cpu;
+   const struct vk_input_assembly_state *ia =
+      &cmdbuf->vk.dynamic_graphics_state.ia;
+   bool writes_point_size =
+      pipeline->state.vs.writes_point_size &&
+      ia->primitive_topology == VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 
    for (unsigned i = 0, buf_idx = 0; i < PANVK_VARY_BUF_MAX; i++) {
       if (varyings->buf_mask & (1 << i)) {
@@ -733,13 +738,12 @@ panvk_draw_prepare_varyings(struct panvk_cmd_buffer *cmdbuf,
          varyings->varying[VARYING_SLOT_POS].offset;
    }
 
-   if (pipeline->state.ia.writes_point_size) {
+   if (writes_point_size) {
       draw->psiz =
          varyings->buf[varyings->varying[VARYING_SLOT_PSIZ].buf].address +
          varyings->varying[VARYING_SLOT_POS].offset;
-   } else if (pipeline->state.ia.topology == MALI_DRAW_MODE_LINES ||
-              pipeline->state.ia.topology == MALI_DRAW_MODE_LINE_STRIP ||
-              pipeline->state.ia.topology == MALI_DRAW_MODE_LINE_LOOP) {
+   } else if (ia->primitive_topology == VK_PRIMITIVE_TOPOLOGY_LINE_LIST ||
+              ia->primitive_topology == VK_PRIMITIVE_TOPOLOGY_LINE_STRIP) {
       draw->line_width = cmdbuf->vk.dynamic_graphics_state.rs.line.width;
    } else {
       draw->line_width = 1.0f;
@@ -1083,17 +1087,50 @@ panvk_draw_prepare_vertex_job(struct panvk_cmd_buffer *cmdbuf,
    }
 }
 
+static enum mali_draw_mode
+translate_prim_topology(VkPrimitiveTopology in)
+{
+   switch (in) {
+   case VK_PRIMITIVE_TOPOLOGY_POINT_LIST:
+      return MALI_DRAW_MODE_POINTS;
+   case VK_PRIMITIVE_TOPOLOGY_LINE_LIST:
+      return MALI_DRAW_MODE_LINES;
+   case VK_PRIMITIVE_TOPOLOGY_LINE_STRIP:
+      return MALI_DRAW_MODE_LINE_STRIP;
+   case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
+      return MALI_DRAW_MODE_TRIANGLES;
+   case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
+      return MALI_DRAW_MODE_TRIANGLE_STRIP;
+   case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
+      return MALI_DRAW_MODE_TRIANGLE_FAN;
+   case VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY:
+   case VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY:
+   case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY:
+   case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY:
+   case VK_PRIMITIVE_TOPOLOGY_PATCH_LIST:
+   default:
+      unreachable("Invalid primitive type");
+   }
+}
+
 static void
-panvk_emit_tiler_primitive(const struct panvk_graphics_pipeline *pipeline,
+panvk_emit_tiler_primitive(struct panvk_cmd_buffer *cmdbuf,
                            const struct panvk_draw_info *draw, void *prim)
 {
+   const struct panvk_graphics_pipeline *pipeline = cmdbuf->state.gfx.pipeline;
+   const struct vk_input_assembly_state *ia =
+      &cmdbuf->vk.dynamic_graphics_state.ia;
+   bool writes_point_size =
+      pipeline->state.vs.writes_point_size &&
+      ia->primitive_topology == VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+
    pan_pack(prim, PRIMITIVE, cfg) {
-      cfg.draw_mode = pipeline->state.ia.topology;
-      if (pipeline->state.ia.writes_point_size)
+      cfg.draw_mode = translate_prim_topology(ia->primitive_topology);
+      if (writes_point_size)
          cfg.point_size_array_format = MALI_POINT_SIZE_ARRAY_FORMAT_FP16;
 
       cfg.first_provoking_vertex = true;
-      if (pipeline->state.ia.primitive_restart)
+      if (ia->primitive_restart_enable)
          cfg.primitive_restart = MALI_PRIMITIVE_RESTART_IMPLICIT;
       cfg.job_task_split = 6;
 
@@ -1123,12 +1160,19 @@ panvk_emit_tiler_primitive(const struct panvk_graphics_pipeline *pipeline,
 }
 
 static void
-panvk_emit_tiler_primitive_size(const struct panvk_graphics_pipeline *pipeline,
+panvk_emit_tiler_primitive_size(struct panvk_cmd_buffer *cmdbuf,
                                 const struct panvk_draw_info *draw,
                                 void *primsz)
 {
+   const struct panvk_graphics_pipeline *pipeline = cmdbuf->state.gfx.pipeline;
+   const struct vk_input_assembly_state *ia =
+      &cmdbuf->vk.dynamic_graphics_state.ia;
+   bool writes_point_size =
+      pipeline->state.vs.writes_point_size &&
+      ia->primitive_topology == VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+
    pan_pack(primsz, PRIMITIVE_SIZE, cfg) {
-      if (pipeline->state.ia.writes_point_size) {
+      if (writes_point_size) {
          cfg.size_array = draw->psiz;
       } else {
          cfg.constant = draw->line_width;
@@ -1140,9 +1184,10 @@ static void
 panvk_emit_tiler_dcd(struct panvk_cmd_buffer *cmdbuf,
                      const struct panvk_draw_info *draw, void *dcd)
 {
-   const struct panvk_graphics_pipeline *pipeline = cmdbuf->state.gfx.pipeline;
    const struct vk_rasterization_state *rs =
       &cmdbuf->vk.dynamic_graphics_state.rs;
+   const struct vk_input_assembly_state *ia =
+      &cmdbuf->vk.dynamic_graphics_state.ia;
 
    pan_pack(dcd, DRAW, cfg) {
       cfg.front_face_ccw = rs->front_face == VK_FRONT_FACE_COUNTER_CLOCKWISE;
@@ -1161,11 +1206,9 @@ panvk_emit_tiler_dcd(struct panvk_cmd_buffer *cmdbuf,
        * be set to 0 and the provoking vertex is selected with the
        * PRIMITIVE.first_provoking_vertex field.
        */
-      if (pipeline->state.ia.topology == MALI_DRAW_MODE_LINES ||
-          pipeline->state.ia.topology == MALI_DRAW_MODE_LINE_STRIP ||
-          pipeline->state.ia.topology == MALI_DRAW_MODE_LINE_LOOP) {
+      if (ia->primitive_topology == VK_PRIMITIVE_TOPOLOGY_LINE_LIST ||
+          ia->primitive_topology == VK_PRIMITIVE_TOPOLOGY_LINE_STRIP)
          cfg.flat_shading_vertex = true;
-      }
 
       cfg.offset_start = draw->offset_start;
       cfg.instance_size =
@@ -1183,7 +1226,6 @@ static void
 panvk_draw_prepare_tiler_job(struct panvk_cmd_buffer *cmdbuf,
                              struct panvk_draw_info *draw)
 {
-   const struct panvk_graphics_pipeline *pipeline = cmdbuf->state.gfx.pipeline;
    struct panvk_batch *batch = cmdbuf->cur_batch;
    struct panfrost_ptr ptr =
       pan_pool_alloc_desc(&cmdbuf->desc_pool.base, TILER_JOB);
@@ -1198,11 +1240,11 @@ panvk_draw_prepare_tiler_job(struct panvk_cmd_buffer *cmdbuf,
    memcpy(pan_section_ptr(ptr.cpu, TILER_JOB, INVOCATION), &draw->invocation,
           pan_size(INVOCATION));
 
-   panvk_emit_tiler_primitive(pipeline, draw,
+   panvk_emit_tiler_primitive(cmdbuf, draw,
                               pan_section_ptr(ptr.cpu, TILER_JOB, PRIMITIVE));
 
    panvk_emit_tiler_primitive_size(
-      pipeline, draw, pan_section_ptr(ptr.cpu, TILER_JOB, PRIMITIVE_SIZE));
+      cmdbuf, draw, pan_section_ptr(ptr.cpu, TILER_JOB, PRIMITIVE_SIZE));
 
    panvk_emit_tiler_dcd(cmdbuf, draw,
                         pan_section_ptr(ptr.cpu, TILER_JOB, DRAW));
@@ -1406,8 +1448,9 @@ panvk_per_arch(CmdDrawIndexed)(VkCommandBuffer commandBuffer,
    if (instanceCount == 0 || indexCount == 0)
       return;
 
-   const struct panvk_graphics_pipeline *pipeline = cmdbuf->state.gfx.pipeline;
-   bool primitive_restart = pipeline->state.ia.primitive_restart;
+   const struct vk_input_assembly_state *ia =
+      &cmdbuf->vk.dynamic_graphics_state.ia;
+   bool primitive_restart = ia->primitive_restart_enable;
 
    panvk_index_minmax_search(cmdbuf, firstIndex, indexCount, primitive_restart,
                              &min_vertex, &max_vertex);

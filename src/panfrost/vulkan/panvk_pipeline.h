@@ -81,6 +81,7 @@ struct panvk_graphics_pipeline {
 
       struct {
          struct panvk_attribs_info attribs;
+         bool writes_point_size;
       } vs;
 
       struct {
@@ -91,12 +92,6 @@ struct panvk_graphics_pipeline {
          uint8_t rt_mask;
          struct mali_renderer_state_packed rsd_template;
       } fs;
-
-      struct {
-         unsigned topology;
-         bool writes_point_size;
-         bool primitive_restart;
-      } ia;
 
       struct {
          bool z_test;

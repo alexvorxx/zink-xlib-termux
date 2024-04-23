@@ -341,17 +341,9 @@ init_shaders(struct panvk_pipeline *pipeline,
       if (shader->has_img_access)
          pipeline->img_access_mask |= BITFIELD_BIT(i);
 
-      if (i == MESA_SHADER_VERTEX && shader->info.vs.writes_point_size) {
-         VkPrimitiveTopology topology =
-            gfx_create_info->pInputAssemblyState->topology;
-         bool points = (topology == VK_PRIMITIVE_TOPOLOGY_POINT_LIST);
-
-         /* Even if the vertex shader writes point size, we only consider the
-          * pipeline to write point size when we're actually drawing points.
-          * Otherwise the point size write would conflict with wide lines.
-          */
-         gfx_pipeline->state.ia.writes_point_size = points;
-      }
+      if (i == MESA_SHADER_VERTEX)
+         gfx_pipeline->state.vs.writes_point_size =
+            shader->info.vs.writes_point_size;
 
       mali_ptr shader_ptr = i == MESA_SHADER_FRAGMENT
                                ? gfx_pipeline->state.fs.address
@@ -414,43 +406,6 @@ parse_dynamic_state(struct panvk_graphics_pipeline *pipeline,
       pipeline->state.dynamic_mask |= PANVK_DYNAMIC_STENCIL_WRITE_MASK;
    if (is_dyn(state, DS_STENCIL_REFERENCE))
       pipeline->state.dynamic_mask |= PANVK_DYNAMIC_STENCIL_REFERENCE;
-}
-
-static enum mali_draw_mode
-translate_prim_topology(VkPrimitiveTopology in)
-{
-   switch (in) {
-   case VK_PRIMITIVE_TOPOLOGY_POINT_LIST:
-      return MALI_DRAW_MODE_POINTS;
-   case VK_PRIMITIVE_TOPOLOGY_LINE_LIST:
-      return MALI_DRAW_MODE_LINES;
-   case VK_PRIMITIVE_TOPOLOGY_LINE_STRIP:
-      return MALI_DRAW_MODE_LINE_STRIP;
-   case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
-      return MALI_DRAW_MODE_TRIANGLES;
-   case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
-      return MALI_DRAW_MODE_TRIANGLE_STRIP;
-   case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
-      return MALI_DRAW_MODE_TRIANGLE_FAN;
-   case VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY:
-   case VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY:
-   case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY:
-   case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY:
-   case VK_PRIMITIVE_TOPOLOGY_PATCH_LIST:
-   default:
-      unreachable("Invalid primitive type");
-   }
-}
-
-static void
-parse_input_assembly(struct panvk_graphics_pipeline *pipeline,
-                     const struct vk_graphics_pipeline_state *state)
-{
-   const struct vk_input_assembly_state *ia = state->ia;
-
-   pipeline->state.ia.primitive_restart = ia->primitive_restart_enable;
-   pipeline->state.ia.topology =
-      translate_prim_topology(ia->primitive_topology);
 }
 
 static uint32_t
@@ -854,7 +809,6 @@ panvk_graphics_pipeline_create(struct panvk_device *dev,
    compile_shaders(&gfx_pipeline->base, create_info->pStages,
                    create_info->stageCount, alloc, shaders);
    collect_varyings(gfx_pipeline, shaders);
-   parse_input_assembly(gfx_pipeline, &state);
    parse_multisample(gfx_pipeline, &state);
    parse_zs(gfx_pipeline, &state);
    parse_vertex_input(gfx_pipeline, &state, shaders);

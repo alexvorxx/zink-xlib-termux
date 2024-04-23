@@ -149,6 +149,7 @@ v3d_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
         case PIPE_CAP_CONDITIONAL_RENDER:
         case PIPE_CAP_CONDITIONAL_RENDER_INVERTED:
         case PIPE_CAP_CUBE_MAP_ARRAY:
+        case PIPE_CAP_NIR_COMPACT_ARRAYS:
                 return 1;
 
         case PIPE_CAP_POLYGON_OFFSET_CLAMP:
@@ -463,8 +464,6 @@ v3d_screen_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_type s
                         return 0;
                 }
 
-        case PIPE_SHADER_CAP_PREFERRED_IR:
-                return PIPE_SHADER_IR_NIR;
         case PIPE_SHADER_CAP_SUPPORTED_IRS:
                 return 1 << PIPE_SHADER_IR_NIR;
         default:
@@ -546,8 +545,11 @@ v3d_get_compute_param(struct pipe_screen *pscreen, enum pipe_shader_ir ir_type,
         case PIPE_COMPUTE_CAP_IMAGES_SUPPORTED:
                 RET((uint32_t []) { 1 });
 
-        case PIPE_COMPUTE_CAP_SUBGROUP_SIZE:
+        case PIPE_COMPUTE_CAP_SUBGROUP_SIZES:
                 RET((uint32_t []) { 16 });
+
+        case PIPE_COMPUTE_CAP_MAX_SUBGROUPS:
+                RET((uint32_t []) { 0 });
 
         }
 
@@ -697,8 +699,8 @@ static const nir_shader_compiler_options v3d_nir_options = {
         .lower_extract_word = true,
         .lower_insert_byte = true,
         .lower_insert_word = true,
-        .lower_bitfield_insert_to_shifts = true,
-        .lower_bitfield_extract_to_shifts = true,
+        .lower_bitfield_insert = true,
+        .lower_bitfield_extract = true,
         .lower_bitfield_reverse = true,
         .lower_bit_count = true,
         .lower_cs_local_id_to_index = true,
@@ -732,6 +734,7 @@ static const nir_shader_compiler_options v3d_nir_options = {
         .lower_rotate = true,
         .lower_to_scalar = true,
         .lower_int64_options = nir_lower_imul_2x32_64,
+        .lower_fquantize2f16 = true,
         .has_fsub = true,
         .has_isub = true,
         .divergence_analysis_options =
@@ -965,17 +968,17 @@ v3d_screen_create(int fd, const struct pipe_screen_config *config,
         }
 
         /* Generate the bitmask of supported draw primitives. */
-        screen->prim_types = BITFIELD_BIT(PIPE_PRIM_POINTS) |
-                             BITFIELD_BIT(PIPE_PRIM_LINES) |
-                             BITFIELD_BIT(PIPE_PRIM_LINE_LOOP) |
-                             BITFIELD_BIT(PIPE_PRIM_LINE_STRIP) |
-                             BITFIELD_BIT(PIPE_PRIM_TRIANGLES) |
-                             BITFIELD_BIT(PIPE_PRIM_TRIANGLE_STRIP) |
-                             BITFIELD_BIT(PIPE_PRIM_TRIANGLE_FAN) |
-                             BITFIELD_BIT(PIPE_PRIM_LINES_ADJACENCY) |
-                             BITFIELD_BIT(PIPE_PRIM_LINE_STRIP_ADJACENCY) |
-                             BITFIELD_BIT(PIPE_PRIM_TRIANGLES_ADJACENCY) |
-                             BITFIELD_BIT(PIPE_PRIM_TRIANGLE_STRIP_ADJACENCY);
+        screen->prim_types = BITFIELD_BIT(MESA_PRIM_POINTS) |
+                             BITFIELD_BIT(MESA_PRIM_LINES) |
+                             BITFIELD_BIT(MESA_PRIM_LINE_LOOP) |
+                             BITFIELD_BIT(MESA_PRIM_LINE_STRIP) |
+                             BITFIELD_BIT(MESA_PRIM_TRIANGLES) |
+                             BITFIELD_BIT(MESA_PRIM_TRIANGLE_STRIP) |
+                             BITFIELD_BIT(MESA_PRIM_TRIANGLE_FAN) |
+                             BITFIELD_BIT(MESA_PRIM_LINES_ADJACENCY) |
+                             BITFIELD_BIT(MESA_PRIM_LINE_STRIP_ADJACENCY) |
+                             BITFIELD_BIT(MESA_PRIM_TRIANGLES_ADJACENCY) |
+                             BITFIELD_BIT(MESA_PRIM_TRIANGLE_STRIP_ADJACENCY);
 
         return pscreen;
 

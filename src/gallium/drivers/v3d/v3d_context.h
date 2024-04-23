@@ -215,6 +215,9 @@ struct v3d_uncompiled_shader {
         uint16_t tf_specs[16];
         uint16_t tf_specs_psiz[16];
         uint32_t num_tf_specs;
+
+        /* For caching */
+        unsigned char sha1[20];
 };
 
 struct v3d_compiled_shader {
@@ -760,13 +763,6 @@ uint8_t v3d_get_tex_return_channels(const struct v3d_device_info *devinfo,
                                     enum pipe_format f);
 const uint8_t *v3d_get_format_swizzle(const struct v3d_device_info *devinfo,
                                       enum pipe_format f);
-void v3d_get_internal_type_bpp_for_output_format(const struct v3d_device_info *devinfo,
-                                                 uint32_t format,
-                                                 uint32_t *type,
-                                                 uint32_t *bpp);
-bool v3d_tfu_supports_tex_format(const struct v3d_device_info *devinfo,
-                                 uint32_t tex_format,
-                                 bool for_mipmap);
 bool v3d_format_supports_tlb_msaa_resolve(const struct v3d_device_info *devinfo,
                                           enum pipe_format f);
 
@@ -801,9 +797,6 @@ void v3d_ensure_prim_counts_allocated(struct v3d_context *ctx);
 void v3d_flag_dirty_sampler_state(struct v3d_context *v3d,
                                   enum pipe_shader_type shader);
 
-void v3d_create_texture_shader_state_bo(struct v3d_context *v3d,
-                                        struct v3d_sampler_view *so);
-
 void v3d_get_tile_buffer_size(bool is_msaa,
                               bool double_buffer,
                               uint32_t nr_cbufs,
@@ -817,10 +810,12 @@ bool v3d_render_condition_check(struct v3d_context *v3d);
 
 #ifdef ENABLE_SHADER_CACHE
 struct v3d_compiled_shader *v3d_disk_cache_retrieve(struct v3d_context *v3d,
-                                                    const struct v3d_key *key);
+                                                    const struct v3d_key *key,
+                                                    const struct v3d_uncompiled_shader *uncompiled);
 
 void v3d_disk_cache_store(struct v3d_context *v3d,
                           const struct v3d_key *key,
+                          const struct v3d_uncompiled_shader *uncompiled,
                           const struct v3d_compiled_shader *shader,
                           uint64_t *qpu_insts,
                           uint32_t qpu_size);

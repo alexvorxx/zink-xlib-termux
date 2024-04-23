@@ -124,7 +124,7 @@ mkdir_if_needed(const char *path)
       }
    }
 
-   int ret = mkdir(path, 0755);
+   int ret = mkdir(path, 0700);
    if (ret == 0 || (ret == -1 && errno == EEXIST))
      return 0;
 
@@ -933,6 +933,12 @@ disk_cache_generate_cache_dir(void *mem_ctx, const char *gpu_name,
 bool
 disk_cache_enabled()
 {
+   /* Disk cache is not enabled for android, but android's EGL layer
+    * uses EGL_ANDROID_blob_cache to manage the cache itself:
+    */
+   if (DETECT_OS_ANDROID)
+      return false;
+
    /* If running as a users other than the real user disable cache */
    if (geteuid() != getuid())
       return false;

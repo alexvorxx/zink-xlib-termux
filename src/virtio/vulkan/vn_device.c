@@ -24,18 +24,15 @@
 static void
 vn_queue_fini(struct vn_queue *queue)
 {
-   VkDevice dev_handle = vn_device_to_handle(queue->device);
+   VkDevice dev_handle = vk_device_to_handle(queue->base.base.base.device);
 
    if (queue->wait_fence != VK_NULL_HANDLE) {
       vn_DestroyFence(dev_handle, queue->wait_fence, NULL);
    }
-   if (queue->sync_fence != VK_NULL_HANDLE) {
-      vn_DestroyFence(dev_handle, queue->sync_fence, NULL);
-   }
    if (queue->sparse_semaphore != VK_NULL_HANDLE) {
       vn_DestroySemaphore(dev_handle, queue->sparse_semaphore, NULL);
    }
-   vn_object_base_fini(&queue->base);
+   vn_queue_base_fini(&queue->base);
 }
 
 static VkResult
@@ -44,7 +41,10 @@ vn_queue_init(struct vn_device *dev,
               const VkDeviceQueueCreateInfo *queue_info,
               uint32_t queue_index)
 {
-   vn_object_base_init(&queue->base, VK_OBJECT_TYPE_QUEUE, &dev->base);
+   VkResult result =
+      vn_queue_base_init(&queue->base, &dev->base, queue_info, queue_index);
+   if (result != VK_SUCCESS)
+      return result;
 
    VkDeviceQueueTimelineInfoMESA timeline_info;
    const struct vn_renderer_info *renderer_info =
@@ -75,11 +75,6 @@ vn_queue_init(struct vn_device *dev,
    VkQueue queue_handle = vn_queue_to_handle(queue);
    vn_async_vkGetDeviceQueue2(dev->instance, vn_device_to_handle(dev),
                               &device_queue_info, &queue_handle);
-
-   queue->device = dev;
-   queue->family = queue_info->queueFamilyIndex;
-   queue->index = queue_index;
-   queue->flags = queue_info->flags;
 
    return VK_SUCCESS;
 }
@@ -165,6 +160,54 @@ static inline void
 vn_device_queue_family_fini(struct vn_device *dev)
 {
    vk_free(&dev->base.base.alloc, dev->queue_families);
+}
+
+static VkResult
+vn_device_memory_report_init(struct vn_device *dev,
+                             const VkDeviceCreateInfo *create_info)
+{
+   const struct vk_features *app_feats = &dev->base.base.enabled_features;
+   if (!app_feats->deviceMemoryReport)
+      return VK_SUCCESS;
+
+   uint32_t count = 0;
+   vk_foreach_struct_const(pnext, create_info->pNext) {
+      if (pnext->sType ==
+          VK_STRUCTURE_TYPE_DEVICE_DEVICE_MEMORY_REPORT_CREATE_INFO_EXT)
+         count++;
+   }
+
+   struct vn_device_memory_report *mem_reports = NULL;
+   if (count) {
+      mem_reports =
+         vk_alloc(&dev->base.base.alloc, sizeof(*mem_reports) * count,
+                  VN_DEFAULT_ALIGN, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+      if (!mem_reports)
+         return VK_ERROR_OUT_OF_HOST_MEMORY;
+   }
+
+   count = 0;
+   vk_foreach_struct_const(pnext, create_info->pNext) {
+      if (pnext->sType ==
+          VK_STRUCTURE_TYPE_DEVICE_DEVICE_MEMORY_REPORT_CREATE_INFO_EXT) {
+         const struct VkDeviceDeviceMemoryReportCreateInfoEXT *report =
+            (void *)pnext;
+         mem_reports[count].callback = report->pfnUserCallback;
+         mem_reports[count].data = report->pUserData;
+         count++;
+      }
+   }
+
+   dev->memory_report_count = count;
+   dev->memory_reports = mem_reports;
+
+   return VK_SUCCESS;
+}
+
+static inline void
+vn_device_memory_report_fini(struct vn_device *dev)
+{
+   vk_free(&dev->base.base.alloc, dev->memory_reports);
 }
 
 static bool
@@ -294,6 +337,11 @@ vn_device_fix_create_info(const struct vn_device *dev,
       extra_exts[extra_count++] = VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME;
    }
 
+   if (app_exts->EXT_device_memory_report) {
+      /* see vn_physical_device_get_native_extensions */
+      block_exts[block_count++] = VK_EXT_DEVICE_MEMORY_REPORT_EXTENSION_NAME;
+   }
+
    if (app_exts->EXT_physical_device_drm) {
       /* see vn_physical_device_get_native_extensions */
       block_exts[block_count++] = VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME;
@@ -420,9 +468,13 @@ vn_device_init(struct vn_device *dev,
    if (result != VK_SUCCESS)
       return result;
 
+   result = vn_device_memory_report_init(dev, create_info);
+   if (result != VK_SUCCESS)
+      goto out_destroy_device;
+
    if (!vn_device_queue_family_init(dev, create_info)) {
       result = VK_ERROR_OUT_OF_HOST_MEMORY;
-      goto out_destroy_device;
+      goto out_memory_report_fini;
    }
 
    for (uint32_t i = 0; i < ARRAY_SIZE(dev->memory_pools); i++) {
@@ -430,13 +482,9 @@ vn_device_init(struct vn_device *dev,
       mtx_init(&pool->mutex, mtx_plain);
    }
 
-   result = vn_buffer_cache_init(dev);
-   if (result != VK_SUCCESS)
-      goto out_memory_pool_fini;
-
    result = vn_device_feedback_pool_init(dev);
    if (result != VK_SUCCESS)
-      goto out_buffer_cache_fini;
+      goto out_memory_pool_fini;
 
    result = vn_feedback_cmd_pools_init(dev);
    if (result != VK_SUCCESS)
@@ -445,6 +493,8 @@ vn_device_init(struct vn_device *dev,
    result = vn_device_init_queues(dev, create_info);
    if (result != VK_SUCCESS)
       goto out_cmd_pools_fini;
+
+   vn_buffer_cache_init(dev);
 
    /* This is a WA to allow fossilize replay to detect if the host side shader
     * cache is no longer up to date.
@@ -459,14 +509,14 @@ out_cmd_pools_fini:
 out_feedback_pool_fini:
    vn_device_feedback_pool_fini(dev);
 
-out_buffer_cache_fini:
-   vn_buffer_cache_fini(dev);
-
 out_memory_pool_fini:
    for (uint32_t i = 0; i < ARRAY_SIZE(dev->memory_pools); i++)
       vn_device_memory_pool_fini(dev, i);
 
    vn_device_queue_family_fini(dev);
+
+out_memory_report_fini:
+   vn_device_memory_report_fini(dev);
 
 out_destroy_device:
    vn_call_vkDestroyDevice(instance, dev_handle, NULL);
@@ -534,6 +584,8 @@ vn_DestroyDevice(VkDevice device, const VkAllocationCallbacks *pAllocator)
    if (!dev)
       return;
 
+   vn_buffer_cache_fini(dev);
+
    for (uint32_t i = 0; i < dev->queue_count; i++)
       vn_queue_fini(&dev->queues[i]);
 
@@ -541,12 +593,12 @@ vn_DestroyDevice(VkDevice device, const VkAllocationCallbacks *pAllocator)
 
    vn_device_feedback_pool_fini(dev);
 
-   vn_buffer_cache_fini(dev);
-
    for (uint32_t i = 0; i < ARRAY_SIZE(dev->memory_pools); i++)
       vn_device_memory_pool_fini(dev, i);
 
    vn_device_queue_family_fini(dev);
+
+   vn_device_memory_report_fini(dev);
 
    /* We must emit vkDestroyDevice before freeing dev->queues.  Otherwise,
     * another thread might reuse their object ids while they still refer to
@@ -591,22 +643,6 @@ vn_GetDeviceGroupPeerMemoryFeatures(
    vn_call_vkGetDeviceGroupPeerMemoryFeatures(
       dev->instance, device, heapIndex, localDeviceIndex, remoteDeviceIndex,
       pPeerMemoryFeatures);
-}
-
-VkResult
-vn_DeviceWaitIdle(VkDevice device)
-{
-   VN_TRACE_FUNC();
-   struct vn_device *dev = vn_device_from_handle(device);
-
-   for (uint32_t i = 0; i < dev->queue_count; i++) {
-      struct vn_queue *queue = &dev->queues[i];
-      VkResult result = vn_QueueWaitIdle(vn_queue_to_handle(queue));
-      if (result != VK_SUCCESS)
-         return vn_error(dev->instance, result);
-   }
-
-   return VK_SUCCESS;
 }
 
 VkResult

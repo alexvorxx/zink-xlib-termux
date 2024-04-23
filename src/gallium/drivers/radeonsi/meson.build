@@ -20,14 +20,13 @@
 
 files_libradeonsi = files(
   'driinfo_radeonsi.h',
-  'gfx10_query.c',
   'gfx10_shader_ngg.c',
+  'gfx11_query.c',
   'si_blit.c',
   'si_buffer.c',
   'si_build_pm4.h',
   'si_clear.c',
   'si_compute.c',
-  'si_compute.h',
   'si_compute_blit.c',
   'si_cp_dma.c',
   'si_cp_reg_shadowing.c',
@@ -89,7 +88,6 @@ files_libradeonsi = files(
   'radeon_vce_52.c',
   'radeon_vcn.h',
   'radeon_vcn.c',
-  'radeon_vcn_av1_default.h',
   'radeon_vcn_dec.c',
   'radeon_vcn_dec.h',
   'radeon_vcn_dec_jpeg.c',
@@ -99,13 +97,12 @@ files_libradeonsi = files(
   'radeon_vcn_enc_2_0.c',
   'radeon_vcn_enc_3_0.c',
   'radeon_vcn_enc_4_0.c',
-  'radeon_vcn_enc_av1_default_cdf.h',
   'radeon_video.c',
   'radeon_video.h',
 )
 
 radeonsi_include_dirs = [inc_src, inc_include, inc_gallium, inc_gallium_aux, inc_amd_common,
-                         inc_amd_common_llvm, inc_gallium_drivers, inc_compiler]
+                         inc_amd_common_llvm, inc_gallium_drivers]
 radeonsi_deps = [dep_llvm, dep_clock, dep_libdrm_radeon, idep_nir_headers, idep_amdgfxregs_h, idep_mesautil, idep_aco]
 
 radeonsi_gfx_libs = []

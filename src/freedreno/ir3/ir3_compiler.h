@@ -93,6 +93,8 @@ struct ir3_compiler {
     * different generations:
     */
 
+   bool is_64bit;
+
    /* a4xx (and later) drops SP_FS_FLAT_SHAD_MODE_REG_* for flat-interpolate
     * so we need to use ldlv.u32 to load the varying directly:
     */
@@ -189,11 +191,17 @@ struct ir3_compiler {
    /* The number of total branch stack entries, divided by wave_granularity. */
    uint32_t branchstack_size;
 
+   /* The byte increment of MEMSIZEPERITEM, the private memory per-fiber allocation. */
+   uint32_t pvtmem_per_fiber_align;
+
    /* Whether clip+cull distances are supported */
    bool has_clip_cull;
 
    /* Whether private memory is supported */
    bool has_pvtmem;
+
+   /* Whether SSBOs have descriptors for sampling with ISAM */
+   bool has_isam_ssbo;
 
    /* True if 16-bit descriptors are used for both 16-bit and 32-bit access. */
    bool storage_16bit;
@@ -235,6 +243,8 @@ struct ir3_compiler {
     * TODO: Keep an eye on this for next gens.
     */
    uint64_t geom_shared_consts_size_quirk;
+
+   bool has_fs_tex_prefetch;
 };
 
 void ir3_compiler_destroy(struct ir3_compiler *compiler);
@@ -248,7 +258,7 @@ void ir3_disk_cache_init_shader_key(struct ir3_compiler *compiler,
 struct ir3_shader_variant *ir3_retrieve_variant(struct blob_reader *blob,
                                                 struct ir3_compiler *compiler,
                                                 void *mem_ctx);
-void ir3_store_variant(struct blob *blob, struct ir3_shader_variant *v);
+void ir3_store_variant(struct blob *blob, const struct ir3_shader_variant *v);
 bool ir3_disk_cache_retrieve(struct ir3_shader *shader,
                              struct ir3_shader_variant *v);
 void ir3_disk_cache_store(struct ir3_shader *shader,
@@ -265,7 +275,7 @@ int ir3_compile_shader_nir(struct ir3_compiler *compiler,
 static inline unsigned
 ir3_pointer_size(struct ir3_compiler *compiler)
 {
-   return fd_dev_64b(compiler->dev_id) ? 2 : 1;
+   return compiler->is_64bit ? 2 : 1;
 }
 
 enum ir3_shader_debug {

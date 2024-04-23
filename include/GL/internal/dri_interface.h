@@ -40,6 +40,7 @@
 #ifndef DRI_INTERFACE_H
 #define DRI_INTERFACE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 /**
@@ -1274,6 +1275,13 @@ struct __DRIdri2ExtensionRec {
 #define __DRI_IMAGE_FORMAT_SXRGB8       0x1016
 #define __DRI_IMAGE_FORMAT_ABGR16161616 0x1017
 #define __DRI_IMAGE_FORMAT_XBGR16161616 0x1018
+#define __DRI_IMAGE_FORMAT_ARGB4444	0x1019
+#define __DRI_IMAGE_FORMAT_XRGB4444	0x101a
+#define __DRI_IMAGE_FORMAT_ABGR4444	0x101b
+#define __DRI_IMAGE_FORMAT_XBGR4444	0x101c
+#define __DRI_IMAGE_FORMAT_XRGB1555	0x101d
+#define __DRI_IMAGE_FORMAT_ABGR1555	0x101e
+#define __DRI_IMAGE_FORMAT_XBGR1555	0x101f
 
 #define __DRI_IMAGE_USE_SHARE		0x0001
 #define __DRI_IMAGE_USE_SCANOUT		0x0002
@@ -1634,8 +1642,8 @@ struct __DRIimageExtensionRec {
     *
     * \since 15
     */
-   unsigned char (*queryDmaBufFormats)(__DRIscreen *screen, int max,
-                                       int *formats, int *count);
+   bool (*queryDmaBufFormats)(__DRIscreen *screen, int max, int *formats,
+                              int *count);
 
    /*
     * dmabuf format modifier query for a given format to support
@@ -1656,10 +1664,9 @@ struct __DRIimageExtensionRec {
     *
     * \since 15
     */
-   unsigned char (*queryDmaBufModifiers)(__DRIscreen *screen, int fourcc,
-                                         int max, uint64_t *modifiers,
-                                         unsigned int *external_only,
-                                         int *count);
+   bool (*queryDmaBufModifiers)(__DRIscreen *screen, int fourcc, int max,
+                                uint64_t *modifiers,
+                                unsigned int *external_only, int *count);
 
    /**
     * dmabuf format modifier attribute query for a given format and modifier.
@@ -1675,11 +1682,9 @@ struct __DRIimageExtensionRec {
     *
     * \since 16
     */
-   unsigned char (*queryDmaBufFormatModifierAttribs)(__DRIscreen *screen,
-                                                     uint32_t fourcc,
-                                                     uint64_t modifier,
-                                                     int attrib,
-                                                     uint64_t *value);
+   bool (*queryDmaBufFormatModifierAttribs)(__DRIscreen *screen,
+                                            uint32_t fourcc, uint64_t modifier,
+                                            int attrib, uint64_t *value);
 
    /**
     * Create a DRI image from the given renderbuffer.

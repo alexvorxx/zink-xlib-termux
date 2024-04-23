@@ -29,6 +29,8 @@
 #include "draw_context.h"
 #include "draw_private.h"
 
+#include "tgsi/tgsi_scan.h"
+
 struct draw_context;
 #ifdef DRAW_LLVM_AVAILABLE
 
@@ -77,7 +79,7 @@ struct draw_tess_eval_shader {
    struct pipe_shader_state state;
    struct tgsi_shader_info info;
 
-   enum pipe_prim_type prim_mode;
+   enum mesa_prim prim_mode;
    unsigned spacing;
    unsigned vertex_order_cw;
    unsigned point_mode;
@@ -99,11 +101,9 @@ struct draw_tess_eval_shader {
 #endif
 };
 
-enum pipe_prim_type get_tes_output_prim(struct draw_tess_eval_shader *shader);
+enum mesa_prim get_tes_output_prim(struct draw_tess_eval_shader *shader);
 
 int draw_tess_ctrl_shader_run(struct draw_tess_ctrl_shader *shader,
-                              const void *constants[PIPE_MAX_CONSTANT_BUFFERS],
-                              const unsigned constants_size[PIPE_MAX_CONSTANT_BUFFERS],
                               const struct draw_vertex_info *input_verts,
                               const struct draw_prim_info *input_prim,
                               const struct tgsi_shader_info *input_info,
@@ -111,15 +111,13 @@ int draw_tess_ctrl_shader_run(struct draw_tess_ctrl_shader *shader,
                               struct draw_prim_info *output_prims );
 
 int draw_tess_eval_shader_run(struct draw_tess_eval_shader *shader,
-                              const void *constants[PIPE_MAX_CONSTANT_BUFFERS],
-                              const unsigned constants_size[PIPE_MAX_CONSTANT_BUFFERS],
                               unsigned num_input_vertices_per_patch,
                               const struct draw_vertex_info *input_verts,
                               const struct draw_prim_info *input_prim,
                               const struct tgsi_shader_info *input_info,
                               struct draw_vertex_info *output_verts,
                               struct draw_prim_info *output_prims,
-                              ushort **elts_out);
+                              uint16_t **elts_out);
 
 #ifdef DRAW_LLVM_AVAILABLE
 void draw_tcs_set_current_variant(struct draw_tess_ctrl_shader *shader,

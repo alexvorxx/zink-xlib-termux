@@ -66,7 +66,6 @@ glx_message(int level, const char *f, ...)
 
    /* Note that the _LOADER_* levels are lower numbers for more severe. */
    if (level <= threshold) {
-      fprintf(stderr, "libGL%s: ", level <= _LOADER_WARNING ? " error" : "");
       va_start(args, f);
       vfprintf(stderr, f, args);
       va_end(args);
@@ -791,7 +790,7 @@ AllocAndFetchScreenConfigs(Display * dpy, struct glx_display * priv)
    if (!priv->screens)
       return GL_FALSE;
 
-   for (i = 0; i < screens; i++, psc++) {
+   for (i = 0; i < screens; i++) {
       psc = NULL;
 #if defined(GLX_DIRECT_RENDERING) && !defined(GLX_USE_APPLEGL)
 #if defined(GLX_USE_DRM)

@@ -324,7 +324,8 @@ dxil_module_get_split_double_ret_type(struct dxil_module *mod);
 
 const struct dxil_type *
 dxil_module_get_res_type(struct dxil_module *m, enum dxil_resource_kind kind,
-                         enum dxil_component_type comp_type, bool readwrite);
+                         enum dxil_component_type comp_type, unsigned num_comps,
+                         bool readwrite);
 
 const struct dxil_type *
 dxil_module_get_resret_type(struct dxil_module *m, enum overload_type overload);
@@ -410,6 +411,14 @@ dxil_module_get_double_const(struct dxil_module *m, double value);
 const struct dxil_value *
 dxil_module_get_array_const(struct dxil_module *m, const struct dxil_type *type,
                             const struct dxil_value **values);
+
+const struct dxil_value *
+dxil_module_get_vector_const(struct dxil_module *m, const struct dxil_type *type,
+                             const struct dxil_value **values);
+
+const struct dxil_value *
+dxil_module_get_struct_const(struct dxil_module *m, const struct dxil_type *type,
+                             const struct dxil_value **values);
 
 const struct dxil_value *
 dxil_module_get_undef(struct dxil_module *m, const struct dxil_type *type);
@@ -533,7 +542,6 @@ dxil_emit_ret_void(struct dxil_module *m);
 
 const struct dxil_value *
 dxil_emit_alloca(struct dxil_module *m, const struct dxil_type *alloc_type,
-                 const struct dxil_type *size_type,
                  const struct dxil_value *size,
                  unsigned int align);
 

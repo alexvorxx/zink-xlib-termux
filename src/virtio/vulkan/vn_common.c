@@ -32,6 +32,7 @@ static const struct debug_control vn_debug_options[] = {
    { "no_abort", VN_DEBUG_NO_ABORT },
    { "log_ctx_info", VN_DEBUG_LOG_CTX_INFO },
    { "cache", VN_DEBUG_CACHE },
+   { "no_sparse", VN_DEBUG_NO_SPARSE },
    { NULL, 0 },
    /* clang-format on */
 };
@@ -46,6 +47,7 @@ static const struct debug_control vn_perf_options[] = {
    { "no_memory_suballoc", VN_PERF_NO_MEMORY_SUBALLOC },
    { "no_cmd_batching", VN_PERF_NO_CMD_BATCHING },
    { "no_timeline_sem_feedback", VN_PERF_NO_TIMELINE_SEM_FEEDBACK },
+   { "no_query_feedback", VN_PERF_NO_QUERY_FEEDBACK },
    { NULL, 0 },
    /* clang-format on */
 };
@@ -92,7 +94,7 @@ vn_trace_init(void)
 #ifdef ANDROID
    atrace_init();
 #else
-   util_perfetto_init();
+   util_cpu_trace_init();
 #endif
 }
 

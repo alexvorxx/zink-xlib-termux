@@ -30,6 +30,7 @@
 
 #include "hwdef/rogue_hw_utils.h"
 #include "pvr_bo.h"
+#include "pvr_debug.h"
 #include "pvr_private.h"
 #include "pvr_types.h"
 #include "util/compiler.h"
@@ -42,7 +43,6 @@
 #include "vk_object.h"
 #include "vk_util.h"
 
-#if defined(DEBUG)
 static const struct {
    const char *raw;
    const char *primary;
@@ -78,7 +78,6 @@ static const char *descriptor_names[] = { "VK SAMPLER",
                                           "VK UNIFORM_BUFFER_DYNAMIC",
                                           "VK STORAGE_BUFFER_DYNAMIC",
                                           "VK INPUT_ATTACHMENT" };
-#endif
 
 #define PVR_DESC_IMAGE_SECONDARY_OFFSET_ARRAYBASE 0U
 #define PVR_DESC_IMAGE_SECONDARY_SIZE_ARRAYBASE 2U
@@ -332,14 +331,18 @@ static void pvr_setup_in_memory_layout_sizes(
    }
 }
 
-#if defined(DEBUG)
 static void
 pvr_dump_in_memory_layout_sizes(const struct pvr_descriptor_set_layout *layout)
 {
+   const char *const separator =
+      "----------------------------------------------";
+   const char *const big_separator =
+      "==============================================";
+
    mesa_logd("=== SET LAYOUT ===");
-   mesa_logd("----------------------------------------------");
+   mesa_logd("%s", separator);
    mesa_logd(" in memory:");
-   mesa_logd("----------------------------------------------");
+   mesa_logd("%s", separator);
 
    for (uint32_t stage = 0;
         stage < ARRAY_SIZE(layout->memory_layout_in_dwords_per_stage);
@@ -348,7 +351,7 @@ pvr_dump_in_memory_layout_sizes(const struct pvr_descriptor_set_layout *layout)
          "| %-18s @   %04u                |",
          stage_names[stage].primary,
          layout->memory_layout_in_dwords_per_stage[stage].primary_offset);
-      mesa_logd("----------------------------------------------");
+      mesa_logd("%s", separator);
 
       /* Print primaries. */
       for (uint32_t i = 0; i < layout->binding_count; i++) {
@@ -382,12 +385,12 @@ pvr_dump_in_memory_layout_sizes(const struct pvr_descriptor_set_layout *layout)
                    binding->descriptor_count);
       }
 
-      mesa_logd("----------------------------------------------");
+      mesa_logd("%s", separator);
       mesa_logd(
          "| %-18s @   %04u                |",
          stage_names[stage].secondary,
          layout->memory_layout_in_dwords_per_stage[stage].secondary_offset);
-      mesa_logd("----------------------------------------------");
+      mesa_logd("%s", separator);
 
       /* Print secondaries. */
       for (uint32_t i = 0; i < layout->binding_count; i++) {
@@ -421,10 +424,9 @@ pvr_dump_in_memory_layout_sizes(const struct pvr_descriptor_set_layout *layout)
                    binding->descriptor_count);
       }
 
-      mesa_logd("==============================================");
+      mesa_logd("%s", big_separator);
    }
 }
-#endif
 
 VkResult pvr_CreateDescriptorSetLayout(
    VkDevice _device,
@@ -539,7 +541,7 @@ VkResult pvr_CreateDescriptorSetLayout(
             for (uint32_t j = 0; j < binding->descriptorCount; j++) {
                PVR_FROM_HANDLE(pvr_sampler,
                                sampler,
-                               bindings->pImmutableSamplers[j]);
+                               binding->pImmutableSamplers[j]);
                const uint32_t next = j + layout->immutable_sampler_count;
 
                layout->immutable_samplers[next] = sampler;
@@ -654,9 +656,8 @@ VkResult pvr_CreateDescriptorSetLayout(
 
    pvr_setup_in_memory_layout_sizes(layout, reg_usage);
 
-#if defined(DEBUG)
-   pvr_dump_in_memory_layout_sizes(layout);
-#endif
+   if (PVR_IS_DEBUG_SET(VK_DUMP_DESCRIPTOR_SET_LAYOUT))
+      pvr_dump_in_memory_layout_sizes(layout);
 
    vk_free2(&device->vk.alloc, pAllocator, bindings);
 
@@ -678,25 +679,19 @@ void pvr_DestroyDescriptorSetLayout(VkDevice _device,
    pvr_descriptor_set_layout_free(device, pAllocator, layout);
 }
 
-#if defined(DEBUG)
 static void
 pvr_dump_in_register_layout_sizes(const struct pvr_device *device,
                                   const struct pvr_pipeline_layout *layout)
 {
-#   define SEPARATOR_LENGTH 68
-#   define LOGD_CHAR_NTIMES(c, times)         \
-      do {                                    \
-         char _c_buffer[times + 1];           \
-         for (uint32_t i = 0; i < times; i++) \
-            _c_buffer[i] = c;                 \
-         _c_buffer[times] = '\0';             \
-         mesa_logd("%s", _c_buffer);          \
-      } while (0)
+   const char *const separator =
+      "--------------------------------------------------------------------";
+   const char *const big_separator =
+      "====================================================================";
 
    mesa_logd("=== SET LAYOUT ===");
-   LOGD_CHAR_NTIMES('-', SEPARATOR_LENGTH);
+   mesa_logd("%s", separator);
    mesa_logd(" in registers:");
-   LOGD_CHAR_NTIMES('-', SEPARATOR_LENGTH);
+   mesa_logd("%s", separator);
 
    for (uint32_t stage = 0;
         stage < ARRAY_SIZE(layout->register_layout_in_dwords_per_stage);
@@ -704,7 +699,7 @@ pvr_dump_in_register_layout_sizes(const struct pvr_device *device,
       uint32_t dynamic_offset = 0;
 
       mesa_logd("| %-64s |", stage_names[stage].primary_dynamic);
-      LOGD_CHAR_NTIMES('-', SEPARATOR_LENGTH);
+      mesa_logd("%s", separator);
 
       if (layout->per_stage_reg_info[stage].primary_dynamic_size_in_dwords) {
          /* Print dynamic primaries. */
@@ -738,9 +733,9 @@ pvr_dump_in_register_layout_sizes(const struct pvr_device *device,
          }
       }
 
-      LOGD_CHAR_NTIMES('-', SEPARATOR_LENGTH);
+      mesa_logd("%s", separator);
       mesa_logd("| %-64s |", stage_names[stage].secondary_dynamic);
-      LOGD_CHAR_NTIMES('-', SEPARATOR_LENGTH);
+      mesa_logd("%s", separator);
 
       if (layout->per_stage_reg_info[stage].secondary_dynamic_size_in_dwords) {
          /* Print dynamic secondaries. */
@@ -779,9 +774,9 @@ pvr_dump_in_register_layout_sizes(const struct pvr_device *device,
          }
       }
 
-      LOGD_CHAR_NTIMES('-', SEPARATOR_LENGTH);
+      mesa_logd("%s", separator);
       mesa_logd("| %-64s |", stage_names[stage].primary);
-      LOGD_CHAR_NTIMES('-', SEPARATOR_LENGTH);
+      mesa_logd("%s", separator);
 
       /* Print primaries. */
       for (uint32_t set_num = 0; set_num < layout->set_count; set_num++) {
@@ -811,9 +806,9 @@ pvr_dump_in_register_layout_sizes(const struct pvr_device *device,
          }
       }
 
-      LOGD_CHAR_NTIMES('-', SEPARATOR_LENGTH);
+      mesa_logd("%s", separator);
       mesa_logd("| %-64s |", stage_names[stage].secondary);
-      LOGD_CHAR_NTIMES('-', SEPARATOR_LENGTH);
+      mesa_logd("%s", separator);
 
       /* Print secondaries. */
       for (uint32_t set_num = 0; set_num < layout->set_count; set_num++) {
@@ -847,13 +842,9 @@ pvr_dump_in_register_layout_sizes(const struct pvr_device *device,
          }
       }
 
-      LOGD_CHAR_NTIMES('=', SEPARATOR_LENGTH);
+      mesa_logd("%s", big_separator);
    }
-
-#   undef LOGD_CHAR_NTIMES
-#   undef SEPARATOR_LENGTH
 }
-#endif
 
 /* Pipeline layouts. These have nothing to do with the pipeline. They are
  * just multiple descriptor set layouts pasted together.
@@ -1015,9 +1006,8 @@ VkResult pvr_CreatePipelineLayout(VkDevice _device,
          layout->compute_push_constants_offset = range->offset;
    }
 
-#if defined(DEBUG)
-   pvr_dump_in_register_layout_sizes(device, layout);
-#endif
+   if (PVR_IS_DEBUG_SET(VK_DUMP_DESCRIPTOR_SET_LAYOUT))
+      pvr_dump_in_register_layout_sizes(device, layout);
 
    *pPipelineLayout = pvr_pipeline_layout_to_handle(layout);
 
@@ -1503,7 +1493,7 @@ pvr_write_image_descriptor_secondaries(const struct pvr_device_info *dev_info,
       iview->vk.view_type == VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
 
    if (!PVR_HAS_FEATURE(dev_info, tpu_array_textures)) {
-      const struct pvr_image *image = vk_to_pvr_image(iview->vk.image);
+      const struct pvr_image *image = pvr_image_view_get_image(iview);
       uint64_t addr =
          image->dev_addr.addr + iview->vk.base_array_layer * image->layer_size;
 

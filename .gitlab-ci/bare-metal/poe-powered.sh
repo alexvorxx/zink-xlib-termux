@@ -1,4 +1,8 @@
 #!/bin/bash
+# shellcheck disable=SC1091
+# shellcheck disable=SC2034
+# shellcheck disable=SC2059
+# shellcheck disable=SC2086 # we want word splitting
 
 . "$SCRIPTS_DIR"/setup-test-env.sh
 
@@ -87,7 +91,6 @@ date +'%F %T'
 
 # If BM_BOOTFS is an URL, download it
 if echo $BM_BOOTFS | grep -q http; then
-  apt-get install -y curl
   curl -L --retry 4 -f --retry-all-errors --retry-delay 60 \
     "${FDO_HTTP_CACHE_URI:-}$BM_BOOTFS" -o /tmp/bootfs.tar
   BM_BOOTFS=/tmp/bootfs.tar
@@ -155,7 +158,7 @@ echo "$BM_CMDLINE" > /tftp/cmdline.txt
 printf "$BM_BOOTCONFIG" >> /tftp/config.txt
 
 set +e
-ATTEMPTS=10
+ATTEMPTS=3
 while [ $((ATTEMPTS--)) -gt 0 ]; do
   python3 $BM/poe_run.py \
           --dev="$BM_SERIAL" \

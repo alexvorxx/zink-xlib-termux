@@ -23,6 +23,8 @@
 
 #include "anv_nir.h"
 
+#include "compiler/brw_nir.h"
+
 const struct anv_descriptor_set_layout *
 anv_pipeline_layout_get_push_set(const struct anv_pipeline_sets_layout *layout,
                                  uint8_t *set_idx)
@@ -73,11 +75,8 @@ anv_nir_compute_used_push_descriptors(nir_shader *shader,
       }
    }
 
-   nir_foreach_function(function, shader) {
-      if (!function->impl)
-         continue;
-
-      nir_foreach_block(block, function->impl) {
+   nir_foreach_function_impl(impl, shader) {
+      nir_foreach_block(block, impl) {
          nir_foreach_instr(instr, block) {
             if (instr->type != nir_instr_type_intrinsic)
                continue;
@@ -117,11 +116,8 @@ anv_nir_loads_push_desc_buffer(nir_shader *nir,
    if (push_set_layout == NULL)
       return false;
 
-   nir_foreach_function(function, nir) {
-      if (!function->impl)
-         continue;
-
-      nir_foreach_block(block, function->impl) {
+   nir_foreach_function_impl(impl, nir) {
+      nir_foreach_block(block, impl) {
          nir_foreach_instr(instr, block) {
             if (instr->type != nir_instr_type_intrinsic)
                continue;
@@ -178,11 +174,8 @@ anv_nir_push_desc_ubo_fully_promoted(nir_shader *nir,
          ubos_fully_promoted |= BITFIELD_BIT(bind_layout->descriptor_index);
    }
 
-   nir_foreach_function(function, nir) {
-      if (!function->impl)
-         continue;
-
-      nir_foreach_block(block, function->impl) {
+   nir_foreach_function_impl(impl, nir) {
+      nir_foreach_block(block, impl) {
          nir_foreach_instr(instr, block) {
             if (instr->type != nir_instr_type_intrinsic)
                continue;
@@ -191,12 +184,11 @@ anv_nir_push_desc_ubo_fully_promoted(nir_shader *nir,
             if (intrin->intrinsic != nir_intrinsic_load_ubo)
                continue;
 
-            const nir_const_value *const_bt_idx =
-               nir_src_as_const_value(intrin->src[0]);
-            if (const_bt_idx == NULL)
+            if (!brw_nir_ubo_surface_index_is_pushable(intrin->src[0]))
                continue;
 
-            const unsigned bt_idx = const_bt_idx[0].u32;
+            const unsigned bt_idx =
+               brw_nir_ubo_surface_index_get_bti(intrin->src[0]);
 
             /* Skip if this isn't a load from push descriptor buffer. */
             const struct anv_pipeline_binding *binding =
@@ -219,7 +211,7 @@ anv_nir_push_desc_ubo_fully_promoted(nir_shader *nir,
                /* Check if the load was promoted to a push constant. */
                const unsigned load_offset = const_load_offset[0].u32;
                const int load_bytes = nir_intrinsic_dest_components(intrin) *
-                  (nir_dest_bit_size(intrin->dest) / 8);
+                  (intrin->def.bit_size / 8);
 
                for (unsigned i = 0; i < ARRAY_SIZE(bind_map->push_ranges); i++) {
                   if (bind_map->push_ranges[i].set == binding->set &&

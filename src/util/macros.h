@@ -204,9 +204,15 @@ do {                       \
  * packed, to trade off performance for space.
  */
 #ifdef HAVE_FUNC_ATTRIBUTE_PACKED
-#define PACKED __attribute__((__packed__))
+#  if defined(__MINGW32__) || defined(__MINGW64__)
+#    define PACKED __attribute__((gcc_struct,__packed__))
+#  else
+#    define PACKED __attribute__((__packed__))
+#  endif
+#  define ENUM_PACKED __attribute__((packed))
 #else
 #define PACKED
+#define ENUM_PACKED
 #endif
 
 /* Attribute pure is used for functions that have no effects other than their

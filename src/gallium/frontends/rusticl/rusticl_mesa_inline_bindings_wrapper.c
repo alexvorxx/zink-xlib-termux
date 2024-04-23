@@ -7,6 +7,18 @@ blob_finish(struct blob *blob)
     __blob_finish(blob);
 }
 
+bool
+disk_cache_get_function_identifier(void *ptr, struct mesa_sha1 *ctx)
+{
+   return __disk_cache_get_function_identifier(ptr, ctx);
+}
+
+char *
+mesa_bytes_to_hex(char *buf, const uint8_t *hex_id, unsigned size)
+{
+   return __mesa_bytes_to_hex(buf, hex_id, size);
+}
+
 nir_function_impl *
 nir_shader_get_entrypoint(const nir_shader *shader)
 {
@@ -17,6 +29,18 @@ void
 pipe_resource_reference(struct pipe_resource **dst, struct pipe_resource *src)
 {
    __pipe_resource_reference_wraped(dst, src);
+}
+
+bool
+should_skip_nir(const char *name)
+{
+    return __should_skip_nir(name);
+}
+
+bool
+should_print_nir(nir_shader *shader)
+{
+    return __should_print_nir(shader);
 }
 
 void

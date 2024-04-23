@@ -63,7 +63,11 @@ typedef enum pipe_shader_type
    PIPE_SHADER_TYPES = (PIPE_SHADER_COMPUTE + 1),
    /* Vulkan-only stages. */
    MESA_SHADER_TASK         = 6,
+   PIPE_SHADER_TASK = MESA_SHADER_TASK,
    MESA_SHADER_MESH         = 7,
+   PIPE_SHADER_MESH = MESA_SHADER_MESH,
+   PIPE_SHADER_MESH_TYPES = (PIPE_SHADER_MESH + 1),
+
    MESA_SHADER_RAYGEN       = 8,
    MESA_SHADER_ANY_HIT      = 9,
    MESA_SHADER_CLOSEST_HIT  = 10,
@@ -527,6 +531,27 @@ _mesa_varying_slot_in_fs(gl_varying_slot slot)
 /*@}*/
 
 /**
+ * Writemask values, 1 bit per component.
+ */
+/*@{*/
+#define WRITEMASK_X     0x1
+#define WRITEMASK_Y     0x2
+#define WRITEMASK_XY    0x3
+#define WRITEMASK_Z     0x4
+#define WRITEMASK_XZ    0x5
+#define WRITEMASK_YZ    0x6
+#define WRITEMASK_XYZ   0x7
+#define WRITEMASK_W     0x8
+#define WRITEMASK_XW    0x9
+#define WRITEMASK_YW    0xa
+#define WRITEMASK_XYW   0xb
+#define WRITEMASK_ZW    0xc
+#define WRITEMASK_XZW   0xd
+#define WRITEMASK_YZW   0xe
+#define WRITEMASK_XYZW  0xf
+/*@}*/
+
+/**
  * If the gl_register_file is PROGRAM_SYSTEM_VALUE, the register index will be
  * one of these values.  If a NIR variable's mode is nir_var_system_value, it
  * will be one of these values.
@@ -822,6 +847,14 @@ typedef enum
    SYSTEM_VALUE_BARYCENTRIC_PULL_MODEL,
 
    /**
+    * \name VK_KHR_fragment_shader_barycentric
+    */
+   /*@{*/
+   SYSTEM_VALUE_BARYCENTRIC_PERSP_COORD,
+   SYSTEM_VALUE_BARYCENTRIC_LINEAR_COORD,
+   /*@}*/
+
+   /**
     * \name Ray tracing shader system values
     */
    /*@{*/
@@ -882,6 +915,10 @@ typedef enum
     */
    SYSTEM_VALUE_FRAG_SIZE,
    SYSTEM_VALUE_FRAG_INVOCATION_COUNT,
+
+   /* SPV_AMDX_shader_enqueue */
+   SYSTEM_VALUE_SHADER_INDEX,
+   SYSTEM_VALUE_COALESCED_INPUT_COUNT,
 
    SYSTEM_VALUE_MAX             /**< Number of values */
 } gl_system_value;
@@ -1099,29 +1136,6 @@ enum gl_advanced_blend_mode
    BLEND_HSL_LUMINOSITY,
 };
 
-enum blend_func
-{
-   BLEND_FUNC_ADD,
-   BLEND_FUNC_SUBTRACT,
-   BLEND_FUNC_REVERSE_SUBTRACT,
-   BLEND_FUNC_MIN,
-   BLEND_FUNC_MAX,
-};
-
-enum blend_factor
-{
-   BLEND_FACTOR_ZERO,
-   BLEND_FACTOR_SRC_COLOR,
-   BLEND_FACTOR_SRC1_COLOR,
-   BLEND_FACTOR_DST_COLOR,
-   BLEND_FACTOR_SRC_ALPHA,
-   BLEND_FACTOR_SRC1_ALPHA,
-   BLEND_FACTOR_DST_ALPHA,
-   BLEND_FACTOR_CONSTANT_COLOR,
-   BLEND_FACTOR_CONSTANT_ALPHA,
-   BLEND_FACTOR_SRC_ALPHA_SATURATE,
-};
-
 enum gl_tess_spacing
 {
    TESS_SPACING_UNSPECIFIED,
@@ -1138,26 +1152,29 @@ enum tess_primitive_mode
    TESS_PRIMITIVE_ISOLINES,
 };
 
-/* these also map directly to GL and gallium prim types. */
-enum shader_prim
+/**
+ * Mesa primitive types for both GL and Vulkan:
+ */
+enum ENUM_PACKED mesa_prim
 {
-   SHADER_PRIM_POINTS,
-   SHADER_PRIM_LINES,
-   SHADER_PRIM_LINE_LOOP,
-   SHADER_PRIM_LINE_STRIP,
-   SHADER_PRIM_TRIANGLES,
-   SHADER_PRIM_TRIANGLE_STRIP,
-   SHADER_PRIM_TRIANGLE_FAN,
-   SHADER_PRIM_QUADS,
-   SHADER_PRIM_QUAD_STRIP,
-   SHADER_PRIM_POLYGON,
-   SHADER_PRIM_LINES_ADJACENCY,
-   SHADER_PRIM_LINE_STRIP_ADJACENCY,
-   SHADER_PRIM_TRIANGLES_ADJACENCY,
-   SHADER_PRIM_TRIANGLE_STRIP_ADJACENCY,
-   SHADER_PRIM_PATCHES,
-   SHADER_PRIM_MAX = SHADER_PRIM_PATCHES,
-   SHADER_PRIM_UNKNOWN = (SHADER_PRIM_MAX * 2),
+   MESA_PRIM_POINTS,
+   MESA_PRIM_LINES,
+   MESA_PRIM_LINE_LOOP,
+   MESA_PRIM_LINE_STRIP,
+   MESA_PRIM_TRIANGLES,
+   MESA_PRIM_TRIANGLE_STRIP,
+   MESA_PRIM_TRIANGLE_FAN,
+   MESA_PRIM_QUADS,
+   MESA_PRIM_QUAD_STRIP,
+   MESA_PRIM_POLYGON,
+   MESA_PRIM_LINES_ADJACENCY,
+   MESA_PRIM_LINE_STRIP_ADJACENCY,
+   MESA_PRIM_TRIANGLES_ADJACENCY,
+   MESA_PRIM_TRIANGLE_STRIP_ADJACENCY,
+   MESA_PRIM_PATCHES,
+   MESA_PRIM_MAX = MESA_PRIM_PATCHES,
+   MESA_PRIM_COUNT = MESA_PRIM_MAX +1,
+   MESA_PRIM_UNKNOWN = (MESA_PRIM_MAX * 2),
 };
 
 /**
@@ -1299,7 +1316,7 @@ enum cl_sampler_filter_mode {
 #define MAT_BIT_BACK_INDEXES          (1<<MAT_ATTRIB_BACK_INDEXES)
 
 /** An enum representing what kind of input gl_SubgroupSize is. */
-enum PACKED gl_subgroup_size
+enum ENUM_PACKED gl_subgroup_size
 {
    /** Actual subgroup size, whatever that happens to be */
    SUBGROUP_SIZE_VARYING = 0,
@@ -1334,6 +1351,19 @@ enum PACKED gl_subgroup_size
    SUBGROUP_SIZE_REQUIRE_64  = 64,  /**< VK_EXT_subgroup_size_control */
    SUBGROUP_SIZE_REQUIRE_128 = 128, /**< VK_EXT_subgroup_size_control */
 };
+
+/* Ordered from narrower to wider scope. */
+typedef enum {
+   SCOPE_NONE,
+   SCOPE_INVOCATION,
+   SCOPE_SUBGROUP,
+   SCOPE_SHADER_CALL,
+   SCOPE_WORKGROUP,
+   SCOPE_QUEUE_FAMILY,
+   SCOPE_DEVICE,
+} mesa_scope;
+
+const char *mesa_scope_name(mesa_scope scope);
 
 #ifdef __cplusplus
 } /* extern "C" */

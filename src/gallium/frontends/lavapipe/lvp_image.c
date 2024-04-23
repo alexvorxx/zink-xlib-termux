@@ -24,6 +24,7 @@
 #include "lvp_private.h"
 #include "util/format/u_format.h"
 #include "util/u_inlines.h"
+#include "util/u_surface.h"
 #include "pipe/p_state.h"
 
 static VkResult
@@ -174,14 +175,17 @@ lvp_DestroyImage(VkDevice _device, VkImage _image,
 #include "util/u_sampler.h"
 #include "util/u_inlines.h"
 
-#define fix_depth_swizzle(x) do { \
-  if (x > PIPE_SWIZZLE_X && x < PIPE_SWIZZLE_0) \
-    x = PIPE_SWIZZLE_0;				\
-  } while (0)
-#define fix_depth_swizzle_a(x) do { \
-  if (x > PIPE_SWIZZLE_X && x < PIPE_SWIZZLE_0) \
-    x = PIPE_SWIZZLE_1;				\
-  } while (0)
+static inline char conv_depth_swiz(char swiz) {
+   switch (swiz) {
+   case PIPE_SWIZZLE_Y:
+   case PIPE_SWIZZLE_Z:
+      return PIPE_SWIZZLE_0;
+   case PIPE_SWIZZLE_W:
+      return PIPE_SWIZZLE_1;
+   default:
+      return swiz;
+   }
+}
 
 static struct pipe_sampler_view *
 lvp_create_samplerview(struct pipe_context *pctx, struct lvp_image_view *iv)
@@ -225,10 +229,10 @@ lvp_create_samplerview(struct pipe_context *pctx, struct lvp_image_view *iv)
    */
    if (iv->vk.aspects == VK_IMAGE_ASPECT_DEPTH_BIT ||
        iv->vk.aspects == VK_IMAGE_ASPECT_STENCIL_BIT) {
-      fix_depth_swizzle(templ.swizzle_r);
-      fix_depth_swizzle(templ.swizzle_g);
-      fix_depth_swizzle(templ.swizzle_b);
-      fix_depth_swizzle_a(templ.swizzle_a);
+      templ.swizzle_r = conv_depth_swiz(templ.swizzle_r);
+      templ.swizzle_g = conv_depth_swiz(templ.swizzle_g);
+      templ.swizzle_b = conv_depth_swiz(templ.swizzle_b);
+      templ.swizzle_a = conv_depth_swiz(templ.swizzle_a);
    }
 
    return pctx->create_sampler_view(pctx, iv->image->bo, &templ);
@@ -278,10 +282,21 @@ lvp_CreateImageView(VkDevice _device,
    view->pformat = lvp_vk_format_to_pipe_format(view->vk.format);
    view->image = image;
    view->surface = NULL;
-   if (image->bo->bind & PIPE_BIND_SHADER_IMAGE)
+
+   simple_mtx_lock(&device->queue.lock);
+
+   if (image->bo->bind & PIPE_BIND_SHADER_IMAGE) {
       view->iv = lvp_create_imageview(view);
-   if (image->bo->bind & PIPE_BIND_SAMPLER_VIEW)
+      view->image_handle = (void *)(uintptr_t)device->queue.ctx->create_image_handle(device->queue.ctx, &view->iv);
+   }
+
+   if (image->bo->bind & PIPE_BIND_SAMPLER_VIEW) {
       view->sv = lvp_create_samplerview(device->queue.ctx, view);
+      view->texture_handle = (void *)(uintptr_t)device->queue.ctx->create_texture_handle(device->queue.ctx, view->sv, NULL);
+   }
+
+   simple_mtx_unlock(&device->queue.lock);
+
    *pView = lvp_image_view_to_handle(view);
 
    return VK_SUCCESS;
@@ -297,7 +312,15 @@ lvp_DestroyImageView(VkDevice _device, VkImageView _iview,
    if (!_iview)
      return;
 
+   simple_mtx_lock(&device->queue.lock);
+
+   device->queue.ctx->delete_image_handle(device->queue.ctx, (uint64_t)(uintptr_t)iview->image_handle);
+
    pipe_sampler_view_reference(&iview->sv, NULL);
+   device->queue.ctx->delete_texture_handle(device->queue.ctx, (uint64_t)(uintptr_t)iview->texture_handle);
+
+   simple_mtx_unlock(&device->queue.lock);
+
    pipe_surface_reference(&iview->surface, NULL);
    vk_image_view_destroy(&device->vk, pAllocator, &iview->vk);
 }
@@ -364,6 +387,31 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetImageSubresourceLayout(
    }
 }
 
+VKAPI_ATTR void VKAPI_CALL lvp_GetImageSubresourceLayout2EXT(
+    VkDevice                       _device,
+    VkImage                        _image,
+    const VkImageSubresource2EXT*  pSubresource,
+    VkSubresourceLayout2EXT*       pLayout)
+{
+   lvp_GetImageSubresourceLayout(_device, _image, &pSubresource->imageSubresource, &pLayout->subresourceLayout);
+   VkSubresourceHostMemcpySizeEXT *size = vk_find_struct(pLayout, SUBRESOURCE_HOST_MEMCPY_SIZE_EXT);
+   if (size)
+      size->size = pLayout->subresourceLayout.size;
+}
+
+VKAPI_ATTR void VKAPI_CALL lvp_GetDeviceImageSubresourceLayoutKHR(
+    VkDevice                                    _device,
+    const VkDeviceImageSubresourceInfoKHR*      pInfo,
+    VkSubresourceLayout2KHR*                    pLayout)
+{
+   VkImage image;
+   /* technically supposed to be able to do this without creating an image, but that's harder */
+   if (lvp_image_create(_device, pInfo->pCreateInfo, NULL, &image) != VK_SUCCESS)
+      return;
+   lvp_GetImageSubresourceLayout2EXT(_device, image, pInfo->pSubresource, pLayout);
+   lvp_DestroyImage(_device, image, NULL);
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateBuffer(
     VkDevice                                    _device,
     const VkBufferCreateInfo*                   pCreateInfo,
@@ -379,14 +427,10 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateBuffer(
    if (pCreateInfo->size > UINT32_MAX)
       return VK_ERROR_OUT_OF_DEVICE_MEMORY;
 
-   buffer = vk_alloc2(&device->vk.alloc, pAllocator, sizeof(*buffer), 8,
-                       VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   buffer = vk_buffer_create(&device->vk, pCreateInfo,
+                             pAllocator, sizeof(*buffer));
    if (buffer == NULL)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   vk_object_base_init(&device->vk, &buffer->base, VK_OBJECT_TYPE_BUFFER);
-   buffer->size = pCreateInfo->size;
-   buffer->usage = pCreateInfo->usage;
 
    {
       struct pipe_resource template;
@@ -398,15 +442,15 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateBuffer(
       template.screen = device->pscreen;
       template.target = PIPE_BUFFER;
       template.format = PIPE_FORMAT_R8_UNORM;
-      template.width0 = buffer->size;
+      template.width0 = buffer->vk.size;
       template.height0 = 1;
       template.depth0 = 1;
       template.array_size = 1;
-      if (buffer->usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT)
+      if (buffer->vk.usage & VK_BUFFER_USAGE_2_UNIFORM_TEXEL_BUFFER_BIT_KHR)
          template.bind |= PIPE_BIND_SAMPLER_VIEW;
-      if (buffer->usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
+      if (buffer->vk.usage & VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR)
          template.bind |= PIPE_BIND_SHADER_BUFFER;
-      if (buffer->usage & VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT)
+      if (buffer->vk.usage & VK_BUFFER_USAGE_2_STORAGE_TEXEL_BUFFER_BIT_KHR)
          template.bind |= PIPE_BIND_SHADER_IMAGE;
       template.flags = PIPE_RESOURCE_FLAG_DONT_OVER_ALLOCATE;
       buffer->bo = device->pscreen->resource_create_unbacked(device->pscreen,
@@ -433,18 +477,30 @@ VKAPI_ATTR void VKAPI_CALL lvp_DestroyBuffer(
    if (!_buffer)
      return;
 
+   char *ptr = (char*)buffer->pmem + buffer->offset;
+   if (ptr) {
+      simple_mtx_lock(&device->bda_lock);
+      struct hash_entry *he = _mesa_hash_table_search(&device->bda, ptr);
+      if (he)
+         _mesa_hash_table_remove(&device->bda, he);
+      simple_mtx_unlock(&device->bda_lock);
+   }
    pipe_resource_reference(&buffer->bo, NULL);
-   vk_object_base_finish(&buffer->base);
-   vk_free2(&device->vk.alloc, pAllocator, buffer);
+   vk_buffer_destroy(&device->vk, pAllocator, &buffer->vk);
 }
 
 VKAPI_ATTR VkDeviceAddress VKAPI_CALL lvp_GetBufferDeviceAddress(
-   VkDevice                                    device,
+   VkDevice                                    _device,
    const VkBufferDeviceAddressInfo*            pInfo)
 {
+   LVP_FROM_HANDLE(lvp_device, device, _device);
    LVP_FROM_HANDLE(lvp_buffer, buffer, pInfo->buffer);
+   char *ptr = (char*)buffer->pmem + buffer->offset;
+   simple_mtx_lock(&device->bda_lock);
+   _mesa_hash_table_insert(&device->bda, ptr, buffer);
+   simple_mtx_unlock(&device->bda_lock);
 
-   return (VkDeviceAddress)(uintptr_t)((char*)buffer->pmem + buffer->offset);
+   return (VkDeviceAddress)(uintptr_t)ptr;
 }
 
 VKAPI_ATTR uint64_t VKAPI_CALL lvp_GetBufferOpaqueCaptureAddress(
@@ -467,6 +523,7 @@ lvp_create_samplerview_buffer(struct pipe_context *pctx, struct lvp_buffer_view 
    if (!bv)
       return NULL;
 
+   struct pipe_resource *bo = ((struct lvp_buffer *)bv->vk.buffer)->bo;
    struct pipe_sampler_view templ;
    memset(&templ, 0, sizeof(templ));
    templ.target = PIPE_BUFFER;
@@ -475,11 +532,11 @@ lvp_create_samplerview_buffer(struct pipe_context *pctx, struct lvp_buffer_view 
    templ.swizzle_b = PIPE_SWIZZLE_Z;
    templ.swizzle_a = PIPE_SWIZZLE_W;
    templ.format = bv->pformat;
-   templ.u.buf.offset = bv->offset;
-   templ.u.buf.size = bv->range;
-   templ.texture = bv->buffer->bo;
+   templ.u.buf.offset = bv->vk.offset;
+   templ.u.buf.size = bv->vk.range;
+   templ.texture = bo;
    templ.context = pctx;
-   return pctx->create_sampler_view(pctx, bv->buffer->bo, &templ);
+   return pctx->create_sampler_view(pctx, bo, &templ);
 }
 
 static struct pipe_image_view
@@ -488,10 +545,10 @@ lvp_create_imageview_buffer(const struct lvp_buffer_view *bv)
    struct pipe_image_view view = {0};
    if (!bv)
       return view;
-   view.resource = bv->buffer->bo;
+   view.resource = ((struct lvp_buffer *)bv->vk.buffer)->bo;
    view.format = bv->pformat;
-   view.u.buf.offset = bv->offset;
-   view.u.buf.size = bv->range;
+   view.u.buf.offset = bv->vk.offset;
+   view.u.buf.size = bv->vk.range;
    return view;
 }
 
@@ -504,25 +561,30 @@ lvp_CreateBufferView(VkDevice _device,
    LVP_FROM_HANDLE(lvp_device, device, _device);
    LVP_FROM_HANDLE(lvp_buffer, buffer, pCreateInfo->buffer);
    struct lvp_buffer_view *view;
-   view = vk_zalloc2(&device->vk.alloc, pAllocator, sizeof(*view), 8,
-                     VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+
+   view = vk_buffer_view_create(&device->vk,
+				pCreateInfo,
+				pAllocator,
+				sizeof(*view));
    if (!view)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   vk_object_base_init(&device->vk, &view->base,
-                       VK_OBJECT_TYPE_BUFFER_VIEW);
-   view->buffer = buffer;
-   view->format = pCreateInfo->format;
    view->pformat = lvp_vk_format_to_pipe_format(pCreateInfo->format);
-   view->offset = pCreateInfo->offset;
-   if (pCreateInfo->range == VK_WHOLE_SIZE)
-      view->range = view->buffer->size - view->offset;
-   else
-      view->range = pCreateInfo->range;
-   if (buffer->bo->bind & PIPE_BIND_SAMPLER_VIEW)
+
+   simple_mtx_lock(&device->queue.lock);
+
+   if (buffer->bo->bind & PIPE_BIND_SAMPLER_VIEW) {
       view->sv = lvp_create_samplerview_buffer(device->queue.ctx, view);
-   if (buffer->bo->bind & PIPE_BIND_SHADER_IMAGE)
+      view->texture_handle = (void *)(uintptr_t)device->queue.ctx->create_texture_handle(device->queue.ctx, view->sv, NULL);
+   }
+
+   if (buffer->bo->bind & PIPE_BIND_SHADER_IMAGE) {
       view->iv = lvp_create_imageview_buffer(view);
+      view->image_handle = (void *)(uintptr_t)device->queue.ctx->create_image_handle(device->queue.ctx, &view->iv);
+   }
+
+   simple_mtx_unlock(&device->queue.lock);
+
    *pView = lvp_buffer_view_to_handle(view);
 
    return VK_SUCCESS;
@@ -537,7 +599,147 @@ lvp_DestroyBufferView(VkDevice _device, VkBufferView bufferView,
 
    if (!bufferView)
      return;
+
+   simple_mtx_lock(&device->queue.lock);
+
    pipe_sampler_view_reference(&view->sv, NULL);
-   vk_object_base_finish(&view->base);
-   vk_free2(&device->vk.alloc, pAllocator, view);
+   device->queue.ctx->delete_texture_handle(device->queue.ctx, (uint64_t)(uintptr_t)view->texture_handle);
+
+   device->queue.ctx->delete_image_handle(device->queue.ctx, (uint64_t)(uintptr_t)view->image_handle);
+
+   simple_mtx_unlock(&device->queue.lock);
+
+   vk_buffer_view_destroy(&device->vk, pAllocator, &view->vk);
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+lvp_CopyMemoryToImageEXT(VkDevice _device, const VkCopyMemoryToImageInfoEXT *pCopyMemoryToImageInfo)
+{
+   LVP_FROM_HANDLE(lvp_device, device, _device);
+   LVP_FROM_HANDLE(lvp_image, image, pCopyMemoryToImageInfo->dstImage);
+   for (unsigned i = 0; i < pCopyMemoryToImageInfo->regionCount; i++) {
+      const VkMemoryToImageCopyEXT *copy = &pCopyMemoryToImageInfo->pRegions[i];
+      struct pipe_box box = {
+         .x = copy->imageOffset.x,
+         .y = copy->imageOffset.y,
+         .width = copy->imageExtent.width,
+         .height = copy->imageExtent.height,
+         .depth = 1,
+      };
+      switch (image->bo->target) {
+      case PIPE_TEXTURE_CUBE:
+      case PIPE_TEXTURE_CUBE_ARRAY:
+      case PIPE_TEXTURE_2D_ARRAY:
+      case PIPE_TEXTURE_1D_ARRAY:
+         /* these use layer */
+         box.z = copy->imageSubresource.baseArrayLayer;
+         box.depth = copy->imageSubresource.layerCount;
+         break;
+      case PIPE_TEXTURE_3D:
+         /* this uses depth */
+         box.z = copy->imageOffset.z;
+         box.depth = copy->imageExtent.depth;
+         break;
+      default:
+         break;
+      }
+
+      unsigned stride = util_format_get_stride(image->bo->format, copy->memoryRowLength ? copy->memoryRowLength : box.width);
+      unsigned layer_stride = util_format_get_2d_size(image->bo->format, stride, copy->memoryImageHeight ? copy->memoryImageHeight : box.height);
+      device->queue.ctx->texture_subdata(device->queue.ctx, image->bo, copy->imageSubresource.mipLevel, 0,
+                                         &box, copy->pHostPointer, stride, layer_stride);
+   }
+   return VK_SUCCESS;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+lvp_CopyImageToMemoryEXT(VkDevice _device, const VkCopyImageToMemoryInfoEXT *pCopyImageToMemoryInfo)
+{
+   LVP_FROM_HANDLE(lvp_device, device, _device);
+   LVP_FROM_HANDLE(lvp_image, image, pCopyImageToMemoryInfo->srcImage);
+
+   for (unsigned i = 0; i < pCopyImageToMemoryInfo->regionCount; i++) {
+      const VkImageToMemoryCopyEXT *copy = &pCopyImageToMemoryInfo->pRegions[i];
+      struct pipe_box box = {
+         .x = copy->imageOffset.x,
+         .y = copy->imageOffset.y,
+         .width = copy->imageExtent.width,
+         .height = copy->imageExtent.height,
+         .depth = 1,
+      };
+      switch (image->bo->target) {
+      case PIPE_TEXTURE_CUBE:
+      case PIPE_TEXTURE_CUBE_ARRAY:
+      case PIPE_TEXTURE_2D_ARRAY:
+      case PIPE_TEXTURE_1D_ARRAY:
+         /* these use layer */
+         box.z = copy->imageSubresource.baseArrayLayer;
+         box.depth = copy->imageSubresource.layerCount;
+         break;
+      case PIPE_TEXTURE_3D:
+         /* this uses depth */
+         box.z = copy->imageOffset.z;
+         box.depth = copy->imageExtent.depth;
+         break;
+      default:
+         break;
+      }
+      struct pipe_transfer *xfer;
+      uint8_t *data = device->queue.ctx->texture_map(device->queue.ctx, image->bo, copy->imageSubresource.mipLevel,
+                                                     PIPE_MAP_READ | PIPE_MAP_UNSYNCHRONIZED | PIPE_MAP_THREAD_SAFE, &box, &xfer);
+      if (!data)
+         return VK_ERROR_MEMORY_MAP_FAILED;
+
+      unsigned stride = util_format_get_stride(image->bo->format, copy->memoryRowLength ? copy->memoryRowLength : box.width);
+      unsigned layer_stride = util_format_get_2d_size(image->bo->format, stride, copy->memoryImageHeight ? copy->memoryImageHeight : box.height);
+      util_copy_box(copy->pHostPointer, image->bo->format, stride, layer_stride,
+                    /* offsets are all zero because texture_map handles the offset */
+                    0, 0, 0, box.width, box.height, box.depth, data, xfer->stride, xfer->layer_stride, 0, 0, 0);
+      pipe_texture_unmap(device->queue.ctx, xfer);
+   }
+   return VK_SUCCESS;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+lvp_CopyImageToImageEXT(VkDevice _device, const VkCopyImageToImageInfoEXT *pCopyImageToImageInfo)
+{
+   LVP_FROM_HANDLE(lvp_device, device, _device);
+   LVP_FROM_HANDLE(lvp_image, src_image, pCopyImageToImageInfo->srcImage);
+   LVP_FROM_HANDLE(lvp_image, dst_image, pCopyImageToImageInfo->dstImage);
+
+   /* basically the same as handle_copy_image() */
+   for (unsigned i = 0; i < pCopyImageToImageInfo->regionCount; i++) {
+      struct pipe_box src_box;
+      src_box.x = pCopyImageToImageInfo->pRegions[i].srcOffset.x;
+      src_box.y = pCopyImageToImageInfo->pRegions[i].srcOffset.y;
+      src_box.width = pCopyImageToImageInfo->pRegions[i].extent.width;
+      src_box.height = pCopyImageToImageInfo->pRegions[i].extent.height;
+      if (src_image->bo->target == PIPE_TEXTURE_3D) {
+         src_box.depth = pCopyImageToImageInfo->pRegions[i].extent.depth;
+         src_box.z = pCopyImageToImageInfo->pRegions[i].srcOffset.z;
+      } else {
+         src_box.depth = pCopyImageToImageInfo->pRegions[i].srcSubresource.layerCount;
+         src_box.z = pCopyImageToImageInfo->pRegions[i].srcSubresource.baseArrayLayer;
+      }
+
+      unsigned dstz = dst_image->bo->target == PIPE_TEXTURE_3D ?
+                      pCopyImageToImageInfo->pRegions[i].dstOffset.z :
+                      pCopyImageToImageInfo->pRegions[i].dstSubresource.baseArrayLayer;
+      device->queue.ctx->resource_copy_region(device->queue.ctx, dst_image->bo,
+                                              pCopyImageToImageInfo->pRegions[i].dstSubresource.mipLevel,
+                                              pCopyImageToImageInfo->pRegions[i].dstOffset.x,
+                                              pCopyImageToImageInfo->pRegions[i].dstOffset.y,
+                                              dstz,
+                                              src_image->bo,
+                                              pCopyImageToImageInfo->pRegions[i].srcSubresource.mipLevel,
+                                              &src_box);
+   }
+   return VK_SUCCESS;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+lvp_TransitionImageLayoutEXT(VkDevice device, uint32_t transitionCount, const VkHostImageLayoutTransitionInfoEXT *pTransitions)
+{
+   /* no-op */
+   return VK_SUCCESS;
 }

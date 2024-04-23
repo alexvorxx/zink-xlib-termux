@@ -3,9 +3,9 @@
 
 # When changing this file, you need to bump the following
 # .gitlab-ci/image-tags.yml tags:
-# DEBIAN_X86_TEST_ANDROID_TAG
-# DEBIAN_X86_TEST_GL_TAG
-# DEBIAN_X86_TEST_VK_TAG
+# DEBIAN_X86_64_TEST_ANDROID_TAG
+# DEBIAN_X86_64_TEST_GL_TAG
+# DEBIAN_X86_64_TEST_VK_TAG
 # KERNEL_ROOTFS_TAG
 
 set -ex
@@ -14,7 +14,7 @@ git config --global user.email "mesa@example.com"
 git config --global user.name "Mesa CI"
 git clone \
     https://github.com/KhronosGroup/VK-GL-CTS.git \
-    -b vulkan-cts-1.3.5.1 \
+    -b vulkan-cts-1.3.6.3 \
     --depth 1 \
     /VK-GL-CTS
 pushd /VK-GL-CTS
@@ -26,23 +26,27 @@ pushd /VK-GL-CTS
 # patches.
 
 cts_commits_to_backport=(
-        # queue_transfer fix
-        8771481027d76a262195de8397d8985246bca98f
+        # GL/GLES vertex_attrib_binding.advanced-largeStrideAndOffsetsNewAndLegacyAPI fix
+        bdb456dcf85e34fced872ebdaf06f6b73451f99c
 
-        # sync fix for SSBO writes
-        44f1be32fe6bd2a7de7b9169fc71cc44e0b26124
+        # GL arrays_of_arrays perf fix
+        b481dada59734e8e34050fe884ba6d627d9e5c54
 
-        # correctness fixes for zink validation fails
-        1923cbc89ed3969a3afe7c6926124b51157902e1
-        af3a979c49dc65f8809c27660405ae3a76c7da4a
-        6b70682c57c4ffd07fdf6bcbf1aebd7cf1123629
+        # Test alpha-less 10bit formats correctly in wide_color tests
+        # Fixes dEQP-EGL.functional.wide_color.*_888_colorspace_*
+        dacf752adf388ce4399733ee9b4a3c8a4f317990
 
-        # video validation fails
-        4cc3980a86ba5b7fe6e76b559cc1a9cb5fd1b253
-        a7a2ce442db51ca058ce051de7e09d62db44ae81
+        # KHR-GLES3.packed_pixels.*snorm
+        46158c2a1f570aab0dcefba461ddc879323367d5
 
-        # Check for robustness before testing it
-        ee7138d8adf5ed3c4845e5ac2553c4f9697be9d8
+        # Fix problems when buffer_storage not supported
+        148a65182d88ee6c1c959a3b3cf75df22a3eae82
+
+        # surfaceless: Fix shared contexts and implement makeCurrent
+        3b9859deb22712b8b927dce1fac0b40008202877
+
+        # Don't attempt to test linear-filtered depth border clamping on ES.
+        3b3c101a06f1e4fc6acd3d6b40c813cd1bdc25ef
 )
 
 for commit in "${cts_commits_to_backport[@]}"
@@ -100,7 +104,7 @@ cmake -S /VK-GL-CTS -B . -G Ninja \
       -DDEQP_TARGET=${DEQP_TARGET:-x11_glx} \
       -DCMAKE_BUILD_TYPE=Release \
       $EXTRA_CMAKE_ARGS
-ninja
+mold --run ninja
 
 if [ "${DEQP_TARGET}" = 'android' ]; then
     mv /deqp/modules/egl/deqp-egl /deqp/modules/egl/deqp-egl-android

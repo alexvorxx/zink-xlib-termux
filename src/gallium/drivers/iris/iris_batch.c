@@ -229,11 +229,8 @@ iris_init_batch(struct iris_context *ice,
    }
 
    if (INTEL_DEBUG(DEBUG_ANY)) {
-      const unsigned decode_flags =
-         INTEL_BATCH_DECODE_FULL |
-         (INTEL_DEBUG(DEBUG_COLOR) ? INTEL_BATCH_DECODE_IN_COLOR : 0) |
-         INTEL_BATCH_DECODE_OFFSETS |
-         INTEL_BATCH_DECODE_FLOATS;
+      const unsigned decode_flags = INTEL_BATCH_DECODE_DEFAULT_FLAGS |
+         (INTEL_DEBUG(DEBUG_COLOR) ? INTEL_BATCH_DECODE_IN_COLOR : 0);
 
       intel_batch_decode_ctx_init(&batch->decoder, &screen->compiler->isa,
                                   screen->devinfo,
@@ -551,9 +548,9 @@ void iris_batch_maybe_begin_frame(struct iris_batch *batch)
 {
    struct iris_context *ice = batch->ice;
 
-   if (ice->tracing_begin_frame != ice->frame) {
+   if (ice->utrace.begin_frame != ice->frame) {
       trace_intel_begin_frame(&batch->trace, batch);
-      ice->tracing_begin_frame = ice->tracing_end_frame = ice->frame;
+      ice->utrace.begin_frame = ice->utrace.end_frame = ice->frame;
    }
 }
 
@@ -656,9 +653,9 @@ iris_finish_batch(struct iris_batch *batch)
    trace_intel_end_batch(&batch->trace, batch->name);
 
    struct iris_context *ice = batch->ice;
-   if (ice->tracing_end_frame != ice->frame) {
-      trace_intel_end_frame(&batch->trace, batch, ice->tracing_end_frame);
-      ice->tracing_end_frame = ice->frame;
+   if (ice->utrace.end_frame != ice->frame) {
+      trace_intel_end_frame(&batch->trace, batch, ice->utrace.end_frame);
+      ice->utrace.end_frame = ice->frame;
    }
 
    /* Emit MI_BATCH_BUFFER_END to finish our batch. */
@@ -681,6 +678,8 @@ replace_kernel_ctx(struct iris_batch *batch)
    struct iris_bufmgr *bufmgr = screen->bufmgr;
    const struct intel_device_info *devinfo = iris_bufmgr_get_device_info(bufmgr);
 
+   threaded_context_unwrap_sync(&batch->ice->ctx);
+
    switch (devinfo->kmd_type) {
    case INTEL_KMD_TYPE_I915:
       return iris_i915_replace_batch(batch);
@@ -697,18 +696,19 @@ iris_batch_check_for_reset(struct iris_batch *batch)
 {
    struct iris_screen *screen = batch->screen;
    struct iris_bufmgr *bufmgr = screen->bufmgr;
+   struct iris_context *ice = batch->ice;
    const struct iris_kmd_backend *backend;
-   enum pipe_reset_status status;
+   enum pipe_reset_status status = PIPE_NO_RESET;
+
+   /* Banned context was already signalled to application */
+   if (ice->context_reset_signaled)
+      return status;
 
    backend = iris_bufmgr_get_kernel_driver_backend(bufmgr);
    status = backend->batch_check_for_reset(batch);
-   if (status != PIPE_NO_RESET) {
-      /* Our context is likely banned, or at least in an unknown state.
-       * Throw it away and start with a fresh context.  Ideally this may
-       * catch the problem before our next execbuf fails with -EIO.
-       */
-      replace_kernel_ctx(batch);
-   }
+
+   if (status != PIPE_NO_RESET)
+      ice->context_reset_signaled = true;
 
    return status;
 }
@@ -744,10 +744,13 @@ update_bo_syncobjs(struct iris_batch *batch, struct iris_bo *bo, bool write)
    struct iris_bufmgr *bufmgr = screen->bufmgr;
    struct iris_context *ice = batch->ice;
 
+   simple_mtx_assert_locked(iris_bufmgr_get_bo_deps_lock(bufmgr));
+
    /* Make sure bo->deps is big enough */
    if (screen->id >= bo->deps_size) {
       int new_size = screen->id + 1;
       bo->deps = realloc(bo->deps, new_size * sizeof(bo->deps[0]));
+      assert(bo->deps);
       memset(&bo->deps[bo->deps_size], 0,
              sizeof(bo->deps[0]) * (new_size - bo->deps_size));
 
@@ -815,6 +818,36 @@ iris_batch_update_syncobjs(struct iris_batch *batch)
    }
 }
 
+/**
+ * Convert the syncobj which will be signaled when this batch completes
+ * to a SYNC_FILE object, for use with import/export sync ioctls.
+ */
+bool
+iris_batch_syncobj_to_sync_file_fd(struct iris_batch *batch, int *out_fd)
+{
+   int drm_fd = batch->screen->fd;
+
+   struct iris_syncobj *batch_syncobj =
+      iris_batch_get_signal_syncobj(batch);
+
+   struct drm_syncobj_handle syncobj_to_fd_ioctl = {
+      .handle = batch_syncobj->handle,
+      .flags = DRM_SYNCOBJ_HANDLE_TO_FD_FLAGS_EXPORT_SYNC_FILE,
+      .fd = -1,
+   };
+   if (intel_ioctl(drm_fd, DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD,
+                   &syncobj_to_fd_ioctl)) {
+      fprintf(stderr, "DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD ioctl failed (%d)\n",
+              errno);
+      return false;
+   }
+
+   assert(syncobj_to_fd_ioctl.fd >= 0);
+   *out_fd = syncobj_to_fd_ioctl.fd;
+
+   return true;
+}
+
 const char *
 iris_batch_name_to_string(enum iris_batch_name name)
 {
@@ -827,12 +860,12 @@ iris_batch_name_to_string(enum iris_batch_name name)
 }
 
 static inline bool
-context_or_engine_was_banned(struct iris_bufmgr *bufmgr, int ret)
+context_or_exec_queue_was_banned(struct iris_bufmgr *bufmgr, int ret)
 {
    enum intel_kmd_type kmd_type = iris_bufmgr_get_device_info(bufmgr)->kmd_type;
 
    /* In i915 EIO means our context is banned, while on Xe ECANCELED means
-    * our engine was banned
+    * our exec queue was banned
     */
    if ((kmd_type == INTEL_KMD_TYPE_I915 && ret == -EIO) ||
        (kmd_type == INTEL_KMD_TYPE_XE && ret == -ECANCELED))
@@ -867,7 +900,7 @@ _iris_batch_flush(struct iris_batch *batch, const char *file, int line)
 
       enum intel_kmd_type kmd_type = iris_bufmgr_get_device_info(bufmgr)->kmd_type;
       uint32_t batch_ctx_id = kmd_type == INTEL_KMD_TYPE_I915 ?
-                              batch->i915.ctx_id : batch->xe.engine_id;
+                              batch->i915.ctx_id : batch->xe.exec_queue_id;
       fprintf(stderr, "%19s:%-3d: %s batch [%u] flush with %5db (%0.1f%%) "
               "(cmds), %4d BOs (%0.1fMb aperture)\n",
               file, line, iris_batch_name_to_string(batch->name),
@@ -924,8 +957,12 @@ _iris_batch_flush(struct iris_batch *batch, const char *file, int line)
     * has been lost and needs to be re-initialized.  If this succeeds,
     * dubiously claim success...
     */
-   if (ret && context_or_engine_was_banned(bufmgr, ret)) {
+   if (ret && context_or_exec_queue_was_banned(bufmgr, ret)) {
       enum pipe_reset_status status = iris_batch_check_for_reset(batch);
+
+      if (status != PIPE_NO_RESET || ice->context_reset_signaled)
+         replace_kernel_ctx(batch);
+
       if (batch->reset->reset) {
          /* Tell gallium frontends the device is lost and it was our fault. */
          batch->reset->reset(batch->reset->data, status);

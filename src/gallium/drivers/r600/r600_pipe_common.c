@@ -27,7 +27,6 @@
 #include "r600_pipe_common.h"
 #include "r600_cs.h"
 #include "evergreen_compute.h"
-#include "tgsi/tgsi_parse.h"
 #include "util/list.h"
 #include "util/u_draw_quad.h"
 #include "util/u_memory.h"
@@ -205,10 +204,9 @@ void r600_draw_rectangle(struct blitter_context *blitter,
 	/* draw */
 	struct pipe_vertex_buffer vbuffer = {};
 	vbuffer.buffer.resource = buf;
-	vbuffer.stride = 2 * 4 * sizeof(float); /* vertex size */
 	vbuffer.buffer_offset = offset;
 
-	rctx->b.set_vertex_buffers(&rctx->b, blitter->vb_slot, 1, 0, false, &vbuffer);
+	rctx->b.set_vertex_buffers(&rctx->b, 1, 0, false, &vbuffer);
 	util_draw_arrays_instanced(&rctx->b, R600_PRIM_RECTANGLE_LIST, 0, 3,
 				   0, num_instances);
 	pipe_resource_reference(&buf, NULL);
@@ -634,13 +632,13 @@ bool r600_common_context_init(struct r600_common_context *rctx,
 	if (!rctx->b.const_uploader)
 		return false;
 
-	rctx->ctx = rctx->ws->ctx_create(rctx->ws, RADEON_CTX_PRIORITY_MEDIUM);
+	rctx->ctx = rctx->ws->ctx_create(rctx->ws, RADEON_CTX_PRIORITY_MEDIUM, false);
 	if (!rctx->ctx)
 		return false;
 
 	if (rscreen->info.ip[AMD_IP_SDMA].num_queues && !(rscreen->debug_flags & DBG_NO_ASYNC_DMA)) {
 		rctx->ws->cs_create(&rctx->dma.cs, rctx->ctx, AMD_IP_SDMA,
-                                    r600_flush_dma_ring, rctx, false);
+                                    r600_flush_dma_ring, rctx);
 		rctx->dma.flush = r600_flush_dma_ring;
 	}
 
@@ -1034,8 +1032,9 @@ static int r600_get_compute_param(struct pipe_screen *screen,
 		}
 		return sizeof(uint32_t);
 	case PIPE_COMPUTE_CAP_MAX_PRIVATE_SIZE:
+	case PIPE_COMPUTE_CAP_MAX_SUBGROUPS:
 		break; /* unused */
-	case PIPE_COMPUTE_CAP_SUBGROUP_SIZE:
+	case PIPE_COMPUTE_CAP_SUBGROUP_SIZES:
 		if (ret) {
 			uint32_t *subgroup_size = ret;
 			*subgroup_size = r600_wavefront_size(rscreen->family);
@@ -1095,7 +1094,7 @@ static bool r600_fence_finish(struct pipe_screen *screen,
 			return false;
 
 		/* Recompute the timeout after waiting. */
-		if (timeout && timeout != PIPE_TIMEOUT_INFINITE) {
+		if (timeout && timeout != OS_TIMEOUT_INFINITE) {
 			int64_t time = os_time_get_nano();
 			timeout = abs_timeout > time ? abs_timeout - time : 0;
 		}
@@ -1115,7 +1114,7 @@ static bool r600_fence_finish(struct pipe_screen *screen,
 			return false;
 
 		/* Recompute the timeout after all that. */
-		if (timeout && timeout != PIPE_TIMEOUT_INFINITE) {
+		if (timeout && timeout != OS_TIMEOUT_INFINITE) {
 			int64_t time = os_time_get_nano();
 			timeout = abs_timeout > time ? abs_timeout - time : 0;
 		}
@@ -1340,6 +1339,8 @@ bool r600_common_screen_init(struct r600_common_screen *rscreen,
 		.lower_fmod = true,
 		.lower_uadd_carry = true,
 		.lower_usub_borrow = true,
+		.lower_bitfield_extract = true,
+		.lower_bitfield_insert = true,
 		.lower_extract_byte = true,
 		.lower_extract_word = true,
 		.lower_insert_byte = true,
@@ -1359,11 +1360,13 @@ bool r600_common_screen_init(struct r600_common_screen *rscreen,
 		.use_interpolated_input_intrinsics = true,
 		.has_fsub = true,
 		.has_isub = true,
+		.has_find_msb_rev = true,
 		.lower_iabs = true,
 		.lower_uadd_sat = true,
 		.lower_usub_sat = true,
 		.has_fused_comp_and_csel = true,
-		.lower_find_msb_to_reverse = true,
+		.lower_ifind_msb = true,
+		.lower_ufind_msb = true,
 		.lower_to_scalar = true,
 		.lower_to_scalar_filter = r600_lower_to_scalar_instr_filter,
 		.linker_ignore_precision = true,
@@ -1372,7 +1375,7 @@ bool r600_common_screen_init(struct r600_common_screen *rscreen,
 		.lower_cs_local_index_to_id = true,
 		.lower_uniforms_to_ubo = true,
 		.lower_image_offset_to_range_base = 1,
-		.vectorize_tess_levels = 1
+		.vectorize_tess_levels = 1,
 	};
 
 	rscreen->nir_options = nir_options;
@@ -1381,16 +1384,15 @@ bool r600_common_screen_init(struct r600_common_screen *rscreen,
 		rscreen->nir_options.force_indirect_unrolling_sampler = true;
 
 	if (rscreen->info.gfx_level >= EVERGREEN) {
-		rscreen->nir_options.lower_bitfield_extract = true;
-		rscreen->nir_options.lower_bitfield_insert_to_bitfield_select = true;
+		rscreen->nir_options.has_bfe = true;
+		rscreen->nir_options.has_bfm = true;
+		rscreen->nir_options.has_bitfield_select = true;
 	}
 
 	if (rscreen->info.gfx_level < EVERGREEN) {
 		/* Pre-EG doesn't have these ALU ops */
 		rscreen->nir_options.lower_bit_count = true;
 		rscreen->nir_options.lower_bitfield_reverse = true;
-		rscreen->nir_options.lower_bitfield_insert_to_shifts = true;
-		rscreen->nir_options.lower_bitfield_extract_to_shifts = true;
 	}
 
 	if (rscreen->info.gfx_level < CAYMAN) {

@@ -25,7 +25,6 @@
 
 #include "r600_pipe.h"
 #include "r600_isa.h"
-#include "tgsi/tgsi_exec.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -216,6 +215,7 @@ struct r600_bytecode_cf {
 	unsigned isa[2];
 	unsigned nlds_read;
 	unsigned nqueue_read;
+	unsigned clause_local_written;
 };
 
 #define FC_NONE				0
@@ -284,8 +284,8 @@ struct r600_bytecode {
 	struct r600_isa* isa;
 	struct r600_bytecode_output pending_outputs[5];
 	int n_pending_outputs;
-	boolean			need_wait_ack; /* emit a pending WAIT_ACK prior to control flow */
-	boolean			precise;
+	bool			need_wait_ack; /* emit a pending WAIT_ACK prior to control flow */
+	bool			precise;
 };
 
 /* eg_asm.c */

@@ -87,9 +87,7 @@ upload_blorp_shader(struct blorp_batch *batch, uint32_t stage,
 void
 anv_device_init_blorp(struct anv_device *device)
 {
-   const struct blorp_config config = {
-      .use_mesh_shading = device->physical->vk.supported_extensions.NV_mesh_shader,
-   };
+   const struct blorp_config config = {};
 
    blorp_init(&device->blorp, device, &device->isl_dev, &config);
    device->blorp.compiler = device->physical->compiler;
@@ -1826,6 +1824,12 @@ anv_image_mcs_op(struct anv_cmd_buffer *cmd_buffer,
                              ANV_PIPE_END_OF_PIPE_SYNC_BIT,
                              "before fast clear mcs");
 
+   if (!blorp_address_is_null(surf.clear_color_addr)) {
+      anv_add_pending_pipe_bits(cmd_buffer,
+                                ANV_PIPE_STATE_CACHE_INVALIDATE_BIT,
+                                "before blorp clear color edit");
+   }
+
    switch (mcs_op) {
    case ISL_AUX_OP_FAST_CLEAR:
       blorp_fast_clear(&batch, &surf, format, swizzle,
@@ -1913,6 +1917,12 @@ anv_image_ccs_op(struct anv_cmd_buffer *cmd_buffer,
                              ANV_PIPE_PSS_STALL_SYNC_BIT |
                              ANV_PIPE_END_OF_PIPE_SYNC_BIT,
                              "before fast clear ccs");
+
+   if (!blorp_address_is_null(surf.clear_color_addr)) {
+      anv_add_pending_pipe_bits(cmd_buffer,
+                                ANV_PIPE_STATE_CACHE_INVALIDATE_BIT,
+                                "before blorp clear color edit");
+   }
 
    switch (ccs_op) {
    case ISL_AUX_OP_FAST_CLEAR:

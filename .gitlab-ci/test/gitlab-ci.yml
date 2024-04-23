@@ -17,68 +17,90 @@
     paths:
       - results/
 
-rustfmt:
+.formatting-check:
   # Cancel job if a newer commit is pushed to the same branch
   interruptible: true
   stage: lint
   extends:
-    - .use-debian/x86_build
-    - .lint-rustfmt-rules
+    - .use-debian/x86_64_build
+  rules:
+    # in merge pipeline, don't touch the default settings
+    - if: $GITLAB_USER_LOGIN == "marge-bot" && $CI_COMMIT_BRANCH == null
+    # in other pipelines, formatting checks are allowed to fail
+    - allow_failure: true
   variables:
     GIT_STRATEGY: fetch
+  timeout: 10m
   script:
+    - git diff --color=always --exit-code  # Fails if there are diffs
+
+rustfmt:
+  extends:
+    - .formatting-check
+    - .lint-rustfmt-rules
+  before_script:
     - shopt -s globstar
-    - rustfmt --check --verbose src/**/lib.rs
+    - rustfmt --version
+    - rustfmt --verbose src/**/lib.rs
 
 clang-format:
-  # Cancel job if a newer commit is pushed to the same branch
-  interruptible: true
-  stage: lint
   extends:
-    - .use-debian/x86_build
+    - .formatting-check
     - .lint-clang-format-rules
   variables:
-    GIT_STRATEGY: fetch
-  script:
+    LLVM_VERSION: 15
+  before_script:
     - shopt -s globstar
-    - clang-format-13 --Werror --dry-run src/**/{asahi,panfrost}/**/*.{h,c,cpp}
+    # We need a meson build dir, but its config doesn't actually matter, so
+    # let's just use the default.
+    - meson setup build
+    - clang-format-${LLVM_VERSION} --version
+    - ninja -C build clang-format
 
 .test-gl:
   extends:
     - .test
-    - .use-debian/x86_test-gl
+    - .use-debian/x86_64_test-gl
   needs:
-    - debian/x86_test-gl
+    - debian/x86_64_test-gl
     - debian-testing
+    - !reference [.required-for-hardware-jobs, needs]
+  variables:
+    DEBIAN_ARCH: amd64
 
 .test-vk:
   extends:
     - .test
-    - .use-debian/x86_test-vk
+    - .use-debian/x86_64_test-vk
   needs:
     - debian-testing
-    - debian/x86_test-vk
+    - debian/x86_64_test-vk
+    - !reference [.required-for-hardware-jobs, needs]
+  variables:
+    DEBIAN_ARCH: amd64
 
 .test-cl:
   extends:
     - .test
-    - .use-debian/x86_test-gl
+    - .use-debian/x86_64_test-gl
   needs:
-    - debian/x86_test-gl
+    - debian/x86_64_test-gl
+    - !reference [.required-for-hardware-jobs, needs]
 
 .test-android:
   extends:
     - .test
-    - .use-debian/x86_test-android
+    - .use-debian/x86_64_test-android
   variables:
-    MINIO_ARTIFACT_NAME: mesa-x86_64-android
+    S3_ARTIFACT_NAME: mesa-x86_64-android-debug
   needs:
     - job: debian-testing
       artifacts: true  # On the host we want the Linux build
     - job: debian-android
       artifacts: false  # The Android build will be downloaded later
-    - job: debian/x86_test-android
+    - job: debian/x86_64_test-android
       artifacts: false
+    - !reference [.required-for-hardware-jobs, needs]
   timeout: 20m
   script:
     - ./install/cuttlefish-runner.sh
@@ -122,6 +144,8 @@ clang-format:
       - results/*.shader_cache
   variables:
     PIGLIT_REPLAY_EXTRA_ARGS: --keep-image --db-path ${CI_PROJECT_DIR}/replayer-db/ --minio_bucket=mesa-tracie-public --jwt-file=${CI_JOB_JWT_FILE}
+    # until we overcome Infrastructure issues, give traces extra 5 min before timeout
+    DEVICE_HANGING_TIMEOUT_SEC: 600
   script:
     - section_start variables "Variables passed through:"
     - install/common/generate-env.sh
@@ -130,6 +154,7 @@ clang-format:
 
 .deqp-test:
   script:
+    - rm -rf results # Clear out old results if the docker container was cached
     - ./install/deqp-runner.sh
   artifacts:
     exclude:
@@ -166,8 +191,10 @@ clang-format:
     - section_start artifacts_download "Downloading artifacts from s3"
     # Note: Build dir (and thus install) may be dirty due to GIT_STRATEGY
     - rm -rf install
-    - (set -x; curl -L --retry 4 -f --retry-all-errors --retry-delay 60 ${FDO_HTTP_CACHE_URI:-}https://${PIPELINE_ARTIFACTS_BASE}/${MINIO_ARTIFACT_NAME}.tar.zst | tar --zstd -x)
+    - (set -x; curl -L --retry 4 -f --retry-all-errors --retry-delay 60 ${FDO_HTTP_CACHE_URI:-}https://${PIPELINE_ARTIFACTS_BASE}/${S3_ARTIFACT_NAME}.tar.zst | tar --zstd -x)
     - section_end artifacts_download
+  variables:
+    BM_ROOTFS: /rootfs-${DEBIAN_ARCH}
   artifacts:
     when: always
     name: "mesa_${CI_JOB_NAME}"
@@ -180,17 +207,18 @@ clang-format:
       junit: results/junit.xml
 
 # ARM testing of bare-metal boards attached to an x86 gitlab-runner system
-.baremetal-test-armhf:
+.baremetal-test-arm32:
   extends:
     - .baremetal-test
-    - .use-debian/armhf_test
+    - .use-debian/arm32_test
   variables:
-    BM_ROOTFS: /rootfs-armhf
-    MINIO_ARTIFACT_NAME: mesa-armhf
+    DEBIAN_ARCH: armhf
+    S3_ARTIFACT_NAME: mesa-arm32-default-debugoptimized
   needs:
-    - debian/armhf_test
-    - job: debian-armhf
+    - debian/arm32_test
+    - job: debian-arm32
       artifacts: false
+    - !reference [.required-for-hardware-jobs, needs]
 
 # ARM64 testing of bare-metal boards attached to an x86 gitlab-runner system
 .baremetal-test-arm64:
@@ -198,25 +226,40 @@ clang-format:
     - .baremetal-test
     - .use-debian/arm64_test
   variables:
-    BM_ROOTFS: /rootfs-arm64
-    MINIO_ARTIFACT_NAME: mesa-arm64
+    DEBIAN_ARCH: arm64
+    S3_ARTIFACT_NAME: mesa-arm64-default-debugoptimized
   needs:
     - debian/arm64_test
     - job: debian-arm64
       artifacts: false
+    - !reference [.required-for-hardware-jobs, needs]
 
-# ARM64 testing of bare-metal boards attached to an x86 gitlab-runner system, using an asan mesa build
+# ARM32/64 testing of bare-metal boards attached to an x86 gitlab-runner system, using an asan mesa build
+.baremetal-arm32-asan-test:
+  extends:
+    - .baremetal-test
+    - .use-debian/arm32_test
+  variables:
+    DEQP_RUNNER_OPTIONS: "--env LD_PRELOAD=libasan.so.8:/install/lib/libdlclose-skip.so"
+    S3_ARTIFACT_NAME: mesa-arm32-asan-debugoptimized
+  needs:
+    - debian/arm32_test
+    - job: debian-arm32-asan
+      artifacts: false
+    - !reference [.required-for-hardware-jobs, needs]
+
 .baremetal-arm64-asan-test:
   extends:
     - .baremetal-test
     - .use-debian/arm64_test
   variables:
-    DEQP_RUNNER_OPTIONS: "--env LD_PRELOAD=libasan.so.6:/install/lib/libdlclose-skip.so"
-    MINIO_ARTIFACT_NAME: mesa-arm64-asan
+    DEQP_RUNNER_OPTIONS: "--env LD_PRELOAD=libasan.so.8:/install/lib/libdlclose-skip.so"
+    S3_ARTIFACT_NAME: mesa-arm64-asan-debugoptimized
   needs:
     - debian/arm64_test
     - job: debian-arm64-asan
       artifacts: false
+    - !reference [.required-for-hardware-jobs, needs]
 
 .baremetal-deqp-test:
   variables:
@@ -229,33 +272,34 @@ clang-format:
   # image:, but the integration is not possible for the current
   # use-case. Within this job, two containers are managed. 1) the
   # gitlab runner container from which the job is submitted to the
-  # DUT, and 2) the test container (e.g. debian/x86_test-vk) within
+  # DUT, and 2) the test container (e.g. debian/x86_64_test-vk) within
   # which the test cases will run on the DUT. Since ci-templates and
   # the associated image setting macros in this file rely on variables
   # like FDO_DISTRIBUTION_TAG for *the* image, there is no way to
   # depend on more than one image per job. So, the job container is
   # built as part of the CI in the boot2container project.
-  image: registry.freedesktop.org/mupuf/valve-infra/mesa-trigger:2023-02-27.1
+  image: registry.freedesktop.org/mupuf/valve-infra/mesa-trigger:2023-03-08.1
   timeout: 1h 40m
   variables:
     # No need by default to pull the whole repo
     GIT_STRATEGY: none
     # boot2container initrd configuration parameters.
     B2C_KERNEL_URL: 'https://gitlab.freedesktop.org/mupuf/valve-infra/-/package_files/519/download'  # Linux 6.1
-    B2C_INITRAMFS_URL: 'https://gitlab.freedesktop.org/mupuf/boot2container/-/releases/v0.9.9/downloads/initramfs.linux_amd64.cpio.xz'
+    B2C_INITRAMFS_URL: 'https://gitlab.freedesktop.org/mupuf/boot2container/-/releases/v0.9.10/downloads/initramfs.linux_amd64.cpio.xz'
     B2C_JOB_SUCCESS_REGEX: '\[.*\]: Execution is over, pipeline status: 0\r$'
-    B2C_JOB_WARN_REGEX: '\*ERROR\* ring .* timeout, but soft recovered'
+    B2C_JOB_WARN_REGEX: '\*ERROR\* ring .* timeout'
     B2C_LOG_LEVEL: 6
     B2C_POWEROFF_DELAY: 15
     B2C_SESSION_END_REGEX: '^.*It''s now safe to turn off your computer\r$'
     B2C_SESSION_REBOOT_REGEX: ''
     B2C_TIMEOUT_BOOT_MINUTES: 45
     B2C_TIMEOUT_BOOT_RETRIES: 0
-    B2C_TIMEOUT_FIRST_MINUTES: 5
+    B2C_TIMEOUT_FIRST_MINUTES: 2
     B2C_TIMEOUT_FIRST_RETRIES: 3
-    B2C_TIMEOUT_MINUTES: 4
+    B2C_TIMEOUT_MINUTES: 5
     B2C_TIMEOUT_OVERALL_MINUTES: 90
     B2C_TIMEOUT_RETRIES: 0
+    B2C_JOB_VOLUME_EXCLUSIONS: "*.shader_cache,install/*,*/install/*,*/vkd3d-proton.cache*,vkd3d-proton.cache*,*.qpa"
 
     # As noted in the top description, we make a distinction between the
     # container used by gitlab-runner to queue the work, and the container
@@ -297,7 +341,7 @@ clang-format:
       [ -d "$CI_COMMON_SCRIPTS" ] || exit 1
 
 
-      B2C_TEST_SCRIPT="bash -c 'tar xf ${INSTALL_TARBALL_NAME}; ./install/common/init-stage2.sh'"
+      B2C_TEST_SCRIPT="bash -euc 'tar xf ${INSTALL_TARBALL_NAME}; ./install/common/init-stage2.sh'"
 
       # The Valve CI gateway receives jobs in a YAML format. Create a
       # job description from the CI environment.
@@ -351,7 +395,7 @@ clang-format:
       # Submit the job to Valve's CI gateway service with the CI
       # provisioned job_folder.
       env PYTHONUNBUFFERED=1 executorctl \
-          run -w b2c.yml.jinja2 -j $(slugify "$CI_JOB_NAME") -s ${JOB_FOLDER}
+          run -w b2c.yml.jinja2 -j $(slugify "$CI_JOB_NAME") -s ${JOB_FOLDER} -i "$CI_RUNNER_DESCRIPTION"
 
       # Anything our job places in results/ will be collected by the
       # Gitlab coordinator for status presentation. results/junit.xml
@@ -367,16 +411,18 @@ clang-format:
 
 .b2c-test-vk:
   extends:
-    - .use-debian/x86_test-vk
+    - .use-debian/x86_64_test-vk
     - .b2c-test
   needs:
-    - debian/x86_test-vk
+    - debian/x86_64_test-vk
     - debian-testing
+    - !reference [.required-for-hardware-jobs, needs]
 
 .b2c-test-gl:
   extends:
-    - .use-debian/x86_test-gl
+    - .use-debian/x86_64_test-gl
     - .b2c-test
   needs:
-    - debian/x86_test-gl
+    - debian/x86_64_test-gl
     - debian-testing
+    - !reference [.required-for-hardware-jobs, needs]

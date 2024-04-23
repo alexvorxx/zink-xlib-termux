@@ -76,7 +76,7 @@ panfrost_clear(struct pipe_context *pipe, unsigned buffers,
    }
 
    /* Once there is content, clear with a fullscreen quad */
-   panfrost_blitter_save(ctx, false /* render condition */);
+   panfrost_blitter_save(ctx, PAN_RENDER_CLEAR);
 
    perf_debug_ctx(ctx, "Clearing with quad");
    util_blitter_clear(
@@ -92,7 +92,7 @@ panfrost_writes_point_size(struct panfrost_context *ctx)
    struct panfrost_compiled_shader *vs = ctx->prog[PIPE_SHADER_VERTEX];
    assert(vs != NULL);
 
-   return vs->info.vs.writes_point_size && ctx->active_prim == PIPE_PRIM_POINTS;
+   return vs->info.vs.writes_point_size && ctx->active_prim == MESA_PRIM_POINTS;
 }
 
 /* The entire frame is in memory -- send it off to the kernel! */
@@ -114,7 +114,7 @@ panfrost_flush(struct pipe_context *pipe, struct pipe_fence_handle **fence,
    }
 
    if (dev->debug & PAN_DBG_TRACE)
-      pandecode_next_frame();
+      pandecode_next_frame(dev->decode_ctx);
 }
 
 static void
@@ -326,8 +326,7 @@ panfrost_bind_sampler_states(struct pipe_context *pctx,
 }
 
 static void
-panfrost_set_vertex_buffers(struct pipe_context *pctx, unsigned start_slot,
-                            unsigned num_buffers,
+panfrost_set_vertex_buffers(struct pipe_context *pctx, unsigned num_buffers,
                             unsigned unbind_num_trailing_slots,
                             bool take_ownership,
                             const struct pipe_vertex_buffer *buffers)
@@ -335,8 +334,8 @@ panfrost_set_vertex_buffers(struct pipe_context *pctx, unsigned start_slot,
    struct panfrost_context *ctx = pan_context(pctx);
 
    util_set_vertex_buffers_mask(ctx->vertex_buffers, &ctx->vb_mask, buffers,
-                                start_slot, num_buffers,
-                                unbind_num_trailing_slots, take_ownership);
+                                num_buffers, unbind_num_trailing_slots,
+                                take_ownership);
 
    ctx->dirty |= PAN_DIRTY_VERTEX;
 }
@@ -886,7 +885,7 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
 
    gallium->flush = panfrost_flush;
    gallium->clear = panfrost_clear;
-   gallium->clear_texture = util_clear_texture;
+   gallium->clear_texture = u_default_clear_texture;
    gallium->texture_barrier = panfrost_texture_barrier;
    gallium->set_frontend_noop = panfrost_set_frontend_noop;
 

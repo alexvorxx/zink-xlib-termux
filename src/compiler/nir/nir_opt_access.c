@@ -49,7 +49,7 @@ struct access_state {
 };
 
 static void
-gather_buffer_access(struct access_state *state, nir_ssa_def *def, bool read, bool write)
+gather_buffer_access(struct access_state *state, nir_def *def, bool read, bool write)
 {
    state->buffers_read |= read;
    state->buffers_written |= write;
@@ -105,10 +105,12 @@ gather_intrinsic(struct access_state *state, nir_intrinsic_instr *instr)
       }
 
       if ((var->data.mode == nir_var_uniform ||
-           var->data.mode == nir_var_image) && read)
+           var->data.mode == nir_var_image) &&
+          read)
          _mesa_set_add(state->vars_read, var);
       if ((var->data.mode == nir_var_uniform ||
-           var->data.mode == nir_var_image) && write)
+           var->data.mode == nir_var_image) &&
+          write)
          _mesa_set_add(state->vars_written, var);
       break;
 
@@ -278,11 +280,10 @@ opt_access_impl(struct access_state *state,
    if (progress) {
       nir_metadata_preserve(impl,
                             nir_metadata_block_index |
-                            nir_metadata_dominance |
-                            nir_metadata_live_ssa_defs |
-                            nir_metadata_loop_analysis);
+                               nir_metadata_dominance |
+                               nir_metadata_live_defs |
+                               nir_metadata_loop_analysis);
    }
-
 
    return progress;
 }
@@ -299,13 +300,11 @@ nir_opt_access(nir_shader *shader, const nir_opt_access_options *options)
    bool var_progress = false;
    bool progress = false;
 
-   nir_foreach_function(func, shader) {
-      if (func->impl) {
-         nir_foreach_block(block, func->impl) {
-            nir_foreach_instr(instr, block) {
-               if (instr->type == nir_instr_type_intrinsic)
-                  gather_intrinsic(&state, nir_instr_as_intrinsic(instr));
-            }
+   nir_foreach_function_impl(impl, shader) {
+      nir_foreach_block(block, impl) {
+         nir_foreach_instr(instr, block) {
+            if (instr->type == nir_instr_type_intrinsic)
+               gather_intrinsic(&state, nir_instr_as_intrinsic(instr));
          }
       }
    }
@@ -318,24 +317,19 @@ nir_opt_access(nir_shader *shader, const nir_opt_access_options *options)
       state.images_read |= state.buffers_read;
    }
 
-   nir_foreach_variable_with_modes(var, shader, nir_var_uniform |
-                                                nir_var_mem_ubo |
-                                                nir_var_mem_ssbo |
-                                                nir_var_image)
+   nir_foreach_variable_with_modes(var, shader, nir_var_uniform | nir_var_mem_ubo | nir_var_mem_ssbo | nir_var_image)
       var_progress |= process_variable(&state, var);
 
-   nir_foreach_function(func, shader) {
-      if (func->impl) {
-         progress |= opt_access_impl(&state, func->impl);
+   nir_foreach_function_impl(impl, shader) {
+      progress |= opt_access_impl(&state, impl);
 
-         /* If we make a change to the uniforms, update all the impls. */
-         if (var_progress) {
-            nir_metadata_preserve(func->impl,
-                                  nir_metadata_block_index |
+      /* If we make a change to the uniforms, update all the impls. */
+      if (var_progress) {
+         nir_metadata_preserve(impl,
+                               nir_metadata_block_index |
                                   nir_metadata_dominance |
-                                  nir_metadata_live_ssa_defs |
+                                  nir_metadata_live_defs |
                                   nir_metadata_loop_analysis);
-         }
       }
    }
 

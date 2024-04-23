@@ -315,6 +315,10 @@ variable:
     Disable async optimized pipeline compiles
   ``nobgc``
     Disable all async pipeline compiles
+  ``mem``
+    Enable memory allocation debugging
+  ``quiet``
+    Suppress probably-harmless warnings
 
 Vulkan Validation Layers
 ^^^^^^^^^^^^^^^^^^^^^^^^

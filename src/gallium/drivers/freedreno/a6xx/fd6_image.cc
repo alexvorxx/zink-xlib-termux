@@ -73,6 +73,8 @@ fd6_image_descriptor(struct fd_context *ctx, const struct pipe_image_view *buf,
                             size);
    } else {
       struct fdl_view_args args = {
+         .chip = A6XX,
+
          .iova = rsc_iova(buf->resource, 0),
 
          .base_miplevel = buf->u.tex.level,
@@ -202,16 +204,12 @@ fd6_build_bindless_state(struct fd_context *ctx, enum pipe_shader_type shader,
       struct pipe_shader_buffer *buf = &bufso->sb[b];
       unsigned idx = b + IR3_BINDLESS_SSBO_OFFSET;
       validate_buffer_descriptor(ctx, set, idx, buf);
-      if (buf->buffer)
-         fd_ringbuffer_attach_bo(ring, fd_resource(buf->buffer)->bo);
    }
 
    u_foreach_bit (b, imgso->enabled_mask) {
       struct pipe_image_view *img = &imgso->si[b];
       unsigned idx = b + IR3_BINDLESS_IMAGE_OFFSET;
       validate_image_descriptor(ctx, set, idx, img);
-      if (img->resource)
-         fd_ringbuffer_attach_bo(ring, fd_resource(img->resource)->bo);
    }
 
    if (!set->bo) {
@@ -257,6 +255,8 @@ fd6_build_bindless_state(struct fd_context *ctx, enum pipe_shader_type shader,
     */
 
    unsigned idx = ir3_shader_descriptor_set(shader);
+
+   fd_ringbuffer_attach_bo(ring, set->bo);
 
    if (shader == PIPE_SHADER_COMPUTE) {
       OUT_REG(ring, HLSQ_INVALIDATE_CMD(CHIP, .cs_bindless = 0x1f));

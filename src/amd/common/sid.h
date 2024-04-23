@@ -1,24 +1,7 @@
 /*
- * Southern Islands Register documentation
- *
  * Copyright (C) 2011  Advanced Micro Devices, Inc.
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE COPYRIGHT HOLDER(S) BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #ifndef SID_H
@@ -224,7 +207,6 @@
  * 5. DST_ADDR_HI [31:0]
  * 6. COMMAND [29:22] | BYTE_COUNT [20:0]
  */
-#define PKT3_DMA_DATA                              0x50 /* GFX7+ */
 #define PKT3_DISPATCH_MESH_INDIRECT_MULTI          0x4C /* Indirect mesh shader only dispatch [GFX only], GFX10.3+ */
 #define   S_4C1_XYZ_DIM_REG(x)                        ((x & 0xFFFF))
 #define   S_4C1_DRAW_INDEX_REG(x)                     ((x & 0xFFFF) << 16)
@@ -240,10 +222,12 @@
 #define   S_4D1_XYZ_DIM_ENABLE(x)                     ((x & 1) << 30) /* GFX11+ */
 #define   S_4D1_MODE1_ENABLE(x)                       ((x & 1) << 29) /* GFX11+ */
 #define   S_4D1_LINEAR_DISPATCH_ENABLE(x)             ((x & 1) << 28) /* GFX11+ */
+#define PKT3_DMA_DATA                              0x50 /* GFX7+ */
 #define PKT3_CONTEXT_REG_RMW                       0x51 /* older firmware versions on older chips don't have this */
 #define PKT3_ONE_REG_WRITE                         0x57 /* GFX6 only */
 #define PKT3_ACQUIRE_MEM                           0x58 /* GFX7+ */
 #define PKT3_REWIND                                0x59 /* GFX8+ [any ring] or GFX7 [compute ring only] */
+#define PKT3_PRIME_UTCL2                           0x5D
 #define PKT3_LOAD_UCONFIG_REG                      0x5E /* GFX7+ */
 #define PKT3_LOAD_SH_REG                           0x5F
 #define PKT3_LOAD_CONTEXT_REG                      0x61
@@ -273,31 +257,26 @@
 #define   S_AD4_XYZ_DIM_REG(x)                        ((x & 0xFFFF))
 #define PKT3_EVENT_WRITE_ZPASS                     0xB1 /* GFX11+ & PFP version >= 1458 */
 #define   EVENT_WRITE_ZPASS_PFP_VERSION               1458
-/* All PAIRS packets require GFX11+ and PFP version >= 1448.
- *
- * SET_CONTEXT_REG_PAIRS:
- * SET_SH_REG_PAIRS:
- *   Format: header, (offset, value)^n.
- *   Consecutive offsets must not be equal. Not recommended because the PACKED variants are better.
- *
- * SET_CONTEXT_REG_PAIRS_PACKED:
- * SET_SH_REG_PAIRS_PACKED:
- * SET_SH_REG_PAIRS_PACKED_N:
- *   Format: header, count, (offset0 | (offset1 << 16), value0, value1)^(count / 2)
- *   Consecutive offsets must not be equal. "count" is the register count and must be aligned to 2.
- *   If the register count is odd, it's recommended to duplicate the first register in the last register.
- *   The SH_*_PACKED* variants require register shadowing to be enabled. The *_N variant is
- *   identical to the non-N variant, but is faster with the following limitation:
- *   If PFP version >= 1463, "count" must be at most 14, else "count" must be at most 8. If "count"
- *   is greater than the limit, use the non-N variant.
+/* Use these on GFX11 with a high PFP firmware version (only dGPUs should have that, not APUs)
+ * because they are the fastest SET packets there. Sadly, we'll need 2 different packet codepaths,
+ * one for GFX11 dGPUs and the other one for GFX11 APUs.
+ *    SET_CONTEXT_REG_PAIRS_PACKED:
+ *    SET_SH_REG_PAIRS_PACKED:
+ *    SET_SH_REG_PAIRS_PACKED_N:
+ *      Format: header, count, (offset0 | (offset1 << 16), value0, value1)^(count / 2)
+ *      - "count" is the register count and must be aligned to 2.
+ *      - Consecutive offsets must not be equal.
+ *      - RESET_FILTER_CAM must be set to 1.
+ *      - If the register count is odd, write the first register again at the end to make it even.
+ *      - The SH_*_PACKED* variants require register shadowing to be enabled.
+ *      - The *_N variant is identical to the non-N variant, but the maximum allowed "count" is 14
+ *        and it's faster.
  */
-#define PKT3_SET_CONTEXT_REG_PAIRS                 0xB8 /* GFX11+, PFP version >= 1448 */
-#define PKT3_SET_CONTEXT_REG_PAIRS_PACKED          0xB9 /* GFX11+, PFP version >= 1448 */
-#define PKT3_SET_SH_REG_PAIRS                      0xBA /* GFX11+, PFP version >= 1448 */
-#define PKT3_SET_SH_REG_PAIRS_PACKED               0xBB /* GFX11+, PFP version >= 1448 */
-#define PKT3_SET_SH_REG_PAIRS_PACKED_N             0xBD /* GFX11+, PFP version >= 1448 */
-#define   SET_REG_PAIRS_PFP_VERSION                   1448
-#define   SET_REG_PAIRS_PACKED_N_COUNT14_PFP_VERSION  1463
+#define PKT3_SET_CONTEXT_REG_PAIRS                 0xB8 /* GFX11+, don't use */
+#define PKT3_SET_CONTEXT_REG_PAIRS_PACKED          0xB9 /* GFX11+ */
+#define PKT3_SET_SH_REG_PAIRS                      0xBA /* GFX11+, don't use */
+#define PKT3_SET_SH_REG_PAIRS_PACKED               0xBB /* GFX11+ */
+#define PKT3_SET_SH_REG_PAIRS_PACKED_N             0xBD /* GFX11+ */
 
 #define PKT_TYPE_S(x)         (((unsigned)(x)&0x3) << 30)
 #define PKT_TYPE_G(x)         (((x) >> 30) & 0x3)
@@ -305,16 +284,14 @@
 #define PKT_COUNT_S(x)        (((unsigned)(x)&0x3FFF) << 16)
 #define PKT_COUNT_G(x)        (((x) >> 16) & 0x3FFF)
 #define PKT_COUNT_C           0xC000FFFF
-#define PKT0_BASE_INDEX_S(x)  (((unsigned)(x)&0xFFFF) << 0)
-#define PKT0_BASE_INDEX_G(x)  (((x) >> 0) & 0xFFFF)
-#define PKT0_BASE_INDEX_C     0xFFFF0000
 #define PKT3_IT_OPCODE_S(x)   (((unsigned)(x)&0xFF) << 8)
 #define PKT3_IT_OPCODE_G(x)   (((x) >> 8) & 0xFF)
 #define PKT3_IT_OPCODE_C      0xFFFF00FF
 #define PKT3_PREDICATE(x)     (((x) >> 0) & 0x1)
-#define PKT3_SHADER_TYPE_S(x) (((unsigned)(x)&0x1) << 1)
-#define PKT3_RESET_FILTER_CAM(x) (((unsigned)(x)&0x1) << 2)
-#define PKT0(index, count)    (PKT_TYPE_S(0) | PKT0_BASE_INDEX_S(index) | PKT_COUNT_S(count))
+#define PKT3_SHADER_TYPE_S(x) (((unsigned)(x) & 0x1) << 1)
+#define PKT3_SHADER_TYPE_G(x) (((x) >> 1) & 0x1)
+#define PKT3_RESET_FILTER_CAM_S(x) (((unsigned)(x) & 0x1) << 2)
+#define PKT3_RESET_FILTER_CAM_G(x) (((unsigned)(x) >> 2) & 0x1)
 #define PKT3(op, count, predicate)                                                                 \
    (PKT_TYPE_S(3) | PKT_COUNT_S(count) | PKT3_IT_OPCODE_S(op) | PKT3_PREDICATE(predicate))
 

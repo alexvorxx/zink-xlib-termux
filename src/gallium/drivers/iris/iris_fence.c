@@ -270,8 +270,7 @@ iris_fence_flush(struct pipe_context *ctx,
       iris_measure_frame_end(ice);
    }
 
-   u_trace_context_process(&ice->ds.trace_context,
-                           flags & PIPE_FLUSH_END_OF_FRAME);
+   intel_ds_device_process(&ice->ds, flags & PIPE_FLUSH_END_OF_FRAME);
 
    if (!out_fence)
       return;
@@ -601,7 +600,7 @@ iris_fence_signal(struct pipe_context *ctx,
             continue;
 
          batch->contains_fence_signal = true;
-         iris_batch_add_syncobj(batch, fine->syncobj, I915_EXEC_FENCE_SIGNAL);
+         iris_batch_add_syncobj(batch, fine->syncobj, IRIS_BATCH_FENCE_SIGNAL);
       }
       if (batch->contains_fence_signal)
          iris_batch_flush(batch);

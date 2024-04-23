@@ -1064,6 +1064,7 @@ static const struct intel_device_info intel_device_info_sg1 = {
    .has_64bit_int = false,                                      \
    .has_integer_dword_mul = false,                              \
    .gt = _gt, .num_slices = _slices, .l3_banks = _l3,           \
+   .num_subslices = dual_subslices(1), /* updated by topology */\
    .ver = 12,                                                   \
    .has_pln = false,                                            \
    .has_sample_with_hiz = false,                                \
@@ -1091,7 +1092,6 @@ static const struct intel_device_info intel_device_info_sg1 = {
    XEHP_FEATURES(0, 1, 0),                                      \
    .display_ver = 13,                                           \
    .revision = 4, /* For offline compiler */                    \
-   .num_subslices = dual_subslices(1),                          \
    .apply_hwconfig = true,                                      \
    .has_coarse_pixel_primitive_and_cb = true,                   \
    .has_mesh_shading = true,                                    \
@@ -1113,10 +1113,19 @@ static const struct intel_device_info intel_device_info_dg2_g12 = {
    .platform = INTEL_PLATFORM_DG2_G12,
 };
 
+static const struct intel_device_info intel_device_info_atsm_g10 = {
+   DG2_FEATURES,
+   .platform = INTEL_PLATFORM_ATSM_G10,
+};
+
+static const struct intel_device_info intel_device_info_atsm_g11 = {
+   DG2_FEATURES,
+   .platform = INTEL_PLATFORM_ATSM_G11,
+};
+
 #define MTL_FEATURES                                            \
    /* (Sub)slice info comes from the kernel topology info */    \
    XEHP_FEATURES(0, 1, 0),                                      \
-   .num_subslices = dual_subslices(1),                          \
    .has_local_mem = false,                                      \
    .has_aux_map = true,                                         \
    .apply_hwconfig = true,                                      \
@@ -1125,7 +1134,12 @@ static const struct intel_device_info intel_device_info_dg2_g12 = {
    .has_integer_dword_mul = false,                              \
    .has_coarse_pixel_primitive_and_cb = true,                   \
    .has_mesh_shading = true,                                    \
-   .has_ray_tracing = true
+   .has_ray_tracing = true,                                     \
+   .pat = {                                                     \
+      .coherent = 3, /* 1-way coherent */                       \
+      .scanout = 3, /* 1-way coherent */                        \
+      .writeback = 0,                                           \
+   }
 
 static const struct intel_device_info intel_device_info_mtl_m = {
    MTL_FEATURES,
@@ -1330,6 +1344,7 @@ intel_device_info_init_common(int pci_id,
       break;
    case 11:
    case 12:
+   case 20:
       devinfo->max_wm_threads = 128 /* threads-per-PSD */
                               * devinfo->num_slices
                               * 8; /* subslices per slice */
@@ -1363,7 +1378,7 @@ intel_device_info_init_common(int pci_id,
 static void
 intel_device_info_apply_workarounds(struct intel_device_info *devinfo)
 {
-   if (intel_needs_workaround(devinfo, 22012575642))
+   if (intel_needs_workaround(devinfo, 18012660806))
       devinfo->urb.max_entries[MESA_SHADER_GEOMETRY] = 1536;
 
    /* Fixes issues with:

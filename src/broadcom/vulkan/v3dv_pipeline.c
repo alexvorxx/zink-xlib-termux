@@ -30,13 +30,14 @@
 #include "qpu/qpu_disasm.h"
 
 #include "compiler/nir/nir_builder.h"
-#include "nir/nir_vulkan.h"
 #include "nir/nir_serialize.h"
 
 #include "util/u_atomic.h"
 #include "util/u_prim.h"
 #include "util/os_time.h"
+#include "util/u_helpers.h"
 
+#include "vk_nir_convert_ycbcr.h"
 #include "vk_pipeline.h"
 #include "vulkan/util/vk_format.h"
 
@@ -192,8 +193,8 @@ const nir_shader_compiler_options v3dv_nir_options = {
    .lower_extract_word = true,
    .lower_insert_byte = true,
    .lower_insert_word = true,
-   .lower_bitfield_insert_to_shifts = true,
-   .lower_bitfield_extract_to_shifts = true,
+   .lower_bitfield_insert = true,
+   .lower_bitfield_extract = true,
    .lower_bitfield_reverse = true,
    .lower_bit_count = true,
    .lower_cs_local_id_to_index = true,
@@ -226,10 +227,11 @@ const nir_shader_compiler_options v3dv_nir_options = {
    .lower_isign = true,
    .lower_ldexp = true,
    .lower_mul_high = true,
-   .lower_wpos_pntc = true,
+   .lower_wpos_pntc = false,
    .lower_rotate = true,
    .lower_to_scalar = true,
    .lower_device_index_to_zero = true,
+   .lower_fquantize2f16 = true,
    .has_fsub = true,
    .has_isub = true,
    .vertex_id_zero_based = false, /* FIXME: to set this to true, the intrinsic
@@ -238,7 +240,7 @@ const nir_shader_compiler_options v3dv_nir_options = {
    .max_unroll_iterations = 16,
    .force_indirect_unrolling = (nir_var_shader_in | nir_var_function_temp),
    .divergence_analysis_options =
-      nir_divergence_multiple_workgroup_per_compute_subgroup
+      nir_divergence_multiple_workgroup_per_compute_subgroup,
 };
 
 const nir_shader_compiler_options *
@@ -546,7 +548,7 @@ lower_vulkan_resource_index(nir_builder *b,
       uint32_t start_index = 0;
       if (binding_layout->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
           binding_layout->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) {
-         start_index = MAX_INLINE_UNIFORM_BUFFERS;
+         start_index += MAX_INLINE_UNIFORM_BUFFERS;
       }
 
       index = descriptor_map_add(descriptor_map, set, binding,
@@ -555,14 +557,6 @@ lower_vulkan_resource_index(nir_builder *b,
                                  start_index,
                                  32 /* return_size: doesn't really apply for this case */,
                                  0);
-
-      /* We always reserve index 0 for push constants */
-      if (binding_layout->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
-          binding_layout->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
-          binding_layout->type == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK) {
-         index++;
-      }
-
       break;
    }
 
@@ -575,7 +569,7 @@ lower_vulkan_resource_index(nir_builder *b,
     * vulkan_load_descriptor return a vec2 providing an index and
     * offset. Our backend compiler only cares about the index part.
     */
-   nir_ssa_def_rewrite_uses(&instr->dest.ssa,
+   nir_def_rewrite_uses(&instr->def,
                             nir_imm_ivec2(b, index, 0));
    nir_instr_remove(&instr->instr);
 }
@@ -601,7 +595,7 @@ lower_tex_src(nir_builder *b,
               unsigned src_idx,
               struct lower_pipeline_layout_state *state)
 {
-   nir_ssa_def *index = NULL;
+   nir_def *index = NULL;
    unsigned base_index = 0;
    unsigned array_elements = 1;
    nir_tex_src *src = &instr->src[src_idx];
@@ -612,7 +606,6 @@ lower_tex_src(nir_builder *b,
    /* We compute first the offsets */
    nir_deref_instr *deref = nir_instr_as_deref(src->src.ssa->parent_instr);
    while (deref->deref_type != nir_deref_type_var) {
-      assert(deref->parent.is_ssa);
       nir_deref_instr *parent =
          nir_instr_as_deref(deref->parent.ssa->parent_instr);
 
@@ -629,8 +622,8 @@ lower_tex_src(nir_builder *b,
          }
 
          index = nir_iadd(b, index,
-                          nir_imul(b, nir_imm_int(b, array_elements),
-                                   nir_ssa_for_src(b, deref->arr.index, 1)));
+                          nir_imul_imm(b, deref->arr.index.ssa,
+                                       array_elements));
       }
 
       array_elements *= glsl_get_length(parent->type);
@@ -645,8 +638,7 @@ lower_tex_src(nir_builder *b,
     * instr if needed
     */
    if (index) {
-      nir_instr_rewrite_src(&instr->instr, &src->src,
-                            nir_src_for_ssa(index));
+      nir_src_rewrite(&src->src, index);
 
       src->src_type = is_sampler ?
          nir_tex_src_sampler_offset :
@@ -720,18 +712,20 @@ lower_sampler(nir_builder *b,
    int sampler_idx =
       nir_tex_instr_src_index(instr, nir_tex_src_sampler_deref);
 
-   if (sampler_idx >= 0)
+   if (sampler_idx >= 0) {
+      assert(nir_tex_instr_need_sampler(instr));
       lower_tex_src(b, instr, sampler_idx, state);
+   }
 
    if (texture_idx < 0 && sampler_idx < 0)
       return false;
 
-   /* If we don't have a sampler, we assign it the idx we reserve for this
-    * case, and we ensure that it is using the correct return size.
+   /* If the instruction doesn't have a sampler (i.e. txf) we use backend_flags
+    * to bind a default sampler state to configure precission.
     */
    if (sampler_idx < 0) {
       state->needs_default_sampler_state = true;
-      instr->sampler_index = return_size == 16 ?
+      instr->backend_flags = return_size == 16 ?
          V3DV_NO_SAMPLER_16BIT_IDX : V3DV_NO_SAMPLER_32BIT_IDX;
    }
 
@@ -745,12 +739,11 @@ lower_image_deref(nir_builder *b,
                   struct lower_pipeline_layout_state *state)
 {
    nir_deref_instr *deref = nir_src_as_deref(instr->src[0]);
-   nir_ssa_def *index = NULL;
+   nir_def *index = NULL;
    unsigned array_elements = 1;
    unsigned base_index = 0;
 
    while (deref->deref_type != nir_deref_type_var) {
-      assert(deref->parent.is_ssa);
       nir_deref_instr *parent =
          nir_instr_as_deref(deref->parent.ssa->parent_instr);
 
@@ -767,8 +760,8 @@ lower_image_deref(nir_builder *b,
          }
 
          index = nir_iadd(b, index,
-                          nir_imul(b, nir_imm_int(b, array_elements),
-                                   nir_ssa_for_src(b, deref->arr.index, 1)));
+                          nir_imul_imm(b, deref->arr.index.ssa,
+                                       array_elements));
       }
 
       array_elements *= glsl_get_length(parent->type);
@@ -833,7 +826,7 @@ lower_intrinsic(nir_builder *b,
       /* Loading the descriptor happens as part of load/store instructions,
        * so for us this is a no-op.
        */
-      nir_ssa_def_rewrite_uses(&instr->dest.ssa, instr->src[0].ssa);
+      nir_def_rewrite_uses(&instr->def, instr->src[0].ssa);
       nir_instr_remove(&instr->instr);
       return true;
    }
@@ -899,6 +892,34 @@ lower_pipeline_layout_info(nir_shader *shader,
    return progress;
 }
 
+/* This flips gl_PointCoord.y to match Vulkan requirements */
+static bool
+lower_point_coord_cb(nir_builder *b, nir_intrinsic_instr *intr, void *_state)
+{
+   if (intr->intrinsic != nir_intrinsic_load_input)
+      return false;
+
+   if (nir_intrinsic_io_semantics(intr).location != VARYING_SLOT_PNTC)
+      return false;
+
+   b->cursor = nir_after_instr(&intr->instr);
+   nir_def *result = &intr->def;
+   result =
+      nir_vector_insert_imm(b, result,
+                            nir_fsub_imm(b, 1.0, nir_channel(b, result, 1)), 1);
+   nir_def_rewrite_uses_after(&intr->def,
+                                  result, result->parent_instr);
+   return true;
+}
+
+static bool
+v3d_nir_lower_point_coord(nir_shader *s)
+{
+   assert(s->info.stage == MESA_SHADER_FRAGMENT);
+   return nir_shader_intrinsics_pass(s, lower_point_coord_cb,
+                                       nir_metadata_block_index |
+                                       nir_metadata_dominance, NULL);
+}
 
 static void
 lower_fs_io(nir_shader *nir)
@@ -1035,24 +1056,22 @@ pipeline_populate_v3d_key(struct v3d_key *key,
       p_stage->robustness.storage_buffers == robust_buffer_enabled;
    key->robust_image_access =
       p_stage->robustness.images == robust_image_enabled;
-
-   key->environment = V3D_ENVIRONMENT_VULKAN;
 }
 
 /* FIXME: anv maps to hw primitive type. Perhaps eventually we would do the
  * same. For not using prim_mode that is the one already used on v3d
  */
-static const enum pipe_prim_type vk_to_pipe_prim_type[] = {
-   [VK_PRIMITIVE_TOPOLOGY_POINT_LIST] = PIPE_PRIM_POINTS,
-   [VK_PRIMITIVE_TOPOLOGY_LINE_LIST] = PIPE_PRIM_LINES,
-   [VK_PRIMITIVE_TOPOLOGY_LINE_STRIP] = PIPE_PRIM_LINE_STRIP,
-   [VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST] = PIPE_PRIM_TRIANGLES,
-   [VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP] = PIPE_PRIM_TRIANGLE_STRIP,
-   [VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN] = PIPE_PRIM_TRIANGLE_FAN,
-   [VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY] = PIPE_PRIM_LINES_ADJACENCY,
-   [VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY] = PIPE_PRIM_LINE_STRIP_ADJACENCY,
-   [VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY] = PIPE_PRIM_TRIANGLES_ADJACENCY,
-   [VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY] = PIPE_PRIM_TRIANGLE_STRIP_ADJACENCY,
+static const enum mesa_prim vk_to_mesa_prim[] = {
+   [VK_PRIMITIVE_TOPOLOGY_POINT_LIST] = MESA_PRIM_POINTS,
+   [VK_PRIMITIVE_TOPOLOGY_LINE_LIST] = MESA_PRIM_LINES,
+   [VK_PRIMITIVE_TOPOLOGY_LINE_STRIP] = MESA_PRIM_LINE_STRIP,
+   [VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST] = MESA_PRIM_TRIANGLES,
+   [VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP] = MESA_PRIM_TRIANGLE_STRIP,
+   [VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN] = MESA_PRIM_TRIANGLE_FAN,
+   [VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY] = MESA_PRIM_LINES_ADJACENCY,
+   [VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY] = MESA_PRIM_LINE_STRIP_ADJACENCY,
+   [VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY] = MESA_PRIM_TRIANGLES_ADJACENCY,
+   [VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY] = MESA_PRIM_TRIANGLE_STRIP_ADJACENCY,
 };
 
 static const enum pipe_logicop vk_to_pipe_logicop[] = {
@@ -1092,11 +1111,22 @@ pipeline_populate_v3d_fs_key(struct v3d_fs_key *key,
 
    const VkPipelineInputAssemblyStateCreateInfo *ia_info =
       pCreateInfo->pInputAssemblyState;
-   uint8_t topology = vk_to_pipe_prim_type[ia_info->topology];
+   uint8_t topology = vk_to_mesa_prim[ia_info->topology];
 
-   key->is_points = (topology == PIPE_PRIM_POINTS);
-   key->is_lines = (topology >= PIPE_PRIM_LINES &&
-                    topology <= PIPE_PRIM_LINE_STRIP);
+   key->is_points = (topology == MESA_PRIM_POINTS);
+   key->is_lines = (topology >= MESA_PRIM_LINES &&
+                    topology <= MESA_PRIM_LINE_STRIP);
+
+   if (key->is_points) {
+      /* This mask represents state for GL_ARB_point_sprite which is not
+       * relevant to Vulkan.
+       */
+      key->point_sprite_mask = 0;
+
+      /* Vulkan mandates upper left. */
+      key->point_coord_upper_left = true;
+   }
+
    key->has_gs = has_geometry_shader;
 
    const VkPipelineColorBlendStateCreateInfo *cb_info =
@@ -1172,16 +1202,6 @@ pipeline_populate_v3d_fs_key(struct v3d_fs_key *key,
             key->uint_color_rb |= 1 << i;
          else if (util_format_is_pure_sint(fb_pipe_format))
             key->int_color_rb |= 1 << i;
-      }
-
-      if (key->is_points) {
-         /* This mask represents state for GL_ARB_point_sprite which is not
-          * relevant to Vulkan.
-          */
-         key->point_sprite_mask = 0;
-
-         /* Vulkan mandates upper left. */
-         key->point_coord_upper_left = true;
       }
    }
 }
@@ -1263,11 +1283,11 @@ pipeline_populate_v3d_vs_key(struct v3d_vs_key *key,
     */
    const VkPipelineInputAssemblyStateCreateInfo *ia_info =
       pCreateInfo->pInputAssemblyState;
-   uint8_t topology = vk_to_pipe_prim_type[ia_info->topology];
+   uint8_t topology = vk_to_mesa_prim[ia_info->topology];
 
    /* FIXME: PRIM_POINTS is not enough, in gallium the full check is
-    * PIPE_PRIM_POINTS && v3d->rasterizer->base.point_size_per_vertex */
-   key->per_vertex_point_size = (topology == PIPE_PRIM_POINTS);
+    * MESA_PRIM_POINTS && v3d->rasterizer->base.point_size_per_vertex */
+   key->per_vertex_point_size = (topology == MESA_PRIM_POINTS);
 
    key->is_coord = broadcom_shader_stage_is_binning(p_stage->stage);
 
@@ -1332,8 +1352,10 @@ pipeline_populate_v3d_vs_key(struct v3d_vs_key *key,
       const VkVertexInputAttributeDescription *desc =
          &vi_info->pVertexAttributeDescriptions[i];
       assert(desc->location < MAX_VERTEX_ATTRIBS);
-      if (desc->format == VK_FORMAT_B8G8R8A8_UNORM)
+      if (desc->format == VK_FORMAT_B8G8R8A8_UNORM ||
+          desc->format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) {
          key->va_swap_rb_mask |= 1 << (VERT_ATTRIB_GENERIC0 + desc->location);
+      }
    }
 }
 
@@ -1639,7 +1661,7 @@ pipeline_compile_shader_variant(struct v3dv_pipeline_stage *p_stage,
 
    if (!qpu_insts) {
       fprintf(stderr, "Failed to compile %s prog %d NIR to VIR\n",
-              gl_shader_stage_name(p_stage->stage),
+              broadcom_shader_stage_name(p_stage->stage),
               p_stage->program_id);
       *out_vk_result = VK_ERROR_UNKNOWN;
    } else {
@@ -1902,6 +1924,11 @@ pipeline_compile_fragment_shader(struct v3dv_pipeline *pipeline,
                                 p_stage_gs != NULL,
                                 get_ucp_enable_mask(p_stage_vs));
 
+   if (key.is_points) {
+      assert(key.point_coord_upper_left);
+      NIR_PASS(_, p_stage_fs->nir, v3d_nir_lower_point_coord);
+   }
+
    VkResult vk_result;
    pipeline->shared_data->variants[BROADCOM_SHADER_FRAGMENT] =
       pipeline_compile_shader_variant(p_stage_fs, &key.base, sizeof(key),
@@ -1925,7 +1952,7 @@ pipeline_populate_graphics_key(struct v3dv_pipeline *pipeline,
 
    const VkPipelineInputAssemblyStateCreateInfo *ia_info =
       pCreateInfo->pInputAssemblyState;
-   key->topology = vk_to_pipe_prim_type[ia_info->topology];
+   key->topology = vk_to_mesa_prim[ia_info->topology];
 
    const VkPipelineColorBlendStateCreateInfo *cb_info =
       raster_enabled ? pCreateInfo->pColorBlendState : NULL;
@@ -1990,8 +2017,10 @@ pipeline_populate_graphics_key(struct v3dv_pipeline *pipeline,
       const VkVertexInputAttributeDescription *desc =
          &vi_info->pVertexAttributeDescriptions[i];
       assert(desc->location < MAX_VERTEX_ATTRIBS);
-      if (desc->format == VK_FORMAT_B8G8R8A8_UNORM)
+      if (desc->format == VK_FORMAT_B8G8R8A8_UNORM ||
+          desc->format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) {
          key->va_swap_rb_mask |= 1 << (VERT_ATTRIB_GENERIC0 + desc->location);
+      }
    }
 
    assert(pipeline->subpass);
@@ -2122,19 +2151,19 @@ write_creation_feedback(struct v3dv_pipeline *pipeline,
    }
 }
 
-static enum shader_prim
+static enum mesa_prim
 multiview_gs_input_primitive_from_pipeline(struct v3dv_pipeline *pipeline)
 {
    switch (pipeline->topology) {
-   case PIPE_PRIM_POINTS:
-      return SHADER_PRIM_POINTS;
-   case PIPE_PRIM_LINES:
-   case PIPE_PRIM_LINE_STRIP:
-      return SHADER_PRIM_LINES;
-   case PIPE_PRIM_TRIANGLES:
-   case PIPE_PRIM_TRIANGLE_STRIP:
-   case PIPE_PRIM_TRIANGLE_FAN:
-      return SHADER_PRIM_TRIANGLES;
+   case MESA_PRIM_POINTS:
+      return MESA_PRIM_POINTS;
+   case MESA_PRIM_LINES:
+   case MESA_PRIM_LINE_STRIP:
+      return MESA_PRIM_LINES;
+   case MESA_PRIM_TRIANGLES:
+   case MESA_PRIM_TRIANGLE_STRIP:
+   case MESA_PRIM_TRIANGLE_FAN:
+      return MESA_PRIM_TRIANGLES;
    default:
       /* Since we don't allow GS with multiview, we can only see non-adjacency
        * primitives.
@@ -2143,19 +2172,19 @@ multiview_gs_input_primitive_from_pipeline(struct v3dv_pipeline *pipeline)
    }
 }
 
-static enum shader_prim
+static enum mesa_prim
 multiview_gs_output_primitive_from_pipeline(struct v3dv_pipeline *pipeline)
 {
    switch (pipeline->topology) {
-   case PIPE_PRIM_POINTS:
-      return SHADER_PRIM_POINTS;
-   case PIPE_PRIM_LINES:
-   case PIPE_PRIM_LINE_STRIP:
-      return SHADER_PRIM_LINE_STRIP;
-   case PIPE_PRIM_TRIANGLES:
-   case PIPE_PRIM_TRIANGLE_STRIP:
-   case PIPE_PRIM_TRIANGLE_FAN:
-      return SHADER_PRIM_TRIANGLE_STRIP;
+   case MESA_PRIM_POINTS:
+      return MESA_PRIM_POINTS;
+   case MESA_PRIM_LINES:
+   case MESA_PRIM_LINE_STRIP:
+      return MESA_PRIM_LINE_STRIP;
+   case MESA_PRIM_TRIANGLES:
+   case MESA_PRIM_TRIANGLE_STRIP:
+   case MESA_PRIM_TRIANGLE_FAN:
+      return MESA_PRIM_TRIANGLE_STRIP;
    default:
       /* Since we don't allow GS with multiview, we can only see non-adjacency
        * primitives.
@@ -2224,7 +2253,7 @@ pipeline_add_multiview_gs(struct v3dv_pipeline *pipeline,
    out_layer->data.location = VARYING_SLOT_LAYER;
 
    /* Get the view index value that we will write to gl_Layer */
-   nir_ssa_def *layer =
+   nir_def *layer =
       nir_load_system_value(&b, nir_intrinsic_load_view_index, 0, 1, 32);
 
    /* Emit all output vertices */
@@ -2901,7 +2930,7 @@ pipeline_init(struct v3dv_pipeline *pipeline,
 
    const VkPipelineInputAssemblyStateCreateInfo *ia_info =
       pCreateInfo->pInputAssemblyState;
-   pipeline->topology = vk_to_pipe_prim_type[ia_info->topology];
+   pipeline->topology = vk_to_mesa_prim[ia_info->topology];
 
    /* If rasterization is not enabled, various CreateInfo structs must be
     * ignored.
@@ -3098,14 +3127,20 @@ shared_type_info(const struct glsl_type *type, unsigned *size, unsigned *align)
 }
 
 static void
-lower_cs_shared(struct nir_shader *nir)
+lower_compute(struct nir_shader *nir)
 {
    if (!nir->info.shared_memory_explicit_layout) {
       NIR_PASS(_, nir, nir_lower_vars_to_explicit_types,
                nir_var_mem_shared, shared_type_info);
    }
+
    NIR_PASS(_, nir, nir_lower_explicit_io,
             nir_var_mem_shared, nir_address_format_32bit_offset);
+
+   struct nir_lower_compute_system_values_options sysval_options = {
+      .has_base_workgroup_id = true,
+   };
+   NIR_PASS_V(nir, nir_lower_compute_system_values, &sysval_options);
 }
 
 static VkResult
@@ -3193,7 +3228,7 @@ pipeline_compile_compute(struct v3dv_pipeline *pipeline,
 
    v3d_optimize_nir(NULL, p_stage->nir);
    pipeline_lower_nir(pipeline, p_stage, pipeline->layout);
-   lower_cs_shared(p_stage->nir);
+   lower_compute(p_stage->nir);
 
    VkResult result = VK_SUCCESS;
 

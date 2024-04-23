@@ -2,24 +2,7 @@
  * Copyright 2020 Advanced Micro Devices, Inc.
  * Copyright © 2020 Valve Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 #include "ac_rgp.h"
 
@@ -408,7 +391,7 @@ static enum sqtt_memory_type ac_vram_type_to_sqtt_memory_type(uint32_t vram_type
    }
 }
 
-static void ac_sqtt_fill_asic_info(struct radeon_info *rad_info,
+static void ac_sqtt_fill_asic_info(const struct radeon_info *rad_info,
                                    struct sqtt_file_chunk_asic_info *chunk)
 {
    bool has_wave32 = rad_info->gfx_level >= GFX10;
@@ -723,7 +706,7 @@ static enum sqtt_version ac_gfx_level_to_sqtt_version(enum amd_gfx_level gfx_lev
    }
 }
 
-static void ac_sqtt_fill_sqtt_desc(struct radeon_info *info,
+static void ac_sqtt_fill_sqtt_desc(const struct radeon_info *info,
                                    struct sqtt_file_chunk_sqtt_desc *chunk, int32_t chunk_index,
                                    int32_t shader_engine_index, int32_t compute_unit_index)
 {
@@ -998,7 +981,7 @@ static void ac_sqtt_dump_spm(const struct ac_spm_trace *spm_trace,
 
 #if defined(USE_LIBELF)
 static void
-ac_sqtt_dump_data(struct radeon_info *rad_info, struct ac_sqtt_trace *sqtt_trace,
+ac_sqtt_dump_data(const struct radeon_info *rad_info, struct ac_sqtt_trace *sqtt_trace,
                   const struct ac_spm_trace *spm_trace, FILE *output)
 {
    struct sqtt_file_chunk_asic_info asic_info = {0};
@@ -1181,7 +1164,7 @@ ac_sqtt_dump_data(struct radeon_info *rad_info, struct ac_sqtt_trace *sqtt_trace
 #endif
 
 int
-ac_dump_rgp_capture(struct radeon_info *info, struct ac_sqtt_trace *sqtt_trace,
+ac_dump_rgp_capture(const struct radeon_info *info, struct ac_sqtt_trace *sqtt_trace,
                     const struct ac_spm_trace *spm_trace)
 {
 #if !defined(USE_LIBELF)

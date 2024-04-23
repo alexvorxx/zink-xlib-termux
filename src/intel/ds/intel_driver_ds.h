@@ -58,6 +58,7 @@ enum intel_ds_stall_flag {
    INTEL_DS_UNTYPED_DATAPORT_CACHE_FLUSH_BIT = BITFIELD_BIT(13),
    INTEL_DS_PSS_STALL_SYNC_BIT               = BITFIELD_BIT(14),
    INTEL_DS_END_OF_PIPE_BIT                  = BITFIELD_BIT(15),
+   INTEL_DS_CCS_CACHE_FLUSH_BIT              = BITFIELD_BIT(16),
 };
 
 /* Convert internal driver PIPE_CONTROL stall bits to intel_ds_stall_flag. */
@@ -67,7 +68,7 @@ enum intel_ds_queue_stage {
    INTEL_DS_QUEUE_STAGE_QUEUE,
    INTEL_DS_QUEUE_STAGE_FRAME,
    INTEL_DS_QUEUE_STAGE_CMD_BUFFER,
-   INTEL_DS_QUEUE_STAGE_GENERATE_DRAWS,
+   INTEL_DS_QUEUE_STAGE_INTERNAL_OPS,
    INTEL_DS_QUEUE_STAGE_STALL,
    INTEL_DS_QUEUE_STAGE_COMPUTE,
    INTEL_DS_QUEUE_STAGE_RENDER_PASS,
@@ -110,6 +111,9 @@ struct intel_ds_device {
     * IntelRenderpassDataSource::Trace)
     */
    uint64_t event_id;
+
+   /* Protects submissions of u_trace data to trace_context */
+   simple_mtx_t trace_context_mutex;
 
    struct u_trace_context trace_context;
 
@@ -181,6 +185,13 @@ void intel_ds_flush_data_init(struct intel_ds_flush_data *data,
                               uint64_t submission_id);
 
 void intel_ds_flush_data_fini(struct intel_ds_flush_data *data);
+
+void intel_ds_queue_flush_data(struct intel_ds_queue *queue,
+                               struct u_trace *ut,
+                               struct intel_ds_flush_data *data,
+                               bool free_data);
+
+void intel_ds_device_process(struct intel_ds_device *device, bool eof);
 
 #ifdef HAVE_PERFETTO
 

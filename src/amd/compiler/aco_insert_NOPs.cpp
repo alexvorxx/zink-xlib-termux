@@ -254,8 +254,7 @@ public:
    void join_min(const VGPRCounterMap& other)
    {
       unsigned i;
-      BITSET_FOREACH_SET(i, other.resident, 256)
-      {
+      BITSET_FOREACH_SET (i, other.resident, 256) {
          if (BITSET_TEST(resident, i))
             val[i] = MIN2(val[i] + base, other.val[i] + other.base) - base;
          else
@@ -270,8 +269,7 @@ public:
          return false;
 
       unsigned i;
-      BITSET_FOREACH_SET(i, other.resident, 256)
-      {
+      BITSET_FOREACH_SET (i, other.resident, 256) {
          if (!BITSET_TEST(resident, i))
             return false;
          if (val[i] + base != other.val[i] + other.base)
@@ -365,11 +363,11 @@ search_backwards_internal(State& state, GlobalState& global_state, BlockState bl
          return;
    }
 
-PRAGMA_DIAGNOSTIC_PUSH
-PRAGMA_DIAGNOSTIC_IGNORED(-Waddress)
+   PRAGMA_DIAGNOSTIC_PUSH
+   PRAGMA_DIAGNOSTIC_IGNORED(-Waddress)
    if (block_cb != nullptr && !block_cb(global_state, block_state, block))
       return;
-PRAGMA_DIAGNOSTIC_POP
+   PRAGMA_DIAGNOSTIC_POP
 
    for (unsigned lin_pred : block->linear_preds) {
       search_backwards_internal<GlobalState, BlockState, block_cb, instr_cb>(
@@ -796,14 +794,6 @@ VALU_writes_sgpr(aco_ptr<Instruction>& instr)
 }
 
 bool
-instr_writes_exec(const aco_ptr<Instruction>& instr)
-{
-   return std::any_of(instr->definitions.begin(), instr->definitions.end(),
-                      [](const Definition& def) -> bool
-                      { return def.physReg() == exec_lo || def.physReg() == exec_hi; });
-}
-
-bool
 instr_writes_sgpr(const aco_ptr<Instruction>& instr)
 {
    return std::any_of(instr->definitions.begin(), instr->definitions.end(),
@@ -917,7 +907,7 @@ handle_instruction_gfx10(State& state, NOP_ctx_gfx10& ctx, aco_ptr<Instruction>&
    if (!instr->isVALU() && instr->reads_exec()) {
       ctx.has_nonVALU_exec_read = true;
    } else if (instr->isVALU()) {
-      if (instr_writes_exec(instr)) {
+      if (instr->writes_exec()) {
          ctx.has_nonVALU_exec_read = false;
 
          /* Insert s_waitcnt_depctr instruction with magic imm to mitigate the problem */
@@ -1153,7 +1143,7 @@ handle_valu_partial_forwarding_hazard_instr(VALUPartialForwardingHazardGlobalSta
                                             aco_ptr<Instruction>& instr)
 {
    if (instr->isSALU() && !instr->definitions.empty()) {
-      if (block_state.state == written_after_exec_write && instr_writes_exec(instr))
+      if (block_state.state == written_after_exec_write && instr->writes_exec())
          block_state.state = exec_written;
    } else if (instr->isVALU()) {
       bool vgpr_write = false;

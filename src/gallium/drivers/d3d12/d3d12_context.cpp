@@ -62,6 +62,12 @@
 #include "dxil_validator.h"
 #endif
 
+#ifdef _GAMING_XBOX
+typedef D3D12_DEPTH_STENCILOP_DESC d3d12_depth_stencil_op_desc_type;
+#else
+typedef D3D12_DEPTH_STENCILOP_DESC1 d3d12_depth_stencil_op_desc_type;
+#endif
+
 static void
 d3d12_context_destroy(struct pipe_context *pctx)
 {
@@ -75,8 +81,7 @@ d3d12_context_destroy(struct pipe_context *pctx)
    mtx_unlock(&screen->submit_mutex);
 
 #ifdef _WIN32
-   if (ctx->dxil_validator)
-      dxil_destroy_validator(ctx->dxil_validator);
+   dxil_destroy_validator(ctx->dxil_validator);
 #endif
 
 #ifndef _GAMING_XBOX
@@ -131,6 +136,7 @@ d3d12_create_vertex_elements_state(struct pipe_context *pctx,
    if (!cso)
       return NULL;
 
+   unsigned max_vb = 0;
    for (unsigned i = 0; i < num_elements; ++i) {
       cso->elements[i].SemanticName = "TEXCOORD";
       cso->elements[i].SemanticIndex = i;
@@ -154,9 +160,12 @@ d3d12_create_vertex_elements_state(struct pipe_context *pctx,
          cso->elements[i].InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
          cso->elements[i].InstanceDataStepRate = 0;
       }
+      max_vb = MAX2(max_vb, elements[i].vertex_buffer_index);
+      cso->strides[elements[i].vertex_buffer_index] = elements[i].src_stride;
    }
 
    cso->num_elements = num_elements;
+   cso->num_buffers = num_elements ? max_vb + 1 : 0;
    return cso;
 }
 
@@ -340,7 +349,7 @@ d3d12_create_blend_state(struct pipe_context *pctx,
       return NULL;
 
    if (blend_state->logicop_enable) {
-      state->desc.RenderTarget[0].LogicOpEnable = TRUE;
+      state->desc.RenderTarget[0].LogicOpEnable = true;
       state->desc.RenderTarget[0].LogicOp = logic_op((pipe_logicop) blend_state->logicop_func);
    }
 
@@ -350,7 +359,7 @@ d3d12_create_blend_state(struct pipe_context *pctx,
 
    int num_targets = 1;
    if (blend_state->independent_blend_enable) {
-      state->desc.IndependentBlendEnable = TRUE;
+      state->desc.IndependentBlendEnable = true;
       num_targets = PIPE_MAX_COLOR_BUFS;
    }
 
@@ -358,7 +367,7 @@ d3d12_create_blend_state(struct pipe_context *pctx,
       const struct pipe_rt_blend_state *rt = blend_state->rt + i;
 
       if (rt->blend_enable) {
-         state->desc.RenderTarget[i].BlendEnable = TRUE;
+         state->desc.RenderTarget[i].BlendEnable = true;
          state->desc.RenderTarget[i].SrcBlend = blend_factor_rgb((pipe_blendfactor) rt->rgb_src_factor);
          state->desc.RenderTarget[i].DestBlend = blend_factor_rgb((pipe_blendfactor) rt->rgb_dst_factor);
          state->desc.RenderTarget[i].BlendOp = blend_op((pipe_blend_func) rt->rgb_func);
@@ -429,16 +438,18 @@ stencil_op(enum pipe_stencil_op op)
    unreachable("unexpected op");
 }
 
-static D3D12_DEPTH_STENCILOP_DESC1
+static d3d12_depth_stencil_op_desc_type
 stencil_op_state(const struct pipe_stencil_state *src)
 {
-   D3D12_DEPTH_STENCILOP_DESC1 ret;
+   d3d12_depth_stencil_op_desc_type ret;
    ret.StencilFailOp = stencil_op((pipe_stencil_op) src->fail_op);
    ret.StencilPassOp = stencil_op((pipe_stencil_op) src->zpass_op);
    ret.StencilDepthFailOp = stencil_op((pipe_stencil_op) src->zfail_op);
    ret.StencilFunc = compare_op((pipe_compare_func) src->func);
+#ifndef _GAMING_XBOX
    ret.StencilReadMask = src->valuemask;
    ret.StencilWriteMask = src->writemask;
+#endif
    return ret;
 }
 
@@ -451,34 +462,36 @@ d3d12_create_depth_stencil_alpha_state(struct pipe_context *pctx,
       return NULL;
 
    if (depth_stencil_alpha->depth_enabled) {
-      dsa->desc.DepthEnable = TRUE;
+      dsa->desc.DepthEnable = true;
       dsa->desc.DepthFunc = compare_op((pipe_compare_func) depth_stencil_alpha->depth_func);
    }
 
    /* TODO Add support for GL_depth_bound_tests */
    #if 0
    if (depth_stencil_alpha->depth.bounds_test) {
-      dsa->desc.DepthBoundsTestEnable = TRUE;
+      dsa->desc.DepthBoundsTestEnable = true;
       dsa->min_depth_bounds = depth_stencil_alpha->depth.bounds_min;
       dsa->max_depth_bounds = depth_stencil_alpha->depth.bounds_max;
    }
    #endif
 
    if (depth_stencil_alpha->stencil[0].enabled) {
-      dsa->desc.StencilEnable = TRUE;
+      dsa->desc.StencilEnable = true;
       dsa->desc.FrontFace = stencil_op_state(depth_stencil_alpha->stencil);
    }
 
    if (depth_stencil_alpha->stencil[1].enabled) {
-      struct d3d12_screen* screen = d3d12_screen(pctx->screen);
-
       dsa->backface_enabled = true;
       dsa->desc.BackFace = stencil_op_state(depth_stencil_alpha->stencil + 1);
+
+#ifndef _GAMING_XBOX
+      struct d3d12_screen *screen = d3d12_screen(pctx->screen);
 
       if (!screen->opts14.IndependentFrontAndBackStencilRefMaskSupported) {
          dsa->desc.BackFace.StencilReadMask = dsa->desc.FrontFace.StencilReadMask;
          dsa->desc.BackFace.StencilWriteMask = dsa->desc.FrontFace.StencilWriteMask;
       }
+#endif
    }
    else {
       dsa->desc.BackFace = dsa->desc.FrontFace;
@@ -1300,7 +1313,6 @@ d3d12_set_polygon_stipple(struct pipe_context *pctx,
 
 static void
 d3d12_set_vertex_buffers(struct pipe_context *pctx,
-                         unsigned start_slot,
                          unsigned num_buffers,
                          unsigned unbind_num_trailing_slots,
                          bool take_ownership,
@@ -1308,7 +1320,7 @@ d3d12_set_vertex_buffers(struct pipe_context *pctx,
 {
    struct d3d12_context *ctx = d3d12_context(pctx);
    util_set_vertex_buffers_count(ctx->vbs, &ctx->num_vbs,
-                                 buffers, start_slot, num_buffers,
+                                 buffers, num_buffers,
                                  unbind_num_trailing_slots,
                                  take_ownership);
 
@@ -1318,7 +1330,6 @@ d3d12_set_vertex_buffers(struct pipe_context *pctx,
          continue;
       struct d3d12_resource *res = d3d12_resource(buf->buffer.resource);
       ctx->vbvs[i].BufferLocation = d3d12_resource_gpu_virtual_address(res) + buf->buffer_offset;
-      ctx->vbvs[i].StrideInBytes = buf->stride;
       ctx->vbvs[i].SizeInBytes = res->base.b.width0 - buf->buffer_offset;
    }
    ctx->state_dirty |= D3D12_DIRTY_VERTEX_BUFFERS;
@@ -1993,9 +2004,9 @@ d3d12_flush_cmdlist_and_wait(struct d3d12_context *ctx)
    struct d3d12_batch *batch = d3d12_current_batch(ctx);
 
    d3d12_foreach_submitted_batch(ctx, old_batch)
-      d3d12_reset_batch(ctx, old_batch, PIPE_TIMEOUT_INFINITE);
+      d3d12_reset_batch(ctx, old_batch, OS_TIMEOUT_INFINITE);
    d3d12_flush_cmdlist(ctx);
-   d3d12_reset_batch(ctx, batch, PIPE_TIMEOUT_INFINITE);
+   d3d12_reset_batch(ctx, batch, OS_TIMEOUT_INFINITE);
 }
 
 static void
@@ -2071,7 +2082,7 @@ d3d12_clear_depth_stencil(struct pipe_context *pctx,
    if (clear_flags & PIPE_CLEAR_STENCIL)
       flags |= D3D12_CLEAR_FLAG_STENCIL;
 
-   struct d3d12_resource *res = d3d12_resource(ctx->fb.zsbuf->texture);
+   struct d3d12_resource *res = d3d12_resource(psurf->texture);
    d3d12_transition_resource_state(ctx, res,
                                    D3D12_RESOURCE_STATE_DEPTH_WRITE,
                                    D3D12_TRANSITION_FLAG_INVALIDATE_BINDINGS);
@@ -2488,11 +2499,11 @@ d3d12_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
                        0, false);
 
    struct primconvert_config cfg = {};
-   cfg.primtypes_mask = 1 << PIPE_PRIM_POINTS |
-                        1 << PIPE_PRIM_LINES |
-                        1 << PIPE_PRIM_LINE_STRIP |
-                        1 << PIPE_PRIM_TRIANGLES |
-                        1 << PIPE_PRIM_TRIANGLE_STRIP;
+   cfg.primtypes_mask = 1 << MESA_PRIM_POINTS |
+                        1 << MESA_PRIM_LINES |
+                        1 << MESA_PRIM_LINE_STRIP |
+                        1 << MESA_PRIM_TRIANGLES |
+                        1 << MESA_PRIM_TRIANGLE_STRIP;
    cfg.restart_primtypes_mask = cfg.primtypes_mask;
    cfg.fixed_prim_restart = true;
    ctx->primconvert = util_primconvert_create_config(&ctx->base, &cfg);

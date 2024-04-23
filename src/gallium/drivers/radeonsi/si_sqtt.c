@@ -1,32 +1,12 @@
 /*
  * Copyright 2020 Advanced Micro Devices, Inc.
- * All Rights Reserved.
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
+ * SPDX-License-Identifier: MIT
  */
 
 
 #include "si_pipe.h"
 #include "si_build_pm4.h"
-#include "si_compute.h"
 
 #include "ac_rgp.h"
 #include "ac_sqtt.h"
@@ -67,6 +47,18 @@ static bool si_sqtt_init_bo(struct si_context *sctx) {
   return true;
 }
 
+static bool
+si_sqtt_se_is_disabled(const struct radeon_info *info, unsigned se)
+{
+   /* FIXME: SQTT only works on SE0 for some unknown reasons. See RADV for the
+    * solution */
+   if (info->gfx_level == GFX11)
+      return se != 0;
+
+   /* No active CU on the SE means it is disabled. */
+   return info->cu_mask[se][0] == 0;
+}
+
 static void si_emit_sqtt_start(struct si_context *sctx,
                                struct radeon_cmdbuf *cs,
                                uint32_t queue_family_index) {
@@ -82,7 +74,7 @@ static void si_emit_sqtt_start(struct si_context *sctx,
         ac_sqtt_get_data_va(&sctx->screen->info, sctx->sqtt, va, se);
     uint64_t shifted_va = data_va >> SQTT_BUFFER_ALIGN_SHIFT;
 
-    if (ac_sqtt_se_is_disabled(&sctx->screen->info, se))
+    if (si_sqtt_se_is_disabled(&sctx->screen->info, se))
       continue;
 
     /* Target SEx and SH0. */
@@ -353,7 +345,7 @@ static void si_emit_sqtt_stop(struct si_context *sctx, struct radeon_cmdbuf *cs,
   }
 
   for (unsigned se = 0; se < max_se; se++) {
-    if (ac_sqtt_se_is_disabled(&sctx->screen->info, se))
+    if (si_sqtt_se_is_disabled(&sctx->screen->info, se))
       continue;
 
     radeon_begin(cs);
@@ -533,7 +525,7 @@ static void si_sqtt_init_cs(struct si_context *sctx) {
   /* Thread trace start CS (only handles AMD_IP_GFX). */
   sctx->sqtt->start_cs[AMD_IP_GFX] = CALLOC_STRUCT(radeon_cmdbuf);
   if (!ws->cs_create(sctx->sqtt->start_cs[AMD_IP_GFX], sctx->ctx, AMD_IP_GFX,
-                     NULL, NULL, 0)) {
+                     NULL, NULL)) {
     free(sctx->sqtt->start_cs[AMD_IP_GFX]);
     sctx->sqtt->start_cs[AMD_IP_GFX] = NULL;
     return;
@@ -544,7 +536,7 @@ static void si_sqtt_init_cs(struct si_context *sctx) {
   /* Thread trace stop CS. */
   sctx->sqtt->stop_cs[AMD_IP_GFX] = CALLOC_STRUCT(radeon_cmdbuf);
   if (!ws->cs_create(sctx->sqtt->stop_cs[AMD_IP_GFX], sctx->ctx, AMD_IP_GFX,
-                     NULL, NULL, 0)) {
+                     NULL, NULL)) {
     free(sctx->sqtt->start_cs[AMD_IP_GFX]);
     sctx->sqtt->start_cs[AMD_IP_GFX] = NULL;
     free(sctx->sqtt->stop_cs[AMD_IP_GFX]);
@@ -585,7 +577,7 @@ static bool si_get_sqtt_trace(struct si_context *sctx,
       void *info_ptr = sqtt_ptr + info_offset;
       struct ac_sqtt_data_info *info = (struct ac_sqtt_data_info *)info_ptr;
 
-      if (ac_sqtt_se_is_disabled(&sctx->screen->info, se))
+      if (si_sqtt_se_is_disabled(&sctx->screen->info, se))
         continue;
 
       if (!ac_is_sqtt_complete(&sctx->screen->info, sctx->sqtt, info)) {
@@ -748,7 +740,7 @@ void si_handle_sqtt(struct si_context *sctx, struct radeon_cmdbuf *rcs) {
     if (frame_trigger || file_trigger) {
       /* Wait for last submission */
       sctx->ws->fence_wait(sctx->ws, sctx->last_gfx_fence,
-                           PIPE_TIMEOUT_INFINITE);
+                           OS_TIMEOUT_INFINITE);
 
       /* Start SQTT */
       si_begin_sqtt(sctx, rcs);
@@ -772,7 +764,7 @@ void si_handle_sqtt(struct si_context *sctx, struct radeon_cmdbuf *rcs) {
 
     /* Wait for SQTT to finish and read back the bo */
     if (sctx->ws->fence_wait(sctx->ws, sctx->last_sqtt_fence,
-                             PIPE_TIMEOUT_INFINITE) &&
+                             OS_TIMEOUT_INFINITE) &&
         si_get_sqtt_trace(sctx, &sqtt_trace)) {
       struct ac_spm_trace spm_trace;
 
@@ -1102,7 +1094,7 @@ si_sqtt_register_pipeline(struct si_context* sctx, struct si_sqtt_fake_pipeline 
 {
    assert(!si_sqtt_pipeline_is_registered(sctx->sqtt, pipeline->code_hash));
 
-   bool result = ac_sqtt_add_pso_correlation(sctx->sqtt, pipeline->code_hash);
+   bool result = ac_sqtt_add_pso_correlation(sctx->sqtt, pipeline->code_hash, pipeline->code_hash);
    if (!result)
       return false;
 

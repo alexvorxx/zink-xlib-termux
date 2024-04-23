@@ -46,6 +46,7 @@
 #include "util/bitscan.h"
 
 #include "state_tracker/st_program.h"
+#include "state_tracker/st_nir.h"
 
 #include "compiler/nir/nir_builder.h"
 #include "compiler/nir/nir_builtin_builder.h"
@@ -284,27 +285,14 @@ struct tnl_program {
 
    nir_builder *b;
 
-   nir_ssa_def *eye_position;
-   nir_ssa_def *eye_position_z;
-   nir_ssa_def *eye_position_normalized;
-   nir_ssa_def *transformed_normal;
+   nir_def *eye_position;
+   nir_def *eye_position_z;
+   nir_def *eye_position_normalized;
+   nir_def *transformed_normal;
 
    GLuint materials;
    GLuint color_materials;
 };
-
-static nir_variable *
-find_state_var(nir_shader *s,
-               gl_state_index16 tokens[STATE_LENGTH])
-{
-   nir_foreach_variable_with_modes(var, s, nir_var_uniform) {
-      if (var->num_state_slots == 1 &&
-          !memcmp(var->state_slots[0].tokens, tokens,
-                  sizeof(var->state_slots[0].tokens)))
-         return var;
-   }
-   return NULL;
-}
 
 static nir_variable *
 register_state_var(struct tnl_program *p,
@@ -319,28 +307,17 @@ register_state_var(struct tnl_program *p,
    tokens[1] = s1;
    tokens[2] = s2;
    tokens[3] = s3;
-   nir_variable *var = find_state_var(p->b->shader, tokens);
+   nir_variable *var = nir_find_state_variable(p->b->shader, tokens);
    if (var)
       return var;
 
-   int loc = _mesa_add_state_reference(p->state_params, tokens);
+   var = st_nir_state_variable_create(p->b->shader, type, tokens);
+   var->data.driver_location = _mesa_add_state_reference(p->state_params, tokens);
 
-   char *name = _mesa_program_state_string(tokens);
-   var = nir_variable_create(p->b->shader, nir_var_uniform, type,
-                             name);
-   free(name);
-
-   var->num_state_slots = 1;
-   var->state_slots = ralloc_array(var, nir_state_slot, 1);
-   var->data.driver_location = loc;
-   memcpy(var->state_slots[0].tokens, tokens,
-          sizeof(var->state_slots[0].tokens));
-
-   p->b->shader->num_uniforms++;
    return var;
 }
 
-static nir_ssa_def *
+static nir_def *
 load_state_var(struct tnl_program *p,
                gl_state_index s0,
                gl_state_index s1,
@@ -352,7 +329,7 @@ load_state_var(struct tnl_program *p,
    return nir_load_var(p->b, var);
 }
 
-static nir_ssa_def *
+static nir_def *
 load_state_vec4(struct tnl_program *p,
                 gl_state_index s0,
                 gl_state_index s1,
@@ -363,14 +340,14 @@ load_state_vec4(struct tnl_program *p,
 }
 
 static void
-load_state_mat4(struct tnl_program *p, nir_ssa_def *out[4],
+load_state_mat4(struct tnl_program *p, nir_def *out[4],
                 gl_state_index state_index, unsigned tex_index)
 {
    for (int i = 0; i < 4; ++i)
       out[i] = load_state_vec4(p, state_index, tex_index, i, i);
 }
 
-static nir_ssa_def *
+static nir_def *
 load_input(struct tnl_program *p, gl_vert_attrib attr,
            const struct glsl_type *type)
 {
@@ -383,7 +360,7 @@ load_input(struct tnl_program *p, gl_vert_attrib attr,
       return load_state_var(p, STATE_CURRENT_ATTRIB, attr, 0, 0, type);
 }
 
-static nir_ssa_def *
+static nir_def *
 load_input_vec4(struct tnl_program *p, gl_vert_attrib attr)
 {
    return load_input(p, attr, glsl_vec4_type());
@@ -401,7 +378,7 @@ register_output(struct tnl_program *p, gl_varying_slot slot,
 
 static void
 store_output_vec4_masked(struct tnl_program *p, gl_varying_slot slot,
-                         nir_ssa_def *value, unsigned mask)
+                         nir_def *value, unsigned mask)
 {
    assert(mask <= 0xf);
    nir_variable *var = register_output(p, slot, glsl_vec4_type());
@@ -410,24 +387,24 @@ store_output_vec4_masked(struct tnl_program *p, gl_varying_slot slot,
 
 static void
 store_output_vec4(struct tnl_program *p, gl_varying_slot slot,
-                  nir_ssa_def *value)
+                  nir_def *value)
 {
    store_output_vec4_masked(p, slot, value, 0xf);
 }
 
 static void
 store_output_float(struct tnl_program *p, gl_varying_slot slot,
-                   nir_ssa_def *value)
+                   nir_def *value)
 {
    nir_variable *var = register_output(p, slot, glsl_float_type());
    nir_store_var(p->b, var, value, 0x1);
 }
 
 
-static nir_ssa_def *
+static nir_def *
 emit_matrix_transform_vec4(nir_builder *b,
-                           nir_ssa_def *mat[4],
-                           nir_ssa_def *src)
+                           nir_def *mat[4],
+                           nir_def *src)
 {
    return nir_vec4(b,
                    nir_fdot4(b, src, mat[0]),
@@ -436,12 +413,12 @@ emit_matrix_transform_vec4(nir_builder *b,
                    nir_fdot4(b, src, mat[3]));
 }
 
-static nir_ssa_def *
+static nir_def *
 emit_transpose_matrix_transform_vec4(nir_builder *b,
-                                     nir_ssa_def *mat[4],
-                                     nir_ssa_def *src)
+                                     nir_def *mat[4],
+                                     nir_def *src)
 {
-   nir_ssa_def *result;
+   nir_def *result;
    result = nir_fmul(b, nir_channel(b, src, 0), mat[0]);
    result = nir_fmad(b, nir_channel(b, src, 1), mat[1], result);
    result = nir_fmad(b, nir_channel(b, src, 2), mat[2], result);
@@ -449,10 +426,10 @@ emit_transpose_matrix_transform_vec4(nir_builder *b,
    return result;
 }
 
-static nir_ssa_def *
+static nir_def *
 emit_matrix_transform_vec3(nir_builder *b,
-                           nir_ssa_def *mat[3],
-                           nir_ssa_def *src)
+                           nir_def *mat[3],
+                           nir_def *src)
 {
    return nir_vec3(b,
                    nir_fdot3(b, src, mat[0]),
@@ -460,10 +437,10 @@ emit_matrix_transform_vec3(nir_builder *b,
                    nir_fdot3(b, src, mat[2]));
 }
 
-static nir_ssa_def *
-emit_normalize_vec3(nir_builder *b, nir_ssa_def *src)
+static nir_def *
+emit_normalize_vec3(nir_builder *b, nir_def *src)
 {
-   nir_ssa_def *tmp = nir_frsq(b, nir_fdot3(b, src, src));
+   nir_def *tmp = nir_frsq(b, nir_fdot3(b, src, src));
    return nir_fmul(b, src, tmp);
 }
 
@@ -471,23 +448,23 @@ static void
 emit_passthrough(struct tnl_program *p, gl_vert_attrib attr,
                  gl_varying_slot varying)
 {
-   nir_ssa_def *val = load_input_vec4(p, attr);
+   nir_def *val = load_input_vec4(p, attr);
    store_output_vec4(p, varying, val);
 }
 
-static nir_ssa_def *
+static nir_def *
 get_eye_position(struct tnl_program *p)
 {
    if (!p->eye_position) {
-      nir_ssa_def *pos =
+      nir_def *pos =
          load_input_vec4(p, VERT_ATTRIB_POS);
       if (p->mvp_with_dp4) {
-         nir_ssa_def *modelview[4];
+         nir_def *modelview[4];
          load_state_mat4(p, modelview, STATE_MODELVIEW_MATRIX, 0);
          p->eye_position =
             emit_matrix_transform_vec4(p->b, modelview, pos);
       } else {
-         nir_ssa_def *modelview[4];
+         nir_def *modelview[4];
          load_state_mat4(p, modelview,
                          STATE_MODELVIEW_MATRIX_TRANSPOSE, 0);
          p->eye_position =
@@ -498,24 +475,24 @@ get_eye_position(struct tnl_program *p)
    return p->eye_position;
 }
 
-static nir_ssa_def *
+static nir_def *
 get_eye_position_z(struct tnl_program *p)
 {
    return nir_channel(p->b, get_eye_position(p), 2);
 }
 
-static nir_ssa_def *
+static nir_def *
 get_eye_position_normalized(struct tnl_program *p)
 {
    if (!p->eye_position_normalized) {
-      nir_ssa_def *eye = get_eye_position(p);
+      nir_def *eye = get_eye_position(p);
       p->eye_position_normalized = emit_normalize_vec3(p->b, eye);
    }
 
    return p->eye_position_normalized;
 }
 
-static nir_ssa_def *
+static nir_def *
 get_transformed_normal(struct tnl_program *p)
 {
    if (!p->transformed_normal &&
@@ -526,12 +503,12 @@ get_transformed_normal(struct tnl_program *p)
          load_input(p, VERT_ATTRIB_NORMAL,
                     glsl_vector_type(GLSL_TYPE_FLOAT, 3));
    } else if (!p->transformed_normal) {
-      nir_ssa_def *normal =
+      nir_def *normal =
          load_input(p, VERT_ATTRIB_NORMAL,
                     glsl_vector_type(GLSL_TYPE_FLOAT, 3));
 
       if (p->state->need_eye_coords) {
-         nir_ssa_def *mvinv[4];
+         nir_def *mvinv[4];
          load_state_mat4(p, mvinv, STATE_MODELVIEW_MATRIX_INVTRANS, 0);
          normal = emit_matrix_transform_vec3(p->b, mvinv, normal);
       }
@@ -541,7 +518,7 @@ get_transformed_normal(struct tnl_program *p)
       if (p->state->normalize)
          normal = emit_normalize_vec3(p->b, normal);
       else if (p->state->need_eye_coords == p->state->rescale_normals) {
-         nir_ssa_def *scale =
+         nir_def *scale =
             load_state_var(p, STATE_NORMAL_SCALE, 0, 0, 0,
                            glsl_float_type());
          normal = nir_fmul(p->b, normal, scale);
@@ -551,24 +528,6 @@ get_transformed_normal(struct tnl_program *p)
    }
 
    return p->transformed_normal;
-}
-
-static void
-build_hpos(struct tnl_program *p)
-{
-   nir_ssa_def *pos =
-      load_input_vec4(p, VERT_ATTRIB_POS);
-   if (p->mvp_with_dp4) {
-      nir_ssa_def *mvp[4];
-      load_state_mat4(p, mvp, STATE_MODELVIEW_MATRIX, 0);
-      pos = emit_matrix_transform_vec4(p->b, mvp, pos);
-   } else {
-      nir_ssa_def *mvp[4];
-      load_state_mat4(p, mvp, STATE_MVP_MATRIX_TRANSPOSE, 0);
-      pos = emit_transpose_matrix_transform_vec4(p->b, mvp, pos);
-   }
-
-   store_output_vec4(p, VARYING_SLOT_POS, pos);
 }
 
 static GLuint material_attrib( GLuint side, GLuint property )
@@ -608,7 +567,7 @@ static void set_material_flags( struct tnl_program *p )
 }
 
 
-static nir_ssa_def *
+static nir_def *
 get_material(struct tnl_program *p, GLuint side,
              GLuint property)
 {
@@ -642,17 +601,17 @@ get_material(struct tnl_program *p, GLuint side,
  * lift it out of the main loop.  That way the programs created here
  * would be independent of the vertex_buffer details.
  */
-static nir_ssa_def *
+static nir_def *
 get_scenecolor(struct tnl_program *p, GLuint side)
 {
    if (p->materials & SCENE_COLOR_BITS(side)) {
-      nir_ssa_def *lm_ambient =
+      nir_def *lm_ambient =
          load_state_vec4(p, STATE_LIGHTMODEL_AMBIENT, 0, 0, 0);
-      nir_ssa_def *material_emission =
+      nir_def *material_emission =
          get_material(p, side, STATE_EMISSION);
-      nir_ssa_def *material_ambient =
+      nir_def *material_ambient =
          get_material(p, side, STATE_AMBIENT);
-      nir_ssa_def *material_diffuse =
+      nir_def *material_diffuse =
          get_material(p, side, STATE_DIFFUSE);
 
       // rgb: material_emission + material_ambient * lm_ambient
@@ -670,7 +629,7 @@ get_scenecolor(struct tnl_program *p, GLuint side)
       return load_state_vec4(p, STATE_LIGHTMODEL_SCENECOLOR, side, 0, 0);
 }
 
-static nir_ssa_def *
+static nir_def *
 get_lightprod(struct tnl_program *p, GLuint light,
               GLuint side, GLuint property, bool *is_state_light)
 {
@@ -685,26 +644,26 @@ get_lightprod(struct tnl_program *p, GLuint light,
 }
 
 
-static nir_ssa_def *
+static nir_def *
 calculate_light_attenuation(struct tnl_program *p,
                             GLuint i,
-                            nir_ssa_def *VPpli,
-                            nir_ssa_def *dist)
+                            nir_def *VPpli,
+                            nir_def *dist)
 {
-   nir_ssa_def *attenuation = NULL;
-   nir_ssa_def *att = NULL;
+   nir_def *attenuation = NULL;
+   nir_def *att = NULL;
 
    /* Calculate spot attenuation:
     */
    if (!p->state->unit[i].light_spotcutoff_is_180) {
-       nir_ssa_def *spot_dir_norm =
+       nir_def *spot_dir_norm =
          load_state_vec4(p, STATE_LIGHT_SPOT_DIR_NORMALIZED, i, 0, 0);
       attenuation =
          load_state_vec4(p, STATE_LIGHT, i, STATE_ATTENUATION, 0);
 
-      nir_ssa_def *spot = nir_fdot3(p->b, nir_fneg(p->b, VPpli),
+      nir_def *spot = nir_fdot3(p->b, nir_fneg(p->b, VPpli),
                                     spot_dir_norm);
-      nir_ssa_def *cmp = nir_flt(p->b, nir_channel(p->b, spot_dir_norm, 3),
+      nir_def *cmp = nir_flt(p->b, nir_channel(p->b, spot_dir_norm, 3),
                                  spot);
       spot = nir_fpow(p->b, spot, nir_channel(p->b, attenuation, 3));
       att = nir_bcsel(p->b, cmp, spot, nir_imm_zero(p->b, 1, 32));
@@ -720,8 +679,14 @@ calculate_light_attenuation(struct tnl_program *p,
                                        STATE_ATTENUATION, 0);
       }
 
+      /* dist is the reciprocal of ||VP|| used in the distance
+       * attenuation formula. So need to get the reciprocal of dist first
+       * before applying to the formula.
+       */
+      dist = nir_frcp(p->b, dist);
+
       /* 1, d, d*d */
-      nir_ssa_def *tmp = nir_vec3(p->b,
+      nir_def *tmp = nir_vec3(p->b,
          nir_imm_float(p->b, 1.0f),
          dist,
          nir_fmul(p->b, dist, dist)
@@ -736,20 +701,20 @@ calculate_light_attenuation(struct tnl_program *p,
    return att;
 }
 
-static nir_ssa_def *
+static nir_def *
 emit_lit(nir_builder *b,
-         nir_ssa_def *src)
+         nir_def *src)
 {
-   nir_ssa_def *zero = nir_imm_zero(b, 1, 32);
-   nir_ssa_def *one = nir_imm_float(b, 1.0f);
-   nir_ssa_def *src_x = nir_channel(b, src, 0);
-   nir_ssa_def *src_y = nir_channel(b, src, 1);
-   nir_ssa_def *src_w = nir_channel(b, src, 3);
+   nir_def *zero = nir_imm_zero(b, 1, 32);
+   nir_def *one = nir_imm_float(b, 1.0f);
+   nir_def *src_x = nir_channel(b, src, 0);
+   nir_def *src_y = nir_channel(b, src, 1);
+   nir_def *src_w = nir_channel(b, src, 3);
 
-   nir_ssa_def *wclamp = nir_fmax(b, nir_fmin(b, src_w,
+   nir_def *wclamp = nir_fmax(b, nir_fmin(b, src_w,
                                               nir_imm_float(b, 128.0f)),
                                   nir_imm_float(b, -128.0f));
-   nir_ssa_def *pow = nir_fpow(b, nir_fmax(b, src_y, zero), wclamp);
+   nir_def *pow = nir_fpow(b, nir_fmax(b, src_y, zero), wclamp);
 
    return nir_vec4(b,
                    one,
@@ -766,19 +731,19 @@ emit_lit(nir_builder *b,
  *   lit.y = MAX(0, dots.x)
  *   lit.z = SLT(0, dots.x)
  */
-static nir_ssa_def *
+static nir_def *
 emit_degenerate_lit(nir_builder *b,
-                    nir_ssa_def *dots)
+                    nir_def *dots)
 {
-   nir_ssa_def *id = nir_imm_vec4(b, 0.0f, 0.0f, 0.0f, 1.0f);
+   nir_def *id = nir_imm_vec4(b, 0.0f, 0.0f, 0.0f, 1.0f);
 
    /* Note that lit.x & lit.w will not be examined.  Note also that
     * dots.xyzw == dots.xxxx.
     */
 
-   nir_ssa_def *zero = nir_imm_zero(b, 1, 32);
-   nir_ssa_def *dots_x = nir_channel(b, dots, 0);
-   nir_ssa_def *tmp = nir_fmax(b, id, dots);
+   nir_def *zero = nir_imm_zero(b, 1, 32);
+   nir_def *dots_x = nir_channel(b, dots, 0);
+   nir_def *tmp = nir_fmax(b, id, dots);
    return nir_vector_insert_imm(b, tmp, nir_slt(b, zero, dots_x), 2);
 }
 
@@ -792,11 +757,11 @@ static void build_lighting( struct tnl_program *p )
    const GLboolean twoside = p->state->light_twoside;
    const GLboolean separate = p->state->separate_specular;
    GLuint nr_lights = 0;
-   nir_ssa_def *lit = NULL;
-   nir_ssa_def *dots = nir_imm_zero(p->b, 4, 32);
-   nir_ssa_def *normal = get_transformed_normal(p);
-   nir_ssa_def *_col0 = NULL, *_col1 = NULL;
-   nir_ssa_def *_bfc0 = NULL, *_bfc1 = NULL;
+   nir_def *lit = NULL;
+   nir_def *dots = nir_imm_zero(p->b, 4, 32);
+   nir_def *normal = get_transformed_normal(p);
+   nir_def *_col0 = NULL, *_col1 = NULL;
+   nir_def *_bfc0 = NULL, *_bfc1 = NULL;
    GLuint i;
 
    /*
@@ -815,8 +780,8 @@ static void build_lighting( struct tnl_program *p )
 
    {
       if (!p->state->material_shininess_is_zero) {
-         nir_ssa_def *shininess = get_material(p, 0, STATE_SHININESS);
-         nir_ssa_def *tmp = nir_channel(p->b, shininess, 0);
+         nir_def *shininess = get_material(p, 0, STATE_SHININESS);
+         nir_def *tmp = nir_channel(p->b, shininess, 0);
          dots = nir_vector_insert_imm(p->b, dots, tmp, 3);
       }
 
@@ -830,8 +795,8 @@ static void build_lighting( struct tnl_program *p )
          /* Note that we negate the back-face specular exponent here.
           * The negation will be un-done later in the back-face code below.
           */
-         nir_ssa_def *shininess = get_material(p, 1, STATE_SHININESS);
-         nir_ssa_def *tmp = nir_channel(p->b, shininess, 0);
+         nir_def *shininess = get_material(p, 1, STATE_SHININESS);
+         nir_def *tmp = nir_channel(p->b, shininess, 0);
          tmp = nir_fneg(p->b, tmp);
          dots = nir_vector_insert_imm(p->b, dots, tmp, 2);
       }
@@ -860,8 +825,8 @@ static void build_lighting( struct tnl_program *p )
    /* Declare light products first to place them sequentially next to each
     * other for optimal constant uploads.
     */
-   nir_ssa_def *lightprod_front[MAX_LIGHTS][3];
-   nir_ssa_def *lightprod_back[MAX_LIGHTS][3];
+   nir_def *lightprod_front[MAX_LIGHTS][3];
+   nir_def *lightprod_back[MAX_LIGHTS][3];
    bool lightprod_front_is_state_light[MAX_LIGHTS][3];
    bool lightprod_back_is_state_light[MAX_LIGHTS][3];
 
@@ -912,19 +877,19 @@ static void build_lighting( struct tnl_program *p )
 
    for (i = 0; i < MAX_LIGHTS; i++) {
       if (p->state->unit[i].light_enabled) {
-         nir_ssa_def *half = NULL;
-         nir_ssa_def *att = NULL, *VPpli = NULL;
-         nir_ssa_def *dist = NULL;
+         nir_def *half = NULL;
+         nir_def *att = NULL, *VPpli = NULL;
+         nir_def *dist = NULL;
 
          if (p->state->unit[i].light_eyepos3_is_zero) {
             VPpli = load_state_var(p, STATE_LIGHT_POSITION_NORMALIZED,
                                    i, 0, 0,
                                    glsl_vector_type(GLSL_TYPE_FLOAT, 3));
          } else {
-            nir_ssa_def *Ppli =
+            nir_def *Ppli =
                load_state_vec4(p, STATE_LIGHT_POSITION, i, 0, 0);
 
-            nir_ssa_def *V = get_eye_position(p);
+            nir_def *V = get_eye_position(p);
             VPpli = nir_fsub(p->b, Ppli, V);
 
             /* Normalize VPpli.  The dist value also used in
@@ -942,7 +907,7 @@ static void build_lighting( struct tnl_program *p )
           */
          if (!p->state->material_shininess_is_zero) {
             if (p->state->light_local_viewer) {
-               nir_ssa_def *eye_hat = get_eye_position_normalized(p);
+               nir_def *eye_hat = get_eye_position_normalized(p);
                half = emit_normalize_vec3(p->b,
                                           nir_fsub(p->b, VPpli, eye_hat));
             } else if (p->state->unit[i].light_eyepos3_is_zero) {
@@ -951,7 +916,7 @@ static void build_lighting( struct tnl_program *p )
                                  i, 0, 0,
                                  glsl_vector_type(GLSL_TYPE_FLOAT, 3));
             } else {
-               nir_ssa_def *tmp =
+               nir_def *tmp =
                   nir_fadd(p->b,
                            VPpli,
                            nir_imm_vec3(p->b, 0.0f, 0.0f, 1.0f));
@@ -961,9 +926,9 @@ static void build_lighting( struct tnl_program *p )
 
          /* Calculate dot products:
           */
-         nir_ssa_def *dot = nir_fdot3(p->b, normal, VPpli);
+         nir_def *dot = nir_fdot3(p->b, normal, VPpli);
          if (p->state->material_shininess_is_zero) {
-            dots = nir_vec4(p->b, dot, dot, dot, dot);
+            dots = nir_replicate(p->b, dot, 4);
          } else {
             dots = nir_vector_insert_imm(p->b, dots, dot, 0);
             dot = nir_fdot3(p->b, normal, half);
@@ -978,16 +943,16 @@ static void build_lighting( struct tnl_program *p )
             */
             for (int j = 0; j < 3; j++) {
                if (lightprod_front_is_state_light[i][j]) {
-                  nir_ssa_def *material =
+                  nir_def *material =
                      get_material(p, 0, STATE_AMBIENT + j);
                   lightprod_front[i][j] =
                      nir_fmul(p->b, lightprod_front[i][j], material);
                }
             }
 
-            nir_ssa_def *ambient = lightprod_front[i][0];
-            nir_ssa_def *diffuse = lightprod_front[i][1];
-            nir_ssa_def *specular = lightprod_front[i][2];
+            nir_def *ambient = lightprod_front[i][0];
+            nir_def *diffuse = lightprod_front[i][1];
+            nir_def *specular = lightprod_front[i][2];
 
             if (att) {
                /* light is attenuated by distance */
@@ -1015,23 +980,23 @@ static void build_lighting( struct tnl_program *p )
          }
          /* Back face lighting:
           */
-         nir_ssa_def *old_dots = dots;
+         nir_def *old_dots = dots;
          if (twoside) {
             /* Transform STATE_LIGHT into STATE_LIGHTPROD if needed. This isn't done in
             * get_lightprod to avoid using too many temps.
             */
             for (int j = 0; j < 3; j++) {
                if (lightprod_back_is_state_light[i][j]) {
-                  nir_ssa_def *material =
+                  nir_def *material =
                      get_material(p, 1, STATE_AMBIENT + j);
                   lightprod_back[i][j] =
                      nir_fmul(p->b, lightprod_back[i][j], material);
                }
             }
 
-            nir_ssa_def *ambient = lightprod_back[i][0];
-            nir_ssa_def *diffuse = lightprod_back[i][1];
-            nir_ssa_def *specular = lightprod_back[i][2];
+            nir_def *ambient = lightprod_back[i][0];
+            nir_def *diffuse = lightprod_back[i][1];
+            nir_def *specular = lightprod_back[i][2];
 
             /* For the back face we need to negate the X and Y component
              * dot products.  dots.Z has the negated back-face specular
@@ -1039,7 +1004,7 @@ static void build_lighting( struct tnl_program *p )
              * negation makes the back-face specular term positive again.
              */
             unsigned swiz_xywz[] = {0, 1, 3, 2};
-            nir_ssa_def *dots =
+            nir_def *dots =
                nir_fneg(p->b, nir_swizzle(p->b, old_dots, swiz_xywz, 4));
 
             if (att) {
@@ -1083,13 +1048,12 @@ static void build_lighting( struct tnl_program *p )
 
 static void build_fog( struct tnl_program *p )
 {
-   nir_ssa_def *fog;
+   nir_def *fog;
    switch (p->state->fog_distance_mode) {
    case FDM_EYE_RADIAL:
       /* Z = sqrt(Xe*Xe + Ye*Ye + Ze*Ze) */
-      fog = nir_fast_length(p->b, nir_channels(p->b,
-                                               get_eye_position(p),
-                                               0x7));
+      fog = nir_fast_length(p->b,
+                            nir_trim_vector(p->b, get_eye_position(p), 3));
       break;
    case FDM_EYE_PLANE: /* Z = Ze */
       fog = get_eye_position_z(p);
@@ -1109,13 +1073,13 @@ static void build_fog( struct tnl_program *p )
 }
 
 
-static nir_ssa_def *
+static nir_def *
 build_reflect_texgen(struct tnl_program *p)
 {
-   nir_ssa_def *normal = get_transformed_normal(p);
-   nir_ssa_def *eye_hat = get_eye_position_normalized(p);
+   nir_def *normal = get_transformed_normal(p);
+   nir_def *eye_hat = get_eye_position_normalized(p);
    /* n.u */
-   nir_ssa_def *tmp = nir_fdot3(p->b, normal, eye_hat);
+   nir_def *tmp = nir_fdot3(p->b, normal, eye_hat);
    /* 2n.u */
    tmp = nir_fadd(p->b, tmp, tmp);
    /* (-2n.u)n + u */
@@ -1123,11 +1087,11 @@ build_reflect_texgen(struct tnl_program *p)
 }
 
 
-static nir_ssa_def *
+static nir_def *
 build_sphere_texgen(struct tnl_program *p)
 {
-   nir_ssa_def *normal = get_transformed_normal(p);
-   nir_ssa_def *eye_hat = get_eye_position_normalized(p);
+   nir_def *normal = get_transformed_normal(p);
+   nir_def *eye_hat = get_eye_position_normalized(p);
 
    /* Could share the above calculations, but it would be
     * a fairly odd state for someone to set (both sphere and
@@ -1138,11 +1102,11 @@ build_sphere_texgen(struct tnl_program *p)
     */
 
    /* n.u */
-   nir_ssa_def *tmp = nir_fdot3(p->b, normal, eye_hat);
+   nir_def *tmp = nir_fdot3(p->b, normal, eye_hat);
    /* 2n.u */
    tmp = nir_fadd(p->b, tmp, tmp);
    /* (-2n.u)n + u */
-   nir_ssa_def *r = nir_fmad(p->b, nir_fneg(p->b, tmp), normal, eye_hat);
+   nir_def *r = nir_fmad(p->b, nir_fneg(p->b, tmp), normal, eye_hat);
    /* r + 0,0,1 */
    tmp = nir_fadd(p->b, r, nir_imm_vec4(p->b, 0.0f, 0.0f, 1.0f, 0.0f));
    /* rx^2 + ry^2 + (rz+1)^2 */
@@ -1150,7 +1114,7 @@ build_sphere_texgen(struct tnl_program *p)
    /* 2/m */
    tmp = nir_frsq(p->b, tmp);
    /* 1/m */
-   nir_ssa_def *inv_m = nir_fmul_imm(p->b, tmp, 0.5f);
+   nir_def *inv_m = nir_fmul_imm(p->b, tmp, 0.5f);
    /* r/m + 1/2 */
    return nir_fmad(p->b, r, inv_m, nir_imm_float(p->b, 0.5f));
 }
@@ -1167,14 +1131,14 @@ static void build_texture_transform( struct tnl_program *p )
       if (p->state->unit[i].coord_replace)
          continue;
 
-      nir_ssa_def *texcoord;
+      nir_def *texcoord;
       if (p->state->unit[i].texgen_enabled) {
          GLuint copy_mask = 0;
          GLuint sphere_mask = 0;
          GLuint reflect_mask = 0;
          GLuint normal_mask = 0;
          GLuint modes[4];
-         nir_ssa_def *comps[4];
+         nir_def *comps[4];
 
          modes[0] = p->state->unit[i].texgen_mode0;
          modes[1] = p->state->unit[i].texgen_mode1;
@@ -1184,16 +1148,16 @@ static void build_texture_transform( struct tnl_program *p )
          for (j = 0; j < 4; j++) {
             switch (modes[j]) {
             case TXG_OBJ_LINEAR: {
-               nir_ssa_def *obj = load_input_vec4(p, VERT_ATTRIB_POS);
-               nir_ssa_def *plane =
+               nir_def *obj = load_input_vec4(p, VERT_ATTRIB_POS);
+               nir_def *plane =
                   load_state_vec4(p, STATE_TEXGEN, i,
                                   STATE_TEXGEN_OBJECT_S + j, 0);
                comps[j] = nir_fdot4(p->b, obj, plane);
                break;
             }
             case TXG_EYE_LINEAR: {
-               nir_ssa_def *eye = get_eye_position(p);
-               nir_ssa_def *plane =
+               nir_def *eye = get_eye_position(p);
+               nir_def *plane =
                   load_state_vec4(p, STATE_TEXGEN, i,
                                   STATE_TEXGEN_EYE_S + j, 0);
                comps[j] = nir_fdot4(p->b, eye, plane);
@@ -1214,28 +1178,28 @@ static void build_texture_transform( struct tnl_program *p )
          }
 
          if (sphere_mask) {
-            nir_ssa_def *sphere = build_sphere_texgen(p);
+            nir_def *sphere = build_sphere_texgen(p);
             for (j = 0; j < 4; j++)
                if (sphere_mask & (1 << j))
                   comps[j] = nir_channel(p->b, sphere, j);
          }
 
          if (reflect_mask) {
-            nir_ssa_def *reflect = build_reflect_texgen(p);
+            nir_def *reflect = build_reflect_texgen(p);
             for (j = 0; j < 4; j++)
                if (reflect_mask & (1 << j))
                   comps[j] = nir_channel(p->b, reflect, j);
          }
 
          if (normal_mask) {
-            nir_ssa_def *normal = get_transformed_normal(p);
+            nir_def *normal = get_transformed_normal(p);
             for (j = 0; j < 4; j++)
                if (normal_mask & (1 << j))
                   comps[j] = nir_channel(p->b, normal, j);
          }
 
          if (copy_mask) {
-            nir_ssa_def *in = load_input_vec4(p, VERT_ATTRIB_TEX0 + i);
+            nir_def *in = load_input_vec4(p, VERT_ATTRIB_TEX0 + i);
             for (j = 0; j < 4; j++)
                if (copy_mask & (1 << j))
                   comps[j] = nir_channel(p->b, in, j);
@@ -1246,7 +1210,7 @@ static void build_texture_transform( struct tnl_program *p )
          texcoord = load_input_vec4(p, VERT_ATTRIB_TEX0 + i);
 
       if (p->state->unit[i].texmat_enabled) {
-         nir_ssa_def *texmat[4];
+         nir_def *texmat[4];
          if (p->mvp_with_dp4) {
             load_state_mat4(p, texmat, STATE_TEXTURE_MATRIX, i);
             texcoord =
@@ -1270,17 +1234,17 @@ static void build_texture_transform( struct tnl_program *p )
  */
 static void build_atten_pointsize( struct tnl_program *p )
 {
-   nir_ssa_def *eye = get_eye_position_z(p);
-   nir_ssa_def *in_size =
+   nir_def *eye = get_eye_position_z(p);
+   nir_def *in_size =
       load_state_vec4(p, STATE_POINT_SIZE_CLAMPED, 0, 0, 0);
-   nir_ssa_def *att =
+   nir_def *att =
       load_state_vec4(p, STATE_POINT_ATTENUATION, 0, 0, 0);
 
    /* dist = |eyez| */
-   nir_ssa_def *dist = nir_fabs(p->b, eye);
+   nir_def *dist = nir_fabs(p->b, eye);
 
    /* p1 + dist * (p2 + dist * p3); */
-   nir_ssa_def *factor = nir_fmad(p->b, dist, nir_channel(p->b, att, 2),
+   nir_def *factor = nir_fmad(p->b, dist, nir_channel(p->b, att, 2),
                                               nir_channel(p->b, att, 1));
    factor = nir_fmad(p->b, dist, factor, nir_channel(p->b, att, 0));
 
@@ -1288,7 +1252,7 @@ static void build_atten_pointsize( struct tnl_program *p )
    factor = nir_frsq(p->b, factor);
 
    /* pointSize / sqrt(factor) */
-   nir_ssa_def *size = nir_fmul(p->b, factor,
+   nir_def *size = nir_fmul(p->b, factor,
                                 nir_channel(p->b, in_size, 0));
 
 #if 1
@@ -1308,7 +1272,7 @@ static void build_atten_pointsize( struct tnl_program *p )
  */
 static void build_array_pointsize( struct tnl_program *p )
 {
-   nir_ssa_def *val = load_input(p, VERT_ATTRIB_POINT_SIZE,
+   nir_def *val = load_input(p, VERT_ATTRIB_POINT_SIZE,
                                  glsl_float_type());
    store_output_float(p, VARYING_SLOT_PSIZ, val);
 }
@@ -1316,9 +1280,7 @@ static void build_array_pointsize( struct tnl_program *p )
 
 static void build_tnl_program( struct tnl_program *p )
 {
-   /* Emit the program, starting with the modelview, projection transforms:
-    */
-   build_hpos(p);
+   /* Emit the program (except for the MVP transform, which is a separate pass) */
 
    /* Lighting calculations:
     */
@@ -1380,6 +1342,9 @@ create_new_program( const struct state_key *key,
    build_tnl_program( &p );
 
    nir_validate_shader(b.shader, "after generating ff-vertex shader");
+
+   /* Emit the MVP position transformation */
+   NIR_PASS_V(b.shader, st_nir_lower_position_invariant, mvp_with_dp4, p.state_params);
 
    _mesa_add_separate_state_parameters(program, p.state_params);
    _mesa_free_parameter_list(p.state_params);

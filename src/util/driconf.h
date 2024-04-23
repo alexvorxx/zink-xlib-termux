@@ -168,6 +168,13 @@
    DRI_CONF_OPT_B(disable_uniform_array_resize, def, \
                   "Disable the glsl optimisation that resizes uniform arrays")
 
+#define DRI_CONF_ALIAS_SHADER_EXTENSION() \
+   DRI_CONF_OPT_S_NODEF(alias_shader_extension, "Allow  alias for shader extensions")
+
+#define DRI_CONF_ALLOW_VERTEX_TEXTURE_BIAS(def) \
+   DRI_CONF_OPT_B(allow_vertex_texture_bias, def, \
+                  "Allow GL2 vertex shaders to have access to texture2D/textureCube with bias variants")
+
 #define DRI_CONF_FORCE_GLSL_VERSION(def) \
    DRI_CONF_OPT_I(force_glsl_version, def, 0, 999, \
                   "Force a default GLSL version for shaders that lack an explicit #version line")
@@ -310,6 +317,17 @@
    DRI_CONF_OPT_B(ignore_discard_framebuffer, def, \
                   "Ignore glDiscardFramebuffer/glInvalidateFramebuffer, workaround for games that use it incorrectly")
 
+#define DRI_CONF_FORCE_VK_VENDOR(def) \
+   DRI_CONF_OPT_I(force_vk_vendor, 0, -1, 2147483647, "Override GPU vendor id")
+
+#define DRI_CONF_FAKE_SPARSE(def) \
+   DRI_CONF_OPT_B(fake_sparse, def, \
+                  "Advertise support for sparse binding of textures regardless of real support")
+
+#define DRI_CONF_INTEL_ENABLE_WA_14018912822(def) \
+   DRI_CONF_OPT_B(intel_enable_wa_14018912822, def, \
+                  "Intel workaround for using zero blend constants")
+
 /**
  * \brief Image quality-related options
  */
@@ -380,6 +398,10 @@
    DRI_CONF_OPT_B(vk_wsi_force_bgra8_unorm_first, def, \
                   "Force vkGetPhysicalDeviceSurfaceFormatsKHR to return VK_FORMAT_B8G8R8A8_UNORM as the first format")
 
+#define DRI_CONF_VK_WSI_FORCE_SWAPCHAIN_TO_CURRENT_EXTENT(def) \
+   DRI_CONF_OPT_B(vk_wsi_force_swapchain_to_current_extent, def, \
+                  "Force VkSwapchainCreateInfoKHR::imageExtent to be VkSurfaceCapabilities2KHR::currentExtent")
+
 #define DRI_CONF_VK_X11_OVERRIDE_MIN_IMAGE_COUNT(def) \
    DRI_CONF_OPT_I(vk_x11_override_min_image_count, def, 0, 999, \
                   "Override the VkSurfaceCapabilitiesKHR::minImageCount (0 = no override)")
@@ -408,7 +430,9 @@
    DRI_CONF_OPT_B(mesa_no_error, def, \
                   "Disable GL driver error checking")
 
-
+#define DRI_CONF_SHADER_SPILLING_RATE(def) \
+   DRI_CONF_OPT_I(shader_spilling_rate, def, 0, 100, \
+                  "Speed up shader compilation by increasing number of spilled registers after ra_allocate failure")
 /**
  * \brief Miscellaneous configuration options
  */
@@ -448,6 +472,10 @@
 #define DRI_CONF_ALLOW_MULTISAMPLED_COPYTEXIMAGE(def) \
    DRI_CONF_OPT_B(allow_multisampled_copyteximage, def, \
                   "Allow CopyTexSubImage and other to copy sampled framebuffer")
+
+#define DRI_CONF_NO_FP16(def) \
+   DRI_CONF_OPT_B(no_fp16, def, \
+                  "Disable 16-bit float support")
 
 /**
  * \brief Initialization configuration options
@@ -573,10 +601,6 @@
    DRI_CONF_OPT_B(radv_disable_shrink_image_store, def, \
                   "Disabling shrinking of image stores based on the format")
 
-#define DRI_CONF_RADV_ABSOLUTE_DEPTH_BIAS(def) \
-   DRI_CONF_OPT_B(radv_absolute_depth_bias, def, \
-                  "Consider depthBiasConstantFactor an absolute depth bias (like D3D9)")
-
 #define DRI_CONF_RADV_OVERRIDE_UNIFORM_OFFSET_ALIGNMENT(def) \
    DRI_CONF_OPT_I(radv_override_uniform_offset_alignment, def, 0, 128, \
                   "Override the minUniformBufferOffsetAlignment exposed to the application. (0 = default)")
@@ -634,13 +658,13 @@
    DRI_CONF_OPT_B(radv_tex_non_uniform, def, \
                   "Always mark texture sample operations as non-uniform.")
 
-#define DRI_CONF_RADV_RT(def) \
-   DRI_CONF_OPT_B(radv_rt, def, \
-                  "Expose support for VK_KHR_ray_tracing_pipeline")
-
 #define DRI_CONF_RADV_FLUSH_BEFORE_TIMESTAMP_WRITE(def) \
    DRI_CONF_OPT_B(radv_flush_before_timestamp_write, def, \
                   "Wait for previous commands to finish before writing timestamps")
+
+#define DRI_CONF_RADV_RT_WAVE64(def) \
+   DRI_CONF_OPT_B(radv_rt_wave64, def, \
+                  "Force wave64 in RT shaders")
 
 #define DRI_CONF_RADV_APP_LAYER() DRI_CONF_OPT_S_NODEF(radv_app_layer, "Select an application layer.")
 
@@ -675,7 +699,15 @@
 
 #define DRI_CONF_ANV_QUERY_CLEAR_WITH_BLORP_THRESHOLD(def) \
    DRI_CONF_OPT_I(query_clear_with_blorp_threshold, def, 0, INT32_MAX, \
-                  "Indirect threshold count above which we start generating commands")
+                  "Query threshold count above which query buffers are cleared with blorp")
+
+#define DRI_CONF_ANV_QUERY_COPY_WITH_SHADER_THRESHOLD(def) \
+   DRI_CONF_OPT_I(query_copy_with_shader_threshold, def, 0, INT32_MAX, \
+                  "Query threshold count above which query copies are executed with a shader")
+
+#define DRI_CONF_ANV_FORCE_INDIRECT_DESCRIPTORS(def) \
+   DRI_CONF_OPT_B(force_indirect_descriptors, def, \
+                  "Use an indirection to access buffer/image/texture/sampler handles")
 
 /**
  * \brief DZN specific configuration options

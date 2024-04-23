@@ -38,6 +38,8 @@ extern "C" {
  */
 
 struct fd_dev_info {
+   uint8_t chip;
+
    /* alignment for size of tiles */
    uint32_t tile_align_w, tile_align_h;
    /* gmem load/store granularity */
@@ -47,6 +49,13 @@ struct fd_dev_info {
 
    uint32_t num_vsc_pipes;
 
+   uint32_t cs_shared_mem_size;
+
+   int wave_granularity;
+
+   /* Information for private memory calculations */
+   uint32_t fibers_per_sp;
+
    /* number of CCU is always equal to the number of SP */
    union {
       uint32_t num_sp_cores;
@@ -55,9 +64,6 @@ struct fd_dev_info {
 
    union {
       struct {
-         /* Information for private memory calculations */
-         uint32_t fibers_per_sp;
-
          uint32_t reg_size_vec4;
 
          /* The size (in instrlen units (128 bytes)) of instruction cache where
@@ -65,6 +71,10 @@ struct fd_dev_info {
           * on gen3 and later.
           */
          uint32_t instr_cache_size;
+
+         bool has_hw_multiview;
+
+         bool has_fs_tex_prefetch;
 
          /* Whether the PC_MULTIVIEW_MASK register exists. */
          bool supports_multiview_mask;
@@ -112,21 +122,6 @@ struct fd_dev_info {
 
          bool has_8bpp_ubwc;
 
-         /* a650 seems to be affected by a bug where flushing CCU color into
-          * depth or vice-versa requires a WFI. In particular, clearing a
-          * depth attachment (which writes to it as a color attachment) then
-          * using it as a normal depth attachment requires a WFI in addition
-          * to the expected CCU_FLUSH_COLOR + CCU_INVALIDATE_DEPTH, even
-          * though all those operations happen in the same stage. As this is
-          * usually the only scenario where a CCU flush doesn't require a WFI
-          * we just insert a WFI after every CCU flush.
-          *
-          * Tests affected include
-          * dEQP-VK.renderpass.suballocation.formats.d16_unorm.* in sysmem
-          * mode (a few tests flake when the entire series is run).
-          */
-         bool has_ccu_flush_bug;
-
          bool has_lpac;
 
          bool has_getfiberid;
@@ -151,7 +146,29 @@ struct fd_dev_info {
           * different views.
           */
          bool has_per_view_viewport;
+         bool has_gmem_fast_clear;
 
+         /* Per CCU GMEM amount reserved for each of DEPTH and COLOR caches
+          * in sysmem rendering. */
+         uint32_t sysmem_per_ccu_cache_size;
+         /* Per CCU GMEM amount reserved for color cache used by GMEM resolves
+          * which require color cache (non-BLIT event case).
+          * The size is expressed as a fraction of ccu cache used by sysmem
+          * rendering. If a GMEM resolve requires color cache, the driver needs
+          * to make sure it will not overwrite pixel data in GMEM that is still
+          * needed.
+          */
+         /* see enum a6xx_ccu_color_cache_size */
+         uint32_t gmem_ccu_color_cache_fraction;
+
+         /* Corresponds to HLSQ_CONTROL_1_REG::PRIMALLOCTHRESHOLD */
+         uint32_t prim_alloc_threshold;
+
+         uint32_t vs_max_inputs_count;
+
+         bool supports_double_threadsize;
+
+         bool has_sampler_minmax;
          struct {
             uint32_t PC_POWER_CNTL;
             uint32_t TPL1_DBG_ECO_CNTL;
@@ -167,6 +184,11 @@ struct fd_dev_info {
             uint32_t VPC_DBG_ECO_CNTL;
             uint32_t UCHE_UNKNOWN_0E12;
          } magic;
+
+         struct {
+               uint32_t reg;
+               uint32_t value;
+         } magic_raw[32];
       } a6xx;
    };
 };
@@ -195,10 +217,12 @@ fd_dev_gpu_id(const struct fd_dev_id *id)
    return id->gpu_id;
 }
 
+const struct fd_dev_info * fd_dev_info(const struct fd_dev_id *id);
+
 static uint8_t
 fd_dev_gen(const struct fd_dev_id *id)
 {
-   return fd_dev_gpu_id(id) / 100;
+   return fd_dev_info(id)->chip;
 }
 
 static inline bool
@@ -218,7 +242,6 @@ fd_dev_64b(const struct fd_dev_id *id)
  */
 #define A6XX_CCU_GMEM_COLOR_SIZE (16 * 1024)
 
-const struct fd_dev_info * fd_dev_info(const struct fd_dev_id *id);
 const char * fd_dev_name(const struct fd_dev_id *id);
 
 #ifdef __cplusplus

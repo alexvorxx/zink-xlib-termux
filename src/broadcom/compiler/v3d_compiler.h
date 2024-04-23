@@ -99,6 +99,8 @@ enum qfile {
         /**
          * VPM reads use this with an index value to say what part of the VPM
          * is being read.
+         *
+         * Used only for ver < 40. For ver >= 40 we use ldvpm.
          */
         QFILE_VPM,
 
@@ -390,13 +392,7 @@ static inline uint8_t v3d_slot_get_component(struct v3d_varying_slot slot)
         return slot.slot_and_component & 3;
 }
 
-enum v3d_execution_environment {
-   V3D_ENVIRONMENT_OPENGL = 0,
-   V3D_ENVIRONMENT_VULKAN,
-};
-
 struct v3d_key {
-        void *shader_state;
         struct {
                 uint8_t swizzle[4];
         } tex[V3D_MAX_TEXTURE_SAMPLERS];
@@ -412,8 +408,6 @@ struct v3d_key {
         bool robust_uniform_access;
         bool robust_storage_access;
         bool robust_image_access;
-
-        enum v3d_execution_environment environment;
 };
 
 struct v3d_fs_key {
@@ -627,7 +621,7 @@ struct v3d_compile {
         void *debug_output_data;
 
         /**
-         * Mapping from nir_register * or nir_ssa_def * to array of struct
+         * Mapping from nir_register * or nir_def * to array of struct
          * qreg for the values.
          */
         struct hash_table *def_ht;
@@ -646,7 +640,7 @@ struct v3d_compile {
                 uint32_t output_fifo_size;
 
                 struct {
-                        nir_dest *dest;
+                        nir_def *def;
                         uint8_t num_components;
                         uint8_t component_mask;
                 } flush[MAX_TMU_QUEUE_SIZE];
@@ -690,11 +684,6 @@ struct v3d_compile {
 
         /* True if a fragment shader reads gl_PrimitiveID */
         bool fs_uses_primitive_id;
-
-        /* If the fragment shader does anything that requires to force
-         * per-sample MSAA, such as reading gl_SampleID.
-         */
-        bool force_per_sample_msaa;
 
         /* Whether we are using the fallback scheduler. This will be set after
          * register allocation has failed once.
@@ -1049,6 +1038,10 @@ struct v3d_fs_prog_data {
         bool uses_center_w;
         bool uses_implicit_point_line_varyings;
         bool lock_scoreboard_on_first_thrsw;
+
+        /* If the fragment shader does anything that requires to force
+         * per-sample MSAA, such as reading gl_SampleID.
+         */
         bool force_per_sample_msaa;
 };
 
@@ -1153,10 +1146,10 @@ bool vir_writes_r4(const struct v3d_device_info *devinfo, struct qinst *inst);
 struct qreg vir_follow_movs(struct v3d_compile *c, struct qreg reg);
 uint8_t vir_channels_written(struct qinst *inst);
 struct qreg ntq_get_src(struct v3d_compile *c, nir_src src, int i);
-void ntq_store_dest(struct v3d_compile *c, nir_dest *dest, int chan,
-                    struct qreg result);
+void ntq_store_def(struct v3d_compile *c, nir_def *def, int chan,
+                   struct qreg result);
 bool ntq_tmu_fifo_overflow(struct v3d_compile *c, uint32_t components);
-void ntq_add_pending_tmu_flush(struct v3d_compile *c, nir_dest *dest,
+void ntq_add_pending_tmu_flush(struct v3d_compile *c, nir_def *def,
                                uint32_t component_mask);
 void ntq_flush_tmu(struct v3d_compile *c);
 void vir_emit_thrsw(struct v3d_compile *c);
@@ -1180,8 +1173,6 @@ bool vir_opt_constant_alu(struct v3d_compile *c);
 bool v3d_nir_lower_io(nir_shader *s, struct v3d_compile *c);
 bool v3d_nir_lower_line_smooth(nir_shader *shader);
 bool v3d_nir_lower_logic_ops(nir_shader *s, struct v3d_compile *c);
-bool v3d_nir_lower_robust_buffer_access(nir_shader *s, struct v3d_compile *c);
-bool v3d_nir_lower_robust_image_access(nir_shader *s, struct v3d_compile *c);
 bool v3d_nir_lower_scratch(nir_shader *s);
 bool v3d_nir_lower_txf_ms(nir_shader *s);
 bool v3d_nir_lower_image_load_store(nir_shader *s);

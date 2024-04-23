@@ -25,7 +25,8 @@
 #define V3D_UTIL_H
 
 #include "common/v3d_device_info.h"
-#include "pipe/p_defines.h"
+#include "compiler/shader_enums.h"
+#include "util/format/u_formats.h"
 
 uint32_t
 v3d_csd_choose_workgroups_per_supergroup(struct v3d_device_info *devinfo,
@@ -44,6 +45,6 @@ uint32_t
 v3d_translate_pipe_swizzle(enum pipe_swizzle swizzle);
 
 uint32_t
-v3d_hw_prim_type(enum pipe_prim_type prim_type);
+v3d_hw_prim_type(enum mesa_prim prim_type);
 
 #endif

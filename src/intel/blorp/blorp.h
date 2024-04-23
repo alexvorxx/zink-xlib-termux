@@ -109,6 +109,9 @@ enum blorp_batch_flags {
 
    /** Use the hardware blitter to perform any operations in this batch */
    BLORP_BATCH_USE_BLITTER = (1 << 4),
+
+   /** Need a PSS Stall Sync, Wa_18019816803. */
+   BLORP_BATCH_NEED_PSS_STALL_SYNC = (1 << 5),
 };
 
 struct blorp_batch {
@@ -134,6 +137,12 @@ struct blorp_address {
     */
    bool local_hint;
 };
+
+static inline bool
+blorp_address_is_null(struct blorp_address address)
+{
+   return address.buffer == NULL && address.offset == 0;
+}
 
 struct blorp_surf
 {
@@ -182,6 +191,13 @@ blorp_blit(struct blorp_batch *batch,
            float dst_x1, float dst_y1,
            enum blorp_filter filter,
            bool mirror_x, bool mirror_y);
+
+void
+blorp_copy_get_formats(const struct isl_device *isl_dev,
+                       const struct isl_surf *src_surf,
+                       const struct isl_surf *dst_surf,
+                       enum isl_format *src_view_format,
+                       enum isl_format *dst_view_format);
 
 void
 blorp_copy(struct blorp_batch *batch,

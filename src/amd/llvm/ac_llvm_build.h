@@ -1,26 +1,7 @@
 /*
  * Copyright 2016 Bas Nieuwenhuizen
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the
- * "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish,
- * distribute, sub license, and/or sell copies of the Software, and to
- * permit persons to whom the Software is furnished to do so, subject to
- * the following conditions:
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE COPYRIGHT HOLDERS, AUTHORS AND/OR ITS SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- * The above copyright notice and this permission notice (including the
- * next paragraph) shall be included in all copies or substantial portions
- * of the Software.
- *
+ * SPDX-License-Identifier: MIT
  */
 #ifndef AC_LLVM_BUILD_H
 #define AC_LLVM_BUILD_H
@@ -56,6 +37,7 @@ enum
 
 struct ac_llvm_flow;
 struct ac_llvm_compiler;
+struct radeon_info;
 
 struct ac_llvm_flow_state {
    struct ac_llvm_flow *stack;
@@ -130,13 +112,6 @@ struct ac_llvm_context {
    LLVMValueRef i1true;
    LLVMValueRef i1false;
 
-   /* Temporary helper to implement demote_to_helper:
-    * True = live lanes
-    * False = demoted lanes
-    */
-   LLVMValueRef postponed_kill;
-   bool conditional_demote_seen;
-
    /* Since ac_nir_translate makes a local copy of ac_llvm_context, there
     * are two ac_llvm_contexts. Declare a pointer here, so that the control
     * flow stack is shared by both ac_llvm_contexts.
@@ -146,11 +121,12 @@ struct ac_llvm_context {
    unsigned range_md_kind;
    unsigned invariant_load_md_kind;
    unsigned uniform_md_kind;
+   unsigned fpmath_md_kind;
    LLVMValueRef empty_md;
+   LLVMValueRef three_md;
 
+   const struct radeon_info *info;
    enum amd_gfx_level gfx_level;
-   enum radeon_family family;
-   bool has_3d_cube_border_color_mipmap;
 
    unsigned wave_size;
    unsigned ballot_mask_bits;
@@ -167,10 +143,9 @@ struct ac_llvm_context {
 };
 
 void ac_llvm_context_init(struct ac_llvm_context *ctx, struct ac_llvm_compiler *compiler,
-                          enum amd_gfx_level gfx_level, enum radeon_family family,
-                          bool has_3d_cube_border_color_mipmap,
-                          enum ac_float_mode float_mode, unsigned wave_size,
-                          unsigned ballot_mask_bits, bool exports_color_null, bool exports_mrtz);
+                          const struct radeon_info *info, enum ac_float_mode float_mode,
+                          unsigned wave_size, unsigned ballot_mask_bits, bool exports_color_null,
+                          bool exports_mrtz);
 
 void ac_llvm_context_dispose(struct ac_llvm_context *ctx);
 
@@ -200,7 +175,7 @@ LLVMValueRef ac_build_phi(struct ac_llvm_context *ctx, LLVMTypeRef type, unsigne
 void ac_build_s_barrier(struct ac_llvm_context *ctx, gl_shader_stage stage);
 void ac_build_optimization_barrier(struct ac_llvm_context *ctx, LLVMValueRef *pgpr, bool sgpr);
 
-LLVMValueRef ac_build_shader_clock(struct ac_llvm_context *ctx, nir_scope scope);
+LLVMValueRef ac_build_shader_clock(struct ac_llvm_context *ctx, mesa_scope scope);
 
 LLVMValueRef ac_build_ballot(struct ac_llvm_context *ctx, LLVMValueRef value);
 LLVMValueRef ac_get_i1_sgpr_mask(struct ac_llvm_context *ctx, LLVMValueRef value);
@@ -242,9 +217,6 @@ LLVMValueRef ac_build_fast_udiv_nuw(struct ac_llvm_context *ctx, LLVMValueRef nu
                                     LLVMValueRef post_shift, LLVMValueRef increment);
 LLVMValueRef ac_build_fast_udiv_u31_d_not_one(struct ac_llvm_context *ctx, LLVMValueRef num,
                                               LLVMValueRef multiplier, LLVMValueRef post_shift);
-
-void ac_prepare_cube_coords(struct ac_llvm_context *ctx, bool is_deriv, bool is_array, bool is_lod,
-                            LLVMValueRef *coords_arg, LLVMValueRef *derivs_arg);
 
 LLVMValueRef ac_build_fs_interp(struct ac_llvm_context *ctx, LLVMValueRef llvm_chan,
                                 LLVMValueRef attr_number, LLVMValueRef params, LLVMValueRef i,
@@ -306,8 +278,9 @@ LLVMValueRef ac_build_buffer_load_byte(struct ac_llvm_context *ctx, LLVMValueRef
 
 LLVMValueRef ac_build_safe_tbuffer_load(struct ac_llvm_context *ctx, LLVMValueRef rsrc,
                                         LLVMValueRef vindex, LLVMValueRef voffset,
-                                        LLVMValueRef soffset, LLVMTypeRef channel_type,
-                                        const struct ac_vtx_format_info *vtx_info,
+                                        LLVMValueRef soffset,
+                                        const enum pipe_format format,
+                                        unsigned channel_bit_size,
                                         unsigned const_offset,
                                         unsigned align_offset,
                                         unsigned align_mul,
@@ -519,8 +492,6 @@ LLVMValueRef ac_build_ddxy_interp(struct ac_llvm_context *ctx, LLVMValueRef inte
 
 LLVMValueRef ac_build_load_helper_invocation(struct ac_llvm_context *ctx);
 
-LLVMValueRef ac_build_is_helper_invocation(struct ac_llvm_context *ctx);
-
 LLVMValueRef ac_build_call(struct ac_llvm_context *ctx, LLVMTypeRef fn_type, LLVMValueRef func,
                            LLVMValueRef *args, unsigned num_args);
 
@@ -541,9 +512,6 @@ struct ac_ngg_prim {
    LLVMValueRef edgeflags;
    LLVMValueRef passthrough;
 };
-
-LLVMValueRef ac_pack_edgeflags_for_export(struct ac_llvm_context *ctx,
-                                          const struct ac_shader_args *args);
 
 LLVMTypeRef ac_arg_type_to_pointee_type(struct ac_llvm_context *ctx, enum ac_arg_type type);
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2086 # we want word splitting
 
-set -e
-set -x
+set -ex
 
 # If we run in the fork (not from mesa or Marge-bot), reuse mainline kernel and rootfs, if exist.
 BASE_SYSTEM_HOST_PATH="${BASE_SYSTEM_MAINLINE_HOST_PATH}"
@@ -21,25 +21,18 @@ mkdir -p results/job-rootfs-overlay/
 cp artifacts/ci-common/capture-devcoredump.sh results/job-rootfs-overlay/
 cp artifacts/ci-common/init-*.sh results/job-rootfs-overlay/
 cp artifacts/ci-common/intel-gpu-freq.sh results/job-rootfs-overlay/
+cp artifacts/ci-common/kdl.sh results/job-rootfs-overlay/
 cp "$SCRIPTS_DIR"/setup-test-env.sh results/job-rootfs-overlay/
 
 # Prepare env vars for upload.
 section_start variables "Variables passed through:"
-KERNEL_IMAGE_BASE_URL="https://${BASE_SYSTEM_HOST_PATH}" \
-	artifacts/ci-common/generate-env.sh | tee results/job-rootfs-overlay/set-job-env-vars.sh
+artifacts/ci-common/generate-env.sh | tee results/job-rootfs-overlay/set-job-env-vars.sh
 section_end variables
 
 tar zcf job-rootfs-overlay.tar.gz -C results/job-rootfs-overlay/ .
 ci-fairy s3cp --token-file "${CI_JOB_JWT_FILE}" job-rootfs-overlay.tar.gz "https://${JOB_ROOTFS_OVERLAY_PATH}"
 
-ARTIFACT_URL="${FDO_HTTP_CACHE_URI:-}https://${BUILD_PATH}"
-# Make it take the mesa build from MINIO_ARTIFACT_NAME, if it is specified in
-# the environment. This will make the LAVA behavior consistent with the
-# baremetal jobs.
-if [ -n "${MINIO_ARTIFACT_NAME}" ]
-then
-	ARTIFACT_URL="${FDO_HTTP_CACHE_URI:-}https://${PIPELINE_ARTIFACTS_BASE}/${MINIO_ARTIFACT_NAME}.tar.zst"
-fi
+ARTIFACT_URL="${FDO_HTTP_CACHE_URI:-}https://${PIPELINE_ARTIFACTS_BASE}/${S3_ARTIFACT_NAME:?}.tar.zst"
 
 touch results/lava.log
 tail -f results/lava.log &
@@ -48,7 +41,7 @@ PYTHONPATH=artifacts/ artifacts/lava/lava_job_submitter.py \
 	--dump-yaml \
 	--pipeline-info "$CI_JOB_NAME: $CI_PIPELINE_URL on $CI_COMMIT_REF_NAME ${CI_NODE_INDEX}/${CI_NODE_TOTAL}" \
 	--rootfs-url-prefix "https://${BASE_SYSTEM_HOST_PATH}" \
-	--kernel-url-prefix "https://${BASE_SYSTEM_HOST_PATH}" \
+	--kernel-url-prefix "${KERNEL_IMAGE_BASE}/${DEBIAN_ARCH}" \
 	--build-url "${ARTIFACT_URL}" \
 	--job-rootfs-overlay-url "${FDO_HTTP_CACHE_URI:-}https://${JOB_ROOTFS_OVERLAY_PATH}" \
 	--job-timeout-min ${JOB_TIMEOUT:-30} \
@@ -64,4 +57,5 @@ PYTHONPATH=artifacts/ artifacts/lava/lava_job_submitter.py \
 	--lava-tags "${LAVA_TAGS}" \
 	--mesa-job-name "$CI_JOB_NAME" \
 	--structured-log-file "results/lava_job_detail.json" \
+	--ssh-client-image "${LAVA_SSH_CLIENT_IMAGE}" \
 	>> results/lava.log

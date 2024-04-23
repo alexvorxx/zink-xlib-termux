@@ -211,6 +211,8 @@ is_overwritten_since(pr_opt_ctx& ctx, PhysReg reg, RegClass rc, const Idx& since
          return true;
       else if (i == overwritten_untrackable || i == not_written_yet)
          continue;
+      else if (i == overwritten_subdword)
+         return true;
 
       assert(i.found());
 
@@ -505,6 +507,11 @@ try_combine_dpp(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
       if (is_overwritten_since(ctx, mov->operands[0], op_instr_idx))
          continue;
 
+      /* GFX8/9 don't have fetch-inactive. */
+      if (ctx.program->gfx_level < GFX10 &&
+          is_overwritten_since(ctx, Operand(exec, ctx.program->lane_mask), op_instr_idx))
+         continue;
+
       /* We won't eliminate the DPP mov if the operand is used twice */
       bool op_used_twice = false;
       for (unsigned j = 0; j < instr->operands.size(); j++)
@@ -513,8 +520,8 @@ try_combine_dpp(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
          continue;
 
       bool dpp8 = mov->isDPP8();
-      bool input_mods = instr_info.can_use_input_modifiers[(int)instr->opcode] &&
-                        instr_info.operand_size[(int)instr->opcode] == 32;
+      bool input_mods = can_use_input_modifiers(ctx.program->gfx_level, instr->opcode, i) &&
+                        get_operand_size(instr, i) == 32;
       bool mov_uses_mods = mov->valu().neg[0] || mov->valu().abs[0];
       if (((dpp8 && ctx.program->gfx_level < GFX11) || !input_mods) && mov_uses_mods)
          continue;
@@ -522,12 +529,7 @@ try_combine_dpp(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
       if (i != 0) {
          if (!can_swap_operands(instr, &instr->opcode, 0, i))
             continue;
-         std::swap(instr->operands[0], instr->operands[i]);
-         instr->valu().neg[0].swap(instr->valu().neg[i]);
-         instr->valu().abs[0].swap(instr->valu().abs[i]);
-         instr->valu().opsel[0].swap(instr->valu().opsel[i]);
-         instr->valu().opsel_lo[0].swap(instr->valu().opsel_lo[i]);
-         instr->valu().opsel_hi[0].swap(instr->valu().opsel_hi[i]);
+         instr->valu().swapOperands(0, i);
       }
 
       if (!can_use_DPP(ctx.program->gfx_level, instr, dpp8))

@@ -996,6 +996,24 @@ _mesa_initialize_context(struct gl_context *ctx,
    struct gl_shared_state *shared;
    int i;
 
+   switch (api) {
+   case API_OPENGL_COMPAT:
+   case API_OPENGL_CORE:
+      if (!HAVE_OPENGL)
+         return GL_FALSE;
+      break;
+   case API_OPENGLES2:
+      if (!HAVE_OPENGL_ES_2)
+         return GL_FALSE;
+      break;
+   case API_OPENGLES:
+      if (!HAVE_OPENGL_ES_1)
+         return GL_FALSE;
+      break;
+   default:
+      return GL_FALSE;
+   }
+
    ctx->API = api;
    ctx->DrawBuffer = NULL;
    ctx->ReadBuffer = NULL;
@@ -1484,7 +1502,9 @@ _mesa_make_current( struct gl_context *newCtx,
        curCtx->Const.ContextReleaseBehavior ==
        GL_CONTEXT_RELEASE_BEHAVIOR_FLUSH) {
       FLUSH_VERTICES(curCtx, 0, 0);
-      st_glFlush(curCtx, 0);
+      if (curCtx->st){
+         st_glFlush(curCtx, 0);
+      }
    }
 
    if (!newCtx) {

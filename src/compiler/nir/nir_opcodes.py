@@ -150,6 +150,7 @@ def type_base_type(type_):
 _2src_commutative = "2src_commutative "
 associative = "associative "
 selection = "selection "
+derivative = "derivative "
 
 # global dictionary of opcodes
 opcodes = {}
@@ -164,8 +165,9 @@ def opcode(name, output_size, output_type, input_sizes, input_types,
 def unop_convert(name, out_type, in_type, const_expr, description = ""):
    opcode(name, 0, out_type, [0], [in_type], False, "", const_expr, description)
 
-def unop(name, ty, const_expr, description = ""):
-   opcode(name, 0, ty, [0], [ty], False, "", const_expr, description)
+def unop(name, ty, const_expr, description = "", algebraic_properties = ""):
+   opcode(name, 0, ty, [0], [ty], False, algebraic_properties, const_expr,
+          description)
 
 def unop_horiz(name, output_size, output_type, input_size, input_type,
                const_expr, description = ""):
@@ -332,12 +334,13 @@ unop_convert("frexp_sig", tfloat, tfloat, "int n; dst = frexp(src0, &n);")
 deriv_template = """
 Calculate the screen-space partial derivative using {} derivatives of the input
 with respect to the {}-axis. The constant folding is trivial as the derivative
-of a constant is 0.
+of a constant is 0 if the constant is not Inf or NaN.
 """
 
 for mode, suffix in [("either fine or coarse", ""), ("fine", "_fine"), ("coarse", "_coarse")]:
     for axis in ["x", "y"]:
-        unop(f"fdd{axis}{suffix}", tfloat, "0.0",
+        unop(f"fdd{axis}{suffix}", tfloat, "isfinite(src0) ? 0.0 : NAN",
+             algebraic_properties = derivative,
              description = deriv_template.format(mode, axis.upper()))
 
 # Floating point pack and unpack operations.
@@ -423,7 +426,7 @@ unop_horiz("unpack_64_2x32", 2, tuint32, 1, tuint64,
            "dst.x = src0.x; dst.y = src0.x >> 32;")
 
 unop_horiz("unpack_64_4x16", 4, tuint16, 1, tuint64,
-           "dst.x = src0.x; dst.y = src0.x >> 16; dst.z = src0.x >> 32; dst.w = src0.w >> 48;")
+           "dst.x = src0.x; dst.y = src0.x >> 16; dst.z = src0.x >> 32; dst.w = src0.x >> 48;")
 
 unop_horiz("unpack_32_2x16", 2, tuint16, 1, tuint32,
            "dst.x = src0.x; dst.y = src0.x >> 16;")
@@ -536,69 +539,35 @@ for (unsigned bit = 0; bit < bit_size; bit++) {
 }
 """)
 
-# AMD_gcn_shader extended instructions
-unop_horiz("cube_face_coord_amd", 2, tfloat32, 3, tfloat32, """
-dst.x = dst.y = 0.0;
-float absX = fabsf(src0.x);
-float absY = fabsf(src0.y);
-float absZ = fabsf(src0.z);
-
-float ma = 0.0;
-if (absX >= absY && absX >= absZ) { ma = 2 * src0.x; }
-if (absY >= absX && absY >= absZ) { ma = 2 * src0.y; }
-if (absZ >= absX && absZ >= absY) { ma = 2 * src0.z; }
-
-if (src0.x >= 0 && absX >= absY && absX >= absZ) { dst.x = -src0.z; dst.y = -src0.y; }
-if (src0.x < 0 && absX >= absY && absX >= absZ) { dst.x = src0.z; dst.y = -src0.y; }
-if (src0.y >= 0 && absY >= absX && absY >= absZ) { dst.x = src0.x; dst.y = src0.z; }
-if (src0.y < 0 && absY >= absX && absY >= absZ) { dst.x = src0.x; dst.y = -src0.z; }
-if (src0.z >= 0 && absZ >= absX && absZ >= absY) { dst.x = src0.x; dst.y = -src0.y; }
-if (src0.z < 0 && absZ >= absX && absZ >= absY) { dst.x = -src0.x; dst.y = -src0.y; }
-
-dst.x = dst.x * (1.0f / ma) + 0.5f;
-dst.y = dst.y * (1.0f / ma) + 0.5f;
-""")
-
-unop_horiz("cube_face_index_amd", 1, tfloat32, 3, tfloat32, """
-dst.x = 0.0;
-float absX = fabsf(src0.x);
-float absY = fabsf(src0.y);
-float absZ = fabsf(src0.z);
-if (src0.x >= 0 && absX >= absY && absX >= absZ) dst.x = 0;
-if (src0.x < 0 && absX >= absY && absX >= absZ) dst.x = 1;
-if (src0.y >= 0 && absY >= absX && absY >= absZ) dst.x = 2;
-if (src0.y < 0 && absY >= absX && absY >= absZ) dst.x = 3;
-if (src0.z >= 0 && absZ >= absX && absZ >= absY) dst.x = 4;
-if (src0.z < 0 && absZ >= absX && absZ >= absY) dst.x = 5;
-""")
-
 unop_reduce("fsum", 1, tfloat, tfloat, "{src}", "{src0} + {src1}", "{src}",
             description = "Sum of vector components")
 
-def binop_convert(name, out_type, in_type, alg_props, const_expr, description=""):
-   opcode(name, 0, out_type, [0, 0], [in_type, in_type],
+def binop_convert(name, out_type, in_type1, alg_props, const_expr, description="", in_type2=None):
+   if in_type2 is None:
+      in_type2 = in_type1
+   opcode(name, 0, out_type, [0, 0], [in_type1, in_type2],
           False, alg_props, const_expr, description)
 
 def binop(name, ty, alg_props, const_expr, description = ""):
    binop_convert(name, ty, ty, alg_props, const_expr, description)
 
-def binop_compare(name, ty, alg_props, const_expr, description = ""):
-   binop_convert(name, tbool1, ty, alg_props, const_expr, description)
+def binop_compare(name, ty, alg_props, const_expr, description = "", ty2=None):
+   binop_convert(name, tbool1, ty, alg_props, const_expr, description, ty2)
 
-def binop_compare8(name, ty, alg_props, const_expr, description = ""):
-   binop_convert(name, tbool8, ty, alg_props, const_expr, description)
+def binop_compare8(name, ty, alg_props, const_expr, description = "", ty2=None):
+   binop_convert(name, tbool8, ty, alg_props, const_expr, description, ty2)
 
-def binop_compare16(name, ty, alg_props, const_expr, description = ""):
-   binop_convert(name, tbool16, ty, alg_props, const_expr, description)
+def binop_compare16(name, ty, alg_props, const_expr, description = "", ty2=None):
+   binop_convert(name, tbool16, ty, alg_props, const_expr, description, ty2)
 
-def binop_compare32(name, ty, alg_props, const_expr, description = ""):
-   binop_convert(name, tbool32, ty, alg_props, const_expr, description)
+def binop_compare32(name, ty, alg_props, const_expr, description = "", ty2=None):
+   binop_convert(name, tbool32, ty, alg_props, const_expr, description, ty2)
 
-def binop_compare_all_sizes(name, ty, alg_props, const_expr, description = ""):
-   binop_compare(name, ty, alg_props, const_expr, description)
-   binop_compare8(name + "8", ty, alg_props, const_expr, description)
-   binop_compare16(name + "16", ty, alg_props, const_expr, description)
-   binop_compare32(name + "32", ty, alg_props, const_expr, description)
+def binop_compare_all_sizes(name, ty, alg_props, const_expr, description = "", ty2=None):
+   binop_compare(name, ty, alg_props, const_expr, description, ty2)
+   binop_compare8(name + "8", ty, alg_props, const_expr, description, ty2)
+   binop_compare16(name + "16", ty, alg_props, const_expr, description, ty2)
+   binop_compare32(name + "32", ty, alg_props, const_expr, description, ty2)
 
 def binop_horiz(name, out_size, out_type, src1_size, src1_type, src2_size,
                 src2_type, const_expr, description = ""):
@@ -850,6 +819,12 @@ binop_compare_all_sizes("ieq", tint, _2src_commutative, "src0 == src1")
 binop_compare_all_sizes("ine", tint, _2src_commutative, "src0 != src1")
 binop_compare_all_sizes("ult", tuint, "", "src0 < src1")
 binop_compare_all_sizes("uge", tuint, "", "src0 >= src1")
+
+binop_compare_all_sizes("bitnz", tuint, "", "((uint64_t)src0 >> (src1 & (bit_size - 1)) & 0x1) == 0x1",
+   "only uses the least significant bits like SM5 shifts", tuint32)
+
+binop_compare_all_sizes("bitz", tuint, "", "((uint64_t)src0 >> (src1 & (bit_size - 1)) & 0x1) == 0x0",
+   "only uses the least significant bits like SM5 shifts", tuint32)
 
 # integer-aware GLSL-style comparisons that compare floats and ints
 
@@ -1263,11 +1238,11 @@ dst = ((((src0 & 0xffff0000) >> 16) * (src1 & 0x0000ffff)) << 16) + src2;
 triop("imad24_ir3", tint32, _2src_commutative,
       "(((int32_t)src0 << 8) >> 8) * (((int32_t)src1 << 8) >> 8) + src2")
 
-# r600-specific instruction that evaluates unnormalized cube texture coordinates
+# r600/gcn specific instruction that evaluates unnormalized cube texture coordinates
 # and face index
 # The actual texture coordinates are evaluated from this according to
 #    dst.yx / abs(dst.z) + 1.5
-unop_horiz("cube_r600", 4, tfloat32, 3, tfloat32, """
+unop_horiz("cube_amd", 4, tfloat32, 3, tfloat32, """
    dst.x = dst.y = dst.z = 0.0;
    float absX = fabsf(src0.x);
    float absY = fabsf(src0.y);
@@ -1343,6 +1318,16 @@ opcode("extr_agx", 0, tuint32,
 #opcode("imsubshl_agx", 0, tint, [0, 0, 0, 0], [tint, tint, tint, tint], False,
 #       "", f"(src0 * src1) - (src2 << src3)")
 
+binop_convert("interleave_agx", tuint32, tuint16, "", """
+      dst = 0;
+      for (unsigned bit = 0; bit < 16; bit++) {
+          dst |= (src0 & (1 << bit)) << bit;
+          dst |= (src1 & (1 << bit)) << (bit + 1);
+      }""", description="""
+      Interleave bits of 16-bit integers to calculate a 32-bit integer. This can
+      be used as-is for Morton encoding.
+      """)
+
 # 24b multiply into 32b result (with sign extension)
 binop("imul24", tint32, _2src_commutative + associative,
       "(((int32_t)src0 << 8) >> 8) * (((int32_t)src1 << 8) >> 8)")
@@ -1415,9 +1400,17 @@ for (int i = 0; i < 32; i += 8) {
 unop("fsat_signed_mali", tfloat, ("fmin(fmax(src0, -1.0), 1.0)"))
 unop("fclamp_pos_mali", tfloat, ("fmax(src0, 0.0)"))
 
+opcode("b32fcsel_mdg", 0, tuint, [0, 0, 0],
+       [tbool32, tfloat, tfloat], False, selection, "src0 ? src1 : src2",
+       description = csel_description.format("a 32-bit", "0 vs ~0") + """
+       This Midgard-specific variant takes floating-point sources, rather than
+       integer sources. That includes support for floating point modifiers in
+       the backend.
+       """)
+
 # Magnitude equal to fddx/y, sign undefined. Derivative of a constant is zero.
-unop("fddx_must_abs_mali", tfloat, "0.0")
-unop("fddy_must_abs_mali", tfloat, "0.0")
+unop("fddx_must_abs_mali", tfloat, "0.0", algebraic_properties = "derivative")
+unop("fddy_must_abs_mali", tfloat, "0.0", algebraic_properties = "derivative")
 
 # DXIL specific double [un]pack
 # DXIL doesn't support generic [un]pack instructions, so we want those

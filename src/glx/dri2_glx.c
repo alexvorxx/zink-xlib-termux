@@ -652,7 +652,7 @@ unsigned dri2GetSwapEventType(Display* dpy, XID drawable)
       struct glx_display *glx_dpy = __glXInitialize(dpy);
       __GLXDRIdrawable *pdraw;
       pdraw = dri2GetGlxDrawableFromXDrawableId(dpy, drawable);
-      if (!pdraw)
+      if (!pdraw || !(pdraw->eventMask & GLX_BUFFER_SWAP_COMPLETE_INTEL_MASK))
          return 0;
       return glx_dpy->codes.first_event + GLX_BufferSwapComplete;
 }
@@ -979,6 +979,9 @@ dri2BindExtensions(struct dri2_screen *psc, struct glx_display * priv,
 
    if (psc->rendererQuery)
       __glXEnableDirectExtension(&psc->base, "GLX_MESA_query_renderer");
+
+   if (psc->interop)
+      __glXEnableDirectExtension(&psc->base, "GLX_MESA_gl_interop");
 }
 
 static char *

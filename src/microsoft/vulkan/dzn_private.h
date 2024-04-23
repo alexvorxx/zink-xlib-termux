@@ -176,7 +176,7 @@ dzn_meta_blits_get_context(struct dzn_device *device,
                            const struct dzn_meta_blit_key *key);
 
 #define MAX_SYNC_TYPES 3
-#define MAX_QUEUE_FAMILIES 3
+#define MAX_QUEUE_FAMILIES 2
 
 struct dzn_physical_device {
    struct vk_physical_device vk;
@@ -198,11 +198,13 @@ struct dzn_physical_device {
 
    struct wsi_device wsi_device;
 
-   mtx_t dev_lock;
    ID3D12Device4 *dev;
    ID3D12Device10 *dev10;
    ID3D12Device11 *dev11;
    ID3D12Device12 *dev12;
+#if D3D12_SDK_VERSION >= 611
+   ID3D12Device13 *dev13;
+#endif
    D3D_FEATURE_LEVEL feature_level;
    D3D_SHADER_MODEL shader_model;
    D3D_ROOT_SIGNATURE_VERSION root_sig_version;
@@ -288,6 +290,9 @@ struct dzn_device {
    ID3D12Device10 *dev10;
    ID3D12Device11 *dev11;
    ID3D12Device12 *dev12;
+#if D3D12_SDK_VERSION >= 611
+   ID3D12Device13 *dev13;
+#endif
    ID3D12DeviceConfiguration *dev_config;
 
    struct dzn_meta_indirect_draw indirect_draws[DZN_NUM_INDIRECT_DRAW_TYPES];
@@ -346,6 +351,9 @@ struct dzn_device_memory {
 
    /* If the resource is exportable, this is the pre-created handle for that */
    HANDLE export_handle;
+
+   /* These flags need to be added into all resources created on this heap */
+   D3D12_RESOURCE_FLAGS res_flags;
 };
 
 enum dzn_cmd_bindpoint_dirty {
@@ -769,6 +777,7 @@ struct dzn_descriptor_set_layout {
    struct {
       uint32_t bindings[MAX_DYNAMIC_BUFFERS];
       uint32_t count;
+      uint32_t desc_count;
       uint32_t range_offset;
    } dynamic_buffers;
    uint32_t buffer_count;
@@ -1240,6 +1249,7 @@ enum dzn_debug_flags {
    DZN_DEBUG_DEBUGGER = 1 << 8,
    DZN_DEBUG_REDIRECTS = 1 << 9,
    DZN_DEBUG_BINDLESS = 1 << 10,
+   DZN_DEBUG_NO_BINDLESS = 1 << 11,
 };
 
 struct dzn_instance {

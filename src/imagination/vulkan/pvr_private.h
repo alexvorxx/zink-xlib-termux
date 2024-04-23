@@ -38,6 +38,7 @@
 
 #include "compiler/shader_enums.h"
 #include "hwdef/rogue_hw_defs.h"
+#include "pvr_border.h"
 #include "pvr_clear.h"
 #include "pvr_common.h"
 #include "pvr_csb.h"
@@ -69,6 +70,7 @@
 #include "vk_physical_device.h"
 #include "vk_queue.h"
 #include "vk_sync.h"
+#include "vulkan/util/vk_enum_to_str.h"
 #include "wsi_common.h"
 
 #ifdef HAVE_VALGRIND
@@ -96,10 +98,8 @@ struct pvr_physical_device {
    struct pvr_instance *instance;
 
    char *name;
-   int master_fd;
-   int render_fd;
-   char *master_path;
    char *render_path;
+   char *display_path;
 
    struct pvr_winsys *ws;
    struct pvr_device_info dev_info;
@@ -117,9 +117,6 @@ struct pvr_physical_device {
 
 struct pvr_instance {
    struct vk_instance vk;
-
-   int physical_devices_count;
-   struct pvr_physical_device physical_device;
 
    uint32_t active_device_count;
 };
@@ -171,9 +168,6 @@ struct pvr_device {
    struct pvr_instance *instance;
    struct pvr_physical_device *pdevice;
 
-   int master_fd;
-   int render_fd;
-
    struct pvr_winsys *ws;
    struct pvr_winsys_heaps heaps;
 
@@ -204,6 +198,7 @@ struct pvr_device {
    struct pvr_suballocator suballoc_pds;
    struct pvr_suballocator suballoc_transfer;
    struct pvr_suballocator suballoc_usc;
+   struct pvr_suballocator suballoc_vis_test;
 
    struct {
       struct pvr_pds_upload pds;
@@ -269,7 +264,7 @@ struct pvr_device {
       } load_program[PVR_SPM_LOAD_PROGRAM_COUNT];
    } spm_load_state;
 
-   struct {
+   struct pvr_device_tile_buffer_state {
       simple_mtx_t mtx;
 
 #define PVR_MAX_TILE_BUFFER_COUNT 7U
@@ -284,6 +279,8 @@ struct pvr_device {
    struct pvr_bo *robustness_buffer;
 
    struct vk_sync *presignaled_sync;
+
+   struct pvr_border_color_table border_color_table;
 };
 
 struct pvr_device_memory {
@@ -440,6 +437,11 @@ struct pvr_transfer_cmd {
     * cmd_buffer::bo_list head.
     */
    struct pvr_cmd_buffer *cmd_buffer;
+
+   /* Deferred RTA clears are allocated from pvr_cmd_buffer->deferred_clears and
+    * cannot be freed directly.
+    */
+   bool is_deferred_clear;
 };
 
 struct pvr_sub_cmd_gfx {
@@ -458,7 +460,11 @@ struct pvr_sub_cmd_gfx {
    bool modifies_depth;
    bool modifies_stencil;
 
+   /* Store the render to a scratch buffer. */
    bool barrier_store;
+   /* Load the render (stored with a `barrier_store`) as a background to the
+    * current render.
+    */
    bool barrier_load;
 
    const struct pvr_query_pool *query_pool;
@@ -499,6 +505,8 @@ struct pvr_sub_cmd_gfx {
    bool frag_uses_texture_rw;
 
    bool has_occlusion_query;
+
+   bool wait_on_previous_transfer;
 };
 
 struct pvr_sub_cmd_compute {
@@ -520,27 +528,28 @@ struct pvr_sub_cmd_compute {
 struct pvr_sub_cmd_transfer {
    bool serialize_with_frag;
 
-   /* List of pvr_transfer_cmd type structures. */
-   struct list_head transfer_cmds;
+   /* Pointer to the actual transfer command list, allowing primary and
+    * secondary sub-commands to share the same list.
+    */
+   struct list_head *transfer_cmds;
+
+   /* List of pvr_transfer_cmd type structures. Do not access the list
+    * directly, but always use the transfer_cmds pointer above.
+    */
+   struct list_head transfer_cmds_priv;
 };
 
 struct pvr_sub_cmd_event {
    enum pvr_event_type type;
 
    union {
-      struct {
+      struct pvr_sub_cmd_event_set_reset {
          struct pvr_event *event;
-         /* Stages to wait for until the event is set. */
+         /* Stages to wait for until the event is set or reset. */
          uint32_t wait_for_stage_mask;
-      } set;
+      } set_reset;
 
-      struct {
-         struct pvr_event *event;
-         /* Stages to wait for until the event is reset. */
-         uint32_t wait_for_stage_mask;
-      } reset;
-
-      struct {
+      struct pvr_sub_cmd_event_wait {
          uint32_t count;
          /* Events to wait for before resuming. */
          struct pvr_event **events;
@@ -548,7 +557,7 @@ struct pvr_sub_cmd_event {
          uint32_t *wait_at_stage_masks;
       } wait;
 
-      struct {
+      struct pvr_sub_cmd_event_barrier {
          bool in_render_pass;
 
          /* Stages to wait for. */
@@ -681,8 +690,6 @@ struct pvr_cmd_buffer_draw_state {
 };
 
 struct pvr_cmd_buffer_state {
-   VkResult status;
-
    /* Pipeline binding. */
    const struct pvr_graphics_pipeline *gfx_pipeline;
 
@@ -718,7 +725,7 @@ struct pvr_cmd_buffer_state {
    /* Array size of barriers_needed is based on number of sync pipeline
     * stages.
     */
-   uint32_t barriers_needed[4];
+   uint32_t barriers_needed[PVR_NUM_SYNC_PIPELINE_STAGES];
 
    struct pvr_descriptor_state gfx_desc_state;
    struct pvr_descriptor_state compute_desc_state;
@@ -856,7 +863,7 @@ struct pvr_pds_attrib_program {
 struct pvr_pipeline_stage_state {
    uint32_t const_shared_reg_count;
    uint32_t const_shared_reg_offset;
-   uint32_t temps_count;
+   uint32_t pds_temps_count;
 
    uint32_t coefficient_size;
 
@@ -984,8 +991,8 @@ struct pvr_query_pool {
 
    uint32_t query_count;
 
-   struct pvr_bo *result_buffer;
-   struct pvr_bo *availability_buffer;
+   struct pvr_suballoc_bo *result_buffer;
+   struct pvr_suballoc_bo *availability_buffer;
 };
 
 struct pvr_private_compute_pipeline {
@@ -995,6 +1002,7 @@ struct pvr_private_compute_pipeline {
    uint32_t pds_data_size_dw;
    uint32_t pds_temps_used;
    uint32_t coeff_regs_count;
+   uint32_t unified_store_regs_count;
    VkExtent3D workgroup_size;
 
    /* Used by pvr_compute_update_shared_private(). */
@@ -1016,7 +1024,7 @@ struct pvr_query_info {
          uint32_t num_query_indices;
          struct pvr_suballoc_bo *index_bo;
          uint32_t num_queries;
-         struct pvr_bo *availability_bo;
+         struct pvr_suballoc_bo *availability_bo;
       } availability_write;
 
       struct {
@@ -1254,7 +1262,6 @@ VkResult pvr_cmd_buffer_add_transfer_cmd(struct pvr_cmd_buffer *cmd_buffer,
 VkResult pvr_cmd_buffer_alloc_mem(struct pvr_cmd_buffer *cmd_buffer,
                                   struct pvr_winsys_heap *heap,
                                   uint64_t size,
-                                  uint32_t flags,
                                   struct pvr_suballoc_bo **const pvr_bo_out);
 
 void pvr_calculate_vertex_cam_size(const struct pvr_device_info *dev_info,
@@ -1262,12 +1269,6 @@ void pvr_calculate_vertex_cam_size(const struct pvr_device_info *dev_info,
                                    const bool raster_enable,
                                    uint32_t *const cam_size_out,
                                    uint32_t *const vs_max_instances_out);
-
-VkResult
-pvr_copy_or_resolve_color_image_region(struct pvr_cmd_buffer *cmd_buffer,
-                                       const struct pvr_image *src,
-                                       const struct pvr_image *dst,
-                                       const VkImageCopy2 *region);
 
 void pvr_get_image_subresource_layout(const struct pvr_image *image,
                                       const VkImageSubresource *subresource,
@@ -1291,6 +1292,12 @@ static inline const struct pvr_image *
 vk_to_pvr_image(const struct vk_image *image)
 {
    return container_of(image, const struct pvr_image, vk);
+}
+
+static inline const struct pvr_image *
+pvr_image_view_get_image(const struct pvr_image_view *const iview)
+{
+   return vk_to_pvr_image(iview->vk.image);
 }
 
 static enum pvr_pipeline_stage_bits
@@ -1357,6 +1364,24 @@ static inline bool pvr_sub_cmd_gfx_requires_split_submit(
    const struct pvr_sub_cmd_gfx *const sub_cmd)
 {
    return sub_cmd->job.run_frag && sub_cmd->framebuffer->layers > 1;
+}
+
+/* This function is intended to be used when the error being set has been
+ * returned from a function call, i.e. the error happened further down the
+ * stack. `vk_command_buffer_set_error()` should be used at the point an error
+ * occurs, i.e. VK_ERROR_* is being passed in.
+ * This ensures we only ever get the error printed once.
+ */
+static inline VkResult
+pvr_cmd_buffer_set_error_unwarned(struct pvr_cmd_buffer *cmd_buffer,
+                                  VkResult error)
+{
+   assert(error != VK_SUCCESS);
+
+   if (cmd_buffer->vk.record_result == VK_SUCCESS)
+      cmd_buffer->vk.record_result = error;
+
+   return error;
 }
 
 VkResult pvr_pds_fragment_program_create_and_upload(
@@ -1527,21 +1552,29 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_render_pass,
  *    sType and pNext members) any chained structures with sType values not
  *    defined by extensions supported by that component.
  */
-#define pvr_debug_ignored_stype(sType) \
-   mesa_logd("%s: ignored VkStructureType %u\n", __func__, (sType))
+#define pvr_debug_ignored_stype(sType)                  \
+   do {                                                 \
+      const VkStructureType _type = (sType);            \
+      mesa_logd("%s: ignored VkStructureType %s(%u)\n", \
+                __func__,                               \
+                vk_StructureType_to_str(_type),         \
+                _type);                                 \
+   } while (0)
 
-/* Debug helper macros. */
 #define PVR_CHECK_COMMAND_BUFFER_BUILDING_STATE(cmd_buffer)                  \
    do {                                                                      \
       struct pvr_cmd_buffer *const _cmd_buffer = (cmd_buffer);               \
+      const VkResult _record_result =                                        \
+         vk_command_buffer_get_record_result(&_cmd_buffer->vk);              \
+                                                                             \
       if (_cmd_buffer->vk.state != MESA_VK_COMMAND_BUFFER_STATE_RECORDING) { \
          vk_errorf(_cmd_buffer,                                              \
                    VK_ERROR_OUT_OF_DEVICE_MEMORY,                            \
                    "Command buffer is not in recording state");              \
          return;                                                             \
-      } else if (_cmd_buffer->state.status < VK_SUCCESS) {                   \
+      } else if (_record_result < VK_SUCCESS) {                              \
          vk_errorf(_cmd_buffer,                                              \
-                   _cmd_buffer->state.status,                                \
+                   _record_result,                                           \
                    "Skipping function as command buffer has "                \
                    "previous build error");                                  \
          return;                                                             \

@@ -43,7 +43,8 @@ zink_create_gfx_pipeline(struct zink_screen *screen,
                          struct zink_gfx_pipeline_state *state,
                          const uint8_t *binding_map,
                          VkPrimitiveTopology primitive_topology,
-                         bool optimize)
+                         bool optimize,
+                         struct util_dynarray *dgc)
 {
    struct zink_rasterizer_hw_state *hw_rast_state = (void*)&state->dyn_state3;
    VkPipelineVertexInputStateCreateInfo vertex_input_state;
@@ -272,7 +273,7 @@ zink_create_gfx_pipeline(struct zink_screen *screen,
    if (screen->info.have_EXT_color_write_enable)
       dynamicStateEnables[state_count++] = VK_DYNAMIC_STATE_COLOR_WRITE_ENABLE_EXT;
 
-   assert(state->rast_prim != PIPE_PRIM_MAX);
+   assert(state->rast_prim != MESA_PRIM_COUNT);
 
    VkPipelineRasterizationLineStateCreateInfoEXT rast_line_state;
    if (screen->info.have_EXT_line_rasterization &&
@@ -282,7 +283,7 @@ zink_create_gfx_pipeline(struct zink_screen *screen,
       rast_line_state.stippledLineEnable = VK_FALSE;
       rast_line_state.lineRasterizationMode = VK_LINE_RASTERIZATION_MODE_DEFAULT_EXT;
 
-      if (state->rast_prim == PIPE_PRIM_LINES) {
+      if (state->rast_prim == MESA_PRIM_LINES) {
          const char *features[4][2] = {
             [VK_LINE_RASTERIZATION_MODE_DEFAULT_EXT] = {"",""},
             [VK_LINE_RASTERIZATION_MODE_RECTANGULAR_EXT] = {"rectangularLines", "stippledRectangularLines"},
@@ -328,24 +329,27 @@ zink_create_gfx_pipeline(struct zink_screen *screen,
    VkPipelineDynamicStateCreateInfo pipelineDynamicStateCreateInfo = {0};
    pipelineDynamicStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
    pipelineDynamicStateCreateInfo.pDynamicStates = dynamicStateEnables;
-   pipelineDynamicStateCreateInfo.dynamicStateCount = state_count;
 
    VkGraphicsPipelineCreateInfo pci = {0};
    pci.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-   static bool feedback_warn = false;
    if (!optimize)
       pci.flags |= VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
-   if (state->feedback_loop) {
-      if (screen->info.have_EXT_attachment_feedback_loop_layout)
-         pci.flags |= VK_PIPELINE_CREATE_COLOR_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT;
-      else
-         warn_missing_feature(feedback_warn, "EXT_attachment_feedback_loop_layout");
-   }
-   if (state->feedback_loop_zs) {
-      if (screen->info.have_EXT_attachment_feedback_loop_layout)
-         pci.flags |= VK_PIPELINE_CREATE_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT;
-      else
-         warn_missing_feature(feedback_warn, "EXT_attachment_feedback_loop_layout");
+   if (screen->info.have_EXT_attachment_feedback_loop_dynamic_state) {
+      dynamicStateEnables[state_count++] = VK_DYNAMIC_STATE_ATTACHMENT_FEEDBACK_LOOP_ENABLE_EXT;
+   } else {
+      static bool feedback_warn = false;
+      if (state->feedback_loop) {
+         if (screen->info.have_EXT_attachment_feedback_loop_layout)
+            pci.flags |= VK_PIPELINE_CREATE_COLOR_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT;
+         else
+            warn_missing_feature(feedback_warn, "EXT_attachment_feedback_loop_layout");
+      }
+      if (state->feedback_loop_zs) {
+         if (screen->info.have_EXT_attachment_feedback_loop_layout)
+            pci.flags |= VK_PIPELINE_CREATE_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT;
+         else
+            warn_missing_feature(feedback_warn, "EXT_attachment_feedback_loop_layout");
+      }
    }
    if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB)
       pci.flags |= VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
@@ -363,10 +367,12 @@ zink_create_gfx_pipeline(struct zink_screen *screen,
    pci.pViewportState = &viewport_state;
    pci.pDepthStencilState = &depth_stencil_state;
    pci.pDynamicState = &pipelineDynamicStateCreateInfo;
+   pipelineDynamicStateCreateInfo.dynamicStateCount = state_count;
 
    VkPipelineTessellationStateCreateInfo tci = {0};
    VkPipelineTessellationDomainOriginStateCreateInfo tdci = {0};
-   if (prog->shaders[MESA_SHADER_TESS_CTRL] && prog->shaders[MESA_SHADER_TESS_EVAL]) {
+   unsigned tess_bits = BITFIELD_BIT(MESA_SHADER_TESS_CTRL) | BITFIELD_BIT(MESA_SHADER_TESS_EVAL);
+   if ((prog->stages_present & tess_bits) == tess_bits) {
       tci.sType = VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO;
       tci.patchControlPoints = state->dyn_state2.vertices_per_patch;
       pci.pTessellationState = &tci;
@@ -379,7 +385,7 @@ zink_create_gfx_pipeline(struct zink_screen *screen,
    VkShaderModuleCreateInfo smci[ZINK_GFX_SHADER_COUNT] = {0};
    uint32_t num_stages = 0;
    for (int i = 0; i < ZINK_GFX_SHADER_COUNT; ++i) {
-      if (!prog->shaders[i])
+      if (!(prog->stages_present & BITFIELD_BIT(i)))
          continue;
 
       VkPipelineShaderStageCreateInfo stage = {0};
@@ -401,9 +407,32 @@ zink_create_gfx_pipeline(struct zink_screen *screen,
    pci.pStages = shader_stages;
    pci.stageCount = num_stages;
 
+   VkGraphicsShaderGroupCreateInfoNV gci = {
+      VK_STRUCTURE_TYPE_GRAPHICS_SHADER_GROUP_CREATE_INFO_NV,
+      NULL,
+      pci.stageCount,
+      pci.pStages,
+      pci.pVertexInputState,
+      pci.pTessellationState
+   };
+   VkGraphicsPipelineShaderGroupsCreateInfoNV dgci = {
+      VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_SHADER_GROUPS_CREATE_INFO_NV,
+      pci.pNext,
+      1,
+      &gci,
+      dgc ? util_dynarray_num_elements(dgc, VkPipeline) : 0,
+      dgc ? dgc->data : NULL
+   };
+   if (zink_debug & ZINK_DEBUG_DGC) {
+      pci.flags |= VK_PIPELINE_CREATE_INDIRECT_BINDABLE_BIT_NV;
+      pci.pNext = &dgci;
+   }
+
    VkPipeline pipeline;
+   u_rwlock_wrlock(&prog->base.pipeline_cache_lock);
    VkResult result = VKSCR(CreateGraphicsPipelines)(screen->dev, prog->base.pipeline_cache,
                                                     1, &pci, NULL, &pipeline);
+   u_rwlock_wrunlock(&prog->base.pipeline_cache_lock);
    if (result != VK_SUCCESS) {
       mesa_loge("ZINK: vkCreateGraphicsPipelines failed (%s)", vk_Result_to_str(result));
       return VK_NULL_HANDLE;
@@ -446,8 +475,10 @@ zink_create_compute_pipeline(struct zink_screen *screen, struct zink_compute_pro
    pci.stage = stage;
 
    VkPipeline pipeline;
+   u_rwlock_wrlock(&comp->base.pipeline_cache_lock);
    VkResult result = VKSCR(CreateComputePipelines)(screen->dev, comp->base.pipeline_cache,
                                                    1, &pci, NULL, &pipeline);
+   u_rwlock_wrunlock(&comp->base.pipeline_cache_lock);
    if (result != VK_SUCCESS) {
       mesa_loge("ZINK: vkCreateComputePipelines failed (%s)", vk_Result_to_str(result));
       return VK_NULL_HANDLE;
@@ -534,27 +565,31 @@ zink_create_gfx_pipeline_output(struct zink_screen *screen, struct zink_gfx_pipe
    VkPipelineDynamicStateCreateInfo pipelineDynamicStateCreateInfo = {0};
    pipelineDynamicStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
    pipelineDynamicStateCreateInfo.pDynamicStates = dynamicStateEnables;
-   pipelineDynamicStateCreateInfo.dynamicStateCount = state_count;
 
    VkGraphicsPipelineCreateInfo pci = {0};
    pci.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
    pci.pNext = &gplci;
    pci.flags = VK_PIPELINE_CREATE_LIBRARY_BIT_KHR | VK_PIPELINE_CREATE_RETAIN_LINK_TIME_OPTIMIZATION_INFO_BIT_EXT;
-   static bool feedback_warn = false;
-   if (state->feedback_loop) {
-      if (screen->info.have_EXT_attachment_feedback_loop_layout)
-         pci.flags |= VK_PIPELINE_CREATE_COLOR_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT;
-      else
-         warn_missing_feature(feedback_warn, "EXT_attachment_feedback_loop_layout");
-   }
-   if (state->feedback_loop_zs) {
-      if (screen->info.have_EXT_attachment_feedback_loop_layout)
-         pci.flags |= VK_PIPELINE_CREATE_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT;
-      else
-         warn_missing_feature(feedback_warn, "EXT_attachment_feedback_loop_layout");
+   if (screen->info.have_EXT_attachment_feedback_loop_dynamic_state) {
+      dynamicStateEnables[state_count++] = VK_DYNAMIC_STATE_ATTACHMENT_FEEDBACK_LOOP_ENABLE_EXT;
+   } else {
+      static bool feedback_warn = false;
+      if (state->feedback_loop) {
+         if (screen->info.have_EXT_attachment_feedback_loop_layout)
+            pci.flags |= VK_PIPELINE_CREATE_COLOR_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT;
+         else
+            warn_missing_feature(feedback_warn, "EXT_attachment_feedback_loop_layout");
+      }
+      if (state->feedback_loop_zs) {
+         if (screen->info.have_EXT_attachment_feedback_loop_layout)
+            pci.flags |= VK_PIPELINE_CREATE_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT;
+         else
+            warn_missing_feature(feedback_warn, "EXT_attachment_feedback_loop_layout");
+      }
    }
    if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB)
       pci.flags |= VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
+   pipelineDynamicStateCreateInfo.dynamicStateCount = state_count;
    pci.pColorBlendState = &blend_state;
    pci.pMultisampleState = &ms_state;
    pci.pDynamicState = &pipelineDynamicStateCreateInfo;
@@ -648,7 +683,7 @@ zink_create_gfx_pipeline_input(struct zink_screen *screen,
 }
 
 static VkPipeline
-create_gfx_pipeline_library(struct zink_screen *screen, struct zink_shader_object *objs, VkPipelineLayout layout, VkPipelineCache pipeline_cache)
+create_gfx_pipeline_library(struct zink_screen *screen, struct zink_shader_object *objs, unsigned stage_mask, VkPipelineLayout layout, VkPipelineCache pipeline_cache)
 {
    assert(screen->info.have_EXT_extended_dynamic_state && screen->info.have_EXT_extended_dynamic_state2);
    VkPipelineRenderingCreateInfo rendering_info;
@@ -660,9 +695,9 @@ create_gfx_pipeline_library(struct zink_screen *screen, struct zink_shader_objec
       &rendering_info,
       0
    };
-   if (objs[MESA_SHADER_VERTEX].mod)
+   if (stage_mask & BITFIELD_BIT(MESA_SHADER_VERTEX))
       gplci.flags |= VK_GRAPHICS_PIPELINE_LIBRARY_PRE_RASTERIZATION_SHADERS_BIT_EXT;
-   if (objs[MESA_SHADER_FRAGMENT].mod)
+   if (stage_mask & BITFIELD_BIT(MESA_SHADER_FRAGMENT))
       gplci.flags |= VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT;
 
    VkPipelineViewportStateCreateInfo viewport_state = {0};
@@ -733,7 +768,8 @@ create_gfx_pipeline_library(struct zink_screen *screen, struct zink_shader_objec
 
    VkPipelineTessellationStateCreateInfo tci = {0};
    VkPipelineTessellationDomainOriginStateCreateInfo tdci = {0};
-   if (objs[MESA_SHADER_TESS_CTRL].mod && objs[MESA_SHADER_TESS_EVAL].mod) {
+   unsigned tess_bits = BITFIELD_BIT(MESA_SHADER_TESS_CTRL) | BITFIELD_BIT(MESA_SHADER_TESS_EVAL);
+   if ((stage_mask & tess_bits) == tess_bits) {
       tci.sType = VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO;
       //this is a wild guess; pray for extendedDynamicState2PatchControlPoints
       if (!screen->info.dynamic_state2_feats.extendedDynamicState2PatchControlPoints) {
@@ -750,7 +786,7 @@ create_gfx_pipeline_library(struct zink_screen *screen, struct zink_shader_objec
    VkPipelineShaderStageCreateInfo shader_stages[ZINK_GFX_SHADER_COUNT];
    uint32_t num_stages = 0;
    for (int i = 0; i < ZINK_GFX_SHADER_COUNT; ++i) {
-      if (!objs[i].mod)
+      if (!(stage_mask & BITFIELD_BIT(i)))
          continue;
 
       VkPipelineShaderStageCreateInfo stage = {0};
@@ -783,17 +819,20 @@ create_gfx_pipeline_library(struct zink_screen *screen, struct zink_shader_objec
 VkPipeline
 zink_create_gfx_pipeline_library(struct zink_screen *screen, struct zink_gfx_program *prog)
 {
-   return create_gfx_pipeline_library(screen, prog->objs, prog->base.layout, prog->base.pipeline_cache);
+   u_rwlock_wrlock(&prog->base.pipeline_cache_lock);
+   VkPipeline pipeline = create_gfx_pipeline_library(screen, prog->objs, prog->stages_present, prog->base.layout, prog->base.pipeline_cache);
+   u_rwlock_wrunlock(&prog->base.pipeline_cache_lock);
+   return pipeline;
 }
 
 VkPipeline
-zink_create_gfx_pipeline_separate(struct zink_screen *screen, struct zink_shader_object *objs, VkPipelineLayout layout)
+zink_create_gfx_pipeline_separate(struct zink_screen *screen, struct zink_shader_object *objs, VkPipelineLayout layout, gl_shader_stage stage)
 {
-   return create_gfx_pipeline_library(screen, objs, layout, VK_NULL_HANDLE);
+   return create_gfx_pipeline_library(screen, objs, BITFIELD_BIT(stage), layout, VK_NULL_HANDLE);
 }
 
 VkPipeline
-zink_create_gfx_pipeline_combined(struct zink_screen *screen, struct zink_gfx_program *prog, VkPipeline input, VkPipeline *library, unsigned libcount, VkPipeline output, bool optimized)
+zink_create_gfx_pipeline_combined(struct zink_screen *screen, struct zink_gfx_program *prog, VkPipeline input, VkPipeline *library, unsigned libcount, VkPipeline output, bool optimized, bool testonly)
 {
    VkPipeline libraries[4];
    VkPipelineLibraryCreateInfoKHR libstate = {0};
@@ -813,6 +852,8 @@ zink_create_gfx_pipeline_combined(struct zink_screen *screen, struct zink_gfx_pr
       pci.flags = VK_PIPELINE_CREATE_LINK_TIME_OPTIMIZATION_BIT_EXT;
    else
       pci.flags = VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
+   if (testonly)
+      pci.flags |= VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
    if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB)
       pci.flags |= VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
    pci.pNext = &libstate;
@@ -821,11 +862,14 @@ zink_create_gfx_pipeline_combined(struct zink_screen *screen, struct zink_gfx_pr
       pci.flags |= VK_PIPELINE_CREATE_LIBRARY_BIT_KHR;
 
    VkPipeline pipeline;
-   if (VKSCR(CreateGraphicsPipelines)(screen->dev, prog->base.pipeline_cache, 1, &pci,
-                                      NULL, &pipeline) != VK_SUCCESS) {
+   u_rwlock_wrlock(&prog->base.pipeline_cache_lock);
+   VkResult result = VKSCR(CreateGraphicsPipelines)(screen->dev, prog->base.pipeline_cache, 1, &pci, NULL, &pipeline);
+   if (result != VK_SUCCESS && result != VK_PIPELINE_COMPILE_REQUIRED_EXT) {
       mesa_loge("ZINK: vkCreateGraphicsPipelines failed");
+      u_rwlock_wrunlock(&prog->base.pipeline_cache_lock);
       return VK_NULL_HANDLE;
    }
+   u_rwlock_wrunlock(&prog->base.pipeline_cache_lock);
 
    return pipeline;
 }

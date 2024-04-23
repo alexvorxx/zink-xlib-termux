@@ -442,6 +442,11 @@ tu_cond_exec_start(struct tu_cs *cs, uint32_t cond_flags)
    assert(cs->mode == TU_CS_MODE_GROW);
    assert(cs->cond_stack_depth < TU_COND_EXEC_STACK_SIZE);
 
+   ASSERTED enum compare_mode mode =
+      (enum compare_mode)((cond_flags & CP_COND_REG_EXEC_0_MODE__MASK) >>
+                          CP_COND_REG_EXEC_0_MODE__SHIFT);
+   assert(mode == PRED_TEST || mode == RENDER_MODE || mode == THREAD_MODE);
+
    tu_cs_emit_pkt7(cs, CP_COND_REG_EXEC, 2);
    tu_cs_emit(cs, cond_flags);
 
@@ -449,7 +454,7 @@ tu_cond_exec_start(struct tu_cs *cs, uint32_t cond_flags)
    cs->cond_dwords[cs->cond_stack_depth] = cs->cur;
 
    /* Emit dummy DWORD field here */
-   tu_cs_emit(cs, CP_COND_REG_EXEC_1_DWORDS(0));
+   tu_cs_emit(cs, RENDER_MODE_CP_COND_REG_EXEC_1_DWORDS(0));
 
    cs->cond_stack_depth++;
 }
@@ -466,8 +471,13 @@ tu_cond_exec_end(struct tu_cs *cs)
 
    cs->cond_flags[cs->cond_stack_depth] = 0;
    /* Subtract one here to account for the DWORD field itself. */
-   *cs->cond_dwords[cs->cond_stack_depth] =
-      cs->cur - cs->cond_dwords[cs->cond_stack_depth] - 1;
+   uint32_t cond_len = cs->cur - cs->cond_dwords[cs->cond_stack_depth] - 1;
+   if (cond_len) {
+      *cs->cond_dwords[cs->cond_stack_depth] = cond_len;
+   } else {
+      /* rewind the CS to drop the empty cond reg packet. */
+      cs->cur = cs->cur - 3;
+   }
 }
 
 /* Temporary struct for tracking a register state to be written, used by
@@ -488,6 +498,7 @@ struct tu_reg_value {
 #define __bo_type struct tu_bo *
 
 #include "a6xx-pack.xml.h"
+#include "adreno-pm4-pack.xml.h"
 
 #define __assert_eq(a, b)                                               \
    do {                                                                 \

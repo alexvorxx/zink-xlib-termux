@@ -22,8 +22,14 @@
 enum tu_draw_state_group_id
 {
    TU_DRAW_STATE_PROGRAM_CONFIG,
-   TU_DRAW_STATE_PROGRAM,
-   TU_DRAW_STATE_PROGRAM_BINNING,
+   TU_DRAW_STATE_VS,
+   TU_DRAW_STATE_VS_BINNING,
+   TU_DRAW_STATE_HS,
+   TU_DRAW_STATE_DS,
+   TU_DRAW_STATE_GS,
+   TU_DRAW_STATE_GS_BINNING,
+   TU_DRAW_STATE_VPC,
+   TU_DRAW_STATE_FS,
    TU_DRAW_STATE_VB,
    TU_DRAW_STATE_CONST,
    TU_DRAW_STATE_DESC_SETS,
@@ -35,7 +41,6 @@ enum tu_draw_state_group_id
    TU_DRAW_STATE_LRZ_AND_DEPTH_PLANE,
    TU_DRAW_STATE_PRIM_MODE_GMEM,
    TU_DRAW_STATE_PRIM_MODE_SYSMEM,
-   TU_DRAW_STATE_MSAA,
 
    /* dynamic state related draw states */
    TU_DRAW_STATE_DYNAMIC,
@@ -55,22 +60,19 @@ struct tu_descriptor_state
 enum tu_cmd_dirty_bits
 {
    TU_CMD_DIRTY_VERTEX_BUFFERS = BIT(0),
-   TU_CMD_DIRTY_VB_STRIDE = BIT(1),
-   TU_CMD_DIRTY_RAST = BIT(2),
-   TU_CMD_DIRTY_DS = BIT(3),
-   TU_CMD_DIRTY_DESC_SETS = BIT(4),
-   TU_CMD_DIRTY_COMPUTE_DESC_SETS = BIT(5),
-   TU_CMD_DIRTY_SHADER_CONSTS = BIT(6),
-   TU_CMD_DIRTY_LRZ = BIT(7),
-   TU_CMD_DIRTY_VS_PARAMS = BIT(8),
-   TU_CMD_DIRTY_FS_PARAMS = BIT(9),
-   TU_CMD_DIRTY_PC_RASTER_CNTL = BIT(10),
-   TU_CMD_DIRTY_VIEWPORTS = BIT(11),
-   TU_CMD_DIRTY_SCISSORS = BIT(12),
-   TU_CMD_DIRTY_BLEND = BIT(13),
-   TU_CMD_DIRTY_PATCH_CONTROL_POINTS = BIT(14),
+   TU_CMD_DIRTY_DESC_SETS = BIT(1),
+   TU_CMD_DIRTY_COMPUTE_DESC_SETS = BIT(2),
+   TU_CMD_DIRTY_SHADER_CONSTS = BIT(3),
+   TU_CMD_DIRTY_LRZ = BIT(4),
+   TU_CMD_DIRTY_VS_PARAMS = BIT(5),
+   TU_CMD_DIRTY_TESS_PARAMS = BIT(6),
+   TU_CMD_DIRTY_SUBPASS = BIT(7),
+   TU_CMD_DIRTY_FDM = BIT(8),
+   TU_CMD_DIRTY_PER_VIEW_VIEWPORT = BIT(9),
+   TU_CMD_DIRTY_TES = BIT(10),
+   TU_CMD_DIRTY_PROGRAM = BIT(11),
    /* all draw states were disabled and need to be re-enabled: */
-   TU_CMD_DIRTY_DRAW_STATE = BIT(15)
+   TU_CMD_DIRTY_DRAW_STATE = BIT(12)
 };
 
 /* There are only three cache domains we have to care about: the CCU, or
@@ -153,55 +155,28 @@ enum tu_cmd_access_mask {
       TU_ACCESS_WRITE,
 };
 
-/* Starting with a6xx, the pipeline is split into several "clusters" (really
- * pipeline stages). Each stage has its own pair of register banks and can
- * switch them independently, so that earlier stages can run ahead of later
- * ones. e.g. the FS of draw N and the VS of draw N + 1 can be executing at
- * the same time.
+/* From the driver's point of view, we only need to distinguish between things
+ * which won't start until a WFI is complete and things which additionally
+ * need a WAIT_FOR_ME.
  *
- * As a result of this, we need to insert a WFI when an earlier stage depends
- * on the result of a later stage. CP_DRAW_* and CP_BLIT will wait for any
- * pending WFI's to complete before starting, and usually before reading
- * indirect params even, so a WFI also acts as a full "pipeline stall".
- *
- * Note, the names of the stages come from CLUSTER_* in devcoredump. We
- * include all the stages for completeness, even ones which do not read/write
- * anything.
+ * TODO: This will get more complicated with concurrent binning.
  */
-
 enum tu_stage {
-   /* This doesn't correspond to a cluster, but we need it for tracking
-    * indirect draw parameter reads etc.
+   /* As a destination stage, this is for operations on the CP which don't
+    * wait for pending WFIs to complete and therefore need a CP_WAIT_FOR_ME.
+    * As a source stage, it is for things needing no waits. 
     */
    TU_STAGE_CP,
 
-   /* - Fetch index buffer
-    * - Fetch vertex attributes, dispatch VS
+   /* This is for most operations, which WFI will wait to finish and will not
+    * start until any pending WFIs are finished.
     */
-   TU_STAGE_FE,
+   TU_STAGE_GPU,
 
-   /* Execute all geometry stages (VS thru GS) */
-   TU_STAGE_SP_VS,
-
-   /* Write to VPC, do primitive assembly. */
-   TU_STAGE_PC_VS,
-
-   /* Rasterization. RB_DEPTH_BUFFER_BASE only exists in CLUSTER_PS according
-    * to devcoredump so presumably this stage stalls for TU_STAGE_PS when
-    * early depth testing is enabled before dispatching fragments? However
-    * GRAS reads and writes LRZ directly.
+   /* This is only used as a destination stage and is for things needing no
+    * waits on the GPU (e.g. host operations).
     */
-   TU_STAGE_GRAS,
-
-   /* Execute FS */
-   TU_STAGE_SP_PS,
-
-   /* - Fragment tests
-    * - Write color/depth
-    * - Streamout writes (???)
-    * - Varying interpolation (???)
-    */
-   TU_STAGE_PS,
+   TU_STAGE_BOTTOM,
 };
 
 enum tu_cmd_flush_bits {
@@ -266,11 +241,10 @@ struct tu_vs_params {
    uint32_t draw_id;
 };
 
-struct tu_primitive_params {
+struct tu_tess_params {
    bool valid;
-   bool primitive_restart;
-   bool provoking_vtx_last;
-   bool tess_upper_left_domain_origin;
+   enum a6xx_tess_output output_upper_left, output_lower_left;
+   enum a6xx_tess_spacing spacing;
 };
 
 /* This should be for state that is set inside a renderpass and used at
@@ -411,57 +385,39 @@ struct tu_cmd_state
 {
    uint32_t dirty;
 
-   struct tu_pipeline *pipeline;
-   struct tu_pipeline *compute_pipeline;
+   struct tu_shader *shaders[MESA_SHADER_STAGES];
+
+   struct tu_program_state program;
 
    struct tu_render_pass_state rp;
 
-   /* Vertex buffers, viewports, and scissors
+   struct vk_render_pass_state vk_rp;
+   struct vk_vertex_input_state vi;
+   struct vk_sample_locations_state sl;
+
+   struct tu_bandwidth bandwidth;
+
+   /* Vertex buffers
     * the states for these can be updated partially, so we need to save these
     * to be able to emit a complete draw state
     */
    struct {
       uint64_t base;
       uint32_t size;
-      uint32_t stride;
    } vb[MAX_VBS];
 
    uint32_t max_vbs_bound;
 
-   VkViewport viewport[MAX_VIEWPORTS];
-   VkRect2D scissor[MAX_SCISSORS];
-   uint32_t viewport_count, scissor_count;
    bool per_view_viewport;
-
-   /* for dynamic states that can't be emitted directly */
-   uint32_t dynamic_stencil_mask;
-   uint32_t dynamic_stencil_wrmask;
-   uint32_t dynamic_stencil_ref;
-   bool stencil_front_write;
-   bool stencil_back_write;
-
-   uint32_t gras_su_cntl, gras_cl_cntl, rb_depth_cntl, rb_stencil_cntl;
-   uint32_t pc_raster_cntl, vpc_unknown_9107;
-   enum a6xx_polygon_mode polygon_mode;
-   uint32_t rb_mrt_control[MAX_RTS], rb_mrt_blend_control[MAX_RTS];
-   uint32_t rb_mrt_control_rop;
-   uint32_t rb_blend_cntl, sp_blend_cntl;
-   uint32_t pipeline_color_write_enable, blend_enable;
-   uint32_t color_write_enable;
-   bool logic_op_enabled;
-   bool rop_reads_dst;
-   bool alpha_to_coverage;
-   enum pc_di_primtype primtype;
-   bool primitive_restart_enable;
-   bool tess_upper_left_domain_origin;
-   bool provoking_vertex_last;
 
    /* saved states to re-emit in TU_CMD_DIRTY_DRAW_STATE case */
    struct tu_draw_state dynamic_state[TU_DYNAMIC_STATE_COUNT];
    struct tu_draw_state vertex_buffers;
    struct tu_draw_state shader_const;
    struct tu_draw_state desc_sets;
-   struct tu_draw_state msaa;
+   struct tu_draw_state load_state;
+   struct tu_draw_state compute_load_state;
+   struct tu_draw_state prim_order_sysmem, prim_order_gmem;
 
    struct tu_draw_state vs_params;
    struct tu_draw_state fs_params;
@@ -500,6 +456,7 @@ struct tu_cmd_state
    VkRect2D render_area;
 
    const struct tu_image_view **attachments;
+   VkClearValue *clear_values;
 
    /* State that in the dynamic case comes from VkRenderingInfo and needs to
     * be saved/restored when suspending. This holds the state for the last
@@ -520,12 +477,14 @@ struct tu_cmd_state
 
    bool tessfactor_addr_set;
    bool predication_active;
-   enum a5xx_line_mode line_mode;
-   VkSampleCountFlagBits samples;
    bool msaa_disable;
-   bool z_negative_one_to_one;
+   bool blend_reads_dest;
+   bool stencil_front_write;
+   bool stencil_back_write;
+   bool pipeline_feedback_loop_ds;
 
-   unsigned patch_control_points;
+   bool pipeline_blend_lrz, pipeline_bandwidth;
+   uint32_t pipeline_draw_states;
 
    /* VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT and
     * VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT are allowed to run simultaniously,
@@ -545,7 +504,7 @@ struct tu_cmd_state
 
    struct tu_vs_params last_vs_params;
 
-   struct tu_primitive_params last_prim_params;
+   struct tu_tess_params tess_params;
 
    uint64_t descriptor_buffer_iova[MAX_SETS];
 };
@@ -583,6 +542,7 @@ struct tu_cmd_buffer
    struct tu_subpass_attachment dynamic_color_attachments[MAX_RTS];
    struct tu_subpass_attachment dynamic_resolve_attachments[MAX_RTS + 1];
    const struct tu_image_view *dynamic_attachments[2 * (MAX_RTS + 1) + 1];
+   VkClearValue dynamic_clear_values[2 * (MAX_RTS + 1)];
 
    struct tu_render_pass dynamic_pass;
    struct tu_subpass dynamic_subpass;
@@ -651,8 +611,14 @@ void tu_render_pass_state_merge(struct tu_render_pass_state *dst,
 VkResult tu_cmd_buffer_begin(struct tu_cmd_buffer *cmd_buffer,
                              const VkCommandBufferBeginInfo *pBeginInfo);
 
+template <chip CHIP>
+void
+tu_emit_cache_flush(struct tu_cmd_buffer *cmd_buffer);
+
+template <chip CHIP>
 void tu_emit_cache_flush_renderpass(struct tu_cmd_buffer *cmd_buffer);
 
+template <chip CHIP>
 void tu_emit_cache_flush_ccu(struct tu_cmd_buffer *cmd_buffer,
                              struct tu_cs *cs,
                              enum tu_cmd_ccu_state ccu_state);
@@ -673,12 +639,16 @@ void
 tu_restore_suspended_pass(struct tu_cmd_buffer *cmd,
                           struct tu_cmd_buffer *suspended);
 
+template <chip CHIP>
 void tu_cmd_render(struct tu_cmd_buffer *cmd);
 
+enum fd_gpu_event : uint32_t;
+
+template <chip CHIP>
 void
-tu6_emit_event_write(struct tu_cmd_buffer *cmd,
-                     struct tu_cs *cs,
-                     enum vgt_event_type event);
+tu_emit_event_write(struct tu_cmd_buffer *cmd,
+                    struct tu_cs *cs,
+                    enum fd_gpu_event event);
 
 static inline struct tu_descriptor_state *
 tu_get_descriptors_state(struct tu_cmd_buffer *cmd_buffer,

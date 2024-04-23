@@ -21,8 +21,8 @@
  * IN THE SOFTWARE.
  */
 
-#include "nir.h"
 #include "nir/nir_builder.h"
+#include "nir.h"
 #include "nir_control_flow.h"
 #include "nir_search_helpers.h"
 
@@ -70,7 +70,7 @@ block_check_for_allowed_instrs(nir_block *block, unsigned *count,
          case nir_instr_type_deref:
          case nir_instr_type_load_const:
          case nir_instr_type_phi:
-         case nir_instr_type_ssa_undef:
+         case nir_instr_type_undef:
          case nir_instr_type_tex:
             break;
 
@@ -143,6 +143,14 @@ block_check_for_allowed_instrs(nir_block *block, unsigned *count,
          case nir_intrinsic_load_frag_shading_rate:
          case nir_intrinsic_is_sparse_texels_resident:
          case nir_intrinsic_sparse_residency_code_and:
+         case nir_intrinsic_read_invocation:
+         case nir_intrinsic_quad_broadcast:
+         case nir_intrinsic_quad_swap_horizontal:
+         case nir_intrinsic_quad_swap_vertical:
+         case nir_intrinsic_quad_swap_diagonal:
+         case nir_intrinsic_quad_swizzle_amd:
+         case nir_intrinsic_masked_swizzle_amd:
+         case nir_intrinsic_lane_permute_16_amd:
             if (!alu_ok)
                return false;
             break;
@@ -156,7 +164,7 @@ block_check_for_allowed_instrs(nir_block *block, unsigned *count,
 
       case nir_instr_type_deref:
       case nir_instr_type_load_const:
-      case nir_instr_type_ssa_undef:
+      case nir_instr_type_undef:
          break;
 
       case nir_instr_type_alu: {
@@ -204,10 +212,6 @@ block_check_for_allowed_instrs(nir_block *block, unsigned *count,
             break;
          }
 
-         /* It must be SSA */
-         if (!mov->dest.dest.is_ssa)
-            return false;
-
          if (alu_ok) {
             /* If the ALU operation is an fsat or a move-like operation, do
              * not count it.  The expectation is that it will eventually be
@@ -217,12 +221,8 @@ block_check_for_allowed_instrs(nir_block *block, unsigned *count,
             if (mov->op != nir_op_fsat && !movelike)
                (*count)++;
          } else {
-            /* Can't handle saturate */
-            if (mov->dest.saturate)
-               return false;
-
             /* The only uses of this definition must be phis in the successor */
-            nir_foreach_use_including_if(use, &mov->dest.dest.ssa) {
+            nir_foreach_use_including_if(use, &mov->def) {
                if (use->is_if ||
                    use->parent_instr->type != nir_instr_type_phi ||
                    use->parent_instr->block != block->successors[0])
@@ -306,7 +306,7 @@ nir_opt_collapse_if(nir_if *if_stmt, nir_shader *shader, unsigned limit,
       nir_phi_src *else_src =
          nir_phi_get_src_from_block(phi, nir_if_first_else_block(if_stmt));
 
-      nir_foreach_use (src, &phi->dest.ssa) {
+      nir_foreach_use(src, &phi->def) {
          assert(src->parent_instr->type == nir_instr_type_phi);
          nir_phi_src *phi_src =
             nir_phi_get_src_from_block(nir_instr_as_phi(src->parent_instr),
@@ -337,28 +337,25 @@ nir_opt_collapse_if(nir_if *if_stmt, nir_shader *shader, unsigned limit,
       nir_phi_instr *phi = nir_instr_as_phi(instr);
       nir_phi_src *else_src =
          nir_phi_get_src_from_block(phi, nir_if_first_else_block(if_stmt));
-      nir_foreach_use_safe(src, &phi->dest.ssa) {
+      nir_foreach_use_safe(src, &phi->def) {
          nir_phi_src *phi_src =
             nir_phi_get_src_from_block(nir_instr_as_phi(src->parent_instr),
                                        nir_if_first_else_block(parent_if));
          if (phi_src->src.ssa == else_src->src.ssa)
-            nir_instr_rewrite_src(src->parent_instr, &phi_src->src,
-                                  nir_src_for_ssa(&phi->dest.ssa));
+            nir_src_rewrite(&phi_src->src, &phi->def);
       }
    }
 
    /* combine the conditions */
-   struct nir_builder b;
-   nir_builder_init(&b, nir_cf_node_get_function(&if_stmt->cf_node)->function->impl);
-   b.cursor = nir_before_cf_node(&if_stmt->cf_node);
-   nir_ssa_def *cond = nir_iand(&b, if_stmt->condition.ssa,
-                                parent_if->condition.ssa);
-   nir_if_rewrite_condition(if_stmt, nir_src_for_ssa(cond));
+   struct nir_builder b = nir_builder_at(nir_before_cf_node(&if_stmt->cf_node));
+   nir_def *cond = nir_iand(&b, if_stmt->condition.ssa,
+                            parent_if->condition.ssa);
+   nir_src_rewrite(&if_stmt->condition, cond);
 
    /* move the whole inner if before the parent if */
    nir_cf_list tmp;
    nir_cf_extract(&tmp, nir_before_block(first),
-                        nir_after_block(last));
+                  nir_after_block(last));
    nir_cf_reinsert(&tmp, nir_before_cf_node(&parent_if->cf_node));
 
    /* The now empty parent if will be cleaned up by other passes */
@@ -447,26 +444,23 @@ nir_opt_peephole_select_block(nir_block *block, nir_shader *shader,
 
    nir_foreach_phi_safe(phi, block) {
       nir_alu_instr *sel = nir_alu_instr_create(shader, nir_op_bcsel);
-      nir_src_copy(&sel->src[0].src, &if_stmt->condition, &sel->instr);
+      sel->src[0].src = nir_src_for_ssa(if_stmt->condition.ssa);
       /* Splat the condition to all channels */
       memset(sel->src[0].swizzle, 0, sizeof sel->src[0].swizzle);
 
       assert(exec_list_length(&phi->srcs) == 2);
       nir_foreach_phi_src(src, phi) {
          assert(src->pred == then_block || src->pred == else_block);
-         assert(src->src.is_ssa);
 
          unsigned idx = src->pred == then_block ? 1 : 2;
-         nir_src_copy(&sel->src[idx].src, &src->src, &sel->instr);
+         sel->src[idx].src = nir_src_for_ssa(src->src.ssa);
       }
 
-      nir_ssa_dest_init(&sel->instr, &sel->dest.dest,
-                        phi->dest.ssa.num_components,
-                        phi->dest.ssa.bit_size, NULL);
-      sel->dest.write_mask = (1 << phi->dest.ssa.num_components) - 1;
+      nir_def_init(&sel->instr, &sel->def,
+                   phi->def.num_components, phi->def.bit_size);
 
-      nir_ssa_def_rewrite_uses(&phi->dest.ssa,
-                               &sel->dest.dest.ssa);
+      nir_def_rewrite_uses(&phi->def,
+                           &sel->def);
 
       nir_instr_insert_before(&phi->instr, &sel->instr);
       nir_instr_remove(&phi->instr);
@@ -504,11 +498,10 @@ nir_opt_peephole_select(nir_shader *shader, unsigned limit,
 {
    bool progress = false;
 
-   nir_foreach_function(function, shader) {
-      if (function->impl)
-         progress |= nir_opt_peephole_select_impl(function->impl, limit,
-                                                  indirect_load_ok,
-                                                  expensive_alu_ok);
+   nir_foreach_function_impl(impl, shader) {
+      progress |= nir_opt_peephole_select_impl(impl, limit,
+                                               indirect_load_ok,
+                                               expensive_alu_ok);
    }
 
    return progress;

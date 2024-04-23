@@ -1,25 +1,7 @@
 /*
  * Copyright 2020 Advanced Micro Devices, Inc.
- * All Rights Reserved.
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #include "si_pipe.h"
@@ -484,8 +466,7 @@ static void si_llvm_emit_polygon_stipple(struct si_shader_context *ctx,
  * overridden by other states. (e.g. per-sample interpolation)
  * Interpolated colors are stored after the preloaded VGPRs.
  */
-void si_llvm_build_ps_prolog(struct si_shader_context *ctx, union si_shader_part_key *key,
-                             bool separate_prolog)
+void si_llvm_build_ps_prolog(struct si_shader_context *ctx, union si_shader_part_key *key)
 {
    LLVMValueRef ret, func;
    int num_returns, i, num_color_channels;
@@ -609,13 +590,13 @@ void si_llvm_build_ps_prolog(struct si_shader_context *ctx, union si_shader_part
 
       /* Read LINEAR_SAMPLE. */
       for (i = 0; i < 2; i++)
-         linear_sample[i] = LLVMGetParam(func, base + (separate_prolog ? 6 : 9) + i);
+         linear_sample[i] = LLVMGetParam(func, base + 6 + i);
       /* Overwrite LINEAR_CENTER. */
       for (i = 0; i < 2; i++)
-         ret = LLVMBuildInsertValue(ctx->ac.builder, ret, linear_sample[i], base + (separate_prolog ? 8 : 11) + i, "");
+         ret = LLVMBuildInsertValue(ctx->ac.builder, ret, linear_sample[i], base + 8 + i, "");
       /* Overwrite LINEAR_CENTROID. */
       for (i = 0; i < 2; i++)
-         ret = LLVMBuildInsertValue(ctx->ac.builder, ret, linear_sample[i], base + (separate_prolog ? 10 : 13) + i, "");
+         ret = LLVMBuildInsertValue(ctx->ac.builder, ret, linear_sample[i], base + 10 + i, "");
    }
 
    /* Force center interpolation. */
@@ -705,15 +686,8 @@ void si_llvm_build_ps_prolog(struct si_shader_context *ctx, union si_shader_part
     * entire pixel/fragment, so mask bits out based on the sample ID.
     */
    if (key->ps_prolog.states.samplemask_log_ps_iter) {
-      /* The bit pattern matches that used by fixed function fragment
-       * processing. */
-      static const uint16_t ps_iter_masks[] = {
-         0xffff, /* not used */
-         0x5555, 0x1111, 0x0101, 0x0001,
-      };
-      assert(key->ps_prolog.states.samplemask_log_ps_iter < ARRAY_SIZE(ps_iter_masks));
-
-      uint32_t ps_iter_mask = ps_iter_masks[key->ps_prolog.states.samplemask_log_ps_iter];
+      uint32_t ps_iter_mask =
+         ac_get_ps_iter_mask(1 << key->ps_prolog.states.samplemask_log_ps_iter);
       LLVMValueRef sampleid = si_unpack_param(ctx, ancillary, 8, 4);
       LLVMValueRef samplemask = ac_get_arg(&ctx->ac, param_sample_mask);
 
@@ -740,8 +714,7 @@ void si_llvm_build_ps_prolog(struct si_shader_context *ctx, union si_shader_part
  * Build the pixel shader epilog function. This handles everything that must be
  * emulated for pixel shader exports. (alpha-test, format conversions, etc)
  */
-void si_llvm_build_ps_epilog(struct si_shader_context *ctx, union si_shader_part_key *key,
-                             UNUSED bool separate_epilog)
+void si_llvm_build_ps_epilog(struct si_shader_context *ctx, union si_shader_part_key *key)
 {
    int i;
    struct si_ps_exports exp = {};

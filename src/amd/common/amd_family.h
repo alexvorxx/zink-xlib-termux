@@ -2,24 +2,8 @@
  * Copyright 2008 Corbin Simpson <MostAwesomeDude@gmail.com>
  * Copyright 2010 Marek Olšák <maraeo@gmail.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE. */
+ * SPDX-License-Identifier: MIT
+ */
 
 #ifndef AMD_FAMILY_H
 #define AMD_FAMILY_H
@@ -129,9 +113,10 @@ enum radeon_family
    CHIP_NAVI24,         /* Radeon 6400, 6500 (formerly "Beige Goby") */
    CHIP_REMBRANDT,      /* Ryzen 6000 (formerly "Yellow Carp") */
    CHIP_RAPHAEL_MENDOCINO, /* Ryzen 7000(X), Ryzen 7045, Ryzen 7020 */
-   CHIP_GFX1100,
-   CHIP_GFX1101,
-   CHIP_GFX1102,
+   /* GFX11 (RDNA 3) */
+   CHIP_NAVI31,         /* Radeon 7900 */
+   CHIP_NAVI32,         /* Radeon 7800, 7700 */
+   CHIP_NAVI33,         /* Radeon 7600, 7700S (mobile) */
    CHIP_GFX1103_R1,
    CHIP_GFX1103_R2,
    CHIP_LAST,
@@ -215,6 +200,9 @@ enum vcn_version{
 };
 
 const char *ac_get_family_name(enum radeon_family family);
+enum amd_gfx_level ac_get_gfx_level(enum radeon_family family);
+unsigned ac_get_family_id(enum radeon_family family);
+const char *ac_get_llvm_processor_name(enum radeon_family family);
 
 #ifdef __cplusplus
 }

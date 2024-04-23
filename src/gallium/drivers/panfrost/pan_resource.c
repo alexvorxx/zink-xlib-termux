@@ -63,7 +63,8 @@ panfrost_clear_depth_stencil(struct pipe_context *pipe,
    if (render_condition_enabled && !panfrost_render_condition_check(ctx))
       return;
 
-   panfrost_blitter_save(ctx, render_condition_enabled);
+   panfrost_blitter_save(
+      ctx, render_condition_enabled ? PAN_RENDER_COND : PAN_RENDER_BASE);
    util_blitter_clear_depth_stencil(ctx->blitter, dst, clear_flags, depth,
                                     stencil, dstx, dsty, width, height);
 }
@@ -80,7 +81,8 @@ panfrost_clear_render_target(struct pipe_context *pipe,
    if (render_condition_enabled && !panfrost_render_condition_check(ctx))
       return;
 
-   panfrost_blitter_save(ctx, render_condition_enabled);
+   panfrost_blitter_save(
+      ctx, render_condition_enabled ? PAN_RENDER_COND : PAN_RENDER_BASE);
    util_blitter_clear_render_target(ctx->blitter, dst, color, dstx, dsty, width,
                                     height);
 }
@@ -130,7 +132,8 @@ panfrost_resource_from_handle(struct pipe_screen *pscreen,
       .nr_slices = 1,
    };
 
-   bool valid = pan_image_layout_init(&rsc->image.layout, &explicit_layout);
+   bool valid =
+      pan_image_layout_init(dev, &rsc->image.layout, &explicit_layout);
 
    if (!valid) {
       FREE(rsc);
@@ -489,7 +492,7 @@ panfrost_resource_setup(struct panfrost_device *dev,
       .crc = panfrost_should_checksum(dev, pres),
    };
 
-   ASSERTED bool valid = pan_image_layout_init(&pres->image.layout, NULL);
+   ASSERTED bool valid = pan_image_layout_init(dev, &pres->image.layout, NULL);
    assert(valid);
 }
 
@@ -1001,7 +1004,8 @@ panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
    panfrost_bo_mmap(bo);
 
    if (dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC))
-      pandecode_inject_mmap(bo->ptr.gpu, bo->ptr.cpu, bo->size, NULL);
+      pandecode_inject_mmap(dev->decode_ctx, bo->ptr.gpu, bo->ptr.cpu, bo->size,
+                            NULL);
 
    /* Upgrade writes to uninitialized ranges to UNSYNCHRONIZED */
    if ((usage & PIPE_MAP_WRITE) && resource->target == PIPE_BUFFER &&
@@ -1389,6 +1393,18 @@ panfrost_resource_get_internal_format(struct pipe_resource *rsrc)
 {
    struct panfrost_resource *prsrc = (struct panfrost_resource *)rsrc;
    return prsrc->image.layout.format;
+}
+
+void
+panfrost_set_image_view_planes(struct pan_image_view *iview,
+                               struct pipe_resource *texture)
+{
+   struct panfrost_resource *prsrc_plane = (struct panfrost_resource *)texture;
+
+   for (int i = 0; i < MAX_IMAGE_PLANES && prsrc_plane; i++) {
+      iview->planes[i] = &prsrc_plane->image;
+      prsrc_plane = (struct panfrost_resource *)prsrc_plane->base.next;
+   }
 }
 
 static bool

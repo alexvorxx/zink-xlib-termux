@@ -13,15 +13,18 @@ modified and thus is unreliable).
 
 The CI runs a number of tests, from trivial build-testing to complex GPU rendering:
 
-- Build testing for a number of build systems, configurations and platforms
+- Build testing for a number of configurations and platforms
 - Sanity checks (``meson test``)
-- Some drivers (Softpipe, LLVMpipe, Freedreno and Panfrost) are also tested
-  using `VK-GL-CTS <https://github.com/KhronosGroup/VK-GL-CTS>`__
+- Most drivers are also tested using several test suites, such as the
+  `Vulkan/GL/GLES conformance test suite <https://github.com/KhronosGroup/VK-GL-CTS>`__,
+  `Piglit <https://gitlab.freedesktop.org/mesa/piglit>`__, and others.
 - Replay of application traces
 
 A typical run takes between 20 and 30 minutes, although it can go up very quickly
 if the GitLab runners are overwhelmed, which happens sometimes. When it does happen,
 not much can be done besides waiting it out, or cancel it.
+You can do your part by only running the jobs you care about by using `our
+tool <#running-specific-ci-jobs>`__.
 
 Due to limited resources, we currently do not run the CI automatically
 on every push; instead, we only run it automatically once the MR has
@@ -51,6 +54,28 @@ The three GitLab CI systems currently integrated are:
    bare-metal
    LAVA
    docker
+
+Farm management
+---------------
+
+.. note::
+   Never mix farm maintenance with any other change in the same merge request!
+
+When the farm starts failing for any reason (power, network, out-of-space), it needs to be disabled by pushing separate MR with
+
+.. code-block:: console
+
+   git mv .ci-farms{,-disabled}/$farm_name
+
+After farm restore functionality can be enabled by pushing a new merge request, which contains
+
+.. code-block:: console
+
+   git mv .ci-farms{-disabled,}/$farm_name
+
+.. warning::
+   Pushing (``git push``) directly to ``main`` is forbidden; this change must
+   be sent as a :ref:`Merge Request <merging>`.
 
 Application traces replay
 -------------------------
@@ -248,7 +273,7 @@ directory.  You can hack on mesa and iterate testing the build with:
 
 .. code-block:: console
 
-   sudo docker run --rm -v `pwd`:/mesa $IMAGE ninja -C /mesa/_build
+   sudo docker run --rm -v `pwd`:/mesa $IMAGE meson compile -C /mesa/_build
 
 Running specific CI jobs
 ------------------------
@@ -285,3 +310,15 @@ instructions on how to uprev Linux Kernel in the GitLab CI ecosystem.
   :maxdepth: 1
 
   kernel
+
+
+Reusing CI scripts for other projects
+--------------------------------------
+
+The CI scripts in ``.gitlab-ci/`` can be reused for other projects, to
+facilitate reuse of the infrastructure, our scripts can be used as tools
+to create containers and run tests on the available farms.
+
+.. envvar:: EXTRA_LOCAL_PACKAGES
+
+   Define extra Debian packages to be installed in the container.

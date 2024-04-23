@@ -1,24 +1,7 @@
 /*
  * Copyright 2012 Advanced Micro Devices, Inc.
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #include "ac_shader_util.h"
@@ -489,7 +472,7 @@ const struct ac_data_format_info *ac_get_data_format_info(unsigned dfmt)
    [(int)PIPE_FORMAT_R10G10B10A2_UINT] = {DST_SEL(X,Y,Z,W), 4, 4, 0, FMTP(2_10_10_10, UINT)}, \
    [(int)PIPE_FORMAT_R10G10B10A2_SINT] = {DST_SEL(X,Y,Z,W), 4, 4, 0, FMTP(2_10_10_10, SINT), \
                                           AA(AC_ALPHA_ADJUST_SINT)}, \
-   [(int)PIPE_FORMAT_R11G11B10_FLOAT] = {DST_SEL(X,Y,Z,W), 4, 3, 0, FMTP(10_11_11, FLOAT)}, \
+   [(int)PIPE_FORMAT_R11G11B10_FLOAT] = {DST_SEL(X,Y,Z,1), 4, 3, 0, FMTP(10_11_11, FLOAT)}, \
 
 #define HW_FMT(dfmt, nfmt) (V_008F0C_BUF_DATA_FORMAT_##dfmt | (V_008F0C_BUF_NUM_FORMAT_##nfmt << 4))
 #define HW_FMT_INVALID (V_008F0C_BUF_DATA_FORMAT_INVALID | (V_008F0C_BUF_NUM_FORMAT_UNORM << 4))
@@ -693,6 +676,22 @@ unsigned ac_get_fs_input_vgpr_cnt(const struct ac_shader_config *config,
       *sample_coverage_vgpr_index_ptr = sample_coverage_vgpr_index;
 
    return num_input_vgprs;
+}
+
+uint16_t ac_get_ps_iter_mask(unsigned ps_iter_samples)
+{
+   /* The bit pattern matches that used by fixed function fragment
+    * processing.
+    */
+   switch (ps_iter_samples) {
+   case 1: return 0xffff;
+   case 2: return 0x5555;
+   case 4: return 0x1111;
+   case 8: return 0x0101;
+   case 16: return 0x0001;
+   default:
+      unreachable("invalid sample count");
+   }
 }
 
 void ac_choose_spi_color_formats(unsigned format, unsigned swap, unsigned ntype,
@@ -1053,7 +1052,7 @@ enum gl_access_qualifier ac_get_mem_access_flags(const nir_intrinsic_instr *inst
  * "access" must be a result of ac_get_mem_access_flags() with the appropriate ACCESS_TYPE_*
  * flags set.
  */
-union ac_hw_cache_flags ac_get_hw_cache_flags(enum amd_gfx_level gfx_level,
+union ac_hw_cache_flags ac_get_hw_cache_flags(const struct radeon_info *info,
                                               enum gl_access_qualifier access)
 {
    union ac_hw_cache_flags result;
@@ -1067,7 +1066,7 @@ union ac_hw_cache_flags ac_get_hw_cache_flags(enum amd_gfx_level gfx_level,
 
    bool scope_is_device = access & (ACCESS_COHERENT | ACCESS_VOLATILE);
 
-   if (gfx_level >= GFX11) {
+   if (info->gfx_level >= GFX11) {
       /* GFX11 simplified it and exposes what is actually useful.
        *
        * GLC means device scope for loads only. (stores and atomics are always device scope)
@@ -1081,7 +1080,7 @@ union ac_hw_cache_flags ac_get_hw_cache_flags(enum amd_gfx_level gfx_level,
 
       if (access & ACCESS_NON_TEMPORAL && !(access & ACCESS_TYPE_SMEM))
          result.value |= ac_slc;
-   } else if (gfx_level >= GFX10) {
+   } else if (info->gfx_level >= GFX10) {
       /* GFX10-10.3:
        *
        * VMEM and SMEM loads (SMEM only supports the first four):
@@ -1135,7 +1134,7 @@ union ac_hw_cache_flags ac_get_hw_cache_flags(enum amd_gfx_level gfx_level,
        */
       if (scope_is_device && !(access & ACCESS_TYPE_ATOMIC)) {
          /* SMEM doesn't support the device scope on GFX6-7. */
-         assert(gfx_level >= GFX8 || !(access & ACCESS_TYPE_SMEM));
+         assert(info->gfx_level >= GFX8 || !(access & ACCESS_TYPE_SMEM));
          result.value |= ac_glc;
       }
 
@@ -1145,7 +1144,7 @@ union ac_hw_cache_flags ac_get_hw_cache_flags(enum amd_gfx_level gfx_level,
       /* GFX6 has a TC L1 bug causing corruption of 8bit/16bit stores. All store opcodes not
        * aligned to a dword are affected.
        */
-      if (gfx_level == GFX6 && access & ACCESS_MAY_STORE_SUBDWORD)
+      if (info->gfx_level == GFX6 && access & ACCESS_MAY_STORE_SUBDWORD)
          result.value |= ac_glc;
    }
 
@@ -1153,4 +1152,32 @@ union ac_hw_cache_flags ac_get_hw_cache_flags(enum amd_gfx_level gfx_level,
       result.value |= ac_swizzled;
 
    return result;
+}
+
+unsigned ac_get_all_edge_flag_bits(void)
+{
+   /* This will be extended in the future. */
+   return (1u << 9) | (1u << 19) | (1u << 29);
+}
+
+/**
+ * Returns a unique index for a per-patch semantic name and index. The index
+ * must be less than 32, so that a 32-bit bitmask of used inputs or outputs
+ * can be calculated.
+ */
+unsigned
+ac_shader_io_get_unique_index_patch(unsigned semantic)
+{
+   switch (semantic) {
+   case VARYING_SLOT_TESS_LEVEL_OUTER:
+      return 0;
+   case VARYING_SLOT_TESS_LEVEL_INNER:
+      return 1;
+   default:
+      if (semantic >= VARYING_SLOT_PATCH0 && semantic < VARYING_SLOT_PATCH0 + 30)
+         return 2 + (semantic - VARYING_SLOT_PATCH0);
+
+      assert(!"invalid semantic");
+      return 0;
+   }
 }

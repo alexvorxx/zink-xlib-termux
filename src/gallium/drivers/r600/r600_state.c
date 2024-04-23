@@ -25,6 +25,7 @@
 #include "r600d.h"
 
 #include "pipe/p_shader_tokens.h"
+#include "util/u_endian.h"
 #include "util/u_pack_color.h"
 #include "util/u_memory.h"
 #include "util/u_framebuffer.h"
@@ -144,13 +145,13 @@ static uint32_t r600_translate_dbformat(enum pipe_format format)
 static bool r600_is_sampler_format_supported(struct pipe_screen *screen, enum pipe_format format)
 {
 	return r600_translate_texformat(screen, format, NULL, NULL, NULL,
-                                   FALSE) != ~0U;
+                                   false) != ~0U;
 }
 
 static bool r600_is_colorbuffer_format_supported(enum amd_gfx_level chip, enum pipe_format format)
 {
-	return r600_translate_colorformat(chip, format, FALSE) != ~0U &&
-	       r600_translate_colorswap(format, FALSE) != ~0U;
+	return r600_translate_colorformat(chip, format, false) != ~0U &&
+	       r600_translate_colorswap(format, false) != ~0U;
 }
 
 static bool r600_is_zs_format_supported(enum pipe_format format)
@@ -677,7 +678,7 @@ r600_create_sampler_view_custom(struct pipe_context *ctx,
 	uint32_t word4 = 0, yuv_format = 0, pitch = 0;
 	unsigned char swizzle[4], array_mode = 0;
 	unsigned width, height, depth, offset_level, last_level;
-	bool do_endian_swap = FALSE;
+	bool do_endian_swap = false;
 
 	if (!view)
 		return NULL;
@@ -698,7 +699,7 @@ r600_create_sampler_view_custom(struct pipe_context *ctx,
 	swizzle[2] = state->swizzle_b;
 	swizzle[3] = state->swizzle_a;
 
-	if (R600_BIG_ENDIAN)
+	if (UTIL_ARCH_BIG_ENDIAN)
 		do_endian_swap = !tmp->db_compatible;
 
 	format = r600_translate_texformat(ctx->screen, state->format,
@@ -824,7 +825,7 @@ static void r600_init_color_surface(struct r600_context *rctx,
 	unsigned offset;
 	const struct util_format_description *desc;
 	int i;
-	bool blend_bypass = 0, blend_clamp = 0, do_endian_swap = FALSE;
+	bool blend_bypass = 0, blend_clamp = 0, do_endian_swap = false;
 
 	if (rtex->db_compatible && !r600_can_sample_zs(rtex, false)) {
 		r600_init_flushed_depth_texture(&rctx->b.b, surf->base.texture, NULL);
@@ -876,7 +877,7 @@ static void r600_init_color_surface(struct r600_context *rctx,
 		ntype = V_0280A0_NUMBER_FLOAT;
 	}
 
-	if (R600_BIG_ENDIAN)
+	if (UTIL_ARCH_BIG_ENDIAN)
 		do_endian_swap = !rtex->db_compatible;
 
 	format = r600_translate_colorformat(rctx->b.gfx_level, surf->base.format,
@@ -1663,13 +1664,15 @@ static void r600_emit_config_state(struct r600_context *rctx, struct r600_atom *
 static void r600_emit_vertex_buffers(struct r600_context *rctx, struct r600_atom *atom)
 {
 	struct radeon_cmdbuf *cs = &rctx->b.gfx.cs;
-	uint32_t dirty_mask = rctx->vertex_buffer_state.dirty_mask;
+	struct r600_fetch_shader *shader = (struct r600_fetch_shader*)rctx->vertex_fetch_shader.cso;
+	uint32_t dirty_mask = rctx->vertex_buffer_state.dirty_mask & shader->buffer_mask;
 
 	while (dirty_mask) {
 		struct pipe_vertex_buffer *vb;
 		struct r600_resource *rbuffer;
 		unsigned offset;
 		unsigned buffer_index = u_bit_scan(&dirty_mask);
+		unsigned stride = shader->strides[buffer_index];
 
 		vb = &rctx->vertex_buffer_state.vb[buffer_index];
 		rbuffer = (struct r600_resource*)vb->buffer.resource;
@@ -1684,7 +1687,7 @@ static void r600_emit_vertex_buffers(struct r600_context *rctx, struct r600_atom
 		radeon_emit(cs, rbuffer->b.b.width0 - offset - 1); /* RESOURCEi_WORD1 */
 		radeon_emit(cs, /* RESOURCEi_WORD2 */
 				 S_038008_ENDIAN_SWAP(r600_endian_swap(32)) |
-				 S_038008_STRIDE(vb->stride));
+				 S_038008_STRIDE(stride));
 		radeon_emit(cs, 0); /* RESOURCEi_WORD3 */
 		radeon_emit(cs, 0); /* RESOURCEi_WORD4 */
 		radeon_emit(cs, 0); /* RESOURCEi_WORD5 */
@@ -1841,6 +1844,20 @@ static void r600_emit_sampler_states(struct r600_context *rctx,
 		enum pipe_texture_target target = PIPE_BUFFER;
 		if (rview)
 			target = rview->base.texture->target;
+
+                /* If seamless cube map is set, set the CAMP_(X|Y|Z) to
+                 * SQ_TEX_WRAP which seems to trigger properly ignoring the
+                 * texture wrap mode */
+                if (target == PIPE_TEXTURE_CUBE ||
+		    target == PIPE_TEXTURE_CUBE_ARRAY) {
+                   if (rstate->seamless_cube_map){
+                      uint32_t mask = ~(S_03C000_CLAMP_X(7) |
+                                        S_03C000_CLAMP_Y(7) |
+                                        S_03C000_CLAMP_Z(7));
+                      rstate->tex_sampler_words[0] &= mask;
+                   }
+                }
+
 		if (target == PIPE_TEXTURE_1D_ARRAY ||
 		    target == PIPE_TEXTURE_2D_ARRAY) {
 			rstate->tex_sampler_words[0] |= S_03C000_TEX_ARRAY_OVERRIDE(1);
@@ -2774,7 +2791,7 @@ void *r600_create_decompress_blend(struct r600_context *rctx)
 void *r600_create_db_flush_dsa(struct r600_context *rctx)
 {
 	struct pipe_depth_stencil_alpha_state dsa;
-	boolean quirk = false;
+	bool quirk = false;
 
 	if (rctx->b.family == CHIP_RV610 || rctx->b.family == CHIP_RV630 ||
 		rctx->b.family == CHIP_RV620 || rctx->b.family == CHIP_RV635)
@@ -2846,7 +2863,7 @@ static inline unsigned r600_array_mode(unsigned mode)
 	}
 }
 
-static boolean r600_dma_copy_tile(struct r600_context *rctx,
+static bool r600_dma_copy_tile(struct r600_context *rctx,
 				struct pipe_resource *dst,
 				unsigned dst_level,
 				unsigned dst_x,
@@ -2917,7 +2934,7 @@ static boolean r600_dma_copy_tile(struct r600_context *rctx,
 	}
 	/* check that we are in dw/base alignment constraint */
 	if (addr % 4 || base % 256) {
-		return FALSE;
+		return false;
 	}
 
 	/* It's a r6xx/r7xx limitation, the blit must be on 8 boundary for number
@@ -2946,7 +2963,7 @@ static boolean r600_dma_copy_tile(struct r600_context *rctx,
 		addr += cheight * pitch;
 		y += cheight;
 	}
-	return TRUE;
+	return true;
 }
 
 static void r600_dma_copy(struct pipe_context *ctx,

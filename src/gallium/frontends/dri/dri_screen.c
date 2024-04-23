@@ -190,6 +190,18 @@ driCreateConfigs(mesa_format format,
       /* MESA_FORMAT_RGBA_FLOAT16 */
       {{ 0, 0, 0, 0},
        { 0, 16, 32, 48 }},
+      /* MESA_FORMAT_B5G5R5A1_UNORM */
+      {{ 0x00007C00, 0x000003E0, 0x0000001F, 0x00008000 },
+       { 10, 5, 0, 15 }},
+      /* MESA_FORMAT_R5G5B5A1_UNORM */
+      {{ 0x0000001F, 0x000003E0, 0x00007C00, 0x00008000 },
+       { 0, 5, 10, 15 }},
+      /* MESA_FORMAT_B4G4R4A4_UNORM */
+      {{ 0x00000F00, 0x000000F0, 0x0000000F, 0x0000F000 },
+       { 8, 4, 0, 12 }},
+      /* MESA_FORMAT_R4G4B4A4_UNORM */
+      {{ 0x0000000F, 0x000000F0, 0x00000F00, 0x0000F000 },
+       { 0, 4, 8, 12 }},
    };
 
    const uint32_t * masks;
@@ -254,6 +266,22 @@ driCreateConfigs(mesa_format format,
    case MESA_FORMAT_R10G10B10A2_UNORM:
       masks = format_table[8].masks;
       shifts = format_table[8].shifts;
+      break;
+   case MESA_FORMAT_B5G5R5A1_UNORM:
+      masks = format_table[11].masks;
+      shifts = format_table[11].shifts;
+      break;
+   case MESA_FORMAT_R5G5B5A1_UNORM:
+      masks = format_table[12].masks;
+      shifts = format_table[12].shifts;
+      break;
+   case MESA_FORMAT_B4G4R4A4_UNORM:
+      masks = format_table[13].masks;
+      shifts = format_table[13].shifts;
+      break;
+   case MESA_FORMAT_R4G4B4A4_UNORM:
+      masks = format_table[14].masks;
+      shifts = format_table[14].shifts;
       break;
    default:
       fprintf(stderr, "[%s:%u] Unknown framebuffer type %s (%d).\n",
@@ -417,6 +445,11 @@ dri_fill_in_modes(struct dri_screen *screen)
 
       /* Required by Android, for HAL_PIXEL_FORMAT_RGBX_8888. */
       MESA_FORMAT_R8G8B8X8_SRGB,
+
+      MESA_FORMAT_B5G5R5A1_UNORM,
+      MESA_FORMAT_R5G5B5A1_UNORM,
+      MESA_FORMAT_B4G4R4A4_UNORM,
+      MESA_FORMAT_R4G4B4A4_UNORM,
    };
    static const enum pipe_format pipe_formats[] = {
       PIPE_FORMAT_B10G10R10A2_UNORM,
@@ -434,6 +467,10 @@ dri_fill_in_modes(struct dri_screen *screen)
       PIPE_FORMAT_RGBX8888_UNORM,
       PIPE_FORMAT_RGBA8888_SRGB,
       PIPE_FORMAT_RGBX8888_SRGB,
+      PIPE_FORMAT_B5G5R5A1_UNORM,
+      PIPE_FORMAT_R5G5B5A1_UNORM,
+      PIPE_FORMAT_B4G4R4A4_UNORM,
+      PIPE_FORMAT_R4G4B4A4_UNORM,
    };
    __DRIconfig **configs = NULL;
    uint8_t depth_bits_array[5];
@@ -520,7 +557,9 @@ dri_fill_in_modes(struct dri_screen *screen)
           (mesa_formats[format] == MESA_FORMAT_R8G8B8A8_UNORM ||
            mesa_formats[format] == MESA_FORMAT_R8G8B8X8_UNORM ||
            mesa_formats[format] == MESA_FORMAT_R8G8B8A8_SRGB  ||
-           mesa_formats[format] == MESA_FORMAT_R8G8B8X8_SRGB))
+           mesa_formats[format] == MESA_FORMAT_R8G8B8X8_SRGB  ||
+           mesa_formats[format] == MESA_FORMAT_R5G5B5A1_UNORM ||
+           mesa_formats[format] == MESA_FORMAT_R4G4B4A4_UNORM))
          continue;
 
       if (!allow_rgb10 &&
@@ -656,6 +695,38 @@ dri_fill_st_visual(struct st_visual *stvis,
       stvis->color_format = PIPE_FORMAT_B5G6R5_UNORM;
       break;
 
+   case 0x00007C00:
+      assert(!mode->sRGBCapable);
+      if (mode->alphaMask)
+         stvis->color_format = PIPE_FORMAT_B5G5R5A1_UNORM;
+      else
+         stvis->color_format = PIPE_FORMAT_B5G5R5X1_UNORM;
+      break;
+
+   case 0x0000001F:
+      assert(!mode->sRGBCapable);
+      if (mode->alphaMask)
+         stvis->color_format = PIPE_FORMAT_R5G5B5A1_UNORM;
+      else
+         stvis->color_format = PIPE_FORMAT_R5G5B5X1_UNORM;
+      break;
+
+   case 0x00000F00:
+      assert(!mode->sRGBCapable);
+      if (mode->alphaMask)
+         stvis->color_format = PIPE_FORMAT_B4G4R4A4_UNORM;
+      else
+         stvis->color_format = PIPE_FORMAT_B4G4R4X4_UNORM;
+      break;
+
+   case 0x0000000F:
+      assert(!mode->sRGBCapable);
+      if (mode->alphaMask)
+         stvis->color_format = PIPE_FORMAT_R4G4B4A4_UNORM;
+      else
+         stvis->color_format = PIPE_FORMAT_R4G4B4X4_UNORM;
+      break;
+
    default:
       assert(!"unsupported visual: invalid red mask");
       return;
@@ -726,7 +797,7 @@ dri_get_egl_image(struct pipe_frontend_screen *fscreen,
    }
 
    if (!img)
-      return FALSE;
+      return false;
 
    stimg->texture = NULL;
    pipe_resource_reference(&stimg->texture, img->texture);
@@ -749,7 +820,7 @@ dri_get_egl_image(struct pipe_frontend_screen *fscreen,
    stimg->yuv_color_space = img->yuv_color_space;
    stimg->yuv_range = img->sample_range;
 
-   return TRUE;
+   return true;
 }
 
 static bool
@@ -769,12 +840,19 @@ dri_get_param(struct pipe_frontend_screen *fscreen,
 }
 
 void
-dri_destroy_screen_helper(struct dri_screen * screen)
+dri_release_screen(struct dri_screen * screen)
 {
    st_screen_destroy(&screen->base);
 
-   if (screen->base.screen)
+   if (screen->base.screen) {
       screen->base.screen->destroy(screen->base.screen);
+      screen->base.screen = NULL;
+   }
+
+   if (screen->dev) {
+      pipe_loader_release(&screen->dev, 1);
+      screen->dev = NULL;
+   }
 
    mtx_destroy(&screen->opencl_func_mutex);
 }
@@ -782,9 +860,7 @@ dri_destroy_screen_helper(struct dri_screen * screen)
 void
 dri_destroy_screen(struct dri_screen *screen)
 {
-   dri_destroy_screen_helper(screen);
-
-   pipe_loader_release(&screen->dev, 1);
+   dri_release_screen(screen);
 
    free(screen->options.force_gl_vendor);
    free(screen->options.force_gl_renderer);
@@ -824,8 +900,8 @@ dri_set_background_context(struct st_context *st,
 }
 
 const __DRIconfig **
-dri_init_screen_helper(struct dri_screen *screen,
-                       struct pipe_screen *pscreen)
+dri_init_screen(struct dri_screen *screen,
+                struct pipe_screen *pscreen)
 {
    screen->base.screen = pscreen;
    screen->base.get_egl_image = dri_get_egl_image;

@@ -23,7 +23,6 @@ inc_egl_dri2 = include_directories('drivers/dri2')
 
 c_args_for_egl = [asan_c_args]
 cpp_args_for_egl = []
-override_for_egl = []
 link_for_egl = []
 deps_for_egl = []
 incs_for_egl = [inc_include, inc_src, inc_egl]
@@ -140,7 +139,6 @@ if with_dri2
       files_egl += files('drivers/dri2/platform_android_mapper.cpp')
       c_args_for_egl += '-DUSE_IMAPPER4_METADATA_API'
       cpp_args_for_egl += '-DUSE_IMAPPER4_METADATA_API'
-      override_for_egl += 'cpp_std=c++17'
     endif
   endif
 elif with_platform_haiku
@@ -182,6 +180,7 @@ else
     input : 'main/50_mesa.json',
     output: '50_@0@.json'.format(glvnd_vendor_name),
     install : true,
+    install_tag : 'runtime',
     install_dir : join_paths(get_option('datadir'), 'glvnd', 'egl_vendor.d')
   )
 endif
@@ -201,7 +200,6 @@ libegl = shared_library(
     '-D_EGL_NATIVE_PLATFORM=_EGL_PLATFORM_@0@'.format(egl_native_platform.to_upper()),
   ],
   cpp_args : [cpp_args_for_egl],
-  override_options : override_for_egl,
   gnu_symbol_visibility : 'hidden',
   include_directories : incs_for_egl,
   link_with : [link_for_egl, libglapi],

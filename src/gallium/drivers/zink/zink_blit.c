@@ -74,6 +74,8 @@ blit_resolve(struct zink_context *ctx, const struct pipe_blit_info *info, bool *
    VkCommandBuffer cmdbuf = *needs_present_readback ?
                             ctx->batch.state->cmdbuf :
                             zink_get_cmdbuf(ctx, src, dst);
+   if (cmdbuf == ctx->batch.state->cmdbuf)
+      zink_flush_dgc_if_enabled(ctx);
    zink_batch_reference_resource_rw(batch, src, false);
    zink_batch_reference_resource_rw(batch, dst, true);
 
@@ -155,7 +157,7 @@ blit_native(struct zink_context *ctx, const struct pipe_blit_info *info, bool *n
    if (src->format != zink_get_format(screen, info->src.format) ||
        dst->format != zink_get_format(screen, info->dst.format))
       return false;
-   if (zink_format_is_emulated_alpha(info->src.format))
+   if (src->format != VK_FORMAT_A8_UNORM_KHR && zink_format_is_emulated_alpha(info->src.format))
       return false;
 
    if (!(src->obj->vkfeats & VK_FORMAT_FEATURE_BLIT_SRC_BIT) ||
@@ -266,6 +268,8 @@ blit_native(struct zink_context *ctx, const struct pipe_blit_info *info, bool *n
    VkCommandBuffer cmdbuf = *needs_present_readback ?
                             ctx->batch.state->cmdbuf :
                             zink_get_cmdbuf(ctx, src, dst);
+   if (cmdbuf == ctx->batch.state->cmdbuf)
+      zink_flush_dgc_if_enabled(ctx);
    zink_batch_reference_resource_rw(batch, src, false);
    zink_batch_reference_resource_rw(batch, dst, true);
 
@@ -393,14 +397,19 @@ zink_blit(struct pipe_context *pctx,
    if (whole)
       pctx->invalidate_resource(pctx, info->dst.resource);
 
+   zink_flush_dgc_if_enabled(ctx);
    ctx->unordered_blitting = !(info->render_condition_enable && ctx->render_condition_active) &&
                              zink_screen(ctx->base.screen)->info.have_KHR_dynamic_rendering &&
+                             !needs_present_readback &&
                              zink_get_cmdbuf(ctx, src, dst) == ctx->batch.state->barrier_cmdbuf;
    VkCommandBuffer cmdbuf = ctx->batch.state->cmdbuf;
    VkPipeline pipeline = ctx->gfx_pipeline_state.pipeline;
    bool in_rp = ctx->batch.in_rp;
    uint64_t tc_data = ctx->dynamic_fb.tc_info.data;
    bool queries_disabled = ctx->queries_disabled;
+   bool rp_changed = ctx->rp_changed || (!ctx->fb_state.zsbuf && util_format_is_depth_or_stencil(info->dst.format));
+   unsigned ds3_states = ctx->ds3_states;
+   bool rp_tc_info_updated = ctx->rp_tc_info_updated;
    if (ctx->unordered_blitting) {
       /* for unordered blit, swap the unordered cmdbuf for the main one for the whole op to avoid conditional hell */
       ctx->batch.state->cmdbuf = ctx->batch.state->barrier_cmdbuf;
@@ -409,12 +418,13 @@ zink_blit(struct pipe_context *pctx,
       ctx->queries_disabled = true;
       ctx->batch.state->has_barriers = true;
       ctx->pipeline_changed[0] = true;
+      zink_reset_ds3_states(ctx);
       zink_select_draw_vbo(ctx);
    }
    zink_blit_begin(ctx, ZINK_BLIT_SAVE_FB | ZINK_BLIT_SAVE_FS | ZINK_BLIT_SAVE_TEXTURES);
-   if (!zink_is_swapchain(src) && info->src.format != info->src.resource->format)
+   if (zink_format_needs_mutable(info->src.format, info->src.resource->format))
       zink_resource_object_init_mutable(ctx, src);
-   if (!zink_is_swapchain(dst) && info->dst.format != info->dst.resource->format)
+   if (zink_format_needs_mutable(info->dst.format, info->dst.resource->format))
       zink_resource_object_init_mutable(ctx, dst);
    zink_blit_barriers(ctx, src, dst, whole);
    ctx->blitting = true;
@@ -448,18 +458,23 @@ zink_blit(struct pipe_context *pctx,
       zink_batch_no_rp(ctx);
       ctx->batch.in_rp = in_rp;
       ctx->gfx_pipeline_state.rp_state = zink_update_rendering_info(ctx);
-      ctx->rp_changed = false;
+      ctx->rp_changed = rp_changed;
+      ctx->rp_tc_info_updated |= rp_tc_info_updated;
       ctx->queries_disabled = queries_disabled;
       ctx->dynamic_fb.tc_info.data = tc_data;
       ctx->batch.state->cmdbuf = cmdbuf;
       ctx->gfx_pipeline_state.pipeline = pipeline;
       ctx->pipeline_changed[0] = true;
+      ctx->ds3_states = ds3_states;
       zink_select_draw_vbo(ctx);
    }
    ctx->unordered_blitting = false;
 end:
-   if (needs_present_readback)
+   if (needs_present_readback) {
+      src->obj->unordered_read = false;
+      dst->obj->unordered_write = false;
       zink_kopper_present_readback(ctx, src);
+   }
 }
 
 /* similar to radeonsi */

@@ -46,12 +46,14 @@ struct asm_context {
    enum amd_gfx_level gfx_level;
    std::vector<std::pair<int, SOPP_instruction*>> branches;
    std::map<unsigned, constaddr_info> constaddrs;
+   std::map<unsigned, constaddr_info> resumeaddrs;
    std::vector<struct aco_symbol>* symbols;
+   Block* loop_header = NULL;
    const int16_t* opcode;
    // TODO: keep track of branch instructions referring blocks
    // and, when emitting the block, correct the offset in instr
    asm_context(Program* program_, std::vector<struct aco_symbol>* symbols_)
-      : program(program_), gfx_level(program->gfx_level), symbols(symbols_)
+       : program(program_), gfx_level(program->gfx_level), symbols(symbols_)
    {
       if (gfx_level <= GFX7)
          opcode = &instr_info.opcode_gfx7[0];
@@ -138,6 +140,19 @@ emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* inst
       assert(instr->operands[1].isConstant());
       /* in case it's an inline constant, make it a literal */
       instr->operands[1] = Operand::literal32(instr->operands[1].constantValue());
+   } else if (instr->opcode == aco_opcode::p_resumeaddr_getpc) {
+      ctx.resumeaddrs[instr->operands[0].constantValue()].getpc_end = out.size() + 1;
+
+      instr->opcode = aco_opcode::s_getpc_b64;
+      instr->operands.pop_back();
+   } else if (instr->opcode == aco_opcode::p_resumeaddr_addlo) {
+      ctx.resumeaddrs[instr->operands[2].constantValue()].add_literal = out.size() + 1;
+
+      instr->opcode = aco_opcode::s_add_u32;
+      instr->operands.pop_back();
+      assert(instr->operands[1].isConstant());
+      /* in case it's an inline constant, make it a literal */
+      instr->operands[1] = Operand::literal32(instr->operands[1].constantValue());
    } else if (instr->opcode == aco_opcode::p_load_symbol) {
       assert(instr->operands[0].isConstant());
       assert(ctx.symbols);
@@ -160,8 +175,7 @@ emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* inst
          instr->opcode = aco_opcode::v_fma_f16;
          instr->format = (Format)((uint32_t)instr->format & ~(uint32_t)Format::VOP2);
       } else if (instr->opcode == aco_opcode::v_fmamk_f16) {
-         std::swap(instr->operands[1], instr->operands[2]);
-         instr->valu().opsel[1].swap(instr->valu().opsel[2]);
+         instr->valu().swapOperands(1, 2);
          instr->opcode = aco_opcode::v_fma_f16;
          instr->format = (Format)((uint32_t)instr->format & ~(uint32_t)Format::VOP2);
       }
@@ -474,7 +488,8 @@ emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* inst
          encoding |= reg(ctx, instr->operands[2], 8) << 16;
       if (instr->operands.size() >= 2 && instr->operands[1].physReg() != m0)
          encoding |= reg(ctx, instr->operands[1], 8) << 8;
-      encoding |= reg(ctx, instr->operands[0], 8);
+      if (!instr->operands[0].isUndefined())
+         encoding |= reg(ctx, instr->operands[0], 8);
       out.push_back(encoding);
       break;
    }
@@ -781,7 +796,7 @@ emit_instruction(asm_context& ctx, std::vector<uint32_t>& out, Instruction* inst
          encoding |= dpp.abs[0] << 21;
          encoding |= dpp.neg[0] << 20;
          if (ctx.gfx_level >= GFX10)
-            encoding |= 1 << 18; /* set Fetch Inactive to match GFX9 behaviour */
+            encoding |= 1 << 18; /* set Fetch Inactive */
          encoding |= dpp.bound_ctrl << 19;
          encoding |= dpp.dpp_ctrl << 8;
          encoding |= reg(ctx, dpp_op, 8);
@@ -980,14 +995,15 @@ fix_exports(asm_context& ctx, std::vector<uint32_t>& out, Program* program)
       while (it != block.instructions.rend()) {
          if ((*it)->isEXP()) {
             Export_instruction& exp = (*it)->exp();
-            if (program->stage.hw == HWStage::VS || program->stage.hw == HWStage::NGG) {
+            if (program->stage.hw == AC_HW_VERTEX_SHADER ||
+                program->stage.hw == AC_HW_NEXT_GEN_GEOMETRY_SHADER) {
                if (exp.dest >= V_008DFC_SQ_EXP_POS && exp.dest <= (V_008DFC_SQ_EXP_POS + 3)) {
                   exp.done = true;
                   exported = true;
                   break;
                }
             } else {
-               if (!program->info.ps.has_epilog) {
+               if (!program->info.has_epilog) {
                   exp.done = true;
                   exp.valid_mask = true;
                }
@@ -1000,19 +1016,26 @@ fix_exports(asm_context& ctx, std::vector<uint32_t>& out, Program* program)
             /* Do not abort if the main FS has an epilog because it only
              * exports MRTZ (if present) and the epilog exports colors.
              */
-            exported |= program->stage.hw == HWStage::FS && program->info.ps.has_epilog;
+            exported |= program->stage.hw == AC_HW_PIXEL_SHADER && program->info.has_epilog;
+
+            /* Do not abort for VS/TES as NGG if they are non-monolithic shaders
+             * because a jump would be emitted.
+             */
+            exported |= (program->stage.sw == SWStage::VS || program->stage.sw == SWStage::TES) &&
+                        program->stage.hw == AC_HW_NEXT_GEN_GEOMETRY_SHADER &&
+                        program->info.merged_shader_compiled_separately;
          }
          ++it;
       }
    }
 
    /* GFX10+ FS may not export anything if no discard is used. */
-   bool may_skip_export = program->stage.hw == HWStage::FS && program->gfx_level >= GFX10;
+   bool may_skip_export = program->stage.hw == AC_HW_PIXEL_SHADER && program->gfx_level >= GFX10;
 
    if (!exported && !may_skip_export) {
       /* Abort in order to avoid a GPU hang. */
-      bool is_vertex_or_ngg =
-         (program->stage.hw == HWStage::VS || program->stage.hw == HWStage::NGG);
+      bool is_vertex_or_ngg = (program->stage.hw == AC_HW_VERTEX_SHADER ||
+                               program->stage.hw == AC_HW_NEXT_GEN_GEOMETRY_SHADER);
       aco_err(program,
               "Missing export in %s shader:", is_vertex_or_ngg ? "vertex or NGG" : "fragment");
       aco_print_program(program, stderr);
@@ -1043,6 +1066,13 @@ insert_code(asm_context& ctx, std::vector<uint32_t>& out, unsigned insert_before
 
    /* Update the locations of p_constaddr instructions */
    for (auto& constaddr : ctx.constaddrs) {
+      constaddr_info& info = constaddr.second;
+      if (info.getpc_end >= insert_before)
+         info.getpc_end += insert_count;
+      if (info.add_literal >= insert_before)
+         info.add_literal += insert_count;
+   }
+   for (auto& constaddr : ctx.resumeaddrs) {
       constaddr_info& info = constaddr.second;
       if (info.getpc_end >= insert_before)
          info.getpc_end += insert_count;
@@ -1139,8 +1169,7 @@ emit_long_jump(asm_context& ctx, SOPP_instruction* branch, bool backwards,
    emit_instruction(ctx, out, instr.get());
 
    /* create the s_setpc_b64 to jump */
-   instr.reset(
-      bld.sop1(aco_opcode::s_setpc_b64, Operand(def.physReg(), s2)).instr);
+   instr.reset(bld.sop1(aco_opcode::s_setpc_b64, Operand(def.physReg(), s2)).instr);
    emit_instruction(ctx, out, instr.get());
 }
 
@@ -1187,21 +1216,101 @@ fix_constaddrs(asm_context& ctx, std::vector<uint32_t>& out)
    for (auto& constaddr : ctx.constaddrs) {
       constaddr_info& info = constaddr.second;
       out[info.add_literal] += (out.size() - info.getpc_end) * 4u;
+
+      if (ctx.symbols) {
+         struct aco_symbol sym;
+         sym.id = aco_symbol_const_data_addr;
+         sym.offset = info.add_literal;
+         ctx.symbols->push_back(sym);
+      }
+   }
+   for (auto& addr : ctx.resumeaddrs) {
+      constaddr_info& info = addr.second;
+      const Block& block = ctx.program->blocks[out[info.add_literal]];
+      assert(block.kind & block_kind_resume);
+      out[info.add_literal] = (block.offset - info.getpc_end) * 4u;
+   }
+}
+
+void
+align_block(asm_context& ctx, std::vector<uint32_t>& code, Block& block)
+{
+   /* Blocks with block_kind_loop_exit might be eliminated after jump threading, so we instead find
+    * loop exits using loop_nest_depth.
+    */
+   if (ctx.loop_header && !block.linear_preds.empty() &&
+       block.loop_nest_depth < ctx.loop_header->loop_nest_depth) {
+      Block* loop_header = ctx.loop_header;
+      ctx.loop_header = NULL;
+      std::vector<uint32_t> nops;
+
+      const unsigned loop_num_cl = DIV_ROUND_UP(block.offset - loop_header->offset, 16);
+
+      /* On GFX10.3+, change the prefetch mode if the loop fits into 2 or 3 cache lines.
+       * Don't use the s_inst_prefetch instruction on GFX10 as it might cause hangs.
+       */
+      const bool change_prefetch =
+         ctx.program->gfx_level >= GFX10_3 && loop_num_cl > 1 && loop_num_cl <= 3;
+
+      if (change_prefetch) {
+         Builder bld(ctx.program);
+         int16_t prefetch_mode = loop_num_cl == 3 ? 0x1 : 0x2;
+         aco_ptr<Instruction> instr(bld.sopp(aco_opcode::s_inst_prefetch, -1, prefetch_mode));
+         emit_instruction(ctx, nops, instr.get());
+         insert_code(ctx, code, loop_header->offset, nops.size(), nops.data());
+
+         /* Change prefetch mode back to default (0x3). */
+         instr->sopp().imm = 0x3;
+         emit_instruction(ctx, code, instr.get());
+      }
+
+      const unsigned loop_start_cl = loop_header->offset >> 4;
+      const unsigned loop_end_cl = (block.offset - 1) >> 4;
+
+      /* Align the loop if it fits into the fetched cache lines or if we can
+       * reduce the number of cache lines with less than 8 NOPs.
+       */
+      const bool align_loop = loop_end_cl - loop_start_cl >= loop_num_cl &&
+                              (loop_num_cl == 1 || change_prefetch || loop_header->offset % 16 > 8);
+
+      if (align_loop) {
+         nops.clear();
+         nops.resize(16 - (loop_header->offset % 16), 0xbf800000u);
+         insert_code(ctx, code, loop_header->offset, nops.size(), nops.data());
+      }
+   }
+
+   if (block.kind & block_kind_loop_header) {
+      /* In case of nested loops, only handle the inner-most loops in order
+       * to not break the alignment of inner loops by handling outer loops.
+       * Also ignore loops without back-edge.
+       */
+      ctx.loop_header = block.linear_preds.size() > 1 ? &block : NULL;
+   }
+
+   /* align resume shaders with cache line */
+   if (block.kind & block_kind_resume) {
+      size_t cache_aligned = align(code.size(), 16);
+      code.resize(cache_aligned, 0xbf800000u); /* s_nop 0 */
+      block.offset = code.size();
    }
 }
 
 unsigned
-emit_program(Program* program, std::vector<uint32_t>& code,
-             std::vector<struct aco_symbol>* symbols)
+emit_program(Program* program, std::vector<uint32_t>& code, std::vector<struct aco_symbol>* symbols,
+             bool append_endpgm)
 {
    asm_context ctx(program, symbols);
 
-   if (program->stage.hw == HWStage::VS || program->stage.hw == HWStage::FS ||
-       program->stage.hw == HWStage::NGG)
+   /* Prolog has no exports. */
+   if (!program->is_prolog &&
+       (program->stage.hw == AC_HW_VERTEX_SHADER || program->stage.hw == AC_HW_PIXEL_SHADER ||
+        program->stage.hw == AC_HW_NEXT_GEN_GEOMETRY_SHADER))
       fix_exports(ctx, code, program);
 
    for (Block& block : program->blocks) {
       block.offset = code.size();
+      align_block(ctx, code, block);
       emit_block(ctx, code, block);
    }
 
@@ -1209,13 +1318,9 @@ emit_program(Program* program, std::vector<uint32_t>& code,
 
    unsigned exec_size = code.size() * sizeof(uint32_t);
 
-   if (program->gfx_level >= GFX10) {
-      /* Pad output with s_code_end so instruction prefetching doesn't cause
-       * page faults */
-      unsigned final_size = align(code.size() + 3 * 16, program->gfx_level >= GFX11 ? 32 : 16);
-      while (code.size() < final_size)
-         code.push_back(0xbf9f0000u);
-   }
+   /* Add end-of-code markers for the UMR disassembler. */
+   if (append_endpgm)
+      code.resize(code.size() + 5, 0xbf9f0000u);
 
    fix_constaddrs(ctx, code);
 
@@ -1225,8 +1330,8 @@ emit_program(Program* program, std::vector<uint32_t>& code,
    code.insert(code.end(), (uint32_t*)program->constant_data.data(),
                (uint32_t*)(program->constant_data.data() + program->constant_data.size()));
 
-   program->config->scratch_bytes_per_wave = align(
-      program->config->scratch_bytes_per_wave, program->dev.scratch_alloc_granule);
+   program->config->scratch_bytes_per_wave =
+      align(program->config->scratch_bytes_per_wave, program->dev.scratch_alloc_granule);
 
    return exec_size;
 }

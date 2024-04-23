@@ -38,6 +38,7 @@
 
 #include "vk_descriptor_update_template.h"
 #include "vk_device.h"
+#include "vk_device_memory.h"
 #include "vk_format.h"
 #include "vk_instance.h"
 #include "vk_image.h"
@@ -62,6 +63,11 @@
 #define VG(x) x
 #else
 #define VG(x) ((void)0)
+#endif
+
+#ifdef ANDROID
+#include <vndk/hardware_buffer.h>
+#include "util/u_gralloc/u_gralloc.h"
 #endif
 
 #include "v3dv_limits.h"
@@ -168,7 +174,7 @@ struct v3dv_physical_device {
    const struct v3d_compiler *compiler;
    uint32_t next_program_id;
 
-   uint64_t heap_used;
+   alignas(8) uint64_t heap_used;
 
    /* This array holds all our 'struct v3dv_bo' allocations. We use this
     * so we can add a refcount to our BOs and check if a particular BO
@@ -222,7 +228,9 @@ void v3dv_meta_texel_buffer_copy_finish(struct v3dv_device *device);
 
 bool v3dv_meta_can_use_tlb(struct v3dv_image *image,
                            uint8_t plane,
+                           uint8_t miplevel,
                            const VkOffset3D *offset,
+                           const VkExtent3D *extent,
                            VkFormat *compat_format);
 
 struct v3dv_instance {
@@ -586,17 +594,12 @@ struct v3dv_device {
    struct util_dynarray device_address_bo_list; /* Array of struct v3dv_bo * */
 
 #ifdef ANDROID
-   const void *gralloc;
-   enum {
-      V3DV_GRALLOC_UNKNOWN,
-      V3DV_GRALLOC_CROS,
-      V3DV_GRALLOC_OTHER,
-   } gralloc_type;
+   struct u_gralloc *gralloc;
 #endif
 };
 
 struct v3dv_device_memory {
-   struct vk_object_base base;
+   struct vk_device_memory vk;
 
    struct v3dv_bo *bo;
    const VkMemoryType *type;
@@ -670,6 +673,8 @@ struct v3d_resource_slice {
    uint32_t offset;
    uint32_t stride;
    uint32_t padded_height;
+   uint32_t width;
+   uint32_t height;
    /* Size of a single pane of the slice.  For 3D textures, there will be
     * a number of panes equal to the minified, power-of-two-aligned
     * depth.
@@ -724,9 +729,18 @@ struct v3dv_image {
       VkFormat vk_format;
    } planes[V3DV_MAX_PLANE_COUNT];
 
+   /* Used only when sampling a linear texture (which V3D doesn't support).
+    * This holds a tiled copy of the image we can use for that purpose.
+    */
+   struct v3dv_image *shadow;
+
 #ifdef ANDROID
    /* Image is backed by VK_ANDROID_native_buffer, */
    bool is_native_buffer_memory;
+   /* Image is backed by VK_ANDROID_external_memory_android_hardware_buffer */
+   bool is_ahb;
+   VkImageDrmFormatModifierExplicitCreateInfoEXT *android_explicit_layout;
+   VkSubresourceLayout *android_plane_layouts;
 #endif
 };
 
@@ -796,6 +810,11 @@ struct v3dv_image_view {
        */
       uint8_t texture_shader_state[2][V3DV_TEXTURE_SHADER_STATE_LENGTH];
    } planes[V3DV_MAX_PLANE_COUNT];
+
+   /* Used only when sampling a linear texture (which V3D doesn't support).
+    * This would represent a view over the tiled shadow image.
+    */
+   struct v3dv_image_view *shadow;
 };
 
 VkResult v3dv_create_image_view(struct v3dv_device *device,
@@ -1121,7 +1140,6 @@ enum v3dv_job_type {
    V3DV_JOB_TYPE_CPU_RESET_QUERIES,
    V3DV_JOB_TYPE_CPU_END_QUERY,
    V3DV_JOB_TYPE_CPU_COPY_QUERY_RESULTS,
-   V3DV_JOB_TYPE_CPU_COPY_BUFFER_TO_IMAGE,
    V3DV_JOB_TYPE_CPU_CSD_INDIRECT,
    V3DV_JOB_TYPE_CPU_TIMESTAMP_QUERY,
 };
@@ -1158,20 +1176,6 @@ struct v3dv_submit_sync_info {
    /* List of syncs to signal when all jobs complete */
    uint32_t signal_count;
    struct vk_sync_signal *signals;
-};
-
-struct v3dv_copy_buffer_to_image_cpu_job_info {
-   struct v3dv_image *image;
-   struct v3dv_buffer *buffer;
-   uint32_t buffer_offset;
-   uint32_t buffer_stride;
-   uint32_t buffer_layer_stride;
-   VkOffset3D image_offset;
-   VkExtent3D image_extent;
-   uint32_t mip_level;
-   uint32_t base_layer;
-   uint32_t layer_count;
-   uint8_t plane;
 };
 
 struct v3dv_csd_indirect_cpu_job_info {
@@ -1327,7 +1331,6 @@ struct v3dv_job {
       struct v3dv_reset_query_cpu_job_info          query_reset;
       struct v3dv_end_query_info                    query_end;
       struct v3dv_copy_query_results_cpu_job_info   query_copy_results;
-      struct v3dv_copy_buffer_to_image_cpu_job_info copy_buffer_to_image;
       struct v3dv_csd_indirect_cpu_job_info         csd_indirect;
       struct v3dv_timestamp_query_cpu_job_info      query_timestamp;
    } cpu;
@@ -1827,6 +1830,11 @@ bool v3dv_cmd_buffer_check_needs_store(const struct v3dv_cmd_buffer_state *state
 void v3dv_cmd_buffer_emit_pipeline_barrier(struct v3dv_cmd_buffer *cmd_buffer,
                                            const VkDependencyInfoKHR *info);
 
+bool v3dv_cmd_buffer_copy_image_tfu(struct v3dv_cmd_buffer *cmd_buffer,
+                                    struct v3dv_image *dst,
+                                    struct v3dv_image *src,
+                                    const VkImageCopy2 *region);
+
 struct v3dv_event {
    struct vk_object_base base;
 
@@ -2156,32 +2164,6 @@ struct v3dv_sampler {
 #define V3DV_NO_SAMPLER_16BIT_IDX 0
 #define V3DV_NO_SAMPLER_32BIT_IDX 1
 
-/*
- * Following two methods are using on the combined to/from texture/sampler
- * indices maps at v3dv_pipeline.
- */
-static inline uint32_t
-v3dv_pipeline_combined_index_key_create(uint32_t texture_index,
-                                        uint32_t sampler_index)
-{
-   return texture_index << 24 | sampler_index;
-}
-
-static inline void
-v3dv_pipeline_combined_index_key_unpack(uint32_t combined_index_key,
-                                        uint32_t *texture_index,
-                                        uint32_t *sampler_index)
-{
-   uint32_t texture = combined_index_key >> 24;
-   uint32_t sampler = combined_index_key & 0xffffff;
-
-   if (texture_index)
-      *texture_index = texture;
-
-   if (sampler_index)
-      *sampler_index = sampler;
-}
-
 struct v3dv_descriptor_maps {
    struct v3dv_descriptor_map ubo_map;
    struct v3dv_descriptor_map ssbo_map;
@@ -2277,7 +2259,7 @@ struct v3dv_pipeline {
    } va[MAX_VERTEX_ATTRIBS];
    uint32_t va_count;
 
-   enum pipe_prim_type topology;
+   enum mesa_prim topology;
 
    struct v3dv_pipeline_shared_data *shared_data;
 
@@ -2522,7 +2504,7 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(v3dv_buffer, base, VkBuffer,
                                VK_OBJECT_TYPE_BUFFER)
 VK_DEFINE_NONDISP_HANDLE_CASTS(v3dv_buffer_view, base, VkBufferView,
                                VK_OBJECT_TYPE_BUFFER_VIEW)
-VK_DEFINE_NONDISP_HANDLE_CASTS(v3dv_device_memory, base, VkDeviceMemory,
+VK_DEFINE_NONDISP_HANDLE_CASTS(v3dv_device_memory, vk.base, VkDeviceMemory,
                                VK_OBJECT_TYPE_DEVICE_MEMORY)
 VK_DEFINE_NONDISP_HANDLE_CASTS(v3dv_descriptor_pool, base, VkDescriptorPool,
                                VK_OBJECT_TYPE_DESCRIPTOR_POOL)
@@ -2624,14 +2606,20 @@ u64_compare(const void *key1, const void *key2)
 #  undef v3dX
 #endif
 
+VkResult
+v3dv_update_image_layout(struct v3dv_device *device,
+                         struct v3dv_image *image,
+                         uint64_t modifier,
+                         bool disjoint,
+                         const VkImageDrmFormatModifierExplicitCreateInfoEXT *explicit_mod_info);
+
 #ifdef ANDROID
 VkResult
-v3dv_gralloc_info(struct v3dv_device *device,
-                  const VkNativeBufferANDROID *gralloc_info,
-                  int *out_dmabuf,
-                  int *out_stride,
-                  int *out_size,
-                  uint64_t *out_modifier);
+v3dv_gralloc_to_drm_explicit_layout(struct u_gralloc *gralloc,
+                                    struct u_gralloc_buffer_handle *in_hnd,
+                                    VkImageDrmFormatModifierExplicitCreateInfoEXT *out,
+                                    VkSubresourceLayout *out_layouts,
+                                    int max_planes);
 
 VkResult
 v3dv_import_native_buffer_fd(VkDevice device_h,

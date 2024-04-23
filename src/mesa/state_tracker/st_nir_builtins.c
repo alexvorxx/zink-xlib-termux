@@ -20,14 +20,12 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "tgsi/tgsi_from_mesa.h"
 #include "st_nir.h"
 #include "st_program.h"
 
 #include "compiler/nir/nir_builder.h"
 #include "compiler/glsl/gl_nir.h"
 #include "compiler/glsl/gl_nir_linker.h"
-#include "tgsi/tgsi_parse.h"
 
 void
 st_nir_finish_builtin_nir(struct st_context *st, nir_shader *nir)
@@ -100,8 +98,8 @@ st_nir_make_passthrough_shader(struct st_context *st,
                                const char *shader_name,
                                gl_shader_stage stage,
                                unsigned num_vars,
-                               unsigned *input_locations,
-                               unsigned *output_locations,
+                               const unsigned *input_locations,
+                               const gl_varying_slot *output_locations,
                                unsigned *interpolation_modes,
                                unsigned sysval_mask)
 {
@@ -153,7 +151,7 @@ st_nir_make_clearcolor_shader(struct st_context *st)
    b.shader->num_uniforms = 1;
 
    /* Read clear color from constant buffer */
-   nir_ssa_def *clear_color = nir_load_uniform(&b, 4, 32, nir_imm_int(&b,0),
+   nir_def *clear_color = nir_load_uniform(&b, 4, 32, nir_imm_int(&b,0),
                                                .range = 16,
                                                .dest_type = nir_type_float32);
 

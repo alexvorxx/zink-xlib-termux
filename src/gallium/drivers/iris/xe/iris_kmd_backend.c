@@ -47,13 +47,20 @@ xe_gem_create(struct iris_bufmgr *bufmgr,
    uint32_t vm_id = iris_bufmgr_get_global_vm_id(bufmgr);
    vm_id = alloc_flags & BO_ALLOC_SHARED ? 0 : vm_id;
 
+   uint32_t flags = 0;
+   /* TODO: we might need to consider scanout for shared buffers too as we
+    * do not know what the process this is shared with will do with it
+    */
+   if (alloc_flags & BO_ALLOC_SCANOUT)
+      flags |= XE_GEM_CREATE_FLAG_SCANOUT;
+   if (!intel_vram_all_mappable(iris_bufmgr_get_device_info(bufmgr)) &&
+       heap_flags == IRIS_HEAP_DEVICE_LOCAL_PREFERRED)
+      flags |= XE_GEM_CREATE_FLAG_NEEDS_VISIBLE_VRAM;
+
    struct drm_xe_gem_create gem_create = {
      .vm_id = vm_id,
      .size = align64(size, iris_bufmgr_get_device_info(bufmgr)->mem_alignment),
-     /* TODO: we might need to consider scanout for shared buffers too as we
-      * do not know what the process this is shared with will do with it
-      */
-     .flags = alloc_flags & BO_ALLOC_SCANOUT ? XE_GEM_CREATE_FLAG_SCANOUT : 0,
+     .flags = flags,
    };
    for (uint16_t i = 0; i < regions_count; i++)
       gem_create.flags |= BITFIELD_BIT(regions[i]->instance);
@@ -185,18 +192,136 @@ static enum pipe_reset_status
 xe_batch_check_for_reset(struct iris_batch *batch)
 {
    enum pipe_reset_status status = PIPE_NO_RESET;
-   struct drm_xe_engine_get_property engine_get_property = {
-      .engine_id = batch->xe.engine_id,
-      .property = XE_ENGINE_GET_PROPERTY_BAN,
+   struct drm_xe_exec_queue_get_property exec_queue_get_property = {
+      .exec_queue_id = batch->xe.exec_queue_id,
+      .property = XE_EXEC_QUEUE_GET_PROPERTY_BAN,
    };
    int ret = intel_ioctl(iris_bufmgr_get_fd(batch->screen->bufmgr),
-                         DRM_IOCTL_XE_ENGINE_GET_PROPERTY,
-                         &engine_get_property);
+                         DRM_IOCTL_XE_EXEC_QUEUE_GET_PROPERTY,
+                         &exec_queue_get_property);
 
-   if (ret || engine_get_property.value)
+   if (ret || exec_queue_get_property.value)
       status = PIPE_GUILTY_CONTEXT_RESET;
 
    return status;
+}
+
+static uint32_t
+xe_batch_submit_external_bo_count(struct iris_batch *batch)
+{
+   uint32_t count = 0;
+
+   for (int i = 0; i < batch->exec_count; i++) {
+      if (iris_bo_is_external(batch->exec_bos[i]))
+         count++;
+   }
+
+   return count;
+}
+
+struct iris_implicit_sync {
+   struct iris_implicit_sync_entry {
+      struct iris_bo *bo;
+      struct iris_syncobj *iris_syncobj;
+   } *entries;
+   uint32_t entry_count;
+
+   struct iris_syncobj *batch_signal_syncobj;
+};
+
+static bool
+iris_implicit_sync_add_bo(struct iris_batch *batch,
+                          struct iris_implicit_sync *sync,
+                          struct iris_bo *bo)
+{
+   struct iris_syncobj *syncobj = iris_bo_export_sync_state(bo);
+
+   if (!syncobj)
+      return false;
+
+   sync->entries[sync->entry_count].bo = bo;
+   sync->entries[sync->entry_count].iris_syncobj = syncobj;
+   sync->entry_count++;
+
+   iris_batch_add_syncobj(batch, syncobj, IRIS_BATCH_FENCE_WAIT);
+
+   return true;
+}
+
+/* Cleans up the state of 'sync'. */
+static void
+iris_implicit_sync_finish(struct iris_batch *batch,
+                          struct iris_implicit_sync *sync)
+{
+   struct iris_bufmgr *bufmgr = batch->screen->bufmgr;
+
+   for (int i = 0; i < sync->entry_count; i++)
+      iris_syncobj_reference(bufmgr, &sync->entries[i].iris_syncobj, NULL);
+
+   free(sync->entries);
+   sync->entry_count = 0;
+}
+
+/* Import implicit synchronization data from the batch bos that require
+ * implicit synchronization int our batch buffer so the batch will wait for
+ * these bos to be idle before starting.
+ */
+static int
+iris_implicit_sync_import(struct iris_batch *batch,
+                          struct iris_implicit_sync *sync)
+{
+   uint32_t len = xe_batch_submit_external_bo_count(batch);
+
+   if (!len)
+      return 0;
+
+   sync->entries = malloc(sizeof(*sync->entries) * len);
+   if (!sync->entries)
+      return -ENOMEM;
+
+   for (int i = 0; i < batch->exec_count; i++) {
+      struct iris_bo *bo = batch->exec_bos[i];
+
+      if (!iris_bo_is_real(bo) || !iris_bo_is_external(bo)) {
+         assert(iris_get_backing_bo(bo)->real.prime_fd == -1);
+         continue;
+      }
+
+      if (bo->real.prime_fd == -1) {
+         fprintf(stderr, "Bo(%s/%i %sported) with prime_fd unset in iris_implicit_sync_import()\n",
+                 bo->name, bo->gem_handle, bo->real.imported ? "im" : "ex");
+         continue;
+      }
+
+      if (!iris_implicit_sync_add_bo(batch, sync, bo)) {
+         iris_implicit_sync_finish(batch, sync);
+         return -1;
+      }
+   }
+
+   return 0;
+}
+
+/* Export implicit synchronization data from our batch buffer into the bos
+ * that require implicit synchronization so other clients relying on it can do
+ * implicit synchronization with these bos, which will wait for the batch
+ * buffer we just submitted to signal its syncobj.
+ */
+static bool
+iris_implicit_sync_export(struct iris_batch *batch,
+                          struct iris_implicit_sync *sync)
+{
+   int sync_file_fd;
+
+   if (!iris_batch_syncobj_to_sync_file_fd(batch, &sync_file_fd))
+      return false;
+
+   for (int i = 0; i < sync->entry_count; i++)
+      iris_bo_import_sync_state(sync->entries[i].bo, sync_file_fd);
+
+   close(sync_file_fd);
+
+   return true;
 }
 
 static int
@@ -204,9 +329,10 @@ xe_batch_submit(struct iris_batch *batch)
 {
    struct iris_bufmgr *bufmgr = batch->screen->bufmgr;
    simple_mtx_t *bo_deps_lock = iris_bufmgr_get_bo_deps_lock(bufmgr);
+   struct iris_implicit_sync implicit_sync = {};
    struct drm_xe_sync *syncs = NULL;
    unsigned long sync_len;
-   int ret = 0;
+   int ret;
 
    iris_bo_unmap(batch->bo);
 
@@ -221,6 +347,10 @@ xe_batch_submit(struct iris_batch *batch)
    simple_mtx_lock(bo_deps_lock);
 
    iris_batch_update_syncobjs(batch);
+
+   ret = iris_implicit_sync_import(batch, &implicit_sync);
+   if (ret)
+      goto error_implicit_sync_import;
 
    sync_len = iris_batch_num_fences(batch);
    if (sync_len) {
@@ -253,7 +383,7 @@ xe_batch_submit(struct iris_batch *batch)
    }
 
    struct drm_xe_exec exec = {
-      .engine_id = batch->xe.engine_id,
+      .exec_queue_id = batch->xe.exec_queue_id,
       .num_batch_buffer = 1,
       .address = batch->exec_bos[0]->address,
       .syncs = (uintptr_t)syncs,
@@ -261,6 +391,17 @@ xe_batch_submit(struct iris_batch *batch)
    };
    if (!batch->screen->devinfo->no_hw)
        ret = intel_ioctl(iris_bufmgr_get_fd(bufmgr), DRM_IOCTL_XE_EXEC, &exec);
+
+   if (ret) {
+      ret = -errno;
+      goto error_exec;
+   }
+
+   if (!iris_implicit_sync_export(batch, &implicit_sync))
+      ret = -1;
+
+error_exec:
+   iris_implicit_sync_finish(batch, &implicit_sync);
 
    simple_mtx_unlock(bo_deps_lock);
 
@@ -280,14 +421,42 @@ xe_batch_submit(struct iris_batch *batch)
    return ret;
 
 error_no_sync_mem:
+   iris_implicit_sync_finish(batch, &implicit_sync);
+error_implicit_sync_import:
    simple_mtx_unlock(bo_deps_lock);
    return ret;
+}
+
+static int
+xe_gem_close(struct iris_bufmgr *bufmgr, struct iris_bo *bo)
+{
+   if (bo->real.userptr)
+      return 0;
+
+   struct drm_gem_close close = {
+      .handle = bo->gem_handle,
+   };
+   return intel_ioctl(iris_bufmgr_get_fd(bufmgr), DRM_IOCTL_GEM_CLOSE, &close);
+}
+
+static uint32_t
+xe_gem_create_userptr(struct iris_bufmgr *bufmgr, void *ptr, uint64_t size)
+{
+   /* We return UINT32_MAX, because Xe doesn't create handles for userptrs but
+    * it needs a gem_handle different than 0 so iris_bo_is_real() returns true
+    * for userptr bos.
+    * UINT32_MAX handle here will not conflict with an actual gem handle with
+    * same id as userptr bos are not put to slab or bo cache.
+    */
+   return UINT32_MAX;
 }
 
 const struct iris_kmd_backend *xe_get_backend(void)
 {
    static const struct iris_kmd_backend xe_backend = {
       .gem_create = xe_gem_create,
+      .gem_create_userptr = xe_gem_create_userptr,
+      .gem_close = xe_gem_close,
       .gem_mmap = xe_gem_mmap,
       .gem_vm_bind = xe_gem_vm_bind,
       .gem_vm_unbind = xe_gem_vm_unbind,

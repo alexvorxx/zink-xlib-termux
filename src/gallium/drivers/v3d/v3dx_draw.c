@@ -394,14 +394,14 @@ v3d_emit_gs_state_record(struct v3d_job *job,
 }
 
 static uint8_t
-v3d_gs_output_primitive(enum shader_prim prim_type)
+v3d_gs_output_primitive(enum mesa_prim prim_type)
 {
     switch (prim_type) {
-    case SHADER_PRIM_POINTS:
+    case MESA_PRIM_POINTS:
         return GEOMETRY_SHADER_POINTS;
-    case SHADER_PRIM_LINE_STRIP:
+    case MESA_PRIM_LINE_STRIP:
         return GEOMETRY_SHADER_LINE_STRIP;
-    case SHADER_PRIM_TRIANGLE_STRIP:
+    case MESA_PRIM_TRIANGLE_STRIP:
         return GEOMETRY_SHADER_TRI_STRIP;
     default:
         unreachable("Unsupported primitive type");
@@ -600,7 +600,7 @@ v3d_emit_gl_shader_state(struct v3d_context *v3d,
                 shader.enable_clipping = true;
                 /* V3D_DIRTY_PRIM_MODE | V3D_DIRTY_RASTERIZER */
                 shader.point_size_in_shaded_vertex_data =
-                        (info->mode == PIPE_PRIM_POINTS &&
+                        (info->mode == MESA_PRIM_POINTS &&
                          v3d->rasterizer->base.point_size_per_vertex);
 
                 /* Must be set if the shader modifies Z, discards, or modifies
@@ -743,7 +743,7 @@ v3d_emit_gl_shader_state(struct v3d_context *v3d,
                 cl_emit_with_prepacked(&job->indirect,
                                        GL_SHADER_STATE_ATTRIBUTE_RECORD,
                                        &vtx->attrs[i * size], attr) {
-                        attr.stride = vb->stride;
+                        attr.stride = elem->src_stride;
                         attr.address = cl_address(rsc->bo,
                                                   vb->buffer_offset +
                                                   elem->src_offset);
@@ -1033,8 +1033,12 @@ v3d_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
          * rendering to each texture's BO.
          */
         if (v3d->tex[PIPE_SHADER_VERTEX].num_textures || (indirect && indirect->buffer)) {
-                perf_debug("Blocking binner on last render "
-                           "due to vertex texturing or indirect drawing.\n");
+                static bool warned = false;
+                if (!warned) {
+                        perf_debug("Blocking binner on last render due to "
+                                   "vertex texturing or indirect drawing.\n");
+                        warned = true;
+                }
                 job->submit.in_sync_bcl = v3d->out_sync;
         }
 
@@ -1595,6 +1599,9 @@ v3d_tlb_clear(struct v3d_job *job, unsigned buffers,
                         clamped_color.f[3] = orig_color.f[3];
                 }
 
+                if (util_format_is_alpha(psurf->format))
+                        clamped_color.f[0] = clamped_color.f[3];
+
                 switch (surf->internal_type) {
                 case V3D_INTERNAL_TYPE_8:
                         util_pack_color(clamped_color.f, PIPE_FORMAT_R8G8B8A8_UNORM,
@@ -1677,7 +1684,13 @@ v3d_clear_render_target(struct pipe_context *pctx, struct pipe_surface *ps,
                         unsigned x, unsigned y, unsigned w, unsigned h,
                         bool render_condition_enabled)
 {
-        fprintf(stderr, "unimpl: clear RT\n");
+        struct v3d_context *v3d = v3d_context(pctx);
+
+        if (render_condition_enabled && !v3d_render_condition_check(v3d))
+                return;
+
+        v3d_blitter_save(v3d, false, render_condition_enabled);
+        util_blitter_clear_render_target(v3d->blitter, ps, color, x, y, w, h);
 }
 
 static void
@@ -1686,7 +1699,14 @@ v3d_clear_depth_stencil(struct pipe_context *pctx, struct pipe_surface *ps,
                         unsigned x, unsigned y, unsigned w, unsigned h,
                         bool render_condition_enabled)
 {
-        fprintf(stderr, "unimpl: clear DS\n");
+        struct v3d_context *v3d = v3d_context(pctx);
+
+        if (render_condition_enabled && !v3d_render_condition_check(v3d))
+                return;
+
+        v3d_blitter_save(v3d, false, render_condition_enabled);
+        util_blitter_clear_depth_stencil(v3d->blitter, ps, buffers, depth,
+                                         stencil, x, y, w, h);
 }
 
 void

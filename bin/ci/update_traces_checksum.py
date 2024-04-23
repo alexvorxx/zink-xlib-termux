@@ -3,6 +3,7 @@
 # Authors:
 #   David Heidelberg <david.heidelberg@collabora.com>
 #
+# For the dependencies, see the requirements.txt
 # SPDX-License-Identifier: MIT
 
 """
@@ -69,7 +70,7 @@ def gather_results(
 
                 # parse artifact
                 results_json_bz2 = cur_job.artifact(path="results/results.json.bz2", streamed=False)
-                results_json = bz2.decompress(results_json_bz2).decode("utf-8")
+                results_json = bz2.decompress(results_json_bz2).decode("utf-8", errors="replace")
                 results = json.loads(results_json)
 
                 for _, value in results["tests"].items():

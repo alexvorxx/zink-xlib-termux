@@ -27,6 +27,7 @@
 #ifndef ACO_SHADER_INFO_H
 #define ACO_SHADER_INFO_H
 
+#include "ac_hw_stage.h"
 #include "ac_shader_args.h"
 #include "amd_family.h"
 #include "shader_enums.h"
@@ -35,10 +36,10 @@
 extern "C" {
 #endif
 
-#define ACO_MAX_SO_OUTPUTS 64
-#define ACO_MAX_SO_BUFFERS 4
+#define ACO_MAX_SO_OUTPUTS     128
+#define ACO_MAX_SO_BUFFERS     4
 #define ACO_MAX_VERTEX_ATTRIBS 32
-#define ACO_MAX_VBS 32
+#define ACO_MAX_VBS            32
 
 struct aco_vs_input_state {
    uint32_t instance_rate_inputs;
@@ -76,38 +77,65 @@ struct aco_ps_epilog_info {
    bool mrt0_is_dual_src;
 };
 
+struct aco_tcs_epilog_info {
+   bool pass_tessfactors_by_reg;
+   bool tcs_out_patch_fits_subgroup;
+   enum tess_primitive_mode primitive_mode;
+   unsigned tess_offchip_ring_size;
+   bool tes_reads_tessfactors;
+
+   struct ac_arg invocation_id;
+   struct ac_arg rel_patch_id;
+   struct ac_arg tcs_out_current_patch_data_offset;
+   struct ac_arg patch_base;
+   struct ac_arg tess_lvl_in[2];
+   struct ac_arg tess_lvl_out[4];
+   struct ac_arg tcs_out_lds_layout;
+   struct ac_arg tcs_offchip_layout;
+};
+
+struct aco_gl_vs_prolog_info {
+   uint16_t instance_divisor_is_one;
+   uint16_t instance_divisor_is_fetched;
+   unsigned instance_diviser_buf_offset;
+   unsigned num_inputs;
+   bool as_ls;
+
+   struct ac_arg internal_bindings;
+};
+
 struct aco_shader_info {
+   enum ac_hw_stage hw_stage;
    uint8_t wave_size;
-   bool is_ngg;
    bool has_ngg_culling;
    bool has_ngg_early_prim_export;
    bool image_2d_view_of_3d;
    unsigned workgroup_size;
+   bool has_epilog;                        /* Only for TCS or PS. */
+   bool merged_shader_compiled_separately; /* GFX9+ */
+   struct ac_arg next_stage_pc;
    struct {
-      bool as_es;
-      bool as_ls;
       bool tcs_in_out_eq;
       uint64_t tcs_temp_only_input_mask;
-      bool use_per_attribute_vb_descs;
-      uint32_t input_slot_usage_mask;
       bool has_prolog;
-      bool dynamic_inputs;
    } vs;
    struct {
-      uint8_t output_usage_mask[VARYING_SLOT_VAR31 + 1];
-      uint8_t num_stream_output_components[4];
-      uint8_t output_streams[VARYING_SLOT_VAR31 + 1];
-      unsigned vertices_out;
-   } gs;
-   struct {
+      struct ac_arg tcs_offchip_layout;
+
+      /* Vulkan only */
       uint32_t num_lds_blocks;
-      unsigned tess_input_vertices;
+      struct ac_arg epilog_pc;
+      uint32_t num_linked_outputs;
+      uint32_t num_linked_patch_outputs;
+      uint32_t tcs_vertices_out;
+
+      /* OpenGL only */
+      bool pass_tessfactors_by_reg;
+      unsigned patch_stride;
+      struct ac_arg tes_offchip_addr;
+      struct ac_arg vs_state_bits;
    } tcs;
    struct {
-      bool as_es;
-   } tes;
-   struct {
-      bool has_epilog;
       struct ac_arg epilog_pc;
       uint32_t num_interp;
       unsigned spi_ps_input;
@@ -137,12 +165,13 @@ struct aco_compiler_options {
    bool optimisations_disabled;
    uint8_t enable_mrt_output_nan_fixup;
    bool wgp_mode;
+   bool is_opengl;
    enum radeon_family family;
    enum amd_gfx_level gfx_level;
    uint32_t address32_hi;
    struct {
-      void (*func)(void *private_data, enum aco_compiler_debug_level level, const char *message);
-      void *private_data;
+      void (*func)(void* private_data, enum aco_compiler_debug_level level, const char* message);
+      void* private_data;
    } debug;
 };
 
@@ -164,6 +193,9 @@ enum aco_symbol_id {
    aco_symbol_invalid,
    aco_symbol_scratch_addr_lo,
    aco_symbol_scratch_addr_hi,
+   aco_symbol_lds_ngg_scratch_base,
+   aco_symbol_lds_ngg_gs_out_vertex_base,
+   aco_symbol_const_data_addr,
 };
 
 struct aco_symbol {

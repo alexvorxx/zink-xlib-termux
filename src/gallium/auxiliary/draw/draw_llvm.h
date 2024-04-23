@@ -49,12 +49,6 @@ struct llvm_geometry_shader;
 struct llvm_tess_ctrl_shader;
 struct llvm_tess_eval_shader;
 
-enum {
-   DRAW_JIT_VERTEX_VERTEX_ID = 0,
-   DRAW_JIT_VERTEX_CLIP_POS,
-   DRAW_JIT_VERTEX_DATA
-};
-
 /**
  * This structure is passed directly to the generated vertex shader.
  *
@@ -66,40 +60,27 @@ enum {
  * Only use types with a clear size and padding here, in particular prefer the
  * stdint.h types to the basic integer types.
  */
-struct draw_jit_context
+struct draw_vs_jit_context
 {
    float (*planes) [DRAW_TOTAL_CLIP_PLANES][4];
    struct pipe_viewport_state *viewports;
 };
 
 enum {
-   DRAW_JIT_CTX_PLANES               = 0,
-   DRAW_JIT_CTX_VIEWPORT             = 1,
-   DRAW_JIT_CTX_NUM_FIELDS
+   DRAW_VS_JIT_CTX_PLANES               = 0,
+   DRAW_VS_JIT_CTX_VIEWPORT             = 1,
+   DRAW_VS_JIT_CTX_NUM_FIELDS
 };
 
-#define draw_jit_context_planes(_gallivm, _type, _ptr) \
-   lp_build_struct_get2(_gallivm, _type, _ptr, DRAW_JIT_CTX_PLANES, "planes")
+#define draw_vs_jit_context_planes(_gallivm, _type, _ptr) \
+   lp_build_struct_get2(_gallivm, _type, _ptr, DRAW_VS_JIT_CTX_PLANES, "planes")
 
-#define draw_jit_context_viewports(_variant, _ptr) \
-   lp_build_struct_get2(_variant->gallivm, _variant->context_type, _ptr, DRAW_JIT_CTX_VIEWPORT, "viewports")
+#define draw_vs_jit_context_viewports(_variant, _ptr) \
+   lp_build_struct_get2(_variant->gallivm, _variant->context_type, _ptr, DRAW_VS_JIT_CTX_VIEWPORT, "viewports")
 
-
-#define draw_jit_header_id(_gallivm, _type, _ptr)              \
-   lp_build_struct_get_ptr2(_gallivm, _type, _ptr, DRAW_JIT_VERTEX_VERTEX_ID, "id")
-
-#define draw_jit_header_clip_pos(_gallivm, _type, _ptr) \
-   lp_build_struct_get_ptr2(_gallivm, _type, _ptr, DRAW_JIT_VERTEX_CLIP_POS, "clip_pos")
-
-#define draw_jit_header_data(_gallivm, _type, _ptr)            \
-   lp_build_struct_get_ptr2(_gallivm, _type, _ptr, DRAW_JIT_VERTEX_DATA, "data")
-
-
-#define draw_jit_vbuffer_stride(_gallivm, _type, _ptr)         \
-   lp_build_struct_get2(_gallivm, _type, _ptr, 0, "stride")
 
 #define draw_jit_vbuffer_offset(_gallivm, _type, _ptr)         \
-   lp_build_struct_get2(_gallivm, _type, _ptr, 2, "buffer_offset")
+   lp_build_struct_get2(_gallivm, _type, _ptr, 1, "buffer_offset")
 
 enum {
    DRAW_JIT_DVBUFFER_MAP = 0,
@@ -160,8 +141,8 @@ enum {
    lp_build_struct_get2(_variant->gallivm, _variant->context_type, _ptr, DRAW_GS_JIT_CTX_EMITTED_PRIMS, "emitted_prims")
 
 
-typedef boolean
-(*draw_jit_vert_func)(struct draw_jit_context *context,
+typedef bool
+(*draw_jit_vert_func)(struct draw_vs_jit_context *context,
                       const struct lp_jit_resources *resources,
                       struct vertex_header *io,
                       const struct draw_vertex_buffer vbuffers[PIPE_MAX_ATTRIBS],
@@ -558,15 +539,12 @@ struct draw_llvm {
    struct draw_context *draw;
 
    LLVMContextRef context;
-   boolean context_owned;
+   bool context_owned;
 
-   struct draw_jit_context jit_context;
+   struct draw_vs_jit_context vs_jit_context;
    struct draw_gs_jit_context gs_jit_context;
 
-   struct lp_jit_resources jit_resources;
-   struct lp_jit_resources gs_jit_resources;
-   struct lp_jit_resources tcs_jit_resources;
-   struct lp_jit_resources tes_jit_resources;
+   struct lp_jit_resources jit_resources[DRAW_MAX_SHADER_STAGE];
 
    struct draw_llvm_variant_list_item vs_variants_list;
    int nr_variants;
@@ -696,4 +674,17 @@ draw_llvm_set_mapped_image(struct draw_context *draw,
                            uint32_t img_stride,
                            uint32_t num_samples,
                            uint32_t sample_stride);
+
+void
+draw_store_aos_array(struct gallivm_state *gallivm,
+                     struct lp_type soa_type,
+                     LLVMTypeRef io_type,
+                     LLVMValueRef io_ptr,
+                     LLVMValueRef *indices,
+                     LLVMValueRef* aos,
+                     int attrib,
+                     LLVMValueRef clipmask,
+                     bool need_edgeflag,
+                     bool per_prim);
+
 #endif

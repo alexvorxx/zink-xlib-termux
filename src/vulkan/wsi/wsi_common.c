@@ -72,7 +72,7 @@ wsi_device_init(struct wsi_device *wsi,
 
    WSI_DEBUG = parse_debug_string(getenv("MESA_VK_WSI_DEBUG"), debug_control);
 
-   util_perfetto_init();
+   util_cpu_trace_init();
 
    memset(wsi, 0, sizeof(*wsi));
 
@@ -239,6 +239,11 @@ wsi_device_init(struct wsi_device *wsi,
       if (driCheckOption(dri_options, "vk_wsi_force_bgra8_unorm_first",  DRI_BOOL)) {
          wsi->force_bgra8_unorm_first =
             driQueryOptionb(dri_options, "vk_wsi_force_bgra8_unorm_first");
+      }
+
+      if (driCheckOption(dri_options, "vk_wsi_force_swapchain_to_current_extent",  DRI_BOOL)) {
+         wsi->force_swapchain_to_currentExtent =
+            driQueryOptionb(dri_options, "vk_wsi_force_swapchain_to_current_extent");
       }
    }
 
@@ -923,12 +928,22 @@ wsi_CreateSwapchainKHR(VkDevice _device,
    else
      alloc = &device->alloc;
 
+   VkSwapchainCreateInfoKHR info = *pCreateInfo;
+
+   if (wsi_device->force_swapchain_to_currentExtent) {
+      VkSurfaceCapabilities2KHR caps2 = {
+         .sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR,
+      };
+      iface->get_capabilities2(surface, wsi_device, NULL, &caps2);
+      info.imageExtent = caps2.surfaceCapabilities.currentExtent;
+   }
+
    /* Ignore DEFERRED_MEMORY_ALLOCATION_BIT. Would require deep plumbing to be able to take advantage of it.
     * bool deferred_allocation = pCreateInfo->flags & VK_SWAPCHAIN_CREATE_DEFERRED_MEMORY_ALLOCATION_BIT_EXT;
     */
 
    VkResult result = iface->create_swapchain(surface, _device, wsi_device,
-                                             pCreateInfo, alloc,
+                                             &info, alloc,
                                              &swapchain);
    if (result != VK_SUCCESS)
       return result;
@@ -1221,6 +1236,43 @@ static VkResult wsi_signal_present_id_timeline(struct wsi_swapchain *swapchain,
    return swapchain->wsi->QueueSubmit(queue, submit_count, &submit_info, present_fence);
 }
 
+static VkResult
+handle_trace(VkQueue queue, struct vk_device *device)
+{
+   struct vk_instance *instance = device->physical->instance;
+   if (!instance->trace_mode)
+      return VK_SUCCESS;
+
+   simple_mtx_lock(&device->trace_mtx);
+
+   bool frame_trigger = device->current_frame == instance->trace_frame;
+   if (device->current_frame <= instance->trace_frame)
+      device->current_frame++;
+
+   bool file_trigger = false;
+#ifndef _WIN32
+   if (instance->trace_trigger_file && access(instance->trace_trigger_file, W_OK) == 0) {
+      if (unlink(instance->trace_trigger_file) == 0) {
+         file_trigger = true;
+      } else {
+         /* Do not enable tracing if we cannot remove the file,
+          * because by then we'll trace every frame ... */
+         fprintf(stderr, "Could not remove trace trigger file, ignoring\n");
+      }
+   }
+#endif
+
+   VkResult result = VK_SUCCESS;
+   if (frame_trigger || file_trigger || device->trace_hotkey_trigger)
+      result = device->capture_trace(queue);
+
+   device->trace_hotkey_trigger = false;
+
+   simple_mtx_unlock(&device->trace_mtx);
+
+   return result;
+}
+
 VkResult
 wsi_common_queue_present(const struct wsi_device *wsi,
                          VkDevice device,
@@ -1228,7 +1280,7 @@ wsi_common_queue_present(const struct wsi_device *wsi,
                          int queue_family_index,
                          const VkPresentInfoKHR *pPresentInfo)
 {
-   VkResult final_result = VK_SUCCESS;
+   VkResult final_result = handle_trace(queue, vk_device_from_handle(device));
 
    STACK_ARRAY(VkPipelineStageFlags, stage_flags,
                MAX2(1, pPresentInfo->waitSemaphoreCount));

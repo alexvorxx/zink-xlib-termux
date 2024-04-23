@@ -209,7 +209,6 @@ static VkResult pvr_write_compute_query_pds_data_section(
    result = pvr_cmd_buffer_alloc_mem(cmd_buffer,
                                      cmd_buffer->device->heaps.pds_heap,
                                      PVR_DW_TO_BYTES(info->data_size_in_dwords),
-                                     PVR_BO_ALLOC_FLAG_CPU_MAPPED,
                                      &pvr_bo);
    if (result != VK_SUCCESS)
       return result;
@@ -554,6 +553,7 @@ VkResult pvr_add_query_program(struct pvr_cmd_buffer *cmd_buffer,
    pipeline.pds_temps_used = query_prog->primary_num_temps;
 
    pipeline.coeff_regs_count = shader_factory_info->coeff_regs;
+   pipeline.unified_store_regs_count = shader_factory_info->input_regs;
    pipeline.const_shared_regs_count = shader_factory_info->const_shared_regs;
 
    const_buffer = vk_alloc(&cmd_buffer->vk.pool->alloc,
@@ -561,8 +561,8 @@ VkResult pvr_add_query_program(struct pvr_cmd_buffer *cmd_buffer,
                            8,
                            VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
    if (!const_buffer) {
-      cmd_buffer->state.status = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-      return cmd_buffer->state.status;
+      return vk_command_buffer_set_error(&cmd_buffer->vk,
+                                         VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
    /* clang-format off */
@@ -592,8 +592,7 @@ VkResult pvr_add_query_program(struct pvr_cmd_buffer *cmd_buffer,
                                   &image_sampler_state[image_sampler_idx][0]);
       if (result != VK_SUCCESS) {
          vk_free(&cmd_buffer->vk.pool->alloc, const_buffer);
-         cmd_buffer->state.status = result;
-         return result;
+         return pvr_cmd_buffer_set_error_unwarned(cmd_buffer, result);
       }
 
       image_sampler_idx++;
@@ -602,15 +601,14 @@ VkResult pvr_add_query_program(struct pvr_cmd_buffer *cmd_buffer,
          dev_info,
          &tex_info,
          query_info->availability_write.num_queries,
-         query_info->availability_write.availability_bo->vma->dev_addr);
+         query_info->availability_write.availability_bo->dev_addr);
 
       result = pvr_pack_tex_state(device,
                                   &tex_info,
                                   &image_sampler_state[image_sampler_idx][0]);
       if (result != VK_SUCCESS) {
          vk_free(&cmd_buffer->vk.pool->alloc, const_buffer);
-         cmd_buffer->state.status = result;
-         return result;
+         return pvr_cmd_buffer_set_error_unwarned(cmd_buffer, result);
       }
 
       image_sampler_idx++;
@@ -645,9 +643,8 @@ VkResult pvr_add_query_program(struct pvr_cmd_buffer *cmd_buffer,
       if (!image_sampler_state) {
          vk_free(&cmd_buffer->vk.pool->alloc, const_buffer);
 
-         cmd_buffer->state.status =
-            vk_error(cmd_buffer, VK_ERROR_OUT_OF_HOST_MEMORY);
-         return cmd_buffer->state.status;
+         return vk_command_buffer_set_error(&cmd_buffer->vk,
+                                            VK_ERROR_OUT_OF_HOST_MEMORY);
       }
 
 #define SAMPLER_ARR_2D(_arr, _i, _j) \
@@ -660,8 +657,7 @@ VkResult pvr_add_query_program(struct pvr_cmd_buffer *cmd_buffer,
 
       offset = query_info->copy_query_results.first_query * sizeof(uint32_t);
 
-      addr =
-         PVR_DEV_ADDR_OFFSET(pool->availability_buffer->vma->dev_addr, offset);
+      addr = PVR_DEV_ADDR_OFFSET(pool->availability_buffer->dev_addr, offset);
 
       pvr_init_tex_info(dev_info, &tex_info, num_query_indices, addr);
 
@@ -671,14 +667,13 @@ VkResult pvr_add_query_program(struct pvr_cmd_buffer *cmd_buffer,
          &SAMPLER_ARR_2D(image_sampler_state, image_sampler_idx, 0));
       if (result != VK_SUCCESS) {
          vk_free(&cmd_buffer->vk.pool->alloc, const_buffer);
-         cmd_buffer->state.status = result;
-         return result;
+         return pvr_cmd_buffer_set_error_unwarned(cmd_buffer, result);
       }
 
       image_sampler_idx++;
 
       for (uint32_t i = 0; i < buffer_count; i++) {
-         addr = PVR_DEV_ADDR_OFFSET(pool->result_buffer->vma->dev_addr,
+         addr = PVR_DEV_ADDR_OFFSET(pool->result_buffer->dev_addr,
                                     offset + i * pool->result_stride);
 
          pvr_init_tex_info(dev_info, &tex_info, num_query_indices, addr);
@@ -689,8 +684,7 @@ VkResult pvr_add_query_program(struct pvr_cmd_buffer *cmd_buffer,
             &SAMPLER_ARR_2D(image_sampler_state, image_sampler_idx, 0));
          if (result != VK_SUCCESS) {
             vk_free(&cmd_buffer->vk.pool->alloc, const_buffer);
-            cmd_buffer->state.status = result;
-            return result;
+            return pvr_cmd_buffer_set_error_unwarned(cmd_buffer, result);
          }
 
          image_sampler_idx++;
@@ -707,7 +701,7 @@ VkResult pvr_add_query_program(struct pvr_cmd_buffer *cmd_buffer,
              PVR_COPY_QUERY_POOL_RESULTS_COUNT);
 
       /* Assert if no memory is bound to destination buffer. */
-      assert(buffer->dev_addr.addr == 0);
+      assert(buffer->dev_addr.addr);
 
       addr = buffer->dev_addr;
       addr.addr += query_info->copy_query_results.dst_offset;
@@ -745,9 +739,8 @@ VkResult pvr_add_query_program(struct pvr_cmd_buffer *cmd_buffer,
       if (!image_sampler_state) {
          vk_free(&cmd_buffer->vk.pool->alloc, const_buffer);
 
-         cmd_buffer->state.status =
-            vk_error(cmd_buffer, VK_ERROR_OUT_OF_HOST_MEMORY);
-         return cmd_buffer->state.status;
+         return vk_command_buffer_set_error(&cmd_buffer->vk,
+                                            VK_ERROR_OUT_OF_HOST_MEMORY);
       }
 
       memcpy(&SAMPLER_ARR_2D(image_sampler_state, image_sampler_idx, 0),
@@ -758,7 +751,7 @@ VkResult pvr_add_query_program(struct pvr_cmd_buffer *cmd_buffer,
       offset = query_info->reset_query_pool.first_query * sizeof(uint32_t);
 
       for (uint32_t i = 0; i < buffer_count; i++) {
-         addr = PVR_DEV_ADDR_OFFSET(pool->result_buffer->vma->dev_addr,
+         addr = PVR_DEV_ADDR_OFFSET(pool->result_buffer->dev_addr,
                                     offset + i * pool->result_stride);
 
          pvr_init_tex_info(dev_info, &tex_info, num_query_indices, addr);
@@ -769,15 +762,13 @@ VkResult pvr_add_query_program(struct pvr_cmd_buffer *cmd_buffer,
             &SAMPLER_ARR_2D(image_sampler_state, image_sampler_idx, 0));
          if (result != VK_SUCCESS) {
             vk_free(&cmd_buffer->vk.pool->alloc, const_buffer);
-            cmd_buffer->state.status = result;
-            return result;
+            return pvr_cmd_buffer_set_error_unwarned(cmd_buffer, result);
          }
 
          image_sampler_idx++;
       }
 
-      addr =
-         PVR_DEV_ADDR_OFFSET(pool->availability_buffer->vma->dev_addr, offset);
+      addr = PVR_DEV_ADDR_OFFSET(pool->availability_buffer->dev_addr, offset);
 
       pvr_init_tex_info(dev_info, &tex_info, num_query_indices, addr);
 
@@ -787,8 +778,7 @@ VkResult pvr_add_query_program(struct pvr_cmd_buffer *cmd_buffer,
          &SAMPLER_ARR_2D(image_sampler_state, image_sampler_idx, 0));
       if (result != VK_SUCCESS) {
          vk_free(&cmd_buffer->vk.pool->alloc, const_buffer);
-         cmd_buffer->state.status = result;
-         return result;
+         return pvr_cmd_buffer_set_error_unwarned(cmd_buffer, result);
       }
 
       image_sampler_idx++;

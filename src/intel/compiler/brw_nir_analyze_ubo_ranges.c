@@ -141,9 +141,9 @@ analyze_ubos_block(struct ubo_analysis_state *state, nir_block *block)
          continue; /* Not a uniform or UBO intrinsic */
       }
 
-      if (nir_src_is_const(intrin->src[0]) &&
+      if (brw_nir_ubo_surface_index_is_pushable(intrin->src[0]) &&
           nir_src_is_const(intrin->src[1])) {
-         const int block = nir_src_as_uint(intrin->src[0]);
+         const int block = brw_nir_ubo_surface_index_get_push_block(intrin->src[0]);
          const unsigned byte_offset = nir_src_as_uint(intrin->src[1]);
          const int offset = byte_offset / 32;
 
@@ -158,7 +158,7 @@ analyze_ubos_block(struct ubo_analysis_state *state, nir_block *block)
 
          /* The value might span multiple 32-byte chunks. */
          const int bytes = nir_intrinsic_dest_components(intrin) *
-                           (nir_dest_bit_size(intrin->dest) / 8);
+                           (intrin->def.bit_size / 8);
          const int start = ROUND_DOWN_TO(byte_offset, 32);
          const int end = ALIGN(byte_offset + bytes, 32);
          const int chunks = (end - start) / 32;
@@ -218,11 +218,9 @@ brw_nir_analyze_ubo_ranges(const struct brw_compiler *compiler,
    }
 
    /* Walk the IR, recording how many times each UBO block/offset is used. */
-   nir_foreach_function(function, nir) {
-      if (function->impl) {
-         nir_foreach_block(block, function->impl) {
-            analyze_ubos_block(&state, block);
-         }
+   nir_foreach_function_impl(impl, nir) {
+      nir_foreach_block(block, impl) {
+         analyze_ubos_block(&state, block);
       }
    }
 

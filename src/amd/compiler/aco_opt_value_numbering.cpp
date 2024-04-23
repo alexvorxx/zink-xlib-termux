@@ -357,7 +357,9 @@ can_eliminate(aco_ptr<Instruction>& instr)
    }
 
    if (instr->definitions.empty() || instr->opcode == aco_opcode::p_phi ||
-       instr->opcode == aco_opcode::p_linear_phi || instr->definitions[0].isNoCSE())
+       instr->opcode == aco_opcode::p_linear_phi ||
+       instr->opcode == aco_opcode::p_pops_gfx9_add_exiting_wave_id ||
+       instr->definitions[0].isNoCSE())
       return false;
 
    return true;
@@ -380,7 +382,7 @@ process_block(vn_ctx& ctx, Block& block)
       }
 
       if (instr->opcode == aco_opcode::p_discard_if ||
-          instr->opcode == aco_opcode::p_demote_to_helper)
+          instr->opcode == aco_opcode::p_demote_to_helper || instr->opcode == aco_opcode::p_end_wqm)
          ctx.exec_id++;
 
       if (!can_eliminate(instr)) {

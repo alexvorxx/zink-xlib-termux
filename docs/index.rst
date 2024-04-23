@@ -88,7 +88,9 @@ Linux, FreeBSD, and other operating systems.
    drivers/freedreno
    drivers/lima
    drivers/llvmpipe
+   drivers/nvk
    drivers/panfrost
+   drivers/powervr
    drivers/radv
    drivers/svga3d
    drivers/v3d
@@ -116,6 +118,7 @@ Linux, FreeBSD, and other operating systems.
    vulkan/index
    nir/index
    isl/index
+   isaspec
    rusticl
    android
    macos

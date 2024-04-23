@@ -91,6 +91,20 @@ tex_filter(unsigned filter, bool aniso)
    }
 }
 
+static enum a6xx_reduction_mode
+reduction_mode(unsigned reduction_mode)
+{
+   switch (reduction_mode) {
+   default:
+   case PIPE_TEX_REDUCTION_WEIGHTED_AVERAGE:
+      return A6XX_REDUCTION_MODE_AVERAGE;
+   case PIPE_TEX_REDUCTION_MIN:
+      return A6XX_REDUCTION_MODE_MIN;
+   case PIPE_TEX_REDUCTION_MAX:
+      return A6XX_REDUCTION_MODE_MAX;
+   }
+}
+
 static void
 setup_border_color(struct fd_screen *screen,
                    const struct pipe_sampler_state *sampler,
@@ -264,7 +278,7 @@ fd6_sampler_state_create(struct pipe_context *pctx,
       return NULL;
 
    so->base = *cso;
-   so->seqno = seqno_next_u16(&fd6_context(ctx)->tex_seqno);
+   so->seqno = util_idalloc_alloc(&fd6_context(ctx)->tex_ids);
 
    if (cso->min_mip_filter == PIPE_TEX_MIPFILTER_LINEAR)
       miplinear = true;
@@ -303,6 +317,9 @@ fd6_sampler_state_create(struct pipe_context *pctx,
        cso->min_img_filter == PIPE_TEX_FILTER_LINEAR)
       so->texsamp2 |= A6XX_TEX_SAMP_2_CHROMA_LINEAR;
 
+   so->texsamp2 |=
+      A6XX_TEX_SAMP_2_REDUCTION_MODE(reduction_mode(cso->reduction_mode));
+
    return so;
 }
 
@@ -328,6 +345,8 @@ fd6_sampler_state_delete(struct pipe_context *pctx, void *hwcso)
 
    fd_screen_unlock(ctx->screen);
 
+   util_idalloc_free(&fd6_ctx->tex_ids, samp->seqno);
+
    free(hwcso);
 }
 
@@ -335,18 +354,46 @@ static struct pipe_sampler_view *
 fd6_sampler_view_create(struct pipe_context *pctx, struct pipe_resource *prsc,
                         const struct pipe_sampler_view *cso)
 {
+   struct fd6_context *fd6_ctx = fd6_context(fd_context(pctx));
    struct fd6_pipe_sampler_view *so = CALLOC_STRUCT(fd6_pipe_sampler_view);
 
    if (!so)
       return NULL;
 
    so->base = *cso;
+   so->seqno = util_idalloc_alloc(&fd6_ctx->tex_ids);
    pipe_reference(NULL, &prsc->reference);
    so->base.texture = prsc;
    so->base.reference.count = 1;
    so->base.context = pctx;
 
    return &so->base;
+}
+
+/**
+ * Remove any texture state entries that reference the specified sampler
+ * view.
+ */
+static void
+fd6_sampler_view_invalidate(struct fd_context *ctx,
+                            struct fd6_pipe_sampler_view *view)
+{
+   struct fd6_context *fd6_ctx = fd6_context(ctx);
+
+   fd_screen_lock(ctx->screen);
+
+   hash_table_foreach (fd6_ctx->tex_cache, entry) {
+      struct fd6_texture_state *state = (struct fd6_texture_state *)entry->data;
+
+      for (unsigned i = 0; i < ARRAY_SIZE(state->key.view_seqno); i++) {
+         if (view->seqno == state->key.view_seqno[i]) {
+            remove_tex_entry(fd6_ctx, entry);
+            break;
+         }
+      }
+   }
+
+   fd_screen_unlock(ctx->screen);
 }
 
 static void
@@ -365,7 +412,8 @@ fd6_sampler_view_update(struct fd_context *ctx,
    if (so->rsc_seqno == rsc->seqno)
       return;
 
-   so->seqno = seqno_next_u16(&fd6_context(ctx)->tex_seqno);
+   fd6_sampler_view_invalidate(ctx, so);
+
    so->rsc_seqno = rsc->seqno;
 
    if (format == PIPE_FORMAT_X32_S8X24_UINT) {
@@ -388,6 +436,8 @@ fd6_sampler_view_update(struct fd_context *ctx,
       fdl6_buffer_view_init(so->descriptor, cso->format, swiz, iova, size);
    } else {
       struct fdl_view_args args = {
+         .chip = A6XX,
+
          /* Using relocs for addresses still */
          .iova = 0,
 
@@ -476,25 +526,13 @@ fd6_sampler_view_destroy(struct pipe_context *pctx,
                          struct pipe_sampler_view *_view)
 {
    struct fd_context *ctx = fd_context(pctx);
-   struct fd6_context *fd6_ctx = fd6_context(ctx);
    struct fd6_pipe_sampler_view *view = fd6_pipe_sampler_view(_view);
 
-   fd_screen_lock(ctx->screen);
-
-   hash_table_foreach (fd6_ctx->tex_cache, entry) {
-      struct fd6_texture_state *state = (struct fd6_texture_state *)entry->data;
-
-      for (unsigned i = 0; i < ARRAY_SIZE(state->key.view_seqno); i++) {
-         if (view->seqno == state->key.view_seqno[i]) {
-            remove_tex_entry(fd6_ctx, entry);
-            break;
-         }
-      }
-   }
-
-   fd_screen_unlock(ctx->screen);
+   fd6_sampler_view_invalidate(ctx, view);
 
    pipe_resource_reference(&view->base.texture, NULL);
+
+   util_idalloc_free(&fd6_context(ctx)->tex_ids, view->seqno);
 
    free(view);
 }
@@ -768,7 +806,11 @@ fd6_texture_state(struct fd_context *ctx, enum pipe_shader_type type)
       if (!tex->textures[i])
          continue;
 
-      state->view_rsc_seqno[i] = fd_resource(tex->textures[i]->texture)->seqno;
+      struct fd_resource *rsc = fd_resource(tex->textures[i]->texture);
+
+      assert(rsc->dirty & FD_DIRTY_TEX);
+
+      state->view_rsc_seqno[i] = rsc->seqno;
    }
 
    state->key = key;
@@ -840,7 +882,10 @@ fd6_texture_init(struct pipe_context *pctx) disable_thread_safety_analysis
                                    FD6_MAX_BORDER_COLORS * FD6_BORDER_COLOR_SIZE,
                                    0, "bcolor");
 
+   fd_context_add_private_bo(ctx, fd6_ctx->bcolor_mem);
+
    fd6_ctx->tex_cache = _mesa_hash_table_create(NULL, tex_key_hash, tex_key_equals);
+   util_idalloc_init(&fd6_ctx->tex_ids, 256);
 }
 
 void
@@ -857,6 +902,7 @@ fd6_texture_fini(struct pipe_context *pctx)
 
    fd_screen_unlock(ctx->screen);
 
+   util_idalloc_fini(&fd6_ctx->tex_ids);
    ralloc_free(fd6_ctx->tex_cache);
    fd_bo_del(fd6_ctx->bcolor_mem);
    ralloc_free(fd6_ctx->bcolor_cache);

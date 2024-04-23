@@ -41,8 +41,10 @@ extern "C" {
 #endif
 
 #define PIPE_H265_MAX_REFERENCES      15
+#define PIPE_AV1_MAX_REFERENCES       8
 #define PIPE_DEFAULT_FRAME_RATE_DEN   1
 #define PIPE_DEFAULT_FRAME_RATE_NUM   30
+#define PIPE_DEFAULT_INTRA_IDR_PERIOD 30
 #define PIPE_H2645_EXTENDED_SAR       255
 #define PIPE_DEFAULT_DECODER_FEEDBACK_TIMEOUT_NS 1000000000
 
@@ -184,8 +186,9 @@ struct pipe_picture_desc
    uint8_t *decrypt_key;
    uint32_t key_size;
    enum pipe_format input_format;
+   bool input_full_range;
    enum pipe_format output_format;
-   /* A fence used on PIPE_VIDEO_ENTRYPOINT_DECODE to signal job completion */
+   /* A fence used on PIPE_VIDEO_ENTRYPOINT_DECODE/PROCESSING to signal job completion */
    struct pipe_fence_handle **fence;
 };
 
@@ -375,10 +378,6 @@ struct pipe_h264_pps
    int8_t   second_chroma_qp_index_offset;
 };
 
-struct h264_private {
-   struct pipe_video_buffer *past_ref[16];
-};
-
 struct pipe_h264_picture_desc
 {
    struct pipe_picture_desc base;
@@ -404,9 +403,6 @@ struct pipe_h264_picture_desc
    uint32_t frame_num_list[16];
 
    struct pipe_video_buffer *ref[16];
-
-   /* using private as a parameter name conflicts with C++ keywords */
-   void    *priv;
 
    struct
    {
@@ -516,12 +512,22 @@ struct pipe_h264_enc_seq_param
    struct {
       uint32_t aspect_ratio_info_present_flag: 1;
       uint32_t timing_info_present_flag: 1;
+      uint32_t video_signal_type_present_flag: 1;
+      uint32_t colour_description_present_flag: 1;
+      uint32_t chroma_loc_info_present_flag: 1;
    } vui_flags;
    uint32_t aspect_ratio_idc;
    uint32_t sar_width;
    uint32_t sar_height;
    uint32_t num_units_in_tick;
    uint32_t time_scale;
+   uint32_t video_format;
+   uint32_t video_full_range_flag;
+   uint32_t colour_primaries;
+   uint32_t transfer_characteristics;
+   uint32_t matrix_coefficients;
+   uint32_t chroma_sample_loc_type_top_field;
+   uint32_t chroma_sample_loc_type_bottom_field;
 };
 
 struct pipe_h264_enc_picture_desc
@@ -600,12 +606,22 @@ struct pipe_h265_enc_seq_param
    struct {
       uint32_t aspect_ratio_info_present_flag: 1;
       uint32_t timing_info_present_flag: 1;
+      uint32_t video_signal_type_present_flag: 1;
+      uint32_t colour_description_present_flag: 1;
+      uint32_t chroma_loc_info_present_flag: 1;
    } vui_flags;
    uint32_t aspect_ratio_idc;
    uint32_t sar_width;
    uint32_t sar_height;
    uint32_t num_units_in_tick;
    uint32_t time_scale;
+   uint32_t video_format;
+   uint32_t video_full_range_flag;
+   uint32_t colour_primaries;
+   uint32_t transfer_characteristics;
+   uint32_t matrix_coefficients;
+   uint32_t chroma_sample_loc_type_top_field;
+   uint32_t chroma_sample_loc_type_bottom_field;
 };
 
 struct pipe_h265_enc_pic_param
@@ -694,6 +710,8 @@ struct pipe_av1_enc_rate_control
    unsigned frame_rate_den;
    unsigned vbv_buffer_size;
    unsigned vbv_buf_lv;
+   unsigned vbv_buf_initial_size;
+   bool app_requested_hrd_buffer;
    unsigned target_bits_picture;
    unsigned peak_bits_picture_integer;
    unsigned peak_bits_picture_fraction;
@@ -701,9 +719,14 @@ struct pipe_av1_enc_rate_control
    unsigned skip_frame_enable;
    unsigned enforce_hrd;
    unsigned max_au_size;
-   unsigned qp;
+   unsigned qp; /* Initial QP */
    unsigned max_qp;
    unsigned min_qp;
+   bool app_requested_qp_range;
+   bool app_requested_initial_qp;
+
+   /* Used with PIPE_H2645_ENC_RATE_CONTROL_METHOD_QUALITY_VARIABLE */
+   unsigned vbr_quality_factor;
 };
 
 struct pipe_av1_enc_decoder_model_info
@@ -729,14 +752,24 @@ struct pipe_av1_enc_seq_param
    uint32_t tier;
    uint32_t num_temporal_layers;
    uint32_t intra_period;
+   uint32_t ip_period;
    uint32_t bit_depth_minus8;
    uint32_t pic_width_in_luma_samples;
    uint32_t pic_height_in_luma_samples;
    struct
    {
+      uint32_t use_128x128_superblock:1;
+      uint32_t enable_filter_intra :1;
+      uint32_t enable_intra_edge_filter :1;
+      uint32_t enable_interintra_compound :1;
+      uint32_t enable_masked_compound :1;
+      uint32_t enable_warped_motion :1;
+      uint32_t enable_dual_filter :1;
       uint32_t enable_cdef:1;
+      uint32_t enable_restoration:1;
       uint32_t enable_superres:1;
       uint32_t enable_order_hint:1;
+      uint32_t enable_jnt_comp:1;
       uint32_t color_description_present_flag:1;
       uint32_t enable_ref_frame_mvs:1;
       uint32_t frame_id_number_present_flag:1;
@@ -763,6 +796,11 @@ struct pipe_av1_enc_seq_param
    uint8_t decoder_model_present_for_this_op[32];
 };
 
+struct pipe_av1_tile_group {
+   uint8_t tile_group_start;
+   uint8_t tile_group_end;
+};
+
 struct pipe_av1_enc_picture_desc
 {
    struct pipe_picture_desc base;
@@ -775,6 +813,7 @@ struct pipe_av1_enc_picture_desc
       uint32_t disable_cdf_update:1;
       uint32_t frame_size_override_flag:1;
       uint32_t allow_screen_content_tools:1;
+      uint32_t allow_intrabc:1;
       uint32_t force_integer_mv:1;
       uint32_t disable_frame_end_update_cdf:1;
       uint32_t palette_mode_enable:1;
@@ -782,17 +821,92 @@ struct pipe_av1_enc_picture_desc
       uint32_t use_ref_frame_mvs;
       uint32_t show_existing_frame:1;
       uint32_t enable_render_size:1;
+      uint32_t use_superres:1;
+      uint32_t reduced_tx_set:1;
+      uint32_t skip_mode_present:1;
    };
    struct pipe_enc_quality_modes quality_modes;
    uint32_t num_tiles_in_pic; /* [1, 32], */
+   uint32_t tile_rows;
+   uint32_t tile_cols;
+   unsigned num_tile_groups;
+   struct pipe_av1_tile_group tile_groups[256];
+   uint32_t context_update_tile_id;
+   uint16_t width_in_sbs_minus_1[63];
+   uint16_t height_in_sbs_minus_1[63];
    uint32_t frame_num;
+   uint32_t last_key_frame_num;
    uint32_t number_of_skips;
    uint32_t temporal_id;
    uint32_t spatial_id;
    uint16_t frame_width;
+   uint16_t frame_height;
+   uint16_t frame_width_sb;
+   uint16_t frame_height_sb;
    uint16_t upscaled_width;
    uint16_t render_width;
    uint16_t render_height;
+   uint32_t interpolation_filter;
+   uint8_t tx_mode;
+   uint8_t compound_reference_mode;
+   uint32_t order_hint;
+   uint8_t superres_scale_denominator;
+   uint32_t primary_ref_frame;
+   uint8_t refresh_frame_flags;
+   uint8_t ref_frame_idx[7];
+
+   struct {
+      uint8_t cdef_damping_minus_3;
+      uint8_t cdef_bits;
+      uint8_t cdef_y_strengths[8];
+      uint8_t cdef_uv_strengths[8];
+   } cdef;
+
+   struct {
+      uint8_t yframe_restoration_type;
+      uint8_t cbframe_restoration_type;
+      uint8_t crframe_restoration_type;
+      uint8_t lr_unit_shift;
+      uint8_t lr_uv_shift;
+   } restoration;
+
+   struct {
+      uint8_t filter_level[2];
+      uint8_t filter_level_u;
+      uint8_t filter_level_v;
+      uint8_t sharpness_level;
+      uint8_t mode_ref_delta_enabled;
+      uint8_t mode_ref_delta_update;
+      int8_t  ref_deltas[8];
+      int8_t  mode_deltas[2];
+      uint8_t delta_lf_present;
+      uint8_t delta_lf_res;
+      uint8_t delta_lf_multi;
+   } loop_filter;
+
+   struct {
+      uint8_t base_qindex;
+      int8_t y_dc_delta_q;
+      int8_t u_dc_delta_q;
+      int8_t u_ac_delta_q;
+      int8_t v_dc_delta_q;
+      int8_t v_ac_delta_q;
+      uint8_t min_base_qindex;
+      uint8_t max_base_qindex;
+      uint8_t using_qmatrix;
+      uint8_t qm_y;
+      uint8_t qm_u;
+      uint8_t qm_v;
+      uint8_t delta_q_present;
+      uint8_t delta_q_res;
+   } quantization;
+
+   struct {
+      uint8_t obu_extension_flag;
+      uint8_t obu_has_size_field;
+      uint8_t temporal_id;
+      uint8_t spatial_id;
+   } tg_obu_header;
 };
 
 struct pipe_h265_sps
@@ -1269,6 +1383,7 @@ struct pipe_av1_picture_desc
       uint16_t slice_data_row[256];
       uint16_t slice_data_col[256];
       uint8_t slice_data_anchor_frame_idx[256];
+      uint16_t slice_count;
    } slice_parameter;
 };
 
@@ -1286,6 +1401,9 @@ struct pipe_vpp_desc
    struct u_rect dst_region;
    enum pipe_video_vpp_orientation orientation;
    struct pipe_vpp_blend blend;
+
+   /* Fence to wait on for the src surface */
+   struct pipe_fence_handle *src_surface_fence;
 };
 
 

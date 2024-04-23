@@ -183,7 +183,8 @@ Core Mesa environment variables
 
    if set to ``true``, disables the on-disk shader cache. If set to
    ``false``, enables the on-disk shader cache when it is disabled by
-   default.
+   default.  Note that EGL_ANDROID_blob_cache is still enabled even
+   if on-disk shader cache is disabled.
 
 .. envvar:: MESA_SHADER_CACHE_MAX_SIZE
 
@@ -341,6 +342,42 @@ Core Mesa environment variables
 
    print debug info about device selection decision-making
 
+.. envvar:: MESA_VK_TRACE
+
+   A comma-separated list of trace types used for offline analysis. The
+   option names are equal to the file extension. Traces are dumped into ``/tmp``.
+   Captures can be triggered by pressing ``F1`` with the application window
+   focused (Currently X11 only) or via :envvar:`MESA_VK_TRACE_FRAME` and
+   :envvar:`MESA_VK_TRACE_TRIGGER`.
+
+   .. list-table::
+      :header-rows: 1
+
+      * - File extension
+        - Offline analysis tool
+        - Supported drivers
+      * - ``rmv``
+        - Radeon Memory Visualizer
+        - ``RADV``
+      * - ``rgp``
+        - Radeon GPU Profiler
+        - ``RADV``
+      * - ``rra``
+        - Radeon Raytracing Analyzer
+        - ``RADV``
+
+   - Creating RMV captures requires the ``scripts/setup.sh`` script in the
+     Radeon Developer Tools folder to be run beforehand
+
+.. envvar:: MESA_VK_TRACE_FRAME
+
+   Specifies a frame index at which a trace capture is automatically triggered.
+
+.. envvar:: MESA_VK_TRACE_TRIGGER
+
+   Specifies a trigger file. Creating the file triggers the capture. (e.g.
+   ``export MESA_VK_TRACE_TRIGGER=/tmp/trigger`` and then ``touch /tmp/trigger``)
+
 .. envvar:: MESA_LOADER_DRIVER_OVERRIDE
 
    chooses a different driver binary such as ``etnaviv`` or ``zink``.
@@ -356,9 +393,12 @@ Core Mesa environment variables
    and Vulkan (in this case "select" means the GPU will be first in the reported
    physical devices list). The supported syntaxes are:
 
-   - ``DRI_PRIME=1``: selects the first non-default GPU.
+   - ``DRI_PRIME=N``: selects the Nth non-default GPU (N > 0).
    - ``DRI_PRIME=pci-0000_02_00_0``: selects the GPU connected to this PCIe bus
-   - ``DRI_PRIME=vendor_id:device_id``: selects the first GPU matching these ids
+   - ``DRI_PRIME=vendor_id:device_id``: selects the first GPU matching these ids.
+
+   For Vulkan it's possible to append ``!``, in which case only the selected GPU
+   will be exposed to the application (eg: DRI_PRIME=1!).
 
    .. note::
 
@@ -480,6 +520,12 @@ Intel driver environment variables
    ``do32``
       generate compute shader SIMD32 programs even if workgroup size
       doesn't exceed the SIMD16 limit
+   ``draw_bkp``
+      Add semaphore wait before/after draw call count.
+      ``INTEL_DEBUG_BKP_BEFORE_DRAW_COUNT`` or
+      ``INTEL_DEBUG_BKP_AFTER_DRAW_COUNT`` can control draw call number.
+      To make test wait forever, we need to set preempt_timeout_ms and
+      i915.enable_hangcheck to zero.
    ``fall``
       emit messages about performance issues (same as ``perf``)
    ``fs``
@@ -535,6 +581,8 @@ Intel driver environment variables
       the SF program)
    ``soft64``
       enable implementation of software 64bit floating point support
+   ``sparse``
+      dump usage of sparse resources
    ``spill_fs``
       force spilling of all registers in the scalar backend (useful to
       debug spilling code)
@@ -669,6 +717,22 @@ Intel driver environment variables
    if set to 1, true or yes, then the driver prefers accuracy over
    performance in trig functions.
 
+.. envvar:: INTEL_SHADER_OPTIMIZER_PATH
+
+   if set, determines the directory to be used for overriding shader
+   assembly. The binaries with custom assembly should be placed in
+   this folder and have a name formatted as ``sha1_of_assembly.bin``.
+   The SHA-1 of a shader assembly is printed when assembly is dumped via
+   corresponding :envvar:`INTEL_DEBUG` flag (e.g. ``vs`` for vertex shader).
+   A binary could be generated from a dumped assembly by ``i965_asm``.
+   For :envvar:`INTEL_SHADER_ASM_READ_PATH` to work it is necessary to enable
+   dumping of corresponding shader stages via :envvar:`INTEL_DEBUG`.
+   It is advised to use ``nocompact`` flag of :envvar:`INTEL_DEBUG` when
+   dumping and overriding shader assemblies.
+   The success of assembly override would be signified by "Successfully
+   overrode shader with sha1 <SHA-1>" in stderr replacing the original
+   assembly.
+
 .. envvar:: INTEL_SHADER_ASM_READ_PATH
 
    if set, determines the directory to be used for overriding shader
@@ -740,6 +804,8 @@ Vulkan mesa device select layer environment variables
    when set to "vid:did" number from PCI device. That PCI device is
    selected as default. The default device is returned as the first
    device in vkEnumeratePhysicalDevices API.
+   Using "vid:did!" will have the same effect as using the
+   ``MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE`` variable.
 
 .. envvar:: MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE
 
@@ -881,6 +947,33 @@ Gallium environment variables
 Clover environment variables
 ----------------------------
 
+.. envvar:: CLOVER_DEVICE_TYPE
+
+   allows to overwrite the device type of devices. Possible values are
+   ``accelerator``, ``cpu``, ``custom`` and ``gpu``
+
+.. envvar:: CLOVER_DEVICE_VERSION_OVERRIDE
+
+   overwrites the auto detected OpenCL version of a device. Possible values:
+   ``1.0``
+   ``1.1``
+   ``1.2``
+   ``2.0``
+   ``2.1``
+   ``2.2``
+   ``3.0``
+
+.. envvar:: CLOVER_DEVICE_CLC_VERSION_OVERRIDE
+
+   overwrites the auto detected CLC version. Possible values:
+   ``1.0``
+   ``1.1``
+   ``1.2``
+   ``2.0``
+   ``2.1``
+   ``2.2``
+   ``3.0``
+
 .. envvar:: CLOVER_EXTRA_BUILD_OPTIONS
 
    allows specifying additional compiler and linker options. Specified
@@ -898,6 +991,13 @@ Clover environment variables
    allows specifying additional linker options. Specified options are
    appended after the options set by the OpenCL program in
    ``clLinkProgram``.
+   
+.. _rusticl-env-var:
+
+.. envvar:: IRIS_ENABLE_CLOVER
+
+   allows to enable experimental Clover NIR support with the iris driver if
+   set to 1 or true.
 
 Rusticl environment variables
 -----------------------------
@@ -922,18 +1022,43 @@ Rusticl environment variables
    -  ``RUSTICL_ENABLE=iris:1,radeonsi:0,2`` (enables second iris and first
       and third radeonsi device)
 
+   Supported drivers (decent support with maybe a few conformance issues or bugs):
+   ``iris``,
+   ``llvmpipe``,
+   ``nouveau``,
+   ``panfrost``,
+   ``radeonsi``,
+   Experimental drivers (unknown level of support, expect conformance issues or major bugs):
+   ``r600``
+
 .. envvar:: RUSTICL_FEATURES
 
    a comma-separated list of features to enable. Those are disabled by default
    as they might not be stable enough or break OpenCL conformance.
 
+   - ``fp16`` enables OpenCL half support
    - ``fp64`` enables OpenCL double support
 
 .. envvar:: RUSTICL_DEBUG
 
    a comma-separated list of debug channels to enable.
 
+   - ``allow_invalid_spirv`` disables validation of any input SPIR-V
+   - ``clc`` dumps all OpenCL C source being compiled
    - ``program`` dumps compilation logs to stderr
+   - ``sync`` waits on the GPU to complete after every event
+
+.. _clc-env-var:
+
+clc environment variables
+-----------------------------
+
+.. envvar:: CLC_DEBUG
+
+   a comma-separated list of debug channels to enable.
+
+   - ``dump_spirv`` Dumps all compiled, linked and specialized SPIR-Vs
+   - ``verbose`` Enable debug logging of clc code
 
 Nine frontend environment variables
 -----------------------------------
@@ -981,9 +1106,6 @@ Softpipe driver environment variables
    ``use_llvm``
       the Softpipe driver will try to use LLVM JIT for vertex
       shading processing.
-   ``use_tgsi``
-      if set, the Softpipe driver will ask to directly consume TGSI, instead
-      of NIR.
 
 LLVMpipe driver environment variables
 -------------------------------------
@@ -1062,23 +1184,6 @@ VC4 driver environment variables
    a comma-separated list of named flags, which do various things. Use
    ``VC4_DEBUG=help`` to print a list of available options.
 
-Shared Vulkan driver environment variables
-------------------------------------------
-
-.. envvar:: MESA_VK_MEMORY_TRACE
-
-   enable memory tracing and exporting RMV captures (requires the
-   ``scripts/setup.sh`` script in the Radeon Developer Tools folder to be
-   run beforehand). ``MESA_VK_MEMORY_TRACE=n`` dumps data
-   after n frames. Currently, only RADV implements this.
-
-.. envvar:: MESA_VK_MEMORY_TRACE_TRIGGER
-
-   enable trigger file-based memory tracing. (e.g.
-   ``export MESA_VK_MEMORY_TRACE_TRIGGER=/tmp/memory_trigger`` and then
-   ``touch /tmp/memory_trigger`` to capture a memory trace).
-   Running ``scripts/setup.sh`` beforehand is required.
-
 V3D/V3DV driver environment variables
 -------------------------------------
 
@@ -1152,6 +1257,9 @@ RADV driver environment variables
       disable NGG for GFX10 and GFX10.3
    ``nonggc``
       disable NGG culling on GPUs where it's enabled by default (GFX10.3+ only).
+   ``nort``
+      skip executing vkCmdTraceRays and ray queries (RT extensions will still be
+      advertised)
    ``notccompatcmask``
       disable TC-compat CMASK for MSAA surfaces
    ``noumr``
@@ -1224,8 +1332,6 @@ RADV driver environment variables
       enable NGG streamout
    ``nggc``
       enable NGG culling on GPUs where it's not enabled by default (GFX10.1 only).
-   ``rt``
-      enable rt pipelines whose implementation is still experimental.
    ``sam``
       enable optimizations to move more driver internal objects to VRAM.
    ``rtwave64``
@@ -1236,11 +1342,6 @@ RADV driver environment variables
 .. envvar:: RADV_TEX_ANISO
 
    force anisotropy filter (up to 16)
-
-.. envvar:: RADV_THREAD_TRACE
-
-   enable frame based SQTT/RGP captures (e.g. ``export RADV_THREAD_TRACE=100``
-   will capture the frame #100)
 
 .. envvar:: RADV_THREAD_TRACE_BUFFER_SIZE
 
@@ -1254,23 +1355,6 @@ RADV driver environment variables
 .. envvar:: RADV_THREAD_TRACE_INSTRUCTION_TIMING
 
    enable/disable SQTT/RGP instruction timing (enabled by default)
-
-.. envvar:: RADV_THREAD_TRACE_TRIGGER
-
-   enable trigger file based SQTT/RGP captures (e.g.
-   ``export RADV_THREAD_TRACE_TRIGGER=/tmp/radv_sqtt_trigger`` and then
-   ``touch /tmp/radv_sqtt_trigger`` to capture a frame)
-
-.. envvar:: RADV_RRA_TRACE
-
-   enable frame based Radeon Raytracing Analyzer captures
-   (e.g. ``export RADV_RRA_TRACE=100`` will capture the frame #100)
-
-.. envvar:: RADV_RRA_TRACE_TRIGGER
-
-   enable trigger file based RRA captures (e.g.
-   ``export RADV_RRA_TRACE_TRIGGER=/tmp/radv_rra_trigger`` and then
-   ``touch /tmp/radv_rra_trigger`` to capture a frame)
 
 .. envvar:: RADV_RRA_TRACE_VALIDATE
 
@@ -1607,8 +1691,6 @@ r300 driver environment variables
       Disable hierarchical zbuffer
    ``nocmask``
       Disable AA compression and fast AA clear
-   ``use_tgsi``
-      Request TGSI shaders from the state tracker
    ``notcl``
       Disable hardware accelerated Transform/Clip/Lighting
 
@@ -1631,6 +1713,10 @@ Asahi driver environment variables
       possible) or added in the Mesa-wide driconf (if closed source).
    ``dirty``
       In debug builds only: disable dirty tracking optimizations.
+   ``nowc``
+      Disable write-combining (force all allocations to be write-through). This
+      may be useful for diagnosing certain performance issues. Note imported
+      buffers may still be write-combined.
 
 .. envvar:: AGX_MESA_DEBUG
 

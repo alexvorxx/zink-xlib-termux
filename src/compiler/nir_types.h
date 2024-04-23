@@ -37,11 +37,7 @@
 
 #ifdef __cplusplus
 extern "C" {
-#else
-struct glsl_type;
 #endif
-
-const char *glsl_get_type_name(const struct glsl_type *type);
 
 const struct glsl_type *glsl_get_struct_field(const struct glsl_type *type,
                                               unsigned index);
@@ -72,12 +68,6 @@ const struct glsl_type *glsl_without_array_or_matrix(const struct glsl_type *typ
 const struct glsl_type *glsl_get_bare_type(const struct glsl_type *type);
 
 const struct glsl_type *glsl_get_column_type(const struct glsl_type *type);
-
-const struct glsl_type *
-glsl_get_function_return_type(const struct glsl_type *type);
-
-const struct glsl_function_param *
-glsl_get_function_param(const struct glsl_type *type, unsigned index);
 
 const struct glsl_type *
 glsl_texture_type_to_sampler(const struct glsl_type *type, bool is_shadow);
@@ -150,6 +140,7 @@ bool glsl_type_is_array(const struct glsl_type *type);
 bool glsl_type_is_unsized_array(const struct glsl_type *type);
 bool glsl_type_is_array_of_arrays(const struct glsl_type *type);
 bool glsl_type_is_array_or_matrix(const struct glsl_type *type);
+bool glsl_type_is_cmat(const struct glsl_type *type);
 bool glsl_type_is_struct(const struct glsl_type *type);
 bool glsl_type_is_interface(const struct glsl_type *type);
 bool glsl_type_is_struct_or_ifc(const struct glsl_type *type);
@@ -207,9 +198,11 @@ const struct glsl_type *glsl_explicit_matrix_type(const struct glsl_type *mat,
                                                   unsigned stride,
                                                   bool row_major);
 
-const struct glsl_type *glsl_array_type(const struct glsl_type *base,
-                                        unsigned elements,
+const struct glsl_type *glsl_array_type(const struct glsl_type *element,
+                                        unsigned array_size,
                                         unsigned explicit_stride);
+
+const struct glsl_type *glsl_cmat_type(const struct glsl_cmat_description *desc);
 
 const struct glsl_type *glsl_struct_type(const struct glsl_struct_field *fields,
                                          unsigned num_fields, const char *name,
@@ -230,9 +223,6 @@ const struct glsl_type *glsl_texture_type(enum glsl_sampler_dim dim,
 const struct glsl_type *glsl_image_type(enum glsl_sampler_dim dim,
                                         bool is_array,
                                         enum glsl_base_type base_type);
-const struct glsl_type * glsl_function_type(const struct glsl_type *return_type,
-                                            const struct glsl_function_param *params,
-                                            unsigned num_params);
 
 const struct glsl_type *glsl_transposed_type(const struct glsl_type *type);
 
@@ -266,6 +256,9 @@ unsigned glsl_type_get_image_count(const struct glsl_type *type);
 int glsl_get_field_index(const struct glsl_type *type, const char *name);
 
 bool glsl_type_is_leaf(const struct glsl_type *type);
+
+const struct glsl_type *glsl_get_cmat_element(const struct glsl_type *type);
+const struct glsl_cmat_description *glsl_get_cmat_description(const struct glsl_type *type);
 
 #ifdef __cplusplus
 }

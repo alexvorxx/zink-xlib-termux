@@ -36,6 +36,7 @@ etna_compiler_create(const char *renderer, const struct etna_specs *specs)
    struct etna_compiler *compiler = rzalloc(NULL, struct etna_compiler);
 
    compiler->options = (nir_shader_compiler_options) {
+      .has_texture_scaling = true,
       .lower_fpow = true,
       .lower_fround_even = true,
       .lower_ftrunc = true,
@@ -74,8 +75,9 @@ etna_compiler_create(const char *renderer, const struct etna_specs *specs)
       .lower_unpack_32_2x16_split = true,
       .lower_unpack_64_2x32_split = true,
       .lower_find_lsb = true,
-      .lower_ifind_msb_to_uclz = true,
-      .lower_ufind_msb_to_uclz = true,
+      .lower_ifind_msb = true,
+      .lower_ufind_msb = true,
+      .has_uclz = true,
    };
 
    compiler->regs = etna_ra_setup(compiler);

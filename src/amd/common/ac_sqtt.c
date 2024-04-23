@@ -1,26 +1,8 @@
 /*
  * Copyright 2020 Advanced Micro Devices, Inc.
  * Copyright 2020 Valve Corporation
- * All Rights Reserved.
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * on the rights to use, copy, modify, merge, publish, distribute, sub
- * license, and/or sell copies of the Software, and to permit persons to whom
- * the Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
- * USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #include "ac_sqtt.h"
@@ -139,7 +121,7 @@ ac_get_expected_buffer_size(struct radeon_info *rad_info, const struct ac_sqtt_d
 }
 
 bool
-ac_sqtt_add_pso_correlation(struct ac_sqtt *sqtt, uint64_t pipeline_hash)
+ac_sqtt_add_pso_correlation(struct ac_sqtt *sqtt, uint64_t pipeline_hash, uint64_t api_hash)
 {
    struct rgp_pso_correlation *pso_correlation = &sqtt->rgp_pso_correlation;
    struct rgp_pso_correlation_record *record;
@@ -148,7 +130,7 @@ ac_sqtt_add_pso_correlation(struct ac_sqtt *sqtt, uint64_t pipeline_hash)
    if (!record)
       return false;
 
-   record->api_pso_hash = pipeline_hash;
+   record->api_pso_hash = api_hash;
    record->pipeline_hash[0] = pipeline_hash;
    record->pipeline_hash[1] = pipeline_hash;
    memset(record->api_level_obj_name, 0, sizeof(record->api_level_obj_name));
@@ -247,12 +229,24 @@ ac_sqtt_get_next_cmdbuf_id(struct ac_sqtt *data, enum amd_ip_type ip_type)
 bool
 ac_sqtt_se_is_disabled(const struct radeon_info *info, unsigned se)
 {
-   /* FIXME: SQTT only works on SE0 for some unknown reasons. */
-   if (info->gfx_level == GFX11)
-      return se != 0;
-
    /* No active CU on the SE means it is disabled. */
    return info->cu_mask[se][0] == 0;
+}
+
+uint32_t
+ac_sqtt_get_active_cu(const struct radeon_info *info, unsigned se)
+{
+   uint32_t cu_index;
+
+   if (info->gfx_level >= GFX11) {
+      /* GFX11 seems to operate on the last active CU. */
+      cu_index = util_last_bit(info->cu_mask[se][0]) - 1;
+   } else {
+      /* Default to the first active CU. */
+      cu_index = ffs(info->cu_mask[se][0]);
+   }
+
+   return cu_index;
 }
 
 bool
@@ -271,7 +265,7 @@ ac_sqtt_get_trace(struct ac_sqtt *data, const struct radeon_info *info,
       void *data_ptr = (uint8_t *)ptr + data_offset;
       struct ac_sqtt_data_info *trace_info = (struct ac_sqtt_data_info *)info_ptr;
       struct ac_sqtt_data_se data_se = {0};
-      int first_active_cu = ffs(info->cu_mask[se][0]);
+      int active_cu = ac_sqtt_get_active_cu(info, se);
 
       if (ac_sqtt_se_is_disabled(info, se))
          continue;
@@ -284,7 +278,7 @@ ac_sqtt_get_trace(struct ac_sqtt *data, const struct radeon_info *info,
       data_se.shader_engine = se;
 
       /* RGP seems to expect units of WGP on GFX10+. */
-      data_se.compute_unit = info->gfx_level >= GFX10 ? (first_active_cu / 2) : first_active_cu;
+      data_se.compute_unit = info->gfx_level >= GFX10 ? (active_cu / 2) : active_cu;
 
       sqtt_trace->traces[sqtt_trace->num_traces] = data_se;
       sqtt_trace->num_traces++;
@@ -298,4 +292,17 @@ ac_sqtt_get_trace(struct ac_sqtt *data, const struct radeon_info *info,
    sqtt_trace->rgp_clock_calibration = &data->rgp_clock_calibration;
 
    return true;
+}
+
+uint32_t
+ac_sqtt_get_shader_mask(const struct radeon_info *info)
+{
+   unsigned shader_mask = 0x7f; /* all shader stages */
+
+   if (info->gfx_level >= GFX11) {
+      /* Disable unsupported hw shader stages */
+      shader_mask &= ~(0x02 /* VS */ | 0x08 /* ES */ | 0x20 /* LS */);
+   }
+
+   return shader_mask;
 }

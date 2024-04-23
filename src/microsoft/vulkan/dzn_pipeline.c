@@ -275,14 +275,10 @@ dzn_pipeline_get_nir_shader(struct dzn_device *device,
 }
 
 static bool
-adjust_resource_index_binding(struct nir_builder *builder, nir_instr *instr,
+adjust_resource_index_binding(struct nir_builder *builder,
+                              nir_intrinsic_instr *intrin,
                               void *cb_data)
 {
-   if (instr->type != nir_instr_type_intrinsic)
-      return false;
-
-   nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
-
    if (intrin->intrinsic != nir_intrinsic_vulkan_resource_index)
       return false;
 
@@ -379,7 +375,7 @@ adjust_var_bindings(nir_shader *shader,
       }
       return ret;
    } else {
-      return nir_shader_instructions_pass(shader, adjust_resource_index_binding,
+      return nir_shader_intrinsics_pass(shader, adjust_resource_index_binding,
                                           nir_metadata_all, (void *)layout);
    }
 }
@@ -404,7 +400,11 @@ dzn_pipeline_compile_shader(struct dzn_device *device,
       container_of(device->vk.physical, struct dzn_physical_device, vk);
    struct nir_to_dxil_options opts = {
       .environment = DXIL_ENVIRONMENT_VULKAN,
-      .lower_int16 = !pdev->options4.Native16BitShaderOpsSupported,
+      .lower_int16 = !pdev->options4.Native16BitShaderOpsSupported &&
+      /* Don't lower 16-bit types if they can only come from min-precision */
+         (device->vk.enabled_extensions.KHR_shader_float16_int8 ||
+          device->vk.enabled_features.shaderFloat16 ||
+          device->vk.enabled_features.shaderInt16),
       .shader_model_max = dzn_get_shader_model(pdev),
       .input_clip_size = input_clip_size,
 #ifdef _WIN32

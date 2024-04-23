@@ -50,6 +50,9 @@ intel_aux_map_init(void *driver_ctx,
                    struct intel_mapped_pinned_buffer_alloc *buffer_alloc,
                    const struct intel_device_info *devinfo);
 
+uint32_t
+intel_aux_map_get_alignment(struct intel_aux_map_context *ctx);
+
 void
 intel_aux_map_finish(struct intel_aux_map_context *ctx);
 
@@ -103,16 +106,16 @@ intel_aux_map_format_bits_for_isl_surf(const struct isl_surf *isl_surf);
 
 uint64_t *
 intel_aux_map_get_entry(struct intel_aux_map_context *ctx,
-                        uint64_t address,
-                        uint64_t *entry_address);
+                        uint64_t main_address,
+                        uint64_t *aux_entry_address);
 
 void
-intel_aux_map_add_mapping(struct intel_aux_map_context *ctx, uint64_t address,
+intel_aux_map_add_mapping(struct intel_aux_map_context *ctx, uint64_t main_address,
                           uint64_t aux_address, uint64_t main_size_B,
                           uint64_t format_bits);
 
 void
-intel_aux_map_unmap_range(struct intel_aux_map_context *ctx, uint64_t address,
+intel_aux_map_unmap_range(struct intel_aux_map_context *ctx, uint64_t main_address,
                           uint64_t size);
 
 #ifdef __cplusplus

@@ -46,6 +46,7 @@
 #include "util/set.h"
 #include "util/simple_mtx.h"
 #include "util/slab.h"
+#include "util/u_blitter.h"
 #include "util/u_dynarray.h"
 #include "util/u_idalloc.h"
 #include "util/u_live_shader_cache.h"
@@ -1542,6 +1543,7 @@ struct zink_screen {
       bool needs_zs_shader_swizzle;
       bool can_do_invalid_linear_modifier;
       bool io_opt;
+      bool inconsistent_interpolation;
       unsigned z16_unscaled_bias;
       unsigned z24_unscaled_bias;
    } driver_workarounds;
@@ -2009,6 +2011,8 @@ struct zink_context {
    bool is_device_lost;
    bool primitive_restart;
    bool blitting : 1;
+   bool blit_scissor : 1;
+   bool blit_nearest : 1;
    bool unordered_blitting : 1;
    bool vertex_state_changed : 1;
    bool blend_state_changed : 1;

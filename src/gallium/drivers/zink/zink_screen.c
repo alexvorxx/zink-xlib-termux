@@ -3052,6 +3052,8 @@ init_driver_workarounds(struct zink_screen *screen)
    case VK_DRIVER_ID_AMD_PROPRIETARY:
       /* this has bad perf on AMD */
       screen->info.have_KHR_push_descriptor = false;
+      /* Interpolation is not consistent between two triangles of a rectangle. */
+      screen->driver_workarounds.inconsistent_interpolation = true;
       break;
    default:
       break;

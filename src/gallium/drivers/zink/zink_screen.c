@@ -1419,7 +1419,7 @@ zink_is_format_supported(struct pipe_screen *pscreen,
       }
    }
 
-   struct zink_format_props props = screen->format_props[format];
+   VkFormatProperties props = screen->format_props[format];
 
    if (target == PIPE_BUFFER) {
       if (bind & PIPE_BIND_VERTEX_BUFFER) {
@@ -2186,9 +2186,7 @@ retry:
          props3.pNext = props.pNext;
          props.pNext = &props3;
          VKSCR(GetPhysicalDeviceFormatProperties2)(screen->pdev, format, &props);
-         screen->format_props[i].linearTilingFeatures = props3.linearTilingFeatures;
-         screen->format_props[i].optimalTilingFeatures = props3.optimalTilingFeatures;
-         screen->format_props[i].bufferFeatures = props3.bufferFeatures;
+         screen->format_props[i] = props.formatProperties;
          if (props3.linearTilingFeatures & VK_FORMAT_FEATURE_2_LINEAR_COLOR_ATTACHMENT_BIT_NV)
             screen->format_props[i].linearTilingFeatures |= VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT;
          if (screen->info.have_EXT_image_drm_format_modifier && mod_props.drmFormatModifierCount) {
@@ -2199,13 +2197,8 @@ retry:
                   screen->modifier_props[i].pDrmFormatModifierProperties[j] = mod_props.pDrmFormatModifierProperties[j];
             }
          }
-      } else {
-         VkFormatProperties props = {0};
-         VKSCR(GetPhysicalDeviceFormatProperties)(screen->pdev, format, &props);
-         screen->format_props[i].linearTilingFeatures = props.linearTilingFeatures;
-         screen->format_props[i].optimalTilingFeatures = props.optimalTilingFeatures;
-         screen->format_props[i].bufferFeatures = props.bufferFeatures;
-      }
+      } else
+         VKSCR(GetPhysicalDeviceFormatProperties)(screen->pdev, format, &screen->format_props[i]);
       if (i == PIPE_FORMAT_A8_UNORM && !screen->driver_workarounds.missing_a8_unorm) {
          if (!screen->format_props[i].linearTilingFeatures &&
              !screen->format_props[i].optimalTilingFeatures &&
@@ -3046,34 +3039,6 @@ init_driver_workarounds(struct zink_screen *screen)
          screen->driver_workarounds.disable_optimized_compile = true;
       break;
    }
-   if (!screen->resizable_bar)
-      screen->info.have_EXT_host_image_copy = false;
-}
-
-static void
-fixup_driver_props(struct zink_screen *screen)
-{
-   VkPhysicalDeviceProperties2 props = {
-      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2
-   };
-   if (screen->info.have_EXT_host_image_copy) {
-      /* fill in layouts */
-      screen->info.hic_props.pNext = props.pNext;
-      props.pNext = &screen->info.hic_props;
-      screen->info.hic_props.pCopySrcLayouts = ralloc_array(screen, VkImageLayout, screen->info.hic_props.copySrcLayoutCount);
-      screen->info.hic_props.pCopyDstLayouts = ralloc_array(screen, VkImageLayout, screen->info.hic_props.copyDstLayoutCount);
-   }
-   if (props.pNext)
-      screen->vk.GetPhysicalDeviceProperties2(screen->pdev, &props);
-
-   if (screen->info.have_EXT_host_image_copy) {
-      for (unsigned i = 0; i < screen->info.hic_props.copyDstLayoutCount; i++) {
-         if (screen->info.hic_props.pCopyDstLayouts[i] == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-            screen->can_hic_shader_read = true;
-            break;
-         }
-      }
-   }
 }
 
 static void
@@ -3344,43 +3309,6 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
       goto fail;
    }
 
-   memset(&screen->heap_map, UINT8_MAX, sizeof(screen->heap_map));
-   for (enum zink_heap i = 0; i < ZINK_HEAP_MAX; i++) {
-      for (unsigned j = 0; j < screen->info.mem_props.memoryTypeCount; j++) {
-         VkMemoryPropertyFlags domains = vk_domain_from_heap(i);
-         if ((screen->info.mem_props.memoryTypes[j].propertyFlags & domains) == domains) {
-            screen->heap_map[i][screen->heap_count[i]++] = j;
-         }
-      }
-   }
-   /* iterate again to check for missing heaps */
-   for (enum zink_heap i = 0; i < ZINK_HEAP_MAX; i++) {
-      /* not found: use compatible heap */
-      if (screen->heap_map[i][0] == UINT8_MAX) {
-         /* only cached mem has a failure case for now */
-         assert(i == ZINK_HEAP_HOST_VISIBLE_COHERENT_CACHED || i == ZINK_HEAP_DEVICE_LOCAL_LAZY ||
-                i == ZINK_HEAP_DEVICE_LOCAL_VISIBLE);
-         if (i == ZINK_HEAP_HOST_VISIBLE_COHERENT_CACHED) {
-            memcpy(screen->heap_map[i], screen->heap_map[ZINK_HEAP_HOST_VISIBLE_COHERENT], screen->heap_count[ZINK_HEAP_HOST_VISIBLE_COHERENT]);
-            screen->heap_count[i] = screen->heap_count[ZINK_HEAP_HOST_VISIBLE_COHERENT];
-         } else {
-            memcpy(screen->heap_map[i], screen->heap_map[ZINK_HEAP_DEVICE_LOCAL], screen->heap_count[ZINK_HEAP_DEVICE_LOCAL]);
-            screen->heap_count[i] = screen->heap_count[ZINK_HEAP_DEVICE_LOCAL];
-         }
-      }
-   }
-   {
-      uint64_t biggest_vis_vram = 0;
-      for (unsigned i = 0; i < screen->heap_count[ZINK_HEAP_DEVICE_LOCAL_VISIBLE]; i++)
-         biggest_vis_vram = MAX2(biggest_vis_vram, screen->info.mem_props.memoryHeaps[screen->info.mem_props.memoryTypes[i].heapIndex].size);
-      uint64_t biggest_vram = 0;
-      for (unsigned i = 0; i < screen->heap_count[ZINK_HEAP_DEVICE_LOCAL]; i++)
-         biggest_vram = MAX2(biggest_vis_vram, screen->info.mem_props.memoryHeaps[screen->info.mem_props.memoryTypes[i].heapIndex].size);
-      /* determine if vis vram is roughly equal to total vram */
-      if (biggest_vis_vram > biggest_vram * 0.9)
-         screen->resizable_bar = true;
-   }
-
    setup_renderdoc(screen);
    if (screen->threaded_submit && !util_queue_init(&screen->flush_queue, "zfq", 8, 1, UTIL_QUEUE_INIT_RESIZE_IF_FULL, screen)) {
       mesa_loge("zink: Failed to create flush queue.\n");
@@ -3405,8 +3333,6 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
       simple_mtx_init(&screen->debug_mem_lock, mtx_plain);
       screen->debug_mem_sizes = _mesa_hash_table_create(screen, _mesa_hash_string, _mesa_key_string_equal);
    }
-
-   fixup_driver_props(screen);
 
    init_driver_workarounds(screen);
 
@@ -3535,14 +3461,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
    slab_create_parent(&screen->transfer_pool, sizeof(struct zink_transfer), 16);
 
    screen->driconf.inline_uniforms = debug_get_bool_option("ZINK_INLINE_UNIFORMS", screen->is_cpu) && !(zink_debug & ZINK_DEBUG_DGC);
-
-   screen->total_video_mem = get_video_mem(screen);
-   screen->clamp_video_mem = screen->total_video_mem * 0.8;
-   if (!os_get_total_physical_memory(&screen->total_mem)) {
-      mesa_loge("ZINK: failed to get total physical memory");
-      goto fail;
-   }
-
+   
    /*if (!zink_screen_init_semaphore(screen)) {
       mesa_loge("zink: failed to create timeline semaphore");
       goto fail;
@@ -3564,6 +3483,50 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
    if (!screen->info.have_KHR_imageless_framebuffer) {
       simple_mtx_init(&screen->framebuffer_mtx, mtx_plain);
       _mesa_hash_table_init(&screen->framebuffer_cache, screen, hash_framebuffer_state, equals_framebuffer_state);
+   }
+
+   screen->total_video_mem = get_video_mem(screen);
+   screen->clamp_video_mem = screen->total_video_mem * 0.8;
+   if (!os_get_total_physical_memory(&screen->total_mem)) {
+      mesa_loge("ZINK: failed to get total physical memory");
+      goto fail;
+   }
+
+   memset(&screen->heap_map, UINT8_MAX, sizeof(screen->heap_map));
+   for (enum zink_heap i = 0; i < ZINK_HEAP_MAX; i++) {
+      for (unsigned j = 0; j < screen->info.mem_props.memoryTypeCount; j++) {
+         VkMemoryPropertyFlags domains = vk_domain_from_heap(i);
+         if ((screen->info.mem_props.memoryTypes[j].propertyFlags & domains) == domains) {
+            screen->heap_map[i][screen->heap_count[i]++] = j;
+         }
+      }
+   }
+   /* iterate again to check for missing heaps */
+   for (enum zink_heap i = 0; i < ZINK_HEAP_MAX; i++) {
+      /* not found: use compatible heap */
+      if (screen->heap_map[i][0] == UINT8_MAX) {
+         /* only cached mem has a failure case for now */
+         assert(i == ZINK_HEAP_HOST_VISIBLE_COHERENT_CACHED || i == ZINK_HEAP_DEVICE_LOCAL_LAZY ||
+                i == ZINK_HEAP_DEVICE_LOCAL_VISIBLE);
+         if (i == ZINK_HEAP_HOST_VISIBLE_COHERENT_CACHED) {
+            memcpy(screen->heap_map[i], screen->heap_map[ZINK_HEAP_HOST_VISIBLE_COHERENT], screen->heap_count[ZINK_HEAP_HOST_VISIBLE_COHERENT]);
+            screen->heap_count[i] = screen->heap_count[ZINK_HEAP_HOST_VISIBLE_COHERENT];
+         } else {
+            memcpy(screen->heap_map[i], screen->heap_map[ZINK_HEAP_DEVICE_LOCAL], screen->heap_count[ZINK_HEAP_DEVICE_LOCAL]);
+            screen->heap_count[i] = screen->heap_count[ZINK_HEAP_DEVICE_LOCAL];
+         }
+      }
+   }
+   {
+      uint64_t biggest_vis_vram = 0;
+      for (unsigned i = 0; i < screen->heap_count[ZINK_HEAP_DEVICE_LOCAL_VISIBLE]; i++)
+         biggest_vis_vram = MAX2(biggest_vis_vram, screen->info.mem_props.memoryHeaps[screen->info.mem_props.memoryTypes[i].heapIndex].size);
+      uint64_t biggest_vram = 0;
+      for (unsigned i = 0; i < screen->heap_count[ZINK_HEAP_DEVICE_LOCAL]; i++)
+         biggest_vram = MAX2(biggest_vis_vram, screen->info.mem_props.memoryHeaps[screen->info.mem_props.memoryTypes[i].heapIndex].size);
+      /* determine if vis vram is roughly equal to total vram */
+      if (biggest_vis_vram > biggest_vram * 0.9)
+         screen->resizable_bar = true;
    }
 
    bool can_db = true;

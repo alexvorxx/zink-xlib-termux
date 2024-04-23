@@ -1384,12 +1384,6 @@ struct zink_modifier_prop {
     VkDrmFormatModifierPropertiesEXT*    pDrmFormatModifierProperties;
 };
 
-struct zink_format_props {
-   VkFormatFeatureFlags2 linearTilingFeatures;
-   VkFormatFeatureFlags2 optimalTilingFeatures;
-   VkFormatFeatureFlags2 bufferFeatures;
-};
-
 struct zink_screen {
    struct pipe_screen base;
 
@@ -1494,7 +1488,6 @@ struct zink_screen {
    bool need_2D_zs;
    bool need_2D_sparse;
    bool faked_e5sparse; //drivers may not expose R9G9B9E5 but cts requires it
-   bool can_hic_shader_read;
 
    uint32_t gfx_queue;
    uint32_t sparse_queue;
@@ -1538,7 +1531,7 @@ struct zink_screen {
       bool zink_shader_object_enable;
    } driconf;
 
-   struct zink_format_props format_props[PIPE_FORMAT_COUNT];
+   VkFormatProperties format_props[PIPE_FORMAT_COUNT];
    struct zink_modifier_prop modifier_props[PIPE_FORMAT_COUNT];
 
    VkExtent2D maxSampleLocationGridSize[5];

@@ -398,36 +398,6 @@ init_shaders(struct panvk_pipeline *pipeline,
    }
 }
 
-static void
-parse_viewport(struct panvk_graphics_pipeline *pipeline,
-               const struct vk_graphics_pipeline_state *state)
-{
-   const struct vk_rasterization_state *rs = state->rs;
-   const struct vk_viewport_state *vp = state->vp;
-
-   /* The spec says:
-    *
-    *    pViewportState is a pointer to an instance of the
-    *    VkPipelineViewportStateCreateInfo structure, and is ignored if the
-    *    pipeline has rasterization disabled.
-    */
-   if (!rs->rasterizer_discard_enable &&
-       dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_VP_VIEWPORTS) &&
-       dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_VP_SCISSORS)) {
-      struct panfrost_ptr vpd =
-         pan_pool_alloc_desc(&pipeline->base.desc_pool.base, VIEWPORT);
-
-      panvk_per_arch(emit_viewport)(vp->viewports, vp->scissors, vpd.cpu);
-      pipeline->state.vp.vpd = vpd.gpu;
-   }
-
-   if (dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_VP_VIEWPORTS))
-      pipeline->state.vp.viewport = vp->viewports[0];
-
-   if (dyn_state_is_set(pipeline, MESA_VK_DYNAMIC_VP_SCISSORS))
-      pipeline->state.vp.scissor = vp->scissors[0];
-}
-
 #define is_dyn(__state, __name)                                                \
    BITSET_TEST((__state)->dynamic, MESA_VK_DYNAMIC_##__name)
 
@@ -435,10 +405,6 @@ static void
 parse_dynamic_state(struct panvk_graphics_pipeline *pipeline,
                     const struct vk_graphics_pipeline_state *state)
 {
-   if (is_dyn(state, VP_VIEWPORTS))
-      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_VIEWPORT;
-   if (is_dyn(state, VP_SCISSORS))
-      pipeline->state.dynamic_mask |= PANVK_DYNAMIC_SCISSOR;
    if (is_dyn(state, RS_LINE_WIDTH))
       pipeline->state.dynamic_mask |= PANVK_DYNAMIC_LINE_WIDTH;
    if (is_dyn(state, RS_DEPTH_BIAS_FACTORS))
@@ -920,7 +886,6 @@ panvk_graphics_pipeline_create(struct panvk_device *dev,
    parse_vertex_input(gfx_pipeline, &state, shaders);
    init_fs_state(gfx_pipeline, &state, shaders[MESA_SHADER_FRAGMENT]);
    init_shaders(&gfx_pipeline->base, create_info, shaders);
-   parse_viewport(gfx_pipeline, &state);
 
    release_shaders(&gfx_pipeline->base, shaders, alloc);
    return VK_SUCCESS;

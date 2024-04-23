@@ -147,12 +147,6 @@ struct panvk_graphics_pipeline {
          bool reads_dest;
       } blend;
 
-      struct {
-         uint64_t vpd;
-         VkViewport viewport;
-         VkRect2D scissor;
-      } vp;
-
       struct vk_dynamic_graphics_state dynamic;
       struct vk_vertex_input_state vi;
       struct vk_sample_locations_state sl;

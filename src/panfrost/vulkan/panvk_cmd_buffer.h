@@ -73,8 +73,6 @@ struct panvk_cmd_event_op {
 };
 
 enum panvk_dynamic_state_bits {
-   PANVK_DYNAMIC_VIEWPORT = 1 << 0,
-   PANVK_DYNAMIC_SCISSOR = 1 << 1,
    PANVK_DYNAMIC_LINE_WIDTH = 1 << 2,
    PANVK_DYNAMIC_DEPTH_BIAS = 1 << 3,
    PANVK_DYNAMIC_BLEND_CONSTANTS = 1 << 4,
@@ -167,8 +165,6 @@ struct panvk_cmd_graphics_state {
    } fb;
 
    mali_ptr vpd;
-   VkViewport viewport;
-   VkRect2D scissor;
 };
 
 struct panvk_cmd_compute_state {

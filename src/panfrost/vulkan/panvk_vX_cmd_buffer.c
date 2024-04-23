@@ -256,6 +256,14 @@ panvk_per_arch(cmd_alloc_tls_desc)(struct panvk_cmd_buffer *cmdbuf, bool gfx)
    }
 }
 
+#define is_dirty(__cmdbuf, __name)                                             \
+   BITSET_TEST((__cmdbuf)->vk.dynamic_graphics_state.dirty,                    \
+               MESA_VK_DYNAMIC_##__name)
+
+#define set_dirty(__cmdbuf, __nm)                                              \
+   BITSET_SET((__cmdbuf)->vk.dynamic_graphics_state.dirty,                     \
+              MESA_VK_DYNAMIC_##__name)
+
 static void
 panvk_cmd_prepare_draw_sysvals(struct panvk_cmd_buffer *cmdbuf,
                                struct panvk_draw_info *draw)
@@ -279,8 +287,8 @@ panvk_cmd_prepare_draw_sysvals(struct panvk_cmd_buffer *cmdbuf,
       desc_state->push_uniforms = 0;
    }
 
-   if (cmdbuf->state.gfx.dirty & PANVK_DYNAMIC_VIEWPORT) {
-      VkViewport *viewport = &cmdbuf->state.gfx.viewport;
+   if (is_dirty(cmdbuf, VP_VIEWPORTS)) {
+      VkViewport *viewport = &cmdbuf->vk.dynamic_graphics_state.vp.viewports[0];
 
       /* Upload the viewport scale. Defined as (px/2, py/2, pz) at the start of
        * section 24.5 ("Controlling the Viewport") of the Vulkan spec. At the
@@ -1024,28 +1032,19 @@ static void
 panvk_draw_prepare_viewport(struct panvk_cmd_buffer *cmdbuf,
                             struct panvk_draw_info *draw)
 {
-   const struct panvk_graphics_pipeline *pipeline = cmdbuf->state.gfx.pipeline;
-
-   if (pipeline->state.vp.vpd) {
-      draw->viewport = pipeline->state.vp.vpd;
-   } else if (cmdbuf->state.gfx.vpd) {
-      draw->viewport = cmdbuf->state.gfx.vpd;
-   } else {
+   if (is_dirty(cmdbuf, VP_VIEWPORTS) || is_dirty(cmdbuf, VP_SCISSORS)) {
+      const VkViewport *viewport =
+         &cmdbuf->vk.dynamic_graphics_state.vp.viewports[0];
+      const VkRect2D *scissor =
+         &cmdbuf->vk.dynamic_graphics_state.vp.scissors[0];
       struct panfrost_ptr vp =
          pan_pool_alloc_desc(&cmdbuf->desc_pool.base, VIEWPORT);
 
-      const VkViewport *viewport =
-         pipeline->state.dynamic_mask & PANVK_DYNAMIC_VIEWPORT
-            ? &cmdbuf->state.gfx.viewport
-            : &pipeline->state.vp.viewport;
-      const VkRect2D *scissor =
-         pipeline->state.dynamic_mask & PANVK_DYNAMIC_SCISSOR
-            ? &cmdbuf->state.gfx.scissor
-            : &pipeline->state.vp.scissor;
-
       panvk_per_arch(emit_viewport)(viewport, scissor, vp.cpu);
-      draw->viewport = cmdbuf->state.gfx.vpd = vp.gpu;
+      cmdbuf->state.gfx.vpd = vp.gpu;
    }
+
+   draw->viewport = cmdbuf->state.gfx.vpd;
 }
 
 static void
@@ -2131,18 +2130,6 @@ panvk_per_arch(CmdBindPipeline)(VkCommandBuffer commandBuffer,
 
       cmdbuf->state.gfx.fs_rsd = 0;
       cmdbuf->state.gfx.varyings = gfx_pipeline->varyings;
-
-      if (!(gfx_pipeline->state.dynamic_mask &
-            BITFIELD_BIT(VK_DYNAMIC_STATE_VIEWPORT))) {
-         cmdbuf->state.gfx.viewport = gfx_pipeline->state.vp.viewport;
-         cmdbuf->state.gfx.dirty |= PANVK_DYNAMIC_VIEWPORT;
-      }
-      if (!(gfx_pipeline->state.dynamic_mask &
-            BITFIELD_BIT(VK_DYNAMIC_STATE_SCISSOR))) {
-         cmdbuf->state.gfx.scissor = gfx_pipeline->state.vp.scissor;
-         cmdbuf->state.gfx.dirty |= PANVK_DYNAMIC_SCISSOR;
-      }
-
       cmdbuf->state.gfx.pipeline = gfx_pipeline;
       break;
    }
@@ -2156,34 +2143,6 @@ panvk_per_arch(CmdBindPipeline)(VkCommandBuffer commandBuffer,
       assert(!"Unsupported bind point");
       break;
    }
-}
-
-VKAPI_ATTR void VKAPI_CALL
-panvk_per_arch(CmdSetViewport)(VkCommandBuffer commandBuffer,
-                               uint32_t firstViewport, uint32_t viewportCount,
-                               const VkViewport *pViewports)
-{
-   VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
-   assert(viewportCount == 1);
-   assert(!firstViewport);
-
-   cmdbuf->state.gfx.viewport = pViewports[0];
-   cmdbuf->state.gfx.vpd = 0;
-   cmdbuf->state.gfx.dirty |= PANVK_DYNAMIC_VIEWPORT;
-}
-
-VKAPI_ATTR void VKAPI_CALL
-panvk_per_arch(CmdSetScissor)(VkCommandBuffer commandBuffer,
-                              uint32_t firstScissor, uint32_t scissorCount,
-                              const VkRect2D *pScissors)
-{
-   VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
-   assert(scissorCount == 1);
-   assert(!firstScissor);
-
-   cmdbuf->state.gfx.scissor = pScissors[0];
-   cmdbuf->state.gfx.vpd = 0;
-   cmdbuf->state.gfx.dirty |= PANVK_DYNAMIC_SCISSOR;
 }
 
 VKAPI_ATTR void VKAPI_CALL

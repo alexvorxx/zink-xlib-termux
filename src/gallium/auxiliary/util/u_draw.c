@@ -263,7 +263,6 @@ util_draw_multi(struct pipe_context *pctx, const struct pipe_draw_info *info,
                 const struct pipe_draw_start_count_bias *draws,
                 unsigned num_draws)
 {
-   struct pipe_draw_info tmp_info = *info;
    unsigned drawid = drawid_offset;
 
    /* If you call this with num_draws==1, that is probably going to be
@@ -273,8 +272,8 @@ util_draw_multi(struct pipe_context *pctx, const struct pipe_draw_info *info,
 
    for (unsigned i = 0; i < num_draws; i++) {
       if (indirect || (draws[i].count && info->instance_count))
-         pctx->draw_vbo(pctx, &tmp_info, drawid, indirect, &draws[i], 1);
-      if (tmp_info.increment_draw_id)
+         pctx->draw_vbo(pctx, info, drawid, indirect, &draws[i], 1);
+      if (info->increment_draw_id)
          drawid++;
    }
 }

@@ -714,20 +714,16 @@ parse_vertex_input(struct panvk_graphics_pipeline *pipeline,
       attribs->buf[i].instance_divisor = desc->divisor;
    }
 
-   const struct pan_shader_info *vs = &shaders[MESA_SHADER_VERTEX]->info;
-   uint32_t vi_attrib_count = util_last_bit(vi->attributes_valid);
+   attribs->attrib_count = util_last_bit(vi->attributes_valid);
+   for (unsigned i = 0; i < attribs->attrib_count; i++) {
+      if (!(vi->attributes_valid & BITFIELD_BIT(i)))
+         continue;
 
-   attribs->attrib_count = 0;
-   for (unsigned i = 0; i < vi_attrib_count; i++) {
       const struct vk_vertex_attribute_state *desc = &vi->attributes[i];
-      unsigned attrib = i + VERT_ATTRIB_GENERIC0;
-      unsigned slot =
-         util_bitcount64(vs->attributes_read & BITFIELD64_MASK(attrib));
 
-      attribs->attrib[slot].buf = desc->binding;
-      attribs->attrib[slot].format = vk_format_to_pipe_format(desc->format);
-      attribs->attrib[slot].offset = desc->offset;
-      attribs->attrib_count = MAX2(attribs->attrib_count, slot + 1);
+      attribs->attrib[i].buf = desc->binding;
+      attribs->attrib[i].format = vk_format_to_pipe_format(desc->format);
+      attribs->attrib[i].offset = desc->offset;
    }
 }
 

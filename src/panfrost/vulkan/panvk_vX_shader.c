@@ -339,7 +339,21 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
    NIR_PASS_V(nir, nir_split_var_copies);
    NIR_PASS_V(nir, nir_lower_var_copies);
 
-   nir_assign_io_var_locations(nir, nir_var_shader_in, &nir->num_inputs, stage);
+   if (stage == MESA_SHADER_VERTEX) {
+      /* We need the driver_location to match the vertex attribute location,
+       * so we can use the attribute layout described by
+       * vk_vertex_input_state where there are holes in the attribute locations.
+       */
+      nir_foreach_shader_in_variable(var, nir) {
+         assert(var->data.location >= VERT_ATTRIB_GENERIC0 &&
+                var->data.location <= VERT_ATTRIB_GENERIC15);
+         var->data.driver_location = var->data.location - VERT_ATTRIB_GENERIC0;
+      }
+   } else {
+      nir_assign_io_var_locations(nir, nir_var_shader_in, &nir->num_inputs,
+                                  stage);
+   }
+
    nir_assign_io_var_locations(nir, nir_var_shader_out, &nir->num_outputs,
                                stage);
 
@@ -388,6 +402,18 @@ panvk_per_arch(shader_create)(struct panvk_device *dev, gl_shader_stage stage,
       panvk_per_arch(pipeline_layout_total_ubo_count)(layout);
    shader->info.sampler_count = layout->num_samplers;
    shader->info.texture_count = layout->num_textures;
+
+   if (stage == MESA_SHADER_VERTEX) {
+      /* We leave holes in the attribute locations, but pan_shader.c assumes the
+       * opposite. Patch attribute_count accordingly, so
+       * pan_shader_prepare_rsd() does what we expect.
+       */
+      uint32_t gen_attribs =
+         (shader->info.attributes_read & VERT_BIT_GENERIC_ALL) >>
+         VERT_ATTRIB_GENERIC0;
+
+      shader->info.attribute_count = util_last_bit(gen_attribs);
+   }
 
    /* Image attributes start at MAX_VS_ATTRIBS in the VS attribute table,
     * and zero in other stages.

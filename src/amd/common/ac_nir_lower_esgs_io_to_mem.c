@@ -154,14 +154,15 @@ lower_es_output_store(nir_builder *b,
       /* GFX6-8: ES is a separate HW stage, data is passed from ES to GS in VRAM. */
       nir_def *ring = nir_load_ring_esgs_amd(b);
       nir_def *es2gs_off = nir_load_ring_es2gs_offset_amd(b);
-      emit_split_buffer_store(b, store_val, ring, io_off, es2gs_off,
-                              store_val->bit_size,
-                              0, write_mask, true, true);
+      AC_NIR_STORE_IO(b, store_val, 0, write_mask, io_sem.high_16bits, emit_split_buffer_store,
+                      ring, io_off, es2gs_off, store_val->bit_size, store_const_offset,
+                      store_write_mask, true, true);
    } else {
       /* GFX9+: ES is merged into GS, data is passed through LDS. */
       nir_def *vertex_idx = nir_load_local_invocation_index(b);
       nir_def *off = nir_iadd(b, nir_imul_imm(b, vertex_idx, st->esgs_itemsize), io_off);
-      nir_store_shared(b, store_val, off, .write_mask = write_mask);
+      AC_NIR_STORE_IO(b, store_val, 0, write_mask, io_sem.high_16bits, nir_store_shared, off,
+                      .write_mask = store_write_mask, .base = store_const_offset);
    }
 
    nir_instr_remove(&intrin->instr);
@@ -264,15 +265,19 @@ lower_gs_per_vertex_input_load(nir_builder *b,
 {
    lower_esgs_io_state *st = (lower_esgs_io_state *) state;
    nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
    nir_def *off = gs_per_vertex_input_offset(b, st, intrin);
+   nir_def *load = NULL;
 
-   if (st->gfx_level >= GFX9)
-      return nir_load_shared(b, intrin->def.num_components, intrin->def.bit_size, off);
+   if (st->gfx_level >= GFX9) {
+      AC_NIR_LOAD_IO(load, b, intrin->num_components, intrin->def.bit_size, io_sem.high_16bits,
+                     nir_load_shared, off);
+   } else {
+      AC_NIR_LOAD_IO(load, b, intrin->num_components, intrin->def.bit_size, io_sem.high_16bits,
+                     emit_split_buffer_load, 4 * 64, nir_load_ring_esgs_amd(b), off, nir_imm_int(b, 0));
+   }
 
-   unsigned wave_size = 64u; /* GFX6-8 only support wave64 */
-   nir_def *ring = nir_load_ring_esgs_amd(b);
-   return emit_split_buffer_load(b, intrin->def.num_components, intrin->def.bit_size,
-                                 4u * wave_size, ring, off, nir_imm_int(b, 0));
+   return load;
 }
 
 static bool

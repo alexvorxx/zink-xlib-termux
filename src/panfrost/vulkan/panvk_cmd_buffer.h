@@ -82,10 +82,7 @@ enum panvk_dynamic_state_bits {
    PANVK_DYNAMIC_STENCIL_COMPARE_MASK = 1 << 6,
    PANVK_DYNAMIC_STENCIL_WRITE_MASK = 1 << 7,
    PANVK_DYNAMIC_STENCIL_REFERENCE = 1 << 8,
-   PANVK_DYNAMIC_DISCARD_RECTANGLE = 1 << 9,
-   PANVK_DYNAMIC_SSBO = 1 << 10,
-   PANVK_DYNAMIC_VERTEX_INSTANCE_OFFSETS = 1 << 11,
-   PANVK_DYNAMIC_ALL = (1 << 12) - 1,
+   PANVK_DYNAMIC_ALL = (1 << 9) - 1,
 };
 
 struct panvk_descriptor_state {

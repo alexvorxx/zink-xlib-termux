@@ -248,6 +248,10 @@ impl ProgramBuild {
         }
     }
 
+    pub fn kernels(&self) -> &[String] {
+        &self.kernels
+    }
+
     pub fn to_nir(&self, kernel: &str, d: &Device) -> NirShader {
         let mut spec_constants: Vec<_> = self
             .spec_constants
@@ -554,10 +558,6 @@ impl Program {
     // devices. If we do in the future, this needs to be properly implemented.
     pub fn has_unique_kernel_signatures(&self, _kernel_name: &str) -> bool {
         true
-    }
-
-    pub fn kernels(&self) -> Vec<String> {
-        self.build_info().kernels.clone()
     }
 
     pub fn active_kernels(&self) -> bool {

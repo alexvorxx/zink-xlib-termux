@@ -811,8 +811,7 @@ fn extract<'a, const S: usize>(buf: &'a mut &[u8]) -> &'a [u8; S] {
 }
 
 impl Kernel {
-    pub fn new(name: String, prog: Arc<Program>) -> Arc<Kernel> {
-        let prog_build = prog.build_info();
+    pub fn new(name: String, prog: Arc<Program>, prog_build: &ProgramBuild) -> Arc<Kernel> {
         let kernel_info = Arc::clone(prog_build.kernel_info.get(&name).unwrap());
         let builds = prog_build
             .builds
@@ -823,7 +822,7 @@ impl Kernel {
         let values = vec![None; kernel_info.args.len()];
         Arc::new(Self {
             base: CLObjectBase::new(RusticlTypes::Kernel),
-            prog: prog.clone(),
+            prog: prog,
             name: name,
             values: Mutex::new(values),
             builds: builds,

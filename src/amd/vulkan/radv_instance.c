@@ -43,7 +43,6 @@ static const struct debug_control radv_debug_options[] = {{"nofastclears", RADV_
                                                           {"allbos", RADV_DEBUG_ALL_BOS},
                                                           {"noibs", RADV_DEBUG_NO_IBS},
                                                           {"spirv", RADV_DEBUG_DUMP_SPIRV},
-                                                          {"vmfaults", RADV_DEBUG_VM_FAULTS},
                                                           {"zerovram", RADV_DEBUG_ZERO_VRAM},
                                                           {"syncshaders", RADV_DEBUG_SYNC_SHADERS},
                                                           {"preoptir", RADV_DEBUG_PREOPTIR},
@@ -77,6 +76,7 @@ static const struct debug_control radv_debug_options[] = {{"nofastclears", RADV_
                                                           {"nogpl", RADV_DEBUG_NO_GPL},
                                                           {"videoarraypath", RADV_DEBUG_VIDEO_ARRAY_PATH},
                                                           {"nort", RADV_DEBUG_NO_RT},
+                                                          {"nomeshshader", RADV_DEBUG_NO_MESH_SHADER},
                                                           {NULL, 0}};
 
 const char *
@@ -97,7 +97,6 @@ static const struct debug_control radv_perftest_options[] = {{"localbos", RADV_P
                                                              {"nggc", RADV_PERFTEST_NGGC},
                                                              {"emulate_rt", RADV_PERFTEST_EMULATE_RT},
                                                              {"rtwave64", RADV_PERFTEST_RT_WAVE_64},
-                                                             {"ngg_streamout", RADV_PERFTEST_NGG_STREAMOUT},
                                                              {"video_decode", RADV_PERFTEST_VIDEO_DECODE},
                                                              {"dmashaders", RADV_PERFTEST_DMA_SHADERS},
                                                              {NULL, 0}};

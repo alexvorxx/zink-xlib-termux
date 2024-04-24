@@ -40,6 +40,7 @@
 #define VG(x) ((void)0)
 #endif
 
+#include "common/intel_aux_map.h"
 #include "common/intel_decoder.h"
 #include "common/intel_engine.h"
 #include "common/intel_gem.h"
@@ -385,8 +386,8 @@ enum anv_bo_alloc_flags {
    /** Has an address which is visible to the client */
    ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS = (1 << 8),
 
-   /** This buffer has implicit CCS data attached to it */
-   ANV_BO_ALLOC_IMPLICIT_CCS = (1 << 9),
+   /** This BO will be dedicated to a buffer or an image */
+   ANV_BO_ALLOC_DEDICATED = (1 << 9),
 
    /** This buffer is allocated from local memory and should be cpu visible */
    ANV_BO_ALLOC_LOCAL_MEM_CPU_VISIBLE = (1 << 10),
@@ -430,7 +431,7 @@ struct anv_bo {
     */
    uint64_t offset;
 
-   /** Size of the buffer not including implicit aux */
+   /** Size of the buffer */
    uint64_t size;
 
    /* Map for internally mapped BOs.
@@ -440,32 +441,8 @@ struct anv_bo {
     */
    void *map;
 
-   /** Size of the implicit CCS range at the end of the buffer
-    *
-    * On Gfx12, CCS data is always a direct 1/256 scale-down.  A single 64K
-    * page of main surface data maps to a 256B chunk of CCS data and that
-    * mapping is provided on TGL-LP by the AUX table which maps virtual memory
-    * addresses in the main surface to virtual memory addresses for CCS data.
-    *
-    * Because we can't change these maps around easily and because Vulkan
-    * allows two VkImages to be bound to overlapping memory regions (as long
-    * as the app is careful), it's not feasible to make this mapping part of
-    * the image.  (On Gfx11 and earlier, the mapping was provided via
-    * RENDER_SURFACE_STATE so each image had its own main -> CCS mapping.)
-    * Instead, we attach the CCS data directly to the buffer object and setup
-    * the AUX table mapping at BO creation time.
-    *
-    * This field is for internal tracking use by the BO allocator only and
-    * should not be touched by other parts of the code.  If something wants to
-    * know if a BO has implicit CCS data, it should instead look at the
-    * has_implicit_ccs boolean below.
-    *
-    * This data is not included in maps of this buffer.
-    */
-   uint32_t _ccs_size;
-
    /* The actual size of bo allocated by kmd, basically:
-    * align(size + _ccs_size, mem_alignment)
+    * align(size, mem_alignment)
     */
    uint64_t actual_size;
 
@@ -483,9 +460,6 @@ struct anv_bo {
 
    /** See also ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS */
    bool has_client_visible_address:1;
-
-   /** True if this BO has implicit CCS data attached to it */
-   bool has_implicit_ccs:1;
 
    /** True if this BO can only live in VRAM */
    bool vram_only:1;
@@ -601,6 +575,10 @@ struct anv_block_pool {
    struct anv_bo *bo;
    uint32_t nbos;
 
+   /* Maximum size of the pool */
+   uint64_t max_size;
+
+   /* Current size of the pool */
    uint64_t size;
 
    /* The canonical address where the start of the pool is pinned. The various bos that
@@ -635,10 +613,10 @@ anv_block_pool_size(struct anv_block_pool *pool)
 }
 
 struct anv_state {
-   int32_t offset;
+   int64_t offset;
    uint32_t alloc_size;
-   void *map;
    uint32_t idx;
+   void *map;
 };
 
 #define ANV_STATE_NULL ((struct anv_state) { .alloc_size = 0 })
@@ -663,6 +641,7 @@ struct anv_state_table {
    int fd;
    struct anv_free_entry *map;
    uint32_t size;
+   uint64_t max_size;
    struct anv_block_state state;
    struct u_vector cleanups;
 };
@@ -673,7 +652,7 @@ struct anv_state_pool {
    /* Offset into the relevant state base address where the state pool starts
     * allocating memory.
     */
-   int32_t start_offset;
+   int64_t start_offset;
 
    struct anv_state_table table;
 
@@ -712,19 +691,27 @@ VkResult anv_block_pool_init(struct anv_block_pool *pool,
                              struct anv_device *device,
                              const char *name,
                              uint64_t start_address,
-                             uint32_t initial_size);
+                             uint32_t initial_size,
+                             uint32_t max_size);
 void anv_block_pool_finish(struct anv_block_pool *pool);
-int32_t anv_block_pool_alloc(struct anv_block_pool *pool,
-                             uint32_t block_size, uint32_t *padding);
+VkResult anv_block_pool_alloc(struct anv_block_pool *pool,
+                              uint32_t block_size,
+                              int64_t *offset,
+                              uint32_t *padding);
 void* anv_block_pool_map(struct anv_block_pool *pool, int32_t offset, uint32_t
 size);
 
+struct anv_state_pool_params {
+   const char *name;
+   uint64_t    base_address;
+   int64_t     start_offset;
+   uint32_t    block_size;
+   uint32_t    max_size;
+};
+
 VkResult anv_state_pool_init(struct anv_state_pool *pool,
                              struct anv_device *device,
-                             const char *name,
-                             uint64_t base_address,
-                             int32_t start_offset,
-                             uint32_t block_size);
+                             const struct anv_state_pool_params *params);
 void anv_state_pool_finish(struct anv_state_pool *pool);
 struct anv_state anv_state_pool_alloc(struct anv_state_pool *pool,
                                       uint32_t state_size, uint32_t alignment);
@@ -904,13 +891,6 @@ struct anv_physical_device {
      */
     bool                                        has_reg_timestamp;
 
-    /** True if this device has implicit AUX
-     *
-     * If true, CCS is handled as an implicit attachment to the BO rather than
-     * as an explicitly bound surface.
-     */
-    bool                                        has_implicit_ccs;
-
     /** True if we can create protected contexts. */
     bool                                        has_protected_contexts;
 
@@ -924,6 +904,8 @@ struct anv_physical_device {
 
     /** True if HW supports ASTC LDR */
     bool                                        has_astc_ldr;
+    /** True if denorms in void extents should be flushed to zero */
+    bool                                        flush_astc_ldr_void_extent_denorms;
     /** True if ASTC LDR is supported via emulation */
     bool                                        emu_astc_ldr;
 
@@ -979,17 +961,57 @@ struct anv_physical_device {
     } memory;
 
     struct {
+       /**
+        * General state pool
+        */
        struct anv_va_range                      general_state_pool;
+       /**
+        * Low 32bit heap
+        */
        struct anv_va_range                      low_heap;
-       struct anv_va_range                      dynamic_state_pool;
+       /**
+        * Binding table pool
+        */
        struct anv_va_range                      binding_table_pool;
+       /**
+        * Internal surface states for blorp & push descriptors.
+        */
        struct anv_va_range                      internal_surface_state_pool;
+       /**
+        * Scratch surfaces (overlaps with internal_surface_state_pool).
+        */
        struct anv_va_range                      scratch_surface_state_pool;
+       /**
+        * Bindless surface states (used with indirect descriptors)
+        */
        struct anv_va_range                      bindless_surface_state_pool;
+       /**
+        * Bindless surface & sampler states (used with direct descriptors)
+        */
+       struct anv_va_range                      direct_descriptor_pool;
+       /**
+        * Dynamic state pool
+        */
+       struct anv_va_range                      dynamic_state_pool;
+       /**
+        * Indirect descriptor pool
+        */
+       struct anv_va_range                      indirect_descriptor_pool;
+       /**
+        * Indirect push descriptor pool
+        */
+       struct anv_va_range                      indirect_push_descriptor_pool;
+       /**
+        * Instruction state pool
+        */
        struct anv_va_range                      instruction_state_pool;
-       struct anv_va_range                      descriptor_pool;
-       struct anv_va_range                      push_descriptor_pool;
+       /**
+        * Client visible VMA allocation heap
+        */
        struct anv_va_range                      client_visible_heap;
+       /**
+        * Client heap
+        */
        struct anv_va_range                      high_heap;
     } va;
 
@@ -1049,6 +1071,8 @@ struct anv_instance {
     struct driOptionCache                       available_dri_options;
 
     int                                         mesh_conv_prim_attrs_to_vert_attrs;
+    bool                                        enable_tbimr;
+
     /**
      * Workarounds for game bugs.
      */
@@ -1058,6 +1082,7 @@ struct anv_instance {
     bool                                        fp64_workaround_enabled;
     float                                       lower_depth_range_rate;
     unsigned                                    generated_indirect_threshold;
+    unsigned                                    generated_indirect_ring_threshold;
     unsigned                                    query_clear_with_blorp_threshold;
     unsigned                                    query_copy_with_shader_threshold;
     unsigned                                    force_vk_vendor;
@@ -1227,6 +1252,7 @@ enum anv_gfx_state_bits {
    ANV_GFX_STATE_WM_DEPTH_STENCIL,
    ANV_GFX_STATE_PMA_FIX, /* Fake state to implement workaround */
    ANV_GFX_STATE_WA_18019816803, /* Fake state to implement workaround */
+   ANV_GFX_STATE_TBIMR_TILE_PASS_INFO,
 
    ANV_GFX_STATE_MAX,
 };
@@ -1459,6 +1485,17 @@ struct anv_gfx_dynamic_state {
       uint32_t BackfaceStencilTestFunction;
    } ds;
 
+   /* 3DSTATE_TBIMR_TILE_PASS_INFO */
+   struct {
+      unsigned TileRectangleHeight;
+      unsigned TileRectangleWidth;
+      unsigned VerticalTileCount;
+      unsigned HorizontalTileCount;
+      unsigned TBIMRBatchSize;
+      unsigned TileBoxCheck;
+   } tbimr;
+   bool use_tbimr;
+
    bool pma_fix;
 
    BITSET_DECLARE(dirty, ANV_GFX_STATE_MAX);
@@ -1490,6 +1527,16 @@ struct anv_internal_kernel_bind_map {
 enum anv_rt_bvh_build_method {
    ANV_BVH_BUILD_METHOD_TRIVIAL,
    ANV_BVH_BUILD_METHOD_NEW_SAH,
+};
+
+struct anv_device_astc_emu {
+    struct vk_texcompress_astc_state           *texcompress;
+
+    /* for flush_astc_ldr_void_extent_denorms */
+    simple_mtx_t mutex;
+    VkDescriptorSetLayout ds_layout;
+    VkPipelineLayout pipeline_layout;
+    VkPipeline pipeline;
 };
 
 struct anv_device {
@@ -1533,7 +1580,7 @@ struct anv_device {
     struct anv_state_pool                       scratch_surface_state_pool;
     struct anv_state_pool                       internal_surface_state_pool;
     struct anv_state_pool                       bindless_surface_state_pool;
-    struct anv_state_pool                       push_descriptor_pool;
+    struct anv_state_pool                       indirect_push_descriptor_pool;
 
     struct anv_state_reserved_pool              custom_border_colors;
 
@@ -1673,7 +1720,7 @@ struct anv_device {
      */
     bool                                         using_sparse;
 
-    struct vk_texcompress_astc_state           *texcompress_astc;
+    struct anv_device_astc_emu                   astc_emu;
 };
 
 static inline uint32_t
@@ -2444,7 +2491,7 @@ uint32_t
 anv_descriptor_set_layout_descriptor_buffer_size(const struct anv_descriptor_set_layout *set_layout,
                                                  uint32_t var_desc_count);
 
-void
+bool
 anv_push_descriptor_set_init(struct anv_cmd_buffer *cmd_buffer,
                              struct anv_push_descriptor_set *push_set,
                              struct anv_descriptor_set_layout *layout);
@@ -2702,10 +2749,11 @@ anv_buffer_is_sparse(struct anv_buffer *buffer)
 enum anv_cmd_dirty_bits {
    ANV_CMD_DIRTY_PIPELINE                            = 1 << 0,
    ANV_CMD_DIRTY_INDEX_BUFFER                        = 1 << 1,
-   ANV_CMD_DIRTY_RENDER_TARGETS                      = 1 << 2,
-   ANV_CMD_DIRTY_XFB_ENABLE                          = 1 << 3,
-   ANV_CMD_DIRTY_RESTART_INDEX                       = 1 << 4,
-   ANV_CMD_DIRTY_OCCLUSION_QUERY_ACTIVE              = 1 << 5,
+   ANV_CMD_DIRTY_RENDER_AREA                         = 1 << 2,
+   ANV_CMD_DIRTY_RENDER_TARGETS                      = 1 << 3,
+   ANV_CMD_DIRTY_XFB_ENABLE                          = 1 << 4,
+   ANV_CMD_DIRTY_RESTART_INDEX                       = 1 << 5,
+   ANV_CMD_DIRTY_OCCLUSION_QUERY_ACTIVE              = 1 << 6,
 };
 typedef enum anv_cmd_dirty_bits anv_cmd_dirty_mask_t;
 
@@ -3550,7 +3598,7 @@ struct anv_cmd_buffer {
    struct anv_state_stream                      surface_state_stream;
    struct anv_state_stream                      dynamic_state_stream;
    struct anv_state_stream                      general_state_stream;
-   struct anv_state_stream                      push_descriptor_stream;
+   struct anv_state_stream                      indirect_push_descriptor_stream;
 
    VkCommandBufferUsageFlags                    usage_flags;
 
@@ -3585,32 +3633,43 @@ struct anv_cmd_buffer {
     */
    uint32_t                                     total_batch_size;
 
-   /** Batch generating part of the anv_cmd_buffer::batch */
-   struct anv_batch                             generation_batch;
+   struct {
+      /** Batch generating part of the anv_cmd_buffer::batch */
+      struct anv_batch                          batch;
 
-   /**
-    * Location in anv_cmd_buffer::batch at which we left some space to insert
-    * a MI_BATCH_BUFFER_START into the generation_batch if needed.
-    */
-   struct anv_address                           generation_jump_addr;
+      /**
+       * Location in anv_cmd_buffer::batch at which we left some space to
+       * insert a MI_BATCH_BUFFER_START into the
+       * anv_cmd_buffer::generation::batch if needed.
+       */
+      struct anv_address                        jump_addr;
 
-   /**
-    * Location in anv_cmd_buffer::batch at which the generation batch should
-    * jump back to.
-    */
-   struct anv_address                           generation_return_addr;
+      /**
+       * Location in anv_cmd_buffer::batch at which the generation batch
+       * should jump back to.
+       */
+      struct anv_address                        return_addr;
 
-   /** List of anv_batch_bo used for generation
-    *
-    * We have to keep this separated of the anv_cmd_buffer::batch_bos that is
-    * used for a chaining optimization.
-    */
-   struct list_head                             generation_batch_bos;
+      /** List of anv_batch_bo used for generation
+       *
+       * We have to keep this separated of the anv_cmd_buffer::batch_bos that
+       * is used for a chaining optimization.
+       */
+      struct list_head                          batch_bos;
 
-   /**
-    * State tracking of the generation shader.
-    */
-   struct anv_simple_shader                     generation_shader_state;
+      /** Ring buffer of generated commands
+       *
+       * When generating draws in ring mode, this buffer will hold generated
+       * 3DPRIMITIVE commands.
+       */
+      struct anv_bo                            *ring_bo;
+
+      /**
+       * State tracking of the generation shader (only used for the non-ring
+       * mode).
+       */
+      struct anv_simple_shader                  shader_state;
+   } generation;
 
    /**
     * A vector of anv_bo pointers for chunks of memory used by the command
@@ -3730,9 +3789,13 @@ struct anv_state
 anv_cmd_buffer_alloc_binding_table(struct anv_cmd_buffer *cmd_buffer,
                                    uint32_t entries, uint32_t *state_offset);
 struct anv_state
-anv_cmd_buffer_alloc_surface_state(struct anv_cmd_buffer *cmd_buffer);
+anv_cmd_buffer_alloc_surface_states(struct anv_cmd_buffer *cmd_buffer,
+                                    uint32_t count);
 struct anv_state
 anv_cmd_buffer_alloc_dynamic_state(struct anv_cmd_buffer *cmd_buffer,
+                                   uint32_t size, uint32_t alignment);
+struct anv_state
+anv_cmd_buffer_alloc_general_state(struct anv_cmd_buffer *cmd_buffer,
                                    uint32_t size, uint32_t alignment);
 
 void
@@ -4487,13 +4550,27 @@ bool anv_formats_ccs_e_compatible(const struct intel_device_info *devinfo,
 extern VkFormat
 vk_format_from_android(unsigned android_format, unsigned android_usage);
 
+static inline VkFormat
+anv_get_emulation_format(const struct anv_physical_device *pdevice, VkFormat format)
+{
+   if (pdevice->flush_astc_ldr_void_extent_denorms) {
+      const struct util_format_description *desc =
+         vk_format_description(format);
+      if (desc->layout == UTIL_FORMAT_LAYOUT_ASTC &&
+          desc->colorspace == UTIL_FORMAT_COLORSPACE_RGB)
+         return format;
+   }
+
+   if (pdevice->emu_astc_ldr)
+      return vk_texcompress_astc_emulation_format(format);
+
+   return VK_FORMAT_UNDEFINED;
+}
+
 static inline bool
 anv_is_format_emulated(const struct anv_physical_device *pdevice, VkFormat format)
 {
-   if (pdevice->emu_astc_ldr &&
-       vk_texcompress_astc_emulation_format(format) != VK_FORMAT_UNDEFINED)
-      return true;
-   return false;
+   return anv_get_emulation_format(pdevice, format) != VK_FORMAT_UNDEFINED;
 }
 
 static inline struct isl_swizzle
@@ -4608,7 +4685,7 @@ struct anv_image {
 
    /**
     * If not UNDEFINED, image has a hidden plane at planes[n_planes] for ASTC
-    * LDR emulation.
+    * LDR workaround or emulation.
     */
    VkFormat emu_plane_format;
 
@@ -4656,6 +4733,9 @@ struct anv_image {
       enum isl_aux_usage aux_usage;
 
       struct anv_surface aux_surface;
+
+      /** Location of the compression control surface.  */
+      struct anv_image_memory_range compr_ctrl_memory_range;
 
       /** Location of the fast clear state.  */
       struct anv_image_memory_range fast_clear_memory_range;
@@ -4834,6 +4914,16 @@ anv_image_get_compression_state_addr(const struct anv_device *device,
       offset);
 }
 
+static inline const struct anv_image_memory_range *
+anv_image_get_aux_memory_range(const struct anv_image *image,
+                               uint32_t plane)
+{
+   if (image->planes[plane].aux_surface.memory_range.size > 0)
+     return &image->planes[plane].aux_surface.memory_range;
+   else
+     return &image->planes[plane].compr_ctrl_memory_range;
+}
+
 /* Returns true if a HiZ-enabled depth buffer can be sampled from. */
 static inline bool
 anv_can_sample_with_hiz(const struct intel_device_info * const devinfo,
@@ -4890,6 +4980,35 @@ anv_image_plane_uses_aux_map(const struct anv_device *device,
 {
    return device->info->has_aux_map &&
       isl_aux_usage_has_ccs(image->planes[plane].aux_usage);
+}
+
+static inline bool
+anv_image_uses_aux_map(const struct anv_device *device,
+                       const struct anv_image *image)
+{
+   for (uint32_t p = 0; p < image->n_planes; ++p) {
+      if (anv_image_plane_uses_aux_map(device, image, p))
+         return true;
+   }
+
+   return false;
+}
+
+static inline bool
+anv_bo_allows_aux_map(const struct anv_device *device,
+                      const struct anv_bo *bo)
+{
+   if (device->aux_map_ctx == NULL)
+      return false;
+
+   /* Technically, we really only care about what offset the image is bound
+    * into on the BO, but we don't have that information here. As a heuristic,
+    * rely on the BO offset instead.
+    */
+   if (bo->offset % intel_aux_map_get_alignment(device->aux_map_ctx) != 0)
+      return false;
+
+   return true;
 }
 
 void
@@ -5362,12 +5481,12 @@ void anv_device_finish_internal_kernels(struct anv_device *device);
 
 VkResult anv_device_init_astc_emu(struct anv_device *device);
 void anv_device_finish_astc_emu(struct anv_device *device);
-void anv_astc_emu_decompress(struct anv_cmd_buffer *cmd_buffer,
-                             struct anv_image *image,
-                             VkImageLayout layout,
-                             const VkImageSubresourceLayers *subresource,
-                             VkOffset3D block_offset,
-                             VkExtent3D block_extent);
+void anv_astc_emu_process(struct anv_cmd_buffer *cmd_buffer,
+                          struct anv_image *image,
+                          VkImageLayout layout,
+                          const VkImageSubresourceLayers *subresource,
+                          VkOffset3D block_offset,
+                          VkExtent3D block_extent);
 
 /* This structure is used in 2 scenarios :
  *

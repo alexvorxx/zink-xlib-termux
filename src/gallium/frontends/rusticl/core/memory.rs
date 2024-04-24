@@ -451,13 +451,14 @@ impl Mem {
         let b = self.to_parent(&mut offset);
         let r = b.get_res()?.get(&q.device).unwrap();
 
-        Ok(ctx.buffer_map(
+        ctx.buffer_map(
             r,
             offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
             size.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
             rw,
             ResourceMapType::Normal,
-        ))
+        )
+        .ok_or(CL_OUT_OF_RESOURCES)
     }
 
     fn tx_raw_async(
@@ -492,7 +493,9 @@ impl Mem {
                 .screen()
                 .resource_create_buffer(size as u32, ResourceType::Staging)
                 .ok_or(CL_OUT_OF_RESOURCES)?;
-            let tx = ctx.buffer_map_coherent(&shadow, 0, size, rw);
+            let tx = ctx
+                .buffer_map_coherent(&shadow, 0, size, rw)
+                .ok_or(CL_OUT_OF_RESOURCES)?;
             Ok((tx, Some(shadow)))
         }
     }
@@ -518,7 +521,8 @@ impl Mem {
         assert!(!self.is_buffer());
 
         let r = self.get_res()?.get(&q.device).unwrap();
-        Ok(ctx.texture_map(r, bx, rw, ResourceMapType::Normal))
+        ctx.texture_map(r, bx, rw, ResourceMapType::Normal)
+            .ok_or(CL_OUT_OF_RESOURCES)
     }
 
     fn tx_image_raw_async(
@@ -555,7 +559,9 @@ impl Mem {
                     false,
                 )
                 .ok_or(CL_OUT_OF_RESOURCES)?;
-            let tx = ctx.texture_map_coherent(&shadow, bx, rw);
+            let tx = ctx
+                .texture_map_coherent(&shadow, bx, rw)
+                .ok_or(CL_OUT_OF_RESOURCES)?;
             Ok((tx, Some(shadow)))
         }
     }
@@ -1230,6 +1236,19 @@ impl Mem {
         lock.clean_up_tx(q.device, ctx);
 
         Ok(())
+    }
+
+    pub fn pipe_image_host_access(&self) -> u16 {
+        // those flags are all mutually exclusive
+        (if bit_check(self.flags, CL_MEM_HOST_READ_ONLY) {
+            PIPE_IMAGE_ACCESS_READ
+        } else if bit_check(self.flags, CL_MEM_HOST_WRITE_ONLY) {
+            PIPE_IMAGE_ACCESS_WRITE
+        } else if bit_check(self.flags, CL_MEM_HOST_NO_ACCESS) {
+            0
+        } else {
+            PIPE_IMAGE_ACCESS_READ_WRITE
+        }) as u16
     }
 }
 

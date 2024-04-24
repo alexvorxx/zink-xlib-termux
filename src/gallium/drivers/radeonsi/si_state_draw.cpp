@@ -14,6 +14,8 @@
 #include "util/u_prim.h"
 #include "util/u_upload_mgr.h"
 #include "ac_rtld.h"
+#include "si_build_pm4.h"
+#include "si_tracepoints.h"
 
 #if (GFX_VER == 6)
 #define GFX(name) name##GFX6
@@ -29,6 +31,8 @@
 #define GFX(name) name##GFX10_3
 #elif (GFX_VER == 11)
 #define GFX(name) name##GFX11
+#elif (GFX_VER == 115)
+#define GFX(name) name##GFX11_5
 #else
 #error "Unknown gfx level"
 #endif
@@ -551,6 +555,9 @@ void si_cp_dma_prefetch(struct si_context *sctx, struct pipe_resource *buf,
       break;
    case GFX11:
       si_cp_dma_prefetch_inline<GFX11>(sctx, address, size);
+      break;
+   case GFX11_5:
+      si_cp_dma_prefetch_inline<GFX11_5>(sctx, address, size);
       break;
    default:
       break;
@@ -1680,6 +1687,9 @@ void si_set_vertex_buffer_descriptor(struct si_screen *sscreen, struct si_vertex
    case GFX11:
       si_set_vb_descriptor<GFX11>(velems, vb, element_index, out);
       break;
+   case GFX11_5:
+      si_set_vb_descriptor<GFX11_5>(velems, vb, element_index, out);
+      break;
    default:
       unreachable("unhandled gfx level");
    }
@@ -1985,6 +1995,9 @@ static void si_draw(struct pipe_context *ctx,
 
    si_need_gfx_cs_space(sctx, num_draws);
 
+   if (u_trace_perfetto_active(&sctx->ds.trace_context))
+      trace_si_begin_draw(&sctx->trace);
+   
    unsigned instance_count = info->instance_count;
 
    /* GFX6-GFX7 treat instance_count==0 as instance_count==1. There is
@@ -2294,6 +2307,10 @@ static void si_draw(struct pipe_context *ctx,
    if (sctx->framebuffer.state.zsbuf) {
       struct si_texture *zstex = (struct si_texture *)sctx->framebuffer.state.zsbuf->texture;
       zstex->depth_cleared_level_mask &= ~BITFIELD_BIT(sctx->framebuffer.state.zsbuf->u.tex.level);
+   }
+
+   if (u_trace_perfetto_active(&sctx->ds.trace_context)) {
+      trace_si_end_draw(&sctx->trace, total_direct_count);
    }
 
    DRAW_CLEANUP;

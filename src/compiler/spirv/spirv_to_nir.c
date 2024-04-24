@@ -3045,6 +3045,10 @@ vtn_handle_texture(struct vtn_builder *b, SpvOp opcode,
    case nir_texop_lod_bias_agx:
       vtn_fail("unexpected nir_texop_lod_bias_agx");
       break;
+   case nir_texop_hdr_dim_nv:
+   case nir_texop_tex_type_nv:
+      vtn_fail("unexpected nir_texop_*_nv");
+      break;
    }
 
    unsigned idx = 4;
@@ -4540,8 +4544,8 @@ vertices_in_from_spv_execution_mode(struct vtn_builder *b,
    }
 }
 
-static gl_shader_stage
-stage_for_execution_model(struct vtn_builder *b, SpvExecutionModel model)
+gl_shader_stage
+vtn_stage_for_execution_model(SpvExecutionModel model)
 {
    switch (model) {
    case SpvExecutionModelVertex:
@@ -4577,8 +4581,7 @@ stage_for_execution_model(struct vtn_builder *b, SpvExecutionModel model)
    case SpvExecutionModelMeshEXT:
       return MESA_SHADER_MESH;
    default:
-      vtn_fail("Unsupported execution model: %s (%u)",
-               spirv_executionmodel_to_string(model), model);
+      return MESA_SHADER_NONE;
    }
 }
 
@@ -4598,8 +4601,12 @@ vtn_handle_entry_point(struct vtn_builder *b, const uint32_t *w,
    unsigned name_words;
    entry_point->name = vtn_string_literal(b, &w[3], count - 3, &name_words);
 
+   gl_shader_stage stage = vtn_stage_for_execution_model(w[1]);  
+   vtn_fail_if(stage == MESA_SHADER_NONE,
+               "Unsupported execution model: %s (%u)",
+               spirv_executionmodel_to_string(w[1]), w[1]);
    if (strcmp(entry_point->name, b->entry_point_name) != 0 ||
-       stage_for_execution_model(b, w[1]) != b->entry_point_stage)
+       stage != b->entry_point_stage)
       return;
 
    vtn_assert(b->entry_point == NULL);
@@ -5989,7 +5996,7 @@ vtn_handle_write_packed_primitive_indices(struct vtn_builder *b, SpvOp opcode,
 
    if (!indices) {
       unsigned vertices_per_prim =
-         num_mesh_vertices_per_primitive(b->shader->info.mesh.primitive_type);
+         mesa_vertices_per_prim(b->shader->info.mesh.primitive_type);
       unsigned max_prim_indices =
          vertices_per_prim * b->shader->info.mesh.max_primitives_out;
       const struct glsl_type *t =

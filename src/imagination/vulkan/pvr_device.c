@@ -141,14 +141,16 @@ struct pvr_drm_device_config {
 /* This is the list of supported DRM render/display driver configs. */
 static const struct pvr_drm_device_config pvr_drm_configs[] = {
    DEF_CONFIG("mediatek,mt8173-gpu", "mediatek-drm"),
-   DEF_CONFIG("ti,am62-gpu", "ti,am65x-dss"),
+   DEF_CONFIG("ti,am62-gpu", "ti,am625-dss"),
 };
 
 #undef DEF_CONFIG
 
 static const struct vk_instance_extension_table pvr_instance_extensions = {
    .KHR_display = PVR_USE_WSI_PLATFORM_DISPLAY,
+   .KHR_external_fence_capabilities = true,
    .KHR_external_memory_capabilities = true,
+   .KHR_external_semaphore_capabilities = true,
    .KHR_get_display_properties2 = PVR_USE_WSI_PLATFORM_DISPLAY,
    .KHR_get_physical_device_properties2 = true,
    .KHR_get_surface_capabilities2 = PVR_USE_WSI_PLATFORM,
@@ -161,6 +163,7 @@ static void pvr_physical_device_get_supported_extensions(
    struct vk_device_extension_table *extensions)
 {
    *extensions = (struct vk_device_extension_table){
+      .KHR_bind_memory2 = true,
       .KHR_copy_commands2 = true,
       /* TODO: enable this extension when the conformance tests get
        * updated to version 1.3.6.0, the current version does not
@@ -168,14 +171,23 @@ static void pvr_physical_device_get_supported_extensions(
        * test fail
        */
       .KHR_driver_properties = false,
+      .KHR_external_fence = true,
+      .KHR_external_fence_fd = true,
       .KHR_external_memory = true,
       .KHR_external_memory_fd = true,
       .KHR_format_feature_flags2 = true,
+      .KHR_external_semaphore = PVR_USE_WSI_PLATFORM,
+      .KHR_external_semaphore_fd = PVR_USE_WSI_PLATFORM,
       .KHR_get_memory_requirements2 = true,
+      .KHR_image_format_list = true,
       .KHR_swapchain = PVR_USE_WSI_PLATFORM,
       .KHR_timeline_semaphore = true,
+      .KHR_uniform_buffer_standard_layout = true,
       .EXT_external_memory_dma_buf = true,
+      .EXT_host_query_reset = true,
       .EXT_private_data = true,
+      .EXT_scalar_block_layout = true,
+      .EXT_texel_buffer_alignment = true,
       .EXT_tooling_info = true,
    };
 }
@@ -245,8 +257,21 @@ static void pvr_physical_device_get_supported_features(
       /* Vulkan 1.2 / VK_KHR_timeline_semaphore */
       .timelineSemaphore = true,
 
+      /* Vulkan 1.2 / VK_KHR_uniform_buffer_standard_layout */
+      .uniformBufferStandardLayout = true,
+
+      /* Vulkan 1.2 / VK_EXT_host_query_reset */
+      .hostQueryReset = true,
+
       /* Vulkan 1.3 / VK_EXT_private_data */
       .privateData = true,
+
+      /* Vulkan 1.2 / VK_EXT_scalar_block_layout */
+      .scalarBlockLayout = true,
+
+      /* Vulkan 1.3 / VK_EXT_texel_buffer_alignment */
+      .texelBufferAlignment = true,
+
    };
 }
 

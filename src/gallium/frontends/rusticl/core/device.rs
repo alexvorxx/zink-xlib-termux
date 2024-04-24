@@ -68,7 +68,7 @@ pub trait HelperContextWrapper {
         offset: i32,
         size: i32,
         rw: RWFlags,
-    ) -> PipeTransfer;
+    ) -> Option<PipeTransfer>;
 
     fn texture_map_directly(
         &self,
@@ -77,7 +77,12 @@ pub trait HelperContextWrapper {
         rw: RWFlags,
     ) -> Option<PipeTransfer>;
 
-    fn texture_map_coherent(&self, res: &PipeResource, bx: &pipe_box, rw: RWFlags) -> PipeTransfer;
+    fn texture_map_coherent(
+        &self,
+        res: &PipeResource,
+        bx: &pipe_box,
+        rw: RWFlags,
+    ) -> Option<PipeTransfer>;
 
     fn create_compute_state(&self, nir: &NirShader, static_local_mem: u32) -> *mut c_void;
     fn delete_compute_state(&self, cso: *mut c_void);
@@ -140,7 +145,7 @@ impl<'a> HelperContextWrapper for HelperContext<'a> {
         offset: i32,
         size: i32,
         rw: RWFlags,
-    ) -> PipeTransfer {
+    ) -> Option<PipeTransfer> {
         self.lock
             .buffer_map(res, offset, size, rw, ResourceMapType::Coherent)
     }
@@ -154,7 +159,12 @@ impl<'a> HelperContextWrapper for HelperContext<'a> {
         self.lock.texture_map_directly(res, bx, rw)
     }
 
-    fn texture_map_coherent(&self, res: &PipeResource, bx: &pipe_box, rw: RWFlags) -> PipeTransfer {
+    fn texture_map_coherent(
+        &self,
+        res: &PipeResource,
+        bx: &pipe_box,
+        rw: RWFlags,
+    ) -> Option<PipeTransfer> {
         self.lock
             .texture_map(res, bx, rw, ResourceMapType::Coherent)
     }
@@ -252,6 +262,16 @@ impl Device {
         for f in FORMATS {
             let mut fs = HashMap::new();
             for t in CL_IMAGE_TYPES {
+                // the CTS doesn't test them, so let's not advertize them by accident if they are
+                // broken
+                if t == CL_MEM_OBJECT_IMAGE1D_BUFFER
+                    && [CL_RGB, CL_RGBx].contains(&f.cl_image_format.image_channel_order)
+                    && ![CL_UNORM_SHORT_565, CL_UNORM_SHORT_555]
+                        .contains(&f.cl_image_format.image_channel_data_type)
+                {
+                    continue;
+                }
+
                 let mut flags: cl_uint = 0;
                 if self.screen.is_format_supported(
                     f.pipe,
@@ -624,9 +644,17 @@ impl Device {
 
     pub fn const_max_size(&self) -> cl_ulong {
         min(
-            self.max_mem_alloc(),
-            self.screen
-                .param(pipe_cap::PIPE_CAP_MAX_SHADER_BUFFER_SIZE_UINT) as u64,
+            // Needed to fix the `api min_max_constant_buffer_size` CL CTS test as it can't really
+            // handle arbitrary values here. We might want to reconsider later and figure out how to
+            // advertize higher values without tripping of the test.
+            // should be at least 1 << 16 (native UBO size on NVidia)
+            // advertising more just in case it benefits other hardware
+            1 << 26,
+            min(
+                self.max_mem_alloc(),
+                self.screen
+                    .param(pipe_cap::PIPE_CAP_MAX_SHADER_BUFFER_SIZE_UINT) as u64,
+            ),
         )
     }
 
@@ -740,8 +768,12 @@ impl Device {
     }
 
     pub fn image_buffer_size(&self) -> usize {
-        self.screen
-            .param(pipe_cap::PIPE_CAP_MAX_TEXEL_BUFFER_ELEMENTS_UINT) as usize
+        min(
+            // the CTS requires it to not exceed `CL_MAX_MEM_ALLOC_SIZE`
+            self.max_mem_alloc(),
+            self.screen
+                .param(pipe_cap::PIPE_CAP_MAX_TEXEL_BUFFER_ELEMENTS_UINT) as cl_ulong,
+        ) as usize
     }
 
     pub fn image_read_count(&self) -> cl_uint {
@@ -842,7 +874,7 @@ impl Device {
     pub fn param_max_size(&self) -> usize {
         min(
             self.shader_param(pipe_shader_cap::PIPE_SHADER_CAP_MAX_CONST_BUFFER0_SIZE) as u32,
-            32 * 1024,
+            4 * 1024,
         ) as usize
     }
 

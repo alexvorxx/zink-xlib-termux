@@ -1947,17 +1947,18 @@ wsi_configure_buffer_image(UNUSED const struct wsi_swapchain *chain,
 
    const uint32_t cpp = vk_format_get_blocksize(pCreateInfo->imageFormat);
    info->linear_stride = pCreateInfo->imageExtent.width * cpp;
-   info->linear_stride = ALIGN_POT(info->linear_stride, stride_align);
+   info->linear_stride = align(info->linear_stride, stride_align);
 
    /* Since we can pick the stride to be whatever we want, also align to the
     * device's optimalBufferCopyRowPitchAlignment so we get efficient copies.
     */
    assert(wsi->optimalBufferCopyRowPitchAlignment > 0);
-   info->linear_stride = ALIGN_POT(info->linear_stride,
-                                   wsi->optimalBufferCopyRowPitchAlignment);
+   info->linear_stride = align(info->linear_stride,
+                               wsi->optimalBufferCopyRowPitchAlignment);
 
-   info->linear_size = info->linear_stride * pCreateInfo->imageExtent.height;
-   info->linear_size = ALIGN_POT(info->linear_size, size_align);
+   info->linear_size = (uint64_t)info->linear_stride *
+                       pCreateInfo->imageExtent.height;
+   info->linear_size = align64(info->linear_size, size_align);
 
    info->finish_create = wsi_finish_create_blit_context;
 }
@@ -2116,4 +2117,15 @@ wsi_WaitForPresentKHR(VkDevice device, VkSwapchainKHR _swapchain,
    VK_FROM_HANDLE(wsi_swapchain, swapchain, _swapchain);
    assert(swapchain->wait_for_present);
    return swapchain->wait_for_present(swapchain, presentId, timeout);
+}
+
+VkImageUsageFlags
+wsi_caps_get_image_usage(void)
+{
+   return VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+          VK_IMAGE_USAGE_SAMPLED_BIT |
+          VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+          VK_IMAGE_USAGE_STORAGE_BIT |
+          VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+          VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
 }

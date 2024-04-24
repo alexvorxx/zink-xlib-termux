@@ -119,6 +119,7 @@ nvk_physical_device_spirv_options(const struct nvk_physical_device *pdev,
          .tessellation = true,
          .transform_feedback = true,
          .variable_pointers = true,
+         .workgroup_memory_explicit_layout = true,
       },
       .ssbo_addr_format = nvk_buffer_addr_format(rs->storage_buffers),
       .phys_ssbo_addr_format = nir_address_format_64bit_global,
@@ -1305,4 +1306,15 @@ nvk_shader_upload(struct nvk_device *dev, struct nvk_shader *shader)
    free(data);
 
    return result;
+}
+
+void
+nvk_shader_finish(struct nvk_device *dev, struct nvk_shader *shader)
+{
+   if (shader->upload_size > 0) {
+      nvk_heap_free(dev, &dev->shader_heap,
+                    shader->upload_addr,
+                    shader->upload_size);
+   }
+   free(shader->xfb);
 }

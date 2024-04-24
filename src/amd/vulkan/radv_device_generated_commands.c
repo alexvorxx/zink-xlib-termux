@@ -140,9 +140,9 @@ radv_get_sequence_size(const struct radv_indirect_command_layout *layout, struct
 }
 
 static uint32_t
-radv_align_cmdbuf_size(const struct radv_device *device, uint32_t size)
+radv_align_cmdbuf_size(const struct radv_device *device, uint32_t size, enum amd_ip_type ip_type)
 {
-   const uint32_t ib_alignment = device->physical_device->rad_info.ib_alignment;
+   const uint32_t ib_alignment = device->physical_device->rad_info.ip[ip_type].ib_alignment;
 
    return align(size, ib_alignment);
 }
@@ -150,7 +150,7 @@ radv_align_cmdbuf_size(const struct radv_device *device, uint32_t size)
 static unsigned
 radv_dgc_preamble_cmdbuf_size(const struct radv_device *device)
 {
-   return radv_align_cmdbuf_size(device, 16);
+   return radv_align_cmdbuf_size(device, 16, AMD_IP_GFX);
 }
 
 static bool
@@ -173,7 +173,7 @@ radv_get_indirect_cmdbuf_size(const VkGeneratedCommandsInfoNV *cmd_info)
 
    uint32_t cmd_size, upload_size;
    radv_get_sequence_size(layout, pipeline, &cmd_size, &upload_size);
-   return radv_align_cmdbuf_size(device, cmd_size * cmd_info->sequencesCount);
+   return radv_align_cmdbuf_size(device, cmd_size * cmd_info->sequencesCount, AMD_IP_GFX);
 }
 
 struct radv_dgc_params {
@@ -474,7 +474,7 @@ dgc_cmd_buf_size(nir_builder *b, nir_def *sequence_count, const struct radv_devi
    nir_def *cmd_buf_size = load_param32(b, cmd_buf_size);
    nir_def *cmd_buf_stride = load_param32(b, cmd_buf_stride);
    nir_def *size = nir_imul(b, cmd_buf_stride, sequence_count);
-   unsigned align_mask = radv_align_cmdbuf_size(device, 1) - 1;
+   unsigned align_mask = radv_align_cmdbuf_size(device, 1, AMD_IP_GFX) - 1;
 
    size = nir_iand_imm(b, nir_iadd_imm(b, size, align_mask), ~align_mask);
 
@@ -1337,6 +1337,30 @@ radv_CreateIndirectCommandsLayoutNV(VkDevice _device, const VkIndirectCommandsLa
    if (!layout->indexed)
       layout->binds_index_buffer = false;
 
+   layout->use_preprocess = pCreateInfo->flags & VK_INDIRECT_COMMANDS_LAYOUT_USAGE_EXPLICIT_PREPROCESS_BIT_NV;
+
+   /* From the Vulkan spec (1.3.269, chapter 32):
+    * "The bound descriptor sets and push constants that will be used with indirect command generation for the compute
+    * piplines must already be specified at the time of preprocessing commands with vkCmdPreprocessGeneratedCommandsNV.
+    * They must not change until the execution of indirect commands is submitted with vkCmdExecuteGeneratedCommandsNV."
+    *
+    * So we can always preprocess compute layouts.
+    */
+   if (layout->pipeline_bind_point != VK_PIPELINE_BIND_POINT_COMPUTE) {
+      /* We embed the index buffer extent in indirect draw packets, but that isn't available at preprocess time. */
+      if (layout->indexed && !layout->binds_index_buffer)
+         layout->use_preprocess = false;
+
+      /* VBO binding (in particular partial VBO binding) uses some draw state which we don't generate at preprocess time
+       * yet. */
+      if (layout->bind_vbo_mask)
+         layout->use_preprocess = false;
+
+      /* In preprocess we use the non-overridden push constants from the draw state for now. */
+      if (layout->push_constant_mask)
+         layout->use_preprocess = false;
+   }
+
    *pIndirectCommandsLayout = radv_indirect_command_layout_to_handle(layout);
    return VK_SUCCESS;
 }
@@ -1367,22 +1391,57 @@ radv_GetGeneratedCommandsMemoryRequirementsNV(VkDevice _device,
    uint32_t cmd_stride, upload_stride;
    radv_get_sequence_size(layout, pipeline, &cmd_stride, &upload_stride);
 
-   VkDeviceSize cmd_buf_size =
-      radv_align_cmdbuf_size(device, cmd_stride * pInfo->maxSequencesCount) + radv_dgc_preamble_cmdbuf_size(device);
+   VkDeviceSize cmd_buf_size = radv_align_cmdbuf_size(device, cmd_stride * pInfo->maxSequencesCount, AMD_IP_GFX) +
+                               radv_dgc_preamble_cmdbuf_size(device);
    VkDeviceSize upload_buf_size = upload_stride * pInfo->maxSequencesCount;
 
    pMemoryRequirements->memoryRequirements.memoryTypeBits = device->physical_device->memory_types_32bit;
-   pMemoryRequirements->memoryRequirements.alignment = device->physical_device->rad_info.ib_alignment;
+   pMemoryRequirements->memoryRequirements.alignment =
+      MAX2(device->physical_device->rad_info.ip[AMD_IP_GFX].ib_alignment,
+           device->physical_device->rad_info.ip[AMD_IP_COMPUTE].ib_alignment);
    pMemoryRequirements->memoryRequirements.size =
       align(cmd_buf_size + upload_buf_size, pMemoryRequirements->memoryRequirements.alignment);
+}
+
+bool
+radv_use_dgc_predication(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsInfoNV *pGeneratedCommandsInfo)
+{
+   VK_FROM_HANDLE(radv_buffer, seq_count_buffer, pGeneratedCommandsInfo->sequencesCountBuffer);
+
+   /* Enable conditional rendering (if not enabled by user) to skip prepare/execute DGC calls when
+    * the indirect sequence count might be zero. This can only be enabled on GFX because on ACE it's
+    * not possible to skip the execute DGC call (ie. no INDIRECT_PACKET)
+    */
+   return cmd_buffer->qf == RADV_QUEUE_GENERAL && seq_count_buffer && !cmd_buffer->state.predicating;
 }
 
 VKAPI_ATTR void VKAPI_CALL
 radv_CmdPreprocessGeneratedCommandsNV(VkCommandBuffer commandBuffer,
                                       const VkGeneratedCommandsInfoNV *pGeneratedCommandsInfo)
 {
-   /* Can't do anything here as we depend on some dynamic state in some cases that we only know
-    * at draw time. */
+   VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(radv_indirect_command_layout, layout, pGeneratedCommandsInfo->indirectCommandsLayout);
+
+   if (!layout->use_preprocess)
+      return;
+
+   const bool use_predication = radv_use_dgc_predication(cmd_buffer, pGeneratedCommandsInfo);
+
+   if (use_predication) {
+      VK_FROM_HANDLE(radv_buffer, seq_count_buffer, pGeneratedCommandsInfo->sequencesCountBuffer);
+      const uint64_t va = radv_buffer_get_va(seq_count_buffer->bo) + seq_count_buffer->offset +
+                          pGeneratedCommandsInfo->sequencesCountOffset;
+
+      radv_begin_conditional_rendering(cmd_buffer, va, true);
+      cmd_buffer->state.predicating = true;
+   }
+
+   radv_prepare_dgc(cmd_buffer, pGeneratedCommandsInfo);
+
+   if (use_predication) {
+      cmd_buffer->state.predicating = false;
+      radv_end_conditional_rendering(cmd_buffer);
+   }
 }
 
 /* Always need to call this directly before draw due to dependence on bound state. */
@@ -1506,7 +1565,7 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
    radv_get_sequence_size(layout, pipeline, &cmd_stride, &upload_stride);
 
    unsigned cmd_buf_size =
-      radv_align_cmdbuf_size(cmd_buffer->device, cmd_stride * pGeneratedCommandsInfo->sequencesCount);
+      radv_align_cmdbuf_size(cmd_buffer->device, cmd_stride * pGeneratedCommandsInfo->sequencesCount, AMD_IP_GFX);
 
    uint64_t upload_addr =
       radv_buffer_get_va(prep_buffer->bo) + prep_buffer->offset + pGeneratedCommandsInfo->preprocessOffset;
@@ -1656,8 +1715,6 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
 
    radv_buffer_finish(&token_buffer);
    radv_meta_restore(&saved_state, cmd_buffer);
-
-   cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_INV_VCACHE | RADV_CMD_FLAG_INV_L2;
 }
 
 /* VK_NV_device_generated_commands_compute */

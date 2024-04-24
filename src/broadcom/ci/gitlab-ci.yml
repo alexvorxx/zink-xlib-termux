@@ -15,6 +15,7 @@
 .vc4-rules:
   stage: broadcom
   rules:
+    - !reference [.never-post-merge-rules, rules]
     - !reference [.igalia-farm-rules, rules]
     - !reference [.gl-rules, rules]
     - !reference [.broadcom-common-rules, rules]
@@ -28,6 +29,7 @@
 .v3d-rules:
   stage: broadcom
   rules:
+    - !reference [.never-post-merge-rules, rules]
     - !reference [.igalia-farm-rules, rules]
     - !reference [.gl-rules, rules]
     - !reference [.broadcom-common-rules, rules]
@@ -42,6 +44,7 @@
   stage: broadcom
   retry: !reference [.scheduled_pipeline-rules, retry]
   rules:
+    - !reference [.never-post-merge-rules, rules]
     - !reference [.igalia-farm-manual-rules, rules]
     - !reference [.gl-manual-rules, rules]
     - changes:
@@ -54,6 +57,7 @@
 .v3dv-rules:
   stage: broadcom
   rules:
+    - !reference [.never-post-merge-rules, rules]
     - !reference [.igalia-farm-rules, rules]
     - !reference [.vulkan-rules, rules]
     - changes:
@@ -67,6 +71,7 @@
   variables:
     HWCI_TEST_SCRIPT: "/install/deqp-runner.sh"
     FLAKES_CHANNEL: "#videocore-ci"
+  timeout: 20m
 
 .broadcom-test:arm64:
   extends:
@@ -88,7 +93,6 @@ vc4-rpi3-gl:arm32:
     - .vc4-rules
   tags:
     - igalia-rpi3
-  timeout: 30m  # standard run time between 8 and 10 minutes
   parallel: 4
   variables:
     GPU_VERSION: broadcom-rpi3
@@ -96,13 +100,12 @@ vc4-rpi3-gl:arm32:
     DEQP_SUITE: broadcom-rpi3
     HWCI_START_WESTON: 1
 
-v3d-rpi4-gl:arm32:
+v3d-rpi4-gl:arm64:
   extends:
-    - .broadcom-test:arm32
+    - .broadcom-test:arm64
     - .v3d-rules
   tags:
     - igalia-rpi4
-  timeout: 30m  # standard run time between 8 and 11 minutes
   parallel: 10
   variables:
     GPU_VERSION: broadcom-rpi4
@@ -116,7 +119,6 @@ v3d-rpi4-traces:arm64:
     - .piglit-traces-test
     - .broadcom-test:arm64
     - .v3d-rules
-  timeout: 30m  # standard run time between 5 and 8 minutes
   variables:
     GPU_VERSION: broadcom-rpi4
     HWCI_KERNEL_MODULES: v3d,vc4
@@ -132,7 +134,6 @@ v3dv-rpi4-vk:arm64:
     - .broadcom-test:arm64
     - .v3dv-rules
   parallel: 10
-  timeout: 30m  # standard run time between 9 and 13 minutes
   variables:
     HWCI_TEST_SCRIPT: "/install/deqp-runner.sh"
     DEQP_EXPECTED_RENDERER: "V3D.4.2"

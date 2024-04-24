@@ -138,19 +138,24 @@ include:
 # YAML anchors for rule conditions
 # --------------------------------
 .rules-anchors:
+  # Post-merge pipeline
+  - &is-post-merge '$CI_PROJECT_NAMESPACE == "mesa" && $CI_COMMIT_BRANCH'
+  # Post-merge pipeline after Marge has merged an MR
+  - &is-post-merge-for-marge '$CI_PROJECT_NAMESPACE == "mesa" && $CI_COMMIT_BRANCH && $GITLAB_USER_LOGIN != "marge-bot"'
+  # Post-merge pipeline, not for Marge Bot
+  - &is-post-merge-not-for-marge '$CI_PROJECT_NAMESPACE == "mesa" && $GITLAB_USER_LOGIN != "marge-bot" && $CI_COMMIT_BRANCH'
+  # Pre-merge pipeline
+  - &is-pre-merge '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  # Pre-merge pipeline for Marge Bot
+  - &is-pre-merge-for-marge '$GITLAB_USER_LOGIN == "marge-bot" && $CI_PIPELINE_SOURCE == "merge_request_event"'
+  # Pre-merge pipeline *not* for Marge Bot
+  - &is-pre-merge-not-for-marge '$GITLAB_USER_LOGIN != "marge-bot" && $CI_PIPELINE_SOURCE == "merge_request_event"'
+
+
+.never-post-merge-rules:
   rules:
-    # Post-merge pipeline
-    - if: &is-post-merge '$CI_PROJECT_NAMESPACE == "mesa" && $CI_COMMIT_BRANCH'
-      when: on_success
-    # Post-merge pipeline, not for Marge Bot
-    - if: &is-post-merge-not-for-marge '$CI_PROJECT_NAMESPACE == "mesa" && $GITLAB_USER_LOGIN != "marge-bot" && $CI_COMMIT_BRANCH'
-      when: on_success
-    # Pre-merge pipeline
-    - if: &is-pre-merge '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      when: on_success
-    # Pre-merge pipeline for Marge Bot
-    - if: &is-pre-merge-for-marge '$GITLAB_USER_LOGIN == "marge-bot" && $CI_PIPELINE_SOURCE == "merge_request_event"'
-      when: on_success
+    - if: *is-post-merge-for-marge
+      when: never
 
 
 .container+build-rules:
@@ -238,7 +243,7 @@ sanity:
     - .fdo.ci-fairy
   stage: sanity
   rules:
-    - if: *is-pre-merge
+    - if: *is-pre-merge-not-for-marge
       when: on_success
     # Other cases default to never
   variables:

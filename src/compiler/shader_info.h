@@ -227,7 +227,7 @@ typedef struct shader_info {
    BITSET_DECLARE(msaa_images, 64);
 
    /* SPV_KHR_float_controls: execution mode for floating point ops */
-   uint16_t float_controls_execution_mode;
+   uint32_t float_controls_execution_mode;
 
    /**
     * Size of shared variables accessed by compute/task/mesh shaders.
@@ -588,7 +588,7 @@ typedef struct shader_info {
 
          uint16_t max_vertices_out;
          uint16_t max_primitives_out;
-         uint16_t primitive_type;  /* GL_POINTS, GL_LINES or GL_TRIANGLES. */
+         enum mesa_prim primitive_type;  /* GL_POINTS, GL_LINES or GL_TRIANGLES. */
 
          /* TODO: remove this when we stop supporting NV_mesh_shader. */
          bool nv;

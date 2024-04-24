@@ -281,8 +281,13 @@ i915_finalize_nir(struct pipe_screen *pscreen, void *nir)
    nir_sweep(s);
 
    char *msg = i915_check_control_flow(s);
-   if (msg)
+   if (msg) {
+      if (I915_DBG_ON(DBG_FS) && (!s->info.internal || NIR_DEBUG(PRINT_INTERNAL))) {
+         mesa_logi("failing shader:");
+         nir_log_shaderi(s);
+      }
       return strdup(msg);
+   }
 
    if (s->info.stage == MESA_SHADER_FRAGMENT)
       return i915_test_fragment_shader_compile(pscreen, s);
@@ -376,7 +381,6 @@ i915_get_shader_param(struct pipe_screen *screen, enum pipe_shader_type shader,
       case PIPE_SHADER_CAP_MAX_TEXTURE_SAMPLERS:
       case PIPE_SHADER_CAP_MAX_SAMPLER_VIEWS:
          return I915_TEX_UNITS;
-      case PIPE_SHADER_CAP_DROUND_SUPPORTED:
       case PIPE_SHADER_CAP_TGSI_ANY_INOUT_DECL_RANGE:
       case PIPE_SHADER_CAP_MAX_SHADER_BUFFERS:
       case PIPE_SHADER_CAP_MAX_SHADER_IMAGES:

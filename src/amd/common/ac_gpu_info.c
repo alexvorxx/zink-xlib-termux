@@ -59,6 +59,7 @@
 #define AMDGPU_INFO_VIDEO_CAPS_DECODE 0
 #define AMDGPU_INFO_VIDEO_CAPS_ENCODE 1
 #define AMDGPU_INFO_FW_GFX_MEC 0x08
+#define AMDGPU_INFO_MAX_IBS 0x22
 
 #define AMDGPU_VRAM_TYPE_UNKNOWN 0
 #define AMDGPU_VRAM_TYPE_GDDR1 1
@@ -677,24 +678,32 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
             info->ip[AMD_IP_GFX].ver_minor = info->ip[AMD_IP_COMPUTE].ver_minor = 3;
       }
       info->ip[ip_type].num_queues = util_bitcount(ip_info.available_rings);
-      info->ib_alignment = MAX3(info->ib_alignment, ip_info.ib_start_alignment,
-                                ip_info.ib_size_alignment);
+
+      /* According to the kernel, only SDMA and VPE require 256B alignment, but use it
+       * for all queues because the kernel reports wrong limits for some of the queues.
+       * This is only space allocation alignment, so it's OK to keep it like this even
+       * when it's greater than what the queues require.
+       */
+      info->ip[ip_type].ib_alignment = MAX3(ip_info.ib_start_alignment,
+                                            ip_info.ib_size_alignment, 256);
    }
+
+   /* Set dword padding minus 1. */
+   info->ip[AMD_IP_GFX].ib_pad_dw_mask = 0x7;
+   info->ip[AMD_IP_COMPUTE].ib_pad_dw_mask = 0x7;
+   info->ip[AMD_IP_SDMA].ib_pad_dw_mask = 0xf;
+   info->ip[AMD_IP_UVD].ib_pad_dw_mask = 0xf;
+   info->ip[AMD_IP_VCE].ib_pad_dw_mask = 0x3f;
+   info->ip[AMD_IP_UVD_ENC].ib_pad_dw_mask = 0x3f;
+   info->ip[AMD_IP_VCN_DEC].ib_pad_dw_mask = 0xf;
+   info->ip[AMD_IP_VCN_ENC].ib_pad_dw_mask = 0x3f;
+   info->ip[AMD_IP_VCN_JPEG].ib_pad_dw_mask = 0xf;
 
    /* Only require gfx or compute. */
    if (!info->ip[AMD_IP_GFX].num_queues && !info->ip[AMD_IP_COMPUTE].num_queues) {
       fprintf(stderr, "amdgpu: failed to find gfx or compute.\n");
       return false;
    }
-
-   assert(util_is_power_of_two_or_zero(info->ip[AMD_IP_COMPUTE].num_queues));
-   assert(util_is_power_of_two_or_zero(info->ip[AMD_IP_SDMA].num_queues));
-
-   /* The kernel pads gfx and compute IBs to 256 dwords since:
-    *   66f3b2d527154bd258a57c8815004b5964aa1cf5
-    * Do the same.
-    */
-   info->ib_alignment = MAX2(info->ib_alignment, 1024);
 
    r = amdgpu_query_firmware_version(dev, AMDGPU_INFO_FW_GFX_ME, 0, 0, &info->me_fw_version,
                                      &info->me_fw_feature);
@@ -845,9 +854,14 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
          identify_chip(GFX1103_R1);
          identify_chip(GFX1103_R2);
          break;
+      case FAMILY_GFX1150:
+         identify_chip(GFX1150);
+         break;
       }
 
-      if (info->ip[AMD_IP_GFX].ver_major == 11)
+      if (info->ip[AMD_IP_GFX].ver_major == 11 && info->ip[AMD_IP_GFX].ver_minor == 5)
+         info->gfx_level = GFX11_5;
+      else if (info->ip[AMD_IP_GFX].ver_major == 11)
          info->gfx_level = GFX11;
       else if (info->ip[AMD_IP_GFX].ver_major == 10 && info->ip[AMD_IP_GFX].ver_minor == 3)
          info->gfx_level = GFX10_3;
@@ -956,6 +970,9 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
       case VCN_IP_VERSION(4, 0, 4):
          info->vcn_ip_version = VCN_4_0_4;
          break;
+      case VCN_IP_VERSION(4, 0, 5):
+         info->vcn_ip_version = VCN_4_0_5;
+         break;
       default:
          info->vcn_ip_version = VCN_UNKNOWN;
       }
@@ -1005,7 +1022,10 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
    info->has_sparse_vm_mappings = info->gfx_level >= GFX7;
    info->has_scheduled_fence_dependency = info->drm_minor >= 28;
    info->has_gang_submit = info->drm_minor >= 49;
-   info->register_shadowing_required = device_info.ids_flags & AMDGPU_IDS_FLAGS_PREEMPTION;
+   info->has_gpuvm_fault_query = info->drm_minor >= 55;
+   /* WARNING: Register shadowing decreases performance by up to 50% on GFX11 with current FW. */
+   info->register_shadowing_required = device_info.ids_flags & AMDGPU_IDS_FLAGS_PREEMPTION &&
+                                       info->gfx_level < GFX11;
    info->has_tmz_support = has_tmz_support(dev, info, device_info.ids_flags);
    info->kernel_has_modifiers = has_modifiers(fd);
    info->uses_kernel_cu_mask = false; /* Not implemented in the kernel. */
@@ -1132,17 +1152,6 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
    info->lds_encode_granularity = info->gfx_level >= GFX7 ? 128 * 4 : 64 * 4;
    info->lds_alloc_granularity = info->gfx_level >= GFX10_3 ? 256 * 4 : info->lds_encode_granularity;
 
-   /* This is "align_mask" copied from the kernel, maximums of all IP versions. */
-   info->ib_pad_dw_mask[AMD_IP_GFX] = 0xff;
-   info->ib_pad_dw_mask[AMD_IP_COMPUTE] = 0xff;
-   info->ib_pad_dw_mask[AMD_IP_SDMA] = 0xf;
-   info->ib_pad_dw_mask[AMD_IP_UVD] = 0xf;
-   info->ib_pad_dw_mask[AMD_IP_VCE] = 0x3f;
-   info->ib_pad_dw_mask[AMD_IP_UVD_ENC] = 0x3f;
-   info->ib_pad_dw_mask[AMD_IP_VCN_DEC] = 0xf;
-   info->ib_pad_dw_mask[AMD_IP_VCN_ENC] = 0x3f;
-   info->ib_pad_dw_mask[AMD_IP_VCN_JPEG] = 0xf;
-
    /* The mere presence of CLEAR_STATE in the IB causes random GPU hangs
     * on GFX6. Some CLEAR_STATE cause asic hang on radeon kernel, etc.
     * SPI_VS_OUT_CONFIG. So only enable GFX7 CLEAR_STATE on amdgpu kernel.
@@ -1260,6 +1269,12 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
    info->has_set_pairs_packets = info->gfx_level >= GFX11 &&
                                  info->register_shadowing_required &&
                                  info->has_dedicated_vram;
+
+   /* GFX6-8 SDMA can't ignore page faults on unmapped sparse resources. */
+   info->sdma_supports_sparse = info->gfx_level >= GFX9;
+
+   /* GFX10+ SDMA supports DCC and HTILE, but Navi 10 has issues with it according to PAL. */
+   info->sdma_supports_compression = info->gfx_level >= GFX10 && info->family != CHIP_NAVI10;
 
    /* Get the number of good compute units. */
    info->num_cu = 0;
@@ -1520,18 +1535,24 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
     * (ie. some initial setup needed for a submit) and the packet size.
     * It can be calculated according to the kernel source code as:
     * (ring->max_dw - emit_frame_size) / emit_ib_size
-    *
-    * The numbers we chose here is a rough estimate that should
-    * work well (as of kernel 6.3).
     */
-   memset(info->max_submitted_ibs, 50, AMD_NUM_IP_TYPES);
-   info->max_submitted_ibs[AMD_IP_GFX] = info->gfx_level >= GFX7 ? 192 : 144;
-   info->max_submitted_ibs[AMD_IP_COMPUTE] = 124;
-   info->max_submitted_ibs[AMD_IP_VCN_JPEG] = 16;
-   for (unsigned i = 0; i < AMD_NUM_IP_TYPES; ++i) {
-      /* Clear out max submitted IB count for IPs that have no queues. */
-      if (!info->ip[i].num_queues)
-         info->max_submitted_ibs[i] = 0;
+   r = amdgpu_query_info(dev, AMDGPU_INFO_MAX_IBS,
+                         sizeof(info->max_submitted_ibs), info->max_submitted_ibs);
+   if (r) {
+      /* When the number of IBs can't be queried from the kernel, we choose a
+       * rough estimate that should work well (as of kernel 6.3).
+       */
+      for (unsigned i = 0; i < AMD_NUM_IP_TYPES; ++i)
+         info->max_submitted_ibs[i] = 50;
+
+      info->max_submitted_ibs[AMD_IP_GFX] = info->gfx_level >= GFX7 ? 192 : 144;
+      info->max_submitted_ibs[AMD_IP_COMPUTE] = 124;
+      info->max_submitted_ibs[AMD_IP_VCN_JPEG] = 16;
+      for (unsigned i = 0; i < AMD_NUM_IP_TYPES; ++i) {
+         /* Clear out max submitted IB count for IPs that have no queues. */
+         if (!info->ip[i].num_queues)
+            info->max_submitted_ibs[i] = 0;
+      }
    }
 
    if (info->gfx_level >= GFX11) {
@@ -1584,7 +1605,7 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
          }
 
          ac_parse_ib(stdout, ib, size / 4, NULL, 0, "IB", info->gfx_level, info->family,
-                     NULL, NULL);
+                     AMD_IP_GFX, NULL, NULL);
          free(ib);
          exit(0);
       }
@@ -1681,8 +1702,9 @@ void ac_print_gpu_info(const struct radeon_info *info, FILE *f)
 
    for (unsigned i = 0; i < AMD_NUM_IP_TYPES; i++) {
       if (info->ip[i].num_queues) {
-         fprintf(f, "    IP %-7s %2u.%u \tqueues:%u\n", ip_string[i],
-                 info->ip[i].ver_major, info->ip[i].ver_minor, info->ip[i].num_queues);
+         fprintf(f, "    IP %-7s %2u.%u \tqueues:%u \talign:%u \tpad_dw:0x%x\n", ip_string[i],
+                 info->ip[i].ver_major, info->ip[i].ver_minor, info->ip[i].num_queues,
+                 info->ip[i].ib_alignment, info->ip[i].ib_pad_dw_mask);
       }
    }
 
@@ -1756,7 +1778,6 @@ void ac_print_gpu_info(const struct radeon_info *info, FILE *f)
 
    fprintf(f, "CP info:\n");
    fprintf(f, "    gfx_ib_pad_with_type2 = %i\n", info->gfx_ib_pad_with_type2);
-   fprintf(f, "    ib_alignment = %u\n", info->ib_alignment);
    fprintf(f, "    me_fw_version = %i\n", info->me_fw_version);
    fprintf(f, "    me_fw_feature = %i\n", info->me_fw_feature);
    fprintf(f, "    mec_fw_version = %i\n", info->mec_fw_version);
@@ -1791,6 +1812,7 @@ void ac_print_gpu_info(const struct radeon_info *info, FILE *f)
    fprintf(f, "    has_stable_pstate = %u\n", info->has_stable_pstate);
    fprintf(f, "    has_scheduled_fence_dependency = %u\n", info->has_scheduled_fence_dependency);
    fprintf(f, "    has_gang_submit = %u\n", info->has_gang_submit);
+   fprintf(f, "    has_gpuvm_fault_query = %u\n", info->has_gpuvm_fault_query);
    fprintf(f, "    register_shadowing_required = %u\n", info->register_shadowing_required);
    fprintf(f, "    has_fw_based_shadowing = %u\n", info->has_fw_based_shadowing);
    if (info->has_fw_based_shadowing) {

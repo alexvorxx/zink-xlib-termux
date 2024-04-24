@@ -101,6 +101,9 @@ enum intel_platform {
 #define intel_device_info_is_mtl(devinfo) \
    intel_platform_in_range((devinfo)->platform, MTL)
 
+#define intel_device_info_is_adln(devinfo) \
+   (devinfo->is_adl_n == true)
+
 struct intel_memory_class_instance {
    /* Kernel backend specific class value, no translation needed yet */
    uint16_t klass;
@@ -201,6 +204,11 @@ struct intel_device_info
     * fragment shader instructions.
     */
    bool needs_unlit_centroid_workaround;
+
+   /**
+    * We need this for ADL-N specific Wa_14014966230.
+    */
+   bool is_adl_n;
    /** @} */
 
    /**

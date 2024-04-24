@@ -798,7 +798,7 @@ registry_handle_global(void *data, struct wl_registry *registry,
    if (strcmp(interface, wp_presentation_interface.name) == 0) {
       display->wp_presentation_notwrapped =
          wl_registry_bind(registry, name, &wp_presentation_interface, 1);
-   } else if (strcmp(interface, wp_tearing_control_v1_interface.name) == 0) {
+   } else if (strcmp(interface, wp_tearing_control_manager_v1_interface.name) == 0) {
       display->tearing_control_manager =
          wl_registry_bind(registry, name, &wp_tearing_control_manager_v1_interface, 1);
    }
@@ -1084,13 +1084,7 @@ wsi_wl_surface_get_capabilities(VkIcdSurfaceBase *surface,
       VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR |
       VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
 
-   caps->supportedUsageFlags =
-      VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-      VK_IMAGE_USAGE_SAMPLED_BIT |
-      VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-      VK_IMAGE_USAGE_STORAGE_BIT |
-      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-      VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+   caps->supportedUsageFlags = wsi_caps_get_image_usage();
 
    VK_FROM_HANDLE(vk_physical_device, pdevice, wsi_device->pdevice);
    if (pdevice->supported_extensions.EXT_attachment_feedback_loop_layout)

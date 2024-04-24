@@ -153,6 +153,9 @@ _eglAddDRMDevice(drmDevicePtr device)
 
 /* Finds a device in DeviceList, for the given fd.
  *
+ * The fd must be of a render-capable device, as there are only render-capable
+ * devices in DeviceList.
+ *
  * If a software device, the fd is ignored.
  */
 _EGLDevice *
@@ -182,9 +185,15 @@ _eglFindDevice(int fd, bool software)
 
       if (_eglDeviceSupports(dev, _EGL_DEVICE_DRM) &&
           drmDevicesEqual(device, dev->device) != 0) {
-         goto out;
+         goto cleanup_drm;
       }
    }
+
+   /* Couldn't find an EGLDevice for the device. */
+   dev = NULL;
+
+cleanup_drm:
+   drmFreeDevice(&device);
 
 #else
    _eglLog(_EGL_FATAL,

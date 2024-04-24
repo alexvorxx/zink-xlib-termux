@@ -338,8 +338,6 @@ disk_cache_init(struct zink_screen *screen)
       disk_cache_destroy(screen->disk_cache);
       screen->disk_cache = NULL;
 
-      util_queue_destroy(&screen->cache_put_thread);
-
       return false;
    }
 #endif
@@ -704,7 +702,6 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return screen->info.have_NV_compute_shader_derivatives;
 
    case PIPE_CAP_INT64:
-   case PIPE_CAP_INT64_DIVMOD:
    case PIPE_CAP_DOUBLES:
       return 1;
 
@@ -1266,9 +1263,6 @@ zink_get_shader_param(struct pipe_screen *pscreen,
                        screen->info.props.limits.maxPerStageDescriptorSampledImages),
                   PIPE_MAX_SAMPLERS);
 
-   case PIPE_SHADER_CAP_DROUND_SUPPORTED:
-      return 0; /* not implemented */
-
    case PIPE_SHADER_CAP_TGSI_ANY_INOUT_DECL_RANGE:
       return 0; /* no idea */
 
@@ -1493,9 +1487,7 @@ zink_destroy_screen(struct pipe_screen *pscreen)
 
    hash_table_foreach(&screen->dts, entry)
       zink_kopper_deinit_displaytarget(screen, entry->data);
-   simple_mtx_destroy(&screen->dt_lock);
 
-   simple_mtx_destroy(&screen->copy_context_lock);
    if (screen->copy_context)
       screen->copy_context->base.destroy(&screen->copy_context->base);
 
@@ -1513,13 +1505,16 @@ zink_destroy_screen(struct pipe_screen *pscreen)
 
    util_vertex_state_cache_deinit(&screen->vertex_state_cache);
 
-   VKSCR(DestroyPipelineLayout)(screen->dev, screen->gfx_push_constant_layout, NULL);
+   if (screen->gfx_push_constant_layout)
+      VKSCR(DestroyPipelineLayout)(screen->dev, screen->gfx_push_constant_layout, NULL);
 
    u_transfer_helper_destroy(pscreen->transfer_helper);
-   util_queue_finish(&screen->cache_get_thread);
-   util_queue_destroy(&screen->cache_get_thread);
+   if (util_queue_is_initialized(&screen->cache_get_thread)) {
+      util_queue_finish(&screen->cache_get_thread);
+      util_queue_destroy(&screen->cache_get_thread);
+   }
 #ifdef ENABLE_SHADER_CACHE
-   if (screen->disk_cache) {
+   if (screen->disk_cache && util_queue_is_initialized(&screen->cache_put_thread)) {
       util_queue_finish(&screen->cache_put_thread);
       disk_cache_wait_for_idle(screen->disk_cache);
       util_queue_destroy(&screen->cache_put_thread);
@@ -1527,10 +1522,10 @@ zink_destroy_screen(struct pipe_screen *pscreen)
 #endif
    disk_cache_destroy(screen->disk_cache);
 
+   /* we don't have an API to check if a set is already initialized */
    for (unsigned i = 0; i < ARRAY_SIZE(screen->pipeline_libs); i++)
-      _mesa_set_clear(&screen->pipeline_libs[i], NULL);
-   for (unsigned i = 0; i < ARRAY_SIZE(screen->pipeline_libs_lock); i++)
-      simple_mtx_destroy(&screen->pipeline_libs_lock[i]);
+      if (screen->pipeline_libs[i].table)
+         _mesa_set_clear(&screen->pipeline_libs[i], NULL);
 
    zink_bo_deinit(screen);
    util_live_shader_cache_deinit(&screen->shaders);
@@ -1546,10 +1541,9 @@ zink_destroy_screen(struct pipe_screen *pscreen)
    if (screen->fence)
       VKSCR(DestroyFence)(screen->dev, screen->fence, NULL);
 
-   if (screen->threaded_submit)
+   if (util_queue_is_initialized(&screen->flush_queue))
       util_queue_destroy(&screen->flush_queue);
 
-   simple_mtx_destroy(&screen->semaphores_lock);
    while (util_dynarray_contains(&screen->semaphores, VkSemaphore))
       VKSCR(DestroySemaphore)(screen->dev, util_dynarray_pop(&screen->semaphores, VkSemaphore), NULL);
    while (util_dynarray_contains(&screen->fd_semaphores, VkSemaphore))
@@ -1557,11 +1551,9 @@ zink_destroy_screen(struct pipe_screen *pscreen)
    if (screen->bindless_layout)
       VKSCR(DestroyDescriptorSetLayout)(screen->dev, screen->bindless_layout, NULL);
 
-   if (zink_debug & ZINK_DEBUG_MEM)
-      simple_mtx_destroy(&screen->debug_mem_lock);
+   if (screen->dev)
+      VKSCR(DestroyDevice)(screen->dev, NULL);
 
-   simple_mtx_destroy(&screen->queue_lock);
-   VKSCR(DestroyDevice)(screen->dev, NULL);
    VKSCR(DestroyInstance)(screen->instance, NULL);
    util_idalloc_mt_fini(&screen->buffer_ids);
 
@@ -3035,6 +3027,15 @@ init_driver_workarounds(struct zink_screen *screen)
       break;
    }
 
+   /* these drivers can successfully do INVALID <-> LINEAR dri3 modifier swap */
+   switch (screen->info.driver_props.driverID) {
+   case VK_DRIVER_ID_MESA_TURNIP:
+      screen->driver_workarounds.can_do_invalid_linear_modifier = true;
+      break;
+   default:
+      break;
+   }
+
    /* these drivers have no difference between unoptimized and optimized shader compilation */
    switch (screen->info.driver_props.driverID) {
    case VK_DRIVER_ID_MESA_LLVMPIPE:
@@ -3269,6 +3270,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
       return NULL;
    }
 
+   glsl_type_singleton_init_or_ref();
    zink_debug = debug_get_option_zink_debug();
    if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_AUTO)
       zink_descriptor_mode = debug_get_option_zink_descriptor_mode();
@@ -3663,7 +3665,6 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
                                 zink_create_vertex_state, zink_vertex_state_destroy);
    screen->base.create_vertex_state = zink_cache_create_vertex_state;
    screen->base.vertex_state_destroy = zink_cache_vertex_state_destroy;
-   glsl_type_singleton_init_or_ref();
 
    zink_synchronization_init(screen);
 
@@ -3692,12 +3693,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
    return screen;
 
 fail:
-   if (screen->loader_lib)
-      util_dl_close(screen->loader_lib);
-   if (screen->threaded_submit)
-      util_queue_destroy(&screen->flush_queue);
-
-   ralloc_free(screen);
+   zink_destroy_screen(&screen->base);
    return NULL;
 }
 

@@ -12,6 +12,7 @@
 #include "util/u_log.h"
 #include "util/u_upload_mgr.h"
 #include "ac_debug.h"
+#include "si_utrace.h"
 
 void si_flush_gfx_cs(struct si_context *ctx, unsigned flags, struct pipe_fence_handle **fence)
 {
@@ -129,8 +130,18 @@ void si_flush_gfx_cs(struct si_context *ctx, unsigned flags, struct pipe_fence_h
    if (ctx->is_noop)
       flags |= RADEON_FLUSH_NOOP;
 
+   uint64_t start_ts = 0, submission_id = 0;
+   if (u_trace_perfetto_active(&ctx->ds.trace_context)) {
+      start_ts = si_ds_begin_submit(&ctx->ds_queue);
+      submission_id = ctx->ds_queue.submission_id;
+   }
+
    /* Flush the CS. */
    ws->cs_flush(cs, flags, &ctx->last_gfx_fence);
+
+   if (u_trace_perfetto_active(&ctx->ds.trace_context) && start_ts > 0) {
+      si_ds_end_submit(&ctx->ds_queue, start_ts);
+   }
 
    tc_driver_internal_flush_notify(ctx->tc);
    if (fence)
@@ -154,6 +165,9 @@ void si_flush_gfx_cs(struct si_context *ctx, unsigned flags, struct pipe_fence_h
 
    if (ctx->current_saved_cs)
       si_saved_cs_reference(&ctx->current_saved_cs, NULL);
+
+   if (u_trace_perfetto_active(&ctx->ds.trace_context))
+      si_utrace_flush(ctx, submission_id);
 
    si_begin_new_gfx_cs(ctx, false);
    ctx->gfx_flush_in_progress = false;
@@ -351,6 +365,11 @@ static void si_draw_vstate_tmz_preamble(struct pipe_context *ctx,
 void si_begin_new_gfx_cs(struct si_context *ctx, bool first_cs)
 {
    bool is_secure = false;
+
+   if (!first_cs)
+      u_trace_fini(&ctx->trace);
+
+   u_trace_init(&ctx->trace, &ctx->ds.trace_context);
 
    if (unlikely(radeon_uses_secure_bos(ctx->ws))) {
       is_secure = ctx->ws->cs_is_secure(&ctx->gfx_cs);
@@ -588,6 +607,15 @@ void si_trace_emit(struct si_context *sctx)
 
    if (sctx->log)
       u_log_flush(sctx->log);
+}
+
+/* timestamp logging for u_trace: */
+void si_emit_ts(struct si_context *sctx, struct si_resource* buffer, unsigned int offset)
+{
+   struct radeon_cmdbuf *cs = &sctx->gfx_cs;
+   uint64_t va = buffer->gpu_address + offset;
+   si_cp_release_mem(sctx, cs, V_028A90_BOTTOM_OF_PIPE_TS, 0, EOP_DST_SEL_MEM, EOP_INT_SEL_NONE,
+                        EOP_DATA_SEL_TIMESTAMP, buffer, va, 0, PIPE_QUERY_TIMESTAMP);
 }
 
 void si_emit_surface_sync(struct si_context *sctx, struct radeon_cmdbuf *cs, unsigned cp_coher_cntl)

@@ -30,13 +30,12 @@
 #include <limits.h>
 #include <math.h>
 #include "util/half_float.h"
+#include "util/macros.h"
 #include "util/u_math.h"
 #include "util/u_qsort.h"
 #include "nir_builder.h"
 #include "nir_control_flow_private.h"
 #include "nir_worklist.h"
-
-#include "main/menums.h" /* BITFIELD64_MASK */
 
 #ifndef NDEBUG
 uint32_t nir_debug = 0;
@@ -1636,6 +1635,25 @@ nir_def_components_read(const nir_def *def)
    return read_mask;
 }
 
+bool
+nir_def_all_uses_are_fsat(const nir_def *def)
+{
+   nir_foreach_use(src, def) {
+      if (nir_src_is_if(src))
+         return false;
+
+      nir_instr *use = nir_src_parent_instr(src);
+      if (use->type != nir_instr_type_alu)
+         return false;
+
+      nir_alu_instr *alu = nir_instr_as_alu(use);
+      if (alu->op != nir_op_fsat)
+         return false;
+   }
+
+   return true;
+}
+
 nir_block *
 nir_block_unstructured_next(nir_block *block)
 {
@@ -3066,6 +3084,10 @@ nir_tex_instr_result_size(const nir_tex_instr *instr)
       return instr->sampler_dim == GLSL_SAMPLER_DIM_BUF ? 4 : 8;
 
    case nir_texop_sampler_descriptor_amd:
+      return 4;
+
+   case nir_texop_hdr_dim_nv:
+   case nir_texop_tex_type_nv:
       return 4;
 
    default:

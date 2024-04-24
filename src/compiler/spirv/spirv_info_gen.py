@@ -34,16 +34,16 @@ def collect_data(spirv, kind):
             operands = x
             break
 
-    # There are some duplicate values in some of the tables (thanks guys!), so
-    # filter them out.
-    seen = set()
-    values = []
+    values = {}
     for x in operands["enumerants"]:
-        if x["value"] not in seen:
-            seen.add(x["value"])
-            values.append(x["enumerant"])
+        name = x["enumerant"]
+        val = x["value"]
+        if val not in values:
+            values[val] = [name]
+        else:
+            values[val].append(name)
 
-    return (kind, values, operands["category"])
+    return (kind, list(values.values()), operands["category"])
 
 def collect_opcodes(spirv):
     seen = set()
@@ -56,7 +56,7 @@ def collect_opcodes(spirv):
         opcode = x["opcode"]
         name = x["opname"]
         assert name.startswith("Op")
-        values.append(name[2:])
+        values.append([name[2:]])
         seen.add(opcode)
 
     return ("Op", values, None)
@@ -101,11 +101,11 @@ const char *
 spirv_${kind.lower()}_to_string(Spv${kind}Mask v)
 {
    switch (v) {
-    % for name in values:
-    %if name != "None":
-   case Spv${kind}${name}Mask: return "Spv${kind}${name}";
+    % for names in values:
+    %if names[0] != "None":
+   case Spv${kind}${names[0]}Mask: return "Spv${kind}${names[0]}";
     % else:
-   case Spv${kind}MaskNone: return "Spv${kind}${name}";
+   case Spv${kind}MaskNone: return "Spv${kind}${names[0]}";
     % endif
     % endfor
    }
@@ -117,8 +117,8 @@ const char *
 spirv_${kind.lower()}_to_string(Spv${kind} v)
 {
    switch (v) {
-    % for name in values:
-   case Spv${kind}${name}: return "Spv${kind}${name}";
+    % for names in values:
+   case Spv${kind}${names[0]}: return "Spv${kind}${names[0]}";
     % endfor
    case Spv${kind}Max: break; /* silence warnings about unhandled enums. */
    }

@@ -8,6 +8,7 @@
 #include "glsl_types.h"
 #include "nir_serialize.h"
 #include "spirv/nir_spirv.h"
+#include "spirv/spirv_info.h"
 
 #include "pipe/p_context.h"
 #include "pipe/p_defines.h"

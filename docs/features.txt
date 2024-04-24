@@ -48,7 +48,7 @@ GL 3.0, GLSL 1.30 --- all DONE: freedreno, nv50, nvc0, r600, radeonsi, llvmpipe,
   GL_ARB_depth_buffer_float (Float depth buffers)       DONE (v3d)
   GL_ARB_framebuffer_object (Framebuffer objects)       DONE (v3d, vc4, etnaviv)
   GL_ARB_half_float_pixel                               DONE (all drivers)
-  GL_ARB_half_float_vertex                              DONE (v3d, vc4, lima)
+  GL_ARB_half_float_vertex                              DONE (v3d, vc4, lima, etnaviv)
   GL_EXT_texture_integer                                DONE (v3d)
   GL_EXT_texture_array                                  DONE (v3d, etnaviv/HALTI0)
   GL_EXT_draw_buffers2 (Per-buffer blend and masks)     DONE (v3d)
@@ -61,10 +61,10 @@ GL 3.0, GLSL 1.30 --- all DONE: freedreno, nv50, nvc0, r600, radeonsi, llvmpipe,
   glGetStringi command                                  DONE
   glTexParameterI, glGetTexParameterI commands          DONE
   glVertexAttribI commands                              DONE
-  Depth format cube textures                            DONE ()
+  Depth format cube textures                            DONE (v3d)
   GLX_ARB_create_context (GLX 1.4 is required)          DONE (v3d, vc4)
-  Multisample anti-aliasing                             DONE (freedreno/a5xx+, freedreno (*), llvmpipe (*), softpipe (*)))
-  8 draw buffers                                        DONE (panfrost/t760+)
+  Multisample anti-aliasing                             DONE (freedreno/a5xx+, freedreno (*), llvmpipe (*), softpipe (*)), v3d)
+  8 draw buffers                                        DONE (panfrost/t760+, v3d/vc7+)
 
 (*) freedreno (a2xx-a4xx), llvmpipe, and softpipe have fake Multisample anti-aliasing support
 
@@ -75,9 +75,9 @@ GL 3.1, GLSL 1.40 --- all DONE: freedreno, nv50, nvc0, r600, radeonsi, llvmpipe,
   GL_ARB_draw_instanced (Instanced drawing)             DONE (etnaviv/HALTI2, v3d, crocus)
   GL_ARB_copy_buffer (Buffer copying)                   DONE (v3d, vc4, lima, crocus)
   GL_NV_primitive_restart (Primitive restart)           DONE (v3d, crocus)
-  16 vertex texture image units                         DONE ()
+  16 vertex texture image units                         DONE (v3d)
   GL_ARB_texture_buffer_object (Texture buffer objs)    DONE (v3d)
-  GL_ARB_texture_rectangle (Rectangular textures)       DONE (v3d, vc4, lima, crocus)
+  GL_ARB_texture_rectangle (Rectangular textures)       DONE (v3d, vc4, lima, crocus, etnaviv)
   GL_ARB_uniform_buffer_object (Uniform buffer objs)    DONE (v3d, crocus)
   GL_EXT_texture_snorm (Signed normalized textures)     DONE (v3d, crocus)
 
@@ -850,7 +850,7 @@ Rusticl OpenCL 1.2 -- all DONE:
   clEnqueueMarkerWithWaitList                           DONE
   clEnqueueBarrierWithWaitList                          DONE
   clUnloadPlatformCompiler                              DONE
-  cl_khr_fp64                                           in progress (iris, llvmpipe, nvc0, radeonsi, Available with environment variable RUSTICL_FEATURES=fp64, device dependent.)
+  cl_khr_fp64                                           in progress (iris, llvmpipe, nvc0, radeonsi, zink, Available with environment variable RUSTICL_FEATURES=fp64, device dependent.)
   printf                                                DONE
   CL_KERNEL_ATTRIBUTES for clGetKernelInfo              DONE
   OpenCL C 1.2                                          DONE
@@ -870,7 +870,7 @@ Rusticl OpenCL 2.0 -- all DONE:
   - from sRGB images                                    in progress
   clCreateSamplerWithProperties                         DONE
   Non-uniform work-group sizes                          not started
-  cl_khr_3d_image_writes                                DONE (iris, llvmpipe, nvc0, panfrost, radeonsi)
+  cl_khr_3d_image_writes                                DONE (iris, llvmpipe, nvc0, panfrost, radeonsi, zink)
   OpenCL C 2.0                                          in progress
   - Work-group Collective Functions                     not started
   - Generic address space                               in progress
@@ -881,7 +881,7 @@ Rusticl OpenCL 2.1 -- all DONE:
   Sub groups                                            DONE (iris, llvmpipe, radeonsi)
   - cl_khr_subgroups                                    in progress
   cl_khr_il_program                                     DONE
-  Device and host timer synchronization                 DONE (iris, llvmpipe, radeonsi)
+  Device and host timer synchronization                 DONE (iris, llvmpipe, radeonsi, zink)
   clEnqueueSVMMigrateMem                                in progress (nvc0/gp100, broken)
   clCloneKernel                                         DONE
   Default device command queue                          not started
@@ -915,13 +915,13 @@ Rusticl extensions that are not part of any OpenCL version:
   cl_khr_async_copy_fence                               not started
   cl_khr_async_work_group_copy_fence                    not started
   cl_khr_device_enqueue_local_arg_types                 not started
-  cl_khr_device_uuid                                    DONE (iris, llvmpipe, radeonsi)
+  cl_khr_device_uuid                                    DONE (iris, llvmpipe, radeonsi, zink)
   cl_khr_egl_event                                      not started
   cl_khr_egl_image                                      not started
   cl_khr_expect_assume                                  in progress (hints are ignored)
   cl_khr_extended_async_copies                          not started
   cl_khr_extended_bit_ops                               in progress
-  cl_khr_fp16                                           in progress (llvmpipe, radeonsi, Available with environment variable RUSTICL_FEATURES=fp16)
+  cl_khr_fp16                                           in progress (llvmpipe, radeonsi, zink, Available with environment variable RUSTICL_FEATURES=fp16)
   cl_khr_gl_depth_images                                not started
   cl_khr_gl_msaa_sharing                                not started
   cl_khr_gl_sharing                                     in progress
@@ -931,7 +931,7 @@ Rusticl extensions that are not part of any OpenCL version:
   cl_khr_int64_extended_atomics                         not started
   cl_khr_integer_dot_product                            DONE
   cl_khr_mipmap_image                                   not started
-  cl_khr_pci_bus_info                                   DONE (iris, nvc0, radeonsi)
+  cl_khr_pci_bus_info                                   DONE (iris, nvc0, radeonsi, zink)
   cl_khr_priority_hints                                 not started
   cl_khr_spirv_extended_debug_info                      not started
   cl_khr_spirv_linkonce_odr                             not started

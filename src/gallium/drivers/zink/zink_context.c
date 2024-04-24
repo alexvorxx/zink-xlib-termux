@@ -55,6 +55,8 @@
 #include "nir.h"
 #include "nir_builder.h"
 
+#include "vk_format.h"
+
 #include "driver_trace/tr_context.h"
 
 #include "util/u_memory.h"
@@ -407,6 +409,7 @@ zink_create_sampler_state(struct pipe_context *pctx,
                           const struct pipe_sampler_state *state)
 {
    struct zink_screen *screen = zink_screen(pctx->screen);
+   struct zink_context *zink = zink_context(pctx);
    bool need_custom = false;
    bool need_clamped_border_color = false;
    VkSamplerCreateInfo sci = {0};
@@ -415,7 +418,10 @@ zink_create_sampler_state(struct pipe_context *pctx,
    sci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
    if (screen->info.have_EXT_non_seamless_cube_map && !state->seamless_cube_map)
       sci.flags |= VK_SAMPLER_CREATE_NON_SEAMLESS_CUBE_MAP_BIT_EXT;
-   assert(!state->unnormalized_coords);
+   if (state->unnormalized_coords) {
+      assert(zink->flags & PIPE_CONTEXT_COMPUTE_ONLY);
+      sci.unnormalizedCoordinates = state->unnormalized_coords;
+   }
    sci.magFilter = zink_filter(state->mag_img_filter);
    if (sci.unnormalizedCoordinates)
       sci.minFilter = sci.magFilter;
@@ -1172,6 +1178,10 @@ zink_create_sampler_view(struct pipe_context *pctx, struct pipe_resource *pres,
                } else
                   assert(state->format == linear);
             }
+         } else if (util_format_is_red_alpha(pres->format)) {
+            /* RA formats are mapped to RG with adjusted swizzle */
+            assert(util_format_is_red_green(vk_format_to_pipe_format(ivci.format)));
+            swizzle[3] = PIPE_SWIZZLE_Y;
          }
 
          ivci.components.r = zink_component_mapping(swizzle[0]);
@@ -2487,6 +2497,44 @@ zink_make_image_handle_resident(struct pipe_context *pctx, uint64_t handle, unsi
 }
 
 static void
+zink_set_global_binding(struct pipe_context *pctx,
+                        unsigned first, unsigned count,
+                        struct pipe_resource **resources,
+                        uint32_t **handles)
+{
+   struct zink_context *ctx = zink_context(pctx);
+
+   size_t size = ctx->di.global_bindings.capacity;
+   if (!util_dynarray_resize(&ctx->di.global_bindings, struct pipe_resource*, first + count + 8))
+      unreachable("zink: out of memory somehow");
+   if (size != ctx->di.global_bindings.capacity) {
+      uint8_t *data = ctx->di.global_bindings.data;
+      memset(data + size, 0, ctx->di.global_bindings.capacity - size);
+   }
+
+   struct pipe_resource **globals = ctx->di.global_bindings.data;
+   for (unsigned i = 0; i < count; i++) {
+      if (resources && resources[i]) {
+         struct zink_resource *res = zink_resource(resources[i]);
+
+         util_range_add(&res->base.b, &res->valid_buffer_range, 0, res->base.b.width0);
+         pipe_resource_reference(&globals[first + i], resources[i]);
+
+         uint64_t addr = 0;
+         memcpy(&addr, handles[i], sizeof(addr));
+         addr += zink_resource_get_address(zink_screen(pctx->screen), res);
+         memcpy(handles[i], &addr, sizeof(addr));
+         zink_resource_usage_set(res, ctx->batch.state, true);
+         res->obj->unordered_read = res->obj->unordered_write = false;
+         zink_screen(ctx->base.screen)->buffer_barrier(ctx, res, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+      } else if (globals[i]) {
+         zink_batch_reference_resource(&ctx->batch, zink_resource(globals[first + i]));
+         pipe_resource_reference(&globals[first + i], NULL);
+      }
+   }
+}
+
+static void
 zink_set_stencil_ref(struct pipe_context *pctx,
                      const struct pipe_stencil_ref ref)
 {
@@ -3228,6 +3276,16 @@ zink_update_descriptor_refs(struct zink_context *ctx, bool compute)
             }
          }
       }
+   }
+
+   unsigned global_count = util_dynarray_num_elements(&ctx->di.global_bindings, struct zink_resource*);
+   struct zink_resource **globals = ctx->di.global_bindings.data;
+   for (unsigned i = 0; i < global_count; i++) {
+      struct zink_resource *res = globals[i];
+      if (!res)
+         continue;
+      zink_batch_resource_usage_set(batch, res, true, true);
+      res->obj->unordered_read = res->obj->unordered_write = false;
    }
 }
 
@@ -5366,6 +5424,8 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
 
    ctx->base.set_stream_output_targets = zink_set_stream_output_targets;
    ctx->base.flush_resource = zink_flush_resource;
+   if (screen->info.have_KHR_buffer_device_address)
+      ctx->base.set_global_binding = zink_set_global_binding;
 
    ctx->base.emit_string_marker = zink_emit_string_marker;
 

@@ -599,6 +599,9 @@ struct zink_batch_state {
    struct zink_context *ctx;
    VkCommandPool cmdpool;
    VkCommandBuffer cmdbuf;
+   
+   VkCommandBuffer barrier_cmdbuf;
+   
    VkCommandBuffer reordered_cmdbuf;
    VkCommandPool unsynchronized_cmdpool;
    VkCommandBuffer unsynchronized_cmdbuf;

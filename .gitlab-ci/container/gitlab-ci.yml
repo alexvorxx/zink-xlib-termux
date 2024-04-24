@@ -202,7 +202,7 @@ debian/x86_64_test-base:
 debian/x86_64_test-gl:
   extends: .use-debian/x86_64_test-base
   variables:
-    MESA_IMAGE_TAG: &debian-x86_64_test-gl ${DEBIAN_X86_64_TEST_GL_TAG}
+    MESA_IMAGE_TAG: &debian-x86_64_test-gl ${DEBIAN_TEST_GL_TAG}
 
 .use-debian/x86_64_test-gl:
   extends:
@@ -218,7 +218,7 @@ debian/x86_64_test-gl:
 debian/x86_64_test-vk:
   extends: .use-debian/x86_64_test-base
   variables:
-    MESA_IMAGE_TAG: &debian-x86_64_test-vk ${DEBIAN_X86_64_TEST_VK_TAG}
+    MESA_IMAGE_TAG: &debian-x86_64_test-vk ${DEBIAN_TEST_VK_TAG}
 
 .use-debian/x86_64_test-vk:
   extends:
@@ -234,7 +234,7 @@ debian/x86_64_test-vk:
 .debian/x86_64_test-android:
   extends: .use-debian/x86_64_test-base
   variables:
-    MESA_IMAGE_TAG: &debian-x86_64_test-android ${DEBIAN_X86_64_TEST_ANDROID_TAG}
+    MESA_IMAGE_TAG: &debian-x86_64_test-android ${DEBIAN_TEST_ANDROID_TAG}
     ANDROID_NDK: android-ndk-r25b
 
 .use-debian/x86_64_test-android:

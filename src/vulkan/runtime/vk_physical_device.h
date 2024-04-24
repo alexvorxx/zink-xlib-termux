@@ -29,6 +29,8 @@
 #include "vk_physical_device_features.h"
 #include "vk_physical_device_properties.h"
 
+#include "compiler/spirv/spirv_info.h"
+
 #include "util/list.h"
 
 #ifdef __cplusplus

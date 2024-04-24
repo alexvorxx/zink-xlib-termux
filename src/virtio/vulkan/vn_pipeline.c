@@ -1522,6 +1522,10 @@ vn_CreateGraphicsPipelines(VkDevice device,
    bool want_sync = false;
    VkResult result;
 
+   /* silence -Wmaybe-uninitialized false alarm on release build with gcc */
+   if (!createInfoCount)
+      return VK_SUCCESS;
+
    memset(pPipelines, 0, sizeof(*pPipelines) * createInfoCount);
 
    if (!vn_create_pipeline_handles(dev, VN_PIPELINE_TYPE_GRAPHICS,

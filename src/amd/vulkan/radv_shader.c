@@ -341,15 +341,15 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
       };
       const bool has_fragment_shader_interlock = radv_has_pops(pdev);
       const struct spirv_to_nir_options spirv_options = {
+         .amd_gcn_shader = true,
+         .amd_shader_ballot = true,
+         .amd_shader_explicit_vertex_parameter = true,
+         .amd_trinary_minmax = true,
          .caps =
             {
                .amd_fragment_mask = true,
-               .amd_gcn_shader = true,
                .amd_image_gather_bias_lod = true,
                .amd_image_read_write_lod = true,
-               .amd_shader_ballot = true,
-               .amd_shader_explicit_vertex_parameter = true,
-               .amd_trinary_minmax = true,
                .demote_to_helper_invocation = true,
                .derivative_group = true,
                .descriptor_array_dynamic_indexing = true,

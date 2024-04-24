@@ -40,12 +40,8 @@ extern "C" {
 struct spirv_supported_capabilities {
    bool address;
    bool amd_fragment_mask;
-   bool amd_gcn_shader;
    bool amd_image_gather_bias_lod;
    bool amd_image_read_write_lod;
-   bool amd_shader_ballot;
-   bool amd_shader_explicit_vertex_parameter;
-   bool amd_trinary_minmax;
    bool atomic_storage;
    bool cooperative_matrix;
    bool demote_to_helper_invocation;

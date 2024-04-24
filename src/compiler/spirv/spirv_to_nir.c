@@ -621,16 +621,16 @@ vtn_handle_extension(struct vtn_builder *b, SpvOp opcode,
       if (strcmp(ext, "GLSL.std.450") == 0) {
          val->ext_handler = vtn_handle_glsl450_instruction;
       } else if ((strcmp(ext, "SPV_AMD_gcn_shader") == 0)
-                && (b->options && b->options->caps.amd_gcn_shader)) {
+                && (b->options && b->options->amd_gcn_shader)) {
          val->ext_handler = vtn_handle_amd_gcn_shader_instruction;
       } else if ((strcmp(ext, "SPV_AMD_shader_ballot") == 0)
-                && (b->options && b->options->caps.amd_shader_ballot)) {
+                && (b->options && b->options->amd_shader_ballot)) {
          val->ext_handler = vtn_handle_amd_shader_ballot_instruction;
       } else if ((strcmp(ext, "SPV_AMD_shader_trinary_minmax") == 0)
-                && (b->options && b->options->caps.amd_trinary_minmax)) {
+                && (b->options && b->options->amd_trinary_minmax)) {
          val->ext_handler = vtn_handle_amd_shader_trinary_minmax_instruction;
       } else if ((strcmp(ext, "SPV_AMD_shader_explicit_vertex_parameter") == 0)
-                && (b->options && b->options->caps.amd_shader_explicit_vertex_parameter)) {
+                && (b->options && b->options->amd_shader_explicit_vertex_parameter)) {
          val->ext_handler = vtn_handle_amd_shader_explicit_vertex_parameter_instruction;
       } else if (strcmp(ext, "OpenCL.std") == 0) {
          val->ext_handler = vtn_handle_opencl_instruction;

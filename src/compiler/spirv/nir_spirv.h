@@ -79,6 +79,12 @@ struct spirv_to_nir_options {
     */
    bool mediump_16bit_derivatives;
 
+   /* These really early AMD extensions don't have capabilities */
+   bool amd_gcn_shader;
+   bool amd_shader_ballot;
+   bool amd_trinary_minmax;
+   bool amd_shader_explicit_vertex_parameter;
+
    struct spirv_supported_capabilities caps;
 
    /* Address format for various kinds of pointers. */

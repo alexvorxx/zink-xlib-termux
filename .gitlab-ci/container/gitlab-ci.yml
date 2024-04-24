@@ -198,6 +198,28 @@ debian/x86_64_test-base:
   needs:
     - debian/x86_64_test-base
 
+# Debian based aarch64 test image base
+debian/arm64_test-base:
+  tags:
+    - aarch64
+  extends:
+    - .debian-container
+  variables:
+    MESA_IMAGE_TAG: &debian-arm64_test-base "${DEBIAN_BASE_TAG}--${PKG_REPO_REV}"
+
+.use-debian/arm64_test-base:
+  tags:
+    - aarch64
+  extends:
+    - .fdo.container-build@debian
+    - .debian-container-version
+    - .use-base-image
+  variables:
+    MESA_BASE_IMAGE: ${DEBIAN_ARM64_TEST_BASE_IMAGE}
+    MESA_BASE_TAG: *debian-arm64_test-base
+  needs:
+    - debian/arm64_test-base
+
 # Debian based x86_64 test image for GL
 debian/x86_64_test-gl:
   extends: .use-debian/x86_64_test-base
@@ -246,6 +268,46 @@ debian/x86_64_test-vk:
     MESA_IMAGE_TAG: *debian-x86_64_test-android
   needs:
     - debian/x86_64_test-android
+
+# Debian based aarch64 test image for GL
+debian/arm64_test-gl:
+  tags:
+    - aarch64
+  extends: .use-debian/arm64_test-base
+  variables:
+    MESA_IMAGE_TAG: &debian-arm64_test-gl ${DEBIAN_TEST_GL_TAG}
+
+.use-debian/arm64_test-gl:
+  tags:
+    - aarch64
+  extends:
+    - .set-image-base-tag
+  variables:
+    MESA_BASE_TAG: *debian-arm64_test-base
+    MESA_IMAGE_PATH: ${DEBIAN_ARM64_TEST_IMAGE_GL_PATH}
+    MESA_IMAGE_TAG: *debian-arm64_test-gl
+  needs:
+    - debian/arm64_test-gl
+
+# Debian based aarch64 test image for VK
+debian/arm64_test-vk:
+  tags:
+    - aarch64
+  extends: .use-debian/arm64_test-base
+  variables:
+    MESA_IMAGE_TAG: &debian-arm64_test-vk ${DEBIAN_TEST_VK_TAG}
+
+.use-debian/arm64_test-vk:
+  tags:
+    - aarch64
+  extends:
+    - .set-image-base-tag
+  variables:
+    MESA_BASE_TAG: *debian-arm64_test-base
+    MESA_IMAGE_PATH: ${DEBIAN_ARM64_TEST_IMAGE_VK_PATH}
+    MESA_IMAGE_TAG: *debian-arm64_test-vk
+  needs:
+    - debian/arm64_test-vk
 
 # Debian based ARM build image
 debian/arm64_build:

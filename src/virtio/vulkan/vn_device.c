@@ -73,7 +73,7 @@ vn_queue_init(struct vn_device *dev,
    };
 
    VkQueue queue_handle = vn_queue_to_handle(queue);
-   vn_async_vkGetDeviceQueue2(dev->instance, vn_device_to_handle(dev),
+   vn_async_vkGetDeviceQueue2(dev->primary_ring, vn_device_to_handle(dev),
                               &device_queue_info, &queue_handle);
 
    return VK_SUCCESS;
@@ -436,6 +436,41 @@ vn_device_update_shader_cache_id(struct vn_device *dev)
 #endif
 }
 
+bool
+vn_device_secondary_ring_init_once(struct vn_device *dev)
+{
+   VN_TRACE_FUNC();
+
+   assert(!dev->force_primary_ring_submission);
+
+   static bool ok = true;
+   if (!ok)
+      return ok;
+
+   mtx_lock(&dev->ring_mutex);
+   /* allows caller to check secondary ring without holding a lock */
+   if (dev->secondary_ring)
+      goto out_unlock;
+
+   /* keep the extra for potential roundtrip sync on secondary ring */
+   static const size_t extra_size = sizeof(uint32_t);
+
+   /* only need a small ring for synchronous cmds on secondary ring */
+   static const size_t buf_size = 16 * 1024;
+
+   struct vn_ring_layout layout;
+   vn_ring_get_layout(buf_size, extra_size, &layout);
+
+   dev->secondary_ring = vn_ring_create(dev->instance, &layout);
+   if (!dev->secondary_ring) {
+      ok = false;
+      vn_log(dev->instance, "WARNING: failed to create secondary ring");
+   }
+out_unlock:
+   mtx_unlock(&dev->ring_mutex);
+   return ok;
+}
+
 static VkResult
 vn_device_init(struct vn_device *dev,
                struct vn_physical_device *physical_dev,
@@ -452,14 +487,18 @@ vn_device_init(struct vn_device *dev,
    dev->instance = instance;
    dev->physical_device = physical_dev;
    dev->renderer = instance->renderer;
+   dev->primary_ring = instance->ring.ring;
+
+   /* can be extended for app compat purpose */
+   dev->force_primary_ring_submission = VN_PERF(NO_MULTI_RING);
 
    create_info =
       vn_device_fix_create_info(dev, create_info, alloc, &local_create_info);
    if (!create_info)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
-   result = vn_call_vkCreateDevice(instance, physical_dev_handle, create_info,
-                                   NULL, &dev_handle);
+   result = vn_call_vkCreateDevice(dev->primary_ring, physical_dev_handle,
+                                   create_info, NULL, &dev_handle);
 
    /* free the fixed extensions here since no longer needed below */
    if (create_info == &local_create_info)
@@ -467,6 +506,8 @@ vn_device_init(struct vn_device *dev,
 
    if (result != VK_SUCCESS)
       return result;
+
+   mtx_init(&dev->ring_mutex, mtx_plain);
 
    result = vn_device_memory_report_init(dev, create_info);
    if (result != VK_SUCCESS)
@@ -519,7 +560,8 @@ out_memory_report_fini:
    vn_device_memory_report_fini(dev);
 
 out_destroy_device:
-   vn_call_vkDestroyDevice(instance, dev_handle, NULL);
+   mtx_destroy(&dev->ring_mutex);
+   vn_call_vkDestroyDevice(dev->primary_ring, dev_handle, NULL);
 
    return result;
 }
@@ -604,17 +646,22 @@ vn_DestroyDevice(VkDevice device, const VkAllocationCallbacks *pAllocator)
     * another thread might reuse their object ids while they still refer to
     * the queues in the renderer.
     */
-   vn_async_vkDestroyDevice(dev->instance, device, NULL);
+   vn_async_vkDestroyDevice(dev->primary_ring, device, NULL);
 
    /* We must emit vn_call_vkDestroyDevice before releasing bound ring_idx.
     * Otherwise, another thread might reuse their ring_idx while they
     * are still bound to the queues in the renderer.
     */
-   if (dev->instance->renderer->info.supports_multiple_timelines) {
+   if (dev->renderer->info.supports_multiple_timelines) {
       for (uint32_t i = 0; i < dev->queue_count; i++) {
          vn_instance_release_ring_idx(dev->instance, dev->queues[i].ring_idx);
       }
    }
+
+   if (dev->secondary_ring)
+      vn_ring_destroy(dev->secondary_ring);
+
+   mtx_destroy(&dev->ring_mutex);
 
    vk_free(alloc, dev->queues);
 
@@ -641,8 +688,8 @@ vn_GetDeviceGroupPeerMemoryFeatures(
 
    /* TODO get and cache the values in vkCreateDevice */
    vn_call_vkGetDeviceGroupPeerMemoryFeatures(
-      dev->instance, device, heapIndex, localDeviceIndex, remoteDeviceIndex,
-      pPeerMemoryFeatures);
+      dev->primary_ring, device, heapIndex, localDeviceIndex,
+      remoteDeviceIndex, pPeerMemoryFeatures);
 }
 
 VkResult
@@ -670,7 +717,7 @@ vn_GetCalibratedTimestampsEXT(
          uint64_t device_max_deviation = 0;
 
          ret = vn_call_vkGetCalibratedTimestampsEXT(
-            dev->instance, device, 1, &pTimestampInfos[domain],
+            dev->primary_ring, device, 1, &pTimestampInfos[domain],
             &pTimestamps[domain], &device_max_deviation);
 
          if (ret != VK_SUCCESS)

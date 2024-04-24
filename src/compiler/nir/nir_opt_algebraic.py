@@ -46,6 +46,10 @@ signed_zero_nan_preserve_32 = ('(nir_is_float_control_signed_zero_preserve(info-
 signed_zero_inf_nan_preserve_16 = 'nir_is_float_control_signed_zero_inf_nan_preserve(info->float_controls_execution_mode, 16)'
 signed_zero_inf_nan_preserve_32 = 'nir_is_float_control_signed_zero_inf_nan_preserve(info->float_controls_execution_mode, 32)'
 
+has_fmulz = '(options->has_fmulz || \
+              (options->has_fmulz_no_denorms && \
+               !nir_is_denorm_preserve(info->float_controls_execution_mode, 32)))'
+
 ignore_exact = nir_algebraic.ignore_exact
 
 # Written in the form (<search>, <replace>) where <search> is an expression
@@ -274,20 +278,20 @@ optimizations = [
    # Optimize open-coded fmulz.
    # (b==0.0 ? 0.0 : a) * (a==0.0 ? 0.0 : b) -> fmulz(a, b)
    (('fmul@32', ('bcsel', ignore_exact('feq', b, 0.0), 0.0, a), ('bcsel', ignore_exact('feq', a, 0.0), 0.0, b)),
-    ('fmulz', a, b), 'options->has_fmulz && !'+signed_zero_preserve_32),
+    ('fmulz', a, b), has_fmulz+' && !'+signed_zero_preserve_32),
    (('fmul@32', a, ('bcsel', ignore_exact('feq', a, 0.0), 0.0, '#b(is_not_const_zero)')),
-    ('fmulz', a, b), 'options->has_fmulz && !'+signed_zero_preserve_32),
+    ('fmulz', a, b), has_fmulz+' && !'+signed_zero_preserve_32),
 
    # ffma(b==0.0 ? 0.0 : a, a==0.0 ? 0.0 : b, c) -> ffmaz(a, b, c)
    (('ffma@32', ('bcsel', ignore_exact('feq', b, 0.0), 0.0, a), ('bcsel', ignore_exact('feq', a, 0.0), 0.0, b), c),
-    ('ffmaz', a, b, c), 'options->has_fmulz && !'+signed_zero_preserve_32),
+    ('ffmaz', a, b, c), has_fmulz+' && !'+signed_zero_preserve_32),
    (('ffma@32', a, ('bcsel', ignore_exact('feq', a, 0.0), 0.0, '#b(is_not_const_zero)'), c),
-    ('ffmaz', a, b, c), 'options->has_fmulz && !'+signed_zero_preserve_32),
+    ('ffmaz', a, b, c), has_fmulz+' && !'+signed_zero_preserve_32),
 
    # b == 0.0 ? 1.0 : fexp2(fmul(a, b)) -> fexp2(fmulz(a, b))
    (('bcsel', ignore_exact('feq', b, 0.0), 1.0, ('fexp2', ('fmul@32', a, b))),
     ('fexp2', ('fmulz', a, b)),
-    'options->has_fmulz && !'+signed_zero_inf_nan_preserve_32),
+    has_fmulz+' && !'+signed_zero_inf_nan_preserve_32),
 ]
 
 # Shorthand for the expansion of just the dot product part of the [iu]dp4a
@@ -321,15 +325,15 @@ optimizations.extend([
    # overflowing.  0x100000000 - 0x3f804 = 0xfffc07fc.  If c is a constant
    # that is less than 0xfffc07fc, then the result cannot overflow ever.
    (('udot_4x8_uadd_sat', a, b, '#c(is_ult_0xfffc07fc)'), ('udot_4x8_uadd', a, b, c)),
-   (('udot_4x8_uadd_sat', a, b, c), ('uadd_sat', udot_4x8_a_b, c), '!options->has_udot_4x8'),
+   (('udot_4x8_uadd_sat', a, b, c), ('uadd_sat', ('udot_4x8_uadd', a, b, 0), c), '!options->has_udot_4x8_sat'),
 
    # For the signed dot-product, the largest positive value is 4*(-128*-128) =
    # 0x10000, and the largest negative value is 4*(-128*127) = -0xfe00.  We
    # don't have to worry about that intermediate result overflowing or
    # underflowing.
-   (('sdot_4x8_iadd_sat', a, b, c), ('iadd_sat', sdot_4x8_a_b, c), '!options->has_sdot_4x8'),
+   (('sdot_4x8_iadd_sat', a, b, c), ('iadd_sat', ('sdot_4x8_iadd', a, b, 0), c), '!options->has_sdot_4x8_sat'),
 
-   (('sudot_4x8_iadd_sat', a, b, c), ('iadd_sat', sudot_4x8_a_b, c), '!options->has_sudot_4x8'),
+   (('sudot_4x8_iadd_sat', a, b, c), ('iadd_sat', ('sudot_4x8_iadd', a, b, 0), c), '!options->has_sudot_4x8_sat'),
 
    (('udot_2x16_uadd_sat', a, b, c), ('uadd_sat', udot_2x16_a_b, c), '!options->has_dot_2x16'),
    (('sdot_2x16_iadd_sat', a, b, c), ('iadd_sat', sdot_2x16_a_b, c), '!options->has_dot_2x16'),
@@ -1439,9 +1443,14 @@ optimizations.extend([
     ('~fmul', ('fpow', a, b), ('fpow', c, d)), '!options->lower_fpow'), # 2^(lg2(a) * b + lg2(c) + d) = a^b * c^d
    (('~fexp2', ('fmul', ('flog2', a), 0.5)), ('fsqrt', a)),
    (('~fexp2', ('fmul', ('flog2', a), 2.0)), ('fmul', a, a)),
+   (('~fexp2', ('fmul', ('flog2', a), 3.0)), ('fmul', ('fmul', a, a), a)),
    (('~fexp2', ('fmul', ('flog2', a), 4.0)), ('fmul', ('fmul', a, a), ('fmul', a, a))),
+   (('~fexp2', ('fmul', ('flog2', a), 5.0)), ('fmul', ('fmul', ('fmul', a, a), ('fmul', a, a)), a)),
+   (('~fexp2', ('fmul', ('flog2', a), 6.0)), ('fmul', ('fmul', ('fmul', a, a), ('fmul', a, a)), ('fmul', a, a))),
+   (('~fexp2', ('fmul', ('flog2', a), 8.0)), ('fmul', ('fmul', ('fmul', a, a), ('fmul', a, a)), ('fmul', ('fmul', a, a), ('fmul', a, a)))),
    (('~fpow', a, 1.0), a),
    (('~fpow', a, 2.0), ('fmul', a, a)),
+   (('~fpow', a, 3.0), ('fmul', ('fmul', a, a), a)),
    (('~fpow', a, 4.0), ('fmul', ('fmul', a, a), ('fmul', a, a))),
    (('~fpow', 2.0, a), ('fexp2', a)),
    (('~fpow', ('fpow', a, 2.2), 0.454545), a),

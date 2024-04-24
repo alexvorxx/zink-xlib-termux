@@ -43,6 +43,7 @@
 #include <sys/inotify.h>
 #endif
 
+#include "meta/radv_meta.h"
 #include "util/disk_cache.h"
 #include "util/u_debug.h"
 #include "radv_cs.h"
@@ -78,7 +79,7 @@ typedef void *drmDevicePtr;
 #include "vk_sync.h"
 #include "vk_sync_dummy.h"
 
-#ifdef LLVM_AVAILABLE
+#if LLVM_AVAILABLE
 #include "ac_llvm_util.h"
 #endif
 
@@ -823,8 +824,10 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
       }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GRAPHICS_PIPELINE_LIBRARY_FEATURES_EXT: {
          const VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT *features = (const void *)ext;
-         if (features->graphicsPipelineLibrary)
+         if (features->graphicsPipelineLibrary) {
             vs_prologs = true;
+            ps_epilogs = true;
+         }
          break;
       }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT: {
@@ -987,6 +990,13 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
        * allow launching waves out-of-order.
        */
       device->dispatch_initiator |= S_00B800_ORDER_MODE(1);
+   }
+   if (device->physical_device->rad_info.gfx_level >= GFX10) {
+      /* Enable asynchronous compute tunneling. The KMD restricts this feature
+       * to high-priority compute queues, so setting the bit on any other queue
+       * is a no-op. PAL always sets this bit as well.
+       */
+      device->dispatch_initiator |= S_00B800_TUNNEL_ENABLE(1);
    }
 
    /* Disable partial preemption for task shaders.
@@ -1323,9 +1333,13 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 bool
 radv_get_memory_fd(struct radv_device *device, struct radv_device_memory *memory, int *pFD)
 {
-   /* Only set BO metadata for the first plane */
-   if (memory->image && memory->image->bindings[0].offset == 0) {
+   /* Set BO metadata for dedicated image allocations.  We don't need it for import when the image
+    * tiling is VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT, but we set it anyway for foreign consumers.
+    */
+   if (memory->image) {
       struct radeon_bo_metadata metadata;
+
+      assert(memory->image->bindings[0].offset == 0);
       radv_init_metadata(device, memory->image, &metadata);
       device->ws->buffer_set_metadata(device->ws, memory->bo, &metadata);
    }
@@ -1731,11 +1745,7 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
       }
 
       if (radv_image_is_tc_compat_cmask(iview->image)) {
-         /* Allow the texture block to read FMASK directly
-          * without decompressing it. This bit must be cleared
-          * when performing FMASK_DECOMPRESS or DCC_COMPRESS,
-          * otherwise the operation doesn't happen.
-          */
+         /* Allow the texture block to read FMASK directly without decompressing it. */
          cb->cb_color_info |= S_028C70_FMASK_COMPRESS_1FRAG_ONLY(1);
 
          if (device->physical_device->rad_info.gfx_level == GFX8) {
@@ -1872,7 +1882,7 @@ radv_initialise_vrs_surface(struct radv_image *image, struct radv_buffer *htile_
 
 void
 radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buffer_info *ds,
-                           struct radv_image_view *iview)
+                           struct radv_image_view *iview, VkImageAspectFlags ds_aspects)
 {
    unsigned level = iview->vk.base_mip_level;
    unsigned format, stencil_format;
@@ -1889,7 +1899,9 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
    stencil_format = surf->has_stencil ? V_028044_STENCIL_8 : V_028044_STENCIL_INVALID;
 
    uint32_t max_slice = radv_surface_max_layer_count(iview) - 1;
-   ds->db_depth_view = S_028008_SLICE_START(iview->vk.base_array_layer) | S_028008_SLICE_MAX(max_slice);
+   ds->db_depth_view = S_028008_SLICE_START(iview->vk.base_array_layer) | S_028008_SLICE_MAX(max_slice) |
+                       S_028008_Z_READ_ONLY(!(ds_aspects & VK_IMAGE_ASPECT_DEPTH_BIT)) |
+                       S_028008_STENCIL_READ_ONLY(!(ds_aspects & VK_IMAGE_ASPECT_STENCIL_BIT));
    if (device->physical_device->rad_info.gfx_level >= GFX10) {
       ds->db_depth_view |=
          S_028008_SLICE_START_HI(iview->vk.base_array_layer >> 11) | S_028008_SLICE_MAX_HI(max_slice >> 11);
@@ -2159,8 +2171,8 @@ radv_GetMemoryFdPropertiesKHR(VkDevice _device, VkExternalMemoryHandleTypeFlagBi
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
-radv_GetCalibratedTimestampsEXT(VkDevice _device, uint32_t timestampCount,
-                                const VkCalibratedTimestampInfoEXT *pTimestampInfos, uint64_t *pTimestamps,
+radv_GetCalibratedTimestampsKHR(VkDevice _device, uint32_t timestampCount,
+                                const VkCalibratedTimestampInfoKHR *pTimestampInfos, uint64_t *pTimestamps,
                                 uint64_t *pMaxDeviation)
 {
 #ifndef _WIN32
@@ -2178,18 +2190,18 @@ radv_GetCalibratedTimestampsEXT(VkDevice _device, uint32_t timestampCount,
 
    for (d = 0; d < timestampCount; d++) {
       switch (pTimestampInfos[d].timeDomain) {
-      case VK_TIME_DOMAIN_DEVICE_EXT:
+      case VK_TIME_DOMAIN_DEVICE_KHR:
          pTimestamps[d] = device->ws->query_value(device->ws, RADEON_TIMESTAMP);
          uint64_t device_period = DIV_ROUND_UP(1000000, clock_crystal_freq);
          max_clock_period = MAX2(max_clock_period, device_period);
          break;
-      case VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT:
+      case VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR:
          pTimestamps[d] = vk_clock_gettime(CLOCK_MONOTONIC);
          max_clock_period = MAX2(max_clock_period, 1);
          break;
 
 #ifdef CLOCK_MONOTONIC_RAW
-      case VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_EXT:
+      case VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR:
          pTimestamps[d] = begin;
          break;
 #endif

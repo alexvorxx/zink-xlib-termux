@@ -110,8 +110,7 @@ struct H264_VUI_PARAMS
 struct H264_SPS
 {
    uint32_t profile_idc;
-   uint32_t constraint_set1_flag;
-   uint32_t constraint_set3_flag;
+   uint32_t constraint_set_flags;
    uint32_t level_idc;
    uint32_t seq_parameter_set_id;
    uint32_t bit_depth_luma_minus8;
@@ -147,6 +146,9 @@ struct H264_PPS
 
 enum H264_SPEC_PROFILES
 {
+   // Same as BASELINE (66) with constraint_set1_flag set
+   H264_PROFILE_CONSTRAINED_BASELINE = 66,
+   H264_PROFILE_BASELINE   = 66,
    H264_PROFILE_MAIN   = 77,
    H264_PROFILE_HIGH   = 100,
    H264_PROFILE_HIGH10 = 110,

@@ -587,6 +587,11 @@ static bool lower_intrinsic(nir_builder *b, nir_instr *instr, struct lower_abi_s
    case nir_intrinsic_load_alpha_reference_amd:
       replacement = ac_nir_load_arg(b, &args->ac, args->alpha_reference);
       break;
+   case nir_intrinsic_load_front_face:
+      if (!key->ps.opt.force_front_face_input)
+         return false;
+      replacement = nir_imm_bool(b, key->ps.opt.force_front_face_input == 1);
+      break;
    case nir_intrinsic_load_barycentric_optimize_amd: {
       nir_def *prim_mask = ac_nir_load_arg(b, &args->ac, args->ac.prim_mask);
       /* enabled when bit 31 is set */
@@ -611,9 +616,15 @@ static bool lower_intrinsic(nir_builder *b, nir_instr *instr, struct lower_abi_s
 
       nir_def *color[4];
       for (int i = 0; i < 4; i++) {
-         color[i] = colors_read & BITFIELD_BIT(start + i) ?
-            ac_nir_load_arg_at_offset(b, &args->ac, args->color_start, offset++) :
-            nir_undef(b, 1, 32);
+         if (colors_read & BITFIELD_BIT(start + i)) {
+            color[i] = ac_nir_load_arg_at_offset(b, &args->ac, args->color_start, offset++);
+
+            nir_intrinsic_set_flags(nir_instr_as_intrinsic(color[i]->parent_instr),
+                                    SI_VECTOR_ARG_IS_COLOR |
+                                    SI_VECTOR_ARG_COLOR_COMPONENT(start + i));
+         } else {
+            color[i] = nir_undef(b, 1, 32);
+         }
       }
 
       replacement = nir_vec(b, color, 4);
@@ -626,7 +637,9 @@ static bool lower_intrinsic(nir_builder *b, nir_instr *instr, struct lower_abi_s
       /* Load point coordinates (x, y) which are written by the hw after the interpolated inputs */
       replacement = nir_load_interpolated_input(b, 2, 32, interp_param, nir_imm_int(b, 0),
                                                 .base = si_get_ps_num_interp(shader),
-                                                .component = 2);
+                                                .component = 2,
+                                                /* This tells si_nir_scan_shader that it's PARAM_GEN */
+                                                .io_semantics.no_varying = 1);
       break;
    }
    case nir_intrinsic_load_poly_line_smooth_enabled:

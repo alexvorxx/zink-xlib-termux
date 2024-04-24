@@ -544,7 +544,7 @@ fn lower_and_optimize_nir(
         internal_args.push(InternalKernelArg {
             kind: InternalKernelArgType::ConstantBuffer,
             offset: 0,
-            size: 8,
+            size: (dev.address_bits() / 8) as usize,
         });
         lower_state.const_buf_loc = args.len() + internal_args.len() - 1;
         nir.add_var(
@@ -558,7 +558,7 @@ fn lower_and_optimize_nir(
         internal_args.push(InternalKernelArg {
             kind: InternalKernelArgType::PrintfBuffer,
             offset: 0,
-            size: 8,
+            size: (dev.address_bits() / 8) as usize,
         });
         lower_state.printf_buf_loc = args.len() + internal_args.len() - 1;
         nir.add_var(
@@ -733,6 +733,10 @@ pub(super) fn convert_spirv_to_nir(
          * vstore/vload_half
          */
         nir.preserve_fp16_denorms();
+
+        // Set to rtne for now until drivers are able to report their prefered rounding mode, that
+        // also matches what we report via the API.
+        nir.set_fp_rounding_mode_rtne();
 
         let (args, internal_args) = lower_and_optimize_nir(dev, &mut nir, args, &dev.lib_clc);
 

@@ -250,7 +250,8 @@ init_common_queue_state(struct anv_queue *queue, struct anv_batch *batch)
          (struct anv_address) { .offset =
          device->physical->va.dynamic_state_pool.addr,
       };
-      sba.DynamicStateBufferSize = device->physical->va.dynamic_state_pool.size / 4096;
+      sba.DynamicStateBufferSize = (device->physical->va.dynamic_state_pool.size +
+                                    device->physical->va.sampler_state_pool.size) / 4096;
       sba.DynamicStateMOCS = mocs;
       sba.DynamicStateBaseAddressModifyEnable = true;
       sba.DynamicStateBufferSizeModifyEnable = true;
@@ -270,6 +271,13 @@ init_common_queue_state(struct anv_queue *queue, struct anv_batch *batch)
       sba.InstructionBaseAddressModifyEnable = true;
       sba.InstructionBuffersizeModifyEnable = true;
 
+#if GFX_VER >= 11
+      sba.BindlessSamplerStateBaseAddress = ANV_NULL_ADDRESS;
+      sba.BindlessSamplerStateBufferSize = 0;
+      sba.BindlessSamplerStateMOCS = mocs;
+      sba.BindlessSamplerStateBaseAddressModifyEnable = true;
+#endif
+
       if (device->physical->indirect_descriptors) {
          sba.BindlessSurfaceStateBaseAddress =
             (struct anv_address) { .offset =
@@ -279,29 +287,18 @@ init_common_queue_state(struct anv_queue *queue, struct anv_batch *batch)
             anv_physical_device_bindless_heap_size(device->physical) / ANV_SURFACE_STATE_SIZE - 1;
          sba.BindlessSurfaceStateMOCS = mocs;
          sba.BindlessSurfaceStateBaseAddressModifyEnable = true;
-
-         sba.BindlessSamplerStateBaseAddress = (struct anv_address) { NULL, 0 };
-         sba.BindlessSamplerStateMOCS = mocs;
-         sba.BindlessSamplerStateBaseAddressModifyEnable = true;
-         sba.BindlessSamplerStateBufferSize = 0;
       } else {
          /* Bindless Surface State & Bindless Sampler State are aligned to the
           * same heap
           */
-         sba.BindlessSurfaceStateBaseAddress =
-            sba.BindlessSamplerStateBaseAddress =
-            (struct anv_address) { .offset = device->physical->va.binding_table_pool.addr, };
+         sba.BindlessSurfaceStateBaseAddress = (struct anv_address) {
+            .offset = device->physical->va.internal_surface_state_pool.addr,
+         };
          sba.BindlessSurfaceStateSize =
-            (device->physical->va.binding_table_pool.size +
-             device->physical->va.internal_surface_state_pool.size +
-             device->physical->va.direct_descriptor_pool.size) - 1;
-         sba.BindlessSamplerStateBufferSize =
-            (device->physical->va.binding_table_pool.size +
-             device->physical->va.internal_surface_state_pool.size +
-             device->physical->va.direct_descriptor_pool.size) / 4096 - 1;
-         sba.BindlessSurfaceStateMOCS = sba.BindlessSamplerStateMOCS = mocs;
-         sba.BindlessSurfaceStateBaseAddressModifyEnable =
-            sba.BindlessSamplerStateBaseAddressModifyEnable = true;
+            (device->physical->va.internal_surface_state_pool.size +
+             device->physical->va.bindless_surface_state_pool.size) - 1;
+         sba.BindlessSurfaceStateMOCS = mocs;
+         sba.BindlessSurfaceStateBaseAddressModifyEnable = true;
       }
 
 #if GFX_VERx10 >= 125
@@ -355,7 +352,7 @@ init_render_queue_state(struct anv_queue *queue, bool is_companion_rcs_batch)
    };
    GENX(VERTEX_ELEMENT_STATE_pack)(NULL, device->empty_vs_input, &empty_ve);
 
-   genX(emit_pipeline_select)(&batch, _3D);
+   genX(emit_pipeline_select)(&batch, _3D, device);
 
 #if GFX_VER == 9
    anv_batch_write_reg(&batch, GENX(CACHE_MODE_1), cm1) {
@@ -598,7 +595,7 @@ init_render_queue_state(struct anv_queue *queue, bool is_companion_rcs_batch)
                                       ANV_NULL_ADDRESS,
                                       0,
                                       ANV_PIPE_FLUSH_BITS | ANV_PIPE_INVALIDATE_BITS);
-   genX(emit_pipeline_select)(&batch, GPGPU);
+   genX(emit_pipeline_select)(&batch, GPGPU, device);
    anv_batch_emit(&batch, GENX(CFE_STATE), cfe) {
       cfe.MaximumNumberofThreads =
          devinfo->max_cs_threads * devinfo->subslice_total;
@@ -607,7 +604,7 @@ init_render_queue_state(struct anv_queue *queue, bool is_companion_rcs_batch)
                                       ANV_NULL_ADDRESS,
                                       0,
                                       ANV_PIPE_FLUSH_BITS | ANV_PIPE_INVALIDATE_BITS);
-   genX(emit_pipeline_select)(&batch, _3D);
+   genX(emit_pipeline_select)(&batch, _3D, device);
 #endif
 
    anv_batch_emit(&batch, GENX(MI_BATCH_BUFFER_END), bbe);
@@ -631,7 +628,7 @@ init_compute_queue_state(struct anv_queue *queue)
       .end = (void *) cmds + sizeof(cmds),
    };
 
-   genX(emit_pipeline_select)(&batch, GPGPU);
+   genX(emit_pipeline_select)(&batch, GPGPU, queue->device);
 
 #if GFX_VER == 12
    if (queue->device->info->has_aux_map) {
@@ -703,6 +700,52 @@ init_compute_queue_state(struct anv_queue *queue)
                                         false /* is_companion_rcs_batch */);
 }
 
+static VkResult
+init_copy_video_queue_state(struct anv_queue *queue)
+{
+#if GFX_VER >= 12
+   UNUSED const struct intel_device_info *devinfo = queue->device->info;
+   uint32_t cmds[64];
+   UNUSED struct anv_batch batch = {
+      .start = cmds,
+      .next = cmds,
+      .end = (void *) cmds + sizeof(cmds),
+   };
+
+   if (queue->device->info->has_aux_map) {
+      uint64_t reg = GENX(VD0_AUX_TABLE_BASE_ADDR_num);
+
+      if (queue->family->engine_class == INTEL_ENGINE_CLASS_COPY) {
+#if GFX_VERx10 >= 125
+         reg = GENX(BCS_AUX_TABLE_BASE_ADDR_num);
+#endif
+      }
+
+      uint64_t aux_base_addr =
+         intel_aux_map_get_base(queue->device->aux_map_ctx);
+      assert(aux_base_addr % (32 * 1024) == 0);
+      anv_batch_emit(&batch, GENX(MI_LOAD_REGISTER_IMM), lri) {
+         lri.RegisterOffset = reg;
+         lri.DataDWord = aux_base_addr & 0xffffffff;
+      }
+      anv_batch_emit(&batch, GENX(MI_LOAD_REGISTER_IMM), lri) {
+         lri.RegisterOffset = reg + 4;
+         lri.DataDWord = aux_base_addr >> 32;
+      }
+
+      anv_batch_emit(&batch, GENX(MI_BATCH_BUFFER_END), bbe);
+      assert(batch.next <= batch.end);
+
+      return anv_queue_submit_simple_batch(queue, &batch,
+                                           false /* is_companion_rcs_batch */);
+   }
+#else
+   assert(!queue->device->info->has_aux_map);
+#endif
+
+   return VK_SUCCESS;
+}
+
 void
 genX(init_physical_device_state)(ASSERTED struct anv_physical_device *pdevice)
 {
@@ -740,9 +783,13 @@ genX(init_device_state)(struct anv_device *device)
          break;
       }
       case INTEL_ENGINE_CLASS_VIDEO:
-         res = VK_SUCCESS;
+         res = init_copy_video_queue_state(queue);
          break;
       case INTEL_ENGINE_CLASS_COPY:
+         res = init_copy_video_queue_state(queue);
+         if (res != VK_SUCCESS)
+            return res;
+
          /**
           * Execute RCS init batch by default on the companion RCS command buffer in
           * order to support MSAA copy/clear operations on copy queue.

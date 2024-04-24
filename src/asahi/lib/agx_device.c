@@ -462,7 +462,7 @@ agx_debug_fault(struct agx_device *dev, uint64_t addr)
 uint64_t
 agx_get_gpu_timestamp(struct agx_device *dev)
 {
-#if DETECT_ARCH_ARCH64
+#if DETECT_ARCH_AARCH64
    uint64_t ret;
    __asm__ volatile("mrs \t%0, cntvct_el0" : "=r"(ret));
    return ret;
@@ -472,6 +472,6 @@ agx_get_gpu_timestamp(struct agx_device *dev)
    __asm__ volatile("rdtsc" : "=a"(low), "=d"(high));
    return (uint64_t)low | ((uint64_t)high << 32);
 #else
-   unreachable("Kernel support for fetching timestamps pending");
+#error "invalid architecture for asahi"
 #endif
 }

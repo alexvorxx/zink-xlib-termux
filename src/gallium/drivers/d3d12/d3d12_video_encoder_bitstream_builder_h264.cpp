@@ -24,6 +24,7 @@
 #include "d3d12_video_encoder_bitstream_builder_h264.h"
 
 #include <cmath>
+#include "util/u_video.h"
 
 d3d12_video_bitstream_builder_h264::d3d12_video_bitstream_builder_h264(bool insert_aud_nalu)
    : m_insert_aud_nalu(insert_aud_nalu)
@@ -54,7 +55,7 @@ Convert12ToSpecH264Profiles(D3D12_VIDEO_ENCODER_PROFILE_H264 profile12)
 
 void
 d3d12_video_bitstream_builder_h264::build_sps(const struct pipe_h264_enc_seq_param &                 seqData,
-                                              const D3D12_VIDEO_ENCODER_PROFILE_H264 &               profile,
+                                              const enum pipe_video_profile &                        profile,
                                               const D3D12_VIDEO_ENCODER_LEVELS_H264 &                level,
                                               const DXGI_FORMAT &                                    inputFmt,
                                               const D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264 &   codecConfig,
@@ -67,21 +68,11 @@ d3d12_video_bitstream_builder_h264::build_sps(const struct pipe_h264_enc_seq_par
                                               std::vector<uint8_t>::iterator              placingPositionStart,
                                               size_t &                                    writtenBytes)
 {
-   H264_SPEC_PROFILES profile_idc          = Convert12ToSpecH264Profiles(profile);
-   uint32_t           constraint_set1_flag = (profile_idc == H264_PROFILE_MAIN) ? 1 : 0;
-   uint32_t           constraint_set3_flag = 0;
+   H264_SPEC_PROFILES profile_idc          = (H264_SPEC_PROFILES) u_get_h264_profile_idc(profile);
    uint32_t           level_idc            = 0;
    d3d12_video_encoder_convert_from_d3d12_level_h264(
       level,
-      level_idc,
-      constraint_set3_flag /*Always 0 except if level is 11 or 1b in which case 0 means 11, 1 means 1b*/);
-
-   // constraint_set3_flag is for Main profile only and levels 11 or 1b: levels 11 if off, level 1b if on. Always 0 for
-   // HIGH/HIGH10 profiles
-   if ((profile == D3D12_VIDEO_ENCODER_PROFILE_H264_HIGH) || (profile == D3D12_VIDEO_ENCODER_PROFILE_H264_HIGH_10)) {
-      // Force 0 for high profiles
-      constraint_set3_flag = 0;
-   }
+      level_idc);
 
    assert((inputFmt == DXGI_FORMAT_NV12) || (inputFmt == DXGI_FORMAT_P010));
 
@@ -111,8 +102,7 @@ d3d12_video_bitstream_builder_h264::build_sps(const struct pipe_h264_enc_seq_par
    }
 
    H264_SPS spsStructure = { static_cast<uint32_t>(profile_idc),
-                             constraint_set1_flag,
-                             constraint_set3_flag,
+                             seqData.enc_constraint_set_flags,
                              level_idc,
                              seq_parameter_set_id,
                              bit_depth_luma_minus8,
@@ -171,7 +161,7 @@ d3d12_video_bitstream_builder_h264::build_sps(const struct pipe_h264_enc_seq_par
    spsStructure.vui.num_reorder_frames = seqData.max_num_reorder_frames;
    spsStructure.vui.max_dec_frame_buffering = seqData.max_dec_frame_buffering;
 
-   // Print built PPS structure
+   // Print built SPS structure
    debug_printf(
       "[D3D12 d3d12_video_bitstream_builder_h264] H264_SPS Structure generated before writing to bitstream:\n");
    print_sps(spsStructure);
@@ -205,7 +195,7 @@ d3d12_video_bitstream_builder_h264::write_aud(std::vector<uint8_t> &         hea
 }
 
 void
-d3d12_video_bitstream_builder_h264::build_pps(const D3D12_VIDEO_ENCODER_PROFILE_H264 &                   profile,
+d3d12_video_bitstream_builder_h264::build_pps(const enum pipe_video_profile &                            profile,
                                               const D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264 &       codecConfig,
                                               const D3D12_VIDEO_ENCODER_PICTURE_CONTROL_CODEC_DATA_H264 &pictureControl,
                                               uint32_t                       pic_parameter_set_id,
@@ -215,7 +205,7 @@ d3d12_video_bitstream_builder_h264::build_pps(const D3D12_VIDEO_ENCODER_PROFILE_
                                               size_t &                       writtenBytes)
 {
    BOOL bIsHighProfile =
-      ((profile == D3D12_VIDEO_ENCODER_PROFILE_H264_HIGH) || (profile == D3D12_VIDEO_ENCODER_PROFILE_H264_HIGH_10));
+      ((profile == PIPE_VIDEO_PROFILE_MPEG4_AVC_HIGH) || (profile == PIPE_VIDEO_PROFILE_MPEG4_AVC_HIGH10));
 
    H264_PPS ppsStructure = {
       pic_parameter_set_id,
@@ -299,7 +289,7 @@ d3d12_video_bitstream_builder_h264::print_sps(const H264_SPS &sps)
    // d3d12_video_encoder_bitstream_builder_h264.h
 
    static_assert(sizeof(H264_SPS) ==
-                (sizeof(uint32_t) * 21 + sizeof(H264_VUI_PARAMS)), "Update the print function if structure changes");
+                (sizeof(uint32_t) * 20 + sizeof(H264_VUI_PARAMS)), "Update the print function if structure changes");
 
    static_assert(sizeof(H264_VUI_PARAMS) ==
                  (sizeof(uint32_t) * 32 + 2*sizeof(H264_HRD_PARAMS)), "Update the print function if structure changes");
@@ -310,8 +300,7 @@ d3d12_video_bitstream_builder_h264::print_sps(const H264_SPS &sps)
    // Declared fields from definition in d3d12_video_encoder_bitstream_builder_h264.h
    debug_printf("[D3D12 d3d12_video_bitstream_builder_h264] H264_SPS values below:\n");
    debug_printf("profile_idc: %d\n", sps.profile_idc);
-   debug_printf("constraint_set1_flag: %d\n", sps.constraint_set1_flag);
-   debug_printf("constraint_set3_flag: %d\n", sps.constraint_set3_flag);
+   debug_printf("constraint_set_flags: %x\n", sps.constraint_set_flags);
    debug_printf("level_idc: %d\n", sps.level_idc);
    debug_printf("seq_parameter_set_id: %d\n", sps.seq_parameter_set_id);
    debug_printf("bit_depth_luma_minus8: %d\n", sps.bit_depth_luma_minus8);

@@ -1606,11 +1606,25 @@ fs_generator::enable_debug(const char *shader_name)
    this->shader_name = shader_name;
 }
 
+static gfx12_systolic_depth
+translate_systolic_depth(unsigned d)
+{
+   /* Could also return (ffs(d) - 1) & 3. */
+   switch (d) {
+   case 2:  return BRW_SYSTOLIC_DEPTH_2;
+   case 4:  return BRW_SYSTOLIC_DEPTH_4;
+   case 8:  return BRW_SYSTOLIC_DEPTH_8;
+   case 16: return BRW_SYSTOLIC_DEPTH_16;
+   default: unreachable("Invalid systolic depth.");
+   }
+}
+
 int
 fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
                             struct shader_stats shader_stats,
                             const brw::performance &perf,
-                            struct brw_compile_stats *stats)
+                            struct brw_compile_stats *stats,
+                            unsigned max_polygons)
 {
    /* align to 64 byte boundary. */
    brw_realign(p, 64);
@@ -1788,6 +1802,12 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
 
       case BRW_OPCODE_LINE:
          brw_LINE(p, dst, src[0], src[1]);
+         break;
+
+      case BRW_OPCODE_DPAS:
+         assert(devinfo->verx10 >= 125);
+         brw_DPAS(p, translate_systolic_depth(inst->sdepth), inst->rcount,
+                  dst, src[0], src[1], src[2]);
          break;
 
       case BRW_OPCODE_MAD:
@@ -2439,6 +2459,7 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width,
                         before_size, after_size);
    if (stats) {
       stats->dispatch_width = dispatch_width;
+      stats->max_polygons = max_polygons;
       stats->max_dispatch_width = dispatch_width;
       stats->instructions = before_size / 16 - nop_count;
       stats->sends = send_count;

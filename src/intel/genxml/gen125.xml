@@ -1004,6 +1004,7 @@
       <value name="POSOFFSET_CENTROID" value="2" />
       <value name="POSOFFSET_SAMPLE" value="3" />
     </field>
+    <field name="Dual SIMD8 Dispatch Enable" start="197" end="197" type="bool" />
     <field name="Render Target Resolve Type" start="198" end="199" type="uint">
       <value name="RESOLVE_DISABLED" value="0" />
       <value name="RESOLVE_PARTIAL" value="1" />
@@ -1011,6 +1012,7 @@
       <value name="RESOLVE_FULL" value="3" />
     </field>
     <field name="Render Target Fast Clear Enable" start="200" end="200" type="bool" />
+    <field name="Overlapping Subspans Enable" start="201" end="201" type="bool" />
     <field name="Push Constant Enable" start="203" end="203" type="bool" />
     <field name="Maximum Number of Threads Per PSD" start="215" end="223" type="uint" />
     <field name="Dispatch GRF Start Register For Constant/Setup Data 2" start="224" end="230" type="uint" />
@@ -1762,6 +1764,7 @@
     </field>
     <field name="Media Sampler DOP Clock Gate Enable" start="4" end="4" type="bool" />
     <field name="Force Media Awake" start="5" end="5" type="bool" />
+    <field name="Systolic Mode Enable" start="7" end="7" type="bool" />
     <field name="Mask Bits" start="8" end="15" type="uint" />
     <field name="3D Command Sub Opcode" start="16" end="23" type="uint" default="4" />
     <field name="3D Command Opcode" start="24" end="26" type="uint" default="1" />
@@ -2117,6 +2120,9 @@
     <field name="Destination Depth/Stencil Resource" start="498" end="498" type="bool" />
     <field name="Destination Array Index" start="501" end="511" type="uint" />
   </instruction>
+  <register name="BCS_AUX_TABLE_BASE_ADDR" length="2" num="0x4240">
+    <field name="Address" start="0" end="63" type="uint" />
+  </register>
   <register name="BCS_CCS_AUX_INV" length="1" num="0x4248">
     <field name="Aux Inv" start="0" end="0" type="bool" />
   </register>

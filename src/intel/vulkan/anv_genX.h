@@ -90,7 +90,8 @@ void genX(cmd_buffer_emit_hashing_mode)(struct anv_cmd_buffer *cmd_buffer,
 
 void genX(flush_pipeline_select_3d)(struct anv_cmd_buffer *cmd_buffer);
 void genX(flush_pipeline_select_gpgpu)(struct anv_cmd_buffer *cmd_buffer);
-void genX(emit_pipeline_select)(struct anv_batch *batch, uint32_t pipeline);
+void genX(emit_pipeline_select)(struct anv_batch *batch, uint32_t pipeline,
+                                const struct anv_device *device);
 
 void genX(apply_task_urb_workaround)(struct anv_cmd_buffer *cmd_buffer);
 
@@ -106,6 +107,12 @@ genX(emit_apply_pipe_flushes)(struct anv_batch *batch,
                               uint32_t current_pipeline,
                               enum anv_pipe_bits bits,
                               enum anv_pipe_bits *emitted_flush_bits);
+void
+genX(invalidate_aux_map)(struct anv_batch *batch,
+                         struct anv_device *device,
+                         enum intel_engine_class engine_class,
+                         enum anv_pipe_bits bits);
+
 
 void genX(emit_so_memcpy_init)(struct anv_memcpy_state *state,
                                struct anv_device *device,
@@ -172,6 +179,12 @@ void genX(cmd_buffer_dispatch_kernel)(struct anv_cmd_buffer *cmd_buffer,
 
 void genX(blorp_exec)(struct blorp_batch *batch,
                       const struct blorp_params *params);
+
+void genX(batch_emit_secondary_call)(struct anv_batch *batch,
+                                     struct anv_address secondary_addr,
+                                     struct anv_address secondary_return_addr);
+
+void *genX(batch_emit_return)(struct anv_batch *batch);
 
 void genX(cmd_emit_timestamp)(struct anv_batch *batch,
                               struct anv_device *device,

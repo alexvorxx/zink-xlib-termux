@@ -67,7 +67,7 @@ static const driOptionDescription anv_dri_options[] = {
       DRI_CONF_VK_X11_OVERRIDE_MIN_IMAGE_COUNT(0)
       DRI_CONF_VK_X11_STRICT_IMAGE_COUNT(false)
       DRI_CONF_VK_XWAYLAND_WAIT_READY(true)
-      DRI_CONF_ANV_ASSUME_FULL_SUBGROUPS(false)
+      DRI_CONF_ANV_ASSUME_FULL_SUBGROUPS(0)
       DRI_CONF_ANV_SAMPLE_MASK_OUT_OPENGL_BEHAVIOUR(false)
       DRI_CONF_NO_16BIT(false)
       DRI_CONF_ANV_HASVK_OVERRIDE_API_VERSION(false)
@@ -132,7 +132,7 @@ compiler_perf_log(UNUSED void *data, UNUSED unsigned *id, const char *fmt, ...)
 #define ANV_USE_WSI_PLATFORM
 #endif
 
-#ifdef ANDROID
+#ifdef ANDROID_STRICT
 #define ANV_API_VERSION VK_MAKE_VERSION(1, 1, VK_HEADER_VERSION)
 #else
 #define ANV_API_VERSION_1_3 VK_MAKE_VERSION(1, 3, VK_HEADER_VERSION)
@@ -142,7 +142,7 @@ compiler_perf_log(UNUSED void *data, UNUSED unsigned *id, const char *fmt, ...)
 VkResult anv_EnumerateInstanceVersion(
     uint32_t*                                   pApiVersion)
 {
-#ifdef ANDROID
+#ifdef ANDROID_STRICT
    *pApiVersion = ANV_API_VERSION;
 #else
    *pApiVersion = ANV_API_VERSION_1_3;
@@ -1325,7 +1325,7 @@ anv_init_dri_options(struct anv_instance *instance)
                        instance->vk.app_info.engine_version);
 
     instance->assume_full_subgroups =
-            driQueryOptionb(&instance->dri_options, "anv_assume_full_subgroups");
+            driQueryOptioni(&instance->dri_options, "anv_assume_full_subgroups");
     instance->limit_trig_input_range =
             driQueryOptionb(&instance->dri_options, "limit_trig_input_range");
     instance->sample_mask_out_opengl_behaviour =
@@ -1571,7 +1571,7 @@ void anv_GetPhysicalDeviceProperties(
    };
 
    *pProperties = (VkPhysicalDeviceProperties) {
-#ifdef ANDROID
+#ifdef ANDROID_STRICT
       .apiVersion = ANV_API_VERSION,
 #else
       .apiVersion =  (pdevice->use_softpin || pdevice->instance->report_vk_1_3) ?
@@ -3720,7 +3720,7 @@ void anv_GetBufferMemoryRequirements2(
                                       pMemoryRequirements);
 }
 
-void anv_GetDeviceBufferMemoryRequirementsKHR(
+void anv_GetDeviceBufferMemoryRequirements(
     VkDevice                                    _device,
     const VkDeviceBufferMemoryRequirements*     pInfo,
     VkMemoryRequirements2*                      pMemoryRequirements)

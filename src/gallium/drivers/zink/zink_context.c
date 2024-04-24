@@ -127,7 +127,9 @@ zink_context_destroy(struct pipe_context *pctx)
    if (util_queue_is_initialized(&screen->flush_queue))
       util_queue_finish(&screen->flush_queue);
    if (ctx->batch.state && !screen->device_lost) {
+      simple_mtx_lock(&screen->queue_lock);
       VkResult result = VKSCR(QueueWaitIdle)(screen->queue);
+      simple_mtx_unlock(&screen->queue_lock);
 
       if (result != VK_SUCCESS)
          mesa_loge("ZINK: vkQueueWaitIdle failed (%s)", vk_Result_to_str(result));
@@ -427,7 +429,7 @@ zink_create_sampler_state(struct pipe_context *pctx,
                           const struct pipe_sampler_state *state)
 {
    struct zink_screen *screen = zink_screen(pctx->screen);
-   struct zink_context *zink = zink_context(pctx);
+   ASSERTED struct zink_context *zink = zink_context(pctx);
    bool need_custom = false;
    bool need_clamped_border_color = false;
    VkSamplerCreateInfo sci = {0};
@@ -3319,15 +3321,9 @@ reapply_color_write(struct zink_context *ctx)
    VKCTX(CmdSetColorWriteEnableEXT)(ctx->batch.state->reordered_cmdbuf, max_att, enables);
    assert(screen->info.have_EXT_extended_dynamic_state);
    if (ctx->dsa_state)*/
-   if (screen->info.have_EXT_color_write_enable) {
-      const VkBool32 enables[PIPE_MAX_COLOR_BUFS] = {1, 1, 1, 1, 1, 1, 1, 1};
-      const VkBool32 disables[PIPE_MAX_COLOR_BUFS] = {0};
-      const unsigned max_att = MIN2(PIPE_MAX_COLOR_BUFS, screen->info.props.limits.maxColorAttachments);
-      VKCTX(CmdSetColorWriteEnableEXT)(ctx->batch.state->cmdbuf, max_att, ctx->disable_color_writes ? disables : enables);
-      VKCTX(CmdSetColorWriteEnableEXT)(ctx->batch.state->barrier_cmdbuf, max_att, enables);
-   }
-   if (screen->info.have_EXT_extended_dynamic_state && ctx->dsa_state)
-      VKCTX(CmdSetDepthWriteEnableEXT)(ctx->batch.state->cmdbuf, ctx->disable_color_writes ? VK_FALSE : ctx->dsa_state->hw_state.depth_write);
+
+   if (ctx->dsa_state)
+      VKCTX(CmdSetDepthWriteEnable)(ctx->batch.state->cmdbuf, ctx->disable_color_writes ? VK_FALSE : ctx->dsa_state->hw_state.depth_write);
 }
 
 static void
@@ -5245,7 +5241,7 @@ zink_flush_dgc(struct zink_context *ctx)
          strides
       };
       VkIndirectCommandsLayoutNV iclayout;
-      VkResult res = VKSCR(CreateIndirectCommandsLayoutNV)(screen->dev, &lci, NULL, &iclayout);
+      ASSERTED VkResult res = VKSCR(CreateIndirectCommandsLayoutNV)(screen->dev, &lci, NULL, &iclayout);
       assert(res == VK_SUCCESS);
       util_dynarray_append(&bs->dgc.layouts, VkIndirectCommandsLayoutNV, iclayout);
 

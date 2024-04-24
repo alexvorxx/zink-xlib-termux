@@ -1927,7 +1927,7 @@ isl_device_init(struct isl_device *dev,
                 const struct intel_device_info *info);
 
 isl_sample_count_mask_t ATTRIBUTE_CONST
-isl_device_get_sample_counts(struct isl_device *dev);
+isl_device_get_sample_counts(const struct isl_device *dev);
 
 /**
  * :returns: The isl_format_layout for the given isl_format
@@ -2342,6 +2342,30 @@ isl_drm_modifier_has_aux(uint64_t modifier)
 
    return isl_drm_modifier_get_info(modifier)->supports_render_compression ||
           isl_drm_modifier_get_info(modifier)->supports_media_compression;
+}
+
+static inline bool
+isl_drm_modifier_plane_is_clear_color(uint64_t modifier, uint32_t plane)
+{
+   if (modifier == DRM_FORMAT_MOD_INVALID)
+      return false;
+
+   ASSERTED const struct isl_drm_modifier_info *mod_info =
+      isl_drm_modifier_get_info(modifier);
+   assert(mod_info);
+
+   switch (modifier) {
+   case I915_FORMAT_MOD_4_TILED_MTL_RC_CCS_CC:
+   case I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS_CC:
+      assert(mod_info->supports_clear_color);
+      return plane == 2;
+   case I915_FORMAT_MOD_4_TILED_DG2_RC_CCS_CC:
+      assert(mod_info->supports_clear_color);
+      return plane == 1;
+   default:
+      assert(!mod_info->supports_clear_color);
+      return false;
+   }
 }
 
 /** Returns the default isl_aux_state for the given modifier.

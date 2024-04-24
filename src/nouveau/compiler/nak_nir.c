@@ -19,6 +19,41 @@
 
 #define OPT_V(nir, pass, ...) NIR_PASS_V(nir, pass, ##__VA_ARGS__)
 
+bool
+nak_nir_workgroup_has_one_subgroup(const nir_shader *nir)
+{
+   switch (nir->info.stage) {
+   case MESA_SHADER_VERTEX:
+   case MESA_SHADER_TESS_EVAL:
+   case MESA_SHADER_GEOMETRY:
+   case MESA_SHADER_FRAGMENT:
+      unreachable("Shader stage does not have workgroups");
+      break;
+
+   case MESA_SHADER_TESS_CTRL:
+      /* Tessellation only ever has one subgroup per workgroup.  The Vulkan
+       * limit on the number of tessellation invocations is 32 to allow for
+       * this.
+       */
+      return true;
+
+   case MESA_SHADER_COMPUTE:
+   case MESA_SHADER_KERNEL: {
+      if (nir->info.workgroup_size_variable)
+         return false;
+
+      uint16_t wg_sz = nir->info.workgroup_size[0] *
+                       nir->info.workgroup_size[1] *
+                       nir->info.workgroup_size[2];
+
+      return wg_sz <= 32;
+   }
+
+   default:
+      unreachable("Unknown shader stage");
+   }
+}
+
 static void
 optimize_nir(nir_shader *nir, const struct nak_compiler *nak, bool allow_copies)
 {
@@ -150,7 +185,7 @@ lower_bit_size_cb(const nir_instr *instr, void *_data)
       switch (intrin->intrinsic) {
       case nir_intrinsic_vote_ieq:
          if (intrin->src[0].ssa->bit_size != 1 &&
-             intrin->src[0].ssa->bit_size != 32)
+             intrin->src[0].ssa->bit_size < 32)
             return 32;
          return 0;
 
@@ -168,7 +203,7 @@ lower_bit_size_cb(const nir_instr *instr, void *_data)
       case nir_intrinsic_reduce:
       case nir_intrinsic_inclusive_scan:
       case nir_intrinsic_exclusive_scan:
-         if (intrin->src[0].ssa->bit_size != 32)
+         if (intrin->src[0].ssa->bit_size < 32)
             return 32;
          return 0;
 
@@ -179,7 +214,7 @@ lower_bit_size_cb(const nir_instr *instr, void *_data)
 
    case nir_instr_type_phi: {
       nir_phi_instr *phi = nir_instr_as_phi(instr);
-      if (phi->def.bit_size != 32 && phi->def.bit_size != 1)
+      if (phi->def.bit_size < 32 && phi->def.bit_size != 1)
          return 32;
       return 0;
    }
@@ -204,7 +239,7 @@ nak_nir_lower_subgroup_id_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
       b->cursor = nir_instr_remove(&intrin->instr);
 
       nir_def *num_subgroups;
-      if (nak_nir_has_one_subgroup(b->shader)) {
+      if (nak_nir_workgroup_has_one_subgroup(b->shader)) {
          num_subgroups = nir_imm_int(b, 1);
       } else {
          assert(b->shader->info.cs.derivative_group == DERIVATIVE_GROUP_NONE);
@@ -225,7 +260,7 @@ nak_nir_lower_subgroup_id_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
       b->cursor = nir_instr_remove(&intrin->instr);
 
       nir_def *subgroup_id;
-      if (nak_nir_has_one_subgroup(b->shader)) {
+      if (nak_nir_workgroup_has_one_subgroup(b->shader)) {
          subgroup_id = nir_imm_int(b, 0);
       } else {
          assert(b->shader->info.cs.derivative_group == DERIVATIVE_GROUP_NONE);
@@ -288,20 +323,6 @@ nak_preprocess_nir(nir_shader *nir, const struct nak_compiler *nak)
    OPT(nir, nir_lower_system_values);
    OPT(nir, nak_nir_lower_subgroup_id);
    OPT(nir, nir_lower_compute_system_values, NULL);
-
-   const nir_lower_subgroups_options subgroups_options = {
-      .subgroup_size = 32,
-      .ballot_bit_size = 32,
-      .ballot_components = 1,
-      .lower_to_scalar = true,
-      .lower_vote_eq = true,
-      .lower_first_invocation_to_ballot = true,
-      .lower_read_first_invocation = true,
-      .lower_elect = true,
-      .lower_inverse_ballot = true,
-   };
-   OPT(nir, nir_lower_subgroups, &subgroups_options);
-   OPT(nir, nak_nir_lower_scan_reduce);
 }
 
 static uint16_t
@@ -522,7 +543,8 @@ nak_nir_lower_varyings(nir_shader *nir, nir_variable_mode modes)
    nir_foreach_variable_with_modes(var, nir, modes)
       var->data.driver_location = nak_varying_attr_addr(var->data.location);
 
-   OPT(nir, nir_lower_io, modes, type_size_vec4_bytes, 0);
+   OPT(nir, nir_lower_io, modes, type_size_vec4_bytes,
+       nir_lower_io_lower_64bit_to_32);
 
    return progress;
 }
@@ -539,6 +561,7 @@ nak_xfb_from_nir(const struct nir_xfb_info *nir_xfb)
       nak_xfb.stride[b] = nir_xfb->buffers[b].stride;
       nak_xfb.stream[b] = nir_xfb->buffer_to_stream[b];
    }
+   memset(nak_xfb.attr_index, 0xff, sizeof(nak_xfb.attr_index)); /* = skip */
 
    for (unsigned o = 0; o < nir_xfb->output_count; o++) {
       const nir_xfb_output_info *out = &nir_xfb->outputs[o];
@@ -610,8 +633,30 @@ load_interpolated_input(nir_builder *b, unsigned num_components, uint32_t addr,
             comps[c] = nir_fmul(b, comps[c], inv_w);
       }
       return nir_vec(b, comps, num_components);
+   } else if (nak->sm >= 50) {
+      struct nak_nir_ipa_flags flags = {
+         .interp_mode = interp_mode,
+         .interp_freq = NAK_INTERP_FREQ_PASS,
+         .interp_loc = interp_loc,
+      };
+
+      if (interp_mode == NAK_INTERP_MODE_PERSPECTIVE)
+         flags.interp_freq = NAK_INTERP_FREQ_PASS_MUL_W;
+      else
+         inv_w = nir_imm_float(b, 0);
+
+      uint32_t flags_u32;
+      memcpy(&flags_u32, &flags, sizeof(flags_u32));
+
+      nir_def *comps[NIR_MAX_VEC_COMPONENTS];
+      for (unsigned c = 0; c < num_components; c++) {
+         comps[c] = nir_ipa_nv(b, inv_w, offset,
+                               .base = addr + c * 4,
+                               .flags = flags_u32);
+      }
+      return nir_vec(b, comps, num_components);
    } else {
-      unreachable("Figure out input interpolation on Maxwell");
+      unreachable("Figure out input interpolation on Kepler");
    }
 }
 
@@ -965,15 +1010,34 @@ nak_nir_lower_fs_outputs(nir_shader *nir)
    return true;
 }
 
+static bool
+nak_mem_vectorize_cb(unsigned align_mul, unsigned align_offset,
+                     unsigned bit_size, unsigned num_components,
+                     nir_intrinsic_instr *low, nir_intrinsic_instr *high,
+                     void *cb_data)
+{
+   /*
+    * Since we legalize these later with nir_lower_mem_access_bit_sizes,
+    * we can optimistically combine anything that might be profitable
+    */
+   assert(util_is_power_of_two_nonzero(align_mul));
+
+   unsigned max_bytes = 128u / 8u;
+   if (low->intrinsic == nir_intrinsic_load_ubo)
+      max_bytes = 64u / 8u;
+
+   align_mul = MIN2(align_mul, max_bytes);
+   align_offset = align_offset % align_mul;
+   return align_offset + num_components * (bit_size / 8) <= align_mul;
+}
+
 static nir_mem_access_size_align
 nak_mem_access_size_align(nir_intrinsic_op intrin,
                           uint8_t bytes, uint8_t bit_size,
                           uint32_t align_mul, uint32_t align_offset,
                           bool offset_is_const, const void *cb_data)
 {
-   assert(align_offset < align_mul);
-   const uint32_t align =
-      align_offset ? 1 << (ffs(align_offset) - 1) : align_mul;
+   const uint32_t align = nir_combined_align(align_mul, align_offset);
    assert(util_is_power_of_two_nonzero(align));
 
    unsigned bytes_pow2;
@@ -1014,13 +1078,13 @@ nak_mem_access_size_align(nir_intrinsic_op intrin,
       return (nir_mem_access_size_align) {
          .bit_size = chunk_bytes * 8,
          .num_components = 1,
-         .align = align,
+         .align = chunk_bytes,
       };
    } else {
       return (nir_mem_access_size_align) {
          .bit_size = 32,
          .num_components = chunk_bytes / 4,
-         .align = align,
+         .align = chunk_bytes,
       };
    }
 }
@@ -1039,18 +1103,45 @@ nir_shader_has_local_variables(const nir_shader *nir)
 void
 nak_postprocess_nir(nir_shader *nir,
                     const struct nak_compiler *nak,
+                    nir_variable_mode robust2_modes,
                     const struct nak_fs_key *fs_key)
 {
    UNUSED bool progress = false;
 
    nak_optimize_nir(nir, nak);
 
+   const nir_lower_subgroups_options subgroups_options = {
+      .subgroup_size = 32,
+      .ballot_bit_size = 32,
+      .ballot_components = 1,
+      .lower_to_scalar = true,
+      .lower_vote_eq = true,
+      .lower_first_invocation_to_ballot = true,
+      .lower_read_first_invocation = true,
+      .lower_elect = true,
+      .lower_inverse_ballot = true,
+   };
+   OPT(nir, nir_lower_subgroups, &subgroups_options);
+   OPT(nir, nak_nir_lower_scan_reduce);
+
    if (nir_shader_has_local_variables(nir)) {
       OPT(nir, nir_lower_vars_to_explicit_types, nir_var_function_temp,
           glsl_get_natural_size_align_bytes);
       OPT(nir, nir_lower_explicit_io, nir_var_function_temp,
           nir_address_format_32bit_offset);
+      nak_optimize_nir(nir, nak);
    }
+
+   OPT(nir, nir_opt_shrink_vectors);
+
+   nir_load_store_vectorize_options vectorize_opts = {};
+   vectorize_opts.modes = nir_var_mem_global |
+                          nir_var_mem_ssbo |
+                          nir_var_mem_shared |
+                          nir_var_shader_temp;
+   vectorize_opts.callback = nak_mem_vectorize_cb;
+   vectorize_opts.robust_modes = robust2_modes;
+   OPT(nir, nir_opt_load_store_vectorize, &vectorize_opts);
 
    nir_lower_mem_access_bit_sizes_options mem_bit_size_options = {
       .modes = nir_var_mem_constant | nir_var_mem_ubo | nir_var_mem_generic,
@@ -1058,6 +1149,8 @@ nak_postprocess_nir(nir_shader *nir,
    };
    OPT(nir, nir_lower_mem_access_bit_sizes, &mem_bit_size_options);
    OPT(nir, nir_lower_bit_size, lower_bit_size_cb, (void *)nak);
+
+   OPT(nir, nir_opt_combine_barriers, NULL, NULL);
 
    nak_optimize_nir(nir, nak);
 
@@ -1110,13 +1203,24 @@ nak_postprocess_nir(nir_shader *nir,
       unreachable("Unsupported shader stage");
    }
 
+   OPT(nir, nir_lower_doubles, NULL, nak->nir_options.lower_doubles_options);
    OPT(nir, nir_lower_int64);
 
    nak_optimize_nir(nir, nak);
 
    do {
       progress = false;
-      if (OPT(nir, nir_opt_algebraic_late)) {
+      OPT(nir, nir_opt_algebraic_late);
+      OPT(nir, nak_nir_lower_algebraic_late, nak);
+
+      /* If we're lowering fp64 sat but not min/max, the sat lowering may have
+       * been undone by nir_opt_algebraic.  Lower sat again just to be sure.
+       */
+      if ((nak->nir_options.lower_doubles_options & nir_lower_dsat) &&
+          !(nak->nir_options.lower_doubles_options & nir_lower_dminmax))
+         OPT(nir, nir_lower_doubles, NULL, nir_lower_dsat);
+
+      if (progress) {
          OPT(nir, nir_opt_constant_folding);
          OPT(nir, nir_copy_prop);
          OPT(nir, nir_opt_dce);

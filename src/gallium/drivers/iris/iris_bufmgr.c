@@ -812,6 +812,7 @@ iris_slab_alloc(void *priv,
       bo->index = -1;
       bo->refcount = 0;
       bo->idle = true;
+      bo->zeroed = slab->bo->zeroed;
 
       bo->slab.entry.slab = &slab->base;
       bo->slab.entry.group_index = group_index;
@@ -876,6 +877,9 @@ zero_bo(struct iris_bufmgr *bufmgr,
 {
    assert(flags & BO_ALLOC_ZEROED);
 
+   if (bo->zeroed)
+      return true;
+
    if (bufmgr->devinfo.has_flat_ccs && (flags & BO_ALLOC_LMEM)) {
       /* With flat CCS, all allocations in LMEM have memory ranges with
        * corresponding CCS elements. These elements are only accessible
@@ -889,6 +893,7 @@ zero_bo(struct iris_bufmgr *bufmgr,
       return false;
 
    memset(map, 0, bo->size);
+   bo->zeroed = true;
    return true;
 }
 
@@ -1060,6 +1065,7 @@ alloc_bo_from_cache(struct iris_bufmgr *bufmgr,
    /* Zero the contents if necessary.  If this fails, fall back to
     * allocating a fresh BO, which will always be zeroed by the kernel.
     */
+   assert(bo->zeroed == false);
    if ((flags & BO_ALLOC_ZEROED) && !zero_bo(bufmgr, flags, bo)) {
       bo_free(bo);
       return NULL;
@@ -1121,6 +1127,7 @@ alloc_fresh_bo(struct iris_bufmgr *bufmgr, uint64_t bo_size, unsigned flags)
    bo->bufmgr = bufmgr;
    bo->size = bo_size;
    bo->idle = true;
+   bo->zeroed = true;
 
    return bo;
 }
@@ -1140,8 +1147,9 @@ heap_to_mmap_mode(struct iris_bufmgr *bufmgr, enum iris_heap heap)
 
    switch (heap) {
    case IRIS_HEAP_DEVICE_LOCAL:
-   case IRIS_HEAP_DEVICE_LOCAL_PREFERRED:
       return intel_vram_all_mappable(devinfo) ? IRIS_MMAP_WC : IRIS_MMAP_NONE;
+   case IRIS_HEAP_DEVICE_LOCAL_PREFERRED:
+      return IRIS_MMAP_WC;
    case IRIS_HEAP_SYSTEM_MEMORY_CACHED_COHERENT:
       return IRIS_MMAP_WB;
    case IRIS_HEAP_SYSTEM_MEMORY_UNCACHED:
@@ -1399,6 +1407,7 @@ iris_bo_gem_create_from_name(struct iris_bufmgr *bufmgr,
    bo->bufmgr = bufmgr;
    bo->gem_handle = open_arg.handle;
    bo->name = name;
+   bo->index = -1;
    bo->real.global_name = handle;
    bo->real.prime_fd = -1;
    bo->real.reusable = false;
@@ -1595,6 +1604,7 @@ iris_bo_unreference(struct iris_bo *bo)
 
       clock_gettime(CLOCK_MONOTONIC, &time);
 
+      bo->zeroed = false;
       if (bo->gem_handle == 0) {
          pb_slab_free(get_slabs(bufmgr, bo->size), &bo->slab.entry);
       } else {
@@ -1922,6 +1932,7 @@ iris_bo_import_dmabuf(struct iris_bufmgr *bufmgr, int prime_fd,
 
    bo->bufmgr = bufmgr;
    bo->name = "prime";
+   bo->index = -1;
    bo->real.reusable = false;
    bo->real.imported = true;
    /* Xe KMD expects at least 1-way coherency for imports */

@@ -31,6 +31,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "util/blend.h"
 #include "util/macros.h"
 #include "common/v3d_debug.h"
 #include "common/v3d_device_info.h"
@@ -40,7 +41,6 @@
 #include "util/u_math.h"
 
 #include "qpu/qpu_instr.h"
-#include "pipe/p_state.h"
 
 /**
  * Maximum number of outstanding TMU operations we can queue for execution.
@@ -435,10 +435,8 @@ struct v3d_fs_key {
                 uint8_t swizzle[4];
         } color_fmt[V3D_MAX_DRAW_BUFFERS];
 
-        uint8_t logicop_func;
+        enum pipe_logicop logicop_func;
         uint32_t point_sprite_mask;
-
-        struct pipe_rt_blend_state blend;
 
         /* If the fragment shader reads gl_PrimitiveID then we have 2 scenarios:
          *
@@ -916,6 +914,12 @@ struct v3d_compile {
 
         bool tmu_dirty_rcl;
         bool has_global_address;
+
+        /* If we have processed a discard/terminate instruction. This may
+         * cause some lanes to be inactive even during uniform control
+         * flow.
+         */
+        bool emitted_discard;
 };
 
 struct v3d_uniform_list {

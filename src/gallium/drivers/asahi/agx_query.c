@@ -35,18 +35,49 @@ is_occlusion(struct agx_query *query)
    }
 }
 
-static void
-agx_destroy_query(struct pipe_context *ctx, struct pipe_query *pquery)
+static bool
+is_timer(struct agx_query *query)
 {
+   switch (query->type) {
+   case PIPE_QUERY_TIMESTAMP:
+   case PIPE_QUERY_TIME_ELAPSED:
+      return true;
+   default:
+      return false;
+   }
+}
+
+static void
+agx_destroy_query(struct pipe_context *pctx, struct pipe_query *pquery)
+{
+   struct agx_context *ctx = agx_context(pctx);
    struct agx_query *query = (struct agx_query *)pquery;
 
    /* It is legal for the query to be destroyed before its value is read,
     * particularly during application teardown. In this case, don't leave a
     * dangling reference to the query.
     */
-   if (query->writer && is_occlusion(query)) {
-      *util_dynarray_element(&query->writer->occlusion_queries,
-                             struct agx_query *, query->writer_index) = NULL;
+   if (query->writer) {
+      assert(!is_timer(query) && "single writer not used here");
+
+      struct agx_batch *writer = query->writer;
+      struct util_dynarray *array = is_occlusion(query)
+                                       ? &writer->occlusion_queries
+                                       : &writer->nonocclusion_queries;
+      struct agx_query **ptr =
+         util_dynarray_element(array, struct agx_query *, query->writer_index);
+
+      assert((*ptr) == query && "data structure invariant");
+      *ptr = NULL;
+   } else if (is_timer(query)) {
+      /* Potentially has many writers! We need them all to synchronize so they
+       * don't have dangling references. Syncing will destroy batches that hold
+       * references as required.
+       *
+       * TODO: Optimize this, timestamp queries are bonkers on tilers.
+       */
+      agx_flush_all(ctx, "Destroying time query");
+      agx_sync_all(ctx, "Destroying time query");
    }
 
    free(query);
@@ -68,11 +99,11 @@ agx_begin_query(struct pipe_context *pctx, struct pipe_query *pquery)
       break;
 
    case PIPE_QUERY_PRIMITIVES_GENERATED:
-      ctx->prims_generated = query;
+      ctx->prims_generated[query->index] = query;
       break;
 
    case PIPE_QUERY_PRIMITIVES_EMITTED:
-      ctx->tf_prims_generated = query;
+      ctx->tf_prims_generated[query->index] = query;
       break;
 
    case PIPE_QUERY_TIME_ELAPSED:
@@ -119,10 +150,10 @@ agx_end_query(struct pipe_context *pctx, struct pipe_query *pquery)
       ctx->occlusion_query = NULL;
       return true;
    case PIPE_QUERY_PRIMITIVES_GENERATED:
-      ctx->prims_generated = NULL;
+      ctx->prims_generated[query->index] = NULL;
       return true;
    case PIPE_QUERY_PRIMITIVES_EMITTED:
-      ctx->tf_prims_generated = NULL;
+      ctx->tf_prims_generated[query->index] = NULL;
       return true;
    case PIPE_QUERY_TIME_ELAPSED:
       ctx->time_elapsed = NULL;

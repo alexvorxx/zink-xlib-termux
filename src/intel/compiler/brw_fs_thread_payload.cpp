@@ -22,6 +22,7 @@
  */
 
 #include "brw_fs.h"
+#include "brw_fs_builder.h"
 
 using namespace brw;
 
@@ -103,7 +104,7 @@ gs_thread_payload::gs_thread_payload(fs_visitor &v)
 {
    struct brw_vue_prog_data *vue_prog_data = brw_vue_prog_data(v.prog_data);
    struct brw_gs_prog_data *gs_prog_data = brw_gs_prog_data(v.prog_data);
-   const fs_builder bld = fs_builder(&v, v.dispatch_width).at_end();
+   const fs_builder bld = fs_builder(&v).at_end();
 
    /* R0: thread header. */
    unsigned r = reg_unit(v.devinfo);
@@ -150,6 +151,80 @@ gs_thread_payload::gs_thread_payload(fs_visitor &v)
 }
 
 static inline void
+setup_fs_payload_gfx20(fs_thread_payload &payload,
+                       const fs_visitor &v,
+                       bool &source_depth_to_render_target)
+{
+   struct brw_wm_prog_data *prog_data = brw_wm_prog_data(v.prog_data);
+   const unsigned payload_width = 16;
+   assert(v.dispatch_width % payload_width == 0);
+   assert(v.devinfo->ver >= 20);
+
+   for (unsigned j = 0; j < v.dispatch_width / payload_width; j++) {
+      /* R0-1: PS thread payload header, masks and pixel X/Y coordinates. */
+      payload.num_regs++;
+      payload.subspan_coord_reg[j] = payload.num_regs++;
+   }
+
+   for (unsigned j = 0; j < v.dispatch_width / payload_width; j++) {
+      /* R2-13: Barycentric interpolation coordinates.  These appear
+       * in the same order that they appear in the brw_barycentric_mode
+       * enum.  Each set of coordinates occupies 2 64B registers per
+       * SIMD16 half.  Coordinates only appear if they were enabled
+       * using the "Barycentric Interpolation Mode" bits in WM_STATE.
+       */
+      for (int i = 0; i < BRW_BARYCENTRIC_MODE_COUNT; ++i) {
+         if (prog_data->barycentric_interp_modes & (1 << i)) {
+            payload.barycentric_coord_reg[i][j] = payload.num_regs;
+            payload.num_regs += payload_width / 4;
+         }
+      }
+
+      /* R14: Interpolated depth if "Pixel Shader Uses Source Depth" is set. */
+      if (prog_data->uses_src_depth) {
+         payload.source_depth_reg[j] = payload.num_regs;
+         payload.num_regs += payload_width / 8;
+      }
+
+      /* R15: Interpolated W if "Pixel Shader Uses Source W" is set. */
+      if (prog_data->uses_src_w) {
+         payload.source_w_reg[j] = payload.num_regs;
+         payload.num_regs += payload_width / 8;
+      }
+
+      /* R16: MSAA input coverage mask if "Pixel Shader Uses Input
+       * Coverage Mask" is set.
+       */
+      if (prog_data->uses_sample_mask) {
+         payload.sample_mask_in_reg[j] = payload.num_regs;
+         payload.num_regs += payload_width / 8;
+      }
+
+      /* R19: MSAA position XY offsets if "Position XY Offset Select"
+       * is either POSOFFSET_CENTROID or POSOFFSET_SAMPLE.  Note that
+       * this is delivered as a single SIMD32 vector, inconsistently
+       * with most other PS payload fields.
+       */
+      if (prog_data->uses_pos_offset && j == 0) {
+         for (unsigned k = 0; k < 2; k++) {
+            payload.sample_pos_reg[k] = payload.num_regs;
+            payload.num_regs++;
+         }
+      }
+   }
+
+   if (prog_data->uses_depth_w_coefficients) {
+      assert(v.max_polygons == 1);
+      payload.depth_w_coef_reg = payload.num_regs;
+      payload.num_regs += 2;
+   }
+
+   if (v.nir->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_DEPTH)) {
+      source_depth_to_render_target = true;
+   }
+}
+
+static inline void
 setup_fs_payload_gfx6(fs_thread_payload &payload,
                       const fs_visitor &v,
                       bool &source_depth_to_render_target)
@@ -158,7 +233,7 @@ setup_fs_payload_gfx6(fs_thread_payload &payload,
 
    const unsigned payload_width = MIN2(16, v.dispatch_width);
    assert(v.dispatch_width % payload_width == 0);
-   assert(v.devinfo->ver >= 6);
+   assert(v.devinfo->ver >= 6 && v.devinfo->ver < 20);
 
    payload.num_regs = 0;
 
@@ -209,12 +284,13 @@ setup_fs_payload_gfx6(fs_thread_payload &payload,
          payload.sample_mask_in_reg[j] = payload.num_regs;
          payload.num_regs += payload_width / 8;
       }
+   }
 
-      /* R66: Source Depth and/or W Attribute Vertex Deltas */
-      if (prog_data->uses_depth_w_coefficients) {
-         payload.depth_w_coef_reg[j] = payload.num_regs;
-         payload.num_regs++;
-      }
+   /* R66: Source Depth and/or W Attribute Vertex Deltas */
+   if (prog_data->uses_depth_w_coefficients) {
+      assert(v.max_polygons == 1);
+      payload.depth_w_coef_reg = payload.num_regs;
+      payload.num_regs++;
    }
 
    if (v.nir->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_DEPTH)) {
@@ -379,7 +455,9 @@ fs_thread_payload::fs_thread_payload(const fs_visitor &v,
     depth_w_coef_reg(),
     barycentric_coord_reg()
 {
-   if (v.devinfo->ver >= 6)
+   if (v.devinfo->ver >= 20)
+      setup_fs_payload_gfx20(*this, v, source_depth_to_render_target);
+   else if (v.devinfo->ver >= 6)
       setup_fs_payload_gfx6(*this, v, source_depth_to_render_target);
    else
       setup_fs_payload_gfx4(*this, v, source_depth_to_render_target,
@@ -438,7 +516,7 @@ task_mesh_thread_payload::task_mesh_thread_payload(fs_visitor &v)
     * the address to descriptors.
     */
 
-   const fs_builder bld = fs_builder(&v, v.dispatch_width).at_end();
+   const fs_builder bld = fs_builder(&v).at_end();
 
    unsigned r = 0;
    assert(subgroup_id_.file != BAD_FILE);

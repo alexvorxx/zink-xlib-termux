@@ -41,22 +41,6 @@ LibGL environment variables
 Core Mesa environment variables
 -------------------------------
 
-.. envvar:: MESA_NO_ASM
-
-   if set, disables all assembly language optimizations
-
-.. envvar:: MESA_NO_MMX
-
-   if set, disables Intel MMX optimizations
-
-.. envvar:: MESA_NO_3DNOW
-
-   if set, disables AMD 3DNow! optimizations
-
-.. envvar:: MESA_NO_SSE
-
-   if set, disables Intel SSE optimizations
-
 .. envvar:: MESA_NO_ERROR
 
    if set to 1, error checking is disabled as per :ext:`GL_KHR_no_error`.
@@ -495,6 +479,12 @@ Intel driver environment variables
    advertise support for a compute queue if a compute engine is
    detected.
 
+.. envvar:: INTEL_COPY_CLASS
+
+   If set to 1, true or yes, then I915_ENGINE_CLASS_COPY will be
+   supported. For Vulkan, anvil will advertise support for a transfer
+   queue if a copy engine is detected.
+
 .. envvar:: INTEL_DEBUG
 
    a comma-separated list of named flags, which do various things:
@@ -712,6 +702,14 @@ Intel driver environment variables
    are currently in.
 
    ``INTEL_MEASURE=cpu {workload}``
+
+.. envvar:: INTEL_MODIFIER_OVERRIDE
+
+   if set, determines the single DRM modifier reported back to (Vulkan)
+   applications, in order to make selecting modifier deterministic
+   between Vulkan driver and applications. The value can be one of the
+   supported modifiers on a platform, but other values are also acceptable
+   for debug purposes.
 
 .. envvar:: INTEL_NO_HW
 
@@ -1063,6 +1061,7 @@ clc environment variables
 
    a comma-separated list of debug channels to enable.
 
+   - ``dump_llvm`` Dumps all generated LLVM IRs
    - ``dump_spirv`` Dumps all compiled, linked and specialized SPIR-Vs
    - ``verbose`` Enable debug logging of clc code
 

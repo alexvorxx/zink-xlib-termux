@@ -92,6 +92,19 @@ rusticl_args = [
   '-Aclippy::type_complexity',
 ]
 
+if rustc.version().version_compare('>=1.72')
+  rusticl_args += [
+    # Needs to be fixed
+    '-Aclippy::arc-with-non-send-sync'
+  ]
+endif
+
+if with_platform_x11
+  rusticl_args += [
+    '--cfg', 'glx',
+  ]
+endif
+
 rusticl_gen_args = [
   # can't do anything about it anyway
   '-Aclippy::all',
@@ -154,8 +167,12 @@ rusticl_opencl_bindings_rs = rust.bindgen(
   include_directories : [
     inc_include,
   ],
+  dependencies : [
+    dep_x11,
+  ],
   c_args : [
     rusticl_bindgen_c_args,
+    pre_args,
     cl_c_args,
   ],
   args : [
@@ -394,10 +411,9 @@ libmesa_rust = static_library(
   ]
 )
 
-rusticl_proc_macros = shared_library(
+rusticl_proc_macros = rust.proc_macro(
   'rusticl_proc_macros',
   [rusticl_proc_macros_files],
-  rust_crate_type : 'proc-macro',
   rust_args : [
     rusticl_args,
   ],

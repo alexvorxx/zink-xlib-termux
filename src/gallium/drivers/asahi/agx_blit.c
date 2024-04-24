@@ -22,8 +22,8 @@ agx_blitter_save(struct agx_context *ctx, struct blitter_context *blitter,
    util_blitter_save_geometry_shader(blitter,
                                      ctx->stage[PIPE_SHADER_GEOMETRY].shader);
    util_blitter_save_rasterizer(blitter, ctx->rast);
-   util_blitter_save_viewport(blitter, &ctx->viewport);
-   util_blitter_save_scissor(blitter, &ctx->scissor);
+   util_blitter_save_viewport(blitter, &ctx->viewport[0]);
+   util_blitter_save_scissor(blitter, &ctx->scissor[0]);
    util_blitter_save_fragment_shader(blitter,
                                      ctx->stage[PIPE_SHADER_FRAGMENT].shader);
    util_blitter_save_blend(blitter, ctx->blend);
@@ -64,6 +64,9 @@ agx_blit(struct pipe_context *pipe, const struct pipe_blit_info *info)
       fprintf(stderr, "\n\n");
       unreachable("Unsupported blit");
    }
+
+   /* Handle self-blits */
+   agx_flush_writer(ctx, agx_resource(info->dst.resource), "Blit");
 
    /* Legalize compression /before/ calling into u_blitter to avoid recursion.
     * u_blitter bans recursive usage.

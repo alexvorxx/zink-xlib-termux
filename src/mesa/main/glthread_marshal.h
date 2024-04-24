@@ -33,7 +33,7 @@
 #include "main/glthread.h"
 #include "main/context.h"
 #include "main/macros.h"
-#include "marshal_generated.h"
+#include "main/matrix.h"
 
 struct marshal_cmd_base
 {
@@ -48,9 +48,28 @@ struct marshal_cmd_base
    uint16_t cmd_size;
 };
 
+/* This must be included after "struct marshal_cmd_base" because it uses it. */
+#include "marshal_generated.h"
+
 typedef uint32_t (*_mesa_unmarshal_func)(struct gl_context *ctx,
                                          const void *restrict cmd);
 extern const _mesa_unmarshal_func _mesa_unmarshal_dispatch[NUM_DISPATCH_CMD];
+extern const char *_mesa_unmarshal_func_name[NUM_DISPATCH_CMD];
+
+struct marshal_cmd_DrawElementsUserBuf
+{
+   struct marshal_cmd_base cmd_base;
+   GLenum16 mode;
+   GLenum16 type;
+   GLsizei count;
+   GLsizei instance_count;
+   GLint basevertex;
+   GLuint baseinstance;
+   GLuint drawid;
+   GLuint user_buffer_mask;
+   const GLvoid *indices;
+   struct gl_buffer_object *index_buffer;
+};
 
 static inline void *
 _mesa_glthread_allocate_command(struct gl_context *ctx,
@@ -72,6 +91,19 @@ _mesa_glthread_allocate_command(struct gl_context *ctx,
    cmd_base->cmd_id = cmd_id;
    cmd_base->cmd_size = num_elements;
    return cmd_base;
+}
+
+static inline struct marshal_cmd_base *
+_mesa_glthread_get_cmd(uint64_t *opaque_cmd)
+{
+   return (struct marshal_cmd_base*)opaque_cmd;
+}
+
+static inline uint64_t *
+_mesa_glthread_next_cmd(uint64_t *opaque_cmd, unsigned cmd_size)
+{
+   assert(_mesa_glthread_get_cmd(opaque_cmd)->cmd_size == cmd_size);
+   return opaque_cmd + cmd_size;
 }
 
 static inline bool
@@ -397,19 +429,6 @@ _mesa_get_matrix_index(struct gl_context *ctx, GLenum mode)
       return M_PROGRAM0 + (mode - GL_MATRIX0_ARB);
 
    return M_DUMMY;
-}
-
-static inline bool
-_mesa_matrix_is_identity(const float *m)
-{
-   static float identity[16] = {
-      1, 0, 0, 0,
-      0, 1, 0, 0,
-      0, 0, 1, 0,
-      0, 0, 0, 1
-   };
-
-   return !memcmp(m, identity, sizeof(identity));
 }
 
 static inline void

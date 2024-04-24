@@ -597,6 +597,10 @@
    DRI_CONF_OPT_B(venus_implicit_fencing, def, \
                   "Assume the virtio-gpu kernel driver supports implicit fencing")
 
+#define DRI_CONF_VENUS_WSI_MULTI_PLANE_MODIFIERS(def) \
+   DRI_CONF_OPT_B(venus_wsi_multi_plane_modifiers, def, \
+                  "Enable support of multi-plane format modifiers for wsi images")
+
 /**
  * \brief RADV specific configuration options
  */
@@ -674,6 +678,10 @@
    DRI_CONF_OPT_B(radv_tex_non_uniform, def, \
                   "Always mark texture sample operations as non-uniform.")
 
+#define DRI_CONF_RADV_SSBO_NON_UNIFORM(def) \
+   DRI_CONF_OPT_B(radv_ssbo_non_uniform, def, \
+                  "Always mark SSBO operations as non-uniform.")
+
 #define DRI_CONF_RADV_FLUSH_BEFORE_TIMESTAMP_WRITE(def) \
    DRI_CONF_OPT_B(radv_flush_before_timestamp_write, def, \
                   "Wait for previous commands to finish before writing timestamps")
@@ -681,6 +689,10 @@
 #define DRI_CONF_RADV_RT_WAVE64(def) \
    DRI_CONF_OPT_B(radv_rt_wave64, def, \
                   "Force wave64 in RT shaders")
+
+#define DRI_CONF_RADV_LEGACY_SPARSE_BINDING(def) \
+   DRI_CONF_OPT_B(radv_legacy_sparse_binding, def, \
+                  "Enable legacy sparse binding (with implicit synchronization) on the graphics and compute queue")
 
 /**
  * Overrides for forcing re-compilation of pipelines when RADV_BUILD_ID_OVERRIDE is enabled.
@@ -701,13 +713,16 @@
 
 #define DRI_CONF_RADV_APP_LAYER() DRI_CONF_OPT_S_NODEF(radv_app_layer, "Select an application layer.")
 
+#define DRI_CONF_RADV_CLEAR_LDS(def) \
+   DRI_CONF_OPT_B(radv_clear_lds, def, "Clear LDS at the end of shaders. Might decrease performance.")
+
 /**
  * \brief ANV specific configuration options
  */
 
 #define DRI_CONF_ANV_ASSUME_FULL_SUBGROUPS(def) \
-   DRI_CONF_OPT_B(anv_assume_full_subgroups, def, \
-                  "Allow assuming full subgroups requirement even when it's not specified explicitly")
+   DRI_CONF_OPT_I(anv_assume_full_subgroups, def, 0, 32, \
+                  "Allow assuming full subgroups requirement even when it's not specified explicitly and set the given size")
 
 #define DRI_CONF_ANV_SAMPLE_MASK_OUT_OPENGL_BEHAVIOUR(def) \
    DRI_CONF_OPT_B(anv_sample_mask_out_opengl_behaviour, def, \

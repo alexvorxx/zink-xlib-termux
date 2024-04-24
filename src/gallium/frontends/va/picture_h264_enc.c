@@ -207,6 +207,7 @@ vlVaHandleVAEncSequenceParameterBufferTypeH264(vlVaDriver *drv, vlVaContext *con
       context->desc.h264enc.intra_refresh.need_sequence_header = 0;
    }
 
+   context->desc.h264enc.ip_period = h264->ip_period;
    context->desc.h264enc.intra_idr_period =
       h264->intra_idr_period != 0 ? h264->intra_idr_period : PIPE_DEFAULT_INTRA_IDR_PERIOD;
    context->gop_coeff = ((1024 + context->desc.h264enc.intra_idr_period - 1) /
@@ -374,7 +375,9 @@ static void parseEncSpsParamsH264(vlVaContext *context, struct vl_rbsp *rbsp)
 
    profile_idc = vl_rbsp_u(rbsp, 8);
 
-   vl_rbsp_u(rbsp, 8); /* constraint_set_flags */
+   context->desc.h264enc.seq.enc_constraint_set_flags =
+      vl_rbsp_u(rbsp, 6); /* constraint_set_flags */
+   vl_rbsp_u(rbsp, 2); /* reserved_zero_2bits */
    vl_rbsp_u(rbsp, 8); /* level_idc */
 
    vl_rbsp_ue(rbsp); /* seq_parameter_set_id */

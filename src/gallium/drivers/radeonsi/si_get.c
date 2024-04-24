@@ -270,7 +270,7 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return enable_sparse ? RADEON_SPARSE_PAGE_SIZE : 0;
 
    case PIPE_CAP_CONTEXT_PRIORITY_MASK:
-      if (!(sscreen->info.is_amdgpu && sscreen->info.drm_minor >= 22))
+      if (!sscreen->info.is_amdgpu)
          return 0;
       return PIPE_CONTEXT_PRIORITY_LOW |
              PIPE_CONTEXT_PRIORITY_MEDIUM |
@@ -829,6 +829,19 @@ static int si_get_video_param(struct pipe_screen *screen, enum pipe_video_profil
          else
             return 0;
 
+      case PIPE_VIDEO_CAP_ENC_ROI:
+         if (sscreen->info.vcn_ip_version >= VCN_1_0_0) {
+            union pipe_enc_cap_roi attrib;
+            attrib.value = 0;
+
+            attrib.bits.num_roi_regions = PIPE_ENC_ROI_REGION_NUM_MAX;
+            attrib.bits.roi_rc_priority_support = PIPE_ENC_FEATURE_NOT_SUPPORTED;
+            attrib.bits.roi_rc_qp_delta_support = PIPE_ENC_FEATURE_SUPPORTED;
+            return attrib.value;
+         }
+         else
+            return 0;
+
       default:
          return 0;
       }
@@ -880,7 +893,7 @@ static int si_get_video_param(struct pipe_screen *screen, enum pipe_video_profil
          }
          if (sscreen->info.family < CHIP_CARRIZO || sscreen->info.family >= CHIP_VEGA10)
             return false;
-         if (!(sscreen->info.is_amdgpu && sscreen->info.drm_minor >= 19)) {
+         if (!sscreen->info.is_amdgpu) {
             RVID_ERR("No MJPEG support for the kernel version\n");
             return false;
          }
@@ -982,6 +995,11 @@ static int si_get_video_param(struct pipe_screen *screen, enum pipe_video_profil
       }
    case PIPE_VIDEO_CAP_SUPPORTS_CONTIGUOUS_PLANES_MAP:
       return true;
+   case PIPE_VIDEO_CAP_ROI_CROP_DEC:
+      if (codec == PIPE_VIDEO_FORMAT_JPEG &&
+          sscreen->info.vcn_ip_version == VCN_4_0_3)
+         return true;
+      return false;
    default:
       return 0;
    }
@@ -1307,7 +1325,7 @@ static void si_init_renderer_string(struct si_screen *sscreen)
       snprintf(kernel_version, sizeof(kernel_version), ", %s", uname_data.release);
 
    const char *compiler_name =
-#ifdef LLVM_AVAILABLE
+#if LLVM_AVAILABLE
       !sscreen->use_aco ? "LLVM " MESA_LLVM_VERSION_STRING :
 #endif
       "ACO";
@@ -1424,6 +1442,9 @@ void si_init_screen_get_functions(struct si_screen *sscreen)
       .has_sdot_4x8 = sscreen->info.has_accelerated_dot_product,
       .has_sudot_4x8 = sscreen->info.has_accelerated_dot_product && sscreen->info.gfx_level >= GFX11,
       .has_udot_4x8 = sscreen->info.has_accelerated_dot_product,
+      .has_sdot_4x8_sat = sscreen->info.has_accelerated_dot_product,
+      .has_sudot_4x8_sat = sscreen->info.has_accelerated_dot_product && sscreen->info.gfx_level >= GFX11,
+      .has_udot_4x8_sat = sscreen->info.has_accelerated_dot_product,
       .has_dot_2x16 = sscreen->info.has_accelerated_dot_product && sscreen->info.gfx_level < GFX11,
       .has_bfe = true,
       .has_bfm = true,

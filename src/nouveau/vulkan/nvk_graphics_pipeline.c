@@ -6,6 +6,7 @@
 
 #include "nvk_cmd_buffer.h"
 #include "nvk_device.h"
+#include "nvk_mme.h"
 #include "nvk_physical_device.h"
 #include "nvk_shader.h"
 
@@ -22,25 +23,6 @@
 #include "nvk_cl9097.h"
 #include "nvk_clb197.h"
 #include "nvk_clc397.h"
-
-static void
-emit_pipeline_ts_state(struct nv_push *p,
-                       const struct vk_tessellation_state *ts)
-{
-}
-
-static void
-emit_pipeline_vp_state(struct nv_push *p,
-                       const struct vk_viewport_state *vp)
-{
-}
-
-static void
-emit_pipeline_rs_state(struct nv_push *p,
-                       const struct vk_rasterization_state *rs)
-{
-   P_IMMD(p, NV9097, SET_RASTER_INPUT, rs->rasterization_stream);
-}
 
 static void
 nvk_populate_fs_key(struct nak_fs_key *key,
@@ -69,17 +51,6 @@ emit_pipeline_ms_state(struct nv_push *p,
                        const struct vk_multisample_state *ms,
                        bool force_max_samples)
 {
-   P_IMMD(p, NV9097, SET_ANTI_ALIAS_ALPHA_CONTROL, {
-      .alpha_to_coverage   = ms->alpha_to_coverage_enable,
-      .alpha_to_one        = ms->alpha_to_one_enable,
-   });
-
-   P_MTHD(p, NV9097, SET_SAMPLE_MASK_X0_Y0);
-   P_NV9097_SET_SAMPLE_MASK_X0_Y0(p, ms->sample_mask & 0xffff);
-   P_NV9097_SET_SAMPLE_MASK_X1_Y0(p, ms->sample_mask & 0xffff);
-   P_NV9097_SET_SAMPLE_MASK_X0_Y1(p, ms->sample_mask & 0xffff);
-   P_NV9097_SET_SAMPLE_MASK_X1_Y1(p, ms->sample_mask & 0xffff);
-
    const float min_sample_shading = force_max_samples ? 1 :
       (ms->sample_shading_enable ? CLAMP(ms->min_sample_shading, 0, 1) : 0);
    uint32_t min_samples = ceilf(ms->rasterization_samples * min_sample_shading);
@@ -91,118 +62,28 @@ emit_pipeline_ms_state(struct nv_push *p,
    });
 }
 
-static uint32_t
-vk_to_nv9097_blend_op(VkBlendOp vk_op)
-{
-#define OP(vk, nv) [VK_BLEND_OP_##vk] = NV9097_SET_BLEND_COLOR_OP_V_OGL_##nv
-   ASSERTED uint16_t vk_to_nv9097[] = {
-      OP(ADD,              FUNC_ADD),
-      OP(SUBTRACT,         FUNC_SUBTRACT),
-      OP(REVERSE_SUBTRACT, FUNC_REVERSE_SUBTRACT),
-      OP(MIN,              MIN),
-      OP(MAX,              MAX),
-   };
-   assert(vk_op < ARRAY_SIZE(vk_to_nv9097));
-#undef OP
-
-   return vk_to_nv9097[vk_op];
-}
-
-static uint32_t
-vk_to_nv9097_blend_factor(VkBlendFactor vk_factor)
-{
-#define FACTOR(vk, nv) [VK_BLEND_FACTOR_##vk] = \
-   NV9097_SET_BLEND_COLOR_SOURCE_COEFF_V_##nv
-   ASSERTED uint16_t vk_to_nv9097[] = {
-      FACTOR(ZERO,                     OGL_ZERO),
-      FACTOR(ONE,                      OGL_ONE),
-      FACTOR(SRC_COLOR,                OGL_SRC_COLOR),
-      FACTOR(ONE_MINUS_SRC_COLOR,      OGL_ONE_MINUS_SRC_COLOR),
-      FACTOR(DST_COLOR,                OGL_DST_COLOR),
-      FACTOR(ONE_MINUS_DST_COLOR,      OGL_ONE_MINUS_DST_COLOR),
-      FACTOR(SRC_ALPHA,                OGL_SRC_ALPHA),
-      FACTOR(ONE_MINUS_SRC_ALPHA,      OGL_ONE_MINUS_SRC_ALPHA),
-      FACTOR(DST_ALPHA,                OGL_DST_ALPHA),
-      FACTOR(ONE_MINUS_DST_ALPHA,      OGL_ONE_MINUS_DST_ALPHA),
-      FACTOR(CONSTANT_COLOR,           OGL_CONSTANT_COLOR),
-      FACTOR(ONE_MINUS_CONSTANT_COLOR, OGL_ONE_MINUS_CONSTANT_COLOR),
-      FACTOR(CONSTANT_ALPHA,           OGL_CONSTANT_ALPHA),
-      FACTOR(ONE_MINUS_CONSTANT_ALPHA, OGL_ONE_MINUS_CONSTANT_ALPHA),
-      FACTOR(SRC_ALPHA_SATURATE,       OGL_SRC_ALPHA_SATURATE),
-      FACTOR(SRC1_COLOR,               OGL_SRC1COLOR),
-      FACTOR(ONE_MINUS_SRC1_COLOR,     OGL_INVSRC1COLOR),
-      FACTOR(SRC1_ALPHA,               OGL_SRC1ALPHA),
-      FACTOR(ONE_MINUS_SRC1_ALPHA,     OGL_INVSRC1ALPHA),
-   };
-   assert(vk_factor < ARRAY_SIZE(vk_to_nv9097));
-#undef FACTOR
-
-   return vk_to_nv9097[vk_factor];
-}
-
-static void
-emit_pipeline_cb_state(struct nv_push *p,
-                       const struct vk_color_blend_state *cb)
-{
-   P_IMMD(p, NV9097, SET_BLEND_STATE_PER_TARGET, ENABLE_TRUE);
-
-   for (uint32_t a = 0; a < cb->attachment_count; a++) {
-      const struct vk_color_blend_attachment_state *att = &cb->attachments[a];
-      P_IMMD(p, NV9097, SET_BLEND(a), att->blend_enable);
-
-      P_MTHD(p, NV9097, SET_BLEND_PER_TARGET_SEPARATE_FOR_ALPHA(a));
-      P_NV9097_SET_BLEND_PER_TARGET_SEPARATE_FOR_ALPHA(p, a, ENABLE_TRUE);
-      P_NV9097_SET_BLEND_PER_TARGET_COLOR_OP(p, a,
-         vk_to_nv9097_blend_op(att->color_blend_op));
-      P_NV9097_SET_BLEND_PER_TARGET_COLOR_SOURCE_COEFF(p, a,
-         vk_to_nv9097_blend_factor(att->src_color_blend_factor));
-      P_NV9097_SET_BLEND_PER_TARGET_COLOR_DEST_COEFF(p, a,
-         vk_to_nv9097_blend_factor(att->dst_color_blend_factor));
-      P_NV9097_SET_BLEND_PER_TARGET_ALPHA_OP(p, a,
-         vk_to_nv9097_blend_op(att->alpha_blend_op));
-      P_NV9097_SET_BLEND_PER_TARGET_ALPHA_SOURCE_COEFF(p, a,
-         vk_to_nv9097_blend_factor(att->src_alpha_blend_factor));
-      P_NV9097_SET_BLEND_PER_TARGET_ALPHA_DEST_COEFF(p, a,
-         vk_to_nv9097_blend_factor(att->dst_alpha_blend_factor));
-   }
-}
-
 static void
 emit_pipeline_ct_write_state(struct nv_push *p,
                              const struct vk_color_blend_state *cb,
                              const struct vk_render_pass_state *rp)
 {
-   uint32_t att_write_masks[8] = {};
+   uint32_t write_mask = 0;
    uint32_t att_count = 0;
 
    if (rp != NULL) {
       att_count = rp->color_attachment_count;
       for (uint32_t a = 0; a < rp->color_attachment_count; a++) {
          VkFormat att_format = rp->color_attachment_formats[a];
-         att_write_masks[a] = att_format == VK_FORMAT_UNDEFINED ? 0 : 0xf;
+         if (att_format != VK_FORMAT_UNDEFINED)
+            write_mask |= 0xf << (4 * a);
       }
    }
 
-   if (cb != NULL) {
-      assert(cb->attachment_count == att_count);
-      for (uint32_t a = 0; a < cb->attachment_count; a++)
-         att_write_masks[a] &= cb->attachments[a].write_mask;
-   }
+   P_IMMD(p, NV9097, SET_MME_SHADOW_SCRATCH(NVK_MME_SCRATCH_WRITE_MASK_PIPELINE),
+          write_mask);
 
-   bool indep_color_masks = true;
-   for (uint32_t a = 0; a < att_count; a++) {
-      P_IMMD(p, NV9097, SET_CT_WRITE(a), {
-         .r_enable = (att_write_masks[a] & BITFIELD_BIT(0)) != 0,
-         .g_enable = (att_write_masks[a] & BITFIELD_BIT(1)) != 0,
-         .b_enable = (att_write_masks[a] & BITFIELD_BIT(2)) != 0,
-         .a_enable = (att_write_masks[a] & BITFIELD_BIT(3)) != 0,
-      });
-
-      if (att_write_masks[a] != att_write_masks[0])
-         indep_color_masks = false;
-   }
-
-   P_IMMD(p, NV9097, SET_SINGLE_CT_WRITE_CONTROL, indep_color_masks);
+   P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_SET_WRITE_MASK));
+   P_INLINE_DATA(p, att_count);
 }
 
 static void
@@ -231,27 +112,6 @@ static const uint32_t mesa_to_nv9097_shader_type[] = {
    [MESA_SHADER_GEOMETRY]  = NV9097_SET_PIPELINE_SHADER_TYPE_GEOMETRY,
    [MESA_SHADER_FRAGMENT]  = NV9097_SET_PIPELINE_SHADER_TYPE_PIXEL,
 };
-
-static void
-emit_tessellation_paramaters(struct nv_push *p,
-                             const struct nvk_shader *shader,
-                             const struct vk_tessellation_state *state)
-{
-   enum nak_ts_prims prims = shader->info.ts.prims;
-   /* When the origin is lower-left, we have to flip the winding order */
-   if (state->domain_origin == VK_TESSELLATION_DOMAIN_ORIGIN_LOWER_LEFT) {
-      if (prims == NAK_TS_PRIMS_TRIANGLES_CW)
-         prims = NAK_TS_PRIMS_TRIANGLES_CCW;
-      else if (prims == NAK_TS_PRIMS_TRIANGLES_CCW)
-         prims = NAK_TS_PRIMS_TRIANGLES_CW;
-   }
-   P_MTHD(p, NV9097, SET_TESSELLATION_PARAMETERS);
-   P_NV9097_SET_TESSELLATION_PARAMETERS(p, {
-      shader->info.ts.domain,
-      shader->info.ts.spacing,
-      prims
-   });
-}
 
 static void
 merge_tess_info(struct shader_info *tes_info, struct shader_info *tcs_info)
@@ -348,7 +208,8 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
       const VkPipelineShaderStageCreateInfo *sinfo = &pCreateInfo->pStages[i];
       gl_shader_stage stage = vk_to_mesa_shader_stage(sinfo->stage);
       nvk_lower_nir(dev, nir[stage], &robustness[stage],
-                    state.rp->view_mask != 0, pipeline_layout);
+                    state.rp->view_mask != 0, pipeline_layout,
+                    &pipeline->base.shaders[stage]);
    }
 
    for (gl_shader_stage stage = 0; stage < MESA_SHADER_STAGES; stage++) {
@@ -361,7 +222,8 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
          fs_key = &fs_key_tmp;
       }
 
-      result = nvk_compile_nir(pdev, nir[stage], pipeline_flags, fs_key,
+      result = nvk_compile_nir(pdev, nir[stage], pipeline_flags,
+                               &robustness[stage], fs_key,
                                &pipeline->base.shaders[stage]);
       ralloc_free(nir[stage]);
       if (result != VK_SUCCESS)
@@ -384,11 +246,11 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
       uint32_t idx = mesa_to_nv9097_shader_type[stage];
 
       P_IMMD(p, NV9097, SET_PIPELINE_SHADER(idx), {
-         .enable  = shader->upload_size > 0,
+         .enable  = nvk_shader_is_enabled(shader),
          .type    = mesa_to_nv9097_shader_type[stage],
       });
 
-      if (shader->upload_size == 0)
+      if (!nvk_shader_is_enabled(shader))
          continue;
 
       if (stage != MESA_SHADER_FRAGMENT)
@@ -404,12 +266,15 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
          P_IMMD(p, NV9097, SET_PIPELINE_PROGRAM(idx), addr);
       }
 
-      P_IMMD(p, NV9097, SET_PIPELINE_REGISTER_COUNT(idx),
-             shader->info.num_gprs);
+      P_MTHD(p, NVC397, SET_PIPELINE_REGISTER_COUNT(idx));
+      P_NVC397_SET_PIPELINE_REGISTER_COUNT(p, idx, shader->info.num_gprs);
+      P_NVC397_SET_PIPELINE_BINDING(p, idx, stage);
 
       switch (stage) {
       case MESA_SHADER_VERTEX:
       case MESA_SHADER_GEOMETRY:
+      case MESA_SHADER_TESS_CTRL:
+      case MESA_SHADER_TESS_EVAL:
          break;
 
       case MESA_SHADER_FRAGMENT:
@@ -443,13 +308,6 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
           */
          force_max_samples = shader->info.fs.reads_sample_mask ||
                              shader->info.fs.uses_sample_shading;
-         break;
-
-      case MESA_SHADER_TESS_CTRL:
-         break;
-
-      case MESA_SHADER_TESS_EVAL:
-         emit_tessellation_paramaters(p, shader, state.ts);
          break;
 
       default:
@@ -492,11 +350,7 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
 
    emit_pipeline_xfb_state(&push, &last_geom->info.vtg.xfb);
 
-   if (state.ts) emit_pipeline_ts_state(&push, state.ts);
-   if (state.vp) emit_pipeline_vp_state(&push, state.vp);
-   if (state.rs) emit_pipeline_rs_state(&push, state.rs);
    if (state.ms) emit_pipeline_ms_state(&push, state.ms, force_max_samples);
-   if (state.cb) emit_pipeline_cb_state(&push, state.cb);
    emit_pipeline_ct_write_state(&push, state.cb, state.rp);
 
    pipeline->push_dw_count = nv_push_dw_count(&push);

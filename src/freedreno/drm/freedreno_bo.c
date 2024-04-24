@@ -64,6 +64,15 @@ lookup_bo(struct hash_table *tbl, uint32_t key)
        * checking for refcnt==0 (ie. 1 after p_atomic_inc_return).
        */
       if (p_atomic_inc_return(&bo->refcnt) == 1) {
+         /* Restore the zombified reference count, so if another thread
+          * that ends up calling lookup_bo() gets the table_lock before
+          * the thread deleting the bo does, it doesn't mistakenly see
+          * that the BO is live.
+          *
+          * We are holding the table_lock here so we can't be racing
+          * with another caller of lookup_bo()
+          */
+         p_atomic_dec(&bo->refcnt);
          return &zombie;
       }
 
@@ -132,9 +141,11 @@ bo_new(struct fd_device *dev, uint32_t size, uint32_t flags,
 
    if (size < FD_BO_HEAP_BLOCK_SIZE) {
       if ((flags == 0) && dev->default_heap)
-         return fd_bo_heap_alloc(dev->default_heap, size);
-      if ((flags == RING_FLAGS) && dev->ring_heap)
-         return fd_bo_heap_alloc(dev->ring_heap, size);
+         bo = fd_bo_heap_alloc(dev->default_heap, size);
+      else if ((flags == RING_FLAGS) && dev->ring_heap)
+         bo = fd_bo_heap_alloc(dev->ring_heap, size);
+      if (bo)
+         return bo;
    }
 
    /* demote cached-coherent to WC if not supported: */
@@ -591,6 +602,22 @@ bool
 fd_bo_is_cached(struct fd_bo *bo)
 {
    return !!(bo->alloc_flags & FD_BO_CACHED_COHERENT);
+}
+
+void
+fd_bo_set_metadata(struct fd_bo *bo, void *metadata, uint32_t metadata_size)
+{
+   if (!bo->funcs->set_metadata)
+      return;
+   bo->funcs->set_metadata(bo, metadata, metadata_size);
+}
+
+int
+fd_bo_get_metadata(struct fd_bo *bo, void *metadata, uint32_t metadata_size)
+{
+   if (!bo->funcs->get_metadata)
+      return -ENOSYS;
+   return bo->funcs->get_metadata(bo, metadata, metadata_size);
 }
 
 void *

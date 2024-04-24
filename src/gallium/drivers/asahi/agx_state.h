@@ -26,6 +26,7 @@
 #include "util/disk_cache.h"
 #include "util/hash_table.h"
 #include "util/u_range.h"
+#include "agx_helpers.h"
 #include "agx_meta.h"
 
 #ifdef __GLIBC__
@@ -99,22 +100,34 @@ struct PACKED agx_draw_uniforms {
    /* Vertex buffer object bases, if present */
    uint64_t vbo_base[PIPE_MAX_ATTRIBS];
 
+   /* Address of input assembly buffer if geom/tess is used, else 0 */
+   uint64_t input_assembly;
+
    /* Address of geometry param buffer if geometry shaders are used, else 0 */
    uint64_t geometry_params;
 
    /* Blend constant if any */
    float blend_constant[4];
 
+   /* glPointSize value */
+   float fixed_point_size;
+
    /* Value of the multisample control register, containing sample positions in
     * each byte (x in low nibble, y in high nibble).
     */
    uint32_t ppp_multisamplectl;
+
+   /* gl_DrawID for a direct multidraw */
+   uint32_t draw_id;
 
    /* glSampleMask */
    uint16_t sample_mask;
 
    /* Nonzero if the last vertex stage writes the layer ID, zero otherwise */
    uint16_t layer_id_written;
+
+   /* Nonzero for indexed draws, zero otherwise */
+   uint16_t is_indexed_draw;
 };
 
 struct PACKED agx_stage_uniforms {
@@ -189,7 +202,7 @@ struct agx_uncompiled_shader {
    uint8_t nir_sha1[20];
    struct agx_uncompiled_shader_info info;
    struct hash_table *variants;
-   struct agx_uncompiled_shader *passthrough_progs[MESA_PRIM_COUNT];
+   struct agx_uncompiled_shader *passthrough_progs[MESA_PRIM_COUNT][3][2];
    bool has_xfb_info;
 
    /* Whether the shader accesses indexed samplers via the bindless heap */
@@ -274,6 +287,11 @@ struct agx_batch {
    /* Whether we're drawing points, lines, or triangles */
    enum mesa_prim reduced_prim;
 
+   /* Whether the bound FS needs a primitive ID that is not supplied by the
+    * bound hardware VS (software GS)
+    */
+   bool generate_primitive_id;
+
    /* Current varyings linkage structures */
    uint32_t varyings;
 
@@ -355,6 +373,7 @@ struct agx_blend {
 struct asahi_vs_shader_key {
    struct agx_vbufs vbuf;
    bool clip_halfz;
+   bool program_point_size;
    uint64_t outputs_flat_shaded;
    uint64_t outputs_linear_shaded;
 };
@@ -371,6 +390,7 @@ struct asahi_fs_shader_key {
     */
    bool api_sample_mask;
 
+   uint8_t cull_distance_size;
    uint8_t clip_plane_enable;
    uint8_t nr_samples;
    bool multisample;
@@ -469,8 +489,8 @@ struct agx_context {
    struct agx_zsa *zs;
    struct agx_blend *blend;
    struct pipe_blend_color blend_color;
-   struct pipe_viewport_state viewport;
-   struct pipe_scissor_state scissor;
+   struct pipe_viewport_state viewport[AGX_MAX_VIEWPORTS];
+   struct pipe_scissor_state scissor[AGX_MAX_VIEWPORTS];
    struct pipe_stencil_ref stencil_ref;
    struct agx_streamout streamout;
    uint16_t sample_mask;
@@ -481,8 +501,8 @@ struct agx_context {
    enum pipe_render_cond_flag cond_mode;
 
    struct agx_query *occlusion_query;
-   struct agx_query *prims_generated;
-   struct agx_query *tf_prims_generated;
+   struct agx_query *prims_generated[4];
+   struct agx_query *tf_prims_generated[4];
    struct agx_query *time_elapsed;
    bool active_queries;
 
@@ -500,7 +520,8 @@ struct agx_context {
    struct util_dynarray global_buffers;
 
    struct agx_compiled_shader *gs_prefix_sums[16];
-   struct agx_compiled_shader *gs_setup_indirect[MESA_PRIM_MAX];
+   struct agx_compiled_shader *gs_setup_indirect[MESA_PRIM_MAX][2];
+   struct agx_compiled_shader *gs_unroll_restart[MESA_PRIM_MAX][3];
    struct agx_meta_cache meta;
 
    uint32_t syncobj;
@@ -657,8 +678,9 @@ struct agx_sampler_state {
 struct agx_sampler_view {
    struct pipe_sampler_view base;
 
-   /* Resource, may differ from base.texture in case of separate stencil */
+   /* Resource/format, may differ from base in case of separate stencil */
    struct agx_resource *rsrc;
+   enum pipe_format format;
 
    /* Prepared descriptor */
    struct agx_texture_packed desc;
@@ -785,21 +807,15 @@ void agx_upload_uniforms(struct agx_batch *batch);
 uint64_t agx_upload_stage_uniforms(struct agx_batch *batch, uint64_t textures,
                                    enum pipe_shader_type stage);
 
-bool agx_nir_lower_sysvals(nir_shader *shader);
+void agx_nir_lower_point_size(nir_shader *nir, bool program_point_size);
+
+bool agx_nir_lower_sysvals(nir_shader *shader, bool lower_draw_params);
 
 bool agx_nir_layout_uniforms(nir_shader *shader,
                              struct agx_compiled_shader *compiled,
                              unsigned *push_size);
 
 bool agx_nir_lower_bindings(nir_shader *shader, bool *uses_bindless_samplers);
-
-void agx_nir_lower_gs(nir_shader *gs, nir_shader *input_shader,
-                      const nir_shader *libagx, struct agx_ia_key *ia,
-                      bool rasterizer_discard, nir_shader **gs_count,
-                      nir_shader **gs_copy, nir_shader **pre_gs,
-                      enum mesa_prim *out_mode, unsigned *out_count_words);
-
-nir_shader *agx_nir_prefix_sum_gs(const nir_shader *libagx, unsigned words);
 
 bool agx_batch_is_active(struct agx_batch *batch);
 bool agx_batch_is_submitted(struct agx_batch *batch);

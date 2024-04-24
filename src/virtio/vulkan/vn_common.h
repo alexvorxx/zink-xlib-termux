@@ -20,9 +20,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/syscall.h>
 #include <vulkan/vulkan.h>
 
 #include "c11/threads.h"
+#include "drm-uapi/drm_fourcc.h"
 #include "util/bitscan.h"
 #include "util/bitset.h"
 #include "util/compiler.h"
@@ -48,6 +50,7 @@
 #include "vn_entrypoints.h"
 
 #define VN_DEFAULT_ALIGN 8
+#define VN_WATCHDOG_REPORT_PERIOD_US 3000000
 
 #define VN_DEBUG(category) (unlikely(vn_env.debug & VN_DEBUG_##category))
 #define VN_PERF(category) (unlikely(vn_env.perf & VN_PERF_##category))
@@ -120,6 +123,8 @@ enum vn_perf {
    VN_PERF_NO_TIMELINE_SEM_FEEDBACK = 1ull << 7,
    VN_PERF_NO_QUERY_FEEDBACK = 1ull << 8,
    VN_PERF_NO_ASYNC_MEM_ALLOC = 1ull << 9,
+   VN_PERF_NO_TILED_WSI_IMAGE = 1ull << 10,
+   VN_PERF_NO_MULTI_RING = 1ull << 11,
 };
 
 typedef uint64_t vn_object_id;
@@ -179,10 +184,39 @@ struct vn_env {
 };
 extern struct vn_env vn_env;
 
+/* Only one "waiting" thread may fulfill the "watchdog" role at a time. Every
+ * VN_WATCHDOG_REPORT_PERIOD_US or longer, the watchdog tests the ring's ALIVE
+ * status, updates the "alive" atomic, and resets the ALIVE status for the
+ * next cycle. Other waiting threads just check the "alive" atomic. The
+ * watchdog role may be released and acquired by another waiting thread
+ * dynamically.
+ *
+ * Examples of "waiting" are to wait for:
+ * - ring to reach a seqno
+ * - ring space to be released
+ * - sync primitives to signal
+ * - query result being available
+ */
+struct vn_watchdog {
+   mtx_t mutex;
+   atomic_int tid;
+   atomic_bool alive;
+};
+
 struct vn_relax_state {
-   struct vn_ring *ring;
+   struct vn_instance *instance;
    uint32_t iter;
    const char *reason;
+};
+
+struct vn_tls {
+   /* Track swapchain and command pool creations on threads so dispatch of the
+    * following on non-tracked threads can be routed as synchronous on the
+    * secondary ring:
+    * - pipeline creations
+    * - pipeline cache retrievals
+    */
+   bool primary_ring_submission;
 };
 
 void
@@ -252,20 +286,44 @@ vn_refcount_dec(struct vn_refcount *ref)
 uint32_t
 vn_extension_get_spec_version(const char *name);
 
-void
-vn_ring_monitor_release(struct vn_ring *ring);
+static inline void
+vn_watchdog_init(struct vn_watchdog *watchdog)
+{
+#ifndef NDEBUG
+   /* ensure minimum check period is greater than maximum renderer
+    * reporting period (with margin of safety to ensure no false
+    * positives).
+    *
+    * first_warn_time is pre-calculated based on parameters in vn_relax
+    * and must update together.
+    */
+   static const uint32_t first_warn_time = 3481600;
+   static const uint32_t safety_margin = 250000;
+   assert(first_warn_time - safety_margin >= VN_WATCHDOG_REPORT_PERIOD_US);
+#endif
+
+   mtx_init(&watchdog->mutex, mtx_plain);
+
+   watchdog->tid = 0;
+
+   /* initialized to be alive to avoid vn_watchdog_timout false alarm */
+   watchdog->alive = true;
+}
+
+static inline void
+vn_watchdog_fini(struct vn_watchdog *watchdog)
+{
+   mtx_destroy(&watchdog->mutex);
+}
 
 struct vn_relax_state
-vn_relax_init(struct vn_ring *ring, const char *reason);
+vn_relax_init(struct vn_instance *instance, const char *reason);
 
 void
 vn_relax(struct vn_relax_state *state);
 
-static inline void
-vn_relax_fini(struct vn_relax_state *state)
-{
-   vn_ring_monitor_release(state->ring);
-}
+void
+vn_relax_fini(struct vn_relax_state *state);
 
 static_assert(sizeof(vn_object_id) >= sizeof(uintptr_t), "");
 
@@ -410,6 +468,36 @@ vn_object_get_id(const void *obj, VkObjectType type)
    default:
       return ((struct vn_object_base *)obj)->id;
    }
+}
+
+static inline pid_t
+vn_gettid(void)
+{
+#ifdef ANDROID
+   return gettid();
+#else
+   return syscall(SYS_gettid);
+#endif
+}
+
+struct vn_tls *
+vn_tls_get(void);
+
+static inline void
+vn_tls_set_primary_ring_submission(void)
+{
+   struct vn_tls *tls = vn_tls_get();
+   if (likely(tls))
+      tls->primary_ring_submission = true;
+}
+
+static inline bool
+vn_tls_get_primary_ring_submission(void)
+{
+   const struct vn_tls *tls = vn_tls_get();
+   if (likely(tls))
+      return tls->primary_ring_submission;
+   return true;
 }
 
 #endif /* VN_COMMON_H */

@@ -337,12 +337,12 @@ vk_vertex_input_state_init(struct vk_vertex_input_state *vi,
       vi->attributes[a].offset = desc->offset;
    }
 
-   const VkPipelineVertexInputDivisorStateCreateInfoEXT *vi_div_state =
+   const VkPipelineVertexInputDivisorStateCreateInfoKHR *vi_div_state =
       vk_find_struct_const(vi_info->pNext,
-                           PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO_EXT);
+                           PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO_KHR);
    if (vi_div_state) {
       for (uint32_t i = 0; i < vi_div_state->vertexBindingDivisorCount; i++) {
-         const VkVertexInputBindingDivisorDescriptionEXT *desc =
+         const VkVertexInputBindingDivisorDescriptionKHR *desc =
             &vi_div_state->pVertexBindingDivisors[i];
 
          assert(desc->binding < MESA_VK_MAX_VERTEX_BINDINGS);
@@ -1408,10 +1408,10 @@ vk_graphics_pipeline_state_fill(const struct vk_device *device,
        *
        *    "If the pipeline is being created with pre-rasterization shader
        *    state the stage member of one element of pStages must be either
-       *    VK_SHADER_STAGE_VERTEX_BIT or VK_SHADER_STAGE_MESH_BIT_NV"
+       *    VK_SHADER_STAGE_VERTEX_BIT or VK_SHADER_STAGE_MESH_BIT_EXT"
        */
       assert(state->shader_stages & (VK_SHADER_STAGE_VERTEX_BIT |
-                                     VK_SHADER_STAGE_MESH_BIT_NV));
+                                     VK_SHADER_STAGE_MESH_BIT_EXT));
 
       if (state->shader_stages & (VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT |
                                   VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT))
@@ -2306,8 +2306,8 @@ vk_common_CmdSetDiscardRectangleEXT(VkCommandBuffer commandBuffer,
 }
 
 VKAPI_ATTR void VKAPI_CALL
-vk_common_CmdSetRasterizerDiscardEnableEXT(VkCommandBuffer commandBuffer,
-                                           VkBool32 rasterizerDiscardEnable)
+vk_common_CmdSetRasterizerDiscardEnable(VkCommandBuffer commandBuffer,
+                                        VkBool32 rasterizerDiscardEnable)
 {
    VK_FROM_HANDLE(vk_command_buffer, cmd, commandBuffer);
    struct vk_dynamic_graphics_state *dyn = &cmd->dynamic_graphics_state;
@@ -2423,7 +2423,7 @@ vk_common_CmdSetRasterizationStreamEXT(VkCommandBuffer commandBuffer,
    VK_FROM_HANDLE(vk_command_buffer, cmd, commandBuffer);
    struct vk_dynamic_graphics_state *dyn = &cmd->dynamic_graphics_state;
 
-   SET_DYN_VALUE(dyn, RS_PROVOKING_VERTEX,
+   SET_DYN_VALUE(dyn, RS_RASTERIZATION_STREAM,
                  rs.rasterization_stream, rasterizationStream);
 }
 

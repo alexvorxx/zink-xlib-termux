@@ -77,12 +77,6 @@ nva0c0_compute_setup_launch_desc_template(uint32_t *qmd,
 {
    base_compute_setup_launch_desc_template(qmd, shader, A0C0, 00, 06);
 
-   NVA0C0_QMDV00_06_DEF_SET(qmd, INVALIDATE_TEXTURE_DATA_CACHE, TRUE);
-   NVA0C0_QMDV00_06_DEF_SET(qmd, INVALIDATE_TEXTURE_HEADER_CACHE, TRUE);
-   NVA0C0_QMDV00_06_DEF_SET(qmd, INVALIDATE_TEXTURE_SAMPLER_CACHE, TRUE);
-   NVA0C0_QMDV00_06_DEF_SET(qmd, INVALIDATE_SHADER_CONSTANT_CACHE, TRUE);
-   NVA0C0_QMDV00_06_DEF_SET(qmd, INVALIDATE_SHADER_DATA_CACHE, TRUE);
-
    if (shader->info.cs.smem_size <= (16 << 10))
       NVA0C0_QMDV00_06_DEF_SET(qmd, L1_CONFIGURATION, DIRECTLY_ADDRESSABLE_MEMORY_SIZE_16KB);
    else if (shader->info.cs.smem_size <= (32 << 10))
@@ -190,20 +184,20 @@ nvk_compute_pipeline_create(struct nvk_device *dev,
    if (result != VK_SUCCESS)
       goto fail;
 
-   nvk_lower_nir(dev, nir, &robustness, false, pipeline_layout);
+   struct nvk_shader *shader = &pipeline->base.shaders[MESA_SHADER_COMPUTE];
 
-   result = nvk_compile_nir(pdev, nir, pipeline_flags, NULL,
-                            &pipeline->base.shaders[MESA_SHADER_COMPUTE]);
+   nvk_lower_nir(dev, nir, &robustness, false, pipeline_layout, shader);
+
+   result = nvk_compile_nir(pdev, nir, pipeline_flags, &robustness, NULL,
+                            shader);
    ralloc_free(nir);
    if (result != VK_SUCCESS)
       goto fail;
 
-   result = nvk_shader_upload(dev,
-                              &pipeline->base.shaders[MESA_SHADER_COMPUTE]);
+   result = nvk_shader_upload(dev, shader);
    if (result != VK_SUCCESS)
       goto fail;
 
-   struct nvk_shader *shader = &pipeline->base.shaders[MESA_SHADER_COMPUTE];
    if (pdev->info.cls_compute >= AMPERE_COMPUTE_A)
       nvc6c0_compute_setup_launch_desc_template(pipeline->qmd_template, shader);
    else if (pdev->info.cls_compute >= VOLTA_COMPUTE_A)

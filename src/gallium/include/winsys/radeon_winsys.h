@@ -221,7 +221,6 @@ struct radeon_cmdbuf {
    /* Memory usage of the buffer list. These are always 0 for preamble IBs. */
    uint32_t used_vram_kb;
    uint32_t used_gart_kb;
-   uint64_t gpu_address;
 
    /* Private winsys data. */
    void *priv;
@@ -676,6 +675,11 @@ struct radeon_winsys {
     * Signal a syncobj when the CS finishes execution.
     */
    void (*cs_add_syncobj_signal)(struct radeon_cmdbuf *cs, struct pipe_fence_handle *fence);
+
+   /**
+    * Returns the amd_ip_type type of a CS.
+    */
+   enum amd_ip_type (*cs_get_ip_type)(struct radeon_cmdbuf *cs);
 
    /**
     * Wait for the fence and return true if the fence has been signalled.

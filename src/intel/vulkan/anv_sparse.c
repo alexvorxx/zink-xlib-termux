@@ -545,6 +545,7 @@ anv_sparse_bind_trtt(struct anv_device *device,
    int l3l2_binds_capacity = 1;
    int l1_binds_capacity = 0;
    for (int b = 0; b < sparse_submit->binds_len; b++) {
+      assert(sparse_submit->binds[b].size % (64 * 1024) == 0);
       int pages = sparse_submit->binds[b].size / (64 * 1024);
       l1_binds_capacity += pages;
       l3l2_binds_capacity += (pages / 1024 + 1) * 2;
@@ -811,6 +812,13 @@ anv_sparse_calc_image_format_properties(struct anv_physical_device *pdevice,
       if (pdevice->info.verx10 >= 125 && isl_format_is_yuv(surf->format))
          is_known_nonstandard_format = true;
 
+      /* The standard block shapes (and by extension, the tiling formats they
+       * require) are simply incompatible with getting a 2D view of a 3D
+       * image.
+       */
+      if (surf->usage & ISL_SURF_USAGE_2D_3D_COMPATIBLE_BIT)
+         is_known_nonstandard_format = true;
+
       is_standard = granularity.width == std_shape.width &&
                     granularity.height == std_shape.height &&
                     granularity.depth == std_shape.depth;
@@ -987,6 +995,9 @@ anv_sparse_bind_resource_memory(struct anv_device *device,
                                 struct anv_sparse_submission *submit)
 {
    struct anv_vm_bind bind = vk_bind_to_anv_vm_bind(sparse, vk_bind);
+
+   if (vk_bind->size % ANV_SPARSE_BLOCK_SIZE != 0)
+      return vk_error(device, VK_ERROR_VALIDATION_FAILED_EXT);
 
    return anv_sparse_submission_add(device, submit, &bind);
 }

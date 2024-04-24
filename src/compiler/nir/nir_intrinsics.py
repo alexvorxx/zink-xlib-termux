@@ -318,6 +318,10 @@ index("enum glsl_matrix_layout", "matrix_layout")
 index("nir_cmat_signed", "cmat_signed_mask")
 index("nir_op", "alu_op")
 
+# For Intel DPAS instrinsic.
+index("unsigned", "systolic_depth")
+index("unsigned", "repeat_count")
+
 intrinsic("nop", flags=[CAN_ELIMINATE])
 
 intrinsic("convert_alu_types", dest_comp=0, src_comp=[0],
@@ -1186,7 +1190,7 @@ intrinsic("load_frag_shading_rate", dest_comp=1, bit_sizes=[32],
 system_value("fully_covered", dest_comp=1, bit_sizes=[1])
 
 # OpenCL printf instruction
-# First source is a deref to the format string
+# First source is an index to the format string (u_printf_info element of the shader)
 # Second source is a deref to a struct containing the args
 # Dest is success or failure
 intrinsic("printf", src_comp=[1, 1], dest_comp=1, bit_sizes=[32])
@@ -1590,8 +1594,12 @@ intrinsic("execute_miss_amd", src_comp=[1])
 # Load forced VRS rates.
 intrinsic("load_force_vrs_rates_amd", dest_comp=1, bit_sizes=[32], flags=[CAN_ELIMINATE, CAN_REORDER])
 
-intrinsic("load_scalar_arg_amd", dest_comp=0, bit_sizes=[32], indices=[BASE, ARG_UPPER_BOUND_U32_AMD], flags=[CAN_ELIMINATE, CAN_REORDER])
-intrinsic("load_vector_arg_amd", dest_comp=0, bit_sizes=[32], indices=[BASE, ARG_UPPER_BOUND_U32_AMD], flags=[CAN_ELIMINATE, CAN_REORDER])
+intrinsic("load_scalar_arg_amd", dest_comp=0, bit_sizes=[32],
+          indices=[BASE, ARG_UPPER_BOUND_U32_AMD],
+          flags=[CAN_ELIMINATE, CAN_REORDER])
+intrinsic("load_vector_arg_amd", dest_comp=0, bit_sizes=[32],
+          indices=[BASE, ARG_UPPER_BOUND_U32_AMD, FLAGS],
+          flags=[CAN_ELIMINATE, CAN_REORDER])
 store("scalar_arg_amd", [], [BASE])
 store("vector_arg_amd", [], [BASE])
 
@@ -1841,6 +1849,9 @@ system_value("api_sample_mask_agx", 1, bit_sizes=[16])
 # Loads the sample position array as fixed point packed into a 32-bit word
 system_value("sample_positions_agx", 1, bit_sizes=[32])
 
+# Loads the fixed-function glPointSize() value
+system_value("fixed_point_size_agx", 1, bit_sizes=[32])
+
 # Image loads go through the texture cache, which is not coherent with the PBE
 # or memory access, so fencing is necessary for writes to become visible.
 
@@ -1853,6 +1864,9 @@ barrier("fence_mem_to_tex_agx")
 # Variant of fence_pbe_to_tex_agx specialized to stores in pixel shaders that
 # act like render target writes, in conjunction with fragment interlock.
 barrier("fence_pbe_to_tex_pixel_agx")
+
+# Address of state for AGX input assembly lowering for geometry/tessellation
+system_value("input_assembly_buffer_agx", 1, bit_sizes=[64])
 
 # Address of the parameter buffer for AGX geometry shaders
 system_value("geometry_param_buffer_agx", 1, bit_sizes=[64])
@@ -2008,6 +2022,15 @@ system_value("leaf_procedural_intel", 1, bit_sizes=[1])
 system_value("btd_shader_type_intel", 1)
 system_value("ray_query_global_intel", 1, bit_sizes=[64])
 
+# Source 0: A matrix (type specified by SRC_TYPE)
+# Source 1: B matrix (type specified by SRC_TYPE)
+# Source 2: Accumulator matrix (type specified by DEST_TYPE)
+#
+# The matrix parameters are the slices owned by the invocation.
+intrinsic("dpas_intel", dest_comp=0, src_comp=[0, 0, 0],
+          indices=[DEST_TYPE, SRC_TYPE, SATURATE, CMAT_SIGNED_MASK, SYSTOLIC_DEPTH, REPEAT_COUNT],
+          flags=[CAN_ELIMINATE])
+
 # NVIDIA-specific intrinsics
 intrinsic("load_sysval_nv", dest_comp=1, src_comp=[], bit_sizes=[32, 64],
           indices=[ACCESS, BASE], flags=[CAN_ELIMINATE])
@@ -2039,8 +2062,9 @@ intrinsic("end_primitive_nv", dest_comp=1, src_comp=[1], indices=[STREAM_ID])
 intrinsic("final_primitive_nv", src_comp=[1])
 
 intrinsic("bar_set_nv", dest_comp=1, bit_sizes=[32], flags=[CAN_ELIMINATE])
-intrinsic("bar_break_nv", src_comp=[1])
-intrinsic("bar_sync_nv", src_comp=[1])
+intrinsic("bar_break_nv", dest_comp=1, bit_sizes=[32], src_comp=[1])
+# src[] = { bar, bar_set }
+intrinsic("bar_sync_nv", src_comp=[1, 1])
 
 # In order to deal with flipped render targets, gl_PointCoord may be flipped
 # in the shader requiring a shader key or extra instructions or it may be

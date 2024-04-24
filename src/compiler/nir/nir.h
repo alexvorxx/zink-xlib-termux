@@ -28,8 +28,8 @@
 #ifndef NIR_H
 #define NIR_H
 
+#include "compiler/glsl_types.h"
 #include "compiler/glsl/list.h"
-#include "compiler/nir_types.h"
 #include "compiler/shader_enums.h"
 #include "compiler/shader_info.h"
 #include "util/bitscan.h"
@@ -749,6 +749,9 @@ typedef struct nir_variable {
        * slot has not been assigned, the value will be -1.
        */
       int location;
+
+      /** Required alignment of this variable */
+      unsigned alignment;
 
       /**
        * The actual location of the variable in the IR. Only valid for inputs,
@@ -3520,7 +3523,9 @@ typedef enum {
    nir_lower_dsub = (1 << 9),
    nir_lower_ddiv = (1 << 10),
    nir_lower_dsign = (1 << 11),
-   nir_lower_fp64_full_software = (1 << 12),
+   nir_lower_dminmax = (1 << 12),
+   nir_lower_dsat = (1 << 13),
+   nir_lower_fp64_full_software = (1 << 14),
 } nir_lower_doubles_options;
 
 typedef enum {
@@ -3873,20 +3878,35 @@ typedef struct nir_shader_compiler_options {
     * lowerings. */
    bool has_texture_scaling;
 
-   /** Backend supports sdot_4x8 opcodes. */
+   /** Backend supports sdot_4x8_iadd. */
    bool has_sdot_4x8;
 
-   /** Backend supports udot_4x8 opcodes. */
+   /** Backend supports udot_4x8_uadd. */
    bool has_udot_4x8;
 
-   /** Backend supports sudot_4x8 opcodes. */
+   /** Backend supports sudot_4x8_iadd. */
    bool has_sudot_4x8;
+
+   /** Backend supports sdot_4x8_iadd_sat. */
+   bool has_sdot_4x8_sat;
+
+   /** Backend supports udot_4x8_uadd_sat. */
+   bool has_udot_4x8_sat;
+
+   /** Backend supports sudot_4x8_iadd_sat. */
+   bool has_sudot_4x8_sat;
 
    /** Backend supports sdot_2x16 and udot_2x16 opcodes. */
    bool has_dot_2x16;
 
    /** Backend supports fmulz (and ffmaz if lower_ffma32=false) */
    bool has_fmulz;
+
+   /**
+    * Backend supports fmulz (and ffmaz if lower_ffma32=false) but only if
+    * FLOAT_CONTROLS_DENORM_PRESERVE_FP32 is not set
+    */
+   bool has_fmulz_no_denorms;
 
    /** Backend supports 32bit ufind_msb_rev and ifind_msb_rev. */
    bool has_find_msb_rev;
@@ -5084,6 +5104,7 @@ bool nir_opt_memcpy(nir_shader *shader);
 bool nir_lower_memcpy(nir_shader *shader);
 
 void nir_fixup_deref_modes(nir_shader *shader);
+void nir_fixup_deref_types(nir_shader *shader);
 
 bool nir_lower_global_vars_to_local(nir_shader *shader);
 
@@ -5524,6 +5545,9 @@ bool nir_lower_variable_initializers(nir_shader *shader,
 bool nir_zero_initialize_shared_memory(nir_shader *shader,
                                        const unsigned shared_size,
                                        const unsigned chunk_size);
+bool nir_clear_shared_memory(nir_shader *shader,
+                             const unsigned shared_size,
+                             const unsigned chunk_size);
 
 bool nir_move_vec_src_uses_to_dest(nir_shader *shader, bool skip_const_srcs);
 bool nir_lower_vec_to_regs(nir_shader *shader, nir_instr_writemask_filter_cb cb,
@@ -6442,6 +6466,9 @@ typedef struct {
    /* True if the subgroup size is uniform. */
    bool subgroup_size_uniform;
 
+   /* True if load_workgroup_size is supported in the preamble. */
+   bool load_workgroup_size_allowed;
+
    /* size/align for load/store_preamble. */
    void (*def_size)(nir_def *def, unsigned *size, unsigned *align);
 
@@ -6491,6 +6518,9 @@ nir_remove_tex_shadow(nir_shader *shader, unsigned textures_bitmask);
 void
 nir_trivialize_registers(nir_shader *s);
 
+unsigned
+nir_static_workgroup_size(const nir_shader *s);
+
 static inline nir_intrinsic_instr *
 nir_reg_get_decl(nir_def *reg)
 {
@@ -6533,6 +6563,18 @@ nir_next_decl_reg(nir_intrinsic_instr *prev, nir_function_impl *impl)
                             *next_ = nir_next_decl_reg(reg, NULL); \
         reg; reg = next_, next_ = nir_next_decl_reg(next_, NULL))
 
+static inline nir_cursor
+nir_after_reg_decls(nir_function_impl *impl)
+{
+   nir_intrinsic_instr *last_reg_decl = NULL;
+   nir_foreach_reg_decl(reg_decl, impl)
+      last_reg_decl = reg_decl;
+
+   if (last_reg_decl != NULL)
+      return nir_after_instr(&last_reg_decl->instr);
+   return nir_before_impl(impl);
+}
+
 static inline bool
 nir_is_load_reg(nir_intrinsic_instr *intr)
 {
@@ -6553,10 +6595,22 @@ nir_is_store_reg(nir_intrinsic_instr *intr)
    nir_foreach_use(load, &reg->def)             \
       if (nir_is_load_reg(nir_instr_as_intrinsic(nir_src_parent_instr(load))))
 
+#define nir_foreach_reg_load_safe(load, reg)         \
+   assert(reg->intrinsic == nir_intrinsic_decl_reg); \
+                                                     \
+   nir_foreach_use_safe(load, &reg->def)             \
+      if (nir_is_load_reg(nir_instr_as_intrinsic(nir_src_parent_instr(load))))
+
 #define nir_foreach_reg_store(store, reg)            \
    assert(reg->intrinsic == nir_intrinsic_decl_reg); \
                                                      \
    nir_foreach_use(store, &reg->def)            \
+      if (nir_is_store_reg(nir_instr_as_intrinsic(nir_src_parent_instr(store))))
+
+#define nir_foreach_reg_store_safe(store, reg)       \
+   assert(reg->intrinsic == nir_intrinsic_decl_reg); \
+                                                     \
+   nir_foreach_use_safe(store, &reg->def)            \
       if (nir_is_store_reg(nir_instr_as_intrinsic(nir_src_parent_instr(store))))
 
 static inline nir_intrinsic_instr *

@@ -1359,7 +1359,7 @@ radv_GetQueryPoolResults(VkDevice _device, VkQueryPool queryPool, uint32_t first
          uint64_t value;
 
          do {
-            value = p_atomic_read(src64);
+            value = p_atomic_read(&src64->value);
          } while (value == TIMESTAMP_NOT_READY && (flags & VK_QUERY_RESULT_WAIT_BIT));
 
          available = value != TIMESTAMP_NOT_READY;
@@ -1392,8 +1392,8 @@ radv_GetQueryPoolResults(VkDevice _device, VkQueryPool queryPool, uint32_t first
                continue;
 
             do {
-               start = p_atomic_read(src64 + 2 * i);
-               end = p_atomic_read(src64 + 2 * i + 1);
+               start = p_atomic_read(&src64[2 * i].value);
+               end = p_atomic_read(&src64[2 * i + 1].value);
             } while ((!(start & (1ull << 63)) || !(end & (1ull << 63))) && (flags & VK_QUERY_RESULT_WAIT_BIT));
 
             if (!(start & (1ull << 63)) || !(end & (1ull << 63)))
@@ -1481,7 +1481,7 @@ radv_GetQueryPoolResults(VkDevice _device, VkQueryPool queryPool, uint32_t first
          do {
             available = 1;
             for (int j = 0; j < 4; j++) {
-               if (!(p_atomic_read(src64 + j) & 0x8000000000000000UL))
+               if (!(p_atomic_read(&src64[j].value) & 0x8000000000000000UL))
                   available = 0;
             }
          } while (!available && (flags & VK_QUERY_RESULT_WAIT_BIT));
@@ -1489,8 +1489,8 @@ radv_GetQueryPoolResults(VkDevice _device, VkQueryPool queryPool, uint32_t first
          if (!available && !(flags & VK_QUERY_RESULT_PARTIAL_BIT))
             result = VK_NOT_READY;
 
-         num_primitives_written = src64[3] - src64[1];
-         primitive_storage_needed = src64[2] - src64[0];
+         num_primitives_written = p_atomic_read_relaxed(&src64[3].value) - p_atomic_read_relaxed(&src64[1].value);
+         primitive_storage_needed = p_atomic_read_relaxed(&src64[2].value) - p_atomic_read_relaxed(&src64[0].value);
 
          if (flags & VK_QUERY_RESULT_64_BIT) {
             if (available || (flags & VK_QUERY_RESULT_PARTIAL_BIT))
@@ -1522,12 +1522,12 @@ radv_GetQueryPoolResults(VkDevice _device, VkQueryPool queryPool, uint32_t first
           */
          do {
             available = 1;
-            if (!(p_atomic_read(src64 + 0) & 0x8000000000000000UL) ||
-                !(p_atomic_read(src64 + 2) & 0x8000000000000000UL)) {
+            if (!(p_atomic_read(&src64[0].value) & 0x8000000000000000UL) ||
+                !(p_atomic_read(&src64[2].value) & 0x8000000000000000UL)) {
                available = 0;
             }
-            if (uses_gds_query && (!(p_atomic_read(src64 + 4) & 0x8000000000000000UL) ||
-                                   !(p_atomic_read(src64 + 5) & 0x8000000000000000UL))) {
+            if (uses_gds_query && (!(p_atomic_read(&src64[4].value) & 0x8000000000000000UL) ||
+                                   !(p_atomic_read(&src64[5].value) & 0x8000000000000000UL))) {
                available = 0;
             }
          } while (!available && (flags & VK_QUERY_RESULT_WAIT_BIT));
@@ -1535,11 +1535,11 @@ radv_GetQueryPoolResults(VkDevice _device, VkQueryPool queryPool, uint32_t first
          if (!available && !(flags & VK_QUERY_RESULT_PARTIAL_BIT))
             result = VK_NOT_READY;
 
-         primitive_storage_needed = src64[2] - src64[0];
+         primitive_storage_needed = p_atomic_read_relaxed(&src64[2].value) - p_atomic_read_relaxed(&src64[0].value);
 
          if (uses_gds_query) {
             /* Accumulate the result that was copied from GDS in case NGG shader has been used. */
-            primitive_storage_needed += src64[5] - src64[4];
+            primitive_storage_needed += p_atomic_read_relaxed(&src64[5].value) - p_atomic_read_relaxed(&src64[4].value);
          }
 
          if (flags & VK_QUERY_RESULT_64_BIT) {
@@ -1560,13 +1560,13 @@ radv_GetQueryPoolResults(VkDevice _device, VkQueryPool queryPool, uint32_t first
          do {
             avail = true;
             for (unsigned i = 0; i < pc_pool->num_passes; ++i)
-               if (!p_atomic_read(src64 + pool->stride / 8 - i - 1))
+               if (!p_atomic_read(&src64[pool->stride / 8 - i - 1].value))
                   avail = false;
          } while (!avail && (flags & VK_QUERY_RESULT_WAIT_BIT));
 
          available = avail;
 
-         radv_pc_get_results(pc_pool, src64, dest);
+         radv_pc_get_results(pc_pool, &src64->value, dest);
          dest += pc_pool->num_counters * sizeof(union VkPerformanceCounterResultKHR);
          break;
       }
@@ -1576,8 +1576,8 @@ radv_GetQueryPoolResults(VkDevice _device, VkQueryPool queryPool, uint32_t first
 
          do {
             available = 1;
-            if (!(p_atomic_read(src64 + 0) & 0x8000000000000000UL) ||
-                !(p_atomic_read(src64 + 1) & 0x8000000000000000UL)) {
+            if (!(p_atomic_read(&src64[0].value) & 0x8000000000000000UL) ||
+                !(p_atomic_read(&src64[1].value) & 0x8000000000000000UL)) {
                available = 0;
             }
          } while (!available && (flags & VK_QUERY_RESULT_WAIT_BIT));
@@ -1585,7 +1585,7 @@ radv_GetQueryPoolResults(VkDevice _device, VkQueryPool queryPool, uint32_t first
          if (!available && !(flags & VK_QUERY_RESULT_PARTIAL_BIT))
             result = VK_NOT_READY;
 
-         ms_prim_gen = src64[1] - src64[0];
+         ms_prim_gen = p_atomic_read_relaxed(&src64[1].value) - p_atomic_read_relaxed(&src64[0].value);
 
          if (flags & VK_QUERY_RESULT_64_BIT) {
             if (available || (flags & VK_QUERY_RESULT_PARTIAL_BIT))
@@ -2443,11 +2443,27 @@ radv_CmdWriteTimestamp2(VkCommandBuffer commandBuffer, VkPipelineStageFlags2 sta
 {
    RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    RADV_FROM_HANDLE(radv_query_pool, pool, queryPool);
+   const unsigned num_queries = MAX2(util_bitcount(cmd_buffer->state.render.view_mask), 1);
    struct radeon_cmdbuf *cs = cmd_buffer->cs;
-   uint64_t va = radv_buffer_get_va(pool->bo);
+   const uint64_t va = radv_buffer_get_va(pool->bo);
    uint64_t query_va = va + pool->stride * query;
 
    radv_cs_add_buffer(cmd_buffer->device->ws, cs, pool->bo);
+
+   if (cmd_buffer->qf == RADV_QUEUE_TRANSFER) {
+      if (cmd_buffer->device->instance->flush_before_timestamp_write) {
+         radeon_check_space(cmd_buffer->device->ws, cmd_buffer->cs, 1);
+         radeon_emit(cmd_buffer->cs, SDMA_PACKET(SDMA_OPCODE_NOP, 0, 0));
+      }
+
+      for (unsigned i = 0; i < num_queries; ++i, query_va += pool->stride) {
+         radeon_check_space(cmd_buffer->device->ws, cmd_buffer->cs, 3);
+         radeon_emit(cmd_buffer->cs, SDMA_PACKET(SDMA_OPCODE_TIMESTAMP, SDMA_TS_SUB_OPCODE_GET_GLOBAL_TIMESTAMP, 0));
+         radeon_emit(cs, query_va);
+         radeon_emit(cs, query_va >> 32);
+      }
+      return;
+   }
 
    if (cmd_buffer->device->instance->flush_before_timestamp_write) {
       /* Make sure previously launched waves have finished */
@@ -2455,10 +2471,6 @@ radv_CmdWriteTimestamp2(VkCommandBuffer commandBuffer, VkPipelineStageFlags2 sta
    }
 
    si_emit_cache_flush(cmd_buffer);
-
-   int num_queries = 1;
-   if (cmd_buffer->state.render.view_mask)
-      num_queries = util_bitcount(cmd_buffer->state.render.view_mask);
 
    ASSERTED unsigned cdw_max = radeon_check_space(cmd_buffer->device->ws, cs, 28 * num_queries);
 

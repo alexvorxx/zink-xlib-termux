@@ -25,8 +25,29 @@ struct vk_shader_module;
 #define TU102_SHADER_HEADER_SIZE (32 * 4)
 #define NVC0_MAX_SHADER_HEADER_SIZE TU102_SHADER_HEADER_SIZE
 
+enum ENUM_PACKED nvk_cbuf_type {
+   NVK_CBUF_TYPE_INVALID = 0,
+   NVK_CBUF_TYPE_ROOT_DESC,
+   NVK_CBUF_TYPE_DESC_SET,
+   NVK_CBUF_TYPE_DYNAMIC_UBO,
+   NVK_CBUF_TYPE_UBO_DESC,
+};
+
+struct nvk_cbuf {
+   enum nvk_cbuf_type type;
+   uint8_t desc_set;
+   uint8_t dynamic_idx;
+   uint32_t desc_offset;
+};
+
+struct nvk_cbuf_map {
+   uint32_t cbuf_count;
+   struct nvk_cbuf cbufs[16];
+};
+
 struct nvk_shader {
    struct nak_shader_info info;
+   struct nvk_cbuf_map cbuf_map;
 
    struct nak_shader_bin *nak;
    const void *code_ptr;
@@ -41,6 +62,12 @@ static inline uint64_t
 nvk_shader_address(const struct nvk_shader *shader)
 {
    return shader->upload_addr + shader->upload_padding;
+}
+
+static inline bool
+nvk_shader_is_enabled(const struct nvk_shader *shader)
+{
+   return shader->upload_size > 0;
 }
 
 VkShaderStageFlags nvk_nak_stages(const struct nv_device_info *info);
@@ -73,7 +100,8 @@ nvk_physical_device_spirv_options(const struct nvk_physical_device *pdev,
 bool
 nvk_nir_lower_descriptors(nir_shader *nir,
                           const struct vk_pipeline_robustness_state *rs,
-                          const struct vk_pipeline_layout *layout);
+                          const struct vk_pipeline_layout *layout,
+                          struct nvk_cbuf_map *cbuf_map_out);
 
 VkResult
 nvk_shader_stage_to_nir(struct nvk_device *dev,
@@ -86,11 +114,13 @@ void
 nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
               const struct vk_pipeline_robustness_state *rs,
               bool is_multiview,
-              const struct vk_pipeline_layout *layout);
+              const struct vk_pipeline_layout *layout,
+              struct nvk_shader *shader);
 
 VkResult
 nvk_compile_nir(struct nvk_physical_device *dev, nir_shader *nir,
                 VkPipelineCreateFlagBits2KHR pipeline_flags,
+                const struct vk_pipeline_robustness_state *rstate,
                 const struct nak_fs_key *fs_key,
                 struct nvk_shader *shader);
 

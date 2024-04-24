@@ -16,7 +16,6 @@
 #include <vndk/hardware_buffer.h>
 #include <vulkan/vk_icd.h>
 
-#include "drm-uapi/drm_fourcc.h"
 #include "util/os_file.h"
 #include "vk_android.h"
 
@@ -355,6 +354,8 @@ vn_GetSwapchainGrallocUsage2ANDROID(
 
    if (swapchainImageUsage & VK_SWAPCHAIN_IMAGE_USAGE_SHARED_BIT_ANDROID)
       *grallocProducerUsage |= vn_android_gralloc_get_shared_present_usage();
+
+   vn_tls_set_primary_ring_submission();
 
    return VK_SUCCESS;
 }

@@ -1,5 +1,4 @@
 # kopper
-glx@glx-multi-window-single-context,Crash
 spec@egl_chromium_sync_control@conformance@eglGetSyncValuesCHROMIUM_ust_test,Fail
 
 # #6115
@@ -10,19 +9,6 @@ spec@arb_tessellation_shader@execution@variable-indexing@tes-both-input-array-ve
 
 
 glx@extension string sanity,Fail
-glx@glx_arb_create_context_es2_profile@invalid opengl es version,Fail
-glx@glx_arb_create_context_no_error@no error,Fail
-glx@glx_arb_create_context_robustness@invalid reset notification strategy,Fail
-glx@glx_ext_import_context@free context,Fail
-glx@glx_ext_import_context@get context id,Fail
-glx@glx_ext_import_context@get current display,Fail
-glx@glx_ext_import_context@import context- multi process,Fail
-glx@glx_ext_import_context@import context- single process,Fail
-glx@glx_ext_import_context@imported context has same context id,Fail
-glx@glx_ext_import_context@make current- multi process,Fail
-glx@glx_ext_import_context@make current- single process,Fail
-glx@glx_ext_import_context@query context info,Fail
-glx@glx-swap-pixmap-bad,Fail
 
 # #6322
 spec@arb_framebuffer_object@fbo-blit-scaled-linear,Fail
@@ -89,8 +75,6 @@ spec@arb_sample_shading@interpolate-at-sample-position 4,Fail
 spec@arb_sample_shading@interpolate-at-sample-position 6,Fail
 spec@arb_sample_shading@interpolate-at-sample-position 8,Fail
 
-spec@arb_shader_clock@execution@clock2x32,Fail
-spec@arb_shader_clock@execution@clock,Fail
 spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgradcube,Fail
 spec@arb_shading_language_packing@execution@built-in-functions@fs-packhalf2x16,Fail
 spec@arb_shading_language_packing@execution@built-in-functions@vs-packhalf2x16,Fail
@@ -207,8 +191,6 @@ spec@!opengl 3.0@clearbuffer-depth-cs-probe,Fail
 spec@!opengl 1.0@rasterpos@glsl_vs_gs_linked,Fail
 spec@!opengl 1.0@rasterpos@glsl_vs_tes_linked,Fail
 
-glx@glx-buffer-age,Fail
-glx@glx-buffer-age vblank_mode=0,Fail
 spec@!opengl 1.1@teximage-colors gl_sluminance8_alpha8,Fail
 spec@!opengl 1.1@teximage-colors gl_sluminance8_alpha8@GL_SLUMINANCE8_ALPHA8 texture with GL_ABGR_EXT and GL_BYTE,Fail
 spec@!opengl 1.1@teximage-colors gl_sluminance8_alpha8@GL_SLUMINANCE8_ALPHA8 texture with GL_ABGR_EXT and GL_FLOAT,Fail
@@ -276,7 +258,6 @@ spec@!opengl 1.1@line-smooth-stipple,Fail
 # Delta over NAVI10
 spec@!opengl 1.1@depthstencil-default_fb-blit samples=4,Fail
 spec@!opengl 1.1@depthstencil-default_fb-copypixels samples=6,Fail
-spec@!opengl 1.1@depthstencil-default_fb-copypixels samples=8,Fail
 
 spec@ext_transform_feedback@tessellation quad_strip wireframe,Fail
 spec@ext_transform_feedback@tessellation quads wireframe,Fail
@@ -366,13 +347,7 @@ spec@arb_viewport_array@display-list,Fail
 
 dEQP-GLES3.functional.shaders.precision.uint.highp_div_fragment,Fail
 dEQP-GLES31.functional.image_load_store.buffer.atomic.comp_swap_r32i_return_value,Fail
-spec@!opengl 1.1@depthstencil-default_fb-drawpixels-24_8 samples=6,Fail
-spec@!opengl 1.1@depthstencil-default_fb-drawpixels-24_8 samples=8,Fail
-spec@!opengl 1.1@depthstencil-default_fb-drawpixels-32f_24_8_rev samples=6,Fail
-spec@!opengl 1.1@depthstencil-default_fb-drawpixels-32f_24_8_rev samples=8,Fail
-spec@arb_depth_buffer_float@fbo-depthstencil-gl_depth32f_stencil8-drawpixels-float-and-ushort,Fail
 spec@arb_sample_shading@arb_sample_shading-builtin-gl-sample-mask-mrt-alpha-to-coverage,Fail
-spec@ext_packed_depth_stencil@fbo-depthstencil-gl_depth24_stencil8-drawpixels-float-and-ushort,Fail
 
 dEQP-GLES31.functional.image_load_store.buffer.atomic.comp_swap_r32ui_return_value,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-export,Fail

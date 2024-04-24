@@ -9,22 +9,22 @@
 #include "nvk_device_memory.h"
 #include "nvk_physical_device.h"
 
-uint32_t
-nvk_get_buffer_alignment(UNUSED const struct nv_device_info *info,
+static uint32_t
+nvk_get_buffer_alignment(const struct nvk_physical_device *pdev,
                          VkBufferUsageFlags2KHR usage_flags,
                          VkBufferCreateFlags create_flags)
 {
    uint32_t alignment = 16;
 
    if (usage_flags & VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR)
-      alignment = MAX2(alignment, NVK_MIN_UBO_ALIGNMENT);
+      alignment = MAX2(alignment, nvk_min_cbuf_alignment(&pdev->info));
 
    if (usage_flags & VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR)
       alignment = MAX2(alignment, NVK_MIN_SSBO_ALIGNMENT);
 
    if (usage_flags & (VK_BUFFER_USAGE_2_UNIFORM_TEXEL_BUFFER_BIT_KHR |
                       VK_BUFFER_USAGE_2_STORAGE_TEXEL_BUFFER_BIT_KHR))
-      alignment = MAX2(alignment, NVK_MIN_UBO_ALIGNMENT);
+      alignment = MAX2(alignment, NVK_MIN_TEXEL_BUFFER_ALIGNMENT);
 
    if (create_flags & (VK_BUFFER_CREATE_SPARSE_BINDING_BIT |
                        VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT))
@@ -94,7 +94,7 @@ nvk_CreateBuffer(VkDevice device,
        (buffer->vk.create_flags & (VK_BUFFER_CREATE_SPARSE_BINDING_BIT |
                                    VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT))) {
       const uint32_t alignment =
-         nvk_get_buffer_alignment(&nvk_device_physical(dev)->info,
+         nvk_get_buffer_alignment(nvk_device_physical(dev),
                                   buffer->vk.usage,
                                   buffer->vk.create_flags);
       assert(alignment >= 4096);
@@ -159,14 +159,14 @@ nvk_GetDeviceBufferMemoryRequirements(
    VK_FROM_HANDLE(nvk_device, dev, device);
 
    const uint32_t alignment =
-      nvk_get_buffer_alignment(&nvk_device_physical(dev)->info,
+      nvk_get_buffer_alignment(nvk_device_physical(dev),
                                pInfo->pCreateInfo->usage,
                                pInfo->pCreateInfo->flags);
 
    pMemoryRequirements->memoryRequirements = (VkMemoryRequirements) {
       .size = align64(pInfo->pCreateInfo->size, alignment),
       .alignment = alignment,
-      .memoryTypeBits = BITFIELD_MASK(dev->pdev->mem_type_cnt),
+      .memoryTypeBits = BITFIELD_MASK(dev->pdev->mem_type_count),
    };
 
    vk_foreach_struct_const(ext, pMemoryRequirements->pNext) {

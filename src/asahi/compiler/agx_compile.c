@@ -7,8 +7,9 @@
 
 #include "agx_compile.h"
 #include "compiler/nir/nir_builder.h"
-#include "compiler/nir_types.h"
+#include "glsl_types.h"
 #include "util/glheader.h"
+#include "util/macros.h"
 #include "util/u_debug.h"
 #include "agx_builder.h"
 #include "agx_compiler.h"
@@ -17,6 +18,8 @@
 #include "agx_nir.h"
 #include "nir.h"
 #include "nir_intrinsics.h"
+#include "nir_intrinsics_indices.h"
+#include "shader_enums.h"
 
 /* Alignment for shader programs. I'm not sure what the optimal value is. */
 #define AGX_CODE_ALIGN 0x100
@@ -245,6 +248,12 @@ agx_subdivide_to(agx_builder *b, agx_index dst, agx_index s0, unsigned comp)
 {
    assert((s0.size == (dst.size + 1)) && "only 2x subdivide handled");
    assert((comp == 0 || comp == 1) && "too many components");
+
+   /* Handle immediates specially so we don't have to constant fold splits. */
+   if (s0.type == AGX_INDEX_IMMEDIATE) {
+      unsigned bits = 16 * agx_size_align_16(dst.size);
+      return agx_mov_imm_to(b, dst, (s0.value >> bits) & BITFIELD64_MASK(bits));
+   }
 
    agx_instr *split = agx_split(b, 2, s0);
    split->dest[comp] = dst;
@@ -912,8 +921,20 @@ agx_emit_image_load(agx_builder *b, agx_index dst, nir_intrinsic_instr *intr)
       agx_extract_nir_src(b, intr->src[1], 3),
    };
 
+   /* Get the image dimension. Cubes are lowered to 2D, since they are logically
+    * equivalent for imageLoad, but out-of-bounds behaviour for cubes on G13
+    * is wrong according to Piglit's arb_shader_image_load_store-invalid.
+    *
+    * This requires a matching transform in the driver.
+    */
    enum glsl_sampler_dim dim = nir_intrinsic_image_dim(intr);
    bool is_array = nir_intrinsic_image_array(intr);
+
+   if (dim == GLSL_SAMPLER_DIM_CUBE) {
+      dim = GLSL_SAMPLER_DIM_2D;
+      is_array = true;
+   }
+
    bool is_ms = dim == GLSL_SAMPLER_DIM_MS;
    unsigned coord_comps = glsl_get_sampler_dim_coordinate_components(dim);
    if (is_array && is_ms) {
@@ -951,8 +972,16 @@ agx_emit_image_load(agx_builder *b, agx_index dst, nir_intrinsic_instr *intr)
 static agx_instr *
 agx_emit_image_store(agx_builder *b, nir_intrinsic_instr *instr)
 {
+   /* See remarks in agx_emit_image_load */
    enum glsl_sampler_dim glsl_dim = nir_intrinsic_image_dim(instr);
-   enum agx_dim dim = agx_tex_dim(glsl_dim, nir_intrinsic_image_array(instr));
+   bool is_array = nir_intrinsic_image_array(instr);
+
+   if (glsl_dim == GLSL_SAMPLER_DIM_CUBE) {
+      glsl_dim = GLSL_SAMPLER_DIM_2D;
+      is_array = true;
+   }
+
+   enum agx_dim dim = agx_tex_dim(glsl_dim, is_array);
    assert(glsl_dim != GLSL_SAMPLER_DIM_MS && "needs to be lowered");
 
    agx_index base, index;
@@ -973,7 +1002,7 @@ agx_emit_image_store(agx_builder *b, nir_intrinsic_instr *instr)
    assert(lod.size == AGX_SIZE_16);
 
    int coord_components = glsl_get_sampler_dim_coordinate_components(glsl_dim);
-   if (nir_intrinsic_image_array(instr))
+   if (is_array)
       coord_components++;
 
    agx_index coord_comps[4] = {};
@@ -1202,6 +1231,9 @@ agx_emit_intrinsic(agx_builder *b, nir_intrinsic_instr *instr)
    case nir_intrinsic_fence_mem_to_tex_agx: {
       /* Flush out the atomic to main memory */
       agx_memory_barrier(b);
+      /* Found experimentally... */
+      if (b->shader->key->needs_g13x_coherency)
+         agx_memory_barrier_2(b);
 
       /* TODO: Which ones do we actually need? */
       agx_image_barrier_1(b);
@@ -2474,7 +2506,11 @@ agx_remap_varyings_vs(nir_shader *nir, struct agx_varyings_vs *varyings,
    base += 4;
 
    /* These are always flat-shaded from the FS perspective */
-   key->vs.outputs_flat_shaded |= VARYING_SLOT_LAYER | VARYING_SLOT_VIEWPORT;
+   key->vs.outputs_flat_shaded |= VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT;
+
+   /* The internal cull distance slots are always linearly-interpolated */
+   key->vs.outputs_linear_shaded |=
+      BITFIELD64_RANGE(VARYING_SLOT_CULL_PRIMITIVE, 2);
 
    assert(!(key->vs.outputs_flat_shaded & key->vs.outputs_linear_shaded));
 
@@ -2523,7 +2559,7 @@ agx_remap_varyings_vs(nir_shader *nir, struct agx_varyings_vs *varyings,
       base += 1;
    }
 
-   if (nir->info.outputs_written & VARYING_BIT_LAYER) {
+   if (nir->info.outputs_written & (VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT)) {
       varyings->layer_viewport_slot = base;
       base += 1;
    }
@@ -2589,12 +2625,12 @@ agx_gather_interp(nir_builder *b, nir_instr *instr, void *data)
 
    if (intr->intrinsic == nir_intrinsic_load_input) {
       nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
-      masks->flat |= BITFIELD64_BIT(sem.location);
+      masks->flat |= BITFIELD64_RANGE(sem.location, sem.num_slots);
    } else if (intr->intrinsic == nir_intrinsic_load_interpolated_input &&
               nir_intrinsic_interp_mode(nir_src_as_intrinsic(intr->src[0])) ==
                  INTERP_MODE_NOPERSPECTIVE) {
       nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
-      masks->linear |= BITFIELD64_BIT(sem.location);
+      masks->linear |= BITFIELD64_RANGE(sem.location, sem.num_slots);
    }
 
    return false;
@@ -2727,7 +2763,10 @@ agx_compile_function_nir(nir_shader *nir, nir_function_impl *impl,
    emit_cf_list(ctx, &impl->body);
    agx_emit_phis_deferred(ctx);
 
-   if (impl->function->is_entrypoint && nir->scratch_size > 0) {
+   /* TODO: reenable when we have the helper program, and have fixed
+    * scratch_size on shaders that use libagx.
+    */
+   if (impl->function->is_entrypoint && nir->scratch_size > 0 && false) {
       /* Apple always allocate 40 more bytes in the entrypoint and align to 4. */
       uint64_t stack_size = ALIGN(DIV_ROUND_UP(nir->scratch_size, 4) + 10, 4);
 
@@ -2847,14 +2886,10 @@ link_libagx(nir_shader *nir, const nir_shader *libagx)
    nir_link_shader_functions(nir, libagx);
    NIR_PASS_V(nir, nir_inline_functions);
    NIR_PASS_V(nir, nir_remove_non_entrypoints);
-   NIR_PASS_V(nir, nir_lower_vars_to_explicit_types, nir_var_function_temp,
-              glsl_get_cl_type_size_align);
-   NIR_PASS_V(nir, nir_opt_deref);
-   NIR_PASS_V(nir, nir_lower_vars_to_ssa);
-   NIR_PASS_V(nir, nir_lower_explicit_io,
+   NIR_PASS_V(nir, nir_lower_vars_to_explicit_types,
               nir_var_shader_temp | nir_var_function_temp | nir_var_mem_shared |
                  nir_var_mem_global,
-              nir_address_format_62bit_generic);
+              glsl_get_cl_type_size_align);
 }
 
 /*
@@ -2881,10 +2916,6 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx,
 
    NIR_PASS_V(nir, nir_lower_vars_to_ssa);
 
-   if (nir->info.stage == MESA_SHADER_VERTEX) {
-      NIR_PASS_V(nir, nir_lower_point_size, 1.0, 0.0);
-   }
-
    /* Lower large arrays to scratch and small arrays to csel */
    NIR_PASS_V(nir, nir_lower_vars_to_scratch, nir_var_function_temp, 16,
               glsl_get_natural_size_align_bytes);
@@ -2894,7 +2925,7 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx,
    NIR_PASS_V(nir, nir_lower_var_copies);
    NIR_PASS_V(nir, nir_lower_vars_to_ssa);
    NIR_PASS_V(nir, nir_lower_io, nir_var_shader_in | nir_var_shader_out,
-              glsl_type_size, 0);
+              glsl_type_size, nir_lower_io_lower_64bit_to_32);
    NIR_PASS_V(nir, nir_lower_ssbo);
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
       struct interp_masks masks = agx_interp_masks(nir);
@@ -2918,6 +2949,12 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx,
          out->inputs_flat_shaded = masks.flat;
          out->inputs_linear_shaded = masks.linear;
       }
+   } else if (nir->info.stage == MESA_SHADER_VERTEX) {
+      out->has_edgeflags = nir->info.outputs_written & VARYING_BIT_EDGE;
+      out->cull_distance_size = nir->info.cull_distance_array_size;
+
+      if (out->cull_distance_size)
+         NIR_PASS_V(nir, agx_nir_lower_cull_distance_vs);
    }
 
    /* Clean up deref gunk after lowering I/O */
@@ -2950,6 +2987,13 @@ agx_preprocess_nir(nir_shader *nir, const nir_shader *libagx,
     * run now, that run will ideally be almost a no-op.
     */
    agx_optimize_loop_nir(nir);
+
+   NIR_PASS_V(nir, nir_opt_deref);
+   NIR_PASS_V(nir, nir_lower_vars_to_ssa);
+   NIR_PASS_V(nir, nir_lower_explicit_io,
+              nir_var_shader_temp | nir_var_function_temp | nir_var_mem_shared |
+                 nir_var_mem_global,
+              nir_address_format_62bit_generic);
 
    /* We're lowered away all variables. Remove them all for smaller shaders. */
    NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_all, NULL);
@@ -3019,8 +3063,16 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
    if (nir->info.stage == MESA_SHADER_FRAGMENT)
       NIR_PASS(needs_libagx, nir, agx_nir_lower_interpolation);
 
-   if (needs_libagx)
+   if (needs_libagx) {
       link_libagx(nir, key->libagx);
+
+      NIR_PASS_V(nir, nir_opt_deref);
+      NIR_PASS_V(nir, nir_lower_vars_to_ssa);
+      NIR_PASS_V(nir, nir_lower_explicit_io,
+                 nir_var_shader_temp | nir_var_function_temp |
+                    nir_var_mem_shared | nir_var_mem_global,
+                 nir_address_format_62bit_generic);
+   }
 
    /* Late VBO lowering creates constant udiv instructions */
    NIR_PASS_V(nir, nir_opt_idiv_const, 16);
@@ -3087,9 +3139,17 @@ agx_compile_shader_nir(nir_shader *nir, struct agx_shader_key *key,
       out->writes_psiz =
          nir->info.outputs_written & BITFIELD_BIT(VARYING_SLOT_PSIZ);
 
+      out->nonzero_viewport = nir->info.outputs_written & VARYING_BIT_VIEWPORT;
+
       out->writes_layer_viewport =
          nir->info.outputs_written & (VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT);
 
+      out->uses_draw_id =
+         BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_DRAW_ID);
+
+      out->uses_base_param =
+         BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BASE_VERTEX) ||
+         BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BASE_INSTANCE);
    } else if (nir->info.stage == MESA_SHADER_FRAGMENT) {
       out->disable_tri_merging = nir->info.uses_wide_subgroup_intrinsics ||
                                  nir->info.fs.needs_quad_helper_invocations ||

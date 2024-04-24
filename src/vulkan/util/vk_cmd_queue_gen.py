@@ -52,7 +52,13 @@ MANUAL_COMMANDS = [
 
 NO_ENQUEUE_COMMANDS = [
     # pData's size cannot be calculated from the xml
+    'CmdBindDescriptorBufferEmbeddedSamplers2EXT',
+    'CmdBindDescriptorSets2KHR',
+    'CmdPushConstants2KHR',
+    'CmdPushDescriptorSet2KHR',
+    'CmdPushDescriptorSetWithTemplate2KHR',
     'CmdPushDescriptorSetWithTemplateKHR',
+    'CmdSetDescriptorBufferOffsets2EXT',
 
     # These don't return void
     'CmdSetPerformanceMarkerINTEL',
@@ -198,7 +204,7 @@ void vk_cmd_queue_execute(struct vk_cmd_queue *queue,
 #ifdef __cplusplus
 }
 #endif
-""", output_encoding='utf-8')
+""")
 
 TEMPLATE_C = Template(COPYRIGHT + """
 /* This file generated from ${filename}, don't edit directly. */
@@ -415,7 +421,7 @@ vk_cmd_enqueue_unless_primary_${c.name}(${c.decl_params()})
 #endif // ${c.guard}
 % endif
 % endfor
-""", output_encoding='utf-8')
+""")
 
 def remove_prefix(text, prefix):
     if text.startswith(prefix):
@@ -664,10 +670,10 @@ def main():
     }
 
     try:
-        with open(args.out_h, 'wb') as f:
+        with open(args.out_h, 'w', encoding='utf-8') as f:
             guard = os.path.basename(args.out_h).replace('.', '_').upper()
             f.write(TEMPLATE_H.render(guard=guard, **environment))
-        with open(args.out_c, 'wb') as f:
+        with open(args.out_c, 'w', encoding='utf-8') as f:
             f.write(TEMPLATE_C.render(**environment))
     except Exception:
         # In the event there's an error, this imports some helpers from mako

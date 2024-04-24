@@ -342,6 +342,11 @@ typedef struct shader_info {
    bool workgroup_size_variable:1;
 
    /**
+    * Whether the shader uses printf instructions.
+    */
+   bool uses_printf:1;
+
+   /**
      * Set if this shader uses legacy (DX9 or ARB assembly) math rules.
      *
      * From the ARB_fragment_program specification:
@@ -587,7 +592,7 @@ typedef struct shader_info {
 
          uint16_t max_vertices_out;
          uint16_t max_primitives_out;
-         enum mesa_prim primitive_type;  /* GL_POINTS, GL_LINES or GL_TRIANGLES. */
+         enum mesa_prim primitive_type; /* POINTS, LINES or TRIANGLES. */
 
          /* TODO: remove this when we stop supporting NV_mesh_shader. */
          bool nv;

@@ -659,7 +659,8 @@ instruction_requires_packed_data(fs_inst *inst)
 static bool
 try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
                    acp_entry *entry, int arg,
-                   const brw::simple_allocator &alloc)
+                   const brw::simple_allocator &alloc,
+                   uint8_t max_polygons)
 {
    if (inst->src[arg].file != VGRF)
       return false;
@@ -801,6 +802,17 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
        (reg_offset(inst->dst) % REG_SIZE) != (reg_offset(entry->src) % REG_SIZE))
       return false;
 
+   /* The <8;8,0> regions used for FS attributes in multipolygon
+    * dispatch mode could violate regioning restrictions, don't copy
+    * propagate them in such cases.
+    */
+   if (entry->src.file == ATTR && max_polygons > 1 &&
+       (has_dst_aligned_region_restriction(devinfo, inst, dst_type) ||
+	instruction_requires_packed_data(inst) ||
+	(inst->is_3src(compiler) && arg == 2) ||
+	entry->dst.type != inst->src[arg].type))
+      return false;
+
    /* Bail if the source FIXED_GRF region of the copy cannot be trivially
     * composed with the source region of the instruction -- E.g. because the
     * copy uses some extended stride greater than 4 not supported natively by
@@ -913,7 +925,6 @@ try_copy_propagate(const brw_compiler *compiler, fs_inst *inst,
           * type.  If we got here, then we can just change the source and
           * destination types of the instruction and keep going.
           */
-         assert(inst->can_change_types());
          for (int i = 0; i < inst->sources; i++) {
             inst->src[i].type = entry->dst.type;
          }
@@ -1264,7 +1275,8 @@ can_propagate_from(fs_inst *inst)
 static bool
 opt_copy_propagation_local(const brw_compiler *compiler, void *copy_prop_ctx,
                            bblock_t *block, struct acp &acp,
-                           const brw::simple_allocator &alloc)
+                           const brw::simple_allocator &alloc,
+                           uint8_t max_polygons)
 {
    bool progress = false;
 
@@ -1284,7 +1296,8 @@ opt_copy_propagation_local(const brw_compiler *compiler, void *copy_prop_ctx,
                   break;
                }
             } else {
-               if (try_copy_propagate(compiler, inst, *iter, i, alloc)) {
+               if (try_copy_propagate(compiler, inst, *iter, i, alloc,
+                                      max_polygons)) {
                   instruction_progress = true;
                   break;
                }
@@ -1399,7 +1412,8 @@ fs_visitor::opt_copy_propagation()
     */
    foreach_block (block, cfg) {
       progress = opt_copy_propagation_local(compiler, copy_prop_ctx, block,
-                                            out_acp[block->num], alloc) || progress;
+                                            out_acp[block->num], alloc,
+                                            max_polygons) || progress;
 
       /* If the destination of an ACP entry exists only within this block,
        * then there's no need to keep it for dataflow analysis.  We can delete
@@ -1438,7 +1452,8 @@ fs_visitor::opt_copy_propagation()
          }
       }
 
-      progress = opt_copy_propagation_local(compiler, copy_prop_ctx, block, in_acp, alloc) ||
+      progress = opt_copy_propagation_local(compiler, copy_prop_ctx, block,
+                                            in_acp, alloc, max_polygons) ||
                  progress;
    }
 

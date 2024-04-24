@@ -112,10 +112,15 @@ panvk_get_device_uuid(void *uuid)
 }
 
 static const struct debug_control panvk_debug_options[] = {
-   {"startup", PANVK_DEBUG_STARTUP}, {"nir", PANVK_DEBUG_NIR},
-   {"trace", PANVK_DEBUG_TRACE},     {"sync", PANVK_DEBUG_SYNC},
-   {"afbc", PANVK_DEBUG_AFBC},       {"linear", PANVK_DEBUG_LINEAR},
-   {"dump", PANVK_DEBUG_DUMP},       {NULL, 0}};
+   {"startup", PANVK_DEBUG_STARTUP},
+   {"nir", PANVK_DEBUG_NIR},
+   {"trace", PANVK_DEBUG_TRACE},
+   {"sync", PANVK_DEBUG_SYNC},
+   {"afbc", PANVK_DEBUG_AFBC},
+   {"linear", PANVK_DEBUG_LINEAR},
+   {"dump", PANVK_DEBUG_DUMP},
+   {"no_known_warn", PANVK_DEBUG_NO_KNOWN_WARN},
+   {NULL, 0}};
 
 #if defined(VK_USE_PLATFORM_WAYLAND_KHR)
 #define PANVK_USE_WSI_PLATFORM
@@ -460,7 +465,8 @@ panvk_physical_device_init(struct panvk_physical_device *device,
    memset(device->name, 0, sizeof(device->name));
    sprintf(device->name, "%s", device->pdev.model->name);
 
-   if (panvk_device_get_cache_uuid(device->pdev.gpu_id, device->cache_uuid)) {
+   if (panvk_device_get_cache_uuid(panfrost_device_gpu_id(&device->pdev),
+                                   device->cache_uuid)) {
       result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
                          "cannot generate UUID");
       goto fail_close_device;
@@ -471,7 +477,8 @@ panvk_physical_device_init(struct panvk_physical_device *device,
    panvk_get_driver_uuid(&device->device_uuid);
    panvk_get_device_uuid(&device->device_uuid);
 
-   device->drm_syncobj_type = vk_drm_syncobj_get_type(device->pdev.fd);
+   device->drm_syncobj_type =
+      vk_drm_syncobj_get_type(panfrost_device_fd(&device->pdev));
    /* We don't support timelines in the uAPI yet and we don't want it getting
     * suddenly turned on by vk_drm_syncobj_get_type() without us adding panvk
     * code for it first.
@@ -800,7 +807,8 @@ panvk_queue_init(struct panvk_device *device, struct panvk_queue *queue,
       .flags = DRM_SYNCOBJ_CREATE_SIGNALED,
    };
 
-   int ret = drmIoctl(pdev->fd, DRM_IOCTL_SYNCOBJ_CREATE, &create);
+   int ret =
+      drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_SYNCOBJ_CREATE, &create);
    if (ret) {
       vk_queue_finish(&queue->vk);
       return VK_ERROR_OUT_OF_HOST_MEMORY;
@@ -897,7 +905,7 @@ panvk_CreateDevice(VkPhysicalDevice physicalDevice,
    device->physical_device = physical_device;
 
    const struct panfrost_device *pdev = &physical_device->pdev;
-   vk_device_set_drm_fd(&device->vk, pdev->fd);
+   vk_device_set_drm_fd(&device->vk, panfrost_device_fd(pdev));
 
    for (unsigned i = 0; i < pCreateInfo->queueCreateInfoCount; i++) {
       const VkDeviceQueueCreateInfo *queue_create =
@@ -983,7 +991,7 @@ panvk_QueueWaitIdle(VkQueue _queue)
    };
    int ret;
 
-   ret = drmIoctl(pdev->fd, DRM_IOCTL_SYNCOBJ_WAIT, &wait);
+   ret = drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_SYNCOBJ_WAIT, &wait);
    assert(!ret);
 
    return VK_SUCCESS;
@@ -1027,6 +1035,7 @@ panvk_AllocateMemory(VkDevice _device,
 {
    VK_FROM_HANDLE(panvk_device, device, _device);
    struct panvk_device_memory *mem;
+   bool can_be_exported = false;
 
    assert(pAllocateInfo->sType == VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO);
 
@@ -1034,6 +1043,18 @@ panvk_AllocateMemory(VkDevice _device,
       /* Apparently, this is allowed */
       *pMem = VK_NULL_HANDLE;
       return VK_SUCCESS;
+   }
+
+   const VkExportMemoryAllocateInfo *export_info =
+      vk_find_struct_const(pAllocateInfo->pNext, EXPORT_MEMORY_ALLOCATE_INFO);
+
+   if (export_info) {
+      if (export_info->handleTypes &
+          ~(VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT |
+            VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT))
+         return vk_error(device, VK_ERROR_INVALID_EXTERNAL_HANDLE);
+      else if (export_info->handleTypes)
+         can_be_exported = true;
    }
 
    mem = vk_object_alloc(&device->vk, pAllocator, sizeof(*mem),
@@ -1061,9 +1082,9 @@ panvk_AllocateMemory(VkDevice _device,
       /* take ownership and close the fd */
       close(fd_info->fd);
    } else {
-      mem->bo = panfrost_bo_create(&device->physical_device->pdev,
-                                   pAllocateInfo->allocationSize, 0,
-                                   "User-requested memory");
+      mem->bo = panfrost_bo_create(
+         &device->physical_device->pdev, pAllocateInfo->allocationSize,
+         can_be_exported ? PAN_BO_SHAREABLE : 0, "User-requested memory");
    }
 
    assert(mem->bo);
@@ -1247,7 +1268,8 @@ panvk_CreateEvent(VkDevice _device, const VkEventCreateInfo *pCreateInfo,
       .flags = 0,
    };
 
-   int ret = drmIoctl(pdev->fd, DRM_IOCTL_SYNCOBJ_CREATE, &create);
+   int ret =
+      drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_SYNCOBJ_CREATE, &create);
    if (ret)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
@@ -1269,7 +1291,7 @@ panvk_DestroyEvent(VkDevice _device, VkEvent _event,
       return;
 
    struct drm_syncobj_destroy destroy = {.handle = event->syncobj};
-   drmIoctl(pdev->fd, DRM_IOCTL_SYNCOBJ_DESTROY, &destroy);
+   drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_SYNCOBJ_DESTROY, &destroy);
 
    vk_object_free(&device->vk, pAllocator, event);
 }
@@ -1289,7 +1311,7 @@ panvk_GetEventStatus(VkDevice _device, VkEvent _event)
       .flags = DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT,
    };
 
-   int ret = drmIoctl(pdev->fd, DRM_IOCTL_SYNCOBJ_WAIT, &wait);
+   int ret = drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_SYNCOBJ_WAIT, &wait);
    if (ret) {
       if (errno == ETIME)
          signaled = false;
@@ -1320,7 +1342,7 @@ panvk_SetEvent(VkDevice _device, VkEvent _event)
     * command executes.
     * https://www.khronos.org/registry/vulkan/specs/1.2/html/chap6.html#commandbuffers-submission-progress
     */
-   if (drmIoctl(pdev->fd, DRM_IOCTL_SYNCOBJ_SIGNAL, &objs))
+   if (drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_SYNCOBJ_SIGNAL, &objs))
       return VK_ERROR_DEVICE_LOST;
 
    return VK_SUCCESS;
@@ -1337,7 +1359,7 @@ panvk_ResetEvent(VkDevice _device, VkEvent _event)
       .handles = (uint64_t)(uintptr_t)&event->syncobj,
       .count_handles = 1};
 
-   if (drmIoctl(pdev->fd, DRM_IOCTL_SYNCOBJ_RESET, &objs))
+   if (drmIoctl(panfrost_device_fd(pdev), DRM_IOCTL_SYNCOBJ_RESET, &objs))
       return VK_ERROR_DEVICE_LOST;
 
    return VK_SUCCESS;

@@ -10,7 +10,8 @@
 
 struct barrier {
    nir_cf_node *node;
-   nir_def *bar;
+   nir_def *bar_set;
+   nir_def *bar_reg;
 };
 
 struct add_barriers_state {
@@ -30,13 +31,16 @@ add_bar_cf_node(nir_cf_node *node, struct add_barriers_state *state)
 
    b->cursor = nir_after_block(before);
    nir_def *bar = nir_bar_set_nv(b);
+   nir_def *bar_reg = nir_decl_reg(b, 1, 32, 0);
+   nir_store_reg(b, bar, bar_reg);
 
    b->cursor = nir_before_block_after_phis(after);
-   nir_bar_sync_nv(b, bar);
+   nir_bar_sync_nv(b, nir_load_reg(b, bar_reg), bar);
 
    struct barrier barrier = {
       .node = node,
-      .bar = bar,
+      .bar_set = bar,
+      .bar_reg = bar_reg,
    };
    util_dynarray_append(&state->barriers, struct barrier, barrier);
 
@@ -72,7 +76,9 @@ break_loop_bars(nir_block *block, struct add_barriers_state *state)
       const struct barrier *bar =
          util_dynarray_element(&state->barriers, struct barrier, idx);
       if (bar->node == p) {
-         nir_bar_break_nv(b, bar->bar);
+         nir_def *bar_val = nir_load_reg(b, bar->bar_reg);
+         bar_val = nir_bar_break_nv(b, bar_val);
+         nir_store_reg(b, bar_val, bar->bar_reg);
          idx--;
       }
    }
@@ -107,7 +113,7 @@ lower_control_barriers_block(nir_block *block,
              "Control barrier with scope > WORKGROUP");
 
       if (exec_scope == SCOPE_WORKGROUP &&
-          nak_nir_has_one_subgroup(state->builder.shader))
+          nak_nir_workgroup_has_one_subgroup(state->builder.shader))
          exec_scope = SCOPE_SUBGROUP;
 
       /* Because we're guaranteeing maximal convergence with this pass,
@@ -281,6 +287,8 @@ nak_nir_add_barriers_impl(nir_function_impl *impl,
       nir_metadata_preserve(impl, nir_metadata_block_index |
                                   nir_metadata_dominance |
                                   nir_metadata_loop_analysis);
+
+      nir_lower_reg_intrinsics_to_ssa_impl(impl);
    } else {
       nir_metadata_preserve(impl, nir_metadata_all);
    }
@@ -291,7 +299,7 @@ nak_nir_add_barriers_impl(nir_function_impl *impl,
 bool
 nak_nir_add_barriers(nir_shader *nir, const struct nak_compiler *nak)
 {
-   if (nak->sm < 75) {
+   if (nak->sm < 70) {
       nir_shader_preserve_all_metadata(nir);
       return false;
    }

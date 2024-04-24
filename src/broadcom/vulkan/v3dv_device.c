@@ -70,7 +70,7 @@
 
 #define V3DV_API_VERSION VK_MAKE_VERSION(1, 2, VK_HEADER_VERSION)
 
-#ifdef ANDROID
+#ifdef ANDROID_STRICT
 #if ANDROID_API_LEVEL <= 32
 /* Android 12.1 and lower support only Vulkan API v1.1 */
 #undef V3DV_API_VERSION
@@ -170,6 +170,7 @@ get_device_extensions(const struct v3dv_physical_device *device,
       .KHR_timeline_semaphore               = true,
       .KHR_uniform_buffer_standard_layout   = true,
       .KHR_shader_integer_dot_product       = true,
+      .KHR_shader_terminate_invocation      = true,
       .KHR_synchronization2                 = true,
       .KHR_workgroup_memory_explicit_layout = true,
 #ifdef V3DV_USE_WSI_PLATFORM
@@ -440,6 +441,9 @@ get_features(const struct v3dv_physical_device *physical_device,
 
       /* VK_EXT_multi_draw */
       .multiDraw = true,
+
+      /* VK_KHR_shader_terminate_invocation */
+      .shaderTerminateInvocation = true,
    };
 }
 
@@ -848,6 +852,9 @@ create_physical_device(struct v3dv_instance *instance,
                          "Kernel driver doesn't have required features.");
       goto fail;
    }
+
+   device->caps.cpu_queue =
+      v3d_has_feature(device, DRM_V3D_PARAM_SUPPORTS_CPU_QUEUE);
 
    device->caps.multisync =
       v3d_has_feature(device, DRM_V3D_PARAM_SUPPORTS_MULTISYNC_EXT);
@@ -2171,7 +2178,7 @@ v3dv_AllocateMemory(VkDevice _device,
     * through descriptor state.
     */
    if (flags_info &&
-       (flags_info->flags & VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR)) {
+       (flags_info->flags & VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT)) {
       mem->is_for_device_address = true;
       device_add_device_address_bo(device, mem->bo);
    }
@@ -2306,7 +2313,7 @@ v3dv_GetImageMemoryRequirements2(VkDevice device,
 }
 
 VKAPI_ATTR void VKAPI_CALL
-v3dv_GetDeviceImageMemoryRequirementsKHR(
+v3dv_GetDeviceImageMemoryRequirements(
     VkDevice _device,
     const VkDeviceImageMemoryRequirements *pInfo,
     VkMemoryRequirements2 *pMemoryRequirements)
@@ -2515,7 +2522,7 @@ v3dv_GetBufferMemoryRequirements2(VkDevice device,
 }
 
 VKAPI_ATTR void VKAPI_CALL
-v3dv_GetDeviceBufferMemoryRequirementsKHR(
+v3dv_GetDeviceBufferMemoryRequirements(
     VkDevice _device,
     const VkDeviceBufferMemoryRequirements *pInfo,
     VkMemoryRequirements2 *pMemoryRequirements)
@@ -2801,7 +2808,7 @@ v3dv_GetImageSparseMemoryRequirements2(
 }
 
 VKAPI_ATTR void VKAPI_CALL
-v3dv_GetDeviceImageSparseMemoryRequirementsKHR(
+v3dv_GetDeviceImageSparseMemoryRequirements(
     VkDevice device,
     const VkDeviceImageMemoryRequirements *pInfo,
     uint32_t *pSparseMemoryRequirementCount,
@@ -2812,7 +2819,7 @@ v3dv_GetDeviceImageSparseMemoryRequirementsKHR(
 
 VkDeviceAddress
 v3dv_GetBufferDeviceAddress(VkDevice device,
-                            const VkBufferDeviceAddressInfoKHR *pInfo)
+                            const VkBufferDeviceAddressInfo *pInfo)
 {
    V3DV_FROM_HANDLE(v3dv_buffer, buffer, pInfo->buffer);
    return buffer->mem_offset + buffer->mem->bo->offset;
@@ -2820,7 +2827,7 @@ v3dv_GetBufferDeviceAddress(VkDevice device,
 
 uint64_t
 v3dv_GetBufferOpaqueCaptureAddress(VkDevice device,
-                                   const VkBufferDeviceAddressInfoKHR *pInfo)
+                                   const VkBufferDeviceAddressInfo *pInfo)
 {
    /* Not implemented */
    return 0;
@@ -2829,7 +2836,7 @@ v3dv_GetBufferOpaqueCaptureAddress(VkDevice device,
 uint64_t
 v3dv_GetDeviceMemoryOpaqueCaptureAddress(
     VkDevice device,
-    const VkDeviceMemoryOpaqueCaptureAddressInfoKHR *pInfo)
+    const VkDeviceMemoryOpaqueCaptureAddressInfo *pInfo)
 {
    /* Not implemented */
    return 0;

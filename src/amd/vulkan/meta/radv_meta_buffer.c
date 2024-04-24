@@ -1,5 +1,6 @@
 #include "nir/nir_builder.h"
 #include "radv_meta.h"
+#include "radv_sdma.h"
 
 #include "radv_cs.h"
 #include "sid.h"
@@ -236,7 +237,9 @@ radv_fill_buffer(struct radv_cmd_buffer *cmd_buffer, const struct radv_image *im
    if (bo)
       radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, bo);
 
-   if (use_compute) {
+   if (cmd_buffer->qf == RADV_QUEUE_TRANSFER) {
+      radv_sdma_fill_buffer(cmd_buffer->device, cmd_buffer->cs, va, size, value);
+   } else if (use_compute) {
       cmd_buffer->state.flush_bits |= radv_dst_access_flush(cmd_buffer, VK_ACCESS_2_SHADER_WRITE_BIT, image);
 
       fill_buffer_shader(cmd_buffer, va, size, value);
@@ -262,7 +265,9 @@ radv_copy_buffer(struct radv_cmd_buffer *cmd_buffer, struct radeon_winsys_bo *sr
    radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, src_bo);
    radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, dst_bo);
 
-   if (use_compute)
+   if (cmd_buffer->qf == RADV_QUEUE_TRANSFER)
+      radv_sdma_copy_buffer(cmd_buffer->device, cmd_buffer->cs, src_va, dst_va, size);
+   else if (use_compute)
       copy_buffer_shader(cmd_buffer, src_va, dst_va, size);
    else if (size)
       si_cp_dma_buffer_copy(cmd_buffer, src_va, dst_va, size);
@@ -349,7 +354,7 @@ radv_CmdUpdateBuffer(VkCommandBuffer commandBuffer, VkBuffer dstBuffer, VkDevice
    if (!dataSize)
       return;
 
-   if (dataSize < RADV_BUFFER_UPDATE_THRESHOLD) {
+   if (dataSize < RADV_BUFFER_UPDATE_THRESHOLD && cmd_buffer->qf != RADV_QUEUE_TRANSFER) {
       radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, dst_buffer->bo);
       radv_update_buffer_cp(cmd_buffer, va, pData, dataSize);
    } else {

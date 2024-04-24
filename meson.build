@@ -338,7 +338,22 @@ if with_vulkan_beta
 endif
 
 _codecs = get_option('video-codecs')
-foreach c : ['vc1dec', 'h264dec', 'h264enc', 'h265dec', 'h265enc', 'av1dec', 'av1enc', 'vp9dec']
+patent_codecs = ['vc1dec', 'h264dec', 'h264enc', 'h265dec', 'h265enc']
+free_codecs = ['av1dec', 'av1enc', 'vp9dec']
+all_codecs = patent_codecs + free_codecs
+
+if _codecs.contains('all')
+  _codecs = all_codecs
+elif _codecs.contains('all_free')
+  selected_codecs = _codecs
+  _codecs = free_codecs
+  foreach c : patent_codecs
+    if selected_codecs.contains(c)
+      _codecs += c
+    endif
+  endforeach
+endif
+foreach c : all_codecs
    pre_args += '-DVIDEO_CODEC_@0@=@1@'.format(c.to_upper(), _codecs.contains(c).to_int())
 endforeach
 
@@ -547,7 +562,7 @@ if with_gallium_d3d12 or with_microsoft_clc or with_microsoft_vk
   dep_dxheaders = dependency('directx-headers', required : false)
   if not dep_dxheaders.found()
     dep_dxheaders = dependency('DirectX-Headers',
-      version : '>= 1.610.0',
+      version : '>= 1.611.0',
       fallback : ['DirectX-Headers', 'dep_dxheaders'],
       required : with_gallium_d3d12 or with_microsoft_vk
     )
@@ -798,11 +813,12 @@ if with_gallium_rusticl
     error('rusticl requires at least one gallium driver.')
   endif
 
-  if meson.version().version_compare('< 1.2')
-    error('rusticl requires meson 1.2.0 or newer')
+  if meson.version().version_compare('< 1.3')
+    error('rusticl requires meson 1.3.0 or newer')
   endif
 
   add_languages('rust', required: true)
+  rustc = meson.get_compiler('rust')
 
   with_clc = true
 endif
@@ -876,6 +892,9 @@ if with_platform_android
     '-DANDROID',
     '-DANDROID_API_LEVEL=' + get_option('platform-sdk-version').to_string()
   ]
+  if get_option('android-strict')
+    pre_args += '-DANDROID_STRICT'
+  endif
 endif
 
 # On Android, seccomp kills the process on kernels without
@@ -892,9 +911,12 @@ prog_python = import('python').find_installation('python3')
 has_mako = run_command(
   prog_python, '-c',
   '''
-from distutils.version import StrictVersion
+try:
+  from packaging.version import Version
+except:
+  from distutils.version import StrictVersion as Version
 import mako
-assert StrictVersion(mako.__version__) >= StrictVersion("0.8.0")
+assert Version(mako.__version__) >= Version("0.8.0")
   ''', check: false)
 if has_mako.returncode() != 0
   error('Python (3.x) mako module >= 0.8.0 required to build mesa.')
@@ -1048,6 +1070,7 @@ else
     '-fno-trapping-math',
     '-Qunused-arguments',
     '-fno-common',
+    '-Wno-unknown-pragmas',
     # Clang
     '-Wno-microsoft-enum-value',
     '-Wno-unused-function',
@@ -1067,6 +1090,7 @@ else
     # to the memory before the constructor as "dead stores".
     # For now we disable this optimization.
     '-flifetime-dse=1',
+    '-Wno-unknown-pragmas',
     # Clang
     '-Wno-microsoft-enum-value',
   ]
@@ -1502,7 +1526,7 @@ else
 endif
 
 dep_zlib = dependency('zlib', version : '>= 1.2.3',
-                      fallback : ['zlib', 'zlib_dep'],
+                      allow_fallback: true,
                       required : get_option('zlib'))
 if dep_zlib.found()
   pre_args += '-DHAVE_ZLIB'
@@ -1545,7 +1569,7 @@ with_expat = get_option('expat') \
 if host_machine.system() == 'darwin'
   dep_expat = meson.get_compiler('c').find_library('expat', required : with_expat)
 else
-  dep_expat = dependency('expat', fallback : ['expat', 'expat_dep'],
+  dep_expat = dependency('expat', allow_fallback: true,
                          required : with_expat)
 endif
 
@@ -1730,13 +1754,10 @@ if _llvm.allowed()
   with_llvm = dep_llvm.found()
 endif
 if with_llvm
-  pre_args += '-DLLVM_AVAILABLE'
   pre_args += '-DMESA_LLVM_VERSION_STRING="@0@"'.format(dep_llvm.version())
   pre_args += '-DLLVM_IS_SHARED=@0@'.format(_shared_llvm.to_int())
 
-  if draw_with_llvm
-    pre_args += '-DDRAW_LLVM_AVAILABLE'
-  elif with_swrast_vk
+  if with_swrast_vk and not draw_with_llvm
     error('Lavapipe requires LLVM draw support.')
   endif
 
@@ -1778,6 +1799,8 @@ elif with_clc
 else
   draw_with_llvm = false
 endif
+pre_args += '-DLLVM_AVAILABLE=' + (with_llvm ? '1' : '0')
+pre_args += '-DDRAW_LLVM_AVAILABLE=' + (with_llvm and draw_with_llvm ? '1' : '0')
 
 with_opencl_spirv = (_opencl != 'disabled' and get_option('opencl-spirv')) or with_clc
 if with_opencl_spirv
@@ -2013,6 +2036,9 @@ if with_platform_x11
     dep_xfixes = dependency('xfixes', version : '>= 2.0')
     dep_xcb_glx = dependency('xcb-glx', version : '>= 1.8.1')
     dep_xcb_shm = dependency('xcb-shm')
+  elif with_gallium_rusticl
+    # needed for GL sharing extension
+    dep_x11 = dependency('x11')
   endif
   if (with_any_vk or with_glx == 'dri' or with_egl or
        (with_gallium_vdpau or with_gallium_va or

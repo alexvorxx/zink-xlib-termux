@@ -22,7 +22,7 @@ struct nak_compiler {
    struct nir_shader_compiler_options nir_options;
 };
 
-enum PACKED nak_attr {
+enum ENUM_PACKED nak_attr {
    /* System values A */
    NAK_ATTR_TESS_LOD_LEFT     = 0x000,
    NAK_ATTR_TESS_LOD_RIGHT    = 0x004,
@@ -58,7 +58,7 @@ enum PACKED nak_attr {
    NAK_ATTR_CLIP_CULL_DIST_4  = 0x2d0,
    NAK_ATTR_CLIP_CULL_DIST_5  = 0x2d4,
    NAK_ATTR_CLIP_CULL_DIST_6  = 0x2d8,
-   NAK_ATTR_CLIP_CULL_DIST_7  = 0x2dd,
+   NAK_ATTR_CLIP_CULL_DIST_7  = 0x2dc,
    NAK_ATTR_CLIP_CULL_DIST    = NAK_ATTR_CLIP_CULL_DIST_0,
    NAK_ATTR_POINT_SPRITE_S    = 0x2e0,
    NAK_ATTR_POINT_SPRITE_T    = 0x2e4,
@@ -85,7 +85,7 @@ enum PACKED nak_attr {
    NAK_ATTR_FRONT_FACE        = 0x3fc,
 };
 
-enum PACKED nak_sv {
+enum ENUM_PACKED nak_sv {
    NAK_SV_LANE_ID          = 0x00,
    NAK_SV_VERTEX_COUNT     = 0x10,
    NAK_SV_INVOCATION_ID    = 0x11,
@@ -108,18 +108,7 @@ enum PACKED nak_sv {
    NAK_SV_CLOCK            = 0x50,
 };
 
-static bool
-nak_nir_has_one_subgroup(const nir_shader *nir)
-{
-   if (nir->info.workgroup_size_variable)
-      return false;
-
-   uint16_t wg_sz = nir->info.workgroup_size[0] *
-                    nir->info.workgroup_size[1] *
-                    nir->info.workgroup_size[2];
-
-   return wg_sz <= 32;
-}
+bool nak_nir_workgroup_has_one_subgroup(const nir_shader *nir);
 
 struct nak_xfb_info
 nak_xfb_from_nir(const struct nir_xfb_info *nir_xfb);
@@ -157,6 +146,7 @@ struct nak_nir_tex_flags {
 bool nak_nir_lower_scan_reduce(nir_shader *shader);
 bool nak_nir_lower_tex(nir_shader *nir, const struct nak_compiler *nak);
 bool nak_nir_lower_gs_intrinsics(nir_shader *shader);
+bool nak_nir_lower_algebraic_late(nir_shader *nir, const struct nak_compiler *nak);
 
 struct nak_nir_attr_io_flags {
    bool output : 1;
@@ -175,6 +165,7 @@ enum nak_interp_mode {
 
 enum nak_interp_freq {
     NAK_INTERP_FREQ_PASS,
+    NAK_INTERP_FREQ_PASS_MUL_W,
     NAK_INTERP_FREQ_CONSTANT,
     NAK_INTERP_FREQ_STATE,
 };

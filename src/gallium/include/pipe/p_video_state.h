@@ -40,6 +40,7 @@
 extern "C" {
 #endif
 
+#define PIPE_H264_MAX_REFERENCES      16
 #define PIPE_H265_MAX_REFERENCES      15
 #define PIPE_H265_MAX_SLICES          128
 #define PIPE_AV1_MAX_REFERENCES       8
@@ -47,6 +48,7 @@ extern "C" {
 #define PIPE_DEFAULT_FRAME_RATE_NUM   30
 #define PIPE_DEFAULT_INTRA_IDR_PERIOD 30
 #define PIPE_H2645_EXTENDED_SAR       255
+#define PIPE_ENC_ROI_REGION_NUM_MAX   32
 #define PIPE_DEFAULT_DECODER_FEEDBACK_TIMEOUT_NS 1000000000
 
 /*
@@ -448,6 +450,32 @@ enum
    INTRA_REFRESH_MODE_UNIT_COLUMNS,
 };
 
+/* All the values are in pixels, driver converts it into
+ * different units for different codecs, for example: h264
+ * is in 16x16 block, hevc/av1 is in 64x64 block.
+ * x, y means the location of region start, width/height defines
+ * the region size; the qp value carries the qp_delta.
+ */
+struct pipe_enc_region_in_roi
+{
+   bool    valid;
+   int32_t qp_value;
+   unsigned int x, y;
+   unsigned int width, height;
+};
+/* It does not support prioirty only qp_delta.
+ * The priority is implied by the region sequence number.
+ * Region 0 is most significant one, and region 1 is less
+ * significant, and lesser significant when region number
+ * grows. It allows region overlapping, and lower
+ * priority region would be overwritten by the higher one.
+ */
+struct pipe_enc_roi
+{
+   unsigned int num;
+   struct pipe_enc_region_in_roi region[PIPE_ENC_ROI_REGION_NUM_MAX];
+};
+
 struct pipe_h264_enc_rate_control
 {
    enum pipe_h2645_enc_rate_control_method rate_ctrl_method;
@@ -601,6 +629,7 @@ struct pipe_h264_enc_picture_desc
    struct pipe_h264_enc_dbk_param dbk;
 
    unsigned intra_idr_period;
+   unsigned ip_period;
 
    unsigned quant_i_frames;
    unsigned quant_p_frames;
@@ -623,6 +652,7 @@ struct pipe_h264_enc_picture_desc
    unsigned gop_size;
    struct pipe_enc_quality_modes quality_modes;
    struct pipe_enc_intra_refresh intra_refresh;
+   struct pipe_enc_roi roi;
 
    bool not_referenced;
    bool is_ltr;
@@ -641,6 +671,7 @@ struct pipe_h264_enc_picture_desc
 
    bool insert_aud_nalu;
    enum pipe_video_feedback_metadata_type requested_metadata;
+   bool renew_headers_on_idr;
 };
 
 struct pipe_h265_enc_sublayer_hrd_params
@@ -816,6 +847,7 @@ struct pipe_h265_enc_picture_desc
    unsigned pic_order_cnt_type;
    struct pipe_enc_quality_modes quality_modes;
    struct pipe_enc_intra_refresh intra_refresh;
+   struct pipe_enc_roi roi;
    unsigned num_ref_idx_l0_active_minus1;
    unsigned num_ref_idx_l1_active_minus1;
    unsigned ref_idx_l0_list[PIPE_H265_MAX_REFERENCES];
@@ -832,6 +864,7 @@ struct pipe_h265_enc_picture_desc
    /* Use with PIPE_VIDEO_SLICE_MODE_MAX_SLICE_SICE */
    unsigned max_slice_bytes;
    enum pipe_video_feedback_metadata_type requested_metadata;
+   bool renew_headers_on_idr;
 };
 
 struct pipe_av1_enc_rate_control
@@ -960,6 +993,7 @@ struct pipe_av1_enc_picture_desc
    };
    struct pipe_enc_quality_modes quality_modes;
    struct pipe_enc_intra_refresh intra_refresh;
+   struct pipe_enc_roi roi;
    uint32_t num_tiles_in_pic; /* [1, 32], */
    uint32_t tile_rows;
    uint32_t tile_cols;
@@ -1925,6 +1959,47 @@ struct pipe_enc_feedback_metadata
     */
    struct codec_unit_location_t codec_unit_metadata[256];
    unsigned codec_unit_metadata_count;
+
+   /*
+   * Driver writes the average QP used to encode this frame
+   */
+   unsigned int average_frame_qp;
+};
+
+union pipe_enc_cap_roi {
+   struct {
+      /**
+       * The number of ROI regions supported, 0 if ROI is not supported
+       */
+      uint32_t num_roi_regions                 : 8;
+      /**
+       * A flag indicates whether ROI priority is supported
+       *
+       * roi_rc_priority_support equal to 1 specifies the underlying driver supports
+       * ROI priority when VAConfigAttribRateControl != VA_RC_CQP, user can use roi_value
+       * in #VAEncROI to set ROI priority. roi_rc_priority_support equal to 0 specifies
+       * the underlying driver doesn't support ROI priority.
+       *
+       * User should ignore roi_rc_priority_support when VAConfigAttribRateControl == VA_RC_CQP
+       * because ROI delta QP is always required when VAConfigAttribRateControl == VA_RC_CQP.
+       */
+      uint32_t roi_rc_priority_support         : 1;
+      /**
+       * A flag indicates whether ROI delta QP is supported
+       *
+       * roi_rc_qp_delta_support equal to 1 specifies the underlying driver supports
+       * ROI delta QP when VAConfigAttribRateControl != VA_RC_CQP, user can use roi_value
+       * in #VAEncROI to set ROI delta QP. roi_rc_qp_delta_support equal to 0 specifies
+       * the underlying driver doesn't support ROI delta QP.
+       *
+       * User should ignore roi_rc_qp_delta_support when VAConfigAttribRateControl == VA_RC_CQP
+       * because ROI delta QP is always required when VAConfigAttribRateControl == VA_RC_CQP.
+       */
+      uint32_t roi_rc_qp_delta_support         : 1;
+      uint32_t reserved                        : 22;
+
+   } bits;
+   uint32_t value;
 };
 
 #ifdef __cplusplus

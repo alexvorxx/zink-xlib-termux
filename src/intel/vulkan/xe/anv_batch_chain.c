@@ -25,8 +25,6 @@
 
 #include "anv_private.h"
 
-#include <xf86drm.h>
-
 #include "drm-uapi/xe_drm.h"
 
 VkResult
@@ -36,17 +34,20 @@ xe_execute_simple_batch(struct anv_queue *queue,
                         bool is_companion_rcs_batch)
 {
    struct anv_device *device = queue->device;
-   VkResult result = VK_SUCCESS;
-   uint32_t syncobj_handle;
    uint32_t exec_queue_id = is_companion_rcs_batch ?
                             queue->companion_rcs_id :
                             queue->exec_queue_id;
-   if (drmSyncobjCreate(device->fd, 0, &syncobj_handle))
+   struct drm_syncobj_create syncobj_create = {};
+   struct drm_syncobj_destroy syncobj_destroy = {};
+   VkResult result = VK_SUCCESS;
+
+   if (intel_ioctl(device->fd, DRM_IOCTL_SYNCOBJ_CREATE, &syncobj_create))
       return vk_errorf(device, VK_ERROR_UNKNOWN, "Unable to create sync obj");
 
    struct drm_xe_sync sync = {
-      .flags = DRM_XE_SYNC_FLAG_SYNCOBJ | DRM_XE_SYNC_FLAG_SIGNAL,
-      .handle = syncobj_handle,
+      .type = DRM_XE_SYNC_TYPE_SYNCOBJ,
+      .flags = DRM_XE_SYNC_FLAG_SIGNAL,
+      .handle = syncobj_create.handle,
    };
    struct drm_xe_exec exec = {
       .exec_queue_id = exec_queue_id,
@@ -62,7 +63,7 @@ xe_execute_simple_batch(struct anv_queue *queue,
    }
 
    struct drm_syncobj_wait wait = {
-      .handles = (uintptr_t)&syncobj_handle,
+      .handles = (uintptr_t)&syncobj_create.handle,
       .timeout_nsec = INT64_MAX,
       .count_handles = 1,
    };
@@ -70,7 +71,8 @@ xe_execute_simple_batch(struct anv_queue *queue,
       result = vk_device_set_lost(&device->vk, "DRM_IOCTL_SYNCOBJ_WAIT failed: %m");
 
 exec_error:
-   drmSyncobjDestroy(device->fd, syncobj_handle);
+   syncobj_destroy.handle = syncobj_create.handle;
+   intel_ioctl(device->fd, DRM_IOCTL_SYNCOBJ_DESTROY, &syncobj_destroy);
 
    return result;
 }
@@ -91,14 +93,14 @@ xe_exec_fill_sync(struct drm_xe_sync *xe_sync, struct vk_sync *vk_sync,
    xe_sync->handle = syncobj->syncobj;
 
    if (value) {
-      xe_sync->flags |= DRM_XE_SYNC_FLAG_TIMELINE_SYNCOBJ;
+      xe_sync->type = DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ;
       xe_sync->timeline_value = value;
    } else {
-      xe_sync->flags |= DRM_XE_SYNC_FLAG_SYNCOBJ;
+      xe_sync->type = DRM_XE_SYNC_TYPE_SYNCOBJ;
    }
 
    if (signal)
-      xe_sync->flags |= DRM_XE_SYNC_FLAG_SIGNAL;
+      xe_sync->flags = DRM_XE_SYNC_FLAG_SIGNAL;
 }
 
 static VkResult
@@ -193,7 +195,8 @@ xe_execute_trtt_batch(struct anv_sparse_submission *submit,
    VkResult result;
 
    struct drm_xe_sync extra_sync = {
-      .flags = DRM_XE_SYNC_FLAG_TIMELINE_SYNCOBJ | DRM_XE_SYNC_FLAG_SIGNAL,
+      .type = DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ,
+      .flags = DRM_XE_SYNC_FLAG_SIGNAL,
       .handle = trtt->timeline_handle,
       .timeline_value = trtt_bbo->timeline_val,
    };
@@ -242,7 +245,8 @@ xe_queue_exec_utrace_locked(struct anv_queue *queue,
    xe_exec_fill_sync(&xe_sync, utrace_submit->sync, 0, TYPE_SIGNAL);
 
 #ifdef SUPPORT_INTEL_INTEGRATED_GPUS
-   if (device->physical->memory.need_flush) {
+   if (device->physical->memory.need_flush &&
+       anv_bo_needs_host_cache_flush(device->utrace_bo_pool.bo_alloc_flags)) {
       util_dynarray_foreach(&utrace_submit->batch_bos, struct anv_bo *, bo)
          intel_flush_range((*bo)->map, (*bo)->size);
    }
@@ -360,7 +364,8 @@ xe_queue_exec_locked(struct anv_queue *queue,
       anv_cmd_buffer_chain_command_buffers(cmd_buffers, cmd_buffer_count);
 
 #ifdef SUPPORT_INTEL_INTEGRATED_GPUS
-      if (device->physical->memory.need_flush)
+      if (device->physical->memory.need_flush &&
+          anv_bo_needs_host_cache_flush(device->batch_bo_pool.bo_alloc_flags))
          anv_cmd_buffer_clflush(cmd_buffers, cmd_buffer_count);
 #endif
 

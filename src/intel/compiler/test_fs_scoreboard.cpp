@@ -23,6 +23,7 @@
 
 #include <gtest/gtest.h>
 #include "brw_fs.h"
+#include "brw_fs_builder.h"
 #include "brw_cfg.h"
 
 using namespace brw;
@@ -64,7 +65,7 @@ scoreboard_test::scoreboard_test()
    v = new fs_visitor(compiler, &params, NULL, &prog_data->base, shader, 8,
                       false, false);
 
-   bld = fs_builder(v, v->dispatch_width).at_end();
+   bld = fs_builder(v).at_end();
 }
 
 scoreboard_test::~scoreboard_test()
@@ -149,10 +150,10 @@ TEST_F(scoreboard_test, RAW_inorder_inorder)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
-   fs_reg y = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
+   fs_reg y = v->vgrf(glsl_int_type());
    bld.ADD(   x, g[1], g[2]);
    bld.MUL(   y, g[3], g[4]);
    bld.AND(g[5],    x,    y);
@@ -175,9 +176,9 @@ TEST_F(scoreboard_test, RAW_inorder_outoforder)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    bld.ADD(          x, g[1], g[2]);
    bld.MUL(       g[3], g[4], g[5]);
    emit_SEND(bld, g[6], g[7],    x);
@@ -200,10 +201,10 @@ TEST_F(scoreboard_test, RAW_outoforder_inorder)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
-   fs_reg y = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
+   fs_reg y = v->vgrf(glsl_int_type());
    emit_SEND(bld,    x, g[1], g[2]);
    bld.MUL(          y, g[3], g[4]);
    bld.AND(       g[5],    x,    y);
@@ -226,13 +227,13 @@ TEST_F(scoreboard_test, RAW_outoforder_outoforder)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
    /* The second SEND depends on the first, and would need to refer to two
     * SBIDs.  Since it is not possible we expect a SYNC instruction to be
     * added.
     */
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    emit_SEND(bld,    x, g[1], g[2]);
    emit_SEND(bld, g[3],    x, g[4])->sfid++;
 
@@ -258,9 +259,9 @@ TEST_F(scoreboard_test, WAR_inorder_inorder)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    bld.ADD(g[1],    x, g[2]);
    bld.MUL(g[3], g[4], g[5]);
    bld.AND(   x, g[6], g[7]);
@@ -283,9 +284,9 @@ TEST_F(scoreboard_test, WAR_inorder_outoforder)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    bld.ADD(       g[1],    x, g[2]);
    bld.MUL(       g[3], g[4], g[5]);
    emit_SEND(bld,    x, g[6], g[7]);
@@ -308,9 +309,9 @@ TEST_F(scoreboard_test, WAR_outoforder_inorder)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    emit_SEND(bld, g[1], g[2],    x);
    bld.MUL(       g[4], g[5], g[6]);
    bld.AND(          x, g[7], g[8]);
@@ -333,9 +334,9 @@ TEST_F(scoreboard_test, WAR_outoforder_outoforder)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    emit_SEND(bld, g[1], g[2],    x);
    emit_SEND(bld,    x, g[3], g[4])->sfid++;
 
@@ -361,9 +362,9 @@ TEST_F(scoreboard_test, WAW_inorder_inorder)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    bld.ADD(   x, g[1], g[2]);
    bld.MUL(g[3], g[4], g[5]);
    bld.AND(   x, g[6], g[7]);
@@ -391,9 +392,9 @@ TEST_F(scoreboard_test, WAW_inorder_outoforder)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    bld.ADD(          x, g[1], g[2]);
    bld.MUL(       g[3], g[4], g[5]);
    emit_SEND(bld,    x, g[6], g[7]);
@@ -416,9 +417,9 @@ TEST_F(scoreboard_test, WAW_outoforder_inorder)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    emit_SEND(bld,    x, g[1], g[2]);
    bld.MUL(       g[3], g[4], g[5]);
    bld.AND(          x, g[6], g[7]);
@@ -441,9 +442,9 @@ TEST_F(scoreboard_test, WAW_outoforder_outoforder)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    emit_SEND(bld, x, g[1], g[2]);
    emit_SEND(bld, x, g[3], g[4])->sfid++;
 
@@ -470,9 +471,9 @@ TEST_F(scoreboard_test, loop1)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    bld.XOR(   x, g[1], g[2]);
 
    bld.emit(BRW_OPCODE_DO);
@@ -500,9 +501,9 @@ TEST_F(scoreboard_test, loop2)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    bld.XOR(   x, g[1], g[2]);
    bld.XOR(g[3], g[1], g[2]);
    bld.XOR(g[4], g[1], g[2]);
@@ -535,9 +536,9 @@ TEST_F(scoreboard_test, loop3)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    bld.XOR(   x, g[1], g[2]);
 
    bld.emit(BRW_OPCODE_DO);
@@ -572,9 +573,9 @@ TEST_F(scoreboard_test, conditional1)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    bld.XOR(   x, g[1], g[2]);
    bld.emit(BRW_OPCODE_IF);
 
@@ -601,9 +602,9 @@ TEST_F(scoreboard_test, conditional2)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    bld.XOR(   x, g[1], g[2]);
    bld.XOR(g[3], g[1], g[2]);
    bld.XOR(g[4], g[1], g[2]);
@@ -633,9 +634,9 @@ TEST_F(scoreboard_test, conditional3)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    bld.XOR(   x, g[1], g[2]);
    bld.emit(BRW_OPCODE_IF);
 
@@ -665,9 +666,9 @@ TEST_F(scoreboard_test, conditional4)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    bld.XOR(   x, g[1], g[2]);
    bld.emit(BRW_OPCODE_IF);
 
@@ -697,9 +698,9 @@ TEST_F(scoreboard_test, conditional5)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    bld.XOR(   x, g[1], g[2]);
    bld.emit(BRW_OPCODE_IF);
 
@@ -734,9 +735,9 @@ TEST_F(scoreboard_test, conditional6)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    bld.XOR(   x, g[1], g[2]);
    bld.emit(BRW_OPCODE_IF);
 
@@ -778,9 +779,9 @@ TEST_F(scoreboard_test, conditional7)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    bld.XOR(   x, g[1], g[2]);
    bld.emit(BRW_OPCODE_IF);
 
@@ -822,9 +823,9 @@ TEST_F(scoreboard_test, conditional8)
 {
    fs_reg g[16];
    for (unsigned i = 0; i < ARRAY_SIZE(g); i++)
-      g[i] = v->vgrf(glsl_type::int_type);
+      g[i] = v->vgrf(glsl_int_type());
 
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg x = v->vgrf(glsl_int_type());
    bld.XOR(   x, g[1], g[2]);
    bld.XOR(g[3], g[1], g[2]);
    bld.XOR(g[4], g[1], g[2]);
@@ -868,10 +869,10 @@ TEST_F(scoreboard_test, gfx125_RaR_over_different_pipes)
    devinfo->verx10 = 125;
    brw_init_isa_info(&compiler->isa, devinfo);
 
-   fs_reg a = v->vgrf(glsl_type::int_type);
-   fs_reg b = v->vgrf(glsl_type::int_type);
-   fs_reg f = v->vgrf(glsl_type::float_type);
-   fs_reg x = v->vgrf(glsl_type::int_type);
+   fs_reg a = v->vgrf(glsl_int_type());
+   fs_reg b = v->vgrf(glsl_int_type());
+   fs_reg f = v->vgrf(glsl_float_type());
+   fs_reg x = v->vgrf(glsl_int_type());
 
    bld.ADD(f, x, x);
    bld.ADD(a, x, x);

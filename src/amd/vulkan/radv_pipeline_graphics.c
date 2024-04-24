@@ -195,10 +195,9 @@ format_is_float32(VkFormat format)
    return channel >= 0 && desc->channel[channel].type == UTIL_FORMAT_TYPE_FLOAT && desc->channel[channel].size == 32;
 }
 
-static unsigned
-radv_compact_spi_shader_col_format(const struct radv_shader *ps, const struct radv_blend_state *blend)
+unsigned
+radv_compact_spi_shader_col_format(const struct radv_shader *ps, uint32_t spi_shader_col_format)
 {
-   unsigned spi_shader_col_format = blend->spi_shader_col_format;
    unsigned value = 0, num_mrts = 0;
    unsigned i, num_targets;
 
@@ -261,29 +260,36 @@ radv_format_meta_fs_key(struct radv_device *device, VkFormat format)
 }
 
 static bool
-radv_pipeline_needs_dynamic_ps_epilog(const struct radv_graphics_pipeline *pipeline)
+radv_pipeline_needs_ps_epilog(const struct radv_graphics_pipeline *pipeline,
+                              VkGraphicsPipelineLibraryFlagBitsEXT lib_flags)
 {
+   /* Use a PS epilog when the fragment shader is compiled without the fragment output interface. */
+   if ((pipeline->active_stages & VK_SHADER_STAGE_FRAGMENT_BIT) &&
+       (lib_flags & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT) &&
+       !(lib_flags & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_OUTPUT_INTERFACE_BIT_EXT))
+      return true;
+
    /* These dynamic states need to compile PS epilogs on-demand. */
-   return !!(pipeline->dynamic_states & (RADV_DYNAMIC_COLOR_BLEND_ENABLE | RADV_DYNAMIC_COLOR_WRITE_MASK |
-                                         RADV_DYNAMIC_ALPHA_TO_COVERAGE_ENABLE | RADV_DYNAMIC_COLOR_BLEND_EQUATION));
+   if (pipeline->dynamic_states & (RADV_DYNAMIC_COLOR_BLEND_ENABLE | RADV_DYNAMIC_COLOR_WRITE_MASK |
+                                   RADV_DYNAMIC_ALPHA_TO_COVERAGE_ENABLE | RADV_DYNAMIC_COLOR_BLEND_EQUATION))
+      return true;
+
+   return false;
 }
 
 static struct radv_blend_state
-radv_pipeline_init_blend_state(struct radv_graphics_pipeline *pipeline, const struct vk_graphics_pipeline_state *state)
+radv_pipeline_init_blend_state(struct radv_graphics_pipeline *pipeline, const struct vk_graphics_pipeline_state *state,
+                               VkGraphicsPipelineLibraryFlagBitsEXT lib_flags)
 {
    const struct radv_shader *ps = pipeline->base.shaders[MESA_SHADER_FRAGMENT];
    struct radv_blend_state blend = {0};
    unsigned spi_shader_col_format = 0;
 
-   if (radv_pipeline_needs_dynamic_ps_epilog(pipeline))
+   if (radv_pipeline_needs_ps_epilog(pipeline, lib_flags))
       return blend;
 
    if (ps) {
-      if (ps->info.has_epilog) {
-         spi_shader_col_format = pipeline->ps_epilog->spi_shader_col_format;
-      } else {
-         spi_shader_col_format = ps->info.ps.spi_shader_col_format;
-      }
+      spi_shader_col_format = ps->info.ps.spi_shader_col_format;
    }
 
    blend.cb_shader_mask = ac_get_cb_shader_mask(spi_shader_col_format);
@@ -557,9 +563,6 @@ radv_pipeline_needed_dynamic_state(const struct radv_device *device, const struc
        (!state->ms || !state->ms->sample_locations_enable))
       states &= ~RADV_DYNAMIC_SAMPLE_LOCATIONS;
 
-   if (!(pipeline->dynamic_states & RADV_DYNAMIC_LINE_STIPPLE_ENABLE) && !state->rs->line.stipple.enable)
-      states &= ~RADV_DYNAMIC_LINE_STIPPLE;
-
    if (!has_color_att || !radv_pipeline_is_blend_enabled(pipeline, state->cb))
       states &= ~RADV_DYNAMIC_BLEND_CONSTANTS;
 
@@ -787,12 +790,6 @@ radv_graphics_pipeline_import_lib(const struct radv_device *device, struct radv_
       if (lib->base.base.gs_copy_shader) {
          assert(!pipeline->base.gs_copy_shader);
          pipeline->base.gs_copy_shader = radv_shader_ref(lib->base.base.gs_copy_shader);
-      }
-
-      /* Import the PS epilog if present. */
-      if (lib->base.ps_epilog) {
-         assert(!pipeline->ps_epilog);
-         pipeline->ps_epilog = radv_shader_part_ref(lib->base.ps_epilog);
       }
    }
 
@@ -1225,12 +1222,9 @@ radv_remove_color_exports(const struct radv_pipeline_key *pipeline_key, nir_shad
 {
    bool fixup_derefs = false;
 
-   /* Do not remove color exports when a PS epilog is used because the format isn't known. */
+   /* Do not remove color exports when a PS epilog is used because the format isn't known and the color write mask can
+    * be dynamic. */
    if (pipeline_key->ps.has_epilog)
-      return;
-
-   /* Do not remove color exports when the write mask is dynamic. */
-   if (pipeline_key->dynamic_color_write_mask)
       return;
 
    nir_foreach_shader_out_variable (var, nir) {
@@ -1682,10 +1676,9 @@ radv_graphics_shaders_link(const struct radv_device *device, const struct radv_p
 }
 
 struct radv_ps_epilog_key
-radv_generate_ps_epilog_key(const struct radv_device *device, const struct radv_ps_epilog_state *state,
-                            bool disable_mrt_compaction)
+radv_generate_ps_epilog_key(const struct radv_device *device, const struct radv_ps_epilog_state *state)
 {
-   unsigned col_format = 0, is_int8 = 0, is_int10 = 0, is_float32 = 0;
+   unsigned col_format = 0, is_int8 = 0, is_int10 = 0, is_float32 = 0, z_format = 0;
    struct radv_ps_epilog_key key;
 
    memset(&key, 0, sizeof(key));
@@ -1719,37 +1712,32 @@ radv_generate_ps_epilog_key(const struct radv_device *device, const struct radv_
       col_format |= V_028714_SPI_SHADER_32_AR;
    }
 
-   if (disable_mrt_compaction) {
-      /* Do not compact MRTs when the pipeline uses a PS epilog because we can't detect color
-       * attachments without exports. Without compaction and if the i-th target format is set, all
-       * previous target formats must be non-zero to avoid hangs.
-       */
-      unsigned num_targets = (util_last_bit(col_format) + 3) / 4;
-      for (unsigned i = 0; i < num_targets; i++) {
-         if (!(col_format & (0xfu << (i * 4)))) {
-            col_format |= V_028714_SPI_SHADER_32_R << (i * 4);
-         }
-      }
-   }
-
    /* The output for dual source blending should have the same format as the first output. */
    if (state->mrt0_is_dual_src) {
       assert(!(col_format >> 4));
       col_format |= (col_format & 0xf) << 4;
    }
 
+   if (state->alpha_to_coverage_via_mrtz)
+      z_format = ac_get_spi_shader_z_format(state->export_depth, state->export_stencil, state->export_sample_mask,
+                                            state->alpha_to_coverage_via_mrtz);
+
    key.spi_shader_col_format = col_format;
    key.color_is_int8 = device->physical_device->rad_info.gfx_level < GFX8 ? is_int8 : 0;
    key.color_is_int10 = device->physical_device->rad_info.gfx_level < GFX8 ? is_int10 : 0;
    key.enable_mrt_output_nan_fixup = device->instance->enable_mrt_output_nan_fixup ? is_float32 : 0;
    key.mrt0_is_dual_src = state->mrt0_is_dual_src;
+   key.export_depth = state->export_depth;
+   key.export_stencil = state->export_stencil;
+   key.export_sample_mask = state->export_sample_mask;
+   key.alpha_to_coverage_via_mrtz = state->alpha_to_coverage_via_mrtz;
+   key.spi_shader_z_format = z_format;
 
    return key;
 }
 
 static struct radv_ps_epilog_key
-radv_pipeline_generate_ps_epilog_key(const struct radv_device *device, const struct vk_graphics_pipeline_state *state,
-                                     bool disable_mrt_compaction)
+radv_pipeline_generate_ps_epilog_key(const struct radv_device *device, const struct vk_graphics_pipeline_state *state)
 {
    struct radv_ps_epilog_state ps_epilog = {0};
 
@@ -1802,7 +1790,7 @@ radv_pipeline_generate_ps_epilog_key(const struct radv_device *device, const str
       }
    }
 
-   return radv_generate_ps_epilog_key(device, &ps_epilog, disable_mrt_compaction);
+   return radv_generate_ps_epilog_key(device, &ps_epilog);
 }
 
 static struct radv_pipeline_key
@@ -1926,33 +1914,25 @@ radv_generate_graphics_pipeline_key(const struct radv_device *device, const stru
    if (device->primitives_generated_query)
       key.primitives_generated_query = true;
 
-   if (radv_pipeline_needs_dynamic_ps_epilog(pipeline))
-      key.ps.dynamic_ps_epilog = true;
+   if (radv_pipeline_needs_ps_epilog(pipeline, lib_flags))
+      key.ps.has_epilog = true;
 
-   /* The fragment shader needs an epilog when both:
-    * - it's compiled without the fragment output interface with GPL
-    * - it's compiled on-demand because some dynamic states are enabled
-    */
-   key.ps.has_epilog = (pipeline->active_stages & VK_SHADER_STAGE_FRAGMENT_BIT) &&
-                       (((lib_flags & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT) &&
-                         !(lib_flags & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_OUTPUT_INTERFACE_BIT_EXT)) ||
-                        key.ps.dynamic_ps_epilog);
+   key.ps.epilog = radv_pipeline_generate_ps_epilog_key(device, state);
 
-   /* Disable MRT compaction when it's not possible to know both the written color outputs and the
-    * color blend attachments.
-    */
-   bool disable_mrt_compaction =
-      key.ps.has_epilog || ((lib_flags & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_OUTPUT_INTERFACE_BIT_EXT) &&
-                            !(lib_flags & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT));
-
-   key.ps.epilog = radv_pipeline_generate_ps_epilog_key(device, state, disable_mrt_compaction);
+   if (device->physical_device->rad_info.gfx_level >= GFX11) {
+      /* On GFX11, alpha to coverage is exported via MRTZ when depth/stencil/samplemask are also
+       * exported. Though, when a PS epilog is needed and the MS state is NULL (with dynamic
+       * rendering), it's not possible to know the info at compile time and MRTZ needs to be
+       * exported in the epilog.
+       */
+      key.ps.exports_mrtz_via_epilog =
+         key.ps.has_epilog && (!state->ms || (pipeline->dynamic_states & RADV_DYNAMIC_ALPHA_TO_COVERAGE_ENABLE));
+   }
 
    key.dynamic_patch_control_points = !!(pipeline->dynamic_states & RADV_DYNAMIC_PATCH_CONTROL_POINTS);
 
    key.dynamic_rasterization_samples = !!(pipeline->dynamic_states & RADV_DYNAMIC_RASTERIZATION_SAMPLES) ||
                                        (!!(pipeline->active_stages & VK_SHADER_STAGE_FRAGMENT_BIT) && !state->ms);
-
-   key.dynamic_color_write_mask = !!(pipeline->dynamic_states & RADV_DYNAMIC_COLOR_WRITE_MASK);
 
    if (device->physical_device->use_ngg) {
       VkShaderStageFlags ngg_stage;
@@ -2392,36 +2372,6 @@ radv_pipeline_load_retained_shaders(const struct radv_device *device, struct rad
    }
 }
 
-static bool
-radv_pipeline_create_ps_epilog(struct radv_device *device, struct radv_graphics_pipeline *pipeline,
-                               const struct radv_pipeline_key *pipeline_key,
-                               VkGraphicsPipelineLibraryFlagBitsEXT lib_flags,
-                               struct radv_shader_part_binary **ps_epilog_binary)
-{
-   bool needs_ps_epilog = false;
-
-   /* Do not compile a PS epilog as part of the pipeline when it needs to be dynamic. */
-   if (pipeline_key->ps.dynamic_ps_epilog)
-      return true;
-
-   if (pipeline->base.type == RADV_PIPELINE_GRAPHICS) {
-      needs_ps_epilog = pipeline->base.shaders[MESA_SHADER_FRAGMENT] &&
-                        pipeline->base.shaders[MESA_SHADER_FRAGMENT]->info.has_epilog && !pipeline->ps_epilog;
-   } else {
-      assert(pipeline->base.type == RADV_PIPELINE_GRAPHICS_LIB);
-      needs_ps_epilog = (lib_flags & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_OUTPUT_INTERFACE_BIT_EXT) &&
-                        !(lib_flags & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT);
-   }
-
-   if (needs_ps_epilog) {
-      pipeline->ps_epilog = radv_create_ps_epilog(device, &pipeline_key->ps.epilog, ps_epilog_binary);
-      if (!pipeline->ps_epilog)
-         return false;
-   }
-
-   return true;
-}
-
 static unsigned
 radv_get_rasterization_prim(const struct radv_shader_stage *stages, const struct radv_pipeline_key *pipeline_key)
 {
@@ -2455,11 +2405,6 @@ radv_skip_graphics_pipeline_compile(const struct radv_device *device, const stru
 
    /* Do not skip when fast-linking isn't enabled. */
    if (!fast_linking_enabled)
-      return false;
-
-   /* Do not skip when the PS epilog needs to be compiled. */
-   if (!radv_pipeline_needs_dynamic_ps_epilog(pipeline) && pipeline->base.shaders[MESA_SHADER_FRAGMENT] &&
-       pipeline->base.shaders[MESA_SHADER_FRAGMENT]->info.has_epilog && !pipeline->ps_epilog)
       return false;
 
    /* Determine which shader stages have been imported. */
@@ -2663,7 +2608,6 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline, const Vk
 {
    struct radv_shader_binary *binaries[MESA_VULKAN_SHADER_STAGES] = {NULL};
    struct radv_shader_binary *gs_copy_binary = NULL;
-   struct radv_shader_part_binary *ps_epilog_binary = NULL;
    unsigned char hash[20];
    bool keep_executable_info = radv_pipeline_capture_shaders(device, pipeline->base.create_flags);
    bool keep_statistic_info = radv_pipeline_capture_shader_stats(device, pipeline->base.create_flags);
@@ -2764,15 +2708,11 @@ radv_graphics_pipeline_compile(struct radv_graphics_pipeline *pipeline, const Vk
                                  pipeline->base.is_internal, retained_shaders, noop_fs, pipeline->base.shaders,
                                  binaries, &pipeline->base.gs_copy_shader, &gs_copy_binary);
 
-   if (!radv_pipeline_create_ps_epilog(device, pipeline, pipeline_key, lib_flags, &ps_epilog_binary))
-      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
-
    if (!skip_shaders_cache) {
-      radv_pipeline_cache_insert(device, cache, &pipeline->base, ps_epilog_binary, hash);
+      radv_pipeline_cache_insert(device, cache, &pipeline->base, hash);
    }
 
    free(gs_copy_binary);
-   free(ps_epilog_binary);
    for (int i = 0; i < MESA_VULKAN_SHADER_STAGES; ++i) {
       free(binaries[i]);
       if (stages[i].nir) {
@@ -3999,7 +3939,7 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
       radv_pipeline_init_input_assembly_state(device, pipeline);
    radv_pipeline_init_dynamic_state(device, pipeline, &state, pCreateInfo);
 
-   struct radv_blend_state blend = radv_pipeline_init_blend_state(pipeline, &state);
+   struct radv_blend_state blend = radv_pipeline_init_blend_state(pipeline, &state, needed_lib_flags);
 
    /* Copy the non-compacted SPI_SHADER_COL_FORMAT which is used to emit RBPLUS state. */
    pipeline->col_format_non_compacted = blend.spi_shader_col_format;
@@ -4007,7 +3947,7 @@ radv_graphics_pipeline_init(struct radv_graphics_pipeline *pipeline, struct radv
    struct radv_shader *ps = pipeline->base.shaders[MESA_SHADER_FRAGMENT];
    bool enable_mrt_compaction = ps && !ps->info.has_epilog && !ps->info.ps.mrt0_is_dual_src;
    if (enable_mrt_compaction) {
-      blend.spi_shader_col_format = radv_compact_spi_shader_col_format(ps, &blend);
+      blend.spi_shader_col_format = radv_compact_spi_shader_col_format(ps, blend.spi_shader_col_format);
 
       /* In presence of MRT holes (ie. the FS exports MRT1 but not MRT0), the compiler will remap
        * them, so that only MRT0 is exported and the driver will compact SPI_SHADER_COL_FORMAT to
@@ -4103,8 +4043,6 @@ radv_destroy_graphics_pipeline(struct radv_device *device, struct radv_graphics_
 
    if (pipeline->base.gs_copy_shader)
       radv_shader_unref(device, pipeline->base.gs_copy_shader);
-   if (pipeline->ps_epilog)
-      radv_shader_part_unref(device, pipeline->ps_epilog);
 
    vk_free(&device->vk.alloc, pipeline->state_data);
 }

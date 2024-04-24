@@ -42,28 +42,6 @@ shared_var_info(const struct glsl_type *type, unsigned *size, unsigned *align)
    *size = comp_size * length, *align = comp_size;
 }
 
-static inline enum pipe_shader_type
-pipe_shader_type_from_mesa(gl_shader_stage stage)
-{
-   switch (stage) {
-   case MESA_SHADER_VERTEX:
-      return PIPE_SHADER_VERTEX;
-   case MESA_SHADER_TESS_CTRL:
-      return PIPE_SHADER_TESS_CTRL;
-   case MESA_SHADER_TESS_EVAL:
-      return PIPE_SHADER_TESS_EVAL;
-   case MESA_SHADER_GEOMETRY:
-      return PIPE_SHADER_GEOMETRY;
-   case MESA_SHADER_FRAGMENT:
-      return PIPE_SHADER_FRAGMENT;
-   case MESA_SHADER_COMPUTE:
-   case MESA_SHADER_KERNEL:
-      return PIPE_SHADER_COMPUTE;
-   default:
-      unreachable("bad shader stage");
-   }
-}
-
 VkShaderStageFlags
 nvk_nak_stages(const struct nv_device_info *info)
 {
@@ -88,7 +66,7 @@ nvk_nak_stages(const struct nv_device_info *info)
 
    const char *env_str = getenv("NVK_USE_NAK");
    if (env_str == NULL)
-      return info->cls_eng3d >= TURING_A ? all : 0;
+      return info->cls_eng3d >= VOLTA_A ? all : 0;
    else
       return parse_debug_string(env_str, flags);
 }
@@ -102,18 +80,20 @@ use_nak(const struct nvk_physical_device *pdev, gl_shader_stage stage)
 uint64_t
 nvk_physical_device_compiler_flags(const struct nvk_physical_device *pdev)
 {
+   bool no_cbufs = pdev->debug_flags & NVK_DEBUG_NO_CBUF;
    uint64_t prog_debug = nvk_cg_get_prog_debug();
    uint64_t prog_optimize = nvk_cg_get_prog_optimize();
    uint64_t nak_stages = nvk_nak_stages(&pdev->info);
    uint64_t nak_flags = nak_debug_flags(pdev->nak);
 
    assert(prog_debug <= UINT8_MAX);
-   assert(prog_optimize <= UINT8_MAX);
+   assert(prog_optimize < 16);
    assert(nak_stages <= UINT32_MAX);
    assert(nak_flags <= UINT16_MAX);
 
    return prog_debug
       | (prog_optimize << 8)
+      | ((uint64_t)no_cbufs << 12)
       | (nak_stages << 16)
       | (nak_flags << 48);
 }
@@ -140,12 +120,17 @@ nvk_physical_device_spirv_options(const struct nvk_physical_device *pdev,
          .descriptor_indexing = true,
          .device_group = true,
          .draw_parameters = true,
+         .float_controls = true,
+         .float64 = true,
          .fragment_barycentric = true,
          .geometry_streams = true,
+         .image_atomic_int64 = true,
          .image_read_without_format = true,
          .image_write_without_format = true,
          .int8 = true,
          .int16 = true,
+         .int64 = true,
+         .int64_atomics = true,
          .min_lod = true,
          .multiview = true,
          .physical_storage_buffer_address = true,
@@ -163,6 +148,8 @@ nvk_physical_device_spirv_options(const struct nvk_physical_device *pdev,
          .tessellation = true,
          .transform_feedback = true,
          .variable_pointers = true,
+         .vk_memory_model_device_scope = true,
+         .vk_memory_model = true,
          .workgroup_memory_explicit_layout = true,
       },
       .ssbo_addr_format = nvk_buffer_addr_format(rs->storage_buffers),
@@ -170,7 +157,7 @@ nvk_physical_device_spirv_options(const struct nvk_physical_device *pdev,
       .ubo_addr_format = nvk_buffer_addr_format(rs->uniform_buffers),
       .shared_addr_format = nir_address_format_32bit_offset,
       .min_ssbo_alignment = NVK_MIN_SSBO_ALIGNMENT,
-      .min_ubo_alignment = NVK_MIN_UBO_ALIGNMENT,
+      .min_ubo_alignment = nvk_min_cbuf_alignment(&pdev->info),
    };
 }
 
@@ -315,7 +302,8 @@ void
 nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
               const struct vk_pipeline_robustness_state *rs,
               bool is_multiview,
-              const struct vk_pipeline_layout *layout)
+              const struct vk_pipeline_layout *layout,
+              struct nvk_shader *shader)
 {
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
 
@@ -366,7 +354,25 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
     */
    assert(dev->pdev->info.cls_eng3d >= MAXWELL_A || !nir_has_image_var(nir));
 
-   NIR_PASS(_, nir, nvk_nir_lower_descriptors, rs, layout);
+   struct nvk_cbuf_map *cbuf_map = NULL;
+   if (use_nak(pdev, nir->info.stage) &&
+       !(pdev->debug_flags & NVK_DEBUG_NO_CBUF)) {
+      cbuf_map = &shader->cbuf_map;
+   } else {
+      /* Codegen sometimes puts stuff in cbuf 1 and adds 1 to our cbuf indices
+       * so we can't really rely on it for lowering to cbufs and instead place
+       * the root descriptors in both cbuf 0 and cbuf 1.
+       */
+      shader->cbuf_map = (struct nvk_cbuf_map) {
+         .cbuf_count = 2,
+         .cbufs = {
+            { .type = NVK_CBUF_TYPE_ROOT_DESC },
+            { .type = NVK_CBUF_TYPE_ROOT_DESC },
+         }
+      };
+   }
+
+   NIR_PASS(_, nir, nvk_nir_lower_descriptors, rs, layout, cbuf_map);
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_global,
             nir_address_format_64bit_global);
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_ssbo,
@@ -374,8 +380,7 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_ubo,
             nvk_buffer_addr_format(rs->uniform_buffers));
    NIR_PASS(_, nir, nir_shader_intrinsics_pass,
-            lower_load_global_constant_offset_instr,
-            nir_metadata_block_index | nir_metadata_dominance, NULL);
+            lower_load_global_constant_offset_instr, nir_metadata_none, NULL);
 
    if (!nir->info.shared_memory_explicit_layout) {
       NIR_PASS(_, nir, nir_lower_vars_to_explicit_types,
@@ -412,13 +417,20 @@ static VkResult
 nvk_compile_nir_with_nak(struct nvk_physical_device *pdev,
                          nir_shader *nir,
                          VkPipelineCreateFlagBits2KHR pipeline_flags,
+                         const struct vk_pipeline_robustness_state *rs,
                          const struct nak_fs_key *fs_key,
                          struct nvk_shader *shader)
 {
    const bool dump_asm =
       pipeline_flags & VK_PIPELINE_CREATE_2_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR;
 
-   shader->nak = nak_compile_shader(nir, dump_asm, pdev->nak, fs_key);
+   nir_variable_mode robust2_modes = 0;
+   if (rs->uniform_buffers == VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2_EXT)
+      robust2_modes |= nir_var_mem_ubo;
+   if (rs->storage_buffers == VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2_EXT)
+      robust2_modes |= nir_var_mem_ssbo;
+
+   shader->nak = nak_compile_shader(nir, dump_asm, pdev->nak, robust2_modes, fs_key);
    shader->info = shader->nak->info;
    shader->code_ptr = shader->nak->code;
    shader->code_size = shader->nak->code_size;
@@ -429,11 +441,12 @@ nvk_compile_nir_with_nak(struct nvk_physical_device *pdev,
 VkResult
 nvk_compile_nir(struct nvk_physical_device *pdev, nir_shader *nir,
                 VkPipelineCreateFlagBits2KHR pipeline_flags,
+                const struct vk_pipeline_robustness_state *rs,
                 const struct nak_fs_key *fs_key,
                 struct nvk_shader *shader)
 {
    if (use_nak(pdev, nir->info.stage)) {
-      return nvk_compile_nir_with_nak(pdev, nir, pipeline_flags,
+      return nvk_compile_nir_with_nak(pdev, nir, pipeline_flags, rs,
                                       fs_key, shader);
    } else {
       return nvk_cg_compile_nir(pdev, nir, fs_key, shader);

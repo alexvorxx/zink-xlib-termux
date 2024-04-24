@@ -75,6 +75,7 @@ debian-testing:
     GALLIUM_ST: >
       -D dri3=enabled
       -D gallium-va=enabled
+      -D gallium-rusticl=true
     GALLIUM_DRIVERS: "swrast,virgl,radeonsi,zink,crocus,iris,i915"
     VULKAN_DRIVERS: "swrast,amd,intel,intel_hasvk,virtio,nouveau-experimental"
     BUILDTYPE: "debugoptimized"
@@ -123,28 +124,6 @@ debian-testing-msan:
     MESON_TEST_ARGS: "--suite glcpp --suite format"
     GALLIUM_DRIVERS: "freedreno,iris,nouveau,kmsro,r300,r600,swrast,svga,v3d,vc4,virgl,etnaviv,panfrost,lima,zink,radeonsi,tegra,d3d12,crocus"
     VULKAN_DRIVERS: intel,amd,broadcom,virtio
-
-debian-rusticl-testing:
-  extends:
-    - .meson-build
-    - .ci-deqp-artifacts
-  variables:
-    BUILDTYPE: "debugoptimized"
-    EXTRA_OPTION: >
-      -D valgrind=disabled
-    LLVM_VERSION: 15
-    DRI_LOADERS: >
-      -D glx=disabled
-      -D egl=disabled
-      -D gbm=disabled
-    GALLIUM_DRIVERS: "swrast"
-    GALLIUM_ST: >
-      -D gallium-rusticl=true
-      -D opencl-spirv=true
-    UNWIND: "enabled"
-  script:
-    - .gitlab-ci/meson/build.sh
-    - .gitlab-ci/prepare-artifacts.sh
 
 debian-build-testing:
   extends: .meson-build
@@ -258,8 +237,6 @@ alpine-build-testing:
       -D shared-llvm=enabled
     UNWIND: "disabled"
     VULKAN_DRIVERS: "amd,broadcom,freedreno,intel,imagination-experimental"
-  script:
-    - .gitlab-ci/meson/build.sh
 
 fedora-release:
   extends:
@@ -308,8 +285,6 @@ fedora-release:
     LLVM_VERSION: ""
     UNWIND: "disabled"
     VULKAN_DRIVERS: "amd,broadcom,freedreno,imagination-experimental,intel,intel_hasvk"
-  script:
-    - .gitlab-ci/meson/build.sh
 
 debian-android:
   extends:
@@ -467,8 +442,6 @@ debian-arm64-build-test:
     VULKAN_DRIVERS: "amd"
     EXTRA_OPTION: >
       -Dtools=panfrost,imagination
-  script:
-    - .gitlab-ci/meson/build.sh
 
 debian-arm64-release:
   extends:
@@ -523,7 +496,7 @@ debian-clang:
       -D opencl-spirv=true
       -D shared-glapi=enabled
     GALLIUM_DRIVERS: "iris,nouveau,kmsro,r300,r600,freedreno,swrast,svga,v3d,vc4,virgl,etnaviv,panfrost,lima,zink,radeonsi,tegra,d3d12,crocus,i915,asahi"
-    VULKAN_DRIVERS: intel,amd,freedreno,broadcom,virtio,swrast,panfrost,imagination-experimental,microsoft-experimental
+    VULKAN_DRIVERS: intel,amd,freedreno,broadcom,virtio,swrast,panfrost,imagination-experimental,microsoft-experimental,nouveau-experimental
     EXTRA_OPTION:
       -D spirv-to-dxil=true
       -D osmesa=true
@@ -559,10 +532,10 @@ debian-clang-release:
       -D opencl-spirv=true
       -D shared-glapi=disabled
 
-windows-vs2019:
+windows-msvc:
   extends:
     - .build-windows
-    - .use-windows_build_vs2019
+    - .use-windows_build_msvc
     - .windows-build-rules
   stage: build-misc
   script:
@@ -614,7 +587,7 @@ debian-x86_32:
     BUILDTYPE: debug
     CROSS: i386
     VULKAN_DRIVERS: intel,amd,swrast,virtio
-    GALLIUM_DRIVERS: "iris,nouveau,r300,r600,radeonsi,swrast,virgl,zink,crocus"
+    GALLIUM_DRIVERS: "iris,nouveau,r300,r600,radeonsi,swrast,virgl,zink,crocus,d3d12"
     LLVM_VERSION: 15
     EXTRA_OPTION: >
       -D vulkan-layers=device-select,overlay

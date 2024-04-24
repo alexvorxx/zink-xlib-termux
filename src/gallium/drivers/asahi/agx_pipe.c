@@ -31,6 +31,7 @@
 #include "util/timespec.h"
 #include "util/u_drm.h"
 #include "util/u_gen_mipmap.h"
+#include "util/u_helpers.h"
 #include "util/u_inlines.h"
 #include "util/u_memory.h"
 #include "util/u_resource.h"
@@ -40,6 +41,8 @@
 #include "agx_device.h"
 #include "agx_disk_cache.h"
 #include "agx_fence.h"
+#include "agx_helpers.h"
+#include "agx_pack.h"
 #include "agx_public.h"
 #include "agx_state.h"
 #include "agx_tilebuffer.h"
@@ -73,6 +76,7 @@ static const struct debug_named_value agx_debug_options[] = {
    {"nomsaa",    AGX_DBG_NOMSAA,   "Force disable MSAA"},
    {"noshadow",  AGX_DBG_NOSHADOW, "Force disable resource shadowing"},
    {"noclipctrl",AGX_DBG_NOCLIPCTRL,"Disable ARB_clip_control"},
+   {"varyings",  AGX_DBG_VARYINGS,  "Validate varying linkage"},
    DEBUG_NAMED_VALUE_END
 };
 /* clang-format on */
@@ -565,6 +569,12 @@ agx_resource_create_with_modifiers(struct pipe_screen *screen,
 
    ail_make_miptree(&nresource->layout);
 
+   /* Fail Piglit's obnoxious allocations */
+   if (nresource->layout.size_B >= (1ull << 32)) {
+      free(nresource);
+      return NULL;
+   }
+
    if (templ->target == PIPE_BUFFER) {
       assert(nresource->layout.tiling == AIL_TILING_LINEAR);
       util_range_init(&nresource->valid_buffer_range);
@@ -869,8 +879,8 @@ agx_alloc_staging(struct pipe_screen *screen, struct agx_resource *rsc,
 
    /* Linear is incompatible with depth/stencil, so we convert */
    tmpl.format = agx_staging_color_format_for_zs(rsc->layout.format);
-   tmpl.bind &= ~PIPE_BIND_DEPTH_STENCIL;
-   tmpl.bind |= PIPE_BIND_LINEAR | PIPE_BIND_RENDER_TARGET;
+   tmpl.bind =
+      PIPE_BIND_LINEAR | PIPE_BIND_RENDER_TARGET | PIPE_BIND_SAMPLER_VIEW;
 
    struct pipe_resource *pstaging = screen->resource_create(screen, &tmpl);
    if (!pstaging)
@@ -1129,8 +1139,12 @@ agx_clear(struct pipe_context *pctx, unsigned buffers,
 
       static_assert(sizeof(color->f) == 16, "mismatched structure");
 
-      batch->uploaded_clear_color[rt] =
-         agx_pool_upload_aligned(&batch->pool, color->f, sizeof(color->f), 16);
+      /* Clear colour must be clamped to properly handle signed ints. */
+      union pipe_color_union clamped =
+         util_clamp_color(batch->key.cbufs[rt]->format, color);
+
+      batch->uploaded_clear_color[rt] = agx_pool_upload_aligned(
+         &batch->pool, clamped.f, sizeof(clamped.f), 16);
    }
 
    if (fastclear & PIPE_CLEAR_DEPTH)
@@ -1167,17 +1181,24 @@ transition_resource(struct pipe_context *pctx, struct agx_resource *rsrc,
    assert(new_res);
    assert(!(rsrc->base.bind & PIPE_BIND_SHARED) && "cannot swap BOs if shared");
 
+   /* Flush current writers out, so that rsrc->data_valid is correctly set (e.g.
+    * for render targets). The writers would have been flushed by the blits
+    * anyway, so this is not further harming performance.
+    */
+   agx_flush_writer(agx_context(pctx), rsrc, "Transition");
+
    int level;
    BITSET_FOREACH_SET(level, rsrc->data_valid, PIPE_MAX_TEXTURE_LEVELS) {
       /* Blit each valid level */
       struct pipe_blit_info blit = {0};
 
-      u_box_3d(0, 0, 0, rsrc->layout.width_px, rsrc->layout.height_px,
-               rsrc->layout.depth_px, &blit.dst.box);
+      u_box_3d(0, 0, 0, u_minify(rsrc->layout.width_px, level),
+               u_minify(rsrc->layout.height_px, level),
+               util_num_layers(&rsrc->base, level), &blit.dst.box);
       blit.src.box = blit.dst.box;
 
       blit.dst.resource = &new_res->base;
-      blit.dst.format = new_res->base.format;
+      blit.dst.format = rsrc->base.format;
       blit.dst.level = level;
       blit.src.resource = &rsrc->base;
       blit.src.format = rsrc->base.format;
@@ -1568,6 +1589,8 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_FRAMEBUFFER_NO_ATTACHMENT:
    case PIPE_CAP_SHADER_PACK_HALF_FLOAT:
    case PIPE_CAP_FS_FINE_DERIVATIVE:
+   case PIPE_CAP_CULL_DISTANCE_NOCOMBINE:
+   case PIPE_CAP_NIR_COMPACT_ARRAYS:
       return 1;
 
    case PIPE_CAP_CLIP_HALFZ:
@@ -1623,6 +1646,10 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_INT64:
    case PIPE_CAP_SAMPLE_SHADING:
    case PIPE_CAP_START_INSTANCE:
+   case PIPE_CAP_DRAW_PARAMETERS:
+   case PIPE_CAP_MULTI_DRAW_INDIRECT:
+   case PIPE_CAP_MULTI_DRAW_INDIRECT_PARAMS:
+   case PIPE_CAP_CULL_DISTANCE:
       return 1;
    case PIPE_CAP_SURFACE_SAMPLE_COUNT:
       /* TODO: MSRTT */
@@ -1650,7 +1677,7 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 
    case PIPE_CAP_GLSL_FEATURE_LEVEL:
    case PIPE_CAP_GLSL_FEATURE_LEVEL_COMPATIBILITY:
-      return 330;
+      return 410;
    case PIPE_CAP_ESSL_FEATURE_LEVEL:
       return 320;
 
@@ -1673,13 +1700,6 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return 64;
 
    case PIPE_CAP_VERTEX_ATTRIB_ELEMENT_ALIGNED_ONLY:
-      return 1;
-
-   /* We run nir_lower_point_size so we need the GLSL linker to copy
-    * the original gl_PointSize when captured by transform feedback. We could
-    * also copy it ourselves but it's easier to set the CAP.
-    */
-   case PIPE_CAP_PSIZ_CLAMPED:
       return 1;
 
    case PIPE_CAP_MAX_TEXTURE_2D_SIZE:
@@ -1715,7 +1735,11 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_MAX_TEXTURE_GATHER_OFFSET:
       return 7;
    case PIPE_CAP_DRAW_INDIRECT:
+   case PIPE_CAP_TEXTURE_QUERY_SAMPLES:
       return true;
+
+   case PIPE_CAP_MAX_VIEWPORTS:
+      return AGX_MAX_VIEWPORTS;
 
    case PIPE_CAP_VIDEO_MEMORY: {
       uint64_t system_memory;
@@ -1735,7 +1759,6 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_FLATSHADE:
    case PIPE_CAP_TWO_SIDED_COLOR:
    case PIPE_CAP_ALPHA_TEST:
-   case PIPE_CAP_POINT_SIZE_FIXED:
    case PIPE_CAP_CLIP_PLANES:
    case PIPE_CAP_NIR_IMAGES_AS_DEREF:
       return 0;
@@ -1754,8 +1777,7 @@ agx_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
              BITFIELD_BIT(MESA_PRIM_LINES_ADJACENCY) |
              BITFIELD_BIT(MESA_PRIM_LINE_STRIP_ADJACENCY) |
              BITFIELD_BIT(MESA_PRIM_TRIANGLES_ADJACENCY) |
-             BITFIELD_BIT(MESA_PRIM_TRIANGLE_STRIP_ADJACENCY) |
-             BITFIELD_BIT(MESA_PRIM_QUADS) | BITFIELD_BIT(MESA_PRIM_QUAD_STRIP);
+             BITFIELD_BIT(MESA_PRIM_TRIANGLE_STRIP_ADJACENCY);
 
    case PIPE_CAP_MAP_UNSYNCHRONIZED_THREAD_SAFE:
       return 1;
@@ -1841,10 +1863,12 @@ agx_get_shader_param(struct pipe_screen *pscreen, enum pipe_shader_type shader,
       return 1024;
 
    case PIPE_SHADER_CAP_MAX_INPUTS:
-      return 16;
+      return shader == PIPE_SHADER_VERTEX ? 16 : 32;
 
    case PIPE_SHADER_CAP_MAX_OUTPUTS:
-      return shader == PIPE_SHADER_FRAGMENT ? 8 : 16;
+      return shader == PIPE_SHADER_FRAGMENT ? 8
+             : shader == PIPE_SHADER_VERTEX ? 16
+                                            : 32;
 
    case PIPE_SHADER_CAP_MAX_TEMPS:
       return 256; /* GL_MAX_PROGRAM_TEMPORARIES_ARB */
@@ -2023,8 +2047,12 @@ agx_is_format_supported(struct pipe_screen *pscreen, enum pipe_format format,
       if (!agx_is_valid_pixel_format(tex_format))
          return false;
 
-      /* RGB32 is emulated for texture buffers only */
-      if (ent.channels == AGX_CHANNELS_R32G32B32_EMULATED &&
+      /* RGB32, luminance/alpha/intensity emulated for texture buffers only */
+      if ((ent.channels == AGX_CHANNELS_R32G32B32_EMULATED ||
+           util_format_is_luminance(tex_format) ||
+           util_format_is_alpha(tex_format) ||
+           util_format_is_luminance_alpha(tex_format) ||
+           util_format_is_intensity(tex_format)) &&
           target != PIPE_BUFFER)
          return false;
 

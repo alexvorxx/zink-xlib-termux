@@ -68,6 +68,7 @@ d3d12_debug_options[] = {
    { "res",          D3D12_DEBUG_RESOURCE,      "Debug resources" },
    { "debuglayer",   D3D12_DEBUG_DEBUG_LAYER,   "Enable debug layer" },
    { "gpuvalidator", D3D12_DEBUG_GPU_VALIDATOR, "Enable GPU validator" },
+   { "singleton",    D3D12_DEBUG_SINGLETON,     "Disallow use of device factory" },
    DEBUG_NAMED_VALUE_END
 };
 
@@ -770,6 +771,10 @@ d3d12_deinit_screen(struct d3d12_screen *screen)
 void
 d3d12_destroy_screen(struct d3d12_screen *screen)
 {
+   if (screen->winsys) {
+      screen->winsys->destroy(screen->winsys);
+      screen->winsys = nullptr;
+   }
    slab_destroy_parent(&screen->transfer_pool);
    mtx_destroy(&screen->submit_mutex);
    mtx_destroy(&screen->descriptor_pool_mutex);
@@ -1215,10 +1220,9 @@ d3d12_get_node_mask(struct pipe_screen *pscreen)
 static void
 d3d12_create_fence_win32(struct pipe_screen *pscreen, struct pipe_fence_handle **pfence, void *handle, const void *name, enum pipe_fd_type type)
 {
-   d3d12_fence_reference((struct d3d12_fence **)pfence,
-                         type == PIPE_FD_TYPE_TIMELINE_SEMAPHORE ?
-                           d3d12_open_fence(d3d12_screen(pscreen), handle, name) :
-                           nullptr);
+   d3d12_fence_reference((struct d3d12_fence **)pfence, nullptr);
+   if(type == PIPE_FD_TYPE_TIMELINE_SEMAPHORE)
+      *pfence = (struct pipe_fence_handle*) d3d12_open_fence(d3d12_screen(pscreen), handle, name);
 }
 
 static void
@@ -1268,6 +1272,26 @@ d3d12_screen_get_fd(struct pipe_screen *pscreen)
       return -1;
 }
 
+#ifdef _WIN32
+static void* d3d12_fence_get_win32_handle(struct pipe_screen *pscreen,
+                                          struct pipe_fence_handle *fence_handle,
+                                          uint64_t *fence_value)
+{
+   struct d3d12_screen *screen = d3d12_screen(pscreen);
+   struct d3d12_fence* fence = (struct d3d12_fence*) fence_handle;
+   HANDLE shared_handle = nullptr;
+   screen->dev->CreateSharedHandle(fence->cmdqueue_fence,
+                                   NULL,
+                                   GENERIC_ALL,
+                                   NULL,
+                                   &shared_handle);
+   if(shared_handle)
+      *fence_value = fence->value;
+
+   return (void*) shared_handle;
+}
+#endif
+
 bool
 d3d12_init_screen_base(struct d3d12_screen *screen, struct sw_winsys *winsys, LUID *adapter_luid)
 {
@@ -1311,6 +1335,9 @@ d3d12_init_screen_base(struct d3d12_screen *screen, struct sw_winsys *winsys, LU
    screen->base.set_fence_timeline_value = d3d12_set_fence_timeline_value;
    screen->base.interop_query_device_info = d3d12_interop_query_device_info;
    screen->base.interop_export_object = d3d12_interop_export_object;
+#ifdef _WIN32
+   screen->base.fence_get_win32_handle = d3d12_fence_get_win32_handle;
+#endif
 
    screen->d3d12_mod = util_dl_open(
       UTIL_DL_PREFIX
@@ -1367,6 +1394,9 @@ try_find_d3d12core_next_to_self(char *path, size_t path_arr_size)
 static ID3D12DeviceFactory *
 try_create_device_factory(util_dl_library *d3d12_mod)
 {
+   if (d3d12_debug & D3D12_DEBUG_SINGLETON)
+      return nullptr;
+
    /* A device factory allows us to isolate things like debug layer enablement from other callers,
     * and can potentially even refer to a different D3D12 redist implementation from others.
     */
@@ -1570,7 +1600,7 @@ d3d12_init_screen(struct d3d12_screen *screen, IUnknown *adapter)
          return false;
    }
 
-   if (FAILED(screen->dev->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&screen->fence))))
+   if (FAILED(screen->dev->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&screen->fence))))
       return false;
 
    if (!d3d12_init_residency(screen))

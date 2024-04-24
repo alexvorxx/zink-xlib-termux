@@ -261,6 +261,8 @@ const nir_lower_subgroups_options si_nir_subgroups_options = {
    .ballot_components = 1,
    .lower_to_scalar = true,
    .lower_subgroup_masks = true,
+   .lower_relative_shuffle = true,
+   .lower_shuffle_to_32bit = true,
    .lower_vote_trivial = false,
    .lower_vote_eq = true,
    .lower_vote_bool_eq = true,
@@ -281,6 +283,7 @@ static void si_lower_nir(struct si_screen *sscreen, struct nir_shader *nir)
     * - ensure constant offsets for texture instructions are folded
     *   and copy-propagated
     */
+   NIR_PASS_V(nir, nir_lower_int64);
 
    const struct nir_lower_tex_options lower_tex_options = {
       .lower_txp = ~0u,

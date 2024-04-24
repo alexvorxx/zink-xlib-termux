@@ -39,6 +39,7 @@
 #include "radv_cs.h"
 #include "radv_debug.h"
 #include "radv_private.h"
+#include "radv_sdma.h"
 #include "radv_shader_args.h"
 
 #include "util/u_debug.h"
@@ -56,7 +57,7 @@
 
 #include "aco_shader_info.h"
 #include "radv_aco_shader_info.h"
-#ifdef LLVM_AVAILABLE
+#if LLVM_AVAILABLE
 #include "ac_llvm_util.h"
 #endif
 
@@ -105,6 +106,9 @@ get_nir_options_for_stage(struct radv_physical_device *device, gl_shader_stage s
       .has_sdot_4x8 = device->rad_info.has_accelerated_dot_product,
       .has_sudot_4x8 = device->rad_info.has_accelerated_dot_product && device->rad_info.gfx_level >= GFX11,
       .has_udot_4x8 = device->rad_info.has_accelerated_dot_product,
+      .has_sdot_4x8_sat = device->rad_info.has_accelerated_dot_product,
+      .has_sudot_4x8_sat = device->rad_info.has_accelerated_dot_product && device->rad_info.gfx_level >= GFX11,
+      .has_udot_4x8_sat = device->rad_info.has_accelerated_dot_product,
       .has_dot_2x16 = device->rad_info.has_accelerated_dot_product && device->rad_info.gfx_level < GFX11,
       .has_find_msb_rev = true,
       .has_pack_half_2x16_rtz = true,
@@ -468,6 +472,7 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
                .private_data = &spirv_debug_data,
             },
          .force_tex_non_uniform = key->tex_non_uniform,
+         .force_ssbo_non_uniform = key->ssbo_non_uniform,
       };
       nir = spirv_to_nir(spirv, stage->spirv.size / 4, spec_entries, num_spec_entries, stage->stage, stage->entrypoint,
                          &spirv_options, &device->physical_device->nir_options[stage->stage]);
@@ -2045,6 +2050,60 @@ radv_shader_upload(struct radv_device *device, struct radv_shader *shader, const
    return true;
 }
 
+static unsigned
+radv_get_max_waves(const struct radv_device *device, const struct ac_shader_config *conf,
+                   const struct radv_shader_info *info)
+{
+   const struct radeon_info *rad_info = &device->physical_device->rad_info;
+   const enum amd_gfx_level gfx_level = rad_info->gfx_level;
+   const uint8_t wave_size = info->wave_size;
+   gl_shader_stage stage = info->stage;
+   unsigned max_simd_waves = rad_info->max_waves_per_simd;
+   unsigned lds_per_wave = 0;
+
+   if (stage == MESA_SHADER_FRAGMENT) {
+      lds_per_wave = conf->lds_size * rad_info->lds_encode_granularity + info->ps.num_interp * 48;
+      lds_per_wave = align(lds_per_wave, rad_info->lds_alloc_granularity);
+   } else if (stage == MESA_SHADER_COMPUTE || stage == MESA_SHADER_TASK) {
+      unsigned max_workgroup_size = info->workgroup_size;
+      lds_per_wave = align(conf->lds_size * rad_info->lds_encode_granularity, rad_info->lds_alloc_granularity);
+      lds_per_wave /= DIV_ROUND_UP(max_workgroup_size, wave_size);
+   }
+
+   if (conf->num_sgprs && gfx_level < GFX10) {
+      unsigned sgprs = align(conf->num_sgprs, gfx_level >= GFX8 ? 16 : 8);
+      max_simd_waves = MIN2(max_simd_waves, rad_info->num_physical_sgprs_per_simd / sgprs);
+   }
+
+   if (conf->num_vgprs) {
+      unsigned physical_vgprs = rad_info->num_physical_wave64_vgprs_per_simd * (64 / wave_size);
+      unsigned vgprs = align(conf->num_vgprs, wave_size == 32 ? 8 : 4);
+      if (gfx_level >= GFX10_3) {
+         unsigned real_vgpr_gran = rad_info->num_physical_wave64_vgprs_per_simd / 64;
+         vgprs = util_align_npot(vgprs, real_vgpr_gran * (wave_size == 32 ? 2 : 1));
+      }
+      max_simd_waves = MIN2(max_simd_waves, physical_vgprs / vgprs);
+   }
+
+   unsigned simd_per_workgroup = rad_info->num_simd_per_compute_unit;
+   if (gfx_level >= GFX10)
+      simd_per_workgroup *= 2; /* like lds_size_per_workgroup, assume WGP on GFX10+ */
+
+   unsigned max_lds_per_simd = rad_info->lds_size_per_workgroup / simd_per_workgroup;
+   if (lds_per_wave)
+      max_simd_waves = MIN2(max_simd_waves, DIV_ROUND_UP(max_lds_per_simd, lds_per_wave));
+
+   return gfx_level >= GFX10 ? max_simd_waves * (wave_size / 32) : max_simd_waves;
+}
+
+unsigned
+radv_get_max_scratch_waves(const struct radv_device *device, struct radv_shader *shader)
+{
+   const unsigned num_cu = device->physical_device->rad_info.num_cu;
+
+   return MIN2(device->scratch_waves, 4 * num_cu * shader->max_waves);
+}
+
 VkResult
 radv_shader_create_uncached(struct radv_device *device, const struct radv_shader_binary *binary, bool replayable,
                             struct radv_serialized_shader_arena_block *replay_block, struct radv_shader **out_shader)
@@ -2060,9 +2119,8 @@ radv_shader_create_uncached(struct radv_device *device, const struct radv_shader
    vk_pipeline_cache_object_init(&device->vk, &shader->base, &radv_shader_ops, shader->hash, sizeof(shader->hash));
 
    shader->info = binary->info;
-
-   /* Copy the shader binary configuration. */
-   memcpy(&shader->config, &binary->config, sizeof(shader->config));
+   shader->config = binary->config;
+   shader->max_waves = radv_get_max_waves(device, &shader->config, &shader->info);
 
    if (binary->type == RADV_BINARY_TYPE_RTLD) {
 #if !defined(USE_LIBELF)
@@ -2190,6 +2248,7 @@ radv_shader_part_create(struct radv_device *device, struct radv_shader_part_bina
    shader_part->disasm_string = binary->disasm_size ? strdup((const char *)(binary->data + binary->code_size)) : NULL;
 
    shader_part->spi_shader_col_format = binary->info.spi_shader_col_format;
+   shader_part->spi_shader_z_format = binary->info.spi_shader_z_format;
 
    /* Allocate memory and upload. */
    shader_part->alloc = radv_alloc_shader_memory(device, shader_part->code_size, false, NULL);
@@ -2422,7 +2481,7 @@ shader_compile(struct radv_device *device, struct nir_shader *const *shaders, in
 
    struct radv_shader_binary *binary = NULL;
 
-#ifdef LLVM_AVAILABLE
+#if LLVM_AVAILABLE
    if (radv_use_llvm_for_stage(device, stage) || options->dump_shader || options->record_ir)
       ac_init_llvm_once();
 
@@ -2571,7 +2630,7 @@ radv_create_rt_prolog(struct radv_device *device)
    radv_declare_rt_shader_args(options.info->gfx_level, &out_args);
    info.user_sgprs_locs = in_args.user_sgprs_locs;
 
-#ifdef LLVM_AVAILABLE
+#if LLVM_AVAILABLE
    if (options.dump_shader || options.record_ir)
       ac_init_llvm_once();
 #endif
@@ -2634,7 +2693,7 @@ radv_create_vs_prolog(struct radv_device *device, const struct radv_vs_prolog_ke
    info.user_sgprs_locs = args.user_sgprs_locs;
    info.inline_push_constant_mask = args.ac.inline_push_const_mask;
 
-#ifdef LLVM_AVAILABLE
+#if LLVM_AVAILABLE
    if (options.dump_shader || options.record_ir)
       ac_init_llvm_once();
 #endif
@@ -2687,7 +2746,7 @@ radv_create_ps_epilog(struct radv_device *device, const struct radv_ps_epilog_ke
 
    radv_declare_ps_epilog_args(device, key, &args);
 
-#ifdef LLVM_AVAILABLE
+#if LLVM_AVAILABLE
    if (options.dump_shader || options.record_ir)
       ac_init_llvm_once();
 #endif
@@ -2702,6 +2761,7 @@ radv_create_ps_epilog(struct radv_device *device, const struct radv_ps_epilog_ke
    aco_compile_ps_epilog(&ac_opts, &ac_info, &ac_epilog_info, &args.ac, &radv_aco_build_shader_part, (void **)&binary);
 
    binary->info.spi_shader_col_format = key->spi_shader_col_format;
+   binary->info.spi_shader_z_format = key->spi_shader_z_format;
 
    epilog = radv_shader_part_create(device, binary, info.wave_size);
    if (!epilog)
@@ -2744,7 +2804,7 @@ radv_create_tcs_epilog(struct radv_device *device, const struct radv_tcs_epilog_
 
    radv_declare_tcs_epilog_args(device, key, &args);
 
-#ifdef LLVM_AVAILABLE
+#if LLVM_AVAILABLE
    if (options.dump_shader || options.record_ir)
       ac_init_llvm_once();
 #endif
@@ -2871,61 +2931,6 @@ radv_get_shader_name(const struct radv_shader_info *info, gl_shader_stage stage)
    default:
       return "Unknown shader";
    };
-}
-
-unsigned
-radv_get_max_waves(const struct radv_device *device, struct radv_shader *shader, gl_shader_stage stage)
-{
-   const struct radeon_info *info = &device->physical_device->rad_info;
-   const enum amd_gfx_level gfx_level = info->gfx_level;
-   const uint8_t wave_size = shader->info.wave_size;
-   const struct ac_shader_config *conf = &shader->config;
-   unsigned max_simd_waves;
-   unsigned lds_per_wave = 0;
-
-   max_simd_waves = info->max_wave64_per_simd * (64 / wave_size);
-
-   if (stage == MESA_SHADER_FRAGMENT) {
-      lds_per_wave = conf->lds_size * info->lds_encode_granularity + shader->info.ps.num_interp * 48;
-      lds_per_wave = align(lds_per_wave, info->lds_alloc_granularity);
-   } else if (stage == MESA_SHADER_COMPUTE || stage == MESA_SHADER_TASK) {
-      unsigned max_workgroup_size = shader->info.workgroup_size;
-      lds_per_wave = align(conf->lds_size * info->lds_encode_granularity, info->lds_alloc_granularity);
-      lds_per_wave /= DIV_ROUND_UP(max_workgroup_size, wave_size);
-   }
-
-   if (conf->num_sgprs && gfx_level < GFX10) {
-      unsigned sgprs = align(conf->num_sgprs, gfx_level >= GFX8 ? 16 : 8);
-      max_simd_waves = MIN2(max_simd_waves, info->num_physical_sgprs_per_simd / sgprs);
-   }
-
-   if (conf->num_vgprs) {
-      unsigned physical_vgprs = info->num_physical_wave64_vgprs_per_simd * (64 / wave_size);
-      unsigned vgprs = align(conf->num_vgprs, wave_size == 32 ? 8 : 4);
-      if (gfx_level >= GFX10_3) {
-         unsigned real_vgpr_gran = info->num_physical_wave64_vgprs_per_simd / 64;
-         vgprs = util_align_npot(vgprs, real_vgpr_gran * (wave_size == 32 ? 2 : 1));
-      }
-      max_simd_waves = MIN2(max_simd_waves, physical_vgprs / vgprs);
-   }
-
-   unsigned simd_per_workgroup = info->num_simd_per_compute_unit;
-   if (gfx_level >= GFX10)
-      simd_per_workgroup *= 2; /* like lds_size_per_workgroup, assume WGP on GFX10+ */
-
-   unsigned max_lds_per_simd = info->lds_size_per_workgroup / simd_per_workgroup;
-   if (lds_per_wave)
-      max_simd_waves = MIN2(max_simd_waves, DIV_ROUND_UP(max_lds_per_simd, lds_per_wave));
-
-   return gfx_level >= GFX10 ? max_simd_waves * (wave_size / 32) : max_simd_waves;
-}
-
-unsigned
-radv_get_max_scratch_waves(const struct radv_device *device, struct radv_shader *shader)
-{
-   const unsigned num_cu = device->physical_device->rad_info.num_cu;
-
-   return MIN2(device->scratch_waves, 4 * num_cu * radv_get_max_waves(device, shader, shader->info.stage));
 }
 
 unsigned

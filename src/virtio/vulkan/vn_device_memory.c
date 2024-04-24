@@ -17,6 +17,7 @@
 #include "vn_buffer.h"
 #include "vn_device.h"
 #include "vn_image.h"
+#include "vn_instance.h"
 #include "vn_physical_device.h"
 
 /* device memory commands */
@@ -29,13 +30,13 @@ vn_device_memory_alloc_simple(struct vn_device *dev,
    VkDevice dev_handle = vn_device_to_handle(dev);
    VkDeviceMemory mem_handle = vn_device_memory_to_handle(mem);
    if (VN_PERF(NO_ASYNC_MEM_ALLOC)) {
-      return vn_call_vkAllocateMemory(dev->instance, dev_handle, alloc_info,
-                                      NULL, &mem_handle);
+      return vn_call_vkAllocateMemory(dev->primary_ring, dev_handle,
+                                      alloc_info, NULL, &mem_handle);
    }
 
-   struct vn_instance_submit_command instance_submit;
-   vn_submit_vkAllocateMemory(dev->instance, 0, dev_handle, alloc_info, NULL,
-                              &mem_handle, &instance_submit);
+   struct vn_ring_submit_command instance_submit;
+   vn_submit_vkAllocateMemory(dev->primary_ring, 0, dev_handle, alloc_info,
+                              NULL, &mem_handle, &instance_submit);
    if (!instance_submit.ring_seqno_valid)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
@@ -50,7 +51,7 @@ vn_device_memory_free_simple(struct vn_device *dev,
 {
    VkDevice dev_handle = vn_device_to_handle(dev);
    VkDeviceMemory mem_handle = vn_device_memory_to_handle(mem);
-   vn_async_vkFreeMemory(dev->instance, dev_handle, mem_handle, NULL);
+   vn_async_vkFreeMemory(dev->primary_ring, dev_handle, mem_handle, NULL);
 }
 
 static VkResult
@@ -60,14 +61,21 @@ vn_device_memory_wait_alloc(struct vn_device *dev,
    if (!mem->bo_ring_seqno_valid)
       return VK_SUCCESS;
 
+   /* no need to wait for ring if
+    * - mem alloc is done upon bo map or export
+    * - mem import is done upon bo destroy
+    */
+   if (vn_ring_get_seqno_status(dev->primary_ring, mem->bo_ring_seqno))
+      return VK_SUCCESS;
+
    /* fine to false it here since renderer submission failure is fatal */
    mem->bo_ring_seqno_valid = false;
 
+   const uint64_t ring_id = vn_ring_get_id(dev->primary_ring);
    uint32_t local_data[8];
    struct vn_cs_encoder local_enc =
       VN_CS_ENCODER_INITIALIZER_LOCAL(local_data, sizeof(local_data));
-   vn_encode_vkWaitRingSeqnoMESA(&local_enc, 0, dev->instance->ring.id,
-                                 mem->bo_ring_seqno);
+   vn_encode_vkWaitRingSeqnoMESA(&local_enc, 0, ring_id, mem->bo_ring_seqno);
    return vn_renderer_submit_simple(dev->renderer, local_data,
                                     vn_cs_encoder_get_len(&local_enc));
 }
@@ -640,8 +648,8 @@ vn_GetDeviceMemoryOpaqueCaptureAddress(
       vn_device_memory_from_handle(pInfo->memory);
 
    assert(!mem->base_memory);
-   return vn_call_vkGetDeviceMemoryOpaqueCaptureAddress(dev->instance, device,
-                                                        pInfo);
+   return vn_call_vkGetDeviceMemoryOpaqueCaptureAddress(dev->primary_ring,
+                                                        device, pInfo);
 }
 
 VkResult
@@ -762,7 +770,7 @@ vn_GetDeviceMemoryCommitment(VkDevice device,
       vn_device_memory_from_handle(memory);
 
    assert(!mem->base_memory);
-   vn_call_vkGetDeviceMemoryCommitment(dev->instance, device, memory,
+   vn_call_vkGetDeviceMemoryCommitment(dev->primary_ring, device, memory,
                                        pCommittedMemoryInBytes);
 }
 
@@ -812,8 +820,8 @@ vn_get_memory_dma_buf_properties(struct vn_device *dev,
       .sType = VK_STRUCTURE_TYPE_MEMORY_RESOURCE_PROPERTIES_MESA,
       .pNext = &alloc_size_props,
    };
-   result = vn_call_vkGetMemoryResourcePropertiesMESA(dev->instance, device,
-                                                      bo->res_id, &props);
+   result = vn_call_vkGetMemoryResourcePropertiesMESA(
+      dev->primary_ring, device, bo->res_id, &props);
    vn_renderer_bo_unref(dev->renderer, bo);
    if (result != VK_SUCCESS)
       return result;

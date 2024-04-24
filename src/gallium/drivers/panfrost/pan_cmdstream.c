@@ -1769,7 +1769,7 @@ emit_image_bufs(struct panfrost_batch *batch, enum pipe_shader_type shader,
          cfg.type = pan_modifier_to_attr_type(rsrc->image.layout.modifier);
          cfg.pointer = rsrc->image.data.bo->ptr.gpu + offset;
          cfg.stride = util_format_get_blocksize(image->format);
-         cfg.size = rsrc->image.data.bo->size - offset;
+         cfg.size = panfrost_bo_size(rsrc->image.data.bo) - offset;
       }
 
       if (is_buffer) {
@@ -3686,8 +3686,8 @@ init_polygon_list(struct panfrost_batch *batch)
 {
 #if PAN_ARCH <= 5
    mali_ptr polygon_list = batch_get_polygon_list(batch);
-   panfrost_scoreboard_initialize_tiler(&batch->pool.base,
-                                        &batch->jm.jobs.vtc_jc, polygon_list);
+   pan_jc_initialize_tiler(&batch->pool.base, &batch->jm.jobs.vtc_jc,
+                           polygon_list);
 #endif
 }
 

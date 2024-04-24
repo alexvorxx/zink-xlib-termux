@@ -97,8 +97,8 @@ jm_submit_jc(struct panfrost_batch *batch, mali_ptr first_job_desc,
    submit.requirements = reqs;
 
    if (ctx->in_sync_fd >= 0) {
-      ret =
-         drmSyncobjImportSyncFile(dev->fd, ctx->in_sync_obj, ctx->in_sync_fd);
+      ret = drmSyncobjImportSyncFile(panfrost_device_fd(dev), ctx->in_sync_obj,
+                                     ctx->in_sync_fd);
       assert(!ret);
 
       in_syncs[submit.in_sync_count++] = ctx->in_sync_obj;
@@ -149,16 +149,18 @@ jm_submit_jc(struct panfrost_batch *batch, mali_ptr first_job_desc,
     * by fragment jobs (the polygon list is coming from this heap).
     */
    if (batch->jm.jobs.vtc_jc.first_tiler)
-      bo_handles[submit.bo_handle_count++] = dev->tiler_heap->gem_handle;
+      bo_handles[submit.bo_handle_count++] =
+         panfrost_bo_handle(dev->tiler_heap);
 
    /* Always used on Bifrost, occassionally used on Midgard */
-   bo_handles[submit.bo_handle_count++] = dev->sample_positions->gem_handle;
+   bo_handles[submit.bo_handle_count++] =
+      panfrost_bo_handle(dev->sample_positions);
 
    submit.bo_handles = (u64)(uintptr_t)bo_handles;
    if (ctx->is_noop)
       ret = 0;
    else
-      ret = drmIoctl(dev->fd, DRM_IOCTL_PANFROST_SUBMIT, &submit);
+      ret = drmIoctl(panfrost_device_fd(dev), DRM_IOCTL_PANFROST_SUBMIT, &submit);
    free(bo_handles);
 
    if (ret)
@@ -167,17 +169,17 @@ jm_submit_jc(struct panfrost_batch *batch, mali_ptr first_job_desc,
    /* Trace the job if we're doing that */
    if (dev->debug & (PAN_DBG_TRACE | PAN_DBG_SYNC)) {
       /* Wait so we can get errors reported back */
-      drmSyncobjWait(dev->fd, &out_sync, 1, INT64_MAX, 0, NULL);
+      drmSyncobjWait(panfrost_device_fd(dev), &out_sync, 1, INT64_MAX, 0, NULL);
 
       if (dev->debug & PAN_DBG_TRACE)
-         pandecode_jc(dev->decode_ctx, submit.jc, dev->gpu_id);
+         pandecode_jc(dev->decode_ctx, submit.jc, panfrost_device_gpu_id(dev));
 
       if (dev->debug & PAN_DBG_DUMP)
          pandecode_dump_mappings(dev->decode_ctx);
 
       /* Jobs won't be complete if blackhole rendering, that's ok */
       if (!ctx->is_noop && dev->debug & PAN_DBG_SYNC)
-         pandecode_abort_on_fault(dev->decode_ctx, submit.jc, dev->gpu_id);
+         pandecode_abort_on_fault(dev->decode_ctx, submit.jc, panfrost_device_gpu_id(dev));
    }
 
    return 0;
@@ -348,9 +350,9 @@ GENX(jm_launch_grid)(struct panfrost_batch *batch,
    }
 #endif
 
-   panfrost_add_job(&batch->pool.base, &batch->jm.jobs.vtc_jc,
-                    MALI_JOB_TYPE_COMPUTE, true, false, indirect_dep, 0, &t,
-                    false);
+   pan_jc_add_job(&batch->pool.base, &batch->jm.jobs.vtc_jc,
+                  MALI_JOB_TYPE_COMPUTE, true, false, indirect_dep, 0, &t,
+                  false);
 }
 
 #if PAN_ARCH >= 6
@@ -365,10 +367,10 @@ jm_emit_tiler_desc(struct panfrost_batch *batch)
    struct panfrost_ptr t = pan_pool_alloc_desc(&batch->pool.base, TILER_HEAP);
 
    pan_pack(t.cpu, TILER_HEAP, heap) {
-      heap.size = dev->tiler_heap->size;
+      heap.size = panfrost_bo_size(dev->tiler_heap);
       heap.base = dev->tiler_heap->ptr.gpu;
       heap.bottom = dev->tiler_heap->ptr.gpu;
-      heap.top = dev->tiler_heap->ptr.gpu + dev->tiler_heap->size;
+      heap.top = dev->tiler_heap->ptr.gpu + panfrost_bo_size(dev->tiler_heap);
    }
 
    mali_ptr heap = t.gpu;
@@ -837,8 +839,8 @@ GENX(jm_launch_xfb)(struct panfrost_batch *batch,
 #if PAN_ARCH <= 5
    job_type = MALI_JOB_TYPE_VERTEX;
 #endif
-   panfrost_add_job(&batch->pool.base, &batch->jm.jobs.vtc_jc, job_type, true,
-                    false, 0, 0, &t, false);
+   pan_jc_add_job(&batch->pool.base, &batch->jm.jobs.vtc_jc, job_type, true,
+                  false, 0, 0, &t, false);
 }
 
 #if PAN_ARCH < 9
@@ -852,13 +854,13 @@ jm_push_vertex_tiler_jobs(struct panfrost_batch *batch,
                           const struct panfrost_ptr *vertex_job,
                           const struct panfrost_ptr *tiler_job)
 {
-   unsigned vertex = panfrost_add_job(&batch->pool.base, &batch->jm.jobs.vtc_jc,
-                                      MALI_JOB_TYPE_VERTEX, false, false, 0, 0,
-                                      vertex_job, false);
+   unsigned vertex = pan_jc_add_job(&batch->pool.base, &batch->jm.jobs.vtc_jc,
+                                    MALI_JOB_TYPE_VERTEX, false, false, 0, 0,
+                                    vertex_job, false);
 
-   panfrost_add_job(&batch->pool.base, &batch->jm.jobs.vtc_jc,
-                    MALI_JOB_TYPE_TILER, false, false, vertex, 0, tiler_job,
-                    false);
+   pan_jc_add_job(&batch->pool.base, &batch->jm.jobs.vtc_jc,
+                  MALI_JOB_TYPE_TILER, false, false, vertex, 0, tiler_job,
+                  false);
 }
 #endif
 
@@ -914,9 +916,9 @@ GENX(jm_launch_draw)(struct panfrost_batch *batch,
 
    jm_emit_malloc_vertex_job(batch, info, draw, secondary_shader, tiler.cpu);
 
-   panfrost_add_job(&batch->pool.base, &batch->jm.jobs.vtc_jc,
-                    MALI_JOB_TYPE_MALLOC_VERTEX, false, false, 0, 0, &tiler,
-                    false);
+   pan_jc_add_job(&batch->pool.base, &batch->jm.jobs.vtc_jc,
+                  MALI_JOB_TYPE_MALLOC_VERTEX, false, false, 0, 0, &tiler,
+                  false);
 #else
    /* Fire off the draw itself */
    jm_emit_tiler_job(batch, info, draw, &invocation, secondary_shader,
@@ -926,9 +928,9 @@ GENX(jm_launch_draw)(struct panfrost_batch *batch,
       jm_emit_vertex_draw(
          batch, pan_section_ptr(tiler.cpu, INDEXED_VERTEX_JOB, VERTEX_DRAW));
 
-      panfrost_add_job(&batch->pool.base, &batch->jm.jobs.vtc_jc,
-                       MALI_JOB_TYPE_INDEXED_VERTEX, false, false, 0, 0, &tiler,
-                       false);
+      pan_jc_add_job(&batch->pool.base, &batch->jm.jobs.vtc_jc,
+                     MALI_JOB_TYPE_INDEXED_VERTEX, false, false, 0, 0, &tiler,
+                     false);
 #endif
    } else {
       jm_emit_vertex_job(batch, info, &invocation, vertex.cpu);

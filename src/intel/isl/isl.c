@@ -109,7 +109,20 @@ isl_device_setup_mocs(struct isl_device *dev)
 {
    dev->mocs.protected_mask = 0;
 
-   if (dev->info->ver >= 12) {
+   if (dev->info->ver >= 20) {
+      /* L3+L4=WB; BSpec: 71582 */
+      dev->mocs.internal = 1 << 1;
+      dev->mocs.external = 1 << 1;
+      dev->mocs.protected_mask = 3 << 0;
+      /* TODO: Setting to uncached
+       * WA 14018443005:
+       *  Ensure that any compression-enabled resource from gfx memory subject
+       *  to app recycling (e.g. OGL sparse resource backing memory or
+       *  Vulkan heaps) is never PAT/MOCS'ed as L3:UC.
+       */
+      dev->mocs.blitter_dst = 1 << 1;
+      dev->mocs.blitter_src = 1 << 1;
+   } else if (dev->info->ver >= 12) {
       if (intel_device_info_is_mtl(dev->info)) {
          /* Cached L3+L4; BSpec: 45101 */
          dev->mocs.internal = 1 << 1;
@@ -117,6 +130,12 @@ isl_device_setup_mocs(struct isl_device *dev)
          dev->mocs.external = 14 << 1;
          /* Uncached - GO:Mem */
          dev->mocs.uncached = 5 << 1;
+         /* TODO: XY_BLOCK_COPY_BLT don't mention what should be the L4 cache
+          * mode so for now it is setting L4 as uncached following what is
+          * asked for L3
+          */
+         dev->mocs.blitter_dst = 9 << 1;
+         dev->mocs.blitter_src = 9 << 1;
       } else if (intel_device_info_is_dg2(dev->info)) {
          /* L3CC=WB; BSpec: 45101 */
          dev->mocs.internal = 3 << 1;
@@ -401,7 +420,7 @@ isl_device_init(struct isl_device *dev,
  * supported.
  */
 isl_sample_count_mask_t ATTRIBUTE_CONST
-isl_device_get_sample_counts(struct isl_device *dev)
+isl_device_get_sample_counts(const struct isl_device *dev)
 {
    if (ISL_GFX_VER(dev) >= 9) {
       return ISL_SAMPLE_COUNT_1_BIT |
@@ -2558,6 +2577,7 @@ isl_calc_base_alignment(const struct isl_device *dev,
        * there.
        */
       if (dev->info->has_aux_map &&
+          !INTEL_DEBUG(DEBUG_NO_CCS) &&
           !(info->usage & ISL_SURF_USAGE_DISABLE_AUX_BIT)) {
          base_alignment_B = MAX(base_alignment_B, dev->info->verx10 >= 125 ?
                1024 * 1024 : 64 * 1024);

@@ -94,6 +94,8 @@ struct build_config {
 struct acceleration_structure_layout {
    uint32_t geometry_info_offset;
    uint32_t bvh_offset;
+   uint32_t leaf_nodes_offset;
+   uint32_t internal_nodes_offset;
    uint32_t size;
 };
 
@@ -155,18 +157,14 @@ get_build_layout(struct radv_device *device, uint32_t leaf_count,
    }
 
    uint32_t bvh_leaf_size;
-   uint32_t ir_leaf_size;
    switch (geometry_type) {
    case VK_GEOMETRY_TYPE_TRIANGLES_KHR:
-      ir_leaf_size = sizeof(struct radv_ir_triangle_node);
       bvh_leaf_size = sizeof(struct radv_bvh_triangle_node);
       break;
    case VK_GEOMETRY_TYPE_AABBS_KHR:
-      ir_leaf_size = sizeof(struct radv_ir_aabb_node);
       bvh_leaf_size = sizeof(struct radv_bvh_aabb_node);
       break;
    case VK_GEOMETRY_TYPE_INSTANCES_KHR:
-      ir_leaf_size = sizeof(struct radv_ir_instance_node);
       bvh_leaf_size = sizeof(struct radv_bvh_instance_node);
       break;
    default:
@@ -190,7 +188,15 @@ get_build_layout(struct radv_device *device, uint32_t leaf_count,
       offset = ALIGN(offset, 64);
       accel_struct->bvh_offset = offset;
 
-      offset += bvh_size;
+      /* root node */
+      offset += sizeof(struct radv_bvh_box32_node);
+
+      accel_struct->leaf_nodes_offset = offset;
+      offset += bvh_leaf_size * leaf_count;
+
+      accel_struct->internal_nodes_offset = offset;
+      /* Factor out the root node. */
+      offset += sizeof(struct radv_bvh_box32_node) * (internal_count - 1);
 
       accel_struct->size = offset;
    }
@@ -232,7 +238,7 @@ get_build_layout(struct radv_device *device, uint32_t leaf_count,
       offset += MAX3(requirements.internal_size, ploc_scratch_space, lbvh_node_space);
 
       scratch->ir_offset = offset;
-      offset += ir_leaf_size * leaf_count;
+      offset += sizeof(struct radv_ir_node) * leaf_count;
 
       scratch->internal_node_offset = offset;
       offset += sizeof(struct radv_ir_box_node) * internal_count;
@@ -629,8 +635,11 @@ build_leaves(VkCommandBuffer commandBuffer, uint32_t infoCount,
    radv_CmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
                         cmd_buffer->device->meta_state.accel_struct_build.leaf_pipeline);
    for (uint32_t i = 0; i < infoCount; ++i) {
+      RADV_FROM_HANDLE(vk_acceleration_structure, accel_struct, pInfos[i].dstAccelerationStructure);
+
       struct leaf_args leaf_consts = {
-         .bvh = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.ir_offset,
+         .ir = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.ir_offset,
+         .bvh = vk_acceleration_structure_get_va(accel_struct) + bvh_states[i].accel_struct.leaf_nodes_offset,
          .header = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.header_offset,
          .ids = pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.sort_buffer_offset[0],
       };
@@ -1054,22 +1063,7 @@ encode_nodes(VkCommandBuffer commandBuffer, uint32_t infoCount,
             pInfos[i].pGeometries ? pInfos[i].pGeometries[0].geometryType : pInfos[i].ppGeometries[0]->geometryType;
 
       if (bvh_states[i].config.compact) {
-         uint32_t leaf_node_size = 0;
-         switch (geometry_type) {
-         case VK_GEOMETRY_TYPE_TRIANGLES_KHR:
-            leaf_node_size = sizeof(struct radv_bvh_triangle_node);
-            break;
-         case VK_GEOMETRY_TYPE_AABBS_KHR:
-            leaf_node_size = sizeof(struct radv_bvh_aabb_node);
-            break;
-         case VK_GEOMETRY_TYPE_INSTANCES_KHR:
-            leaf_node_size = sizeof(struct radv_bvh_instance_node);
-            break;
-         default:
-            unreachable("");
-         }
-
-         uint32_t dst_offset = sizeof(struct radv_bvh_box32_node) + bvh_states[i].leaf_node_count * leaf_node_size;
+         uint32_t dst_offset = bvh_states[i].accel_struct.internal_nodes_offset - bvh_states[i].accel_struct.bvh_offset;
          radv_update_buffer_cp(cmd_buffer,
                                pInfos[i].scratchData.deviceAddress + bvh_states[i].scratch.header_offset +
                                   offsetof(struct radv_ir_header, dst_node_offset),

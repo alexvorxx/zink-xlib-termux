@@ -375,8 +375,12 @@ enum anv_bo_alloc_flags {
    /** Specifies that the BO should be mapped */
    ANV_BO_ALLOC_MAPPED =                  (1 << 2),
 
-   /** Specifies that the BO should be cached and coherent */
-   ANV_BO_ALLOC_HOST_CACHED_COHERENT =    (1 << 3),
+   /** Specifies that the BO should be coherent.
+    *
+    * Note: In platforms with LLC where HOST_CACHED + HOST_COHERENT is free,
+    * bo can get upgraded to HOST_CACHED_COHERENT
+    */
+   ANV_BO_ALLOC_HOST_COHERENT =           (1 << 3),
 
    /** Specifies that the BO should be captured in error states */
    ANV_BO_ALLOC_CAPTURE =                 (1 << 4),
@@ -426,12 +430,20 @@ enum anv_bo_alloc_flags {
    /** Protected buffer */
    ANV_BO_ALLOC_PROTECTED =               (1 << 15),
 
-   /** Specifies that the BO should be cached and incoherent.
-    *
-    * If ANV_BO_ALLOC_HOST_CACHED or ANV_BO_ALLOC_HOST_CACHED_COHERENT are not
-    * set it will allocate a coherent BO.
-    **/
+   /** Specifies that the BO should be cached and incoherent. */
    ANV_BO_ALLOC_HOST_CACHED =             (1 << 16),
+
+   /** For sampler pools */
+   ANV_BO_ALLOC_SAMPLER_POOL =            (1 << 17),
+
+   /** Specifies that the BO is imported.
+    *
+    * Imported BOs must also be marked as ANV_BO_ALLOC_EXTERNAL
+    */
+   ANV_BO_ALLOC_IMPORTED =                (1 << 18),
+
+   /** Specifies that the BO should be cached and coherent. */
+   ANV_BO_ALLOC_HOST_CACHED_COHERENT =    (ANV_BO_ALLOC_HOST_COHERENT | ANV_BO_ALLOC_HOST_CACHED),
 };
 
 struct anv_bo {
@@ -485,15 +497,21 @@ struct anv_bo {
 
    /** True if this BO wraps a host pointer */
    bool from_host_ptr:1;
-
-   /** True if this BO can only live in VRAM */
-   bool vram_only:1;
 };
 
 static inline bool
 anv_bo_is_external(const struct anv_bo *bo)
 {
    return bo->alloc_flags & ANV_BO_ALLOC_EXTERNAL;
+}
+
+static inline bool
+anv_bo_is_vram_only(const struct anv_bo *bo)
+{
+   return !(bo->alloc_flags & (ANV_BO_ALLOC_NO_LOCAL_MEM |
+                               ANV_BO_ALLOC_MAPPED |
+                               ANV_BO_ALLOC_LOCAL_MEM_CPU_VISIBLE |
+                               ANV_BO_ALLOC_IMPORTED));
 }
 
 static inline struct anv_bo *
@@ -505,6 +523,13 @@ anv_bo_ref(struct anv_bo *bo)
 
 enum intel_device_info_mmap_mode
 anv_bo_get_mmap_mode(struct anv_device *device, struct anv_bo *bo);
+
+static inline bool
+anv_bo_needs_host_cache_flush(enum anv_bo_alloc_flags alloc_flags)
+{
+   return (alloc_flags & (ANV_BO_ALLOC_HOST_CACHED | ANV_BO_ALLOC_HOST_COHERENT)) ==
+          ANV_BO_ALLOC_HOST_CACHED;
+}
 
 struct anv_address {
    struct anv_bo *bo;
@@ -1011,6 +1036,9 @@ struct anv_physical_device {
 
     bool                                        uses_relocs;
 
+    /** Can the platform support cooperative matrices and is it enabled? */
+    bool                                        has_cooperative_matrix;
+
     struct {
       uint32_t                                  family_count;
       struct anv_queue_family                   families[ANV_MAX_QUEUE_FAMILIES];
@@ -1048,17 +1076,18 @@ struct anv_physical_device {
         */
        struct anv_va_range                      scratch_surface_state_pool;
        /**
-        * Bindless surface states (used with indirect descriptors)
+        * Bindless surface states (indirectly referred to by indirect
+        * descriptors or for direct descriptors)
         */
        struct anv_va_range                      bindless_surface_state_pool;
-       /**
-        * Bindless surface & sampler states (used with direct descriptors)
-        */
-       struct anv_va_range                      direct_descriptor_pool;
        /**
         * Dynamic state pool
         */
        struct anv_va_range                      dynamic_state_pool;
+       /**
+        * Sampler state pool
+        */
+       struct anv_va_range                      sampler_state_pool;
        /**
         * Indirect descriptor pool
         */
@@ -1139,7 +1168,7 @@ struct anv_instance {
     /**
      * Workarounds for game bugs.
      */
-    bool                                        assume_full_subgroups;
+    uint8_t                                     assume_full_subgroups;
     bool                                        limit_trig_input_range;
     bool                                        sample_mask_out_opengl_behaviour;
     bool                                        fp64_workaround_enabled;
@@ -1633,6 +1662,7 @@ struct anv_device {
     struct util_vma_heap                        vma_lo;
     struct util_vma_heap                        vma_hi;
     struct util_vma_heap                        vma_desc;
+    struct util_vma_heap                        vma_samplers;
     struct util_vma_heap                        vma_trtt;
 
     /** List of all anv_device_memory objects */
@@ -2369,18 +2399,30 @@ struct anv_descriptor_set_binding_layout {
     */
    int16_t dynamic_offset_index;
 
-   /* Computed size from data */
-   uint16_t descriptor_data_size;
+   /* Computed surface size from data (for one plane) */
+   uint16_t descriptor_data_surface_size;
+
+   /* Computed sampler size from data (for one plane) */
+   uint16_t descriptor_data_sampler_size;
 
    /* Index into the descriptor set buffer views */
    int32_t buffer_view_index;
 
-   /* Offset into the descriptor buffer where this descriptor lives */
-   uint32_t descriptor_offset;
+   /* Offset into the descriptor buffer where the surface descriptor lives */
+   uint32_t descriptor_surface_offset;
 
-   /* Pre computed stride (with multiplane descriptor, the descriptor includes
-    * all the planes) */
-   unsigned descriptor_stride;
+   /* Offset into the descriptor buffer where the sampler descriptor lives */
+   uint16_t descriptor_sampler_offset;
+
+   /* Pre computed surface stride (with multiplane descriptor, the descriptor
+    * includes all the planes)
+    */
+   uint16_t descriptor_surface_stride;
+
+   /* Pre computed sampler stride (with multiplane descriptor, the descriptor
+    * includes all the planes)
+    */
+   uint16_t descriptor_sampler_stride;
 
    /* Immutable samplers (or NULL if no immutable samplers) */
    struct anv_sampler **immutable_samplers;
@@ -2432,8 +2474,15 @@ struct anv_descriptor_set_layout {
     */
    VkShaderStageFlags dynamic_offset_stages[MAX_DYNAMIC_BUFFERS];
 
-   /* Size of the descriptor buffer for this descriptor set */
-   uint32_t descriptor_buffer_size;
+   /* Size of the descriptor buffer dedicated to surface states for this
+    * descriptor set
+    */
+   uint32_t descriptor_buffer_surface_size;
+
+   /* Size of the descriptor buffer dedicated to sampler states for this
+    * descriptor set
+    */
+   uint32_t descriptor_buffer_sampler_size;
 
    /* Bindings in this descriptor set */
    struct anv_descriptor_set_binding_layout binding[0];
@@ -2441,6 +2490,8 @@ struct anv_descriptor_set_layout {
 
 void anv_descriptor_set_layout_destroy(struct anv_device *device,
                                        struct anv_descriptor_set_layout *layout);
+
+void anv_descriptor_set_layout_print(const struct anv_descriptor_set_layout *layout);
 
 static inline struct anv_descriptor_set_layout *
 anv_descriptor_set_layout_ref(struct anv_descriptor_set_layout *layout)
@@ -2503,13 +2554,20 @@ struct anv_descriptor_set {
     */
    uint32_t generate_surface_states;
 
-   /* State relative to anv_descriptor_pool::bo */
-   struct anv_state desc_mem;
+   /* State relative to anv_descriptor_pool::surface_bo */
+   struct anv_state desc_surface_mem;
+   /* State relative to anv_descriptor_pool::sampler_bo */
+   struct anv_state desc_sampler_mem;
    /* Surface state for the descriptor buffer */
    struct anv_state desc_surface_state;
 
-   /* Descriptor set address. */
-   struct anv_address desc_addr;
+   /* Descriptor set address pointing to desc_surface_mem (we don't need one
+    * for sampler because they're never accessed other than by the HW through
+    * the shader sampler handle).
+    */
+   struct anv_address desc_surface_addr;
+
+   struct anv_address desc_sampler_addr;
 
    /* Descriptor offset from the
     * device->va.internal_surface_state_pool.addr
@@ -2589,15 +2647,28 @@ anv_descriptor_set_address(struct anv_descriptor_set *set)
       push_set->set_used_on_gpu = true;
    }
 
-   return set->desc_addr;
+   return set->desc_surface_addr;
 }
+
+struct anv_descriptor_pool_heap {
+   /* BO allocated to back the pool (unused for host pools) */
+   struct anv_bo        *bo;
+
+   /* Host memory allocated to back a host pool */
+   void                 *host_mem;
+
+   /* Heap tracking allocations in bo/host_mem */
+   struct util_vma_heap  heap;
+
+   /* Size of the heap */
+   uint32_t              size;
+};
 
 struct anv_descriptor_pool {
    struct vk_object_base base;
 
-   struct anv_bo *bo;
-   void *host_bo;
-   struct util_vma_heap bo_heap;
+   struct anv_descriptor_pool_heap surfaces;
+   struct anv_descriptor_pool_heap samplers;
 
    struct anv_state_stream surface_state_stream;
    void *surface_state_free_list;
@@ -2611,9 +2682,6 @@ struct anv_descriptor_pool {
    /** Allocated size of host_mem */
    uint32_t host_mem_size;
 
-   /** Allocated size of descriptor bo (should be equal to bo->size) */
-   uint32_t bo_mem_size;
-
    /**
     * VK_DESCRIPTOR_POOL_CREATE_HOST_ONLY_BIT_EXT. If set, then
     * surface_state_stream is unused.
@@ -2622,14 +2690,6 @@ struct anv_descriptor_pool {
 
    char host_mem[0];
 };
-
-size_t
-anv_descriptor_set_layout_size(const struct anv_descriptor_set_layout *layout,
-                               bool host_only, uint32_t var_desc_count);
-
-uint32_t
-anv_descriptor_set_layout_descriptor_buffer_size(const struct anv_descriptor_set_layout *set_layout,
-                                                 uint32_t var_desc_count);
 
 bool
 anv_push_descriptor_set_init(struct anv_cmd_buffer *cmd_buffer,
@@ -3270,15 +3330,6 @@ struct anv_push_constants {
    /** Push constant data provided by the client through vkPushConstants */
    uint8_t client_data[MAX_PUSH_CONSTANTS_SIZE];
 
-   /** Dynamic offsets for dynamic UBOs and SSBOs */
-   uint32_t dynamic_offsets[MAX_DYNAMIC_BUFFERS];
-
-   /* Robust access pushed registers. */
-   uint64_t push_reg_mask[MESA_SHADER_STAGES];
-
-   /** Ray query globals (RT_DISPATCH_GLOBALS) */
-   uint64_t ray_query_globals;
-
 #define ANV_DESCRIPTOR_SET_DYNAMIC_INDEX_MASK ((uint32_t)ANV_UBO_ALIGNMENT - 1)
 #define ANV_DESCRIPTOR_SET_OFFSET_MASK        (~(uint32_t)(ANV_UBO_ALIGNMENT - 1))
 
@@ -3290,7 +3341,15 @@ struct anv_push_constants {
     *
     * In bits [6:63] : descriptor set address
     */
-   uint32_t desc_offsets[MAX_SETS];
+   uint32_t desc_surface_offsets[MAX_SETS];
+
+   /**
+    * Base offsets for descriptor sets from
+    */
+   uint32_t desc_sampler_offsets[MAX_SETS];
+
+   /** Dynamic offsets for dynamic UBOs and SSBOs */
+   uint32_t dynamic_offsets[MAX_DYNAMIC_BUFFERS];
 
    union {
       struct {
@@ -3316,6 +3375,12 @@ struct anv_push_constants {
          uint32_t subgroup_id;
       } cs;
    };
+
+   /* Robust access pushed registers. */
+   uint64_t push_reg_mask[MESA_SHADER_STAGES];
+
+   /** Ray query globals (RT_DISPATCH_GLOBALS) */
+   uint64_t ray_query_globals;
 };
 
 struct anv_surface_state {
@@ -5033,9 +5098,16 @@ anv_image_get_fast_clear_type_addr(const struct anv_device *device,
    struct anv_address addr =
       anv_image_get_clear_color_addr(device, image, aspect);
 
-   const unsigned clear_color_state_size = device->info->ver >= 10 ?
-      device->isl_dev.ss.clear_color_state_size :
-      device->isl_dev.ss.clear_value_size;
+   unsigned clear_color_state_size;
+   if (device->info->ver >= 11) {
+      /* The fast clear type and the first compression state are stored in the
+       * last 2 dwords of the clear color struct. Refer to the comment in
+       * add_aux_state_tracking_buffer().
+       */
+      assert(device->isl_dev.ss.clear_color_state_size >= 32);
+      clear_color_state_size = device->isl_dev.ss.clear_color_state_size - 8;
+   } else
+      clear_color_state_size = device->isl_dev.ss.clear_value_size;
    return anv_address_add(addr, clear_color_state_size);
 }
 
@@ -5050,7 +5122,7 @@ anv_image_get_compression_state_addr(const struct anv_device *device,
    UNUSED uint32_t plane = anv_image_aspect_to_plane(image, aspect);
    assert(isl_aux_usage_has_ccs_e(image->planes[plane].aux_usage));
 
-   /* Relative to start of the plane's fast clear memory range */
+   /* Relative to start of the plane's fast clear type */
    uint32_t offset;
 
    offset = 4; /* Go past the fast clear type */
@@ -5284,7 +5356,7 @@ anv_cmd_buffer_fill_area(struct anv_cmd_buffer *cmd_buffer,
                          uint32_t data);
 
 VkResult
-anv_create_companion_rcs_command_buffer(struct anv_cmd_buffer *cmd_buffer);
+anv_cmd_buffer_ensure_rcs_companion(struct anv_cmd_buffer *cmd_buffer);
 
 bool
 anv_can_hiz_clear_ds_view(struct anv_device *device,
@@ -5735,6 +5807,11 @@ static inline void anv_perfetto_end_submit(struct anv_queue *queue,
 {}
 #endif
 
+static bool
+anv_has_cooperative_matrix(const struct anv_physical_device *device)
+{
+   return device->has_cooperative_matrix;
+}
 
 #define ANV_FROM_HANDLE(__anv_type, __name, __handle) \
    VK_FROM_HANDLE(__anv_type, __name, __handle)

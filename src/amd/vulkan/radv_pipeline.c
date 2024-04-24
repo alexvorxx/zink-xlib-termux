@@ -162,6 +162,7 @@ radv_generate_pipeline_key(const struct radv_device *device, const VkPipelineSha
    key.image_2d_view_of_3d = device->image_2d_view_of_3d && device->physical_device->rad_info.gfx_level == GFX9;
 
    key.tex_non_uniform = device->instance->tex_non_uniform;
+   key.ssbo_non_uniform = device->instance->ssbo_non_uniform;
 
    for (unsigned i = 0; i < num_stages; ++i) {
       const VkPipelineShaderStageCreateInfo *const stage = &stages[i];
@@ -224,6 +225,20 @@ radv_generate_pipeline_key(const struct radv_device *device, const VkPipelineSha
    return key;
 }
 
+#define RADV_HASH_SHADER_CS_WAVE32       (1 << 1)
+#define RADV_HASH_SHADER_PS_WAVE32       (1 << 2)
+#define RADV_HASH_SHADER_GE_WAVE32       (1 << 3)
+#define RADV_HASH_SHADER_LLVM            (1 << 4)
+#define RADV_HASH_SHADER_CLEAR_LDS       (1 << 5)
+#define RADV_HASH_SHADER_KEEP_STATISTICS (1 << 8)
+#define RADV_HASH_SHADER_USE_NGG_CULLING (1 << 13)
+#define RADV_HASH_SHADER_EMULATE_RT      (1 << 16)
+#define RADV_HASH_SHADER_SPLIT_FMA       (1 << 17)
+#define RADV_HASH_SHADER_RT_WAVE64       (1 << 18)
+#define RADV_HASH_SHADER_NO_FMASK        (1 << 19)
+#define RADV_HASH_SHADER_NO_RT           (1 << 20)
+#define RADV_HASH_SHADER_DUAL_BLEND_MRT1 (1 << 21)
+
 uint32_t
 radv_get_hash_flags(const struct radv_device *device, bool stats)
 {
@@ -253,6 +268,8 @@ radv_get_hash_flags(const struct radv_device *device, bool stats)
       hash_flags |= RADV_HASH_SHADER_NO_RT;
    if (device->instance->dual_color_blend_by_location)
       hash_flags |= RADV_HASH_SHADER_DUAL_BLEND_MRT1;
+   if (device->instance->clear_lds)
+      hash_flags |= RADV_HASH_SHADER_CLEAR_LDS;
    return hash_flags;
 }
 
@@ -655,22 +672,9 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_pipeline_key 
          .family = device->physical_device->rad_info.family,
          .use_aco = !radv_use_llvm_for_stage(device, stage->stage),
          .uses_discard = true,
-         /* Compared to radv_pipeline_key.ps.alpha_to_coverage_via_mrtz,
-          * radv_shader_info.ps.writes_mrt0_alpha need any depth/stencil/sample_mask exist.
-          * ac_nir_lower_ps() require this field to reflect whether alpha via mrtz is really
-          * present.
-          */
-         .alpha_to_coverage_via_mrtz = stage->info.ps.writes_mrt0_alpha,
-         .dual_src_blend_swizzle = pipeline_key->ps.epilog.mrt0_is_dual_src && gfx_level >= GFX11,
-         /* Need to filter out unwritten color slots. */
-         .spi_shader_col_format = pipeline_key->ps.epilog.spi_shader_col_format & stage->info.ps.colors_written,
-         .color_is_int8 = pipeline_key->ps.epilog.color_is_int8,
-         .color_is_int10 = pipeline_key->ps.epilog.color_is_int10,
          .alpha_func = COMPARE_FUNC_ALWAYS,
-
-         .enable_mrt_output_nan_fixup =
-            pipeline_key->ps.epilog.enable_mrt_output_nan_fixup && !stage->nir->info.internal,
          .no_color_export = stage->info.has_epilog,
+         .no_depth_export = stage->info.ps.exports_mrtz_via_epilog,
 
          .bc_optimize_for_persp = G_0286CC_PERSP_CENTER_ENA(stage->info.ps.spi_ps_input) &&
                                   G_0286CC_PERSP_CENTROID_ENA(stage->info.ps.spi_ps_input),
@@ -678,7 +682,32 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_pipeline_key 
                                    G_0286CC_LINEAR_CENTROID_ENA(stage->info.ps.spi_ps_input),
       };
 
+      if (!options.no_color_export) {
+         options.dual_src_blend_swizzle = pipeline_key->ps.epilog.mrt0_is_dual_src && gfx_level >= GFX11;
+         options.color_is_int8 = pipeline_key->ps.epilog.color_is_int8;
+         options.color_is_int10 = pipeline_key->ps.epilog.color_is_int10;
+         options.enable_mrt_output_nan_fixup =
+            pipeline_key->ps.epilog.enable_mrt_output_nan_fixup && !stage->nir->info.internal;
+         /* Need to filter out unwritten color slots. */
+         options.spi_shader_col_format = pipeline_key->ps.epilog.spi_shader_col_format & stage->info.ps.colors_written;
+      }
+
+      if (!options.no_depth_export) {
+         /* Compared to radv_pipeline_key.ps.alpha_to_coverage_via_mrtz,
+          * radv_shader_info.ps.writes_mrt0_alpha need any depth/stencil/sample_mask exist.
+          * ac_nir_lower_ps() require this field to reflect whether alpha via mrtz is really
+          * present.
+          */
+         options.alpha_to_coverage_via_mrtz = stage->info.ps.writes_mrt0_alpha;
+      }
+
       NIR_PASS_V(stage->nir, ac_nir_lower_ps, &options);
+   }
+
+   if (radv_shader_should_clear_lds(device, stage->nir)) {
+      const unsigned chunk_size = 16; /* max single store size */
+      const unsigned shared_size = ALIGN(stage->nir->info.shared_size, chunk_size);
+      NIR_PASS(_, stage->nir, nir_clear_shared_memory, shared_size, chunk_size);
    }
 
    NIR_PASS(_, stage->nir, nir_lower_int64);
@@ -760,6 +789,14 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_pipeline_key 
          nir_move_const_undef | nir_move_load_ubo | nir_move_load_input | nir_move_comparisons | nir_move_copies;
       NIR_PASS(_, stage->nir, nir_opt_move, move_opts);
    }
+}
+
+bool
+radv_shader_should_clear_lds(const struct radv_device *device, const nir_shader *shader)
+{
+   return (shader->info.stage == MESA_SHADER_COMPUTE || shader->info.stage == MESA_SHADER_MESH ||
+           shader->info.stage == MESA_SHADER_TASK) &&
+          shader->info.shared_size > 0 && device->instance->clear_lds;
 }
 
 static uint32_t
@@ -954,7 +991,6 @@ radv_GetPipelineExecutableStatisticsKHR(VkDevice _device, const VkPipelineExecut
    unsigned lds_increment = pdevice->rad_info.gfx_level >= GFX11 && stage == MESA_SHADER_FRAGMENT
                                ? 1024
                                : pdevice->rad_info.lds_encode_granularity;
-   unsigned max_waves = radv_get_max_waves(device, shader, stage);
 
    VkPipelineExecutableStatisticKHR *s = pStatistics;
    VkPipelineExecutableStatisticKHR *end = s + (pStatistics ? *pStatisticCount : 0);
@@ -1028,7 +1064,7 @@ radv_GetPipelineExecutableStatisticsKHR(VkDevice _device, const VkPipelineExecut
       desc_copy(s->name, "Subgroups per SIMD");
       desc_copy(s->description, "The maximum number of subgroups in flight on a SIMD unit");
       s->format = VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR;
-      s->value.u64 = max_waves;
+      s->value.u64 = shader->max_waves;
    }
    ++s;
 

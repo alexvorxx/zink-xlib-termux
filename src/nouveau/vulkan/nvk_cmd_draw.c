@@ -546,6 +546,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
    struct nvk_rendering_state *render = &cmd->state.gfx.render;
+   struct vk_dynamic_graphics_state *dyn = &cmd->vk.dynamic_graphics_state;
 
    memset(render, 0, sizeof(*render));
 
@@ -569,13 +570,14 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
    nvk_attachment_init(&render->stencil_att,
                        pRenderingInfo->pStencilAttachment);
 
-   /* If we don't have any attachments, emit a dummy color attachment */
-   if (render->color_att_count == 0 &&
-       render->depth_att.iview == NULL &&
-       render->stencil_att.iview == NULL)
-      render->color_att_count = 1;
+   BITSET_SET(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_TEST_ENABLE);
+   BITSET_SET(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_WRITE_ENABLE);
+   BITSET_SET(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_BOUNDS_TEST_ENABLE);
+   BITSET_SET(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_TEST_ENABLE);
 
-   struct nv_push *p = nvk_cmd_buffer_push(cmd, render->color_att_count * 10 + 27);
+   /* Always emit at least one color attachment, even if it's just a dummy. */
+   uint32_t color_att_count = MAX2(1, render->color_att_count);
+   struct nv_push *p = nvk_cmd_buffer_push(cmd, color_att_count * 10 + 27);
 
    P_IMMD(p, NV9097, SET_MME_SHADOW_SCRATCH(NVK_MME_SCRATCH_VIEW_MASK),
           render->view_mask);
@@ -591,7 +593,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
    });
 
    enum nil_sample_layout sample_layout = NIL_SAMPLE_LAYOUT_INVALID;
-   for (uint32_t i = 0; i < render->color_att_count; i++) {
+   for (uint32_t i = 0; i < color_att_count; i++) {
       if (render->color_att[i].iview) {
          const struct nvk_image_view *iview = render->color_att[i].iview;
          const struct nvk_image *image = (struct nvk_image *)iview->vk.image;
@@ -655,7 +657,7 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
    }
 
    P_IMMD(p, NV9097, SET_CT_SELECT, {
-      .target_count = render->color_att_count,
+      .target_count = color_att_count,
       .target0 = 0,
       .target1 = 1,
       .target2 = 2,
@@ -1368,22 +1370,32 @@ nvk_flush_ds_state(struct nvk_cmd_buffer *cmd)
 {
    struct nv_push *p = nvk_cmd_buffer_push(cmd, 35);
 
+   const struct nvk_rendering_state *render = &cmd->state.gfx.render;
    const struct vk_dynamic_graphics_state *dyn =
       &cmd->vk.dynamic_graphics_state;
 
-   if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_TEST_ENABLE))
-      P_IMMD(p, NV9097, SET_DEPTH_TEST, dyn->ds.depth.test_enable);
+   if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_TEST_ENABLE)) {
+      bool enable = dyn->ds.depth.test_enable &&
+                    render->depth_att.vk_format != VK_FORMAT_UNDEFINED;
+      P_IMMD(p, NV9097, SET_DEPTH_TEST, enable);
+   }
 
-   if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_WRITE_ENABLE))
-      P_IMMD(p, NV9097, SET_DEPTH_WRITE, dyn->ds.depth.write_enable);
+   if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_WRITE_ENABLE)) {
+      bool enable = dyn->ds.depth.write_enable &&
+                    render->depth_att.vk_format != VK_FORMAT_UNDEFINED;
+      P_IMMD(p, NV9097, SET_DEPTH_WRITE, enable);
+   }
 
    if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_COMPARE_OP)) {
       const uint32_t func = vk_to_nv9097_compare_op(dyn->ds.depth.compare_op);
       P_IMMD(p, NV9097, SET_DEPTH_FUNC, func);
    }
 
-   if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_BOUNDS_TEST_ENABLE))
-      P_IMMD(p, NV9097, SET_DEPTH_BOUNDS_TEST, dyn->ds.depth.bounds_test.enable);
+   if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_BOUNDS_TEST_ENABLE)) {
+      bool enable = dyn->ds.depth.bounds_test.enable &&
+                    render->depth_att.vk_format != VK_FORMAT_UNDEFINED;
+      P_IMMD(p, NV9097, SET_DEPTH_BOUNDS_TEST, enable);
+   }
 
    if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_DEPTH_BOUNDS_TEST_BOUNDS)) {
       P_MTHD(p, NV9097, SET_DEPTH_BOUNDS_MIN);
@@ -1391,8 +1403,11 @@ nvk_flush_ds_state(struct nvk_cmd_buffer *cmd)
       P_NV9097_SET_DEPTH_BOUNDS_MAX(p, fui(dyn->ds.depth.bounds_test.max));
    }
 
-   if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_TEST_ENABLE))
-      P_IMMD(p, NV9097, SET_STENCIL_TEST, dyn->ds.stencil.test_enable);
+   if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_DS_STENCIL_TEST_ENABLE)) {
+      bool enable = dyn->ds.stencil.test_enable &&
+                    render->stencil_att.vk_format != VK_FORMAT_UNDEFINED;
+      P_IMMD(p, NV9097, SET_STENCIL_TEST, enable);
+   }
 
    const struct vk_stencil_test_face_state *front = &dyn->ds.stencil.front;
    const struct vk_stencil_test_face_state *back = &dyn->ds.stencil.back;
@@ -2101,7 +2116,8 @@ nvk_CmdDrawIndirect(VkCommandBuffer commandBuffer,
    });
 
    if (nvk_cmd_buffer_3d_cls(cmd) >= TURING_A) {
-      struct nv_push *p = nvk_cmd_buffer_push(cmd, 8);
+      struct nv_push *p = nvk_cmd_buffer_push(cmd, 10);
+      P_IMMD(p, NVC597, MME_DMA_SYSMEMBAR, 0);
       P_IMMD(p, NVC597, SET_MME_DATA_FIFO_CONFIG, FIFO_SIZE_SIZE_4KB);
       P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_DRAW_INDIRECT));
       P_INLINE_DATA(p, begin);
@@ -2218,7 +2234,8 @@ nvk_CmdDrawIndexedIndirect(VkCommandBuffer commandBuffer,
    });
 
    if (nvk_cmd_buffer_3d_cls(cmd) >= TURING_A) {
-      struct nv_push *p = nvk_cmd_buffer_push(cmd, 8);
+      struct nv_push *p = nvk_cmd_buffer_push(cmd, 10);
+      P_IMMD(p, NVC597, MME_DMA_SYSMEMBAR, 0);
       P_IMMD(p, NVC597, SET_MME_DATA_FIFO_CONFIG, FIFO_SIZE_SIZE_4KB);
       P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_DRAW_INDEXED_INDIRECT));
       P_INLINE_DATA(p, begin);
@@ -2315,7 +2332,8 @@ nvk_CmdDrawIndirectCount(VkCommandBuffer commandBuffer,
       .split_mode = SPLIT_MODE_NORMAL_BEGIN_NORMAL_END,
    });
 
-   struct nv_push *p = nvk_cmd_buffer_push(cmd, 10);
+   struct nv_push *p = nvk_cmd_buffer_push(cmd, 12);
+   P_IMMD(p, NVC597, MME_DMA_SYSMEMBAR, 0);
    P_IMMD(p, NVC597, SET_MME_DATA_FIFO_CONFIG, FIFO_SIZE_SIZE_4KB);
    P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_DRAW_INDIRECT_COUNT));
    P_INLINE_DATA(p, begin);
@@ -2392,7 +2410,8 @@ nvk_CmdDrawIndexedIndirectCount(VkCommandBuffer commandBuffer,
       .split_mode = SPLIT_MODE_NORMAL_BEGIN_NORMAL_END,
    });
 
-   struct nv_push *p = nvk_cmd_buffer_push(cmd, 10);
+   struct nv_push *p = nvk_cmd_buffer_push(cmd, 12);
+   P_IMMD(p, NVC597, MME_DMA_SYSMEMBAR, 0);
    P_IMMD(p, NVC597, SET_MME_DATA_FIFO_CONFIG, FIFO_SIZE_SIZE_4KB);
    P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_DRAW_INDEXED_INDIRECT_COUNT));
    P_INLINE_DATA(p, begin);
@@ -2508,9 +2527,10 @@ nvk_CmdDrawIndirectByteCountEXT(VkCommandBuffer commandBuffer,
    });
 
    if (nvk_cmd_buffer_3d_cls(cmd) >= TURING_A) {
-      struct nv_push *p = nvk_cmd_buffer_push(cmd, 12);
+      struct nv_push *p = nvk_cmd_buffer_push(cmd, 14);
       P_IMMD(p, NV9097, SET_DRAW_AUTO_START, counterOffset);
       P_IMMD(p, NV9097, SET_DRAW_AUTO_STRIDE, vertexStride);
+      P_IMMD(p, NVC597, MME_DMA_SYSMEMBAR, 0);
       P_IMMD(p, NVC597, SET_MME_DATA_FIFO_CONFIG, FIFO_SIZE_SIZE_4KB);
 
       P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_XFB_DRAW_INDIRECT));

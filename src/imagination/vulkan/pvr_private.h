@@ -832,12 +832,6 @@ struct pvr_cmd_buffer {
    struct list_head sub_cmds;
 };
 
-struct pvr_pipeline_cache {
-   struct vk_object_base base;
-
-   struct pvr_device *device;
-};
-
 struct pvr_stage_allocation_descriptor_state {
    struct pvr_pds_upload pds_code;
    /* Since we upload the code segment separately from the data segment
@@ -1483,10 +1477,6 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_device_memory,
                                VkDeviceMemory,
                                VK_OBJECT_TYPE_DEVICE_MEMORY)
 VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_image, vk.base, VkImage, VK_OBJECT_TYPE_IMAGE)
-VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_pipeline_cache,
-                               base,
-                               VkPipelineCache,
-                               VK_OBJECT_TYPE_PIPELINE_CACHE)
 VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_buffer,
                                vk.base,
                                VkBuffer,
@@ -1513,7 +1503,7 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_descriptor_pool,
                                VkDescriptorPool,
                                VK_OBJECT_TYPE_DESCRIPTOR_POOL)
 VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_sampler,
-                               base,
+                               vk.base,
                                VkSampler,
                                VK_OBJECT_TYPE_SAMPLER)
 VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_pipeline_layout,

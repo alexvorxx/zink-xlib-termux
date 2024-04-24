@@ -409,3 +409,21 @@ python-test:
     - debian/x86_64_test-gl
     - debian-testing
     - !reference [.required-for-hardware-jobs, needs]
+
+.b2c-arm64-test-vk:
+  extends:
+    - .use-debian/arm64_test-vk
+    - .b2c-test
+  needs:
+    - debian/arm64_test-vk
+    - debian-arm64
+    - !reference [.required-for-hardware-jobs, needs]
+
+.b2c-arm64-test-gl:
+  extends:
+    - .use-debian/arm64_test-gl
+    - .b2c-test
+  needs:
+    - debian/arm64_test-gl
+    - debian-arm64
+    - !reference [.required-for-hardware-jobs, needs]

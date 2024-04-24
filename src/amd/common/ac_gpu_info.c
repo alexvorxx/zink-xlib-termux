@@ -45,6 +45,7 @@
 #define AMDGPU_HW_IP_VCN_DEC 6
 #define AMDGPU_HW_IP_VCN_ENC 7
 #define AMDGPU_HW_IP_VCN_JPEG 8
+#define AMDGPU_HW_IP_VPE 9
 #define AMDGPU_IDS_FLAGS_FUSION 0x1
 #define AMDGPU_IDS_FLAGS_PREEMPTION 0x2
 #define AMDGPU_IDS_FLAGS_TMZ 0x4
@@ -611,6 +612,7 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
    STATIC_ASSERT(AMDGPU_HW_IP_VCN_DEC == AMD_IP_VCN_DEC);
    STATIC_ASSERT(AMDGPU_HW_IP_VCN_ENC == AMD_IP_VCN_ENC);
    STATIC_ASSERT(AMDGPU_HW_IP_VCN_JPEG == AMD_IP_VCN_JPEG);
+   STATIC_ASSERT(AMDGPU_HW_IP_VPE == AMD_IP_VPE);
 
    handle_env_var_force_family(info);
 
@@ -698,6 +700,7 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
    info->ip[AMD_IP_VCN_DEC].ib_pad_dw_mask = 0xf;
    info->ip[AMD_IP_VCN_ENC].ib_pad_dw_mask = 0x3f;
    info->ip[AMD_IP_VCN_JPEG].ib_pad_dw_mask = 0xf;
+   info->ip[AMD_IP_VPE].ib_pad_dw_mask = 0xf;
 
    /* Only require gfx or compute. */
    if (!info->ip[AMD_IP_GFX].num_queues && !info->ip[AMD_IP_COMPUTE].num_queues) {
@@ -1067,7 +1070,9 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
       info->num_sqc_per_wgp = device_info.num_sqc_per_wgp;
    }
 
-   if (info->gfx_level >= GFX11 && info->drm_minor >= 52) {
+   /* Firmware wrongly reports 0 bytes of MALL being present on Navi33.
+    * Work around this by manually computing cache sizes. */
+   if (info->gfx_level >= GFX11 && info->drm_minor >= 52 && info->family != CHIP_NAVI33) {
       info->tcp_cache_size = device_info.tcp_cache_size * 1024;
       info->l1_cache_size = device_info.gl1c_cache_size * 1024;
       info->l2_cache_size = device_info.gl2c_cache_size * 1024;
@@ -1243,6 +1248,13 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
                                     info->family == CHIP_BONAIRE ||
                                     info->family == CHIP_KABINI;
 
+   /* HW bug workaround with async compute dispatches when threadgroup > 4096.
+    * The workaround is to change the "threadgroup" dimension mode to "thread"
+    * dimension mode.
+    */
+   info->has_async_compute_threadgroup_bug = info->family == CHIP_ICELAND ||
+                                             info->family == CHIP_TONGA;
+
    /* Support for GFX10.3 was added with F32_ME_FEATURE_VERSION_31 but the
     * feature version wasn't bumped.
     */
@@ -1259,11 +1271,16 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
 
    info->has_export_conflict_bug = info->gfx_level == GFX11;
 
-   /* GFX6-8 SDMA can't ignore page faults on unmapped sparse resources. */
-   info->sdma_supports_sparse = info->gfx_level >= GFX9;
+   /* Convert the SDMA version in the current GPU to an enum. */
+   info->sdma_ip_version =
+      (enum sdma_version)SDMA_VERSION_VALUE(info->ip[AMD_IP_SDMA].ver_major,
+                                            info->ip[AMD_IP_SDMA].ver_minor);
 
-   /* GFX10+ SDMA supports DCC and HTILE, but Navi 10 has issues with it according to PAL. */
-   info->sdma_supports_compression = info->gfx_level >= GFX10 && info->family != CHIP_NAVI10;
+   /* SDMA v1.0-3.x (GFX6-8) can't ignore page faults on unmapped sparse resources. */
+   info->sdma_supports_sparse = info->sdma_ip_version >= SDMA_4_0;
+
+   /* SDMA v5.0+ (GFX10+) supports DCC and HTILE, but Navi 10 has issues with it according to PAL. */
+   info->sdma_supports_compression = info->sdma_ip_version >= SDMA_5_0 && info->family != CHIP_NAVI10;
 
    /* Get the number of good compute units. */
    info->num_cu = 0;

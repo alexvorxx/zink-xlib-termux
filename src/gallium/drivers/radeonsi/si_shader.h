@@ -436,8 +436,8 @@ struct si_shader_info {
    uint64_t inputs_read; /* "get_unique_index" bits */
    uint64_t tcs_vgpr_only_inputs; /* TCS inputs that are only in VGPRs, not LDS. */
 
+   uint64_t outputs_written_before_tes_gs; /* "get_unique_index" bits */
    uint64_t outputs_written_before_ps; /* "get_unique_index" bits */
-   uint64_t outputs_written;           /* "get_unique_index" bits */
    uint32_t patch_outputs_written;     /* "get_unique_index_patch" bits */
 
    uint8_t clipdist_mask;
@@ -504,6 +504,7 @@ struct si_shader_info {
    bool uses_indirect_descriptor;
    bool has_divergent_loop;
    bool uses_sampleid;
+   bool uses_layer_id;
    bool has_non_uniform_tex_access;
 
    bool uses_vmem_sampler_or_bvh;
@@ -742,6 +743,7 @@ struct si_shader_key_ge {
       uint64_t kill_outputs; /* "get_unique_index" bits */
       unsigned kill_clip_distances : 8;
       unsigned kill_pointsize : 1;
+      unsigned kill_layer : 1;
       unsigned remove_streamout : 1;
 
       /* For NGG VS and TES. */

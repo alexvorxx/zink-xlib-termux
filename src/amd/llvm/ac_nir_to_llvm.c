@@ -906,7 +906,6 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
       break;
    case nir_op_f2i8:
    case nir_op_f2i16:
-   case nir_op_f2imp:
    case nir_op_f2i32:
    case nir_op_f2i64:
       src[0] = ac_to_float(&ctx->ac, src[0]);
@@ -914,64 +913,46 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
       break;
    case nir_op_f2u8:
    case nir_op_f2u16:
-   case nir_op_f2ump:
    case nir_op_f2u32:
    case nir_op_f2u64:
       src[0] = ac_to_float(&ctx->ac, src[0]);
       result = LLVMBuildFPToUI(ctx->ac.builder, src[0], def_type, "");
       break;
    case nir_op_i2f16:
-   case nir_op_i2fmp:
    case nir_op_i2f32:
    case nir_op_i2f64:
       result = LLVMBuildSIToFP(ctx->ac.builder, src[0], ac_to_float_type(&ctx->ac, def_type), "");
       break;
    case nir_op_u2f16:
-   case nir_op_u2fmp:
    case nir_op_u2f32:
    case nir_op_u2f64:
       result = LLVMBuildUIToFP(ctx->ac.builder, src[0], ac_to_float_type(&ctx->ac, def_type), "");
       break;
-   case nir_op_f2f16_rtz:
-   case nir_op_f2f16:
-   case nir_op_f2fmp:
+   case nir_op_f2f16_rtz: {
       src[0] = ac_to_float(&ctx->ac, src[0]);
 
-      /* For OpenGL, we want fast packing with v_cvt_pkrtz_f16, but if we use it,
-       * all f32->f16 conversions have to round towards zero, because both scalar
-       * and vec2 down-conversions have to round equally.
+      if (LLVMTypeOf(src[0]) == ctx->ac.f64)
+         src[0] = LLVMBuildFPTrunc(ctx->ac.builder, src[0], ctx->ac.f32, "");
+
+      /* Fast path conversion. This only works if NIR is vectorized
+       * to vec2 16.
        */
-      if (ctx->ac.float_mode == AC_FLOAT_MODE_DEFAULT_OPENGL || instr->op == nir_op_f2f16_rtz) {
-         src[0] = ac_to_float(&ctx->ac, src[0]);
-
-         if (LLVMTypeOf(src[0]) == ctx->ac.f64)
-            src[0] = LLVMBuildFPTrunc(ctx->ac.builder, src[0], ctx->ac.f32, "");
-
-         /* Fast path conversion. This only works if NIR is vectorized
-          * to vec2 16.
-          */
-         if (LLVMTypeOf(src[0]) == ctx->ac.v2f32) {
-            LLVMValueRef args[] = {
-               ac_llvm_extract_elem(&ctx->ac, src[0], 0),
-               ac_llvm_extract_elem(&ctx->ac, src[0], 1),
-            };
-            result = ac_build_cvt_pkrtz_f16(&ctx->ac, args);
-            break;
-         }
-
-         assert(ac_get_llvm_num_components(src[0]) == 1);
-         LLVMValueRef param[2] = {src[0], LLVMGetUndef(ctx->ac.f32)};
-         result = ac_build_cvt_pkrtz_f16(&ctx->ac, param);
-         result = LLVMBuildExtractElement(ctx->ac.builder, result, ctx->ac.i32_0, "");
-      } else {
-         if (ac_get_elem_bits(&ctx->ac, LLVMTypeOf(src[0])) < ac_get_elem_bits(&ctx->ac, def_type))
-            result =
-               LLVMBuildFPExt(ctx->ac.builder, src[0], ac_to_float_type(&ctx->ac, def_type), "");
-         else
-            result =
-               LLVMBuildFPTrunc(ctx->ac.builder, src[0], ac_to_float_type(&ctx->ac, def_type), "");
+      if (LLVMTypeOf(src[0]) == ctx->ac.v2f32) {
+         LLVMValueRef args[] = {
+            ac_llvm_extract_elem(&ctx->ac, src[0], 0),
+            ac_llvm_extract_elem(&ctx->ac, src[0], 1),
+         };
+         result = ac_build_cvt_pkrtz_f16(&ctx->ac, args);
+         break;
       }
+
+      assert(ac_get_llvm_num_components(src[0]) == 1);
+      LLVMValueRef param[2] = {src[0], LLVMGetUndef(ctx->ac.f32)};
+      result = ac_build_cvt_pkrtz_f16(&ctx->ac, param);
+      result = LLVMBuildExtractElement(ctx->ac.builder, result, ctx->ac.i32_0, "");
       break;
+   }
+   case nir_op_f2f16:
    case nir_op_f2f16_rtne:
    case nir_op_f2f32:
    case nir_op_f2f64:
@@ -993,7 +974,6 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
       break;
    case nir_op_i2i8:
    case nir_op_i2i16:
-   case nir_op_i2imp:
    case nir_op_i2i32:
    case nir_op_i2i64:
       if (ac_get_elem_bits(&ctx->ac, LLVMTypeOf(src[0])) < ac_get_elem_bits(&ctx->ac, def_type))
@@ -3372,6 +3352,15 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
    }
    case nir_intrinsic_vote_any: {
       result = ac_build_vote_any(&ctx->ac, get_src(ctx, instr->src[0]));
+      break;
+   }
+   case nir_intrinsic_quad_vote_any: {
+      result = ac_build_wqm_vote(&ctx->ac, get_src(ctx, instr->src[0]));
+      break;
+   }
+   case nir_intrinsic_quad_vote_all: {
+      LLVMValueRef src = LLVMBuildNot(ctx->ac.builder, get_src(ctx, instr->src[0]), "");
+      result = LLVMBuildNot(ctx->ac.builder, ac_build_wqm_vote(&ctx->ac, src), "");
       break;
    }
    case nir_intrinsic_shuffle:

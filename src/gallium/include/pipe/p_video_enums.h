@@ -142,6 +142,57 @@ enum pipe_video_cap
    PIPE_VIDEO_CAP_ENC_MAX_TILE_ROWS = 41,
    PIPE_VIDEO_CAP_ENC_MAX_TILE_COLS = 42,
    PIPE_VIDEO_CAP_ENC_INTRA_REFRESH = 43,
+   PIPE_VIDEO_CAP_ENC_SUPPORTS_FEEDBACK_METADATA = 44,
+   /*
+    * uses pipe_video_h264_enc_dbk_filter_mode_flags and sets the
+    * supported modes to set in disable_deblocking_filter_idc
+   */
+   PIPE_VIDEO_CAP_ENC_H264_DISABLE_DBK_FILTER_MODES_SUPPORTED = 45,
+   /* max number of intra refresh cycles before the beginning of a new
+    * intra-refresh wave (e.g pipe_enc_intra_refresh.offset is 0 again)
+   */
+   PIPE_VIDEO_CAP_ENC_INTRA_REFRESH_MAX_DURATION = 46,
+};
+
+enum pipe_video_h264_enc_dbk_filter_mode_flags
+{
+   PIPE_VIDEO_H264_ENC_DBK_MODE_NONE	= 0,
+   PIPE_VIDEO_H264_ENC_DBK_MODE_ALL_LUMA_CHROMA_SLICE_BLOCK_EDGES_ALWAYS_FILTERED	= 0x1,
+   PIPE_VIDEO_H264_ENC_DBK_MODE_DISABLE_ALL_SLICE_BLOCK_EDGES	= 0x2,
+   PIPE_VIDEO_H264_ENC_DBK_MODE_DISABLE_SLICE_BOUNDARIES_BLOCKS = 0x4,
+   PIPE_VIDEO_H264_ENC_DBK_MODE_USE_TWO_STAGE_DEBLOCKING = 0x8,
+   PIPE_VIDEO_H264_ENC_DBK_MODE_DISABLE_CHROMA_BLOCK_EDGES	= 0x10,
+   PIPE_VIDEO_H264_ENC_DBK_MODE_DISABLE_CHROMA_BLOCK_EDGES_AND_LUMA_BOUNDARIES = 0x20,
+   PIPE_VIDEO_H264_ENC_DBK_MODE_DISABLE_CHROMA_BLOCK_EDGES_AND_USE_LUMA_TWO_STAGE_DEBLOCKING = 0x40,
+};
+
+enum pipe_video_feedback_encode_result_flags
+{
+   /* Requires PIPE_VIDEO_FEEDBACK_METADATA_TYPE_ENCODE_RESULT */
+   PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_OK = 0x0,
+   PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED = 0x1,
+   /* Requires PIPE_VIDEO_FEEDBACK_METADATA_TYPE_MAX_FRAME_SIZE_OVERFLOW */
+   PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_MAX_FRAME_SIZE_OVERFLOW = 0x2,
+};
+
+enum codec_unit_location_flags
+{
+   PIPE_VIDEO_CODEC_UNIT_LOCATION_FLAG_NONE = 0x0,
+   /* Requires PIPE_VIDEO_FEEDBACK_METADATA_TYPE_MAX_SLICE_SIZE_OVERFLOW */
+   PIPE_VIDEO_CODEC_UNIT_LOCATION_FLAG_MAX_SLICE_SIZE_OVERFLOW = 0x1,
+};
+
+/* To be used with PIPE_VIDEO_CAP_ENC_SUPPORTS_FEEDBACK_METADATA
+ * for checking gallium driver support and to indicate the
+ * different metadata types in an encode operation
+*/
+enum pipe_video_feedback_metadata_type
+{
+   PIPE_VIDEO_FEEDBACK_METADATA_TYPE_BITSTREAM_SIZE           = 0x0,
+   PIPE_VIDEO_FEEDBACK_METADATA_TYPE_ENCODE_RESULT            = 0x1,
+   PIPE_VIDEO_FEEDBACK_METADATA_TYPE_CODEC_UNIT_LOCATION      = 0x2,
+   PIPE_VIDEO_FEEDBACK_METADATA_TYPE_MAX_FRAME_SIZE_OVERFLOW  = 0x4,
+   PIPE_VIDEO_FEEDBACK_METADATA_TYPE_MAX_SLICE_SIZE_OVERFLOW  = 0x8,
 };
 
 enum pipe_video_av1_enc_filter_mode
@@ -177,6 +228,35 @@ enum pipe_video_vpp_blend_mode
 {
    PIPE_VIDEO_VPP_BLEND_MODE_NONE = 0x0,
    PIPE_VIDEO_VPP_BLEND_MODE_GLOBAL_ALPHA = 0x1,
+};
+
+/* To be used for VPP state*/
+enum pipe_video_vpp_color_standard_type
+{
+   PIPE_VIDEO_VPP_COLOR_STANDARD_TYPE_NONE = 0x0,
+   PIPE_VIDEO_VPP_COLOR_STANDARD_TYPE_BT601 = 0x1,
+   PIPE_VIDEO_VPP_COLOR_STANDARD_TYPE_BT709 = 0x2,
+   PIPE_VIDEO_VPP_COLOR_STANDARD_TYPE_BT2020 = 0xC,
+   PIPE_VIDEO_VPP_COLOR_STANDARD_TYPE_COUNT,
+};
+
+/* To be used for VPP state*/
+enum pipe_video_vpp_color_range
+{
+   PIPE_VIDEO_VPP_CHROMA_COLOR_RANGE_NONE     = 0x00,
+   PIPE_VIDEO_VPP_CHROMA_COLOR_RANGE_REDUCED  = 0x01,
+   PIPE_VIDEO_VPP_CHROMA_COLOR_RANGE_FULL     = 0x02,
+};
+
+/* To be used for VPP state*/
+enum pipe_video_vpp_chroma_siting
+{
+   PIPE_VIDEO_VPP_CHROMA_SITING_NONE              = 0x00,
+   PIPE_VIDEO_VPP_CHROMA_SITING_VERTICAL_TOP      = 0x01,
+   PIPE_VIDEO_VPP_CHROMA_SITING_VERTICAL_CENTER   = 0x02,
+   PIPE_VIDEO_VPP_CHROMA_SITING_VERTICAL_BOTTOM   = 0x04,
+   PIPE_VIDEO_VPP_CHROMA_SITING_HORIZONTAL_LEFT   = 0x10,
+   PIPE_VIDEO_VPP_CHROMA_SITING_HORIZONTAL_CENTER = 0x20,
 };
 
 
@@ -232,6 +312,18 @@ enum pipe_video_enc_intra_refresh_mode
    PIPE_VIDEO_ENC_INTRA_REFRESH_B_FRAME   = 0x20000,
    /* intra-refresh support multiple reference encoder */
    PIPE_VIDEO_ENC_INTRA_REFRESH_MULTI_REF = 0x40000,
+};
+
+enum pipe_video_slice_mode
+{
+   /*
+    * Partitions the frame using block offsets and block numbers
+   */
+   PIPE_VIDEO_SLICE_MODE_BLOCKS = 0,
+   /*
+    * Partitions the frame using max slice size per coded slice
+   */
+   PIPE_VIDEO_SLICE_MODE_MAX_SLICE_SICE = 1,
 };
 
 enum pipe_video_entrypoint

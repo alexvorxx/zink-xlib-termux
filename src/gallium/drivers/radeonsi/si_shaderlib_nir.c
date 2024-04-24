@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "gallium/auxiliary/nir/pipe_nir.h"
 #define AC_SURFACE_INCLUDE_NIR
 #include "ac_surface.h"
 #include "si_pipe.h"
@@ -13,30 +14,7 @@
 static void *create_shader_state(struct si_context *sctx, nir_shader *nir)
 {
    sctx->b.screen->finalize_nir(sctx->b.screen, (void*)nir);
-
-   struct pipe_shader_state state = {0};
-   state.type = PIPE_SHADER_IR_NIR;
-   state.ir.nir = nir;
-
-   switch (nir->info.stage) {
-   case MESA_SHADER_VERTEX:
-      return sctx->b.create_vs_state(&sctx->b, &state);
-   case MESA_SHADER_TESS_CTRL:
-      return sctx->b.create_tcs_state(&sctx->b, &state);
-   case MESA_SHADER_TESS_EVAL:
-      return sctx->b.create_tes_state(&sctx->b, &state);
-   case MESA_SHADER_FRAGMENT:
-      return sctx->b.create_fs_state(&sctx->b, &state);
-   case MESA_SHADER_COMPUTE: {
-      struct pipe_compute_state cs_state = {0};
-      cs_state.ir_type = PIPE_SHADER_IR_NIR;
-      cs_state.prog = nir;
-      return sctx->b.create_compute_state(&sctx->b, &cs_state);
-   }
-   default:
-      unreachable("invalid shader stage");
-      return NULL;
-   }
+   return pipe_shader_from_nir(&sctx->b, nir);
 }
 
 static nir_def *get_global_ids(nir_builder *b, unsigned num_components)
@@ -644,4 +622,221 @@ void *si_clear_12bytes_buffer_shader(struct si_context *sctx)
       .access = SI_COMPUTE_DST_CACHE_POLICY != L2_LRU ? ACCESS_NON_TEMPORAL : 0);
 
    return create_shader_state(sctx, b.shader);
+}
+
+/* Create a compute shader implementing clear_buffer or copy_buffer. */
+void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_per_thread,
+                                   bool dst_stream_cache_policy, bool is_copy)
+{
+   assert(util_is_power_of_two_nonzero(num_dwords_per_thread));
+
+   const nir_shader_compiler_options *options =
+      sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_COMPUTE);
+
+   unsigned store_qualifier = ACCESS_COHERENT | ACCESS_RESTRICT;
+   if (dst_stream_cache_policy)
+      store_qualifier |= ACCESS_NON_TEMPORAL;
+
+   /* Don't cache loads, because there is no reuse. */
+   unsigned load_qualifier = store_qualifier | ACCESS_NON_TEMPORAL;
+
+   nir_builder b =
+      nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, options, "create_dma_compute");
+
+   unsigned default_wave_size = si_determine_wave_size(sctx->screen, NULL);
+
+   b.shader->info.workgroup_size[0] = default_wave_size;
+   b.shader->info.workgroup_size[1] = 1;
+   b.shader->info.workgroup_size[2] = 1;
+   b.shader->info.num_ssbos = 1;
+
+   unsigned num_mem_ops = MAX2(1, num_dwords_per_thread / 4);
+   unsigned *inst_dwords = alloca(num_mem_ops * sizeof(unsigned));
+
+   for (unsigned i = 0; i < num_mem_ops; i++) {
+      if (i * 4 < num_dwords_per_thread)
+         inst_dwords[i] = MIN2(4, num_dwords_per_thread - i * 4);
+   }
+
+   /* If there are multiple stores,
+    * the first store writes into 0 * wavesize + tid,
+    * the 2nd store writes into 1 * wavesize + tid,
+    * the 3rd store writes into 2 * wavesize + tid, etc.
+    */
+   nir_def *store_address = get_global_ids(&b, 1);
+
+   /* Convert from a "store size unit" into bytes. */
+   store_address = nir_imul_imm(&b, store_address, 4 * inst_dwords[0]);
+
+   nir_def *load_address = store_address, *value, *values[num_mem_ops];
+   value = nir_undef(&b, 1, 32);
+
+   if (is_copy) {
+      b.shader->info.num_ssbos++;
+   } else {
+      b.shader->info.cs.user_data_components_amd = inst_dwords[0];
+      value = nir_trim_vector(&b, nir_load_user_data_amd(&b), inst_dwords[0]);
+   }
+
+   /* Distance between a load and a store for latency hiding. */
+   unsigned load_store_distance = is_copy ? 8 : 0;
+
+   for (unsigned i = 0; i < num_mem_ops + load_store_distance; i++) {
+      int d = i - load_store_distance;
+
+      if (is_copy && i < num_mem_ops) {
+         if (i) {
+            load_address = nir_iadd(&b, load_address,
+                                    nir_imm_int(&b, 4 * inst_dwords[i] * default_wave_size));
+         }
+         values[i] = nir_load_ssbo(&b, 4, 32, nir_imm_int(&b, 1),load_address,
+                                   .access = load_qualifier);
+      }
+
+      if (d >= 0) {
+         if (d) {
+            store_address = nir_iadd(&b, store_address,
+                                     nir_imm_int(&b, 4 * inst_dwords[d] * default_wave_size));
+         }
+         nir_store_ssbo(&b, is_copy ? values[d] : value, nir_imm_int(&b, 0), store_address,
+                        .access = store_qualifier);
+      }
+   }
+
+   return create_shader_state(sctx, b.shader);
+}
+
+/* Load samples from the image, and copy them to the same image. This looks like
+ * a no-op, but it's not. Loads use FMASK, while stores don't, so samples are
+ * reordered to match expanded FMASK.
+ *
+ * After the shader finishes, FMASK should be cleared to identity.
+ */
+void *si_create_fmask_expand_cs(struct si_context *sctx, unsigned num_samples, bool is_array)
+{
+   const nir_shader_compiler_options *options =
+      sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_COMPUTE);
+
+   nir_builder b =
+      nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, options, "create_fmask_expand_cs");
+   b.shader->info.workgroup_size[0] = 8;
+   b.shader->info.workgroup_size[1] = 8;
+   b.shader->info.workgroup_size[2] = 1;
+
+   /* Return an empty compute shader */
+   if (num_samples == 0)
+      return create_shader_state(sctx, b.shader);
+
+   b.shader->info.num_images = 1;
+
+   const struct glsl_type *img_type = glsl_image_type(GLSL_SAMPLER_DIM_MS, is_array, GLSL_TYPE_FLOAT);
+   nir_variable *img = nir_variable_create(b.shader, nir_var_image, img_type, "image");
+   img->data.access = ACCESS_RESTRICT;
+
+   nir_def *z = nir_undef(&b, 1, 32);
+   if (is_array) {
+      z = nir_channel(&b, nir_load_workgroup_id(&b), 2);
+   }
+
+   nir_def *zero = nir_imm_int(&b, 0);
+   nir_def *address = get_global_ids(&b, 2);
+
+   nir_def *sample[8], *addresses[8];
+   assert(num_samples <= ARRAY_SIZE(sample));
+
+   nir_def *img_def = &nir_build_deref_var(&b, img)->def;
+
+   /* Load samples, resolving FMASK. */
+   for (unsigned i = 0; i < num_samples; i++) {
+      nir_def *it = nir_imm_int(&b, i);
+      sample[i] = nir_vec4(&b, nir_channel(&b, address, 0), nir_channel(&b, address, 1), z, it);
+      addresses[i] = nir_image_deref_load(&b, 4, 32, img_def, sample[i], it, zero,
+                                          .access = ACCESS_RESTRICT,
+                                          .image_dim = GLSL_SAMPLER_DIM_2D,
+                                          .image_array = is_array);
+   }
+
+   /* Store samples, ignoring FMASK. */
+   for (unsigned i = 0; i < num_samples; i++) {
+      nir_image_deref_store(&b, img_def, sample[i], nir_imm_int(&b, i), addresses[i], zero,
+                            .access = ACCESS_RESTRICT,
+                            .image_dim = GLSL_SAMPLER_DIM_2D,
+                            .image_array = is_array);
+   }
+
+   return create_shader_state(sctx, b.shader);
+}
+
+/* This is just a pass-through shader with 1-3 MOV instructions. */
+void *si_get_blitter_vs(struct si_context *sctx, enum blitter_attrib_type type, unsigned num_layers)
+{
+   unsigned vs_blit_property;
+   void **vs;
+
+   switch (type) {
+   case UTIL_BLITTER_ATTRIB_NONE:
+      vs = num_layers > 1 ? &sctx->vs_blit_pos_layered : &sctx->vs_blit_pos;
+      vs_blit_property = SI_VS_BLIT_SGPRS_POS;
+      break;
+   case UTIL_BLITTER_ATTRIB_COLOR:
+      vs = num_layers > 1 ? &sctx->vs_blit_color_layered : &sctx->vs_blit_color;
+      vs_blit_property = SI_VS_BLIT_SGPRS_POS_COLOR;
+      break;
+   case UTIL_BLITTER_ATTRIB_TEXCOORD_XY:
+   case UTIL_BLITTER_ATTRIB_TEXCOORD_XYZW:
+      assert(num_layers == 1);
+      vs = &sctx->vs_blit_texcoord;
+      vs_blit_property = SI_VS_BLIT_SGPRS_POS_TEXCOORD;
+      break;
+   default:
+      assert(0);
+      return NULL;
+   }
+
+   if (*vs)
+      return *vs;
+
+   /* Add 1 for the attribute ring address. */
+   if (sctx->gfx_level >= GFX11 && type != UTIL_BLITTER_ATTRIB_NONE)
+      vs_blit_property++;
+
+   const nir_shader_compiler_options *options =
+      sctx->b.screen->get_compiler_options(sctx->b.screen, PIPE_SHADER_IR_NIR, PIPE_SHADER_VERTEX);
+
+   nir_builder b =
+      nir_builder_init_simple_shader(MESA_SHADER_VERTEX, options, "get_blitter_vs");
+
+   /* Tell the shader to load VS inputs from SGPRs: */
+   b.shader->info.vs.blit_sgprs_amd = vs_blit_property;
+   b.shader->info.vs.window_space_position = true;
+
+   const struct glsl_type *vec4 = glsl_vec4_type();
+
+   nir_copy_var(&b,
+                nir_create_variable_with_location(b.shader, nir_var_shader_out,
+                                                  VARYING_SLOT_POS, vec4),
+                nir_create_variable_with_location(b.shader, nir_var_shader_in,
+                                                  VERT_ATTRIB_GENERIC0, vec4));
+
+   if (type != UTIL_BLITTER_ATTRIB_NONE) {
+      nir_copy_var(&b,
+                   nir_create_variable_with_location(b.shader, nir_var_shader_out,
+                                                     VARYING_SLOT_VAR0, vec4),
+                   nir_create_variable_with_location(b.shader, nir_var_shader_in,
+                                                     VERT_ATTRIB_GENERIC1, vec4));
+   }
+
+   if (num_layers > 1) {
+      nir_variable *out_layer =
+         nir_create_variable_with_location(b.shader, nir_var_shader_out,
+                                           VARYING_SLOT_LAYER, glsl_int_type());
+      out_layer->data.interpolation = INTERP_MODE_NONE;
+
+      nir_copy_var(&b, out_layer,
+                   nir_create_variable_with_location(b.shader, nir_var_system_value,
+                                                     SYSTEM_VALUE_INSTANCE_ID, glsl_int_type()));
+   }
+
+   *vs = create_shader_state(sctx, b.shader);
+   return *vs;
 }

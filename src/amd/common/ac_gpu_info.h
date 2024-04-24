@@ -101,6 +101,7 @@ struct radeon_info {
    bool has_two_planes_iterate256_bug;
    bool has_vgt_flush_ngg_legacy_bug;
    bool has_cs_regalloc_hang_bug;
+   bool has_async_compute_threadgroup_bug;
    bool has_32bit_predication;
    bool has_3d_cube_border_color_mipmap;
    bool has_image_opcodes;
@@ -120,14 +121,20 @@ struct radeon_info {
    /* conformant_trunc_coord is equal to TA_CNTL2.TRUNCATE_COORD_MODE, which exists since gfx11.
     *
     * If TA_CNTL2.TRUNCATE_COORD_MODE == 0, coordinate truncation is the same as gfx10 and older.
-    * If TA_CNTL2.TRUNCATE_COORD_MODE == 1, coordinate truncation is adjusted to be conformant
-    * if you also set TRUNC_COORD.
     *
-    * Behavior:
-    *    truncate_coord_xy = TRUNC_COORD &&
-    *                        ((xy_filter == Point && !gather) || !TA_CNTL2.TRUNCATE_COORD_MODE);
-    *    truncate_coord_z = TRUNC_COORD && (z_filter == Point || !TA_CNTL2.TRUNCATE_COORD_MODE);
-    *    truncate_coord_layer = TRUNC_COORD && !TA_CNTL2.TRUNCATE_COORD_MODE;
+    * If TA_CNTL2.TRUNCATE_COORD_MODE == 1, coordinate truncation is adjusted to be D3D9/GL/Vulkan
+    * conformant if you also set TRUNC_COORD. Coordinate truncation uses D3D10+ behaviour if
+    * TRUNC_COORD is unset.
+    *
+    * Behavior if TA_CNTL2.TRUNCATE_COORD_MODE == 1:
+    *    truncate_coord_xy = TRUNC_COORD && (xy_filter == Point && !gather);
+    *    truncate_coord_z = TRUNC_COORD && (z_filter == Point);
+    *    truncate_coord_layer = false;
+    *
+    * Behavior if TA_CNTL2.TRUNCATE_COORD_MODE == 0:
+    *    truncate_coord_xy = TRUNC_COORD;
+    *    truncate_coord_z = TRUNC_COORD;
+    *    truncate_coord_layer = TRUNC_COORD;
     *
     * AnisoPoint is treated as Point.
     */
@@ -187,6 +194,7 @@ struct radeon_info {
    } dec_caps, enc_caps;
 
    enum vcn_version vcn_ip_version;
+   enum sdma_version sdma_ip_version;
 
    /* Kernel & winsys capabilities. */
    uint32_t drm_major; /* version */

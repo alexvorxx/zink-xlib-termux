@@ -37,6 +37,10 @@ struct d3d12_encode_codec_support {
    enum pipe_video_profile profile;
    union {
       struct {
+         enum pipe_video_h264_enc_dbk_filter_mode_flags disable_dbk_filter_mode_flags;
+         D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT_H264 d3d12_caps;
+      } h264_support;
+      struct {
          enum pipe_h265_enc_pred_direction prediction_direction;
          union pipe_h265_enc_cap_features hevc_features;
          union pipe_h265_enc_cap_block_sizes hevc_block_sizes;
@@ -149,20 +153,37 @@ d3d12_has_video_decode_support(struct pipe_screen *pscreen, enum pipe_video_prof
    // Supported profiles below
    bool supportsProfile = false;
    switch (profile) {
+#if VIDEO_CODEC_H264DEC
       case PIPE_VIDEO_PROFILE_MPEG4_AVC_BASELINE:
       case PIPE_VIDEO_PROFILE_MPEG4_AVC_EXTENDED:
       case PIPE_VIDEO_PROFILE_MPEG4_AVC_CONSTRAINED_BASELINE:
       case PIPE_VIDEO_PROFILE_MPEG4_AVC_MAIN:
       case PIPE_VIDEO_PROFILE_MPEG4_AVC_HIGH:
       case PIPE_VIDEO_PROFILE_MPEG4_AVC_HIGH10:
+      {
+         supportsProfile = true;
+      } break;
+#endif
+#if VIDEO_CODEC_H265DEC
       case PIPE_VIDEO_PROFILE_HEVC_MAIN:
       case PIPE_VIDEO_PROFILE_HEVC_MAIN_10:
+      {
+         supportsProfile = true;
+      } break;
+#endif
+#if VIDEO_CODEC_AV1DEC
       case PIPE_VIDEO_PROFILE_AV1_MAIN:
+      {
+         supportsProfile = true;
+      } break;
+#endif
+#if VIDEO_CODEC_VP9DEC
       case PIPE_VIDEO_PROFILE_VP9_PROFILE0:
       case PIPE_VIDEO_PROFILE_VP9_PROFILE2:
       {
          supportsProfile = true;
       } break;
+#endif
       default:
          supportsProfile = false;
    }
@@ -494,10 +515,27 @@ d3d12_video_encode_supported_slice_structures(const D3D12_VIDEO_ENCODER_CODEC &c
       supportedSliceStructuresBitMask |= PIPE_VIDEO_CAP_SLICE_STRUCTURE_POWER_OF_TWO_ROWS;
    }
 
-   /* Needs more work in VA frontend to support VAEncMiscParameterMaxSliceSize 
-         and the driver potentially reporting back status in VACodedBufferSegment */
+   capDataSubregionLayout.SubregionMode =
+      D3D12_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE_SQUARE_UNITS_PER_SUBREGION_ROW_UNALIGNED;
+   hr = pD3D12VideoDevice->CheckFeatureSupport(D3D12_FEATURE_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE,
+                                                         &capDataSubregionLayout,
+                                                         sizeof(capDataSubregionLayout));
+   if (FAILED(hr)) {
+      debug_printf("CheckFeatureSupport failed with HR %x\n", hr);
+   } else if (capDataSubregionLayout.IsSupported) {
+      /* This would be setting K rows per subregions in this D3D12 mode */
+      supportedSliceStructuresBitMask |= PIPE_VIDEO_CAP_SLICE_STRUCTURE_EQUAL_MULTI_ROWS;
+      /* Assuming height/blocksize >= max_supported_slices, which is reported
+      in PIPE_VIDEO_CAP_ENC_MAX_SLICES_PER_FRAME and should be checked by the client*/
+      /* This would be setting 1 row per subregion in this D3D12 mode */
+      supportedSliceStructuresBitMask |= PIPE_VIDEO_CAP_SLICE_STRUCTURE_EQUAL_ROWS;
+      /* This is ok, would be setting K rows per subregions in this D3D12 mode (and rounding the last one) */
+      supportedSliceStructuresBitMask |= PIPE_VIDEO_CAP_SLICE_STRUCTURE_POWER_OF_TWO_ROWS;
+      /* This is ok, would be setting K MBs per subregions in this D3D12 mode*/
+      supportedSliceStructuresBitMask |= PIPE_VIDEO_CAP_SLICE_STRUCTURE_ARBITRARY_MACROBLOCKS;
+   }
 
-   /*capDataSubregionLayout.SubregionMode = D3D12_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE_BYTES_PER_SUBREGION;
+   capDataSubregionLayout.SubregionMode = D3D12_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE_BYTES_PER_SUBREGION;
    hr = pD3D12VideoDevice->CheckFeatureSupport(D3D12_FEATURE_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE,
                                                          &capDataSubregionLayout,
                                                          sizeof(capDataSubregionLayout));
@@ -505,7 +543,7 @@ d3d12_video_encode_supported_slice_structures(const D3D12_VIDEO_ENCODER_CODEC &c
       debug_printf("CheckFeatureSupport failed with HR %x\n", hr);
    } else if (capDataSubregionLayout.IsSupported) {
       supportedSliceStructuresBitMask |= PIPE_VIDEO_CAP_SLICE_STRUCTURE_MAX_SLICE_SIZE;
-   }*/  
+   }
 
    return supportedSliceStructuresBitMask;
 }
@@ -699,6 +737,28 @@ static d3d12_video_encode_get_av1_codec_support ( const D3D12_VIDEO_ENCODER_CODE
 #endif
 
 bool
+static d3d12_video_encode_get_h264_codec_support(const D3D12_VIDEO_ENCODER_PROFILE_DESC &argTargetProfile,
+                                                 ID3D12VideoDevice3 *pD3D12VideoDevice,
+                                                 D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT_H264 &supportedCaps)
+{
+   D3D12_FEATURE_DATA_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT capCodecConfigData = { };
+   capCodecConfigData.NodeIndex = 0;
+   capCodecConfigData.Codec = D3D12_VIDEO_ENCODER_CODEC_H264;
+   capCodecConfigData.Profile = argTargetProfile;
+   capCodecConfigData.CodecSupportLimits.pH264Support = &supportedCaps;
+   capCodecConfigData.CodecSupportLimits.DataSize = sizeof(supportedCaps);
+
+   if(FAILED(pD3D12VideoDevice->CheckFeatureSupport(D3D12_FEATURE_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT, &capCodecConfigData, sizeof(capCodecConfigData))
+      || !capCodecConfigData.IsSupported))
+   {
+         debug_printf("D3D12_FEATURE_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT call failed.");
+         return false;
+   }
+
+   return true;
+}
+
+bool
 static d3d12_video_encode_get_hevc_codec_support ( const D3D12_VIDEO_ENCODER_CODEC &argCodec,
                                                    const D3D12_VIDEO_ENCODER_PROFILE_DESC &argTargetProfile,
                                                    ID3D12VideoDevice3 *pD3D12VideoDevice,
@@ -786,7 +846,8 @@ d3d12_has_video_encode_support(struct pipe_screen *pscreen,
                                uint32_t &isRCMaxFrameSizeSupported,
                                uint32_t &maxQualityLevels,
                                uint32_t &max_tile_rows,
-                               uint32_t &max_tile_cols)
+                               uint32_t &max_tile_cols,
+                               uint32_t &maxIRDuration)
 {
    ComPtr<ID3D12VideoDevice3> spD3D12VideoDevice;
    struct d3d12_screen *pD3D12Screen = (struct d3d12_screen *) pscreen;
@@ -804,8 +865,8 @@ d3d12_has_video_encode_support(struct pipe_screen *pscreen,
    D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT d3d12_codec_support = { };
    bool supportsProfile = false;
    switch (profile) {
+#if VIDEO_CODEC_H264ENC
       case PIPE_VIDEO_PROFILE_MPEG4_AVC_CONSTRAINED_BASELINE:
-      case PIPE_VIDEO_PROFILE_MPEG4_AVC_BASELINE:
       case PIPE_VIDEO_PROFILE_MPEG4_AVC_MAIN:
       case PIPE_VIDEO_PROFILE_MPEG4_AVC_HIGH:
       case PIPE_VIDEO_PROFILE_MPEG4_AVC_HIGH10:
@@ -870,14 +931,21 @@ d3d12_has_video_encode_support(struct pipe_screen *pscreen,
             else
                maxSlices = resolutionDepCaps.MaxSubregionsNumber;
 
+            maxIRDuration = resolutionDepCaps.MaxIntraRefreshFrameDuration;
             isRCMaxFrameSizeSupported = ((capEncoderSupportData1.SupportFlags & D3D12_VIDEO_ENCODER_SUPPORT_FLAG_RATE_CONTROL_MAX_FRAME_SIZE_AVAILABLE) != 0) ? 1 : 0;
             maxReferencesPerFrame =
                d3d12_video_encode_supported_references_per_frame_structures(codecDesc,
                                                                             profile,
                                                                             spD3D12VideoDevice.Get(),
                                                                             codecSupport);
+
+            supportsProfile = d3d12_video_encode_get_h264_codec_support(profDesc,
+                                                                        spD3D12VideoDevice.Get(),
+                                                                        codecSupport.h264_support.d3d12_caps);
          }
       } break;
+#endif
+#if VIDEO_CODEC_H265ENC
       case PIPE_VIDEO_PROFILE_HEVC_MAIN:
       case PIPE_VIDEO_PROFILE_HEVC_MAIN_10:
       {
@@ -1040,10 +1108,14 @@ d3d12_has_video_encode_support(struct pipe_screen *pscreen,
                   maxSlices = 0;
                else
                   maxSlices = resolutionDepCaps.MaxSubregionsNumber;
+
+               maxIRDuration = resolutionDepCaps.MaxIntraRefreshFrameDuration;
                isRCMaxFrameSizeSupported = ((capEncoderSupportData1.SupportFlags & D3D12_VIDEO_ENCODER_SUPPORT_FLAG_RATE_CONTROL_MAX_FRAME_SIZE_AVAILABLE) != 0) ? 1 : 0;
             }
          }
       } break;
+#endif
+#if VIDEO_CODEC_AV1ENC
 #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
       case PIPE_VIDEO_PROFILE_AV1_MAIN:
       {
@@ -1295,13 +1367,15 @@ d3d12_has_video_encode_support(struct pipe_screen *pscreen,
                else
                   maxSlices = resolutionDepCaps.MaxSubregionsNumber;
 
+               maxIRDuration = resolutionDepCaps.MaxIntraRefreshFrameDuration;
                codecSupport.av1_support.features_ext2.bits.max_tile_num_minus1 = maxSlices - 1;
 
                isRCMaxFrameSizeSupported = ((capEncoderSupportData1.SupportFlags & D3D12_VIDEO_ENCODER_SUPPORT_FLAG_RATE_CONTROL_MAX_FRAME_SIZE_AVAILABLE) != 0) ? 1 : 0;
             }
          }
       } break;
-#endif
+#endif // #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
+#endif // #if VIDEO_CODEC_AV1ENC
       default:
          supportsProfile = false;
    }
@@ -1599,6 +1673,7 @@ d3d12_screen_get_video_param_encode(struct pipe_screen *pscreen,
    uint32_t maxQualityLevels = 0u;
    uint32_t max_tile_rows = 0u;
    uint32_t max_tile_cols = 0u;
+   uint32_t maxIRDuration = 0u;
    struct d3d12_encode_codec_support codec_specific_support;
    memset(&codec_specific_support, 0, sizeof(codec_specific_support));
    switch (param) {
@@ -1608,6 +1683,11 @@ d3d12_screen_get_video_param_encode(struct pipe_screen *pscreen,
          return 1;
       case PIPE_VIDEO_CAP_NPOT_TEXTURES:
          return 1;
+      case PIPE_VIDEO_CAP_ENC_SUPPORTS_FEEDBACK_METADATA:
+         return (PIPE_VIDEO_FEEDBACK_METADATA_TYPE_BITSTREAM_SIZE |
+                 PIPE_VIDEO_FEEDBACK_METADATA_TYPE_ENCODE_RESULT |
+                 PIPE_VIDEO_FEEDBACK_METADATA_TYPE_CODEC_UNIT_LOCATION |
+                 PIPE_VIDEO_FEEDBACK_METADATA_TYPE_MAX_FRAME_SIZE_OVERFLOW);
       case PIPE_VIDEO_CAP_MAX_WIDTH:
       case PIPE_VIDEO_CAP_MAX_HEIGHT:
       case PIPE_VIDEO_CAP_MIN_WIDTH:
@@ -1628,6 +1708,8 @@ d3d12_screen_get_video_param_encode(struct pipe_screen *pscreen,
       case PIPE_VIDEO_CAP_ENC_QUALITY_LEVEL:
       case PIPE_VIDEO_CAP_ENC_MAX_TILE_ROWS:
       case PIPE_VIDEO_CAP_ENC_MAX_TILE_COLS:
+      case PIPE_VIDEO_CAP_ENC_INTRA_REFRESH_MAX_DURATION:
+      case PIPE_VIDEO_CAP_ENC_H264_DISABLE_DBK_FILTER_MODES_SUPPORTED:
       {
          if (d3d12_has_video_encode_support(pscreen,
                                             profile,
@@ -1641,7 +1723,8 @@ d3d12_screen_get_video_param_encode(struct pipe_screen *pscreen,
                                             isRCMaxFrameSizeSupported,
                                             maxQualityLevels,
                                             max_tile_rows,
-                                            max_tile_cols)) {
+                                            max_tile_cols,
+                                            maxIRDuration)) {
 
             DXGI_FORMAT format = d3d12_convert_pipe_video_profile_to_dxgi_format(profile);
             auto pipeFmt = d3d12_get_pipe_format(format);
@@ -1667,8 +1750,12 @@ d3d12_screen_get_video_param_encode(struct pipe_screen *pscreen,
                   return max_tile_rows;
                } else if (param == PIPE_VIDEO_CAP_ENC_MAX_TILE_COLS) {
                   return max_tile_cols;
+               } else if(param == PIPE_VIDEO_CAP_ENC_H264_DISABLE_DBK_FILTER_MODES_SUPPORTED) {
+                  return codec_specific_support.h264_support.disable_dbk_filter_mode_flags;
                } else if (param == PIPE_VIDEO_CAP_ENC_MAX_REFERENCES_PER_FRAME) {
                   return maxReferencesPerFrame;
+               } else if (param == PIPE_VIDEO_CAP_ENC_INTRA_REFRESH_MAX_DURATION) {
+                  return maxIRDuration;
                } else if (param == PIPE_VIDEO_CAP_ENC_SUPPORTS_MAX_FRAME_SIZE) {
                   return isRCMaxFrameSizeSupported;
                } else if (param == PIPE_VIDEO_CAP_ENC_HEVC_FEATURE_FLAGS) {
@@ -1768,28 +1855,39 @@ is_d3d12_video_encode_format_supported(struct pipe_screen *screen,
                                            pipe_format format,
                                            enum pipe_video_profile profile)
 {
+#if VIDEO_CODEC_H264ENC
    D3D12_VIDEO_ENCODER_PROFILE_H264 profH264 = {};
+#endif
+#if VIDEO_CODEC_H265ENC
    D3D12_VIDEO_ENCODER_PROFILE_HEVC profHEVC = {};
+#endif
+#if VIDEO_CODEC_AV1ENC
 #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
    D3D12_VIDEO_ENCODER_AV1_PROFILE profAV1 = {};
+#endif
 #endif
    D3D12_FEATURE_DATA_VIDEO_ENCODER_INPUT_FORMAT capDataFmt = {};
    capDataFmt.NodeIndex = 0;
    capDataFmt.Codec = d3d12_video_encoder_convert_codec_to_d3d12_enc_codec(profile);
    capDataFmt.Format = d3d12_get_format(format);
    switch (u_reduce_video_profile(profile)) {
+#if VIDEO_CODEC_H264ENC
       case PIPE_VIDEO_FORMAT_MPEG4_AVC:
       {
          profH264 = d3d12_video_encoder_convert_profile_to_d3d12_enc_profile_h264(profile);
          capDataFmt.Profile.DataSize = sizeof(profH264);
          capDataFmt.Profile.pH264Profile = &profH264;
       } break;
+#endif
+#if VIDEO_CODEC_H265ENC
       case PIPE_VIDEO_FORMAT_HEVC:
       {
          profHEVC = d3d12_video_encoder_convert_profile_to_d3d12_enc_profile_hevc(profile);
          capDataFmt.Profile.DataSize = sizeof(profHEVC);
          capDataFmt.Profile.pHEVCProfile = &profHEVC;
       } break;
+#endif
+#if VIDEO_CODEC_AV1ENC
    #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
       case PIPE_VIDEO_FORMAT_AV1:
       {
@@ -1798,6 +1896,7 @@ is_d3d12_video_encode_format_supported(struct pipe_screen *screen,
          capDataFmt.Profile.pAV1Profile = &profAV1;
       } break;
    #endif
+#endif
       default:
       {
          unreachable("Unsupported pipe_video_format");

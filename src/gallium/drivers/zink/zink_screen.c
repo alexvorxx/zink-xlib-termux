@@ -1667,6 +1667,12 @@ choose_pdev(struct zink_screen *screen, int64_t dev_major, int64_t dev_minor)
    }
    VKSCR(GetPhysicalDeviceProperties)(screen->pdev, &screen->info.props);
 
+   /* allow software rendering only if forced by the user */
+   if (!cpu && screen->info.props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU) {
+      screen->pdev = VK_NULL_HANDLE;
+      return;
+   }
+
    screen->info.device_version = screen->info.props.apiVersion;
 
    /* runtime version is the lesser of the instance version and device version */
@@ -3274,6 +3280,8 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
       mesa_loge("ZINK: failed to allocate screen");
       return NULL;
    }
+
+   screen->drm_fd = -1;
 
    glsl_type_singleton_init_or_ref();
    zink_debug = debug_get_option_zink_debug();

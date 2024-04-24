@@ -9,7 +9,7 @@ mod nak_assign_regs;
 mod nak_builder;
 mod nak_calc_instr_deps;
 mod nak_cfg;
-mod nak_encode_sm75;
+mod nak_encode_sm70;
 mod nak_from_nir;
 mod nak_ir;
 mod nak_legalize;
@@ -33,7 +33,8 @@ use nak_from_nir::*;
 use nak_ir::ShaderIoInfo;
 use std::cmp::max;
 use std::env;
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
+use std::fmt::Write;
 use std::os::raw::c_void;
 use std::sync::OnceLock;
 
@@ -119,8 +120,6 @@ fn nir_options(_dev: &nv_device_info) -> nir_shader_compiler_options {
     op.lower_unpack_snorm_2x16 = true;
     op.lower_unpack_unorm_4x8 = true;
     op.lower_unpack_snorm_4x8 = true;
-    op.lower_extract_byte = true;
-    op.lower_extract_word = true;
     op.lower_insert_byte = true;
     op.lower_insert_word = true;
     op.lower_cs_local_index_to_id = true;
@@ -181,18 +180,27 @@ pub extern "C" fn nak_nir_options(
 struct ShaderBin {
     bin: nak_shader_bin,
     code: Vec<u32>,
+    asm: CString,
 }
 
 impl ShaderBin {
-    pub fn new(info: nak_shader_info, code: Vec<u32>) -> ShaderBin {
+    pub fn new(info: nak_shader_info, code: Vec<u32>, asm: &str) -> ShaderBin {
+        let asm = CString::new(asm)
+            .expect("NAK assembly has unexpected null characters");
         let bin = nak_shader_bin {
             info: info,
             code_size: (code.len() * 4).try_into().unwrap(),
             code: code.as_ptr() as *const c_void,
+            asm_str: if asm.is_empty() {
+                std::ptr::null()
+            } else {
+                asm.as_ptr()
+            },
         };
         ShaderBin {
             bin: bin,
             code: code,
+            asm: asm,
         }
     }
 }
@@ -219,6 +227,7 @@ fn eprint_hex(label: &str, data: &[u32]) {
 #[no_mangle]
 pub extern "C" fn nak_compile_shader(
     nir: *mut nir_shader,
+    dump_asm: bool,
     nak: *const nak_compiler,
     fs_key: *const nak_fs_key,
 ) -> *mut nak_shader_bin {
@@ -378,8 +387,13 @@ pub extern "C" fn nak_compile_shader(
         hdr: nak_sph::encode_header(&s.info, fs_key),
     };
 
-    let code = if nak.sm >= 75 {
-        s.encode_sm75()
+    let mut asm = String::new();
+    if dump_asm {
+        write!(asm, "{}", s).expect("Failed to dump assembly");
+    }
+
+    let code = if nak.sm >= 70 {
+        s.encode_sm70()
     } else {
         panic!("Unsupported shader model");
     };
@@ -400,5 +414,6 @@ pub extern "C" fn nak_compile_shader(
         eprint_hex("Encoded shader", &code);
     }
 
-    Box::into_raw(Box::new(ShaderBin::new(info, code))) as *mut nak_shader_bin
+    let bin = Box::new(ShaderBin::new(info, code, &asm));
+    Box::into_raw(bin) as *mut nak_shader_bin
 }

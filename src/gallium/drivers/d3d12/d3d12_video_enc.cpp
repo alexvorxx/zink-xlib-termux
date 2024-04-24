@@ -30,10 +30,16 @@
 #include "d3d12_screen.h"
 #include "d3d12_surface.h"
 #include "d3d12_video_enc.h"
+#if VIDEO_CODEC_H264ENC
 #include "d3d12_video_enc_h264.h"
+#endif
+#if VIDEO_CODEC_H265ENC
 #include "d3d12_video_enc_hevc.h"
+#endif
+#if VIDEO_CODEC_AV1ENC
 #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
 #include "d3d12_video_enc_av1.h"
+#endif
 #endif
 #include "d3d12_video_buffer.h"
 #include "d3d12_video_texture_array_dpb_manager.h"
@@ -53,6 +59,37 @@
 
 #include <cmath>
 
+D3D12_VIDEO_ENCODER_CODEC
+d3d12_video_encoder_convert_codec_to_d3d12_enc_codec(enum pipe_video_profile profile)
+{
+   switch (u_reduce_video_profile(profile)) {
+      case PIPE_VIDEO_FORMAT_MPEG4_AVC:
+      {
+         return D3D12_VIDEO_ENCODER_CODEC_H264;
+      } break;
+      case PIPE_VIDEO_FORMAT_HEVC:
+      {
+         return D3D12_VIDEO_ENCODER_CODEC_HEVC;
+      } break;
+#if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
+      case PIPE_VIDEO_FORMAT_AV1:
+      {
+         return D3D12_VIDEO_ENCODER_CODEC_AV1;
+      } break;
+#endif
+      case PIPE_VIDEO_FORMAT_MPEG12:
+      case PIPE_VIDEO_FORMAT_MPEG4:
+      case PIPE_VIDEO_FORMAT_VC1:
+      case PIPE_VIDEO_FORMAT_JPEG:
+      case PIPE_VIDEO_FORMAT_VP9:
+      case PIPE_VIDEO_FORMAT_UNKNOWN:
+      default:
+      {
+         unreachable("Unsupported pipe_video_profile");
+      } break;
+   }
+}
+
 uint64_t
 d3d12_video_encoder_pool_current_index(struct d3d12_video_encoder *pD3D12Enc)
 {
@@ -66,6 +103,12 @@ d3d12_video_encoder_flush(struct pipe_video_codec *codec)
    assert(pD3D12Enc);
    assert(pD3D12Enc->m_spD3D12VideoDevice);
    assert(pD3D12Enc->m_spEncodeCommandQueue);
+
+   if (pD3D12Enc->m_inflightResourcesPool[d3d12_video_encoder_pool_current_index(pD3D12Enc)].encode_result & PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED) {
+      debug_printf("WARNING: [d3d12_video_encoder] d3d12_video_encoder_flush - Frame submission %" PRIu64 " failed. Encoder lost, please recreate pipe_video_codec object \n", pD3D12Enc->m_fenceValue);
+      assert(false);
+      return;
+   }
 
    // Flush any work batched (ie. shaders blit on input texture, etc or bitstream headers buffer_subdata batched upload)
    // and Wait the m_spEncodeCommandQueue for GPU upload completion
@@ -131,6 +174,8 @@ d3d12_video_encoder_flush(struct pipe_video_codec *codec)
 
 flush_fail:
    debug_printf("[d3d12_video_encoder] d3d12_video_encoder_flush failed for fenceValue: %" PRIu64 "\n", pD3D12Enc->m_fenceValue);
+   pD3D12Enc->m_inflightResourcesPool[d3d12_video_encoder_pool_current_index(pD3D12Enc)].encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED;
+   pD3D12Enc->m_spEncodedFrameMetadata[pD3D12Enc->m_fenceValue % D3D12_VIDEO_ENC_METADATA_BUFFERS_COUNT].encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED;
    assert(false);
 }
 
@@ -159,13 +204,13 @@ d3d12_video_encoder_ensure_fence_finished(struct pipe_video_codec *codec, uint64
             goto ensure_fence_finished_fail;
          }
 
-         d3d12_fence_wait_event(event, event_fd, timeout_ns);
-         d3d12_fence_close_event(event, event_fd);
-
          debug_printf("[d3d12_video_encoder] d3d12_video_encoder_ensure_fence_finished - Waiting on fence to be done with "
                "fenceValue: %" PRIu64 " - current CompletedValue: %" PRIu64 "\n",
                fenceValueToWaitOn,
                completedValue);
+
+         d3d12_fence_wait_event(event, event_fd, timeout_ns);
+         d3d12_fence_close_event(event, event_fd);
       } else {
          debug_printf("[d3d12_video_encoder] d3d12_video_encoder_ensure_fence_finished - Fence already done with "
                "fenceValue: %" PRIu64 " - current CompletedValue: %" PRIu64 "\n",
@@ -176,6 +221,8 @@ d3d12_video_encoder_ensure_fence_finished(struct pipe_video_codec *codec, uint64
 
 ensure_fence_finished_fail:
    debug_printf("[d3d12_video_encoder] d3d12_video_encoder_sync_completion failed for fenceValue: %" PRIu64 "\n", fenceValueToWaitOn);
+   pD3D12Enc->m_inflightResourcesPool[fenceValueToWaitOn % D3D12_VIDEO_ENC_ASYNC_DEPTH].encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED;
+   pD3D12Enc->m_spEncodedFrameMetadata[fenceValueToWaitOn % D3D12_VIDEO_ENC_METADATA_BUFFERS_COUNT].encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED;
    assert(false);
 }
 
@@ -222,6 +269,8 @@ d3d12_video_encoder_sync_completion(struct pipe_video_codec *codec, uint64_t fen
 
 sync_with_token_fail:
    debug_printf("[d3d12_video_encoder] d3d12_video_encoder_sync_completion failed for fenceValue: %" PRIu64 "\n", fenceValueToWaitOn);
+   pD3D12Enc->m_inflightResourcesPool[fenceValueToWaitOn % D3D12_VIDEO_ENC_ASYNC_DEPTH].encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED;
+   pD3D12Enc->m_spEncodedFrameMetadata[fenceValueToWaitOn % D3D12_VIDEO_ENC_METADATA_BUFFERS_COUNT].encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED;
    assert(false);
 }
 
@@ -262,20 +311,25 @@ d3d12_video_encoder_update_picparams_tracking(struct d3d12_video_encoder *pD3D12
    enum pipe_video_format codec = u_reduce_video_profile(pD3D12Enc->base.profile);
    bool bUsedAsReference = false;
    switch (codec) {
+#if VIDEO_CODEC_H264ENC
       case PIPE_VIDEO_FORMAT_MPEG4_AVC:
       {
          d3d12_video_encoder_update_current_frame_pic_params_info_h264(pD3D12Enc, srcTexture, picture, currentPicParams, bUsedAsReference);
       } break;
-
+#endif
+#if VIDEO_CODEC_H265ENC
       case PIPE_VIDEO_FORMAT_HEVC:
       {
          d3d12_video_encoder_update_current_frame_pic_params_info_hevc(pD3D12Enc, srcTexture, picture, currentPicParams, bUsedAsReference);
       } break;
+#endif
+#if VIDEO_CODEC_AV1ENC
 #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
       case PIPE_VIDEO_FORMAT_AV1:
       {
          d3d12_video_encoder_update_current_frame_pic_params_info_av1(pD3D12Enc, srcTexture, picture, currentPicParams, bUsedAsReference);
       } break;
+#endif
 #endif
       default:
       {
@@ -311,6 +365,8 @@ d3d12_video_encoder_reconfigure_encoder_objects(struct d3d12_video_encoder *pD3D
       ((pD3D12Enc->m_currentEncodeConfig.m_ConfigDirtyFlags & d3d12_video_encoder_config_dirty_flag_gop) != 0);
    bool motionPrecisionLimitChanged = ((pD3D12Enc->m_currentEncodeConfig.m_ConfigDirtyFlags &
                                         d3d12_video_encoder_config_dirty_flag_motion_precision_limit) != 0);
+   bool irChanged = ((pD3D12Enc->m_currentEncodeConfig.m_ConfigDirtyFlags &
+                                        d3d12_video_encoder_config_dirty_flag_intra_refresh) != 0);
 
    // Events that that trigger a re-creation of the reference picture manager
    // Stores codec agnostic textures so only input format, resolution and gop (num dpb references) affects this
@@ -362,7 +418,7 @@ d3d12_video_encoder_reconfigure_encoder_objects(struct d3d12_video_encoder *pD3D
             resourceAllocFlags,
             pD3D12Enc->m_NodeMask);
       }
-      d3d12_video_encoder_create_reference_picture_manager(pD3D12Enc);
+      d3d12_video_encoder_create_reference_picture_manager(pD3D12Enc, picture);
    }
 
    bool reCreatedEncoder = false;
@@ -486,16 +542,21 @@ d3d12_video_encoder_reconfigure_encoder_objects(struct d3d12_video_encoder *pD3D
        (pD3D12Enc->m_fenceValue > 1) && (!reCreatedEncoder || !reCreatedEncoderHeap)) {
       pD3D12Enc->m_currentEncodeConfig.m_seqFlags |= D3D12_VIDEO_ENCODER_SEQUENCE_CONTROL_FLAG_GOP_SEQUENCE_CHANGE;
    }
+
+   if(irChanged)
+      pD3D12Enc->m_currentEncodeConfig.m_seqFlags |= D3D12_VIDEO_ENCODER_SEQUENCE_CONTROL_FLAG_REQUEST_INTRA_REFRESH;
+
    return true;
 }
 
 void
-d3d12_video_encoder_create_reference_picture_manager(struct d3d12_video_encoder *pD3D12Enc)
+d3d12_video_encoder_create_reference_picture_manager(struct d3d12_video_encoder *pD3D12Enc, struct pipe_picture_desc *  picture)
 {
    pD3D12Enc->m_upDPBManager.reset();
    pD3D12Enc->m_upBitstreamBuilder.reset();
    enum pipe_video_format codec = u_reduce_video_profile(pD3D12Enc->base.profile);
    switch (codec) {
+#if VIDEO_CODEC_H264ENC
       case PIPE_VIDEO_FORMAT_MPEG4_AVC:
       {
          bool gopHasPFrames =
@@ -511,9 +572,11 @@ d3d12_video_encoder_create_reference_picture_manager(struct d3d12_video_encoder 
             d3d12_video_encoder_get_current_max_dpb_capacity(pD3D12Enc)
          );
 
-         pD3D12Enc->m_upBitstreamBuilder = std::make_unique<d3d12_video_bitstream_builder_h264>();
+         struct pipe_h264_enc_picture_desc *pH264Pic = (struct pipe_h264_enc_picture_desc *) picture;
+         pD3D12Enc->m_upBitstreamBuilder = std::make_unique<d3d12_video_bitstream_builder_h264>(pH264Pic->insert_aud_nalu);
       } break;
-
+#endif
+#if VIDEO_CODEC_H265ENC
       case PIPE_VIDEO_FORMAT_HEVC:
       {
          bool gopHasPFrames =
@@ -531,6 +594,8 @@ d3d12_video_encoder_create_reference_picture_manager(struct d3d12_video_encoder 
 
          pD3D12Enc->m_upBitstreamBuilder = std::make_unique<d3d12_video_bitstream_builder_hevc>();
       } break;
+#endif
+#if VIDEO_CODEC_AV1ENC
 #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
       case PIPE_VIDEO_FORMAT_AV1:
       {
@@ -549,6 +614,7 @@ d3d12_video_encoder_create_reference_picture_manager(struct d3d12_video_encoder 
          pD3D12Enc->m_upBitstreamBuilder = std::make_unique<d3d12_video_bitstream_builder_av1>();
       } break;
 #endif
+#endif
       default:
       {
          unreachable("Unsupported pipe_video_format");
@@ -561,6 +627,7 @@ d3d12_video_encoder_get_current_slice_param_settings(struct d3d12_video_encoder 
 {
    enum pipe_video_format codec = u_reduce_video_profile(pD3D12Enc->base.profile);
    switch (codec) {
+#if VIDEO_CODEC_H264ENC
       case PIPE_VIDEO_FORMAT_MPEG4_AVC:
       {
          D3D12_VIDEO_ENCODER_PICTURE_CONTROL_SUBREGIONS_LAYOUT_DATA subregionData = {};
@@ -572,7 +639,8 @@ d3d12_video_encoder_get_current_slice_param_settings(struct d3d12_video_encoder 
          }
          return subregionData;
       } break;
-
+#endif
+#if VIDEO_CODEC_H265ENC
       case PIPE_VIDEO_FORMAT_HEVC:
       {
          D3D12_VIDEO_ENCODER_PICTURE_CONTROL_SUBREGIONS_LAYOUT_DATA subregionData = {};
@@ -584,6 +652,8 @@ d3d12_video_encoder_get_current_slice_param_settings(struct d3d12_video_encoder 
          }
          return subregionData;
       } break;
+#endif
+#if VIDEO_CODEC_AV1ENC
 #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
       case PIPE_VIDEO_FORMAT_AV1:
       {
@@ -597,6 +667,7 @@ d3d12_video_encoder_get_current_slice_param_settings(struct d3d12_video_encoder 
          return subregionData;
       } break;
 #endif
+#endif
       default:
       {
          unreachable("Unsupported pipe_video_format");
@@ -609,6 +680,7 @@ d3d12_video_encoder_get_current_picture_param_settings(struct d3d12_video_encode
 {
    enum pipe_video_format codec = u_reduce_video_profile(pD3D12Enc->base.profile);
    switch (codec) {
+#if VIDEO_CODEC_H264ENC
       case PIPE_VIDEO_FORMAT_MPEG4_AVC:
       {
          D3D12_VIDEO_ENCODER_PICTURE_CONTROL_CODEC_DATA curPicParamsData = {};
@@ -616,7 +688,8 @@ d3d12_video_encoder_get_current_picture_param_settings(struct d3d12_video_encode
          curPicParamsData.DataSize     = sizeof(pD3D12Enc->m_currentEncodeConfig.m_encoderPicParamsDesc.m_H264PicData);
          return curPicParamsData;
       } break;
-
+#endif
+#if VIDEO_CODEC_H265ENC
       case PIPE_VIDEO_FORMAT_HEVC:
       {
          D3D12_VIDEO_ENCODER_PICTURE_CONTROL_CODEC_DATA curPicParamsData = {};
@@ -624,6 +697,8 @@ d3d12_video_encoder_get_current_picture_param_settings(struct d3d12_video_encode
          curPicParamsData.DataSize     = sizeof(pD3D12Enc->m_currentEncodeConfig.m_encoderPicParamsDesc.m_HEVCPicData);
          return curPicParamsData;
       } break;
+#endif
+#if VIDEO_CODEC_AV1ENC
 #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
       case PIPE_VIDEO_FORMAT_AV1:
       {
@@ -632,6 +707,7 @@ d3d12_video_encoder_get_current_picture_param_settings(struct d3d12_video_encode
          curPicParamsData.DataSize     = sizeof(pD3D12Enc->m_currentEncodeConfig.m_encoderPicParamsDesc.m_AV1PicData);
          return curPicParamsData;
       } break;
+#endif
 #endif
       default:
       {
@@ -743,6 +819,7 @@ d3d12_video_encoder_get_current_level_desc(struct d3d12_video_encoder *pD3D12Enc
 {
    enum pipe_video_format codec = u_reduce_video_profile(pD3D12Enc->base.profile);
    switch (codec) {
+#if VIDEO_CODEC_H264ENC
       case PIPE_VIDEO_FORMAT_MPEG4_AVC:
       {
          D3D12_VIDEO_ENCODER_LEVEL_SETTING curLevelDesc = {};
@@ -750,7 +827,8 @@ d3d12_video_encoder_get_current_level_desc(struct d3d12_video_encoder *pD3D12Enc
          curLevelDesc.DataSize = sizeof(pD3D12Enc->m_currentEncodeConfig.m_encoderLevelDesc.m_H264LevelSetting);
          return curLevelDesc;
       } break;
-
+#endif
+#if VIDEO_CODEC_H265ENC
       case PIPE_VIDEO_FORMAT_HEVC:
       {
          D3D12_VIDEO_ENCODER_LEVEL_SETTING curLevelDesc = {};
@@ -758,6 +836,8 @@ d3d12_video_encoder_get_current_level_desc(struct d3d12_video_encoder *pD3D12Enc
          curLevelDesc.DataSize = sizeof(pD3D12Enc->m_currentEncodeConfig.m_encoderLevelDesc.m_HEVCLevelSetting);
          return curLevelDesc;
       } break;
+#endif
+#if VIDEO_CODEC_AV1ENC
 #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
       case PIPE_VIDEO_FORMAT_AV1:
       {
@@ -766,6 +846,7 @@ d3d12_video_encoder_get_current_level_desc(struct d3d12_video_encoder *pD3D12Enc
          curLevelDesc.DataSize = sizeof(pD3D12Enc->m_currentEncodeConfig.m_encoderLevelDesc.m_AV1LevelSetting);
          return curLevelDesc;
       } break;
+#endif
 #endif
       default:
       {
@@ -777,29 +858,34 @@ d3d12_video_encoder_get_current_level_desc(struct d3d12_video_encoder *pD3D12Enc
 void
 d3d12_video_encoder_build_pre_encode_codec_headers(struct d3d12_video_encoder *pD3D12Enc,
                                                    bool &postEncodeHeadersNeeded,
-                                                   uint64_t &preEncodeGeneratedHeadersByteSize)
+                                                   uint64_t &preEncodeGeneratedHeadersByteSize,
+                                                   std::vector<uint64_t> &pWrittenCodecUnitsSizes)
 {
    enum pipe_video_format codec = u_reduce_video_profile(pD3D12Enc->base.profile);
    switch (codec) {
+#if VIDEO_CODEC_H264ENC
       case PIPE_VIDEO_FORMAT_MPEG4_AVC:
       {
          postEncodeHeadersNeeded = false;
-         preEncodeGeneratedHeadersByteSize = d3d12_video_encoder_build_codec_headers_h264(pD3D12Enc);
+         preEncodeGeneratedHeadersByteSize = d3d12_video_encoder_build_codec_headers_h264(pD3D12Enc, pWrittenCodecUnitsSizes);
       } break;
-
+#endif
+#if VIDEO_CODEC_H265ENC
       case PIPE_VIDEO_FORMAT_HEVC:
       {
          postEncodeHeadersNeeded = false;
-         preEncodeGeneratedHeadersByteSize = d3d12_video_encoder_build_codec_headers_hevc(pD3D12Enc);
+         preEncodeGeneratedHeadersByteSize = d3d12_video_encoder_build_codec_headers_hevc(pD3D12Enc, pWrittenCodecUnitsSizes);
       } break;
-
+#endif
+#if VIDEO_CODEC_AV1ENC
       case PIPE_VIDEO_FORMAT_AV1:
       { 
          pD3D12Enc->m_BitstreamHeadersBuffer.resize(0);
          postEncodeHeadersNeeded = true;
          preEncodeGeneratedHeadersByteSize = 0;
+         pWrittenCodecUnitsSizes.clear();
       } break;
-
+#endif
       default:
       {
          unreachable("Unsupported pipe_video_format");
@@ -812,6 +898,7 @@ d3d12_video_encoder_get_current_gop_desc(struct d3d12_video_encoder *pD3D12Enc)
 {
    enum pipe_video_format codec = u_reduce_video_profile(pD3D12Enc->base.profile);
    switch (codec) {
+#if VIDEO_CODEC_H264ENC
       case PIPE_VIDEO_FORMAT_MPEG4_AVC:
       {
          D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE curGOPDesc = {};
@@ -820,7 +907,8 @@ d3d12_video_encoder_get_current_gop_desc(struct d3d12_video_encoder *pD3D12Enc)
          curGOPDesc.DataSize = sizeof(pD3D12Enc->m_currentEncodeConfig.m_encoderGOPConfigDesc.m_H264GroupOfPictures);
          return curGOPDesc;
       } break;
-
+#endif
+#if VIDEO_CODEC_H265ENC
       case PIPE_VIDEO_FORMAT_HEVC:
       {
          D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE curGOPDesc = {};
@@ -829,7 +917,8 @@ d3d12_video_encoder_get_current_gop_desc(struct d3d12_video_encoder *pD3D12Enc)
          curGOPDesc.DataSize = sizeof(pD3D12Enc->m_currentEncodeConfig.m_encoderGOPConfigDesc.m_HEVCGroupOfPictures);
          return curGOPDesc;
       } break;
-
+#endif
+#if VIDEO_CODEC_AV1ENC
 #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
       case PIPE_VIDEO_FORMAT_AV1:
       {
@@ -839,6 +928,7 @@ d3d12_video_encoder_get_current_gop_desc(struct d3d12_video_encoder *pD3D12Enc)
          curGOPDesc.DataSize = sizeof(pD3D12Enc->m_currentEncodeConfig.m_encoderGOPConfigDesc.m_AV1SequenceStructure);
          return curGOPDesc;
       } break;
+#endif
 #endif
       default:
       {
@@ -852,6 +942,7 @@ d3d12_video_encoder_get_current_codec_config_desc(struct d3d12_video_encoder *pD
 {
    enum pipe_video_format codec = u_reduce_video_profile(pD3D12Enc->base.profile);
    switch (codec) {
+#if VIDEO_CODEC_H264ENC
       case PIPE_VIDEO_FORMAT_MPEG4_AVC:
       {
          D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION codecConfigDesc = {};
@@ -860,7 +951,8 @@ d3d12_video_encoder_get_current_codec_config_desc(struct d3d12_video_encoder *pD
             sizeof(pD3D12Enc->m_currentEncodeConfig.m_encoderCodecSpecificConfigDesc.m_H264Config);
          return codecConfigDesc;
       } break;
-
+#endif
+#if VIDEO_CODEC_H265ENC
       case PIPE_VIDEO_FORMAT_HEVC:
       {
          D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION codecConfigDesc = {};
@@ -869,7 +961,8 @@ d3d12_video_encoder_get_current_codec_config_desc(struct d3d12_video_encoder *pD
             sizeof(pD3D12Enc->m_currentEncodeConfig.m_encoderCodecSpecificConfigDesc.m_HEVCConfig);
          return codecConfigDesc;
       } break;
-
+#endif
+#if VIDEO_CODEC_AV1ENC
 #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
       case PIPE_VIDEO_FORMAT_AV1:
       {
@@ -879,6 +972,7 @@ d3d12_video_encoder_get_current_codec_config_desc(struct d3d12_video_encoder *pD
             sizeof(pD3D12Enc->m_currentEncodeConfig.m_encoderCodecSpecificConfigDesc.m_AV1Config);
          return codecConfigDesc;
       } break;
+#endif
 #endif
       default:
       {
@@ -892,19 +986,25 @@ d3d12_video_encoder_get_current_codec(struct d3d12_video_encoder *pD3D12Enc)
 {
    enum pipe_video_format codec = u_reduce_video_profile(pD3D12Enc->base.profile);
    switch (codec) {
+#if VIDEO_CODEC_H264ENC
       case PIPE_VIDEO_FORMAT_MPEG4_AVC:
       {
          return D3D12_VIDEO_ENCODER_CODEC_H264;
       } break;
+#endif
+#if VIDEO_CODEC_H265ENC
       case PIPE_VIDEO_FORMAT_HEVC:
       {
          return D3D12_VIDEO_ENCODER_CODEC_HEVC;
       } break;
+#endif
+#if VIDEO_CODEC_AV1ENC
 #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
       case PIPE_VIDEO_FORMAT_AV1:
       {
          return D3D12_VIDEO_ENCODER_CODEC_AV1;
       } break;
+#endif
 #endif
       default:
       {
@@ -946,6 +1046,7 @@ static void
 d3d12_video_encoder_disable_rc_maxframesize(struct D3D12EncodeRateControlState & rcState)
 {
    rcState.m_Flags &= ~D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_MAX_FRAME_SIZE;
+   rcState.max_frame_size = 0;
    switch (rcState.m_Mode) {
       case D3D12_VIDEO_ENCODER_RATE_CONTROL_MODE_CBR:
       {
@@ -1142,6 +1243,16 @@ bool d3d12_video_encoder_negotiate_requested_features_and_d3d12_driver_caps(stru
                         && (capEncoderSupportData1.ValidationFlags == D3D12_VIDEO_ENCODER_VALIDATION_FLAG_NONE));
    }
 
+   if (pD3D12Enc->m_currentEncodeConfig.m_IntraRefresh.IntraRefreshDuration >
+      pD3D12Enc->m_currentEncodeCapabilities.m_currentResolutionSupportCaps.MaxIntraRefreshFrameDuration)
+   {
+      debug_printf("[d3d12_video_encoder] Desired duration of intrarefresh %d is not supported (higher than max "
+                  "reported IR duration %d in query caps) for current resolution.\n",
+                  pD3D12Enc->m_currentEncodeConfig.m_IntraRefresh.IntraRefreshDuration,
+                  pD3D12Enc->m_currentEncodeCapabilities.m_currentResolutionSupportCaps.MaxIntraRefreshFrameDuration);
+      return false;
+   }
+
    if(!configSupported) {
       debug_printf("[d3d12_video_encoder] Cap negotiation failed, see more details below:\n");
       
@@ -1203,6 +1314,7 @@ bool d3d12_video_encoder_query_d3d12_driver_caps(struct d3d12_video_encoder *pD3
 
    enum pipe_video_format codec = u_reduce_video_profile(pD3D12Enc->base.profile);
    switch (codec) {
+#if VIDEO_CODEC_H264ENC
       case PIPE_VIDEO_FORMAT_MPEG4_AVC:
       {
          capEncoderSupportData1.SuggestedProfile.pH264Profile =
@@ -1214,7 +1326,8 @@ bool d3d12_video_encoder_query_d3d12_driver_caps(struct d3d12_video_encoder *pD3
          capEncoderSupportData1.SuggestedLevel.DataSize =
             sizeof(pD3D12Enc->m_currentEncodeCapabilities.m_encoderLevelSuggestedDesc.m_H264LevelSetting);
       } break;
-
+#endif
+#if VIDEO_CODEC_H265ENC
       case PIPE_VIDEO_FORMAT_HEVC:
       {
          capEncoderSupportData1.SuggestedProfile.pHEVCProfile =
@@ -1226,7 +1339,8 @@ bool d3d12_video_encoder_query_d3d12_driver_caps(struct d3d12_video_encoder *pD3
          capEncoderSupportData1.SuggestedLevel.DataSize =
             sizeof(pD3D12Enc->m_currentEncodeCapabilities.m_encoderLevelSuggestedDesc.m_HEVCLevelSetting);
       } break;
-
+#endif
+#if VIDEO_CODEC_AV1ENC
 #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
       case PIPE_VIDEO_FORMAT_AV1:
       {
@@ -1239,6 +1353,7 @@ bool d3d12_video_encoder_query_d3d12_driver_caps(struct d3d12_video_encoder *pD3
          capEncoderSupportData1.SuggestedLevel.DataSize =
             sizeof(pD3D12Enc->m_currentEncodeCapabilities.m_encoderLevelSuggestedDesc.m_AV1LevelSetting);
       } break;
+#endif
 #endif
       default:
       {
@@ -1299,6 +1414,7 @@ d3d12_video_encoder_get_current_profile_desc(struct d3d12_video_encoder *pD3D12E
 {
    enum pipe_video_format codec = u_reduce_video_profile(pD3D12Enc->base.profile);
    switch (codec) {
+#if VIDEO_CODEC_H264ENC
       case PIPE_VIDEO_FORMAT_MPEG4_AVC:
       {
          D3D12_VIDEO_ENCODER_PROFILE_DESC curProfDesc = {};
@@ -1306,7 +1422,8 @@ d3d12_video_encoder_get_current_profile_desc(struct d3d12_video_encoder *pD3D12E
          curProfDesc.DataSize     = sizeof(pD3D12Enc->m_currentEncodeConfig.m_encoderProfileDesc.m_H264Profile);
          return curProfDesc;
       } break;
-
+#endif
+#if VIDEO_CODEC_H265ENC
       case PIPE_VIDEO_FORMAT_HEVC:
       {
          D3D12_VIDEO_ENCODER_PROFILE_DESC curProfDesc = {};
@@ -1314,6 +1431,8 @@ d3d12_video_encoder_get_current_profile_desc(struct d3d12_video_encoder *pD3D12E
          curProfDesc.DataSize     = sizeof(pD3D12Enc->m_currentEncodeConfig.m_encoderProfileDesc.m_HEVCProfile);
          return curProfDesc;
       } break;
+#endif
+#if VIDEO_CODEC_AV1ENC
 #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
       case PIPE_VIDEO_FORMAT_AV1:
       {
@@ -1322,6 +1441,7 @@ d3d12_video_encoder_get_current_profile_desc(struct d3d12_video_encoder *pD3D12E
          curProfDesc.DataSize     = sizeof(pD3D12Enc->m_currentEncodeConfig.m_encoderProfileDesc.m_AV1Profile);
          return curProfDesc;
       } break;
+#endif
 #endif
       default:
       {
@@ -1343,20 +1463,25 @@ d3d12_video_encoder_update_current_encoder_config_state(struct d3d12_video_encod
 {
    enum pipe_video_format codec = u_reduce_video_profile(pD3D12Enc->base.profile);
    switch (codec) {
+#if VIDEO_CODEC_H264ENC
       case PIPE_VIDEO_FORMAT_MPEG4_AVC:
       {
          return d3d12_video_encoder_update_current_encoder_config_state_h264(pD3D12Enc, srcTexture, picture);
       } break;
-
+#endif
+#if VIDEO_CODEC_H265ENC
       case PIPE_VIDEO_FORMAT_HEVC:
       {
          return d3d12_video_encoder_update_current_encoder_config_state_hevc(pD3D12Enc, srcTexture, picture);
       } break;
+#endif
+#if VIDEO_CODEC_AV1ENC
 #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
       case PIPE_VIDEO_FORMAT_AV1:
       {
          return d3d12_video_encoder_update_current_encoder_config_state_av1(pD3D12Enc, srcTexture, picture);
       } break;
+#endif
 #endif
       default:
       {
@@ -1586,6 +1711,16 @@ d3d12_video_encoder_reconfigure_session(struct d3d12_video_encoder *pD3D12Enc,
       debug_printf("d3d12_video_encoder_prepare_output_buffers failed!\n");
       return false;
    }
+
+   // Save frame size expectation snapshot from record time to resolve at get_feedback time (after execution)
+   uint64_t current_metadata_slot = (pD3D12Enc->m_fenceValue % D3D12_VIDEO_ENC_METADATA_BUFFERS_COUNT);
+   pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].expected_max_frame_size =
+      pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.max_frame_size;
+
+   pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].expected_max_slice_size =
+      (pD3D12Enc->m_currentEncodeConfig.m_encoderSliceConfigMode == D3D12_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE_BYTES_PER_SUBREGION) ?
+      pD3D12Enc->m_currentEncodeConfig.m_encoderSliceConfigDesc.m_SlicesPartition_H264.MaxBytesPerSlice : 0;
+
    return true;
 }
 
@@ -1630,6 +1765,8 @@ d3d12_video_encoder_begin_frame(struct pipe_video_codec * codec,
    }
 
    pD3D12Enc->m_inflightResourcesPool[d3d12_video_encoder_pool_current_index(pD3D12Enc)].m_InputSurfaceFence = (struct d3d12_fence*) *picture->fence;
+   pD3D12Enc->m_inflightResourcesPool[d3d12_video_encoder_pool_current_index(pD3D12Enc)].encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_OK;
+   pD3D12Enc->m_spEncodedFrameMetadata[pD3D12Enc->m_fenceValue % D3D12_VIDEO_ENC_METADATA_BUFFERS_COUNT].encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_OK;
 
    debug_printf("[d3d12_video_encoder] d3d12_video_encoder_begin_frame finalized for fenceValue: %" PRIu64 "\n",
                  pD3D12Enc->m_fenceValue);
@@ -1638,6 +1775,8 @@ d3d12_video_encoder_begin_frame(struct pipe_video_codec * codec,
 fail:
    debug_printf("[d3d12_video_encoder] d3d12_video_encoder_begin_frame failed for fenceValue: %" PRIu64 "\n",
                 pD3D12Enc->m_fenceValue);
+   pD3D12Enc->m_inflightResourcesPool[d3d12_video_encoder_pool_current_index(pD3D12Enc)].encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED;
+   pD3D12Enc->m_spEncodedFrameMetadata[pD3D12Enc->m_fenceValue % D3D12_VIDEO_ENC_METADATA_BUFFERS_COUNT].encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED;
    assert(false);
 }
 
@@ -1648,15 +1787,22 @@ d3d12_video_encoder_calculate_metadata_resolved_buffer_size(enum pipe_video_form
                 (maxSliceNumber * sizeof(D3D12_VIDEO_ENCODER_FRAME_SUBREGION_METADATA));
                 
    switch (codec) {
+#if VIDEO_CODEC_H264ENC
       case PIPE_VIDEO_FORMAT_MPEG4_AVC:
+         break;
+#endif
+#if VIDEO_CODEC_H265ENC
       case PIPE_VIDEO_FORMAT_HEVC:
          break;
+#endif
+#if VIDEO_CODEC_AV1ENC
 #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
       case PIPE_VIDEO_FORMAT_AV1:
       {
          size_t extra_av1_size = d3d12_video_encoder_calculate_metadata_resolved_buffer_size_av1(maxSliceNumber);
          bufferSize += extra_av1_size;
       } break;
+#endif
 #endif
       default:
       {
@@ -1730,9 +1876,11 @@ d3d12_video_encoder_encode_bitstream(struct pipe_video_codec * codec,
    assert(pD3D12Enc->m_spEncodeCommandQueue);
    assert(pD3D12Enc->m_pD3D12Screen);
 
-   // Since this can be queried out of order in get_feedback, we need to pass out the actual value of the fence
-   // and not the pointer to it (the fence value will keep increasing in the surfaces that have a pointer to it)
-   *feedback = (void*) pD3D12Enc->m_fenceValue;
+   if (pD3D12Enc->m_inflightResourcesPool[d3d12_video_encoder_pool_current_index(pD3D12Enc)].encode_result & PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED) {
+      debug_printf("WARNING: [d3d12_video_encoder] d3d12_video_encoder_encode_bitstream - Frame submission %" PRIu64 " failed. Encoder lost, please recreate pipe_video_codec object\n", pD3D12Enc->m_fenceValue);
+      assert(false);
+      return;
+   }
 
    struct d3d12_video_buffer *pInputVideoBuffer = (struct d3d12_video_buffer *) source;
    assert(pInputVideoBuffer);
@@ -1796,7 +1944,8 @@ d3d12_video_encoder_encode_bitstream(struct pipe_video_codec * codec,
 
    d3d12_video_encoder_build_pre_encode_codec_headers(pD3D12Enc, 
                                                       pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].postEncodeHeadersNeeded,
-                                                      pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].preEncodeGeneratedHeadersByteSize);
+                                                      pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].preEncodeGeneratedHeadersByteSize,
+                                                      pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].pWrittenCodecUnitsSizes);
    assert(pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].preEncodeGeneratedHeadersByteSize == pD3D12Enc->m_BitstreamHeadersBuffer.size());
 
    // Only upload headers now and leave prefix offset space gap in compressed bitstream if the codec builds headers before execution.
@@ -1814,8 +1963,13 @@ d3d12_video_encoder_encode_bitstream(struct pipe_video_codec * codec,
             (pD3D12Enc->m_currentEncodeCapabilities.m_ResourceRequirementsCaps.CompressedBitstreamBufferAccessAlignment > 1)
             && ((pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].preEncodeGeneratedHeadersByteSize % pD3D12Enc->m_currentEncodeCapabilities.m_ResourceRequirementsCaps.CompressedBitstreamBufferAccessAlignment) != 0)
          ) {
-            pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].preEncodeGeneratedHeadersByteSize = ALIGN(pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].preEncodeGeneratedHeadersByteSize, pD3D12Enc->m_currentEncodeCapabilities.m_ResourceRequirementsCaps.CompressedBitstreamBufferAccessAlignment);
+            size_t new_size = ALIGN(pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].preEncodeGeneratedHeadersByteSize, pD3D12Enc->m_currentEncodeCapabilities.m_ResourceRequirementsCaps.CompressedBitstreamBufferAccessAlignment);
+            size_t align_padding = new_size - pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].preEncodeGeneratedHeadersByteSize;
+            pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].preEncodeGeneratedHeadersByteSize = new_size;
             pD3D12Enc->m_BitstreamHeadersBuffer.resize(pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].preEncodeGeneratedHeadersByteSize, 0);
+            // Update last pWrittenCodecUnitsSizes with extra offset padding
+            if (pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].pWrittenCodecUnitsSizes.size() > 0)
+               pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].pWrittenCodecUnitsSizes[pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].pWrittenCodecUnitsSizes.size() - 1] += align_padding;
          }
 
          // Upload the CPU buffers with the bitstream headers to the compressed bitstream resource in the interval
@@ -1848,7 +2002,9 @@ d3d12_video_encoder_encode_bitstream(struct pipe_video_codec * codec,
 
          if (FAILED(hr)) {
             debug_printf("CreateCommittedResource failed with HR %x\n", hr);
+            pD3D12Enc->m_inflightResourcesPool[d3d12_video_encoder_pool_current_index(pD3D12Enc)].encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED;
             assert(false);
+            return;
          }
       }
       
@@ -1859,6 +2015,13 @@ d3d12_video_encoder_encode_bitstream(struct pipe_video_codec * codec,
       // Save the pipe destination buffer the headers need to be written to in get_feedback
       pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].comp_bit_destination = &pOutputBitstreamBuffer->base.b;
    }
+
+   memset(&pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].m_FenceData,
+            0,
+            sizeof(pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].m_FenceData));
+   pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].m_FenceData.value = pD3D12Enc->m_fenceValue;
+   pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].m_FenceData.cmdqueue_fence = pD3D12Enc->m_spFence.Get();
+   *feedback = (void*) &pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].m_FenceData;
 
    std::vector<D3D12_RESOURCE_BARRIER> rgCurrentFrameStateTransitions = {
       CD3DX12_RESOURCE_BARRIER::Transition(pInputVideoD3D12Res,
@@ -2102,15 +2265,49 @@ d3d12_video_encoder_encode_bitstream(struct pipe_video_codec * codec,
 }
 
 void
-d3d12_video_encoder_get_feedback(struct pipe_video_codec *codec, void *feedback, unsigned *size)
+d3d12_video_encoder_get_feedback(struct pipe_video_codec *codec,
+                                  void *feedback,
+                                  unsigned *size,
+                                  struct pipe_enc_feedback_metadata* pMetadata)
 {
    struct d3d12_video_encoder *pD3D12Enc = (struct d3d12_video_encoder *) codec;
    assert(pD3D12Enc);
 
-   uint64_t requested_metadata_fence = ((uint64_t) feedback);
-   d3d12_video_encoder_sync_completion(codec, requested_metadata_fence, OS_TIMEOUT_INFINITE);
+   struct d3d12_fence *feedback_fence = (struct d3d12_fence *) feedback;
+   uint64_t requested_metadata_fence = feedback_fence->value;
+
+   struct pipe_enc_feedback_metadata opt_metadata;
+   memset(&opt_metadata, 0, sizeof(opt_metadata));
+   HRESULT hr = pD3D12Enc->m_pD3D12Screen->dev->GetDeviceRemovedReason();
+   if (hr != S_OK) {
+      opt_metadata.encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED;
+      debug_printf("Error: d3d12_video_encoder_get_feedback for Encode GPU command for fence %" PRIu64 " failed with GetDeviceRemovedReason: %x\n",
+                     requested_metadata_fence,
+                     hr);
+      assert(false);
+      return;
+   }
 
    uint64_t current_metadata_slot = (requested_metadata_fence % D3D12_VIDEO_ENC_METADATA_BUFFERS_COUNT);
+   opt_metadata.encode_result = pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].encode_result;
+   if (opt_metadata.encode_result & PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED) {
+      debug_printf("Error: d3d12_video_encoder_get_feedback for Encode GPU command for fence %" PRIu64 " failed on submission with encode_result: %x\n",
+                     requested_metadata_fence,
+                     opt_metadata.encode_result);
+      assert(false);
+      return;
+   }
+
+   d3d12_video_encoder_sync_completion(codec, requested_metadata_fence, OS_TIMEOUT_INFINITE);
+
+   opt_metadata.encode_result = pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].encode_result;
+   if (opt_metadata.encode_result & PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED) {
+      debug_printf("Error: d3d12_video_encoder_get_feedback for Encode GPU command for fence %" PRIu64 " failed on GPU fence wait with encode_result: %x\n",
+                     requested_metadata_fence,
+                     opt_metadata.encode_result);
+      assert(false);
+      return;
+   }
 
    debug_printf("d3d12_video_encoder_get_feedback with feedback: %" PRIu64 ", resources slot %" PRIu64 " metadata resolved ID3D12Resource buffer %p metadata required size %" PRIu64 "\n",
       requested_metadata_fence,
@@ -2126,11 +2323,33 @@ d3d12_video_encoder_get_feedback(struct pipe_video_codec *codec, void *feedback,
          requested_metadata_fence,
          pD3D12Enc->m_fenceValue,
          D3D12_VIDEO_ENC_METADATA_BUFFERS_COUNT);
-      *size = 0;
+      opt_metadata.encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED;
       assert(false);
       return;
    }
 
+   // Extract encode metadata
+   D3D12_VIDEO_ENCODER_OUTPUT_METADATA                       encoderMetadata;
+   std::vector<D3D12_VIDEO_ENCODER_FRAME_SUBREGION_METADATA> pSubregionsMetadata;
+   d3d12_video_encoder_extract_encode_metadata(
+      pD3D12Enc,
+      pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].spBuffer.Get(),
+      pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].bufferSize,
+      encoderMetadata,
+      pSubregionsMetadata);
+
+   // Validate encoder output metadata
+   if ((encoderMetadata.EncodeErrorFlags != D3D12_VIDEO_ENCODER_ENCODE_ERROR_FLAG_NO_ERROR) || (encoderMetadata.EncodedBitstreamWrittenBytesCount == 0)) {
+      opt_metadata.encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED;
+      debug_printf("[d3d12_video_encoder] Encode GPU command for fence %" PRIu64 " failed - EncodeErrorFlags: %" PRIu64 "\n",
+                     requested_metadata_fence,
+                     encoderMetadata.EncodeErrorFlags);
+      assert(false);
+      return;
+   }
+   debug_printf("WrittenSubregionsCount: %" PRIu64" \n", encoderMetadata.WrittenSubregionsCount);
+
+   // Calculate the full bitstream size
    if(pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].postEncodeHeadersNeeded)
    {
       ///
@@ -2152,35 +2371,49 @@ d3d12_video_encoder_get_feedback(struct pipe_video_codec *codec, void *feedback,
       /// If we wrote headers (if any) before encode execution, use that size to calculate feedback size of complete bitstream.
       ///
 
-      D3D12_VIDEO_ENCODER_OUTPUT_METADATA                       encoderMetadata;
-      std::vector<D3D12_VIDEO_ENCODER_FRAME_SUBREGION_METADATA> pSubregionsMetadata;
-      d3d12_video_encoder_extract_encode_metadata(
-         pD3D12Enc,
-         pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].spBuffer.Get(),
-         pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].bufferSize,
-         encoderMetadata,
-         pSubregionsMetadata);
-
-      // Read metadata from encoderMetadata
-      if (encoderMetadata.EncodeErrorFlags != D3D12_VIDEO_ENCODER_ENCODE_ERROR_FLAG_NO_ERROR) {
-         debug_printf("[d3d12_video_encoder] Encode GPU command for fence %" PRIu64 " failed - EncodeErrorFlags: %" PRIu64 "\n",
-                        requested_metadata_fence,
-                        encoderMetadata.EncodeErrorFlags);
-         *size = 0;
-         assert(false);
-         return;
-      }
-
-      assert(encoderMetadata.EncodedBitstreamWrittenBytesCount > 0u);
-
       *size = static_cast<unsigned int>(pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].preEncodeGeneratedHeadersByteSize + encoderMetadata.EncodedBitstreamWrittenBytesCount);
+
+      // Prepare codec unit metadata post execution with pre-execution headers generation
+      for (unsigned i = 0; i < pSubregionsMetadata.size();i++)
+         pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].pWrittenCodecUnitsSizes.push_back(pSubregionsMetadata[i].bSize);
    }
-   
+
    debug_printf("[d3d12_video_encoder_get_feedback] Requested metadata for encoded frame at fence %" PRIu64 " is %d (feedback was requested at current fence %" PRIu64 ")\n",
          requested_metadata_fence,
          *size,
          pD3D12Enc->m_fenceValue);
 
+
+   if (*size > pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].expected_max_frame_size)
+      opt_metadata.encode_result |= PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_MAX_FRAME_SIZE_OVERFLOW;
+
+   // Report codec unit metadata
+   opt_metadata.codec_unit_metadata_count = 0u;
+   memset(opt_metadata.codec_unit_metadata, 0, sizeof(opt_metadata.codec_unit_metadata));
+   uint64_t absolute_offset_acum = 0u;
+   debug_printf("Written: %" PRIu64" codec units \n", static_cast<uint64_t>(pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].pWrittenCodecUnitsSizes.size()));
+   for (uint32_t i = 0; i < pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].pWrittenCodecUnitsSizes.size(); i++)
+   {
+      opt_metadata.codec_unit_metadata[opt_metadata.codec_unit_metadata_count].size = pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].pWrittenCodecUnitsSizes[i];
+      opt_metadata.codec_unit_metadata[opt_metadata.codec_unit_metadata_count].offset = absolute_offset_acum;
+      absolute_offset_acum += opt_metadata.codec_unit_metadata[opt_metadata.codec_unit_metadata_count].size;
+      debug_printf("Codec unit %d: offset: %" PRIu64" - size: %" PRIu64" \n",
+         i,
+         opt_metadata.codec_unit_metadata[opt_metadata.codec_unit_metadata_count].offset,
+         opt_metadata.codec_unit_metadata[opt_metadata.codec_unit_metadata_count].size);
+
+      opt_metadata.codec_unit_metadata_count++;
+   }
+
+   opt_metadata.present_metadata = (PIPE_VIDEO_FEEDBACK_METADATA_TYPE_BITSTREAM_SIZE |
+                                    PIPE_VIDEO_FEEDBACK_METADATA_TYPE_ENCODE_RESULT |
+                                    PIPE_VIDEO_FEEDBACK_METADATA_TYPE_CODEC_UNIT_LOCATION |
+                                    PIPE_VIDEO_FEEDBACK_METADATA_TYPE_MAX_FRAME_SIZE_OVERFLOW);
+
+   if (pMetadata)
+      *pMetadata = opt_metadata;
+
+   assert(absolute_offset_acum == *size);
    pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].bRead = true;
 }
 
@@ -2191,11 +2424,19 @@ d3d12_video_encoder_build_post_encode_codec_bitstream(struct d3d12_video_encoder
 {
    enum pipe_video_format codec_format = u_reduce_video_profile(pD3D12Enc->base.profile);
    switch (codec_format) {
+#if VIDEO_CODEC_H264ENC
       case PIPE_VIDEO_FORMAT_MPEG4_AVC:
+      {
+         return 0;
+      } break;
+#endif
+#if VIDEO_CODEC_H265ENC
       case PIPE_VIDEO_FORMAT_HEVC:
       {
          return 0;
       } break; // Do not need post encode values in headers
+#endif
+#if VIDEO_CODEC_AV1ENC
 #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
       case PIPE_VIDEO_FORMAT_AV1:
       {
@@ -2208,6 +2449,7 @@ d3d12_video_encoder_build_post_encode_codec_bitstream(struct d3d12_video_encoder
             associatedMetadata
          );
       } break;
+#endif
 #endif
       default:
          unreachable("Unsupported pipe_video_format");
@@ -2295,6 +2537,12 @@ d3d12_video_encoder_end_frame(struct pipe_video_codec * codec,
    debug_printf("[d3d12_video_encoder] d3d12_video_encoder_end_frame started for fenceValue: %" PRIu64 "\n",
                  pD3D12Enc->m_fenceValue);
 
+   if (pD3D12Enc->m_inflightResourcesPool[d3d12_video_encoder_pool_current_index(pD3D12Enc)].encode_result != PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_OK) {
+      debug_printf("WARNING: [d3d12_video_encoder] d3d12_video_encoder_end_frame - Frame submission %" PRIu64 " failed. Encoder lost, please recreate pipe_video_codec object\n", pD3D12Enc->m_fenceValue);
+      assert(false);
+      return;
+   }
+
    // Signal finish of current frame encoding to the picture management tracker
    pD3D12Enc->m_upDPBManager->end_frame();
 
@@ -2316,20 +2564,25 @@ d3d12_video_encoder_store_current_picture_references(d3d12_video_encoder *pD3D12
 {
    enum pipe_video_format codec = u_reduce_video_profile(pD3D12Enc->base.profile);
    switch (codec) {
+#if VIDEO_CODEC_H264ENC
       case PIPE_VIDEO_FORMAT_MPEG4_AVC:
       {
          // Not needed (not post encode headers)
       } break;
-
+#endif
+#if VIDEO_CODEC_H265ENC
       case PIPE_VIDEO_FORMAT_HEVC:
       {
          // Not needed (not post encode headers)
       } break;
+#endif
+#if VIDEO_CODEC_AV1ENC
 #if ((D3D12_SDK_VERSION >= 611) && (D3D12_PREVIEW_SDK_VERSION >= 712))
       case PIPE_VIDEO_FORMAT_AV1:
       {
          d3d12_video_encoder_store_current_picture_references_av1(pD3D12Enc, current_metadata_slot);
       } break;
+#endif
 #endif
       default:
       {

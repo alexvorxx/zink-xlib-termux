@@ -238,6 +238,22 @@ struct intel_perf_query_result;
 #define SO_BUFFER_INDEX_0_CMD 0x60
 #define anv_printflike(a, b) __attribute__((__format__(__printf__, a, b)))
 
+/* The TR-TT L1 page table entries may contain these values instead of actual
+ * pointers to indicate the regions are either NULL or invalid. We program
+ * these values to TR-TT registers, so we could change them, but it's super
+ * convenient to have the NULL value be 0 because everything is
+ * zero-initialized when allocated.
+ *
+ * Since we reserve these values for NULL/INVALID, then we can't use them as
+ * destinations for TR-TT address translation. Both values are shifted by 16
+ * bits, wich results in graphic addresses 0 and 64k. On Anv the first vma
+ * starts at 2MB, so we already don't use 0 and 64k for anything, so there's
+ * nothing really to reserve. We could instead just reserve random 64kb
+ * ranges from any of the non-TR-TT vmas and use their addresses.
+ */
+#define ANV_TRTT_L1_NULL_TILE_VAL 0
+#define ANV_TRTT_L1_INVALID_TILE_VAL 1
+
 static inline uint32_t
 align_down_npot_u32(uint32_t v, uint32_t a)
 {
@@ -351,64 +367,71 @@ enum anv_bo_alloc_flags {
     *
     * This is the opposite of EXEC_OBJECT_SUPPORTS_48B_ADDRESS.
     */
-   ANV_BO_ALLOC_32BIT_ADDRESS =  (1 << 0),
+   ANV_BO_ALLOC_32BIT_ADDRESS =           (1 << 0),
 
    /** Specifies that the BO may be shared externally */
-   ANV_BO_ALLOC_EXTERNAL =       (1 << 1),
+   ANV_BO_ALLOC_EXTERNAL =                (1 << 1),
 
    /** Specifies that the BO should be mapped */
-   ANV_BO_ALLOC_MAPPED =         (1 << 2),
+   ANV_BO_ALLOC_MAPPED =                  (1 << 2),
 
-   /** Specifies that the BO should be snooped so we get coherency */
-   ANV_BO_ALLOC_SNOOPED =        (1 << 3),
+   /** Specifies that the BO should be cached and coherent */
+   ANV_BO_ALLOC_HOST_CACHED_COHERENT =    (1 << 3),
 
    /** Specifies that the BO should be captured in error states */
-   ANV_BO_ALLOC_CAPTURE =        (1 << 4),
+   ANV_BO_ALLOC_CAPTURE =                 (1 << 4),
 
    /** Specifies that the BO will have an address assigned by the caller
     *
     * Such BOs do not exist in any VMA heap.
     */
-   ANV_BO_ALLOC_FIXED_ADDRESS = (1 << 5),
+   ANV_BO_ALLOC_FIXED_ADDRESS =           (1 << 5),
 
    /** Enables implicit synchronization on the BO
     *
     * This is the opposite of EXEC_OBJECT_ASYNC.
     */
-   ANV_BO_ALLOC_IMPLICIT_SYNC =  (1 << 6),
+   ANV_BO_ALLOC_IMPLICIT_SYNC =           (1 << 6),
 
    /** Enables implicit synchronization on the BO
     *
     * This is equivalent to EXEC_OBJECT_WRITE.
     */
-   ANV_BO_ALLOC_IMPLICIT_WRITE = (1 << 7),
+   ANV_BO_ALLOC_IMPLICIT_WRITE =          (1 << 7),
 
    /** Has an address which is visible to the client */
-   ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS = (1 << 8),
+   ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS =  (1 << 8),
 
    /** This BO will be dedicated to a buffer or an image */
-   ANV_BO_ALLOC_DEDICATED = (1 << 9),
+   ANV_BO_ALLOC_DEDICATED =               (1 << 9),
 
    /** This buffer is allocated from local memory and should be cpu visible */
-   ANV_BO_ALLOC_LOCAL_MEM_CPU_VISIBLE = (1 << 10),
+   ANV_BO_ALLOC_LOCAL_MEM_CPU_VISIBLE =   (1 << 10),
 
    /** For non device local allocations */
-   ANV_BO_ALLOC_NO_LOCAL_MEM = (1 << 11),
+   ANV_BO_ALLOC_NO_LOCAL_MEM =            (1 << 11),
 
    /** This buffer will be scanout to display */
-   ANV_BO_ALLOC_SCANOUT = (1 << 12),
+   ANV_BO_ALLOC_SCANOUT =                 (1 << 12),
 
    /** For descriptor pools */
-   ANV_BO_ALLOC_DESCRIPTOR_POOL = (1 << 13),
+   ANV_BO_ALLOC_DESCRIPTOR_POOL =         (1 << 13),
 
    /** For buffers that will be bound using TR-TT.
     *
     * Not for buffers used as the TR-TT page tables.
     */
-   ANV_BO_ALLOC_TRTT = (1 << 14),
+   ANV_BO_ALLOC_TRTT =                    (1 << 14),
 
    /** Protected buffer */
-   ANV_BO_ALLOC_PROTECTED = (1 << 15),
+   ANV_BO_ALLOC_PROTECTED =               (1 << 15),
+
+   /** Specifies that the BO should be cached and incoherent.
+    *
+    * If ANV_BO_ALLOC_HOST_CACHED or ANV_BO_ALLOC_HOST_CACHED_COHERENT are not
+    * set it will allocate a coherent BO.
+    **/
+   ANV_BO_ALLOC_HOST_CACHED =             (1 << 16),
 };
 
 struct anv_bo {
@@ -695,6 +718,35 @@ struct anv_state_stream {
    struct util_dynarray all_blocks;
 };
 
+struct anv_sparse_submission {
+   struct anv_queue *queue;
+
+   struct anv_vm_bind *binds;
+   int binds_len;
+   int binds_capacity;
+
+   uint32_t wait_count;
+   uint32_t signal_count;
+
+   struct vk_sync_wait *waits;
+   struct vk_sync_signal *signals;
+};
+
+struct anv_trtt_bind {
+   uint64_t pte_addr;
+   uint64_t entry_addr;
+};
+
+struct anv_trtt_submission {
+   struct anv_sparse_submission *sparse;
+
+   struct anv_trtt_bind *l3l2_binds;
+   struct anv_trtt_bind *l1_binds;
+
+   int l3l2_binds_len;
+   int l1_binds_len;
+};
+
 /* The block_pool functions exported for testing only.  The block pool should
  * only be used via a state pool (see below).
  */
@@ -862,6 +914,7 @@ enum anv_timestamp_capture_type {
     ANV_TIMESTAMP_CAPTURE_END_OF_PIPE,
     ANV_TIMESTAMP_CAPTURE_AT_CS_STALL,
     ANV_TIMESTAMP_REWRITE_COMPUTE_WALKER,
+    ANV_TIMESTAMP_REWRITE_INDIRECT_DISPATCH,
 };
 
 struct anv_physical_device {
@@ -912,6 +965,7 @@ struct anv_physical_device {
      * a vm_bind ioctl).
      */
     bool                                        has_sparse;
+    bool                                        sparse_uses_trtt;
 
     /** True if HW supports ASTC LDR */
     bool                                        has_astc_ldr;
@@ -919,7 +973,8 @@ struct anv_physical_device {
     bool                                        flush_astc_ldr_void_extent_denorms;
     /** True if ASTC LDR is supported via emulation */
     bool                                        emu_astc_ldr;
-
+    /* true if FCV optimization should be disabled. */
+    bool                                        disable_fcv;
     /**/
     bool                                        uses_ex_bso;
 
@@ -1095,6 +1150,7 @@ struct anv_instance {
     unsigned                                    query_copy_with_shader_threshold;
     unsigned                                    force_vk_vendor;
     bool                                        has_fake_sparse;
+    bool                                        disable_fcv;
 
     /* HW workarounds */
     bool                                        no_16bit;
@@ -1547,6 +1603,19 @@ struct anv_device_astc_emu {
     VkPipeline pipeline;
 };
 
+struct anv_trtt_batch_bo {
+   struct anv_bo *bo;
+   uint32_t size;
+
+   /* Once device->trtt.timeline_handle signals timeline_val as complete we
+    * can free this struct and its members.
+    */
+   uint64_t timeline_val;
+
+   /* Part of device->trtt.in_flight_batches. */
+   struct list_head link;
+};
+
 struct anv_device {
     struct vk_device                            vk;
 
@@ -1722,6 +1791,49 @@ struct anv_device {
      */
     VkCommandPool                               companion_rcs_cmd_pool;
 
+    struct anv_trtt {
+       pthread_mutex_t mutex;
+
+       /* Sometimes we need to run batches from places where we don't have a
+        * queue coming from the API, so we use this.
+        */
+       struct anv_queue *queue;
+
+       /* There's only one L3 table, so if l3_addr is zero that means we
+        * didn't initialize the TR-TT context yet (i.e., we're not using TR-TT
+        * yet in this context).
+        */
+       uint64_t l3_addr;
+
+       /* We don't want to access the page tables from the CPU, so just
+        * maintain a mirror that we can use.
+        */
+       uint64_t *l3_mirror;
+       uint64_t *l2_mirror;
+
+       /* We keep a dynamic list of page table bos, and each bo can store
+        * multiple page tables.
+        */
+       struct anv_bo **page_table_bos;
+       int num_page_table_bos;
+       int page_table_bos_capacity;
+
+       /* These are used to keep track of space available for more page tables
+        * within a bo.
+        */
+       struct anv_bo *cur_page_table_bo;
+       uint64_t next_page_table_bo_offset;
+
+       /* Timeline syncobj used to track completion of the TR-TT batch BOs. */
+       uint32_t timeline_handle;
+       uint64_t timeline_val;
+
+       /* List of struct anv_trtt_batch_bo batches that are in flight and can
+        * be freed once their timeline gets signaled.
+        */
+       struct list_head in_flight_batches;
+    } trtt;
+
     /* This is true if the user ever bound a sparse resource to memory. This
      * is used for a workaround that makes every memoryBarrier flush more
      * things than it should. Many applications request for the sparse
@@ -1859,6 +1971,17 @@ VkResult anv_queue_submit(struct vk_queue *queue,
 VkResult anv_queue_submit_simple_batch(struct anv_queue *queue,
                                        struct anv_batch *batch,
                                        bool is_companion_rcs_batch);
+VkResult anv_queue_submit_trtt_batch(struct anv_sparse_submission *submit,
+                                     struct anv_batch *batch);
+
+static inline void
+anv_trtt_batch_bo_free(struct anv_device *device,
+                       struct anv_trtt_batch_bo *trtt_bbo)
+{
+   anv_bo_pool_free(&device->batch_bo_pool, trtt_bbo->bo);
+   list_del(&trtt_bbo->link);
+   vk_free(&device->vk.alloc, trtt_bbo);
+}
 
 void anv_queue_trace(struct anv_queue *queue, const char *label,
                      bool frame, bool begin);
@@ -2724,10 +2847,14 @@ VkResult anv_free_sparse_bindings(struct anv_device *device,
                                   struct anv_sparse_binding_data *sparse);
 VkResult anv_sparse_bind_resource_memory(struct anv_device *device,
                                          struct anv_sparse_binding_data *data,
-                                         const VkSparseMemoryBind *bind_);
+                                         const VkSparseMemoryBind *bind_,
+                                         struct anv_sparse_submission *submit);
 VkResult anv_sparse_bind_image_memory(struct anv_queue *queue,
                                       struct anv_image *image,
-                                      const VkSparseImageMemoryBind *bind);
+                                      const VkSparseImageMemoryBind *bind,
+                                      struct anv_sparse_submission *submit);
+VkResult anv_sparse_bind(struct anv_device *device,
+                         struct anv_sparse_submission *sparse_submit);
 
 VkSparseImageFormatProperties
 anv_sparse_calc_image_format_properties(struct anv_physical_device *pdevice,
@@ -2747,6 +2874,8 @@ VkResult anv_sparse_image_check_support(struct anv_physical_device *pdevice,
                                         VkSampleCountFlagBits samples,
                                         VkImageType type,
                                         VkFormat format);
+VkResult anv_trtt_batch_bo_new(struct anv_device *device, uint32_t batch_size,
+                               struct anv_trtt_batch_bo **out_trtt_bbo);
 
 struct anv_buffer {
    struct vk_buffer vk;
@@ -3349,6 +3478,9 @@ struct anv_cmd_pipeline_state {
       uint32_t                                  offsets[MAX_DYNAMIC_BUFFERS];
    }                                            dynamic_offsets[MAX_SETS];
 
+   /**
+    * The current bound pipeline.
+    */
    struct anv_pipeline      *pipeline;
 };
 
@@ -3361,8 +3493,6 @@ struct anv_cmd_pipeline_state {
  */
 struct anv_cmd_graphics_state {
    struct anv_cmd_pipeline_state base;
-
-   struct anv_graphics_pipeline *pipeline;
 
    VkRenderingFlags rendering_flags;
    VkRect2D render_area;
@@ -3416,6 +3546,11 @@ struct anv_cmd_graphics_state {
     */
    bool ds_write_state;
 
+   /**
+    * State tracking for Wa_18020335297.
+    */
+   bool                                         viewport_set;
+
    uint32_t n_occlusion_queries;
 
    struct anv_gfx_dynamic_state dyn_state;
@@ -3437,8 +3572,6 @@ enum anv_depth_reg_mode {
 struct anv_cmd_compute_state {
    struct anv_cmd_pipeline_state base;
 
-   struct anv_compute_pipeline *pipeline;
-
    bool pipeline_dirty;
 
    struct anv_state push_data;
@@ -3450,8 +3583,6 @@ struct anv_cmd_compute_state {
 
 struct anv_cmd_ray_tracing_state {
    struct anv_cmd_pipeline_state base;
-
-   struct anv_ray_tracing_pipeline *pipeline;
 
    bool pipeline_dirty;
 
@@ -3708,6 +3839,13 @@ struct anv_cmd_buffer {
     * Sync" field for utrace timestamp emission.
     */
    void                                        *last_compute_walker;
+
+   /** Pointer to the last emitted EXECUTE_INDIRECT_DISPATCH.
+    *
+    * This is used to edit the instruction post emission to replace the "Post
+    * Sync" field for utrace timestamp emission.
+    */
+   void                                        *last_indirect_dispatch;
 
    struct {
       struct anv_video_session *vid;
@@ -4772,6 +4910,8 @@ struct anv_image {
        * boolean will prevent the usage of CC_ONE.
        */
       bool can_non_zero_fast_clear;
+
+      bool aux_ccs_mapped;
    } planes[3];
 
    struct anv_image_memory_range vid_dmv_top_surface;
@@ -5023,6 +5163,24 @@ anv_bo_allows_aux_map(const struct anv_device *device,
     * rely on the BO offset instead.
     */
    if (bo->offset % intel_aux_map_get_alignment(device->aux_map_ctx) != 0)
+      return false;
+
+   return true;
+}
+
+static inline bool
+anv_address_allows_aux_map(const struct anv_device *device,
+                           struct anv_address addr)
+{
+   if (device->aux_map_ctx == NULL)
+      return false;
+
+   /* Technically, we really only care about what offset the image is bound
+    * into on the BO, but we don't have that information here. As a heuristic,
+    * rely on the BO offset instead.
+    */
+   if (((addr.bo ? addr.bo->offset : 0) + addr.offset) %
+       intel_aux_map_get_alignment(device->aux_map_ctx) != 0)
       return false;
 
    return true;

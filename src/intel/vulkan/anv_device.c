@@ -78,6 +78,7 @@ static const driOptionDescription anv_dri_options[] = {
       DRI_CONF_VK_KHR_PRESENT_WAIT(false)
       DRI_CONF_VK_XWAYLAND_WAIT_READY(true)
       DRI_CONF_ANV_ASSUME_FULL_SUBGROUPS(false)
+      DRI_CONF_ANV_DISABLE_FCV(false)
       DRI_CONF_ANV_SAMPLE_MASK_OUT_OPENGL_BEHAVIOUR(false)
       DRI_CONF_ANV_FP64_WORKAROUND_ENABLED(false)
       DRI_CONF_ANV_GENERATED_INDIRECT_THRESHOLD(4)
@@ -390,6 +391,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_vertex_attribute_divisor          = true,
       .EXT_vertex_input_dynamic_state        = true,
       .EXT_ycbcr_image_arrays                = true,
+      .AMD_buffer_marker                     = true,
 #ifdef ANDROID
       .ANDROID_external_memory_android_hardware_buffer = true,
       .ANDROID_native_buffer                 = true,
@@ -1150,11 +1152,17 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
          intel_engines_count(pdevice->engine_info, INTEL_ENGINE_CLASS_VIDEO);
       int g_count = 0;
       int c_count = 0;
-      const bool can_use_non_render_engines =
+      const bool kernel_supports_non_render_engines =
          pdevice->info.kmd_type == INTEL_KMD_TYPE_XE || pdevice->has_vm_control;
+      const bool sparse_supports_non_render_engines =
+         !pdevice->has_sparse || !pdevice->sparse_uses_trtt;
+      const bool can_use_non_render_engines =
+         kernel_supports_non_render_engines &&
+         sparse_supports_non_render_engines;
+
       if (debug_get_bool_option("INTEL_COMPUTE_CLASS", false)) {
          if (!can_use_non_render_engines)
-            mesa_logw("cannot initialize compute engine, no vm control.");
+            mesa_logw("cannot initialize compute engine");
          else
             c_count = intel_engines_count(pdevice->engine_info,
                                           INTEL_ENGINE_CLASS_COMPUTE);
@@ -1166,7 +1174,7 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
       if (debug_get_bool_option("INTEL_COPY_CLASS", false) &&
           pdevice->info.verx10 >= 125) {
          if (!can_use_non_render_engines)
-            mesa_logw("cannot initialize blitter engine, no vm control.");
+            mesa_logw("cannot initialize blitter engine");
          else
             blit_count = intel_engines_count(pdevice->engine_info,
                                              INTEL_ENGINE_CLASS_COPY);
@@ -1376,6 +1384,8 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       device->flush_astc_ldr_void_extent_denorms =
          device->has_astc_ldr && !device->emu_astc_ldr;
    }
+   device->disable_fcv = intel_device_info_is_mtl(&device->info) ||
+                         instance->disable_fcv;
 
    result = anv_physical_device_init_heaps(device, fd);
    if (result != VK_SUCCESS)
@@ -1441,8 +1451,18 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
 
    device->uses_relocs = device->info.kmd_type != INTEL_KMD_TYPE_XE;
 
-   device->has_sparse = device->info.kmd_type == INTEL_KMD_TYPE_XE &&
-      debug_get_bool_option("ANV_SPARSE", true);
+   /* While xe.ko can use both vm_bind and TR-TT, i915.ko only has TR-TT. */
+   if (device->info.kmd_type == INTEL_KMD_TYPE_XE) {
+      device->has_sparse = true;
+      device->sparse_uses_trtt =
+         debug_get_bool_option("ANV_SPARSE_USE_TRTT", false);
+   } else {
+      device->has_sparse =
+         device->info.ver >= 12 &&
+         device->has_exec_timeline &&
+         debug_get_bool_option("ANV_SPARSE", true);
+      device->sparse_uses_trtt = true;
+   }
 
    device->always_flush_cache = INTEL_DEBUG(DEBUG_STALL) ||
       driQueryOptionb(&instance->dri_options, "always_flush_cache");
@@ -1620,6 +1640,8 @@ anv_init_dri_options(struct anv_instance *instance)
     instance->has_fake_sparse =
        driQueryOptionb(&instance->dri_options, "fake_sparse");
     instance->enable_tbimr = driQueryOptionb(&instance->dri_options, "intel_tbimr");
+    instance->disable_fcv =
+            driQueryOptionb(&instance->dri_options, "anv_disable_fcv");
 }
 
 VkResult anv_CreateInstance(
@@ -1727,6 +1749,11 @@ void anv_GetPhysicalDeviceProperties(
    const bool has_sparse_or_fake = pdevice->instance->has_fake_sparse ||
                                    pdevice->has_sparse;
 
+   uint64_t sparse_addr_space_size =
+      !has_sparse_or_fake ? 0 :
+      pdevice->sparse_uses_trtt ? pdevice->va.trtt.size :
+      pdevice->va.high_heap.size;
+
    VkSampleCountFlags sample_counts =
       isl_device_get_sample_counts(&pdevice->isl_dev);
 
@@ -1744,7 +1771,7 @@ void anv_GetPhysicalDeviceProperties(
       .maxMemoryAllocationCount                 = UINT32_MAX,
       .maxSamplerAllocationCount                = 64 * 1024,
       .bufferImageGranularity                   = 1,
-      .sparseAddressSpaceSize                   = has_sparse_or_fake ? (1uLL << 48) : 0,
+      .sparseAddressSpaceSize                   = sparse_addr_space_size,
       .maxBoundDescriptorSets                   = MAX_SETS,
       .maxPerStageDescriptorSamplers            = max_samplers,
       .maxPerStageDescriptorUniformBuffers      = MAX_PER_STAGE_DESCRIPTOR_UNIFORM_BUFFERS,
@@ -3078,6 +3105,61 @@ anv_device_destroy_context_or_vm(struct anv_device *device)
    }
 }
 
+static VkResult
+anv_device_init_trtt(struct anv_device *device)
+{
+   struct anv_trtt *trtt = &device->trtt;
+
+   if (pthread_mutex_init(&trtt->mutex, NULL) != 0)
+      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+
+   list_inithead(&trtt->in_flight_batches);
+
+   return VK_SUCCESS;
+}
+
+static void
+anv_device_finish_trtt(struct anv_device *device)
+{
+   struct anv_trtt *trtt = &device->trtt;
+
+   if (trtt->timeline_val > 0) {
+      struct drm_syncobj_timeline_wait wait = {
+         .handles = (uintptr_t)&trtt->timeline_handle,
+         .points = (uintptr_t)&trtt->timeline_val,
+         .timeout_nsec = INT64_MAX,
+         .count_handles = 1,
+         .flags = DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL,
+         .first_signaled = false,
+      };
+      if (intel_ioctl(device->fd, DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT, &wait))
+         fprintf(stderr, "TR-TT syncobj wait failed!\n");
+
+      list_for_each_entry_safe(struct anv_trtt_batch_bo, trtt_bbo,
+                               &trtt->in_flight_batches, link)
+         anv_trtt_batch_bo_free(device, trtt_bbo);
+
+   }
+
+   if (trtt->timeline_handle > 0) {
+      struct drm_syncobj_destroy destroy = {
+         .handle = trtt->timeline_handle,
+      };
+      if (intel_ioctl(device->fd, DRM_IOCTL_SYNCOBJ_DESTROY, &destroy))
+         fprintf(stderr, "TR-TT syncobj destroy failed!\n");
+   }
+
+   pthread_mutex_destroy(&trtt->mutex);
+
+   vk_free(&device->vk.alloc, trtt->l3_mirror);
+   vk_free(&device->vk.alloc, trtt->l2_mirror);
+
+   for (int i = 0; i < trtt->num_page_table_bos; i++)
+      anv_device_release_bo(device, trtt->page_table_bos[i]);
+
+   vk_free(&device->vk.alloc, trtt->page_table_bos);
+}
+
 VkResult anv_CreateDevice(
     VkPhysicalDevice                            physicalDevice,
     const VkDeviceCreateInfo*                   pCreateInfo,
@@ -3273,7 +3355,7 @@ VkResult anv_CreateDevice(
 
    anv_bo_pool_init(&device->batch_bo_pool, device, "batch",
                     ANV_BO_ALLOC_MAPPED |
-                    ANV_BO_ALLOC_SNOOPED |
+                    ANV_BO_ALLOC_HOST_CACHED_COHERENT |
                     ANV_BO_ALLOC_CAPTURE);
    if (device->vk.enabled_extensions.KHR_acceleration_structure) {
       anv_bo_pool_init(&device->bvh_bo_pool, device, "bvh build",
@@ -3537,16 +3619,20 @@ VkResult anv_CreateDevice(
          goto fail_trivial_batch_bo_and_scratch_pool;
    }
 
-   result = anv_genX(device->info, init_device_state)(device);
+   result = anv_device_init_trtt(device);
    if (result != VK_SUCCESS)
       goto fail_btd_fifo_bo;
+
+   result = anv_genX(device->info, init_device_state)(device);
+   if (result != VK_SUCCESS)
+      goto fail_trtt;
 
    struct vk_pipeline_cache_create_info pcc_info = { };
    device->default_pipeline_cache =
       vk_pipeline_cache_create(&device->vk, &pcc_info, NULL);
    if (!device->default_pipeline_cache) {
       result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-      goto fail_btd_fifo_bo;
+      goto fail_trtt;
    }
 
    /* Internal shaders need their own pipeline cache because, unlike the rest
@@ -3649,6 +3735,8 @@ VkResult anv_CreateDevice(
    vk_pipeline_cache_destroy(device->internal_cache, NULL);
  fail_default_pipeline_cache:
    vk_pipeline_cache_destroy(device->default_pipeline_cache, NULL);
+ fail_trtt:
+   anv_device_finish_trtt(device);
  fail_btd_fifo_bo:
    if (ANV_SUPPORT_RT && device->info->has_ray_tracing)
       anv_device_release_bo(device, device->btd_fifo_bo);
@@ -3748,6 +3836,8 @@ void anv_DestroyDevice(
 
    vk_pipeline_cache_destroy(device->internal_cache, NULL);
    vk_pipeline_cache_destroy(device->default_pipeline_cache, NULL);
+
+   anv_device_finish_trtt(device);
 
    if (ANV_SUPPORT_RT && device->info->has_ray_tracing)
       anv_device_release_bo(device, device->btd_fifo_bo);
@@ -4056,10 +4146,13 @@ VkResult anv_AllocateMemory(
    if (mem->vk.export_handle_types || mem->vk.import_handle_type)
       alloc_flags |= (ANV_BO_ALLOC_EXTERNAL | ANV_BO_ALLOC_IMPLICIT_SYNC);
 
-   if ((mem_type->propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) &&
-       (mem_type->propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) &&
-       (alloc_flags & (ANV_BO_ALLOC_EXTERNAL | ANV_BO_ALLOC_SCANOUT)) == 0)
-      alloc_flags |= ANV_BO_ALLOC_SNOOPED;
+   if ((alloc_flags & (ANV_BO_ALLOC_EXTERNAL | ANV_BO_ALLOC_SCANOUT)) == 0) {
+      if ((mem_type->propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) &&
+          (mem_type->propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT))
+         alloc_flags |= ANV_BO_ALLOC_HOST_CACHED_COHERENT;
+      else if (mem_type->propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)
+         alloc_flags |= ANV_BO_ALLOC_HOST_CACHED;
+   }
 
    if (mem->vk.ahardware_buffer) {
       result = anv_import_ahw_memory(_device, mem);
@@ -5094,10 +5187,22 @@ const struct intel_device_info_pat_entry *
 anv_device_get_pat_entry(struct anv_device *device,
                          enum anv_bo_alloc_flags alloc_flags)
 {
-   if (alloc_flags & (ANV_BO_ALLOC_SNOOPED))
-      return &device->info->pat.coherent;
+   /* PAT indexes has no actual effect in DG2 and DG1, smem caches will always
+    * be snopped by GPU and lmem will always be WC.
+    * This might change in future discrete platforms.
+    */
+   if (anv_physical_device_has_vram(device->physical)) {
+      if (alloc_flags & ANV_BO_ALLOC_NO_LOCAL_MEM)
+         return &device->info->pat.cached_coherent;
+      return &device->info->pat.writecombining;
+   }
+
+   if (alloc_flags & (ANV_BO_ALLOC_HOST_CACHED_COHERENT))
+      return &device->info->pat.cached_coherent;
    else if (alloc_flags & (ANV_BO_ALLOC_EXTERNAL | ANV_BO_ALLOC_SCANOUT))
       return &device->info->pat.scanout;
+   else if (alloc_flags & ANV_BO_ALLOC_HOST_CACHED)
+      return &device->info->pat.writeback_incoherent;
    else
       return &device->info->pat.writecombining;
 }

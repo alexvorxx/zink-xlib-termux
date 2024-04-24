@@ -721,7 +721,8 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
        ((sscreen->info.vcn_ip_version >= VCN_4_0_0) ?
 	 sscreen->info.ip[AMD_IP_VCN_UNIFIED].num_queues : sscreen->info.ip[AMD_IP_VCN_DEC].num_queues) ||
        sscreen->info.ip[AMD_IP_VCN_JPEG].num_queues || sscreen->info.ip[AMD_IP_VCE].num_queues ||
-       sscreen->info.ip[AMD_IP_UVD_ENC].num_queues || sscreen->info.ip[AMD_IP_VCN_ENC].num_queues) {
+       sscreen->info.ip[AMD_IP_UVD_ENC].num_queues || sscreen->info.ip[AMD_IP_VCN_ENC].num_queues ||
+       sscreen->info.ip[AMD_IP_VPE].num_queues) {
       sctx->b.create_video_codec = si_uvd_create_decoder;
       sctx->b.create_video_buffer = si_video_buffer_create;
       if (screen->resource_create_with_modifiers)
@@ -1191,6 +1192,7 @@ static struct pipe_screen *radeonsi_screen_create_impl(struct radeon_winsys *ws,
                            &sscreen->pa_sc_raster_config_1, &sscreen->se_tile_repeat);
    }
 
+   sscreen->context_roll_log_filename = debug_get_option("AMD_ROLLS", NULL);
    sscreen->debug_flags = debug_get_flags_option("R600_DEBUG", radeonsi_debug_options, 0);
    sscreen->debug_flags |= debug_get_flags_option("AMD_DEBUG", radeonsi_debug_options, 0);
    test_flags = debug_get_flags_option("AMD_TEST", test_options, 0);

@@ -174,6 +174,7 @@ set_wqm(isel_context* ctx, bool enable_helpers = false)
    if (ctx->program->stage == fragment_fs) {
       ctx->wqm_block_idx = ctx->block->index;
       ctx->wqm_instruction_idx = ctx->block->instructions.size();
+      enable_helpers |= ctx->shader->info.fs.require_full_quads;
       ctx->program->needs_wqm |= enable_helpers;
    }
 }
@@ -1374,11 +1375,6 @@ emit_vec2_f2f16(isel_context* ctx, nir_alu_instr* instr, Temp dst)
    RegClass rc = RegClass(src.regClass().type(), instr->src[0].src.ssa->bit_size / 32);
    Temp src0 = emit_extract_vector(ctx, src, instr->src[0].swizzle[0], rc);
    Temp src1 = emit_extract_vector(ctx, src, instr->src[0].swizzle[1], rc);
-
-   if (instr->src[0].src.ssa->bit_size == 64) {
-      src0 = bld.vop1(aco_opcode::v_cvt_f32_f64, bld.def(v1), src0);
-      src1 = bld.vop1(aco_opcode::v_cvt_f32_f64, bld.def(v1), src1);
-   }
 
    src1 = as_vgpr(ctx, src1);
    if (ctx->program->gfx_level == GFX8 || ctx->program->gfx_level == GFX9)
@@ -2914,6 +2910,7 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
    }
    case nir_op_f2f16:
    case nir_op_f2f16_rtne: {
+      assert(instr->src[0].src.ssa->bit_size == 32);
       if (instr->def.num_components == 2) {
          /* Vectorizing f2f16 is only possible with rtz. */
          assert(instr->op != nir_op_f2f16_rtne);
@@ -2923,8 +2920,6 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
          break;
       }
       Temp src = get_alu_src(ctx, instr->src[0]);
-      if (instr->src[0].src.ssa->bit_size == 64)
-         src = bld.vop1(aco_opcode::v_cvt_f32_f64, bld.def(v1), src);
       if (instr->op == nir_op_f2f16_rtne && ctx->block->fp_mode.round16_64 != fp_round_ne)
          /* We emit s_round_mode/s_setreg_imm32 in lower_to_hw_instr to
           * keep value numbering and the scheduler simpler.
@@ -2935,13 +2930,12 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
       break;
    }
    case nir_op_f2f16_rtz: {
+      assert(instr->src[0].src.ssa->bit_size == 32);
       if (instr->def.num_components == 2) {
          emit_vec2_f2f16(ctx, instr, dst);
          break;
       }
       Temp src = get_alu_src(ctx, instr->src[0]);
-      if (instr->src[0].src.ssa->bit_size == 64)
-         src = bld.vop1(aco_opcode::v_cvt_f32_f64, bld.def(v1), src);
       if (ctx->block->fp_mode.round16_64 == fp_round_tz)
          bld.vop1(aco_opcode::v_cvt_f16_f32, Definition(dst), src);
       else if (ctx->program->gfx_level == GFX8 || ctx->program->gfx_level == GFX9)
@@ -2961,9 +2955,8 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
       break;
    }
    case nir_op_f2f64: {
+      assert(instr->src[0].src.ssa->bit_size == 32);
       Temp src = get_alu_src(ctx, instr->src[0]);
-      if (instr->src[0].src.ssa->bit_size == 16)
-         src = bld.vop1(aco_opcode::v_cvt_f32_f16, bld.def(v1), src);
       bld.vop1(aco_opcode::v_cvt_f64_f32, Definition(dst), src);
       break;
    }
@@ -7641,143 +7634,6 @@ visit_store_scratch(isel_context* ctx, nir_intrinsic_instr* instr)
    }
 }
 
-void
-emit_boolean_reduce(isel_context* ctx, nir_op op, unsigned cluster_size, Temp src, Temp dst)
-{
-   Builder bld(ctx->program, ctx->block);
-   assert(dst.regClass() == bld.lm);
-
-   if (cluster_size == 1) {
-      bld.copy(Definition(dst), src);
-   }
-   if (op == nir_op_iand && cluster_size == 4) {
-      /* subgroupClusteredAnd(val, 4) -> ~wqm(~val & exec) */
-      Temp tmp = bld.sop1(Builder::s_not, bld.def(bld.lm), bld.def(s1, scc), src);
-      tmp = bld.sop2(Builder::s_and, bld.def(bld.lm), bld.def(s1, scc), tmp, Operand(exec, bld.lm));
-      bld.sop1(Builder::s_not, Definition(dst), bld.def(s1, scc),
-               bld.sop1(Builder::s_wqm, bld.def(bld.lm), bld.def(s1, scc), tmp));
-   } else if (op == nir_op_ior && cluster_size == 4) {
-      /* subgroupClusteredOr(val, 4) -> wqm(val & exec) */
-      bld.sop1(
-         Builder::s_wqm, Definition(dst), bld.def(s1, scc),
-         bld.sop2(Builder::s_and, bld.def(bld.lm), bld.def(s1, scc), src, Operand(exec, bld.lm)));
-   } else if (op == nir_op_iand && cluster_size == ctx->program->wave_size) {
-      /* subgroupAnd(val) -> (~val & exec) == 0 */
-      Temp tmp = bld.sop1(Builder::s_not, bld.def(bld.lm), bld.def(s1, scc), src);
-      tmp = bld.sop2(Builder::s_and, bld.def(bld.lm), bld.def(s1, scc), tmp, Operand(exec, bld.lm))
-               .def(1)
-               .getTemp();
-      Temp cond = bool_to_vector_condition(ctx, tmp);
-      bld.sop1(Builder::s_not, Definition(dst), bld.def(s1, scc), cond);
-   } else if (op == nir_op_ior && cluster_size == ctx->program->wave_size) {
-      /* subgroupOr(val) -> (val & exec) != 0 */
-      Temp tmp =
-         bld.sop2(Builder::s_and, bld.def(bld.lm), bld.def(s1, scc), src, Operand(exec, bld.lm))
-            .def(1)
-            .getTemp();
-      bool_to_vector_condition(ctx, tmp, dst);
-   } else if (op == nir_op_ixor && cluster_size == ctx->program->wave_size) {
-      /* subgroupXor(val) -> s_bcnt1_i32_b64(val & exec) & 1 */
-      Temp tmp =
-         bld.sop2(Builder::s_and, bld.def(bld.lm), bld.def(s1, scc), src, Operand(exec, bld.lm));
-      tmp = bld.sop1(Builder::s_bcnt1_i32, bld.def(s1), bld.def(s1, scc), tmp);
-      tmp = bld.sop2(aco_opcode::s_and_b32, bld.def(s1), bld.def(s1, scc), tmp, Operand::c32(1u))
-               .def(1)
-               .getTemp();
-      bool_to_vector_condition(ctx, tmp, dst);
-   } else {
-      /* subgroupClustered{And,Or,Xor}(val, n):
-       *   lane_id = v_mbcnt_hi_u32_b32(-1, v_mbcnt_lo_u32_b32(-1, 0)) (just v_mbcnt_lo on wave32)
-       *   cluster_offset = ~(n - 1) & lane_id cluster_mask = ((1 << n) - 1)
-       * subgroupClusteredAnd():
-       *   return ((val | ~exec) >> cluster_offset) & cluster_mask == cluster_mask
-       * subgroupClusteredOr():
-       *   return ((val & exec) >> cluster_offset) & cluster_mask != 0
-       * subgroupClusteredXor():
-       *   return v_bnt_u32_b32(((val & exec) >> cluster_offset) & cluster_mask, 0) & 1 != 0
-       */
-      Temp lane_id = emit_mbcnt(ctx, bld.tmp(v1));
-      Temp cluster_offset = bld.vop2(aco_opcode::v_and_b32, bld.def(v1),
-                                     Operand::c32(~uint32_t(cluster_size - 1)), lane_id);
-
-      Temp tmp;
-      if (op == nir_op_iand)
-         tmp = bld.sop2(Builder::s_orn2, bld.def(bld.lm), bld.def(s1, scc), src,
-                        Operand(exec, bld.lm));
-      else
-         tmp =
-            bld.sop2(Builder::s_and, bld.def(bld.lm), bld.def(s1, scc), src, Operand(exec, bld.lm));
-
-      uint32_t cluster_mask = cluster_size == 32 ? -1 : (1u << cluster_size) - 1u;
-
-      if (ctx->program->gfx_level <= GFX7)
-         tmp = bld.vop3(aco_opcode::v_lshr_b64, bld.def(v2), tmp, cluster_offset);
-      else if (ctx->program->wave_size == 64)
-         tmp = bld.vop3(aco_opcode::v_lshrrev_b64, bld.def(v2), cluster_offset, tmp);
-      else
-         tmp = bld.vop2_e64(aco_opcode::v_lshrrev_b32, bld.def(v1), cluster_offset, tmp);
-      tmp = emit_extract_vector(ctx, tmp, 0, v1);
-      if (cluster_mask != 0xffffffff)
-         tmp = bld.vop2(aco_opcode::v_and_b32, bld.def(v1), Operand::c32(cluster_mask), tmp);
-
-      if (op == nir_op_iand) {
-         bld.vopc(aco_opcode::v_cmp_eq_u32, Definition(dst), Operand::c32(cluster_mask), tmp);
-      } else if (op == nir_op_ior) {
-         bld.vopc(aco_opcode::v_cmp_lg_u32, Definition(dst), Operand::zero(), tmp);
-      } else if (op == nir_op_ixor) {
-         tmp = bld.vop2(aco_opcode::v_and_b32, bld.def(v1), Operand::c32(1u),
-                        bld.vop3(aco_opcode::v_bcnt_u32_b32, bld.def(v1), tmp, Operand::zero()));
-         bld.vopc(aco_opcode::v_cmp_lg_u32, Definition(dst), Operand::zero(), tmp);
-      }
-   }
-}
-
-void
-emit_boolean_exclusive_scan(isel_context* ctx, nir_op op, Temp src, Temp dst)
-{
-   Builder bld(ctx->program, ctx->block);
-   assert(src.regClass() == bld.lm);
-
-   /* subgroupExclusiveAnd(val) -> mbcnt(~val & exec) == 0
-    * subgroupExclusiveOr(val) -> mbcnt(val & exec) != 0
-    * subgroupExclusiveXor(val) -> mbcnt(val & exec) & 1 != 0
-    */
-   if (op == nir_op_iand)
-      src = bld.sop1(Builder::s_not, bld.def(bld.lm), bld.def(s1, scc), src);
-
-   Temp tmp =
-      bld.sop2(Builder::s_and, bld.def(bld.lm), bld.def(s1, scc), src, Operand(exec, bld.lm));
-
-   Temp mbcnt = emit_mbcnt(ctx, bld.tmp(v1), Operand(tmp));
-
-   if (op == nir_op_iand)
-      bld.vopc(aco_opcode::v_cmp_eq_u32, Definition(dst), Operand::zero(), mbcnt);
-   else if (op == nir_op_ior)
-      bld.vopc(aco_opcode::v_cmp_lg_u32, Definition(dst), Operand::zero(), mbcnt);
-   else if (op == nir_op_ixor)
-      bld.vopc(aco_opcode::v_cmp_lg_u32, Definition(dst), Operand::zero(),
-               bld.vop2(aco_opcode::v_and_b32, bld.def(v1), Operand::c32(1u), mbcnt));
-}
-
-void
-emit_boolean_inclusive_scan(isel_context* ctx, nir_op op, Temp src, Temp dst)
-{
-   Builder bld(ctx->program, ctx->block);
-
-   /* subgroupInclusiveAnd(val) -> subgroupExclusiveAnd(val) && val
-    * subgroupInclusiveOr(val) -> subgroupExclusiveOr(val) || val
-    * subgroupInclusiveXor(val) -> subgroupExclusiveXor(val) ^^ val
-    */
-   Temp tmp = bld.tmp(bld.lm);
-   emit_boolean_exclusive_scan(ctx, op, src, tmp);
-   if (op == nir_op_iand)
-      bld.sop2(Builder::s_and, Definition(dst), bld.def(s1, scc), tmp, src);
-   else if (op == nir_op_ior)
-      bld.sop2(Builder::s_or, Definition(dst), bld.def(s1, scc), tmp, src);
-   else if (op == nir_op_ixor)
-      bld.sop2(Builder::s_xor, Definition(dst), bld.def(s1, scc), tmp, src);
-}
-
 ReduceOp
 get_reduce_op(nir_op op, unsigned bit_size)
 {
@@ -7896,7 +7752,7 @@ emit_uniform_reduce(isel_context* ctx, nir_intrinsic_instr* instr)
 
       Temp thread_count =
          bld.sop1(Builder::s_bcnt1_i32, bld.def(s1), bld.def(s1, scc), Operand(exec, bld.lm));
-      set_wqm(ctx, nir_intrinsic_include_helpers(instr));
+      set_wqm(ctx);
 
       emit_addition_uniform_reduce(ctx, op, dst, instr->src[0], thread_count);
    } else {
@@ -8588,6 +8444,22 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       set_wqm(ctx);
       break;
    }
+   case nir_intrinsic_quad_vote_any: {
+      Temp src = get_ssa_temp(ctx, instr->src[0].ssa);
+      src = bld.sop2(Builder::s_and, bld.def(bld.lm), bld.def(s1, scc), src, Operand(exec, bld.lm));
+      bld.sop1(Builder::s_wqm, Definition(get_ssa_temp(ctx, &instr->def)), bld.def(s1, scc), src);
+      set_wqm(ctx);
+      break;
+   }
+   case nir_intrinsic_quad_vote_all: {
+      Temp src = get_ssa_temp(ctx, instr->src[0].ssa);
+      src = bld.sop1(Builder::s_not, bld.def(bld.lm), bld.def(s1, scc), src);
+      src = bld.sop2(Builder::s_and, bld.def(bld.lm), bld.def(s1, scc), src, Operand(exec, bld.lm));
+      src = bld.sop1(Builder::s_wqm, bld.def(bld.lm), bld.def(s1, scc), src);
+      bld.sop1(Builder::s_not, Definition(get_ssa_temp(ctx, &instr->def)), bld.def(s1, scc), src);
+      set_wqm(ctx);
+      break;
+   }
    case nir_intrinsic_reduce:
    case nir_intrinsic_inclusive_scan:
    case nir_intrinsic_exclusive_scan: {
@@ -8598,11 +8470,10 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
          instr->intrinsic == nir_intrinsic_reduce ? nir_intrinsic_cluster_size(instr) : 0;
       cluster_size = util_next_power_of_two(
          MIN2(cluster_size ? cluster_size : ctx->program->wave_size, ctx->program->wave_size));
-      bool create_helpers =
-         instr->intrinsic == nir_intrinsic_reduce && nir_intrinsic_include_helpers(instr);
+      const unsigned bit_size = instr->src[0].ssa->bit_size;
+      assert(bit_size != 1);
 
-      if (!nir_src_is_divergent(instr->src[0]) && cluster_size == ctx->program->wave_size &&
-          instr->def.bit_size != 1) {
+      if (!nir_src_is_divergent(instr->src[0]) && cluster_size == ctx->program->wave_size) {
          /* We use divergence analysis to assign the regclass, so check if it's
           * working as expected */
          ASSERTED bool expected_divergent = instr->intrinsic == nir_intrinsic_exclusive_scan;
@@ -8618,48 +8489,27 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
          }
       }
 
-      if (instr->def.bit_size == 1) {
-         if (op == nir_op_imul || op == nir_op_umin || op == nir_op_imin)
-            op = nir_op_iand;
-         else if (op == nir_op_iadd)
-            op = nir_op_ixor;
-         else if (op == nir_op_umax || op == nir_op_imax)
-            op = nir_op_ior;
-         assert(op == nir_op_iand || op == nir_op_ior || op == nir_op_ixor);
+      src = emit_extract_vector(ctx, src, 0, RegClass::get(RegType::vgpr, bit_size / 8));
+      ReduceOp reduce_op = get_reduce_op(op, bit_size);
 
-         switch (instr->intrinsic) {
-         case nir_intrinsic_reduce: emit_boolean_reduce(ctx, op, cluster_size, src, dst); break;
-         case nir_intrinsic_exclusive_scan: emit_boolean_exclusive_scan(ctx, op, src, dst); break;
-         case nir_intrinsic_inclusive_scan: emit_boolean_inclusive_scan(ctx, op, src, dst); break;
-         default: assert(false);
-         }
-      } else if (cluster_size == 1) {
-         bld.copy(Definition(dst), src);
-      } else {
-         unsigned bit_size = instr->src[0].ssa->bit_size;
-
-         src = emit_extract_vector(ctx, src, 0, RegClass::get(RegType::vgpr, bit_size / 8));
-
-         ReduceOp reduce_op = get_reduce_op(op, bit_size);
-
-         aco_opcode aco_op;
-         switch (instr->intrinsic) {
-         case nir_intrinsic_reduce: aco_op = aco_opcode::p_reduce; break;
-         case nir_intrinsic_inclusive_scan: aco_op = aco_opcode::p_inclusive_scan; break;
-         case nir_intrinsic_exclusive_scan: aco_op = aco_opcode::p_exclusive_scan; break;
-         default: unreachable("unknown reduce intrinsic");
-         }
-
-         /* Avoid whole wave shift. */
-         const bool use_inclusive_for_exclusive = aco_op == aco_opcode::p_exclusive_scan &&
-                                                  (op == nir_op_iadd || op == nir_op_ixor) &&
-                                                  dst.type() == RegType::vgpr;
-         if (use_inclusive_for_exclusive)
-            inclusive_scan_to_exclusive(ctx, reduce_op, Definition(dst), src);
-         else
-            emit_reduction_instr(ctx, aco_op, reduce_op, cluster_size, Definition(dst), src);
+      aco_opcode aco_op;
+      switch (instr->intrinsic) {
+      case nir_intrinsic_reduce: aco_op = aco_opcode::p_reduce; break;
+      case nir_intrinsic_inclusive_scan: aco_op = aco_opcode::p_inclusive_scan; break;
+      case nir_intrinsic_exclusive_scan: aco_op = aco_opcode::p_exclusive_scan; break;
+      default: unreachable("unknown reduce intrinsic");
       }
-      set_wqm(ctx, create_helpers);
+
+      /* Avoid whole wave shift. */
+      const bool use_inclusive_for_exclusive = aco_op == aco_opcode::p_exclusive_scan &&
+                                               (op == nir_op_iadd || op == nir_op_ixor) &&
+                                               dst.type() == RegType::vgpr;
+      if (use_inclusive_for_exclusive)
+         inclusive_scan_to_exclusive(ctx, reduce_op, Definition(dst), src);
+      else
+         emit_reduction_instr(ctx, aco_op, reduce_op, cluster_size, Definition(dst), src);
+
+      set_wqm(ctx);
       break;
    }
    case nir_intrinsic_quad_broadcast:
@@ -8755,8 +8605,7 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
          isel_err(&instr->instr, "Unimplemented NIR quad group instruction bit size.");
       }
 
-      /* Vulkan spec 9.25: Helper invocations must be active for quad group instructions. */
-      set_wqm(ctx, true);
+      set_wqm(ctx);
       break;
    }
    case nir_intrinsic_masked_swizzle_amd: {
@@ -9562,42 +9411,46 @@ visit_tex(isel_context* ctx, nir_tex_instr* instr)
    Temp tg4_compare_cube_wa64 = Temp();
 
    if (tg4_integer_workarounds) {
-      Temp tg4_lod = bld.copy(bld.def(v1), Operand::zero());
-      Temp size = bld.tmp(v2);
-      MIMG_instruction* tex = emit_mimg(bld, aco_opcode::image_get_resinfo, size, resource,
-                                        Operand(s4), std::vector<Temp>{tg4_lod});
-      tex->dim = dim;
-      tex->dmask = 0x3;
-      tex->da = da;
-      emit_split_vector(ctx, size, size.size());
-
       Temp half_texel[2];
-      for (unsigned i = 0; i < 2; i++) {
-         half_texel[i] = emit_extract_vector(ctx, size, i, v1);
-         half_texel[i] = bld.vop1(aco_opcode::v_cvt_f32_i32, bld.def(v1), half_texel[i]);
-         half_texel[i] = bld.vop1(aco_opcode::v_rcp_iflag_f32, bld.def(v1), half_texel[i]);
-         half_texel[i] = bld.vop2(aco_opcode::v_mul_f32, bld.def(v1),
-                                  Operand::c32(0xbf000000 /*-0.5*/), half_texel[i]);
-      }
+      if (instr->sampler_dim == GLSL_SAMPLER_DIM_RECT) {
+         half_texel[0] = half_texel[1] = bld.copy(bld.def(v1), Operand::c32(0xbf000000 /*-0.5*/));
+      } else {
+         Temp tg4_lod = bld.copy(bld.def(v1), Operand::zero());
+         Temp size = bld.tmp(v2);
+         MIMG_instruction* tex = emit_mimg(bld, aco_opcode::image_get_resinfo, size, resource,
+                                           Operand(s4), std::vector<Temp>{tg4_lod});
+         tex->dim = dim;
+         tex->dmask = 0x3;
+         tex->da = da;
+         emit_split_vector(ctx, size, size.size());
 
-      if (instr->sampler_dim == GLSL_SAMPLER_DIM_2D && !instr->is_array) {
-         /* In vulkan, whether the sampler uses unnormalized
-          * coordinates or not is a dynamic property of the
-          * sampler. Hence, to figure out whether or not we
-          * need to divide by the texture size, we need to test
-          * the sampler at runtime. This tests the bit set by
-          * radv_init_sampler().
-          */
-         unsigned bit_idx = ffs(S_008F30_FORCE_UNNORMALIZED(1)) - 1;
-         Temp dword0 = emit_extract_vector(ctx, sampler, 0, s1);
-         Temp not_needed =
-            bld.sopc(aco_opcode::s_bitcmp0_b32, bld.def(s1, scc), dword0, Operand::c32(bit_idx));
+         for (unsigned i = 0; i < 2; i++) {
+            half_texel[i] = emit_extract_vector(ctx, size, i, v1);
+            half_texel[i] = bld.vop1(aco_opcode::v_cvt_f32_i32, bld.def(v1), half_texel[i]);
+            half_texel[i] = bld.vop1(aco_opcode::v_rcp_iflag_f32, bld.def(v1), half_texel[i]);
+            half_texel[i] = bld.vop2(aco_opcode::v_mul_f32, bld.def(v1),
+                                     Operand::c32(0xbf000000 /*-0.5*/), half_texel[i]);
+         }
 
-         not_needed = bool_to_vector_condition(ctx, not_needed);
-         half_texel[0] = bld.vop2(aco_opcode::v_cndmask_b32, bld.def(v1),
-                                  Operand::c32(0xbf000000 /*-0.5*/), half_texel[0], not_needed);
-         half_texel[1] = bld.vop2(aco_opcode::v_cndmask_b32, bld.def(v1),
-                                  Operand::c32(0xbf000000 /*-0.5*/), half_texel[1], not_needed);
+         if (instr->sampler_dim == GLSL_SAMPLER_DIM_2D && !instr->is_array) {
+            /* In vulkan, whether the sampler uses unnormalized
+             * coordinates or not is a dynamic property of the
+             * sampler. Hence, to figure out whether or not we
+             * need to divide by the texture size, we need to test
+             * the sampler at runtime. This tests the bit set by
+             * radv_init_sampler().
+             */
+            unsigned bit_idx = ffs(S_008F30_FORCE_UNNORMALIZED(1)) - 1;
+            Temp dword0 = emit_extract_vector(ctx, sampler, 0, s1);
+            Temp not_needed =
+               bld.sopc(aco_opcode::s_bitcmp0_b32, bld.def(s1, scc), dword0, Operand::c32(bit_idx));
+
+            not_needed = bool_to_vector_condition(ctx, not_needed);
+            half_texel[0] = bld.vop2(aco_opcode::v_cndmask_b32, bld.def(v1),
+                                     Operand::c32(0xbf000000 /*-0.5*/), half_texel[0], not_needed);
+            half_texel[1] = bld.vop2(aco_opcode::v_cndmask_b32, bld.def(v1),
+                                     Operand::c32(0xbf000000 /*-0.5*/), half_texel[1], not_needed);
+         }
       }
 
       Temp new_coords[2] = {bld.vop2(aco_opcode::v_add_f32, bld.def(v1), coords[0], half_texel[0]),
@@ -9905,6 +9758,7 @@ visit_tex(isel_context* ctx, nir_tex_instr* instr)
    tex->dim = dim;
    tex->dmask = dmask & 0xf;
    tex->da = da;
+   tex->unrm = instr->sampler_dim == GLSL_SAMPLER_DIM_RECT;
    tex->tfe = instr->is_sparse;
    tex->d16 = d16;
    tex->a16 = a16;
@@ -11036,7 +10890,7 @@ static void
 create_fs_jump_to_epilog(isel_context* ctx)
 {
    Builder bld(ctx->program, ctx->block);
-   std::vector<Operand> color_exports;
+   std::vector<Operand> exports;
    PhysReg exports_start(256); /* VGPR 0 */
 
    for (unsigned slot = FRAG_RESULT_DATA0; slot < FRAG_RESULT_DATA7 + 1; ++slot) {
@@ -11051,7 +10905,7 @@ create_fs_jump_to_epilog(isel_context* ctx)
 
       for (unsigned i = 0; i < 4; i++) {
          if (!(write_mask & BITFIELD_BIT(i))) {
-            color_exports.emplace_back(Operand(v1));
+            exports.emplace_back(Operand(v1));
             continue;
          }
 
@@ -11067,17 +10921,17 @@ create_fs_jump_to_epilog(isel_context* ctx)
          }
 
          chan.setFixed(chan_reg);
-         color_exports.emplace_back(chan);
+         exports.emplace_back(chan);
       }
    }
 
    Temp continue_pc = convert_pointer_to_64_bit(ctx, get_arg(ctx, ctx->program->info.ps.epilog_pc));
 
    aco_ptr<Pseudo_instruction> jump{create_instruction<Pseudo_instruction>(
-      aco_opcode::p_jump_to_epilog, Format::PSEUDO, 1 + color_exports.size(), 0)};
+      aco_opcode::p_jump_to_epilog, Format::PSEUDO, 1 + exports.size(), 0)};
    jump->operands[0] = Operand(continue_pc);
-   for (unsigned i = 0; i < color_exports.size(); i++) {
-      jump->operands[i + 1] = color_exports[i];
+   for (unsigned i = 0; i < exports.size(); i++) {
+      jump->operands[i + 1] = exports[i];
    }
    ctx->block->instructions.emplace_back(std::move(jump));
 }

@@ -40,6 +40,7 @@
 #include "zink_surface.h"
 
 
+#include "nir/pipe_nir.h"
 #include "util/u_blitter.h"
 #include "util/u_debug.h"
 #include "util/format_srgb.h"
@@ -3545,12 +3546,7 @@ zink_set_null_fs(struct zink_context *ctx)
    /*if (!ctx->null_fs) {
       nir_shader *nir = nir_builder_init_simple_shader(MESA_SHADER_FRAGMENT, &screen->nir_options, "null_fs").shader;
       nir->info.separate_shader = true;
-      struct pipe_shader_state shstate = {
-         .type = PIPE_SHADER_IR_NIR,
-         .tokens = NULL,
-         .ir.nir = nir
-      };
-      ctx->null_fs = ctx->base.create_fs_state(&ctx->base, &shstate);
+      ctx->null_fs = pipe_shader_from_nir(&ctx->base, nir);
    }
    ctx->saved_fs = ctx->gfx_stages[MESA_SHADER_FRAGMENT];
    ctx->base.bind_fs_state(&ctx->base, ctx->null_fs);*/
@@ -4922,14 +4918,13 @@ zink_resource_commit(struct pipe_context *pctx, struct pipe_resource *pres, unsi
 {
    struct zink_context *ctx = zink_context(pctx);
    struct zink_resource *res = zink_resource(pres);
-   struct zink_screen *screen = zink_screen(pctx->screen);
 
    /* if any current usage exists, flush the queue */
    if (zink_resource_has_unflushed_usage(res))
       zink_flush_queue(ctx);
 
    VkSemaphore sem = VK_NULL_HANDLE;
-   bool ret = zink_bo_commit(screen, res, level, box, commit, &sem);
+   bool ret = zink_bo_commit(ctx, res, level, box, commit, &sem);
    if (ret) {
       if (sem)
          zink_batch_add_wait_semaphore(&ctx->batch, sem);
@@ -5026,7 +5021,7 @@ zink_rebind_all_images(struct zink_context *ctx)
     for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
       for (unsigned j = 0; j < ctx->di.num_sampler_views[i]; j++) {
          struct zink_sampler_view *sv = zink_sampler_view(ctx->sampler_views[i][j]);
-         if (!sv || sv->image_view->base.texture->target == PIPE_BUFFER || !sv->image_view)
+         if (!sv || !sv->image_view || sv->image_view->base.texture->target == PIPE_BUFFER)
             continue;
          struct zink_resource *res = zink_resource(sv->image_view->base.texture);
          if (res->obj != sv->image_view->obj) {

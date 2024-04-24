@@ -52,14 +52,14 @@ zink-anv-tgl-traces:
     # dependencies right.
     - .lava-traces-base
   variables:
-    PIGLIT_REPLAY_DESCRIPTION_FILE: "/install/traces-zink.yml"
+    PIGLIT_TRACES_FILE: traces-zink.yml
 
 zink-anv-tgl-traces-restricted:
   extends:
     - zink-anv-tgl-traces
     - .zink-anv-rules-restricted
   variables:
-    PIGLIT_REPLAY_DESCRIPTION_FILE: "/install/traces-zink-restricted.yml"
+    PIGLIT_TRACES_FILE: traces-zink-restricted.yml
     PIGLIT_REPLAY_EXTRA_ARGS: --db-path ${CI_PROJECT_DIR}/replayer-db/ --minio_bucket=mesa-tracie-private --jwt-file=${CI_JOB_JWT_FILE}
   allow_failure: true
 
@@ -142,3 +142,16 @@ zink-radv-vangogh-valve:
   tags:
     - farm:$RUNNER_FARM_LOCATION
     - amdgpu:codename:VANGOGH
+
+zink-radv-navi31-valve:
+  extends:
+    - .radv-zink-test-valve
+    - .navi31-test-valve
+    - .zink-radv-manual-rules
+  timeout: 1h 20m
+  variables:
+    GPU_VERSION: zink-radv-navi31
+    # TODO: Multithreading issues (lot of AMDGPU errors reported)
+    FDO_CI_CONCURRENT: 1
+    B2C_TIMEOUT_BOOT_MINUTES: 75
+    B2C_TIMEOUT_OVERALL_MINUTES: 75

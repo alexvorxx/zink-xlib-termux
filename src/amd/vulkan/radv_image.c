@@ -75,6 +75,13 @@ radv_use_tc_compat_htile_for_image(struct radv_device *device, const VkImageCrea
    if (device->physical_device->rad_info.gfx_level < GFX8)
       return false;
 
+   /* TC-compat HTILE looks broken on Tonga (and Iceland is the same design) and the documented bug
+    * workarounds don't help.
+    */
+   if (device->physical_device->rad_info.family == CHIP_TONGA ||
+       device->physical_device->rad_info.family == CHIP_ICELAND)
+      return false;
+
    if (pCreateInfo->tiling == VK_IMAGE_TILING_LINEAR)
       return false;
 
@@ -106,6 +113,11 @@ radv_use_tc_compat_htile_for_image(struct radv_device *device, const VkImageCrea
       if (pCreateInfo->arrayLayers > 1)
          return false;
    }
+
+   /* GFX9 has issues when the sample count is 4 and the format is D16 */
+   if (device->physical_device->rad_info.gfx_level == GFX9 && pCreateInfo->samples == 4 &&
+       format == VK_FORMAT_D16_UNORM)
+      return false;
 
    return true;
 }
@@ -1921,6 +1933,9 @@ radv_image_create(VkDevice _device, const struct radv_image_create_info *create_
          else
             image->queue_family_mask |=
                1u << vk_queue_to_radv(device->physical_device, pCreateInfo->pQueueFamilyIndices[i]);
+
+      /* This queue never really accesses the image. */
+      image->queue_family_mask &= ~(1u << RADV_QUEUE_SPARSE);
    }
 
    const VkExternalMemoryImageCreateInfo *external_info =
@@ -2203,13 +2218,14 @@ radv_image_view_init(struct radv_image_view *iview, struct radv_device *device,
    }
 
    if (iview->vk.format != image->planes[iview->plane_id].format) {
+      const struct radv_image_plane *plane = &image->planes[iview->plane_id];
       unsigned view_bw = vk_format_get_blockwidth(iview->vk.format);
       unsigned view_bh = vk_format_get_blockheight(iview->vk.format);
-      unsigned img_bw = vk_format_get_blockwidth(image->planes[iview->plane_id].format);
-      unsigned img_bh = vk_format_get_blockheight(image->planes[iview->plane_id].format);
+      unsigned plane_bw = vk_format_get_blockwidth(plane->format);
+      unsigned plane_bh = vk_format_get_blockheight(plane->format);
 
-      iview->extent.width = DIV_ROUND_UP(iview->extent.width * view_bw, img_bw);
-      iview->extent.height = DIV_ROUND_UP(iview->extent.height * view_bh, img_bh);
+      iview->extent.width = DIV_ROUND_UP(iview->extent.width * view_bw, plane_bw);
+      iview->extent.height = DIV_ROUND_UP(iview->extent.height * view_bh, plane_bh);
 
       /* Comment ported from amdvlk -
        * If we have the following image:
@@ -2237,25 +2253,25 @@ radv_image_view_init(struct radv_image_view *iview, struct radv_device *device,
        * block compatible format and the compressed format, so even if we take
        * the plain converted dimensions the physical layout is correct.
        */
-      if (device->physical_device->rad_info.gfx_level >= GFX9 && vk_format_is_block_compressed(image->vk.format) &&
+      if (device->physical_device->rad_info.gfx_level >= GFX9 && vk_format_is_block_compressed(plane->format) &&
           !vk_format_is_block_compressed(iview->vk.format)) {
          /* If we have multiple levels in the view we should ideally take the last level,
           * but the mip calculation has a max(..., 1) so walking back to the base mip in an
           * useful way is hard. */
          if (iview->vk.level_count > 1) {
-            iview->extent.width = iview->image->planes[0].surface.u.gfx9.base_mip_width;
-            iview->extent.height = iview->image->planes[0].surface.u.gfx9.base_mip_height;
+            iview->extent.width = plane->surface.u.gfx9.base_mip_width;
+            iview->extent.height = plane->surface.u.gfx9.base_mip_height;
          } else {
             unsigned lvl_width = radv_minify(image->vk.extent.width, range->baseMipLevel);
             unsigned lvl_height = radv_minify(image->vk.extent.height, range->baseMipLevel);
 
-            lvl_width = DIV_ROUND_UP(lvl_width * view_bw, img_bw);
-            lvl_height = DIV_ROUND_UP(lvl_height * view_bh, img_bh);
+            lvl_width = DIV_ROUND_UP(lvl_width * view_bw, plane_bw);
+            lvl_height = DIV_ROUND_UP(lvl_height * view_bh, plane_bh);
 
-            iview->extent.width = CLAMP(lvl_width << range->baseMipLevel, iview->extent.width,
-                                        iview->image->planes[0].surface.u.gfx9.base_mip_width);
-            iview->extent.height = CLAMP(lvl_height << range->baseMipLevel, iview->extent.height,
-                                         iview->image->planes[0].surface.u.gfx9.base_mip_height);
+            iview->extent.width =
+               CLAMP(lvl_width << range->baseMipLevel, iview->extent.width, plane->surface.u.gfx9.base_mip_width);
+            iview->extent.height =
+               CLAMP(lvl_height << range->baseMipLevel, iview->extent.height, plane->surface.u.gfx9.base_mip_height);
 
             /* If the hardware-computed extent is still be too small, on GFX10
              * we can attempt another workaround provided by addrlib that

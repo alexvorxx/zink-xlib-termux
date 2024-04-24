@@ -45,7 +45,7 @@ xe_execute_simple_batch(struct anv_queue *queue,
       return vk_errorf(device, VK_ERROR_UNKNOWN, "Unable to create sync obj");
 
    struct drm_xe_sync sync = {
-      .flags = DRM_XE_SYNC_SYNCOBJ | DRM_XE_SYNC_SIGNAL,
+      .flags = DRM_XE_SYNC_FLAG_SYNCOBJ | DRM_XE_SYNC_FLAG_SIGNAL,
       .handle = syncobj_handle,
    };
    struct drm_xe_exec exec = {
@@ -91,26 +91,28 @@ xe_exec_fill_sync(struct drm_xe_sync *xe_sync, struct vk_sync *vk_sync,
    xe_sync->handle = syncobj->syncobj;
 
    if (value) {
-      xe_sync->flags |= DRM_XE_SYNC_TIMELINE_SYNCOBJ;
+      xe_sync->flags |= DRM_XE_SYNC_FLAG_TIMELINE_SYNCOBJ;
       xe_sync->timeline_value = value;
    } else {
-      xe_sync->flags |= DRM_XE_SYNC_SYNCOBJ;
+      xe_sync->flags |= DRM_XE_SYNC_FLAG_SYNCOBJ;
    }
 
    if (signal)
-      xe_sync->flags |= DRM_XE_SYNC_SIGNAL;
+      xe_sync->flags |= DRM_XE_SYNC_FLAG_SIGNAL;
 }
 
 static VkResult
 xe_exec_process_syncs(struct anv_queue *queue,
                       uint32_t wait_count, const struct vk_sync_wait *waits,
                       uint32_t signal_count, const struct vk_sync_signal *signals,
+                      uint32_t extra_sync_count, const struct drm_xe_sync *extra_syncs,
                       struct anv_utrace_submit *utrace_submit,
                       bool is_companion_rcs_queue,
                       struct drm_xe_sync **ret, uint32_t *ret_count)
 {
    struct anv_device *device = queue->device;
-   uint32_t num_syncs = wait_count + signal_count + (utrace_submit ? 1 : 0) +
+   uint32_t num_syncs = wait_count + signal_count + extra_sync_count +
+                        (utrace_submit ? 1 : 0) +
                         ((queue->sync && !is_companion_rcs_queue) ? 1 : 0);
    if (!num_syncs)
       return VK_SUCCESS;
@@ -150,6 +152,9 @@ xe_exec_process_syncs(struct anv_queue *queue,
                         TYPE_SIGNAL);
    }
 
+   for (uint32_t i = 0; i < extra_sync_count; i++)
+      xe_syncs[count++] = extra_syncs[i];
+
    if (queue->sync && !is_companion_rcs_queue) {
       struct drm_xe_sync *xe_sync = &xe_syncs[count++];
 
@@ -176,6 +181,55 @@ xe_exec_print_debug(struct anv_queue *queue, uint32_t cmd_buffer_count,
    anv_cmd_buffer_exec_batch_debug(queue, cmd_buffer_count, cmd_buffers,
                                    perf_query_pool, perf_query_pass,
                                    is_companion_rcs_cmd_buffer);
+}
+
+VkResult
+xe_execute_trtt_batch(struct anv_sparse_submission *submit,
+                      struct anv_trtt_batch_bo *trtt_bbo)
+{
+   struct anv_queue *queue = submit->queue;
+   struct anv_device *device = queue->device;
+   struct anv_trtt *trtt = &device->trtt;
+   VkResult result;
+
+   struct drm_xe_sync extra_sync = {
+      .flags = DRM_XE_SYNC_FLAG_TIMELINE_SYNCOBJ | DRM_XE_SYNC_FLAG_SIGNAL,
+      .handle = trtt->timeline_handle,
+      .timeline_value = trtt_bbo->timeline_val,
+   };
+
+   struct drm_xe_sync *xe_syncs = NULL;
+   uint32_t xe_syncs_count = 0;
+   result = xe_exec_process_syncs(queue, submit->wait_count, submit->waits,
+                                  submit->signal_count, submit->signals,
+                                  1, &extra_sync,
+                                  NULL, /* utrace_submit */
+                                  false, /* is_companion_rcs_queue */
+                                  &xe_syncs, &xe_syncs_count);
+   if (result != VK_SUCCESS)
+      return result;
+
+   struct drm_xe_exec exec = {
+      .exec_queue_id = queue->exec_queue_id,
+      .num_syncs = xe_syncs_count,
+      .syncs = (uintptr_t)xe_syncs,
+      .address = trtt_bbo->bo->offset,
+      .num_batch_buffer = 1,
+   };
+
+   if (!device->info->no_hw) {
+      if (intel_ioctl(device->fd, DRM_IOCTL_XE_EXEC, &exec))
+         return vk_device_set_lost(&device->vk, "XE_EXEC failed: %m");
+   }
+
+   if (queue->sync) {
+      result = vk_sync_wait(&device->vk, queue->sync, 0,
+                            VK_SYNC_WAIT_COMPLETE, UINT64_MAX);
+      if (result != VK_SUCCESS)
+         return vk_queue_set_lost(&queue->vk, "trtt sync wait failed");
+   }
+
+   return VK_SUCCESS;
 }
 
 VkResult
@@ -229,6 +283,7 @@ xe_companion_rcs_queue_exec_locked(struct anv_queue *queue,
    result = xe_exec_process_syncs(queue,
                                   wait_count, waits,
                                   1, &companion_sync,
+                                  0, NULL, /* extra_syncs */
                                   NULL /* utrace_submit */,
                                   true /* is_companion_rcs_queue */,
                                   &xe_syncs,
@@ -281,6 +336,7 @@ xe_queue_exec_locked(struct anv_queue *queue,
    uint32_t xe_syncs_count = 0;
    result = xe_exec_process_syncs(queue, wait_count, waits,
                                   signal_count, signals,
+                                  0, NULL, /* extra_syncs */
                                   utrace_submit,
                                   false, /* is_companion_rcs_queue */
                                   &xe_syncs, &xe_syncs_count);

@@ -28,6 +28,7 @@
 #include "d3d12_screen.h"
 #include "d3d12_format.h"
 #include <cmath>
+#include <numeric>
 
 void
 d3d12_video_encoder_update_current_rate_control_av1(struct d3d12_video_encoder *pD3D12Enc,
@@ -76,6 +77,7 @@ d3d12_video_encoder_update_current_rate_control_av1(struct d3d12_video_encoder *
                picture->rc[0].vbv_buf_initial_size;
          }
 
+         pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.max_frame_size = picture->rc[0].max_au_size;
          if (picture->rc[0].max_au_size > 0) {
             pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Flags |=
                D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_MAX_FRAME_SIZE;
@@ -163,6 +165,7 @@ d3d12_video_encoder_update_current_rate_control_av1(struct d3d12_video_encoder *
                picture->rc[0].vbv_buf_initial_size;
          }
 #endif
+         pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.max_frame_size = picture->rc[0].max_au_size;
          if (picture->rc[0].max_au_size > 0) {
             pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Flags |=
                D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_MAX_FRAME_SIZE;
@@ -246,6 +249,7 @@ d3d12_video_encoder_update_current_rate_control_av1(struct d3d12_video_encoder *
                picture->rc[0].vbv_buf_initial_size;
          }
 
+         pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.max_frame_size = picture->rc[0].max_au_size;
          if (picture->rc[0].max_au_size > 0) {
             pD3D12Enc->m_currentEncodeConfig.m_encoderRateControlDesc.m_Flags |=
                D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_MAX_FRAME_SIZE;
@@ -983,6 +987,48 @@ d3d12_video_encoder_convert_av1_codec_configuration(struct d3d12_video_encoder *
    return config;
 }
 
+static bool
+d3d12_video_encoder_update_intra_refresh_av1(struct d3d12_video_encoder *pD3D12Enc,
+                                                        struct pipe_video_buffer *  srcTexture,
+                                                        struct pipe_av1_enc_picture_desc *  picture)
+{
+   if (picture->intra_refresh.mode != INTRA_REFRESH_MODE_NONE)
+   {
+      // D3D12 only supports row intra-refresh
+      if (picture->intra_refresh.mode != INTRA_REFRESH_MODE_UNIT_ROWS)
+      {
+         debug_printf("[d3d12_video_encoder_update_intra_refresh_av1] Unsupported INTRA_REFRESH_MODE %d\n", picture->intra_refresh.mode);
+         return false;
+      }
+
+      uint32_t sbSize = ((pD3D12Enc->m_currentEncodeConfig.m_encoderCodecSpecificConfigDesc.m_AV1Config.FeatureFlags &
+        D3D12_VIDEO_ENCODER_AV1_FEATURE_FLAG_128x128_SUPERBLOCK) != 0) ? 128u : 64u;
+      uint32_t total_frame_blocks = static_cast<uint32_t>(std::ceil(srcTexture->height / sbSize)) *
+                              static_cast<uint32_t>(std::ceil(srcTexture->width / sbSize));
+      D3D12_VIDEO_ENCODER_INTRA_REFRESH targetIntraRefresh = {
+         D3D12_VIDEO_ENCODER_INTRA_REFRESH_MODE_ROW_BASED,
+         total_frame_blocks / picture->intra_refresh.region_size,
+      };
+      double ir_wave_progress = (picture->intra_refresh.offset == 0) ? 0 :
+         picture->intra_refresh.offset / (double) total_frame_blocks;
+      pD3D12Enc->m_currentEncodeConfig.m_IntraRefreshCurrentFrameIndex =
+         static_cast<uint32_t>(std::ceil(ir_wave_progress * targetIntraRefresh.IntraRefreshDuration));
+
+      // Set intra refresh state
+      pD3D12Enc->m_currentEncodeConfig.m_IntraRefresh = targetIntraRefresh;
+      // Need to send the sequence flag during all the IR duration
+      pD3D12Enc->m_currentEncodeConfig.m_ConfigDirtyFlags |= d3d12_video_encoder_config_dirty_flag_intra_refresh;
+   } else {
+      pD3D12Enc->m_currentEncodeConfig.m_IntraRefreshCurrentFrameIndex = 0;
+      pD3D12Enc->m_currentEncodeConfig.m_IntraRefresh = {
+         D3D12_VIDEO_ENCODER_INTRA_REFRESH_MODE_NONE,
+         0,
+      };
+   }
+
+   return true;
+}
+
 bool
 d3d12_video_encoder_update_current_encoder_config_state_av1(struct d3d12_video_encoder *pD3D12Enc,
                                                             struct pipe_video_buffer *srcTexture,
@@ -1100,6 +1146,12 @@ d3d12_video_encoder_update_current_encoder_config_state_av1(struct d3d12_video_e
    // Set GOP config
    if (!d3d12_video_encoder_update_av1_gop_configuration(pD3D12Enc, av1Pic)) {
       debug_printf("d3d12_video_encoder_update_av1_gop_configuration failed!\n");
+      return false;
+   }
+
+   // Set intra-refresh config
+   if(!d3d12_video_encoder_update_intra_refresh_av1(pD3D12Enc, srcTexture, av1Pic)) {
+      debug_printf("d3d12_video_encoder_update_intra_refresh_av1 failed!\n");
       return false;
    }
 
@@ -2181,6 +2233,8 @@ d3d12_video_encoder_build_post_encode_codec_bitstream_av1(struct d3d12_video_enc
       static_cast<d3d12_video_bitstream_builder_av1 *>(pD3D12Enc->m_upBitstreamBuilder.get());
    assert(pAV1BitstreamBuilder);
 
+   associatedMetadata.pWrittenCodecUnitsSizes.clear();
+
    size_t writtenTemporalDelimBytes = 0;
    if (picHdr.show_frame && associatedMetadata.m_CodecSpecificData.AV1HeadersInfo.temporal_delim_rendered) {
       pAV1BitstreamBuilder->write_temporal_delimiter_obu(
@@ -2190,6 +2244,7 @@ d3d12_video_encoder_build_post_encode_codec_bitstream_av1(struct d3d12_video_enc
       );
       assert(pD3D12Enc->m_BitstreamHeadersBuffer.size() == writtenTemporalDelimBytes);
       debug_printf("Written OBU_TEMPORAL_DELIMITER bytes: %" PRIu64 "\n", writtenTemporalDelimBytes);
+      associatedMetadata.pWrittenCodecUnitsSizes.push_back(writtenTemporalDelimBytes);
    }
 
    size_t writtenSequenceBytes = 0;
@@ -2207,6 +2262,7 @@ d3d12_video_encoder_build_post_encode_codec_bitstream_av1(struct d3d12_video_enc
          pD3D12Enc->m_BitstreamHeadersBuffer.begin() + writtenTemporalDelimBytes,   // placingPositionStart
          writtenSequenceBytes   // Bytes Written AFTER placingPositionStart arg above
       );
+      associatedMetadata.pWrittenCodecUnitsSizes.push_back(writtenSequenceBytes);
       assert(pD3D12Enc->m_BitstreamHeadersBuffer.size() == (writtenSequenceBytes + writtenTemporalDelimBytes));
       debug_printf("Written OBU_SEQUENCE_HEADER bytes: %" PRIu64 "\n", writtenSequenceBytes);
    }
@@ -2255,6 +2311,7 @@ d3d12_video_encoder_build_post_encode_codec_bitstream_av1(struct d3d12_video_enc
       );
 
       debug_printf("Written OBU_FRAME bytes: %" PRIu64 "\n", writtenFrameBytes);
+      associatedMetadata.pWrittenCodecUnitsSizes.push_back(writtenFrameBytes);
 
       assert(pD3D12Enc->m_BitstreamHeadersBuffer.size() ==
              (writtenSequenceBytes + writtenTemporalDelimBytes + writtenFrameBytes));
@@ -2291,7 +2348,8 @@ d3d12_video_encoder_build_post_encode_codec_bitstream_av1(struct d3d12_video_enc
             1,
          associatedMetadata.m_associatedEncodeConfig.m_encoderSliceConfigDesc.m_TilesConfig_AV1.TilesPartition,
          associatedMetadata.m_associatedEncodeConfig.m_encoderSliceConfigDesc.m_TilesConfig_AV1.TilesGroups[0],
-         written_bytes_to_staging_bitstream_buffer);
+         written_bytes_to_staging_bitstream_buffer,
+         associatedMetadata.pWrittenCodecUnitsSizes);
 
       writtenTileBytes += tile_group_obu_size;
       comp_bitstream_offset += writtenTileBytes;
@@ -2329,6 +2387,7 @@ d3d12_video_encoder_build_post_encode_codec_bitstream_av1(struct d3d12_video_enc
                                                   writtenTemporalDelimBytes,   // placingPositionStart
                                                writtenFrameBytes   // Bytes Written AFTER placingPositionStart arg above
       );
+      associatedMetadata.pWrittenCodecUnitsSizes.push_back(writtenFrameBytes);
 
       debug_printf("Written OBU_FRAME_HEADER bytes: %" PRIu64 "\n", writtenFrameBytes);
 
@@ -2392,6 +2451,7 @@ d3d12_video_encoder_build_post_encode_codec_bitstream_av1(struct d3d12_video_enc
                       staging_bitstream_buffer_offset);
 
          writtenTileBytes += writtenTileObuPrefixBytes;
+         associatedMetadata.pWrittenCodecUnitsSizes.push_back(writtenTileObuPrefixBytes);
 
          // Note: The buffer_subdata is queued in pD3D12Enc->base.context but doesn't execute immediately
          pD3D12Enc->base.context->buffer_subdata(
@@ -2429,7 +2489,8 @@ d3d12_video_encoder_build_post_encode_codec_bitstream_av1(struct d3d12_video_enc
                1,
             associatedMetadata.m_associatedEncodeConfig.m_encoderSliceConfigDesc.m_TilesConfig_AV1.TilesPartition,
             currentTg,
-            written_bytes_to_staging_bitstream_buffer);
+            written_bytes_to_staging_bitstream_buffer,
+            associatedMetadata.pWrittenCodecUnitsSizes);
 
          staging_bitstream_buffer_offset += written_bytes_to_staging_bitstream_buffer;
          comp_bitstream_offset += tile_group_obu_size;
@@ -2512,6 +2573,7 @@ d3d12_video_encoder_build_post_encode_codec_bitstream_av1(struct d3d12_video_enc
                   writtenTemporalDelimBytes   // Bytes Written AFTER placingPositionStart arg above
                );
             }
+            associatedMetadata.pWrittenCodecUnitsSizes.push_back(writtenTemporalDelimBytes);
             assert(writtenTemporalDelimBytes == (pD3D12Enc->m_BitstreamHeadersBuffer.size() - staging_buf_offset));
 
             // Add current pending frame being processed in the loop
@@ -2536,6 +2598,8 @@ d3d12_video_encoder_build_post_encode_codec_bitstream_av1(struct d3d12_video_enc
                   writtenShowExistingFrameBytes   // Bytes Written AFTER placingPositionStart arg above
                );
             }
+            associatedMetadata.pWrittenCodecUnitsSizes.push_back(writtenShowExistingFrameBytes);
+
             assert(writtenShowExistingFrameBytes ==
                    (pD3D12Enc->m_BitstreamHeadersBuffer.size() - staging_buf_offset - writtenTemporalDelimBytes));
 
@@ -2605,8 +2669,12 @@ d3d12_video_encoder_build_post_encode_codec_bitstream_av1(struct d3d12_video_enc
 
    assert((writtenSequenceBytes + writtenTemporalDelimBytes + writtenFrameBytes +
            extra_show_existing_frame_payload_bytes) == pD3D12Enc->m_BitstreamHeadersBuffer.size());
-   return static_cast<unsigned int>(writtenSequenceBytes + writtenTemporalDelimBytes + writtenFrameBytes +
+
+   uint32_t total_bytes_written = static_cast<uint32_t>(writtenSequenceBytes + writtenTemporalDelimBytes + writtenFrameBytes +
                                     writtenTileBytes + extra_show_existing_frame_payload_bytes);
+   assert(std::accumulate(associatedMetadata.pWrittenCodecUnitsSizes.begin(), associatedMetadata.pWrittenCodecUnitsSizes.end(), 0u) ==
+      static_cast<uint64_t>(total_bytes_written));
+   return total_bytes_written;
 }
 
 void
@@ -2622,7 +2690,8 @@ upload_tile_group_obu(struct d3d12_video_encoder *pD3D12Enc,
                       size_t TileSizeBytes,   // Pass already +1'd from TileSizeBytesMinus1
                       const D3D12_VIDEO_ENCODER_AV1_PICTURE_CONTROL_SUBREGIONS_LAYOUT_DATA_TILES &TilesPartition,
                       const av1_tile_group_t &tileGroup,
-                      size_t &written_bytes_to_staging_bitstream_buffer)
+                      size_t &written_bytes_to_staging_bitstream_buffer,
+                      std::vector<uint64_t> &pWrittenCodecUnitsSizes)
 {
    debug_printf("[Tile group start %d to end %d] Writing to comp_bit_destination %p starts at offset %" PRIu64 "\n",
                 tileGroup.tg_start,
@@ -2795,6 +2864,13 @@ upload_tile_group_obu(struct d3d12_video_encoder *pD3D12Enc,
                    comp_bit_destination_offset);
 
       comp_bit_destination_offset += tile_size;
+
+      size_t cur_tile_reportable_size = tile_size;
+      if (TileIdx != tileGroup.tg_end)
+         cur_tile_reportable_size += TileSizeBytes; /* extra tile_size_bytes_minus1 in all tiles except last*/
+      if (TileIdx == 0)
+         cur_tile_reportable_size += bitstream_tile_group_obu_bytes; // part of the obu tile group header (make part of first tile)
+      pWrittenCodecUnitsSizes.push_back(cur_tile_reportable_size);
    }
 
    // Make sure we wrote the expected bytes that match the obu_size elements

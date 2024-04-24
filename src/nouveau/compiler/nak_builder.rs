@@ -49,6 +49,27 @@ pub trait Builder {
         }
     }
 
+    fn prmt_to(&mut self, dst: Dst, x: Src, y: Src, sel: [u8;4]) {
+        if sel == [0, 1, 2, 3] {
+            self.copy_to(dst, x);
+        } else if sel == [4, 5, 6, 7] {
+            self.copy_to(dst, y);
+        } else {
+            let mut sel_u32 = 0;
+            for i in 0..4 {
+                assert!(sel[i] < 16);
+                sel_u32 |= u32::from(sel[i]) << (i * 4);
+            }
+
+            self.push_op(OpPrmt {
+                dst: dst,
+                srcs: [x, y],
+                sel: sel_u32.into(),
+                mode: PrmtMode::Index,
+            });
+        }
+    }
+
     fn copy_to(&mut self, dst: Dst, src: Src) {
         self.push_op(OpCopy { dst: dst, src: src });
     }
@@ -72,6 +93,16 @@ pub trait SSABuilder: Builder {
             srcs: [x, y],
             saturate: false,
             rnd_mode: FRndMode::NearestEven,
+        });
+        dst
+    }
+
+    fn fmnmx(&mut self, x: Src, y: Src, min: Src) -> SSARef {
+        let dst = self.alloc_ssa(RegFile::GPR, 1);
+        self.push_op(OpFMnMx {
+            dst: dst.into(),
+            srcs: [x, y],
+            min: min,
         });
         dst
     }
@@ -127,6 +158,27 @@ pub trait SSABuilder: Builder {
         dst
     }
 
+    fn imnmx(&mut self, tp: IntCmpType, x: Src, y: Src, min: Src) -> SSARef {
+        let dst = self.alloc_ssa(RegFile::GPR, 1);
+        self.push_op(OpIMnMx {
+            dst: dst.into(),
+            cmp_type: tp,
+            srcs: [x, y],
+            min: min,
+        });
+        dst
+    }
+
+    fn imul(&mut self, x: Src, y: Src) -> SSARef {
+        let dst = self.alloc_ssa(RegFile::GPR, 1);
+        self.push_op(OpIMad {
+            dst: dst.into(),
+            srcs: [x, y, 0.into()],
+            signed: false,
+        });
+        dst
+    }
+
     fn ineg(&mut self, i: Src) -> SSARef {
         let dst = self.alloc_ssa(RegFile::GPR, 1);
         self.push_op(OpINeg {
@@ -173,6 +225,50 @@ pub trait SSABuilder: Builder {
             src: src,
         });
         dst
+    }
+
+    fn prmt(&mut self, x: Src, y: Src, sel: [u8;4]) -> SSARef {
+        let dst = self.alloc_ssa(RegFile::GPR, 1);
+        self.prmt_to(dst.into(), x, y, sel);
+        dst
+    }
+
+    fn prmt4(&mut self, src: [Src;4], sel: [u8;4]) -> SSARef {
+        let max_sel = *sel.iter().max().unwrap();
+        if max_sel < 8 {
+            self.prmt(src[0], src[1], sel)
+        } else if max_sel < 12 {
+            let mut sel_a = [0_u8; 4];
+            let mut sel_b = [0_u8; 4];
+            for i in 0..4_u8 {
+                if sel[usize::from(i)] < 8 {
+                    sel_a[usize::from(i)] = sel[usize::from(i)];
+                    sel_b[usize::from(i)] = i;
+                } else {
+                    sel_b[usize::from(i)] = (sel[usize::from(i)] - 8) + 4;
+                }
+            }
+            let a = self.prmt(src[0], src[1], sel_a);
+            self.prmt(a.into(), src[2], sel_b)
+        } else if max_sel < 16 {
+            let mut sel_a = [0_u8; 4];
+            let mut sel_b = [0_u8; 4];
+            let mut sel_c = [0_u8; 4];
+            for i in 0..4_u8 {
+                if sel[usize::from(i)] < 8 {
+                    sel_a[usize::from(i)] = sel[usize::from(i)];
+                    sel_c[usize::from(i)] = i;
+                } else {
+                    sel_b[usize::from(i)] = sel[usize::from(i)] - 8;
+                    sel_c[usize::from(i)] = 4 + i;
+                }
+            }
+            let a = self.prmt(src[0], src[1], sel_a);
+            let b = self.prmt(src[2], src[3], sel_b);
+            self.prmt(a.into(), b.into(), sel_c)
+        } else {
+            panic!("Invalid permute value: {max_sel}");
+        }
     }
 
     fn sel(&mut self, cond: Src, x: Src, y: Src) -> SSARef {

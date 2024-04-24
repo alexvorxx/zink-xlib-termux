@@ -2195,6 +2195,8 @@ nir_intrinsic_from_system_value(gl_system_value val)
       return nir_intrinsic_load_sample_pos_or_center;
    case SYSTEM_VALUE_SAMPLE_MASK_IN:
       return nir_intrinsic_load_sample_mask_in;
+   case SYSTEM_VALUE_LAYER_ID:
+      return nir_intrinsic_load_layer_id;
    case SYSTEM_VALUE_LOCAL_INVOCATION_ID:
       return nir_intrinsic_load_local_invocation_id;
    case SYSTEM_VALUE_LOCAL_INVOCATION_INDEX:
@@ -2348,6 +2350,8 @@ nir_system_value_from_intrinsic(nir_intrinsic_op intrin)
       return SYSTEM_VALUE_SAMPLE_POS_OR_CENTER;
    case nir_intrinsic_load_sample_mask_in:
       return SYSTEM_VALUE_SAMPLE_MASK_IN;
+   case nir_intrinsic_load_layer_id:
+      return SYSTEM_VALUE_LAYER_ID;
    case nir_intrinsic_load_local_invocation_id:
       return SYSTEM_VALUE_LOCAL_INVOCATION_ID;
    case nir_intrinsic_load_local_invocation_index:
@@ -2846,16 +2850,6 @@ nir_op_is_vec(nir_op op)
    default:
       return false;
    }
-}
-
-bool
-nir_alu_instr_channel_used(const nir_alu_instr *instr, unsigned src,
-                           unsigned channel)
-{
-   if (nir_op_infos[instr->op].input_sizes[src] > 0)
-      return channel < nir_op_infos[instr->op].input_sizes[src];
-
-   return channel < instr->def.num_components;
 }
 
 nir_component_mask_t
@@ -3377,7 +3371,7 @@ nir_remove_varying(nir_intrinsic_instr *intr, gl_shader_stage next_shader)
  * This marks the output store instruction as not feeding fixed-function
  * logic. If the instruction has no other use, it's removed.
  */
-void
+bool
 nir_remove_sysval_output(nir_intrinsic_instr *intr)
 {
    nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
@@ -3387,8 +3381,10 @@ nir_remove_sysval_output(nir_intrinsic_instr *intr)
       /* Demote the store instruction. */
       sem.no_sysval_output = true;
       nir_intrinsic_set_io_semantics(intr, sem);
+      return false;
    } else {
       nir_instr_remove(&intr->instr);
+      return true;
    }
 }
 

@@ -339,6 +339,31 @@ get_context_and_exec_flags(struct anv_queue *queue,
 }
 
 static VkResult
+anv_execbuf_add_trtt_bos(struct anv_device *device,
+                         struct anv_execbuf *execbuf)
+{
+   struct anv_trtt *trtt = &device->trtt;
+   VkResult result = VK_SUCCESS;
+
+   /* If l3_addr is zero we're not using TR-TT, there's no bo to add. */
+   if (!trtt->l3_addr)
+      return VK_SUCCESS;
+
+   pthread_mutex_lock(&trtt->mutex);
+
+   for (int i = 0; i < trtt->num_page_table_bos; i++) {
+      result = anv_execbuf_add_bo(device, execbuf, trtt->page_table_bos[i],
+                                  NULL, 0);
+      if (result != VK_SUCCESS)
+         goto out;
+   }
+
+out:
+   pthread_mutex_unlock(&trtt->mutex);
+   return result;
+}
+
+static VkResult
 setup_execbuf_for_cmd_buffers(struct anv_execbuf *execbuf,
                               struct anv_queue *queue,
                               struct anv_cmd_buffer **cmd_buffers,
@@ -401,7 +426,8 @@ setup_execbuf_for_cmd_buffers(struct anv_execbuf *execbuf,
       return result;
 
    /* Add the BOs for all user allocated memory objects because we can't
-    * track after binding updates of VK_EXT_descriptor_indexing.
+    * track after binding updates of VK_EXT_descriptor_indexing and due to how
+    * sparse resources work.
     */
    list_for_each_entry(struct anv_device_memory, mem,
                        &device->memory_objects, link) {
@@ -409,6 +435,10 @@ setup_execbuf_for_cmd_buffers(struct anv_execbuf *execbuf,
       if (result != VK_SUCCESS)
          return result;
    }
+
+   result = anv_execbuf_add_trtt_bos(device, execbuf);
+   if (result != VK_SUCCESS)
+      return result;
 
    /* Add all the private BOs from images because we can't track after binding
     * updates of VK_EXT_descriptor_indexing.
@@ -651,6 +681,23 @@ anv_i915_debug_submit(const struct anv_execbuf *execbuf)
    }
 }
 
+static void
+setup_execbuf_fence_params(struct anv_execbuf *execbuf)
+{
+   if (execbuf->syncobj_values) {
+      execbuf->timeline_fences.fence_count = execbuf->syncobj_count;
+      execbuf->timeline_fences.handles_ptr = (uintptr_t)execbuf->syncobjs;
+      execbuf->timeline_fences.values_ptr = (uintptr_t)execbuf->syncobj_values;
+      anv_execbuf_add_ext(execbuf,
+                          DRM_I915_GEM_EXECBUFFER_EXT_TIMELINE_FENCES,
+                          &execbuf->timeline_fences.base);
+   } else if (execbuf->syncobjs) {
+      execbuf->execbuf.flags |= I915_EXEC_FENCE_ARRAY;
+      execbuf->execbuf.num_cliprects = execbuf->syncobj_count;
+      execbuf->execbuf.cliprects_ptr = (uintptr_t)execbuf->syncobjs;
+   }
+}
+
 static VkResult
 i915_companion_rcs_queue_exec_locked(struct anv_queue *queue,
                                      uint32_t cmd_buffer_count,
@@ -701,18 +748,7 @@ i915_companion_rcs_queue_exec_locked(struct anv_queue *queue,
    anv_cmd_buffer_exec_batch_debug(queue, cmd_buffer_count, cmd_buffers,
                                    NULL, 0, true /*is_companion_rcs_cmd_buffer */);
 
-   if (execbuf.syncobj_values) {
-      execbuf.timeline_fences.fence_count = execbuf.syncobj_count;
-      execbuf.timeline_fences.handles_ptr = (uintptr_t)execbuf.syncobjs;
-      execbuf.timeline_fences.values_ptr = (uintptr_t)execbuf.syncobj_values;
-      anv_execbuf_add_ext(&execbuf,
-                          DRM_I915_GEM_EXECBUFFER_EXT_TIMELINE_FENCES,
-                          &execbuf.timeline_fences.base);
-   } else if (execbuf.syncobjs) {
-      execbuf.execbuf.flags |= I915_EXEC_FENCE_ARRAY;
-      execbuf.execbuf.num_cliprects = execbuf.syncobj_count;
-      execbuf.execbuf.cliprects_ptr = (uintptr_t)execbuf.syncobjs;
-   }
+   setup_execbuf_fence_params(&execbuf);
 
    int ret = queue->device->info->no_hw ? 0 :
       anv_gem_execbuffer(queue->device, &execbuf.execbuf);
@@ -817,18 +853,7 @@ i915_queue_exec_locked(struct anv_queue *queue,
                                    perf_query_pool, perf_query_pass,
                                    false /* is_companion_rcs_cmd_buffer */);
 
-   if (execbuf.syncobj_values) {
-      execbuf.timeline_fences.fence_count = execbuf.syncobj_count;
-      execbuf.timeline_fences.handles_ptr = (uintptr_t)execbuf.syncobjs;
-      execbuf.timeline_fences.values_ptr = (uintptr_t)execbuf.syncobj_values;
-      anv_execbuf_add_ext(&execbuf,
-                          DRM_I915_GEM_EXECBUFFER_EXT_TIMELINE_FENCES,
-                          &execbuf.timeline_fences.base);
-   } else if (execbuf.syncobjs) {
-      execbuf.execbuf.flags |= I915_EXEC_FENCE_ARRAY;
-      execbuf.execbuf.num_cliprects = execbuf.syncobj_count;
-      execbuf.execbuf.cliprects_ptr = (uintptr_t)execbuf.syncobjs;
-   }
+   setup_execbuf_fence_params(&execbuf);
 
    if (has_perf_query) {
       assert(perf_query_pass < perf_query_pool->n_passes);
@@ -950,6 +975,106 @@ i915_execute_simple_batch(struct anv_queue *queue, struct anv_bo *batch_bo,
                                   "anv_device_wait failed: %m");
 
 fail:
+   anv_execbuf_finish(&execbuf);
+   return result;
+}
+
+VkResult
+i915_execute_trtt_batch(struct anv_sparse_submission *submit,
+                        struct anv_trtt_batch_bo *trtt_bbo)
+{
+   struct anv_queue *queue = submit->queue;
+   struct anv_device *device = queue->device;
+   struct anv_trtt *trtt = &device->trtt;
+   struct anv_execbuf execbuf = {
+      .alloc = &device->vk.alloc,
+      .alloc_scope = VK_SYSTEM_ALLOCATION_SCOPE_DEVICE,
+   };
+   VkResult result;
+
+   for (uint32_t i = 0; i < submit->wait_count; i++) {
+      result = anv_execbuf_add_sync(device, &execbuf, submit->waits[i].sync,
+                                    false /* is_signal */,
+                                    submit->waits[i].wait_value);
+      if (result != VK_SUCCESS)
+         goto out;
+   }
+
+   for (uint32_t i = 0; i < submit->signal_count; i++) {
+      result = anv_execbuf_add_sync(device, &execbuf, submit->signals[i].sync,
+                                    true /* is_signal */,
+                                    submit->signals[i].signal_value);
+      if (result != VK_SUCCESS)
+         goto out;
+   }
+
+   result = anv_execbuf_add_syncobj(device, &execbuf, trtt->timeline_handle,
+                                    I915_EXEC_FENCE_SIGNAL,
+                                    trtt_bbo->timeline_val);
+   if (result != VK_SUCCESS)
+      goto out;
+
+
+   result = anv_execbuf_add_bo(device, &execbuf, device->workaround_bo, NULL,
+                               0);
+   if (result != VK_SUCCESS)
+      goto out;
+
+   for (int i = 0; i < trtt->num_page_table_bos; i++) {
+      result = anv_execbuf_add_bo(device, &execbuf, trtt->page_table_bos[i],
+                                  NULL, EXEC_OBJECT_WRITE);
+      if (result != VK_SUCCESS)
+         goto out;
+   }
+
+   if (queue->sync) {
+      result = anv_execbuf_add_sync(device, &execbuf, queue->sync,
+                                    true /* is_signal */,
+                                    0 /* signal_value */);
+      if (result != VK_SUCCESS)
+         goto out;
+   }
+
+   result = anv_execbuf_add_bo(device, &execbuf, trtt_bbo->bo, NULL, 0);
+   if (result != VK_SUCCESS)
+      goto out;
+
+   if (INTEL_DEBUG(DEBUG_SUBMIT))
+      anv_i915_debug_submit(&execbuf);
+
+   uint64_t exec_flags = 0;
+   uint32_t context_id;
+   get_context_and_exec_flags(queue, false, &exec_flags, &context_id);
+
+   execbuf.execbuf = (struct drm_i915_gem_execbuffer2) {
+      .buffers_ptr = (uintptr_t) execbuf.objects,
+      .buffer_count = execbuf.bo_count,
+      .batch_start_offset = 0,
+      .batch_len = trtt_bbo->size,
+      .flags = I915_EXEC_HANDLE_LUT | I915_EXEC_NO_RELOC | exec_flags,
+      .rsvd1 = context_id,
+      .rsvd2 = 0,
+   };
+   setup_execbuf_fence_params(&execbuf);
+
+   int ret = queue->device->info->no_hw ? 0 :
+      anv_gem_execbuffer(device, &execbuf.execbuf);
+   if (ret) {
+      result = vk_device_set_lost(&device->vk,
+                                  "trtt anv_gem_execbuffer failed: %m");
+      goto out;
+   }
+
+   if (queue->sync) {
+      result = vk_sync_wait(&device->vk, queue->sync, 0,
+                            VK_SYNC_WAIT_COMPLETE, UINT64_MAX);
+      if (result != VK_SUCCESS) {
+         result = vk_queue_set_lost(&queue->vk, "trtt sync wait failed");
+         goto out;
+      }
+   }
+
+out:
    anv_execbuf_finish(&execbuf);
    return result;
 }

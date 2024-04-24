@@ -157,6 +157,8 @@ radv_generate_pipeline_key(const struct radv_device *device, const VkPipelineSha
    key.disable_aniso_single_level =
       device->instance->disable_aniso_single_level && device->physical_device->rad_info.gfx_level < GFX8;
 
+   key.disable_trunc_coord = device->disable_trunc_coord;
+
    key.image_2d_view_of_3d = device->image_2d_view_of_3d && device->physical_device->rad_info.gfx_level == GFX9;
 
    key.tex_non_uniform = device->instance->tex_non_uniform;
@@ -487,44 +489,7 @@ opt_vectorize_callback(const nir_instr *instr, const void *_)
    if (bit_size != 16)
       return 1;
 
-   switch (alu->op) {
-   case nir_op_f2f16: {
-      nir_shader *shader = nir_cf_node_get_function(&instr->block->cf_node)->function->shader;
-      unsigned execution_mode = shader->info.float_controls_execution_mode;
-      return nir_is_rounding_mode_rtz(execution_mode, 16) ? 2 : 1;
-   }
-   case nir_op_fadd:
-   case nir_op_fsub:
-   case nir_op_fmul:
-   case nir_op_ffma:
-   case nir_op_fdiv:
-   case nir_op_flrp:
-   case nir_op_fabs:
-   case nir_op_fneg:
-   case nir_op_fsat:
-   case nir_op_fmin:
-   case nir_op_fmax:
-   case nir_op_f2f16_rtz:
-   case nir_op_iabs:
-   case nir_op_iadd:
-   case nir_op_iadd_sat:
-   case nir_op_uadd_sat:
-   case nir_op_isub:
-   case nir_op_isub_sat:
-   case nir_op_usub_sat:
-   case nir_op_ineg:
-   case nir_op_imul:
-   case nir_op_imin:
-   case nir_op_imax:
-   case nir_op_umin:
-   case nir_op_umax:
-      return 2;
-   case nir_op_ishl: /* TODO: in NIR, these have 32bit shift operands */
-   case nir_op_ishr: /* while Radeon needs 16bit operands when vectorized */
-   case nir_op_ushr:
-   default:
-      return 1;
-   }
+   return aco_nir_op_supports_packed_math_16bit(alu) ? 2 : 1;
 }
 
 static nir_component_mask_t
@@ -626,7 +591,8 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_pipeline_key 
    NIR_PASS(_, stage->nir, ac_nir_lower_tex,
             &(ac_nir_lower_tex_options){
                .gfx_level = gfx_level,
-               .lower_array_layer_round_even = !device->physical_device->rad_info.conformant_trunc_coord,
+               .lower_array_layer_round_even =
+                  !device->physical_device->rad_info.conformant_trunc_coord || device->disable_trunc_coord,
                .fix_derivs_in_divergent_cf = fix_derivs_in_divergent_cf,
                .max_wqm_vgprs = 64, // TODO: improve spiller and RA support for linear VGPRs
             });
@@ -672,7 +638,7 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_pipeline_key 
          NIR_PASS_V(stage->nir, ac_nir_lower_legacy_vs, gfx_level,
                     stage->info.outinfo.clip_dist_mask | stage->info.outinfo.cull_dist_mask,
                     stage->info.outinfo.vs_output_param_offset, stage->info.outinfo.param_exports,
-                    stage->info.outinfo.export_prim_id, false, false, stage->info.force_vrs_per_vertex);
+                    stage->info.outinfo.export_prim_id, false, false, false, stage->info.force_vrs_per_vertex);
 
       } else {
          bool emulate_ngg_gs_query_pipeline_stat = device->physical_device->emulate_ngg_gs_query_pipeline_stat;
@@ -734,6 +700,8 @@ radv_postprocess_nir(struct radv_device *device, const struct radv_pipeline_key 
               device->physical_device->rad_info.address32_hi);
    radv_optimize_nir_algebraic(
       stage->nir, io_to_mem || lowered_ngg || stage->stage == MESA_SHADER_COMPUTE || stage->stage == MESA_SHADER_TASK);
+
+   NIR_PASS(_, stage->nir, nir_lower_fp16_casts, nir_lower_fp16_split_fp64);
 
    if (stage->nir->info.bit_sizes_int & (8 | 16)) {
       if (gfx_level >= GFX8) {

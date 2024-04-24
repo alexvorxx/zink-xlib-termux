@@ -726,11 +726,13 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    bool use_dgc = false;
    bool smooth_lines = false;
    bool mesh_shader_queries = false;
+   bool dual_src_blend = false;
 
    /* Check enabled features */
    if (pCreateInfo->pEnabledFeatures) {
       if (pCreateInfo->pEnabledFeatures->robustBufferAccess)
          buffer_robustness = MAX2(buffer_robustness, RADV_BUFFER_ROBUSTNESS_1);
+      dual_src_blend = pCreateInfo->pEnabledFeatures->dualSrcBlend;
    }
 
    vk_foreach_struct_const (ext, pCreateInfo->pNext) {
@@ -739,6 +741,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
          const VkPhysicalDeviceFeatures2 *features = (const void *)ext;
          if (features->features.robustBufferAccess)
             buffer_robustness = MAX2(buffer_robustness, RADV_BUFFER_ROBUSTNESS_1);
+         dual_src_blend |= features->features.dualSrcBlend;
          break;
       }
       case VK_STRUCTURE_TYPE_DEVICE_MEMORY_OVERALLOCATION_CREATE_INFO_AMD: {
@@ -1147,6 +1150,17 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
       fprintf(stderr, "radv: Forcing anisotropy filter to %ix\n", 1 << util_logbase2(device->force_aniso));
    }
 
+   device->disable_trunc_coord = device->instance->disable_trunc_coord;
+
+   if (device->instance->vk.app_info.engine_name && !strcmp(device->instance->vk.app_info.engine_name, "DXVK")) {
+      /* For DXVK 2.3.0 and older, use dualSrcBlend to determine if this is D3D9. */
+      bool is_d3d9 = !dual_src_blend;
+      if (device->instance->vk.app_info.engine_version > VK_MAKE_VERSION(2, 3, 0))
+         is_d3d9 = device->instance->vk.app_info.app_version & 0x1;
+
+      device->disable_trunc_coord &= !is_d3d9;
+   }
+
    if (use_perf_counters) {
       size_t bo_size = PERF_CTR_BO_PASS_OFFSET + sizeof(uint64_t) * PERF_CTR_MAX_PASSES;
       result = device->ws->buffer_create(device->ws, bo_size, 4096, RADEON_DOMAIN_GTT,
@@ -1532,6 +1546,10 @@ radv_init_dcc_control_reg(struct radv_device *device, struct radv_image_view *iv
       result |= S_028C78_INDEPENDENT_128B_BLOCKS_GFX11(independent_128b_blocks) |
                 S_028C78_DISABLE_CONSTANT_ENCODE_REG(1) |
                 S_028C78_FDCC_ENABLE(radv_dcc_enabled(iview->image, iview->vk.base_mip_level));
+
+      if (device->physical_device->rad_info.family >= CHIP_GFX1103_R2) {
+         result |= S_028C78_ENABLE_MAX_COMP_FRAG_OVERRIDE(1) | S_028C78_MAX_COMP_FRAGS(iview->image->vk.samples >= 4);
+      }
    } else {
       result |= S_028C78_INDEPENDENT_128B_BLOCKS_GFX10(independent_128b_blocks);
    }
@@ -2045,8 +2063,7 @@ radv_gfx11_set_db_render_control(const struct radv_device *device, unsigned num_
          max_allowed_tiles_in_wave = 15;
    }
 
-   *db_render_control |=
-      S_028000_OREO_MODE(V_028000_OMODE_O_THEN_B) | S_028000_MAX_ALLOWED_TILES_IN_WAVE(max_allowed_tiles_in_wave);
+   *db_render_control |= S_028000_MAX_ALLOWED_TILES_IN_WAVE(max_allowed_tiles_in_wave);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL

@@ -185,8 +185,11 @@ genX(batch_emit_post_3dprimitive_was)(struct anv_batch *batch,
                                       uint32_t primitive_topology,
                                       uint32_t vertex_count);
 
+void genX(batch_emit_fast_color_dummy_blit)(struct anv_batch *batch,
+                                            struct anv_device *device);
+
 VkPolygonMode
-genX(raster_polygon_mode)(struct anv_graphics_pipeline *pipeline,
+genX(raster_polygon_mode)(const struct anv_graphics_pipeline *pipeline,
                           VkPolygonMode polygon_mode,
                           VkPrimitiveTopology primitive_topology);
 
@@ -283,3 +286,7 @@ genX(simple_shader_push_state_address)(struct anv_simple_shader *state,
 
 void
 genX(emit_simple_shader_end)(struct anv_simple_shader *state);
+
+VkResult genX(init_trtt_context_state)(struct anv_queue *queue);
+
+VkResult genX(write_trtt_entries)(struct anv_trtt_submission *submit);

@@ -41,6 +41,7 @@
 #include "util/u_drm.h"
 #include "util/u_gen_mipmap.h"
 #include "util/u_memory.h"
+#include "util/u_resource.h"
 #include "util/u_surface.h"
 #include "util/u_transfer.h"
 #include "util/u_transfer_helper.h"
@@ -219,9 +220,8 @@ panfrost_resource_get_param(struct pipe_screen *pscreen,
                             enum pipe_resource_param param, unsigned usage,
                             uint64_t *value)
 {
-   struct panfrost_resource *rsrc = (struct panfrost_resource *)prsc;
-   struct pipe_resource *cur;
-   unsigned count;
+   struct panfrost_resource *rsrc =
+      (struct panfrost_resource *)util_resource_at_index(prsc, plane);
 
    switch (param) {
    case PIPE_RESOURCE_PARAM_STRIDE:
@@ -234,14 +234,7 @@ panfrost_resource_get_param(struct pipe_screen *pscreen,
       *value = rsrc->image.layout.modifier;
       return true;
    case PIPE_RESOURCE_PARAM_NPLANES:
-      /* Panfrost doesn't directly support multi-planar formats,
-       * but we should still handle this case for gbm users
-       * that might want to use resources shared with panfrost
-       * on video processing hardware that does.
-       */
-      for (count = 0, cur = prsc; cur; cur = cur->next)
-         count++;
-      *value = count;
+      *value = util_resource_num(prsc);
       return true;
    default:
       return false;
@@ -1316,20 +1309,11 @@ pan_resource_modifier_convert(struct panfrost_context *ctx,
       ctx->base.screen, &rsrc->base, modifier);
    struct panfrost_resource *tmp_rsrc = pan_resource(tmp_prsrc);
 
-   unsigned depth = rsrc->base.target == PIPE_TEXTURE_3D
-                       ? rsrc->base.depth0
-                       : rsrc->base.array_size;
-
-   struct pipe_box box = {0,    0, 0, rsrc->base.width0, rsrc->base.height0,
-                          depth};
-
    struct pipe_blit_info blit = {
       .dst.resource = &tmp_rsrc->base,
       .dst.format = tmp_rsrc->base.format,
-      .dst.box = box,
       .src.resource = &rsrc->base,
       .src.format = rsrc->base.format,
-      .src.box = box,
       .mask = util_format_get_mask(tmp_rsrc->base.format),
       .filter = PIPE_TEX_FILTER_NEAREST,
    };
@@ -1337,6 +1321,14 @@ pan_resource_modifier_convert(struct panfrost_context *ctx,
    for (int i = 0; i <= rsrc->base.last_level; i++) {
       if (BITSET_TEST(rsrc->valid.data, i)) {
          blit.dst.level = blit.src.level = i;
+
+         u_box_3d(0, 0, 0,
+                  u_minify(rsrc->base.width0, i),
+                  u_minify(rsrc->base.height0, i),
+                  util_num_layers(&rsrc->base, i),
+                  &blit.dst.box);
+         blit.src.box = blit.dst.box;
+
          panfrost_blit(&ctx->base, &blit);
       }
    }

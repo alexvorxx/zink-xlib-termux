@@ -70,7 +70,7 @@ panfrost_clear(struct pipe_context *pipe, unsigned buffers,
    struct panfrost_batch *batch = panfrost_get_batch_for_fbo(ctx);
 
    /* At the start of the batch, we can clear for free */
-   if (!batch->scoreboard.first_job) {
+   if (batch->draw_count == 0) {
       panfrost_batch_clear(batch, buffers, color, depth, stencil);
       return;
    }
@@ -254,7 +254,7 @@ panfrost_set_shader_images(struct pipe_context *pctx,
                            const struct pipe_image_view *iviews)
 {
    struct panfrost_context *ctx = pan_context(pctx);
-   ctx->dirty_shader[PIPE_SHADER_FRAGMENT] |= PAN_DIRTY_STAGE_IMAGE;
+   ctx->dirty_shader[shader] |= PAN_DIRTY_STAGE_IMAGE;
 
    /* Unbind start_slot...start_slot+count */
    if (!iviews) {
@@ -940,7 +940,7 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
    gallium->set_global_binding = panfrost_set_global_binding;
    gallium->memory_barrier = panfrost_memory_barrier;
 
-   pan_screen(screen)->vtbl.context_init(gallium);
+   pan_screen(screen)->vtbl.context_populate_vtbl(gallium);
 
    panfrost_resource_context_init(gallium);
    panfrost_shader_context_init(gallium);

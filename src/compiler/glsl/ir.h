@@ -825,7 +825,7 @@ public:
        * This is not equal to \c ir_depth_layout_none if and only if this
        * variable is \c gl_FragDepth and a layout qualifier is specified.
        */
-      ir_depth_layout depth_layout:3;
+      unsigned depth_layout:3; /*ir_depth_layout*/
 
       /**
        * Memory qualifiers.
@@ -1538,7 +1538,6 @@ public:
              operation == ir_binop_dot ||
              operation == ir_binop_vector_extract ||
              operation == ir_triop_vector_insert ||
-             operation == ir_binop_ubo_load ||
              operation == ir_quadop_vector;
    }
 

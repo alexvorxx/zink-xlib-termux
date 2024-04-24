@@ -172,9 +172,6 @@ index("unsigned", "reduction_op")
 # Cluster size for reduction operations
 index("unsigned", "cluster_size")
 
-# Requires that the operation creates and includes helper invocations
-index("bool", "include_helpers")
-
 # Parameter index for a load_param intrinsic
 index("unsigned", "param_idx")
 
@@ -499,12 +496,18 @@ intrinsic("quad_swap_horizontal", src_comp=[0], dest_comp=0, bit_sizes=src0, fla
 intrinsic("quad_swap_vertical", src_comp=[0], dest_comp=0, bit_sizes=src0, flags=[CAN_ELIMINATE])
 intrinsic("quad_swap_diagonal", src_comp=[0], dest_comp=0, bit_sizes=src0, flags=[CAN_ELIMINATE])
 
+# Similar to vote_any and vote_all, but per-quad instead of per-wavefront.
+# Equivalent to subgroupOr(val, 4) and subgroupAnd(val, 4) assuming val is
+# boolean.
+intrinsic("quad_vote_any", src_comp=[1], dest_comp=1, flags=[CAN_ELIMINATE])
+intrinsic("quad_vote_all", src_comp=[1], dest_comp=1, flags=[CAN_ELIMINATE])
+
 # Rotate operation from SPIR-V: SpvOpGroupNonUniformRotateKHR.
 intrinsic("rotate", src_comp=[0, 1], dest_comp=0, bit_sizes=src0,
           indices=[EXECUTION_SCOPE, CLUSTER_SIZE], flags=[CAN_ELIMINATE]);
 
 intrinsic("reduce", src_comp=[0], dest_comp=0, bit_sizes=src0,
-          indices=[REDUCTION_OP, CLUSTER_SIZE, INCLUDE_HELPERS], flags=[CAN_ELIMINATE])
+          indices=[REDUCTION_OP, CLUSTER_SIZE], flags=[CAN_ELIMINATE])
 intrinsic("inclusive_scan", src_comp=[0], dest_comp=0, bit_sizes=src0,
           indices=[REDUCTION_OP], flags=[CAN_ELIMINATE])
 intrinsic("exclusive_scan", src_comp=[0], dest_comp=0, bit_sizes=src0,
@@ -2023,6 +2026,9 @@ intrinsic("ast_nv", src_comp=[0, 1, 1],
           indices=[BASE, RANGE_BASE, RANGE, FLAGS], flags=[])
 # src[] = { inv_w, offset }.
 intrinsic("ipa_nv", dest_comp=1, src_comp=[1, 1], bit_sizes=[32],
+          indices=[BASE, FLAGS], flags=[CAN_ELIMINATE, CAN_REORDER])
+# FLAGS indicate if we load vertex_id == 2
+intrinsic("ldtram_nv", dest_comp=2, bit_sizes=[32],
           indices=[BASE, FLAGS], flags=[CAN_ELIMINATE, CAN_REORDER])
 
 # NVIDIA-specific Geometry Shader intrinsics.

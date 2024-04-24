@@ -1660,11 +1660,13 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
    } while (progress);
 
 
-   if (OPT(brw_nir_lower_conversions)) {
+   if (OPT(nir_lower_fp16_casts, nir_lower_fp16_split_fp64)) {
       if (OPT(nir_lower_int64)) {
          brw_nir_optimize(nir, is_scalar, devinfo);
       }
    }
+
+   OPT(brw_nir_lower_conversions);
 
    if (is_scalar)
       OPT(nir_lower_alu_to_scalar, NULL, NULL);
@@ -1735,6 +1737,13 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
    }
 
    nir_validate_ssa_dominance(nir, "before nir_convert_from_ssa");
+
+   /* Rerun the divergence analysis before convert_from_ssa as this pass has
+    * some assert on consistent divergence flags.
+    */
+   NIR_PASS(_, nir, nir_convert_to_lcssa, true, true);
+   NIR_PASS_V(nir, nir_divergence_analysis);
+   OPT(nir_opt_remove_phis);
 
    OPT(nir_convert_from_ssa, true);
 

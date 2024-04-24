@@ -5626,6 +5626,8 @@ emit_zip(const fs_builder &lbld_before, const fs_builder &lbld_after,
    assert(lbld_before.group() == lbld_after.group());
    assert(lbld_after.group() >= inst->group);
 
+   const struct intel_device_info *devinfo = lbld_before.shader->devinfo;
+
    /* Specified channel group from the destination region. */
    const fs_reg dst = horiz_offset(inst->dst, lbld_after.group() - inst->group);
 
@@ -5637,7 +5639,8 @@ emit_zip(const fs_builder &lbld_before, const fs_builder &lbld_after,
    }
 
    /* Deal with the residency data part later */
-   const unsigned residency_size = inst->has_sampler_residency() ? REG_SIZE : 0;
+   const unsigned residency_size = inst->has_sampler_residency() ?
+      (reg_unit(devinfo) * REG_SIZE) : 0;
    const unsigned dst_size = (inst->size_written - residency_size) /
       inst->dst.component_size(inst->exec_size);
 
@@ -5715,8 +5718,8 @@ fs_visitor::lower_simd_width()
           * original or the lowered instruction, whichever is lower.
           */
          const unsigned n = DIV_ROUND_UP(inst->exec_size, lower_width);
-         const unsigned residency_size =
-            inst->has_sampler_residency() ? REG_SIZE : 0;
+         const unsigned residency_size = inst->has_sampler_residency() ?
+            (reg_unit(devinfo) * REG_SIZE) : 0;
          const unsigned dst_size =
             (inst->size_written - residency_size) /
             inst->dst.component_size(inst->exec_size);
@@ -7864,7 +7867,7 @@ brw_nir_populate_wm_prog_data(nir_shader *shader,
     */
    prog_data->uses_vmask = devinfo->verx10 < 125 ||
                            shader->info.fs.needs_quad_helper_invocations ||
-                           shader->info.fs.needs_all_helper_invocations ||
+                           shader->info.uses_wide_subgroup_intrinsics ||
                            prog_data->coarse_pixel_dispatch != BRW_NEVER;
 
    prog_data->uses_src_w =

@@ -306,21 +306,10 @@ fs_visitor::nir_emit_system_values()
 void
 fs_visitor::nir_emit_impl(nir_function_impl *impl)
 {
-   nir_ssa_values = reralloc(mem_ctx, nir_ssa_values, fs_reg,
-                             impl->ssa_alloc);
-
-   nir_resource_insts = reralloc(mem_ctx, nir_resource_insts, fs_inst *,
-                                 impl->ssa_alloc);
-   memset(nir_resource_insts, 0, sizeof(nir_resource_insts[0]) * impl->ssa_alloc);
-
-   nir_ssa_bind_infos = reralloc(mem_ctx, nir_ssa_bind_infos,
-                                 struct brw_fs_bind_info,
-                                 impl->ssa_alloc);
-   memset(nir_ssa_bind_infos, 0,
-          sizeof(nir_ssa_bind_infos[0]) * impl->ssa_alloc);
-
-   nir_resource_values = reralloc(mem_ctx, nir_resource_values, fs_reg,
-                                  impl->ssa_alloc);
+   nir_ssa_values = rzalloc_array(mem_ctx, fs_reg, impl->ssa_alloc);
+   nir_resource_insts = rzalloc_array(mem_ctx, fs_inst *, impl->ssa_alloc);
+   nir_ssa_bind_infos = rzalloc_array(mem_ctx, struct brw_fs_bind_info, impl->ssa_alloc);
+   nir_resource_values = rzalloc_array(mem_ctx, fs_reg, impl->ssa_alloc);
 
    nir_emit_cf_list(&impl->body);
 }
@@ -2094,12 +2083,18 @@ emit_pixel_interpolater_send(const fs_builder &bld,
                              const fs_reg &dst,
                              const fs_reg &src,
                              const fs_reg &desc,
+                             const fs_reg &flag_reg,
                              glsl_interp_mode interpolation)
 {
    struct brw_wm_prog_data *wm_prog_data =
       brw_wm_prog_data(bld.shader->stage_prog_data);
 
-   fs_inst *inst = bld.emit(opcode, dst, src, desc);
+   fs_reg srcs[INTERP_NUM_SRCS];
+   srcs[INTERP_SRC_OFFSET]       = src;
+   srcs[INTERP_SRC_MSG_DESC]     = desc;
+   srcs[INTERP_SRC_DYNAMIC_MODE] = flag_reg;
+
+   fs_inst *inst = bld.emit(opcode, dst, srcs, INTERP_NUM_SRCS);
    /* 2 floats per slot returned */
    inst->size_written = 2 * dst.component_size(inst->exec_size);
    if (interpolation == INTERP_MODE_NOPERSPECTIVE) {
@@ -3580,11 +3575,23 @@ fs_visitor::nir_emit_fs_intrinsic(const fs_builder &bld,
          bld.exec_all().group(1, 0).SHL(msg_data, sample_id, brw_imm_ud(4u));
       }
 
+      fs_reg flag_reg;
+      struct brw_wm_prog_key *wm_prog_key = (struct brw_wm_prog_key *) key;
+      if (wm_prog_key->multisample_fbo == BRW_SOMETIMES) {
+         struct brw_wm_prog_data *wm_prog_data = brw_wm_prog_data(prog_data);
+
+         check_dynamic_msaa_flag(bld.exec_all().group(8, 0),
+                                 wm_prog_data,
+                                 BRW_WM_MSAA_FLAG_MULTISAMPLE_FBO);
+         flag_reg = brw_flag_reg(0, 0);
+      }
+
       emit_pixel_interpolater_send(bld,
                                    FS_OPCODE_INTERPOLATE_AT_SAMPLE,
                                    dest,
                                    fs_reg(), /* src */
                                    msg_data,
+                                   flag_reg,
                                    interpolation);
       break;
    }
@@ -3605,6 +3612,7 @@ fs_visitor::nir_emit_fs_intrinsic(const fs_builder &bld,
                                       dest,
                                       fs_reg(), /* src */
                                       brw_imm_ud(off_x | (off_y << 4)),
+                                      fs_reg(), /* flag_reg */
                                       interpolation);
       } else {
          fs_reg src = retype(get_nir_src(instr->src[0]), BRW_REGISTER_TYPE_D);
@@ -3614,6 +3622,7 @@ fs_visitor::nir_emit_fs_intrinsic(const fs_builder &bld,
                                       dest,
                                       src,
                                       brw_imm_ud(0u),
+                                      fs_reg(), /* flag_reg */
                                       interpolation);
       }
       break;
@@ -6702,14 +6711,14 @@ fs_visitor::nir_emit_texture(const fs_builder &bld, nir_tex_instr *instr)
       if (instr->is_sparse) {
          inst->size_written = (util_last_bit(write_mask) - 1) *
                               inst->dst.component_size(inst->exec_size) +
-                              REG_SIZE;
+                              (reg_unit(devinfo) * REG_SIZE);
       } else {
          inst->size_written = util_last_bit(write_mask) *
                               inst->dst.component_size(inst->exec_size);
       }
    } else {
       inst->size_written = 4 * inst->dst.component_size(inst->exec_size) +
-                           (instr->is_sparse ? REG_SIZE : 0);
+                           (instr->is_sparse ? (reg_unit(devinfo) * REG_SIZE) : 0);
    }
 
    if (srcs[TEX_LOGICAL_SRC_SHADOW_C].file != BAD_FILE)

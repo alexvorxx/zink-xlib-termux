@@ -67,6 +67,14 @@ pipe_shader_type_from_mesa(gl_shader_stage stage)
 VkShaderStageFlags
 nvk_nak_stages(const struct nv_device_info *info)
 {
+   const VkShaderStageFlags all =
+      VK_SHADER_STAGE_VERTEX_BIT |
+      VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT |
+      VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT |
+      VK_SHADER_STAGE_GEOMETRY_BIT |
+      VK_SHADER_STAGE_FRAGMENT_BIT |
+      VK_SHADER_STAGE_COMPUTE_BIT;
+
    const struct debug_control flags[] = {
       { "vs", BITFIELD64_BIT(MESA_SHADER_VERTEX) },
       { "tcs", BITFIELD64_BIT(MESA_SHADER_TESS_CTRL) },
@@ -74,13 +82,13 @@ nvk_nak_stages(const struct nv_device_info *info)
       { "gs", BITFIELD64_BIT(MESA_SHADER_GEOMETRY) },
       { "fs", BITFIELD64_BIT(MESA_SHADER_FRAGMENT) },
       { "cs", BITFIELD64_BIT(MESA_SHADER_COMPUTE) },
-      { "all", ~0 },
+      { "all", all },
       { NULL, 0 },
    };
 
    const char *env_str = getenv("NVK_USE_NAK");
    if (env_str == NULL)
-      return info->cls_eng3d >= TURING_A ? ~0 : 0;
+      return info->cls_eng3d >= TURING_A ? all : 0;
    else
       return parse_debug_string(env_str, flags);
 }
@@ -88,7 +96,7 @@ nvk_nak_stages(const struct nv_device_info *info)
 static bool
 use_nak(const struct nvk_physical_device *pdev, gl_shader_stage stage)
 {
-   return nvk_nak_stages(&pdev->info) & BITFIELD64_BIT(stage);
+   return nvk_nak_stages(&pdev->info) & mesa_to_vk_shader_stage(stage);
 }
 
 uint64_t
@@ -132,17 +140,25 @@ nvk_physical_device_spirv_options(const struct nvk_physical_device *pdev,
          .descriptor_indexing = true,
          .device_group = true,
          .draw_parameters = true,
+         .fragment_barycentric = true,
          .geometry_streams = true,
          .image_read_without_format = true,
          .image_write_without_format = true,
+         .int8 = true,
+         .int16 = true,
          .min_lod = true,
          .multiview = true,
          .physical_storage_buffer_address = true,
          .runtime_descriptor_array = true,
          .shader_clock = true,
          .shader_viewport_index_layer = true,
+         .storage_8bit = true,
+         .storage_16bit = true,
+         .subgroup_arithmetic = true,
          .subgroup_ballot = true,
          .subgroup_basic = true,
+         .subgroup_quad = true,
+         .subgroup_shuffle = true,
          .subgroup_vote = true,
          .tessellation = true,
          .transform_feedback = true,
@@ -395,10 +411,14 @@ nvk_shader_dump(struct nvk_shader *shader)
 static VkResult
 nvk_compile_nir_with_nak(struct nvk_physical_device *pdev,
                          nir_shader *nir,
+                         VkPipelineCreateFlagBits2KHR pipeline_flags,
                          const struct nak_fs_key *fs_key,
                          struct nvk_shader *shader)
 {
-   shader->nak = nak_compile_shader(nir, pdev->nak, fs_key);
+   const bool dump_asm =
+      pipeline_flags & VK_PIPELINE_CREATE_2_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR;
+
+   shader->nak = nak_compile_shader(nir, dump_asm, pdev->nak, fs_key);
    shader->info = shader->nak->info;
    shader->code_ptr = shader->nak->code;
    shader->code_size = shader->nak->code_size;
@@ -408,13 +428,16 @@ nvk_compile_nir_with_nak(struct nvk_physical_device *pdev,
 
 VkResult
 nvk_compile_nir(struct nvk_physical_device *pdev, nir_shader *nir,
+                VkPipelineCreateFlagBits2KHR pipeline_flags,
                 const struct nak_fs_key *fs_key,
                 struct nvk_shader *shader)
 {
-   if (use_nak(pdev, nir->info.stage))
-      return nvk_compile_nir_with_nak(pdev, nir, fs_key, shader);
-   else
+   if (use_nak(pdev, nir->info.stage)) {
+      return nvk_compile_nir_with_nak(pdev, nir, pipeline_flags,
+                                      fs_key, shader);
+   } else {
       return nvk_cg_compile_nir(pdev, nir, fs_key, shader);
+   }
 }
 
 VkResult

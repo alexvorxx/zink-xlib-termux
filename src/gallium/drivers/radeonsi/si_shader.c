@@ -474,7 +474,7 @@ void si_init_shader_args(struct si_shader *shader, struct si_shader_args *args)
 
             /* VS outputs passed via VGPRs to TCS. */
             if (shader->key.ge.opt.same_patch_vertices && !sel->screen->use_aco) {
-               unsigned num_outputs = util_last_bit64(shader->selector->info.outputs_written);
+               unsigned num_outputs = util_last_bit64(shader->selector->info.outputs_written_before_tes_gs);
                for (i = 0; i < num_outputs * 4; i++)
                   ac_add_return(&args->ac, AC_ARG_VGPR);
             }
@@ -482,7 +482,7 @@ void si_init_shader_args(struct si_shader *shader, struct si_shader_args *args)
       } else {
          /* TCS inputs are passed via VGPRs from VS. */
          if (shader->key.ge.opt.same_patch_vertices && !sel->screen->use_aco) {
-            unsigned num_inputs = util_last_bit64(shader->previous_stage_sel->info.outputs_written);
+            unsigned num_inputs = util_last_bit64(shader->previous_stage_sel->info.outputs_written_before_tes_gs);
             for (i = 0; i < num_inputs * 4; i++)
                ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_FLOAT, NULL);
          }
@@ -1270,7 +1270,7 @@ void si_shader_dump_stats_for_shader_db(struct si_screen *screen, struct si_shad
                shader->key.ge.as_ngg)
          num_outputs = shader->info.nr_param_exports;
       else if (shader->selector->stage == MESA_SHADER_TESS_CTRL)
-         num_outputs = util_last_bit64(shader->selector->info.outputs_written);
+         num_outputs = util_last_bit64(shader->selector->info.outputs_written_before_tes_gs);
       else
          unreachable("invalid shader key");
    } else if (shader->selector->stage == MESA_SHADER_FRAGMENT) {
@@ -1543,6 +1543,7 @@ static void si_dump_shader_key(const struct si_shader *shader, FILE *f)
        !key->ge.as_es && !key->ge.as_ls) {
       fprintf(f, "  opt.kill_outputs = 0x%" PRIx64 "\n", key->ge.opt.kill_outputs);
       fprintf(f, "  opt.kill_pointsize = 0x%x\n", key->ge.opt.kill_pointsize);
+      fprintf(f, "  opt.kill_layer = 0x%x\n", key->ge.opt.kill_layer);
       fprintf(f, "  opt.kill_clip_distances = 0x%x\n", key->ge.opt.kill_clip_distances);
       fprintf(f, "  opt.ngg_culling = 0x%x\n", key->ge.opt.ngg_culling);
       fprintf(f, "  opt.remove_streamout = 0x%x\n", key->ge.opt.remove_streamout);
@@ -1639,20 +1640,13 @@ static bool si_nir_kill_outputs(nir_shader *nir, const union si_shader_key *key)
 {
    nir_function_impl *impl = nir_shader_get_entrypoint(nir);
    assert(impl);
-   uint64_t kill_outputs = nir->info.stage > MESA_SHADER_GEOMETRY ? 0 : key->ge.opt.kill_outputs;
+   assert(nir->info.stage <= MESA_SHADER_GEOMETRY);
 
-   /* Always remove the interpolated gl_Layer output for blit shaders on the first compile
-    * (it's always unused by PS), otherwise we hang because we don't pass the attribute ring
-    * pointer to position-only shaders that also write gl_Layer.
-    */
-   if (nir->info.stage == MESA_SHADER_VERTEX && nir->info.vs.blit_sgprs_amd)
-      kill_outputs |= BITFIELD64_BIT(SI_UNIQUE_SLOT_LAYER);
-
-   if (nir->info.stage > MESA_SHADER_GEOMETRY ||
-       (!kill_outputs &&
-        !key->ge.opt.kill_pointsize &&
-        !key->ge.opt.kill_clip_distances &&
-        (nir->info.stage != MESA_SHADER_VERTEX || !nir->info.vs.blit_sgprs_amd))) {
+   if (!key->ge.opt.kill_outputs &&
+       !key->ge.opt.kill_pointsize &&
+       !key->ge.opt.kill_layer &&
+       !key->ge.opt.kill_clip_distances &&
+       !(nir->info.outputs_written & BITFIELD64_BIT(VARYING_SLOT_LAYER))) {
       nir_metadata_preserve(impl, nir_metadata_all);
       return false;
    }
@@ -1676,37 +1670,44 @@ static bool si_nir_kill_outputs(nir_shader *nir, const union si_shader_key *key)
          nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
 
          if (nir_slot_is_varying(sem.location) &&
-             kill_outputs &
-             (1ull << si_shader_io_get_unique_index(sem.location))) {
-            nir_remove_varying(intr, MESA_SHADER_FRAGMENT);
-            progress = true;
-         }
+             key->ge.opt.kill_outputs &
+             (1ull << si_shader_io_get_unique_index(sem.location)))
+            progress |= nir_remove_varying(intr, MESA_SHADER_FRAGMENT);
 
-         if (key->ge.opt.kill_pointsize && sem.location == VARYING_SLOT_PSIZ) {
-            nir_remove_sysval_output(intr);
-            progress = true;
-         }
+         switch (sem.location) {
+         case VARYING_SLOT_PSIZ:
+            if (key->ge.opt.kill_pointsize)
+               progress |= nir_remove_sysval_output(intr);
+            break;
 
-         /* TODO: We should only kill specific clip planes as required by kill_clip_distance,
-          * not whole gl_ClipVertex. Lower ClipVertex in NIR.
-          */
-         if ((key->ge.opt.kill_clip_distances & SI_USER_CLIP_PLANE_MASK) == SI_USER_CLIP_PLANE_MASK &&
-             sem.location == VARYING_SLOT_CLIP_VERTEX) {
-            nir_remove_sysval_output(intr);
-            progress = true;
-         }
+         case VARYING_SLOT_CLIP_VERTEX:
+            /* TODO: We should only kill specific clip planes as required by kill_clip_distance,
+             * not whole gl_ClipVertex. Lower ClipVertex in NIR.
+             */
+            if ((key->ge.opt.kill_clip_distances & SI_USER_CLIP_PLANE_MASK) ==
+                SI_USER_CLIP_PLANE_MASK)
+               progress |= nir_remove_sysval_output(intr);
+            break;
 
-         if (key->ge.opt.kill_clip_distances &&
-             (sem.location == VARYING_SLOT_CLIP_DIST0 ||
-              sem.location == VARYING_SLOT_CLIP_DIST1)) {
-            assert(nir_intrinsic_src_type(intr) == nir_type_float32);
-            unsigned index = (sem.location - VARYING_SLOT_CLIP_DIST0) * 4 +
-                             nir_intrinsic_component(intr);
+         case VARYING_SLOT_CLIP_DIST0:
+         case VARYING_SLOT_CLIP_DIST1:
+            if (key->ge.opt.kill_clip_distances) {
+               assert(nir_intrinsic_src_type(intr) == nir_type_float32);
+               unsigned index = (sem.location - VARYING_SLOT_CLIP_DIST0) * 4 +
+                                nir_intrinsic_component(intr);
 
-            if ((key->ge.opt.kill_clip_distances >> index) & 0x1) {
-               nir_remove_sysval_output(intr);
-               progress = true;
+               if (key->ge.opt.kill_clip_distances & BITFIELD_BIT(index))
+                  progress |= nir_remove_sysval_output(intr);
             }
+            break;
+
+         case VARYING_SLOT_LAYER:
+            /* LAYER is never passed to FS. Instead, we load it there as a system value. */
+            progress |= nir_remove_varying(intr, MESA_SHADER_FRAGMENT);
+
+            if (key->ge.opt.kill_layer)
+               progress |= nir_remove_sysval_output(intr);
+            break;
          }
       }
    }
@@ -1796,7 +1797,7 @@ static bool si_lower_io_to_mem(struct si_shader *shader, nir_shader *nir,
                  /* Used by hs_emit_write_tess_factors() when monolithic shader. */
                  key->ge.part.tcs.epilog.tes_reads_tess_factors,
                  ~0ULL, ~0ULL, /* no TES inputs filter */
-                 util_last_bit64(sel->info.outputs_written),
+                 util_last_bit64(sel->info.outputs_written_before_tes_gs),
                  util_last_bit64(sel->info.patch_outputs_written),
                  shader->wave_size,
                  /* ALL TCS inputs are passed by register. */
@@ -1845,6 +1846,7 @@ static void si_lower_ngg(struct si_shader *shader, nir_shader *nir)
       .has_param_exports = shader->info.nr_param_exports,
       .clipdist_enable_mask = clipdist_mask,
       .kill_pointsize = key->ge.opt.kill_pointsize,
+      .kill_layer = key->ge.opt.kill_layer,
       .force_vrs = sel->screen->options.vrs2x2,
    };
 
@@ -2010,8 +2012,8 @@ static unsigned si_get_nr_pos_exports(const struct si_shader_selector *sel,
 
    if ((info->writes_psize && !key->ge.opt.kill_pointsize) ||
        (info->writes_edgeflag && !key->ge.as_ngg) ||
-       info->writes_viewport_index || info->writes_layer ||
-       sel->screen->options.vrs2x2) {
+       (info->writes_layer && !key->ge.opt.kill_layer) ||
+       info->writes_viewport_index || sel->screen->options.vrs2x2) {
       nr_pos_exports++;
    }
 
@@ -2341,6 +2343,7 @@ struct nir_shader *si_get_nir_shader(struct si_shader *shader,
                     shader->key.ge.mono.u.vs_export_prim_id,
                     !si_shader_uses_streamout(shader),
                     key->ge.opt.kill_pointsize,
+                    key->ge.opt.kill_layer,
                     sel->screen->options.vrs2x2);
       }
    } else if (is_legacy_gs) {
@@ -2494,6 +2497,7 @@ si_nir_generate_gs_copy_shader(struct si_screen *sscreen,
                                    shader->info.nr_param_exports,
                                    !si_shader_uses_streamout(gs_shader),
                                    gskey->ge.opt.kill_pointsize,
+                                   gskey->ge.opt.kill_layer,
                                    sscreen->options.vrs2x2,
                                    output_info);
 
@@ -2650,7 +2654,7 @@ si_set_spi_ps_input_config(struct si_shader *shader)
       S_0286CC_LINEAR_SAMPLE_ENA(info->uses_linear_sample) |
       S_0286CC_FRONT_FACE_ENA(info->uses_frontface) |
       S_0286CC_SAMPLE_COVERAGE_ENA(info->reads_samplemask) |
-      S_0286CC_ANCILLARY_ENA(info->uses_sampleid);
+      S_0286CC_ANCILLARY_ENA(info->uses_sampleid || info->uses_layer_id);
 
    uint8_t mask = info->reads_frag_coord_mask | info->reads_sample_pos_mask;
    u_foreach_bit(i, mask) {
@@ -2677,6 +2681,14 @@ si_set_spi_ps_input_config(struct si_shader *shader)
     */
    if (key->ps.mono.point_smoothing)
       shader->config.spi_ps_input_ena |= S_0286CC_PERSP_CENTER_ENA(1);
+
+   /* See fetch_framebuffer() for used args when fbfetch output. */
+   if (info->base.fs.uses_fbfetch_output) {
+      shader->config.spi_ps_input_ena |= S_0286CC_POS_FIXED_PT_ENA(1);
+
+      if (key->ps.mono.fbfetch_layered || key->ps.mono.fbfetch_msaa)
+         shader->config.spi_ps_input_ena |= S_0286CC_ANCILLARY_ENA(1);
+   }
 
    if (shader->is_monolithic) {
       si_fixup_spi_ps_input_config(shader);
@@ -3524,7 +3536,7 @@ nir_shader *si_get_prev_stage_nir_shader(struct si_shader *shader,
 unsigned si_get_tcs_out_patch_stride(const struct si_shader_info *info)
 {
    unsigned tcs_out_vertices = info->base.tess.tcs_vertices_out;
-   unsigned vertex_stride = util_last_bit64(info->outputs_written) * 4;
+   unsigned vertex_stride = util_last_bit64(info->outputs_written_before_tes_gs) * 4;
    unsigned num_patch_outputs = util_last_bit64(info->patch_outputs_written);
 
    return tcs_out_vertices * vertex_stride + num_patch_outputs * 4;

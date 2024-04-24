@@ -39,6 +39,14 @@ struct nak_fs_key {
     * VkPipelineMultisampleStateCreateInfo::minSampleShading
     */
    bool force_sample_shading;
+
+   /**
+    * The constant buffer index and offset at which the sample locations table lives.
+    * Each sample location is two 4-bit unorm values packed into an 8-bit value
+    * with the bottom 4 bits for x and the top 4 bits for y.
+   */
+   uint8_t sample_locations_cb;
+   uint32_t sample_locations_offset;
 };
 
 void nak_postprocess_nir(nir_shader *nir, const struct nak_compiler *nak,
@@ -123,14 +131,17 @@ struct nak_shader_info {
 
 struct nak_shader_bin {
    struct nak_shader_info info;
+
    uint32_t code_size;
    const void *code;
+
+   const char *asm_str;
 };
 
 void nak_shader_bin_destroy(struct nak_shader_bin *bin);
 
 struct nak_shader_bin *
-nak_compile_shader(nir_shader *nir,
+nak_compile_shader(nir_shader *nir, bool dump_asm,
                    const struct nak_compiler *nak,
                    const struct nak_fs_key *fs_key);
 

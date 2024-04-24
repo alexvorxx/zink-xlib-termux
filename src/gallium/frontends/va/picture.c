@@ -644,6 +644,28 @@ handleVAEncMiscParameterTypeHRD(vlVaContext *context, VAEncMiscParameterBuffer *
 }
 
 static VAStatus
+handleVAEncMiscParameterTypeMaxSliceSize(vlVaContext *context, VAEncMiscParameterBuffer *misc)
+{
+   VAStatus status = VA_STATUS_SUCCESS;
+   VAEncMiscParameterMaxSliceSize *max_slice_size_buffer = (VAEncMiscParameterMaxSliceSize *)misc->data;
+   switch (u_reduce_video_profile(context->templat.profile)) {
+      case PIPE_VIDEO_FORMAT_MPEG4_AVC:
+      {
+         context->desc.h264enc.slice_mode = PIPE_VIDEO_SLICE_MODE_MAX_SLICE_SICE;
+         context->desc.h264enc.max_slice_bytes = max_slice_size_buffer->max_slice_size;
+      } break;
+      case PIPE_VIDEO_FORMAT_HEVC:
+      {
+         context->desc.h265enc.slice_mode = PIPE_VIDEO_SLICE_MODE_MAX_SLICE_SICE;
+         context->desc.h265enc.max_slice_bytes = max_slice_size_buffer->max_slice_size;
+      } break;
+      default:
+         break;
+   }
+   return status;
+}
+
+static VAStatus
 handleVAEncMiscParameterTypeRIR(vlVaContext *context, VAEncMiscParameterBuffer *misc)
 {
    VAStatus status = VA_STATUS_SUCCESS;
@@ -730,6 +752,10 @@ handleVAEncMiscParameterBufferType(vlVaContext *context, vlVaBuffer *buf)
 
    case VAEncMiscParameterTypeRIR:
       vaStatus = handleVAEncMiscParameterTypeRIR(context, misc);
+      break;
+
+   case VAEncMiscParameterTypeMaxSliceSize:
+      vaStatus = handleVAEncMiscParameterTypeMaxSliceSize(context, misc);
       break;
 
    default:
@@ -1196,6 +1222,17 @@ vlVaEndPicture(VADriverContextP ctx, VAContextID context_id)
       context->desc.base.input_format = surf->buffer->buffer_format;
       context->desc.base.input_full_range = surf->full_range;
       context->desc.base.output_format = surf->encoder_format;
+
+      int driver_metadata_support = drv->pipe->screen->get_video_param(drv->pipe->screen,
+                                                                       context->decoder->profile,
+                                                                       context->decoder->entrypoint,
+                                                                       PIPE_VIDEO_CAP_ENC_SUPPORTS_FEEDBACK_METADATA);
+      if (u_reduce_video_profile(context->templat.profile) == PIPE_VIDEO_FORMAT_MPEG4_AVC)
+         context->desc.h264enc.requested_metadata = driver_metadata_support;
+      else if (u_reduce_video_profile(context->templat.profile) == PIPE_VIDEO_FORMAT_HEVC)
+         context->desc.h265enc.requested_metadata = driver_metadata_support;
+      else if (u_reduce_video_profile(context->templat.profile) == PIPE_VIDEO_FORMAT_AV1)
+         context->desc.av1enc.requested_metadata = driver_metadata_support;
 
       context->decoder->begin_frame(context->decoder, context->target, &context->desc.base);
       context->decoder->encode_bitstream(context->decoder, context->target,

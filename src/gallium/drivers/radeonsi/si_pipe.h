@@ -591,6 +591,7 @@ struct si_screen {
    /* Whether shaders are monolithic (1-part) or separate (3-part). */
    bool use_monolithic_shaders;
    bool record_llvm_ir;
+   const char *context_roll_log_filename;
 
    struct slab_parent_pool pool_transfers;
 
@@ -1526,6 +1527,7 @@ void si_cp_copy_data(struct si_context *sctx, struct radeon_cmdbuf *cs, unsigned
 void si_init_cp_reg_shadowing(struct si_context *sctx);
 
 /* si_debug.c */
+void si_gather_context_rolls(struct si_context *sctx);
 void si_save_cs(struct radeon_winsys *ws, struct radeon_cmdbuf *cs, struct radeon_saved_cs *saved,
                 bool get_buffer_list);
 void si_clear_saved_cs(struct radeon_saved_cs *saved);
@@ -1647,15 +1649,17 @@ union si_compute_blit_shader_key {
 
 void *si_create_blit_cs(struct si_context *sctx, const union si_compute_blit_shader_key *options);
 
-/* si_shaderlib_tgsi.c */
+/* si_shaderlib_nir.c */
 void *si_get_blitter_vs(struct si_context *sctx, enum blitter_attrib_type type,
                         unsigned num_layers);
-void *si_create_dma_compute_shader(struct pipe_context *ctx, unsigned num_dwords_per_thread,
+void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_per_thread,
                                    bool dst_stream_cache_policy, bool is_copy);
 void *si_create_clear_buffer_rmw_cs(struct si_context *sctx);
 void *si_clear_render_target_shader(struct si_context *sctx, enum pipe_texture_target type);
 void *si_clear_12bytes_buffer_shader(struct si_context *sctx);
-void *si_create_fmask_expand_cs(struct pipe_context *ctx, unsigned num_samples, bool is_array);
+void *si_create_fmask_expand_cs(struct si_context *sctx, unsigned num_samples, bool is_array);
+
+/* si_shaderlib_tgsi.c */
 void *si_create_query_result_cs(struct si_context *sctx);
 void *gfx11_create_sh_query_result_cs(struct si_context *sctx);
 

@@ -4,6 +4,7 @@
  */
 #include "nvk_pipeline.h"
 
+#include "nvk_cmd_buffer.h"
 #include "nvk_device.h"
 #include "nvk_physical_device.h"
 #include "nvk_shader.h"
@@ -47,6 +48,9 @@ nvk_populate_fs_key(struct nak_fs_key *key,
                     const struct vk_graphics_pipeline_state *state)
 {
    memset(key, 0, sizeof(*key));
+
+   key->sample_locations_cb = 0;
+   key->sample_locations_offset = nvk_root_descriptor_offset(draw.sample_locations);
 
    if (state->pipeline_flags &
        VK_PIPELINE_CREATE_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT)
@@ -305,12 +309,13 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
    struct nvk_graphics_pipeline *pipeline;
    VkResult result = VK_SUCCESS;
 
-   pipeline = vk_object_zalloc(&dev->vk, pAllocator, sizeof(*pipeline),
-                               VK_OBJECT_TYPE_PIPELINE);
+   pipeline = (void *)nvk_pipeline_zalloc(dev, NVK_PIPELINE_GRAPHICS,
+                                          sizeof(*pipeline), pAllocator);
    if (pipeline == NULL)
       return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   pipeline->base.type = NVK_PIPELINE_GRAPHICS;
+   VkPipelineCreateFlags2KHR pipeline_flags =
+      vk_graphics_pipeline_create_flags(pCreateInfo);
 
    struct vk_graphics_pipeline_all_state all;
    struct vk_graphics_pipeline_state state = {};
@@ -356,7 +361,7 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
          fs_key = &fs_key_tmp;
       }
 
-      result = nvk_compile_nir(pdev, nir[stage], fs_key,
+      result = nvk_compile_nir(pdev, nir[stage], pipeline_flags, fs_key,
                                &pipeline->base.shaders[stage]);
       ralloc_free(nir[stage]);
       if (result != VK_SUCCESS)

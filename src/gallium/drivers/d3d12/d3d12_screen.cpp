@@ -193,9 +193,9 @@ d3d12_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return 1;
 
    case PIPE_CAP_GLSL_FEATURE_LEVEL:
-      return 450;
+      return 460;
    case PIPE_CAP_GLSL_FEATURE_LEVEL_COMPATIBILITY:
-      return 450;
+      return 460;
    case PIPE_CAP_ESSL_FEATURE_LEVEL:
       return 310;
 
@@ -340,6 +340,11 @@ d3d12_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_CULL_DISTANCE:
    case PIPE_CAP_TEXTURE_QUERY_SAMPLES:
    case PIPE_CAP_TEXTURE_BARRIER:
+   case PIPE_CAP_GL_SPIRV:
+   case PIPE_CAP_POLYGON_OFFSET_CLAMP:
+   case PIPE_CAP_SHADER_GROUP_VOTE:
+   case PIPE_CAP_QUERY_PIPELINE_STATISTICS:
+   case PIPE_CAP_QUERY_SO_OVERFLOW:
       return 1;
 
    case PIPE_CAP_QUERY_BUFFER_OBJECT:
@@ -1417,30 +1422,32 @@ d3d12_init_screen(struct d3d12_screen *screen, IUnknown *adapter)
 {
    assert(screen->base.destroy != nullptr);
 
+   // Device can be imported with d3d12_create_dxcore_screen_from_d3d12_device
+   if (!screen->dev) {
 #ifndef _GAMING_XBOX
-   ID3D12DeviceFactory *factory = try_create_device_factory(screen->d3d12_mod);
+      ID3D12DeviceFactory *factory = try_create_device_factory(screen->d3d12_mod);
 
 #ifndef DEBUG
-   if (d3d12_debug & D3D12_DEBUG_DEBUG_LAYER)
+      if (d3d12_debug & D3D12_DEBUG_DEBUG_LAYER)
 #endif
-      enable_d3d12_debug_layer(screen->d3d12_mod, factory);
+         enable_d3d12_debug_layer(screen->d3d12_mod, factory);
 
-   if (d3d12_debug & D3D12_DEBUG_GPU_VALIDATOR)
-      enable_gpu_validation(screen->d3d12_mod, factory);
+      if (d3d12_debug & D3D12_DEBUG_GPU_VALIDATOR)
+         enable_gpu_validation(screen->d3d12_mod, factory);
 
-   screen->dev = create_device(screen->d3d12_mod, adapter, factory);
+      screen->dev = create_device(screen->d3d12_mod, adapter, factory);
 
-   if (factory)
-      factory->Release();
+      if (factory)
+         factory->Release();
 #else
-   screen->dev = create_device(screen->d3d12_mod, adapter);
+      screen->dev = create_device(screen->d3d12_mod, adapter);
 #endif
 
-   if (!screen->dev) {
-      debug_printf("D3D12: failed to create device\n");
-      return false;
+      if (!screen->dev) {
+         debug_printf("D3D12: failed to create device\n");
+         return false;
+      }
    }
-
    screen->adapter_luid = GetAdapterLuid(screen->dev);
 
 #ifndef _GAMING_XBOX
@@ -1572,7 +1579,7 @@ d3d12_init_screen(struct d3d12_screen *screen, IUnknown *adapter)
    UINT64 timestamp_freq;
    if (FAILED(screen->cmdqueue->GetTimestampFrequency(&timestamp_freq)))
        timestamp_freq = 10000000;
-   screen->timestamp_multiplier = 1000000000.0 / timestamp_freq;
+   screen->timestamp_multiplier = 1000000000.0f / timestamp_freq;
 
    d3d12_screen_fence_init(&screen->base);
    d3d12_screen_resource_init(&screen->base);

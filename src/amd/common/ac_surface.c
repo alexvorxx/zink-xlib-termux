@@ -809,11 +809,13 @@ static int gfx6_compute_level(ADDR_HANDLE addrlib, const struct ac_surf_config *
       surf_level->mode = RADEON_SURF_MODE_LINEAR_ALIGNED;
       break;
    case ADDR_TM_1D_TILED_THIN1:
+   case ADDR_TM_1D_TILED_THICK:
    case ADDR_TM_PRT_TILED_THIN1:
       surf_level->mode = RADEON_SURF_MODE_1D;
       break;
    case ADDR_TM_2D_TILED_THIN1:
    case ADDR_TM_PRT_2D_TILED_THIN1:
+   case ADDR_TM_PRT_TILED_THICK:
       surf_level->mode = RADEON_SURF_MODE_2D;
       break;
    default:
@@ -1170,9 +1172,13 @@ static int gfx6_compute_surface(ADDR_HANDLE addrlib, const struct radeon_info *i
          AddrSurfInfoIn.tileMode = ADDR_TM_1D_TILED_THIN1;
       break;
    case RADEON_SURF_MODE_2D:
-      if (surf->flags & RADEON_SURF_PRT)
-         AddrSurfInfoIn.tileMode = ADDR_TM_PRT_2D_TILED_THIN1;
-      else
+      if (surf->flags & RADEON_SURF_PRT) {
+         if (config->is_3d && surf->bpe < 8) {
+            AddrSurfInfoIn.tileMode = ADDR_TM_PRT_2D_TILED_THICK;
+         } else {
+            AddrSurfInfoIn.tileMode = ADDR_TM_PRT_2D_TILED_THIN1;
+         }
+      } else
          AddrSurfInfoIn.tileMode = ADDR_TM_2D_TILED_THIN1;
       break;
    default:
@@ -3093,8 +3099,9 @@ bool ac_surface_override_offset_stride(const struct radeon_info *info, struct ra
             surf->total_size = surf->surf_size = surf->u.gfx9.surf_slice_size * slices;
          }
       }
+
       surf->u.gfx9.surf_offset = offset;
-      if (surf->u.gfx9.zs.stencil_offset)
+      if (surf->has_stencil)
          surf->u.gfx9.zs.stencil_offset += offset;
    } else {
       if (pitch) {

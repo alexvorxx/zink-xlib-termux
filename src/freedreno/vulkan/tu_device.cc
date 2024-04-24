@@ -616,8 +616,8 @@ tu_physical_device_init(struct tu_physical_device *device,
                                "device name alloc fail");
    }
 
-   const struct fd_dev_info *info = fd_dev_info(&device->dev_id);
-   if (!info) {
+   const struct fd_dev_info info = fd_dev_info(&device->dev_id);
+   if (!info.chip) {
       result = vk_startup_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
                                  "device %s is unsupported", device->name);
       goto fail_free_name;
@@ -625,7 +625,8 @@ tu_physical_device_init(struct tu_physical_device *device,
    switch (fd_dev_gen(&device->dev_id)) {
    case 6:
    case 7: {
-      device->info = info;
+      device->dev_info = info;
+      device->info = &device->dev_info;
       uint32_t depth_cache_size =
          device->info->num_ccu * device->info->a6xx.sysmem_per_ccu_cache_size;
       uint32_t color_cache_size =
@@ -2285,8 +2286,8 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
          .storage_16bit = physical_device->info->a6xx.storage_16bit,
          .shared_push_consts = !TU_DEBUG(PUSH_CONSTS_PER_STAGE),
       };
-      device->compiler =
-         ir3_compiler_create(NULL, &physical_device->dev_id, &ir3_options);
+      device->compiler = ir3_compiler_create(
+         NULL, &physical_device->dev_id, physical_device->info, &ir3_options);
    }
    if (!device->compiler) {
       result = vk_startup_errorf(physical_device->instance,

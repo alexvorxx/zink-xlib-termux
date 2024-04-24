@@ -111,7 +111,7 @@ i915_gem_create(struct anv_device *device,
 
    *actual_size = gem_create.size;
 
-   if (alloc_flags & ANV_BO_ALLOC_SNOOPED) {
+   if (alloc_flags & ANV_BO_ALLOC_HOST_CACHED_COHERENT) {
       /* We don't want to change these defaults if it's going to be shared
        * with another process.
        */
@@ -207,8 +207,7 @@ i915_gem_mmap(struct anv_device *device, struct anv_bo *bo, uint64_t offset,
 }
 
 static int
-i915_vm_bind(struct anv_device *device, int num_binds,
-             struct anv_vm_bind *binds)
+i915_vm_bind(struct anv_device *device, struct anv_sparse_submission *submit)
 {
    return 0;
 }
@@ -277,6 +276,7 @@ anv_i915_kmd_backend_get(void)
       .vm_bind_bo = i915_vm_bind_bo,
       .vm_unbind_bo = i915_vm_bind_bo,
       .execute_simple_batch = i915_execute_simple_batch,
+      .execute_trtt_batch = i915_execute_trtt_batch,
       .queue_exec_locked = i915_queue_exec_locked,
       .queue_exec_trace = i915_queue_exec_trace,
       .bo_alloc_flags_to_bo_flags = i915_bo_alloc_flags_to_bo_flags,

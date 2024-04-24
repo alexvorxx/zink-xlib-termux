@@ -1575,10 +1575,6 @@ typedef struct nir_alu_instr {
 
 void nir_alu_src_copy(nir_alu_src *dest, const nir_alu_src *src);
 
-/* is this source channel used? */
-bool
-nir_alu_instr_channel_used(const nir_alu_instr *instr, unsigned src,
-                           unsigned channel);
 nir_component_mask_t
 nir_alu_instr_src_read_mask(const nir_alu_instr *instr, unsigned src);
 /**
@@ -1586,6 +1582,14 @@ nir_alu_instr_src_read_mask(const nir_alu_instr *instr, unsigned src);
  */
 unsigned
 nir_ssa_alu_instr_src_components(const nir_alu_instr *instr, unsigned src);
+
+/* is this source channel used? */
+static inline bool
+nir_alu_instr_channel_used(const nir_alu_instr *instr, unsigned src,
+                           unsigned channel)
+{
+   return channel < nir_ssa_alu_instr_src_components(instr, src);
+}
 
 bool
 nir_alu_instr_is_comparison(const nir_alu_instr *instr);
@@ -4012,6 +4016,12 @@ typedef struct nir_shader_compiler_options {
 
    /** lowers fquantize2f16 to alu ops. */
    bool lower_fquantize2f16;
+
+   /** Lower f2f16 to f2f16_rtz when execution mode is not rtne. */
+   bool force_f2f16_rtz;
+
+   /** Lower VARYING_SLOT_LAYER in FS to SYSTEM_VALUE_LAYER_ID. */
+   bool lower_layer_fs_input_to_sysval;
 } nir_shader_compiler_options;
 
 typedef struct nir_shader {
@@ -5138,7 +5148,7 @@ bool nir_slot_is_varying(gl_varying_slot slot);
 bool nir_slot_is_sysval_output_and_varying(gl_varying_slot slot,
                                            gl_shader_stage next_shader);
 bool nir_remove_varying(nir_intrinsic_instr *intr, gl_shader_stage next_shader);
-void nir_remove_sysval_output(nir_intrinsic_instr *intr);
+bool nir_remove_sysval_output(nir_intrinsic_instr *intr);
 
 bool nir_lower_amul(nir_shader *shader,
                     int (*type_size)(const struct glsl_type *, bool));
@@ -5597,6 +5607,7 @@ typedef struct nir_lower_subgroups_options {
    bool lower_rotate_to_shuffle : 1;
    bool lower_ballot_bit_count_to_mbcnt_amd : 1;
    bool lower_inverse_ballot : 1;
+   bool lower_boolean_reduce : 1;
 } nir_lower_subgroups_options;
 
 bool nir_lower_subgroups(nir_shader *shader,
@@ -5682,6 +5693,15 @@ typedef struct nir_lower_tex_options {
     * texture dims to normalize.
     */
    bool lower_rect;
+
+   /**
+    * If true, lower 1D textures to 2D. This requires the GL/VK driver to map 1D
+    * textures to 2D textures with height=1.
+    *
+    * lower_1d_shadow does this lowering for shadow textures only.
+    */
+   bool lower_1d;
+   bool lower_1d_shadow;
 
    /**
     * If true, convert yuv to rgb.
@@ -5966,6 +5986,8 @@ bool nir_lower_clip_gs(nir_shader *shader, unsigned ucp_enables,
                        const gl_state_index16 clipplane_state_tokens[][STATE_LENGTH]);
 bool nir_lower_clip_fs(nir_shader *shader, unsigned ucp_enables,
                        bool use_clipdist_array);
+
+void nir_lower_clip_cull_distance_to_vec4s(nir_shader *shader);
 bool nir_lower_clip_cull_distance_arrays(nir_shader *nir);
 bool nir_lower_clip_disable(nir_shader *shader, unsigned clip_plane_enable);
 
@@ -6144,6 +6166,7 @@ typedef enum {
    nir_lower_fp16_ru = (1 << 2),
    nir_lower_fp16_rd = (1 << 3),
    nir_lower_fp16_all = 0xf,
+   nir_lower_fp16_split_fp64 = (1 << 4),
 } nir_lower_fp16_cast_options;
 bool nir_lower_fp16_casts(nir_shader *shader, nir_lower_fp16_cast_options options);
 bool nir_normalize_cubemap_coords(nir_shader *shader);
@@ -6256,6 +6279,7 @@ bool nir_opt_idiv_const(nir_shader *shader, unsigned min_bit_size);
 typedef enum {
    nir_opt_if_aggressive_last_continue = (1 << 0),
    nir_opt_if_optimize_phi_true_false = (1 << 1),
+   nir_opt_if_avoid_64bit_phis = (1 << 2),
 } nir_opt_if_options;
 
 bool nir_opt_if(nir_shader *shader, nir_opt_if_options options);

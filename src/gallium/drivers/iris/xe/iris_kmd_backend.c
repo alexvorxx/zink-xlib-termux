@@ -52,10 +52,10 @@ xe_gem_create(struct iris_bufmgr *bufmgr,
     * do not know what the process this is shared with will do with it
     */
    if (alloc_flags & BO_ALLOC_SCANOUT)
-      flags |= XE_GEM_CREATE_FLAG_SCANOUT;
+      flags |= DRM_XE_GEM_CREATE_FLAG_SCANOUT;
    if (!intel_vram_all_mappable(iris_bufmgr_get_device_info(bufmgr)) &&
        heap_flags == IRIS_HEAP_DEVICE_LOCAL_PREFERRED)
-      flags |= XE_GEM_CREATE_FLAG_NEEDS_VISIBLE_VRAM;
+      flags |= DRM_XE_GEM_CREATE_FLAG_NEEDS_VISIBLE_VRAM;
 
    struct drm_xe_gem_create gem_create = {
      .vm_id = vm_id,
@@ -64,6 +64,21 @@ xe_gem_create(struct iris_bufmgr *bufmgr,
    };
    for (uint16_t i = 0; i < regions_count; i++)
       gem_create.flags |= BITFIELD_BIT(regions[i]->instance);
+
+   const struct intel_device_info *devinfo = iris_bufmgr_get_device_info(bufmgr);
+   const struct intel_device_info_pat_entry *pat_entry;
+   pat_entry = iris_heap_to_pat_entry(devinfo, heap_flags);
+   switch (pat_entry->mmap) {
+   case INTEL_DEVICE_INFO_MMAP_MODE_WC:
+      gem_create.cpu_caching = DRM_XE_GEM_CPU_CACHING_WC;
+      break;
+   case INTEL_DEVICE_INFO_MMAP_MODE_WB:
+      gem_create.cpu_caching = DRM_XE_GEM_CPU_CACHING_WB;
+      break;
+   default:
+      unreachable("missing");
+      gem_create.cpu_caching = DRM_XE_GEM_CPU_CACHING_WC;
+   }
 
    if (intel_ioctl(iris_bufmgr_get_fd(bufmgr), DRM_IOCTL_XE_GEM_CREATE,
                    &gem_create))
@@ -89,22 +104,26 @@ xe_gem_mmap(struct iris_bufmgr *bufmgr, struct iris_bo *bo)
 static inline int
 xe_gem_vm_bind_op(struct iris_bo *bo, uint32_t op)
 {
-   uint32_t handle = op == XE_VM_BIND_OP_UNMAP ? 0 : bo->gem_handle;
+   const struct intel_device_info *devinfo = iris_bufmgr_get_device_info(bo->bufmgr);
+   uint32_t handle = op == DRM_XE_VM_BIND_OP_UNMAP ? 0 : bo->gem_handle;
    uint64_t range, obj_offset = 0;
    int ret;
 
    if (iris_bo_is_imported(bo))
       range = bo->size;
    else
-      range = align64(bo->size,
-                      iris_bufmgr_get_device_info(bo->bufmgr)->mem_alignment);
+      range = align64(bo->size, devinfo->mem_alignment);
 
    if (bo->real.userptr) {
       handle = 0;
       obj_offset = (uintptr_t)bo->real.map;
-      if (op == XE_VM_BIND_OP_MAP)
-         op = XE_VM_BIND_OP_MAP_USERPTR;
+      if (op == DRM_XE_VM_BIND_OP_MAP)
+         op = DRM_XE_VM_BIND_OP_MAP_USERPTR;
    }
+
+   uint16_t pat_index = 0;
+   if (op != DRM_XE_VM_BIND_OP_UNMAP)
+      pat_index = iris_heap_to_pat_entry(devinfo, bo->real.heap)->index;
 
    struct drm_xe_vm_bind args = {
       .vm_id = iris_bufmgr_get_global_vm_id(bo->bufmgr),
@@ -114,6 +133,7 @@ xe_gem_vm_bind_op(struct iris_bo *bo, uint32_t op)
       .bind.range = range,
       .bind.addr = intel_48b_address(bo->address),
       .bind.op = op,
+      .bind.pat_index = pat_index,
    };
    ret = intel_ioctl(iris_bufmgr_get_fd(bo->bufmgr), DRM_IOCTL_XE_VM_BIND, &args);
    if (ret) {
@@ -126,13 +146,13 @@ xe_gem_vm_bind_op(struct iris_bo *bo, uint32_t op)
 static bool
 xe_gem_vm_bind(struct iris_bo *bo)
 {
-   return xe_gem_vm_bind_op(bo, XE_VM_BIND_OP_MAP) == 0;
+   return xe_gem_vm_bind_op(bo, DRM_XE_VM_BIND_OP_MAP) == 0;
 }
 
 static bool
 xe_gem_vm_unbind(struct iris_bo *bo)
 {
-   return xe_gem_vm_bind_op(bo, XE_VM_BIND_OP_UNMAP) == 0;
+   return xe_gem_vm_bind_op(bo, DRM_XE_VM_BIND_OP_UNMAP) == 0;
 }
 
 static bool
@@ -160,7 +180,7 @@ xe_batch_check_for_reset(struct iris_batch *batch)
    enum pipe_reset_status status = PIPE_NO_RESET;
    struct drm_xe_exec_queue_get_property exec_queue_get_property = {
       .exec_queue_id = batch->xe.exec_queue_id,
-      .property = XE_EXEC_QUEUE_GET_PROPERTY_BAN,
+      .property = DRM_XE_EXEC_QUEUE_GET_PROPERTY_BAN,
    };
    int ret = intel_ioctl(iris_bufmgr_get_fd(batch->screen->bufmgr),
                          DRM_IOCTL_XE_EXEC_QUEUE_GET_PROPERTY,
@@ -330,10 +350,10 @@ xe_batch_submit(struct iris_batch *batch)
 
       util_dynarray_foreach(&batch->exec_fences, struct iris_batch_fence,
                             fence) {
-         uint32_t flags = DRM_XE_SYNC_SYNCOBJ;
+         uint32_t flags = DRM_XE_SYNC_FLAG_SYNCOBJ;
 
          if (fence->flags & IRIS_BATCH_FENCE_SIGNAL)
-            flags |= DRM_XE_SYNC_SIGNAL;
+            flags |= DRM_XE_SYNC_FLAG_SIGNAL;
 
          syncs[i].handle = fence->handle;
          syncs[i].flags = flags;

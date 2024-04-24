@@ -32,6 +32,8 @@
 extern "C" {
 #endif
 
+struct spirv_capabilities;
+
 struct nir_spirv_specialization {
    uint32_t id;
    nir_const_value value;
@@ -87,6 +89,8 @@ struct spirv_to_nir_options {
 
    /* Whether or not printf is supported */
    bool printf;
+
+   const struct spirv_capabilities *capabilities;
 
    struct spirv_supported_capabilities caps;
 

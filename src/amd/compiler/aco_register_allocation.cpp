@@ -3333,9 +3333,12 @@ register_allocation(Program* program, live& live_vars, ra_test_policy policy)
 
       if ((block.kind & block_kind_top_level) && block.linear_succs.empty()) {
          /* Reset this for block_kind_resume. */
-         ASSERTED PhysRegInterval linear_vgpr_bounds = get_reg_bounds(ctx, RegType::vgpr, true);
-         assert(register_file.count_zero(linear_vgpr_bounds) == linear_vgpr_bounds.size);
          ctx.num_linear_vgprs = 0;
+
+         ASSERTED PhysRegInterval vgpr_bounds = get_reg_bounds(ctx, RegType::vgpr, false);
+         ASSERTED PhysRegInterval sgpr_bounds = get_reg_bounds(ctx, RegType::sgpr, false);
+         assert(register_file.count_zero(vgpr_bounds) == ctx.vgpr_bounds);
+         assert(register_file.count_zero(sgpr_bounds) == ctx.sgpr_bounds);
       } else if (should_compact_linear_vgprs(ctx, live_vars, register_file)) {
          aco_ptr<Instruction> br = std::move(instructions.back());
          instructions.pop_back();

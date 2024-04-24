@@ -1098,7 +1098,7 @@ iris_resource_create_for_image(struct pipe_screen *pscreen,
    /* Allocate space for the extra aux buffer. */
    if (res->aux.extra_aux.surf.size_B > 0) {
       res->aux.extra_aux.offset =
-         (uint32_t)align64(bo_size, res->aux.extra_aux.surf.alignment_B);
+         (uint32_t)align64(bo_size, INTEL_AUX_MAP_META_ALIGNMENT_B);
       bo_size = res->aux.extra_aux.offset + res->aux.extra_aux.surf.size_B;
    }
 

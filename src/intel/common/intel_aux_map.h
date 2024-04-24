@@ -55,6 +55,16 @@ struct intel_device_info;
  */
 #define INTEL_AUX_MAP_MAIN_PITCH_SCALEDOWN (512 / 64)
 
+/**
+ * The alignment at which the AUX data virtual addresses should start.
+ *
+ * The diagram in Bspec 44930 shows that the CCS is indexed in 256B chunks for
+ * TGL, 4K chunks for MTL. However, when modifiers are in use, the 4K
+ * alignment requirement of the PLANE_AUX_DIST::Auxiliary Surface Distance
+ * field must be considered (Bspec 50379). Keep things simple and just use 4K.
+ */
+#define INTEL_AUX_MAP_META_ALIGNMENT_B 4096
+
 struct intel_aux_map_context *
 intel_aux_map_init(void *driver_ctx,
                    struct intel_mapped_pinned_buffer_alloc *buffer_alloc,

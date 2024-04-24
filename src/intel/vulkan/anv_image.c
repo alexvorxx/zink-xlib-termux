@@ -708,15 +708,8 @@ add_compression_control_buffer(struct anv_device *device,
    assert(image->planes[plane].primary_surface.isl.size_B % ratio == 0);
    uint64_t size = image->planes[plane].primary_surface.isl.size_B / ratio;
 
-   /* The diagram in the Bspec section, Memory Compression - Gfx12 (44930),
-    * shows that the CCS is indexed in 256B chunks for TGL, 4K chunks for MTL.
-    * When modifiers are in use, the 4K alignment requirement of the
-    * PLANE_AUX_DIST::Auxiliary Surface Distance field must be considered
-    * (Bspec 50379). Keep things simple and just use 4K.
-    */
-   uint32_t alignment = 4096;
-
-   return image_binding_grow(device, image, binding, offset, size, alignment,
+   return image_binding_grow(device, image, binding, offset, size,
+                             INTEL_AUX_MAP_META_ALIGNMENT_B,
                              &image->planes[plane].compr_ctrl_memory_range);
 }
 

@@ -147,22 +147,13 @@ panfrost_adjust_cube_dimensions(unsigned *first_face, unsigned *last_face,
 /* Following the texture descriptor is a number of descriptors. How many? */
 
 static unsigned
-panfrost_texture_num_elements(unsigned first_level, unsigned last_level,
-                              unsigned first_layer, unsigned last_layer,
-                              unsigned nr_samples, bool is_cube)
+panfrost_texture_num_elements(const struct pan_image_view *iview)
 {
-   unsigned first_face = 0, last_face = 0;
+   unsigned levels = 1 + iview->last_level - iview->first_level;
+   unsigned layers = 1 + iview->last_layer - iview->first_layer;
+   unsigned nr_samples = pan_image_view_get_nr_samples(iview);
 
-   if (is_cube) {
-      panfrost_adjust_cube_dimensions(&first_face, &last_face, &first_layer,
-                                      &last_layer);
-   }
-
-   unsigned levels = 1 + last_level - first_level;
-   unsigned layers = 1 + last_layer - first_layer;
-   unsigned faces = 1 + last_face - first_face;
-
-   return levels * layers * faces * MAX2(nr_samples, 1);
+   return levels * layers * MAX2(nr_samples, 1);
 }
 
 /* Conservative estimate of the size of the texture payload a priori.
@@ -192,10 +183,7 @@ GENX(panfrost_estimate_texture_payload_size)(const struct pan_image_view *iview)
    element_size = pan_size(SURFACE_WITH_STRIDE);
 #endif
 
-   unsigned elements = panfrost_texture_num_elements(
-      iview->first_level, iview->last_level, iview->first_layer,
-      iview->last_layer, pan_image_view_get_nr_samples(iview),
-      iview->dim == MALI_TEXTURE_DIMENSION_CUBE);
+   unsigned elements = panfrost_texture_num_elements(iview);
 
    return element_size * elements;
 }

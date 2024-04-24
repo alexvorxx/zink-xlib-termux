@@ -1591,7 +1591,8 @@ zink_get_display_device(const struct zink_screen *screen, uint32_t pdev_count,
          return i;
    }
 
-   return -1;
+   //return -1;
+   return 0;
 }
 
 static int

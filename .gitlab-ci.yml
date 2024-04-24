@@ -93,6 +93,9 @@ variables:
   MESA_SPIRV_LOG_LEVEL: error
 
 default:
+  id_tokens:
+    S3_JWT:
+      aud: https://s3.freedesktop.org
   before_script:
     - >
       export SCRIPTS_DIR=$(mktemp -d) &&

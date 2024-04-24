@@ -535,7 +535,7 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
    const struct panvk_graphics_pipeline *pipeline = cmdbuf->state.gfx.pipeline;
 
    if (!pipeline->state.fs.dynamic_rsd) {
-      draw->fs_rsd = pipeline->base.rsds[MESA_SHADER_FRAGMENT];
+      draw->fs_rsd = pipeline->fs.rsd;
       return;
    }
 
@@ -708,7 +708,7 @@ panvk_draw_prepare_varyings(struct panvk_cmd_buffer *cmdbuf,
    const struct vk_input_assembly_state *ia =
       &cmdbuf->vk.dynamic_graphics_state.ia;
    bool writes_point_size =
-      pipeline->state.vs.writes_point_size &&
+      pipeline->vs.info.vs.writes_point_size &&
       ia->primitive_topology == VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 
    for (unsigned i = 0, buf_idx = 0; i < PANVK_VARY_BUF_MAX; i++) {
@@ -806,7 +806,7 @@ panvk_prepare_img_attribs(struct panvk_cmd_buffer *cmdbuf,
                           struct panvk_descriptor_state *desc_state,
                           const struct panvk_pipeline *pipeline)
 {
-   if (desc_state->img.attribs || !pipeline->img_access_mask)
+   if (desc_state->img.attribs)
       return;
 
    unsigned attrib_count = pipeline->layout->num_imgs;
@@ -925,9 +925,7 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
    const struct vk_vertex_input_state *vi =
       cmdbuf->vk.dynamic_graphics_state.vi;
    unsigned num_imgs =
-      pipeline->base.img_access_mask & BITFIELD_BIT(MESA_SHADER_VERTEX)
-         ? pipeline->base.layout->num_imgs
-         : 0;
+      pipeline->vs.has_img_access ? pipeline->base.layout->num_imgs : 0;
    unsigned num_vs_attribs = util_last_bit(vi->attributes_valid);
    unsigned num_vbs = util_last_bit(vi->bindings_valid);
    unsigned attrib_count =
@@ -1004,16 +1002,16 @@ panvk_draw_prepare_attributes(struct panvk_cmd_buffer *cmdbuf,
    struct panvk_descriptor_state *desc_state = &cmdbuf->state.gfx.desc_state;
    const struct panvk_graphics_pipeline *pipeline = cmdbuf->state.gfx.pipeline;
 
-   for (unsigned i = 0; i < ARRAY_SIZE(draw->stages); i++) {
-      if (i == MESA_SHADER_VERTEX) {
-         panvk_draw_prepare_vs_attribs(cmdbuf, draw);
-         draw->stages[i].attributes = cmdbuf->state.gfx.vs.attribs;
-         draw->stages[i].attribute_bufs = cmdbuf->state.gfx.vs.attrib_bufs;
-      } else if (pipeline->base.img_access_mask & BITFIELD_BIT(i)) {
-         panvk_prepare_img_attribs(cmdbuf, desc_state, &pipeline->base);
-         draw->stages[i].attributes = desc_state->img.attribs;
-         draw->stages[i].attribute_bufs = desc_state->img.attrib_bufs;
-      }
+   panvk_draw_prepare_vs_attribs(cmdbuf, draw);
+   draw->stages[MESA_SHADER_VERTEX].attributes = cmdbuf->state.gfx.vs.attribs;
+   draw->stages[MESA_SHADER_VERTEX].attribute_bufs =
+      cmdbuf->state.gfx.vs.attrib_bufs;
+
+   if (pipeline->fs.has_img_access) {
+      panvk_prepare_img_attribs(cmdbuf, desc_state, &pipeline->base);
+      draw->stages[MESA_SHADER_FRAGMENT].attributes = desc_state->img.attribs;
+      draw->stages[MESA_SHADER_FRAGMENT].attribute_bufs =
+         desc_state->img.attrib_bufs;
    }
 }
 
@@ -1092,7 +1090,7 @@ panvk_draw_prepare_vertex_job(struct panvk_cmd_buffer *cmdbuf,
    }
 
    pan_section_pack(ptr.cpu, COMPUTE_JOB, DRAW, cfg) {
-      cfg.state = pipeline->base.rsds[MESA_SHADER_VERTEX];
+      cfg.state = pipeline->vs.rsd;
       cfg.attributes = draw->stages[MESA_SHADER_VERTEX].attributes;
       cfg.attribute_buffers = draw->stages[MESA_SHADER_VERTEX].attribute_bufs;
       cfg.varyings = draw->stages[MESA_SHADER_VERTEX].varyings;
@@ -1142,7 +1140,7 @@ panvk_emit_tiler_primitive(struct panvk_cmd_buffer *cmdbuf,
    const struct vk_input_assembly_state *ia =
       &cmdbuf->vk.dynamic_graphics_state.ia;
    bool writes_point_size =
-      pipeline->state.vs.writes_point_size &&
+      pipeline->vs.info.vs.writes_point_size &&
       ia->primitive_topology == VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 
    pan_pack(prim, PRIMITIVE, cfg) {
@@ -1189,7 +1187,7 @@ panvk_emit_tiler_primitive_size(struct panvk_cmd_buffer *cmdbuf,
    const struct vk_input_assembly_state *ia =
       &cmdbuf->vk.dynamic_graphics_state.ia;
    bool writes_point_size =
-      pipeline->state.vs.writes_point_size &&
+      pipeline->vs.info.vs.writes_point_size &&
       ia->primitive_topology == VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 
    pan_pack(primsz, PRIMITIVE_SIZE, cfg) {
@@ -1367,7 +1365,8 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info *draw)
    panvk_draw_prepare_vertex_job(cmdbuf, draw);
    panvk_draw_prepare_tiler_job(cmdbuf, draw);
    batch->tlsinfo.tls.size =
-      MAX2(pipeline->base.tls_size, batch->tlsinfo.tls.size);
+      MAX3(pipeline->vs.info.tls_size, pipeline->fs.info.tls_size,
+           batch->tlsinfo.tls.size);
 
    unsigned vjob_id =
       pan_jc_add_job(&cmdbuf->desc_pool.base, &batch->jc, MALI_JOB_TYPE_VERTEX,
@@ -1779,7 +1778,10 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    dispatch.tsd = batch->tls.gpu;
 
    panvk_cmd_prepare_push_sets(cmdbuf, desc_state, &pipeline->base);
-   panvk_prepare_img_attribs(cmdbuf, desc_state, &pipeline->base);
+
+   if (pipeline->cs.has_img_access)
+      panvk_prepare_img_attribs(cmdbuf, desc_state, &pipeline->base);
+
    dispatch.attributes = desc_state->img.attribs;
    dispatch.attribute_bufs = desc_state->img.attrib_bufs;
 
@@ -1809,7 +1811,7 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    }
 
    pan_section_pack(job.cpu, COMPUTE_JOB, DRAW, cfg) {
-      cfg.state = pipeline->base.rsds[MESA_SHADER_COMPUTE];
+      cfg.state = pipeline->cs.rsd;
       cfg.attributes = dispatch.attributes;
       cfg.attribute_buffers = dispatch.attribute_bufs;
       cfg.thread_storage = dispatch.tsd;
@@ -1822,8 +1824,8 @@ panvk_per_arch(CmdDispatch)(VkCommandBuffer commandBuffer, uint32_t x,
    pan_jc_add_job(&cmdbuf->desc_pool.base, &batch->jc, MALI_JOB_TYPE_COMPUTE,
                   false, false, 0, 0, &job, false);
 
-   batch->tlsinfo.tls.size = pipeline->base.tls_size;
-   batch->tlsinfo.wls.size = pipeline->wls_size;
+   batch->tlsinfo.tls.size = pipeline->cs.info.tls_size;
+   batch->tlsinfo.wls.size = pipeline->cs.info.wls_size;
    if (batch->tlsinfo.wls.size) {
       unsigned core_id_range;
 

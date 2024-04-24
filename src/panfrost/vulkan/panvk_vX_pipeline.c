@@ -52,20 +52,6 @@
 #include "pan_earlyzs.h"
 #include "pan_shader.h"
 
-static void
-release_shaders(struct panvk_pipeline *pipeline, struct panvk_shader **shaders,
-                const VkAllocationCallbacks *alloc)
-{
-   struct panvk_device *dev = to_panvk_device(pipeline->base.device);
-
-   for (uint32_t i = 0; i < MESA_SHADER_STAGES; i++) {
-      if (!shaders[i])
-         continue;
-
-      panvk_per_arch(shader_destroy)(dev, shaders[i], alloc);
-   }
-}
-
 static bool
 dyn_state_is_set(const struct panvk_graphics_pipeline *pipeline, uint32_t id)
 {
@@ -73,72 +59,6 @@ dyn_state_is_set(const struct panvk_graphics_pipeline *pipeline, uint32_t id)
       return false;
 
    return BITSET_TEST(pipeline->state.dynamic.set, id);
-}
-
-static VkResult
-compile_shaders(struct panvk_pipeline *pipeline,
-                const VkPipelineShaderStageCreateInfo *stages,
-                uint32_t stage_count, const VkAllocationCallbacks *alloc,
-                struct panvk_shader **shaders)
-{
-   struct panvk_device *dev = to_panvk_device(pipeline->base.device);
-   struct panvk_graphics_pipeline *gfx_pipeline =
-      panvk_pipeline_to_graphics_pipeline(pipeline);
-   const VkPipelineShaderStageCreateInfo *stage_infos[MESA_SHADER_STAGES] = {
-      NULL,
-   };
-
-   for (uint32_t i = 0; i < stage_count; i++) {
-      gl_shader_stage stage = vk_to_mesa_shader_stage(stages[i].stage);
-      stage_infos[stage] = &stages[i];
-   }
-
-   /* compile shaders in reverse order */
-   for (gl_shader_stage stage = MESA_SHADER_STAGES - 1;
-        stage > MESA_SHADER_NONE; stage--) {
-      const VkPipelineShaderStageCreateInfo *stage_info = stage_infos[stage];
-      if (!stage_info)
-         continue;
-
-      struct panvk_shader *shader;
-
-      shader = panvk_per_arch(shader_create)(
-         dev, stage_info, pipeline->layout,
-         gfx_pipeline ? &gfx_pipeline->state.blend.pstate : NULL,
-         dyn_state_is_set(gfx_pipeline, MESA_VK_DYNAMIC_CB_BLEND_CONSTANTS),
-         alloc);
-      if (!shader)
-         return VK_ERROR_OUT_OF_HOST_MEMORY;
-
-      shaders[stage] = shader;
-   }
-
-   return VK_SUCCESS;
-}
-
-static mali_ptr
-upload_shader(struct panvk_pipeline *pipeline,
-              const struct panvk_shader *shader)
-{
-   void *shader_data = util_dynarray_element(&shader->binary, uint8_t, 0);
-   unsigned shader_sz = util_dynarray_num_elements(&shader->binary, uint8_t);
-
-   if (!shader_sz)
-      return 0;
-
-   return pan_pool_upload_aligned(&pipeline->bin_pool.base, shader_data,
-                                  shader_sz, 128);
-}
-
-static void
-emit_non_fs_rsd(const struct pan_shader_info *shader_info, mali_ptr shader_ptr,
-                void *rsd)
-{
-   assert(shader_info->stage != MESA_SHADER_FRAGMENT);
-
-   pan_pack(rsd, RENDERER_STATE, cfg) {
-      pan_shader_prepare_rsd(shader_info, shader_ptr, &cfg);
-   }
 }
 
 static bool
@@ -225,7 +145,7 @@ static void
 emit_base_fs_rsd(const struct panvk_graphics_pipeline *pipeline,
                  const struct vk_graphics_pipeline_state *state, void *rsd)
 {
-   const struct pan_shader_info *info = &pipeline->state.fs.info;
+   const struct pan_shader_info *info = &pipeline->fs.info;
    const struct vk_rasterization_state *rs = state->rs;
    const struct vk_depth_stencil_state *ds = state->ds;
    const struct vk_multisample_state *ms = state->ms;
@@ -238,13 +158,12 @@ emit_base_fs_rsd(const struct panvk_graphics_pipeline *pipeline,
       bool alpha_to_coverage = ms && ms->alpha_to_coverage_enable;
 
       if (pipeline->state.fs.required) {
-         pan_shader_prepare_rsd(info, pipeline->state.fs.address, &cfg);
+         pan_shader_prepare_rsd(info, pipeline->fs.code, &cfg);
 
-         uint8_t rt_written =
-            pipeline->state.fs.info.outputs_written >> FRAG_RESULT_DATA0;
+         uint8_t rt_written = info->outputs_written >> FRAG_RESULT_DATA0;
          uint8_t rt_mask = pipeline->state.fs.rt_mask;
          cfg.properties.allow_forward_pixel_to_kill =
-            pipeline->state.fs.info.fs.can_fpk && !(rt_mask & ~rt_written) &&
+            pipeline->fs.info.fs.can_fpk && !(rt_mask & ~rt_written) &&
             !alpha_to_coverage && !pipeline->state.blend.reads_dest;
 
          bool writes_zs = writes_z || writes_s;
@@ -405,77 +324,8 @@ emit_blend(const struct panvk_graphics_pipeline *pipeline, unsigned rt,
       cfg.internal.fixed_function.conversion.memory_format =
          GENX(panfrost_dithered_format_from_pipe_format)(rts->format, dithered);
       cfg.internal.fixed_function.conversion.register_format =
-         blend_type_from_nir(pipeline->state.fs.info.bifrost.blend[rt].type);
+         blend_type_from_nir(pipeline->fs.info.bifrost.blend[rt].type);
       cfg.internal.fixed_function.rt = rt;
-   }
-}
-
-static void
-init_shaders(struct panvk_pipeline *pipeline,
-             const VkGraphicsPipelineCreateInfo *gfx_create_info,
-             const struct vk_graphics_pipeline_state *gfx_state,
-             struct panvk_shader **shaders)
-{
-   struct panvk_graphics_pipeline *gfx_pipeline =
-      panvk_pipeline_to_graphics_pipeline(pipeline);
-   struct panvk_compute_pipeline *compute_pipeline =
-      panvk_pipeline_to_compute_pipeline(pipeline);
-
-   for (uint32_t i = 0; i < MESA_SHADER_STAGES; i++) {
-      const struct panvk_shader *shader = shaders[i];
-      if (!shader)
-         continue;
-
-      pipeline->tls_size = MAX2(pipeline->tls_size, shader->info.tls_size);
-
-      if (shader->has_img_access)
-         pipeline->img_access_mask |= BITFIELD_BIT(i);
-
-      if (i == MESA_SHADER_VERTEX)
-         gfx_pipeline->state.vs.writes_point_size =
-            shader->info.vs.writes_point_size;
-
-      mali_ptr shader_ptr = i == MESA_SHADER_FRAGMENT
-                               ? gfx_pipeline->state.fs.address
-                               : upload_shader(pipeline, shader);
-
-      if (i != MESA_SHADER_FRAGMENT) {
-         struct panfrost_ptr rsd =
-            pan_pool_alloc_desc(&pipeline->desc_pool.base, RENDERER_STATE);
-
-         emit_non_fs_rsd(&shader->info, shader_ptr, rsd.cpu);
-         pipeline->rsds[i] = rsd.gpu;
-      }
-
-      if (i == MESA_SHADER_COMPUTE) {
-         compute_pipeline->local_size = shader->local_size;
-         compute_pipeline->wls_size = shader->info.wls_size;
-      }
-   }
-
-   if (gfx_create_info && !gfx_pipeline->state.fs.dynamic_rsd) {
-      unsigned bd_count = MAX2(gfx_pipeline->state.blend.pstate.rt_count, 1);
-      struct panfrost_ptr rsd = pan_pool_alloc_desc_aggregate(
-         &pipeline->desc_pool.base, PAN_DESC(RENDERER_STATE),
-         PAN_DESC_ARRAY(bd_count, BLEND));
-      void *bd = rsd.cpu + pan_size(RENDERER_STATE);
-
-      emit_base_fs_rsd(gfx_pipeline, gfx_state, rsd.cpu);
-      for (unsigned rt = 0; rt < gfx_pipeline->state.blend.pstate.rt_count;
-           rt++) {
-         emit_blend(gfx_pipeline, rt, bd);
-         bd += pan_size(BLEND);
-      }
-
-      pipeline->rsds[MESA_SHADER_FRAGMENT] = rsd.gpu;
-   } else if (gfx_create_info) {
-      emit_base_fs_rsd(gfx_pipeline, gfx_state,
-                       gfx_pipeline->state.fs.rsd_template.opaque);
-      for (unsigned rt = 0;
-           rt < MAX2(gfx_pipeline->state.blend.pstate.rt_count, 1); rt++) {
-         emit_blend(gfx_pipeline, rt,
-                    &gfx_pipeline->state.blend.bd_template[rt].opaque);
-      }
    }
 }
 
@@ -578,7 +428,7 @@ parse_color_blend(struct panvk_graphics_pipeline *pipeline,
 static bool
 fs_required(struct panvk_graphics_pipeline *pipeline)
 {
-   const struct pan_shader_info *info = &pipeline->state.fs.info;
+   const struct pan_shader_info *info = &pipeline->fs.info;
 
    /* If we generally have side effects */
    if (info->fs.sidefx)
@@ -598,21 +448,33 @@ fs_required(struct panvk_graphics_pipeline *pipeline)
 
 static void
 init_fs_state(struct panvk_graphics_pipeline *pipeline,
-              const struct vk_graphics_pipeline_state *state,
-              struct panvk_shader *shader)
+              const struct vk_graphics_pipeline_state *state)
 {
-   if (!shader)
-      return;
-
    pipeline->state.fs.dynamic_rsd = is_dyn(state, RS_DEPTH_BIAS_FACTORS) ||
                                     is_dyn(state, CB_BLEND_CONSTANTS) ||
                                     is_dyn(state, DS_STENCIL_COMPARE_MASK) ||
                                     is_dyn(state, DS_STENCIL_WRITE_MASK) ||
                                     is_dyn(state, DS_STENCIL_REFERENCE);
-   pipeline->state.fs.address = upload_shader(&pipeline->base, shader);
-   pipeline->state.fs.info = shader->info;
    pipeline->state.fs.rt_mask = get_active_color_attachments(state);
    pipeline->state.fs.required = fs_required(pipeline);
+
+   unsigned bd_count = MAX2(pipeline->state.blend.pstate.rt_count, 1);
+   struct mali_renderer_state_packed *rsd = &pipeline->state.fs.rsd_template;
+   struct mali_blend_packed *bds = pipeline->state.blend.bd_template;
+
+   if (!pipeline->state.fs.dynamic_rsd) {
+      struct panfrost_ptr ptr = pan_pool_alloc_desc_aggregate(
+         &pipeline->base.desc_pool.base, PAN_DESC(RENDERER_STATE),
+         PAN_DESC_ARRAY(bd_count, BLEND));
+
+      rsd = ptr.cpu;
+      bds = ptr.cpu + pan_size(RENDERER_STATE);
+      pipeline->fs.rsd = ptr.gpu;
+   }
+
+   emit_base_fs_rsd(pipeline, state, rsd);
+   for (unsigned i = 0; i < bd_count; i++)
+      emit_blend(pipeline, i, &bds[i]);
 }
 
 static void
@@ -656,24 +518,19 @@ update_varying_slot(struct panvk_varyings_info *varyings, gl_shader_stage stage,
 }
 
 static void
-collect_varyings(struct panvk_graphics_pipeline *pipeline,
-                 struct panvk_shader **shaders)
+collect_varyings(struct panvk_graphics_pipeline *pipeline)
 {
-   for (uint32_t s = 0; s < MESA_SHADER_STAGES; s++) {
-      if (!shaders[s])
-         continue;
+   const struct pan_shader_info *vs_info = &pipeline->vs.info;
+   const struct pan_shader_info *fs_info = &pipeline->fs.info;
 
-      const struct pan_shader_info *info = &shaders[s]->info;
+   for (unsigned i = 0; i < vs_info->varyings.output_count; i++) {
+      update_varying_slot(&pipeline->varyings, MESA_SHADER_VERTEX,
+                          &vs_info->varyings.output[i], false);
+   }
 
-      for (unsigned i = 0; i < info->varyings.input_count; i++) {
-         update_varying_slot(&pipeline->varyings, s, &info->varyings.input[i],
-                             true);
-      }
-
-      for (unsigned i = 0; i < info->varyings.output_count; i++) {
-         update_varying_slot(&pipeline->varyings, s, &info->varyings.output[i],
-                             false);
-      }
+   for (unsigned i = 0; i < fs_info->varyings.input_count; i++) {
+      update_varying_slot(&pipeline->varyings, MESA_SHADER_FRAGMENT,
+                          &fs_info->varyings.input[i], true);
    }
 
    /* TODO: Xfb */
@@ -691,6 +548,60 @@ collect_varyings(struct panvk_graphics_pipeline *pipeline,
          pipeline->varyings.buf[buf_idx].stride;
       pipeline->varyings.buf[buf_idx].stride += varying_sz;
    }
+}
+
+static VkResult
+init_pipeline_shader(struct panvk_pipeline *pipeline,
+                     const VkPipelineShaderStageCreateInfo *stage_info,
+                     const VkAllocationCallbacks *alloc,
+                     struct panvk_pipeline_shader *pshader)
+{
+   struct panvk_device *dev = to_panvk_device(pipeline->base.device);
+   struct panvk_graphics_pipeline *gfx_pipeline =
+      panvk_pipeline_to_graphics_pipeline(pipeline);
+   struct panvk_shader *shader;
+
+   shader = panvk_per_arch(shader_create)(
+      dev, stage_info, pipeline->layout,
+      gfx_pipeline ? &gfx_pipeline->state.blend.pstate : NULL,
+      dyn_state_is_set(gfx_pipeline, MESA_VK_DYNAMIC_CB_BLEND_CONSTANTS),
+      alloc);
+   if (!shader)
+      return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   void *shader_data = util_dynarray_element(&shader->binary, uint8_t, 0);
+   unsigned shader_sz = util_dynarray_num_elements(&shader->binary, uint8_t);
+
+   if (shader_sz) {
+      pshader->code = pan_pool_upload_aligned(&pipeline->bin_pool.base,
+                                              shader_data, shader_sz, 128);
+   } else {
+      pshader->code = 0;
+   }
+
+   pshader->info = shader->info;
+   pshader->has_img_access = shader->has_img_access;
+
+   if (stage_info->stage == VK_SHADER_STAGE_COMPUTE_BIT) {
+      struct panvk_compute_pipeline *compute_pipeline =
+         panvk_pipeline_to_compute_pipeline(pipeline);
+
+      compute_pipeline->local_size = shader->local_size;
+   }
+
+   if (stage_info->stage != VK_SHADER_STAGE_FRAGMENT_BIT) {
+      struct panfrost_ptr rsd =
+         pan_pool_alloc_desc(&pipeline->desc_pool.base, RENDERER_STATE);
+
+      pan_pack(rsd.cpu, RENDERER_STATE, cfg) {
+         pan_shader_prepare_rsd(&pshader->info, pshader->code, &cfg);
+      }
+
+      pshader->rsd = rsd.gpu;
+   }
+
+   panvk_per_arch(shader_destroy)(dev, shader, alloc);
+   return VK_SUCCESS;
 }
 
 static VkResult
@@ -730,16 +641,38 @@ panvk_graphics_pipeline_create(struct panvk_device *dev,
    panvk_pool_init(&gfx_pipeline->base.desc_pool, dev, NULL, 0, 4096,
                    "Pipeline static state", false);
 
-   struct panvk_shader *shaders[MESA_SHADER_STAGES] = {NULL};
-
    parse_color_blend(gfx_pipeline, &state);
-   compile_shaders(&gfx_pipeline->base, create_info->pStages,
-                   create_info->stageCount, alloc, shaders);
-   collect_varyings(gfx_pipeline, shaders);
-   init_fs_state(gfx_pipeline, &state, shaders[MESA_SHADER_FRAGMENT]);
-   init_shaders(&gfx_pipeline->base, create_info, &state, shaders);
 
-   release_shaders(&gfx_pipeline->base, shaders, alloc);
+   /* Make sure the stage info is correct even if no stage info is provided for
+    * this stage in pStages.
+    */
+   gfx_pipeline->vs.info.stage = MESA_SHADER_VERTEX;
+   gfx_pipeline->fs.info.stage = MESA_SHADER_FRAGMENT;
+
+   for (uint32_t i = 0; i < create_info->stageCount; i++) {
+      struct panvk_pipeline_shader *pshader = NULL;
+      switch (create_info->pStages[i].stage) {
+      case VK_SHADER_STAGE_VERTEX_BIT:
+         pshader = &gfx_pipeline->vs;
+         break;
+
+      case VK_SHADER_STAGE_FRAGMENT_BIT:
+         pshader = &gfx_pipeline->fs;
+         break;
+
+      default:
+         assert(!"Unsupported graphics pipeline stage");
+      }
+
+      VkResult result = init_pipeline_shader(
+         &gfx_pipeline->base, &create_info->pStages[i], alloc, pshader);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   collect_varyings(gfx_pipeline);
+   init_fs_state(gfx_pipeline, &state);
+
    return VK_SUCCESS;
 }
 
@@ -796,13 +729,12 @@ panvk_compute_pipeline_create(struct panvk_device *dev,
    panvk_pool_init(&compute_pipeline->base.desc_pool, dev, NULL, 0, 4096,
                    "Pipeline static state", false);
 
-   struct panvk_shader *shaders[MESA_SHADER_STAGES] = {NULL};
+   VkResult result =
+      init_pipeline_shader(&compute_pipeline->base, &create_info->stage, alloc,
+                           &compute_pipeline->cs);
+   if (result != VK_SUCCESS)
+      return result;
 
-   compile_shaders(&compute_pipeline->base, &create_info->stage, 1, alloc,
-                   shaders);
-   init_shaders(&compute_pipeline->base, NULL, NULL, shaders);
-
-   release_shaders(&compute_pipeline->base, shaders, alloc);
    return VK_SUCCESS;
 }
 

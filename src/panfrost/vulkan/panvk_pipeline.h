@@ -25,6 +25,13 @@
 
 #define MAX_RTS 8
 
+struct panvk_pipeline_shader {
+   mali_ptr code;
+   mali_ptr rsd;
+   struct pan_shader_info info;
+   bool has_img_access;
+};
+
 enum panvk_pipeline_type {
    PANVK_PIPELINE_GRAPHICS,
    PANVK_PIPELINE_COMPUTE,
@@ -38,15 +45,6 @@ struct panvk_pipeline {
 
    struct panvk_pool bin_pool;
    struct panvk_pool desc_pool;
-
-   unsigned active_stages;
-
-   uint64_t rsds[MESA_SHADER_STAGES];
-
-   /* shader stage bit is set of the stage accesses storage images */
-   uint32_t img_access_mask;
-
-   unsigned tls_size;
 };
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline, base, VkPipeline,
@@ -55,16 +53,13 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_pipeline, base, VkPipeline,
 struct panvk_graphics_pipeline {
    struct panvk_pipeline base;
 
+   struct panvk_pipeline_shader vs;
+   struct panvk_pipeline_shader fs;
+
    struct panvk_varyings_info varyings;
 
    struct {
       struct {
-         bool writes_point_size;
-      } vs;
-
-      struct {
-         uint64_t address;
-         struct pan_shader_info info;
          bool required;
          bool dynamic_rsd;
          uint8_t rt_mask;
@@ -100,8 +95,9 @@ panvk_pipeline_to_graphics_pipeline(struct panvk_pipeline *pipeline)
 struct panvk_compute_pipeline {
    struct panvk_pipeline base;
 
+   struct panvk_pipeline_shader cs;
+
    struct pan_compute_dim local_size;
-   unsigned wls_size;
 };
 
 static struct panvk_compute_pipeline *

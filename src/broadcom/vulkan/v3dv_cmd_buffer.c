@@ -2205,12 +2205,17 @@ bind_graphics_pipeline(struct v3dv_cmd_buffer *cmd_buffer,
                        struct v3dv_pipeline *pipeline)
 {
    assert(pipeline && !(pipeline->active_stages & VK_SHADER_STAGE_COMPUTE_BIT));
+
+   /* We need to unconditionally bind the pipeline static state, as the state
+    * could have changed (through calls to vkCmdSetXXX) between bindings of
+    * the same pipeline.
+    */
+   cmd_buffer_bind_pipeline_static_state(cmd_buffer, &pipeline->dynamic_state);
+
    if (cmd_buffer->state.gfx.pipeline == pipeline)
       return;
 
    cmd_buffer->state.gfx.pipeline = pipeline;
-
-   cmd_buffer_bind_pipeline_static_state(cmd_buffer, &pipeline->dynamic_state);
 
    cmd_buffer->state.dirty |= V3DV_CMD_DIRTY_PIPELINE;
 }

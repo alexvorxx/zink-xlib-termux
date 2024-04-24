@@ -1194,10 +1194,10 @@ can_swap_operands(aco_ptr<Instruction>& instr, aco_opcode* new_op, unsigned idx0
    }
 }
 
-wait_imm::wait_imm() : vm(unset_counter), exp(unset_counter), lgkm(unset_counter), vs(unset_counter)
+wait_imm::wait_imm() : exp(unset_counter), lgkm(unset_counter), vm(unset_counter), vs(unset_counter)
 {}
 wait_imm::wait_imm(uint16_t vm_, uint16_t exp_, uint16_t lgkm_, uint16_t vs_)
-    : vm(vm_), exp(exp_), lgkm(lgkm_), vs(vs_)
+    : exp(exp_), lgkm(lgkm_), vm(vm_), vs(vs_)
 {}
 
 wait_imm::wait_imm(enum amd_gfx_level gfx_level, uint16_t packed) : vs(unset_counter)
@@ -1260,32 +1260,37 @@ wait_imm::pack(enum amd_gfx_level gfx_level) const
 bool
 wait_imm::combine(const wait_imm& other)
 {
-   bool changed = other.vm < vm || other.exp < exp || other.lgkm < lgkm || other.vs < vs;
-   vm = std::min(vm, other.vm);
-   exp = std::min(exp, other.exp);
-   lgkm = std::min(lgkm, other.lgkm);
-   vs = std::min(vs, other.vs);
+   bool changed = false;
+   for (unsigned i = 0; i < wait_type_num; i++) {
+      if (other[i] < (*this)[i])
+         changed = true;
+      (*this)[i] = std::min((*this)[i], other[i]);
+   }
    return changed;
 }
 
 bool
 wait_imm::empty() const
 {
-   return vm == unset_counter && exp == unset_counter && lgkm == unset_counter &&
-          vs == unset_counter;
+   for (unsigned i = 0; i < wait_type_num; i++) {
+      if ((*this)[i] != unset_counter)
+         return false;
+   }
+   return true;
 }
 
 void
 wait_imm::print(FILE* output) const
 {
-   if (exp != unset_counter)
-      fprintf(output, "exp: %u\n", exp);
-   if (vm != unset_counter)
-      fprintf(output, "vm: %u\n", vm);
-   if (lgkm != unset_counter)
-      fprintf(output, "lgkm: %u\n", lgkm);
-   if (vs != unset_counter)
-      fprintf(output, "vs: %u\n", vs);
+   const char* names[wait_type_num];
+   names[wait_type_exp] = "exp";
+   names[wait_type_vm] = "vm";
+   names[wait_type_lgkm] = "lgkm";
+   names[wait_type_vs] = "vs";
+   for (unsigned i = 0; i < wait_type_num; i++) {
+      if ((*this)[i] != unset_counter)
+         fprintf(output, "%s: %u\n", names[i], (*this)[i]);
+   }
 }
 
 bool

@@ -983,7 +983,8 @@ panfrost_upload_txs_sysval(struct panfrost_batch *batch,
 
    if (tex->target == PIPE_BUFFER) {
       assert(dim == 1);
-      uniform->i[0] = tex->u.buf.size / util_format_get_blocksize(tex->format);
+      unsigned buf_size = tex->u.buf.size / util_format_get_blocksize(tex->format);
+      uniform->i[0] = MIN2(buf_size, PAN_MAX_TEXEL_BUFFER_ELEMENTS);
       return;
    }
 
@@ -1539,6 +1540,7 @@ panfrost_create_sampler_view_bo(struct panfrost_sampler_view *so,
    unsigned buf_offset = is_buffer ? so->base.u.buf.offset : 0;
    unsigned buf_size =
       (is_buffer ? so->base.u.buf.size : 0) / util_format_get_blocksize(format);
+   buf_size = MIN2(buf_size, PAN_MAX_TEXEL_BUFFER_ELEMENTS);
 
    if (so->base.target == PIPE_TEXTURE_3D) {
       first_layer /= prsrc->image.layout.depth;

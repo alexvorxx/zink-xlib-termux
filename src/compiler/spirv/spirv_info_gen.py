@@ -63,11 +63,33 @@ def collect_opcodes(spirv):
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("json")
-    p.add_argument("out")
+    p.add_argument('--out-c', required=True, help='Output C file.')
+    p.add_argument('--out-h', required=True, help='Output H file.')
+    p.add_argument('--json', required=True, help='SPIR-V JSON file.')
     return p.parse_args()
 
-TEMPLATE  = Template("""\
+TEMPLATE_H  = Template("""\
+/* DO NOT EDIT - This file is generated automatically by spirv_info_c.py script */
+
+""" + COPYRIGHT + """\
+
+#ifndef _SPIRV_INFO_H_
+#define _SPIRV_INFO_H_
+
+#include "spirv.h"
+
+% for kind,values,category in info:
+% if category == "BitEnum":
+const char *spirv_${kind.lower()}_to_string(Spv${kind}Mask v);
+% else:
+const char *spirv_${kind.lower()}_to_string(Spv${kind} v);
+% endif
+% endfor
+
+#endif /* SPIRV_INFO_H */
+""")
+
+TEMPLATE_C  = Template("""\
 /* DO NOT EDIT - This file is generated automatically by spirv_info_c.py script */
 
 """ + COPYRIGHT + """\
@@ -128,5 +150,7 @@ if __name__ == "__main__":
         collect_opcodes(spirv_info),
     ]
 
-    with open(pargs.out, 'w', encoding='utf-8') as f:
-        f.write(TEMPLATE.render(info=info))
+    with open(pargs.out_h, 'w', encoding='utf-8') as f:
+        f.write(TEMPLATE_H.render(info=info))
+    with open(pargs.out_c, 'w', encoding='utf-8') as f:
+        f.write(TEMPLATE_C.render(info=info))

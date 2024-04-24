@@ -76,7 +76,32 @@ TEMPLATE_H  = Template("""\
 #ifndef _SPIRV_INFO_H_
 #define _SPIRV_INFO_H_
 
-#include "spirv.h"
+#include <stdbool.h>
+
+#include "compiler/spirv/spirv.h"
+
+% for kind,values,category in info:
+% if kind == "Capability":
+struct spirv_capabilities {
+    % for names in values:
+    % if len(names) == 1:
+   bool ${names[0]};
+    % else:
+   union {
+    % for name in names:
+      bool ${name};
+    % endfor
+   };
+    % endif
+    % endfor
+};
+% endif
+% endfor
+
+bool spirv_capabilities_get(const struct spirv_capabilities *caps,
+                            SpvCapability cap);
+void spirv_capabilities_set(struct spirv_capabilities *caps,
+                            SpvCapability cap, bool enabled);
 
 % for kind,values,category in info:
 % if category == "BitEnum":
@@ -94,6 +119,39 @@ TEMPLATE_C  = Template("""\
 
 """ + COPYRIGHT + """\
 #include "spirv_info.h"
+
+#include "util/macros.h"
+
+% for kind,values,category in info:
+% if kind == "Capability":
+bool
+spirv_capabilities_get(const struct spirv_capabilities *caps,
+                       SpvCapability cap)
+{
+   switch (cap) {
+    % for names in values:
+   case SpvCapability${names[0]}: return caps->${names[0]};
+    % endfor
+   default:
+      return false;
+   }
+}
+
+void
+spirv_capabilities_set(struct spirv_capabilities *caps,
+                       SpvCapability cap, bool enabled)
+{
+   switch (cap) {
+    % for names in values:
+   case SpvCapability${names[0]}: caps->${names[0]} = enabled; break;
+    % endfor
+   default:
+      unreachable("Unknown capability");
+   }
+}
+% endif
+% endfor
+
 % for kind,values,category in info:
 
 % if category == "BitEnum":

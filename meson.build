@@ -962,12 +962,7 @@ endif
 pre_args += '-DMESA_DEBUG=' + (with_mesa_debug ? '1' : '0')
 
 with_split_debug = get_option('split-debug') \
-  .disable_if(not cc.compiles('''#include<stdio.h>
-                                 int main() {
-                                 printf("\n");
-                                 };''',
-                    args : '-gsplit-dwarf',
-                    name : 'split-dwarf support'),
+  .disable_if(not cc.has_argument('-gsplit-dwarf'),
     error_message : 'split-debug requires compiler -gsplit-dwarf support') \
   .disable_if(not cc.has_link_argument('-Wl,--gdb-index'),
     error_message : 'split-debug requires the linker argument -Wl,--gdb-index')

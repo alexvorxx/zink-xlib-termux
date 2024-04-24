@@ -27,43 +27,76 @@
  */
 
 #include "spirv_capabilities.h"
-#include "compiler/shader_info.h"
+#include "compiler/spirv/spirv_info.h"
 
 void
-_mesa_fill_supported_spirv_capabilities(struct spirv_supported_capabilities *caps,
+_mesa_fill_supported_spirv_capabilities(struct spirv_capabilities *caps,
                                         struct gl_constants *consts,
                                         const struct gl_extensions *gl_exts)
 {
    const struct spirv_supported_extensions *spirv_exts = consts->SpirVExtensions;
 
-   *caps = (struct spirv_supported_capabilities) {
-      .atomic_storage             = gl_exts->ARB_shader_atomic_counters,
-      .demote_to_helper_invocation = gl_exts->EXT_demote_to_helper_invocation,
-      .draw_parameters            =
-         gl_exts->ARB_shader_draw_parameters &&
-         spirv_exts->supported[SPV_KHR_shader_draw_parameters],
-      .derivative_group           = gl_exts->NV_compute_shader_derivatives,
-      .float64                    = gl_exts->ARB_gpu_shader_fp64,
-      .geometry_streams           = gl_exts->ARB_gpu_shader5,
-      .image_ms_array             = gl_exts->ARB_shader_image_load_store &&
-                                               consts->MaxImageSamples > 1,
-      .image_read_without_format  = gl_exts->EXT_shader_image_load_formatted,
-      .image_write_without_format = gl_exts->ARB_shader_image_load_store,
-      .int64                      = gl_exts->ARB_gpu_shader_int64,
-      .int64_atomics              = gl_exts->NV_shader_atomic_int64,
-      .post_depth_coverage        = gl_exts->ARB_post_depth_coverage,
-      .shader_clock               = gl_exts->ARB_shader_clock,
-      .shader_viewport_index_layer = gl_exts->ARB_shader_viewport_layer_array,
-      .stencil_export             = gl_exts->ARB_shader_stencil_export,
-      .storage_image_ms           = gl_exts->ARB_shader_image_load_store &&
-                                               consts->MaxImageSamples > 1,
-      .subgroup_ballot            =
-         gl_exts->ARB_shader_ballot && spirv_exts->supported[SPV_KHR_shader_ballot],
-      .subgroup_vote              =
-         gl_exts->ARB_shader_group_vote && spirv_exts->supported[SPV_KHR_subgroup_vote],
-      .tessellation               = gl_exts->ARB_tessellation_shader,
-      .transform_feedback         = gl_exts->ARB_transform_feedback3,
-      .variable_pointers          = spirv_exts->supported[SPV_KHR_variable_pointers],
-      .integer_functions2         = gl_exts->INTEL_shader_integer_functions2,
+   *caps = (struct spirv_capabilities) {
+      /* These come from the table in GL_ARB_gl_spirv */
+      .Matrix                             = true,
+      .Shader                             = true,
+      .Geometry                           = true,
+      .Tessellation                       = gl_exts->ARB_tessellation_shader,
+      .Float64                            = gl_exts->ARB_gpu_shader_fp64,
+      .AtomicStorage                      = gl_exts->ARB_shader_atomic_counters,
+      .TessellationPointSize              = gl_exts->ARB_tessellation_shader,
+      .GeometryPointSize                  = true,
+      .ImageGatherExtended                = gl_exts->ARB_gpu_shader5,
+      .StorageImageMultisample            = gl_exts->ARB_shader_image_load_store &&
+                                            consts->MaxImageSamples > 1,
+      .UniformBufferArrayDynamicIndexing  = gl_exts->ARB_gpu_shader5,
+      .SampledImageArrayDynamicIndexing   = gl_exts->ARB_gpu_shader5,
+      .StorageBufferArrayDynamicIndexing  = gl_exts->ARB_shader_storage_buffer_object,
+      .StorageImageArrayDynamicIndexing   = gl_exts->ARB_shader_image_load_store,
+      .ClipDistance                       = true,
+      .CullDistance                       = gl_exts->ARB_cull_distance,
+      .ImageCubeArray                     = gl_exts->ARB_texture_cube_map_array,
+      .SampleRateShading                  = gl_exts->ARB_sample_shading,
+      .ImageRect                          = true,
+      .SampledRect                        = true,
+      .Sampled1D                          = true,
+      .Image1D                            = true,
+      .SampledCubeArray                   = gl_exts->ARB_texture_cube_map_array,
+      .SampledBuffer                      = true,
+      .ImageBuffer                        = true,
+      .ImageMSArray                       = true,
+      .StorageImageExtendedFormats        = gl_exts->ARB_shader_image_load_store,
+      .ImageQuery                         = true,
+      .DerivativeControl                  = gl_exts->ARB_derivative_control,
+      .InterpolationFunction              = gl_exts->ARB_gpu_shader5,
+      .TransformFeedback                  = true,
+      .GeometryStreams                    = gl_exts->ARB_gpu_shader5,
+      .StorageImageWriteWithoutFormat     = gl_exts->ARB_shader_image_load_store,
+      .MultiViewport                      = gl_exts->ARB_viewport_array,
+
+      /* These aren't in the main table for some reason */
+      .Int64                              = gl_exts->ARB_gpu_shader_int64,
+      .SparseResidency                    = gl_exts->ARB_sparse_texture2,
+      .MinLod                             = gl_exts->ARB_sparse_texture_clamp,
+      .StorageImageReadWithoutFormat      = gl_exts->EXT_shader_image_load_formatted,
+      .Int64Atomics                       = gl_exts->NV_shader_atomic_int64,
+
+      /* These come from their individual extension specs */
+      .DemoteToHelperInvocation           = gl_exts->EXT_demote_to_helper_invocation,
+      .DrawParameters                     = gl_exts->ARB_shader_draw_parameters &&
+                                            spirv_exts->supported[SPV_KHR_shader_draw_parameters],
+      .ComputeDerivativeGroupQuadsNV      = gl_exts->NV_compute_shader_derivatives,
+      .ComputeDerivativeGroupLinearNV     = gl_exts->NV_compute_shader_derivatives,
+      .SampleMaskPostDepthCoverage        = gl_exts->ARB_post_depth_coverage,
+      .ShaderClockKHR                     = gl_exts->ARB_shader_clock,
+      .ShaderViewportIndexLayerEXT        = gl_exts->ARB_shader_viewport_layer_array,
+      .StencilExportEXT                   = gl_exts->ARB_shader_stencil_export,
+      .SubgroupBallotKHR                  = gl_exts->ARB_shader_ballot &&
+                                            spirv_exts->supported[SPV_KHR_shader_ballot],
+      .SubgroupVoteKHR                    = gl_exts->ARB_shader_group_vote &&
+                                            spirv_exts->supported[SPV_KHR_subgroup_vote],
+      .TransformFeedback                  = gl_exts->ARB_transform_feedback3,
+      .VariablePointers                   = spirv_exts->supported[SPV_KHR_variable_pointers],
+      .IntegerFunctions2INTEL             = gl_exts->INTEL_shader_integer_functions2,
    };
 }

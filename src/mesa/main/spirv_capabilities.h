@@ -36,9 +36,9 @@
 extern "C" {
 #endif
 
-struct spirv_supported_capabilities;
+struct spirv_capabilities;
 
-void _mesa_fill_supported_spirv_capabilities(struct spirv_supported_capabilities *caps,
+void _mesa_fill_supported_spirv_capabilities(struct spirv_capabilities *caps,
                                              struct gl_constants *consts,
                                              const struct gl_extensions *gl_exts);
 

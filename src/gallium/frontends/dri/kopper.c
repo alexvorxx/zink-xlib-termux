@@ -428,8 +428,6 @@ kopper_allocate_textures(struct dri_context *ctx,
 
    resized = (drawable->old_w != width ||
               drawable->old_h != height);
-   if (resized)
-      drawable->buffer_age = 0;
 
    /* Wait for glthread to finish because we can't use pipe_context from
     * multiple threads.
@@ -845,7 +843,6 @@ kopperSwapBuffersWithDamage(__DRIdrawable *dPriv, uint32_t flush_flags, int nrec
    }
 
    kopper_copy_to_front(ctx->st->pipe, drawable, ptex, nrects, stack_boxes);
-   drawable->buffer_age = 1;
    if (drawable->is_window && !zink_kopper_check(ptex))
       return -1;
    if (!drawable->textures[ST_ATTACHMENT_FRONT_LEFT]) {

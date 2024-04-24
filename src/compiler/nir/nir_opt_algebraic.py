@@ -2240,7 +2240,12 @@ optimizations.extend([
     (('pack_unorm_4x8', 'v'),
      ('pack_uvec4_to_uint',
         ('f2u32', ('fround_even', ('fmul', ('fsat', 'v'), 255.0)))),
-     'options->lower_pack_unorm_4x8'),
+     'options->lower_pack_unorm_4x8 && !options->has_pack_32_4x8'),
+
+    (('pack_unorm_4x8', 'v'),
+     ('pack_32_4x8',
+        ('f2u8', ('fround_even', ('fmul', ('fsat', 'v'), 255.0)))),
+     'options->lower_pack_unorm_4x8 && options->has_pack_32_4x8'),
 
     (('pack_snorm_2x16', 'v'),
      ('pack_uvec2_to_uint',
@@ -2250,7 +2255,12 @@ optimizations.extend([
     (('pack_snorm_4x8', 'v'),
      ('pack_uvec4_to_uint',
         ('f2i32', ('fround_even', ('fmul', ('fmin', 1.0, ('fmax', -1.0, 'v')), 127.0)))),
-     'options->lower_pack_snorm_4x8'),
+     'options->lower_pack_snorm_4x8 && !options->has_pack_32_4x8'),
+
+    (('pack_snorm_4x8', 'v'),
+     ('pack_32_4x8',
+        ('f2i8', ('fround_even', ('fmul', ('fmin', 1.0, ('fmax', -1.0, 'v')), 127.0)))),
+     'options->lower_pack_snorm_4x8 && options->has_pack_32_4x8'),
 
     (('unpack_unorm_2x16', 'v'),
      ('fdiv', ('u2f32', ('vec2', ('extract_u16', 'v', 0),

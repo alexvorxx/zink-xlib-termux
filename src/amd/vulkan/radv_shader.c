@@ -1555,7 +1555,7 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
    unsigned num_input_vgprs = args->ac.num_vgprs_used;
 
    if (stage == MESA_SHADER_FRAGMENT) {
-      num_input_vgprs = ac_get_fs_input_vgpr_cnt(config, NULL, NULL, NULL);
+      num_input_vgprs = ac_get_fs_input_vgpr_cnt(config, NULL);
    }
 
    unsigned num_vgprs = MAX2(config->num_vgprs, num_input_vgprs);
@@ -2605,7 +2605,7 @@ radv_create_ps_epilog(struct radv_device *device, const struct radv_ps_epilog_ke
 
    struct radv_shader_part_binary *binary = NULL;
    struct aco_shader_info ac_info;
-   struct aco_ps_epilog_info ac_epilog_info;
+   struct aco_ps_epilog_info ac_epilog_info = {0};
    struct aco_compiler_options ac_opts;
    radv_aco_convert_shader_info(&ac_info, &info, &args, &options.key, options.info->gfx_level);
    radv_aco_convert_opts(&ac_opts, &options, &args);

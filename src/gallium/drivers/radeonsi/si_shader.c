@@ -668,7 +668,7 @@ void si_init_shader_args(struct si_shader *shader, struct si_shader_args *args)
                          SI_PARAM_ANCILLARY);
       si_add_arg_checked(&args->ac, AC_ARG_VGPR, 1, AC_ARG_FLOAT, &args->ac.sample_coverage,
                          SI_PARAM_SAMPLE_COVERAGE);
-      si_add_arg_checked(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->pos_fixed_pt,
+      si_add_arg_checked(&args->ac, AC_ARG_VGPR, 1, AC_ARG_INT, &args->ac.pos_fixed_pt,
                          SI_PARAM_POS_FIXED_PT);
 
       if (shader->use_aco) {
@@ -2139,8 +2139,8 @@ static void si_nir_emit_polygon_stipple(nir_shader *nir, struct si_shader_args *
     * Since the stipple pattern is 32x32 and it repeats, just get 5 bits
     * per coordinate to get the repeating effect.
     */
-   nir_def *pos_x = ac_nir_unpack_arg(b, &args->ac, args->pos_fixed_pt, 0, 5);
-   nir_def *pos_y = ac_nir_unpack_arg(b, &args->ac, args->pos_fixed_pt, 16, 5);
+   nir_def *pos_x = ac_nir_unpack_arg(b, &args->ac, args->ac.pos_fixed_pt, 0, 5);
+   nir_def *pos_y = ac_nir_unpack_arg(b, &args->ac, args->ac.pos_fixed_pt, 16, 5);
 
    nir_def *zero = nir_imm_int(b, 0);
    /* The stipple pattern is 32x32, each row has 32 bits. */
@@ -2453,8 +2453,6 @@ static void si_determine_use_aco(struct si_shader *shader)
          shader->is_gs_copy_shader;
       break;
    case MESA_SHADER_FRAGMENT:
-      shader->use_aco = shader->is_monolithic;
-      break;
    case MESA_SHADER_COMPUTE:
       shader->use_aco = true;
       break;
@@ -2662,8 +2660,6 @@ static void si_fixup_spi_ps_input_config(struct si_shader *shader)
 static void
 si_set_spi_ps_input_config(struct si_shader *shader)
 {
-   assert(shader->is_monolithic);
-
    const struct si_shader_selector *sel = shader->selector;
    const struct si_shader_info *info = &sel->info;
    const union si_shader_key *key = &shader->key;
@@ -2705,8 +2701,19 @@ si_set_spi_ps_input_config(struct si_shader *shader)
    if (key->ps.mono.point_smoothing)
       shader->config.spi_ps_input_ena |= S_0286CC_PERSP_CENTER_ENA(1);
 
-   si_fixup_spi_ps_input_config(shader);
-   shader->config.spi_ps_input_addr = shader->config.spi_ps_input_ena;
+   if (shader->is_monolithic) {
+      si_fixup_spi_ps_input_config(shader);
+      shader->config.spi_ps_input_addr = shader->config.spi_ps_input_ena;
+   } else {
+      /* Part mode will call si_fixup_spi_ps_input_config() when combining multi
+       * shader part in si_shader_select_ps_parts().
+       *
+       * Reserve register locations for VGPR inputs the PS prolog may need.
+       */
+      shader->config.spi_ps_input_addr =
+         shader->config.spi_ps_input_ena |
+         SI_SPI_PS_INPUT_ADDR_FOR_PROLOG;
+   }
 }
 
 static void
@@ -2877,17 +2884,27 @@ bool si_compile_shader(struct si_screen *sscreen, struct ac_llvm_compiler *compi
       }
    }
 
-   /* Add the scratch offset to input SGPRs. */
+   /* Add/remove the scratch offset to/from input SGPRs. */
    if (sel->screen->info.gfx_level < GFX11 &&
        (sel->screen->info.family < CHIP_GFX940 || sel->screen->info.has_graphics) &&
-       shader->config.scratch_bytes_per_wave && !si_is_merged_shader(shader))
-      shader->info.num_input_sgprs += 1; /* scratch byte offset */
+       !si_is_merged_shader(shader)) {
+      if (shader->use_aco) {
+         /* When aco scratch_offset arg is added explicitly at the beginning.
+          * After compile if no scratch used, reduce the input sgpr count.
+          */
+         if (!shader->config.scratch_bytes_per_wave)
+            shader->info.num_input_sgprs--;
+      } else {
+         /* scratch_offset arg is added by llvm implicitly */
+         if (shader->info.num_input_sgprs)
+            shader->info.num_input_sgprs++;
+      }
+   }
 
    /* Calculate the number of fragment input VGPRs. */
    if (sel->stage == MESA_SHADER_FRAGMENT) {
       shader->info.num_input_vgprs = ac_get_fs_input_vgpr_cnt(
-         &shader->config, &shader->info.face_vgpr_index, &shader->info.ancillary_vgpr_index,
-         &shader->info.sample_coverage_vgpr_index);
+         &shader->config, &shader->info.num_ps_pos_inputs);
    }
 
    si_calculate_max_simd_waves(shader);
@@ -2954,7 +2971,6 @@ si_get_shader_part(struct si_screen *sscreen, struct si_shader_part **list,
          use_aco = sscreen->info.gfx_level <= GFX8;
          break;
       default:
-         use_aco = false;
          break;
       }
    }
@@ -3079,7 +3095,6 @@ void si_get_ps_prolog_key(struct si_shader *shader, union si_shader_part_key *ke
    key->ps_prolog.wave32 = shader->wave_size == 32;
    key->ps_prolog.colors_read = info->colors_read;
    key->ps_prolog.num_input_sgprs = shader->info.num_input_sgprs;
-   key->ps_prolog.num_input_vgprs = shader->info.num_input_vgprs;
    key->ps_prolog.wqm =
       info->base.fs.needs_quad_helper_invocations &&
       (key->ps_prolog.colors_read || key->ps_prolog.states.force_persp_sample_interp ||
@@ -3087,8 +3102,7 @@ void si_get_ps_prolog_key(struct si_shader *shader, union si_shader_part_key *ke
        key->ps_prolog.states.force_persp_center_interp ||
        key->ps_prolog.states.force_linear_center_interp ||
        key->ps_prolog.states.bc_optimize_for_persp || key->ps_prolog.states.bc_optimize_for_linear);
-   key->ps_prolog.ancillary_vgpr_index = shader->info.ancillary_vgpr_index;
-   key->ps_prolog.sample_coverage_vgpr_index = shader->info.sample_coverage_vgpr_index;
+   key->ps_prolog.num_pos_inputs = shader->info.num_ps_pos_inputs;
 
    if (shader->key.ps.part.prolog.poly_stipple)
       shader->info.uses_vmem_load_other = true;
@@ -3099,7 +3113,6 @@ void si_get_ps_prolog_key(struct si_shader *shader, union si_shader_part_key *ke
       if (shader->key.ps.part.prolog.color_two_side) {
          /* BCOLORs are stored after the last input. */
          key->ps_prolog.num_interp_inputs = info->num_inputs;
-         key->ps_prolog.face_vgpr_index = shader->info.face_vgpr_index;
          shader->config.spi_ps_input_ena |= S_0286CC_FRONT_FACE_ENA(1);
       }
 
@@ -3641,4 +3654,66 @@ void si_get_vs_prolog_args(enum amd_gfx_level gfx_level,
    args->internal_bindings = input_sgprs[user_sgpr_base + SI_SGPR_INTERNAL_BINDINGS];
    args->ac.start_instance = input_sgprs[user_sgpr_base + SI_SGPR_START_INSTANCE];
    args->ac.base_vertex = input_sgprs[user_sgpr_base + SI_SGPR_BASE_VERTEX];
+}
+
+void si_get_ps_prolog_args(struct si_shader_args *args,
+                           const union si_shader_part_key *key)
+{
+   memset(args, 0, sizeof(*args));
+
+   const unsigned num_input_sgprs = key->ps_prolog.num_input_sgprs;
+
+   struct ac_arg input_sgprs[num_input_sgprs];
+   for (unsigned i = 0; i < num_input_sgprs; i++)
+      ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, input_sgprs + i);
+
+   args->internal_bindings = input_sgprs[SI_SGPR_INTERNAL_BINDINGS];
+   /* Use the absolute location of the input. */
+   args->ac.prim_mask = input_sgprs[SI_PS_NUM_USER_SGPR];
+
+   ac_add_arg(&args->ac, AC_ARG_VGPR, 2, AC_ARG_FLOAT, &args->ac.persp_sample);
+   ac_add_arg(&args->ac, AC_ARG_VGPR, 2, AC_ARG_FLOAT, &args->ac.persp_center);
+   ac_add_arg(&args->ac, AC_ARG_VGPR, 2, AC_ARG_FLOAT, &args->ac.persp_centroid);
+   /* skip PERSP_PULL_MODEL */
+   ac_add_arg(&args->ac, AC_ARG_VGPR, 2, AC_ARG_FLOAT, &args->ac.linear_sample);
+   ac_add_arg(&args->ac, AC_ARG_VGPR, 2, AC_ARG_FLOAT, &args->ac.linear_center);
+   ac_add_arg(&args->ac, AC_ARG_VGPR, 2, AC_ARG_FLOAT, &args->ac.linear_centroid);
+   /* skip LINE_STIPPLE_TEX */
+
+   /* POS_X|Y|Z|W_FLOAT */
+   for (unsigned i = 0; i < key->ps_prolog.num_pos_inputs; i++)
+      ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_FLOAT, NULL);
+
+   ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_FLOAT, &args->ac.front_face);
+   ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_FLOAT, &args->ac.ancillary);
+   ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_FLOAT, &args->ac.sample_coverage);
+   ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_FLOAT, &args->ac.pos_fixed_pt);
+}
+
+void si_get_ps_epilog_args(struct si_shader_args *args,
+                           const union si_shader_part_key *key,
+                           struct ac_arg colors[MAX_DRAW_BUFFERS],
+                           struct ac_arg *depth, struct ac_arg *stencil,
+                           struct ac_arg *sample_mask)
+{
+   memset(args, 0, sizeof(*args));
+
+   ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, NULL);
+   ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, NULL);
+   ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, NULL);
+   ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_INT, NULL);
+   ac_add_arg(&args->ac, AC_ARG_SGPR, 1, AC_ARG_FLOAT, &args->alpha_reference);
+
+   u_foreach_bit (i, key->ps_epilog.colors_written) {
+      ac_add_arg(&args->ac, AC_ARG_VGPR, 4, AC_ARG_FLOAT, colors + i);
+   }
+
+   if (key->ps_epilog.writes_z)
+      ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_FLOAT, depth);
+
+   if (key->ps_epilog.writes_stencil)
+      ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_FLOAT, stencil);
+
+   if (key->ps_epilog.writes_samplemask)
+      ac_add_arg(&args->ac, AC_ARG_VGPR, 1, AC_ARG_FLOAT, sample_mask);
 }

@@ -37,10 +37,10 @@ struct agx_linked_shader {
    struct agx_fragment_control_packed fragment_control;
 };
 
-struct agx_linked_shader *
-agx_fast_link(void *memctx, struct agx_device *dev, bool fragment,
-              struct agx_shader_part *main, struct agx_shader_part *prolog,
-              struct agx_shader_part *epilog, unsigned nr_samples_shaded);
+void agx_fast_link(struct agx_linked_shader *linked, struct agx_device *dev,
+                   bool fragment, struct agx_shader_part *main,
+                   struct agx_shader_part *prolog,
+                   struct agx_shader_part *epilog, unsigned nr_samples_shaded);
 
 /* These parts of the vertex element affect the generated code */
 struct agx_velem_key {

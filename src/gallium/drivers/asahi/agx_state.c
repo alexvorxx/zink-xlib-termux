@@ -2160,9 +2160,10 @@ asahi_fast_link(struct agx_context *ctx, struct agx_uncompiled_shader *so,
    /* Fast-link it all together */
    struct agx_device *dev = agx_device(ctx->base.screen);
 
-   struct agx_linked_shader *linked = agx_fast_link(
-      so->linked_shaders, dev, so->type == PIPE_SHADER_FRAGMENT, &key->main->b,
-      &prolog->b, &epilog->b, key->nr_samples_shaded);
+   struct agx_linked_shader *linked =
+      rzalloc(so->linked_shaders, struct agx_linked_shader);
+   agx_fast_link(linked, dev, so->type == PIPE_SHADER_FRAGMENT, &key->main->b,
+                 &prolog->b, &epilog->b, key->nr_samples_shaded);
 
    /* Cache the fast linked program */
    union asahi_shader_key *cloned_key =

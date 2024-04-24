@@ -2770,8 +2770,11 @@ isl_surf_get_mcs_surf(const struct isl_device *dev,
    if (surf->msaa_layout != ISL_MSAA_LAYOUT_ARRAY)
       return false;
 
-   /* We are seeing failures with mcs on dg2, so disable it for now. */
-   if (intel_device_info_is_dg2(dev->info))
+   /* On Gfx12+ this format is not listed in TGL PRMs, Volume 2b: Command
+    * Reference: Enumerations, RenderCompressionFormat
+    */
+   if (ISL_GFX_VER(dev) >= 12 &&
+       surf->format == ISL_FORMAT_R9G9B9E5_SHAREDEXP)
       return false;
 
    /* The following are true of all multisampled surfaces */

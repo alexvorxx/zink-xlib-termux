@@ -316,6 +316,7 @@ typedef struct {
    struct {
       struct pipe_resource *resource;
       struct pipe_transfer *transfer;
+      enum pipe_video_entrypoint entrypoint;
    } derived_surface;
    unsigned int export_refcount;
    VABufferInfo export_state;
@@ -385,7 +386,7 @@ typedef struct {
 } vlVaConfig;
 
 typedef struct {
-   struct pipe_video_buffer templat, *buffer, *deint_buffer;
+   struct pipe_video_buffer templat, *buffer;
    struct util_dynarray subpics; /* vlVaSubpicture */
    vlVaContext *ctx;
    vlVaBuffer *coded_buf;

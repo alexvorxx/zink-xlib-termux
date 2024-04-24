@@ -536,14 +536,19 @@ intrinsic("end_primitive", indices=[STREAM_ID])
 # Alternatively, drivers may implement these intrinsics, and use
 # nir_lower_gs_intrinsics() to convert from the basic intrinsics.
 #
-# These contain two additional unsigned integer sources:
+# These contain four additional unsigned integer sources:
 # 1. The total number of vertices emitted so far.
 # 2. The number of vertices emitted for the current primitive
 #    so far if we're counting, otherwise undef.
-intrinsic("emit_vertex_with_counter", src_comp=[1, 1], indices=[STREAM_ID])
-intrinsic("end_primitive_with_counter", src_comp=[1, 1], indices=[STREAM_ID])
-# Contains the final total vertex and primitive counts in the current GS thread.
-intrinsic("set_vertex_and_primitive_count", src_comp=[1, 1], indices=[STREAM_ID])
+# 3. The total number of primitives emitted so far.
+# 4. The total number of decomposed primitives emitted so far. This counts like
+#    the PRIMITIVES_GENERATED query: a triangle strip with 5 vertices is counted
+#    as 3 primitives (not 1).
+intrinsic("emit_vertex_with_counter", src_comp=[1, 1, 1, 1], indices=[STREAM_ID])
+intrinsic("end_primitive_with_counter", src_comp=[1, 1, 1, 1], indices=[STREAM_ID])
+# Contains the final total vertex, primitive, and decomposed primitives counts
+# in the current GS thread.
+intrinsic("set_vertex_and_primitive_count", src_comp=[1, 1, 1], indices=[STREAM_ID])
 
 # Launches mesh shader workgroups from a task shader, with explicit task_payload.
 # Rules:
@@ -1699,6 +1704,24 @@ store("tlb_sample_color_v3d", [1], [BASE, COMPONENT, SRC_TYPE], [])
 # the target framebuffer
 intrinsic("load_fb_layers_v3d", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER])
 
+# Load a bindless sampler handle mapping a binding table sampler.
+intrinsic("load_sampler_handle_agx", [1], 1, [],
+          flags=[CAN_ELIMINATE, CAN_REORDER],
+          bit_sizes=[16])
+
+# Load a bindless texture handle mapping a binding table texture.
+intrinsic("load_texture_handle_agx", [1], 2, [],
+          flags=[CAN_ELIMINATE, CAN_REORDER],
+          bit_sizes=[32])
+
+# Given a vec2 bindless texture handle, load the address of the texture
+# descriptor described by that vec2. This allows inspecting the descriptor from
+# the shader. This does not actually load the content of the descriptor, only
+# the content of the handle (which is the address of the descriptor).
+intrinsic("load_from_texture_handle_agx", [2], 1, [],
+          flags=[CAN_ELIMINATE, CAN_REORDER],
+          bit_sizes=[64])
+
 # Load the coefficient register corresponding to a given fragment shader input.
 # Coefficient registers are vec3s that are dotted with <x, y, 1> to interpolate
 # the input, where x and y are relative to the 32x32 supertile.
@@ -1792,7 +1815,11 @@ system_value("back_face_agx", 1, bit_sizes=[1, 32])
 # Load a driver-internal system value from a given system value set at a given
 # binding within the set. This is used for correctness when lowering things like
 # UBOs with merged shaders.
-load("sysval_agx", [], [DESC_SET, BINDING], [CAN_REORDER, CAN_ELIMINATE])
+#
+# The FLAGS are used internally for loading the index of the uniform itself,
+# rather than the contents, used for lowering bindless handles (which encode
+# uniform indices as immediates in the NIR for technical reasons).
+load("sysval_agx", [], [DESC_SET, BINDING, FLAGS], [CAN_REORDER, CAN_ELIMINATE])
 
 # Write out a sample mask for a targeted subset of samples, specified in the two
 # masks. Maps to the corresponding AGX instruction, the actual workings are
@@ -1823,6 +1850,26 @@ barrier("fence_mem_to_tex_agx")
 # Variant of fence_pbe_to_tex_agx specialized to stores in pixel shaders that
 # act like render target writes, in conjunction with fragment interlock.
 barrier("fence_pbe_to_tex_pixel_agx")
+
+# Address of the parameter buffer for AGX geometry shaders
+system_value("geometry_param_buffer_agx", 1, bit_sizes=[64])
+
+# Loads the vertex index within the current decomposed primitive. For a
+# triangle, this will be in [0, 2], where 2 is the last vertex. This is defined
+# only when the vertex shader is reinvoked for the same vertex in each
+# primitive, as occurs in the geometry shader lowering.
+system_value("vertex_id_in_primitive_agx", 1, bit_sizes=[32])
+
+# Helper shader intrinsics
+# src[] = { value }.
+intrinsic("doorbell_agx", src_comp=[1])
+
+# src[] = { index, stack_address }.
+intrinsic("stack_map_agx", src_comp=[1, 1])
+
+# src[] = { index }.
+# dst[] = { stack_address }.
+intrinsic("stack_unmap_agx", src_comp=[1], dest_comp=1, bit_sizes=[32])
 
 # Intel-specific query for loading from the brw_image_param struct passed
 # into the shader as a uniform.  The variable is a deref to the image
@@ -1974,6 +2021,9 @@ intrinsic("ald_nv", dest_comp=0, src_comp=[1, 1], bit_sizes=[32],
 # FLAGS is struct nak_nir_attr_io_flags
 intrinsic("ast_nv", src_comp=[0, 1, 1],
           indices=[BASE, RANGE_BASE, RANGE, FLAGS], flags=[])
+# src[] = { inv_w, offset }.
+intrinsic("ipa_nv", dest_comp=1, src_comp=[1, 1], bit_sizes=[32],
+          indices=[BASE, FLAGS], flags=[CAN_ELIMINATE, CAN_REORDER])
 
 # NVIDIA-specific Geometry Shader intrinsics.
 # These contain an additional integer source and destination with the primitive handle input/output.
@@ -1981,6 +2031,10 @@ intrinsic("emit_vertex_nv", dest_comp=1, src_comp=[1], indices=[STREAM_ID])
 intrinsic("end_primitive_nv", dest_comp=1, src_comp=[1], indices=[STREAM_ID])
 # Contains the final primitive handle and indicate the end of emission.
 intrinsic("final_primitive_nv", src_comp=[1])
+
+intrinsic("bar_set_nv", dest_comp=1, bit_sizes=[32], flags=[CAN_ELIMINATE])
+intrinsic("bar_break_nv", src_comp=[1])
+intrinsic("bar_sync_nv", src_comp=[1])
 
 # In order to deal with flipped render targets, gl_PointCoord may be flipped
 # in the shader requiring a shader key or extra instructions or it may be

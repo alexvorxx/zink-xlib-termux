@@ -909,7 +909,8 @@ static bool upload_binary_elf(struct si_screen *sscreen, struct si_shader *shade
       return false;
 
    unsigned rx_size = ac_align_shader_binary_for_prefetch(&sscreen->info, binary.rx_size);
-   bool dma_upload = !(sscreen->debug_flags & DBG(NO_DMA_SHADERS));
+   bool dma_upload = !(sscreen->debug_flags & DBG(NO_DMA_SHADERS)) &&
+                     sscreen->info.has_dedicated_vram;
 
    si_resource_reference(&shader->bo, NULL);
    shader->bo = si_aligned_buffer_create(
@@ -1839,7 +1840,7 @@ static void si_lower_ngg(struct si_shader *shader, nir_shader *nir)
       .max_workgroup_size = si_get_max_workgroup_size(shader),
       .wave_size = shader->wave_size,
       .can_cull = !!key->ge.opt.ngg_culling,
-      .disable_streamout = key->ge.opt.remove_streamout,
+      .disable_streamout = !si_shader_uses_streamout(shader),
       .vs_output_param_offset = shader->info.vs_output_param_offset,
       .has_param_exports = shader->info.nr_param_exports,
       .clipdist_enable_mask = clipdist_mask,
@@ -1886,6 +1887,10 @@ static void si_lower_ngg(struct si_shader *shader, nir_shader *nir)
       options.gs_out_vtx_bytes = sel->info.gsvs_vertex_size;
       options.has_gen_prim_query = options.has_xfb_prim_query =
          sel->screen->info.gfx_level >= GFX11;
+
+      /* For monolithic ES/GS to add vscnt wait when GS export pos0. */
+      if (key->ge.part.gs.es)
+         nir->info.writes_memory |= key->ge.part.gs.es->info.base.writes_memory;
 
       NIR_PASS_V(nir, ac_nir_lower_ngg_gs, &options);
    }
@@ -2334,7 +2339,7 @@ struct nir_shader *si_get_nir_shader(struct si_shader *shader,
                     shader->info.vs_output_param_offset,
                     shader->info.nr_param_exports,
                     shader->key.ge.mono.u.vs_export_prim_id,
-                    key->ge.opt.remove_streamout,
+                    !si_shader_uses_streamout(shader),
                     key->ge.opt.kill_pointsize,
                     sel->screen->options.vrs2x2);
       }
@@ -2487,7 +2492,7 @@ si_nir_generate_gs_copy_shader(struct si_screen *sscreen,
                                    clip_cull_mask,
                                    shader->info.vs_output_param_offset,
                                    shader->info.nr_param_exports,
-                                   gskey->ge.opt.remove_streamout,
+                                   !si_shader_uses_streamout(gs_shader),
                                    gskey->ge.opt.kill_pointsize,
                                    sscreen->options.vrs2x2,
                                    output_info);

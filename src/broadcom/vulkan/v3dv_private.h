@@ -618,10 +618,10 @@ struct v3dv_device_memory {
 
 #define V3DV_MAX_PLANE_COUNT 3
 struct v3dv_format_plane {
-   /* One of V3D33_OUTPUT_IMAGE_FORMAT_*, or OUTPUT_IMAGE_FORMAT_NO */
+   /* One of V3D42_OUTPUT_IMAGE_FORMAT_*, or OUTPUT_IMAGE_FORMAT_NO */
    uint8_t rt_type;
 
-   /* One of V3D33_TEXTURE_DATA_FORMAT_*. */
+   /* One of V3D42_TEXTURE_DATA_FORMAT_*. */
    uint8_t tex_type;
 
    /* Swizzle to apply to the RGBA shader output for storing to the tile
@@ -1091,6 +1091,7 @@ enum v3dv_cmd_dirty_bits {
    V3DV_CMD_DIRTY_VIEW_INDEX                = 1 << 17,
    V3DV_CMD_DIRTY_COLOR_WRITE_ENABLE        = 1 << 18,
    V3DV_CMD_DIRTY_DEPTH_BOUNDS              = 1 << 19,
+   V3DV_CMD_DIRTY_DRAW_ID                   = 1 << 20,
 };
 
 struct v3dv_dynamic_state {
@@ -1529,6 +1530,9 @@ struct v3dv_cmd_buffer_state {
 
    /* Current view index for multiview rendering */
    uint32_t view_index;
+
+   /* Current draw ID for multidraw */
+   uint32_t draw_id;
 
    /* Used to flag OOM conditions during command buffer recording */
    bool oom;

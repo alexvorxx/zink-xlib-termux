@@ -1026,20 +1026,18 @@ handle_instruction_gfx10(State& state, NOP_ctx_gfx10& ctx, aco_ptr<Instruction>&
          bld.sop1(aco_opcode::s_mov_b32, Definition(sgpr_null, s1), Operand::zero());
       }
    } else if (instr->isSALU()) {
-      if (instr->format != Format::SOPP) {
+      /* Reducing lgkmcnt count to 0 always mitigates the hazard. */
+      if (instr->opcode == aco_opcode::s_waitcnt_lgkmcnt) {
+         const SOPK_instruction& sopk = instr->sopk();
+         if (sopk.imm == 0 && sopk.operands[0].physReg() == sgpr_null)
+            ctx.sgprs_read_by_SMEM.reset();
+      } else if (instr->opcode == aco_opcode::s_waitcnt) {
+         wait_imm imm(state.program->gfx_level, instr->sopp().imm);
+         if (imm.lgkm == 0)
+            ctx.sgprs_read_by_SMEM.reset();
+      } else if (instr->format != Format::SOPP && instr->definitions.size()) {
          /* SALU can mitigate the hazard */
          ctx.sgprs_read_by_SMEM.reset();
-      } else {
-         /* Reducing lgkmcnt count to 0 always mitigates the hazard. */
-         const SOPP_instruction& sopp = instr->sopp();
-         if (sopp.opcode == aco_opcode::s_waitcnt_lgkmcnt) {
-            if (sopp.imm == 0 && sopp.definitions[0].physReg() == sgpr_null)
-               ctx.sgprs_read_by_SMEM.reset();
-         } else if (sopp.opcode == aco_opcode::s_waitcnt) {
-            wait_imm imm(state.program->gfx_level, instr->sopp().imm);
-            if (imm.lgkm == 0)
-               ctx.sgprs_read_by_SMEM.reset();
-         }
       }
    }
 
@@ -1048,12 +1046,12 @@ handle_instruction_gfx10(State& state, NOP_ctx_gfx10& ctx, aco_ptr<Instruction>&
     */
    if (instr->isVMEM() || instr->isGlobal() || instr->isScratch()) {
       if (ctx.has_branch_after_DS)
-         bld.sopk(aco_opcode::s_waitcnt_vscnt, Definition(sgpr_null, s1), 0);
+         bld.sopk(aco_opcode::s_waitcnt_vscnt, Operand(sgpr_null, s1), 0);
       ctx.has_branch_after_VMEM = ctx.has_branch_after_DS = ctx.has_DS = false;
       ctx.has_VMEM = true;
    } else if (instr->isDS()) {
       if (ctx.has_branch_after_VMEM)
-         bld.sopk(aco_opcode::s_waitcnt_vscnt, Definition(sgpr_null, s1), 0);
+         bld.sopk(aco_opcode::s_waitcnt_vscnt, Operand(sgpr_null, s1), 0);
       ctx.has_branch_after_VMEM = ctx.has_branch_after_DS = ctx.has_VMEM = false;
       ctx.has_DS = true;
    } else if (instr_is_branch(instr)) {
@@ -1063,7 +1061,7 @@ handle_instruction_gfx10(State& state, NOP_ctx_gfx10& ctx, aco_ptr<Instruction>&
    } else if (instr->opcode == aco_opcode::s_waitcnt_vscnt) {
       /* Only s_waitcnt_vscnt can mitigate the hazard */
       const SOPK_instruction& sopk = instr->sopk();
-      if (sopk.definitions[0].physReg() == sgpr_null && sopk.imm == 0)
+      if (sopk.operands[0].physReg() == sgpr_null && sopk.imm == 0)
          ctx.has_VMEM = ctx.has_branch_after_VMEM = ctx.has_DS = ctx.has_branch_after_DS = false;
    }
 
@@ -1142,7 +1140,7 @@ resolve_all_gfx10(State& state, NOP_ctx_gfx10& ctx,
 
    /* LdsBranchVmemWARHazard */
    if (ctx.has_VMEM || ctx.has_branch_after_VMEM || ctx.has_DS || ctx.has_branch_after_DS) {
-      bld.sopk(aco_opcode::s_waitcnt_vscnt, Definition(sgpr_null, s1), 0);
+      bld.sopk(aco_opcode::s_waitcnt_vscnt, Operand(sgpr_null, s1), 0);
       ctx.has_VMEM = ctx.has_branch_after_VMEM = ctx.has_DS = ctx.has_branch_after_DS = false;
    }
 

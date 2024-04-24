@@ -72,9 +72,15 @@ load_descriptor(nir_builder *b, unsigned num_components, unsigned bit_size,
          nir_iadd_imm(b, nir_imul_imm(b, index, sizeof(struct nvk_buffer_address)),
                       nvk_root_descriptor_offset(dynamic_buffers));
 
-      return nir_load_ubo(b, num_components, bit_size,
-                          nir_imm_int(b, 0), root_desc_offset,
-                          .align_mul = 16, .align_offset = 0, .range = ~0);
+      assert(num_components == 4 && bit_size == 32);
+      nir_def *desc =
+         nir_load_ubo(b, 4, 32, nir_imm_int(b, 0), root_desc_offset,
+                      .align_mul = 16, .align_offset = 0, .range = ~0);
+      /* We know a priori that the the .w compnent (offset) is zero */
+      return nir_vec4(b, nir_channel(b, desc, 0),
+                         nir_channel(b, desc, 1),
+                         nir_channel(b, desc, 2),
+                         nir_imm_int(b, 0));
    }
 
    case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK: {
@@ -103,10 +109,21 @@ load_descriptor(nir_builder *b, unsigned num_components, unsigned bit_size,
       desc_align = MIN2(desc_align, 16);
 
       nir_def *set_addr = load_descriptor_set_addr(b, set, ctx);
-      return nir_load_global_constant_offset(b, num_components, bit_size,
-                                             set_addr, desc_ubo_offset,
-                                             .align_mul = desc_align,
-                                             .align_offset = 0);
+      nir_def *desc =
+         nir_load_global_constant_offset(b, num_components, bit_size,
+                                         set_addr, desc_ubo_offset,
+                                         .align_mul = desc_align,
+                                         .align_offset = 0);
+      if (binding_layout->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
+          binding_layout->type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
+         /* We know a priori that the the .w compnent (offset) is zero */
+         assert(num_components == 4 && bit_size == 32);
+         desc = nir_vec4(b, nir_channel(b, desc, 0),
+                            nir_channel(b, desc, 1),
+                            nir_channel(b, desc, 2),
+                            nir_imm_int(b, 0));
+      }
+      return desc;
    }
    }
 }
@@ -164,46 +181,29 @@ try_lower_load_vulkan_descriptor(nir_builder *b, nir_intrinsic_instr *intrin,
 }
 
 static bool
-lower_num_workgroups(nir_builder *b, nir_intrinsic_instr *load,
-                     const struct lower_descriptors_ctx *ctx)
+_lower_sysval_to_root_table(nir_builder *b, nir_intrinsic_instr *intrin,
+                            uint32_t root_table_offset,
+                            const struct lower_descriptors_ctx *ctx)
 {
-   const uint32_t root_table_offset =
-      nvk_root_descriptor_offset(cs.group_count);
+   b->cursor = nir_instr_remove(&intrin->instr);
 
-   b->cursor = nir_instr_remove(&load->instr);
+   nir_def *val = nir_load_ubo(b, intrin->def.num_components,
+                               intrin->def.bit_size,
+                               nir_imm_int(b, 0), /* Root table */
+                               nir_imm_int(b, root_table_offset),
+                               .align_mul = 4,
+                               .align_offset = 0,
+                               .range = root_table_offset + 3 * 4);
 
-   nir_def *val = nir_load_ubo(b, 3, 32,
-                                   nir_imm_int(b, 0), /* Root table */
-                                   nir_imm_int(b, root_table_offset),
-                                   .align_mul = 4,
-                                   .align_offset = 0,
-                                   .range = root_table_offset + 3 * 4);
-
-   nir_def_rewrite_uses(&load->def, val);
+   nir_def_rewrite_uses(&intrin->def, val);
 
    return true;
 }
 
-static bool
-lower_load_base_workgroup_id(nir_builder *b, nir_intrinsic_instr *load,
-                             const struct lower_descriptors_ctx *ctx)
-{
-   const uint32_t root_table_offset =
-      nvk_root_descriptor_offset(cs.base_group);
-
-   b->cursor = nir_instr_remove(&load->instr);
-
-   nir_def *val = nir_load_ubo(b, 3, 32,
-                                   nir_imm_int(b, 0),
-                                   nir_imm_int(b, root_table_offset),
-                                   .align_mul = 4,
-                                   .align_offset = 0,
-                                   .range = root_table_offset + 3 * 4);
-
-   nir_def_rewrite_uses(&load->def, val);
-
-   return true;
-}
+#define lower_sysval_to_root_table(b, intrin, member, ctx)           \
+   _lower_sysval_to_root_table(b, intrin,                            \
+                               nvk_root_descriptor_offset(member),   \
+                               ctx)
 
 static bool
 lower_load_push_constant(nir_builder *b, nir_intrinsic_instr *load,
@@ -225,27 +225,6 @@ lower_load_push_constant(nir_builder *b, nir_intrinsic_instr *load,
                    .align_offset = 0,
                    .range = push_region_offset + base +
                             nir_intrinsic_range(load));
-
-   nir_def_rewrite_uses(&load->def, val);
-
-   return true;
-}
-
-static bool
-lower_load_view_index(nir_builder *b, nir_intrinsic_instr *load,
-                      const struct lower_descriptors_ctx *ctx)
-{
-   const uint32_t root_table_offset =
-      nvk_root_descriptor_offset(draw.view_index);
-
-   b->cursor = nir_instr_remove(&load->instr);
-
-   nir_def *val = nir_load_ubo(b, 1, 32,
-                                   nir_imm_int(b, 0),
-                                   nir_imm_int(b, root_table_offset),
-                                   .align_mul = 4,
-                                   .align_offset = 0,
-                                   .range = root_table_offset + 4);
 
    nir_def_rewrite_uses(&load->def, val);
 
@@ -300,10 +279,6 @@ lower_image_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
       nir_intrinsic_set_image_array(intrin, true);
    }
 
-   /* We don't support ReadWithoutFormat yet */
-   if (intrin->intrinsic == nir_intrinsic_image_deref_load)
-      assert(nir_intrinsic_format(intrin) != PIPE_FORMAT_NONE);
-
    return true;
 }
 
@@ -352,16 +327,26 @@ try_lower_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
       unreachable("Should have been lowered by nir_lower_cs_intrinsics()");
 
    case nir_intrinsic_load_num_workgroups:
-      return lower_num_workgroups(b, intrin, ctx);
+      return lower_sysval_to_root_table(b, intrin, cs.group_count, ctx);
 
    case nir_intrinsic_load_base_workgroup_id:
-      return lower_load_base_workgroup_id(b, intrin, ctx);
+      return lower_sysval_to_root_table(b, intrin, cs.base_group, ctx);
 
    case nir_intrinsic_load_push_constant:
       return lower_load_push_constant(b, intrin, ctx);
 
+   case nir_intrinsic_load_base_vertex:
+   case nir_intrinsic_load_first_vertex:
+      return lower_sysval_to_root_table(b, intrin, draw.base_vertex, ctx);
+
+   case nir_intrinsic_load_base_instance:
+      return lower_sysval_to_root_table(b, intrin, draw.base_instance, ctx);
+
+   case nir_intrinsic_load_draw_id:
+      return lower_sysval_to_root_table(b, intrin, draw.draw_id, ctx);
+
    case nir_intrinsic_load_view_index:
-      return lower_load_view_index(b, intrin, ctx);
+      return lower_sysval_to_root_table(b, intrin, draw.view_index, ctx);
 
    case nir_intrinsic_image_deref_load:
    case nir_intrinsic_image_deref_store:
@@ -602,9 +587,9 @@ lower_load_ssbo_descriptor(nir_builder *b, nir_intrinsic_instr *intrin,
    case nir_address_format_64bit_global:
       /* Mask off the binding stride */
       addr = nir_iand_imm(b, addr, BITFIELD64_MASK(56));
-      desc = nir_build_load_global(b, 1, 64, addr,
-                                   .access = ACCESS_NON_WRITEABLE,
-                                   .align_mul = 16, .align_offset = 0);
+      desc = nir_build_load_global_constant(b, 1, 64, addr,
+                                            .align_mul = 16,
+                                            .align_offset = 0);
       break;
 
    case nir_address_format_64bit_global_32bit_offset: {

@@ -99,6 +99,7 @@ static const struct debug_control radv_perftest_options[] = {{"localbos", RADV_P
                                                              {"rtwave64", RADV_PERFTEST_RT_WAVE_64},
                                                              {"video_decode", RADV_PERFTEST_VIDEO_DECODE},
                                                              {"dmashaders", RADV_PERFTEST_DMA_SHADERS},
+                                                             {"gsfastlaunch2", RADV_PERFTEST_GS_FAST_LAUNCH_2},
                                                              {NULL, 0}};
 
 const char *
@@ -151,6 +152,9 @@ static const driOptionDescription radv_dri_options[] = {
       DRI_CONF_RADV_FLUSH_BEFORE_TIMESTAMP_WRITE(false)
       DRI_CONF_RADV_RT_WAVE64(false)
       DRI_CONF_DUAL_COLOR_BLEND_BY_LOCATION(false)
+      DRI_CONF_RADV_OVERRIDE_GRAPHICS_SHADER_VERSION(0)
+      DRI_CONF_RADV_OVERRIDE_COMPUTE_SHADER_VERSION(0)
+      DRI_CONF_RADV_OVERRIDE_RAY_TRACING_SHADER_VERSION(0)
       DRI_CONF_RADV_APP_LAYER()
    DRI_CONF_SECTION_END
 };
@@ -207,6 +211,13 @@ radv_init_dri_options(struct radv_instance *instance)
    instance->force_rt_wave64 = driQueryOptionb(&instance->dri_options, "radv_rt_wave64");
 
    instance->dual_color_blend_by_location = driQueryOptionb(&instance->dri_options, "dual_color_blend_by_location");
+
+   instance->override_graphics_shader_version =
+      driQueryOptioni(&instance->dri_options, "radv_override_graphics_shader_version");
+   instance->override_compute_shader_version =
+      driQueryOptioni(&instance->dri_options, "radv_override_compute_shader_version");
+   instance->override_ray_tracing_shader_version =
+      driQueryOptioni(&instance->dri_options, "radv_override_ray_tracing_shader_version");
 }
 
 static const struct vk_instance_extension_table radv_instance_extensions_supported = {
@@ -370,53 +381,6 @@ radv_GetInstanceProcAddr(VkInstance _instance, const char *pName)
 #define PUBLIC
 #endif
 
-PUBLIC VKAPI_ATTR VkResult VKAPI_CALL
-vk_icdNegotiateLoaderICDInterfaceVersion(uint32_t *pSupportedVersion)
-{
-   /* For the full details on loader interface versioning, see
-    * <https://github.com/KhronosGroup/Vulkan-LoaderAndValidationLayers/blob/master/loader/LoaderAndLayerInterface.md>.
-    * What follows is a condensed summary, to help you navigate the large and
-    * confusing official doc.
-    *
-    *   - Loader interface v0 is incompatible with later versions. We don't
-    *     support it.
-    *
-    *   - In loader interface v1:
-    *       - The first ICD entrypoint called by the loader is
-    *         vk_icdGetInstanceProcAddr(). The ICD must statically expose this
-    *         entrypoint.
-    *       - The ICD must statically expose no other Vulkan symbol unless it is
-    *         linked with -Bsymbolic.
-    *       - Each dispatchable Vulkan handle created by the ICD must be
-    *         a pointer to a struct whose first member is VK_LOADER_DATA. The
-    *         ICD must initialize VK_LOADER_DATA.loadMagic to ICD_LOADER_MAGIC.
-    *       - The loader implements vkCreate{PLATFORM}SurfaceKHR() and
-    *         vkDestroySurfaceKHR(). The ICD must be capable of working with
-    *         such loader-managed surfaces.
-    *
-    *    - Loader interface v2 differs from v1 in:
-    *       - The first ICD entrypoint called by the loader is
-    *         vk_icdNegotiateLoaderICDInterfaceVersion(). The ICD must
-    *         statically expose this entrypoint.
-    *
-    *    - Loader interface v3 differs from v2 in:
-    *        - The ICD must implement vkCreate{PLATFORM}SurfaceKHR(),
-    *          vkDestroySurfaceKHR(), and other API which uses VKSurfaceKHR,
-    *          because the loader no longer does so.
-    *
-    *    - Loader interface v4 differs from v3 in:
-    *        - The ICD must implement vk_icdGetPhysicalDeviceProcAddr().
-    *
-    *    - Loader interface v5 differs from v4 in:
-    *        - The ICD must support Vulkan API version 1.1 and must not return
-    *          VK_ERROR_INCOMPATIBLE_DRIVER from vkCreateInstance() unless a
-    *          Vulkan Loader with interface v4 or smaller is being used and the
-    *          application provides an API version that is greater than 1.0.
-    */
-   *pSupportedVersion = MIN2(*pSupportedVersion, 5u);
-   return VK_SUCCESS;
-}
-
 /* The loader wants us to expose a second GetInstanceProcAddr function
  * to work around certain LD_PRELOAD issues seen in apps.
  */
@@ -425,12 +389,4 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
 vk_icdGetInstanceProcAddr(VkInstance instance, const char *pName)
 {
    return radv_GetInstanceProcAddr(instance, pName);
-}
-
-PUBLIC
-VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
-vk_icdGetPhysicalDeviceProcAddr(VkInstance _instance, const char *pName)
-{
-   RADV_FROM_HANDLE(radv_instance, instance, _instance);
-   return vk_instance_get_physical_device_proc_addr(&instance->vk, pName);
 }

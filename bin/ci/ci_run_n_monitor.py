@@ -21,7 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from itertools import chain
 from subprocess import check_output
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Iterable, Literal, Optional
 
 import gitlab
 from colorama import Fore, Style
@@ -32,6 +32,9 @@ from gitlab_common import (
     pretty_duration,
 )
 from gitlab_gql import GitlabGQL, create_job_needs_dag, filter_dag, print_dag
+
+if TYPE_CHECKING:
+    from gitlab_gql import Dag
 
 GITLAB_URL = "https://gitlab.freedesktop.org"
 
@@ -87,7 +90,7 @@ def pretty_wait(sec: int) -> None:
 def monitor_pipeline(
     project,
     pipeline,
-    target_job: str,
+    target_jobs_regex: re.Pattern,
     dependencies,
     force_manual: bool,
     stress: int,
@@ -97,8 +100,6 @@ def monitor_pipeline(
     target_statuses: dict[str, str] = defaultdict(str)
     stress_status_counter = defaultdict(lambda: defaultdict(int))
     target_id = None
-
-    target_jobs_regex = re.compile(target_job.strip())
 
     while True:
         to_cancel = []
@@ -295,22 +296,39 @@ def parse_args() -> None:
     return args
 
 
-def find_dependencies(target_job: str, project_path: str, iid: int) -> set[str]:
+def print_detected_jobs(
+    target_dep_dag: "Dag", dependency_jobs: Iterable[str], target_jobs: Iterable[str]
+) -> None:
+    def print_job_set(color: str, kind: str, job_set: Iterable[str]):
+        print(
+            color + f"Running {len(job_set)} {kind} jobs: ",
+            "\n",
+            ", ".join(sorted(job_set)),
+            Fore.RESET,
+            "\n",
+        )
+
+    print(Fore.YELLOW + "Detected target job and its dependencies:", "\n")
+    print_dag(target_dep_dag)
+    print_job_set(Fore.MAGENTA, "dependency", dependency_jobs)
+    print_job_set(Fore.BLUE, "target", target_jobs)
+
+
+def find_dependencies(target_jobs_regex: re.Pattern, project_path: str, iid: int) -> set[str]:
     gql_instance = GitlabGQL()
-    dag, _ = create_job_needs_dag(
+    dag = create_job_needs_dag(
         gql_instance, {"projectPath": project_path.path_with_namespace, "iid": iid}
     )
 
-    target_dep_dag = filter_dag(dag, target_job)
+    target_dep_dag = filter_dag(dag, target_jobs_regex)
     if not target_dep_dag:
         print(Fore.RED + "The job(s) were not found in the pipeline." + Fore.RESET)
         sys.exit(1)
-    print(Fore.YELLOW)
-    print("Detected job dependencies:")
-    print()
-    print_dag(target_dep_dag)
-    print(Fore.RESET)
-    return set(chain.from_iterable(target_dep_dag.values()))
+
+    dependency_jobs = set(chain.from_iterable(d["needs"] for d in target_dep_dag.values()))
+    target_jobs = set(target_dep_dag.keys())
+    print_detected_jobs(target_dep_dag, dependency_jobs, target_jobs)
+    return target_jobs.union(dependency_jobs)
 
 
 if __name__ == "__main__":
@@ -348,14 +366,16 @@ if __name__ == "__main__":
         print(f"Revision: {REV}")
         print(f"Pipeline: {pipe.web_url}")
 
+        target_jobs_regex = re.compile(args.target.strip())
+
         deps = set()
         if args.target:
             print("🞋 job: " + Fore.BLUE + args.target + Style.RESET_ALL)
             deps = find_dependencies(
-                target_job=args.target, iid=pipe.iid, project_path=cur_project
+                target_jobs_regex=target_jobs_regex, iid=pipe.iid, project_path=cur_project
             )
         target_job_id, ret = monitor_pipeline(
-            cur_project, pipe, args.target, deps, args.force_manual, args.stress
+            cur_project, pipe, target_jobs_regex, deps, args.force_manual, args.stress
         )
 
         if target_job_id:

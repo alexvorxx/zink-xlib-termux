@@ -310,7 +310,7 @@ static int si_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
        */
       return 256;
    case PIPE_CAP_MAX_GEOMETRY_TOTAL_OUTPUT_COMPONENTS:
-      return 4095;
+      return 1024;
    case PIPE_CAP_MAX_GS_INVOCATIONS:
       /* Even though the hw supports more, we officially wanna expose only 32. */
       return 32;
@@ -758,6 +758,16 @@ static int si_get_video_param(struct pipe_screen *screen, enum pipe_video_profil
             return refPicList0 | (refPicList1 << 16);
          } else
             return 1;
+
+      case PIPE_VIDEO_CAP_ENC_INTRA_REFRESH:
+         if (sscreen->info.vcn_ip_version >= VCN_1_0_0) {
+            int value = PIPE_VIDEO_ENC_INTRA_REFRESH_ROW |
+                        PIPE_VIDEO_ENC_INTRA_REFRESH_COLUMN |
+                        PIPE_VIDEO_ENC_INTRA_REFRESH_P_FRAME;
+            return value;
+         }
+         else
+            return 0;
 
       default:
          return 0;

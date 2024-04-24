@@ -4,6 +4,7 @@ use crate::pipe::resource::*;
 use crate::pipe::screen::*;
 use crate::pipe::transfer::*;
 
+use mesa_rust_gen::pipe_fd_type::*;
 use mesa_rust_gen::*;
 use mesa_rust_util::has_required_feature;
 
@@ -342,6 +343,10 @@ impl PipeContext {
         }
     }
 
+    pub fn is_create_fence_fd_supported(&self) -> bool {
+        unsafe { self.pipe.as_ref().create_fence_fd.is_some() }
+    }
+
     pub fn create_sampler_state(&self, state: &pipe_sampler_state) -> *mut c_void {
         unsafe { self.pipe.as_ref().create_sampler_state.unwrap()(self.pipe.as_ptr(), state) }
     }
@@ -561,6 +566,19 @@ impl PipeContext {
         unsafe {
             let mut fence = ptr::null_mut();
             self.pipe.as_ref().flush.unwrap()(self.pipe.as_ptr(), &mut fence, 0);
+            PipeFence::new(fence, &self.screen)
+        }
+    }
+
+    pub fn import_fence(&self, fence_fd: &FenceFd) -> PipeFence {
+        unsafe {
+            let mut fence = ptr::null_mut();
+            self.pipe.as_ref().create_fence_fd.unwrap()(
+                self.pipe.as_ptr(),
+                &mut fence,
+                fence_fd.fd,
+                PIPE_FD_TYPE_NATIVE_SYNC,
+            );
             PipeFence::new(fence, &self.screen)
         }
     }

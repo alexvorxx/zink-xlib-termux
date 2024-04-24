@@ -211,12 +211,13 @@ typedef enum {
                                    nir_var_system_value | nir_var_mem_constant |
                                    nir_var_mem_ubo,
    /* Modes where vector derefs can be indexed as arrays. nir_var_shader_out
-    * is only for mesh stages.
+    * is only for mesh stages. nir_var_system_value is only for kernel stages.
     */
-   nir_var_vec_indexable_modes   = nir_var_mem_ubo | nir_var_mem_ssbo |
+   nir_var_vec_indexable_modes   = nir_var_shader_temp | nir_var_function_temp |
+                                 nir_var_mem_ubo | nir_var_mem_ssbo |
                                  nir_var_mem_shared | nir_var_mem_global |
                                  nir_var_mem_push_const | nir_var_mem_task_payload |
-                                 nir_var_shader_out,
+                                 nir_var_shader_out | nir_var_system_value,
    nir_num_variable_modes        = 18,
    nir_var_all                   = (1 << nir_num_variable_modes) - 1,
 } nir_variable_mode;
@@ -3465,6 +3466,8 @@ typedef struct nir_function {
    nir_function_impl *impl;
 
    bool is_entrypoint;
+   /* from SPIR-V linkage, only for libraries */
+   bool is_exported;
    bool is_preamble;
    /* from SPIR-V function control */
    bool should_inline;
@@ -4148,7 +4151,12 @@ nir_shader_get_function_for_name(const nir_shader *shader, const char *name)
    return NULL;
 }
 
+/*
+ * After all functions are forcibly inlined, these passes remove redundant
+ * functions from a shader and library respectively.
+ */
 void nir_remove_non_entrypoints(nir_shader *shader);
+void nir_remove_non_exported(nir_shader *shader);
 
 nir_shader *nir_shader_create(void *mem_ctx,
                               gl_shader_stage stage,
@@ -5015,6 +5023,7 @@ void nir_dump_cfg(nir_shader *shader, FILE *fp);
 void nir_gs_count_vertices_and_primitives(const nir_shader *shader,
                                           int *out_vtxcnt,
                                           int *out_prmcnt,
+                                          int *out_decomposed_prmcnt,
                                           unsigned num_streams);
 
 typedef enum {
@@ -6021,6 +6030,8 @@ typedef enum {
    nir_lower_gs_intrinsics_count_primitives = 1 << 1,
    nir_lower_gs_intrinsics_count_vertices_per_primitive = 1 << 2,
    nir_lower_gs_intrinsics_overwrite_incomplete = 1 << 3,
+   nir_lower_gs_intrinsics_always_end_primitive = 1 << 4,
+   nir_lower_gs_intrinsics_count_decomposed_primitives = 1 << 5,
 } nir_lower_gs_intrinsics_flags;
 
 bool nir_lower_gs_intrinsics(nir_shader *shader, nir_lower_gs_intrinsics_flags options);

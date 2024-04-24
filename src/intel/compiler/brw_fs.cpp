@@ -243,9 +243,6 @@ fs_inst::is_send_from_grf() const
    case FS_OPCODE_FB_READ:
       return src[0].file == VGRF;
    default:
-      if (is_tex())
-         return src[0].file == VGRF;
-
       return false;
    }
 }
@@ -309,16 +306,29 @@ fs_inst::is_payload(unsigned arg) const
    case SHADER_OPCODE_INTERLOCK:
    case SHADER_OPCODE_MEMORY_FENCE:
    case SHADER_OPCODE_BARRIER:
+   case SHADER_OPCODE_TEX:
+   case FS_OPCODE_TXB:
+   case SHADER_OPCODE_TXD:
+   case SHADER_OPCODE_TXF:
+   case SHADER_OPCODE_TXF_LZ:
+   case SHADER_OPCODE_TXF_CMS:
+   case SHADER_OPCODE_TXF_CMS_W:
+   case SHADER_OPCODE_TXF_UMS:
+   case SHADER_OPCODE_TXF_MCS:
+   case SHADER_OPCODE_TXL:
+   case SHADER_OPCODE_TXL_LZ:
+   case SHADER_OPCODE_TXS:
+   case SHADER_OPCODE_LOD:
+   case SHADER_OPCODE_TG4:
+   case SHADER_OPCODE_TG4_OFFSET:
+   case SHADER_OPCODE_SAMPLEINFO:
       return arg == 0;
 
    case SHADER_OPCODE_SEND:
       return arg == 2 || arg == 3;
 
    default:
-      if (is_tex())
-         return arg == 0;
-      else
-         return false;
+      return false;
    }
 }
 
@@ -910,9 +920,27 @@ fs_inst::size_read(int arg) const
       }
       break;
 
-   default:
-      if (arg == 0 && src[0].file == VGRF && is_tex())
+   case SHADER_OPCODE_TEX:
+   case FS_OPCODE_TXB:
+   case SHADER_OPCODE_TXD:
+   case SHADER_OPCODE_TXF:
+   case SHADER_OPCODE_TXF_LZ:
+   case SHADER_OPCODE_TXF_CMS:
+   case SHADER_OPCODE_TXF_CMS_W:
+   case SHADER_OPCODE_TXF_UMS:
+   case SHADER_OPCODE_TXF_MCS:
+   case SHADER_OPCODE_TXL:
+   case SHADER_OPCODE_TXL_LZ:
+   case SHADER_OPCODE_TXS:
+   case SHADER_OPCODE_LOD:
+   case SHADER_OPCODE_TG4:
+   case SHADER_OPCODE_TG4_OFFSET:
+   case SHADER_OPCODE_SAMPLEINFO:
+      if (arg == 0 && src[0].file == VGRF)
          return mlen * REG_SIZE;
+      break;
+
+   default:
       break;
    }
 
@@ -3078,9 +3106,25 @@ fs_visitor::opt_algebraic()
    return progress;
 }
 
+static unsigned
+load_payload_sources_read_for_size(fs_inst *lp, unsigned size_read)
+{
+   assert(lp->opcode == SHADER_OPCODE_LOAD_PAYLOAD);
+   assert(size_read >= lp->header_size * REG_SIZE);
+
+   unsigned i;
+   unsigned size = lp->header_size * REG_SIZE;
+   for (i = lp->header_size; size < size_read && i < lp->sources; i++)
+      size += lp->exec_size * type_sz(lp->src[i].type);
+
+   /* Size read must cover exactly a subset of sources. */
+   assert(size == size_read);
+   return i;
+}
+
 /**
  * Optimize sample messages that have constant zero values for the trailing
- * texture coordinates. We can just reduce the message length for these
+ * parameters. We can just reduce the message length for these
  * instructions instead of reserving a register for it. Trailing parameters
  * that aren't sent default to zero anyway. This will cause the dead code
  * eliminator to remove the MOV instruction that would otherwise be emitted to
@@ -3089,25 +3133,36 @@ fs_visitor::opt_algebraic()
 bool
 fs_visitor::opt_zero_samples()
 {
-   /* Gfx4 infers the texturing opcode based on the message length so we can't
-    * change it.  Gfx12.5 has restrictions on the number of coordinate
-    * parameters that have to be provided for some texture types
-    * (Wa_14012688258).
-    */
-   if (devinfo->ver < 5 || intel_needs_workaround(devinfo, 14012688258))
-      return false;
+   /* Implementation supports only SENDs, so applicable to Gfx7+ only. */
+   assert(devinfo->ver >= 7);
 
    bool progress = false;
 
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
-      if (!inst->is_tex())
+   foreach_block_and_inst(block, fs_inst, send, cfg) {
+      if (send->opcode != SHADER_OPCODE_SEND ||
+          send->sfid != BRW_SFID_SAMPLER)
          continue;
 
-      fs_inst *load_payload = (fs_inst *) inst->prev;
-
-      if (load_payload->is_head_sentinel() ||
-          load_payload->opcode != SHADER_OPCODE_LOAD_PAYLOAD)
+      /* Wa_14012688258:
+       *
+       * Don't trim zeros at the end of payload for sample operations
+       * in cube and cube arrays.
+       */
+      if (send->keep_payload_trailing_zeros)
          continue;
+
+      /* This pass works on SENDs before splitting. */
+      if (send->ex_mlen > 0)
+         continue;
+
+      fs_inst *lp = (fs_inst *) send->prev;
+
+      if (lp->is_head_sentinel() || lp->opcode != SHADER_OPCODE_LOAD_PAYLOAD)
+         continue;
+
+      /* How much of the payload are actually read by this SEND. */
+      const unsigned params =
+         load_payload_sources_read_for_size(lp, send->mlen * REG_SIZE);
 
       /* We don't want to remove the message header or the first parameter.
        * Removing the first parameter is not allowed, see the Haswell PRM
@@ -3116,11 +3171,17 @@ fs_visitor::opt_zero_samples()
        *     "Parameter 0 is required except for the sampleinfo message, which
        *      has no parameter 0"
        */
-      while (inst->mlen > inst->header_size + inst->exec_size / 8 &&
-             load_payload->src[(inst->mlen - inst->header_size) /
-                               (inst->exec_size / 8) +
-                               inst->header_size - 1].is_zero()) {
-         inst->mlen -= inst->exec_size / 8;
+      const unsigned first_param_idx = lp->header_size;
+      unsigned zero_size = 0;
+      for (unsigned i = params - 1; i > first_param_idx; i--) {
+         if (lp->src[i].file != BAD_FILE && !lp->src[i].is_zero())
+            break;
+         zero_size += lp->exec_size * type_sz(lp->src[i].type) * lp->dst.stride;
+      }
+
+      const unsigned zero_len = zero_size / (reg_unit(devinfo) * REG_SIZE);
+      if (zero_len > 0) {
+         send->mlen -= zero_len;
          progress = true;
       }
    }
@@ -3155,23 +3216,14 @@ fs_visitor::opt_split_sends()
 
    bool progress = false;
 
-   const fs_live_variables &live = live_analysis.require();
-
-   int next_ip = 0;
-
-   foreach_block_and_inst_safe(block, fs_inst, send, cfg) {
-      int ip = next_ip;
-      next_ip++;
-
+   foreach_block_and_inst(block, fs_inst, send, cfg) {
       if (send->opcode != SHADER_OPCODE_SEND ||
           send->mlen <= reg_unit(devinfo) || send->ex_mlen > 0)
          continue;
 
-      /* Don't split payloads which are also read later. */
       assert(send->src[2].file == VGRF);
-      if (live.vgrf_end[send->src[2].nr] > ip)
-         continue;
 
+      /* Currently don't split sends that reuse a previously used payload. */
       fs_inst *lp = (fs_inst *) send->prev;
 
       if (lp->is_head_sentinel() || lp->opcode != SHADER_OPCODE_LOAD_PAYLOAD)
@@ -3183,37 +3235,46 @@ fs_visitor::opt_split_sends()
       /* Split either after the header (if present), or when consecutive
        * sources switch from one VGRF to a different one.
        */
-      unsigned i = lp->header_size;
-      if (lp->header_size == 0) {
-         for (i = 1; i < lp->sources; i++) {
-            if (lp->src[i].file == BAD_FILE)
+      unsigned mid = lp->header_size;
+      if (mid == 0) {
+         for (mid = 1; mid < lp->sources; mid++) {
+            if (lp->src[mid].file == BAD_FILE)
                continue;
 
-            if (lp->src[0].file != lp->src[i].file ||
-                lp->src[0].nr != lp->src[i].nr)
+            if (lp->src[0].file != lp->src[mid].file ||
+                lp->src[0].nr != lp->src[mid].nr)
                break;
          }
       }
 
-      if (i != lp->sources) {
-         const fs_builder ibld(this, block, lp);
-         fs_inst *lp2 =
-            ibld.LOAD_PAYLOAD(lp->dst, &lp->src[i], lp->sources - i, 0);
+      /* SEND mlen might be smaller than what LOAD_PAYLOAD provides, so
+       * find out how many sources from the payload does it really need.
+       */
+      const unsigned end =
+         load_payload_sources_read_for_size(lp, send->mlen * REG_SIZE);
 
-         lp->resize_sources(i);
-         lp->size_written -= lp2->size_written;
+      /* Nothing to split. */
+      if (end <= mid)
+         continue;
 
-         lp->dst = fs_reg(VGRF, alloc.allocate(lp->size_written / REG_SIZE), lp->dst.type);
-         lp2->dst = fs_reg(VGRF, alloc.allocate(lp2->size_written / REG_SIZE), lp2->dst.type);
+      const fs_builder ibld(this, block, lp);
+      fs_inst *lp1 = ibld.LOAD_PAYLOAD(lp->dst, &lp->src[0], mid, lp->header_size);
+      fs_inst *lp2 = ibld.LOAD_PAYLOAD(lp->dst, &lp->src[mid], end - mid, 0);
 
-         send->resize_sources(4);
-         send->src[2] = lp->dst;
-         send->src[3] = lp2->dst;
-         send->ex_mlen = lp2->size_written / REG_SIZE;
-         send->mlen -= send->ex_mlen;
+      assert(lp1->size_written % REG_SIZE == 0);
+      assert(lp2->size_written % REG_SIZE == 0);
+      assert((lp1->size_written + lp2->size_written) / REG_SIZE == send->mlen);
 
-         progress = true;
-      }
+      lp1->dst = fs_reg(VGRF, alloc.allocate(lp1->size_written / REG_SIZE), lp1->dst.type);
+      lp2->dst = fs_reg(VGRF, alloc.allocate(lp2->size_written / REG_SIZE), lp2->dst.type);
+
+      send->resize_sources(4);
+      send->src[2] = lp1->dst;
+      send->src[3] = lp2->dst;
+      send->ex_mlen = lp2->size_written / REG_SIZE;
+      send->mlen -= send->ex_mlen;
+
+      progress = true;
    }
 
    if (progress)
@@ -6366,18 +6427,23 @@ fs_visitor::optimize()
    OPT(lower_logical_sends);
 
    /* After logical SEND lowering. */
-   OPT(opt_copy_propagation);
+
+   if (OPT(opt_copy_propagation))
+      OPT(opt_algebraic);
+
+   /* Identify trailing zeros LOAD_PAYLOAD of sampler messages.
+    * Do this before splitting SENDs.
+    */
+   if (devinfo->ver >= 7) {
+      if (OPT(opt_zero_samples) && OPT(opt_copy_propagation))
+         OPT(opt_algebraic);
+   }
+
    OPT(opt_split_sends);
    OPT(fixup_nomask_control_flow);
 
    if (progress) {
       if (OPT(opt_copy_propagation))
-         OPT(opt_algebraic);
-
-      /* Only run after logical send lowering because it's easier to implement
-       * in terms of physical sends.
-       */
-      if (OPT(opt_zero_samples) && OPT(opt_copy_propagation))
          OPT(opt_algebraic);
 
       /* Run after logical send lowering to give it a chance to CSE the
@@ -6862,6 +6928,9 @@ fs_visitor::allocate_registers(bool allow_spilling)
    fs_inst **orig_order = save_instruction_order(cfg);
    fs_inst **best_pressure_order = NULL;
 
+   void *scheduler_ctx = ralloc_context(NULL);
+   fs_instruction_scheduler *sched = prepare_scheduler(scheduler_ctx);
+
    /* Try each scheduling heuristic to see if it can successfully register
     * allocate without spilling.  They should be ordered by decreasing
     * performance but increasing likelihood of allocating.
@@ -6869,7 +6938,7 @@ fs_visitor::allocate_registers(bool allow_spilling)
    for (unsigned i = 0; i < ARRAY_SIZE(pre_modes); i++) {
       enum instruction_scheduler_mode sched_mode = pre_modes[i];
 
-      schedule_instructions(sched_mode);
+      schedule_instructions_pre_ra(sched, sched_mode);
       this->shader_stats.scheduler_mode = scheduler_mode_name[sched_mode];
 
       debug_optimizer(nir, shader_stats.scheduler_mode, 95, i);
@@ -6907,6 +6976,8 @@ fs_visitor::allocate_registers(bool allow_spilling)
       invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
    }
 
+   ralloc_free(scheduler_ctx);
+
    if (!allocated) {
       if (0) {
          fprintf(stderr, "Spilling - using lowest-pressure mode \"%s\"\n",
@@ -6943,7 +7014,7 @@ fs_visitor::allocate_registers(bool allow_spilling)
 
    opt_bank_conflicts();
 
-   schedule_instructions(SCHEDULE_POST);
+   schedule_instructions_post_ra();
 
    if (last_scratch > 0) {
       ASSERTED unsigned max_scratch_size = 2 * 1024 * 1024;
@@ -8059,21 +8130,17 @@ brw_compile_fs(const struct brw_compiler *compiler,
 fs_reg
 fs_visitor::emit_work_group_id_setup()
 {
-   assert(gl_shader_stage_uses_workgroup(stage));
+   assert(gl_shader_stage_is_compute(stage));
 
    fs_reg id = bld.vgrf(BRW_REGISTER_TYPE_UD, 3);
 
    struct brw_reg r0_1(retype(brw_vec1_grf(0, 1), BRW_REGISTER_TYPE_UD));
    bld.MOV(id, r0_1);
 
-   if (gl_shader_stage_is_compute(stage)) {
-      struct brw_reg r0_6(retype(brw_vec1_grf(0, 6), BRW_REGISTER_TYPE_UD));
-      struct brw_reg r0_7(retype(brw_vec1_grf(0, 7), BRW_REGISTER_TYPE_UD));
-      bld.MOV(offset(id, bld, 1), r0_6);
-      bld.MOV(offset(id, bld, 2), r0_7);
-   } else {
-      unreachable("workgroup id should not be used in non-compute stage");
-   }
+   struct brw_reg r0_6(retype(brw_vec1_grf(0, 6), BRW_REGISTER_TYPE_UD));
+   struct brw_reg r0_7(retype(brw_vec1_grf(0, 7), BRW_REGISTER_TYPE_UD));
+   bld.MOV(offset(id, bld, 1), r0_6);
+   bld.MOV(offset(id, bld, 2), r0_7);
 
    return id;
 }

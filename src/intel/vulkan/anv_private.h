@@ -400,6 +400,15 @@ enum anv_bo_alloc_flags {
 
    /** For descriptor pools */
    ANV_BO_ALLOC_DESCRIPTOR_POOL = (1 << 13),
+
+   /** For buffers that will be bound using TR-TT.
+    *
+    * Not for buffers used as the TR-TT page tables.
+    */
+   ANV_BO_ALLOC_TRTT = (1 << 14),
+
+   /** Protected buffer */
+   ANV_BO_ALLOC_PROTECTED = (1 << 15),
 };
 
 struct anv_bo {
@@ -449,21 +458,20 @@ struct anv_bo {
    /** Flags to pass to the kernel through drm_i915_exec_object2::flags */
    uint32_t flags;
 
-   /** True if this BO may be shared with other processes */
-   bool is_external:1;
-
-   /** See also ANV_BO_ALLOC_FIXED_ADDRESS */
-   bool has_fixed_address:1;
+   enum anv_bo_alloc_flags alloc_flags;
 
    /** True if this BO wraps a host pointer */
    bool from_host_ptr:1;
 
-   /** See also ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS */
-   bool has_client_visible_address:1;
-
    /** True if this BO can only live in VRAM */
    bool vram_only:1;
 };
+
+static inline bool
+anv_bo_is_external(const struct anv_bo *bo)
+{
+   return bo->alloc_flags & ANV_BO_ALLOC_EXTERNAL;
+}
 
 static inline struct anv_bo *
 anv_bo_ref(struct anv_bo *bo)
@@ -471,6 +479,9 @@ anv_bo_ref(struct anv_bo *bo)
    p_atomic_inc(&bo->refcount);
    return bo;
 }
+
+enum intel_device_info_mmap_mode
+anv_bo_get_mmap_mode(struct anv_device *device, struct anv_bo *bo);
 
 struct anv_address {
    struct anv_bo *bo;
@@ -1006,13 +1017,10 @@ struct anv_physical_device {
         */
        struct anv_va_range                      instruction_state_pool;
        /**
-        * Client visible VMA allocation heap
-        */
-       struct anv_va_range                      client_visible_heap;
-       /**
         * Client heap
         */
        struct anv_va_range                      high_heap;
+       struct anv_va_range                      trtt;
     } va;
 
     /* Either we have a single vram region and it's all mappable, or we have
@@ -1554,9 +1562,9 @@ struct anv_device {
 
     pthread_mutex_t                             vma_mutex;
     struct util_vma_heap                        vma_lo;
-    struct util_vma_heap                        vma_cva;
     struct util_vma_heap                        vma_hi;
     struct util_vma_heap                        vma_desc;
+    struct util_vma_heap                        vma_trtt;
 
     /** List of all anv_device_memory objects */
     struct list_head                            memory_objects;
@@ -1639,6 +1647,8 @@ struct anv_device {
     uint32_t                                    empty_vs_input[2];
 
     bool                                        robust_buffer_access;
+
+    uint32_t                                    protected_session_id;
 
     /** Shadow ray query BO
      *
@@ -1775,7 +1785,7 @@ anv_mocs(const struct anv_device *device,
          const struct anv_bo *bo,
          isl_surf_usage_flags_t usage)
 {
-   return isl_mocs(&device->isl_dev, usage, bo && bo->is_external);
+   return isl_mocs(&device->isl_dev, usage, bo && anv_bo_is_external(bo));
 }
 
 static inline uint32_t
@@ -1797,7 +1807,6 @@ VkResult anv_device_map_bo(struct anv_device *device,
                            struct anv_bo *bo,
                            uint64_t offset,
                            size_t size,
-                           uint32_t gem_flags,
                            void **map_out);
 void anv_device_unmap_bo(struct anv_device *device,
                          struct anv_bo *bo,
@@ -1856,7 +1865,7 @@ void anv_queue_trace(struct anv_queue *queue, const char *label,
 
 void *
 anv_gem_mmap(struct anv_device *device, struct anv_bo *bo, uint64_t offset,
-             uint64_t size, VkMemoryPropertyFlags property_flags);
+             uint64_t size);
 void anv_gem_munmap(struct anv_device *device, void *p, uint64_t size);
 int anv_gem_wait(struct anv_device *device, uint32_t gem_handle, int64_t *timeout_ns);
 int anv_gem_set_tiling(struct anv_device *device, uint32_t gem_handle,
@@ -1871,6 +1880,9 @@ anv_gem_import_bo_alloc_flags_to_bo_flags(struct anv_device *device,
                                           struct anv_bo *bo,
                                           enum anv_bo_alloc_flags alloc_flags,
                                           uint32_t *bo_flags);
+const struct intel_device_info_pat_entry *
+anv_device_get_pat_entry(struct anv_device *device,
+                         enum anv_bo_alloc_flags alloc_flags);
 
 uint64_t anv_vma_alloc(struct anv_device *device,
                        uint64_t size, uint64_t align,
@@ -1958,6 +1970,11 @@ struct anv_batch {
    VkResult                                     status;
 
    enum intel_engine_class                      engine_class;
+
+   /**
+    * Number of 3DPRIMITIVE's emitted for WA 16014538804
+    */
+   uint8_t num_3d_primitives_emitted;
 };
 
 void *anv_batch_emit_dwords(struct anv_batch *batch, int num_dwords);
@@ -5506,7 +5523,7 @@ struct anv_utrace_submit {
     */
    struct anv_reloc_list relocs;
    struct anv_batch batch;
-   struct anv_bo *batch_bo;
+   struct util_dynarray batch_bos;
 
    /* Stream for temporary allocations */
    struct anv_state_stream dynamic_state_stream;

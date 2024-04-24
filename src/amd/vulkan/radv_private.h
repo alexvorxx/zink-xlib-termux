@@ -419,6 +419,9 @@ struct radv_instance {
    bool force_rt_wave64;
    bool dual_color_blend_by_location;
    char *app_layer;
+   uint8_t override_graphics_shader_version;
+   uint8_t override_compute_shader_version;
+   uint8_t override_ray_tracing_shader_version;
 };
 
 VkResult radv_init_wsi(struct radv_physical_device *physical_device);
@@ -840,6 +843,7 @@ struct radv_queue {
    struct radeon_winsys_bo *gang_sem_bo;
 
    uint64_t last_shader_upload_seq;
+   bool sqtt_present;
 };
 
 int radv_queue_init(struct radv_device *device, struct radv_queue *queue, int idx,
@@ -946,6 +950,14 @@ enum radv_buffer_robustness {
    RADV_BUFFER_ROBUSTNESS_2, /* robustBufferAccess2 */
 };
 
+struct radv_sqtt_timestamp {
+   uint8_t *map;
+   unsigned offset;
+   uint64_t size;
+   struct radeon_winsys_bo *bo;
+   struct list_head list;
+};
+
 struct radv_device {
    struct vk_device vk;
 
@@ -1049,6 +1061,14 @@ struct radv_device {
    bool sqtt_enabled;
    bool sqtt_triggered;
 
+   /* SQTT timestamps for queue events. */
+   simple_mtx_t sqtt_timestamp_mtx;
+   struct radv_sqtt_timestamp sqtt_timestamp;
+
+   /* SQTT timed cmd buffers. */
+   simple_mtx_t sqtt_command_pool_mtx;
+   struct vk_command_pool *sqtt_command_pool[2];
+
    /* Memory trace. */
    struct radv_memory_trace_data memory_trace;
 
@@ -1079,22 +1099,16 @@ struct radv_device {
       struct radv_device_memory *mem;
    } vrs;
 
-   struct u_rwlock vs_prologs_lock;
-   struct hash_table *vs_prologs;
-
    /* Prime blit sdma queue */
    struct radv_queue *private_sdma_queue;
 
+   struct radv_shader_part_cache vs_prologs;
    struct radv_shader_part *simple_vs_prologs[MAX_VERTEX_ATTRIBS];
    struct radv_shader_part *instance_rate_vs_prologs[816];
 
-   /* PS epilogs */
-   struct u_rwlock ps_epilogs_lock;
-   struct hash_table *ps_epilogs;
+   struct radv_shader_part_cache ps_epilogs;
 
-   /* TCS epilogs */
-   struct u_rwlock tcs_epilogs_lock;
-   struct hash_table *tcs_epilogs;
+   struct radv_shader_part_cache tcs_epilogs;
 
    simple_mtx_t trace_mtx;
 
@@ -1717,8 +1731,6 @@ struct radv_cmd_state {
    uint32_t rt_stack_size;
 
    struct radv_shader_part *emitted_vs_prolog;
-   uint32_t *emitted_vs_prolog_key;
-   uint32_t emitted_vs_prolog_key_hash;
    uint32_t vbo_misaligned_mask;
    uint32_t vbo_misaligned_mask_invalid;
    uint32_t vbo_bound_mask;
@@ -1819,6 +1831,10 @@ struct radv_cmd_buffer {
 
    uint64_t mec_inv_pred_va;  /* For inverted predication when using MEC. */
    bool mec_inv_pred_emitted; /* To ensure we don't have to repeat inverting the VA. */
+
+   struct set vs_prologs;
+   struct set ps_epilogs;
+   struct set tcs_epilogs;
 
    /**
     * Gang state.
@@ -1926,36 +1942,6 @@ struct radv_dispatch_info {
 
 void radv_compute_dispatch(struct radv_cmd_buffer *cmd_buffer, const struct radv_dispatch_info *info);
 
-static VkPipelineCreateFlagBits2KHR
-radv_get_pipeline_create_flags(const void *pCreateInfo)
-{
-   const VkBaseInStructure *base = pCreateInfo;
-   const VkPipelineCreateFlags2CreateInfoKHR *flags2 =
-      vk_find_struct_const(base->pNext, PIPELINE_CREATE_FLAGS_2_CREATE_INFO_KHR);
-
-   if (flags2)
-      return flags2->flags;
-
-   switch (((VkBaseInStructure *)pCreateInfo)->sType) {
-   case VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO: {
-      const VkGraphicsPipelineCreateInfo *create_info = (VkGraphicsPipelineCreateInfo *)pCreateInfo;
-      return create_info->flags;
-   }
-   case VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO: {
-      const VkComputePipelineCreateInfo *create_info = (VkComputePipelineCreateInfo *)pCreateInfo;
-      return create_info->flags;
-   }
-   case VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR: {
-      const VkRayTracingPipelineCreateInfoKHR *create_info = (VkRayTracingPipelineCreateInfoKHR *)pCreateInfo;
-      return create_info->flags;
-   }
-   default:
-      unreachable("invalid pCreateInfo pipeline struct");
-   }
-
-   return 0;
-}
-
 struct radv_image;
 struct radv_image_view;
 
@@ -2016,11 +2002,6 @@ void si_cp_dma_wait_for_idle(struct radv_cmd_buffer *cmd_buffer);
 uint32_t radv_get_vgt_index_size(uint32_t type);
 
 unsigned radv_instance_rate_prolog_index(unsigned num_attributes, uint32_t instance_rate_inputs);
-uint32_t radv_hash_vs_prolog(const void *key_);
-bool radv_cmp_vs_prolog(const void *a_, const void *b_);
-
-uint32_t radv_hash_ps_epilog(const void *key_);
-bool radv_cmp_ps_epilog(const void *a_, const void *b_);
 
 struct radv_ps_epilog_state {
    uint8_t color_attachment_count;
@@ -2036,9 +2017,6 @@ struct radv_ps_epilog_state {
 struct radv_ps_epilog_key radv_generate_ps_epilog_key(const struct radv_device *device,
                                                       const struct radv_ps_epilog_state *state,
                                                       bool disable_mrt_compaction);
-
-uint32_t radv_hash_tcs_epilog(const void *key_);
-bool radv_cmp_tcs_epilog(const void *a_, const void *b_);
 
 bool radv_needs_null_export_workaround(const struct radv_device *device, const struct radv_shader *ps,
                                        unsigned custom_blend_mode);
@@ -2096,6 +2074,8 @@ uint32_t radv_fill_buffer(struct radv_cmd_buffer *cmd_buffer, const struct radv_
                           struct radeon_winsys_bo *bo, uint64_t va, uint64_t size, uint32_t value);
 void radv_copy_buffer(struct radv_cmd_buffer *cmd_buffer, struct radeon_winsys_bo *src_bo,
                       struct radeon_winsys_bo *dst_bo, uint64_t src_offset, uint64_t dst_offset, uint64_t size);
+
+void radv_write_timestamp(struct radv_cmd_buffer *cmd_buffer, uint64_t va, VkPipelineStageFlags2 stage);
 
 void radv_cmd_buffer_trace_emit(struct radv_cmd_buffer *cmd_buffer);
 bool radv_get_memory_fd(struct radv_device *device, struct radv_device_memory *memory, int *pFD);
@@ -3124,10 +3104,18 @@ bool radv_get_sqtt_trace(struct radv_queue *queue, struct ac_sqtt_trace *sqtt_tr
 void radv_reset_sqtt_trace(struct radv_device *device);
 void radv_emit_sqtt_userdata(const struct radv_cmd_buffer *cmd_buffer, const void *data, uint32_t num_dwords);
 bool radv_is_instruction_timing_enabled(void);
+bool radv_sqtt_queue_events_enabled(void);
 bool radv_sqtt_sample_clocks(struct radv_device *device);
 
 void radv_emit_inhibit_clockgating(const struct radv_device *device, struct radeon_cmdbuf *cs, bool inhibit);
 void radv_emit_spi_config_cntl(const struct radv_device *device, struct radeon_cmdbuf *cs, bool enable);
+
+VkResult radv_sqtt_get_timed_cmdbuf(struct radv_queue *queue, struct radeon_winsys_bo *timestamp_bo,
+                                    uint32_t timestamp_offset, VkPipelineStageFlags2 timestamp_stage,
+                                    VkCommandBuffer *pcmdbuf);
+
+VkResult radv_sqtt_acquire_gpu_timestamp(struct radv_device *device, struct radeon_winsys_bo **gpu_timestamp_bo,
+                                         uint32_t *gpu_timestamp_offset, void **gpu_timestamp_ptr);
 
 void radv_rra_trace_init(struct radv_device *device);
 
@@ -3246,6 +3234,7 @@ void radv_sqtt_emit_relocated_shaders(struct radv_cmd_buffer *cmd_buffer, struct
 struct radv_indirect_command_layout {
    struct vk_object_base base;
 
+   VkIndirectCommandsLayoutUsageFlagsNV flags;
    VkPipelineBindPoint pipeline_bind_point;
 
    uint32_t input_stride;
@@ -3270,8 +3259,6 @@ struct radv_indirect_command_layout {
    uint32_t ibo_type_32;
    uint32_t ibo_type_8;
 
-   bool use_preprocess;
-
    VkIndirectCommandsLayoutTokenNV tokens[0];
 };
 
@@ -3280,6 +3267,8 @@ uint32_t radv_get_indirect_cmdbuf_size(const VkGeneratedCommandsInfoNV *cmd_info
 bool radv_use_dgc_predication(struct radv_cmd_buffer *cmd_buffer,
                               const VkGeneratedCommandsInfoNV *pGeneratedCommandsInfo);
 void radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsInfoNV *pGeneratedCommandsInfo);
+
+bool radv_dgc_can_preprocess(const struct radv_indirect_command_layout *layout, struct radv_pipeline *pipeline);
 
 static inline uint32_t
 si_conv_prim_to_gs_out(uint32_t topology, bool is_ngg)

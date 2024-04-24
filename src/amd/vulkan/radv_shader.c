@@ -2207,6 +2207,75 @@ fail:
    return NULL;
 }
 
+bool
+radv_shader_part_cache_init(struct radv_shader_part_cache *cache, struct radv_shader_part_cache_ops *ops)
+{
+   cache->ops = ops;
+   if (!_mesa_set_init(&cache->entries, NULL, cache->ops->hash, cache->ops->equals))
+      return false;
+   simple_mtx_init(&cache->lock, mtx_plain);
+   return true;
+}
+
+void
+radv_shader_part_cache_finish(struct radv_device *device, struct radv_shader_part_cache *cache)
+{
+   set_foreach (&cache->entries, entry)
+      radv_shader_part_unref(device, radv_shader_part_from_cache_entry(entry->key));
+   simple_mtx_destroy(&cache->lock);
+   ralloc_free(cache->entries.table);
+}
+
+/*
+ * A cache with atomics-free fast path for prolog / epilog lookups.
+ *
+ * VS prologs and PS/TCS epilogs are used to support dynamic states. In
+ * particular dynamic blend state is heavily used by Zink. These are called
+ * every frame as a part of command buffer building, so these functions are
+ * on the hot path.
+ *
+ * Originally this was implemented with a rwlock, but this lead to high
+ * overhead. To avoid locking altogether in the hot path, the cache is done
+ * at two levels: one at device level, and another at each CS. Access to the
+ * CS cache is externally synchronized and do not require a lock.
+ */
+struct radv_shader_part *
+radv_shader_part_cache_get(struct radv_device *device, struct radv_shader_part_cache *cache, struct set *local_entries,
+                           const void *key)
+{
+   struct set_entry *local, *global;
+   bool local_found, global_found;
+   uint32_t hash = cache->ops->hash(key);
+
+   local = _mesa_set_search_or_add_pre_hashed(local_entries, hash, key, &local_found);
+   if (local_found)
+      return radv_shader_part_from_cache_entry(local->key);
+
+   simple_mtx_lock(&cache->lock);
+   global = _mesa_set_search_or_add_pre_hashed(&cache->entries, hash, key, &global_found);
+   if (global_found) {
+      simple_mtx_unlock(&cache->lock);
+      local->key = global->key;
+      return radv_shader_part_from_cache_entry(global->key);
+   }
+
+   struct radv_shader_part *shader_part = cache->ops->create(device, key);
+   if (!shader_part) {
+      _mesa_set_remove(&cache->entries, global);
+      simple_mtx_unlock(&cache->lock);
+      _mesa_set_remove(local_entries, local);
+      return NULL;
+   }
+
+   /* Make the set entry a pointer to the key, so that the hash and equals
+    * functions from radv_shader_part_cache_ops can be directly used.
+    */
+   global->key = &shader_part->key;
+   simple_mtx_unlock(&cache->lock);
+   local->key = &shader_part->key;
+   return shader_part;
+}
+
 static char *
 radv_dump_nir_shaders(struct nir_shader *const *shaders, int shader_count)
 {
@@ -2581,7 +2650,8 @@ radv_create_vs_prolog(struct radv_device *device, const struct radv_vs_prolog_ke
    if (!prolog)
       goto fail;
 
-   prolog->nontrivial_divisors = key->state->nontrivial_divisors;
+   prolog->key.vs = *key;
+   prolog->nontrivial_divisors = key->nontrivial_divisors;
 
    if (options.dump_shader) {
       fprintf(stderr, "Vertex prolog");
@@ -2635,6 +2705,8 @@ radv_create_ps_epilog(struct radv_device *device, const struct radv_ps_epilog_ke
    if (!epilog)
       goto fail;
 
+   epilog->key.ps = *key;
+
    if (options.dump_shader) {
       fprintf(stderr, "Fragment epilog");
       fprintf(stderr, "\ndisasm:\n%s\n", epilog->disasm_string);
@@ -2687,6 +2759,8 @@ radv_create_tcs_epilog(struct radv_device *device, const struct radv_tcs_epilog_
    epilog = radv_shader_part_create(device, binary, info.wave_size);
    if (!epilog)
       goto fail;
+
+   epilog->key.tcs = *key;
 
    if (options.dump_shader) {
       fprintf(stderr, "TCS epilog");

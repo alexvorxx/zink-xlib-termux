@@ -27,11 +27,6 @@ traces:
       label: [unsupported]
       text: needs GL 4.1
 
-  freedoom/freedoom-phase2-gl-high.trace:
-    broadcom-rpi4:
-      label: [unsupported]
-      text: needs GL 4.6
-
   glxgears/glxgears-2-v2.trace:
     broadcom-rpi4:
       label: [skip, flakes]
@@ -115,14 +110,6 @@ traces:
   jvgs/jvgs-d27fb67-v2.trace:
     broadcom-rpi4:
       checksum: 831138a408cc9557528ef68381b080f2
-
-  minetest/minetest-high-v2.trace:
-    broadcom-rpi4:
-      checksum: ade651f34a154d4508a00c47e532c482
-
-  minetest/minetest-v2.trace:
-    broadcom-rpi4:
-      checksum: 88a5c82db5ce868c81fa1d6e0f6d8dc9
 
   neverball/neverball-v2.trace:
     broadcom-rpi4:

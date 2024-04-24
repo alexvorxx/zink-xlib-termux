@@ -118,7 +118,7 @@ radv_get_sequence_size(const struct radv_indirect_command_layout *layout, struct
          }
          if (locs->shader_data[AC_UD_INLINE_PUSH_CONSTANTS].sgpr_idx >= 0)
             /* One PKT3_SET_SH_REG writing all inline push constants. */
-            *cmd_size += (2 + locs->shader_data[AC_UD_INLINE_PUSH_CONSTANTS].num_sgprs) * 4;
+            *cmd_size += (3 * util_bitcount64(layout->push_constant_mask)) * 4;
       }
       if (need_copy)
          *upload_size += align(pipeline->push_constant_size + 16 * pipeline->dynamic_offset_count, 16);
@@ -795,12 +795,10 @@ dgc_emit_push_constant(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_bu
 
       nir_push_if(b, nir_ine_imm(b, inline_sgpr, 0));
       {
-         nir_def *inline_len = nir_bit_count(b, inline_mask);
          nir_store_var(b, idx, nir_imm_int(b, 0), 0x1);
 
-         nir_def *pkt[2] = {nir_pkt3(b, PKT3_SET_SH_REG, inline_len), inline_sgpr};
-
-         dgc_emit(b, cs, nir_vec(b, pkt, 2));
+         nir_variable *pc_idx = nir_variable_create(b->shader, nir_var_shader_temp, glsl_uint_type(), "pc_idx");
+         nir_store_var(b, pc_idx, nir_imm_int(b, 0), 0x1);
 
          nir_push_loop(b);
          {
@@ -831,19 +829,16 @@ dgc_emit_push_constant(nir_builder *b, struct dgc_cmdbuf *cs, nir_def *stream_bu
                   nir_load_ssbo(b, 1, 32, param_buf, nir_iadd(b, param_offset_offset, nir_ishl_imm(b, cur_idx, 2)));
                nir_def *new_data = nir_load_ssbo(b, 1, 32, stream_buf, nir_iadd(b, stream_base, stream_offset));
                nir_store_var(b, data, new_data, 0x1);
-            }
-            nir_push_else(b, NULL);
-            {
-               nir_store_var(
-                  b, data,
-                  nir_load_ssbo(b, 1, 32, param_buf, nir_iadd(b, param_const_offset, nir_ishl_imm(b, cur_idx, 2))),
-                  0x1);
+
+               nir_def *pkt[3] = {nir_pkt3(b, PKT3_SET_SH_REG, nir_imm_int(b, 1)),
+                                  nir_iadd(b, inline_sgpr, nir_load_var(b, pc_idx)), nir_load_var(b, data)};
+
+               dgc_emit(b, cs, nir_vec(b, pkt, 3));
             }
             nir_pop_if(b, NULL);
 
-            dgc_emit(b, cs, nir_load_var(b, data));
-
             nir_store_var(b, idx, nir_iadd_imm(b, cur_idx, 1), 0x1);
+            nir_store_var(b, pc_idx, nir_iadd_imm(b, nir_load_var(b, pc_idx), 1), 0x1);
          }
          nir_pop_loop(b, NULL);
       }
@@ -1286,6 +1281,7 @@ radv_CreateIndirectCommandsLayoutNV(VkDevice _device, const VkIndirectCommandsLa
 
    vk_object_base_init(&device->vk, &layout->base, VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NV);
 
+   layout->flags = pCreateInfo->flags;
    layout->pipeline_bind_point = pCreateInfo->pipelineBindPoint;
    layout->input_stride = pCreateInfo->pStreamStrides[0];
    layout->token_count = pCreateInfo->tokenCount;
@@ -1336,30 +1332,6 @@ radv_CreateIndirectCommandsLayoutNV(VkDevice _device, const VkIndirectCommandsLa
    }
    if (!layout->indexed)
       layout->binds_index_buffer = false;
-
-   layout->use_preprocess = pCreateInfo->flags & VK_INDIRECT_COMMANDS_LAYOUT_USAGE_EXPLICIT_PREPROCESS_BIT_NV;
-
-   /* From the Vulkan spec (1.3.269, chapter 32):
-    * "The bound descriptor sets and push constants that will be used with indirect command generation for the compute
-    * piplines must already be specified at the time of preprocessing commands with vkCmdPreprocessGeneratedCommandsNV.
-    * They must not change until the execution of indirect commands is submitted with vkCmdExecuteGeneratedCommandsNV."
-    *
-    * So we can always preprocess compute layouts.
-    */
-   if (layout->pipeline_bind_point != VK_PIPELINE_BIND_POINT_COMPUTE) {
-      /* We embed the index buffer extent in indirect draw packets, but that isn't available at preprocess time. */
-      if (layout->indexed && !layout->binds_index_buffer)
-         layout->use_preprocess = false;
-
-      /* VBO binding (in particular partial VBO binding) uses some draw state which we don't generate at preprocess time
-       * yet. */
-      if (layout->bind_vbo_mask)
-         layout->use_preprocess = false;
-
-      /* In preprocess we use the non-overridden push constants from the draw state for now. */
-      if (layout->push_constant_mask)
-         layout->use_preprocess = false;
-   }
 
    *pIndirectCommandsLayout = radv_indirect_command_layout_to_handle(layout);
    return VK_SUCCESS;
@@ -1415,14 +1387,65 @@ radv_use_dgc_predication(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCo
    return cmd_buffer->qf == RADV_QUEUE_GENERAL && seq_count_buffer && !cmd_buffer->state.predicating;
 }
 
+static bool
+radv_dgc_need_push_constants_copy(const struct radv_pipeline *pipeline)
+{
+   for (unsigned i = 0; i < ARRAY_SIZE(pipeline->shaders); ++i) {
+      const struct radv_shader *shader = pipeline->shaders[i];
+
+      if (!shader)
+         continue;
+
+      const struct radv_userdata_locations *locs = &shader->info.user_sgprs_locs;
+      if (locs->shader_data[AC_UD_PUSH_CONSTANTS].sgpr_idx >= 0)
+         return true;
+   }
+
+   return false;
+}
+
+bool
+radv_dgc_can_preprocess(const struct radv_indirect_command_layout *layout, struct radv_pipeline *pipeline)
+{
+   if (!(layout->flags & VK_INDIRECT_COMMANDS_LAYOUT_USAGE_EXPLICIT_PREPROCESS_BIT_NV))
+      return false;
+
+   /* From the Vulkan spec (1.3.269, chapter 32):
+    * "The bound descriptor sets and push constants that will be used with indirect command generation for the compute
+    * piplines must already be specified at the time of preprocessing commands with vkCmdPreprocessGeneratedCommandsNV.
+    * They must not change until the execution of indirect commands is submitted with vkCmdExecuteGeneratedCommandsNV."
+    *
+    * So we can always preprocess compute layouts.
+    */
+   if (layout->pipeline_bind_point != VK_PIPELINE_BIND_POINT_COMPUTE) {
+      /* We embed the index buffer extent in indirect draw packets, but that isn't available at preprocess time. */
+      if (layout->indexed && !layout->binds_index_buffer)
+         return false;
+
+      /* VBO binding (in particular partial VBO binding) uses some draw state which we don't generate at preprocess time
+       * yet. */
+      if (layout->bind_vbo_mask)
+         return false;
+
+      /* Do not preprocess when all push constants can't be inlined because they need to be copied
+       * to the upload BO.
+       */
+      if (layout->push_constant_mask && radv_dgc_need_push_constants_copy(pipeline))
+         return false;
+   }
+
+   return true;
+}
+
 VKAPI_ATTR void VKAPI_CALL
 radv_CmdPreprocessGeneratedCommandsNV(VkCommandBuffer commandBuffer,
                                       const VkGeneratedCommandsInfoNV *pGeneratedCommandsInfo)
 {
    VK_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
    VK_FROM_HANDLE(radv_indirect_command_layout, layout, pGeneratedCommandsInfo->indirectCommandsLayout);
+   VK_FROM_HANDLE(radv_pipeline, pipeline, pGeneratedCommandsInfo->pipeline);
 
-   if (!layout->use_preprocess)
+   if (!radv_dgc_can_preprocess(layout, pipeline))
       return;
 
    const bool use_predication = radv_use_dgc_predication(cmd_buffer, pGeneratedCommandsInfo);

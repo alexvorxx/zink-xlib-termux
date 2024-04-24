@@ -229,7 +229,6 @@ enum
    DBG_NO_EFC,
 
    /* 3D engine options: */
-   DBG_NO_GFX,
    DBG_NO_NGG,
    DBG_ALWAYS_NGG_CULLING_ALL,
    DBG_NO_NGG_CULLING,
@@ -948,7 +947,7 @@ struct si_vertex_state {
 };
 
 /* The structure layout is identical to a pair of registers in SET_*_REG_PAIRS_PACKED. */
-struct si_sh_reg_pair {
+struct gfx11_reg_pair {
    union {
       /* A pair of register offsets. */
       struct {
@@ -1064,11 +1063,14 @@ struct si_context {
    uint64_t dirty_atoms; /* mask */
    union si_state queued;
    union si_state emitted;
-   /* Gfx11+: Buffered SH registers for SET_SH_REG_PAIRS_PACKED*. */
+
+   /* Gfx11+: Buffered SH registers for SET_SH_REG_PAIRS_*. */
    unsigned num_buffered_gfx_sh_regs;
-   struct si_sh_reg_pair buffered_gfx_sh_regs[32];
    unsigned num_buffered_compute_sh_regs;
-   struct si_sh_reg_pair buffered_compute_sh_regs[32];
+   struct {
+      struct gfx11_reg_pair buffered_gfx_sh_regs[32];
+      struct gfx11_reg_pair buffered_compute_sh_regs[32];
+   } gfx11;
 
    /* Atom declarations. */
    struct si_framebuffer framebuffer;
@@ -1486,8 +1488,6 @@ void si_compute_clear_buffer_rmw(struct si_context *sctx, struct pipe_resource *
                                  unsigned dst_offset, unsigned size,
                                  uint32_t clear_value, uint32_t writebitmask,
                                  unsigned flags, enum si_coherency coher);
-void si_screen_clear_buffer(struct si_screen *sscreen, struct pipe_resource *dst, uint64_t offset,
-                            uint64_t size, unsigned value, unsigned flags);
 void si_copy_buffer(struct si_context *sctx, struct pipe_resource *dst, struct pipe_resource *src,
                     uint64_t dst_offset, uint64_t src_offset, unsigned size, unsigned flags);
 bool si_compute_copy_image(struct si_context *sctx, struct pipe_resource *dst, unsigned dst_level,
@@ -2137,7 +2137,7 @@ si_update_ngg_prim_state_sgpr(struct si_context *sctx, struct si_shader *hw_vs, 
 /* Set the primitive type seen by the rasterizer. GS and tessellation affect this.
  * It's expected that hw_vs and ngg are inline constants in draw_vbo after optimizations.
  */
-static inline void
+static ALWAYS_INLINE void
 si_set_rasterized_prim(struct si_context *sctx, enum mesa_prim rast_prim,
                        struct si_shader *hw_vs, bool ngg)
 {

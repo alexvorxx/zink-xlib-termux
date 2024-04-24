@@ -1176,14 +1176,10 @@ static void radeon_enc_feedback(struct radeon_encoder *enc)
 
 static void radeon_enc_intra_refresh(struct radeon_encoder *enc)
 {
-   enc->enc_pic.intra_ref.intra_refresh_mode = RENCODE_INTRA_REFRESH_MODE_NONE;
-   enc->enc_pic.intra_ref.offset = 0;
-   enc->enc_pic.intra_ref.region_size = 0;
-
    RADEON_ENC_BEGIN(enc->cmd.intra_refresh);
-   RADEON_ENC_CS(enc->enc_pic.intra_ref.intra_refresh_mode);
-   RADEON_ENC_CS(enc->enc_pic.intra_ref.offset);
-   RADEON_ENC_CS(enc->enc_pic.intra_ref.region_size);
+   RADEON_ENC_CS(enc->enc_pic.intra_refresh.intra_refresh_mode);
+   RADEON_ENC_CS(enc->enc_pic.intra_refresh.offset);
+   RADEON_ENC_CS(enc->enc_pic.intra_refresh.region_size);
    RADEON_ENC_END();
 }
 
@@ -1354,7 +1350,7 @@ static void radeon_enc_headers_h264(struct radeon_encoder *enc)
    enc->nalu_aud(enc);
    if (enc->enc_pic.layer_ctrl.num_temporal_layers > 1)
       enc->nalu_prefix(enc);
-   if (enc->enc_pic.is_idr) {
+   if (enc->enc_pic.is_idr || enc->enc_pic.need_sequence_header) {
       if (enc->enc_pic.layer_ctrl.num_temporal_layers > 1)
          enc->nalu_sei(enc);
       enc->nalu_sps(enc);
@@ -1368,7 +1364,7 @@ static void radeon_enc_headers_h264(struct radeon_encoder *enc)
 static void radeon_enc_headers_hevc(struct radeon_encoder *enc)
 {
    enc->nalu_aud(enc);
-   if (enc->enc_pic.is_idr) {
+   if (enc->enc_pic.is_idr || enc->enc_pic.need_sequence_header) {
       enc->nalu_vps(enc);
       enc->nalu_pps(enc);
       enc->nalu_sps(enc);

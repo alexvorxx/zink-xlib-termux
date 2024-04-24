@@ -42,6 +42,7 @@ enum global_shader {
    GLOBAL_SH_FS_BLIT,
    GLOBAL_SH_FS_BLIT_ZSCALE,
    GLOBAL_SH_FS_COPY_MS,
+   GLOBAL_SH_FS_COPY_MS_HALF,
    GLOBAL_SH_FS_CLEAR0,
    GLOBAL_SH_FS_CLEAR_MAX = GLOBAL_SH_FS_CLEAR0 + MAX_RTS,
    GLOBAL_SH_COUNT,
@@ -353,6 +354,9 @@ struct tu_device
    /* Command streams to set pass index to a scratch reg */
    struct tu_cs *perfcntrs_pass_cs;
    struct tu_cs_entry *perfcntrs_pass_cs_entries;
+
+   struct tu_cs *cmdbuf_start_a725_quirk_cs;
+   struct tu_cs_entry *cmdbuf_start_a725_quirk_entry;
 
    struct util_dynarray dynamic_rendering_pending;
    VkCommandPool dynamic_rendering_pool;

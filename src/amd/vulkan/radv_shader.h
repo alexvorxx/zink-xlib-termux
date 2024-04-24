@@ -99,6 +99,10 @@ struct radv_pipeline_key {
    uint32_t mesh_shader_queries : 1;
 
    uint32_t vertex_robustness1 : 1;
+   uint32_t mesh_fast_launch_2 : 1;
+
+   /* Pipeline shader version (up to 8) to force re-compilation when RADV_BUILD_ID_OVERRIDE is enabled. */
+   uint32_t shader_version : 3;
 
    struct radv_shader_stage_key stage_info[MESA_VULKAN_SHADER_STAGES];
 
@@ -481,7 +485,19 @@ struct radv_vs_input_state {
 };
 
 struct radv_vs_prolog_key {
-   const struct radv_vs_input_state *state;
+   /* All the fields are pre-masked with BITFIELD_MASK(num_attributes).
+    * Some of the fields are pre-masked by other conditions. See lookup_vs_prolog.
+    */
+   uint32_t instance_rate_inputs;
+   uint32_t nontrivial_divisors;
+   uint32_t zero_divisors;
+   uint32_t post_shuffle;
+   /* Having two separate fields instead of a single uint64_t makes it easier to remove attributes
+    * using bitwise arithmetic.
+    */
+   uint32_t alpha_adjust_lo;
+   uint32_t alpha_adjust_hi;
+   uint8_t formats[MAX_VERTEX_ATTRIBS];
    unsigned num_attributes;
    uint32_t misaligned_mask;
    bool as_ls;
@@ -605,6 +621,12 @@ struct radv_shader {
 struct radv_shader_part {
    uint32_t ref_count;
 
+   union {
+      struct radv_vs_prolog_key vs;
+      struct radv_ps_epilog_key ps;
+      struct radv_tcs_epilog_key tcs;
+   } key;
+
    uint64_t va;
 
    struct radeon_winsys_bo *bo;
@@ -617,6 +639,18 @@ struct radv_shader_part {
 
    /* debug only */
    char *disasm_string;
+};
+
+struct radv_shader_part_cache_ops {
+   uint32_t (*hash)(const void *key);
+   bool (*equals)(const void *a, const void *b);
+   struct radv_shader_part *(*create)(struct radv_device *device, const void *key);
+};
+
+struct radv_shader_part_cache {
+   simple_mtx_t lock;
+   struct radv_shader_part_cache_ops *ops;
+   struct set entries;
 };
 
 struct radv_pipeline_layout;
@@ -706,6 +740,11 @@ struct radv_shader_part *radv_create_tcs_epilog(struct radv_device *device, cons
 
 void radv_shader_part_destroy(struct radv_device *device, struct radv_shader_part *shader_part);
 
+bool radv_shader_part_cache_init(struct radv_shader_part_cache *cache, struct radv_shader_part_cache_ops *ops);
+void radv_shader_part_cache_finish(struct radv_device *device, struct radv_shader_part_cache *cache);
+struct radv_shader_part *radv_shader_part_cache_get(struct radv_device *device, struct radv_shader_part_cache *cache,
+                                                    struct set *local_entries, const void *key);
+
 uint64_t radv_shader_get_va(const struct radv_shader *shader);
 struct radv_shader *radv_find_shader(struct radv_device *device, uint64_t pc);
 
@@ -758,6 +797,12 @@ radv_shader_part_unref(struct radv_device *device, struct radv_shader_part *shad
    assert(shader_part && shader_part->ref_count >= 1);
    if (p_atomic_dec_zero(&shader_part->ref_count))
       radv_shader_part_destroy(device, shader_part);
+}
+
+static inline struct radv_shader_part *
+radv_shader_part_from_cache_entry(const void *key)
+{
+   return container_of(key, struct radv_shader_part, key);
 }
 
 static inline unsigned

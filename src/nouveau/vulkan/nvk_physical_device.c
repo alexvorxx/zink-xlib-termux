@@ -4,6 +4,7 @@
  */
 #include "nvk_physical_device.h"
 
+#include "nak.h"
 #include "nvk_buffer.h"
 #include "nvk_entrypoints.h"
 #include "nvk_format.h"
@@ -39,13 +40,6 @@
 #include "clc597.h"
 #include "clc5c0.h"
 #include "clc997.h"
-
-PUBLIC VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
-vk_icdGetPhysicalDeviceProcAddr(VkInstance _instance, const char *pName)
-{
-   VK_FROM_HANDLE(nvk_instance, instance, _instance);
-   return vk_instance_get_physical_device_proc_addr(&instance->vk, pName);
-}
 
 static void
 nvk_get_device_extensions(const struct nv_device_info *info,
@@ -87,6 +81,8 @@ nvk_get_device_extensions(const struct nv_device_info *info,
       .KHR_shader_clock = true,
       .KHR_shader_draw_parameters = true,
       .KHR_shader_non_semantic_info = true,
+      .KHR_shader_terminate_invocation =
+         (nvk_nak_stages(info) & VK_SHADER_STAGE_FRAGMENT_BIT) != 0,
       .KHR_spirv_1_4 = true,
       .KHR_storage_buffer_storage_class = true,
       .KHR_timeline_semaphore = true,
@@ -251,6 +247,7 @@ nvk_get_device_features(const struct nv_device_info *info,
       .descriptorBindingInlineUniformBlockUpdateAfterBind = true,
       .privateData = true,
       .shaderDemoteToHelperInvocation = true,
+      .shaderTerminateInvocation = true,
       .dynamicRendering = true,
       .maintenance4 = true,
 
@@ -537,6 +534,12 @@ nvk_get_device_properties(const struct nvk_instance *instance,
       .sparseResidencyNonResidentStrict = true,
 
       /* Vulkan 1.1 properties */
+      .subgroupSize = 32,
+      .subgroupSupportedStages = nvk_nak_stages(info),
+      .subgroupSupportedOperations = VK_SUBGROUP_FEATURE_BALLOT_BIT |
+                                     VK_SUBGROUP_FEATURE_BASIC_BIT |
+                                     VK_SUBGROUP_FEATURE_VOTE_BIT,
+      .subgroupQuadOperationsInAllStages = false,
       .pointClippingBehavior = VK_POINT_CLIPPING_BEHAVIOR_USER_CLIP_PLANES_ONLY,
       .maxMultiviewViewCount = NVK_MAX_MULTIVIEW_VIEW_COUNT,
       .maxMultiviewInstanceIndex = UINT32_MAX,
@@ -840,6 +843,12 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
    pdev->render_dev = render_dev;
    pdev->info = info;
 
+   pdev->nak = nak_compiler_create(&pdev->info);
+   if (pdev->nak == NULL) {
+      result = vk_error(instance, VK_ERROR_OUT_OF_HOST_MEMORY);
+      goto fail_init;
+   }
+
    nvk_physical_device_init_pipeline_cache(pdev);
 
    pdev->mem_heaps[0].flags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
@@ -889,6 +898,8 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
 
 fail_disk_cache:
    nvk_physical_device_free_disk_cache(pdev);
+   nak_compiler_destroy(pdev->nak);
+fail_init:
    vk_physical_device_finish(&pdev->vk);
 fail_alloc:
    vk_free(&instance->vk.alloc, pdev);
@@ -903,6 +914,7 @@ nvk_physical_device_destroy(struct vk_physical_device *vk_pdev)
 
    nvk_finish_wsi(pdev);
    nvk_physical_device_free_disk_cache(pdev);
+   nak_compiler_destroy(pdev->nak);
    vk_physical_device_finish(&pdev->vk);
    vk_free(&pdev->vk.instance->alloc, pdev);
 }

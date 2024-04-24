@@ -504,7 +504,7 @@ radv_dump_queue_state(struct radv_queue *queue, const char *dump_dir, FILE *f)
       if (!(queue->device->instance->debug_flags & RADV_DEBUG_NO_UMR)) {
          struct ac_wave_info waves[AC_MAX_WAVES_PER_CHIP];
          enum amd_gfx_level gfx_level = device->physical_device->rad_info.gfx_level;
-         unsigned num_waves = ac_get_wave_info(gfx_level, waves);
+         unsigned num_waves = ac_get_wave_info(gfx_level, &device->physical_device->rad_info, waves);
 
          fprintf(f, COLOR_CYAN "The number of active waves = %u" COLOR_RESET "\n\n", num_waves);
 
@@ -653,36 +653,43 @@ radv_dump_device_name(const struct radv_device *device, FILE *f)
 static void
 radv_dump_umr_ring(const struct radv_queue *queue, FILE *f)
 {
+#ifndef _WIN32
    const enum amd_ip_type ring = radv_queue_ring(queue);
    const struct radv_device *device = queue->device;
-   char cmd[128];
+   char cmd[256];
 
    /* TODO: Dump compute ring. */
    if (ring != AMD_IP_GFX)
       return;
 
-   sprintf(cmd, "umr -RS %s 2>&1", device->physical_device->rad_info.gfx_level >= GFX10 ? "gfx_0.0.0" : "gfx");
-
+   sprintf(cmd, "umr --by-pci %04x:%02x:%02x.%01x -RS %s 2>&1", device->physical_device->bus_info.domain,
+           device->physical_device->bus_info.bus, device->physical_device->bus_info.dev,
+           device->physical_device->bus_info.func,
+           device->physical_device->rad_info.gfx_level >= GFX10 ? "gfx_0.0.0" : "gfx");
    fprintf(f, "\nUMR GFX ring:\n\n");
    radv_dump_cmd(cmd, f);
+#endif
 }
 
 static void
 radv_dump_umr_waves(struct radv_queue *queue, FILE *f)
 {
+#ifndef _WIN32
    enum amd_ip_type ring = radv_queue_ring(queue);
    struct radv_device *device = queue->device;
-   char cmd[128];
+   char cmd[256];
 
    /* TODO: Dump compute ring. */
    if (ring != AMD_IP_GFX)
       return;
 
-   sprintf(cmd, "umr -O bits,halt_waves -go 0 -wa %s -go 1 2>&1",
+   sprintf(cmd, "umr --by-pci %04x:%02x:%02x.%01x -O bits,halt_waves -go 0 -wa %s -go 1 2>&1",
+           device->physical_device->bus_info.domain, device->physical_device->bus_info.bus,
+           device->physical_device->bus_info.dev, device->physical_device->bus_info.func,
            device->physical_device->rad_info.gfx_level >= GFX10 ? "gfx_0.0.0" : "gfx");
-
    fprintf(f, "\nUMR GFX waves:\n\n");
    radv_dump_cmd(cmd, f);
+#endif
 }
 
 static bool
@@ -1055,4 +1062,42 @@ radv_check_trap_handler(struct radv_queue *queue)
    radv_dump_faulty_shader(device, pc);
 
    abort();
+}
+
+/* VK_EXT_device_fault */
+VKAPI_ATTR VkResult VKAPI_CALL
+radv_GetDeviceFaultInfoEXT(VkDevice _device, VkDeviceFaultCountsEXT *pFaultCounts, VkDeviceFaultInfoEXT *pFaultInfo)
+{
+   VK_OUTARRAY_MAKE_TYPED(VkDeviceFaultAddressInfoEXT, out, pFaultInfo ? pFaultInfo->pAddressInfos : NULL,
+                          &pFaultCounts->addressInfoCount);
+   struct radv_winsys_gpuvm_fault_info fault_info = {0};
+   RADV_FROM_HANDLE(radv_device, device, _device);
+   bool vm_fault_occurred = false;
+
+   /* Query if a GPUVM fault happened. */
+   vm_fault_occurred = radv_vm_fault_occurred(device, &fault_info);
+
+   /* No vendor-specific crash dumps yet. */
+   pFaultCounts->vendorInfoCount = 0;
+   pFaultCounts->vendorBinarySize = 0;
+
+   if (vm_fault_occurred) {
+      VkDeviceFaultAddressInfoEXT addr_fault_info = {
+         .reportedAddress = fault_info.addr,
+         .addressPrecision = 4096, /* 4K page granularity */
+      };
+
+      strncpy(pFaultInfo->description, "A GPUVM fault has been detected", sizeof(pFaultInfo->description));
+
+      if (device->physical_device->rad_info.gfx_level >= GFX10) {
+         addr_fault_info.addressType = G_00A130_RW(fault_info.status) ? VK_DEVICE_FAULT_ADDRESS_TYPE_WRITE_INVALID_EXT
+                                                                      : VK_DEVICE_FAULT_ADDRESS_TYPE_READ_INVALID_EXT;
+      } else {
+         /* Not sure how to get the access status on GFX6-9. */
+         addr_fault_info.addressType = VK_DEVICE_FAULT_ADDRESS_TYPE_NONE_EXT;
+      }
+      vk_outarray_append_typed(VkDeviceFaultAddressInfoEXT, &out, elem) *elem = addr_fault_info;
+   }
+
+   return vk_outarray_status(&out);
 }

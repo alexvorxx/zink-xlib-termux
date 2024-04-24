@@ -183,7 +183,7 @@ nvk_cmd_buffer_upload_alloc(struct nvk_cmd_buffer *cmd,
    assert(size <= NVK_CMD_BO_SIZE);
 
    uint32_t offset = cmd->upload_offset;
-   if (align > 0)
+   if (alignment > 0)
       offset = align(offset, alignment);
 
    assert(offset <= NVK_CMD_BO_SIZE);
@@ -357,8 +357,8 @@ nvk_CmdBindPipeline(VkCommandBuffer commandBuffer,
    struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
 
    for (unsigned s = 0; s < ARRAY_SIZE(pipeline->shaders); s++) {
-      if (pipeline->shaders[s].slm_size)
-         nvk_device_ensure_slm(dev, pipeline->shaders[s].slm_size);
+      if (pipeline->shaders[s].info.slm_size)
+         nvk_device_ensure_slm(dev, pipeline->shaders[s].info.slm_size);
    }
 
    switch (pipelineBindPoint) {

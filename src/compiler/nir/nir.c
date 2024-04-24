@@ -318,7 +318,7 @@ nir_create_variable_with_location(nir_shader *shader, nir_variable_mode mode, in
    /* Only supporting non-array, or arrayed-io types, because otherwise we don't
     * know how much to increment num_inputs/outputs
     */
-   assert(glsl_get_length(type) <= 1);
+   assert(glsl_type_is_vector_or_scalar(type) || glsl_type_is_unsized_array(type));
 
    const char *name;
    switch (mode) {
@@ -502,6 +502,9 @@ nir_function_create(nir_shader *shader, const char *name)
    func->is_preamble = false;
    func->dont_inline = false;
    func->should_inline = false;
+
+   /* Only meaningful for shader libraries, so don't export by default. */
+   func->is_exported = false;
 
    return func;
 }
@@ -3397,4 +3400,13 @@ nir_remove_non_entrypoints(nir_shader *nir)
          exec_node_remove(&func->node);
    }
    assert(exec_list_length(&nir->functions) == 1);
+}
+
+void
+nir_remove_non_exported(nir_shader *nir)
+{
+   nir_foreach_function_safe(func, nir) {
+      if (!func->is_exported)
+         exec_node_remove(&func->node);
+   }
 }

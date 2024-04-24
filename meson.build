@@ -24,7 +24,14 @@ project(
   version : files('VERSION'),
   license : 'MIT',
   meson_version : '>= 0.60',
-  default_options : ['buildtype=debugoptimized', 'b_ndebug=if-release', 'c_std=c11', 'cpp_std=c++17', 'rust_std=2021']
+  default_options : [
+    'buildtype=debugoptimized',
+    'b_ndebug=if-release',
+    'c_std=c11',
+    'cpp_std=c++17',
+    'rust_std=2021',
+    'build.rust_std=2021',
+  ],
 )
 
 cc = meson.get_compiler('c')
@@ -304,7 +311,7 @@ if with_aco_tests and not with_amd_vk
 endif
 
 with_microsoft_clc = get_option('microsoft-clc').enabled()
-with_clc = with_microsoft_clc or with_intel_clc
+with_clc = with_microsoft_clc or with_intel_clc or with_gallium_asahi
 with_spirv_to_dxil = get_option('spirv-to-dxil')
 
 if host_machine.system() == 'darwin'
@@ -1772,7 +1779,7 @@ else
   draw_with_llvm = false
 endif
 
-with_opencl_spirv = (_opencl != 'disabled' and get_option('opencl-spirv')) or with_intel_clc or with_microsoft_clc or with_gallium_rusticl
+with_opencl_spirv = (_opencl != 'disabled' and get_option('opencl-spirv')) or with_clc
 if with_opencl_spirv
   chosen_llvm_version_array = dep_llvm.version().split('.')
   chosen_llvm_version_major = chosen_llvm_version_array[0].to_int()

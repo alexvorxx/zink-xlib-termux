@@ -177,7 +177,7 @@ endif
 
 libr600 = static_library(
   'r600',
-  [files_r600, egd_tables_h],
+  [files_r600, egd_tables_h, sha1_h],
   c_args : [r600_c_args, '-Wstrict-overflow=0'],
   cpp_args: r600_cpp_args,
   gnu_symbol_visibility : 'hidden',
@@ -185,7 +185,7 @@ libr600 = static_library(
     inc_src, inc_mapi, inc_mesa, inc_include, inc_gallium, inc_gallium_aux, inc_amd_common,
     inc_gallium_drivers,
   ],
-
+  link_with : [ libgalliumvl ],
   dependencies: [dep_libdrm_radeon, dep_elf, dep_llvm, idep_nir, idep_nir_headers],
 )
 

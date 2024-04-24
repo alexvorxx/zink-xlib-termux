@@ -292,6 +292,33 @@ radv_emit_clear_data(struct radv_cmd_buffer *cmd_buffer, unsigned engine_sel, ui
 }
 
 static void
+radv_cmd_buffer_finish_shader_part_cache(struct radv_cmd_buffer *cmd_buffer)
+{
+   ralloc_free(cmd_buffer->vs_prologs.table);
+   ralloc_free(cmd_buffer->ps_epilogs.table);
+   ralloc_free(cmd_buffer->tcs_epilogs.table);
+}
+
+static bool
+radv_cmd_buffer_init_shader_part_cache(struct radv_device *device, struct radv_cmd_buffer *cmd_buffer)
+{
+   if (device->vs_prologs.ops) {
+      if (!_mesa_set_init(&cmd_buffer->vs_prologs, NULL, device->vs_prologs.ops->hash, device->vs_prologs.ops->equals))
+         return false;
+   }
+   if (device->tcs_epilogs.ops) {
+      if (!_mesa_set_init(&cmd_buffer->tcs_epilogs, NULL, device->tcs_epilogs.ops->hash,
+                          device->tcs_epilogs.ops->equals))
+         return false;
+   }
+   if (device->ps_epilogs.ops) {
+      if (!_mesa_set_init(&cmd_buffer->ps_epilogs, NULL, device->ps_epilogs.ops->hash, device->ps_epilogs.ops->equals))
+         return false;
+   }
+   return true;
+}
+
+static void
 radv_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
 {
    struct radv_cmd_buffer *cmd_buffer = container_of(vk_cmd_buffer, struct radv_cmd_buffer, vk);
@@ -314,6 +341,8 @@ radv_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
       cmd_buffer->device->ws->cs_destroy(cmd_buffer->gang.cs);
    if (cmd_buffer->transfer.copy_temp)
       cmd_buffer->device->ws->buffer_destroy(cmd_buffer->device->ws, cmd_buffer->transfer.copy_temp);
+
+   radv_cmd_buffer_finish_shader_part_cache(cmd_buffer);
 
    for (unsigned i = 0; i < MAX_BIND_POINTS; i++) {
       struct radv_descriptor_set_header *set = &cmd_buffer->descriptors[i].push_set.set;
@@ -344,6 +373,11 @@ radv_create_cmd_buffer(struct vk_command_pool *pool, struct vk_command_buffer **
    if (result != VK_SUCCESS) {
       vk_free(&cmd_buffer->vk.pool->alloc, cmd_buffer);
       return result;
+   }
+
+   if (!radv_cmd_buffer_init_shader_part_cache(device, cmd_buffer)) {
+      radv_destroy_cmd_buffer(&cmd_buffer->vk);
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
    list_inithead(&cmd_buffer->upload.list);
@@ -2856,20 +2890,56 @@ radv_update_zrange_precision(struct radv_cmd_buffer *cmd_buffer, struct radv_ds_
    radeon_set_context_reg(cmd_buffer->cs, db_z_info_reg, db_z_info);
 }
 
+static struct radv_image *
+radv_cmd_buffer_get_vrs_image(struct radv_cmd_buffer *cmd_buffer)
+{
+   struct radv_device *device = cmd_buffer->device;
+
+   if (!device->vrs.image) {
+      VkResult result;
+
+      /* The global VRS state is initialized on-demand to avoid wasting VRAM. */
+      result = radv_device_init_vrs_state(device);
+      if (result != VK_SUCCESS) {
+         vk_command_buffer_set_error(&cmd_buffer->vk, result);
+         return NULL;
+      }
+   }
+
+   return device->vrs.image;
+}
+
 static void
 radv_emit_fb_ds_state(struct radv_cmd_buffer *cmd_buffer, struct radv_ds_buffer_info *ds, struct radv_image_view *iview,
                       bool depth_compressed, bool stencil_compressed)
 {
+   uint64_t db_htile_data_base = ds->db_htile_data_base;
    uint32_t db_htile_surface = ds->db_htile_surface;
    uint32_t db_render_control = ds->db_render_control | cmd_buffer->state.db_render_control;
+   uint32_t db_z_info = ds->db_z_info;
 
    if (!depth_compressed)
       db_render_control |= S_028000_DEPTH_COMPRESS_DISABLE(1);
    if (!stencil_compressed)
       db_render_control |= S_028000_STENCIL_COMPRESS_DISABLE(1);
 
-   if (cmd_buffer->device->physical_device->rad_info.gfx_level == GFX10_3 && !cmd_buffer->state.render.vrs_att.iview) {
-      db_htile_surface &= C_028ABC_VRS_HTILE_ENCODING;
+   if (cmd_buffer->device->physical_device->rad_info.gfx_level == GFX10_3) {
+      if (!cmd_buffer->state.render.vrs_att.iview) {
+         db_htile_surface &= C_028ABC_VRS_HTILE_ENCODING;
+      } else {
+         /* On GFX10.3, when a subpass uses VRS attachment but HTILE can't be enabled, we fallback to
+          * our internal HTILE buffer.
+          */
+         if (!radv_htile_enabled(iview->image, iview->vk.base_mip_level) && radv_cmd_buffer_get_vrs_image(cmd_buffer)) {
+            struct radv_buffer *htile_buffer = cmd_buffer->device->vrs.buffer;
+
+            assert(!G_028038_TILE_SURFACE_ENABLE(db_z_info) && !db_htile_data_base && !db_htile_surface);
+            db_z_info |= S_028038_TILE_SURFACE_ENABLE(1);
+            db_htile_data_base = radv_buffer_get_va(htile_buffer->bo) >> 8;
+            db_htile_surface = S_028ABC_FULL_CACHE(1) | S_028ABC_PIPE_ALIGNED(1) |
+                               S_028ABC_VRS_HTILE_ENCODING(V_028ABC_VRS_HTILE_4BIT_ENCODING);
+         }
+      }
    }
 
    radeon_set_context_reg(cmd_buffer->cs, R_028000_DB_RENDER_CONTROL, db_render_control);
@@ -2878,7 +2948,7 @@ radv_emit_fb_ds_state(struct radv_cmd_buffer *cmd_buffer, struct radv_ds_buffer_
    radeon_set_context_reg(cmd_buffer->cs, R_028ABC_DB_HTILE_SURFACE, db_htile_surface);
 
    if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX10) {
-      radeon_set_context_reg(cmd_buffer->cs, R_028014_DB_HTILE_DATA_BASE, ds->db_htile_data_base);
+      radeon_set_context_reg(cmd_buffer->cs, R_028014_DB_HTILE_DATA_BASE, db_htile_data_base);
       radeon_set_context_reg(cmd_buffer->cs, R_02801C_DB_DEPTH_SIZE_XY, ds->db_depth_size);
 
       if (cmd_buffer->device->physical_device->rad_info.gfx_level >= GFX11) {
@@ -2887,7 +2957,7 @@ radv_emit_fb_ds_state(struct radv_cmd_buffer *cmd_buffer, struct radv_ds_buffer_
          radeon_set_context_reg_seq(cmd_buffer->cs, R_02803C_DB_DEPTH_INFO, 7);
          radeon_emit(cmd_buffer->cs, S_02803C_RESOURCE_LEVEL(1));
       }
-      radeon_emit(cmd_buffer->cs, ds->db_z_info);
+      radeon_emit(cmd_buffer->cs, db_z_info);
       radeon_emit(cmd_buffer->cs, ds->db_stencil_info);
       radeon_emit(cmd_buffer->cs, ds->db_z_read_base);
       radeon_emit(cmd_buffer->cs, ds->db_stencil_read_base);
@@ -2899,15 +2969,15 @@ radv_emit_fb_ds_state(struct radv_cmd_buffer *cmd_buffer, struct radv_ds_buffer_
       radeon_emit(cmd_buffer->cs, ds->db_stencil_read_base >> 32);
       radeon_emit(cmd_buffer->cs, ds->db_z_read_base >> 32);
       radeon_emit(cmd_buffer->cs, ds->db_stencil_read_base >> 32);
-      radeon_emit(cmd_buffer->cs, ds->db_htile_data_base >> 32);
+      radeon_emit(cmd_buffer->cs, db_htile_data_base >> 32);
    } else if (cmd_buffer->device->physical_device->rad_info.gfx_level == GFX9) {
       radeon_set_context_reg_seq(cmd_buffer->cs, R_028014_DB_HTILE_DATA_BASE, 3);
-      radeon_emit(cmd_buffer->cs, ds->db_htile_data_base);
-      radeon_emit(cmd_buffer->cs, S_028018_BASE_HI(ds->db_htile_data_base >> 32));
+      radeon_emit(cmd_buffer->cs, db_htile_data_base);
+      radeon_emit(cmd_buffer->cs, S_028018_BASE_HI(db_htile_data_base >> 32));
       radeon_emit(cmd_buffer->cs, ds->db_depth_size);
 
       radeon_set_context_reg_seq(cmd_buffer->cs, R_028038_DB_Z_INFO, 10);
-      radeon_emit(cmd_buffer->cs, ds->db_z_info);                                     /* DB_Z_INFO */
+      radeon_emit(cmd_buffer->cs, db_z_info);                                         /* DB_Z_INFO */
       radeon_emit(cmd_buffer->cs, ds->db_stencil_info);                               /* DB_STENCIL_INFO */
       radeon_emit(cmd_buffer->cs, ds->db_z_read_base);                                /* DB_Z_READ_BASE */
       radeon_emit(cmd_buffer->cs, S_028044_BASE_HI(ds->db_z_read_base >> 32));        /* DB_Z_READ_BASE_HI */
@@ -2922,11 +2992,11 @@ radv_emit_fb_ds_state(struct radv_cmd_buffer *cmd_buffer, struct radv_ds_buffer_
       radeon_emit(cmd_buffer->cs, ds->db_z_info2);
       radeon_emit(cmd_buffer->cs, ds->db_stencil_info2);
    } else {
-      radeon_set_context_reg(cmd_buffer->cs, R_028014_DB_HTILE_DATA_BASE, ds->db_htile_data_base);
+      radeon_set_context_reg(cmd_buffer->cs, R_028014_DB_HTILE_DATA_BASE, db_htile_data_base);
 
       radeon_set_context_reg_seq(cmd_buffer->cs, R_02803C_DB_DEPTH_INFO, 9);
       radeon_emit(cmd_buffer->cs, ds->db_depth_info);         /* R_02803C_DB_DEPTH_INFO */
-      radeon_emit(cmd_buffer->cs, ds->db_z_info);             /* R_028040_DB_Z_INFO */
+      radeon_emit(cmd_buffer->cs, db_z_info);                 /* R_028040_DB_Z_INFO */
       radeon_emit(cmd_buffer->cs, ds->db_stencil_info);       /* R_028044_DB_STENCIL_INFO */
       radeon_emit(cmd_buffer->cs, ds->db_z_read_base);        /* R_028048_DB_Z_READ_BASE */
       radeon_emit(cmd_buffer->cs, ds->db_stencil_read_base);  /* R_02804C_DB_STENCIL_READ_BASE */
@@ -3403,25 +3473,6 @@ radv_emit_mip_change_flush_default(struct radv_cmd_buffer *cmd_buffer)
    memset(cmd_buffer->state.cb_mip, 0, sizeof(cmd_buffer->state.cb_mip));
 }
 
-static struct radv_image *
-radv_cmd_buffer_get_vrs_image(struct radv_cmd_buffer *cmd_buffer)
-{
-   struct radv_device *device = cmd_buffer->device;
-
-   if (!device->vrs.image) {
-      VkResult result;
-
-      /* The global VRS state is initialized on-demand to avoid wasting VRAM. */
-      result = radv_device_init_vrs_state(device);
-      if (result != VK_SUCCESS) {
-         vk_command_buffer_set_error(&cmd_buffer->vk, result);
-         return NULL;
-      }
-   }
-
-   return device->vrs.image;
-}
-
 static void
 radv_emit_framebuffer_state(struct radv_cmd_buffer *cmd_buffer)
 {
@@ -3691,53 +3742,9 @@ radv_instance_rate_prolog_index(unsigned num_attributes, uint32_t instance_rate_
    return start_index + offset_from_start_index + first;
 }
 
-union vs_prolog_key_header {
-   struct {
-      uint32_t key_size : 8;
-      uint32_t num_attributes : 6;
-      uint32_t as_ls : 1;
-      uint32_t is_ngg : 1;
-      uint32_t wave32 : 1;
-      uint32_t next_stage : 3;
-      uint32_t instance_rate_inputs : 1;
-      uint32_t alpha_adjust_lo : 1;
-      uint32_t alpha_adjust_hi : 1;
-      uint32_t misaligned_mask : 1;
-      uint32_t post_shuffle : 1;
-      uint32_t nontrivial_divisors : 1;
-      uint32_t zero_divisors : 1;
-      /* We need this to ensure the padding is zero. It's useful even if it's unused. */
-      uint32_t padding0 : 5;
-   };
-   uint32_t v;
-};
-
-uint32_t
-radv_hash_vs_prolog(const void *key_)
-{
-   const uint32_t *key = key_;
-   union vs_prolog_key_header header;
-   header.v = key[0];
-   return _mesa_hash_data(key, header.key_size);
-}
-
-bool
-radv_cmp_vs_prolog(const void *a_, const void *b_)
-{
-   const uint32_t *a = a_;
-   const uint32_t *b = b_;
-   if (a[0] != b[0])
-      return false;
-
-   union vs_prolog_key_header header;
-   header.v = a[0];
-   return memcmp(a, b, header.key_size) == 0;
-}
-
 static struct radv_shader_part *
 lookup_vs_prolog(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *vs_shader, uint32_t *nontrivial_divisors)
 {
-   STATIC_ASSERT(sizeof(union vs_prolog_key_header) == 4);
    assert(vs_shader->info.vs.dynamic_inputs);
 
    const struct radv_vs_input_state *state = &cmd_buffer->state.dynamic_vs_input;
@@ -3777,6 +3784,7 @@ lookup_vs_prolog(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *v
       cmd_buffer->state.vbo_misaligned_mask_invalid &= ~attribute_mask;
    }
    misaligned_mask |= state->nontrivial_formats;
+   misaligned_mask &= attribute_mask;
 
    const bool can_use_simple_input =
       cmd_buffer->state.shaders[MESA_SHADER_VERTEX] &&
@@ -3784,10 +3792,15 @@ lookup_vs_prolog(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *v
       cmd_buffer->state.shaders[MESA_SHADER_VERTEX]->info.is_ngg == device->physical_device->use_ngg &&
       cmd_buffer->state.shaders[MESA_SHADER_VERTEX]->info.wave_size == device->physical_device->ge_wave_size;
 
+   /* The instance ID input VGPR is placed differently when as_ls=true. as_ls is also needed to
+    * workaround the LS VGPR initialization bug.
+    */
+   bool as_ls =
+      vs_shader->info.vs.as_ls && (instance_rate_inputs || device->physical_device->rad_info.has_ls_vgpr_init_bug);
+
    /* try to use a pre-compiled prolog first */
    struct radv_shader_part *prolog = NULL;
-   if (can_use_simple_input && (!vs_shader->info.vs.as_ls || !instance_rate_inputs) && !misaligned_mask &&
-       !state->alpha_adjust_lo && !state->alpha_adjust_hi) {
+   if (can_use_simple_input && !as_ls && !misaligned_mask && !state->alpha_adjust_lo && !state->alpha_adjust_hi) {
       if (!instance_rate_inputs) {
          prolog = device->simple_vs_prologs[num_attributes - 1];
       } else if (num_attributes <= 16 && !*nontrivial_divisors && !zero_divisors &&
@@ -3800,16 +3813,20 @@ lookup_vs_prolog(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *v
    if (prolog)
       return prolog;
 
-   /* if we couldn't use a pre-compiled prolog, find one in the cache or create one */
-   uint32_t key_words[17];
-   unsigned key_size = 1;
-
    struct radv_vs_prolog_key key;
-   key.state = state;
+   memset(&key, 0, sizeof(key));
+   key.instance_rate_inputs = instance_rate_inputs;
+   key.nontrivial_divisors = *nontrivial_divisors;
+   key.zero_divisors = zero_divisors;
+   /* If the attribute is aligned, post shuffle is implemented using DST_SEL instead. */
+   key.post_shuffle = state->post_shuffle & misaligned_mask;
+   key.alpha_adjust_hi = state->alpha_adjust_hi & attribute_mask;
+   key.alpha_adjust_lo = state->alpha_adjust_lo & attribute_mask;
+   u_foreach_bit (index, misaligned_mask)
+      key.formats[index] = state->formats[index];
    key.num_attributes = num_attributes;
    key.misaligned_mask = misaligned_mask;
-   /* The instance ID input VGPR is placed differently when as_ls=true. */
-   key.as_ls = vs_shader->info.vs.as_ls && instance_rate_inputs;
+   key.as_ls = as_ls;
    key.is_ngg = vs_shader->info.is_ngg;
    key.wave32 = vs_shader->info.wave_size == 32;
 
@@ -3820,89 +3837,7 @@ lookup_vs_prolog(struct radv_cmd_buffer *cmd_buffer, const struct radv_shader *v
       key.next_stage = vs_shader->info.stage;
    }
 
-   union vs_prolog_key_header header;
-   header.v = 0;
-   header.num_attributes = num_attributes;
-   header.as_ls = key.as_ls;
-   header.is_ngg = key.is_ngg;
-   header.wave32 = key.wave32;
-   header.next_stage = key.next_stage;
-
-   if (instance_rate_inputs & ~*nontrivial_divisors) {
-      header.instance_rate_inputs = true;
-      key_words[key_size++] = instance_rate_inputs;
-   }
-   if (*nontrivial_divisors) {
-      header.nontrivial_divisors = true;
-      key_words[key_size++] = *nontrivial_divisors;
-   }
-   if (zero_divisors) {
-      header.zero_divisors = true;
-      key_words[key_size++] = zero_divisors;
-   }
-   if (misaligned_mask) {
-      header.misaligned_mask = true;
-      key_words[key_size++] = misaligned_mask;
-
-      uint8_t *formats = (uint8_t *)&key_words[key_size];
-      unsigned num_formats = 0;
-      u_foreach_bit (index, misaligned_mask)
-         formats[num_formats++] = state->formats[index];
-      while (num_formats & 0x3)
-         formats[num_formats++] = 0;
-      key_size += num_formats / 4u;
-
-      if (state->post_shuffle & attribute_mask) {
-         header.post_shuffle = true;
-         key_words[key_size++] = state->post_shuffle & attribute_mask;
-      }
-   }
-   if (state->alpha_adjust_lo & attribute_mask) {
-      header.alpha_adjust_lo = true;
-      key_words[key_size++] = state->alpha_adjust_lo & attribute_mask;
-   }
-   if (state->alpha_adjust_hi & attribute_mask) {
-      header.alpha_adjust_hi = true;
-      key_words[key_size++] = state->alpha_adjust_hi & attribute_mask;
-   }
-
-   header.key_size = key_size * sizeof(key_words[0]);
-   key_words[0] = header.v;
-
-   uint32_t hash = radv_hash_vs_prolog(key_words);
-
-   if (cmd_buffer->state.emitted_vs_prolog && cmd_buffer->state.emitted_vs_prolog_key_hash == hash &&
-       radv_cmp_vs_prolog(key_words, cmd_buffer->state.emitted_vs_prolog_key))
-      return cmd_buffer->state.emitted_vs_prolog;
-
-   u_rwlock_rdlock(&device->vs_prologs_lock);
-   struct hash_entry *prolog_entry = _mesa_hash_table_search_pre_hashed(device->vs_prologs, hash, key_words);
-   u_rwlock_rdunlock(&device->vs_prologs_lock);
-
-   if (!prolog_entry) {
-      u_rwlock_wrlock(&device->vs_prologs_lock);
-      prolog_entry = _mesa_hash_table_search_pre_hashed(device->vs_prologs, hash, key_words);
-      if (prolog_entry) {
-         u_rwlock_wrunlock(&device->vs_prologs_lock);
-         return prolog_entry->data;
-      }
-
-      prolog = radv_create_vs_prolog(device, &key);
-      uint32_t *key2 = malloc(key_size * 4);
-      if (!prolog || !key2) {
-         radv_shader_part_unref(device, prolog);
-         free(key2);
-         u_rwlock_wrunlock(&device->vs_prologs_lock);
-         return NULL;
-      }
-      memcpy(key2, key_words, key_size * 4);
-      _mesa_hash_table_insert_pre_hashed(device->vs_prologs, hash, key2, prolog);
-
-      u_rwlock_wrunlock(&device->vs_prologs_lock);
-      return prolog;
-   }
-
-   return prolog_entry->data;
+   return radv_shader_part_cache_get(device, &device->vs_prologs, &cmd_buffer->vs_prologs, &key);
 }
 
 static void
@@ -4233,28 +4168,12 @@ radv_emit_color_blend(struct radv_cmd_buffer *cmd_buffer)
    }
 }
 
-uint32_t
-radv_hash_ps_epilog(const void *key_)
-{
-   const struct radv_ps_epilog_key *key = key_;
-   return _mesa_hash_data(key, sizeof(*key));
-}
-
-bool
-radv_cmp_ps_epilog(const void *a_, const void *b_)
-{
-   const struct radv_ps_epilog_key *a = a_;
-   const struct radv_ps_epilog_key *b = b_;
-   return memcmp(a, b, sizeof(*a)) == 0;
-}
-
 static struct radv_shader_part *
 lookup_ps_epilog(struct radv_cmd_buffer *cmd_buffer)
 {
    const struct radv_rendering_state *render = &cmd_buffer->state.render;
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
    struct radv_device *device = cmd_buffer->device;
-   struct radv_shader_part *epilog = NULL;
    struct radv_ps_epilog_state state = {0};
 
    state.color_attachment_count = render->color_att_count;
@@ -4286,51 +4205,7 @@ lookup_ps_epilog(struct radv_cmd_buffer *cmd_buffer)
    }
 
    struct radv_ps_epilog_key key = radv_generate_ps_epilog_key(device, &state, true);
-   uint32_t hash = radv_hash_ps_epilog(&key);
-
-   u_rwlock_rdlock(&device->ps_epilogs_lock);
-   struct hash_entry *epilog_entry = _mesa_hash_table_search_pre_hashed(device->ps_epilogs, hash, &key);
-   u_rwlock_rdunlock(&device->ps_epilogs_lock);
-
-   if (!epilog_entry) {
-      u_rwlock_wrlock(&device->ps_epilogs_lock);
-      epilog_entry = _mesa_hash_table_search_pre_hashed(device->ps_epilogs, hash, &key);
-      if (epilog_entry) {
-         u_rwlock_wrunlock(&device->ps_epilogs_lock);
-         return epilog_entry->data;
-      }
-
-      epilog = radv_create_ps_epilog(device, &key, NULL);
-      struct radv_ps_epilog_key *key2 = malloc(sizeof(*key2));
-      if (!epilog || !key2) {
-         radv_shader_part_unref(device, epilog);
-         free(key2);
-         u_rwlock_wrunlock(&device->ps_epilogs_lock);
-         return NULL;
-      }
-      memcpy(key2, &key, sizeof(*key2));
-      _mesa_hash_table_insert_pre_hashed(device->ps_epilogs, hash, key2, epilog);
-
-      u_rwlock_wrunlock(&device->ps_epilogs_lock);
-      return epilog;
-   }
-
-   return epilog_entry->data;
-}
-
-uint32_t
-radv_hash_tcs_epilog(const void *key_)
-{
-   const struct radv_tcs_epilog_key *key = key_;
-   return _mesa_hash_data(key, sizeof(*key));
-}
-
-bool
-radv_cmp_tcs_epilog(const void *a_, const void *b_)
-{
-   const struct radv_tcs_epilog_key *a = a_;
-   const struct radv_tcs_epilog_key *b = b_;
-   return memcmp(a, b, sizeof(*a)) == 0;
+   return radv_shader_part_cache_get(device, &device->ps_epilogs, &cmd_buffer->ps_epilogs, &key);
 }
 
 static struct radv_shader_part *
@@ -4339,7 +4214,6 @@ lookup_tcs_epilog(struct radv_cmd_buffer *cmd_buffer)
    const struct radv_shader *tcs = cmd_buffer->state.shaders[MESA_SHADER_TESS_CTRL];
    const struct radv_shader *tes = radv_get_shader(cmd_buffer->state.shaders, MESA_SHADER_TESS_EVAL);
    struct radv_device *device = cmd_buffer->device;
-   struct radv_shader_part *epilog = NULL;
 
    struct radv_tcs_epilog_key key = {
       .primitive_mode = tes->info.tes._primitive_mode,
@@ -4347,36 +4221,7 @@ lookup_tcs_epilog(struct radv_cmd_buffer *cmd_buffer)
       .tcs_out_patch_fits_subgroup = tcs->info.wave_size % tcs->info.tcs.tcs_vertices_out == 0,
    };
 
-   uint32_t hash = radv_hash_tcs_epilog(&key);
-
-   u_rwlock_rdlock(&device->tcs_epilogs_lock);
-   struct hash_entry *epilog_entry = _mesa_hash_table_search_pre_hashed(device->tcs_epilogs, hash, &key);
-   u_rwlock_rdunlock(&device->tcs_epilogs_lock);
-
-   if (!epilog_entry) {
-      u_rwlock_wrlock(&device->tcs_epilogs_lock);
-      epilog_entry = _mesa_hash_table_search_pre_hashed(device->tcs_epilogs, hash, &key);
-      if (epilog_entry) {
-         u_rwlock_wrunlock(&device->tcs_epilogs_lock);
-         return epilog_entry->data;
-      }
-
-      epilog = radv_create_tcs_epilog(device, &key);
-      struct radv_tcs_epilog_key *key2 = malloc(sizeof(*key2));
-      if (!epilog || !key2) {
-         radv_shader_part_unref(device, epilog);
-         free(key2);
-         u_rwlock_wrunlock(&device->tcs_epilogs_lock);
-         return NULL;
-      }
-      memcpy(key2, &key, sizeof(*key2));
-      _mesa_hash_table_insert_pre_hashed(device->tcs_epilogs, hash, key2, epilog);
-
-      u_rwlock_wrunlock(&device->tcs_epilogs_lock);
-      return epilog;
-   }
-
-   return epilog_entry->data;
+   return radv_shader_part_cache_get(device, &device->tcs_epilogs, &cmd_buffer->tcs_epilogs, &key);
 }
 
 static void
@@ -7812,7 +7657,8 @@ radv_CmdBeginRendering(VkCommandBuffer commandBuffer, const VkRenderingInfo *pRe
    cmd_buffer->state.dirty |= RADV_CMD_DIRTY_DYNAMIC_DEPTH_BIAS;
 
    if (render->vrs_att.iview && cmd_buffer->device->physical_device->rad_info.gfx_level == GFX10_3) {
-      if (render->ds_att.iview) {
+      if (render->ds_att.iview &&
+          radv_htile_enabled(render->ds_att.iview->image, render->ds_att.iview->vk.base_mip_level)) {
          /* When we have a VRS attachment and a depth/stencil attachment, we just need to copy the
           * VRS rates to the HTILE buffer of the attachment.
           */
@@ -7836,8 +7682,8 @@ radv_CmdBeginRendering(VkCommandBuffer commandBuffer, const VkRenderingInfo *pRe
 
          radv_buffer_finish(&htile_buffer);
       } else {
-         /* When a subpass uses a VRS attachment without binding a depth/stencil attachment, we have
-          * to copy the VRS rates to our internal HTILE buffer.
+         /* When a subpass uses a VRS attachment without binding a depth/stencil attachment, or when
+          * HTILE isn't enabled, we use a fallback that copies the VRS rates to our internal HTILE buffer.
           */
          struct radv_image *ds_image = radv_cmd_buffer_get_vrs_image(cmd_buffer);
 
@@ -9550,7 +9396,7 @@ radv_CmdExecuteGeneratedCommandsNV(VkCommandBuffer commandBuffer, VkBool32 isPre
       cmd_buffer->state.predicating = true;
    }
 
-   if (!layout->use_preprocess) {
+   if (!radv_dgc_can_preprocess(layout, pipeline)) {
       radv_prepare_dgc(cmd_buffer, pGeneratedCommandsInfo);
 
       cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_INV_VCACHE | RADV_CMD_FLAG_INV_L2;

@@ -250,6 +250,14 @@ iris_predraw_resolve_framebuffer(struct iris_context *ice,
 
          struct iris_resource *res = (void *) surf->base.texture;
 
+         /* Undocumented workaround:
+          *
+          * Disable auxiliary buffer if MSRT is bound as texture.
+          */
+         if (intel_device_info_is_dg2(devinfo) && res->surf.samples > 1 &&
+             nir->info.outputs_read != 0)
+            draw_aux_buffer_disabled[i] = true;
+
          enum isl_aux_usage aux_usage =
             iris_resource_render_aux_usage(ice, res, surf->view.format,
                                            surf->view.base_level,
@@ -583,6 +591,19 @@ iris_mcs_exec(struct iris_context *ice,
    if (op == ISL_AUX_OP_PARTIAL_RESOLVE) {
       blorp_mcs_partial_resolve(&blorp_batch, &surf, res->surf.format,
                                 start_layer, num_layers);
+   } else if (op == ISL_AUX_OP_FULL_RESOLVE) {
+      /* Simply copy compressed surface to uncompressed surface in order to do
+       * the full resolve.
+       */
+      struct blorp_surf src_surf, dst_surf;
+      iris_blorp_surf_for_resource(&batch->screen->isl_dev, &src_surf,
+                                   &res->base.b, res->aux.usage, 0, false);
+      iris_blorp_surf_for_resource(&batch->screen->isl_dev, &dst_surf,
+                                   &res->base.b, ISL_AUX_USAGE_NONE, 0, true);
+
+      blorp_copy(&blorp_batch, &src_surf, 0, 0, &dst_surf, 0, 0,
+                 0, 0, 0, 0, surf.surf->logical_level0_px.width,
+                 surf.surf->logical_level0_px.height);
    } else {
       assert(op == ISL_AUX_OP_AMBIGUATE);
       blorp_mcs_ambiguate(&blorp_batch, &surf, start_layer, num_layers);
@@ -679,6 +700,13 @@ iris_hiz_exec(struct iris_context *ice,
    //DBG("%s %s to mt %p level %d layers %d-%d\n",
        //__func__, name, mt, level, start_layer, start_layer + num_layers - 1);
 
+   /* A data cache flush is not suggested by HW docs, but we found it to fix
+    * a number of failures.
+    */
+   unsigned wa_flush = intel_device_info_is_dg2(batch->screen->devinfo) &&
+                       res->aux.usage == ISL_AUX_USAGE_HIZ_CCS ?
+                       PIPE_CONTROL_DATA_CACHE_FLUSH : 0;
+
    /* The following stalls and flushes are only documented to be required
     * for HiZ clear operations.  However, they also seem to be required for
     * resolve operations.
@@ -695,6 +723,7 @@ iris_hiz_exec(struct iris_context *ice,
    iris_emit_pipe_control_flush(batch,
                                 "hiz op: pre-flush",
                                 PIPE_CONTROL_DEPTH_CACHE_FLUSH |
+                                wa_flush |
                                 PIPE_CONTROL_DEPTH_STALL |
                                 PIPE_CONTROL_CS_STALL);
 

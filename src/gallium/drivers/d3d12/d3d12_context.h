@@ -257,11 +257,11 @@ struct d3d12_context {
 
    uint64_t submit_id;
    ID3D12GraphicsCommandList *cmdlist;
+   ID3D12GraphicsCommandList2 *cmdlist2;
    ID3D12GraphicsCommandList8 *cmdlist8;
    ID3D12GraphicsCommandList *state_fixup_cmdlist;
 
    struct list_head active_queries;
-   struct util_dynarray ended_queries;
    bool queries_disabled;
 
    struct d3d12_descriptor_pool *sampler_pool;
@@ -333,6 +333,7 @@ enum d3d12_transition_flags {
    D3D12_TRANSITION_FLAG_NONE = 0,
    D3D12_TRANSITION_FLAG_INVALIDATE_BINDINGS = 1,
    D3D12_TRANSITION_FLAG_ACCUMULATE_STATE = 2,
+   D3D12_TRANSITION_FLAG_PENDING_MEMORY_BARRIER = 4,
 };
 
 void

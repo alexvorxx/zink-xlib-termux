@@ -97,6 +97,11 @@ static const driOptionDescription anv_dri_options[] = {
       DRI_CONF_ANV_MESH_CONV_PRIM_ATTRS_TO_VERT_ATTRS(-2)
       DRI_CONF_FORCE_VK_VENDOR(0)
       DRI_CONF_FAKE_SPARSE(false)
+#if defined(ANDROID) && ANDROID_API_LEVEL >= 34
+      DRI_CONF_VK_REQUIRE_ASTC(true)
+#else
+      DRI_CONF_VK_REQUIRE_ASTC(false)
+#endif
    DRI_CONF_SECTION_END
 
    DRI_CONF_SECTION_QUALITY
@@ -403,11 +408,6 @@ get_features(const struct anv_physical_device *pdevice,
 {
    struct vk_app_info *app_info = &pdevice->instance->vk.app_info;
 
-   /* Just pick one; they're all the same */
-   const bool has_astc_ldr =
-      isl_format_supports_sampling(&pdevice->info,
-                                   ISL_FORMAT_ASTC_LDR_2D_4X4_FLT16);
-
    const bool rt_enabled = ANV_SUPPORT_RT && pdevice->info.has_ray_tracing;
 
    const bool mesh_shader =
@@ -439,7 +439,8 @@ get_features(const struct anv_physical_device *pdevice,
       .multiViewport                            = true,
       .samplerAnisotropy                        = true,
       .textureCompressionETC2                   = true,
-      .textureCompressionASTC_LDR               = has_astc_ldr,
+      .textureCompressionASTC_LDR               = pdevice->has_astc_ldr ||
+                                                  pdevice->emu_astc_ldr,
       .textureCompressionBC                     = true,
       .occlusionQueryPrecise                    = true,
       .pipelineStatisticsQuery                  = true,
@@ -1350,6 +1351,14 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
     */
    device->has_protected_contexts = device->info.ver >= 12 &&
       intel_gem_supports_protected_context(fd, device->info.kmd_type);
+
+   /* Just pick one; they're all the same */
+   device->has_astc_ldr =
+      isl_format_supports_sampling(&device->info,
+                                   ISL_FORMAT_ASTC_LDR_2D_4X4_FLT16);
+   if (!device->has_astc_ldr &&
+       driQueryOptionb(&device->instance->dri_options, "vk_require_astc"))
+      device->emu_astc_ldr = true;
 
    result = anv_physical_device_init_heaps(device, fd);
    if (result != VK_SUCCESS)
@@ -3543,6 +3552,8 @@ VkResult anv_CreateDevice(
 
    anv_device_init_internal_kernels(device);
 
+   anv_device_init_astc_emu(device);
+
    anv_device_perf_init(device);
 
    anv_device_utrace_init(device);
@@ -3668,6 +3679,8 @@ void anv_DestroyDevice(
    anv_device_finish_blorp(device);
 
    anv_device_finish_rt_shaders(device);
+
+   anv_device_finish_astc_emu(device);
 
    anv_device_finish_internal_kernels(device);
 

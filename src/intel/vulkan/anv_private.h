@@ -92,6 +92,7 @@
 #include "vk_shader_module.h"
 #include "vk_sync.h"
 #include "vk_sync_timeline.h"
+#include "vk_texcompress_astc.h"
 #include "vk_util.h"
 #include "vk_query_pool.h"
 #include "vk_queue.h"
@@ -921,6 +922,11 @@ struct anv_physical_device {
      */
     bool                                        has_sparse;
 
+    /** True if HW supports ASTC LDR */
+    bool                                        has_astc_ldr;
+    /** True if ASTC LDR is supported via emulation */
+    bool                                        emu_astc_ldr;
+
     /**/
     bool                                        uses_ex_bso;
 
@@ -1666,6 +1672,8 @@ struct anv_device {
      * resources but never use them.
      */
     bool                                         using_sparse;
+
+    struct vk_texcompress_astc_state           *texcompress_astc;
 };
 
 static inline uint32_t
@@ -2437,6 +2445,14 @@ anv_descriptor_set_layout_descriptor_buffer_size(const struct anv_descriptor_set
                                                  uint32_t var_desc_count);
 
 void
+anv_push_descriptor_set_init(struct anv_cmd_buffer *cmd_buffer,
+                             struct anv_push_descriptor_set *push_set,
+                             struct anv_descriptor_set_layout *layout);
+
+void
+anv_push_descriptor_set_finish(struct anv_push_descriptor_set *push_set);
+
+void
 anv_descriptor_set_write_image_view(struct anv_device *device,
                                     struct anv_descriptor_set *set,
                                     const VkDescriptorImageInfo * const info,
@@ -2481,6 +2497,12 @@ anv_descriptor_set_write_inline_uniform_data(struct anv_device *device,
                                              const void *data,
                                              size_t offset,
                                              size_t size);
+
+void
+anv_descriptor_set_write(struct anv_device *device,
+                         struct anv_descriptor_set *set_override,
+                         uint32_t write_count,
+                         const VkWriteDescriptorSet *writes);
 
 void
 anv_descriptor_set_write_template(struct anv_device *device,
@@ -2566,6 +2588,7 @@ struct anv_pipeline_sets_layout {
 
    uint32_t num_sets;
    uint32_t num_dynamic_buffers;
+   int push_descriptor_set_index;
 
    bool independent_sets;
 
@@ -3782,6 +3805,28 @@ anv_cmd_buffer_get_view_count(struct anv_cmd_buffer *cmd_buffer)
    return MAX2(1, util_bitcount(gfx->view_mask));
 }
 
+/* Save/restore cmd buffer states for meta operations */
+enum anv_cmd_saved_state_flags {
+   ANV_CMD_SAVED_STATE_COMPUTE_PIPELINE         = BITFIELD_BIT(0),
+   ANV_CMD_SAVED_STATE_DESCRIPTOR_SET_0         = BITFIELD_BIT(1),
+   ANV_CMD_SAVED_STATE_PUSH_CONSTANTS           = BITFIELD_BIT(2),
+};
+
+struct anv_cmd_saved_state {
+   uint32_t flags;
+
+   struct anv_pipeline *pipeline;
+   struct anv_descriptor_set *descriptor_set;
+   uint8_t push_constants[MAX_PUSH_CONSTANTS_SIZE];
+};
+
+void anv_cmd_buffer_save_state(struct anv_cmd_buffer *cmd_buffer,
+                               uint32_t flags,
+                               struct anv_cmd_saved_state *state);
+
+void anv_cmd_buffer_restore_state(struct anv_cmd_buffer *cmd_buffer,
+                                  struct anv_cmd_saved_state *state);
+
 enum anv_bo_sync_state {
    /** Indicates that this is a new (or newly reset fence) */
    ANV_BO_SYNC_STATE_RESET,
@@ -4442,6 +4487,15 @@ bool anv_formats_ccs_e_compatible(const struct intel_device_info *devinfo,
 extern VkFormat
 vk_format_from_android(unsigned android_format, unsigned android_usage);
 
+static inline bool
+anv_is_format_emulated(const struct anv_physical_device *pdevice, VkFormat format)
+{
+   if (pdevice->emu_astc_ldr &&
+       vk_texcompress_astc_emulation_format(format) != VK_FORMAT_UNDEFINED)
+      return true;
+   return false;
+}
+
 static inline struct isl_swizzle
 anv_swizzle_for_render(struct isl_swizzle swizzle)
 {
@@ -4551,6 +4605,12 @@ struct anv_image {
     * must be released when the image is destroyed.
     */
    bool from_gralloc;
+
+   /**
+    * If not UNDEFINED, image has a hidden plane at planes[n_planes] for ASTC
+    * LDR emulation.
+    */
+   VkFormat emu_plane_format;
 
    /**
     * The memory bindings created by vkCreateImage and vkBindImageMemory.
@@ -5001,9 +5061,14 @@ struct anv_image_view {
    const struct anv_image *image; /**< VkImageViewCreateInfo::image */
 
    unsigned n_planes;
-   struct {
-      uint32_t image_plane;
 
+   /**
+    * True if the surface states (if any) are owned by some anv_state_stream
+    * from internal_surface_state_pool.
+    */
+   bool use_surface_state_stream;
+
+   struct {
       struct isl_view isl;
 
       /**
@@ -5071,6 +5136,13 @@ void anv_image_get_memory_requirements(struct anv_device *device,
                                        struct anv_image *image,
                                        VkImageAspectFlags aspects,
                                        VkMemoryRequirements2 *pMemoryRequirements);
+
+void anv_image_view_init(struct anv_device *device,
+                         struct anv_image_view *iview,
+                         const VkImageViewCreateInfo *pCreateInfo,
+                         struct anv_state_stream *state_stream);
+
+void anv_image_view_finish(struct anv_image_view *iview);
 
 enum isl_format
 anv_isl_format_for_descriptor_type(const struct anv_device *device,
@@ -5287,6 +5359,15 @@ struct anv_memcpy_state {
 
 VkResult anv_device_init_internal_kernels(struct anv_device *device);
 void anv_device_finish_internal_kernels(struct anv_device *device);
+
+VkResult anv_device_init_astc_emu(struct anv_device *device);
+void anv_device_finish_astc_emu(struct anv_device *device);
+void anv_astc_emu_decompress(struct anv_cmd_buffer *cmd_buffer,
+                             struct anv_image *image,
+                             VkImageLayout layout,
+                             const VkImageSubresourceLayers *subresource,
+                             VkOffset3D block_offset,
+                             VkExtent3D block_extent);
 
 /* This structure is used in 2 scenarios :
  *

@@ -137,6 +137,20 @@ zink-tu-a618-traces-performance:
     - !reference [zink-tu-a618-traces, needs]
     - !reference [.piglit-performance:arm64, needs]
 
+zink-tu-a750:
+  extends:
+    - .tu-zink-test-valve
+    - .a750-mupuf
+    - .zink-turnip-valve-manual-rules
+  timeout: 25m  # base runtime 11min total, 9min of testing
+  variables:
+    B2C_TIMEOUT_BOOT_MINUTES: 15
+    B2C_TIMEOUT_OVERALL_MINUTES: 20
+    DEQP_SUITE: zink-tu-a750
+    GPU_VERSION: zink-tu-a750
+    HWCI_START_WESTON: 1
+
+
 ############### Combined testing (GL, GLES, Piglit) on RADV
 zink-radv-polaris10-valve:
   extends:

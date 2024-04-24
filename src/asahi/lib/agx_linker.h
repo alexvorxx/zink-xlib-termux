@@ -21,6 +21,11 @@ struct agx_linked_shader {
     */
    bool uses_base_param;
 
+   /* Set if the linked shader uses txf. The epilog may even if the main shader
+    * does not, in the case of spilled render targets.
+    */
+   bool uses_txf;
+
    /* Coefficient register bindings */
    struct agx_varyings_fs cf;
 

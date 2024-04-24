@@ -1063,6 +1063,8 @@ agx_emit_image_load(agx_builder *b, agx_index dst, nir_intrinsic_instr *intr)
       b, tmp, coords, lod, bindless, texture, agx_immediate(0), agx_null(),
       agx_tex_dim(dim, is_array), lod_mode, 0, false);
    I->mask = agx_expand_tex_to(b, &intr->def, tmp, true);
+
+   b->shader->out->uses_txf = true;
    return NULL;
 }
 
@@ -2098,8 +2100,10 @@ agx_emit_tex(agx_builder *b, nir_tex_instr *instr)
       !agx_is_null(packed_offset), !agx_is_null(compare),
       instr->op == nir_texop_lod, agx_gather_for_nir(instr));
 
-   if (instr->op == nir_texop_txf || instr->op == nir_texop_txf_ms)
+   if (instr->op == nir_texop_txf || instr->op == nir_texop_txf_ms) {
       I->op = AGX_OPCODE_TEXTURE_LOAD;
+      b->shader->out->uses_txf = true;
+   }
 
    /* Destination masking doesn't seem to work properly for gathers (because
     * it's mostly pointless), but it does show up in the lowering of

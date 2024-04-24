@@ -110,6 +110,7 @@ agx_fast_link(void *memctx, struct agx_device *dev, bool fragment,
       writes_sample_mask |= part->info.writes_sample_mask;
       disable_tri_merging |= part->info.disable_tri_merging;
       linked->uses_base_param |= part->info.uses_base_param;
+      linked->uses_txf |= part->info.uses_txf;
       tag_write_disable &= part->info.tag_write_disable;
    }
 

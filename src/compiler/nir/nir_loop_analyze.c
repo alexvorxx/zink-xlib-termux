@@ -1259,6 +1259,7 @@ find_trip_count(loop_info_state *state, unsigned execution_mode,
          alu_op = nir_scalar_alu_op(cond);
          invert_cond = !invert_cond;
          trip_count_known = false;
+         terminator->conditional_instr = cond.def->parent_instr;
          terminator->exact_trip_count_unknown = true;
       }
 

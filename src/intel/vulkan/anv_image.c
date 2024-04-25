@@ -2568,10 +2568,7 @@ get_image_fast_clear_layout(const struct anv_image *image,
     */
    out_layout->arrayPitch = 1;
    out_layout->depthPitch = 1;
-   /* On TGL and DG2, 64-byte alignment on clear color is required.
-    * This pitch is ignored on MTL. (drm_fourcc.h)
-    */
-   out_layout->rowPitch = 64;
+   out_layout->rowPitch = ISL_DRM_CC_PLANE_PITCH_B;
 }
 
 static void

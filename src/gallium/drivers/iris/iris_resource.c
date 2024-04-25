@@ -1670,22 +1670,17 @@ iris_resource_get_param(struct pipe_screen *pscreen,
       }
       return true;
    case PIPE_RESOURCE_PARAM_STRIDE:
-      *value = wants_cc ? 64 :
+      *value = wants_cc ? ISL_DRM_CC_PLANE_PITCH_B :
                wants_aux ? res->aux.surf.row_pitch_B : res->surf.row_pitch_B;
 
       /* Mesa's implementation of eglCreateImage rejects strides of zero (see
        * dri2_check_dma_buf_attribs). Ensure we return a non-zero stride as
        * this value may be queried from GBM and passed into EGL.
        *
-       * Also, although modifiers which use a clear color plane specify that
-       * the plane's pitch should be ignored, some kernels have been found to
-       * require 64-byte alignment.
-       *
-       * Also, for OpenCL gl_sharing we have to support exporting buffers, for
-       * which we report a stride of 0 here.
+       * We make an exception for buffers. For OpenCL gl_sharing we have to
+       * support exporting buffers, for which we report a stride of 0 here.
        */
-      assert((*value != 0 || resource->target == PIPE_BUFFER) &&
-             (!wants_cc || *value % 64 == 0));
+      assert(*value != 0 || resource->target == PIPE_BUFFER);
 
       return true;
    case PIPE_RESOURCE_PARAM_OFFSET:

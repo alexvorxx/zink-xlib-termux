@@ -2401,6 +2401,11 @@ extern const struct isl_drm_modifier_info isl_drm_modifier_info_list[];
         __info->modifier != DRM_FORMAT_MOD_INVALID; \
         ++__info)
 
+/* According to drm_fourcc.h, the clear color pitch is ignored on MTL but it
+ * should be 64B aligned for TGL and DG2. There's no need to special-case MTL.
+ */
+#define ISL_DRM_CC_PLANE_PITCH_B 64
+
 const struct isl_drm_modifier_info * ATTRIBUTE_CONST
 isl_drm_modifier_get_info(uint64_t modifier);
 

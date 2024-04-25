@@ -123,7 +123,7 @@ isl_device_setup_mocs(struct isl_device *dev)
       dev->mocs.blitter_dst = 1 << 1;
       dev->mocs.blitter_src = 1 << 1;
    } else if (dev->info->ver >= 12) {
-      if (intel_device_info_is_mtl(dev->info)) {
+      if (intel_device_info_is_mtl_or_arl(dev->info)) {
          /* Cached L3+L4; BSpec: 45101 */
          dev->mocs.internal = 1 << 1;
          /* Displayables cached to L3+L4:WT */
@@ -270,7 +270,7 @@ isl_mocs(const struct isl_device *dev, isl_surf_usage_flags_t usage,
    if (external)
       return dev->mocs.external | mask;
 
-   if (intel_device_info_is_mtl(dev->info) &&
+   if (intel_device_info_is_mtl_or_arl(dev->info) &&
        (usage & ISL_SURF_USAGE_STREAM_OUT_BIT))
       return dev->mocs.uncached | mask;
 
@@ -2374,7 +2374,7 @@ _isl_notify_failure(const struct isl_surf_init_info *surf_info,
 
    snprintf(msg + ret, sizeof(msg) - ret,
             " extent=%ux%ux%u dim=%s msaa=%ux levels=%u rpitch=%u fmt=%s "
-            "usages=%s%s%s%s%s%s%s%s%s%s%s%s%s%s "
+            "usages=%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s "
             "tiling_flags=%s%s%s%s%s%s%s%s%s%s%s%s%s",
             surf_info->width, surf_info->height,
             surf_info->dim == ISL_SURF_DIM_3D ?
@@ -2385,20 +2385,22 @@ _isl_notify_failure(const struct isl_surf_init_info *surf_info,
             surf_info->row_pitch_B,
             isl_format_get_name(surf_info->format) + strlen("ISL_FORMAT_"),
 
-            PRINT_USAGE(RENDER_TARGET,   "rt"),
-            PRINT_USAGE(DEPTH,           "depth"),
-            PRINT_USAGE(STENCIL,         "stenc"),
-            PRINT_USAGE(TEXTURE,         "tex"),
-            PRINT_USAGE(CUBE,            "cube"),
-            PRINT_USAGE(DISABLE_AUX,     "noaux"),
-            PRINT_USAGE(DISPLAY,         "disp"),
-            PRINT_USAGE(HIZ,             "hiz"),
-            PRINT_USAGE(MCS,             "mcs"),
-            PRINT_USAGE(CCS,             "ccs"),
-            PRINT_USAGE(VERTEX_BUFFER,   "vb"),
-            PRINT_USAGE(INDEX_BUFFER,    "ib"),
-            PRINT_USAGE(CONSTANT_BUFFER, "const"),
-            PRINT_USAGE(STAGING,         "stage"),
+            PRINT_USAGE(RENDER_TARGET,       "rt"),
+            PRINT_USAGE(DEPTH,               "depth"),
+            PRINT_USAGE(STENCIL,             "stenc"),
+            PRINT_USAGE(TEXTURE,             "tex"),
+            PRINT_USAGE(CUBE,                "cube"),
+            PRINT_USAGE(DISABLE_AUX,         "noaux"),
+            PRINT_USAGE(DISPLAY,             "disp"),
+            PRINT_USAGE(HIZ,                 "hiz"),
+            PRINT_USAGE(MCS,                 "mcs"),
+            PRINT_USAGE(CCS,                 "ccs"),
+            PRINT_USAGE(VERTEX_BUFFER,       "vb"),
+            PRINT_USAGE(INDEX_BUFFER,        "ib"),
+            PRINT_USAGE(CONSTANT_BUFFER,     "const"),
+            PRINT_USAGE(STAGING,             "stage"),
+            PRINT_USAGE(SPARSE,              "sparse"),
+            PRINT_USAGE(NO_AUX_TT_ALIGNMENT, "no-aux-align"),
 
             PRINT_TILING(LINEAR,         "linear"),
             PRINT_TILING(W,              "W"),
@@ -2689,8 +2691,10 @@ isl_calc_base_alignment(const struct isl_device *dev,
           * is that we haven't enable CCS on linear images yet so we can avoid
           * the extra alignment there.
           */
-         base_alignment_B = MAX(base_alignment_B, dev->info->verx10 >= 125 ?
-                                1024 * 1024 : 64 * 1024);
+         if (!(info->usage & ISL_SURF_USAGE_NO_AUX_TT_ALIGNMENT_BIT)) {
+            base_alignment_B = MAX(base_alignment_B, dev->info->verx10 >= 125 ?
+                                   1024 * 1024 : 64 * 1024);
+         }
       }
    }
 

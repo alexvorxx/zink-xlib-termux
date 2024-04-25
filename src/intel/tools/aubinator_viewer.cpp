@@ -39,7 +39,8 @@
 #include "aub_read.h"
 #include "aub_mem.h"
 
-#include "common/intel_disasm.h"
+#include "compiler/brw_disasm.h"
+#include "compiler/brw_isa_info.h"
 
 #define xtzalloc(name) ((decltype(&name)) calloc(1, sizeof(name)))
 #define xtalloc(name) ((decltype(&name)) malloc(sizeof(name)))
@@ -394,9 +395,9 @@ new_shader_window(struct aub_mem *mem, uint64_t address, const char *desc)
    if (shader_bo.map) {
       FILE *f = open_memstream(&window->shader, &window->shader_size);
       if (f) {
-         intel_disassemble(&context.file->isa,
-                           (const uint8_t *) shader_bo.map +
-                           (address - shader_bo.addr), 0, f);
+         brw_disassemble_with_errors(&context.file->isa,
+                                     (const uint8_t *) shader_bo.map +
+                                     (address - shader_bo.addr), 0, f);
          fclose(f);
       }
    }

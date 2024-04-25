@@ -122,6 +122,9 @@ static const struct vk_instance_extension_table instance_extensions = {
 #ifdef VK_USE_PLATFORM_XLIB_XRANDR_EXT
    .EXT_acquire_xlib_display            = true,
 #endif
+#ifndef VK_USE_PLATFORM_WIN32_KHR
+   .EXT_headless_surface                = true,
+#endif
    .EXT_debug_report                    = true,
    .EXT_debug_utils                     = true,
 };

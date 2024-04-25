@@ -142,8 +142,8 @@ blorp_batch_finish(struct blorp_batch *batch)
 }
 
 void
-brw_blorp_surface_info_init(struct blorp_batch *batch,
-                            struct brw_blorp_surface_info *info,
+blorp_surface_info_init(struct blorp_batch *batch,
+                            struct blorp_surface_info *info,
                             const struct blorp_surf *surf,
                             unsigned int level, float layer,
                             enum isl_format format, bool is_dest)
@@ -250,32 +250,16 @@ blorp_params_init(struct blorp_params *params)
    params->num_layers = 1;
 }
 
-void
-brw_blorp_init_wm_prog_key(struct brw_wm_prog_key *wm_key)
-{
-   memset(wm_key, 0, sizeof(*wm_key));
-   wm_key->nr_color_regions = 1;
-}
-
-void
-brw_blorp_init_cs_prog_key(struct brw_cs_prog_key *cs_key)
-{
-   memset(cs_key, 0, sizeof(*cs_key));
-}
-
-const unsigned *
+struct blorp_program
 blorp_compile_fs(struct blorp_context *blorp, void *mem_ctx,
                  struct nir_shader *nir,
-                 struct brw_wm_prog_key *wm_key,
-                 bool use_repclear,
-                 struct brw_wm_prog_data *wm_prog_data)
+                 bool multisample_fbo,
+                 bool use_repclear)
 {
    const struct brw_compiler *compiler = blorp->compiler;
-
    nir->options = compiler->nir_options[MESA_SHADER_FRAGMENT];
 
-   memset(wm_prog_data, 0, sizeof(*wm_prog_data));
-
+   struct brw_wm_prog_data *wm_prog_data = rzalloc(mem_ctx, struct brw_wm_prog_data);
    wm_prog_data->base.nr_params = 0;
    wm_prog_data->base.param = NULL;
 
@@ -284,11 +268,16 @@ blorp_compile_fs(struct blorp_context *blorp, void *mem_ctx,
    nir_remove_dead_variables(nir, nir_var_shader_in, NULL);
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
 
+   struct brw_wm_prog_key wm_key;
+   memset(&wm_key, 0, sizeof(wm_key));
+   wm_key.multisample_fbo = multisample_fbo ? BRW_ALWAYS : BRW_NEVER;
+   wm_key.nr_color_regions = 1;
+
    if (blorp->compiler->devinfo->ver < 6) {
       if (nir->info.fs.uses_discard)
-         wm_key->iz_lookup |= BRW_WM_IZ_PS_KILL_ALPHATEST_BIT;
+         wm_key.iz_lookup |= BRW_WM_IZ_PS_KILL_ALPHATEST_BIT;
 
-      wm_key->input_slots_valid = nir->info.inputs_read | VARYING_BIT_POS;
+      wm_key.input_slots_valid = nir->info.inputs_read | VARYING_BIT_POS;
    }
 
    struct brw_compile_fs_params params = {
@@ -298,20 +287,25 @@ blorp_compile_fs(struct blorp_context *blorp, void *mem_ctx,
          .log_data = blorp->driver_ctx,
          .debug_flag = DEBUG_BLORP,
       },
-      .key = wm_key,
+      .key = &wm_key,
       .prog_data = wm_prog_data,
 
       .use_rep_send = use_repclear,
       .max_polygons = 1,
    };
 
-   return brw_compile_fs(compiler, &params);
+   const unsigned *kernel = brw_compile_fs(compiler, &params);
+   return (struct blorp_program){
+      .kernel         = kernel,
+      .kernel_size    = wm_prog_data->base.program_size,
+      .prog_data      = wm_prog_data,
+      .prog_data_size = sizeof(*wm_prog_data),
+   };
 }
 
-const unsigned *
+struct blorp_program
 blorp_compile_vs(struct blorp_context *blorp, void *mem_ctx,
-                 struct nir_shader *nir,
-                 struct brw_vs_prog_data *vs_prog_data)
+                 struct nir_shader *nir)
 {
    const struct brw_compiler *compiler = blorp->compiler;
 
@@ -321,6 +315,7 @@ blorp_compile_vs(struct blorp_context *blorp, void *mem_ctx,
    brw_preprocess_nir(compiler, nir, &opts);
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
 
+   struct brw_vs_prog_data *vs_prog_data = rzalloc(mem_ctx, struct brw_vs_prog_data);
    vs_prog_data->inputs_read = nir->info.inputs_read;
 
    brw_compute_vue_map(compiler->devinfo,
@@ -342,7 +337,13 @@ blorp_compile_vs(struct blorp_context *blorp, void *mem_ctx,
       .prog_data = vs_prog_data,
    };
 
-   return brw_compile_vs(compiler, &params);
+   const unsigned *kernel = brw_compile_vs(compiler, &params);
+   return (struct blorp_program) {
+      .kernel         = kernel,
+      .kernel_size    = vs_prog_data->base.base.program_size,
+      .prog_data      = vs_prog_data,
+      .prog_data_size = sizeof(*vs_prog_data),
+   };
 }
 
 static bool
@@ -357,17 +358,13 @@ lower_base_workgroup_id(nir_builder *b, nir_intrinsic_instr *intrin,
    return true;
 }
 
-const unsigned *
+struct blorp_program
 blorp_compile_cs(struct blorp_context *blorp, void *mem_ctx,
-                 struct nir_shader *nir,
-                 struct brw_cs_prog_key *cs_key,
-                 struct brw_cs_prog_data *cs_prog_data)
+                 struct nir_shader *nir)
 {
    const struct brw_compiler *compiler = blorp->compiler;
 
    nir->options = compiler->nir_options[MESA_SHADER_COMPUTE];
-
-   memset(cs_prog_data, 0, sizeof(*cs_prog_data));
 
    struct brw_nir_compiler_opts opts = {};
    brw_preprocess_nir(compiler, nir, &opts);
@@ -376,10 +373,12 @@ blorp_compile_cs(struct blorp_context *blorp, void *mem_ctx,
    NIR_PASS_V(nir, nir_lower_io, nir_var_uniform, type_size_scalar_bytes,
               (nir_lower_io_options)0);
 
-   STATIC_ASSERT(offsetof(struct brw_blorp_wm_inputs, subgroup_id) + 4 ==
-                 sizeof(struct brw_blorp_wm_inputs));
-   nir->num_uniforms = offsetof(struct brw_blorp_wm_inputs, subgroup_id);
+   STATIC_ASSERT(offsetof(struct blorp_wm_inputs, subgroup_id) + 4 ==
+                 sizeof(struct blorp_wm_inputs));
+   nir->num_uniforms = offsetof(struct blorp_wm_inputs, subgroup_id);
    unsigned nr_params = nir->num_uniforms / 4;
+
+   struct brw_cs_prog_data *cs_prog_data = rzalloc(mem_ctx, struct brw_cs_prog_data);
    cs_prog_data->base.nr_params = nr_params;
    cs_prog_data->base.param = rzalloc_array(NULL, uint32_t, nr_params);
 
@@ -388,6 +387,9 @@ blorp_compile_cs(struct blorp_context *blorp, void *mem_ctx,
    NIR_PASS_V(nir, nir_shader_intrinsics_pass, lower_base_workgroup_id,
               nir_metadata_block_index | nir_metadata_dominance, NULL);
 
+   struct brw_cs_prog_key cs_key;
+   memset(&cs_key, 0, sizeof(cs_key));
+
    struct brw_compile_cs_params params = {
       .base = {
          .mem_ctx = mem_ctx,
@@ -395,20 +397,25 @@ blorp_compile_cs(struct blorp_context *blorp, void *mem_ctx,
          .log_data = blorp->driver_ctx,
          .debug_flag = DEBUG_BLORP,
       },
-      .key = cs_key,
+      .key = &cs_key,
       .prog_data = cs_prog_data,
    };
 
-   const unsigned *program = brw_compile_cs(compiler, &params);
+   const unsigned *kernel = brw_compile_cs(compiler, &params);
 
    ralloc_free(cs_prog_data->base.param);
    cs_prog_data->base.param = NULL;
 
-   return program;
+   return (struct blorp_program) {
+      .kernel         = kernel,
+      .kernel_size    = cs_prog_data->base.program_size,
+      .prog_data      = cs_prog_data,
+      .prog_data_size = sizeof(*cs_prog_data),
+   };
 }
 
 struct blorp_sf_key {
-   struct brw_blorp_base_key base;
+   struct blorp_base_key base;
    struct brw_sf_prog_key key;
 };
 
@@ -425,7 +432,7 @@ blorp_ensure_sf_program(struct blorp_batch *batch,
       return true;
 
    struct blorp_sf_key key = {
-      .base = BRW_BLORP_BASE_KEY_INIT(BLORP_SHADER_TYPE_GFX4_SF),
+      .base = BLORP_BASE_KEY_INIT(BLORP_SHADER_TYPE_GFX4_SF),
    };
 
    /* Everything gets compacted in vertex setup, so we just need a
@@ -452,7 +459,7 @@ blorp_ensure_sf_program(struct blorp_batch *batch,
    const unsigned *program;
    unsigned program_size;
 
-   struct brw_vue_map vue_map;
+   struct intel_vue_map vue_map;
    brw_compute_vue_map(blorp->compiler->devinfo, &vue_map, slots_valid, false, 1);
 
    struct brw_sf_prog_data prog_data_tmp;
@@ -500,7 +507,7 @@ blorp_hiz_op(struct blorp_batch *batch, struct blorp_surf *surf,
    for (uint32_t a = 0; a < num_layers; a++) {
       const uint32_t layer = start_layer + a;
 
-      brw_blorp_surface_info_init(batch, &params.depth, surf, level,
+      blorp_surface_info_init(batch, &params.depth, surf, level,
                                   layer, surf->surf->format, true);
 
       /* Align the rectangle primitive to 8x4 pixels.

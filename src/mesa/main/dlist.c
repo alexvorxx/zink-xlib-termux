@@ -1220,7 +1220,7 @@ dlist_alloc(struct gl_context *ctx, OpCode opcode, GLuint bytes, bool align8)
       ctx->ListState.CurrentPos++;
    }
 
-   if (ctx->ListState.CurrentPos + numNodes + contNodes > BLOCK_SIZE) {
+   if (ctx->ListState.CurrentPos + numNodes + contNodes >= BLOCK_SIZE) {
       /* This block is full.  Allocate a new block and chain to it */
       Node *newblock;
       Node *n = ctx->ListState.CurrentBlock + ctx->ListState.CurrentPos;
@@ -13401,7 +13401,7 @@ _mesa_EndList(void)
    /* Install the new list */
    _mesa_HashInsertLocked(ctx->Shared->DisplayList,
                           ctx->ListState.CurrentList->Name,
-                          ctx->ListState.CurrentList, true);
+                          ctx->ListState.CurrentList, false);
 
    if (MESA_VERBOSE & VERBOSE_DISPLAY_LIST)
       mesa_print_display_list(ctx->ListState.CurrentList->Name);

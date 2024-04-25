@@ -86,6 +86,8 @@ d3d12_resource_destroy(struct pipe_screen *pscreen,
       screen->winsys->displaytarget_destroy(screen->winsys, resource->dt);
    }
 
+   if (resource->dt_proxy)
+      pipe_resource_reference(&resource->dt_proxy, NULL);
    threaded_resource_deinit(presource);
    if (can_map_directly(presource))
       util_range_destroy(&resource->valid_buffer_range);
@@ -369,14 +371,24 @@ init_texture(struct d3d12_screen *screen,
 
    if (screen->winsys && (templ->bind & PIPE_BIND_DISPLAY_TARGET)) {
       struct sw_winsys *winsys = screen->winsys;
-      res->dt = winsys->displaytarget_create(screen->winsys,
-                                             res->base.b.bind,
-                                             res->base.b.format,
-                                             templ->width0,
-                                             templ->height0,
-                                             64, NULL,
-                                             &res->dt_stride);
-      res->dt_refcount = 1;
+      if (winsys->is_displaytarget_format_supported(winsys, res->base.b.bind, res->base.b.format)) {
+         res->dt = winsys->displaytarget_create(screen->winsys,
+                                                res->base.b.bind,
+                                                res->base.b.format,
+                                                templ->width0,
+                                                templ->height0,
+                                                64, NULL,
+                                                &res->dt_stride);
+         res->dt_refcount = 1;
+      } else {
+         assert(res->base.b.format == PIPE_FORMAT_R16G16B16A16_FLOAT); /* The only format we proxy right now */
+         struct pipe_resource proxy_templ = *templ;
+         proxy_templ.format = PIPE_FORMAT_R8G8B8A8_UNORM;
+         res->dt_proxy = screen->base.resource_create(&screen->base, &proxy_templ);
+         if (!res->dt_proxy)
+            return false;
+         assert(d3d12_resource(res->dt_proxy)->dt);
+      }
    }
 
    res->bo = d3d12_bo_wrap_res(screen, d3d12_res, init_residency);

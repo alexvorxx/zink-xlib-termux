@@ -148,7 +148,7 @@ _mesa_alloc_shared_state(struct gl_context *ctx)
 
 
 /**
- * Callback for deleting a display list.  Called by _mesa_HashDeleteAll().
+ * Callback for deleting a display list.  Called by _mesa_DeleteHashTable().
  */
 static void
 delete_displaylist_cb(void *data, void *userData)
@@ -160,7 +160,7 @@ delete_displaylist_cb(void *data, void *userData)
 
 
 /**
- * Callback for deleting a texture object.  Called by _mesa_HashDeleteAll().
+ * Callback for deleting a texture object.  Called by _mesa_DeleteHashTable().
  */
 static void
 delete_texture_cb(void *data, void *userData)
@@ -172,7 +172,7 @@ delete_texture_cb(void *data, void *userData)
 
 
 /**
- * Callback for deleting a program object.  Called by _mesa_HashDeleteAll().
+ * Callback for deleting a program object.  Called by _mesa_DeleteHashTable().
  */
 static void
 delete_program_cb(void *data, void *userData)
@@ -189,7 +189,7 @@ delete_program_cb(void *data, void *userData)
 
 /**
  * Callback for deleting an ATI fragment shader object.
- * Called by _mesa_HashDeleteAll().
+ * Called by _mesa_DeleteHashTable().
  */
 static void
 delete_fragshader_cb(void *data, void *userData)
@@ -201,7 +201,7 @@ delete_fragshader_cb(void *data, void *userData)
 
 
 /**
- * Callback for deleting a buffer object.  Called by _mesa_HashDeleteAll().
+ * Callback for deleting a buffer object.  Called by _mesa_DeleteHashTable().
  */
 static void
 delete_bufferobj_cb(void *data, void *userData)
@@ -232,7 +232,7 @@ free_shader_program_data_cb(void *data, void *userData)
 
 /**
  * Callback for deleting shader and shader programs objects.
- * Called by _mesa_HashDeleteAll().
+ * Called by _mesa_DeleteHashTable().
  */
 static void
 delete_shader_cb(void *data, void *userData)
@@ -251,7 +251,7 @@ delete_shader_cb(void *data, void *userData)
 
 
 /**
- * Callback for deleting a framebuffer object.  Called by _mesa_HashDeleteAll()
+ * Callback for deleting a framebuffer object.  Called by _mesa_DeleteHashTable()
  */
 static void
 delete_framebuffer_cb(void *data, UNUSED void *userData)
@@ -272,7 +272,7 @@ delete_framebuffer_cb(void *data, UNUSED void *userData)
 
 
 /**
- * Callback for deleting a renderbuffer object. Called by _mesa_HashDeleteAll()
+ * Callback for deleting a renderbuffer object. Called by _mesa_DeleteHashTable()
  */
 static void
 delete_renderbuffer_cb(void *data, void *userData)
@@ -286,7 +286,7 @@ delete_renderbuffer_cb(void *data, void *userData)
 
 
 /**
- * Callback for deleting a sampler object. Called by _mesa_HashDeleteAll()
+ * Callback for deleting a sampler object. Called by _mesa_DeleteHashTable()
  */
 static void
 delete_sampler_object_cb(void *data, void *userData)
@@ -297,7 +297,7 @@ delete_sampler_object_cb(void *data, void *userData)
 }
 
 /**
- * Callback for deleting a memory object.  Called by _mesa_HashDeleteAll().
+ * Callback for deleting a memory object.  Called by _mesa_DeleteHashTable().
  */
 static void
 delete_memory_object_cb(void *data, void *userData)
@@ -308,7 +308,7 @@ delete_memory_object_cb(void *data, void *userData)
 }
 
 /**
- * Callback for deleting a memory object.  Called by _mesa_HashDeleteAll().
+ * Callback for deleting a memory object.  Called by _mesa_DeleteHashTable().
  */
 static void
 delete_semaphore_object_cb(void *data, void *userData)
@@ -347,22 +347,18 @@ free_shared_state(struct gl_context *ctx, struct gl_shared_state *shared)
     * Free display lists
     */
    if (shared->DisplayList) {
-      _mesa_HashDeleteAll(shared->DisplayList, delete_displaylist_cb, ctx);
-      _mesa_DeleteHashTable(shared->DisplayList);
+      _mesa_DeleteHashTable(shared->DisplayList, delete_displaylist_cb, ctx);
       free(shared->small_dlist_store.ptr);
       util_idalloc_fini(&shared->small_dlist_store.free_idx);
    }
 
    if (shared->ShaderObjects) {
       _mesa_HashWalk(shared->ShaderObjects, free_shader_program_data_cb, ctx);
-      _mesa_HashDeleteAll(shared->ShaderObjects, delete_shader_cb, ctx);
-      _mesa_DeleteHashTable(shared->ShaderObjects);
+      _mesa_DeleteHashTable(shared->ShaderObjects, delete_shader_cb, ctx);
    }
 
-   if (shared->Programs) {
-      _mesa_HashDeleteAll(shared->Programs, delete_program_cb, ctx);
-      _mesa_DeleteHashTable(shared->Programs);
-   }
+   if (shared->Programs)
+      _mesa_DeleteHashTable(shared->Programs, delete_program_cb, ctx);
 
    if (shared->DefaultVertexProgram)
       _mesa_reference_program(ctx, &shared->DefaultVertexProgram, NULL);
@@ -373,15 +369,11 @@ free_shared_state(struct gl_context *ctx, struct gl_shared_state *shared)
    if (shared->DefaultFragmentShader)
       _mesa_delete_ati_fragment_shader(ctx, shared->DefaultFragmentShader);
 
-   if (shared->ATIShaders) {
-      _mesa_HashDeleteAll(shared->ATIShaders, delete_fragshader_cb, ctx);
-      _mesa_DeleteHashTable(shared->ATIShaders);
-   }
+   if (shared->ATIShaders)
+      _mesa_DeleteHashTable(shared->ATIShaders, delete_fragshader_cb, ctx);
 
-   if (shared->BufferObjects) {
-      _mesa_HashDeleteAll(shared->BufferObjects, delete_bufferobj_cb, ctx);
-      _mesa_DeleteHashTable(shared->BufferObjects);
-   }
+   if (shared->BufferObjects)
+      _mesa_DeleteHashTable(shared->BufferObjects, delete_bufferobj_cb, ctx);
 
    if (shared->ZombieBufferObjects) {
       set_foreach(shared->ZombieBufferObjects, entry) {
@@ -390,15 +382,11 @@ free_shared_state(struct gl_context *ctx, struct gl_shared_state *shared)
       _mesa_set_destroy(shared->ZombieBufferObjects, NULL);
    }
 
-   if (shared->FrameBuffers) {
-      _mesa_HashDeleteAll(shared->FrameBuffers, delete_framebuffer_cb, ctx);
-      _mesa_DeleteHashTable(shared->FrameBuffers);
-   }
+   if (shared->FrameBuffers)
+      _mesa_DeleteHashTable(shared->FrameBuffers, delete_framebuffer_cb, ctx);
 
-   if (shared->RenderBuffers) {
-      _mesa_HashDeleteAll(shared->RenderBuffers, delete_renderbuffer_cb, ctx);
-      _mesa_DeleteHashTable(shared->RenderBuffers);
-   }
+   if (shared->RenderBuffers)
+      _mesa_DeleteHashTable(shared->RenderBuffers, delete_renderbuffer_cb, ctx);
 
    if (shared->SyncObjects) {
       set_foreach(shared->SyncObjects, entry) {
@@ -409,9 +397,8 @@ free_shared_state(struct gl_context *ctx, struct gl_shared_state *shared)
    }
 
    if (shared->SamplerObjects) {
-      _mesa_HashDeleteAll(shared->SamplerObjects, delete_sampler_object_cb,
-                          ctx);
-      _mesa_DeleteHashTable(shared->SamplerObjects);
+      _mesa_DeleteHashTable(shared->SamplerObjects, delete_sampler_object_cb,
+                            ctx);
    }
 
    /*
@@ -425,10 +412,8 @@ free_shared_state(struct gl_context *ctx, struct gl_shared_state *shared)
    }
 
    /* all other textures */
-   if (shared->TexObjects) {
-      _mesa_HashDeleteAll(shared->TexObjects, delete_texture_cb, ctx);
-      _mesa_DeleteHashTable(shared->TexObjects);
-   }
+   if (shared->TexObjects)
+      _mesa_DeleteHashTable(shared->TexObjects, delete_texture_cb, ctx);
 
    _mesa_free_shared_handles(shared);
 
@@ -437,13 +422,13 @@ free_shared_state(struct gl_context *ctx, struct gl_shared_state *shared)
    simple_mtx_destroy(&shared->ShaderIncludeMutex);
 
    if (shared->MemoryObjects) {
-      _mesa_HashDeleteAll(shared->MemoryObjects, delete_memory_object_cb, ctx);
-      _mesa_DeleteHashTable(shared->MemoryObjects);
+      _mesa_DeleteHashTable(shared->MemoryObjects, delete_memory_object_cb,
+                            ctx);
    }
 
    if (shared->SemaphoreObjects) {
-      _mesa_HashDeleteAll(shared->SemaphoreObjects, delete_semaphore_object_cb, ctx);
-      _mesa_DeleteHashTable(shared->SemaphoreObjects);
+      _mesa_DeleteHashTable(shared->SemaphoreObjects,
+                            delete_semaphore_object_cb, ctx);
    }
 
    simple_mtx_destroy(&shared->Mutex);

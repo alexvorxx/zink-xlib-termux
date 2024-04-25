@@ -125,6 +125,7 @@ def define_tracepoints(args):
 
     # Indirect draw generation, only for Anv
     begin_end_tp('generate_draws')
+    begin_end_tp('generate_commands')
 
     # vkCmdResetQuery, only for Anv
     begin_end_tp('query_clear_blorp',

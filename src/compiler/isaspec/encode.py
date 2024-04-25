@@ -340,6 +340,7 @@ template = """\
  * IN THE SOFTWARE.
  */
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <util/bitset.h>

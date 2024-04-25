@@ -240,6 +240,22 @@ glsl_contains_double(const glsl_type *t)
 }
 
 bool
+glsl_type_contains_32bit(const glsl_type *t)
+{
+   if (glsl_type_is_array(t)) {
+      return glsl_type_contains_32bit(t->fields.array);
+   } else if (glsl_type_is_struct(t) || glsl_type_is_interface(t)) {
+      for (unsigned int i = 0; i < t->length; i++) {
+         if (glsl_type_contains_32bit(t->fields.structure[i].type))
+            return true;
+      }
+      return false;
+   } else {
+      return glsl_type_is_32bit(t);
+   }
+}
+
+bool
 glsl_type_contains_64bit(const glsl_type *t)
 {
    if (glsl_type_is_array(t)) {
@@ -1969,7 +1985,7 @@ glsl_varying_count(const glsl_type *t)
 unsigned
 glsl_get_std140_base_alignment(const glsl_type *t, bool row_major)
 {
-   unsigned N = glsl_type_is_64bit(t) ? 8 : 4;
+   unsigned N = glsl_type_is_64bit(t) ? 8 : (glsl_type_is_16bit(t) ? 2 : 4);
 
    /* (1) If the member is a scalar consuming <N> basic machine units, the
     *     base alignment is <N>.
@@ -2088,7 +2104,7 @@ glsl_get_std140_base_alignment(const glsl_type *t, bool row_major)
 unsigned
 glsl_get_std140_size(const glsl_type *t, bool row_major)
 {
-   unsigned N = glsl_type_is_64bit(t) ? 8 : 4;
+   unsigned N = glsl_type_is_64bit(t) ? 8 : (glsl_type_is_16bit(t) ? 2 : 4);
 
    /* (1) If the member is a scalar consuming <N> basic machine units, the
     *     base alignment is <N>.
@@ -2308,7 +2324,7 @@ unsigned
 glsl_get_std430_base_alignment(const glsl_type *t, bool row_major)
 {
 
-   unsigned N = glsl_type_is_64bit(t) ? 8 : 4;
+   unsigned N = glsl_type_is_64bit(t) ? 8 : (glsl_type_is_16bit(t) ? 2 : 4);
 
    /* (1) If the member is a scalar consuming <N> basic machine units, the
     *     base alignment is <N>.
@@ -2417,7 +2433,7 @@ glsl_get_std430_base_alignment(const glsl_type *t, bool row_major)
 unsigned
 glsl_get_std430_array_stride(const glsl_type *t, bool row_major)
 {
-   unsigned N = glsl_type_is_64bit(t) ? 8 : 4;
+   unsigned N = glsl_type_is_64bit(t) ? 8 : (glsl_type_is_16bit(t) ? 2 : 4);
 
    /* Notice that the array stride of a vec3 is not 3 * N but 4 * N.
     * See OpenGL 4.30 spec, section 7.6.2.2 "Standard Uniform Block Layout"
@@ -2505,7 +2521,7 @@ glsl_get_explicit_size(const glsl_type *t, bool align_to_stride)
 unsigned
 glsl_get_std430_size(const glsl_type *t, bool row_major)
 {
-   unsigned N = glsl_type_is_64bit(t) ? 8 : 4;
+   unsigned N = glsl_type_is_64bit(t) ? 8 : (glsl_type_is_16bit(t) ? 2 : 4);
 
    /* OpenGL 4.30 spec, section 7.6.2.2 "Standard Uniform Block Layout":
     *

@@ -60,7 +60,7 @@ genX(cmd_buffer_emit_generate_draws)(struct anv_cmd_buffer *cmd_buffer,
 
    struct anv_state push_data_state =
       genX(simple_shader_alloc_push)(simple_state,
-                                     sizeof(struct anv_generated_indirect_params));
+                                     sizeof(struct anv_gen_indirect_params));
    if (push_data_state.map == NULL)
       return ANV_STATE_NULL;
 
@@ -73,42 +73,37 @@ genX(cmd_buffer_emit_generate_draws)(struct anv_cmd_buffer *cmd_buffer,
    if (anv_address_is_null(count_addr)) {
       draw_count_addr = anv_address_add(
          genX(simple_shader_push_state_address)(simple_state, push_data_state),
-         offsetof(struct anv_generated_indirect_params, draw_count));
+         offsetof(struct anv_gen_indirect_params, draw_count));
    } else {
       draw_count_addr = count_addr;
    }
 
-   struct anv_generated_indirect_params *push_data = push_data_state.map;
-   *push_data = (struct anv_generated_indirect_params) {
-      .draw                      = {
-         .draw_id_addr           = anv_address_physical(draw_id_addr),
-         .indirect_data_addr     = anv_address_physical(indirect_data_addr),
-         .indirect_data_stride   = indirect_data_stride,
-         .flags                  = (use_tbimr ? ANV_GENERATED_FLAG_TBIMR : 0) |
-                                   (indexed ? ANV_GENERATED_FLAG_INDEXED : 0) |
-                                   (cmd_buffer->state.conditional_render_enabled ?
-                                    ANV_GENERATED_FLAG_PREDICATED : 0) |
-                                   ((vs_prog_data->uses_firstvertex ||
-                                     vs_prog_data->uses_baseinstance) ?
-                                    ANV_GENERATED_FLAG_BASE : 0) |
-                                   (vs_prog_data->uses_drawid ? ANV_GENERATED_FLAG_DRAWID : 0) |
-                                   (anv_mocs(device, indirect_data_addr.bo,
-                                             ISL_SURF_USAGE_VERTEX_BUFFER_BIT) << 8) |
-                                   (!anv_address_is_null(count_addr) ?
-                                    ANV_GENERATED_FLAG_COUNT : 0) |
-                                   (ring_count != 0 ? ANV_GENERATED_FLAG_RING_MODE : 0) |
-                                   ((generated_cmd_stride / 4) << 16) |
-                                   device->info->ver << 24,
-         .draw_base              = item_base,
-         .max_draw_count         = max_count,
-         .ring_count             = ring_count,
-         .instance_multiplier    = pipeline->instance_multiplier,
-      },
-      .draw_count                = anv_address_is_null(count_addr) ? max_count : 0,
-      .indirect_data_addr        = anv_address_physical(indirect_data_addr),
-      .generated_cmds_addr       = anv_address_physical(generated_cmds_addr),
-      .draw_ids_addr             = anv_address_physical(draw_id_addr),
-      .draw_count_addr           = anv_address_physical(draw_count_addr),
+   struct anv_gen_indirect_params *push_data = push_data_state.map;
+   *push_data = (struct anv_gen_indirect_params) {
+      .draw_id_addr           = anv_address_physical(draw_id_addr),
+      .indirect_data_addr     = anv_address_physical(indirect_data_addr),
+      .indirect_data_stride   = indirect_data_stride,
+      .flags                  = (use_tbimr ? ANV_GENERATED_FLAG_TBIMR : 0) |
+                                (indexed ? ANV_GENERATED_FLAG_INDEXED : 0) |
+                                (cmd_buffer->state.conditional_render_enabled ?
+                                 ANV_GENERATED_FLAG_PREDICATED : 0) |
+                                ((vs_prog_data->uses_firstvertex ||
+                                  vs_prog_data->uses_baseinstance) ?
+                                 ANV_GENERATED_FLAG_BASE : 0) |
+                                (vs_prog_data->uses_drawid ? ANV_GENERATED_FLAG_DRAWID : 0) |
+                                (anv_mocs(device, indirect_data_addr.bo,
+                                          ISL_SURF_USAGE_VERTEX_BUFFER_BIT) << 8) |
+                                (!anv_address_is_null(count_addr) ?
+                                 ANV_GENERATED_FLAG_COUNT : 0) |
+                                (ring_count != 0 ? ANV_GENERATED_FLAG_RING_MODE : 0) |
+                                ((generated_cmd_stride / 4) << 16),
+      .draw_base              = item_base,
+      .max_draw_count         = max_count,
+      .ring_count             = ring_count,
+      .instance_multiplier    = pipeline->instance_multiplier,
+      .draw_count             = anv_address_is_null(count_addr) ? max_count : 0,
+      .generated_cmds_addr    = anv_address_physical(generated_cmds_addr),
+      .draw_count_addr        = anv_address_physical(draw_count_addr),
    };
 
    genX(emit_simple_shader_dispatch)(simple_state, item_count, push_data_state);
@@ -151,6 +146,7 @@ genX(cmd_buffer_emit_indirect_generated_draws_init)(struct anv_cmd_buffer *cmd_b
       .kernel               = device->internal_kernels[
          ANV_INTERNAL_KERNEL_GENERATED_DRAWS],
       .l3_config            = device->internal_kernels_l3_config,
+      .urb_cfg              = &cmd_buffer->state.gfx.urb_cfg,
    };
 
    genX(emit_simple_shader_init)(state);
@@ -211,7 +207,7 @@ genX(cmd_buffer_get_generated_draw_stride)(struct anv_cmd_buffer *cmd_buffer)
 
 static void
 genX(cmd_buffer_rewrite_forward_end_addr)(struct anv_cmd_buffer *cmd_buffer,
-                                          struct anv_generated_indirect_params *params)
+                                          struct anv_gen_indirect_params *params)
 {
    /* We don't know the end_addr until we have emitted all the generation
     * draws. Go and edit the address of all the push parameters.
@@ -219,7 +215,7 @@ genX(cmd_buffer_rewrite_forward_end_addr)(struct anv_cmd_buffer *cmd_buffer,
    uint64_t end_addr =
       anv_address_physical(anv_batch_current_address(&cmd_buffer->batch));
    while (params != NULL) {
-      params->draw.end_addr = end_addr;
+      params->end_addr = end_addr;
       params = params->prev;
    }
 }
@@ -294,7 +290,7 @@ genX(cmd_buffer_emit_indirect_generated_draws_inplace)(struct anv_cmd_buffer *cm
    const uint32_t draw_cmd_stride =
       genX(cmd_buffer_get_generated_draw_stride)(cmd_buffer);
 
-   struct anv_generated_indirect_params *last_params = NULL;
+   struct anv_gen_indirect_params *last_params = NULL;
    uint32_t item_base = 0;
    while (item_base < max_draw_count) {
       const uint32_t item_count = MIN2(max_draw_count - item_base,
@@ -328,7 +324,7 @@ genX(cmd_buffer_emit_indirect_generated_draws_inplace)(struct anv_cmd_buffer *cm
             max_draw_count,
             indexed,
             0 /* ring_count */);
-      struct anv_generated_indirect_params *params = params_state.map;
+      struct anv_gen_indirect_params *params = params_state.map;
       if (params == NULL)
          return;
 
@@ -478,6 +474,7 @@ genX(cmd_buffer_emit_indirect_generated_draws_inring)(struct anv_cmd_buffer *cmd
       .kernel               = device->internal_kernels[
          ANV_INTERNAL_KERNEL_GENERATED_DRAWS],
       .l3_config            = device->internal_kernels_l3_config,
+      .urb_cfg              = &cmd_buffer->state.gfx.urb_cfg,
    };
    genX(emit_simple_shader_init)(&simple_state);
 
@@ -496,7 +493,7 @@ genX(cmd_buffer_emit_indirect_generated_draws_inring)(struct anv_cmd_buffer *cmd
          max_draw_count,
          indexed,
          ring_count);
-   struct anv_generated_indirect_params *params = params_state.map;
+   struct anv_gen_indirect_params *params = params_state.map;
 
    anv_add_pending_pipe_bits(cmd_buffer,
 #if GFX_VER == 9
@@ -559,7 +556,7 @@ genX(cmd_buffer_emit_indirect_generated_draws_inring)(struct anv_cmd_buffer *cmd
       struct anv_address draw_base_addr = anv_address_add(
          genX(simple_shader_push_state_address)(
             &simple_state, params_state),
-         offsetof(struct anv_generated_indirect_params, draw.draw_base));
+         offsetof(struct anv_gen_indirect_params, draw_base));
 
       const uint32_t mocs = anv_mocs_for_address(cmd_buffer->device,
                                                  &draw_base_addr);
@@ -592,8 +589,8 @@ genX(cmd_buffer_emit_indirect_generated_draws_inring)(struct anv_cmd_buffer *cmd
                                 ANV_PIPE_CONSTANT_CACHE_INVALIDATE_BIT,
                                 "after generated draws end");
 
-      params->draw.gen_addr = anv_address_physical(inc_addr);
-      params->draw.end_addr = anv_address_physical(end_addr);
+      params->gen_addr = anv_address_physical(inc_addr);
+      params->end_addr = anv_address_physical(end_addr);
    }
 }
 

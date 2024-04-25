@@ -574,11 +574,19 @@ nvk_shader_upload(struct nvk_device *dev, struct nvk_shader *shader)
 #endif
 
    VkResult result = nvk_heap_upload(dev, &dev->shader_heap, data,
-                                     total_size, alignment, &shader->upload_addr);
+                                     total_size, alignment,
+                                     &shader->upload_addr);
    if (result == VK_SUCCESS) {
       shader->upload_size = total_size;
-      shader->hdr_offset = hdr_offset;
-      shader->data_offset = data_offset;
+
+      shader->hdr_addr = shader->upload_addr + hdr_offset;
+      if (dev->pdev->info.cls_eng3d < VOLTA_A) {
+         const uint64_t heap_base_addr =
+            nvk_heap_contiguous_base_address(&dev->shader_heap);
+         assert(shader->upload_addr - heap_base_addr < UINT32_MAX);
+         shader->hdr_addr -= heap_base_addr;
+      }
+      shader->data_addr = shader->upload_addr + data_offset;
    }
    free(data);
 

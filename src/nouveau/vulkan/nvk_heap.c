@@ -103,9 +103,7 @@ nvk_heap_grow_locked(struct nvk_device *dev, struct nvk_heap *heap)
       NVK_HEAP_MIN_SIZE << (MAX2(heap->bo_count, 1) - 1);
 
    struct nouveau_ws_bo *bo =
-      nouveau_ws_bo_new(dev->ws_dev,
-                        new_bo_size + heap->overalloc, 0,
-                        heap->bo_flags);
+      nouveau_ws_bo_new(dev->ws_dev, new_bo_size, 0, heap->bo_flags);
    if (bo == NULL) {
       return vk_errorf(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY,
                        "Failed to allocate a heap BO: %m");
@@ -125,10 +123,23 @@ nvk_heap_grow_locked(struct nvk_device *dev, struct nvk_heap *heap)
    if (heap->base_addr != 0) {
       addr = heap->base_addr + heap->total_size;
       nouveau_ws_bo_bind_vma(dev->ws_dev, bo, addr, new_bo_size, 0, 0);
+
+      /* For contiguous heaps, we can now free the padding from the previous
+       * BO because the BO we just added will provide the needed padding. For
+       * non-contiguous heaps, we have to leave each BO padded individually.
+       */
+      if (heap->bo_count > 0) {
+         struct nouveau_ws_bo *prev_bo = heap->bos[heap->bo_count - 1].bo;
+         assert(heap->overalloc < prev_bo->size);
+         const uint64_t pad_vma =
+            encode_vma(heap->bo_count - 1, prev_bo->size - heap->overalloc);
+         util_vma_heap_free(&heap->heap, pad_vma, heap->overalloc);
+      }
    }
 
    uint64_t vma = encode_vma(heap->bo_count, 0);
-   util_vma_heap_free(&heap->heap, vma, new_bo_size);
+   assert(heap->overalloc < new_bo_size);
+   util_vma_heap_free(&heap->heap, vma, new_bo_size - heap->overalloc);
 
    heap->bos[heap->bo_count++] = (struct nvk_heap_bo) {
       .bo = bo,
@@ -153,15 +164,9 @@ nvk_heap_alloc_locked(struct nvk_device *dev, struct nvk_heap *heap,
 
          assert(bo_idx < heap->bo_count);
          assert(heap->bos[bo_idx].bo != NULL);
-         assert(bo_offset + size + heap->overalloc <=
-                heap->bos[bo_idx].bo->size);
+         assert(bo_offset + size <= heap->bos[bo_idx].bo->size);
 
-         if (heap->base_addr != 0) {
-            assert(bo_idx == 0);
-            *addr_out = bo_offset;
-         } else {
-            *addr_out = heap->bos[bo_idx].bo->offset + bo_offset;
-         }
+         *addr_out = heap->bos[bo_idx].addr + bo_offset;
          if (map_out != NULL) {
             assert(heap->bos[bo_idx].map != NULL);
             *map_out = (char *)heap->bos[bo_idx].map + bo_offset;
@@ -183,10 +188,10 @@ nvk_heap_free_locked(struct nvk_device *dev, struct nvk_heap *heap,
    assert(addr + size > addr);
 
    for (uint32_t bo_idx = 0; bo_idx < heap->bo_count; bo_idx++) {
-      if (addr < heap->bos[bo_idx].bo->offset)
+      if (addr < heap->bos[bo_idx].addr)
          continue;
 
-      uint64_t bo_offset = addr - heap->bos[bo_idx].bo->offset;
+      uint64_t bo_offset = addr - heap->bos[bo_idx].addr;
       if (bo_offset >= heap->bos[bo_idx].bo->size)
          continue;
 

@@ -23,6 +23,7 @@
 
 #include "brw_cfg.h"
 #include "brw_eu.h"
+#include "brw_disasm.h"
 #include "brw_disasm_info.h"
 #include "dev/intel_debug.h"
 #include "compiler/nir/nir.h"

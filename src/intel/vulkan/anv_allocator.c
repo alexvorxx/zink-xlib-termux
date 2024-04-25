@@ -1491,6 +1491,13 @@ anv_device_alloc_bo(struct anv_device *device,
    /* The kernel is going to give us whole pages anyway. */
    size = align64(size, 4096);
 
+   const uint64_t ccs_offset = size;
+   if (alloc_flags & ANV_BO_ALLOC_AUX_CCS) {
+      assert(device->info->has_aux_map);
+      size += DIV_ROUND_UP(size, intel_aux_get_main_to_aux_ratio(device->aux_map_ctx));
+      size = align64(size, 4096);
+   }
+
    const struct intel_memory_class_instance *regions[2];
    uint32_t nregions = 0;
 
@@ -1532,6 +1539,7 @@ anv_device_alloc_bo(struct anv_device *device,
       .refcount = 1,
       .offset = -1,
       .size = size,
+      .ccs_offset = ccs_offset,
       .actual_size = actual_size,
       .flags = bo_flags,
       .alloc_flags = alloc_flags,
@@ -1614,6 +1622,7 @@ anv_device_import_bo_from_host_ptr(struct anv_device *device,
    assert(!(alloc_flags & (ANV_BO_ALLOC_MAPPED |
                            ANV_BO_ALLOC_HOST_CACHED |
                            ANV_BO_ALLOC_HOST_COHERENT |
+                           ANV_BO_ALLOC_AUX_CCS |
                            ANV_BO_ALLOC_PROTECTED |
                            ANV_BO_ALLOC_FIXED_ADDRESS)));
    assert(alloc_flags & ANV_BO_ALLOC_EXTERNAL);
@@ -1909,12 +1918,6 @@ anv_device_release_bo(struct anv_device *device,
       return;
    }
    assert(bo->refcount == 0);
-
-   /* Unmap the entire BO. In the case that some addresses lacked an aux-map
-    * entry, the unmapping function will add table entries for them.
-    */
-   if (anv_bo_allows_aux_map(device, bo))
-      intel_aux_map_unmap_range(device->aux_map_ctx, bo->offset, bo->size);
 
    /* Memset the BO just in case.  The refcount being zero should be enough to
     * prevent someone from assuming the data is valid but it's safer to just

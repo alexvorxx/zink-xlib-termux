@@ -593,7 +593,7 @@ namespace brw {
    void
    check_dynamic_msaa_flag(const fs_builder &bld,
                            const struct brw_wm_prog_data *wm_prog_data,
-                           enum brw_wm_msaa_flags flag);
+                           enum intel_msaa_flags flag);
 
    bool
    lower_src_modifiers(fs_visitor *v, bblock_t *block, fs_inst *inst, unsigned i);

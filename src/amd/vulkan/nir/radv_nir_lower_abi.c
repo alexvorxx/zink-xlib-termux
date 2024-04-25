@@ -285,9 +285,13 @@ lower_abi_instr(nir_builder *b, nir_intrinsic_instr *intrin, void *state)
    case nir_intrinsic_load_esgs_vertex_stride_amd: {
       /* Emulate VGT_ESGS_RING_ITEMSIZE on GFX9+ to reduce context register writes. */
       assert(s->gfx_level >= GFX9);
-      const unsigned stride =
-         s->info->is_ngg ? s->info->ngg_info.vgt_esgs_ring_itemsize : s->info->gs_ring_info.vgt_esgs_ring_itemsize;
-      replacement = nir_imm_int(b, stride);
+      if (s->info->merged_shader_compiled_separately) {
+         replacement = ac_nir_load_arg(b, &s->args->ac, s->args->vgt_esgs_ring_itemsize);
+      } else {
+         const unsigned stride =
+            s->info->is_ngg ? s->info->ngg_info.vgt_esgs_ring_itemsize : s->info->gs_ring_info.vgt_esgs_ring_itemsize;
+         replacement = nir_imm_int(b, stride);
+      }
       break;
    }
    case nir_intrinsic_load_hs_out_patch_data_offset_amd: {

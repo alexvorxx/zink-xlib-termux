@@ -709,6 +709,39 @@ try_reassign_split_vector(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
 }
 
 void
+try_convert_fma_to_vop2(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
+{
+   /* We convert v_fma_f32 with inline constant to fmamk/fmaak.
+    * This is only benefical if it allows more VOPD.
+    */
+   if (ctx.program->gfx_level < GFX11 || ctx.program->wave_size != 32 ||
+       instr->opcode != aco_opcode::v_fma_f32 || instr->usesModifiers())
+      return;
+
+   int constant_idx = -1;
+   int vgpr_idx = -1;
+   for (int i = 0; i < 3; i++) {
+      const Operand& op = instr->operands[i];
+      if (op.isConstant() && !op.isLiteral())
+         constant_idx = i;
+      else if (op.isOfType(RegType::vgpr))
+         vgpr_idx = i;
+      else
+         return;
+   }
+
+   if (constant_idx < 0 || vgpr_idx < 0)
+      return;
+
+   std::swap(instr->operands[constant_idx], instr->operands[2]);
+   if (constant_idx == 0 || vgpr_idx == 0)
+      std::swap(instr->operands[0], instr->operands[1]);
+   instr->operands[2] = Operand::literal32(instr->operands[2].constantValue());
+   instr->opcode = constant_idx == 2 ? aco_opcode::v_fmaak_f32 : aco_opcode::v_fmamk_f32;
+   instr->format = Format::VOP2;
+}
+
+void
 process_instruction(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
 {
    /* Don't try to optimize instructions which are already dead. */
@@ -725,6 +758,8 @@ process_instruction(pr_opt_ctx& ctx, aco_ptr<Instruction>& instr)
    try_combine_dpp(ctx, instr);
 
    try_reassign_split_vector(ctx, instr);
+
+   try_convert_fma_to_vop2(ctx, instr);
 
    if (instr)
       save_reg_writes(ctx, instr);

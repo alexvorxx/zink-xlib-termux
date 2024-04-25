@@ -917,6 +917,24 @@ static inline unsigned util_res_sample_count(struct pipe_resource *res)
    return res->nr_samples > 0 ? res->nr_samples : 1;
 }
 
+static inline void
+util_set_vertex_buffers(struct pipe_context *pipe,
+                        unsigned num_buffers, bool take_ownership,
+                        const struct pipe_vertex_buffer *buffers)
+{
+   /* set_vertex_buffers requires that reference counts are incremented
+    * by the caller.
+    */
+   if (!take_ownership) {
+      for (unsigned i = 0; i < num_buffers; i++) {
+         if (!buffers[i].is_user_buffer && buffers[i].buffer.resource)
+            p_atomic_inc(&buffers[i].buffer.resource->reference.count);
+      }
+   }
+
+   pipe->set_vertex_buffers(pipe, num_buffers, buffers);
+}
+
 #ifdef __cplusplus
 }
 #endif

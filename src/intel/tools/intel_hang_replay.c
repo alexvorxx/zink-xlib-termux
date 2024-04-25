@@ -42,9 +42,10 @@
 
 #include <xf86drm.h>
 
-#include "common/intel_disasm.h"
 #include "common/intel_gem.h"
 #include "common/intel_hang_dump.h"
+#include "compiler/brw_disasm.h"
+#include "compiler/brw_isa_info.h"
 #include "dev/intel_device_info.h"
 
 #include "drm-uapi/i915_drm.h"
@@ -417,9 +418,9 @@ main(int argc, char *argv[])
                  (bo->file_offset - aligned_offset), (*addr - bo->offset));
          struct brw_isa_info _isa, *isa = &_isa;
          brw_init_isa_info(isa, &devinfo);
-         intel_disassemble(isa,
-                           map + (bo->file_offset - aligned_offset) + (*addr - bo->offset),
-                           0, stderr);
+         brw_disassemble_with_errors(isa,
+                                     map + (bo->file_offset - aligned_offset) + (*addr - bo->offset),
+                                     0, stderr);
 
          munmap(map, remaining_length);
       }

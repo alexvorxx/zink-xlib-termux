@@ -10,7 +10,6 @@ use mesa_rust_util::static_assert;
 use rusticl_opencl_gen::*;
 
 use std::collections::HashSet;
-use std::slice;
 use std::sync::Arc;
 use std::sync::Condvar;
 use std::sync::Mutex;
@@ -67,7 +66,7 @@ impl Event {
         work: EventSig,
     ) -> Arc<Event> {
         Arc::new(Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Event),
             context: queue.context.clone(),
             queue: Some(queue.clone()),
             cmd_type: cmd_type,
@@ -83,7 +82,7 @@ impl Event {
 
     pub fn new_user(context: Arc<Context>) -> Arc<Event> {
         Arc::new(Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Event),
             context: context,
             queue: None,
             cmd_type: CL_COMMAND_USER,
@@ -94,11 +93,6 @@ impl Event {
             }),
             cv: Condvar::new(),
         })
-    }
-
-    pub fn from_cl_arr(events: *const cl_event, num_events: u32) -> CLResult<Vec<Arc<Event>>> {
-        let s = unsafe { slice::from_raw_parts(events, num_events as usize) };
-        s.iter().map(|e| e.get_arc()).collect()
     }
 
     fn state(&self) -> MutexGuard<EventMutState> {

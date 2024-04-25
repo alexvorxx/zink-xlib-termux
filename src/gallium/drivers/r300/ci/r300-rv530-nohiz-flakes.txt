@@ -10,3 +10,5 @@ spec@!opengl 1.4@tex-miplevel-selection-lod-bias
 spec@arb_sampler_objects@sampler-incomplete
 spec@glsl-1.10@execution@built-in-functions@fs-op-selection-bool-bvec3-bvec3
 spec@oes_draw_elements_base_vertex@oes_draw_elements_base_vertex-drawelements
+shaders@glsl-fs-bug25902
+shaders@glsl-lod-bias

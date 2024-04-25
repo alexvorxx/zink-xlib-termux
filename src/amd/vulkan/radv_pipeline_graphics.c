@@ -1178,11 +1178,12 @@ get_vs_output_info(const struct radv_graphics_pipeline *pipeline)
 static bool
 radv_should_export_multiview(const struct radv_shader_stage *stage, const struct radv_graphics_state_key *gfx_state)
 {
-   /* Export the layer in the last VGT stage if multiview is used. When the next stage is unknown
-    * (with graphics pipeline library), the layer is exported unconditionally.
+   /* Export the layer in the last VGT stage if multiview is used.
+    * Also checks for NONE stage, which happens when we have depth-only rendering.
+    * When the next stage is unknown (with graphics pipeline library), the layer is exported unconditionally.
     */
    return gfx_state->has_multiview_view_index &&
-          (stage->info.next_stage == MESA_SHADER_FRAGMENT ||
+          (stage->info.next_stage == MESA_SHADER_FRAGMENT || stage->info.next_stage == MESA_SHADER_NONE ||
            !(gfx_state->lib_flags & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT)) &&
           !(stage->nir->info.outputs_written & VARYING_BIT_LAYER);
 }
@@ -1919,8 +1920,6 @@ radv_generate_graphics_state_key(const struct radv_device *device, const struct 
          key.ps.has_epilog && (!state->ms || (pipeline->dynamic_states & RADV_DYNAMIC_ALPHA_TO_COVERAGE_ENABLE));
    }
 
-   key.dynamic_patch_control_points = !!(pipeline->dynamic_states & RADV_DYNAMIC_PATCH_CONTROL_POINTS);
-
    key.dynamic_rasterization_samples = !!(pipeline->dynamic_states & RADV_DYNAMIC_RASTERIZATION_SAMPLES) ||
                                        (!!(pipeline->active_stages & VK_SHADER_STAGE_FRAGMENT_BIT) && !state->ms);
 
@@ -1992,17 +1991,23 @@ static void
 radv_fill_shader_info_ngg(struct radv_device *device, struct radv_shader_stage *stages,
                           VkShaderStageFlagBits active_nir_stages)
 {
-   if (device->cache_key.use_ngg) {
-      if (stages[MESA_SHADER_TESS_CTRL].nir) {
-         stages[MESA_SHADER_TESS_EVAL].info.is_ngg = true;
-      } else if (stages[MESA_SHADER_VERTEX].nir) {
-         stages[MESA_SHADER_VERTEX].info.is_ngg = true;
-      } else if (stages[MESA_SHADER_MESH].nir) {
-         stages[MESA_SHADER_MESH].info.is_ngg = true;
-      }
+   if (!device->cache_key.use_ngg)
+      return;
 
-      if (device->physical_device->rad_info.gfx_level < GFX11 && stages[MESA_SHADER_TESS_CTRL].nir &&
-          stages[MESA_SHADER_GEOMETRY].nir &&
+   if (stages[MESA_SHADER_VERTEX].nir && stages[MESA_SHADER_VERTEX].info.next_stage != MESA_SHADER_TESS_CTRL) {
+      stages[MESA_SHADER_VERTEX].info.is_ngg = true;
+   } else if (stages[MESA_SHADER_TESS_EVAL].nir) {
+      stages[MESA_SHADER_TESS_EVAL].info.is_ngg = true;
+   } else if (stages[MESA_SHADER_MESH].nir) {
+      stages[MESA_SHADER_MESH].info.is_ngg = true;
+   }
+
+   if (device->physical_device->rad_info.gfx_level >= GFX11) {
+      if (stages[MESA_SHADER_GEOMETRY].nir)
+         stages[MESA_SHADER_GEOMETRY].info.is_ngg = true;
+   } else {
+      /* GFX10/GFX10.3 can't always enable NGG due to HW bugs/limitations. */
+      if (stages[MESA_SHADER_TESS_EVAL].nir && stages[MESA_SHADER_GEOMETRY].nir &&
           stages[MESA_SHADER_GEOMETRY].nir->info.gs.invocations *
                 stages[MESA_SHADER_GEOMETRY].nir->info.gs.vertices_out >
              256) {
@@ -2022,20 +2027,20 @@ radv_fill_shader_info_ngg(struct radv_device *device, struct radv_shader_stage *
          }
       }
 
-      bool uses_xfb = last_vgt_stage && last_vgt_stage->nir->xfb_info;
-
-      if (!device->physical_device->use_ngg_streamout && uses_xfb) {
-         /* GFX11+ requires NGG. */
-         assert(device->physical_device->rad_info.gfx_level < GFX11);
-
-         if (stages[MESA_SHADER_TESS_CTRL].nir)
+      if ((last_vgt_stage && last_vgt_stage->nir->xfb_info) ||
+          ((device->instance->debug_flags & RADV_DEBUG_NO_NGG_GS) && stages[MESA_SHADER_GEOMETRY].nir)) {
+         /* NGG needs to be disabled on GFX10/GFX10.3 when:
+          * - streamout is used because NGG streamout isn't supported
+          * - NGG GS is explictly disabled to workaround performance issues
+          */
+         if (stages[MESA_SHADER_TESS_EVAL].nir)
             stages[MESA_SHADER_TESS_EVAL].info.is_ngg = false;
          else
             stages[MESA_SHADER_VERTEX].info.is_ngg = false;
       }
 
       if (stages[MESA_SHADER_GEOMETRY].nir) {
-         if (stages[MESA_SHADER_TESS_CTRL].nir)
+         if (stages[MESA_SHADER_TESS_EVAL].nir)
             stages[MESA_SHADER_GEOMETRY].info.is_ngg = stages[MESA_SHADER_TESS_EVAL].info.is_ngg;
          else
             stages[MESA_SHADER_GEOMETRY].info.is_ngg = stages[MESA_SHADER_VERTEX].info.is_ngg;
@@ -2256,10 +2261,12 @@ radv_graphics_shaders_nir_to_asm(struct radv_device *device, struct vk_pipeline_
 
       /* On GFX9+, TES is merged with GS and VS is merged with TCS or GS. */
       if (device->physical_device->rad_info.gfx_level >= GFX9 &&
-          (s == MESA_SHADER_TESS_CTRL || s == MESA_SHADER_GEOMETRY)) {
+          ((s == MESA_SHADER_GEOMETRY &&
+            (active_nir_stages & (VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT))) ||
+           (s == MESA_SHADER_TESS_CTRL && (active_nir_stages & VK_SHADER_STAGE_VERTEX_BIT)))) {
          gl_shader_stage pre_stage;
 
-         if (s == MESA_SHADER_GEOMETRY && stages[MESA_SHADER_TESS_EVAL].nir) {
+         if (s == MESA_SHADER_GEOMETRY && (active_nir_stages & VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT)) {
             pre_stage = MESA_SHADER_TESS_EVAL;
          } else {
             pre_stage = MESA_SHADER_VERTEX;
@@ -3113,8 +3120,46 @@ radv_emit_hw_hs(const struct radv_device *device, struct radeon_cmdbuf *cs, cons
 
 void
 radv_emit_vertex_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
-                        const struct radv_shader *vs)
+                        const struct radv_shader *vs, const struct radv_shader *next_stage)
 {
+   if (vs->info.merged_shader_compiled_separately) {
+      const struct radv_userdata_info *loc = &vs->info.user_sgprs_locs.shader_data[AC_UD_NEXT_STAGE_PC];
+      const uint32_t base_reg = vs->info.user_data_0;
+
+      assert(loc->sgpr_idx != -1 && loc->num_sgprs == 1);
+
+      if (!vs->info.vs.has_prolog) {
+         uint32_t rsrc1, rsrc2;
+
+         if (vs->info.next_stage == MESA_SHADER_TESS_CTRL) {
+            radv_shader_combine_cfg_vs_tcs(vs, next_stage, &rsrc1, NULL);
+
+            if (device->physical_device->rad_info.gfx_level >= GFX10) {
+               radeon_set_sh_reg(cs, R_00B520_SPI_SHADER_PGM_LO_LS, vs->va >> 8);
+            } else {
+               radeon_set_sh_reg(cs, R_00B410_SPI_SHADER_PGM_LO_LS, vs->va >> 8);
+            }
+
+            radeon_set_sh_reg(cs, R_00B428_SPI_SHADER_PGM_RSRC1_HS, rsrc1);
+         } else {
+            radv_shader_combine_cfg_vs_gs(vs, next_stage, &rsrc1, &rsrc2);
+
+            if (device->physical_device->rad_info.gfx_level >= GFX10) {
+               radeon_set_sh_reg(cs, R_00B320_SPI_SHADER_PGM_LO_ES, vs->va >> 8);
+            } else {
+               radeon_set_sh_reg(cs, R_00B210_SPI_SHADER_PGM_LO_ES, vs->va >> 8);
+            }
+
+            radeon_set_sh_reg_seq(cs, R_00B228_SPI_SHADER_PGM_RSRC1_GS, 2);
+            radeon_emit(cs, rsrc1);
+            radeon_emit(cs, rsrc2 | S_00B22C_LDS_SIZE(next_stage->info.gs_ring_info.lds_size));
+         }
+      }
+
+      radv_emit_shader_pointer(device, cs, base_reg + loc->sgpr_idx * 4, next_stage->va, false);
+      return;
+   }
+
    if (vs->info.vs.as_ls)
       radv_emit_hw_ls(cs, vs);
    else if (vs->info.vs.as_es)
@@ -3128,13 +3173,39 @@ radv_emit_vertex_shader(const struct radv_device *device, struct radeon_cmdbuf *
 void
 radv_emit_tess_ctrl_shader(const struct radv_device *device, struct radeon_cmdbuf *cs, const struct radv_shader *tcs)
 {
+   if (tcs->info.merged_shader_compiled_separately) {
+      /* When VS+TCS are compiled separately on GFX9+, the VS will jump to the TCS and everything is
+       * emitted as part of the VS.
+       */
+      return;
+   }
+
    radv_emit_hw_hs(device, cs, tcs);
 }
 
 void
 radv_emit_tess_eval_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
-                           const struct radv_shader *tes)
+                           const struct radv_shader *tes, const struct radv_shader *gs)
 {
+   if (tes->info.merged_shader_compiled_separately) {
+      const struct radv_userdata_info *loc = &tes->info.user_sgprs_locs.shader_data[AC_UD_NEXT_STAGE_PC];
+      const uint32_t base_reg = tes->info.user_data_0;
+      uint32_t rsrc1, rsrc2;
+
+      assert(loc->sgpr_idx != -1 && loc->num_sgprs == 1);
+
+      radv_shader_combine_cfg_tes_gs(tes, gs, &rsrc1, &rsrc2);
+
+      radeon_set_sh_reg(cs, R_00B210_SPI_SHADER_PGM_LO_ES, tes->va >> 8);
+
+      radeon_set_sh_reg_seq(cs, R_00B228_SPI_SHADER_PGM_RSRC1_GS, 2);
+      radeon_emit(cs, rsrc1);
+      radeon_emit(cs, rsrc2 | S_00B22C_LDS_SIZE(gs->info.gs_ring_info.lds_size));
+
+      radv_emit_shader_pointer(device, cs, base_reg + loc->sgpr_idx * 4, gs->va, false);
+      return;
+   }
+
    if (tes->info.is_ngg) {
       radv_emit_hw_ngg(device, ctx_cs, cs, NULL, tes);
    } else if (tes->info.tes.as_es) {
@@ -3194,15 +3265,18 @@ radv_emit_hw_gs(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, 
    va = radv_shader_get_va(gs);
 
    if (pdevice->rad_info.gfx_level >= GFX9) {
-      if (pdevice->rad_info.gfx_level >= GFX10) {
-         radeon_set_sh_reg(cs, R_00B320_SPI_SHADER_PGM_LO_ES, va >> 8);
-      } else {
-         radeon_set_sh_reg(cs, R_00B210_SPI_SHADER_PGM_LO_ES, va >> 8);
-      }
+      if (!gs->info.merged_shader_compiled_separately) {
 
-      radeon_set_sh_reg_seq(cs, R_00B228_SPI_SHADER_PGM_RSRC1_GS, 2);
-      radeon_emit(cs, gs->config.rsrc1);
-      radeon_emit(cs, gs->config.rsrc2 | S_00B22C_LDS_SIZE(gs_state->lds_size));
+         if (pdevice->rad_info.gfx_level >= GFX10) {
+            radeon_set_sh_reg(cs, R_00B320_SPI_SHADER_PGM_LO_ES, va >> 8);
+         } else {
+            radeon_set_sh_reg(cs, R_00B210_SPI_SHADER_PGM_LO_ES, va >> 8);
+         }
+
+         radeon_set_sh_reg_seq(cs, R_00B228_SPI_SHADER_PGM_RSRC1_GS, 2);
+         radeon_emit(cs, gs->config.rsrc1);
+         radeon_emit(cs, gs->config.rsrc2 | S_00B22C_LDS_SIZE(gs_state->lds_size));
+      }
 
       radeon_set_context_reg(ctx_cs, R_028A44_VGT_GS_ONCHIP_CNTL, gs_state->vgt_gs_onchip_cntl);
       radeon_set_context_reg(ctx_cs, R_028A94_VGT_GS_MAX_PRIMS_PER_SUBGROUP, gs_state->vgt_gs_max_prims_per_subgroup);
@@ -3637,7 +3711,7 @@ radv_pipeline_emit_pm4(const struct radv_device *device, struct radv_graphics_pi
    radv_emit_vgt_gs_mode(device, ctx_cs, pipeline->base.shaders[pipeline->last_vgt_api_stage]);
 
    if (radv_pipeline_has_stage(pipeline, MESA_SHADER_VERTEX)) {
-      radv_emit_vertex_shader(device, ctx_cs, cs, pipeline->base.shaders[MESA_SHADER_VERTEX]);
+      radv_emit_vertex_shader(device, ctx_cs, cs, pipeline->base.shaders[MESA_SHADER_VERTEX], NULL);
    }
 
    if (radv_pipeline_has_stage(pipeline, MESA_SHADER_MESH)) {
@@ -3648,7 +3722,7 @@ radv_pipeline_emit_pm4(const struct radv_device *device, struct radv_graphics_pi
       radv_emit_tess_ctrl_shader(device, cs, pipeline->base.shaders[MESA_SHADER_TESS_CTRL]);
 
       if (radv_pipeline_has_stage(pipeline, MESA_SHADER_TESS_EVAL)) {
-         radv_emit_tess_eval_shader(device, ctx_cs, cs, pipeline->base.shaders[MESA_SHADER_TESS_EVAL]);
+         radv_emit_tess_eval_shader(device, ctx_cs, cs, pipeline->base.shaders[MESA_SHADER_TESS_EVAL], NULL);
       }
    }
 

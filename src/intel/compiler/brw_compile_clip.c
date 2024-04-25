@@ -22,6 +22,7 @@
  */
 
 #include "brw_clip.h"
+#include "brw_disasm.h"
 
 #include "dev/intel_debug.h"
 
@@ -30,7 +31,7 @@ brw_compile_clip(const struct brw_compiler *compiler,
                  void *mem_ctx,
                  const struct brw_clip_prog_key *key,
                  struct brw_clip_prog_data *prog_data,
-                 struct brw_vue_map *vue_map,
+                 struct intel_vue_map *vue_map,
                  unsigned *final_assembly_size)
 {
    struct brw_clip_compile c;

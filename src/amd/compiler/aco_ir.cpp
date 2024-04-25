@@ -45,8 +45,9 @@ static const struct debug_control aco_debug_options[] = {
    {"force-waitdeps", DEBUG_FORCE_WAITDEPS},
    {"novn", DEBUG_NO_VN},
    {"noopt", DEBUG_NO_OPT},
-   {"nosched", DEBUG_NO_SCHED | DEBUG_NO_SCHED_ILP},
+   {"nosched", DEBUG_NO_SCHED | DEBUG_NO_SCHED_ILP | DEBUG_NO_SCHED_VOPD},
    {"nosched-ilp", DEBUG_NO_SCHED_ILP},
+   {"nosched-vopd", DEBUG_NO_SCHED_VOPD},
    {"perfinfo", DEBUG_PERF_INFO},
    {"liveinfo", DEBUG_LIVE_INFO},
    {NULL, 0}};
@@ -413,6 +414,9 @@ can_use_DPP(amd_gfx_level gfx_level, const aco_ptr<Instruction>& instr, bool dpp
              instr->opcode == aco_opcode::v_dot2_f32_f16 ||
              instr->opcode == aco_opcode::v_dot2_f32_bf16;
    }
+
+   if (instr->opcode == aco_opcode::v_pk_fmac_f16)
+      return gfx_level < GFX11;
 
    /* there are more cases but those all take 64-bit inputs */
    return instr->opcode != aco_opcode::v_madmk_f32 && instr->opcode != aco_opcode::v_madak_f32 &&

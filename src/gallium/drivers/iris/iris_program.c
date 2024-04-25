@@ -436,7 +436,6 @@ static void
 iris_setup_uniforms(ASSERTED const struct intel_device_info *devinfo,
                     void *mem_ctx,
                     nir_shader *nir,
-                    struct brw_stage_prog_data *prog_data,
                     unsigned kernel_input_size,
                     enum brw_param_builtin **out_system_values,
                     unsigned *out_num_system_values,
@@ -445,7 +444,7 @@ iris_setup_uniforms(ASSERTED const struct intel_device_info *devinfo,
    unsigned system_values_start = ALIGN(kernel_input_size, sizeof(uint32_t));
 
    const unsigned IRIS_MAX_SYSTEM_VALUES =
-      PIPE_MAX_SHADER_IMAGES * BRW_IMAGE_PARAM_SIZE;
+      PIPE_MAX_SHADER_IMAGES * ISL_IMAGE_PARAM_SIZE;
    enum brw_param_builtin *system_values =
       rzalloc_array(mem_ctx, enum brw_param_builtin, IRIS_MAX_SYSTEM_VALUES);
    unsigned num_system_values = 0;
@@ -594,31 +593,31 @@ iris_setup_uniforms(ASSERTED const struct intel_device_info *devinfo,
                   const unsigned img = var->data.binding + i;
 
                   img_idx[img] = num_system_values;
-                  num_system_values += BRW_IMAGE_PARAM_SIZE;
+                  num_system_values += ISL_IMAGE_PARAM_SIZE;
 
                   uint32_t *img_sv = &system_values[img_idx[img]];
 
                   setup_vec4_image_sysval(
-                     img_sv + BRW_IMAGE_PARAM_OFFSET_OFFSET, img,
-                     offsetof(struct brw_image_param, offset), 2);
+                     img_sv + ISL_IMAGE_PARAM_OFFSET_OFFSET, img,
+                     offsetof(struct isl_image_param, offset), 2);
                   setup_vec4_image_sysval(
-                     img_sv + BRW_IMAGE_PARAM_SIZE_OFFSET, img,
-                     offsetof(struct brw_image_param, size), 3);
+                     img_sv + ISL_IMAGE_PARAM_SIZE_OFFSET, img,
+                     offsetof(struct isl_image_param, size), 3);
                   setup_vec4_image_sysval(
-                     img_sv + BRW_IMAGE_PARAM_STRIDE_OFFSET, img,
-                     offsetof(struct brw_image_param, stride), 4);
+                     img_sv + ISL_IMAGE_PARAM_STRIDE_OFFSET, img,
+                     offsetof(struct isl_image_param, stride), 4);
                   setup_vec4_image_sysval(
-                     img_sv + BRW_IMAGE_PARAM_TILING_OFFSET, img,
-                     offsetof(struct brw_image_param, tiling), 3);
+                     img_sv + ISL_IMAGE_PARAM_TILING_OFFSET, img,
+                     offsetof(struct isl_image_param, tiling), 3);
                   setup_vec4_image_sysval(
-                     img_sv + BRW_IMAGE_PARAM_SWIZZLING_OFFSET, img,
-                     offsetof(struct brw_image_param, swizzling), 2);
+                     img_sv + ISL_IMAGE_PARAM_SWIZZLING_OFFSET, img,
+                     offsetof(struct isl_image_param, swizzling), 2);
                }
             }
 
             b.cursor = nir_before_instr(instr);
             offset = nir_iadd_imm(&b,
-               get_aoa_deref_offset(&b, deref, BRW_IMAGE_PARAM_SIZE * 4),
+               get_aoa_deref_offset(&b, deref, ISL_IMAGE_PARAM_SIZE * 4),
                system_values_start +
                img_idx[var->data.binding] * 4 +
                nir_intrinsic_base(intrin) * 16);
@@ -1145,7 +1144,7 @@ check_urb_size(struct iris_context *ice,
                unsigned needed_size,
                gl_shader_stage stage)
 {
-   unsigned last_allocated_size = ice->shaders.urb.size[stage];
+   unsigned last_allocated_size = ice->shaders.urb.cfg.size[stage];
 
    /* If the last URB allocation wasn't large enough for our needs,
     * flag it as needing to be reconfigured.  Otherwise, we can use
@@ -1315,7 +1314,7 @@ iris_compile_vs(struct iris_screen *screen,
 
    prog_data->use_alt_mode = nir->info.use_legacy_math_rules;
 
-   iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data, 0, &system_values,
+   iris_setup_uniforms(devinfo, mem_ctx, nir, 0, &system_values,
                        &num_system_values, &num_cbufs);
 
    struct iris_binding_table bt;
@@ -1500,7 +1499,7 @@ iris_compile_tcs(struct iris_screen *screen,
       source_hash = *(uint32_t*)nir->info.source_sha1;
    }
 
-   iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data, 0, &system_values,
+   iris_setup_uniforms(devinfo, mem_ctx, nir, 0, &system_values,
                        &num_system_values, &num_cbufs);
    iris_setup_binding_table(devinfo, nir, &bt, /* num_render_targets */ 0,
                             num_system_values, num_cbufs);
@@ -1657,7 +1656,7 @@ iris_compile_tes(struct iris_screen *screen,
       nir_shader_gather_info(nir, impl);
    }
 
-   iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data, 0, &system_values,
+   iris_setup_uniforms(devinfo, mem_ctx, nir, 0, &system_values,
                        &num_system_values, &num_cbufs);
 
    struct iris_binding_table bt;
@@ -1666,7 +1665,7 @@ iris_compile_tes(struct iris_screen *screen,
 
    brw_nir_analyze_ubo_ranges(compiler, nir, prog_data->ubo_ranges);
 
-   struct brw_vue_map input_vue_map;
+   struct intel_vue_map input_vue_map;
    brw_compute_tess_vue_map(&input_vue_map, key->inputs_read,
                             key->patch_inputs_read);
 
@@ -1800,7 +1799,7 @@ iris_compile_gs(struct iris_screen *screen,
       nir_shader_gather_info(nir, impl);
    }
 
-   iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data, 0, &system_values,
+   iris_setup_uniforms(devinfo, mem_ctx, nir, 0, &system_values,
                        &num_system_values, &num_cbufs);
 
    struct iris_binding_table bt;
@@ -1913,7 +1912,7 @@ iris_compile_fs(struct iris_screen *screen,
                 struct util_debug_callback *dbg,
                 struct iris_uncompiled_shader *ish,
                 struct iris_compiled_shader *shader,
-                struct brw_vue_map *vue_map)
+                struct intel_vue_map *vue_map)
 {
    const struct brw_compiler *compiler = screen->compiler;
    void *mem_ctx = ralloc_context(NULL);
@@ -1930,7 +1929,7 @@ iris_compile_fs(struct iris_screen *screen,
 
    prog_data->use_alt_mode = nir->info.use_legacy_math_rules;
 
-   iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data, 0, &system_values,
+   iris_setup_uniforms(devinfo, mem_ctx, nir, 0, &system_values,
                        &num_system_values, &num_cbufs);
 
    /* Lower output variables to load_output intrinsics before setting up
@@ -2012,7 +2011,7 @@ iris_update_compiled_fs(struct iris_context *ice)
    struct iris_fs_prog_key key = { KEY_INIT(base) };
    screen->vtbl.populate_fs_key(ice, &ish->nir->info, &key);
 
-   struct brw_vue_map *last_vue_map =
+   struct intel_vue_map *last_vue_map =
       &brw_vue_prog_data(ice->shaders.last_vue_shader->prog_data)->vue_map;
 
    if (ish->nos & (1ull << IRIS_NOS_LAST_VUE_MAP))
@@ -2058,8 +2057,8 @@ update_last_vue_map(struct iris_context *ice,
                     struct iris_compiled_shader *shader)
 {
    struct brw_vue_prog_data *vue_prog_data = (void *) shader->prog_data;
-   struct brw_vue_map *vue_map = &vue_prog_data->vue_map;
-   struct brw_vue_map *old_map = !ice->shaders.last_vue_shader ? NULL :
+   struct intel_vue_map *vue_map = &vue_prog_data->vue_map;
+   struct intel_vue_map *old_map = !ice->shaders.last_vue_shader ? NULL :
       &brw_vue_prog_data(ice->shaders.last_vue_shader->prog_data)->vue_map;
    const uint64_t changed_slots =
       (old_map ? old_map->slots_valid : 0ull) ^ vue_map->slots_valid;
@@ -2166,8 +2165,8 @@ iris_update_compiled_shaders(struct iris_context *ice)
       } else if (tes) {
          const struct brw_tes_prog_data *tes_data = (void *) tes->prog_data;
          points_or_lines =
-            tes_data->output_topology == BRW_TESS_OUTPUT_TOPOLOGY_LINE ||
-            tes_data->output_topology == BRW_TESS_OUTPUT_TOPOLOGY_POINT;
+            tes_data->output_topology == INTEL_TESS_OUTPUT_TOPOLOGY_LINE ||
+            tes_data->output_topology == INTEL_TESS_OUTPUT_TOPOLOGY_POINT;
       }
 
       if (ice->shaders.output_topology_is_points_or_lines != points_or_lines) {
@@ -2226,8 +2225,7 @@ iris_compile_cs(struct iris_screen *screen,
 
    NIR_PASS_V(nir, brw_nir_lower_cs_intrinsics, devinfo, cs_prog_data);
 
-   iris_setup_uniforms(devinfo, mem_ctx, nir, prog_data,
-                       ish->kernel_input_size,
+   iris_setup_uniforms(devinfo, mem_ctx, nir, ish->kernel_input_size,
                        &system_values, &num_system_values, &num_cbufs);
 
    struct iris_binding_table bt;

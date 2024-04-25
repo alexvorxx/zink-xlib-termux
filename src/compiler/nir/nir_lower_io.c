@@ -216,7 +216,7 @@ get_io_offset(nir_builder *b, nir_deref_instr *deref,
       p++;
    }
 
-   if (path.path[0]->var->data.compact) {
+   if (path.path[0]->var->data.compact && nir_src_is_const((*p)->arr.index)) {
       assert((*p)->deref_type == nir_deref_type_array);
       assert(glsl_type_is_scalar((*p)->type));
 
@@ -3190,8 +3190,7 @@ type_size_vec4(const struct glsl_type *type, bool bindless)
 void
 nir_lower_io_passes(nir_shader *nir, bool renumber_vs_inputs)
 {
-   if (!nir->options->lower_io_variables ||
-       nir->info.stage == MESA_SHADER_COMPUTE)
+   if (nir->info.stage == MESA_SHADER_COMPUTE)
       return;
 
    bool has_indirect_inputs =
@@ -3259,6 +3258,9 @@ nir_lower_io_passes(nir_shader *nir, bool renumber_vs_inputs)
 
    if (nir->xfb_info)
       NIR_PASS_V(nir, nir_io_add_intrinsic_xfb_info);
+
+   if (nir->options->lower_mediump_io)
+      nir->options->lower_mediump_io(nir);
 
    nir->info.io_lowered = true;
 }

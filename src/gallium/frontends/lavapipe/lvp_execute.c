@@ -532,14 +532,14 @@ static void emit_state(struct rendering_state *state)
       state->vb_strides_dirty = false;
    }
 
-   if (state->vb_dirty) {
-      cso_set_vertex_buffers(state->cso, state->num_vb, false, state->vb);
-      state->vb_dirty = false;
-   }
-
    if (state->ve_dirty) {
       cso_set_vertex_elements(state->cso, &state->velem);
       state->ve_dirty = false;
+   }
+
+   if (state->vb_dirty) {
+      cso_set_vertex_buffers(state->cso, state->num_vb, false, state->vb);
+      state->vb_dirty = false;
    }
 
    bool pcbuf_dirty[LVP_SHADER_STAGES] = {false};

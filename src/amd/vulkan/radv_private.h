@@ -352,6 +352,9 @@ enum radv_trace_mode {
 
    /** Radeon Raytracing Analyzer */
    RADV_TRACE_MODE_RRA = 1 << (VK_TRACE_MODE_COUNT + 1),
+
+   /** Gather context rolls of submitted command buffers */
+   RADV_TRACE_MODE_CTX_ROLLS = 1 << (VK_TRACE_MODE_COUNT + 2),
 };
 
 struct radv_instance {
@@ -847,13 +850,134 @@ struct radv_rra_accel_struct_data {
 
 void radv_destroy_rra_accel_struct_data(VkDevice device, struct radv_rra_accel_struct_data *data);
 
+struct radv_ray_history_header {
+   uint32_t offset;
+   uint32_t dispatch_index;
+   uint32_t submit_base_index;
+};
+
+enum radv_packed_token_type {
+   radv_packed_token_end_trace,
+};
+
+struct radv_packed_token_header {
+   uint32_t launch_index : 29;
+   uint32_t hit : 1;
+   uint32_t token_type : 2;
+};
+
+struct radv_packed_end_trace_token {
+   struct radv_packed_token_header header;
+
+   uint32_t accel_struct_lo;
+   uint32_t accel_struct_hi;
+
+   uint32_t flags : 16;
+   uint32_t dispatch_index : 16;
+
+   uint32_t sbt_offset : 4;
+   uint32_t sbt_stride : 4;
+   uint32_t miss_index : 16;
+   uint32_t cull_mask : 8;
+
+   float origin[3];
+   float tmin;
+   float direction[3];
+   float tmax;
+
+   uint32_t iteration_count : 16;
+   uint32_t instance_count : 16;
+
+   uint32_t ahit_count : 16;
+   uint32_t isec_count : 16;
+
+   uint32_t primitive_id;
+   uint32_t geometry_id;
+
+   uint32_t instance_id : 24;
+   uint32_t hit_kind : 8;
+
+   float t;
+};
+static_assert(sizeof(struct radv_packed_end_trace_token) == 76, "Unexpected radv_packed_end_trace_token size");
+
+enum radv_rra_ray_history_metadata_type {
+   RADV_RRA_COUNTER_INFO = 1,
+   RADV_RRA_DISPATCH_SIZE = 2,
+   RADV_RRA_TRAVERSAL_FLAGS = 3,
+};
+
+struct radv_rra_ray_history_metadata_info {
+   enum radv_rra_ray_history_metadata_type type : 32;
+   uint32_t padding;
+   uint64_t size;
+};
+
+enum radv_rra_pipeline_type {
+   RADV_RRA_PIPELINE_RAY_TRACING,
+};
+
+struct radv_rra_ray_history_counter {
+   uint32_t dispatch_size[3];
+   uint32_t hit_shader_count;
+   uint32_t miss_shader_count;
+   uint32_t shader_count;
+   uint64_t pipeline_api_hash;
+   uint32_t mode;
+   uint32_t mask;
+   uint32_t stride;
+   uint32_t data_size;
+   uint32_t lost_token_size;
+   uint32_t ray_id_begin;
+   uint32_t ray_id_end;
+   enum radv_rra_pipeline_type pipeline_type : 32;
+};
+
+struct radv_rra_ray_history_dispatch_size {
+   uint32_t size[3];
+   uint32_t padding;
+};
+
+struct radv_rra_ray_history_traversal_flags {
+   uint32_t box_sort_mode : 1;
+   uint32_t node_ptr_flags : 1;
+   uint32_t reserved : 30;
+   uint32_t padding;
+};
+
+struct radv_rra_ray_history_metadata {
+   struct radv_rra_ray_history_metadata_info counter_info;
+   struct radv_rra_ray_history_counter counter;
+
+   struct radv_rra_ray_history_metadata_info dispatch_size_info;
+   struct radv_rra_ray_history_dispatch_size dispatch_size;
+
+   struct radv_rra_ray_history_metadata_info traversal_flags_info;
+   struct radv_rra_ray_history_traversal_flags traversal_flags;
+};
+static_assert(sizeof(struct radv_rra_ray_history_metadata) == 136,
+              "radv_rra_ray_history_metadata does not match RRA expectations");
+
+struct radv_rra_ray_history_data {
+   struct radv_rra_ray_history_metadata metadata;
+};
+
 struct radv_rra_trace_data {
    struct hash_table *accel_structs;
    struct hash_table_u64 *accel_struct_vas;
    simple_mtx_t data_mtx;
    bool validate_as;
    bool copy_after_build;
+   bool triggered;
    uint32_t copy_memory_index;
+
+   struct util_dynarray ray_history;
+   VkBuffer ray_history_buffer;
+   VkDeviceMemory ray_history_memory;
+   void *ray_history_data;
+   uint64_t ray_history_addr;
+   uint32_t ray_history_buffer_size;
+   uint32_t ray_history_resolution_scale;
 };
 
 enum radv_dispatch_table {
@@ -862,6 +986,7 @@ enum radv_dispatch_table {
    RADV_RGP_DISPATCH_TABLE,
    RADV_RRA_DISPATCH_TABLE,
    RADV_RMV_DISPATCH_TABLE,
+   RADV_CTX_ROLL_DISPATCH_TABLE,
    RADV_DISPATCH_TABLE_COUNT,
 };
 
@@ -870,6 +995,7 @@ struct radv_layer_dispatch_tables {
    struct vk_device_dispatch_table rgp;
    struct vk_device_dispatch_table rra;
    struct vk_device_dispatch_table rmv;
+   struct vk_device_dispatch_table ctx_roll;
 };
 
 enum radv_buffer_robustness {
@@ -1057,6 +1183,9 @@ struct radv_device {
 
    /* Radeon Raytracing Analyzer trace. */
    struct radv_rra_trace_data rra_trace;
+
+   FILE *ctx_roll_file;
+   simple_mtx_t ctx_roll_mtx;
 
    /* Trap handler. */
    struct radv_shader *trap_handler_shader;
@@ -1776,6 +1905,8 @@ struct radv_cmd_buffer {
    uint64_t shader_upload_seq;
 
    uint32_t sqtt_cb_id;
+
+   struct util_dynarray ray_history;
 };
 
 static inline bool
@@ -1980,7 +2111,7 @@ radv_emit_shader_pointer_head(struct radeon_cmdbuf *cs, unsigned sh_offset, unsi
 }
 
 static inline void
-radv_emit_shader_pointer_body(struct radv_device *device, struct radeon_cmdbuf *cs, uint64_t va,
+radv_emit_shader_pointer_body(const struct radv_device *device, struct radeon_cmdbuf *cs, uint64_t va,
                               bool use_32bit_pointers)
 {
    radeon_emit(cs, va);
@@ -1993,7 +2124,7 @@ radv_emit_shader_pointer_body(struct radv_device *device, struct radeon_cmdbuf *
 }
 
 static inline void
-radv_emit_shader_pointer(struct radv_device *device, struct radeon_cmdbuf *cs, uint32_t sh_offset, uint64_t va,
+radv_emit_shader_pointer(const struct radv_device *device, struct radeon_cmdbuf *cs, uint32_t sh_offset, uint64_t va,
                          bool global)
 {
    bool use_32bit_pointers = !global;
@@ -2343,13 +2474,13 @@ bool radv_mem_vectorize_callback(unsigned align_mul, unsigned align_offset, unsi
                                  nir_intrinsic_instr *low, nir_intrinsic_instr *high, void *data);
 
 void radv_emit_vertex_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
-                             const struct radv_shader *vs);
+                             const struct radv_shader *vs, const struct radv_shader *next_stage);
 
 void radv_emit_tess_ctrl_shader(const struct radv_device *device, struct radeon_cmdbuf *cs,
                                 const struct radv_shader *tcs);
 
 void radv_emit_tess_eval_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs,
-                                struct radeon_cmdbuf *cs, const struct radv_shader *tes);
+                                struct radeon_cmdbuf *cs, const struct radv_shader *tes, const struct radv_shader *gs);
 
 void radv_emit_fragment_shader(const struct radv_device *device, struct radeon_cmdbuf *ctx_cs, struct radeon_cmdbuf *cs,
                                const struct radv_shader *ps);
@@ -3002,9 +3133,10 @@ VkResult radv_sqtt_get_timed_cmdbuf(struct radv_queue *queue, struct radeon_wins
 VkResult radv_sqtt_acquire_gpu_timestamp(struct radv_device *device, struct radeon_winsys_bo **gpu_timestamp_bo,
                                          uint32_t *gpu_timestamp_offset, void **gpu_timestamp_ptr);
 
-void radv_rra_trace_init(struct radv_device *device);
+VkResult radv_rra_trace_init(struct radv_device *device);
 
 VkResult radv_rra_dump_trace(VkQueue vk_queue, char *filename);
+void radv_rra_trace_clear_ray_history(VkDevice _device, struct radv_rra_trace_data *data);
 void radv_rra_trace_finish(VkDevice vk_device, struct radv_rra_trace_data *data);
 
 void radv_memory_trace_init(struct radv_device *device);
@@ -3124,8 +3256,6 @@ struct radv_indirect_command_layout {
    uint16_t index_buffer_offset;
 
    uint16_t dispatch_params_offset;
-
-   uint16_t state_offset;
 
    uint32_t bind_vbo_mask;
    uint32_t vbo_offsets[MAX_VBS];

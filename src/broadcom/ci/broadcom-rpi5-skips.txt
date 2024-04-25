@@ -70,3 +70,7 @@ dEQP-VK.ssbo.phys.layout.random.all_per_block_buffers.22
 dEQP-VK.ssbo.phys.layout.random.all_shared_buffer.3
 dEQP-VK.ssbo.phys.layout.random.scalar.3
 dEQP-VK.ssbo.phys.layout.random.scalar.93
+dEQP-VK.wsi.wayland.incremental_present.scale_none.fifo.identity.opaque.incremental_present
+dEQP-VK.wsi.wayland.incremental_present.scale_none.fifo.identity.opaque.reference
+dEQP-VK.wsi.wayland.incremental_present.scale_none.fifo.identity.pre_multiplied.incremental_present
+dEQP-VK.wsi.wayland.incremental_present.scale_none.fifo.identity.pre_multiplied.reference

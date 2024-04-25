@@ -183,7 +183,7 @@ is_output(nir_intrinsic_instr *intrin)
 
 static bool
 remap_patch_urb_offsets(nir_block *block, nir_builder *b,
-                        const struct brw_vue_map *vue_map,
+                        const struct intel_vue_map *vue_map,
                         enum tess_primitive_mode tes_primitive_mode)
 {
    nir_foreach_instr_safe(instr, block) {
@@ -366,7 +366,7 @@ brw_nir_lower_vs_inputs(nir_shader *nir,
 
 void
 brw_nir_lower_vue_inputs(nir_shader *nir,
-                         const struct brw_vue_map *vue_map)
+                         const struct intel_vue_map *vue_map)
 {
    nir_foreach_shader_in_variable(var, nir)
       var->data.driver_location = var->data.location;
@@ -415,7 +415,7 @@ brw_nir_lower_vue_inputs(nir_shader *nir,
 }
 
 void
-brw_nir_lower_tes_inputs(nir_shader *nir, const struct brw_vue_map *vue_map)
+brw_nir_lower_tes_inputs(nir_shader *nir, const struct intel_vue_map *vue_map)
 {
    nir_foreach_shader_in_variable(var, nir)
       var->data.driver_location = var->data.location;
@@ -558,7 +558,7 @@ brw_nir_lower_vue_outputs(nir_shader *nir)
 }
 
 void
-brw_nir_lower_tcs_outputs(nir_shader *nir, const struct brw_vue_map *vue_map,
+brw_nir_lower_tcs_outputs(nir_shader *nir, const struct intel_vue_map *vue_map,
                           enum tess_primitive_mode tes_primitive_mode)
 {
    nir_foreach_shader_out_variable(var, nir) {
@@ -1686,6 +1686,7 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
    OPT(nir_opt_move, nir_move_comparisons);
    OPT(nir_opt_dead_cf);
 
+   bool divergence_analysis_dirty = false;
    NIR_PASS(_, nir, nir_convert_to_lcssa, true, true);
    NIR_PASS_V(nir, nir_divergence_analysis);
 
@@ -1711,11 +1712,19 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
 
       if (OPT(nir_lower_int64))
          brw_nir_optimize(nir, is_scalar, devinfo);
+
+      divergence_analysis_dirty = true;
    }
 
    /* Do this only after the last opt_gcm. GCM will undo this lowering. */
-   if (nir->info.stage == MESA_SHADER_FRAGMENT)
+   if (nir->info.stage == MESA_SHADER_FRAGMENT) {
+      if (divergence_analysis_dirty) {
+         NIR_PASS(_, nir, nir_convert_to_lcssa, true, true);
+         NIR_PASS_V(nir, nir_divergence_analysis);
+      }
+
       OPT(brw_nir_lower_non_uniform_barycentric_at_sample);
+   }
 
    /* Clean up LCSSA phis */
    OPT(nir_opt_remove_phis);
@@ -1885,6 +1894,11 @@ brw_nir_apply_key(nir_shader *nir,
    bool progress = false;
 
    OPT(brw_nir_apply_sampler_key, compiler, &key->tex);
+
+   const struct brw_nir_lower_texture_opts tex_opts = {
+      .combined_lod_and_array_index = compiler->devinfo->ver >= 20,
+   };
+   OPT(brw_nir_lower_texture, &tex_opts);
 
    const nir_lower_subgroups_options subgroups_options = {
       .subgroup_size = get_subgroup_size(&nir->info, max_subgroup_size),

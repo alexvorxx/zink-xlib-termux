@@ -101,6 +101,7 @@ libintel_compiler_files = files(
   'brw_nir_lower_shading_rate_output.c',
   'brw_nir_lower_sparse.c',
   'brw_nir_lower_storage_image.c',
+  'brw_nir_lower_texture.c',
   'brw_nir_opt_peephole_ffma.c',
   'brw_nir_opt_peephole_imul32x16.c',
   'brw_nir_rt.h',
@@ -149,6 +150,12 @@ libintel_compiler_files = files(
   'gfx6_gs_visitor.h',
 )
 
+brw_device_sha1_gen_src = custom_target('brw_device_sha1_gen.c',
+                                        input : ['brw_device_sha1_gen_c.py', '../dev/intel_device_info.py'],
+                                        output : ['brw_device_sha1_gen.c'],
+                                        command : [prog_python, '@INPUT0@', '--outdir', meson.current_build_dir()])
+
+
 brw_nir_trig = custom_target(
   'brw_nir_trig_workarounds.c',
   input : 'brw_nir_trig_workarounds.py',
@@ -162,7 +169,7 @@ brw_nir_trig = custom_target(
 
 libintel_compiler = static_library(
   'intel_compiler',
-  [libintel_compiler_files, brw_nir_trig, ir_expression_operation_h],
+  [libintel_compiler_files, brw_nir_trig, ir_expression_operation_h, [brw_device_sha1_gen_src]],
   include_directories : [inc_include, inc_src, inc_intel],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
@@ -186,6 +193,7 @@ elif with_intel_clc
     link_args : [ld_args_build_id],
     dependencies : [idep_nir, idep_vtn, idep_mesaclc, idep_mesautil, idep_intel_dev],
     native : true,
+    install : get_option('install-intel-clc'),
   )
   dep_prog_intel_clc = [prog_intel_clc]
 endif
@@ -222,3 +230,88 @@ if with_tests
     protocol : 'gtest',
   )
 endif
+
+if with_intel_tools
+
+bison_command = []
+if yacc_is_bison
+  bison_command = [
+    prog_bison, '@INPUT@', '--defines=@OUTPUT1@',
+    '--output=@OUTPUT0@'
+  ]
+else
+  bison_command = [
+    prog_bison, '-H', '@OUTPUT1@',
+    '-o', '@OUTPUT0@', '@INPUT@'
+  ]
+endif
+
+brw_gram_tab = custom_target(
+  'brw_gram.tab.[ch]',
+  input : 'brw_gram.y',
+  output : ['brw_gram.tab.c', 'brw_gram.tab.h'],
+  command : bison_command
+)
+
+brw_lex_yy_c = custom_target(
+  'brw_lex.yy.c',
+  input : 'brw_lex.l',
+  output : 'brw_lex.yy.c',
+  command : [prog_flex, '-o', '@OUTPUT@', '@INPUT@']
+)
+
+brw_asm_tool = executable(
+  'brw_asm',
+  ['brw_asm_tool.c', brw_gram_tab[0], brw_gram_tab[1], brw_lex_yy_c],
+  dependencies : [idep_mesautil, dep_thread, idep_intel_dev],
+  include_directories : [inc_include, inc_src, inc_intel],
+  link_with : [libintel_common, libintel_compiler],
+  c_args : [no_override_init_args],
+  gnu_symbol_visibility : 'hidden',
+  install : true
+)
+
+asm_testcases = [
+  ['brw', 'gfx4'],
+  ['g4x', 'gfx4.5'],
+  ['ilk', 'gfx5'],
+  ['snb', 'gfx6'],
+  ['ivb', 'gfx7'],
+  ['hsw', 'gfx7.5'],
+  ['bdw', 'gfx8'],
+  ['skl', 'gfx9'],
+  ['icl', 'gfx11'],
+  ['tgl', 'gfx12'],
+  ['dg2', 'gfx12.5'],
+]
+
+test_runner = find_program('tests/run-test.py')
+foreach testcase : asm_testcases
+  _gen_name = testcase[0]
+  _gen_num = testcase[1]
+  _gen_folder = join_paths(meson.current_source_dir(), 'tests',
+                           _gen_num.replace('gfx', 'gen'))
+  test(
+    'brw_asm_' + _gen_num, test_runner,
+    args : [
+      '--brw_asm', brw_asm_tool,
+      '--gen_name', _gen_name,
+      '--gen_folder', _gen_folder,
+    ],
+    suite : 'intel',
+  )
+endforeach
+
+brw_disasm_tool = executable(
+  'brw_disasm',
+  files('brw_disasm_tool.c'),
+  dependencies : [idep_mesautil, dep_thread, idep_intel_dev],
+  include_directories : [inc_include, inc_src, inc_intel],
+  link_with : [libintel_common, libintel_compiler],
+  c_args : [no_override_init_args],
+  gnu_symbol_visibility : 'hidden',
+  install : true
+)
+
+endif
+

@@ -452,3 +452,200 @@ brw_kernel_from_spirv(struct brw_compiler *compiler,
 
    return kernel->code != NULL;
 }
+
+
+nir_shader *
+brw_nir_from_spirv(void *mem_ctx, const uint32_t *spirv, size_t spirv_size)
+{
+   struct spirv_to_nir_options spirv_options = {
+      .environment = NIR_SPIRV_OPENCL,
+      .caps = {
+         .address = true,
+         .groups = true,
+         .image_write_without_format = true,
+         .int8 = true,
+         .int16 = true,
+         .int64 = true,
+         .int64_atomics = true,
+         .kernel = true,
+         .linkage = true, /* We receive linked kernel from clc */
+         .float_controls = true,
+         .generic_pointers = true,
+         .storage_8bit = true,
+         .storage_16bit = true,
+         .subgroup_arithmetic = true,
+         .subgroup_basic = true,
+         .subgroup_ballot = true,
+         .subgroup_dispatch = true,
+         .subgroup_quad = true,
+         .subgroup_shuffle = true,
+         .subgroup_vote = true,
+
+         .intel_subgroup_shuffle = true,
+         .intel_subgroup_buffer_block_io = true,
+      },
+      .shared_addr_format = nir_address_format_62bit_generic,
+      .global_addr_format = nir_address_format_62bit_generic,
+      .temp_addr_format = nir_address_format_62bit_generic,
+      .constant_addr_format = nir_address_format_64bit_global,
+      .create_library = true,
+   };
+
+   assert(spirv_size % 4 == 0);
+   nir_shader *nir =
+      spirv_to_nir(spirv, spirv_size / 4, NULL, 0, MESA_SHADER_KERNEL,
+                   "library", &spirv_options, &brw_scalar_nir_options);
+   nir_validate_shader(nir, "after spirv_to_nir");
+   nir_validate_ssa_dominance(nir, "after spirv_to_nir");
+   ralloc_steal(mem_ctx, nir);
+   nir->info.name = ralloc_strdup(nir, "library");
+
+   if (INTEL_DEBUG(DEBUG_CS)) {
+      /* Re-index SSA defs so we print more sensible numbers. */
+      nir_foreach_function_impl(impl, nir) {
+         nir_index_ssa_defs(impl);
+      }
+
+      fprintf(stderr, "NIR (from SPIR-V) for kernel\n");
+      nir_print_shader(nir, stderr);
+   }
+
+   NIR_PASS_V(nir, implement_intel_builtins);
+   NIR_PASS_V(nir, nir_link_shader_functions, spirv_options.clc_shader);
+
+   /* We have to lower away local constant initializers right before we
+    * inline functions.  That way they get properly initialized at the top
+    * of the function and not at the top of its caller.
+    */
+   NIR_PASS_V(nir, nir_lower_variable_initializers, ~(nir_var_shader_temp |
+                                                      nir_var_function_temp));
+   NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_uniform | nir_var_mem_ubo |
+              nir_var_mem_constant | nir_var_function_temp | nir_var_image, NULL);
+   {
+      bool progress;
+      do
+      {
+         progress = false;
+         NIR_PASS(progress, nir, nir_copy_prop);
+         NIR_PASS(progress, nir, nir_opt_copy_prop_vars);
+         NIR_PASS(progress, nir, nir_opt_deref);
+         NIR_PASS(progress, nir, nir_opt_dce);
+         NIR_PASS(progress, nir, nir_opt_undef);
+         NIR_PASS(progress, nir, nir_opt_constant_folding);
+         NIR_PASS(progress, nir, nir_opt_cse);
+         NIR_PASS(progress, nir, nir_lower_vars_to_ssa);
+         NIR_PASS(progress, nir, nir_opt_algebraic);
+      } while (progress);
+   }
+
+   NIR_PASS_V(nir, nir_lower_variable_initializers, nir_var_function_temp);
+   NIR_PASS_V(nir, nir_lower_returns);
+   NIR_PASS_V(nir, nir_inline_functions);
+
+   assert(nir->scratch_size == 0);
+   NIR_PASS_V(nir, nir_lower_vars_to_explicit_types, nir_var_function_temp, glsl_get_cl_type_size_align);
+
+   {
+      bool progress;
+      do
+      {
+         progress = false;
+         NIR_PASS(progress, nir, nir_copy_prop);
+         NIR_PASS(progress, nir, nir_opt_copy_prop_vars);
+         NIR_PASS(progress, nir, nir_opt_deref);
+         NIR_PASS(progress, nir, nir_opt_dce);
+         NIR_PASS(progress, nir, nir_opt_undef);
+         NIR_PASS(progress, nir, nir_opt_constant_folding);
+         NIR_PASS(progress, nir, nir_opt_cse);
+         NIR_PASS(progress, nir, nir_split_var_copies);
+         NIR_PASS(progress, nir, nir_lower_var_copies);
+         NIR_PASS(progress, nir, nir_lower_vars_to_ssa);
+         NIR_PASS(progress, nir, nir_opt_algebraic);
+         NIR_PASS(progress, nir, nir_opt_if, nir_opt_if_optimize_phi_true_false);
+         NIR_PASS(progress, nir, nir_opt_dead_cf);
+         NIR_PASS(progress, nir, nir_opt_remove_phis);
+         NIR_PASS(progress, nir, nir_opt_peephole_select, 8, true, true);
+         NIR_PASS(progress, nir, nir_lower_vec3_to_vec4, nir_var_mem_generic | nir_var_uniform);
+         NIR_PASS(progress, nir, nir_opt_memcpy);
+      } while (progress);
+   }
+
+   NIR_PASS_V(nir, nir_scale_fdiv);
+
+   NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_uniform | nir_var_mem_ubo |
+              nir_var_mem_constant | nir_var_function_temp | nir_var_image, NULL);
+
+
+   NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_mem_shared | nir_var_function_temp, NULL);
+
+   nir->scratch_size = 0;
+   NIR_PASS_V(nir, nir_lower_vars_to_explicit_types,
+              nir_var_mem_shared | nir_var_function_temp | nir_var_mem_global | nir_var_mem_constant,
+              glsl_get_cl_type_size_align);
+
+   // Lower memcpy - needs to wait until types are sized
+   {
+      bool progress;
+      do {
+         progress = false;
+         NIR_PASS(progress, nir, nir_opt_memcpy);
+         NIR_PASS(progress, nir, nir_copy_prop);
+         NIR_PASS(progress, nir, nir_opt_copy_prop_vars);
+         NIR_PASS(progress, nir, nir_opt_deref);
+         NIR_PASS(progress, nir, nir_opt_dce);
+         NIR_PASS(progress, nir, nir_split_var_copies);
+         NIR_PASS(progress, nir, nir_lower_var_copies);
+         NIR_PASS(progress, nir, nir_lower_vars_to_ssa);
+         NIR_PASS(progress, nir, nir_opt_constant_folding);
+         NIR_PASS(progress, nir, nir_opt_cse);
+      } while (progress);
+   }
+   NIR_PASS_V(nir, nir_lower_memcpy);
+
+   NIR_PASS_V(nir, nir_lower_explicit_io,
+              nir_var_mem_shared | nir_var_function_temp | nir_var_uniform,
+              nir_address_format_32bit_offset_as_64bit);
+
+   NIR_PASS_V(nir, nir_lower_system_values);
+
+   /* Lower again, this time after dead-variables to get more compact variable
+    * layouts.
+    */
+   nir->global_mem_size = 0;
+   nir->scratch_size = 0;
+   nir->info.shared_size = 0;
+   NIR_PASS_V(nir, nir_lower_vars_to_explicit_types,
+              nir_var_shader_temp | nir_var_function_temp |
+              nir_var_mem_shared | nir_var_mem_global | nir_var_mem_constant,
+              glsl_get_cl_type_size_align);
+   if (nir->constant_data_size > 0) {
+      assert(nir->constant_data == NULL);
+      nir->constant_data = rzalloc_size(nir, nir->constant_data_size);
+      nir_gather_explicit_io_initializers(nir, nir->constant_data,
+                                          nir->constant_data_size,
+                                          nir_var_mem_constant);
+   }
+
+   NIR_PASS_V(nir, nir_lower_explicit_io, nir_var_mem_constant,
+              nir_address_format_64bit_global);
+
+   NIR_PASS_V(nir, nir_lower_explicit_io, nir_var_uniform,
+              nir_address_format_32bit_offset_as_64bit);
+
+   NIR_PASS_V(nir, nir_lower_explicit_io,
+              nir_var_shader_temp | nir_var_function_temp |
+              nir_var_mem_shared | nir_var_mem_global,
+              nir_address_format_62bit_generic);
+
+   if (INTEL_DEBUG(DEBUG_CS)) {
+      /* Re-index SSA defs so we print more sensible numbers. */
+      nir_foreach_function_impl(impl, nir) {
+         nir_index_ssa_defs(impl);
+      }
+
+      fprintf(stderr, "NIR (before I/O lowering) for kernel\n");
+      nir_print_shader(nir, stderr);
+   }
+
+   return nir;
+}

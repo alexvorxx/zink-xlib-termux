@@ -328,13 +328,12 @@ panfrost_bind_sampler_states(struct pipe_context *pctx,
 
 static void
 panfrost_set_vertex_buffers(struct pipe_context *pctx, unsigned num_buffers,
-                            bool take_ownership,
                             const struct pipe_vertex_buffer *buffers)
 {
    struct panfrost_context *ctx = pan_context(pctx);
 
    util_set_vertex_buffers_mask(ctx->vertex_buffers, &ctx->vb_mask, buffers,
-                                num_buffers, take_ownership);
+                                num_buffers, true);
 
    ctx->dirty |= PAN_DIRTY_VERTEX;
 }

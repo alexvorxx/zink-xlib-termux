@@ -276,16 +276,16 @@ genX(emit_urb_setup)(struct anv_device *device, struct anv_batch *batch,
                      enum intel_urb_deref_block_size *deref_block_size)
 {
    const struct intel_device_info *devinfo = device->info;
+   struct intel_urb_config urb_cfg = {
+      .size = { entry_size[0], entry_size[1], entry_size[2], entry_size[3], },
+   };
 
-   unsigned entries[4];
-   unsigned start[4];
    bool constrained;
    intel_get_urb_config(devinfo, l3_config,
                         active_stages &
                            VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
                         active_stages & VK_SHADER_STAGE_GEOMETRY_BIT,
-                        entry_size, entries, start, deref_block_size,
-                        &constrained);
+                        &urb_cfg, deref_block_size, &constrained);
 
 #if GFX_VERx10 == 70
    /* From the IVB PRM Vol. 2, Part 1, Section 3.2.1:
@@ -306,9 +306,9 @@ genX(emit_urb_setup)(struct anv_device *device, struct anv_batch *batch,
    for (int i = 0; i <= MESA_SHADER_GEOMETRY; i++) {
       anv_batch_emit(batch, GENX(3DSTATE_URB_VS), urb) {
          urb._3DCommandSubOpcode      += i;
-         urb.VSURBStartingAddress      = start[i];
-         urb.VSURBEntryAllocationSize  = entry_size[i] - 1;
-         urb.VSNumberofURBEntries      = entries[i];
+         urb.VSURBStartingAddress      = urb_cfg.start[i];
+         urb.VSURBEntryAllocationSize  = urb_cfg.size[i] - 1;
+         urb.VSNumberofURBEntries      = urb_cfg.entries[i];
       }
    }
 }
@@ -362,7 +362,7 @@ emit_3dstate_sbe(struct anv_graphics_pipeline *pipeline)
 #  define swiz sbe
 #endif
 
-   const struct brw_vue_map *fs_input_map =
+   const struct intel_vue_map *fs_input_map =
       &anv_pipeline_get_last_vue_prog_data(pipeline)->vue_map;
 
    int first_slot = brw_compute_first_urb_slot_required(wm_prog_data->inputs,
@@ -476,14 +476,14 @@ genX(raster_polygon_mode)(struct anv_graphics_pipeline *pipeline,
       unreachable("Unsupported GS output topology");
    } else if (anv_pipeline_has_stage(pipeline, MESA_SHADER_TESS_EVAL)) {
       switch (get_tes_prog_data(pipeline)->output_topology) {
-      case BRW_TESS_OUTPUT_TOPOLOGY_POINT:
+      case INTEL_TESS_OUTPUT_TOPOLOGY_POINT:
          return VK_POLYGON_MODE_POINT;
 
-      case BRW_TESS_OUTPUT_TOPOLOGY_LINE:
+      case INTEL_TESS_OUTPUT_TOPOLOGY_LINE:
          return VK_POLYGON_MODE_LINE;
 
-      case BRW_TESS_OUTPUT_TOPOLOGY_TRI_CW:
-      case BRW_TESS_OUTPUT_TOPOLOGY_TRI_CCW:
+      case INTEL_TESS_OUTPUT_TOPOLOGY_TRI_CW:
+      case INTEL_TESS_OUTPUT_TOPOLOGY_TRI_CCW:
          return pipeline->polygon_mode;
       }
       unreachable("Unsupported TCS output topology");
@@ -1092,7 +1092,7 @@ emit_3dstate_streamout(struct anv_graphics_pipeline *pipeline,
 {
    const struct brw_vue_prog_data *prog_data =
       anv_pipeline_get_last_vue_prog_data(pipeline);
-   const struct brw_vue_map *vue_map = &prog_data->vue_map;
+   const struct intel_vue_map *vue_map = &prog_data->vue_map;
 
    nir_xfb_info *xfb_info;
    if (anv_pipeline_has_stage(pipeline, MESA_SHADER_GEOMETRY))
@@ -1437,7 +1437,7 @@ emit_3dstate_hs_te_ds(struct anv_graphics_pipeline *pipeline,
       ds.MaximumNumberofThreads = devinfo->max_tes_threads - 1;
 
       ds.ComputeWCoordinateEnable =
-         tes_prog_data->domain == BRW_TESS_DOMAIN_TRI;
+         tes_prog_data->domain == INTEL_TESS_DOMAIN_TRI;
 
       ds.PatchURBEntryReadLength = tes_prog_data->base.urb_read_length;
       ds.PatchURBEntryReadOffset = 0;
@@ -1882,7 +1882,7 @@ genX(compute_pipeline_emit)(struct anv_compute_pipeline *pipeline)
 
    anv_pipeline_setup_l3_config(&pipeline->base, cs_prog_data->base.total_shared > 0);
 
-   const struct brw_cs_dispatch_info dispatch =
+   const struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(devinfo, cs_prog_data, NULL);
    const uint32_t vfe_curbe_allocation =
       ALIGN(cs_prog_data->push.per_thread.regs * dispatch.threads +

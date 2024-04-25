@@ -176,7 +176,7 @@ foreach t : [['125', 'gfx125', 'dg2']]
     ],
     dependencies : [
       dep_valgrind, idep_nir_headers, idep_vulkan_util_headers, idep_vulkan_wsi_headers,
-      idep_vulkan_runtime_headers, idep_anv_headers,
+      idep_vulkan_runtime_headers, idep_anv_headers, idep_genxml,
     ],
     gnu_symbol_visibility : 'hidden',
   )

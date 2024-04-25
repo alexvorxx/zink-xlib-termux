@@ -2110,11 +2110,10 @@ static void si_shader_init_pm4_state(struct si_screen *sscreen, struct si_shader
    assert(!(sscreen->debug_flags & DBG(SQTT)) || shader->pm4.spi_shader_pgm_lo_reg != 0);
 }
 
-static void si_clear_vs_key_inputs(struct si_context *sctx, union si_shader_key *key,
-                                   struct si_vs_prolog_bits *prolog_key)
+static void si_clear_vs_key_inputs(union si_shader_key *key)
 {
-   prolog_key->instance_divisor_is_one = 0;
-   prolog_key->instance_divisor_is_fetched = 0;
+   key->ge.mono.instance_divisor_is_one = 0;
+   key->ge.mono.instance_divisor_is_fetched = 0;
    key->ge.mono.vs_fetch_opencode = 0;
    memset(key->ge.mono.vs_fix_fetch, 0, sizeof(key->ge.mono.vs_fix_fetch));
 }
@@ -2129,7 +2128,7 @@ void si_vs_key_update_inputs(struct si_context *sctx)
       return;
 
    if (vs->info.base.vs.blit_sgprs_amd) {
-      si_clear_vs_key_inputs(sctx, key, &key->ge.part.vs.prolog);
+      si_clear_vs_key_inputs(key);
       key->ge.opt.prefer_mono = 0;
       sctx->uses_nontrivial_vs_inputs = false;
       return;
@@ -2140,8 +2139,8 @@ void si_vs_key_update_inputs(struct si_context *sctx)
    if (elts->instance_divisor_is_one || elts->instance_divisor_is_fetched)
       uses_nontrivial_vs_inputs = true;
 
-   key->ge.part.vs.prolog.instance_divisor_is_one = elts->instance_divisor_is_one;
-   key->ge.part.vs.prolog.instance_divisor_is_fetched = elts->instance_divisor_is_fetched;
+   key->ge.mono.instance_divisor_is_one = elts->instance_divisor_is_one;
+   key->ge.mono.instance_divisor_is_fetched = elts->instance_divisor_is_fetched;
    key->ge.opt.prefer_mono = elts->instance_divisor_is_fetched;
 
    unsigned count_mask = (1 << vs->info.num_inputs) - 1;
@@ -2179,25 +2178,22 @@ void si_vs_key_update_inputs(struct si_context *sctx)
 
    sctx->uses_nontrivial_vs_inputs = uses_nontrivial_vs_inputs;
 
-   /* draw_vertex_state (display lists) requires a trivial VS prolog that ignores
-    * the current vertex buffers and vertex elements.
+   /* draw_vertex_state (display lists) requires that all VS input lowering is disabled
+    * because its vertex elements never need any lowering.
     *
-    * We just computed the prolog key because we needed to set uses_nontrivial_vs_inputs,
-    * so that we know whether the VS prolog should be updated when we switch from
-    * draw_vertex_state to draw_vbo. Now clear the VS prolog for draw_vertex_state.
-    * This should happen rarely because the VS prolog should be trivial in most
-    * cases.
+    * We just computed the key because we needed to set uses_nontrivial_vs_inputs, so that we know
+    * whether the VS should be updated when we switch from draw_vertex_state to draw_vbo. Now
+    * clear the VS input bits for draw_vertex_state. This should happen rarely because VS inputs
+    * don't usually need any lowering.
     */
    if (uses_nontrivial_vs_inputs && sctx->force_trivial_vs_inputs)
-      si_clear_vs_key_inputs(sctx, key, &key->ge.part.vs.prolog);
+      si_clear_vs_key_inputs(key);
 }
 
-void si_get_vs_key_inputs(struct si_context *sctx, union si_shader_key *key,
-                          struct si_vs_prolog_bits *prolog_key)
+static void si_get_vs_key_inputs(struct si_context *sctx, union si_shader_key *key)
 {
-   prolog_key->instance_divisor_is_one = sctx->shader.vs.key.ge.part.vs.prolog.instance_divisor_is_one;
-   prolog_key->instance_divisor_is_fetched = sctx->shader.vs.key.ge.part.vs.prolog.instance_divisor_is_fetched;
-
+   key->ge.mono.instance_divisor_is_one = sctx->shader.vs.key.ge.mono.instance_divisor_is_one;
+   key->ge.mono.instance_divisor_is_fetched = sctx->shader.vs.key.ge.mono.instance_divisor_is_fetched;
    key->ge.mono.vs_fetch_opencode = sctx->shader.vs.key.ge.mono.vs_fetch_opencode;
    memcpy(key->ge.mono.vs_fix_fetch, sctx->shader.vs.key.ge.mono.vs_fix_fetch,
           sizeof(key->ge.mono.vs_fix_fetch));
@@ -2624,7 +2620,7 @@ static inline void si_shader_selector_key(struct pipe_context *ctx, struct si_sh
       break;
    case MESA_SHADER_TESS_CTRL:
       if (sctx->gfx_level >= GFX9) {
-         si_get_vs_key_inputs(sctx, key, &key->ge.part.tcs.ls_prolog);
+         si_get_vs_key_inputs(sctx, key);
          key->ge.part.tcs.ls = sctx->shader.vs.cso;
       }
       break;
@@ -2637,10 +2633,10 @@ static inline void si_shader_selector_key(struct pipe_context *ctx, struct si_sh
    case MESA_SHADER_GEOMETRY:
       if (sctx->gfx_level >= GFX9) {
          if (sctx->shader.tes.cso) {
-            si_clear_vs_key_inputs(sctx, key, &key->ge.part.gs.vs_prolog);
+            si_clear_vs_key_inputs(key);
             key->ge.part.gs.es = sctx->shader.tes.cso;
          } else {
-            si_get_vs_key_inputs(sctx, key, &key->ge.part.gs.vs_prolog);
+            si_get_vs_key_inputs(sctx, key);
             key->ge.part.gs.es = sctx->shader.vs.cso;
          }
 
@@ -4451,28 +4447,12 @@ static void si_update_tess_in_out_patch_vertices(struct si_context *sctx)
          sctx->shader.tcs.key.ge.opt.same_patch_vertices = same_patch_vertices;
          sctx->do_update_shaders = true;
       }
-
-      if (sctx->gfx_level == GFX9 && sctx->screen->info.has_ls_vgpr_init_bug) {
-         /* Determine whether the LS VGPR fix should be applied.
-          *
-          * It is only required when num input CPs > num output CPs,
-          * which cannot happen with the fixed function TCS.
-          */
-         bool ls_vgpr_fix =
-            sctx->patch_vertices > tcs->info.base.tess.tcs_vertices_out;
-
-         if (ls_vgpr_fix != sctx->shader.tcs.key.ge.part.tcs.ls_prolog.ls_vgpr_fix) {
-            sctx->shader.tcs.key.ge.part.tcs.ls_prolog.ls_vgpr_fix = ls_vgpr_fix;
-            sctx->do_update_shaders = true;
-         }
-      }
    } else {
       /* These fields are static for fixed function TCS. So no need to set
        * do_update_shaders between fixed-TCS draws. As fixed-TCS to user-TCS
        * or opposite, do_update_shaders should already be set by bind state.
        */
       sctx->shader.tcs.key.ge.opt.same_patch_vertices = sctx->gfx_level >= GFX9;
-      sctx->shader.tcs.key.ge.part.tcs.ls_prolog.ls_vgpr_fix = false;
 
       /* User may only change patch vertices, needs to update fixed func TCS. */
       if (sctx->shader.tcs.cso &&

@@ -4,8 +4,8 @@
  */
 
 #include "agx_meta.h"
-#include "agx_compile.h"
 #include "agx_device.h" /* for AGX_MEMORY_TYPE_SHADER */
+#include "agx_nir_passes.h"
 #include "agx_tilebuffer.h"
 #include "nir.h"
 #include "nir_builder.h"
@@ -33,12 +33,14 @@ agx_compile_meta_shader(struct agx_meta_cache *cache, nir_shader *shader,
    struct util_dynarray binary;
    util_dynarray_init(&binary, NULL);
 
+   agx_nir_lower_texture(shader);
    agx_preprocess_nir(shader, cache->dev->libagx, false, NULL);
    if (tib) {
       unsigned bindless_base = 0;
       agx_nir_lower_tilebuffer(shader, tib, NULL, &bindless_base, NULL, true);
       agx_nir_lower_monolithic_msaa(
          shader, &(struct agx_msaa_state){.nr_samples = tib->nr_samples});
+      agx_nir_lower_multisampled_image_store(shader);
 
       nir_shader_intrinsics_pass(
          shader, lower_tex_handle_to_u0,
@@ -114,7 +116,6 @@ agx_build_background_shader(struct agx_meta_cache *cache,
 
    struct agx_shader_key compiler_key = {
       .fs.ignore_tib_dependencies = true,
-      .fs.nr_samples = key->tib.nr_samples,
       .reserved_preamble = key->reserved_preamble,
    };
 

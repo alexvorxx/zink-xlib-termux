@@ -1430,7 +1430,7 @@ crocus_init_compute_context(struct crocus_batch *batch)
 struct crocus_genx_state {
    struct {
 #if GFX_VER >= 7
-      struct brw_image_param image_param[PIPE_MAX_SHADER_IMAGES];
+      struct isl_image_param image_param[PIPE_MAX_SHADER_IMAGES];
 #endif
    } shaders[MESA_SHADER_STAGES];
 
@@ -3008,7 +3008,7 @@ crocus_create_surface(struct pipe_context *ctx,
 
 #if GFX_VER >= 7
 static void
-fill_default_image_param(struct brw_image_param *param)
+fill_default_image_param(struct isl_image_param *param)
 {
    memset(param, 0, sizeof(*param));
    /* Set the swizzling shifts to all-ones to effectively disable swizzling --
@@ -3020,7 +3020,7 @@ fill_default_image_param(struct brw_image_param *param)
 }
 
 static void
-fill_buffer_image_param(struct brw_image_param *param,
+fill_buffer_image_param(struct isl_image_param *param,
                         enum pipe_format pfmt,
                         unsigned size)
 {
@@ -3050,7 +3050,7 @@ crocus_set_shader_images(struct pipe_context *ctx,
    gl_shader_stage stage = stage_from_pipe(p_stage);
    struct crocus_shader_state *shs = &ice->state.shaders[stage];
    struct crocus_genx_state *genx = ice->state.genx;
-   struct brw_image_param *image_params = genx->shaders[stage].image_param;
+   struct isl_image_param *image_params = genx->shaders[stage].image_param;
 
    shs->bound_image_views &= ~u_bit_consecutive(start_slot, count);
 
@@ -3124,7 +3124,7 @@ crocus_set_shader_images(struct pipe_context *ctx,
       stage == MESA_SHADER_COMPUTE ? CROCUS_DIRTY_COMPUTE_RESOLVES_AND_FLUSHES
                                    : CROCUS_DIRTY_RENDER_RESOLVES_AND_FLUSHES;
 
-   /* Broadwell also needs brw_image_params re-uploaded */
+   /* Broadwell also needs isl_image_params re-uploaded */
    ice->state.stage_dirty |= CROCUS_STAGE_DIRTY_CONSTANTS_VS << stage;
    shs->sysvals_need_upload = true;
 #endif
@@ -3551,10 +3551,10 @@ upload_sysvals(struct crocus_context *ice,
 #if GFX_VER >= 7
          unsigned img = BRW_PARAM_IMAGE_IDX(sysval);
          unsigned offset = BRW_PARAM_IMAGE_OFFSET(sysval);
-         struct brw_image_param *param =
+         struct isl_image_param *param =
             &genx->shaders[stage].image_param[img];
 
-         assert(offset < sizeof(struct brw_image_param));
+         assert(offset < sizeof(struct isl_image_param));
          value = ((uint32_t *) param)[offset];
 #endif
       } else if (sysval == BRW_PARAM_BUILTIN_ZERO) {
@@ -3659,7 +3659,6 @@ crocus_delete_state(struct pipe_context *ctx, void *state)
 static void
 crocus_set_vertex_buffers(struct pipe_context *ctx,
                           unsigned count,
-                          bool take_ownership,
                           const struct pipe_vertex_buffer *buffers)
 {
    struct crocus_context *ice = (struct crocus_context *) ctx;
@@ -3668,7 +3667,7 @@ crocus_set_vertex_buffers(struct pipe_context *ctx,
       (GFX_VERx10 < 75 && screen->devinfo.platform != INTEL_PLATFORM_BYT) * 2;
 
    util_set_vertex_buffers_mask(ice->state.vertex_buffers, &ice->state.bound_vertex_buffers,
-                                buffers, count, take_ownership);
+                                buffers, count, true);
 
    for (unsigned i = 0; i < count; i++) {
       struct pipe_vertex_buffer *state =
@@ -4268,7 +4267,7 @@ crocus_set_stream_output_targets(struct pipe_context *ctx,
  */
 static uint32_t *
 crocus_create_so_decl_list(const struct pipe_stream_output_info *info,
-                           const struct brw_vue_map *vue_map)
+                           const struct intel_vue_map *vue_map)
 {
    struct GENX(SO_DECL) so_decl[PIPE_MAX_VERTEX_STREAMS][128];
    int buffer_mask[PIPE_MAX_VERTEX_STREAMS] = {0, 0, 0, 0};
@@ -4443,7 +4442,7 @@ crocus_is_drawing_points(const struct crocus_context *ice)
    } else if (ice->shaders.prog[MESA_SHADER_TESS_EVAL]) {
       const struct brw_tes_prog_data *tes_data =
          (void *) ice->shaders.prog[MESA_SHADER_TESS_EVAL]->prog_data;
-      return tes_data->output_topology == BRW_TESS_OUTPUT_TOPOLOGY_POINT;
+      return tes_data->output_topology == INTEL_TESS_OUTPUT_TOPOLOGY_POINT;
    } else {
       return ice->state.prim_mode == MESA_PRIM_POINTS;
    }
@@ -4454,7 +4453,7 @@ crocus_is_drawing_points(const struct crocus_context *ice)
 static void
 get_attr_override(
    struct GENX(SF_OUTPUT_ATTRIBUTE_DETAIL) *attr,
-   const struct brw_vue_map *vue_map,
+   const struct intel_vue_map *vue_map,
    int urb_entry_read_offset, int fs_attr,
    bool two_side_color, uint32_t *max_source_attr)
 {
@@ -4555,7 +4554,7 @@ calculate_attr_overrides(
 {
    const struct brw_wm_prog_data *wm_prog_data = (void *)
       ice->shaders.prog[MESA_SHADER_FRAGMENT]->prog_data;
-   const struct brw_vue_map *vue_map = ice->shaders.last_vue_map;
+   const struct intel_vue_map *vue_map = ice->shaders.last_vue_map;
    const struct crocus_rasterizer_state *cso_rast = ice->state.cso_rast;
    uint32_t max_source_attr = 0;
    const struct shader_info *fs_info =
@@ -6058,49 +6057,46 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
       const struct intel_device_info *devinfo = &batch->screen->devinfo;
       bool gs_present = ice->shaders.prog[MESA_SHADER_GEOMETRY] != NULL;
       bool tess_present = ice->shaders.prog[MESA_SHADER_TESS_EVAL] != NULL;
-      unsigned entry_size[4];
+      struct intel_urb_config urb_cfg;
 
       for (int i = MESA_SHADER_VERTEX; i <= MESA_SHADER_GEOMETRY; i++) {
          if (!ice->shaders.prog[i]) {
-            entry_size[i] = 1;
+            urb_cfg.size[i] = 1;
          } else {
             struct brw_vue_prog_data *vue_prog_data =
                (void *) ice->shaders.prog[i]->prog_data;
-            entry_size[i] = vue_prog_data->urb_entry_size;
+            urb_cfg.size[i] = vue_prog_data->urb_entry_size;
          }
-         assert(entry_size[i] != 0);
+         assert(urb_cfg.size[i] != 0);
       }
 
       /* If we're just switching between programs with the same URB requirements,
        * skip the rest of the logic.
        */
       bool no_change = false;
-      if (ice->urb.vsize == entry_size[MESA_SHADER_VERTEX] &&
+      if (ice->urb.vsize == urb_cfg.size[MESA_SHADER_VERTEX] &&
           ice->urb.gs_present == gs_present &&
-          ice->urb.gsize == entry_size[MESA_SHADER_GEOMETRY] &&
+          ice->urb.gsize == urb_cfg.size[MESA_SHADER_GEOMETRY] &&
           ice->urb.tess_present == tess_present &&
-          ice->urb.hsize == entry_size[MESA_SHADER_TESS_CTRL] &&
-          ice->urb.dsize == entry_size[MESA_SHADER_TESS_EVAL]) {
+          ice->urb.hsize == urb_cfg.size[MESA_SHADER_TESS_CTRL] &&
+          ice->urb.dsize == urb_cfg.size[MESA_SHADER_TESS_EVAL]) {
          no_change = true;
       }
 
       if (!no_change) {
-         ice->urb.vsize = entry_size[MESA_SHADER_VERTEX];
+         ice->urb.vsize = urb_cfg.size[MESA_SHADER_VERTEX];
          ice->urb.gs_present = gs_present;
-         ice->urb.gsize = entry_size[MESA_SHADER_GEOMETRY];
+         ice->urb.gsize = urb_cfg.size[MESA_SHADER_GEOMETRY];
          ice->urb.tess_present = tess_present;
-         ice->urb.hsize = entry_size[MESA_SHADER_TESS_CTRL];
-         ice->urb.dsize = entry_size[MESA_SHADER_TESS_EVAL];
+         ice->urb.hsize = urb_cfg.size[MESA_SHADER_TESS_CTRL];
+         ice->urb.dsize = urb_cfg.size[MESA_SHADER_TESS_EVAL];
 
-         unsigned entries[4];
-         unsigned start[4];
          bool constrained;
          intel_get_urb_config(devinfo,
                               batch->screen->l3_config_3d,
                               tess_present,
                               gs_present,
-                              entry_size,
-                              entries, start, NULL, &constrained);
+                              &urb_cfg, NULL, &constrained);
 
 #if GFX_VER == 7
          if (devinfo->platform == INTEL_PLATFORM_IVB)
@@ -6109,9 +6105,9 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
          for (int i = MESA_SHADER_VERTEX; i <= MESA_SHADER_GEOMETRY; i++) {
             crocus_emit_cmd(batch, GENX(3DSTATE_URB_VS), urb) {
                urb._3DCommandSubOpcode += i;
-               urb.VSURBStartingAddress     = start[i];
-               urb.VSURBEntryAllocationSize = entry_size[i] - 1;
-               urb.VSNumberofURBEntries     = entries[i];
+               urb.VSURBStartingAddress     = urb_cfg.start[i];
+               urb.VSURBEntryAllocationSize = urb_cfg.size[i] - 1;
+               urb.VSNumberofURBEntries     = urb_cfg.entries[i];
             }
          }
       }
@@ -7029,7 +7025,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 
             ds.MaximumNumberofThreads = batch->screen->devinfo.max_tes_threads - 1;
             ds.ComputeWCoordinateEnable =
-               tes_prog_data->domain == BRW_TESS_DOMAIN_TRI;
+               tes_prog_data->domain == INTEL_TESS_DOMAIN_TRI;
 
 #if GFX_VER >= 8
             if (vue_prog_data->dispatch_mode == DISPATCH_MODE_SIMD8)
@@ -8055,7 +8051,7 @@ crocus_upload_compute_state(struct crocus_context *ice,
       ice->shaders.prog[MESA_SHADER_COMPUTE];
    struct brw_stage_prog_data *prog_data = shader->prog_data;
    struct brw_cs_prog_data *cs_prog_data = (void *) prog_data;
-   const struct brw_cs_dispatch_info dispatch =
+   const struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(devinfo, cs_prog_data, grid->block);
 
    crocus_update_surface_base_address(batch);

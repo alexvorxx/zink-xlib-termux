@@ -33,6 +33,9 @@ bool anv_xe_device_destroy_vm(struct anv_device *device)
    struct drm_xe_vm_destroy destroy = {
       .vm_id = device->vm_id,
    };
+
+   intel_bind_timeline_finish(&device->bind_timeline, device->fd);
+
    return intel_ioctl(device->fd, DRM_IOCTL_XE_VM_DESTROY, &destroy) == 0;
 }
 
@@ -46,6 +49,13 @@ VkResult anv_xe_device_setup_vm(struct anv_device *device)
                        "vm creation failed");
 
    device->vm_id = create.vm_id;
+
+   if (!intel_bind_timeline_init(&device->bind_timeline, device->fd)) {
+      anv_xe_device_destroy_vm(device);
+      return vk_errorf(device, VK_ERROR_INITIALIZATION_FAILED,
+                       "intel_bind_timeline_init failed");
+   }
+
    return VK_SUCCESS;
 }
 

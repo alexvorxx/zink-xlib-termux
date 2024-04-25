@@ -231,8 +231,10 @@ struct iris_bufmgr {
 
    struct intel_device_info devinfo;
    const struct iris_kmd_backend *kmd_backend;
+   struct intel_bind_timeline bind_timeline; /* Xe only */
    bool bo_reuse:1;
    bool use_global_vm:1;
+   bool compute_engine_supported:1;
 
    struct intel_aux_map_context *aux_map_ctx;
 
@@ -1769,6 +1771,7 @@ iris_bufmgr_destroy_global_vm(struct iris_bufmgr *bufmgr)
       /* Nothing to do in i915 */
       break;
    case INTEL_KMD_TYPE_XE:
+      intel_bind_timeline_finish(&bufmgr->bind_timeline, bufmgr->fd);
       iris_xe_destroy_global_vm(bufmgr);
       break;
    default:
@@ -2269,6 +2272,9 @@ iris_bufmgr_init_global_vm(struct iris_bufmgr *bufmgr)
       /* i915 don't require VM, so returning true even if use_global_vm is false */
       return true;
    case INTEL_KMD_TYPE_XE:
+      if (!intel_bind_timeline_init(&bufmgr->bind_timeline, bufmgr->fd))
+         return false;
+
       bufmgr->use_global_vm = iris_xe_init_global_vm(bufmgr, &bufmgr->global_vm_id);
       /* Xe requires VM */
       return bufmgr->use_global_vm;
@@ -2325,6 +2331,11 @@ iris_bufmgr_create(struct intel_device_info *devinfo, int fd, bool bo_reuse)
    bufmgr->devinfo.has_compute_engine = engine_info &&
                                         intel_engines_count(engine_info,
                                                             INTEL_ENGINE_CLASS_COMPUTE);
+   bufmgr->compute_engine_supported = bufmgr->devinfo.has_compute_engine &&
+                                      intel_engines_supported_count(bufmgr->fd,
+                                                                    &bufmgr->devinfo,
+                                                                    engine_info,
+                                                                    INTEL_ENGINE_CLASS_COMPUTE);
    free(engine_info);
 
    if (!iris_bufmgr_init_global_vm(bufmgr))
@@ -2337,38 +2348,63 @@ iris_bufmgr_create(struct intel_device_info *devinfo, int fd, bool bo_reuse)
    /* The STATE_BASE_ADDRESS size field can only hold 1 page shy of 4GB */
    const uint64_t _4GB_minus_1 = _4GB - PAGE_SIZE;
 
-   util_vma_heap_init(&bufmgr->vma_allocator[IRIS_MEMZONE_SHADER],
-                      PAGE_SIZE, _4GB_minus_1 - PAGE_SIZE);
-   util_vma_heap_init(&bufmgr->vma_allocator[IRIS_MEMZONE_BINDER],
-                      IRIS_MEMZONE_BINDER_START + IRIS_SCRATCH_ZONE_SIZE,
-                      IRIS_BINDER_ZONE_SIZE - IRIS_SCRATCH_ZONE_SIZE);
-   util_vma_heap_init(&bufmgr->vma_allocator[IRIS_MEMZONE_SCRATCH],
-                      IRIS_MEMZONE_SCRATCH_START, IRIS_SCRATCH_ZONE_SIZE);
-   util_vma_heap_init(&bufmgr->vma_allocator[IRIS_MEMZONE_SURFACE],
-                      IRIS_MEMZONE_SURFACE_START, _4GB_minus_1 -
-                      IRIS_BINDER_ZONE_SIZE - IRIS_SCRATCH_ZONE_SIZE);
+   const struct {
+      uint64_t start;
+      uint64_t size;
+   } vma[IRIS_MEMZONE_COUNT] = {
+      [IRIS_MEMZONE_SHADER] = {
+         .start = PAGE_SIZE,
+         .size  = _4GB_minus_1 - PAGE_SIZE
+      },
+      [IRIS_MEMZONE_BINDER] = {
+         .start = IRIS_MEMZONE_BINDER_START + IRIS_SCRATCH_ZONE_SIZE,
+         .size  = IRIS_BINDER_ZONE_SIZE - IRIS_SCRATCH_ZONE_SIZE
+      },
+      [IRIS_MEMZONE_SCRATCH] = {
+         .start = IRIS_MEMZONE_SCRATCH_START,
+         .size  = IRIS_SCRATCH_ZONE_SIZE
+      },
+      [IRIS_MEMZONE_SURFACE] = {
+         .start = IRIS_MEMZONE_SURFACE_START,
+         .size = _4GB_minus_1 - IRIS_BINDER_ZONE_SIZE - IRIS_SCRATCH_ZONE_SIZE
+      },
+      [IRIS_MEMZONE_DYNAMIC] = {
+         .start = IRIS_MEMZONE_DYNAMIC_START + IRIS_BORDER_COLOR_POOL_SIZE,
 
-   /* Wa_2209859288: the Tigerlake PRM's workarounds volume says:
-    *
-    *    "PSDunit is dropping MSB of the blend state pointer from SD FIFO"
-    *    "Limit the Blend State Pointer to < 2G"
-    *
-    * We restrict the dynamic state pool to 2GB so that we don't ever get a
-    * BLEND_STATE pointer with the MSB set.  We aren't likely to need the
-    * full 4GB for dynamic state anyway.
-    */
-   const uint64_t dynamic_pool_size =
-      (devinfo->ver >= 12 ? _2GB : _4GB_minus_1) - IRIS_BORDER_COLOR_POOL_SIZE;
-   util_vma_heap_init(&bufmgr->vma_allocator[IRIS_MEMZONE_DYNAMIC],
-                      IRIS_MEMZONE_DYNAMIC_START + IRIS_BORDER_COLOR_POOL_SIZE,
-                      dynamic_pool_size);
+         /* Wa_2209859288: the Tigerlake PRM's workarounds volume says:
+          *
+          *    "PSDunit is dropping MSB of the blend state pointer from SD
+          *     FIFO [...] Limit the Blend State Pointer to < 2G"
+          *
+          * We restrict the dynamic state pool to 2GB so that we don't ever
+          * get a BLEND_STATE pointer with the MSB set.  We aren't likely to
+          * need the full 4GB for dynamic state anyway.
+          */
+         .size  = (devinfo->ver >= 12 ? _2GB : _4GB_minus_1)
+                  - IRIS_BORDER_COLOR_POOL_SIZE
+      },
+      [IRIS_MEMZONE_OTHER] = {
+         .start = IRIS_MEMZONE_OTHER_START,
 
-   /* Leave the last 4GB out of the high vma range, so that no state
-    * base address + size can overflow 48 bits.
-    */
-   util_vma_heap_init(&bufmgr->vma_allocator[IRIS_MEMZONE_OTHER],
-                      IRIS_MEMZONE_OTHER_START,
-                      (devinfo->gtt_size - _4GB) - IRIS_MEMZONE_OTHER_START);
+         /* Leave the last 4GB out of the high vma range, so that no state
+          * base address + size can overflow 48 bits.
+          */
+         .size  = (devinfo->gtt_size - _4GB) - IRIS_MEMZONE_OTHER_START,
+      },
+   };
+
+   for (unsigned i = 0; i < IRIS_MEMZONE_COUNT; i++) {
+      util_vma_heap_init(&bufmgr->vma_allocator[i],
+                         vma[i].start, vma[i].size);
+   }
+
+   if (INTEL_DEBUG(DEBUG_HEAPS)) {
+      for (unsigned i = 0; i < IRIS_MEMZONE_COUNT; i++) {
+         fprintf(stderr, "%-11s | 0x%016" PRIx64 "-0x%016" PRIx64 "\n",
+                 memzone_name(i), vma[i].start,
+                 vma[i].start + vma[i].size - 1);
+      }
+   }
 
    for (int h = 0; h < IRIS_HEAP_MAX; h++)
       init_cache_buckets(bufmgr, h);
@@ -2554,6 +2590,12 @@ iris_bufmgr_use_global_vm_id(struct iris_bufmgr *bufmgr)
    return bufmgr->use_global_vm;
 }
 
+bool
+iris_bufmgr_compute_engine_supported(struct iris_bufmgr *bufmgr)
+{
+   return bufmgr->compute_engine_supported;
+}
+
 /**
  * Return the pat entry based on the bo heap and allocation flags.
  */
@@ -2572,4 +2614,10 @@ iris_heap_to_pat_entry(const struct intel_device_info *devinfo,
    default:
       unreachable("invalid heap for platforms using PAT entries");
    }
+}
+
+struct intel_bind_timeline *
+iris_bufmgr_get_bind_timeline(struct iris_bufmgr *bufmgr)
+{
+   return &bufmgr->bind_timeline;
 }

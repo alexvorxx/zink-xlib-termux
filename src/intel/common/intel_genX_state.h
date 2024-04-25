@@ -44,7 +44,7 @@ intel_set_ps_dispatch_state(struct GENX(3DSTATE_PS) *ps,
                             const struct intel_device_info *devinfo,
                             const struct brw_wm_prog_data *prog_data,
                             unsigned rasterization_samples,
-                            enum brw_wm_msaa_flags msaa_flags)
+                            enum intel_msaa_flags msaa_flags)
 {
    assert(rasterization_samples != 0);
 

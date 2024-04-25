@@ -553,6 +553,16 @@ dzn_meta_blit_create(struct dzn_device *device, const struct dzn_meta_blit_key *
          .OffsetInDescriptorsFromTableStart = 0,
       },
    };
+   D3D12_DESCRIPTOR_RANGE1 sampler_ranges[] = {
+      {
+         .RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,
+         .NumDescriptors = 1,
+         .BaseShaderRegister = 0,
+         .RegisterSpace = 0,
+         .Flags = 0,
+         .OffsetInDescriptorsFromTableStart = 0,
+      },
+   };
 
    D3D12_STATIC_SAMPLER_DESC samplers[] = {
       {
@@ -572,7 +582,7 @@ dzn_meta_blit_create(struct dzn_device *device, const struct dzn_meta_blit_key *
       },
    };
 
-   D3D12_ROOT_PARAMETER1 root_params[] = {
+   D3D12_ROOT_PARAMETER1 root_params[4] = {
       {
          .ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
          .DescriptorTable = {
@@ -591,6 +601,14 @@ dzn_meta_blit_create(struct dzn_device *device, const struct dzn_meta_blit_key *
          .ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX,
       },
       {
+         .ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
+         .DescriptorTable = {
+            .NumDescriptorRanges = ARRAY_SIZE(sampler_ranges),
+            .pDescriptorRanges = sampler_ranges,
+         },
+         .ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL,
+      },
+      {
          .ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS,
          .Constants = {
             .ShaderRegister = 0,
@@ -598,8 +616,9 @@ dzn_meta_blit_create(struct dzn_device *device, const struct dzn_meta_blit_key *
             .Num32BitValues = 1,
          },
          .ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL,
-      }
+      },
    };
+   uint32_t num_root_params = 2;
 
    uint32_t samples = key->resolve_mode == dzn_blit_resolve_none ?
       key->samples : 1;
@@ -632,7 +651,7 @@ dzn_meta_blit_create(struct dzn_device *device, const struct dzn_meta_blit_key *
    D3D12_VERSIONED_ROOT_SIGNATURE_DESC root_sig_desc = {
       .Version = D3D_ROOT_SIGNATURE_VERSION_1_1,
       .Desc_1_1 = {
-         .NumParameters = ARRAY_SIZE(root_params),
+         .NumParameters = num_root_params,
          .pParameters = root_params,
          .NumStaticSamplers = ARRAY_SIZE(samplers),
          .pStaticSamplers = samplers,
@@ -640,9 +659,20 @@ dzn_meta_blit_create(struct dzn_device *device, const struct dzn_meta_blit_key *
       },
    };
 
+   if (!device->support_static_samplers) {
+      root_sig_desc.Desc_1_1.NumStaticSamplers = 0;
+      root_sig_desc.Desc_1_1.NumParameters = 3;
+   }
+
    /* Don't need fs constants unless we're doing the stencil fallback */
-   if (!blit_fs_info.stencil_fallback)
-      root_sig_desc.Desc_1_1.NumParameters--;
+   if (blit_fs_info.stencil_fallback) {
+      if (device->support_static_samplers) {
+         root_params[2] = root_params[3];
+         root_sig_desc.Desc_1_1.NumParameters = 3;
+      } else {
+         root_sig_desc.Desc_1_1.NumParameters = 4;
+      }
+   }
 
    blit->root_sig = dzn_device_create_root_sig(device, &root_sig_desc);
    if (!blit->root_sig) {

@@ -295,13 +295,16 @@ with_any_broadcom = [
   with_broadcom_vk,
 ].contains(true)
 
-if ['x86_64'].contains(host_machine.cpu_family())
-  with_intel_clc = get_option('intel-clc') == 'enabled'
-  with_intel_vk_rt = with_intel_vk and get_option('intel-clc') != 'disabled'
+if get_option('intel-clc') != 'system'
+  # Require intel-clc with Anv & Iris (for internal shaders)
+  with_intel_clc = get_option('intel-clc') == 'enabled' or \
+                   with_intel_vk or with_gallium_iris
 else
   with_intel_clc = false
-  with_intel_vk_rt = false
 endif
+
+with_intel_vk_rt = ['x86_64'].contains(host_machine.cpu_family()) and \
+  with_intel_vk and get_option('intel-rt') != 'disabled'
 
 with_any_intel = [
   with_gallium_crocus,
@@ -601,7 +604,7 @@ _vdpau_drivers = [
 vdpau = get_option('gallium-vdpau') \
   .require(system_has_kms_drm, error_message : 'VDPAU state tracker can only be build on unix-like OSes.') \
   .require(with_platform_x11, error_message : 'VDPAU state tracker requires X11 support.') \
-  .require(_vdpau_drivers.contains(true), error_message : 'VDPAU state tracker requires at least one of the following gallium drivers: r600, radeonsi, nouveau, d3d12 (with option gallium-d3d12-video, virgl).') 
+  .require(_vdpau_drivers.contains(true), error_message : 'VDPAU state tracker requires at least one of the following gallium drivers: r600, radeonsi, nouveau, d3d12 (with option gallium-d3d12-video, virgl).')
 
 dep_vdpau = dependency('vdpau', version : '>= 1.1', required : vdpau)
 if dep_vdpau.found()
@@ -949,7 +952,7 @@ endif
 
 with_shader_cache = get_option('shader-cache') \
   .require(host_machine.system() != 'windows', error_message : 'Shader Cache does not currently work on Windows') \
-  .allowed() 
+  .allowed()
 
 if with_shader_cache
   pre_args += '-DENABLE_SHADER_CACHE'
@@ -1537,7 +1540,7 @@ else
   dep_clock = cc.find_library('rt')
 endif
 
-dep_zlib = dependency('zlib', version : '>= 1.2.3',
+dep_zlib = dependency('zlib', version : '>= 1.2.9',
                       allow_fallback: true,
                       required : get_option('zlib'))
 if dep_zlib.found()
@@ -1597,7 +1600,7 @@ use_xmlconfig = get_option('xmlconfig') \
   .require(dep_expat.found(),
            error_message : 'requires expat') \
   .allowed()
-  
+
 # Predefined macros for windows
 if host_machine.system() == 'windows'
   pre_args += '-DWIN32_LEAN_AND_MEAN' # http://msdn2.microsoft.com/en-us/library/6dwk3a1z.aspx

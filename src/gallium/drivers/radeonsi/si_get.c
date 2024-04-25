@@ -1420,13 +1420,8 @@ void si_init_screen_get_functions(struct si_screen *sscreen)
     * when execution mode is rtz instead of rtne.
     */
    options->force_f2f16_rtz = true;
-   options->pack_varying_options = nir_pack_varying_interp_mode_none |
-                                   nir_pack_varying_interp_mode_smooth |
-                                   nir_pack_varying_interp_mode_noperspective |
-                                   nir_pack_varying_interp_loc_center |
-                                   nir_pack_varying_interp_loc_sample |
-                                   nir_pack_varying_interp_loc_centroid;
-   options->lower_io_variables = true;
+   options->io_options = nir_io_has_flexible_input_interpolation_except_flat |
+                         nir_io_glsl_lower_derefs;
    /* HW supports indirect indexing for: | Enabled in driver
     * -------------------------------------------------------
     * TCS inputs                         | Yes

@@ -179,8 +179,8 @@ radv_optimize_nir(struct nir_shader *shader, bool optimize_conservatively)
    _mesa_set_destroy(skip, NULL);
 
    NIR_PASS(progress, shader, nir_opt_shrink_vectors);
-   NIR_PASS(progress, shader, nir_remove_dead_variables, nir_var_function_temp | nir_var_shader_in | nir_var_shader_out,
-            NULL);
+   NIR_PASS(progress, shader, nir_remove_dead_variables,
+            nir_var_function_temp | nir_var_shader_in | nir_var_shader_out | nir_var_mem_shared, NULL);
 
    if (shader->info.stage == MESA_SHADER_FRAGMENT && (shader->info.fs.uses_discard || shader->info.fs.uses_demote)) {
       NIR_PASS(progress, shader, nir_opt_conditional_discard);
@@ -383,6 +383,7 @@ radv_shader_spirv_to_nir(struct radv_device *device, const struct radv_shader_st
                .multiview = true,
                .physical_storage_buffer_address = true,
                .post_depth_coverage = true,
+               .quad_control = true,
                .ray_cull_mask = true,
                .ray_query = true,
                .ray_tracing = true,
@@ -757,6 +758,13 @@ radv_consider_culling(const struct radv_physical_device *pdevice, struct nir_sha
     * Future work: try to save this to LDS and reload, but it can still be broken in subtle ways.
     */
    if (BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_SUBGROUP_INVOCATION))
+      return false;
+
+   /* When re-using values that depend on subgroup operations, we'd break convergence guarantees.
+    * Since we only re-use uniform values, the only subgroup operations we really care about are
+    * ballot, reductions and vote intrinsics.
+    */
+   if (nir->info.maximally_reconverges && nir->info.uses_wide_subgroup_intrinsics)
       return false;
 
    return true;
@@ -1580,6 +1588,24 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
       config->rsrc2 |= S_00B22C_USER_SGPR_MSB_GFX9(args->num_user_sgprs >> 5);
    }
 
+   gl_shader_stage es_stage = MESA_SHADER_NONE;
+   if (pdevice->rad_info.gfx_level >= GFX9) {
+      es_stage = stage == MESA_SHADER_GEOMETRY ? info->gs.es_type : stage;
+   }
+
+   if (info->merged_shader_compiled_separately) {
+      /* Update the stage for merged shaders compiled separately with ESO on GFX9+. */
+      if (stage == MESA_SHADER_VERTEX && info->vs.as_ls) {
+         stage = MESA_SHADER_TESS_CTRL;
+      } else if (stage == MESA_SHADER_VERTEX && info->vs.as_es) {
+         es_stage = MESA_SHADER_VERTEX;
+         stage = MESA_SHADER_GEOMETRY;
+      } else if (stage == MESA_SHADER_TESS_EVAL && info->tes.as_es) {
+         es_stage = MESA_SHADER_TESS_EVAL;
+         stage = MESA_SHADER_GEOMETRY;
+      }
+   }
+
    bool wgp_mode = radv_should_use_wgp_mode(device, stage, info);
 
    switch (stage) {
@@ -1701,9 +1727,6 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
        (stage == MESA_SHADER_VERTEX || stage == MESA_SHADER_TESS_EVAL || stage == MESA_SHADER_GEOMETRY ||
         stage == MESA_SHADER_MESH)) {
       unsigned gs_vgpr_comp_cnt, es_vgpr_comp_cnt;
-      gl_shader_stage es_stage = stage;
-      if (stage == MESA_SHADER_GEOMETRY)
-         es_stage = info->gs.es_type;
 
       /* VGPR5-8: (VertexID, UserVGPR0, UserVGPR1, UserVGPR2 / InstanceID) */
       if (es_stage == MESA_SHADER_VERTEX) {
@@ -1749,17 +1772,16 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
       config->rsrc2 |= S_00B22C_ES_VGPR_COMP_CNT(es_vgpr_comp_cnt) | S_00B22C_LDS_SIZE(config->lds_size) |
                        S_00B22C_OC_LDS_EN(es_stage == MESA_SHADER_TESS_EVAL);
    } else if (pdevice->rad_info.gfx_level >= GFX9 && stage == MESA_SHADER_GEOMETRY) {
-      unsigned es_type = info->gs.es_type;
       unsigned gs_vgpr_comp_cnt, es_vgpr_comp_cnt;
 
-      if (es_type == MESA_SHADER_VERTEX) {
+      if (es_stage == MESA_SHADER_VERTEX) {
          /* VGPR0-3: (VertexID, InstanceID / StepRate0, ...) */
          if (info->vs.needs_instance_id) {
             es_vgpr_comp_cnt = pdevice->rad_info.gfx_level >= GFX10 ? 3 : 1;
          } else {
             es_vgpr_comp_cnt = 0;
          }
-      } else if (es_type == MESA_SHADER_TESS_EVAL) {
+      } else if (es_stage == MESA_SHADER_TESS_EVAL) {
          es_vgpr_comp_cnt = info->uses_prim_id ? 3 : 2;
       } else {
          unreachable("invalid shader ES type");
@@ -1780,7 +1802,7 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
 
       config->rsrc1 |= S_00B228_GS_VGPR_COMP_CNT(gs_vgpr_comp_cnt) | S_00B228_WGP_MODE(wgp_mode);
       config->rsrc2 |=
-         S_00B22C_ES_VGPR_COMP_CNT(es_vgpr_comp_cnt) | S_00B22C_OC_LDS_EN(es_type == MESA_SHADER_TESS_EVAL);
+         S_00B22C_ES_VGPR_COMP_CNT(es_vgpr_comp_cnt) | S_00B22C_OC_LDS_EN(es_stage == MESA_SHADER_TESS_EVAL);
    } else if (pdevice->rad_info.gfx_level >= GFX9 && stage == MESA_SHADER_TESS_CTRL) {
       config->rsrc1 |= S_00B428_LS_VGPR_COMP_CNT(vgpr_comp_cnt);
    } else {
@@ -1788,6 +1810,75 @@ radv_postprocess_binary_config(struct radv_device *device, struct radv_shader_bi
    }
 
    return true;
+}
+
+void
+radv_shader_combine_cfg_vs_tcs(const struct radv_shader *vs, const struct radv_shader *tcs, uint32_t *rsrc1_out,
+                               uint32_t *rsrc2_out)
+{
+   if (rsrc1_out) {
+      uint32_t rsrc1 = vs->config.rsrc1;
+
+      if (G_00B848_VGPRS(tcs->config.rsrc1) > G_00B848_VGPRS(rsrc1))
+         rsrc1 = (rsrc1 & C_00B848_VGPRS) | (tcs->config.rsrc1 & ~C_00B848_VGPRS);
+      if (G_00B228_SGPRS(tcs->config.rsrc1) > G_00B228_SGPRS(rsrc1))
+         rsrc1 = (rsrc1 & C_00B228_SGPRS) | (tcs->config.rsrc1 & ~C_00B228_SGPRS);
+      if (G_00B428_LS_VGPR_COMP_CNT(tcs->config.rsrc1) > G_00B428_LS_VGPR_COMP_CNT(rsrc1))
+         rsrc1 = (rsrc1 & C_00B428_LS_VGPR_COMP_CNT) | (tcs->config.rsrc1 & ~C_00B428_LS_VGPR_COMP_CNT);
+
+      *rsrc1_out = rsrc1;
+   }
+
+   if (rsrc2_out) {
+      uint32_t rsrc2 = vs->config.rsrc2;
+
+      rsrc2 |= tcs->config.rsrc2 & ~C_00B12C_SCRATCH_EN;
+
+      *rsrc2_out = rsrc2;
+   }
+}
+
+void
+radv_shader_combine_cfg_vs_gs(const struct radv_shader *vs, const struct radv_shader *gs, uint32_t *rsrc1_out,
+                              uint32_t *rsrc2_out)
+{
+   assert(G_00B12C_USER_SGPR(vs->config.rsrc2) == G_00B12C_USER_SGPR(gs->config.rsrc2));
+
+   if (rsrc1_out) {
+      uint32_t rsrc1 = vs->config.rsrc1;
+
+      if (G_00B848_VGPRS(gs->config.rsrc1) > G_00B848_VGPRS(rsrc1))
+         rsrc1 = (rsrc1 & C_00B848_VGPRS) | (gs->config.rsrc1 & ~C_00B848_VGPRS);
+      if (G_00B228_SGPRS(gs->config.rsrc1) > G_00B228_SGPRS(rsrc1))
+         rsrc1 = (rsrc1 & C_00B228_SGPRS) | (gs->config.rsrc1 & ~C_00B228_SGPRS);
+      if (G_00B228_GS_VGPR_COMP_CNT(gs->config.rsrc1) > G_00B228_GS_VGPR_COMP_CNT(rsrc1))
+         rsrc1 = (rsrc1 & C_00B228_GS_VGPR_COMP_CNT) | (gs->config.rsrc1 & ~C_00B228_GS_VGPR_COMP_CNT);
+
+      *rsrc1_out = rsrc1;
+   }
+
+   if (rsrc2_out) {
+      uint32_t rsrc2 = vs->config.rsrc2;
+
+      if (G_00B22C_ES_VGPR_COMP_CNT(gs->config.rsrc2) > G_00B22C_ES_VGPR_COMP_CNT(rsrc2))
+         rsrc2 = (rsrc2 & C_00B22C_ES_VGPR_COMP_CNT) | (gs->config.rsrc2 & ~C_00B22C_ES_VGPR_COMP_CNT);
+
+      rsrc2 |= gs->config.rsrc2 & ~(C_00B12C_SCRATCH_EN & C_00B12C_SO_EN & C_00B12C_SO_BASE0_EN & C_00B12C_SO_BASE1_EN &
+                                    C_00B12C_SO_BASE2_EN & C_00B12C_SO_BASE3_EN);
+
+      *rsrc2_out = rsrc2;
+   }
+}
+
+void
+radv_shader_combine_cfg_tes_gs(const struct radv_shader *tes, const struct radv_shader *gs, uint32_t *rsrc1_out,
+                               uint32_t *rsrc2_out)
+{
+   radv_shader_combine_cfg_vs_gs(tes, gs, rsrc1_out, rsrc2_out);
+
+   if (rsrc2_out) {
+      *rsrc2_out |= S_00B22C_OC_LDS_EN(1);
+   }
 }
 
 static bool

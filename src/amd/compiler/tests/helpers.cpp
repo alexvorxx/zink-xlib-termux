@@ -243,6 +243,14 @@ finish_to_hw_instr_test()
 }
 
 void
+finish_schedule_vopd_test()
+{
+   finish_program(program.get());
+   aco::schedule_vopd(program.get());
+   aco_print_program(program.get(), output);
+}
+
+void
 finish_waitcnt_test()
 {
    finish_program(program.get());

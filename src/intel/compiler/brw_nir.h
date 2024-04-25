@@ -33,6 +33,9 @@
 extern "C" {
 #endif
 
+extern const struct nir_shader_compiler_options brw_scalar_nir_options;
+extern const struct nir_shader_compiler_options brw_vector_nir_options;
+
 int type_size_vec4(const struct glsl_type *type, bool bindless);
 int type_size_dvec4(const struct glsl_type *type, bool bindless);
 
@@ -179,13 +182,13 @@ void brw_nir_lower_vs_inputs(nir_shader *nir,
                              bool edgeflag_is_last,
                              const uint8_t *vs_attrib_wa_flags);
 void brw_nir_lower_vue_inputs(nir_shader *nir,
-                              const struct brw_vue_map *vue_map);
-void brw_nir_lower_tes_inputs(nir_shader *nir, const struct brw_vue_map *vue);
+                              const struct intel_vue_map *vue_map);
+void brw_nir_lower_tes_inputs(nir_shader *nir, const struct intel_vue_map *vue);
 void brw_nir_lower_fs_inputs(nir_shader *nir,
                              const struct intel_device_info *devinfo,
                              const struct brw_wm_prog_key *key);
 void brw_nir_lower_vue_outputs(nir_shader *nir);
-void brw_nir_lower_tcs_outputs(nir_shader *nir, const struct brw_vue_map *vue,
+void brw_nir_lower_tcs_outputs(nir_shader *nir, const struct intel_vue_map *vue,
                                enum tess_primitive_mode tes_primitive_mode);
 void brw_nir_lower_fs_outputs(nir_shader *nir);
 
@@ -208,6 +211,12 @@ struct brw_nir_lower_storage_image_opts {
 
 bool brw_nir_lower_storage_image(nir_shader *nir,
                                  const struct brw_nir_lower_storage_image_opts *opts);
+
+struct brw_nir_lower_texture_opts {
+   bool combined_lod_and_array_index;
+};
+bool brw_nir_lower_texture(nir_shader *nir,
+                           const struct brw_nir_lower_texture_opts *opts);
 
 bool brw_nir_lower_mem_access_bit_sizes(nir_shader *shader,
                                         const struct

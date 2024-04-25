@@ -32,6 +32,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include "brw_disasm.h"
 #include "brw_eu_defines.h"
 #include "brw_eu.h"
 #include "brw_shader.h"

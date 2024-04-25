@@ -22,7 +22,7 @@
  */
 
 #include "common/intel_decoder.h"
-#include "intel_disasm.h"
+#include "compiler/brw_disasm.h"
 #include "util/macros.h"
 #include "util/u_debug.h"
 #include "util/u_dynarray.h"
@@ -161,10 +161,10 @@ ctx_disassemble_program(struct intel_batch_decode_ctx *ctx,
       return;
 
    fprintf(ctx->fp, "\nReferenced %s:\n", name);
-   intel_disassemble(ctx->isa, bo.map, 0, ctx->fp);
+   brw_disassemble_with_errors(ctx->isa, bo.map, 0, ctx->fp);
 
    if (ctx->shader_binary) {
-      int size = intel_disassemble_find_end(ctx->isa, bo.map, 0);
+      int size = brw_disassemble_find_end(ctx->isa, bo.map, 0);
 
       ctx->shader_binary(ctx->user_data, short_name, addr,
                          bo.map, size);

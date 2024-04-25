@@ -490,7 +490,8 @@ static const struct dxil_mdnode *
 emit_uav_metadata(struct dxil_module *m, const struct dxil_type *struct_type,
                   const char *name, const resource_array_layout *layout,
                   enum dxil_component_type comp_type,
-                  enum dxil_resource_kind res_kind)
+                  enum dxil_resource_kind res_kind,
+                  enum gl_access_qualifier access)
 {
    const struct dxil_mdnode *fields[11];
 
@@ -498,7 +499,7 @@ emit_uav_metadata(struct dxil_module *m, const struct dxil_type *struct_type,
 
    fill_resource_metadata(m, fields, struct_type, name, layout);
    fields[6] = dxil_get_metadata_int32(m, res_kind); // resource shape
-   fields[7] = dxil_get_metadata_int1(m, false); // globally-coherent
+   fields[7] = dxil_get_metadata_int1(m, (access & ACCESS_COHERENT) != 0); // globally-coherent
    fields[8] = dxil_get_metadata_int1(m, false); // has counter
    fields[9] = dxil_get_metadata_int1(m, false); // is ROV
    if (res_kind != DXIL_RESOURCE_KIND_RAW_BUFFER &&
@@ -1338,7 +1339,7 @@ emit_globals(struct ntd_context *ctx, unsigned size)
       emit_uav_metadata(&ctx->mod, array_type,
                                    "globals", &layout,
                                    DXIL_COMP_TYPE_INVALID,
-                                   DXIL_RESOURCE_KIND_RAW_BUFFER);
+                                   DXIL_RESOURCE_KIND_RAW_BUFFER, 0);
    if (!uav_meta)
       return false;
 
@@ -1355,7 +1356,7 @@ emit_globals(struct ntd_context *ctx, unsigned size)
 static bool
 emit_uav(struct ntd_context *ctx, unsigned binding, unsigned space, unsigned count,
          enum dxil_component_type comp_type, unsigned num_comps, enum dxil_resource_kind res_kind,
-         const char *name)
+         enum gl_access_qualifier access, const char *name)
 {
    unsigned id = util_dynarray_num_elements(&ctx->uav_metadata_nodes, const struct dxil_mdnode *);
    resource_array_layout layout = { id, binding, count, space };
@@ -1363,7 +1364,7 @@ emit_uav(struct ntd_context *ctx, unsigned binding, unsigned space, unsigned cou
    const struct dxil_type *res_type = dxil_module_get_res_type(&ctx->mod, res_kind, comp_type, num_comps, true /* readwrite */);
    res_type = dxil_module_get_array_type(&ctx->mod, res_type, count);
    const struct dxil_mdnode *uav_meta = emit_uav_metadata(&ctx->mod, res_type, name,
-                                                          &layout, comp_type, res_kind);
+                                                          &layout, comp_type, res_kind, access);
 
    if (!uav_meta)
       return false;
@@ -1405,7 +1406,7 @@ emit_uav_var(struct ntd_context *ctx, nir_variable *var, unsigned count)
 
    return emit_uav(ctx, binding, space, count, comp_type,
                    util_format_get_nr_components(var->data.image.format),
-                   res_kind, name);
+                   res_kind, var->data.access, name);
 }
 
 static const struct dxil_value *
@@ -1813,6 +1814,25 @@ emit_threads(struct ntd_context *ctx)
    return dxil_get_metadata_node(&ctx->mod, threads_nodes, ARRAY_SIZE(threads_nodes));
 }
 
+static const struct dxil_mdnode *
+emit_wave_size(struct ntd_context *ctx)
+{
+   const nir_shader *s = ctx->shader;
+   const struct dxil_mdnode *wave_size_node = dxil_get_metadata_int32(&ctx->mod, s->info.subgroup_size);
+   return dxil_get_metadata_node(&ctx->mod, &wave_size_node, 1);
+}
+
+static const struct dxil_mdnode *
+emit_wave_size_range(struct ntd_context *ctx)
+{
+   const nir_shader *s = ctx->shader;
+   const struct dxil_mdnode *wave_size_nodes[3];
+   wave_size_nodes[0] = dxil_get_metadata_int32(&ctx->mod, s->info.subgroup_size);
+   wave_size_nodes[1] = wave_size_nodes[0];
+   wave_size_nodes[2] = wave_size_nodes[0];
+   return dxil_get_metadata_node(&ctx->mod, wave_size_nodes, ARRAY_SIZE(wave_size_nodes));
+}
+
 static int64_t
 get_module_flags(struct ntd_context *ctx)
 {
@@ -2038,10 +2058,15 @@ emit_metadata(struct ntd_context *ctx)
       if (!emit_tag(ctx, DXIL_SHADER_TAG_NUM_THREADS, emit_threads(ctx)))
          return false;
       if (ctx->mod.minor_version >= 6 &&
-          ctx->shader->info.subgroup_size >= SUBGROUP_SIZE_REQUIRE_8 &&
-          !emit_tag(ctx, DXIL_SHADER_TAG_WAVE_SIZE,
-                    dxil_get_metadata_int32(&ctx->mod, ctx->shader->info.subgroup_size)))
-          return false;
+          ctx->shader->info.subgroup_size >= SUBGROUP_SIZE_REQUIRE_8) {
+         if (ctx->mod.minor_version < 8) {
+            if (!emit_tag(ctx, DXIL_SHADER_TAG_WAVE_SIZE, emit_wave_size(ctx)))
+               return false;
+         } else {
+            if (!emit_tag(ctx, DXIL_SHADER_TAG_WAVE_SIZE_RANGE, emit_wave_size_range(ctx)))
+               return false;
+         }
+      }
    }
 
    uint64_t flags = get_module_flags(ctx);
@@ -6046,7 +6071,7 @@ emit_module(struct ntd_context *ctx, const struct nir_to_dxil_options *opts)
                count = glsl_get_length(var->type);
             if (!emit_uav(ctx, var->data.binding, var->data.descriptor_set,
                         count, DXIL_COMP_TYPE_INVALID, 1,
-                        DXIL_RESOURCE_KIND_RAW_BUFFER, var->name))
+                        DXIL_RESOURCE_KIND_RAW_BUFFER, var->data.access, var->name))
                return false;
             
          }
@@ -6056,7 +6081,7 @@ emit_module(struct ntd_context *ctx, const struct nir_to_dxil_options *opts)
          char name[64];
          snprintf(name, sizeof(name), "__ssbo%d", i);
          if (!emit_uav(ctx, i, 0, 1, DXIL_COMP_TYPE_INVALID, 1,
-                       DXIL_RESOURCE_KIND_RAW_BUFFER, name))
+                       DXIL_RESOURCE_KIND_RAW_BUFFER, 0, name))
             return false;
       }
       /* To work around a WARP bug, bind these descriptors a second time in descriptor
@@ -6066,7 +6091,7 @@ emit_module(struct ntd_context *ctx, const struct nir_to_dxil_options *opts)
        */
       if (ctx->shader->info.num_ssbos &&
           !emit_uav(ctx, 0, 2, ctx->shader->info.num_ssbos, DXIL_COMP_TYPE_INVALID, 1,
-                    DXIL_RESOURCE_KIND_RAW_BUFFER, "__ssbo_dynamic"))
+                    DXIL_RESOURCE_KIND_RAW_BUFFER, 0, "__ssbo_dynamic"))
          return false;
    }
 
@@ -6323,7 +6348,12 @@ void dxil_fill_validation_state(struct ntd_context *ctx,
       sizeof(struct dxil_resource_v1) : sizeof(struct dxil_resource_v0);
    state->num_resources = ctx->resources.size / resource_element_size;
    state->resources.v0 = (struct dxil_resource_v0*)ctx->resources.data;
-   state->state.psv1.psv0.max_expected_wave_lane_count = UINT_MAX;
+   if (ctx->shader->info.subgroup_size >= SUBGROUP_SIZE_REQUIRE_8) {
+      state->state.psv1.psv0.max_expected_wave_lane_count = ctx->shader->info.subgroup_size;
+      state->state.psv1.psv0.min_expected_wave_lane_count = ctx->shader->info.subgroup_size;
+   } else {
+      state->state.psv1.psv0.max_expected_wave_lane_count = UINT_MAX;
+   }
    state->state.psv1.shader_stage = (uint8_t)ctx->mod.shader_kind;
    state->state.psv1.uses_view_id = (uint8_t)ctx->mod.feats.view_id;
    state->state.psv1.sig_input_elements = (uint8_t)ctx->mod.num_sig_inputs;

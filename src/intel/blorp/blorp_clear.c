@@ -28,17 +28,18 @@
 #include "util/format_srgb.h"
 
 #include "blorp_priv.h"
-#include "compiler/brw_eu_defines.h"
+#include "compiler/brw_compiler.h"
 #include "dev/intel_debug.h"
+#include "dev/intel_device_info.h"
 
 #include "blorp_nir_builder.h"
 
 #define FILE_DEBUG_FLAG DEBUG_BLORP
 
 #pragma pack(push, 1)
-struct brw_blorp_const_color_prog_key
+struct blorp_const_color_prog_key
 {
-   struct brw_blorp_base_key base;
+   struct blorp_base_key base;
    bool use_simd16_replicated_data;
    bool clear_rgb_as_red;
    uint8_t local_y;
@@ -53,8 +54,8 @@ blorp_params_get_clear_kernel_fs(struct blorp_batch *batch,
 {
    struct blorp_context *blorp = batch->blorp;
 
-   const struct brw_blorp_const_color_prog_key blorp_key = {
-      .base = BRW_BLORP_BASE_KEY_INIT(BLORP_SHADER_TYPE_CLEAR),
+   const struct blorp_const_color_prog_key blorp_key = {
+      .base = BLORP_BASE_KEY_INIT(BLORP_SHADER_TYPE_CLEAR),
       .base.shader_pipeline = BLORP_SHADER_PIPELINE_RENDER,
       .use_simd16_replicated_data = use_replicated_data,
       .clear_rgb_as_red = clear_rgb_as_red,
@@ -90,19 +91,15 @@ blorp_params_get_clear_kernel_fs(struct blorp_batch *batch,
    frag_color->data.location = FRAG_RESULT_COLOR;
    nir_store_var(&b, frag_color, color, 0xf);
 
-   struct brw_wm_prog_key wm_key;
-   brw_blorp_init_wm_prog_key(&wm_key);
-
-   struct brw_wm_prog_data prog_data;
-   const unsigned *program =
-      blorp_compile_fs(blorp, mem_ctx, b.shader, &wm_key, use_replicated_data,
-                       &prog_data);
+   const bool multisample_fbo = false;
+   struct blorp_program p =
+      blorp_compile_fs(blorp, mem_ctx, b.shader, multisample_fbo, use_replicated_data);
 
    bool result =
       blorp->upload_shader(batch, MESA_SHADER_FRAGMENT,
                            &blorp_key, sizeof(blorp_key),
-                           program, prog_data.base.program_size,
-                           &prog_data.base, sizeof(prog_data),
+                           p.kernel, p.kernel_size,
+                           p.prog_data, p.prog_data_size,
                            &params->wm_prog_kernel, &params->wm_prog_data);
 
    ralloc_free(mem_ctx);
@@ -116,8 +113,8 @@ blorp_params_get_clear_kernel_cs(struct blorp_batch *batch,
 {
    struct blorp_context *blorp = batch->blorp;
 
-   const struct brw_blorp_const_color_prog_key blorp_key = {
-      .base = BRW_BLORP_BASE_KEY_INIT(BLORP_SHADER_TYPE_CLEAR),
+   const struct blorp_const_color_prog_key blorp_key = {
+      .base = BLORP_BASE_KEY_INIT(BLORP_SHADER_TYPE_CLEAR),
       .base.shader_pipeline = BLORP_SHADER_PIPELINE_COMPUTE,
       .use_simd16_replicated_data = false,
       .clear_rgb_as_red = clear_rgb_as_red,
@@ -166,18 +163,14 @@ blorp_params_get_clear_kernel_cs(struct blorp_batch *batch,
 
    nir_pop_if(&b, NULL);
 
-   struct brw_cs_prog_key cs_key;
-   brw_blorp_init_cs_prog_key(&cs_key);
-
-   struct brw_cs_prog_data prog_data;
-   const unsigned *program =
-      blorp_compile_cs(blorp, mem_ctx, b.shader, &cs_key, &prog_data);
+   const struct blorp_program p =
+      blorp_compile_cs(blorp, mem_ctx, b.shader);
 
    bool result =
       blorp->upload_shader(batch, MESA_SHADER_COMPUTE,
                            &blorp_key, sizeof(blorp_key),
-                           program, prog_data.base.program_size,
-                           &prog_data.base, sizeof(prog_data),
+                           p.kernel, p.kernel_size,
+                           p.prog_data, p.prog_data_size,
                            &params->cs_prog_kernel, &params->cs_prog_data);
 
    ralloc_free(mem_ctx);
@@ -202,7 +195,7 @@ blorp_params_get_clear_kernel(struct blorp_batch *batch,
 
 #pragma pack(push, 1)
 struct layer_offset_vs_key {
-   struct brw_blorp_base_key base;
+   struct blorp_base_key base;
    unsigned num_inputs;
 };
 #pragma pack(pop)
@@ -220,11 +213,12 @@ blorp_params_get_layer_offset_vs(struct blorp_batch *batch,
 {
    struct blorp_context *blorp = batch->blorp;
    struct layer_offset_vs_key blorp_key = {
-      .base = BRW_BLORP_BASE_KEY_INIT(BLORP_SHADER_TYPE_LAYER_OFFSET_VS),
+      .base = BLORP_BASE_KEY_INIT(BLORP_SHADER_TYPE_LAYER_OFFSET_VS),
    };
 
-   if (params->wm_prog_data)
-      blorp_key.num_inputs = params->wm_prog_data->num_varying_inputs;
+   struct brw_wm_prog_data *wm_prog_data = params->wm_prog_data;
+   if (wm_prog_data)
+      blorp_key.num_inputs = wm_prog_data->num_varying_inputs;
 
    if (blorp->lookup_shader(batch, &blorp_key, sizeof(blorp_key),
                             &params->vs_prog_kernel, &params->vs_prog_data))
@@ -277,17 +271,14 @@ blorp_params_get_layer_offset_vs(struct blorp_batch *batch,
       nir_copy_var(&b, v_out, a_in);
    }
 
-   struct brw_vs_prog_data vs_prog_data;
-   memset(&vs_prog_data, 0, sizeof(vs_prog_data));
-
-   const unsigned *program =
-      blorp_compile_vs(blorp, mem_ctx, b.shader, &vs_prog_data);
+   const struct blorp_program p =
+      blorp_compile_vs(blorp, mem_ctx, b.shader);
 
    bool result =
       blorp->upload_shader(batch, MESA_SHADER_VERTEX,
                            &blorp_key, sizeof(blorp_key),
-                           program, vs_prog_data.base.base.program_size,
-                           &vs_prog_data.base.base, sizeof(vs_prog_data),
+                           p.kernel, p.kernel_size,
+                           p.prog_data, p.prog_data_size,
                            &params->vs_prog_kernel, &params->vs_prog_data);
 
    ralloc_free(mem_ctx);
@@ -468,7 +459,7 @@ blorp_fast_clear(struct blorp_batch *batch,
    if (!blorp_params_get_clear_kernel(batch, &params, true, false))
       return;
 
-   brw_blorp_surface_info_init(batch, &params.dst, surf, level,
+   blorp_surface_info_init(batch, &params.dst, surf, level,
                                start_layer, format, true);
    params.num_samples = params.dst.surf.samples;
 
@@ -635,7 +626,7 @@ blorp_clear(struct blorp_batch *batch,
       return;
 
    while (num_layers > 0) {
-      brw_blorp_surface_info_init(batch, &params.dst, surf, level,
+      blorp_surface_info_init(batch, &params.dst, surf, level,
                                   start_layer, format, true);
       params.dst.view.swizzle = swizzle;
 
@@ -820,7 +811,7 @@ blorp_clear_stencil_as_rgba(struct blorp_batch *batch,
    for (uint32_t a = 0; a < num_layers; a++) {
       uint32_t layer = start_layer + a;
 
-      brw_blorp_surface_info_init(batch, &params.dst, surf, level,
+      blorp_surface_info_init(batch, &params.dst, surf, level,
                                   layer, ISL_FORMAT_UNSUPPORTED, true);
 
       if (surf->surf->samples > 1)
@@ -891,7 +882,7 @@ blorp_clear_depth_stencil(struct blorp_batch *batch,
       params.num_layers = num_layers;
 
       if (stencil_mask) {
-         brw_blorp_surface_info_init(batch, &params.stencil, stencil,
+         blorp_surface_info_init(batch, &params.stencil, stencil,
                                      level, start_layer,
                                      ISL_FORMAT_UNSUPPORTED, true);
          params.stencil_mask = stencil_mask;
@@ -913,7 +904,7 @@ blorp_clear_depth_stencil(struct blorp_batch *batch,
       }
 
       if (clear_depth) {
-         brw_blorp_surface_info_init(batch, &params.depth, depth,
+         blorp_surface_info_init(batch, &params.depth, depth,
                                      level, start_layer,
                                      ISL_FORMAT_UNSUPPORTED, true);
          params.z = depth_value;
@@ -1078,7 +1069,7 @@ blorp_hiz_clear_depth_stencil(struct blorp_batch *batch,
    for (uint32_t l = 0; l < num_layers; l++) {
       const uint32_t layer = start_layer + l;
       if (clear_stencil) {
-         brw_blorp_surface_info_init(batch, &params.stencil, stencil,
+         blorp_surface_info_init(batch, &params.stencil, stencil,
                                      level, layer,
                                      ISL_FORMAT_UNSUPPORTED, true);
          params.stencil_mask = 0xff;
@@ -1090,7 +1081,7 @@ blorp_hiz_clear_depth_stencil(struct blorp_batch *batch,
          /* If we're clearing depth, we must have HiZ */
          assert(depth && isl_aux_usage_has_hiz(depth->aux_usage));
 
-         brw_blorp_surface_info_init(batch, &params.depth, depth,
+         blorp_surface_info_init(batch, &params.depth, depth,
                                      level, layer,
                                      ISL_FORMAT_UNSUPPORTED, true);
          params.depth.clear_color.f32[0] = depth_value;
@@ -1235,7 +1226,7 @@ blorp_ccs_resolve(struct blorp_batch *batch,
    default:
       assert(false);
    }
-   brw_blorp_surface_info_init(batch, &params.dst, surf,
+   blorp_surface_info_init(batch, &params.dst, surf,
                                level, start_layer, format, true);
 
    params.x0 = params.y0 = 0;
@@ -1326,7 +1317,7 @@ blorp_nir_bit(nir_builder *b, nir_def *src, unsigned bit)
 #pragma pack(push, 1)
 struct blorp_mcs_partial_resolve_key
 {
-   struct brw_blorp_base_key base;
+   struct blorp_base_key base;
    bool indirect_clear_color;
    bool int_format;
    uint32_t num_samples;
@@ -1339,7 +1330,7 @@ blorp_params_get_mcs_partial_resolve_kernel(struct blorp_batch *batch,
 {
    struct blorp_context *blorp = batch->blorp;
    const struct blorp_mcs_partial_resolve_key blorp_key = {
-      .base = BRW_BLORP_BASE_KEY_INIT(BLORP_SHADER_TYPE_MCS_PARTIAL_RESOLVE),
+      .base = BLORP_BASE_KEY_INIT(BLORP_SHADER_TYPE_MCS_PARTIAL_RESOLVE),
       .indirect_clear_color = params->dst.clear_color_addr.buffer != NULL,
       .int_format = isl_format_has_int_channel(params->dst.view.format),
       .num_samples = params->num_samples,
@@ -1386,20 +1377,15 @@ blorp_params_get_mcs_partial_resolve_kernel(struct blorp_batch *batch,
    }
    nir_store_var(&b, frag_color, clear_color, 0xf);
 
-   struct brw_wm_prog_key wm_key;
-   brw_blorp_init_wm_prog_key(&wm_key);
-   wm_key.multisample_fbo = BRW_ALWAYS;
-
-   struct brw_wm_prog_data prog_data;
-   const unsigned *program =
-      blorp_compile_fs(blorp, mem_ctx, b.shader, &wm_key, false,
-                       &prog_data);
+   const bool multisample_fbo = true;
+   const struct blorp_program p =
+      blorp_compile_fs(blorp, mem_ctx, b.shader, multisample_fbo, false);
 
    bool result =
       blorp->upload_shader(batch, MESA_SHADER_FRAGMENT,
                            &blorp_key, sizeof(blorp_key),
-                           program, prog_data.base.program_size,
-                           &prog_data.base, sizeof(prog_data),
+                           p.kernel, p.kernel_size,
+                           p.prog_data, p.prog_data_size,
                            &params->wm_prog_kernel, &params->wm_prog_data);
 
    ralloc_free(mem_ctx);
@@ -1423,9 +1409,9 @@ blorp_mcs_partial_resolve(struct blorp_batch *batch,
    params.x1 = surf->surf->logical_level0_px.width;
    params.y1 = surf->surf->logical_level0_px.height;
 
-   brw_blorp_surface_info_init(batch, &params.src, surf, 0,
+   blorp_surface_info_init(batch, &params.src, surf, 0,
                                start_layer, format, false);
-   brw_blorp_surface_info_init(batch, &params.dst, surf, 0,
+   blorp_surface_info_init(batch, &params.dst, surf, 0,
                                start_layer, format, true);
 
    params.num_samples = params.dst.surf.samples;
@@ -1498,7 +1484,7 @@ blorp_mcs_ambiguate(struct blorp_batch *batch,
    default: unreachable("Unexpected MCS format size for ambiguate");
    }
 
-   params.dst = (struct brw_blorp_surface_info) {
+   params.dst = (struct blorp_surface_info) {
       .enabled = true,
       .surf = *surf->aux_surf,
       .addr = surf->aux_addr,
@@ -1558,7 +1544,7 @@ blorp_ccs_ambiguate(struct blorp_batch *batch,
       isl_format_get_layout(surf->aux_surf->format);
    assert(aux_fmtl->txc == ISL_TXC_CCS);
 
-   params.dst = (struct brw_blorp_surface_info) {
+   params.dst = (struct blorp_surface_info) {
       .enabled = true,
       .addr = surf->aux_addr,
       .view = {

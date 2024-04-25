@@ -66,7 +66,6 @@
  * shader parts per shader increased. The complete new list of shader parts is:
  * - 1st shader: prolog part
  * - 1st shader: main part
- * - 2nd shader: prolog part
  * - 2nd shader: main part
  * - 2nd shader: epilog part
  */
@@ -132,6 +131,8 @@ struct nir_lower_subgroups_options;
 #define SI_MAX_ATTRIBS    16
 #define SI_MAX_VS_OUTPUTS 40
 #define SI_USER_CLIP_PLANE_MASK  0x3F
+
+#define INTERP_MODE_COLOR  INTERP_MODE_COUNT
 
 #define SI_PS_INPUT_CNTL_0000          (S_028644_OFFSET(0x20) | S_028644_DEFAULT_VAL(0))
 #define SI_PS_INPUT_CNTL_0001          (S_028644_OFFSET(0x20) | S_028644_DEFAULT_VAL(3))
@@ -480,7 +481,6 @@ struct si_shader_info {
    uint8_t colors_read; /**< which color components are read by the FS */
    uint8_t colors_written;
    uint16_t output_color_types; /**< Each bit pair is enum si_color_output_type */
-   bool vs_needs_prolog;
    bool color0_writes_all_cbufs; /**< gl_FragColor */
    bool reads_samplemask;   /**< does fragment shader read sample mask? */
    bool reads_tess_factors; /**< If TES reads TESSINNER or TESSOUTER */
@@ -624,19 +624,6 @@ struct si_shader_selector {
  */
 #pragma pack(push, 1)
 
-/* Common VS bits between the shader key and the prolog key. */
-struct si_vs_prolog_bits {
-   /* - If neither "is_one" nor "is_fetched" has a bit set, the instance
-    *   divisor is 0.
-    * - If "is_one" has a bit set, the instance divisor is 1.
-    * - If "is_fetched" has a bit set, the instance divisor will be loaded
-    *   from the constant buffer.
-    */
-   uint16_t instance_divisor_is_one;     /* bitmask of inputs */
-   uint16_t instance_divisor_is_fetched; /* bitmask of inputs */
-   unsigned ls_vgpr_fix : 1;
-};
-
 /* Common TCS bits between the shader key and the epilog key. */
 struct si_tcs_epilog_bits {
    unsigned prim_mode : 3;
@@ -675,17 +662,6 @@ struct si_ps_epilog_bits {
 
 union si_shader_part_key {
    struct {
-      struct si_vs_prolog_bits states;
-      unsigned wave32 : 1;
-      unsigned num_input_sgprs : 6;
-      /* For merged stages such as LS-HS, HS input VGPRs are first. */
-      unsigned num_merged_next_stage_vgprs : 3;
-      unsigned num_inputs : 5;
-      unsigned as_ls : 1;
-      unsigned as_es : 1;
-      unsigned as_ngg : 1;
-   } vs_prolog;
-   struct {
       struct si_tcs_epilog_bits states;
       unsigned wave32 : 1;
       unsigned noop_s_barrier : 1;
@@ -719,15 +695,10 @@ struct si_shader_key_ge {
    /* Prolog and epilog flags. */
    union {
       struct {
-         struct si_vs_prolog_bits prolog;
-      } vs;
-      struct {
-         struct si_vs_prolog_bits ls_prolog; /* for merged LS-HS */
          struct si_shader_selector *ls;      /* for merged LS-HS */
          struct si_tcs_epilog_bits epilog;
       } tcs; /* tessellation control shader */
       struct {
-         struct si_vs_prolog_bits vs_prolog; /* for merged ES-GS */
          struct si_shader_selector *es;      /* for merged ES-GS */
       } gs;
    } part;
@@ -742,6 +713,15 @@ struct si_shader_key_ge {
 
    /* Flags for monolithic compilation only. */
    struct {
+      /* - If neither "is_one" nor "is_fetched" has a bit set, the instance
+       *   divisor is 0.
+       * - If "is_one" has a bit set, the instance divisor is 1.
+       * - If "is_fetched" has a bit set, the instance divisor will be loaded
+       *   from the constant buffer.
+       */
+      uint16_t instance_divisor_is_one;     /* bitmask of inputs */
+      uint16_t instance_divisor_is_fetched; /* bitmask of inputs */
+
       /* Whether fetch should be opencoded according to vs_fix_fetch.
        * Otherwise, if vs_fix_fetch is non-zero, buffer_load_format_xyzw
        * with minimal fixups is used. */

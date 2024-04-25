@@ -598,6 +598,7 @@ init_dispatch_tables(struct radv_device *device, struct radv_physical_device *ph
    b.tables[RADV_RGP_DISPATCH_TABLE] = &device->layer_dispatch.rgp;
    b.tables[RADV_RRA_DISPATCH_TABLE] = &device->layer_dispatch.rra;
    b.tables[RADV_RMV_DISPATCH_TABLE] = &device->layer_dispatch.rmv;
+   b.tables[RADV_CTX_ROLL_DISPATCH_TABLE] = &device->layer_dispatch.ctx_roll;
 
    if (!strcmp(physical_device->instance->drirc.app_layer, "metroexodus")) {
       add_entrypoints(&b, &metro_exodus_device_entrypoints, RADV_APP_DISPATCH_TABLE);
@@ -618,6 +619,9 @@ init_dispatch_tables(struct radv_device *device, struct radv_physical_device *ph
       add_entrypoints(&b, &rmv_device_entrypoints, RADV_RMV_DISPATCH_TABLE);
 #endif
 
+   if (physical_device->instance->vk.trace_mode & RADV_TRACE_MODE_CTX_ROLLS)
+      add_entrypoints(&b, &ctx_roll_device_entrypoints, RADV_CTX_ROLL_DISPATCH_TABLE);
+
    add_entrypoints(&b, &radv_device_entrypoints, RADV_DISPATCH_TABLE_COUNT);
    add_entrypoints(&b, &wsi_device_entrypoints, RADV_DISPATCH_TABLE_COUNT);
    add_entrypoints(&b, &vk_common_device_entrypoints, RADV_DISPATCH_TABLE_COUNT);
@@ -630,28 +634,8 @@ capture_trace(VkQueue _queue)
 
    VkResult result = VK_SUCCESS;
 
-   char filename[2048];
-   struct tm now;
-   time_t t;
-
-   t = time(NULL);
-   now = *localtime(&t);
-
-   if (queue->device->instance->vk.trace_mode & RADV_TRACE_MODE_RRA) {
-      if (_mesa_hash_table_num_entries(queue->device->rra_trace.accel_structs) == 0) {
-         fprintf(stderr, "radv: No acceleration structures captured, not saving RRA trace.\n");
-      } else {
-         snprintf(filename, sizeof(filename), "/tmp/%s_%04d.%02d.%02d_%02d.%02d.%02d.rra", util_get_process_name(),
-                  1900 + now.tm_year, now.tm_mon + 1, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec);
-
-         result = radv_rra_dump_trace(_queue, filename);
-
-         if (result == VK_SUCCESS)
-            fprintf(stderr, "radv: RRA capture saved to '%s'\n", filename);
-         else
-            fprintf(stderr, "radv: Failed to save RRA capture!\n");
-      }
-   }
+   if (queue->device->instance->vk.trace_mode & RADV_TRACE_MODE_RRA)
+      queue->device->rra_trace.triggered = true;
 
    if (queue->device->vk.memory_trace_data.is_enabled) {
       simple_mtx_lock(&queue->device->vk.memory_trace_data.token_mtx);
@@ -662,6 +646,22 @@ capture_trace(VkQueue _queue)
 
    if (queue->device->instance->vk.trace_mode & RADV_TRACE_MODE_RGP)
       queue->device->sqtt_triggered = true;
+
+   if (queue->device->instance->vk.trace_mode & RADV_TRACE_MODE_CTX_ROLLS) {
+      char filename[2048];
+      time_t t = time(NULL);
+      struct tm now = *localtime(&t);
+      snprintf(filename, sizeof(filename), "/tmp/%s_%04d.%02d.%02d_%02d.%02d.%02d.ctxroll", util_get_process_name(),
+               1900 + now.tm_year, now.tm_mon + 1, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec);
+
+      simple_mtx_lock(&queue->device->ctx_roll_mtx);
+
+      queue->device->ctx_roll_file = fopen(filename, "w");
+      if (queue->device->ctx_roll_file)
+         fprintf(stderr, "radv: Writing context rolls to '%s'...\n", filename);
+
+      simple_mtx_unlock(&queue->device->ctx_roll_mtx);
+   }
 
    return result;
 }
@@ -745,6 +745,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
 
    device->instance = physical_device->instance;
    device->physical_device = physical_device;
+   simple_mtx_init(&device->ctx_roll_mtx, mtx_plain);
    simple_mtx_init(&device->trace_mtx, mtx_plain);
    simple_mtx_init(&device->pstate_mtx, mtx_plain);
    simple_mtx_init(&device->rt_handles_mtx, mtx_plain);
@@ -1064,7 +1065,9 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    }
 
    if ((device->instance->vk.trace_mode & RADV_TRACE_MODE_RRA) && radv_enable_rt(physical_device, false)) {
-      radv_rra_trace_init(device);
+      result = radv_rra_trace_init(device);
+      if (result != VK_SUCCESS)
+         goto fail;
    }
 
    if (device->vk.enabled_features.rayTracingPipelineShaderGroupHandleCaptureReplay) {
@@ -1086,6 +1089,8 @@ fail:
    radv_printf_data_finish(device);
 
    radv_sqtt_finish(device);
+
+   radv_rra_trace_finish(radv_device_to_handle(device), &device->rra_trace);
 
    radv_spm_finish(device);
 
@@ -1125,6 +1130,7 @@ fail_queue:
 
    _mesa_hash_table_destroy(device->rt_handles, NULL);
 
+   simple_mtx_destroy(&device->ctx_roll_mtx);
    simple_mtx_destroy(&device->pstate_mtx);
    simple_mtx_destroy(&device->trace_mtx);
    simple_mtx_destroy(&device->rt_handles_mtx);
@@ -1187,6 +1193,7 @@ radv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    }
 
    mtx_destroy(&device->overallocation_mutex);
+   simple_mtx_destroy(&device->ctx_roll_mtx);
    simple_mtx_destroy(&device->pstate_mtx);
    simple_mtx_destroy(&device->trace_mtx);
    simple_mtx_destroy(&device->rt_handles_mtx);

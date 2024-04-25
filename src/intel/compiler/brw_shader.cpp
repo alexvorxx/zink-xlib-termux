@@ -1285,7 +1285,7 @@ brw_compile_tes(const struct brw_compiler *compiler,
    const struct intel_device_info *devinfo = compiler->devinfo;
    nir_shader *nir = params->base.nir;
    const struct brw_tes_prog_key *key = params->key;
-   const struct brw_vue_map *input_vue_map = params->input_vue_map;
+   const struct intel_vue_map *input_vue_map = params->input_vue_map;
    struct brw_tes_prog_data *prog_data = params->prog_data;
 
    const bool is_scalar = compiler->scalar_stage[MESA_SHADER_TESS_EVAL];
@@ -1331,38 +1331,38 @@ brw_compile_tes(const struct brw_compiler *compiler,
 
    prog_data->base.urb_read_length = 0;
 
-   STATIC_ASSERT(BRW_TESS_PARTITIONING_INTEGER == TESS_SPACING_EQUAL - 1);
-   STATIC_ASSERT(BRW_TESS_PARTITIONING_ODD_FRACTIONAL ==
+   STATIC_ASSERT(INTEL_TESS_PARTITIONING_INTEGER == TESS_SPACING_EQUAL - 1);
+   STATIC_ASSERT(INTEL_TESS_PARTITIONING_ODD_FRACTIONAL ==
                  TESS_SPACING_FRACTIONAL_ODD - 1);
-   STATIC_ASSERT(BRW_TESS_PARTITIONING_EVEN_FRACTIONAL ==
+   STATIC_ASSERT(INTEL_TESS_PARTITIONING_EVEN_FRACTIONAL ==
                  TESS_SPACING_FRACTIONAL_EVEN - 1);
 
    prog_data->partitioning =
-      (enum brw_tess_partitioning) (nir->info.tess.spacing - 1);
+      (enum intel_tess_partitioning) (nir->info.tess.spacing - 1);
 
    switch (nir->info.tess._primitive_mode) {
    case TESS_PRIMITIVE_QUADS:
-      prog_data->domain = BRW_TESS_DOMAIN_QUAD;
+      prog_data->domain = INTEL_TESS_DOMAIN_QUAD;
       break;
    case TESS_PRIMITIVE_TRIANGLES:
-      prog_data->domain = BRW_TESS_DOMAIN_TRI;
+      prog_data->domain = INTEL_TESS_DOMAIN_TRI;
       break;
    case TESS_PRIMITIVE_ISOLINES:
-      prog_data->domain = BRW_TESS_DOMAIN_ISOLINE;
+      prog_data->domain = INTEL_TESS_DOMAIN_ISOLINE;
       break;
    default:
       unreachable("invalid domain shader primitive mode");
    }
 
    if (nir->info.tess.point_mode) {
-      prog_data->output_topology = BRW_TESS_OUTPUT_TOPOLOGY_POINT;
+      prog_data->output_topology = INTEL_TESS_OUTPUT_TOPOLOGY_POINT;
    } else if (nir->info.tess._primitive_mode == TESS_PRIMITIVE_ISOLINES) {
-      prog_data->output_topology = BRW_TESS_OUTPUT_TOPOLOGY_LINE;
+      prog_data->output_topology = INTEL_TESS_OUTPUT_TOPOLOGY_LINE;
    } else {
       /* Hardware winding order is backwards from OpenGL */
       prog_data->output_topology =
-         nir->info.tess.ccw ? BRW_TESS_OUTPUT_TOPOLOGY_TRI_CW
-                             : BRW_TESS_OUTPUT_TOPOLOGY_TRI_CCW;
+         nir->info.tess.ccw ? INTEL_TESS_OUTPUT_TOPOLOGY_TRI_CW
+                             : INTEL_TESS_OUTPUT_TOPOLOGY_TRI_CCW;
    }
 
    if (unlikely(debug_enabled)) {
@@ -1387,7 +1387,7 @@ brw_compile_tes(const struct brw_compiler *compiler,
       assert(v.payload().num_regs % reg_unit(devinfo) == 0);
       prog_data->base.base.dispatch_grf_start_reg = v.payload().num_regs / reg_unit(devinfo);
 
-      prog_data->base.dispatch_mode = DISPATCH_MODE_SIMD8;
+      prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_SIMD8;
 
       fs_generator g(compiler, &params->base,
                      &prog_data->base.base, false, MESA_SHADER_TESS_EVAL);

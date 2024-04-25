@@ -27,11 +27,14 @@
 #include <stdio.h>
 #include "c11/threads.h"
 #include "dev/intel_device_info.h"
+#include "isl/isl.h"
 #include "util/macros.h"
+#include "util/mesa-sha1.h"
 #include "util/enum_operators.h"
 #include "util/ralloc.h"
 #include "util/u_math.h"
 #include "brw_isa_info.h"
+#include "intel_shader_enums.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -637,48 +640,6 @@ union brw_any_prog_key {
 
 PRAGMA_DIAGNOSTIC_POP
 
-/*
- * Image metadata structure as laid out in the shader parameter
- * buffer.  Entries have to be 16B-aligned for the vec4 back-end to be
- * able to use them.  That's okay because the padding and any unused
- * entries [most of them except when we're doing untyped surface
- * access] will be removed by the uniform packing pass.
- */
-#define BRW_IMAGE_PARAM_OFFSET_OFFSET           0
-#define BRW_IMAGE_PARAM_SIZE_OFFSET             4
-#define BRW_IMAGE_PARAM_STRIDE_OFFSET           8
-#define BRW_IMAGE_PARAM_TILING_OFFSET           12
-#define BRW_IMAGE_PARAM_SWIZZLING_OFFSET        16
-#define BRW_IMAGE_PARAM_SIZE                    20
-
-struct brw_image_param {
-   /** Offset applied to the X and Y surface coordinates. */
-   uint32_t offset[2];
-
-   /** Surface X, Y and Z dimensions. */
-   uint32_t size[3];
-
-   /** X-stride in bytes, Y-stride in pixels, horizontal slice stride in
-    * pixels, vertical slice stride in pixels.
-    */
-   uint32_t stride[4];
-
-   /** Log2 of the tiling modulus in the X, Y and Z dimension. */
-   uint32_t tiling[3];
-
-   /**
-    * Right shift to apply for bit 6 address swizzling.  Two different
-    * swizzles can be specified and will be applied one after the other.  The
-    * resulting address will be:
-    *
-    *  addr' = addr ^ ((1 << 6) & ((addr >> swizzling[0]) ^
-    *                              (addr >> swizzling[1])))
-    *
-    * Use \c 0xff if any of the swizzles is not required.
-    */
-   uint32_t swizzling[2];
-};
-
 /** Max number of render targets in a shader */
 #define BRW_MAX_DRAW_BUFFERS 8
 
@@ -909,42 +870,6 @@ enum brw_pixel_shader_computed_depth_mode {
    BRW_PSCDEPTH_ON_GE = 2, /* PS guarantees output depth >= source depth */
    BRW_PSCDEPTH_ON_LE = 3, /* PS guarantees output depth <= source depth */
 };
-
-enum brw_wm_msaa_flags {
-   /** Must be set whenever any dynamic MSAA is used
-    *
-    * This flag mostly exists to let us assert that the driver understands
-    * dynamic MSAA so we don't run into trouble with drivers that don't.
-    */
-   BRW_WM_MSAA_FLAG_ENABLE_DYNAMIC = (1 << 0),
-
-   /** True if the framebuffer is multisampled */
-   BRW_WM_MSAA_FLAG_MULTISAMPLE_FBO = (1 << 1),
-
-   /** True if this shader has been dispatched per-sample */
-   BRW_WM_MSAA_FLAG_PERSAMPLE_DISPATCH = (1 << 2),
-
-   /** True if inputs should be interpolated per-sample by default */
-   BRW_WM_MSAA_FLAG_PERSAMPLE_INTERP = (1 << 3),
-
-   /** True if this shader has been dispatched with alpha-to-coverage */
-   BRW_WM_MSAA_FLAG_ALPHA_TO_COVERAGE = (1 << 4),
-
-   /** True if this shader has been dispatched coarse
-    *
-    * This is intentionally chose to be bit 15 to correspond to the coarse bit
-    * in the pixel interpolator messages.
-    */
-   BRW_WM_MSAA_FLAG_COARSE_PI_MSG = (1 << 15),
-
-   /** True if this shader has been dispatched coarse
-    *
-    * This is intentionally chose to be bit 18 to correspond to the coarse bit
-    * in the render target messages.
-    */
-   BRW_WM_MSAA_FLAG_COARSE_RT_WRITES = (1 << 18),
-};
-MESA_DEFINE_CPP_ENUM_BITFIELD_OPERATORS(enum brw_wm_msaa_flags)
 
 /* Data about a particular attempt to compile a program.  Note that
  * there can be many of these, each in a different GL state
@@ -1208,21 +1133,21 @@ _brw_wm_prog_data_reg_blocks(const struct brw_wm_prog_data *prog_data,
 
 static inline bool
 brw_wm_prog_data_is_persample(const struct brw_wm_prog_data *prog_data,
-                              enum brw_wm_msaa_flags pushed_msaa_flags)
+                              enum intel_msaa_flags pushed_msaa_flags)
 {
-   if (pushed_msaa_flags & BRW_WM_MSAA_FLAG_ENABLE_DYNAMIC) {
-      if (!(pushed_msaa_flags & BRW_WM_MSAA_FLAG_MULTISAMPLE_FBO))
+   if (pushed_msaa_flags & INTEL_MSAA_FLAG_ENABLE_DYNAMIC) {
+      if (!(pushed_msaa_flags & INTEL_MSAA_FLAG_MULTISAMPLE_FBO))
          return false;
 
       if (prog_data->sample_shading)
-         assert(pushed_msaa_flags & BRW_WM_MSAA_FLAG_PERSAMPLE_DISPATCH);
+         assert(pushed_msaa_flags & INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH);
 
-      if (pushed_msaa_flags & BRW_WM_MSAA_FLAG_PERSAMPLE_DISPATCH)
+      if (pushed_msaa_flags & INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH)
          assert(prog_data->persample_dispatch != BRW_NEVER);
       else
          assert(prog_data->persample_dispatch != BRW_ALWAYS);
 
-      return (pushed_msaa_flags & BRW_WM_MSAA_FLAG_PERSAMPLE_DISPATCH) != 0;
+      return (pushed_msaa_flags & INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH) != 0;
    }
 
    assert(prog_data->persample_dispatch == BRW_ALWAYS ||
@@ -1233,19 +1158,19 @@ brw_wm_prog_data_is_persample(const struct brw_wm_prog_data *prog_data,
 
 static inline uint32_t
 wm_prog_data_barycentric_modes(const struct brw_wm_prog_data *prog_data,
-                               enum brw_wm_msaa_flags pushed_msaa_flags)
+                               enum intel_msaa_flags pushed_msaa_flags)
 {
    uint32_t modes = prog_data->barycentric_interp_modes;
 
    /* In the non dynamic case, we can just return the computed modes from
     * compilation time.
     */
-   if (!(pushed_msaa_flags & BRW_WM_MSAA_FLAG_ENABLE_DYNAMIC))
+   if (!(pushed_msaa_flags & INTEL_MSAA_FLAG_ENABLE_DYNAMIC))
       return modes;
 
-   if (pushed_msaa_flags & BRW_WM_MSAA_FLAG_PERSAMPLE_INTERP) {
+   if (pushed_msaa_flags & INTEL_MSAA_FLAG_PERSAMPLE_INTERP) {
       assert(prog_data->persample_dispatch == BRW_ALWAYS ||
-             (pushed_msaa_flags & BRW_WM_MSAA_FLAG_PERSAMPLE_DISPATCH));
+             (pushed_msaa_flags & INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH));
 
       /* Making dynamic per-sample interpolation work is a bit tricky.  The
        * hardware will hang if SAMPLE is requested but per-sample dispatch is
@@ -1299,15 +1224,15 @@ wm_prog_data_barycentric_modes(const struct brw_wm_prog_data *prog_data,
 
 static inline bool
 brw_wm_prog_data_is_coarse(const struct brw_wm_prog_data *prog_data,
-                           enum brw_wm_msaa_flags pushed_msaa_flags)
+                           enum intel_msaa_flags pushed_msaa_flags)
 {
-   if (pushed_msaa_flags & BRW_WM_MSAA_FLAG_ENABLE_DYNAMIC) {
-      if (pushed_msaa_flags & BRW_WM_MSAA_FLAG_COARSE_RT_WRITES)
+   if (pushed_msaa_flags & INTEL_MSAA_FLAG_ENABLE_DYNAMIC) {
+      if (pushed_msaa_flags & INTEL_MSAA_FLAG_COARSE_RT_WRITES)
          assert(prog_data->coarse_pixel_dispatch != BRW_NEVER);
       else
          assert(prog_data->coarse_pixel_dispatch != BRW_ALWAYS);
 
-      return pushed_msaa_flags & BRW_WM_MSAA_FLAG_COARSE_RT_WRITES;
+      return pushed_msaa_flags & INTEL_MSAA_FLAG_COARSE_RT_WRITES;
    }
 
    assert(prog_data->coarse_pixel_dispatch == BRW_ALWAYS ||
@@ -1444,78 +1369,7 @@ typedef enum
    (BITFIELD64_RANGE(0, VARYING_SLOT_MAX) & \
     ~VARYING_BIT_POS & ~VARYING_BIT_FACE)
 
-/**
- * Data structure recording the relationship between the gl_varying_slot enum
- * and "slots" within the vertex URB entry (VUE).  A "slot" is defined as a
- * single octaword within the VUE (128 bits).
- *
- * Note that each BRW register contains 256 bits (2 octawords), so when
- * accessing the VUE in URB_NOSWIZZLE mode, each register corresponds to two
- * consecutive VUE slots.  When accessing the VUE in URB_INTERLEAVED mode (as
- * in a vertex shader), each register corresponds to a single VUE slot, since
- * it contains data for two separate vertices.
- */
-struct brw_vue_map {
-   /**
-    * Bitfield representing all varying slots that are (a) stored in this VUE
-    * map, and (b) actually written by the shader.  Does not include any of
-    * the additional varying slots defined in brw_varying_slot.
-    */
-   uint64_t slots_valid;
-
-   /**
-    * Is this VUE map for a separate shader pipeline?
-    *
-    * Separable programs (GL_ARB_separate_shader_objects) can be mixed and matched
-    * without the linker having a chance to dead code eliminate unused varyings.
-    *
-    * This means that we have to use a fixed slot layout, based on the output's
-    * location field, rather than assigning slots in a compact contiguous block.
-    */
-   bool separate;
-
-   /**
-    * Map from gl_varying_slot value to VUE slot.  For gl_varying_slots that are
-    * not stored in a slot (because they are not written, or because
-    * additional processing is applied before storing them in the VUE), the
-    * value is -1.
-    */
-   signed char varying_to_slot[VARYING_SLOT_TESS_MAX];
-
-   /**
-    * Map from VUE slot to gl_varying_slot value.  For slots that do not
-    * directly correspond to a gl_varying_slot, the value comes from
-    * brw_varying_slot.
-    *
-    * For slots that are not in use, the value is BRW_VARYING_SLOT_PAD.
-    */
-   signed char slot_to_varying[VARYING_SLOT_TESS_MAX];
-
-   /**
-    * Total number of VUE slots in use
-    */
-   int num_slots;
-
-   /**
-    * Number of position VUE slots.  If num_pos_slots > 1, primitive
-    * replication is being used.
-    */
-   int num_pos_slots;
-
-   /**
-    * Number of per-patch VUE slots. Only valid for tessellation control
-    * shader outputs and tessellation evaluation shader inputs.
-    */
-   int num_per_patch_slots;
-
-   /**
-    * Number of per-vertex VUE slots. Only valid for tessellation control
-    * shader outputs and tessellation evaluation shader inputs.
-    */
-   int num_per_vertex_slots;
-};
-
-void brw_print_vue_map(FILE *fp, const struct brw_vue_map *vue_map,
+void brw_print_vue_map(FILE *fp, const struct intel_vue_map *vue_map,
                        gl_shader_stage stage);
 
 /**
@@ -1531,67 +1385,29 @@ static inline unsigned brw_vue_slot_to_offset(unsigned slot)
  * VUE.
  */
 static inline unsigned
-brw_varying_to_offset(const struct brw_vue_map *vue_map, unsigned varying)
+brw_varying_to_offset(const struct intel_vue_map *vue_map, unsigned varying)
 {
    return brw_vue_slot_to_offset(vue_map->varying_to_slot[varying]);
 }
 
 void brw_compute_vue_map(const struct intel_device_info *devinfo,
-                         struct brw_vue_map *vue_map,
+                         struct intel_vue_map *vue_map,
                          uint64_t slots_valid,
                          bool separate_shader,
                          uint32_t pos_slots);
 
-void brw_compute_tess_vue_map(struct brw_vue_map *const vue_map,
+void brw_compute_tess_vue_map(struct intel_vue_map *const vue_map,
                               uint64_t slots_valid,
                               uint32_t is_patch);
 
 /* brw_interpolation_map.c */
-void brw_setup_vue_interpolation(const struct brw_vue_map *vue_map,
+void brw_setup_vue_interpolation(const struct intel_vue_map *vue_map,
                                  struct nir_shader *nir,
                                  struct brw_wm_prog_data *prog_data);
 
-enum shader_dispatch_mode {
-   DISPATCH_MODE_4X1_SINGLE = 0,
-   DISPATCH_MODE_4X2_DUAL_INSTANCE = 1,
-   DISPATCH_MODE_4X2_DUAL_OBJECT = 2,
-   DISPATCH_MODE_SIMD8 = 3,
-
-   DISPATCH_MODE_TCS_SINGLE_PATCH = 0,
-   DISPATCH_MODE_TCS_MULTI_PATCH = 2,
-};
-
-/**
- * @defgroup Tessellator parameter enumerations.
- *
- * These correspond to the hardware values in 3DSTATE_TE, and are provided
- * as part of the tessellation evaluation shader.
- *
- * @{
- */
-enum brw_tess_partitioning {
-   BRW_TESS_PARTITIONING_INTEGER         = 0,
-   BRW_TESS_PARTITIONING_ODD_FRACTIONAL  = 1,
-   BRW_TESS_PARTITIONING_EVEN_FRACTIONAL = 2,
-};
-
-enum brw_tess_output_topology {
-   BRW_TESS_OUTPUT_TOPOLOGY_POINT   = 0,
-   BRW_TESS_OUTPUT_TOPOLOGY_LINE    = 1,
-   BRW_TESS_OUTPUT_TOPOLOGY_TRI_CW  = 2,
-   BRW_TESS_OUTPUT_TOPOLOGY_TRI_CCW = 3,
-};
-
-enum brw_tess_domain {
-   BRW_TESS_DOMAIN_QUAD    = 0,
-   BRW_TESS_DOMAIN_TRI     = 1,
-   BRW_TESS_DOMAIN_ISOLINE = 2,
-};
-/** @} */
-
 struct brw_vue_prog_data {
    struct brw_stage_prog_data base;
-   struct brw_vue_map vue_map;
+   struct intel_vue_map vue_map;
 
    /** Should the hardware deliver input VUE handles for URB pull loads? */
    bool include_vue_handles;
@@ -1608,7 +1424,7 @@ struct brw_vue_prog_data {
     */
    unsigned urb_entry_size;
 
-   enum shader_dispatch_mode dispatch_mode;
+   enum intel_shader_dispatch_mode dispatch_mode;
 };
 
 struct brw_vs_prog_data {
@@ -1646,9 +1462,9 @@ struct brw_tes_prog_data
 {
    struct brw_vue_prog_data base;
 
-   enum brw_tess_partitioning partitioning;
-   enum brw_tess_output_topology output_topology;
-   enum brw_tess_domain domain;
+   enum intel_tess_partitioning partitioning;
+   enum intel_tess_output_topology output_topology;
+   enum intel_tess_domain domain;
    bool include_primitive_id;
 };
 
@@ -1869,6 +1685,20 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo);
 uint64_t
 brw_get_compiler_config_value(const struct brw_compiler *compiler);
 
+/* Provides a string sha1 hash of all device information fields that could
+ * affect shader compilation.
+ */
+void
+brw_device_sha1(char *hex, const struct intel_device_info *devinfo);
+
+/* For callers computing their own UUID or hash.  Hashes all device
+ * information fields that could affect shader compilation into the provided
+ * sha1_ctx.
+ */
+void
+brw_device_sha1_update(struct mesa_sha1 *sha1_ctx,
+                       const struct intel_device_info *devinfo);
+
 unsigned
 brw_prog_data_size(gl_shader_stage stage);
 
@@ -1945,7 +1775,7 @@ struct brw_compile_tes_params {
 
    const struct brw_tes_prog_key *key;
    struct brw_tes_prog_data *prog_data;
-   const struct brw_vue_map *input_vue_map;
+   const struct intel_vue_map *input_vue_map;
 };
 
 /**
@@ -1991,7 +1821,7 @@ brw_compile_sf(const struct brw_compiler *compiler,
                void *mem_ctx,
                const struct brw_sf_prog_key *key,
                struct brw_sf_prog_data *prog_data,
-               struct brw_vue_map *vue_map,
+               struct intel_vue_map *vue_map,
                unsigned *final_assembly_size);
 
 /**
@@ -2007,7 +1837,7 @@ brw_compile_clip(const struct brw_compiler *compiler,
                  void *mem_ctx,
                  const struct brw_clip_prog_key *key,
                  struct brw_clip_prog_data *prog_data,
-                 struct brw_vue_map *vue_map,
+                 struct intel_vue_map *vue_map,
                  unsigned *final_assembly_size);
 
 struct brw_compile_task_params {
@@ -2044,7 +1874,7 @@ struct brw_compile_fs_params {
    const struct brw_wm_prog_key *key;
    struct brw_wm_prog_data *prog_data;
 
-   const struct brw_vue_map *vue_map;
+   const struct intel_vue_map *vue_map;
    const struct brw_mue_map *mue_map;
 
    bool allow_spilling;
@@ -2116,7 +1946,7 @@ brw_compile_ff_gs_prog(struct brw_compiler *compiler,
 		       void *mem_ctx,
 		       const struct brw_ff_gs_prog_key *key,
 		       struct brw_ff_gs_prog_data *prog_data,
-		       struct brw_vue_map *vue_map,
+		       struct intel_vue_map *vue_map,
 		       unsigned *final_assembly_size);
 
 void brw_debug_key_recompile(const struct brw_compiler *c, void *log,
@@ -2181,15 +2011,6 @@ brw_write_shader_relocs(const struct brw_isa_info *isa,
                         struct brw_shader_reloc_value *values,
                         unsigned num_values);
 
-struct brw_cs_dispatch_info {
-   uint32_t group_size;
-   uint32_t simd_size;
-   uint32_t threads;
-
-   /* RightExecutionMask field used in GPGPU_WALKER. */
-   uint32_t right_mask;
-};
-
 /**
  * Get the dispatch information for a shader to be used with GPGPU_WALKER and
  * similar instructions.
@@ -2199,7 +2020,7 @@ struct brw_cs_dispatch_info {
  * ARB_compute_variable_group_size, where the size is set only at dispatch
  * time (so prog_data is outdated).
  */
-struct brw_cs_dispatch_info
+struct intel_cs_dispatch_info
 brw_cs_get_dispatch_info(const struct intel_device_info *devinfo,
                          const struct brw_cs_prog_data *prog_data,
                          const unsigned *override_local_size);
@@ -2272,7 +2093,7 @@ brw_stage_has_packed_dispatch(ASSERTED const struct intel_device_info *devinfo,
  */
 static inline int
 brw_compute_first_urb_slot_required(uint64_t inputs_read,
-                                    const struct brw_vue_map *prev_stage_vue_map)
+                                    const struct intel_vue_map *prev_stage_vue_map)
 {
    if ((inputs_read & (VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT | VARYING_BIT_PRIMITIVE_SHADING_RATE)) == 0) {
       for (int i = 0; i < prev_stage_vue_map->num_slots; i++) {

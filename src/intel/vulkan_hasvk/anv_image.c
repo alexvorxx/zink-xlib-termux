@@ -2182,7 +2182,7 @@ anv_image_fill_surface_state(struct anv_device *device,
                              const union isl_color_value *clear_color,
                              enum anv_image_view_state_flags flags,
                              struct anv_surface_state *state_inout,
-                             struct brw_image_param *image_param_out)
+                             struct isl_image_param *image_param_out)
 {
    const uint32_t plane = anv_image_aspect_to_plane(image, aspect);
 

@@ -37,7 +37,7 @@
 struct crocus_resource;
 struct crocus_context;
 struct crocus_sampler_state;
-struct brw_vue_map;
+struct intel_vue_map;
 struct brw_tcs_prog_key;
 struct brw_tes_prog_key;
 struct brw_cs_prog_key;
@@ -115,7 +115,7 @@ struct crocus_vtable {
                                      uint32_t report_id);
 
    uint32_t *(*create_so_decl_list)(const struct pipe_stream_output_info *sol,
-                                    const struct brw_vue_map *vue_map);
+                                    const struct intel_vue_map *vue_map);
    void (*populate_vs_key)(const struct crocus_context *ice,
                            const struct shader_info *info,
                            gl_shader_stage last_stage,

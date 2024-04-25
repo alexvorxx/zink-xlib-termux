@@ -24,6 +24,7 @@
 #include "brw_compiler.h"
 #include "brw_shader.h"
 #include "brw_eu.h"
+#include "brw_nir.h"
 #include "dev/intel_debug.h"
 #include "compiler/nir/nir.h"
 #include "util/u_debug.h"
@@ -76,12 +77,12 @@
        nir_divergence_single_patch_per_tes_subgroup |                         \
        nir_divergence_shader_record_ptr_uniform)
 
-static const struct nir_shader_compiler_options scalar_nir_options = {
+const struct nir_shader_compiler_options brw_scalar_nir_options = {
    COMMON_OPTIONS,
    COMMON_SCALAR_OPTIONS,
 };
 
-static const struct nir_shader_compiler_options vector_nir_options = {
+const struct nir_shader_compiler_options brw_vector_nir_options = {
    COMMON_OPTIONS,
 
    /* In the vec4 backend, our dpN instruction replicates its result to all the
@@ -123,6 +124,8 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
 
    compiler->lower_dpas = devinfo->verx10 < 125 ||
       intel_device_info_is_mtl(devinfo) ||
+      (intel_device_info_is_arl(devinfo) &&
+       devinfo->platform != INTEL_PLATFORM_ARL_H) ||
       debug_get_bool_option("INTEL_LOWER_DPAS", false);
 
    /* There is no vec4 mode on Gfx10+, and we don't use it at all on Gfx8+. */
@@ -173,10 +176,10 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
          rzalloc(compiler, struct nir_shader_compiler_options);
       bool is_scalar = compiler->scalar_stage[i];
       if (is_scalar) {
-         *nir_options = scalar_nir_options;
+         *nir_options = brw_scalar_nir_options;
          int64_options |= nir_lower_usub_sat64;
       } else {
-         *nir_options = vector_nir_options;
+         *nir_options = brw_vector_nir_options;
       }
 
       /* Prior to Gfx6, there are no three source operations, and Gfx11 loses
@@ -276,6 +279,17 @@ brw_get_compiler_config_value(const struct brw_compiler *compiler)
    assert(bits <= util_bitcount64(UINT64_MAX));
 
    return config;
+}
+
+void
+brw_device_sha1(char *hex,
+                const struct intel_device_info *devinfo) {
+   struct mesa_sha1 ctx;
+   _mesa_sha1_init(&ctx);
+   brw_device_sha1_update(&ctx, devinfo);
+   unsigned char result[20];
+   _mesa_sha1_final(&ctx, result);
+   _mesa_sha1_format(hex, result);
 }
 
 unsigned

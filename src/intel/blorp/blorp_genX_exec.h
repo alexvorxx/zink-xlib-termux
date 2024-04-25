@@ -113,11 +113,15 @@ blorp_get_surface_base_address(struct blorp_batch *batch);
 #if GFX_VER >= 7
 static const struct intel_l3_config *
 blorp_get_l3_config(struct blorp_batch *batch);
-# else
+#endif
+
+static void
+blorp_pre_emit_urb_config(struct blorp_batch *batch,
+                          struct intel_urb_config *urb_config);
+
 static void
 blorp_emit_urb_config(struct blorp_batch *batch,
-                      unsigned vs_entry_size, unsigned sf_entry_size);
-#endif
+                      struct intel_urb_config *urb_config);
 
 static void
 blorp_emit_pipeline(struct blorp_batch *batch,
@@ -129,6 +133,19 @@ blorp_emit_pre_draw(struct blorp_batch *batch,
 static void
 blorp_emit_post_draw(struct blorp_batch *batch,
                      const struct blorp_params *params);
+
+static inline unsigned
+brw_blorp_get_urb_length(const struct brw_wm_prog_data *prog_data)
+{
+   if (prog_data == NULL)
+      return 1;
+
+   /* From the BSpec: 3D Pipeline - Strips and Fans - 3DSTATE_SBE
+    *
+    * read_length = ceiling((max_source_attr+1)/2)
+    */
+   return MAX2((prog_data->num_varying_inputs + 1) / 2, 1);
+}
 
 /***** BEGIN blorp_exec implementation ******/
 
@@ -229,26 +246,33 @@ emit_urb_config(struct blorp_batch *batch,
     *
     * where 'n' stands for number of varying inputs expressed as vec4s.
     */
-    const unsigned num_varyings =
-       params->wm_prog_data ? params->wm_prog_data->num_varying_inputs : 0;
-    const unsigned total_needed = 16 + 16 + num_varyings * 16;
+   struct brw_wm_prog_data *wm_prog_data = params->wm_prog_data;
+   const unsigned num_varyings =
+      wm_prog_data ? wm_prog_data->num_varying_inputs : 0;
+   const unsigned total_needed = 16 + 16 + num_varyings * 16;
 
    /* The URB size is expressed in units of 64 bytes (512 bits) */
    const unsigned vs_entry_size = DIV_ROUND_UP(total_needed, 64);
 
+   ASSERTED struct brw_sf_prog_data *sf_prog_data = params->sf_prog_data;
    ASSERTED const unsigned sf_entry_size =
-      params->sf_prog_data ? params->sf_prog_data->urb_entry_size : 0;
+      sf_prog_data ? sf_prog_data->urb_entry_size : 0;
 
 #if GFX_VER >= 7
    assert(sf_entry_size == 0);
-   const unsigned entry_size[4] = { vs_entry_size, 1, 1, 1 };
 
-   unsigned entries[4], start[4];
+   struct intel_urb_config urb_cfg = {
+      .size = { vs_entry_size, 1, 1, 1 },
+   };
+
    bool constrained;
    intel_get_urb_config(batch->blorp->compiler->devinfo,
                         blorp_get_l3_config(batch),
-                        false, false, entry_size,
-                        entries, start, deref_block_size, &constrained);
+                        false, false, &urb_cfg,
+                        deref_block_size, &constrained);
+
+   /* Tell drivers about the config. */
+   blorp_pre_emit_urb_config(batch, &urb_cfg);
 
 #if GFX_VERx10 == 70
    /* From the IVB PRM Vol. 2, Part 1, Section 3.2.1:
@@ -269,9 +293,9 @@ emit_urb_config(struct blorp_batch *batch,
    for (int i = 0; i <= MESA_SHADER_GEOMETRY; i++) {
       blorp_emit(batch, GENX(3DSTATE_URB_VS), urb) {
          urb._3DCommandSubOpcode      += i;
-         urb.VSURBStartingAddress      = start[i];
-         urb.VSURBEntryAllocationSize  = entry_size[i] - 1;
-         urb.VSNumberofURBEntries      = entries[i];
+         urb.VSURBStartingAddress      = urb_cfg.start[i];
+         urb.VSURBEntryAllocationSize  = urb_cfg.size[i] - 1;
+         urb.VSNumberofURBEntries      = urb_cfg.entries[i];
       }
    }
 
@@ -283,7 +307,10 @@ emit_urb_config(struct blorp_batch *batch,
    }
 
 #else /* GFX_VER < 7 */
-   blorp_emit_urb_config(batch, vs_entry_size, sf_entry_size);
+   struct intel_urb_config urb_cfg = {
+      .size = { vs_entry_size, 0, 0, 0, sf_entry_size, },
+   };
+   blorp_emit_urb_config(batch, &urb_cfg);
 #endif
 }
 
@@ -322,8 +349,9 @@ blorp_emit_input_varying_data(struct blorp_batch *batch,
    const unsigned vec4_size_in_bytes = 4 * sizeof(float);
    const unsigned max_num_varyings =
       DIV_ROUND_UP(sizeof(params->wm_inputs), vec4_size_in_bytes);
+   struct brw_wm_prog_data *wm_prog_data = params->wm_prog_data;
    const unsigned num_varyings =
-      params->wm_prog_data ? params->wm_prog_data->num_varying_inputs : 0;
+      wm_prog_data ? wm_prog_data->num_varying_inputs : 0;
 
    *size = 16 + num_varyings * vec4_size_in_bytes;
 
@@ -344,7 +372,7 @@ blorp_emit_input_varying_data(struct blorp_batch *batch,
       for (unsigned i = 0; i < max_num_varyings; i++) {
          const gl_varying_slot attr = VARYING_SLOT_VAR0 + i;
 
-         const int input_index = params->wm_prog_data->urb_setup[attr];
+         const int input_index = wm_prog_data->urb_setup[attr];
          if (input_index < 0)
             continue;
 
@@ -449,8 +477,9 @@ static void
 blorp_emit_vertex_elements(struct blorp_batch *batch,
                            const struct blorp_params *params)
 {
+   struct brw_wm_prog_data *wm_prog_data = params->wm_prog_data;
    const unsigned num_varyings =
-      params->wm_prog_data ? params->wm_prog_data->num_varying_inputs : 0;
+      wm_prog_data ? wm_prog_data->num_varying_inputs : 0;
    bool need_ndc = batch->blorp->compiler->devinfo->ver <= 5;
    const unsigned num_elements = 2 + need_ndc + num_varyings;
 
@@ -712,7 +741,7 @@ blorp_emit_vs_config(struct blorp_batch *batch,
 {
    struct brw_vs_prog_data *vs_prog_data = params->vs_prog_data;
    assert(!vs_prog_data || GFX_VER < 11 ||
-          vs_prog_data->base.dispatch_mode == DISPATCH_MODE_SIMD8);
+          vs_prog_data->base.dispatch_mode == INTEL_DISPATCH_MODE_SIMD8);
 
    blorp_emit(batch, GENX(3DSTATE_VS), vs) {
       if (vs_prog_data) {
@@ -730,7 +759,7 @@ blorp_emit_vs_config(struct blorp_batch *batch,
             batch->blorp->isl_dev->info->max_vs_threads - 1;
 
          assert(GFX_VER < 8 ||
-                vs_prog_data->base.dispatch_mode == DISPATCH_MODE_SIMD8);
+                vs_prog_data->base.dispatch_mode == INTEL_DISPATCH_MODE_SIMD8);
 #if GFX_VER >= 8 && GFX_VER < 20
          vs.SIMD8DispatchEnable = true;
 #endif
@@ -1485,7 +1514,7 @@ blorp_emit_memcpy(struct blorp_batch *batch,
 
 static void
 blorp_emit_surface_state(struct blorp_batch *batch,
-                         const struct brw_blorp_surface_info *surface,
+                         const struct blorp_surface_info *surface,
                          UNUSED enum isl_aux_op aux_op,
                          void *state, uint32_t state_offset,
                          uint8_t color_write_disable,
@@ -1584,7 +1613,7 @@ blorp_emit_surface_state(struct blorp_batch *batch,
 
 static void
 blorp_emit_null_surface_state(struct blorp_batch *batch,
-                              const struct brw_blorp_surface_info *surface,
+                              const struct blorp_surface_info *surface,
                               uint32_t *state)
 {
    struct GENX(RENDER_SURFACE_STATE) ss = {
@@ -1644,7 +1673,7 @@ blorp_setup_binding_table(struct blorp_batch *batch,
                                   params->color_write_disable, true);
       } else {
          assert(params->depth.enabled || params->stencil.enabled);
-         const struct brw_blorp_surface_info *surface =
+         const struct blorp_surface_info *surface =
             params->depth.enabled ? &params->depth : &params->stencil;
          blorp_emit_null_surface_state(batch, surface,
                                        surface_maps[BLORP_RENDERBUFFER_BT_INDEX]);
@@ -1851,6 +1880,9 @@ blorp_emit_gfx8_hiz_op(struct blorp_batch *batch,
       blorp_emit_depth_stencil_config(batch, params);
    }
 
+   /* TODO - If we ever start using 3DSTATE_WM_HZ_OP::StencilBufferResolveEnable
+    * we need to implement required steps, flushes documented in Wa_1605967699.
+    */
    blorp_emit(batch, GENX(3DSTATE_WM_HZ_OP), hzp) {
       switch (params->hiz_op) {
       case ISL_AUX_OP_FAST_CLEAR:
@@ -1906,7 +1938,7 @@ blorp_emit_gfx8_hiz_op(struct blorp_batch *batch,
 
 static void
 blorp_update_clear_color(UNUSED struct blorp_batch *batch,
-                         const struct brw_blorp_surface_info *info)
+                         const struct blorp_surface_info *info)
 {
    assert(info->clear_color_addr.buffer != NULL);
 #if GFX_VER == 11
@@ -2147,7 +2179,7 @@ blorp_exec_compute(struct blorp_batch *batch, const struct blorp_params *params)
 
    const struct brw_cs_prog_data *cs_prog_data = params->cs_prog_data;
    const struct brw_stage_prog_data *prog_data = &cs_prog_data->base;
-   const struct brw_cs_dispatch_info dispatch =
+   const struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(batch->blorp->compiler->devinfo, cs_prog_data,
                                NULL);
    const struct intel_device_info *devinfo = batch->blorp->compiler->devinfo;
@@ -2394,7 +2426,7 @@ xy_bcb_surf_depth(const struct isl_surf *surf)
 }
 
 static uint32_t
-xy_aux_mode(const struct brw_blorp_surface_info *info)
+xy_aux_mode(const struct blorp_surface_info *info)
 {
    switch (info->aux_usage) {
    case ISL_AUX_USAGE_CCS_E:

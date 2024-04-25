@@ -30,8 +30,8 @@
 #include "util/mesa-sha1.h"
 #include "util/os_time.h"
 #include "common/intel_l3_config.h"
-#include "common/intel_disasm.h"
 #include "common/intel_sample_positions.h"
+#include "compiler/brw_disasm.h"
 #include "anv_private.h"
 #include "compiler/brw_nir.h"
 #include "compiler/brw_nir_rt.h"
@@ -1035,8 +1035,8 @@ anv_pipeline_add_executable(struct anv_pipeline *pipeline,
       /* Creating this is far cheaper than it looks.  It's perfectly fine to
        * do it for every binary.
        */
-      intel_disassemble(&pipeline->device->physical->compiler->isa,
-                        stage->code, code_offset, stream);
+      brw_disassemble_with_errors(&pipeline->device->physical->compiler->isa,
+                                  stage->code, code_offset, stream);
 
       fclose(stream);
 

@@ -182,6 +182,7 @@ vkcts-vega10-valve:
     GPU_VERSION: radv-vega10-aco
     B2C_TIMEOUT_BOOT_MINUTES: 70
     B2C_TIMEOUT_OVERALL_MINUTES: 70
+    RADV_PERFTEST: shader_object
 
 vkcts-renoir-valve:
   extends:
@@ -327,7 +328,6 @@ vkd3d-navi21-valve:
     - .radv-valve-manual-rules
   variables:
     VKD3D_PROTON_RESULTS: radv-navi21-vkd3d
-    VKD3D_CONFIG: dxr11
 
 vkd3d-vangogh-valve:
   extends:
@@ -344,4 +344,3 @@ vkd3d-navi31-valve:
     - .radv-valve-manual-rules
   variables:
     VKD3D_PROTON_RESULTS: radv-navi31-vkd3d
-    VKD3D_CONFIG: dxr11

@@ -512,11 +512,11 @@ lower_fb_write_logical_send(const fs_builder &bld, fs_inst *inst,
       if (prog_data->coarse_pixel_dispatch == BRW_ALWAYS) {
          inst->desc |= (1 << 18);
       } else if (prog_data->coarse_pixel_dispatch == BRW_SOMETIMES) {
-         STATIC_ASSERT(BRW_WM_MSAA_FLAG_COARSE_RT_WRITES == (1 << 18));
+         STATIC_ASSERT(INTEL_MSAA_FLAG_COARSE_RT_WRITES == (1 << 18));
          const fs_builder &ubld = bld.exec_all().group(8, 0);
          desc = ubld.vgrf(BRW_REGISTER_TYPE_UD);
          ubld.AND(desc, dynamic_msaa_flags(prog_data),
-                  brw_imm_ud(BRW_WM_MSAA_FLAG_COARSE_RT_WRITES));
+                  brw_imm_ud(INTEL_MSAA_FLAG_COARSE_RT_WRITES));
          desc = component(desc, 0);
       }
 
@@ -837,58 +837,76 @@ is_high_sampler(const struct intel_device_info *devinfo, const fs_reg &sampler)
 
 static unsigned
 sampler_msg_type(const intel_device_info *devinfo,
-                 opcode opcode, bool shadow_compare)
+                 opcode opcode, bool shadow_compare, bool has_min_lod)
 {
    assert(devinfo->ver >= 5);
    switch (opcode) {
    case SHADER_OPCODE_TEX:
-      return shadow_compare ? GFX5_SAMPLER_MESSAGE_SAMPLE_COMPARE :
-                              GFX5_SAMPLER_MESSAGE_SAMPLE;
+      if (devinfo->ver >= 20 && has_min_lod) {
+         return shadow_compare ? XE2_SAMPLER_MESSAGE_SAMPLE_COMPARE_MLOD :
+                                 XE2_SAMPLER_MESSAGE_SAMPLE_MLOD;
+      } else {
+         return shadow_compare ? GFX5_SAMPLER_MESSAGE_SAMPLE_COMPARE :
+                                 GFX5_SAMPLER_MESSAGE_SAMPLE;
+      }
    case FS_OPCODE_TXB:
       return shadow_compare ? GFX5_SAMPLER_MESSAGE_SAMPLE_BIAS_COMPARE :
                               GFX5_SAMPLER_MESSAGE_SAMPLE_BIAS;
    case SHADER_OPCODE_TXL:
+      assert(!has_min_lod);
       return shadow_compare ? GFX5_SAMPLER_MESSAGE_SAMPLE_LOD_COMPARE :
                               GFX5_SAMPLER_MESSAGE_SAMPLE_LOD;
    case SHADER_OPCODE_TXL_LZ:
+      assert(!has_min_lod);
       return shadow_compare ? GFX9_SAMPLER_MESSAGE_SAMPLE_C_LZ :
                               GFX9_SAMPLER_MESSAGE_SAMPLE_LZ;
    case SHADER_OPCODE_TXS:
    case SHADER_OPCODE_IMAGE_SIZE_LOGICAL:
+      assert(!has_min_lod);
       return GFX5_SAMPLER_MESSAGE_SAMPLE_RESINFO;
    case SHADER_OPCODE_TXD:
       assert(!shadow_compare || devinfo->verx10 >= 75);
       return shadow_compare ? HSW_SAMPLER_MESSAGE_SAMPLE_DERIV_COMPARE :
                               GFX5_SAMPLER_MESSAGE_SAMPLE_DERIVS;
    case SHADER_OPCODE_TXF:
+      assert(!has_min_lod);
       return GFX5_SAMPLER_MESSAGE_SAMPLE_LD;
    case SHADER_OPCODE_TXF_LZ:
+      assert(!has_min_lod);
       assert(devinfo->ver >= 9);
       return GFX9_SAMPLER_MESSAGE_SAMPLE_LD_LZ;
    case SHADER_OPCODE_TXF_CMS_W:
+      assert(!has_min_lod);
       assert(devinfo->ver >= 9);
       return GFX9_SAMPLER_MESSAGE_SAMPLE_LD2DMS_W;
    case SHADER_OPCODE_TXF_CMS:
+      assert(!has_min_lod);
       return devinfo->ver >= 7 ? GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DMS :
                                  GFX5_SAMPLER_MESSAGE_SAMPLE_LD;
    case SHADER_OPCODE_TXF_UMS:
+      assert(!has_min_lod);
       assert(devinfo->ver >= 7);
       return GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DSS;
    case SHADER_OPCODE_TXF_MCS:
+      assert(!has_min_lod);
       assert(devinfo->ver >= 7);
       return GFX7_SAMPLER_MESSAGE_SAMPLE_LD_MCS;
    case SHADER_OPCODE_LOD:
+      assert(!has_min_lod);
       return GFX5_SAMPLER_MESSAGE_LOD;
    case SHADER_OPCODE_TG4:
+      assert(!has_min_lod);
       assert(devinfo->ver >= 7);
       return shadow_compare ? GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_C :
                               GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4;
       break;
    case SHADER_OPCODE_TG4_OFFSET:
+      assert(!has_min_lod);
       assert(devinfo->ver >= 7);
       return shadow_compare ? GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO_C :
                               GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO;
    case SHADER_OPCODE_SAMPLEINFO:
+      assert(!has_min_lod);
       return GFX6_SAMPLER_MESSAGE_SAMPLE_SAMPLEINFO;
    default:
       unreachable("not reached");
@@ -1077,6 +1095,33 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
       }
    }
 
+   /* Change the opcode to account for LOD being zero before the
+    * switch-statement that emits sources based on the opcode.
+    */
+   if (devinfo->ver >= 9 && lod.is_zero()) {
+      if (op == SHADER_OPCODE_TXL)
+         op = SHADER_OPCODE_TXL_LZ;
+      else if (op == SHADER_OPCODE_TXF)
+         op = SHADER_OPCODE_TXF_LZ;
+   }
+
+   /* On Xe2 and newer platforms, min_lod is the first parameter specifically
+    * so that a bunch of other, possibly unused, parameters don't need to also
+    * be included.
+    */
+   const unsigned msg_type =
+      sampler_msg_type(devinfo, op, inst->shadow_compare,
+                       min_lod.file != BAD_FILE);
+
+   const bool min_lod_is_first = devinfo->ver >= 20 &&
+      (msg_type == XE2_SAMPLER_MESSAGE_SAMPLE_MLOD ||
+       msg_type == XE2_SAMPLER_MESSAGE_SAMPLE_COMPARE_MLOD);
+
+   if (min_lod_is_first) {
+      assert(min_lod.file != BAD_FILE);
+      bld.MOV(sources[length++], min_lod);
+   }
+
    if (shadow_c.file != BAD_FILE) {
       bld.MOV(sources[length], shadow_c);
       length++;
@@ -1088,10 +1133,6 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
    switch (op) {
    case FS_OPCODE_TXB:
    case SHADER_OPCODE_TXL:
-      if (devinfo->ver >= 9 && op == SHADER_OPCODE_TXL && lod.is_zero()) {
-         op = SHADER_OPCODE_TXL_LZ;
-         break;
-      }
       bld.MOV(sources[length], lod);
       length++;
       break;
@@ -1128,6 +1169,7 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
       length++;
       break;
    case SHADER_OPCODE_TXF:
+   case SHADER_OPCODE_TXF_LZ:
       /* Unfortunately, the parameters for LD are intermixed: u, lod, v, r.
        * On Gfx9 they are u, v, lod, r
        */
@@ -1143,9 +1185,7 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
          length++;
       }
 
-      if (devinfo->ver >= 9 && lod.is_zero()) {
-         op = SHADER_OPCODE_TXF_LZ;
-      } else {
+      if (op != SHADER_OPCODE_TXF_LZ) {
          bld.MOV(retype(sources[length], payload_signed_type), lod);
          length++;
       }
@@ -1239,7 +1279,7 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
                  offset(coordinate, bld, i));
    }
 
-   if (min_lod.file != BAD_FILE) {
+   if (min_lod.file != BAD_FILE && !min_lod_is_first) {
       /* Account for all of the missing coordinate sources */
       if (op == SHADER_OPCODE_TXD && devinfo->verx10 >= 125) {
          /* On DG2 and newer platforms, sample_d can only be used with 1D and
@@ -1279,13 +1319,23 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
                                      header_size, REG_SIZE * reg_unit(devinfo));
    unsigned mlen = load_payload_inst->size_written / REG_SIZE;
    unsigned simd_mode = 0;
-   if (payload_type_bit_size == 16) {
-      assert(devinfo->ver >= 11);
-      simd_mode = inst->exec_size <= 8 ? GFX10_SAMPLER_SIMD_MODE_SIMD8H :
-                                         GFX10_SAMPLER_SIMD_MODE_SIMD16H;
+   if (devinfo->ver < 20) {
+      if (payload_type_bit_size == 16) {
+         assert(devinfo->ver >= 11);
+         simd_mode = inst->exec_size <= 8 ? GFX10_SAMPLER_SIMD_MODE_SIMD8H :
+            GFX10_SAMPLER_SIMD_MODE_SIMD16H;
+      } else {
+         simd_mode = inst->exec_size <= 8 ? BRW_SAMPLER_SIMD_MODE_SIMD8 :
+            BRW_SAMPLER_SIMD_MODE_SIMD16;
+      }
    } else {
-      simd_mode = inst->exec_size <= 8 ? BRW_SAMPLER_SIMD_MODE_SIMD8 :
-                                         BRW_SAMPLER_SIMD_MODE_SIMD16;
+      if (payload_type_bit_size == 16) {
+         simd_mode = inst->exec_size <= 16 ? XE2_SAMPLER_SIMD_MODE_SIMD16H :
+            XE2_SAMPLER_SIMD_MODE_SIMD32H;
+      } else {
+         simd_mode = inst->exec_size <= 16 ? XE2_SAMPLER_SIMD_MODE_SIMD16 :
+            XE2_SAMPLER_SIMD_MODE_SIMD32;
+      }
    }
 
    /* Generate the SEND. */
@@ -1293,8 +1343,8 @@ lower_sampler_logical_send_gfx7(const fs_builder &bld, fs_inst *inst, opcode op,
    inst->mlen = mlen;
    inst->header_size = header_size;
 
-   const unsigned msg_type =
-      sampler_msg_type(devinfo, op, inst->shadow_compare);
+   assert(msg_type == sampler_msg_type(devinfo, op, inst->shadow_compare,
+                                       min_lod.file != BAD_FILE));
 
    inst->sfid = BRW_SFID_SAMPLER;
    if (surface.file == IMM &&
@@ -2765,12 +2815,12 @@ lower_interpolator_logical_send(const fs_builder &bld, fs_inst *inst,
    if (wm_prog_data->coarse_pixel_dispatch == BRW_ALWAYS) {
       desc_imm |= (1 << 15);
    } else if (wm_prog_data->coarse_pixel_dispatch == BRW_SOMETIMES) {
-      STATIC_ASSERT(BRW_WM_MSAA_FLAG_COARSE_PI_MSG == (1 << 15));
+      STATIC_ASSERT(INTEL_MSAA_FLAG_COARSE_PI_MSG == (1 << 15));
       fs_reg orig_desc = desc;
       const fs_builder &ubld = bld.exec_all().group(8, 0);
       desc = ubld.vgrf(BRW_REGISTER_TYPE_UD);
       ubld.AND(desc, dynamic_msaa_flags(wm_prog_data),
-               brw_imm_ud(BRW_WM_MSAA_FLAG_COARSE_PI_MSG));
+               brw_imm_ud(INTEL_MSAA_FLAG_COARSE_PI_MSG));
 
       /* And, if it's AT_OFFSET, we might have a non-trivial descriptor */
       if (orig_desc.file == IMM) {

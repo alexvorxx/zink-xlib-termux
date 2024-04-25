@@ -560,6 +560,13 @@ struct iris_compiled_shader {
    uint8_t derived_data[0];
 };
 
+static inline uint64_t
+KSP(const struct iris_compiled_shader *shader)
+{
+   struct iris_resource *res = (void *) shader->assembly.res;
+   return iris_bo_offset_from_base_address(res->bo) + shader->assembly.offset;
+}
+
 /**
  * API context state that is replicated per shader stage.
  */
@@ -707,6 +714,28 @@ struct iris_context {
        * drawid and is_indexed_draw. They will go in their own vertex element.
        */
       struct iris_state_ref derived_draw_params;
+
+      struct {
+         /**
+          * Generation fragment shader
+          */
+         struct iris_compiled_shader *shader;
+
+         /**
+          * Ring buffer where to generate indirect draw commands
+          */
+         struct iris_bo *ring_bo;
+
+         /**
+          * Allocated iris_gen_indirect_params
+          */
+         struct iris_state_ref params;
+
+         /**
+          * Vertices used to dispatch the generated fragment shaders
+          */
+         struct iris_state_ref vertices;
+      } generation;
    } draw;
 
    struct {
@@ -714,11 +743,12 @@ struct iris_context {
       struct iris_compiled_shader *prog[MESA_SHADER_STAGES];
       struct iris_compiled_shader *last_vue_shader;
       struct {
-         unsigned size[4];
-         unsigned entries[4];
-         unsigned start[4];
+         struct intel_urb_config cfg;
          bool constrained;
       } urb;
+
+      /** Last urb emitted by the driver. */
+      struct intel_urb_config last_urb;
 
       /** Uploader for shader assembly from the driver thread */
       struct u_upload_mgr *uploader_driver;
@@ -922,6 +952,60 @@ struct iris_context {
    } state;
 };
 
+/**
+ * Push constant data handed over to the indirect draw generation shader
+ */
+struct iris_gen_indirect_params {
+   /**
+    * Address of iris_context:draw:generation:ring_bo
+    */
+   uint64_t generated_cmds_addr;
+   /**
+    * Address of indirect data to draw with
+    */
+   uint64_t indirect_data_addr;
+   /**
+    * Address inside iris_context:draw:generation:ring_bo where to draw ids
+    */
+   uint64_t draw_id_addr;
+   /**
+    * Address of the indirect count (can be null, in which case max_draw_count
+    * is used)
+    */
+   uint64_t draw_count_addr;
+   /**
+    * Address to jump to in order to generate more draws
+    */
+   uint64_t gen_addr;
+   /**
+    * Address to jump to to end generated draws
+    */
+   uint64_t end_addr;
+   /**
+    * Stride between the indirect draw data
+    */
+   uint32_t indirect_data_stride;
+   /**
+    * Base index of the current generated draws in the ring buffer (increments
+    * by ring_count)
+    */
+   uint32_t draw_base;
+   /**
+    * Maximum number of generated draw if draw_count_addr is null
+    */
+   uint32_t max_draw_count;
+   /**
+    * bits 0-7:   ANV_GENERATED_FLAG_*
+    * bits 8-15:  vertex buffer mocs
+    * bits 16-23: stride between generated commands
+    */
+   uint32_t flags;
+   /**
+    * Number of items to generate in the ring buffer
+    */
+   uint32_t ring_count;
+};
+
 #define perf_debug(dbg, ...) do {                      \
    if (INTEL_DEBUG(DEBUG_PERF))                        \
       dbg_printf(__VA_ARGS__);                         \
@@ -1121,10 +1205,13 @@ bool iris_blorp_lookup_shader(struct blorp_batch *blorp_batch,
 bool iris_blorp_upload_shader(struct blorp_batch *blorp_batch, uint32_t stage,
                               const void *key, uint32_t key_size,
                               const void *kernel, uint32_t kernel_size,
-                              const struct brw_stage_prog_data *prog_data,
+                              const void *prog_data,
                               uint32_t prog_data_size,
                               uint32_t *kernel_out,
                               void *prog_data_out);
+
+void iris_ensure_indirect_generation_shader(struct iris_batch *batch);
+
 
 /* iris_resolve.c */
 
@@ -1180,21 +1267,6 @@ iris_execute_indirect_draw_supported(const struct iris_context *ice,
 #ifdef genX
 #  include "iris_genx_protos.h"
 #else
-#  define genX(x) gfx4_##x
-#  include "iris_genx_protos.h"
-#  undef genX
-#  define genX(x) gfx5_##x
-#  include "iris_genx_protos.h"
-#  undef genX
-#  define genX(x) gfx6_##x
-#  include "iris_genx_protos.h"
-#  undef genX
-#  define genX(x) gfx7_##x
-#  include "iris_genx_protos.h"
-#  undef genX
-#  define genX(x) gfx75_##x
-#  include "iris_genx_protos.h"
-#  undef genX
 #  define genX(x) gfx8_##x
 #  include "iris_genx_protos.h"
 #  undef genX

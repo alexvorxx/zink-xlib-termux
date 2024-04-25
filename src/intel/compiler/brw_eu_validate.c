@@ -40,6 +40,7 @@
 
 #include <stdlib.h>
 #include "brw_eu.h"
+#include "brw_disasm_info.h"
 
 /* We're going to do lots of string concatenation, so this should help. */
 struct string {

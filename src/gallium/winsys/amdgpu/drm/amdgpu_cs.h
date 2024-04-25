@@ -36,7 +36,6 @@ struct amdgpu_ctx {
 
 struct amdgpu_cs_buffer {
    struct amdgpu_winsys_bo *bo;
-   unsigned slab_real_idx; /* index of underlying real BO, used by slab buffers only */
    unsigned usage;
 };
 
@@ -177,11 +176,6 @@ struct amdgpu_fence {
 
 void amdgpu_fence_destroy(struct amdgpu_fence *fence);
 
-static inline bool amdgpu_fence_is_syncobj(struct amdgpu_fence *fence)
-{
-   return fence->ctx == NULL;
-}
-
 static inline void amdgpu_ctx_reference(struct amdgpu_ctx **dst, struct amdgpu_ctx *src)
 {
    struct amdgpu_ctx *old_dst = *dst;
@@ -189,6 +183,7 @@ static inline void amdgpu_ctx_reference(struct amdgpu_ctx **dst, struct amdgpu_c
    if (pipe_reference(old_dst ? &old_dst->reference : NULL,
                       src ? &src->reference : NULL)) {
       amdgpu_cs_ctx_free(old_dst->ctx);
+      amdgpu_bo_cpu_unmap(old_dst->user_fence_bo);
       amdgpu_bo_free(old_dst->user_fence_bo);
       FREE(old_dst);
    }

@@ -268,7 +268,7 @@ static inline struct GENX(INTERFACE_DESCRIPTOR_DATA)
 get_interface_descriptor_data(struct anv_cmd_buffer *cmd_buffer,
                               const struct anv_shader_bin *shader,
                               const struct brw_cs_prog_data *prog_data,
-                              const struct brw_cs_dispatch_info *dispatch)
+                              const struct intel_cs_dispatch_info *dispatch)
 {
    const struct intel_device_info *devinfo = cmd_buffer->device->info;
 
@@ -298,7 +298,7 @@ emit_indirect_compute_walker(struct anv_cmd_buffer *cmd_buffer,
    struct anv_cmd_compute_state *comp_state = &cmd_buffer->state.compute;
    bool predicate = cmd_buffer->state.conditional_render_enabled;
 
-   const struct brw_cs_dispatch_info dispatch =
+   const struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(devinfo, prog_data, NULL);
    const int dispatch_size = dispatch.simd_size / 16;
 
@@ -342,7 +342,7 @@ emit_compute_walker(struct anv_cmd_buffer *cmd_buffer,
    const bool predicate = cmd_buffer->state.conditional_render_enabled;
 
    const struct intel_device_info *devinfo = pipeline->base.device->info;
-   const struct brw_cs_dispatch_info dispatch =
+   const struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(devinfo, prog_data, NULL);
 
    cmd_buffer->last_compute_walker =
@@ -392,7 +392,7 @@ emit_gpgpu_walker(struct anv_cmd_buffer *cmd_buffer,
    const bool predicate = cmd_buffer->state.conditional_render_enabled;
 
    const struct intel_device_info *devinfo = pipeline->base.device->info;
-   const struct brw_cs_dispatch_info dispatch =
+   const struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(devinfo, prog_data, NULL);
 
    anv_batch_emit(&cmd_buffer->batch, GENX(GPGPU_WALKER), ggw) {
@@ -638,7 +638,7 @@ genX(cmd_buffer_dispatch_kernel)(struct anv_cmd_buffer *cmd_buffer,
       }
    }
 
-   struct brw_cs_dispatch_info dispatch =
+   struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(devinfo, cs_prog_data, NULL);
 
    anv_batch_emit(&cmd_buffer->batch, GENX(COMPUTE_WALKER), cw) {
@@ -1045,7 +1045,7 @@ cmd_buffer_trace_rays(struct anv_cmd_buffer *cmd_buffer,
 
    const struct brw_cs_prog_data *cs_prog_data =
       brw_cs_prog_data_const(device->rt_trampoline->prog_data);
-   struct brw_cs_dispatch_info dispatch =
+   struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(device->info, cs_prog_data, NULL);
 
    anv_batch_emit(&cmd_buffer->batch, GENX(COMPUTE_WALKER), cw) {

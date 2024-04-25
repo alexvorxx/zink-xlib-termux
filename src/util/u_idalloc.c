@@ -144,8 +144,11 @@ ret:
 void
 util_idalloc_free(struct util_idalloc *buf, unsigned id)
 {
-   assert(id / 32 < buf->num_elements);
    unsigned idx = id / 32;
+
+   if (idx >= buf->num_elements)
+       return;
+
    buf->lowest_free_idx = MIN2(idx, buf->lowest_free_idx);
    buf->data[idx] &= ~(1 << (id % 32));
 }

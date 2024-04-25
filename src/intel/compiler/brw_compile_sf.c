@@ -22,6 +22,7 @@
  */
 
 #include "brw_compiler.h"
+#include "brw_disasm.h"
 #include "brw_eu.h"
 #include "brw_prim.h"
 
@@ -67,7 +68,7 @@ struct brw_sf_compile {
    /** The last known value of the f0.0 flag register. */
    unsigned flag_value;
 
-   struct brw_vue_map vue_map;
+   struct intel_vue_map vue_map;
 };
 
 /**
@@ -805,7 +806,7 @@ brw_compile_sf(const struct brw_compiler *compiler,
                void *mem_ctx,
                const struct brw_sf_prog_key *key,
                struct brw_sf_prog_data *prog_data,
-               struct brw_vue_map *vue_map,
+               struct intel_vue_map *vue_map,
                unsigned *final_assembly_size)
 {
    struct brw_sf_compile c;

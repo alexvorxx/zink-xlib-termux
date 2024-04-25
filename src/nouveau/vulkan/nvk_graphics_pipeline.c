@@ -325,7 +325,7 @@ nvk_graphics_pipeline_create(struct nvk_device *dev,
       if (stage != MESA_SHADER_FRAGMENT)
          last_geom = shader;
 
-      uint64_t addr = nvk_shader_address(shader);
+      uint64_t addr = shader->hdr_addr;
       if (dev->pdev->info.cls_eng3d >= VOLTA_A) {
          P_MTHD(p, NVC397, SET_PIPELINE_PROGRAM_ADDRESS_A(idx));
          P_NVC397_SET_PIPELINE_PROGRAM_ADDRESS_A(p, idx, addr >> 32);

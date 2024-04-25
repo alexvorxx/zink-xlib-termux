@@ -98,7 +98,9 @@ radv_calibrated_timestamps_enabled(const struct radv_physical_device *pdevice)
 static bool
 radv_shader_object_enabled(const struct radv_physical_device *pdevice)
 {
-   return pdevice->rad_info.gfx_level < GFX9 && pdevice->instance->perftest_flags & RADV_PERFTEST_SHADER_OBJECT;
+   /* FIXME: Fix GPU hangs on Renoir. */
+   return (pdevice->rad_info.gfx_level < GFX9 || pdevice->rad_info.family == CHIP_VEGA10) && !pdevice->use_llvm &&
+          pdevice->instance->perftest_flags & RADV_PERFTEST_SHADER_OBJECT;
 }
 
 bool
@@ -504,7 +506,9 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .KHR_shader_float16_int8 = true,
       .KHR_shader_float_controls = true,
       .KHR_shader_integer_dot_product = true,
+      .KHR_shader_maximal_reconvergence = true,
       .KHR_shader_non_semantic_info = true,
+      .KHR_shader_quad_control = true,
       .KHR_shader_subgroup_extended_types = true,
       .KHR_shader_subgroup_rotate = true,
       .KHR_shader_subgroup_uniform_control_flow = true,
@@ -1134,6 +1138,12 @@ radv_physical_device_get_features(const struct radv_physical_device *pdevice, st
 
       /* VK_KHR_shader_expect_assume */
       .shaderExpectAssume = true,
+
+      /* VK_KHR_shader_maximal_reconvergence */
+      .shaderMaximalReconvergence = true,
+
+      /* VK_KHR_shader_quad_control */
+      .shaderQuadControl = true,
    };
 }
 
@@ -1344,7 +1354,8 @@ radv_get_physical_device_properties(struct radv_physical_device *pdevice)
    p->subgroupSupportedOperations = VK_SUBGROUP_FEATURE_BASIC_BIT | VK_SUBGROUP_FEATURE_VOTE_BIT |
                                     VK_SUBGROUP_FEATURE_ARITHMETIC_BIT | VK_SUBGROUP_FEATURE_BALLOT_BIT |
                                     VK_SUBGROUP_FEATURE_CLUSTERED_BIT | VK_SUBGROUP_FEATURE_QUAD_BIT |
-                                    VK_SUBGROUP_FEATURE_SHUFFLE_BIT | VK_SUBGROUP_FEATURE_SHUFFLE_RELATIVE_BIT;
+                                    VK_SUBGROUP_FEATURE_SHUFFLE_BIT | VK_SUBGROUP_FEATURE_SHUFFLE_RELATIVE_BIT |
+                                    VK_SUBGROUP_FEATURE_ROTATE_BIT_KHR | VK_SUBGROUP_FEATURE_ROTATE_CLUSTERED_BIT_KHR;
    p->subgroupQuadOperationsInAllStages = true;
 
    p->pointClippingBehavior = VK_POINT_CLIPPING_BEHAVIOR_ALL_CLIP_PLANES;
@@ -1697,7 +1708,7 @@ radv_get_physical_device_properties(struct radv_physical_device *pdevice)
    /* VK_NV_device_generated_commands */
    p->maxIndirectCommandsStreamCount = 1;
    p->maxIndirectCommandsStreamStride = UINT32_MAX;
-   p->maxIndirectCommandsTokenCount = UINT32_MAX;
+   p->maxIndirectCommandsTokenCount = 512;
    p->maxIndirectCommandsTokenOffset = UINT16_MAX;
    p->minIndirectCommandsBufferOffsetAlignment = 4;
    p->minSequencesCountBufferOffsetAlignment = 4;
@@ -2001,13 +2012,15 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
          device->ge_wave_size = 32;
 
       /* Default to 32 on RDNA1-2 as that gives better perf due to less issues with divergence.
-       * However, on GFX11 default to wave64 as ACO does not support VOPD yet, and with the VALU
-       * dependence wave32 would likely be a net-loss (as well as the SALU count becoming more
-       * problematic)
+       * However, on RDNA3+ default to wave64 as implicit dual issuing is likely better than
+       * wave32 VOPD for VALU dependent code.
+       * (as well as the SALU count becoming more problematic with wave32)
        */
-      if (!(device->instance->perftest_flags & RADV_PERFTEST_RT_WAVE_64) &&
-          !(device->instance->drirc.force_rt_wave64) && device->rad_info.gfx_level < GFX11)
+      if (device->instance->perftest_flags & RADV_PERFTEST_RT_WAVE_32 || device->rad_info.gfx_level < GFX11)
          device->rt_wave_size = 32;
+
+      if (device->instance->perftest_flags & RADV_PERFTEST_RT_WAVE_64 || device->instance->drirc.force_rt_wave64)
+         device->rt_wave_size = 64;
    }
 
    device->max_shared_size = device->rad_info.gfx_level >= GFX7 ? 65536 : 32768;
@@ -2049,12 +2062,12 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
    if ((device->instance->debug_flags & RADV_DEBUG_INFO))
       ac_print_gpu_info(&device->rad_info, stdout);
 
+   radv_init_physical_device_decoder(device);
+
    radv_physical_device_init_queue_table(device);
 
    /* We don't check the error code, but later check if it is initialized. */
    ac_init_perfcounters(&device->rad_info, false, false, &device->ac_perfcounters);
-
-   radv_init_physical_device_decoder(device);
 
    /* The WSI is structured as a layer on top of the driver, so this has
     * to be the last part of initialization (at least until we get other

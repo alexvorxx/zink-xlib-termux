@@ -1712,7 +1712,7 @@ calculate_urb_setup(const struct intel_device_info *devinfo,
           * geometry has more than one position slot (used for Primitive
           * Replication).
           */
-         struct brw_vue_map prev_stage_vue_map;
+         struct intel_vue_map prev_stage_vue_map;
          brw_compute_vue_map(devinfo, &prev_stage_vue_map,
                              key->input_slots_valid,
                              nir->info.separate_shader, 1);
@@ -4905,6 +4905,9 @@ get_fpu_lowered_simd_width(const fs_visitor *shader,
  * the message length to determine the exact SIMD width and argument count,
  * which makes a number of sampler message combinations impossible to
  * represent).
+ *
+ * Note: Platforms with monolithic SIMD16 double the possible SIMD widths
+ * change from (SIMD8, SIMD16) to (SIMD16, SIMD32).
  */
 static unsigned
 get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
@@ -4916,7 +4919,7 @@ get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
     */
    if (inst->opcode != SHADER_OPCODE_TEX &&
        inst->components_read(TEX_LOGICAL_SRC_MIN_LOD))
-      return 8;
+      return devinfo->ver < 20 ? 8 : 16;
 
    /* Calculate the number of coordinate components that have to be present
     * assuming that additional arguments follow the texel coordinates in the
@@ -4953,12 +4956,14 @@ get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
        inst->components_read(TEX_LOGICAL_SRC_TG4_OFFSET) : 0) +
       inst->components_read(TEX_LOGICAL_SRC_MCS);
 
-   /* SIMD16 messages with more than five arguments exceed the maximum message
-    * size supported by the sampler, regardless of whether a header is
-    * provided or not.
+   const unsigned simd_limit = reg_unit(devinfo) *
+      (num_payload_components > MAX_SAMPLER_MESSAGE_SIZE / 2 ? 8 : 16);
+
+   /* SIMD16 (SIMD32 on Xe2) messages with more than five arguments exceed the
+    * maximum message size supported by the sampler, regardless of whether a
+    * header is provided or not.
     */
-   return MIN2(inst->exec_size,
-               num_payload_components > MAX_SAMPLER_MESSAGE_SIZE / 2 ? 8 : 16);
+   return MIN2(inst->exec_size, simd_limit);
 }
 
 /**
@@ -5169,8 +5174,10 @@ get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
       return MIN2(16, inst->exec_size);
 
    case SHADER_OPCODE_TXD_LOGICAL:
-      /* TXD is unsupported in SIMD16 mode. */
-      return 8;
+      /* TXD is unsupported in SIMD16 mode previous to Xe2. SIMD32 is still
+       * unsuppported on Xe2.
+       */
+      return devinfo->ver < 20 ? 8 : 16;
 
    case SHADER_OPCODE_TXL_LOGICAL:
    case FS_OPCODE_TXB_LOGICAL:
@@ -6881,13 +6888,13 @@ fs_visitor::set_tcs_invocation_id()
 
    invocation_id = bld.vgrf(BRW_REGISTER_TYPE_UD);
 
-   if (vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_MULTI_PATCH) {
+   if (vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_MULTI_PATCH) {
       /* gl_InvocationID is just the thread number */
       bld.SHR(invocation_id, t, brw_imm_ud(instance_id_shift));
       return;
    }
 
-   assert(vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_SINGLE_PATCH);
+   assert(vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_SINGLE_PATCH);
 
    fs_reg channels_uw = bld.vgrf(BRW_REGISTER_TYPE_UW);
    fs_reg channels_ud = bld.vgrf(BRW_REGISTER_TYPE_UD);
@@ -6938,8 +6945,8 @@ fs_visitor::run_tcs()
    struct brw_vue_prog_data *vue_prog_data = brw_vue_prog_data(prog_data);
    const fs_builder bld = fs_builder(this).at_end();
 
-   assert(vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_SINGLE_PATCH ||
-          vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_MULTI_PATCH);
+   assert(vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_SINGLE_PATCH ||
+          vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_MULTI_PATCH);
 
    payload_ = new tcs_thread_payload(*this);
 
@@ -6947,7 +6954,7 @@ fs_visitor::run_tcs()
    set_tcs_invocation_id();
 
    const bool fix_dispatch_mask =
-      vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_SINGLE_PATCH &&
+      vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_SINGLE_PATCH &&
       (nir->info.tess.tcs_vertices_out % 8) != 0;
 
    /* Fix the disptach mask */
@@ -8237,12 +8244,12 @@ brw_compile_cs(const struct brw_compiler *compiler,
    return g.get_assembly();
 }
 
-struct brw_cs_dispatch_info
+struct intel_cs_dispatch_info
 brw_cs_get_dispatch_info(const struct intel_device_info *devinfo,
                          const struct brw_cs_prog_data *prog_data,
                          const unsigned *override_local_size)
 {
-   struct brw_cs_dispatch_info info = {};
+   struct intel_cs_dispatch_info info = {};
 
    const unsigned *sizes =
       override_local_size ? override_local_size :
@@ -8290,9 +8297,9 @@ compile_single_bs(const struct brw_compiler *compiler,
       .prog_data = prog_data,
 
       /* Since divergence is a lot more likely in RT than compute, it makes
-       * sense to limit ourselves to SIMD8 for now.
+       * sense to limit ourselves to the smallest available SIMD for now.
        */
-      .required_width = 8,
+      .required_width = compiler->devinfo->ver >= 20 ? 16u : 8u,
    };
 
    std::unique_ptr<fs_visitor> v[2];
@@ -8548,7 +8555,7 @@ namespace brw {
    void
    check_dynamic_msaa_flag(const fs_builder &bld,
                            const struct brw_wm_prog_data *wm_prog_data,
-                           enum brw_wm_msaa_flags flag)
+                           enum intel_msaa_flags flag)
    {
       fs_inst *inst = bld.AND(bld.null_reg_ud(),
                               dynamic_msaa_flags(wm_prog_data),

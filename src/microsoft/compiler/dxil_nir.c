@@ -1931,7 +1931,8 @@ lower_subgroup_id(nir_builder *b, nir_intrinsic_instr *intr, void *data)
       return false;
 
    b->cursor = nir_before_impl(b->impl);
-   if (b->shader->info.workgroup_size[1] == 1 &&
+   if (b->shader->info.stage == MESA_SHADER_COMPUTE &&
+       b->shader->info.workgroup_size[1] == 1 &&
        b->shader->info.workgroup_size[2] == 1) {
       /* When using Nx1x1 groups, use a simple stable algorithm
        * which is almost guaranteed to be correct. */
@@ -2177,6 +2178,7 @@ lower_subgroup_scan(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    b->cursor = nir_before_instr(&intr->instr);
    nir_op op = nir_intrinsic_reduction_op(intr);
    nir_def *subgroup_id = nir_load_subgroup_invocation(b);
+   nir_def *subgroup_size = nir_load_subgroup_size(b);
    nir_def *active_threads = nir_ballot(b, 4, 32, nir_imm_true(b));
    nir_def *base_value;
    uint32_t bit_size = intr->def.bit_size;
@@ -2202,18 +2204,23 @@ lower_subgroup_scan(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    nir_store_var(b, result_var, base_value, 1);
    nir_loop *loop = nir_push_loop(b);
    nir_def *loop_counter = nir_load_var(b, loop_counter_var);
-   nir_if *nif = nir_push_if(b, intr->intrinsic == nir_intrinsic_inclusive_scan ?
+
+   nir_if *nif = nir_push_if(b, nir_ilt(b, loop_counter, subgroup_size));
+   nir_def *other_thread_val = nir_read_invocation(b, intr->src[0].ssa, loop_counter);
+   nir_def *thread_in_range = intr->intrinsic == nir_intrinsic_inclusive_scan ?
       nir_ige(b, subgroup_id, loop_counter) :
-      nir_ilt(b, loop_counter, subgroup_id));
-   nir_if *if_active_thread = nir_push_if(b, nir_ballot_bitfield_extract(b, 32, active_threads, loop_counter));
-   nir_def *result = nir_build_alu2(b, op,
-                                        nir_load_var(b, result_var),
-                                        nir_read_invocation(b, intr->src[0].ssa, loop_counter));
+      nir_ilt(b, loop_counter, subgroup_id);
+   nir_def *thread_active = nir_ballot_bitfield_extract(b, 1, active_threads, loop_counter);
+
+   nir_if *if_active_thread = nir_push_if(b, nir_iand(b, thread_in_range, thread_active));
+   nir_def *result = nir_build_alu2(b, op, nir_load_var(b, result_var), other_thread_val);
    nir_store_var(b, result_var, result, 1);
    nir_pop_if(b, if_active_thread);
+
    nir_store_var(b, loop_counter_var, nir_iadd_imm(b, loop_counter, 1), 1);
    nir_jump(b, nir_jump_continue);
    nir_pop_if(b, nif);
+
    nir_jump(b, nir_jump_break);
    nir_pop_loop(b, loop);
 
@@ -2670,4 +2677,142 @@ dxil_nir_guess_image_formats(nir_shader *s)
    nir_shader_intrinsics_pass(s, update_intrinsic_formats, nir_metadata_all,
                               NULL);
    return progress;
+}
+
+static void
+set_binding_variables_coherent(nir_shader *s, nir_binding binding, nir_variable_mode modes)
+{
+   nir_foreach_variable_with_modes(var, s, modes) {
+      if (var->data.binding == binding.binding &&
+          var->data.descriptor_set == binding.desc_set) {
+         var->data.access |= ACCESS_COHERENT;
+      }
+   }
+}
+
+static void
+set_deref_variables_coherent(nir_shader *s, nir_deref_instr *deref)
+{
+   while (deref->deref_type != nir_deref_type_var &&
+          deref->deref_type != nir_deref_type_cast) {
+      deref = nir_deref_instr_parent(deref);
+   }
+   if (deref->deref_type == nir_deref_type_var) {
+      deref->var->data.access |= ACCESS_COHERENT;
+      return;
+   }
+
+   /* For derefs with casts, we only support pre-lowered Vulkan accesses */
+   assert(deref->deref_type == nir_deref_type_cast);
+   nir_intrinsic_instr *cast_src = nir_instr_as_intrinsic(deref->parent.ssa->parent_instr);
+   assert(cast_src->intrinsic == nir_intrinsic_load_vulkan_descriptor);
+   nir_binding binding = nir_chase_binding(cast_src->src[0]);
+   set_binding_variables_coherent(s, binding, nir_var_mem_ssbo);
+}
+
+static nir_def *
+get_atomic_for_load_store(nir_builder *b, nir_intrinsic_instr *intr, unsigned bit_size)
+{
+   nir_def *zero = nir_imm_intN_t(b, 0, bit_size);
+   switch (intr->intrinsic) {
+   case nir_intrinsic_load_deref:
+      return nir_deref_atomic(b, bit_size, intr->src[0].ssa, zero, .atomic_op = nir_atomic_op_iadd);
+   case nir_intrinsic_load_ssbo:
+      return nir_ssbo_atomic(b, bit_size, intr->src[0].ssa, intr->src[1].ssa, zero, .atomic_op = nir_atomic_op_iadd);
+   case nir_intrinsic_image_deref_load:
+      return nir_image_deref_atomic(b, bit_size, intr->src[0].ssa, intr->src[1].ssa, intr->src[2].ssa, zero, .atomic_op = nir_atomic_op_iadd);
+   case nir_intrinsic_image_load:
+      return nir_image_atomic(b, bit_size, intr->src[0].ssa, intr->src[1].ssa, intr->src[2].ssa, zero, .atomic_op = nir_atomic_op_iadd);
+   case nir_intrinsic_store_deref:
+      return nir_deref_atomic(b, bit_size, intr->src[0].ssa, intr->src[1].ssa, .atomic_op = nir_atomic_op_xchg);
+   case nir_intrinsic_store_ssbo:
+      return nir_ssbo_atomic(b, bit_size, intr->src[1].ssa, intr->src[2].ssa, intr->src[0].ssa, .atomic_op = nir_atomic_op_xchg);
+   case nir_intrinsic_image_deref_store:
+      return nir_image_deref_atomic(b, bit_size, intr->src[0].ssa, intr->src[1].ssa, intr->src[2].ssa, intr->src[3].ssa, .atomic_op = nir_atomic_op_xchg);
+   case nir_intrinsic_image_store:
+      return nir_image_atomic(b, bit_size, intr->src[0].ssa, intr->src[1].ssa, intr->src[2].ssa, intr->src[3].ssa, .atomic_op = nir_atomic_op_xchg);
+   default:
+      return NULL;
+   }
+}
+
+static bool
+lower_coherent_load_store(nir_builder *b, nir_intrinsic_instr *intr, void *context)
+{
+   if (!nir_intrinsic_has_access(intr) || (nir_intrinsic_access(intr) & ACCESS_COHERENT) == 0)
+      return false;
+
+   nir_def *atomic_def = NULL;
+   b->cursor = nir_before_instr(&intr->instr);
+   switch (intr->intrinsic) {
+   case nir_intrinsic_load_deref:
+   case nir_intrinsic_load_ssbo:
+   case nir_intrinsic_image_deref_load:
+   case nir_intrinsic_image_load: {
+      if (intr->def.bit_size < 32 || intr->def.num_components > 1) {
+         if (intr->intrinsic == nir_intrinsic_load_deref)
+            set_deref_variables_coherent(b->shader, nir_src_as_deref(intr->src[0]));
+         else {
+            nir_binding binding = {0};
+            if (nir_src_is_const(intr->src[0]))
+               binding.binding = nir_src_as_uint(intr->src[0]);
+            set_binding_variables_coherent(b->shader, binding,
+                                           intr->intrinsic == nir_intrinsic_load_ssbo ? nir_var_mem_ssbo : nir_var_image);
+         }
+         return false;
+      }
+
+      atomic_def = get_atomic_for_load_store(b, intr, intr->def.bit_size);
+      nir_def_rewrite_uses(&intr->def, atomic_def);
+      break;
+   }
+   case nir_intrinsic_store_deref:
+   case nir_intrinsic_store_ssbo:
+   case nir_intrinsic_image_deref_store:
+   case nir_intrinsic_image_store: {
+      int resource_idx = intr->intrinsic == nir_intrinsic_store_ssbo ? 1 : 0;
+      int value_idx = intr->intrinsic == nir_intrinsic_store_ssbo ? 0 :
+         intr->intrinsic == nir_intrinsic_store_deref ? 1 : 3;
+      unsigned num_components = nir_intrinsic_has_write_mask(intr) ?
+         util_bitcount(nir_intrinsic_write_mask(intr)) : intr->src[value_idx].ssa->num_components;
+      if (intr->src[value_idx].ssa->bit_size < 32 || num_components > 1) {
+         if (intr->intrinsic == nir_intrinsic_store_deref)
+            set_deref_variables_coherent(b->shader, nir_src_as_deref(intr->src[resource_idx]));
+         else {
+            nir_binding binding = {0};
+            if (nir_src_is_const(intr->src[resource_idx]))
+               binding.binding = nir_src_as_uint(intr->src[resource_idx]);
+            set_binding_variables_coherent(b->shader, binding,
+                                           intr->intrinsic == nir_intrinsic_store_ssbo ? nir_var_mem_ssbo : nir_var_image);
+         }
+         return false;
+      }
+
+      atomic_def = get_atomic_for_load_store(b, intr, intr->src[value_idx].ssa->bit_size);
+      break;
+   }
+   default:
+      return false;
+   }
+
+   nir_intrinsic_instr *atomic = nir_instr_as_intrinsic(atomic_def->parent_instr);
+   nir_intrinsic_set_access(atomic, nir_intrinsic_access(intr));
+   if (nir_intrinsic_has_image_dim(intr))
+      nir_intrinsic_set_image_dim(atomic, nir_intrinsic_image_dim(intr));
+   if (nir_intrinsic_has_image_array(intr))
+      nir_intrinsic_set_image_array(atomic, nir_intrinsic_image_array(intr));
+   if (nir_intrinsic_has_format(intr))
+      nir_intrinsic_set_format(atomic, nir_intrinsic_format(intr));
+   if (nir_intrinsic_has_range_base(intr))
+      nir_intrinsic_set_range_base(atomic, nir_intrinsic_range_base(intr));
+   nir_instr_remove(&intr->instr);
+   return true;
+}
+
+bool
+dxil_nir_lower_coherent_loads_and_stores(nir_shader *s)
+{
+   return nir_shader_intrinsics_pass(s, lower_coherent_load_store,
+                                     nir_metadata_block_index | nir_metadata_dominance | nir_metadata_loop_analysis,
+                                     NULL);
 }

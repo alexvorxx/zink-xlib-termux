@@ -24,6 +24,7 @@ from subprocess import check_output
 from typing import TYPE_CHECKING, Iterable, Literal, Optional
 
 import gitlab
+import gitlab.v4.objects
 from colorama import Fore, Style
 from gitlab_common import (
     GITLAB_URL,
@@ -63,6 +64,9 @@ COMPLETED_STATUSES = ["success", "failed"]
 def print_job_status(job, new_status=False) -> None:
     """It prints a nice, colored job status with a link to the job."""
     if job.status == "canceled":
+        return
+
+    if new_status and job.status == "created":
         return
 
     if job.duration:
@@ -116,10 +120,10 @@ def monitor_pipeline(
                         stress < 0
                         or sum(stress_status_counter[job.name].values()) < stress
                     ):
-                        enable_job(project, job, "retry", force_manual)
+                        job = enable_job(project, pipeline, job, "retry", force_manual)
                         stress_status_counter[job.name][job.status] += 1
                 else:
-                    enable_job(project, job, "target", force_manual)
+                    job = enable_job(project, pipeline, job, "target", force_manual)
 
                 print_job_status(job, job.status not in target_statuses[job.name])
                 target_statuses[job.name] = job.status
@@ -132,7 +136,7 @@ def monitor_pipeline(
 
             # run dependencies and cancel the rest
             if job.name in dependencies:
-                enable_job(project, job, "dep", True)
+                job = enable_job(project, pipeline, job, "dep", True)
                 if job.status == "failed":
                     deps_failed.append(job.name)
             else:
@@ -187,23 +191,37 @@ def monitor_pipeline(
         pretty_wait(REFRESH_WAIT_JOBS)
 
 
+def get_pipeline_job(
+    pipeline: gitlab.v4.objects.ProjectPipeline,
+    id: int,
+) -> gitlab.v4.objects.ProjectPipelineJob:
+    pipeline_jobs = pipeline.jobs.list(all=True)
+    return [j for j in pipeline_jobs if j.id == id][0]
+
+
 def enable_job(
-    project, job, action_type: Literal["target", "dep", "retry"], force_manual: bool
-) -> None:
+    project: gitlab.v4.objects.Project,
+    pipeline: gitlab.v4.objects.ProjectPipeline,
+    job: gitlab.v4.objects.ProjectPipelineJob,
+    action_type: Literal["target", "dep", "retry"],
+    force_manual: bool,
+) -> gitlab.v4.objects.ProjectPipelineJob:
     """enable job"""
     if (
         (job.status in ["success", "failed"] and action_type != "retry")
         or (job.status == "manual" and not force_manual)
         or job.status in ["skipped", "running", "created", "pending"]
     ):
-        return
+        return job
 
     pjob = project.jobs.get(job.id, lazy=True)
 
     if job.status in ["success", "failed", "canceled"]:
-        pjob.retry()
+        new_job = pjob.retry()
+        job = get_pipeline_job(pipeline, new_job["id"])
     else:
         pjob.play()
+        job = get_pipeline_job(pipeline, pjob.id)
 
     if action_type == "target":
         jtype = "🞋 "
@@ -213,6 +231,8 @@ def enable_job(
         jtype = "(dependency)"
 
     print(Fore.MAGENTA + f"{jtype} job {job.name} manually enabled" + Style.RESET_ALL)
+
+    return job
 
 
 def cancel_job(project, job) -> None:
@@ -404,6 +424,29 @@ if __name__ == "__main__":
                 REV = mesa_project.mergerequests.get(args.mr).sha
             else:
                 REV = check_output(['git', 'rev-parse', REV]).decode('ascii').strip()
+
+                if args.rev == 'HEAD':
+                    branch_name = check_output([
+                        'git', 'symbolic-ref', '-q', 'HEAD',
+                    ]).decode('ascii').strip()
+
+                    tracked_remote = check_output([
+                        'git', 'for-each-ref', '--format=%(upstream)',
+                        branch_name,
+                    ]).decode('ascii').strip()
+
+                    if tracked_remote:
+                        remote_rev = check_output([
+                            'git', 'rev-parse', tracked_remote,
+                        ]).decode('ascii').strip()
+
+                        if REV != remote_rev:
+                            print(
+                                f"Local HEAD commit {REV[:10]} is different than "
+                                f"tracked remote HEAD commit {remote_rev[:10]}"
+                            )
+                            print("Did you forget to `git push` ?")
+
                 projects.append(get_gitlab_project(gl, args.project))
             (pipe, cur_project) = wait_for_pipeline(projects, REV)
 
@@ -411,10 +454,16 @@ if __name__ == "__main__":
         print(f"Pipeline: {pipe.web_url}")
 
         target = '|'.join(args.target)
-        target_jobs_regex = re.compile(target.strip())
+        target = target.strip()
 
         deps = set()
         print("🞋 job: " + Fore.BLUE + target + Style.RESET_ALL)
+
+        # Implicitly include `parallel:` jobs
+        target = f'({target})' + r'( \d+/\d+)?'
+
+        target_jobs_regex = re.compile(target)
+
         deps = find_dependencies(
             token=token,
             target_jobs_regex=target_jobs_regex,

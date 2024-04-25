@@ -90,6 +90,9 @@ static const struct vk_instance_extension_table instance_extensions = {
 #ifdef VK_USE_PLATFORM_XLIB_KHR
    .KHR_xlib_surface                         = true,
 #endif
+#ifndef VK_USE_PLATFORM_WIN32_KHR
+   .EXT_headless_surface                     = true,
+#endif
    .EXT_debug_report                         = true,
    .EXT_debug_utils                          = true,
 };
@@ -181,6 +184,7 @@ static const struct debug_control dzn_debug_options[] = {
    { "bindless", DZN_DEBUG_BINDLESS },
    { "nobindless", DZN_DEBUG_NO_BINDLESS },
    { "experimental", DZN_DEBUG_EXPERIMENTAL },
+   { "multiview", DZN_DEBUG_MULTIVIEW },
    { NULL, 0 }
 };
 
@@ -1134,6 +1138,9 @@ dzn_physical_device_create(struct vk_instance *instance,
    dzn_physical_device_init_memory(pdev);
    dzn_physical_device_init_uuids(pdev);
 
+   if (dzn_instance->debug_flags & DZN_DEBUG_MULTIVIEW)
+      pdev->options3.ViewInstancingTier = D3D12_VIEW_INSTANCING_TIER_NOT_SUPPORTED;
+
    dzn_physical_device_get_extensions(pdev);
    if (driQueryOptionb(&dzn_instance->dri_options, "dzn_enable_8bit_loads_stores") &&
        pdev->options4.Native16BitShaderOpsSupported)
@@ -1735,6 +1742,7 @@ static const driOptionDescription dzn_dri_options[] = {
    DRI_CONF_SECTION_DEBUG
       DRI_CONF_DZN_CLAIM_WIDE_LINES(false)
       DRI_CONF_DZN_ENABLE_8BIT_LOADS_STORES(false)
+      DRI_CONF_DZN_DISABLE(false)
       DRI_CONF_VK_WSI_FORCE_SWAPCHAIN_TO_CURRENT_EXTENT(false)
    DRI_CONF_SECTION_END
 };
@@ -1835,6 +1843,11 @@ dzn_instance_create(const VkInstanceCreateInfo *pCreateInfo,
 
    instance->sync_binary_type = vk_sync_binary_get_type(&dzn_sync_type);
    dzn_init_dri_config(instance);
+
+   if (driQueryOptionb(&instance->dri_options, "dzn_disable")) {
+      dzn_instance_destroy(instance, pAllocator);
+      return vk_errorf(NULL, VK_ERROR_INITIALIZATION_FAILED, "dzn_disable set, failing instance creation");
+   }
 
    *out = dzn_instance_to_handle(instance);
    return VK_SUCCESS;

@@ -344,6 +344,7 @@ d3d12_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_GL_SPIRV:
    case PIPE_CAP_POLYGON_OFFSET_CLAMP:
    case PIPE_CAP_SHADER_GROUP_VOTE:
+   case PIPE_CAP_SHADER_BALLOT:
    case PIPE_CAP_QUERY_PIPELINE_STATISTICS:
    case PIPE_CAP_QUERY_SO_OVERFLOW:
       return 1;
@@ -633,7 +634,8 @@ d3d12_is_format_supported(struct pipe_screen *pscreen,
    }
 
    if (bind & PIPE_BIND_DISPLAY_TARGET) {
-      if (!screen->winsys->is_displaytarget_format_supported(screen->winsys, bind, format))
+      enum pipe_format dt_format = format == PIPE_FORMAT_R16G16B16A16_FLOAT ? PIPE_FORMAT_R8G8B8A8_UNORM : format;
+      if (!screen->winsys->is_displaytarget_format_supported(screen->winsys, bind, dt_format))
          return false;
    }
 
@@ -796,6 +798,29 @@ d3d12_flush_frontbuffer(struct pipe_screen * pscreen,
 
    if (!winsys || !pctx)
      return;
+
+   assert(res->dt || res->dt_proxy);
+   if (res->dt_proxy) {
+     struct pipe_blit_info blit;
+
+     memset(&blit, 0, sizeof(blit));
+     blit.dst.resource = res->dt_proxy;
+     blit.dst.box.width = blit.dst.resource->width0;
+     blit.dst.box.height = blit.dst.resource->height0;
+     blit.dst.box.depth = 1;
+     blit.dst.format = blit.dst.resource->format;
+     blit.src.resource = pres;
+     blit.src.box.width = blit.src.resource->width0;
+     blit.src.box.height = blit.src.resource->height0;
+     blit.src.box.depth = 1;
+     blit.src.format = blit.src.resource->format;
+     blit.mask = PIPE_MASK_RGBA;
+     blit.filter = PIPE_TEX_FILTER_NEAREST;
+
+     pctx->blit(pctx, &blit);
+     pres = res->dt_proxy;
+     res = d3d12_resource(pres);
+   }
 
    assert(res->dt);
    void *map = winsys->displaytarget_map(winsys, res->dt, 0);

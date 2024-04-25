@@ -926,6 +926,8 @@ nir_split_array_vars(nir_shader *shader, nir_variable_mode modes)
    bool has_global_array = false;
    //if (modes & (nir_var_shader_temp | nir_var_ray_hit_attrib)) {
    if (modes & nir_var_shader_temp) {
+   //bool has_global_array = false;
+   //if (modes & (~nir_var_function_temp)) {
       has_global_array = init_var_list_array_infos(shader,
                                                    &shader->variables,
                                                    //modes,
@@ -961,8 +963,10 @@ nir_split_array_vars(nir_shader *shader, nir_variable_mode modes)
    }
 
    bool has_global_splits = false;
+
    //if (modes & (nir_var_shader_temp | nir_var_ray_hit_attrib)) {
    if (modes & nir_var_shader_temp) {
+   //if (modes & (~nir_var_function_temp)) {
       has_global_splits = split_var_list_arrays(shader, NULL,
                                                 &shader->variables,
                                                 //modes,

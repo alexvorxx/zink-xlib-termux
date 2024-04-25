@@ -35,6 +35,7 @@
 #include "i915/intel_device_info.h"
 #include "xe/intel_device_info.h"
 
+#include "common/intel_gem.h"
 #include "util/u_debug.h"
 #include "util/log.h"
 #include "util/macros.h"
@@ -72,6 +73,7 @@ static const struct {
    { "rpl", 0xa780 },
    { "dg2", 0x5690 },
    { "mtl", 0x7d60 },
+   { "arl", 0x7d67 },
 };
 
 /**
@@ -1197,6 +1199,16 @@ static const struct intel_device_info intel_device_info_mtl_h = {
    .platform = INTEL_PLATFORM_MTL_H,
 };
 
+static const struct intel_device_info intel_device_info_arl_u = {
+   MTL_FEATURES,
+   .platform = INTEL_PLATFORM_ARL_U,
+};
+
+static const struct intel_device_info intel_device_info_arl_h = {
+   MTL_FEATURES,
+   .platform = INTEL_PLATFORM_ARL_H,
+};
+
 void
 intel_device_info_topology_reset_masks(struct intel_device_info *devinfo)
 {
@@ -1598,7 +1610,7 @@ intel_device_info_calc_engine_prefetch(const struct intel_device_info *devinfo,
       }
    }
 
-   if (intel_device_info_is_mtl(devinfo)) {
+   if (intel_device_info_is_mtl_or_arl(devinfo)) {
       switch (engine_class) {
       case INTEL_ENGINE_CLASS_RENDER:
          return 2048;
@@ -1620,6 +1632,21 @@ intel_device_info_calc_engine_prefetch(const struct intel_device_info *devinfo,
 bool
 intel_get_device_info_from_fd(int fd, struct intel_device_info *devinfo, int min_ver, int max_ver)
 {
+   if (NULL != getenv("INTEL_STUB_GPU_JSON")) {
+      /* This call will succeed when shim-drm has been initialized with a
+       * serialized intel_device_info structure.
+       */
+      struct drm_intel_stub_devinfo arg = {
+         .addr = (uintptr_t)devinfo,
+         .size = sizeof(*devinfo),
+      };
+      if (0 == intel_ioctl(fd, DRM_IOCTL_INTEL_STUB_DEVINFO, &arg)) {
+         intel_device_info_init_was(devinfo);
+         intel_device_info_apply_workarounds(devinfo);
+         return true;
+      }
+   }
+
    /* Get PCI info.
     *
     * Some callers may already have a valid drm device which holds values of
@@ -1769,3 +1796,4 @@ intel_device_info_wa_stepping(struct intel_device_info *devinfo)
    /* all other platforms support only released steppings */
    return INTEL_STEPPING_RELEASE;
 }
+

@@ -67,6 +67,9 @@ brw_kernel_from_spirv(struct brw_compiler *compiler,
                       const char *entrypoint_name,
                       char **error_str);
 
+nir_shader *
+brw_nir_from_spirv(void *mem_ctx, const uint32_t *spirv, size_t spirv_size);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

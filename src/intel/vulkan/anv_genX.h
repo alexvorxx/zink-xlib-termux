@@ -37,6 +37,10 @@
 #endif
 
 struct intel_sample_positions;
+struct intel_urb_config;
+
+typedef struct nir_builder nir_builder;
+typedef struct nir_shader nir_shader;
 
 extern const uint32_t genX(vk_to_intel_cullmode)[];
 
@@ -57,6 +61,11 @@ void genX(init_physical_device_state)(struct anv_physical_device *device);
 VkResult genX(init_device_state)(struct anv_device *device);
 
 void genX(init_cps_device_state)(struct anv_device *device);
+
+nir_shader *genX(load_libanv_shader)(struct anv_device *device, void *mem_ctx);
+
+uint32_t genX(call_internal_shader)(nir_builder *b,
+                                    enum anv_internal_kernel_name shader_name);
 
 void
 genX(set_fast_clear_state)(struct anv_cmd_buffer *cmd_buffer,
@@ -87,6 +96,9 @@ void genX(cmd_buffer_update_dirty_vbs_for_gfx8_vb_flush)(struct anv_cmd_buffer *
 void genX(cmd_buffer_emit_hashing_mode)(struct anv_cmd_buffer *cmd_buffer,
                                         unsigned width, unsigned height,
                                         unsigned scale);
+
+void genX(urb_workaround)(struct anv_cmd_buffer *cmd_buffer,
+                          const struct intel_urb_config *urb_cfg);
 
 void genX(flush_pipeline_select_3d)(struct anv_cmd_buffer *cmd_buffer);
 void genX(flush_pipeline_select_gpgpu)(struct anv_cmd_buffer *cmd_buffer);
@@ -172,7 +184,8 @@ void
 genX(emit_urb_setup)(struct anv_device *device, struct anv_batch *batch,
                      const struct intel_l3_config *l3_config,
                      VkShaderStageFlags active_stages,
-                     const unsigned entry_size[4],
+                     const struct intel_urb_config *urb_cfg_in,
+                     struct intel_urb_config *urb_cfg_out,
                      enum intel_urb_deref_block_size *deref_block_size);
 
 void genX(emit_sample_pattern)(struct anv_batch *batch,

@@ -79,6 +79,7 @@
  */
 
 #include "brw_eu.h"
+#include "brw_disasm.h"
 #include "brw_shader.h"
 #include "brw_disasm_info.h"
 #include "dev/intel_debug.h"

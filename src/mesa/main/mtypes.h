@@ -1668,6 +1668,12 @@ struct gl_vertex_array_object
    GLbitfield Enabled;
 
    /**
+    * Mask of vertex attributes that have:
+    *    VertexAttrib[i].BufferBindingIndex != i.
+    */
+   GLbitfield NonIdentityBufferAttribMapping;
+
+   /**
     * Mask indicating which VertexAttrib and BufferBinding structures have
     * been changed since the VAO creation. No bit is ever cleared to 0 by
     * state updates. Setting to the default state doesn't update this.

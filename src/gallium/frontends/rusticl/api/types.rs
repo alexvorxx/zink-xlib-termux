@@ -2,7 +2,7 @@ use crate::api::icd::CLResult;
 use crate::api::icd::ReferenceCountedAPIPointer;
 use crate::core::context::Context;
 use crate::core::event::Event;
-use crate::core::memory::Mem;
+use crate::core::memory::MemBase;
 use crate::core::program::Program;
 use crate::core::queue::Queue;
 
@@ -153,7 +153,7 @@ cl_callback!(
 );
 
 impl MemCB {
-    pub fn call(self, mem: &Mem) {
+    pub fn call(self, mem: &MemBase) {
         let cl = cl_mem::from_ptr(mem);
         // SAFETY: `cl` must have pointed to an OpenCL context, which is where we just got it from.
         // All other requirements are covered by this callback's type invariants.

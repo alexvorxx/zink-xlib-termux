@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include "util/ralloc.h"
+#include "brw_disasm.h"
 #include "brw_eu.h"
 
 #include <gtest/gtest.h>

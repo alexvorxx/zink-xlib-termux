@@ -122,6 +122,9 @@ static const struct vk_instance_extension_table tu_instance_extensions_supported
    .EXT_direct_mode_display             = true,
    .EXT_display_surface_counter         = true,
 #endif
+#ifndef VK_USE_PLATFORM_WIN32_KHR
+   .EXT_headless_surface                = true,
+#endif
    .EXT_swapchain_colorspace            = TU_HAS_SURFACE,
 } };
 
@@ -228,7 +231,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_extended_dynamic_state3 = true,
       .EXT_external_memory_dma_buf = true,
       .EXT_filter_cubic = device->info->a6xx.has_tex_filter_cubic,
-      .EXT_fragment_density_map = true,
+      .EXT_fragment_density_map = !device->info->a7xx.load_shader_consts_via_preamble,
       .EXT_global_priority = true,
       .EXT_global_priority_query = true,
       .EXT_graphics_pipeline_library = true,
@@ -635,14 +638,38 @@ tu_physical_device_init(struct tu_physical_device *device,
       device->dev_info = info;
       device->info = &device->dev_info;
       uint32_t depth_cache_size =
-         device->info->num_ccu * device->info->a6xx.sysmem_per_ccu_cache_size;
+         device->info->num_ccu * device->info->a6xx.sysmem_per_ccu_depth_cache_size;
       uint32_t color_cache_size =
          (device->info->num_ccu *
-          device->info->a6xx.sysmem_per_ccu_cache_size) /
+          device->info->a6xx.sysmem_per_ccu_color_cache_size);
+      uint32_t color_cache_size_gmem =
+         color_cache_size /
          (1 << device->info->a6xx.gmem_ccu_color_cache_fraction);
 
-      device->ccu_offset_bypass = depth_cache_size;
-      device->ccu_offset_gmem = device->gmem_size - color_cache_size;
+      device->ccu_depth_offset_bypass = 0;
+      device->ccu_offset_bypass =
+         device->ccu_depth_offset_bypass + depth_cache_size;
+
+      if (device->info->a7xx.has_gmem_vpc_attr_buf) {
+         device->vpc_attr_buf_size_bypass =
+            device->info->a7xx.sysmem_vpc_attr_buf_size;
+         device->vpc_attr_buf_offset_bypass =
+            device->ccu_offset_bypass + color_cache_size;
+
+         device->vpc_attr_buf_size_gmem =
+            device->info->a7xx.gmem_vpc_attr_buf_size;
+         device->vpc_attr_buf_offset_gmem =
+            device->gmem_size -
+            (device->vpc_attr_buf_size_gmem * device->info->num_ccu);
+
+         device->ccu_offset_gmem =
+            device->vpc_attr_buf_offset_gmem - color_cache_size_gmem;
+
+         device->usable_gmem_size_gmem = device->vpc_attr_buf_offset_gmem;
+      } else {
+         device->ccu_offset_gmem = device->gmem_size - color_cache_size_gmem;
+         device->usable_gmem_size_gmem = device->gmem_size;
+      }
 
       if (instance->reserve_descriptor_set) {
          device->usable_sets = device->reserved_set_idx = device->info->a6xx.max_sets - 1;
@@ -761,7 +788,7 @@ static const driOptionDescription tu_dri_options[] = {
       DRI_CONF_VK_KHR_PRESENT_WAIT(false)
       DRI_CONF_VK_X11_STRICT_IMAGE_COUNT(false)
       DRI_CONF_VK_X11_ENSURE_MIN_IMAGE_COUNT(false)
-      DRI_CONF_VK_XWAYLAND_WAIT_READY(true)
+      DRI_CONF_VK_XWAYLAND_WAIT_READY(false)
    DRI_CONF_SECTION_END
 
    DRI_CONF_SECTION_DEBUG

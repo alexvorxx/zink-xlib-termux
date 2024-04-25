@@ -28,7 +28,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/types.h>
+
 #include "c11/threads.h"
+#include "common/intel_bind_timeline.h"
 #include "util/macros.h"
 #include "util/u_atomic.h"
 #include "util/u_dynarray.h"
@@ -620,6 +622,8 @@ const struct iris_kmd_backend *
 iris_bufmgr_get_kernel_driver_backend(struct iris_bufmgr *bufmgr);
 uint32_t iris_bufmgr_get_global_vm_id(struct iris_bufmgr *bufmgr);
 bool iris_bufmgr_use_global_vm_id(struct iris_bufmgr *bufmgr);
+struct intel_bind_timeline *iris_bufmgr_get_bind_timeline(struct iris_bufmgr *bufmgr);
+bool iris_bufmgr_compute_engine_supported(struct iris_bufmgr *bufmgr);
 
 enum iris_madvice {
    IRIS_MADVICE_WILL_NEED = 0,

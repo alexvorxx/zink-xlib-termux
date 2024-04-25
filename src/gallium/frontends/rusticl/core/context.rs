@@ -40,7 +40,7 @@ impl Context {
         gl_ctx_manager: Option<GLCtxManager>,
     ) -> Arc<Context> {
         Arc::new(Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Context),
             devs: devs,
             properties: properties,
             dtors: Mutex::new(Vec::new()),

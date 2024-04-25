@@ -93,7 +93,7 @@ set_feedback_vertex_format(struct gl_context *ctx)
  */
 void
 st_feedback_draw_vbo(struct gl_context *ctx,
-                     struct pipe_draw_info *info,
+                     const struct pipe_draw_info *info,
                      unsigned drawid_offset,
                      const struct pipe_draw_indirect_info *indirect,
                      const struct pipe_draw_start_count_bias *draws,
@@ -157,8 +157,8 @@ st_feedback_draw_vbo(struct gl_context *ctx,
       }
    }
 
-   draw_set_vertex_buffers(draw, num_vbuffers, vbuffers);
    draw_set_vertex_elements(draw, vp->num_inputs, velements.velems);
+   draw_set_vertex_buffers(draw, num_vbuffers, vbuffers);
 
    if (info->index_size) {
       if (info->has_user_indices) {

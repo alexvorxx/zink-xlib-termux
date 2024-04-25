@@ -37,7 +37,7 @@ static char const *get_qual_name(int mode)
 
 static void
 gfx4_frag_prog_set_interp_modes(struct brw_wm_prog_data *prog_data,
-                                const struct brw_vue_map *vue_map,
+                                const struct intel_vue_map *vue_map,
                                 unsigned location, unsigned slot_count,
                                 enum glsl_interp_mode interp)
 {
@@ -57,7 +57,7 @@ gfx4_frag_prog_set_interp_modes(struct brw_wm_prog_data *prog_data,
 
 /* Set up interpolation modes for every element in the VUE */
 void
-brw_setup_vue_interpolation(const struct brw_vue_map *vue_map, nir_shader *nir,
+brw_setup_vue_interpolation(const struct intel_vue_map *vue_map, nir_shader *nir,
                             struct brw_wm_prog_data *prog_data)
 {
    /* Initialise interp_mode. INTERP_MODE_NONE == 0 */

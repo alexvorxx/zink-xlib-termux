@@ -130,6 +130,7 @@ typedef enum {
 
    /* Macros that expand to a loop */
    OPC_SCAN_MACRO      = _OPC(1, 58),
+   OPC_SCAN_CLUSTERS_MACRO = _OPC(1, 60),
 
    /* Macros that expand to an stsc at the start of the preamble.
     * It loads into const file and should not be optimized in any way.
@@ -363,6 +364,7 @@ typedef enum {
 
    OPC_LDC_K           = _OPC(6, 81),
    OPC_STSC            = _OPC(6, 82),
+   OPC_LDG_K           = _OPC(6, 83),
 
    /* category 7: */
    OPC_BAR             = _OPC(7, 0),

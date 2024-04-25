@@ -2978,7 +2978,7 @@ fs_nir_emit_tcs_intrinsic(nir_to_brw_state &ntb,
       fs_inst *inst;
 
       const bool multi_patch =
-         vue_prog_data->dispatch_mode == DISPATCH_MODE_TCS_MULTI_PATCH;
+         vue_prog_data->dispatch_mode == INTEL_DISPATCH_MODE_TCS_MULTI_PATCH;
 
       fs_reg icp_handle = multi_patch ?
          get_tcs_multi_patch_icp_handle(ntb, bld, instr) :
@@ -3770,7 +3770,7 @@ emit_samplepos_setup(nir_to_brw_state &ntb)
 
    if (wm_prog_data->persample_dispatch == BRW_SOMETIMES) {
       check_dynamic_msaa_flag(abld, wm_prog_data,
-                              BRW_WM_MSAA_FLAG_PERSAMPLE_DISPATCH);
+                              INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH);
       for (unsigned i = 0; i < 2; i++) {
          set_predicate(BRW_PREDICATE_NORMAL,
                        bld.SEL(offset(pos, abld, i), offset(pos, abld, i),
@@ -3893,7 +3893,7 @@ emit_sampleid_setup(nir_to_brw_state &ntb)
 
    if (key->multisample_fbo == BRW_SOMETIMES) {
       check_dynamic_msaa_flag(abld, wm_prog_data,
-                              BRW_WM_MSAA_FLAG_MULTISAMPLE_FBO);
+                              INTEL_MSAA_FLAG_MULTISAMPLE_FBO);
       set_predicate(BRW_PREDICATE_NORMAL,
                     abld.SEL(sample_id, sample_id, brw_imm_ud(0)));
    }
@@ -3947,7 +3947,7 @@ emit_samplemaskin_setup(nir_to_brw_state &ntb)
       return mask;
 
    check_dynamic_msaa_flag(abld, wm_prog_data,
-                           BRW_WM_MSAA_FLAG_PERSAMPLE_DISPATCH);
+                           INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH);
    set_predicate(BRW_PREDICATE_NORMAL, abld.SEL(mask, mask, coverage_mask));
 
    return mask;
@@ -3997,7 +3997,7 @@ emit_shading_rate_setup(nir_to_brw_state &ntb)
       return rate;
 
    check_dynamic_msaa_flag(abld, wm_prog_data,
-                           BRW_WM_MSAA_FLAG_COARSE_RT_WRITES);
+                           INTEL_MSAA_FLAG_COARSE_RT_WRITES);
    set_predicate(BRW_PREDICATE_NORMAL, abld.SEL(rate, rate, brw_imm_ud(0)));
 
    return rate;
@@ -4314,7 +4314,7 @@ fs_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
 
          check_dynamic_msaa_flag(bld.exec_all().group(8, 0),
                                  wm_prog_data,
-                                 BRW_WM_MSAA_FLAG_MULTISAMPLE_FBO);
+                                 INTEL_MSAA_FLAG_MULTISAMPLE_FBO);
          flag_reg = brw_flag_reg(0, 0);
       }
 
@@ -7684,13 +7684,14 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
    }
 
    case nir_intrinsic_load_topology_id_intel: {
-       /* These move around basically every hardware generation, so don'
-        * do any >= checks and fail if the platform hasn't explicitly
-        * been enabled here.
-        */
-      assert(devinfo->ver == 12);
+      /* These move around basically every hardware generation, so don't
+       * do any unbounded checks and fail if the platform hasn't explicitly
+       * been enabled here.
+       */
+      assert(devinfo->ver >= 12 && devinfo->ver <= 20);
 
-      /* Here is what the layout of SR0 looks like on Gfx12 :
+      /* Here is what the layout of SR0 looks like on Gfx12
+       * https://gfxspecs.intel.com/Predator/Home/Index/47256
        *   [13:11] : Slice ID.
        *   [10:9]  : Dual-SubSlice ID
        *   [8]     : SubSlice ID
@@ -7698,30 +7699,90 @@ fs_nir_emit_intrinsic(nir_to_brw_state &ntb,
        *   [6]     : Reserved
        *   [5:4]   : EUID[1:0]
        *   [2:0]   : Thread ID
+       *
+       * Xe2: Engine 3D and GPGPU Programs, EU Overview, Registers and
+       * Register Regions, ARF Registers, State Register,
+       * https://gfxspecs.intel.com/Predator/Home/Index/56623
+       *   [15:11] : Slice ID.
+       *   [9:8]   : SubSlice ID
+       *   [6:4]   : EUID
+       *   [2:0]   : Thread ID
        */
       fs_reg raw_id = bld.vgrf(BRW_REGISTER_TYPE_UD);
       bld.emit(SHADER_OPCODE_READ_SR_REG, raw_id, brw_imm_ud(0));
       switch (nir_intrinsic_base(instr)) {
       case BRW_TOPOLOGY_ID_DSS:
-         bld.AND(raw_id, raw_id, brw_imm_ud(0x3fff));
-         /* Get rid of anything below dualsubslice */
-         bld.SHR(retype(dest, BRW_REGISTER_TYPE_UD), raw_id, brw_imm_ud(9));
+         if (devinfo->ver >= 20) {
+            /* Xe2+: 3D and GPGPU Programs, Shared Functions, Ray Tracing:
+             * https://gfxspecs.intel.com/Predator/Home/Index/56936
+             *
+             * Note: DSSID in all formulas below is a logical identifier of an
+             * XeCore (a value that goes from 0 to (number_of_slices *
+             * number_of_XeCores_per_slice -1). SW can get this value from
+             * either:
+             *
+             *  - Message Control Register LogicalSSID field (only in shaders
+             *    eligible for Mid-Thread Preemption).
+             *  - Calculated based of State Register with the following formula:
+             *    DSSID = StateRegister.SliceID * GT_ARCH_SS_PER_SLICE +
+             *    StateRRegister.SubSliceID where GT_SS_PER_SLICE is an
+             *    architectural parameter defined per product SKU.
+             *
+             * We are using the state register to calculate the DSSID.
+             */
+            fs_reg slice_id = bld.vgrf(BRW_REGISTER_TYPE_UD);
+            fs_reg subslice_id = bld.vgrf(BRW_REGISTER_TYPE_UD);
+            bld.AND(slice_id, raw_id, brw_imm_ud(INTEL_MASK(15, 11)));
+            bld.SHR(slice_id, slice_id, brw_imm_ud(11));
+
+            /* Assert that max subslices covers at least 2 bits that we use for
+             * subslices.
+             */
+            assert(devinfo->max_subslices_per_slice >= (1 << 2));
+            bld.MUL(slice_id, slice_id,
+                    brw_imm_ud(devinfo->max_subslices_per_slice));
+            bld.AND(subslice_id, raw_id, brw_imm_ud(INTEL_MASK(9, 8)));
+            bld.SHR(subslice_id, subslice_id, brw_imm_ud(8));
+            bld.ADD(retype(dest, BRW_REGISTER_TYPE_UD), slice_id,
+                    subslice_id);
+         } else {
+            bld.AND(raw_id, raw_id, brw_imm_ud(0x3fff));
+            /* Get rid of anything below dualsubslice */
+            bld.SHR(retype(dest, BRW_REGISTER_TYPE_UD), raw_id, brw_imm_ud(9));
+         }
          break;
       case BRW_TOPOLOGY_ID_EU_THREAD_SIMD: {
          s.limit_dispatch_width(16, "Topology helper for Ray queries, "
                               "not supported in SIMD32 mode.");
          fs_reg dst = retype(dest, BRW_REGISTER_TYPE_UD);
 
-         /* EU[3:0] << 7
-          *
-          * The 4bit EU[3:0] we need to build for ray query memory addresses
-          * computations is a bit odd :
-          *
-          *   EU[1:0] = raw_id[5:4] (identified as EUID[1:0])
-          *   EU[2]   = raw_id[8]   (identified as SubSlice ID)
-          *   EU[3]   = raw_id[7]   (identified as EUID[2] or Row ID)
-          */
-         {
+         if (devinfo->ver >= 20) {
+            /* Xe2+: Graphics Engine, 3D and GPGPU Programs, Shared Functions
+             * Ray Tracing,
+             * https://gfxspecs.intel.com/Predator/Home/Index/56936
+             *
+             * SyncStackID = (EUID[2:0] <<  8) | (ThreadID[2:0] << 4) |
+             *               SIMDLaneID[3:0];
+             *
+             * This section just deals with the EUID part.
+             *
+             * The 3bit EU[2:0] we need to build for ray query memory addresses
+             * computations is a bit odd :
+             *
+             *   EU[2:0] = raw_id[6:4] (identified as EUID[2:0])
+             */
+            bld.AND(dst, raw_id, brw_imm_ud(INTEL_MASK(6, 4)));
+            bld.SHL(dst, dst, brw_imm_ud(4));
+         } else {
+            /* EU[3:0] << 7
+             *
+             * The 4bit EU[3:0] we need to build for ray query memory addresses
+             * computations is a bit odd :
+             *
+             *   EU[1:0] = raw_id[5:4] (identified as EUID[1:0])
+             *   EU[2]   = raw_id[8]   (identified as SubSlice ID)
+             *   EU[3]   = raw_id[7]   (identified as EUID[2] or Row ID)
+             */
             fs_reg tmp = bld.vgrf(BRW_REGISTER_TYPE_UD);
             bld.AND(tmp, raw_id, brw_imm_ud(INTEL_MASK(7, 7)));
             bld.SHL(dst, tmp, brw_imm_ud(3));
@@ -8018,12 +8079,17 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
    if (instr->sampler_dim == GLSL_SAMPLER_DIM_BUF)
       srcs[TEX_LOGICAL_SRC_LOD] = brw_imm_d(0);
 
+   ASSERTED bool got_lod = false;
+   ASSERTED bool got_bias = false;
    uint32_t header_bits = 0;
    for (unsigned i = 0; i < instr->num_srcs; i++) {
       nir_src nir_src = instr->src[i].src;
       fs_reg src = get_nir_src(ntb, nir_src);
       switch (instr->src[i].src_type) {
       case nir_tex_src_bias:
+         assert(!got_lod);
+         got_bias = true;
+
          srcs[TEX_LOGICAL_SRC_LOD] =
             retype(get_nir_src_imm(ntb, instr->src[i].src), BRW_REGISTER_TYPE_F);
          break;
@@ -8051,6 +8117,9 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
          srcs[TEX_LOGICAL_SRC_LOD2] = retype(src, BRW_REGISTER_TYPE_F);
          break;
       case nir_tex_src_lod:
+         assert(!got_bias);
+         got_lod = true;
+
          switch (instr->op) {
          case nir_texop_txs:
             srcs[TEX_LOGICAL_SRC_LOD] =
@@ -8140,6 +8209,19 @@ fs_nir_emit_texture(nir_to_brw_state &ntb,
       case nir_tex_src_ms_mcs_intel:
          assert(instr->op == nir_texop_txf_ms);
          srcs[TEX_LOGICAL_SRC_MCS] = retype(src, BRW_REGISTER_TYPE_D);
+         break;
+
+      /* If this parameter is present, we are packing either the explicit LOD
+       * or LOD bias and the array index into a single (32-bit) value when
+       * 32-bit texture coordinates are used.
+       */
+      case nir_tex_src_backend1:
+         assert(!got_lod && !got_bias);
+         got_lod = true;
+
+         assert(instr->op == nir_texop_txl || instr->op == nir_texop_txb);
+         srcs[TEX_LOGICAL_SRC_LOD] =
+            retype(get_nir_src_imm(ntb, instr->src[i].src), BRW_REGISTER_TYPE_F);
          break;
 
       default:

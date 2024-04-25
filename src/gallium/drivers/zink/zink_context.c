@@ -1355,7 +1355,6 @@ update_existing_vbo(struct zink_context *ctx, unsigned slot)
 static void
 zink_set_vertex_buffers(struct pipe_context *pctx,
                         unsigned num_buffers,
-                        bool take_ownership,
                         const struct pipe_vertex_buffer *buffers)
 {
    struct zink_context *ctx = zink_context(pctx);
@@ -1372,12 +1371,9 @@ zink_set_vertex_buffers(struct pipe_context *pctx,
       const struct pipe_vertex_buffer *vb = buffers + i;
       struct pipe_vertex_buffer *ctx_vb = &ctx->vertex_buffers[i];
       update_existing_vbo(ctx, i);
-      if (!take_ownership)
-         pipe_resource_reference(&ctx_vb->buffer.resource, vb->buffer.resource);
-      else {
-         pipe_resource_reference(&ctx_vb->buffer.resource, NULL);
-         ctx_vb->buffer.resource = vb->buffer.resource;
-      }
+      pipe_resource_reference(&ctx_vb->buffer.resource, NULL);
+      ctx_vb->buffer.resource = vb->buffer.resource;
+
       if (vb->buffer.resource) {
          struct zink_resource *res = zink_resource(vb->buffer.resource);
          res->vbo_bind_mask |= BITFIELD_BIT(i);
@@ -3847,7 +3843,6 @@ zink_flush(struct pipe_context *pctx,
    struct zink_batch *batch = &ctx->batch;
    struct zink_fence *fence = NULL;
    struct zink_screen *screen = zink_screen(ctx->base.screen);
-   unsigned submit_count = 0;
    VkSemaphore export_sem = VK_NULL_HANDLE;
 
    /* triggering clears will force has_work */
@@ -3908,8 +3903,7 @@ zink_flush(struct pipe_context *pctx,
       }
    }
 
-   /* TODO: if swapchains gain timeline semaphore semantics, `flags` can be eliminated and no-op fence can return timeline id */
-   if (!batch->has_work && flags) {
+   if (!batch->has_work) {
        if (pfence) {
           /* reuse last fence */
           fence = ctx->last_fence;
@@ -3926,7 +3920,6 @@ zink_flush(struct pipe_context *pctx,
          tc_driver_internal_flush_notify(ctx->tc);
    } else {
       fence = &batch->state->fence;
-      submit_count = batch->state->usage.submit_count;
       if (deferred && !(flags & PIPE_FLUSH_FENCE_FD) && pfence)
          deferred_fence = true;
       else
@@ -3950,7 +3943,7 @@ zink_flush(struct pipe_context *pctx,
       mfence->fence = fence;
       mfence->sem = export_sem;
       if (fence) {
-         mfence->submit_count = submit_count;
+         mfence->submit_count = zink_batch_state(fence)->usage.submit_count;
          util_dynarray_append(&fence->mfences, struct zink_tc_fence *, mfence);
       }
       if (export_sem) {
@@ -5659,7 +5652,8 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
    if (!is_copy_only && !is_compute_only) {
       pipe_buffer_write_nooverlap(&ctx->base, ctx->dummy_vertex_buffer, 0, sizeof(data), data);
       pipe_buffer_write_nooverlap(&ctx->base, ctx->dummy_xfb_buffer, 0, sizeof(data), data);
-      reapply_color_write(ctx);
+      if (screen->info.have_EXT_color_write_enable)
+         reapply_color_write(ctx);
 
       /* set on startup just to avoid validation errors if a draw comes through without
       * a tess shader later

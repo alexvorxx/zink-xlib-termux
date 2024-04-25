@@ -548,7 +548,7 @@ bo_sparse_create(struct zink_screen *screen, uint64_t size)
    bo->base.base.alignment_log2 = util_logbase2(ZINK_SPARSE_BUFFER_PAGE_SIZE);
    bo->base.base.size = size;
    bo->base.vtbl = &bo_sparse_vtbl;
-   unsigned placement = zink_mem_type_idx_from_bits(screen, ZINK_HEAP_DEVICE_LOCAL_SPARSE, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+   unsigned placement = zink_mem_type_idx_from_types(screen, ZINK_HEAP_DEVICE_LOCAL_SPARSE, UINT32_MAX);
    assert(placement != UINT32_MAX);
    bo->base.base.placement = placement;
    bo->unique_id = p_atomic_inc_return(&screen->pb.next_bo_unique_id);

@@ -1176,7 +1176,7 @@ BEGIN_TEST(insert_nops.setpc_gfx10)
 
    /* VcmpxExecWARHazard */
    //! p_unit_test 3
-   //! s1: %0:s[0] = s_mov_b32 %0:s[127]
+   //! s1: %0:s[0] = s_mov_b32 %0:exec_hi
    //! s_waitcnt_depctr sa_sdst(0)
    //! s_setpc_b64 0
    bld.pseudo(aco_opcode::p_unit_test, Operand::c32(3));

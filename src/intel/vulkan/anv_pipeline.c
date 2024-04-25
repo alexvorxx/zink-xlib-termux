@@ -30,8 +30,8 @@
 #include "util/mesa-sha1.h"
 #include "util/os_time.h"
 #include "common/intel_l3_config.h"
-#include "common/intel_disasm.h"
 #include "common/intel_sample_positions.h"
+#include "compiler/brw_disasm.h"
 #include "anv_private.h"
 #include "compiler/brw_nir.h"
 #include "compiler/brw_nir_rt.h"
@@ -1558,7 +1558,7 @@ anv_pipeline_compile_fs(const struct brw_compiler *compiler,
       fs_stage->key.wm.input_slots_valid =
          prev_stage->prog_data.vue.vue_map.slots_valid;
    } else {
-      struct brw_vue_map prev_vue_map;
+      struct intel_vue_map prev_vue_map;
       brw_compute_vue_map(compiler->devinfo,
                           &prev_vue_map,
                           fs_stage->nir->info.inputs_read,
@@ -1666,8 +1666,8 @@ anv_pipeline_add_executable(struct anv_pipeline *pipeline,
       /* Creating this is far cheaper than it looks.  It's perfectly fine to
        * do it for every binary.
        */
-      intel_disassemble(&pipeline->device->physical->compiler->isa,
-                        stage->code, code_offset, stream);
+      brw_disassemble_with_errors(&pipeline->device->physical->compiler->isa,
+                                  stage->code, code_offset, stream);
 
       fclose(stream);
 
@@ -2912,33 +2912,33 @@ anv_graphics_pipeline_emit(struct anv_graphics_pipeline *pipeline,
       const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
 
       if (wm_prog_data_dynamic(wm_prog_data)) {
-         pipeline->fs_msaa_flags = BRW_WM_MSAA_FLAG_ENABLE_DYNAMIC;
+         pipeline->fs_msaa_flags = INTEL_MSAA_FLAG_ENABLE_DYNAMIC;
 
          assert(wm_prog_data->persample_dispatch == BRW_SOMETIMES);
          if (state->ms && state->ms->rasterization_samples > 1) {
-            pipeline->fs_msaa_flags |= BRW_WM_MSAA_FLAG_MULTISAMPLE_FBO;
+            pipeline->fs_msaa_flags |= INTEL_MSAA_FLAG_MULTISAMPLE_FBO;
 
             if (wm_prog_data->sample_shading) {
                assert(wm_prog_data->persample_dispatch != BRW_NEVER);
-               pipeline->fs_msaa_flags |= BRW_WM_MSAA_FLAG_PERSAMPLE_DISPATCH;
+               pipeline->fs_msaa_flags |= INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH;
             }
 
             if (state->ms->sample_shading_enable &&
                 (state->ms->min_sample_shading * state->ms->rasterization_samples) > 1) {
-               pipeline->fs_msaa_flags |= BRW_WM_MSAA_FLAG_PERSAMPLE_DISPATCH |
-                                          BRW_WM_MSAA_FLAG_PERSAMPLE_INTERP;
+               pipeline->fs_msaa_flags |= INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH |
+                                          INTEL_MSAA_FLAG_PERSAMPLE_INTERP;
             }
          }
 
          if (state->ms && state->ms->alpha_to_coverage_enable)
-            pipeline->fs_msaa_flags |= BRW_WM_MSAA_FLAG_ALPHA_TO_COVERAGE;
+            pipeline->fs_msaa_flags |= INTEL_MSAA_FLAG_ALPHA_TO_COVERAGE;
 
          assert(wm_prog_data->coarse_pixel_dispatch != BRW_ALWAYS);
          if (wm_prog_data->coarse_pixel_dispatch == BRW_SOMETIMES &&
-             !(pipeline->fs_msaa_flags & BRW_WM_MSAA_FLAG_PERSAMPLE_DISPATCH) &&
+             !(pipeline->fs_msaa_flags & INTEL_MSAA_FLAG_PERSAMPLE_DISPATCH) &&
              (!state->ms || !state->ms->sample_shading_enable)) {
-            pipeline->fs_msaa_flags |= BRW_WM_MSAA_FLAG_COARSE_PI_MSG |
-                                       BRW_WM_MSAA_FLAG_COARSE_RT_WRITES;
+            pipeline->fs_msaa_flags |= INTEL_MSAA_FLAG_COARSE_PI_MSG |
+                                       INTEL_MSAA_FLAG_COARSE_RT_WRITES;
          }
       } else {
          assert(wm_prog_data->alpha_to_coverage != BRW_SOMETIMES);

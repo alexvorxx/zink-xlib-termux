@@ -383,11 +383,6 @@ nvk_push_draw_state_init(struct nvk_device *dev, struct nv_push *p)
       });
    }
 
-   P_MTHD(p, NV9097, SET_CONSTANT_BUFFER_SELECTOR_A);
-   P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_A(p, 0);
-   P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_B(p, 0);
-   P_NV9097_SET_CONSTANT_BUFFER_SELECTOR_C(p, 0);
-
    for (uint32_t group = 0; group < 5; group++) {
       for (uint32_t slot = 0; slot < 16; slot++) {
          P_IMMD(p, NV9097, BIND_GROUP_CONSTANT_BUFFER(group), {
@@ -2140,6 +2135,10 @@ void
 nvk_cmd_bind_vertex_buffer(struct nvk_cmd_buffer *cmd, uint32_t vb_idx,
                            struct nvk_addr_range addr_range)
 {
+   /* Used for meta save/restore */
+   if (vb_idx == 0)
+      cmd->state.gfx.vb0 = addr_range;
+
    struct nv_push *p = nvk_cmd_buffer_push(cmd, 6);
 
    P_MTHD(p, NV9097, SET_VERTEX_STREAM_A_LOCATION_A(vb_idx));
@@ -2183,10 +2182,6 @@ nvk_CmdBindVertexBuffers2(VkCommandBuffer commandBuffer,
       uint64_t size = pSizes ? pSizes[i] : VK_WHOLE_SIZE;
       const struct nvk_addr_range addr_range =
          nvk_buffer_addr_range(buffer, pOffsets[i], size);
-
-      /* Used for meta save/restore */
-      if (idx == 0)
-         cmd->state.gfx.vb0 = addr_range;
 
       nvk_cmd_bind_vertex_buffer(cmd, idx, addr_range);
    }

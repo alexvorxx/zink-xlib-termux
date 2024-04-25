@@ -160,6 +160,9 @@ struct stream_ctx *vpe_alloc_stream_ctx(struct vpe_priv *vpe_priv, uint32_t num_
         ctx->vpe_priv = vpe_priv;
         vpe_color_set_adjustments_to_default(&ctx->color_adjustments);
         ctx->tf_scaling_factor = vpe_fixpt_one;
+        ctx->stream.flags.geometric_scaling = 0;
+        ctx->stream.tm_params.UID = 0;
+        ctx->UID_3DLUT = 0;
     }
 
     return ctx_base;

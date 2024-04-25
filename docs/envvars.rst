@@ -349,6 +349,9 @@ Core Mesa environment variables
       * - ``rra``
         - Radeon Raytracing Analyzer
         - ``RADV``
+      * - ``ctxroll``
+        - Context rolls
+        - ``RADV``
 
    - Creating RMV captures requires the ``scripts/setup.sh`` script in the
      Radeon Developer Tools folder to be run beforehand
@@ -1277,7 +1280,9 @@ RADV driver environment variables
    ``nongg``
       disable NGG for GFX10 and GFX10.3
    ``nonggc``
-      disable NGG culling on GPUs where it's enabled by default (GFX10.3+ only).
+      disable NGG culling on GPUs where it's enabled by default (GFX10.3 only).
+   ``nongg_gs``
+      disable NGG GS for GFX10 and GFX10.3
    ``nort``
       skip executing vkCmdTraceRays and ray queries (RT extensions will still be
       advertised)
@@ -1353,12 +1358,15 @@ RADV driver environment variables
       disable optimizations that get enabled when all VRAM is CPU visible.
    ``pswave32``
       enable wave32 for pixel shaders (GFX10+)
+   ``rtwave32``
+      enable wave32 for ray tracing shaders (GFX11+)
    ``rtwave64``
-      enable wave64 for ray tracing shaders (GFX10+)
+      enable wave64 for ray tracing shaders (GFX10-10.3)
    ``sam``
       enable optimizations to move more driver internal objects to VRAM.
    ``shader_object``
-      enable experimental implementation of VK_EXT_shader_object (GFX6-8)
+      enable experimental implementation of VK_EXT_shader_object (GFX6-8 and
+      VEGA10)
    ``transfer_queue``
       enable experimental transfer queue support (GFX9+, not yet spec compliant)
    ``video_decode``
@@ -1389,6 +1397,16 @@ RADV driver environment variables
 
    enable validation of captured acceleration structures. Can be
    useful if RRA crashes upon opening a trace.
+
+.. envvar:: RADV_RRA_TRACE_HISTORY_SIZE
+
+   set the ray history buffer size when capturing RRA traces (default value is 100MiB,
+   small buffers may result in incomplete traces)
+
+.. envvar:: RADV_RRA_TRACE_RESOLUTION_SCALE
+
+   decrease the resolution used for dumping the ray history resolution when capturing
+   RRA traces. This allows for dumping every Nth invocation along each dispatch dimension.
 
 .. envvar:: ACO_DEBUG
 

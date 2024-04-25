@@ -40,13 +40,14 @@
 #include "brw_eu_defines.h"
 #include "brw_isa_info.h"
 #include "brw_reg.h"
-#include "brw_disasm_info.h"
 
 #include "util/bitset.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+struct disasm_info;
 
 #define BRW_EU_MAX_INSN_STACK 5
 
@@ -179,20 +180,6 @@ void brw_init_codegen(const struct brw_isa_info *isa,
                       struct brw_codegen *p, void *mem_ctx);
 bool brw_has_jip(const struct intel_device_info *devinfo, enum opcode opcode);
 bool brw_has_uip(const struct intel_device_info *devinfo, enum opcode opcode);
-const struct brw_label *brw_find_label(const struct brw_label *root, int offset);
-void brw_create_label(struct brw_label **labels, int offset, void *mem_ctx);
-int brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
-                         const struct brw_inst *inst, bool is_compacted,
-                         int offset, const struct brw_label *root_label);
-const struct
-brw_label *brw_label_assembly(const struct brw_isa_info *isa,
-                              const void *assembly, int start, int end,
-                              void *mem_ctx);
-void brw_disassemble_with_labels(const struct brw_isa_info *isa,
-                                 const void *assembly, int start, int end, FILE *out);
-void brw_disassemble(const struct brw_isa_info *isa,
-                     const void *assembly, int start, int end,
-                     const struct brw_label *root_label, FILE *out);
 const struct brw_shader_reloc *brw_get_shader_relocs(struct brw_codegen *p,
                                                      unsigned *num_relocs);
 const unsigned *brw_get_program( struct brw_codegen *p, unsigned *sz );
@@ -414,6 +401,20 @@ brw_sampler_desc(const struct intel_device_info *devinfo,
    const unsigned desc = (SET_BITS(binding_table_index, 7, 0) |
                           SET_BITS(sampler, 11, 8));
 
+   /* From GFX20 Bspec: Shared Functions - Message Descriptor -
+    * Sampling Engine:
+    *
+    *    Message Type[5]  31  This bit represents the upper bit of message type
+    *                         6-bit encoding (c.f. [16:12]). This bit is set
+    *                         for messages with programmable offsets.
+    */
+   if (devinfo->ver >= 20)
+      return desc | SET_BITS(msg_type & 0x1F, 16, 12) |
+             SET_BITS(simd_mode & 0x3, 18, 17) |
+             SET_BITS(simd_mode >> 2, 29, 29) |
+             SET_BITS(return_format, 30, 30) |
+             SET_BITS(msg_type >> 5, 31, 31);
+
    /* From the CHV Bspec: Shared Functions - Message Descriptor -
     * Sampling Engine:
     *
@@ -456,7 +457,9 @@ brw_sampler_desc_sampler(UNUSED const struct intel_device_info *devinfo,
 static inline unsigned
 brw_sampler_desc_msg_type(const struct intel_device_info *devinfo, uint32_t desc)
 {
-   if (devinfo->ver >= 7)
+   if (devinfo->ver >= 20)
+      return GET_BITS(desc, 31, 31) << 5 | GET_BITS(desc, 16, 12);
+   else if (devinfo->ver >= 7)
       return GET_BITS(desc, 16, 12);
    else if (devinfo->verx10 >= 45)
       return GET_BITS(desc, 15, 12);
@@ -1650,6 +1653,7 @@ brw_btd_spawn_desc(ASSERTED const struct intel_device_info *devinfo,
                    unsigned exec_size, unsigned msg_type)
 {
    assert(devinfo->has_ray_tracing);
+   assert(devinfo->ver < 20 || exec_size == 16);
 
    return SET_BITS(0, 19, 19) | /* No header */
           SET_BITS(msg_type, 17, 14) |
@@ -1675,6 +1679,7 @@ brw_rt_trace_ray_desc(ASSERTED const struct intel_device_info *devinfo,
                       unsigned exec_size)
 {
    assert(devinfo->has_ray_tracing);
+   assert(devinfo->ver < 20 || exec_size == 16);
 
    return SET_BITS(0, 19, 19) | /* No header */
           SET_BITS(0, 17, 14) | /* Message type */

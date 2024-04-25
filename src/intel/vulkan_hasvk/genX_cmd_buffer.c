@@ -4515,7 +4515,7 @@ emit_gpgpu_walker(struct anv_cmd_buffer *cmd_buffer,
       cmd_buffer->state.conditional_render_enabled;
 
    const struct intel_device_info *devinfo = pipeline->base.device->info;
-   const struct brw_cs_dispatch_info dispatch =
+   const struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(devinfo, prog_data, NULL);
 
    anv_batch_emit(&cmd_buffer->batch, GENX(GPGPU_WALKER), ggw) {

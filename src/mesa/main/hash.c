@@ -1,19 +1,8 @@
-/**
- * \file hash.c
- * Generic hash table. 
- *
- * Used for display lists, texture objects, vertex/fragment programs,
- * buffer objects, etc.  The hash functions are thread-safe.
- * 
- * \note key=0 is illegal.
- *
- * \author Brian Paul
- */
-
 /*
  * Mesa 3-D graphics library
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
+ * Copyright (C) 2024 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -34,6 +23,18 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+/**
+ * \file hash.c
+ * Generic hash table.
+ *
+ * Used for display lists, texture objects, vertex/fragment programs,
+ * buffer objects, etc.  The hash functions are thread-safe.
+ *
+ * \note key=0 is illegal.
+ *
+ * \author Brian Paul
+ */
+
 #include "errors.h"
 #include "util/glheader.h"
 #include "hash.h"
@@ -41,6 +42,62 @@
 #include "util/u_memory.h"
 #include "util/u_idalloc.h"
 
+/**
+ * Magic GLuint object name that gets stored outside of the struct hash_table.
+ *
+ * The hash table needs a particular pointer to be the marker for a key that
+ * was deleted from the table, along with NULL for the "never allocated in the
+ * table" marker.  Legacy GL allows any GLuint to be used as a GL object name,
+ * and we use a 1:1 mapping from GLuints to key pointers, so we need to be
+ * able to track a GLuint that happens to match the deleted key outside of
+ * struct hash_table.  We tell the hash table to use "1" as the deleted key
+ * value, so that we test the deleted-key-in-the-table path as best we can.
+ */
+#define DELETED_KEY_VALUE 1
+
+/** @{
+ * Mapping from our use of GLuint as both the key and the hash value to the
+ * hash_table.h API
+ *
+ * There exist many integer hash functions, designed to avoid collisions when
+ * the integers are spread across key space with some patterns.  In GL, the
+ * pattern (in the case of glGen*()ed object IDs) is that the keys are unique
+ * contiguous integers starting from 1.  Because of that, we just use the key
+ * as the hash value, to minimize the cost of the hash function.  If objects
+ * are never deleted, we will never see a collision in the table, because the
+ * table resizes itself when it approaches full, and thus key % table_size ==
+ * key.
+ *
+ * The case where we could have collisions for genned objects would be
+ * something like: glGenBuffers(&a, 100); glDeleteBuffers(&a + 50, 50);
+ * glGenBuffers(&b, 100), because objects 1-50 and 101-200 are allocated at
+ * the end of that sequence, instead of 1-150.  So far it doesn't appear to be
+ * a problem.
+ */
+static inline bool
+uint_key_compare(const void *a, const void *b)
+{
+   return a == b;
+}
+
+static inline uint32_t
+uint_hash(GLuint id)
+{
+   return id;
+}
+
+static inline uint32_t
+uint_key_hash(const void *key)
+{
+   return uint_hash((uintptr_t)key);
+}
+
+static inline void *
+uint_key(GLuint id)
+{
+   return (void *)(uintptr_t) id;
+}
+/** @} */
 
 /**
  * Create a new hash table.
@@ -71,23 +128,32 @@ _mesa_NewHashTable(void)
    return table;
 }
 
-
-
 /**
  * Delete a hash table.
  * Frees each entry on the hash table and then the hash table structure itself.
  * Note that the caller should have already traversed the table and deleted
  * the objects in the table (i.e. We don't free the entries' data pointer).
  *
+ * Invoke the given callback function for each table entry if not NULL.
+ *
  * \param table the hash table to delete.
+ * \param table  the hash table to delete
+ * \param free_callback  the callback function
+ * \param userData  arbitrary pointer to pass along to the callback
+ *                  (this is typically a struct gl_context pointer)
  */
 void
-_mesa_DeleteHashTable(struct _mesa_HashTable *table)
+_mesa_DeleteHashTable(struct _mesa_HashTable *table,
+                      void (*free_callback)(void *data, void *userData),
+                      void *userData)
 {
-   assert(table);
-
-   if (_mesa_hash_table_next_entry(table->ht, NULL) != NULL) {
-      _mesa_problem(NULL, "In _mesa_DeleteHashTable, found non-freed data");
+   if (free_callback) {
+      hash_table_foreach(table->ht, entry) {
+         free_callback(entry->data, userData);
+      }
+      if (table->deleted_key_data) {
+         free_callback(table->deleted_key_data, userData);
+      }
    }
 
    _mesa_hash_table_destroy(table->ht, NULL);
@@ -118,15 +184,21 @@ _mesa_HashEnableNameReuse(struct _mesa_HashTable *table)
 }
 
 /**
- * Lookup an entry in the hash table, without locking.
- * \sa _mesa_HashLookup
+ * Lookup an entry in the hash table without locking the mutex.
+ *
+ * The hash table mutex must be locked manually by calling
+ * _mesa_HashLockMutex() before calling this function.
+ *
+ * \param table the hash table.
+ * \param key the key.
+ *
+ * \return pointer to user's data or NULL if key not in table
  */
-static inline void *
-_mesa_HashLookup_unlocked(struct _mesa_HashTable *table, GLuint key)
+void *
+_mesa_HashLookupLocked(struct _mesa_HashTable *table, GLuint key)
 {
    const struct hash_entry *entry;
 
-   assert(table);
    assert(key);
 
    if (key == DELETED_KEY_VALUE)
@@ -141,7 +213,6 @@ _mesa_HashLookup_unlocked(struct _mesa_HashTable *table, GLuint key)
    return entry->data;
 }
 
-
 /**
  * Lookup an entry in the hash table.
  * 
@@ -155,54 +226,10 @@ _mesa_HashLookup(struct _mesa_HashTable *table, GLuint key)
 {
    void *res;
    _mesa_HashLockMutex(table);
-   res = _mesa_HashLookup_unlocked(table, key);
+   res = _mesa_HashLookupLocked(table, key);
    _mesa_HashUnlockMutex(table);
    return res;
 }
-
-
-/**
- * Lookup an entry in the hash table without locking the mutex.
- *
- * The hash table mutex must be locked manually by calling
- * _mesa_HashLockMutex() before calling this function.
- *
- * \param table the hash table.
- * \param key the key.
- *
- * \return pointer to user's data or NULL if key not in table
- */
-void *
-_mesa_HashLookupLocked(struct _mesa_HashTable *table, GLuint key)
-{
-   return _mesa_HashLookup_unlocked(table, key);
-}
-
-
-static inline void
-_mesa_HashInsert_unlocked(struct _mesa_HashTable *table, GLuint key, void *data)
-{
-   uint32_t hash = uint_hash(key);
-   struct hash_entry *entry;
-
-   assert(table);
-   assert(key);
-
-   if (key > table->MaxKey)
-      table->MaxKey = key;
-
-   if (key == DELETED_KEY_VALUE) {
-      table->deleted_key_data = data;
-   } else {
-      entry = _mesa_hash_table_search_pre_hashed(table->ht, hash, uint_key(key));
-      if (entry) {
-         entry->data = data;
-      } else {
-         _mesa_hash_table_insert_pre_hashed(table->ht, hash, uint_key(key), data);
-      }
-   }
-}
-
 
 /**
  * Insert a key/pointer pair into the hash table without locking the mutex.
@@ -220,11 +247,28 @@ void
 _mesa_HashInsertLocked(struct _mesa_HashTable *table, GLuint key, void *data,
                        GLboolean isGenName)
 {
-   _mesa_HashInsert_unlocked(table, key, data);
+   uint32_t hash = uint_hash(key);
+   struct hash_entry *entry;
+
+   assert(key);
+
+   if (key > table->MaxKey)
+      table->MaxKey = key;
+
+   if (key == DELETED_KEY_VALUE) {
+      table->deleted_key_data = data;
+   } else {
+      entry = _mesa_hash_table_search_pre_hashed(table->ht, hash, uint_key(key));
+      if (entry) {
+         entry->data = data;
+      } else {
+         _mesa_hash_table_insert_pre_hashed(table->ht, hash, uint_key(key), data);
+      }
+   }
+
    if (!isGenName && table->id_alloc)
       util_idalloc_reserve(table->id_alloc, key);
 }
-
 
 /**
  * Insert a key/pointer pair into the hash table.
@@ -240,12 +284,9 @@ _mesa_HashInsert(struct _mesa_HashTable *table, GLuint key, void *data,
                  GLboolean isGenName)
 {
    _mesa_HashLockMutex(table);
-   _mesa_HashInsert_unlocked(table, key, data);
-   if (!isGenName && table->id_alloc)
-      util_idalloc_reserve(table->id_alloc, key);
+   _mesa_HashInsertLocked(table, key, data, isGenName);
    _mesa_HashUnlockMutex(table);
 }
-
 
 /**
  * Remove an entry from the hash table.
@@ -256,20 +297,12 @@ _mesa_HashInsert(struct _mesa_HashTable *table, GLuint key, void *data,
  * While holding the hash table's lock, searches the entry with the matching
  * key and unlinks it.
  */
-static inline void
-_mesa_HashRemove_unlocked(struct _mesa_HashTable *table, GLuint key)
+void
+_mesa_HashRemoveLocked(struct _mesa_HashTable *table, GLuint key)
 {
    struct hash_entry *entry;
 
-   assert(table);
    assert(key);
-
-   #ifndef NDEBUG
-   /* assert if _mesa_HashRemove illegally called from _mesa_HashDeleteAll
-    * callback function. Have to check this outside of mutex lock.
-    */
-   assert(!table->InDeleteAll);
-   #endif
 
    if (key == DELETED_KEY_VALUE) {
       table->deleted_key_data = NULL;
@@ -284,60 +317,13 @@ _mesa_HashRemove_unlocked(struct _mesa_HashTable *table, GLuint key)
       util_idalloc_free(table->id_alloc, key);
 }
 
-
-void
-_mesa_HashRemoveLocked(struct _mesa_HashTable *table, GLuint key)
-{
-   _mesa_HashRemove_unlocked(table, key);
-}
-
 void
 _mesa_HashRemove(struct _mesa_HashTable *table, GLuint key)
 {
    _mesa_HashLockMutex(table);
-   _mesa_HashRemove_unlocked(table, key);
+   _mesa_HashRemoveLocked(table, key);
    _mesa_HashUnlockMutex(table);
 }
-
-/**
- * Delete all entries in a hash table, but don't delete the table itself.
- * Invoke the given callback function for each table entry.
- *
- * \param table  the hash table to delete
- * \param callback  the callback function
- * \param userData  arbitrary pointer to pass along to the callback
- *                  (this is typically a struct gl_context pointer)
- */
-void
-_mesa_HashDeleteAll(struct _mesa_HashTable *table,
-                    void (*callback)(void *data, void *userData),
-                    void *userData)
-{
-   assert(callback);
-   _mesa_HashLockMutex(table);
-   #ifndef NDEBUG
-   table->InDeleteAll = GL_TRUE;
-   #endif
-   hash_table_foreach(table->ht, entry) {
-      callback(entry->data, userData);
-      _mesa_hash_table_remove(table->ht, entry);
-   }
-   if (table->deleted_key_data) {
-      callback(table->deleted_key_data, userData);
-      table->deleted_key_data = NULL;
-   }
-   if (table->id_alloc) {
-      util_idalloc_fini(table->id_alloc);
-      free(table->id_alloc);
-      init_name_reuse(table);
-   }
-   #ifndef NDEBUG
-   table->InDeleteAll = GL_FALSE;
-   #endif
-   table->MaxKey = 0;
-   _mesa_HashUnlockMutex(table);
-}
-
 
 /**
  * Walk over all entries in a hash table, calling callback function for each.
@@ -346,12 +332,11 @@ _mesa_HashDeleteAll(struct _mesa_HashTable *table,
  * \param userData  arbitrary pointer to pass along to the callback
  *                  (this is typically a struct gl_context pointer)
  */
-static void
-hash_walk_unlocked(const struct _mesa_HashTable *table,
-                   void (*callback)(void *data, void *userData),
-                   void *userData)
+void
+_mesa_HashWalkLocked(struct _mesa_HashTable *table,
+                     void (*callback)(void *data, void *userData),
+                     void *userData)
 {
-   assert(table);
    assert(callback);
 
    hash_table_foreach(table->ht, entry) {
@@ -361,45 +346,15 @@ hash_walk_unlocked(const struct _mesa_HashTable *table,
       callback(table->deleted_key_data, userData);
 }
 
-
 void
-_mesa_HashWalk(const struct _mesa_HashTable *table,
+_mesa_HashWalk(struct _mesa_HashTable *table,
                void (*callback)(void *data, void *userData),
                void *userData)
 {
-   /* cast-away const */
-   struct _mesa_HashTable *table2 = (struct _mesa_HashTable *) table;
-
-   _mesa_HashLockMutex(table2);
-   hash_walk_unlocked(table, callback, userData);
-   _mesa_HashUnlockMutex(table2);
+   _mesa_HashLockMutex(table);
+   _mesa_HashWalkLocked(table, callback, userData);
+   _mesa_HashUnlockMutex(table);
 }
-
-void
-_mesa_HashWalkLocked(const struct _mesa_HashTable *table,
-               void (*callback)(void *data, void *userData),
-               void *userData)
-{
-   hash_walk_unlocked(table, callback, userData);
-}
-
-/**
- * Dump contents of hash table for debugging.
- *
- * \param table the hash table.
- */
-void
-_mesa_HashPrint(const struct _mesa_HashTable *table)
-{
-   if (table->deleted_key_data)
-      _mesa_debug(NULL, "%u %p\n", DELETED_KEY_VALUE, table->deleted_key_data);
-
-   hash_table_foreach(table->ht, entry) {
-      _mesa_debug(NULL, "%u %p\n", (unsigned)(uintptr_t) entry->key,
-                  entry->data);
-   }
-}
-
 
 /**
  * Find a block of adjacent unused hash keys.
@@ -418,8 +373,8 @@ GLuint
 _mesa_HashFindFreeKeyBlock(struct _mesa_HashTable *table, GLuint numKeys)
 {
    const GLuint maxKey = ~((GLuint) 0) - 1;
-   if (table->id_alloc && numKeys == 1) {
-      return util_idalloc_alloc(table->id_alloc);
+   if (table->id_alloc) {
+      return util_idalloc_alloc_range(table->id_alloc, numKeys);
    } else if (maxKey - numKeys > table->MaxKey) {
       /* the quick solution */
       return table->MaxKey + 1;
@@ -430,7 +385,7 @@ _mesa_HashFindFreeKeyBlock(struct _mesa_HashTable *table, GLuint numKeys)
       GLuint freeStart = 1;
       GLuint key;
       for (key = 1; key != maxKey; key++) {
-	 if (_mesa_HashLookup_unlocked(table, key)) {
+	 if (_mesa_HashLookupLocked(table, key)) {
 	    /* darn, this key is already in use */
 	    freeCount = 0;
 	    freeStart = key+1;
@@ -448,7 +403,6 @@ _mesa_HashFindFreeKeyBlock(struct _mesa_HashTable *table, GLuint numKeys)
    }
 }
 
-
 bool
 _mesa_HashFindFreeKeys(struct _mesa_HashTable *table, GLuint* keys, GLuint numKeys)
 {
@@ -465,21 +419,4 @@ _mesa_HashFindFreeKeys(struct _mesa_HashTable *table, GLuint* keys, GLuint numKe
    }
 
    return true;
-}
-
-
-/**
- * Return the number of entries in the hash table.
- */
-GLuint
-_mesa_HashNumEntries(const struct _mesa_HashTable *table)
-{
-   GLuint count = 0;
-
-   if (table->deleted_key_data)
-      count++;
-
-   count += _mesa_hash_table_num_entries(table->ht);
-
-   return count;
 }

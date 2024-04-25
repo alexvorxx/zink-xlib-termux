@@ -1483,6 +1483,8 @@ enum brw_message_target {
 #define GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_C    16
 #define GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO   17
 #define GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO_C 18
+#define XE2_SAMPLER_MESSAGE_SAMPLE_MLOD          18
+#define XE2_SAMPLER_MESSAGE_SAMPLE_COMPARE_MLOD  19
 #define HSW_SAMPLER_MESSAGE_SAMPLE_DERIV_COMPARE 20
 #define GFX9_SAMPLER_MESSAGE_SAMPLE_LZ           24
 #define GFX9_SAMPLER_MESSAGE_SAMPLE_C_LZ         25
@@ -1500,6 +1502,11 @@ enum brw_message_target {
 
 #define GFX10_SAMPLER_SIMD_MODE_SIMD8H                  5
 #define GFX10_SAMPLER_SIMD_MODE_SIMD16H                 6
+
+#define XE2_SAMPLER_SIMD_MODE_SIMD16                  1
+#define XE2_SAMPLER_SIMD_MODE_SIMD32                  2
+#define XE2_SAMPLER_SIMD_MODE_SIMD16H                 5
+#define XE2_SAMPLER_SIMD_MODE_SIMD32H                 6
 
 /* GFX9 changes SIMD mode 0 to mean SIMD8D, but lets us get the SIMD4x2
  * behavior by setting bit 22 of dword 2 in the message header. */

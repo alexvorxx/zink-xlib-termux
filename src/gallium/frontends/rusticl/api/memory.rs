@@ -10,6 +10,7 @@ use crate::core::event::EventSig;
 use crate::core::format::*;
 use crate::core::gl::*;
 use crate::core::memory::*;
+use crate::core::queue::*;
 
 use mesa_rust_util::properties::Properties;
 use mesa_rust_util::ptr::*;
@@ -80,7 +81,7 @@ fn validate_map_flags_common(map_flags: cl_mem_flags) -> CLResult<()> {
     Ok(())
 }
 
-fn validate_map_flags(m: &Mem, map_flags: cl_mem_flags) -> CLResult<()> {
+fn validate_map_flags(m: &MemBase, map_flags: cl_mem_flags) -> CLResult<()> {
     validate_map_flags_common(map_flags)?;
 
     // CL_INVALID_OPERATION if buffer has been created with CL_MEM_HOST_WRITE_ONLY or
@@ -104,7 +105,7 @@ fn filter_image_access_flags(flags: cl_mem_flags) -> cl_mem_flags {
             as cl_mem_flags
 }
 
-fn inherit_mem_flags(mut flags: cl_mem_flags, mem: &Mem) -> cl_mem_flags {
+fn inherit_mem_flags(mut flags: cl_mem_flags, mem: &MemBase) -> cl_mem_flags {
     let read_write_mask = cl_bitfield::from(
         CL_MEM_READ_WRITE |
       CL_MEM_WRITE_ONLY |
@@ -185,7 +186,7 @@ fn validate_host_ptr(host_ptr: *mut ::std::os::raw::c_void, flags: cl_mem_flags)
     Ok(())
 }
 
-fn validate_matching_buffer_flags(mem: &Mem, flags: cl_mem_flags) -> CLResult<()> {
+fn validate_matching_buffer_flags(mem: &MemBase, flags: cl_mem_flags) -> CLResult<()> {
     // CL_INVALID_VALUE if an image is being created from another memory object (buffer or image)
     // under one of the following circumstances:
     //
@@ -214,15 +215,16 @@ fn validate_matching_buffer_flags(mem: &Mem, flags: cl_mem_flags) -> CLResult<()
 #[cl_info_entrypoint(cl_get_mem_object_info)]
 impl CLInfo<cl_mem_info> for cl_mem {
     fn query(&self, q: cl_mem_info, _: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let mem = self.get_ref()?;
+        let mem = MemBase::ref_from_raw(*self)?;
         Ok(match *q {
             CL_MEM_ASSOCIATED_MEMOBJECT => {
                 let ptr = match mem.parent.as_ref() {
                     // Note we use as_ptr here which doesn't increase the reference count.
-                    Some(parent) => Arc::as_ptr(parent),
-                    None => ptr::null(),
+                    Some(Mem::Buffer(buffer)) => cl_mem::from_ptr(Arc::as_ptr(buffer)),
+                    Some(Mem::Image(image)) => cl_mem::from_ptr(Arc::as_ptr(image)),
+                    None => ptr::null_mut(),
                 };
-                cl_prop::<cl_mem>(cl_mem::from_ptr(ptr))
+                cl_prop::<cl_mem>(ptr.cast())
             }
             CL_MEM_CONTEXT => {
                 // Note we use as_ptr here which doesn't increase the reference count.
@@ -233,9 +235,17 @@ impl CLInfo<cl_mem_info> for cl_mem {
             // TODO debugging feature
             CL_MEM_MAP_COUNT => cl_prop::<cl_uint>(0),
             CL_MEM_HOST_PTR => cl_prop::<*mut c_void>(mem.host_ptr),
-            CL_MEM_OFFSET => cl_prop::<usize>(mem.offset),
+            CL_MEM_OFFSET => cl_prop::<usize>(if mem.is_buffer() {
+                Buffer::ref_from_raw(*self)?.offset
+            } else {
+                0
+            }),
             CL_MEM_PROPERTIES => cl_prop::<&Vec<cl_mem_properties>>(&mem.props),
-            CL_MEM_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
+            CL_MEM_REFERENCE_COUNT => cl_prop::<cl_uint>(if mem.is_buffer() {
+                Buffer::refcnt(*self)?
+            } else {
+                Image::refcnt(*self)?
+            }),
             CL_MEM_SIZE => cl_prop::<usize>(mem.size),
             CL_MEM_TYPE => cl_prop::<cl_mem_object_type>(mem.mem_type),
             CL_MEM_USES_SVM_POINTER | CL_MEM_USES_SVM_POINTER_ARM => {
@@ -254,7 +264,7 @@ fn create_buffer_with_properties(
     size: usize,
     host_ptr: *mut ::std::os::raw::c_void,
 ) -> CLResult<cl_mem> {
-    let c = context.get_arc()?;
+    let c = Context::arc_from_raw(context)?;
 
     // CL_INVALID_VALUE if values specified in flags are not valid as defined in the Memory Flags table.
     validate_mem_flags(flags, false)?;
@@ -280,9 +290,7 @@ fn create_buffer_with_properties(
         return Err(CL_INVALID_PROPERTY);
     }
 
-    Ok(cl_mem::from_arc(Mem::new_buffer(
-        c, flags, size, host_ptr, props,
-    )?))
+    Ok(MemBase::new_buffer(c, flags, size, host_ptr, props)?.into_cl())
 }
 
 #[cl_entrypoint]
@@ -302,7 +310,7 @@ fn create_sub_buffer(
     buffer_create_type: cl_buffer_create_type,
     buffer_create_info: *const ::std::os::raw::c_void,
 ) -> CLResult<cl_mem> {
-    let b = buffer.get_arc()?;
+    let b = Buffer::arc_from_raw(buffer)?;
 
     // CL_INVALID_MEM_OBJECT if buffer ... is a sub-buffer object.
     if b.parent.is_some() {
@@ -341,9 +349,7 @@ fn create_sub_buffer(
         _ => return Err(CL_INVALID_VALUE),
     };
 
-    Ok(cl_mem::from_arc(Mem::new_sub_buffer(
-        b, flags, offset, size,
-    )))
+    Ok(MemBase::new_sub_buffer(b, flags, offset, size).into_cl())
 
     // TODO
     // CL_MISALIGNED_SUB_BUFFER_OFFSET if there are no devices in context associated with buffer for which the origin field of the cl_buffer_region structure passed in buffer_create_info is aligned to the CL_DEVICE_MEM_BASE_ADDR_ALIGN value.
@@ -355,7 +361,7 @@ fn set_mem_object_destructor_callback(
     pfn_notify: Option<FuncMemCB>,
     user_data: *mut ::std::os::raw::c_void,
 ) -> CLResult<()> {
-    let m = memobj.get_ref()?;
+    let m = MemBase::ref_from_raw(memobj)?;
 
     // SAFETY: The requirements on `MemCB::new` match the requirements
     // imposed by the OpenCL specification. It is the caller's duty to uphold them.
@@ -394,7 +400,7 @@ fn validate_image_desc(
     host_ptr: *mut ::std::os::raw::c_void,
     elem_size: usize,
     devs: &[&Device],
-) -> CLResult<(cl_image_desc, Option<Arc<Mem>>)> {
+) -> CLResult<(cl_image_desc, Option<Mem>)> {
     // CL_INVALID_IMAGE_DESCRIPTOR if values specified in image_desc are not valid
     const err: cl_int = CL_INVALID_IMAGE_DESCRIPTOR;
 
@@ -464,7 +470,7 @@ fn validate_image_desc(
     // TODO: cl_khr_image2d_from_buffer is an optional feature
     let p = unsafe { &desc.anon_1.mem_object };
     let parent = if !p.is_null() {
-        let p = p.get_arc()?;
+        let p = MemBase::arc_from_raw(*p)?;
         if !match desc.image_type {
             CL_MEM_OBJECT_IMAGE1D_BUFFER => p.is_buffer(),
             CL_MEM_OBJECT_IMAGE2D => {
@@ -542,7 +548,7 @@ fn validate_image_desc(
     Ok((desc, parent))
 }
 
-fn validate_image_bounds(i: &Mem, origin: CLVec<usize>, region: CLVec<usize>) -> CLResult<()> {
+fn validate_image_bounds(i: &Image, origin: CLVec<usize>, region: CLVec<usize>) -> CLResult<()> {
     let dims = i.image_desc.dims_with_array();
     let bound = region + origin;
     if bound > i.image_desc.size() {
@@ -596,7 +602,7 @@ fn validate_buffer(
     // the specified memory objects data store are modified, those changes are reflected in the
     // contents of the image object and vice-versa at corresponding synchronization points.
     if !mem_object.is_null() {
-        let mem = mem_object.get_ref()?;
+        let mem = MemBase::ref_from_raw(mem_object)?;
 
         match mem.mem_type {
             CL_MEM_OBJECT_BUFFER => {
@@ -624,7 +630,8 @@ fn validate_buffer(
             // image descriptor except for mem_object must match the image descriptor information
             // associated with mem_object.
             CL_MEM_OBJECT_IMAGE2D => {
-                if desc.image_type != mem.mem_type || !desc_eq_no_buffer(desc, &mem.image_desc) {
+                let image = Image::ref_from_raw(mem_object).unwrap();
+                if desc.image_type != mem.mem_type || !desc_eq_no_buffer(desc, &image.image_desc) {
                     return Err(err);
                 }
 
@@ -637,13 +644,13 @@ fn validate_buffer(
                 //
                 // The image channel data type specified in image_format must match the image channel
                 // data type associated with mem_object.
-                if format.image_channel_data_type != mem.image_format.image_channel_data_type {
+                if format.image_channel_data_type != image.image_format.image_channel_data_type {
                     return Err(CL_INVALID_IMAGE_FORMAT_DESCRIPTOR);
                 }
 
                 // The image channel order specified in image_format must be compatible with the image
                 // channel order associated with mem_object. Compatible image channel orders are:
-                if format.image_channel_order != mem.image_format.image_channel_order {
+                if format.image_channel_order != image.image_format.image_channel_order {
                     // in image_format | in  mem_object:
                     // CL_sBGRA | CL_BGRA
                     // CL_BGRA  | CL_sBGRA
@@ -656,7 +663,7 @@ fn validate_buffer(
                     // CL_DEPTH | CL_R
                     match (
                         format.image_channel_order,
-                        mem.image_format.image_channel_order,
+                        image.image_format.image_channel_order,
                     ) {
                         (CL_sBGRA, CL_BGRA)
                         | (CL_BGRA, CL_sBGRA)
@@ -703,7 +710,7 @@ fn validate_buffer(
 #[cl_info_entrypoint(cl_get_image_info)]
 impl CLInfo<cl_image_info> for cl_mem {
     fn query(&self, q: cl_image_info, _: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let mem = self.get_ref()?;
+        let mem = Image::ref_from_raw(*self)?;
         Ok(match *q {
             CL_IMAGE_ARRAY_SIZE => cl_prop::<usize>(mem.image_desc.image_array_size),
             CL_IMAGE_BUFFER => cl_prop::<cl_mem>(unsafe { mem.image_desc.anon_1.buffer }),
@@ -730,7 +737,7 @@ fn create_image_with_properties(
     image_desc: *const cl_image_desc,
     host_ptr: *mut ::std::os::raw::c_void,
 ) -> CLResult<cl_mem> {
-    let c = context.get_arc()?;
+    let c = Context::arc_from_raw(context)?;
 
     // CL_INVALID_OPERATION if there are no devices in context that support images (i.e.
     // CL_DEVICE_IMAGE_SUPPORT specified in the Device Queries table is CL_FALSE).
@@ -773,7 +780,7 @@ fn create_image_with_properties(
         return Err(CL_INVALID_PROPERTY);
     }
 
-    Ok(cl_mem::from_arc(Mem::new_image(
+    Ok(MemBase::new_image(
         c,
         parent,
         desc.image_type,
@@ -783,7 +790,8 @@ fn create_image_with_properties(
         elem_size,
         host_ptr,
         props,
-    )?))
+    )?
+    .into_cl())
 }
 
 #[cl_entrypoint]
@@ -859,7 +867,7 @@ fn get_supported_image_formats(
     image_formats: *mut cl_image_format,
     num_image_formats: *mut cl_uint,
 ) -> CLResult<()> {
-    let c = context.get_ref()?;
+    let c = Context::ref_from_raw(context)?;
 
     // CL_INVALID_VALUE if flags
     validate_mem_flags(flags, true)?;
@@ -898,7 +906,7 @@ fn get_supported_image_formats(
 #[cl_info_entrypoint(cl_get_sampler_info)]
 impl CLInfo<cl_sampler_info> for cl_sampler {
     fn query(&self, q: cl_sampler_info, _: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let sampler = self.get_ref()?;
+        let sampler = Sampler::ref_from_raw(*self)?;
         Ok(match q {
             CL_SAMPLER_ADDRESSING_MODE => cl_prop::<cl_addressing_mode>(sampler.addressing_mode),
             CL_SAMPLER_CONTEXT => {
@@ -908,7 +916,7 @@ impl CLInfo<cl_sampler_info> for cl_sampler {
             }
             CL_SAMPLER_FILTER_MODE => cl_prop::<cl_filter_mode>(sampler.filter_mode),
             CL_SAMPLER_NORMALIZED_COORDS => cl_prop::<bool>(sampler.normalized_coords),
-            CL_SAMPLER_REFERENCE_COUNT => cl_prop::<cl_uint>(self.refcnt()?),
+            CL_SAMPLER_REFERENCE_COUNT => cl_prop::<cl_uint>(Sampler::refcnt(*self)?),
             CL_SAMPLER_PROPERTIES => {
                 cl_prop::<&Option<Properties<cl_sampler_properties>>>(&sampler.props)
             }
@@ -925,7 +933,7 @@ fn create_sampler_impl(
     filter_mode: cl_filter_mode,
     props: Option<Properties<cl_sampler_properties>>,
 ) -> CLResult<cl_sampler> {
-    let c = context.get_arc()?;
+    let c = Context::arc_from_raw(context)?;
 
     // CL_INVALID_OPERATION if images are not supported by any device associated with context (i.e.
     // CL_DEVICE_IMAGE_SUPPORT specified in the Device Queries table is CL_FALSE).
@@ -946,7 +954,7 @@ fn create_sampler_impl(
         filter_mode,
         props,
     );
-    Ok(cl_sampler::from_arc(sampler))
+    Ok(sampler.into_cl())
 }
 
 #[cl_entrypoint]
@@ -1004,12 +1012,12 @@ fn create_sampler_with_properties(
 
 #[cl_entrypoint]
 fn retain_sampler(sampler: cl_sampler) -> CLResult<()> {
-    sampler.retain()
+    Sampler::retain(sampler)
 }
 
 #[cl_entrypoint]
 fn release_sampler(sampler: cl_sampler) -> CLResult<()> {
-    sampler.release()
+    Sampler::release(sampler)
 }
 
 #[cl_entrypoint]
@@ -1024,8 +1032,8 @@ fn enqueue_read_buffer(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let b = buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let b = Buffer::arc_from_raw(buffer)?;
     let block = check_cl_bool(blocking_read).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
@@ -1058,7 +1066,7 @@ fn enqueue_read_buffer(
         evs,
         event,
         block,
-        Box::new(move |q, ctx| b.read_to_user(q, ctx, offset, ptr, cb)),
+        Box::new(move |q, ctx| b.read(q, ctx, offset, ptr, cb)),
     )
 
     // TODO
@@ -1077,8 +1085,8 @@ fn enqueue_write_buffer(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let b = buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let b = Buffer::arc_from_raw(buffer)?;
     let block = check_cl_bool(blocking_write).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
@@ -1111,7 +1119,7 @@ fn enqueue_write_buffer(
         evs,
         event,
         block,
-        Box::new(move |q, ctx| b.write_from_user(q, ctx, offset, ptr, cb)),
+        Box::new(move |q, ctx| b.write(q, ctx, offset, ptr, cb)),
     )
 
     // TODO
@@ -1130,9 +1138,9 @@ fn enqueue_copy_buffer(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let src = src_buffer.get_arc()?;
-    let dst = dst_buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let src = Buffer::arc_from_raw(src_buffer)?;
+    let dst = Buffer::arc_from_raw(dst_buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if the context associated with command_queue, src_buffer and dst_buffer
@@ -1168,16 +1176,7 @@ fn enqueue_copy_buffer(
         evs,
         event,
         false,
-        Box::new(move |q, ctx| {
-            src.copy_to(
-                q,
-                ctx,
-                &dst,
-                CLVec::new([src_offset, 0, 0]),
-                CLVec::new([dst_offset, 0, 0]),
-                &CLVec::new([size, 1, 1]),
-            )
-        }),
+        Box::new(move |q, ctx| src.copy_to_buffer(q, ctx, &dst, src_offset, dst_offset, size)),
     )
 
     // TODO
@@ -1204,8 +1203,8 @@ fn enqueue_read_buffer_rect(
     event: *mut cl_event,
 ) -> CLResult<()> {
     let block = check_cl_bool(blocking_read).ok_or(CL_INVALID_VALUE)?;
-    let q = command_queue.get_arc()?;
-    let buf = buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let buf = Buffer::arc_from_raw(buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_OPERATION if clEnqueueReadBufferRect is called on buffer which has been created
@@ -1290,7 +1289,7 @@ fn enqueue_read_buffer_rect(
         event,
         block,
         Box::new(move |q, ctx| {
-            buf.read_to_user_rect(
+            buf.read_rect(
                 ptr,
                 q,
                 ctx,
@@ -1327,8 +1326,8 @@ fn enqueue_write_buffer_rect(
     event: *mut cl_event,
 ) -> CLResult<()> {
     let block = check_cl_bool(blocking_write).ok_or(CL_INVALID_VALUE)?;
-    let q = command_queue.get_arc()?;
-    let buf = buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let buf = Buffer::arc_from_raw(buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_OPERATION if clEnqueueWriteBufferRect is called on buffer which has been created
@@ -1413,7 +1412,7 @@ fn enqueue_write_buffer_rect(
         event,
         block,
         Box::new(move |q, ctx| {
-            buf.write_from_user_rect(
+            buf.write_rect(
                 ptr,
                 q,
                 ctx,
@@ -1448,9 +1447,9 @@ fn enqueue_copy_buffer_rect(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let src = src_buffer.get_arc()?;
-    let dst = dst_buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let src = Buffer::arc_from_raw(src_buffer)?;
+    let dst = Buffer::arc_from_raw(dst_buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_VALUE if src_origin, dst_origin, or region is NULL.
@@ -1552,7 +1551,7 @@ fn enqueue_copy_buffer_rect(
         event,
         false,
         Box::new(move |q, ctx| {
-            src.copy_to_rect(
+            src.copy_rect(
                 &dst,
                 q,
                 ctx,
@@ -1583,8 +1582,8 @@ fn enqueue_fill_buffer(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let b = buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let b = Buffer::arc_from_raw(buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_VALUE if offset or offset + size require accessing elements outside the buffer
@@ -1637,8 +1636,8 @@ fn enqueue_map_buffer(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<*mut c_void> {
-    let q = command_queue.get_arc()?;
-    let b = buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let b = Buffer::arc_from_raw(buffer)?;
     let block = check_cl_bool(blocking_map).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
@@ -1661,14 +1660,14 @@ fn enqueue_map_buffer(
         return Err(CL_INVALID_CONTEXT);
     }
 
-    let ptr = b.map_buffer(q.device, offset, size)?;
+    let ptr = b.map(q.device, offset)?;
     create_and_queue(
         q,
         CL_COMMAND_MAP_BUFFER,
         evs,
         event,
         block,
-        Box::new(move |q, ctx| b.sync_shadow_buffer(q, ctx, ptr)),
+        Box::new(move |q, ctx| b.sync_shadow(q, ctx, ptr)),
     )?;
 
     Ok(ptr)
@@ -1693,8 +1692,8 @@ fn enqueue_read_image(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let i = image.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let i = Image::arc_from_raw(image)?;
     let block = check_cl_bool(blocking_read).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
     let pixel_size = i.image_format.pixel_size().unwrap() as usize;
@@ -1748,20 +1747,7 @@ fn enqueue_read_image(
         evs,
         event,
         block,
-        Box::new(move |q, ctx| {
-            i.read_to_user_rect(
-                ptr,
-                q,
-                ctx,
-                &r,
-                &o,
-                i.image_desc.image_row_pitch,
-                i.image_desc.image_slice_pitch,
-                &CLVec::default(),
-                row_pitch,
-                slice_pitch,
-            )
-        }),
+        Box::new(move |q, ctx| i.read(ptr, q, ctx, &r, &o, row_pitch, slice_pitch)),
     )
 
     //• CL_INVALID_IMAGE_SIZE if image dimensions (image width, height, specified or compute row and/or slice pitch) for image are not supported by device associated with queue.
@@ -1784,8 +1770,8 @@ fn enqueue_write_image(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let i = image.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let i = Image::arc_from_raw(image)?;
     let block = check_cl_bool(blocking_write).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
     let pixel_size = i.image_format.pixel_size().unwrap() as usize;
@@ -1839,20 +1825,7 @@ fn enqueue_write_image(
         evs,
         event,
         block,
-        Box::new(move |q, ctx| {
-            i.write_from_user_rect(
-                ptr,
-                q,
-                ctx,
-                &r,
-                &CLVec::default(),
-                row_pitch,
-                slice_pitch,
-                &o,
-                i.image_desc.image_row_pitch,
-                i.image_desc.image_slice_pitch,
-            )
-        }),
+        Box::new(move |q, ctx| i.write(ptr, q, ctx, &r, row_pitch, slice_pitch, &o)),
     )
 
     //• CL_INVALID_IMAGE_SIZE if image dimensions (image width, height, specified or compute row and/or slice pitch) for image are not supported by device associated with queue.
@@ -1873,9 +1846,9 @@ fn enqueue_copy_image(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let src_image = src_image.get_arc()?;
-    let dst_image = dst_image.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let src_image = Image::arc_from_raw(src_image)?;
+    let dst_image = Image::arc_from_raw(dst_image)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if the context associated with command_queue, src_image and dst_image are not the same
@@ -1912,7 +1885,7 @@ fn enqueue_copy_image(
         event,
         false,
         Box::new(move |q, ctx| {
-            src_image.copy_to(q, ctx, &dst_image, src_origin, dst_origin, &region)
+            src_image.copy_to_image(q, ctx, &dst_image, src_origin, dst_origin, &region)
         }),
     )
 
@@ -1933,8 +1906,8 @@ fn enqueue_fill_image(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let i = image.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let i = Image::arc_from_raw(image)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if the context associated with command_queue and image are not the same
@@ -1966,7 +1939,7 @@ fn enqueue_fill_image(
         evs,
         event,
         false,
-        Box::new(move |q, ctx| i.fill_image(q, ctx, &fill_color, &origin, &region)),
+        Box::new(move |q, ctx| i.fill(q, ctx, &fill_color, &origin, &region)),
     )
 
     //• CL_INVALID_IMAGE_SIZE if image dimensions (image width, height, specified or compute row and/or slice pitch) for image are not supported by device associated with queue.
@@ -1986,9 +1959,9 @@ fn enqueue_copy_buffer_to_image(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let src = src_buffer.get_arc()?;
-    let dst = dst_image.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let src = Buffer::arc_from_raw(src_buffer)?;
+    let dst = Image::arc_from_raw(dst_image)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if the context associated with command_queue, src_buffer and dst_image
@@ -2003,7 +1976,6 @@ fn enqueue_copy_buffer_to_image(
     }
 
     let region = unsafe { CLVec::from_raw(region) };
-    let src_origin = CLVec::new([src_offset, 0, 0]);
     let dst_origin = unsafe { CLVec::from_raw(dst_origin) };
 
     // CL_INVALID_VALUE if values in dst_origin and region do not follow rules described in the
@@ -2018,7 +1990,7 @@ fn enqueue_copy_buffer_to_image(
         evs,
         event,
         false,
-        Box::new(move |q, ctx| src.copy_to(q, ctx, &dst, src_origin, dst_origin, &region)),
+        Box::new(move |q, ctx| src.copy_to_image(q, ctx, &dst, src_offset, dst_origin, &region)),
     )
 
     //• CL_INVALID_MEM_OBJECT if src_buffer is not a valid buffer object or dst_image is not a valid image object or if dst_image is a 1D image buffer object created from src_buffer.
@@ -2042,9 +2014,9 @@ fn enqueue_copy_image_to_buffer(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let src = src_image.get_arc()?;
-    let dst = dst_buffer.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let src = Image::arc_from_raw(src_image)?;
+    let dst = Buffer::arc_from_raw(dst_buffer)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if the context associated with command_queue, src_image and dst_buffer
@@ -2060,7 +2032,6 @@ fn enqueue_copy_image_to_buffer(
 
     let region = unsafe { CLVec::from_raw(region) };
     let src_origin = unsafe { CLVec::from_raw(src_origin) };
-    let dst_origin = CLVec::new([dst_offset, 0, 0]);
 
     // CL_INVALID_VALUE if values in src_origin and region do not follow rules described in the
     // argument description for src_origin and region.
@@ -2075,7 +2046,7 @@ fn enqueue_copy_image_to_buffer(
         evs,
         event,
         false,
-        Box::new(move |q, ctx| src.copy_to(q, ctx, &dst, src_origin, dst_origin, &region)),
+        Box::new(move |q, ctx| src.copy_to_buffer(q, ctx, &dst, src_origin, dst_offset, &region)),
     )
 
     //• CL_INVALID_MEM_OBJECT if src_image is not a valid image object or dst_buffer is not a valid buffer object or if src_image is a 1D image buffer object created from dst_buffer.
@@ -2101,8 +2072,8 @@ fn enqueue_map_image(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<*mut ::std::os::raw::c_void> {
-    let q = command_queue.get_arc()?;
-    let i = image.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let i = Image::arc_from_raw(image)?;
     let block = check_cl_bool(blocking_map).ok_or(CL_INVALID_VALUE)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
@@ -2140,21 +2111,20 @@ fn enqueue_map_image(
         unsafe { image_slice_pitch.as_mut().unwrap() }
     };
 
-    let ptr = i.map_image(
+    let ptr = i.map(
         q.device,
         &origin,
-        &region,
         unsafe { image_row_pitch.as_mut().unwrap() },
         image_slice_pitch,
     )?;
 
     create_and_queue(
-        q.clone(),
+        q,
         CL_COMMAND_MAP_IMAGE,
         evs,
         event,
         block,
-        Box::new(move |q, ctx| i.sync_shadow_image(q, ctx, ptr)),
+        Box::new(move |q, ctx| i.sync_shadow(q, ctx, ptr)),
     )?;
 
     Ok(ptr)
@@ -2169,12 +2139,22 @@ fn enqueue_map_image(
 
 #[cl_entrypoint]
 fn retain_mem_object(mem: cl_mem) -> CLResult<()> {
-    mem.retain()
+    let m = MemBase::ref_from_raw(mem)?;
+    match m.base.get_type()? {
+        RusticlTypes::Buffer => Buffer::retain(mem),
+        RusticlTypes::Image => Image::retain(mem),
+        _ => Err(CL_INVALID_MEM_OBJECT),
+    }
 }
 
 #[cl_entrypoint]
 fn release_mem_object(mem: cl_mem) -> CLResult<()> {
-    mem.release()
+    let m = MemBase::ref_from_raw(mem)?;
+    match m.base.get_type()? {
+        RusticlTypes::Buffer => Buffer::release(mem),
+        RusticlTypes::Image => Image::release(mem),
+        _ => Err(CL_INVALID_MEM_OBJECT),
+    }
 }
 
 #[cl_entrypoint]
@@ -2186,8 +2166,8 @@ fn enqueue_unmap_mem_object(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
-    let m = memobj.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
+    let m = MemBase::arc_from_raw(memobj)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_CONTEXT if context associated with command_queue and memobj are not the same
@@ -2221,9 +2201,9 @@ fn enqueue_migrate_mem_objects(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
-    let bufs = cl_mem::get_arc_vec_from_arr(mem_objects, num_mem_objects)?;
+    let bufs = MemBase::refs_from_arr(mem_objects, num_mem_objects)?;
 
     // CL_INVALID_VALUE if num_mem_objects is zero or if mem_objects is NULL.
     if bufs.is_empty() {
@@ -2276,7 +2256,7 @@ pub fn svm_alloc(
     // clSVMAlloc will fail if
 
     // context is not a valid context
-    let c = context.get_ref()?;
+    let c = Context::ref_from_raw(context)?;
 
     // or no devices in context support SVM.
     if !c.has_svm_devs() {
@@ -2337,7 +2317,7 @@ fn svm_free_impl(c: &Context, svm_pointer: *mut c_void) {
 }
 
 pub fn svm_free(context: cl_context, svm_pointer: *mut c_void) -> CLResult<()> {
-    let c = context.get_ref()?;
+    let c = Context::ref_from_raw(context)?;
     svm_free_impl(c, svm_pointer);
     Ok(())
 }
@@ -2353,7 +2333,7 @@ fn enqueue_svm_free_impl(
     event: *mut cl_event,
     cmd_type: cl_command_type,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_VALUE if num_svm_pointers is 0 and svm_pointers is non-NULL, or if svm_pointers is
@@ -2457,7 +2437,7 @@ fn enqueue_svm_memcpy_impl(
     event: *mut cl_event,
     cmd_type: cl_command_type,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
     let block = check_cl_bool(blocking_copy).ok_or(CL_INVALID_VALUE)?;
 
@@ -2565,7 +2545,7 @@ fn enqueue_svm_mem_fill_impl(
     event: *mut cl_event,
     cmd_type: cl_command_type,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_OPERATION if the device associated with command queue does not support SVM.
@@ -2745,7 +2725,7 @@ fn enqueue_svm_map_impl(
     event: *mut cl_event,
     cmd_type: cl_command_type,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
     let block = check_cl_bool(blocking_map).ok_or(CL_INVALID_VALUE)?;
 
@@ -2826,7 +2806,7 @@ fn enqueue_svm_unmap_impl(
     event: *mut cl_event,
     cmd_type: cl_command_type,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_OPERATION if the device associated with command queue does not support SVM.
@@ -2889,7 +2869,7 @@ fn enqueue_svm_migrate_mem(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
 
     // CL_INVALID_OPERATION if the device associated with command queue does not support SVM.
@@ -2964,7 +2944,7 @@ fn create_pipe(
 #[cl_info_entrypoint(cl_get_gl_texture_info)]
 impl CLInfo<cl_gl_texture_info> for cl_mem {
     fn query(&self, q: cl_gl_texture_info, _: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
-        let mem = self.get_ref()?;
+        let mem = MemBase::ref_from_raw(*self)?;
         Ok(match *q {
             CL_GL_MIPMAP_LEVEL => cl_prop::<cl_GLint>(0),
             CL_GL_TEXTURE_TARGET => cl_prop::<cl_GLenum>(
@@ -2985,7 +2965,7 @@ fn create_from_gl(
     miplevel: cl_GLint,
     texture: cl_GLuint,
 ) -> CLResult<cl_mem> {
-    let c = context.get_arc()?;
+    let c = Context::arc_from_raw(context)?;
     let gl_ctx_manager = &c.gl_ctx_manager;
 
     // CL_INVALID_CONTEXT if context associated with command_queue was not created from an OpenGL context
@@ -3008,11 +2988,7 @@ fn create_from_gl(
         let gl_export_manager =
             gl_ctx_manager.export_object(&c, target, flags as u32, miplevel, texture)?;
 
-        Ok(cl_mem::from_arc(Mem::from_gl(
-            c,
-            flags,
-            &gl_export_manager,
-        )?))
+        Ok(MemBase::from_gl(c, flags, &gl_export_manager)?)
     } else {
         Err(CL_INVALID_CONTEXT)
     }
@@ -3093,7 +3069,7 @@ fn get_gl_object_info(
     gl_object_type: *mut cl_gl_object_type,
     gl_object_name: *mut cl_GLuint,
 ) -> CLResult<()> {
-    let m = memobj.get_ref()?;
+    let m = MemBase::ref_from_raw(memobj)?;
 
     match &m.gl_obj {
         Some(gl_obj) => {
@@ -3118,9 +3094,9 @@ fn enqueue_acquire_gl_objects(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
-    let objs = cl_mem::get_arc_vec_from_arr(mem_objects, num_objects)?;
+    let objs = MemBase::arcs_from_arr(mem_objects, num_objects)?;
     let gl_ctx_manager = &q.context.gl_ctx_manager;
 
     // CL_INVALID_CONTEXT if context associated with command_queue was not created from an OpenGL context
@@ -3152,9 +3128,9 @@ fn enqueue_release_gl_objects(
     event_wait_list: *const cl_event,
     event: *mut cl_event,
 ) -> CLResult<()> {
-    let q = command_queue.get_arc()?;
+    let q = Queue::arc_from_raw(command_queue)?;
     let evs = event_list_from_cl(&q, num_events_in_wait_list, event_wait_list)?;
-    let objs = cl_mem::get_arc_vec_from_arr(mem_objects, num_objects)?;
+    let objs = MemBase::arcs_from_arr(mem_objects, num_objects)?;
     let gl_ctx_manager = &q.context.gl_ctx_manager;
 
     // CL_INVALID_CONTEXT if context associated with command_queue was not created from an OpenGL context

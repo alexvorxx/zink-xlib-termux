@@ -371,7 +371,7 @@ brw_compile_tcs(const struct brw_compiler *compiler,
    nir->info.outputs_written = key->outputs_written;
    nir->info.patch_outputs_written = key->patch_outputs_written;
 
-   struct brw_vue_map input_vue_map;
+   struct intel_vue_map input_vue_map;
    brw_compute_vue_map(devinfo, &input_vue_map, nir->info.inputs_read,
                        nir->info.separate_shader, 1);
    brw_compute_tess_vue_map(&vue_prog_data->vue_map,
@@ -396,12 +396,12 @@ brw_compile_tcs(const struct brw_compiler *compiler,
    prog_data->patch_count_threshold = brw::get_patch_count_threshold(key->input_vertices);
 
    if (compiler->use_tcs_multi_patch) {
-      vue_prog_data->dispatch_mode = DISPATCH_MODE_TCS_MULTI_PATCH;
+      vue_prog_data->dispatch_mode = INTEL_DISPATCH_MODE_TCS_MULTI_PATCH;
       prog_data->instances = nir->info.tess.tcs_vertices_out;
       prog_data->include_primitive_id = has_primitive_id;
    } else {
       unsigned verts_per_thread = is_scalar ? 8 : 2;
-      vue_prog_data->dispatch_mode = DISPATCH_MODE_TCS_SINGLE_PATCH;
+      vue_prog_data->dispatch_mode = INTEL_DISPATCH_MODE_TCS_SINGLE_PATCH;
       prog_data->instances =
          DIV_ROUND_UP(nir->info.tess.tcs_vertices_out, verts_per_thread);
    }

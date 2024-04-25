@@ -71,6 +71,12 @@ struct vk_video_h265_pps {
    StdVideoH265PredictorPaletteEntries palette_entries;
 };
 
+struct vk_video_av1_seq_hdr {
+   StdVideoAV1SequenceHeader base;
+   StdVideoAV1ColorConfig color_config;
+   StdVideoAV1TimingInfo timing_info;
+};
+
 struct vk_video_session {
    struct vk_object_base base;
    VkVideoSessionCreateFlagsKHR flags;
@@ -93,6 +99,10 @@ struct vk_video_session {
       struct {
          StdVideoH265ProfileIdc profile_idc;
       } h265;
+      struct {
+         StdVideoAV1Profile profile;
+         int film_grain_support;
+      } av1;
    };
 };
 
@@ -122,6 +132,10 @@ struct vk_video_session_parameters {
          uint32_t h265_pps_count;
          struct vk_video_h265_pps *h265_pps;
       } h265_dec;
+
+      struct {
+         struct vk_video_av1_seq_hdr seq_hdr;
+      } av1_dec;
 
       struct {
          uint32_t max_h264_sps_count;
@@ -265,6 +279,9 @@ void vk_fill_video_h265_reference_info(const VkVideoDecodeInfoKHR *frame_info,
 
 #define VK_VIDEO_H265_CTU_MAX_WIDTH 64
 #define VK_VIDEO_H265_CTU_MAX_HEIGHT 64
+
+#define VK_VIDEO_AV1_BLOCK_WIDTH 128
+#define VK_VIDEO_AV1_BLOCK_HEIGHT 128
 
 void
 vk_video_get_profile_alignments(const VkVideoProfileListInfoKHR *profile_list,

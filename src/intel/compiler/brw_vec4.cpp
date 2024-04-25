@@ -1858,13 +1858,13 @@ vec4_visitor::convert_to_hw_regs()
 
 static bool
 stage_uses_interleaved_attributes(unsigned stage,
-                                  enum shader_dispatch_mode dispatch_mode)
+                                  enum intel_shader_dispatch_mode dispatch_mode)
 {
    switch (stage) {
    case MESA_SHADER_TESS_EVAL:
       return true;
    case MESA_SHADER_GEOMETRY:
-      return dispatch_mode != DISPATCH_MODE_4X2_DUAL_OBJECT;
+      return dispatch_mode != INTEL_DISPATCH_MODE_4X2_DUAL_OBJECT;
    default:
       return false;
    }
@@ -1878,7 +1878,7 @@ stage_uses_interleaved_attributes(unsigned stage,
  */
 static unsigned
 get_lowered_simd_width(const struct intel_device_info *devinfo,
-                       enum shader_dispatch_mode dispatch_mode,
+                       enum intel_shader_dispatch_mode dispatch_mode,
                        unsigned stage, const vec4_instruction *inst)
 {
    /* Do not split some instructions that require special handling */
@@ -2650,7 +2650,7 @@ brw_compile_vs(const struct brw_compiler *compiler,
 
    if (is_scalar) {
       const unsigned dispatch_width = compiler->devinfo->ver >= 20 ? 16 : 8;
-      prog_data->base.dispatch_mode = DISPATCH_MODE_SIMD8;
+      prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_SIMD8;
 
       fs_visitor v(compiler, &params->base, &key->base,
                    &prog_data->base.base, nir, dispatch_width,
@@ -2684,7 +2684,7 @@ brw_compile_vs(const struct brw_compiler *compiler,
    }
 
    if (!assembly) {
-      prog_data->base.dispatch_mode = DISPATCH_MODE_4X2_DUAL_OBJECT;
+      prog_data->base.dispatch_mode = INTEL_DISPATCH_MODE_4X2_DUAL_OBJECT;
 
       vec4_vs_visitor v(compiler, &params->base, key, prog_data,
                         nir, debug_enabled);

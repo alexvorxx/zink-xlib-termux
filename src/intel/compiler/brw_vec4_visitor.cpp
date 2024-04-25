@@ -619,7 +619,7 @@ type_size_xvec4(const struct glsl_type *type, bool as_vec4, bool bindless)
    case GLSL_TYPE_ATOMIC_UINT:
       return 0;
    case GLSL_TYPE_IMAGE:
-      return bindless ? 1 : DIV_ROUND_UP(BRW_IMAGE_PARAM_SIZE, 4);
+      return bindless ? 1 : DIV_ROUND_UP(ISL_IMAGE_PARAM_SIZE, 4);
    case GLSL_TYPE_VOID:
    case GLSL_TYPE_ERROR:
    case GLSL_TYPE_COOPERATIVE_MATRIX:

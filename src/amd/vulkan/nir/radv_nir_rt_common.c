@@ -570,6 +570,12 @@ radv_build_ray_traversal(struct radv_device *device, nir_builder *b, const struc
             }
             nir_push_else(b, NULL);
             {
+               if (args->vars.iteration_instance_count) {
+                  nir_def *iteration_instance_count = nir_load_deref(b, args->vars.iteration_instance_count);
+                  iteration_instance_count = nir_iadd_imm(b, iteration_instance_count, 1 << 16);
+                  nir_store_deref(b, args->vars.iteration_instance_count, iteration_instance_count, 0x1);
+               }
+
                /* instance */
                nir_def *instance_node_addr = build_node_to_addr(device, b, global_bvh_node, false);
                nir_store_deref(b, args->vars.instance_addr, instance_node_addr, 1);
@@ -670,6 +676,12 @@ radv_build_ray_traversal(struct radv_device *device, nir_builder *b, const struc
          insert_traversal_triangle_case(device, b, args, &ray_flags, result, global_bvh_node);
       }
       nir_pop_if(b, NULL);
+
+      if (args->vars.iteration_instance_count) {
+         nir_def *iteration_instance_count = nir_load_deref(b, args->vars.iteration_instance_count);
+         iteration_instance_count = nir_iadd_imm(b, iteration_instance_count, 1);
+         nir_store_deref(b, args->vars.iteration_instance_count, iteration_instance_count, 0x1);
+      }
    }
    nir_pop_loop(b, NULL);
 

@@ -72,7 +72,8 @@ enum vpe_status {
     VPE_STATUS_REPEAT_ITEM,
     VPE_STATUS_PATCH_OVER_MAXSIZE,
     VPE_STATUS_INVALID_BUFFER_SIZE,
-    VPE_STATUS_SCALER_NOT_SET
+    VPE_STATUS_SCALER_NOT_SET,
+    VPE_STATUS_GEOMETRICSCALING_ERROR
 };
 
 /** HW IP level */
@@ -434,6 +435,8 @@ enum vpe_transfer_function {
     VPE_TF_PQ,
     VPE_TF_PQ_NORMALIZED,
     VPE_TF_HLG,
+    VPE_TF_SRGB,
+    VPE_TF_BT709,
     VPE_TF_COUNT
 };
 
@@ -543,10 +546,12 @@ struct vpe_hdr_metadata {
 };
 
 struct vpe_tonemap_params {
+    uint64_t                   UID;          /* Unique ID for tonemap params */
     enum vpe_transfer_function shaper_tf;
     enum vpe_transfer_function lut_out_tf;
     enum vpe_color_primaries   lut_in_gamut;
     enum vpe_color_primaries   lut_out_gamut;
+    uint16_t                   input_pq_norm_factor;
     uint16_t                   lut_dim;
     uint16_t                  *lut_data;
 
@@ -572,7 +577,11 @@ struct vpe_stream {
 
     struct {
         uint32_t hdr_metadata : 1;
-        uint32_t reserved     : 31;
+        uint32_t geometric_scaling : 1; /* support 1 input stream only,
+                                         * if set, gamut/gamma remapping will be disabled,
+                                         * blending will be disabled
+                                         * dst rect must equal to target rect */
+        uint32_t reserved : 30;
     } flags;
 };
 

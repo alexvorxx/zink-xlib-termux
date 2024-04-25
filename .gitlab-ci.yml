@@ -294,6 +294,32 @@ sanity:
   script:
     # ci-fairy check-commits --junit-xml=check-commits.xml
     - ci-fairy check-merge-request --require-allow-collaboration --junit-xml=check-merge-request.xml
+    - |
+      set -eu
+      image_tags=(
+        DEBIAN_BASE_TAG
+        DEBIAN_BUILD_TAG
+        DEBIAN_X86_64_TEST_ANDROID_TAG
+        DEBIAN_X86_64_TEST_GL_TAG
+        DEBIAN_X86_64_TEST_VK_TAG
+        ALPINE_X86_64_BUILD_TAG
+        ALPINE_X86_64_LAVA_SSH_TAG
+        FEDORA_X86_64_BUILD_TAG
+        KERNEL_ROOTFS_TAG
+        KERNEL_TAG
+        PKG_REPO_REV
+        WINDOWS_X64_MSVC_TAG
+        WINDOWS_X64_BUILD_TAG
+        WINDOWS_X64_TEST_TAG
+      )
+      for var in "${image_tags[@]}"
+      do
+        if [ "$(echo -n "${!var}" | wc -c)" -gt 20 ]
+        then
+          echo "$var is too long; please make sure it is at most 20 chars."
+          exit 1
+        fi
+      done
   artifacts:
     when: on_failure
     reports:

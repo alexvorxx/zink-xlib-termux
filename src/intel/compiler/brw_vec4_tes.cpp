@@ -122,7 +122,7 @@ vec4_tes_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
                src_reg(brw_vec8_grf(1, 0))));
       break;
    case nir_intrinsic_load_tess_level_outer:
-      if (tes_prog_data->domain == BRW_TESS_DOMAIN_ISOLINE) {
+      if (tes_prog_data->domain == INTEL_TESS_DOMAIN_ISOLINE) {
          emit(MOV(get_nir_def(instr->def, BRW_REGISTER_TYPE_F),
                   swizzle(src_reg(ATTR, 1, glsl_vec4_type()),
                           BRW_SWIZZLE_ZWZW)));
@@ -133,7 +133,7 @@ vec4_tes_visitor::nir_emit_intrinsic(nir_intrinsic_instr *instr)
       }
       break;
    case nir_intrinsic_load_tess_level_inner:
-      if (tes_prog_data->domain == BRW_TESS_DOMAIN_QUAD) {
+      if (tes_prog_data->domain == INTEL_TESS_DOMAIN_QUAD) {
          emit(MOV(get_nir_def(instr->def, BRW_REGISTER_TYPE_F),
                   swizzle(src_reg(ATTR, 0, glsl_vec4_type()),
                           BRW_SWIZZLE_WZYX)));

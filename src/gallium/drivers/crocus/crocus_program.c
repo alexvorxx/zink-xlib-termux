@@ -433,7 +433,7 @@ crocus_setup_uniforms(ASSERTED const struct intel_device_info *devinfo,
                       unsigned *out_num_cbufs)
 {
    const unsigned CROCUS_MAX_SYSTEM_VALUES =
-      PIPE_MAX_SHADER_IMAGES * BRW_IMAGE_PARAM_SIZE;
+      PIPE_MAX_SHADER_IMAGES * ISL_IMAGE_PARAM_SIZE;
    enum brw_param_builtin *system_values =
       rzalloc_array(mem_ctx, enum brw_param_builtin, CROCUS_MAX_SYSTEM_VALUES);
    unsigned num_system_values = 0;
@@ -572,31 +572,31 @@ crocus_setup_uniforms(ASSERTED const struct intel_device_info *devinfo,
                   const unsigned img = var->data.binding + i;
 
                   img_idx[img] = num_system_values;
-                  num_system_values += BRW_IMAGE_PARAM_SIZE;
+                  num_system_values += ISL_IMAGE_PARAM_SIZE;
 
                   uint32_t *img_sv = &system_values[img_idx[img]];
 
                   setup_vec4_image_sysval(
-                     img_sv + BRW_IMAGE_PARAM_OFFSET_OFFSET, img,
-                     offsetof(struct brw_image_param, offset), 2);
+                     img_sv + ISL_IMAGE_PARAM_OFFSET_OFFSET, img,
+                     offsetof(struct isl_image_param, offset), 2);
                   setup_vec4_image_sysval(
-                     img_sv + BRW_IMAGE_PARAM_SIZE_OFFSET, img,
-                     offsetof(struct brw_image_param, size), 3);
+                     img_sv + ISL_IMAGE_PARAM_SIZE_OFFSET, img,
+                     offsetof(struct isl_image_param, size), 3);
                   setup_vec4_image_sysval(
-                     img_sv + BRW_IMAGE_PARAM_STRIDE_OFFSET, img,
-                     offsetof(struct brw_image_param, stride), 4);
+                     img_sv + ISL_IMAGE_PARAM_STRIDE_OFFSET, img,
+                     offsetof(struct isl_image_param, stride), 4);
                   setup_vec4_image_sysval(
-                     img_sv + BRW_IMAGE_PARAM_TILING_OFFSET, img,
-                     offsetof(struct brw_image_param, tiling), 3);
+                     img_sv + ISL_IMAGE_PARAM_TILING_OFFSET, img,
+                     offsetof(struct isl_image_param, tiling), 3);
                   setup_vec4_image_sysval(
-                     img_sv + BRW_IMAGE_PARAM_SWIZZLING_OFFSET, img,
-                     offsetof(struct brw_image_param, swizzling), 2);
+                     img_sv + ISL_IMAGE_PARAM_SWIZZLING_OFFSET, img,
+                     offsetof(struct isl_image_param, swizzling), 2);
                }
             }
 
             b.cursor = nir_before_instr(instr);
             offset = nir_iadd_imm(&b,
-                                  get_aoa_deref_offset(&b, deref, BRW_IMAGE_PARAM_SIZE * 4),
+                                  get_aoa_deref_offset(&b, deref, ISL_IMAGE_PARAM_SIZE * 4),
                                   img_idx[var->data.binding] * 4 +
                                   nir_intrinsic_base(intrin) * 16);
             break;
@@ -1553,7 +1553,7 @@ crocus_compile_tes(struct crocus_context *ice,
    if (can_push_ubo(devinfo))
       brw_nir_analyze_ubo_ranges(compiler, nir, prog_data->ubo_ranges);
 
-   struct brw_vue_map input_vue_map;
+   struct intel_vue_map input_vue_map;
    brw_compute_tess_vue_map(&input_vue_map, key->inputs_read,
                             key->patch_inputs_read);
 
@@ -1798,7 +1798,7 @@ static struct crocus_compiled_shader *
 crocus_compile_fs(struct crocus_context *ice,
                   struct crocus_uncompiled_shader *ish,
                   const struct brw_wm_prog_key *key,
-                  struct brw_vue_map *vue_map)
+                  struct intel_vue_map *vue_map)
 {
    struct crocus_screen *screen = (struct crocus_screen *)ice->ctx.screen;
    const struct brw_compiler *compiler = screen->compiler;
@@ -1950,8 +1950,8 @@ update_last_vue_map(struct crocus_context *ice,
    struct crocus_screen *screen = (struct crocus_screen *)ice->ctx.screen;
    const struct intel_device_info *devinfo = &screen->devinfo;
    struct brw_vue_prog_data *vue_prog_data = (void *) prog_data;
-   struct brw_vue_map *vue_map = &vue_prog_data->vue_map;
-   struct brw_vue_map *old_map = ice->shaders.last_vue_map;
+   struct intel_vue_map *vue_map = &vue_prog_data->vue_map;
+   struct intel_vue_map *old_map = ice->shaders.last_vue_map;
    const uint64_t changed_slots =
       (old_map ? old_map->slots_valid : 0ull) ^ vue_map->slots_valid;
 
@@ -2428,8 +2428,8 @@ crocus_update_compiled_shaders(struct crocus_context *ice)
       } else if (tes) {
          const struct brw_tes_prog_data *tes_data = (void *) tes->prog_data;
          points_or_lines =
-            tes_data->output_topology == BRW_TESS_OUTPUT_TOPOLOGY_LINE ||
-            tes_data->output_topology == BRW_TESS_OUTPUT_TOPOLOGY_POINT;
+            tes_data->output_topology == INTEL_TESS_OUTPUT_TOPOLOGY_LINE ||
+            tes_data->output_topology == INTEL_TESS_OUTPUT_TOPOLOGY_POINT;
       }
 
       if (ice->shaders.output_topology_is_points_or_lines != points_or_lines) {
@@ -2872,7 +2872,7 @@ crocus_create_fs_state(struct pipe_context *ctx,
          can_rearrange_varyings ? 0 : info->inputs_read | VARYING_BIT_POS,
       };
 
-      struct brw_vue_map vue_map;
+      struct intel_vue_map vue_map;
       if (devinfo->ver < 6) {
          brw_compute_vue_map(devinfo, &vue_map,
                              info->inputs_read | VARYING_BIT_POS,

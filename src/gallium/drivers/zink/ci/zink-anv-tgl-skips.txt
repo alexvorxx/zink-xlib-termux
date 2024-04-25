@@ -46,3 +46,6 @@ spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_y412
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_y416
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_yuv420
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_yuyv
+
+# would require adding a bunch of VVL exceptions
+KHR-GL46.gl_spirv.spirv_validation_capabilities_test

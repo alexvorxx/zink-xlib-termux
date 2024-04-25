@@ -1,5 +1,6 @@
 /*
  * Copyright © 2008 Keith Packard
+ * Copyright © 2014 Intel Corporation
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -20,16 +21,19 @@
  * OF THIS SOFTWARE.
  */
 
-#include <stdio.h>
-#include <string.h>
 #include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
+#include "brw_disasm.h"
+#include "brw_disasm_info.h"
 #include "brw_eu_defines.h"
-#include "brw_inst.h"
-#include "brw_shader.h"
-#include "brw_reg.h"
-#include "brw_inst.h"
 #include "brw_eu.h"
+#include "brw_inst.h"
+#include "brw_isa_info.h"
+#include "brw_reg.h"
+#include "brw_shader.h"
 #include "util/half_float.h"
 
 bool
@@ -620,6 +624,33 @@ static const char *const gfx5_sampler_msg_type[] = {
    [GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DSS]       = "ld2dss",
 };
 
+static const char *const xe2_sampler_msg_type[] = {
+   [GFX5_SAMPLER_MESSAGE_SAMPLE]              = "sample",
+   [GFX5_SAMPLER_MESSAGE_SAMPLE_BIAS]         = "sample_b",
+   [GFX5_SAMPLER_MESSAGE_SAMPLE_LOD]          = "sample_l",
+   [GFX5_SAMPLER_MESSAGE_SAMPLE_COMPARE]      = "sample_c",
+   [GFX5_SAMPLER_MESSAGE_SAMPLE_DERIVS]       = "sample_d",
+   [GFX5_SAMPLER_MESSAGE_SAMPLE_BIAS_COMPARE] = "sample_b_c",
+   [GFX5_SAMPLER_MESSAGE_SAMPLE_LOD_COMPARE]  = "sample_l_c",
+   [GFX5_SAMPLER_MESSAGE_SAMPLE_LD]           = "ld",
+   [GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4]      = "gather4",
+   [GFX5_SAMPLER_MESSAGE_LOD]                 = "lod",
+   [GFX5_SAMPLER_MESSAGE_SAMPLE_RESINFO]      = "resinfo",
+   [GFX6_SAMPLER_MESSAGE_SAMPLE_SAMPLEINFO]   = "sampleinfo",
+   [GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_C]    = "gather4_c",
+   [GFX7_SAMPLER_MESSAGE_SAMPLE_GATHER4_PO]   = "gather4_po",
+   [XE2_SAMPLER_MESSAGE_SAMPLE_MLOD]          = "sample_mlod",
+   [XE2_SAMPLER_MESSAGE_SAMPLE_COMPARE_MLOD]  = "sample_c_mlod",
+   [HSW_SAMPLER_MESSAGE_SAMPLE_DERIV_COMPARE] = "sample_d_c",
+   [GFX9_SAMPLER_MESSAGE_SAMPLE_LZ]           = "sample_lz",
+   [GFX9_SAMPLER_MESSAGE_SAMPLE_C_LZ]         = "sample_c_lz",
+   [GFX9_SAMPLER_MESSAGE_SAMPLE_LD_LZ]        = "ld_lz",
+   [GFX9_SAMPLER_MESSAGE_SAMPLE_LD2DMS_W]     = "ld2dms_w",
+   [GFX7_SAMPLER_MESSAGE_SAMPLE_LD_MCS]       = "ld_mcs",
+   [GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DMS]       = "ld2dms",
+   [GFX7_SAMPLER_MESSAGE_SAMPLE_LD2DSS]       = "ld2dss",
+};
+
 static const char *const gfx5_sampler_simd_mode[7] = {
    [BRW_SAMPLER_SIMD_MODE_SIMD4X2]   = "SIMD4x2",
    [BRW_SAMPLER_SIMD_MODE_SIMD8]     = "SIMD8",
@@ -627,6 +658,13 @@ static const char *const gfx5_sampler_simd_mode[7] = {
    [BRW_SAMPLER_SIMD_MODE_SIMD32_64] = "SIMD32/64",
    [GFX10_SAMPLER_SIMD_MODE_SIMD8H]  = "SIMD8H",
    [GFX10_SAMPLER_SIMD_MODE_SIMD16H] = "SIMD16H",
+};
+
+static const char *const xe2_sampler_simd_mode[7] = {
+   [XE2_SAMPLER_SIMD_MODE_SIMD16]  = "SIMD16",
+   [XE2_SAMPLER_SIMD_MODE_SIMD32]  = "SIMD32",
+   [XE2_SAMPLER_SIMD_MODE_SIMD16H] = "SIMD16H",
+   [XE2_SAMPLER_SIMD_MODE_SIMD32H] = "SIMD32H",
 };
 
 static const char *const sampler_target_format[4] = {
@@ -2284,7 +2322,20 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
                            brw_inst_math_msg_precision(devinfo, inst), &space);
             break;
          case BRW_SFID_SAMPLER:
-            if (devinfo->ver >= 5) {
+            if (devinfo->ver >= 20) {
+               err |= control(file, "sampler message", xe2_sampler_msg_type,
+                              brw_sampler_desc_msg_type(devinfo, imm_desc),
+                              &space);
+               err |= control(file, "sampler simd mode", xe2_sampler_simd_mode,
+                              brw_sampler_desc_simd_mode(devinfo, imm_desc),
+                              &space);
+               if (brw_sampler_desc_return_format(devinfo, imm_desc)) {
+                  string(file, " HP");
+               }
+               format(file, " Surface = %u Sampler = %u",
+                      brw_sampler_desc_binding_table_index(devinfo, imm_desc),
+                      brw_sampler_desc_sampler(devinfo, imm_desc));
+            } else if (devinfo->ver >= 5) {
                err |= control(file, "sampler message", gfx5_sampler_msg_type,
                               brw_sampler_desc_msg_type(devinfo, imm_desc),
                               &space);
@@ -2690,7 +2741,8 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
 
          format(file, " ex_bso");
       }
-      if (brw_sfid_is_lsc(sfid)) {
+      if (brw_sfid_is_lsc(sfid) ||
+          (sfid == BRW_SFID_URB && devinfo->ver >= 20)) {
             lsc_disassemble_ex_desc(devinfo, imm_desc, imm_ex_desc, file);
       } else {
          if (has_imm_desc)
@@ -2762,4 +2814,74 @@ brw_disassemble_inst(FILE *file, const struct brw_isa_info *isa,
    string(file, ";");
    newline(file);
    return err;
+}
+
+int
+brw_disassemble_find_end(const struct brw_isa_info *isa,
+                         const void *assembly, int start)
+{
+   const struct intel_device_info *devinfo = isa->devinfo;
+   int offset = start;
+
+   /* This loop exits when send-with-EOT or when opcode is 0 */
+   while (true) {
+      const brw_inst *insn = assembly + offset;
+
+      if (brw_inst_cmpt_control(devinfo, insn)) {
+         offset += 8;
+      } else {
+         offset += 16;
+      }
+
+      /* Simplistic, but efficient way to terminate disasm */
+      uint32_t opcode = brw_inst_opcode(isa, insn);
+      if (opcode == 0 || (is_send(opcode) && brw_inst_eot(devinfo, insn))) {
+         break;
+      }
+   }
+
+   return offset;
+}
+
+void
+brw_disassemble_with_errors(const struct brw_isa_info *isa,
+                            const void *assembly, int start, FILE *out)
+{
+   int end = brw_disassemble_find_end(isa, assembly, start);
+
+   /* Make a dummy disasm structure that brw_validate_instructions
+    * can work from.
+    */
+   struct disasm_info *disasm_info = disasm_initialize(isa, NULL);
+   disasm_new_inst_group(disasm_info, start);
+   disasm_new_inst_group(disasm_info, end);
+
+   brw_validate_instructions(isa, assembly, start, end, disasm_info);
+
+   void *mem_ctx = ralloc_context(NULL);
+   const struct brw_label *root_label =
+      brw_label_assembly(isa, assembly, start, end, mem_ctx);
+
+   foreach_list_typed(struct inst_group, group, link,
+                      &disasm_info->group_list) {
+      struct exec_node *next_node = exec_node_get_next(&group->link);
+      if (exec_node_is_tail_sentinel(next_node))
+         break;
+
+      struct inst_group *next =
+         exec_node_data(struct inst_group, next_node, link);
+
+      int start_offset = group->offset;
+      int end_offset = next->offset;
+
+      brw_disassemble(isa, assembly, start_offset, end_offset,
+                      root_label, out);
+
+      if (group->error) {
+         fputs(group->error, out);
+      }
+   }
+
+   ralloc_free(mem_ctx);
+   ralloc_free(disasm_info);
 }

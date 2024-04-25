@@ -228,6 +228,11 @@ struct radv_winsys_gpuvm_fault_info {
    uint32_t vmhub;
 };
 
+enum radv_cs_dump_type {
+   RADV_CS_DUMP_TYPE_IBS,
+   RADV_CS_DUMP_TYPE_CTX_ROLLS,
+};
+
 struct radeon_winsys {
    void (*destroy)(struct radeon_winsys *ws);
 
@@ -303,7 +308,8 @@ struct radeon_winsys {
    void (*cs_execute_ib)(struct radeon_cmdbuf *cs, struct radeon_winsys_bo *bo, const uint64_t offset,
                          const uint32_t cdw, const bool predicate);
 
-   void (*cs_dump)(struct radeon_cmdbuf *cs, FILE *file, const int *trace_ids, int trace_id_count);
+   void (*cs_dump)(struct radeon_cmdbuf *cs, FILE *file, const int *trace_ids, int trace_id_count,
+                   enum radv_cs_dump_type type);
 
    void (*dump_bo_ranges)(struct radeon_winsys *ws, FILE *file);
 

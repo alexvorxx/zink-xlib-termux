@@ -1385,7 +1385,7 @@ _mesa_init_queryobj(struct gl_context *ctx)
 
 
 /**
- * Callback for deleting a query object.  Called by _mesa_HashDeleteAll().
+ * Callback for deleting a query object.  Called by _mesa_DeleteHashTable().
  */
 static void
 delete_queryobj_cb(void *data, void *userData)
@@ -1402,6 +1402,5 @@ delete_queryobj_cb(void *data, void *userData)
 void
 _mesa_free_queryobj_data(struct gl_context *ctx)
 {
-   _mesa_HashDeleteAll(ctx->Query.QueryObjects, delete_queryobj_cb, ctx);
-   _mesa_DeleteHashTable(ctx->Query.QueryObjects);
+   _mesa_DeleteHashTable(ctx->Query.QueryObjects, delete_queryobj_cb, ctx);
 }

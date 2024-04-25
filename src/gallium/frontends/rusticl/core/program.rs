@@ -355,18 +355,18 @@ impl Program {
             .collect()
     }
 
-    pub fn new(context: &Arc<Context>, devs: &[&'static Device], src: CString) -> Arc<Program> {
+    pub fn new(context: Arc<Context>, src: CString) -> Arc<Program> {
         Arc::new(Self {
-            base: CLObjectBase::new(),
-            context: context.clone(),
-            devs: devs.to_vec(),
-            src: ProgramSourceType::Src(src),
+            base: CLObjectBase::new(RusticlTypes::Program),
             build: Mutex::new(ProgramBuild {
-                builds: Self::create_default_builds(devs),
+                builds: Self::create_default_builds(&context.devs),
                 spec_constants: HashMap::new(),
                 kernels: Vec::new(),
                 kernel_info: HashMap::new(),
             }),
+            devs: context.devs.to_vec(),
+            context: context,
+            src: ProgramSourceType::Src(src),
         })
     }
 
@@ -438,7 +438,7 @@ impl Program {
         build.build_nirs(false);
 
         Arc::new(Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Program),
             context: context,
             devs: devs,
             src: ProgramSourceType::Binary,
@@ -449,7 +449,7 @@ impl Program {
     pub fn from_spirv(context: Arc<Context>, spirv: &[u8]) -> Arc<Program> {
         let builds = Self::create_default_builds(&context.devs);
         Arc::new(Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Program),
             devs: context.devs.clone(),
             context: context,
             src: ProgramSourceType::Il(SPIRVBin::from_bin(spirv)),
@@ -751,7 +751,7 @@ impl Program {
         build.build_nirs(false);
 
         Arc::new(Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Program),
             context: context,
             devs: devs.to_owned(),
             src: ProgramSourceType::Linked,

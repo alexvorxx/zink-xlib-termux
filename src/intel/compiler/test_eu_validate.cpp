@@ -22,6 +22,7 @@
  */
 
 #include <gtest/gtest.h>
+#include "brw_disasm_info.h"
 #include "brw_eu.h"
 #include "brw_eu_defines.h"
 #include "util/bitset.h"

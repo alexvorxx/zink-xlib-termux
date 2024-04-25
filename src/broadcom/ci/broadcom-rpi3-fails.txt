@@ -1199,3 +1199,6 @@ x11-dEQP-EGL.functional.fence_sync.valid.egl_fence_persistent_buffer,Crash
 
 # Bisected to 35ae5dce39c ("mesa: don't pass Infs to the shader via gl_Fog.scale")
 spec@glsl-1.10@execution@glsl-1.10-built-in-uniform-state,Fail
+
+# Couldn't reproduce locally
+spec@oes_packed_depth_stencil@depth_stencil texture gles2,Fail

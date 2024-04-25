@@ -241,6 +241,11 @@ _mesa_vertex_attrib_binding(struct gl_context *ctx,
       }
 
       vao->NonDefaultStateMask |= array_bit | BITFIELD_BIT(bindingIndex);
+
+      if (attribIndex != bindingIndex)
+         vao->NonIdentityBufferAttribMapping |= array_bit;
+      else
+         vao->NonIdentityBufferAttribMapping &= ~array_bit;
    }
 }
 
@@ -4094,6 +4099,8 @@ init_array(struct gl_context *ctx,
    assert(index < ARRAY_SIZE(vao->BufferBinding));
    struct gl_vertex_buffer_binding *binding = &vao->BufferBinding[index];
 
+   vao->NonIdentityBufferAttribMapping &= ~BITFIELD_BIT(index);
+
    _mesa_set_vertex_format(&array->Format, size, type, GL_RGBA,
                            GL_FALSE, GL_FALSE, GL_FALSE);
    array->Stride = 0;
@@ -4165,7 +4172,7 @@ _mesa_init_varray(struct gl_context *ctx)
 
 
 /**
- * Callback for deleting an array object.  Called by _mesa_HashDeleteAll().
+ * Callback for deleting an array object.  Called by _mesa_DeleteHashTable().
  */
 static void
 delete_arrayobj_cb(void *data, void *userData)
@@ -4182,8 +4189,7 @@ delete_arrayobj_cb(void *data, void *userData)
 void
 _mesa_free_varray_data(struct gl_context *ctx)
 {
-   _mesa_HashDeleteAll(ctx->Array.Objects, delete_arrayobj_cb, ctx);
-   _mesa_DeleteHashTable(ctx->Array.Objects);
+   _mesa_DeleteHashTable(ctx->Array.Objects, delete_arrayobj_cb, ctx);
 }
 
 void GLAPIENTRY

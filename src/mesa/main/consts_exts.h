@@ -225,6 +225,7 @@ struct gl_extensions
    GLboolean AMD_compressed_ATC_texture;
    GLboolean AMD_framebuffer_multisample_advanced;
    GLboolean AMD_depth_clamp_separate;
+   GLboolean AMD_gpu_shader_half_float;
    GLboolean AMD_performance_monitor;
    GLboolean AMD_pinned_memory;
    GLboolean AMD_seamless_cubemap_per_texture;
@@ -1018,5 +1019,9 @@ struct gl_constants
 
    /** Allow GLThread to convert glBuffer */
    bool AllowGLThreadBufferSubDataOpt;
+
+   /** Whether pipe_context::draw_vertex_state is supported. */
+   bool HasDrawVertexState;
 };
+
 #endif

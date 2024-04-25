@@ -891,6 +891,8 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
       driQueryOptionb(config->options, "intel_enable_wa_14018912822");
    screen->driconf.enable_tbimr =
       driQueryOptionb(config->options, "intel_tbimr");
+   screen->driconf.generated_indirect_threshold =
+      driQueryOptioni(config->options, "generated_indirect_threshold");
 
    screen->precompile = debug_get_bool_option("shader_precompile", true);
 
@@ -941,6 +943,7 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
    iris_init_screen_program_functions(pscreen);
 
    genX_call(screen->devinfo, init_screen_state, screen);
+   genX_call(screen->devinfo, init_screen_gen_state, screen);
 
    glsl_type_singleton_init_or_ref();
 

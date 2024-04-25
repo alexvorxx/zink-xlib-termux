@@ -30,6 +30,7 @@
   */
 
 #include "brw_compiler.h"
+#include "brw_disasm.h"
 #include "brw_eu.h"
 #include "brw_prim.h"
 
@@ -66,7 +67,7 @@ struct brw_ff_gs_compile {
    /* Number of registers used to store vertex data */
    GLuint nr_regs;
 
-   struct brw_vue_map vue_map;
+   struct intel_vue_map vue_map;
 };
 
 /**
@@ -563,7 +564,7 @@ brw_compile_ff_gs_prog(struct brw_compiler *compiler,
 		       void *mem_ctx,
 		       const struct brw_ff_gs_prog_key *key,
 		       struct brw_ff_gs_prog_data *prog_data,
-		       struct brw_vue_map *vue_map,
+		       struct intel_vue_map *vue_map,
 		       unsigned *final_assembly_size)
 {
    struct brw_ff_gs_compile c;

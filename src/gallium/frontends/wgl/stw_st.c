@@ -169,8 +169,9 @@ stw_st_framebuffer_validate_locked(struct st_context *st,
     * drawing. A fake front texture is needed to handle that scenario.
     * For MSAA, we just need to make sure that the back buffer also
     * exists, so we can blt to it during flush_frontbuffer. */
-   if (mask & ST_ATTACHMENT_FRONT_LEFT_MASK &&
-       stwfb->fb->winsys_framebuffer) {
+   if ((mask & ST_ATTACHMENT_FRONT_LEFT_MASK) &&
+       stwfb->fb->winsys_framebuffer &&
+       (stwfb->stvis.buffer_mask & ST_ATTACHMENT_BACK_LEFT_MASK)) {
       if (stwfb->stvis.samples <= 1)
          stwfb->needs_fake_front = true;
       else
@@ -488,6 +489,9 @@ stw_st_framebuffer_flush_front(struct st_context *st,
       /* fake front texture is now invalid */
       p_atomic_inc(&stwfb->base.stamp);
       need_swap_textures = true;
+   } else if (stwfb->fb->winsys_framebuffer &&
+              stwfb->fb->winsys_framebuffer->flush_frontbuffer) {
+      stwfb->fb->winsys_framebuffer->flush_frontbuffer(stwfb->fb->winsys_framebuffer, pipe);
    }
 
    if (need_swap_textures) {

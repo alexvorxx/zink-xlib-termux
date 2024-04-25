@@ -302,7 +302,7 @@ fs_visitor::emit_interpolation_setup_gfx6()
          abld.exec_all().group(MIN2(16, dispatch_width) * 2, 0);
 
       check_dynamic_msaa_flag(dbld, wm_prog_data,
-                              BRW_WM_MSAA_FLAG_COARSE_RT_WRITES);
+                              INTEL_MSAA_FLAG_COARSE_RT_WRITES);
 
       int_pixel_offset_x = dbld.vgrf(BRW_REGISTER_TYPE_UW);
       set_predicate(BRW_PREDICATE_NORMAL,
@@ -555,7 +555,7 @@ fs_visitor::emit_interpolation_setup_gfx6()
 
          if (!loaded_flag) {
             check_dynamic_msaa_flag(ubld, wm_prog_data,
-                                    BRW_WM_MSAA_FLAG_PERSAMPLE_INTERP);
+                                    INTEL_MSAA_FLAG_PERSAMPLE_INTERP);
          }
 
          for (unsigned j = 0; j < dispatch_width / 8; j++) {
@@ -829,7 +829,7 @@ fs_visitor::emit_urb_writes(const fs_reg &gs_vertex_count)
       (const struct brw_vs_prog_key *) this->key;
    const GLbitfield64 psiz_mask =
       VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT | VARYING_BIT_PSIZ | VARYING_BIT_PRIMITIVE_SHADING_RATE;
-   const struct brw_vue_map *vue_map = &vue_prog_data->vue_map;
+   const struct intel_vue_map *vue_map = &vue_prog_data->vue_map;
    bool flush;
    fs_reg sources[8];
    fs_reg urb_handle;

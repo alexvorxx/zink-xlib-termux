@@ -41,6 +41,7 @@
 #endif
 
 #include "common/intel_aux_map.h"
+#include "common/intel_bind_timeline.h"
 #include "common/intel_decoder.h"
 #include "common/intel_engine.h"
 #include "common/intel_gem.h"
@@ -447,9 +448,18 @@ enum anv_bo_alloc_flags {
    /** Specify whether this BO is internal to the driver */
    ANV_BO_ALLOC_INTERNAL =                (1 << 19),
 
-   /** Specifies that the BO should be cached and coherent. */
-   ANV_BO_ALLOC_HOST_CACHED_COHERENT =    (ANV_BO_ALLOC_HOST_COHERENT | ANV_BO_ALLOC_HOST_CACHED),
+   /** Allocate with CCS AUX requirements
+    *
+    * This pads the BO include CCS data mapppable through the AUX-TT and
+    * aligned to the AUX-TT requirements.
+    */
+   ANV_BO_ALLOC_AUX_CCS =                 (1 << 20),
 };
+
+/** Specifies that the BO should be cached and coherent. */
+#define ANV_BO_ALLOC_HOST_CACHED_COHERENT (ANV_BO_ALLOC_HOST_COHERENT | \
+                                           ANV_BO_ALLOC_HOST_CACHED)
+
 
 struct anv_bo {
    const char *name;
@@ -482,6 +492,9 @@ struct anv_bo {
 
    /** Size of the buffer */
    uint64_t size;
+
+   /** Offset at which the CCS data is stored */
+   uint64_t ccs_offset;
 
    /* Map for internally mapped BOs.
     *
@@ -1015,6 +1028,25 @@ struct anv_physical_device {
     bool                                        uses_ex_bso;
 
     bool                                        always_flush_cache;
+
+    /** True if application memory is allocated with extra AUX memory
+     *
+     * Applications quite often pool image allocations together in a single
+     * VkDeviceMemory object. On platforms like MTL, the alignment of images
+     * with compression mapped through the AUX translation tables is large :
+     * 1MB. This can create a lot of wasted space in the application memory
+     * objects.
+     *
+     * To workaround this problem, we allocate CCS data at the end of
+     * VkDeviceMemory objects. This would not work well for TGL-like platforms
+     * because the AUX translation tables also contain the format of the
+     * images, but on MTL the HW ignore those values. So we can share the AUX
+     * TT entries between different images without problem.
+     *
+     * This should be only true for platforms with AUX TT.
+     */
+    bool                                         alloc_aux_tt_mem;
+
     /**
      * True if the descriptors buffers are holding one of the following :
      *    - anv_sampled_image_descriptor
@@ -1172,6 +1204,7 @@ struct anv_instance {
     uint8_t                                     assume_full_subgroups;
     bool                                        limit_trig_input_range;
     bool                                        sample_mask_out_opengl_behaviour;
+    bool                                        force_filter_addr_rounding;
     bool                                        fp64_workaround_enabled;
     float                                       lower_depth_range_rate;
     unsigned                                    generated_indirect_threshold;
@@ -1602,20 +1635,6 @@ enum anv_internal_kernel_name {
    ANV_INTERNAL_KERNEL_COUNT,
 };
 
-struct anv_internal_kernel_bind_map {
-   uint32_t num_bindings;
-   struct {
-      /* Whether this binding is provided through push constants */
-      bool     push_constant;
-
-      /* When not provided by push constants, this is offset at which the
-       * 64bit address of the binding is located in the push constant data.
-       */
-      uint32_t address_offset;
-   } bindings[5];
-   uint32_t push_data_size;
-};
-
 enum anv_rt_bvh_build_method {
    ANV_BVH_BUILD_METHOD_TRIVIAL,
    ANV_BVH_BUILD_METHOD_NEW_SAH,
@@ -1711,6 +1730,12 @@ struct anv_device {
 
     struct anv_bo *                             trivial_batch_bo;
     struct anv_state                            null_surface_state;
+
+    /**
+     * NULL surface state copy stored in host memory for use as a fast
+     * memcpy() source.
+     */
+    char                                        host_null_surface_state[ANV_SURFACE_STATE_SIZE];
 
     struct vk_pipeline_cache *                  default_pipeline_cache;
     struct vk_pipeline_cache *                  internal_cache;
@@ -1872,6 +1897,8 @@ struct anv_device {
     bool                                         using_sparse;
 
     struct anv_device_astc_emu                   astc_emu;
+
+    struct intel_bind_timeline bind_timeline; /* Xe only */
 };
 
 static inline uint32_t
@@ -2014,6 +2041,23 @@ anv_trtt_batch_bo_free(struct anv_device *device,
 
 void anv_queue_trace(struct anv_queue *queue, const char *label,
                      bool frame, bool begin);
+
+static inline VkResult
+anv_queue_post_submit(struct anv_queue *queue, VkResult submit_result)
+{
+   if (submit_result != VK_SUCCESS)
+      return submit_result;
+
+   VkResult result = VK_SUCCESS;
+   if (queue->sync) {
+      result = vk_sync_wait(&queue->device->vk, queue->sync, 0,
+                            VK_SYNC_WAIT_COMPLETE, UINT64_MAX);
+      if (result != VK_SUCCESS)
+         result = vk_queue_set_lost(&queue->vk, "sync wait failed");
+   }
+
+   return result;
+}
 
 void *
 anv_gem_mmap(struct anv_device *device, struct anv_bo *bo, uint64_t offset,
@@ -3028,6 +3072,15 @@ enum anv_query_bits {
    ANV_QUERY_WRITES_DATA_FLUSH    = (1 << 3),
 };
 
+/* It's not clear why DG2 doesn't have issues with L3/CS coherency. But it's
+ * likely related to performance workaround 14015868140.
+ *
+ * For now we enable this only on DG2 and platform prior to Gfx12 where there
+ * is no tile cache.
+ */
+#define ANV_DEVINFO_HAS_COHERENT_L3_CS(devinfo) \
+   (intel_device_info_is_dg2(devinfo))
+
 /* Things we need to flush before accessing query data using the command
  * streamer.
  *
@@ -3039,10 +3092,11 @@ enum anv_query_bits {
  * vkCopyQueryPoolResults().
  */
 #define ANV_QUERY_RENDER_TARGET_WRITES_PENDING_BITS(devinfo) \
-   (((devinfo->verx10 >= 120 && \
-      devinfo->verx10 < 125) ? ANV_QUERY_WRITES_TILE_FLUSH : 0) | \
-   ANV_QUERY_WRITES_RT_FLUSH | \
-   ANV_QUERY_WRITES_CS_STALL)
+   (((!ANV_DEVINFO_HAS_COHERENT_L3_CS(devinfo) && \
+      devinfo->ver >= 12) ? \
+     ANV_QUERY_WRITES_TILE_FLUSH : 0) | \
+    ANV_QUERY_WRITES_RT_FLUSH | \
+    ANV_QUERY_WRITES_CS_STALL)
 #define ANV_QUERY_COMPUTE_WRITES_PENDING_BITS \
    (ANV_QUERY_WRITES_DATA_FLUSH | \
     ANV_QUERY_WRITES_CS_STALL)
@@ -3333,6 +3387,8 @@ struct anv_simple_shader {
    struct anv_shader_bin *kernel;
    /* L3 config used by the shader */
    const struct intel_l3_config *l3_config;
+   /* Current URB config */
+   const struct intel_urb_config *urb_cfg;
 
    /* Managed by the simpler shader helper*/
    struct anv_state bt_state;
@@ -3442,6 +3498,8 @@ struct anv_cmd_graphics_state {
     * State tracking for Wa_18020335297.
     */
    bool                                         viewport_set;
+
+   struct intel_urb_config urb_cfg;
 
    uint32_t n_occlusion_queries;
 
@@ -4173,7 +4231,7 @@ struct anv_graphics_base_pipeline {
    enum brw_robustness_flags                    robust_flags[ANV_GRAPHICS_SHADER_STAGE_COUNT];
 
    /* True if at the time the fragment shader was compiled, it didn't have all
-    * the information to avoid BRW_WM_MSAA_FLAG_ENABLE_DYNAMIC.
+    * the information to avoid INTEL_MSAA_FLAG_ENABLE_DYNAMIC.
     */
    bool                                         fragment_dynamic;
 };
@@ -4268,12 +4326,15 @@ struct anv_graphics_pipeline {
    uint32_t                                     vertex_input_elems;
    uint32_t                                     vertex_input_data[2 * 31 /* MAX_VES + 2 internal */];
 
-   enum brw_wm_msaa_flags                       fs_msaa_flags;
+   enum intel_msaa_flags                        fs_msaa_flags;
 
    /* Pre computed CS instructions that can directly be copied into
     * anv_cmd_buffer.
     */
    uint32_t                                     batch_data[416];
+
+   /* Urb setup utilized by this pipeline. */
+   struct intel_urb_config urb_cfg;
 
    /* Fully backed instructions, ready to be emitted in the anv_cmd_buffer */
    struct {
@@ -5120,7 +5181,7 @@ anv_address_allows_aux_map(const struct anv_device *device,
     * into on the BO, but we don't have that information here. As a heuristic,
     * rely on the BO offset instead.
     */
-   if (((addr.bo ? addr.bo->offset : 0) + addr.offset) %
+   if (anv_address_physical(addr) %
        intel_aux_map_get_alignment(device->aux_map_ctx) != 0)
       return false;
 
@@ -5213,7 +5274,8 @@ anv_image_ccs_op(struct anv_cmd_buffer *cmd_buffer,
                  bool predicate);
 
 isl_surf_usage_flags_t
-anv_image_choose_isl_surf_usage(VkImageCreateFlags vk_create_flags,
+anv_image_choose_isl_surf_usage(struct anv_physical_device *device,
+                                VkImageCreateFlags vk_create_flags,
                                 VkImageUsageFlags vk_usage,
                                 isl_surf_usage_flags_t isl_extra_usage,
                                 VkImageAspectFlagBits aspect);

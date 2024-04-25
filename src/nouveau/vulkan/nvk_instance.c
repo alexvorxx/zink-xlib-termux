@@ -41,6 +41,9 @@ static const struct vk_instance_extension_table instance_extensions = {
 #ifdef VK_USE_PLATFORM_XLIB_XRANDR_EXT
    .EXT_acquire_xlib_display = true,
 #endif
+#ifndef VK_USE_PLATFORM_WIN32_KHR
+   .EXT_headless_surface = true,
+#endif
    .KHR_device_group_creation = true,
    .KHR_external_fence_capabilities = true,
    .KHR_external_memory_capabilities = true,
@@ -69,7 +72,7 @@ static const driOptionDescription nvk_dri_options[] = {
       DRI_CONF_VK_X11_STRICT_IMAGE_COUNT(false)
       DRI_CONF_VK_X11_ENSURE_MIN_IMAGE_COUNT(false)
       DRI_CONF_VK_KHR_PRESENT_WAIT(false)
-      DRI_CONF_VK_XWAYLAND_WAIT_READY(true)
+      DRI_CONF_VK_XWAYLAND_WAIT_READY(false)
    DRI_CONF_SECTION_END
 
    DRI_CONF_SECTION_DEBUG

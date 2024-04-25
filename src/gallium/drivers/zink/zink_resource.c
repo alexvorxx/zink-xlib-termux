@@ -685,7 +685,8 @@ init_ici(struct zink_screen *screen, VkImageCreateInfo *ici, const struct pipe_r
 
    case PIPE_TEXTURE_3D:
       ici->imageType = VK_IMAGE_TYPE_3D;
-      ici->flags |= VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT;
+      if (!(templ->flags & PIPE_RESOURCE_FLAG_SPARSE))
+         ici->flags |= VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT;
       if (screen->info.have_EXT_image_2d_view_of_3d)
          ici->flags |= VK_IMAGE_CREATE_2D_VIEW_COMPATIBLE_BIT_EXT;
       break;
@@ -989,7 +990,7 @@ allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
       alignment = MAX2(alignment, screen->info.props.limits.minMemoryMapAlignment);
    obj->alignment = alignment;
 
-   if (zink_mem_type_idx_from_bits(screen, heap, reqs->memoryTypeBits) == UINT32_MAX) {
+   if (zink_mem_type_idx_from_types(screen, heap, reqs->memoryTypeBits) == UINT32_MAX) {
       /* not valid based on reqs; demote to more compatible type */
       switch (heap) {
       case ZINK_HEAP_DEVICE_LOCAL_VISIBLE:
@@ -1001,7 +1002,7 @@ allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
       default:
          break;
       }
-      assert(zink_mem_type_idx_from_bits(screen, heap, reqs->memoryTypeBits) != UINT32_MAX);
+      assert(zink_mem_type_idx_from_types(screen, heap, reqs->memoryTypeBits) != UINT32_MAX);
    }
 
    while (1) {
@@ -1014,7 +1015,7 @@ allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
          obj->bo = zink_bo(zink_bo_create(screen, reqs->size, alignment, heap, mai.pNext ? ZINK_ALLOC_NO_SUBALLOC : 0, mai.memoryTypeIndex, mai.pNext));
       }
 
-      if (obj->bo || heap != ZINK_HEAP_DEVICE_LOCAL_VISIBLE) {
+      if (obj->bo || heap != ZINK_HEAP_DEVICE_LOCAL_VISIBLE)
          break;
 
       /* demote BAR allocations to a different heap on failure to avoid oom */
@@ -1022,7 +1023,6 @@ allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
           heap = ZINK_HEAP_HOST_VISIBLE_COHERENT;
       else
           heap = ZINK_HEAP_DEVICE_LOCAL;
-      }
    };
 
    return obj->bo ? roc_success : roc_fail_and_cleanup_object;
@@ -1724,6 +1724,11 @@ add_resource_bind(struct zink_context *ctx, struct zink_resource *res, unsigned 
                              u_minify(res->base.b.height0, i), res->base.b.array_size};
       box.depth = util_num_layers(&res->base.b, i);
       ctx->base.resource_copy_region(&ctx->base, &res->base.b, i, 0, 0, 0, &staging.base.b, i, &box);
+   }
+   if (old_obj->exportable) {
+      simple_mtx_lock(&ctx->batch.state->exportable_lock);
+      _mesa_set_remove_key(&ctx->batch.state->dmabuf_exports, &staging);
+      simple_mtx_unlock(&ctx->batch.state->exportable_lock);
    }
    zink_resource_object_reference(screen, &old_obj, NULL);
    return true;

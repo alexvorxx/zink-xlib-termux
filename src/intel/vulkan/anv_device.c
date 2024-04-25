@@ -60,7 +60,6 @@
 #include "vk_drm_syncobj.h"
 #include "common/intel_aux_map.h"
 #include "common/intel_uuid.h"
-#include "common/i915/intel_gem.h"
 #include "perf/intel_perf.h"
 
 #include "i915/anv_device.h"
@@ -76,10 +75,11 @@ static const driOptionDescription anv_dri_options[] = {
       DRI_CONF_VK_X11_OVERRIDE_MIN_IMAGE_COUNT(0)
       DRI_CONF_VK_X11_STRICT_IMAGE_COUNT(false)
       DRI_CONF_VK_KHR_PRESENT_WAIT(false)
-      DRI_CONF_VK_XWAYLAND_WAIT_READY(true)
+      DRI_CONF_VK_XWAYLAND_WAIT_READY(false)
       DRI_CONF_ANV_ASSUME_FULL_SUBGROUPS(0)
       DRI_CONF_ANV_DISABLE_FCV(false)
       DRI_CONF_ANV_SAMPLE_MASK_OUT_OPENGL_BEHAVIOUR(false)
+      DRI_CONF_ANV_FORCE_FILTER_ADDR_ROUNDING(false)
       DRI_CONF_ANV_FP64_WORKAROUND_ENABLED(false)
       DRI_CONF_ANV_GENERATED_INDIRECT_THRESHOLD(4)
       DRI_CONF_ANV_GENERATED_INDIRECT_RING_THRESHOLD(100)
@@ -207,6 +207,9 @@ static const struct vk_instance_extension_table instance_extensions = {
    .EXT_direct_mode_display                  = true,
    .EXT_display_surface_counter              = true,
    .EXT_acquire_drm_display                  = true,
+#endif
+#ifndef VK_USE_PLATFORM_WIN32_KHR
+   .EXT_headless_surface                     = true,
 #endif
 };
 
@@ -958,7 +961,9 @@ get_properties_1_1(const struct anv_physical_device *pdevice,
                                     VK_SUBGROUP_FEATURE_SHUFFLE_RELATIVE_BIT |
                                     VK_SUBGROUP_FEATURE_QUAD_BIT |
                                     VK_SUBGROUP_FEATURE_ARITHMETIC_BIT |
-                                    VK_SUBGROUP_FEATURE_CLUSTERED_BIT;
+                                    VK_SUBGROUP_FEATURE_CLUSTERED_BIT |
+                                    VK_SUBGROUP_FEATURE_ROTATE_BIT_KHR |
+                                    VK_SUBGROUP_FEATURE_ROTATE_CLUSTERED_BIT_KHR;
    p->subgroupQuadOperationsInAllStages = true;
 
    p->pointClippingBehavior      = VK_POINT_CLIPPING_BEHAVIOR_USER_CLIP_PLANES_ONLY;
@@ -1884,8 +1889,7 @@ anv_physical_device_init_uuids(struct anv_physical_device *device)
     */
    _mesa_sha1_init(&sha1_ctx);
    _mesa_sha1_update(&sha1_ctx, build_id_data(note), build_id_len);
-   _mesa_sha1_update(&sha1_ctx, &device->info.pci_device_id,
-                     sizeof(device->info.pci_device_id));
+   brw_device_sha1_update(&sha1_ctx, &device->info);
    _mesa_sha1_update(&sha1_ctx, &device->always_use_bindless,
                      sizeof(device->always_use_bindless));
    _mesa_sha1_final(&sha1_ctx, sha1);
@@ -2016,24 +2020,25 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
          kernel_supports_non_render_engines &&
          sparse_supports_non_render_engines;
 
-      if (debug_get_bool_option("INTEL_COMPUTE_CLASS", false)) {
-         if (!can_use_non_render_engines)
-            mesa_logw("cannot initialize compute engine");
-         else
-            c_count = intel_engines_count(pdevice->engine_info,
-                                          INTEL_ENGINE_CLASS_COMPUTE);
-      }
+      if (!can_use_non_render_engines)
+         mesa_logw("cannot initialize compute engine");
+      else
+         c_count = intel_engines_supported_count(pdevice->local_fd,
+                                                 &pdevice->info,
+                                                 pdevice->engine_info,
+                                                 INTEL_ENGINE_CLASS_COMPUTE);
       enum intel_engine_class compute_class =
          c_count < 1 ? INTEL_ENGINE_CLASS_RENDER : INTEL_ENGINE_CLASS_COMPUTE;
 
       int blit_count = 0;
-      if (debug_get_bool_option("INTEL_COPY_CLASS", true) &&
-          pdevice->info.verx10 >= 125) {
+      if (pdevice->info.verx10 >= 125) {
          if (!can_use_non_render_engines)
             mesa_logw("cannot initialize blitter engine");
          else
-            blit_count = intel_engines_count(pdevice->engine_info,
-                                             INTEL_ENGINE_CLASS_COPY);
+            blit_count = intel_engines_supported_count(pdevice->local_fd,
+                                                       &pdevice->info,
+                                                       pdevice->engine_info,
+                                                       INTEL_ENGINE_CLASS_COPY);
       }
 
       anv_override_engine_counts(&gc_count, &g_count, &c_count, &v_count);
@@ -2235,7 +2240,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       device->flush_astc_ldr_void_extent_denorms =
          device->has_astc_ldr && !device->emu_astc_ldr;
    }
-   device->disable_fcv = intel_device_info_is_mtl(&device->info) ||
+   device->disable_fcv = intel_device_info_is_mtl_or_arl(&device->info) ||
                          instance->disable_fcv;
 
    result = anv_physical_device_init_heaps(device, fd);
@@ -2292,6 +2297,8 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       !device->uses_ex_bso ||
       driQueryOptionb(&instance->dri_options, "force_indirect_descriptors");
 
+   device->alloc_aux_tt_mem =
+      device->info.has_aux_map && device->info.verx10 >= 125;
    /* Check if we can read the GPU timestamp register from the CPU */
    uint64_t u64_ignore;
    device->has_reg_timestamp = intel_gem_read_render_timestamp(fd,
@@ -2467,6 +2474,8 @@ anv_init_dri_options(struct anv_instance *instance)
             driQueryOptionb(&instance->dri_options, "limit_trig_input_range");
     instance->sample_mask_out_opengl_behaviour =
             driQueryOptionb(&instance->dri_options, "anv_sample_mask_out_opengl_behaviour");
+    instance->force_filter_addr_rounding =
+            driQueryOptionb(&instance->dri_options, "anv_force_filter_addr_rounding");
     instance->lower_depth_range_rate =
             driQueryOptionf(&instance->dri_options, "lower_depth_range_rate");
     instance->no_16bit =
@@ -3534,6 +3543,9 @@ VkResult anv_CreateDevice(
                           .size = isl_extent3d(1, 1, 1) /* This shouldn't matter */);
    }
 
+   isl_null_fill_state(&device->isl_dev, &device->host_null_surface_state,
+                       .size = isl_extent3d(1, 1, 1) /* This shouldn't matter */);
+
    anv_scratch_pool_init(device, &device->scratch_pool);
 
    /* TODO(RT): Do we want some sort of data structure for this? */
@@ -4090,6 +4102,21 @@ VkResult anv_AllocateMemory(
     */
    if (device->info->has_aux_map)
       alloc_flags |= ANV_BO_ALLOC_AUX_TT_ALIGNED;
+
+   /* If the allocation is not dedicated nor a host pointer, allocate
+    * additional CCS space.
+    *
+    * TODO: If we ever ship VK_EXT_descriptor_buffer (ahahah... :() we could
+    * drop this flag in the descriptor buffer case as we don't need any
+    * compression there.
+    *
+    * TODO: We could also create new memory types for allocations that don't
+    * need any compression.
+    */
+   if (device->physical->alloc_aux_tt_mem &&
+       dedicated_info == NULL &&
+       mem->vk.host_ptr == NULL)
+      alloc_flags |= ANV_BO_ALLOC_AUX_CCS;
 
    /* TODO: Android, ChromeOS and other applications may need another way to
     * allocate buffers that can be scanout to display but it should pretty

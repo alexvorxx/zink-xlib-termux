@@ -39,7 +39,7 @@
 #include "compiler/nir/nir.h"
 #include "compiler/nir/nir_builder.h"
 #include "intel/compiler/brw_compiler.h"
-#include "intel/compiler/brw_eu.h"
+#include "intel/compiler/brw_disasm.h"
 #include "intel/compiler/brw_nir.h"
 #include "crocus_context.h"
 #include "crocus_resource.h"
@@ -258,7 +258,7 @@ bool
 crocus_blorp_upload_shader(struct blorp_batch *blorp_batch, uint32_t stage,
                            const void *key, uint32_t key_size,
                            const void *kernel, uint32_t kernel_size,
-                           const struct brw_stage_prog_data *prog_data_templ,
+                           const void *prog_data_templ,
                            uint32_t prog_data_size, uint32_t *kernel_out,
                            void *prog_data_out)
 {

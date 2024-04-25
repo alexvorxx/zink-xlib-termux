@@ -690,7 +690,7 @@ void anv_CmdBindPipeline(
             cmd_buffer->state.push_constants_dirty |= stages;
       }
 
-      if ((new_pipeline->fs_msaa_flags & BRW_WM_MSAA_FLAG_ENABLE_DYNAMIC) &&
+      if ((new_pipeline->fs_msaa_flags & INTEL_MSAA_FLAG_ENABLE_DYNAMIC) &&
           push->gfx.fs_msaa_flags != new_pipeline->fs_msaa_flags) {
          push->gfx.fs_msaa_flags = new_pipeline->fs_msaa_flags;
          cmd_buffer->state.push_constants_dirty |= VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -1097,7 +1097,7 @@ anv_cmd_buffer_cs_push_constants(struct anv_cmd_buffer *cmd_buffer)
    const struct brw_cs_prog_data *cs_prog_data = get_cs_prog_data(pipeline);
    const struct anv_push_range *range = &pipeline->cs->bind_map.push_ranges[0];
 
-   const struct brw_cs_dispatch_info dispatch =
+   const struct intel_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(devinfo, cs_prog_data, NULL);
    const unsigned total_push_constants_size =
       brw_cs_push_const_total_size(cs_prog_data, dispatch.threads);

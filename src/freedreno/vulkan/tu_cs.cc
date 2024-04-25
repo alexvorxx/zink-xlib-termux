@@ -507,6 +507,26 @@ tu_cs_reset(struct tu_cs *cs)
    cs->entry_count = 0;
 }
 
+uint64_t
+tu_cs_emit_data_nop(struct tu_cs *cs,
+                    const uint32_t *data,
+                    uint32_t size,
+                    uint32_t align_dwords)
+{
+   uint32_t total_size = size + (align_dwords - 1);
+   tu_cs_emit_pkt7(cs, CP_NOP, total_size);
+
+   uint64_t iova = tu_cs_get_cur_iova(cs);
+   uint64_t iova_aligned = align64(iova, align_dwords * sizeof(uint32_t));
+   size_t offset = (iova_aligned - iova) / sizeof(uint32_t);
+   cs->cur += offset;
+   memcpy(cs->cur, data, size * sizeof(uint32_t));
+
+   cs->cur += total_size - offset;
+
+   return iova + offset * sizeof(uint32_t);
+}
+
 void
 tu_cs_emit_debug_string(struct tu_cs *cs, const char *string, int len)
 {

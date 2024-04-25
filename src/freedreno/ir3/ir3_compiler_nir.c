@@ -920,6 +920,40 @@ emit_intrinsic_copy_ubo_to_uniform(struct ir3_context *ctx,
    array_insert(b, b->keeps, ldc);
 }
 
+static void
+emit_intrinsic_copy_global_to_uniform(struct ir3_context *ctx,
+                                      nir_intrinsic_instr *intr)
+{
+   struct ir3_block *b = ctx->block;
+
+   unsigned size = nir_intrinsic_range(intr);
+   unsigned dst = nir_intrinsic_range_base(intr);
+   unsigned addr_offset = nir_intrinsic_base(intr);
+   unsigned dst_lo = dst & 0xff;
+   unsigned dst_hi = dst >> 8;
+
+   struct ir3_instruction *a1 = NULL;
+   if (dst_hi)
+      a1 = ir3_get_addr1(ctx, dst_hi << 8);
+
+   struct ir3_instruction *addr_lo = ir3_get_src(ctx, &intr->src[0])[0];
+   struct ir3_instruction *addr_hi = ir3_get_src(ctx, &intr->src[0])[1];
+   struct ir3_instruction *addr = ir3_collect(b, addr_lo, addr_hi);
+   struct ir3_instruction *ldg = ir3_LDG_K(b, create_immed(b, dst_lo), 0, addr, 0, 
+                                           create_immed(b, addr_offset), 0,
+                                           create_immed(b, size), 0);
+   ldg->barrier_class = ldg->barrier_conflict = IR3_BARRIER_CONST_W;
+   ldg->cat6.type = TYPE_U32;
+
+   if (a1) {
+      ir3_instr_set_address(ldg, a1);
+      ldg->flags |= IR3_INSTR_A1EN;
+   }
+
+   array_insert(b, b->keeps, ldg);
+}
+
+
 /* handles direct/indirect UBO reads: */
 static void
 emit_intrinsic_load_ubo(struct ir3_context *ctx, nir_intrinsic_instr *intr,
@@ -1984,6 +2018,111 @@ emit_intrinsic_reduce(struct ir3_context *ctx, nir_intrinsic_instr *intr)
    return create_multidst_mov(ctx->block, dst);
 }
 
+static struct ir3_instruction *
+emit_intrinsic_reduce_clusters(struct ir3_context *ctx,
+                               nir_intrinsic_instr *intr)
+{
+   nir_op nir_reduce_op = (nir_op)nir_intrinsic_reduction_op(intr);
+   reduce_op_t reduce_op = get_reduce_op(nir_reduce_op);
+   unsigned dst_size = intr->def.bit_size;
+
+   bool need_exclusive =
+      intr->intrinsic == nir_intrinsic_exclusive_scan_clusters_ir3;
+   bool need_scratch = reduce_op == REDUCE_OP_MUL_U && dst_size == 32;
+
+   /* Note: the shared reg is initialized to the identity, so we need it to
+    * always be 32-bit even when the source isn't because half shared regs are
+    * not supported.
+    */
+   struct ir3_instruction *identity =
+      create_immed(ctx->block, get_reduce_identity(nir_reduce_op, dst_size));
+   identity->dsts[0]->flags |= IR3_REG_SHARED;
+
+   /* OPC_SCAN_CLUSTERS_MACRO has the following destinations:
+    * - Shared reg reduction result, must be initialized to the identity
+    * - Inclusive scan result
+    * - (iff exclusive) Exclusive scan result. Conditionally added because
+    *   calculating the exclusive value is optional (i.e., not a side-effect of
+    *   calculating the inclusive value) and won't be DCE'd anymore at this
+    *   point.
+    * - (iff 32b mul_u) Scratch register. We try to emit "op rx, ry, rx" for
+    *   most ops but this isn't possible for the 32b mul_u macro since its
+    *   destination is clobbered. So conditionally allocate an extra
+    *   register in that case.
+    *
+    * Note that the getlast loop this macro expands to iterates over all
+    * clusters. However, for each iteration, not only the fibers in the current
+    * cluster are active but all later ones as well. Since they still need their
+    * sources when their cluster is handled, all destinations interfere with
+    * the sources.
+    */
+   unsigned ndst = 2 + need_exclusive + need_scratch;
+   unsigned nsrc = 2 + need_exclusive;
+   struct ir3_instruction *scan =
+      ir3_instr_create(ctx->block, OPC_SCAN_CLUSTERS_MACRO, ndst, nsrc);
+   scan->cat1.reduce_op = reduce_op;
+
+   unsigned dst_flags = IR3_REG_EARLY_CLOBBER;
+   if (ir3_bitsize(ctx, dst_size) == 16)
+      dst_flags |= IR3_REG_HALF;
+
+   struct ir3_register *reduce = __ssa_dst(scan);
+   reduce->flags |= IR3_REG_SHARED;
+   struct ir3_register *inclusive = __ssa_dst(scan);
+   inclusive->flags |= dst_flags;
+
+   struct ir3_register *exclusive = NULL;
+   if (need_exclusive) {
+      exclusive = __ssa_dst(scan);
+      exclusive->flags |= dst_flags;
+   }
+
+   if (need_scratch) {
+      struct ir3_register *scratch = __ssa_dst(scan);
+      scratch->flags |= dst_flags;
+   }
+
+   struct ir3_register *reduce_init = __ssa_src(scan, identity, IR3_REG_SHARED);
+   ir3_reg_tie(reduce, reduce_init);
+
+   struct ir3_instruction *inclusive_src = ir3_get_src(ctx, &intr->src[0])[0];
+   __ssa_src(scan, inclusive_src, 0);
+
+   if (need_exclusive) {
+      struct ir3_instruction *exclusive_src =
+         ir3_get_src(ctx, &intr->src[1])[0];
+      __ssa_src(scan, exclusive_src, 0);
+   }
+
+   struct ir3_register *dst;
+   switch (intr->intrinsic) {
+   case nir_intrinsic_reduce_clusters_ir3:
+      dst = reduce;
+      break;
+   case nir_intrinsic_inclusive_scan_clusters_ir3:
+      dst = inclusive;
+      break;
+   case nir_intrinsic_exclusive_scan_clusters_ir3: {
+      assert(exclusive != NULL);
+      dst = exclusive;
+      break;
+   }
+   default:
+      unreachable("unknown reduce intrinsic");
+   }
+
+   return create_multidst_mov(ctx->block, dst);
+}
+
+static struct ir3_instruction *
+emit_intrinsic_brcst_active(struct ir3_context *ctx, nir_intrinsic_instr *intr)
+{
+   struct ir3_instruction *default_src = ir3_get_src(ctx, &intr->src[0])[0];
+   struct ir3_instruction *brcst_val = ir3_get_src(ctx, &intr->src[1])[0];
+   return ir3_BRCST_ACTIVE(ctx->block, nir_intrinsic_cluster_size(intr),
+                           brcst_val, default_src);
+}
+
 static void setup_input(struct ir3_context *ctx, nir_intrinsic_instr *intr);
 static void setup_output(struct ir3_context *ctx, nir_intrinsic_instr *intr);
 
@@ -2171,6 +2310,9 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
       break;
    case nir_intrinsic_copy_ubo_to_uniform_ir3:
       emit_intrinsic_copy_ubo_to_uniform(ctx, intr);
+      break;
+   case nir_intrinsic_copy_global_to_uniform_ir3:
+      emit_intrinsic_copy_global_to_uniform(ctx, intr);
       break;
    case nir_intrinsic_load_frag_coord:
    case nir_intrinsic_load_frag_coord_unscaled_ir3:
@@ -2537,14 +2679,9 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
    }
    case nir_intrinsic_elect:
       dst[0] = ir3_ELECT_MACRO(ctx->block);
-      /* This may expand to a divergent if/then, so allocate stack space for
-       * it.
-       */
-      ctx->max_stack = MAX2(ctx->max_stack, ctx->stack + 1);
       break;
    case nir_intrinsic_preamble_start_ir3:
       dst[0] = ir3_SHPS_MACRO(ctx->block);
-      ctx->max_stack = MAX2(ctx->max_stack, ctx->stack + 1);
       break;
 
    case nir_intrinsic_read_invocation_cond_ir3: {
@@ -2555,7 +2692,6 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
       dst[0]->dsts[0]->flags |= IR3_REG_SHARED;
       dst[0]->srcs[0]->num = regid(REG_P0, 0);
       array_insert(ctx->ir, ctx->ir->predicates, dst[0]);
-      ctx->max_stack = MAX2(ctx->max_stack, ctx->stack + 1);
       break;
    }
 
@@ -2563,7 +2699,6 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
       struct ir3_instruction *src = ir3_get_src(ctx, &intr->src[0])[0];
       dst[0] = ir3_READ_FIRST_MACRO(ctx->block, src, 0);
       dst[0]->dsts[0]->flags |= IR3_REG_SHARED;
-      ctx->max_stack = MAX2(ctx->max_stack, ctx->stack + 1);
       break;
    }
 
@@ -2579,7 +2714,6 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
          ballot = ir3_BALLOT_MACRO(ctx->block, pred, components);
          ballot->srcs[0]->num = regid(REG_P0, 0);
          array_insert(ctx->ir, ctx->ir->predicates, ballot);
-         ctx->max_stack = MAX2(ctx->max_stack, ctx->stack + 1);
       }
 
       ballot->barrier_class = IR3_BARRIER_ACTIVE_FIBERS_R;
@@ -2643,6 +2777,16 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
    case nir_intrinsic_inclusive_scan:
    case nir_intrinsic_exclusive_scan:
       dst[0] = emit_intrinsic_reduce(ctx, intr);
+      break;
+
+   case nir_intrinsic_reduce_clusters_ir3:
+   case nir_intrinsic_inclusive_scan_clusters_ir3:
+   case nir_intrinsic_exclusive_scan_clusters_ir3:
+      dst[0] = emit_intrinsic_reduce_clusters(ctx, intr);
+      break;
+
+   case nir_intrinsic_brcst_active_ir3:
+      dst[0] = emit_intrinsic_brcst_active(ctx, intr);
       break;
 
    case nir_intrinsic_preamble_end_ir3: {
@@ -3655,7 +3799,6 @@ emit_block(struct ir3_context *ctx, nir_block *nblock)
       if (nblock->successors[i]) {
          ctx->block->successors[i] =
             get_block_or_continue(ctx, nblock->successors[i]);
-         ctx->block->physical_successors[i] = ctx->block->successors[i];
       }
    }
 
@@ -3695,20 +3838,6 @@ emit_if(struct ir3_context *ctx, nir_if *nif)
 
    emit_cf_list(ctx, &nif->then_list);
    emit_cf_list(ctx, &nif->else_list);
-
-   struct ir3_block *last_then = get_block(ctx, nir_if_last_then_block(nif));
-   struct ir3_block *first_else = get_block(ctx, nir_if_first_else_block(nif));
-   assert(last_then->physical_successors[0] &&
-          !last_then->physical_successors[1]);
-   last_then->physical_successors[1] = first_else;
-
-   struct ir3_block *last_else = get_block(ctx, nir_if_last_else_block(nif));
-   struct ir3_block *after_if =
-      get_block(ctx, nir_cf_node_as_block(nir_cf_node_next(&nif->cf_node)));
-   assert(last_else->physical_successors[0] &&
-          !last_else->physical_successors[1]);
-   if (after_if != last_else->physical_successors[0])
-      last_else->physical_successors[1] = after_if;
 }
 
 static void
@@ -3723,7 +3852,7 @@ emit_loop(struct ir3_context *ctx, nir_loop *nloop)
    struct ir3_block *continue_blk = NULL;
 
    /* There's always one incoming edge from outside the loop, and if there
-    * are more than two backedges from inside the loop (so more than 2 total
+    * is more than one backedge from inside the loop (so more than 2 total
     * edges) then we need to create a continue block after the loop to ensure
     * that control reconverges at the end of each loop iteration.
     */
@@ -3736,7 +3865,6 @@ emit_loop(struct ir3_context *ctx, nir_loop *nloop)
    if (continue_blk) {
       struct ir3_block *start = get_block(ctx, nstart);
       continue_blk->successors[0] = start;
-      continue_blk->physical_successors[0] = start;
       continue_blk->loop_id = ctx->loop_id;
       continue_blk->loop_depth = ctx->loop_depth;
       list_addtail(&continue_blk->node, &ctx->ir->block_list);
@@ -3748,20 +3876,6 @@ emit_loop(struct ir3_context *ctx, nir_loop *nloop)
 }
 
 static void
-stack_push(struct ir3_context *ctx)
-{
-   ctx->stack++;
-   ctx->max_stack = MAX2(ctx->max_stack, ctx->stack);
-}
-
-static void
-stack_pop(struct ir3_context *ctx)
-{
-   compile_assert(ctx, ctx->stack > 0);
-   ctx->stack--;
-}
-
-static void
 emit_cf_list(struct ir3_context *ctx, struct exec_list *list)
 {
    foreach_list_typed (nir_cf_node, node, node, list) {
@@ -3770,14 +3884,10 @@ emit_cf_list(struct ir3_context *ctx, struct exec_list *list)
          emit_block(ctx, nir_cf_node_as_block(node));
          break;
       case nir_cf_node_if:
-         stack_push(ctx);
          emit_if(ctx, nir_cf_node_as_if(node));
-         stack_pop(ctx);
          break;
       case nir_cf_node_loop:
-         stack_push(ctx);
          emit_loop(ctx, nir_cf_node_as_loop(node));
-         stack_pop(ctx);
          break;
       case nir_cf_node_function:
          ir3_context_error(ctx, "TODO\n");
@@ -3840,12 +3950,7 @@ emit_stream_out(struct ir3_context *ctx)
    orig_end_block->successors[0] = stream_out_block;
    orig_end_block->successors[1] = new_end_block;
 
-   orig_end_block->physical_successors[0] = stream_out_block;
-   orig_end_block->physical_successors[1] = new_end_block;
-
    stream_out_block->successors[0] = new_end_block;
-
-   stream_out_block->physical_successors[0] = new_end_block;
 
    /* setup 'if (vtxcnt < maxvtxcnt)' condition: */
    cond = ir3_CMPS_S(ctx->block, vtxcnt, 0, maxvtxcnt, 0);
@@ -3912,9 +4017,6 @@ setup_predecessors(struct ir3 *ir)
       for (int i = 0; i < ARRAY_SIZE(block->successors); i++) {
          if (block->successors[i])
             ir3_block_add_predecessor(block->successors[i], block);
-         if (block->physical_successors[i])
-            ir3_block_add_physical_predecessor(block->physical_successors[i],
-                                               block);
       }
    }
 }
@@ -3924,12 +4026,8 @@ emit_function(struct ir3_context *ctx, nir_function_impl *impl)
 {
    nir_metadata_require(impl, nir_metadata_block_index);
 
-   compile_assert(ctx, ctx->stack == 0);
-
    emit_cf_list(ctx, &impl->body);
    emit_block(ctx, impl->end_block);
-
-   compile_assert(ctx, ctx->stack == 0);
 
    /* at this point, we should have a single empty block,
     * into which we emit the 'end' instruction.
@@ -4877,6 +4975,8 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
 
    IR3_PASS(ir, ir3_array_to_ssa);
 
+   ir3_calc_reconvergence(so);
+
    do {
       progress = false;
 
@@ -5054,8 +5154,6 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
          ir3_instr_create(ctx->block, OPC_UNLOCK, 0, 0);
       ir3_instr_move_before(unlock, end);
    }
-
-   so->branchstack = ctx->max_stack;
 
    so->pvtmem_size = ALIGN(so->pvtmem_size, compiler->pvtmem_per_fiber_align);
 

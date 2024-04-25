@@ -138,15 +138,13 @@ anv_device_utrace_emit_cs_copy_ts_buffer(struct u_trace_context *utctx,
    struct anv_memcpy_params *params = push_data_state.map;
 
    *params = (struct anv_memcpy_params) {
-      .copy = {
-         .num_dwords = count * sizeof(union anv_utrace_timestamp) / 4,
-      },
-      .src_addr = anv_address_physical(from_addr),
-      .dst_addr = anv_address_physical(to_addr),
+      .num_dwords = count * sizeof(union anv_utrace_timestamp) / 4,
+      .src_addr   = anv_address_physical(from_addr),
+      .dst_addr   = anv_address_physical(to_addr),
    };
 
    anv_genX(device->info, emit_simple_shader_dispatch)(
-      &submit->simple_state, DIV_ROUND_UP(params->copy.num_dwords, 4),
+      &submit->simple_state, DIV_ROUND_UP(params->num_dwords, 4),
       push_data_state);
 }
 

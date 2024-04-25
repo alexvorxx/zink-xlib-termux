@@ -31,10 +31,11 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub enum KernelArgValue {
     None,
+    Buffer(Arc<Buffer>),
     Constant(Vec<u8>),
-    MemObject(Arc<Mem>),
-    Sampler(Arc<Sampler>),
+    Image(Arc<Image>),
     LocalMem(usize),
+    Sampler(Arc<Sampler>),
 }
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy)]
@@ -633,6 +634,24 @@ fn lower_and_optimize_nir(
     opt_nir(nir, dev, true);
     nir_pass!(nir, nir_lower_memcpy);
 
+    // we might have got rid of more function_temp or shared memory
+    nir.reset_scratch_size();
+    nir.reset_shared_size();
+    nir_pass!(
+        nir,
+        nir_remove_dead_variables,
+        nir_variable_mode::nir_var_function_temp | nir_variable_mode::nir_var_mem_shared,
+        &dv_opts,
+    );
+    nir_pass!(
+        nir,
+        nir_lower_vars_to_explicit_types,
+        nir_variable_mode::nir_var_function_temp
+            | nir_variable_mode::nir_var_mem_shared
+            | nir_variable_mode::nir_var_mem_generic,
+        Some(glsl_get_cl_type_size_align),
+    );
+
     nir_pass!(
         nir,
         nir_lower_explicit_io,
@@ -807,7 +826,7 @@ impl Kernel {
             .collect();
 
         Arc::new(Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Kernel),
             prog: prog.clone(),
             name: name,
             values: values,
@@ -903,59 +922,61 @@ impl Kernel {
             }
             match val.borrow().as_ref().unwrap() {
                 KernelArgValue::Constant(c) => input.extend_from_slice(c),
-                KernelArgValue::MemObject(mem) => {
-                    let res = mem.get_res_of_dev(q.device)?;
-                    // If resource is a buffer and mem a 2D image, the 2d image was created from a
-                    // buffer. Use strides and dimensions of 2d image
+                KernelArgValue::Buffer(buffer) => {
+                    let res = buffer.get_res_of_dev(q.device)?;
+                    if q.device.address_bits() == 64 {
+                        input.extend_from_slice(&buffer.offset.to_ne_bytes());
+                    } else {
+                        input.extend_from_slice(&(buffer.offset as u32).to_ne_bytes());
+                    }
+                    resource_info.push((res.clone(), arg.offset));
+                }
+                KernelArgValue::Image(image) => {
+                    let res = image.get_res_of_dev(q.device)?;
+
+                    // If resource is a buffer, the image was created from a buffer. Use strides and
+                    // dimensions of the image then.
                     let app_img_info =
-                        if res.as_ref().is_buffer() && mem.mem_type == CL_MEM_OBJECT_IMAGE2D {
+                        if res.as_ref().is_buffer() && image.mem_type == CL_MEM_OBJECT_IMAGE2D {
                             Some(AppImgInfo::new(
-                                mem.image_desc.row_pitch()? / mem.image_elem_size as u32,
-                                mem.image_desc.width()?,
-                                mem.image_desc.height()?,
+                                image.image_desc.row_pitch()? / image.image_elem_size as u32,
+                                image.image_desc.width()?,
+                                image.image_desc.height()?,
                             ))
                         } else {
                             None
                         };
-                    if mem.is_buffer() {
-                        if q.device.address_bits() == 64 {
-                            input.extend_from_slice(&mem.offset.to_ne_bytes());
-                        } else {
-                            input.extend_from_slice(&(mem.offset as u32).to_ne_bytes());
-                        }
-                        resource_info.push((res.clone(), arg.offset));
+
+                    let format = image.pipe_format;
+                    let (formats, orders) = if arg.kind == KernelArgType::Image {
+                        iviews.push(res.pipe_image_view(
+                            format,
+                            false,
+                            image.pipe_image_host_access(),
+                            app_img_info.as_ref(),
+                        ));
+                        (&mut img_formats, &mut img_orders)
+                    } else if arg.kind == KernelArgType::RWImage {
+                        iviews.push(res.pipe_image_view(
+                            format,
+                            true,
+                            image.pipe_image_host_access(),
+                            app_img_info.as_ref(),
+                        ));
+                        (&mut img_formats, &mut img_orders)
                     } else {
-                        let format = mem.pipe_format;
-                        let (formats, orders) = if arg.kind == KernelArgType::Image {
-                            iviews.push(res.pipe_image_view(
-                                format,
-                                false,
-                                mem.pipe_image_host_access(),
-                                app_img_info.as_ref(),
-                            ));
-                            (&mut img_formats, &mut img_orders)
-                        } else if arg.kind == KernelArgType::RWImage {
-                            iviews.push(res.pipe_image_view(
-                                format,
-                                true,
-                                mem.pipe_image_host_access(),
-                                app_img_info.as_ref(),
-                            ));
-                            (&mut img_formats, &mut img_orders)
-                        } else {
-                            sviews.push((res.clone(), format, app_img_info));
-                            (&mut tex_formats, &mut tex_orders)
-                        };
+                        sviews.push((res.clone(), format, app_img_info));
+                        (&mut tex_formats, &mut tex_orders)
+                    };
 
-                        let binding = arg.binding as usize;
-                        assert!(binding >= formats.len());
+                    let binding = arg.binding as usize;
+                    assert!(binding >= formats.len());
 
-                        formats.resize(binding, 0);
-                        orders.resize(binding, 0);
+                    formats.resize(binding, 0);
+                    orders.resize(binding, 0);
 
-                        formats.push(mem.image_format.image_channel_data_type as u16);
-                        orders.push(mem.image_format.image_channel_order as u16);
-                    }
+                    formats.push(image.image_format.image_channel_data_type as u16);
+                    orders.push(image.image_format.image_channel_order as u16);
                 }
                 KernelArgValue::LocalMem(size) => {
                     // TODO 32 bit
@@ -1274,7 +1295,7 @@ impl Kernel {
 impl Clone for Kernel {
     fn clone(&self) -> Self {
         Self {
-            base: CLObjectBase::new(),
+            base: CLObjectBase::new(RusticlTypes::Kernel),
             prog: self.prog.clone(),
             name: self.name.clone(),
             values: self.values.clone(),

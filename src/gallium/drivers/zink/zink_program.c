@@ -1123,14 +1123,15 @@ zink_create_gfx_program(struct zink_context *ctx,
       prog->stages_present |= BITFIELD_BIT(MESA_SHADER_TESS_CTRL);
    }
    prog->stages_remaining = prog->stages_present;
-
-   assign_io(screen, nir);
-   for (unsigned i = 0; i < ZINK_GFX_SHADER_COUNT; i++) {
-      if (nir[i])
-         zink_shader_serialize_blob(nir[i], &prog->blobs[i]);
-      ralloc_free(nir[i]);
+   for (int i = 0; i < ZINK_GFX_SHADER_COUNT; ++i) {
+      if (prog->shaders[i]) {
+         simple_mtx_lock(&prog->shaders[i]->lock);
+         _mesa_set_add(prog->shaders[i]->programs, prog);
+         simple_mtx_unlock(&prog->shaders[i]->lock);
+         zink_gfx_program_reference(screen, NULL, prog);
+      }
    }
-
+   p_atomic_dec(&prog->base.reference.count);
 
    if (stages[MESA_SHADER_GEOMETRY])
       prog->last_vertex_stage = stages[MESA_SHADER_GEOMETRY];
@@ -1149,6 +1150,13 @@ zink_create_gfx_program(struct zink_context *ctx,
       }
    }
 
+   assign_io(screen, nir);
+   for (unsigned i = 0; i < ZINK_GFX_SHADER_COUNT; i++) {
+      if (nir[i])
+         zink_shader_serialize_blob(nir[i], &prog->blobs[i]);
+      ralloc_free(nir[i]);
+   }
+
    if (screen->optimal_keys)
       prog->libs = find_or_create_lib_cache(screen, prog);
    if (prog->libs)
@@ -1157,16 +1165,10 @@ zink_create_gfx_program(struct zink_context *ctx,
    struct mesa_sha1 sctx;
    _mesa_sha1_init(&sctx);
    for (int i = 0; i < ZINK_GFX_SHADER_COUNT; ++i) {
-      if (prog->shaders[i]) {
-         simple_mtx_lock(&prog->shaders[i]->lock);
-         _mesa_set_add(prog->shaders[i]->programs, prog);
-         simple_mtx_unlock(&prog->shaders[i]->lock);
-         zink_gfx_program_reference(screen, NULL, prog);
+      if (prog->shaders[i])
          _mesa_sha1_update(&sctx, prog->shaders[i]->base.sha1, sizeof(prog->shaders[i]->base.sha1));
-      }
    }
    _mesa_sha1_final(&sctx, prog->base.sha1);
-   p_atomic_dec(&prog->base.reference.count);
 
    if (!zink_descriptor_program_init(ctx, &prog->base))
       goto fail;

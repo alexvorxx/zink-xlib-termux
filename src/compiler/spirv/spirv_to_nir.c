@@ -40,6 +40,161 @@
 
 #include <stdio.h>
 
+/* Table of all implemented capabilities.  These are the capabilities that are
+ * implemented in the spirv_to_nir, not what the device supports.
+ *
+ * This list should remain alphabetized.  For the purposes of alphabetization,
+ * suffixes do not exist and 8 comes before 16.
+ */
+static const struct spirv_capabilities implemented_capabilities = {
+   .Addresses = true,
+   .AtomicFloat16AddEXT = true,
+   .AtomicFloat32AddEXT = true,
+   .AtomicFloat64AddEXT = true,
+   .AtomicFloat16MinMaxEXT = true,
+   .AtomicFloat32MinMaxEXT = true,
+   .AtomicFloat64MinMaxEXT = true,
+   .AtomicStorage = true,
+   .ClipDistance = true,
+   .ComputeDerivativeGroupLinearNV = true,
+   .ComputeDerivativeGroupQuadsNV = true,
+   .CooperativeMatrixKHR = true,
+   .CullDistance = true,
+   .DemoteToHelperInvocation = true,
+   .DenormFlushToZero = true,
+   .DenormPreserve = true,
+   .DerivativeControl = true,
+   .DeviceGroup = true,
+   .DotProduct = true,
+   .DotProductInput4x8Bit = true,
+   .DotProductInput4x8BitPacked = true,
+   .DotProductInputAll = true,
+   .DrawParameters = true,
+   .ExpectAssumeKHR = true,
+   .Float16 = true,
+   .Float16Buffer = true,
+   .Float64 = true,
+   .FloatControls2 = true,
+   .FragmentBarycentricKHR = true,
+   .FragmentDensityEXT = true,
+   .FragmentFullyCoveredEXT = true,
+   .FragmentMaskAMD = true,
+   .FragmentShaderPixelInterlockEXT = true,
+   .FragmentShaderSampleInterlockEXT = true,
+   .FragmentShadingRateKHR = true,
+   .GenericPointer = true,
+   .Geometry = true,
+   .GeometryPointSize = true,
+   .GeometryStreams = true,
+   .GroupNonUniform = true,
+   .GroupNonUniformArithmetic = true,
+   .GroupNonUniformBallot = true,
+   .GroupNonUniformClustered = true,
+   .GroupNonUniformQuad = true,
+   .GroupNonUniformRotateKHR = true,
+   .GroupNonUniformShuffle = true,
+   .GroupNonUniformShuffleRelative = true,
+   .GroupNonUniformVote = true,
+   .Groups = true,
+   .Image1D = true,
+   .ImageBasic = true,
+   .ImageBuffer = true,
+   .ImageCubeArray = true,
+   .ImageGatherBiasLodAMD = true,
+   .ImageGatherExtended = true,
+   .ImageMSArray = true,
+   .ImageQuery = true,
+   .ImageReadWrite = true,
+   .ImageReadWriteLodAMD = true,
+   .ImageRect = true,
+   .InputAttachment = true,
+   .InputAttachmentArrayDynamicIndexingEXT = true,
+   .InputAttachmentArrayNonUniformIndexingEXT = true,
+   .Int8 = true,
+   .Int16 = true,
+   .Int64 = true,
+   .Int64Atomics = true,
+   .Int64ImageEXT = true,
+   .IntegerFunctions2INTEL = true,
+   .InterpolationFunction = true,
+   .Kernel = true,
+   .LiteralSampler = true,
+   .Matrix = true,
+   .MeshShadingEXT = true,
+   .MeshShadingNV = true,
+   .MinLod = true,
+   .MultiView = true,
+   .MultiViewport = true,
+   .PerViewAttributesNV = true,
+   .PhysicalStorageBufferAddresses = true,
+   .QuadControlKHR = true,
+   .RayCullMaskKHR = true,
+   .RayQueryKHR = true,
+   .RayQueryPositionFetchKHR = true,
+   .RayTracingKHR = true,
+   .RayTracingPositionFetchKHR = true,
+   .RayTraversalPrimitiveCullingKHR = true,
+   .RoundingModeRTE = true,
+   .RoundingModeRTZ = true,
+   .RuntimeDescriptorArrayEXT = true,
+   .Sampled1D = true,
+   .SampledBuffer = true,
+   .SampledCubeArray = true,
+   .SampledImageArrayDynamicIndexing = true,
+   .SampledImageArrayNonUniformIndexingEXT = true,
+   .SampledRect = true,
+   .SampleMaskPostDepthCoverage = true,
+   .SampleRateShading = true,
+   .Shader = true,
+   .ShaderClockKHR = true,
+   .ShaderEnqueueAMDX = true,
+   .ShaderLayer = true,
+   .ShaderNonUniformEXT = true,
+   .ShaderSMBuiltinsNV = true,
+   .ShaderViewportIndex = true,
+   .ShaderViewportIndexLayerEXT = true,
+   .ShaderViewportMaskNV = true,
+   .SignedZeroInfNanPreserve = true,
+   .SparseResidency = true,
+   .StencilExportEXT = true,
+   .StorageBuffer8BitAccess = true,
+   .StorageBufferArrayDynamicIndexing = true,
+   .StorageBufferArrayNonUniformIndexingEXT = true,
+   .StorageImageArrayDynamicIndexing = true,
+   .StorageImageArrayNonUniformIndexingEXT = true,
+   .StorageImageExtendedFormats = true,
+   .StorageImageMultisample = true,
+   .StorageImageReadWithoutFormat = true,
+   .StorageImageWriteWithoutFormat = true,
+   .StorageInputOutput16 = true,
+   .StoragePushConstant8 = true,
+   .StoragePushConstant16 = true,
+   .StorageTexelBufferArrayDynamicIndexingEXT = true,
+   .StorageTexelBufferArrayNonUniformIndexingEXT = true,
+   .StorageUniform16 = true,
+   .StorageUniformBufferBlock16 = true,
+   .SubgroupBallotKHR = true,
+   .SubgroupBufferBlockIOINTEL = true,
+   .SubgroupShuffleINTEL = true,
+   .SubgroupVoteKHR = true,
+   .Tessellation = true,
+   .TessellationPointSize = true,
+   .TransformFeedback = true,
+   .UniformAndStorageBuffer8BitAccess = true,
+   .UniformBufferArrayDynamicIndexing = true,
+   .UniformBufferArrayNonUniformIndexingEXT = true,
+   .UniformTexelBufferArrayDynamicIndexingEXT = true,
+   .UniformTexelBufferArrayNonUniformIndexingEXT = true,
+   .VariablePointers = true,
+   .VariablePointersStorageBuffer = true,
+   .Vector16 = true,
+   .VulkanMemoryModel = true,
+   .VulkanMemoryModelDeviceScope = true,
+   .WorkgroupMemoryExplicitLayoutKHR = true,
+   .WorkgroupMemoryExplicitLayout8BitAccessKHR = true,
+   .WorkgroupMemoryExplicitLayout16BitAccessKHR = true,
+};
+
 #ifndef NDEBUG
 uint32_t mesa_spirv_debug = 0;
 
@@ -4653,6 +4808,28 @@ vtn_handle_preamble_instruction(struct vtn_builder *b, SpvOp opcode,
    case SpvOpCapability: {
       SpvCapability cap = w[1];
       switch (cap) {
+      case SpvCapabilityLinkage:
+         if (!b->options->create_library)
+            vtn_warn("Unsupported SPIR-V capability: %s",
+                     spirv_capability_to_string(cap));
+         break;
+
+      case SpvCapabilitySubgroupDispatch:
+         /* Missing :
+          *   - SpvOpGetKernelLocalSizeForSubgroupCount
+          *   - SpvOpGetKernelMaxNumSubgroups
+          */
+         vtn_warn("Not fully supported capability: %s",
+                  spirv_capability_to_string(cap));
+         break;
+
+      default:
+         vtn_fail_if(!spirv_capabilities_get(&implemented_capabilities, cap),
+                     "Unimplemented SPIR-V capability: %s (%u)",
+                     spirv_capability_to_string(cap), cap);
+      }
+
+      switch (cap) {
       case SpvCapabilityMatrix:
       case SpvCapabilityShader:
       case SpvCapabilityGeometry:
@@ -4688,9 +4865,6 @@ vtn_handle_preamble_instruction(struct vtn_builder *b, SpvOp opcode,
          break;
 
       case SpvCapabilityLinkage:
-         if (!b->options->create_library)
-            vtn_warn("Unsupported SPIR-V capability: %s",
-                     spirv_capability_to_string(cap));
          spv_check_supported(linkage, cap);
          break;
 
@@ -4760,13 +4934,6 @@ vtn_handle_preamble_instruction(struct vtn_builder *b, SpvOp opcode,
          spv_check_supported(literal_sampler, cap);
          break;
 
-      case SpvCapabilityImageMipmap:
-      case SpvCapabilityPipes:
-      case SpvCapabilityDeviceEnqueue:
-         vtn_warn("Unsupported OpenCL-style SPIR-V capability: %s",
-                  spirv_capability_to_string(cap));
-         break;
-
       case SpvCapabilityImageMSArray:
          spv_check_supported(image_ms_array, cap);
          break;
@@ -4830,12 +4997,6 @@ vtn_handle_preamble_instruction(struct vtn_builder *b, SpvOp opcode,
 
       case SpvCapabilitySubgroupDispatch:
          spv_check_supported(subgroup_dispatch, cap);
-         /* Missing :
-          *   - SpvOpGetKernelLocalSizeForSubgroupCount
-          *   - SpvOpGetKernelMaxNumSubgroups
-          */
-         vtn_warn("Not fully supported capability: %s",
-                  spirv_capability_to_string(cap));
          break;
 
       case SpvCapabilityVariablePointersStorageBuffer:

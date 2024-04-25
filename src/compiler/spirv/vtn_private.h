@@ -672,6 +672,7 @@ struct vtn_builder {
    enum vtn_generator generator_id;
    SpvSourceLanguage source_lang;
 
+   struct spirv_capabilities supported_capabilities;
    struct spirv_capabilities enabled_capabilities;
 
    /* True if we need to fix up CS OpControlBarrier */

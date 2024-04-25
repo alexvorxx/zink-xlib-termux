@@ -3502,6 +3502,21 @@ flag_shadow_tex(nir_variable *var, struct zink_shader *zs)
    zs->fs.legacy_shadow_mask |= BITFIELD_BIT(var->data.driver_location);
 }
 
+static void
+flag_shadow_tex_instr(nir_builder *b, nir_tex_instr *tex, nir_variable *var, struct zink_shader *zs)
+{
+   assert(var);
+   unsigned num_components = tex->def.num_components;
+   bool rewrite_depth = tex->is_shadow && num_components > 1 && tex->op != nir_texop_tg4 && !tex->is_sparse;
+   if (rewrite_depth && nir_def_components_read( &tex->def) & ~1) {
+      /* this needs recompiles */
+      if (b->shader->info.stage == MESA_SHADER_FRAGMENT)
+         flag_shadow_tex(var, zs);
+      else
+         mesa_loge("unhandled old-style shadow sampler in non-fragment stage!");
+   }
+}
+
 static nir_def *
 rewrite_tex_dest(nir_builder *b, nir_tex_instr *tex, nir_variable *var, struct zink_shader *zs)
 {
@@ -3519,11 +3534,7 @@ rewrite_tex_dest(nir_builder *b, nir_tex_instr *tex, nir_variable *var, struct z
    nir_def *dest = &tex->def;
    if (rewrite_depth && zs) {
       if (nir_def_components_read(dest) & ~1) {
-         /* this needs recompiles */
-         if (b->shader->info.stage == MESA_SHADER_FRAGMENT)
-            flag_shadow_tex(var, zs);
-         else
-            mesa_loge("unhandled old-style shadow sampler in non-fragment stage!");
+         /* handled above */
          return NULL;
       }
       /* If only .x is used in the NIR, then it's effectively not a legacy depth
@@ -4844,7 +4855,7 @@ scan_nir(struct zink_screen *screen, nir_shader *shader, struct zink_shader *zs)
 }
 
 static bool
-match_tex_dests_instr(nir_builder *b, nir_instr *in, void *data)
+match_tex_dests_instr(nir_builder *b, nir_instr *in, void *data, bool pre)
 {
    if (in->type != nir_instr_type_tex)
       return false;
@@ -4854,26 +4865,45 @@ match_tex_dests_instr(nir_builder *b, nir_instr *in, void *data)
    int handle = nir_tex_instr_src_index(tex, nir_tex_src_texture_handle);
    nir_variable *var = NULL;
    if (handle != -1) {
+      if (pre)
+         return false;
       var = nir_deref_instr_get_variable(nir_src_as_deref(tex->src[handle].src));
    } else {
       nir_foreach_variable_with_modes(img, b->shader, nir_var_uniform) {
          if (glsl_type_is_sampler(glsl_without_array(img->type))) {
             unsigned size = glsl_type_is_array(img->type) ? glsl_get_aoa_size(img->type) : 1;
-            if (tex->texture_index >= img->data.driver_location &&
-                tex->texture_index < img->data.driver_location + size) {
+            int location = pre ? img->data.binding : img->data.driver_location;
+            if (tex->texture_index >= location &&
+                tex->texture_index < location + size) {
                var = img;
                break;
             }
          }
       }
    }
+   if (pre) {
+      flag_shadow_tex_instr(b, tex, var, data);
+      return false;
+   }
    return !!rewrite_tex_dest(b, tex, var, data);
 }
 
 static bool
-match_tex_dests(nir_shader *shader, struct zink_shader *zs)
+match_tex_dests_instr_pre(nir_builder *b, nir_instr *in, void *data)
 {
-   return nir_shader_instructions_pass(shader, match_tex_dests_instr, nir_metadata_dominance, zs);
+   return match_tex_dests_instr(b, in, data, true);
+}
+
+static bool
+match_tex_dests_instr_post(nir_builder *b, nir_instr *in, void *data)
+{
+   return match_tex_dests_instr(b, in, data, false);
+}
+
+static bool
+match_tex_dests(nir_shader *shader, struct zink_shader *zs, bool pre_mangle)
+{
+   return nir_shader_instructions_pass(shader, pre_mangle ? match_tex_dests_instr_pre : match_tex_dests_instr_post, nir_metadata_dominance, zs);
 }
 
 static bool
@@ -6116,6 +6146,9 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
    zs->programs = _mesa_pointer_set_create(NULL);
    simple_mtx_init(&zs->lock, mtx_plain);
 
+   if (nir->info.stage != MESA_SHADER_KERNEL)
+      match_tex_dests(nir, zs, true);
+
    if (nir->info.stage == MESA_SHADER_KERNEL) {
       nir_lower_mem_access_bit_sizes_options lower_mem_access_options = {
          .modes = nir_var_all ^ nir_var_function_temp,
@@ -6319,7 +6352,7 @@ zink_shader_create(struct zink_screen *screen, struct nir_shader *nir)
    if (!screen->info.feats.features.shaderInt64 || !screen->info.feats.features.shaderFloat64)
       NIR_PASS_V(nir, lower_64bit_vars, screen->info.feats.features.shaderInt64);
    if (nir->info.stage != MESA_SHADER_KERNEL)
-      NIR_PASS_V(nir, match_tex_dests, zs);
+      NIR_PASS_V(nir, match_tex_dests, zs, false);
 
    if (!nir->info.internal)
       nir_foreach_shader_out_variable(var, nir)

@@ -24,10 +24,10 @@
 
 #include "util/os_time.h"
 
-#include "nvk_cl906f.h"
-#include "nvk_cl9097.h"
-#include "nvk_cla0c0.h"
-#include "nvk_clc597.h"
+#include "nv_push_cl906f.h"
+#include "nv_push_cl9097.h"
+#include "nv_push_cla0c0.h"
+#include "nv_push_clc597.h"
 
 struct nvk_query_report {
    uint64_t value;

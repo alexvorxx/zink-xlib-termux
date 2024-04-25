@@ -13,13 +13,13 @@
 
 #include <xf86drm.h>
 
-#include "nvk_cl9039.h"
-#include "nvk_cl9097.h"
-#include "nvk_cl90b5.h"
-#include "nvk_cla0c0.h"
+#include "nv_push_cl9039.h"
+#include "nv_push_cl9097.h"
+#include "nv_push_cl90b5.h"
+#include "nv_push_cla0c0.h"
 #include "cla1c0.h"
-#include "nvk_clc3c0.h"
-#include "nvk_clc397.h"
+#include "nv_push_clc3c0.h"
+#include "nv_push_clc397.h"
 
 static void
 nvk_queue_state_init(struct nvk_queue_state *qs)

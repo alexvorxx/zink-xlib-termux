@@ -9,8 +9,8 @@
 #include "nvk_image.h"
 #include "nvk_physical_device.h"
 
-#include "nvk_cl9097.h"
-#include "nvk_clb197.h"
+#include "nv_push_cl9097.h"
+#include "nv_push_clb197.h"
 
 static VkResult
 nvk_cmd_bind_map_buffer(struct vk_command_buffer *vk_cmd,

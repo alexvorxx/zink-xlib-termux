@@ -20,15 +20,15 @@
 
 #include "nouveau_context.h"
 
-#include "nvk_cl902d.h"
-#include "nvk_cl9097.h"
-#include "nvk_cl90b5.h"
-#include "nvk_cl90c0.h"
-#include "nvk_cla097.h"
-#include "nvk_clb097.h"
-#include "nvk_clb197.h"
-#include "nvk_clc397.h"
-#include "nvk_clc597.h"
+#include "nv_push_cl902d.h"
+#include "nv_push_cl9097.h"
+#include "nv_push_cl90b5.h"
+#include "nv_push_cl90c0.h"
+#include "nv_push_cla097.h"
+#include "nv_push_clb097.h"
+#include "nv_push_clb197.h"
+#include "nv_push_clc397.h"
+#include "nv_push_clc597.h"
 #include "drf.h"
 
 static inline uint16_t

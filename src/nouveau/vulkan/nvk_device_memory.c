@@ -18,7 +18,7 @@
 #include <sys/mman.h>
 
 #include "nvtypes.h"
-#include "nvk_cl90b5.h"
+#include "nv_push_cl90b5.h"
 
 /* Supports opaque fd only */
 const VkExternalMemoryProperties nvk_opaque_fd_mem_props = {

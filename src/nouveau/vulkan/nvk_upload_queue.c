@@ -13,7 +13,7 @@
 #include "drm-uapi/nouveau_drm.h"
 
 #include "nv_push.h"
-#include "nvk_cl90b5.h"
+#include "nv_push_cl90b5.h"
 
 #define NVK_UPLOAD_BO_SIZE 64*1024
 

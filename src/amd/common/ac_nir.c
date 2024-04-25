@@ -196,6 +196,93 @@ ac_nir_store_var_components(nir_builder *b, nir_variable *var, nir_def *value,
    nir_store_var(b, var, value, writemask);
 }
 
+/* Process the given store_output intrinsic and process its information.
+ * Meant to be used for VS/TES/GS when they are the last pre-rasterization stage.
+ *
+ * Assumptions:
+ * - We called nir_lower_io_to_temporaries on the shader
+ * - 64-bit outputs are lowered
+ * - no indirect indexing is present
+ */
+void ac_nir_gather_prerast_store_output_info(nir_builder *b, nir_intrinsic_instr *intrin, ac_nir_prerast_out *out)
+{
+   assert(intrin->intrinsic == nir_intrinsic_store_output);
+   assert(nir_src_is_const(intrin->src[1]) && !nir_src_as_uint(intrin->src[1]));
+
+   const nir_io_semantics io_sem = nir_intrinsic_io_semantics(intrin);
+   const unsigned slot = io_sem.location;
+
+   nir_def *store_val = intrin->src[0].ssa;
+   assert(store_val->bit_size == 16 || store_val->bit_size == 32);
+
+   nir_def **output;
+   nir_alu_type *type;
+   ac_nir_prerast_per_output_info *info;
+
+   if (slot >= VARYING_SLOT_VAR0_16BIT) {
+      const unsigned index = slot - VARYING_SLOT_VAR0_16BIT;
+
+      if (io_sem.high_16bits) {
+         output = out->outputs_16bit_hi[index];
+         type = out->types_16bit_hi[index];
+         info = &out->infos_16bit_hi[index];
+      } else {
+         output = out->outputs_16bit_lo[index];
+         type = out->types_16bit_lo[index];
+         info = &out->infos_16bit_lo[index];
+      }
+   } else {
+      output = out->outputs[slot];
+      type = out->types[slot];
+      info = &out->infos[slot];
+   }
+
+   unsigned component_offset = nir_intrinsic_component(intrin);
+   unsigned write_mask = nir_intrinsic_write_mask(intrin);
+   nir_alu_type src_type = nir_intrinsic_src_type(intrin);
+   assert(nir_alu_type_get_type_size(src_type) == store_val->bit_size);
+
+   b->cursor = nir_before_instr(&intrin->instr);
+
+   /* 16-bit output stored in a normal varying slot that isn't a dedicated 16-bit slot. */
+   const bool non_dedicated_16bit = slot < VARYING_SLOT_VAR0_16BIT && store_val->bit_size == 16;
+
+   u_foreach_bit (i, write_mask) {
+      const unsigned stream = (io_sem.gs_streams >> (i * 2)) & 0x3;
+
+      if (b->shader->info.stage == MESA_SHADER_GEOMETRY) {
+         if (!(b->shader->info.gs.active_stream_mask & (1 << stream)))
+            continue;
+      }
+
+      const unsigned c = component_offset + i;
+
+      /* The same output component should always belong to the same stream. */
+      assert(!(info->components_mask & (1 << c)) ||
+             ((info->stream >> (c * 2)) & 3) == stream);
+
+      /* Components of the same output slot may belong to different streams. */
+      info->stream |= stream << (c * 2);
+      info->components_mask |= BITFIELD_BIT(c);
+
+      nir_def *store_component = nir_channel(b, intrin->src[0].ssa, i);
+
+      if (non_dedicated_16bit) {
+         if (io_sem.high_16bits) {
+            nir_def *lo = output[c] ? nir_unpack_32_2x16_split_x(b, output[c]) : nir_imm_intN_t(b, 0, 16);
+            output[c] = nir_pack_32_2x16_split(b, lo, store_component);
+         } else {
+            nir_def *hi = output[c] ? nir_unpack_32_2x16_split_y(b, output[c]) : nir_imm_intN_t(b, 0, 16);
+            output[c] = nir_pack_32_2x16_split(b, store_component, hi);
+         }
+         type[c] = nir_type_uint32;
+      } else {
+         output[c] = store_component;
+         type[c] = src_type;
+      }
+   }
+}
+
 static nir_intrinsic_instr *
 export(nir_builder *b, nir_def *val, nir_def *row, unsigned base, unsigned flags,
        unsigned write_mask)

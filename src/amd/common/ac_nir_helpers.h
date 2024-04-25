@@ -46,6 +46,29 @@ extern "C" {
       } \
    } while (0)
 
+typedef struct
+{
+   /* GS output stream index, 2 bit per component */
+   uint8_t stream;
+   /* Bitmask of components used: 4 bits per slot, 1 bit per component. */
+   uint8_t components_mask : 4;
+} ac_nir_prerast_per_output_info;
+
+typedef struct
+{
+   nir_def *outputs[VARYING_SLOT_MAX][4];
+   nir_def *outputs_16bit_lo[16][4];
+   nir_def *outputs_16bit_hi[16][4];
+
+   nir_alu_type types[VARYING_SLOT_MAX][4];
+   nir_alu_type types_16bit_lo[16][4];
+   nir_alu_type types_16bit_hi[16][4];
+
+   ac_nir_prerast_per_output_info infos[VARYING_SLOT_MAX];
+   ac_nir_prerast_per_output_info infos_16bit_lo[16];
+   ac_nir_prerast_per_output_info infos_16bit_hi[16];
+} ac_nir_prerast_out;
+
 /* Maps I/O semantics to the actual location used by the lowering pass. */
 typedef unsigned (*ac_nir_map_io_driver_location)(unsigned semantic);
 
@@ -59,6 +82,11 @@ typedef void (*ac_nir_cull_accepted)(nir_builder *b, void *state);
 void
 ac_nir_store_var_components(nir_builder *b, nir_variable *var, nir_def *value,
                             unsigned component, unsigned writemask);
+
+void
+ac_nir_gather_prerast_store_output_info(nir_builder *b,
+                                        nir_intrinsic_instr *intrin,
+                                        ac_nir_prerast_out *out);
 
 void
 ac_nir_export_primitive(nir_builder *b, nir_def *prim, nir_def *row);

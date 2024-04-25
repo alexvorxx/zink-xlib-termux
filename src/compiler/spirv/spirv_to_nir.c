@@ -3291,7 +3291,8 @@ vtn_handle_texture(struct vtn_builder *b, SpvOp opcode,
    /* If SpvCapabilityImageGatherBiasLodAMD is enabled, texture gather without an explicit LOD
     * has an implicit one (instead of using level 0).
     */
-   if (texop == nir_texop_tg4 && b->image_gather_bias_lod &&
+   if (texop == nir_texop_tg4 &&
+       b->enabled_capabilities.ImageGatherBiasLodAMD &&
        !(operands & SpvImageOperandsLodMask)) {
       instr->is_gather_implicit_lod = true;
    }
@@ -4840,7 +4841,6 @@ vtn_handle_preamble_instruction(struct vtn_builder *b, SpvOp opcode,
       case SpvCapabilityVariablePointersStorageBuffer:
       case SpvCapabilityVariablePointers:
          spv_check_supported(variable_pointers, cap);
-         b->variable_pointers = true;
          break;
 
       case SpvCapabilityStorageUniformBufferBlock16:
@@ -4933,7 +4933,6 @@ vtn_handle_preamble_instruction(struct vtn_builder *b, SpvOp opcode,
 
       case SpvCapabilityDemoteToHelperInvocation:
          spv_check_supported(demote_to_helper_invocation, cap);
-         b->uses_demote_to_helper_invocation = true;
          break;
 
       case SpvCapabilityShaderClockKHR:
@@ -4962,7 +4961,6 @@ vtn_handle_preamble_instruction(struct vtn_builder *b, SpvOp opcode,
 
       case SpvCapabilityImageGatherBiasLodAMD:
          spv_check_supported(amd_image_gather_bias_lod, cap);
-         b->image_gather_bias_lod = true;
          break;
 
       case SpvCapabilityAtomicFloat16AddEXT:
@@ -5088,6 +5086,8 @@ vtn_handle_preamble_instruction(struct vtn_builder *b, SpvOp opcode,
          vtn_fail("Unhandled capability: %s (%u)",
                   spirv_capability_to_string(cap), cap);
       }
+
+      spirv_capabilities_set(&b->enabled_capabilities, cap, true);
       break;
    }
 
@@ -7022,7 +7022,7 @@ spirv_to_nir(const uint32_t *words, size_t word_count,
     * Related glslang issue: https://github.com/KhronosGroup/glslang/issues/2416
     */
    bool dxsc = b->generator_id == vtn_generator_spiregg;
-   b->convert_discard_to_demote = ((dxsc && !b->uses_demote_to_helper_invocation) ||
+   b->convert_discard_to_demote = ((dxsc && !b->enabled_capabilities.DemoteToHelperInvocation) ||
                                    (is_glslang(b) && b->source_lang == SpvSourceLanguageHLSL)) &&
                                   options->caps.demote_to_helper_invocation;
 

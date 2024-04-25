@@ -2092,7 +2092,8 @@ vtn_create_variable(struct vtn_builder *b, struct vtn_value *val,
    case vtn_variable_mode_ssbo:
       if (storage_class == SpvStorageClassStorageBuffer &&
           !without_array->block) {
-         if (b->variable_pointers) {
+         if (!b->enabled_capabilities.VariablePointers &&
+             !b->enabled_capabilities.VariablePointersStorageBuffer) {
             vtn_fail("Variables in the StorageBuffer storage class must "
                      "have a struct type with the Block decoration");
          } else {

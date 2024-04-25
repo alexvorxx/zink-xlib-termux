@@ -103,6 +103,9 @@ etna_screen_destroy(struct pipe_screen *pscreen)
 
    etna_shader_screen_fini(pscreen);
 
+   if (screen->pipe_nn)
+      etna_pipe_del(screen->pipe_nn);
+
    if (screen->pipe)
       etna_pipe_del(screen->pipe);
 
@@ -1090,6 +1093,14 @@ etna_screen_create(struct etna_device *dev, struct etna_gpu *gpu,
    if (!screen->pipe) {
       DBG("could not create 3d pipe");
       goto fail;
+   }
+
+   if (gpu != npu) {
+      screen->pipe_nn = etna_pipe_new(npu, ETNA_PIPE_3D);
+      if (!screen->pipe_nn) {
+         DBG("could not create nn pipe");
+         goto fail;
+      }
    }
 
    /* apply debug options that disable individual features */

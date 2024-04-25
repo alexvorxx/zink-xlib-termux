@@ -395,28 +395,21 @@ lay_out_uniforms(struct agx_compiled_shader *shader, struct state *state)
       shader->push[shader->push_range_count++] = (struct agx_push_range){
          .uniform = 6 * count,
          .table = AGX_SYSVAL_TABLE_PARAMS,
-         .offset = 4,
-         .length = 2,
+         .offset = 0,
+         .length = 4,
       };
 
-      uniform = (6 * count) + 2;
+      uniform = (6 * count) + 4;
 
       if (state->hw_stage == PIPE_SHADER_COMPUTE) {
          shader->push[shader->push_range_count++] = (struct agx_push_range){
-            .uniform = (6 * count) + 2,
-            .table = AGX_SYSVAL_TABLE_PARAMS,
-            .offset = 0,
-            .length = 2,
-         };
-
-         shader->push[shader->push_range_count++] = (struct agx_push_range){
-            .uniform = (6 * count) + 4,
+            .uniform = (6 * count) + 8,
             .table = AGX_SYSVAL_TABLE_ROOT,
             .offset = (uintptr_t)&u->input_assembly,
             .length = 4,
          };
 
-         uniform = (6 * count) + 8;
+         uniform = (6 * count) + 12;
       }
    } else if (state->stage == PIPE_SHADER_FRAGMENT) {
       struct agx_draw_uniforms *u = NULL;

@@ -80,12 +80,12 @@ map_vs_part_uniform(nir_intrinsic_instr *intr, unsigned nr_attribs)
       return 4 * nir_src_as_uint(intr->src[0]);
    case nir_intrinsic_load_attrib_clamp_agx:
       return (4 * nr_attribs) + (2 * nir_src_as_uint(intr->src[0]));
-   case nir_intrinsic_load_base_instance:
-      return (6 * nr_attribs);
    case nir_intrinsic_load_first_vertex:
+      return (6 * nr_attribs);
+   case nir_intrinsic_load_base_instance:
       return (6 * nr_attribs) + 2;
    case nir_intrinsic_load_input_assembly_buffer_agx:
-      return (6 * nr_attribs) + 4;
+      return (6 * nr_attribs) + 8;
    default:
       return -1;
    }

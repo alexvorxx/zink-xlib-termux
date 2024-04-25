@@ -2132,7 +2132,7 @@ struct radv_ray_tracing_group {
 
 struct radv_ray_tracing_stage {
    struct vk_pipeline_cache_object *nir;
-   struct vk_pipeline_cache_object *shader;
+   struct radv_shader *shader;
    gl_shader_stage stage;
    uint32_t stack_size;
 
@@ -2140,13 +2140,6 @@ struct radv_ray_tracing_stage {
 
    uint8_t sha1[SHA1_DIGEST_LENGTH];
 };
-
-static inline bool
-radv_ray_tracing_stage_is_compiled(struct radv_ray_tracing_stage *stage)
-{
-   return stage->stage == MESA_SHADER_RAYGEN || stage->stage == MESA_SHADER_CALLABLE ||
-          stage->stage == MESA_SHADER_CLOSEST_HIT || stage->stage == MESA_SHADER_MISS;
-}
 
 struct radv_ray_tracing_pipeline {
    struct radv_compute_pipeline base;
@@ -2156,6 +2149,7 @@ struct radv_ray_tracing_pipeline {
    struct radv_ray_tracing_stage *stages;
    struct radv_ray_tracing_group *groups;
    unsigned stage_count;
+   unsigned non_imported_stage_count;
    unsigned group_count;
 
    uint8_t sha1[SHA1_DIGEST_LENGTH];
@@ -2908,6 +2902,7 @@ void radv_rmv_log_descriptor_pool_create(struct radv_device *device, const VkDes
 void radv_rmv_log_graphics_pipeline_create(struct radv_device *device, struct radv_pipeline *pipeline,
                                            bool is_internal);
 void radv_rmv_log_compute_pipeline_create(struct radv_device *device, struct radv_pipeline *pipeline, bool is_internal);
+void radv_rmv_log_rt_pipeline_create(struct radv_device *device, struct radv_ray_tracing_pipeline *pipeline);
 void radv_rmv_log_event_create(struct radv_device *device, VkEvent event, VkEventCreateFlags flags, bool is_internal);
 void radv_rmv_log_resource_destroy(struct radv_device *device, uint64_t handle);
 void radv_rmv_log_submit(struct radv_device *device, enum amd_ip_type type);

@@ -2146,20 +2146,6 @@ precompile_job(void *data, void *gdata, int thread_index)
 }
 
 static void
-precompile_separate_shader_job(void *data, void *gdata, int thread_index)
-{
-   struct zink_screen *screen = gdata;
-   struct zink_shader *zs = data;
-
-   zs->precompile.obj = zink_shader_compile_separate(screen, zs);
-   if (!screen->info.have_EXT_shader_object) {
-      struct zink_shader_object objs[ZINK_GFX_SHADER_COUNT] = {0};
-      objs[zs->info.stage].mod = zs->precompile.obj.mod;
-      zs->precompile.gpl = zink_create_gfx_pipeline_separate(screen, objs, zs->precompile.layout, zs->info.stage);
-   }
-}
-
-static void
 zink_link_gfx_shader(struct pipe_context *pctx, void **shaders)
 {
    struct zink_context *ctx = zink_context(pctx);
@@ -2225,6 +2211,20 @@ void
 zink_delete_shader_state(struct pipe_context *pctx, void *cso)
 {
    zink_gfx_shader_free(zink_screen(pctx->screen), cso);
+}
+
+static void
+precompile_separate_shader_job(void *data, void *gdata, int thread_index)
+{
+   struct zink_screen *screen = gdata;
+   struct zink_shader *zs = data;
+
+   zs->precompile.obj = zink_shader_compile_separate(screen, zs);
+   if (!screen->info.have_EXT_shader_object) {
+      struct zink_shader_object objs[ZINK_GFX_SHADER_COUNT] = {0};
+      objs[zs->info.stage].mod = zs->precompile.obj.mod;
+      zs->precompile.gpl = zink_create_gfx_pipeline_separate(screen, objs, zs->precompile.layout, zs->info.stage);
+   }
 }
 
 void *
